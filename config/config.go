@@ -40,10 +40,13 @@ const (
 	DefaultNodeKeyName  = "node_key.json"
 	DefaultAddrBookName = "addrbook.json"
 
-	MempoolTypeFlood    = "flood"
-	MempoolTypeNop      = "nop"
-	MempoolTypePriority = "priority"
-	MempoolTypeCAT      = "cat"
+	MempoolTypeFlood          = "flood"
+	MempoolTypeNop            = "nop"
+	MempoolTypePriority       = "priority"
+	MempoolTypeCAT            = "cat"
+	LegacyMempoolTypeFlood    = "v0"
+	LegacyMempoolTypePriority = "v1"
+	LegacyMempoolTypeCAT      = "v2"
 )
 
 // NOTE: Most of the structs & relevant comments + the
@@ -855,7 +858,7 @@ func (cfg *MempoolConfig) WalEnabled() bool {
 // returns an error if any check fails.
 func (cfg *MempoolConfig) ValidateBasic() error {
 	switch cfg.Type {
-	case MempoolTypeFlood, MempoolTypeNop, MempoolTypePriority:
+	case MempoolTypeFlood, MempoolTypeNop, MempoolTypePriority, LegacyMempoolTypePriority, LegacyMempoolTypeFlood:
 	case "": // allow empty string to be backwards compatible
 	default:
 		return fmt.Errorf("unknown mempool type: %q", cfg.Type)

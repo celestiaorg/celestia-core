@@ -238,7 +238,7 @@ func createMempoolAndMempoolReactor(
 ) (mempl.Mempool, p2p.Reactor) {
 	switch config.Mempool.Type {
 	// allow empty string for backward compatibility
-	case cfg.MempoolTypeFlood, "":
+	case cfg.MempoolTypeFlood, cfg.LegacyMempoolTypeFlood, "":
 		logger = logger.With("module", "mempool")
 		mp := mempl.NewCListMempool(
 			config.Mempool,
@@ -264,7 +264,7 @@ func createMempoolAndMempoolReactor(
 		// Strictly speaking, there's no need to have a `mempl.NopMempoolReactor`, but
 		// adding it leads to a cleaner code.
 		return &mempl.NopMempool{}, mempl.NewNopMempoolReactor()
-	case cfg.MempoolTypePriority:
+	case cfg.MempoolTypePriority, cfg.LegacyMempoolTypePriority:
 		mp := v1.NewTxMempool(
 			logger,
 			config.Mempool,

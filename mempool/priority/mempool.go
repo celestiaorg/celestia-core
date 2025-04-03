@@ -3,7 +3,6 @@ package priority
 import (
 	"context"
 	"fmt"
-	"math"
 	"sort"
 	"sync"
 	"sync/atomic"
@@ -786,23 +785,4 @@ func (txmp *TxMempool) preCheck(tx types.Tx) error {
 		return txmp.preCheckFn(tx)
 	}
 	return nil
-}
-
-// getTxPriority returns a naive tx priority based on the amount of the smallest denomination of the gas price
-// provided in a transaction.
-// NOTE: This implementation should be used with a great consideration as it opens potential attack vectors
-// where txs with multiple coins could not be prioritize as expected.
-func getTxPriority(fee, gas int64) int64 {
-	var priority int64
-
-	p := int64(math.MaxInt64)
-	gasPrice := fee / gas
-	if gasPrice > 0 {
-		p = gasPrice
-	}
-	if priority == 0 || p < priority {
-		priority = p
-	}
-
-	return priority
 }
