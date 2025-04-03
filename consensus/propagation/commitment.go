@@ -153,10 +153,6 @@ func (blockProp *Reactor) handleCompactBlock(cb *proptypes.CompactBlock, peer p2
 		return
 	}
 
-	blockProp.processCompactBlock(cb, peer)
-}
-
-func (blockProp *Reactor) processCompactBlock(cb *proptypes.CompactBlock, peer p2p.ID) {
 	proofs, err := cb.Proofs()
 	if err != nil {
 		blockProp.DeleteRound(cb.Proposal.Height, cb.Proposal.Round)
