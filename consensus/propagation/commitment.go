@@ -149,13 +149,13 @@ func (blockProp *Reactor) handleCompactBlock(cb *proptypes.CompactBlock, peer p2
 	}
 
 	fmt.Println("adding proposal")
-	added, _, _ := blockProp.AddProposal(cb)
+	added := blockProp.AddProposal(cb)
 	if !added {
 		return
 	}
 
 	// generate (and cache) the proofs from the partset hashes in the compact block
-	_, err := cb.Proofs()
+	_, err = cb.Proofs()
 	if err != nil {
 		blockProp.DeleteRound(cb.Proposal.Height, cb.Proposal.Round)
 		blockProp.Logger.Error("received invalid compact block", "err", err.Error())
