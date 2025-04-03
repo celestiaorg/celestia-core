@@ -12,6 +12,10 @@ import (
 	"github.com/tendermint/tendermint/types"
 )
 
+const (
+	ParityRatio = 2
+)
+
 // TxMetaData keeps track of the hash of a transaction and its location within the
 // protobuf encoded block.
 // Range is [start, end).
@@ -97,6 +101,11 @@ func (c *CompactBlock) ValidateBasic() error {
 		}
 	}
 
+	// // todo make more flexible to not always have a constant amount of parity data
+	// if len(c.PartsHashes) != (ParityRatio * int(c.Proposal.BlockID.PartSetHeader.Total)) {
+	// 	return fmt.Errorf("unexpected number of part hashes")
+	// }
+
 	return nil
 }
 
@@ -130,6 +139,10 @@ func (c *CompactBlock) Proofs() ([]*merkle.Proof, error) {
 	}
 
 	total := c.Proposal.BlockID.PartSetHeader.Total
+
+	if len(c.PartsHashes) != (ParityRatio * int(total)) {
+		return nil, errors.New("invalid number of partset hashes")
+	}
 
 	c.proofsCache = make([]*merkle.Proof, 0, len(c.PartsHashes))
 
