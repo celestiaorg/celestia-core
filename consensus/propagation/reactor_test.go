@@ -441,7 +441,7 @@ func TestStopPeerForError(t *testing.T) {
 		// put an invalid part set hash
 		cb.Proposal.BlockID.PartSetHeader.Hash = cmtrand.Bytes(32)
 		require.NotNil(t, reactor1.getPeer(reactor2.self))
-		reactor1.handleCompactBlock(cb, reactor2.self)
+		reactor1.handleCompactBlock(cb, reactor2.self, true)
 		assert.Nil(t, reactor1.getPeer(reactor2.self))
 	})
 	t.Run("invalid message", func(t *testing.T) {
@@ -555,14 +555,6 @@ func TestHugeBlock(t *testing.T) {
 	prop, ps, _, metaData := createTestProposal(sm, 1, 32, 1000000)
 
 	reactors[1].ProposeBlock(prop, ps, metaData)
-}
-
-func createBitArray(size int, indices []int) *bits.BitArray {
-	ba := bits.NewBitArray(size)
-	for _, index := range indices {
-		ba.SetIndex(index, true)
-	}
-	return ba
 }
 
 func createBitArray(size int, indices []int) *bits.BitArray {

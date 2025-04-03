@@ -1,8 +1,6 @@
 package propagation
 
 import (
-	"bytes"
-	"errors"
 	"fmt"
 
 	"github.com/tendermint/tendermint/crypto/merkle"

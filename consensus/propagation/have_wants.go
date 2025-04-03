@@ -15,7 +15,7 @@ import (
 // node doesn't have. If the sender has parts that this node doesn't have, this
 // node will request those parts. The peer must always send the proposal before
 // sending parts. If they did not, this node must disconnect from them.
-func (blockProp *Reactor) handleHaves(peer p2p.ID, haves *proptypes.HaveParts, _ bool) {
+func (blockProp *Reactor) handleHaves(peer p2p.ID, haves *proptypes.HaveParts) {
 	if haves == nil {
 		// TODO handle the disconnection case
 		return
