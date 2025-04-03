@@ -37,7 +37,7 @@ func (blockProp *Reactor) handleHaves(peer p2p.ID, haves *proptypes.HaveParts, _
 		return
 	}
 
-	_, parts, fullReqs, has := blockProp.getAllState(height, round)
+	_, parts, _, has := blockProp.getAllState(height, round)
 	if !has {
 		// TODO disconnect from the peer
 		blockProp.Logger.Error("received part state for unknown proposal", "peer", peer, "height", height, "round", round)
@@ -58,36 +58,7 @@ func (blockProp *Reactor) handleHaves(peer p2p.ID, haves *proptypes.HaveParts, _
 
 	// Check if the sender has parts that we don't have.
 	hc := haves.BitArray(int(parts.Total()))
-	hc.Sub(parts.BitArray())
-
-	if hc.IsEmpty() {
-		return
-	}
-
-	hc.Sub(fullReqs)
-
-	if hc.IsEmpty() {
-		return
-	}
-
-	// if enough requests have been made for the parts, don't request them.
-	for _, partIndex := range hc.GetTrueIndices() {
-		reqs := blockProp.countRequests(height, round, partIndex)
-		if len(reqs) >= maxRequestsPerPart {
-			// TODO check if this is still needed
-			hc.SetIndex(partIndex, false)
-			// mark the part as fully requested.
-			fullReqs.SetIndex(partIndex, true)
-		}
-		// don't request the part from this peer if we've already requested it
-		// from them.
-		for _, p := range reqs {
-			// p == peer means we have already requested the part from this peer.
-			if p == peer {
-				hc.SetIndex(partIndex, false)
-			}
-		}
-	}
+	hc = hc.Sub(parts.BitArray())
 
 	if hc.IsEmpty() {
 		return
