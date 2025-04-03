@@ -127,7 +127,7 @@ func TestReactorMaxConcurrentPerPeerRequests(t *testing.T) {
 
 	// add the compact block to all reactors
 	for _, reactor := range reactors {
-		added, _, _ := reactor.AddProposal(cb)
+		added := reactor.AddProposal(cb)
 		require.True(t, added)
 	}
 
@@ -159,9 +159,9 @@ func TestReactorMaxConcurrentPerPartRequests(t *testing.T) {
 
 	// add the compact block to all reactors
 
-	added, _, _ := reactor1.AddProposal(cb)
+	added := reactor1.AddProposal(cb)
 	require.True(t, added)
-	added, _, _ = reactor2.AddProposal(cb)
+	added = reactor2.AddProposal(cb)
 	require.True(t, added)
 
 	// send a have from reactor2 to reactor 1 to create the peer state
