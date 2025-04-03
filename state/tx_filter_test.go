@@ -41,9 +41,9 @@ func TestTxFilter(t *testing.T) {
 
 		f := sm.TxPreCheck(state)
 		if tc.isErr {
-			assert.NotNil(t, f(tc.tx), "#%v", i)
+			assert.NotNil(t, f(tc.tx.ToCachedTx()), "#%v", i)
 		} else {
-			assert.Nil(t, f(tc.tx), "#%v", i)
+			assert.Nil(t, f(tc.tx.ToCachedTx()), "#%v", i)
 		}
 	}
 }

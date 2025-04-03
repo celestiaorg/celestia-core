@@ -14,6 +14,7 @@ require (
 	github.com/celestiaorg/nmt v0.23.0
 	github.com/cometbft/cometbft-db v1.0.3
 	github.com/cometbft/cometbft-load-test v0.3.0
+	github.com/creachadair/taskgroup v0.13.2
 	github.com/fortytw2/leaktest v1.3.0
 	github.com/go-git/go-git/v5 v5.13.1
 	github.com/go-kit/kit v0.12.0
@@ -29,6 +30,7 @@ require (
 	github.com/grafana/otel-profiling-go v0.5.1
 	github.com/grafana/pyroscope-go v1.1.2
 	github.com/gtank/merlin v0.1.1
+	github.com/klauspost/reedsolomon v1.12.4
 	github.com/lib/pq v1.10.9
 	github.com/libp2p/go-buffer-pool v0.1.0
 	github.com/minio/highwayhash v1.0.3
@@ -106,7 +108,6 @@ require (
 	github.com/kevinburke/ssh_config v1.2.0 // indirect
 	github.com/klauspost/compress v1.17.11 // indirect
 	github.com/klauspost/cpuid/v2 v2.2.8 // indirect
-	github.com/klauspost/reedsolomon v1.12.4 // indirect
 	github.com/kr/pretty v0.3.1 // indirect
 	github.com/kr/text v0.2.0 // indirect
 	github.com/linxGnu/grocksdb v1.9.8 // indirect

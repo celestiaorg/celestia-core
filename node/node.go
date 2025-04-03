@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"runtime"
 	"strings"
 	"time"
 
@@ -243,10 +244,9 @@ type Node struct {
 }
 
 func initDBs(config *cfg.Config, dbProvider DBProvider) (blockStore *store.BlockStore, stateDB dbm.DB, err error) {
-	var blockStoreDB dbm.DB
-	blockStoreDB, err = dbProvider(&DBContext{"blockstore", config})
+	blockStoreDB, err := dbm.NewDB("blockstore", "pebbledb", config.DBDir())
 	if err != nil {
-		return
+		return nil, nil, err
 	}
 	blockStore = store.NewBlockStore(blockStoreDB)
 
@@ -1123,6 +1123,9 @@ func (n *Node) OnStart() error {
 		}
 	}
 
+	// todo: obviously remove
+	go n.printMemStats(n.tracer)
+
 	return nil
 }
 
@@ -1645,4 +1648,37 @@ func splitAndTrimEmpty(s, sep, cutset string) []string {
 		}
 	}
 	return nonEmptyStrings
+}
+
+type MemStats struct {
+	Alloc      uint64 `json:"alloc"`
+	TotalAlloc uint64 `json:"total_alloc"`
+	Sys        uint64 `json:"sys"`
+	NumGC      uint32 `json:"num_gc"`
+}
+
+func (ms *MemStats) Table() string {
+	return "mem_stats"
+}
+
+func (n *Node) printMemStats(traceClient trace.Tracer) {
+	timer := time.NewTicker(30 * time.Second)
+	for {
+		select {
+		case <-timer.C:
+			var m runtime.MemStats
+			runtime.ReadMemStats(&m)
+			ms := &MemStats{
+				Alloc:      m.Alloc,
+				TotalAlloc: m.TotalAlloc,
+				Sys:        m.Sys,
+				NumGC:      m.NumGC,
+			}
+			if traceClient != nil {
+				traceClient.Write(ms)
+			}
+		case <-n.Quit():
+			return
+		}
+	}
 }

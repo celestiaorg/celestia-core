@@ -4,6 +4,7 @@ import (
 	"errors"
 
 	proptypes "github.com/tendermint/tendermint/consensus/propagation/types"
+	"github.com/tendermint/tendermint/crypto/tmhash"
 	"github.com/tendermint/tendermint/p2p"
 	"github.com/tendermint/tendermint/pkg/trace/schema"
 	propproto "github.com/tendermint/tendermint/proto/tendermint/propagation"
@@ -12,10 +13,17 @@ import (
 // handleHaves is called when a peer sends a have message. This is used to
 // determine if the sender has or is getting portions of the proposal that this
 // node doesn't have. If the sender has parts that this node doesn't have, this
-// node will request those parts.
-// The peer must always send the proposal before sending parts. If they did
-// not, this node must disconnect from them.
-func (blockProp *Reactor) handleHaves(peer p2p.ID, haves *proptypes.HaveParts) {
+// node will request those parts. The peer must always send the proposal before
+// sending parts. If they did not, this node must disconnect from them.
+func (blockProp *Reactor) handleHaves(peer p2p.ID, haves *proptypes.HaveParts, _ bool) {
+	if haves == nil {
+		// TODO handle the disconnection case
+		return
+	}
+	if !blockProp.started.Load() {
+		return
+	}
+
 	height := haves.Height
 	round := haves.Round
 	p := blockProp.getPeer(peer)
@@ -24,7 +32,7 @@ func (blockProp *Reactor) handleHaves(peer p2p.ID, haves *proptypes.HaveParts) {
 		return
 	}
 
-	_, parts, fullReqs, has := blockProp.getAllState(height, round)
+	_, parts, fullReqs, has := blockProp.getAllState(height, round, false)
 	if !has {
 		blockProp.Logger.Error("received have part for unknown proposal", "peer", peer, "height", height, "round", round)
 		blockProp.Switch.StopPeerForError(blockProp.getPeer(peer).peer, errors.New("received part for unknown proposal"))
@@ -156,6 +164,9 @@ func (blockProp *Reactor) broadcastHaves(haves *proptypes.HaveParts, from p2p.ID
 // peers data that this node already has and store the wants to send them data
 // in the future.
 func (blockProp *Reactor) handleWants(peer p2p.ID, wants *proptypes.WantParts) {
+	if !blockProp.started.Load() {
+		return
+	}
 	height := wants.Height
 	round := wants.Round
 	p := blockProp.getPeer(peer)
@@ -164,7 +175,9 @@ func (blockProp *Reactor) handleWants(peer p2p.ID, wants *proptypes.WantParts) {
 		return
 	}
 
-	_, parts, _, has := blockProp.getAllState(height, round)
+	// get data, use the prove as a proxy for determining if this Want message
+	// if for catchup
+	_, parts, _, has := blockProp.getAllState(height, round, wants.Prove)
 	// the peer must always send the proposal before sending parts, if they did
 	//  not, this node must disconnect from them.
 	if !has {
@@ -183,14 +196,16 @@ func (blockProp *Reactor) handleWants(peer p2p.ID, wants *proptypes.WantParts) {
 
 	for _, partIndex := range canSend.GetTrueIndices() {
 		part, _ := parts.GetPart(uint32(partIndex))
+		partBz := make([]byte, len(part.Bytes))
+		copy(partBz, part.Bytes)
 		rpart := &propproto.RecoveryPart{
 			Height: height,
 			Round:  round,
 			Index:  uint32(partIndex),
-			Data:   part.Bytes,
+			Data:   partBz,
 		}
 		if wants.Prove {
-			rpart.Proof = part.Proof.ToProto()
+			rpart.Proof = *part.Proof.ToProto()
 		}
 		e := p2p.Envelope{
 			ChannelID: DataChannel,
@@ -202,7 +217,7 @@ func (blockProp *Reactor) handleWants(peer p2p.ID, wants *proptypes.WantParts) {
 			continue
 		}
 		// p.SetHave(height, round, int(partIndex))
-		schema.WriteBlockPartState(blockProp.traceClient, height, round, []int{partIndex}, true, string(peer), schema.AskForProposal)
+		schema.WriteBlockPart(blockProp.traceClient, height, round, part.Index, wants.Prove, string(peer), schema.Upload)
 	}
 
 	// for parts that we don't have, but they still want, store the wants.
@@ -215,6 +230,9 @@ func (blockProp *Reactor) handleWants(peer p2p.ID, wants *proptypes.WantParts) {
 // handleRecoveryPart is called when a peer sends a block part message. This is used
 // to store the part and clear any wants for that part.
 func (blockProp *Reactor) handleRecoveryPart(peer p2p.ID, part *proptypes.RecoveryPart) {
+	if !blockProp.started.Load() {
+		return
+	}
 	if peer == "" {
 		peer = blockProp.self
 	}
@@ -225,7 +243,7 @@ func (blockProp *Reactor) handleRecoveryPart(peer p2p.ID, part *proptypes.Recove
 	}
 	// the peer must always send the proposal before sending parts, if they did
 	// not this node must disconnect from them.
-	cb, parts, _, has := blockProp.getAllState(part.Height, part.Round)
+	cb, parts, _, has := blockProp.getAllState(part.Height, part.Round, false)
 	if !has {
 		blockProp.Logger.Error("received part for unknown proposal", "peer", peer, "height", part.Height, "round", part.Round)
 		blockProp.Switch.StopPeerForError(p.peer, errors.New("received recovery part for unknown proposal"))
@@ -252,6 +270,9 @@ func (blockProp *Reactor) handleRecoveryPart(peer p2p.ID, part *proptypes.Recove
 			blockProp.Logger.Error("proof not found", "peer", peer, "height", part.Height, "round", part.Round, "part", part.Index)
 			return
 		}
+		if len(part.Proof.LeafHash) != tmhash.Size {
+			return
+		}
 		proof = part.Proof
 	}
 
@@ -275,6 +296,12 @@ func (blockProp *Reactor) handleRecoveryPart(peer p2p.ID, part *proptypes.Recove
 	// during catchup. todo: use the bool found in the state instead of checking
 	// for nil.
 	if parts.CanDecode() {
+		if parts.IsDecoding.Load() {
+			return
+		}
+		parts.IsDecoding.Store(true)
+		defer parts.IsDecoding.Store(false)
+
 		err := parts.Decode()
 		if err != nil {
 			blockProp.Logger.Error("failed to decode parts", "peer", peer, "height", part.Height, "round", part.Round, "error", err)
@@ -303,11 +330,13 @@ func (blockProp *Reactor) handleRecoveryPart(peer p2p.ID, part *proptypes.Recove
 		go func(height int64, round int32, parts *proptypes.CombinedPartSet) {
 			for i := uint32(0); i < parts.Total(); i++ {
 				p, _ := parts.GetPart(i)
+				pbz := make([]byte, len(p.Bytes))
+				copy(pbz, p.Bytes)
 				msg := &proptypes.RecoveryPart{
 					Height: height,
 					Round:  round,
 					Index:  p.Index,
-					Data:   p.Bytes,
+					Data:   pbz,
 				}
 				blockProp.clearWants(msg)
 			}

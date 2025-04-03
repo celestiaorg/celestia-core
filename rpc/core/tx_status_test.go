@@ -78,7 +78,7 @@ func TestTxStatus(t *testing.T) {
 
 				for _, tx := range txs {
 					// Set GetTxByKey to return the transaction and true for all transactions
-					mempool.EXPECT().GetTxByKey(tx.Key()).Return(tx, true).AnyTimes()
+					mempool.EXPECT().GetTxByKey(tx.Key()).Return(tx.ToCachedTx(), true).AnyTimes()
 				}
 			},
 			expectedStatus: "PENDING",

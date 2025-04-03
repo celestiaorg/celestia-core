@@ -47,7 +47,7 @@ type Mempool interface {
 	// ReapMaxTxs reaps up to max transactions from the mempool. If max is
 	// negative, there is no cap on the size of all returned transactions
 	// (~ all available transactions).
-	ReapMaxTxs(max int) types.Txs
+	ReapMaxTxs(max int) []*types.CachedTx
 
 	// Lock locks the mempool. The consensus must be able to hold lock to safely
 	// update.
@@ -64,7 +64,7 @@ type Mempool interface {
 	// 2. Lock/Unlock must be managed by the caller.
 	Update(
 		blockHeight int64,
-		blockTxs types.Txs,
+		blockTxs []*types.CachedTx,
 		deliverTxResponses []*abci.ResponseDeliverTx,
 		newPreFn PreCheckFunc,
 		newPostFn PostCheckFunc,
@@ -93,7 +93,7 @@ type Mempool interface {
 
 	// GetTxByKey gets a tx by its key from the mempool. Returns the tx and a bool indicating its presence in the tx cache.
 	// Used in the RPC endpoint: TxStatus.
-	GetTxByKey(key types.TxKey) (types.Tx, bool)
+	GetTxByKey(key types.TxKey) (*types.CachedTx, bool)
 
 	// WasRecentlyEvicted returns true if the tx was evicted from the mempool and exists in the
 	// evicted cache.
@@ -110,18 +110,18 @@ type Mempool interface {
 // PreCheckFunc is an optional filter executed before CheckTx and rejects
 // transaction if false is returned. An example would be to ensure that a
 // transaction doesn't exceeded the block size.
-type PreCheckFunc func(types.Tx) error
+type PreCheckFunc func(*types.CachedTx) error
 
 // PostCheckFunc is an optional filter executed after CheckTx and rejects
 // transaction if false is returned. An example would be to ensure a
 // transaction doesn't require more gas than available for the block.
-type PostCheckFunc func(types.Tx, *abci.ResponseCheckTx) error
+type PostCheckFunc func(*types.CachedTx, *abci.ResponseCheckTx) error
 
 // PreCheckMaxBytes checks that the size of the transaction is smaller or equal
 // to the expected maxBytes.
 func PreCheckMaxBytes(maxBytes int64) PreCheckFunc {
-	return func(tx types.Tx) error {
-		txSize := types.ComputeProtoSizeForTxs([]types.Tx{tx})
+	return func(tx *types.CachedTx) error {
+		txSize := types.ComputeProtoSizeForTxs([]types.Tx{tx.Tx})
 
 		if txSize > maxBytes {
 			return fmt.Errorf("tx size is too big: %d, max: %d", txSize, maxBytes)
@@ -134,7 +134,7 @@ func PreCheckMaxBytes(maxBytes int64) PreCheckFunc {
 // PostCheckMaxGas checks that the wanted gas is smaller or equal to the passed
 // maxGas. Returns nil if maxGas is -1.
 func PostCheckMaxGas(maxGas int64) PostCheckFunc {
-	return func(tx types.Tx, res *abci.ResponseCheckTx) error {
+	return func(tx *types.CachedTx, res *abci.ResponseCheckTx) error {
 		if maxGas == -1 {
 			return nil
 		}

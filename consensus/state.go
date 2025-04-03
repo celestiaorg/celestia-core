@@ -548,7 +548,7 @@ func (cs *State) updateRoundStep(round int32, step cstypes.RoundStepType) {
 		}
 		if cs.Step != step {
 			cs.metrics.MarkStep(cs.Step)
-			schema.WriteRoundState(cs.traceClient, cs.Height, round, uint8(step))
+			schema.WriteRoundState(cs.traceClient, cs.Height, round, step.String())
 		}
 	}
 	cs.Round = round
@@ -1070,6 +1070,9 @@ func (cs *State) enterNewRound(height int64, round int32) {
 	if err := cs.eventBus.PublishEventNewRound(cs.NewRoundEvent()); err != nil {
 		cs.Logger.Error("failed publishing new round", "err", err)
 	}
+
+	cs.propagator.SetConsensusRound(height, round)
+
 	// Wait for txs to be available in the mempool
 	// before we enterPropose in round 0. If the last block changed the app hash,
 	// we may need an empty "proof" block, and enterPropose immediately.
@@ -2507,7 +2510,7 @@ func repairWalFile(src, dst string) error {
 	return nil
 }
 
-const SyncDataInterval = 50
+const SyncDataInterval = 150
 
 // sync data periodically checks to make sure that all block parts in the data
 // routine are pushed through to the state.
@@ -2567,7 +2570,6 @@ func (cs *State) syncData() {
 					"found and sent proposal: %v/%v",
 					prop.Height, prop.Round,
 				)
-				cs.Logger.Info("Proposal was apparently not nil, so we're sending it", "complete", parts.IsComplete())
 				cs.peerMsgQueue <- msgInfo{&ProposalMessage{prop}, ""}
 			}
 
