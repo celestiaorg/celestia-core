@@ -153,7 +153,7 @@ func (memR *Reactor) GetChannels() []*p2p.ChannelDescriptor {
 	return []*p2p.ChannelDescriptor{
 		{
 			ID:                  mempool.MempoolChannel,
-			Priority:            5,
+			Priority:            1,
 			RecvMessageCapacity: batchMsg.Size(),
 			MessageType:         &protomem.Message{},
 		},
@@ -291,7 +291,7 @@ func (memR *Reactor) broadcastTxRoutine(peer p2p.Peer) {
 		if !memTx.HasPeer(peerID) {
 			success := p2p.SendEnvelopeShim(peer, p2p.Envelope{ //nolint: staticcheck
 				ChannelID: mempool.MempoolChannel,
-				Message:   &protomem.Txs{Txs: [][]byte{memTx.tx}},
+				Message:   &protomem.Txs{Txs: [][]byte{memTx.tx.Tx}},
 			}, memR.Logger)
 			if !success {
 				time.Sleep(mempool.PeerCatchupSleepIntervalMS * time.Millisecond)
@@ -304,7 +304,7 @@ func (memR *Reactor) broadcastTxRoutine(peer p2p.Peer) {
 					memR.traceClient,
 					string(peer.ID()),
 					memTx.tx.Hash(),
-					len(memTx.tx),
+					len(memTx.tx.Tx),
 					schema.Upload,
 				)
 			}

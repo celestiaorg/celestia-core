@@ -176,7 +176,7 @@ func TestTxMempool_TxsAvailable(t *testing.T) {
 
 	// commit half the transactions and ensure we fire an event
 	txmp.Lock()
-	require.NoError(t, txmp.Update(1, rawTxs[:50], responses, nil, nil))
+	require.NoError(t, txmp.Update(1, types.CachedTxFromTxs(rawTxs[:50]), responses, nil, nil))
 	txmp.Unlock()
 	ensureTxFire()
 	ensureNoTxFire()
@@ -204,7 +204,7 @@ func TestTxMempool_Size(t *testing.T) {
 	}
 
 	txmp.Lock()
-	require.NoError(t, txmp.Update(1, rawTxs[:50], responses, nil, nil))
+	require.NoError(t, txmp.Update(1, types.CachedTxFromTxs(rawTxs[:50]), responses, nil, nil))
 	txmp.Unlock()
 
 	require.Equal(t, len(rawTxs)/2, txmp.Size())
@@ -307,7 +307,7 @@ func TestTxMempool_Flush(t *testing.T) {
 	}
 
 	txmp.Lock()
-	require.NoError(t, txmp.Update(1, rawTxs[:50], responses, nil, nil))
+	require.NoError(t, txmp.Update(1, types.CachedTxFromTxs(rawTxs[:50]), responses, nil, nil))
 	txmp.Unlock()
 
 	txmp.Flush()
@@ -410,7 +410,7 @@ func TestTxMempool_ReapMaxTxs(t *testing.T) {
 		return priorities[i] > priorities[j]
 	})
 
-	ensurePrioritized := func(reapedTxs types.Txs) {
+	ensurePrioritized := func(reapedTxs []*types.CachedTx) {
 		reapedPriorities := make([]int64, len(reapedTxs))
 		for i, rTx := range reapedTxs {
 			reapedPriorities[i] = txMap[rTx.Key()].priority
@@ -599,7 +599,7 @@ func TestTxMempool_ExpiredTxs_Timestamp(t *testing.T) {
 		if _, ok := txmp.txByKey[tx.tx.Key()]; ok {
 			t.Errorf("Transaction %X should have been purged for TTL", tx.tx.Key())
 		}
-		if txmp.cache.Has(tx.tx) {
+		if txmp.cache.Has(tx.tx.ToCachedTx()) {
 			t.Errorf("Transaction %X should have been removed from the cache", tx.tx.Key())
 		}
 	}
@@ -620,7 +620,7 @@ func TestGetTxByKey_GetsTx(t *testing.T) {
 	for _, tx := range txs {
 		txKey := tx.tx.Key()
 		txFromMempool, exists := txmp.GetTxByKey(txKey)
-		require.Equal(t, tx.tx, txFromMempool)
+		require.Equal(t, tx.tx, txFromMempool.Tx)
 		require.True(t, exists)
 	}
 
@@ -692,7 +692,7 @@ func TestTxMempool_CheckTxPostCheckError(t *testing.T) {
 	for _, tc := range cases {
 		testCase := tc
 		t.Run(testCase.name, func(t *testing.T) {
-			postCheckFn := func(_ types.Tx, _ *abci.ResponseCheckTx) error {
+			postCheckFn := func(_ *types.CachedTx, _ *abci.ResponseCheckTx) error {
 				return testCase.err
 			}
 			txmp := setup(t, 1, WithPostCheck(postCheckFn))
@@ -736,7 +736,7 @@ func TestRemoveBlobTx(t *testing.T) {
 	err = txmp.CheckTx(bTx, nil, mempool.TxInfo{})
 	require.NoError(t, err)
 
-	err = txmp.Update(1, []types.Tx{indexWrapper}, abciResponses(1, abci.CodeTypeOK), nil, nil)
+	err = txmp.Update(1, types.CachedTxFromTxs([]types.Tx{indexWrapper}), abciResponses(1, abci.CodeTypeOK), nil, nil)
 	require.NoError(t, err)
 	assert.EqualValues(t, 0, txmp.Size())
 	assert.EqualValues(t, 0, txmp.SizeBytes())

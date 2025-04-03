@@ -7,6 +7,7 @@ import (
 	"github.com/tendermint/tendermint/types"
 	"reflect"
 	"sync"
+	"sync/atomic"
 
 	"github.com/tendermint/tendermint/p2p/conn"
 
@@ -16,6 +17,7 @@ import (
 	proptypes "github.com/tendermint/tendermint/consensus/propagation/types"
 	"github.com/tendermint/tendermint/p2p"
 	"github.com/tendermint/tendermint/pkg/trace"
+	"github.com/tendermint/tendermint/pkg/trace/schema"
 	propproto "github.com/tendermint/tendermint/proto/tendermint/propagation"
 )
 
@@ -31,11 +33,6 @@ const (
 
 	// WantChannel the propagation reactor channel handling the wants.
 	WantChannel = byte(0x51)
-
-	// blockCacheSize determines the number of blocks to keep in the cache.
-	// After each block is committed, only the last `blockCacheSize` blocks are
-	// kept.
-	blockCacheSize = 5
 )
 
 type validateProposalFunc func(proposer crypto.PubKey, proposal *types.Proposal) error
@@ -65,6 +62,7 @@ type Reactor struct {
 	mtx         *sync.RWMutex
 	traceClient trace.Tracer
 	self        p2p.ID
+	started     atomic.Bool
 }
 
 func NewReactor(self p2p.ID, tracer trace.Tracer, store *store.BlockStore, mempool Mempool, options ...ReactorOption) *Reactor {
@@ -72,12 +70,13 @@ func NewReactor(self p2p.ID, tracer trace.Tracer, store *store.BlockStore, mempo
 		tracer = trace.NoOpTracer()
 	}
 	reactor := &Reactor{
-		self:              self,
-		traceClient:       tracer,
-		peerstate:         make(map[p2p.ID]*PeerState),
-		mtx:               &sync.RWMutex{},
-		ProposalCache:     NewProposalCache(store),
-		mempool:           mempool,
+		self:          self,
+		traceClient:   tracer,
+		peerstate:     make(map[p2p.ID]*PeerState),
+		mtx:           &sync.RWMutex{},
+		ProposalCache: NewProposalCache(store),
+		mempool:       mempool,
+		started:       atomic.Bool{},
 		proposalValidator: func(proposer crypto.PubKey, proposal *types.Proposal) error { return nil },
 		stateInfo:         func() *StateInfo { return &StateInfo{} },
 		ProposersCache:    NewProposersCache(),
@@ -118,14 +117,14 @@ func (blockProp *Reactor) GetChannels() []*conn.ChannelDescriptor {
 	return []*p2p.ChannelDescriptor{
 		{
 			ID:                  WantChannel,
-			Priority:            20,
+			Priority:            45,
 			SendQueueCapacity:   20000,
 			RecvMessageCapacity: maxMsgSize,
 			MessageType:         &propproto.Message{},
 		},
 		{
 			ID:                  DataChannel,
-			Priority:            15,
+			Priority:            40,
 			SendQueueCapacity:   20000,
 			RecvMessageCapacity: maxMsgSize,
 			MessageType:         &propproto.Message{},
@@ -201,6 +200,7 @@ func (blockProp *Reactor) ReceiveEnvelope(e p2p.Envelope) {
 		case *proptypes.CompactBlock:
 			blockProp.logger.Info("Handled compact block", "msg", msg)
 			blockProp.handleCompactBlock(msg, e.Src.ID(), false)
+			schema.WriteProposal(blockProp.traceClient, msg.Proposal.Height, msg.Proposal.Round, string(e.Src.ID()), schema.Download)
 		case *proptypes.HaveParts:
 			blockProp.logger.Info("Handled haves", "msg", msg)
 			blockProp.handleHaves(e.Src.ID(), msg, false)
@@ -241,12 +241,19 @@ func (blockProp *Reactor) Receive(chID byte, peer p2p.Peer, msgBytes []byte) {
 // Prune removes all peer and proposal state from the block propagation reactor.
 // This should be called only after a block has been committed.
 func (blockProp *Reactor) Prune(committedHeight int64) {
-	prunePast := committedHeight - blockCacheSize
+	prunePast := committedHeight
 	peers := blockProp.getPeers()
 	for _, peer := range peers {
 		peer.prune(prunePast)
 	}
 	blockProp.ProposalCache.prune(prunePast)
+	blockProp.pmtx.Lock()
+	defer blockProp.pmtx.Unlock()
+	blockProp.consensusHeight = committedHeight
+}
+
+func (blockProp *Reactor) StartProcessing() {
+	blockProp.started.Store(true)
 }
 
 // getPeer returns the peer state for the given peer. If the peer does not exist,

@@ -40,10 +40,10 @@ func TestCacheAfterUpdate(t *testing.T) {
 			require.NoError(t, err)
 		}
 
-		updateTxs := []types.Tx{}
+		updateTxs := []*types.CachedTx{}
 		for _, v := range tc.updateIndices {
 			tx := types.Tx{byte(v)}
-			updateTxs = append(updateTxs, tx)
+			updateTxs = append(updateTxs, tx.ToCachedTx())
 		}
 		err := mp.Update(int64(tcIndex), updateTxs, abciResponses(len(updateTxs), abci.CodeTypeOK), nil, nil)
 		require.NoError(t, err)

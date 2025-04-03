@@ -10,6 +10,7 @@ func MempoolTables() []string {
 	return []string{
 		MempoolTxTable,
 		MempoolPeerStateTable,
+		MempoolRecoveredPartsTable,
 	}
 }
 
@@ -96,5 +97,36 @@ func WriteMempoolPeerState(
 		StateUpdate:  stateUpdate,
 		TransferType: transferType,
 		TxHash:       bytes.HexBytes(txHash).String(),
+	})
+}
+
+const (
+	// MempoolRecoveredPartsTable is the tracing "measurement" (aka table) for the
+	// mempool that stores tracing data related to the recovery of parts.
+	MempoolRecoveredPartsTable = "recovered"
+)
+
+// MempoolRecoveredParts describes the schema for the "recovered" table.
+type MempoolRecoveredParts struct {
+	Height         int64 `json:"height"`
+	Round          int32 `json:"round"`
+	RecoveredParts int   `json:"recovered_parts"`
+	Ontime         bool  `json:"ontime"`
+}
+
+func (m MempoolRecoveredParts) Table() string {
+	return MempoolRecoveredPartsTable
+}
+
+// WriteMempoolRecoveredParts writes a tracing point for the recovery of parts
+// using the predetermined schema for mempool tracing.
+func WriteMempoolRecoveredParts(client trace.Tracer, height int64, round int32, parts int) {
+	if !client.IsCollecting(MempoolRecoveredPartsTable) {
+		return
+	}
+	client.Write(MempoolRecoveredParts{
+		Height:         height,
+		Round:          round,
+		RecoveredParts: parts,
 	})
 }
