@@ -17,10 +17,10 @@ import (
 
 const (
 	// concurrentPerPeerRequestLimit the maximum number of requests to send a peer.
-	concurrentPerPeerRequestLimit = 100
+	concurrentPerPeerRequestLimit = 40
 
 	// maxRequestsPerPart the maximum number of requests per parts.
-	maxRequestsPerPart = 30
+	maxRequestsPerPart = 40
 
 	// maxNumberOfPendingRequests the maximum number of pending requests.
 	maxNumberOfPendingRequests = 50_000
@@ -29,7 +29,7 @@ const (
 	maxRequestRetry = 10
 
 	// requestTimeout request timeout after it's pending to be sent
-	requestTimeout = 60 * time.Second
+	requestTimeout = 10 * time.Second
 )
 
 type request struct {
@@ -46,6 +46,7 @@ type request struct {
 type requester struct {
 	sync.Mutex
 	pendingRequests []*request
+	sentRequests    []*request
 	perPeerRequests map[p2p.ID]int
 	// perPartRequests a map of [height][round][partIndex]numberOfRequests
 	perPartRequests map[int64]map[int32]map[int]int
@@ -54,13 +55,40 @@ type requester struct {
 }
 
 func newRequester(logger log.Logger) *requester {
-	return &requester{
+	requester := requester{
 		perPeerRequests: make(map[p2p.ID]int),
 		perPartRequests: make(map[int64]map[int32]map[int]int),
 		pendingRequests: make([]*request, 0),
+		sentRequests:    make([]*request, 0),
 		logger:          logger,
 		ctx:             context.Background(),
 	}
+	go func() {
+		ticker := time.NewTicker(2 * time.Second)
+		for {
+			select {
+			case <-requester.ctx.Done():
+				return
+			case <-ticker.C:
+				requester.Lock()
+				for i, req := range requester.sentRequests {
+					if req.timestamp.Add(requestTimeout).Before(time.Now()) {
+						err := requester.removeSentRequest(i)
+						if err != nil {
+							requester.logger.With("err", err).Error("failed to remove sent request")
+							continue
+						}
+						requester.perPeerRequests[req.targetPeer.ID()]--
+						for index := range req.want.Parts.GetTrueIndices() {
+							requester.perPartRequests[req.want.Height][req.want.Round][index]--
+						}
+					}
+				}
+				requester.Unlock()
+			}
+		}
+	}()
+	return &requester
 }
 
 func (r *requester) sendRequest(targetPeer p2p.Peer, want *proptypes.WantParts) (bool, error) {
@@ -120,6 +148,7 @@ func (r *requester) sendRequest(targetPeer p2p.Peer, want *proptypes.WantParts) 
 				return false, err
 			}
 		}
+		r.sentRequests = append(r.sentRequests, req)
 		r.perPeerRequests[targetPeer.ID()]++
 	}
 	if !toPostpone.IsEmpty() {
@@ -215,7 +244,7 @@ func (r *requester) sendNextRequest(from p2p.Peer) {
 		req := r.pendingRequests[index]
 		if !req.timestamp.Add(requestTimeout).After(time.Now()) {
 			// remove expired request
-			err := r.removeRequest(index)
+			err := r.removePendingRequest(index)
 			if err != nil {
 				r.logger.Error("failed to remove expired request", "peer", from, "index", index, "err", err)
 			}
@@ -229,7 +258,7 @@ func (r *requester) sendNextRequest(from p2p.Peer) {
 				}
 			}()
 			// remove pending request from pending requests list
-			err := r.removeRequest(index)
+			err := r.removePendingRequest(index)
 			if err != nil {
 				r.logger.Error("failed to remove expired request", "peer", from, "index", index, "err", err)
 			}
@@ -239,7 +268,7 @@ func (r *requester) sendNextRequest(from p2p.Peer) {
 	}
 }
 
-func (r *requester) removeRequest(index int) error {
+func (r *requester) removePendingRequest(index int) error {
 	if index >= len(r.pendingRequests) {
 		return errors.New("request index out of pending requests range")
 	}
@@ -248,5 +277,17 @@ func (r *requester) removeRequest(index int) error {
 		return nil
 	}
 	r.pendingRequests = append(r.pendingRequests[:index], r.pendingRequests[index+1:]...)
+	return nil
+}
+
+func (r *requester) removeSentRequest(index int) error {
+	if index >= len(r.sentRequests) {
+		return errors.New("request index out of pending requests range")
+	}
+	if index+1 == len(r.sentRequests) {
+		r.sentRequests = r.sentRequests[:index]
+		return nil
+	}
+	r.sentRequests = append(r.sentRequests[:index], r.sentRequests[index+1:]...)
 	return nil
 }

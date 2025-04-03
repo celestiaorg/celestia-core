@@ -38,11 +38,12 @@ func TestRequester_SendRequest(t *testing.T) {
 				r.perPeerRequests = make(map[p2p.ID]int)
 				r.perPartRequests = make(map[int64]map[int32]map[int]int)
 				r.pendingRequests = []*request{}
+				r.sentRequests = []*request{}
 			},
 			want: &proptypes.WantParts{
 				Height: 10,
 				Round:  1,
-				Parts:  bits.NewBitArray(1),
+				Parts:  bits.NewBitArray(10).Not(),
 				Prove:  false,
 			},
 			expectedSent:      true,
@@ -57,7 +58,7 @@ func TestRequester_SendRequest(t *testing.T) {
 			want: &proptypes.WantParts{
 				Height: 10,
 				Round:  1,
-				Parts:  bits.NewBitArray(1),
+				Parts:  bits.NewBitArray(10).Not(),
 				Prove:  false,
 			},
 			expectedSent:      true,
@@ -72,7 +73,7 @@ func TestRequester_SendRequest(t *testing.T) {
 				}
 			},
 			want: func() *proptypes.WantParts {
-				bitArray := bits.NewBitArray(1)
+				bitArray := bits.NewBitArray(10).Not()
 				bitArray.SetIndex(0, true)
 				return &proptypes.WantParts{
 					Height: 10,
@@ -108,6 +109,16 @@ func TestRequester_SendRequest(t *testing.T) {
 			sent, err := r.sendRequest(peer, tt.want)
 
 			assert.Equal(t, tt.expectedSent, sent)
+			if tt.expectedSent {
+				exists := false
+				for _, req := range r.sentRequests {
+					if req.want.Height == tt.want.Height && req.want.Round == tt.want.Round {
+						exists = true
+					}
+				}
+				assert.True(t, exists)
+			}
+
 			if tt.expectedError != nil {
 				assert.EqualError(t, err, tt.expectedError.Error())
 			} else {
