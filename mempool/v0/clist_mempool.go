@@ -184,7 +184,7 @@ func (mem *CListMempool) TxsFront() *clist.CElement {
 }
 
 // GetTxByKey retrieves a transaction from the mempool using its key.
-func (mem *CListMempool) GetTxByKey(key types.TxKey) (types.Tx, bool) {
+func (mem *CListMempool) GetTxByKey(key types.TxKey) (*types.CachedTx, bool) {
 	e, ok := mem.txsMap.Load(key)
 	if !ok {
 		return nil, false
@@ -238,8 +238,9 @@ func (mem *CListMempool) CheckTx(
 		}
 	}
 
+	cachedTx := tx.ToCachedTx()
 	if mem.preCheck != nil {
-		if err := mem.preCheck(tx); err != nil {
+		if err := mem.preCheck(cachedTx); err != nil {
 			return mempool.ErrPreCheck{
 				Reason: err,
 			}
@@ -251,7 +252,7 @@ func (mem *CListMempool) CheckTx(
 		return err
 	}
 
-	if !mem.cache.Push(tx) { // if the transaction already exists in the cache
+	if !mem.cache.Push(cachedTx) { // if the transaction already exists in the cache
 		// Record a new sender for a tx we've already seen.
 		// Note it's possible a tx is still in the cache but no longer in the mempool
 		// (eg. after committing a block, txs are removed from mempool but not cache),
@@ -268,7 +269,7 @@ func (mem *CListMempool) CheckTx(
 	}
 
 	reqRes := mem.proxyAppConn.CheckTxAsync(abci.RequestCheckTx{Tx: tx})
-	reqRes.SetCallback(mem.reqResCb(tx, txInfo.SenderID, txInfo.SenderP2PID, cb))
+	reqRes.SetCallback(mem.reqResCb(cachedTx, txInfo.SenderID, txInfo.SenderP2PID, cb))
 
 	return nil
 }
@@ -305,7 +306,7 @@ func (mem *CListMempool) globalCb(req *abci.Request, res *abci.Response) {
 //
 // Used in CheckTx to record PeerID who sent us the tx.
 func (mem *CListMempool) reqResCb(
-	tx []byte,
+	tx *types.CachedTx,
 	peerID uint16,
 	peerP2PID p2p.ID,
 	externalCb func(*abci.Response),
@@ -334,21 +335,21 @@ func (mem *CListMempool) reqResCb(
 func (mem *CListMempool) addTx(memTx *mempoolTx) {
 	e := mem.txs.PushBack(memTx)
 	mem.txsMap.Store(memTx.tx.Key(), e)
-	atomic.AddInt64(&mem.txsBytes, int64(len(memTx.tx)))
-	mem.metrics.TxSizeBytes.Observe(float64(len(memTx.tx)))
+	atomic.AddInt64(&mem.txsBytes, int64(len(memTx.tx.Tx)))
+	mem.metrics.TxSizeBytes.Observe(float64(len(memTx.tx.Tx)))
 }
 
 // Called from:
 //   - Update (lock held) if tx was committed
 //   - resCbRecheck (lock not held) if tx was invalidated
-func (mem *CListMempool) removeTx(tx types.Tx, elem *clist.CElement, removeFromCache bool) {
+func (mem *CListMempool) removeTx(tx *types.CachedTx, elem *clist.CElement, removeFromCache bool) {
 	mem.txs.Remove(elem)
 	elem.DetachPrev()
 	mem.txsMap.Delete(tx.Key())
 	if memtx, ok := elem.Value.(*mempoolTx); ok {
 		tx = memtx.tx
 	}
-	atomic.AddInt64(&mem.txsBytes, int64(-len(tx)))
+	atomic.AddInt64(&mem.txsBytes, int64(-len(tx.Tx)))
 
 	if removeFromCache {
 		mem.cache.Remove(tx)
@@ -391,7 +392,7 @@ func (mem *CListMempool) isFull(txSize int) error {
 // The case where the app checks the tx for the second and subsequent times is
 // handled by the resCbRecheck callback.
 func (mem *CListMempool) resCbFirstTime(
-	tx []byte,
+	tx *types.CachedTx,
 	peerID uint16,
 	peerP2PID p2p.ID,
 	res *abci.Response,
@@ -405,7 +406,7 @@ func (mem *CListMempool) resCbFirstTime(
 		if (r.CheckTx.Code == abci.CodeTypeOK) && postCheckErr == nil {
 			// Check mempool isn't full again to reduce the chance of exceeding the
 			// limits.
-			if err := mem.isFull(len(tx)); err != nil {
+			if err := mem.isFull(len(tx.Tx)); err != nil {
 				// remove from cache (mempool might have a space later)
 				mem.cache.Remove(tx)
 				mem.logger.Error(err.Error())
@@ -413,12 +414,12 @@ func (mem *CListMempool) resCbFirstTime(
 			}
 
 			// Check transaction not already in the mempool
-			if e, ok := mem.txsMap.Load(types.Tx(tx).Key()); ok {
+			if e, ok := mem.txsMap.Load(tx.Key()); ok {
 				memTx := e.(*clist.CElement).Value.(*mempoolTx)
 				memTx.senders.LoadOrStore(peerID, true)
 				mem.logger.Debug(
 					"transaction already there, not adding it again",
-					"tx", types.Tx(tx).Hash(),
+					"tx", tx.Hash(),
 					"res", r,
 					"height", mem.height,
 					"total", mem.Size(),
@@ -435,7 +436,7 @@ func (mem *CListMempool) resCbFirstTime(
 			mem.addTx(memTx)
 			mem.logger.Debug(
 				"added good transaction",
-				"tx", types.Tx(tx).Hash(),
+				"tx", tx.Hash(),
 				"res", r,
 				"height", memTx.height,
 				"total", mem.Size(),
@@ -445,7 +446,7 @@ func (mem *CListMempool) resCbFirstTime(
 			// ignore bad transaction
 			mem.logger.Debug(
 				"rejected bad transaction",
-				"tx", types.Tx(tx).Hash(),
+				"tx", tx.Hash(),
 				"peerID", peerP2PID,
 				"res", r,
 				"err", postCheckErr,
@@ -470,13 +471,14 @@ func (mem *CListMempool) resCbFirstTime(
 func (mem *CListMempool) resCbRecheck(req *abci.Request, res *abci.Response) {
 	switch r := res.Value.(type) {
 	case *abci.Response_CheckTx:
-		tx := req.GetCheckTx().Tx
+		txBytes := req.GetCheckTx().Tx
 		memTx := mem.recheckCursor.Value.(*mempoolTx)
+		tx := &types.CachedTx{Tx: txBytes}
 
 		// Search through the remaining list of tx to recheck for a transaction that matches
 		// the one we received from the ABCI application.
 		for {
-			if bytes.Equal(tx, memTx.tx) {
+			if bytes.Equal(tx.Tx, memTx.tx.Tx) {
 				// We've found a tx in the recheck list that matches the tx that we
 				// received from the ABCI application.
 				// Break, and use this transaction for further checks.
@@ -485,7 +487,7 @@ func (mem *CListMempool) resCbRecheck(req *abci.Request, res *abci.Response) {
 
 			mem.logger.Error(
 				"re-CheckTx transaction mismatch",
-				"got", types.Tx(tx),
+				"got", tx.Tx,
 				"expected", memTx.tx,
 			)
 
@@ -510,7 +512,7 @@ func (mem *CListMempool) resCbRecheck(req *abci.Request, res *abci.Response) {
 			// Good, nothing to do.
 		} else {
 			// Tx became invalidated due to newly committed block.
-			mem.logger.Debug("tx is no longer valid", "tx", types.Tx(tx).Hash(), "res", r, "err", postCheckErr)
+			mem.logger.Debug("tx is no longer valid", "tx", tx.Hash(), "res", r, "err", postCheckErr)
 			// NOTE: we remove tx from the cache because it might be good later
 			mem.removeTx(tx, mem.recheckCursor, !mem.config.KeepInvalidTxsInCache)
 		}
@@ -565,17 +567,17 @@ func (mem *CListMempool) ReapMaxBytesMaxGas(maxBytes, maxGas int64) []*types.Cac
 	// TODO: we will get a performance boost if we have a good estimate of avg
 	// size per tx, and set the initial capacity based off of that.
 	// txs := make([]types.Tx, 0, cmtmath.MinInt(mem.txs.Len(), max/mem.avgTxSize))
-	txs := make([]types.Tx, 0, mem.txs.Len())
+	txs := make([]*types.CachedTx, 0, mem.txs.Len())
 	for e := mem.txs.Front(); e != nil; e = e.Next() {
 		memTx := e.Value.(*mempoolTx)
 
 		txs = append(txs, memTx.tx)
 
-		dataSize := types.ComputeProtoSizeForTxs([]types.Tx{memTx.tx})
+		dataSize := types.ComputeProtoSizeForTxs([]types.Tx{memTx.tx.Tx})
 
 		// Check total size requirement
 		if maxBytes > -1 && runningSize+dataSize > maxBytes {
-			return types.CachedTxFromTxs(txs[:len(txs)-1])
+			return txs[:len(txs)-1]
 		}
 
 		runningSize += dataSize
@@ -586,15 +588,15 @@ func (mem *CListMempool) ReapMaxBytesMaxGas(maxBytes, maxGas int64) []*types.Cac
 		// must be non-negative, it follows that this won't overflow.
 		newTotalGas := totalGas + memTx.gasWanted
 		if maxGas > -1 && newTotalGas > maxGas {
-			return types.CachedTxFromTxs(txs[:len(txs)-1])
+			return txs[:len(txs)-1]
 		}
 		totalGas = newTotalGas
 	}
-	return types.CachedTxFromTxs(txs)
+	return txs
 }
 
 // Safe for concurrent use by multiple goroutines.
-func (mem *CListMempool) ReapMaxTxs(max int) types.Txs {
+func (mem *CListMempool) ReapMaxTxs(max int) []*types.CachedTx {
 	mem.updateMtx.RLock()
 	defer mem.updateMtx.RUnlock()
 
@@ -602,7 +604,7 @@ func (mem *CListMempool) ReapMaxTxs(max int) types.Txs {
 		max = mem.txs.Len()
 	}
 
-	txs := make([]types.Tx, 0, cmtmath.MinInt(mem.txs.Len(), max))
+	txs := make([]*types.CachedTx, 0, cmtmath.MinInt(mem.txs.Len(), max))
 	for e := mem.txs.Front(); e != nil && len(txs) <= max; e = e.Next() {
 		memTx := e.Value.(*mempoolTx)
 		txs = append(txs, memTx.tx)
@@ -613,7 +615,7 @@ func (mem *CListMempool) ReapMaxTxs(max int) types.Txs {
 // Lock() must be help by the caller during execution.
 func (mem *CListMempool) Update(
 	height int64,
-	txs types.Txs,
+	txs []*types.CachedTx,
 	deliverTxResponses []*abci.ResponseDeliverTx,
 	preCheck mempool.PreCheckFunc,
 	postCheck mempool.PostCheckFunc,
@@ -688,7 +690,7 @@ func (mem *CListMempool) recheckTxs() {
 	for e := mem.txs.Front(); e != nil; e = e.Next() {
 		memTx := e.Value.(*mempoolTx)
 		mem.proxyAppConn.CheckTxAsync(abci.RequestCheckTx{
-			Tx:   memTx.tx,
+			Tx:   memTx.tx.Tx,
 			Type: abci.CheckTxType_Recheck,
 		})
 	}
@@ -700,9 +702,9 @@ func (mem *CListMempool) recheckTxs() {
 
 // mempoolTx is a transaction that successfully ran
 type mempoolTx struct {
-	height    int64    // height that this tx had been validated in
-	gasWanted int64    // amount of gas this tx states it will require
-	tx        types.Tx //
+	height    int64           // height that this tx had been validated in
+	gasWanted int64           // amount of gas this tx states it will require
+	tx        *types.CachedTx //
 
 	// ids of peers who've sent us this tx (as a map for quick lookups).
 	// senders: PeerID -> bool

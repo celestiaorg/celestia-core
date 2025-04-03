@@ -5,6 +5,9 @@ import (
 
 	proptypes "github.com/tendermint/tendermint/consensus/propagation/types"
 	"github.com/tendermint/tendermint/libs/bits"
+	"github.com/tendermint/tendermint/p2p"
+	"github.com/tendermint/tendermint/pkg/trace/schema"
+	protoprop "github.com/tendermint/tendermint/proto/tendermint/propagation"
 	"github.com/tendermint/tendermint/types"
 )
 
@@ -12,13 +15,17 @@ import (
 //
 // todo: add a request limit for each part to avoid downloading the block too
 // many times. atm, this code will request the same part from every peer.
-func (blockProp *Reactor) retryWants(currentHeight int64, currentRound int32) {
-	data := blockProp.dumpAll()
+func (blockProp *Reactor) retryWants(currentHeight int64) {
+	if !blockProp.started.Load() {
+		return
+	}
+	data := blockProp.unfinishedHeights()
 	peers := blockProp.getPeers()
 	for _, prop := range data {
 		height, round := prop.compactBlock.Proposal.Height, prop.compactBlock.Proposal.Round
 
-		if height == currentHeight && round == currentRound {
+		// don't re-request parts for any round on the current height
+		if height == currentHeight {
 			continue
 		}
 
@@ -27,17 +34,20 @@ func (blockProp *Reactor) retryWants(currentHeight int64, currentRound int32) {
 		}
 
 		// only re-request original parts that are missing, not parity parts.
-		missing := prop.block.BitArray().Not()
+		missing := prop.block.MissingOriginal()
 		if missing.IsEmpty() {
 			blockProp.Logger.Error("no missing parts yet block is incomplete", "height", height, "round", round)
 			continue
 		}
+
+		schema.WriteRetries(blockProp.traceClient, height, round, missing.String())
 
 		// make requests from different peers
 		peers = shuffle(peers)
 
 		for _, peer := range peers {
 			mc := missing.Copy()
+
 			reqs, has := peer.GetRequests(height, round)
 			if has {
 				mc = mc.Sub(reqs)
@@ -48,7 +58,7 @@ func (blockProp *Reactor) retryWants(currentHeight int64, currentRound int32) {
 			}
 
 			sent, err := blockProp.requester.sendRequest(peer.peer, &proptypes.WantParts{
-				Parts:  missing,
+				Parts:  mc,
 				Height: height,
 				Round:  round,
 				Prove:  true,
@@ -62,16 +72,22 @@ func (blockProp *Reactor) retryWants(currentHeight int64, currentRound int32) {
 				continue
 			}
 
+			schema.WriteCatchupRequest(blockProp.traceClient, height, round, mc.String(), string(peer.peer.ID()))
+
 			// keep track of which requests we've made this attempt.
-			missing.Sub(mc)
+			missing = missing.Sub(mc)
 			peer.AddRequests(height, round, missing)
 		}
 	}
 }
 
 func (blockProp *Reactor) AddCommitment(height int64, round int32, psh *types.PartSetHeader) {
+	blockProp.Logger.Info("adding commitment", "height", height, "round", round, "psh", psh)
 	blockProp.pmtx.Lock()
 	defer blockProp.pmtx.Unlock()
+
+	blockProp.Logger.Info("added commitment", "height", height, "round", round)
+	schema.WriteGap(blockProp.traceClient, height, round)
 
 	if blockProp.proposals[height] == nil {
 		blockProp.proposals[height] = make(map[int32]*proposalData)

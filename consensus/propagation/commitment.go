@@ -1,7 +1,6 @@
 package propagation
 
 import (
-	"bytes"
 	"fmt"
 
 	"github.com/tendermint/tendermint/crypto/merkle"
@@ -45,9 +44,9 @@ func (blockProp *Reactor) ProposeBlock(proposal *types.Proposal, block *types.Pa
 	cb.SetProofCache(proofs)
 
 	// save the compact block locally and broadcast it to the connected peers
-	blockProp.handleCompactBlock(&cb, blockProp.self)
+	blockProp.handleCompactBlock(&cb, blockProp.self, true)
 
-	_, parts, _, has := blockProp.getAllState(proposal.Height, proposal.Round)
+	_, parts, _, has := blockProp.getAllState(proposal.Height, proposal.Round, false)
 	if !has {
 		panic(fmt.Sprintf("failed to get all state for this node's proposal %d/%d", proposal.Height, proposal.Round))
 	}
@@ -73,6 +72,8 @@ func (blockProp *Reactor) ProposeBlock(proposal *types.Proposal, block *types.Pa
 			// TODO retry
 			continue
 		}
+
+		schema.WriteBlockPartState(blockProp.traceClient, proposal.Height, proposal.Round, chunks[index].GetTrueIndices(), true, string(peer.peer.ID()), schema.Upload)
 	}
 }
 
@@ -122,13 +123,14 @@ func chunkToPartMetaData(chunk *bits.BitArray, partSet *proptypes.CombinedPartSe
 // handleCompactBlock adds a proposal to the data routine. This should be called any
 // time a proposal is received from a peer or when a proposal is created. If the
 // proposal is new, it will be stored and broadcast to the relevant peers.
-func (blockProp *Reactor) handleCompactBlock(cb *proptypes.CompactBlock, peer p2p.ID) {
-	added, _, _ := blockProp.AddProposal(cb)
+func (blockProp *Reactor) handleCompactBlock(cb *proptypes.CompactBlock, peer p2p.ID, proposer bool) {
+	added := blockProp.AddProposal(cb)
 	if !added {
 		return
 	}
 
-	proofs, err := cb.Proofs()
+	// generate (and cache) the proofs from the partset hashes in the compact block
+	_, err := cb.Proofs()
 	if err != nil {
 		blockProp.DeleteRound(cb.Proposal.Height, cb.Proposal.Round)
 		blockProp.Logger.Error("received invalid compact block", "err", err.Error())
@@ -136,61 +138,21 @@ func (blockProp *Reactor) handleCompactBlock(cb *proptypes.CompactBlock, peer p2
 		return
 	}
 
-	// run the catchup routine to recover any missing parts for past heights.
-	blockProp.retryWants(cb.Proposal.Height, cb.Proposal.Round)
-
 	blockProp.broadcastCompactBlock(cb, peer)
 
-	// check if we have any transactions that are in the compact block
-	parts := blockProp.compactBlockToParts(cb)
-	_, partSet, found := blockProp.GetProposal(cb.Proposal.Height, cb.Proposal.Round)
-	if !found {
-		panic("failed to get proposal that was just added")
-	}
-
-	// the partset will be complete if this node is the proposer, and thus
-	// doesn't need to recover any parts.
-	if partSet.IsComplete() {
+	if proposer {
 		return
 	}
 
-	for _, part := range parts {
-		// todo: figure out what we want to do here. we might just want to defer
-		// to the consensus reactor for invalid parts.
-		if !bytes.Equal(merkle.LeafHash(part.Bytes), cb.PartsHashes[part.Index]) {
-			blockProp.Logger.Error(
-				"recovered part hash is different than compact block",
-				"part",
-				part.Index,
-				"height",
-				cb.Proposal.Height,
-				"round",
-				cb.Proposal.Round,
-			)
-			continue
-		}
+	// run the catchup routine to recover any missing parts for past heights.
+	blockProp.retryWants(cb.Proposal.Height)
 
-		part.Proof = *proofs[part.Index]
-
-		// note: using AddPartWithoutProof to skip verifying the proof that was
-		// generated and verified above.
-		added, err := partSet.AddPartWithoutProof(part)
-		if err != nil {
-			blockProp.Logger.Error("failed to add locally recovered part", "err", err)
-			continue
-		}
-
-		if !added {
-			blockProp.Logger.Error("failed to add locally recovered part", "part", part.Index)
-			continue
-		}
-
-		// todo: broadcast haves
-	}
+	// check if we have any transactions that are in the compact block
+	go blockProp.recoverPartsFromMempool(cb)
 }
 
-// compactBlockToParts queries the mempool to see if we can recover any block parts locally.
-func (blockProp *Reactor) compactBlockToParts(cb *proptypes.CompactBlock) []*types.Part {
+// recoverPartsFromMempool queries the mempool to see if we can recover any block parts locally.
+func (blockProp *Reactor) recoverPartsFromMempool(cb *proptypes.CompactBlock) {
 	// find the compact block transactions that exist in our mempool
 	txsFound := make([]proptypes.UnmarshalledTx, 0)
 	for _, txMetaData := range cb.Blobs {
@@ -199,12 +161,13 @@ func (blockProp *Reactor) compactBlockToParts(cb *proptypes.CompactBlock) []*typ
 			blockProp.Logger.Error("failed to decode tx key", "err", err, "tx", txMetaData)
 			continue
 		}
+
 		tx, has := blockProp.mempool.GetTxByKey(txKey)
 		if !has {
 			continue
 		}
 
-		protoTxs := mempool.Txs{Txs: [][]byte{tx}}
+		protoTxs := mempool.Txs{Txs: [][]byte{tx.Tx}}
 		marshalledTx, err := proto.Marshal(&protoTxs)
 		if err != nil {
 			blockProp.Logger.Error("failed to encode tx", "err", err, "tx", txMetaData)
@@ -213,17 +176,65 @@ func (blockProp *Reactor) compactBlockToParts(cb *proptypes.CompactBlock) []*typ
 
 		txsFound = append(txsFound, proptypes.UnmarshalledTx{MetaData: txMetaData, Key: txKey, TxBytes: marshalledTx})
 	}
+
 	if len(txsFound) == 0 {
-		// no compact block transaction was found locally
-		return nil
+		return
 	}
 
 	parts := proptypes.TxsToParts(txsFound)
-	if len(parts) > 0 {
-		blockProp.Logger.Info("recovered parts from the mempool", "number of parts", len(parts))
+
+	_, partSet, _, found := blockProp.getAllState(cb.Proposal.Height, cb.Proposal.Round, false)
+	if !found {
+		blockProp.Logger.Error("failed to get all state for this node's proposal", "height", cb.Proposal.Height, "round", cb.Proposal.Round)
 	}
 
-	return parts
+	proofs, err := cb.Proofs()
+	if err != nil {
+		blockProp.Logger.Error("failed to get proofs from compact block", "err", err)
+		return
+	}
+
+	// todo: investigate why this could get hit, it shouldn't ever get hit
+	if partSet == nil {
+		blockProp.Logger.Error("unexpected nil partset while attempting to reuse transactions from the mempool")
+		return
+	}
+
+	originalParts := partSet.Original()
+	recoveredCount := 0
+	haves := proptypes.HaveParts{
+		Height: cb.Proposal.Height,
+		Round:  cb.Proposal.Round,
+		Parts:  make([]proptypes.PartMetaData, 0),
+	}
+	for _, p := range parts {
+		p.Proof = *proofs[p.Index]
+
+		// adding the part without checking the proof since the proof was just
+		// created above.
+		added, err := originalParts.AddPartWithoutProof(p)
+		if err != nil {
+			blockProp.Logger.Error("failed to add locally recovered part", "err", err)
+			continue
+		}
+
+		if !added {
+			blockProp.Logger.Error("failed to add locally recovered part", "part", p.Index)
+			continue
+		}
+
+		recoveredCount++
+
+		haves.Parts = append(haves.Parts, proptypes.PartMetaData{Index: p.Index, Hash: p.Proof.LeafHash})
+	}
+
+	schema.WriteMempoolRecoveredParts(blockProp.traceClient, cb.Proposal.Height, cb.Proposal.Round, recoveredCount)
+
+	if len(haves.Parts) > 0 {
+		// todo: distribute haves amongst peers in a fan out fashion similar to
+		// a proposer
+		blockProp.broadcastHaves(&haves, blockProp.self, int(partSet.Total()))
+	}
 }
 
 // broadcastProposal gossips the provided proposal to all peers. This should

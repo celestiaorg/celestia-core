@@ -310,7 +310,7 @@ func (memR *Reactor) broadcastTxRoutine(peer p2p.Peer) {
 		if _, ok := memTx.senders.Load(peerID); !ok {
 			success := p2p.SendEnvelopeShim(peer, p2p.Envelope{ //nolint: staticcheck
 				ChannelID: mempool.MempoolChannel,
-				Message:   &protomem.Txs{Txs: [][]byte{memTx.tx}},
+				Message:   &protomem.Txs{Txs: [][]byte{memTx.tx.Tx}},
 			}, memR.Logger)
 			if !success {
 				time.Sleep(mempool.PeerCatchupSleepIntervalMS * time.Millisecond)
