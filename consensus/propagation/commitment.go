@@ -2,6 +2,7 @@ package propagation
 
 import (
 	"fmt"
+
 	"github.com/gogo/protobuf/proto"
 	proptypes "github.com/tendermint/tendermint/consensus/propagation/types"
 	"github.com/tendermint/tendermint/crypto/merkle"
