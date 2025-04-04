@@ -6,6 +6,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/tendermint/tendermint/crypto/merkle"
+	"github.com/tendermint/tendermint/proto/tendermint/propagation"
+
 	dbm "github.com/cometbft/cometbft-db"
 	cfg "github.com/cometbft/cometbft/config"
 	"github.com/cometbft/cometbft/consensus/propagation/types"
@@ -160,7 +163,6 @@ func TestHandleHavesAndWantsAndRecoveryParts(t *testing.T) {
 				{Index: 0},
 			},
 		},
-		false,
 	)
 
 	haves, has := reactor1.getPeer(reactor2.self).GetHaves(height, round)
@@ -257,7 +259,6 @@ func TestInvalidPart(t *testing.T) {
 				{Index: 0},
 			},
 		},
-		false,
 	)
 
 	haves, has := reactor1.getPeer(reactor2.self).GetHaves(height, round)
@@ -428,6 +429,114 @@ func TestPropagationSmokeTest(t *testing.T) {
 		}
 	}
 
+}
+
+func TestStopPeerForError(t *testing.T) {
+	t.Run("invalid compact block: incorrect original part set hash", func(t *testing.T) {
+		reactors, _ := testBlockPropReactors(2, cfg.DefaultP2PConfig())
+		reactor1 := reactors[0]
+		reactor2 := reactors[1]
+		cb, _, _, _ := testCompactBlock(t, 10, 3)
+		// put an invalid part set hash
+		cb.Proposal.BlockID.PartSetHeader.Hash = cmtrand.Bytes(32)
+		require.NotNil(t, reactor1.getPeer(reactor2.self))
+		reactor1.handleCompactBlock(cb, reactor2.self, true)
+		assert.Nil(t, reactor1.getPeer(reactor2.self))
+	})
+	t.Run("invalid message", func(t *testing.T) {
+		reactors, _ := testBlockPropReactors(2, cfg.DefaultP2PConfig())
+		reactor1 := reactors[0]
+		reactor2 := reactors[1]
+		reactor2Peer := reactor1.getPeer(reactor2.self).peer
+		require.NotNil(t, reactor2Peer)
+		invalidEnvelope := p2p.Envelope{
+			Src:       reactor2Peer,
+			Message:   &propagation.CompactBlock{BpHash: cmtrand.Bytes(2)},
+			ChannelID: byte(0x05),
+		}
+		reactor1.ReceiveEnvelope(invalidEnvelope)
+		assert.Nil(t, reactor1.getPeer(reactor2.self))
+	})
+	t.Run("invalid compact block: incorrect leaf hash", func(t *testing.T) {
+		// TODO implement this test case
+	})
+	t.Run("have part for unknown proposal", func(t *testing.T) {
+		t.Skip() // skipping for now
+		reactors, _ := testBlockPropReactors(2, cfg.DefaultP2PConfig())
+		reactor1 := reactors[0]
+		reactor2 := reactors[1]
+		require.NotNil(t, reactor1.getPeer(reactor2.self))
+		// send haves before receiving a proposal
+		reactor1.handleHaves(reactor2.self, &proptypes.HaveParts{
+			Height: 1,
+			Round:  2,
+		})
+		assert.Nil(t, reactor1.getPeer(reactor2.self))
+	})
+	t.Run("want part for unknown proposal", func(t *testing.T) {
+		t.Skip() // skipping for now
+		reactors, _ := testBlockPropReactors(2, cfg.DefaultP2PConfig())
+		reactor1 := reactors[0]
+		reactor2 := reactors[1]
+		require.NotNil(t, reactor1.getPeer(reactor2.self))
+		// send wants before receiving a proposal
+		reactor1.handleWants(reactor2.self, &proptypes.WantParts{
+			Height: 1,
+			Round:  2,
+		})
+		assert.Nil(t, reactor1.getPeer(reactor2.self))
+	})
+	t.Run("recovery part for unknown proposal", func(t *testing.T) {
+		t.Skip() // skipping for now
+		reactors, _ := testBlockPropReactors(2, cfg.DefaultP2PConfig())
+		reactor1 := reactors[0]
+		reactor2 := reactors[1]
+		require.NotNil(t, reactor1.getPeer(reactor2.self))
+		// send wants before receiving a proposal
+		reactor1.handleRecoveryPart(reactor2.self, &proptypes.RecoveryPart{
+			Height: 1,
+			Round:  2,
+		})
+		assert.Nil(t, reactor1.getPeer(reactor2.self))
+	})
+}
+
+// testCompactBlock returns a test compact block with the corresponding orignal part set,
+// parity partset, and proofs.
+func testCompactBlock(t *testing.T, height int64, round int32) (*proptypes.CompactBlock, *types.PartSet, *types.PartSet, []*merkle.Proof) {
+	ps := types.NewPartSetFromData(cmtrand.Bytes(1000), types.BlockPartSizeBytes)
+	pse, lastLen, err := types.Encode(ps, types.BlockPartSizeBytes)
+	require.NoError(t, err)
+	psh := ps.Header()
+	pseh := pse.Header()
+
+	hashes := extractHashes(ps, pse)
+	proofs := extractProofs(ps, pse)
+
+	baseCompactBlock := &proptypes.CompactBlock{
+		BpHash:    pseh.Hash,
+		Signature: cmtrand.Bytes(64),
+		LastLen:   uint32(lastLen),
+		Blobs: []proptypes.TxMetaData{
+			{Hash: cmtrand.Bytes(32)},
+			{Hash: cmtrand.Bytes(32)},
+		},
+		PartsHashes: hashes,
+	}
+
+	// adding the proposal manually so the haves/wants and recovery
+	// parts are not rejected.
+	p := types.Proposal{
+		BlockID: types.BlockID{
+			Hash:          cmtrand.Bytes(32),
+			PartSetHeader: psh,
+		},
+		Height: height,
+		Round:  round,
+	}
+	baseCompactBlock.Proposal = p
+
+	return baseCompactBlock, ps, pse, proofs
 }
 
 func createBitArray(size int, indices []int) *bits.BitArray {
