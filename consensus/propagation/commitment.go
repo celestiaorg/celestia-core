@@ -2,7 +2,6 @@ package propagation
 
 import (
 	"fmt"
-
 	"github.com/gogo/protobuf/proto"
 	proptypes "github.com/tendermint/tendermint/consensus/propagation/types"
 	"github.com/tendermint/tendermint/crypto/merkle"
@@ -125,7 +124,6 @@ func (blockProp *Reactor) handleCompactBlock(cb *proptypes.CompactBlock, peer p2
 	err := blockProp.validateCompactBlock(cb)
 	if !proposer && err != nil {
 		blockProp.Logger.Info("failed to validate proposal. triggering catchup", "err", err, "height", cb.Proposal.Height, "round", cb.Proposal.Round)
-		blockProp.retryWants(cb.Proposal.Height)
 		if err = blockProp.validateCompactBlock(cb); err != nil {
 			blockProp.Logger.Info("failed to validate proposal. ignoring", "err", err, "height", cb.Proposal.Height, "round", cb.Proposal.Round)
 			return

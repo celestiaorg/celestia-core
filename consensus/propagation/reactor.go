@@ -87,7 +87,7 @@ func NewReactor(self p2p.ID, tracer trace.Tracer, store *store.BlockStore, mempo
 	// start the catchup routine
 	go func() {
 		// TODO dynamically set the ticker depending on how many blocks are missing
-		ticker := time.NewTicker(6 * time.Second)
+		ticker := time.NewTicker(time.Second)
 		for {
 			select {
 			case <-reactor.ctx.Done():
