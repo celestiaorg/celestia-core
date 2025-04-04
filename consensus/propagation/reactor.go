@@ -211,7 +211,7 @@ func (blockProp *Reactor) ReceiveEnvelope(e p2p.Envelope) {
 			blockProp.handleCompactBlock(msg, e.Src.ID(), false)
 			schema.WriteProposal(blockProp.traceClient, msg.Proposal.Height, msg.Proposal.Round, string(e.Src.ID()), schema.Download)
 		case *proptypes.HaveParts:
-			blockProp.handleHaves(e.Src.ID(), msg, false)
+			blockProp.handleHaves(e.Src.ID(), msg)
 		case *proptypes.RecoveryPart:
 			blockProp.handleRecoveryPart(e.Src.ID(), msg)
 		default:

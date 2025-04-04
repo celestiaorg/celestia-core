@@ -1,8 +1,11 @@
 package types
 
 import (
+	"encoding/binary"
 	"errors"
 	"testing"
+
+	"github.com/gogo/protobuf/proto"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -101,6 +104,55 @@ func TestCompactBlock_RoundTrip(t *testing.T) {
 			require.Equal(t, tt.data, roundTripped)
 		})
 	}
+}
+
+func TestSignBytes(t *testing.T) {
+	block := CompactBlock{
+		BpHash: []byte("block_part_hash"),
+		Blobs: []TxMetaData{
+			{Hash: rand.Bytes(tmhash.Size), Start: 0, End: 10},
+			{Hash: rand.Bytes(tmhash.Size), Start: 5, End: 10},
+		},
+		Proposal: types.Proposal{
+			Signature: []byte("proposal_signature"),
+		},
+		LastLen: 42,
+		PartsHashes: [][]byte{
+			[]byte("part1hash"),
+			[]byte("part2hash"),
+		},
+	}
+
+	// Compute expected sign bytes manually
+	expectedBytes := make([]byte, 0)
+	expectedBytes = append(expectedBytes, block.BpHash...)
+
+	for _, md := range block.Blobs {
+		pb, err := proto.Marshal(md.ToProto())
+		require.NoError(t, err)
+		expectedBytes = append(expectedBytes, pb...)
+	}
+
+	expectedBytes = append(expectedBytes, block.Proposal.Signature...)
+
+	// Encode LastLen in BigEndian
+	lastLenBytes := make([]byte, 4)
+	binary.BigEndian.PutUint32(lastLenBytes, block.LastLen)
+	expectedBytes = append(expectedBytes, lastLenBytes...)
+
+	for _, ph := range block.PartsHashes {
+		expectedBytes = append(expectedBytes, ph...)
+	}
+
+	// Compute expected hash
+	expectedSignBytes := tmhash.Sum(expectedBytes)
+
+	// Generate sign bytes from the function
+	actualSignBytes, err := block.SignBytes()
+	require.NoError(t, err)
+
+	// Compare results
+	require.Equal(t, expectedSignBytes, actualSignBytes)
 }
 
 func TestCompactBlock_ValidateBasic(t *testing.T) {
