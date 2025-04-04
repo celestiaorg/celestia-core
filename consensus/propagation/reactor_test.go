@@ -430,7 +430,6 @@ func TestPropagationSmokeTest(t *testing.T) {
 			r.Prune(i)
 		}
 	}
-
 }
 
 func TestStopPeerForError(t *testing.T) {
