@@ -1,6 +1,7 @@
 package propagation
 
 import (
+	"context"
 	"fmt"
 	"github.com/tendermint/tendermint/crypto"
 	"github.com/tendermint/tendermint/libs/log"
@@ -9,6 +10,7 @@ import (
 	"reflect"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"github.com/tendermint/tendermint/store"
 
@@ -62,29 +64,54 @@ type Reactor struct {
 	traceClient trace.Tracer
 	self        p2p.ID
 	started     atomic.Bool
+
+	ctx    context.Context
+	cancel context.CancelFunc
 }
 
 func NewReactor(self p2p.ID, tracer trace.Tracer, store *store.BlockStore, mempool Mempool, options ...ReactorOption) *Reactor {
 	if tracer == nil {
 		tracer = trace.NoOpTracer()
 	}
+	ctx, cancel := context.WithCancel(context.Background())
 	reactor := &Reactor{
-		self:              self,
-		traceClient:       tracer,
-		peerstate:         make(map[p2p.ID]*PeerState),
-		mtx:               &sync.RWMutex{},
-		ProposalCache:     NewProposalCache(store),
-		mempool:           mempool,
-		started:           atomic.Bool{},
+		self:          self,
+		traceClient:   tracer,
+		peerstate:     make(map[p2p.ID]*PeerState),
+		mtx:           &sync.RWMutex{},
+		ProposalCache: NewProposalCache(store),
+		mempool:       mempool,
+		started:       atomic.Bool{},
 		proposalValidator: func(proposer crypto.PubKey, proposal *types.Proposal) error { return nil },
 		stateInfo:         func() *StateInfo { return &StateInfo{} },
 		ProposersCache:    NewProposersCache(),
+		ctx:           ctx,
+		cancel:        cancel,
 	}
 	reactor.BaseReactor = *p2p.NewBaseReactor("BlockProp", reactor, p2p.WithIncomingQueueSize(ReactorIncomingMessageQueueSize))
 
 	for _, option := range options {
 		option(reactor)
 	}
+
+	// start the catchup routine
+	go func() {
+		// TODO dynamically set the ticker depending on how many blocks are missing
+		ticker := time.NewTicker(6 * time.Second)
+		for {
+			select {
+			case <-reactor.ctx.Done():
+				return
+			case <-ticker.C:
+				reactor.pmtx.Lock()
+				currentHeight := reactor.currentHeight
+				reactor.pmtx.Unlock()
+				// run the catchup routine to recover any missing parts for past heights.
+				reactor.retryWants(currentHeight)
+			}
+		}
+	}()
+
 	return reactor
 }
 
@@ -111,6 +138,7 @@ func (blockProp *Reactor) OnStart() error {
 }
 
 func (blockProp *Reactor) OnStop() {
+	blockProp.cancel()
 }
 
 func (blockProp *Reactor) GetChannels() []*conn.ChannelDescriptor {
