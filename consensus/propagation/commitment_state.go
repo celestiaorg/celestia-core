@@ -97,7 +97,7 @@ func (p *ProposalCache) unfinishedHeights() []*proposalData {
 				prop = pd
 			}
 		}
-		if prop.block.IsComplete() {
+		if prop == nil || prop.block.IsComplete() {
 			continue
 		}
 		data = append(data, prop)
