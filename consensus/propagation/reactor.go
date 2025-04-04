@@ -37,12 +37,6 @@ const (
 
 type validateProposalFunc func(proposal *types.Proposal) error
 
-type StateInfo struct {
-	Height int64
-	Round  int32
-}
-type stateInfoFunc func() *StateInfo
-
 type Reactor struct {
 	p2p.BaseReactor // BaseService + p2p.Switch
 
@@ -52,7 +46,6 @@ type Reactor struct {
 	// block data for gossiping.
 	*ProposalCache
 	proposalValidator validateProposalFunc
-	stateInfo         stateInfoFunc
 
 	// mempool access to read the transactions by hash from the mempool
 	// and eventually remove it.
@@ -81,7 +74,6 @@ func NewReactor(self p2p.ID, tracer trace.Tracer, store *store.BlockStore, mempo
 		mempool:           mempool,
 		started:           atomic.Bool{},
 		proposalValidator: func(proposal *types.Proposal) error { return nil },
-		stateInfo:         func() *StateInfo { return &StateInfo{} },
 		ctx:               ctx,
 		cancel:            cancel,
 	}
@@ -117,11 +109,6 @@ type ReactorOption func(*Reactor)
 // SetProposalValidator sets the proposal stateful validation function.
 func (blockProp *Reactor) SetProposalValidator(validator validateProposalFunc) {
 	blockProp.proposalValidator = validator
-}
-
-// SetStateInfo sets the function returning the state information.
-func (blockProp *Reactor) SetStateInfo(stateInfo stateInfoFunc) {
-	blockProp.stateInfo = stateInfo
 }
 
 func (blockProp *Reactor) SetLogger(logger log.Logger) {
@@ -221,14 +208,11 @@ func (blockProp *Reactor) ReceiveEnvelope(e p2p.Envelope) {
 	case DataChannel:
 		switch msg := msg.(type) {
 		case *proptypes.CompactBlock:
-			blockProp.Logger.Info("Handled compact block", "height", msg.Proposal.Height, "round", msg.Proposal.Round, "from", e.Src.ID())
 			blockProp.handleCompactBlock(msg, e.Src.ID(), false)
 			schema.WriteProposal(blockProp.traceClient, msg.Proposal.Height, msg.Proposal.Round, string(e.Src.ID()), schema.Download)
 		case *proptypes.HaveParts:
-			blockProp.Logger.Info("Handled haves", "msg", msg, "from", e.Src.ID())
 			blockProp.handleHaves(e.Src.ID(), msg, false)
 		case *proptypes.RecoveryPart:
-			blockProp.Logger.Info("Handled recovery part", "height", msg.Height, "round", msg.Round, "index", msg.Index, "from", e.Src.ID())
 			blockProp.handleRecoveryPart(e.Src.ID(), msg)
 		default:
 			blockProp.Logger.Error(fmt.Sprintf("Unknown message type %v", reflect.TypeOf(msg)))
@@ -236,7 +220,6 @@ func (blockProp *Reactor) ReceiveEnvelope(e p2p.Envelope) {
 	case WantChannel:
 		switch msg := msg.(type) {
 		case *proptypes.WantParts:
-			blockProp.Logger.Info("Handled want parts", "msg", msg, "from", e.Src.ID())
 			blockProp.handleWants(e.Src.ID(), msg)
 		}
 	default:
