@@ -19,7 +19,7 @@ import (
 
 var _ Propagator = (*Reactor)(nil)
 
-// ProposeBlock is called when the consensus routine has created a new proposal
+// ProposeBlock is called when the consensus routine has created a new proposal,
 // and it needs to be gossiped to the rest of the network.
 func (blockProp *Reactor) ProposeBlock(proposal *types.Proposal, block *types.PartSet, txs []proptypes.TxMetaData) {
 	// create the parity data and the compact block
@@ -143,9 +143,6 @@ func (blockProp *Reactor) handleCompactBlock(cb *proptypes.CompactBlock, peer p2
 	if proposer {
 		return
 	}
-
-	// run the catchup routine to recover any missing parts for past heights.
-	blockProp.retryWants(cb.Proposal.Height)
 
 	// check if we have any transactions that are in the compact block
 	go blockProp.recoverPartsFromMempool(cb)
