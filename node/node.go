@@ -946,25 +946,6 @@ func NewNodeWithContext(ctx context.Context,
 	})
 	propagationReactor.SetLogger(logger.With("module", "propagation"))
 
-	//go func() {
-	//	ticker := time.NewTicker(200 * time.Millisecond)
-	//	for {
-	//		select {
-	//		case <-ticker.C:
-	//			if _, has := propagationReactor.GetProposer(consensusState.Height, consensusState.Round); !has {
-	//
-	//			}
-	//		}
-	//	}
-	//}()
-
-	propagationReactor.SetStateInfo(func() *propagation.StateInfo {
-		return &propagation.StateInfo{
-			Height: consensusState.Height,
-			Round:  consensusState.Round,
-		}
-	})
-
 	logger.Info("Consensus reactor created", "timeout_propose", consensusState.GetState().TimeoutPropose, "timeout_commit", consensusState.GetState().TimeoutCommit)
 	// Set up state sync reactor, and schedule a sync if requested.
 	// FIXME The way we do phased startups (e.g. replay -> fast sync -> consensus) is very messy,
