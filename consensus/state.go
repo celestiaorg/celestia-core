@@ -1924,7 +1924,7 @@ func (cs *State) defaultSetProposal(proposal *types.Proposal) error {
 	}
 
 	pubKey := cs.Validators.GetProposer().PubKey
-	p, err := cs.ValidateProposal(pubKey, proposal)
+	p, err := cs.ValidateProposal(proposal)
 	if err != nil {
 		return err
 	}
@@ -2496,8 +2496,6 @@ const SyncDataInterval = 150
 // sync data periodically checks to make sure that all block parts in the data
 // routine are pushed through to the state.
 func (cs *State) syncData() {
-	currentH := int64(0)
-	currentR := int32(0)
 	for {
 		select {
 		case <-cs.Quit():
@@ -2507,43 +2505,15 @@ func (cs *State) syncData() {
 				continue
 			}
 
-			//fmt.Println("prop 11")
 			// check if the data routine already has a proposal or block parts
 			// if so, we can add them here
 			cs.mtx.RLock()
-			//fmt.Println("22")
 			h, r := cs.Height, cs.Round
-			key, has := cs.propagator.GetProposer(h, r)
-			if currentR != r || currentH != h {
-				fmt.Println("========")
-				fmt.Println(h)
-				fmt.Println(r)
-				fmt.Println(cs.Validators.GetProposer().PubKey)
-				fmt.Println(has)
-				fmt.Println(key)
-				cs.propagator.Print()
-				fmt.Println("===========")
-				currentH = h
-				currentR = r
-			}
-			//cs.Logger.Info("trying to set proposer", "height", h, "round", r, "has", has)
-			//fmt.Println(cs.Validators.GetProposer().PubKey.Address().String())
-			//if key != nil {
-			//	fmt.Println(key.Address().String())
-			//}
-			if !has {
-				err := cs.propagator.SetProposer(h, r, cs.Validators.GetProposer().PubKey)
-				if err != nil {
-					cs.Logger.Error("failed to set proposer", "height", h, "round", r, "err", err)
-				}
-			}
-
 			pparts := cs.ProposalBlockParts
 			pprop := cs.Proposal
 			completeProp := cs.isProposalComplete()
 			cs.mtx.RUnlock()
 
-			//fmt.Println("prop 33")
 			if completeProp {
 				continue
 			}
@@ -2601,13 +2571,12 @@ func (cs *State) syncData() {
 				}
 				cs.peerMsgQueue <- msgInfo{&BlockPartMessage{h, r, part}, ""}
 			}
-			//fmt.Println("3")
 		}
 	}
 }
 
 // ValidateProposal stateful validation of the proposal.
-func (cs *State) ValidateProposal(proposer crypto.PubKey, proposal *types.Proposal) (*cmtproto.Proposal, error) {
+func (cs *State) ValidateProposal(proposal *types.Proposal) (*cmtproto.Proposal, error) {
 	// Verify POLRound, which must be -1 or in range [0, proposal.Round).
 	if proposal.POLRound < -1 ||
 		(proposal.POLRound >= 0 && proposal.POLRound >= proposal.Round) {
@@ -2615,6 +2584,7 @@ func (cs *State) ValidateProposal(proposer crypto.PubKey, proposal *types.Propos
 	}
 
 	p := proposal.ToProto()
+	proposer := cs.Validators.GetProposer().PubKey
 	// Verify signature
 	if !proposer.VerifySignature(
 		types.ProposalSignBytes(cs.state.ChainID, p), proposal.Signature,

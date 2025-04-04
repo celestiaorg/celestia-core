@@ -940,8 +940,8 @@ func NewNodeWithContext(ctx context.Context,
 		privValidator, csMetrics, propagationReactor, stateSync || fastSync, eventBus, consensusLogger, tracer,
 	)
 
-	propagationReactor.SetProposalValidator(func(proposer crypto.PubKey, proposal *types.Proposal) error {
-		_, err := consensusState.ValidateProposal(proposer, proposal)
+	propagationReactor.SetProposalValidator(func(proposal *types.Proposal) error {
+		_, err := consensusState.ValidateProposal(proposal)
 		return err
 	})
 	propagationReactor.SetLogger(logger.With("module", "propagation"))

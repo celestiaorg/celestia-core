@@ -2,7 +2,6 @@ package propagation
 
 import (
 	proptypes "github.com/tendermint/tendermint/consensus/propagation/types"
-	"github.com/tendermint/tendermint/crypto"
 	"github.com/tendermint/tendermint/types"
 )
 
@@ -15,7 +14,4 @@ type Propagator interface {
 	Prune(committedHeight int64)
 	SetConsensusRound(height int64, round int32)
 	StartProcessing()
-	SetProposer(height int64, round int32, proposer crypto.PubKey) error
-	GetProposer(height int64, round int32) (crypto.PubKey, bool)
-	Print()
 }

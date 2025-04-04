@@ -324,11 +324,7 @@ func chunkIndexes(totalSize, chunkSize int) [][2]int {
 
 // validateCompactBlock stateful validation of the compact block.
 func (blockProp *Reactor) validateCompactBlock(cb *proptypes.CompactBlock) error {
-	proposer, has := blockProp.GetProposer(cb.Proposal.Height, cb.Proposal.Round)
-	if !has {
-		return fmt.Errorf("proposer not found")
-	}
-	err := blockProp.proposalValidator(proposer, &cb.Proposal)
+	err := blockProp.proposalValidator(&cb.Proposal)
 	if err != nil {
 		return err
 	}

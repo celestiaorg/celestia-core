@@ -3,7 +3,6 @@ package propagation
 import (
 	"context"
 	"fmt"
-	"github.com/tendermint/tendermint/crypto"
 	"github.com/tendermint/tendermint/libs/log"
 	"github.com/tendermint/tendermint/p2p/conn"
 	"github.com/tendermint/tendermint/types"
@@ -36,7 +35,7 @@ const (
 	WantChannel = byte(0x51)
 )
 
-type validateProposalFunc func(proposer crypto.PubKey, proposal *types.Proposal) error
+type validateProposalFunc func(proposal *types.Proposal) error
 
 type StateInfo struct {
 	Height int64
@@ -54,7 +53,6 @@ type Reactor struct {
 	*ProposalCache
 	proposalValidator validateProposalFunc
 	stateInfo         stateInfoFunc
-	*ProposersCache
 
 	// mempool access to read the transactions by hash from the mempool
 	// and eventually remove it.
@@ -82,9 +80,8 @@ func NewReactor(self p2p.ID, tracer trace.Tracer, store *store.BlockStore, mempo
 		ProposalCache:     NewProposalCache(store),
 		mempool:           mempool,
 		started:           atomic.Bool{},
-		proposalValidator: func(proposer crypto.PubKey, proposal *types.Proposal) error { return nil },
+		proposalValidator: func(proposal *types.Proposal) error { return nil },
 		stateInfo:         func() *StateInfo { return &StateInfo{} },
-		ProposersCache:    NewProposersCache(),
 		ctx:               ctx,
 		cancel:            cancel,
 	}
@@ -306,10 +303,4 @@ func (blockProp *Reactor) setPeer(peer p2p.ID, state *PeerState) {
 	blockProp.mtx.Lock()
 	defer blockProp.mtx.Unlock()
 	blockProp.peerstate[peer] = state
-}
-
-func (blockProp *Reactor) Print() {
-	blockProp.mtx.RLock()
-	fmt.Println(blockProp.proposers)
-	blockProp.mtx.RUnlock()
 }
