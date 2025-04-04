@@ -12,7 +12,7 @@ import (
 var ErrConflictingProposer = errors.New("conflicting proposer")
 
 type ProposersCache struct {
-	logger    log.Logger
+	logger2   log.Logger
 	mutex     sync.RWMutex
 	proposers map[int64]map[int32]crypto.PubKey
 }
@@ -20,9 +20,10 @@ type ProposersCache struct {
 func NewProposersCache() *ProposersCache {
 	p := ProposersCache{
 		proposers: make(map[int64]map[int32]crypto.PubKey),
-		logger:    log.NewNopLogger(),
+		logger2:   log.NewNopLogger(),
 		mutex:     sync.RWMutex{},
 	}
+	// TODO add proposers pruning!
 	go func() {
 		//for {
 		//	time.Sleep(time.Second)
@@ -35,7 +36,7 @@ func NewProposersCache() *ProposersCache {
 }
 
 func (pc *ProposersCache) SetLogger(logger log.Logger) {
-	pc.logger = logger
+	pc.logger2 = logger
 }
 
 func (pc *ProposersCache) GetProposer(height int64, round int32) (crypto.PubKey, bool) {
@@ -49,7 +50,7 @@ func (pc *ProposersCache) SetProposer(height int64, round int32, proposer crypto
 	pc.mutex.Lock()
 	defer pc.mutex.Unlock()
 	if existingProposer, ok := pc.proposers[height][round]; ok && existingProposer != nil {
-		pc.logger.Error(
+		pc.logger2.Error(
 			"conflicting proposer",
 			"height",
 			height,
@@ -66,6 +67,6 @@ func (pc *ProposersCache) SetProposer(height int64, round int32, proposer crypto
 		pc.proposers[height] = make(map[int32]crypto.PubKey)
 	}
 	pc.proposers[height][round] = proposer
-	pc.logger.Info("set proposer", "height", height, "round", round)
+	pc.logger2.Info("set proposer", "height", height, "round", round)
 	return nil
 }

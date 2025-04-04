@@ -3,6 +3,7 @@ package propagation
 import (
 	proptypes "github.com/tendermint/tendermint/consensus/propagation/types"
 	"github.com/tendermint/tendermint/libs/bits"
+	"github.com/tendermint/tendermint/libs/log"
 	"github.com/tendermint/tendermint/libs/sync"
 	"github.com/tendermint/tendermint/store"
 	"github.com/tendermint/tendermint/types"
@@ -24,6 +25,7 @@ type ProposalCache struct {
 
 	consensusHeight int64
 	consensusRound  int32
+	logger          log.Logger
 }
 
 func NewProposalCache(bs *store.BlockStore) *ProposalCache {
@@ -44,16 +46,19 @@ func (p *ProposalCache) AddProposal(cb *proptypes.CompactBlock) (added bool) {
 	p.pmtx.Lock()
 	defer p.pmtx.Unlock()
 
+	p.logger.Info("here 1", "height", cb.Proposal.Height, "round", cb.Proposal.Round)
 	if !p.relevant(cb.Proposal.Height, cb.Proposal.Round) {
 		return false
 	}
 
+	p.logger.Info("here 2", "height", cb.Proposal.Height, "round", cb.Proposal.Round)
 	if p.proposals[cb.Proposal.Height] == nil {
 		p.proposals[cb.Proposal.Height] = make(map[int32]*proposalData)
 	}
 	if p.proposals[cb.Proposal.Height][cb.Proposal.Round] != nil {
 		return false
 	}
+	p.logger.Info("here 3", "height", cb.Proposal.Height, "round", cb.Proposal.Round)
 
 	// if we don't have this proposal, and its height is greater than the current
 	// height, update the current height and round.
