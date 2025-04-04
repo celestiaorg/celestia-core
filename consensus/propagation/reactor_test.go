@@ -378,7 +378,6 @@ func TestChunkParts(t *testing.T) {
 // blocks with some data already distributed via the mempool. The passing
 // criteria is simply finishing.
 func TestPropagationSmokeTest(t *testing.T) {
-	t.Skip()
 	p2pCfg := cfg.DefaultP2PConfig()
 	p2pCfg.SendRate = 100000000
 	p2pCfg.RecvRate = 110000000

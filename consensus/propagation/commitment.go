@@ -127,13 +127,10 @@ func (blockProp *Reactor) handleCompactBlock(cb *proptypes.CompactBlock, peer p2
 		return
 	}
 
-	blockProp.Logger.Info("validated compact block", "height", cb.Proposal.Height, "round", cb.Proposal.Round)
 	added := blockProp.AddProposal(cb)
 	if !added {
 		return
 	}
-
-	blockProp.Logger.Info("added proposal", "height", cb.Proposal.Height, "round", cb.Proposal.Round)
 
 	// generate (and cache) the proofs from the partset hashes in the compact block
 	_, err = cb.Proofs()
