@@ -122,9 +122,13 @@ func chunkToPartMetaData(chunk *bits.BitArray, partSet *proptypes.CombinedPartSe
 // proposal is new, it will be stored and broadcast to the relevant peers.
 func (blockProp *Reactor) handleCompactBlock(cb *proptypes.CompactBlock, peer p2p.ID, proposer bool) {
 	err := blockProp.validateCompactBlock(cb)
-	if err != nil && proposer == false {
-		blockProp.Logger.Info("failed to validate proposal. ignoring it", "err", err, "height", cb.Proposal.Height, "round", cb.Proposal.Round)
-		return
+	if !proposer && err != nil {
+		blockProp.Logger.Info("failed to validate proposal. triggering catchup", "err", err, "height", cb.Proposal.Height, "round", cb.Proposal.Round)
+		blockProp.retryWants(cb.Proposal.Height)
+		if err = blockProp.validateCompactBlock(cb); err != nil {
+			blockProp.Logger.Info("failed to validate proposal. ignoring", "err", err, "height", cb.Proposal.Height, "round", cb.Proposal.Round)
+			return
+		}
 	}
 
 	added := blockProp.AddProposal(cb)
