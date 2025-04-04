@@ -6,6 +6,7 @@ option go_package = "github.com/tendermint/tendermint/proto/tendermint/propagati
 import "gogoproto/gogo.proto";
 import "tendermint/libs/bits/types.proto";
 import "tendermint/types/types.proto";
+import "tendermint/crypto/proof.proto";
 
 // TxMetaData contains all information needed to commit to a transaction. Start
 // and end are used to insert the transaction into the protobuf encoded version
@@ -48,14 +49,16 @@ message WantParts {
   tendermint.libs.bits.BitArray parts  = 1 [(gogoproto.nullable) = false];
   int64                         height = 2;
   int32                         round  = 3;
+  bool                          prove  = 4;
 }
 
 // RecoveryPart is a wire message for sending a portion of the block to a peer.
 message RecoveryPart {
-  int64  height = 1;
-  int32  round  = 2;
-  uint32 index  = 3;
-  bytes  data   = 4;
+  int64                   height = 1;
+  int32                   round  = 2;
+  uint32                  index  = 3;
+  bytes                   data   = 4;
+  tendermint.crypto.Proof proof  = 5 [(gogoproto.nullable) = false];
 }
 
 message Message {

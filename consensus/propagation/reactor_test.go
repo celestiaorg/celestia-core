@@ -1,8 +1,13 @@
 package propagation
 
 import (
+	"path/filepath"
+	"strconv"
 	"testing"
 	"time"
+
+	"github.com/tendermint/tendermint/crypto/merkle"
+	"github.com/tendermint/tendermint/proto/tendermint/propagation"
 
 	dbm "github.com/cometbft/cometbft-db"
 	"github.com/stretchr/testify/assert"
@@ -10,30 +15,49 @@ import (
 	cfg "github.com/tendermint/tendermint/config"
 	proptypes "github.com/tendermint/tendermint/consensus/propagation/types"
 	"github.com/tendermint/tendermint/libs/bits"
+	"github.com/tendermint/tendermint/libs/log"
 	cmtrand "github.com/tendermint/tendermint/libs/rand"
 	"github.com/tendermint/tendermint/p2p"
 	"github.com/tendermint/tendermint/p2p/mock"
 	"github.com/tendermint/tendermint/pkg/trace"
+	"github.com/tendermint/tendermint/state"
 	"github.com/tendermint/tendermint/store"
 	"github.com/tendermint/tendermint/types"
 )
 
-func newPropagationReactor(s *p2p.Switch) *Reactor {
+func newPropagationReactor(s *p2p.Switch, _ trace.Tracer) *Reactor {
 	blockStore := store.NewBlockStore(dbm.NewMemDB())
-	blockPropR := NewReactor(s.NetAddress().ID, trace.NoOpTracer(), blockStore, mockMempool{})
+	blockPropR := NewReactor(s.NetAddress().ID, trace.NoOpTracer(), blockStore, &mockMempool{txs: make(map[types.TxKey]*types.CachedTx)})
+	blockPropR.started.Store(true)
 	blockPropR.SetSwitch(s)
 
 	return blockPropR
 }
 
-func testBlockPropReactors(n int) ([]*Reactor, []*p2p.Switch) {
+func testBlockPropReactors(n int, p2pCfg *cfg.P2PConfig) ([]*Reactor, []*p2p.Switch) {
+	return createTestReactors(n, p2pCfg, false, "")
+}
+
+func createTestReactors(n int, p2pCfg *cfg.P2PConfig, tracer bool, traceDir string) ([]*Reactor, []*p2p.Switch) {
 	reactors := make([]*Reactor, n)
 	switches := make([]*p2p.Switch, n)
 
-	p2pCfg := cfg.DefaultP2PConfig()
-
 	p2p.MakeConnectedSwitches(p2pCfg, n, func(i int, s *p2p.Switch) *p2p.Switch {
-		reactors[i] = newPropagationReactor(s)
+		var (
+			tr  trace.Tracer
+			err error
+		)
+		if !tracer {
+			tr = trace.NoOpTracer()
+		} else {
+			dconfig := cfg.DefaultConfig()
+			dconfig.SetRoot(filepath.Join(traceDir, strconv.Itoa(i)))
+			tr, err = trace.NewLocalTracer(dconfig, log.NewNopLogger(), "test", string(s.NetAddress().ID))
+			if err != nil {
+				panic(err)
+			}
+		}
+		reactors[i] = newPropagationReactor(s, tr)
 		s.AddReactor("BlockProp", reactors[i])
 		switches = append(switches, s)
 		return s
@@ -45,7 +69,7 @@ func testBlockPropReactors(n int) ([]*Reactor, []*p2p.Switch) {
 }
 
 func TestCountRequests(t *testing.T) {
-	reactors, _ := testBlockPropReactors(1)
+	reactors, _ := testBlockPropReactors(1, cfg.DefaultP2PConfig())
 	reactor := reactors[0]
 
 	peer1 := mock.NewPeer(nil)
@@ -81,7 +105,7 @@ func TestCountRequests(t *testing.T) {
 }
 
 func TestHandleHavesAndWantsAndRecoveryParts(t *testing.T) {
-	reactors, _ := testBlockPropReactors(3)
+	reactors, _ := testBlockPropReactors(3, cfg.DefaultP2PConfig())
 	reactor1 := reactors[0]
 	reactor2 := reactors[1]
 	reactor3 := reactors[2]
@@ -123,11 +147,11 @@ func TestHandleHavesAndWantsAndRecoveryParts(t *testing.T) {
 	}
 	baseCompactBlock.Proposal = p
 
-	added, _, _ := reactor1.AddProposal(baseCompactBlock)
+	added := reactor1.AddProposal(baseCompactBlock)
 	require.True(t, added)
-	added, _, _ = reactor2.AddProposal(baseCompactBlock)
+	added = reactor2.AddProposal(baseCompactBlock)
 	require.True(t, added)
-	added, _, _ = reactor3.AddProposal(baseCompactBlock)
+	added = reactor3.AddProposal(baseCompactBlock)
 	require.True(t, added)
 
 	// reactor 1 will receive haves from reactor 2
@@ -140,7 +164,6 @@ func TestHandleHavesAndWantsAndRecoveryParts(t *testing.T) {
 				{Index: 0},
 			},
 		},
-		false,
 	)
 
 	haves, has := reactor1.getPeer(reactor2.self).GetHaves(height, round)
@@ -172,7 +195,7 @@ func TestHandleHavesAndWantsAndRecoveryParts(t *testing.T) {
 	require.Equal(t, randomData, parts.GetPart(0).Bytes.Bytes())
 
 	// check to see if the parity data was generated after receiveing the first part.
-	_, combined, _, has := reactor3.getAllState(height, round)
+	_, combined, _, has := reactor3.getAllState(height, round, true)
 	assert.True(t, has)
 	assert.True(t, combined.IsComplete())
 	parityPart, has := combined.GetPart(1)
@@ -181,7 +204,7 @@ func TestHandleHavesAndWantsAndRecoveryParts(t *testing.T) {
 }
 
 func TestInvalidPart(t *testing.T) {
-	reactors, _ := testBlockPropReactors(2)
+	reactors, _ := testBlockPropReactors(2, cfg.DefaultP2PConfig())
 	reactor1 := reactors[0]
 	reactor2 := reactors[1]
 
@@ -222,9 +245,9 @@ func TestInvalidPart(t *testing.T) {
 	}
 	baseCompactBlock.Proposal = p
 
-	added, _, _ := reactor1.AddProposal(baseCompactBlock)
+	added := reactor1.AddProposal(baseCompactBlock)
 	require.True(t, added)
-	added, _, _ = reactor2.AddProposal(baseCompactBlock)
+	added = reactor2.AddProposal(baseCompactBlock)
 	require.True(t, added)
 
 	// reactor 1 will receive haves from reactor 2
@@ -237,7 +260,6 @@ func TestInvalidPart(t *testing.T) {
 				{Index: 0},
 			},
 		},
-		false,
 	)
 
 	haves, has := reactor1.getPeer(reactor2.self).GetHaves(height, round)
@@ -349,6 +371,173 @@ func TestChunkParts(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestPropagationSmokeTest is a high level smoke test for 10 reactors to distrute 5 2MB
+// blocks with some data already distributed via the mempool. The passing
+// criteria is simply finishing.
+func TestPropagationSmokeTest(t *testing.T) {
+	p2pCfg := cfg.DefaultP2PConfig()
+	p2pCfg.SendRate = 100000000
+	p2pCfg.RecvRate = 110000000
+
+	nodes := 10
+
+	reactors, _ := createTestReactors(nodes, p2pCfg, false, "")
+
+	cleanup, _, sm := state.SetupTestCase(t)
+	t.Cleanup(func() {
+		cleanup(t)
+	})
+
+	for i := int64(1); i < 5; i++ {
+		prop, ps, block, metaData := createTestProposal(sm, i, 2, 1000000)
+
+		// predistribute portions of the block
+		for _, tx := range block.Data.Txs {
+			for j := 0; j < nodes/2; j++ {
+				r := reactors[j]
+				pool := r.mempool.(*mockMempool)
+				pool.AddTx(tx)
+			}
+		}
+
+		reactors[1].ProposeBlock(prop, ps, metaData)
+
+		distributing := true
+		for distributing {
+			count := 0
+			for _, r := range reactors {
+				_, parts, _, has := r.getAllState(i, 0, false)
+				if !has {
+					continue
+				}
+				if !parts.IsComplete() {
+					continue
+				}
+
+				count++
+
+				if count == nodes {
+					distributing = false
+				}
+			}
+			time.Sleep(200 * time.Millisecond)
+		}
+
+		for _, r := range reactors {
+			r.Prune(i)
+		}
+	}
+
+}
+
+func TestStopPeerForError(t *testing.T) {
+	t.Run("invalid compact block: incorrect original part set hash", func(t *testing.T) {
+		reactors, _ := testBlockPropReactors(2, cfg.DefaultP2PConfig())
+		reactor1 := reactors[0]
+		reactor2 := reactors[1]
+		cb, _, _, _ := testCompactBlock(t, 10, 3)
+		// put an invalid part set hash
+		cb.Proposal.BlockID.PartSetHeader.Hash = cmtrand.Bytes(32)
+		require.NotNil(t, reactor1.getPeer(reactor2.self))
+		reactor1.handleCompactBlock(cb, reactor2.self, true)
+		assert.Nil(t, reactor1.getPeer(reactor2.self))
+	})
+	t.Run("invalid message", func(t *testing.T) {
+		reactors, _ := testBlockPropReactors(2, cfg.DefaultP2PConfig())
+		reactor1 := reactors[0]
+		reactor2 := reactors[1]
+		reactor2Peer := reactor1.getPeer(reactor2.self).peer
+		require.NotNil(t, reactor2Peer)
+		invalidEnvelope := p2p.Envelope{
+			Src:       reactor2Peer,
+			Message:   &propagation.CompactBlock{BpHash: cmtrand.Bytes(2)},
+			ChannelID: byte(0x05),
+		}
+		reactor1.ReceiveEnvelope(invalidEnvelope)
+		assert.Nil(t, reactor1.getPeer(reactor2.self))
+	})
+	t.Run("invalid compact block: incorrect leaf hash", func(t *testing.T) {
+		// TODO implement this test case
+	})
+	t.Run("have part for unknown proposal", func(t *testing.T) {
+		t.Skip() // skipping for now
+		reactors, _ := testBlockPropReactors(2, cfg.DefaultP2PConfig())
+		reactor1 := reactors[0]
+		reactor2 := reactors[1]
+		require.NotNil(t, reactor1.getPeer(reactor2.self))
+		// send haves before receiving a proposal
+		reactor1.handleHaves(reactor2.self, &proptypes.HaveParts{
+			Height: 1,
+			Round:  2,
+		})
+		assert.Nil(t, reactor1.getPeer(reactor2.self))
+	})
+	t.Run("want part for unknown proposal", func(t *testing.T) {
+		t.Skip() // skipping for now
+		reactors, _ := testBlockPropReactors(2, cfg.DefaultP2PConfig())
+		reactor1 := reactors[0]
+		reactor2 := reactors[1]
+		require.NotNil(t, reactor1.getPeer(reactor2.self))
+		// send wants before receiving a proposal
+		reactor1.handleWants(reactor2.self, &proptypes.WantParts{
+			Height: 1,
+			Round:  2,
+		})
+		assert.Nil(t, reactor1.getPeer(reactor2.self))
+	})
+	t.Run("recovery part for unknown proposal", func(t *testing.T) {
+		t.Skip() // skipping for now
+		reactors, _ := testBlockPropReactors(2, cfg.DefaultP2PConfig())
+		reactor1 := reactors[0]
+		reactor2 := reactors[1]
+		require.NotNil(t, reactor1.getPeer(reactor2.self))
+		// send wants before receiving a proposal
+		reactor1.handleRecoveryPart(reactor2.self, &proptypes.RecoveryPart{
+			Height: 1,
+			Round:  2,
+		})
+		assert.Nil(t, reactor1.getPeer(reactor2.self))
+	})
+}
+
+// testCompactBlock returns a test compact block with the corresponding orignal part set,
+// parity partset, and proofs.
+func testCompactBlock(t *testing.T, height int64, round int32) (*proptypes.CompactBlock, *types.PartSet, *types.PartSet, []*merkle.Proof) {
+	ps := types.NewPartSetFromData(cmtrand.Bytes(1000), types.BlockPartSizeBytes)
+	pse, lastLen, err := types.Encode(ps, types.BlockPartSizeBytes)
+	require.NoError(t, err)
+	psh := ps.Header()
+	pseh := pse.Header()
+
+	hashes := extractHashes(ps, pse)
+	proofs := extractProofs(ps, pse)
+
+	baseCompactBlock := &proptypes.CompactBlock{
+		BpHash:    pseh.Hash,
+		Signature: cmtrand.Bytes(64),
+		LastLen:   uint32(lastLen),
+		Blobs: []proptypes.TxMetaData{
+			{Hash: cmtrand.Bytes(32)},
+			{Hash: cmtrand.Bytes(32)},
+		},
+		PartsHashes: hashes,
+	}
+
+	// adding the proposal manually so the haves/wants and recovery
+	// parts are not rejected.
+	p := types.Proposal{
+		BlockID: types.BlockID{
+			Hash:          cmtrand.Bytes(32),
+			PartSetHeader: psh,
+		},
+		Height: height,
+		Round:  round,
+	}
+	baseCompactBlock.Proposal = p
+
+	return baseCompactBlock, ps, pse, proofs
 }
 
 func createBitArray(size int, indices []int) *bits.BitArray {

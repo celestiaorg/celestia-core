@@ -55,8 +55,6 @@ func TestProposalCache_AddProposal(t *testing.T) {
 		name              string
 		inputProposal     *proptypes.CompactBlock
 		wantAdded         bool
-		wantGapHeights    []int64
-		wantGapRounds     []int32
 		wantCurrentHeight int64
 		wantCurrentRound  int32
 	}
@@ -66,8 +64,6 @@ func TestProposalCache_AddProposal(t *testing.T) {
 			name:              "Add first proposal - updates current height/round",
 			inputProposal:     makeCompactBlock(10, 1, 5),
 			wantAdded:         true,
-			wantGapHeights:    []int64{1, 2, 3, 4, 5, 6, 7, 8, 9}, // since store.Height=0 initially
-			wantGapRounds:     nil,
 			wantCurrentHeight: 10,
 			wantCurrentRound:  1,
 		},
@@ -75,8 +71,6 @@ func TestProposalCache_AddProposal(t *testing.T) {
 			name:              "Add proposal at same height, higher round - updates current round",
 			inputProposal:     makeCompactBlock(10, 3, 5),
 			wantAdded:         true,
-			wantGapHeights:    nil,        // same height
-			wantGapRounds:     []int32{2}, // we jumped from round=1 to round=3
 			wantCurrentHeight: 10,
 			wantCurrentRound:  3,
 		},
@@ -84,8 +78,6 @@ func TestProposalCache_AddProposal(t *testing.T) {
 			name:              "Add proposal with same height and round - returns false",
 			inputProposal:     makeCompactBlock(10, 3, 5),
 			wantAdded:         false, // already have 10/3 from above
-			wantGapHeights:    nil,
-			wantGapRounds:     nil,
 			wantCurrentHeight: 10,
 			wantCurrentRound:  3,
 		},
@@ -93,8 +85,6 @@ func TestProposalCache_AddProposal(t *testing.T) {
 			name:              "Add proposal at higher height, round 0 - gap in heights",
 			inputProposal:     makeCompactBlock(12, 0, 5),
 			wantAdded:         true,
-			wantGapHeights:    []int64{11},
-			wantGapRounds:     nil,
 			wantCurrentHeight: 12,
 			wantCurrentRound:  0,
 		},
@@ -102,19 +92,15 @@ func TestProposalCache_AddProposal(t *testing.T) {
 			name:              "Add proposal with older height - no height/round update",
 			inputProposal:     makeCompactBlock(5, 0, 5),
 			wantAdded:         true, // it doesn't exist yet, so it can be added
-			wantGapHeights:    nil,  // ignoring the store, it won't fill in from 0..5
-			wantGapRounds:     nil,
-			wantCurrentHeight: 12, // still remain at 12/0
+			wantCurrentHeight: 12,   // still remain at 12/0
 			wantCurrentRound:  0,
 		},
 	}
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			added, gapHeights, gapRounds := pc.AddProposal(tc.inputProposal)
+			added := pc.AddProposal(tc.inputProposal)
 			require.Equal(t, tc.wantAdded, added, "added mismatch")
-			require.Equal(t, tc.wantGapHeights, gapHeights, "gapHeights mismatch")
-			require.Equal(t, tc.wantGapRounds, gapRounds, "gapRounds mismatch")
 			require.Equal(t, tc.wantCurrentHeight, pc.currentHeight, "currentHeight mismatch")
 			require.Equal(t, tc.wantCurrentRound, pc.currentRound, "currentRound mismatch")
 		})
@@ -177,7 +163,7 @@ func TestProposalCache_GetProposalWithRequests(t *testing.T) {
 		{
 			name:         "Use negative round => fetch the latest round for height=5 which is 1",
 			height:       5,
-			round:        -1, // meaning "latest round"
+			round:        -2, // meaning "latest round"
 			wantProposal: prop2,
 			wantBitArray: bits.NewBitArray(3),
 			wantOk:       true,
@@ -192,7 +178,7 @@ func TestProposalCache_GetProposalWithRequests(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			gotProposal, gotPartSet, gotBA, ok := pc.getAllState(tc.height, tc.round)
+			gotProposal, gotPartSet, gotBA, ok := pc.getAllState(tc.height, tc.round, true)
 			if !tc.wantOk {
 				require.False(t, ok, "should not have found proposal")
 				require.Nil(t, gotProposal)
@@ -240,14 +226,14 @@ func TestProposalCache_DeleteHeight(t *testing.T) {
 	pc.AddProposal(makeCompactBlock(10, 1, 3))
 	pc.AddProposal(makeCompactBlock(11, 0, 5))
 
-	_, _, _, okBefore := pc.getAllState(10, 0)
+	_, _, _, okBefore := pc.getAllState(10, 0, true)
 	require.True(t, okBefore, "proposal 10/0 should exist")
 
 	pc.DeleteHeight(10)
 
-	_, _, _, okAfter := pc.getAllState(10, 0)
+	_, _, _, okAfter := pc.getAllState(10, 0, true)
 	require.False(t, okAfter, "proposal for height=10 should have been deleted")
-	_, _, _, stillOk := pc.getAllState(11, 0)
+	_, _, _, stillOk := pc.getAllState(11, 0, true)
 	require.True(t, stillOk, "proposal for height=11 should remain")
 }
 
@@ -290,7 +276,7 @@ func TestProposalCache_prune(t *testing.T) {
 	pc.currentHeight = 12
 	pc.currentRound = 2
 
-	pc.prune(1, 1) // keep only the past 1 height, and past 1 round in memory
+	pc.prune(11)
 
 	// Expect that everything older than height=11 is removed.
 	// So height=10 is gone
@@ -298,17 +284,10 @@ func TestProposalCache_prune(t *testing.T) {
 
 	// For height=11, we keep it because it's within 1 height of current (12)
 	require.NotNil(t, pc.proposals[11])
-
-	// For height=11, we also prune the older rounds. Because keepRecentRounds=1
-	// That means we only keep round=2 if it exists, or the maximum round if that's less.
-	// But the maximum round we inserted is 2, so we keep only that.
 	require.NotNil(t, pc.proposals[11][2], "round=2 of height=11 should remain")
-	require.Nil(t, pc.proposals[11][0], "round=0 of height=11 should have been pruned")
-	require.Nil(t, pc.proposals[11][1], "round=1 of height=11 should have been pruned")
-
-	// For the current height=12, we do not prune all but the last round.
-	// The code specifically skips pruning the current height's older rounds
+	require.NotNil(t, pc.proposals[11][0], "round=0 of height=11 should have been pruned")
+	require.NotNil(t, pc.proposals[11][1], "round=1 of height=11 should have been pruned")
 	require.NotNil(t, pc.proposals[12][0], "round=0 of current height=12 should remain")
 	require.NotNil(t, pc.proposals[12][1], "round=1 of current height=12 should remain")
-	require.NotNil(t, pc.proposals[12][2], "round=2 of current height=12 is definitely still there")
+	require.NotNil(t, pc.proposals[12][2], "round=2 of current height=12 should remain")
 }

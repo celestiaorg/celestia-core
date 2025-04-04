@@ -145,8 +145,11 @@ func (sp *Proof) ToProto() *cmtcrypto.Proof {
 	return pb
 }
 
-func ProofFromProto(pb *cmtcrypto.Proof) (*Proof, error) {
-	if pb == nil {
+func ProofFromProto(pb *cmtcrypto.Proof, optional bool) (*Proof, error) {
+	if pb == nil || (len(pb.LeafHash) == 0 && len(pb.Aunts) == 0) {
+		if optional {
+			return nil, nil
+		}
 		return nil, errors.New("nil proof")
 	}
 

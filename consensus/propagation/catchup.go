@@ -1,54 +1,122 @@
 package propagation
 
 import (
+	"math/rand"
+
 	proptypes "github.com/tendermint/tendermint/consensus/propagation/types"
+	"github.com/tendermint/tendermint/libs/bits"
 	"github.com/tendermint/tendermint/p2p"
+	"github.com/tendermint/tendermint/pkg/trace/schema"
+	protoprop "github.com/tendermint/tendermint/proto/tendermint/propagation"
+	"github.com/tendermint/tendermint/types"
 )
 
-// sendPsh sends the part set header to the provided peer.
-// TODO check if we still need this?
-func (blockProp *Reactor) sendPsh(peer p2p.ID, height int64, round int32) bool {
-	return true
+// retryWants ensure that all data for all unpruned compact blocks is requested.
+//
+// todo: add a request limit for each part to avoid downloading the block too
+// many times. atm, this code will request the same part from every peer.
+func (blockProp *Reactor) retryWants(currentHeight int64) {
+	if !blockProp.started.Load() {
+		return
+	}
+	data := blockProp.unfinishedHeights()
+	peers := blockProp.getPeers()
+	for _, prop := range data {
+		height, round := prop.compactBlock.Proposal.Height, prop.compactBlock.Proposal.Round
+
+		// don't re-request parts for any round on the current height
+		if height == currentHeight {
+			continue
+		}
+
+		if prop.block.IsComplete() {
+			continue
+		}
+
+		// only re-request original parts that are missing, not parity parts.
+		missing := prop.block.MissingOriginal()
+		if missing.IsEmpty() {
+			blockProp.Logger.Error("no missing parts yet block is incomplete", "height", height, "round", round)
+			continue
+		}
+
+		schema.WriteRetries(blockProp.traceClient, height, round, missing.String())
+
+		// make requests from different peers
+		peers = shuffle(peers)
+
+		for _, peer := range peers {
+			mc := missing.Copy()
+
+			reqs, has := peer.GetRequests(height, round)
+			if has {
+				mc = mc.Sub(reqs)
+			}
+
+			if mc.IsEmpty() {
+				continue
+			}
+
+			e := p2p.Envelope{
+				ChannelID: WantChannel,
+				Message: &protoprop.WantParts{
+					Parts:  *mc.ToProto(),
+					Height: height,
+					Round:  round,
+					Prove:  true,
+				},
+			}
+
+			if !p2p.TrySendEnvelopeShim(peer.peer, e, blockProp.Logger) { //nolint:staticcheck
+				blockProp.Logger.Error("failed to send want part", "peer", peer, "height", height, "round", round)
+				continue
+			}
+
+			schema.WriteCatchupRequest(blockProp.traceClient, height, round, mc.String(), string(peer.peer.ID()))
+
+			// keep track of which requests we've made this attempt.
+			missing = missing.Sub(mc)
+			peer.AddRequests(height, round, missing)
+		}
+	}
 }
 
-// requestMissingBlocks is called when a node is catching up and needs to
-// request all previous blocks from the compact block source peer.
-func (blockProp *Reactor) requestMissingBlocks(targetHeight int64, targetRound int32) {
-	// if we're missing heights, we will be requesting them from the connected peers
-	for height := blockProp.currentHeight + 1; height < targetHeight; height++ {
-		heightProposal, partSet, found := blockProp.GetProposal(height, -1)
-		if !found {
-			blockProp.Logger.Error("couldn't find proposal", "height", height, "round", -1)
-			continue
-		}
-		if partSet.BitArray() == nil {
-			panic("partSet is nil when getting proposal!")
-		}
-		missingParts := partSet.BitArray().Not()
-		wantPart := &proptypes.WantParts{
-			Parts:  missingParts,
-			Height: height,
-			Round:  heightProposal.Round,
-		}
-		blockProp.broadcastWants(wantPart, blockProp.self)
+func (blockProp *Reactor) AddCommitment(height int64, round int32, psh *types.PartSetHeader) {
+	blockProp.Logger.Info("adding commitment", "height", height, "round", round, "psh", psh)
+	blockProp.pmtx.Lock()
+	defer blockProp.pmtx.Unlock()
+
+	blockProp.Logger.Info("added commitment", "height", height, "round", round)
+	schema.WriteGap(blockProp.traceClient, height, round)
+
+	if blockProp.proposals[height] == nil {
+		blockProp.proposals[height] = make(map[int32]*proposalData)
 	}
 
-	// if we're missing rounds for the current height, request them from all the peers
-	for round := int32(0); round < targetRound; round++ {
-		_, partSet, found := blockProp.GetProposal(targetHeight, round)
-		if !found {
-			blockProp.Logger.Error("couldn't find proposal", "height", targetHeight, "round", round)
-			continue
-		}
-		if partSet.BitArray() == nil {
-			panic("partSet is nil when getting proposal!")
-		}
-		missingParts := partSet.BitArray().Not()
-		wantPart := &proptypes.WantParts{
-			Parts:  missingParts,
-			Height: targetHeight,
-			Round:  round,
-		}
-		blockProp.broadcastWants(wantPart, blockProp.self)
+	combinedSet := proptypes.NewCombinedPartSetFromOriginal(types.NewPartSetFromHeader(*psh), true)
+
+	if blockProp.proposals[height][round] != nil {
+		return
 	}
+
+	blockProp.proposals[height][round] = &proposalData{
+		compactBlock: &proptypes.CompactBlock{
+			Proposal: types.Proposal{
+				Height: height,
+				Round:  round,
+			},
+		},
+		catchup:     true,
+		block:       combinedSet,
+		maxRequests: bits.NewBitArray(int(psh.Total * 2)), // this assumes that the parity parts are the same size
+	}
+}
+
+func shuffle[T any](slice []T) []T {
+	n := len(slice)
+	for i := n - 1; i > 0; i-- {
+		j := rand.Intn(i + 1)
+		slice[i], slice[j] = slice[j], slice[i]
+	}
+	return slice
 }

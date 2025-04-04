@@ -96,6 +96,10 @@ func (tx Tx) Hash() []byte {
 	return tmhash.Sum(tx)
 }
 
+func (tx Tx) ToCachedTx() *CachedTx {
+	return &CachedTx{Tx: tx}
+}
+
 // Key returns the sha256 hash of the wire encoded transaction. It attempts to
 // unwrap the transaction if it is a BlobTx or a IndexWrapper.
 func (tx Tx) Key() TxKey {
@@ -245,7 +249,7 @@ func (tp TxProof) ToProto() cmtproto.TxProof {
 }
 func TxProofFromProto(pb cmtproto.TxProof) (TxProof, error) {
 
-	pbProof, err := merkle.ProofFromProto(pb.Proof)
+	pbProof, err := merkle.ProofFromProto(pb.Proof, false)
 	if err != nil {
 		return TxProof{}, err
 	}

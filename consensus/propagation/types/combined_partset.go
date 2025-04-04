@@ -3,6 +3,8 @@ package types
 import (
 	"bytes"
 	"fmt"
+	"sync"
+	"sync/atomic"
 
 	"github.com/tendermint/tendermint/crypto/merkle"
 	"github.com/tendermint/tendermint/libs/bits"
@@ -11,10 +13,14 @@ import (
 
 // CombinedPartSet wraps two PartSet instances: one for original block data and one for parity data.
 type CombinedPartSet struct {
+	mtx      *sync.Mutex
 	totalMap *bits.BitArray
 	original *types.PartSet // holds the original parts (indexes: 0 to original.Total()-1)
 	parity   *types.PartSet // holds parity parts (logical indexes start at original.Total())
 	lastLen  uint32
+	catchup  bool
+
+	IsDecoding atomic.Bool
 }
 
 // NewCombinedSetFromCompactBlock creates a new CombinedPartSet from a
@@ -33,25 +39,62 @@ func NewCombinedSetFromCompactBlock(cb *CompactBlock) *CombinedPartSet {
 		parity:   parity,
 		lastLen:  cb.LastLen,
 		totalMap: total,
+		mtx:      &sync.Mutex{},
 	}
 }
 
-func NewCombinedPartSetFromOriginal(original *types.PartSet) *CombinedPartSet {
-	return &CombinedPartSet{
+func NewCombinedPartSetFromOriginal(original *types.PartSet, catchup bool) *CombinedPartSet {
+	ps := &CombinedPartSet{
+		mtx:      &sync.Mutex{},
 		original: original,
+		parity:   &types.PartSet{},
+		catchup:  catchup,
+		totalMap: bits.NewBitArray(int(original.Total() * 2)),
 	}
+	for _, ind := range original.BitArray().GetTrueIndices() {
+		ps.totalMap.SetIndex(ind, true)
+	}
+	return ps
+}
+
+func (cps *CombinedPartSet) SetProposalData(original, parity *types.PartSet) {
+	cps.mtx.Lock()
+	defer cps.mtx.Unlock()
+	cps.original = original
+	cps.parity = parity
+	cps.totalMap = bits.NewBitArray(int(original.Total() + parity.Total()))
+	cps.totalMap.Fill()
 }
 
 func (cps *CombinedPartSet) Original() *types.PartSet {
+	cps.mtx.Lock()
+	defer cps.mtx.Unlock()
 	return cps.original
 }
 
 func (cps *CombinedPartSet) Parity() *types.PartSet {
+	cps.mtx.Lock()
+	defer cps.mtx.Unlock()
 	return cps.parity
 }
 
 func (cps *CombinedPartSet) BitArray() *bits.BitArray {
+	cps.mtx.Lock()
+	defer cps.mtx.Unlock()
 	return cps.totalMap
+}
+
+// OringinalBitArray returns a BitArray that only missing parts if they are in the original
+// part set.
+func (cps *CombinedPartSet) MissingOriginal() *bits.BitArray {
+	cps.mtx.Lock()
+	defer cps.mtx.Unlock()
+	out := bits.NewBitArray(int(cps.original.Total() * 2))
+	missOrig := cps.original.BitArray().Not()
+	for _, ind := range missOrig.GetTrueIndices() {
+		out.SetIndex(ind, true)
+	}
+	return out
 }
 
 func (cps *CombinedPartSet) Total() uint32 {
@@ -59,20 +102,28 @@ func (cps *CombinedPartSet) Total() uint32 {
 }
 
 func (cps *CombinedPartSet) IsComplete() bool {
+	cps.mtx.Lock()
+	defer cps.mtx.Unlock()
 	return cps.original.IsComplete() && cps.parity.IsComplete()
 }
 
 // CanDecode determines if enough parts have been added to decode the block.
 func (cps *CombinedPartSet) CanDecode() bool {
-	return (cps.original.Count() + cps.parity.Count()) >= cps.original.Total()
+	return (cps.original.Count()+cps.parity.Count()) >= cps.original.Total() &&
+		!cps.catchup
 }
 
 func (cps *CombinedPartSet) Decode() error {
-	_, _, err := types.Decode(cps.original, cps.parity, int(cps.lastLen))
-	if err == nil {
-		cps.totalMap.Fill()
+	ops, eps, err := types.Decode(cps.original, cps.parity, int(cps.lastLen))
+	if err != nil {
+		return err
 	}
-	return err
+	cps.mtx.Lock()
+	defer cps.mtx.Unlock()
+	cps.totalMap.Fill()
+	cps.original = ops
+	cps.parity = eps
+	return nil
 }
 
 // AddPart adds a part to the combined part set. It assumes that the parts being
@@ -97,10 +148,11 @@ func (cps *CombinedPartSet) AddPart(part *RecoveryPart, proof merkle.Proof) (boo
 	}
 
 	// Adjust the index to be relative to the parity set.
+	encodedIndex := p.Index
 	p.Index -= cps.original.Total()
 	added, err := cps.parity.AddPartWithoutProof(p)
 	if added {
-		cps.totalMap.SetIndex(int(part.Index), true)
+		cps.totalMap.SetIndex(int(encodedIndex), true)
 	}
 	return added, err
 }

@@ -11,14 +11,15 @@ import (
 	"github.com/stretchr/testify/assert"
 
 	"github.com/stretchr/testify/require"
+	cfg "github.com/tendermint/tendermint/config"
 	proptypes "github.com/tendermint/tendermint/consensus/propagation/types"
 	cmtrand "github.com/tendermint/tendermint/libs/rand"
 	"github.com/tendermint/tendermint/state"
-	types "github.com/tendermint/tendermint/types"
+	"github.com/tendermint/tendermint/types"
 )
 
 func TestPropose(t *testing.T) {
-	reactors, _ := testBlockPropReactors(3)
+	reactors, _ := testBlockPropReactors(3, cfg.DefaultP2PConfig())
 	reactor1 := reactors[0]
 	reactor2 := reactors[1]
 	reactor3 := reactors[2]
@@ -28,27 +29,7 @@ func TestPropose(t *testing.T) {
 		cleanup(t)
 	})
 
-	data := types.Data{
-		Txs: []types.Tx{
-			cmtrand.Bytes(1000),
-			cmtrand.Bytes(64000),
-			cmtrand.Bytes(20000),
-		},
-	}
-
-	block, partSet := sm.MakeBlock(1, data, types.RandCommit(time.Now()), []types.Evidence{}, cmtrand.Bytes(20))
-	id := types.BlockID{Hash: block.Hash(), PartSetHeader: partSet.Header()}
-	prop := types.NewProposal(block.Height, 0, 0, id)
-	prop.Signature = cmtrand.Bytes(64)
-
-	metaData := make([]proptypes.TxMetaData, len(partSet.TxPos))
-	for i, pos := range partSet.TxPos {
-		metaData[i] = proptypes.TxMetaData{
-			Start: uint32(pos.Start),
-			End:   uint32(pos.End),
-			Hash:  block.Txs[i].Hash(),
-		}
-	}
+	prop, partSet, _, metaData := createTestProposal(sm, 1, 100, 1000)
 
 	reactor1.ProposeBlock(prop, partSet, metaData)
 
@@ -74,6 +55,41 @@ func TestPropose(t *testing.T) {
 	assert.True(t, has)
 	// the parts == total because we only have 2 peers
 	assert.Equal(t, haves.Size(), int(partSet.Total()*2))
+
+	time.Sleep(500 * time.Millisecond)
+
+	for _, r := range reactors {
+		_, parts, _, has := r.getAllState(prop.Height, prop.Round, false)
+		require.True(t, has)
+		assert.True(t, parts.IsComplete())
+	}
+}
+
+func createTestProposal(
+	sm state.State,
+	height int64,
+	txCount, txSize int,
+) (*types.Proposal, *types.PartSet, *types.Block, []proptypes.TxMetaData) {
+	txs := make([]types.Tx, txCount)
+	for i := 0; i < txCount; i++ {
+		txs[i] = cmtrand.Bytes(txSize)
+	}
+	data := types.Data{
+		Txs: txs,
+	}
+	block, partSet := sm.MakeBlock(height, data, types.RandCommit(time.Now()), []types.Evidence{}, cmtrand.Bytes(20))
+	metaData := make([]proptypes.TxMetaData, len(partSet.TxPos))
+	for i, pos := range partSet.TxPos {
+		metaData[i] = proptypes.TxMetaData{
+			Start: uint32(pos.Start),
+			End:   uint32(pos.End),
+			Hash:  block.Txs[i].Hash(),
+		}
+	}
+	id := types.BlockID{Hash: block.Hash(), PartSetHeader: partSet.Header()}
+	prop := types.NewProposal(block.Height, 0, 0, id)
+	prop.Signature = cmtrand.Bytes(64)
+	return prop, partSet, block, metaData
 }
 
 // TestRecoverPartsLocally provides a set of transactions to the mempool
@@ -85,10 +101,10 @@ func TestRecoverPartsLocally(t *testing.T) {
 	})
 
 	numberOfTxs := 10
-	txsMap := make(map[types.TxKey]types.Tx)
-	txs := make([]types.Tx, numberOfTxs)
+	txsMap := make(map[types.TxKey]*types.CachedTx)
+	txs := make([]*types.CachedTx, numberOfTxs)
 	for i := 0; i < numberOfTxs; i++ {
-		tx := types.Tx(cmtrand.Bytes(int(types.BlockPartSizeBytes / 3)))
+		tx := &types.CachedTx{Tx: cmtrand.Bytes(int(types.BlockPartSizeBytes / 3))}
 		txKey, err := types.TxKeyFromBytes(tx.Hash())
 		require.NoError(t, err)
 		txsMap[txKey] = tx
@@ -96,11 +112,11 @@ func TestRecoverPartsLocally(t *testing.T) {
 	}
 
 	blockStore := store.NewBlockStore(dbm.NewMemDB())
-	blockPropR := NewReactor("", trace.NoOpTracer(), blockStore, mockMempool{
+	blockPropR := NewReactor("", trace.NoOpTracer(), blockStore, &mockMempool{
 		txs: txsMap,
 	})
 
-	data := types.Data{Txs: txs}
+	data := types.Data{Txs: types.TxsFromCachedTxs(txs)}
 
 	block, partSet := sm.MakeBlock(1, data, types.RandCommit(time.Now()), []types.Evidence{}, cmtrand.Bytes(20))
 	id := types.BlockID{Hash: block.Hash(), PartSetHeader: partSet.Header()}
@@ -134,9 +150,15 @@ func TestRecoverPartsLocally(t *testing.T) {
 var _ Mempool = &mockMempool{}
 
 type mockMempool struct {
-	txs map[types.TxKey]types.Tx
+	txs map[types.TxKey]*types.CachedTx
 }
 
-func (m mockMempool) GetTxByKey(key types.TxKey) (types.Tx, bool) {
-	return m.txs[key], true
+func (m *mockMempool) AddTx(tx types.Tx) {
+	cachTx := &types.CachedTx{Tx: tx}
+	m.txs[tx.Key()] = cachTx
+}
+
+func (m *mockMempool) GetTxByKey(key types.TxKey) (*types.CachedTx, bool) {
+	val, found := m.txs[key]
+	return val, found
 }

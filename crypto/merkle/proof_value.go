@@ -47,7 +47,7 @@ func ValueOpDecoder(pop cmtcrypto.ProofOp) (ProofOperator, error) {
 		return nil, fmt.Errorf("decoding ProofOp.Data into ValueOp: %w", err)
 	}
 
-	sp, err := ProofFromProto(pbop.Proof)
+	sp, err := ProofFromProto(pbop.Proof, false)
 	if err != nil {
 		return nil, err
 	}

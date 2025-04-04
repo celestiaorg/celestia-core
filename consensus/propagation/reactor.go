@@ -1,24 +1,27 @@
 package propagation
 
 import (
+	"context"
 	"fmt"
 	"reflect"
+	"sync"
+	"sync/atomic"
+	"time"
 
 	"github.com/tendermint/tendermint/p2p/conn"
 
-	"github.com/tendermint/tendermint/libs/sync"
 	"github.com/tendermint/tendermint/store"
 
 	"github.com/gogo/protobuf/proto"
 	proptypes "github.com/tendermint/tendermint/consensus/propagation/types"
 	"github.com/tendermint/tendermint/p2p"
 	"github.com/tendermint/tendermint/pkg/trace"
+	"github.com/tendermint/tendermint/pkg/trace/schema"
 	propproto "github.com/tendermint/tendermint/proto/tendermint/propagation"
 )
 
 const (
-	// TODO: set a valid max msg size
-	maxMsgSize = 1048576
+	maxMsgSize = 4194304 // 4MiB
 
 	// ReactorIncomingMessageQueueSize the size of the reactor's message queue.
 	ReactorIncomingMessageQueueSize = 2000
@@ -47,13 +50,17 @@ type Reactor struct {
 	mtx         *sync.RWMutex
 	traceClient trace.Tracer
 	self        p2p.ID
+	started     atomic.Bool
+
+	ctx    context.Context
+	cancel context.CancelFunc
 }
 
 func NewReactor(self p2p.ID, tracer trace.Tracer, store *store.BlockStore, mempool Mempool, options ...ReactorOption) *Reactor {
 	if tracer == nil {
-		// TODO not pass nil. instead, use a NOOP and allow the tracer to be passed as an option
 		tracer = trace.NoOpTracer()
 	}
+	ctx, cancel := context.WithCancel(context.Background())
 	reactor := &Reactor{
 		self:          self,
 		traceClient:   tracer,
@@ -61,12 +68,34 @@ func NewReactor(self p2p.ID, tracer trace.Tracer, store *store.BlockStore, mempo
 		mtx:           &sync.RWMutex{},
 		ProposalCache: NewProposalCache(store),
 		mempool:       mempool,
+		started:       atomic.Bool{},
+		ctx:           ctx,
+		cancel:        cancel,
 	}
 	reactor.BaseReactor = *p2p.NewBaseReactor("BlockProp", reactor, p2p.WithIncomingQueueSize(ReactorIncomingMessageQueueSize))
 
 	for _, option := range options {
 		option(reactor)
 	}
+
+	// start the catchup routine
+	go func() {
+		// TODO dynamically set the ticker depending on how many blocks are missing
+		ticker := time.NewTicker(6 * time.Second)
+		for {
+			select {
+			case <-reactor.ctx.Done():
+				return
+			case <-ticker.C:
+				reactor.pmtx.Lock()
+				currentHeight := reactor.currentHeight
+				reactor.pmtx.Unlock()
+				// run the catchup routine to recover any missing parts for past heights.
+				reactor.retryWants(currentHeight)
+			}
+		}
+	}()
+
 	return reactor
 }
 
@@ -78,24 +107,22 @@ func (blockProp *Reactor) OnStart() error {
 }
 
 func (blockProp *Reactor) OnStop() {
-	// TODO: implement
+	blockProp.cancel()
 }
 
 func (blockProp *Reactor) GetChannels() []*conn.ChannelDescriptor {
 	return []*p2p.ChannelDescriptor{
 		{
-			// TODO: set better values
 			ID:                  WantChannel,
-			Priority:            6,
-			SendQueueCapacity:   100,
+			Priority:            45,
+			SendQueueCapacity:   20000,
 			RecvMessageCapacity: maxMsgSize,
 			MessageType:         &propproto.Message{},
 		},
 		{
-			// TODO: set better values
 			ID:                  DataChannel,
-			Priority:            10,
-			SendQueueCapacity:   1000,
+			Priority:            40,
+			SendQueueCapacity:   20000,
 			RecvMessageCapacity: maxMsgSize,
 			MessageType:         &propproto.Message{},
 		},
@@ -113,10 +140,10 @@ func (blockProp *Reactor) AddPeer(peer p2p.Peer) {
 
 	// ignore the peer if it already exists.
 	if p := blockProp.getPeer(peer.ID()); p != nil {
+		blockProp.Logger.Error("Peer exists in propagation reactors", "peer", peer.ID())
 		return
 	}
 
-	// TODO pass a separate logger if needed
 	blockProp.setPeer(peer.ID(), newPeerState(peer, blockProp.Logger))
 	cb, _, found := blockProp.GetCurrentCompactBlock()
 
@@ -134,6 +161,12 @@ func (blockProp *Reactor) AddPeer(peer p2p.Peer) {
 	if !p2p.TrySendEnvelopeShim(peer, e, blockProp.Logger) { //nolint:staticcheck
 		blockProp.Logger.Debug("failed to send proposal to peer", "peer", peer.ID())
 	}
+}
+
+func (blockProp *Reactor) RemovePeer(peer p2p.Peer, reason interface{}) {
+	blockProp.mtx.Lock()
+	defer blockProp.mtx.Unlock()
+	delete(blockProp.peerstate, peer.ID())
 }
 
 func (blockProp *Reactor) ReceiveEnvelope(e p2p.Envelope) {
@@ -162,9 +195,10 @@ func (blockProp *Reactor) ReceiveEnvelope(e p2p.Envelope) {
 	case DataChannel:
 		switch msg := msg.(type) {
 		case *proptypes.CompactBlock:
-			blockProp.handleCompactBlock(msg, e.Src.ID())
+			blockProp.handleCompactBlock(msg, e.Src.ID(), false)
+			schema.WriteProposal(blockProp.traceClient, msg.Proposal.Height, msg.Proposal.Round, string(e.Src.ID()), schema.Download)
 		case *proptypes.HaveParts:
-			blockProp.handleHaves(e.Src.ID(), msg, false)
+			blockProp.handleHaves(e.Src.ID(), msg)
 		case *proptypes.RecoveryPart:
 			blockProp.handleRecoveryPart(e.Src.ID(), msg)
 		default:
@@ -195,6 +229,24 @@ func (blockProp *Reactor) Receive(chID byte, peer p2p.Peer, msgBytes []byte) {
 		Src:       peer,
 		Message:   uw,
 	})
+}
+
+// Prune removes all peer and proposal state from the block propagation reactor.
+// This should be called only after a block has been committed.
+func (blockProp *Reactor) Prune(committedHeight int64) {
+	prunePast := committedHeight
+	peers := blockProp.getPeers()
+	for _, peer := range peers {
+		peer.prune(prunePast)
+	}
+	blockProp.ProposalCache.prune(prunePast)
+	blockProp.pmtx.Lock()
+	defer blockProp.pmtx.Unlock()
+	blockProp.consensusHeight = committedHeight
+}
+
+func (blockProp *Reactor) StartProcessing() {
+	blockProp.started.Store(true)
 }
 
 // getPeer returns the peer state for the given peer. If the peer does not exist,
