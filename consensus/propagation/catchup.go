@@ -67,7 +67,7 @@ func (blockProp *Reactor) retryWants(currentHeight int64) {
 				},
 			}
 
-			blockProp.logger.Info("sending wants", "height", height, "round", round, "reqs", reqs, "to", peer.peer.ID())
+			blockProp.Logger.Info("sending wants", "height", height, "round", round, "reqs", reqs, "to", peer.peer.ID())
 			if !p2p.TrySendEnvelopeShim(peer.peer, e, blockProp.Logger) { //nolint:staticcheck
 				blockProp.Logger.Error("failed to send want part", "peer", peer, "height", height, "round", round)
 				continue

@@ -121,40 +121,19 @@ func chunkToPartMetaData(chunk *bits.BitArray, partSet *proptypes.CombinedPartSe
 // time a proposal is received from a peer or when a proposal is created. If the
 // proposal is new, it will be stored and broadcast to the relevant peers.
 func (blockProp *Reactor) handleCompactBlock(cb *proptypes.CompactBlock, peer p2p.ID, proposer bool) {
-	fmt.Println(blockProp.stateInfo())
 	err := blockProp.validateCompactBlock(cb)
 	if err != nil && proposer == false {
-		blockProp.Logger.Info("failed to validate proposal", "err", err, "height", cb.Proposal.Height, "round", cb.Proposal.Round)
+		blockProp.Logger.Info("failed to validate proposal. ignoring it", "err", err, "height", cb.Proposal.Height, "round", cb.Proposal.Round)
 		return
-		//for i := 0; i < 10; i++ {
-		//	time.Sleep(500 * time.Millisecond)
-		//	if blockProp.validateCompactBlock(cb) == nil {
-		//		blockProp.Logger.Info("compact block verified")
-		//		fmt.Println("compact block verified")
-		//		break
-		//	}
-		//	if blockProp.store.LoadBlock(cb.Proposal.Height) != nil {
-		//		// the block was stored, no need to continue this
-		//		blockProp.Logger.Info("block was stored. no need to handle its compact block", "height", cb.Proposal.Height, "round", cb.Proposal.Round)
-		//		return
-		//	}
-		//	if blockProp.stateInfo().Round > cb.Proposal.Round &&
-		//		blockProp.stateInfo().Height == cb.Proposal.Height {
-		//		//we can discard this compact block
-		//		blockProp.Logger.Info("discarding compact block")
-		//		fmt.Println("discarding compact block")
-		//		return
-		//	}
-		//}
 	}
 
-	blockProp.logger.Info("validated compact block", "height", cb.Proposal.Height, "round", cb.Proposal.Round)
+	blockProp.Logger.Info("validated compact block", "height", cb.Proposal.Height, "round", cb.Proposal.Round)
 	added := blockProp.AddProposal(cb)
 	if !added {
 		return
 	}
 
-	blockProp.logger.Info("added proposal", "height", cb.Proposal.Height, "round", cb.Proposal.Round)
+	blockProp.Logger.Info("added proposal", "height", cb.Proposal.Height, "round", cb.Proposal.Round)
 
 	// generate (and cache) the proofs from the partset hashes in the compact block
 	_, err = cb.Proofs()
@@ -349,7 +328,6 @@ func (blockProp *Reactor) validateCompactBlock(cb *proptypes.CompactBlock) error
 	if !has {
 		return fmt.Errorf("proposer not found")
 	}
-	fmt.Println("got proposer")
 	err := blockProp.proposalValidator(proposer, &cb.Proposal)
 	if err != nil {
 		return err
