@@ -62,20 +62,20 @@ func TestReactorBroadcastTxsMessage(t *testing.T) {
 }
 
 func TestReactorSendWantTxAfterReceiveingSeenTx(t *testing.T) {
-	t.Skip()
 	reactor, _ := setupReactor(t)
 
 	tx := newDefaultTx("hello")
 	key := tx.Key()
 	msgSeen := &protomem.SeenTx{TxKey: key[:]}
 
-	msgWant := &protomem.WantTx{TxKey: key[:]}
+	msgWant := &protomem.Message{
+		Sum: &protomem.Message_WantTx{WantTx: &protomem.WantTx{TxKey: key[:]}},
+	}
 
 	peer := genPeer()
 	env := p2p.Envelope{
 		ChannelID: MempoolStateChannel,
 		Message:   msgWant,
-		Src:       peer,
 	}
 	peer.On("Send", env).Return(true)
 
