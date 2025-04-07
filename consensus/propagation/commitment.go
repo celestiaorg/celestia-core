@@ -178,7 +178,7 @@ func (blockProp *Reactor) recoverPartsFromMempool(cb *proptypes.CompactBlock) {
 		return
 	}
 
-	parts := proptypes.TxsToParts(txsFound)
+	parts := proptypes.TxsToParts(txsFound, cb.Proposal.BlockID.PartSetHeader.Total, types.BlockPartSizeBytes, cb.LastLen)
 
 	_, partSet, _, found := blockProp.getAllState(cb.Proposal.Height, cb.Proposal.Round, false)
 	if !found {
