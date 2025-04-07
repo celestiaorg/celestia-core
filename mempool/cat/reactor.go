@@ -303,7 +303,7 @@ func (memR *Reactor) Receive(e p2p.Envelope) {
 		if has && !memR.opts.ListenOnly {
 			peerID := memR.ids.GetIDForPeer(e.Src.ID())
 			memR.Logger.Debug("sending a tx in response to a want msg", "peer", peerID)
-			if e.Src.Send(p2p.Envelope{ //nolint:staticcheck
+			if e.Src.Send(p2p.Envelope{
 				ChannelID: mempool.MempoolChannel,
 				Message:   &protomem.Txs{Txs: [][]byte{tx}},
 			}) {
@@ -401,7 +401,7 @@ func (memR *Reactor) broadcastNewTx(wtx *wrappedTx) {
 				ChannelID: mempool.MempoolChannel,
 				Message:   msg,
 			},
-		) { //nolint:staticcheck
+		) {
 			memR.mempool.PeerHasTx(id, wtx.key)
 		}
 	}
@@ -426,7 +426,7 @@ func (memR *Reactor) requestTx(txKey types.TxKey, peer p2p.Peer) {
 			ChannelID: MempoolStateChannel,
 			Message:   msg,
 		},
-	) //nolint:staticcheck
+	)
 	if success {
 		memR.mempool.metrics.RequestedTxs.Add(1)
 		requested := memR.requests.Add(txKey, memR.ids.GetIDForPeer(peer.ID()), memR.findNewPeerToRequestTx)

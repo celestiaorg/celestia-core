@@ -688,7 +688,7 @@ func TestTxPool_RemoveBlobTx(t *testing.T) {
 
 	txmp := NewTxPool(log.TestingLogger(), cfg, appConnMem, 1)
 
-	originalTx := []byte{1, 2, 3, 4}
+	originalTx := []byte("sender=00001")
 	indexWrapper, err := types.MarshalIndexWrapper(originalTx, 100)
 	require.NoError(t, err)
 	namespaceOne := bytes.Repeat([]byte{1}, share.NamespaceIDSize)
