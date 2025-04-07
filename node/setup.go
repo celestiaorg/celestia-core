@@ -280,7 +280,7 @@ func createMempoolAndMempoolReactor(
 		)
 		reactor.SetLogger(logger)
 		return mp, reactor
-	case cfg.MempoolTypeCAT:
+	case cfg.MempoolTypeCAT, cfg.LegacyMempoolTypeCAT:
 		mp := cat.NewTxPool(
 			logger,
 			config.Mempool,
