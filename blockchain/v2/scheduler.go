@@ -292,7 +292,9 @@ func (sc *scheduler) addNewBlocks() {
 		if i > sc.maxHeight() {
 			break
 		}
-		if sc.getStateAtHeight(i) == blockStateUnknown {
+		// Get all peers that have this block before adding it to blockStateNew
+		peers := sc.getPeersWithHeight(i)
+		if len(peers) > 0 && sc.getStateAtHeight(i) == blockStateUnknown {
 			sc.setStateAtHeight(i, blockStateNew)
 		}
 	}
@@ -315,9 +317,25 @@ func (sc *scheduler) setPeerRange(peerID p2p.ID, base int64, height int64) error
 		return fmt.Errorf("cannot set peer base higher than its height")
 	}
 
+	// If this is a new peer (state is peerStateNew) or height increased,
+	// we might need to reconsider some unknown blocks
+	needsReconsideration := peer.state == peerStateNew || height > peer.height
+
 	peer.base = base
 	peer.height = height
 	peer.state = peerStateReady
+
+	if needsReconsideration {
+		// Reconsider unknown blocks that this peer might have
+		for i := sc.height; i <= height; i++ {
+			if sc.getStateAtHeight(i) == blockStateUnknown {
+				// Add to blockStateNew only if peer has this block
+				if base <= i && i <= height {
+					sc.setStateAtHeight(i, blockStateNew)
+				}
+			}
+		}
+	}
 
 	sc.addNewBlocks()
 	return nil
@@ -504,8 +522,44 @@ func (sc *scheduler) selectPeer(height int64) (p2p.ID, error) {
 		}
 	}
 
-	sort.Sort(PeerByID(pendingFrom[int(minPending)]))
-	return pendingFrom[int(minPending)][0], nil
+	// If we have multiple peers with the same minimum number of pending requests,
+	// try to select the peer with the highest lastRate
+	candidatePeers := pendingFrom[int(minPending)]
+	if len(candidatePeers) > 1 {
+		// Sort by lastRate descendingly
+		type peerRate struct {
+			id   p2p.ID
+			rate int64
+		}
+		peerRates := make([]peerRate, 0, len(candidatePeers))
+		for _, peerID := range candidatePeers {
+			peer, ok := sc.peers[peerID]
+			if !ok || peer.state != peerStateReady {
+				continue
+			}
+			peerRates = append(peerRates, peerRate{id: peerID, rate: peer.lastRate})
+		}
+
+		// Sort by rate in descending order (highest rate first)
+		sort.Slice(peerRates, func(i, j int) bool {
+			return peerRates[i].rate > peerRates[j].rate
+		})
+
+		// Select first peer with non-zero rate, or fallback to the first peer
+		for _, pr := range peerRates {
+			if pr.rate > 0 {
+				return pr.id, nil
+			}
+		}
+		// If all have zero rate, just pick the first one
+		if len(peerRates) > 0 {
+			return peerRates[0].id, nil
+		}
+	}
+
+	// Default case: sort by ID for deterministic behavior
+	sort.Sort(PeerByID(candidatePeers))
+	return candidatePeers[0], nil
 }
 
 // PeerByID is a list of peers sorted by peerID.
@@ -655,6 +709,15 @@ func (sc *scheduler) handleTrySchedule(event rTrySchedule) (Event, error) {
 		return noOp, nil
 	}
 
+	// Check if there are any peers available for this height
+	peers := sc.getPeersWithHeight(nextHeight)
+	if len(peers) == 0 {
+		// No peers available for this height, move block back to unknown state
+		// so it can be reconsidered when peer availability changes
+		delete(sc.blockStates, nextHeight)
+		return noOp, nil
+	}
+
 	bestPeerID, err := sc.selectPeer(nextHeight)
 	if err != nil {
 		return scSchedulerFail{reason: err}, nil
@@ -663,7 +726,6 @@ func (sc *scheduler) handleTrySchedule(event rTrySchedule) (Event, error) {
 		return scSchedulerFail{reason: err}, nil // XXX: peerError might be more appropriate
 	}
 	return scBlockRequest{peerID: bestPeerID, height: nextHeight}, nil
-
 }
 
 func (sc *scheduler) handleStatusResponse(event bcStatusResponse) (Event, error) {
