@@ -58,12 +58,14 @@ persist_interval = 3
 retain_blocks = 20
 perturb = ["kill"]
 key_type = "secp256k1"
+mempool_version = "priority"
 
 [node.validator04]
 persistent_peers = ["validator01"]
 database = "goleveldb"
 perturb = ["pause"]
 key_type = "sr25519"
+mempool_version = "priority"
 
 [node.validator05]
 start_at = 1005                                      # Becomes part of the validator set at 1010

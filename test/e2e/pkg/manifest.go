@@ -195,6 +195,9 @@ type ManifestNode struct {
 	// It defaults to false so unless the configured, the node will
 	// receive load.
 	SendNoLoad bool `toml:"send_no_load"`
+
+	// MempoolVersion specifies the mempool version to use: "flood" or "priority".
+	MempoolVersion string `toml:"mempool_version"`
 }
 
 // Save saves the testnet manifest to a file.
