@@ -819,7 +819,7 @@ type MempoolConfig struct {
 // DefaultMempoolConfig returns a default configuration for the CometBFT mempool
 func DefaultMempoolConfig() *MempoolConfig {
 	return &MempoolConfig{
-		Type:           MempoolTypeFlood,
+		Type:           MempoolTypePriority,
 		Recheck:        true,
 		RecheckTimeout: 1000 * time.Millisecond,
 		Broadcast:      true,
