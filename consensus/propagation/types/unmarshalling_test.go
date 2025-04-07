@@ -112,7 +112,8 @@ func TestTxsToParts_Correctness(t *testing.T) {
 						}
 					}
 
-					parts := TxsToParts(combinationTxs)
+					lastPart := partSet.GetPart(int(partSet.Total() - 1))
+					parts := TxsToParts(combinationTxs, partSet.Total(), types.BlockPartSizeBytes, uint32(len(lastPart.Bytes)))
 					for _, part := range parts {
 						expectedPart := partSet.GetPart(int(part.Index))
 						require.Equal(t, expectedPart.Bytes, part.Bytes)
@@ -121,6 +122,93 @@ func TestTxsToParts_Correctness(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestTxsToParts_EdgeCases adds additional tests for edge conditions.
+func TestTxsToParts_EdgeCases(t *testing.T) {
+	cleanup, _, sm := state.SetupTestCase(t)
+	t.Cleanup(func() { cleanup(t) })
+
+	t.Run("empty input", func(t *testing.T) {
+		// No transactions provided.
+		parts := TxsToParts([]UnmarshalledTx{}, 1, types.BlockPartSizeBytes, 1)
+		require.Empty(t, parts)
+	})
+
+	t.Run("incomplete part", func(t *testing.T) {
+		// Create a block where a single part is normally filled by two txs,
+		// then provide only one transaction so that the part is incomplete.
+		txs := generateTxs(2, int(types.BlockPartSizeBytes/2))
+		data := types.Data{Txs: txs}
+		block, partSet := sm.MakeBlock(1, data, types.RandCommit(time.Now()), []types.Evidence{}, cmtrand.Bytes(20))
+
+		txsFound := make([]UnmarshalledTx, len(partSet.TxPos))
+		for i, pos := range partSet.TxPos {
+			protoTxs := mempool.Txs{Txs: [][]byte{data.Txs[i]}}
+			marshalledTx, err := proto.Marshal(&protoTxs)
+			require.NoError(t, err)
+
+			txKey, err := types.TxKeyFromBytes(block.Txs[i].Hash())
+			require.NoError(t, err)
+
+			txsFound[i] = UnmarshalledTx{
+				MetaData: TxMetaData{
+					Start: uint32(pos.Start),
+					End:   uint32(pos.End),
+					Hash:  block.Txs[i].Hash(),
+				},
+				Key:     txKey,
+				TxBytes: marshalledTx,
+			}
+		}
+
+		// Remove one transaction to simulate an incomplete part.
+		incompleteTxsFound := txsFound[:1]
+		lastPart := partSet.GetPart(int(partSet.Total() - 1))
+		parts := TxsToParts(incompleteTxsFound, partSet.Total(), types.BlockPartSizeBytes, uint32(len(lastPart.Bytes)))
+		// Expect no complete part to be returned.
+		require.Empty(t, parts)
+	})
+
+	t.Run("partial final part", func(t *testing.T) {
+		// Create a block that normally would be divided into three parts.
+		txs := generateTxs(3, int(types.BlockPartSizeBytes))
+		data := types.Data{Txs: txs}
+		block, partSet := sm.MakeBlock(1, data, types.RandCommit(time.Now()), []types.Evidence{}, cmtrand.Bytes(20))
+
+		txsFound := make([]UnmarshalledTx, len(partSet.TxPos))
+		for i, pos := range partSet.TxPos {
+			protoTxs := mempool.Txs{Txs: [][]byte{data.Txs[i]}}
+			marshalledTx, err := proto.Marshal(&protoTxs)
+			require.NoError(t, err)
+
+			txKey, err := types.TxKeyFromBytes(block.Txs[i].Hash())
+			require.NoError(t, err)
+
+			txsFound[i] = UnmarshalledTx{
+				MetaData: TxMetaData{
+					Start: uint32(pos.Start),
+					End:   uint32(pos.End),
+					Hash:  block.Txs[i].Hash(),
+				},
+				Key:     txKey,
+				TxBytes: marshalledTx,
+			}
+		}
+
+		// Remove the last transaction to simulate that the final part is incomplete.
+		incompleteTxsFound := txsFound[:len(txsFound)-1]
+		lastPart := partSet.GetPart(int(partSet.Total() - 1))
+		parts := TxsToParts(incompleteTxsFound, partSet.Total(), types.BlockPartSizeBytes, uint32(len(lastPart.Bytes)))
+
+		// Only the second part should be returned as the block has data not
+		// included in the transactions
+		require.Equal(t, 1, len(parts))
+		for _, part := range parts {
+			expectedPart := partSet.GetPart(int(part.Index))
+			require.Equal(t, expectedPart.Bytes, part.Bytes)
+		}
+	})
 }
 
 // FuzzTxsToParts is a fuzz test that randomly selects a subset of transactions from a
@@ -173,7 +261,8 @@ func FuzzTxsToParts(f *testing.F) {
 			}
 		}
 
-		parts := TxsToParts(subset)
+		lastPart := partSet.GetPart(int(partSet.Total() - 1))
+		parts := TxsToParts(subset, partSet.Total(), types.BlockPartSizeBytes, uint32(len(lastPart.Bytes)))
 		for _, part := range parts {
 			expectedPart := partSet.GetPart(int(part.Index))
 			require.Equal(t, expectedPart.Bytes, part.Bytes)

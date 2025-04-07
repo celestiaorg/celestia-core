@@ -59,8 +59,8 @@ func TestMarshalBlockWithTxPositions(t *testing.T) {
 			//   tag (varint) + length (varint) + raw tx bytes
 			for i, pos := range positions {
 				// Check that positions are within bounds.
-				assert.GreaterOrEqual(t, pos.Start, 0, "position start must be non-negative")
-				assert.LessOrEqual(t, pos.End, len(b), "position end must be within message bounds")
+				assert.GreaterOrEqual(t, pos.Start, uint32(0), "position start must be non-negative")
+				assert.LessOrEqual(t, pos.End, uint32(len(b)), "position end must be within message bounds")
 
 				fieldBytes := b[pos.Start:pos.End]
 

@@ -101,6 +101,8 @@ func (c *CompactBlock) ValidateBasic() error {
 		}
 	}
 
+	// todo: add a validity rule where there can be no overlapping txmetadata
+
 	// // todo make more flexible to not always have a constant amount of parity data
 	// if len(c.PartsHashes) != (ParityRatio * int(c.Proposal.BlockID.PartSetHeader.Total)) {
 	// 	return fmt.Errorf("unexpected number of part hashes")

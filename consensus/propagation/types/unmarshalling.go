@@ -3,82 +3,8 @@ package types
 import (
 	"sort"
 
-	"github.com/tendermint/tendermint/crypto/merkle"
 	"github.com/tendermint/tendermint/types"
 )
-
-// TxsToParts takes a set of mempool transactions and creates parts from them.
-// It fixes the memory leak by copying part bytes.
-func TxsToParts(txsFound []UnmarshalledTx) []*types.Part {
-	// sort the transactions by start index
-	sort.Slice(txsFound, func(i, j int) bool {
-		return txsFound[i].MetaData.Start < txsFound[j].MetaData.Start
-	})
-
-	parts := make([]*types.Part, 0)
-	var cumulativeBytes []byte
-	// cumulativeStart tracks the starting index of the bytes stored in cumulativeBytes.
-	cumulativeStart := -1
-
-	for i, tx := range txsFound {
-		// Determine the boundaries of the part in which this transaction belongs.
-		partIndex := tx.MetaData.Start / types.BlockPartSizeBytes
-		partStart := partIndex * types.BlockPartSizeBytes
-		partEnd := int(partIndex+1) * int(types.BlockPartSizeBytes)
-
-		// If the cumulative buffer is empty, set the starting index.
-		if len(cumulativeBytes) == 0 {
-			cumulativeStart = int(tx.MetaData.Start)
-		}
-
-		// Append the current transaction's bytes.
-		cumulativeBytes = append(cumulativeBytes, tx.TxBytes...)
-
-		// Check if the cumulative bytes do not start exactly at the beginning of the part.
-		// If they don't, adjust the cumulative buffer.
-		if int(partStart) < cumulativeStart {
-			relativeEnd := partEnd - cumulativeStart
-			if relativeEnd > len(cumulativeBytes) {
-				// Not enough bytes to flush any part, reset the cumulative buffer.
-				cumulativeBytes = cumulativeBytes[:0]
-				cumulativeStart = -1
-			} else {
-				// Trim the cumulative buffer to start exactly at the part's end.
-				cumulativeBytes = cumulativeBytes[relativeEnd:]
-				cumulativeStart = partEnd
-			}
-		}
-
-		// Flush complete parts from the cumulative buffer.
-		for len(cumulativeBytes) >= int(types.BlockPartSizeBytes) {
-			// Create a copy of the part's bytes to prevent memory leaks.
-			partData := make([]byte, types.BlockPartSizeBytes)
-			copy(partData, cumulativeBytes[:types.BlockPartSizeBytes])
-
-			newPart := &types.Part{
-				Index: uint32(cumulativeStart) / types.BlockPartSizeBytes,
-				Bytes: partData,
-				Proof: merkle.Proof{}, // empty proof as the full Merkle tree is unavailable here
-			}
-			parts = append(parts, newPart)
-
-			// Remove the flushed part from the cumulative buffer.
-			cumulativeBytes = cumulativeBytes[types.BlockPartSizeBytes:]
-			cumulativeStart += int(types.BlockPartSizeBytes)
-		}
-
-		// If the next transaction is not contiguous with the current one, reset the buffer.
-		if i+1 < len(txsFound) {
-			nextTx := txsFound[i+1]
-			if tx.MetaData.End != nextTx.MetaData.Start {
-				cumulativeBytes = cumulativeBytes[:0]
-				cumulativeStart = -1
-			}
-		}
-	}
-
-	return parts
-}
 
 // UnmarshalledTx is an intermediary type that allows keeping the transaction
 // metadata, its Key and the actual tx bytes. This will be used to create the
@@ -87,4 +13,76 @@ type UnmarshalledTx struct {
 	MetaData TxMetaData
 	Key      types.TxKey
 	TxBytes  []byte
+}
+
+// TxsToParts calculates the parts that can be reconstructed from
+// transactions
+func TxsToParts(txs []UnmarshalledTx, partCount, partSize, lastPartLen uint32) []*types.Part {
+	result := make([]*types.Part, 0)
+
+	sort.Slice(txs, func(i, j int) bool {
+		return txs[i].MetaData.Start < txs[j].MetaData.Start
+	})
+
+	for i := uint32(0); i < partCount; i++ {
+		startBoundary := uint32(i * partSize)
+		endBoundary := startBoundary + uint32(partSize)
+		if i == partCount-1 && lastPartLen > 0 && lastPartLen < partSize {
+			endBoundary = startBoundary + uint32(lastPartLen)
+		}
+
+		var isolatedTxs []UnmarshalledTx
+		// isolate the relevant transactions for this part
+		for _, tx := range txs {
+			if tx.MetaData.End < startBoundary || tx.MetaData.Start >= endBoundary {
+				continue
+			}
+			isolatedTxs = append(isolatedTxs, tx)
+		}
+
+		cur := startBoundary
+		complete := false
+		for _, tx := range isolatedTxs {
+			if tx.MetaData.Start > cur {
+				break
+			}
+			if tx.MetaData.End > cur {
+				cur = tx.MetaData.End
+			}
+			if cur >= endBoundary {
+				complete = true
+				break
+			}
+		}
+
+		if !complete {
+			continue
+		}
+
+		partLen := endBoundary - startBoundary
+		partBytes := make([]byte, partLen)
+
+		for _, tx := range isolatedTxs {
+			overlapStart := max(tx.MetaData.Start, startBoundary)
+			overlapEnd := min(tx.MetaData.End, endBoundary)
+			if overlapEnd <= overlapStart {
+				continue
+			}
+
+			txOffset := overlapStart - tx.MetaData.Start
+			partOffset := overlapStart - startBoundary
+			length := overlapEnd - overlapStart
+
+			copy(partBytes[partOffset:partOffset+length], tx.TxBytes[txOffset:txOffset+length])
+		}
+
+		part := &types.Part{
+			Index: uint32(i), // this will only need to change when blocks are > 4GiB
+			Bytes: partBytes,
+		}
+
+		result = append(result, part)
+	}
+
+	return result
 }
