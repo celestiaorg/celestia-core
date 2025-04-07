@@ -1,15 +1,15 @@
 # This testnet is run by CI, and attempts to cover a broad range of
 # functionality with a single network.
 
-ipv6 = true
-initial_height = 1000
-vote_extensions_update_height = 1004
-vote_extensions_enable_height = 1007
+check_tx_delay = "0ms"
 evidence = 5
-initial_state = { initial01 = "a", initial02 = "b", initial03 = "c" }
+initial_height = 1000
+initial_state = {initial01 = "a", initial02 = "b", initial03 = "c"}
+ipv6 = true
 prepare_proposal_delay = "100ms"
 process_proposal_delay = "100ms"
-check_tx_delay = "0ms"
+vote_extensions_enable_height = 1007
+vote_extensions_update_height = 1004
 # The most common case (e.g. Cosmos SDK-based chains).
 abci_protocol = "builtin"
 prometheus = true
@@ -39,67 +39,68 @@ mode = "seed"
 perturb = ["restart"]
 
 [node.validator01]
+perturb = ["disconnect"]
 seeds = ["seed01"]
 snapshot_interval = 5
-perturb = ["disconnect"]
 
 [node.validator02]
-seeds = ["seed01"]
 database = "goleveldb"
-privval_protocol = "tcp"
+mempool_version = "v2"
 persist_interval = 0
 perturb = ["restart"]
+privval_protocol = "tcp"
+seeds = ["seed01"]
 
 [node.validator03]
-seeds = ["seed01"]
 database = "badgerdb"
-privval_protocol = "unix"
-persist_interval = 3
-retain_blocks = 20
-perturb = ["kill"]
 key_type = "secp256k1"
-mempool_version = "priority"
+mempool_version = "v1"
+persist_interval = 3
+perturb = ["kill"]
+privval_protocol = "unix"
+retain_blocks = 20
+seeds = ["seed01"]
 
 [node.validator04]
-persistent_peers = ["validator01"]
 database = "goleveldb"
-perturb = ["pause"]
 key_type = "sr25519"
 mempool_version = "priority"
+persistent_peers = ["validator01"]
+perturb = ["pause"]
 
 [node.validator05]
-start_at = 1005                                      # Becomes part of the validator set at 1010
-persistent_peers = ["validator01", "full01"]
-database = "goleveldb"
-privval_protocol = "tcp"
-perturb = ["kill", "pause", "disconnect", "restart"]
+database = "goleveldb" 
+persistent_peers = ["validator01", "full01"] 
+perturb = ["kill", "pause", "disconnect", "restart"] 
+privval_protocol = "tcp" 
+start_at = 1005 # Becomes part of the validator set at 1010
 
 [node.full01]
-start_at = 1010
 mode = "full"
 persistent_peers = [
-    "validator01",
-    "validator02",
-    "validator03",
-    "validator04",
-    "validator05",
+  "validator01",
+  "validator02",
+  "validator03",
+  "validator04",
+  "validator05",
 ]
-retain_blocks = 20
 perturb = ["restart"]
+retain_blocks = 20
+start_at = 1010
 
 [node.full02]
-start_at = 1015
 mode = "full"
-state_sync = true
-seeds = ["seed01"]
 perturb = ["restart"]
+seeds = ["seed01"]
+start_at = 1015
+state_sync = true
 
 [node.light01]
 mode = "light"
-start_at = 1005
 persistent_peers = ["validator01", "validator02", "validator03"]
+start_at = 1005
 
 [node.light02]
 mode = "light"
-start_at = 1015
 persistent_peers = ["validator04", "full01", "validator05"]
+start_at = 1015
