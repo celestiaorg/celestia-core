@@ -30,6 +30,10 @@ type (
 	TxKey [TxKeySize]byte
 )
 
+func (tx TxKey) String() string {
+	return fmt.Sprintf("TxKey{%X}", tx[:])
+}
+
 // Hash computes the TMHASH hash of the wire encoded transaction.
 func (tx Tx) Hash() []byte {
 	if indexWrapper, isIndexWrapper := UnmarshalIndexWrapper(tx); isIndexWrapper {

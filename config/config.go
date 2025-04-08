@@ -819,7 +819,7 @@ type MempoolConfig struct {
 // DefaultMempoolConfig returns a default configuration for the CometBFT mempool
 func DefaultMempoolConfig() *MempoolConfig {
 	return &MempoolConfig{
-		Type:           MempoolTypeFlood,
+		Type:           MempoolTypePriority,
 		Recheck:        true,
 		RecheckTimeout: 1000 * time.Millisecond,
 		Broadcast:      true,
@@ -858,7 +858,7 @@ func (cfg *MempoolConfig) WalEnabled() bool {
 // returns an error if any check fails.
 func (cfg *MempoolConfig) ValidateBasic() error {
 	switch cfg.Type {
-	case MempoolTypeFlood, MempoolTypeNop, MempoolTypePriority, LegacyMempoolTypePriority, LegacyMempoolTypeFlood:
+	case MempoolTypeFlood, MempoolTypeNop, MempoolTypePriority, LegacyMempoolTypePriority, LegacyMempoolTypeFlood, MempoolTypeCAT, LegacyMempoolTypeCAT:
 	case "": // allow empty string to be backwards compatible
 	default:
 		return fmt.Errorf("unknown mempool type: %q", cfg.Type)
