@@ -17,7 +17,6 @@ type UnmarshalledTx struct {
 }
 
 func TxsToParts(txs []UnmarshalledTx, partCount, partSize, lastPartLen uint32) ([]*types.Part, error) {
-	fmt.Println("txs to parts inputs", len(txs), partCount, partSize, lastPartLen)
 	result := make([]*types.Part, 0)
 
 	for i, tx := range txs {
