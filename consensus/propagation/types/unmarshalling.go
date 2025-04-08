@@ -70,6 +70,7 @@ func TxsToParts(txs []UnmarshalledTx, partCount, partSize, lastPartLen uint32) (
 		partLen := endBoundary - startBoundary
 		partBytes := make([]byte, partLen)
 
+		var skip bool
 		for _, tx := range isolatedTxs {
 			overlapStart := max(tx.MetaData.Start, startBoundary)
 			overlapEnd := min(tx.MetaData.End, endBoundary)
@@ -83,15 +84,19 @@ func TxsToParts(txs []UnmarshalledTx, partCount, partSize, lastPartLen uint32) (
 
 			// Defensive check: Ensure the computed bounds are within the slice lengths.
 			if txOffset+length > uint32(len(tx.TxBytes)) {
-				return nil, fmt.Errorf("invalid copy bounds for tx %v: txOffset+length (%d) exceeds tx.TxBytes length (%d)",
-					tx, txOffset+length, len(tx.TxBytes))
+				skip = true
+				break
 			}
 			if partOffset+length > uint32(len(partBytes)) {
-				return nil, fmt.Errorf("invalid copy bounds for part: partOffset+length (%d) exceeds partBytes length (%d)",
-					partOffset+length, len(partBytes))
+				skip = true
+				break
 			}
 
 			copy(partBytes[partOffset:partOffset+length], tx.TxBytes[txOffset:txOffset+length])
+		}
+
+		if skip {
+			continue
 		}
 
 		part := &types.Part{
