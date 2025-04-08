@@ -2,6 +2,8 @@ package types
 
 import (
 	"fmt"
+	"math/rand"
+	"runtime/debug"
 	"testing"
 	"time"
 
@@ -113,7 +115,8 @@ func TestTxsToParts_Correctness(t *testing.T) {
 					}
 
 					lastPart := partSet.GetPart(int(partSet.Total() - 1))
-					parts := TxsToParts(combinationTxs, partSet.Total(), types.BlockPartSizeBytes, uint32(len(lastPart.Bytes)))
+					parts, err := TxsToParts(combinationTxs, partSet.Total(), types.BlockPartSizeBytes, uint32(len(lastPart.Bytes)))
+					require.NoError(t, err)
 					for _, part := range parts {
 						expectedPart := partSet.GetPart(int(part.Index))
 						require.Equal(t, expectedPart.Bytes, part.Bytes)
@@ -131,7 +134,8 @@ func TestTxsToParts_EdgeCases(t *testing.T) {
 
 	t.Run("empty input", func(t *testing.T) {
 		// No transactions provided.
-		parts := TxsToParts([]UnmarshalledTx{}, 1, types.BlockPartSizeBytes, 1)
+		parts, err := TxsToParts([]UnmarshalledTx{}, 1, types.BlockPartSizeBytes, 1)
+		require.NoError(t, err)
 		require.Empty(t, parts)
 	})
 
@@ -165,7 +169,8 @@ func TestTxsToParts_EdgeCases(t *testing.T) {
 		// Remove one transaction to simulate an incomplete part.
 		incompleteTxsFound := txsFound[:1]
 		lastPart := partSet.GetPart(int(partSet.Total() - 1))
-		parts := TxsToParts(incompleteTxsFound, partSet.Total(), types.BlockPartSizeBytes, uint32(len(lastPart.Bytes)))
+		parts, err := TxsToParts(incompleteTxsFound, partSet.Total(), types.BlockPartSizeBytes, uint32(len(lastPart.Bytes)))
+		require.NoError(t, err)
 		// Expect no complete part to be returned.
 		require.Empty(t, parts)
 	})
@@ -199,7 +204,8 @@ func TestTxsToParts_EdgeCases(t *testing.T) {
 		// Remove the last transaction to simulate that the final part is incomplete.
 		incompleteTxsFound := txsFound[:len(txsFound)-1]
 		lastPart := partSet.GetPart(int(partSet.Total() - 1))
-		parts := TxsToParts(incompleteTxsFound, partSet.Total(), types.BlockPartSizeBytes, uint32(len(lastPart.Bytes)))
+		parts, err := TxsToParts(incompleteTxsFound, partSet.Total(), types.BlockPartSizeBytes, uint32(len(lastPart.Bytes)))
+		require.NoError(t, err)
 
 		// Only the second part should be returned as the block has data not
 		// included in the transactions
@@ -262,10 +268,201 @@ func FuzzTxsToParts(f *testing.F) {
 		}
 
 		lastPart := partSet.GetPart(int(partSet.Total() - 1))
-		parts := TxsToParts(subset, partSet.Total(), types.BlockPartSizeBytes, uint32(len(lastPart.Bytes)))
+		parts, err := TxsToParts(subset, partSet.Total(), types.BlockPartSizeBytes, uint32(len(lastPart.Bytes)))
+		require.NoError(t, err)
 		for _, part := range parts {
 			expectedPart := partSet.GetPart(int(part.Index))
 			require.Equal(t, expectedPart.Bytes, part.Bytes)
 		}
 	})
+}
+
+func TestTxsToParts_Panic(t *testing.T) {
+	type test struct {
+		// originalTxs describes the number of and the size of each transaction
+		originalTxs []int
+		// providedTxs deterines which txs are actually given to the function
+		providedTxs []int
+	}
+	tests := []test{
+		{
+			originalTxs: []int{100, 100, 100, 1000, 100000, 10000000},
+			providedTxs: []int{4, 5},
+		},
+		{
+			originalTxs: []int{1990000},
+			providedTxs: []int{0},
+		},
+		{
+			originalTxs: []int{1990000, 100, 1990000, 1990000, 1990000},
+			providedTxs: []int{0},
+		},
+		{
+			originalTxs: []int{1990000, 100, 1990000, 1990000, 1990000},
+			providedTxs: []int{0},
+		},
+		{
+			originalTxs: []int{1990000, 100, 1990000, 1990000, 1990000},
+			providedTxs: []int{0, 1},
+		},
+		{
+			originalTxs: []int{1990000, 100, 1990000, 1990000, 1990000},
+			providedTxs: []int{0, 2, 3},
+		},
+	}
+	for _, tt := range tests {
+		cleanup, _, sm := state.SetupTestCase(t)
+		t.Cleanup(func() {
+			cleanup(t)
+		})
+
+		txs := genHeterogeneousTxs(tt.originalTxs)
+
+		data := types.Data{Txs: txs}
+		block, partSet := sm.MakeBlock(1, data, types.RandCommit(time.Now()), []types.Evidence{}, cmtrand.Bytes(20))
+
+		txsFound := make([]UnmarshalledTx, len(partSet.TxPos))
+		for i, pos := range partSet.TxPos {
+			protoTxs := mempool.Txs{Txs: [][]byte{data.Txs[i]}}
+			marshalledTx, err := proto.Marshal(&protoTxs)
+			if err != nil {
+				t.Skip("Skipping due to proto.Marshal error")
+			}
+
+			txKey, err := types.TxKeyFromBytes(block.Txs[i].Hash())
+			if err != nil {
+				t.Skip("Skipping due to TxKeyFromBytes error")
+			}
+
+			txsFound[i] = UnmarshalledTx{
+				MetaData: TxMetaData{
+					Start: pos.Start,
+					End:   pos.End,
+					Hash:  block.Txs[i].Hash(),
+				},
+				Key:     txKey,
+				TxBytes: marshalledTx,
+			}
+		}
+
+		lastPart := partSet.GetPart(int(partSet.Total() - 1))
+		subset := filter(txsFound, tt.providedTxs)
+		_, err := TxsToParts(subset, partSet.Total(), types.BlockPartSizeBytes, uint32(len(lastPart.Bytes)))
+		require.NoError(t, err)
+	}
+}
+
+func FuzzTxsToParts_Panic(f *testing.F) {
+	// Seed corpus: one value (e.g. 10 transactions)
+	f.Add(uint(10))
+
+	f.Fuzz(func(t *testing.T, numTx uint) {
+		// Ensure at least one transaction.
+		if numTx == 0 {
+			numTx = 1
+		}
+
+		// Set an upper bound to avoid excessive allocations (e.g. no more than 1000 transactions).
+		if numTx > 10 {
+			numTx = 30
+		}
+
+		// Prepare a slice to hold sizes for each transaction.
+		sizes := make([]int, numTx)
+		// Define the maximum allowed size for a transaction.
+		const maxTxSize = 3000000
+
+		// Seed a pseudo-random number generator using the input (for reproducibility).
+		r := rand.New(rand.NewSource(time.Now().UnixNano() + int64(numTx)))
+
+		// Generate a random size (up to 2,000,000) for each transaction.
+		// If the random size exceeds maxTxSize, clamp it.
+		for i := uint(0); i < numTx; i++ {
+			size := r.Intn(maxTxSize)
+			if size < 1 {
+				size = 1
+			}
+			sizes[i] = size
+		}
+
+		// remove a random number of transactions
+		keep := r.Intn(int(numTx))
+		keepInd := make(map[int]bool)
+		for i := 0; i < keep; i++ {
+			k := r.Intn(int(numTx))
+			keepInd[k] = true
+		}
+		kept := make([]int, 0, keep)
+		for k := range keepInd {
+			kept = append(kept, k)
+		}
+
+		fmt.Println("inputs", sizes, kept, f.Name())
+		defer func() {
+			if r := recover(); r != nil {
+				fmt.Println("inputs", sizes, kept)
+				fmt.Printf("Recovered from panic: %v\n", r)
+				fmt.Println(string(debug.Stack()))
+				t.Fail()
+			}
+		}()
+
+		// Setup the test environment.
+		cleanup, _, sm := state.SetupTestCase(t)
+		t.Cleanup(func() {
+			cleanup(t)
+		})
+
+		txs := genHeterogeneousTxs(sizes)
+
+		dataObj := types.Data{Txs: txs}
+		block, partSet := sm.MakeBlock(1, dataObj, types.RandCommit(time.Now()), []types.Evidence{}, cmtrand.Bytes(20))
+
+		txsFound := make([]UnmarshalledTx, len(partSet.TxPos))
+		for i, pos := range partSet.TxPos {
+			protoTxs := mempool.Txs{Txs: [][]byte{dataObj.Txs[i]}}
+			marshalledTx, err := proto.Marshal(&protoTxs)
+			if err != nil {
+				t.Skip("Skipping due to proto.Marshal error")
+			}
+
+			txKey, err := types.TxKeyFromBytes(block.Txs[i].Hash())
+			if err != nil {
+				t.Skip("Skipping due to TxKeyFromBytes error")
+			}
+
+			txsFound[i] = UnmarshalledTx{
+				MetaData: TxMetaData{
+					Start: uint32(pos.Start),
+					End:   uint32(pos.End),
+					Hash:  block.Txs[i].Hash(),
+				},
+				Key:     txKey,
+				TxBytes: marshalledTx,
+			}
+		}
+
+		lastPart := partSet.GetPart(int(partSet.Total() - 1))
+		// Filter transactions using the provided indices.
+		subset := filter(txsFound, kept)
+
+		_, err := TxsToParts(subset, partSet.Total(), types.BlockPartSizeBytes, uint32(len(lastPart.Bytes)))
+		require.NoError(t, err)
+	})
+}
+
+func genHeterogeneousTxs(sizes []int) []types.Tx {
+	txs := make([]types.Tx, 0, len(sizes))
+	for _, size := range sizes {
+		txs = append(txs, cmtrand.Bytes(size))
+	}
+	return txs
+}
+
+func filter[T any](txs []T, keep []int) []T {
+	kept := make([]T, 0, len(keep))
+	for _, k := range keep {
+		kept = append(kept, txs[k])
+	}
+	return kept
 }

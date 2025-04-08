@@ -1,6 +1,7 @@
 package types
 
 import (
+	"fmt"
 	"sort"
 
 	"github.com/tendermint/tendermint/types"
@@ -15,24 +16,32 @@ type UnmarshalledTx struct {
 	TxBytes  []byte
 }
 
-// TxsToParts calculates the parts that can be reconstructed from
-// transactions
-func TxsToParts(txs []UnmarshalledTx, partCount, partSize, lastPartLen uint32) []*types.Part {
+func TxsToParts(txs []UnmarshalledTx, partCount, partSize, lastPartLen uint32) ([]*types.Part, error) {
+	fmt.Println("txs to parts inputs", len(txs), partCount, partSize, lastPartLen)
 	result := make([]*types.Part, 0)
+
+	for i, tx := range txs {
+		expectedLen := tx.MetaData.End - tx.MetaData.Start
+		if uint32(len(tx.TxBytes)) != expectedLen {
+			return nil, fmt.Errorf("transaction %d has inconsistent TxBytes length: expected %d, got %d",
+				i, expectedLen, len(tx.TxBytes))
+		}
+	}
 
 	sort.Slice(txs, func(i, j int) bool {
 		return txs[i].MetaData.Start < txs[j].MetaData.Start
 	})
 
 	for i := uint32(0); i < partCount; i++ {
-		startBoundary := uint32(i * partSize)
-		endBoundary := startBoundary + uint32(partSize)
+		startBoundary := i * partSize
+		endBoundary := startBoundary + partSize
+		// Adjust for a short final part if necessary.
 		if i == partCount-1 && lastPartLen > 0 && lastPartLen < partSize {
-			endBoundary = startBoundary + uint32(lastPartLen)
+			endBoundary = startBoundary + lastPartLen
 		}
 
+		// Isolate the transactions overlapping with the current part.
 		var isolatedTxs []UnmarshalledTx
-		// isolate the relevant transactions for this part
 		for _, tx := range txs {
 			if tx.MetaData.End < startBoundary || tx.MetaData.Start >= endBoundary {
 				continue
@@ -66,23 +75,32 @@ func TxsToParts(txs []UnmarshalledTx, partCount, partSize, lastPartLen uint32) [
 			overlapStart := max(tx.MetaData.Start, startBoundary)
 			overlapEnd := min(tx.MetaData.End, endBoundary)
 			if overlapEnd <= overlapStart {
-				continue
+				continue // No overlap.
 			}
 
 			txOffset := overlapStart - tx.MetaData.Start
 			partOffset := overlapStart - startBoundary
 			length := overlapEnd - overlapStart
 
+			// Defensive check: Ensure the computed bounds are within the slice lengths.
+			if txOffset+length > uint32(len(tx.TxBytes)) {
+				return nil, fmt.Errorf("invalid copy bounds for tx %v: txOffset+length (%d) exceeds tx.TxBytes length (%d)",
+					tx, txOffset+length, len(tx.TxBytes))
+			}
+			if partOffset+length > uint32(len(partBytes)) {
+				return nil, fmt.Errorf("invalid copy bounds for part: partOffset+length (%d) exceeds partBytes length (%d)",
+					partOffset+length, len(partBytes))
+			}
+
 			copy(partBytes[partOffset:partOffset+length], tx.TxBytes[txOffset:txOffset+length])
 		}
 
 		part := &types.Part{
-			Index: uint32(i), // this will only need to change when blocks are > 4GiB
+			Index: uint32(i),
 			Bytes: partBytes,
 		}
-
 		result = append(result, part)
 	}
 
-	return result
+	return result, nil
 }
