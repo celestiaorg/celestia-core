@@ -108,7 +108,7 @@ func (p *ProposalCache) unfinishedHeights() []*proposalData {
 // example, passing the height that was already committed is not actionable.
 // Passing a round that has already been surpassed is not actionable.
 func (p *ProposalCache) relevant(height int64, round int32) bool {
-	if height <= p.consensusHeight {
+	if height < p.consensusHeight {
 		return false
 	}
 

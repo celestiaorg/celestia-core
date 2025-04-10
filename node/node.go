@@ -431,6 +431,9 @@ func NewNodeWithContext(ctx context.Context,
 	}
 
 	propagationReactor := propagation.NewReactor(nodeKey.ID(), tracer, blockStore, mempool)
+	if !stateSync && !fastSync {
+		propagationReactor.StartProcessing()
+	}
 
 	consensusReactor, consensusState := createConsensusReactor(
 		config, state, blockExec, blockStore, mempool, evidencePool,
