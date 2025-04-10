@@ -17,10 +17,10 @@ import (
 
 const (
 	// concurrentPerPeerRequestLimit the maximum number of requests to send a peer.
-	concurrentPerPeerRequestLimit = 60
+	concurrentPerPeerRequestLimit = 30
 
 	// maxRequestsPerPart the maximum number of requests per parts.
-	maxRequestsPerPart = 40
+	maxRequestsPerPart = 2
 
 	// maxNumberOfPendingRequests the maximum number of pending requests.
 	maxNumberOfPendingRequests = 50_000
@@ -29,7 +29,7 @@ const (
 	maxRequestRetry = 10
 
 	// requestTimeout request timeout after it's pending to be sent
-	requestTimeout = 10 * time.Second
+	requestTimeout = 3 * time.Second
 )
 
 type request struct {
