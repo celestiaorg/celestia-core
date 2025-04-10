@@ -437,7 +437,7 @@ func TestStopPeerForError(t *testing.T) {
 		reactors, _ := testBlockPropReactors(2, cfg.DefaultP2PConfig())
 		reactor1 := reactors[0]
 		reactor2 := reactors[1]
-		cb, _, _, _ := testCompactBlock(t, 10, 3)
+		cb, _, _, _ := testCompactBlock(t, 1000, 10, 3)
 		// put an invalid part set hash
 		cb.Proposal.BlockID.PartSetHeader.Hash = cmtrand.Bytes(32)
 		require.NotNil(t, reactor1.getPeer(reactor2.self))
@@ -504,8 +504,8 @@ func TestStopPeerForError(t *testing.T) {
 
 // testCompactBlock returns a test compact block with the corresponding orignal part set,
 // parity partset, and proofs.
-func testCompactBlock(t *testing.T, height int64, round int32) (*proptypes.CompactBlock, *types.PartSet, *types.PartSet, []*merkle.Proof) {
-	ps := types.NewPartSetFromData(cmtrand.Bytes(1000), types.BlockPartSizeBytes)
+func testCompactBlock(t *testing.T, size int, height int64, round int32) (*proptypes.CompactBlock, *types.PartSet, *types.PartSet, []*merkle.Proof) {
+	ps := types.NewPartSetFromData(cmtrand.Bytes(size), types.BlockPartSizeBytes)
 	pse, lastLen, err := types.Encode(ps, types.BlockPartSizeBytes)
 	require.NoError(t, err)
 	psh := ps.Header()

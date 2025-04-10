@@ -9,13 +9,10 @@ import (
 	"github.com/stretchr/testify/require"
 	cfg "github.com/tendermint/tendermint/config"
 	proptypes "github.com/tendermint/tendermint/consensus/propagation/types"
-	"github.com/tendermint/tendermint/crypto/merkle"
 	"github.com/tendermint/tendermint/libs/bits"
 	"github.com/tendermint/tendermint/libs/log"
-	cmtrand "github.com/tendermint/tendermint/libs/rand"
 	"github.com/tendermint/tendermint/p2p"
 	"github.com/tendermint/tendermint/p2p/mock"
-	"github.com/tendermint/tendermint/types"
 )
 
 func TestRequester_SendRequest(t *testing.T) {
@@ -152,7 +149,7 @@ func TestReactorMaxConcurrentPerPeerRequests(t *testing.T) {
 					Hash:  originalPs.GetPart(i).Proof.LeafHash,
 				},
 			},
-		}, false)
+		})
 	}
 	time.Sleep(300 * time.Millisecond)
 	// check that reactor 2 only received concurrentPerPeerRequestLimit of wants
@@ -185,7 +182,7 @@ func TestReactorMaxConcurrentPerPartRequests(t *testing.T) {
 				Hash:  originalPs.GetPart(1).Proof.LeafHash,
 			},
 		},
-	}, false)
+	})
 
 	// set the current number of requests for part 0 to maxRequestsPerPart
 	reactor1.requester.perPartRequests[10][1][0] = maxRequestsPerPart
@@ -200,7 +197,7 @@ func TestReactorMaxConcurrentPerPartRequests(t *testing.T) {
 				Hash:  originalPs.GetPart(0).Proof.LeafHash,
 			},
 		},
-	}, false)
+	})
 	time.Sleep(200 * time.Millisecond)
 
 	// check that reactor 1 didn't send a want to reactor 2
@@ -260,44 +257,4 @@ func TestExpiredRequest(t *testing.T) {
 	r.sendNextRequest(peer2)
 
 	assert.Equal(t, 3, len(r.pendingRequests))
-}
-
-// testCompactBlock returns a test compact block with the corresponding orignal part set,
-// parity partset, and proofs.
-// TODO remove after merging https://github.com/celestiaorg/celestia-core/pull/1685 as this method
-// is already added there.
-func testCompactBlock(t *testing.T, size int, height int64, round int32) (*proptypes.CompactBlock, *types.PartSet, *types.PartSet, []*merkle.Proof) {
-	ps := types.NewPartSetFromData(cmtrand.Bytes(size), types.BlockPartSizeBytes)
-	pse, lastLen, err := types.Encode(ps, types.BlockPartSizeBytes)
-	require.NoError(t, err)
-	psh := ps.Header()
-	pseh := pse.Header()
-
-	hashes := extractHashes(ps, pse)
-	proofs := extractProofs(ps, pse)
-
-	baseCompactBlock := &proptypes.CompactBlock{
-		BpHash:    pseh.Hash,
-		Signature: cmtrand.Bytes(64),
-		LastLen:   uint32(lastLen),
-		Blobs: []proptypes.TxMetaData{
-			{Hash: cmtrand.Bytes(32)},
-			{Hash: cmtrand.Bytes(32)},
-		},
-		PartsHashes: hashes,
-	}
-
-	// adding the proposal manually so the haves/wants and recovery
-	// parts are not rejected.
-	p := types.Proposal{
-		BlockID: types.BlockID{
-			Hash:          cmtrand.Bytes(32),
-			PartSetHeader: psh,
-		},
-		Height: height,
-		Round:  round,
-	}
-	baseCompactBlock.Proposal = p
-
-	return baseCompactBlock, ps, pse, proofs
 }
