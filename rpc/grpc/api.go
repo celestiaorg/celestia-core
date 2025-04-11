@@ -222,7 +222,7 @@ func (blockAPI *BlockAPI) Stop(ctx context.Context) error {
 	return err
 }
 
-func (blockAPI *BlockAPI) BlockByHash(req *BlockByHashRequest, stream BlockAPIService_BlockByHashServer) error {
+func (blockAPI *BlockAPI) BlockByHash(req *BlockByHashRequest, stream BlockAPI_BlockByHashServer) error {
 	blockStore := blockAPI.env.BlockStore
 	blockMeta := blockStore.LoadBlockMetaByHash(req.Hash)
 	if blockMeta == nil {
@@ -271,7 +271,7 @@ func (blockAPI *BlockAPI) BlockByHash(req *BlockByHashRequest, stream BlockAPISe
 	return nil
 }
 
-func (blockAPI *BlockAPI) BlockByHeight(req *BlockByHeightRequest, stream BlockAPIService_BlockByHeightServer) error {
+func (blockAPI *BlockAPI) BlockByHeight(req *BlockByHeightRequest, stream BlockAPI_BlockByHeightServer) error {
 	blockStore := blockAPI.env.BlockStore
 	height := req.Height
 	if height == 0 {
@@ -399,7 +399,7 @@ func (blockAPI *BlockAPI) ValidatorSet(_ context.Context, req *ValidatorSetReque
 	}, nil
 }
 
-func (blockAPI *BlockAPI) SubscribeNewHeights(_ *SubscribeNewHeightsRequest, stream BlockAPIService_SubscribeNewHeightsServer) error {
+func (blockAPI *BlockAPI) SubscribeNewHeights(_ *SubscribeNewHeightsRequest, stream BlockAPI_SubscribeNewHeightsServer) error {
 	heightListener := blockAPI.addHeightListener()
 	defer blockAPI.removeHeightListener(heightListener)
 

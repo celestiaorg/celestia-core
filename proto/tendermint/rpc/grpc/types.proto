@@ -43,7 +43,7 @@ service BroadcastAPI {
 }
 
 // BlockAPI is an API for querying blocks.
-service BlockAPIService {
+service BlockAPI {
   // BlockByHash returns a block by its hash.
   rpc BlockByHash(BlockByHashRequest) returns (stream BlockByHashResponse);
   // BlockByHeight returns a block by its height.
