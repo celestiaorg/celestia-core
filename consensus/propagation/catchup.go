@@ -2,6 +2,7 @@ package propagation
 
 import (
 	"math/rand"
+	"time"
 
 	proptypes "github.com/tendermint/tendermint/consensus/propagation/types"
 	"github.com/tendermint/tendermint/libs/bits"
@@ -15,29 +16,29 @@ import (
 //
 // todo: add a request limit for each part to avoid downloading the block too
 // many times. atm, this code will request the same part from every peer.
-func (blockProp *Reactor) retryWants(currentHeight int64) {
+func (blockProp *Reactor) retryWants(height int64, round int32) {
+	blockProp.Logger.Info("retry wants", "height", height, "round", round)
 	if !blockProp.started.Load() {
 		return
 	}
-	data := blockProp.unfinishedHeights()
 	peers := blockProp.getPeers()
-	for _, prop := range data {
-		height, round := prop.compactBlock.Proposal.Height, prop.compactBlock.Proposal.Round
 
-		// don't re-request parts for any round on the current height
-		if height == currentHeight {
-			continue
+	for {
+		blockProp.Logger.Info("catching up", "height", height, "round", round)
+		_, combinedPartSet, _, has := blockProp.getAllState(height, round, false)
+		if !has {
+			blockProp.Logger.Error("height not found in state", "height", height, "round", round)
+			return
 		}
-
-		if prop.block.IsComplete() {
-			continue
+		if combinedPartSet.IsComplete() {
+			return
 		}
-
+		blockProp.Logger.Info("not complete nigga", "height", height, "round", round)
 		// only re-request original parts that are missing, not parity parts.
-		missing := prop.block.MissingOriginal()
+		missing := combinedPartSet.MissingOriginal()
 		if missing.IsEmpty() {
 			blockProp.Logger.Error("no missing parts yet block is incomplete", "height", height, "round", round)
-			continue
+			return
 		}
 
 		schema.WriteRetries(blockProp.traceClient, height, round, missing.String())
@@ -78,6 +79,8 @@ func (blockProp *Reactor) retryWants(currentHeight int64) {
 			missing = missing.Sub(mc)
 			peer.AddRequests(height, round, missing)
 		}
+		// sleep for sometime to get time for the network messages to arrive
+		time.Sleep(6 * time.Second)
 	}
 }
 
@@ -109,6 +112,10 @@ func (blockProp *Reactor) AddCommitment(height int64, round int32, psh *types.Pa
 		catchup:     true,
 		block:       combinedSet,
 		maxRequests: bits.NewBitArray(int(psh.Total * 2)), // this assumes that the parity parts are the same size
+	}
+
+	if height > blockProp.consensusHeight || round > blockProp.consensusRound {
+		go blockProp.retryWants(height, round)
 	}
 }
 

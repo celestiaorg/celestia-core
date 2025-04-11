@@ -930,6 +930,7 @@ func NewNodeWithContext(ctx context.Context,
 	if !stateSync && !fastSync {
 		propagationReactor.StartProcessing()
 	}
+	propagationReactor.SetLogger(logger.With("module", "propagation"))
 
 	// Make ConsensusReactor. Don't enable fully if doing a state sync and/or fast sync first.
 	// FIXME We need to update metrics here, since other reactors don't have access to them.

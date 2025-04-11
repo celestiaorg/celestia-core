@@ -3,14 +3,11 @@ package propagation
 import (
 	"context"
 	"fmt"
+	"github.com/tendermint/tendermint/p2p/conn"
+	"github.com/tendermint/tendermint/store"
 	"reflect"
 	"sync"
 	"sync/atomic"
-	"time"
-
-	"github.com/tendermint/tendermint/p2p/conn"
-
-	"github.com/tendermint/tendermint/store"
 
 	"github.com/gogo/protobuf/proto"
 	proptypes "github.com/tendermint/tendermint/consensus/propagation/types"
@@ -77,24 +74,6 @@ func NewReactor(self p2p.ID, tracer trace.Tracer, store *store.BlockStore, mempo
 	for _, option := range options {
 		option(reactor)
 	}
-
-	// start the catchup routine
-	go func() {
-		// TODO dynamically set the ticker depending on how many blocks are missing
-		ticker := time.NewTicker(6 * time.Second)
-		for {
-			select {
-			case <-reactor.ctx.Done():
-				return
-			case <-ticker.C:
-				reactor.pmtx.Lock()
-				currentHeight := reactor.currentHeight
-				reactor.pmtx.Unlock()
-				// run the catchup routine to recover any missing parts for past heights.
-				reactor.retryWants(currentHeight)
-			}
-		}
-	}()
 
 	return reactor
 }
@@ -247,6 +226,14 @@ func (blockProp *Reactor) Prune(committedHeight int64) {
 
 func (blockProp *Reactor) StartProcessing() {
 	blockProp.started.Store(true)
+	// start the catchup routine to recover the remaining unfinished heights
+	go func() {
+		data := blockProp.unfinishedHeights()
+		for _, prop := range data {
+			height, round := prop.compactBlock.Proposal.Height, prop.compactBlock.Proposal.Round
+			blockProp.retryWants(height, round)
+		}
+	}()
 }
 
 // getPeer returns the peer state for the given peer. If the peer does not exist,
