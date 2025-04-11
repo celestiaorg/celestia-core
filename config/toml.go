@@ -539,7 +539,7 @@ discard_abci_responses = {{ .Storage.DiscardABCIResponses}}
 # to decide which txs to index based on configuration set in the application.
 #
 # Options:
-#   1) "null" (default) - disable indexer
+#   1) "null" (default) - index transaction status only
 #   2) "kv" - index transactions using key-value storage based on DBBackend. "tx.height" and "tx.hash" will always be indexed.
 #   3) "psql" - index transactions using PostgreSQL. "tx.height" and "tx.hash" will always be indexed.
 indexer = "{{ .TxIndex.Indexer }}"
