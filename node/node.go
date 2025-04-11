@@ -444,6 +444,13 @@ func NewNodeWithContext(ctx context.Context,
 	if err != nil {
 		panic(fmt.Sprintf("failed to reset the offline state sync height %s", err))
 	}
+	propagationReactor.SetProposalValidator(func(proposal *types.Proposal) error {
+		_, err := consensusState.ValidateProposal(proposal)
+		return err
+	})
+	propagationReactor.SetLogger(logger.With("module", "propagation"))
+
+	logger.Info("Consensus reactor created", "timeout_propose", consensusState.GetState().TimeoutPropose, "timeout_commit", consensusState.GetState().TimeoutCommit)
 	// Set up state sync reactor, and schedule a sync if requested.
 	// FIXME The way we do phased startups (e.g. replay -> block sync -> consensus) is very messy,
 	// we should clean this whole thing up. See:

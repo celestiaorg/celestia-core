@@ -57,6 +57,7 @@ func createTestReactors(n int, p2pCfg *cfg.P2PConfig, tracer bool, traceDir stri
 			}
 		}
 		reactors[i] = newPropagationReactor(s, tr)
+		reactors[i].SetLogger(log.NewNopLogger())
 		s.AddReactor("BlockProp", reactors[i])
 		switches = append(switches, s)
 		return s
@@ -428,7 +429,6 @@ func TestPropagationSmokeTest(t *testing.T) {
 			r.Prune(i)
 		}
 	}
-
 }
 
 func TestStopPeerForError(t *testing.T) {
