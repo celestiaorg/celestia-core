@@ -8,6 +8,13 @@ import (
 	"reflect"
 	"sync"
 	"sync/atomic"
+	"time"
+
+	"github.com/tendermint/tendermint/libs/log"
+	"github.com/tendermint/tendermint/p2p/conn"
+	"github.com/tendermint/tendermint/types"
+
+	"github.com/tendermint/tendermint/store"
 
 	"github.com/gogo/protobuf/proto"
 	proptypes "github.com/tendermint/tendermint/consensus/propagation/types"
@@ -31,6 +38,8 @@ const (
 	WantChannel = byte(0x51)
 )
 
+type validateProposalFunc func(proposal *types.Proposal) error
+
 type Reactor struct {
 	p2p.BaseReactor // BaseService + p2p.Switch
 
@@ -39,6 +48,7 @@ type Reactor struct {
 	// ProposalCache temporarily stores recently active proposals and their
 	// block data for gossiping.
 	*ProposalCache
+	proposalValidator validateProposalFunc
 
 	// mempool access to read the transactions by hash from the mempool
 	// and eventually remove it.
@@ -59,15 +69,16 @@ func NewReactor(self p2p.ID, tracer trace.Tracer, store *store.BlockStore, mempo
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	reactor := &Reactor{
-		self:          self,
-		traceClient:   tracer,
-		peerstate:     make(map[p2p.ID]*PeerState),
-		mtx:           &sync.RWMutex{},
-		ProposalCache: NewProposalCache(store),
-		mempool:       mempool,
-		started:       atomic.Bool{},
-		ctx:           ctx,
-		cancel:        cancel,
+		self:              self,
+		traceClient:       tracer,
+		peerstate:         make(map[p2p.ID]*PeerState),
+		mtx:               &sync.RWMutex{},
+		ProposalCache:     NewProposalCache(store),
+		mempool:           mempool,
+		started:           atomic.Bool{},
+		proposalValidator: func(proposal *types.Proposal) error { return nil },
+		ctx:               ctx,
+		cancel:            cancel,
 	}
 	reactor.BaseReactor = *p2p.NewBaseReactor("BlockProp", reactor, p2p.WithIncomingQueueSize(ReactorIncomingMessageQueueSize))
 
@@ -79,6 +90,15 @@ func NewReactor(self p2p.ID, tracer trace.Tracer, store *store.BlockStore, mempo
 }
 
 type ReactorOption func(*Reactor)
+
+// SetProposalValidator sets the proposal stateful validation function.
+func (blockProp *Reactor) SetProposalValidator(validator validateProposalFunc) {
+	blockProp.proposalValidator = validator
+}
+
+func (blockProp *Reactor) SetLogger(logger log.Logger) {
+	blockProp.Logger = logger
+}
 
 func (blockProp *Reactor) OnStart() error {
 	// TODO: implement
