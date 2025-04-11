@@ -3,12 +3,11 @@ package propagation
 import (
 	"context"
 	"fmt"
-	"github.com/tendermint/tendermint/p2p/conn"
-	"github.com/tendermint/tendermint/store"
+	"time"
+
 	"reflect"
 	"sync"
 	"sync/atomic"
-	"time"
 
 	"github.com/tendermint/tendermint/libs/log"
 	"github.com/tendermint/tendermint/p2p/conn"
@@ -85,6 +84,20 @@ func NewReactor(self p2p.ID, tracer trace.Tracer, store *store.BlockStore, mempo
 	for _, option := range options {
 		option(reactor)
 	}
+
+	// start the catchup routine
+	go func() {
+		// TODO Make this frequency configurable
+		ticker := time.NewTicker(30 * time.Second)
+		for {
+			select {
+			case <-reactor.ctx.Done():
+				return
+			case <-ticker.C:
+				reactor.retryUnfinishedHeights()
+			}
+		}
+	}()
 
 	return reactor
 }
@@ -248,11 +261,7 @@ func (blockProp *Reactor) StartProcessing() {
 	blockProp.started.Store(true)
 	// start the catchup routine to recover the remaining unfinished heights
 	go func() {
-		data := blockProp.unfinishedHeights()
-		for _, prop := range data {
-			height, round := prop.compactBlock.Proposal.Height, prop.compactBlock.Proposal.Round
-			blockProp.retryWants(height, round)
-		}
+		blockProp.retryUnfinishedHeights()
 	}()
 }
 

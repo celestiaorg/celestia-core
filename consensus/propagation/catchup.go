@@ -12,28 +12,35 @@ import (
 	"github.com/tendermint/tendermint/types"
 )
 
+func (blockProp *Reactor) retryUnfinishedHeights() {
+	data := blockProp.unfinishedHeights()
+	for _, prop := range data {
+		height, round := prop.compactBlock.Proposal.Height, prop.compactBlock.Proposal.Round
+		blockProp.retryWants(height, round)
+	}
+}
+
 // retryWants ensure that all data for all unpruned compact blocks is requested.
 //
 // todo: add a request limit for each part to avoid downloading the block too
 // many times. atm, this code will request the same part from every peer.
 func (blockProp *Reactor) retryWants(height int64, round int32) {
-	blockProp.Logger.Info("retry wants", "height", height, "round", round)
 	if !blockProp.started.Load() {
 		return
 	}
 	peers := blockProp.getPeers()
 
 	for {
-		blockProp.Logger.Info("catching up", "height", height, "round", round)
+		blockProp.Logger.Debug("retrying", "height", height, "round", round)
 		_, combinedPartSet, _, has := blockProp.getAllState(height, round, false)
 		if !has {
 			blockProp.Logger.Error("height not found in state", "height", height, "round", round)
 			return
 		}
 		if combinedPartSet.IsComplete() {
+			blockProp.Logger.Debug("completed partset. stopping retry.", "height", height, "round", round)
 			return
 		}
-		blockProp.Logger.Info("not complete nigga", "height", height, "round", round)
 		// only re-request original parts that are missing, not parity parts.
 		missing := combinedPartSet.MissingOriginal()
 		if missing.IsEmpty() {
@@ -80,7 +87,7 @@ func (blockProp *Reactor) retryWants(height int64, round int32) {
 			peer.AddRequests(height, round, missing)
 		}
 		// sleep for sometime to get time for the network messages to arrive
-		time.Sleep(6 * time.Second)
+		time.Sleep(3 * time.Second)
 	}
 }
 
