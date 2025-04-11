@@ -209,7 +209,7 @@ func MaxReqBatchSize(o *Options) {
 	o.maxReqBatchSize = 2
 }
 
-func GetBlockAPIClient() (core_grpc.BlockAPIServiceClient, error) {
+func GetBlockAPIClient() (core_grpc.BlockAPIClient, error) {
 	grpcAddr := globalConfig.RPC.GRPCListenAddress
 	client, err := core_grpc.StartBlockAPIGRPCClient(grpcAddr)
 	if err != nil {

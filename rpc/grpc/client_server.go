@@ -29,7 +29,7 @@ func StartGRPCServer(env *core.Environment, ln net.Listener) error {
 
 	// block api
 	api := NewBlockAPI(env)
-	RegisterBlockAPIServiceServer(grpcServer, api)
+	RegisterBlockAPIServer(grpcServer, api)
 
 	// blobstream api
 	blobstreamAPI := NewBlobstreamAPI(env)
@@ -73,7 +73,7 @@ func dialerFunc(_ context.Context, addr string) (net.Conn, error) {
 
 // StartBlockAPIGRPCClient dials the gRPC server using protoAddr and returns a new
 // BlockAPIClient.
-func StartBlockAPIGRPCClient(protoAddr string, opts ...grpc.DialOption) (BlockAPIServiceClient, error) {
+func StartBlockAPIGRPCClient(protoAddr string, opts ...grpc.DialOption) (BlockAPIClient, error) {
 	if len(opts) == 0 {
 		opts = append(opts, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	}
@@ -85,7 +85,7 @@ func StartBlockAPIGRPCClient(protoAddr string, opts ...grpc.DialOption) (BlockAP
 	if err != nil {
 		return nil, err
 	}
-	return NewBlockAPIServiceClient(conn), nil
+	return NewBlockAPIClient(conn), nil
 }
 
 // StartBlobstreamAPIGRPCClient dials the gRPC server using protoAddr and returns a new
