@@ -12,14 +12,16 @@ Previously, the ABCI was referred to as TMSP.
 
 ## Installation & Usage
 
-To get up and running quickly, see the [getting started guide](../docs/app-dev/getting-started.md) along with the [abci-cli documentation](../docs/app-dev/abci-cli.md) which will go through the examples found in the [examples](./example/) directory.
+To get up and running quickly, see the [getting started guide](https://github.com/cometbft/cometbft/blob/main/docs/guides/app-dev/getting-started.md)
+along with the [abci-cli documentation](https://github.com/cometbft/cometbft/blob/main/docs/guides/app-dev/abci-cli.md)
+which will go through the examples found in the [examples](./example/) directory.
 
 ## Specification
 
 A detailed description of the ABCI methods and message types is contained in:
 
-- [The main spec](https://github.com/cometbft/cometbft/blob/v0.34.x/spec/abci/README.md)
-- [A protobuf file](../proto/abci/types.proto)
+- [The main spec](https://github.com/cometbft/cometbft/blob/main/spec/abci/README.md)
+- [A protobuf file](https://github.com/cometbft/cometbft/blob/main/proto/cometbft/types/v1/types.proto)
 - [A Go interface](./types/application.go)
 
 ## Protocol Buffers
