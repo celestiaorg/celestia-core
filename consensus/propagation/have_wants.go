@@ -33,7 +33,7 @@ func (blockProp *Reactor) handleHaves(peer p2p.ID, haves *proptypes.HaveParts) {
 	_, parts, _, has := blockProp.getAllState(height, round, false)
 	if !has {
 		blockProp.Logger.Error("received have part for unknown proposal", "peer", peer, "height", height, "round", round)
-		//blockProp.Switch.StopPeerForError(blockProp.getPeer(peer).peer, errors.New("received part for unknown proposal"))
+		// blockProp.Switch.StopPeerForError(blockProp.getPeer(peer).peer, errors.New("received part for unknown proposal"))
 		return
 	}
 
@@ -149,7 +149,7 @@ func (blockProp *Reactor) handleWants(peer p2p.ID, wants *proptypes.WantParts) {
 	//  not, this node must disconnect from them.
 	if !has {
 		blockProp.Logger.Error("received part state request for unknown proposal", "peer", peer, "height", height, "round", round)
-		//blockProp.Switch.StopPeerForError(p.peer, errors.New("received want part for unknown proposal"))
+		// blockProp.Switch.StopPeerForError(p.peer, errors.New("received want part for unknown proposal"))
 		return
 	}
 
@@ -213,7 +213,7 @@ func (blockProp *Reactor) handleRecoveryPart(peer p2p.ID, part *proptypes.Recove
 	cb, parts, _, has := blockProp.getAllState(part.Height, part.Round, false)
 	if !has {
 		blockProp.Logger.Error("received part for unknown proposal", "peer", peer, "height", part.Height, "round", part.Round)
-		//blockProp.Switch.StopPeerForError(p.peer, errors.New("received recovery part for unknown proposal"))
+		// blockProp.Switch.StopPeerForError(p.peer, errors.New("received recovery part for unknown proposal"))
 		return
 	}
 
