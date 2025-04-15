@@ -17,6 +17,10 @@ type PeerState struct {
 	// and round.
 	state map[int64]map[int32]*partState
 
+	// keep track of the peer's latest height and round
+	latestHeight int64
+	latestRound  int32
+
 	logger log.Logger
 }
 
@@ -57,6 +61,34 @@ func (d *PeerState) AddHaves(height int64, round int32, haves *bits.BitArray) {
 	defer d.mtx.Unlock()
 	d.initialize(height, round, haves.Size())
 	d.state[height][round].addHaves(haves)
+}
+
+// SetLatestHeight sets the latest height
+func (d *PeerState) SetLatestHeight(height int64) {
+	d.mtx.Lock()
+	defer d.mtx.Unlock()
+	d.latestHeight = height
+}
+
+// GetLatestHeight gets the latest height
+func (d *PeerState) GetLatestHeight() int64 {
+	d.mtx.RLock()
+	defer d.mtx.RUnlock()
+	return d.latestHeight
+}
+
+// SetLatestRound sets the latest height
+func (d *PeerState) SetLatestRound(round int32) {
+	d.mtx.Lock()
+	defer d.mtx.Unlock()
+	d.latestRound = round
+}
+
+// GetLatestRound gets the latest round
+func (d *PeerState) GetLatestRound() int32 {
+	d.mtx.RLock()
+	defer d.mtx.RUnlock()
+	return d.latestRound
 }
 
 // AddWants sets the wants for a given height and round.
