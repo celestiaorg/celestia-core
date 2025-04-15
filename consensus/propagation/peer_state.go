@@ -102,7 +102,7 @@ func (d *PeerState) AddWants(height int64, round int32, wants *bits.BitArray) {
 // AddRequests sets the requests for a given height and round.
 func (d *PeerState) AddRequests(height int64, round int32, requests *bits.BitArray) {
 	if requests == nil || requests.Size() == 0 {
-		d.logger.Error("peer state requests is nil or empty")
+		d.logger.Error("peer state sentWants is nil or empty")
 		return
 	}
 	d.mtx.Lock()
@@ -140,7 +140,7 @@ func (d *PeerState) GetHaves(height int64, round int32) (empty *bits.BitArray, h
 	if !has {
 		return empty, false
 	}
-	return rdata.haves, true
+	return rdata.sentHaves, true
 }
 
 // GetWants retrieves the wants for a given height and round.
@@ -156,7 +156,7 @@ func (d *PeerState) GetWants(height int64, round int32) (empty *bits.BitArray, h
 	if !has {
 		return empty, false
 	}
-	return rdata.wants, true
+	return rdata.receivedWants, true
 }
 
 // GetRequests retrieves the requests for a given height and round.
@@ -172,7 +172,7 @@ func (d *PeerState) GetRequests(height int64, round int32) (empty *bits.BitArray
 	if !has {
 		return empty, false
 	}
-	return rdata.requests, true
+	return rdata.sentWants, true
 }
 
 // WantsPart checks if the peer wants a given part.
@@ -205,39 +205,45 @@ func (d *PeerState) prune(prunePastHeight int64) {
 }
 
 type partState struct {
-	haves    *bits.BitArray
-	wants    *bits.BitArray
-	requests *bits.BitArray
+	// sentHaves the haves sent to a peer
+	sentHaves *bits.BitArray
+	// receivedHaves the haves received from a peer
+	receivedHaves *bits.BitArray
+	// requests the parts requested from a peer,
+	// i.e., wants sent to a peer.
+	sentWants *bits.BitArray
+	// wants the wants received from a peer
+	receivedWants *bits.BitArray
 }
 
 // newpartState initializes and returns a new partState
 func newpartState(size int, _ int64, _ int32) *partState {
 	return &partState{
-		haves:    bits.NewBitArray(size),
-		wants:    bits.NewBitArray(size),
-		requests: bits.NewBitArray(size),
+		sentHaves:     bits.NewBitArray(size),
+		receivedWants: bits.NewBitArray(size),
+		sentWants:     bits.NewBitArray(size),
 	}
 }
 
 func (p *partState) addHaves(haves *bits.BitArray) {
-	p.haves.AddBitArray(haves)
+	p.sentHaves.AddBitArray(haves)
 }
 
 func (p *partState) addWants(wants *bits.BitArray) {
-	p.wants.AddBitArray(wants)
+	p.receivedWants.AddBitArray(wants)
 }
 
 func (p *partState) addRequests(requests *bits.BitArray) {
-	p.requests.AddBitArray(requests)
+	p.sentWants.AddBitArray(requests)
 }
 
 // SetHave sets the have bit for a given part.
 // TODO support setting the hash and the proof
 func (p *partState) setHave(index int, has bool) {
-	p.haves.SetIndex(index, has)
+	p.sentHaves.SetIndex(index, has)
 }
 
 // SetWant sets the want bit for a given part.
 func (p *partState) setWant(part int, wants bool) {
-	p.wants.SetIndex(part, wants)
+	p.receivedWants.SetIndex(part, wants)
 }

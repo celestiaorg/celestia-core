@@ -53,7 +53,7 @@ func TestPeerState_SetRequests(t *testing.T) {
 			gotRequests, ok := ps.GetRequests(tt.height, tt.round)
 			if tt.requestBits.Size() == 0 {
 				// If requestBits had 0 size, we expect not to store anything.
-				require.False(t, ok, "GetRequests should be false if requests is 0 size")
+				require.False(t, ok, "GetRequests should be false if sentWants is 0 size")
 				return
 			}
 			require.True(t, ok)

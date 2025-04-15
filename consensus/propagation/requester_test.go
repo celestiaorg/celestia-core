@@ -84,7 +84,7 @@ func TestRequester_SendRequest(t *testing.T) {
 			expectedQueueSize: 1,
 		},
 		{
-			name: "too many pending requests",
+			name: "too many pending sentWants",
 			setup: func() {
 				r.pendingRequests = make([]*request, maxNumberOfPendingRequests)
 			},
@@ -95,7 +95,7 @@ func TestRequester_SendRequest(t *testing.T) {
 				Prove:  false,
 			},
 			expectedSent:      false,
-			expectedError:     errors.New("too many pending requests"),
+			expectedError:     errors.New("too many pending sentWants"),
 			expectedQueueSize: maxNumberOfPendingRequests,
 		},
 	}

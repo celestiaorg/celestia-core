@@ -228,7 +228,7 @@ func (r *requester) retry(e *p2p.Envelope, targetPeer p2p.Peer) error {
 
 func (r *requester) addPendingRequest(req *request) (bool, error) {
 	if len(r.pendingRequests) == maxNumberOfPendingRequests {
-		return false, errors.New("too many pending requests")
+		return false, errors.New("too many pending sentWants")
 	}
 	r.pendingRequests = append(r.pendingRequests, req)
 	return true, nil
@@ -270,7 +270,7 @@ func (r *requester) sendNextRequest(from p2p.Peer) {
 
 func (r *requester) removePendingRequest(index int) error {
 	if index >= len(r.pendingRequests) {
-		return errors.New("request index out of pending requests range")
+		return errors.New("request index out of pending sentWants range")
 	}
 	if index+1 == len(r.pendingRequests) {
 		r.pendingRequests = r.pendingRequests[:index]
@@ -282,7 +282,7 @@ func (r *requester) removePendingRequest(index int) error {
 
 func (r *requester) removeSentRequest(index int) error {
 	if index >= len(r.sentRequests) {
-		return errors.New("request index out of pending requests range")
+		return errors.New("request index out of pending sentWants range")
 	}
 	if index+1 == len(r.sentRequests) {
 		r.sentRequests = r.sentRequests[:index]
