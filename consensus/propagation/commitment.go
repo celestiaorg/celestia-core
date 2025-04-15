@@ -3,17 +3,15 @@ package propagation
 import (
 	"fmt"
 
-	"github.com/tendermint/tendermint/crypto/merkle"
-
 	"github.com/gogo/protobuf/proto"
-	"github.com/tendermint/tendermint/proto/tendermint/mempool"
-	"github.com/tendermint/tendermint/proto/tendermint/propagation"
-
 	proptypes "github.com/tendermint/tendermint/consensus/propagation/types"
+	"github.com/tendermint/tendermint/crypto/merkle"
 	"github.com/tendermint/tendermint/libs/bits"
 	cmtrand "github.com/tendermint/tendermint/libs/rand"
 	"github.com/tendermint/tendermint/p2p"
 	"github.com/tendermint/tendermint/pkg/trace/schema"
+	"github.com/tendermint/tendermint/proto/tendermint/mempool"
+	"github.com/tendermint/tendermint/proto/tendermint/propagation"
 	"github.com/tendermint/tendermint/types"
 )
 
@@ -124,13 +122,19 @@ func chunkToPartMetaData(chunk *bits.BitArray, partSet *proptypes.CombinedPartSe
 // time a proposal is received from a peer or when a proposal is created. If the
 // proposal is new, it will be stored and broadcast to the relevant peers.
 func (blockProp *Reactor) handleCompactBlock(cb *proptypes.CompactBlock, peer p2p.ID, proposer bool) {
+	err := blockProp.validateCompactBlock(cb)
+	if !proposer && err != nil {
+		blockProp.Logger.Info("failed to validate proposal. ignoring", "err", err, "height", cb.Proposal.Height, "round", cb.Proposal.Round)
+		return
+	}
+
 	added := blockProp.AddProposal(cb)
 	if !added {
 		return
 	}
 
 	// generate (and cache) the proofs from the partset hashes in the compact block
-	_, err := cb.Proofs()
+	_, err = cb.Proofs()
 	if err != nil {
 		blockProp.DeleteRound(cb.Proposal.Height, cb.Proposal.Round)
 		blockProp.Logger.Error("received invalid compact block", "err", err.Error())
@@ -318,4 +322,16 @@ func chunkIndexes(totalSize, chunkSize int) [][2]int {
 	}
 
 	return chunks
+}
+
+// validateCompactBlock stateful validation of the compact block.
+func (blockProp *Reactor) validateCompactBlock(cb *proptypes.CompactBlock) error {
+	err := blockProp.proposalValidator(&cb.Proposal)
+	if err != nil {
+		return err
+	}
+
+	// TODO add compact block signature verification once implemented
+
+	return nil
 }

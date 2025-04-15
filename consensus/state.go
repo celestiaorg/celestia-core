@@ -156,7 +156,6 @@ type State struct {
 type StateOption func(*State)
 
 // NewState returns a new State.
-// TODO initialise the propagator
 func NewState(
 	config *cfg.ConsensusConfig,
 	state sm.State,
@@ -1924,28 +1923,10 @@ func (cs *State) defaultSetProposal(proposal *types.Proposal) error {
 		return nil
 	}
 
-	// Verify POLRound, which must be -1 or in range [0, proposal.Round).
-	if proposal.POLRound < -1 ||
-		(proposal.POLRound >= 0 && proposal.POLRound >= proposal.Round) {
-		return fmt.Errorf(ErrInvalidProposalPOLRound.Error()+"%v %v", proposal.POLRound, proposal.Round)
-	}
-
-	p := proposal.ToProto()
-	// Verify signature
 	pubKey := cs.Validators.GetProposer().PubKey
-	if !pubKey.VerifySignature(
-		types.ProposalSignBytes(cs.state.ChainID, p), proposal.Signature,
-	) {
-		return ErrInvalidProposalSignature
-	}
-
-	// Validate the proposed block size, derived from its PartSetHeader
-	maxBytes := cs.state.ConsensusParams.Block.MaxBytes
-	if maxBytes == -1 {
-		maxBytes = int64(types.MaxBlockSizeBytes)
-	}
-	if int64(proposal.BlockID.PartSetHeader.Total) > (maxBytes-1)/int64(types.BlockPartSizeBytes)+1 {
-		return ErrProposalTooManyParts
+	p, err := cs.ValidateProposal(proposal)
+	if err != nil {
+		return err
 	}
 
 	proposal.Signature = p.Signature
@@ -2592,4 +2573,32 @@ func (cs *State) syncData() {
 			}
 		}
 	}
+}
+
+// ValidateProposal stateful validation of the proposal.
+func (cs *State) ValidateProposal(proposal *types.Proposal) (*cmtproto.Proposal, error) {
+	// Verify POLRound, which must be -1 or in range [0, proposal.Round).
+	if proposal.POLRound < -1 ||
+		(proposal.POLRound >= 0 && proposal.POLRound >= proposal.Round) {
+		return nil, fmt.Errorf(ErrInvalidProposalPOLRound.Error()+"%v %v", proposal.POLRound, proposal.Round)
+	}
+
+	p := proposal.ToProto()
+	proposer := cs.Validators.GetProposer().PubKey
+	// Verify signature
+	if !proposer.VerifySignature(
+		types.ProposalSignBytes(cs.state.ChainID, p), proposal.Signature,
+	) {
+		return nil, ErrInvalidProposalSignature
+	}
+
+	// Validate the proposed block size, derived from its PartSetHeader
+	maxBytes := cs.state.ConsensusParams.Block.MaxBytes
+	if maxBytes == -1 {
+		maxBytes = int64(types.MaxBlockSizeBytes)
+	}
+	if int64(proposal.BlockID.PartSetHeader.Total) > (maxBytes-1)/int64(types.BlockPartSizeBytes)+1 {
+		return nil, ErrProposalTooManyParts
+	}
+	return p, nil
 }

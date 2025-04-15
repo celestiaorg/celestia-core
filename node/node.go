@@ -927,6 +927,9 @@ func NewNodeWithContext(ctx context.Context,
 	}
 
 	propagationReactor := propagation.NewReactor(nodeKey.ID(), tracer, blockStore, mempool)
+	if !stateSync && !fastSync {
+		propagationReactor.StartProcessing()
+	}
 
 	// Make ConsensusReactor. Don't enable fully if doing a state sync and/or fast sync first.
 	// FIXME We need to update metrics here, since other reactors don't have access to them.
@@ -939,6 +942,12 @@ func NewNodeWithContext(ctx context.Context,
 		config, state, blockExec, blockStore, mempool, evidencePool,
 		privValidator, csMetrics, propagationReactor, stateSync || fastSync, eventBus, consensusLogger, tracer,
 	)
+
+	propagationReactor.SetProposalValidator(func(proposal *types.Proposal) error {
+		_, err := consensusState.ValidateProposal(proposal)
+		return err
+	})
+	propagationReactor.SetLogger(logger.With("module", "propagation"))
 
 	logger.Info("Consensus reactor created", "timeout_propose", consensusState.GetState().TimeoutPropose, "timeout_commit", consensusState.GetState().TimeoutCommit)
 	// Set up state sync reactor, and schedule a sync if requested.
