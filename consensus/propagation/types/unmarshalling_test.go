@@ -3,7 +3,6 @@ package types
 import (
 	"fmt"
 	"math/rand"
-	"runtime/debug"
 	"testing"
 	"time"
 
@@ -95,8 +94,8 @@ func TestTxsToParts_Correctness(t *testing.T) {
 
 				txsFound[i] = UnmarshalledTx{
 					MetaData: TxMetaData{
-						Start: uint32(pos.Start),
-						End:   uint32(pos.End),
+						Start: pos.Start,
+						End:   pos.End,
 						Hash:  block.Txs[i].Hash(),
 					},
 					Key:     txKey,
@@ -157,8 +156,8 @@ func TestTxsToParts_EdgeCases(t *testing.T) {
 
 			txsFound[i] = UnmarshalledTx{
 				MetaData: TxMetaData{
-					Start: uint32(pos.Start),
-					End:   uint32(pos.End),
+					Start: pos.Start,
+					End:   pos.End,
 					Hash:  block.Txs[i].Hash(),
 				},
 				Key:     txKey,
@@ -192,8 +191,8 @@ func TestTxsToParts_EdgeCases(t *testing.T) {
 
 			txsFound[i] = UnmarshalledTx{
 				MetaData: TxMetaData{
-					Start: uint32(pos.Start),
-					End:   uint32(pos.End),
+					Start: pos.Start,
+					End:   pos.End,
 					Hash:  block.Txs[i].Hash(),
 				},
 				Key:     txKey,
@@ -251,8 +250,8 @@ func FuzzTxsToParts(f *testing.F) {
 
 			txsFound[i] = UnmarshalledTx{
 				MetaData: TxMetaData{
-					Start: uint32(pos.Start),
-					End:   uint32(pos.End),
+					Start: pos.Start,
+					End:   pos.End,
 					Hash:  block.Txs[i].Hash(),
 				},
 				Key:     txKey,
@@ -397,16 +396,6 @@ func FuzzTxsToParts_Panic(f *testing.F) {
 			kept = append(kept, k)
 		}
 
-		fmt.Println("inputs", sizes, kept, f.Name())
-		defer func() {
-			if r := recover(); r != nil {
-				fmt.Println("inputs", sizes, kept)
-				fmt.Printf("Recovered from panic: %v\n", r)
-				fmt.Println(string(debug.Stack()))
-				t.Fail()
-			}
-		}()
-
 		// Setup the test environment.
 		cleanup, _, sm := state.SetupTestCase(t)
 		t.Cleanup(func() {
@@ -433,8 +422,8 @@ func FuzzTxsToParts_Panic(f *testing.F) {
 
 			txsFound[i] = UnmarshalledTx{
 				MetaData: TxMetaData{
-					Start: uint32(pos.Start),
-					End:   uint32(pos.End),
+					Start: pos.Start,
+					End:   pos.End,
 					Hash:  block.Txs[i].Hash(),
 				},
 				Key:     txKey,
