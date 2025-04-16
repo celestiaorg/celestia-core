@@ -70,6 +70,7 @@ func (blockProp *Reactor) ProposeBlock(proposal *types.Proposal, block *types.Pa
 			continue
 		}
 
+		peer.AddSentHaves(proposal.Height, proposal.Round, chunks[index])
 		schema.WriteBlockPartState(blockProp.traceClient, proposal.Height, proposal.Round, chunks[index].GetTrueIndices(), true, string(peer.peer.ID()), schema.Upload)
 	}
 }

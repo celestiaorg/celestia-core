@@ -3,6 +3,7 @@ package propagation
 import (
 	proptypes "github.com/tendermint/tendermint/consensus/propagation/types"
 	"github.com/tendermint/tendermint/crypto/tmhash"
+	"github.com/tendermint/tendermint/libs/bits"
 	"github.com/tendermint/tendermint/p2p"
 	"github.com/tendermint/tendermint/pkg/trace/schema"
 	propproto "github.com/tendermint/tendermint/proto/tendermint/propagation"
@@ -83,6 +84,7 @@ func (blockProp *Reactor) handleHaves(peer p2p.ID, haves *proptypes.HaveParts) {
 
 	// keep track of the parts that this node has requested.
 	p.AddSentWants(height, round, hc)
+	p.AddReceivedHave(height, round, hc)
 	blockProp.broadcastHaves(haves, peer, int(parts.Total()))
 }
 
@@ -94,10 +96,22 @@ func (blockProp *Reactor) broadcastHaves(haves *proptypes.HaveParts, from p2p.ID
 		if peer.peer.ID() == from {
 			continue
 		}
+		sentHaves, has := peer.GetSentHaves(haves.Height, haves.Round)
+		if !has {
+			blockProp.Logger.Error("couldn't find sent haves for peer", "peer", peer)
+		}
+		havesToBeSent := haves.BitArray(partSetSize).Sub(sentHaves)
+		if havesToBeSent.IsEmpty() {
+			continue
+		}
+		filteredHaves := filterHaves(havesToBeSent, haves)
+		if len(filteredHaves.Parts) == 0 {
+			continue
+		}
 
 		e := p2p.Envelope{
 			ChannelID: DataChannel,
-			Message:   haves.ToProto(),
+			Message:   filteredHaves.ToProto(),
 		}
 
 		// todo(evan): don't rely strictly on try, however since we're using
@@ -108,7 +122,21 @@ func (blockProp *Reactor) broadcastHaves(haves *proptypes.HaveParts, from p2p.ID
 			blockProp.Logger.Error("failed to send haves to peer", "peer", peer.peer.ID())
 			continue
 		}
-		peer.AddSentHaves(haves.Height, haves.Round, haves.BitArray(partSetSize))
+		peer.AddSentHaves(haves.Height, haves.Round, havesToBeSent)
+	}
+}
+
+func filterHaves(ba *bits.BitArray, haves *proptypes.HaveParts) *proptypes.HaveParts {
+	filteredHavesMetadata := make([]proptypes.PartMetaData, 0)
+	for _, part := range haves.Parts {
+		if ba.GetIndex(int(part.Index)) {
+			filteredHavesMetadata = append(filteredHavesMetadata, part)
+		}
+	}
+	return &proptypes.HaveParts{
+		Height: haves.Height,
+		Round:  haves.Round,
+		Parts:  filteredHavesMetadata,
 	}
 }
 
@@ -211,6 +239,8 @@ func (blockProp *Reactor) handleRecoveryPart(peer p2p.ID, part *proptypes.Recove
 		return
 	}
 	if parts == nil {
+		// we can remove this since we're already calling parts.IsComplete and that would nil pointer if nil but since we're checking if
+		// !has, then we're fine. @evan-forbes, what do you think?
 		return
 	}
 
@@ -320,7 +350,7 @@ func (blockProp *Reactor) clearWants(part *proptypes.RecoveryPart) {
 				blockProp.Logger.Error("failed to send part", "peer", peer.peer.ID(), "height", part.Height, "round", part.Round, "part", part.Index)
 				continue
 			}
-			peer.SetReceivedHave(part.Height, part.Round, int(part.Index))
+			peer.SetReceivedHave(part.Height, part.Round, int(part.Index)) // this is optional to set. let's remove it later after testing.
 			peer.SetReceivedWant(part.Height, part.Round, int(part.Index), false)
 			catchup := false
 			blockProp.pmtx.Lock()
