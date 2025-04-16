@@ -153,7 +153,7 @@ func TestReactorMaxConcurrentPerPeerRequests(t *testing.T) {
 	}
 	time.Sleep(300 * time.Millisecond)
 	// check that reactor 2 only received concurrentPerPeerRequestLimit of wants
-	bitArray, has := reactor2.getPeer(reactor1.self).GetWants(10, 1)
+	bitArray, has := reactor2.getPeer(reactor1.self).GetReceivedWants(10, 1)
 	require.True(t, has)
 	assert.Equal(t, concurrentPerPeerRequestLimit, len(bitArray.GetTrueIndices()))
 }
@@ -204,7 +204,7 @@ func TestReactorMaxConcurrentPerPartRequests(t *testing.T) {
 	// because it already sent maxRequestsPerPart for that part
 	peerState := reactor2.getPeer(reactor1.self)
 	require.NotNil(t, peerState)
-	bitArray, has := peerState.GetWants(10, 1)
+	bitArray, has := peerState.GetReceivedWants(10, 1)
 	assert.True(t, has)
 	assert.False(t, bitArray.GetIndex(0))
 }

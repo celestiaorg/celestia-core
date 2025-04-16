@@ -249,7 +249,7 @@ type HaveParts struct {
 	Parts  []PartMetaData `json:"parts,omitempty"`
 }
 
-// BitArrary returns a bit array of the provided size with the indexes of the
+// BitArray returns a bit array of the provided size with the indexes of the
 // parts set to true.
 func (h *HaveParts) BitArray(size int) *bits.BitArray {
 	ba := bits.NewBitArray(size)

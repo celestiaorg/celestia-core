@@ -48,9 +48,9 @@ func TestPeerState_SetRequests(t *testing.T) {
 		tt := tt // pin
 		t.Run(tt.name, func(t *testing.T) {
 			ps := newTestPeerState()
-			ps.AddRequests(tt.height, tt.round, tt.requestBits)
+			ps.AddSentWants(tt.height, tt.round, tt.requestBits)
 
-			gotRequests, ok := ps.GetRequests(tt.height, tt.round)
+			gotRequests, ok := ps.GetSentWants(tt.height, tt.round)
 			if tt.requestBits.Size() == 0 {
 				// If requestBits had 0 size, we expect not to store anything.
 				require.False(t, ok, "GetRequests should be false if sentWants is 0 size")
@@ -68,19 +68,19 @@ func TestPeerState_DeleteHeight(t *testing.T) {
 	bm := bits.NewBitArray(10)
 	bm.Fill()
 	// Create some data at height=10, round=1
-	ps.AddHaves(heightToDelete, 1, bm)
+	ps.AddSentHaves(heightToDelete, 1, bm)
 	// Also create data at a different height
-	ps.AddHaves(20, 0, bm)
+	ps.AddSentHaves(20, 0, bm)
 
 	// Now delete the data for height=10
 	ps.DeleteHeight(heightToDelete)
 
 	// Verify height=10 data is gone
-	_, ok := ps.GetHaves(heightToDelete, 1)
+	_, ok := ps.GetSentHaves(heightToDelete, 1)
 	require.False(t, ok, "Expected no data for height=10 after DeleteHeight")
 
 	// But height=20 data remains
-	_, ok2 := ps.GetHaves(20, 0)
+	_, ok2 := ps.GetSentHaves(20, 0)
 	require.True(t, ok2, "Should still have data for other heights")
 }
 
@@ -108,7 +108,7 @@ func TestPeerState_prune(t *testing.T) {
 	height := int64(13)
 	for h := int64(10); h <= 13; h++ {
 		for r := int32(0); r < 3; r++ {
-			ps.AddHaves(h, r, bm)
+			ps.AddSentHaves(h, r, bm)
 		}
 	}
 
@@ -116,23 +116,23 @@ func TestPeerState_prune(t *testing.T) {
 	ps.prune(height - 2)
 
 	// Height < 11 => remove
-	_, okH10r0 := ps.GetHaves(10, 0)
+	_, okH10r0 := ps.GetSentHaves(10, 0)
 	require.False(t, okH10r0, "height=10 should be removed entirely")
 
 	// Height=11 => keep only round >= 12 => that means no rounds at all (0..2 < 12 => all removed)
-	_, okH11r0 := ps.GetHaves(11, 0)
+	_, okH11r0 := ps.GetSentHaves(11, 0)
 	require.True(t, okH11r0, "all rounds at height=11 removed")
 
-	_, okH11r2 := ps.GetHaves(11, 2)
+	_, okH11r2 := ps.GetSentHaves(11, 2)
 	require.True(t, okH11r2, "all rounds at height=11 removed")
 
 	// Height=12 => keep only round >= 12 => that means round=0..2 <12 => removed
-	_, okH12r2 := ps.GetHaves(12, 2)
+	_, okH12r2 := ps.GetSentHaves(12, 2)
 	require.True(t, okH12r2, "all rounds at height=12 removed")
 
 	// Height=13 => do nothing, keep all rounds
 	for r := int32(0); r < 3; r++ {
-		_, ok := ps.GetHaves(13, r)
+		_, ok := ps.GetSentHaves(13, r)
 		require.True(t, ok, "height=13 round=%d should remain", r)
 	}
 }

@@ -51,16 +51,32 @@ func (d *PeerState) initialize(height int64, round int32, size int) {
 		d.state[height] = make(map[int32]*partState)
 	}
 	if d.state[height][round] == nil {
-		d.state[height][round] = newpartState(size, height, round)
+		d.state[height][round] = newPartState(size, height, round)
 	}
 }
 
-// AddHaves sets the haves for a given height and round.
-func (d *PeerState) AddHaves(height int64, round int32, haves *bits.BitArray) {
+// AddSentHaves sets the sent haves for a given height and round.
+func (d *PeerState) AddSentHaves(height int64, round int32, haves *bits.BitArray) {
+	if haves == nil || haves.Size() == 0 {
+		d.logger.Error("peer state sent haves is nil or empty")
+		return
+	}
 	d.mtx.Lock()
 	defer d.mtx.Unlock()
 	d.initialize(height, round, haves.Size())
-	d.state[height][round].addHaves(haves)
+	d.state[height][round].addSentHaves(haves)
+}
+
+// AddReceivedHaves sets the received haves for a given height and round.
+func (d *PeerState) AddReceivedHaves(height int64, round int32, haves *bits.BitArray) {
+	if haves == nil || haves.Size() == 0 {
+		d.logger.Error("peer state received haves is nil or empty")
+		return
+	}
+	d.mtx.Lock()
+	defer d.mtx.Unlock()
+	d.initialize(height, round, haves.Size())
+	d.state[height][round].addReceivedHaves(haves)
 }
 
 // SetLatestHeight sets the latest height
@@ -91,44 +107,72 @@ func (d *PeerState) GetLatestRound() int32 {
 	return d.latestRound
 }
 
-// AddWants sets the wants for a given height and round.
-func (d *PeerState) AddWants(height int64, round int32, wants *bits.BitArray) {
-	d.mtx.Lock()
-	defer d.mtx.Unlock()
-	d.initialize(height, round, wants.Size())
-	d.state[height][round].addWants(wants)
-}
-
-// AddRequests sets the requests for a given height and round.
-func (d *PeerState) AddRequests(height int64, round int32, requests *bits.BitArray) {
-	if requests == nil || requests.Size() == 0 {
-		d.logger.Error("peer state sentWants is nil or empty")
+// AddSentWants sets the sent wants for a given height and round.
+func (d *PeerState) AddSentWants(height int64, round int32, wants *bits.BitArray) {
+	if wants == nil || wants.Size() == 0 {
+		d.logger.Error("peer state sent wants is nil or empty")
 		return
 	}
 	d.mtx.Lock()
 	defer d.mtx.Unlock()
-	d.initialize(height, round, requests.Size())
-	d.state[height][round].addRequests(requests)
+	d.initialize(height, round, wants.Size())
+	d.state[height][round].addSentWants(wants)
 }
 
-// SetHave sets the have bit for a given part. WARNING: if the state is not
+// AddReceivedWants sets the received wants for a given height and round.
+func (d *PeerState) AddReceivedWants(height int64, round int32, wants *bits.BitArray) {
+	if wants == nil || wants.Size() == 0 {
+		d.logger.Error("peer state received wants is nil or empty")
+		return
+	}
+	d.mtx.Lock()
+	defer d.mtx.Unlock()
+	d.initialize(height, round, wants.Size())
+	d.state[height][round].addReceivedWants(wants)
+}
+
+// SetSentHave sets the sent have bit for a given part. WARNING: if the state is not
 // initialized for a given height and round, the function will panic.
-func (d *PeerState) SetHave(height int64, round int32, part int) {
+func (d *PeerState) SetSentHave(height int64, round int32, part int) {
 	d.mtx.RLock()
 	defer d.mtx.RUnlock()
-	d.state[height][round].setHave(part, true)
+	d.state[height][round].setSentHave(part, true)
 }
 
-// SetWant sets the want bit for a given part. WARNING: if the state is not
+// SetReceivedHave sets the received have bit for a given part. WARNING: if the state is not
 // initialized for a given height and round, the function will panic.
-func (d *PeerState) SetWant(height int64, round int32, part int, wants bool) {
+func (d *PeerState) SetReceivedHave(height int64, round int32, part int) {
 	d.mtx.RLock()
 	defer d.mtx.RUnlock()
-	d.state[height][round].setWant(part, wants)
+	d.state[height][round].setReceivedHave(part, true)
 }
 
-// GetHaves retrieves the haves for a given height and round.
-func (d *PeerState) GetHaves(height int64, round int32) (empty *bits.BitArray, has bool) {
+// AddReceivedHave adds the received have bits to the existing received haves. WARNING: if the state is not
+// initialized for a given height and round, the function will panic.
+func (d *PeerState) AddReceivedHave(height int64, round int32, haves *bits.BitArray) {
+	d.mtx.RLock()
+	defer d.mtx.RUnlock()
+	d.state[height][round].addReceivedHaves(haves)
+}
+
+// SetSentWant sets the sent want bit for a given part. WARNING: if the state is not
+// initialized for a given height and round, the function will panic.
+func (d *PeerState) SetSentWant(height int64, round int32, part int) {
+	d.mtx.RLock()
+	defer d.mtx.RUnlock()
+	d.state[height][round].setSentWant(part, true)
+}
+
+// SetReceivedWant sets the received want bit for a given part. WARNING: if the state is not
+// initialized for a given height and round, the function will panic.
+func (d *PeerState) SetReceivedWant(height int64, round int32, part int, wants bool) {
+	d.mtx.RLock()
+	defer d.mtx.RUnlock()
+	d.state[height][round].setReceivedWant(part, wants)
+}
+
+// GetSentHaves retrieves the sent haves for a given height and round.
+func (d *PeerState) GetSentHaves(height int64, round int32) (empty *bits.BitArray, has bool) {
 	d.mtx.Lock()
 	defer d.mtx.Unlock()
 	// create the maps if they don't exist
@@ -143,10 +187,19 @@ func (d *PeerState) GetHaves(height int64, round int32) (empty *bits.BitArray, h
 	return rdata.sentHaves, true
 }
 
-// GetWants retrieves the wants for a given height and round.
-func (d *PeerState) GetWants(height int64, round int32) (empty *bits.BitArray, has bool) {
-	d.mtx.RLock()
-	defer d.mtx.RUnlock()
+// WantsPart checks if the peer wants a given part.
+func (d *PeerState) WantsPart(height int64, round int32, part uint32) bool {
+	w, has := d.GetReceivedWants(height, round)
+	if !has {
+		return false
+	}
+	return w.GetIndex(int(part))
+}
+
+// GetReceivedHaves retrieves the sent haves for a given height and round.
+func (d *PeerState) GetReceivedHaves(height int64, round int32) (empty *bits.BitArray, has bool) {
+	d.mtx.Lock()
+	defer d.mtx.Unlock()
 	// create the maps if they don't exist
 	hdata, has := d.state[height]
 	if !has {
@@ -156,11 +209,11 @@ func (d *PeerState) GetWants(height int64, round int32) (empty *bits.BitArray, h
 	if !has {
 		return empty, false
 	}
-	return rdata.receivedWants, true
+	return rdata.receivedHaves, true
 }
 
-// GetRequests retrieves the requests for a given height and round.
-func (d *PeerState) GetRequests(height int64, round int32) (empty *bits.BitArray, has bool) {
+// GetSentWants retrieves the sent wants for a given height and round.
+func (d *PeerState) GetSentWants(height int64, round int32) (empty *bits.BitArray, has bool) {
 	d.mtx.RLock()
 	defer d.mtx.RUnlock()
 	// create the maps if they don't exist
@@ -175,13 +228,20 @@ func (d *PeerState) GetRequests(height int64, round int32) (empty *bits.BitArray
 	return rdata.sentWants, true
 }
 
-// WantsPart checks if the peer wants a given part.
-func (d *PeerState) WantsPart(height int64, round int32, part uint32) bool {
-	w, has := d.GetWants(height, round)
+// GetReceivedWants retrieves the received wants for a given height and round.
+func (d *PeerState) GetReceivedWants(height int64, round int32) (empty *bits.BitArray, has bool) {
+	d.mtx.RLock()
+	defer d.mtx.RUnlock()
+	// create the maps if they don't exist
+	hdata, has := d.state[height]
 	if !has {
-		return false
+		return empty, false
 	}
-	return w.GetIndex(int(part))
+	rdata, has := hdata[round]
+	if !has {
+		return empty, false
+	}
+	return rdata.receivedWants, true
 }
 
 // DeleteHeight removes all haves and wants for a given height.
@@ -216,34 +276,48 @@ type partState struct {
 	receivedWants *bits.BitArray
 }
 
-// newpartState initializes and returns a new partState
-func newpartState(size int, _ int64, _ int32) *partState {
+// newPartState initializes and returns a new partState
+func newPartState(size int, _ int64, _ int32) *partState {
 	return &partState{
 		sentHaves:     bits.NewBitArray(size),
+		receivedHaves: bits.NewBitArray(size),
 		receivedWants: bits.NewBitArray(size),
 		sentWants:     bits.NewBitArray(size),
 	}
 }
 
-func (p *partState) addHaves(haves *bits.BitArray) {
+func (p *partState) addSentHaves(haves *bits.BitArray) {
 	p.sentHaves.AddBitArray(haves)
 }
 
-func (p *partState) addWants(wants *bits.BitArray) {
+func (p *partState) addReceivedHaves(haves *bits.BitArray) {
+	p.receivedHaves.AddBitArray(haves)
+}
+
+func (p *partState) addSentWants(wants *bits.BitArray) {
+	p.sentWants.AddBitArray(wants)
+}
+
+func (p *partState) addReceivedWants(wants *bits.BitArray) {
 	p.receivedWants.AddBitArray(wants)
 }
 
-func (p *partState) addRequests(requests *bits.BitArray) {
-	p.sentWants.AddBitArray(requests)
-}
-
-// SetHave sets the have bit for a given part.
-// TODO support setting the hash and the proof
-func (p *partState) setHave(index int, has bool) {
+// setSentHave sets the sent have bit for a given part.
+func (p *partState) setSentHave(index int, has bool) {
 	p.sentHaves.SetIndex(index, has)
 }
 
-// SetWant sets the want bit for a given part.
-func (p *partState) setWant(part int, wants bool) {
+// setReceivedHave sets the received have bit for a given part.
+func (p *partState) setReceivedHave(index int, has bool) {
+	p.receivedHaves.SetIndex(index, has)
+}
+
+// SetSentWant sets the sent want bit for a given part.
+func (p *partState) setSentWant(part int, wants bool) {
+	p.sentWants.SetIndex(part, wants)
+}
+
+// setReceivedWant sets the received want bit for a given part.
+func (p *partState) setReceivedWant(part int, wants bool) {
 	p.receivedWants.SetIndex(part, wants)
 }

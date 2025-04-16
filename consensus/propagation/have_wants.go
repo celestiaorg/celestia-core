@@ -39,8 +39,8 @@ func (blockProp *Reactor) handleHaves(peer p2p.ID, haves *proptypes.HaveParts) {
 
 	p.Initialize(height, round, int(parts.Total()))
 
-	bm, _ := p.GetHaves(height, round)
-
+	// updating the state to keep track of all the haves this peer sent us
+	bm, _ := p.GetReceivedHaves(height, round)
 	for _, pmd := range haves.Parts {
 		bm.SetIndex(int(pmd.Index), true)
 	}
@@ -82,23 +82,8 @@ func (blockProp *Reactor) handleHaves(peer p2p.ID, haves *proptypes.HaveParts) {
 	)
 
 	// keep track of the parts that this node has requested.
-	p.AddRequests(height, round, hc)
+	p.AddSentWants(height, round, hc)
 	blockProp.broadcastHaves(haves, peer, int(parts.Total()))
-}
-
-// countRequests returns the number of requests for a given part.
-func (blockProp *Reactor) countRequests(height int64, round int32, part int) []p2p.ID {
-	peers := make([]p2p.ID, 0)
-	for _, peer := range blockProp.getPeers() {
-		reqs, has := peer.GetRequests(height, round)
-		if has {
-			index := reqs.GetIndex(part)
-			if index {
-				peers = append(peers, peer.peer.ID())
-			}
-		}
-	}
-	return peers
 }
 
 // broadcastHaves gossips the provided have msg to all peers except to the
@@ -123,7 +108,7 @@ func (blockProp *Reactor) broadcastHaves(haves *proptypes.HaveParts, from p2p.ID
 			blockProp.Logger.Error("failed to send haves to peer", "peer", peer.peer.ID())
 			continue
 		}
-		peer.AddHaves(haves.Height, haves.Round, haves.BitArray(partSetSize))
+		peer.AddSentHaves(haves.Height, haves.Round, haves.BitArray(partSetSize))
 	}
 }
 
@@ -190,7 +175,7 @@ func (blockProp *Reactor) handleWants(peer p2p.ID, wants *proptypes.WantParts) {
 	// for parts that we don't have, but they still want, store the wants.
 	stillMissing := wants.Parts.Sub(canSend)
 	if !stillMissing.IsEmpty() {
-		p.AddWants(height, round, stillMissing)
+		p.AddReceivedWants(height, round, stillMissing)
 	}
 }
 
@@ -335,8 +320,8 @@ func (blockProp *Reactor) clearWants(part *proptypes.RecoveryPart) {
 				blockProp.Logger.Error("failed to send part", "peer", peer.peer.ID(), "height", part.Height, "round", part.Round, "part", part.Index)
 				continue
 			}
-			peer.SetHave(part.Height, part.Round, int(part.Index))
-			peer.SetWant(part.Height, part.Round, int(part.Index), false)
+			peer.SetReceivedHave(part.Height, part.Round, int(part.Index))
+			peer.SetReceivedWant(part.Height, part.Round, int(part.Index), false)
 			catchup := false
 			blockProp.pmtx.Lock()
 			if part.Height < blockProp.currentHeight {

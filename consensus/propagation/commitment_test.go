@@ -46,12 +46,12 @@ func TestPropose(t *testing.T) {
 	require.True(t, has)
 
 	// Check if the other reactors received the haves
-	haves, has := reactor2.getPeer(reactor1.self).GetHaves(prop.Height, prop.Round)
+	haves, has := reactor2.getPeer(reactor1.self).GetReceivedHaves(prop.Height, prop.Round)
 	assert.True(t, has)
 	// the parts == total because we only have 2 peers
 	assert.Equal(t, haves.Size(), int(partSet.Total()*2))
 
-	haves, has = reactor3.getPeer(reactor1.self).GetHaves(prop.Height, prop.Round)
+	haves, has = reactor3.getPeer(reactor1.self).GetReceivedHaves(prop.Height, prop.Round)
 	assert.True(t, has)
 	// the parts == total because we only have 2 peers
 	assert.Equal(t, haves.Size(), int(partSet.Total()*2))

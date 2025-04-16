@@ -46,7 +46,7 @@ func (blockProp *Reactor) retryWants(currentHeight int64) {
 		for _, peer := range peers {
 			mc := missing.Copy()
 
-			reqs, has := peer.GetRequests(height, round)
+			reqs, has := peer.GetSentWants(height, round)
 			if has {
 				mc = mc.Sub(reqs)
 			}
@@ -74,7 +74,7 @@ func (blockProp *Reactor) retryWants(currentHeight int64) {
 
 			// keep track of which requests we've made this attempt.
 			missing = missing.Sub(mc)
-			peer.AddRequests(height, round, missing)
+			peer.AddSentWants(height, round, missing)
 		}
 	}
 }

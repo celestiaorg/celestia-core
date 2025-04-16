@@ -18,7 +18,6 @@ import (
 	"github.com/tendermint/tendermint/libs/log"
 	cmtrand "github.com/tendermint/tendermint/libs/rand"
 	"github.com/tendermint/tendermint/p2p"
-	"github.com/tendermint/tendermint/p2p/mock"
 	"github.com/tendermint/tendermint/pkg/trace"
 	"github.com/tendermint/tendermint/state"
 	"github.com/tendermint/tendermint/store"
@@ -67,42 +66,6 @@ func createTestReactors(n int, p2pCfg *cfg.P2PConfig, tracer bool, traceDir stri
 	)
 
 	return reactors, switches
-}
-
-func TestCountRequests(t *testing.T) {
-	reactors, _ := testBlockPropReactors(1, cfg.DefaultP2PConfig())
-	reactor := reactors[0]
-
-	peer1 := mock.NewPeer(nil)
-	reactor.AddPeer(peer1)
-	peer2 := mock.NewPeer(nil)
-	reactor.AddPeer(peer2)
-	peer3 := mock.NewPeer(nil)
-	reactor.AddPeer(peer3)
-
-	peer1State := reactor.getPeer(peer1.ID())
-	// peer1 requests part=0 at height=10, round=0
-	array := bits.NewBitArray(3)
-	array.SetIndex(0, true)
-	peer1State.AddRequests(10, 0, array)
-
-	peer2State := reactor.getPeer(peer2.ID())
-	// peer2 requests part=0 and part=2 and part=3  at height=10, round=0
-	array2 := bits.NewBitArray(3)
-	array2.SetIndex(0, true)
-	array2.SetIndex(2, true)
-	array2.SetIndex(3, true)
-	peer2State.AddRequests(10, 0, array2)
-
-	// peer3 doesn't request anything
-
-	// count requests part=0 at height=10, round=0
-	part0Round0Height10RequestsCount := reactor.countRequests(10, 0, 0)
-	assert.Equal(t, 2, len(part0Round0Height10RequestsCount))
-
-	// count requests part=3 at height=10, round=0
-	part3Round0Height10RequestsCount := reactor.countRequests(10, 0, 2)
-	assert.Equal(t, 1, len(part3Round0Height10RequestsCount))
 }
 
 func TestHandleHavesAndWantsAndRecoveryParts(t *testing.T) {
@@ -167,7 +130,7 @@ func TestHandleHavesAndWantsAndRecoveryParts(t *testing.T) {
 		},
 	)
 
-	haves, has := reactor1.getPeer(reactor2.self).GetHaves(height, round)
+	haves, has := reactor1.getPeer(reactor2.self).GetReceivedHaves(height, round)
 	assert.True(t, has)
 	require.True(t, haves.GetIndex(0))
 
@@ -176,7 +139,7 @@ func TestHandleHavesAndWantsAndRecoveryParts(t *testing.T) {
 	r3State := reactor3.getPeer(reactor1.self)
 	require.NotNil(t, r3State)
 
-	r3Haves, r3Has := r3State.GetHaves(height, round)
+	r3Haves, r3Has := r3State.GetReceivedHaves(height, round)
 	assert.True(t, r3Has)
 	require.True(t, r3Haves.GetIndex(0))
 
@@ -263,7 +226,7 @@ func TestInvalidPart(t *testing.T) {
 		},
 	)
 
-	haves, has := reactor1.getPeer(reactor2.self).GetHaves(height, round)
+	haves, has := reactor1.getPeer(reactor2.self).GetReceivedHaves(height, round)
 	assert.True(t, has)
 	require.True(t, haves.GetIndex(0))
 
