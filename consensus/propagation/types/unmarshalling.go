@@ -100,7 +100,7 @@ func TxsToParts(txs []UnmarshalledTx, partCount, partSize, lastPartLen uint32) (
 		}
 
 		part := &types.Part{
-			Index: uint32(i),
+			Index: i,
 			Bytes: partBytes,
 		}
 		result = append(result, part)
