@@ -34,6 +34,12 @@ import (
 
 var logger = log.NewTMLogger(log.NewSyncWriter(os.Stdout))
 
+func init() {
+	// set the global retry time to something closer to the desired e2e block
+	// time.
+	propagation.RetryTime = 1000 * time.Millisecond
+}
+
 // main is the binary entrypoint.
 func main() {
 	if len(os.Args) != 2 {
@@ -57,10 +63,6 @@ func run(configFile string) error {
 	if err != nil {
 		return err
 	}
-
-	// set the global retry time to something closer to the desired e2e block
-	// time.
-	propagation.RetryTime = 1000 * time.Millisecond
 
 	// Start remote signer (must start before node if running builtin).
 	if cfg.PrivValServer != "" {
