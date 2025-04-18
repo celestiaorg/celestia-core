@@ -4,11 +4,9 @@ import (
 	"context"
 	"fmt"
 	"github.com/tendermint/tendermint/consensus/propagation/types"
-	"github.com/tendermint/tendermint/libs/bits"
 	"github.com/tendermint/tendermint/libs/log"
 	"github.com/tendermint/tendermint/libs/sync"
 	"github.com/tendermint/tendermint/p2p"
-	"github.com/tendermint/tendermint/proto/tendermint/propagation"
 	"time"
 )
 
@@ -31,29 +29,27 @@ type RequestManager struct {
 	logger    log.Logger
 	peerState map[p2p.ID]*PeerState
 	*ProposalCache
-	haveChan       <-chan HaveWithFrom
-	CommitmentChan <-chan types.CompactBlock
-	expiredWant    chan *sentWant
-	height         int64
-	round          int32
-	sentWants      map[p2p.ID][]sentWant
-	totalSentWants map[int64]map[int32]*bits.BitArray
-	fetcher        *partFetcher
+	haveChan        <-chan HaveWithFrom
+	CommitmentChan  <-chan types.CompactBlock
+	expiredWantChan chan *sentWant
+	height          int64
+	round           int32
+	sentWants       map[p2p.ID][]*sentWant
+	fetcher         *partFetcher
 }
 
 func NewRequestsManager(ctx context.Context, peerState map[p2p.ID]*PeerState, proposalCache *ProposalCache, haveChan <-chan HaveWithFrom, compactBlockChan <-chan types.CompactBlock) *RequestManager {
 	return &RequestManager{
-		ctx:            ctx,
-		mtx:            sync.RWMutex{},
-		peerState:      peerState,
-		ProposalCache:  proposalCache,
-		logger:         log.NewNopLogger(),
-		haveChan:       haveChan,
-		CommitmentChan: compactBlockChan,
-		sentWants:      make(map[p2p.ID][]sentWant),
-		totalSentWants: make(map[int64]map[int32]*bits.BitArray),
-		expiredWant:    make(chan *sentWant, 100),
-		fetcher:        newPartFetcher(log.NewNopLogger()),
+		ctx:             ctx,
+		mtx:             sync.RWMutex{},
+		peerState:       peerState,
+		ProposalCache:   proposalCache,
+		logger:          log.NewNopLogger(),
+		haveChan:        haveChan,
+		CommitmentChan:  compactBlockChan,
+		sentWants:       make(map[p2p.ID][]*sentWant),
+		expiredWantChan: make(chan *sentWant, 100),
+		fetcher:         newPartFetcher(log.NewNopLogger()),
 	}
 }
 
@@ -63,24 +59,38 @@ func (pf *RequestManager) WithLogger(logger log.Logger) {
 }
 
 func (pf *RequestManager) Start() {
-	ticker := time.NewTicker(6 * time.Second)
+	tickerDuration := 6 * time.Second
+	ticker := time.NewTicker(tickerDuration)
 	for {
 		select {
 		case <-pf.ctx.Done():
 			// TODO refactor all the cases into methods
 			return
 		case <-ticker.C:
-			// TODO I Don't think we need this case: We do since the commitment is only received
-			// once we advance to a new height. If we didn't, we need to trigger this. But we need to extend the timer everytime we receive something: Im not sure what it is.
-		case want, has := <-pf.expiredWant:
+			// This case should help advance the propagation in the following case:
+			// - We receive haves for some parts
+			// - The peer that sent us the haves is almost saturated with requests
+			// - We request some wants, but the remaining are not requested
+			// - no other peer send us haves for those parts, and we don't advance to a new height
+			// due to multiple rounds of consensus.
+			// Note: the ticker is reset with every received have to avoid triggering it
+			// unnecessarily.
+		case expiredWant, has := <-pf.expiredWantChan:
 			if !has {
 				// channel was closed
 				return
 			}
-			_, parts, _, has := pf.getAllState(want.Height, want.Round, false)
+			pf.mtx.RLock()
+			height, round := pf.height, pf.round
+			pf.mtx.RUnlock()
+			if expiredWant.Height != height || expiredWant.Round != round {
+				// this expired want is for a previous height/round, we can ignore it.
+				continue
+			}
+			_, parts, _, has := pf.getAllState(expiredWant.Height, expiredWant.Round, false)
 			if !has {
 				// this shouldn't happen
-				pf.logger.Error("couldn't find state for proposal", "height", want.Height, "round", want.Round)
+				pf.logger.Error("couldn't find state for proposal", "height", expiredWant.Height, "round", expiredWant.Round)
 				// TODO maybe return?
 				continue
 			}
@@ -89,23 +99,23 @@ func (pf *RequestManager) Start() {
 			}
 			missing := parts.MissingOriginal()
 			notMissed := missing.Not()
-			toRequest := want.Parts.Sub(notMissed)
+			toRequest := expiredWant.Parts.Sub(notMissed)
 			for !toRequest.IsEmpty() {
 				peers := shuffle(pf.getPeers())
 				to := peers[0].peer
 				pendingWant := types.WantParts{
 					Parts:  toRequest,
-					Height: want.Height,
-					Round:  want.Round,
-					Prove:  want.Prove,
+					Height: expiredWant.Height,
+					Round:  expiredWant.Round,
+					Prove:  expiredWant.Prove,
 				}
 				remaining, err := pf.fetcher.sendRequest(to, &pendingWant)
 				if err != nil {
-					pf.logger.Error("failed to send want parts", "peer", peers[0].peer.ID(), "height", want.Height, "round", want.Round)
+					pf.logger.Error("failed to send want parts", "peer", peers[0].peer.ID(), "height", expiredWant.Height, "round", expiredWant.Round)
 					continue
 				}
 				toRequest = toRequest.Sub(remaining)
-				pf.sentWants[to.ID()] = append(pf.sentWants[to.ID()], sentWant{
+				pf.sentWants[to.ID()] = append(pf.sentWants[to.ID()], &sentWant{
 					WantParts: &pendingWant,
 					timestamp: time.Now(),
 					to:        to.ID(),
@@ -131,6 +141,7 @@ func (pf *RequestManager) Start() {
 				// TODO maybe return?
 				continue
 			}
+			ticker.Reset(tickerDuration)
 			hc := have.BitArray(int(parts.Total()))
 			hc = hc.Sub(parts.BitArray())
 			if hc.IsEmpty() {
@@ -138,8 +149,25 @@ func (pf *RequestManager) Start() {
 				continue
 			}
 			// TODO check for peer remaining available requests
-			wantsBA = hc
-			to = have.from
+			to := pf.peerState[have.from].peer
+			want := types.WantParts{
+				Parts:  hc,
+				Height: have.Height,
+				Round:  have.Round,
+				Prove:  false,
+			}
+			remaining, err := pf.fetcher.sendRequest(to, &want)
+			if err != nil {
+				pf.logger.Error("failed to send want parts", "peer", have.from, "height", have.Height, "round", have.Round)
+				continue
+			}
+			sent := hc.Sub(remaining)
+			want.Parts = sent
+			pf.sentWants[to.ID()] = append(pf.sentWants[to.ID()], &sentWant{
+				WantParts: &want,
+				timestamp: time.Now(),
+				to:        have.from,
+			})
 		case compactBlock, has := <-pf.CommitmentChan:
 			if !has {
 				// channel was closed
@@ -166,87 +194,60 @@ func (pf *RequestManager) Start() {
 			}
 			missing := parts.MissingOriginal()
 			// TODO maybe shuffle peers on every run
-			for _, peer := range pf.peerState {
+			for _, peer := range shuffle(pf.getPeers()) {
 				if missing.IsEmpty() {
 					break
 				}
 
 				// if this peer is at a higher height, we can request everything from them that we didn't request
 				if peer.latestHeight > height || (peer.latestHeight == height && peer.latestRound > round) {
-					remainingRequestsForPeer := pf.peerRemainingRequests(peer.peer.ID())
-					if remainingRequestsForPeer == 0 {
-						// we already sent the maximum number of requests to this peer, we can't send more.
+					// TODO check if we really need to keep track of the sent/recived wants etc
+					want := types.WantParts{
+						Parts:  missing,
+						Height: height,
+						Round:  round,
+						Prove:  true,
+					}
+					remaining, err := pf.fetcher.sendRequest(peer.peer, &want)
+					if err != nil {
+						pf.logger.Error("failed to send catchup want parts", "peer", peer.peer.ID(), "height", height, "round", round, "err", err)
 						continue
 					}
-					toRequest := missing.Copy()
-					// TODO check if we really need to keep track of the sent/recived wants etc
-					peerSentWants, has := peer.GetSentWants(height, round)
-					if has {
-						toRequest = toRequest.Sub(peerSentWants)
-					}
-					for i := 0; i < len(toRequest.GetTrueIndices())-remainingRequestsForPeer; i++ {
-						toRequest.SetIndex(toRequest.GetTrueIndices()[i], false)
-					}
-					e := p2p.Envelope{
-						ChannelID: WantChannel,
-						Message: &propagation.WantParts{
-							Parts:  *toRequest.ToProto(),
-							Height: height,
-							Round:  round,
-							Prove:  true,
-						},
-					}
-					if !p2p.TrySendEnvelopeShim(peer.peer, e, pf.logger) { //nolint:staticcheck
-						pf.logger.Error("failed to send want parts", "peer", peer.peer.ID(), "height", height, "round", round)
-					} else {
-						missing = missing.Sub(toRequest)
-						peerSentWants.AddBitArray(toRequest)
-						// TODO add the sent requests to the total sent wants
-					}
+					missing = missing.Sub(remaining)
+					pf.sentWants[peer.peer.ID()] = append(pf.sentWants[peer.peer.ID()], &sentWant{
+						WantParts: &want,
+						timestamp: time.Now(),
+						to:        peer.peer.ID(),
+					})
 					continue
 				}
 
 				peerHaves, has := peer.GetReceivedHaves(height, round)
 				if !has {
-					// This shouldn't happen
 					// TODO maybe log something
 					continue
 				}
 				notMissed := missing.Not()
 				toRequest := peerHaves.Sub(notMissed)
-				// TODO the next part can be refactored as it's copy pasted
-				remainingRequestsForPeer := pf.peerRemainingRequests(peer.peer.ID())
-				if remainingRequestsForPeer == 0 {
-					// we already sent the maximum number of requests to this peer, we can't send more.
+				want := types.WantParts{
+					Parts:  toRequest,
+					Height: height,
+					Round:  round,
+					Prove:  true,
+				}
+				remaining, err := pf.fetcher.sendRequest(peer.peer, &want)
+				if err != nil {
+					pf.logger.Error("failed to send catchup want parts", "peer", peer.peer.ID(), "height", height, "round", round, "err", err)
 					continue
 				}
-				peerSentWants, has := peer.GetSentWants(height, round)
-				if has {
-					toRequest = toRequest.Sub(peerSentWants)
-				}
-				for i := 0; i < len(toRequest.GetTrueIndices())-remainingRequestsForPeer; i++ {
-					toRequest.SetIndex(toRequest.GetTrueIndices()[i], false)
-				}
-				e := p2p.Envelope{
-					ChannelID: WantChannel,
-					Message: &propagation.WantParts{
-						Parts:  *toRequest.ToProto(),
-						Height: height,
-						Round:  round,
-						Prove:  true,
-					},
-				}
-				if !p2p.TrySendEnvelopeShim(peer.peer, e, pf.logger) { //nolint:staticcheck
-					pf.logger.Error("failed to send want parts", "peer", peer.peer.ID(), "height", height, "round", round)
-				} else {
-					missing = missing.Sub(toRequest)
-					peerSentWants.AddBitArray(toRequest)
-					// TODO add the sent requests to the total sent wants
-				}
+				missing = missing.Sub(remaining)
+				pf.sentWants[peer.peer.ID()] = append(pf.sentWants[peer.peer.ID()], &sentWant{
+					WantParts: &want,
+					timestamp: time.Now(),
+					to:        peer.peer.ID(),
+				})
 			}
 		}
-		// TODO move this one to each case. maybe even remove the head declarations
-		pf.sendWants(wantsBA, to)
 	}
 }
 
@@ -273,6 +274,7 @@ func (pf *RequestManager) prune(height int64, round int32) {
 
 // expireWants TODO call it from the start function.
 func (pf *RequestManager) expireWants() {
+	// TODO maybe also expire old unanswered wants if we start receiving data from the peer.
 	ticker := time.NewTicker(time.Second)
 	for {
 		select {
@@ -287,7 +289,7 @@ func (pf *RequestManager) expireWants() {
 							pf.logger.Error("failed to remove expired want", "peer", peerID, "index", index, "err", err)
 							continue
 						}
-						pf.expiredWant <- want.want
+						pf.expiredWantChan <- want
 					}
 				}
 			}
