@@ -24,6 +24,7 @@ type HaveWithFrom struct {
 	from p2p.ID
 }
 
+// TODO set the latest height/round in sync data
 type RequestManager struct {
 	ctx       context.Context
 	mtx       sync.RWMutex
@@ -31,7 +32,7 @@ type RequestManager struct {
 	peerState map[p2p.ID]*PeerState
 	*ProposalCache
 	haveChan        <-chan HaveWithFrom
-	CommitmentChan  <-chan types.CompactBlock
+	CommitmentChan  <-chan *types.CompactBlock
 	expiredWantChan chan *sentWant
 	height          int64
 	round           int32
@@ -39,7 +40,7 @@ type RequestManager struct {
 	fetcher         *partFetcher
 }
 
-func NewRequestsManager(ctx context.Context, peerState map[p2p.ID]*PeerState, proposalCache *ProposalCache, haveChan <-chan HaveWithFrom, compactBlockChan <-chan types.CompactBlock) *RequestManager {
+func NewRequestsManager(ctx context.Context, peerState map[p2p.ID]*PeerState, proposalCache *ProposalCache, haveChan <-chan HaveWithFrom, compactBlockChan <-chan *types.CompactBlock) *RequestManager {
 	return &RequestManager{
 		ctx:             ctx,
 		mtx:             sync.RWMutex{},
@@ -94,7 +95,7 @@ func (rm *RequestManager) Start() {
 			if !has {
 				return
 			}
-			rm.handleCommitment(&compactBlock)
+			rm.handleCommitment(compactBlock)
 		}
 	}
 }
@@ -328,5 +329,6 @@ func (rm *RequestManager) requestUsingHaves(peer *PeerState, height int64, round
 		timestamp: time.Now(),
 		to:        peer.peer.ID(),
 	})
+	// TODO udpate also the peerstate.AddSentWants, and AddReceivedHaves
 	return missing
 }

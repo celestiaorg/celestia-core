@@ -3,14 +3,12 @@ package propagation
 import (
 	"context"
 	"fmt"
-	"reflect"
-	"sync"
-	"sync/atomic"
-	"time"
-
 	"github.com/tendermint/tendermint/libs/log"
 	"github.com/tendermint/tendermint/p2p/conn"
 	"github.com/tendermint/tendermint/types"
+	"reflect"
+	"sync"
+	"sync/atomic"
 
 	"github.com/tendermint/tendermint/store"
 
@@ -52,7 +50,9 @@ type Reactor struct {
 	// and eventually remove it.
 	mempool Mempool
 
-	requester *partFetcher
+	requester      *partFetcher
+	haveChan       chan<- HaveWithFrom
+	CommitmentChan chan<- *proptypes.CompactBlock
 
 	mtx         *sync.RWMutex
 	traceClient trace.Tracer
@@ -86,24 +86,6 @@ func NewReactor(self p2p.ID, tracer trace.Tracer, store *store.BlockStore, mempo
 		option(reactor)
 	}
 	reactor.requester = newPartFetcher(reactor.Logger)
-
-	// start the catchup routine
-	go func() {
-		// TODO dynamically set the ticker depending on how many blocks are missing
-		ticker := time.NewTicker(2 * time.Second)
-		for {
-			select {
-			case <-reactor.ctx.Done():
-				return
-			case <-ticker.C:
-				reactor.pmtx.Lock()
-				currentHeight := reactor.currentHeight
-				reactor.pmtx.Unlock()
-				// run the catchup routine to recover any missing parts for past heights.
-				reactor.retryWants(currentHeight)
-			}
-		}
-	}()
 
 	return reactor
 }

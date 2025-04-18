@@ -9,80 +9,9 @@ import (
 	"github.com/tendermint/tendermint/types"
 )
 
-// retryWants ensure that all data for all unpruned compact blocks is requested.
-//
-// todo: add a request limit for each part to avoid downloading the block too
-// many times. atm, this code will request the same part from every peer.
-func (blockProp *Reactor) retryWants(currentHeight int64) {
-	if !blockProp.started.Load() {
-		return
-	}
-	data := blockProp.unfinishedHeights()
-	peers := blockProp.getPeers()
-	for _, prop := range data {
-		height, round := prop.compactBlock.Proposal.Height, prop.compactBlock.Proposal.Round
-
-		// don't re-request parts for any round on the current height
-		if height == currentHeight {
-			continue
-		}
-
-		if prop.block.IsComplete() {
-			continue
-		}
-
-		// only re-request original parts that are missing, not parity parts.
-		missing := prop.block.MissingOriginal()
-		if missing.IsEmpty() {
-			blockProp.Logger.Error("no missing parts yet block is incomplete", "height", height, "round", round)
-			continue
-		}
-
-		schema.WriteRetries(blockProp.traceClient, height, round, missing.String())
-
-		// make requests from different peers
-		peers = shuffle(peers)
-
-		for _, peer := range peers {
-			mc := missing.Copy()
-
-			reqs, has := peer.GetSentWants(height, round)
-			if has {
-				mc = mc.Sub(reqs)
-			}
-
-			if mc.IsEmpty() {
-				continue
-			}
-
-			sent, err := blockProp.requester.sendRequest(peer.peer, &proptypes.WantParts{
-				Parts:  mc,
-				Height: height,
-				Round:  round,
-				Prove:  true,
-			})
-			if err != nil {
-				blockProp.Logger.Error("failed to send want part", "peer", peer, "height", height, "round", round, "err", err)
-				continue
-			}
-			if !sent {
-				blockProp.Logger.Error("failed to send want part", "peer", peer, "height", height, "round", round)
-				continue
-			}
-
-			schema.WriteCatchupRequest(blockProp.traceClient, height, round, mc.String(), string(peer.peer.ID()))
-
-			// keep track of which requests we've made this attempt.
-			missing = missing.Sub(mc)
-			peer.AddSentWants(height, round, missing)
-		}
-	}
-}
-
 func (blockProp *Reactor) AddCommitment(height int64, round int32, psh *types.PartSetHeader) {
 	blockProp.Logger.Info("adding commitment", "height", height, "round", round, "psh", psh)
 	blockProp.pmtx.Lock()
-	defer blockProp.pmtx.Unlock()
 
 	blockProp.Logger.Info("added commitment", "height", height, "round", round)
 	schema.WriteGap(blockProp.traceClient, height, round)
@@ -97,16 +26,24 @@ func (blockProp *Reactor) AddCommitment(height int64, round int32, psh *types.Pa
 		return
 	}
 
-	blockProp.proposals[height][round] = &proposalData{
-		compactBlock: &proptypes.CompactBlock{
-			Proposal: types.Proposal{
-				Height: height,
-				Round:  round,
-			},
+	cb := proptypes.CompactBlock{
+		Proposal: types.Proposal{
+			Height: height,
+			Round:  round,
 		},
-		catchup:     true,
-		block:       combinedSet,
-		maxRequests: bits.NewBitArray(int(psh.Total * 2)), // this assumes that the parity parts are the same size
+	}
+	blockProp.proposals[height][round] = &proposalData{
+		compactBlock: &cb,
+		catchup:      true,
+		block:        combinedSet,
+		maxRequests:  bits.NewBitArray(int(psh.Total * 2)), // this assumes that the parity parts are the same size
+	}
+	blockProp.pmtx.Unlock()
+
+	select {
+	case <-blockProp.ctx.Done():
+		return
+	case blockProp.CommitmentChan <- &cb:
 	}
 }
 

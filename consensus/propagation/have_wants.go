@@ -14,7 +14,7 @@ import (
 // node doesn't have. If the sender has parts that this node doesn't have, this
 // node will request those parts. The peer must always send the proposal before
 // sending parts. If they did not, this node must disconnect from them.
-func (blockProp *Reactor) handleHaves(peer p2p.ID, haves *proptypes.HaveParts) {
+func (blockProp *Reactor) handleHaves(from p2p.ID, haves *proptypes.HaveParts) {
 	if haves == nil {
 		// TODO handle the disconnection case
 		return
@@ -25,15 +25,15 @@ func (blockProp *Reactor) handleHaves(peer p2p.ID, haves *proptypes.HaveParts) {
 
 	height := haves.Height
 	round := haves.Round
-	p := blockProp.getPeer(peer)
+	p := blockProp.getPeer(from)
 	if p == nil || p.peer == nil {
-		blockProp.Logger.Error("peer not found", "peer", peer)
+		blockProp.Logger.Error("peer not found", "peer", from)
 		return
 	}
 
 	_, parts, _, has := blockProp.getAllState(height, round, false)
 	if !has {
-		blockProp.Logger.Error("received have part for unknown proposal", "peer", peer, "height", height, "round", round)
+		blockProp.Logger.Error("received have part for unknown proposal", "peer", from, "height", height, "round", round)
 		// blockProp.Switch.StopPeerForError(blockProp.getPeer(peer).peer, errors.New("received part for unknown proposal"))
 		return
 	}
@@ -46,30 +46,10 @@ func (blockProp *Reactor) handleHaves(peer p2p.ID, haves *proptypes.HaveParts) {
 		bm.SetIndex(int(pmd.Index), true)
 	}
 
-	if parts.Original().IsComplete() {
+	select {
+	case <-blockProp.ctx.Done():
 		return
-	}
-
-	// Check if the sender has parts that we don't have.
-	hc := haves.BitArray(int(parts.Total()))
-	hc = hc.Sub(parts.BitArray())
-
-	if hc.IsEmpty() {
-		return
-	}
-
-	sent, err := blockProp.requester.sendRequest(p.peer, &proptypes.WantParts{
-		Parts:  hc,
-		Height: height,
-		Round:  round,
-	})
-	if err != nil {
-		blockProp.Logger.Error("failed to send want part", "peer", peer, "height", height, "round", round, "err", err)
-		return
-	}
-	if !sent {
-		blockProp.Logger.Error("failed to send want part", "peer", peer, "height", height, "round", round)
-		return
+	case blockProp.haveChan <- HaveWithFrom{HaveParts: haves, from: from}:
 	}
 
 	schema.WriteBlockPartState(
@@ -78,14 +58,14 @@ func (blockProp *Reactor) handleHaves(peer p2p.ID, haves *proptypes.HaveParts) {
 		round,
 		hc.GetTrueIndices(),
 		false,
-		string(peer),
+		string(from),
 		schema.Haves,
 	)
 
 	// keep track of the parts that this node has requested.
 	p.AddSentWants(height, round, hc)
 	p.AddReceivedHave(height, round, hc)
-	blockProp.broadcastHaves(haves, peer, int(parts.Total()))
+	blockProp.broadcastHaves(haves, from, int(parts.Total()))
 }
 
 // broadcastHaves gossips the provided have msg to all peers except to the

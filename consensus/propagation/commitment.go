@@ -156,6 +156,12 @@ func (blockProp *Reactor) handleCompactBlock(cb *proptypes.CompactBlock, peer p2
 
 	// check if we have any transactions that are in the compact block
 	go blockProp.recoverPartsFromMempool(cb)
+
+	select {
+	case <-blockProp.ctx.Done():
+		return
+	case blockProp.CommitmentChan <- cb:
+	}
 }
 
 // recoverPartsFromMempool queries the mempool to see if we can recover any block parts locally.
