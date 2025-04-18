@@ -53,7 +53,7 @@ func (blockProp *Reactor) ProposeBlock(proposal *types.Proposal, block *types.Pa
 	// distribute equal portions of haves to each of the proposer's peers
 	peers := blockProp.getPeers()
 	chunks := chunkParts(parts.BitArray(), len(peers), 1)
-	// chunks = Shuffle(chunks)
+	// chunks = shuffle(chunks)
 	for index, peer := range peers {
 		e := p2p.Envelope{
 			ChannelID: DataChannel,

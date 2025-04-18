@@ -17,7 +17,7 @@ import (
 
 func TestRequester_SendRequest(t *testing.T) {
 	logger := log.NewNopLogger()
-	r := newRequester(logger)
+	r := newPartFetcher(logger)
 
 	peer := mock.NewPeer(nil)
 
@@ -211,7 +211,7 @@ func TestReactorMaxConcurrentPerPartRequests(t *testing.T) {
 
 func TestExpiredRequest(t *testing.T) {
 	logger := log.NewNopLogger()
-	r := newRequester(logger)
+	r := newPartFetcher(logger)
 	peer1 := mock.NewPeer(nil)
 	peer2 := mock.NewPeer(nil)
 

@@ -52,7 +52,7 @@ type Reactor struct {
 	// and eventually remove it.
 	mempool Mempool
 
-	requester *requester
+	requester *partFetcher
 
 	mtx         *sync.RWMutex
 	traceClient trace.Tracer
@@ -85,7 +85,7 @@ func NewReactor(self p2p.ID, tracer trace.Tracer, store *store.BlockStore, mempo
 	for _, option := range options {
 		option(reactor)
 	}
-	reactor.requester = newRequester(reactor.Logger)
+	reactor.requester = newPartFetcher(reactor.Logger)
 
 	// start the catchup routine
 	go func() {
