@@ -69,27 +69,31 @@ func (rm *RequestManager) Start() {
 	go rm.expireWants()
 	tickerDuration := 6 * time.Second
 	ticker := time.NewTicker(tickerDuration)
+	rm.logger.Info("starting request manager")
 	for {
+		rm.logger.Info("starting request manager loop")
 		select {
 		case <-rm.ctx.Done():
 			// TODO refactor all the cases into methods
 			return
-		case <-ticker.C:
-			// This case should help advance the propagation in the following case:
-			// - We receive haves for some parts
-			// - The peer that sent us the haves is almost saturated with requests
-			// - We request some wants, but the remaining are not requested
-			// - no other peer send us haves for those parts, and we don't advance to a new height
-			// due to multiple rounds of consensus.
-			// Note: the ticker is reset with every received have to avoid triggering it
-			// unnecessarily.
-			// TODO think more about this case
+		//case <-ticker.C:
+		// This case should help advance the propagation in the following case:
+		// - We receive haves for some parts
+		// - The peer that sent us the haves is almost saturated with requests
+		// - We request some wants, but the remaining are not requested
+		// - no other peer send us haves for those parts, and we don't advance to a new height
+		// due to multiple rounds of consensus.
+		// Note: the ticker is reset with every received have to avoid triggering it
+		// unnecessarily.
+		// TODO think more about this case
 		case expiredWant, has := <-rm.expiredWantChan:
+			rm.logger.Info("received expired want", "want", expiredWant)
 			if !has {
 				return
 			}
 			rm.handleExpiredWant(expiredWant)
 		case have, has := <-rm.haveChan:
+			rm.logger.Info("received have", "have", have)
 			if !has {
 				return
 			}
@@ -98,6 +102,7 @@ func (rm *RequestManager) Start() {
 				ticker.Reset(tickerDuration)
 			}
 		case compactBlock, has := <-rm.CommitmentChan:
+			rm.logger.Info("received commitment", "commitment", compactBlock)
 			if !has {
 				return
 			}

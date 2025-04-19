@@ -20,6 +20,7 @@ var _ Propagator = (*Reactor)(nil)
 // ProposeBlock is called when the consensus routine has created a new proposal,
 // and it needs to be gossiped to the rest of the network.
 func (blockProp *Reactor) ProposeBlock(proposal *types.Proposal, block *types.PartSet, txs []proptypes.TxMetaData) {
+	blockProp.Logger.Info("proposing block", "height", proposal.Height, "round", proposal.Round)
 	// create the parity data and the compact block
 	parityBlock, lastLen, err := types.Encode(block, types.BlockPartSizeBytes)
 	if err != nil {

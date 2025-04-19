@@ -223,11 +223,14 @@ func (blockProp *Reactor) ReceiveEnvelope(e p2p.Envelope) {
 	case DataChannel:
 		switch msg := msg.(type) {
 		case *proptypes.CompactBlock:
+			blockProp.Logger.Info("received compact block", "msg", msg, "peer", e.Src)
 			blockProp.handleCompactBlock(msg, e.Src.ID(), false)
 			schema.WriteProposal(blockProp.traceClient, msg.Proposal.Height, msg.Proposal.Round, string(e.Src.ID()), schema.Download)
 		case *proptypes.HaveParts:
+			blockProp.Logger.Info("received have parts", "msg", msg, "peer", e.Src)
 			blockProp.handleHaves(e.Src.ID(), msg)
 		case *proptypes.RecoveryPart:
+			blockProp.Logger.Info("received recovery part", "height", msg.Height, "round", msg.Round, "peer", e.Src)
 			blockProp.handleRecoveryPart(e.Src.ID(), msg)
 		default:
 			blockProp.Logger.Error(fmt.Sprintf("Unknown message type %v", reflect.TypeOf(msg)))
@@ -235,6 +238,7 @@ func (blockProp *Reactor) ReceiveEnvelope(e p2p.Envelope) {
 	case WantChannel:
 		switch msg := msg.(type) {
 		case *proptypes.WantParts:
+			blockProp.Logger.Info("received want parts", "msg", msg, "peer", e.Src)
 			blockProp.handleWants(e.Src.ID(), msg)
 		}
 	default:
