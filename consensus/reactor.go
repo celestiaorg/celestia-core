@@ -132,7 +132,7 @@ func (conR *Reactor) SwitchToConsensus(state sm.State, skipWAL bool) {
 		// NOTE: The line below causes broadcastNewRoundStepRoutine() to broadcast a
 		// NewRoundStepMessage.
 		conR.conS.updateToState(state)
-		conR.propagator.SetConsensusHeight(height)
+		conR.propagator.SetConsensusHeight(state.LastBlockHeight)
 	}()
 
 	conR.mtx.Lock()
