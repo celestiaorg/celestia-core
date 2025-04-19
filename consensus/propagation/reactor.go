@@ -3,12 +3,13 @@ package propagation
 import (
 	"context"
 	"fmt"
-	"github.com/tendermint/tendermint/libs/log"
-	"github.com/tendermint/tendermint/p2p/conn"
-	"github.com/tendermint/tendermint/types"
 	"reflect"
 	"sync"
 	"sync/atomic"
+
+	"github.com/tendermint/tendermint/libs/log"
+	"github.com/tendermint/tendermint/p2p/conn"
+	"github.com/tendermint/tendermint/types"
 
 	"github.com/tendermint/tendermint/store"
 

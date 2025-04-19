@@ -3,6 +3,8 @@ package propagation
 import (
 	"context"
 	"fmt"
+	"time"
+
 	"github.com/tendermint/tendermint/consensus/propagation/types"
 	"github.com/tendermint/tendermint/libs/bits"
 	"github.com/tendermint/tendermint/libs/log"
@@ -10,7 +12,6 @@ import (
 	"github.com/tendermint/tendermint/p2p"
 	"github.com/tendermint/tendermint/pkg/trace"
 	"github.com/tendermint/tendermint/pkg/trace/schema"
-	"time"
 )
 
 type PeersGetterFunc func(context.Context) ([]*PeerState, error)
