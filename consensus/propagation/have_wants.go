@@ -52,19 +52,6 @@ func (blockProp *Reactor) handleHaves(from p2p.ID, haves *proptypes.HaveParts) {
 	case blockProp.haveChan <- HaveWithFrom{HaveParts: haves, from: from}:
 	}
 
-	schema.WriteBlockPartState(
-		blockProp.traceClient,
-		height,
-		round,
-		hc.GetTrueIndices(),
-		false,
-		string(from),
-		schema.Haves,
-	)
-
-	// keep track of the parts that this node has requested.
-	p.AddSentWants(height, round, hc)
-	p.AddReceivedHave(height, round, hc)
 	blockProp.broadcastHaves(haves, from, int(parts.Total()))
 }
 
@@ -76,6 +63,7 @@ func (blockProp *Reactor) broadcastHaves(haves *proptypes.HaveParts, from p2p.ID
 		if peer.peer.ID() == from {
 			continue
 		}
+		// only send haves we never sent before.
 		sentHaves, has := peer.GetSentHaves(haves.Height, haves.Round)
 		if !has {
 			blockProp.Logger.Error("couldn't find sent haves for peer", "peer", peer)
@@ -236,12 +224,6 @@ func (blockProp *Reactor) handleRecoveryPart(peer p2p.ID, part *proptypes.Recove
 			return
 		}
 		proof = part.Proof
-	}
-
-	err := blockProp.requester.receivedResponse(p.peer, part)
-	if err != nil {
-		blockProp.Logger.Error("failed to update requester state", "peer", p.peer, "height", part.Height, "round", part.Round, "part", part.Index, "err", err)
-		// no need to return at this level, we can continue processing the part.
 	}
 
 	// TODO: to verify, compare the hash with that of the have that was sent for

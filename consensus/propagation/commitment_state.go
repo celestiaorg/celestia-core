@@ -212,14 +212,6 @@ func (p *ProposalCache) DeleteRound(height int64, round int32) {
 	}
 }
 
-func (p *ProposalCache) SetConsensusRound(height int64, round int32) {
-	p.pmtx.Lock()
-	defer p.pmtx.Unlock()
-	p.consensusRound = round
-	// todo: delete the old round data as its no longer relevant don't delete
-	// past round data if it has a POL
-}
-
 // prune deletes all cached compact blocks for heights less than the provided
 // height and round.
 //

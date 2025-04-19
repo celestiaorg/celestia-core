@@ -196,6 +196,7 @@ func NewState(
 	}
 
 	cs.updateToState(state)
+	cs.propagator.SetConsensusHeight(state.LastBlockHeight)
 
 	// NOTE: we do not call scheduleRound0 yet, we do that upon Start()
 
@@ -1779,6 +1780,7 @@ func (cs *State) finalizeCommit(height int64) {
 
 	// NewHeightStep!
 	cs.updateToState(stateCopy)
+	cs.propagator.SetConsensusHeight(height)
 
 	fail.Fail() // XXX
 

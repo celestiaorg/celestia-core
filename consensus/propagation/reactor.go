@@ -50,7 +50,7 @@ type Reactor struct {
 	// and eventually remove it.
 	mempool Mempool
 
-	requester      *partFetcher
+	requestManager *RequestManager
 	haveChan       chan<- HaveWithFrom
 	CommitmentChan chan<- *proptypes.CompactBlock
 
@@ -68,12 +68,14 @@ func NewReactor(self p2p.ID, tracer trace.Tracer, store *store.BlockStore, mempo
 		tracer = trace.NoOpTracer()
 	}
 	ctx, cancel := context.WithCancel(context.Background())
+	peerState := make(map[p2p.ID]*PeerState)
+	proposalCache := NewProposalCache(store)
 	reactor := &Reactor{
 		self:              self,
 		traceClient:       tracer,
-		peerstate:         make(map[p2p.ID]*PeerState),
+		peerstate:         peerState,
 		mtx:               &sync.RWMutex{},
-		ProposalCache:     NewProposalCache(store),
+		ProposalCache:     proposalCache,
 		mempool:           mempool,
 		started:           atomic.Bool{},
 		proposalValidator: func(proposal *types.Proposal) error { return nil },
@@ -85,7 +87,12 @@ func NewReactor(self p2p.ID, tracer trace.Tracer, store *store.BlockStore, mempo
 	for _, option := range options {
 		option(reactor)
 	}
-	reactor.requester = newPartFetcher(reactor.Logger)
+	haveChan := make(chan HaveWithFrom, 1000)
+	commitmentChan := make(chan *proptypes.CompactBlock, 1000)
+	requestManager := NewRequestsManager(ctx, tracer, peerState, proposalCache, haveChan, commitmentChan)
+	reactor.requestManager = requestManager
+	reactor.haveChan = haveChan
+	reactor.CommitmentChan = commitmentChan
 
 	return reactor
 }
@@ -99,6 +106,7 @@ func (blockProp *Reactor) SetProposalValidator(validator validateProposalFunc) {
 
 func (blockProp *Reactor) SetLogger(logger log.Logger) {
 	blockProp.Logger = logger
+	blockProp.requestManager.logger = logger
 }
 
 func (blockProp *Reactor) OnStart() error {
@@ -108,6 +116,25 @@ func (blockProp *Reactor) OnStart() error {
 
 func (blockProp *Reactor) OnStop() {
 	blockProp.cancel()
+}
+
+func (blockProp *Reactor) SetConsensusRound(height int64, round int32) {
+	blockProp.pmtx.Lock()
+	defer blockProp.pmtx.Unlock()
+	blockProp.consensusRound = round
+	blockProp.requestManager.setHeight(height)
+	blockProp.requestManager.setRound(round)
+	// todo: delete the old round data as its no longer relevant don't delete
+	// past round data if it has a POL
+}
+
+func (blockProp *Reactor) SetConsensusHeight(height int64) {
+	blockProp.mtx.Lock()
+	defer blockProp.mtx.Unlock()
+	blockProp.consensusHeight = height
+	blockProp.requestManager.setHeight(height)
+	// todo: delete the old round data as its no longer relevant don't delete
+	// past round data if it has a POL
 }
 
 func (blockProp *Reactor) GetChannels() []*conn.ChannelDescriptor {
@@ -247,6 +274,7 @@ func (blockProp *Reactor) Prune(committedHeight int64) {
 
 func (blockProp *Reactor) StartProcessing() {
 	blockProp.started.Store(true)
+	blockProp.requestManager.Start()
 }
 
 // getPeer returns the peer state for the given peer. If the peer does not exist,

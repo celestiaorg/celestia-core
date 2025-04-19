@@ -8,6 +8,8 @@ import (
 	"github.com/tendermint/tendermint/libs/log"
 	"github.com/tendermint/tendermint/libs/sync"
 	"github.com/tendermint/tendermint/p2p"
+	"github.com/tendermint/tendermint/pkg/trace"
+	"github.com/tendermint/tendermint/pkg/trace/schema"
 	"time"
 )
 
@@ -38,9 +40,10 @@ type RequestManager struct {
 	round           int32
 	sentWants       map[p2p.ID][]*sentWant
 	fetcher         *partFetcher
+	traceClient     trace.Tracer
 }
 
-func NewRequestsManager(ctx context.Context, peerState map[p2p.ID]*PeerState, proposalCache *ProposalCache, haveChan <-chan HaveWithFrom, compactBlockChan <-chan *types.CompactBlock) *RequestManager {
+func NewRequestsManager(ctx context.Context, tracer trace.Tracer, peerState map[p2p.ID]*PeerState, proposalCache *ProposalCache, haveChan <-chan HaveWithFrom, compactBlockChan <-chan *types.CompactBlock) *RequestManager {
 	return &RequestManager{
 		ctx:             ctx,
 		mtx:             sync.RWMutex{},
@@ -52,6 +55,7 @@ func NewRequestsManager(ctx context.Context, peerState map[p2p.ID]*PeerState, pr
 		sentWants:       make(map[p2p.ID][]*sentWant),
 		expiredWantChan: make(chan *sentWant, 100),
 		fetcher:         newPartFetcher(log.NewNopLogger()),
+		traceClient:     tracer,
 	}
 }
 
@@ -61,6 +65,7 @@ func (rm *RequestManager) WithLogger(logger log.Logger) {
 }
 
 func (rm *RequestManager) Start() {
+	go rm.expireWants()
 	tickerDuration := 6 * time.Second
 	ticker := time.NewTicker(tickerDuration)
 	for {
@@ -226,7 +231,8 @@ func (rm *RequestManager) handleHave(have *HaveWithFrom) (wantSent bool) {
 		// we have all the parts that this peer has
 		return
 	}
-	to := rm.peerState[have.from].peer
+	peer := rm.peerState[have.from]
+	to := peer.peer
 	want := types.WantParts{
 		Parts:  hc,
 		Height: have.Height,
@@ -245,6 +251,20 @@ func (rm *RequestManager) handleHave(have *HaveWithFrom) (wantSent bool) {
 		timestamp: time.Now(),
 		to:        have.from,
 	})
+
+	schema.WriteBlockPartState(
+		rm.traceClient,
+		height,
+		round,
+		sent.GetTrueIndices(),
+		false,
+		string(have.from),
+		schema.Haves,
+	)
+
+	// keep track of the parts that this node has requested.
+	peer.AddSentWants(height, round, sent)
+	peer.AddReceivedHave(height, round, hc)
 	return true
 }
 
@@ -331,4 +351,18 @@ func (rm *RequestManager) requestUsingHaves(peer *PeerState, height int64, round
 	})
 	// TODO udpate also the peerstate.AddSentWants, and AddReceivedHaves
 	return missing
+}
+
+func (rm *RequestManager) setHeight(height int64) {
+	rm.mtx.Lock()
+	defer rm.mtx.Unlock()
+	rm.height = height
+	// TODO prune previous height/round
+}
+
+func (rm *RequestManager) setRound(round int32) {
+	rm.mtx.Lock()
+	defer rm.mtx.Unlock()
+	rm.round = round
+	// TODO prune previous height/round
 }

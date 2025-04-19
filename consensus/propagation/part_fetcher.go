@@ -75,11 +75,6 @@ func (r *partFetcher) sendRequest(targetPeer p2p.Peer, want *proptypes.WantParts
 			toRequest.SetIndex(indice, true)
 			continue
 		}
-		// TODO do this in the request manager
-		if perPartCount == -1 {
-			// part already received, no need to re-request it
-			continue
-		}
 		if perPartCount == maxRequestsPerPart {
 			toPostpone.SetIndex(indice, true)
 			continue
