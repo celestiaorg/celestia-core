@@ -36,6 +36,11 @@ const (
 	WantChannel = byte(0x51)
 )
 
+var (
+	// todo: avoid endin up in programmer hell by not using a global var
+	RetryTime = 6 * time.Second
+)
+
 type validateProposalFunc func(proposal *types.Proposal) error
 
 type Reactor struct {
@@ -87,7 +92,7 @@ func NewReactor(self p2p.ID, tracer trace.Tracer, store *store.BlockStore, mempo
 	// start the catchup routine
 	go func() {
 		// TODO dynamically set the ticker depending on how many blocks are missing
-		ticker := time.NewTicker(2 * time.Second)
+		ticker := time.NewTicker(RetryTime)
 		for {
 			select {
 			case <-reactor.ctx.Done():
