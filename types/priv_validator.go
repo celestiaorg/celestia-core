@@ -17,6 +17,7 @@ type PrivValidator interface {
 
 	SignVote(chainID string, vote *cmtproto.Vote) error
 	SignProposal(chainID string, proposal *cmtproto.Proposal) error
+	SignP2PMessage(chainID, uID string, hash []byte) error
 }
 
 type PrivValidatorsByAddress []PrivValidator
