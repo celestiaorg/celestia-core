@@ -7,6 +7,7 @@ import (
 
 	"github.com/tendermint/tendermint/crypto"
 	"github.com/tendermint/tendermint/crypto/ed25519"
+	cmtbytes "github.com/tendermint/tendermint/libs/bytes"
 	cmtproto "github.com/tendermint/tendermint/proto/tendermint/types"
 )
 
@@ -17,7 +18,7 @@ type PrivValidator interface {
 
 	SignVote(chainID string, vote *cmtproto.Vote) error
 	SignProposal(chainID string, proposal *cmtproto.Proposal) error
-	SignP2PMessage(chainID, uID string, hash []byte) error
+	SignP2PMessage(chainID, uID string, hash cmtbytes.HexBytes) ([]byte, error)
 }
 
 type PrivValidatorsByAddress []PrivValidator
@@ -41,6 +42,10 @@ func (pvs PrivValidatorsByAddress) Less(i, j int) bool {
 
 func (pvs PrivValidatorsByAddress) Swap(i, j int) {
 	pvs[i], pvs[j] = pvs[j], pvs[i]
+}
+
+func P2PMessageSignBytes(chainID, uID string, hash cmtbytes.HexBytes) []byte {
+	return []byte(chainID + uID + hash.String())
 }
 
 //----------------------------------------
@@ -102,6 +107,15 @@ func (pv MockPV) SignProposal(chainID string, proposal *cmtproto.Proposal) error
 	return nil
 }
 
+func (pv MockPV) SignP2PMessage(chainID, uID string, hash cmtbytes.HexBytes) ([]byte, error) {
+	useChainID := chainID
+	if pv.breakProposalSigning {
+		useChainID = "incorrect-chain-id"
+	}
+
+	return pv.PrivKey.Sign(P2PMessageSignBytes(useChainID, uID, hash))
+}
+
 func (pv MockPV) ExtractIntoValidator(votingPower int64) *Validator {
 	pubKey, _ := pv.GetPubKey()
 	return &Validator{
@@ -137,6 +151,10 @@ func (pv *ErroringMockPV) SignVote(chainID string, vote *cmtproto.Vote) error {
 // Implements PrivValidator.
 func (pv *ErroringMockPV) SignProposal(chainID string, proposal *cmtproto.Proposal) error {
 	return ErroringMockPVErr
+}
+
+func (pv *ErroringMockPV) SignP2PMessage(chainID, uID string, hash cmtbytes.HexBytes) ([]byte, error) {
+	return nil, ErroringMockPVErr
 }
 
 // NewErroringMockPV returns a MockPV that fails on each signing request. Again, for testing only.

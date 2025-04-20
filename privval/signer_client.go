@@ -6,6 +6,7 @@ import (
 
 	"github.com/tendermint/tendermint/crypto"
 	cryptoenc "github.com/tendermint/tendermint/crypto/encoding"
+	cmtbytes "github.com/tendermint/tendermint/libs/bytes"
 	privvalproto "github.com/tendermint/tendermint/proto/tendermint/privval"
 	cmtproto "github.com/tendermint/tendermint/proto/tendermint/types"
 	"github.com/tendermint/tendermint/types"
@@ -130,4 +131,23 @@ func (sc *SignerClient) SignProposal(chainID string, proposal *cmtproto.Proposal
 	*proposal = resp.Proposal
 
 	return nil
+}
+
+func (sc *SignerClient) SignP2PMessage(chainID, uID string, hash cmtbytes.HexBytes) ([]byte, error) {
+	response, err := sc.endpoint.SendRequest(mustWrapMsg(
+		&privvalproto.SignedP2PMessageRequest{Hash: hash.Bytes(), ChainId: chainID, UniqueId: uID},
+	))
+	if err != nil {
+		return nil, err
+	}
+
+	resp := response.GetSignedP2PMessageResponse()
+	if resp == nil {
+		return nil, ErrUnexpectedResponse
+	}
+	if resp.Error != nil {
+		return nil, &RemoteSignerError{Code: int(resp.Error.Code), Description: resp.Error.Description}
+	}
+
+	return resp.Signature, err
 }

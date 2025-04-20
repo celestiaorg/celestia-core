@@ -266,6 +266,14 @@ func (pv *FilePV) SignProposal(chainID string, proposal *cmtproto.Proposal) erro
 	return nil
 }
 
+func (pv *FilePV) SignP2PMessage(chainID, uID string, hash cmtbytes.HexBytes) ([]byte, error) {
+	sig, err := pv.signP2PMessage(chainID, uID, hash)
+	if err != nil {
+		return nil, fmt.Errorf("error signing p2p message: %v", err)
+	}
+	return sig, err
+}
+
 // Save persists the FilePV to disk.
 func (pv *FilePV) Save() {
 	pv.Key.Save()
@@ -379,6 +387,14 @@ func (pv *FilePV) signProposal(chainID string, proposal *cmtproto.Proposal) erro
 	pv.saveSigned(height, round, step, signBytes, sig)
 	proposal.Signature = sig
 	return nil
+}
+
+func P2PMessageSignBytes(chainID, uID string, hash cmtbytes.HexBytes) []byte {
+	return []byte(chainID + uID + hash.String())
+}
+
+func (pv *FilePV) signP2PMessage(chainID, uID string, hash cmtbytes.HexBytes) ([]byte, error) {
+	return pv.Key.PrivKey.Sign(P2PMessageSignBytes(chainID, uID, hash))
 }
 
 // Persist height/round/step and signature
