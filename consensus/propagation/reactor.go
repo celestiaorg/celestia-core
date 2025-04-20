@@ -221,7 +221,7 @@ func (blockProp *Reactor) ReceiveEnvelope(e p2p.Envelope) {
 	case DataChannel:
 		switch msg := msg.(type) {
 		case *proptypes.CompactBlock:
-			blockProp.Logger.Info("received compact block", "msg", msg, "peer", e.Src)
+			blockProp.Logger.Info("received compact block", "height", msg.Proposal.Height, "round", msg.Proposal.Round, "peer", e.Src)
 			blockProp.handleCompactBlock(msg, e.Src.ID(), false)
 			schema.WriteProposal(blockProp.traceClient, msg.Proposal.Height, msg.Proposal.Round, string(e.Src.ID()), schema.Download)
 		case *proptypes.HaveParts:
