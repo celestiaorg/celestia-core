@@ -27,14 +27,12 @@ type HaveWithFrom struct {
 	from p2p.ID
 }
 
-type peerState map[p2p.ID]*PeerState
-
 // TODO set the latest height/round in sync data
 type RequestManager struct {
 	ctx       context.Context
 	mtx       sync.RWMutex
 	logger    log.Logger
-	peerState *peerState
+	peerState map[p2p.ID]*PeerState
 	*ProposalCache
 	haveChan        <-chan HaveWithFrom
 	CommitmentChan  <-chan *types.CompactBlock
@@ -46,7 +44,14 @@ type RequestManager struct {
 	traceClient     trace.Tracer
 }
 
-func NewRequestsManager(ctx context.Context, tracer trace.Tracer, peerState *peerState, proposalCache *ProposalCache, haveChan <-chan HaveWithFrom, compactBlockChan <-chan *types.CompactBlock) *RequestManager {
+func NewRequestsManager(
+	ctx context.Context,
+	tracer trace.Tracer,
+	peerState map[p2p.ID]*PeerState,
+	proposalCache *ProposalCache,
+	haveChan <-chan HaveWithFrom,
+	compactBlockChan <-chan *types.CompactBlock,
+) *RequestManager {
 	return &RequestManager{
 		ctx:             ctx,
 		mtx:             sync.RWMutex{},
@@ -121,8 +126,8 @@ func (rm *RequestManager) Stop() {
 func (rm *RequestManager) getPeers() []*PeerState {
 	rm.mtx.RLock()
 	defer rm.mtx.RUnlock()
-	peers := make([]*PeerState, 0, len(*rm.peerState))
-	for _, peer := range *rm.peerState {
+	peers := make([]*PeerState, 0, len(rm.peerState))
+	for _, peer := range rm.peerState {
 		peers = append(peers, peer)
 	}
 	return peers
@@ -239,7 +244,7 @@ func (rm *RequestManager) handleHave(have *HaveWithFrom) (wantSent bool) {
 		// we have all the parts that this peer has
 		return
 	}
-	peer := (*rm.peerState)[have.from]
+	peer := rm.peerState[have.from]
 	to := peer.peer
 	want := types.WantParts{
 		Parts:  hc,

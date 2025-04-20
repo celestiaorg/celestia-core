@@ -69,14 +69,12 @@ func NewReactor(self p2p.ID, tracer trace.Tracer, store *store.BlockStore, mempo
 		tracer = trace.NoOpTracer()
 	}
 	ctx, cancel := context.WithCancel(context.Background())
-	ps := make(map[p2p.ID]*PeerState)
-	proposalCache := NewProposalCache(store)
 	reactor := &Reactor{
 		self:              self,
 		traceClient:       tracer,
-		peerstate:         ps,
+		peerstate:         make(map[p2p.ID]*PeerState),
 		mtx:               &sync.RWMutex{},
-		ProposalCache:     proposalCache,
+		ProposalCache:     NewProposalCache(store),
 		mempool:           mempool,
 		started:           atomic.Bool{},
 		proposalValidator: func(proposal *types.Proposal) error { return nil },
@@ -90,7 +88,7 @@ func NewReactor(self p2p.ID, tracer trace.Tracer, store *store.BlockStore, mempo
 	}
 	haveChan := make(chan HaveWithFrom, 1000)
 	commitmentChan := make(chan *proptypes.CompactBlock, 1000)
-	requestManager := NewRequestsManager(ctx, tracer, (*peerState)(&ps), proposalCache, haveChan, commitmentChan)
+	requestManager := NewRequestsManager(ctx, tracer, reactor.peerstate, reactor.ProposalCache, haveChan, commitmentChan)
 	reactor.requestManager = requestManager
 	reactor.haveChan = haveChan
 	reactor.CommitmentChan = commitmentChan
