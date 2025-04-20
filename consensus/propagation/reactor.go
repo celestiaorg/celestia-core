@@ -69,12 +69,12 @@ func NewReactor(self p2p.ID, tracer trace.Tracer, store *store.BlockStore, mempo
 		tracer = trace.NoOpTracer()
 	}
 	ctx, cancel := context.WithCancel(context.Background())
-	peerState := make(map[p2p.ID]*PeerState)
+	ps := make(map[p2p.ID]*PeerState)
 	proposalCache := NewProposalCache(store)
 	reactor := &Reactor{
 		self:              self,
 		traceClient:       tracer,
-		peerstate:         peerState,
+		peerstate:         ps,
 		mtx:               &sync.RWMutex{},
 		ProposalCache:     proposalCache,
 		mempool:           mempool,
@@ -90,7 +90,7 @@ func NewReactor(self p2p.ID, tracer trace.Tracer, store *store.BlockStore, mempo
 	}
 	haveChan := make(chan HaveWithFrom, 1000)
 	commitmentChan := make(chan *proptypes.CompactBlock, 1000)
-	requestManager := NewRequestsManager(ctx, tracer, peerState, proposalCache, haveChan, commitmentChan)
+	requestManager := NewRequestsManager(ctx, tracer, (*peerState)(&ps), proposalCache, haveChan, commitmentChan)
 	reactor.requestManager = requestManager
 	reactor.haveChan = haveChan
 	reactor.CommitmentChan = commitmentChan
@@ -279,7 +279,7 @@ func (blockProp *Reactor) Prune(committedHeight int64) {
 
 func (blockProp *Reactor) StartProcessing() {
 	blockProp.started.Store(true)
-	blockProp.requestManager.Start()
+	go blockProp.requestManager.Start()
 }
 
 // getPeer returns the peer state for the given peer. If the peer does not exist,

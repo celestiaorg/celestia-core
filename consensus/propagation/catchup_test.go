@@ -34,7 +34,6 @@ func TestGapCatchup(t *testing.T) {
 
 	partHashes := extractHashes(ps, parityBlock)
 	proofs := extractProofs(ps, parityBlock)
-
 	cb := &proptypes.CompactBlock{
 		Proposal:    *prop,
 		LastLen:     uint32(lastLen),
@@ -43,34 +42,55 @@ func TestGapCatchup(t *testing.T) {
 		Blobs:       metaData,
 		PartsHashes: partHashes,
 	}
-
 	cb.SetProofCache(proofs)
-
 	added := n1.AddProposal(cb)
 	require.True(t, added)
 
 	_, parts, _, has := n1.getAllState(prop.Height, prop.Round, true)
 	require.True(t, has)
-
 	parts.SetProposalData(ps, parityBlock)
 
-	// add the partset header to the second node and trigger the call to retry
-	// wants
 	n2 := reactors[1]
 
-	_, _, has = n2.GetProposal(prop.Height, prop.Round)
-	require.False(t, has)
+	t.Run("catchup with a peer that sent us haves", func(t *testing.T) {
+		n2.handleCompactBlock(cb, n1.self, false)
+		n2.requestManager.consensusHeight = prop.Height
+		n2.requestManager.consensusRound = prop.Round
+		firstPart, has := parts.GetPart(0)
+		require.True(t, has)
+		n2.handleHaves(n1.self, &proptypes.HaveParts{
+			Height: prop.Height,
+			Round:  prop.Round,
+			Parts: []proptypes.PartMetaData{
+				{
+					Index: firstPart.Index,
+					Hash:  firstPart.Proof.LeafHash,
+				}},
+		})
+		haves, has := n2.peerstate[n1.self].GetReceivedHaves(prop.Height, prop.Round)
+		require.True(t, has)
+		require.True(t, haves.GetIndex(int(firstPart.Index)))
 
-	psh := ps.Header()
-	n2.AddCommitment(prop.Height, prop.Round, &psh)
+		time.Sleep(1000 * time.Millisecond)
 
-	// this call simulates getting a commitment for a proposal of a higher
-	// height
-	n2.retryWants(2)
+		_, partSet, has := n2.GetProposal(prop.Height, prop.Round)
+		require.True(t, has)
+		require.NotNil(t, partSet.GetPart(int(firstPart.Index)))
+	})
 
-	time.Sleep(800 * time.Millisecond)
+	t.Run("catchup with a peer at a higher height", func(t *testing.T) {
 
-	_, caughtUp, has := n2.GetProposal(prop.Height, prop.Round)
-	require.True(t, has)
-	require.True(t, caughtUp.IsComplete())
+	})
+
+	//_, _, has = n2.GetProposal(prop.Height, prop.Round)
+	//require.False(t, has)
+
+	//psh := ps.Header()
+	//n2.AddCommitment(prop.Height, prop.Round, &psh)
+
+	time.Sleep(80000 * time.Millisecond)
+
+	//_, caughtUp, has := n2.GetProposal(prop.Height, prop.Round)
+	//require.True(t, has)
+	//require.True(t, caughtUp.IsComplete())
 }

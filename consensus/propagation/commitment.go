@@ -126,6 +126,8 @@ func chunkToPartMetaData(chunk *bits.BitArray, partSet *proptypes.CombinedPartSe
 func (blockProp *Reactor) handleCompactBlock(cb *proptypes.CompactBlock, peer p2p.ID, proposer bool) {
 	if !proposer {
 		// update the peer state to optimistically assume the peer is at this height
+		// TODO initialise the state when connecting to a peer
+		// and delete it when removing the peer
 		blockProp.getPeer(peer).SetLatestHeight(cb.Proposal.Height)
 		blockProp.getPeer(peer).SetLatestRound(cb.Proposal.Round)
 	}
