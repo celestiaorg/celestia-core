@@ -120,6 +120,7 @@ func (blockProp *Reactor) OnStop() {
 func (blockProp *Reactor) SetConsensusRound(height int64, round int32) {
 	blockProp.pmtx.Lock()
 	defer blockProp.pmtx.Unlock()
+	blockProp.Logger.Info("setting consensus round", "height", height, "round", round)
 	blockProp.consensusRound = round
 	blockProp.requestManager.setHeight(height)
 	blockProp.requestManager.setRound(round)
@@ -130,6 +131,7 @@ func (blockProp *Reactor) SetConsensusRound(height int64, round int32) {
 func (blockProp *Reactor) SetConsensusHeight(height int64) {
 	blockProp.mtx.Lock()
 	defer blockProp.mtx.Unlock()
+	blockProp.Logger.Info("setting consensus height", "height", height)
 	blockProp.consensusHeight = height
 	blockProp.requestManager.setHeight(height)
 	// todo: delete the old round data as its no longer relevant don't delete

@@ -22,7 +22,7 @@ func (blockProp *Reactor) handleHaves(from p2p.ID, haves *proptypes.HaveParts) {
 	if !blockProp.started.Load() {
 		return
 	}
-
+	blockProp.Logger.Info("handling haves")
 	height := haves.Height
 	round := haves.Round
 	p := blockProp.getPeer(from)
@@ -40,6 +40,7 @@ func (blockProp *Reactor) handleHaves(from p2p.ID, haves *proptypes.HaveParts) {
 
 	p.Initialize(height, round, int(parts.Total()))
 
+	blockProp.Logger.Info("updating received haves", "peer", from, "height", height, "round", round, "haves", haves, "partSet", parts)
 	// updating the state to keep track of all the haves this peer sent us
 	bm, _ := p.GetReceivedHaves(height, round)
 	for _, pmd := range haves.Parts {
@@ -60,6 +61,7 @@ func (blockProp *Reactor) handleHaves(from p2p.ID, haves *proptypes.HaveParts) {
 // first time.
 func (blockProp *Reactor) broadcastHaves(haves *proptypes.HaveParts, from p2p.ID, partSetSize int) {
 	for _, peer := range blockProp.getPeers() {
+		blockProp.Logger.Info("broadcasting haves", "peer", peer.peer.ID(), "from", from, "haves", haves)
 		if peer.peer.ID() == from {
 			continue
 		}
@@ -115,6 +117,7 @@ func (blockProp *Reactor) handleWants(peer p2p.ID, wants *proptypes.WantParts) {
 	if !blockProp.started.Load() {
 		return
 	}
+	blockProp.Logger.Info("handling wants", "peer", peer, "wants", wants)
 	height := wants.Height
 	round := wants.Round
 	p := blockProp.getPeer(peer)
@@ -143,6 +146,7 @@ func (blockProp *Reactor) handleWants(peer p2p.ID, wants *proptypes.WantParts) {
 	}
 
 	for _, partIndex := range canSend.GetTrueIndices() {
+		blockProp.Logger.Info("sending recovery parts", "peer", peer, "height", height, "round", round, "part", partIndex)
 		part, _ := parts.GetPart(uint32(partIndex))
 		partBz := make([]byte, len(part.Bytes))
 		copy(partBz, part.Bytes)
@@ -184,6 +188,7 @@ func (blockProp *Reactor) handleRecoveryPart(peer p2p.ID, part *proptypes.Recove
 	if peer == "" {
 		peer = blockProp.self
 	}
+	blockProp.Logger.Info("handling recovery part", "peer", peer, "height", part.Height, "round", part.Round, "part", part.Index)
 	p := blockProp.getPeer(peer)
 	if p == nil && peer != blockProp.self {
 		blockProp.Logger.Error("peer not found", "peer", peer)

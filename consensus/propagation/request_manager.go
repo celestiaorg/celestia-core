@@ -78,7 +78,7 @@ func (rm *RequestManager) Start() {
 	ticker := time.NewTicker(tickerDuration)
 	rm.logger.Info("starting request manager")
 	for {
-		rm.logger.Info("starting request manager loop")
+		rm.logger.Info("request loop")
 		select {
 		case <-rm.ctx.Done():
 			// TODO refactor all the cases into methods
@@ -109,7 +109,7 @@ func (rm *RequestManager) Start() {
 				ticker.Reset(tickerDuration)
 			}
 		case compactBlock, has := <-rm.CommitmentChan:
-			rm.logger.Info("received commitment", "commitment", compactBlock)
+			rm.logger.Info("received commitment", "height", compactBlock.Proposal.Height, "round", compactBlock.Proposal.Round)
 			if !has {
 				return
 			}
@@ -156,6 +156,7 @@ func (rm *RequestManager) expireWants() {
 							rm.logger.Error("failed to remove expired want", "peer", peerID, "index", index, "err", err)
 							continue
 						}
+						rm.logger.Info("removed expired want and sending it to expiredWantChan", "peer", peerID, "index", index)
 						rm.expiredWantChan <- want
 					}
 				}
@@ -185,22 +186,25 @@ func (rm *RequestManager) handleExpiredWant(expiredWant *sentWant) {
 	height, round := rm.height, rm.round
 	rm.mtx.RUnlock()
 	if expiredWant.Height != height || expiredWant.Round != round {
+		rm.logger.Info("received expired want for a different height/round", "want", expiredWant, "height", height, "round", round)
 		// this expired want is for a previous height/round, we can ignore it.
 		return
 	}
-	_, parts, _, has := rm.getAllState(expiredWant.Height, expiredWant.Round, false)
+	_, parts, _, has := rm.getAllState(expiredWant.Height, expiredWant.Round, true)
 	if !has {
 		// this shouldn't happen
 		rm.logger.Error("couldn't find state for proposal", "height", expiredWant.Height, "round", expiredWant.Round)
 		return
 	}
 	if parts.IsComplete() {
+		rm.logger.Info("complete parts for expired want", "want", expiredWant, "height", height, "round", round)
 		return
 	}
 	missing := parts.MissingOriginal()
 	notMissed := missing.Not()
 	toRequest := expiredWant.Parts.Sub(notMissed)
 	for !toRequest.IsEmpty() {
+		rm.logger.Info("looping when handling expired want", "want", expiredWant, "toRequest", toRequest)
 		peers := shuffle(rm.getPeers())
 		to := peers[0].peer
 		pendingWant := types.WantParts{
@@ -228,10 +232,11 @@ func (rm *RequestManager) handleHave(have *HaveWithFrom) (wantSent bool) {
 	height, round := rm.height, rm.round
 	rm.mtx.RUnlock()
 	if have.Height != height || have.Round != round {
+		rm.logger.Info("received have for a different height/round", "have", have, "height", height, "round", round)
 		// this shouldn't happen as we should only receive have parts for the current height and round
 		return
 	}
-	_, parts, _, has := rm.getAllState(height, round, false)
+	_, parts, _, has := rm.getAllState(height, round, true)
 	if !has {
 		// this shouldn't happen
 		rm.logger.Error("couldn't find state for proposal", "height", height, "round", round)
@@ -278,6 +283,7 @@ func (rm *RequestManager) handleHave(have *HaveWithFrom) (wantSent bool) {
 	// keep track of the parts that this node has requested.
 	peer.AddSentWants(height, round, sent)
 	peer.AddReceivedHave(height, round, hc)
+	rm.logger.Info("added sent wants and received haves", "want", want, "to", to.ID())
 	return true
 }
 
@@ -289,9 +295,10 @@ func (rm *RequestManager) handleCommitment(compactBlock *types.CompactBlock) {
 	rm.mtx.RUnlock()
 	if height == compactBlock.Proposal.Height && round == compactBlock.Proposal.Round {
 		// we're already at the new height/round, we can wait for haves.
+		rm.logger.Info("received commitment for the current height/round. ignoring", "height", height, "round", round)
 		return
 	}
-	_, parts, _, has := rm.getAllState(height, round, false)
+	_, parts, _, has := rm.getAllState(height, round, true)
 	if !has {
 		// this shouldn't happen
 		rm.logger.Error("couldn't find state for proposal", "height", height, "round", round)

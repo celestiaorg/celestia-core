@@ -12,7 +12,7 @@ import (
 type PeerState struct {
 	peer p2p.Peer
 
-	mtx *sync.RWMutex
+	mtx sync.RWMutex
 	// state organized the haves and wants for each data is indexed by height
 	// and round.
 	state map[int64]map[int32]*partState
@@ -28,7 +28,7 @@ type PeerState struct {
 // called for each peer.
 func newPeerState(peer p2p.Peer, logger log.Logger) *PeerState {
 	return &PeerState{
-		mtx:    &sync.RWMutex{},
+		mtx:    sync.RWMutex{},
 		state:  make(map[int64]map[int32]*partState),
 		peer:   peer,
 		logger: logger,

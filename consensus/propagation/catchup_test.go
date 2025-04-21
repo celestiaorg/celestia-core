@@ -54,8 +54,8 @@ func TestGapCatchup(t *testing.T) {
 
 	t.Run("catchup with a peer that sent us haves", func(t *testing.T) {
 		n2.handleCompactBlock(cb, n1.self, false)
-		n2.requestManager.consensusHeight = prop.Height
-		n2.requestManager.consensusRound = prop.Round
+		n2.requestManager.height = prop.Height
+		n2.requestManager.round = prop.Round
 		firstPart, has := parts.GetPart(0)
 		require.True(t, has)
 		n2.handleHaves(n1.self, &proptypes.HaveParts{
@@ -71,7 +71,7 @@ func TestGapCatchup(t *testing.T) {
 		require.True(t, has)
 		require.True(t, haves.GetIndex(int(firstPart.Index)))
 
-		time.Sleep(1000 * time.Millisecond)
+		time.Sleep(500 * time.Millisecond)
 
 		_, partSet, has := n2.GetProposal(prop.Height, prop.Round)
 		require.True(t, has)
@@ -88,7 +88,7 @@ func TestGapCatchup(t *testing.T) {
 	//psh := ps.Header()
 	//n2.AddCommitment(prop.Height, prop.Round, &psh)
 
-	time.Sleep(80000 * time.Millisecond)
+	//time.Sleep(80000 * time.Millisecond)
 
 	//_, caughtUp, has := n2.GetProposal(prop.Height, prop.Round)
 	//require.True(t, has)

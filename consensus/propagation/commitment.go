@@ -124,8 +124,10 @@ func chunkToPartMetaData(chunk *bits.BitArray, partSet *proptypes.CombinedPartSe
 // time a proposal is received from a peer or when a proposal is created. If the
 // proposal is new, it will be stored and broadcast to the relevant peers.
 func (blockProp *Reactor) handleCompactBlock(cb *proptypes.CompactBlock, peer p2p.ID, proposer bool) {
+	blockProp.Logger.Info("received proposal", "height", cb.Proposal.Height, "round", cb.Proposal.Round)
 	if !proposer {
 		// update the peer state to optimistically assume the peer is at this height
+		blockProp.Logger.Info("setting latest height and round for peer", "height", cb.Proposal.Height, "round", cb.Proposal.Round, "peer", peer, "proposer", proposer)
 		blockProp.getPeer(peer).SetLatestHeight(cb.Proposal.Height)
 		blockProp.getPeer(peer).SetLatestRound(cb.Proposal.Round)
 	}
@@ -264,6 +266,7 @@ func (blockProp *Reactor) broadcastCompactBlock(cb *proptypes.CompactBlock, from
 	peers := blockProp.getPeers()
 
 	for _, peer := range peers {
+		blockProp.Logger.Debug("broadcasting compact block", "peer", peer.peer.ID())
 		if peer.peer.ID() == from {
 			continue
 		}

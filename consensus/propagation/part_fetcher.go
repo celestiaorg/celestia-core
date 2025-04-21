@@ -17,10 +17,10 @@ import (
 
 const (
 	// concurrentPerPeerRequestLimit the maximum number of requests to send a peer.
-	concurrentPerPeerRequestLimit = 30
+	concurrentPerPeerRequestLimit = 3000
 
 	// maxRequestsPerPart the maximum number of requests per parts.
-	maxRequestsPerPart = 1
+	maxRequestsPerPart = 3
 
 	// maxRequestRetry the maximum number of times to try to send a request
 	maxRequestRetry = 3
@@ -55,6 +55,7 @@ func newPartFetcher(logger log.Logger) *partFetcher {
 func (r *partFetcher) sendRequest(targetPeer p2p.Peer, want *proptypes.WantParts) (*bits.BitArray, error) {
 	r.Lock()
 	defer r.Unlock()
+	r.logger.Info("sending request", "peer", targetPeer, "height", want.Height, "round", want.Round, "part_count", want.Parts.Size(), "prove", want.Prove)
 	// check per peer requests
 	perPeerRequestCount, has := r.perPeerRequests[targetPeer.ID()]
 	if !has {
@@ -62,6 +63,7 @@ func (r *partFetcher) sendRequest(targetPeer p2p.Peer, want *proptypes.WantParts
 		perPeerRequestCount = 0
 	}
 	if perPeerRequestCount == concurrentPerPeerRequestLimit {
+		r.logger.Info("concurrent request limit reached for peer", "peer", targetPeer, "count", perPeerRequestCount, "limit", concurrentPerPeerRequestLimit, "height", want.Height, "round", want.Round)
 		return nil, fmt.Errorf("concurrent request limit reached for peer %s", targetPeer.ID())
 	}
 	// check per part requests
@@ -93,6 +95,7 @@ func (r *partFetcher) sendRequest(targetPeer p2p.Peer, want *proptypes.WantParts
 				Prove:  want.Prove,
 			},
 		}
+		r.logger.Info("sending want part", "peer", targetPeer, "height", want.Height, "round", want.Round, "part_count", toRequest.Size())
 		if !p2p.TrySendEnvelopeShim(targetPeer, e, r.logger) { //nolint:staticcheck
 			r.logger.Error("failed to send want part. retrying", "peer", targetPeer, "height", want.Height, "round", want.Round)
 			err := r.retry(&e, targetPeer)
