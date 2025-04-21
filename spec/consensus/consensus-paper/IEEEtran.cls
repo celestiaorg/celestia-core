@@ -125,7 +125,7 @@
 %    margins will be the same and the text will be horizontally centered. 
 %    For final submission to IEEE, authors should use US letter (8.5 X 11in)
 %    paper. Note that authors should ensure that all post-processing 
-%    (ps, pdf, etc.) uses the same paper specificiation as the .tex document.
+%    (ps, pdf, etc.) uses the same paper specification as the .tex document.
 %    Problems here are by far the number one reason for incorrect margins.
 %    IEEEtran will automatically set the default paper size under pdflatex 
 %    (without requiring a change to pdftex.cfg), so this issue is more
