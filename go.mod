@@ -23,7 +23,7 @@ require (
 	github.com/gofrs/uuid v4.3.0+incompatible
 	github.com/gogo/protobuf v1.3.2
 	github.com/golang/mock v1.4.4
-	github.com/golang/protobuf v1.5.3
+	github.com/golang/protobuf v1.5.4
 	github.com/golangci/golangci-lint v1.50.1
 	github.com/google/orderedcode v0.0.1
 	github.com/google/uuid v1.3.1
@@ -54,7 +54,7 @@ require (
 	golang.org/x/net v0.26.0
 	gonum.org/v1/gonum v0.8.2
 	google.golang.org/grpc v1.59.0
-	google.golang.org/protobuf v1.31.0
+	google.golang.org/protobuf v1.33.0
 )
 
 require (
