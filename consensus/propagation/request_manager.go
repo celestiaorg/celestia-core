@@ -74,7 +74,7 @@ func (rm *RequestManager) WithLogger(logger log.Logger) {
 
 func (rm *RequestManager) Start() {
 	go rm.expireWants()
-	tickerDuration := 1 * time.Second
+	tickerDuration := 100 * time.Second
 	ticker := time.NewTicker(tickerDuration)
 	rm.logger.Info("starting request manager")
 	for {
@@ -93,8 +93,8 @@ func (rm *RequestManager) Start() {
 			// Note: the ticker is reset with every received have to avoid triggering it
 			// unnecessarily.
 			// TODO think more about this case
-			rm.logger.Info("ticker retry")
-			rm.handleCommitment()
+			//rm.logger.Info("ticker retry")
+			//rm.handleCommitment()
 		case expiredWant, has := <-rm.expiredWantChan:
 			rm.logger.Info("received expired want", "want", expiredWant)
 			if !has {
@@ -311,6 +311,7 @@ func (rm *RequestManager) handleCommitment() {
 		}
 		switch {
 		case peer.latestHeight > height || (peer.latestHeight == height && peer.latestRound > round):
+			rm.logger.Info("peer is at a higher height")
 			// this peer is at a higher height, we can request everything from them that we didn't request
 			want := types.WantParts{
 				Parts:  missing,
@@ -329,7 +330,8 @@ func (rm *RequestManager) handleCommitment() {
 				timestamp: time.Now(),
 				to:        peer.peer.ID(),
 			})
-		case peer.latestHeight == height || peer.latestRound == round:
+		case peer.latestHeight == height && peer.latestRound == round:
+			rm.logger.Info("peer is at the same height/round")
 			// this peer is at the same, we can request only the data they broadcasted available to them.
 			remaining := rm.requestUsingHaves(peer, height, round, missing)
 			missing = missing.Sub(remaining)

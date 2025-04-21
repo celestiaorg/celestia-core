@@ -127,12 +127,9 @@ func (blockProp *Reactor) handleCompactBlock(cb *proptypes.CompactBlock, peer p2
 	blockProp.Logger.Info("received proposal", "height", cb.Proposal.Height, "round", cb.Proposal.Round)
 	if !proposer {
 		// update the peer state to optimistically assume the peer is at this height
-		if blockProp.getPeer(peer) != nil {
-			// FIXME nil shouldn't happen!
-			blockProp.Logger.Info("setting latest height and round for peer", "height", cb.Proposal.Height, "round", cb.Proposal.Round, "peer", peer, "proposer", proposer)
-			blockProp.getPeer(peer).SetLatestHeight(cb.Proposal.Height)
-			blockProp.getPeer(peer).SetLatestRound(cb.Proposal.Round)
-		}
+		blockProp.Logger.Info("setting latest height and round for peer", "height", cb.Proposal.Height, "round", cb.Proposal.Round, "peer", peer, "proposer", proposer)
+		blockProp.getPeer(peer).SetLatestHeight(cb.Proposal.Height)
+		blockProp.getPeer(peer).SetLatestRound(cb.Proposal.Round)
 	}
 
 	err := blockProp.validateCompactBlock(cb)
@@ -163,12 +160,6 @@ func (blockProp *Reactor) handleCompactBlock(cb *proptypes.CompactBlock, peer p2
 
 	// check if we have any transactions that are in the compact block
 	go blockProp.recoverPartsFromMempool(cb)
-
-	select {
-	case <-blockProp.ctx.Done():
-		return
-	case blockProp.CommitmentChan <- cb:
-	}
 }
 
 // recoverPartsFromMempool queries the mempool to see if we can recover any block parts locally.

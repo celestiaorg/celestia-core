@@ -17,10 +17,10 @@ import (
 
 const (
 	// concurrentPerPeerRequestLimit the maximum number of requests to send a peer.
-	concurrentPerPeerRequestLimit = 3000
+	concurrentPerPeerRequestLimit = 300
 
 	// maxRequestsPerPart the maximum number of requests per parts.
-	maxRequestsPerPart = 3
+	maxRequestsPerPart = 1
 
 	// maxRequestRetry the maximum number of times to try to send a request
 	maxRequestRetry = 3

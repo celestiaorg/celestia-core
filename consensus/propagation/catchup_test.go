@@ -1,6 +1,7 @@
 package propagation
 
 import (
+	"github.com/tendermint/tendermint/libs/bits"
 	"testing"
 	"time"
 
@@ -12,23 +13,127 @@ import (
 	"github.com/tendermint/tendermint/types"
 )
 
-func TestGapCatchup(t *testing.T) {
-	p2pCfg := cfg.DefaultP2PConfig()
-	p2pCfg.SendRate = 100000000
-	p2pCfg.RecvRate = 100000000
+// TestSameHeightCatchup catchup with a peer that sent us haves and is still at the same height as us
+func TestSameHeightCatchup(t *testing.T) {
+	p2pCfg := defaultTestP2PConf()
 	nodes := 2
-
-	reactors, _ := createTestReactors(nodes, p2pCfg, false, "/home/evan/data/experiments/celestia/fast-recovery/debug")
+	reactors, _ := createTestReactors(nodes, p2pCfg, false, "./same-height-catchup")
+	r1, r2 := reactors[0], reactors[1]
 	cleanup, _, sm := state.SetupTestCase(t)
 	t.Cleanup(func() {
 		cleanup(t)
 	})
 
 	prop, ps, _, metaData := createTestProposal(sm, 1, 2, 1000000)
+	cb, parityBlock := createCompactBlock(t, prop, ps, metaData)
 
-	// set the commitment and the data on the first node so that it can respond
-	// to the catchup request
-	n1 := reactors[0]
+	// set reactor 1 state
+	added := r1.AddProposal(cb)
+	require.True(t, added)
+	_, parts, _, has := r1.getAllState(prop.Height, prop.Round, true)
+	require.True(t, has)
+	parts.SetProposalData(ps, parityBlock)
+
+	// set reactor 2 state
+	added = r2.AddProposal(cb)
+	require.True(t, added)
+	_, _, _, has = r2.getAllState(prop.Height, prop.Round, true)
+	require.True(t, has)
+
+	// set reactor 2 request manager to the current height and round
+	r2.requestManager.height = prop.Height
+	r2.requestManager.round = prop.Round
+
+	// set reactor 2 haves from reactor 1
+	firstPart, has := parts.GetPart(0)
+	require.True(t, has)
+	haves := bits.NewBitArray(int(parts.Total()))
+	haves.SetIndex(int(firstPart.Index), true)
+	r2.peerstate[r1.self].initialize(prop.Height, prop.Round, int(ps.Total()))
+	r2.peerstate[r1.self].state[prop.Height][prop.Round].receivedHaves = haves
+
+	// set the peer to a higher height
+	r2.peerstate[r1.self].latestHeight = 1
+
+	// create next height
+	prop2, ps2, _, metaData2 := createTestProposal(sm, 2, 2, 1000000)
+	cb2, _ := createCompactBlock(t, prop2, ps2, metaData2)
+	r2.AddCommitment(2, 0, &cb2.Proposal.BlockID.PartSetHeader)
+
+	time.Sleep(500 * time.Millisecond)
+
+	_, partSet, has := r2.GetProposal(prop.Height, prop.Round)
+	require.True(t, has)
+	require.NotNil(t, partSet.GetPart(int(firstPart.Index)))
+}
+
+// TestHigherHeightCatchup catchup with a peer that sent us haves while being on a higher height
+func TestHigherHeightCatchup(t *testing.T) {
+	p2pCfg := defaultTestP2PConf()
+	nodes := 2
+	reactors, _ := createTestReactors(nodes, p2pCfg, false, "./same-height-catchup")
+	r1, r2 := reactors[0], reactors[1]
+	cleanup, _, sm := state.SetupTestCase(t)
+	t.Cleanup(func() {
+		cleanup(t)
+	})
+
+	prop, ps, _, metaData := createTestProposal(sm, 1, 2, 1000000)
+	cb, parityBlock := createCompactBlock(t, prop, ps, metaData)
+
+	// set reactor 1 state
+	added := r1.AddProposal(cb)
+	require.True(t, added)
+	_, parts, _, has := r1.getAllState(prop.Height, prop.Round, true)
+	require.True(t, has)
+	parts.SetProposalData(ps, parityBlock)
+
+	// set reactor 2 state
+	added = r2.AddProposal(cb)
+	require.True(t, added)
+	_, _, _, has = r2.getAllState(prop.Height, prop.Round, true)
+	require.True(t, has)
+
+	// set reactor 2 request manager to the current height and round
+	r2.requestManager.height = prop.Height
+	r2.requestManager.round = prop.Round
+
+	// set reactor 2 haves from reactor 1
+	firstPart, has := parts.GetPart(0)
+	require.True(t, has)
+	haves := bits.NewBitArray(int(parts.Total()))
+	haves.SetIndex(int(firstPart.Index), true)
+	r2.peerstate[r1.self].initialize(prop.Height, prop.Round, int(ps.Total()))
+	r2.peerstate[r1.self].state[prop.Height][prop.Round].receivedHaves = haves
+
+	// set the peer to a higher height
+	r2.peerstate[r1.self].latestHeight = 2
+
+	// create next height
+	prop2, ps2, _, metaData2 := createTestProposal(sm, 2, 2, 1000000)
+	cb2, _ := createCompactBlock(t, prop2, ps2, metaData2)
+	r2.AddCommitment(2, 0, &cb2.Proposal.BlockID.PartSetHeader)
+
+	time.Sleep(500 * time.Millisecond)
+
+	_, partSet, has := r2.GetProposal(prop.Height, prop.Round)
+	require.True(t, has)
+	require.NotNil(t, partSet.GetPart(int(firstPart.Index)))
+}
+
+func defaultTestP2PConf() *cfg.P2PConfig {
+	p2pCfg := cfg.DefaultP2PConfig()
+	p2pCfg.SendRate = 100000000
+	p2pCfg.RecvRate = 100000000
+	return p2pCfg
+}
+
+func createCompactBlock(
+	t *testing.T,
+	prop *types.Proposal,
+	ps *types.PartSet,
+	metaData []proptypes.TxMetaData,
+) (*proptypes.CompactBlock, *types.PartSet) {
 	parityBlock, lastLen, err := types.Encode(ps, types.BlockPartSizeBytes)
 	require.NoError(t, err)
 
@@ -43,54 +148,5 @@ func TestGapCatchup(t *testing.T) {
 		PartsHashes: partHashes,
 	}
 	cb.SetProofCache(proofs)
-	added := n1.AddProposal(cb)
-	require.True(t, added)
-
-	_, parts, _, has := n1.getAllState(prop.Height, prop.Round, true)
-	require.True(t, has)
-	parts.SetProposalData(ps, parityBlock)
-
-	n2 := reactors[1]
-
-	t.Run("catchup with a peer that sent us haves", func(t *testing.T) {
-		n2.handleCompactBlock(cb, n1.self, false)
-		n2.requestManager.height = prop.Height
-		n2.requestManager.round = prop.Round
-		firstPart, has := parts.GetPart(0)
-		require.True(t, has)
-		n2.handleHaves(n1.self, &proptypes.HaveParts{
-			Height: prop.Height,
-			Round:  prop.Round,
-			Parts: []proptypes.PartMetaData{
-				{
-					Index: firstPart.Index,
-					Hash:  firstPart.Proof.LeafHash,
-				}},
-		})
-		haves, has := n2.peerstate[n1.self].GetReceivedHaves(prop.Height, prop.Round)
-		require.True(t, has)
-		require.True(t, haves.GetIndex(int(firstPart.Index)))
-
-		time.Sleep(500 * time.Millisecond)
-
-		_, partSet, has := n2.GetProposal(prop.Height, prop.Round)
-		require.True(t, has)
-		require.NotNil(t, partSet.GetPart(int(firstPart.Index)))
-	})
-
-	t.Run("catchup with a peer at a higher height", func(t *testing.T) {
-
-	})
-
-	//_, _, has = n2.GetProposal(prop.Height, prop.Round)
-	//require.False(t, has)
-
-	//psh := ps.Header()
-	//n2.AddCommitment(prop.Height, prop.Round, &psh)
-
-	//time.Sleep(80000 * time.Millisecond)
-
-	//_, caughtUp, has := n2.GetProposal(prop.Height, prop.Round)
-	//require.True(t, has)
-	//require.True(t, caughtUp.IsComplete())
+	return cb, parityBlock
 }
