@@ -74,7 +74,7 @@ func (rm *RequestManager) WithLogger(logger log.Logger) {
 
 func (rm *RequestManager) Start() {
 	go rm.expireWants()
-	tickerDuration := 6 * time.Second
+	tickerDuration := 1 * time.Second
 	ticker := time.NewTicker(tickerDuration)
 	rm.logger.Info("starting request manager")
 	for {
@@ -83,16 +83,18 @@ func (rm *RequestManager) Start() {
 		case <-rm.ctx.Done():
 			// TODO refactor all the cases into methods
 			return
-		//case <-ticker.C:
-		// This case should help advance the propagation in the following case:
-		// - We receive haves for some parts
-		// - The peer that sent us the haves is almost saturated with requests
-		// - We request some wants, but the remaining are not requested
-		// - no other peer send us haves for those parts, and we don't advance to a new height
-		// due to multiple rounds of consensus.
-		// Note: the ticker is reset with every received have to avoid triggering it
-		// unnecessarily.
-		// TODO think more about this case
+		case <-ticker.C:
+			// This case should help advance the propagation in the following case:
+			// - We receive haves for some parts
+			// - The peer that sent us the haves is almost saturated with requests
+			// - We request some wants, but the remaining are not requested
+			// - no other peer send us haves for those parts, and we don't advance to a new height
+			// due to multiple rounds of consensus.
+			// Note: the ticker is reset with every received have to avoid triggering it
+			// unnecessarily.
+			// TODO think more about this case
+			rm.logger.Info("ticker retry")
+			rm.handleCommitment()
 		case expiredWant, has := <-rm.expiredWantChan:
 			rm.logger.Info("received expired want", "want", expiredWant)
 			if !has {
@@ -113,7 +115,7 @@ func (rm *RequestManager) Start() {
 			if !has {
 				return
 			}
-			rm.handleCommitment(compactBlock)
+			rm.handleCommitment()
 		}
 	}
 }
@@ -287,17 +289,12 @@ func (rm *RequestManager) handleHave(have *HaveWithFrom) (wantSent bool) {
 	return true
 }
 
-func (rm *RequestManager) handleCommitment(compactBlock *types.CompactBlock) {
+func (rm *RequestManager) handleCommitment() {
 	rm.mtx.RLock()
 	// TODO find a way to increment these once we have all the data for a height/round
 	// maybe do it in the data sync routine.
 	height, round := rm.height, rm.round
 	rm.mtx.RUnlock()
-	if height == compactBlock.Proposal.Height && round == compactBlock.Proposal.Round {
-		// we're already at the new height/round, we can wait for haves.
-		rm.logger.Info("received commitment for the current height/round. ignoring", "height", height, "round", round)
-		return
-	}
 	_, parts, _, has := rm.getAllState(height, round, true)
 	if !has {
 		// this shouldn't happen
