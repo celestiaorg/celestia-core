@@ -36,7 +36,7 @@ jobs:
       - name: install
         run: make install
         if: "env.GIT_DIFF != ''"
-      - uses: actions/cache@v3
+      - uses: actions/cache@v4
         with:
           path: ~/go/pkg/mod
           key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
@@ -44,7 +44,7 @@ jobs:
             ${{ runner.os }}-go-
         if: env.GIT_DIFF
       # Cache binaries for use by other jobs
-      - uses: actions/cache@v3
+      - uses: actions/cache@v4
         with:
           path: ~/go/bin
           key: ${{ runner.os }}-${{ github.sha }}-tm-binary
@@ -66,14 +66,14 @@ jobs:
   #           **/**.go
   #           go.mod
   #           go.sum
-  #     - uses: actions/cache@v3
+  #     - uses: actions/cache@v4
   #       with:
   #         path: ~/go/pkg/mod
   #         key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
   #         restore-keys: |
   #           ${{ runner.os }}-go-
   #       if: env.GIT_DIFF
-  #     - uses: actions/cache@v3
+  #     - uses: actions/cache@v4
   #       with:
   #         path: ~/go/bin
   #         key: ${{ runner.os }}-${{ github.sha }}-tm-binary
