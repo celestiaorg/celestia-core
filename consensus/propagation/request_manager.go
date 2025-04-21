@@ -34,14 +34,15 @@ type RequestManager struct {
 	logger    log.Logger
 	peerState map[p2p.ID]*PeerState
 	*ProposalCache
-	haveChan        <-chan HaveWithFrom
-	CommitmentChan  <-chan *types.CompactBlock
-	expiredWantChan chan *sentWant
-	height          int64
-	round           int32
-	sentWants       map[p2p.ID][]*sentWant
-	fetcher         *partFetcher
-	traceClient     trace.Tracer
+	haveChan         <-chan HaveWithFrom
+	CommitmentChan   <-chan *types.CompactBlock
+	expiredWantChan  chan *sentWant
+	height           int64
+	round            int32
+	sentWants        map[p2p.ID][]*sentWant
+	fetcher          *partFetcher
+	traceClient      trace.Tracer
+	catchupFrequency int64 // in seconds
 }
 
 func NewRequestsManager(
@@ -53,17 +54,18 @@ func NewRequestsManager(
 	compactBlockChan <-chan *types.CompactBlock,
 ) *RequestManager {
 	return &RequestManager{
-		ctx:             ctx,
-		mtx:             sync.RWMutex{},
-		peerState:       peerState,
-		ProposalCache:   proposalCache,
-		logger:          log.NewNopLogger(),
-		haveChan:        haveChan,
-		CommitmentChan:  compactBlockChan,
-		sentWants:       make(map[p2p.ID][]*sentWant),
-		expiredWantChan: make(chan *sentWant, 100),
-		fetcher:         newPartFetcher(log.NewNopLogger()),
-		traceClient:     tracer,
+		ctx:              ctx,
+		mtx:              sync.RWMutex{},
+		peerState:        peerState,
+		ProposalCache:    proposalCache,
+		logger:           log.NewNopLogger(),
+		haveChan:         haveChan,
+		CommitmentChan:   compactBlockChan,
+		sentWants:        make(map[p2p.ID][]*sentWant),
+		expiredWantChan:  make(chan *sentWant, 100),
+		fetcher:          newPartFetcher(log.NewNopLogger()),
+		traceClient:      tracer,
+		catchupFrequency: 3,
 	}
 }
 
@@ -74,7 +76,7 @@ func (rm *RequestManager) WithLogger(logger log.Logger) {
 
 func (rm *RequestManager) Start() {
 	go rm.expireWants()
-	tickerDuration := 100 * time.Second
+	tickerDuration := time.Duration(rm.catchupFrequency * time.Second.Nanoseconds())
 	ticker := time.NewTicker(tickerDuration)
 	rm.logger.Info("starting request manager")
 	for {
