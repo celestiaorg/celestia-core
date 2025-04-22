@@ -14,6 +14,7 @@ import (
 
 	"github.com/tendermint/tendermint/abci/server"
 	"github.com/tendermint/tendermint/config"
+	"github.com/tendermint/tendermint/consensus/propagation"
 	"github.com/tendermint/tendermint/crypto/ed25519"
 	cmtflags "github.com/tendermint/tendermint/libs/cli/flags"
 	"github.com/tendermint/tendermint/libs/log"
@@ -32,6 +33,12 @@ import (
 )
 
 var logger = log.NewTMLogger(log.NewSyncWriter(os.Stdout))
+
+func init() {
+	// set the global retry time to something closer to the desired e2e block
+	// time.
+	propagation.RetryTime = 1000 * time.Millisecond
+}
 
 // main is the binary entrypoint.
 func main() {

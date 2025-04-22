@@ -1211,8 +1211,8 @@ func (cs *State) defaultDecideProposal(height int64, round int32) {
 		hashes := block.CachedHashes()
 		for i, pos := range blockParts.TxPos {
 			metaData[i] = proptypes.TxMetaData{
-				Start: uint32(pos.Start),
-				End:   uint32(pos.End),
+				Start: pos.Start,
+				End:   pos.End,
 				Hash:  hashes[i],
 			}
 		}

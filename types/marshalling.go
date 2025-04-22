@@ -4,6 +4,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"math"
 
 	"github.com/gogo/protobuf/proto"
 )
@@ -11,13 +12,20 @@ import (
 // TxPosition holds the start and end indexes (in the overall encoded []byte)
 // for a given txs field.
 type TxPosition struct {
-	Start int
+	Start uint32
 	// End exclusive position of the transaction
-	End int
+	End uint32
+}
+
+// safeAddUint32 performs checked addition of two uint32 numbers.
+func safeAddUint32(a, b uint32) (uint32, error) {
+	if a > math.MaxUint32-b {
+		return 0, fmt.Errorf("integer overflow: %d + %d", a, b)
+	}
+	return a + b, nil
 }
 
 // MarshalBlockWithTxPositions marshals the given Block message using protobuf
-// (so that the final encoding is identical to what proto.Marshal produces)
 // and returns both the encoded []byte and a slice of positions marking the
 // boundaries of each nested tx (repeated []byte field) inside Data (field number 1).
 func MarshalBlockWithTxPositions(block proto.Message) ([]byte, []TxPosition, error) {
@@ -28,42 +36,53 @@ func MarshalBlockWithTxPositions(block proto.Message) ([]byte, []TxPosition, err
 	}
 
 	// In our Block proto, field number 2 is the Data message.
-	// We need to find it (it’s encoded as a length-delimited field).
 	dataContentOffset, _, dataContent, err := findField(b, 2)
 	if err != nil {
 		return b, nil, err
 	}
 
-	// Now, parse the encoded Data message to locate each repeated "txs" field.
-	// In Data, txs is field number 1 and is a length-delimited field.
 	var positions []TxPosition
-	offset := 0
-	for offset < len(dataContent) {
+	var offset uint32 = 0
+	for offset < uint32(len(dataContent)) {
 		// Read the field tag (a varint).
 		tag, n, err := readVarint(dataContent[offset:])
 		if err != nil {
 			return b, nil, err
 		}
+		fieldStartInData := offset
+		offset, err = safeAddUint32(offset, uint32(n))
+		if err != nil {
+			return b, nil, err
+		}
+
 		fieldNum := int(tag >> 3)
 		wireType := int(tag & 0x7)
-		fieldStartInData := offset // marks start of this field (tag start)
-		offset += n
 
 		if wireType == 2 { // length-delimited
-			// Read the length of the field’s value.
 			length, n, err := readVarint(dataContent[offset:])
 			if err != nil {
 				return b, nil, err
 			}
-			offset += n
-			// value starts here
-			offset += int(length)
-			fieldEndInData := offset
+			offset, err = safeAddUint32(offset, uint32(n))
+			if err != nil {
+				return b, nil, err
+			}
+			newOffset, err := safeAddUint32(offset, uint32(length))
+			if err != nil {
+				return b, nil, err
+			}
+			fieldEndInData := newOffset
+			offset = newOffset
 
 			if fieldNum == 1 {
-				// Record positions relative to the entire Block encoding.
-				overallStart := dataContentOffset + fieldStartInData
-				overallEnd := dataContentOffset + fieldEndInData
+				overallStart, err := safeAddUint32(uint32(dataContentOffset), fieldStartInData)
+				if err != nil {
+					return b, nil, err
+				}
+				overallEnd, err := safeAddUint32(uint32(dataContentOffset), fieldEndInData)
+				if err != nil {
+					return b, nil, err
+				}
 				positions = append(positions, TxPosition{Start: overallStart, End: overallEnd})
 			}
 			continue
@@ -76,11 +95,20 @@ func MarshalBlockWithTxPositions(block proto.Message) ([]byte, []TxPosition, err
 			if err != nil {
 				return b, nil, err
 			}
-			offset += n
+			offset, err = safeAddUint32(offset, uint32(n))
+			if err != nil {
+				return b, nil, err
+			}
 		case 1: // 64-bit
-			offset += 8
+			offset, err = safeAddUint32(offset, 8)
+			if err != nil {
+				return b, nil, err
+			}
 		case 5: // 32-bit
-			offset += 4
+			offset, err = safeAddUint32(offset, 4)
+			if err != nil {
+				return b, nil, err
+			}
 		default:
 			return b, nil, fmt.Errorf("unsupported wire type %d", wireType)
 		}
@@ -90,11 +118,9 @@ func MarshalBlockWithTxPositions(block proto.Message) ([]byte, []TxPosition, err
 }
 
 // findField scans the encoded message b for a length-delimited field with the given targetField number.
-// It returns the offset (within b) where the field’s content begins and ends, as well as the raw content bytes.
 func findField(b []byte, targetField int) (contentStart int, contentEnd int, content []byte, err error) {
 	offset := 0
 	for offset < len(b) {
-		// Read the key (a varint).
 		tag, n, err := readVarint(b[offset:])
 		if err != nil {
 			return 0, 0, nil, err
@@ -103,8 +129,7 @@ func findField(b []byte, targetField int) (contentStart int, contentEnd int, con
 		fieldNum := int(tag >> 3)
 		wireType := int(tag & 0x7)
 
-		if wireType == 2 { // length-delimited
-			// Read the length of the field.
+		if wireType == 2 {
 			length, n, err := readVarint(b[offset:])
 			if err != nil {
 				return 0, 0, nil, err
@@ -117,7 +142,6 @@ func findField(b []byte, targetField int) (contentStart int, contentEnd int, con
 			}
 			offset = end
 		} else {
-			// Skip other wire types.
 			switch wireType {
 			case 0:
 				_, n, err := readVarint(b[offset:])
@@ -138,7 +162,6 @@ func findField(b []byte, targetField int) (contentStart int, contentEnd int, con
 }
 
 // readVarint reads a varint-encoded unsigned integer from b.
-// It returns the decoded value, the number of bytes consumed, or an error.
 func readVarint(b []byte) (uint64, int, error) {
 	value, n := binary.Uvarint(b)
 	if n <= 0 {

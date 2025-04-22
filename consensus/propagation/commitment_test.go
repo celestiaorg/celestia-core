@@ -81,8 +81,8 @@ func createTestProposal(
 	metaData := make([]proptypes.TxMetaData, len(partSet.TxPos))
 	for i, pos := range partSet.TxPos {
 		metaData[i] = proptypes.TxMetaData{
-			Start: uint32(pos.Start),
-			End:   uint32(pos.End),
+			Start: pos.Start,
+			End:   pos.End,
 			Hash:  block.Txs[i].Hash(),
 		}
 	}
@@ -126,8 +126,8 @@ func TestRecoverPartsLocally(t *testing.T) {
 	metaData := make([]proptypes.TxMetaData, len(partSet.TxPos))
 	for i, pos := range partSet.TxPos {
 		metaData[i] = proptypes.TxMetaData{
-			Start: uint32(pos.Start),
-			End:   uint32(pos.End),
+			Start: pos.Start,
+			End:   pos.End,
 			Hash:  block.Txs[i].Hash(),
 		}
 	}

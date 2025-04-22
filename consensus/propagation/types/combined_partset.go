@@ -98,6 +98,8 @@ func (cps *CombinedPartSet) MissingOriginal() *bits.BitArray {
 }
 
 func (cps *CombinedPartSet) Total() uint32 {
+	cps.mtx.Lock()
+	defer cps.mtx.Unlock()
 	return cps.original.Total() + cps.parity.Total()
 }
 
