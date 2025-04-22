@@ -443,7 +443,7 @@ func DefaultRPCConfig() *RPCConfig {
 		CORSAllowedOrigins:     []string{},
 		CORSAllowedMethods:     []string{http.MethodHead, http.MethodGet, http.MethodPost},
 		CORSAllowedHeaders:     []string{"Origin", "Accept", "Content-Type", "X-Requested-With", "X-Server-Time"},
-		GRPCListenAddress:      "",
+		GRPCListenAddress:      "localhost:9090",
 		GRPCMaxOpenConnections: 900,
 
 		Unsafe:             false,
