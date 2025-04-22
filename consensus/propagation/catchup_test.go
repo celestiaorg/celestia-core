@@ -40,10 +40,6 @@ func TestSameHeightCatchup(t *testing.T) {
 	_, _, _, has = r2.getAllState(prop.Height, prop.Round, true)
 	require.True(t, has)
 
-	// set reactor 2 request manager to the current height and round
-	r2.requestManager.height = prop.Height
-	r2.requestManager.round = prop.Round
-
 	// set reactor 2 haves from reactor 1
 	firstPart, has := parts.GetPart(0)
 	require.True(t, has)
@@ -93,10 +89,6 @@ func TestHigherHeightCatchup(t *testing.T) {
 	require.True(t, added)
 	_, _, _, has = r2.getAllState(prop.Height, prop.Round, true)
 	require.True(t, has)
-
-	// set reactor 2 request manager to the current height and round
-	r2.requestManager.height = prop.Height
-	r2.requestManager.round = prop.Round
 
 	// set reactor 2 haves from reactor 1
 	firstPart, has := parts.GetPart(0)

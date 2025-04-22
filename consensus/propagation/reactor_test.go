@@ -355,11 +355,6 @@ func TestPropagationSmokeTest(t *testing.T) {
 		cleanup(t)
 	})
 
-	for _, reactor := range reactors {
-		reactor.requestManager.height = 1
-		reactor.requestManager.round = 0
-	}
-
 	for i := int64(1); i < 5; i++ {
 		prop, ps, block, metaData := createTestProposal(sm, i, 2, 1000000)
 

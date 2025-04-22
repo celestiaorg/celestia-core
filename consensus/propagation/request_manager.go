@@ -37,8 +37,6 @@ type RequestManager struct {
 	haveChan         <-chan HaveWithFrom
 	CommitmentChan   <-chan *types.CompactBlock
 	expiredWantChan  chan *sentWant
-	height           int64
-	round            int32
 	sentWants        map[p2p.ID][]*sentWant
 	fetcher          *partFetcher
 	traceClient      trace.Tracer
@@ -80,7 +78,6 @@ func (rm *RequestManager) Start() {
 	ticker := time.NewTicker(tickerDuration)
 	rm.logger.Info("starting request manager")
 	for {
-		rm.logger.Info("request loop")
 		select {
 		case <-rm.ctx.Done():
 			// TODO refactor all the cases into methods
@@ -170,6 +167,8 @@ func (rm *RequestManager) expireWants() {
 }
 
 func (rm *RequestManager) removeExpiredWant(id p2p.ID, index int) error {
+	rm.mtx.Lock()
+	defer rm.mtx.Unlock()
 	peerRequests, has := rm.sentWants[id]
 	if !has {
 		return fmt.Errorf("peer %s has no sent wants", id)
@@ -186,14 +185,6 @@ func (rm *RequestManager) removeExpiredWant(id p2p.ID, index int) error {
 }
 
 func (rm *RequestManager) handleExpiredWant(expiredWant *sentWant) {
-	rm.mtx.RLock()
-	height, round := rm.height, rm.round
-	rm.mtx.RUnlock()
-	if expiredWant.Height != height || expiredWant.Round != round {
-		rm.logger.Info("received expired want for a different height/round", "want", expiredWant, "height", height, "round", round)
-		// this expired want is for a previous height/round, we can ignore it.
-		return
-	}
 	_, parts, _, has := rm.getAllState(expiredWant.Height, expiredWant.Round, true)
 	if !has {
 		// this shouldn't happen
@@ -201,49 +192,42 @@ func (rm *RequestManager) handleExpiredWant(expiredWant *sentWant) {
 		return
 	}
 	if parts.IsComplete() {
-		rm.logger.Info("complete parts for expired want", "want", expiredWant, "height", height, "round", round)
+		rm.logger.Info("complete parts for expired want", "want", expiredWant, "height", expiredWant.Height, "round", expiredWant.Round)
 		return
 	}
 	missing := parts.MissingOriginal()
 	notMissed := missing.Not()
 	toRequest := expiredWant.Parts.Sub(notMissed)
-	for !toRequest.IsEmpty() {
+	for _, to := range shuffle(rm.getPeers()) {
 		rm.logger.Info("looping when handling expired want", "want", expiredWant, "toRequest", toRequest)
-		peers := shuffle(rm.getPeers())
-		to := peers[0].peer
+		if toRequest.IsEmpty() {
+			break
+		}
 		pendingWant := types.WantParts{
 			Parts:  toRequest,
 			Height: expiredWant.Height,
 			Round:  expiredWant.Round,
 			Prove:  expiredWant.Prove,
 		}
-		remaining, err := rm.fetcher.sendRequest(to, &pendingWant)
+		remaining, err := rm.fetcher.sendRequest(to.peer, &pendingWant)
 		if err != nil {
-			rm.logger.Error("failed to send want parts", "peer", peers[0].peer.ID(), "height", expiredWant.Height, "round", expiredWant.Round)
+			rm.logger.Error("failed to send want parts", "peer", to.peer.ID(), "height", expiredWant.Height, "round", expiredWant.Round)
 			continue
 		}
 		toRequest = toRequest.Sub(remaining)
-		rm.sentWants[to.ID()] = append(rm.sentWants[to.ID()], &sentWant{
+		rm.sentWants[to.peer.ID()] = append(rm.sentWants[to.peer.ID()], &sentWant{
 			WantParts: &pendingWant,
 			timestamp: time.Now(),
-			to:        to.ID(),
+			to:        to.peer.ID(),
 		})
 	}
 }
 
 func (rm *RequestManager) handleHave(have *HaveWithFrom) (wantSent bool) {
-	rm.mtx.RLock()
-	height, round := rm.height, rm.round
-	rm.mtx.RUnlock()
-	if have.Height != height || have.Round != round {
-		rm.logger.Info("received have for a different height/round", "have", have, "height", height, "round", round)
-		// this shouldn't happen as we should only receive have parts for the current height and round
-		return
-	}
-	_, parts, _, has := rm.getAllState(height, round, true)
+	_, parts, _, has := rm.getAllState(have.Height, have.Round, false)
 	if !has {
 		// this shouldn't happen
-		rm.logger.Error("couldn't find state for proposal", "height", height, "round", round)
+		rm.logger.Error("couldn't find state for proposal", "height", have.Height, "round", have.Round)
 		// TODO maybe return?
 		return
 	}
@@ -276,8 +260,8 @@ func (rm *RequestManager) handleHave(have *HaveWithFrom) (wantSent bool) {
 
 	schema.WriteBlockPartState(
 		rm.traceClient,
-		height,
-		round,
+		have.Height,
+		have.Round,
 		sent.GetTrueIndices(),
 		false,
 		string(have.from),
@@ -285,18 +269,23 @@ func (rm *RequestManager) handleHave(have *HaveWithFrom) (wantSent bool) {
 	)
 
 	// keep track of the parts that this node has requested.
-	peer.AddSentWants(height, round, sent)
-	peer.AddReceivedHave(height, round, hc)
+	peer.AddSentWants(have.Height, have.Round, sent)
+	peer.AddReceivedHave(have.Height, have.Round, hc)
 	rm.logger.Info("added sent wants and received haves", "want", want, "to", to.ID())
 	return true
 }
 
 func (rm *RequestManager) handleCommitment() {
-	rm.mtx.RLock()
-	// TODO find a way to increment these once we have all the data for a height/round
-	// maybe do it in the data sync routine.
-	height, round := rm.height, rm.round
-	rm.mtx.RUnlock()
+	unfinishedHeights := rm.unfinishedHeights()
+	rm.logger.Info("unfinished heights", "unfinishedHeights", len(unfinishedHeights))
+	for _, unfinishedHeight := range unfinishedHeights {
+		rm.retryUnfinishedHeight(unfinishedHeight)
+	}
+}
+
+func (rm *RequestManager) retryUnfinishedHeight(unfinishedHeight *proposalData) {
+	height := unfinishedHeight.compactBlock.Proposal.Height
+	round := unfinishedHeight.compactBlock.Proposal.Round
 	_, parts, _, has := rm.getAllState(height, round, true)
 	if !has {
 		// this shouldn't happen
@@ -372,18 +361,4 @@ func (rm *RequestManager) requestUsingHaves(peer *PeerState, height int64, round
 	})
 	// TODO udpate also the peerstate.AddSentWants, and AddReceivedHaves
 	return missing
-}
-
-func (rm *RequestManager) setHeight(height int64) {
-	rm.mtx.Lock()
-	defer rm.mtx.Unlock()
-	rm.height = height
-	// TODO prune previous height/round
-}
-
-func (rm *RequestManager) setRound(round int32) {
-	rm.mtx.Lock()
-	defer rm.mtx.Unlock()
-	rm.round = round
-	// TODO prune previous height/round
 }

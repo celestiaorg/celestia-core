@@ -128,8 +128,11 @@ func (blockProp *Reactor) handleCompactBlock(cb *proptypes.CompactBlock, peer p2
 	if !proposer {
 		// update the peer state to optimistically assume the peer is at this height
 		blockProp.Logger.Info("setting latest height and round for peer", "height", cb.Proposal.Height, "round", cb.Proposal.Round, "peer", peer, "proposer", proposer)
-		blockProp.getPeer(peer).SetLatestHeight(cb.Proposal.Height)
-		blockProp.getPeer(peer).SetLatestRound(cb.Proposal.Round)
+		if p := blockProp.getPeer(peer); p != nil {
+			// FIXME this should never happen.
+			p.SetLatestHeight(cb.Proposal.Height)
+			p.SetLatestRound(cb.Proposal.Round)
+		}
 	}
 
 	err := blockProp.validateCompactBlock(cb)
