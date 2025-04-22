@@ -27,20 +27,23 @@ type HaveWithFrom struct {
 	from p2p.ID
 }
 
-// TODO set the latest height/round in sync data
+var (
+	// todo: avoid endin up in programmer hell by not using a global var
+	RetryTime = 6 * time.Second
+)
+
 type RequestManager struct {
 	ctx       context.Context
 	mtx       sync.RWMutex
 	logger    log.Logger
 	peerState map[p2p.ID]*PeerState
 	*ProposalCache
-	haveChan         <-chan HaveWithFrom
-	CommitmentChan   <-chan *types.CompactBlock
-	expiredWantChan  chan *sentWant
-	sentWants        map[p2p.ID][]*sentWant
-	fetcher          *partFetcher
-	traceClient      trace.Tracer
-	catchupFrequency int64 // in seconds
+	haveChan        <-chan HaveWithFrom
+	CommitmentChan  <-chan *types.CompactBlock
+	expiredWantChan chan *sentWant
+	sentWants       map[p2p.ID][]*sentWant
+	fetcher         *partFetcher
+	traceClient     trace.Tracer
 }
 
 func NewRequestsManager(
@@ -52,18 +55,17 @@ func NewRequestsManager(
 	compactBlockChan <-chan *types.CompactBlock,
 ) *RequestManager {
 	return &RequestManager{
-		ctx:              ctx,
-		mtx:              sync.RWMutex{},
-		peerState:        peerState,
-		ProposalCache:    proposalCache,
-		logger:           log.NewNopLogger(),
-		haveChan:         haveChan,
-		CommitmentChan:   compactBlockChan,
-		sentWants:        make(map[p2p.ID][]*sentWant),
-		expiredWantChan:  make(chan *sentWant, 100),
-		fetcher:          newPartFetcher(log.NewNopLogger()),
-		traceClient:      tracer,
-		catchupFrequency: 3,
+		ctx:             ctx,
+		mtx:             sync.RWMutex{},
+		peerState:       peerState,
+		ProposalCache:   proposalCache,
+		logger:          log.NewNopLogger(),
+		haveChan:        haveChan,
+		CommitmentChan:  compactBlockChan,
+		sentWants:       make(map[p2p.ID][]*sentWant),
+		expiredWantChan: make(chan *sentWant, 100),
+		fetcher:         newPartFetcher(log.NewNopLogger()),
+		traceClient:     tracer,
 	}
 }
 
@@ -74,8 +76,7 @@ func (rm *RequestManager) WithLogger(logger log.Logger) {
 
 func (rm *RequestManager) Start() {
 	go rm.expireWants()
-	tickerDuration := time.Duration(rm.catchupFrequency * time.Second.Nanoseconds())
-	ticker := time.NewTicker(tickerDuration)
+	ticker := time.NewTicker(RetryTime)
 	rm.logger.Info("starting request manager")
 	for {
 		select {
@@ -107,7 +108,7 @@ func (rm *RequestManager) Start() {
 			}
 			wantSent := rm.handleHave(&have)
 			if wantSent {
-				ticker.Reset(tickerDuration)
+				ticker.Reset(RetryTime)
 			}
 		case compactBlock, has := <-rm.CommitmentChan:
 			rm.logger.Info("received commitment", "height", compactBlock.Proposal.Height, "round", compactBlock.Proposal.Round)
