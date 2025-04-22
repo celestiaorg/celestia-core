@@ -1,22 +1,18 @@
 queue_rules:
   - name: default
-    conditions:
+    queue_conditions:
       - base=main
       - label=automerge
+    merge_conditions:
+      - base=main
+      - label=automerge
+    commit_message_template: |
+      {{ title }} (#{{ number }})
+
+      {{ body }}
+    merge_method: squash
 
 pull_request_rules:
-  - name: Automerge to main
-    conditions:
-      - base=main
-      - label=automerge
-    actions:
-      queue:
-        method: squash
-        name: default
-        commit_message_template: |
-          {{ title }} (#{{ number }})
-
-          {{ body }}
   - name: backport patches to v0.37.x branch
     conditions:
       - base=main
@@ -33,3 +29,7 @@ pull_request_rules:
       backport:
         branches:
           - v0.34.x
+  - name: Automerge to main
+    conditions: []
+    actions:
+      queue:

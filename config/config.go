@@ -1245,13 +1245,7 @@ func TestStorageConfig() *StorageConfig {
 // TxIndexConfig defines the configuration for the transaction indexer,
 // including composite keys to index.
 type TxIndexConfig struct {
-	// What indexer to use for transactions
-	//
-	// Options:
-	//   1) "null"
-	//   2) "kv" (default) - the simplest possible indexer,
-	//      backed by key-value storage (defaults to levelDB; see DBBackend).
-	//   3) "psql" - the indexer services backed by PostgreSQL.
+	// Indexer is the indexer to use for transactions
 	Indexer string `mapstructure:"indexer"`
 
 	// The PostgreSQL connection configuration, the connection format:
