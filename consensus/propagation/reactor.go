@@ -117,15 +117,6 @@ func (blockProp *Reactor) OnStop() {
 	blockProp.cancel()
 }
 
-func (blockProp *Reactor) SetConsensusRound(height int64, round int32) {
-	blockProp.pmtx.Lock()
-	defer blockProp.pmtx.Unlock()
-	blockProp.Logger.Info("setting consensus round", "height", height, "round", round)
-	blockProp.consensusRound = round
-	// todo: delete the old round data as its no longer relevant don't delete
-	// past round data if it has a POL
-}
-
 func (blockProp *Reactor) SetConsensusHeight(height int64) {
 	// TODO put them back where they were
 	blockProp.mtx.Lock()
