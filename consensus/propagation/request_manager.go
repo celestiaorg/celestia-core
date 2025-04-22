@@ -94,7 +94,7 @@ func (rm *RequestManager) Start() {
 			// unnecessarily.
 			// TODO think more about this case
 			//rm.logger.Info("ticker retry")
-			//rm.handleCommitment()
+			rm.handleCommitment()
 		case expiredWant, has := <-rm.expiredWantChan:
 			rm.logger.Info("received expired want", "want", expiredWant)
 			if !has {

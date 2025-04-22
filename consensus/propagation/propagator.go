@@ -13,6 +13,5 @@ type Propagator interface {
 	AddCommitment(height int64, round int32, psh *types.PartSetHeader)
 	Prune(committedHeight int64)
 	SetConsensusRound(height int64, round int32)
-	SetConsensusHeight(height int64)
 	StartProcessing()
 }

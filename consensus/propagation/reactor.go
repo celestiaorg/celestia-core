@@ -116,16 +116,6 @@ func (blockProp *Reactor) OnStop() {
 	blockProp.cancel()
 }
 
-func (blockProp *Reactor) SetConsensusHeight(height int64) {
-	// TODO put them back where they were
-	blockProp.mtx.Lock()
-	defer blockProp.mtx.Unlock()
-	blockProp.Logger.Info("setting consensus height", "height", height)
-	blockProp.consensusHeight = height
-	// todo: delete the old round data as its no longer relevant don't delete
-	// past round data if it has a POL
-}
-
 func (blockProp *Reactor) GetChannels() []*conn.ChannelDescriptor {
 	return []*p2p.ChannelDescriptor{
 		{
