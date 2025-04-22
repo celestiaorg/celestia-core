@@ -70,7 +70,10 @@ func (blockProp *Reactor) broadcastHaves(haves *proptypes.HaveParts, from p2p.ID
 		if !has {
 			blockProp.Logger.Error("couldn't find sent haves for peer", "peer", peer)
 		}
-		havesToBeSent := haves.BitArray(partSetSize).Sub(sentHaves)
+		havesToBeSent := haves.BitArray(partSetSize)
+		if sentHaves != nil {
+			havesToBeSent = havesToBeSent.Sub(sentHaves)
+		}
 		if havesToBeSent.IsEmpty() {
 			continue
 		}

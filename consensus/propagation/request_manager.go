@@ -197,7 +197,10 @@ func (rm *RequestManager) handleExpiredWant(expiredWant *sentWant) {
 	}
 	missing := parts.MissingOriginal()
 	notMissed := missing.Not()
-	toRequest := expiredWant.Parts.Sub(notMissed)
+	toRequest := expiredWant.Parts
+	if notMissed != nil {
+		toRequest = toRequest.Sub(notMissed)
+	}
 	for _, to := range shuffle(rm.getPeers()) {
 		rm.logger.Info("looping when handling expired want", "want", expiredWant, "toRequest", toRequest)
 		if toRequest.IsEmpty() {
@@ -214,7 +217,9 @@ func (rm *RequestManager) handleExpiredWant(expiredWant *sentWant) {
 			rm.logger.Error("failed to send want parts", "peer", to.peer.ID(), "height", expiredWant.Height, "round", expiredWant.Round)
 			continue
 		}
-		toRequest = toRequest.Sub(remaining)
+		if remaining != nil {
+			toRequest = toRequest.Sub(remaining)
+		}
 		rm.sentWants[to.peer.ID()] = append(rm.sentWants[to.peer.ID()], &sentWant{
 			WantParts: &pendingWant,
 			timestamp: time.Now(),
@@ -250,7 +255,10 @@ func (rm *RequestManager) handleHave(have *HaveWithFrom) (wantSent bool) {
 		rm.logger.Error("failed to send want parts", "peer", have.from, "height", have.Height, "round", have.Round)
 		return
 	}
-	sent := hc.Sub(remaining)
+	sent := hc
+	if remaining != nil {
+		sent = hc.Sub(remaining)
+	}
 	want.Parts = sent
 	rm.sentWants[to.ID()] = append(rm.sentWants[to.ID()], &sentWant{
 		WantParts: &want,
@@ -315,7 +323,9 @@ func (rm *RequestManager) retryUnfinishedHeight(unfinishedHeight *proposalData) 
 				rm.logger.Error("failed to send catchup want parts", "peer", peer.peer.ID(), "height", height, "round", round, "err", err)
 				continue
 			}
-			missing = missing.Sub(remaining)
+			if remaining != nil {
+				missing = missing.Sub(remaining)
+			}
 			rm.sentWants[peer.peer.ID()] = append(rm.sentWants[peer.peer.ID()], &sentWant{
 				WantParts: &want,
 				timestamp: time.Now(),
@@ -325,7 +335,9 @@ func (rm *RequestManager) retryUnfinishedHeight(unfinishedHeight *proposalData) 
 			rm.logger.Info("peer is at the same height/round")
 			// this peer is at the same, we can request only the data they broadcasted available to them.
 			remaining := rm.requestUsingHaves(peer, height, round, missing)
-			missing = missing.Sub(remaining)
+			if remaining != nil {
+				missing = missing.Sub(remaining)
+			}
 		}
 		// TODO check if we really need to keep track of the sent/recived wants etc
 	}
@@ -341,7 +353,10 @@ func (rm *RequestManager) requestUsingHaves(peer *PeerState, height int64, round
 		return missing
 	}
 	notMissed := missing.Not()
-	toRequest := peerHaves.Sub(notMissed)
+	toRequest := peerHaves
+	if notMissed != nil {
+		toRequest = peerHaves.Sub(notMissed)
+	}
 	want := types.WantParts{
 		Parts:  toRequest,
 		Height: height,
@@ -353,7 +368,9 @@ func (rm *RequestManager) requestUsingHaves(peer *PeerState, height int64, round
 		rm.logger.Error("failed to send catchup want parts", "peer", peer.peer.ID(), "height", height, "round", round, "err", err)
 		return missing
 	}
-	missing = missing.Sub(remaining)
+	if remaining != nil {
+		missing = missing.Sub(remaining)
+	}
 	rm.sentWants[peer.peer.ID()] = append(rm.sentWants[peer.peer.ID()], &sentWant{
 		WantParts: &want,
 		timestamp: time.Now(),

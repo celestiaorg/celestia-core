@@ -48,7 +48,7 @@ func TestSameHeightCatchup(t *testing.T) {
 	r2.peerstate[r1.self].initialize(prop.Height, prop.Round, int(ps.Total()))
 	r2.peerstate[r1.self].state[prop.Height][prop.Round].receivedHaves = haves
 
-	// set the peer to a higher height
+	// set the peer to the same height
 	r2.peerstate[r1.self].latestHeight = 1
 
 	// create next height
