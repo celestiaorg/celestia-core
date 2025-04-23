@@ -92,6 +92,10 @@ func (rm *RequestManager) Start() {
 func (rm *RequestManager) Stop() {
 }
 
+func (rm *RequestManager) ReceivedPart(from p2p.ID, part *proptypes.RecoveryPart) {
+	rm.fetcher.ReceivedPart(from, part)
+}
+
 // getPeers returns a list of all peers that the requests manager is aware of.
 func (rm *RequestManager) getPeers() []*PeerState {
 	rm.mtx.RLock()

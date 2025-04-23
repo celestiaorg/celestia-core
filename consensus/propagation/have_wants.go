@@ -184,24 +184,24 @@ func (blockProp *Reactor) handleWants(peer p2p.ID, wants *proptypes.WantParts) {
 
 // handleRecoveryPart is called when a peer sends a block part message. This is used
 // to store the part and clear any wants for that part.
-func (blockProp *Reactor) handleRecoveryPart(peer p2p.ID, part *proptypes.RecoveryPart) {
+func (blockProp *Reactor) handleRecoveryPart(from p2p.ID, part *proptypes.RecoveryPart) {
 	if !blockProp.started.Load() {
 		return
 	}
-	if peer == "" {
-		peer = blockProp.self
+	if from == "" {
+		from = blockProp.self
 	}
-	blockProp.Logger.Info("handling recovery part", "peer", peer, "height", part.Height, "round", part.Round, "part", part.Index)
-	p := blockProp.getPeer(peer)
-	if p == nil && peer != blockProp.self {
-		blockProp.Logger.Error("peer not found", "peer", peer)
+	blockProp.Logger.Info("handling recovery part", "peer", from, "height", part.Height, "round", part.Round, "part", part.Index)
+	p := blockProp.getPeer(from)
+	if p == nil && from != blockProp.self {
+		blockProp.Logger.Error("peer not found", "peer", from)
 		return
 	}
 	// the peer must always send the proposal before sending parts, if they did
 	// not this node must disconnect from them.
 	cb, parts, _, has := blockProp.getAllState(part.Height, part.Round, false)
 	if !has {
-		blockProp.Logger.Error("received part for unknown proposal", "peer", peer, "height", part.Height, "round", part.Round)
+		blockProp.Logger.Error("received part for unknown proposal", "peer", from, "height", part.Height, "round", part.Round)
 		// blockProp.Switch.StopPeerForError(p.peer, errors.New("received recovery part for unknown proposal"))
 		return
 	}
@@ -225,7 +225,7 @@ func (blockProp *Reactor) handleRecoveryPart(peer p2p.ID, part *proptypes.Recove
 	proof := cb.GetProof(part.Index)
 	if proof == nil {
 		if part.Proof == nil {
-			blockProp.Logger.Error("proof not found", "peer", peer, "height", part.Height, "round", part.Round, "part", part.Index)
+			blockProp.Logger.Error("proof not found", "peer", from, "height", part.Height, "round", part.Round, "part", part.Index)
 			return
 		}
 		if len(part.Proof.LeafHash) != tmhash.Size {
@@ -234,11 +234,13 @@ func (blockProp *Reactor) handleRecoveryPart(peer p2p.ID, part *proptypes.Recove
 		proof = part.Proof
 	}
 
+	blockProp.requestManager.ReceivedPart(from, part)
+
 	// TODO: to verify, compare the hash with that of the have that was sent for
 	// this part and verified.
 	added, err := parts.AddPart(part, *proof)
 	if err != nil {
-		blockProp.Logger.Error("failed to add part to part set", "peer", peer, "height", part.Height, "round", part.Round, "part", part.Index, "error", err)
+		blockProp.Logger.Error("failed to add part to part set", "peer", from, "height", part.Height, "round", part.Round, "part", part.Index, "error", err)
 		return
 	}
 
@@ -262,7 +264,7 @@ func (blockProp *Reactor) handleRecoveryPart(peer p2p.ID, part *proptypes.Recove
 
 		err := parts.Decode()
 		if err != nil {
-			blockProp.Logger.Error("failed to decode parts", "peer", peer, "height", part.Height, "round", part.Round, "error", err)
+			blockProp.Logger.Error("failed to decode parts", "peer", from, "height", part.Height, "round", part.Round, "error", err)
 			return
 		}
 
@@ -276,13 +278,13 @@ func (blockProp *Reactor) handleRecoveryPart(peer p2p.ID, part *proptypes.Recove
 		for i := uint32(0); i < parts.Total(); i++ {
 			p, has := parts.GetPart(i)
 			if !has {
-				blockProp.Logger.Error("failed to get decoded part", "peer", peer, "height", part.Height, "round", part.Round, "part", i)
+				blockProp.Logger.Error("failed to get decoded part", "peer", from, "height", part.Height, "round", part.Round, "part", i)
 				continue
 			}
 			haves.Parts = append(haves.Parts, proptypes.PartMetaData{Index: i, Hash: p.Proof.LeafHash})
 		}
 
-		blockProp.broadcastHaves(haves, peer, int(parts.Total()))
+		blockProp.broadcastHaves(haves, from, int(parts.Total()))
 
 		// clear all the wants if they exist
 		go func(height int64, round int32, parts *proptypes.CombinedPartSet) {

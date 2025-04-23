@@ -150,3 +150,10 @@ func (r *partFetcher) pruneHeight(height int64) {
 	defer r.Unlock()
 	delete(r.perPartRequests, height)
 }
+
+func (r *partFetcher) ReceivedPart(from p2p.ID, part *proptypes.RecoveryPart) {
+	r.Mutex.Lock()
+	r.perPeerRequests[from]--
+	r.perPartRequests[part.Height][part.Round][int(part.Index)]--
+	r.Mutex.Unlock()
+}
