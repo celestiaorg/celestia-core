@@ -140,6 +140,15 @@ func (r *partFetcher) retry(e *p2p.Envelope, targetPeer p2p.Peer) error {
 	return errors.New("max retry exceeded for part")
 }
 
+func (r *partFetcher) expiredRequest(want *sentWant) {
+	r.Lock()
+	defer r.Unlock()
+	r.perPeerRequests[want.to]--
+	for _, indice := range want.Parts.GetTrueIndices() {
+		r.perPartRequests[want.Height][want.Round][indice]--
+	}
+}
+
 // pruneRound removes a round from the per part requests map.
 // TODO call from requests manager
 func (r *partFetcher) pruneRound(height int64, round int32) {

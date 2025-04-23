@@ -67,7 +67,7 @@ func TestSameHeightCatchup(t *testing.T) {
 func TestHigherHeightCatchup(t *testing.T) {
 	p2pCfg := defaultTestP2PConf()
 	nodes := 2
-	reactors, _ := createTestReactors(nodes, p2pCfg, false, "./same-height-catchup")
+	reactors, _ := createTestReactors(nodes, p2pCfg, false, "./higher-height-catchup")
 	r1, r2 := reactors[0], reactors[1]
 	cleanup, _, sm := state.SetupTestCase(t)
 	t.Cleanup(func() {
@@ -106,7 +106,7 @@ func TestHigherHeightCatchup(t *testing.T) {
 	cb2, _ := createCompactBlock(t, prop2, ps2, metaData2)
 	r2.AddCommitment(2, 0, &cb2.Proposal.BlockID.PartSetHeader)
 
-	time.Sleep(500 * time.Millisecond)
+	time.Sleep(800 * time.Millisecond)
 
 	_, partSet, has := r2.GetProposal(prop.Height, prop.Round)
 	require.True(t, has)

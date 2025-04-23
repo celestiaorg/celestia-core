@@ -2,7 +2,6 @@ package propagation
 
 import (
 	"context"
-	"fmt"
 	"time"
 
 	"github.com/tendermint/tendermint/consensus/propagation/types"
@@ -38,12 +37,11 @@ type RequestManager struct {
 	logger    log.Logger
 	peerState map[p2p.ID]*PeerState
 	*ProposalCache
-	haveChan        <-chan HaveWithFrom
-	CommitmentChan  <-chan *types.CompactBlock
-	expiredWantChan chan *sentWant
-	sentWants       map[p2p.ID][]*sentWant
-	fetcher         *partFetcher
-	traceClient     trace.Tracer
+	haveChan       <-chan HaveWithFrom
+	CommitmentChan <-chan *types.CompactBlock
+	sentWants      map[p2p.ID][]*sentWant
+	fetcher        *partFetcher
+	traceClient    trace.Tracer
 }
 
 func NewRequestsManager(
@@ -55,17 +53,16 @@ func NewRequestsManager(
 	compactBlockChan <-chan *types.CompactBlock,
 ) *RequestManager {
 	return &RequestManager{
-		ctx:             ctx,
-		mtx:             sync.RWMutex{},
-		peerState:       peerState,
-		ProposalCache:   proposalCache,
-		logger:          log.NewNopLogger(),
-		haveChan:        haveChan,
-		CommitmentChan:  compactBlockChan,
-		sentWants:       make(map[p2p.ID][]*sentWant),
-		expiredWantChan: make(chan *sentWant, 100),
-		fetcher:         newPartFetcher(log.NewNopLogger()),
-		traceClient:     tracer,
+		ctx:            ctx,
+		mtx:            sync.RWMutex{},
+		peerState:      peerState,
+		ProposalCache:  proposalCache,
+		logger:         log.NewNopLogger(),
+		haveChan:       haveChan,
+		CommitmentChan: compactBlockChan,
+		sentWants:      make(map[p2p.ID][]*sentWant),
+		fetcher:        newPartFetcher(log.NewNopLogger()),
+		traceClient:    tracer,
 	}
 }
 
@@ -75,53 +72,32 @@ func (rm *RequestManager) WithLogger(logger log.Logger) {
 }
 
 func (rm *RequestManager) Start() {
-	go rm.expireWants()
 	ticker := time.NewTicker(RetryTime)
 	rm.logger.Info("starting request manager")
 	for {
 		select {
 		case <-rm.ctx.Done():
-			// TODO refactor all the cases into methods
 			return
 		case <-ticker.C:
-			// This case should help advance the propagation in the following case:
-			// - We receive haves for some parts
-			// - The peer that sent us the haves is almost saturated with requests
-			// - We request some wants, but the remaining are not requested
-			// - no other peer send us haves for those parts, and we don't advance to a new height
-			// due to multiple rounds of consensus.
-			// Note: the ticker is reset with every received have to avoid triggering it
-			// unnecessarily.
-			// TODO think more about this case
-			//rm.logger.Info("ticker retry")
-			rm.handleCommitment()
-		case expiredWant, has := <-rm.expiredWantChan:
-			rm.logger.Info("received expired want", "want", expiredWant)
-			if !has {
-				return
-			}
-			rm.handleExpiredWant(expiredWant)
+			rm.retryUnfinishedHeights()
 		case have, has := <-rm.haveChan:
 			rm.logger.Info("received have", "have", have)
 			if !has {
 				return
 			}
-			wantSent := rm.handleHave(&have)
-			if wantSent {
-				ticker.Reset(RetryTime)
-			}
+			rm.handleHave(&have)
 		case compactBlock, has := <-rm.CommitmentChan:
 			rm.logger.Info("received commitment", "height", compactBlock.Proposal.Height, "round", compactBlock.Proposal.Round)
 			if !has {
 				return
 			}
-			rm.handleCommitment()
+			rm.retryUnfinishedHeights()
+			ticker.Reset(RetryTime)
 		}
 	}
 }
 
 func (rm *RequestManager) Stop() {
-	close(rm.expiredWantChan)
 }
 
 // getPeers returns a list of all peers that the requests manager is aware of.
@@ -139,94 +115,6 @@ func (rm *RequestManager) getPeers() []*PeerState {
 // also, removes that height and round from the sent wants and total sent wants.
 func (rm *RequestManager) prune(height int64, round int32) {
 	// TODO also call the partFetcher.prune
-}
-
-// expireWants TODO call it from the start function.
-func (rm *RequestManager) expireWants() {
-	// TODO maybe also expire old unanswered wants if we start receiving data from the peer.
-	ticker := time.NewTicker(time.Second)
-	for {
-		select {
-		case <-rm.ctx.Done():
-			return
-		case <-ticker.C:
-			for peerID, wants := range rm.sentWants {
-				for index, want := range wants {
-					if time.Now().Sub(want.timestamp) >= 2*time.Second {
-						err := rm.removeExpiredWant(peerID, index)
-						if err != nil {
-							rm.logger.Error("failed to remove expired want", "peer", peerID, "index", index, "err", err)
-							continue
-						}
-						rm.logger.Info("removed expired want and sending it to expiredWantChan", "peer", peerID, "index", index)
-						rm.expiredWantChan <- want
-					}
-				}
-			}
-		}
-	}
-}
-
-func (rm *RequestManager) removeExpiredWant(id p2p.ID, index int) error {
-	rm.mtx.Lock()
-	defer rm.mtx.Unlock()
-	peerRequests, has := rm.sentWants[id]
-	if !has {
-		return fmt.Errorf("peer %s has no sent wants", id)
-	}
-	if index >= len(peerRequests) || index < 0 {
-		return fmt.Errorf("index %d is out of bounds %d", index, len(peerRequests))
-	}
-	if index+1 == len(peerRequests) {
-		rm.sentWants[id] = rm.sentWants[id][:index]
-		return nil
-	}
-	rm.sentWants[id] = append(rm.sentWants[id][:index], rm.sentWants[id][index+1:]...)
-	return nil
-}
-
-func (rm *RequestManager) handleExpiredWant(expiredWant *sentWant) {
-	_, parts, _, has := rm.getAllState(expiredWant.Height, expiredWant.Round, true)
-	if !has {
-		// this shouldn't happen
-		rm.logger.Error("couldn't find state for proposal", "height", expiredWant.Height, "round", expiredWant.Round)
-		return
-	}
-	if parts.IsComplete() {
-		rm.logger.Info("complete parts for expired want", "want", expiredWant, "height", expiredWant.Height, "round", expiredWant.Round)
-		return
-	}
-	missing := parts.MissingOriginal()
-	notMissed := missing.Not()
-	toRequest := expiredWant.Parts
-	if notMissed != nil {
-		toRequest = toRequest.Sub(notMissed)
-	}
-	for _, to := range shuffle(rm.getPeers()) {
-		rm.logger.Info("looping when handling expired want", "want", expiredWant, "toRequest", toRequest)
-		if toRequest.IsEmpty() {
-			break
-		}
-		pendingWant := types.WantParts{
-			Parts:  toRequest,
-			Height: expiredWant.Height,
-			Round:  expiredWant.Round,
-			Prove:  expiredWant.Prove,
-		}
-		remaining, err := rm.fetcher.sendRequest(to.peer, &pendingWant)
-		if err != nil {
-			rm.logger.Error("failed to send want parts", "peer", to.peer.ID(), "height", expiredWant.Height, "round", expiredWant.Round)
-			continue
-		}
-		if remaining != nil {
-			toRequest = toRequest.Sub(remaining)
-		}
-		rm.sentWants[to.peer.ID()] = append(rm.sentWants[to.peer.ID()], &sentWant{
-			WantParts: &pendingWant,
-			timestamp: time.Now(),
-			to:        to.peer.ID(),
-		})
-	}
 }
 
 func (rm *RequestManager) handleHave(have *HaveWithFrom) (wantSent bool) {
@@ -284,17 +172,18 @@ func (rm *RequestManager) handleHave(have *HaveWithFrom) (wantSent bool) {
 	return true
 }
 
-func (rm *RequestManager) handleCommitment() {
+func (rm *RequestManager) retryUnfinishedHeights() {
 	unfinishedHeights := rm.unfinishedHeights()
 	rm.logger.Info("unfinished heights", "unfinishedHeights", len(unfinishedHeights))
 	for _, unfinishedHeight := range unfinishedHeights {
-		rm.retryUnfinishedHeight(unfinishedHeight)
+		rm.retryUnfinishedHeight(
+			unfinishedHeight.compactBlock.Proposal.Height,
+			unfinishedHeight.compactBlock.Proposal.Round,
+		)
 	}
 }
 
-func (rm *RequestManager) retryUnfinishedHeight(unfinishedHeight *proposalData) {
-	height := unfinishedHeight.compactBlock.Proposal.Height
-	round := unfinishedHeight.compactBlock.Proposal.Round
+func (rm *RequestManager) retryUnfinishedHeight(height int64, round int32) {
 	_, parts, _, has := rm.getAllState(height, round, true)
 	if !has {
 		// this shouldn't happen

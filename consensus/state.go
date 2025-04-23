@@ -2543,6 +2543,7 @@ func (cs *State) syncData() {
 			)
 
 			if prop != nil && pprop == nil && prop.Signature != nil { // todo: don't use the signature as a proxy for catchup
+				cs.Logger.Info("found proposal", "height", h, "round", r, "proposal", prop)
 				schema.WriteNote(
 					cs.traceClient,
 					prop.Height,
@@ -2555,6 +2556,7 @@ func (cs *State) syncData() {
 			}
 
 			if pparts != nil && pparts.IsComplete() {
+				cs.Logger.Info("found complete block parts", "height", h, "round", r, "parts", pparts)
 				continue
 			}
 
@@ -2569,6 +2571,7 @@ func (cs *State) syncData() {
 				if part == nil {
 					continue
 				}
+				cs.Logger.Info("sending block part to consensus", "height", h, "round", r, "part", i)
 				cs.peerMsgQueue <- msgInfo{&BlockPartMessage{h, r, part}, ""}
 			}
 		}
