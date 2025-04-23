@@ -105,6 +105,7 @@ func (blockProp *Reactor) SetProposalValidator(validator validateProposalFunc) {
 func (blockProp *Reactor) SetLogger(logger log.Logger) {
 	blockProp.Logger = logger
 	blockProp.requestManager.logger = logger
+	blockProp.requestManager.fetcher.logger = logger
 }
 
 func (blockProp *Reactor) OnStart() error {

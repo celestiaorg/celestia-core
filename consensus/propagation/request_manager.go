@@ -92,7 +92,7 @@ func (rm *RequestManager) Start() {
 func (rm *RequestManager) Stop() {
 }
 
-func (rm *RequestManager) ReceivedPart(from p2p.ID, part *proptypes.RecoveryPart) {
+func (rm *RequestManager) ReceivedPart(from p2p.ID, part *types.RecoveryPart) {
 	rm.fetcher.ReceivedPart(from, part)
 }
 
@@ -135,7 +135,7 @@ func (rm *RequestManager) handleHave(have *HaveWithFrom) (wantSent bool) {
 		Round:  have.Round,
 		Prove:  false,
 	}
-	remaining, err := rm.fetcher.sendRequest(to, &want)
+	remaining, err := rm.fetcher.sendRequest(to, &want, false)
 	if err != nil {
 		rm.logger.Error("failed to send want parts", "peer", have.from, "height", have.Height, "round", have.Round)
 		return
@@ -200,7 +200,7 @@ func (rm *RequestManager) retryUnfinishedHeight(height int64, round int32) {
 				Round:  round,
 				Prove:  true,
 			}
-			remaining, err := rm.fetcher.sendRequest(peer.peer, &want)
+			remaining, err := rm.fetcher.sendRequest(peer.peer, &want, true)
 			if err != nil {
 				rm.logger.Error("failed to send catchup want parts", "peer", peer.peer.ID(), "height", height, "round", round, "err", err)
 				continue
@@ -240,7 +240,7 @@ func (rm *RequestManager) requestUsingHaves(peer *PeerState, height int64, round
 		Round:  round,
 		Prove:  true,
 	}
-	remaining, err := rm.fetcher.sendRequest(peer.peer, &want)
+	remaining, err := rm.fetcher.sendRequest(peer.peer, &want, true)
 	if err != nil {
 		rm.logger.Error("failed to send catchup want parts", "peer", peer.peer.ID(), "height", height, "round", round, "err", err)
 		return missing

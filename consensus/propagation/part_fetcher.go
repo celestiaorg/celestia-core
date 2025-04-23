@@ -47,7 +47,7 @@ func newPartFetcher(logger log.Logger) *partFetcher {
 	}
 }
 
-func (r *partFetcher) sendRequest(targetPeer p2p.Peer, want *proptypes.WantParts) (*bits.BitArray, error) {
+func (r *partFetcher) sendRequest(targetPeer p2p.Peer, want *proptypes.WantParts, catchup bool) (*bits.BitArray, error) {
 	r.Lock()
 	defer r.Unlock()
 	r.logger.Info("sending request", "peer", targetPeer, "height", want.Height, "round", want.Round, "part_count", want.Parts.Size(), "prove", want.Prove)
@@ -72,7 +72,7 @@ func (r *partFetcher) sendRequest(targetPeer p2p.Peer, want *proptypes.WantParts
 			toRequest.SetIndex(indice, true)
 			continue
 		}
-		if perPartCount == maxRequestsPerPart {
+		if !catchup && perPartCount == maxRequestsPerPart {
 			toPostpone.SetIndex(indice, true)
 			continue
 		}
