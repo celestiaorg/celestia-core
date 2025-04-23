@@ -15,12 +15,6 @@ import (
 
 type PeersGetterFunc func(context.Context) ([]*PeerState, error)
 
-type sentWant struct {
-	*types.WantParts
-	timestamp time.Time
-	to        p2p.ID
-}
-
 type HaveWithFrom struct {
 	*types.HaveParts
 	from p2p.ID
@@ -39,7 +33,6 @@ type RequestManager struct {
 	*ProposalCache
 	haveChan       <-chan HaveWithFrom
 	CommitmentChan <-chan *types.CompactBlock
-	sentWants      map[p2p.ID][]*sentWant
 	fetcher        *partFetcher
 	traceClient    trace.Tracer
 }
@@ -60,7 +53,6 @@ func NewRequestsManager(
 		logger:         log.NewNopLogger(),
 		haveChan:       haveChan,
 		CommitmentChan: compactBlockChan,
-		sentWants:      make(map[p2p.ID][]*sentWant),
 		fetcher:        newPartFetcher(log.NewNopLogger()),
 		traceClient:    tracer,
 	}
@@ -148,12 +140,8 @@ func (rm *RequestManager) handleHave(have *HaveWithFrom) (wantSent bool) {
 	if remaining != nil {
 		sent = hc.Sub(remaining)
 	}
+	// FIXME maybe delete these lines too
 	want.Parts = sent
-	rm.sentWants[to.ID()] = append(rm.sentWants[to.ID()], &sentWant{
-		WantParts: &want,
-		timestamp: time.Now(),
-		to:        have.from,
-	})
 
 	schema.WriteBlockPartState(
 		rm.traceClient,
@@ -216,11 +204,6 @@ func (rm *RequestManager) retryUnfinishedHeight(height int64, round int32) {
 			if remaining != nil {
 				missing = missing.Sub(remaining)
 			}
-			rm.sentWants[peer.peer.ID()] = append(rm.sentWants[peer.peer.ID()], &sentWant{
-				WantParts: &want,
-				timestamp: time.Now(),
-				to:        peer.peer.ID(),
-			})
 		case peer.latestHeight == height && peer.latestRound == round:
 			rm.logger.Info("peer is at the same height/round")
 			// this peer is at the same, we can request only the data they broadcasted available to them.
@@ -261,11 +244,6 @@ func (rm *RequestManager) requestUsingHaves(peer *PeerState, height int64, round
 	if remaining != nil {
 		missing = missing.Sub(remaining)
 	}
-	rm.sentWants[peer.peer.ID()] = append(rm.sentWants[peer.peer.ID()], &sentWant{
-		WantParts: &want,
-		timestamp: time.Now(),
-		to:        peer.peer.ID(),
-	})
 	// TODO udpate also the peerstate.AddSentWants, and AddReceivedHaves
 	return missing
 }
