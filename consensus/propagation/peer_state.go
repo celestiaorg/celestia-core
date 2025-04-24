@@ -1,10 +1,12 @@
 package propagation
 
 import (
+	"github.com/tendermint/tendermint/consensus/propagation/types"
 	"github.com/tendermint/tendermint/libs/bits"
 	"github.com/tendermint/tendermint/libs/log"
 	"github.com/tendermint/tendermint/libs/sync"
 	"github.com/tendermint/tendermint/p2p"
+	"sync/atomic"
 )
 
 // PeerState keeps track of haves and wants for each peer. This is used for
@@ -17,18 +19,48 @@ type PeerState struct {
 	// and round.
 	state map[int64]map[int32]*partState
 
+	haveChan       chan<- *types.HaveParts
+	commitmentChan chan<- struct{}
+
+	latestHeight atomic.Int64
+	latestRound  atomic.Int32
+	requestCount atomic.Int64
+
 	logger log.Logger
 }
 
 // newPeerState initializes and returns a new PeerState. This should be
 // called for each peer.
-func newPeerState(peer p2p.Peer, logger log.Logger) *PeerState {
+func newPeerState(peer p2p.Peer, haveChan chan<- *types.HaveParts, commitmentChan chan<- struct{}, logger log.Logger) *PeerState {
 	return &PeerState{
-		mtx:    &sync.RWMutex{},
-		state:  make(map[int64]map[int32]*partState),
-		peer:   peer,
-		logger: logger,
+		mtx:            &sync.RWMutex{},
+		state:          make(map[int64]map[int32]*partState),
+		peer:           peer,
+		logger:         logger,
+		haveChan:       haveChan,
+		commitmentChan: commitmentChan,
 	}
+}
+
+func (d *PeerState) IncreaseRequestCount(add int64) {
+	d.requestCount.Store(d.requestCount.Load() + add)
+}
+
+func (d *PeerState) DecreaseRequestCount(sub int64) {
+	requestCount := d.requestCount.Load()
+	if requestCount == 0 {
+		return
+	}
+	if requestCount < sub {
+		d.requestCount.Store(0)
+		return
+	}
+	d.requestCount.Store(d.requestCount.Load() - sub)
+}
+
+func (d *PeerState) SetLatestHeight(height int64, round int32) {
+	d.latestHeight.Store(height)
+	d.latestRound.Store(round)
 }
 
 // Initialize initializes the state for a given height and round in a

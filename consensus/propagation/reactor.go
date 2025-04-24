@@ -89,24 +89,6 @@ func NewReactor(self p2p.ID, tracer trace.Tracer, store *store.BlockStore, mempo
 		option(reactor)
 	}
 
-	// start the catchup routine
-	go func() {
-		// TODO dynamically set the ticker depending on how many blocks are missing
-		ticker := time.NewTicker(RetryTime)
-		for {
-			select {
-			case <-reactor.ctx.Done():
-				return
-			case <-ticker.C:
-				reactor.pmtx.Lock()
-				currentHeight := reactor.currentHeight
-				reactor.pmtx.Unlock()
-				// run the catchup routine to recover any missing parts for past heights.
-				reactor.retryWants(currentHeight)
-			}
-		}
-	}()
-
 	return reactor
 }
 
@@ -164,7 +146,10 @@ func (blockProp *Reactor) AddPeer(peer p2p.Peer) {
 		return
 	}
 
-	blockProp.setPeer(peer.ID(), newPeerState(peer, blockProp.Logger))
+	haveChan := make(chan *proptypes.HaveParts, 1000)
+	commitmentChan := make(chan struct{}, 1000)
+	blockProp.setPeer(peer.ID(), newPeerState(peer, haveChan, commitmentChan, blockProp.Logger))
+
 	cb, _, found := blockProp.GetCurrentCompactBlock()
 
 	if !found {
@@ -181,6 +166,8 @@ func (blockProp *Reactor) AddPeer(peer p2p.Peer) {
 	if !p2p.TrySendEnvelopeShim(peer, e, blockProp.Logger) { //nolint:staticcheck
 		blockProp.Logger.Debug("failed to send proposal to peer", "peer", peer.ID())
 	}
+
+	go startPeerProcessing(blockProp.ctx, blockProp, peer, haveChan, commitmentChan)
 }
 
 func (blockProp *Reactor) RemovePeer(peer p2p.Peer, reason interface{}) {

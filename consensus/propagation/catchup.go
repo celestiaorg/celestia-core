@@ -5,81 +5,9 @@ import (
 
 	proptypes "github.com/tendermint/tendermint/consensus/propagation/types"
 	"github.com/tendermint/tendermint/libs/bits"
-	"github.com/tendermint/tendermint/p2p"
 	"github.com/tendermint/tendermint/pkg/trace/schema"
-	protoprop "github.com/tendermint/tendermint/proto/tendermint/propagation"
 	"github.com/tendermint/tendermint/types"
 )
-
-// retryWants ensure that all data for all unpruned compact blocks is requested.
-//
-// todo: add a request limit for each part to avoid downloading the block too
-// many times. atm, this code will request the same part from every peer.
-func (blockProp *Reactor) retryWants(currentHeight int64) {
-	if !blockProp.started.Load() {
-		return
-	}
-	data := blockProp.unfinishedHeights()
-	peers := blockProp.getPeers()
-	for _, prop := range data {
-		height, round := prop.compactBlock.Proposal.Height, prop.compactBlock.Proposal.Round
-
-		// don't re-request parts for any round on the current height
-		if height == currentHeight {
-			continue
-		}
-
-		if prop.block.IsComplete() {
-			continue
-		}
-
-		// only re-request original parts that are missing, not parity parts.
-		missing := prop.block.MissingOriginal()
-		if missing.IsEmpty() {
-			blockProp.Logger.Error("no missing parts yet block is incomplete", "height", height, "round", round)
-			continue
-		}
-
-		schema.WriteRetries(blockProp.traceClient, height, round, missing.String())
-
-		// make requests from different peers
-		peers = shuffle(peers)
-
-		for _, peer := range peers {
-			mc := missing.Copy()
-
-			reqs, has := peer.GetRequests(height, round)
-			if has {
-				mc = mc.Sub(reqs)
-			}
-
-			if mc.IsEmpty() {
-				continue
-			}
-
-			e := p2p.Envelope{
-				ChannelID: WantChannel,
-				Message: &protoprop.WantParts{
-					Parts:  *mc.ToProto(),
-					Height: height,
-					Round:  round,
-					Prove:  true,
-				},
-			}
-
-			if !p2p.TrySendEnvelopeShim(peer.peer, e, blockProp.Logger) { //nolint:staticcheck
-				blockProp.Logger.Error("failed to send want part", "peer", peer, "height", height, "round", round)
-				continue
-			}
-
-			schema.WriteCatchupRequest(blockProp.traceClient, height, round, mc.String(), string(peer.peer.ID()))
-
-			// keep track of which requests we've made this attempt.
-			missing = missing.Sub(mc)
-			peer.AddRequests(height, round, missing)
-		}
-	}
-}
 
 func (blockProp *Reactor) AddCommitment(height int64, round int32, psh *types.PartSetHeader) {
 	blockProp.Logger.Info("adding commitment", "height", height, "round", round, "psh", psh)
@@ -110,6 +38,13 @@ func (blockProp *Reactor) AddCommitment(height int64, round int32, psh *types.Pa
 		block:       combinedSet,
 		maxRequests: bits.NewBitArray(int(psh.Total * 2)), // this assumes that the parity parts are the same size
 	}
+
+	// TODO better call
+	go func() {
+		for _, p := range blockProp.getPeers() {
+			p.commitmentChan <- struct{}{}
+		}
+	}()
 }
 
 func shuffle[T any](slice []T) []T {
