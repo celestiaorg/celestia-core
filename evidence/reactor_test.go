@@ -185,7 +185,9 @@ func TestReactorsGossipNoCommittedEvidence(t *testing.T) {
 	time.Sleep(300 * time.Millisecond)
 
 	peerEv, _ = pools[1].PendingEvidence(1000)
-	assert.EqualValues(t, []types.Evidence{evList[0], evList[1]}, peerEv)
+	require.Len(t, peerEv, 2)
+    assert.Equal(t, evList[0].Hash(), peerEv[0].Hash())
+    assert.Equal(t, evList[1].Hash(), peerEv[1].Hash())
 }
 
 func TestReactorBroadcastEvidenceMemoryLeak(t *testing.T) {
