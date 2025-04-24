@@ -30,9 +30,9 @@ func (blockProp *Reactor) handleHaves(peer p2p.ID, haves *proptypes.HaveParts) {
 		return
 	}
 
-	_, parts, _, has := blockProp.getAllState(height, round, false)
+	_, parts, fullReqs, has := blockProp.getAllState(height, round, false)
 	if !has {
-		blockProp.Logger.Error("received have part for unknown proposal", "peer", peer, "height", height, "round", round)
+		//blockProp.Logger.Error("received have part for unknown proposal", "peer", peer, "height", height, "round", round)
 		// blockProp.Switch.StopPeerForError(blockProp.getPeer(peer).peer, errors.New("received part for unknown proposal"))
 		return
 	}
@@ -49,9 +49,71 @@ func (blockProp *Reactor) handleHaves(peer p2p.ID, haves *proptypes.HaveParts) {
 		return
 	}
 
-	// TODO better call mechanism
-	go func() { p.haveChan <- haves }()
+	// Check if the sender has parts that we don't have.
+	hc := haves.BitArray(int(parts.Total()))
+	hc.Sub(parts.BitArray())
 
+	if hc.IsEmpty() {
+		return
+	}
+
+	hc.Sub(fullReqs)
+
+	if hc.IsEmpty() {
+		return
+	}
+
+	reqLimit := 1
+
+	// if enough requests have been made for the parts, don't request them.
+	for _, partIndex := range hc.GetTrueIndices() {
+		reqs := blockProp.countRequests(height, round, partIndex)
+		if len(reqs) >= reqLimit {
+			hc.SetIndex(partIndex, false)
+			// mark the part as fully requested.
+			fullReqs.SetIndex(partIndex, true)
+		}
+		// don't request the part from this peer if we've already requested it
+		// from them.
+		for _, p := range reqs {
+			// p == peer means we have already requested the part from this peer.
+			if p == peer {
+				hc.SetIndex(partIndex, false)
+			}
+		}
+	}
+
+	if hc.IsEmpty() {
+		return
+	}
+
+	// send a want back to the sender of the haves with the wants we
+	e := p2p.Envelope{
+		ChannelID: WantChannel,
+		Message: &propproto.WantParts{
+			Height: height,
+			Round:  round,
+			Parts:  *hc.ToProto(),
+		},
+	}
+
+	if !p2p.TrySendEnvelopeShim(p.peer, e, blockProp.Logger) { //nolint:staticcheck
+		blockProp.Logger.Error("failed to send part state", "peer", peer, "height", height, "round", round)
+		return
+	}
+
+	schema.WriteBlockPartState(
+		blockProp.traceClient,
+		height,
+		round,
+		hc.GetTrueIndices(),
+		false,
+		string(peer),
+		schema.Haves,
+	)
+
+	// keep track of the parts that this node has requested.
+	p.AddRequests(height, round, hc)
 	blockProp.broadcastHaves(haves, peer, int(parts.Total()))
 }
 
