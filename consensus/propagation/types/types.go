@@ -396,14 +396,23 @@ func MsgFromProto(p *protoprop.Message) (Message, error) {
 
 	switch msg := um.(type) {
 	case *protoprop.TxMetaData:
+		if msg == nil {
+			return nil, errors.New("propagation: nil tx metadata")
+		}
 		pb = &TxMetaData{
 			Hash:  msg.Hash,
 			Start: msg.Start,
 			End:   msg.End,
 		}
 	case *protoprop.CompactBlock:
+		if msg == nil {
+			return nil, errors.New("propagation: nil compact block")
+		}
 		blobs := make([]TxMetaData, len(msg.Blobs))
 		for i, blob := range msg.Blobs {
+			if blob == nil {
+				return nil, fmt.Errorf("propagation: nil blob at index %d", i)
+			}
 			blobs[i] = TxMetaData{
 				Hash:  blob.Hash,
 				Start: blob.Start,
@@ -423,13 +432,22 @@ func MsgFromProto(p *protoprop.Message) (Message, error) {
 			PartsHashes: msg.PartsHashes,
 		}
 	case *protoprop.PartMetaData:
+		if msg == nil {
+			return nil, errors.New("propagation: nil PartMetaData")
+		}
 		pb = &PartMetaData{
 			Index: msg.Index,
 			Hash:  msg.Hash,
 		}
 	case *protoprop.HaveParts:
+		if msg == nil {
+			return nil, errors.New("propagation: nil have parts")
+		}
 		parts := make([]PartMetaData, len(msg.Parts))
 		for i, part := range msg.Parts {
+			if part == nil {
+				return nil, fmt.Errorf("propagation: nil part at index %d", i)
+			}
 			parts[i] = PartMetaData{
 				Index: part.Index,
 				Hash:  part.Hash,
@@ -441,6 +459,9 @@ func MsgFromProto(p *protoprop.Message) (Message, error) {
 			Parts:  parts,
 		}
 	case *protoprop.WantParts:
+		if msg == nil {
+			return nil, errors.New("propagation: nil WantParts")
+		}
 		array := bits.NewBitArray(msg.Parts.Size())
 		array.FromProto(&msg.Parts)
 		pb = &WantParts{
@@ -450,6 +471,9 @@ func MsgFromProto(p *protoprop.Message) (Message, error) {
 			Prove:  msg.Prove,
 		}
 	case *protoprop.RecoveryPart:
+		if msg == nil {
+			return nil, errors.New("propagation: nil RecoveryPart")
+		}
 		proof, err := merkle.ProofFromProto(&msg.Proof, true)
 		if err != nil {
 			return pb, err
