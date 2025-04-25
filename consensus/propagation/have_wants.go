@@ -161,7 +161,7 @@ func (blockProp *Reactor) wantsSendingRoutine(ps *PeerState) {
 			requestsBA.SetIndex(int(partIndex), true)
 
 			if len(requestsBA.GetTrueIndices()) >= wantBatchSize(int(parts.Total())) {
-				// no need to keep holding to more than 10 requests
+				// no need to keep holding to a large number of requests
 				blockProp.sendWant(ps, height, round, requestsBA)
 				requestsBA = nil
 			}
