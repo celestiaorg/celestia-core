@@ -373,13 +373,11 @@ func (blockProp *Reactor) handleRecoveryPart(peer p2p.ID, part *proptypes.Recove
 	if p != nil {
 		// FIXME investigate why the nil peer happens
 		p.DecreaseRequestCount(1)
-		func() {
-			select {
-			case <-blockProp.ctx.Done():
-				return
-			case p.receivedPart <- struct{}{}:
-			}
-		}()
+		select {
+		case <-blockProp.ctx.Done():
+			return
+		case p.receivedPart <- struct{}{}:
+		}
 	}
 
 	// if the part was not added and there was no error, the part has already
