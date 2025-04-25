@@ -1,8 +1,6 @@
 package propagation
 
 import (
-	"time"
-
 	proptypes "github.com/tendermint/tendermint/consensus/propagation/types"
 	"github.com/tendermint/tendermint/crypto/tmhash"
 	"github.com/tendermint/tendermint/libs/bits"
@@ -87,19 +85,11 @@ func (blockProp *Reactor) wantsSendingRoutine(ps *PeerState) {
 	var requestsBA *bits.BitArray
 	height := int64(0)
 	round := int32(0)
-	periodicRequestsDelay := 10 * time.Millisecond
-	periodicRequestTicker := time.NewTicker(periodicRequestsDelay)
 	batchRequestCount := int64(0)
 	for {
 		select {
 		case <-blockProp.ctx.Done():
 			return
-		case <-periodicRequestTicker.C:
-			// periodically send the existing requests
-			if requestsBA != nil && !requestsBA.IsEmpty() {
-				blockProp.sendWant(ps, height, round, requestsBA)
-				requestsBA = nil
-			}
 		case req, ok := <-ps.requestChan:
 			if !ok {
 				return
@@ -164,23 +154,13 @@ func (blockProp *Reactor) wantsSendingRoutine(ps *PeerState) {
 			requestsBA.SetIndex(int(partIndex), true)
 			batchRequestCount++
 
-			if len(requestsBA.GetTrueIndices()) >= wantBatchSize(int(parts.Total())) {
-				// no need to keep holding to a large number of requests
+			if len(ps.requestChan) == 0 {
 				blockProp.sendWant(ps, height, round, requestsBA)
 				requestsBA = nil
 				batchRequestCount = 0
 			}
 		}
 	}
-}
-
-// wantBatchSize returns the maximum number of parts to request in a batch.
-// this ensures sending requests without waiting too long especially for small blocks.
-func wantBatchSize(partsCount int) int {
-	if partsCount < 10 {
-		return 1
-	}
-	return 5
 }
 
 func (blockProp *Reactor) sendWant(ps *PeerState, height int64, round int32, requests *bits.BitArray) {
