@@ -178,13 +178,13 @@ func wantBatchSize(partsCount int) int {
 	return 5
 }
 
-func (blockProp *Reactor) sendWant(ps *PeerState, height int64, round int32, requestsBA *bits.BitArray) {
+func (blockProp *Reactor) sendWant(ps *PeerState, height int64, round int32, requests *bits.BitArray) {
 	e := p2p.Envelope{
 		ChannelID: WantChannel,
 		Message: &propproto.WantParts{
 			Height: height,
 			Round:  round,
-			Parts:  *requestsBA.ToProto(),
+			Parts:  *requests.ToProto(),
 		},
 	}
 
@@ -197,15 +197,15 @@ func (blockProp *Reactor) sendWant(ps *PeerState, height int64, round int32, req
 		blockProp.traceClient,
 		height,
 		round,
-		requestsBA.GetTrueIndices(),
+		requests.GetTrueIndices(),
 		false,
 		string(ps.peer.ID()),
 		schema.Haves,
 	)
 
 	// keep track of the parts that this node has requested.
-	ps.AddRequests(height, round, requestsBA)
-	ps.IncreaseRequestCount(int64(len(requestsBA.GetTrueIndices())))
+	ps.AddRequests(height, round, requests)
+	ps.IncreaseRequestCount(int64(len(requests.GetTrueIndices())))
 }
 
 // countRequests returns the number of requests for a given part.
