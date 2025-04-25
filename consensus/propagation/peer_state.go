@@ -1,11 +1,12 @@
 package propagation
 
 import (
+	"sync/atomic"
+
 	"github.com/tendermint/tendermint/libs/bits"
 	"github.com/tendermint/tendermint/libs/log"
 	"github.com/tendermint/tendermint/libs/sync"
 	"github.com/tendermint/tendermint/p2p"
-	"sync/atomic"
 )
 
 type request struct {

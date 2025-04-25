@@ -36,10 +36,8 @@ const (
 	WantChannel = byte(0x51)
 )
 
-var (
-	// todo: avoid endin up in programmer hell by not using a global var
-	RetryTime = 6 * time.Second
-)
+// todo: avoid endin up in programmer hell by not using a global var
+var RetryTime = 6 * time.Second
 
 type validateProposalFunc func(proposal *types.Proposal) error
 
