@@ -83,23 +83,10 @@ func (blockProp *Reactor) handleHaves(peer p2p.ID, haves *proptypes.HaveParts) {
 		return
 	}
 
-	// TODO queue the remaining requests
 	remaining, currentPeerConcurrentRequests := blockProp.filterRequests(peer, height, round, hc)
 	if hc.IsEmpty() {
 		return
 	}
-	// this should be done after sending the data
-	go func() {
-		select {
-		case <-blockProp.ctx.Done():
-			return
-		case p.remainingRequests <- &remainingRequests{
-			height:   height,
-			round:    round,
-			requests: remaining,
-		}:
-		}
-	}()
 
 	// send a want back to the sender of the haves with the wants we
 	e := p2p.Envelope{
@@ -125,6 +112,8 @@ func (blockProp *Reactor) handleHaves(peer p2p.ID, haves *proptypes.HaveParts) {
 		string(peer),
 		schema.Haves,
 	)
+
+	go blockProp.enqueueRemainingRequests(p, height, round, remaining)
 
 	// keep track of the parts that this node has requested.
 	p.AddRequests(height, round, hc)
@@ -191,6 +180,18 @@ func (blockProp *Reactor) filterRequests(peer p2p.ID, height int64, round int32,
 	}
 
 	return remainingRequests, peerConcurrentRequestsCount
+}
+
+func (blockProp *Reactor) enqueueRemainingRequests(peer *PeerState, height int64, round int32, remaining *bits.BitArray) {
+	select {
+	case <-blockProp.ctx.Done():
+		return
+	case peer.remainingRequests <- &remainingRequests{
+		height:   height,
+		round:    round,
+		requests: remaining,
+	}:
+	}
 }
 
 func (blockProp *Reactor) processRemainingRequests(d *PeerState) {

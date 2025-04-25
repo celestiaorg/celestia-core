@@ -12,9 +12,6 @@ import (
 )
 
 // retryWants ensure that all data for all unpruned compact blocks is requested.
-//
-// todo: add a request limit for each part to avoid downloading the block too
-// many times. atm, this code will request the same part from every peer.
 func (blockProp *Reactor) retryWants(currentHeight int64) {
 	if !blockProp.started.Load() {
 		return
@@ -57,6 +54,11 @@ func (blockProp *Reactor) retryWants(currentHeight int64) {
 				continue
 			}
 
+			remaining, currentPeerConcurrentRequests := blockProp.filterRequests(peer.peer.ID(), height, round, mc)
+			if mc.IsEmpty() {
+				return
+			}
+
 			e := p2p.Envelope{
 				ChannelID: WantChannel,
 				Message: &protoprop.WantParts{
@@ -74,9 +76,12 @@ func (blockProp *Reactor) retryWants(currentHeight int64) {
 
 			schema.WriteCatchupRequest(blockProp.traceClient, height, round, mc.String(), string(peer.peer.ID()))
 
+			go blockProp.enqueueRemainingRequests(peer, height, round, remaining)
+
 			// keep track of which requests we've made this attempt.
 			missing = missing.Sub(mc)
-			peer.AddRequests(height, round, missing)
+			peer.SetRequestCount(currentPeerConcurrentRequests)
+			peer.AddRequests(height, round, mc)
 		}
 	}
 }
