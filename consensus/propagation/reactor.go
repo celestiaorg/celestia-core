@@ -128,6 +128,7 @@ func (blockProp *Reactor) OnStart() error {
 
 func (blockProp *Reactor) OnStop() {
 	blockProp.cancel()
+	// TODO close the channels
 }
 
 func (blockProp *Reactor) GetChannels() []*conn.ChannelDescriptor {
@@ -164,9 +165,11 @@ func (blockProp *Reactor) AddPeer(peer p2p.Peer) {
 		return
 	}
 
-	blockProp.setPeer(peer.ID(), newPeerState(peer, blockProp.Logger))
-	cb, _, found := blockProp.GetCurrentCompactBlock()
+	peerState := newPeerState(peer, blockProp.Logger)
+	blockProp.setPeer(peer.ID(), peerState)
+	go blockProp.processRemainingRequests(peerState)
 
+	cb, _, found := blockProp.GetCurrentCompactBlock()
 	if !found {
 		blockProp.Logger.Error("Failed to get current compact block", "peer", peer.ID())
 		return

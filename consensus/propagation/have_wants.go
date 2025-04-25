@@ -11,7 +11,7 @@ import (
 
 const (
 	// concurrentPerPeerRequestLimit the maximum number of requests to send a peer.
-	concurrentPerPeerRequestLimit = 300
+	concurrentPerPeerRequestLimit = 300 // 3000part ~= 196mb
 )
 
 // perPartRequestLimit returns the maximum number of requests for a given part.
@@ -84,10 +84,22 @@ func (blockProp *Reactor) handleHaves(peer p2p.ID, haves *proptypes.HaveParts) {
 	}
 
 	// TODO queue the remaining requests
-	blockProp.filterRequests(peer, height, round, hc)
+	remaining, currentPeerConcurrentRequests := blockProp.filterRequests(peer, height, round, hc)
 	if hc.IsEmpty() {
 		return
 	}
+	// this should be done after sending the data
+	go func() {
+		select {
+		case <-blockProp.ctx.Done():
+			return
+		case p.remainingRequests <- &remainingRequests{
+			height:   height,
+			round:    round,
+			requests: remaining,
+		}:
+		}
+	}()
 
 	// send a want back to the sender of the haves with the wants we
 	e := p2p.Envelope{
@@ -116,28 +128,35 @@ func (blockProp *Reactor) handleHaves(peer p2p.ID, haves *proptypes.HaveParts) {
 
 	// keep track of the parts that this node has requested.
 	p.AddRequests(height, round, hc)
+	p.SetRequestCount(currentPeerConcurrentRequests)
 	blockProp.broadcastHaves(haves, peer, int(parts.Total()))
 }
 
 // filterRequests identifies and excludes block parts that have been fully requested or already requested from the peer.
-// returns the parts that couldn't be requested due to the concurrentPerPeerRequestLimit or nil.
+// returns the parts that couldn't be requested due to the concurrentPerPeerRequestLimit or nil, along with the new concurrent peer requests count.
 // TODO unit test
-func (blockProp *Reactor) filterRequests(peer p2p.ID, height int64, round int32, hc *bits.BitArray) *bits.BitArray {
+// TODO also change this in the catchup!!
+func (blockProp *Reactor) filterRequests(peer p2p.ID, height int64, round int32, hc *bits.BitArray) (*bits.BitArray, int64) {
+	if hc == nil {
+		// TODO maybe return an error?
+		return nil, 0
+	}
+	peerState := blockProp.getPeer(peer)
+	if peerState == nil {
+		// TODO investigate why this happens sometimes
+		return hc, 0
+	}
+	peerConcurrentRequestsCount := peerState.requestCount.Load()
 	_, parts, fullReqs, has := blockProp.getAllState(height, round, false)
 	if !has {
-		blockProp.Logger.Error("received have part for unknown proposal", "peer", peer, "height", height, "round", round)
+		blockProp.Logger.Error("couldn't find proposal when filtering requests", "height", height, "round", round)
 		// blockProp.Switch.StopPeerForError(blockProp.getPeer(peer).peer, errors.New("received part for unknown proposal"))
-		return hc
+		// maybe return error
+		return hc, peerConcurrentRequestsCount
 	}
 	perPartLimit := perPartRequestLimit(int(parts.Total()))
 	// TODO also limit per block
 
-	peerState := blockProp.getPeer(peer)
-	if peerState == nil {
-		// TODO investigate why this happens sometimes
-		return hc
-	}
-	peerConcurrentRequestsCount := peerState.requestCount.Load()
 	var remainingRequests *bits.BitArray
 
 	// shuffle the indices not to request the parts in the same order
@@ -162,19 +181,83 @@ func (blockProp *Reactor) filterRequests(peer p2p.ID, height int64, round int32,
 		// stop if we reached the limit of concurrent per peer requests, remove
 		// the remaining indexes and save them in the remaining parts.
 		if peerConcurrentRequestsCount >= concurrentPerPeerRequestLimit {
-			if len(shuffledTrueIndices) == index+1 {
-				break
-			}
 			remainingRequests = bits.NewBitArray(hc.Size())
-			for _, partId := range shuffledTrueIndices[index+1:] {
+			for _, partId := range shuffledTrueIndices[index:] {
 				remainingRequests.SetIndex(partId, true)
 				hc.SetIndex(partId, false)
 			}
 		}
 		peerConcurrentRequestsCount++
 	}
-	peerState.SetRequestCount(peerConcurrentRequestsCount)
-	return remainingRequests
+
+	return remainingRequests, peerConcurrentRequestsCount
+}
+
+func (blockProp *Reactor) processRemainingRequests(d *PeerState) {
+	for {
+		select {
+		case <-blockProp.ctx.Done():
+			return
+		case remainingReq, has := <-d.remainingRequests:
+			if !blockProp.started.Load() {
+				continue
+			}
+			if !has {
+				return
+			}
+			_, parts, _, has := blockProp.getAllState(remainingReq.height, remainingReq.round, true)
+			if !has {
+				blockProp.Logger.Error("couldn't find proposal when processing remaining requests", "height", remainingReq.height, "round", remainingReq.round)
+				return
+			}
+			// check if we received these parts from anywhere
+			// TODO check if any of the params are nil
+			// TODO refactor not to declare this twice
+			remainingBA := remainingReq.requests.Sub(parts.BitArray())
+			for {
+				select {
+				case <-blockProp.ctx.Done():
+					return
+				case _, has := <-d.receivedPart:
+					if !has {
+						return
+					}
+					// check if we received these parts from anywhere
+					// TODO check if any of the params are nil
+					remainingBA = remainingReq.requests.Sub(parts.BitArray())
+					leftBA, concurrentPeerRequestsCount := blockProp.filterRequests(d.peer.ID(), remainingReq.height, remainingReq.round, remainingBA)
+					if !remainingBA.IsEmpty() {
+						blockProp.Logger.Info("requesting from process remaining requests")
+						e := p2p.Envelope{
+							ChannelID: WantChannel,
+							Message: &propproto.WantParts{
+								Height: remainingReq.height,
+								Round:  remainingReq.round,
+								Parts:  *remainingBA.ToProto(),
+							},
+						}
+
+						if !p2p.TrySendEnvelopeShim(d.peer, e, blockProp.Logger) { //nolint:staticcheck
+							blockProp.Logger.Error("failed to send part state", "peer", d.peer, "height", remainingReq.height, "round", remainingReq.round)
+							continue
+						}
+						schema.WriteBlockPartState(
+							blockProp.traceClient,
+							remainingReq.height,
+							remainingReq.round,
+							remainingBA.GetTrueIndices(),
+							false,
+							string(d.peer.ID()),
+							schema.Haves,
+						)
+						d.AddRequests(remainingReq.height, remainingReq.round, remainingBA)
+						d.SetRequestCount(concurrentPeerRequestsCount)
+					}
+					remainingBA = leftBA
+				}
+			}
+		}
+	}
 }
 
 // countRequests returns the number of requests for a given part.
@@ -345,6 +428,13 @@ func (blockProp *Reactor) handleRecoveryPart(peer p2p.ID, part *proptypes.Recove
 	if p != nil {
 		// FIXME investigate why the nil peer happens
 		p.DecreaseRequestCount(1)
+		go func() {
+			select {
+			case <-blockProp.ctx.Done():
+				return
+			case p.receivedPart <- struct{}{}:
+			}
+		}()
 	}
 
 	// if the part was not added and there was no error, the part has already

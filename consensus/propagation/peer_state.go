@@ -8,6 +8,12 @@ import (
 	"sync/atomic"
 )
 
+type remainingRequests struct {
+	height   int64
+	round    int32
+	requests *bits.BitArray
+}
+
 // PeerState keeps track of haves and wants for each peer. This is used for
 // block prop and catchup.
 type PeerState struct {
@@ -18,7 +24,9 @@ type PeerState struct {
 	// and round.
 	state map[int64]map[int32]*partState
 
-	requestCount atomic.Int64
+	requestCount      atomic.Int64
+	remainingRequests chan *remainingRequests
+	receivedPart      chan struct{}
 
 	logger log.Logger
 }
@@ -27,10 +35,12 @@ type PeerState struct {
 // called for each peer.
 func newPeerState(peer p2p.Peer, logger log.Logger) *PeerState {
 	return &PeerState{
-		mtx:    &sync.RWMutex{},
-		state:  make(map[int64]map[int32]*partState),
-		peer:   peer,
-		logger: logger,
+		mtx:               &sync.RWMutex{},
+		state:             make(map[int64]map[int32]*partState),
+		peer:              peer,
+		logger:            logger,
+		remainingRequests: make(chan *remainingRequests, 1000),
+		receivedPart:      make(chan struct{}, 1000),
 	}
 }
 
