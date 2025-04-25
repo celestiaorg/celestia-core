@@ -89,6 +89,7 @@ func (blockProp *Reactor) wantsSendingRoutine(ps *PeerState) {
 	round := int32(0)
 	periodicRequestsDelay := 10 * time.Millisecond
 	periodicRequestTicker := time.NewTicker(periodicRequestsDelay)
+	batchRequestCount := int64(0)
 	for {
 		select {
 		case <-blockProp.ctx.Done():
@@ -105,11 +106,12 @@ func (blockProp *Reactor) wantsSendingRoutine(ps *PeerState) {
 			}
 
 			// concurrent per-peer per-block request limit reached
-			if ps.requestCount.Load() >= perPeerPerBlockConcurrentRequestLimit() {
+			if ps.requestCount.Load()+batchRequestCount >= perPeerPerBlockConcurrentRequestLimit() {
 				// we reached the limit of requests, we request what we can
 				if requestsBA != nil && !requestsBA.IsEmpty() {
 					blockProp.sendWant(ps, height, round, requestsBA)
 					requestsBA = nil
+					batchRequestCount = 0
 				}
 				// wait for a part to be received before continuing
 				select {
@@ -125,6 +127,7 @@ func (blockProp *Reactor) wantsSendingRoutine(ps *PeerState) {
 			// if we're at a new height, we can drop the previous requests
 			if height != req.height || (height == req.height && round != req.round) {
 				requestsBA = nil
+				batchRequestCount = 0
 				height = req.height
 				round = req.round
 			}
@@ -159,11 +162,13 @@ func (blockProp *Reactor) wantsSendingRoutine(ps *PeerState) {
 				requestsBA = bits.NewBitArray(int(parts.Total()))
 			}
 			requestsBA.SetIndex(int(partIndex), true)
+			batchRequestCount++
 
 			if len(requestsBA.GetTrueIndices()) >= wantBatchSize(int(parts.Total())) {
 				// no need to keep holding to a large number of requests
 				blockProp.sendWant(ps, height, round, requestsBA)
 				requestsBA = nil
+				batchRequestCount = 0
 			}
 		}
 	}
