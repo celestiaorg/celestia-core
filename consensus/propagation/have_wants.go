@@ -172,7 +172,7 @@ func (blockProp *Reactor) wantsSendingRoutine(ps *PeerState) {
 // wantBatchSize returns the maximum number of parts to request in a batch.
 // this ensures sending requests without waiting too long especially for small blocks.
 func wantBatchSize(partsCount int) int {
-	return partsCount * 5 / 100
+	return int(math.Max(1, float64(partsCount*5)/100))
 }
 
 func (blockProp *Reactor) sendWant(ps *PeerState, height int64, round int32, requestsBA *bits.BitArray) {
