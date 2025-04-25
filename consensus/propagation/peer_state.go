@@ -5,6 +5,7 @@ import (
 	"github.com/tendermint/tendermint/libs/log"
 	"github.com/tendermint/tendermint/libs/sync"
 	"github.com/tendermint/tendermint/p2p"
+	"sync/atomic"
 )
 
 // PeerState keeps track of haves and wants for each peer. This is used for
@@ -16,6 +17,8 @@ type PeerState struct {
 	// state organized the haves and wants for each data is indexed by height
 	// and round.
 	state map[int64]map[int32]*partState
+
+	requestCount atomic.Int64
 
 	logger log.Logger
 }
@@ -49,6 +52,29 @@ func (d *PeerState) initialize(height int64, round int32, size int) {
 	if d.state[height][round] == nil {
 		d.state[height][round] = newpartState(size, height, round)
 	}
+}
+
+func (d *PeerState) IncreaseRequestCount(add int64) {
+	// TODO test
+	d.requestCount.Store(d.requestCount.Load() + add)
+}
+
+func (d *PeerState) SetRequestCount(count int64) {
+	// TODO test
+	d.requestCount.Store(count)
+}
+
+func (d *PeerState) DecreaseRequestCount(sub int64) {
+	// TODO test
+	requestCount := d.requestCount.Load()
+	if requestCount == 0 {
+		return
+	}
+	if requestCount < sub {
+		d.requestCount.Store(0)
+		return
+	}
+	d.requestCount.Store(d.requestCount.Load() - sub)
 }
 
 // AddHaves sets the haves for a given height and round.

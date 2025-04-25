@@ -3,10 +3,30 @@ package propagation
 import (
 	proptypes "github.com/tendermint/tendermint/consensus/propagation/types"
 	"github.com/tendermint/tendermint/crypto/tmhash"
+	"github.com/tendermint/tendermint/libs/bits"
 	"github.com/tendermint/tendermint/p2p"
 	"github.com/tendermint/tendermint/pkg/trace/schema"
 	propproto "github.com/tendermint/tendermint/proto/tendermint/propagation"
 )
+
+const (
+	// concurrentPerPeerRequestLimit the maximum number of requests to send a peer.
+	concurrentPerPeerRequestLimit = 300
+)
+
+// perPartRequestLimit returns the maximum number of requests for a given part.
+// takes a blockPartsCount to decide on the number of redundant requests per part.
+func perPartRequestLimit(blockPartsCount int) int {
+	// TODO implement and change the proposal data full requests to support it
+	return 1
+}
+
+// perBlockRequestLimit returns the maximum number of requests for a given block by peer.
+// it helps avoid downloading the whole block from a single peer.
+func perBlockRequestLimit(blockPartsCount int) int {
+	// TODO implement
+	return blockPartsCount
+}
 
 // handleHaves is called when a peer sends a have message. This is used to
 // determine if the sender has or is getting portions of the proposal that this
@@ -63,26 +83,8 @@ func (blockProp *Reactor) handleHaves(peer p2p.ID, haves *proptypes.HaveParts) {
 		return
 	}
 
-	reqLimit := 1
-
-	// if enough requests have been made for the parts, don't request them.
-	for _, partIndex := range hc.GetTrueIndices() {
-		reqs := blockProp.countRequests(height, round, partIndex)
-		if len(reqs) >= reqLimit {
-			hc.SetIndex(partIndex, false)
-			// mark the part as fully requested.
-			fullReqs.SetIndex(partIndex, true)
-		}
-		// don't request the part from this peer if we've already requested it
-		// from them.
-		for _, p := range reqs {
-			// p == peer means we have already requested the part from this peer.
-			if p == peer {
-				hc.SetIndex(partIndex, false)
-			}
-		}
-	}
-
+	// TODO queue the remaining requests
+	blockProp.filterRequests(peer, height, round, hc)
 	if hc.IsEmpty() {
 		return
 	}
@@ -115,6 +117,64 @@ func (blockProp *Reactor) handleHaves(peer p2p.ID, haves *proptypes.HaveParts) {
 	// keep track of the parts that this node has requested.
 	p.AddRequests(height, round, hc)
 	blockProp.broadcastHaves(haves, peer, int(parts.Total()))
+}
+
+// filterRequests identifies and excludes block parts that have been fully requested or already requested from the peer.
+// returns the parts that couldn't be requested due to the concurrentPerPeerRequestLimit or nil.
+// TODO unit test
+func (blockProp *Reactor) filterRequests(peer p2p.ID, height int64, round int32, hc *bits.BitArray) *bits.BitArray {
+	_, parts, fullReqs, has := blockProp.getAllState(height, round, false)
+	if !has {
+		blockProp.Logger.Error("received have part for unknown proposal", "peer", peer, "height", height, "round", round)
+		// blockProp.Switch.StopPeerForError(blockProp.getPeer(peer).peer, errors.New("received part for unknown proposal"))
+		return hc
+	}
+	perPartLimit := perPartRequestLimit(int(parts.Total()))
+	// TODO also limit per block
+
+	peerState := blockProp.getPeer(peer)
+	if peerState == nil {
+		// TODO investigate why this happens sometimes
+		return hc
+	}
+	peerConcurrentRequestsCount := peerState.requestCount.Load()
+	var remainingRequests *bits.BitArray
+
+	// shuffle the indices not to request the parts in the same order
+	shuffledTrueIndices := shuffle(hc.GetTrueIndices())
+	for index, partIndex := range shuffledTrueIndices {
+		reqs := blockProp.countRequests(height, round, partIndex)
+		if len(reqs) >= perPartLimit {
+			hc.SetIndex(partIndex, false)
+			// mark the part as requested.
+			fullReqs.SetIndex(partIndex, true)
+			continue
+		}
+		// don't request the part from this peer if we've already requested it
+		// from them.
+		for _, p := range reqs {
+			// p == peer means we have already requested the part from this peer.
+			if p == peer {
+				hc.SetIndex(partIndex, false)
+				continue
+			}
+		}
+		// stop if we reached the limit of concurrent per peer requests, remove
+		// the remaining indexes and save them in the remaining parts.
+		if peerConcurrentRequestsCount >= concurrentPerPeerRequestLimit {
+			if len(shuffledTrueIndices) == index+1 {
+				break
+			}
+			remainingRequests = bits.NewBitArray(hc.Size())
+			for _, partId := range shuffledTrueIndices[index+1:] {
+				remainingRequests.SetIndex(partId, true)
+				hc.SetIndex(partId, false)
+			}
+		}
+		peerConcurrentRequestsCount++
+	}
+	peerState.SetRequestCount(peerConcurrentRequestsCount)
+	return remainingRequests
 }
 
 // countRequests returns the number of requests for a given part.
@@ -280,6 +340,11 @@ func (blockProp *Reactor) handleRecoveryPart(peer p2p.ID, part *proptypes.Recove
 	if err != nil {
 		blockProp.Logger.Error("failed to add part to part set", "peer", peer, "height", part.Height, "round", part.Round, "part", part.Index, "error", err)
 		return
+	}
+
+	if p != nil {
+		// FIXME investigate why the nil peer happens
+		p.DecreaseRequestCount(1)
 	}
 
 	// if the part was not added and there was no error, the part has already
