@@ -175,6 +175,7 @@ func (blockProp *Reactor) filterRequests(peer p2p.ID, height int64, round int32,
 				remainingRequests.SetIndex(partId, true)
 				hc.SetIndex(partId, false)
 			}
+			break
 		}
 		peerConcurrentRequestsCount++
 	}
@@ -212,10 +213,10 @@ func (blockProp *Reactor) processRemainingRequests(d *PeerState) {
 				return
 			}
 			// check if we received these parts from anywhere
-			// TODO check if any of the params are nil
-			// TODO refactor not to declare this twice
-			remainingBA := remainingReq.requests.Sub(parts.BitArray())
-			for {
+			toBeRequested := remainingReq.requests
+			var remainingBA *bits.BitArray
+			concurrentPeerRequestsCount := int64(0)
+			for remainingBA != nil && !remainingBA.IsEmpty() {
 				select {
 				case <-blockProp.ctx.Done():
 					return
@@ -225,16 +226,16 @@ func (blockProp *Reactor) processRemainingRequests(d *PeerState) {
 					}
 					// check if we received these parts from anywhere
 					// TODO check if any of the params are nil
-					remainingBA = remainingReq.requests.Sub(parts.BitArray())
-					leftBA, concurrentPeerRequestsCount := blockProp.filterRequests(d.peer.ID(), remainingReq.height, remainingReq.round, remainingBA)
-					if !remainingBA.IsEmpty() {
+					toBeRequested = toBeRequested.Sub(parts.BitArray())
+					remainingBA, concurrentPeerRequestsCount = blockProp.filterRequests(d.peer.ID(), remainingReq.height, remainingReq.round, toBeRequested)
+					if !toBeRequested.IsEmpty() {
 						blockProp.Logger.Info("requesting from process remaining requests")
 						e := p2p.Envelope{
 							ChannelID: WantChannel,
 							Message: &propproto.WantParts{
 								Height: remainingReq.height,
 								Round:  remainingReq.round,
-								Parts:  *remainingBA.ToProto(),
+								Parts:  *toBeRequested.ToProto(),
 							},
 						}
 
@@ -246,15 +247,15 @@ func (blockProp *Reactor) processRemainingRequests(d *PeerState) {
 							blockProp.traceClient,
 							remainingReq.height,
 							remainingReq.round,
-							remainingBA.GetTrueIndices(),
+							toBeRequested.GetTrueIndices(),
 							false,
 							string(d.peer.ID()),
 							schema.Haves,
 						)
-						d.AddRequests(remainingReq.height, remainingReq.round, remainingBA)
+						d.AddRequests(remainingReq.height, remainingReq.round, toBeRequested)
 						d.SetRequestCount(concurrentPeerRequestsCount)
 					}
-					remainingBA = leftBA
+					toBeRequested = remainingBA
 				}
 			}
 		}
