@@ -6,6 +6,13 @@ import (
 	"testing"
 
 	"github.com/gogo/protobuf/proto"
+	"github.com/google/gofuzz"
+	"github.com/tendermint/tendermint/proto/tendermint/crypto"
+
+	// "github.com/tendermint/tendermint/proto/tendermint/libs/bits"
+	protobits "github.com/tendermint/tendermint/proto/tendermint/libs/bits"
+	"github.com/tendermint/tendermint/proto/tendermint/propagation"
+	prototypes "github.com/tendermint/tendermint/proto/tendermint/types"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -492,5 +499,120 @@ func makeBlockID(hash []byte, partSetSize uint32, partSetHash []byte) types.Bloc
 			Total: partSetSize,
 			Hash:  psH,
 		},
+	}
+}
+
+func TestFuzzMsgFromProto(t *testing.T) {
+	seedCorpus := []struct {
+		msg    *propagation.Message
+		mutate func(fz *fuzz.Fuzzer, msg *propagation.Message)
+	}{
+		{
+			msg: &propagation.Message{
+				Sum: &propagation.Message_CompactBlock{
+					CompactBlock: &propagation.CompactBlock{
+						BpHash:    rand.Bytes(tmhash.Size),
+						Blobs:     []*propagation.TxMetaData{{Hash: rand.Bytes(tmhash.Size), Start: 0, End: 10}},
+						Signature: rand.Bytes(types.MaxSignatureSize),
+						Proposal:  &prototypes.Proposal{},
+					},
+				},
+			},
+			mutate: func(fz *fuzz.Fuzzer, msg *propagation.Message) {
+				fz.Fuzz(msg.Sum.(*propagation.Message_CompactBlock).CompactBlock)
+			},
+		},
+		{
+			msg: &propagation.Message{
+				Sum: &propagation.Message_HaveParts{
+					HaveParts: &propagation.HaveParts{
+						Height: 1,
+						Round:  0,
+						Parts:  []*propagation.PartMetaData{{Index: 0, Hash: rand.Bytes(tmhash.Size)}},
+					},
+				},
+			},
+			mutate: func(fz *fuzz.Fuzzer, msg *propagation.Message) {
+				fz.Fuzz(msg.Sum.(*propagation.Message_HaveParts).HaveParts)
+			},
+		},
+		{
+			msg: &propagation.Message{
+				Sum: &propagation.Message_WantParts{
+					WantParts: &propagation.WantParts{
+						Parts:  protobits.BitArray{Bits: 10, Elems: []uint64{0}},
+						Height: 1,
+						Round:  0,
+						Prove:  true,
+					},
+				},
+			},
+			mutate: func(fz *fuzz.Fuzzer, msg *propagation.Message) {
+				fz.Fuzz(msg.Sum.(*propagation.Message_WantParts).WantParts)
+			},
+		},
+		{
+			msg: &propagation.Message{
+				Sum: &propagation.Message_RecoveryPart{
+					RecoveryPart: &propagation.RecoveryPart{
+						Height: 1,
+						Round:  0,
+						Index:  0,
+						Data:   rand.Bytes(100),
+						Proof:  crypto.Proof{},
+					},
+				},
+			},
+			mutate: func(fz *fuzz.Fuzzer, msg *propagation.Message) {
+				fz.Fuzz(msg.Sum.(*propagation.Message_RecoveryPart).RecoveryPart)
+			},
+		},
+	}
+	fz := fuzz.New().NilChance(0.2).NumElements(1, 3)
+
+	for i := 0; i < 10000; i++ {
+		seed := seedCorpus[i%len(seedCorpus)]
+
+		// Deep copy to avoid mutating original
+		bz, _ := proto.Marshal(seed.msg)
+		msg := &propagation.Message{}
+		_ = proto.Unmarshal(bz, msg)
+
+		// Fuzz the inner structure only
+		seed.mutate(fz, msg)
+
+		result, err := MsgFromProto(msg)
+
+		if result != nil {
+			if err := result.ValidateBasic(); err != nil {
+				t.Errorf("ValidateBasic failed: %v", err)
+			}
+		}
+
+		if err != nil {
+			expectedErrors := []string{
+				"propagation: nil message",
+				"propagation: nil tx metadata",
+				"propagation: nil compact block",
+				"propagation: nil blob at index",
+				"propagation: nil PartMetaData",
+				"propagation: nil have parts",
+				"propagation: nil part at index",
+				"propagation: nil WantParts",
+				"propagation: nil RecoveryPart",
+				"propagation: message not recognized",
+			}
+
+			found := false
+			for _, expected := range expectedErrors {
+				if err.Error() == expected {
+					found = true
+					break
+				}
+			}
+			if !found {
+				t.Errorf("Unexpected error: %v", err)
+			}
+		}
 	}
 }
