@@ -7,6 +7,7 @@ import (
 	"github.com/tendermint/tendermint/p2p"
 	"github.com/tendermint/tendermint/pkg/trace/schema"
 	propproto "github.com/tendermint/tendermint/proto/tendermint/propagation"
+	"time"
 )
 
 // handleHaves is called when a peer sends a have message. This is used to
@@ -33,7 +34,7 @@ func (blockProp *Reactor) handleHaves(peer p2p.ID, haves *proptypes.HaveParts) {
 
 	_, parts, fullReqs, has := blockProp.getAllState(height, round, false)
 	if !has {
-		blockProp.Logger.Error("received have part for unknown proposal", "peer", peer, "height", height, "round", round)
+		blockProp.Logger.Debug("received have part for unknown proposal", "peer", peer, "height", height, "round", round)
 		// blockProp.Switch.StopPeerForError(blockProp.getPeer(peer).peer, errors.New("received part for unknown proposal"))
 		return
 	}
@@ -82,28 +83,55 @@ func perPeerPerBlockConcurrentRequestLimit() int64 {
 }
 
 func (blockProp *Reactor) wantsSendingRoutine(ps *PeerState) {
+	var requestsBA *bits.BitArray
+	height := int64(0)
+	round := int32(0)
+	periodicRequestsDelay := 10 * time.Millisecond
+	periodicRequestTicker := time.NewTicker(periodicRequestsDelay)
 	for {
 		select {
 		case <-blockProp.ctx.Done():
 			return
+		case <-periodicRequestTicker.C:
+			// periodically send the existing requests
+			if requestsBA != nil && !requestsBA.IsEmpty() {
+				blockProp.sendWant(ps, height, round, requestsBA)
+				requestsBA = nil
+			}
 		case req, ok := <-ps.requestChan:
 			if !ok {
 				return
 			}
+
+			// concurrent per-peer per-block request limit reached
 			if ps.requestCount.Load() >= perPeerPerBlockConcurrentRequestLimit() {
-				_, ok = <-ps.receivedPart
-				if !ok {
+				// we reached the limit of requests, we request what we can
+				if requestsBA != nil && !requestsBA.IsEmpty() {
+					blockProp.sendWant(ps, height, round, requestsBA)
+					requestsBA = nil
+				}
+				// wait for a part to be received before continuing
+				select {
+				case <-blockProp.ctx.Done():
 					return
+				case _, ok = <-ps.receivedPart:
+					if !ok {
+						return
+					}
 				}
 			}
-			height := req.height
-			round := req.round
+
+			// if we're at a new height, we can drop the previous requests
+			if height != req.height || (height == req.height && round != req.round) {
+				requestsBA = nil
+				height = req.height
+				round = req.round
+			}
+
 			partIndex := req.index
 			_, parts, fullReqs, has := blockProp.getAllState(height, round, false)
 			if !has {
 				blockProp.Logger.Error("couldn't find proposal when filtering requests", "height", height, "round", round)
-				// blockProp.Switch.StopPeerForError(blockProp.getPeer(peer).peer, errors.New("received part for unknown proposal"))
-				// maybe return error
 				continue
 			}
 			if parts.BitArray().GetIndex(int(partIndex)) {
@@ -126,37 +154,54 @@ func (blockProp *Reactor) wantsSendingRoutine(ps *PeerState) {
 				}
 			}
 
-			hc := bits.NewBitArray(int(parts.Total()))
-			hc.SetIndex(int(partIndex), true)
-			e := p2p.Envelope{
-				ChannelID: WantChannel,
-				Message: &propproto.WantParts{
-					Height: height,
-					Round:  round,
-					Parts:  *hc.ToProto(),
-				},
+			if requestsBA == nil {
+				requestsBA = bits.NewBitArray(int(parts.Total()))
 			}
+			requestsBA.SetIndex(int(partIndex), true)
 
-			if !p2p.TrySendEnvelopeShim(ps.peer, e, blockProp.Logger) { //nolint:staticcheck
-				blockProp.Logger.Error("failed to send part state", "peer", ps.peer.ID(), "height", height, "round", round)
-				return
+			if len(requestsBA.GetTrueIndices()) >= wantBatchSize(int(parts.Total())) {
+				// no need to keep holding to more than 10 requests
+				blockProp.sendWant(ps, height, round, requestsBA)
+				requestsBA = nil
 			}
-
-			schema.WriteBlockPartState(
-				blockProp.traceClient,
-				height,
-				round,
-				hc.GetTrueIndices(),
-				false,
-				string(ps.peer.ID()),
-				schema.Haves,
-			)
-
-			// keep track of the parts that this node has requested.
-			ps.AddRequests(height, round, hc)
-			ps.IncreaseRequestCount(1)
 		}
 	}
+}
+
+// wantBatchSize returns the maximum number of parts to request in a batch.
+// this ensures sending requests without waiting too long especially for small blocks.
+func wantBatchSize(partsCount int) int {
+	return partsCount * 5 / 100
+}
+
+func (blockProp *Reactor) sendWant(ps *PeerState, height int64, round int32, requestsBA *bits.BitArray) {
+	e := p2p.Envelope{
+		ChannelID: WantChannel,
+		Message: &propproto.WantParts{
+			Height: height,
+			Round:  round,
+			Parts:  *requestsBA.ToProto(),
+		},
+	}
+
+	if !p2p.TrySendEnvelopeShim(ps.peer, e, blockProp.Logger) { //nolint:staticcheck
+		blockProp.Logger.Error("failed to send part state", "peer", ps.peer.ID(), "height", height, "round", round)
+		return
+	}
+
+	schema.WriteBlockPartState(
+		blockProp.traceClient,
+		height,
+		round,
+		requestsBA.GetTrueIndices(),
+		false,
+		string(ps.peer.ID()),
+		schema.Haves,
+	)
+
+	// keep track of the parts that this node has requested.
+	ps.AddRequests(height, round, requestsBA)
+	ps.IncreaseRequestCount(int64(len(requestsBA.GetTrueIndices())))
 }
 
 // countRequests returns the number of requests for a given part.
