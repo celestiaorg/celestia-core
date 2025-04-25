@@ -82,9 +82,7 @@ func perPeerPerBlockConcurrentRequestLimit() int64 {
 }
 
 func (blockProp *Reactor) wantsSendingRoutine(ps *PeerState) {
-	var requestsBA *bits.BitArray
-	height := int64(0)
-	round := int32(0)
+	var want *proptypes.WantParts
 	batchRequestCount := int64(0)
 	for {
 		select {
@@ -98,9 +96,9 @@ func (blockProp *Reactor) wantsSendingRoutine(ps *PeerState) {
 			// concurrent per-peer per-block request limit reached
 			if ps.requestCount.Load()+batchRequestCount >= perPeerPerBlockConcurrentRequestLimit() {
 				// we reached the limit of requests, we request what we can
-				if requestsBA != nil && !requestsBA.IsEmpty() {
-					blockProp.sendWant(ps, height, round, requestsBA)
-					requestsBA = nil
+				if want != nil && !want.Parts.IsEmpty() {
+					blockProp.sendWant(ps, want)
+					want = nil
 					batchRequestCount = 0
 				}
 				// wait for a part to be received before continuing
@@ -115,17 +113,16 @@ func (blockProp *Reactor) wantsSendingRoutine(ps *PeerState) {
 			}
 
 			// if we're at a new height, we can drop the previous requests
-			if height != req.height || (height == req.height && round != req.round) {
-				requestsBA = nil
+			if want != nil &&
+				(want.Height != req.height || (want.Height == req.height && want.Round != req.round)) {
+				want = nil
 				batchRequestCount = 0
-				height = req.height
-				round = req.round
 			}
 
 			partIndex := req.index
-			_, parts, fullReqs, has := blockProp.getAllState(height, round, false)
+			_, parts, fullReqs, has := blockProp.getAllState(req.height, req.round, false)
 			if !has {
-				blockProp.Logger.Error("couldn't find proposal when filtering requests", "height", height, "round", round)
+				blockProp.Logger.Error("couldn't find proposal when filtering requests", "height", req.height, "round", req.round)
 				continue
 			}
 			if parts.BitArray().GetIndex(int(partIndex)) {
@@ -133,7 +130,7 @@ func (blockProp *Reactor) wantsSendingRoutine(ps *PeerState) {
 			}
 
 			reqLimit := 1
-			reqs := blockProp.countRequests(height, round, int(partIndex))
+			reqs := blockProp.countRequests(req.height, req.round, int(partIndex))
 			if len(reqs) >= reqLimit {
 				fullReqs.SetIndex(int(partIndex), true)
 				continue
@@ -148,49 +145,49 @@ func (blockProp *Reactor) wantsSendingRoutine(ps *PeerState) {
 				}
 			}
 
-			if requestsBA == nil {
-				requestsBA = bits.NewBitArray(int(parts.Total()))
+			if want == nil {
+				want = &proptypes.WantParts{
+					Height: req.height,
+					Round:  req.round,
+					Parts:  bits.NewBitArray(int(parts.Total())),
+				}
 			}
-			requestsBA.SetIndex(int(partIndex), true)
+			want.Parts.SetIndex(int(partIndex), true)
 			batchRequestCount++
 
 			if len(ps.requestChan) == 0 {
-				blockProp.sendWant(ps, height, round, requestsBA)
-				requestsBA = nil
+				blockProp.sendWant(ps, want)
+				want = nil
 				batchRequestCount = 0
 			}
 		}
 	}
 }
 
-func (blockProp *Reactor) sendWant(ps *PeerState, height int64, round int32, requests *bits.BitArray) {
+func (blockProp *Reactor) sendWant(ps *PeerState, want *proptypes.WantParts) {
 	e := p2p.Envelope{
 		ChannelID: WantChannel,
-		Message: &propproto.WantParts{
-			Height: height,
-			Round:  round,
-			Parts:  *requests.ToProto(),
-		},
+		Message:   want.ToProto(),
 	}
 
 	if !p2p.TrySendEnvelopeShim(ps.peer, e, blockProp.Logger) { //nolint:staticcheck
-		blockProp.Logger.Error("failed to send part state", "peer", ps.peer.ID(), "height", height, "round", round)
+		blockProp.Logger.Error("failed to send part state", "peer", ps.peer.ID(), "height", want.Height, "round", want.Round)
 		return
 	}
 
 	schema.WriteBlockPartState(
 		blockProp.traceClient,
-		height,
-		round,
-		requests.GetTrueIndices(),
+		want.Height,
+		want.Round,
+		want.Parts.GetTrueIndices(),
 		false,
 		string(ps.peer.ID()),
 		schema.Haves,
 	)
 
 	// keep track of the parts that this node has requested.
-	ps.AddRequests(height, round, requests)
-	ps.IncreaseRequestCount(int64(len(requests.GetTrueIndices())))
+	ps.AddRequests(want.Height, want.Round, want.Parts)
+	ps.IncreaseRequestCount(int64(len(want.Parts.GetTrueIndices())))
 }
 
 // countRequests returns the number of requests for a given part.
