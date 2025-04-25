@@ -5,7 +5,14 @@ import (
 	"github.com/tendermint/tendermint/libs/log"
 	"github.com/tendermint/tendermint/libs/sync"
 	"github.com/tendermint/tendermint/p2p"
+	"sync/atomic"
 )
+
+type request struct {
+	height int64
+	round  int32
+	index  uint32
+}
 
 // PeerState keeps track of haves and wants for each peer. This is used for
 // block prop and catchup.
@@ -17,6 +24,10 @@ type PeerState struct {
 	// and round.
 	state map[int64]map[int32]*partState
 
+	requestChan  chan request
+	requestCount atomic.Int64
+	receivedPart chan struct{}
+
 	logger log.Logger
 }
 
@@ -24,10 +35,12 @@ type PeerState struct {
 // called for each peer.
 func newPeerState(peer p2p.Peer, logger log.Logger) *PeerState {
 	return &PeerState{
-		mtx:    &sync.RWMutex{},
-		state:  make(map[int64]map[int32]*partState),
-		peer:   peer,
-		logger: logger,
+		mtx:          &sync.RWMutex{},
+		state:        make(map[int64]map[int32]*partState),
+		peer:         peer,
+		logger:       logger,
+		requestChan:  make(chan request, 3000),
+		receivedPart: make(chan struct{}, 1000),
 	}
 }
 
@@ -49,6 +62,29 @@ func (d *PeerState) initialize(height int64, round int32, size int) {
 	if d.state[height][round] == nil {
 		d.state[height][round] = newpartState(size, height, round)
 	}
+}
+
+func (d *PeerState) IncreaseRequestCount(add int64) {
+	// TODO test
+	d.requestCount.Add(add)
+}
+
+func (d *PeerState) SetRequestCount(count int64) {
+	// TODO test
+	d.requestCount.Store(count)
+}
+
+func (d *PeerState) DecreaseRequestCount(sub int64) {
+	// TODO test
+	requestCount := d.requestCount.Load()
+	if requestCount == 0 {
+		return
+	}
+	if requestCount < sub {
+		d.requestCount.Store(0)
+		return
+	}
+	d.requestCount.Store(d.requestCount.Load() - sub)
 }
 
 // AddHaves sets the haves for a given height and round.

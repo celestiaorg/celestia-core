@@ -3,6 +3,7 @@ package propagation
 import (
 	proptypes "github.com/tendermint/tendermint/consensus/propagation/types"
 	"github.com/tendermint/tendermint/crypto/tmhash"
+	"github.com/tendermint/tendermint/libs/bits"
 	"github.com/tendermint/tendermint/p2p"
 	"github.com/tendermint/tendermint/pkg/trace/schema"
 	propproto "github.com/tendermint/tendermint/proto/tendermint/propagation"
@@ -63,58 +64,99 @@ func (blockProp *Reactor) handleHaves(peer p2p.ID, haves *proptypes.HaveParts) {
 		return
 	}
 
-	reqLimit := 1
-
-	// if enough requests have been made for the parts, don't request them.
-	for _, partIndex := range hc.GetTrueIndices() {
-		reqs := blockProp.countRequests(height, round, partIndex)
-		if len(reqs) >= reqLimit {
-			hc.SetIndex(partIndex, false)
-			// mark the part as fully requested.
-			fullReqs.SetIndex(partIndex, true)
-		}
-		// don't request the part from this peer if we've already requested it
-		// from them.
-		for _, p := range reqs {
-			// p == peer means we have already requested the part from this peer.
-			if p == peer {
-				hc.SetIndex(partIndex, false)
-			}
+	for _, index := range hc.GetTrueIndices() {
+		select {
+		case <-blockProp.ctx.Done():
+		case p.requestChan <- request{height: height, round: round, index: uint32(index)}:
 		}
 	}
 
-	if hc.IsEmpty() {
-		return
-	}
-
-	// send a want back to the sender of the haves with the wants we
-	e := p2p.Envelope{
-		ChannelID: WantChannel,
-		Message: &propproto.WantParts{
-			Height: height,
-			Round:  round,
-			Parts:  *hc.ToProto(),
-		},
-	}
-
-	if !p2p.TrySendEnvelopeShim(p.peer, e, blockProp.Logger) { //nolint:staticcheck
-		blockProp.Logger.Error("failed to send part state", "peer", peer, "height", height, "round", round)
-		return
-	}
-
-	schema.WriteBlockPartState(
-		blockProp.traceClient,
-		height,
-		round,
-		hc.GetTrueIndices(),
-		false,
-		string(peer),
-		schema.Haves,
-	)
-
-	// keep track of the parts that this node has requested.
-	p.AddRequests(height, round, hc)
 	blockProp.broadcastHaves(haves, peer, int(parts.Total()))
+}
+
+// perPeerPerBlockConcurrentRequestLimit returns the maximum number of requests for a given block by peer.
+// it helps avoid downloading the whole block from a single peer.
+func perPeerPerBlockConcurrentRequestLimit() int64 {
+	// TODO implement
+	return 300
+}
+
+func (blockProp *Reactor) wantsSendingRoutine(ps *PeerState) {
+	for {
+		select {
+		case <-blockProp.ctx.Done():
+			return
+		case req, ok := <-ps.requestChan:
+			if !ok {
+				return
+			}
+			if ps.requestCount.Load() >= perPeerPerBlockConcurrentRequestLimit() {
+				_, ok = <-ps.receivedPart
+				if !ok {
+					return
+				}
+			}
+			height := req.height
+			round := req.round
+			partIndex := req.index
+			_, parts, fullReqs, has := blockProp.getAllState(height, round, false)
+			if !has {
+				blockProp.Logger.Error("couldn't find proposal when filtering requests", "height", height, "round", round)
+				// blockProp.Switch.StopPeerForError(blockProp.getPeer(peer).peer, errors.New("received part for unknown proposal"))
+				// maybe return error
+				continue
+			}
+			if parts.BitArray().GetIndex(int(partIndex)) {
+				continue
+			}
+
+			reqLimit := 1
+			reqs := blockProp.countRequests(height, round, int(partIndex))
+			if len(reqs) >= reqLimit {
+				fullReqs.SetIndex(int(partIndex), true)
+				continue
+			}
+
+			// don't request the part from this peer if we've already requested it
+			// from them.
+			for _, p := range reqs {
+				// p == peer means we have already requested the part from this peer.
+				if p == ps.peer.ID() {
+					continue
+				}
+			}
+
+			hc := bits.NewBitArray(int(parts.Total()))
+			hc.SetIndex(int(partIndex), true)
+			e := p2p.Envelope{
+				ChannelID: WantChannel,
+				Message: &propproto.WantParts{
+					Height: height,
+					Round:  round,
+					Parts:  *hc.ToProto(),
+				},
+			}
+
+			if !p2p.TrySendEnvelopeShim(ps.peer, e, blockProp.Logger) { //nolint:staticcheck
+				blockProp.Logger.Error("failed to send part state", "peer", ps.peer.ID(), "height", height, "round", round)
+				return
+			}
+
+			schema.WriteBlockPartState(
+				blockProp.traceClient,
+				height,
+				round,
+				hc.GetTrueIndices(),
+				false,
+				string(ps.peer.ID()),
+				schema.Haves,
+			)
+
+			// keep track of the parts that this node has requested.
+			ps.AddRequests(height, round, hc)
+			ps.IncreaseRequestCount(1)
+		}
+	}
 }
 
 // countRequests returns the number of requests for a given part.
@@ -280,6 +322,18 @@ func (blockProp *Reactor) handleRecoveryPart(peer p2p.ID, part *proptypes.Recove
 	if err != nil {
 		blockProp.Logger.Error("failed to add part to part set", "peer", peer, "height", part.Height, "round", part.Round, "part", part.Index, "error", err)
 		return
+	}
+
+	if p != nil {
+		// FIXME investigate why the nil peer happens
+		p.DecreaseRequestCount(1)
+		func() {
+			select {
+			case <-blockProp.ctx.Done():
+				return
+			case p.receivedPart <- struct{}{}:
+			}
+		}()
 	}
 
 	// if the part was not added and there was no error, the part has already
