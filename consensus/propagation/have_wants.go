@@ -1,6 +1,7 @@
 package propagation
 
 import (
+	"math"
 	"time"
 
 	proptypes "github.com/tendermint/tendermint/consensus/propagation/types"
