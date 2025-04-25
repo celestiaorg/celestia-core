@@ -1,7 +1,6 @@
 package propagation
 
 import (
-	"math"
 	"time"
 
 	proptypes "github.com/tendermint/tendermint/consensus/propagation/types"
@@ -161,19 +160,13 @@ func (blockProp *Reactor) wantsSendingRoutine(ps *PeerState) {
 			}
 			requestsBA.SetIndex(int(partIndex), true)
 
-			if len(requestsBA.GetTrueIndices()) >= wantBatchSize(int(parts.Total())) {
+			if len(requestsBA.GetTrueIndices()) >= 5 {
 				// no need to keep holding to a large number of requests
 				blockProp.sendWant(ps, height, round, requestsBA)
 				requestsBA = nil
 			}
 		}
 	}
-}
-
-// wantBatchSize returns the maximum number of parts to request in a batch.
-// this ensures sending requests without waiting too long especially for small blocks.
-func wantBatchSize(partsCount int) int {
-	return int(math.Max(1, float64(partsCount*5)/100))
 }
 
 func (blockProp *Reactor) sendWant(ps *PeerState, height int64, round int32, requestsBA *bits.BitArray) {
