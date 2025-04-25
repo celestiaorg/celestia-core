@@ -160,13 +160,22 @@ func (blockProp *Reactor) wantsSendingRoutine(ps *PeerState) {
 			}
 			requestsBA.SetIndex(int(partIndex), true)
 
-			if len(requestsBA.GetTrueIndices()) >= 5 {
+			if len(requestsBA.GetTrueIndices()) >= wantBatchSize(int(parts.Total())) {
 				// no need to keep holding to a large number of requests
 				blockProp.sendWant(ps, height, round, requestsBA)
 				requestsBA = nil
 			}
 		}
 	}
+}
+
+// wantBatchSize returns the maximum number of parts to request in a batch.
+// this ensures sending requests without waiting too long especially for small blocks.
+func wantBatchSize(partsCount int) int {
+	if partsCount < 10 {
+		return 1
+	}
+	return 5
 }
 
 func (blockProp *Reactor) sendWant(ps *PeerState, height int64, round int32, requestsBA *bits.BitArray) {
