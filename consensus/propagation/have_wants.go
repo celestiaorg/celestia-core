@@ -175,7 +175,7 @@ func (blockProp *Reactor) sendWantsThenBroadcastHaves(ps *PeerState, wants *prop
 	if haves == nil {
 		return
 	}
-	blockProp.broadcastHaves(haves, ps.peer.ID(), int(wants.Parts.Size()))
+	blockProp.broadcastHaves(haves, ps.peer.ID(), wants.Parts.Size())
 }
 
 func (blockProp *Reactor) haveFromWant(wants *proptypes.WantParts) *proptypes.HaveParts {
