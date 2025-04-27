@@ -72,11 +72,11 @@ func (blockProp *Reactor) handleHaves(peer p2p.ID, haves *proptypes.HaveParts) {
 	}
 }
 
-// perPeerConcurrentRequestLimit returns the maximum number of requests for a given block by peer.
+// perPeerConcurrentRequestLimit returns the maximum number of requests by peer.
 // it helps avoid downloading the whole block from a single peer.
 func perPeerConcurrentRequestLimit() int64 {
 	// TODO implement
-	return 3000
+	return 300
 }
 
 func (blockProp *Reactor) wantsSendingRoutine(ps *PeerState) {
