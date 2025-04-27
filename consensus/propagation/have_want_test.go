@@ -38,7 +38,7 @@ func TestWantsSendingRoutine2(t *testing.T) {
 		go reactor1.wantsSendingRoutine(p2)
 
 		// set the concurrent limit to the max
-		p2.requestCount.Store(perPeerPerBlockConcurrentRequestLimit())
+		p2.requestCount.Store(perPeerConcurrentRequestLimit())
 
 		// send a have
 		p2.requestChan <- request{
