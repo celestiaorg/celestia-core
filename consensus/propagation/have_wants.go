@@ -127,6 +127,7 @@ func (blockProp *Reactor) wantsSendingRoutine(ps *PeerState) {
 
 			// don't request the part from this peer if we've already requested it
 			// from them.
+			// this check will be helpful once we start requesting parts multiple times.
 			for _, p := range reqs {
 				// p == peer means we have already requested the part from this peer.
 				if p == ps.peer.ID() {
