@@ -150,7 +150,7 @@ func (blockProp *Reactor) wantsSendingRoutine(ps *PeerState) {
 				have = &proptypes.HaveParts{
 					Height: req.height,
 					Round:  req.round,
-					Parts:  nil,
+					Parts:  make([]proptypes.PartMetaData, 0),
 				}
 			}
 			have.Parts = append(have.Parts, proptypes.PartMetaData{
