@@ -126,6 +126,10 @@ func (blockProp *Reactor) OnStart() error {
 
 func (blockProp *Reactor) OnStop() {
 	blockProp.cancel()
+	for _, peer := range blockProp.getPeers() {
+		close(peer.requestChan)
+		close(peer.receivedPart)
+	}
 }
 
 func (blockProp *Reactor) GetChannels() []*conn.ChannelDescriptor {
@@ -186,7 +190,7 @@ func (blockProp *Reactor) AddPeer(peer p2p.Peer) {
 func (blockProp *Reactor) RemovePeer(peer p2p.Peer, reason interface{}) {
 	blockProp.mtx.Lock()
 	defer blockProp.mtx.Unlock()
-	p := blockProp.getPeer(peer.ID())
+	p := blockProp.peerstate[peer.ID()]
 	if p != nil {
 		close(p.requestChan)
 		close(p.receivedPart)
