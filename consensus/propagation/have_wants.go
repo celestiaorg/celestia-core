@@ -64,10 +64,21 @@ func (blockProp *Reactor) handleHaves(peer p2p.ID, haves *proptypes.HaveParts) {
 		return
 	}
 
+	pm := haves.PartsMap()
 	for _, index := range hc.GetTrueIndices() {
+		hash, has := pm[uint32(index)]
+		if !has {
+			// this should never happen
+			continue
+		}
 		select {
 		case <-blockProp.ctx.Done():
-		case p.requestChan <- request{height: height, round: round, index: uint32(index)}:
+		case p.requestChan <- request{
+			height: height,
+			round:  round,
+			index:  uint32(index),
+			hash:   hash,
+		}:
 		}
 	}
 }
@@ -80,13 +91,13 @@ func perPeerConcurrentRequestLimit() int64 {
 }
 
 func (blockProp *Reactor) wantsSendingRoutine(ps *PeerState) {
-	var want *proptypes.WantParts
+	var have *proptypes.HaveParts
 	batchRequestCount := int64(0)
 	for {
 		// concurrent per-peer per-block request limit reached
 		if ps.requestCount.Load()+batchRequestCount >= perPeerConcurrentRequestLimit() {
-			blockProp.handleBatchLimit(ps, want)
-			want = nil
+			blockProp.handleBatchLimit(ps, have)
+			have = nil
 			batchRequestCount = 0
 		}
 		select {
@@ -102,14 +113,14 @@ func (blockProp *Reactor) wantsSendingRoutine(ps *PeerState) {
 			}
 
 			// if we're at a new height, we can drop the previous requests
-			if want != nil &&
-				(want.Height != req.height || (want.Height == req.height && want.Round != req.round)) {
-				want = nil
+			if have != nil &&
+				(have.Height != req.height || (have.Height == req.height && have.Round != req.round)) {
+				have = nil
 				batchRequestCount = 0
 			}
 
 			partIndex := req.index
-			_, parts, fullReqs, has := blockProp.getAllState(req.height, req.round, false)
+			cb, parts, fullReqs, has := blockProp.getAllState(req.height, req.round, false)
 			if !has {
 				blockProp.Logger.Error("couldn't find proposal when filtering requests", "height", req.height, "round", req.round)
 				continue
@@ -135,28 +146,36 @@ func (blockProp *Reactor) wantsSendingRoutine(ps *PeerState) {
 				}
 			}
 
-			if want == nil {
-				want = &proptypes.WantParts{
+			if have == nil {
+				have = &proptypes.HaveParts{
 					Height: req.height,
 					Round:  req.round,
-					Parts:  bits.NewBitArray(int(parts.Total())),
+					Parts:  nil,
 				}
 			}
-			want.Parts.SetIndex(int(partIndex), true)
+			have.Parts = append(have.Parts, proptypes.PartMetaData{
+				Index: partIndex,
+				Hash:  req.hash,
+			})
 			batchRequestCount++
 
 			if len(ps.requestChan) == 0 {
-				blockProp.sendWantsThenBroadcastHaves(ps, want)
-				want = nil
+				blockProp.sendWantsThenBroadcastHaves(ps, have, int(cb.Proposal.BlockID.PartSetHeader.Total))
+				have = nil
 				batchRequestCount = 0
 			}
 		}
 	}
 }
 
-func (blockProp *Reactor) handleBatchLimit(ps *PeerState, want *proptypes.WantParts) {
-	if want != nil && !want.Parts.IsEmpty() {
-		blockProp.sendWantsThenBroadcastHaves(ps, want)
+func (blockProp *Reactor) handleBatchLimit(ps *PeerState, have *proptypes.HaveParts) {
+	if have != nil && len(have.Parts) != 0 {
+		cb, _, _, has := blockProp.getAllState(have.Height, have.Round, false)
+		if !has {
+			blockProp.Logger.Error("couldn't find proposal", "height", have.Height, "round", have.Round)
+			return
+		}
+		blockProp.sendWantsThenBroadcastHaves(ps, have, int(cb.Proposal.BlockID.PartSetHeader.Total))
 	}
 
 	select {
@@ -169,33 +188,22 @@ func (blockProp *Reactor) handleBatchLimit(ps *PeerState, want *proptypes.WantPa
 	}
 }
 
-func (blockProp *Reactor) sendWantsThenBroadcastHaves(ps *PeerState, wants *proptypes.WantParts) {
-	blockProp.sendWant(ps, wants)
-	haves := blockProp.haveFromWant(wants)
-	if haves == nil {
-		return
-	}
-	blockProp.broadcastHaves(haves, ps.peer.ID(), wants.Parts.Size())
+func (blockProp *Reactor) sendWantsThenBroadcastHaves(ps *PeerState, have *proptypes.HaveParts, partSetSize int) {
+	want := haveToWant(have, partSetSize)
+	blockProp.sendWant(ps, want)
+	blockProp.broadcastHaves(have, ps.peer.ID(), partSetSize)
 }
 
-func (blockProp *Reactor) haveFromWant(wants *proptypes.WantParts) *proptypes.HaveParts {
-	haves := &proptypes.HaveParts{
-		Height: wants.Height,
-		Round:  wants.Round,
-		Parts:  make([]proptypes.PartMetaData, 0),
+func haveToWant(have *proptypes.HaveParts, partSetSize int) *proptypes.WantParts {
+	want := &proptypes.WantParts{
+		Height: have.Height,
+		Round:  have.Round,
+		Parts:  bits.NewBitArray(partSetSize),
 	}
-	cb, _, _, has := blockProp.getAllState(wants.Height, wants.Round, false)
-	if !has {
-		blockProp.Logger.Error("couldn't find proposal when filtering requests", "height", wants.Height, "round", wants.Round)
-		return nil
+	for _, part := range have.Parts {
+		want.Parts.SetIndex(int(part.Index), true)
 	}
-	for _, indice := range wants.Parts.GetTrueIndices() {
-		haves.Parts = append(haves.Parts, proptypes.PartMetaData{
-			Index: uint32(indice),
-			Hash:  cb.PartsHashes[indice],
-		})
-	}
-	return haves
+	return want
 }
 
 func (blockProp *Reactor) sendWant(ps *PeerState, want *proptypes.WantParts) {
