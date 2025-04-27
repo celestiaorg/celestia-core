@@ -1,12 +1,13 @@
 package propagation
 
 import (
+	"testing"
+	"time"
+
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	cfg "github.com/tendermint/tendermint/config"
 	"github.com/tendermint/tendermint/state"
-	"testing"
-	"time"
 )
 
 func TestWantsSendingRoutine2(t *testing.T) {
