@@ -120,7 +120,7 @@ func (blockProp *Reactor) wantsSendingRoutine(ps *PeerState) {
 			}
 
 			partIndex := req.index
-			cb, parts, fullReqs, has := blockProp.getAllState(req.height, req.round, false)
+			_, parts, fullReqs, has := blockProp.getAllState(req.height, req.round, false)
 			if !has {
 				blockProp.Logger.Error("couldn't find proposal when filtering requests", "height", req.height, "round", req.round)
 				continue
@@ -160,7 +160,7 @@ func (blockProp *Reactor) wantsSendingRoutine(ps *PeerState) {
 			batchRequestCount++
 
 			if len(ps.requestChan) == 0 {
-				blockProp.sendWantsThenBroadcastHaves(ps, have, int(cb.Proposal.BlockID.PartSetHeader.Total))
+				blockProp.sendWantsThenBroadcastHaves(ps, have, int(parts.Total()))
 				have = nil
 				batchRequestCount = 0
 			}
@@ -170,12 +170,12 @@ func (blockProp *Reactor) wantsSendingRoutine(ps *PeerState) {
 
 func (blockProp *Reactor) handleBatchLimit(ps *PeerState, have *proptypes.HaveParts) {
 	if have != nil && len(have.Parts) != 0 {
-		cb, _, _, has := blockProp.getAllState(have.Height, have.Round, false)
+		_, parts, _, has := blockProp.getAllState(have.Height, have.Round, false)
 		if !has {
 			blockProp.Logger.Error("couldn't find proposal", "height", have.Height, "round", have.Round)
 			return
 		}
-		blockProp.sendWantsThenBroadcastHaves(ps, have, int(cb.Proposal.BlockID.PartSetHeader.Total))
+		blockProp.sendWantsThenBroadcastHaves(ps, have, int(parts.Total()))
 	}
 
 	select {
