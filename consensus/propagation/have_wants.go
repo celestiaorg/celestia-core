@@ -194,8 +194,8 @@ func (blockProp *Reactor) sendWantsThenBroadcastHaves(ps *PeerState, have *propt
 	blockProp.broadcastHaves(have, ps.peer.ID(), partSetSize)
 }
 
-func haveToWant(have *proptypes.HaveParts, partSetSize int) *proptypes.WantParts {
-	want := &proptypes.WantParts{
+func haveToWant(have *proptypes.HaveParts, partSetSize int) proptypes.WantParts {
+	want := proptypes.WantParts{
 		Height: have.Height,
 		Round:  have.Round,
 		Parts:  bits.NewBitArray(partSetSize),
@@ -206,7 +206,7 @@ func haveToWant(have *proptypes.HaveParts, partSetSize int) *proptypes.WantParts
 	return want
 }
 
-func (blockProp *Reactor) sendWant(ps *PeerState, want *proptypes.WantParts) {
+func (blockProp *Reactor) sendWant(ps *PeerState, want proptypes.WantParts) {
 	e := p2p.Envelope{
 		ChannelID: WantChannel,
 		Message:   want.ToProto(),
