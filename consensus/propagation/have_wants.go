@@ -70,8 +70,6 @@ func (blockProp *Reactor) handleHaves(peer p2p.ID, haves *proptypes.HaveParts) {
 		case p.requestChan <- request{height: height, round: round, index: uint32(index)}:
 		}
 	}
-
-	blockProp.broadcastHaves(haves, peer, int(parts.Total()))
 }
 
 // perPeerPerBlockConcurrentRequestLimit returns the maximum number of requests for a given block by peer.
@@ -89,7 +87,7 @@ func (blockProp *Reactor) wantsSendingRoutine(ps *PeerState) {
 		if ps.requestCount.Load()+batchRequestCount >= perPeerPerBlockConcurrentRequestLimit() {
 			// we reached the limit of requests, we request what we can
 			if want != nil && !want.Parts.IsEmpty() {
-				blockProp.sendWant(ps, want)
+				blockProp.sendWantsThenBroadcastHaves(ps, want)
 				want = nil
 				batchRequestCount = 0
 			}
@@ -159,12 +157,41 @@ func (blockProp *Reactor) wantsSendingRoutine(ps *PeerState) {
 			batchRequestCount++
 
 			if len(ps.requestChan) == 0 {
-				blockProp.sendWant(ps, want)
+				blockProp.sendWantsThenBroadcastHaves(ps, want)
 				want = nil
 				batchRequestCount = 0
 			}
 		}
 	}
+}
+
+func (blockProp *Reactor) sendWantsThenBroadcastHaves(ps *PeerState, wants *proptypes.WantParts) {
+	blockProp.sendWant(ps, wants)
+	haves := blockProp.haveFromWant(wants)
+	if haves == nil {
+		return
+	}
+	blockProp.broadcastHaves(haves, ps.peer.ID(), int(wants.Parts.Size()))
+}
+
+func (blockProp *Reactor) haveFromWant(wants *proptypes.WantParts) *proptypes.HaveParts {
+	haves := &proptypes.HaveParts{
+		Height: wants.Height,
+		Round:  wants.Round,
+		Parts:  make([]proptypes.PartMetaData, 0),
+	}
+	cb, _, _, has := blockProp.getAllState(wants.Height, wants.Round, false)
+	if !has {
+		blockProp.Logger.Error("couldn't find proposal when filtering requests", "height", wants.Height, "round", wants.Round)
+		return nil
+	}
+	for _, indice := range wants.Parts.GetTrueIndices() {
+		haves.Parts = append(haves.Parts, proptypes.PartMetaData{
+			Index: uint32(indice),
+			Hash:  cb.PartsHashes[indice],
+		})
+	}
+	return haves
 }
 
 func (blockProp *Reactor) sendWant(ps *PeerState, want *proptypes.WantParts) {
