@@ -82,7 +82,7 @@ func TestWantsSendingRoutine2(t *testing.T) {
 		p2.requestChan = make(chan request, 3000)
 		go reactor1.wantsSendingRoutine(p2)
 
-		p2.requestCount.Store(perPeerPerBlockConcurrentRequestLimit())
+		p2.requestCount.Store(perPeerConcurrentRequestLimit())
 		p2.requestChan <- request{
 			height: prop.Height,
 			round:  prop.Round,
