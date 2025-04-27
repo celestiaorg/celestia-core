@@ -86,6 +86,7 @@ func (blockProp *Reactor) wantsSendingRoutine(ps *PeerState) {
 		// concurrent per-peer per-block request limit reached
 		if ps.requestCount.Load()+batchRequestCount >= perPeerPerBlockConcurrentRequestLimit() {
 			blockProp.handleBatchLimit(ps, want)
+		if ps.requestCount.Load()+batchRequestCount >= perPeerConcurrentRequestLimit() {
 			want = nil
 			batchRequestCount = 0
 		}
