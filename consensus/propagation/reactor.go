@@ -186,6 +186,11 @@ func (blockProp *Reactor) AddPeer(peer p2p.Peer) {
 func (blockProp *Reactor) RemovePeer(peer p2p.Peer, reason interface{}) {
 	blockProp.mtx.Lock()
 	defer blockProp.mtx.Unlock()
+	p := blockProp.getPeer(peer.ID())
+	if p != nil {
+		close(p.requestChan)
+		close(p.receivedPart)
+	}
 	delete(blockProp.peerstate, peer.ID())
 }
 
