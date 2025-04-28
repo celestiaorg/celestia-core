@@ -285,6 +285,17 @@ func (h *HaveParts) ValidateBasic() error {
 	return nil
 }
 
+// ValidatePartHashes verifies that each part's hash in the HaveParts struct matches the corresponding expected hash.
+// Returns an error if any hash does not match, indicating the index of the first mismatch.
+func (h *HaveParts) ValidatePartHashes(expectedHashes [][]byte) error {
+	for index, part := range h.Parts {
+		if !bytes.Equal(part.Hash, expectedHashes[index]) {
+			return fmt.Errorf("invalid part hash at index %d", index)
+		}
+	}
+	return nil
+}
+
 func (h *HaveParts) IsEmpty() bool {
 	return len(h.Parts) == 0
 }
