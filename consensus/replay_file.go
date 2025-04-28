@@ -339,7 +339,7 @@ func newConsensusStateForReplay(config cfg.BaseConfig, csConfig *cfg.ConsensusCo
 		panic(err)
 	}
 	// TODO pass a tracer from here
-	propagator := propagation.NewReactor(key.ID(), nil, blockStore, mempool)
+	propagator := propagation.NewReactor(key.ID(), blockStore, mempool)
 	consensusState := NewState(csConfig, state.Copy(), blockExec,
 		blockStore, propagator, mempool, evpool)
 

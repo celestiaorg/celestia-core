@@ -51,13 +51,15 @@ type Reactor struct {
 	// ProposalCache temporarily stores recently active proposals and their
 	// block data for gossiping.
 	*ProposalCache
-	proposalValidator validateProposalFunc
+	consensusLink ConsensusLink
+
+	privval types.PrivValidator
 
 	// mempool access to read the transactions by hash from the mempool
 	// and eventually remove it.
 	mempool Mempool
 
-	mtx         *sync.RWMutex
+	mtx         *sync.Mutex
 	traceClient trace.Tracer
 	self        p2p.ID
 	started     atomic.Bool
@@ -66,22 +68,18 @@ type Reactor struct {
 	cancel context.CancelFunc
 }
 
-func NewReactor(self p2p.ID, tracer trace.Tracer, store *store.BlockStore, mempool Mempool, options ...ReactorOption) *Reactor {
-	if tracer == nil {
-		tracer = trace.NoOpTracer()
-	}
+func NewReactor(self p2p.ID, store *store.BlockStore, mempool Mempool, options ...ReactorOption) *Reactor {
 	ctx, cancel := context.WithCancel(context.Background())
 	reactor := &Reactor{
-		self:              self,
-		traceClient:       tracer,
-		peerstate:         make(map[p2p.ID]*PeerState),
-		mtx:               &sync.RWMutex{},
-		ProposalCache:     NewProposalCache(store),
-		mempool:           mempool,
-		started:           atomic.Bool{},
-		proposalValidator: func(proposal *types.Proposal) error { return nil },
-		ctx:               ctx,
-		cancel:            cancel,
+		self:          self,
+		traceClient:   trace.NoOpTracer(),
+		peerstate:     make(map[p2p.ID]*PeerState),
+		mtx:           &sync.Mutex{},
+		ProposalCache: NewProposalCache(store),
+		mempool:       mempool,
+		started:       atomic.Bool{},
+		ctx:           ctx,
+		cancel:        cancel,
 	}
 	reactor.BaseReactor = *p2p.NewBaseReactor("BlockProp", reactor, p2p.WithIncomingQueueSize(ReactorIncomingMessageQueueSize))
 
@@ -112,9 +110,15 @@ func NewReactor(self p2p.ID, tracer trace.Tracer, store *store.BlockStore, mempo
 
 type ReactorOption func(*Reactor)
 
+func WithTracer(tracer trace.Tracer) func(r *Reactor) {
+	return func(r *Reactor) {
+		r.traceClient = tracer
+	}
+}
+
 // SetProposalValidator sets the proposal stateful validation function.
-func (blockProp *Reactor) SetProposalValidator(validator validateProposalFunc) {
-	blockProp.proposalValidator = validator
+func (blockProp *Reactor) SetConsensusConnector(csc ConsensusLink) {
+	blockProp.consensusLink = csc
 }
 
 func (blockProp *Reactor) SetLogger(logger log.Logger) {
@@ -272,15 +276,15 @@ func (blockProp *Reactor) StartProcessing() {
 // getPeer returns the peer state for the given peer. If the peer does not exist,
 // nil is returned.
 func (blockProp *Reactor) getPeer(peer p2p.ID) *PeerState {
-	blockProp.mtx.RLock()
-	defer blockProp.mtx.RUnlock()
+	blockProp.mtx.Lock()
+	defer blockProp.mtx.Unlock()
 	return blockProp.peerstate[peer]
 }
 
 // getPeers returns a list of all peers that the data routine is aware of.
 func (blockProp *Reactor) getPeers() []*PeerState {
-	blockProp.mtx.RLock()
-	defer blockProp.mtx.RUnlock()
+	blockProp.mtx.Lock()
+	defer blockProp.mtx.Unlock()
 	peers := make([]*PeerState, 0, len(blockProp.peerstate))
 	for _, peer := range blockProp.peerstate {
 		peers = append(peers, peer)

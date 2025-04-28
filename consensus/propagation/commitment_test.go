@@ -5,7 +5,6 @@ import (
 	"time"
 
 	dbm "github.com/cometbft/cometbft-db"
-	"github.com/tendermint/tendermint/pkg/trace"
 	"github.com/tendermint/tendermint/store"
 
 	"github.com/stretchr/testify/assert"
@@ -112,7 +111,7 @@ func TestRecoverPartsLocally(t *testing.T) {
 	}
 
 	blockStore := store.NewBlockStore(dbm.NewMemDB())
-	blockPropR := NewReactor("", trace.NoOpTracer(), blockStore, &mockMempool{
+	blockPropR := NewReactor("", blockStore, &mockMempool{
 		txs: txsMap,
 	})
 
@@ -132,7 +131,7 @@ func TestRecoverPartsLocally(t *testing.T) {
 		}
 	}
 
-	blockPropR.ProposeBlock(prop, partSet, metaData)
+	blockPropR.ProposeBlock(prop, partSet, metaData, sm.ChainID)
 
 	_, actualParts, _ := blockPropR.GetProposal(prop.Height, prop.Round)
 

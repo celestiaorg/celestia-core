@@ -2,6 +2,7 @@ package propagation
 
 import (
 	proptypes "github.com/tendermint/tendermint/consensus/propagation/types"
+	"github.com/tendermint/tendermint/crypto"
 	"github.com/tendermint/tendermint/types"
 )
 
@@ -9,9 +10,14 @@ import (
 // consensus reactor and state.
 type Propagator interface {
 	GetProposal(height int64, round int32) (*types.Proposal, *types.PartSet, bool)
-	ProposeBlock(proposal *types.Proposal, parts *types.PartSet, txs []proptypes.TxMetaData)
+	ProposeBlock(proposal *types.Proposal, parts *types.PartSet, txs []proptypes.TxMetaData, privval types.PrivValidator, chainID string)
 	AddCommitment(height int64, round int32, psh *types.PartSetHeader)
 	Prune(committedHeight int64)
 	SetConsensusRound(height int64, round int32)
 	StartProcessing()
+}
+
+type ConsensusLink interface {
+	VerifyProposal(proposal *types.Proposal) error
+	GetProposer() crypto.PubKey
 }

@@ -1,12 +1,14 @@
 package propagation
 
 import (
+	"os"
 	"path/filepath"
 	"strconv"
 	"testing"
 	"time"
 
 	"github.com/tendermint/tendermint/crypto/merkle"
+	"github.com/tendermint/tendermint/privval"
 	"github.com/tendermint/tendermint/proto/tendermint/propagation"
 
 	dbm "github.com/cometbft/cometbft-db"
@@ -27,7 +29,7 @@ import (
 
 func newPropagationReactor(s *p2p.Switch, _ trace.Tracer) *Reactor {
 	blockStore := store.NewBlockStore(dbm.NewMemDB())
-	blockPropR := NewReactor(s.NetAddress().ID, trace.NoOpTracer(), blockStore, &mockMempool{txs: make(map[types.TxKey]*types.CachedTx)})
+	blockPropR := NewReactor(s.NetAddress().ID, blockStore, &mockMempool{txs: make(map[types.TxKey]*types.CachedTx)})
 	blockPropR.started.Store(true)
 	blockPropR.SetSwitch(s)
 
@@ -403,7 +405,7 @@ func TestPropagationSmokeTest(t *testing.T) {
 			}
 		}
 
-		reactors[1].ProposeBlock(prop, ps, metaData)
+		reactors[1].ProposeBlock(prop, ps, metaData, nil, "test")
 
 		distributing := true
 		for distributing {
@@ -546,4 +548,15 @@ func createBitArray(size int, indices []int) *bits.BitArray {
 		ba.SetIndex(index, true)
 	}
 	return ba
+}
+
+func NewTestPrivval(t *testing.T) types.PrivValidator {
+	tempKeyFile, err := os.CreateTemp("", "priv_validator_key_")
+	require.Nil(t, err)
+
+	tempStateFile, err := os.CreateTemp("", "priv_validator_state_")
+	require.Nil(t, err)
+
+	privVal := privval.GenFilePV(tempKeyFile.Name(), tempStateFile.Name())
+	return privVal
 }

@@ -6,6 +6,7 @@ import (
 	"github.com/gogo/protobuf/proto"
 	proptypes "github.com/tendermint/tendermint/consensus/propagation/types"
 	"github.com/tendermint/tendermint/crypto/merkle"
+	"github.com/tendermint/tendermint/crypto/tmhash"
 	"github.com/tendermint/tendermint/libs/bits"
 	cmtrand "github.com/tendermint/tendermint/libs/rand"
 	"github.com/tendermint/tendermint/p2p"
@@ -19,7 +20,13 @@ var _ Propagator = (*Reactor)(nil)
 
 // ProposeBlock is called when the consensus routine has created a new proposal,
 // and it needs to be gossiped to the rest of the network.
-func (blockProp *Reactor) ProposeBlock(proposal *types.Proposal, block *types.PartSet, txs []proptypes.TxMetaData) {
+func (blockProp *Reactor) ProposeBlock(
+	proposal *types.Proposal,
+	block *types.PartSet,
+	txs []proptypes.TxMetaData,
+	privval types.PrivValidator,
+	chainID string,
+) {
 	// create the parity data and the compact block
 	parityBlock, lastLen, err := types.Encode(block, types.BlockPartSizeBytes)
 	if err != nil {
@@ -40,6 +47,21 @@ func (blockProp *Reactor) ProposeBlock(proposal *types.Proposal, block *types.Pa
 	}
 
 	cb.SetProofCache(proofs)
+
+	sbz, err := cb.SignBytes()
+	if err != nil {
+		blockProp.Logger.Error("failed to create signature for compact block", "err", err)
+		return
+	}
+
+	// sign the hash of the compact block
+	sig, err := privval.SignP2PMessage(chainID, "", tmhash.Sum(sbz))
+	if err != nil {
+		blockProp.Logger.Error("failed to sign compact block", "err", err)
+		return
+	}
+
+	cb.Signature = sig
 
 	// save the compact block locally and broadcast it to the connected peers
 	blockProp.handleCompactBlock(&cb, blockProp.self, true)
@@ -326,12 +348,19 @@ func chunkIndexes(totalSize, chunkSize int) [][2]int {
 
 // validateCompactBlock stateful validation of the compact block.
 func (blockProp *Reactor) validateCompactBlock(cb *proptypes.CompactBlock) error {
-	err := blockProp.proposalValidator(&cb.Proposal)
+	err := blockProp.consensusLink.VerifyProposal(&cb.Proposal)
 	if err != nil {
 		return err
 	}
 
-	// TODO add compact block signature verification once implemented
+	cbz, err := cb.SignBytes()
+	if err != nil {
+		return err
+	}
 
-	return nil
+	if blockProp.consensusLink.GetProposer().VerifySignature(cbz, cb.Signature) {
+		return nil
+	}
+
+	return fmt.Errorf("invalid signature over the compact block: height %d round %d", cb.Proposal.Height, cb.Proposal.Round)
 }
