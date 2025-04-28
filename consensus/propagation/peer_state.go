@@ -13,7 +13,6 @@ type request struct {
 	height int64
 	round  int32
 	index  uint32
-	hash   []byte
 }
 
 // PeerState keeps track of haves and wants for each peer. This is used for

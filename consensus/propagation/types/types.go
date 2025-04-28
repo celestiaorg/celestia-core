@@ -257,14 +257,6 @@ type HaveParts struct {
 	Parts  []PartMetaData `json:"parts,omitempty"`
 }
 
-func (h *HaveParts) PartsMap() map[uint32][]byte {
-	m := make(map[uint32][]byte)
-	for _, part := range h.Parts {
-		m[part.Index] = part.Hash
-	}
-	return m
-}
-
 // BitArrary returns a bit array of the provided size with the indexes of the
 // parts set to true.
 func (h *HaveParts) BitArray(size int) *bits.BitArray {
