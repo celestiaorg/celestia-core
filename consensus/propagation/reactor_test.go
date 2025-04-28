@@ -161,7 +161,10 @@ func TestHandleHavesAndWantsAndRecoveryParts(t *testing.T) {
 			Height: height,
 			Round:  round,
 			Parts: []proptypes.PartMetaData{
-				{Index: 0},
+				{
+					Index: 0,
+					Hash:  hashes[0],
+				},
 			},
 		},
 	)
@@ -257,7 +260,10 @@ func TestInvalidPart(t *testing.T) {
 			Height: height,
 			Round:  round,
 			Parts: []proptypes.PartMetaData{
-				{Index: 0},
+				{
+					Index: 0,
+					Hash:  hashes[0],
+				},
 			},
 		},
 	)
