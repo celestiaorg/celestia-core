@@ -395,15 +395,6 @@ func MsgFromProto(p *protoprop.Message) (Message, error) {
 	}
 
 	switch msg := um.(type) {
-	case *protoprop.TxMetaData:
-		if msg == nil {
-			return nil, errors.New("propagation: nil tx metadata")
-		}
-		pb = &TxMetaData{
-			Hash:  msg.Hash,
-			Start: msg.Start,
-			End:   msg.End,
-		}
 	case *protoprop.CompactBlock:
 		if msg == nil {
 			return nil, errors.New("propagation: nil compact block")
@@ -430,14 +421,6 @@ func MsgFromProto(p *protoprop.Message) (Message, error) {
 			Proposal:    *prop,
 			LastLen:     msg.LastLength,
 			PartsHashes: msg.PartsHashes,
-		}
-	case *protoprop.PartMetaData:
-		if msg == nil {
-			return nil, errors.New("propagation: nil PartMetaData")
-		}
-		pb = &PartMetaData{
-			Index: msg.Index,
-			Hash:  msg.Hash,
 		}
 	case *protoprop.HaveParts:
 		if msg == nil {
