@@ -1186,7 +1186,7 @@ func (cs *State) defaultDecideProposal(height int64, round int32) {
 		schema.WriteABCI(cs.traceClient, schema.PrepareProposalStart, height, round)
 		block, blockParts = cs.createProposalBlock()
 		schema.WriteABCI(cs.traceClient, schema.PrepareProposalEnd, height, round)
-		if block == nil && blockParts == nil {
+		if block == nil {
 			return
 		}
 	}
