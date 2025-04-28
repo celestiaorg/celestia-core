@@ -295,6 +295,9 @@ func (h *HaveParts) ValidateBasic() error {
 // Returns an error if any hash does not match, indicating the index of the first mismatch.
 func (h *HaveParts) ValidatePartHashes(expectedHashes [][]byte) error {
 	for index, part := range h.Parts {
+		if int(part.Index) >= len(expectedHashes) {
+			return fmt.Errorf("non existing part hash index %d", index)
+		}
 		if !bytes.Equal(part.Hash, expectedHashes[index]) {
 			return fmt.Errorf("invalid part hash at index %d", index)
 		}

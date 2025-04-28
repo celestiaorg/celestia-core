@@ -617,6 +617,86 @@ func TestMsgFromProto_NilMessage(t *testing.T) {
 	}
 }
 
+func TestHaveParts_ValidatePartHashes(t *testing.T) {
+	tests := []struct {
+		name           string
+		haveParts      HaveParts
+		expectedHashes [][]byte
+		wantErr        bool
+		errMsg         string
+	}{
+		{
+			name: "valid hashes",
+			haveParts: HaveParts{
+				Parts: []PartMetaData{
+					{Index: 0, Hash: []byte("hash1")},
+					{Index: 1, Hash: []byte("hash2")},
+					{Index: 2, Hash: []byte("hash3")},
+				},
+			},
+			expectedHashes: [][]byte{
+				[]byte("hash1"),
+				[]byte("hash2"),
+				[]byte("hash3"),
+			},
+			wantErr: false,
+		},
+		{
+			name: "invalid hash mismatch",
+			haveParts: HaveParts{
+				Parts: []PartMetaData{
+					{Index: 0, Hash: []byte("hash1")},
+					{Index: 1, Hash: []byte("invalid")},
+					{Index: 2, Hash: []byte("hash3")},
+				},
+			},
+			expectedHashes: [][]byte{
+				[]byte("hash1"),
+				[]byte("hash2"),
+				[]byte("hash3"),
+			},
+			wantErr: true,
+			errMsg:  "invalid part hash at index 1",
+		},
+		{
+			name: "fewer expected hashes",
+			haveParts: HaveParts{
+				Parts: []PartMetaData{
+					{Index: 0, Hash: []byte("hash1")},
+					{Index: 1, Hash: []byte("hash2")},
+					{Index: 2, Hash: []byte("hash3")},
+				},
+			},
+			expectedHashes: [][]byte{
+				[]byte("hash1"),
+				[]byte("hash2"),
+			},
+			wantErr: true,
+			errMsg:  "non existing part hash index 2",
+		},
+		{
+			name: "no parts",
+			haveParts: HaveParts{
+				Parts: nil,
+			},
+			expectedHashes: [][]byte{},
+			wantErr:        false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := tt.haveParts.ValidatePartHashes(tt.expectedHashes)
+			if tt.wantErr {
+				require.Error(t, err)
+				assert.Contains(t, err.Error(), tt.errMsg)
+			} else {
+				assert.NoError(t, err)
+			}
+		})
+	}
+}
+
 func makeBlockID(hash []byte, partSetSize uint32, partSetHash []byte) types.BlockID {
 	var (
 		h   = make([]byte, tmhash.Size)
