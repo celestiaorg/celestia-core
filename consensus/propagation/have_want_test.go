@@ -13,7 +13,7 @@ import (
 	"github.com/tendermint/tendermint/state"
 )
 
-func TestWantsSendingRoutine(t *testing.T) {
+func TestRequestFromPeer(t *testing.T) {
 	t.Run("maximum concurrent request count - want not sent", func(t *testing.T) {
 		reactors, prop, _, _ := createTestCreatorsWithProposal(t, 2, 1)
 		reactor1 := reactors[0]
@@ -23,15 +23,15 @@ func TestWantsSendingRoutine(t *testing.T) {
 		require.NotNil(t, p2)
 
 		// restart the wants sending routine
-		close(p2.requestChan)
-		p2.requestChan = make(chan request, 3000)
-		go reactor1.wantsSendingRoutine(p2)
+		close(p2.receivedHaves)
+		p2.receivedHaves = make(chan request, 3000)
+		go reactor1.requestFromPeer(p2)
 
 		// set the concurrent limit to the max
-		p2.requestCount.Store(perPeerConcurrentRequestLimit())
+		p2.concurrentReqs.Store(perPeerConcurrentRequestLimit())
 
 		// send a have
-		p2.requestChan <- request{
+		p2.receivedHaves <- request{
 			height: prop.Height,
 			round:  prop.Round,
 			index:  uint32(0),
@@ -55,17 +55,17 @@ func TestWantsSendingRoutine(t *testing.T) {
 		require.NotNil(t, p2)
 
 		// restart the wants sending routine
-		close(p2.requestChan)
-		p2.requestChan = make(chan request, 3000)
-		go reactor1.wantsSendingRoutine(p2)
+		close(p2.receivedHaves)
+		p2.receivedHaves = make(chan request, 3000)
+		go reactor1.requestFromPeer(p2)
 
-		p2.requestCount.Store(perPeerConcurrentRequestLimit())
-		p2.requestChan <- request{
+		p2.concurrentReqs.Store(perPeerConcurrentRequestLimit())
+		p2.receivedHaves <- request{
 			height: prop.Height,
 			round:  prop.Round,
 			index:  0,
 		}
-		p2.receivedPart <- struct{}{}
+		p2.receivedParts <- partData{height: prop.Height, round: prop.Round}
 		time.Sleep(200 * time.Millisecond)
 
 		p1 := reactor2.getPeer(reactor1.self)
@@ -93,8 +93,8 @@ func TestWantsSendingRoutine(t *testing.T) {
 		p2 := reactor1.getPeer(reactor2.self)
 		require.NotNil(t, p2)
 
-		p2.requestCount.Store(0)
-		p2.requestChan <- request{
+		p2.concurrentReqs.Store(0)
+		p2.receivedHaves <- request{
 			height: prop.Height,
 			round:  prop.Round,
 			index:  0,
@@ -116,12 +116,14 @@ func TestWantsSendingRoutine(t *testing.T) {
 
 		p2 := reactor1.getPeer(reactor2.self)
 		require.NotNil(t, p2)
-		p2.requestCount.Store(0)
-		p2.requestChan <- request{
+		p2.concurrentReqs.Store(0)
+		p2.receivedHaves <- request{
 			height: prop.Height,
 			round:  prop.Round,
 			index:  0,
 		}
+		p2.RequestsReady()
+
 		time.Sleep(200 * time.Millisecond)
 
 		p1 := reactor2.getPeer(reactor1.self)
@@ -147,20 +149,21 @@ func TestWantsSendingRoutine(t *testing.T) {
 
 		p2 := reactor1.getPeer(reactor2.self)
 		require.NotNil(t, p2)
-		p2.requestCount.Store(0)
+		p2.concurrentReqs.Store(0)
 
 		// restart the wants sending routine
-		close(p2.requestChan)
-		p2.requestChan = make(chan request, 3000)
-		go reactor1.wantsSendingRoutine(p2)
+		close(p2.receivedHaves)
+		p2.receivedHaves = make(chan request, 3000)
+		go reactor1.requestFromPeer(p2)
 
 		for i := 0; i < 10; i++ {
-			p2.requestChan <- request{
+			p2.receivedHaves <- request{
 				height: prop.Height,
 				round:  prop.Round,
 				index:  uint32(i),
 			}
 		}
+		p2.RequestsReady()
 		time.Sleep(200 * time.Millisecond)
 
 		p1 := reactor2.getPeer(reactor1.self)

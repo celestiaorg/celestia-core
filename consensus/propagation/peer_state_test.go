@@ -139,7 +139,7 @@ func TestPeerState_prune(t *testing.T) {
 	}
 }
 
-func TestPeerState_IncreaseRequestCount(t *testing.T) {
+func TestPeerState_IncreaseConcurrentReqs(t *testing.T) {
 	tests := []struct {
 		name      string
 		initial   int64
@@ -170,16 +170,16 @@ func TestPeerState_IncreaseRequestCount(t *testing.T) {
 		tt := tt // pin
 		t.Run(tt.name, func(t *testing.T) {
 			ps := newTestPeerState()
-			ps.SetRequestCount(tt.initial)
+			ps.SetConcurrentReqs(tt.initial)
 
-			ps.IncreaseRequestCount(tt.increment)
+			ps.IncreaseConcurrentReqs(tt.increment)
 
-			assert.Equal(t, tt.expected, ps.requestCount.Load())
+			assert.Equal(t, tt.expected, ps.concurrentReqs.Load())
 		})
 	}
 }
 
-func TestPeerState_SetRequestCount(t *testing.T) {
+func TestPeerState_SetConcurrentReqs(t *testing.T) {
 	tests := []struct {
 		name     string
 		count    int64
@@ -205,15 +205,15 @@ func TestPeerState_SetRequestCount(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			ps := newPeerState(nil, nil)
-			ps.SetRequestCount(tt.count)
+			ps.SetConcurrentReqs(tt.count)
 
-			got := ps.requestCount.Load()
+			got := ps.concurrentReqs.Load()
 			assert.Equal(t, tt.expected, got)
 		})
 	}
 }
 
-func TestPeerState_DecreaseRequestCount(t *testing.T) {
+func TestPeerState_DecreaseConcurrentReqs(t *testing.T) {
 	tests := []struct {
 		name          string
 		initialCount  int64
@@ -249,11 +249,11 @@ func TestPeerState_DecreaseRequestCount(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			ps := newPeerState(nil, nil)
-			ps.SetRequestCount(tt.initialCount)
+			ps.SetConcurrentReqs(tt.initialCount)
 
-			ps.DecreaseRequestCount(tt.decrease)
+			ps.DecreaseConcurrentReqs(tt.decrease)
 
-			got := ps.requestCount.Load()
+			got := ps.concurrentReqs.Load()
 			assert.Equal(t, tt.expectedCount, got)
 		})
 	}

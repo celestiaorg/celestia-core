@@ -127,8 +127,8 @@ func (blockProp *Reactor) OnStart() error {
 func (blockProp *Reactor) OnStop() {
 	blockProp.cancel()
 	for _, peer := range blockProp.getPeers() {
-		close(peer.requestChan)
-		close(peer.receivedPart)
+		close(peer.receivedHaves)
+		close(peer.receivedParts)
 	}
 }
 
@@ -168,7 +168,7 @@ func (blockProp *Reactor) AddPeer(peer p2p.Peer) {
 
 	peerState := newPeerState(peer, blockProp.Logger)
 	blockProp.setPeer(peer.ID(), peerState)
-	go blockProp.wantsSendingRoutine(peerState)
+	go blockProp.requestFromPeer(peerState)
 
 	cb, _, found := blockProp.GetCurrentCompactBlock()
 	if !found {
@@ -192,8 +192,8 @@ func (blockProp *Reactor) RemovePeer(peer p2p.Peer, reason interface{}) {
 	defer blockProp.mtx.Unlock()
 	p := blockProp.peerstate[peer.ID()]
 	if p != nil {
-		close(p.requestChan)
-		close(p.receivedPart)
+		close(p.receivedHaves)
+		close(p.receivedParts)
 	}
 	delete(blockProp.peerstate, peer.ID())
 }
@@ -280,7 +280,6 @@ func (blockProp *Reactor) SetConsensusRound(height int64, round int32) {
 	defer blockProp.pmtx.Unlock()
 	blockProp.consensusRound = round
 	blockProp.ResetRequestCounts()
-	// reset concurrent peer limits
 	// todo: delete the old round data as its no longer relevant don't delete
 	// past round data if it has a POL
 }
@@ -288,12 +287,17 @@ func (blockProp *Reactor) SetConsensusRound(height int64, round int32) {
 func (blockProp *Reactor) ResetRequestCounts() {
 	peers := blockProp.getPeers()
 	for _, p := range peers {
-		p.SetRequestCount(0)
+		p.SetConcurrentReqs(0)
 	}
 }
 
 func (blockProp *Reactor) StartProcessing() {
 	blockProp.started.Store(true)
+}
+
+func (blockProp *Reactor) ConcurrentRequestLimit() int64 {
+	// todo make dynamic
+	return 3000
 }
 
 // getPeer returns the peer state for the given peer. If the peer does not exist,

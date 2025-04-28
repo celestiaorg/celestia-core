@@ -25,23 +25,30 @@ type PeerState struct {
 	// and round.
 	state map[int64]map[int32]*partState
 
-	requestChan  chan request
-	requestCount atomic.Int64
-	receivedPart chan struct{}
+	concurrentReqs atomic.Int64
+	receivedParts  chan partData
+	receivedHaves  chan request
+	canRequest     chan struct{}
 
 	logger log.Logger
+}
+
+type partData struct {
+	height int64
+	round  int32
 }
 
 // newPeerState initializes and returns a new PeerState. This should be
 // called for each peer.
 func newPeerState(peer p2p.Peer, logger log.Logger) *PeerState {
 	return &PeerState{
-		mtx:          &sync.RWMutex{},
-		state:        make(map[int64]map[int32]*partState),
-		peer:         peer,
-		logger:       logger,
-		requestChan:  make(chan request, 3000),
-		receivedPart: make(chan struct{}, 1000),
+		mtx:           &sync.RWMutex{},
+		state:         make(map[int64]map[int32]*partState),
+		peer:          peer,
+		logger:        logger,
+		receivedHaves: make(chan request, 3000),
+		receivedParts: make(chan partData, 3000),
+		canRequest:    make(chan struct{}, 1),
 	}
 }
 
@@ -65,24 +72,24 @@ func (d *PeerState) initialize(height int64, round int32, size int) {
 	}
 }
 
-func (d *PeerState) IncreaseRequestCount(add int64) {
-	d.requestCount.Add(add)
+func (d *PeerState) IncreaseConcurrentReqs(add int64) {
+	d.concurrentReqs.Add(add)
 }
 
-func (d *PeerState) SetRequestCount(count int64) {
-	d.requestCount.Store(count)
+func (d *PeerState) SetConcurrentReqs(count int64) {
+	d.concurrentReqs.Store(count)
 }
 
-func (d *PeerState) DecreaseRequestCount(sub int64) {
-	requestCount := d.requestCount.Load()
-	if requestCount == 0 {
+func (d *PeerState) DecreaseConcurrentReqs(sub int64) {
+	concurrentReqs := d.concurrentReqs.Load()
+	if concurrentReqs == 0 {
 		return
 	}
-	if requestCount < sub {
-		d.requestCount.Store(0)
+	if concurrentReqs < sub {
+		d.concurrentReqs.Store(0)
 		return
 	}
-	d.requestCount.Store(d.requestCount.Load() - sub)
+	d.concurrentReqs.Store(d.concurrentReqs.Load() - sub)
 }
 
 // AddHaves sets the haves for a given height and round.
@@ -191,6 +198,17 @@ func (d *PeerState) DeleteHeight(height int64) {
 	d.mtx.Lock()
 	defer d.mtx.Unlock()
 	delete(d.state, height)
+}
+
+func (d *PeerState) RequestsReady() {
+	select {
+	case d.canRequest <- struct{}{}:
+	default:
+	}
+}
+
+func (d *PeerState) CanRequest() chan struct{} {
+	return d.canRequest
 }
 
 // prune removes all haves and wants for heights less than the given height,
