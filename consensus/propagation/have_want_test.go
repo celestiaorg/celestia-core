@@ -4,6 +4,9 @@ import (
 	"testing"
 	"time"
 
+	proptypes "github.com/tendermint/tendermint/consensus/propagation/types"
+	"github.com/tendermint/tendermint/types"
+
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	cfg "github.com/tendermint/tendermint/config"
@@ -12,22 +15,9 @@ import (
 
 func TestWantsSendingRoutine(t *testing.T) {
 	t.Run("maximum concurrent request count - want not sent", func(t *testing.T) {
-		reactors, _ := createTestReactors(2, cfg.DefaultP2PConfig(), false, "/tmp/test/wants_sending_routine")
+		reactors, prop, _, _ := createTestCreatorsWithProposal(t, 2, 1)
 		reactor1 := reactors[0]
 		reactor2 := reactors[1]
-
-		cleanup, _, sm := state.SetupTestCase(t)
-		t.Cleanup(func() {
-			cleanup(t)
-		})
-
-		prop, ps, _, metaData := createTestProposal(sm, 1, 2, 1000000)
-		cb, _ := createCompactBlock(t, prop, ps, metaData)
-
-		for _, reactor := range reactors {
-			added := reactor.AddProposal(cb)
-			require.True(t, added)
-		}
 
 		p2 := reactor1.getPeer(reactor2.self)
 		require.NotNil(t, p2)
@@ -57,22 +47,9 @@ func TestWantsSendingRoutine(t *testing.T) {
 	})
 
 	t.Run("maximum concurrent request count - want sent after receiving a part", func(t *testing.T) {
-		reactors, _ := createTestReactors(2, cfg.DefaultP2PConfig(), false, "/tmp/test/wants_sending_routine")
+		reactors, prop, _, _ := createTestCreatorsWithProposal(t, 2, 1)
 		reactor1 := reactors[0]
 		reactor2 := reactors[1]
-
-		cleanup, _, sm := state.SetupTestCase(t)
-		t.Cleanup(func() {
-			cleanup(t)
-		})
-
-		prop, ps, _, metaData := createTestProposal(sm, 1, 2, 1000000)
-		cb, _ := createCompactBlock(t, prop, ps, metaData)
-
-		for _, reactor := range reactors {
-			added := reactor.AddProposal(cb)
-			require.True(t, added)
-		}
 
 		p2 := reactor1.getPeer(reactor2.self)
 		require.NotNil(t, p2)
@@ -100,23 +77,10 @@ func TestWantsSendingRoutine(t *testing.T) {
 	})
 
 	t.Run("not requesting part - already requested from another peer", func(t *testing.T) {
-		reactors, _ := createTestReactors(3, cfg.DefaultP2PConfig(), false, "/tmp/test/wants_sending_routine")
+		reactors, prop, _, _ := createTestCreatorsWithProposal(t, 3, 1)
 		reactor1 := reactors[0]
 		reactor2 := reactors[1]
 		reactor3 := reactors[2]
-
-		cleanup, _, sm := state.SetupTestCase(t)
-		t.Cleanup(func() {
-			cleanup(t)
-		})
-
-		prop, ps, _, metaData := createTestProposal(sm, 1, 2, 1000000)
-		cb, _ := createCompactBlock(t, prop, ps, metaData)
-
-		for _, reactor := range reactors {
-			added := reactor.AddProposal(cb)
-			require.True(t, added)
-		}
 
 		// set the request to be sent from another peer
 		p3 := reactor1.getPeer(reactor3.self)
@@ -145,23 +109,10 @@ func TestWantsSendingRoutine(t *testing.T) {
 		}
 	})
 	t.Run("part requested successfully + checking if haves were broadcasted", func(t *testing.T) {
-		reactors, _ := createTestReactors(3, cfg.DefaultP2PConfig(), false, "/tmp/test/wants_sending_routine")
+		reactors, prop, _, _ := createTestCreatorsWithProposal(t, 3, 1)
 		reactor1 := reactors[0]
 		reactor2 := reactors[1]
 		reactor3 := reactors[2]
-
-		cleanup, _, sm := state.SetupTestCase(t)
-		t.Cleanup(func() {
-			cleanup(t)
-		})
-
-		prop, ps, _, metaData := createTestProposal(sm, 1, 2, 1000000)
-		cb, _ := createCompactBlock(t, prop, ps, metaData)
-
-		for _, reactor := range reactors {
-			added := reactor.AddProposal(cb)
-			require.True(t, added)
-		}
 
 		p2 := reactor1.getPeer(reactor2.self)
 		require.NotNil(t, p2)
@@ -189,23 +140,10 @@ func TestWantsSendingRoutine(t *testing.T) {
 		assert.True(t, haves.GetIndex(0))
 	})
 	t.Run("batch parts requested successfully + checking if haves were broadcasted", func(t *testing.T) {
-		reactors, _ := createTestReactors(3, cfg.DefaultP2PConfig(), false, "/tmp/test/wants_sending_routine")
+		reactors, prop, _, _ := createTestCreatorsWithProposal(t, 3, 1)
 		reactor1 := reactors[0]
 		reactor2 := reactors[1]
 		reactor3 := reactors[2]
-
-		cleanup, _, sm := state.SetupTestCase(t)
-		t.Cleanup(func() {
-			cleanup(t)
-		})
-
-		prop, ps, _, metaData := createTestProposal(sm, 1, 2, 1000000)
-		cb, _ := createCompactBlock(t, prop, ps, metaData)
-
-		for _, reactor := range reactors {
-			added := reactor.AddProposal(cb)
-			require.True(t, added)
-		}
 
 		p2 := reactor1.getPeer(reactor2.self)
 		require.NotNil(t, p2)
@@ -244,4 +182,27 @@ func TestWantsSendingRoutine(t *testing.T) {
 			assert.True(t, haves.GetIndex(i), i)
 		}
 	})
+}
+
+func createTestCreatorsWithProposal(t *testing.T, reactorsCount int, height int64) (
+	[]*Reactor,
+	*types.Proposal,
+	*types.PartSet,
+	*proptypes.CompactBlock,
+) {
+	reactors, _ := createTestReactors(reactorsCount, cfg.DefaultP2PConfig(), false, "/tmp/test")
+
+	cleanup, _, sm := state.SetupTestCase(t)
+	t.Cleanup(func() {
+		cleanup(t)
+	})
+
+	prop, ps, _, metaData := createTestProposal(sm, height, 2, 1000000)
+	cb, _ := createCompactBlock(t, prop, ps, metaData)
+
+	for _, reactor := range reactors {
+		added := reactor.AddProposal(cb)
+		require.True(t, added)
+	}
+	return reactors, prop, ps, cb
 }
