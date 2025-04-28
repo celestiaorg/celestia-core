@@ -416,10 +416,11 @@ func (blockProp *Reactor) handleRecoveryPart(peer p2p.ID, part *proptypes.Recove
 	}
 
 	if p != nil {
+		// avoid blocking if a single peer is backed up. This means that they
+		// are sending us too many parts
 		select {
-		case <-blockProp.ctx.Done():
-			return
 		case p.receivedParts <- partData{height: part.Height, round: part.Round}:
+		default:
 		}
 	}
 
