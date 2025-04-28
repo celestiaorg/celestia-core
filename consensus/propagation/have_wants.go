@@ -2,6 +2,7 @@ package propagation
 
 import (
 	"fmt"
+
 	proptypes "github.com/tendermint/tendermint/consensus/propagation/types"
 	"github.com/tendermint/tendermint/crypto/tmhash"
 	"github.com/tendermint/tendermint/libs/bits"
@@ -90,7 +91,10 @@ func (blockProp *Reactor) wantsSendingRoutine(ps *PeerState) {
 	for {
 		// concurrent per-peer per-block request limit reached
 		if ps.requestCount.Load()+batchRequestCount >= perPeerConcurrentRequestLimit() {
-			blockProp.handleBatchLimit(ps, want)
+			err := blockProp.handleBatchLimit(ps, want)
+			if err != nil {
+				blockProp.Logger.Error("error handling batch limit", "err", err)
+			}
 			want = nil
 			batchRequestCount = 0
 		}
@@ -151,7 +155,10 @@ func (blockProp *Reactor) wantsSendingRoutine(ps *PeerState) {
 			batchRequestCount++
 
 			if len(ps.requestChan) == 0 {
-				blockProp.sendWantsThenBroadcastHaves(ps, want)
+				err := blockProp.sendWantsThenBroadcastHaves(ps, want)
+				if err != nil {
+					blockProp.Logger.Error("error sending wants", "err", err)
+				}
 				want = nil
 				batchRequestCount = 0
 			}
@@ -159,19 +166,23 @@ func (blockProp *Reactor) wantsSendingRoutine(ps *PeerState) {
 	}
 }
 
-func (blockProp *Reactor) handleBatchLimit(ps *PeerState, want *proptypes.WantParts) {
+func (blockProp *Reactor) handleBatchLimit(ps *PeerState, want *proptypes.WantParts) error {
 	if want != nil && !want.Parts.IsEmpty() {
-		blockProp.sendWantsThenBroadcastHaves(ps, want)
+		err := blockProp.sendWantsThenBroadcastHaves(ps, want)
+		if err != nil {
+			return err
+		}
 	}
 
 	select {
 	case <-blockProp.ctx.Done():
-		return
+		return nil
 	case _, ok := <-ps.receivedPart:
 		if !ok {
-			return
+			return nil
 		}
 	}
+	return nil
 }
 
 func (blockProp *Reactor) sendWantsThenBroadcastHaves(ps *PeerState, want *proptypes.WantParts) error {
