@@ -2,6 +2,7 @@ package propagation
 
 import (
 	"fmt"
+	"math"
 
 	proptypes "github.com/tendermint/tendermint/consensus/propagation/types"
 	"github.com/tendermint/tendermint/crypto/tmhash"
@@ -85,6 +86,17 @@ func perPeerConcurrentRequestLimit() int64 {
 	return 3000
 }
 
+// ReqLimit limits the number of requests per part.
+// It allows requesting the small blocks multiple times to avoid relying only on a few/single
+// peer to upload the whole block.
+// The provided partsCount is the number of parts in the block and parity data.
+func ReqLimit(partsCount int) int {
+	if partsCount == 0 {
+		return 1
+	}
+	return int(math.Ceil(math.Max(1, 34/float64(partsCount))))
+}
+
 func (blockProp *Reactor) wantsSendingRoutine(ps *PeerState) {
 	var want *proptypes.WantParts
 	batchRequestCount := int64(0)
@@ -127,7 +139,7 @@ func (blockProp *Reactor) wantsSendingRoutine(ps *PeerState) {
 				continue
 			}
 
-			reqLimit := 1
+			reqLimit := ReqLimit(int(parts.Total()))
 			reqs := blockProp.countRequests(req.height, req.round, int(partIndex))
 			if len(reqs) >= reqLimit {
 				fullReqs.SetIndex(int(partIndex), true)
