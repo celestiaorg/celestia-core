@@ -89,6 +89,12 @@ func (blockProp *Reactor) wantsSendingRoutine(ps *PeerState) {
 	var want *proptypes.WantParts
 	batchRequestCount := int64(0)
 	for {
+		// if we're at a new height, we can drop the previous requests
+		if want != nil && !blockProp.relevant(want.Height, want.Round) {
+			want = nil
+			batchRequestCount = 0
+		}
+
 		// concurrent per-peer per-block request limit reached
 		if ps.requestCount.Load()+batchRequestCount >= perPeerConcurrentRequestLimit() {
 			err := blockProp.handleBatchLimit(ps, want)
@@ -109,12 +115,6 @@ func (blockProp *Reactor) wantsSendingRoutine(ps *PeerState) {
 		case req, ok := <-ps.requestChan:
 			if !ok {
 				return
-			}
-
-			// if we're at a new height, we can drop the previous requests
-			if want != nil && !blockProp.relevant(want.Height, want.Round) {
-				want = nil
-				batchRequestCount = 0
 			}
 
 			partIndex := req.index
