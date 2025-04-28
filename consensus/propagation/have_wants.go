@@ -105,6 +105,7 @@ func (blockProp *Reactor) wantsSendingRoutine(ps *PeerState) {
 			if !ok {
 				return
 			}
+			ps.DecreaseRequestCount(1)
 		case req, ok := <-ps.requestChan:
 			if !ok {
 				return
@@ -180,6 +181,7 @@ func (blockProp *Reactor) handleBatchLimit(ps *PeerState, want *proptypes.WantPa
 		if !ok {
 			return nil
 		}
+		ps.DecreaseRequestCount(1)
 	}
 	return nil
 }
