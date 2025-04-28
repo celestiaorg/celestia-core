@@ -412,8 +412,6 @@ func (blockProp *Reactor) handleRecoveryPart(peer p2p.ID, part *proptypes.Recove
 	}
 
 	if p != nil {
-		// FIXME investigate why the nil peer happens
-		p.DecreaseRequestCount(1)
 		select {
 		case <-blockProp.ctx.Done():
 			return
