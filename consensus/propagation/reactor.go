@@ -272,6 +272,24 @@ func (blockProp *Reactor) Prune(committedHeight int64) {
 	blockProp.pmtx.Lock()
 	defer blockProp.pmtx.Unlock()
 	blockProp.consensusHeight = committedHeight
+	blockProp.ResetRequestCounts()
+}
+
+func (blockProp *Reactor) SetConsensusRound(height int64, round int32) {
+	blockProp.pmtx.Lock()
+	defer blockProp.pmtx.Unlock()
+	blockProp.consensusRound = round
+	blockProp.ResetRequestCounts()
+	// reset concurrent peer limits
+	// todo: delete the old round data as its no longer relevant don't delete
+	// past round data if it has a POL
+}
+
+func (blockProp *Reactor) ResetRequestCounts() {
+	peers := blockProp.getPeers()
+	for _, p := range peers {
+		p.SetRequestCount(0)
+	}
 }
 
 func (blockProp *Reactor) StartProcessing() {
