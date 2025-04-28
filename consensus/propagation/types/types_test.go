@@ -11,6 +11,8 @@ import (
 	"github.com/tendermint/tendermint/crypto/tmhash"
 	"github.com/tendermint/tendermint/libs/bits"
 	"github.com/tendermint/tendermint/libs/rand"
+	"github.com/tendermint/tendermint/proto/tendermint/crypto"
+	protobits "github.com/tendermint/tendermint/proto/tendermint/libs/bits"
 	protoprop "github.com/tendermint/tendermint/proto/tendermint/propagation"
 	"github.com/tendermint/tendermint/types"
 )
@@ -481,40 +483,136 @@ func TestHaveParts_GetIndex(t *testing.T) {
 
 func TestMsgFromProto_NilMessage(t *testing.T) {
 	testCases := []struct {
-		name string
-		msg  *protoprop.Message
+		name        string
+		msg         *protoprop.Message
+		expectError string
 	}{
+		{
+			name:        "nil message",
+			msg:         nil,
+			expectError: "propagation: nil message",
+		},
 		{
 			name: "nil message: CompactBlock",
 			msg: &protoprop.Message{
 				Sum: &protoprop.Message_CompactBlock{},
 			},
+			expectError: "propagation: nil compact block",
+		},
+		{
+			name: "nil message fields: CompactBlock",
+			msg: &protoprop.Message{
+				Sum: &protoprop.Message_CompactBlock{
+					CompactBlock: &protoprop.CompactBlock{
+						BpHash:      nil,
+						Blobs:       nil,
+						Signature:   nil,
+						Proposal:    nil,
+						LastLength:  0,
+						PartsHashes: nil,
+					},
+				},
+			},
+			expectError: "nil proposal",
+		},
+		{
+			name: "nil blob: CompactBlock",
+			msg: &protoprop.Message{
+				Sum: &protoprop.Message_CompactBlock{
+					CompactBlock: &protoprop.CompactBlock{
+						Blobs: []*protoprop.TxMetaData{
+							nil,
+						},
+					},
+				},
+			},
+			expectError: "CompactBlock: nil blob",
 		},
 		{
 			name: "nil message: HaveParts",
 			msg: &protoprop.Message{
 				Sum: &protoprop.Message_HaveParts{},
 			},
+			expectError: "propagation: nil have parts",
+		},
+		{
+			name: "nil message fields: HaveParts",
+			msg: &protoprop.Message{
+				Sum: &protoprop.Message_HaveParts{
+					HaveParts: &protoprop.HaveParts{
+						Height: 0,
+						Round:  0,
+						Parts:  nil,
+					},
+				},
+			},
+			expectError: "HaveParts: Parts cannot be nil or empty",
+		},
+		{
+			name: "nil part: HaveParts",
+			msg: &protoprop.Message{
+				Sum: &protoprop.Message_HaveParts{
+					HaveParts: &protoprop.HaveParts{
+						Parts: []*protoprop.PartMetaData{nil},
+					},
+				},
+			},
+			expectError: "HaveParts: nil part at index",
 		},
 		{
 			name: "nil message: WantParts",
 			msg: &protoprop.Message{
 				Sum: &protoprop.Message_WantParts{},
 			},
+			expectError: "propagation: nil want parts",
+		},
+		{
+			name: "nil message fields: WantParts",
+			msg: &protoprop.Message{
+				Sum: &protoprop.Message_WantParts{
+					WantParts: &protoprop.WantParts{
+						Parts:  protobits.BitArray{},
+						Height: 0,
+						Round:  0,
+						Prove:  false,
+					},
+				},
+			},
+			expectError: "WantParts: nil parts",
 		},
 		{
 			name: "nil message: RecoveryPart",
 			msg: &protoprop.Message{
 				Sum: &protoprop.Message_RecoveryPart{},
 			},
+			expectError: "propagation: nil recovery part",
+		},
+		{
+			name: "nil message fields: RecoveryPart",
+			msg: &protoprop.Message{
+				Sum: &protoprop.Message_RecoveryPart{
+					RecoveryPart: &protoprop.RecoveryPart{
+						Height: 0,
+						Round:  0,
+						Index:  0,
+						Data:   nil,
+						Proof:  crypto.Proof{},
+					},
+				},
+			},
+			expectError: "",
 		},
 	}
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			_, err := MsgFromProto(tc.msg)
-			require.Error(t, err)
-			require.Contains(t, err.Error(), "nil")
+			if tc.expectError != "" {
+				require.Error(t, err)
+				require.Contains(t, err.Error(), tc.expectError)
+			} else {
+				require.NoError(t, err)
+			}
 		})
 	}
 }
