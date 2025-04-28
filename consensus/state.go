@@ -1186,7 +1186,7 @@ func (cs *State) defaultDecideProposal(height int64, round int32) {
 		schema.WriteABCI(cs.traceClient, schema.PrepareProposalStart, height, round)
 		block, blockParts = cs.createProposalBlock()
 		schema.WriteABCI(cs.traceClient, schema.PrepareProposalEnd, height, round)
-		if block == nil {
+		if block == nil && blockParts == nil {
 			return
 		}
 	}
@@ -1344,13 +1344,11 @@ func (cs *State) defaultDoPrevote(height int64, round int32) {
 
 	schema.WriteABCI(cs.traceClient, schema.ProcessProposalStart, height, round)
 
-	// todo: re-enable after the fast testnet
-	// stateMachineValidBlock, err := cs.blockExec.ProcessProposal(cs.ProposalBlock)
-	// if err != nil {
-	// 	cs.Logger.Error("state machine returned an error when trying to process proposal block", "err", err)
-	// 	return
-	// }
-	stateMachineValidBlock := true
+	stateMachineValidBlock, err := cs.blockExec.ProcessProposal(cs.ProposalBlock)
+	if err != nil {
+		cs.Logger.Error("state machine returned an error when trying to process proposal block", "err", err)
+		return
+	}
 
 	schema.WriteABCI(cs.traceClient, schema.ProcessProposalEnd, height, round)
 
