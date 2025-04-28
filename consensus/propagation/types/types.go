@@ -298,7 +298,7 @@ func (h *HaveParts) ValidatePartHashes(expectedHashes [][]byte) error {
 		if int(part.Index) >= len(expectedHashes) {
 			return fmt.Errorf("non existing part hash index %d", index)
 		}
-		if !bytes.Equal(part.Hash, expectedHashes[index]) {
+		if !bytes.Equal(part.Hash, expectedHashes[part.Index]) {
 			return fmt.Errorf("invalid part hash at index %d", index)
 		}
 	}
