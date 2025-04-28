@@ -39,6 +39,7 @@ func (blockProp *Reactor) handleHaves(peer p2p.ID, haves *proptypes.HaveParts) {
 
 	err := haves.ValidatePartHashes(cb.PartsHashes)
 	if err != nil {
+		blockProp.Logger.Error("received invalid have part", "err", err)
 		blockProp.Switch.StopPeerForError(p.peer, err)
 		return
 	}
