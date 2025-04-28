@@ -3,6 +3,8 @@ package propagation
 import (
 	"testing"
 
+	"github.com/stretchr/testify/assert"
+
 	"github.com/tendermint/tendermint/libs/log"
 	"github.com/tendermint/tendermint/p2p/mock"
 
@@ -134,5 +136,125 @@ func TestPeerState_prune(t *testing.T) {
 	for r := int32(0); r < 3; r++ {
 		_, ok := ps.GetHaves(13, r)
 		require.True(t, ok, "height=13 round=%d should remain", r)
+	}
+}
+
+func TestPeerState_IncreaseRequestCount(t *testing.T) {
+	tests := []struct {
+		name      string
+		initial   int64
+		increment int64
+		expected  int64
+	}{
+		{
+			name:      "increment by positive value",
+			initial:   0,
+			increment: 10,
+			expected:  10,
+		},
+		{
+			name:      "increment by zero",
+			initial:   5,
+			increment: 0,
+			expected:  5,
+		},
+		{
+			name:      "increment by negative value",
+			initial:   10,
+			increment: -5,
+			expected:  5,
+		},
+	}
+
+	for _, tt := range tests {
+		tt := tt // pin
+		t.Run(tt.name, func(t *testing.T) {
+			ps := newTestPeerState()
+			ps.SetRequestCount(tt.initial)
+
+			ps.IncreaseRequestCount(tt.increment)
+
+			assert.Equal(t, tt.expected, ps.requestCount.Load())
+		})
+	}
+}
+
+func TestPeerState_SetRequestCount(t *testing.T) {
+	tests := []struct {
+		name     string
+		count    int64
+		expected int64
+	}{
+		{
+			name:     "set positive count",
+			count:    5,
+			expected: 5,
+		},
+		{
+			name:     "set zero count",
+			count:    0,
+			expected: 0,
+		},
+		{
+			name:     "set negative count",
+			count:    -3,
+			expected: -3,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ps := newPeerState(nil, nil)
+			ps.SetRequestCount(tt.count)
+
+			got := ps.requestCount.Load()
+			assert.Equal(t, tt.expected, got)
+		})
+	}
+}
+
+func TestPeerState_DecreaseRequestCount(t *testing.T) {
+	tests := []struct {
+		name          string
+		initialCount  int64
+		decrease      int64
+		expectedCount int64
+	}{
+		{
+			name:          "decrease from positive count",
+			initialCount:  10,
+			decrease:      3,
+			expectedCount: 7,
+		},
+		{
+			name:          "decrease to zero",
+			initialCount:  5,
+			decrease:      5,
+			expectedCount: 0,
+		},
+		{
+			name:          "decrease more than count",
+			initialCount:  5,
+			decrease:      10,
+			expectedCount: 0,
+		},
+		{
+			name:          "decrease from zero",
+			initialCount:  0,
+			decrease:      5,
+			expectedCount: 0,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ps := newPeerState(nil, nil)
+			ps.SetRequestCount(tt.initialCount)
+
+			ps.DecreaseRequestCount(tt.decrease)
+
+			got := ps.requestCount.Load()
+			assert.Equal(t, tt.expectedCount, got)
+		})
 	}
 }

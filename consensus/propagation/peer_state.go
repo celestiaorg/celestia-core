@@ -66,17 +66,14 @@ func (d *PeerState) initialize(height int64, round int32, size int) {
 }
 
 func (d *PeerState) IncreaseRequestCount(add int64) {
-	// TODO test
 	d.requestCount.Add(add)
 }
 
 func (d *PeerState) SetRequestCount(count int64) {
-	// TODO test
 	d.requestCount.Store(count)
 }
 
 func (d *PeerState) DecreaseRequestCount(sub int64) {
-	// TODO test
 	requestCount := d.requestCount.Load()
 	if requestCount == 0 {
 		return
