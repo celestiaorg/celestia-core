@@ -82,7 +82,7 @@ func (blockProp *Reactor) handleHaves(peer p2p.ID, haves *proptypes.HaveParts) {
 // it helps avoid downloading the whole block from a single peer.
 func perPeerConcurrentRequestLimit() int64 {
 	// TODO implement
-	return 300
+	return 3000
 }
 
 func (blockProp *Reactor) wantsSendingRoutine(ps *PeerState) {
