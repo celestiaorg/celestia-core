@@ -404,19 +404,19 @@ func (p *RecoveryPart) ValidateBasic() error {
 	return nil
 }
 
-func RecoveryPartFromProto(p *protoprop.RecoveryPart) (*RecoveryPart, error) {
-	if p == nil {
+func RecoveryPartFromProto(r *protoprop.RecoveryPart) (*RecoveryPart, error) {
+	if r == nil {
 		return nil, errors.New("propagation: nil recovery part")
 	}
-	proof, err := merkle.ProofFromProto(&p.Proof, true)
+	proof, err := merkle.ProofFromProto(&r.Proof, true)
 	if err != nil {
 		return nil, err
 	}
 	rp := &RecoveryPart{
-		Height: p.Height,
-		Round:  p.Round,
-		Index:  p.Index,
-		Data:   p.Data,
+		Height: r.Height,
+		Round:  r.Round,
+		Index:  r.Index,
+		Data:   r.Data,
 		Proof:  proof,
 	}
 	return rp, rp.ValidateBasic()
