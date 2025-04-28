@@ -10,7 +10,7 @@ import (
 	"github.com/tendermint/tendermint/state"
 )
 
-func TestWantsSendingRoutine2(t *testing.T) {
+func TestWantsSendingRoutine(t *testing.T) {
 	t.Run("maximum concurrent request count - want not sent", func(t *testing.T) {
 		reactors, _ := createTestReactors(2, cfg.DefaultP2PConfig(), false, "/tmp/test/wants_sending_routine")
 		reactor1 := reactors[0]
