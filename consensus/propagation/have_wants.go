@@ -111,8 +111,7 @@ func (blockProp *Reactor) wantsSendingRoutine(ps *PeerState) {
 			}
 
 			// if we're at a new height, we can drop the previous requests
-			if want != nil &&
-				(want.Height != req.height || (want.Height == req.height && want.Round != req.round)) {
+			if want != nil && !blockProp.relevant(want.Height, want.Round) {
 				want = nil
 				batchRequestCount = 0
 			}
