@@ -210,8 +210,14 @@ func (c *CompactBlock) SetProofCache(proofs []*merkle.Proof) {
 
 // CompactBlockFromProto converts a protobuf CompactBlock to its Go representation.
 func CompactBlockFromProto(c *protoprop.CompactBlock) (*CompactBlock, error) {
+	if c == nil {
+		return nil, errors.New("propagation: nil compact block")
+	}
 	blobs := make([]TxMetaData, len(c.Blobs))
 	for i, blob := range c.Blobs {
+		if blob == nil {
+			return nil, errors.New("CompactBlock: nil blob")
+		}
 		blobs[i] = *TxMetaDataFromProto(blob)
 	}
 
@@ -314,8 +320,14 @@ func (h *HaveParts) ToProto() *protoprop.HaveParts {
 
 // HavePartFromProto converts a protobuf HaveParts to its Go representation.
 func HavePartFromProto(h *protoprop.HaveParts) (*HaveParts, error) {
+	if h == nil {
+		return nil, errors.New("propagation: nil have parts")
+	}
 	parts := make([]PartMetaData, len(h.Parts))
 	for i, part := range h.Parts {
+		if part == nil {
+			return nil, fmt.Errorf("HaveParts: nil part at index %d", i)
+		}
 		parts[i] = PartMetaData{
 			Index: part.Index,
 			Hash:  part.Hash,
@@ -356,10 +368,17 @@ func (w *WantParts) ToProto() *protoprop.WantParts {
 
 // WantPartsFromProto converts a protobuf WantParts to its Go representation.
 func WantPartsFromProto(w *protoprop.WantParts) (*WantParts, error) {
-	ba := new(bits.BitArray)
-	ba.FromProto(&w.Parts)
+	if w == nil {
+		return nil, errors.New("propagation: nil want parts")
+	}
+
+	array := bits.NewBitArray(w.Parts.Size())
+	if array == nil {
+		return nil, errors.New("WantParts: nil parts")
+	}
+	array.FromProto(&w.Parts)
 	wp := &WantParts{
-		Parts:  ba,
+		Parts:  array,
 		Height: w.Height,
 		Round:  w.Round,
 		Prove:  w.Prove,
@@ -376,8 +395,28 @@ type RecoveryPart struct {
 }
 
 func (p *RecoveryPart) ValidateBasic() error {
-	// TODO: implement
+	if p == nil {
+		return errors.New("propagation: nil recovery part")
+	}
 	return nil
+}
+
+func RecoveryPartFromProto(r *protoprop.RecoveryPart) (*RecoveryPart, error) {
+	if r == nil {
+		return nil, errors.New("propagation: nil recovery part")
+	}
+	proof, err := merkle.ProofFromProto(&r.Proof, true)
+	if err != nil {
+		return nil, err
+	}
+	rp := &RecoveryPart{
+		Height: r.Height,
+		Round:  r.Round,
+		Index:  r.Index,
+		Data:   r.Data,
+		Proof:  proof,
+	}
+	return rp, rp.ValidateBasic()
 }
 
 // MsgFromProto takes a consensus proto message and returns the native go type
@@ -392,78 +431,32 @@ func MsgFromProto(p *protoprop.Message) (Message, error) {
 	}
 
 	switch msg := um.(type) {
-	case *protoprop.TxMetaData:
-		pb = &TxMetaData{
-			Hash:  msg.Hash,
-			Start: msg.Start,
-			End:   msg.End,
-		}
 	case *protoprop.CompactBlock:
-		blobs := make([]TxMetaData, len(msg.Blobs))
-		for i, blob := range msg.Blobs {
-			blobs[i] = TxMetaData{
-				Hash:  blob.Hash,
-				Start: blob.Start,
-				End:   blob.End,
-			}
-		}
-		prop, err := types.ProposalFromProto(msg.Proposal)
+		compactBlock, err := CompactBlockFromProto(msg)
 		if err != nil {
 			return nil, err
 		}
-		pb = &CompactBlock{
-			BpHash:      msg.BpHash,
-			Blobs:       blobs,
-			Signature:   msg.Signature,
-			Proposal:    *prop,
-			LastLen:     msg.LastLength,
-			PartsHashes: msg.PartsHashes,
-		}
-	case *protoprop.PartMetaData:
-		pb = &PartMetaData{
-			Index: msg.Index,
-			Hash:  msg.Hash,
-		}
+		pb = compactBlock
 	case *protoprop.HaveParts:
-		parts := make([]PartMetaData, len(msg.Parts))
-		for i, part := range msg.Parts {
-			parts[i] = PartMetaData{
-				Index: part.Index,
-				Hash:  part.Hash,
-			}
-		}
-		pb = &HaveParts{
-			Height: msg.Height,
-			Round:  msg.Round,
-			Parts:  parts,
-		}
-	case *protoprop.WantParts:
-		array := bits.NewBitArray(msg.Parts.Size())
-		array.FromProto(&msg.Parts)
-		pb = &WantParts{
-			Parts:  array,
-			Height: msg.Height,
-			Round:  msg.Round,
-			Prove:  msg.Prove,
-		}
-	case *protoprop.RecoveryPart:
-		proof, err := merkle.ProofFromProto(&msg.Proof, true)
+		haveParts, err := HavePartFromProto(msg)
 		if err != nil {
-			return pb, err
+			return nil, err
 		}
-		pb = &RecoveryPart{
-			Height: msg.Height,
-			Round:  msg.Round,
-			Index:  msg.Index,
-			Data:   msg.Data,
-			Proof:  proof,
+		pb = haveParts
+	case *protoprop.WantParts:
+		wantParts, err := WantPartsFromProto(msg)
+		if err != nil {
+			return nil, err
 		}
+		pb = wantParts
+	case *protoprop.RecoveryPart:
+		recoveryPart, err := RecoveryPartFromProto(msg)
+		if err != nil {
+			return nil, err
+		}
+		pb = recoveryPart
 	default:
 		return nil, fmt.Errorf("propagation: message not recognized: %T", msg)
-	}
-
-	if err := pb.ValidateBasic(); err != nil {
-		return nil, err
 	}
 
 	return pb, nil
