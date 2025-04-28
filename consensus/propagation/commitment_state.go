@@ -120,6 +120,21 @@ func (p *ProposalCache) relevant(height int64, round int32) bool {
 	return true
 }
 
+// relevantHave determines if a have messasage is relevant in a thread safe way.
+func (p *ProposalCache) relevantHave(height int64, round int32) bool {
+	p.pmtx.Lock()
+	defer p.pmtx.Unlock()
+	if height <= p.consensusHeight {
+		return false
+	}
+
+	if round < p.consensusRound {
+		return false
+	}
+
+	return true
+}
+
 // GetProposal returns the proposal and block for a given height and round if
 // this node has it stored or cached. It also return the max requests for that
 // block.

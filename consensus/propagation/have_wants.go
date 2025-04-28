@@ -11,6 +11,10 @@ import (
 	propproto "github.com/tendermint/tendermint/proto/tendermint/propagation"
 )
 
+func ReqLimit() int {
+	return 1
+}
+
 // handleHaves is called when a peer sends a have message. This is used to
 // determine if the sender has or is getting portions of the proposal that this
 // node doesn't have. If the sender has parts that this node doesn't have, this
@@ -90,7 +94,7 @@ func (blockProp *Reactor) wantsSendingRoutine(ps *PeerState) {
 	batchRequestCount := int64(0)
 	for {
 		// if we're at a new height, we can drop the previous requests
-		if want != nil && !blockProp.relevant(want.Height, want.Round) {
+		if want != nil && !blockProp.relevantHave(want.Height, want.Round) {
 			want = nil
 			batchRequestCount = 0
 		}
@@ -117,26 +121,35 @@ func (blockProp *Reactor) wantsSendingRoutine(ps *PeerState) {
 				return
 			}
 
+			if !blockProp.relevantHave(req.height, req.round) {
+				continue
+			}
+
 			partIndex := req.index
 			_, parts, fullReqs, has := blockProp.getAllState(req.height, req.round, false)
 			if !has {
 				blockProp.Logger.Error("couldn't find proposal when filtering requests", "height", req.height, "round", req.round)
 				continue
 			}
+
+			// don't request a part that is already downloaded
 			if parts.BitArray().GetIndex(int(partIndex)) {
 				continue
 			}
 
-			reqLimit := 1
+			// don't request a part that has already hit the request limit
+			if fullReqs.GetIndex(int(partIndex)) {
+				continue
+			}
+
 			reqs := blockProp.countRequests(req.height, req.round, int(partIndex))
-			if len(reqs) >= reqLimit {
+			if len(reqs) >= ReqLimit() {
 				fullReqs.SetIndex(int(partIndex), true)
 				continue
 			}
 
 			// don't request the part from this peer if we've already requested it
 			// from them.
-			// this check will be helpful once we start requesting parts multiple times.
 			for _, p := range reqs {
 				// p == peer means we have already requested the part from this peer.
 				if p == ps.peer.ID() {
