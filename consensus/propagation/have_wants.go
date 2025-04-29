@@ -92,7 +92,7 @@ func perPeerConcurrentRequestLimit() int64 {
 
 func (blockProp *Reactor) requestFromPeer(ps *PeerState) {
 	for {
-		availableReqs := ps.concurrentReqs.Load() + blockProp.ConcurrentRequestLimit()
+		availableReqs := blockProp.ConcurrentRequestLimit() - ps.concurrentReqs.Load()
 
 		if availableReqs > 0 && len(ps.receivedHaves) > 0 {
 			ps.RequestsReady()
@@ -180,11 +180,12 @@ func (blockProp *Reactor) requestFromPeer(ps *PeerState) {
 				}
 
 				wants.Parts.SetIndex(int(have.index), true)
+				i--
+			}
 
-				err := blockProp.sendWantsThenBroadcastHaves(ps, wants)
-				if err != nil {
-					blockProp.Logger.Error("error sending wants", "err", err)
-				}
+			err := blockProp.sendWantsThenBroadcastHaves(ps, wants)
+			if err != nil {
+				blockProp.Logger.Error("error sending wants", "err", err)
 			}
 		}
 	}

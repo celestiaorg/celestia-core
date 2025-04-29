@@ -287,6 +287,10 @@ func (blockProp *Reactor) SetConsensusRound(height int64, round int32) {
 func (blockProp *Reactor) ResetRequestCounts() {
 	peers := blockProp.getPeers()
 	for _, p := range peers {
+		if p == nil {
+			// todo: investigate why nil peers can be present
+			continue
+		}
 		p.SetConcurrentReqs(0)
 	}
 }
