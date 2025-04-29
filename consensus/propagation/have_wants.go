@@ -30,10 +30,21 @@ func (blockProp *Reactor) handleHaves(peer p2p.ID, haves *proptypes.HaveParts) {
 		return
 	}
 
-	_, parts, fullReqs, has := blockProp.getAllState(height, round, false)
+	cb, parts, fullReqs, has := blockProp.getAllState(height, round, false)
 	if !has {
 		blockProp.Logger.Error("received have part for unknown proposal", "peer", peer, "height", height, "round", round)
 		// blockProp.Switch.StopPeerForError(blockProp.getPeer(peer).peer, errors.New("received part for unknown proposal"))
+		return
+	}
+
+	if cb == nil {
+		// we can't process haves for a compact block we don't have
+		return
+	}
+	err := haves.ValidatePartHashes(cb.PartsHashes)
+	if err != nil {
+		blockProp.Logger.Error("received invalid have part", "height", haves.Height, "round", haves.Round, "parts", haves.Parts, "err", err)
+		blockProp.Switch.StopPeerForError(p.peer, err)
 		return
 	}
 
