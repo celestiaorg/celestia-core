@@ -111,7 +111,7 @@ func (blockProp *Reactor) requestFromPeer(ps *PeerState) {
 			time.Sleep(100 * time.Millisecond)
 			continue
 		}
-		availableReqs := ConcurrentRequestLimit(len(blockProp.getPeers()), int(combinedPS.Total())) - ps.concurrentReqs.Load()
+		availableReqs := perPeerConcurrentRequestLimit(len(blockProp.getPeers()), int(combinedPS.Total())) - ps.concurrentReqs.Load()
 
 		if availableReqs > 0 && len(ps.receivedHaves) > 0 {
 			ps.RequestsReady()
@@ -131,7 +131,7 @@ func (blockProp *Reactor) requestFromPeer(ps *PeerState) {
 			ps.DecreaseConcurrentReqs(1)
 
 		case <-ps.CanRequest():
-			canSend := ConcurrentRequestLimit(len(blockProp.getPeers()), int(combinedPS.Total())) - ps.concurrentReqs.Load()
+			canSend := perPeerConcurrentRequestLimit(len(blockProp.getPeers()), int(combinedPS.Total())) - ps.concurrentReqs.Load()
 			if canSend <= 0 {
 				// should never be below zero
 				continue

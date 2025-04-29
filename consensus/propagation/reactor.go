@@ -300,7 +300,7 @@ func (blockProp *Reactor) StartProcessing() {
 	blockProp.started.Store(true)
 }
 
-func ConcurrentRequestLimit(peersCount, partsCount int) int64 {
+func perPeerConcurrentRequestLimit(peersCount, partsCount int) int64 {
 	if peersCount == 0 || partsCount == 0 {
 		return 1
 	}
