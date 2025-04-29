@@ -508,6 +508,79 @@ func TestStopPeerForError(t *testing.T) {
 	})
 }
 
+func TestConcurrentRequestLimit(t *testing.T) {
+	tests := []struct {
+		name          string
+		peersCount    int
+		partsCount    int
+		expectedLimit int64
+	}{
+		{
+			name:          "Zero peers and parts",
+			peersCount:    0,
+			partsCount:    0,
+			expectedLimit: 1,
+		},
+		{
+			name:          "One peer, no parts",
+			peersCount:    1,
+			partsCount:    0,
+			expectedLimit: 1,
+		},
+		{
+			name:          "Two peers, one part",
+			peersCount:    2,
+			partsCount:    1,
+			expectedLimit: 1,
+		},
+		{
+			name:          "Three peers, two parts",
+			peersCount:    3,
+			partsCount:    2,
+			expectedLimit: 1,
+		},
+		{
+			name:          "Four peers, many parts",
+			peersCount:    4,
+			partsCount:    10,
+			expectedLimit: 3,
+		},
+		{
+			name:          "Large peers and parts count",
+			peersCount:    100,
+			partsCount:    500,
+			expectedLimit: 8,
+		},
+		{
+			name:          "Odd division of parts by peers",
+			peersCount:    7,
+			partsCount:    20,
+			expectedLimit: 4,
+		},
+		{
+			name:          "Minimal redundancy case",
+			peersCount:    3,
+			partsCount:    1,
+			expectedLimit: 1,
+		},
+		{
+			name:          "Large redundancy case",
+			peersCount:    100,
+			partsCount:    100000,
+			expectedLimit: 1516,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			limit := ConcurrentRequestLimit(tc.peersCount, tc.partsCount)
+			if limit != tc.expectedLimit {
+				t.Errorf("expected %d, got %d", tc.expectedLimit, limit)
+			}
+		})
+	}
+}
+
 // testCompactBlock returns a test compact block with the corresponding orignal part set,
 // parity partset, and proofs.
 func testCompactBlock(t *testing.T, height int64, round int32) (*proptypes.CompactBlock, *types.PartSet, *types.PartSet, []*merkle.Proof) {

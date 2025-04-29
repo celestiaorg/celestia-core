@@ -1,8 +1,13 @@
 package propagation
 
 import (
+	"fmt"
+	"math"
+	"time"
+
 	proptypes "github.com/tendermint/tendermint/consensus/propagation/types"
 	"github.com/tendermint/tendermint/crypto/tmhash"
+	"github.com/tendermint/tendermint/libs/bits"
 	"github.com/tendermint/tendermint/p2p"
 	"github.com/tendermint/tendermint/pkg/trace/schema"
 	propproto "github.com/tendermint/tendermint/proto/tendermint/propagation"
@@ -32,7 +37,7 @@ func (blockProp *Reactor) handleHaves(peer p2p.ID, haves *proptypes.HaveParts) {
 
 	cb, parts, fullReqs, has := blockProp.getAllState(height, round, false)
 	if !has {
-		blockProp.Logger.Error("received have part for unknown proposal", "peer", peer, "height", height, "round", round)
+		blockProp.Logger.Debug("received have part for unknown proposal", "peer", peer, "height", height, "round", round)
 		// blockProp.Switch.StopPeerForError(blockProp.getPeer(peer).peer, errors.New("received part for unknown proposal"))
 		return
 	}
@@ -74,58 +79,204 @@ func (blockProp *Reactor) handleHaves(peer p2p.ID, haves *proptypes.HaveParts) {
 		return
 	}
 
-	reqLimit := 1
-
-	// if enough requests have been made for the parts, don't request them.
-	for _, partIndex := range hc.GetTrueIndices() {
-		reqs := blockProp.countRequests(height, round, partIndex)
-		if len(reqs) >= reqLimit {
-			hc.SetIndex(partIndex, false)
-			// mark the part as fully requested.
-			fullReqs.SetIndex(partIndex, true)
+	for _, index := range hc.GetTrueIndices() {
+		select {
+		case <-blockProp.ctx.Done():
+		case p.receivedHaves <- request{
+			height: height,
+			round:  round,
+			index:  uint32(index),
+		}:
+			p.RequestsReady()
 		}
-		// don't request the part from this peer if we've already requested it
-		// from them.
-		for _, p := range reqs {
-			// p == peer means we have already requested the part from this peer.
-			if p == peer {
-				hc.SetIndex(partIndex, false)
+	}
+}
+
+// ReqLimit limits the number of requests per part.
+// It allows requesting the small blocks multiple times to avoid relying only on a few/single
+// peer to upload the whole block.
+// The provided partsCount is the number of parts in the block and parity data.
+func ReqLimit(partsCount int) int {
+	if partsCount == 0 {
+		return 1
+	}
+	return int(math.Ceil(math.Max(1, 34/float64(partsCount))))
+}
+
+func (blockProp *Reactor) requestFromPeer(ps *PeerState) {
+	for {
+		_, combinedPS, has := blockProp.GetCurrentProposal()
+		if !has || combinedPS == nil {
+			// shouldn't happen
+			blockProp.Logger.Error("couldn't' get current proposal")
+			time.Sleep(100 * time.Millisecond)
+			continue
+		}
+		availableReqs := ConcurrentRequestLimit(len(blockProp.getPeers()), int(combinedPS.Total())) - ps.concurrentReqs.Load()
+
+		if availableReqs > 0 && len(ps.receivedHaves) > 0 {
+			ps.RequestsReady()
+		}
+
+		select {
+		case <-blockProp.ctx.Done():
+			return
+
+		case part, ok := <-ps.receivedParts:
+			if !ok {
+				return
+			}
+			if !blockProp.relevantHave(part.height, part.round) {
+				continue
+			}
+			ps.DecreaseConcurrentReqs(1)
+
+		case <-ps.CanRequest():
+			canSend := ConcurrentRequestLimit(len(blockProp.getPeers()), int(combinedPS.Total())) - ps.concurrentReqs.Load()
+			if canSend <= 0 {
+				// should never be below zero
+				continue
+			}
+
+			var (
+				wants    *proptypes.WantParts
+				parts    *proptypes.CombinedPartSet
+				fullReqs *bits.BitArray
+			)
+			for i := canSend; i > 0; {
+				if len(ps.receivedHaves) == 0 {
+					break
+				}
+
+				have, ok := <-ps.receivedHaves
+				if !ok {
+					return
+				}
+
+				if !blockProp.relevantHave(have.height, have.round) {
+					continue
+				}
+
+				if parts == nil {
+					var has bool
+					_, parts, fullReqs, has = blockProp.getAllState(have.height, have.round, false)
+					if !has {
+						blockProp.Logger.Error("couldn't find proposal when filtering requests", "height", have.height, "round", have.round)
+						break
+					}
+				}
+
+				// don't request a part that is already downloaded
+				if parts.BitArray().GetIndex(int(have.index)) {
+					continue
+				}
+
+				// don't request a part that has already hit the request limit
+				if fullReqs.GetIndex(int(have.index)) {
+					continue
+				}
+
+				reqLimit := ReqLimit(int(parts.Total()))
+
+				reqs := blockProp.countRequests(have.height, have.round, int(have.index))
+				if len(reqs) >= reqLimit {
+					fullReqs.SetIndex(int(have.index), true)
+					continue
+				}
+
+				// don't request the part from this peer if we've already requested it
+				// from them.
+				for _, p := range reqs {
+					// p == peer means we have already requested the part from this peer.
+					if p == ps.peer.ID() {
+						continue
+					}
+				}
+
+				if wants == nil {
+					wants = &proptypes.WantParts{
+						Height: have.height,
+						Round:  have.round,
+						Parts:  bits.NewBitArray(int(parts.Total())),
+					}
+				}
+
+				wants.Parts.SetIndex(int(have.index), true)
+				i--
+			}
+
+			// if none of the requests were relevant, then wants will still be
+			// nil
+			if wants == nil {
+				continue
+			}
+
+			err := blockProp.sendWantsThenBroadcastHaves(ps, wants)
+			if err != nil {
+				blockProp.Logger.Error("error sending wants", "err", err)
 			}
 		}
 	}
+}
 
-	if hc.IsEmpty() {
-		return
+func (blockProp *Reactor) sendWantsThenBroadcastHaves(ps *PeerState, wants *proptypes.WantParts) error {
+	have, err := blockProp.convertWantToHave(wants)
+	if err != nil {
+		return err
 	}
+	blockProp.sendWant(ps, wants)
+	blockProp.broadcastHaves(have, ps.peer.ID(), wants.Parts.Size())
+	return nil
+}
 
-	// send a want back to the sender of the haves with the wants we
+func (blockProp *Reactor) convertWantToHave(want *proptypes.WantParts) (*proptypes.HaveParts, error) {
+	have := &proptypes.HaveParts{
+		Height: want.Height,
+		Round:  want.Round,
+		Parts:  make([]proptypes.PartMetaData, 0),
+	}
+	cb, _, _, has := blockProp.getAllState(want.Height, want.Round, false)
+	if !has {
+		blockProp.Logger.Error("couldn't find proposal", "height", have.Height, "round", have.Round)
+		return nil, fmt.Errorf("couldn't find proposal height %d round %d", have.Height, have.Round)
+	}
+	for _, index := range want.Parts.GetTrueIndices() {
+		if len(cb.PartsHashes) <= index {
+			blockProp.Logger.Error("couldn't find part hash", "index", index, "height", want.Height, "round", want.Round, "len", len(cb.PartsHashes))
+			continue
+		}
+		have.Parts = append(have.Parts, proptypes.PartMetaData{
+			Index: uint32(index),
+			Hash:  cb.PartsHashes[index],
+		})
+	}
+	return have, nil
+}
+
+func (blockProp *Reactor) sendWant(ps *PeerState, want *proptypes.WantParts) {
 	e := p2p.Envelope{
 		ChannelID: WantChannel,
-		Message: &propproto.WantParts{
-			Height: height,
-			Round:  round,
-			Parts:  *hc.ToProto(),
-		},
+		Message:   want.ToProto(),
 	}
 
-	if !p2p.TrySendEnvelopeShim(p.peer, e, blockProp.Logger) { //nolint:staticcheck
-		blockProp.Logger.Error("failed to send part state", "peer", peer, "height", height, "round", round)
+	if !p2p.TrySendEnvelopeShim(ps.peer, e, blockProp.Logger) { //nolint:staticcheck
+		blockProp.Logger.Error("failed to send part state", "peer", ps.peer.ID(), "height", want.Height, "round", want.Round)
 		return
 	}
 
 	schema.WriteBlockPartState(
 		blockProp.traceClient,
-		height,
-		round,
-		hc.GetTrueIndices(),
+		want.Height,
+		want.Round,
+		want.Parts.GetTrueIndices(),
 		false,
-		string(peer),
+		string(ps.peer.ID()),
 		schema.Haves,
 	)
 
 	// keep track of the parts that this node has requested.
-	p.AddRequests(height, round, hc)
-	blockProp.broadcastHaves(haves, peer, int(parts.Total()))
+	ps.AddRequests(want.Height, want.Round, want.Parts)
+	ps.IncreaseConcurrentReqs(int64(len(want.Parts.GetTrueIndices())))
 }
 
 // countRequests returns the number of requests for a given part.
@@ -291,6 +442,15 @@ func (blockProp *Reactor) handleRecoveryPart(peer p2p.ID, part *proptypes.Recove
 	if err != nil {
 		blockProp.Logger.Error("failed to add part to part set", "peer", peer, "height", part.Height, "round", part.Round, "part", part.Index, "error", err)
 		return
+	}
+
+	if p != nil {
+		// avoid blocking if a single peer is backed up. This means that they
+		// are sending us too many parts
+		select {
+		case p.receivedParts <- partData{height: part.Height, round: part.Round}:
+		default:
+		}
 	}
 
 	// if the part was not added and there was no error, the part has already
