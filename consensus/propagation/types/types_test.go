@@ -693,6 +693,68 @@ func TestHaveParts_ValidatePartHashes(t *testing.T) {
 	}
 }
 
+func TestAreOverlappingRanges(t *testing.T) {
+	tests := []struct {
+		name    string
+		blobs   []TxMetaData
+		wantErr bool
+		errMsg  string
+	}{
+		{
+			name:    "no blobs",
+			blobs:   []TxMetaData{},
+			wantErr: false,
+		},
+		{
+			name: "non-overlapping ranges",
+			blobs: []TxMetaData{
+				{Start: 0, End: 10},
+				{Start: 10, End: 20},
+				{Start: 20, End: 30},
+			},
+			wantErr: false,
+		},
+		{
+			name: "overlapping ranges",
+			blobs: []TxMetaData{
+				{Start: 0, End: 10},
+				{Start: 5, End: 15},
+				{Start: 15, End: 25},
+			},
+			wantErr: true,
+			errMsg:  "overlapping tx metadata ranges: 0:[0-10) and 1:[5-15)",
+		},
+		{
+			name: "single blob",
+			blobs: []TxMetaData{
+				{Start: 0, End: 10},
+			},
+			wantErr: false,
+		},
+		{
+			name: "unsorted input with overlapping ranges",
+			blobs: []TxMetaData{
+				{Start: 10, End: 20},
+				{Start: 5, End: 15},
+			},
+			wantErr: true,
+			errMsg:  "overlapping tx metadata ranges: 0:[5-15) and 1:[10-20)",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := hasOverlappingRanges(tt.blobs)
+			if tt.wantErr {
+				require.Error(t, err)
+				assert.Contains(t, err.Error(), tt.errMsg)
+			} else {
+				require.NoError(t, err)
+			}
+		})
+	}
+}
+
 func makeBlockID(hash []byte, partSetSize uint32, partSetHash []byte) types.BlockID {
 	var (
 		h   = make([]byte, tmhash.Size)
