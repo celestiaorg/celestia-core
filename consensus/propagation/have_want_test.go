@@ -28,7 +28,7 @@ func TestRequestFromPeer(t *testing.T) {
 		go reactor1.requestFromPeer(p2)
 
 		// set the concurrent limit to the max
-		p2.concurrentReqs.Store(perPeerConcurrentRequestLimit(len(reactor1.getPeers()), int(prop.BlockID.PartSetHeader.Total)*2))
+		p2.concurrentReqs.Store(ConcurrentRequestLimit(len(reactor1.getPeers()), int(prop.BlockID.PartSetHeader.Total)*2))
 
 		// send a have
 		p2.receivedHaves <- request{
@@ -59,7 +59,7 @@ func TestRequestFromPeer(t *testing.T) {
 		p2.receivedHaves = make(chan request, 3000)
 		go reactor1.requestFromPeer(p2)
 
-		p2.concurrentReqs.Store(perPeerConcurrentRequestLimit(len(reactor1.getPeers()), int(prop.BlockID.PartSetHeader.Total)*2))
+		p2.concurrentReqs.Store(ConcurrentRequestLimit(len(reactor1.getPeers()), int(prop.BlockID.PartSetHeader.Total)*2))
 		p2.receivedHaves <- request{
 			height: prop.Height,
 			round:  prop.Round,

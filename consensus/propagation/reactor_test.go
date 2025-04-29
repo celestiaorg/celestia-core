@@ -573,7 +573,7 @@ func TestConcurrentRequestLimit(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			limit := perPeerConcurrentRequestLimit(tc.peersCount, tc.partsCount)
+			limit := ConcurrentRequestLimit(tc.peersCount, tc.partsCount)
 			if limit != tc.expectedLimit {
 				t.Errorf("expected %d, got %d", tc.expectedLimit, limit)
 			}
