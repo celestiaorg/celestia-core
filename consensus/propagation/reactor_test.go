@@ -162,7 +162,10 @@ func TestHandleHavesAndWantsAndRecoveryParts(t *testing.T) {
 			Height: height,
 			Round:  round,
 			Parts: []proptypes.PartMetaData{
-				{Index: 0},
+				{
+					Index: 0,
+					Hash:  hashes[0],
+				},
 			},
 		},
 	)
@@ -258,7 +261,10 @@ func TestInvalidPart(t *testing.T) {
 			Height: height,
 			Round:  round,
 			Parts: []proptypes.PartMetaData{
-				{Index: 0},
+				{
+					Index: 0,
+					Hash:  hashes[0],
+				},
 			},
 		},
 	)
@@ -374,7 +380,7 @@ func TestChunkParts(t *testing.T) {
 	}
 }
 
-// TestPropagationSmokeTest is a high level smoke test for 10 reactors to distrute 5 2MB
+// TestPropagationSmokeTest is a high level smoke test for 10 reactors to distribute 5 2MB
 // blocks with some data already distributed via the mempool. The passing
 // criteria is simply finishing.
 func TestPropagationSmokeTest(t *testing.T) {

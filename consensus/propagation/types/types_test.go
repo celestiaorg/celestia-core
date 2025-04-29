@@ -6,12 +6,14 @@ import (
 	"testing"
 
 	"github.com/gogo/protobuf/proto"
-
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/tendermint/tendermint/crypto/tmhash"
 	"github.com/tendermint/tendermint/libs/bits"
 	"github.com/tendermint/tendermint/libs/rand"
+	"github.com/tendermint/tendermint/proto/tendermint/crypto"
+	protobits "github.com/tendermint/tendermint/proto/tendermint/libs/bits"
+	protoprop "github.com/tendermint/tendermint/proto/tendermint/propagation"
 	"github.com/tendermint/tendermint/types"
 )
 
@@ -475,6 +477,284 @@ func TestHaveParts_GetIndex(t *testing.T) {
 			}
 			got := hp.GetIndex(tc.checkIdx)
 			require.Equal(t, tc.expFound, got, "GetIndex result mismatch")
+		})
+	}
+}
+
+func TestMsgFromProto_NilMessage(t *testing.T) {
+	testCases := []struct {
+		name        string
+		msg         *protoprop.Message
+		expectError string
+	}{
+		{
+			name:        "nil message",
+			msg:         nil,
+			expectError: "propagation: nil message",
+		},
+		{
+			name: "nil message: CompactBlock",
+			msg: &protoprop.Message{
+				Sum: &protoprop.Message_CompactBlock{},
+			},
+			expectError: "propagation: nil compact block",
+		},
+		{
+			name: "nil message fields: CompactBlock",
+			msg: &protoprop.Message{
+				Sum: &protoprop.Message_CompactBlock{
+					CompactBlock: &protoprop.CompactBlock{
+						BpHash:      nil,
+						Blobs:       nil,
+						Signature:   nil,
+						Proposal:    nil,
+						LastLength:  0,
+						PartsHashes: nil,
+					},
+				},
+			},
+			expectError: "nil proposal",
+		},
+		{
+			name: "nil blob: CompactBlock",
+			msg: &protoprop.Message{
+				Sum: &protoprop.Message_CompactBlock{
+					CompactBlock: &protoprop.CompactBlock{
+						Blobs: []*protoprop.TxMetaData{
+							nil,
+						},
+					},
+				},
+			},
+			expectError: "CompactBlock: nil blob",
+		},
+		{
+			name: "nil message: HaveParts",
+			msg: &protoprop.Message{
+				Sum: &protoprop.Message_HaveParts{},
+			},
+			expectError: "propagation: nil have parts",
+		},
+		{
+			name: "nil message fields: HaveParts",
+			msg: &protoprop.Message{
+				Sum: &protoprop.Message_HaveParts{
+					HaveParts: &protoprop.HaveParts{
+						Height: 0,
+						Round:  0,
+						Parts:  nil,
+					},
+				},
+			},
+			expectError: "HaveParts: Parts cannot be nil or empty",
+		},
+		{
+			name: "nil part: HaveParts",
+			msg: &protoprop.Message{
+				Sum: &protoprop.Message_HaveParts{
+					HaveParts: &protoprop.HaveParts{
+						Parts: []*protoprop.PartMetaData{nil},
+					},
+				},
+			},
+			expectError: "HaveParts: nil part at index",
+		},
+		{
+			name: "nil message: WantParts",
+			msg: &protoprop.Message{
+				Sum: &protoprop.Message_WantParts{},
+			},
+			expectError: "propagation: nil want parts",
+		},
+		{
+			name: "nil message fields: WantParts",
+			msg: &protoprop.Message{
+				Sum: &protoprop.Message_WantParts{
+					WantParts: &protoprop.WantParts{
+						Parts:  protobits.BitArray{},
+						Height: 0,
+						Round:  0,
+						Prove:  false,
+					},
+				},
+			},
+			expectError: "WantParts: nil parts",
+		},
+		{
+			name: "nil message: RecoveryPart",
+			msg: &protoprop.Message{
+				Sum: &protoprop.Message_RecoveryPart{},
+			},
+			expectError: "propagation: nil recovery part",
+		},
+		{
+			name: "nil message fields: RecoveryPart",
+			msg: &protoprop.Message{
+				Sum: &protoprop.Message_RecoveryPart{
+					RecoveryPart: &protoprop.RecoveryPart{
+						Height: 0,
+						Round:  0,
+						Index:  0,
+						Data:   nil,
+						Proof:  crypto.Proof{},
+					},
+				},
+			},
+			expectError: "",
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := MsgFromProto(tc.msg)
+			if tc.expectError != "" {
+				require.Error(t, err)
+				require.Contains(t, err.Error(), tc.expectError)
+			} else {
+				require.NoError(t, err)
+			}
+		})
+	}
+}
+
+func TestHaveParts_ValidatePartHashes(t *testing.T) {
+	tests := []struct {
+		name           string
+		haveParts      HaveParts
+		expectedHashes [][]byte
+		wantErr        bool
+		errMsg         string
+	}{
+		{
+			name: "valid hashes",
+			haveParts: HaveParts{
+				Parts: []PartMetaData{
+					{Index: 0, Hash: []byte("hash1")},
+					{Index: 1, Hash: []byte("hash2")},
+					{Index: 2, Hash: []byte("hash3")},
+				},
+			},
+			expectedHashes: [][]byte{
+				[]byte("hash1"),
+				[]byte("hash2"),
+				[]byte("hash3"),
+			},
+			wantErr: false,
+		},
+		{
+			name: "invalid hash mismatch",
+			haveParts: HaveParts{
+				Parts: []PartMetaData{
+					{Index: 0, Hash: []byte("hash1")},
+					{Index: 1, Hash: []byte("invalid")},
+					{Index: 2, Hash: []byte("hash3")},
+				},
+			},
+			expectedHashes: [][]byte{
+				[]byte("hash1"),
+				[]byte("hash2"),
+				[]byte("hash3"),
+			},
+			wantErr: true,
+			errMsg:  "invalid part hash at index 1",
+		},
+		{
+			name: "fewer expected hashes",
+			haveParts: HaveParts{
+				Parts: []PartMetaData{
+					{Index: 0, Hash: []byte("hash1")},
+					{Index: 1, Hash: []byte("hash2")},
+					{Index: 2, Hash: []byte("hash3")},
+				},
+			},
+			expectedHashes: [][]byte{
+				[]byte("hash1"),
+				[]byte("hash2"),
+			},
+			wantErr: true,
+			errMsg:  "non existing part hash index 2",
+		},
+		{
+			name: "no parts",
+			haveParts: HaveParts{
+				Parts: nil,
+			},
+			expectedHashes: [][]byte{},
+			wantErr:        false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := tt.haveParts.ValidatePartHashes(tt.expectedHashes)
+			if tt.wantErr {
+				require.Error(t, err)
+				assert.Contains(t, err.Error(), tt.errMsg)
+			} else {
+				assert.NoError(t, err)
+			}
+		})
+	}
+}
+
+func TestAreOverlappingRanges(t *testing.T) {
+	tests := []struct {
+		name    string
+		blobs   []TxMetaData
+		wantErr bool
+		errMsg  string
+	}{
+		{
+			name:    "no blobs",
+			blobs:   []TxMetaData{},
+			wantErr: false,
+		},
+		{
+			name: "non-overlapping ranges",
+			blobs: []TxMetaData{
+				{Start: 0, End: 10},
+				{Start: 10, End: 20},
+				{Start: 20, End: 30},
+			},
+			wantErr: false,
+		},
+		{
+			name: "overlapping ranges",
+			blobs: []TxMetaData{
+				{Start: 0, End: 10},
+				{Start: 5, End: 15},
+				{Start: 15, End: 25},
+			},
+			wantErr: true,
+			errMsg:  "overlapping tx metadata ranges: 0:[0-10) and 1:[5-15)",
+		},
+		{
+			name: "single blob",
+			blobs: []TxMetaData{
+				{Start: 0, End: 10},
+			},
+			wantErr: false,
+		},
+		{
+			name: "unsorted input with overlapping ranges",
+			blobs: []TxMetaData{
+				{Start: 10, End: 20},
+				{Start: 5, End: 15},
+			},
+			wantErr: true,
+			errMsg:  "overlapping tx metadata ranges: 0:[5-15) and 1:[10-20)",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := hasOverlappingRanges(tt.blobs)
+			if tt.wantErr {
+				require.Error(t, err)
+				assert.Contains(t, err.Error(), tt.errMsg)
+			} else {
+				require.NoError(t, err)
+			}
 		})
 	}
 }
