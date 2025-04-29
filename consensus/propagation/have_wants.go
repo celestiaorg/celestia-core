@@ -108,6 +108,7 @@ func (blockProp *Reactor) requestFromPeer(ps *PeerState) {
 		_, combinedPS, has := blockProp.GetCurrentProposal()
 		if !has || combinedPS == nil {
 			// shouldn't happen
+			blockProp.Logger.Error("couldn't' get current proposal")
 			time.Sleep(100 * time.Millisecond)
 			continue
 		}
