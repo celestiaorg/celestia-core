@@ -2,6 +2,7 @@ package propagation
 
 import (
 	"fmt"
+	"math"
 
 	proptypes "github.com/tendermint/tendermint/consensus/propagation/types"
 	"github.com/tendermint/tendermint/crypto/tmhash"
@@ -10,10 +11,6 @@ import (
 	"github.com/tendermint/tendermint/pkg/trace/schema"
 	propproto "github.com/tendermint/tendermint/proto/tendermint/propagation"
 )
-
-func ReqLimit() int {
-	return 1
-}
 
 // handleHaves is called when a peer sends a have message. This is used to
 // determine if the sender has or is getting portions of the proposal that this
@@ -90,6 +87,17 @@ func perPeerConcurrentRequestLimit() int64 {
 	return 3000
 }
 
+// ReqLimit limits the number of requests per part.
+// It allows requesting the small blocks multiple times to avoid relying only on a few/single
+// peer to upload the whole block.
+// The provided partsCount is the number of parts in the block and parity data.
+func ReqLimit(partsCount int) int {
+	if partsCount == 0 {
+		return 1
+	}
+	return int(math.Ceil(math.Max(1, 34/float64(partsCount))))
+}
+
 func (blockProp *Reactor) requestFromPeer(ps *PeerState) {
 	for {
 		availableReqs := blockProp.ConcurrentRequestLimit() - ps.concurrentReqs.Load()
@@ -156,8 +164,10 @@ func (blockProp *Reactor) requestFromPeer(ps *PeerState) {
 					continue
 				}
 
+				reqLimit := ReqLimit(int(parts.Total()))
+
 				reqs := blockProp.countRequests(have.height, have.round, int(have.index))
-				if len(reqs) >= ReqLimit() {
+				if len(reqs) >= reqLimit {
 					fullReqs.SetIndex(int(have.index), true)
 					continue
 				}
