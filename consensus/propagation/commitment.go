@@ -236,8 +236,6 @@ func (blockProp *Reactor) recoverPartsFromMempool(cb *proptypes.CompactBlock) {
 	schema.WriteMempoolRecoveredParts(blockProp.traceClient, cb.Proposal.Height, cb.Proposal.Round, recoveredCount)
 
 	if len(haves.Parts) > 0 {
-		// todo: distribute haves amongst peers in a fan out fashion similar to
-		// a proposer
 		blockProp.broadcastHaves(&haves, blockProp.self, int(partSet.Total()))
 	}
 }
