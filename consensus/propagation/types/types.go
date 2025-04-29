@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"sort"
 	"sync"
 
 	"github.com/gogo/protobuf/proto"
@@ -139,6 +140,33 @@ func (c *CompactBlock) ValidateBasic() error {
 		}
 	}
 
+	// validate tx metadata
+	err = hasOverlappingRanges(c.Blobs)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+// hasOverlappingRanges checks whether any ranges in the provided slice of TxMetaData overlap.
+// Returns an error if overlapping ranges are found, otherwise returns nil.
+func hasOverlappingRanges(blobs []TxMetaData) error {
+	if len(blobs) == 0 {
+		return nil
+	}
+	sort.Slice(blobs, func(i, j int) bool {
+		return blobs[i].Start < blobs[j].Start
+	})
+
+	for i := 1; i < len(blobs); i++ {
+		prev := blobs[i-1]
+		curr := blobs[i]
+
+		// If current range starts before previous range ends, there's an overlap
+		if curr.Start < prev.End { // using < instead of <= because the ranges are [start:end)
+			return fmt.Errorf("overlapping tx metadata ranges: %d:[%d-%d) and %d:[%d-%d)", i-1, prev.Start, prev.End, i, curr.Start, curr.End)
+		}
+	}
 	return nil
 }
 
