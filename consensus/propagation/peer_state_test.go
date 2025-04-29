@@ -137,3 +137,123 @@ func TestPeerState_prune(t *testing.T) {
 		require.True(t, ok, "height=13 round=%d should remain", r)
 	}
 }
+
+func TestPeerState_IncreaseConcurrentReqs(t *testing.T) {
+	tests := []struct {
+		name      string
+		initial   int64
+		increment int64
+		expected  int64
+	}{
+		{
+			name:      "increment by positive value",
+			initial:   0,
+			increment: 10,
+			expected:  10,
+		},
+		{
+			name:      "increment by zero",
+			initial:   5,
+			increment: 0,
+			expected:  5,
+		},
+		{
+			name:      "increment by negative value",
+			initial:   10,
+			increment: -5,
+			expected:  5,
+		},
+	}
+
+	for _, tt := range tests {
+		tt := tt // pin
+		t.Run(tt.name, func(t *testing.T) {
+			ps := newTestPeerState()
+			ps.SetConcurrentReqs(tt.initial)
+
+			ps.IncreaseConcurrentReqs(tt.increment)
+
+			assert.Equal(t, tt.expected, ps.concurrentReqs.Load())
+		})
+	}
+}
+
+func TestPeerState_SetConcurrentReqs(t *testing.T) {
+	tests := []struct {
+		name     string
+		count    int64
+		expected int64
+	}{
+		{
+			name:     "set positive count",
+			count:    5,
+			expected: 5,
+		},
+		{
+			name:     "set zero count",
+			count:    0,
+			expected: 0,
+		},
+		{
+			name:     "set negative count",
+			count:    -3,
+			expected: -3,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ps := newPeerState(nil, nil)
+			ps.SetConcurrentReqs(tt.count)
+
+			got := ps.concurrentReqs.Load()
+			assert.Equal(t, tt.expected, got)
+		})
+	}
+}
+
+func TestPeerState_DecreaseConcurrentReqs(t *testing.T) {
+	tests := []struct {
+		name          string
+		initialCount  int64
+		decrease      int64
+		expectedCount int64
+	}{
+		{
+			name:          "decrease from positive count",
+			initialCount:  10,
+			decrease:      3,
+			expectedCount: 7,
+		},
+		{
+			name:          "decrease to zero",
+			initialCount:  5,
+			decrease:      5,
+			expectedCount: 0,
+		},
+		{
+			name:          "decrease more than count",
+			initialCount:  5,
+			decrease:      10,
+			expectedCount: 0,
+		},
+		{
+			name:          "decrease from zero",
+			initialCount:  0,
+			decrease:      5,
+			expectedCount: 0,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ps := newPeerState(nil, nil)
+			ps.SetConcurrentReqs(tt.initialCount)
+
+			ps.DecreaseConcurrentReqs(tt.decrease)
+
+			got := ps.concurrentReqs.Load()
+			assert.Equal(t, tt.expectedCount, got)
+		})
+	}
+}
