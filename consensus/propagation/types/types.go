@@ -446,6 +446,21 @@ func (p *RecoveryPart) ValidateBasic() error {
 	if p == nil {
 		return errors.New("propagation: nil recovery part")
 	}
+	if p.Height < 0 || p.Round < 0 {
+		return errors.New("RecoveryPart: Height and Round cannot be negative")
+	}
+	if p.Data == nil || len(p.Data) == 0 {
+		return errors.New("RecoveryPart: Data cannot be nil or empty")
+	}
+	if p.Proof != nil {
+		if err := p.Proof.ValidateBasic(); err != nil {
+			return fmt.Errorf("RecoveryPart: invalid proof: %w", err)
+		}
+		hash := merkle.LeafHash(p.Data)
+		if !bytes.Equal(hash, p.Proof.LeafHash) {
+			return errors.New("RecoveryPart: invalid proof leaf hash")
+		}
+	}
 	return nil
 }
 
