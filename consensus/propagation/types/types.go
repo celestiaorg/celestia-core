@@ -154,13 +154,16 @@ func hasOverlappingRanges(blobs []TxMetaData) error {
 	if len(blobs) == 0 {
 		return nil
 	}
-	sort.Slice(blobs, func(i, j int) bool {
-		return blobs[i].Start < blobs[j].Start
+	// Create a copy of the blobs slice to avoid mutating the original
+	blobsCopy := make([]TxMetaData, len(blobs))
+	copy(blobsCopy, blobs)
+	sort.Slice(blobsCopy, func(i, j int) bool {
+		return blobsCopy[i].Start < blobsCopy[j].Start
 	})
 
-	for i := 1; i < len(blobs); i++ {
-		prev := blobs[i-1]
-		curr := blobs[i]
+	for i := 1; i < len(blobsCopy); i++ {
+		prev := blobsCopy[i-1]
+		curr := blobsCopy[i]
 
 		// If current range starts before previous range ends, there's an overlap
 		if curr.Start < prev.End { // using < instead of <= because the ranges are [start:end)
