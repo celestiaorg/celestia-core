@@ -52,27 +52,7 @@ func (blockProp *Reactor) ProposeBlock(proposal *types.Proposal, block *types.Pa
 	parts.SetProposalData(block, parityBlock)
 
 	// distribute equal portions of haves to each of the proposer's peers
-	peers := blockProp.getPeers()
-	chunks := chunkParts(parts.BitArray(), len(peers), 1)
-	// chunks = Shuffle(chunks)
-	for index, peer := range peers {
-		e := p2p.Envelope{
-			ChannelID: DataChannel,
-			Message: &propagation.HaveParts{
-				Height: proposal.Height,
-				Round:  proposal.Round,
-				Parts:  chunkToPartMetaData(chunks[index], parts),
-			},
-		}
-
-		if !p2p.TrySendEnvelopeShim(peer.peer, e, blockProp.Logger) { //nolint:staticcheck
-			blockProp.Logger.Error("failed to send have part", "peer", peer, "height", proposal.Height, "round", proposal.Round, "part", index)
-			// TODO retry
-			continue
-		}
-
-		schema.WriteBlockPartState(blockProp.traceClient, proposal.Height, proposal.Round, chunks[index].GetTrueIndices(), true, string(peer.peer.ID()), schema.Upload)
-	}
+	blockProp.broadcastChunkedHaves(parts.BitArray(), proposal.Height, proposal.Round, parts)
 }
 
 func extractHashes(blocks ...*types.PartSet) [][]byte {
@@ -107,11 +87,10 @@ func extractProofs(blocks ...*types.PartSet) []*merkle.Proof {
 
 func chunkToPartMetaData(chunk *bits.BitArray, partSet *proptypes.CombinedPartSet) []*propagation.PartMetaData {
 	partMetaData := make([]*propagation.PartMetaData, 0)
-	// TODO rename indice to a correct name
-	for _, indice := range chunk.GetTrueIndices() {
-		part, _ := partSet.GetPart(uint32(indice))
+	for _, partIndex := range chunk.GetTrueIndices() {
+		part, _ := partSet.GetPart(uint32(partIndex))
 		partMetaData = append(partMetaData, &propagation.PartMetaData{
-			Index: uint32(indice),
+			Index: uint32(partIndex),
 			Hash:  part.Proof.LeafHash,
 		})
 	}
@@ -236,9 +215,29 @@ func (blockProp *Reactor) recoverPartsFromMempool(cb *proptypes.CompactBlock) {
 	schema.WriteMempoolRecoveredParts(blockProp.traceClient, cb.Proposal.Height, cb.Proposal.Round, recoveredCount)
 
 	if len(haves.Parts) > 0 {
-		// todo: distribute haves amongst peers in a fan out fashion similar to
-		// a proposer
-		blockProp.broadcastHaves(&haves, blockProp.self, int(partSet.Total()))
+		blockProp.broadcastChunkedHaves(haves.BitArray(int(partSet.Total())), cb.Proposal.Height, cb.Proposal.Round, partSet)
+	}
+}
+
+func (blockProp *Reactor) broadcastChunkedHaves(haveParts *bits.BitArray, height int64, round int32, partSet *proptypes.CombinedPartSet) {
+	peers := blockProp.getPeers()
+	chunks := chunkParts(haveParts, len(peers), 1)
+	for index, peer := range peers {
+		e := p2p.Envelope{
+			ChannelID: DataChannel,
+			Message: &propagation.HaveParts{
+				Height: height,
+				Round:  round,
+				Parts:  chunkToPartMetaData(chunks[index], partSet),
+			},
+		}
+
+		if !p2p.TrySendEnvelopeShim(peer.peer, e, blockProp.Logger) { //nolint:staticcheck
+			blockProp.Logger.Error("failed to send have part", "peer", peer, "height", height, "round", round, "part", index)
+			continue
+		}
+
+		schema.WriteBlockPartState(blockProp.traceClient, height, round, chunks[index].GetTrueIndices(), true, string(peer.peer.ID()), schema.Upload)
 	}
 }
 
