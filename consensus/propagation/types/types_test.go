@@ -596,7 +596,7 @@ func TestMsgFromProto_NilMessage(t *testing.T) {
 					},
 				},
 			},
-			expectError: "",
+			expectError: "Data cannot be nil or empty",
 		},
 	}
 
@@ -750,6 +750,109 @@ func TestAreOverlappingRanges(t *testing.T) {
 				assert.Contains(t, err.Error(), tt.errMsg)
 			} else {
 				require.NoError(t, err)
+			}
+		})
+	}
+}
+
+func TestRecoveryPart_ValidateBasic(t *testing.T) {
+	tests := []struct {
+		name        string
+		recovery    *RecoveryPart
+		expectError string
+	}{
+		{
+			name:        "nil recovery part",
+			recovery:    nil,
+			expectError: "propagation: nil recovery part",
+		},
+		{
+			name: "valid recovery part with proof",
+			recovery: &RecoveryPart{
+				Height: 10,
+				Round:  1,
+				Index:  2,
+				Data:   []byte("valid-data"),
+				Proof: &merkle.Proof{
+					LeafHash: merkle.LeafHash([]byte("valid-data")),
+				},
+			},
+			expectError: "",
+		},
+		{
+			name: "negative height",
+			recovery: &RecoveryPart{
+				Height: -1,
+				Round:  1,
+				Index:  0,
+				Data:   []byte("data"),
+			},
+			expectError: "RecoveryPart: Height and Round cannot be negative",
+		},
+		{
+			name: "negative round",
+			recovery: &RecoveryPart{
+				Height: 1,
+				Round:  -1,
+				Index:  0,
+				Data:   []byte("data"),
+			},
+			expectError: "RecoveryPart: Height and Round cannot be negative",
+		},
+		{
+			name: "empty data",
+			recovery: &RecoveryPart{
+				Height: 1,
+				Round:  1,
+				Index:  0,
+				Data:   []byte{},
+			},
+			expectError: "RecoveryPart: Data cannot be nil or empty",
+		},
+		{
+			name: "nil data",
+			recovery: &RecoveryPart{
+				Height: 1,
+				Round:  1,
+				Index:  0,
+				Data:   nil,
+			},
+			expectError: "RecoveryPart: Data cannot be nil or empty",
+		},
+		{
+			name: "proof with invalid structure",
+			recovery: &RecoveryPart{
+				Height: 1,
+				Round:  1,
+				Index:  0,
+				Data:   []byte("data"),
+				Proof:  &merkle.Proof{},
+			},
+			expectError: "RecoveryPart: invalid proof",
+		},
+		{
+			name: "proof with mismatched leaf hash",
+			recovery: &RecoveryPart{
+				Height: 1,
+				Round:  1,
+				Index:  0,
+				Data:   []byte("data"),
+				Proof: &merkle.Proof{
+					LeafHash: merkle.LeafHash([]byte("invalid")),
+				},
+			},
+			expectError: "RecoveryPart: invalid proof leaf hash",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := tt.recovery.ValidateBasic()
+			if tt.expectError != "" {
+				require.Error(t, err)
+				assert.Contains(t, err.Error(), tt.expectError)
+			} else {
+				assert.NoError(t, err)
 			}
 		})
 	}
