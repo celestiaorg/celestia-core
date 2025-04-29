@@ -3,6 +3,7 @@ package propagation
 import (
 	"context"
 	"fmt"
+	"math"
 	"reflect"
 	"sync"
 	"sync/atomic"
@@ -299,9 +300,13 @@ func (blockProp *Reactor) StartProcessing() {
 	blockProp.started.Store(true)
 }
 
-func (blockProp *Reactor) ConcurrentRequestLimit() int64 {
-	// todo make dynamic
-	return 3000
+func ConcurrentRequestLimit(peersCount, partsCount int) int64 {
+	if peersCount == 0 || partsCount == 0 {
+		return 1
+	}
+	faultyValCount := math.Ceil(float64(peersCount) * 0.33)
+	faultyPartCount := float64(partsCount) / 2
+	return int64(math.Ceil(faultyPartCount / faultyValCount))
 }
 
 // getPeer returns the peer state for the given peer. If the peer does not exist,

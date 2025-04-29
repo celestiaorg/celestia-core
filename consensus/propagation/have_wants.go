@@ -3,6 +3,7 @@ package propagation
 import (
 	"fmt"
 	"math"
+	"time"
 
 	proptypes "github.com/tendermint/tendermint/consensus/propagation/types"
 	"github.com/tendermint/tendermint/crypto/tmhash"
@@ -91,13 +92,6 @@ func (blockProp *Reactor) handleHaves(peer p2p.ID, haves *proptypes.HaveParts) {
 	}
 }
 
-// perPeerConcurrentRequestLimit returns the maximum number of requests by peer.
-// it helps avoid downloading the whole block from a single peer.
-func perPeerConcurrentRequestLimit() int64 {
-	// TODO implement
-	return 3000
-}
-
 // ReqLimit limits the number of requests per part.
 // It allows requesting the small blocks multiple times to avoid relying only on a few/single
 // peer to upload the whole block.
@@ -111,7 +105,14 @@ func ReqLimit(partsCount int) int {
 
 func (blockProp *Reactor) requestFromPeer(ps *PeerState) {
 	for {
-		availableReqs := blockProp.ConcurrentRequestLimit() - ps.concurrentReqs.Load()
+		_, combinedPS, has := blockProp.GetCurrentProposal()
+		if !has || combinedPS == nil {
+			// shouldn't happen
+			blockProp.Logger.Error("couldn't' get current proposal")
+			time.Sleep(100 * time.Millisecond)
+			continue
+		}
+		availableReqs := ConcurrentRequestLimit(len(blockProp.getPeers()), int(combinedPS.Total())) - ps.concurrentReqs.Load()
 
 		if availableReqs > 0 && len(ps.receivedHaves) > 0 {
 			ps.RequestsReady()
@@ -131,7 +132,7 @@ func (blockProp *Reactor) requestFromPeer(ps *PeerState) {
 			ps.DecreaseConcurrentReqs(1)
 
 		case <-ps.CanRequest():
-			canSend := blockProp.ConcurrentRequestLimit() - ps.concurrentReqs.Load()
+			canSend := ConcurrentRequestLimit(len(blockProp.getPeers()), int(combinedPS.Total())) - ps.concurrentReqs.Load()
 			if canSend <= 0 {
 				// should never be below zero
 				continue
