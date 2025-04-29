@@ -68,7 +68,7 @@ type CompactBlock struct {
 	Proposal  types.Proposal `json:"proposal,omitempty"`
 	// length of the last part
 	LastLen uint32 `json:"last_len,omitempty"`
-	// the original part set parts hashes.
+	// the original + parity part set parts hashes.
 	PartsHashes [][]byte `json:"parts_hashes,omitempty"`
 
 	mtx sync.Mutex
