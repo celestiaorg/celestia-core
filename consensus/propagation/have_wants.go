@@ -193,6 +193,12 @@ func (blockProp *Reactor) requestFromPeer(ps *PeerState) {
 				i--
 			}
 
+			// if none of the requests were relevant, then wants will still be
+			// nil
+			if wants == nil {
+				continue
+			}
+
 			err := blockProp.sendWantsThenBroadcastHaves(ps, wants)
 			if err != nil {
 				blockProp.Logger.Error("error sending wants", "err", err)
