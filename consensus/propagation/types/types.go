@@ -449,7 +449,7 @@ func (p *RecoveryPart) ValidateBasic() error {
 	if p.Height < 0 || p.Round < 0 {
 		return errors.New("RecoveryPart: Height and Round cannot be negative")
 	}
-	if p.Data == nil || len(p.Data) == 0 {
+	if len(p.Data) == 0 {
 		return errors.New("RecoveryPart: Data cannot be nil or empty")
 	}
 	if p.Proof != nil {
