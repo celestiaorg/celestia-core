@@ -76,7 +76,7 @@ func (blockProp *Reactor) retryWants(currentHeight int64) {
 				reqLimit := ReqLimit(int(prop.block.Total()))
 				reqsCount := blockProp.countRequests(height, round, partIndex)
 				if len(reqsCount) >= reqLimit {
-					missing = missing.Sub(mc)
+					missing.SetIndex(partIndex, false)
 				}
 			}
 
