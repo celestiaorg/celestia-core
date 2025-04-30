@@ -91,7 +91,6 @@ func (blockProp *Reactor) AddCommitment(height int64, round int32, psh *types.Pa
 	blockProp.pmtx.Lock()
 	defer blockProp.pmtx.Unlock()
 
-	blockProp.Logger.Info("added commitment", "height", height, "round", round)
 	schema.WriteGap(blockProp.traceClient, height, round)
 
 	if blockProp.proposals[height] == nil {
@@ -115,6 +114,7 @@ func (blockProp *Reactor) AddCommitment(height int64, round int32, psh *types.Pa
 		block:       combinedSet,
 		maxRequests: bits.NewBitArray(int(psh.Total * 2)), // this assumes that the parity parts are the same size
 	}
+	blockProp.Logger.Info("added commitment", "height", height, "round", round)
 
 	go blockProp.retryWants(height)
 }
