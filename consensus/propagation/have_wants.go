@@ -102,25 +102,10 @@ func ReqLimit(partsCount int) int {
 	return int(math.Ceil(math.Max(1, 34/float64(partsCount))))
 }
 
-func (blockProp *Reactor) getCurrentProposalPartsCount() (int, error) {
-	_, combinedPS, has := blockProp.GetCurrentProposal()
-	if !has || combinedPS == nil {
-		// shouldn't happen
-		blockProp.Logger.Error("no current proposal")
-		return 0, fmt.Errorf("no current proposal")
-	}
-	return int(combinedPS.Total()), nil
-}
-
 func (blockProp *Reactor) requestFromPeer(ps *PeerState) {
 	blockProp.waitForFirstProposal()
-	currentProposalPartsCount, err := blockProp.getCurrentProposalPartsCount()
-	if err != nil {
-		return
-	}
-
 	for {
-		availableReqs := ConcurrentRequestLimit(len(blockProp.getPeers()), currentProposalPartsCount) - ps.concurrentReqs.Load()
+		availableReqs := ConcurrentRequestLimit(len(blockProp.getPeers()), int(blockProp.getCurrentProposalPartsCount())) - ps.concurrentReqs.Load()
 
 		if availableReqs > 0 && len(ps.receivedHaves) > 0 {
 			ps.RequestsReady()
@@ -140,15 +125,7 @@ func (blockProp *Reactor) requestFromPeer(ps *PeerState) {
 			ps.DecreaseConcurrentReqs(1)
 
 		case <-ps.CanRequest():
-			peerConcurrentRequests := ps.concurrentReqs.Load()
-			if peerConcurrentRequests == 0 {
-				currentProposalPartsCount, err = blockProp.getCurrentProposalPartsCount()
-				if err != nil {
-					return
-				}
-			}
-
-			canSend := ConcurrentRequestLimit(len(blockProp.getPeers()), currentProposalPartsCount) - peerConcurrentRequests
+			canSend := ConcurrentRequestLimit(len(blockProp.getPeers()), int(blockProp.getCurrentProposalPartsCount())) - ps.concurrentReqs.Load()
 			if canSend <= 0 {
 				// should never be below zero
 				continue
