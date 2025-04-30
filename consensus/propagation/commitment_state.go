@@ -27,10 +27,6 @@ type ProposalCache struct {
 	consensusHeight int64
 	consensusRound  int32
 
-	// proposalAvailable is a condition variable used to signal when
-	// a proposal is available for the first time.
-	proposalAvailable *sync.Cond
-
 	// currentProposalPartsCount is the maximum number of concurrent requests allowed for the current proposal.
 	currentProposalPartsCount atomic.Int64
 }
@@ -38,10 +34,9 @@ type ProposalCache struct {
 func NewProposalCache(bs *store.BlockStore) *ProposalCache {
 	mtx := sync.Mutex{}
 	pc := &ProposalCache{
-		pmtx:              &mtx,
-		proposals:         make(map[int64]map[int32]*proposalData),
-		store:             bs,
-		proposalAvailable: sync.NewCond(&mtx),
+		pmtx:      &mtx,
+		proposals: make(map[int64]map[int32]*proposalData),
+		store:     bs,
 	}
 
 	// if there is a block saved in the store, set the current height and round.
@@ -49,18 +44,6 @@ func NewProposalCache(bs *store.BlockStore) *ProposalCache {
 		pc.currentHeight = bs.Height()
 	}
 	return pc
-}
-
-// hasCurrentProposal checks if a proposal exists for the current height and round in the ProposalCache.
-// Note: This method is NOT thread-safe. It makes the assumption that the state is already locked.
-func (p *ProposalCache) hasCurrentProposal() bool {
-	if _, has := p.proposals[p.currentHeight]; !has {
-		return false
-	}
-	if _, has := p.proposals[p.currentHeight][p.currentRound]; !has {
-		return false
-	}
-	return true
 }
 
 // getCurrentProposalPartsCount returns the current proposal number of parts.
@@ -71,18 +54,6 @@ func (p *ProposalCache) getCurrentProposalPartsCount() int64 {
 // setCurrentProposalPartsCount sets the current proposal number of parts.
 func (p *ProposalCache) setCurrentProposalPartsCount(limit int64) {
 	p.currentProposalPartsCount.Store(limit)
-}
-
-func (p *ProposalCache) waitForFirstProposal() {
-	p.pmtx.Lock()
-	for !p.hasCurrentProposal() {
-		p.proposalAvailable.Wait()
-	}
-	p.pmtx.Unlock()
-}
-
-func (p *ProposalCache) receivedFirstProposal() {
-	p.proposalAvailable.Broadcast()
 }
 
 func (p *ProposalCache) AddProposal(cb *proptypes.CompactBlock) (added bool) {
@@ -117,7 +88,6 @@ func (p *ProposalCache) AddProposal(cb *proptypes.CompactBlock) (added bool) {
 	}
 
 	p.setCurrentProposalPartsCount(int64(block.Total()))
-	p.receivedFirstProposal()
 	return true
 }
 
