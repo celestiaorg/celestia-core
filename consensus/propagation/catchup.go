@@ -12,9 +12,6 @@ import (
 )
 
 // retryWants ensure that all data for all unpruned compact blocks is requested.
-//
-// todo: add a request limit for each part to avoid downloading the block too
-// many times. atm, this code will request the same part from every peer.
 func (blockProp *Reactor) retryWants(currentHeight int64) {
 	if !blockProp.started.Load() {
 		return
@@ -110,6 +107,8 @@ func (blockProp *Reactor) AddCommitment(height int64, round int32, psh *types.Pa
 		block:       combinedSet,
 		maxRequests: bits.NewBitArray(int(psh.Total * 2)), // this assumes that the parity parts are the same size
 	}
+
+	go blockProp.retryWants(height)
 }
 
 func shuffle[T any](slice []T) []T {
