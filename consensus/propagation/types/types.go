@@ -338,7 +338,6 @@ func (h *HaveParts) IsEmpty() bool {
 }
 
 func (h *HaveParts) GetIndex(i uint32) bool {
-	// TODO set the parts in an ordered way and support getting them faster and also get the proof and verify it
 	for _, part := range h.Parts {
 		if part.Index == i {
 			return true

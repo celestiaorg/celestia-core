@@ -116,7 +116,6 @@ func (blockProp *Reactor) SetLogger(logger log.Logger) {
 }
 
 func (blockProp *Reactor) OnStart() error {
-	// TODO: implement
 	return nil
 }
 

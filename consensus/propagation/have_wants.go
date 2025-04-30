@@ -435,8 +435,6 @@ func (blockProp *Reactor) handleRecoveryPart(peer p2p.ID, part *proptypes.Recove
 		proof = part.Proof
 	}
 
-	// TODO: to verify, compare the hash with that of the have that was sent for
-	// this part and verified.
 	added, err := parts.AddPart(part, *proof)
 	if err != nil {
 		blockProp.Logger.Error("failed to add part to part set", "peer", peer, "height", part.Height, "round", part.Round, "part", part.Index, "error", err)

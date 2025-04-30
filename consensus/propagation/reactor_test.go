@@ -351,7 +351,6 @@ func TestChunkParts(t *testing.T) {
 			peerCount:  9,
 			redundancy: 1,
 			expected: []*bits.BitArray{
-				// TODO verify if this is the right result
 				createBitArray(4, []int{0}),
 				createBitArray(4, []int{1}),
 				createBitArray(4, []int{2}),
