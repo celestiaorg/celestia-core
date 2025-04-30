@@ -71,8 +71,16 @@ func (blockProp *Reactor) retryWants(currentHeight int64) {
 
 			schema.WriteCatchupRequest(blockProp.traceClient, height, round, mc.String(), string(peer.peer.ID()))
 
+			// subtract the parts we just requested
+			for _, partIndex := range mc.GetTrueIndices() {
+				reqLimit := ReqLimit(int(prop.block.Total()))
+				reqsCount := blockProp.countRequests(height, round, partIndex)
+				if len(reqsCount) >= reqLimit {
+					missing = missing.Sub(mc)
+				}
+			}
+
 			// keep track of which requests we've made this attempt.
-			missing = missing.Sub(mc)
 			peer.AddRequests(height, round, missing)
 		}
 	}
