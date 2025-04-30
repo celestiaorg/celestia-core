@@ -108,6 +108,8 @@ func (blockProp *Reactor) AddCommitment(height int64, round int32, psh *types.Pa
 		maxRequests: bits.NewBitArray(int(psh.Total * 2)), // this assumes that the parity parts are the same size
 	}
 
+	blockProp.currentHeight = height + 1
+
 	go blockProp.retryWants(height)
 }
 
