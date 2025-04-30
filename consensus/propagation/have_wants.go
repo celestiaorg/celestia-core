@@ -3,7 +3,6 @@ package propagation
 import (
 	"fmt"
 	"math"
-	"time"
 
 	proptypes "github.com/tendermint/tendermint/consensus/propagation/types"
 	"github.com/tendermint/tendermint/crypto/tmhash"
@@ -104,11 +103,12 @@ func ReqLimit(partsCount int) int {
 }
 
 func (blockProp *Reactor) requestFromPeer(ps *PeerState) {
+	blockProp.waitForFirstProposal()
 	for {
 		_, combinedPS, has := blockProp.GetCurrentProposal()
 		if !has || combinedPS == nil {
 			// shouldn't happen
-			time.Sleep(100 * time.Millisecond)
+			blockProp.Logger.Error("no current proposal")
 			continue
 		}
 		availableReqs := ConcurrentRequestLimit(len(blockProp.getPeers()), int(combinedPS.Total())) - ps.concurrentReqs.Load()

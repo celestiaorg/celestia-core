@@ -1,9 +1,10 @@
 package propagation
 
 import (
+	"sync"
+
 	proptypes "github.com/tendermint/tendermint/consensus/propagation/types"
 	"github.com/tendermint/tendermint/libs/bits"
-	"github.com/tendermint/tendermint/libs/sync"
 	"github.com/tendermint/tendermint/store"
 	"github.com/tendermint/tendermint/types"
 )
@@ -24,13 +25,19 @@ type ProposalCache struct {
 
 	consensusHeight int64
 	consensusRound  int32
+
+	// proposalAvailable is a condition variable used to signal when
+	// a proposal is available for the first time.
+	proposalAvailable *sync.Cond
 }
 
 func NewProposalCache(bs *store.BlockStore) *ProposalCache {
+	mtx := sync.Mutex{}
 	pc := &ProposalCache{
-		pmtx:      &sync.Mutex{},
-		proposals: make(map[int64]map[int32]*proposalData),
-		store:     bs,
+		pmtx:              &mtx,
+		proposals:         make(map[int64]map[int32]*proposalData),
+		store:             bs,
+		proposalAvailable: sync.NewCond(&mtx),
 	}
 
 	// if there is a block saved in the store, set the current height and round.
@@ -38,6 +45,30 @@ func NewProposalCache(bs *store.BlockStore) *ProposalCache {
 		pc.currentHeight = bs.Height()
 	}
 	return pc
+}
+
+// hasCurrentProposal checks if a proposal exists for the current height and round in the ProposalCache.
+// Note: This method is NOT thread-safe. It makes the assumption that the state is already locked.
+func (p *ProposalCache) hasCurrentProposal() bool {
+	if _, has := p.proposals[p.currentHeight]; !has {
+		return false
+	}
+	if _, has := p.proposals[p.currentHeight][p.currentRound]; !has {
+		return false
+	}
+	return true
+}
+
+func (p *ProposalCache) waitForFirstProposal() {
+	p.pmtx.Lock()
+	for !p.hasCurrentProposal() {
+		p.proposalAvailable.Wait()
+	}
+	p.pmtx.Unlock()
+}
+
+func (p *ProposalCache) receivedFirstProposal() {
+	p.proposalAvailable.Broadcast()
 }
 
 func (p *ProposalCache) AddProposal(cb *proptypes.CompactBlock) (added bool) {
@@ -69,6 +100,8 @@ func (p *ProposalCache) AddProposal(cb *proptypes.CompactBlock) (added bool) {
 		block:        proptypes.NewCombinedSetFromCompactBlock(cb),
 		maxRequests:  bits.NewBitArray(int(cb.Proposal.BlockID.PartSetHeader.Total)),
 	}
+
+	p.receivedFirstProposal()
 	return true
 }
 
