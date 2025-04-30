@@ -107,6 +107,8 @@ func (blockProp *Reactor) AddCommitment(height int64, round int32, psh *types.Pa
 		block:       combinedSet,
 		maxRequests: bits.NewBitArray(int(psh.Total * 2)), // this assumes that the parity parts are the same size
 	}
+
+	go blockProp.retryWants(height)
 }
 
 func shuffle[T any](slice []T) []T {
