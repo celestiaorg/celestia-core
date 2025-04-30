@@ -107,11 +107,10 @@ func extractProofs(blocks ...*types.PartSet) []*merkle.Proof {
 
 func chunkToPartMetaData(chunk *bits.BitArray, partSet *proptypes.CombinedPartSet) []*propagation.PartMetaData {
 	partMetaData := make([]*propagation.PartMetaData, 0)
-	// TODO rename indice to a correct name
-	for _, indice := range chunk.GetTrueIndices() {
-		part, _ := partSet.GetPart(uint32(indice))
+	for _, partIndex := range chunk.GetTrueIndices() {
+		part, _ := partSet.GetPart(uint32(partIndex))
 		partMetaData = append(partMetaData, &propagation.PartMetaData{
-			Index: uint32(indice),
+			Index: uint32(partIndex),
 			Hash:  part.Proof.LeafHash,
 		})
 	}
