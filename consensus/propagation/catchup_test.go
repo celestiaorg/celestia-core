@@ -14,7 +14,7 @@ import (
 
 func TestGapCatchup(t *testing.T) {
 	p2pCfg := defaultTestP2PConf()
-	nodes := 2
+	nodes := 3
 	reactors, _ := createTestReactors(nodes, p2pCfg, false, "/tmp/test/gap_catchup")
 	n1 := reactors[0]
 	cleanup, _, sm := state.SetupTestCase(t)
@@ -36,20 +36,27 @@ func TestGapCatchup(t *testing.T) {
 	// add the partset header to the second node and trigger the call to retry
 	// wants
 	n2 := reactors[1]
+	n3 := reactors[2]
 
 	_, _, has = n2.GetProposal(prop.Height, prop.Round)
 	require.False(t, has)
+	_, _, has = n3.GetProposal(prop.Height, prop.Round)
+	require.False(t, has)
 
 	psh := ps.Header()
-	n2.AddCommitment(prop.Height, prop.Round, &psh)
 
-	// this call simulates getting a commitment for a proposal of a higher
-	// height
-	n2.retryWants(2)
+	// test two reactors catching up at the same time as that can increase
+	// flakeyness if something is broken
+	n2.AddCommitment(prop.Height, prop.Round, &psh)
+	n3.AddCommitment(prop.Height, prop.Round, &psh)
 
 	time.Sleep(800 * time.Millisecond)
 
 	_, caughtUp, has := n2.GetProposal(prop.Height, prop.Round)
+	require.True(t, has)
+	require.True(t, caughtUp.IsComplete())
+
+	_, caughtUp, has = n3.GetProposal(prop.Height, prop.Round)
 	require.True(t, has)
 	require.True(t, caughtUp.IsComplete())
 }
