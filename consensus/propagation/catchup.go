@@ -116,7 +116,13 @@ func (blockProp *Reactor) AddCommitment(height int64, round int32, psh *types.Pa
 	}
 	blockProp.Logger.Info("added commitment", "height", height, "round", round)
 
-	go blockProp.retryWants(height)
+	// increment the local copies of the height and round
+	blockProp.currentHeight = height + 1
+	blockProp.currentRound = 0
+	blockProp.consensusHeight = height
+	blockProp.consensusRound = 0
+
+	go blockProp.retryWants(height + 1)
 }
 
 func shuffle[T any](slice []T) []T {
