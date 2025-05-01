@@ -250,7 +250,7 @@ func (blockProp *Reactor) Prune(committedHeight int64) {
 	for _, peer := range peers {
 		peer.prune(prunePast)
 	}
-	blockProp.ProposalCache.prune(prunePast)
+	blockProp.prune(prunePast)
 	blockProp.pmtx.Lock()
 	defer blockProp.pmtx.Unlock()
 	blockProp.consensusHeight = committedHeight

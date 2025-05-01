@@ -23,11 +23,15 @@ type ProposalCache struct {
 
 	consensusHeight int64
 	consensusRound  int32
+
+	// currentProposalPartsCount is the maximum number of concurrent requests allowed for the current proposal.
+	currentProposalPartsCount atomic.Int64
 }
 
 func NewProposalCache(bs *store.BlockStore) *ProposalCache {
+	mtx := sync.Mutex{}
 	pc := &ProposalCache{
-		pmtx:      &sync.Mutex{},
+		pmtx:      &mtx,
 		proposals: make(map[int64]map[int32]*proposalData),
 		store:     bs,
 	}
@@ -37,6 +41,16 @@ func NewProposalCache(bs *store.BlockStore) *ProposalCache {
 		pc.currentHeight = bs.Height()
 	}
 	return pc
+}
+
+// getCurrentProposalPartsCount returns the current proposal number of parts.
+func (p *ProposalCache) getCurrentProposalPartsCount() int64 {
+	return p.currentProposalPartsCount.Load()
+}
+
+// setCurrentProposalPartsCount sets the current proposal number of parts.
+func (p *ProposalCache) setCurrentProposalPartsCount(limit int64) {
+	p.currentProposalPartsCount.Store(limit)
 }
 
 func (p *ProposalCache) AddProposal(cb *proptypes.CompactBlock) (added bool) {
@@ -63,11 +77,14 @@ func (p *ProposalCache) AddProposal(cb *proptypes.CompactBlock) (added bool) {
 		p.currentRound = cb.Proposal.Round
 	}
 
+	block := proptypes.NewCombinedSetFromCompactBlock(cb)
 	p.proposals[cb.Proposal.Height][cb.Proposal.Round] = &proposalData{
 		compactBlock: cb,
-		block:        proptypes.NewCombinedSetFromCompactBlock(cb),
+		block:        block,
 		maxRequests:  bits.NewBitArray(int(cb.Proposal.BlockID.PartSetHeader.Total)),
 	}
+
+	p.setCurrentProposalPartsCount(int64(block.Total()))
 	return true
 }
 
