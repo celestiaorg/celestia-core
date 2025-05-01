@@ -3,7 +3,6 @@ package propagation
 import (
 	"fmt"
 	"math"
-	"time"
 
 	proptypes "github.com/tendermint/tendermint/consensus/propagation/types"
 	"github.com/tendermint/tendermint/crypto/tmhash"
@@ -105,13 +104,7 @@ func ReqLimit(partsCount int) int {
 
 func (blockProp *Reactor) requestFromPeer(ps *PeerState) {
 	for {
-		_, combinedPS, has := blockProp.GetCurrentProposal()
-		if !has || combinedPS == nil {
-			// shouldn't happen
-			time.Sleep(100 * time.Millisecond)
-			continue
-		}
-		availableReqs := ConcurrentRequestLimit(len(blockProp.getPeers()), int(combinedPS.Total())) - ps.concurrentReqs.Load()
+		availableReqs := ConcurrentRequestLimit(len(blockProp.getPeers()), int(blockProp.getCurrentProposalPartsCount())) - ps.concurrentReqs.Load()
 
 		if availableReqs > 0 && len(ps.receivedHaves) > 0 {
 			ps.RequestsReady()
@@ -131,7 +124,7 @@ func (blockProp *Reactor) requestFromPeer(ps *PeerState) {
 			ps.DecreaseConcurrentReqs(1)
 
 		case <-ps.CanRequest():
-			canSend := ConcurrentRequestLimit(len(blockProp.getPeers()), int(combinedPS.Total())) - ps.concurrentReqs.Load()
+			canSend := ConcurrentRequestLimit(len(blockProp.getPeers()), int(blockProp.getCurrentProposalPartsCount())) - ps.concurrentReqs.Load()
 			if canSend <= 0 {
 				// should never be below zero
 				continue

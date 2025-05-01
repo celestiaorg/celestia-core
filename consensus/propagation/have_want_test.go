@@ -22,11 +22,6 @@ func TestRequestFromPeer(t *testing.T) {
 		p2 := reactor1.getPeer(reactor2.self)
 		require.NotNil(t, p2)
 
-		// restart the wants sending routine
-		close(p2.receivedHaves)
-		p2.receivedHaves = make(chan request, 3000)
-		go reactor1.requestFromPeer(p2)
-
 		// set the concurrent limit to the max
 		p2.concurrentReqs.Store(ConcurrentRequestLimit(len(reactor1.getPeers()), int(prop.BlockID.PartSetHeader.Total)*2))
 
@@ -53,11 +48,6 @@ func TestRequestFromPeer(t *testing.T) {
 
 		p2 := reactor1.getPeer(reactor2.self)
 		require.NotNil(t, p2)
-
-		// restart the wants sending routine
-		close(p2.receivedHaves)
-		p2.receivedHaves = make(chan request, 3000)
-		go reactor1.requestFromPeer(p2)
 
 		p2.concurrentReqs.Store(ConcurrentRequestLimit(len(reactor1.getPeers()), int(prop.BlockID.PartSetHeader.Total)*2))
 		p2.receivedHaves <- request{
@@ -150,11 +140,6 @@ func TestRequestFromPeer(t *testing.T) {
 		p2 := reactor1.getPeer(reactor2.self)
 		require.NotNil(t, p2)
 		p2.concurrentReqs.Store(0)
-
-		// restart the wants sending routine
-		close(p2.receivedHaves)
-		p2.receivedHaves = make(chan request, 3000)
-		go reactor1.requestFromPeer(p2)
 
 		for i := 0; i < 10; i++ {
 			p2.receivedHaves <- request{
