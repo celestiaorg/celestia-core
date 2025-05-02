@@ -67,7 +67,7 @@ type Reactor struct {
 	cancel context.CancelFunc
 }
 
-func NewReactor(self p2p.ID, store *store.BlockStore, mempool Mempool, options ...ReactorOption) *Reactor {
+func NewReactor(self p2p.ID, store *store.BlockStore, mempool Mempool, privval types.PrivValidator, options ...ReactorOption) *Reactor {
 	ctx, cancel := context.WithCancel(context.Background())
 	reactor := &Reactor{
 		self:          self,
@@ -79,6 +79,7 @@ func NewReactor(self p2p.ID, store *store.BlockStore, mempool Mempool, options .
 		started:       atomic.Bool{},
 		ctx:           ctx,
 		cancel:        cancel,
+		privval:       privval,
 	}
 	reactor.BaseReactor = *p2p.NewBaseReactor("BlockProp", reactor, p2p.WithIncomingQueueSize(ReactorIncomingMessageQueueSize))
 

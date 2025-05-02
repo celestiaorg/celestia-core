@@ -410,7 +410,7 @@ func TestPropagationSmokeTest(t *testing.T) {
 			}
 		}
 
-		reactors[1].ProposeBlock(prop, ps, metaData, nil, "test")
+		reactors[1].ProposeBlock(prop, ps, metaData, "test")
 
 		distributing := true
 		for distributing {

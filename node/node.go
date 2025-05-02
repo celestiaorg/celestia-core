@@ -926,7 +926,7 @@ func NewNodeWithContext(ctx context.Context,
 		return nil, fmt.Errorf("could not create blockchain reactor: %w", err)
 	}
 
-	propagationReactor := propagation.NewReactor(nodeKey.ID(), blockStore, mempool, propagation.WithTracer(tracer))
+	propagationReactor := propagation.NewReactor(nodeKey.ID(), blockStore, mempool, privValidator, propagation.WithTracer(tracer))
 	if !stateSync && !fastSync {
 		propagationReactor.StartProcessing()
 	}

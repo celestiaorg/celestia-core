@@ -30,7 +30,7 @@ func TestPropose(t *testing.T) {
 
 	prop, partSet, _, metaData := createTestProposal(sm, 1, 100, 1000)
 
-	reactor1.ProposeBlock(prop, partSet, metaData)
+	reactor1.ProposeBlock(prop, partSet, metaData, "test")
 
 	time.Sleep(200 * time.Millisecond)
 
@@ -111,9 +111,14 @@ func TestRecoverPartsLocally(t *testing.T) {
 	}
 
 	blockStore := store.NewBlockStore(dbm.NewMemDB())
-	blockPropR := NewReactor("", blockStore, &mockMempool{
-		txs: txsMap,
-	})
+	blockPropR := NewReactor(
+		"",
+		blockStore,
+		&mockMempool{
+			txs: txsMap,
+		},
+		types.NewMockPV(),
+	)
 
 	data := types.Data{Txs: types.TxsFromCachedTxs(txs)}
 
