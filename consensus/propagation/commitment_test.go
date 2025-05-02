@@ -30,7 +30,7 @@ func TestPropose(t *testing.T) {
 
 	prop, partSet, _, metaData := createTestProposal(sm, 1, 100, 1000)
 
-	reactor1.ProposeBlock(prop, partSet, metaData, "test")
+	reactor1.ProposeBlock(prop, partSet, metaData)
 
 	time.Sleep(200 * time.Millisecond)
 
@@ -110,6 +110,10 @@ func TestRecoverPartsLocally(t *testing.T) {
 		txs[i] = tx
 	}
 
+	pv := types.NewMockPV()
+	pub, err := pv.GetPubKey()
+	require.NoError(t, err)
+
 	blockStore := store.NewBlockStore(dbm.NewMemDB())
 	blockPropR := NewReactor(
 		"",
@@ -117,8 +121,10 @@ func TestRecoverPartsLocally(t *testing.T) {
 		&mockMempool{
 			txs: txsMap,
 		},
-		types.NewMockPV(),
+		pv,
+		WithChainID(sm.ChainID),
 	)
+	blockPropR.SetConsensusLink(NewMockConsensusLink(pub, TestChainID, false))
 
 	data := types.Data{Txs: types.TxsFromCachedTxs(txs)}
 
@@ -136,7 +142,7 @@ func TestRecoverPartsLocally(t *testing.T) {
 		}
 	}
 
-	blockPropR.ProposeBlock(prop, partSet, metaData, sm.ChainID)
+	blockPropR.ProposeBlock(prop, partSet, metaData)
 
 	_, actualParts, _ := blockPropR.GetProposal(prop.Height, prop.Round)
 

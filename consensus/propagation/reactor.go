@@ -53,6 +53,7 @@ type Reactor struct {
 	consensusLink ConsensusLink
 
 	privval types.PrivValidator
+	chainID string
 
 	// mempool access to read the transactions by hash from the mempool
 	// and eventually remove it.
@@ -116,8 +117,14 @@ func WithTracer(tracer trace.Tracer) func(r *Reactor) {
 	}
 }
 
-// SetProposalValidator sets the proposal stateful validation function.
-func (blockProp *Reactor) SetConsensusConnector(csc ConsensusLink) {
+func WithChainID(chainID string) func(r *Reactor) {
+	return func(r *Reactor) {
+		r.chainID = chainID
+	}
+}
+
+// SetConsensusLink sets the proposal stateful validation function.
+func (blockProp *Reactor) SetConsensusLink(csc ConsensusLink) {
 	blockProp.consensusLink = csc
 }
 

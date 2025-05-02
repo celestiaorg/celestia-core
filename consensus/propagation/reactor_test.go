@@ -1,12 +1,14 @@
 package propagation
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strconv"
 	"testing"
 	"time"
 
+	"github.com/tendermint/tendermint/crypto"
 	"github.com/tendermint/tendermint/crypto/merkle"
 	"github.com/tendermint/tendermint/privval"
 	"github.com/tendermint/tendermint/proto/tendermint/propagation"
@@ -27,9 +29,23 @@ import (
 	"github.com/tendermint/tendermint/types"
 )
 
-func newPropagationReactor(s *p2p.Switch, _ trace.Tracer) *Reactor {
+const (
+	TestChainID = "test"
+)
+
+// newPropagationReactor creates a propagation reactor using the provided
+// privval sign and that key to verify proposals.
+func newPropagationReactor(s *p2p.Switch, tr trace.Tracer, pv types.PrivValidator) *Reactor {
 	blockStore := store.NewBlockStore(dbm.NewMemDB())
-	blockPropR := NewReactor(s.NetAddress().ID, blockStore, &mockMempool{txs: make(map[types.TxKey]*types.CachedTx)})
+	pub, err := pv.GetPubKey()
+	if err != nil {
+		panic(err)
+	}
+	blockPropR := NewReactor(s.NetAddress().ID, blockStore, &mockMempool{txs: make(map[types.TxKey]*types.CachedTx)}, pv, WithChainID(TestChainID))
+	blockPropR.traceClient = tr
+	// false means that we're not checking that the proposal was signed correctly by the proposer.
+	// when creating a test proposal, we're currently not signing it
+	blockPropR.SetConsensusLink(NewMockConsensusLink(pub, "test", false))
 	blockPropR.started.Store(true)
 	blockPropR.SetSwitch(s)
 
@@ -40,18 +56,20 @@ func testBlockPropReactors(n int, p2pCfg *cfg.P2PConfig) ([]*Reactor, []*p2p.Swi
 	return createTestReactors(n, p2pCfg, false, "")
 }
 
+// createTestReactors will generate n propagation reactors, each using the same key to sign and verify compact blocks.
 func createTestReactors(n int, p2pCfg *cfg.P2PConfig, tracer bool, traceDir string) ([]*Reactor, []*p2p.Switch) {
 	reactors := make([]*Reactor, n)
 	switches := make([]*p2p.Switch, n)
 
+	pv := types.NewMockPV()
+
 	p2p.MakeConnectedSwitches(p2pCfg, n, func(i int, s *p2p.Switch) *p2p.Switch {
 		var (
-			tr  trace.Tracer
 			err error
+			tr  = trace.NoOpTracer()
 		)
-		if !tracer {
-			tr = trace.NoOpTracer()
-		} else {
+
+		if tracer {
 			dconfig := cfg.DefaultConfig()
 			dconfig.SetRoot(filepath.Join(traceDir, strconv.Itoa(i)))
 			tr, err = trace.NewLocalTracer(dconfig, log.NewNopLogger(), "test", string(s.NetAddress().ID))
@@ -59,7 +77,8 @@ func createTestReactors(n int, p2pCfg *cfg.P2PConfig, tracer bool, traceDir stri
 				panic(err)
 			}
 		}
-		reactors[i] = newPropagationReactor(s, tr)
+
+		reactors[i] = newPropagationReactor(s, tr, pv)
 		reactors[i].SetLogger(log.NewNopLogger())
 		s.AddReactor("BlockProp", reactors[i])
 		switches = append(switches, s)
@@ -70,6 +89,32 @@ func createTestReactors(n int, p2pCfg *cfg.P2PConfig, tracer bool, traceDir stri
 
 	return reactors, switches
 }
+
+type MockConsensusLink struct {
+	pub     crypto.PubKey
+	chainID string
+	verify  bool
+}
+
+func NewMockConsensusLink(pub crypto.PubKey, chainID string, verify bool) *MockConsensusLink {
+	return &MockConsensusLink{
+		pub:     pub,
+		chainID: chainID,
+		verify:  verify,
+	}
+}
+
+func (cl *MockConsensusLink) VerifyProposal(proposal *types.Proposal) error {
+	if !cl.verify {
+		return nil
+	}
+	proposalSignBytes := types.ProposalSignBytes(cl.chainID, proposal.ToProto())
+	if cl.pub.VerifySignature(proposalSignBytes, proposal.Signature) {
+		return nil
+	}
+	return fmt.Errorf("forged proposal")
+}
+func (cl *MockConsensusLink) GetProposer() crypto.PubKey { return cl.pub }
 
 func TestCountRequests(t *testing.T) {
 	reactors, _ := testBlockPropReactors(1, cfg.DefaultP2PConfig())
@@ -410,7 +455,7 @@ func TestPropagationSmokeTest(t *testing.T) {
 			}
 		}
 
-		reactors[1].ProposeBlock(prop, ps, metaData, "test")
+		reactors[1].ProposeBlock(prop, ps, metaData)
 
 		distributing := true
 		for distributing {

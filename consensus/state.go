@@ -1217,7 +1217,7 @@ func (cs *State) defaultDecideProposal(height int64, round int32) {
 			}
 		}
 
-		cs.propagator.ProposeBlock(proposal, blockParts, metaData, cs.privValidator, cs.state.ChainID)
+		cs.propagator.ProposeBlock(proposal, blockParts, metaData)
 
 		for i := 0; i < int(blockParts.Total()); i++ {
 			part := blockParts.GetPart(i)

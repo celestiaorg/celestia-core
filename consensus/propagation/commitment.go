@@ -7,9 +7,9 @@ import (
 	proptypes "github.com/tendermint/tendermint/consensus/propagation/types"
 	"github.com/tendermint/tendermint/crypto/merkle"
 	"github.com/tendermint/tendermint/libs/bits"
-	cmtrand "github.com/tendermint/tendermint/libs/rand"
 	"github.com/tendermint/tendermint/p2p"
 	"github.com/tendermint/tendermint/pkg/trace/schema"
+	"github.com/tendermint/tendermint/privval"
 	"github.com/tendermint/tendermint/proto/tendermint/mempool"
 	"github.com/tendermint/tendermint/proto/tendermint/propagation"
 	"github.com/tendermint/tendermint/types"
@@ -27,7 +27,6 @@ func (blockProp *Reactor) ProposeBlock(
 	proposal *types.Proposal,
 	block *types.PartSet,
 	txs []proptypes.TxMetaData,
-	chainID string,
 ) {
 	// create the parity data and the compact block
 	parityBlock, lastLen, err := types.Encode(block, types.BlockPartSizeBytes)
@@ -42,7 +41,6 @@ func (blockProp *Reactor) ProposeBlock(
 	cb := proptypes.CompactBlock{
 		Proposal:    *proposal,
 		LastLen:     uint32(lastLen),
-		Signature:   cmtrand.Bytes(64), // todo: sign the proposal with a real signature
 		BpHash:      parityBlock.Hash(),
 		Blobs:       txs,
 		PartsHashes: partHashes,
@@ -56,8 +54,9 @@ func (blockProp *Reactor) ProposeBlock(
 		return
 	}
 
-	// sign the hash of the compact block
-	sig, err := blockProp.privval.SignP2PMessage(chainID, CompactBlockUID, sbz)
+	// sign the hash of the compact block NOTE: p2p message sign bytes are
+	// prepended with the chain id and UID
+	sig, err := blockProp.privval.SignP2PMessage(blockProp.chainID, CompactBlockUID, sbz)
 	if err != nil {
 		blockProp.Logger.Error("failed to sign compact block", "err", err)
 		return
@@ -145,6 +144,11 @@ func chunkToPartMetaData(chunk *bits.BitArray, partSet *proptypes.CombinedPartSe
 // time a proposal is received from a peer or when a proposal is created. If the
 // proposal is new, it will be stored and broadcast to the relevant peers.
 func (blockProp *Reactor) handleCompactBlock(cb *proptypes.CompactBlock, peer p2p.ID, proposer bool) {
+	// don't do anything if we already have the compact block
+	if !blockProp.RelevantProposal(cb) {
+		return
+	}
+
 	err := blockProp.validateCompactBlock(cb)
 	if !proposer && err != nil {
 		blockProp.Logger.Info("failed to validate proposal. ignoring", "err", err, "height", cb.Proposal.Height, "round", cb.Proposal.Round)
@@ -357,7 +361,9 @@ func (blockProp *Reactor) validateCompactBlock(cb *proptypes.CompactBlock) error
 		return err
 	}
 
-	if blockProp.consensusLink.GetProposer().VerifySignature(cbz, cb.Signature) {
+	p2pBz := privval.P2PMessageSignBytes(blockProp.chainID, CompactBlockUID, cbz)
+
+	if blockProp.consensusLink.GetProposer().VerifySignature(p2pBz, cb.Signature) {
 		return nil
 	}
 
