@@ -164,7 +164,10 @@ func TestHandleHavesAndWantsAndRecoveryParts(t *testing.T) {
 			Height: height,
 			Round:  round,
 			Parts: []proptypes.PartMetaData{
-				{Index: 0},
+				{
+					Index: 0,
+					Hash:  hashes[0],
+				},
 			},
 		},
 	)
@@ -260,7 +263,10 @@ func TestInvalidPart(t *testing.T) {
 			Height: height,
 			Round:  round,
 			Parts: []proptypes.PartMetaData{
-				{Index: 0},
+				{
+					Index: 0,
+					Hash:  hashes[0],
+				},
 			},
 		},
 	)
@@ -348,7 +354,6 @@ func TestChunkParts(t *testing.T) {
 			peerCount:  9,
 			redundancy: 1,
 			expected: []*bits.BitArray{
-				// TODO verify if this is the right result
 				createBitArray(4, []int{0}),
 				createBitArray(4, []int{1}),
 				createBitArray(4, []int{2}),
@@ -376,7 +381,7 @@ func TestChunkParts(t *testing.T) {
 	}
 }
 
-// TestPropagationSmokeTest is a high level smoke test for 10 reactors to distrute 5 2MB
+// TestPropagationSmokeTest is a high level smoke test for 10 reactors to distribute 5 2MB
 // blocks with some data already distributed via the mempool. The passing
 // criteria is simply finishing.
 func TestPropagationSmokeTest(t *testing.T) {
@@ -502,6 +507,79 @@ func TestStopPeerForError(t *testing.T) {
 		})
 		assert.Nil(t, reactor1.getPeer(reactor2.self))
 	})
+}
+
+func TestConcurrentRequestLimit(t *testing.T) {
+	tests := []struct {
+		name          string
+		peersCount    int
+		partsCount    int
+		expectedLimit int64
+	}{
+		{
+			name:          "Zero peers and parts",
+			peersCount:    0,
+			partsCount:    0,
+			expectedLimit: 1,
+		},
+		{
+			name:          "One peer, no parts",
+			peersCount:    1,
+			partsCount:    0,
+			expectedLimit: 1,
+		},
+		{
+			name:          "Two peers, one part",
+			peersCount:    2,
+			partsCount:    1,
+			expectedLimit: 1,
+		},
+		{
+			name:          "Three peers, two parts",
+			peersCount:    3,
+			partsCount:    2,
+			expectedLimit: 1,
+		},
+		{
+			name:          "Four peers, many parts",
+			peersCount:    4,
+			partsCount:    10,
+			expectedLimit: 3,
+		},
+		{
+			name:          "Large peers and parts count",
+			peersCount:    100,
+			partsCount:    500,
+			expectedLimit: 8,
+		},
+		{
+			name:          "Odd division of parts by peers",
+			peersCount:    7,
+			partsCount:    20,
+			expectedLimit: 4,
+		},
+		{
+			name:          "Minimal redundancy case",
+			peersCount:    3,
+			partsCount:    1,
+			expectedLimit: 1,
+		},
+		{
+			name:          "Large redundancy case",
+			peersCount:    100,
+			partsCount:    100000,
+			expectedLimit: 1516,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			limit := ConcurrentRequestLimit(tc.peersCount, tc.partsCount)
+			if limit != tc.expectedLimit {
+				t.Errorf("expected %d, got %d", tc.expectedLimit, limit)
+			}
+		})
+	}
 }
 
 // testCompactBlock returns a test compact block with the corresponding orignal part set,

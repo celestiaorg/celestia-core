@@ -129,11 +129,10 @@ func extractProofs(blocks ...*types.PartSet) []*merkle.Proof {
 
 func chunkToPartMetaData(chunk *bits.BitArray, partSet *proptypes.CombinedPartSet) []*propagation.PartMetaData {
 	partMetaData := make([]*propagation.PartMetaData, 0)
-	// TODO rename indice to a correct name
-	for _, indice := range chunk.GetTrueIndices() {
-		part, _ := partSet.GetPart(uint32(indice))
+	for _, partIndex := range chunk.GetTrueIndices() {
+		part, _ := partSet.GetPart(uint32(partIndex))
 		partMetaData = append(partMetaData, &propagation.PartMetaData{
-			Index: uint32(indice),
+			Index: uint32(partIndex),
 			Hash:  part.Proof.LeafHash,
 		})
 	}
@@ -258,8 +257,6 @@ func (blockProp *Reactor) recoverPartsFromMempool(cb *proptypes.CompactBlock) {
 	schema.WriteMempoolRecoveredParts(blockProp.traceClient, cb.Proposal.Height, cb.Proposal.Round, recoveredCount)
 
 	if len(haves.Parts) > 0 {
-		// todo: distribute haves amongst peers in a fan out fashion similar to
-		// a proposer
 		blockProp.broadcastHaves(&haves, blockProp.self, int(partSet.Total()))
 	}
 }

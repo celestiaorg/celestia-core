@@ -12,9 +12,6 @@ import (
 )
 
 // retryWants ensure that all data for all unpruned compact blocks is requested.
-//
-// todo: add a request limit for each part to avoid downloading the block too
-// many times. atm, this code will request the same part from every peer.
 func (blockProp *Reactor) retryWants(currentHeight int64) {
 	if !blockProp.started.Load() {
 		return
@@ -74,8 +71,16 @@ func (blockProp *Reactor) retryWants(currentHeight int64) {
 
 			schema.WriteCatchupRequest(blockProp.traceClient, height, round, mc.String(), string(peer.peer.ID()))
 
+			// subtract the parts we just requested
+			for _, partIndex := range mc.GetTrueIndices() {
+				reqLimit := ReqLimit(int(prop.block.Total()))
+				reqsCount := blockProp.countRequests(height, round, partIndex)
+				if len(reqsCount) >= reqLimit {
+					missing.SetIndex(partIndex, false)
+				}
+			}
+
 			// keep track of which requests we've made this attempt.
-			missing = missing.Sub(mc)
 			peer.AddRequests(height, round, missing)
 		}
 	}
@@ -86,7 +91,6 @@ func (blockProp *Reactor) AddCommitment(height int64, round int32, psh *types.Pa
 	blockProp.pmtx.Lock()
 	defer blockProp.pmtx.Unlock()
 
-	blockProp.Logger.Info("added commitment", "height", height, "round", round)
 	schema.WriteGap(blockProp.traceClient, height, round)
 
 	if blockProp.proposals[height] == nil {
@@ -110,6 +114,15 @@ func (blockProp *Reactor) AddCommitment(height int64, round int32, psh *types.Pa
 		block:       combinedSet,
 		maxRequests: bits.NewBitArray(int(psh.Total * 2)), // this assumes that the parity parts are the same size
 	}
+	blockProp.Logger.Info("added commitment", "height", height, "round", round)
+
+	// increment the local copies of the height and round
+	blockProp.currentHeight = height + 1
+	blockProp.currentRound = 0
+	blockProp.consensusHeight = height
+	blockProp.consensusRound = 0
+
+	go blockProp.retryWants(height + 1)
 }
 
 func shuffle[T any](slice []T) []T {

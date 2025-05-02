@@ -1,9 +1,11 @@
 package propagation
 
 import (
+	"sync"
+	"sync/atomic"
+
 	proptypes "github.com/tendermint/tendermint/consensus/propagation/types"
 	"github.com/tendermint/tendermint/libs/bits"
-	"github.com/tendermint/tendermint/libs/sync"
 	"github.com/tendermint/tendermint/store"
 	"github.com/tendermint/tendermint/types"
 )
@@ -24,11 +26,15 @@ type ProposalCache struct {
 
 	consensusHeight int64
 	consensusRound  int32
+
+	// currentProposalPartsCount is the maximum number of concurrent requests allowed for the current proposal.
+	currentProposalPartsCount atomic.Int64
 }
 
 func NewProposalCache(bs *store.BlockStore) *ProposalCache {
+	mtx := sync.Mutex{}
 	pc := &ProposalCache{
-		pmtx:      &sync.Mutex{},
+		pmtx:      &mtx,
 		proposals: make(map[int64]map[int32]*proposalData),
 		store:     bs,
 	}
@@ -38,6 +44,16 @@ func NewProposalCache(bs *store.BlockStore) *ProposalCache {
 		pc.currentHeight = bs.Height()
 	}
 	return pc
+}
+
+// getCurrentProposalPartsCount returns the current proposal number of parts.
+func (p *ProposalCache) getCurrentProposalPartsCount() int64 {
+	return p.currentProposalPartsCount.Load()
+}
+
+// setCurrentProposalPartsCount sets the current proposal number of parts.
+func (p *ProposalCache) setCurrentProposalPartsCount(limit int64) {
+	p.currentProposalPartsCount.Store(limit)
 }
 
 func (p *ProposalCache) AddProposal(cb *proptypes.CompactBlock) (added bool) {
@@ -64,11 +80,14 @@ func (p *ProposalCache) AddProposal(cb *proptypes.CompactBlock) (added bool) {
 		p.currentRound = cb.Proposal.Round
 	}
 
+	block := proptypes.NewCombinedSetFromCompactBlock(cb)
 	p.proposals[cb.Proposal.Height][cb.Proposal.Round] = &proposalData{
 		compactBlock: cb,
-		block:        proptypes.NewCombinedSetFromCompactBlock(cb),
+		block:        block,
 		maxRequests:  bits.NewBitArray(int(cb.Proposal.BlockID.PartSetHeader.Total)),
 	}
+
+	p.setCurrentProposalPartsCount(int64(block.Total()))
 	return true
 }
 
@@ -110,6 +129,21 @@ func (p *ProposalCache) unfinishedHeights() []*proposalData {
 // Passing a round that has already been surpassed is not actionable.
 func (p *ProposalCache) relevant(height int64, round int32) bool {
 	if height < p.consensusHeight {
+		return false
+	}
+
+	if round < p.consensusRound {
+		return false
+	}
+
+	return true
+}
+
+// relevantHave determines if a have messasage is relevant in a thread safe way.
+func (p *ProposalCache) relevantHave(height int64, round int32) bool {
+	p.pmtx.Lock()
+	defer p.pmtx.Unlock()
+	if height <= p.consensusHeight {
 		return false
 	}
 
@@ -210,14 +244,6 @@ func (p *ProposalCache) DeleteRound(height int64, round int32) {
 	if p.proposals[height] != nil {
 		delete(p.proposals[height], round)
 	}
-}
-
-func (p *ProposalCache) SetConsensusRound(height int64, round int32) {
-	p.pmtx.Lock()
-	defer p.pmtx.Unlock()
-	p.consensusRound = round
-	// todo: delete the old round data as its no longer relevant don't delete
-	// past round data if it has a POL
 }
 
 // prune deletes all cached compact blocks for heights less than the provided

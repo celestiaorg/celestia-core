@@ -1,8 +1,6 @@
 package types
 
 import (
-	"bytes"
-	"fmt"
 	"sync"
 	"sync/atomic"
 
@@ -131,10 +129,6 @@ func (cps *CombinedPartSet) Decode() error {
 // AddPart adds a part to the combined part set. It assumes that the parts being
 // added have already been verified.
 func (cps *CombinedPartSet) AddPart(part *RecoveryPart, proof merkle.Proof) (bool, error) {
-	if !bytes.Equal(merkle.LeafHash(part.Data), proof.LeafHash) {
-		return false, fmt.Errorf("part data does not match proof: part index %d leaf hash %v", part.Index, proof.LeafHash)
-	}
-
 	p := &types.Part{
 		Index: part.Index,
 		Bytes: part.Data,
@@ -142,7 +136,7 @@ func (cps *CombinedPartSet) AddPart(part *RecoveryPart, proof merkle.Proof) (boo
 	}
 
 	if part.Index < cps.original.Total() {
-		added, err := cps.original.AddPartWithoutProof(p)
+		added, err := cps.original.AddPart(p)
 		if added {
 			cps.totalMap.SetIndex(int(part.Index), true)
 		}
@@ -152,7 +146,7 @@ func (cps *CombinedPartSet) AddPart(part *RecoveryPart, proof merkle.Proof) (boo
 	// Adjust the index to be relative to the parity set.
 	encodedIndex := p.Index
 	p.Index -= cps.original.Total()
-	added, err := cps.parity.AddPartWithoutProof(p)
+	added, err := cps.parity.AddPart(p)
 	if added {
 		cps.totalMap.SetIndex(int(encodedIndex), true)
 	}

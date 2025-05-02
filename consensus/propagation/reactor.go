@@ -3,6 +3,7 @@ package propagation
 import (
 	"context"
 	"fmt"
+	"math"
 	"reflect"
 	"sync"
 	"sync/atomic"
@@ -36,10 +37,8 @@ const (
 	WantChannel = byte(0x51)
 )
 
-var (
-	// todo: avoid endin up in programmer hell by not using a global var
-	RetryTime = 6 * time.Second
-)
+// todo: avoid endin up in programmer hell by not using a global var
+var RetryTime = 6 * time.Second
 
 type validateProposalFunc func(proposal *types.Proposal) error
 
@@ -126,12 +125,15 @@ func (blockProp *Reactor) SetLogger(logger log.Logger) {
 }
 
 func (blockProp *Reactor) OnStart() error {
-	// TODO: implement
 	return nil
 }
 
 func (blockProp *Reactor) OnStop() {
 	blockProp.cancel()
+	for _, peer := range blockProp.getPeers() {
+		close(peer.receivedHaves)
+		close(peer.receivedParts)
+	}
 }
 
 func (blockProp *Reactor) GetChannels() []*conn.ChannelDescriptor {
@@ -168,9 +170,11 @@ func (blockProp *Reactor) AddPeer(peer p2p.Peer) {
 		return
 	}
 
-	blockProp.setPeer(peer.ID(), newPeerState(peer, blockProp.Logger))
-	cb, _, found := blockProp.GetCurrentCompactBlock()
+	peerState := newPeerState(peer, blockProp.Logger)
+	blockProp.setPeer(peer.ID(), peerState)
+	go blockProp.requestFromPeer(peerState)
 
+	cb, _, found := blockProp.GetCurrentCompactBlock()
 	if !found {
 		blockProp.Logger.Error("Failed to get current compact block", "peer", peer.ID())
 		return
@@ -190,6 +194,11 @@ func (blockProp *Reactor) AddPeer(peer p2p.Peer) {
 func (blockProp *Reactor) RemovePeer(peer p2p.Peer, reason interface{}) {
 	blockProp.mtx.Lock()
 	defer blockProp.mtx.Unlock()
+	p := blockProp.peerstate[peer.ID()]
+	if p != nil {
+		close(p.receivedHaves)
+		close(p.receivedParts)
+	}
 	delete(blockProp.peerstate, peer.ID())
 }
 
@@ -263,14 +272,44 @@ func (blockProp *Reactor) Prune(committedHeight int64) {
 	for _, peer := range peers {
 		peer.prune(prunePast)
 	}
-	blockProp.ProposalCache.prune(prunePast)
+	blockProp.prune(prunePast)
 	blockProp.pmtx.Lock()
 	defer blockProp.pmtx.Unlock()
 	blockProp.consensusHeight = committedHeight
+	blockProp.ResetRequestCounts()
+}
+
+func (blockProp *Reactor) SetConsensusRound(height int64, round int32) {
+	blockProp.pmtx.Lock()
+	defer blockProp.pmtx.Unlock()
+	blockProp.consensusRound = round
+	blockProp.ResetRequestCounts()
+	// todo: delete the old round data as its no longer relevant don't delete
+	// past round data if it has a POL
+}
+
+func (blockProp *Reactor) ResetRequestCounts() {
+	peers := blockProp.getPeers()
+	for _, p := range peers {
+		if p == nil {
+			// todo: investigate why nil peers can be present
+			continue
+		}
+		p.SetConcurrentReqs(0)
+	}
 }
 
 func (blockProp *Reactor) StartProcessing() {
 	blockProp.started.Store(true)
+}
+
+func ConcurrentRequestLimit(peersCount, partsCount int) int64 {
+	if peersCount == 0 || partsCount == 0 {
+		return 1
+	}
+	faultyValCount := math.Ceil(float64(peersCount) * 0.33)
+	faultyPartCount := float64(partsCount) / 2
+	return int64(math.Ceil(faultyPartCount / faultyValCount))
 }
 
 // getPeer returns the peer state for the given peer. If the peer does not exist,
