@@ -44,7 +44,7 @@ func TestGapCatchupLarge(t *testing.T) {
 		reactor.AddCommitment(prop.Height, prop.Round, &psh)
 	}
 
-	time.Sleep(20 * time.Second)
+	time.Sleep(6 * time.Second)
 	for i := 1; i < len(reactors); i++ {
 		reactor := reactors[i]
 		_, caughtUp, has := reactor.GetProposal(prop.Height, prop.Round)
