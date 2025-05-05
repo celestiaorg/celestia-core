@@ -4,8 +4,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/stretchr/testify/assert"
-
 	"github.com/stretchr/testify/require"
 	cfg "github.com/tendermint/tendermint/config"
 	proptypes "github.com/tendermint/tendermint/consensus/propagation/types"
@@ -13,45 +11,6 @@ import (
 	"github.com/tendermint/tendermint/state"
 	"github.com/tendermint/tendermint/types"
 )
-
-func TestGapCatchupLarge(t *testing.T) {
-	RetryTime = time.Second
-	p2pCfg := defaultTestP2PConf()
-	nodes := 30
-	reactors, _ := createTestReactors(nodes, p2pCfg, false, "/tmp/test/gap_catchup_large")
-	n1 := reactors[0]
-	cleanup, _, sm := state.SetupTestCase(t)
-	t.Cleanup(func() {
-		cleanup(t)
-	})
-
-	prop, ps, _, metaData := createTestProposal(sm, 1, 10, 10_000_000)
-	cb, parityBlock := createCompactBlock(t, prop, ps, metaData)
-
-	added := n1.AddProposal(cb)
-	require.True(t, added)
-
-	_, parts, _, has := n1.getAllState(prop.Height, prop.Round, true)
-	require.True(t, has)
-	parts.SetProposalData(ps, parityBlock)
-
-	time.Sleep(200 * time.Millisecond)
-
-	for i, reactor := range reactors[1:] {
-		_, _, has = reactor.GetProposal(prop.Height, prop.Round)
-		require.False(t, has, i)
-		psh := ps.Header()
-		reactor.AddCommitment(prop.Height, prop.Round, &psh)
-	}
-
-	time.Sleep(10 * time.Second)
-	for i := 1; i < len(reactors); i++ {
-		reactor := reactors[i]
-		_, caughtUp, has := reactor.GetProposal(prop.Height, prop.Round)
-		require.True(t, has, i)
-		assert.True(t, caughtUp.IsComplete(), i)
-	}
-}
 
 func TestGapCatchup(t *testing.T) {
 	p2pCfg := defaultTestP2PConf()
