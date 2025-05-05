@@ -23,6 +23,10 @@ func (blockProp *Reactor) handleHaves(peer p2p.ID, haves *proptypes.HaveParts) {
 		return
 	}
 
+	if !blockProp.started.Load() {
+		return
+	}
+
 	height := haves.Height
 	round := haves.Round
 	p := blockProp.getPeer(peer)
@@ -315,6 +319,10 @@ func (blockProp *Reactor) broadcastHaves(haves *proptypes.HaveParts, from p2p.ID
 func (blockProp *Reactor) handleWants(peer p2p.ID, wants *proptypes.WantParts) {
 	height := wants.Height
 	round := wants.Round
+	if !blockProp.started.Load() {
+		return
+	}
+
 	p := blockProp.getPeer(peer)
 	if p == nil {
 		blockProp.Logger.Error("peer not found", "peer", peer)
@@ -379,6 +387,11 @@ func (blockProp *Reactor) handleRecoveryPart(peer p2p.ID, part *proptypes.Recove
 	if peer == "" {
 		peer = blockProp.self
 	}
+
+	if !blockProp.started.Load() {
+		return
+	}
+
 	p := blockProp.getPeer(peer)
 	if p == nil && peer != blockProp.self {
 		blockProp.Logger.Error("peer not found", "peer", peer)

@@ -215,10 +215,6 @@ func (blockProp *Reactor) ReceiveEnvelope(e p2p.Envelope) {
 		return
 	}
 
-	if !blockProp.started.Load() {
-		return
-	}
-
 	m := e.Message
 	if wm, ok := m.(p2p.Wrapper); ok {
 		m = wm.Wrap()
