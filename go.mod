@@ -3,7 +3,7 @@ module github.com/cometbft/cometbft
 go 1.22.5
 
 require (
-	github.com/BurntSushi/toml v1.2.1
+	github.com/BurntSushi/toml v1.5.0
 	github.com/ChainSafe/go-schnorrkel v1.0.0
 	github.com/Masterminds/semver/v3 v3.2.0
 	github.com/Workiva/go-datastructures v1.0.53
