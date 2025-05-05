@@ -421,7 +421,7 @@ func (blockProp *Reactor) handleRecoveryPart(peer p2p.ID, part *proptypes.Recove
 	proof := cb.GetProof(part.Index)
 	if proof == nil {
 		if part.Proof == nil {
-			blockProp.Logger.Error("catchup part proof not found", "peer", peer, "height", part.Height, "round", part.Round, "part", part.Index)
+			blockProp.Logger.Error("proof not found", "peer", peer, "height", part.Height, "round", part.Round, "part", part.Index)
 			return
 		}
 		if len(part.Proof.LeafHash) != tmhash.Size {
