@@ -457,6 +457,7 @@ func newStateWithConfigAndBlockStore(
 	cs := NewState(thisConfig.Consensus, state, blockExec, blockStore, propagator, mempool, evpool)
 	cs.SetLogger(log.TestingLogger().With("module", "consensus"))
 	cs.SetPrivValidator(pv)
+	propagator.SetConsensusLink(cs)
 
 	eventBus := types.NewEventBus()
 	eventBus.SetLogger(log.TestingLogger().With("module", "events"))
