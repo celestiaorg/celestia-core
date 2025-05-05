@@ -1,6 +1,7 @@
 module github.com/cometbft/cometbft
 
 go 1.22.5
+toolchain go1.24.1
 
 require (
 	github.com/BurntSushi/toml v1.2.1
@@ -12,7 +13,7 @@ require (
 	github.com/btcsuite/btcd/btcec/v2 v2.2.1
 	github.com/btcsuite/btcd/btcutil v1.1.2
 	github.com/bufbuild/buf v1.9.0
-	github.com/celestiaorg/nmt v0.22.0
+	github.com/celestiaorg/nmt v0.23.0
 	github.com/cometbft/cometbft-db v0.7.0
 	github.com/creachadair/taskgroup v0.3.2
 	github.com/fortytw2/leaktest v1.3.0
