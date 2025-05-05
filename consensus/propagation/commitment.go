@@ -367,5 +367,7 @@ func (blockProp *Reactor) validateCompactBlock(cb *proptypes.CompactBlock) error
 		return nil
 	}
 
+	panic("invalid compact block signature")
+
 	return fmt.Errorf("invalid signature over the compact block: height %d round %d", cb.Proposal.Height, cb.Proposal.Round)
 }

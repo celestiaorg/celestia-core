@@ -71,7 +71,13 @@ func (p *ProposalCache) RelevantProposal(cb *proptypes.CompactBlock) (has bool) 
 		return true
 	}
 
-	if p.proposals[cb.Proposal.Height][cb.Proposal.Round] == nil {
+	pd := p.proposals[cb.Proposal.Height][cb.Proposal.Round]
+
+	if pd == nil {
+		return true
+	}
+
+	if pd.compactBlock == nil {
 		return true
 	}
 
