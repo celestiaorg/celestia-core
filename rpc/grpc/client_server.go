@@ -86,10 +86,6 @@ func StartGRPCClient(protoAddr string) BroadcastAPIClient {
 	return NewBroadcastAPIClient(conn)
 }
 
-func dialerFunc(_ context.Context, addr string) (net.Conn, error) {
-	return cmtnet.Connect(addr)
-}
-
 // StartBlockAPIGRPCClient dials the gRPC server using protoAddr and returns a new
 // BlockAPIClient.
 func StartBlockAPIGRPCClient(protoAddr string, opts ...grpc.DialOption) (BlockAPIClient, error) {
