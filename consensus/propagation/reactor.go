@@ -40,8 +40,6 @@ const (
 // todo: avoid endin up in programmer hell by not using a global var
 var RetryTime = 6 * time.Second
 
-type validateProposalFunc func(proposal *types.Proposal) error
-
 type Reactor struct {
 	p2p.BaseReactor // BaseService + p2p.Switch
 

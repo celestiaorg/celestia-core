@@ -56,34 +56,6 @@ func (p *ProposalCache) setCurrentProposalPartsCount(limit int64) {
 	p.currentProposalPartsCount.Store(limit)
 }
 
-// RelevantProposal checks if a given incoming proposal is worth checking by
-// first determining if it is relevant, then a compact block for that height and
-// round has already been seen.
-func (p *ProposalCache) RelevantProposal(cb *proptypes.CompactBlock) (has bool) {
-	p.pmtx.Lock()
-	defer p.pmtx.Unlock()
-
-	if !p.relevant(cb.Proposal.Height, cb.Proposal.Round) {
-		return false
-	}
-
-	if p.proposals[cb.Proposal.Height] == nil {
-		return true
-	}
-
-	pd := p.proposals[cb.Proposal.Height][cb.Proposal.Round]
-
-	if pd == nil {
-		return true
-	}
-
-	if pd.compactBlock == nil {
-		return true
-	}
-
-	return false
-}
-
 func (p *ProposalCache) AddProposal(cb *proptypes.CompactBlock) (added bool) {
 	p.pmtx.Lock()
 	defer p.pmtx.Unlock()
