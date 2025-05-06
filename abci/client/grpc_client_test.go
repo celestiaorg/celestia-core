@@ -41,10 +41,8 @@ func TestGRPC(t *testing.T) {
 	})
 
 	// Connect to the socket
-	//nolint:staticcheck // SA1019 Existing use of deprecated but supported dial option.
 	conn, err := grpc.NewClient(socket,
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
-		grpc.WithContextDialer(dialerFunc),
 	)
 	require.NoError(t, err)
 
@@ -76,8 +74,4 @@ func TestGRPC(t *testing.T) {
 		}
 
 	}
-}
-
-func dialerFunc(_ context.Context, addr string) (net.Conn, error) {
-	return cmtnet.Connect(addr)
 }
