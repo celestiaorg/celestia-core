@@ -122,9 +122,9 @@ func TestRecoverPartsLocally(t *testing.T) {
 			txs: txsMap,
 		},
 		pv,
-		WithChainID(sm.ChainID),
+		sm.ChainID,
 	)
-	blockPropR.SetConsensusLink(NewMockConsensusLink(pub, TestChainID, false))
+	blockPropR.SetProposalVerifier(NewMockProposalVerifier(pub, TestChainID, false))
 
 	data := types.Data{Txs: types.TxsFromCachedTxs(txs)}
 

@@ -453,11 +453,11 @@ func newStateWithConfigAndBlockStore(
 	if err != nil {
 		panic(err)
 	}
-	propagator := propagation.NewReactor(key.ID(), blockStore, mempool, pv, propagation.WithChainID(state.ChainID))
+	propagator := propagation.NewReactor(key.ID(), blockStore, mempool, pv, state.ChainID)
 	cs := NewState(thisConfig.Consensus, state, blockExec, blockStore, propagator, mempool, evpool)
 	cs.SetLogger(log.TestingLogger().With("module", "consensus"))
 	cs.SetPrivValidator(pv)
-	propagator.SetConsensusLink(cs)
+	propagator.SetProposalVerifier(cs)
 
 	eventBus := types.NewEventBus()
 	eventBus.SetLogger(log.TestingLogger().With("module", "events"))

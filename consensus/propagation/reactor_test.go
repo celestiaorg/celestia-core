@@ -41,11 +41,11 @@ func newPropagationReactor(s *p2p.Switch, tr trace.Tracer, pv types.PrivValidato
 	if err != nil {
 		panic(err)
 	}
-	blockPropR := NewReactor(s.NetAddress().ID, blockStore, &mockMempool{txs: make(map[types.TxKey]*types.CachedTx)}, pv, WithChainID(TestChainID))
+	blockPropR := NewReactor(s.NetAddress().ID, blockStore, &mockMempool{txs: make(map[types.TxKey]*types.CachedTx)}, pv, TestChainID)
 	blockPropR.traceClient = tr
 	// false means that we're not checking that the proposal was signed correctly by the proposer.
 	// when creating a test proposal, we're currently not signing it
-	blockPropR.SetConsensusLink(NewMockConsensusLink(pub, "test", false))
+	blockPropR.SetProposalVerifier(NewMockProposalVerifier(pub, "test", false))
 	blockPropR.started.Store(true)
 	blockPropR.SetSwitch(s)
 
@@ -90,21 +90,21 @@ func createTestReactors(n int, p2pCfg *cfg.P2PConfig, tracer bool, traceDir stri
 	return reactors, switches
 }
 
-type MockConsensusLink struct {
+type MockProposalVerifier struct {
 	pub     crypto.PubKey
 	chainID string
 	verify  bool
 }
 
-func NewMockConsensusLink(pub crypto.PubKey, chainID string, verify bool) *MockConsensusLink {
-	return &MockConsensusLink{
+func NewMockProposalVerifier(pub crypto.PubKey, chainID string, verify bool) *MockProposalVerifier {
+	return &MockProposalVerifier{
 		pub:     pub,
 		chainID: chainID,
 		verify:  verify,
 	}
 }
 
-func (cl *MockConsensusLink) VerifyProposal(proposal *types.Proposal) error {
+func (cl *MockProposalVerifier) VerifyProposal(proposal *types.Proposal) error {
 	if !cl.verify {
 		return nil
 	}
@@ -114,7 +114,7 @@ func (cl *MockConsensusLink) VerifyProposal(proposal *types.Proposal) error {
 	}
 	return fmt.Errorf("forged proposal")
 }
-func (cl *MockConsensusLink) GetProposer() crypto.PubKey { return cl.pub }
+func (cl *MockProposalVerifier) GetProposer() crypto.PubKey { return cl.pub }
 
 func TestCountRequests(t *testing.T) {
 	reactors, _ := testBlockPropReactors(1, cfg.DefaultP2PConfig())

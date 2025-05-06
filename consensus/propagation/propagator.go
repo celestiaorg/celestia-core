@@ -17,7 +17,7 @@ type Propagator interface {
 	StartProcessing()
 }
 
-type ConsensusLink interface {
+type ProposalVerifier interface {
 	VerifyProposal(proposal *types.Proposal) error
 	GetProposer() crypto.PubKey
 }

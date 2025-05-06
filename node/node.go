@@ -931,8 +931,8 @@ func NewNodeWithContext(ctx context.Context,
 		blockStore,
 		mempool,
 		privValidator,
+		state.ChainID,
 		propagation.WithTracer(tracer),
-		propagation.WithChainID(state.ChainID),
 	)
 	if !stateSync && !fastSync {
 		propagationReactor.StartProcessing()
@@ -950,7 +950,7 @@ func NewNodeWithContext(ctx context.Context,
 		privValidator, csMetrics, propagationReactor, stateSync || fastSync, eventBus, consensusLogger, tracer,
 	)
 
-	propagationReactor.SetConsensusLink(consensusState)
+	propagationReactor.SetProposalVerifier(consensusState)
 	propagationReactor.SetLogger(logger.With("module", "propagation"))
 
 	logger.Info("Consensus reactor created", "timeout_propose", consensusState.GetState().TimeoutPropose, "timeout_commit", consensusState.GetState().TimeoutCommit)

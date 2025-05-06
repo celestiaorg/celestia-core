@@ -48,7 +48,7 @@ type Reactor struct {
 	// ProposalCache temporarily stores recently active proposals and their
 	// block data for gossiping.
 	*ProposalCache
-	consensusLink ConsensusLink
+	consensusLink ProposalVerifier
 
 	privval types.PrivValidator
 	chainID string
@@ -66,7 +66,7 @@ type Reactor struct {
 	cancel context.CancelFunc
 }
 
-func NewReactor(self p2p.ID, store *store.BlockStore, mempool Mempool, privval types.PrivValidator, options ...ReactorOption) *Reactor {
+func NewReactor(self p2p.ID, store *store.BlockStore, mempool Mempool, privval types.PrivValidator, chainID string, options ...ReactorOption) *Reactor {
 	ctx, cancel := context.WithCancel(context.Background())
 	reactor := &Reactor{
 		self:          self,
@@ -79,6 +79,7 @@ func NewReactor(self p2p.ID, store *store.BlockStore, mempool Mempool, privval t
 		ctx:           ctx,
 		cancel:        cancel,
 		privval:       privval,
+		chainID:       chainID,
 	}
 	reactor.BaseReactor = *p2p.NewBaseReactor("BlockProp", reactor, p2p.WithIncomingQueueSize(ReactorIncomingMessageQueueSize))
 
@@ -115,14 +116,8 @@ func WithTracer(tracer trace.Tracer) func(r *Reactor) {
 	}
 }
 
-func WithChainID(chainID string) func(r *Reactor) {
-	return func(r *Reactor) {
-		r.chainID = chainID
-	}
-}
-
-// SetConsensusLink sets the proposal stateful validation function.
-func (blockProp *Reactor) SetConsensusLink(csc ConsensusLink) {
+// SetProposalVerifier sets the proposal stateful validation function.
+func (blockProp *Reactor) SetProposalVerifier(csc ProposalVerifier) {
 	blockProp.consensusLink = csc
 }
 
@@ -210,6 +205,7 @@ func (blockProp *Reactor) RemovePeer(peer p2p.Peer, reason interface{}) {
 
 func (blockProp *Reactor) ReceiveEnvelope(e p2p.Envelope) {
 	if !blockProp.IsRunning() {
+		blockProp.Logger.Debug("Receive", "src", e.Src, "chId", e.ChannelID)
 		return
 	}
 
