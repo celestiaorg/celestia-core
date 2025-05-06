@@ -51,6 +51,10 @@ func P2PMessageSignBytes(chainID, uID string, hash cmtbytes.HexBytes) []byte {
 //----------------------------------------
 // MockPV
 
+const (
+	MockChainID = "incorrect-chain-id"
+)
+
 // MockPV implements PrivValidator without any safety or persistence.
 // Only use it for testing.
 type MockPV struct {
@@ -79,7 +83,7 @@ func (pv MockPV) GetPubKey() (crypto.PubKey, error) {
 func (pv MockPV) SignVote(chainID string, vote *cmtproto.Vote) error {
 	useChainID := chainID
 	if pv.breakVoteSigning {
-		useChainID = "incorrect-chain-id"
+		useChainID = MockChainID
 	}
 
 	signBytes := VoteSignBytes(useChainID, vote)
@@ -95,7 +99,7 @@ func (pv MockPV) SignVote(chainID string, vote *cmtproto.Vote) error {
 func (pv MockPV) SignProposal(chainID string, proposal *cmtproto.Proposal) error {
 	useChainID := chainID
 	if pv.breakProposalSigning {
-		useChainID = "incorrect-chain-id"
+		useChainID = MockChainID
 	}
 
 	signBytes := ProposalSignBytes(useChainID, proposal)
@@ -110,7 +114,7 @@ func (pv MockPV) SignProposal(chainID string, proposal *cmtproto.Proposal) error
 func (pv MockPV) SignP2PMessage(chainID, uID string, hash cmtbytes.HexBytes) ([]byte, error) {
 	useChainID := chainID
 	if pv.breakProposalSigning {
-		useChainID = "incorrect-chain-id"
+		useChainID = MockChainID
 	}
 
 	return pv.PrivKey.Sign(P2PMessageSignBytes(useChainID, uID, hash))
