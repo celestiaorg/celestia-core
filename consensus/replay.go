@@ -92,7 +92,6 @@ func (cs *State) readReplayMessage(msg *TimedWALMessage, newStepSub types.Subscr
 // Replay only those messages since the last block.  `timeoutRoutine` should
 // run concurrently to read off tickChan.
 func (cs *State) catchupReplay(csHeight int64) error {
-
 	// Set replayMode to true so we don't log signing errors.
 	cs.replayMode = true
 	defer func() { cs.replayMode = false }()
@@ -198,6 +197,8 @@ func makeHeightSearchFunc(height int64) auto.SearchFunc {
 // we were last, and using the WAL to recover there.)
 //---------------------------------------------------
 
+// Handshaker is responsible for ensuring we handshake properly with the app
+// during recovery and that we correctly replay blocks when needed.
 type Handshaker struct {
 	stateStore   sm.Store
 	initialState sm.State
@@ -209,6 +210,7 @@ type Handshaker struct {
 	nBlocks int // number of blocks applied to the state
 }
 
+// NewHandshaker creates a new Handshaker.
 func NewHandshaker(stateStore sm.Store, state sm.State,
 	store sm.BlockStore, genDoc *types.GenesisDoc) *Handshaker {
 
@@ -223,11 +225,12 @@ func NewHandshaker(stateStore sm.Store, state sm.State,
 	}
 }
 
+// SetLogger sets the logger for the Handshaker.
 func (h *Handshaker) SetLogger(l log.Logger) {
 	h.logger = l
 }
 
-// SetEventBus - sets the event bus for publishing block related events.
+// SetEventBus sets the event bus for publishing block related events.
 // If not called, it defaults to types.NopEventBus.
 func (h *Handshaker) SetEventBus(eventBus types.BlockEventPublisher) {
 	h.eventBus = eventBus
@@ -238,12 +241,15 @@ func (h *Handshaker) NBlocks() int {
 	return h.nBlocks
 }
 
-// TODO: retry the handshake/replay if it fails ?
+// Handshake performs the ABCI handshake with the app.
+// It calls the non-cancellable version of HandshakeWithContext.
 func (h *Handshaker) Handshake(proxyApp proxy.AppConns) (string, error) {
 	return h.HandshakeWithContext(context.TODO(), proxyApp)
 }
 
-// HandshakeWithContext is cancellable version of Handshake
+// HandshakeWithContext is a cancellable version of Handshake.
+// It performs the ABCI handshake with the application to ensure
+// CometBFT and the app are in sync.
 func (h *Handshaker) HandshakeWithContext(ctx context.Context, proxyApp proxy.AppConns) (string, error) {
 
 	// Handshake is done via ABCI Info on the query conn.
@@ -298,7 +304,9 @@ func (h *Handshaker) ReplayBlocks(
 	return h.ReplayBlocksWithContext(context.TODO(), state, appHash, appBlockHeight, proxyApp)
 }
 
-// ReplayBlocksWithContext is cancellable version of ReplayBlocks.
+// ReplayBlocksWithContext is a cancellable version of ReplayBlocks.
+// It replays blocks from appBlockHeight to the latest block in the store,
+// ensuring that the application state matches CometBFT's state.
 func (h *Handshaker) ReplayBlocksWithContext(
 	ctx context.Context,
 	state sm.State,
@@ -311,12 +319,9 @@ func (h *Handshaker) ReplayBlocksWithContext(
 	stateBlockHeight := state.LastBlockHeight
 	h.logger.Info(
 		"ABCI Replay Blocks",
-		"appHeight",
-		appBlockHeight,
-		"storeHeight",
-		storeBlockHeight,
-		"stateHeight",
-		stateBlockHeight)
+		"appHeight", appBlockHeight,
+		"storeHeight", storeBlockHeight,
+		"stateHeight", stateBlockHeight)
 
 	// If appBlockHeight == 0 it means that we are at genesis and hence should send InitChain.
 	if appBlockHeight == 0 {
@@ -367,7 +372,7 @@ func (h *Handshaker) ReplayBlocksWithContext(
 				state.Version.Consensus.App = state.ConsensusParams.Version.App
 			}
 
-			// update timeouts based on the InitChainSync response
+			// Update timeouts based on the InitChainSync response
 			state.TimeoutCommit = res.TimeoutInfo.TimeoutCommit
 			state.TimeoutPropose = res.TimeoutInfo.TimeoutPropose
 			// We update the last results hash with the empty hash, to conform with RFC-6962.
@@ -385,23 +390,23 @@ func (h *Handshaker) ReplayBlocksWithContext(
 		return appHash, nil
 
 	case appBlockHeight == 0 && state.InitialHeight < storeBlockBase:
-		// the app has no state, and the block store is truncated above the initial height
+		// The app has no state, and the block store is truncated above the initial height
 		return appHash, sm.ErrAppBlockHeightTooLow{AppHeight: appBlockHeight, StoreBase: storeBlockBase}
 
 	case appBlockHeight > 0 && appBlockHeight < storeBlockBase-1:
-		// the app is too far behind truncated store (can be 1 behind since we replay the next)
+		// The app is too far behind truncated store (can be 1 behind since we replay the next)
 		return appHash, sm.ErrAppBlockHeightTooLow{AppHeight: appBlockHeight, StoreBase: storeBlockBase}
 
 	case storeBlockHeight < appBlockHeight:
-		// the app should never be ahead of the store (but this is under app's control)
+		// The app should never be ahead of the store (but this is under app's control)
 		return appHash, sm.ErrAppBlockHeightTooHigh{CoreHeight: storeBlockHeight, AppHeight: appBlockHeight}
 
 	case storeBlockHeight < stateBlockHeight:
-		// the state should never be ahead of the store (this is under CometBFT's control)
+		// The state should never be ahead of the store (this is under CometBFT's control)
 		panic(fmt.Sprintf("StateBlockHeight (%d) > StoreBlockHeight (%d)", stateBlockHeight, storeBlockHeight))
 
 	case storeBlockHeight > stateBlockHeight+1:
-		// store should be at most one ahead of the state (this is under CometBFT's control)
+		// Store should be at most one ahead of the state (this is under CometBFT's control)
 		panic(fmt.Sprintf("StoreBlockHeight (%d) > StateBlockHeight + 1 (%d)", storeBlockHeight, stateBlockHeight+1))
 	}
 
@@ -412,11 +417,11 @@ func (h *Handshaker) ReplayBlocksWithContext(
 		// CometBFT ran Commit and saved the state.
 		// Either the app is asking for replay, or we're all synced up.
 		if appBlockHeight < storeBlockHeight {
-			// the app is behind, so replay blocks, but no need to go through WAL (state is already synced to store)
+			// The app is behind, so replay blocks, but no need to go through WAL (state is already synced to store)
 			return h.replayBlocks(ctx, state, proxyApp, appBlockHeight, storeBlockHeight, false)
 
 		} else if appBlockHeight == storeBlockHeight {
-			// We're good!
+			// We're good! App, store, and state all at the same height
 			assertAppHashEqualsOneFromState(appHash, state)
 			return appHash, nil
 		}
@@ -426,7 +431,7 @@ func (h *Handshaker) ReplayBlocksWithContext(
 		// so we'll need to replay a block using the WAL.
 		switch {
 		case appBlockHeight < stateBlockHeight:
-			// the app is further behind than it should be, so replay blocks
+			// The app is further behind than it should be, so replay blocks
 			// but leave the last block to go through the WAL
 			return h.replayBlocks(ctx, state, proxyApp, appBlockHeight, storeBlockHeight, true)
 
@@ -447,8 +452,8 @@ func (h *Handshaker) ReplayBlocksWithContext(
 			}
 			// NOTE: There is a rare edge case where a node has upgraded from
 			// v0.37 with endblock to v0.38 with finalize block and thus
-			// does not have the app hash saved from the previous height
-			// here we take the appHash provided from the Info handshake
+			// does not have the app hash saved from the previous height.
+			// Here we take the appHash provided from the Info handshake.
 			if len(finalizeBlockResponse.AppHash) == 0 {
 				finalizeBlockResponse.AppHash = appHash
 			}
@@ -457,13 +462,14 @@ func (h *Handshaker) ReplayBlocksWithContext(
 			state, err = h.replayBlock(state, storeBlockHeight, mockApp)
 			return state.AppHash, err
 		}
-
 	}
 
 	panic(fmt.Sprintf("uncovered case! appHeight: %d, storeHeight: %d, stateHeight: %d",
 		appBlockHeight, storeBlockHeight, stateBlockHeight))
 }
 
+// replayBlocks replays all blocks between appBlockHeight and storeBlockHeight.
+// If mutateState is true, the state will be updated during replay.
 func (h *Handshaker) replayBlocks(
 	ctx context.Context,
 	state sm.State,
@@ -477,7 +483,8 @@ func (h *Handshaker) replayBlocks(
 	// Note that we don't have an old version of the state,
 	// so we by-pass state validation/mutation using sm.ExecCommitBlock.
 	// This also means we won't be saving validator sets if they change during this period.
-	// TODO: Load the historical information to fix this and just use state.ApplyBlock
+	// During replay, we need to handle potential validator set changes gracefully,
+	// so when historical information is available, we should use state.ApplyBlock instead.
 	//
 	// If mutateState == true, the final block is replayed with h.replayBlock()
 
@@ -514,7 +521,7 @@ func (h *Handshaker) replayBlocks(
 	}
 
 	if mutateState {
-		// sync the final block
+		// Sync the final block
 		state, err = h.replayBlock(state, storeBlockHeight, proxyApp.Consensus())
 		if err != nil {
 			return nil, err
@@ -526,7 +533,7 @@ func (h *Handshaker) replayBlocks(
 	return appHash, nil
 }
 
-// ApplyBlock on the proxyApp with the last block.
+// replayBlock applies a single block to the state.
 func (h *Handshaker) replayBlock(state sm.State, height int64, proxyApp proxy.AppConnConsensus) (sm.State, error) {
 	block := h.store.LoadBlock(height)
 	meta := h.store.LoadBlockMeta(height)
@@ -548,6 +555,8 @@ func (h *Handshaker) replayBlock(state sm.State, height int64, proxyApp proxy.Ap
 	return state, nil
 }
 
+// assertAppHashEqualsOneFromBlock checks that the AppHash in the block
+// matches the expected AppHash.
 func assertAppHashEqualsOneFromBlock(appHash []byte, block *types.Block) {
 	if !bytes.Equal(appHash, block.AppHash) {
 		panic(fmt.Sprintf(`block.AppHash does not match AppHash after replay. Got %X, expected %X.
@@ -558,6 +567,8 @@ Block: %v
 	}
 }
 
+// assertAppHashEqualsOneFromState checks that the AppHash in the state
+// matches the expected AppHash.
 func assertAppHashEqualsOneFromState(appHash []byte, state sm.State) {
 	if !bytes.Equal(appHash, state.AppHash) {
 		panic(fmt.Sprintf(`state.AppHash does not match AppHash after replay. Got
