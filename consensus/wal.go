@@ -21,28 +21,29 @@ import (
 )
 
 const (
-	// time.Time + max consensus msg size
+	// maxMsgSizeBytes is the maximum size of a WAL message, including time.Time and consensus message
 	maxMsgSizeBytes = maxMsgSize + 24
 
-	// how often the WAL should be sync'd during period sync'ing
+	// walDefaultFlushInterval defines how often the WAL should be synced during periodic syncing
 	walDefaultFlushInterval = 2 * time.Second
 )
 
 //--------------------------------------------------------
-// types and functions for savings consensus messages
+// Types and functions for saving consensus messages
 
 // TimedWALMessage wraps WALMessage and adds Time for debugging purposes.
 type TimedWALMessage struct {
-	Time time.Time  `json:"time"`
-	Msg  WALMessage `json:"msg"`
+	Time time.Time  `json:"time"` // Time of the message
+	Msg  WALMessage `json:"msg"`  // Message content
 }
 
 // EndHeightMessage marks the end of the given height inside WAL.
-// @internal used by scripts/wal2json util.
+// @internal used by scripts/wal2json utility.
 type EndHeightMessage struct {
-	Height int64 `json:"height"`
+	Height int64 `json:"height"` // Height that ended
 }
 
+// WALMessage is an interface for messages that can be written to the WAL.
 type WALMessage interface{}
 
 func init() {
@@ -52,38 +53,42 @@ func init() {
 }
 
 //--------------------------------------------------------
-// Simple write-ahead logger
+// Write-ahead logger implementation
 
 // WAL is an interface for any write-ahead logger.
 type WAL interface {
+	// Write writes a WALMessage to the log
 	Write(WALMessage) error
+
+	// WriteSync writes a WALMessage to the log and flushes it to disk
 	WriteSync(WALMessage) error
+
+	// FlushAndSync flushes and syncs the log to disk
 	FlushAndSync() error
 
+	// SearchForEndHeight searches for the EndHeightMessage with the given height
 	SearchForEndHeight(height int64, options *WALSearchOptions) (rd io.ReadCloser, found bool, err error)
 
-	// service methods
+	// Service methods
 	Start() error
 	Stop() error
 	Wait()
 }
 
-// Write ahead logger writes msgs to disk before they are processed.
-// Can be used for crash-recovery and deterministic replay.
-// TODO: currently the wal is overwritten during replay catchup, give it a mode
-// so it's either reading or appending - must read to end to start appending
-// again.
+// BaseWAL is a write ahead logger that writes consensus messages to disk before they are processed.
+// It can be used for crash-recovery and deterministic replay.
+// The WAL is flushed and synced to disk every 2 seconds by default and when stopped.
 type BaseWAL struct {
 	service.BaseService
 
-	group *auto.Group
+	group *auto.Group // Underlying file group
+	enc   *WALEncoder // Encoder for writing messages
 
-	enc *WALEncoder
-
-	flushTicker   *time.Ticker
-	flushInterval time.Duration
+	flushTicker   *time.Ticker  // Ticker for periodic flushes
+	flushInterval time.Duration // How often to flush to disk
 }
 
+// Ensure BaseWAL implements WAL interface
 var _ WAL = &BaseWAL{}
 
 // NewWAL returns a new write-ahead logger based on `baseWAL`, which implements
@@ -112,20 +117,25 @@ func (wal *BaseWAL) SetFlushInterval(i time.Duration) {
 	wal.flushInterval = i
 }
 
+// Group returns the underlying autofile group.
 func (wal *BaseWAL) Group() *auto.Group {
 	return wal.group
 }
 
+// SetLogger sets the logger for the WAL.
 func (wal *BaseWAL) SetLogger(l log.Logger) {
 	wal.BaseService.Logger = l
 	wal.group.SetLogger(l)
 }
 
+// OnStart implements service.BaseService by creating and starting a
+// fileticker, which is used to periodically flush the WAL to disk.
 func (wal *BaseWAL) OnStart() error {
 	size, err := wal.group.Head.Size()
 	if err != nil {
 		return err
 	} else if size == 0 {
+		// If the WAL file is empty, write a special record to indicate the initial height
 		if err := wal.WriteSync(EndHeightMessage{0}); err != nil {
 			return err
 		}
@@ -139,6 +149,7 @@ func (wal *BaseWAL) OnStart() error {
 	return nil
 }
 
+// processFlushTicks handles periodic WAL flushes.
 func (wal *BaseWAL) processFlushTicks() {
 	for {
 		select {
@@ -158,21 +169,20 @@ func (wal *BaseWAL) FlushAndSync() error {
 	return wal.group.FlushAndSync()
 }
 
-// Stop the underlying autofile group.
-// Use Wait() to ensure it's finished shutting down
-// before cleaning up files.
+// OnStop implements service.BaseService by stopping the fileticker
+// and flushing/closing the WAL.
 func (wal *BaseWAL) OnStop() {
 	wal.flushTicker.Stop()
 	if err := wal.FlushAndSync(); err != nil {
-		wal.Logger.Error("error on flush data to disk", "error", err)
+		wal.Logger.Error("Error on flush data to disk", "error", err)
 	}
 	if err := wal.group.Stop(); err != nil {
-		wal.Logger.Error("error trying to stop wal", "error", err)
+		wal.Logger.Error("Error trying to stop WAL", "error", err)
 	}
 	wal.group.Close()
 }
 
-// Wait for the underlying autofile group to finish shutting down
+// Wait waits for the underlying autofile group to finish shutting down
 // so it's safe to cleanup files.
 func (wal *BaseWAL) Wait() {
 	wal.group.Wait()
@@ -187,7 +197,7 @@ func (wal *BaseWAL) Write(msg WALMessage) error {
 	}
 
 	if err := wal.enc.Encode(&TimedWALMessage{cmttime.Now(), msg}); err != nil {
-		wal.Logger.Error("Error writing msg to consensus wal. WARNING: recover may not be possible for the current height",
+		wal.Logger.Error("Error writing msg to consensus WAL. WARNING: recovery may not be possible for the current height",
 			"err", err, "msg", msg)
 		return err
 	}
@@ -208,7 +218,7 @@ func (wal *BaseWAL) WriteSync(msg WALMessage) error {
 	}
 
 	if err := wal.FlushAndSync(); err != nil {
-		wal.Logger.Error(`WriteSync failed to flush consensus wal.
+		wal.Logger.Error(`WriteSync failed to flush consensus WAL.
 		WARNING: may result in creating alternative proposals / votes for the current height iff the node restarted`,
 			"err", err)
 		return err
