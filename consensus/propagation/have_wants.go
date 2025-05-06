@@ -79,15 +79,17 @@ func (blockProp *Reactor) handleHaves(peer p2p.ID, haves *proptypes.HaveParts) {
 		return
 	}
 
-	for _, index := range hc.GetTrueIndices() {
-		select {
-		case <-blockProp.ctx.Done():
-		case p.receivedHaves <- request{
-			height: height,
-			round:  round,
-			index:  uint32(index),
-		}:
-			p.RequestsReady()
+	if p := blockProp.getPeer(peer); p != nil {
+		for _, index := range hc.GetTrueIndices() {
+			select {
+			case <-blockProp.ctx.Done():
+			case p.receivedHaves <- request{
+				height: height,
+				round:  round,
+				index:  uint32(index),
+			}:
+				p.RequestsReady()
+			}
 		}
 	}
 }
@@ -438,7 +440,7 @@ func (blockProp *Reactor) handleRecoveryPart(peer p2p.ID, part *proptypes.Recove
 		return
 	}
 
-	if p != nil {
+	if p := blockProp.getPeer(peer); p != nil {
 		// avoid blocking if a single peer is backed up. This means that they
 		// are sending us too many parts
 		select {
