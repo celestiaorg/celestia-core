@@ -81,7 +81,7 @@ func (blockProp *Reactor) retryWants(currentHeight int64) {
 			}
 
 			// keep track of which requests we've made this attempt.
-			peer.AddRequests(height, round, missing)
+			peer.AddRequests(height, round, mc)
 		}
 	}
 }
