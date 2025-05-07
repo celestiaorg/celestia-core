@@ -109,13 +109,13 @@ type blockSyncReactor interface {
 
 func initDBs(config *cfg.Config, dbProvider cfg.DBProvider) (blockStore *store.BlockStore, stateDB dbm.DB, err error) {
 	var blockStoreDB dbm.DB
-	blockStoreDB, err = dbProvider(&cfg.DBContext{ID: "blockstore", Config: config})
+	blockStoreDB, err = dbProvider(&cfg.DBContext{ID: "blockstore", Config: config, Path: config.BlockstoreDir()})
 	if err != nil {
 		return
 	}
 	blockStore = store.NewBlockStore(blockStoreDB)
 
-	stateDB, err = dbProvider(&cfg.DBContext{ID: "state", Config: config})
+	stateDB, err = dbProvider(&cfg.DBContext{ID: "state", Config: config, Path: config.DBDir()})
 	if err != nil {
 		return
 	}

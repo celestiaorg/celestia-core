@@ -66,6 +66,11 @@ db_backend = "goleveldb"
 # Database directory
 db_dir = "data"
 
+# Blockstore directory. If not set, defaults to db_dir.
+# This allows placing the blockstore on a separate volume (e.g. HDD)
+# while keeping the state store on a faster volume (e.g. SSD).
+blockstore_dir = "data"
+
 # Output level for logging, including package level options
 log_level = "info"
 
