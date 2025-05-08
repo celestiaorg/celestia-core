@@ -319,11 +319,12 @@ func (blockProp *Reactor) broadcastHaves(haves *proptypes.HaveParts, from p2p.ID
 // peers data that this node already has and store the wants to send them data
 // in the future.
 func (blockProp *Reactor) handleWants(peer p2p.ID, wants *proptypes.WantParts) {
-	height := wants.Height
-	round := wants.Round
 	if !blockProp.started.Load() {
 		return
 	}
+
+	height := wants.Height
+	round := wants.Round
 
 	p := blockProp.getPeer(peer)
 	if p == nil {
