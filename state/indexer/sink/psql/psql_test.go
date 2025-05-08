@@ -100,7 +100,6 @@ func TestMain(m *testing.M) {
 		db = sink.DB() // set global for test use
 		return db.Ping()
 	}); err != nil {
-		//
 		log.Println("not running psql test due to docker failure:", err)
 		return
 	}
