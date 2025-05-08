@@ -99,6 +99,7 @@ func WALGenerateNBlocks(t *testing.T, wr io.Writer, numBlocks int) (err error) {
 	if privValidator != nil {
 		consensusState.SetPrivValidator(privValidator)
 	}
+	propagator.SetProposalVerifier(consensusState)
 	// END OF COPY PASTE
 
 	// set consensus wal to buffered WAL, which will write all incoming msgs to buffer

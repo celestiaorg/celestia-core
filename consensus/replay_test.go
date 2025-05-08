@@ -686,7 +686,6 @@ func testHandshakeReplay(t *testing.T, config *cfg.Config, nBlocks int, mode uin
 		config.Consensus.SetWalFile(walFile)
 
 		privVal := privval.LoadFilePV(config.PrivValidatorKeyFile(), config.PrivValidatorStateFile())
-
 		wal, err := NewWAL(walFile)
 		require.NoError(t, err)
 		wal.SetLogger(log.TestingLogger())
@@ -1185,6 +1184,7 @@ func stateAndStore(
 	if err := stateStore.Save(state); err != nil {
 		panic(err)
 	}
+
 	return stateDB, state, store
 }
 
