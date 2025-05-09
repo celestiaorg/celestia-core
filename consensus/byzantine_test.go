@@ -100,7 +100,12 @@ func TestByzantinePrevoteEquivocation(t *testing.T) {
 		cs.SetLogger(cs.Logger)
 		// set private validator
 		pv := privVals[i]
+		propagationReactor := propagation.NewReactor(nodeKey.ID(), blockStore, mempool, pv, state.ChainID)
+
+		cs := NewState(thisConfig.Consensus, state, blockExec, blockStore, propagationReactor, mempool, evpool)
+		cs.SetLogger(cs.Logger)
 		cs.SetPrivValidator(pv)
+		propagationReactor.SetProposalVerifier(cs)
 
 		eventBus := types.NewEventBus()
 		eventBus.SetLogger(log.TestingLogger().With("module", "events"))

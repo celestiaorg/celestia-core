@@ -92,13 +92,14 @@ func WALGenerateNBlocks(t *testing.T, wr io.Writer, numBlocks int, config *cfg.C
 	if err != nil {
 		panic(err)
 	}
-	propagator := propagation.NewReactor(key.ID(), nil, blockStore, mempool)
+	propagator := propagation.NewReactor(key.ID(), blockStore, mempool, privValidator, state.ChainID)
 	consensusState := NewState(config.Consensus, state.Copy(), blockExec, blockStore, propagator, mempool, evpool)
 	consensusState.SetLogger(logger)
 	consensusState.SetEventBus(eventBus)
 	if privValidator != nil {
 		consensusState.SetPrivValidator(privValidator)
 	}
+	propagator.SetProposalVerifier(consensusState)
 	// END OF COPY PASTE
 
 	// set consensus wal to buffered WAL, which will write all incoming msgs to buffer

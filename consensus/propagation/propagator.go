@@ -16,3 +16,8 @@ type Propagator interface {
 	SetConsensusRound(height int64, round int32)
 	StartProcessing()
 }
+
+type ProposalVerifier interface {
+	VerifyProposal(proposal *types.Proposal) error
+	GetProposer() crypto.PubKey
+}

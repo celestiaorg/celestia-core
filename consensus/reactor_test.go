@@ -197,6 +197,7 @@ func TestReactorWithEvidence(t *testing.T) {
 		cs := NewState(thisConfig.Consensus, state, blockExec, blockStore, propagator, mempool, evpool2)
 		cs.SetLogger(log.TestingLogger().With("module", "consensus"))
 		cs.SetPrivValidator(pv)
+		propagator.SetProposalVerifier(cs)
 
 		eventBus := types.NewEventBus()
 		eventBus.SetLogger(log.TestingLogger().With("module", "events"))
