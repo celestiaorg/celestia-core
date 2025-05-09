@@ -22,6 +22,7 @@ func (blockProp *Reactor) handleHaves(peer p2p.ID, haves *proptypes.HaveParts) {
 		// TODO handle the disconnection case
 		return
 	}
+
 	if !blockProp.started.Load() {
 		return
 	}
@@ -321,8 +322,10 @@ func (blockProp *Reactor) handleWants(peer p2p.ID, wants *proptypes.WantParts) {
 	if !blockProp.started.Load() {
 		return
 	}
+
 	height := wants.Height
 	round := wants.Round
+
 	p := blockProp.getPeer(peer)
 	if p == nil {
 		blockProp.Logger.Error("peer not found", "peer", peer)
@@ -384,12 +387,14 @@ func (blockProp *Reactor) handleWants(peer p2p.ID, wants *proptypes.WantParts) {
 // handleRecoveryPart is called when a peer sends a block part message. This is used
 // to store the part and clear any wants for that part.
 func (blockProp *Reactor) handleRecoveryPart(peer p2p.ID, part *proptypes.RecoveryPart) {
-	if !blockProp.started.Load() {
-		return
-	}
 	if peer == "" {
 		peer = blockProp.self
 	}
+
+	if !blockProp.started.Load() {
+		return
+	}
+
 	p := blockProp.getPeer(peer)
 	if p == nil && peer != blockProp.self {
 		blockProp.Logger.Error("peer not found", "peer", peer)

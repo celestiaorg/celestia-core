@@ -85,6 +85,23 @@ func DefaultValidationRequestHandler(
 		}
 	case *privvalproto.Message_PingRequest:
 		err, res = nil, mustWrapMsg(&privvalproto.PingResponse{})
+	case *privvalproto.Message_SignedP2PMessageRequest:
+		if r.SignedP2PMessageRequest.ChainId != chainID {
+			res = mustWrapMsg(&privvalproto.SignedP2PMessageResponse{
+				Signature: []byte{}, Error: &privvalproto.RemoteSignerError{
+					Code: 0, Description: "unable to sign p2p message"}})
+			return res, fmt.Errorf("want chainID: %s, got chainID: %s", r.SignedP2PMessageRequest.GetChainId(), chainID)
+		}
+
+		signature, err := privVal.SignP2PMessage(chainID, r.SignedP2PMessageRequest.UniqueId, r.SignedP2PMessageRequest.Hash)
+		if err != nil {
+			res = mustWrapMsg(&privvalproto.SignedP2PMessageResponse{
+				Signature: []byte{}, Error: &privvalproto.RemoteSignerError{
+					Code: 0, Description: "unable to sign p2p message"}})
+			return res, fmt.Errorf("failed to sign p2p message: %w", err)
+		}
+
+		res = mustWrapMsg(&privvalproto.SignedP2PMessageResponse{Signature: signature, Error: nil})
 
 	default:
 		err = fmt.Errorf("unknown msg: %v", r)

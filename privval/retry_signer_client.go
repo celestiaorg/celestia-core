@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/tendermint/tendermint/crypto"
+	cmtbytes "github.com/tendermint/tendermint/libs/bytes"
 	cmtproto "github.com/tendermint/tendermint/proto/tendermint/types"
 	"github.com/tendermint/tendermint/types"
 )
@@ -93,4 +94,21 @@ func (sc *RetrySignerClient) SignProposal(chainID string, proposal *cmtproto.Pro
 		time.Sleep(sc.timeout)
 	}
 	return fmt.Errorf("exhausted all attempts to sign proposal: %w", err)
+}
+
+func (sc *RetrySignerClient) SignP2PMessage(chainID, uID string, hash cmtbytes.HexBytes) ([]byte, error) {
+	var err error
+	var sig []byte
+	for i := 0; i < sc.retries || sc.retries == 0; i++ {
+		sig, err = sc.next.SignP2PMessage(chainID, uID, hash)
+		if err == nil {
+			return sig, nil
+		}
+		// If remote signer errors, we don't retry.
+		if _, ok := err.(*RemoteSignerError); ok {
+			return sig, err
+		}
+		time.Sleep(sc.timeout)
+	}
+	return sig, fmt.Errorf("exhausted all attempts to sign proposal: %w", err)
 }

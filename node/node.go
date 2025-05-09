@@ -926,7 +926,14 @@ func NewNodeWithContext(ctx context.Context,
 		return nil, fmt.Errorf("could not create blockchain reactor: %w", err)
 	}
 
-	propagationReactor := propagation.NewReactor(nodeKey.ID(), tracer, blockStore, mempool)
+	propagationReactor := propagation.NewReactor(
+		nodeKey.ID(),
+		blockStore,
+		mempool,
+		privValidator,
+		state.ChainID,
+		propagation.WithTracer(tracer),
+	)
 	if !stateSync && !fastSync {
 		propagationReactor.StartProcessing()
 	}
@@ -943,10 +950,7 @@ func NewNodeWithContext(ctx context.Context,
 		privValidator, csMetrics, propagationReactor, stateSync || fastSync, eventBus, consensusLogger, tracer,
 	)
 
-	propagationReactor.SetProposalValidator(func(proposal *types.Proposal) error {
-		_, err := consensusState.ValidateProposal(proposal)
-		return err
-	})
+	propagationReactor.SetProposalVerifier(consensusState)
 	propagationReactor.SetLogger(logger.With("module", "propagation"))
 
 	logger.Info("Consensus reactor created", "timeout_propose", consensusState.GetState().TimeoutPropose, "timeout_commit", consensusState.GetState().TimeoutCommit)
