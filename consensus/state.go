@@ -2600,3 +2600,12 @@ func (cs *State) ValidateProposal(proposal *types.Proposal) (*cmtproto.Proposal,
 	}
 	return p, nil
 }
+
+func (cs *State) VerifyProposal(proposal *types.Proposal) error {
+	_, err := cs.ValidateProposal(proposal)
+	return err
+}
+
+func (cs *State) GetProposer() crypto.PubKey {
+	return cs.Validators.GetProposer().PubKey
+}

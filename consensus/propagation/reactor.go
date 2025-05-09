@@ -40,8 +40,6 @@ const (
 // todo: avoid endin up in programmer hell by not using a global var
 var RetryTime = 6 * time.Second
 
-type validateProposalFunc func(proposal *types.Proposal) error
-
 type Reactor struct {
 	p2p.BaseReactor // BaseService + p2p.Switch
 
@@ -50,13 +48,16 @@ type Reactor struct {
 	// ProposalCache temporarily stores recently active proposals and their
 	// block data for gossiping.
 	*ProposalCache
-	proposalValidator validateProposalFunc
+	consensusLink ProposalVerifier
+
+	privval types.PrivValidator
+	chainID string
 
 	// mempool access to read the transactions by hash from the mempool
 	// and eventually remove it.
 	mempool Mempool
 
-	mtx         *sync.RWMutex
+	mtx         *sync.Mutex
 	traceClient trace.Tracer
 	self        p2p.ID
 	started     atomic.Bool
@@ -65,22 +66,20 @@ type Reactor struct {
 	cancel context.CancelFunc
 }
 
-func NewReactor(self p2p.ID, tracer trace.Tracer, store *store.BlockStore, mempool Mempool, options ...ReactorOption) *Reactor {
-	if tracer == nil {
-		tracer = trace.NoOpTracer()
-	}
+func NewReactor(self p2p.ID, store *store.BlockStore, mempool Mempool, privval types.PrivValidator, chainID string, options ...ReactorOption) *Reactor {
 	ctx, cancel := context.WithCancel(context.Background())
 	reactor := &Reactor{
-		self:              self,
-		traceClient:       tracer,
-		peerstate:         make(map[p2p.ID]*PeerState),
-		mtx:               &sync.RWMutex{},
-		ProposalCache:     NewProposalCache(store),
-		mempool:           mempool,
-		started:           atomic.Bool{},
-		proposalValidator: func(proposal *types.Proposal) error { return nil },
-		ctx:               ctx,
-		cancel:            cancel,
+		self:          self,
+		traceClient:   trace.NoOpTracer(),
+		peerstate:     make(map[p2p.ID]*PeerState),
+		mtx:           &sync.Mutex{},
+		ProposalCache: NewProposalCache(store),
+		mempool:       mempool,
+		started:       atomic.Bool{},
+		ctx:           ctx,
+		cancel:        cancel,
+		privval:       privval,
+		chainID:       chainID,
 	}
 	reactor.BaseReactor = *p2p.NewBaseReactor("BlockProp", reactor, p2p.WithIncomingQueueSize(ReactorIncomingMessageQueueSize))
 
@@ -111,9 +110,15 @@ func NewReactor(self p2p.ID, tracer trace.Tracer, store *store.BlockStore, mempo
 
 type ReactorOption func(*Reactor)
 
-// SetProposalValidator sets the proposal stateful validation function.
-func (blockProp *Reactor) SetProposalValidator(validator validateProposalFunc) {
-	blockProp.proposalValidator = validator
+func WithTracer(tracer trace.Tracer) func(r *Reactor) {
+	return func(r *Reactor) {
+		r.traceClient = tracer
+	}
+}
+
+// SetProposalVerifier sets the proposal stateful validation function.
+func (blockProp *Reactor) SetProposalVerifier(csc ProposalVerifier) {
+	blockProp.consensusLink = csc
 }
 
 func (blockProp *Reactor) SetLogger(logger log.Logger) {
@@ -208,6 +213,7 @@ func (blockProp *Reactor) ReceiveEnvelope(e p2p.Envelope) {
 	if wm, ok := m.(p2p.Wrapper); ok {
 		m = wm.Wrap()
 	}
+
 	msg, err := proptypes.MsgFromProto(m.(*propproto.Message))
 	if err != nil {
 		blockProp.Logger.Error("Error decoding message", "src", e.Src, "chId", e.ChannelID, "err", err)
@@ -311,15 +317,15 @@ func ConcurrentRequestLimit(peersCount, partsCount int) int64 {
 // getPeer returns the peer state for the given peer. If the peer does not exist,
 // nil is returned.
 func (blockProp *Reactor) getPeer(peer p2p.ID) *PeerState {
-	blockProp.mtx.RLock()
-	defer blockProp.mtx.RUnlock()
+	blockProp.mtx.Lock()
+	defer blockProp.mtx.Unlock()
 	return blockProp.peerstate[peer]
 }
 
 // getPeers returns a list of all peers that the data routine is aware of.
 func (blockProp *Reactor) getPeers() []*PeerState {
-	blockProp.mtx.RLock()
-	defer blockProp.mtx.RUnlock()
+	blockProp.mtx.Lock()
+	defer blockProp.mtx.Unlock()
 	peers := make([]*PeerState, 0, len(blockProp.peerstate))
 	for _, peer := range blockProp.peerstate {
 		peers = append(peers, peer)

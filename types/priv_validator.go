@@ -7,6 +7,7 @@ import (
 
 	"github.com/tendermint/tendermint/crypto"
 	"github.com/tendermint/tendermint/crypto/ed25519"
+	cmtbytes "github.com/tendermint/tendermint/libs/bytes"
 	cmtproto "github.com/tendermint/tendermint/proto/tendermint/types"
 )
 
@@ -17,6 +18,7 @@ type PrivValidator interface {
 
 	SignVote(chainID string, vote *cmtproto.Vote) error
 	SignProposal(chainID string, proposal *cmtproto.Proposal) error
+	SignP2PMessage(chainID, uID string, hash cmtbytes.HexBytes) ([]byte, error)
 }
 
 type PrivValidatorsByAddress []PrivValidator
@@ -42,8 +44,16 @@ func (pvs PrivValidatorsByAddress) Swap(i, j int) {
 	pvs[i], pvs[j] = pvs[j], pvs[i]
 }
 
+func P2PMessageSignBytes(chainID, uID string, hash cmtbytes.HexBytes) []byte {
+	return []byte(chainID + uID + hash.String())
+}
+
 //----------------------------------------
 // MockPV
+
+const (
+	MockChainID = "incorrect-chain-id"
+)
 
 // MockPV implements PrivValidator without any safety or persistence.
 // Only use it for testing.
@@ -73,7 +83,7 @@ func (pv MockPV) GetPubKey() (crypto.PubKey, error) {
 func (pv MockPV) SignVote(chainID string, vote *cmtproto.Vote) error {
 	useChainID := chainID
 	if pv.breakVoteSigning {
-		useChainID = "incorrect-chain-id"
+		useChainID = MockChainID
 	}
 
 	signBytes := VoteSignBytes(useChainID, vote)
@@ -89,7 +99,7 @@ func (pv MockPV) SignVote(chainID string, vote *cmtproto.Vote) error {
 func (pv MockPV) SignProposal(chainID string, proposal *cmtproto.Proposal) error {
 	useChainID := chainID
 	if pv.breakProposalSigning {
-		useChainID = "incorrect-chain-id"
+		useChainID = MockChainID
 	}
 
 	signBytes := ProposalSignBytes(useChainID, proposal)
@@ -99,6 +109,15 @@ func (pv MockPV) SignProposal(chainID string, proposal *cmtproto.Proposal) error
 	}
 	proposal.Signature = sig
 	return nil
+}
+
+func (pv MockPV) SignP2PMessage(chainID, uID string, hash cmtbytes.HexBytes) ([]byte, error) {
+	useChainID := chainID
+	if pv.breakProposalSigning {
+		useChainID = MockChainID
+	}
+
+	return pv.PrivKey.Sign(P2PMessageSignBytes(useChainID, uID, hash))
 }
 
 func (pv MockPV) ExtractIntoValidator(votingPower int64) *Validator {
@@ -136,6 +155,10 @@ func (pv *ErroringMockPV) SignVote(chainID string, vote *cmtproto.Vote) error {
 // Implements PrivValidator.
 func (pv *ErroringMockPV) SignProposal(chainID string, proposal *cmtproto.Proposal) error {
 	return ErroringMockPVErr
+}
+
+func (pv *ErroringMockPV) SignP2PMessage(chainID, uID string, hash cmtbytes.HexBytes) ([]byte, error) {
+	return nil, ErroringMockPVErr
 }
 
 // NewErroringMockPV returns a MockPV that fails on each signing request. Again, for testing only.
