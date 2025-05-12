@@ -9,7 +9,7 @@ require (
 	github.com/Workiva/go-datastructures v1.0.53
 	github.com/adlio/schema v1.3.3
 	github.com/aws/aws-sdk-go v1.40.45
-	github.com/btcsuite/btcd/btcec/v2 v2.2.1
+	github.com/btcsuite/btcd/btcec/v2 v2.3.4
 	github.com/btcsuite/btcd/btcutil v1.1.2
 	github.com/bufbuild/buf v1.9.0
 	github.com/celestiaorg/nmt v0.22.0
