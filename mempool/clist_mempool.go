@@ -527,7 +527,7 @@ func (mem *CListMempool) resCbRecheck(tx types.Tx, res *abci.ResponseCheckTx) {
 	if (res.Code != abci.CodeTypeOK) || postCheckErr != nil {
 		// Tx became invalidated due to newly committed block.
 		mem.logger.Debug("tx is no longer valid", "tx", tx.Hash(), "res", res, "postCheckErr", postCheckErr)
-		txKey := types.Tx(tx).Key()
+		txKey := tx.Key()
 		if err := mem.RemoveTxByKey(txKey); err != nil {
 			mem.logger.Debug("Transaction could not be removed from mempool", "err", err)
 		}
@@ -637,7 +637,7 @@ func (mem *CListMempool) Update(
 
 	mem.metrics.SuccessfulTxs.Add(float64(len(txs)))
 	for i, tx := range txs {
-		txKey := types.Tx(tx).Key()
+		txKey := tx.Key()
 		if txResults[i].Code == abci.CodeTypeOK {
 			// Add valid committed tx to the cache (if missing).
 			_ = mem.cache.Push(txKey)
