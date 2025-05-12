@@ -6,7 +6,7 @@ require (
 	github.com/BurntSushi/toml v1.2.1
 	github.com/ChainSafe/go-schnorrkel v1.0.0
 	github.com/Masterminds/semver/v3 v3.2.0
-	github.com/Workiva/go-datastructures v1.0.53
+	github.com/Workiva/go-datastructures v1.1.5
 	github.com/adlio/schema v1.3.3
 	github.com/aws/aws-sdk-go v1.40.45
 	github.com/btcsuite/btcd/btcec/v2 v2.2.1
