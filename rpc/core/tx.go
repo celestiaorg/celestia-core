@@ -225,10 +225,19 @@ func (env *Environment) ProveShares(
 // It also includes the execution code and log for failed txs.
 func (env *Environment) TxStatus(ctx *rpctypes.Context, hash []byte) (*ctypes.ResultTxStatus, error) {
 
+	latestHeight := env.BlockStore.Height()
+
 	// Check if the tx has been committed
 	txInfo := env.BlockStore.LoadTxInfo(hash)
 	if txInfo != nil {
-		return &ctypes.ResultTxStatus{Height: txInfo.Height, Index: txInfo.Index, ExecutionCode: txInfo.Code, Error: txInfo.Error, Status: TxStatusCommitted}, nil
+		return &ctypes.ResultTxStatus{
+			Height:        txInfo.Height,
+			Index:         txInfo.Index,
+			ExecutionCode: txInfo.Code,
+			Error:         txInfo.Error,
+			Status:        TxStatusCommitted,
+			LatestHeight:  latestHeight,
+		}, nil
 	}
 
 	// Get the tx key from the hash
@@ -240,23 +249,23 @@ func (env *Environment) TxStatus(ctx *rpctypes.Context, hash []byte) (*ctypes.Re
 	// Check if the tx is in the mempool
 	txInMempool, ok := env.Mempool.GetTxByKey(txKey)
 	if txInMempool != nil && ok {
-		return &ctypes.ResultTxStatus{Status: TxStatusPending}, nil
+		return &ctypes.ResultTxStatus{Status: TxStatusPending, LatestHeight: latestHeight}, nil
 	}
 
 	// Check if the tx is evicted
 	isEvicted := env.Mempool.WasRecentlyEvicted(txKey)
 	if isEvicted {
-		return &ctypes.ResultTxStatus{Status: TxStatusEvicted}, nil
+		return &ctypes.ResultTxStatus{Status: TxStatusEvicted, LatestHeight: latestHeight}, nil
 	}
 
 	// Check if the tx is rejected
 	isRejected := env.Mempool.IsRejectedTx(txKey)
 	if isRejected {
-		return &ctypes.ResultTxStatus{Status: TxStatusRejected}, nil
+		return &ctypes.ResultTxStatus{Status: TxStatusRejected, LatestHeight: latestHeight}, nil
 	}
 
 	// If the tx is not in the mempool, evicted, or committed, return unknown
-	return &ctypes.ResultTxStatus{Status: TxStatusUnknown}, nil
+	return &ctypes.ResultTxStatus{Status: TxStatusUnknown, LatestHeight: latestHeight}, nil
 }
 
 // ProveSharesV2 creates a proof for a set of shares to the data root.
