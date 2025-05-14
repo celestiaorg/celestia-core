@@ -17,44 +17,55 @@ func setupBlockStore(b *testing.B, storeType string) (sm.State, interface{}, fun
 	config := test.ResetTestRoot("block_store_bench")
 	var stateStoreDB dbm.DB
 	var bs interface{}
-	var cleanup func()
+
+	// Base cleanup applicable to all store types
+	cleanupFuncs := []func(){
+		func() { os.RemoveAll(config.RootDir) },
+	}
 
 	switch storeType {
 	case "file":
-		// Create a temporary directory for the file block store
-		tempDir, err := os.MkdirTemp("", "file_block_store_bench_")
+		// Use config.RootDir as the base for temporary directories to keep them out of /tmp
+		// and ensure they are cleaned up with config.RootDir.
+		tempDir, err := os.MkdirTemp(config.RootDir, "file_bs_bench_")
 		require.NoError(b, err)
-		// Create a temporary directory for the state store DB
-		stateDBDir, err := os.MkdirTemp("", "state_store_db_bench_")
+		stateDBDir, err := os.MkdirTemp(config.RootDir, "state_db_bench_")
 		require.NoError(b, err)
 
-		// Use a file-based DB for stateStore as well
 		stateStoreDB, err = dbm.NewDB("state", dbm.GoLevelDBBackend, stateDBDir)
 		require.NoError(b, err)
 
 		bs, err = NewFileBlockStore(tempDir)
 		require.NoError(b, err)
-		cleanup = func() {
-			os.RemoveAll(config.RootDir)
-			os.RemoveAll(tempDir)
+
+		// Add specific cleanup for resources opened in this case (e.g., stateStoreDB)
+		cleanupFuncs = append(cleanupFuncs, func() {
 			if c, ok := stateStoreDB.(io.Closer); ok {
 				c.Close()
 			}
-			os.RemoveAll(stateDBDir)
-		}
+			// tempDir and stateDBDir are inside config.RootDir, so they will be removed by the base cleanup.
+		})
+
 	case "db":
 		stateStoreDB = dbm.NewMemDB()
-		// For the "db" case, BlockStore uses its own MemDB instance as per original logic
 		bs = NewBlockStore(dbm.NewMemDB())
-		cleanup = func() {
-			os.RemoveAll(config.RootDir)
-			// MemDB's Close is a no-op, but good to have if stateStoreDB could be other types
+
+		// Add specific cleanup for resources opened in this case
+		cleanupFuncs = append(cleanupFuncs, func() {
 			if c, ok := stateStoreDB.(io.Closer); ok {
-				c.Close()
+				c.Close() // For MemDB, this is typically a no-op
 			}
-		}
+		})
+
 	default:
 		b.Fatalf("unknown store type: %s", storeType)
+	}
+
+	// Combined cleanup function that executes all registered cleanup actions in reverse order.
+	cleanup := func() {
+		for i := len(cleanupFuncs) - 1; i >= 0; i-- {
+			cleanupFuncs[i]()
+		}
 	}
 
 	stateStore := sm.NewStore(stateStoreDB, sm.StoreOptions{
