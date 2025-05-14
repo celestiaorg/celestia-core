@@ -43,7 +43,6 @@ func setupBlockStore(b *testing.B, storeType string) (sm.State, interface{}, fun
 			if c, ok := stateStoreDB.(io.Closer); ok {
 				c.Close()
 			}
-			// tempDir and stateDBDir are inside config.RootDir, so they will be removed by the base cleanup.
 		})
 
 	case "db":
@@ -77,6 +76,44 @@ func setupBlockStore(b *testing.B, storeType string) (sm.State, interface{}, fun
 	return state, bs, cleanup
 }
 
+// commonBenchmarkSetup performs the common setup for load benchmarks
+func commonBenchmarkSetup(b *testing.B, storeType string, numBlocksToSave int) (sm.State, interface{}, func()) {
+	state, bs, cleanup := setupBlockStore(b, storeType)
+
+	// Save some blocks first
+	for i := 0; i < numBlocksToSave; i++ {
+		block, partSet, seenCommit := createTestingBlock(b, state, int64(i+1), 10)
+		switch s := bs.(type) {
+		case *FileBlockStore:
+			s.SaveBlockWithExtendedCommit(block, partSet, seenCommit)
+		case *BlockStore:
+			s.SaveBlockWithExtendedCommit(block, partSet, seenCommit)
+		default:
+			b.Fatalf("unknown block store type: %T", s)
+		}
+	}
+	return state, bs, cleanup
+}
+
+// benchmarkLoadOperation is a helper to run benchmarks for various load operations
+func benchmarkLoadOperation(b *testing.B, operationName string, loadFunc func(bs interface{}, height int64)) {
+	storeTypes := []string{"file", "db"}
+	numPreloadedBlocks := 100
+
+	for _, storeType := range storeTypes {
+		b.Run(storeType+"_"+operationName, func(b *testing.B) {
+			_, bs, cleanup := commonBenchmarkSetup(b, storeType, numPreloadedBlocks)
+			defer cleanup()
+
+			b.ResetTimer()
+			for i := 0; i < b.N; i++ {
+				height := int64(i%numPreloadedBlocks + 1)
+				loadFunc(bs, height)
+			}
+		})
+	}
+}
+
 func BenchmarkBlockStore_SaveBlock(b *testing.B) {
 	storeTypes := []string{"file", "db"}
 	for _, storeType := range storeTypes {
@@ -92,6 +129,8 @@ func BenchmarkBlockStore_SaveBlock(b *testing.B) {
 					s.SaveBlockWithExtendedCommit(block, partSet, seenCommit)
 				case *BlockStore:
 					s.SaveBlockWithExtendedCommit(block, partSet, seenCommit)
+				default:
+					b.Fatalf("unknown block store type: %T", s)
 				}
 			}
 		})
@@ -113,6 +152,8 @@ func BenchmarkBlockStore_SaveBlockWithExtendedCommit(b *testing.B) {
 					s.SaveBlockWithExtendedCommit(block, partSet, seenCommit)
 				case *BlockStore:
 					s.SaveBlockWithExtendedCommit(block, partSet, seenCommit)
+				default:
+					b.Fatalf("unknown block store type: %T", s)
 				}
 			}
 		})
@@ -120,191 +161,110 @@ func BenchmarkBlockStore_SaveBlockWithExtendedCommit(b *testing.B) {
 }
 
 func BenchmarkBlockStore_LoadBlock(b *testing.B) {
-	storeTypes := []string{"file", "db"}
-	for _, storeType := range storeTypes {
-		b.Run(storeType, func(b *testing.B) {
-			state, bs, cleanup := setupBlockStore(b, storeType)
-			defer cleanup()
-
-			// Save some blocks first
-			for i := 0; i < 100; i++ {
-				block, partSet, seenCommit := createTestingBlock(b, state, int64(i+1), 10)
-				switch s := bs.(type) {
-				case *FileBlockStore:
-					s.SaveBlockWithExtendedCommit(block, partSet, seenCommit)
-				case *BlockStore:
-					s.SaveBlockWithExtendedCommit(block, partSet, seenCommit)
-				}
-			}
-
-			b.ResetTimer()
-			for i := 0; i < b.N; i++ {
-				height := int64(i%100 + 1)
-				switch s := bs.(type) {
-				case *FileBlockStore:
-					s.LoadBlock(height)
-				case *BlockStore:
-					s.LoadBlock(height)
-				}
-			}
-		})
-	}
+	benchmarkLoadOperation(b, "LoadBlock", func(bsInf interface{}, height int64) {
+		switch s := bsInf.(type) {
+		case *FileBlockStore:
+			_ = s.LoadBlock(height) // Assign to blank identifier to use the result
+		case *BlockStore:
+			_ = s.LoadBlock(height)
+		default:
+			b.Fatalf("unknown block store type: %T", s)
+		}
+	})
 }
 
 func BenchmarkBlockStore_LoadBlockMeta(b *testing.B) {
-	storeTypes := []string{"file", "db"}
-	for _, storeType := range storeTypes {
-		b.Run(storeType, func(b *testing.B) {
-			state, bs, cleanup := setupBlockStore(b, storeType)
-			defer cleanup()
-
-			// Save some blocks first
-			for i := 0; i < 100; i++ {
-				block, partSet, seenCommit := createTestingBlock(b, state, int64(i+1), 10)
-				switch s := bs.(type) {
-				case *FileBlockStore:
-					s.SaveBlockWithExtendedCommit(block, partSet, seenCommit)
-				case *BlockStore:
-					s.SaveBlockWithExtendedCommit(block, partSet, seenCommit)
-				}
-			}
-
-			b.ResetTimer()
-			for i := 0; i < b.N; i++ {
-				height := int64(i%100 + 1)
-				switch s := bs.(type) {
-				case *FileBlockStore:
-					s.LoadBlockMeta(height)
-				case *BlockStore:
-					s.LoadBlockMeta(height)
-				}
-			}
-		})
-	}
+	benchmarkLoadOperation(b, "LoadBlockMeta", func(bsInf interface{}, height int64) {
+		switch s := bsInf.(type) {
+		case *FileBlockStore:
+			_ = s.LoadBlockMeta(height)
+		case *BlockStore:
+			_ = s.LoadBlockMeta(height)
+		default:
+			b.Fatalf("unknown block store type: %T", s)
+		}
+	})
 }
 
 func BenchmarkBlockStore_LoadBlockPart(b *testing.B) {
-	storeTypes := []string{"file", "db"}
-	for _, storeType := range storeTypes {
-		b.Run(storeType, func(b *testing.B) {
-			state, bs, cleanup := setupBlockStore(b, storeType)
-			defer cleanup()
-
-			// Save some blocks first
-			for i := 0; i < 100; i++ {
-				block, partSet, seenCommit := createTestingBlock(b, state, int64(i+1), 10)
-				switch s := bs.(type) {
-				case *FileBlockStore:
-					s.SaveBlockWithExtendedCommit(block, partSet, seenCommit)
-				case *BlockStore:
-					s.SaveBlockWithExtendedCommit(block, partSet, seenCommit)
-				}
-			}
-
-			b.ResetTimer()
-			for i := 0; i < b.N; i++ {
-				height := int64(i%100 + 1)
-				switch s := bs.(type) {
-				case *FileBlockStore:
-					s.LoadBlockPart(height, 0)
-				case *BlockStore:
-					s.LoadBlockPart(height, 0)
-				}
-			}
-		})
-	}
+	benchmarkLoadOperation(b, "LoadBlockPart", func(bsInf interface{}, height int64) {
+		switch s := bsInf.(type) {
+		case *FileBlockStore:
+			_ = s.LoadBlockPart(height, 0)
+		case *BlockStore:
+			_ = s.LoadBlockPart(height, 0)
+		default:
+			b.Fatalf("unknown block store type: %T", s)
+		}
+	})
 }
 
 func BenchmarkBlockStore_LoadBlockCommit(b *testing.B) {
-	storeTypes := []string{"file", "db"}
-	for _, storeType := range storeTypes {
-		b.Run(storeType, func(b *testing.B) {
-			state, bs, cleanup := setupBlockStore(b, storeType)
-			defer cleanup()
-
-			// Save some blocks first
-			for i := 0; i < 100; i++ {
-				block, partSet, seenCommit := createTestingBlock(b, state, int64(i+1), 10)
-				switch s := bs.(type) {
-				case *FileBlockStore:
-					s.SaveBlockWithExtendedCommit(block, partSet, seenCommit)
-				case *BlockStore:
-					s.SaveBlockWithExtendedCommit(block, partSet, seenCommit)
-				}
-			}
-
-			b.ResetTimer()
-			for i := 0; i < b.N; i++ {
-				height := int64(i%100 + 1)
-				switch s := bs.(type) {
-				case *FileBlockStore:
-					s.LoadBlockCommit(height)
-				case *BlockStore:
-					s.LoadBlockCommit(height)
-				}
-			}
-		})
-	}
+	benchmarkLoadOperation(b, "LoadBlockCommit", func(bsInf interface{}, height int64) {
+		switch s := bsInf.(type) {
+		case *FileBlockStore:
+			_ = s.LoadBlockCommit(height)
+		case *BlockStore:
+			_ = s.LoadBlockCommit(height)
+		default:
+			b.Fatalf("unknown block store type: %T", s)
+		}
+	})
 }
 
 func BenchmarkBlockStore_LoadBlockExtendedCommit(b *testing.B) {
-	storeTypes := []string{"file", "db"}
-	for _, storeType := range storeTypes {
-		b.Run(storeType, func(b *testing.B) {
-			state, bs, cleanup := setupBlockStore(b, storeType)
-			defer cleanup()
-
-			// Save some blocks first
-			for i := 0; i < 100; i++ {
-				block, partSet, seenCommit := createTestingBlock(b, state, int64(i+1), 10)
-				switch s := bs.(type) {
-				case *FileBlockStore:
-					s.SaveBlockWithExtendedCommit(block, partSet, seenCommit)
-				case *BlockStore:
-					s.SaveBlockWithExtendedCommit(block, partSet, seenCommit)
-				}
-			}
-
-			b.ResetTimer()
-			for i := 0; i < b.N; i++ {
-				height := int64(i%100 + 1)
-				switch s := bs.(type) {
-				case *FileBlockStore:
-					s.LoadBlockExtendedCommit(height)
-				case *BlockStore:
-					s.LoadBlockExtendedCommit(height)
-				}
-			}
-		})
-	}
+	benchmarkLoadOperation(b, "LoadBlockExtendedCommit", func(bsInf interface{}, height int64) {
+		switch s := bsInf.(type) {
+		case *FileBlockStore:
+			_ = s.LoadBlockExtendedCommit(height)
+		case *BlockStore:
+			_ = s.LoadBlockExtendedCommit(height)
+		default:
+			b.Fatalf("unknown block store type: %T", s)
+		}
+	})
 }
 
 func BenchmarkBlockStore_PruneBlocks(b *testing.B) {
 	storeTypes := []string{"file", "db"}
 	for _, storeType := range storeTypes {
 		b.Run(storeType, func(b *testing.B) {
-			state, bs, cleanup := setupBlockStore(b, storeType)
+			state, bs, cleanup := commonBenchmarkSetup(b, storeType, 200) // Save more blocks for pruning
 			defer cleanup()
-
-			// Save some blocks first
-			for i := 0; i < 100; i++ {
-				block, partSet, seenCommit := createTestingBlock(b, state, int64(i+1), 10)
-				switch s := bs.(type) {
-				case *FileBlockStore:
-					s.SaveBlockWithExtendedCommit(block, partSet, seenCommit)
-				case *BlockStore:
-					s.SaveBlockWithExtendedCommit(block, partSet, seenCommit)
-				}
-			}
 
 			b.ResetTimer()
 			for i := 0; i < b.N; i++ {
-				height := int64(i%100 + 1)
-				switch s := bs.(type) {
-				case *FileBlockStore:
-					s.PruneBlocks(height, state)
-				case *BlockStore:
-					s.PruneBlocks(height, state)
+				pruneHeight := int64(50) // Target a prune height
+				currentStoreHeight := bs.(interface{ Height() int64 }).Height()
+				base := bs.(interface{ Base() int64 }).Base()
+
+				// Ensure pruneHeight is valid and there's something to prune
+				if pruneHeight >= base && pruneHeight < currentStoreHeight {
+					switch s := bs.(type) {
+					case *FileBlockStore:
+						_, _, err := s.PruneBlocks(pruneHeight, state)
+						if err != nil {
+							b.Error(err)
+						}
+					case *BlockStore:
+						_, _, err := s.PruneBlocks(pruneHeight, state) // Corrected: added state argument
+						if err != nil {
+							b.Error(err)
+						}
+					default:
+						b.Fatalf("unknown block store type: %T", s)
+					}
+				} else if currentStoreHeight <= 1 { // If store is empty or has 1 block, repopulate a bit
+					// Repopulate to ensure pruning can happen in subsequent iterations
+					for j := 0; j < 100; j++ {
+						block, partSet, seenCommit := createTestingBlock(b, state, currentStoreHeight+int64(j+1), 10)
+						switch s := bs.(type) {
+						case *FileBlockStore:
+							s.SaveBlockWithExtendedCommit(block, partSet, seenCommit)
+						case *BlockStore:
+							s.SaveBlockWithExtendedCommit(block, partSet, seenCommit)
+						}
+					}
 				}
 			}
 		})
@@ -315,27 +275,47 @@ func BenchmarkBlockStore_DeleteLatestBlock(b *testing.B) {
 	storeTypes := []string{"file", "db"}
 	for _, storeType := range storeTypes {
 		b.Run(storeType, func(b *testing.B) {
-			state, bs, cleanup := setupBlockStore(b, storeType)
+			state, bs, cleanup := setupBlockStore(b, storeType) // Initial setup
 			defer cleanup()
 
-			// Save some blocks first
-			for i := 0; i < 100; i++ {
+			const numInitialBlocks = 100
+			// Pre-populate blocks for deletion
+			for i := 0; i < numInitialBlocks; i++ {
 				block, partSet, seenCommit := createTestingBlock(b, state, int64(i+1), 10)
 				switch s := bs.(type) {
 				case *FileBlockStore:
 					s.SaveBlockWithExtendedCommit(block, partSet, seenCommit)
 				case *BlockStore:
 					s.SaveBlockWithExtendedCommit(block, partSet, seenCommit)
+				default:
+					b.Fatalf("unknown block store type: %T", s)
 				}
 			}
 
 			b.ResetTimer()
 			for i := 0; i < b.N; i++ {
+				// Ensure there's a block to delete, then re-add one to keep test running
+				if bs.(interface{ Height() int64 }).Height() == 0 {
+					block, partSet, seenCommit := createTestingBlock(b, state, 1, 10)
+					switch s := bs.(type) {
+					case *FileBlockStore:
+						s.SaveBlockWithExtendedCommit(block, partSet, seenCommit)
+					case *BlockStore:
+						s.SaveBlockWithExtendedCommit(block, partSet, seenCommit)
+					}
+				}
+
 				switch s := bs.(type) {
 				case *FileBlockStore:
-					s.DeleteLatestBlock()
+					if err := s.DeleteLatestBlock(); err != nil {
+						b.Error(err)
+					}
 				case *BlockStore:
-					s.DeleteLatestBlock()
+					if err := s.DeleteLatestBlock(); err != nil {
+						b.Error(err)
+					}
+				default:
+					b.Fatalf("unknown block store type: %T", s)
 				}
 			}
 		})
