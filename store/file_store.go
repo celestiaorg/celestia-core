@@ -2,7 +2,6 @@ package store
 
 import (
 	"bufio"
-	"bytes"
 	"fmt"
 	"io"
 	"os"
@@ -19,8 +18,8 @@ import (
 	sm "github.com/cometbft/cometbft/state"
 	"github.com/cometbft/cometbft/types"
 	"github.com/cosmos/gogoproto/proto"
-	"github.com/golang/snappy"
 	lru "github.com/hashicorp/golang-lru/v2"
+	"github.com/klauspost/compress/s2"
 )
 
 const (
@@ -756,15 +755,7 @@ func compressData(data []byte) ([]byte, error) {
 	if len(data) < compressionThreshold {
 		return data, nil
 	}
-	var buf bytes.Buffer
-	writer := snappy.NewBufferedWriter(&buf)
-	if _, err := writer.Write(data); err != nil {
-		return nil, err
-	}
-	if err := writer.Close(); err != nil {
-		return nil, err
-	}
-	return buf.Bytes(), nil
+	return s2.EncodeSnappy(nil, data), nil
 }
 
 // Add decompression helper
@@ -772,10 +763,9 @@ func decompressData(data []byte) ([]byte, error) {
 	if len(data) < compressionThreshold {
 		return data, nil
 	}
-	reader := snappy.NewReader(bytes.NewReader(data))
-	decompressed, err := io.ReadAll(reader)
+	decompressed, err := s2.Decode(nil, data)
 	if err != nil {
-		return nil, fmt.Errorf("snappy decompress failed for data of len %d: %w. Original data might be corrupted or was not compressed as expected", len(data), err)
+		return nil, fmt.Errorf("s2 decompress failed for data of len %d: %w. Original data might be corrupted or was not compressed as expected", len(data), err)
 	}
 	return decompressed, nil
 }
