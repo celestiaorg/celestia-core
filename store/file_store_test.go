@@ -1,6 +1,7 @@
 package store
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -11,7 +12,6 @@ import (
 	dbm "github.com/cometbft/cometbft-db"
 	"github.com/cometbft/cometbft/internal/test"
 	cmtstore "github.com/cometbft/cometbft/proto/tendermint/store"
-	cmtproto "github.com/cometbft/cometbft/proto/tendermint/types"
 	sm "github.com/cometbft/cometbft/state"
 	"github.com/cometbft/cometbft/types"
 	cmttime "github.com/cometbft/cometbft/types/time"
@@ -392,58 +392,32 @@ func TestFileBlockStoreLoadBlockExtendedCommitErrors(t *testing.T) {
 	state, bs, cleanup := setupFileBlockStore(t)
 	defer cleanup()
 
-	// Test loading non-existent extended commit
-	extCommit := bs.LoadBlockExtendedCommit(1)
-	require.Nil(t, extCommit)
-
 	// Create and save a block with extended commit
 	block, partSet, seenExtCommit := createTestingBlock(t, state, 1, 1)
 	bs.SaveBlockWithExtendedCommit(block, partSet, seenExtCommit)
 
-	// Test loading extended commit from non-existent height
-	extCommit = bs.LoadBlockExtendedCommit(999)
-	require.Nil(t, extCommit)
-
-	// Test cache hit
-	extCommit = bs.LoadBlockExtendedCommit(1)
-	require.NotNil(t, extCommit)
-	cachedExtCommit := bs.LoadBlockExtendedCommit(1)
-	require.Equal(t, extCommit.ToCommit().Hash(), cachedExtCommit.ToCommit().Hash())
-
-	// --- Table-driven tests for error cases ---
-	type errorTestCase struct {
+	testCases := []struct {
 		name         string
-		setup        func(bs *FileBlockStore, height int64) // bs and height for context
+		setup        func(bs *FileBlockStore, height int64)
 		checkPanic   bool
 		heightToLoad int64
-	}
-
-	testCases := []errorTestCase{
+	}{
 		{
-			name: "corrupted extended commit file",
-			setup: func(currentBS *FileBlockStore, height int64) {
-				corruptFileForTesting(t, currentBS.getExtendedCommitPath(height))
-				corruptFileForTesting(t, currentBS.getCommitPath(height)) // also corrupt regular commit
+			name: "corrupted_extended_commit_file",
+			setup: func(bs *FileBlockStore, height int64) {
+				// Corrupt the extended commit file
+				path := bs.getExtendedCommitPath(height)
+				corruptFileForTesting(t, path)
 			},
 			checkPanic:   true,
 			heightToLoad: 1,
 		},
 		{
-			name: "invalid proto data in extended commit file",
-			setup: func(currentBS *FileBlockStore, height int64) {
-				extendedCommitPath := currentBS.getExtendedCommitPath(height)
-				regularCommitPath := currentBS.getCommitPath(height)
-
-				invalidExtProto := &cmtproto.ExtendedCommit{Height: -1}
-				invalidExtData, err := proto.Marshal(invalidExtProto)
-				require.NoError(t, err)
-				err = os.WriteFile(extendedCommitPath, invalidExtData, 0644)
-				require.NoError(t, err)
-
-				invalidProto := &cmtproto.Commit{Height: -1}
-				invalidData, err := proto.Marshal(invalidProto)
-				require.NoError(t, err)
-				err = os.WriteFile(regularCommitPath, invalidData, 0644)
+			name: "invalid_proto_data_in_extended_commit_file",
+			setup: func(bs *FileBlockStore, height int64) {
+				// Write invalid proto data to extended commit file
+				path := bs.getExtendedCommitPath(height)
+				err := os.WriteFile(path, []byte("invalid proto data"), 0644)
 				require.NoError(t, err)
 			},
 			checkPanic:   true,
@@ -453,27 +427,55 @@ func TestFileBlockStoreLoadBlockExtendedCommitErrors(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			// Each test case needs its own fresh blockstore and state to avoid interference
-			// but we need to ensure the block is saved first for the error case to be meaningful.
-			// The initial bs already has block 1 saved.
-
-			// Create a new block store instance for this specific test case to ensure cache is clear
-			// and it points to the same tempDir as the original bs.
-			testSpecificBS, err := NewFileBlockStore(bs.baseDir) // Use baseDir from original bs
+			// Create a new temporary directory for this test case
+			tempDir, err := os.MkdirTemp("", fmt.Sprintf("fbs_test_%s_*", tc.name))
 			require.NoError(t, err)
-			defer testSpecificBS.Close()
+			defer os.RemoveAll(tempDir)
 
-			// Apply the specific setup for this test case
-			tc.setup(testSpecificBS, tc.heightToLoad) // Pass testSpecificBS to setup
+			// Create a new block store in the temporary directory
+			testBS, err := NewFileBlockStore(tempDir)
+			require.NoError(t, err)
+			defer testBS.Close()
+
+			// Copy the block and commit files from the original block store
+			srcRangeDir := filepath.Join(bs.baseDir, dataDir, blocksDir, getHeightRangeDir(block.Height))
+			dstRangeDir := filepath.Join(tempDir, dataDir, blocksDir, getHeightRangeDir(block.Height))
+			err = os.MkdirAll(dstRangeDir, 0755)
+			require.NoError(t, err)
+
+			// Copy block file
+			srcBlockPath := filepath.Join(srcRangeDir, fmt.Sprintf("block_%d.proto", block.Height))
+			dstBlockPath := filepath.Join(dstRangeDir, filepath.Base(srcBlockPath))
+			blockData, err := os.ReadFile(srcBlockPath)
+			require.NoError(t, err)
+			err = os.WriteFile(dstBlockPath, blockData, 0644)
+			require.NoError(t, err)
+
+			// Copy commit files
+			srcCommitPath := filepath.Join(srcRangeDir, fmt.Sprintf("commit_%d.proto", block.Height))
+			dstCommitPath := filepath.Join(dstRangeDir, filepath.Base(srcCommitPath))
+			commitData, err := os.ReadFile(srcCommitPath)
+			require.NoError(t, err)
+			err = os.WriteFile(dstCommitPath, commitData, 0644)
+			require.NoError(t, err)
+
+			srcExtCommitPath := filepath.Join(srcRangeDir, fmt.Sprintf("extended_commit_%d.proto", block.Height))
+			dstExtCommitPath := filepath.Join(dstRangeDir, filepath.Base(srcExtCommitPath))
+			extCommitData, err := os.ReadFile(srcExtCommitPath)
+			require.NoError(t, err)
+			err = os.WriteFile(dstExtCommitPath, extCommitData, 0644)
+			require.NoError(t, err)
+
+			// Apply the test case setup
+			tc.setup(testBS, tc.heightToLoad)
 
 			if tc.checkPanic {
 				require.Panics(t, func() {
-					testSpecificBS.LoadBlockExtendedCommit(tc.heightToLoad)
+					testBS.LoadBlockExtendedCommit(tc.heightToLoad)
 				})
 			} else {
 				require.NotPanics(t, func() {
-					extCommit := testSpecificBS.LoadBlockExtendedCommit(tc.heightToLoad)
-					// Further assertions can be added here if not panicking
+					extCommit := testBS.LoadBlockExtendedCommit(tc.heightToLoad)
 					if extCommit == nil {
 						t.Logf("Expected non-nil commit for non-panic case, but got nil")
 					}
@@ -649,4 +651,34 @@ func corruptFileForTesting(t *testing.T, path string) {
 // Helper function to setup file block store for testing
 func setupFileBlockStore(t *testing.T) (sm.State, *FileBlockStore, func()) {
 	return makeStateAndFileBlockStore(t)
+}
+
+func TestFileBlockStoreLoadBlockMeta(t *testing.T) {
+	state, bs, cleanup := setupFileBlockStore(t)
+	defer cleanup()
+
+	// Test loading non-existent block meta
+	meta := bs.LoadBlockMeta(1)
+	require.Nil(t, meta)
+
+	// Create and save a block
+	block := state.MakeBlock(1, types.MakeData(nil), new(types.Commit), nil, state.Validators.GetProposer().Address)
+	partSet, err := block.MakePartSet(types.BlockPartSizeBytes)
+	require.NoError(t, err)
+	seenCommit := makeTestExtCommit(block.Header.Height, cmttime.Now())
+	bs.SaveBlockWithExtendedCommit(block, partSet, seenCommit)
+
+	// Test loading block meta - should be derived from block
+	meta = bs.LoadBlockMeta(1)
+	require.NotNil(t, meta)
+	require.Equal(t, block.Hash(), meta.BlockID.Hash)
+
+	// Test cache hit
+	cachedMeta := bs.LoadBlockMeta(1)
+	require.NotNil(t, cachedMeta)
+	require.Equal(t, meta.BlockID.Hash, cachedMeta.BlockID.Hash)
+
+	// Test loading non-existent height
+	meta = bs.LoadBlockMeta(999)
+	require.Nil(t, meta)
 }

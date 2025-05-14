@@ -177,6 +177,10 @@ func BenchmarkBlockStore_LoadBlockMeta(b *testing.B) {
 	benchmarkLoadOperation(b, "LoadBlockMeta", func(bsInf interface{}, height int64) {
 		switch s := bsInf.(type) {
 		case *FileBlockStore:
+			// Test both cache hit and cache miss scenarios
+			if b.N%2 == 0 {
+				s.metaCache.Remove(height) // Force cache miss to test derivation
+			}
 			_ = s.LoadBlockMeta(height)
 		case *BlockStore:
 			_ = s.LoadBlockMeta(height)

@@ -3,17 +3,15 @@ package store
 import (
 	"bufio"
 	"bytes"
-	"encoding/gob"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
-	"sort"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 
+	dbm "github.com/cometbft/cometbft-db"
 	abci "github.com/cometbft/cometbft/abci/types"
 	cmtsync "github.com/cometbft/cometbft/libs/sync"
 	cmtstore "github.com/cometbft/cometbft/proto/tendermint/store"
@@ -37,10 +35,6 @@ const (
 	// Height range size for directory organization
 	heightRangeSize = 1000
 
-	// Thresholds for parallel processing
-	minBlockSizeForParallel = 1024 * 1024 // 1MB
-	maxParallelWriters      = 4
-
 	// Compression settings
 	compressionThreshold = 1024 * 64 // 64KB minimum size for compression
 	// Cache settings
@@ -48,9 +42,6 @@ const (
 	extendedCacheSize = 1000
 	blockCacheSize    = 50  // Fewer blocks but larger size
 	metaCacheSize     = 200 // More metadata entries as they're smaller
-
-	// File name for the persistent hash-to-height index
-	hashIndexFile = "hash_to_height.idx"
 )
 
 // FileBlockStore implements both BlockStore and Store interfaces using the file system
@@ -82,8 +73,8 @@ type FileBlockStore struct {
 	blockDataCache           *lru.Cache[int64, *blockCacheEntry]
 	metaCache                *lru.Cache[int64, []byte]
 
-	hashToHeight   map[string]int64
-	hashToHeightMu cmtsync.RWMutex
+	// Database for hash -> height index
+	db dbm.DB
 }
 
 // Helper function to get the directory for a given height range
@@ -99,11 +90,6 @@ func (bs *FileBlockStore) getBlockPath(height int64) string {
 	return filepath.Join(bs.baseDir, dataDir, blocksDir, rangeDir, fmt.Sprintf("block_%d.proto", height))
 }
 
-func (bs *FileBlockStore) getMetaPath(height int64) string {
-	rangeDir := getHeightRangeDir(height)
-	return filepath.Join(bs.baseDir, dataDir, blocksDir, rangeDir, fmt.Sprintf("meta_%d.proto", height))
-}
-
 func (bs *FileBlockStore) getCommitPath(height int64) string {
 	rangeDir := getHeightRangeDir(height)
 	return filepath.Join(bs.baseDir, dataDir, blocksDir, rangeDir, fmt.Sprintf("commit_%d.proto", height))
@@ -116,10 +102,6 @@ func (bs *FileBlockStore) getExtendedCommitPath(height int64) string {
 
 func (bs *FileBlockStore) getStatePath() string {
 	return filepath.Join(bs.baseDir, stateDir, "state.json")
-}
-
-func (bs *FileBlockStore) getHashIndexPath() string {
-	return filepath.Join(bs.baseDir, stateDir, hashIndexFile)
 }
 
 // NewFileBlockStore creates a new file-based store that implements both BlockStore and Store interfaces
@@ -143,17 +125,26 @@ func NewFileBlockStore(baseDir string) (*FileBlockStore, error) {
 		return nil, fmt.Errorf("failed to load block store state: %w", err)
 	}
 
+	// Open the database for hash -> height index
+	db, err := dbm.NewDB("hash_index", "goleveldb", filepath.Join(baseDir, "hash_index"))
+	if err != nil {
+		return nil, fmt.Errorf("failed to create hash index database: %w", err)
+	}
+
 	bs := &FileBlockStore{
 		baseDir: baseDir,
 		base:    state.Base,
 		height:  state.Height,
+		db:      db,
 	}
 
 	if err := bs.addCaches(); err != nil {
+		db.Close()
 		return nil, fmt.Errorf("failed to add caches: %w", err)
 	}
 
 	if err := bs.initHashIndex(); err != nil {
+		db.Close()
 		return nil, fmt.Errorf("failed to initialize hash index: %w", err)
 	}
 
@@ -231,14 +222,14 @@ func (bs *FileBlockStore) saveBlockStoreState() error {
 
 // Close implements the BlockStore interface
 func (bs *FileBlockStore) Close() error {
-	if err := bs.saveHashIndex(); err != nil {
-		return fmt.Errorf("failed to save hash index on close: %w", err)
-	}
-	return nil
+	return bs.db.Close()
 }
 
 // LoadBlock implements the BlockStore interface
 func (bs *FileBlockStore) LoadBlock(height int64) *types.Block {
+	bs.mtx.RLock()
+	defer bs.mtx.RUnlock()
+
 	// Check cache first
 	if entry, ok := bs.blockDataCache.Get(height); ok {
 		pbb := new(cmtproto.Block)
@@ -254,12 +245,7 @@ func (bs *FileBlockStore) LoadBlock(height int64) *types.Block {
 		return block
 	}
 
-	blockMeta := bs.LoadBlockMeta(height)
-	if blockMeta == nil {
-		return nil
-	}
-
-	// Read and decompress block file
+	// Read and decompress block file directly without checking meta
 	blockPath := bs.getBlockPath(height)
 	data, err := os.ReadFile(blockPath)
 	if err != nil {
@@ -305,24 +291,61 @@ func (bs *FileBlockStore) LoadBlockByHash(hash []byte) *types.Block {
 
 // LoadBlockMeta implements the BlockStore interface
 func (bs *FileBlockStore) LoadBlockMeta(height int64) *types.BlockMeta {
-	metaPath := bs.getMetaPath(height)
-	data, err := os.ReadFile(metaPath)
+	bs.mtx.RLock()
+	defer bs.mtx.RUnlock()
+
+	// Check meta cache first
+	if cachedMetaBytes, ok := bs.metaCache.Get(height); ok {
+		pbbm := new(cmtproto.BlockMeta)
+		if err := proto.Unmarshal(cachedMetaBytes, pbbm); err != nil {
+			panic(fmt.Sprintf("Error unmarshaling cached block meta: %v", err))
+		}
+		blockMeta, err := types.BlockMetaFromTrustedProto(pbbm)
+		if err != nil {
+			panic(fmt.Sprintf("Error converting cached block meta from proto: %v", err))
+		}
+		return blockMeta
+	}
+
+	// Load the block directly without recursion
+	blockPath := bs.getBlockPath(height)
+	data, err := os.ReadFile(blockPath)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return nil
 		}
-		panic(fmt.Sprintf("Error reading block meta file: %v", err))
+		panic(fmt.Sprintf("Error reading block file: %v", err))
 	}
 
-	pbbm := new(cmtproto.BlockMeta)
-	if err := proto.Unmarshal(data, pbbm); err != nil {
-		panic(fmt.Sprintf("Error unmarshaling block meta: %v", err))
-	}
-
-	blockMeta, err := types.BlockMetaFromTrustedProto(pbbm)
+	decompressed, err := decompressData(data)
 	if err != nil {
-		panic(fmt.Sprintf("Error converting block meta from proto: %v", err))
+		panic(fmt.Sprintf("Error decompressing block data: %v", err))
 	}
+
+	pbb := new(cmtproto.Block)
+	if err := proto.Unmarshal(decompressed, pbb); err != nil {
+		panic(fmt.Sprintf("Error unmarshaling block: %v", err))
+	}
+
+	block, err := types.BlockFromProto(pbb)
+	if err != nil {
+		panic(fmt.Sprintf("Error converting block from proto: %v", err))
+	}
+
+	// Create block meta from block
+	partSet, err := block.MakePartSet(types.BlockPartSizeBytes)
+	if err != nil {
+		panic(fmt.Sprintf("Error creating part set for block %d: %v", height, err))
+	}
+	blockMeta := types.NewBlockMeta(block, partSet)
+
+	// Cache the meta information
+	metaProto := blockMeta.ToProto()
+	metaData, err := proto.Marshal(metaProto)
+	if err != nil {
+		panic(fmt.Sprintf("Error marshaling block meta: %v", err))
+	}
+	bs.metaCache.Add(height, metaData)
 
 	return blockMeta
 }
@@ -347,29 +370,20 @@ func (bs *FileBlockStore) LoadBlockPart(height int64, index int) *types.Part {
 }
 
 // SaveBlock implements the BlockStore interface
-//
-// This method saves a block and its associated data to the filesystem.
-// The block is saved in multiple files:
-// 1. Block file: Contains the full block data.
-// 2. Meta file: Contains block metadata.
-// 3. Commit file: Contains the commit data.
-//
-// Note: This method panics on errors to match the behavior of the original BlockStore.
-// Future versions should consider returning errors instead.
 func (bs *FileBlockStore) SaveBlock(block *types.Block, blockParts *types.PartSet, seenCommit *types.Commit) {
 	bs.mtx.Lock()
 	defer bs.mtx.Unlock()
 
 	height := block.Height
 
-	// Create height range directory (partsDir is no longer created)
+	// Create height range directory
 	rangeDir := getHeightRangeDir(height)
 	blockRangeDir := filepath.Join(bs.baseDir, dataDir, blocksDir, rangeDir)
 	if err := os.MkdirAll(blockRangeDir, 0755); err != nil {
 		panic(fmt.Sprintf("Error creating directory %s: %v", blockRangeDir, err))
 	}
 
-	// Prepare all data in memory first
+	// Prepare block data
 	blockProto, err := block.ToProto()
 	if err != nil {
 		panic(fmt.Sprintf("Error converting block to proto: %v", err))
@@ -377,13 +391,6 @@ func (bs *FileBlockStore) SaveBlock(block *types.Block, blockParts *types.PartSe
 	blockData, err := proto.Marshal(blockProto)
 	if err != nil {
 		panic(fmt.Sprintf("Error marshaling block: %v", err))
-	}
-
-	blockMeta := types.NewBlockMeta(block, blockParts)
-	metaProto := blockMeta.ToProto()
-	metaData, err := proto.Marshal(metaProto)
-	if err != nil {
-		panic(fmt.Sprintf("Error marshaling block meta: %v", err))
 	}
 
 	// Prepare commit data if available
@@ -396,100 +403,56 @@ func (bs *FileBlockStore) SaveBlock(block *types.Block, blockParts *types.PartSe
 		}
 	}
 
-	// Determine if we should use parallel processing (based on block, meta, commit only)
-	useParallel := len(blockData) > minBlockSizeForParallel // Simplified condition
+	// Save block data
+	compressedBlockData, err := compressData(blockData)
+	if err != nil {
+		panic(fmt.Sprintf("Error compressing block data: %v", err))
+	}
+	if err := bs.writeFileWithBuffer(bs.getBlockPath(height), compressedBlockData); err != nil {
+		panic(fmt.Sprintf("Error writing block file: %v", err))
+	}
 
-	if useParallel {
-		var wg sync.WaitGroup
-		errChan := make(chan error, 3) // Buffer for block, meta, commit
-
-		// Write block file
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			if err := bs.writeFileWithBuffer(bs.getBlockPath(height), blockData); err != nil {
-				errChan <- fmt.Errorf("error writing block file: %w", err)
-			}
-		}()
-
-		// Write meta file
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			if err := bs.writeFileWithBuffer(bs.getMetaPath(height), metaData); err != nil {
-				errChan <- fmt.Errorf("error writing block meta file: %w", err)
-			}
-		}()
-
-		// Write commit file if available
-		if seenCommit != nil {
-			wg.Add(1)
-			go func() {
-				defer wg.Done()
-				if err := bs.writeFileWithBuffer(bs.getCommitPath(height), commitData); err != nil {
-					errChan <- fmt.Errorf("error writing commit file: %w", err)
-				}
-			}()
-		}
-
-		// Wait for all writes to complete
-		wg.Wait()
-		close(errChan)
-
-		// Check for any errors
-		for err := range errChan {
-			panic(err)
-		}
-	} else {
-		// Use sequential processing for small blocks
-		if err := bs.writeFileWithBuffer(bs.getBlockPath(height), blockData); err != nil {
-			panic(fmt.Sprintf("Error writing block file: %v", err))
-		}
-
-		if err := bs.writeFileWithBuffer(bs.getMetaPath(height), metaData); err != nil {
-			panic(fmt.Sprintf("Error writing block meta file: %v", err))
-		}
-
-		if seenCommit != nil {
-			if err := bs.writeFileWithBuffer(bs.getCommitPath(height), commitData); err != nil {
-				panic(fmt.Sprintf("Error writing commit file: %v", err))
-			}
+	// Save commit data if available
+	if commitData != nil {
+		if err := bs.writeFileWithBuffer(bs.getCommitPath(height), commitData); err != nil {
+			panic(fmt.Sprintf("Error writing commit file: %v", err))
 		}
 	}
 
-	// Update state
-	if bs.height < height {
+	// Update hash index
+	bs.updateHashIndex(height, block.Hash())
+
+	// Update block store state
+	if height > bs.height {
 		bs.height = height
 	}
 	if bs.base == 0 {
 		bs.base = height
 	}
-
 	if err := bs.saveBlockStoreState(); err != nil {
 		panic(fmt.Sprintf("Error saving block store state: %v", err))
 	}
-
-	// Update hash index
-	bs.updateHashIndex(block.Height, blockMeta.BlockID.Hash)
 }
 
-// Helper function to get height from hash.
-// Relies solely on the in-memory index (populated by initHashIndex).
-// The disk scanning fallback has been removed to ensure O(1) access if the item is in the map.
+// Helper function to get height from hash using the KV database
 func (bs *FileBlockStore) getHeightFromHash(hash []byte) (int64, error) {
 	if len(hash) == 0 {
 		return 0, fmt.Errorf("empty hash")
 	}
 
-	bs.hashToHeightMu.RLock()
-	height, ok := bs.hashToHeight[string(hash)]
-	bs.hashToHeightMu.RUnlock()
-
-	if !ok {
-		// If hash is not in the map, it means it's not known to the store via its index.
-		// No disk scan is performed here to maintain O(1) lookup, assuming initHashIndex built it correctly.
-		return 0, fmt.Errorf("block with hash %x not found in pre-loaded hash-to-height index", hash)
+	bz, err := bs.db.Get(calcBlockHashKey(hash))
+	if err != nil {
+		return 0, fmt.Errorf("failed to get height from hash: %w", err)
 	}
+	if len(bz) == 0 {
+		return 0, fmt.Errorf("block with hash %x not found", hash)
+	}
+
+	height, err := strconv.ParseInt(string(bz), 10, 64)
+	if err != nil {
+		return 0, fmt.Errorf("failed to parse height from %s: %w", string(bz), err)
+	}
+
 	return height, nil
 }
 
@@ -589,16 +552,44 @@ func (bs *FileBlockStore) LoadBlockExtendedCommit(height int64) *types.ExtendedC
 
 // LoadSeenCommit implements the BlockStore interface
 func (bs *FileBlockStore) LoadSeenCommit(height int64) *types.Commit {
+	bs.mtx.RLock()
+	defer bs.mtx.RUnlock()
+
 	// Check cache first
 	if commit, ok := bs.seenCommitCache.Get(height); ok {
 		return commit
 	}
 
-	// For file-based store, we use the same commit file
-	commit := bs.LoadBlockCommit(height)
-	if commit != nil {
+	// Try loading from extended commit first
+	extCommit := bs.LoadBlockExtendedCommit(height)
+	if extCommit != nil {
+		commit := extCommit.ToCommit()
 		bs.seenCommitCache.Add(height, commit)
+		return commit
 	}
+
+	// Try loading from regular commit file
+	commitPath := bs.getCommitPath(height)
+	data, err := os.ReadFile(commitPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		panic(fmt.Sprintf("Error reading commit file: %v", err))
+	}
+
+	pbc := new(cmtproto.Commit)
+	if err := proto.Unmarshal(data, pbc); err != nil {
+		panic(fmt.Sprintf("Error unmarshaling commit: %v", err))
+	}
+
+	commit, err := types.CommitFromProto(pbc)
+	if err != nil {
+		panic(fmt.Sprintf("Error converting commit from proto: %v", err))
+	}
+
+	// Cache the commit
+	bs.seenCommitCache.Add(height, commit)
 
 	return commit
 }
@@ -632,135 +623,92 @@ func (bs *FileBlockStore) SaveSeenCommit(height int64, seenCommit *types.Commit)
 	return nil
 }
 
-// PruneBlocks implements the BlockStore interface
-//
-// This method removes blocks up to (but not including) the given height.
-// It deletes all associated files (block, meta, commit) for each pruned block.
+// PruneBlocks removes blocks up to the given height
 func (bs *FileBlockStore) PruneBlocks(height int64, state sm.State) (uint64, int64, error) {
 	bs.mtx.Lock()
 	defer bs.mtx.Unlock()
 
 	if height <= 0 {
-		return 0, 0, fmt.Errorf("height must be greater than 0")
+		return 0, 0, fmt.Errorf("invalid height %d", height)
 	}
-
 	if height > bs.height {
 		return 0, 0, fmt.Errorf("cannot prune beyond the latest height %d", bs.height)
 	}
-
 	if height < bs.base {
-		return 0, 0, fmt.Errorf("cannot prune to height %d, it is below the base height %d", height, bs.base)
+		return 0, 0, fmt.Errorf("cannot prune below base height %d", bs.base)
 	}
 
-	// Calculate the number of blocks to prune
-	blocksToPrune := height - bs.base + 1
-	if blocksToPrune <= 0 {
-		return 0, 0, nil
-	}
+	pruned := uint64(0)
+	previousBase := bs.base
 
-	// Clear caches for pruned blocks
-	for h := bs.base; h <= height; h++ {
-		bs.blockDataCache.Remove(h)
-		bs.metaCache.Remove(h)
-		bs.seenCommitCache.Remove(h)
-		bs.blockCommitCache.Remove(h)
-		bs.blockExtendedCommitCache.Remove(h)
-	}
-
-	// Group heights by range directory for batch processing
-	rangeDirs := make(map[string][]int64)
+	// Group files by range directory for more efficient deletion
+	rangeMap := make(map[string][]int64)
 	for h := bs.base; h <= height; h++ {
 		rangeDir := getHeightRangeDir(h)
-		rangeDirs[rangeDir] = append(rangeDirs[rangeDir], h)
+		rangeMap[rangeDir] = append(rangeMap[rangeDir], h)
 	}
 
-	// Use a WaitGroup to wait for all deletions to complete
-	var wg sync.WaitGroup
-	errChan := make(chan error, len(rangeDirs))
-
-	// Process each range directory in parallel
-	for rangeDir, heights := range rangeDirs {
-		wg.Add(1)
-		go func(dir string, blockHeights []int64) {
-			defer wg.Done()
-
-			// Get all files to delete for this range
-			var filesToDelete []string
-
-			// Add block, meta, and commit files
-			for _, h := range blockHeights {
-				filesToDelete = append(filesToDelete,
-					bs.getBlockPath(h),
-					bs.getMetaPath(h),
-					bs.getCommitPath(h),
-					bs.getExtendedCommitPath(h),
-				)
+	// Process each range directory
+	for rangeDir, heights := range rangeMap {
+		// Remove files for each height in this range
+		for _, h := range heights {
+			// Remove block file
+			if err := os.Remove(bs.getBlockPath(h)); err != nil && !os.IsNotExist(err) {
+				return pruned, previousBase, fmt.Errorf("failed to remove block file at height %d: %w", h, err)
 			}
 
-			// Delete all files in parallel
-			var fileWg sync.WaitGroup
-			fileErrChan := make(chan error, len(filesToDelete))
-
-			for _, file := range filesToDelete {
-				fileWg.Add(1)
-				go func(f string) {
-					defer fileWg.Done()
-					if err := os.Remove(f); err != nil && !os.IsNotExist(err) {
-						fileErrChan <- fmt.Errorf("failed to remove file %s: %w", f, err)
-					}
-				}(file)
+			// Remove commit files
+			if err := os.Remove(bs.getCommitPath(h)); err != nil && !os.IsNotExist(err) {
+				return pruned, previousBase, fmt.Errorf("failed to remove commit file at height %d: %w", h, err)
+			}
+			if err := os.Remove(bs.getExtendedCommitPath(h)); err != nil && !os.IsNotExist(err) {
+				return pruned, previousBase, fmt.Errorf("failed to remove extended commit file at height %d: %w", h, err)
 			}
 
-			fileWg.Wait()
-			close(fileErrChan)
+			// Clear caches
+			bs.blockDataCache.Remove(h)
+			bs.metaCache.Remove(h)
+			bs.blockCommitCache.Remove(h)
+			bs.blockExtendedCommitCache.Remove(h)
+			bs.seenCommitCache.Remove(h)
 
-			// Check for any file deletion errors
-			for err := range fileErrChan {
-				errChan <- err
-				return
+			pruned++
+		}
+
+		// Try to remove the range directory if empty
+		rangePath := filepath.Join(bs.baseDir, dataDir, blocksDir, rangeDir)
+		if empty, err := isDirEmpty(rangePath); err == nil && empty {
+			if err := os.Remove(rangePath); err != nil && !os.IsNotExist(err) {
+				// Non-critical error, just log it
+				fmt.Printf("Warning: failed to remove empty range directory %s: %v\n", rangePath, err)
 			}
-
-			// Try to remove empty directories
-			os.Remove(filepath.Join(bs.baseDir, dataDir, blocksDir, dir))
-		}(rangeDir, heights)
+		}
 	}
 
-	// Wait for all range directories to be processed
-	wg.Wait()
-	close(errChan)
-
-	// Check for any errors
-	for err := range errChan {
-		return 0, 0, err
-	}
-
-	// Update base height
-	oldBase := bs.base
+	// Update base height to be one more than the pruned height
 	bs.base = height + 1
 
-	// Save state
+	// Save updated state
 	if err := bs.saveBlockStoreState(); err != nil {
-		return 0, 0, fmt.Errorf("failed to save block store state: %w", err)
+		return pruned, previousBase, fmt.Errorf("failed to save block store state: %w", err)
 	}
 
-	// Remove pruned blocks from hash index (in-memory and on-disk)
-	bs.hashToHeightMu.Lock()
-	changed := false
-	for hash, h := range bs.hashToHeight {
-		if h <= height {
-			delete(bs.hashToHeight, hash)
-			changed = true
-		}
-	}
-	bs.hashToHeightMu.Unlock()
+	return pruned, previousBase, nil
+}
 
-	if changed {
-		if err := bs.saveHashIndex(); err != nil {
-			panic(fmt.Sprintf("Critical: failed to save hash index after pruning: %v", err))
-		}
+// Helper function to check if a directory is empty
+func isDirEmpty(path string) (bool, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return false, err
 	}
+	defer f.Close()
 
-	return uint64(blocksToPrune), oldBase, nil
+	_, err = f.Readdirnames(1)
+	if err == io.EOF {
+		return true, nil
+	}
+	return false, err
 }
 
 // DeleteLatestBlock implements the BlockStore interface
@@ -772,102 +720,35 @@ func (bs *FileBlockStore) DeleteLatestBlock() error {
 		return fmt.Errorf("no blocks to delete")
 	}
 
-	currentHeight := bs.height
-	oldBase := bs.base // Capture oldBase before it's potentially modified
+	height := bs.height
 
-	// Clear caches for the deleted block
-	bs.blockDataCache.Remove(currentHeight)
-	bs.metaCache.Remove(currentHeight)
-	bs.seenCommitCache.Remove(currentHeight)
-	bs.blockCommitCache.Remove(currentHeight)
-	bs.blockExtendedCommitCache.Remove(currentHeight)
-
-	// Remove block files
-	blockPath := bs.getBlockPath(currentHeight)
-	if err := os.Remove(blockPath); err != nil && !os.IsNotExist(err) {
+	// Remove block file
+	if err := os.Remove(bs.getBlockPath(height)); err != nil && !os.IsNotExist(err) {
 		return fmt.Errorf("failed to remove block file: %w", err)
 	}
 
-	// Remove meta files
-	metaPath := bs.getMetaPath(currentHeight)
-	if err := os.Remove(metaPath); err != nil && !os.IsNotExist(err) {
-		return fmt.Errorf("failed to remove meta file: %w", err)
-	}
-
 	// Remove commit files
-	commitPath := bs.getCommitPath(currentHeight)
-	if err := os.Remove(commitPath); err != nil && !os.IsNotExist(err) {
+	if err := os.Remove(bs.getCommitPath(height)); err != nil && !os.IsNotExist(err) {
 		return fmt.Errorf("failed to remove commit file: %w", err)
 	}
-
-	// Remove extended commit files (This was correct, it is not related to part removal, it is a separate file type)
-	extendedCommitPath := bs.getExtendedCommitPath(currentHeight)
-	if err := os.Remove(extendedCommitPath); err != nil && !os.IsNotExist(err) {
+	if err := os.Remove(bs.getExtendedCommitPath(height)); err != nil && !os.IsNotExist(err) {
 		return fmt.Errorf("failed to remove extended commit file: %w", err)
 	}
 
-	// Update height
-	bs.height = currentHeight - 1
+	// Clear caches
+	bs.blockDataCache.Remove(height)
+	bs.metaCache.Remove(height)
+	bs.blockCommitCache.Remove(height)
+	bs.blockExtendedCommitCache.Remove(height)
+	bs.seenCommitCache.Remove(height)
+
+	// Update state
+	bs.height--
 	if bs.height < bs.base {
 		bs.base = bs.height
-		if bs.height == 0 {
-			bs.base = 0
-		}
-	}
-	if bs.height == 0 && oldBase == 1 {
-		bs.base = 0
 	}
 
-	// Save state
-	if err := bs.saveBlockStoreState(); err != nil {
-		return fmt.Errorf("failed to save block store state: %w", err)
-	}
-
-	// Remove from hash index (in-memory and on-disk)
-	bs.hashToHeightMu.Lock()
-	changed := false
-	var deletedHash string
-	for hash, h := range bs.hashToHeight {
-		if h == currentHeight {
-			deletedHash = hash
-			delete(bs.hashToHeight, hash)
-			changed = true
-			break // Assuming one hash per height
-		}
-	}
-	bs.hashToHeightMu.Unlock()
-
-	if changed {
-		if err := bs.saveHashIndex(); err != nil {
-			panic(fmt.Sprintf("Critical: failed to save hash index after deleting latest block for hash %s: %v", deletedHash, err))
-		}
-	}
-
-	return nil
-}
-
-// Add this helper function for preparing block data.
-// It prepares marshaled block and meta data.
-func (bs *FileBlockStore) prepareBlockData(block *types.Block, blockParts *types.PartSet) ([]byte, []byte, error) {
-	// Prepare block data
-	blockProto, err := block.ToProto()
-	if err != nil {
-		return nil, nil, fmt.Errorf("error converting block to proto: %w", err)
-	}
-	blockData, err := proto.Marshal(blockProto)
-	if err != nil {
-		return nil, nil, fmt.Errorf("error marshaling block: %w", err)
-	}
-
-	// Prepare meta data
-	blockMeta := types.NewBlockMeta(block, blockParts)
-	metaProto := blockMeta.ToProto()
-	metaData, err := proto.Marshal(metaProto)
-	if err != nil {
-		return nil, nil, fmt.Errorf("error marshaling block meta: %w", err)
-	}
-
-	return blockData, metaData, nil
+	return bs.saveBlockStoreState()
 }
 
 // Add compression helper
@@ -901,37 +782,36 @@ func decompressData(data []byte) ([]byte, error) {
 
 // Add this type for block data caching
 type blockCacheEntry struct {
-	data []byte
-	meta []byte
-	// extendedCommit and regularCommit store the marshaled commit data
-	extendedCommit []byte
-	regularCommit  []byte
-	timestamp      time.Time
+	data      []byte
+	timestamp time.Time
 }
 
-// Modify SaveBlockWithExtendedCommit to use compression and enhanced caching.
-// Individual block parts are not saved to separate files.
+// SaveBlockWithExtendedCommit saves a block with extended commit information
 func (bs *FileBlockStore) SaveBlockWithExtendedCommit(block *types.Block, blockParts *types.PartSet, seenExtendedCommit *types.ExtendedCommit) {
 	bs.mtx.Lock()
 	defer bs.mtx.Unlock()
 
 	height := block.Height
 
+	// Create height range directory
 	rangeDir := getHeightRangeDir(height)
 	blockRangeDir := filepath.Join(bs.baseDir, dataDir, blocksDir, rangeDir)
-
 	if err := os.MkdirAll(blockRangeDir, 0755); err != nil {
 		panic(fmt.Sprintf("Error creating directory %s: %v", blockRangeDir, err))
 	}
 
-	// Prepare and compress all data first
-	blockData, metaData, err := bs.prepareBlockData(block, blockParts)
+	// Prepare block data
+	blockProto, err := block.ToProto()
 	if err != nil {
-		panic(fmt.Sprintf("Error preparing block data: %v", err))
+		panic(fmt.Sprintf("Error converting block to proto: %v", err))
+	}
+	blockData, err := proto.Marshal(blockProto)
+	if err != nil {
+		panic(fmt.Sprintf("Error marshaling block: %v", err))
 	}
 
 	// Prepare extended commit data
-	var extendedCommitData, regularCommitData []byte
+	var extendedCommitData []byte
 	if seenExtendedCommit != nil {
 		extendedCommitProto := seenExtendedCommit.ToProto()
 		extendedCommitData, err = proto.Marshal(extendedCommitProto)
@@ -939,164 +819,53 @@ func (bs *FileBlockStore) SaveBlockWithExtendedCommit(block *types.Block, blockP
 			panic(fmt.Sprintf("Error marshaling extended commit: %v", err))
 		}
 
-		regularCommit := seenExtendedCommit.ToCommit()
-		regularCommitProto := regularCommit.ToProto()
-		regularCommitData, err = proto.Marshal(regularCommitProto)
+		// Also save regular commit for backward compatibility
+		commitProto := seenExtendedCommit.ToCommit().ToProto()
+		commitData, err := proto.Marshal(commitProto)
 		if err != nil {
-			panic(fmt.Sprintf("Error marshaling regular commit: %v", err))
+			panic(fmt.Sprintf("Error marshaling commit: %v", err))
+		}
+		if err := bs.writeFileWithBuffer(bs.getCommitPath(height), commitData); err != nil {
+			panic(fmt.Sprintf("Error writing commit file: %v", err))
 		}
 	}
 
-	// Cache the data
-	cacheEntry := &blockCacheEntry{
-		data:           blockData,
-		meta:           metaData,
-		extendedCommit: extendedCommitData,
-		regularCommit:  regularCommitData,
-		timestamp:      time.Now(),
+	// Save block data
+	compressedBlockData, err := compressData(blockData)
+	if err != nil {
+		panic(fmt.Sprintf("Error compressing block data: %v", err))
 	}
-	bs.blockDataCache.Add(height, cacheEntry)
-	if metaData != nil { // Meta cache stores raw bytes
-		bs.metaCache.Add(height, metaData)
+	if err := bs.writeFileWithBuffer(bs.getBlockPath(height), compressedBlockData); err != nil {
+		panic(fmt.Sprintf("Error writing block file: %v", err))
 	}
 
-	// Determine if we should use parallel processing
-	totalSize := len(blockData) + len(metaData)
-	if seenExtendedCommit != nil {
-		totalSize += len(extendedCommitData) + len(regularCommitData)
-	}
-	useParallel := totalSize > minBlockSizeForParallel
-
-	if useParallel {
-		var wg sync.WaitGroup
-		// Adjust error channel size based on actual number of goroutines
-		numGoRoutines := 0
-		if blockData != nil {
-			numGoRoutines++
-		}
-		if metaData != nil {
-			numGoRoutines++
-		}
-
-		if seenExtendedCommit != nil {
-			if extendedCommitData != nil {
-				numGoRoutines++
-			}
-			if regularCommitData != nil {
-				numGoRoutines++
-			}
-		}
-		errChan := make(chan error, numGoRoutines)
-
-		// Write block and meta files
-		if blockData != nil {
-			wg.Add(1)
-			go func() {
-				defer wg.Done()
-				if err := bs.writeCompressedFile(bs.getBlockPath(height), blockData); err != nil {
-					errChan <- fmt.Errorf("error writing block file: %w", err)
-				}
-			}()
-		}
-		if metaData != nil {
-			wg.Add(1)
-			go func() {
-				defer wg.Done()
-				if err := bs.writeCompressedFile(bs.getMetaPath(height), metaData); err != nil {
-					errChan <- fmt.Errorf("error writing block meta file: %w", err)
-				}
-			}()
-		}
-
-		// Write commit files if available
-		if seenExtendedCommit != nil {
-			if extendedCommitData != nil {
-				wg.Add(1)
-				go func() {
-					defer wg.Done()
-					if err := bs.writeCompressedFile(bs.getExtendedCommitPath(height), extendedCommitData); err != nil {
-						errChan <- fmt.Errorf("error writing extended commit file: %w", err)
-					}
-				}()
-			}
-			if regularCommitData != nil {
-				wg.Add(1)
-				go func() {
-					defer wg.Done()
-					if err := bs.writeCompressedFile(bs.getCommitPath(height), regularCommitData); err != nil {
-						errChan <- fmt.Errorf("error writing regular commit file: %w", err)
-					}
-				}()
-			}
-		}
-
-		wg.Wait()
-		close(errChan)
-
-		for err := range errChan {
-			panic(err)
-		}
-	} else {
-		// Sequential processing for small blocks
-		if err := bs.writeCompressedFile(bs.getBlockPath(height), blockData); err != nil {
-			panic(fmt.Sprintf("Error writing block file: %v", err))
-		}
-		if err := bs.writeCompressedFile(bs.getMetaPath(height), metaData); err != nil {
-			panic(fmt.Sprintf("Error writing block meta file: %v", err))
-		}
-
-		if seenExtendedCommit != nil {
-			if err := bs.writeCompressedFile(bs.getExtendedCommitPath(height), extendedCommitData); err != nil {
-				panic(fmt.Sprintf("Error writing extended commit file: %v", err))
-			}
-			if err := bs.writeCompressedFile(bs.getCommitPath(height), regularCommitData); err != nil {
-				panic(fmt.Sprintf("Error writing regular commit file: %v", err))
-			}
+	// Save extended commit data if available
+	if extendedCommitData != nil {
+		if err := bs.writeFileWithBuffer(bs.getExtendedCommitPath(height), extendedCommitData); err != nil {
+			panic(fmt.Sprintf("Error writing extended commit file: %v", err))
 		}
 	}
 
-	// Update state and caches
-	if bs.height < height {
+	// Update hash index
+	bs.updateHashIndex(height, block.Hash())
+
+	// Update block store state
+	if height > bs.height {
 		bs.height = height
 	}
 	if bs.base == 0 {
 		bs.base = height
 	}
-
-	if seenExtendedCommit != nil {
-		bs.blockExtendedCommitCache.Add(height, seenExtendedCommit)
-	}
-
 	if err := bs.saveBlockStoreState(); err != nil {
 		panic(fmt.Sprintf("Error saving block store state: %v", err))
 	}
 
-	// Update hash index
-	blockMeta := types.NewBlockMeta(block, blockParts)
-	bs.updateHashIndex(block.Height, blockMeta.BlockID.Hash)
-}
-
-// Add this method to write compressed data with buffering
-func (bs *FileBlockStore) writeCompressedFile(path string, data []byte) error {
-	// Create directory if it doesn't exist (writeFileWithBuffer also does this, but good to be sure)
-	dir := filepath.Dir(path)
-	if err := os.MkdirAll(dir, 0755); err != nil {
-		return fmt.Errorf("failed to create directory %s: %w", dir, err)
+	// Update caches
+	if seenExtendedCommit != nil {
+		bs.seenCommitCache.Add(height, seenExtendedCommit.ToCommit())
+		bs.blockExtendedCommitCache.Add(height, seenExtendedCommit)
+		bs.blockCommitCache.Add(height, seenExtendedCommit.ToCommit())
 	}
-
-	// Compress data only if it's above the threshold
-	var dataToWrite []byte
-	var err error
-	if len(data) >= compressionThreshold {
-		dataToWrite, err = compressData(data) // compressData itself does not check threshold internally
-		if err != nil {
-			return fmt.Errorf("compression failed for %s: %w", path, err)
-		}
-	} else {
-		dataToWrite = data // Write original data if below threshold
-	}
-
-	return bs.writeFileWithBuffer(path, dataToWrite)
 }
 
 // SaveTxInfo implements the BlockStore interface
@@ -1223,173 +992,99 @@ func (bs *FileBlockStore) IsEmpty() bool {
 	return bs.height == 0
 }
 
-// loadHashIndex attempts to load the hash-to-height index from disk.
-func (bs *FileBlockStore) loadHashIndex() (map[string]int64, error) {
-	indexPath := bs.getHashIndexPath()
-	file, err := os.Open(indexPath)
+// initHashIndex initializes the hash index by scanning blocks if needed
+func (bs *FileBlockStore) initHashIndex() error {
+	// Check if we have any entries in the database
+	iter, err := bs.db.Iterator(nil, nil)
+	if err != nil {
+		return fmt.Errorf("failed to create iterator: %w", err)
+	}
+	hasEntries := iter.Valid()
+	iter.Close()
+
+	if hasEntries {
+		return nil // Database already has entries, no need to rebuild
+	}
+
+	// Scan blocks directory to build the index
+	batch := bs.db.NewBatch()
+	defer batch.Close()
+
+	blocksDir := filepath.Join(bs.baseDir, dataDir, blocksDir)
+	entries, err := os.ReadDir(blocksDir)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return make(map[string]int64), nil // Return empty map if not found, not an error
+			return nil
 		}
-		return nil, fmt.Errorf("failed to open hash index file %s: %w", indexPath, err)
-	}
-	defer file.Close()
-
-	// Use a buffered reader for potentially better performance with gob
-	bufReader := bufio.NewReader(file)
-	decoder := gob.NewDecoder(bufReader)
-	var index map[string]int64
-	if err := decoder.Decode(&index); err != nil {
-		if err == io.EOF {
-			return make(map[string]int64), nil
-		}
-		return nil, fmt.Errorf("failed to decode hash index from %s: %w", indexPath, err)
-	}
-	return index, nil
-}
-
-// saveHashIndex saves the current in-memory hash-to-height index to disk.
-// This function creates a copy of the map to avoid holding the lock for too long during I/O.
-func (bs *FileBlockStore) saveHashIndex() error {
-	bs.hashToHeightMu.RLock()
-	// Create a copy of the map to avoid holding the lock during file I/O
-	indexToSave := make(map[string]int64, len(bs.hashToHeight))
-	for k, v := range bs.hashToHeight {
-		indexToSave[k] = v
-	}
-	bs.hashToHeightMu.RUnlock()
-
-	if len(indexToSave) == 0 {
-		return nil
+		return fmt.Errorf("failed to read blocks directory: %w", err)
 	}
 
-	indexPath := bs.getHashIndexPath()
-	file, err := os.OpenFile(indexPath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
-	if err != nil {
-		return fmt.Errorf("failed to open hash index file %s for writing: %w", indexPath, err)
-	}
-	defer file.Close()
-
-	bufWriter := bufio.NewWriter(file)
-	encoder := gob.NewEncoder(bufWriter)
-	if err := encoder.Encode(indexToSave); err != nil {
-		return fmt.Errorf("failed to encode hash index to %s: %w", indexPath, err)
-	}
-	return bufWriter.Flush()
-}
-
-// initHashIndex initializes the hash index, trying to load from disk first.
-func (bs *FileBlockStore) initHashIndex() error {
-	bs.hashToHeightMu.Lock()
-
-	loadedIndex, err := bs.loadHashIndex() // This is called without the lock held by this func
-	if err != nil {
-		fmt.Printf("Failed to load hash index from disk (error: %v), will rebuild by scanning.\n", err)
-		bs.hashToHeight = make(map[string]int64)
-	} else if len(loadedIndex) > 0 {
-		bs.hashToHeight = loadedIndex
-		fmt.Printf("Successfully loaded hash index from disk with %d entries.\n", len(bs.hashToHeight))
-		bs.hashToHeightMu.Unlock()
-		return nil
-	} else {
-		bs.hashToHeight = make(map[string]int64)
-	}
-
-	// Fallback: If index not loaded or empty, build it by scanning directories
-	// The lock is still held here.
-	blocksDir := filepath.Join(bs.baseDir, dataDir, blocksDir)
-	entries, readDirErr := os.ReadDir(blocksDir)
-	if readDirErr != nil {
-		if os.IsNotExist(readDirErr) {
-			bs.hashToHeightMu.Unlock()
-			return bs.saveHashIndex()
-		}
-		bs.hashToHeightMu.Unlock() // Unlock before returning error
-		return fmt.Errorf("failed to read blocks directory for hash index init: %w", readDirErr)
-	}
-
-	rangeDirs := make([]string, 0, len(entries))
+	batchSize := 0
 	for _, entry := range entries {
-		if entry.IsDir() && strings.Contains(entry.Name(), "-") {
-			rangeDirs = append(rangeDirs, entry.Name())
-		}
-	}
-	sort.Strings(rangeDirs)
-
-	for _, rangeDir := range rangeDirs {
-		bounds := strings.Split(rangeDir, "-")
-		if len(bounds) != 2 {
-			continue
-		}
-		start, convErr := strconv.ParseInt(bounds[0], 10, 64)
-		if convErr != nil {
-			continue
-		}
-		end, convErr := strconv.ParseInt(bounds[1], 10, 64)
-		if convErr != nil {
+		if !entry.IsDir() || !strings.Contains(entry.Name(), "-") {
 			continue
 		}
 
-		metaDir := filepath.Join(blocksDir, rangeDir)
-		metaEntries, readErr := os.ReadDir(metaDir)
-		if readErr != nil {
+		// Process each block in the range directory
+		rangeDir := filepath.Join(blocksDir, entry.Name())
+		blocks, err := os.ReadDir(rangeDir)
+		if err != nil {
 			continue
 		}
 
-		for _, metaEntry := range metaEntries {
-			if !metaEntry.IsDir() && strings.HasPrefix(metaEntry.Name(), "meta_") && strings.HasSuffix(metaEntry.Name(), ".proto") {
-				heightStr := strings.TrimPrefix(metaEntry.Name(), "meta_")
-				heightStr = strings.TrimSuffix(heightStr, ".proto")
-				height, parseErr := strconv.ParseInt(heightStr, 10, 64)
-				if parseErr != nil || height < start || height > end {
-					if parseErr != nil {
-						fmt.Printf("Warning: failed to parse height from meta file %s: %v\n", metaEntry.Name(), parseErr)
-					}
-					continue
-				}
+		for _, block := range blocks {
+			if !strings.HasPrefix(block.Name(), "block_") {
+				continue
+			}
 
-				metaFilePath := bs.getMetaPath(height)
-				metaDataBytes, err := os.ReadFile(metaFilePath)
-				if err != nil {
-					fmt.Printf("Warning: failed to read meta file %s for hash index: %v\n", metaFilePath, err)
-					continue
-				}
-				pbbm := new(cmtproto.BlockMeta)
-				if err := proto.Unmarshal(metaDataBytes, pbbm); err != nil {
-					fmt.Printf("Warning: failed to unmarshal meta file %s for hash index: %v\n", metaFilePath, err)
-					continue
-				}
-				meta, err := types.BlockMetaFromTrustedProto(pbbm)
-				if err != nil {
-					fmt.Printf("Warning: failed to convert meta from proto for %s for hash index: %v\n", metaFilePath, err)
-					continue
-				}
+			heightStr := strings.TrimPrefix(block.Name(), "block_")
+			heightStr = strings.TrimSuffix(heightStr, ".proto")
+			height, err := strconv.ParseInt(heightStr, 10, 64)
+			if err != nil {
+				continue
+			}
 
-				if meta != nil && len(meta.BlockID.Hash) > 0 {
-					bs.hashToHeight[string(meta.BlockID.Hash)] = height
+			// Load block to get its hash
+			blockData := bs.LoadBlock(height)
+			if blockData == nil {
+				continue
+			}
+
+			hash := blockData.Hash()
+			if err := batch.Set(calcBlockHashKey(hash), []byte(fmt.Sprintf("%d", height))); err != nil {
+				return fmt.Errorf("failed to add hash->height mapping to batch: %w", err)
+			}
+			batchSize++
+
+			// Write batch every 1000 entries to avoid memory issues
+			if batchSize >= 1000 {
+				if err := batch.Write(); err != nil {
+					return fmt.Errorf("failed to write batch: %w", err)
 				}
+				batch.Close()
+				batch = bs.db.NewBatch()
+				batchSize = 0
 			}
 		}
 	}
 
-	bs.hashToHeightMu.Unlock()
-
-	saveErr := bs.saveHashIndex()
-	if saveErr != nil {
-		fmt.Printf("Warning: failed to save newly built hash index to disk: %v\n", saveErr)
+	if batchSize > 0 {
+		if err := batch.Write(); err != nil {
+			return fmt.Errorf("failed to write final batch: %w", err)
+		}
 	}
-	return saveErr
+
+	return nil
 }
 
-// updateHashIndex updates the in-memory hash index.
-// It no longer persists to disk on every call to improve SaveBlock performance.
+// updateHashIndex updates the hash->height mapping in the database
 func (bs *FileBlockStore) updateHashIndex(height int64, hash []byte) {
 	if len(hash) == 0 {
 		return
 	}
-	bs.hashToHeightMu.Lock()
-	bs.hashToHeight[string(hash)] = height
-	bs.hashToHeightMu.Unlock()
+	if err := bs.db.Set(calcBlockHashKey(hash), []byte(fmt.Sprintf("%d", height))); err != nil {
+		panic(fmt.Sprintf("Failed to update hash index: %v", err))
+	}
 }
 
 // Add back the writeFileWithBuffer helper function
