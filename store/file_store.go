@@ -8,6 +8,8 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
+	"syscall"
 	"time"
 
 	dbm "github.com/cometbft/cometbft-db"
@@ -41,7 +43,142 @@ const (
 	extendedCacheSize = 1000
 	blockCacheSize    = 50  // Fewer blocks but larger size
 	metaCacheSize     = 200 // More metadata entries as they're smaller
+
+	// Constants for file writing optimization
+	baseBufferSize      = 32 * 1024
+	maxBufferSize       = 1024 * 1024
+	smallBlockThreshold = 1024 * 16 // 16KB
 )
+
+// dirCache caches the existence of directories to avoid redundant MkdirAll calls
+var dirCache = make(map[string]bool)
+var dirCacheMutex sync.RWMutex
+
+// getOptimalBufferSize returns the optimal buffer size based on data length
+func getOptimalBufferSize(dataLen int) int {
+	// For small data, use base buffer size
+	if dataLen <= baseBufferSize {
+		return baseBufferSize
+	}
+
+	// Scale buffer with data size, but cap at maxBufferSize
+	bufferSize := dataLen / 8 // Use 1/8th of data size as buffer
+	if bufferSize > maxBufferSize {
+		return maxBufferSize
+	}
+	return bufferSize
+}
+
+// ensureDirectoryExists checks directory cache before creating
+func ensureDirectoryExists(dir string) error {
+	dirCacheMutex.RLock()
+	exists := dirCache[dir]
+	dirCacheMutex.RUnlock()
+
+	if exists {
+		return nil
+	}
+
+	dirCacheMutex.Lock()
+	defer dirCacheMutex.Unlock()
+
+	// Double check after acquiring write lock
+	if dirCache[dir] {
+		return nil
+	}
+
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return fmt.Errorf("failed to create directory %s: %w", dir, err)
+	}
+
+	dirCache[dir] = true
+	return nil
+}
+
+// preCreateDirectories pre-creates directories for a range of heights
+func (bs *FileBlockStore) preCreateDirectories(startHeight, endHeight int64) error {
+	for height := startHeight; height <= endHeight; height += heightRangeSize {
+		rangeDir := getHeightRangeDir(height)
+		dir := filepath.Join(bs.baseDir, dataDir, blocksDir, rangeDir)
+		if err := ensureDirectoryExists(dir); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// writeFileWithBuffer writes data to a file with optimized buffering
+func (bs *FileBlockStore) writeFileWithBuffer(path string, data []byte) error {
+	// Ensure directory exists using cache
+	dir := filepath.Dir(path)
+	if err := ensureDirectoryExists(dir); err != nil {
+		return err
+	}
+
+	// Create file with appropriate flags
+	file, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
+	if err != nil {
+		return fmt.Errorf("failed to open file %s: %w", path, err)
+	}
+	defer file.Close()
+
+	// Pre-allocate file space if supported and if file is large enough
+	if len(data) > smallBlockThreshold {
+		if err := preAllocateFile(file, int64(len(data))); err != nil {
+			// Log error but continue - pre-allocation is an optimization
+			fmt.Printf("Warning: failed to pre-allocate file space: %v\n", err)
+		}
+	}
+
+	// Use optimized buffer size based on data length
+	bufferSize := getOptimalBufferSize(len(data))
+	writer := bufio.NewWriterSize(file, bufferSize)
+
+	// Write data in chunks to avoid memory spikes
+	const chunkSize = 1024 * 1024 // 1MB chunks
+	for i := 0; i < len(data); i += chunkSize {
+		end := i + chunkSize
+		if end > len(data) {
+			end = len(data)
+		}
+
+		if _, err := writer.Write(data[i:end]); err != nil {
+			return fmt.Errorf("failed to write chunk to file %s: %w", path, err)
+		}
+	}
+
+	// Ensure all data is written to disk
+	if err := writer.Flush(); err != nil {
+		return fmt.Errorf("failed to flush buffer for file %s: %w", path, err)
+	}
+
+	// Ensure data is synced to disk for important files
+	if strings.Contains(path, "block_") || strings.Contains(path, "commit_") {
+		if err := file.Sync(); err != nil {
+			return fmt.Errorf("failed to sync file %s: %w", path, err)
+		}
+	}
+
+	return nil
+}
+
+// preAllocateFile pre-allocates file space using fallocate where available
+func preAllocateFile(file *os.File, size int64) error {
+	// Get file descriptor
+	fd := file.Fd()
+
+	// Try to pre-allocate using fallocate
+	// This is a Linux/Unix specific optimization
+	err := syscall.Fallocate(int(fd), 0, 0, size)
+	if err != nil {
+		if err == syscall.ENOTSUP || err == syscall.EOPNOTSUPP {
+			// Fallback: truncate if fallocate is not supported
+			return file.Truncate(size)
+		}
+		return err
+	}
+	return nil
+}
 
 // FileBlockStore implements both BlockStore and Store interfaces using the file system
 //
@@ -375,11 +512,9 @@ func (bs *FileBlockStore) SaveBlock(block *types.Block, blockParts *types.PartSe
 
 	height := block.Height
 
-	// Create height range directory
-	rangeDir := getHeightRangeDir(height)
-	blockRangeDir := filepath.Join(bs.baseDir, dataDir, blocksDir, rangeDir)
-	if err := os.MkdirAll(blockRangeDir, 0755); err != nil {
-		panic(fmt.Sprintf("Error creating directory %s: %v", blockRangeDir, err))
+	// Pre-create directories for this height range
+	if err := bs.preCreateDirectories(height, height+heightRangeSize); err != nil {
+		panic(fmt.Sprintf("Error pre-creating directories: %v", err))
 	}
 
 	// Prepare block data
@@ -750,22 +885,41 @@ func (bs *FileBlockStore) DeleteLatestBlock() error {
 	return bs.saveBlockStoreState()
 }
 
-// Add compression helper
+// compressData compresses data if it exceeds the threshold
 func compressData(data []byte) ([]byte, error) {
 	if len(data) < compressionThreshold {
-		return data, nil
+		// For small data, prepend a flag byte to indicate uncompressed
+		result := make([]byte, len(data)+1)
+		result[0] = 0 // 0 indicates uncompressed
+		copy(result[1:], data)
+		return result, nil
 	}
-	return s2.EncodeSnappy(nil, data), nil
+
+	// For larger data, compress and prepend flag
+	compressed := s2.EncodeSnappy(nil, data)
+	result := make([]byte, len(compressed)+1)
+	result[0] = 1 // 1 indicates compressed
+	copy(result[1:], compressed)
+	return result, nil
 }
 
-// Add decompression helper
+// decompressData decompresses data if it was compressed
 func decompressData(data []byte) ([]byte, error) {
-	if len(data) < compressionThreshold {
-		return data, nil
+	if len(data) == 0 {
+		return nil, fmt.Errorf("empty data")
 	}
-	decompressed, err := s2.Decode(nil, data)
+
+	// Check compression flag
+	isCompressed := data[0] == 1
+	if !isCompressed {
+		// Return uncompressed data without the flag byte
+		return data[1:], nil
+	}
+
+	// Decompress data without the flag byte
+	decompressed, err := s2.Decode(nil, data[1:])
 	if err != nil {
-		return nil, fmt.Errorf("s2 decompress failed for data of len %d: %w. Original data might be corrupted or was not compressed as expected", len(data), err)
+		return nil, fmt.Errorf("s2 decompress failed: %w", err)
 	}
 	return decompressed, nil
 }
@@ -783,11 +937,9 @@ func (bs *FileBlockStore) SaveBlockWithExtendedCommit(block *types.Block, blockP
 
 	height := block.Height
 
-	// Create height range directory
-	rangeDir := getHeightRangeDir(height)
-	blockRangeDir := filepath.Join(bs.baseDir, dataDir, blocksDir, rangeDir)
-	if err := os.MkdirAll(blockRangeDir, 0755); err != nil {
-		panic(fmt.Sprintf("Error creating directory %s: %v", blockRangeDir, err))
+	// Pre-create directories for this height range
+	if err := bs.preCreateDirectories(height, height+heightRangeSize); err != nil {
+		panic(fmt.Sprintf("Error pre-creating directories: %v", err))
 	}
 
 	// Prepare block data
@@ -1075,32 +1227,4 @@ func (bs *FileBlockStore) updateHashIndex(height int64, hash []byte) {
 	if err := bs.db.Set(calcBlockHashKey(hash), []byte(fmt.Sprintf("%d", height))); err != nil {
 		panic(fmt.Sprintf("Failed to update hash index: %v", err))
 	}
-}
-
-// Add back the writeFileWithBuffer helper function
-func (bs *FileBlockStore) writeFileWithBuffer(path string, data []byte) error {
-	// Create directory if it doesn't exist
-	dir := filepath.Dir(path)
-	if err := os.MkdirAll(dir, 0755); err != nil {
-		return fmt.Errorf("failed to create directory %s: %w", dir, err)
-	}
-
-	// Create file with buffer
-	file, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
-	if err != nil {
-		return fmt.Errorf("failed to open file %s: %w", path, err)
-	}
-	defer file.Close()
-
-	// Use buffered writer
-	writer := bufio.NewWriterSize(file, 32*1024) // 32KB buffer
-	if _, err := writer.Write(data); err != nil {
-		return fmt.Errorf("failed to write to file %s: %w", path, err)
-	}
-
-	if err := writer.Flush(); err != nil {
-		return fmt.Errorf("failed to flush buffer for file %s: %w", path, err)
-	}
-
-	return nil
 }
