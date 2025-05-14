@@ -1,6 +1,7 @@
 package store
 
 import (
+	"io"
 	"os"
 	"testing"
 
@@ -14,35 +15,53 @@ import (
 // setupBlockStore creates a new block store for benchmarking
 func setupBlockStore(b *testing.B, storeType string) (sm.State, interface{}, func()) {
 	config := test.ResetTestRoot("block_store_bench")
-	stateStore := sm.NewStore(dbm.NewMemDB(), sm.StoreOptions{
-		DiscardABCIResponses: false,
-	})
-	state, err := stateStore.LoadFromDBOrGenesisFile(config.GenesisFile())
-	require.NoError(b, err)
-
+	var stateStoreDB dbm.DB
 	var bs interface{}
 	var cleanup func()
 
 	switch storeType {
 	case "file":
 		// Create a temporary directory for the file block store
-		tempDir, err := os.MkdirTemp("", "file_block_store_bench")
+		tempDir, err := os.MkdirTemp("", "file_block_store_bench_")
 		require.NoError(b, err)
+		// Create a temporary directory for the state store DB
+		stateDBDir, err := os.MkdirTemp("", "state_store_db_bench_")
+		require.NoError(b, err)
+
+		// Use a file-based DB for stateStore as well
+		stateStoreDB, err = dbm.NewDB("state", dbm.GoLevelDBBackend, stateDBDir)
+		require.NoError(b, err)
+
 		bs, err = NewFileBlockStore(tempDir)
 		require.NoError(b, err)
 		cleanup = func() {
 			os.RemoveAll(config.RootDir)
 			os.RemoveAll(tempDir)
+			if c, ok := stateStoreDB.(io.Closer); ok {
+				c.Close()
+			}
+			os.RemoveAll(stateDBDir)
 		}
 	case "db":
-		db := dbm.NewMemDB()
-		bs = NewBlockStore(db)
+		stateStoreDB = dbm.NewMemDB()
+		// For the "db" case, BlockStore uses its own MemDB instance as per original logic
+		bs = NewBlockStore(dbm.NewMemDB())
 		cleanup = func() {
 			os.RemoveAll(config.RootDir)
+			// MemDB's Close is a no-op, but good to have if stateStoreDB could be other types
+			if c, ok := stateStoreDB.(io.Closer); ok {
+				c.Close()
+			}
 		}
 	default:
 		b.Fatalf("unknown store type: %s", storeType)
 	}
+
+	stateStore := sm.NewStore(stateStoreDB, sm.StoreOptions{
+		DiscardABCIResponses: false,
+	})
+	state, err := stateStore.LoadFromDBOrGenesisFile(config.GenesisFile())
+	require.NoError(b, err)
 
 	return state, bs, cleanup
 }
