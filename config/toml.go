@@ -113,6 +113,9 @@ db_backend = "{{ .BaseConfig.DBBackend }}"
 # Database directory
 db_dir = "{{ js .BaseConfig.DBPath }}"
 
+# Blockstore directory. If not set, defaults to db_dir
+blockstore_dir = "{{ js .BaseConfig.BlockstorePath }}"
+
 # Output level for logging, including package level options
 log_level = "{{ .BaseConfig.LogLevel }}"
 

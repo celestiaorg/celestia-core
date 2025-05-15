@@ -66,6 +66,23 @@ db_backend = "goleveldb"
 # Database directory
 db_dir = "data"
 
+# Blockstore directory. If not set, defaults to db_dir.
+# This allows placing the blockstore on a separate volume (e.g. HDD)
+# while keeping the state store on a faster volume (e.g. SSD).
+#
+# IMPORTANT: For existing nodes, manual data migration is required when changing
+# this setting. To move your blockstore to a new location:
+# 1. Stop your node
+# 2. Move your current blockstore data (typically found in 'data/blockstore.db')
+#    to the new location you intend to use for blockstore_dir
+# 3. Update this setting to point to the new location
+# 4. Restart your node
+#
+# WARNING: Setting this to a new empty directory on an existing node without
+# moving the data will result in the node initializing a fresh blockstore,
+# which will be inconsistent with your existing state database.
+blockstore_dir = "data"
+
 # Output level for logging, including package level options
 log_level = "info"
 
