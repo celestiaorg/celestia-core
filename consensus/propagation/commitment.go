@@ -140,15 +140,15 @@ func chunkToPartMetaData(chunk *bits.BitArray, partSet *proptypes.CombinedPartSe
 // time a proposal is received from a peer or when a proposal is created. If the
 // proposal is new, it will be stored and broadcast to the relevant peers.
 func (blockProp *Reactor) handleCompactBlock(cb *proptypes.CompactBlock, peer p2p.ID, proposer bool) {
+	added := blockProp.AddProposal(cb)
+	if !added {
+		return
+	}
+
 	err := blockProp.validateCompactBlock(cb)
 	if !proposer && err != nil {
 		blockProp.DeleteRound(cb.Proposal.Height, cb.Proposal.Round)
 		blockProp.Logger.Info("failed to validate proposal. ignoring", "err", err, "height", cb.Proposal.Height, "round", cb.Proposal.Round)
-		return
-	}
-
-	added := blockProp.AddProposal(cb)
-	if !added {
 		return
 	}
 
