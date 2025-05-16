@@ -74,5 +74,5 @@ jobs:
         if: env.GIT_DIFF
       - uses: codecov/codecov-action@v5
         with:
-          file: ./coverage.txt
+          files: ./coverage.txt
         if: env.GIT_DIFF
