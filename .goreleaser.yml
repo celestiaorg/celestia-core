@@ -1,5 +1,6 @@
-project_name: cometbft
+version: 2
 
+project_name: cometbft
 env:
   # Require use of Go modules.
   - GO111MODULE=on
