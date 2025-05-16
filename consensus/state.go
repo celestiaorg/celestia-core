@@ -43,7 +43,8 @@ var (
 	ErrSignatureFoundInPastBlocks = errors.New("found signature from the same key")
 	ErrProposalTooManyParts       = errors.New("proposal block has too many parts")
 
-	errPubKeyIsNotSet = errors.New("pubkey is not set. Look for \"Can't get private validator pubkey\" errors")
+	errPubKeyIsNotSet             = errors.New("pubkey is not set. Look for \"Can't get private validator pubkey\" errors")
+	errInvalidProposalHeightRound = errors.New("invalid proposal height/round")
 )
 
 var msgQueueSize = 1000
@@ -1916,14 +1917,12 @@ func (cs *State) defaultSetProposal(proposal *types.Proposal) error {
 		return nil
 	}
 
-	// Does not apply
-	if proposal.Height != cs.Height || proposal.Round != cs.Round {
-		return nil
-	}
-
 	pubKey := cs.Validators.GetProposer().PubKey
 	p, err := cs.ValidateProposal(proposal)
 	if err != nil {
+		if errors.Is(err, errInvalidProposalHeightRound) {
+			return nil
+		}
 		return err
 	}
 
@@ -2575,6 +2574,11 @@ func (cs *State) syncData() {
 
 // ValidateProposal stateful validation of the proposal.
 func (cs *State) ValidateProposal(proposal *types.Proposal) (*cmtproto.Proposal, error) {
+	// Does not apply
+	if proposal.Height != cs.Height || proposal.Round != cs.Round {
+		return nil, fmt.Errorf("%w: proposal height %v round %v does not match state height %v round %v", errInvalidProposalHeightRound, proposal.Height, proposal.Round, cs.Height, cs.Round)
+	}
+
 	// Verify POLRound, which must be -1 or in range [0, proposal.Round).
 	if proposal.POLRound < -1 ||
 		(proposal.POLRound >= 0 && proposal.POLRound >= proposal.Round) {
