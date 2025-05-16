@@ -21,7 +21,6 @@ import (
 	"github.com/cometbft/cometbft/types"
 	"github.com/cosmos/gogoproto/proto"
 	lru "github.com/hashicorp/golang-lru/v2"
-	"github.com/klauspost/compress/s2"
 )
 
 const (
@@ -36,8 +35,6 @@ const (
 	// Height range size for directory organization
 	heightRangeSize = 1000
 
-	// Compression settings
-	compressionThreshold = 1024 * 64 // 64KB minimum size for compression
 	// Cache settings
 	defaultCacheSize  = 100
 	extendedCacheSize = 1000
@@ -391,13 +388,8 @@ func (bs *FileBlockStore) LoadBlock(height int64) *types.Block {
 		panic(fmt.Sprintf("Error reading block file: %v", err))
 	}
 
-	decompressed, err := decompressData(data)
-	if err != nil {
-		panic(fmt.Sprintf("Error decompressing block data: %v", err))
-	}
-
 	pbb := new(cmtproto.Block)
-	if err := proto.Unmarshal(decompressed, pbb); err != nil {
+	if err := proto.Unmarshal(data, pbb); err != nil {
 		panic(fmt.Sprintf("Error unmarshaling block: %v", err))
 	}
 
@@ -408,7 +400,7 @@ func (bs *FileBlockStore) LoadBlock(height int64) *types.Block {
 
 	// Cache the block data
 	bs.blockDataCache.Add(height, &blockCacheEntry{
-		data:      decompressed,
+		data:      data,
 		timestamp: time.Now(),
 	})
 
@@ -453,13 +445,8 @@ func (bs *FileBlockStore) LoadBlockMeta(height int64) *types.BlockMeta {
 		panic(fmt.Sprintf("Error reading block file: %v", err))
 	}
 
-	decompressed, err := decompressData(data)
-	if err != nil {
-		panic(fmt.Sprintf("Error decompressing block data: %v", err))
-	}
-
 	pbb := new(cmtproto.Block)
-	if err := proto.Unmarshal(decompressed, pbb); err != nil {
+	if err := proto.Unmarshal(data, pbb); err != nil {
 		panic(fmt.Sprintf("Error unmarshaling block: %v", err))
 	}
 
@@ -538,11 +525,7 @@ func (bs *FileBlockStore) SaveBlock(block *types.Block, blockParts *types.PartSe
 	}
 
 	// Save block data
-	compressedBlockData, err := compressData(blockData)
-	if err != nil {
-		panic(fmt.Sprintf("Error compressing block data: %v", err))
-	}
-	if err := bs.writeFileWithBuffer(bs.getBlockPath(height), compressedBlockData); err != nil {
+	if err := bs.writeFileWithBuffer(bs.getBlockPath(height), blockData); err != nil {
 		panic(fmt.Sprintf("Error writing block file: %v", err))
 	}
 
@@ -885,45 +868,6 @@ func (bs *FileBlockStore) DeleteLatestBlock() error {
 	return bs.saveBlockStoreState()
 }
 
-// compressData compresses data if it exceeds the threshold
-func compressData(data []byte) ([]byte, error) {
-	if len(data) < compressionThreshold {
-		// For small data, prepend a flag byte to indicate uncompressed
-		result := make([]byte, len(data)+1)
-		result[0] = 0 // 0 indicates uncompressed
-		copy(result[1:], data)
-		return result, nil
-	}
-
-	// For larger data, compress and prepend flag
-	compressed := s2.EncodeSnappy(nil, data)
-	result := make([]byte, len(compressed)+1)
-	result[0] = 1 // 1 indicates compressed
-	copy(result[1:], compressed)
-	return result, nil
-}
-
-// decompressData decompresses data if it was compressed
-func decompressData(data []byte) ([]byte, error) {
-	if len(data) == 0 {
-		return nil, fmt.Errorf("empty data")
-	}
-
-	// Check compression flag
-	isCompressed := data[0] == 1
-	if !isCompressed {
-		// Return uncompressed data without the flag byte
-		return data[1:], nil
-	}
-
-	// Decompress data without the flag byte
-	decompressed, err := s2.Decode(nil, data[1:])
-	if err != nil {
-		return nil, fmt.Errorf("s2 decompress failed: %w", err)
-	}
-	return decompressed, nil
-}
-
 // Add this type for block data caching
 type blockCacheEntry struct {
 	data      []byte
@@ -973,11 +917,7 @@ func (bs *FileBlockStore) SaveBlockWithExtendedCommit(block *types.Block, blockP
 	}
 
 	// Save block data
-	compressedBlockData, err := compressData(blockData)
-	if err != nil {
-		panic(fmt.Sprintf("Error compressing block data: %v", err))
-	}
-	if err := bs.writeFileWithBuffer(bs.getBlockPath(height), compressedBlockData); err != nil {
+	if err := bs.writeFileWithBuffer(bs.getBlockPath(height), blockData); err != nil {
 		panic(fmt.Sprintf("Error writing block file: %v", err))
 	}
 
