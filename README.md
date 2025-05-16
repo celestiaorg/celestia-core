@@ -1,7 +1,6 @@
-# CometBFT
+# Celestia Core
 
-[Byzantine-Fault Tolerant][bft] [State Machine Replication][smr]. Or
-[Blockchain], for short.
+A fork of [CometBFT](https://github.com/cometbft/cometbft) with Celestia-specific modifications for use in the [Celestia network](https://celestia.org/).
 
 [![Version][version-badge]][version-url]
 [![API Reference][api-badge]][api-url]
@@ -17,59 +16,59 @@
 | v0.37.x | [![Tests][tests-badge-v037x]][tests-url-v037x] | [![Lint][lint-badge-v037x]][lint-url-v037x] |
 | v0.34.x | [![Tests][tests-badge-v034x]][tests-url-v034x] | [![Lint][lint-badge-v034x]][lint-url-v034x] |
 
-CometBFT is a Byzantine Fault Tolerant (BFT) middleware that takes a
-state transition machine - written in any programming language - and securely
-replicates it on many machines.
+## What is Celestia Core?
 
-It is a fork of [Tendermint Core][tm-core] and implements the Tendermint
-consensus algorithm.
+Celestia Core is a fork of CometBFT, which itself is a fork of Tendermint Core. It implements the CometBFT consensus algorithm with Celestia-specific modifications to support Celestia's data availability and scalability features.
 
-For protocol details, refer to the [CometBFT Specification](./spec/README.md).
+Celestia is a modular consensus and data network, designed to enable anyone to easily deploy their own blockchain with minimal overhead.
 
-For detailed analysis of the consensus protocol, including safety and liveness
-proofs, read our paper, "[The latest gossip on BFT
-consensus](https://arxiv.org/abs/1807.04938)".
+## Key Modifications from CometBFT
+
+Celestia Core includes several important modifications from the upstream CometBFT repository:
+
+1. **Specialized Mempool**: A priority-based mempool implementation for transaction management that prioritizes transactions by assigned priority values. See [Priority Mempool documentation](./mempool/priority/README.md) for details.
+
+2. **Data Availability Extensions**: Integration with Celestia's data availability layer, including:
+   - Namespace Merkle Tree (NMT) support using `github.com/celestiaorg/nmt`
+   - Integration with square data structures via `github.com/celestiaorg/go-square`
+   - Support for data blob handling and verification
+
+3. **Celestia-specific RPC Endpoints**: Additional API endpoints designed for Celestia's unique requirements.
+
+4. **Tracing Support**: Enhanced tracing functionality specifically for Celestia nodes.
+
+5. **Block Data Validation**: Specialized validation for Celestia's unique data structures.
 
 ## Documentation
 
-Complete documentation can be found on the
-[website](https://docs.cometbft.com/).
+Complete documentation for CometBFT can be found on the [CometBFT website](https://docs.cometbft.com/).
+
+For Celestia-specific documentation, please refer to the [Celestia documentation](https://docs.celestia.org/).
 
 ## Releases
 
 Please do not depend on `main` as your production branch. Use
-[releases](https://github.com/cometbft/cometbft/releases) instead.
+[releases](https://github.com/celestiaorg/celestia-core/releases) instead.
 
-If you intend to run CometBFT in production, we're happy to help. To contact
+If you intend to run Celestia Core in production, we're happy to help. To contact
 us, in order of preference:
 
-- [Create a new discussion on
-  GitHub](https://github.com/cometbft/cometbft/discussions)
-- Reach out to us via [Telegram](https://t.me/CometBFT)
-- [Join the Cosmos Network Discord](https://discord.gg/interchain) and
-  discuss in
-  [`#cometbft`](https://discord.com/channels/669268347736686612/1069933855307472906)
-
-More on how releases are conducted can be found [here](./RELEASES.md).
+- [Join the Celestia Discord](https://discord.com/invite/YsnTPcSfWQ)
+- [Create an issue on the Celestia Core repository](https://github.com/celestiaorg/celestia-core/issues)
 
 ## Security
 
-To report a security vulnerability, see our [bug bounty
-program](https://hackerone.com/cosmos). For examples of the kinds of bugs we're
-looking for, see [our security policy](SECURITY.md).
+To report a security vulnerability, please follow the security policies established by the Celestia team.
 
 ## Minimum requirements
 
-| CometBFT version | Requirement | Notes             |
-|------------------|-------------|-------------------|
-| main             | Go version  | Go 1.22 or higher |
-| v0.38.x          | Go version  | Go 1.22 or higher |
-| v0.37.x          | Go version  | Go 1.22 or higher |
-| v0.34.x          | Go version  | Go 1.12 or higher |
+| Version       | Requirement | Notes             |
+|---------------|-------------|-------------------|
+| v0.38.x-celestia | Go version  | Go 1.22 or higher |
 
 ### Install
 
-See the [install guide](./docs/guides/install.md).
+See the original [install guide](./docs/guides/install.md) from CometBFT.
 
 ### Quick Start
 
@@ -81,90 +80,36 @@ See the [install guide](./docs/guides/install.md).
 Please abide by the [Code of Conduct](CODE_OF_CONDUCT.md) in all interactions.
 
 Before contributing to the project, please take a look at the [contributing
-guidelines](CONTRIBUTING.md) and the [style guide](STYLE_GUIDE.md). You may also
-find it helpful to read the [specifications](./spec/README.md), and familiarize
-yourself with our [Architectural Decision Records
-(ADRs)](./docs/architecture/README.md) and [Request For Comments
-(RFCs)](./docs/rfc/README.md).
+guidelines](CONTRIBUTING.md) and the [style guide](STYLE_GUIDE.md).
 
 ## Versioning
 
-### Semantic Versioning
-
-CometBFT uses [Semantic Versioning](http://semver.org/) to determine when and
-how the version changes. According to SemVer, anything in the public API can
-change at any time before version 1.0.0
-
-To provide some stability to users of 0.X.X versions of CometBFT, the MINOR
-version is used to signal breaking changes across CometBFT's API. This API
-includes all publicly exposed types, functions, and methods in non-internal Go
-packages as well as the types and methods accessible via the CometBFT RPC
-interface.
-
-Breaking changes to these public APIs will be documented in the CHANGELOG.
-
-### Upgrades
-
-In an effort to avoid accumulating technical debt prior to 1.0.0, we do not
-guarantee that breaking changes (i.e. bumps in the MINOR version) will work with
-existing CometBFT blockchains. In these cases you will have to start a new
-blockchain, or write something custom to get the old data into the new chain.
-However, any bump in the PATCH version should be compatible with existing
-blockchain histories.
-
-For more information on upgrading, see [UPGRADING.md](./UPGRADING.md).
-
-### Supported Versions
-
-Because we are a small core team, we have limited capacity to ship patch
-updates, including security updates. Consequently, we strongly recommend keeping
-CometBFT up-to-date. Upgrading instructions can be found in
-[UPGRADING.md](./UPGRADING.md).
-
-Currently supported versions include:
-
-- v0.38.x: CometBFT v0.38 introduces ABCI 2.0, which implements the entirety of
-  ABCI++
-- v0.37.x: CometBFT v0.37 introduces ABCI 1.0, which is the first major step
-  towards the full ABCI++ implementation in ABCI 2.0
-- v0.34.x: The CometBFT v0.34 series is compatible with the Tendermint Core
-  v0.34 series
+Celestia Core follows CometBFT's [Semantic Versioning](http://semver.org/) approach, with the addition of the `-celestia` suffix to indicate this is a fork with Celestia-specific modifications.
 
 ## Resources
 
-### Libraries
+### Related Projects
 
-- [Cosmos SDK](http://github.com/cosmos/cosmos-sdk); A framework for building
-  applications in Golang
-- [Tendermint in Rust](https://github.com/informalsystems/tendermint-rs)
-- [ABCI Tower](https://github.com/penumbra-zone/tower-abci)
-
-### Applications
-
-- [Cosmos Hub](https://hub.cosmos.network/)
-- [Terra](https://www.terra.money/)
-- [Celestia](https://celestia.org/)
-- [Anoma](https://anoma.network/)
-- [Vocdoni](https://docs.vocdoni.io/)
+- [Celestia App](https://github.com/celestiaorg/celestia-app) - The Celestia blockchain application
+- [Celestia Node](https://github.com/celestiaorg/celestia-node) - The Celestia light node implementation
+- [Quantum Gravity Bridge](https://github.com/celestiaorg/quantum-gravity-bridge) - Bridge between Celestia and Ethereum
 
 ### Research
 
-Below are links to the original Tendermint consensus algorithm and relevant
-whitepapers which CometBFT will continue to build on.
+Below are links to research papers and resources about Celestia:
 
-- [The latest gossip on BFT consensus](https://arxiv.org/abs/1807.04938)
-- [Master's Thesis on Tendermint](https://atrium.lib.uoguelph.ca/xmlui/handle/10214/9769)
-- [Original Whitepaper: "Tendermint: Consensus Without Mining"](https://tendermint.com/static/docs/tendermint.pdf)
+- [Celestia: A Scalable Byzantine Machine](https://arxiv.org/abs/1906.01799)
+- [Block-STM: Scaling Blockchain Execution by Turning Ordering Curse to a Performance Blessing](https://arxiv.org/abs/2203.06871)
+- [LazyLedger: A Distributed Data Availability Ledger With Client-Side Smart Contracts](https://arxiv.org/abs/1905.09274)
 
 ## Join us
 
-CometBFT is currently maintained by [Informal
-Systems](https://informal.systems). If you'd like to work full-time on CometBFT,
-[we're hiring](https://informal.systems/careers)!
+To learn more about Celestia and get involved:
 
-Funding for CometBFT development comes primarily from the [Interchain
-Foundation](https://interchain.io), a Swiss non-profit. Informal Systems also
-maintains [cometbft.com](https://cometbft.com).
+- [Website](https://celestia.org/)
+- [Discord](https://discord.com/invite/YsnTPcSfWQ)
+- [Twitter](https://twitter.com/CelestiaOrg)
+- [Blog](https://blog.celestia.org/)
 
 [bft]: https://en.wikipedia.org/wiki/Byzantine_fault_tolerance
 [smr]: https://en.wikipedia.org/wiki/State_machine_replication
