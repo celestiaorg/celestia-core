@@ -24,12 +24,13 @@ func TestDefaultConfig(t *testing.T) {
 	cfg.SetRoot("/foo")
 	cfg.Genesis = "bar"
 	cfg.DBPath = "/opt/data"
+	cfg.BlockstorePath = "/opt/blockstore"
 	cfg.Mempool.WalPath = "wal/mem/"
 
 	assert.Equal("/foo/bar", cfg.GenesisFile())
 	assert.Equal("/opt/data", cfg.DBDir())
+	assert.Equal("/opt/blockstore", cfg.BlockstoreDir())
 	assert.Equal("/foo/wal/mem", cfg.Mempool.WalDir())
-
 }
 
 func TestConfigValidateBasic(t *testing.T) {
@@ -228,4 +229,22 @@ func TestCommitWithCustomTimeout(t *testing.T) {
 	customTimeout := 2 * time.Second
 	expectedTime = inputTime.Add(customTimeout)
 	assert.Equal(t, expectedTime, cfg.CommitWithCustomTimeout(inputTime, customTimeout))
+}
+
+func TestBlockstoreDir(t *testing.T) {
+	cfg := config.DefaultConfig()
+
+	// Test 1: When BlockstorePath is not set, it should default to DBDir
+	cfg.SetRoot("/foo")
+	cfg.DBPath = "data"
+	cfg.BlockstorePath = ""
+	assert.Equal(t, cfg.DBDir(), cfg.BlockstoreDir())
+
+	// Test 2: When BlockstorePath is set, it should use that path
+	cfg.BlockstorePath = "blockstore"
+	assert.Equal(t, "/foo/blockstore", cfg.BlockstoreDir())
+
+	// Test 3: Test with absolute paths
+	cfg.BlockstorePath = "/opt/blockstore"
+	assert.Equal(t, "/opt/blockstore", cfg.BlockstoreDir())
 }

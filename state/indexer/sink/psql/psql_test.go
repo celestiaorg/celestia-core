@@ -54,7 +54,8 @@ func TestMain(m *testing.M) {
 	// Set up docker and start a container running PostgreSQL.
 	pool, err := dockertest.NewPool(os.Getenv("DOCKER_URL"))
 	if err != nil {
-		log.Fatalf("Creating docker pool: %v", err)
+		log.Println("not running psql test due to docker failure:", err)
+		return
 	}
 
 	resource, err := pool.RunWithOptions(&dockertest.RunOptions{
