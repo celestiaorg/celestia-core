@@ -16,11 +16,11 @@ jobs:
   check-mocks-metrics:
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
           go-version-file: "go.mod"
 
-      - uses: actions/checkout@v4
 
       - name: "Check generated mocks and metrics"
         run: |
@@ -42,13 +42,12 @@ jobs:
   check-proto:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/setup-go@v5
-        with:
-          go-version-file: "go.mod"
-
       - uses: actions/checkout@v4
         with:
           fetch-depth: 1 # we need a .git directory to run git diff
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: "go.mod"
 
       - name: "Check protobuf generated code"
         run: |

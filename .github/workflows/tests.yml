@@ -15,10 +15,10 @@ jobs:
       matrix:
         part: ["00", "01", "02", "03", "04", "05"]
     steps:
+      - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
           go-version-file: "go.mod"
-      - uses: actions/checkout@v4
       - uses: technote-space/get-diff-action@v6
         with:
           PATTERNS: |
