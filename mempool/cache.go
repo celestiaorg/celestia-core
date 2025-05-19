@@ -23,7 +23,7 @@ type TxCache interface {
 	// Remove removes the given raw transaction from the cache.
 	Remove(key types.TxKey)
 
-	// Has reports whether tx is present in the cache. Checking for presence is
+	// Has reports whether tx key is present in the cache. Checking for presence is
 	// not treated as an access of the value.
 	Has(key types.TxKey) bool
 }
