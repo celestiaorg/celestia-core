@@ -25,10 +25,6 @@ import (
 	"github.com/cometbft/cometbft/types"
 )
 
-const (
-	eventTypeFinalizeBlock = "finalize_block"
-)
-
 // TxIndexer returns a bridge from es to the CometBFT v0.34 transaction indexer.
 func (es *EventSink) TxIndexer() BackportTxIndexer {
 	return BackportTxIndexer{psql: es}
