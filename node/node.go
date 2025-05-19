@@ -465,7 +465,7 @@ func createMempoolAndMempoolReactor(
 
 func createEvidenceReactor(config *cfg.Config, dbProvider DBProvider,
 	stateDB dbm.DB, blockStore *store.BlockStore, logger log.Logger,
-) (*evidence.Reactor, *evidence.Pool, error) {
+) (p2p.Reactor, *evidence.Pool, error) {
 	evidenceDB, err := dbProvider(&DBContext{"evidence", config})
 	if err != nil {
 		return nil, nil, err
@@ -516,7 +516,7 @@ func createConsensusReactor(config *cfg.Config,
 	eventBus *types.EventBus,
 	consensusLogger log.Logger,
 	traceClient trace.Tracer,
-) (*cs.Reactor, *cs.State) {
+) (p2p.Proxy, *cs.State) {
 	consensusState := cs.NewState(
 		config.Consensus,
 		state.Copy(),
@@ -541,7 +541,8 @@ func createConsensusReactor(config *cfg.Config,
 	// services which will be publishing and/or subscribing for messages (events)
 	// consensusReactor will set it on consensusState and blockExecutor
 	consensusReactor.SetEventBus(eventBus)
-	return consensusReactor, consensusState
+	proxyReactor := p2p.NewProxyReactor(consensusReactor, int64(config.P2P.MaxNumInboundPeers+config.P2P.MaxNumOutboundPeers))
+	return proxyReactor, consensusState
 }
 
 func createTransport(
@@ -620,9 +621,9 @@ func createSwitch(config *cfg.Config,
 	peerFilters []p2p.PeerFilterFunc,
 	mempoolReactor p2p.Reactor,
 	bcReactor p2p.Reactor,
-	stateSyncReactor *statesync.Reactor,
-	consensusReactor *cs.Reactor,
-	evidenceReactor *evidence.Reactor,
+	stateSyncReactor p2p.Reactor,
+	consensusReactor p2p.Reactor,
+	evidenceReactor p2p.Reactor,
 	nodeInfo p2p.NodeInfo,
 	nodeKey *p2p.NodeKey,
 	p2pLogger log.Logger,
@@ -952,6 +953,10 @@ func NewNodeWithContext(ctx context.Context,
 	transport, peerFilters := createTransport(config, nodeInfo, nodeKey, proxyApp, tracer)
 
 	// Setup Switch.
+	peerLimit := int64(config.P2P.MaxNumInboundPeers + config.P2P.MaxNumOutboundPeers)
+	mempoolReactor = p2p.NewProxyReactor(mempoolReactor, peerLimit)
+	bcReactor = p2p.NewProxyReactor(bcReactor, peerLimit)
+	evidenceReactor = p2p.NewProxyReactor(evidenceReactor, peerLimit)
 	p2pLogger := logger.With("module", "p2p")
 	sw := createSwitch(
 		config, transport, p2pMetrics, peerFilters, mempoolReactor, bcReactor,
@@ -1015,8 +1020,8 @@ func NewNodeWithContext(ctx context.Context,
 		mempoolReactor:   mempoolReactor,
 		mempool:          mempool,
 		consensusState:   consensusState,
-		consensusReactor: consensusReactor,
-		stateSyncReactor: stateSyncReactor,
+		consensusReactor: consensusReactor.GetTarget().(*cs.Reactor),
+		stateSyncReactor: stateSyncReactor.GetTarget().(*statesync.Reactor),
 		stateSync:        stateSync,
 		stateSyncGenesis: state, // Shouldn't be necessary, but need a way to pass the genesis state
 		pexReactor:       pexReactor,

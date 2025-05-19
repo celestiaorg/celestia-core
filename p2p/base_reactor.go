@@ -3,7 +3,9 @@ package p2p
 import (
 	"context"
 	"fmt"
+	"github.com/tendermint/tendermint/libs/log"
 	"reflect"
+	"sync/atomic"
 
 	"github.com/gogo/protobuf/proto"
 	"github.com/tendermint/tendermint/libs/service"
@@ -69,6 +71,103 @@ type Reactor interface {
 	// reactor. The queue size and the processing function can be changed via
 	// passing options to the base reactor.
 	QueueUnprocessedEnvelope(e UnprocessedEnvelope)
+}
+
+type Proxy interface {
+	Reactor
+	GetTarget() Reactor
+}
+
+type ProxyReactor struct {
+	target Reactor
+	logger log.Logger
+
+	peerLimit int64
+	peers     atomic.Int64
+}
+
+func NewProxyReactor(target Reactor, peerLimit int64) *ProxyReactor {
+	return &ProxyReactor{
+		target:    target,
+		peerLimit: peerLimit,
+	}
+}
+
+func (pr *ProxyReactor) GetTarget() Reactor {
+	return pr.target
+}
+
+func (pr *ProxyReactor) Start() error {
+	return pr.target.Start()
+}
+
+func (pr *ProxyReactor) OnStart() error {
+	return pr.target.OnStart()
+}
+
+func (pr *ProxyReactor) Stop() error {
+	return pr.target.Stop()
+}
+
+func (pr *ProxyReactor) OnStop() {
+	pr.target.OnStop()
+}
+
+func (pr *ProxyReactor) Reset() error {
+	return pr.target.Reset()
+}
+
+func (pr *ProxyReactor) OnReset() error {
+	return pr.target.OnReset()
+}
+
+func (pr *ProxyReactor) IsRunning() bool {
+	return pr.target.IsRunning()
+}
+
+func (pr *ProxyReactor) Quit() <-chan struct{} {
+	return pr.target.Quit()
+}
+
+func (pr *ProxyReactor) String() string {
+	return pr.target.String()
+}
+
+func (pr *ProxyReactor) SetLogger(logger log.Logger) {
+	pr.target.SetLogger(logger)
+	pr.logger = logger
+}
+
+func (pr *ProxyReactor) SetSwitch(s *Switch) {
+	pr.target.SetSwitch(s)
+}
+
+func (pr *ProxyReactor) GetChannels() []*conn.ChannelDescriptor {
+	return pr.target.GetChannels()
+}
+
+func (pr *ProxyReactor) InitPeer(peer Peer) Peer {
+	return pr.target.InitPeer(peer)
+}
+
+func (pr *ProxyReactor) AddPeer(peer Peer) {
+	if pr.peers.Load() <= pr.peerLimit {
+		pr.target.AddPeer(peer)
+	} else {
+		pr.logger.Info("peer limit reached - peer not added", "reactor", pr.String(), "peer", peer.ID(), "limit", pr.peerLimit)
+	}
+}
+
+func (pr *ProxyReactor) RemovePeer(peer Peer, reason interface{}) {
+	pr.target.RemovePeer(peer, reason)
+}
+
+func (pr *ProxyReactor) Receive(chID byte, peer Peer, msgBytes []byte) {
+	pr.target.Receive(chID, peer, msgBytes)
+}
+
+func (pr *ProxyReactor) QueueUnprocessedEnvelope(e UnprocessedEnvelope) {
+	pr.target.QueueUnprocessedEnvelope(e)
 }
 
 type EnvelopeReceiver interface {

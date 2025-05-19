@@ -51,7 +51,7 @@ func NewReactor(
 	conn proxy.AppConnSnapshot,
 	connQuery proxy.AppConnQuery,
 	tempDir string,
-) *Reactor {
+) p2p.Proxy {
 
 	r := &Reactor{
 		cfg:       cfg,
@@ -60,7 +60,7 @@ func NewReactor(
 	}
 	r.BaseReactor = *p2p.NewBaseReactor("StateSync", r, p2p.WithIncomingQueueSize(ReactorIncomingMessageQueueSize))
 
-	return r
+	return p2p.NewProxyReactor(r, 100) // TODO(tzdybal): need config here
 }
 
 // GetChannels implements p2p.Reactor.
