@@ -220,6 +220,9 @@ type BaseConfig struct { //nolint: maligned
 	// Database directory
 	DBPath string `mapstructure:"db_dir"`
 
+	// Blockstore directory. If not set, defaults to DBPath
+	BlockstorePath string `mapstructure:"blockstore_dir"`
+
 	// Output level for logging
 	LogLevel string `mapstructure:"log_level"`
 
@@ -266,6 +269,7 @@ func DefaultBaseConfig() BaseConfig {
 		FilterPeers:        false,
 		DBBackend:          "goleveldb",
 		DBPath:             DefaultDataDir,
+		BlockstorePath:     DefaultDataDir,
 	}
 }
 
@@ -300,6 +304,14 @@ func (cfg BaseConfig) NodeKeyFile() string {
 // DBDir returns the full path to the database directory
 func (cfg BaseConfig) DBDir() string {
 	return rootify(cfg.DBPath, cfg.RootDir)
+}
+
+// BlockstoreDir returns the full path to the blockstore directory
+func (cfg BaseConfig) BlockstoreDir() string {
+	if cfg.BlockstorePath == "" {
+		return cfg.DBDir()
+	}
+	return rootify(cfg.BlockstorePath, cfg.RootDir)
 }
 
 // ValidateBasic performs basic validation (checking param bounds, etc.) and
