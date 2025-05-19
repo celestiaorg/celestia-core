@@ -284,7 +284,7 @@ This release contains a few bug fixes and performance improvements.
 
 ### FEATURES
 
-- [`node`] Add `BootstrapStateWithGenProvider` to boostrap state using a custom
+- [`node`] Add `BootstrapStateWithGenProvider` to bootstrap state using a custom
   genesis doc provider ([\#2793](https://github.com/cometbft/cometbft/pull/2793))
 
 ### IMPROVEMENTS
