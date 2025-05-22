@@ -467,6 +467,8 @@ func (ps *PartSet) Count() uint32 {
 	if ps == nil {
 		return 0
 	}
+	ps.mtx.Lock()
+	defer ps.mtx.Unlock()
 	return ps.count
 }
 
@@ -496,14 +498,18 @@ func (ps *PartSet) AddPart(part *Part) (bool, error) {
 		return false, fmt.Errorf("nil part")
 	}
 
+	ps.mtx.Lock()
 	// The proof should be compatible with the number of parts.
 	if part.Proof.Total != int64(ps.total) {
+		ps.mtx.Unlock()
 		return false, fmt.Errorf(ErrPartSetInvalidProofTotal.Error()+":%v %v", part.Proof.Total, ps.total)
 	}
 
 	if part.Proof.Verify(ps.Hash(), part.Bytes) != nil {
+		ps.mtx.Unlock()
 		return false, ErrPartSetInvalidProofHash
 	}
+	ps.mtx.Unlock()
 
 	return ps.AddPartWithoutProof(part)
 }

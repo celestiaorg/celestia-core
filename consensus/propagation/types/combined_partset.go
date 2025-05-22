@@ -109,6 +109,8 @@ func (cps *CombinedPartSet) IsComplete() bool {
 
 // CanDecode determines if enough parts have been added to decode the block.
 func (cps *CombinedPartSet) CanDecode() bool {
+	cps.mtx.Lock()
+	defer cps.mtx.Unlock()
 	return (cps.original.Count()+cps.parity.Count()) >= cps.original.Total() &&
 		!cps.catchup
 }
@@ -135,6 +137,8 @@ func (cps *CombinedPartSet) AddPart(part *RecoveryPart, proof merkle.Proof) (boo
 		Proof: proof,
 	}
 
+	cps.mtx.Lock()
+	defer cps.mtx.Unlock()
 	if part.Index < cps.original.Total() {
 		added, err := cps.original.AddPart(p)
 		if added {

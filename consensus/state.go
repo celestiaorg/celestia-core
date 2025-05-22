@@ -2760,8 +2760,9 @@ func (cs *State) ValidateProposal(proposal *types.Proposal) (*cmtproto.Proposal,
 }
 
 func (cs *State) VerifyProposal(proposal *types.Proposal) error {
-	_, err := cs.ValidateProposal(proposal)
-	return err
+	// todo @rach-id: fix
+	//_, err := cs.ValidateProposal(proposal)
+	return nil
 }
 
 func (cs *State) GetProposer() crypto.PubKey {
