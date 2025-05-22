@@ -177,7 +177,7 @@ func (blockExec *BlockExecutor) CreateProposalBlock(
 	// via also removing hashes that the application removed!
 	hashes := make([][]byte, len(newData.Txs))
 	for i := 0; i < len(newData.Txs); i++ {
-		hashes[i] = txs[i].Hash()
+		hashes[i] = newData.Txs[i].Hash()
 	}
 
 	block.SetCachedHashes(hashes)

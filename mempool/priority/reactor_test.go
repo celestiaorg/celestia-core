@@ -101,11 +101,9 @@ func TestReactorEventuallyRemovesExpiredTransaction(t *testing.T) {
 	const N = 1
 	reactor := makeAndConnectReactors(config, N)[0]
 
-	tx := types.Tx([]byte("test"))
+	tx := types.Tx("0x00=0x00=123")
 	key := tx.Key()
-	txMsg := &memproto.Message{
-		Sum: &memproto.Message_Txs{Txs: &memproto.Txs{Txs: [][]byte{tx}}},
-	}
+	txMsg := &memproto.Txs{Txs: [][]byte{tx}}
 
 	peer := mock.NewPeer(nil)
 	reactor.InitPeer(peer)

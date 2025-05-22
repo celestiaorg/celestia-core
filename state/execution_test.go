@@ -596,7 +596,7 @@ func TestFinalizeBlockValidatorUpdates(t *testing.T) {
 		mock.Anything,
 		mock.Anything,
 		mock.Anything).Return(nil)
-	mp.On("ReapMaxBytesMaxGas", mock.Anything, mock.Anything).Return(types.Txs{})
+	mp.On("ReapMaxBytesMaxGas", mock.Anything, mock.Anything).Return([]*types.CachedTx{})
 
 	blockStore := store.NewBlockStore(dbm.NewMemDB())
 	blockExec := sm.NewBlockExecutor(
@@ -760,8 +760,9 @@ func TestPrepareProposalTxsAllIncluded(t *testing.T) {
 	evpool.On("PendingEvidence", mock.Anything).Return([]types.Evidence{}, int64(0))
 
 	txs := test.MakeNTxs(height, 10)
+	cachedTxs := types.CachedTxFromTxs(txs)
 	mp := &mpmocks.Mempool{}
-	mp.On("ReapMaxBytesMaxGas", mock.Anything, mock.Anything).Return(txs[2:])
+	mp.On("ReapMaxBytesMaxGas", mock.Anything, mock.Anything).Return(cachedTxs[2:])
 
 	app := &abcimocks.Application{}
 	app.On("PrepareProposal", mock.Anything, mock.Anything).Return(&abci.ResponsePrepareProposal{
@@ -811,8 +812,9 @@ func TestPrepareProposalReorderTxs(t *testing.T) {
 	evpool.On("PendingEvidence", mock.Anything).Return([]types.Evidence{}, int64(0))
 
 	txs := test.MakeNTxs(height, 10)
+	cachedTxs := types.CachedTxFromTxs(txs)
 	mp := &mpmocks.Mempool{}
-	mp.On("ReapMaxBytesMaxGas", mock.Anything, mock.Anything).Return(txs)
+	mp.On("ReapMaxBytesMaxGas", mock.Anything, mock.Anything).Return(cachedTxs)
 
 	txs = txs[2:]
 	txs = append(txs[len(txs)/2:], txs[:len(txs)/2]...)
@@ -870,8 +872,9 @@ func TestPrepareProposalErrorOnTooManyTxs(t *testing.T) {
 	var bytesPerTx int64 = 3
 	maxDataBytes := types.MaxDataBytes(state.ConsensusParams.Block.MaxBytes, 0, nValidators)
 	txs := test.MakeNTxs(height, maxDataBytes/bytesPerTx+2) // +2 so that tx don't fit
+	cachedTxs := types.CachedTxFromTxs(txs)
 	mp := &mpmocks.Mempool{}
-	mp.On("ReapMaxBytesMaxGas", mock.Anything, mock.Anything).Return(txs)
+	mp.On("ReapMaxBytesMaxGas", mock.Anything, mock.Anything).Return(cachedTxs)
 
 	app := &abcimocks.Application{}
 	app.On("PrepareProposal", mock.Anything, mock.Anything).Return(&abci.ResponsePrepareProposal{
@@ -927,8 +930,9 @@ func TestPrepareProposalCountSerializationOverhead(t *testing.T) {
 	evpool.On("PendingEvidence", mock.Anything).Return([]types.Evidence{}, int64(0))
 
 	txs := test.MakeNTxs(height, maxDataBytes/bytesPerTx)
+	cachedTxs := types.CachedTxFromTxs(txs)
 	mp := &mpmocks.Mempool{}
-	mp.On("ReapMaxBytesMaxGas", mock.Anything, mock.Anything).Return(txs)
+	mp.On("ReapMaxBytesMaxGas", mock.Anything, mock.Anything).Return(cachedTxs)
 
 	app := &abcimocks.Application{}
 	app.On("PrepareProposal", mock.Anything, mock.Anything).Return(&abci.ResponsePrepareProposal{
@@ -976,8 +980,9 @@ func TestPrepareProposalErrorOnPrepareProposalError(t *testing.T) {
 	evpool.On("PendingEvidence", mock.Anything).Return([]types.Evidence{}, int64(0))
 
 	txs := test.MakeNTxs(height, 10)
+	cachedTxs := types.CachedTxFromTxs(txs)
 	mp := &mpmocks.Mempool{}
-	mp.On("ReapMaxBytesMaxGas", mock.Anything, mock.Anything).Return(txs)
+	mp.On("ReapMaxBytesMaxGas", mock.Anything, mock.Anything).Return(cachedTxs)
 
 	cm := &abciclientmocks.Client{}
 	cm.On("SetLogger", mock.Anything).Return()
@@ -1079,7 +1084,7 @@ func TestCreateProposalAbsentVoteExtensions(t *testing.T) {
 				mock.Anything,
 				mock.Anything,
 				mock.Anything).Return(nil)
-			mp.On("ReapMaxBytesMaxGas", mock.Anything, mock.Anything).Return(types.Txs{})
+			mp.On("ReapMaxBytesMaxGas", mock.Anything, mock.Anything).Return([]*types.CachedTx{})
 
 			blockStore := store.NewBlockStore(dbm.NewMemDB())
 			blockExec := sm.NewBlockExecutor(
