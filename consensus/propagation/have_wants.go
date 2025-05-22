@@ -4,12 +4,12 @@ import (
 	"fmt"
 	"math"
 
-	proptypes "github.com/tendermint/tendermint/consensus/propagation/types"
-	"github.com/tendermint/tendermint/crypto/tmhash"
-	"github.com/tendermint/tendermint/libs/bits"
-	"github.com/tendermint/tendermint/p2p"
-	"github.com/tendermint/tendermint/pkg/trace/schema"
-	propproto "github.com/tendermint/tendermint/proto/tendermint/propagation"
+	proptypes "github.com/cometbft/cometbft/consensus/propagation/types"
+	"github.com/cometbft/cometbft/crypto/tmhash"
+	"github.com/cometbft/cometbft/libs/bits"
+	"github.com/cometbft/cometbft/libs/trace/schema"
+	"github.com/cometbft/cometbft/p2p"
+	propproto "github.com/cometbft/cometbft/proto/tendermint/propagation"
 )
 
 // handleHaves is called when a peer sends a have message. This is used to
@@ -254,7 +254,7 @@ func (blockProp *Reactor) sendWant(ps *PeerState, want *proptypes.WantParts) {
 		Message:   want.ToProto(),
 	}
 
-	if !p2p.TrySendEnvelopeShim(ps.peer, e, blockProp.Logger) { //nolint:staticcheck
+	if !ps.peer.TrySend(e) {
 		blockProp.Logger.Error("failed to send part state", "peer", ps.peer.ID(), "height", want.Height, "round", want.Round)
 		return
 	}
@@ -307,7 +307,7 @@ func (blockProp *Reactor) broadcastHaves(haves *proptypes.HaveParts, from p2p.ID
 		// pull based gossip, this isn't as big as a deal since if someone asks
 		// for data, they must already have the proposal.
 		// TODO: use retry and logs
-		if !p2p.TrySendEnvelopeShim(peer.peer, e, blockProp.Logger) { //nolint:staticcheck
+		if !peer.peer.TrySend(e) {
 			blockProp.Logger.Error("failed to send haves to peer", "peer", peer.peer.ID())
 			continue
 		}
@@ -369,7 +369,7 @@ func (blockProp *Reactor) handleWants(peer p2p.ID, wants *proptypes.WantParts) {
 			Message:   rpart,
 		}
 
-		if !p2p.TrySendEnvelopeShim(p.peer, e, blockProp.Logger) { //nolint:staticcheck
+		if !p.peer.TrySend(e) {
 			blockProp.Logger.Error("failed to send part", "peer", peer, "height", height, "round", round, "part", partIndex)
 			continue
 		}
@@ -524,7 +524,7 @@ func (blockProp *Reactor) clearWants(part *proptypes.RecoveryPart) {
 				Message:   &propproto.RecoveryPart{Height: part.Height, Round: part.Round, Index: part.Index, Data: part.Data},
 			}
 
-			if !p2p.TrySendEnvelopeShim(peer.peer, e, blockProp.Logger) { //nolint:staticcheck
+			if !peer.peer.TrySend(e) {
 				blockProp.Logger.Error("failed to send part", "peer", peer.peer.ID(), "height", part.Height, "round", part.Round, "part", part.Index)
 				continue
 			}

@@ -5,16 +5,17 @@ import (
 	"time"
 
 	dbm "github.com/cometbft/cometbft-db"
-	"github.com/tendermint/tendermint/store"
+	"github.com/cometbft/cometbft/store"
 
 	"github.com/stretchr/testify/assert"
 
 	"github.com/stretchr/testify/require"
-	cfg "github.com/tendermint/tendermint/config"
-	proptypes "github.com/tendermint/tendermint/consensus/propagation/types"
-	cmtrand "github.com/tendermint/tendermint/libs/rand"
-	"github.com/tendermint/tendermint/state"
-	"github.com/tendermint/tendermint/types"
+
+	cfg "github.com/cometbft/cometbft/config"
+	proptypes "github.com/cometbft/cometbft/consensus/propagation/types"
+	cmtrand "github.com/cometbft/cometbft/libs/rand"
+	"github.com/cometbft/cometbft/state"
+	"github.com/cometbft/cometbft/types"
 )
 
 func TestPropose(t *testing.T) {
@@ -28,7 +29,7 @@ func TestPropose(t *testing.T) {
 		cleanup(t)
 	})
 
-	prop, partSet, _, metaData := createTestProposal(sm, 1, 100, 1000)
+	prop, partSet, _, metaData := createTestProposal(t, sm, 1, 100, 1000)
 
 	reactor1.ProposeBlock(prop, partSet, metaData)
 
@@ -65,6 +66,7 @@ func TestPropose(t *testing.T) {
 }
 
 func createTestProposal(
+	t *testing.T,
 	sm state.State,
 	height int64,
 	txCount, txSize int,
@@ -76,7 +78,8 @@ func createTestProposal(
 	data := types.Data{
 		Txs: txs,
 	}
-	block, partSet := sm.MakeBlock(height, data, types.RandCommit(time.Now()), []types.Evidence{}, cmtrand.Bytes(20))
+	block, partSet, err := sm.MakeBlock(height, data, types.RandCommit(time.Now()), []types.Evidence{}, cmtrand.Bytes(20))
+	require.NoError(t, err)
 	metaData := make([]proptypes.TxMetaData, len(partSet.TxPos))
 	for i, pos := range partSet.TxPos {
 		metaData[i] = proptypes.TxMetaData{
@@ -128,7 +131,8 @@ func TestRecoverPartsLocally(t *testing.T) {
 
 	data := types.Data{Txs: types.TxsFromCachedTxs(txs)}
 
-	block, partSet := sm.MakeBlock(1, data, types.RandCommit(time.Now()), []types.Evidence{}, cmtrand.Bytes(20))
+	block, partSet, err := sm.MakeBlock(1, data, types.RandCommit(time.Now()), []types.Evidence{}, cmtrand.Bytes(20))
+	require.NoError(t, err)
 	id := types.BlockID{Hash: block.Hash(), PartSetHeader: partSet.Header()}
 	prop := types.NewProposal(block.Height, 0, 0, id)
 	prop.Signature = cmtrand.Bytes(64)

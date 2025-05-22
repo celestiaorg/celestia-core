@@ -1,8 +1,8 @@
 package propagation
 
 import (
-	"github.com/cometbft/cometbft/libs/bits"
-	"github.com/cometbft/cometbft/p2p"
+	proptypes "github.com/cometbft/cometbft/consensus/propagation/types"
+	"github.com/cometbft/cometbft/crypto"
 	"github.com/cometbft/cometbft/types"
 )
 

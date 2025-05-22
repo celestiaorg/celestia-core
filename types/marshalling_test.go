@@ -6,9 +6,10 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/tendermint/tendermint/crypto"
-	cmtrand "github.com/tendermint/tendermint/libs/rand"
-	cmtproto "github.com/tendermint/tendermint/proto/tendermint/types"
+
+	"github.com/cometbft/cometbft/crypto"
+	cmtrand "github.com/cometbft/cometbft/libs/rand"
+	cmtproto "github.com/cometbft/cometbft/proto/tendermint/types"
 )
 
 // TestMarshalBlockWithTxPositions uses table-driven tests to check that
@@ -87,8 +88,9 @@ func makeProtoBlock(t *testing.T, txs []int) *cmtproto.Block {
 	h := cmtrand.Int63()
 	c1 := randCommit(time.Now())
 	evidenceTime := time.Date(2019, 1, 1, 0, 0, 0, 0, time.UTC)
-	evi := NewMockDuplicateVoteEvidence(h, evidenceTime, "block-test-chain")
-	b1 := MakeBlock(h, makeData(bztxs), c1, []Evidence{evi})
+	evi, err := NewMockDuplicateVoteEvidence(h, evidenceTime, "block-test-chain")
+	require.NoError(t, err)
+	b1 := MakeBlock(h, MakeData(bztxs), c1, []Evidence{evi})
 	b1.ProposerAddress = cmtrand.Bytes(crypto.AddressSize)
 	pb, err := b1.ToProto()
 	require.NoError(t, err)

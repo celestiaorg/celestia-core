@@ -4,14 +4,16 @@ import (
 	"os"
 	"testing"
 
-	dbm "github.com/cometbft/cometbft-db"
+	"github.com/cometbft/cometbft/internal/test"
+
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	cfg "github.com/tendermint/tendermint/config"
+
+	dbm "github.com/cometbft/cometbft-db"
 )
 
 func SetupTestCase(t *testing.T) (func(t *testing.T), dbm.DB, State) {
-	config := cfg.ResetTestRoot("state_")
+	config := test.ResetTestRoot("state_")
 	dbType := dbm.BackendType(config.DBBackend)
 	stateDB, err := dbm.NewDB("state", dbType, config.DBDir())
 	stateStore := NewStore(stateDB, StoreOptions{

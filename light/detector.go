@@ -132,7 +132,7 @@ func (c *Client) compareNewLightBlockWithWitness(ctx context.Context, errc chan 
 	// the witness hasn't been helpful in comparing headers, we mark the response and continue
 	// comparing with the rest of the witnesses
 	case provider.ErrNoResponse, provider.ErrLightBlockNotFound, context.DeadlineExceeded, context.Canceled:
-		if err == provider.ErrLightBlockNotFound {
+		if errors.Is(err, provider.ErrLightBlockNotFound) {
 			err = provider.NewNotFound()
 		}
 		errc <- err

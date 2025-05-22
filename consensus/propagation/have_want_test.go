@@ -4,13 +4,14 @@ import (
 	"testing"
 	"time"
 
-	proptypes "github.com/tendermint/tendermint/consensus/propagation/types"
-	"github.com/tendermint/tendermint/types"
+	proptypes "github.com/cometbft/cometbft/consensus/propagation/types"
+	"github.com/cometbft/cometbft/types"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	cfg "github.com/tendermint/tendermint/config"
-	"github.com/tendermint/tendermint/state"
+
+	cfg "github.com/cometbft/cometbft/config"
+	"github.com/cometbft/cometbft/state"
 )
 
 func TestRequestFromPeer(t *testing.T) {
@@ -276,7 +277,7 @@ func createTestCreatorsWithProposal(t *testing.T, reactorsCount int, height int6
 		cleanup(t)
 	})
 
-	prop, ps, _, metaData := createTestProposal(sm, height, txCount, txSize)
+	prop, ps, _, metaData := createTestProposal(t, sm, height, txCount, txSize)
 	cb, _ := createCompactBlock(t, prop, ps, metaData)
 
 	for _, reactor := range reactors {

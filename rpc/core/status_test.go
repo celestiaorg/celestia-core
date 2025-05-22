@@ -3,11 +3,12 @@ package core_test
 import (
 	"testing"
 
+	"github.com/stretchr/testify/assert"
+
 	"github.com/cometbft/cometbft/p2p"
 	"github.com/cometbft/cometbft/rpc/core"
 	"github.com/cometbft/cometbft/state/mocks"
 	"github.com/cometbft/cometbft/types"
-	"github.com/stretchr/testify/assert"
 )
 
 func TestGetNodeInfo(t *testing.T) {

@@ -99,7 +99,7 @@ func NewCListMempool(
 }
 
 // GetTxByKey retrieves a transaction from the mempool using its key.
-func (mem *CListMempool) GetTxByKey(key types.TxKey) (types.Tx, bool) {
+func (mem *CListMempool) GetTxByKey(key types.TxKey) (*types.CachedTx, bool) {
 	e, ok := mem.txsMap.Load(key)
 	if !ok {
 		return nil, false
@@ -269,7 +269,7 @@ func (mem *CListMempool) CheckTx(
 
 	cachedTx := tx.ToCachedTx()
 	if mem.preCheck != nil {
-		if err := mem.preCheck(tx); err != nil {
+		if err := mem.preCheck(cachedTx); err != nil {
 			return ErrPreCheck{Err: err}
 		}
 	}
@@ -297,7 +297,7 @@ func (mem *CListMempool) CheckTx(
 	if err != nil {
 		panic(fmt.Errorf("CheckTx request for tx %s failed: %w", log.NewLazySprintf("%v", tx.Hash()), err))
 	}
-	reqRes.SetCallback(mem.reqResCb(tx, txInfo, cb))
+	reqRes.SetCallback(mem.reqResCb(cachedTx, txInfo, cb))
 
 	return nil
 }
@@ -352,14 +352,14 @@ func (mem *CListMempool) globalCb(req *abci.Request, res *abci.Response) {
 //
 // Used in CheckTx to record PeerID who sent us the tx.
 func (mem *CListMempool) reqResCb(
-	tx []byte,
+	tx *types.CachedTx,
 	txInfo TxInfo,
 	externalCb func(*abci.ResponseCheckTx),
 ) func(res *abci.Response) {
 	return func(res *abci.Response) {
 		if !mem.recheck.done() {
 			panic(log.NewLazySprintf("rechecking has not finished; cannot check new tx %v",
-				types.Tx(tx).Hash()))
+				tx.Hash()))
 		}
 
 		mem.resCbFirstTime(tx, txInfo, res)
@@ -380,8 +380,8 @@ func (mem *CListMempool) reqResCb(
 func (mem *CListMempool) addTx(memTx *mempoolTx) {
 	e := mem.txs.PushBack(memTx)
 	mem.txsMap.Store(memTx.tx.Key(), e)
-	mem.txsBytes.Add(int64(len(memTx.tx)))
-	mem.metrics.TxSizeBytes.Observe(float64(len(memTx.tx)))
+	mem.txsBytes.Add(int64(len(memTx.tx.Tx)))
+	mem.metrics.TxSizeBytes.Observe(float64(len(memTx.tx.Tx)))
 }
 
 // RemoveTxByKey removes a transaction from the mempool by its TxKey index.
@@ -393,11 +393,11 @@ func (mem *CListMempool) RemoveTxByKey(txKey types.TxKey) error {
 		mem.txs.Remove(elem)
 		elem.DetachPrev()
 		mem.txsMap.Delete(txKey)
-		var tx types.Tx
+		var tx *types.CachedTx
 		if memtx, ok := elem.Value.(*mempoolTx); ok {
 			tx = memtx.tx
 		}
-		mem.txsBytes.Add(int64(-len(tx)))
+		mem.txsBytes.Add(int64(-len(tx.Tx)))
 		return nil
 	}
 	return ErrTxNotFound
@@ -427,7 +427,7 @@ func (mem *CListMempool) isFull(txSize int) error {
 // The case where the app checks the tx for the second and subsequent times is
 // handled by the resCbRecheck callback.
 func (mem *CListMempool) resCbFirstTime(
-	tx []byte,
+	tx *types.CachedTx,
 	txInfo TxInfo,
 	res *abci.Response,
 ) {
@@ -483,7 +483,7 @@ func (mem *CListMempool) resCbFirstTime(
 			// ignore bad transaction
 			mem.logger.Debug(
 				"rejected bad transaction",
-				"tx", types.Tx(tx).Hash(),
+				"tx", tx.Hash(),
 				"peerID", txInfo.SenderP2PID,
 				"res", r,
 				"err", postCheckErr,
@@ -514,7 +514,7 @@ func (mem *CListMempool) resCbRecheck(tx types.Tx, res *abci.ResponseCheckTx) {
 
 	var postCheckErr error
 	if mem.postCheck != nil {
-		postCheckErr = mem.postCheck(tx, res)
+		postCheckErr = mem.postCheck(tx.ToCachedTx(), res)
 	}
 
 	if (res.Code != abci.CodeTypeOK) || postCheckErr != nil {
@@ -524,7 +524,7 @@ func (mem *CListMempool) resCbRecheck(tx types.Tx, res *abci.ResponseCheckTx) {
 			mem.logger.Debug("Transaction could not be removed from mempool", "err", err)
 		}
 		if !mem.config.KeepInvalidTxsInCache {
-			mem.cache.Remove(tx)
+			mem.cache.Remove(tx.ToCachedTx())
 			mem.metrics.EvictedTxs.Add(1)
 		}
 	}
@@ -609,7 +609,7 @@ func (mem *CListMempool) ReapMaxTxs(max int) []*types.CachedTx {
 // Lock() must be help by the caller during execution.
 func (mem *CListMempool) Update(
 	height int64,
-	txs types.Txs,
+	txs []*types.CachedTx,
 	txResults []*abci.ExecTxResult,
 	preCheck PreCheckFunc,
 	postCheck PostCheckFunc,
@@ -691,7 +691,7 @@ func (mem *CListMempool) recheckTxs() {
 		// Send a CheckTx request to the app. If we're using a sync client, the resCbRecheck
 		// callback will be called right after receiving the response.
 		_, err := mem.proxyAppConn.CheckTxAsync(context.TODO(), &abci.RequestCheckTx{
-			Tx:   tx,
+			Tx:   tx.Tx,
 			Type: abci.CheckTxType_Recheck,
 		})
 		if err != nil {
@@ -795,7 +795,7 @@ func (rc *recheck) findNextEntryMatching(tx *types.Tx) bool {
 	found := false
 	for ; !rc.done(); rc.setNextEntry() {
 		expectedTx := rc.cursor.Value.(*mempoolTx).tx
-		if bytes.Equal(*tx, expectedTx) {
+		if bytes.Equal(*tx, expectedTx.Tx) {
 			// Found an entry in the list of txs to recheck that matches tx.
 			found = true
 			rc.numPendingTxs.Add(-1)

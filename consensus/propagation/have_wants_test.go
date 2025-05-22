@@ -6,11 +6,12 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	cfg "github.com/tendermint/tendermint/config"
-	proptypes "github.com/tendermint/tendermint/consensus/propagation/types"
-	cmtrand "github.com/tendermint/tendermint/libs/rand"
-	"github.com/tendermint/tendermint/state"
-	"github.com/tendermint/tendermint/types"
+
+	cfg "github.com/cometbft/cometbft/config"
+	proptypes "github.com/cometbft/cometbft/consensus/propagation/types"
+	cmtrand "github.com/cometbft/cometbft/libs/rand"
+	"github.com/cometbft/cometbft/state"
+	"github.com/cometbft/cometbft/types"
 )
 
 func TestInvalidHavePartHash(t *testing.T) {
@@ -23,7 +24,7 @@ func TestInvalidHavePartHash(t *testing.T) {
 	t.Cleanup(func() {
 		cleanup(t)
 	})
-	prop, ps, _, metaData := createTestProposal(sm, 1, 2, 1000000)
+	prop, ps, _, metaData := createTestProposal(t, sm, 1, 2, 1000000)
 	parityBlock, lastLen, err := types.Encode(ps, types.BlockPartSizeBytes)
 	require.NoError(t, err)
 	partHashes := extractHashes(ps, parityBlock)

@@ -4,7 +4,8 @@ import (
 	"io"
 	"testing"
 
-	"github.com/gogo/protobuf/proto"
+	"github.com/cosmos/gogoproto/proto"
+
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -95,7 +96,7 @@ func TestEncodingDecodingRoundTrip(t *testing.T) {
 		},
 	}
 	for _, tt := range tests {
-		b1 := MakeBlock(1, makeData([]Tx{Tx(cmtrand.Bytes(tt.dataSize))}), &Commit{Signatures: []CommitSig{}}, []Evidence{})
+		b1 := MakeBlock(1, MakeData([]Tx{Tx(cmtrand.Bytes(tt.dataSize))}), &Commit{Signatures: []CommitSig{}}, []Evidence{})
 		b1.ProposerAddress = cmtrand.Bytes(crypto.AddressSize)
 
 		bp, err := b1.ToProto()

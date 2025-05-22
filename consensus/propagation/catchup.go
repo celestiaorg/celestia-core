@@ -3,12 +3,12 @@ package propagation
 import (
 	"math/rand"
 
-	proptypes "github.com/tendermint/tendermint/consensus/propagation/types"
-	"github.com/tendermint/tendermint/libs/bits"
-	"github.com/tendermint/tendermint/p2p"
-	"github.com/tendermint/tendermint/pkg/trace/schema"
-	protoprop "github.com/tendermint/tendermint/proto/tendermint/propagation"
-	"github.com/tendermint/tendermint/types"
+	proptypes "github.com/cometbft/cometbft/consensus/propagation/types"
+	"github.com/cometbft/cometbft/libs/bits"
+	"github.com/cometbft/cometbft/libs/trace/schema"
+	"github.com/cometbft/cometbft/p2p"
+	protoprop "github.com/cometbft/cometbft/proto/tendermint/propagation"
+	"github.com/cometbft/cometbft/types"
 )
 
 // retryWants ensure that all data for all unpruned compact blocks is requested.
@@ -64,7 +64,7 @@ func (blockProp *Reactor) retryWants(currentHeight int64) {
 				},
 			}
 
-			if !p2p.TrySendEnvelopeShim(peer.peer, e, blockProp.Logger) { //nolint:staticcheck
+			if peer.peer.TrySend(e) {
 				blockProp.Logger.Error("failed to send want part", "peer", peer, "height", height, "round", round)
 				continue
 			}

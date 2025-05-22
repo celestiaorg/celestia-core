@@ -2,8 +2,6 @@ package store
 
 import (
 	"errors"
-	"fmt"
-	"runtime/debug"
 )
 
 var (
@@ -11,7 +9,3 @@ var (
 	// requested header.
 	ErrLightBlockNotFound = errors.New("light block not found")
 )
-
-func NewNotFound() error {
-	return fmt.Errorf("%s: %w", string(debug.Stack()), ErrLightBlockNotFound)
-}

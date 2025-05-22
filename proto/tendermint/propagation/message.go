@@ -3,8 +3,9 @@ package propagation
 import (
 	fmt "fmt"
 
+	"github.com/cosmos/gogoproto/proto"
+
 	"github.com/cometbft/cometbft/p2p"
-	"github.com/gogo/protobuf/proto"
 )
 
 var (

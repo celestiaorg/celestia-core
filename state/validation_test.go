@@ -99,7 +99,7 @@ func TestValidateBlockHeader(t *testing.T) {
 			Invalid blocks don't pass
 		*/
 		for _, tc := range testCases {
-			block, _, _, err := makeBlock(state, height, lastCommit)
+			block, _, err := makeBlock(state, height, lastCommit)
 			require.NoError(t, err)
 			tc.malleateBlock(block)
 			err = blockExec.ValidateBlock(state, block)
@@ -117,7 +117,7 @@ func TestValidateBlockHeader(t *testing.T) {
 	}
 
 	nextHeight := validationTestsStopHeight
-	block, _, _, err := makeBlock(state, nextHeight, lastCommit)
+	block, _, err := makeBlock(state, nextHeight, lastCommit)
 	require.NoError(t, err)
 	state.InitialHeight = nextHeight + 1
 	err = blockExec.ValidateBlock(state, block)
@@ -186,7 +186,7 @@ func TestValidateBlockCommit(t *testing.T) {
 				BlockID:    state.LastBlockID,
 				Signatures: []types.CommitSig{wrongHeightVote.CommitSig()},
 			}
-			block, _, _, err := makeBlock(state, height, wrongHeightCommit)
+			block, _, err := makeBlock(state, height, wrongHeightCommit)
 			require.NoError(t, err)
 			err = blockExec.ValidateBlock(state, block)
 			_, isErrInvalidCommitHeight := err.(types.ErrInvalidCommitHeight)
@@ -195,7 +195,7 @@ func TestValidateBlockCommit(t *testing.T) {
 			/*
 				#2589: test len(block.LastCommit.Signatures) == state.LastValidators.Size()
 			*/
-			block, _, _, err = makeBlock(state, height, wrongSigsCommit)
+			block, _, err = makeBlock(state, height, wrongSigsCommit)
 			require.NoError(t, err)
 			err = blockExec.ValidateBlock(state, block)
 			_, isErrInvalidCommitSignatures := err.(types.ErrInvalidCommitSignatures)
@@ -330,7 +330,7 @@ func TestValidateBlockEvidence(t *testing.T) {
 				evidence = append(evidence, newEv)
 				currentBytes += int64(len(newEv.Bytes()))
 			}
-			block, _, _, err := state.MakeBlock(height, types.MakeData(test.MakeNTxs(height, 10)), lastCommit, evidence, proposerAddr)
+			block, _, err := state.MakeBlock(height, types.MakeData(test.MakeNTxs(height, 10)), lastCommit, evidence, proposerAddr)
 			require.NoError(t, err)
 
 			err = blockExec.ValidateBlock(state, block)

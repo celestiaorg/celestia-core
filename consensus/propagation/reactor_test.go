@@ -8,14 +8,20 @@ import (
 	"testing"
 	"time"
 
-	"github.com/tendermint/tendermint/crypto"
-	"github.com/tendermint/tendermint/crypto/merkle"
-	"github.com/tendermint/tendermint/privval"
-	"github.com/tendermint/tendermint/proto/tendermint/propagation"
+	proptypes "github.com/cometbft/cometbft/consensus/propagation/types"
+	"github.com/cometbft/cometbft/libs/log"
+	"github.com/cometbft/cometbft/state"
+	"github.com/cometbft/cometbft/types"
+
+	"github.com/cometbft/cometbft/crypto"
+	"github.com/cometbft/cometbft/privval"
+	"github.com/cometbft/cometbft/proto/tendermint/propagation"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	dbm "github.com/cometbft/cometbft-db"
 	cfg "github.com/cometbft/cometbft/config"
-	"github.com/cometbft/cometbft/consensus/propagation/types"
 	"github.com/cometbft/cometbft/crypto/merkle"
 	"github.com/cometbft/cometbft/libs/bits"
 	cmtrand "github.com/cometbft/cometbft/libs/rand"
@@ -23,9 +29,6 @@ import (
 	"github.com/cometbft/cometbft/p2p"
 	"github.com/cometbft/cometbft/p2p/mock"
 	"github.com/cometbft/cometbft/store"
-	types2 "github.com/cometbft/cometbft/types"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 )
 
 const (
@@ -443,7 +446,7 @@ func TestPropagationSmokeTest(t *testing.T) {
 	})
 
 	for i := int64(1); i < 5; i++ {
-		prop, ps, block, metaData := createTestProposal(sm, i, 2, 1000000)
+		prop, ps, block, metaData := createTestProposal(t, sm, i, 2, 1000000)
 
 		// predistribute portions of the block
 		for _, tx := range block.Data.Txs {

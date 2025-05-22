@@ -8,6 +8,10 @@ import (
 	"sort"
 	"sync"
 
+	"github.com/cosmos/gogoproto/proto"
+
+	"github.com/cometbft/cometbft/crypto/tmhash"
+
 	"github.com/cometbft/cometbft/crypto/merkle"
 	"github.com/cometbft/cometbft/libs/bits"
 	protoprop "github.com/cometbft/cometbft/proto/tendermint/propagation"

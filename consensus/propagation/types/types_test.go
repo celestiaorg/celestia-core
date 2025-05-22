@@ -5,12 +5,20 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/cosmos/gogoproto/proto"
+
+	"github.com/cometbft/cometbft/proto/tendermint/crypto"
+	protobits "github.com/cometbft/cometbft/proto/tendermint/libs/bits"
+	protoprop "github.com/cometbft/cometbft/proto/tendermint/propagation"
+	"github.com/cometbft/cometbft/types"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
 	"github.com/cometbft/cometbft/crypto/merkle"
 	"github.com/cometbft/cometbft/crypto/tmhash"
 	"github.com/cometbft/cometbft/libs/bits"
 	"github.com/cometbft/cometbft/libs/rand"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 )
 
 func TestTxMetaData_RoundTrip(t *testing.T) {

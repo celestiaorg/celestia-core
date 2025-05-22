@@ -3,16 +3,17 @@ package propagation
 import (
 	"fmt"
 
-	"github.com/gogo/protobuf/proto"
-	proptypes "github.com/tendermint/tendermint/consensus/propagation/types"
-	"github.com/tendermint/tendermint/crypto/merkle"
-	"github.com/tendermint/tendermint/libs/bits"
-	"github.com/tendermint/tendermint/p2p"
-	"github.com/tendermint/tendermint/pkg/trace/schema"
-	"github.com/tendermint/tendermint/privval"
-	"github.com/tendermint/tendermint/proto/tendermint/mempool"
-	"github.com/tendermint/tendermint/proto/tendermint/propagation"
-	"github.com/tendermint/tendermint/types"
+	"github.com/cosmos/gogoproto/proto"
+
+	proptypes "github.com/cometbft/cometbft/consensus/propagation/types"
+	"github.com/cometbft/cometbft/crypto/merkle"
+	"github.com/cometbft/cometbft/libs/bits"
+	"github.com/cometbft/cometbft/libs/trace/schema"
+	"github.com/cometbft/cometbft/p2p"
+	"github.com/cometbft/cometbft/privval"
+	"github.com/cometbft/cometbft/proto/tendermint/mempool"
+	"github.com/cometbft/cometbft/proto/tendermint/propagation"
+	"github.com/cometbft/cometbft/types"
 )
 
 var _ Propagator = (*Reactor)(nil)
@@ -84,7 +85,7 @@ func (blockProp *Reactor) ProposeBlock(proposal *types.Proposal, block *types.Pa
 			},
 		}
 
-		if !p2p.TrySendEnvelopeShim(peer.peer, e, blockProp.Logger) { //nolint:staticcheck
+		if peer.peer.TrySend(e) {
 			blockProp.Logger.Error("failed to send have part", "peer", peer, "height", proposal.Height, "round", proposal.Round, "part", index)
 			// TODO retry
 			continue
@@ -275,7 +276,7 @@ func (blockProp *Reactor) broadcastCompactBlock(cb *proptypes.CompactBlock, from
 			continue
 		}
 
-		if !p2p.TrySendEnvelopeShim(peer.peer, e, blockProp.Logger) { //nolint:staticcheck
+		if !peer.peer.TrySend(e) {
 			blockProp.Logger.Debug("failed to send proposal to peer", "peer", peer.peer.ID())
 			// todo: we need to avoid sending this peer anything else until we can queue this message.
 			continue

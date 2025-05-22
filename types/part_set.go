@@ -7,6 +7,7 @@ import (
 	"io"
 
 	"github.com/klauspost/reedsolomon"
+
 	"github.com/cometbft/cometbft/crypto/merkle"
 	"github.com/cometbft/cometbft/libs/bits"
 	cmtbytes "github.com/cometbft/cometbft/libs/bytes"
@@ -237,7 +238,7 @@ func NewPartSetFromData(data []byte, partSize uint32) (ops *PartSet) {
 	return ops
 }
 
-// Extend erasure encodes the block parts. Only the original parts should be
+// Encode Extend erasure encodes the block parts. Only the original parts should be
 // provided. The parity data is formed into its own PartSet and returned
 // alongside the length of the last part. The length of the last part is
 // necessary because the last part may be padded with zeros after decoding. These zeros must be removed before computi
@@ -306,7 +307,6 @@ func Encode(ops *PartSet, partSize uint32) (*PartSet, int, error) {
 // ready to be decoded.
 // TODO: this here only requires 2/3rd. We need all the data now because we have no erasure encoding.
 func (ps *PartSet) IsReadyForDecoding() bool {
-	//return ps.count >= (ps.total / 2)
 	return ps.IsComplete()
 }
 
@@ -490,6 +490,10 @@ func (ps *PartSet) AddPart(part *Part) (bool, error) {
 	// when its a duplicate block part
 	if ps == nil {
 		return false, nil
+	}
+
+	if part == nil {
+		return false, fmt.Errorf("nil part")
 	}
 
 	// The proof should be compatible with the number of parts.

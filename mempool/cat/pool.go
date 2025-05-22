@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"runtime"
 	"sort"
 	"sync"
 	"time"
@@ -214,7 +213,7 @@ func (txmp *TxPool) CheckToPurgeExpiredTxs() {
 		purgedTxs, numExpired := txmp.store.purgeExpiredTxs(0, expirationAge)
 		// Add the purged transactions to the evicted cache
 		for _, tx := range purgedTxs {
-			txmp.evictedTxCache.Push(tx.tx.Key())
+			txmp.evictedTxCache.Push(tx.key())
 		}
 		txmp.metrics.EvictedTxs.Add(float64(numExpired))
 		txmp.lastPurgeTime = time.Now()
@@ -322,7 +321,7 @@ func (txmp *TxPool) TryAddNewTx(tx *types.CachedTx, key types.TxKey, txInfo memp
 	defer txmp.store.release(key)
 
 	// If a precheck hook is defined, call it before invoking the application.
-	if err := txmp.preCheck(*tx); err != nil {
+	if err := txmp.preCheck(tx); err != nil {
 		txmp.metrics.FailedTxs.Add(1)
 		return nil, err
 	}
@@ -332,8 +331,11 @@ func (txmp *TxPool) TryAddNewTx(tx *types.CachedTx, key types.TxKey, txInfo memp
 		return nil, err
 	}
 
+	txmp.updateMtx.Lock()
+	defer txmp.updateMtx.Unlock()
+
 	// Invoke an ABCI CheckTx for this transaction.
-	rsp, err := txmp.proxyAppConn.CheckTx(context.Background(), &abci.RequestCheckTx{Tx: tx})
+	rsp, err := txmp.proxyAppConn.CheckTx(context.Background(), &abci.RequestCheckTx{Tx: tx.Tx})
 	if err != nil {
 		return rsp, err
 	}
@@ -347,11 +349,11 @@ func (txmp *TxPool) TryAddNewTx(tx *types.CachedTx, key types.TxKey, txInfo memp
 
 	// Create wrapped tx
 	wtx := newWrappedTx(
-		tx, key, txmp.height, rsp.GasWanted, rsp.Priority, string(rsp.Address),
+		tx, txmp.height, rsp.GasWanted, rsp.Priority, string(rsp.Address),
 	)
 
 	// Perform the post check
-	err = txmp.postCheck(*wtx.tx, rsp)
+	err = txmp.postCheck(wtx.tx, rsp)
 	if err != nil {
 		if txmp.config.KeepInvalidTxsInCache {
 			txmp.rejectedTxCache.Push(key)
@@ -431,19 +433,20 @@ func (txmp *TxPool) allEntriesSorted() []*wrappedTx {
 func (txmp *TxPool) ReapMaxBytesMaxGas(maxBytes, maxGas int64) []*types.CachedTx {
 	var totalGas, totalBytes int64
 
-	var keep []*types.CachedTx //nolint:prealloc
-	for _, w := range txmp.allEntriesSorted() {
+	var keep []*types.CachedTx
+	txmp.store.iterateOrderedTxs(func(w *wrappedTx) bool {
 		// N.B. When computing byte size, we need to include the overhead for
 		// encoding as protobuf to send to the application. This actually overestimates it
 		// as we add the proto overhead to each transaction
 		txBytes := types.ComputeProtoSizeForTxs([]types.Tx{w.tx.Tx})
 		if (maxGas >= 0 && totalGas+w.gasWanted > maxGas) || (maxBytes >= 0 && totalBytes+txBytes > maxBytes) {
-			continue
+			return true
 		}
 		totalBytes += txBytes
 		totalGas += w.gasWanted
 		keep = append(keep, w.tx)
-	}
+		return true
+	})
 	return keep
 }
 
@@ -480,7 +483,7 @@ func (txmp *TxPool) ReapMaxTxs(max int) []*types.CachedTx {
 // calling Update.
 func (txmp *TxPool) Update(
 	blockHeight int64,
-	blockTxs types.Txs,
+	blockTxs []*types.CachedTx,
 	deliverTxResponses []*abci.ExecTxResult,
 	newPreFn mempool.PreCheckFunc,
 	newPostFn mempool.PostCheckFunc,
@@ -556,13 +559,13 @@ func (txmp *TxPool) addNewTransaction(wtx *wrappedTx, checkTxRes *abci.ResponseC
 		// drop the new one.
 		if len(victims) == 0 || victimBytes < wtx.size() {
 			txmp.metrics.EvictedTxs.Add(1)
-			txmp.evictedTxCache.Push(wtx.key)
+			txmp.evictedTxCache.Push(wtx.key())
 			return fmt.Errorf("rejected valid incoming transaction; mempool is full (%X). Size: (%d:%d)",
-				wtx.key().String(), txmp.Size(), txmp.SizeBytes())
+				wtx.key(), txmp.Size(), txmp.SizeBytes())
 		}
 
 		txmp.logger.Debug("evicting lower-priority transactions",
-			"new_tx", wtx.key().String(),
+			"new_tx", wtx.key(),
 			"new_priority", wtx.priority,
 		)
 
@@ -628,7 +631,7 @@ func (txmp *TxPool) handleRecheckResult(wtx *wrappedTx, checkTxRes *abci.Respons
 	txmp.metrics.RecheckTimes.Add(1)
 
 	// If a postcheck hook is defined, call it before checking the result.
-	err := txmp.postCheck(*wtx.tx, checkTxRes)
+	err := txmp.postCheck(wtx.tx, checkTxRes)
 
 	if checkTxRes.Code == abci.CodeTypeOK && err == nil {
 		// Note that we do not update the transaction with any of the values returned in
@@ -657,7 +660,7 @@ func (txmp *TxPool) handleRecheckResult(wtx *wrappedTx, checkTxRes *abci.Respons
 // successfully initiated.
 //
 // Precondition: The mempool is not empty.
-// The caller must hold txmp.mtx exclusively.
+// The caller must hold txmp.updateMtx exclusively.
 func (txmp *TxPool) recheckTransactions() {
 	if txmp.Size() == 0 {
 		panic("mempool: cannot run recheck on an empty mempool")
@@ -665,18 +668,15 @@ func (txmp *TxPool) recheckTransactions() {
 	txmp.logger.Debug(
 		"executing re-CheckTx for all remaining transactions",
 		"num_txs", txmp.Size(),
-		"height", txmp.Height(),
+		"height", txmp.height,
 	)
-
-	// Collect transactions currently in the mempool requiring recheck.
-	wtxs := txmp.store.getAllTxs()
 
 	// Issue CheckTx calls for each remaining transaction, and when all the
 	// rechecks are complete signal watchers that transactions may be available.
 	txmp.store.iterateOrderedTxs(func(wtx *wrappedTx) bool {
 		// The response for this CheckTx is handled by the default recheckTxCallback.
 		rsp, err := txmp.proxyAppConn.CheckTx(context.Background(), &abci.RequestCheckTx{
-			Tx:   wtx.tx,
+			Tx:   wtx.tx.Tx,
 			Type: abci.CheckTxType_Recheck,
 		})
 		if err != nil {
@@ -689,10 +689,8 @@ func (txmp *TxPool) recheckTransactions() {
 	})
 	_ = txmp.proxyAppConn.Flush(context.Background())
 
-		// When recheck is complete, trigger a notification for more transactions.
-		_ = g.Wait()
-		txmp.notifyTxsAvailable()
-	}()
+	// When recheck is complete, trigger a notification for more transactions.
+	txmp.notifyTxsAvailable()
 }
 
 // availableBytes returns the number of bytes available in the mempool.
@@ -764,20 +762,20 @@ func (txmp *TxPool) notifyTxsAvailable() {
 	}
 }
 
-func (txmp *TxPool) preCheck(tx types.CachedTx) error {
+func (txmp *TxPool) preCheck(tx *types.CachedTx) error {
 	txmp.updateMtx.Lock()
 	defer txmp.updateMtx.Unlock()
 	if txmp.preCheckFn != nil {
-		return txmp.preCheckFn(&tx)
+		return txmp.preCheckFn(tx)
 	}
 	return nil
 }
 
-func (txmp *TxPool) postCheck(tx types.CachedTx, res *abci.ResponseCheckTx) error {
+func (txmp *TxPool) postCheck(tx *types.CachedTx, res *abci.ResponseCheckTx) error {
 	txmp.updateMtx.Lock()
 	defer txmp.updateMtx.Unlock()
 	if txmp.postCheckFn != nil {
-		return txmp.postCheckFn(&tx, res)
+		return txmp.postCheckFn(tx, res)
 	}
 	return nil
 }

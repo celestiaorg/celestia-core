@@ -6,12 +6,14 @@ import (
 	"testing"
 	"time"
 
-	"github.com/gogo/protobuf/proto"
+	"github.com/cosmos/gogoproto/proto"
+
 	"github.com/stretchr/testify/require"
-	cmtrand "github.com/tendermint/tendermint/libs/rand"
-	"github.com/tendermint/tendermint/proto/tendermint/mempool"
-	"github.com/tendermint/tendermint/state"
-	"github.com/tendermint/tendermint/types"
+
+	cmtrand "github.com/cometbft/cometbft/libs/rand"
+	"github.com/cometbft/cometbft/proto/tendermint/mempool"
+	"github.com/cometbft/cometbft/state"
+	"github.com/cometbft/cometbft/types"
 )
 
 // generateTxs creates n transactions each with the given size.
@@ -79,7 +81,8 @@ func TestTxsToParts_Correctness(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			data := types.Data{Txs: tc.txs}
-			block, partSet := sm.MakeBlock(1, data, types.RandCommit(time.Now()), []types.Evidence{}, cmtrand.Bytes(20))
+			block, partSet, err := sm.MakeBlock(1, data, types.RandCommit(time.Now()), []types.Evidence{}, cmtrand.Bytes(20))
+			require.NoError(t, err)
 
 			// Precompute the expected UnmarshalledTx values.
 			txsFound := make([]UnmarshalledTx, len(partSet.TxPos))
@@ -143,7 +146,8 @@ func TestTxsToParts_EdgeCases(t *testing.T) {
 		// then provide only one transaction so that the part is incomplete.
 		txs := generateTxs(2, int(types.BlockPartSizeBytes/2))
 		data := types.Data{Txs: txs}
-		block, partSet := sm.MakeBlock(1, data, types.RandCommit(time.Now()), []types.Evidence{}, cmtrand.Bytes(20))
+		block, partSet, err := sm.MakeBlock(1, data, types.RandCommit(time.Now()), []types.Evidence{}, cmtrand.Bytes(20))
+		require.NoError(t, err)
 
 		txsFound := make([]UnmarshalledTx, len(partSet.TxPos))
 		for i, pos := range partSet.TxPos {
@@ -178,7 +182,8 @@ func TestTxsToParts_EdgeCases(t *testing.T) {
 		// Create a block that normally would be divided into three parts.
 		txs := generateTxs(3, int(types.BlockPartSizeBytes))
 		data := types.Data{Txs: txs}
-		block, partSet := sm.MakeBlock(1, data, types.RandCommit(time.Now()), []types.Evidence{}, cmtrand.Bytes(20))
+		block, partSet, err := sm.MakeBlock(1, data, types.RandCommit(time.Now()), []types.Evidence{}, cmtrand.Bytes(20))
+		require.NoError(t, err)
 
 		txsFound := make([]UnmarshalledTx, len(partSet.TxPos))
 		for i, pos := range partSet.TxPos {
@@ -233,7 +238,8 @@ func FuzzTxsToParts(f *testing.F) {
 		// Using one tx size for fuzzing.
 		txs := generateTxs(numberOfTxs, int(types.BlockPartSizeBytes/3))
 		data := types.Data{Txs: txs}
-		block, partSet := sm.MakeBlock(1, data, types.RandCommit(time.Now()), []types.Evidence{}, cmtrand.Bytes(20))
+		block, partSet, err := sm.MakeBlock(1, data, types.RandCommit(time.Now()), []types.Evidence{}, cmtrand.Bytes(20))
+		require.NoError(t, err)
 
 		txsFound := make([]UnmarshalledTx, len(partSet.TxPos))
 		for i, pos := range partSet.TxPos {
@@ -318,7 +324,8 @@ func TestTxsToParts_Panic(t *testing.T) {
 		txs := genHeterogeneousTxs(tt.originalTxs)
 
 		data := types.Data{Txs: txs}
-		block, partSet := sm.MakeBlock(1, data, types.RandCommit(time.Now()), []types.Evidence{}, cmtrand.Bytes(20))
+		block, partSet, err := sm.MakeBlock(1, data, types.RandCommit(time.Now()), []types.Evidence{}, cmtrand.Bytes(20))
+		require.NoError(t, err)
 
 		txsFound := make([]UnmarshalledTx, len(partSet.TxPos))
 		for i, pos := range partSet.TxPos {
@@ -346,7 +353,7 @@ func TestTxsToParts_Panic(t *testing.T) {
 
 		lastPart := partSet.GetPart(int(partSet.Total() - 1))
 		subset := filter(txsFound, tt.providedTxs)
-		_, err := TxsToParts(subset, partSet.Total(), types.BlockPartSizeBytes, uint32(len(lastPart.Bytes)))
+		_, err = TxsToParts(subset, partSet.Total(), types.BlockPartSizeBytes, uint32(len(lastPart.Bytes)))
 		require.NoError(t, err)
 	}
 }
@@ -405,7 +412,8 @@ func FuzzTxsToParts_Panic(f *testing.F) {
 		txs := genHeterogeneousTxs(sizes)
 
 		dataObj := types.Data{Txs: txs}
-		block, partSet := sm.MakeBlock(1, dataObj, types.RandCommit(time.Now()), []types.Evidence{}, cmtrand.Bytes(20))
+		block, partSet, err := sm.MakeBlock(1, dataObj, types.RandCommit(time.Now()), []types.Evidence{}, cmtrand.Bytes(20))
+		require.NoError(t, err)
 
 		txsFound := make([]UnmarshalledTx, len(partSet.TxPos))
 		for i, pos := range partSet.TxPos {
@@ -435,7 +443,7 @@ func FuzzTxsToParts_Panic(f *testing.F) {
 		// Filter transactions using the provided indices.
 		subset := filter(txsFound, kept)
 
-		_, err := TxsToParts(subset, partSet.Total(), types.BlockPartSizeBytes, uint32(len(lastPart.Bytes)))
+		_, err = TxsToParts(subset, partSet.Total(), types.BlockPartSizeBytes, uint32(len(lastPart.Bytes)))
 		require.NoError(t, err)
 	})
 }

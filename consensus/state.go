@@ -11,6 +11,8 @@ import (
 	"sort"
 	"time"
 
+	proptypes "github.com/cometbft/cometbft/consensus/propagation/types"
+
 	"github.com/cometbft/cometbft/consensus/propagation"
 
 	"github.com/cosmos/gogoproto/proto"
@@ -1247,38 +1249,15 @@ func (cs *State) defaultDecideProposal(height int64, round int32) {
 		block, blockParts = cs.ValidBlock, cs.ValidBlockParts
 	} else {
 		// Create a new proposal block from state/txs from the mempool.
-		schema.WriteABCI(cs.traceClient, schema.PrepareProposalStart, height, round)
-		blck, ops, eps, hashes, err := cs.createProposalBlock(context.Background())
+		var err error
+		block, blockParts, err = cs.createProposalBlock(context.TODO())
 		if err != nil {
 			cs.Logger.Error("unable to create proposal block", "error", err)
 			return
+		} else if block == nil {
+			panic("Method createProposalBlock should not provide a nil block without errors")
 		}
-		// todo(evan): refactor to not be grody
-		block = blck
-		blockParts = ops
-		compBlck, err := types.NewCompactBlock(height, round, ops.LastLen(), eps, hashes)
-		if err != nil {
-			cs.Logger.Error("unable to create compact", "error", err)
-			return
-		}
-		compBlock = compBlck
-		schema.WriteABCI(cs.traceClient, schema.PrepareProposalEnd, height, round)
-		if block == nil {
-			var err error
-			block, _, _, _, err = cs.createProposalBlock(context.Background())
-			if err != nil {
-				cs.Logger.Error("unable to create proposal block", "error", err)
-				return
-			} else if block == nil {
-				panic("Method createProposalBlock should not provide a nil block without errors")
-			}
-			cs.metrics.ProposalCreateCount.Add(1)
-			blockParts, _, err = block.MakePartSet(types.BlockPartSizeBytes)
-			if err != nil {
-				cs.Logger.Error("unable to create proposal block part set", "error", err)
-				return
-			}
-		}
+		cs.metrics.ProposalCreateCount.Add(1)
 	}
 
 	// Flush the WAL. Otherwise, we may not recompute the same proposal to sign,
@@ -1289,7 +1268,7 @@ func (cs *State) defaultDecideProposal(height int64, round int32) {
 
 	// Make proposal
 	propBlockID := types.BlockID{Hash: block.Hash(), PartSetHeader: blockParts.Header()}
-	proposal := types.NewProposal(height, round, cs.ValidRound, propBlockID, compBlock)
+	proposal := types.NewProposal(height, round, cs.ValidRound, propBlockID)
 	p := proposal.ToProto()
 	if err := cs.privValidator.SignProposal(cs.state.ChainID, p); err == nil {
 		proposal.Signature = p.Signature
@@ -1342,9 +1321,9 @@ func (cs *State) isProposalComplete() bool {
 //
 // NOTE: keep it side-effect free for clarity.
 // CONTRACT: cs.privValidator is not nil.
-func (cs *State) createProposalBlock(ctx context.Context) (block *types.Block, blockParts *types.PartSet, extendedParts *types.PartSet, txs []*types.TxMetaData, err error) {
+func (cs *State) createProposalBlock(ctx context.Context) (block *types.Block, blockParts *types.PartSet, err error) {
 	if cs.privValidator == nil {
-		return nil, nil, nil, nil, errors.New("entered createProposalBlock with privValidator being nil")
+		return nil, nil, errors.New("entered createProposalBlock with privValidator being nil")
 	}
 
 	// TODO(sergio): wouldn't it be easier if CreateProposalBlock accepted cs.LastCommit directly?
@@ -1360,22 +1339,18 @@ func (cs *State) createProposalBlock(ctx context.Context) (block *types.Block, b
 		lastExtCommit = cs.LastCommit.MakeExtendedCommit(cs.state.ConsensusParams.ABCI)
 
 	default: // This shouldn't happen.
-		return nil, nil, nil, nil, errors.New("propose step; cannot propose anything without commit for the previous block")
+		return nil, nil, errors.New("propose step; cannot propose anything without commit for the previous block")
 	}
 
 	if cs.privValidatorPubKey == nil {
 		// If this node is a validator & proposer in the current round, it will
 		// miss the opportunity to create a block.
-		return nil, nil, nil, nil, fmt.Errorf("propose step; empty priv validator public key, error: %w", errPubKeyIsNotSet)
+		return nil, nil, fmt.Errorf("propose step; empty priv validator public key, error: %w", errPubKeyIsNotSet)
 	}
 
 	proposerAddr := cs.privValidatorPubKey.Address()
 
-	block, ops, eps, txs, err := cs.blockExec.CreateProposalBlock(ctx, cs.Height, cs.state, lastExtCommit, proposerAddr)
-	if err != nil {
-		return nil, nil, nil, nil, err
-	}
-	return block, ops, eps, txs, nil
+	return cs.blockExec.CreateProposalBlock(ctx, cs.Height, cs.state, lastExtCommit, proposerAddr)
 }
 
 // Enter: `timeoutPropose` after entering Propose.

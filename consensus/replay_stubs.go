@@ -24,20 +24,20 @@ func (emptyMempool) CheckTx(types.Tx, func(*abci.ResponseCheckTx), mempl.TxInfo)
 	return nil
 }
 
-func (emptyMempool) GetTxByKey(types.TxKey) (types.Tx, bool) { return nil, false }
-func (emptyMempool) WasRecentlyEvicted(types.TxKey) bool     { return false }
+func (emptyMempool) GetTxByKey(types.TxKey) (*types.CachedTx, bool) { return nil, false }
+func (emptyMempool) WasRecentlyEvicted(types.TxKey) bool            { return false }
 
 func (txmp emptyMempool) RemoveTxByKey(types.TxKey) error {
 	return nil
 }
 
-func (emptyMempool) ReapMaxBytesMaxGas(int64, int64) (types.Txs, []types.TxKey) {
-	return types.Txs{}, []types.TxKey{}
+func (emptyMempool) ReapMaxBytesMaxGas(int64, int64) []*types.CachedTx {
+	return []*types.CachedTx{}
 }
-func (emptyMempool) ReapMaxTxs(int) types.Txs                  { return types.Txs{} }
+func (emptyMempool) ReapMaxTxs(int) []*types.CachedTx { return []*types.CachedTx{} }
 func (emptyMempool) Update(
 	int64,
-	types.Txs,
+	[]*types.CachedTx,
 	[]*abci.ExecTxResult,
 	mempl.PreCheckFunc,
 	mempl.PostCheckFunc,

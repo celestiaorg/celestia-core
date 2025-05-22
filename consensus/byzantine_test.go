@@ -3,13 +3,13 @@ package consensus
 import (
 	"context"
 	"fmt"
-	"github.com/cometbft/cometbft/consensus/propagation"
-	cmtos "github.com/cometbft/cometbft/libs/os"
 	"os"
 	"path"
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/cometbft/cometbft/consensus/propagation"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -65,7 +65,7 @@ func TestByzantinePrevoteEquivocation(t *testing.T) {
 		ensureDir(path.Dir(thisConfig.Consensus.WalFile()), 0o700) // dir for wal
 		app := appFunc()
 		vals := types.TM2PB.ValidatorUpdates(state.Validators)
-		_, err := app.InitChain(context.Background(), &abci.RequestInitChain{Validators: vals})
+		_, err = app.InitChain(context.Background(), &abci.RequestInitChain{Validators: vals})
 		require.NoError(t, err)
 
 		blockDB := dbm.NewMemDB()
@@ -92,16 +92,13 @@ func TestByzantinePrevoteEquivocation(t *testing.T) {
 		evpool, err := evidence.NewPool(evidenceDB, stateStore, blockStore)
 		require.NoError(t, err)
 		evpool.SetLogger(logger.With("module", "evidence"))
+
 		// Make State
 		blockExec := sm.NewBlockExecutor(stateStore, log.TestingLogger(), proxyAppConnCon, mempool, evpool, blockStore)
 
-		propagationReactor := propagation.NewReactor(nodeKey.ID(), nil, blockStore, mempool)
-		cs := NewState(thisConfig.Consensus, state, blockExec, blockStore, propagationReactor, mempool, evpool)
-		cs.SetLogger(cs.Logger)
 		// set private validator
 		pv := privVals[i]
 		propagationReactor := propagation.NewReactor(nodeKey.ID(), blockStore, mempool, pv, state.ChainID)
-
 		cs := NewState(thisConfig.Consensus, state, blockExec, blockStore, propagationReactor, mempool, evpool)
 		cs.SetLogger(cs.Logger)
 		cs.SetPrivValidator(pv)
@@ -220,10 +217,10 @@ func TestByzantinePrevoteEquivocation(t *testing.T) {
 		}
 		proposerAddr := lazyProposer.privValidatorPubKey.Address()
 
-		block, _, eps, hashes, err := lazyProposer.blockExec.CreateProposalBlock(
+		block, _, err := lazyProposer.blockExec.CreateProposalBlock(
 			ctx, lazyProposer.Height, lazyProposer.state, extCommit, proposerAddr)
 		require.NoError(t, err)
-		blockParts, _, err := block.MakePartSet(types.BlockPartSizeBytes)
+		blockParts, err := block.MakePartSet(types.BlockPartSizeBytes)
 		require.NoError(t, err)
 
 		// Flush the WAL. Otherwise, we may not recompute the same proposal to sign,
@@ -234,9 +231,7 @@ func TestByzantinePrevoteEquivocation(t *testing.T) {
 
 		// Make proposal
 		propBlockID := types.BlockID{Hash: block.Hash(), PartSetHeader: blockParts.Header()}
-		compB, err := types.NewCompactBlock(block.Height, 0, blockParts.LastLen(), eps, hashes)
-		require.NoError(t, err)
-		proposal := types.NewProposal(height, round, lazyProposer.ValidRound, propBlockID, compB)
+		proposal := types.NewProposal(height, round, lazyProposer.ValidRound, propBlockID)
 		p := proposal.ToProto()
 		if err := lazyProposer.privValidator.SignProposal(lazyProposer.state.ChainID, p); err == nil {
 			proposal.Signature = p.Signature
@@ -473,12 +468,12 @@ func byzantineDecideProposalFunc(ctx context.Context, t *testing.T, height int64
 	// Avoid sending on internalMsgQueue and running consensus state.
 
 	// Create a new proposal block from state/txs from the mempool.
-	block1, _, _, _, err := cs.createProposalBlock(ctx)
+	block1, _, err := cs.createProposalBlock(ctx)
 	require.NoError(t, err)
-	blockParts1, _, err := block1.MakePartSet(types.BlockPartSizeBytes)
+	blockParts1, err := block1.MakePartSet(types.BlockPartSizeBytes)
 	require.NoError(t, err)
 	polRound, propBlockID := cs.ValidRound, types.BlockID{Hash: block1.Hash(), PartSetHeader: blockParts1.Header()}
-	proposal1 := types.NewProposal(height, round, polRound, propBlockID, types.CompactBlock{})
+	proposal1 := types.NewProposal(height, round, polRound, propBlockID)
 	p1 := proposal1.ToProto()
 	if err := cs.privValidator.SignProposal(cs.state.ChainID, p1); err != nil {
 		t.Error(err)
@@ -490,12 +485,12 @@ func byzantineDecideProposalFunc(ctx context.Context, t *testing.T, height int64
 	deliverTxsRange(t, cs, 0, 1)
 
 	// Create a new proposal block from state/txs from the mempool.
-	block2, _, _, _, err := cs.createProposalBlock(ctx)
+	block2, _, err := cs.createProposalBlock(ctx)
 	require.NoError(t, err)
-	blockParts2, _, err := block2.MakePartSet(types.BlockPartSizeBytes)
+	blockParts2, err := block2.MakePartSet(types.BlockPartSizeBytes)
 	require.NoError(t, err)
 	polRound, propBlockID = cs.ValidRound, types.BlockID{Hash: block2.Hash(), PartSetHeader: blockParts2.Header()}
-	proposal2 := types.NewProposal(height, round, polRound, propBlockID, types.CompactBlock{})
+	proposal2 := types.NewProposal(height, round, polRound, propBlockID)
 	p2 := proposal2.ToProto()
 	if err := cs.privValidator.SignProposal(cs.state.ChainID, p2); err != nil {
 		t.Error(err)

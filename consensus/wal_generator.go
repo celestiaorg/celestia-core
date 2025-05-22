@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/cometbft/cometbft/consensus/propagation"
-	cmtos "github.com/cometbft/cometbft/libs/os"
 	"github.com/cometbft/cometbft/p2p"
 
 	db "github.com/cometbft/cometbft-db"
@@ -88,7 +87,7 @@ func WALGenerateNBlocks(t *testing.T, wr io.Writer, numBlocks int, config *cfg.C
 	mempool := emptyMempool{}
 	evpool := sm.EmptyEvidencePool{}
 	blockExec := sm.NewBlockExecutor(stateStore, log.TestingLogger(), proxyApp.Consensus(), mempool, evpool, blockStore)
-	key, err := p2p.LoadNodeKey(config.NodeKey)
+	key, err := p2p.LoadOrGenNodeKey(config.NodeKeyFile())
 	if err != nil {
 		panic(err)
 	}

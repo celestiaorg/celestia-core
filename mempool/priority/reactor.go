@@ -261,7 +261,7 @@ func (memR *Reactor) broadcastTxRoutine(peer p2p.Peer) {
 		if !memTx.HasPeer(peerID) {
 			success := peer.Send(p2p.Envelope{
 				ChannelID: mempool.MempoolChannel,
-				Message:   &protomem.Txs{Txs: [][]byte{memTx.tx}},
+				Message:   &protomem.Txs{Txs: [][]byte{memTx.tx.Tx}},
 			})
 			if !success {
 				time.Sleep(mempool.PeerCatchupSleepIntervalMS * time.Millisecond)

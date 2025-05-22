@@ -370,9 +370,7 @@ func setupChainWithChangingValidators(t *testing.T, name string, nBlocks int) (*
 	newValidatorTx1 := kvstore.MakeValSetChangeTx(valPubKey1ABCI, testMinPower)
 	err = assertMempool(css[0].txNotifier).CheckTx(newValidatorTx1, nil, mempool.TxInfo{})
 	assert.NoError(t, err)
-	propBlock, propBlockParts, eps, hashes, err := css[0].createProposalBlock(ctx) // changeProposer(t, cs1, vs2)
-	require.NoError(t, err)
-	compB, err := types.NewCompactBlock(height, round, propBlockParts.LastLen(), eps, hashes)
+	propBlock, propBlockParts, err := css[0].createProposalBlock(ctx) // changeProposer(t, cs1, vs2)
 	require.NoError(t, err)
 	blockID := types.BlockID{Hash: propBlock.Hash(), PartSetHeader: propBlockParts.Header()}
 
@@ -402,9 +400,7 @@ func setupChainWithChangingValidators(t *testing.T, name string, nBlocks int) (*
 	updateValidatorTx1 := kvstore.MakeValSetChangeTx(updatePubKey1ABCI, 25)
 	err = assertMempool(css[0].txNotifier).CheckTx(updateValidatorTx1, nil, mempool.TxInfo{})
 	assert.NoError(t, err)
-	propBlock, propBlockParts, _, _, err = css[0].createProposalBlock(ctx) // changeProposer(t, cs1, vs2)
-	require.NoError(t, err)
-	compB, err = types.NewCompactBlock(height, round, propBlockParts.LastLen(), eps, hashes)
+	propBlock, propBlockParts, err = css[0].createProposalBlock(ctx) // changeProposer(t, cs1, vs2)
 	require.NoError(t, err)
 	blockID = types.BlockID{Hash: propBlock.Hash(), PartSetHeader: propBlockParts.Header()}
 
@@ -441,10 +437,8 @@ func setupChainWithChangingValidators(t *testing.T, name string, nBlocks int) (*
 	newValidatorTx3 := kvstore.MakeValSetChangeTx(newVal3ABCI, testMinPower)
 	err = assertMempool(css[0].txNotifier).CheckTx(newValidatorTx3, nil, mempool.TxInfo{})
 	assert.NoError(t, err)
-	propBlock, propBlockParts, _, _, err = css[0].createProposalBlock(ctx) // changeProposer(t, cs1, vs2)
+	propBlock, propBlockParts, err = css[0].createProposalBlock(ctx) // changeProposer(t, cs1, vs2)
 	require.NoError(t, err)
-	err = assertMempool(css[0].txNotifier).CheckTx(newValidatorTx3, nil, mempool.TxInfo{})
-	assert.Nil(t, err)
 	blockID = types.BlockID{Hash: propBlock.Hash(), PartSetHeader: propBlockParts.Header()}
 	newVss := make([]*validatorStub, nVals+1)
 	copy(newVss, vss[:nVals+1])
@@ -518,9 +512,7 @@ func setupChainWithChangingValidators(t *testing.T, name string, nBlocks int) (*
 	removeValidatorTx3 := kvstore.MakeValSetChangeTx(newVal3ABCI, 0)
 	err = assertMempool(css[0].txNotifier).CheckTx(removeValidatorTx3, nil, mempool.TxInfo{})
 	assert.NoError(t, err)
-	propBlock, propBlockParts, eps, hashes, err = css[0].createProposalBlock(ctx) // changeProposer(t, cs1, vs2)
-	require.NoError(t, err)
-	compB, err = types.NewCompactBlock(height, round, propBlockParts.LastLen(), eps, hashes)
+	propBlock, propBlockParts, err = css[0].createProposalBlock(ctx) // changeProposer(t, cs1, vs2)
 	require.NoError(t, err)
 	blockID = types.BlockID{Hash: propBlock.Hash(), PartSetHeader: propBlockParts.Header()}
 	newVss = make([]*validatorStub, nVals+3)
@@ -768,7 +760,7 @@ func applyBlock(t *testing.T, stateStore sm.Store, mempool mempool.Mempool, evpo
 	testPartSize := types.BlockPartSizeBytes
 	blockExec := sm.NewBlockExecutor(stateStore, log.TestingLogger(), proxyApp.Consensus(), mempool, evpool, bs)
 
-	bps, _, err := blk.MakePartSet(testPartSize)
+	bps, err := blk.MakePartSet(testPartSize)
 	require.NoError(t, err)
 	blkID := types.BlockID{Hash: blk.Hash(), PartSetHeader: bps.Header()}
 	newState, err := blockExec.ApplyBlock(st, blkID, blk, nil)
@@ -897,7 +889,7 @@ func makeBlocks(n int, state sm.State, privVals []types.PrivValidator) ([]*types
 		if err != nil {
 			return nil, err
 		}
-		block, _, _, err := state.MakeBlock(height, types.MakeData(test.MakeNTxs(height, 10)), lastCommit, nil, state.LastValidators.Proposer.Address)
+		block, _, err := state.MakeBlock(height, types.MakeData(test.MakeNTxs(height, 10)), lastCommit, nil, state.LastValidators.Proposer.Address)
 		if err != nil {
 			return nil, err
 		}
@@ -1199,7 +1191,7 @@ func (bs *mockBlockStore) LoadBlockByHash([]byte) *types.Block {
 func (bs *mockBlockStore) LoadBlockMetaByHash([]byte) *types.BlockMeta { return nil }
 func (bs *mockBlockStore) LoadBlockMeta(height int64) *types.BlockMeta {
 	block := bs.chain[height-1]
-	bps, _, err := block.MakePartSet(types.BlockPartSizeBytes)
+	bps, err := block.MakePartSet(types.BlockPartSizeBytes)
 	require.NoError(bs.t, err)
 	return &types.BlockMeta{
 		BlockID: types.BlockID{Hash: block.Hash(), PartSetHeader: bps.Header()},

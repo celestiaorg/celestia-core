@@ -7,7 +7,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/cosmos/gogoproto/proto"
 	gogotypes "github.com/cosmos/gogoproto/types"
 
 	"github.com/cometbft/cometbft/crypto"
@@ -147,25 +146,25 @@ func (b *Block) Hash() cmtbytes.HexBytes {
 // MakePartSet returns a PartSet containing parts of a serialized block.
 // This is the form in which the block is gossipped to peers.
 // CONTRACT: partSize is greater than zero.
-func (b *Block) MakePartSet(partSize uint32) (*PartSet, *PartSet, error) {
+func (b *Block) MakePartSet(partSize uint32) (*PartSet, error) {
 	if b == nil {
-		return nil, nil, errors.New("nil block")
+		return nil, errors.New("nil block")
 	}
 	b.mtx.Lock()
 	defer b.mtx.Unlock()
 
 	pbb, err := b.ToProto()
 	if err != nil {
-		return nil,nil,  err
+		return nil, err
 	}
 
 	bz, pos, err := MarshalBlockWithTxPositions(pbb)
 	if err != nil {
-		return nil,nil,  err
+		return nil, err
 	}
-	ops, eps := NewPartSetFromData(bz, partSize)
+	ops := NewPartSetFromData(bz, partSize)
 	ops.TxPos = pos
-	return ops, eps, nil
+	return ops, nil
 }
 
 // HashesTo is a convenience function that checks if a block hashes to the given argument.
@@ -250,7 +249,7 @@ func (b *Block) ToProto() (*cmtproto.Block, error) {
 	return pb, nil
 }
 
-// Cachedhashes return any hashes of transactions that were included in this
+// CachedHashes return any hashes of transactions that were included in this
 // block. This is used for passing the hashes of the txs alongside the block,
 // they are not included in any validity rule or encoding of the block.
 func (b *Block) CachedHashes() [][]byte {

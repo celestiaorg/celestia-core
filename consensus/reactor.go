@@ -3,11 +3,12 @@ package consensus
 import (
 	"errors"
 	"fmt"
-	"github.com/cometbft/cometbft/consensus/propagation"
 	"reflect"
 	"strconv"
 	"sync"
 	"time"
+
+	"github.com/cometbft/cometbft/consensus/propagation"
 
 	cstypes "github.com/cometbft/cometbft/consensus/types"
 	"github.com/cometbft/cometbft/libs/bits"
@@ -35,9 +36,6 @@ const (
 
 	blocksToContributeToBecomeGoodPeer = 10000
 	votesToContributeToBecomeGoodPeer  = 10000
-
-	// PropagationChannel the channel ID used by the propagation reactor.
-	PropagationChannel = byte(0x50)
 )
 
 //-----------------------------------------------------------------------------

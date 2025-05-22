@@ -10,6 +10,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/cometbft/cometbft/consensus/propagation"
+
 	"github.com/spf13/viper"
 
 	"github.com/cometbft/cometbft/abci/server"

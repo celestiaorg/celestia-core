@@ -14,9 +14,10 @@ import (
 	"time"
 
 	"github.com/celestiaorg/go-square/v2/share"
-	db "github.com/cometbft/cometbft-db"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	db "github.com/cometbft/cometbft-db"
 
 	"github.com/cometbft/cometbft/abci/example/kvstore"
 	abci "github.com/cometbft/cometbft/abci/types"
@@ -294,7 +295,7 @@ func TestTxPool_Eviction(t *testing.T) {
 	require.True(t, txmp.WasRecentlyEvicted(types.Tx("key7=0006=7").Key()))
 
 	// Free up some space so we can add back previously evicted txs
-	err = txmp.Update(1, types.Txs{types.Tx("key10=0123456789abcdef=11")}, []*abci.ExecTxResult{{Code: abci.CodeTypeOK}}, nil, nil)
+	err = txmp.Update(1, types.CachedTxFromTxs(types.Txs{types.Tx("key10=0123456789abcdef=11")}), []*abci.ExecTxResult{{Code: abci.CodeTypeOK}}, nil, nil)
 	require.NoError(t, err)
 	require.False(t, txExists("key10=0123456789abcdef=11"))
 	mustCheckTx(t, txmp, "key3=0002=10")

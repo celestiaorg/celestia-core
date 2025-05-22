@@ -3,14 +3,15 @@ package propagation
 import (
 	"context"
 	"fmt"
-	"github.com/cometbft/cometbft/libs/trace/schema"
-	"github.com/cometbft/cometbft/p2p/conn"
+	"math"
 	"reflect"
-	"sync"
 	"sync/atomic"
 	"time"
 
-	"github.com/cometbft/cometbft/libs/bits"
+	"github.com/cometbft/cometbft/libs/log"
+	"github.com/cometbft/cometbft/libs/trace/schema"
+	"github.com/cometbft/cometbft/p2p/conn"
+
 	"github.com/cometbft/cometbft/libs/sync"
 	"github.com/cometbft/cometbft/store"
 	"github.com/cometbft/cometbft/types"
@@ -182,7 +183,7 @@ func (blockProp *Reactor) AddPeer(peer p2p.Peer) {
 		Message:   cb.ToProto(),
 	}
 
-	if !p2p.TrySendEnvelopeShim(peer, e, blockProp.Logger) { //nolint:staticcheck
+	if !peer.TrySend(e) {
 		blockProp.Logger.Debug("failed to send proposal to peer", "peer", peer.ID())
 	}
 }

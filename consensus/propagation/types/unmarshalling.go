@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"sort"
 
-	"github.com/tendermint/tendermint/types"
+	"github.com/cometbft/cometbft/types"
 )
 
 // UnmarshalledTx is an intermediary type that allows keeping the transaction

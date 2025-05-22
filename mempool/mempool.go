@@ -67,7 +67,7 @@ type Mempool interface {
 	// 2. Lock/Unlock must be managed by the caller.
 	Update(
 		blockHeight int64,
-		blockTxs types.Txs,
+		blockTxs []*types.CachedTx,
 		deliverTxResponses []*abci.ExecTxResult,
 		newPreFn PreCheckFunc,
 		newPostFn PostCheckFunc,

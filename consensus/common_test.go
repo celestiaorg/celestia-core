@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"github.com/cometbft/cometbft/consensus/propagation"
 	"os"
 	"path"
 	"path/filepath"
@@ -12,6 +11,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/cometbft/cometbft/consensus/propagation"
 
 	"github.com/go-kit/log/term"
 	"github.com/stretchr/testify/assert"
@@ -229,9 +230,9 @@ func decideProposal(
 	round int32,
 ) (*types.Proposal, *types.Block) {
 	cs1.mtx.Lock()
-	block, _, eps, hashes, err := cs1.createProposalBlock(ctx)
+	block, _, err := cs1.createProposalBlock(ctx)
 	require.NoError(t, err)
-	blockParts, _, err := block.MakePartSet(types.BlockPartSizeBytes)
+	blockParts, err := block.MakePartSet(types.BlockPartSizeBytes)
 	require.NoError(t, err)
 	validRound := cs1.ValidRound
 	chainID := cs1.state.ChainID
@@ -242,12 +243,7 @@ func decideProposal(
 
 	// Make proposal
 	polRound, propBlockID := validRound, types.BlockID{Hash: block.Hash(), PartSetHeader: blockParts.Header()}
-	compB, err := types.NewCompactBlock(block.Height, polRound, blockParts.LastLen(), eps, hashes)
-	// todo: refactor test and get rid of this panic
-	if err != nil {
-		panic(err)
-	}
-	proposal := types.NewProposal(height, round, polRound, propBlockID, compB)
+	proposal := types.NewProposal(height, round, polRound, propBlockID)
 	p := proposal.ToProto()
 	if err := vs.SignProposal(chainID, p); err != nil {
 		panic(err)

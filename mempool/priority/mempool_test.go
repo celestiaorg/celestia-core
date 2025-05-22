@@ -15,9 +15,10 @@ import (
 	"time"
 
 	share "github.com/celestiaorg/go-square/v2/share"
-	db "github.com/cometbft/cometbft-db"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	db "github.com/cometbft/cometbft-db"
 
 	"github.com/cometbft/cometbft/abci/example/kvstore"
 	abci "github.com/cometbft/cometbft/abci/types"

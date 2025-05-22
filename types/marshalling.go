@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"math"
 
-	"github.com/gogo/protobuf/proto"
+	"github.com/cosmos/gogoproto/proto"
 )
 
 // TxPosition holds the start and end indexes (in the overall encoded []byte)

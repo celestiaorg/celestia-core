@@ -3,11 +3,15 @@ package propagation
 import (
 	"testing"
 
+	proptypes "github.com/cometbft/cometbft/consensus/propagation/types"
+	cmtrand "github.com/cometbft/cometbft/libs/rand"
+
+	"github.com/stretchr/testify/require"
+
 	dbm "github.com/cometbft/cometbft-db"
 	"github.com/cometbft/cometbft/libs/bits"
 	"github.com/cometbft/cometbft/store"
 	"github.com/cometbft/cometbft/types"
-	"github.com/stretchr/testify/require"
 )
 
 func makeTestBlockStore(t *testing.T) *store.BlockStore {

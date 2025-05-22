@@ -106,12 +106,14 @@ func TestReactorEventuallyRemovesExpiredTransaction(t *testing.T) {
 	txMsg := &memproto.Message{
 		Sum: &memproto.Message_Txs{Txs: &memproto.Txs{Txs: [][]byte{tx}}},
 	}
-	txMsgBytes, err := txMsg.Marshal()
-	require.NoError(t, err)
 
 	peer := mock.NewPeer(nil)
 	reactor.InitPeer(peer)
-	reactor.Receive(mempool.MempoolChannel, peer, txMsgBytes)
+	reactor.Receive(p2p.Envelope{
+		Src:       peer,
+		Message:   txMsg,
+		ChannelID: mempool.MempoolChannel,
+	})
 	reactor.mempool.Lock()
 	_, has := reactor.mempool.txByKey[key]
 	reactor.mempool.Unlock()
@@ -249,7 +251,7 @@ func waitForTxsOnReactor(t *testing.T, txs types.Txs, reactor *Reactor, reactorI
 		expectedTxs[string(tx)] = struct{}{}
 	}
 	for _, tx := range reapedTxs {
-		actualTxs[string(tx)] = struct{}{}
+		actualTxs[string(tx.Tx)] = struct{}{}
 	}
 
 	// Compare the sets

@@ -4,11 +4,13 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"github.com/cometbft/cometbft/consensus/propagation"
 	"net"
 	"net/http"
 	"os"
+	"runtime"
 	"time"
+
+	"github.com/cometbft/cometbft/consensus/propagation"
 
 	"github.com/grafana/pyroscope-go"
 	"github.com/prometheus/client_golang/prometheus"
@@ -438,7 +440,7 @@ func NewNodeWithContext(ctx context.Context,
 		state.ChainID,
 		propagation.WithTracer(tracer),
 	)
-	if !stateSync && !fastSync {
+	if !stateSync && !blockSync {
 		propagationReactor.StartProcessing()
 	}
 
@@ -1023,7 +1025,7 @@ func makeNodeInfo(
 			mempl.MempoolChannel,
 			evidence.EvidenceChannel,
 			statesync.SnapshotChannel, statesync.ChunkChannel,
-			propagation.DataChannel, propagation.WantChannel, // todo: reenable when new reactor is actually working
+			propagation.DataChannel, propagation.WantChannel,
 		},
 		Moniker: config.Moniker,
 		Other: p2p.DefaultNodeInfoOther{
@@ -1046,4 +1048,37 @@ func makeNodeInfo(
 
 	err := nodeInfo.Validate()
 	return nodeInfo, err
+}
+
+type MemStats struct {
+	Alloc      uint64 `json:"alloc"`
+	TotalAlloc uint64 `json:"total_alloc"`
+	Sys        uint64 `json:"sys"`
+	NumGC      uint32 `json:"num_gc"`
+}
+
+func (ms *MemStats) Table() string {
+	return "mem_stats"
+}
+
+func (n *Node) printMemStats(traceClient trace.Tracer) {
+	timer := time.NewTicker(30 * time.Second)
+	for {
+		select {
+		case <-timer.C:
+			var m runtime.MemStats
+			runtime.ReadMemStats(&m)
+			ms := &MemStats{
+				Alloc:      m.Alloc,
+				TotalAlloc: m.TotalAlloc,
+				Sys:        m.Sys,
+				NumGC:      m.NumGC,
+			}
+			if traceClient != nil {
+				traceClient.Write(ms)
+			}
+		case <-n.Quit():
+			return
+		}
+	}
 }

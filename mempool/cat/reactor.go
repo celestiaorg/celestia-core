@@ -91,7 +91,7 @@ func NewReactor(mempool *TxPool, opts *ReactorOptions) (*Reactor, error) {
 		requests:    newRequestScheduler(opts.MaxGossipDelay, defaultGlobalRequestTimeout),
 		traceClient: trace.NoOpTracer(),
 	}
-	memR.BaseReactor = *p2p.NewBaseReactor("Mempool", memR, p2p.WithIncomingQueueSize(1000))
+	memR.BaseReactor = *p2p.NewBaseReactor("Mempool", memR)
 	return memR, nil
 }
 
@@ -305,7 +305,7 @@ func (memR *Reactor) Receive(e p2p.Envelope) {
 			memR.Logger.Debug("sending a tx in response to a want msg", "peer", peerID)
 			if e.Src.Send(p2p.Envelope{
 				ChannelID: mempool.MempoolChannel,
-				Message:   &protomem.Txs{Txs: [][]byte{tx}},
+				Message:   &protomem.Txs{Txs: [][]byte{tx.Tx}},
 			}) {
 				memR.mempool.PeerHasTx(peerID, txKey)
 				schema.WriteMempoolTx(
@@ -402,7 +402,7 @@ func (memR *Reactor) broadcastNewTx(wtx *wrappedTx) {
 				Message:   msg,
 			},
 		) {
-			memR.mempool.PeerHasTx(id, wtx.key)
+			memR.mempool.PeerHasTx(id, wtx.key())
 		}
 	}
 }

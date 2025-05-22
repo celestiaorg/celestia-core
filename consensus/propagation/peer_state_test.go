@@ -3,12 +3,13 @@ package propagation
 import (
 	"testing"
 
+	"github.com/stretchr/testify/assert"
+
 	"github.com/cometbft/cometbft/libs/log"
 	"github.com/cometbft/cometbft/p2p/mock"
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/cometbft/cometbft/consensus/propagation/types"
 	"github.com/cometbft/cometbft/libs/bits"
 )
 

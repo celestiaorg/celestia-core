@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"time"
 
+	cmtbytes "github.com/cometbft/cometbft/libs/bytes"
+
 	"github.com/cometbft/cometbft/crypto"
 	cryptoenc "github.com/cometbft/cometbft/crypto/encoding"
 	privvalproto "github.com/cometbft/cometbft/proto/tendermint/privval"

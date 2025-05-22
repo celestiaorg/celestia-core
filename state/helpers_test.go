@@ -56,7 +56,7 @@ func makeAndCommitGoodBlock(
 func makeAndApplyGoodBlock(state sm.State, height int64, lastCommit *types.Commit, proposerAddr []byte,
 	blockExec *sm.BlockExecutor, evidence []types.Evidence,
 ) (sm.State, types.BlockID, error) {
-	block, partSet, _, err := state.MakeBlock(height, types.MakeData(test.MakeNTxs(height, 10)), lastCommit, evidence, proposerAddr)
+	block, partSet, err := state.MakeBlock(height, types.MakeData(test.MakeNTxs(height, 10)), lastCommit, evidence, proposerAddr)
 	if err != nil {
 		return state, types.BlockID{}, err
 	}
@@ -75,7 +75,7 @@ func makeAndApplyGoodBlock(state sm.State, height int64, lastCommit *types.Commi
 	return state, blockID, nil
 }
 
-func makeBlock(state sm.State, height int64, c *types.Commit) (*types.Block, *types.PartSet, *types.PartSet, error) {
+func makeBlock(state sm.State, height int64, c *types.Commit) (*types.Block, *types.PartSet, error) {
 	return state.MakeBlock(
 		height,
 		types.MakeData(test.MakeNTxs(state.LastBlockHeight, 10)),
@@ -170,7 +170,7 @@ func makeHeaderPartsResponsesValPubKeyChange(
 	state sm.State,
 	pubkey crypto.PubKey,
 ) (types.Header, types.BlockID, *abci.ResponseFinalizeBlock) {
-	block, _, _, err := makeBlock(state, state.LastBlockHeight+1, new(types.Commit))
+	block, _, err := makeBlock(state, state.LastBlockHeight+1, new(types.Commit))
 	if err != nil {
 		panic(err)
 	}
@@ -191,7 +191,7 @@ func makeHeaderPartsResponsesValPowerChange(
 	state sm.State,
 	power int64,
 ) (types.Header, types.BlockID, *abci.ResponseFinalizeBlock) {
-	block, _, _, err := makeBlock(state, state.LastBlockHeight+1, new(types.Commit))
+	block, _, err := makeBlock(state, state.LastBlockHeight+1, new(types.Commit))
 	if err != nil {
 		panic(err)
 	}
@@ -212,7 +212,7 @@ func makeHeaderPartsResponsesParams(
 	state sm.State,
 	params cmtproto.ConsensusParams,
 ) (types.Header, types.BlockID, *abci.ResponseFinalizeBlock) {
-	block, _, _, err := makeBlock(state, state.LastBlockHeight+1, new(types.Commit))
+	block, _, err := makeBlock(state, state.LastBlockHeight+1, new(types.Commit))
 	if err != nil {
 		panic(err)
 	}

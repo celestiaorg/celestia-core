@@ -5,10 +5,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/cometbft/cometbft/consensus/propagation"
 	"net"
 	"strings"
 	"time"
+
+	"github.com/cometbft/cometbft/consensus/propagation"
 
 	_ "net/http/pprof" //nolint: gosec // securely exposed on separate, optional port
 
@@ -201,7 +202,7 @@ func doHandshake(
 func logNodeStartupInfo(state sm.State, pubKey crypto.PubKey, logger, consensusLogger log.Logger) {
 	// Log the version info.
 	logger.Info("Version info",
-		"cmtbft_version", version.TMCoreSemVer,
+		"tendermint_version", version.TMCoreSemVer,
 		"abci", version.ABCISemVer,
 		"block", version.BlockProtocol,
 		"p2p", version.P2PProtocol,
@@ -478,6 +479,7 @@ func createSwitch(config *cfg.Config,
 	stateSyncReactor *statesync.Reactor,
 	consensusReactor *cs.Reactor,
 	evidenceReactor *evidence.Reactor,
+	propagationReactor *propagation.Reactor,
 	nodeInfo p2p.NodeInfo,
 	nodeKey *p2p.NodeKey,
 	p2pLogger log.Logger,
@@ -498,6 +500,7 @@ func createSwitch(config *cfg.Config,
 	sw.AddReactor("CONSENSUS", consensusReactor)
 	sw.AddReactor("EVIDENCE", evidenceReactor)
 	sw.AddReactor("STATESYNC", stateSyncReactor)
+	sw.AddReactor("BLOCKPROP", propagationReactor)
 
 	sw.SetNodeInfo(nodeInfo)
 	sw.SetNodeKey(nodeKey)

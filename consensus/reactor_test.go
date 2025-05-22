@@ -3,12 +3,13 @@ package consensus
 import (
 	"context"
 	"fmt"
-	"github.com/cometbft/cometbft/consensus/propagation"
 	"os"
 	"path"
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/cometbft/cometbft/consensus/propagation"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
@@ -191,9 +192,9 @@ func TestReactorWithEvidence(t *testing.T) {
 
 		// Make State
 		blockExec := sm.NewBlockExecutor(stateStore, log.TestingLogger(), proxyAppConnCon, mempool, evpool, blockStore)
-		key, err := p2p.LoadNodeKey(config.NodeKey)
+		key, err := p2p.LoadOrGenNodeKey(thisConfig.NodeKeyFile())
 		require.NoError(t, err)
-		propagator := propagation.NewReactor(key.ID(), nil, blockStore, mempool)
+		propagator := propagation.NewReactor(key.ID(), blockStore, mempool, pv, state.ChainID)
 		cs := NewState(thisConfig.Consensus, state, blockExec, blockStore, propagator, mempool, evpool2)
 		cs.SetLogger(log.TestingLogger().With("module", "consensus"))
 		cs.SetPrivValidator(pv)
@@ -367,7 +368,7 @@ func TestSwitchToConsensusVoteExtensions(t *testing.T) {
 			cs.state.LastValidators = cs.state.Validators.Copy()
 			cs.state.ConsensusParams.ABCI.VoteExtensionsEnableHeight = testCase.initialRequiredHeight
 
-			propBlock, blockParts, _, _, err := cs.createProposalBlock(ctx)
+			propBlock, blockParts, err := cs.createProposalBlock(ctx)
 			require.NoError(t, err)
 
 			// Consensus is preparing to do the next height after the stored height.
@@ -403,9 +404,9 @@ func TestSwitchToConsensusVoteExtensions(t *testing.T) {
 			}
 			blockDB := dbm.NewMemDB()
 			blockStore := store.NewBlockStore(blockDB)
-			key, err := p2p.LoadNodeKey(config.NodeKey)
+			key, err := p2p.LoadOrGenNodeKey(config.NodeKeyFile())
 			require.NoError(t, err)
-			propagator := propagation.NewReactor(key.ID(), nil, blockStore)
+			propagator := propagation.NewReactor(key.ID(), blockStore, &emptyMempool{}, cs.privValidator, cs.state.ChainID)
 			reactor := NewReactor(
 				cs,
 				propagator,

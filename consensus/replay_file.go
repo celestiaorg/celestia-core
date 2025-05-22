@@ -333,7 +333,7 @@ func newConsensusStateForReplay(config cfg.BaseConfig, csConfig *cfg.ConsensusCo
 
 	mempool, evpool := emptyMempool{}, sm.EmptyEvidencePool{}
 	blockExec := sm.NewBlockExecutor(stateStore, log.TestingLogger(), proxyApp.Consensus(), mempool, evpool, blockStore)
-	key, err := p2p.LoadNodeKey(config.NodeKey)
+	key, err := p2p.LoadOrGenNodeKey(config.NodeKey)
 	if err != nil {
 		panic(err)
 	}

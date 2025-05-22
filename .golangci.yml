@@ -86,6 +86,8 @@ linters-settings:
           - google.golang.org/protobuf/types/known/timestamppb
           - gonum.org/v1/gonum/stat
           - github.com/celestiaorg/go-square/v2
+          - github.com/stretchr/testify/assert
+          - github.com/klauspost/reedsolomon
       test:
         files:
           - "$test"
@@ -111,6 +113,7 @@ linters-settings:
           - github.com/stretchr/testify
           - github.com/decred/dcrd/dcrec/secp256k1/v4
           - github.com/celestiaorg/go-square/v2
+          - github.com/stretchr/testify/require
   revive:
     enable-all-rules: true
     rules:
