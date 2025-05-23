@@ -52,7 +52,7 @@ type TxPool struct {
 	metrics      *mempool.Metrics
 
 	// these values are modified once per height
-	updateMtx            sync.Mutex
+	mtx                  sync.Mutex
 	notifiedTxsAvailable bool
 	txsAvailable         chan struct{} // one value sent per height when mempool is not empty
 	preCheckFn           mempool.PreCheckFunc
@@ -128,11 +128,15 @@ func WithMetrics(metrics *mempool.Metrics) TxPoolOption {
 	return func(txmp *TxPool) { txmp.metrics = metrics }
 }
 
-// Lock is a noop as ABCI calls are serialized
-func (txmp *TxPool) Lock() {}
+// Lock locks the mempool, no new transactions can be processed
+func (txmp *TxPool) Lock() {
+	txmp.mtx.Lock()
+}
 
-// Unlock is a noop as ABCI calls are serialized
-func (txmp *TxPool) Unlock() {}
+// Unlock unlocks the mempool
+func (txmp *TxPool) Unlock() {
+	txmp.mtx.Unlock()
+}
 
 // Size returns the number of valid transactions in the mempool. It is
 // thread-safe.
@@ -162,8 +166,8 @@ func (txmp *TxPool) TxsAvailable() <-chan struct{} { return txmp.txsAvailable }
 
 // Height returns the latest height that the mempool is at
 func (txmp *TxPool) Height() int64 {
-	txmp.updateMtx.Lock()
-	defer txmp.updateMtx.Unlock()
+	txmp.mtx.Lock()
+	defer txmp.mtx.Unlock()
 	return txmp.height
 }
 
@@ -204,8 +208,8 @@ func (txmp *TxPool) IsRejectedTx(txKey types.TxKey) bool {
 // the txpool looped through all transactions and if so, performs a purge of any transaction
 // that has expired according to the TTLDuration. This is thread safe.
 func (txmp *TxPool) CheckToPurgeExpiredTxs() {
-	txmp.updateMtx.Lock()
-	defer txmp.updateMtx.Unlock()
+	txmp.mtx.Lock()
+	defer txmp.mtx.Unlock()
 	if txmp.config.TTLDuration > 0 && time.Since(txmp.lastPurgeTime) > txmp.config.TTLDuration {
 		expirationAge := time.Now().Add(-txmp.config.TTLDuration)
 		// A height of 0 means no transactions will be removed because of height
@@ -331,8 +335,8 @@ func (txmp *TxPool) TryAddNewTx(tx *types.CachedTx, key types.TxKey, txInfo memp
 		return nil, err
 	}
 
-	txmp.updateMtx.Lock()
-	defer txmp.updateMtx.Unlock()
+	txmp.mtx.Lock()
+	defer txmp.mtx.Unlock()
 
 	// Invoke an ABCI CheckTx for this transaction.
 	rsp, err := txmp.proxyAppConn.CheckTx(context.Background(), &abci.RequestCheckTx{Tx: tx.Tx})
@@ -406,20 +410,6 @@ func (txmp *TxPool) PeerHasTx(peer uint16, txKey types.TxKey) {
 	txmp.seenByPeersSet.Add(txKey, peer)
 }
 
-// allEntriesSorted returns a slice of all the transactions currently in the
-// mempool, sorted in nonincreasing order by priority with ties broken by
-// increasing order of arrival time.
-func (txmp *TxPool) allEntriesSorted() []*wrappedTx {
-	txs := txmp.store.getAllTxs()
-	sort.Slice(txs, func(i, j int) bool {
-		if txs[i].priority == txs[j].priority {
-			return txs[i].timestamp.Before(txs[j].timestamp)
-		}
-		return txs[i].priority > txs[j].priority // N.B. higher priorities first
-	})
-	return txs
-}
-
 // ReapMaxBytesMaxGas returns a slice of valid transactions that fit within the
 // size and gas constraints. The results are ordered by nonincreasing priority,
 // with ties broken by increasing order of arrival. Reaping transactions does
@@ -461,12 +451,13 @@ func (txmp *TxPool) ReapMaxBytesMaxGas(maxBytes, maxGas int64) []*types.CachedTx
 func (txmp *TxPool) ReapMaxTxs(max int) []*types.CachedTx {
 	var keep []*types.CachedTx //nolint:prealloc
 
-	for _, w := range txmp.allEntriesSorted() {
+	txmp.store.iterateOrderedTxs(func(w *wrappedTx) bool {
 		if max >= 0 && len(keep) >= max {
-			break
+			return false
 		}
 		keep = append(keep, w.tx)
-	}
+		return true
+	})
 	return keep
 }
 
@@ -495,7 +486,6 @@ func (txmp *TxPool) Update(
 	}
 	txmp.logger.Debug("updating mempool", "height", blockHeight, "txs", len(blockTxs))
 
-	txmp.updateMtx.Lock()
 	txmp.height = blockHeight
 	txmp.notifiedTxsAvailable = false
 
@@ -506,7 +496,6 @@ func (txmp *TxPool) Update(
 		txmp.postCheckFn = newPostFn
 	}
 	txmp.lastPurgeTime = time.Now()
-	txmp.updateMtx.Unlock()
 
 	txmp.metrics.SuccessfulTxs.Add(float64(len(blockTxs)))
 	for _, tx := range blockTxs {
@@ -561,11 +550,11 @@ func (txmp *TxPool) addNewTransaction(wtx *wrappedTx, checkTxRes *abci.ResponseC
 			txmp.metrics.EvictedTxs.Add(1)
 			txmp.evictedTxCache.Push(wtx.key())
 			return fmt.Errorf("rejected valid incoming transaction; mempool is full (%X). Size: (%d:%d)",
-				wtx.key(), txmp.Size(), txmp.SizeBytes())
+				wtx.key().String(), txmp.Size(), txmp.SizeBytes())
 		}
 
 		txmp.logger.Debug("evicting lower-priority transactions",
-			"new_tx", wtx.key(),
+			"new_tx", wtx.key().String(),
 			"new_priority", wtx.priority,
 		)
 
@@ -660,7 +649,7 @@ func (txmp *TxPool) handleRecheckResult(wtx *wrappedTx, checkTxRes *abci.Respons
 // successfully initiated.
 //
 // Precondition: The mempool is not empty.
-// The caller must hold txmp.updateMtx exclusively.
+// The caller must hold txmp.mtx exclusively.
 func (txmp *TxPool) recheckTransactions() {
 	if txmp.Size() == 0 {
 		panic("mempool: cannot run recheck on an empty mempool")
@@ -763,8 +752,8 @@ func (txmp *TxPool) notifyTxsAvailable() {
 }
 
 func (txmp *TxPool) preCheck(tx *types.CachedTx) error {
-	txmp.updateMtx.Lock()
-	defer txmp.updateMtx.Unlock()
+	txmp.mtx.Lock()
+	defer txmp.mtx.Unlock()
 	if txmp.preCheckFn != nil {
 		return txmp.preCheckFn(tx)
 	}
@@ -772,8 +761,6 @@ func (txmp *TxPool) preCheck(tx *types.CachedTx) error {
 }
 
 func (txmp *TxPool) postCheck(tx *types.CachedTx, res *abci.ResponseCheckTx) error {
-	txmp.updateMtx.Lock()
-	defer txmp.updateMtx.Unlock()
 	if txmp.postCheckFn != nil {
 		return txmp.postCheckFn(tx, res)
 	}

@@ -396,7 +396,7 @@ func (memR *Reactor) broadcastNewTx(wtx *wrappedTx) {
 			continue
 		}
 
-		if peer.TrySend(
+		if peer.Send(
 			p2p.Envelope{
 				ChannelID: mempool.MempoolChannel,
 				Message:   msg,
