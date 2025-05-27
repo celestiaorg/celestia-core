@@ -89,11 +89,6 @@ func ValidateConsensusParams(params cmtproto.ConsensusParams) error {
 			params.Block.MaxGas)
 	}
 
-	if params.Block.TimeIotaMs <= 0 {
-		return fmt.Errorf("block.TimeIotaMs must be greater than 0. Got %v",
-			params.Block.TimeIotaMs)
-	}
-
 	if params.Evidence.MaxAgeNumBlocks <= 0 {
 		return fmt.Errorf("evidence.MaxAgeNumBlocks must be greater than 0. Got %d",
 			params.Evidence.MaxAgeNumBlocks)

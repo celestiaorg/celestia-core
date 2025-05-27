@@ -31,7 +31,6 @@ func TestConsensusParamsValidation(t *testing.T) {
 		5: {makeParams(101*1024*1024, 0, 10, 2, 0, valEd25519), false},
 		6: {makeParams(1024*1024*1024, 0, 10, 2, 0, valEd25519), false},
 		7: {makeParams(1024*1024*1024, 0, 10, -1, 0, valEd25519), false},
-		8: {makeParams(1, 0, -10, 2, 0, valEd25519), false},
 		// test evidence params
 		9:  {makeParams(1, 0, 10, 0, 0, valEd25519), false},
 		10: {makeParams(1, 0, 10, 2, 2, valEd25519), false},
