@@ -330,8 +330,8 @@ func (ps *PartSet) AddPart(part *Part) (bool, error) {
 	return true, nil
 }
 
-// AddPartWithoutProof was inspired by the AddPart method but it doesn't
-// validate the proof inside part.
+// AddPartWithoutProof is a Celestia-specific method that was inspired by the
+// AddPart method. AddPartWithoutProof ignores the Proof inside part.
 func (ps *PartSet) AddPartWithoutProof(part *Part) (bool, error) {
 	// TODO: remove this? would be preferable if this only returned (false, nil)
 	// when its a duplicate block part
