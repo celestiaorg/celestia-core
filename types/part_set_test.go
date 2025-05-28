@@ -224,3 +224,37 @@ func TestPartProtoBuf(t *testing.T) {
 		}
 	}
 }
+
+// TestAddPartWithoutProof is inspired by TestWrongProof. It verifies that
+// AddPartWithoutProof accepts parts with proofs that do not validate.
+func TestAddPartWithoutProof(t *testing.T) {
+	data := cmtrand.Bytes(testPartSize * 100)
+	partSet := NewPartSetFromData(data, testPartSize)
+
+	// Test adding a part with wrong data.
+	partSet2 := NewPartSetFromHeader(partSet.Header())
+
+	// Test adding a part with wrong trail.
+	part := partSet.GetPart(0)
+	part.Proof.Aunts[0][0] += byte(0x01)
+	_, err := partSet2.AddPartWithoutProof(part)
+	require.NoError(t, err)
+
+	// Test adding a part with wrong bytes.
+	part = partSet.GetPart(1)
+	part.Bytes[0] += byte(0x01)
+	_, err = partSet2.AddPartWithoutProof(part)
+	require.NoError(t, err)
+
+	// Test adding a part with wrong proof index.
+	part = partSet.GetPart(2)
+	part.Proof.Index = 1
+	_, err = partSet2.AddPartWithoutProof(part)
+	require.NoError(t, err)
+
+	// Test adding a part with wrong proof total.
+	part = partSet.GetPart(3)
+	part.Proof.Total = int64(partSet.Total() - 1)
+	_, err = partSet2.AddPartWithoutProof(part)
+	require.NoError(t, err)
+}
