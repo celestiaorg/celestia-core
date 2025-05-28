@@ -13,39 +13,13 @@ import (
 	"github.com/tendermint/tendermint/libs/log"
 	"github.com/tendermint/tendermint/p2p"
 	"github.com/tendermint/tendermint/p2p/pex"
+	"github.com/tendermint/tendermint/pkg/trace"
 	"github.com/tendermint/tendermint/version"
 )
 
 var (
 	addrBookPath = flag.String("addrbook", "", "Path to the address book file")
 )
-
-type connectionStats struct {
-	mu            sync.Mutex
-	connected     int
-	failed        int
-	totalAttempts int
-}
-
-func (cs *connectionStats) incrementConnected() {
-	cs.mu.Lock()
-	defer cs.mu.Unlock()
-	cs.connected++
-	cs.totalAttempts++
-}
-
-func (cs *connectionStats) incrementFailed() {
-	cs.mu.Lock()
-	defer cs.mu.Unlock()
-	cs.failed++
-	cs.totalAttempts++
-}
-
-func (cs *connectionStats) getStats() (int, int, int) {
-	cs.mu.Lock()
-	defer cs.mu.Unlock()
-	return cs.connected, cs.failed, cs.totalAttempts
-}
 
 // addrBookJSON represents the structure of the address book file
 type addrBookJSON struct {
@@ -104,6 +78,7 @@ func main() {
 
 	logger := log.NewTMLogger(log.NewSyncWriter(os.Stdout))
 	logger = logger.With("module", "connect")
+	logger = log.NewFilter(logger, log.AllowInfo())
 
 	// Get all addresses directly from the file
 	allAddrs, err := getAllAddressesFromFile(*addrBookPath)
@@ -132,7 +107,12 @@ func main() {
 
 	// Create P2P config
 	p2pConfig := config.DefaultP2PConfig()
-	p2pConfig.ListenAddress = "tcp://0.0.0.0:0" // Use random port
+	p2pConfig.ListenAddress = "tcp://0.0.0.0:0"   // Use random port
+	p2pConfig.MaxNumInboundPeers = 2000           // Increase from default 40
+	p2pConfig.MaxNumOutboundPeers = 2000          // Increase from default 10
+	p2pConfig.HandshakeTimeout = 30 * time.Second // Increase from default 20s
+	p2pConfig.DialTimeout = 15 * time.Second      // Increase from default 3s
+	p2pConfig.AllowDuplicateIP = true             // Allow multiple connections from same IP
 
 	// Create node key
 	nodeKey := &p2p.NodeKey{
@@ -159,7 +139,7 @@ func main() {
 		nodeInfo,
 		*nodeKey,
 		p2p.MConnConfig(p2pConfig),
-		nil,
+		trace.NoOpTracer(),
 	)
 
 	// Create switch
@@ -186,52 +166,39 @@ func main() {
 	}
 	defer sw.Stop()
 
-	// Create stats tracker
-	stats := &connectionStats{}
-
-	// Start stats display goroutine
-	go func() {
-		ticker := time.NewTicker(10 * time.Second)
-		defer ticker.Stop()
-
-		for range ticker.C {
-			connected, failed, total := stats.getStats()
-			logger.Info("Connection statistics",
-				"connected", connected,
-				"failed", failed,
-				"total_attempts", total,
-				"remaining", len(allAddrs)-total)
+	// Function to attempt connection to a single peer
+	connectToPeer := func(addr *p2p.NetAddress) bool {
+		err := sw.DialPeerWithAddress(addr)
+		if err != nil {
+			logger.Error("Failed to connect to peer", "addr", addr, "err", err)
+			return false
 		}
-	}()
-
-	// Connect to all addresses
-	var wg sync.WaitGroup
-	for _, addr := range allAddrs {
-		wg.Add(1)
-		go func(addr *p2p.NetAddress) {
-			defer wg.Done()
-
-			err := sw.DialPeerWithAddress(addr)
-			if err != nil {
-				logger.Error("Failed to connect to peer",
-					"addr", addr,
-					"err", err)
-				stats.incrementFailed()
-			} else {
-				logger.Info("Successfully connected to peer",
-					"addr", addr)
-				stats.incrementConnected()
-			}
-		}(addr)
+		logger.Info("Connected to peer", "addr", addr)
+		return true
 	}
 
-	// Wait for all connection attempts to complete
-	wg.Wait()
+	reconnect := func() {
+		var wg sync.WaitGroup
+		for _, addr := range allAddrs {
+			wg.Add(1)
+			go func(addr *p2p.NetAddress) {
+				defer wg.Done()
+				if !sw.IsDialingOrExistingAddress(addr) {
+					connectToPeer(addr)
+				}
+			}(addr)
+		}
+		wg.Wait()
+	}
 
-	// Display final statistics
-	connected, failed, total := stats.getStats()
-	logger.Info("Final connection statistics",
-		"connected", connected,
-		"failed", failed,
-		"total_attempts", total)
+	// Retry loop for failed connections
+	retryTicker := time.NewTicker(20 * time.Second)
+	defer retryTicker.Stop()
+
+	for {
+		reconnect()
+
+		logger.Info("Connection stats", "number connected", sw.Peers().Size(), "number total", len(allAddrs))
+		<-retryTicker.C
+	}
 }
