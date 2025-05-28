@@ -31,15 +31,17 @@ func TestConsensusParamsValidation(t *testing.T) {
 		5: {makeParams(101*1024*1024, 0, 10, 2, 0, valEd25519), false},
 		6: {makeParams(1024*1024*1024, 0, 10, 2, 0, valEd25519), false},
 		7: {makeParams(1024*1024*1024, 0, 10, -1, 0, valEd25519), false},
+		8: {makeParams(1, 0, -10, 2, 0, valEd25519), false},
+		9: {makeParams(1, 0, 0, 2, 0, valEd25519), true}, // 0 is a valid time iota ms
 		// test evidence params
-		9:  {makeParams(1, 0, 10, 0, 0, valEd25519), false},
-		10: {makeParams(1, 0, 10, 2, 2, valEd25519), false},
-		11: {makeParams(1000, 0, 10, 2, 1, valEd25519), true},
-		12: {makeParams(1, 0, 10, -1, 0, valEd25519), false},
+		10: {makeParams(1, 0, 10, 0, 0, valEd25519), false},
+		11: {makeParams(1, 0, 10, 2, 2, valEd25519), false},
+		12: {makeParams(1000, 0, 10, 2, 1, valEd25519), true},
+		13: {makeParams(1, 0, 10, -1, 0, valEd25519), false},
 		// test no pubkey type provided
-		13: {makeParams(1, 0, 10, 2, 0, []string{}), false},
+		14: {makeParams(1, 0, 10, 2, 0, []string{}), false},
 		// test invalid pubkey type provided
-		14: {makeParams(1, 0, 10, 2, 0, []string{"potatoes make good pubkeys"}), false},
+		15: {makeParams(1, 0, 10, 2, 0, []string{"potatoes make good pubkeys"}), false},
 	}
 	for i, tc := range testCases {
 		if tc.valid {
