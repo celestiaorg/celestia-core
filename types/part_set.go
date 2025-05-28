@@ -299,22 +299,44 @@ func (ps *PartSet) AddPart(part *Part) (bool, error) {
 		return false, nil
 	}
 
+	ps.mtx.Lock()
+	defer ps.mtx.Unlock()
+
+	// Invalid part index
+	if part.Index >= ps.total {
+		return false, ErrPartSetUnexpectedIndex
+	}
+
+	// If part already exists, return false.
+	if ps.parts[part.Index] != nil {
+		return false, nil
+	}
+
 	// The proof should be compatible with the number of parts.
 	if part.Proof.Total != int64(ps.total) {
-		return false, fmt.Errorf("%w: part.Proof.Total: %d != ps.total: %d", ErrPartSetInvalidProof, part.Proof.Total, ps.total)
+		return false, ErrPartSetInvalidProof
 	}
 
 	// Check hash proof
-	if err := part.Proof.Verify(ps.Hash(), part.Bytes); err != nil {
-		return false, fmt.Errorf("%w: part.Proof.Verify(ps.Hash(), part.Bytes) = %v", ErrPartSetInvalidProof, err)
+	if part.Proof.Verify(ps.Hash(), part.Bytes) != nil {
+		return false, ErrPartSetInvalidProof
 	}
 
-	return ps.AddPartWithoutProof(part)
+	// Add part
+	ps.parts[part.Index] = part
+	ps.partsBitArray.SetIndex(int(part.Index), true)
+	ps.count++
+	ps.byteSize += int64(len(part.Bytes))
+	return true, nil
 }
 
+// AddPartWithoutProof was inspired by the AddPart method but it doesn't
+// validate the proof inside part.
 func (ps *PartSet) AddPartWithoutProof(part *Part) (bool, error) {
-	if part == nil {
-		return false, errors.New("nil part")
+	// TODO: remove this? would be preferable if this only returned (false, nil)
+	// when its a duplicate block part
+	if ps == nil {
+		return false, nil
 	}
 
 	ps.mtx.Lock()
