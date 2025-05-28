@@ -314,12 +314,12 @@ func (ps *PartSet) AddPart(part *Part) (bool, error) {
 
 	// The proof should be compatible with the number of parts.
 	if part.Proof.Total != int64(ps.total) {
-		return false, ErrPartSetInvalidProof
+		return false, fmt.Errorf("%w: part.Proof.Total: %d != ps.total: %d", ErrPartSetInvalidProof, part.Proof.Total, ps.total)
 	}
 
 	// Check hash proof
-	if part.Proof.Verify(ps.Hash(), part.Bytes) != nil {
-		return false, ErrPartSetInvalidProof
+	if err := part.Proof.Verify(ps.Hash(), part.Bytes); err != nil {
+		return false, fmt.Errorf("%w: part.Proof.Verify(ps.Hash(), part.Bytes) = %v", ErrPartSetInvalidProof, err)
 	}
 
 	// Add part
