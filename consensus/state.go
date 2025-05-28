@@ -1271,7 +1271,7 @@ func (cs *State) defaultDecideProposal(height int64, round int32) {
 	proposal := types.NewProposal(height, round, cs.ValidRound, propBlockID)
 	p := proposal.ToProto()
 	if err := cs.privValidator.SignProposal(cs.state.ChainID, p); err == nil {
-		proposal.Signature = p.Signature
+		proposal.SetSignature(p.Signature)
 
 		// send proposal and block parts on internal msg queue
 		cs.sendInternalMessage(msgInfo{&ProposalMessage{proposal}, ""})
@@ -1981,7 +1981,7 @@ func (cs *State) defaultSetProposal(proposal *types.Proposal) error {
 		return err
 	}
 
-	proposal.Signature = p.Signature
+	proposal.SetSignature(p.Signature)
 	cs.Proposal = proposal
 	// We don't update cs.ProposalBlockParts if it is already set.
 	// This happens if we're already in cstypes.RoundStepCommit or if there is a valid block in the current round.
@@ -2696,7 +2696,7 @@ func (cs *State) syncData() {
 				parts.BitArray().String(),
 			)
 
-			if prop != nil && pprop == nil && prop.Signature != nil { // todo: don't use the signature as a proxy for catchup
+			if prop != nil && pprop == nil && prop.GetSignature() != nil { // todo: don't use the signature as a proxy for catchup
 				schema.WriteNote(
 					cs.traceClient,
 					prop.Height,
@@ -2766,6 +2766,8 @@ func (cs *State) ValidateProposal(proposal *types.Proposal, proposer crypto.PubK
 
 func (cs *State) VerifyProposal(proposal *types.Proposal, proposer crypto.PubKey) error {
 	// todo @rach-id: fix
+	cs.mtx.RLock()
+	defer cs.mtx.RUnlock()
 	_, err := cs.ValidateProposal(proposal, proposer)
 	return err
 }
