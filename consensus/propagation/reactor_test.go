@@ -106,17 +106,16 @@ func NewMockProposalVerifier(pub crypto.PubKey, chainID string, verify bool) *Mo
 	}
 }
 
-func (cl *MockProposalVerifier) VerifyProposal(proposal *types.Proposal) error {
+func (cl *MockProposalVerifier) VerifyProposal(proposal *types.Proposal, proposer crypto.PubKey) error {
 	if !cl.verify {
 		return nil
 	}
 	proposalSignBytes := types.ProposalSignBytes(cl.chainID, proposal.ToProto())
-	if cl.pub.VerifySignature(proposalSignBytes, proposal.Signature) {
+	if proposer.VerifySignature(proposalSignBytes, proposal.Signature) {
 		return nil
 	}
 	return fmt.Errorf("forged proposal")
 }
-func (cl *MockProposalVerifier) GetProposer() crypto.PubKey { return cl.pub }
 
 func TestCountRequests(t *testing.T) {
 	reactors, _ := testBlockPropReactors(1, cfg.DefaultP2PConfig())

@@ -1286,7 +1286,9 @@ func (cs *State) defaultDecideProposal(height int64, round int32) {
 			}
 		}
 
+		//cs.mtx.Unlock()
 		cs.propagator.ProposeBlock(proposal, blockParts, metaData)
+		//cs.mtx.Lock()
 
 		for i := 0; i < int(blockParts.Total()); i++ {
 			part := blockParts.GetPart(i)
@@ -1859,6 +1861,7 @@ func (cs *State) finalizeCommit(height int64) {
 	cs.scheduleRound0(&cs.RoundState)
 
 	// prune the propagation reactor
+	cs.propagator.SetProposer(cs.Validators.GetProposer().PubKey)
 	cs.propagator.Prune(height)
 	// By here,
 	// * cs.Height has been increment to height+1
@@ -1970,7 +1973,7 @@ func (cs *State) defaultSetProposal(proposal *types.Proposal) error {
 	}
 
 	pubKey := cs.Validators.GetProposer().PubKey
-	p, err := cs.ValidateProposal(proposal)
+	p, err := cs.ValidateProposal(proposal, pubKey)
 	if err != nil {
 		if errors.Is(err, errInvalidProposalHeightRound) {
 			return nil
@@ -2727,7 +2730,10 @@ func (cs *State) syncData() {
 }
 
 // ValidateProposal stateful validation of the proposal.
-func (cs *State) ValidateProposal(proposal *types.Proposal) (*cmtproto.Proposal, error) {
+func (cs *State) ValidateProposal(proposal *types.Proposal, proposer crypto.PubKey) (*cmtproto.Proposal, error) {
+	if proposer == nil {
+		return nil, errors.New("nil proposer key")
+	}
 	// Does not apply
 	if proposal.Height != cs.Height || proposal.Round != cs.Round {
 		return nil, fmt.Errorf("%w: proposal height %v round %v does not match state height %v round %v", errInvalidProposalHeightRound, proposal.Height, proposal.Round, cs.Height, cs.Round)
@@ -2740,7 +2746,6 @@ func (cs *State) ValidateProposal(proposal *types.Proposal) (*cmtproto.Proposal,
 	}
 
 	p := proposal.ToProto()
-	proposer := cs.Validators.GetProposer().PubKey
 	// Verify signature
 	if !proposer.VerifySignature(
 		types.ProposalSignBytes(cs.state.ChainID, p), proposal.Signature,
@@ -2759,12 +2764,8 @@ func (cs *State) ValidateProposal(proposal *types.Proposal) (*cmtproto.Proposal,
 	return p, nil
 }
 
-func (cs *State) VerifyProposal(proposal *types.Proposal) error {
+func (cs *State) VerifyProposal(proposal *types.Proposal, proposer crypto.PubKey) error {
 	// todo @rach-id: fix
-	//_, err := cs.ValidateProposal(proposal)
-	return nil
-}
-
-func (cs *State) GetProposer() crypto.PubKey {
-	return cs.Validators.GetProposer().PubKey
+	_, err := cs.ValidateProposal(proposal, proposer)
+	return err
 }

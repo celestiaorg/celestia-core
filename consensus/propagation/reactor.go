@@ -3,6 +3,7 @@ package propagation
 import (
 	"context"
 	"fmt"
+	"github.com/cometbft/cometbft/crypto"
 	"math"
 	"reflect"
 	"sync/atomic"
@@ -44,7 +45,8 @@ type Reactor struct {
 	// ProposalCache temporarily stores recently active proposals and their
 	// block data for gossiping.
 	*ProposalCache
-	consensusLink ProposalVerifier
+	consensusLink   ProposalVerifier
+	currentProposer crypto.PubKey
 
 	privval types.PrivValidator
 	chainID string
@@ -262,6 +264,12 @@ func (blockProp *Reactor) Prune(committedHeight int64) {
 	defer blockProp.pmtx.Unlock()
 	blockProp.consensusHeight = committedHeight
 	blockProp.ResetRequestCounts()
+}
+
+func (blockProp *Reactor) SetProposer(proposer crypto.PubKey) {
+	//blockProp.mtx.Lock()
+	//defer blockProp.mtx.Unlock()
+	blockProp.currentProposer = proposer
 }
 
 func (blockProp *Reactor) SetConsensusRound(height int64, round int32) {

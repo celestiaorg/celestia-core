@@ -1,6 +1,7 @@
 package propagation
 
 import (
+	"errors"
 	"fmt"
 
 	"github.com/cosmos/gogoproto/proto"
@@ -344,7 +345,13 @@ func chunkIndexes(totalSize, chunkSize int) [][2]int {
 
 // validateCompactBlock stateful validation of the compact block.
 func (blockProp *Reactor) validateCompactBlock(cb *proptypes.CompactBlock) error {
-	err := blockProp.consensusLink.VerifyProposal(&cb.Proposal)
+	//blockProp.mtx.Lock()
+	proposer := blockProp.currentProposer
+	if proposer == nil {
+		return errors.New("nil proposer key")
+	}
+	//blockProp.mtx.Unlock()
+	err := blockProp.consensusLink.VerifyProposal(&cb.Proposal, proposer)
 	if err != nil {
 		return err
 	}
@@ -356,7 +363,7 @@ func (blockProp *Reactor) validateCompactBlock(cb *proptypes.CompactBlock) error
 
 	p2pBz := privval.P2PMessageSignBytes(blockProp.chainID, CompactBlockUID, cbz)
 
-	if blockProp.consensusLink.GetProposer().VerifySignature(p2pBz, cb.Signature) {
+	if proposer.VerifySignature(p2pBz, cb.Signature) {
 		return nil
 	}
 
