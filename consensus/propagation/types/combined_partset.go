@@ -116,12 +116,12 @@ func (cps *CombinedPartSet) CanDecode() bool {
 }
 
 func (cps *CombinedPartSet) Decode() error {
+	cps.mtx.Lock()
+	defer cps.mtx.Unlock()
 	ops, eps, err := types.Decode(cps.original, cps.parity, int(cps.lastLen))
 	if err != nil {
 		return err
 	}
-	cps.mtx.Lock()
-	defer cps.mtx.Unlock()
 	cps.totalMap.Fill()
 	cps.original = ops
 	cps.parity = eps
@@ -158,6 +158,8 @@ func (cps *CombinedPartSet) AddPart(part *RecoveryPart, proof merkle.Proof) (boo
 }
 
 func (cps *CombinedPartSet) GetPart(index uint32) (*types.Part, bool) {
+	cps.mtx.Lock()
+	defer cps.mtx.Unlock()
 	if !cps.totalMap.GetIndex(int(index)) {
 		return nil, false
 	}
@@ -166,7 +168,6 @@ func (cps *CombinedPartSet) GetPart(index uint32) (*types.Part, bool) {
 		part := cps.original.GetPart(int(index))
 		return part, part != nil
 	}
-
 	part := cps.parity.GetPart(int(index - cps.original.Total()))
 	return part, part != nil
 }

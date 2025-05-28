@@ -65,7 +65,7 @@ func (blockProp *Reactor) retryWants(currentHeight int64) {
 			}
 
 			if peer.peer.TrySend(e) {
-				blockProp.Logger.Error("failed to send want part", "peer", peer, "height", height, "round", round)
+				blockProp.Logger.Error("failed to send want part", "peer", peer.peer.ID(), "height", height, "round", round)
 				continue
 			}
 
