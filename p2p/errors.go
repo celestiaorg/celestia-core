@@ -3,6 +3,7 @@ package p2p
 import (
 	"fmt"
 	"net"
+	"strings"
 )
 
 // ErrFilterTimeout indicates that a filter operation timed out.
@@ -15,16 +16,27 @@ func (e ErrFilterTimeout) Error() string {
 // ErrRejected indicates that a Peer was rejected carrying additional
 // information as to the reason.
 type ErrRejected struct {
-	addr              NetAddress
-	conn              net.Conn
-	err               error
-	id                ID
-	isAuthFailure     bool
-	isDuplicate       bool
-	isFiltered        bool
-	isIncompatible    bool
-	isNodeInfoInvalid bool
-	isSelf            bool
+	addr               NetAddress
+	conn               net.Conn
+	err                error
+	id                 ID
+	isAuthFailure      bool
+	isDuplicate        bool
+	isFiltered         bool
+	isIncompatible     bool
+	isNodeInfoInvalid  bool
+	isSelf             bool
+	localNodeID        string
+	remoteNodeID       string
+	remotePubKeyRaw    string
+	localAddr          string
+	remoteAddr         string
+	handshakeStage     string
+	challengeReason    string
+	traceID            string
+	chainID            string
+	peerChainID        string
+	malformedHandshake bool
 }
 
 // Addr returns the NetAddress for the rejected Peer.
@@ -33,49 +45,67 @@ func (e ErrRejected) Addr() NetAddress {
 }
 
 func (e ErrRejected) Error() string {
-	if e.isAuthFailure {
-		return fmt.Sprintf("auth failure: %s", e.err)
-	}
-
-	if e.isDuplicate {
+	var base string
+	switch {
+	case e.isAuthFailure:
+		base = fmt.Sprintf("auth failure: %s", e.err)
+	case e.isDuplicate:
 		if e.conn != nil {
-			return fmt.Sprintf(
-				"duplicate CONN<%s>",
-				e.conn.RemoteAddr().String(),
-			)
+			base = fmt.Sprintf("duplicate CONN<%s>", e.conn.RemoteAddr().String())
+		} else if e.id != "" {
+			base = fmt.Sprintf("duplicate ID<%v>", e.id)
 		}
-		if e.id != "" {
-			return fmt.Sprintf("duplicate ID<%v>", e.id)
-		}
-	}
-
-	if e.isFiltered {
+	case e.isFiltered:
 		if e.conn != nil {
-			return fmt.Sprintf(
-				"filtered CONN<%s>: %s",
-				e.conn.RemoteAddr().String(),
-				e.err,
-			)
+			base = fmt.Sprintf("filtered CONN<%s>: %s", e.conn.RemoteAddr().String(), e.err)
+		} else if e.id != "" {
+			base = fmt.Sprintf("filtered ID<%v>: %s", e.id, e.err)
 		}
-
-		if e.id != "" {
-			return fmt.Sprintf("filtered ID<%v>: %s", e.id, e.err)
-		}
+	case e.isIncompatible:
+		base = fmt.Sprintf("incompatible: %s", e.err)
+	case e.isNodeInfoInvalid:
+		base = fmt.Sprintf("invalid NodeInfo: %s", e.err)
+	case e.isSelf:
+		base = fmt.Sprintf("self ID<%v>", e.id)
+	default:
+		base = fmt.Sprintf("%s", e.err)
 	}
 
-	if e.isIncompatible {
-		return fmt.Sprintf("incompatible: %s", e.err)
+	fields := []string{base}
+	if e.localNodeID != "" {
+		fields = append(fields, "localNodeID="+e.localNodeID)
 	}
-
-	if e.isNodeInfoInvalid {
-		return fmt.Sprintf("invalid NodeInfo: %s", e.err)
+	if e.remoteNodeID != "" {
+		fields = append(fields, "remoteNodeID="+e.remoteNodeID)
 	}
-
-	if e.isSelf {
-		return fmt.Sprintf("self ID<%v>", e.id)
+	if e.localAddr != "" {
+		fields = append(fields, "localAddr="+e.localAddr)
 	}
-
-	return fmt.Sprintf("%s", e.err)
+	if e.remoteAddr != "" {
+		fields = append(fields, "remoteAddr="+e.remoteAddr)
+	}
+	if e.remotePubKeyRaw != "" {
+		fields = append(fields, "remotePubKeyRaw="+e.remotePubKeyRaw)
+	}
+	if e.handshakeStage != "" {
+		fields = append(fields, "handshakeStage="+e.handshakeStage)
+	}
+	if e.challengeReason != "" {
+		fields = append(fields, "challengeReason="+e.challengeReason)
+	}
+	if e.traceID != "" {
+		fields = append(fields, "traceID="+e.traceID)
+	}
+	if e.chainID != "" {
+		fields = append(fields, "chainID="+e.chainID)
+	}
+	if e.peerChainID != "" {
+		fields = append(fields, "peerChainID="+e.peerChainID)
+	}
+	if e.malformedHandshake {
+		fields = append(fields, "malformed_handshake=true")
+	}
+	return strings.Join(fields, " | ")
 }
 
 // IsAuthFailure when Peer authentication was unsuccessful.
