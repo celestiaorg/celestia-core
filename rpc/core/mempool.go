@@ -151,7 +151,7 @@ func (env *Environment) UnconfirmedTxs(_ *rpctypes.Context, limitPtr *int) (*cty
 	limit := *limitPtr
 	if limit != -1 {
 		// reuse per_page validator
-		limit = validatePerPage(limitPtr)
+		limit = env.validatePerPage(limitPtr)
 	}
 
 	txs := env.Mempool.ReapMaxTxs(limit)

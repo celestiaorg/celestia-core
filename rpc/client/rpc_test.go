@@ -410,8 +410,8 @@ func TestUncappedUnconfirmedTxs(t *testing.T) {
 	for i := 0; i < numberOfTransactions; i++ {
 		_, _, tx := MakeTxKV()
 
-		ch := make(chan *abci.Response, 1)
-		err := mempool.CheckTx(tx, func(resp *abci.Response) { ch <- resp }, mempl.TxInfo{})
+		ch := make(chan *abci.ResponseCheckTx, 1)
+		err := mempool.CheckTx(tx, func(resp *abci.ResponseCheckTx) { ch <- resp }, mempl.TxInfo{})
 		require.NoError(t, err)
 
 		// wait for tx to arrive in mempoool.
