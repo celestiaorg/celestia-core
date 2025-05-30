@@ -432,13 +432,19 @@ func NewNodeWithContext(ctx context.Context,
 		return nil, fmt.Errorf("could not create blocksync reactor: %w", err)
 	}
 
+	partsChan := make(chan types.Part, 1000)
+	proposalChan := make(chan types.Proposal, 100)
 	propagationReactor := propagation.NewReactor(
 		nodeKey.ID(),
-		blockStore,
-		mempool,
-		privValidator,
-		state.ChainID,
-		state.ConsensusParams.Block.MaxBytes,
+		propagation.Config{
+			Store:         blockStore,
+			Mempool:       mempool,
+			Privval:       privValidator,
+			ChainID:       state.ChainID,
+			BlockMaxBytes: state.ConsensusParams.Block.MaxBytes,
+			PartChan:      partsChan,
+			ProposalChan:  proposalChan,
+		},
 		propagation.WithTracer(tracer),
 	)
 	if !stateSync && !blockSync {
@@ -447,7 +453,7 @@ func NewNodeWithContext(ctx context.Context,
 
 	consensusReactor, consensusState := createConsensusReactor(
 		config, state, blockExec, blockStore, mempool, evidencePool,
-		privValidator, csMetrics, propagationReactor, stateSync || blockSync, eventBus, consensusLogger, offlineStateSyncHeight, tracer,
+		privValidator, csMetrics, propagationReactor, stateSync || blockSync, eventBus, consensusLogger, offlineStateSyncHeight, tracer, partsChan, proposalChan,
 	)
 
 	err = stateStore.SetOfflineStateSyncHeight(0)

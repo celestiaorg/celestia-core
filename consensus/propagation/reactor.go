@@ -55,6 +55,9 @@ type Reactor struct {
 	// and eventually remove it.
 	mempool Mempool
 
+	partChan     chan<- types.Part
+	proposalChan chan<- types.Proposal
+
 	mtx         *sync.Mutex
 	traceClient trace.Tracer
 	self        p2p.ID
@@ -64,21 +67,37 @@ type Reactor struct {
 	cancel context.CancelFunc
 }
 
-func NewReactor(self p2p.ID, store *store.BlockStore, mempool Mempool, privval types.PrivValidator, chainID string, BlockMaxBytes int64, options ...ReactorOption) *Reactor {
+type Config struct {
+	Store         *store.BlockStore
+	Mempool       Mempool
+	Privval       types.PrivValidator
+	ChainID       string
+	BlockMaxBytes int64
+	PartChan      chan<- types.Part
+	ProposalChan  chan<- types.Proposal
+}
+
+func NewReactor(
+	self p2p.ID,
+	config Config,
+	options ...ReactorOption,
+) *Reactor {
 	ctx, cancel := context.WithCancel(context.Background())
 	reactor := &Reactor{
 		self:          self,
 		traceClient:   trace.NoOpTracer(),
 		peerstate:     make(map[p2p.ID]*PeerState),
 		mtx:           &sync.Mutex{},
-		ProposalCache: NewProposalCache(store),
-		mempool:       mempool,
+		ProposalCache: NewProposalCache(config.Store),
+		mempool:       config.Mempool,
 		started:       atomic.Bool{},
 		ctx:           ctx,
 		cancel:        cancel,
-		privval:       privval,
-		chainID:       chainID,
-		BlockMaxBytes: BlockMaxBytes,
+		privval:       config.Privval,
+		chainID:       config.ChainID,
+		BlockMaxBytes: config.BlockMaxBytes,
+		partChan:      config.PartChan,
+		proposalChan:  config.ProposalChan,
 	}
 	reactor.BaseReactor = *p2p.NewBaseReactor("BlockProp", reactor)
 
@@ -129,6 +148,8 @@ func (blockProp *Reactor) OnStop() {
 		close(peer.receivedHaves)
 		close(peer.receivedParts)
 	}
+	close(blockProp.partChan)
+	close(blockProp.proposalChan)
 }
 
 func (blockProp *Reactor) GetChannels() []*conn.ChannelDescriptor {

@@ -117,15 +117,21 @@ func TestRecoverPartsLocally(t *testing.T) {
 	}
 
 	blockStore := store.NewBlockStore(dbm.NewMemDB())
+	partsChan := make(chan types.Part, 1000)
+	proposalChan := make(chan types.Proposal, 100)
 	blockPropR := NewReactor(
 		"",
-		blockStore,
-		&mockMempool{
-			txs: txsMap,
+		Config{
+			Store: blockStore,
+			Mempool: &mockMempool{
+				txs: txsMap,
+			},
+			Privval:       mockPrivVal,
+			ChainID:       sm.ChainID,
+			BlockMaxBytes: sm.ConsensusParams.Block.MaxBytes,
+			PartChan:      partsChan,
+			ProposalChan:  proposalChan,
 		},
-		mockPrivVal,
-		sm.ChainID,
-		sm.ConsensusParams.Block.MaxBytes,
 	)
 	blockPropR.currentProposer = mockPubKey
 

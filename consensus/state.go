@@ -147,7 +147,9 @@ type State struct {
 	// state only emits EventNewRoundStep and EventVote
 	evsw cmtevents.EventSwitch
 
-	propagator propagation.Propagator
+	propagator   propagation.Propagator
+	partChan     <-chan types.Part
+	proposalChan <-chan types.Proposal
 
 	// for reporting metrics
 	metrics *Metrics
@@ -171,6 +173,8 @@ func NewState(
 	propagator propagation.Propagator,
 	txNotifier txNotifier,
 	evpool evidencePool,
+	partChan <-chan types.Part,
+	proposalChan <-chan types.Proposal,
 	options ...StateOption,
 ) *State {
 	cs := &State{
@@ -190,6 +194,8 @@ func NewState(
 		evsw:             cmtevents.NewEventSwitch(),
 		metrics:          NopMetrics(),
 		traceClient:      trace.NoOpTracer(),
+		partChan:         partChan,
+		proposalChan:     proposalChan,
 	}
 	for _, option := range options {
 		option(cs)
@@ -1286,9 +1292,7 @@ func (cs *State) defaultDecideProposal(height int64, round int32) {
 			}
 		}
 
-		//cs.mtx.Unlock()
 		cs.propagator.ProposeBlock(proposal, blockParts, metaData)
-		//cs.mtx.Lock()
 
 		for i := 0; i < int(blockParts.Total()); i++ {
 			part := blockParts.GetPart(i)
@@ -2664,92 +2668,56 @@ func repairWalFile(src, dst string) error {
 	return nil
 }
 
-const SyncDataInterval = 150
-
-// sync data periodically checks to make sure that all block parts in the data
-// routine are pushed through to the state.
+// syncData continuously listens for and processes block parts or proposals from the propagation reactor.
+// It stops execution when the service is terminated or the channels are closed.
+// TODO close channels
 func (cs *State) syncData() {
 	for {
 		select {
 		case <-cs.Quit():
 			return
-		case <-time.After(time.Millisecond * SyncDataInterval):
-			if cs.propagator == nil {
-				continue
+		case part, ok := <-cs.partChan:
+			if !ok {
+				return
 			}
-
-			// check if the data routine already has a proposal or block parts
-			// if so, we can add them here
 			cs.mtx.RLock()
 			h, r := cs.Height, cs.Round
 			pparts := cs.ProposalBlockParts
-			pprop := cs.Proposal
-			completeProp := cs.isProposalComplete()
 			cs.mtx.RUnlock()
-
-			if completeProp {
-				continue
-			}
-
-			prop, parts, has := cs.propagator.GetProposal(h, r)
-
-			if !has {
-				schema.WriteNote(
-					cs.traceClient,
-					h,
-					r,
-					"syncData",
-					"no data found",
-				)
-				continue
-			}
-
-			schema.WriteNote(
-				cs.traceClient,
-				h,
-				r,
-				"syncData",
-				"found data: is complete %v %v %v",
-				parts.IsComplete(),
-				parts.Total(),
-				parts.BitArray().String(),
-			)
-
-			if prop != nil && pprop == nil && prop.GetSignature() != nil { // todo: don't use the signature as a proxy for catchup
-				schema.WriteNote(
-					cs.traceClient,
-					prop.Height,
-					prop.Round,
-					"syncData",
-					"found and sent proposal: %v/%v",
-					prop.Height, prop.Round,
-				)
-				cs.peerMsgQueue <- msgInfo{&ProposalMessage{prop}, ""}
-			}
+			//cs.Logger.Info("received part", "part", part.Index)
 
 			if pparts != nil && pparts.IsComplete() {
 				continue
 			}
+			//cs.Logger.Info("received part2", "part", part.Index)
+			if p := pparts.GetPart(int(part.Index)); p != nil {
+				//cs.Logger.Info("skipping existing part", "part", part.Index)
+				continue
+			}
 
-			for i := 0; i < int(parts.Total()); i++ {
-				if pparts != nil {
-					if p := pparts.GetPart(i); p != nil {
-						continue
-					}
-				}
+			cs.peerMsgQueue <- msgInfo{&BlockPartMessage{h, r, &part}, ""}
+		case proposal, ok := <-cs.proposalChan:
+			if !ok {
+				return
+			}
+			cs.mtx.RLock()
+			pprop := cs.Proposal
+			completeProp := cs.isProposalComplete()
+			cs.mtx.RUnlock()
+			if completeProp {
+				continue
+			}
 
-				part := parts.GetPart(i)
-				if part == nil {
-					continue
-				}
-				// copying the part here to avoid data races between the propogation reactor
-				// and the state.
-				p := &types.Part{
-					Index: part.Index,
-					Bytes: part.Bytes,
-					Proof: part.Proof,
-				}
-				cs.peerMsgQueue <- msgInfo{&BlockPartMessage{h, r, p}, ""}
+			if pprop == nil { // todo: don't use the signature as a proxy for catchup
+				schema.WriteNote(
+					cs.traceClient,
+					proposal.Height,
+					proposal.Round,
+					"syncData",
+					"found and sent proposal: %v/%v",
+					proposal.Height, proposal.Round,
+				)
+				cs.peerMsgQueue <- msgInfo{&ProposalMessage{&proposal}, ""}
 			}
 		}
 	}

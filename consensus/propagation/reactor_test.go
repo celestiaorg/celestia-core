@@ -47,7 +47,17 @@ func newPropagationReactor(s *p2p.Switch, tr trace.Tracer, pv types.PrivValidato
 	if err != nil {
 		panic(err)
 	}
-	blockPropR := NewReactor(s.NetAddress().ID, blockStore, &mockMempool{txs: make(map[types.TxKey]*types.CachedTx)}, pv, TestChainID, 100000000)
+	partsChan := make(chan types.Part, 1000)
+	proposalChan := make(chan types.Proposal, 100)
+	blockPropR := NewReactor(s.NetAddress().ID, Config{
+		Store:         blockStore,
+		Mempool:       &mockMempool{txs: make(map[types.TxKey]*types.CachedTx)},
+		Privval:       pv,
+		ChainID:       TestChainID,
+		BlockMaxBytes: 100000000,
+		PartChan:      partsChan,
+		ProposalChan:  proposalChan,
+	})
 	blockPropR.traceClient = tr
 	blockPropR.currentProposer = pub
 	// false means that we're not checking that the proposal was signed correctly by the proposer.

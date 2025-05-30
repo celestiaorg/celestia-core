@@ -154,6 +154,8 @@ func (blockProp *Reactor) handleCompactBlock(cb *proptypes.CompactBlock, peer p2
 		return
 	}
 
+	blockProp.proposalChan <- cb.Proposal
+
 	// generate (and cache) the proofs from the partset hashes in the compact block
 	_, err = cb.Proofs()
 	if err != nil {
@@ -345,7 +347,9 @@ func chunkIndexes(totalSize, chunkSize int) [][2]int {
 
 // validateCompactBlock stateful validation of the compact block.
 func (blockProp *Reactor) validateCompactBlock(cb *proptypes.CompactBlock) error {
+	blockProp.mtx.Lock()
 	proposer := blockProp.currentProposer
+	blockProp.mtx.Unlock()
 	if proposer == nil {
 		return errors.New("nil proposer key")
 	}

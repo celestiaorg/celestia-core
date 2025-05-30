@@ -2,6 +2,7 @@ package propagation
 
 import (
 	"fmt"
+	"github.com/cometbft/cometbft/types"
 	"math"
 
 	proptypes "github.com/cometbft/cometbft/consensus/propagation/types"
@@ -456,6 +457,15 @@ func (blockProp *Reactor) handleRecoveryPart(peer p2p.ID, part *proptypes.Recove
 		return
 	}
 
+	// only send original parts to the consensus reactor
+	if part.Index < parts.Original().Total() {
+		blockProp.partChan <- types.Part{
+			Index: part.Index,
+			Bytes: part.Data,
+			Proof: *proof,
+		}
+	}
+
 	// attempt to decode the remaining block parts. If they are decoded, then
 	// this node should send all the wanted parts that nodes have requested. cp
 	// == nil means that there was no compact block available and this was
@@ -486,6 +496,15 @@ func (blockProp *Reactor) handleRecoveryPart(peer p2p.ID, part *proptypes.Recove
 			if !has {
 				blockProp.Logger.Error("failed to get decoded part", "peer", peer, "height", part.Height, "round", part.Round, "part", i)
 				continue
+			}
+			// only send original parts to the consensus reactor
+			if p.Index < parts.Original().Total() {
+				p2 := parts.Original().GetPart(int(p.Index))
+				blockProp.partChan <- types.Part{
+					Index: p2.Index,
+					Bytes: p2.Bytes,
+					Proof: p2.Proof,
+				}
 			}
 			haves.Parts = append(haves.Parts, proptypes.PartMetaData{Index: i, Hash: p.Proof.LeafHash})
 		}
