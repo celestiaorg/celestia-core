@@ -1972,13 +1972,32 @@ func (cs *State) defaultSetProposal(proposal *types.Proposal) error {
 		return nil
 	}
 
+	// Does not apply
+	if proposal.Height != cs.Height || proposal.Round != cs.Round {
+		return fmt.Errorf("%w: proposal height %v round %v does not match state height %v round %v", errInvalidProposalHeightRound, proposal.Height, proposal.Round, cs.Height, cs.Round)
+	}
+	// Verify POLRound, which must be -1 or in range [0, proposal.Round).
+	if proposal.POLRound < -1 ||
+		(proposal.POLRound >= 0 && proposal.POLRound >= proposal.Round) {
+		return fmt.Errorf(ErrInvalidProposalPOLRound.Error()+"%v %v", proposal.POLRound, proposal.Round)
+	}
+
 	pubKey := cs.Validators.GetProposer().PubKey
-	p, err := cs.ValidateProposal(proposal, pubKey)
-	if err != nil {
-		if errors.Is(err, errInvalidProposalHeightRound) {
-			return nil
-		}
-		return err
+	p := proposal.ToProto()
+	// Verify signature
+	if !pubKey.VerifySignature(
+		types.ProposalSignBytes(cs.state.ChainID, p), proposal.Signature,
+	) {
+		return ErrInvalidProposalSignature
+	}
+
+	// Validate the proposed block size, derived from its PartSetHeader
+	maxBytes := cs.state.ConsensusParams.Block.MaxBytes
+	if maxBytes == -1 {
+		maxBytes = int64(types.MaxBlockSizeBytes)
+	}
+	if int64(proposal.BlockID.PartSetHeader.Total) > (maxBytes-1)/int64(types.BlockPartSizeBytes)+1 {
+		return ErrProposalTooManyParts
 	}
 
 	proposal.SetSignature(p.Signature)
@@ -2723,51 +2742,15 @@ func (cs *State) syncData() {
 				if part == nil {
 					continue
 				}
-				cs.peerMsgQueue <- msgInfo{&BlockPartMessage{h, r, part}, ""}
+				// copying the part here to avoid data races between the propogation reactor
+				// and the state.
+				p := &types.Part{
+					Index: part.Index,
+					Bytes: part.Bytes,
+					Proof: part.Proof,
+				}
+				cs.peerMsgQueue <- msgInfo{&BlockPartMessage{h, r, p}, ""}
 			}
 		}
 	}
-}
-
-// ValidateProposal stateful validation of the proposal.
-func (cs *State) ValidateProposal(proposal *types.Proposal, proposer crypto.PubKey) (*cmtproto.Proposal, error) {
-	if proposer == nil {
-		return nil, errors.New("nil proposer key")
-	}
-	// Does not apply
-	if proposal.Height != cs.Height || proposal.Round != cs.Round {
-		return nil, fmt.Errorf("%w: proposal height %v round %v does not match state height %v round %v", errInvalidProposalHeightRound, proposal.Height, proposal.Round, cs.Height, cs.Round)
-	}
-
-	// Verify POLRound, which must be -1 or in range [0, proposal.Round).
-	if proposal.POLRound < -1 ||
-		(proposal.POLRound >= 0 && proposal.POLRound >= proposal.Round) {
-		return nil, fmt.Errorf(ErrInvalidProposalPOLRound.Error()+"%v %v", proposal.POLRound, proposal.Round)
-	}
-
-	p := proposal.ToProto()
-	// Verify signature
-	if !proposer.VerifySignature(
-		types.ProposalSignBytes(cs.state.ChainID, p), proposal.Signature,
-	) {
-		return nil, ErrInvalidProposalSignature
-	}
-
-	// Validate the proposed block size, derived from its PartSetHeader
-	maxBytes := cs.state.ConsensusParams.Block.MaxBytes
-	if maxBytes == -1 {
-		maxBytes = int64(types.MaxBlockSizeBytes)
-	}
-	if int64(proposal.BlockID.PartSetHeader.Total) > (maxBytes-1)/int64(types.BlockPartSizeBytes)+1 {
-		return nil, ErrProposalTooManyParts
-	}
-	return p, nil
-}
-
-func (cs *State) VerifyProposal(proposal *types.Proposal, proposer crypto.PubKey) error {
-	// todo @rach-id: fix
-	cs.mtx.RLock()
-	defer cs.mtx.RUnlock()
-	_, err := cs.ValidateProposal(proposal, proposer)
-	return err
 }

@@ -17,7 +17,3 @@ type Propagator interface {
 	StartProcessing()
 	SetProposer(proposer crypto.PubKey)
 }
-
-type ProposalVerifier interface {
-	VerifyProposal(proposal *types.Proposal, proposer crypto.PubKey) error
-}

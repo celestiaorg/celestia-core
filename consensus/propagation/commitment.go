@@ -345,17 +345,39 @@ func chunkIndexes(totalSize, chunkSize int) [][2]int {
 
 // validateCompactBlock stateful validation of the compact block.
 func (blockProp *Reactor) validateCompactBlock(cb *proptypes.CompactBlock) error {
-	//blockProp.mtx.Lock()
 	proposer := blockProp.currentProposer
 	if proposer == nil {
 		return errors.New("nil proposer key")
 	}
-	//blockProp.mtx.Unlock()
-	err := blockProp.consensusLink.VerifyProposal(&cb.Proposal, proposer)
-	if err != nil {
-		return err
+	// Does not apply
+	if cb.Proposal.Height != blockProp.currentHeight || cb.Proposal.Round != blockProp.currentRound {
+		return fmt.Errorf("proposal height %v round %v does not match state height %v round %v", cb.Proposal.Height, cb.Proposal.Round, blockProp.currentHeight, blockProp.currentRound)
 	}
 
+	// Verify POLRound, which must be -1 or in range [0, proposal.Round).
+	if cb.Proposal.POLRound < -1 ||
+		(cb.Proposal.POLRound >= 0 && cb.Proposal.POLRound >= cb.Proposal.Round) {
+		return fmt.Errorf("error invalid proposal POL round: %v %v", cb.Proposal.POLRound, cb.Proposal.Round)
+	}
+
+	p := cb.Proposal.ToProto()
+	// Verify proposal signature
+	if !proposer.VerifySignature(
+		types.ProposalSignBytes(blockProp.chainID, p), cb.Proposal.Signature,
+	) {
+		return errors.New("error invalid proposal signature")
+	}
+
+	// Validate the proposed block size, derived from its PartSetHeader
+	maxBytes := blockProp.BlockMaxBytes
+	if maxBytes == -1 {
+		maxBytes = int64(types.MaxBlockSizeBytes)
+	}
+	if int64(cb.Proposal.BlockID.PartSetHeader.Total) > (maxBytes-1)/int64(types.BlockPartSizeBytes)+1 {
+		return errors.New("proposal block has too many parts")
+	}
+
+	// validate the compact block
 	cbz, err := cb.SignBytes()
 	if err != nil {
 		return err

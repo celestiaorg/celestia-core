@@ -1,7 +1,6 @@
 package propagation
 
 import (
-	"fmt"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -13,7 +12,6 @@ import (
 	"github.com/cometbft/cometbft/state"
 	"github.com/cometbft/cometbft/types"
 
-	"github.com/cometbft/cometbft/crypto"
 	"github.com/cometbft/cometbft/privval"
 	"github.com/cometbft/cometbft/proto/tendermint/propagation"
 
@@ -35,6 +33,12 @@ const (
 	TestChainID = "test"
 )
 
+var (
+	mockPrivVal = types.NewMockPV()
+	mockPrivKey = mockPrivVal.PrivKey
+	mockPubKey  = mockPrivKey.PubKey()
+)
+
 // newPropagationReactor creates a propagation reactor using the provided
 // privval sign and that key to verify proposals.
 func newPropagationReactor(s *p2p.Switch, tr trace.Tracer, pv types.PrivValidator) *Reactor {
@@ -43,11 +47,11 @@ func newPropagationReactor(s *p2p.Switch, tr trace.Tracer, pv types.PrivValidato
 	if err != nil {
 		panic(err)
 	}
-	blockPropR := NewReactor(s.NetAddress().ID, blockStore, &mockMempool{txs: make(map[types.TxKey]*types.CachedTx)}, pv, TestChainID)
+	blockPropR := NewReactor(s.NetAddress().ID, blockStore, &mockMempool{txs: make(map[types.TxKey]*types.CachedTx)}, pv, TestChainID, 100000000)
 	blockPropR.traceClient = tr
+	blockPropR.currentProposer = pub
 	// false means that we're not checking that the proposal was signed correctly by the proposer.
 	// when creating a test proposal, we're currently not signing it
-	blockPropR.SetProposalVerifier(NewMockProposalVerifier(pub, "test", false))
 	blockPropR.started.Store(true)
 	blockPropR.SetSwitch(s)
 
@@ -62,8 +66,6 @@ func testBlockPropReactors(n int, p2pCfg *cfg.P2PConfig) ([]*Reactor, []*p2p.Swi
 func createTestReactors(n int, p2pCfg *cfg.P2PConfig, tracer bool, traceDir string) ([]*Reactor, []*p2p.Switch) {
 	reactors := make([]*Reactor, n)
 	switches := make([]*p2p.Switch, n)
-
-	pv := types.NewMockPV()
 
 	p2p.MakeConnectedSwitches(p2pCfg, n, func(i int, s *p2p.Switch) *p2p.Switch {
 		var (
@@ -80,7 +82,7 @@ func createTestReactors(n int, p2pCfg *cfg.P2PConfig, tracer bool, traceDir stri
 			}
 		}
 
-		reactors[i] = newPropagationReactor(s, tr, pv)
+		reactors[i] = newPropagationReactor(s, tr, mockPrivVal)
 		reactors[i].SetLogger(log.NewNopLogger())
 		s.AddReactor("BlockProp", reactors[i])
 		switches = append(switches, s)
@@ -90,31 +92,6 @@ func createTestReactors(n int, p2pCfg *cfg.P2PConfig, tracer bool, traceDir stri
 	)
 
 	return reactors, switches
-}
-
-type MockProposalVerifier struct {
-	pub     crypto.PubKey
-	chainID string
-	verify  bool
-}
-
-func NewMockProposalVerifier(pub crypto.PubKey, chainID string, verify bool) *MockProposalVerifier {
-	return &MockProposalVerifier{
-		pub:     pub,
-		chainID: chainID,
-		verify:  verify,
-	}
-}
-
-func (cl *MockProposalVerifier) VerifyProposal(proposal *types.Proposal, proposer crypto.PubKey) error {
-	if !cl.verify {
-		return nil
-	}
-	proposalSignBytes := types.ProposalSignBytes(cl.chainID, proposal.ToProto())
-	if proposer.VerifySignature(proposalSignBytes, proposal.Signature) {
-		return nil
-	}
-	return fmt.Errorf("forged proposal")
 }
 
 func TestCountRequests(t *testing.T) {

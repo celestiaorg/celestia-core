@@ -89,8 +89,11 @@ func createTestProposal(
 		}
 	}
 	id := types.BlockID{Hash: block.Hash(), PartSetHeader: partSet.Header()}
-	prop := types.NewProposal(block.Height, 0, 0, id)
-	prop.Signature = cmtrand.Bytes(64)
+	prop := types.NewProposal(block.Height, 0, -1, id)
+	protoProp := prop.ToProto()
+	err = mockPrivVal.SignProposal(TestChainID, protoProp)
+	require.NoError(t, err)
+	prop.Signature = protoProp.Signature
 	return prop, partSet, block, metaData
 }
 
@@ -113,10 +116,6 @@ func TestRecoverPartsLocally(t *testing.T) {
 		txs[i] = tx
 	}
 
-	pv := types.NewMockPV()
-	pub, err := pv.GetPubKey()
-	require.NoError(t, err)
-
 	blockStore := store.NewBlockStore(dbm.NewMemDB())
 	blockPropR := NewReactor(
 		"",
@@ -124,18 +123,22 @@ func TestRecoverPartsLocally(t *testing.T) {
 		&mockMempool{
 			txs: txsMap,
 		},
-		pv,
+		mockPrivVal,
 		sm.ChainID,
+		sm.ConsensusParams.Block.MaxBytes,
 	)
-	blockPropR.SetProposalVerifier(NewMockProposalVerifier(pub, TestChainID, false))
+	blockPropR.currentProposer = mockPubKey
 
 	data := types.Data{Txs: types.TxsFromCachedTxs(txs)}
 
 	block, partSet, err := sm.MakeBlock(1, data, types.RandCommit(time.Now()), []types.Evidence{}, cmtrand.Bytes(20))
 	require.NoError(t, err)
 	id := types.BlockID{Hash: block.Hash(), PartSetHeader: partSet.Header()}
-	prop := types.NewProposal(block.Height, 0, 0, id)
-	prop.Signature = cmtrand.Bytes(64)
+	prop := types.NewProposal(block.Height, 0, -1, id)
+	protoProp := prop.ToProto()
+	err = mockPrivVal.SignProposal("test-chain", protoProp)
+	require.NoError(t, err)
+	prop.Signature = protoProp.Signature
 
 	metaData := make([]proptypes.TxMetaData, len(partSet.TxPos))
 	for i, pos := range partSet.TxPos {

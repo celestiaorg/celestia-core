@@ -45,11 +45,11 @@ type Reactor struct {
 	// ProposalCache temporarily stores recently active proposals and their
 	// block data for gossiping.
 	*ProposalCache
-	consensusLink   ProposalVerifier
 	currentProposer crypto.PubKey
 
-	privval types.PrivValidator
-	chainID string
+	privval       types.PrivValidator
+	chainID       string
+	BlockMaxBytes int64
 
 	// mempool access to read the transactions by hash from the mempool
 	// and eventually remove it.
@@ -64,7 +64,7 @@ type Reactor struct {
 	cancel context.CancelFunc
 }
 
-func NewReactor(self p2p.ID, store *store.BlockStore, mempool Mempool, privval types.PrivValidator, chainID string, options ...ReactorOption) *Reactor {
+func NewReactor(self p2p.ID, store *store.BlockStore, mempool Mempool, privval types.PrivValidator, chainID string, BlockMaxBytes int64, options ...ReactorOption) *Reactor {
 	ctx, cancel := context.WithCancel(context.Background())
 	reactor := &Reactor{
 		self:          self,
@@ -78,6 +78,7 @@ func NewReactor(self p2p.ID, store *store.BlockStore, mempool Mempool, privval t
 		cancel:        cancel,
 		privval:       privval,
 		chainID:       chainID,
+		BlockMaxBytes: BlockMaxBytes,
 	}
 	reactor.BaseReactor = *p2p.NewBaseReactor("BlockProp", reactor)
 
@@ -112,11 +113,6 @@ func WithTracer(tracer trace.Tracer) func(r *Reactor) {
 	return func(r *Reactor) {
 		r.traceClient = tracer
 	}
-}
-
-// SetProposalVerifier sets the proposal stateful validation function.
-func (blockProp *Reactor) SetProposalVerifier(csc ProposalVerifier) {
-	blockProp.consensusLink = csc
 }
 
 func (blockProp *Reactor) SetLogger(logger log.Logger) {
@@ -267,8 +263,8 @@ func (blockProp *Reactor) Prune(committedHeight int64) {
 }
 
 func (blockProp *Reactor) SetProposer(proposer crypto.PubKey) {
-	//blockProp.mtx.Lock()
-	//defer blockProp.mtx.Unlock()
+	blockProp.mtx.Lock()
+	defer blockProp.mtx.Unlock()
 	blockProp.currentProposer = proposer
 }
 

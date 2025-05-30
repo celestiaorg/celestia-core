@@ -438,6 +438,7 @@ func NewNodeWithContext(ctx context.Context,
 		mempool,
 		privValidator,
 		state.ChainID,
+		state.ConsensusParams.Block.MaxBytes,
 		propagation.WithTracer(tracer),
 	)
 	if !stateSync && !blockSync {
@@ -453,7 +454,6 @@ func NewNodeWithContext(ctx context.Context,
 	if err != nil {
 		panic(fmt.Sprintf("failed to reset the offline state sync height %s", err))
 	}
-	propagationReactor.SetProposalVerifier(consensusState)
 	propagationReactor.SetLogger(logger.With("module", "propagation"))
 
 	logger.Info("Consensus reactor created", "timeout_propose", consensusState.GetState().TimeoutPropose, "timeout_commit", consensusState.GetState().TimeoutCommit)
