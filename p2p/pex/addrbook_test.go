@@ -265,7 +265,7 @@ func TestAddrBookGetSelection(t *testing.T) {
 	book.SetLogger(log.TestingLogger())
 
 	// 1) empty book
-	assert.Empty(t, book.GetSelection())
+	assert.Nil(t, book.GetSelection())
 
 	// 2) add one address
 	addr := randIPv4Address(t)
@@ -292,9 +292,8 @@ func TestAddrBookGetSelection(t *testing.T) {
 		addrs[addr.String()] = addr
 	}
 
-	if len(selection) > book.Size() {
-		t.Errorf("selection %v could not be bigger than the book", selection)
-	}
+	// assert that selection is the same as the number of addresses in the book
+	assert.Equal(t, len(selection), book.Size())
 }
 
 func TestAddrBookGetSelectionWithBias(t *testing.T) {
