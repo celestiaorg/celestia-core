@@ -1,4 +1,4 @@
-name: "Copilot Setup Steps"
+name: "copilot-setup-steps"
 
 # Allow testing of the setup steps from your repository's "Actions" tab.
 on: workflow_dispatch
