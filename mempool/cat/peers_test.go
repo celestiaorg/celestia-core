@@ -30,7 +30,7 @@ func TestPeerLifecycle(t *testing.T) {
 	require.NotPanics(t, func() {
 		ids.ReserveForPeer(peer1)
 	})
-	
+
 	// peer should still have the same ID and be present
 	require.Equal(t, id, ids.GetIDForPeer(peerID))
 	require.Equal(t, peer1, ids.GetPeer(id))
