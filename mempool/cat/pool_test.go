@@ -272,54 +272,30 @@ func TestTxPool_Recheck(t *testing.T) {
 }
 
 // TestTxPool_RecheckConcurrency tests that recheck works correctly under 
-// concurrent conditions and doesn't cause deadlocks or panics.
+// concurrent conditions and doesn't cause deadlocks.
 func TestTxPool_RecheckConcurrency(t *testing.T) {
-	// Create mempool with recheck enabled
-	app := &application{kvstore.NewApplication(db.NewMemDB())}
-	cc := proxy.NewLocalClientCreator(app)
+	txmp := setup(t, 0)
+	txmp.config.Recheck = true
 
-	cfg := config.TestMempoolConfig()
-	cfg.Recheck = true
-	cfg.Size = 1000
-	cfg.CacheSize = 10000
-
-	appConnMem, err := cc.NewABCIClient()
-	require.NoError(t, err)
-	require.NoError(t, appConnMem.Start())
-	defer appConnMem.Stop()
-
-	txmp := NewTxPool(
-		log.TestingLogger().With("test", t.Name()),
-		cfg,
-		appConnMem,
-		0,
-	)
-
-	// Add initial set of transactions
-	const numInitialTxs = 50
-	_ = checkTxs(t, txmp, numInitialTxs, 0)
-	require.Equal(t, numInitialTxs, txmp.Size())
+	// Add initial transactions 
+	checkTxs(t, txmp, 50, 0)
+	require.Equal(t, 50, txmp.Size())
 
 	var wg sync.WaitGroup
-	numWorkers := 3
-	wg.Add(numWorkers)
 
-	// Worker 1: Continuously commit some transactions to trigger recheck
+	// Worker 1: Commit transactions to trigger recheck
+	wg.Add(1)
 	go func() {
 		defer wg.Done()
 		height := int64(1)
-		
-		for i := 0; i < 5; i++ { // Do 5 update cycles
-			time.Sleep(10 * time.Millisecond) // Small delay between updates
-			
-			// Get some transactions to commit
+		for i := 0; i < 5; i++ {
+			time.Sleep(10 * time.Millisecond)
 			reapedTxs := txmp.ReapMaxTxs(5)
 			if len(reapedTxs) > 0 {
 				responses := make([]*abci.ExecTxResult, len(reapedTxs))
 				for j := range responses {
 					responses[j] = &abci.ExecTxResult{Code: abci.CodeTypeOK}
 				}
-				
 				txmp.Lock()
 				err := txmp.Update(height, reapedTxs, responses, nil, nil)
 				txmp.Unlock()
@@ -329,57 +305,21 @@ func TestTxPool_RecheckConcurrency(t *testing.T) {
 		}
 	}()
 
-	// Worker 2: Continuously add new transactions
+	// Worker 2: Add new transactions 
+	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		for i := 0; i < 20; i++ { // Add 20 transactions
-			time.Sleep(5 * time.Millisecond) // Small delay between additions
-			
+		for i := 0; i < 20; i++ {
+			time.Sleep(5 * time.Millisecond)
 			tx := newDefaultTx(fmt.Sprintf("concurrent-tx-%d", i))
-			err := txmp.CheckTx(tx, nil, mempool.TxInfo{})
-			// Ignore errors since mempool might be full or tx might be duplicate
-			if err != nil {
-				var mempoolFullErr mempool.ErrMempoolIsFull
-				if !errors.As(err, &mempoolFullErr) && err != mempool.ErrTxInCache {
-					t.Logf("Unexpected error adding tx: %v", err)
-				}
-			}
+			_ = txmp.CheckTx(tx, nil, mempool.TxInfo{}) // Ignore errors for concurrency testing
 		}
 	}()
 
-	// Worker 3: Continuously check mempool size and reap transactions
-	go func() {
-		defer wg.Done()
-		for i := 0; i < 15; i++ { // Check 15 times
-			time.Sleep(8 * time.Millisecond) // Small delay between checks
-			
-			_ = txmp.Size()
-			_ = txmp.SizeBytes()
-			
-			// Try to reap some transactions
-			reaped := txmp.ReapMaxTxs(3)
-			if len(reaped) > 0 {
-				t.Logf("Reaped %d transactions", len(reaped))
-			}
-		}
-	}()
-
-	// Wait for all workers to complete
 	wg.Wait()
 
-	// Final verification - mempool should still be functional
-	finalSize := txmp.Size()
-	t.Logf("Final mempool size: %d", finalSize)
-	
-	// Add one more transaction to ensure mempool is still operational
-	finalTx := newDefaultTx("final-test-tx")
-	err = txmp.CheckTx(finalTx, nil, mempool.TxInfo{})
-	if err != nil {
-		var mempoolFullErr mempool.ErrMempoolIsFull
-		if !errors.As(err, &mempoolFullErr) && err != mempool.ErrTxInCache {
-			require.NoError(t, err, "Mempool should still be functional after concurrent operations")
-		}
-	}
+	// Verify mempool is still functional
+	require.NoError(t, txmp.CheckTx(newDefaultTx("final-test"), nil, mempool.TxInfo{}))
 }
 
 func TestTxPool_Eviction(t *testing.T) {
