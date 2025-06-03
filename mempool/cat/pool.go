@@ -424,19 +424,19 @@ func (txmp *TxPool) ReapMaxBytesMaxGas(maxBytes, maxGas int64) types.Txs {
 	var totalGas, totalBytes int64
 
 	var keep []types.Tx
-	txmp.store.iterateOrderedTxs(func(w *wrappedTx) bool {
+	wtxs := txmp.store.getOrderedTxs()
+	for _, w := range wtxs {
 		// N.B. When computing byte size, we need to include the overhead for
 		// encoding as protobuf to send to the application. This actually overestimates it
 		// as we add the proto overhead to each transaction
 		txBytes := types.ComputeProtoSizeForTxs([]types.Tx{w.tx})
 		if (maxGas >= 0 && totalGas+w.gasWanted > maxGas) || (maxBytes >= 0 && totalBytes+txBytes > maxBytes) {
-			return true
+			continue
 		}
 		totalBytes += txBytes
 		totalGas += w.gasWanted
 		keep = append(keep, w.tx)
-		return true
-	})
+	}
 	return keep
 }
 
@@ -451,13 +451,13 @@ func (txmp *TxPool) ReapMaxBytesMaxGas(maxBytes, maxGas int64) types.Txs {
 func (txmp *TxPool) ReapMaxTxs(max int) types.Txs {
 	var keep []types.Tx
 
-	txmp.store.iterateOrderedTxs(func(w *wrappedTx) bool {
+	wtxs := txmp.store.getOrderedTxs()
+	for _, w := range wtxs {
 		if max >= 0 && len(keep) >= max {
-			return false
+			break
 		}
 		keep = append(keep, w.tx)
-		return true
-	})
+	}
 	return keep
 }
 
@@ -660,14 +660,10 @@ func (txmp *TxPool) recheckTransactions() {
 		"height", txmp.height,
 	)
 
-	// Collect transactions currently in the mempool requiring recheck.
+	// Get all transactions currently in the mempool requiring recheck.
 	// This avoids holding the store lock during the CheckTx calls which could
 	// cause a deadlock when handleRecheckResult tries to modify the store.
-	wtxs := make([]*wrappedTx, 0, txmp.Size())
-	txmp.store.iterateOrderedTxs(func(wtx *wrappedTx) bool {
-		wtxs = append(wtxs, wtx)
-		return true
-	})
+	wtxs := txmp.store.getOrderedTxs()
 
 	// Issue CheckTx calls for each remaining transaction, and when all the
 	// rechecks are complete signal watchers that transactions may be available.
