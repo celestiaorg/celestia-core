@@ -10,7 +10,7 @@ Whenever you generate code or documentation:
 4. Produce readable yet concise code without premature abstraction.
 5. When writing Go, adhere to the latest official Go best practices (idiomatic naming, error handling, package layout, etc.).
 6. Keep suggestions minimal and focused. Avoid excessive detail or overly prescriptive guidance.
-
+7. When debugging you must fix the root of the problem, not hack around the symptoms.
 ## Go-Specific Guidelines
 
 ### Function Structure
