@@ -2,7 +2,7 @@
 
 ## Changelog
 
-- {date}: Initial creation of Reactor Specific Peers ADR.
+- 28.05.2025: Initial creation of Reactor Specific Peers ADR.
 
 ## Context
 
@@ -42,6 +42,21 @@ This change introduces a `PeerManager` component that delegates **peer lifecycle
 
 ### Proposed Solution: Combined Alternative
 
+**Architecture Decision: Two-Component vs Single-Component Approach**
+
+We chose a two-component approach (`PeerManager` + updated `Switch`) instead of consolidating everything into the `Switch` for the following reasons:
+
+**Benefits of Separation**:
+1. **Single Responsibility Principle**: The `PeerManager` focuses solely on peer lifecycle (connection, validation, assignment), while the `Switch` handles reactor coordination and message routing.
+2. **Testability**: Peer management logic can be tested independently of reactor coordination logic.
+3. **Future Extensibility**: The `PeerManager` can be enhanced with advanced features (peer scoring, adaptive peer selection) without cluttering the `Switch`.
+4. **Clear Interface Boundaries**: Well-defined APIs between components reduce coupling.
+5. **Code Reuse Potential**: With clear separation of concerns, we might be able to reuse some peer management code from libp2p libraries.
+
+**Communication Complexity Mitigation**:
+- The `PeerManager` will expose a simple interface to the `Switch` for peer assignment and retrieval operations.
+- The `Switch` will delegate peer lifecycle events to `PeerManager` but retain control over message routing.
+
 There will be two main components:
 1. **PeerManager**:
     - Centrally manages the lifecycle of peers (e.g., validation, filtering, reconnection, termination).
@@ -59,7 +74,42 @@ There will be two main components:
 
 ## Detailed Design
 
-> Must be completed prior to the merging of the implementation.
+### Reactor-Specific Peer Requirements
+
+This section defines which reactors require which types of peers and the behavior for existing reactors:
+
+#### Reactor Peer Requirements:
+1. **Consensus Reactor**:
+   - **Peer Types**: Validator nodes, full nodes participating in consensus
+   - **Criteria**: Nodes with validator keys or nodes that relay consensus messages
+   - **Connection Style**: persistent (for validator connections)
+
+2. **State Sync Reactor**:
+   - **Peer Types**: Full nodes with complete state, archive nodes
+   - **Criteria**: Nodes advertising state sync capability
+   - **Connection Style**: ad hoc / during sync
+   - **Network Requirements**: Requires larger amounts of peers to saturate network connection for faster state synchronization
+
+3. **Block Sync Reactor**:
+   - **Peer Types**: Full nodes, archive nodes with historical blocks
+   - **Criteria**: Nodes with block history and fast sync capability
+   - **Connection Style**: ad hoc / during sync
+   - **Network Requirements**: Requires larger amounts of peers to saturate network connection for efficient block downloading
+
+4. **Mempool Reactor**:
+   - **Peer Types**: All node types that accept transactions
+   - **Criteria**: None
+   - **Connection Style**: ad hoc
+
+5. **Evidence Reactor**:
+   - **Peer Types**: Validator nodes, full nodes
+   - **Criteria**: Nodes participating in consensus
+   - **Connection Style**: ad hoc
+
+#### Backward Compatibility for Existing Reactors:
+- **Default Behavior**: Reactors that don't specify peer criteria will receive all available peers (current behavior).
+- **Opt-in Migration**: Existing reactors can gradually adopt peer-specific criteria without breaking changes.
+- **Interface Compatibility**: Current reactor interfaces (`AddPeer`, `RemovePeer`) remain unchanged.
 
 ### Workflow
 
@@ -115,7 +165,7 @@ There will be two main components:
 1. **Implementation Overhead**:
     - Introducing the `PeerManager` and refactoring existing `Switch` responsibilities require significant effort.
 2. **Coordination Complexity**:
-    - Additional communication paths are necessary between the `PeerManager` and `Switch`.
+    - Additional communication paths are necessary between the `PeerManager` and `Switch`, though mitigated by clear interface boundaries.
 
 ### Neutral
 - The flexibility provided by this approach may not be needed by all reactors upfront. However, it lays a foundation for future scaling.
