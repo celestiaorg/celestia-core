@@ -34,7 +34,7 @@ Whenever you generate code or documentation:
 - Prefer standard library solutions when possible
 
 ### Linting
-- Use golangci-lint before submitting
+- Use golangci-lint and gofmt before submitting
 
 ### Documentation
 - Document all exported functions, types, and constants
