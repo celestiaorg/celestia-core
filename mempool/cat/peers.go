@@ -34,7 +34,8 @@ func (ids *mempoolIDs) ReserveForPeer(peer p2p.Peer) {
 	defer ids.mtx.Unlock()
 
 	if _, ok := ids.peerMap[peer.ID()]; ok {
-		panic("duplicate peer added to mempool")
+		// Peer already exists, no need to add again
+		return
 	}
 
 	curID := ids.nextPeerID()
