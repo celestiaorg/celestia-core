@@ -27,7 +27,7 @@ Whenever you generate code or documentation:
 - Test edge cases and error conditions
 
 ## Pull Request Rules
-- When naming a PR or commits, always follow https://www.conventionalcommits.org/en/v1.0.0/#summary
+- When naming a PR or commits, always follow [conventional commits](https://www.conventionalcommits.org/en/v1.0.0/#summary)
 
 ## Code Organization
 - Analyze the project structure entirely before deciding where something should go.
