@@ -472,7 +472,9 @@ func (r *Reactor) ensurePeersRoutine() {
 func (r *Reactor) ensurePeers() {
 	var (
 		out, in, dial = r.Switch.NumPeers()
-		numToDial     = r.Switch.MaxNumOutboundPeers() - (out + dial)
+		// TODO(Nina): do we want to increase the number of peers we dial?
+		// node operator can manually set this but we could also increase it by default
+		numToDial = r.Switch.MaxNumOutboundPeers() - (out + dial)
 	)
 	r.Logger.Info(
 		"Ensure peers",
@@ -487,7 +489,7 @@ func (r *Reactor) ensurePeers() {
 	}
 
 	// bias to prefer more vetted peers when we have fewer connections.
-	// not perfect, but somewhate ensures that we prioritize connecting to more-vetted
+	// not perfect, but somewhat ensures that we prioritize connecting to more-vetted
 	// NOTE: range here is [10, 90]. Too high ?
 	newBias := cmtmath.MinInt(out, 8)*10 + 10
 
@@ -569,15 +571,18 @@ func (r *Reactor) dialPeer(addr *p2p.NetAddress) error {
 		return errMaxAttemptsToDial{}
 	}
 
-	// exponential backoff if it's not our first attempt to dial given address
-	if attempts > 0 {
-		jitter := time.Duration(cmtrand.Float64() * float64(time.Second)) // 1s == (1e9 ns)
-		backoffDuration := jitter + ((1 << uint(attempts)) * time.Second)
-		backoffDuration = r.maxBackoffDurationForPeer(addr, backoffDuration)
-		sinceLastDialed := time.Since(lastDialed)
-		if sinceLastDialed < backoffDuration {
-			return errTooEarlyToDial{backoffDuration, lastDialed}
-		}
+	minTimeBetweenDials := 30 * time.Second
+	sinceLastDialed := time.Since(lastDialed)
+	if sinceLastDialed < minTimeBetweenDials {
+		return errTooEarlyToDial{minTimeBetweenDials, lastDialed}
+	}
+
+	// If it has been 30s, check if we've been trying for over 1 hour
+	// Each attempt takes at least 30s, so if attempts * 30s > 1h, we've been trying too long
+	totalTimeSpentDialing := time.Duration(attempts) * minTimeBetweenDials
+	if totalTimeSpentDialing > time.Hour {
+		r.book.MarkBad(addr, defaultBanTime)
+		return errMaxAttemptsToDial{}
 	}
 
 	err := r.Switch.DialPeerWithAddress(addr)
