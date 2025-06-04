@@ -424,19 +424,19 @@ func (txmp *TxPool) ReapMaxBytesMaxGas(maxBytes, maxGas int64) types.Txs {
 	var totalGas, totalBytes int64
 
 	var keep []types.Tx
-	wtxs := txmp.store.getOrderedTxs()
-	for _, w := range wtxs {
+	txmp.store.iterateOrderedTxs(func(w *wrappedTx) bool {
 		// N.B. When computing byte size, we need to include the overhead for
 		// encoding as protobuf to send to the application. This actually overestimates it
 		// as we add the proto overhead to each transaction
 		txBytes := types.ComputeProtoSizeForTxs([]types.Tx{w.tx})
 		if (maxGas >= 0 && totalGas+w.gasWanted > maxGas) || (maxBytes >= 0 && totalBytes+txBytes > maxBytes) {
-			continue
+			return true
 		}
 		totalBytes += txBytes
 		totalGas += w.gasWanted
 		keep = append(keep, w.tx)
-	}
+		return true
+	})
 	return keep
 }
 
@@ -451,13 +451,13 @@ func (txmp *TxPool) ReapMaxBytesMaxGas(maxBytes, maxGas int64) types.Txs {
 func (txmp *TxPool) ReapMaxTxs(max int) types.Txs {
 	var keep []types.Tx
 
-	wtxs := txmp.store.getOrderedTxs()
-	for _, w := range wtxs {
+	txmp.store.iterateOrderedTxs(func(w *wrappedTx) bool {
 		if max >= 0 && len(keep) >= max {
-			break
+			return false
 		}
 		keep = append(keep, w.tx)
-	}
+		return true
+	})
 	return keep
 }
 
