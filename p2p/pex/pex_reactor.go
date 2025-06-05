@@ -472,50 +472,26 @@ func (r *Reactor) ensurePeersRoutine() {
 func (r *Reactor) ensurePeers() {
 	var (
 		out, in, dial = r.Switch.NumPeers()
-		// TODO(Nina): do we want to increase the number of peers we dial?
-		// node operator can manually set this but we could also increase it by default
-		numToDial = r.Switch.MaxNumOutboundPeers() - (out + dial)
 	)
 	r.Logger.Info(
 		"Ensure peers",
 		"numOutPeers", out,
 		"numInPeers", in,
 		"numDialing", dial,
-		"numToDial", numToDial,
 	)
 
-	if numToDial <= 0 {
+	// If we have enough outbound connections, don't dial more
+	if out >= r.Switch.MaxNumOutboundPeers() {
 		return
 	}
 
-	// bias to prefer more vetted peers when we have fewer connections.
-	// not perfect, but somewhat ensures that we prioritize connecting to more-vetted
-	// NOTE: range here is [10, 90]. Too high ?
-	newBias := cmtmath.MinInt(out, 8)*10 + 10
-
 	toDial := make(map[p2p.ID]*p2p.NetAddress)
-	// Try maxAttempts times to pick numToDial addresses to dial
-	maxAttempts := numToDial * 3
 
-	for i := 0; i < maxAttempts && len(toDial) < numToDial; i++ {
-		try := r.book.PickAddress(newBias)
-		if try == nil {
+	addrBook := r.book.GetSelection()
+	for _, addr := range addrBook {
+		if r.Switch.IsDialingOrExistingAddress(addr) {
 			continue
 		}
-		if _, selected := toDial[try.ID]; selected {
-			continue
-		}
-		if r.Switch.IsDialingOrExistingAddress(try) {
-			continue
-		}
-		// TODO: consider moving some checks from toDial into here
-		// so we don't even consider dialing peers that we want to wait
-		// before dialling again, or have dialed too many times already
-		toDial[try.ID] = try
-	}
-
-	// Dial picked addresses
-	for _, addr := range toDial {
 		go func(addr *p2p.NetAddress) {
 			err := r.dialPeer(addr)
 			if err != nil {
