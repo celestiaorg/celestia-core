@@ -485,8 +485,6 @@ func (r *Reactor) ensurePeers() {
 		return
 	}
 
-	toDial := make(map[p2p.ID]*p2p.NetAddress)
-
 	addrBook := r.book.GetSelection()
 	for _, addr := range addrBook {
 		if r.Switch.IsDialingOrExistingAddress(addr) {
@@ -521,10 +519,9 @@ func (r *Reactor) ensurePeers() {
 			r.RequestAddrs(peer)
 		}
 
-		// 2) Dial seeds if we are not dialing anyone.
-		// This is done in addition to asking a peer for addresses to work-around
-		// peers not participating in PEX.
-		if len(toDial) == 0 {
+		//get updated address book and compare size
+		updatedAddrBook := r.book.GetSelection()
+		if len(updatedAddrBook) == 0 {
 			r.Logger.Info("No addresses to dial. Falling back to seeds")
 			r.dialSeeds()
 		}
