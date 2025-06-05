@@ -455,8 +455,6 @@ func (r *Reactor) ensurePeers(ensurePeersPeriodElapsed bool) {
 		return
 	}
 
-	toDial := make(map[p2p.ID]*p2p.NetAddress)
-
 	addrBook := r.book.GetSelection()
 	for _, addr := range addrBook {
 		if r.Switch.IsDialingOrExistingAddress(addr) {
@@ -491,7 +489,7 @@ func (r *Reactor) ensurePeers(ensurePeersPeriodElapsed bool) {
 			r.RequestAddrs(peer)
 		}
 
-		//get updated address book and if it's empty, dial seeds
+		//get updated address book and compare size
 		updatedAddrBook := r.book.GetSelection()
 		if len(updatedAddrBook) == 0 {
 			r.Logger.Info("No addresses to dial. Falling back to seeds")
