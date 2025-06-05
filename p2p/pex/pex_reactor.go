@@ -9,7 +9,6 @@ import (
 	"github.com/gogo/protobuf/proto"
 
 	"github.com/cometbft/cometbft/libs/cmap"
-	cmtmath "github.com/cometbft/cometbft/libs/math"
 	cmtrand "github.com/cometbft/cometbft/libs/rand"
 	"github.com/cometbft/cometbft/libs/service"
 	"github.com/cometbft/cometbft/p2p"
@@ -519,7 +518,7 @@ func (r *Reactor) ensurePeers() {
 			r.RequestAddrs(peer)
 		}
 
-		//get updated address book and compare size
+		//get updated address book and if it's empty, dial seeds
 		updatedAddrBook := r.book.GetSelection()
 		if len(updatedAddrBook) == 0 {
 			r.Logger.Info("No addresses to dial. Falling back to seeds")
@@ -578,16 +577,6 @@ func (r *Reactor) dialPeer(addr *p2p.NetAddress) error {
 	// cleanup any history
 	r.attemptsToDial.Delete(addr.DialString())
 	return nil
-}
-
-// maxBackoffDurationForPeer caps the backoff duration for persistent peers.
-func (r *Reactor) maxBackoffDurationForPeer(addr *p2p.NetAddress, planned time.Duration) time.Duration {
-	if r.config.PersistentPeersMaxDialPeriod > 0 &&
-		planned > r.config.PersistentPeersMaxDialPeriod &&
-		r.Switch.IsPeerPersistent(addr) {
-		return r.config.PersistentPeersMaxDialPeriod
-	}
-	return planned
 }
 
 // checkSeeds checks that addresses are well formed.
