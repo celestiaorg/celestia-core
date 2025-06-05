@@ -97,7 +97,7 @@ func (c *CompactBlock) SignBytes() ([]byte, error) {
 		}
 		bytes = append(bytes, pb...)
 	}
-	bytes = append(bytes, c.Proposal.GetSignature()...)
+	bytes = append(bytes, c.Proposal.Signature...)
 
 	// big endian encode the last len
 	lastLenBytes := make([]byte, 4)

@@ -39,6 +39,12 @@ func (e ErrInvalidPart) Unwrap() error {
 	return e.Reason
 }
 
+type PartInfo struct {
+	Part
+	Height int64
+	Round  int32
+}
+
 type Part struct {
 	Index uint32            `json:"index"`
 	Bytes cmtbytes.HexBytes `json:"bytes"`
@@ -467,8 +473,6 @@ func (ps *PartSet) Count() uint32 {
 	if ps == nil {
 		return 0
 	}
-	ps.mtx.Lock()
-	defer ps.mtx.Unlock()
 	return ps.count
 }
 
@@ -498,18 +502,14 @@ func (ps *PartSet) AddPart(part *Part) (bool, error) {
 		return false, fmt.Errorf("nil part")
 	}
 
-	ps.mtx.Lock()
 	// The proof should be compatible with the number of parts.
 	if part.Proof.Total != int64(ps.total) {
-		ps.mtx.Unlock()
 		return false, fmt.Errorf(ErrPartSetInvalidProofTotal.Error()+":%v %v", part.Proof.Total, ps.total)
 	}
 
-	if part.Proof.Verify(ps.Hash(), part.Bytes) != nil {
-		ps.mtx.Unlock()
-		return false, ErrPartSetInvalidProofHash
+	if err := part.Proof.Verify(ps.Hash(), part.Bytes); err != nil {
+		return false, fmt.Errorf("%w:%w", ErrPartSetInvalidProofHash, err)
 	}
-	ps.mtx.Unlock()
 
 	return ps.AddPartWithoutProof(part)
 }
@@ -544,6 +544,12 @@ func (ps *PartSet) GetPart(index int) *Part {
 	ps.mtx.Lock()
 	defer ps.mtx.Unlock()
 	return ps.parts[index]
+}
+
+func (ps *PartSet) HasPart(index int) bool {
+	ps.mtx.Lock()
+	defer ps.mtx.Unlock()
+	return ps.partsBitArray.GetIndex(index)
 }
 
 func (ps *PartSet) IsComplete() bool {

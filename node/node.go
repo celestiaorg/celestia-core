@@ -432,7 +432,7 @@ func NewNodeWithContext(ctx context.Context,
 		return nil, fmt.Errorf("could not create blocksync reactor: %w", err)
 	}
 
-	partsChan := make(chan types.Part, 1000)
+	partsChan := make(chan types.PartInfo, 1000)
 	proposalChan := make(chan types.Proposal, 100)
 	propagationReactor := propagation.NewReactor(
 		nodeKey.ID(),

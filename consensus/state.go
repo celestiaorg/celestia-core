@@ -148,7 +148,7 @@ type State struct {
 	evsw cmtevents.EventSwitch
 
 	propagator   propagation.Propagator
-	partChan     <-chan types.Part
+	partChan     <-chan types.PartInfo
 	proposalChan <-chan types.Proposal
 
 	// for reporting metrics
@@ -173,7 +173,7 @@ func NewState(
 	propagator propagation.Propagator,
 	txNotifier txNotifier,
 	evpool evidencePool,
-	partChan <-chan types.Part,
+	partChan <-chan types.PartInfo,
 	proposalChan <-chan types.Proposal,
 	options ...StateOption,
 ) *State {
@@ -1277,7 +1277,7 @@ func (cs *State) defaultDecideProposal(height int64, round int32) {
 	proposal := types.NewProposal(height, round, cs.ValidRound, propBlockID)
 	p := proposal.ToProto()
 	if err := cs.privValidator.SignProposal(cs.state.ChainID, p); err == nil {
-		proposal.SetSignature(p.Signature)
+		proposal.Signature = p.Signature
 
 		// send proposal and block parts on internal msg queue
 		cs.sendInternalMessage(msgInfo{&ProposalMessage{proposal}, ""})
@@ -2004,7 +2004,7 @@ func (cs *State) defaultSetProposal(proposal *types.Proposal) error {
 		return ErrProposalTooManyParts
 	}
 
-	proposal.SetSignature(p.Signature)
+	proposal.Signature = p.Signature
 	cs.Proposal = proposal
 	// We don't update cs.ProposalBlockParts if it is already set.
 	// This happens if we're already in cstypes.RoundStepCommit or if there is a valid block in the current round.
@@ -2682,33 +2682,35 @@ func (cs *State) syncData() {
 			}
 			cs.mtx.RLock()
 			h, r := cs.Height, cs.Round
-			pparts := cs.ProposalBlockParts
+			currentProposalParts := cs.ProposalBlockParts
 			cs.mtx.RUnlock()
-			//cs.Logger.Info("received part", "part", part.Index)
-
-			if pparts != nil && pparts.IsComplete() {
-				continue
-			}
-			//cs.Logger.Info("received part2", "part", part.Index)
-			if p := pparts.GetPart(int(part.Index)); p != nil {
-				//cs.Logger.Info("skipping existing part", "part", part.Index)
+			if part.Height != h || part.Round != r {
 				continue
 			}
 
-			cs.peerMsgQueue <- msgInfo{&BlockPartMessage{h, r, &part}, ""}
+			if currentProposalParts != nil {
+				if currentProposalParts.IsComplete() {
+					continue
+				}
+				if currentProposalParts.HasPart(int(part.Index)) {
+					continue
+				}
+			}
+
+			cs.peerMsgQueue <- msgInfo{&BlockPartMessage{h, r, &part.Part}, ""}
 		case proposal, ok := <-cs.proposalChan:
 			if !ok {
 				return
 			}
 			cs.mtx.RLock()
-			pprop := cs.Proposal
+			currentProposal := cs.Proposal
 			completeProp := cs.isProposalComplete()
 			cs.mtx.RUnlock()
 			if completeProp {
 				continue
 			}
 
-			if pprop == nil { // todo: don't use the signature as a proxy for catchup
+			if currentProposal == nil { // todo: don't use the signature as a proxy for catchup
 				schema.WriteNote(
 					cs.traceClient,
 					proposal.Height,

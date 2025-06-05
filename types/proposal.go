@@ -3,7 +3,6 @@ package types
 import (
 	"errors"
 	"fmt"
-	"github.com/cometbft/cometbft/libs/sync"
 	"time"
 
 	cmtbytes "github.com/cometbft/cometbft/libs/bytes"
@@ -24,7 +23,6 @@ var (
 // a so-called Proof-of-Lock (POL) round, as noted in the POLRound.
 // If POLRound >= 0, then BlockID corresponds to the block that is locked in POLRound.
 type Proposal struct {
-	mtx       sync.Mutex
 	Type      cmtproto.SignedMsgType
 	Height    int64     `json:"height"`
 	Round     int32     `json:"round"`     // there can not be greater than 2_147_483_647 rounds
@@ -126,8 +124,6 @@ func (p *Proposal) ToProto() *cmtproto.Proposal {
 	}
 	pb := new(cmtproto.Proposal)
 
-	p.mtx.Lock()
-	defer p.mtx.Unlock()
 	pb.BlockID = p.BlockID.ToProto()
 	pb.Type = p.Type
 	pb.Height = p.Height
@@ -137,43 +133,6 @@ func (p *Proposal) ToProto() *cmtproto.Proposal {
 	pb.Signature = p.Signature
 
 	return pb
-}
-
-func (p *Proposal) SetSignature(signature []byte) {
-	p.mtx.Lock()
-	defer p.mtx.Unlock()
-	p.Signature = signature
-}
-
-func (p *Proposal) GetSignature() []byte {
-	p.mtx.Lock()
-	defer p.mtx.Unlock()
-	return p.Signature
-}
-
-func (p *Proposal) SetHeight(height int64) {
-	p.mtx.Lock()
-	defer p.mtx.Unlock()
-	p.Height = height
-}
-
-func (p *Proposal) GetHeight() int64 {
-	// not needed as well as the others for round/height
-	p.mtx.Lock()
-	defer p.mtx.Unlock()
-	return p.Height
-}
-
-func (p *Proposal) SetRound(round int32) {
-	p.mtx.Lock()
-	defer p.mtx.Unlock()
-	p.Round = round
-}
-
-func (p *Proposal) GetRound() int32 {
-	p.mtx.Lock()
-	defer p.mtx.Unlock()
-	return p.Round
 }
 
 // FromProto sets a protobuf Proposal to the given pointer.

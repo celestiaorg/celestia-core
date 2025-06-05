@@ -55,7 +55,7 @@ type Reactor struct {
 	// and eventually remove it.
 	mempool Mempool
 
-	partChan     chan<- types.Part
+	partChan     chan<- types.PartInfo
 	proposalChan chan<- types.Proposal
 
 	mtx         *sync.Mutex
@@ -73,7 +73,7 @@ type Config struct {
 	Privval       types.PrivValidator
 	ChainID       string
 	BlockMaxBytes int64
-	PartChan      chan<- types.Part
+	PartChan      chan<- types.PartInfo
 	ProposalChan  chan<- types.Proposal
 }
 

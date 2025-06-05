@@ -375,7 +375,7 @@ func createConsensusReactor(config *cfg.Config,
 	consensusLogger log.Logger,
 	offlineStateSyncHeight int64,
 	traceClient trace.Tracer,
-	partChan <-chan types.Part,
+	partChan <-chan types.PartInfo,
 	proposalChan <-chan types.Proposal,
 ) (*cs.Reactor, *cs.State) {
 	consensusState := cs.NewState(
