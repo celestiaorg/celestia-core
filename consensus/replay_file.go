@@ -341,6 +341,7 @@ func newConsensusStateForReplay(config cfg.BaseConfig, csConfig *cfg.ConsensusCo
 	partsChan := make(chan types.PartInfo, 1000)
 	proposalChan := make(chan types.Proposal, 100)
 	propagator := propagation.NewReactor(key.ID(), propagation.Config{
+		Store:         blockStore,
 		Mempool:       mempool,
 		Privval:       nil,
 		ChainID:       state.ChainID,

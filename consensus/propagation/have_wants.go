@@ -2,8 +2,9 @@ package propagation
 
 import (
 	"fmt"
-	"github.com/cometbft/cometbft/types"
 	"math"
+
+	"github.com/cometbft/cometbft/types"
 
 	proptypes "github.com/cometbft/cometbft/consensus/propagation/types"
 	"github.com/cometbft/cometbft/crypto/tmhash"
@@ -459,7 +460,6 @@ func (blockProp *Reactor) handleRecoveryPart(peer p2p.ID, part *proptypes.Recove
 
 	// only send original parts to the consensus reactor
 	if part.Index < parts.Original().Total() {
-		blockProp.Logger.Error("sending part to consensus", "parts.original.total", parts.Original().Total(), "part.index", part.Index)
 		blockProp.partChan <- types.PartInfo{
 			Part: types.Part{
 				Index: part.Index,

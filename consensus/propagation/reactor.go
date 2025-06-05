@@ -3,11 +3,12 @@ package propagation
 import (
 	"context"
 	"fmt"
-	"github.com/cometbft/cometbft/crypto"
 	"math"
 	"reflect"
 	"sync/atomic"
 	"time"
+
+	"github.com/cometbft/cometbft/crypto"
 
 	"github.com/cometbft/cometbft/libs/log"
 	"github.com/cometbft/cometbft/libs/trace/schema"

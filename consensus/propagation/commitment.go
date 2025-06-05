@@ -86,7 +86,7 @@ func (blockProp *Reactor) ProposeBlock(proposal *types.Proposal, block *types.Pa
 			},
 		}
 
-		if peer.peer.TrySend(e) {
+		if !peer.peer.TrySend(e) {
 			blockProp.Logger.Error("failed to send have part", "peer", peer, "height", proposal.Height, "round", proposal.Round, "part", index)
 			// TODO retry
 			continue
@@ -154,8 +154,6 @@ func (blockProp *Reactor) handleCompactBlock(cb *proptypes.CompactBlock, peer p2
 		return
 	}
 
-	blockProp.proposalChan <- cb.Proposal
-
 	// generate (and cache) the proofs from the partset hashes in the compact block
 	_, err = cb.Proofs()
 	if err != nil {
@@ -170,6 +168,8 @@ func (blockProp *Reactor) handleCompactBlock(cb *proptypes.CompactBlock, peer p2
 	if proposer {
 		return
 	}
+
+	blockProp.proposalChan <- cb.Proposal
 
 	// check if we have any transactions that are in the compact block
 	go blockProp.recoverPartsFromMempool(cb)

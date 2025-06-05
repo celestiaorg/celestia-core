@@ -2670,7 +2670,6 @@ func repairWalFile(src, dst string) error {
 
 // syncData continuously listens for and processes block parts or proposals from the propagation reactor.
 // It stops execution when the service is terminated or the channels are closed.
-// TODO close channels
 func (cs *State) syncData() {
 	for {
 		select {
@@ -2704,13 +2703,14 @@ func (cs *State) syncData() {
 			}
 			cs.mtx.RLock()
 			currentProposal := cs.Proposal
+			h, r := cs.Height, cs.Round
 			completeProp := cs.isProposalComplete()
 			cs.mtx.RUnlock()
 			if completeProp {
 				continue
 			}
 
-			if currentProposal == nil { // todo: don't use the signature as a proxy for catchup
+			if currentProposal == nil && proposal.Height == h && proposal.Round == r {
 				schema.WriteNote(
 					cs.traceClient,
 					proposal.Height,
