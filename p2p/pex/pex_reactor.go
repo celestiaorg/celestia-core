@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/cometbft/cometbft/libs/cmap"
-	cmtmath "github.com/cometbft/cometbft/libs/math"
 	cmtrand "github.com/cometbft/cometbft/libs/rand"
 	"github.com/cometbft/cometbft/libs/service"
 	"github.com/cometbft/cometbft/p2p"
@@ -514,10 +513,9 @@ func (r *Reactor) ensurePeers(ensurePeersPeriodElapsed bool) {
 			r.RequestAddrs(peer)
 		}
 
-		// 2) Dial seeds if we are not dialing anyone.
-		// This is done in addition to asking a peer for addresses to work-around
-		// peers not participating in PEX.
-		if len(toDial) == 0 {
+		//get updated address book and if it's empty, dial seeds
+		updatedAddrBook := r.book.GetSelection()
+		if len(updatedAddrBook) == 0 {
 			r.Logger.Info("No addresses to dial. Falling back to seeds")
 			r.dialSeeds()
 		}
@@ -571,16 +569,6 @@ func (r *Reactor) dialPeer(addr *p2p.NetAddress) error {
 	// cleanup any history
 	r.attemptsToDial.Delete(addr.DialString())
 	return nil
-}
-
-// maxBackoffDurationForPeer caps the backoff duration for persistent peers.
-func (r *Reactor) maxBackoffDurationForPeer(addr *p2p.NetAddress, planned time.Duration) time.Duration {
-	if r.config.PersistentPeersMaxDialPeriod > 0 &&
-		planned > r.config.PersistentPeersMaxDialPeriod &&
-		r.Switch.IsPeerPersistent(addr) {
-		return r.config.PersistentPeersMaxDialPeriod
-	}
-	return planned
 }
 
 // checkSeeds checks that addresses are well formed.
