@@ -9,7 +9,6 @@ import (
 	"github.com/gogo/protobuf/proto"
 
 	"github.com/cometbft/cometbft/libs/cmap"
-	cmtmath "github.com/cometbft/cometbft/libs/math"
 	cmtrand "github.com/cometbft/cometbft/libs/rand"
 	"github.com/cometbft/cometbft/libs/service"
 	"github.com/cometbft/cometbft/p2p"
@@ -472,48 +471,24 @@ func (r *Reactor) ensurePeersRoutine() {
 func (r *Reactor) ensurePeers() {
 	var (
 		out, in, dial = r.Switch.NumPeers()
-		numToDial     = r.Switch.MaxNumOutboundPeers() - (out + dial)
 	)
 	r.Logger.Info(
 		"Ensure peers",
 		"numOutPeers", out,
 		"numInPeers", in,
 		"numDialing", dial,
-		"numToDial", numToDial,
 	)
 
-	if numToDial <= 0 {
+	// If we have enough outbound connections, don't dial more
+	if out >= r.Switch.MaxNumOutboundPeers() {
 		return
 	}
 
-	// bias to prefer more vetted peers when we have fewer connections.
-	// not perfect, but somewhate ensures that we prioritize connecting to more-vetted
-	// NOTE: range here is [10, 90]. Too high ?
-	newBias := cmtmath.MinInt(out, 8)*10 + 10
-
-	toDial := make(map[p2p.ID]*p2p.NetAddress)
-	// Try maxAttempts times to pick numToDial addresses to dial
-	maxAttempts := numToDial * 3
-
-	for i := 0; i < maxAttempts && len(toDial) < numToDial; i++ {
-		try := r.book.PickAddress(newBias)
-		if try == nil {
+	addrBook := r.book.GetSelection()
+	for _, addr := range addrBook {
+		if r.Switch.IsDialingOrExistingAddress(addr) {
 			continue
 		}
-		if _, selected := toDial[try.ID]; selected {
-			continue
-		}
-		if r.Switch.IsDialingOrExistingAddress(try) {
-			continue
-		}
-		// TODO: consider moving some checks from toDial into here
-		// so we don't even consider dialing peers that we want to wait
-		// before dialling again, or have dialed too many times already
-		toDial[try.ID] = try
-	}
-
-	// Dial picked addresses
-	for _, addr := range toDial {
 		go func(addr *p2p.NetAddress) {
 			err := r.dialPeer(addr)
 			if err != nil {
@@ -543,10 +518,9 @@ func (r *Reactor) ensurePeers() {
 			r.RequestAddrs(peer)
 		}
 
-		// 2) Dial seeds if we are not dialing anyone.
-		// This is done in addition to asking a peer for addresses to work-around
-		// peers not participating in PEX.
-		if len(toDial) == 0 {
+		//get updated address book and if it's empty, dial seeds
+		updatedAddrBook := r.book.GetSelection()
+		if len(updatedAddrBook) == 0 {
 			r.Logger.Info("No addresses to dial. Falling back to seeds")
 			r.dialSeeds()
 		}
@@ -569,15 +543,18 @@ func (r *Reactor) dialPeer(addr *p2p.NetAddress) error {
 		return errMaxAttemptsToDial{}
 	}
 
-	// exponential backoff if it's not our first attempt to dial given address
-	if attempts > 0 {
-		jitter := time.Duration(cmtrand.Float64() * float64(time.Second)) // 1s == (1e9 ns)
-		backoffDuration := jitter + ((1 << uint(attempts)) * time.Second)
-		backoffDuration = r.maxBackoffDurationForPeer(addr, backoffDuration)
-		sinceLastDialed := time.Since(lastDialed)
-		if sinceLastDialed < backoffDuration {
-			return errTooEarlyToDial{backoffDuration, lastDialed}
-		}
+	minTimeBetweenDials := 30 * time.Second
+	sinceLastDialed := time.Since(lastDialed)
+	if sinceLastDialed < minTimeBetweenDials {
+		return errTooEarlyToDial{minTimeBetweenDials, lastDialed}
+	}
+
+	// If it has been 30s, check if we've been trying for over 1 hour
+	// Each attempt takes at least 30s, so if attempts * 30s > 1h, we've been trying too long
+	totalTimeSpentDialing := time.Duration(attempts) * minTimeBetweenDials
+	if totalTimeSpentDialing > time.Hour {
+		r.book.MarkBad(addr, defaultBanTime)
+		return errMaxAttemptsToDial{}
 	}
 
 	err := r.Switch.DialPeerWithAddress(addr)
@@ -600,16 +577,6 @@ func (r *Reactor) dialPeer(addr *p2p.NetAddress) error {
 	// cleanup any history
 	r.attemptsToDial.Delete(addr.DialString())
 	return nil
-}
-
-// maxBackoffDurationForPeer caps the backoff duration for persistent peers.
-func (r *Reactor) maxBackoffDurationForPeer(addr *p2p.NetAddress, planned time.Duration) time.Duration {
-	if r.config.PersistentPeersMaxDialPeriod > 0 &&
-		planned > r.config.PersistentPeersMaxDialPeriod &&
-		r.Switch.IsPeerPersistent(addr) {
-		return r.config.PersistentPeersMaxDialPeriod
-	}
-	return planned
 }
 
 // checkSeeds checks that addresses are well formed.
