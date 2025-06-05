@@ -240,7 +240,7 @@ func (blockProp *Reactor) recoverPartsFromMempool(cb *proptypes.CompactBlock) {
 
 		// adding the part without checking the proof since the proof was just
 		// created above.
-		added, err := originalParts.AddPartWithoutProof(p)
+		added, err := originalParts.AddPart(p)
 		if err != nil {
 			blockProp.Logger.Error("failed to add locally recovered part", "err", err)
 			continue
