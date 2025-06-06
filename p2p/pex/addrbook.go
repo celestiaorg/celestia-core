@@ -409,6 +409,7 @@ func (a *addrBook) GetSelection() []*p2p.NetAddress {
 		addresses = append(addresses, knownAddr.Addr)
 	}
 
+	// Fisher-Yates shuffle the addresses
 	rand.Shuffle(len(addresses), func(i, j int) {
 		addresses[i], addresses[j] = addresses[j], addresses[i]
 	})
