@@ -7,6 +7,6 @@
 # global owners are only requested if there isn't a more specific
 # codeowner specified below. For this reason, the global codeowners
 # are often repeated in package-level definitions.
-*     @cometbft/engineering @cometbft/devrel @cometbft/interchain-inc
+*     @rach-id @evan-forbes @tzdybal @ninabarbakadze @yarikbratashchuk
 
-/spec @cometbft/research @cometbft/engineering @cometbft/interchain-inc
+/spec @rach-id @evan-forbes @tzdybal @ninabarbakadze @yarikbratashchuk
