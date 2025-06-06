@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"time"
 
+	cmtbytes "github.com/cometbft/cometbft/libs/bytes"
+
 	"github.com/cometbft/cometbft/crypto"
 	cryptoenc "github.com/cometbft/cometbft/crypto/encoding"
 	privvalproto "github.com/cometbft/cometbft/proto/tendermint/privval"
@@ -130,4 +132,23 @@ func (sc *SignerClient) SignProposal(chainID string, proposal *cmtproto.Proposal
 	*proposal = resp.Proposal
 
 	return nil
+}
+
+func (sc *SignerClient) SignP2PMessage(chainID, uID string, hash cmtbytes.HexBytes) ([]byte, error) {
+	response, err := sc.endpoint.SendRequest(mustWrapMsg(
+		&privvalproto.SignedP2PMessageRequest{Hash: hash.Bytes(), ChainId: chainID, UniqueId: uID},
+	))
+	if err != nil {
+		return nil, err
+	}
+
+	resp := response.GetSignedP2PMessageResponse()
+	if resp == nil {
+		return nil, ErrUnexpectedResponse
+	}
+	if resp.Error != nil {
+		return nil, &RemoteSignerError{Code: int(resp.Error.Code), Description: resp.Error.Description}
+	}
+
+	return resp.Signature, err
 }

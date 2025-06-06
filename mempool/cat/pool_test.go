@@ -14,9 +14,10 @@ import (
 	"time"
 
 	"github.com/celestiaorg/go-square/v2/share"
-	db "github.com/cometbft/cometbft-db"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	db "github.com/cometbft/cometbft-db"
 
 	"github.com/cometbft/cometbft/abci/example/kvstore"
 	abci "github.com/cometbft/cometbft/abci/types"
@@ -167,9 +168,9 @@ func TestTxPool_TxsAvailable(t *testing.T) {
 	ensureTxFire()
 	ensureNoTxFire()
 
-	rawTxs := make([]types.Tx, len(txs))
+	rawTxs := make([]*types.CachedTx, len(txs))
 	for i, tx := range txs {
-		rawTxs[i] = tx.tx
+		rawTxs[i] = tx.tx.ToCachedTx()
 	}
 
 	responses := make([]*abci.ExecTxResult, len(rawTxs[:50]))
@@ -198,9 +199,9 @@ func TestTxPool_Size(t *testing.T) {
 	require.Equal(t, len(txs), txmp.Size())
 	require.Equal(t, int64(5800), txmp.SizeBytes())
 
-	rawTxs := make([]types.Tx, len(txs))
+	rawTxs := make([]*types.CachedTx, len(txs))
 	for i, tx := range txs {
-		rawTxs[i] = tx.tx
+		rawTxs[i] = tx.tx.ToCachedTx()
 	}
 
 	responses := make([]*abci.ExecTxResult, len(rawTxs[:50]))
@@ -294,7 +295,7 @@ func TestTxPool_Eviction(t *testing.T) {
 	require.True(t, txmp.WasRecentlyEvicted(types.Tx("key7=0006=7").Key()))
 
 	// Free up some space so we can add back previously evicted txs
-	err = txmp.Update(1, types.Txs{types.Tx("key10=0123456789abcdef=11")}, []*abci.ExecTxResult{{Code: abci.CodeTypeOK}}, nil, nil)
+	err = txmp.Update(1, types.CachedTxFromTxs(types.Txs{types.Tx("key10=0123456789abcdef=11")}), []*abci.ExecTxResult{{Code: abci.CodeTypeOK}}, nil, nil)
 	require.NoError(t, err)
 	require.False(t, txExists("key10=0123456789abcdef=11"))
 	mustCheckTx(t, txmp, "key3=0002=10")
@@ -313,9 +314,9 @@ func TestTxPool_Flush(t *testing.T) {
 	require.Equal(t, len(txs), txmp.Size())
 	require.Equal(t, int64(5800), txmp.SizeBytes())
 
-	rawTxs := make([]types.Tx, len(txs))
+	rawTxs := make([]*types.CachedTx, len(txs))
 	for i, tx := range txs {
-		rawTxs[i] = tx.tx
+		rawTxs[i] = tx.tx.ToCachedTx()
 	}
 
 	responses := make([]*abci.ExecTxResult, len(rawTxs[:50]))
@@ -361,14 +362,14 @@ func TestTxPool_ReapMaxBytesMaxGas(t *testing.T) {
 
 	// reap by gas capacity only
 	reapedTxs := txmp.ReapMaxBytesMaxGas(-1, 50)
-	ensurePrioritized(reapedTxs)
+	ensurePrioritized(types.TxsFromCachedTxs(reapedTxs))
 	require.Equal(t, len(tTxs), txmp.Size())
 	require.Equal(t, int64(5800), txmp.SizeBytes())
 	require.Len(t, reapedTxs, 50)
 
 	// reap by transaction bytes only
 	reapedTxs = txmp.ReapMaxBytesMaxGas(1200, -1)
-	ensurePrioritized(reapedTxs)
+	ensurePrioritized(types.TxsFromCachedTxs(reapedTxs))
 	require.Equal(t, len(tTxs), txmp.Size())
 	require.Equal(t, int64(5800), txmp.SizeBytes())
 	// each tx is 57 bytes, 20 * 57 = 1140 + overhead for proto encoding
@@ -377,7 +378,7 @@ func TestTxPool_ReapMaxBytesMaxGas(t *testing.T) {
 	// Reap by both transaction bytes and gas, where the size yields 31 reaped
 	// transactions and the gas limit reaps 25 transactions.
 	reapedTxs = txmp.ReapMaxBytesMaxGas(2000, 25)
-	ensurePrioritized(reapedTxs)
+	ensurePrioritized(types.TxsFromCachedTxs(reapedTxs))
 	require.Equal(t, len(tTxs), txmp.Size())
 	require.Equal(t, int64(5800), txmp.SizeBytes())
 	require.Len(t, reapedTxs, 25)
@@ -400,7 +401,8 @@ func TestTxMempoolTxLargerThanMaxBytes(t *testing.T) {
 	require.NoError(t, txmp.CheckTx(smallTx, nil, mempool.TxInfo{SenderID: 1}))
 
 	// reap by max bytes less than the large tx
-	reapedTxs := txmp.ReapMaxBytesMaxGas(100, -1)
+	cachedReapedTxs := txmp.ReapMaxBytesMaxGas(100, -1)
+	reapedTxs := types.TxsFromCachedTxs(cachedReapedTxs)
 	require.Len(t, reapedTxs, 1)
 	require.Equal(t, types.Tx(smallTx), reapedTxs[0])
 }
@@ -416,7 +418,7 @@ func TestTxPool_ReapMaxTxs(t *testing.T) {
 		txMap[tx.tx.Key()] = tx.priority
 	}
 
-	ensurePrioritized := func(reapedTxs types.Txs) {
+	ensurePrioritized := func(reapedTxs []*types.CachedTx) {
 		for i := 0; i < len(reapedTxs)-1; i++ {
 			currPriority := txMap[reapedTxs[i].Key()]
 			nextPriority := txMap[reapedTxs[i+1].Key()]
@@ -659,7 +661,7 @@ func TestTxPool_CheckTxPostCheckError(t *testing.T) {
 	for _, tc := range cases {
 		testCase := tc
 		t.Run(testCase.name, func(t *testing.T) {
-			postCheckFn := func(_ types.Tx, _ *abci.ResponseCheckTx) error {
+			postCheckFn := func(_ *types.CachedTx, _ *abci.ResponseCheckTx) error {
 				return testCase.err
 			}
 			txmp := setup(t, 0, WithPostCheck(postCheckFn))
@@ -706,7 +708,7 @@ func TestTxPool_RemoveBlobTx(t *testing.T) {
 	err = txmp.CheckTx(bTx, nil, mempool.TxInfo{})
 	require.NoError(t, err)
 
-	err = txmp.Update(1, []types.Tx{indexWrapper}, abciResponses(1, abci.CodeTypeOK), nil, nil)
+	err = txmp.Update(1, []*types.CachedTx{indexWrapper.ToCachedTx()}, abciResponses(1, abci.CodeTypeOK), nil, nil)
 	require.NoError(t, err)
 	require.EqualValues(t, 0, txmp.Size())
 	require.EqualValues(t, 0, txmp.SizeBytes())
@@ -732,7 +734,7 @@ func TestTxPool_ConcurrentlyAddingTx(t *testing.T) {
 		wg.Add(1)
 		go func(sender uint16) {
 			defer wg.Done()
-			_, err := txPool.TryAddNewTx(tx, tx.Key(), mempool.TxInfo{SenderID: sender})
+			_, err := txPool.TryAddNewTx(tx.ToCachedTx(), tx.Key(), mempool.TxInfo{SenderID: sender})
 			errCh <- err
 		}(uint16(i + 1))
 	}
@@ -775,7 +777,7 @@ func TestTxPool_BroadcastQueue(t *testing.T) {
 			case <-ctx.Done():
 				assert.FailNowf(t, "failed to receive all txs (got %d/%d)", "", i+1, txs)
 			case wtx := <-txmp.next():
-				require.Equal(t, wtx.tx, newDefaultTx(fmt.Sprintf("%d", i)))
+				require.Equal(t, wtx.tx.Tx, newDefaultTx(fmt.Sprintf("%d", i)))
 			}
 		}
 	}()

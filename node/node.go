@@ -7,7 +7,10 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"runtime"
 	"time"
+
+	"github.com/cometbft/cometbft/consensus/propagation"
 
 	"github.com/grafana/pyroscope-go"
 	"github.com/prometheus/client_golang/prometheus"
@@ -77,6 +80,7 @@ type Node struct {
 	consensusState    *cs.State               // latest consensus state
 	consensusReactor  *cs.Reactor             // for participating in the consensus
 	pexReactor        *pex.Reactor            // for exchanging peer addresses
+	blockPropReactor  *propagation.Reactor    // the block propagation reactor
 	evidencePool      *evidence.Pool          // tracking evidence
 	proxyApp          proxy.AppConns          // connection to the application
 	rpcListeners      []net.Listener          // rpc servers
@@ -428,15 +432,37 @@ func NewNodeWithContext(ctx context.Context,
 		return nil, fmt.Errorf("could not create blocksync reactor: %w", err)
 	}
 
+	partsChan := make(chan types.PartInfo, 1000)
+	proposalChan := make(chan types.Proposal, 100)
+	propagationReactor := propagation.NewReactor(
+		nodeKey.ID(),
+		propagation.Config{
+			Store:         blockStore,
+			Mempool:       mempool,
+			Privval:       privValidator,
+			ChainID:       state.ChainID,
+			BlockMaxBytes: state.ConsensusParams.Block.MaxBytes,
+			PartChan:      partsChan,
+			ProposalChan:  proposalChan,
+		},
+		propagation.WithTracer(tracer),
+	)
+	if !stateSync && !blockSync {
+		propagationReactor.StartProcessing()
+	}
+
 	consensusReactor, consensusState := createConsensusReactor(
 		config, state, blockExec, blockStore, mempool, evidencePool,
-		privValidator, csMetrics, stateSync || blockSync, eventBus, consensusLogger, offlineStateSyncHeight, tracer,
+		privValidator, csMetrics, propagationReactor, stateSync || blockSync, eventBus, consensusLogger, offlineStateSyncHeight, tracer, partsChan, proposalChan,
 	)
 
 	err = stateStore.SetOfflineStateSyncHeight(0)
 	if err != nil {
 		panic(fmt.Sprintf("failed to reset the offline state sync height %s", err))
 	}
+	propagationReactor.SetLogger(logger.With("module", "propagation"))
+
+	logger.Info("Consensus reactor created", "timeout_propose", consensusState.GetState().TimeoutPropose, "timeout_commit", consensusState.GetState().TimeoutCommit)
 	// Set up state sync reactor, and schedule a sync if requested.
 	// FIXME The way we do phased startups (e.g. replay -> block sync -> consensus) is very messy,
 	// we should clean this whole thing up. See:
@@ -459,7 +485,7 @@ func NewNodeWithContext(ctx context.Context,
 	p2pLogger := logger.With("module", "p2p")
 	sw := createSwitch(
 		config, transport, p2pMetrics, peerFilters, mempoolReactor, bcReactor,
-		stateSyncReactor, consensusReactor, evidenceReactor, nodeInfo, nodeKey, p2pLogger, tracer,
+		stateSyncReactor, consensusReactor, evidenceReactor, propagationReactor, nodeInfo, nodeKey, p2pLogger, tracer,
 	)
 
 	err = sw.AddPersistentPeers(splitAndTrimEmpty(config.P2P.PersistentPeers, ",", " "))
@@ -519,6 +545,7 @@ func NewNodeWithContext(ctx context.Context,
 		stateSync:        stateSync,
 		stateSyncGenesis: state, // Shouldn't be necessary, but need a way to pass the genesis state
 		pexReactor:       pexReactor,
+		blockPropReactor: propagationReactor,
 		evidencePool:     evidencePool,
 		proxyApp:         proxyApp,
 		txIndexer:        txIndexer,
@@ -611,6 +638,9 @@ func (n *Node) OnStart() error {
 			return fmt.Errorf("failed to start state sync: %w", err)
 		}
 	}
+
+	// todo: obviously remove
+	go n.printMemStats(n.tracer)
 
 	return nil
 }
@@ -1001,6 +1031,7 @@ func makeNodeInfo(
 			mempl.MempoolChannel,
 			evidence.EvidenceChannel,
 			statesync.SnapshotChannel, statesync.ChunkChannel,
+			propagation.DataChannel, propagation.WantChannel,
 		},
 		Moniker: config.Moniker,
 		Other: p2p.DefaultNodeInfoOther{
@@ -1023,4 +1054,37 @@ func makeNodeInfo(
 
 	err := nodeInfo.Validate()
 	return nodeInfo, err
+}
+
+type MemStats struct {
+	Alloc      uint64 `json:"alloc"`
+	TotalAlloc uint64 `json:"total_alloc"`
+	Sys        uint64 `json:"sys"`
+	NumGC      uint32 `json:"num_gc"`
+}
+
+func (ms *MemStats) Table() string {
+	return "mem_stats"
+}
+
+func (n *Node) printMemStats(traceClient trace.Tracer) {
+	timer := time.NewTicker(30 * time.Second)
+	for {
+		select {
+		case <-timer.C:
+			var m runtime.MemStats
+			runtime.ReadMemStats(&m)
+			ms := &MemStats{
+				Alloc:      m.Alloc,
+				TotalAlloc: m.TotalAlloc,
+				Sys:        m.Sys,
+				NumGC:      m.NumGC,
+			}
+			if traceClient != nil {
+				traceClient.Write(ms)
+			}
+		case <-n.Quit():
+			return
+		}
+	}
 }

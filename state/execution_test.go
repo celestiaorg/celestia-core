@@ -35,8 +35,7 @@ import (
 )
 
 var (
-	chainID             = "execution_chain"
-	testPartSize uint32 = types.BlockPartSizeBytes
+	chainID = "execution_chain"
 )
 
 func TestApplyBlock(t *testing.T) {
@@ -67,8 +66,7 @@ func TestApplyBlock(t *testing.T) {
 	blockExec := sm.NewBlockExecutor(stateStore, log.TestingLogger(), proxyApp.Consensus(),
 		mp, sm.EmptyEvidencePool{}, blockStore)
 
-	block := makeBlock(state, 1, new(types.Commit))
-	bps, err := block.MakePartSet(testPartSize)
+	block, bps, err := makeBlock(state, 1, new(types.Commit))
 	require.NoError(t, err)
 	blockID := types.BlockID{Hash: block.Hash(), PartSetHeader: bps.Header()}
 
@@ -141,8 +139,7 @@ func TestFinalizeBlockDecidedLastCommit(t *testing.T) {
 			}
 
 			// block for height 2
-			block := makeBlock(state, 2, lastCommit.ToCommit())
-			bps, err := block.MakePartSet(testPartSize)
+			block, bps, err := makeBlock(state, 2, lastCommit.ToCommit())
 			require.NoError(t, err)
 			blockID := types.BlockID{Hash: block.Hash(), PartSetHeader: bps.Header()}
 			_, err = blockExec.ApplyBlock(state, blockID, block, nil)
@@ -221,7 +218,8 @@ func TestFinalizeBlockValidators(t *testing.T) {
 		}
 
 		// block for height 2
-		block := makeBlock(state, 2, lastCommit.ToCommit())
+		block, _, err := makeBlock(state, 2, lastCommit.ToCommit())
+		require.NoError(t, err)
 
 		_, err = sm.ExecCommitBlock(proxyApp.Consensus(), block, log.TestingLogger(), stateStore, 1)
 		require.NoError(t, err, tc.desc)
@@ -346,13 +344,11 @@ func TestFinalizeBlockMisbehavior(t *testing.T) {
 	blockExec := sm.NewBlockExecutor(stateStore, log.TestingLogger(), proxyApp.Consensus(),
 		mp, evpool, blockStore)
 
-	block := makeBlock(state, 1, new(types.Commit))
+	block, ops, err := makeBlock(state, 1, new(types.Commit))
+	require.NoError(t, err)
 	block.Evidence = types.EvidenceData{Evidence: ev}
 	block.Header.EvidenceHash = block.Evidence.Hash()
-	bps, err := block.MakePartSet(testPartSize)
-	require.NoError(t, err)
-
-	blockID = types.BlockID{Hash: block.Hash(), PartSetHeader: bps.Header()}
+	blockID = types.BlockID{Hash: block.Hash(), PartSetHeader: ops.Header()}
 
 	_, err = blockExec.ApplyBlock(state, blockID, block, nil)
 	require.NoError(t, err)
@@ -393,10 +389,9 @@ func TestProcessProposal(t *testing.T) {
 		blockStore,
 	)
 
-	block0 := makeBlock(state, height-1, new(types.Commit))
-	lastCommitSig := []types.CommitSig{}
-	partSet, err := block0.MakePartSet(types.BlockPartSizeBytes)
+	block0, partSet, err := makeBlock(state, height-1, new(types.Commit))
 	require.NoError(t, err)
+	lastCommitSig := []types.CommitSig{}
 	blockID := types.BlockID{Hash: block0.Hash(), PartSetHeader: partSet.Header()}
 	voteInfos := []abci.VoteInfo{}
 	for _, privVal := range privVals {
@@ -416,10 +411,11 @@ func TestProcessProposal(t *testing.T) {
 		lastCommitSig = append(lastCommitSig, vote.CommitSig())
 	}
 
-	block1 := makeBlock(state, height, &types.Commit{
+	block1, _, err := makeBlock(state, height, &types.Commit{
 		Height:     height - 1,
 		Signatures: lastCommitSig,
 	})
+	require.NoError(t, err)
 
 	block1.Txs = txs
 
@@ -600,7 +596,7 @@ func TestFinalizeBlockValidatorUpdates(t *testing.T) {
 		mock.Anything,
 		mock.Anything,
 		mock.Anything).Return(nil)
-	mp.On("ReapMaxBytesMaxGas", mock.Anything, mock.Anything).Return(types.Txs{})
+	mp.On("ReapMaxBytesMaxGas", mock.Anything, mock.Anything).Return([]*types.CachedTx{})
 
 	blockStore := store.NewBlockStore(dbm.NewMemDB())
 	blockExec := sm.NewBlockExecutor(
@@ -626,8 +622,7 @@ func TestFinalizeBlockValidatorUpdates(t *testing.T) {
 	)
 	require.NoError(t, err)
 
-	block := makeBlock(state, 1, new(types.Commit))
-	bps, err := block.MakePartSet(testPartSize)
+	block, bps, err := makeBlock(state, 1, new(types.Commit))
 	require.NoError(t, err)
 	blockID := types.BlockID{Hash: block.Hash(), PartSetHeader: bps.Header()}
 
@@ -688,8 +683,7 @@ func TestFinalizeBlockValidatorUpdatesResultingInEmptySet(t *testing.T) {
 		blockStore,
 	)
 
-	block := makeBlock(state, 1, new(types.Commit))
-	bps, err := block.MakePartSet(testPartSize)
+	block, bps, err := makeBlock(state, 1, new(types.Commit))
 	require.NoError(t, err)
 	blockID := types.BlockID{Hash: block.Hash(), PartSetHeader: bps.Header()}
 
@@ -732,7 +726,7 @@ func TestEmptyPrepareProposal(t *testing.T) {
 		mock.Anything,
 		mock.Anything,
 		mock.Anything).Return(nil)
-	mp.On("ReapMaxBytesMaxGas", mock.Anything, mock.Anything).Return(types.Txs{})
+	mp.On("ReapMaxBytesMaxGas", mock.Anything, mock.Anything).Return([]*types.CachedTx{})
 
 	blockStore := store.NewBlockStore(dbm.NewMemDB())
 	blockExec := sm.NewBlockExecutor(
@@ -746,7 +740,7 @@ func TestEmptyPrepareProposal(t *testing.T) {
 	pa, _ := state.Validators.GetByIndex(0)
 	commit, _, err := makeValidCommit(height, types.BlockID{}, state.Validators, privVals)
 	require.NoError(t, err)
-	_, err = blockExec.CreateProposalBlock(ctx, height, state, commit, pa)
+	_, _, err = blockExec.CreateProposalBlock(ctx, height, state, commit, pa)
 	require.NoError(t, err)
 }
 
@@ -766,8 +760,9 @@ func TestPrepareProposalTxsAllIncluded(t *testing.T) {
 	evpool.On("PendingEvidence", mock.Anything).Return([]types.Evidence{}, int64(0))
 
 	txs := test.MakeNTxs(height, 10)
+	cachedTxs := types.CachedTxFromTxs(txs)
 	mp := &mpmocks.Mempool{}
-	mp.On("ReapMaxBytesMaxGas", mock.Anything, mock.Anything).Return(txs[2:])
+	mp.On("ReapMaxBytesMaxGas", mock.Anything, mock.Anything).Return(cachedTxs[2:])
 
 	app := &abcimocks.Application{}
 	app.On("PrepareProposal", mock.Anything, mock.Anything).Return(&abci.ResponsePrepareProposal{
@@ -791,7 +786,7 @@ func TestPrepareProposalTxsAllIncluded(t *testing.T) {
 	pa, _ := state.Validators.GetByIndex(0)
 	commit, _, err := makeValidCommit(height, types.BlockID{}, state.Validators, privVals)
 	require.NoError(t, err)
-	block, err := blockExec.CreateProposalBlock(ctx, height, state, commit, pa)
+	block, _, err := blockExec.CreateProposalBlock(ctx, height, state, commit, pa)
 	require.NoError(t, err)
 
 	for i, tx := range block.Data.Txs {
@@ -817,8 +812,9 @@ func TestPrepareProposalReorderTxs(t *testing.T) {
 	evpool.On("PendingEvidence", mock.Anything).Return([]types.Evidence{}, int64(0))
 
 	txs := test.MakeNTxs(height, 10)
+	cachedTxs := types.CachedTxFromTxs(txs)
 	mp := &mpmocks.Mempool{}
-	mp.On("ReapMaxBytesMaxGas", mock.Anything, mock.Anything).Return(txs)
+	mp.On("ReapMaxBytesMaxGas", mock.Anything, mock.Anything).Return(cachedTxs)
 
 	txs = txs[2:]
 	txs = append(txs[len(txs)/2:], txs[:len(txs)/2]...)
@@ -846,7 +842,7 @@ func TestPrepareProposalReorderTxs(t *testing.T) {
 	pa, _ := state.Validators.GetByIndex(0)
 	commit, _, err := makeValidCommit(height, types.BlockID{}, state.Validators, privVals)
 	require.NoError(t, err)
-	block, err := blockExec.CreateProposalBlock(ctx, height, state, commit, pa)
+	block, _, err := blockExec.CreateProposalBlock(ctx, height, state, commit, pa)
 	require.NoError(t, err)
 	for i, tx := range block.Data.Txs {
 		require.Equal(t, txs[i], tx)
@@ -876,8 +872,9 @@ func TestPrepareProposalErrorOnTooManyTxs(t *testing.T) {
 	var bytesPerTx int64 = 3
 	maxDataBytes := types.MaxDataBytes(state.ConsensusParams.Block.MaxBytes, 0, nValidators)
 	txs := test.MakeNTxs(height, maxDataBytes/bytesPerTx+2) // +2 so that tx don't fit
+	cachedTxs := types.CachedTxFromTxs(txs)
 	mp := &mpmocks.Mempool{}
-	mp.On("ReapMaxBytesMaxGas", mock.Anything, mock.Anything).Return(txs)
+	mp.On("ReapMaxBytesMaxGas", mock.Anything, mock.Anything).Return(cachedTxs)
 
 	app := &abcimocks.Application{}
 	app.On("PrepareProposal", mock.Anything, mock.Anything).Return(&abci.ResponsePrepareProposal{
@@ -902,7 +899,7 @@ func TestPrepareProposalErrorOnTooManyTxs(t *testing.T) {
 	pa, _ := state.Validators.GetByIndex(0)
 	commit, _, err := makeValidCommit(height, types.BlockID{}, state.Validators, privVals)
 	require.NoError(t, err)
-	block, err := blockExec.CreateProposalBlock(ctx, height, state, commit, pa)
+	block, _, err := blockExec.CreateProposalBlock(ctx, height, state, commit, pa)
 	require.Nil(t, block)
 	require.ErrorContains(t, err, "transaction data size exceeds maximum")
 
@@ -933,8 +930,9 @@ func TestPrepareProposalCountSerializationOverhead(t *testing.T) {
 	evpool.On("PendingEvidence", mock.Anything).Return([]types.Evidence{}, int64(0))
 
 	txs := test.MakeNTxs(height, maxDataBytes/bytesPerTx)
+	cachedTxs := types.CachedTxFromTxs(txs)
 	mp := &mpmocks.Mempool{}
-	mp.On("ReapMaxBytesMaxGas", mock.Anything, mock.Anything).Return(txs)
+	mp.On("ReapMaxBytesMaxGas", mock.Anything, mock.Anything).Return(cachedTxs)
 
 	app := &abcimocks.Application{}
 	app.On("PrepareProposal", mock.Anything, mock.Anything).Return(&abci.ResponsePrepareProposal{
@@ -959,7 +957,7 @@ func TestPrepareProposalCountSerializationOverhead(t *testing.T) {
 	pa, _ := state.Validators.GetByIndex(0)
 	commit, _, err := makeValidCommit(height, types.BlockID{}, state.Validators, privVals)
 	require.NoError(t, err)
-	block, err := blockExec.CreateProposalBlock(ctx, height, state, commit, pa)
+	block, _, err := blockExec.CreateProposalBlock(ctx, height, state, commit, pa)
 	require.Nil(t, block)
 	require.ErrorContains(t, err, "transaction data size exceeds maximum")
 
@@ -982,8 +980,9 @@ func TestPrepareProposalErrorOnPrepareProposalError(t *testing.T) {
 	evpool.On("PendingEvidence", mock.Anything).Return([]types.Evidence{}, int64(0))
 
 	txs := test.MakeNTxs(height, 10)
+	cachedTxs := types.CachedTxFromTxs(txs)
 	mp := &mpmocks.Mempool{}
-	mp.On("ReapMaxBytesMaxGas", mock.Anything, mock.Anything).Return(txs)
+	mp.On("ReapMaxBytesMaxGas", mock.Anything, mock.Anything).Return(cachedTxs)
 
 	cm := &abciclientmocks.Client{}
 	cm.On("SetLogger", mock.Anything).Return()
@@ -1010,7 +1009,7 @@ func TestPrepareProposalErrorOnPrepareProposalError(t *testing.T) {
 	pa, _ := state.Validators.GetByIndex(0)
 	commit, _, err := makeValidCommit(height, types.BlockID{}, state.Validators, privVals)
 	require.NoError(t, err)
-	block, err := blockExec.CreateProposalBlock(ctx, height, state, commit, pa)
+	block, _, err := blockExec.CreateProposalBlock(ctx, height, state, commit, pa)
 	require.Nil(t, block)
 	require.ErrorContains(t, err, "an injected error")
 
@@ -1085,7 +1084,7 @@ func TestCreateProposalAbsentVoteExtensions(t *testing.T) {
 				mock.Anything,
 				mock.Anything,
 				mock.Anything).Return(nil)
-			mp.On("ReapMaxBytesMaxGas", mock.Anything, mock.Anything).Return(types.Txs{})
+			mp.On("ReapMaxBytesMaxGas", mock.Anything, mock.Anything).Return([]*types.CachedTx{})
 
 			blockStore := store.NewBlockStore(dbm.NewMemDB())
 			blockExec := sm.NewBlockExecutor(
@@ -1096,9 +1095,9 @@ func TestCreateProposalAbsentVoteExtensions(t *testing.T) {
 				sm.EmptyEvidencePool{},
 				blockStore,
 			)
-			block := makeBlock(state, testCase.height, new(types.Commit))
+			block, bps, err := makeBlock(state, testCase.height, new(types.Commit))
+			require.NoError(t, err)
 
-			bps, err := block.MakePartSet(testPartSize)
 			require.NoError(t, err)
 			blockID := types.BlockID{Hash: block.Hash(), PartSetHeader: bps.Header()}
 			pa, _ := state.Validators.GetByIndex(0)
@@ -1109,7 +1108,7 @@ func TestCreateProposalAbsentVoteExtensions(t *testing.T) {
 					blockExec.CreateProposalBlock(ctx, testCase.height, state, lastCommit, pa) //nolint:errcheck
 				})
 			} else {
-				_, err = blockExec.CreateProposalBlock(ctx, testCase.height, state, lastCommit, pa)
+				_, _, err = blockExec.CreateProposalBlock(ctx, testCase.height, state, lastCommit, pa)
 				require.NoError(t, err)
 			}
 		})

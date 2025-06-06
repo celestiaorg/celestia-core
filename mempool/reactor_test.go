@@ -102,7 +102,7 @@ func TestReactorConcurrency(t *testing.T) {
 			for i := range txs {
 				txResponses[i] = &abci.ExecTxResult{Code: 0}
 			}
-			err := reactors[0].mempool.Update(1, txs, txResponses, nil, nil)
+			err := reactors[0].mempool.Update(1, types.CachedTxFromTxs(txs), txResponses, nil, nil)
 			assert.NoError(t, err)
 		}()
 
@@ -114,7 +114,7 @@ func TestReactorConcurrency(t *testing.T) {
 
 			reactors[1].mempool.Lock()
 			defer reactors[1].mempool.Unlock()
-			err := reactors[1].mempool.Update(1, []types.Tx{}, make([]*abci.ExecTxResult, 0), nil, nil)
+			err := reactors[1].mempool.Update(1, []*types.CachedTx{}, make([]*abci.ExecTxResult, 0), nil, nil)
 			assert.NoError(t, err)
 		}()
 
@@ -399,7 +399,7 @@ func checkTxsInOrder(t *testing.T, txs types.Txs, reactor *Reactor, reactorIndex
 	// Check that all transactions in the mempool are in the same order as txs.
 	reapedTxs := reactor.mempool.ReapMaxTxs(len(txs))
 	for i, tx := range txs {
-		assert.Equalf(t, tx, reapedTxs[i],
+		assert.Equalf(t, tx, reapedTxs[i].Tx,
 			"txs at index %d on reactor %d don't match: %v vs %v", i, reactorIndex, tx, reapedTxs[i])
 	}
 }

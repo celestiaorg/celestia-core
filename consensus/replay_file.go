@@ -10,6 +10,9 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/cometbft/cometbft/consensus/propagation"
+	"github.com/cometbft/cometbft/p2p"
+
 	dbm "github.com/cometbft/cometbft-db"
 
 	cfg "github.com/cometbft/cometbft/config"
@@ -129,7 +132,7 @@ func (pb *playback) replayReset(count int, newStepSub types.Subscription) error 
 	pb.cs.Wait()
 
 	newCS := NewState(pb.cs.config, pb.genesisState.Copy(), pb.cs.blockExec,
-		pb.cs.blockStore, pb.cs.txNotifier, pb.cs.evpool)
+		pb.cs.blockStore, pb.cs.propagator, pb.cs.txNotifier, pb.cs.evpool, pb.cs.partChan, pb.cs.proposalChan)
 	newCS.SetEventBus(pb.cs.eventBus)
 	newCS.startForReplay()
 
@@ -330,9 +333,24 @@ func newConsensusStateForReplay(config cfg.BaseConfig, csConfig *cfg.ConsensusCo
 
 	mempool, evpool := emptyMempool{}, sm.EmptyEvidencePool{}
 	blockExec := sm.NewBlockExecutor(stateStore, log.TestingLogger(), proxyApp.Consensus(), mempool, evpool, blockStore)
-
+	key, err := p2p.LoadOrGenNodeKey(config.NodeKey)
+	if err != nil {
+		panic(err)
+	}
+	// TODO pass a tracer from here
+	partsChan := make(chan types.PartInfo, 1000)
+	proposalChan := make(chan types.Proposal, 100)
+	propagator := propagation.NewReactor(key.ID(), propagation.Config{
+		Store:         blockStore,
+		Mempool:       mempool,
+		Privval:       nil,
+		ChainID:       state.ChainID,
+		BlockMaxBytes: state.ConsensusParams.Block.MaxBytes,
+		PartChan:      partsChan,
+		ProposalChan:  proposalChan,
+	})
 	consensusState := NewState(csConfig, state.Copy(), blockExec,
-		blockStore, mempool, evpool)
+		blockStore, propagator, mempool, evpool, partsChan, proposalChan)
 
 	consensusState.SetEventBus(eventBus)
 	return consensusState
