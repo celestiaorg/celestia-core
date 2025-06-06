@@ -10,6 +10,7 @@
 .idea/
 .revision
 .cometbft
+cometbft
 .cometbft-lite
 .terraform
 .vagrant
