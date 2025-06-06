@@ -1,6 +1,6 @@
 module github.com/cometbft/cometbft
 
-go 1.23.0
+go 1.24
 
 toolchain go1.24.2
 
@@ -61,7 +61,7 @@ require (
 )
 
 require (
-	github.com/gogo/protobuf v1.3.2
+	github.com/gogo/protobuf v1.3.2 // indirect
 	github.com/golang/snappy v0.0.4 // indirect
 	github.com/klauspost/reedsolomon v1.12.4
 )
