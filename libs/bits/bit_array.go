@@ -57,6 +57,8 @@ func (bA *BitArray) Size() int {
 	if bA == nil {
 		return 0
 	}
+	bA.mtx.Lock()
+	defer bA.mtx.Unlock()
 	return bA.Bits
 }
 
@@ -69,6 +71,15 @@ func (bA *BitArray) GetIndex(i int) bool {
 	bA.mtx.Lock()
 	defer bA.mtx.Unlock()
 	return bA.getIndex(i)
+}
+
+// Fill sets all bits to true
+func (bA *BitArray) Fill() {
+	bA.mtx.Lock()
+	defer bA.mtx.Unlock()
+	for i := 0; i < bA.Bits; i++ {
+		bA.setIndex(i, true)
+	}
 }
 
 func (bA *BitArray) getIndex(i int) bool {
@@ -99,6 +110,33 @@ func (bA *BitArray) setIndex(i int, v bool) bool {
 		bA.Elems[i/64] &= ^(uint64(1) << uint(i%64))
 	}
 	return true
+}
+
+// AddBitArray combines two bit arrays by taking the bitwise OR of the two. If
+// the two bit arrays have different lengths, AddBitArray right-pads the smaller
+// of the two bit-arrays with zeroes. Thus the size of the return value is the
+// maximum of the two provided bit arrays.
+func (bA *BitArray) AddBitArray(b *BitArray) {
+	if bA == nil || b == nil {
+		return
+	}
+	bA.mtx.Lock()
+	defer bA.mtx.Unlock()
+	b.mtx.Lock()
+	defer b.mtx.Unlock()
+
+	// Update bA's Bits count to be the max of the two
+	bA.Bits = cmtmath.MaxInt(bA.Bits, b.Bits)
+
+	// Resize bA's Elems if b is longer
+	if len(b.Elems) > len(bA.Elems) {
+		bA.Elems = append(bA.Elems, make([]uint64, len(b.Elems)-len(bA.Elems))...)
+	}
+
+	// Perform bitwise OR operation up to the length of b
+	for i := 0; i < len(b.Elems); i++ {
+		bA.Elems[i] |= b.Elems[i]
+	}
 }
 
 // Copy returns a copy of the provided bit array.
@@ -279,6 +317,38 @@ func (bA *BitArray) PickRandom() (int, bool) {
 		return 0, false
 	}
 	return index, true
+}
+
+func (bA *BitArray) GetTrueIndices() []int {
+	trueIndices := make([]int, 0, bA.Bits)
+	curBit := 0
+	numElems := len(bA.Elems)
+	// set all true indices
+	for i := 0; i < numElems-1; i++ {
+		elem := bA.Elems[i]
+		if elem == 0 {
+			curBit += 64
+			continue
+		}
+		for j := 0; j < 64; j++ {
+			//nolint:gosec
+			if (elem & (uint64(1) << uint64(j))) > 0 {
+				trueIndices = append(trueIndices, curBit)
+			}
+			curBit++
+		}
+	}
+	// handle last element
+	lastElem := bA.Elems[numElems-1]
+	numFinalBits := bA.Bits - curBit
+	for i := 0; i < numFinalBits; i++ {
+		//nolint:gosec
+		if (lastElem & (uint64(1) << uint64(i))) > 0 {
+			trueIndices = append(trueIndices, curBit)
+		}
+		curBit++
+	}
+	return trueIndices
 }
 
 func (bA *BitArray) getNumTrueIndices() int {

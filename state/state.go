@@ -247,8 +247,7 @@ func (state State) MakeBlock(
 	lastCommit *types.Commit,
 	evidence []types.Evidence,
 	proposerAddress []byte,
-) *types.Block {
-
+) (*types.Block, *types.PartSet, error) {
 	// Build base block with block data.
 	block := types.MakeBlock(height, data, lastCommit, evidence)
 
@@ -269,7 +268,9 @@ func (state State) MakeBlock(
 		proposerAddress,
 	)
 
-	return block
+	ops, err := block.MakePartSet(types.BlockPartSizeBytes)
+
+	return block, ops, err
 }
 
 // MedianTime computes a median time for a given Commit (based on Timestamp field of votes messages) and the

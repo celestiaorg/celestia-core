@@ -3,8 +3,9 @@ package mempool
 import (
 	"testing"
 
-	"github.com/cometbft/cometbft/types"
 	"github.com/stretchr/testify/assert"
+
+	"github.com/cometbft/cometbft/types"
 )
 
 var tx = types.Tx([]byte{0x01})

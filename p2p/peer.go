@@ -413,10 +413,10 @@ func PeerMetrics(metrics *Metrics) PeerOption {
 }
 
 func (p *peer) metricsReporter() {
-	queues := make(map[byte]int, len(p.mconn.Status().Channels))
 	for {
 		select {
 		case <-p.metricsTicker.C:
+			queues := make(map[byte]int, len(p.mconn.Status().Channels))
 			status := p.mconn.Status()
 			var sendQueueSize float64
 			for _, chStatus := range status.Channels {

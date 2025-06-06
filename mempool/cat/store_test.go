@@ -17,7 +17,7 @@ func TestStoreSimple(t *testing.T) {
 
 	tx := types.Tx("tx1")
 	key := tx.Key()
-	wtx := newWrappedTx(tx, key, 1, 1, 1, "")
+	wtx := newWrappedTx(tx.ToCachedTx(), 1, 1, 1, "")
 
 	// asset zero state
 	require.Nil(t, store.get(key))
@@ -53,9 +53,9 @@ func TestStoreOrdering(t *testing.T) {
 	tx3 := types.Tx("tx3")
 
 	// Create wrapped txs with different priorities
-	wtx1 := newWrappedTx(tx1, tx1.Key(), 1, 1, 1, "")
-	wtx2 := newWrappedTx(tx2, tx2.Key(), 2, 2, 2, "")
-	wtx3 := newWrappedTx(tx3, tx3.Key(), 3, 3, 3, "")
+	wtx1 := newWrappedTx(tx1.ToCachedTx(), 1, 1, 1, "")
+	wtx2 := newWrappedTx(tx2.ToCachedTx(), 2, 2, 2, "")
+	wtx3 := newWrappedTx(tx3.ToCachedTx(), 3, 3, 3, "")
 
 	// Add txs in reverse priority order
 	store.set(wtx1)
@@ -84,9 +84,9 @@ func TestStore(t *testing.T) {
 		tx3 := types.Tx("tx3")
 
 		// Create wrapped txs with different priorities
-		wtx1 := newWrappedTx(tx1, tx1.Key(), 1, 1, 1, "")
-		wtx2 := newWrappedTx(tx2, tx2.Key(), 2, 2, 2, "")
-		wtx3 := newWrappedTx(tx3, tx3.Key(), 3, 3, 3, "")
+		wtx1 := newWrappedTx(tx1.ToCachedTx(), 1, 1, 1, "")
+		wtx2 := newWrappedTx(tx2.ToCachedTx(), 2, 2, 2, "")
+		wtx3 := newWrappedTx(tx3.ToCachedTx(), 3, 3, 3, "")
 
 		// Add txs in reverse priority order
 		store.set(wtx1)
@@ -127,7 +127,7 @@ func TestStoreReservingTxs(t *testing.T) {
 
 	tx := types.Tx("tx1")
 	key := tx.Key()
-	wtx := newWrappedTx(tx, key, 1, 1, 1, "")
+	wtx := newWrappedTx(tx.ToCachedTx(), 1, 1, 1, "")
 
 	// asset zero state
 	store.release(key)
@@ -140,13 +140,13 @@ func TestStoreReservingTxs(t *testing.T) {
 
 	// should be able to add a tx
 	store.set(wtx)
-	require.Equal(t, tx, store.get(key).tx)
+	require.Equal(t, tx, store.get(key).tx.Tx)
 	require.Equal(t, wtx.size(), store.totalBytes())
 
 	// releasing should do nothing on a set tx
 	store.release(key)
 	require.True(t, store.has(key))
-	require.Equal(t, tx, store.get(key).tx)
+	require.Equal(t, tx, store.get(key).tx.Tx)
 
 	store.remove(key)
 	require.False(t, store.has(key))
@@ -185,9 +185,9 @@ func TestStoreConcurrentAccess(t *testing.T) {
 			for range ticker.C {
 				tx := types.Tx(fmt.Sprintf("tx%d", i%(numTxs/10)))
 				key := tx.Key()
-				wtx := newWrappedTx(tx, key, 1, 1, 1, "")
+				wtx := newWrappedTx(tx.ToCachedTx(), 1, 1, 1, "")
 				existingTx := store.get(key)
-				if existingTx != nil && bytes.Equal(existingTx.tx, tx) {
+				if existingTx != nil && bytes.Equal(existingTx.tx.Tx, tx) {
 					// tx has already been added
 					return
 				}
@@ -217,8 +217,7 @@ func TestStoreGetTxs(t *testing.T) {
 	numTxs := 100
 	for i := 0; i < numTxs; i++ {
 		tx := types.Tx(fmt.Sprintf("tx%d", i))
-		key := tx.Key()
-		wtx := newWrappedTx(tx, key, 1, 1, int64(i), "")
+		wtx := newWrappedTx(tx.ToCachedTx(), 1, 1, int64(i), "")
 		store.set(wtx)
 	}
 
@@ -247,8 +246,7 @@ func TestStoreExpiredTxs(t *testing.T) {
 	numTxs := 100
 	for i := 0; i < numTxs; i++ {
 		tx := types.Tx(fmt.Sprintf("tx%d", i))
-		key := tx.Key()
-		wtx := newWrappedTx(tx, key, int64(i), 1, 1, "")
+		wtx := newWrappedTx(tx.ToCachedTx(), int64(i), 1, 1, "")
 		store.set(wtx)
 	}
 

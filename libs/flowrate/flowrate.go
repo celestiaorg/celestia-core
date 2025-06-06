@@ -61,6 +61,7 @@ func New(sampleRate, windowSize time.Duration) *Monitor {
 		sLast:   now,
 		sRate:   sampleRate,
 		tLast:   now,
+		mu:      cmtsync.Mutex{},
 	}
 }
 

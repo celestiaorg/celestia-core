@@ -30,6 +30,10 @@ func leafHashOpt(s hash.Hash, leaf []byte) []byte {
 	return s.Sum(nil)
 }
 
+func LeafHash(leaf []byte) []byte {
+	return leafHash(leaf)
+}
+
 // returns tmhash(0x01 || left || right)
 func innerHash(left []byte, right []byte) []byte {
 	return tmhash.SumMany(innerPrefix, left, right)

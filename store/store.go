@@ -133,6 +133,29 @@ func (bs *BlockStore) LoadBaseMeta() *types.BlockMeta {
 	return bs.LoadBlockMeta(bs.base)
 }
 
+// LoadPartSet returns the partset for a given height.
+func (bs *BlockStore) LoadPartSet(height int64) (*types.PartSet, *types.BlockMeta, error) {
+	meta := bs.LoadBlockMeta(height)
+	if meta == nil {
+		return nil, nil, fmt.Errorf("block meta not found")
+	}
+	partSet := types.NewPartSetFromHeader(meta.BlockID.PartSetHeader)
+	for i := 0; i < int(meta.BlockID.PartSetHeader.Total); i++ {
+		part := bs.LoadBlockPart(height, i)
+		if part == nil {
+			return nil, nil, fmt.Errorf("block part not found")
+		}
+		wasAdded, err := partSet.AddPart(part)
+		if err != nil {
+			return nil, nil, fmt.Errorf("error adding part to block store: %w", err)
+		}
+		if !wasAdded {
+			return nil, nil, fmt.Errorf("block part not added")
+		}
+	}
+	return partSet, meta, nil
+}
+
 // LoadBlock returns the block with the given height.
 // If no block is found for that height, it returns nil.
 func (bs *BlockStore) LoadBlock(height int64) *types.Block {
