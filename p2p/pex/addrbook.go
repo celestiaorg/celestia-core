@@ -403,7 +403,7 @@ func (a *addrBook) GetSelection() []*p2p.NetAddress {
 		return nil
 	}
 
-	// Return all addresses from addrLookup
+	// Get all addresses from addrLookup
 	addresses := make([]*p2p.NetAddress, 0, len(a.addrLookup))
 	for _, knownAddr := range a.addrLookup {
 		addresses = append(addresses, knownAddr.Addr)
