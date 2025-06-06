@@ -194,7 +194,7 @@ func TestReactorWithEvidence(t *testing.T) {
 		blockExec := sm.NewBlockExecutor(stateStore, log.TestingLogger(), proxyAppConnCon, mempool, evpool, blockStore)
 		key, err := p2p.LoadOrGenNodeKey(thisConfig.NodeKeyFile())
 		require.NoError(t, err)
-		partsChan := make(chan types.PartInfo, 2500)
+		partsChan := make(chan types.PartInfo, 1000)
 		proposalChan := make(chan types.Proposal, 100)
 		propagator := propagation.NewReactor(key.ID(), propagation.Config{
 			Store:         blockStore,
@@ -415,7 +415,7 @@ func TestSwitchToConsensusVoteExtensions(t *testing.T) {
 			blockStore := store.NewBlockStore(blockDB)
 			key, err := p2p.LoadOrGenNodeKey(config.NodeKeyFile())
 			require.NoError(t, err)
-			partsChan := make(chan types.PartInfo, 2500)
+			partsChan := make(chan types.PartInfo, 1000)
 			proposalChan := make(chan types.Proposal, 100)
 			propagator := propagation.NewReactor(key.ID(), propagation.Config{
 				Store:         blockStore,

@@ -117,7 +117,7 @@ func TestRecoverPartsLocally(t *testing.T) {
 	}
 
 	blockStore := store.NewBlockStore(dbm.NewMemDB())
-	partsChan := make(chan types.PartInfo, 2500)
+	partsChan := make(chan types.PartInfo, 1000)
 	proposalChan := make(chan types.Proposal, 100)
 	blockPropR := NewReactor(
 		"",

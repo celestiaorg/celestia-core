@@ -47,7 +47,7 @@ func newPropagationReactor(s *p2p.Switch, tr trace.Tracer, pv types.PrivValidato
 	if err != nil {
 		panic(err)
 	}
-	partsChan := make(chan types.PartInfo, 2500)
+	partsChan := make(chan types.PartInfo, 1000)
 	proposalChan := make(chan types.Proposal, 100)
 	blockPropR := NewReactor(s.NetAddress().ID, Config{
 		Store:         blockStore,
