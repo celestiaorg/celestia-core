@@ -130,7 +130,7 @@ cometbft node
 ```
 
 By default, CometBFT will try to connect to an ABCI application on
-`tcp://127.0.0.1:26658`. If you have the `kvstore` ABCI app installed, run it in
+`tcp://127.0.0.1:36658`. If you have the `kvstore` ABCI app installed, run it in
 another window. If you don't, kill CometBFT and run an in-process version of
 the `kvstore` app:
 
