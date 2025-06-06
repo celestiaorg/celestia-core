@@ -2,8 +2,10 @@
 reviewers:
   defaults:
     - evan-forbes
-    - tzdybal
+    - ninabarbakadze
     - rach-id
+    - tzdybal
+    - yarikbratashchuk
 
 options:
   ignore_draft: true
