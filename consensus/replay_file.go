@@ -338,7 +338,7 @@ func newConsensusStateForReplay(config cfg.BaseConfig, csConfig *cfg.ConsensusCo
 		panic(err)
 	}
 	// TODO pass a tracer from here
-	partsChan := make(chan types.PartInfo, 1000)
+	partsChan := make(chan types.PartInfo, 2500)
 	proposalChan := make(chan types.Proposal, 100)
 	propagator := propagation.NewReactor(key.ID(), propagation.Config{
 		Store:         blockStore,
