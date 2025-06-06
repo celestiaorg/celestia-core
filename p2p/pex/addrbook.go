@@ -408,6 +408,11 @@ func (a *addrBook) GetSelection() []*p2p.NetAddress {
 	for _, knownAddr := range a.addrLookup {
 		addresses = append(addresses, knownAddr.Addr)
 	}
+
+	rand.Shuffle(len(addresses), func(i, j int) {
+		addresses[i], addresses[j] = addresses[j], addresses[i]
+	})
+
 	return addresses
 }
 
