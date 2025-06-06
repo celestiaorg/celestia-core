@@ -8,6 +8,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/cometbft/cometbft/consensus/propagation"
+
 	cstypes "github.com/cometbft/cometbft/consensus/types"
 	"github.com/cometbft/cometbft/libs/bits"
 	cmtevents "github.com/cometbft/cometbft/libs/events"
@@ -51,19 +53,22 @@ type Reactor struct {
 
 	Metrics     *Metrics
 	traceClient trace.Tracer
+
+	propagator propagation.Propagator
 }
 
 type ReactorOption func(*Reactor)
 
 // NewReactor returns a new Reactor with the given
 // consensusState.
-func NewReactor(consensusState *State, waitSync bool, options ...ReactorOption) *Reactor {
+func NewReactor(consensusState *State, propagator propagation.Propagator, waitSync bool, options ...ReactorOption) *Reactor {
 	conR := &Reactor{
 		conS:        consensusState,
 		waitSync:    waitSync,
 		rs:          consensusState.GetRoundState(),
 		Metrics:     NopMetrics(),
 		traceClient: trace.NoOpTracer(),
+		propagator:  propagator,
 	}
 	conR.BaseReactor = *p2p.NewBaseReactor(
 		"Consensus",
@@ -136,6 +141,8 @@ func (conR *Reactor) SwitchToConsensus(state sm.State, skipWAL bool) {
 	if skipWAL {
 		conR.conS.doWALCatchup = false
 	}
+	conR.propagator.StartProcessing()
+	conR.propagator.SetProposer(state.Validators.GetProposer().PubKey)
 	err := conR.conS.Start()
 	if err != nil {
 		panic(fmt.Sprintf(`Failed to start consensus state: %v
@@ -154,7 +161,7 @@ func (conR *Reactor) GetChannels() []*p2p.ChannelDescriptor {
 	return []*p2p.ChannelDescriptor{
 		{
 			ID:                  StateChannel,
-			Priority:            6,
+			Priority:            30,
 			SendQueueCapacity:   100,
 			RecvMessageCapacity: maxMsgSize,
 			MessageType:         &cmtcons.Message{},
@@ -170,7 +177,7 @@ func (conR *Reactor) GetChannels() []*p2p.ChannelDescriptor {
 		},
 		{
 			ID:                  VoteChannel,
-			Priority:            7,
+			Priority:            35,
 			SendQueueCapacity:   100,
 			RecvBufferCapacity:  100 * 100,
 			RecvMessageCapacity: maxMsgSize,
@@ -178,7 +185,7 @@ func (conR *Reactor) GetChannels() []*p2p.ChannelDescriptor {
 		},
 		{
 			ID:                  VoteSetBitsChannel,
-			Priority:            1,
+			Priority:            6,
 			SendQueueCapacity:   2,
 			RecvBufferCapacity:  1024,
 			RecvMessageCapacity: maxMsgSize,
@@ -206,7 +213,13 @@ func (conR *Reactor) AddPeer(peer p2p.Peer) {
 		panic(fmt.Sprintf("peer %v has no state", peer))
 	}
 	// Begin routines for this peer.
-	go conR.gossipDataRoutine(peer, peerState)
+	isLegacyPropagationPeer, err := isLegacyPropagation(peer)
+	if err != nil {
+		panic(err)
+	}
+	if isLegacyPropagationPeer {
+		go conR.gossipDataRoutine(peer, peerState)
+	}
 	go conR.gossipVotesRoutine(peer, peerState)
 	go conR.queryMaj23Routine(peer, peerState)
 
@@ -215,6 +228,21 @@ func (conR *Reactor) AddPeer(peer p2p.Peer) {
 	if !conR.WaitSync() {
 		conR.sendNewRoundStepMessage(peer)
 	}
+}
+
+func isLegacyPropagation(peer p2p.Peer) (bool, error) {
+	ni, ok := peer.NodeInfo().(p2p.DefaultNodeInfo)
+	if !ok {
+		return false, errors.New("wrong NodeInfo type. Expected DefaultNodeInfo")
+	}
+
+	for _, ch := range ni.Channels {
+		if ch == propagation.DataChannel || ch == propagation.WantChannel {
+			return false, nil
+		}
+	}
+
+	return true, nil
 }
 
 // RemovePeer is a noop.
@@ -371,6 +399,7 @@ func (conR *Reactor) Receive(e p2p.Envelope) {
 			return
 		}
 		switch msg := msg.(type) {
+		// TODO handle the proposal message case in the propagation reactor
 		case *ProposalMessage:
 			ps.SetHasProposal(msg.Proposal)
 			conR.conS.peerMsgQueue <- msgInfo{msg, e.Src.ID()}

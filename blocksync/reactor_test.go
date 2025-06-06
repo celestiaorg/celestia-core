@@ -138,10 +138,9 @@ func newReactor(
 
 		lastExtCommit := seenExtCommit.Clone()
 
-		thisBlock := state.MakeBlock(blockHeight, types.MakeData([]types.Tx{}), lastExtCommit.ToCommit(), nil, state.Validators.Proposer.Address)
-
-		thisParts, err := thisBlock.MakePartSet(types.BlockPartSizeBytes)
+		thisBlock, thisParts, err := state.MakeBlock(blockHeight, types.MakeData([]types.Tx{}), lastExtCommit.ToCommit(), nil, state.Validators.Proposer.Address)
 		require.NoError(t, err)
+
 		blockID := types.BlockID{Hash: thisBlock.Hash(), PartSetHeader: thisParts.Header()}
 
 		// Simulate a commit for the current height

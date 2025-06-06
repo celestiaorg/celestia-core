@@ -155,7 +155,7 @@ func (env *Environment) UnconfirmedTxs(_ *rpctypes.Context, limitPtr *int) (*cty
 		Count:      len(txs),
 		Total:      env.Mempool.Size(),
 		TotalBytes: env.Mempool.SizeBytes(),
-		Txs:        txs,
+		Txs:        types.TxsFromCachedTxs(txs),
 	}, nil
 }
 

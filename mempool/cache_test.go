@@ -7,11 +7,12 @@ import (
 
 	"fmt"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/cometbft/cometbft/abci/example/kvstore"
 	abci "github.com/cometbft/cometbft/abci/types"
 	"github.com/cometbft/cometbft/proxy"
 	"github.com/cometbft/cometbft/types"
-	"github.com/stretchr/testify/require"
 )
 
 func TestCacheAfterUpdate(t *testing.T) {
@@ -43,10 +44,10 @@ func TestCacheAfterUpdate(t *testing.T) {
 			require.NoError(t, err)
 		}
 
-		updateTxs := []types.Tx{}
+		updateTxs := []*types.CachedTx{}
 		for _, v := range tc.updateIndices {
 			tx := kvstore.NewTx(fmt.Sprintf("%d", v), "value")
-			updateTxs = append(updateTxs, tx)
+			updateTxs = append(updateTxs, types.Tx(tx).ToCachedTx())
 		}
 		err := mp.Update(int64(tcIndex), updateTxs, abciResponses(len(updateTxs), abci.CodeTypeOK), nil, nil)
 		require.NoError(t, err)
@@ -96,7 +97,7 @@ func TestCacheRemove(t *testing.T) {
 	require.Equal(t, numTxs, cache.list.Len())
 
 	for i := 0; i < numTxs; i++ {
-		cache.Remove(txs[i])
+		cache.Remove(&types.CachedTx{Tx: txs[i]})
 		// make sure its removed from both the map and the linked list
 		require.Len(t, cache.cacheMap, numTxs-(i+1))
 		require.Equal(t, numTxs-(i+1), cache.list.Len())
@@ -114,7 +115,7 @@ func populate(cache TxCache, numTxs int) ([][]byte, error) {
 		}
 
 		txs[i] = txBytes
-		cache.Push(txBytes)
+		cache.Push(types.Tx(txBytes).ToCachedTx())
 	}
 	return txs, nil
 }

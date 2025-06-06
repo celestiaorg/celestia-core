@@ -6,8 +6,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cometbft/cometbft/mempool"
 	"github.com/stretchr/testify/require"
+
+	"github.com/cometbft/cometbft/mempool"
 )
 
 func BenchmarkTxPool_CheckTx(b *testing.B) {

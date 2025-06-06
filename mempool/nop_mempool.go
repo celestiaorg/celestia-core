@@ -29,10 +29,10 @@ func (*NopMempool) CheckTx(types.Tx, func(*abci.ResponseCheckTx), TxInfo) error 
 func (*NopMempool) RemoveTxByKey(types.TxKey) error { return errNotAllowed }
 
 // ReapMaxBytesMaxGas always returns nil.
-func (*NopMempool) ReapMaxBytesMaxGas(int64, int64) types.Txs { return nil }
+func (*NopMempool) ReapMaxBytesMaxGas(int64, int64) []*types.CachedTx { return nil }
 
 // ReapMaxTxs always returns nil.
-func (*NopMempool) ReapMaxTxs(int) types.Txs { return nil }
+func (*NopMempool) ReapMaxTxs(int) []*types.CachedTx { return nil }
 
 // Lock does nothing.
 func (*NopMempool) Lock() {}
@@ -43,7 +43,7 @@ func (*NopMempool) Unlock() {}
 // Update does nothing.
 func (*NopMempool) Update(
 	int64,
-	types.Txs,
+	[]*types.CachedTx,
 	[]*abci.ExecTxResult,
 	PreCheckFunc,
 	PostCheckFunc,
@@ -75,7 +75,7 @@ func (*NopMempool) Size() int { return 0 }
 func (*NopMempool) SizeBytes() int64 { return 0 }
 
 // GetTxByKey always returns nil.
-func (*NopMempool) GetTxByKey(types.TxKey) (types.Tx, bool) { return nil, false }
+func (*NopMempool) GetTxByKey(types.TxKey) (*types.CachedTx, bool) { return nil, false }
 
 // WasRecentlyEvicted always returns false.
 func (*NopMempool) WasRecentlyEvicted(types.TxKey) bool { return false }
