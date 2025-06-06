@@ -91,7 +91,7 @@ func WALGenerateNBlocks(t *testing.T, wr io.Writer, numBlocks int, config *cfg.C
 	if err != nil {
 		panic(err)
 	}
-	partsChan := make(chan types.PartInfo, 1000)
+	partsChan := make(chan types.PartInfo, 2500)
 	proposalChan := make(chan types.Proposal, 100)
 	propagator := propagation.NewReactor(key.ID(), propagation.Config{
 		Store:         blockStore,

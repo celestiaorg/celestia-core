@@ -98,7 +98,7 @@ func TestByzantinePrevoteEquivocation(t *testing.T) {
 
 		// set private validator
 		pv := privVals[i]
-		partsChan := make(chan types.PartInfo, 1000)
+		partsChan := make(chan types.PartInfo, 2500)
 		proposalChan := make(chan types.Proposal, 100)
 		propagationReactor := propagation.NewReactor(nodeKey.ID(), propagation.Config{
 			Store:         blockStore,
