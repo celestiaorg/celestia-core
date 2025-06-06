@@ -252,6 +252,24 @@ func (_m *Mempool) WasRecentlyEvicted(key types.TxKey) bool {
 	return r0
 }
 
+// IsRejectedTx provides a mock function with given fields: key
+func (_m *Mempool) IsRejectedTx(key types.TxKey) bool {
+	ret := _m.Called(key)
+
+	if len(ret) == 0 {
+		panic("no return value specified for IsRejectedTx")
+	}
+
+	var r0 bool
+	if rf, ok := ret.Get(0).(func(types.TxKey) bool); ok {
+		r0 = rf(key)
+	} else {
+		r0 = ret.Get(0).(bool)
+	}
+
+	return r0
+}
+
 // NewMempool creates a new instance of Mempool. It also registers a testing interface on the mock and a cleanup function to assert the mocks expectations.
 // The first argument is typically a *testing.T value.
 func NewMempool(t interface {

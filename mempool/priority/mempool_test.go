@@ -246,7 +246,7 @@ func TestTxMempool_Eviction(t *testing.T) {
 	require.True(t, txExists("key1=0000=25"))
 	require.False(t, txExists(bigTx))
 	bigTxKey := types.Tx((bigTx)).Key()
-	require.False(t, txmp.cache.HasKey(bigTxKey))
+	require.False(t, txmp.cache.Has(bigTxKey))
 	require.True(t, txmp.WasRecentlyEvicted(bigTxKey)) // bigTx evicted
 	require.Equal(t, int64(len("key1=0000=25")), txmp.SizeBytes())
 
@@ -602,7 +602,7 @@ func TestTxMempool_ExpiredTxs_Timestamp(t *testing.T) {
 		if _, ok := txmp.txByKey[tx.tx.Key()]; ok {
 			t.Errorf("Transaction %X should have been purged for TTL", tx.tx.Key())
 		}
-		if txmp.cache.Has(tx.tx) {
+		if txmp.cache.Has(tx.tx.Key()) {
 			t.Errorf("Transaction %X should have been removed from the cache", tx.tx.Key())
 		}
 	}
