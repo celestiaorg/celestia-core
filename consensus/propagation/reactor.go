@@ -100,7 +100,7 @@ func NewReactor(
 		partChan:      config.PartChan,
 		proposalChan:  config.ProposalChan,
 	}
-	reactor.BaseReactor = *p2p.NewBaseReactor("BlockProp", reactor)
+	reactor.BaseReactor = *p2p.NewBaseReactor("Recovery", reactor)
 
 	for _, option := range options {
 		option(reactor)
