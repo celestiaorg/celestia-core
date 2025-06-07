@@ -9,6 +9,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cometbft/cometbft/consensus/propagation"
+
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
@@ -56,7 +58,7 @@ func startConsensusNet(t *testing.T, css []*State, n int) (
 	for i := 0; i < n; i++ {
 		/*logger, err := cmtflags.ParseLogLevel("consensus:info,*:error", logger, "info")
 		if err != nil {	t.Fatal(err)}*/
-		reactors[i] = NewReactor(css[i], true) // so we dont start the consensus states
+		reactors[i] = NewReactor(css[i], css[i].propagator, true) // so we dont start the consensus states
 		reactors[i].SetLogger(css[i].Logger)
 
 		// eventBus is already started with the cs
@@ -190,7 +192,20 @@ func TestReactorWithEvidence(t *testing.T) {
 
 		// Make State
 		blockExec := sm.NewBlockExecutor(stateStore, log.TestingLogger(), proxyAppConnCon, mempool, evpool, blockStore)
-		cs := NewState(thisConfig.Consensus, state, blockExec, blockStore, mempool, evpool2)
+		key, err := p2p.LoadOrGenNodeKey(thisConfig.NodeKeyFile())
+		require.NoError(t, err)
+		partsChan := make(chan types.PartInfo, 1000)
+		proposalChan := make(chan types.Proposal, 100)
+		propagator := propagation.NewReactor(key.ID(), propagation.Config{
+			Store:         blockStore,
+			Mempool:       mempool,
+			Privval:       pv,
+			ChainID:       state.ChainID,
+			BlockMaxBytes: state.ConsensusParams.Block.MaxBytes,
+			PartChan:      partsChan,
+			ProposalChan:  proposalChan,
+		})
+		cs := NewState(thisConfig.Consensus, state, blockExec, blockStore, propagator, mempool, evpool2, partsChan, proposalChan)
 		cs.SetLogger(log.TestingLogger().With("module", "consensus"))
 		cs.SetPrivValidator(pv)
 
@@ -362,14 +377,12 @@ func TestSwitchToConsensusVoteExtensions(t *testing.T) {
 			cs.state.LastValidators = cs.state.Validators.Copy()
 			cs.state.ConsensusParams.ABCI.VoteExtensionsEnableHeight = testCase.initialRequiredHeight
 
-			propBlock, err := cs.createProposalBlock(ctx)
+			propBlock, blockParts, err := cs.createProposalBlock(ctx)
 			require.NoError(t, err)
 
 			// Consensus is preparing to do the next height after the stored height.
 			cs.Height = testCase.storedHeight + 1
 			propBlock.Height = testCase.storedHeight
-			blockParts, err := propBlock.MakePartSet(types.BlockPartSizeBytes)
-			require.NoError(t, err)
 
 			var voteSet *types.VoteSet
 			if testCase.includeExtensions {
@@ -398,8 +411,24 @@ func TestSwitchToConsensusVoteExtensions(t *testing.T) {
 			} else {
 				cs.blockStore.SaveBlock(propBlock, blockParts, voteSet.MakeExtendedCommit(veHeightParam).ToCommit())
 			}
+			blockDB := dbm.NewMemDB()
+			blockStore := store.NewBlockStore(blockDB)
+			key, err := p2p.LoadOrGenNodeKey(config.NodeKeyFile())
+			require.NoError(t, err)
+			partsChan := make(chan types.PartInfo, 1000)
+			proposalChan := make(chan types.Proposal, 100)
+			propagator := propagation.NewReactor(key.ID(), propagation.Config{
+				Store:         blockStore,
+				Mempool:       &emptyMempool{},
+				Privval:       cs.privValidator,
+				ChainID:       cs.state.ChainID,
+				BlockMaxBytes: cs.state.ConsensusParams.Block.MaxBytes,
+				PartChan:      partsChan,
+				ProposalChan:  proposalChan,
+			})
 			reactor := NewReactor(
 				cs,
+				propagator,
 				true,
 			)
 
@@ -883,7 +912,7 @@ func TestNewValidBlockMessageValidateBasic(t *testing.T) {
 		},
 		{
 			func(msg *NewValidBlockMessage) { msg.BlockParts = bits.NewBitArray(int(types.MaxBlockPartsCount) + 1) },
-			"blockParts bit array size 1602 not equal to BlockPartSetHeader.Total 1",
+			"blockParts bit array size 1998 not equal to BlockPartSetHeader.Total 1",
 		},
 	}
 

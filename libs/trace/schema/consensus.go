@@ -1,6 +1,8 @@
 package schema
 
 import (
+	"fmt"
+
 	"github.com/cometbft/cometbft/libs/trace"
 	"github.com/cometbft/cometbft/types"
 )
@@ -15,6 +17,9 @@ func ConsensusTables() []string {
 		VoteTable,
 		ConsensusStateTable,
 		ProposalTable,
+		GapTable,
+		RetriesTable,
+		CatchupRequestsTable,
 	}
 }
 
@@ -27,9 +32,9 @@ const (
 
 // RoundState describes schema for the "consensus_round_state" table.
 type RoundState struct {
-	Height int64 `json:"height"`
-	Round  int32 `json:"round"`
-	Step   uint8 `json:"step"`
+	Height int64  `json:"height"`
+	Round  int32  `json:"round"`
+	Step   string `json:"step"`
 }
 
 // Table returns the table name for the RoundState struct.
@@ -39,7 +44,7 @@ func (RoundState) Table() string {
 
 // WriteRoundState writes a tracing point for a tx using the predetermined
 // schema for consensus state tracing.
-func WriteRoundState(client trace.Tracer, height int64, round int32, step uint8) {
+func WriteRoundState(client trace.Tracer, height int64, round int32, step string) {
 	client.Write(RoundState{Height: height, Round: round, Step: step})
 }
 
@@ -246,5 +251,175 @@ func WriteProposal(
 		Round:        round,
 		PeerID:       peerID,
 		TransferType: transferType,
+	})
+}
+
+// Schema constants for the "consensus_block_parts" table.
+const (
+	// BlockPartsTable is the name of the table that stores the consensus block
+	// parts.
+	BlockPartStateTable = "bp_state"
+)
+
+// BlockPart describes schema for the "consensus_block_parts" table.
+type BlockPartState struct {
+	Height       int64        `json:"height"`
+	Round        int32        `json:"round"`
+	Indexes      []int        `json:"indexes"`
+	Have         bool         `json:"have"`
+	Peer         string       `json:"peer"`
+	TransferType TransferType `json:"transfer_type"`
+}
+
+// Table returns the table name for the BlockPart struct.
+func (b BlockPartState) Table() string {
+	return BlockPartStateTable
+}
+
+// WriteBlockPart writes a tracing point for a BlockPart using the predetermined
+// schema for consensus state tracing.
+func WriteBlockPartState(
+	client trace.Tracer,
+	height int64,
+	round int32,
+	indexes []int,
+	have bool,
+	peer string,
+	transferType TransferType,
+) {
+	// this check is redundant to what is checked during client.Write, although it
+	// is an optimization to avoid allocations from the map of fields.
+	if !client.IsCollecting(BlockPartStateTable) {
+		return
+	}
+	client.Write(BlockPartState{
+		Height: height,
+		Round:  round,
+		//nolint:gosec
+		Indexes:      indexes,
+		Have:         have,
+		Peer:         peer,
+		TransferType: transferType,
+	})
+}
+
+const (
+	NotesTable = "notes"
+)
+
+type Note struct {
+	Note     string `json:"note"`
+	Height   int64  `json:"height"`
+	Round    int32  `json:"round"`
+	NoteType string `json:"note_type"`
+}
+
+func (p Note) Table() string {
+	return NotesTable
+}
+
+func WriteNote(
+	client trace.Tracer,
+	height int64,
+	round int32,
+	noteType string,
+	note string,
+	items ...interface{},
+) {
+	if !client.IsCollecting(NotesTable) {
+		return
+	}
+
+	client.Write(Note{
+		Height:   height,
+		Round:    round,
+		Note:     fmt.Sprintf(note, items...),
+		NoteType: noteType,
+	})
+}
+
+const (
+	CatchupRequestsTable = "catch_reqs"
+)
+
+type CatchupRequest struct {
+	Height int64  `json:"height"`
+	Round  int32  `json:"round"`
+	Parts  string `json:"parts"`
+	Peer   string `json:"peer"`
+}
+
+func (b CatchupRequest) Table() string {
+	return CatchupRequestsTable
+}
+
+func WriteCatchupRequest(
+	client trace.Tracer,
+	height int64,
+	round int32,
+	parts string,
+	peer string,
+) {
+	// this check is redundant to what is checked during client.Write, although it
+	// is an optimization to avoid allocations from the map of fields.
+	if !client.IsCollecting(CatchupRequestsTable) {
+		return
+	}
+	client.Write(CatchupRequest{
+		Height: height,
+		Round:  round,
+		Parts:  parts,
+		Peer:   peer,
+	})
+}
+
+const (
+	RetriesTable = "retries"
+)
+
+type Retries struct {
+	Height  int64  `json:"height"`
+	Round   int32  `json:"round"`
+	Missing string `json:"missing"`
+}
+
+func (b Retries) Table() string {
+	return RetriesTable
+}
+
+func WriteRetries(
+	client trace.Tracer,
+	height int64,
+	round int32,
+	missing string,
+) {
+	client.Write(Retries{
+		Height:  height,
+		Round:   round,
+		Missing: missing,
+	})
+}
+
+const (
+	GapTable = "gap"
+)
+
+type Gap struct {
+	Height int64 `json:"height"`
+	Round  int32 `json:"round"`
+}
+
+func (b Gap) Table() string {
+	return GapTable
+}
+
+func WriteGap(
+	client trace.Tracer,
+	height int64,
+	round int32,
+) {
+	client.Write(Gap{
+		Height: height,
+		Round:  round,
 	})
 }

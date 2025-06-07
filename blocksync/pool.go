@@ -32,7 +32,7 @@ eg, L = latency = 0.1s
 const (
 	requestIntervalMS         = 2
 	maxPendingRequestsPerPeer = 20
-	requestRetrySeconds       = 30
+	requestRetrySeconds       = 45
 
 	// Minimum recv rate to ensure we're receiving blocks from a peer fast
 	// enough. If a peer is not sending us data at at least that rate, we
@@ -54,7 +54,7 @@ const (
 	minBlocksForSingleRequest = 50
 )
 
-var peerTimeout = 15 * time.Second // not const so we can override with tests
+var peerTimeout = 120 * time.Second // not const so we can override with tests
 
 /*
 	Peers self report their heights when we join the block pool.

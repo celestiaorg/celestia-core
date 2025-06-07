@@ -26,6 +26,15 @@ Whenever you generate code or documentation:
 - Include both positive and negative test cases
 - Test edge cases and error conditions
 
+## Blockchain-Specific Guidelines
+
+### Security Considerations
+- Always validate user inputs, especially in message handlers
+- Be cautious with arithmetic operations that could overflow
+- Verify permissions and authority before state modifications
+- Consider replay attacks and ensure proper nonce/sequence handling
+- Be mindful of gas consumption and potential DoS vectors
+
 ## Pull Request Rules
 - When naming a PR or commits, always follow [conventional commits](https://www.conventionalcommits.org/en/v1.0.0/#summary)
 

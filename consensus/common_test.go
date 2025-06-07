@@ -12,6 +12,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cometbft/cometbft/consensus/propagation"
+
 	"github.com/go-kit/log/term"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -228,7 +230,7 @@ func decideProposal(
 	round int32,
 ) (*types.Proposal, *types.Block) {
 	cs1.mtx.Lock()
-	block, err := cs1.createProposalBlock(ctx)
+	block, _, err := cs1.createProposalBlock(ctx)
 	require.NoError(t, err)
 	blockParts, err := block.MakePartSet(types.BlockPartSizeBytes)
 	require.NoError(t, err)
@@ -432,13 +434,28 @@ func newStateWithConfigAndBlockStore(
 	}
 
 	blockExec := sm.NewBlockExecutor(stateStore, log.TestingLogger(), proxyAppConnCon, mempool, evpool, blockStore)
-	cs := NewState(thisConfig.Consensus, state, blockExec, blockStore, mempool, evpool)
+	key, err := p2p.LoadOrGenNodeKey(thisConfig.NodeKeyFile())
+	if err != nil {
+		panic(err)
+	}
+	partsChan := make(chan types.PartInfo, 1000)
+	proposalChan := make(chan types.Proposal, 100)
+	propagator := propagation.NewReactor(key.ID(), propagation.Config{
+		Store:         blockStore,
+		Mempool:       mempool,
+		Privval:       pv,
+		ChainID:       state.ChainID,
+		BlockMaxBytes: state.ConsensusParams.Block.MaxBytes,
+		PartChan:      partsChan,
+		ProposalChan:  proposalChan,
+	})
+	cs := NewState(thisConfig.Consensus, state, blockExec, blockStore, propagator, mempool, evpool, partsChan, proposalChan)
 	cs.SetLogger(log.TestingLogger().With("module", "consensus"))
 	cs.SetPrivValidator(pv)
 
 	eventBus := types.NewEventBus()
 	eventBus.SetLogger(log.TestingLogger().With("module", "events"))
-	err := eventBus.Start()
+	err = eventBus.Start()
 	if err != nil {
 		panic(err)
 	}

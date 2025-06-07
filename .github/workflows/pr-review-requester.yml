@@ -1,0 +1,23 @@
+name: pr-review-requester
+
+on:
+  # pull_request_target is used to allow forks write permissions when running
+  # this workflow. With the pull_request trigger, forks do not have any write
+  # access for security reasons, however write access is needed in order to
+  # request reviews. Since this workflow is simply requesting reviewers, it is
+  # safe to allow forks write access.
+  pull_request_target:
+
+jobs:
+  auto-request-review:
+    name: Auto request reviews
+    uses: celestiaorg/.github/.github/workflows/reusable_housekeeping.yml@98f519843a1bade938e5604202df600aa0717aa8 #v0.6.3
+    secrets: inherit
+    # write access for issues and pull requests is needed because the called
+    # workflow requires write access to issues and pull requests and the
+    # permissions must match
+    permissions:
+      issues: write
+      pull-requests: write
+    with:
+      run-auto-request-review: true

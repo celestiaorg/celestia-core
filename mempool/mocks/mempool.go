@@ -63,23 +63,23 @@ func (_m *Mempool) FlushAppConn() error {
 }
 
 // GetTxByKey provides a mock function with given fields: key
-func (_m *Mempool) GetTxByKey(key types.TxKey) (types.Tx, bool) {
+func (_m *Mempool) GetTxByKey(key types.TxKey) (*types.CachedTx, bool) {
 	ret := _m.Called(key)
 
 	if len(ret) == 0 {
 		panic("no return value specified for GetTxByKey")
 	}
 
-	var r0 types.Tx
+	var r0 *types.CachedTx
 	var r1 bool
-	if rf, ok := ret.Get(0).(func(types.TxKey) (types.Tx, bool)); ok {
+	if rf, ok := ret.Get(0).(func(types.TxKey) (*types.CachedTx, bool)); ok {
 		return rf(key)
 	}
-	if rf, ok := ret.Get(0).(func(types.TxKey) types.Tx); ok {
+	if rf, ok := ret.Get(0).(func(types.TxKey) *types.CachedTx); ok {
 		r0 = rf(key)
 	} else {
 		if ret.Get(0) != nil {
-			r0 = ret.Get(0).(types.Tx)
+			r0 = ret.Get(0).(*types.CachedTx)
 		}
 	}
 
@@ -98,19 +98,19 @@ func (_m *Mempool) Lock() {
 }
 
 // ReapMaxBytesMaxGas provides a mock function with given fields: maxBytes, maxGas
-func (_m *Mempool) ReapMaxBytesMaxGas(maxBytes int64, maxGas int64) types.Txs {
+func (_m *Mempool) ReapMaxBytesMaxGas(maxBytes int64, maxGas int64) []*types.CachedTx {
 	ret := _m.Called(maxBytes, maxGas)
 
 	if len(ret) == 0 {
 		panic("no return value specified for ReapMaxBytesMaxGas")
 	}
 
-	var r0 types.Txs
-	if rf, ok := ret.Get(0).(func(int64, int64) types.Txs); ok {
+	var r0 []*types.CachedTx
+	if rf, ok := ret.Get(0).(func(int64, int64) []*types.CachedTx); ok {
 		r0 = rf(maxBytes, maxGas)
 	} else {
 		if ret.Get(0) != nil {
-			r0 = ret.Get(0).(types.Txs)
+			r0 = ret.Get(0).([]*types.CachedTx)
 		}
 	}
 
@@ -118,19 +118,19 @@ func (_m *Mempool) ReapMaxBytesMaxGas(maxBytes int64, maxGas int64) types.Txs {
 }
 
 // ReapMaxTxs provides a mock function with given fields: max
-func (_m *Mempool) ReapMaxTxs(max int) types.Txs {
+func (_m *Mempool) ReapMaxTxs(max int) []*types.CachedTx {
 	ret := _m.Called(max)
 
 	if len(ret) == 0 {
 		panic("no return value specified for ReapMaxTxs")
 	}
 
-	var r0 types.Txs
-	if rf, ok := ret.Get(0).(func(int) types.Txs); ok {
+	var r0 []*types.CachedTx
+	if rf, ok := ret.Get(0).(func(int) []*types.CachedTx); ok {
 		r0 = rf(max)
 	} else {
 		if ret.Get(0) != nil {
-			r0 = ret.Get(0).(types.Txs)
+			r0 = ret.Get(0).([]*types.CachedTx)
 		}
 	}
 
@@ -217,7 +217,7 @@ func (_m *Mempool) Unlock() {
 }
 
 // Update provides a mock function with given fields: blockHeight, blockTxs, deliverTxResponses, newPreFn, newPostFn
-func (_m *Mempool) Update(blockHeight int64, blockTxs types.Txs, deliverTxResponses []*abcitypes.ExecTxResult, newPreFn mempool.PreCheckFunc, newPostFn mempool.PostCheckFunc) error {
+func (_m *Mempool) Update(blockHeight int64, blockTxs []*types.CachedTx, deliverTxResponses []*abcitypes.ExecTxResult, newPreFn mempool.PreCheckFunc, newPostFn mempool.PostCheckFunc) error {
 	ret := _m.Called(blockHeight, blockTxs, deliverTxResponses, newPreFn, newPostFn)
 
 	if len(ret) == 0 {
@@ -225,7 +225,7 @@ func (_m *Mempool) Update(blockHeight int64, blockTxs types.Txs, deliverTxRespon
 	}
 
 	var r0 error
-	if rf, ok := ret.Get(0).(func(int64, types.Txs, []*abcitypes.ExecTxResult, mempool.PreCheckFunc, mempool.PostCheckFunc) error); ok {
+	if rf, ok := ret.Get(0).(func(int64, []*types.CachedTx, []*abcitypes.ExecTxResult, mempool.PreCheckFunc, mempool.PostCheckFunc) error); ok {
 		r0 = rf(blockHeight, blockTxs, deliverTxResponses, newPreFn, newPostFn)
 	} else {
 		r0 = ret.Error(0)

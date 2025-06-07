@@ -236,6 +236,30 @@ func TestSignProposal(t *testing.T) {
 	assert.Equal(sig, proposal.Signature)
 }
 
+func TestSignP2PMessage(t *testing.T) {
+	tempKeyFile, err := os.CreateTemp("", "priv_validator_key_")
+	require.Nil(t, err)
+	tempStateFile, err := os.CreateTemp("", "priv_validator_state_")
+	require.Nil(t, err)
+
+	privVal := GenFilePV(tempKeyFile.Name(), tempStateFile.Name())
+
+	randHash := cmtrand.Bytes(tmhash.Size)
+
+	chainID := "test"
+	uid := "test"
+
+	sig, err := privVal.SignP2PMessage(chainID, uid, randHash)
+	require.NoError(t, err, "expected no error signing proposal")
+
+	require.Len(t, sig, 64)
+
+	pubK, err := privVal.GetPubKey()
+	require.NoError(t, err)
+
+	require.True(t, pubK.VerifySignature(P2PMessageSignBytes(chainID, uid, randHash), sig))
+}
+
 func TestDifferByTimestamp(t *testing.T) {
 	tempKeyFile, err := os.CreateTemp("", "priv_validator_key_")
 	require.Nil(t, err)

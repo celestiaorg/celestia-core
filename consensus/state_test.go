@@ -200,7 +200,7 @@ func TestStateBadProposal(t *testing.T) {
 	proposalCh := subscribe(cs1.eventBus, types.EventQueryCompleteProposal)
 	voteCh := subscribe(cs1.eventBus, types.EventQueryVote)
 
-	propBlock, err := cs1.createProposalBlock(ctx) // changeProposer(t, cs1, vs2)
+	propBlock, _, err := cs1.createProposalBlock(ctx) // changeProposer(t, cs1, vs2)
 	require.NoError(t, err)
 
 	// make the second validator the proposer by incrementing round
@@ -2589,22 +2589,20 @@ func signAddPrecommitWithExtension(
 	addVotes(cs, v)
 }
 
-func findBlockSizeLimit(t *testing.T, height, maxBytes int64, cs *State, partSize uint32, oversized bool) (*types.Block, *types.PartSet) {
+func findBlockSizeLimit(t *testing.T, height, maxBytes int64, cs *State, _ uint32, oversized bool) (*types.Block, *types.PartSet) {
 	var offset int64
 	if !oversized {
 		offset = -2
 	}
 	softMaxDataBytes := int(types.MaxDataBytes(maxBytes, 0, 0))
 	for i := softMaxDataBytes; i < softMaxDataBytes*2; i++ {
-		propBlock := cs.state.MakeBlock(
+		propBlock, propBlockParts, err := cs.state.MakeBlock(
 			height,
 			types.MakeData([]types.Tx{[]byte("a=" + strings.Repeat("o", i-2))}),
 			&types.Commit{},
 			nil,
 			cs.privValidatorPubKey.Address(),
 		)
-
-		propBlockParts, err := propBlock.MakePartSet(partSize)
 		require.NoError(t, err)
 		if propBlockParts.ByteSize() > maxBytes+offset {
 			s := "real max"

@@ -11,19 +11,17 @@ import (
 // seen this transaction, this struct should never be modified
 type wrappedTx struct {
 	// these fields are immutable
-	tx        types.Tx    // the original transaction data
-	key       types.TxKey // the transaction hash
-	height    int64       // height when this transaction was initially checked (for expiry)
-	timestamp time.Time   // time when transaction was entered (for TTL)
-	gasWanted int64       // app: gas required to execute this transaction
-	priority  int64       // app: priority value for this transaction
-	sender    string      // app: assigned sender label
+	tx        *types.CachedTx // the original transaction data
+	height    int64           // height when this transaction was initially checked (for expiry)
+	timestamp time.Time       // time when transaction was entered (for TTL)
+	gasWanted int64           // app: gas required to execute this transaction
+	priority  int64           // app: priority value for this transaction
+	sender    string          // app: assigned sender label
 }
 
-func newWrappedTx(tx types.Tx, key types.TxKey, height, gasWanted, priority int64, sender string) *wrappedTx {
+func newWrappedTx(tx *types.CachedTx, height, gasWanted, priority int64, sender string) *wrappedTx {
 	return &wrappedTx{
 		tx:        tx,
-		key:       key,
 		height:    height,
 		timestamp: time.Now().UTC(),
 		gasWanted: gasWanted,
@@ -33,4 +31,7 @@ func newWrappedTx(tx types.Tx, key types.TxKey, height, gasWanted, priority int6
 }
 
 // Size reports the size of the raw transaction in bytes.
-func (w *wrappedTx) size() int64 { return int64(len(w.tx)) }
+func (w *wrappedTx) size() int64 { return int64(len(w.tx.Tx)) }
+
+// key returns the underlying tx key.
+func (w *wrappedTx) key() types.TxKey { return w.tx.Key() }
