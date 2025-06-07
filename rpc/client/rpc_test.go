@@ -570,7 +570,8 @@ func TestBlockSearch(t *testing.T) {
 }
 func TestTxSearch(t *testing.T) {
 	c := getHTTPClient()
-
+	status, err := c.Status(context.Background())
+	require.NoError(t, err)
 	// first we broadcast a few txs
 	for i := 0; i < 10; i++ {
 		_, _, tx := MakeTxKV()
@@ -580,7 +581,7 @@ func TestTxSearch(t *testing.T) {
 
 	// since we're not using an isolated test server, we'll have lingering transactions
 	// from other tests as well
-	result, err := c.TxSearch(context.Background(), "tx.height >= 0", true, nil, nil, "asc")
+	result, err := c.TxSearch(context.Background(), fmt.Sprintf("tx.height >= %d", status.SyncInfo.LatestBlockHeight), true, nil, nil, "asc")
 	require.NoError(t, err)
 	txCount := len(result.Txs)
 
@@ -646,14 +647,14 @@ func TestTxSearch(t *testing.T) {
 		require.Len(t, result.Txs, 0)
 
 		// check sorting
-		result, err = c.TxSearch(context.Background(), "tx.height >= 1", false, nil, nil, "asc")
+		result, err = c.TxSearch(context.Background(), fmt.Sprintf("tx.height >= %d", status.SyncInfo.LatestBlockHeight), false, nil, nil, "asc")
 		require.Nil(t, err)
 		for k := 0; k < len(result.Txs)-1; k++ {
 			require.LessOrEqual(t, result.Txs[k].Height, result.Txs[k+1].Height)
 			require.LessOrEqual(t, result.Txs[k].Index, result.Txs[k+1].Index)
 		}
 
-		result, err = c.TxSearch(context.Background(), "tx.height >= 1", false, nil, nil, "desc")
+		result, err = c.TxSearch(context.Background(), fmt.Sprintf("tx.height >= %d", status.SyncInfo.LatestBlockHeight), false, nil, nil, "desc")
 		require.Nil(t, err)
 		for k := 0; k < len(result.Txs)-1; k++ {
 			require.GreaterOrEqual(t, result.Txs[k].Height, result.Txs[k+1].Height)
@@ -670,7 +671,7 @@ func TestTxSearch(t *testing.T) {
 		totalTx := 0
 		for page := 1; page <= pages; page++ {
 			page := page
-			result, err := c.TxSearch(context.Background(), "tx.height >= 1", true, &page, &perPage, "asc")
+			result, err := c.TxSearch(context.Background(), fmt.Sprintf("tx.height >= %d", status.SyncInfo.LatestBlockHeight), true, &page, &perPage, "asc")
 			require.NoError(t, err)
 			if page < pages {
 				require.Len(t, result.Txs, perPage)
