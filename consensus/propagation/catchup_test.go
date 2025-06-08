@@ -85,9 +85,9 @@ func TestAddCommitment_ReplaceProposalData(t *testing.T) {
 	// replace the existing partset header with a new one
 	secondProposal, secondPartset, _, _ := createTestProposal(t, sm, 1, 10, 1000000)
 	secondPsh := secondPartset.Header()
-
-	// set the second partset header
 	r1.AddCommitment(secondProposal.Height, secondProposal.Round, &secondPsh)
+
+	// verify if the partset header got updated
 	actualSecondPsh := r1.proposals[secondProposal.Height][secondProposal.Round].block.Original().Header()
 	assert.Equal(t, uint32(secondPartset.Total()), actualSecondPsh.Total)
 	assert.Equal(t, secondPsh.Hash, actualSecondPsh.Hash)
