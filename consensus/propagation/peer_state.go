@@ -1,6 +1,7 @@
 package propagation
 
 import (
+	"errors"
 	"sync/atomic"
 
 	"github.com/cometbft/cometbft/libs/bits"
@@ -120,20 +121,40 @@ func (d *PeerState) AddRequests(height int64, round int32, requests *bits.BitArr
 	d.state[height][round].addRequests(requests)
 }
 
-// SetHave sets the have bit for a given part. WARNING: if the state is not
-// initialized for a given height and round, the function will panic.
-func (d *PeerState) SetHave(height int64, round int32, part int) {
+// SetHave sets the have bit for a given part.
+// Returns an error if the state is not initialised.
+func (d *PeerState) SetHave(height int64, round int32, part int) error {
 	d.mtx.RLock()
 	defer d.mtx.RUnlock()
+	if d.state == nil {
+		return errors.New("peer state: nil state")
+	}
+	if d.state[height] == nil {
+		return errors.New("peer state: height not found")
+	}
+	if d.state[height][round] == nil {
+		return errors.New("peer state: round not found")
+	}
 	d.state[height][round].setHave(part, true)
+	return nil
 }
 
-// SetWant sets the want bit for a given part. WARNING: if the state is not
-// initialized for a given height and round, the function will panic.
-func (d *PeerState) SetWant(height int64, round int32, part int, wants bool) {
+// SetWant sets the want bit for a given part.
+// Returns an error if the state is not initialised.
+func (d *PeerState) SetWant(height int64, round int32, part int, wants bool) error {
 	d.mtx.RLock()
 	defer d.mtx.RUnlock()
+	if d.state == nil {
+		return errors.New("peer state: nil state")
+	}
+	if d.state[height] == nil {
+		return errors.New("peer state: height not found")
+	}
+	if d.state[height][round] == nil {
+		return errors.New("peer state: round not found")
+	}
 	d.state[height][round].setWant(part, wants)
+	return nil
 }
 
 // GetHaves retrieves the haves for a given height and round.
