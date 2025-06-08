@@ -3,6 +3,8 @@ package propagation
 import (
 	"errors"
 	"fmt"
+	"sync"
+	"time"
 
 	"github.com/cosmos/gogoproto/proto"
 
@@ -21,6 +23,8 @@ var _ Propagator = (*Reactor)(nil)
 
 const (
 	CompactBlockUID = "compactBlock"
+	maxRetries      = 3
+	retryDelay      = 200 * time.Millisecond
 )
 
 // ProposeBlock is called when the consensus routine has created a new proposal,
@@ -75,25 +79,76 @@ func (blockProp *Reactor) ProposeBlock(proposal *types.Proposal, block *types.Pa
 	// distribute equal portions of haves to each of the proposer's peers
 	peers := blockProp.getPeers()
 	chunks := chunkParts(parts.BitArray(), len(peers), 1)
-	// chunks = Shuffle(chunks)
+	var wg sync.WaitGroup
 	for index, peer := range peers {
-		e := p2p.Envelope{
-			ChannelID: DataChannel,
-			Message: &propagation.HaveParts{
-				Height: proposal.Height,
-				Round:  proposal.Round,
-				Parts:  chunkToPartMetaData(chunks[index], parts),
-			},
-		}
+		wg.Add(1)
+		go func(index int, peer *PeerState) {
+			defer wg.Done()
+			for i := 0; i < maxRetries; i++ {
+				err := blockProp.sendChunksToPeer(chunks[index], chunkToPartMetaData(chunks[index], parts), proposal.Height, proposal.Round, peer)
+				if err == nil {
+					if i > 0 {
+						blockProp.Logger.Info("successfully re-sent chunked haves to a different peer", "new_peer", peer.peer.ID(),
+							"height", proposal.Height,
+							"round", proposal.Round,
+							"part", index,
+							"retries", i,
+							"chunks", chunks[index].GetTrueIndices())
+					}
+					return
+				}
+				blockProp.Logger.Error("failed to send chunked haves. sending to another peer instead",
+					"peer", peer.peer.ID(),
+					"height", proposal.Height,
+					"round", proposal.Round,
+					"part", index,
+					"retries", maxRetries,
+					"err", err)
 
-		if !peer.peer.TrySend(e) {
-			blockProp.Logger.Error("failed to send have part", "peer", peer, "height", proposal.Height, "round", proposal.Round, "part", index)
-			// TODO retry
-			continue
-		}
-
-		schema.WriteBlockPartState(blockProp.traceClient, proposal.Height, proposal.Round, chunks[index].GetTrueIndices(), true, string(peer.peer.ID()), schema.Upload)
+				peer, err = blockProp.getPeerExcept(peer.peer.ID())
+				if err != nil {
+					blockProp.Logger.Error("failed to get the next peer to send chunks to", "err", err)
+					return
+				}
+			}
+			blockProp.Logger.Error("failed to send chunked haves to peer", "chunks", chunks[index].GetTrueIndices())
+		}(index, peer)
 	}
+	wg.Wait()
+}
+
+func (blockProp *Reactor) getPeerExcept(id p2p.ID) (*PeerState, error) {
+	shuffledPeers := shuffle(blockProp.getPeers())
+	for _, peer := range shuffledPeers {
+		if peer.peer.ID() != id {
+			return peer, nil
+		}
+	}
+	return nil, errors.New("no except peer found")
+}
+
+func (blockProp *Reactor) sendChunksToPeer(chunk *bits.BitArray, parts []*propagation.PartMetaData, height int64, round int32, peer *PeerState) error {
+	e := p2p.Envelope{
+		ChannelID: DataChannel,
+		Message: &propagation.HaveParts{
+			Height: height,
+			Round:  round,
+			Parts:  parts,
+		},
+	}
+
+	for retry := 0; retry < maxRetries; retry++ {
+		if peer.peer.TrySend(e) {
+			schema.WriteBlockPartState(blockProp.traceClient, height, round,
+				chunk.GetTrueIndices(), true, string(peer.peer.ID()), schema.Upload)
+			return nil
+		}
+
+		if retry < maxRetries-1 {
+			time.Sleep(retryDelay)
+		}
+	}
+	return fmt.Errorf("failed to send chunked haves to peer %v", peer.peer.ID())
 }
 
 func extractHashes(blocks ...*types.PartSet) [][]byte {
