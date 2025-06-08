@@ -472,6 +472,19 @@ func TestPropagationSmokeTest(t *testing.T) {
 	}
 }
 
+func TestValidateCompactBlock_InvalidLastLen(t *testing.T) {
+	reactors, _ := testBlockPropReactors(1, cfg.DefaultP2PConfig())
+	reactor1 := reactors[0]
+	reactor1.currentHeight = 10
+	reactor1.currentRound = 3
+	cb, _, _, _ := testCompactBlock(t, 10, 3)
+
+	// put an invalid last len
+	cb.LastLen = types.BlockPartSizeBytes + 1
+
+	assert.Error(t, reactor1.validateCompactBlock(cb))
+}
+
 func TestStopPeerForError(t *testing.T) {
 	t.Run("invalid compact block: incorrect original part set hash", func(t *testing.T) {
 		reactors, _ := testBlockPropReactors(2, cfg.DefaultP2PConfig())
