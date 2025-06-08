@@ -1,6 +1,7 @@
 package propagation
 
 import (
+	"bytes"
 	"math/rand"
 
 	proptypes "github.com/cometbft/cometbft/consensus/propagation/types"
@@ -100,7 +101,11 @@ func (blockProp *Reactor) AddCommitment(height int64, round int32, psh *types.Pa
 	combinedSet := proptypes.NewCombinedPartSetFromOriginal(types.NewPartSetFromHeader(*psh), true)
 
 	if blockProp.proposals[height][round] != nil {
-		return
+		existingPSH := blockProp.proposals[height][round].compactBlock.Proposal.BlockID.PartSetHeader
+		if existingPSH.Total == psh.Total && bytes.Equal(existingPSH.Hash, psh.Hash) {
+			return
+		}
+		blockProp.Logger.Info("replacing existing proposal with new one", "height", height, "round", round, "psh", psh)
 	}
 
 	blockProp.proposals[height][round] = &proposalData{
