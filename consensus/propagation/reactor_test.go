@@ -93,7 +93,7 @@ func createTestReactors(n int, p2pCfg *cfg.P2PConfig, tracer bool, traceDir stri
 		}
 
 		reactors[i] = newPropagationReactor(s, tr, mockPrivVal)
-		reactors[i].SetLogger(log.NewNopLogger())
+		reactors[i].SetLogger(log.TestingLogger())
 		s.AddReactor("BlockProp", reactors[i])
 		switches = append(switches, s)
 		return s
