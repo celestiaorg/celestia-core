@@ -23,6 +23,9 @@ type Reactor interface {
 	// SetSwitch allows setting a switch.
 	SetSwitch(*Switch)
 
+	// SetPeerManager allows setting a peer manager.
+	SetPeerManager(*PeerManager)
+
 	// GetChannels returns the list of MConnection.ChannelDescriptor. Make sure
 	// that each ID is unique across all the reactors added to the switch.
 	GetChannels() []*conn.ChannelDescriptor
@@ -53,6 +56,7 @@ type Reactor interface {
 type BaseReactor struct {
 	service.BaseService // Provides Start, Stop, .Quit
 	Switch              *Switch
+	PeerManager         *PeerManager
 }
 
 type ReactorOptions func(*BaseReactor)
@@ -68,6 +72,9 @@ func NewBaseReactor(name string, impl Reactor, opts ...ReactorOptions) *BaseReac
 
 func (br *BaseReactor) SetSwitch(sw *Switch) {
 	br.Switch = sw
+}
+func (br *BaseReactor) SetPeerManager(pm *PeerManager) {
+	br.PeerManager = pm
 }
 func (*BaseReactor) GetChannels() []*conn.ChannelDescriptor { return nil }
 func (*BaseReactor) AddPeer(Peer)                           {}

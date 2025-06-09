@@ -112,5 +112,8 @@ func (*NopMempoolReactor) Receive(p2p.Envelope) {}
 // SetSwitch does nothing.
 func (*NopMempoolReactor) SetSwitch(*p2p.Switch) {}
 
+// SetPeerManager does nothing.
+func (*NopMempoolReactor) SetPeerManager(*p2p.PeerManager) {}
+
 // QueueUnprocessedEnvelope does nothing.
 func (*NopMempoolReactor) QueueUnprocessedEnvelope(p2p.UnprocessedEnvelope) {}

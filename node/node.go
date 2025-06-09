@@ -57,7 +57,8 @@ type Node struct {
 
 	// network
 	transport   *p2p.MultiplexTransport
-	sw          *p2p.Switch  // p2p connections
+	sw          *p2p.Switch // p2p connections
+	pm          *p2p.PeerManager
 	addrBook    pex.AddrBook // known peers
 	nodeInfo    p2p.NodeInfo
 	nodeKey     *p2p.NodeKey // our node privkey
