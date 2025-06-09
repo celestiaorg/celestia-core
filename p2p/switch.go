@@ -899,8 +899,13 @@ func (sw *Switch) addPeer(p Peer) error {
 	schema.WritePeerUpdate(sw.traceClient, string(p.ID()), schema.PeerJoin, "")
 
 	// Start all the reactor protocols on the peer.
+	peerWanted := false
 	for _, reactor := range sw.reactors {
-		reactor.AddPeer(p) // TODO(tzdybal): add return type so reactor can reject peer
+		if err := reactor.AddPeer(p); err != nil {
+			sw.Logger.Info("Reactor rejected peer", "peer", p, "err", err, "reactor", reactor.String())
+			continue
+		}
+
 		chs := reactor.GetChannels()
 		if len(chs) > 0 { // for each reactor there is exactly one PeerSet, no need to iterate over channels
 			if err := sw.peerSetByChID[chs[0].ID].Add(p); err != nil {
@@ -910,9 +915,14 @@ func (sw *Switch) addPeer(p Peer) error {
 						" err ", "Peer has already errored and removal was attempted.",
 						"peer", p.ID())
 				}
-				return err
+				return err // TODO(tzdybal): this should never happen, right?
 			}
+			peerWanted = true
 		}
+	}
+	if !peerWanted {
+		sw.Logger.Error("Peer not wanted by any reactor", "peer", p)
+		sw.StopPeerGracefully(p)
 	}
 
 	sw.Logger.Debug("Added peer", "peer", p)
