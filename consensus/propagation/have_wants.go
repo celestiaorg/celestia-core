@@ -2,6 +2,7 @@ package propagation
 
 import (
 	"fmt"
+	"github.com/cometbft/cometbft/crypto/merkle"
 	"github.com/cometbft/cometbft/proto/tendermint/crypto"
 	"math"
 
@@ -532,19 +533,19 @@ func (blockProp *Reactor) handleRecoveryPart(peer p2p.ID, part *proptypes.Recove
 					Index:  p.Index,
 					Data:   pbz,
 				}
-				blockProp.clearWants(msg)
+				blockProp.clearWants(msg, *proof)
 			}
 		}(part.Height, part.Round, parts)
 
 		return
 	}
 
-	go blockProp.clearWants(part)
+	go blockProp.clearWants(part, *proof)
 }
 
 // clearWants checks the wantState to see if any peers want the given part, if
 // so, it attempts to send them that part.
-func (blockProp *Reactor) clearWants(part *proptypes.RecoveryPart) {
+func (blockProp *Reactor) clearWants(part *proptypes.RecoveryPart, proof merkle.Proof) {
 	for _, peer := range blockProp.getPeers() {
 		if peer.WantsPart(part.Height, part.Round, part.Index) {
 			e := p2p.Envelope{
@@ -555,10 +556,10 @@ func (blockProp *Reactor) clearWants(part *proptypes.RecoveryPart) {
 					Index:  part.Index,
 					Data:   part.Data,
 					Proof: crypto.Proof{
-						Total:    part.Proof.Total,
-						Index:    part.Proof.Index,
-						LeafHash: part.Proof.LeafHash,
-						Aunts:    part.Proof.Aunts,
+						Total:    proof.Total,
+						Index:    proof.Index,
+						LeafHash: proof.LeafHash,
+						Aunts:    proof.Aunts,
 					},
 				},
 			}
