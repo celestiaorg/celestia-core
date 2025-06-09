@@ -2,6 +2,7 @@ package propagation
 
 import (
 	"fmt"
+	"github.com/cometbft/cometbft/proto/tendermint/crypto"
 	"math"
 
 	"github.com/cometbft/cometbft/types"
@@ -548,7 +549,18 @@ func (blockProp *Reactor) clearWants(part *proptypes.RecoveryPart) {
 		if peer.WantsPart(part.Height, part.Round, part.Index) {
 			e := p2p.Envelope{
 				ChannelID: DataChannel,
-				Message:   &propproto.RecoveryPart{Height: part.Height, Round: part.Round, Index: part.Index, Data: part.Data},
+				Message: &propproto.RecoveryPart{
+					Height: part.Height,
+					Round:  part.Round,
+					Index:  part.Index,
+					Data:   part.Data,
+					Proof: crypto.Proof{
+						Total:    part.Proof.Total,
+						Index:    part.Proof.Index,
+						LeafHash: part.Proof.LeafHash,
+						Aunts:    part.Proof.Aunts,
+					},
+				},
 			}
 
 			if !peer.peer.TrySend(e) {
