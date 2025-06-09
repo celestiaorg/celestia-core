@@ -79,6 +79,7 @@ type Switch struct {
 	chDescs       []*conn.ChannelDescriptor
 	reactorsByCh  map[byte]Reactor
 	msgTypeByChID map[byte]proto.Message
+	peerSetByChID map[byte]*PeerSet
 	peers         *PeerSet
 	dialing       *cmap.CMap
 	reconnecting  *cmap.CMap
@@ -123,6 +124,7 @@ func NewSwitch(
 		chDescs:              make([]*conn.ChannelDescriptor, 0),
 		reactorsByCh:         make(map[byte]Reactor),
 		msgTypeByChID:        make(map[byte]proto.Message),
+		peerSetByChID:        make(map[byte]*PeerSet),
 		peers:                NewPeerSet(),
 		dialing:              cmap.NewCMap(),
 		reconnecting:         cmap.NewCMap(),
@@ -173,6 +175,7 @@ func WithTracer(tracer trace.Tracer) SwitchOption {
 // AddReactor adds the given reactor to the switch.
 // NOTE: Not goroutine safe.
 func (sw *Switch) AddReactor(name string, reactor Reactor) Reactor {
+	peerSet := NewPeerSet() // one peer set per reactor
 	for _, chDesc := range reactor.GetChannels() {
 		chID := chDesc.ID
 		// No two reactors can share the same channel.
@@ -181,6 +184,7 @@ func (sw *Switch) AddReactor(name string, reactor Reactor) Reactor {
 		}
 		sw.chDescs = append(sw.chDescs, chDesc)
 		sw.reactorsByCh[chID] = reactor
+		sw.peerSetByChID[chID] = peerSet
 		sw.msgTypeByChID[chID] = chDesc.MessageType
 	}
 	sw.reactors[name] = reactor
@@ -283,7 +287,7 @@ func (sw *Switch) OnStop() {
 func (sw *Switch) Broadcast(e Envelope) chan bool {
 	sw.Logger.Debug("Broadcast", "channel", e.ChannelID)
 
-	peers := sw.peers.List()
+	peers := sw.peersForEnvelope(e)
 	var wg sync.WaitGroup
 	wg.Add(len(peers))
 	successChan := make(chan bool, len(peers))
@@ -302,6 +306,15 @@ func (sw *Switch) Broadcast(e Envelope) chan bool {
 	}()
 
 	return successChan
+}
+
+func (sw *Switch) peersForEnvelope(e Envelope) []Peer {
+	set, ok := sw.peerSetByChID[e.ChannelID]
+	if !ok {
+		sw.Logger.Error("peer set not defined for given channel", "channel", e.ChannelID)
+		return nil
+	}
+	return set.List()
 }
 
 // NumPeers returns the count of outbound/inbound and outbound-dialing peers.
@@ -398,6 +411,10 @@ func (sw *Switch) stopAndRemovePeer(peer Peer, reason interface{}) {
 	schema.WritePeerUpdate(sw.traceClient, string(peer.ID()), schema.PeerDisconnect, fmt.Sprintf("%v", reason))
 	for _, reactor := range sw.reactors {
 		reactor.RemovePeer(peer, reason)
+		chs := reactor.GetChannels()
+		if len(chs) > 0 {
+			_ = sw.peerSetByChID[chs[0].ID].Remove(peer) // TODO(tzdybal): error handling
+		}
 	}
 
 	// Removing a peer should go last to avoid a situation where a peer
@@ -883,7 +900,19 @@ func (sw *Switch) addPeer(p Peer) error {
 
 	// Start all the reactor protocols on the peer.
 	for _, reactor := range sw.reactors {
-		reactor.AddPeer(p)
+		reactor.AddPeer(p) // TODO(tzdybal): add return type so reactor can reject peer
+		chs := reactor.GetChannels()
+		if len(chs) > 0 { // for each reactor there is exactly one PeerSet, no need to iterate over channels
+			if err := sw.peerSetByChID[chs[0].ID].Add(p); err != nil {
+				switch err.(type) {
+				case ErrPeerRemoval:
+					sw.Logger.Error("Error starting peer ",
+						" err ", "Peer has already errored and removal was attempted.",
+						"peer", p.ID())
+				}
+				return err
+			}
+		}
 	}
 
 	sw.Logger.Debug("Added peer", "peer", p)
