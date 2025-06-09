@@ -537,7 +537,9 @@ func (bA *BitArray) UnmarshalJSON(bz []byte) error {
 			bA2.SetIndex(i, true)
 		}
 	}
-	*bA = *bA2 //nolint:govet
+	// Copy fields individually to avoid copying the mutex
+	bA.Bits = bA2.Bits
+	bA.Elems = bA2.Elems
 	return nil
 }
 
