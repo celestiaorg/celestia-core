@@ -42,14 +42,14 @@ func TestPEXReactorAddRemovePeer(t *testing.T) {
 	size := book.Size()
 	peer := p2p.CreateRandomPeer(false)
 
-	r.AddPeer(peer)
+	require.NoError(t, r.AddPeer(peer))
 	assert.Equal(t, size+1, book.Size())
 
 	r.RemovePeer(peer, "peer not available")
 
 	outboundPeer := p2p.CreateRandomPeer(true)
 
-	r.AddPeer(outboundPeer)
+	require.NoError(t, r.AddPeer(outboundPeer))
 	assert.Equal(t, size+1, book.Size(), "outbound peers should not be added to the address book")
 
 	r.RemovePeer(outboundPeer, "peer not available")
@@ -512,7 +512,7 @@ func TestPEXReactorDoesNotAddPrivatePeersToAddrBook(t *testing.T) {
 	})
 	assert.Equal(t, size, book.Size())
 
-	pexR.AddPeer(peer)
+	require.NoError(t, pexR.AddPeer(peer))
 	assert.Equal(t, size, book.Size())
 }
 

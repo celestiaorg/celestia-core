@@ -174,16 +174,15 @@ func (blockProp *Reactor) GetChannels() []*conn.ChannelDescriptor {
 // AddPeer adds the peer to the block propagation reactor. This should be called when a peer
 // is connected. The proposal is sent to the peer so that it can start catchup
 // or request data.
-func (blockProp *Reactor) AddPeer(peer p2p.Peer) {
+func (blockProp *Reactor) AddPeer(peer p2p.Peer) error {
 	// Ignore the peer if it is ourselves.
 	if peer.ID() == blockProp.self {
-		return
+		return fmt.Errorf("ignoring self peer")
 	}
 
 	// ignore the peer if it already exists.
 	if p := blockProp.getPeer(peer.ID()); p != nil {
-		blockProp.Logger.Error("Peer exists in propagation reactors", "peer", peer.ID())
-		return
+		return fmt.Errorf("peer exists in propagation reactors, peer ID: %v", peer.ID())
 	}
 
 	peerState := newPeerState(peer, blockProp.Logger)
@@ -192,8 +191,7 @@ func (blockProp *Reactor) AddPeer(peer p2p.Peer) {
 
 	cb, _, found := blockProp.GetCurrentCompactBlock()
 	if !found {
-		blockProp.Logger.Error("Failed to get current compact block", "peer", peer.ID())
-		return
+		return fmt.Errorf("failed to get current compact block, peer: %v", peer.ID())
 	}
 
 	// send the current proposal
@@ -205,6 +203,7 @@ func (blockProp *Reactor) AddPeer(peer p2p.Peer) {
 	if !peer.TrySend(e) {
 		blockProp.Logger.Debug("failed to send proposal to peer", "peer", peer.ID())
 	}
+	return nil
 }
 
 func (blockProp *Reactor) RemovePeer(peer p2p.Peer, reason interface{}) {

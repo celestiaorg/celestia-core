@@ -109,11 +109,11 @@ func TestCountRequests(t *testing.T) {
 	reactor := reactors[0]
 
 	peer1 := mock.NewPeer(nil)
-	reactor.AddPeer(peer1)
+	require.NoError(t, reactor.AddPeer(peer1))
 	peer2 := mock.NewPeer(nil)
-	reactor.AddPeer(peer2)
+	require.NoError(t, reactor.AddPeer(peer2))
 	peer3 := mock.NewPeer(nil)
-	reactor.AddPeer(peer3)
+	require.NoError(t, reactor.AddPeer(peer3))
 
 	peer1State := reactor.getPeer(peer1.ID())
 	// peer1 requests part=0 at height=10, round=0
