@@ -30,7 +30,8 @@ func (ni mockNodeInfo) Validate() error                  { return nil }
 func (ni mockNodeInfo) CompatibleWith(NodeInfo) error    { return nil }
 
 func AddPeerToSwitchPeerSet(sw *Switch, peer Peer) {
-	sw.peers.Add(peer) //nolint:errcheck // ignore error
+	// Use peerManager to add peer for testing
+	_ = sw.peerManager.AcceptPeer(peer) //nolint:errcheck // ignore error
 }
 
 func CreateRandomPeer(outbound bool) Peer {
@@ -156,7 +157,7 @@ func (sw *Switch) addPeerWithConnection(conn net.Conn) error {
 		sw.mlc,
 	)
 
-	if err = sw.addPeer(p); err != nil {
+	if err = sw.peerManager.AcceptPeer(p); err != nil {
 		pc.CloseConn()
 		return err
 	}
