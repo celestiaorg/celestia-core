@@ -533,7 +533,7 @@ func (blockProp *Reactor) handleRecoveryPart(peer p2p.ID, part *proptypes.Recove
 					Index:  p.Index,
 					Data:   pbz,
 				}
-				blockProp.clearWants(msg, *proof)
+				blockProp.clearWants(msg, p.Proof)
 			}
 		}(part.Height, part.Round, parts)
 
