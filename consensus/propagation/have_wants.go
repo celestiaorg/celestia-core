@@ -1,8 +1,10 @@
 package propagation
 
 import (
+	"errors"
 	"fmt"
 	"math"
+	"time"
 
 	"github.com/cometbft/cometbft/types"
 
@@ -12,6 +14,11 @@ import (
 	"github.com/cometbft/cometbft/libs/trace/schema"
 	"github.com/cometbft/cometbft/p2p"
 	propproto "github.com/cometbft/cometbft/proto/tendermint/propagation"
+)
+
+const (
+	maxRetries = 3
+	retryDelay = 200 * time.Millisecond
 )
 
 // handleHaves is called when a peer sends a have message. This is used to
@@ -372,10 +379,13 @@ func (blockProp *Reactor) handleWants(peer p2p.ID, wants *proptypes.WantParts) {
 		}
 
 		if !p.peer.TrySend(e) {
-			blockProp.Logger.Error("failed to send part", "peer", peer, "height", height, "round", round, "part", partIndex)
+			blockProp.Logger.Error("failed to send part, retrying", "peer", peer, "height", height, "round", round, "part", partIndex)
+			if blockProp.retrySendingEnveloppe(e, p.peer) != nil {
+				// setting the part as still wanted
+				canSend.SetIndex(partIndex, false)
+			}
 			continue
 		}
-		// p.SetHave(height, round, int(partIndex))
 		schema.WriteBlockPart(blockProp.traceClient, height, round, part.Index, wants.Prove, string(peer), schema.Upload)
 	}
 
@@ -384,6 +394,24 @@ func (blockProp *Reactor) handleWants(peer p2p.ID, wants *proptypes.WantParts) {
 	if !stillMissing.IsEmpty() {
 		p.AddWants(height, round, stillMissing)
 	}
+}
+
+// retrySendingEnveloppe attempts to send an envelope to a peer with retries and delays upon failure.
+func (blockProp *Reactor) retrySendingEnveloppe(e p2p.Envelope, peer p2p.Peer) error {
+	for i := 0; i < maxRetries; i++ {
+		if peer.TrySend(e) {
+			blockProp.Logger.Debug("successfully sent envelope", "peer", peer.ID(), "attempt", i+1)
+			return nil
+		}
+
+		if i < maxRetries-1 {
+			time.Sleep(retryDelay)
+		}
+	}
+	blockProp.Logger.Error("failed to send envelope after max retries",
+		"peer", peer.ID(),
+		"retries", maxRetries)
+	return errors.New("failed to send envelope after max retries")
 }
 
 // handleRecoveryPart is called when a peer sends a block part message. This is used
