@@ -823,7 +823,7 @@ paths:
       parameters:
         - in: query
           name: limit
-          description: Maximum number of unconfirmed transactions to return (max 100)
+          description: Maximum number of unconfirmed transactions to return (max 100). If set to -1, it will return all the unconfirmed mempool transactions.
           required: false
           schema:
             type: integer
