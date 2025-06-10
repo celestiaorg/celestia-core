@@ -730,7 +730,7 @@ func waitForAndValidateBlockWithTx(
 			// check that txs match the txs we're waiting for.
 			// note they could be spread over multiple blocks,
 			// but they should be in order.
-			for _, tx := range newBlock.Data.Txs {
+			for _, tx := range newBlock.Data.Txs { //nolint:staticcheck
 				assert.EqualValues(t, txs[ntxs], tx)
 				ntxs++
 			}
@@ -819,7 +819,7 @@ func timeoutWaitGroup(n int, f func(int)) {
 // Ensure basic validation of structs is functioning
 
 func TestNewRoundStepMessageValidateBasic(t *testing.T) {
-	testCases := []struct { //nolint: maligned
+	testCases := []struct {
 		expectErr              bool
 		messageRound           int32
 		messageLastCommitRound int32
@@ -858,7 +858,7 @@ func TestNewRoundStepMessageValidateBasic(t *testing.T) {
 
 func TestNewRoundStepMessageValidateHeight(t *testing.T) {
 	initialHeight := int64(10)
-	testCases := []struct { //nolint: maligned
+	testCases := []struct {
 		expectErr              bool
 		messageLastCommitRound int32
 		messageHeight          int64
@@ -1010,7 +1010,7 @@ func TestHasVoteMessageValidateBasic(t *testing.T) {
 		invalidSignedMsgType cmtproto.SignedMsgType = 0x03
 	)
 
-	testCases := []struct { //nolint: maligned
+	testCases := []struct {
 		expectErr     bool
 		messageRound  int32
 		messageIndex  int32
@@ -1055,7 +1055,7 @@ func TestVoteSetMaj23MessageValidateBasic(t *testing.T) {
 		},
 	}
 
-	testCases := []struct { //nolint: maligned
+	testCases := []struct {
 		expectErr      bool
 		messageRound   int32
 		messageHeight  int64
