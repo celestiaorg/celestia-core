@@ -928,7 +928,7 @@ OUTER_LOOP:
 			}
 		}
 
-		if sleeping == 0 {
+		if sleeping == 0 { //nolint:staticcheck
 			// We sent nothing. Sleep...
 			sleeping = 1
 			logger.Debug("No votes to send, sleeping", "rs.Height", rs.Height, "prs.Height", prs.Height,
@@ -1489,7 +1489,7 @@ func (ps *PeerState) EnsureVoteBitArrays(height int64, numValidators int) {
 }
 
 func (ps *PeerState) ensureVoteBitArrays(height int64, numValidators int) {
-	if ps.PRS.Height == height {
+	if ps.PRS.Height == height { //nolint:staticcheck
 		if ps.PRS.Prevotes == nil {
 			ps.PRS.Prevotes = bits.NewBitArray(numValidators)
 		}

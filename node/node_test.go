@@ -162,7 +162,7 @@ func TestNodeSetPrivValTCP(t *testing.T) {
 
 	config := test.ResetTestRoot("node_priv_val_tcp_test")
 	defer os.RemoveAll(config.RootDir)
-	config.BaseConfig.PrivValidatorListenAddr = addr
+	config.BaseConfig.PrivValidatorListenAddr = addr //nolint:staticcheck
 
 	dialer := privval.DialTCPFn(addr, 100*time.Millisecond, ed25519.GenPrivKey())
 	dialerEndpoint := privval.NewSignerDialerEndpoint(
@@ -196,7 +196,7 @@ func TestPrivValidatorListenAddrNoProtocol(t *testing.T) {
 
 	config := test.ResetTestRoot("node_priv_val_tcp_test")
 	defer os.RemoveAll(config.RootDir)
-	config.BaseConfig.PrivValidatorListenAddr = addrNoPrefix
+	config.BaseConfig.PrivValidatorListenAddr = addrNoPrefix //nolint:staticcheck
 
 	_, err := DefaultNewNode(config, log.TestingLogger())
 	assert.Error(t, err)
@@ -208,7 +208,7 @@ func TestNodeSetPrivValIPC(t *testing.T) {
 
 	config := test.ResetTestRoot("node_priv_val_tcp_test")
 	defer os.RemoveAll(config.RootDir)
-	config.BaseConfig.PrivValidatorListenAddr = "unix://" + tmpfile
+	config.BaseConfig.PrivValidatorListenAddr = "unix://" + tmpfile //nolint:staticcheck
 
 	dialer := privval.DialUnixFn(tmpfile)
 	dialerEndpoint := privval.NewSignerDialerEndpoint(
