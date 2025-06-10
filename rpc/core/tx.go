@@ -264,7 +264,7 @@ func (env *Environment) TxStatus(ctx *rpctypes.Context, hash []byte) (*ctypes.Re
 		return &ctypes.ResultTxStatus{Status: TxStatusRejected, LatestHeight: latestHeight}, nil
 	}
 
-	// If the tx is not in the mempool, evicted, or committed, return unknown
+	// If the tx is not in the mempool, evicted, rejected or committed, return unknown
 	return &ctypes.ResultTxStatus{Status: TxStatusUnknown, LatestHeight: latestHeight}, nil
 }
 
