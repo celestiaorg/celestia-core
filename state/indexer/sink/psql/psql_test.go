@@ -6,6 +6,7 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"net"
 	"os"
 	"os/signal"
 	"testing"
@@ -68,6 +69,9 @@ func TestMain(m *testing.M) {
 			"listen_addresses = '*'",
 		},
 		ExposedPorts: []string{port},
+		PortBindings: map[docker.Port][]docker.PortBinding{
+			"5432/tcp": {{HostPort: fmt.Sprintf("%d", getFreePort())}},
+		},
 	}, func(config *docker.HostConfig) {
 		// set AutoRemove to true so that stopped container goes away by itself
 		config.AutoRemove = true
@@ -137,6 +141,21 @@ func TestMain(m *testing.M) {
 	}
 
 	os.Exit(code)
+}
+
+func getFreePort() int {
+	addr, err := net.ResolveTCPAddr("tcp", "localhost:0")
+	if err != nil {
+		panic(err)
+	}
+
+	l, err := net.ListenTCP("tcp", addr)
+	if err != nil {
+		panic(err)
+	}
+	defer l.Close()
+
+	return l.Addr().(*net.TCPAddr).Port
 }
 
 func TestIndexing(t *testing.T) {

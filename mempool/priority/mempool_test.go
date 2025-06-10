@@ -804,7 +804,7 @@ func TestConcurrentCheckTxDataRace(t *testing.T) {
 				// Use different transactions for different goroutines
 				// but ensure some overlap to trigger the race
 				var tx types.Tx
-				if id%3 == 0 {
+				if id%3 == 0 { //nolint:staticcheck
 					tx = tx1 // Already in cache, will access txByKey
 				} else if id%3 == 1 {
 					tx = tx2 // New transaction

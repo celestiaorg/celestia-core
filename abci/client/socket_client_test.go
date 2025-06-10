@@ -202,7 +202,7 @@ type blockedABCIApplication struct {
 
 func (b blockedABCIApplication) CheckTxAsync(ctx context.Context, r *types.RequestCheckTx) (*types.ResponseCheckTx, error) {
 	b.wg.Wait()
-	return b.BaseApplication.CheckTx(ctx, r)
+	return b.BaseApplication.CheckTx(ctx, r) //nolint:staticcheck
 }
 
 // TestCallbackInvokedWhenSetEarly ensures that the callback is invoked when
