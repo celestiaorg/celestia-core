@@ -22,7 +22,7 @@ Available Commands:
 
 Flags:
       --abci string        either socket or grpc (default "socket")
-      --address string     address of application socket (default "tcp://0.0.0.0:26658")
+      --address string     address of application socket (default "tcp://0.0.0.0:36658")
   -h, --help               help for abci-cli
       --log_level string   set the logger level (default "debug")
   -v, --verbose            print the command and results as if it were a console session
