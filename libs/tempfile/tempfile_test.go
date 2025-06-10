@@ -114,7 +114,7 @@ func TestWriteFileAtomicManyDuplicates(t *testing.T) {
 		fname := "/tmp/" + atomicWriteFilePrefix + fileRand
 		f, err := os.OpenFile(fname, atomicWriteFileFlag, 0777)
 		require.Nil(t, err)
-		_, err = f.WriteString(fmt.Sprintf(testString, i))
+		_, err = f.WriteString(fmt.Sprintf(testString, i)) //nolint:staticcheck
 		require.NoError(t, err)
 		defer os.Remove(fname)
 	}

@@ -408,7 +408,7 @@ func (h *Handshaker) ReplayBlocksWithContext(
 	var err error
 	// Now either store is equal to state, or one ahead.
 	// For each, consider all cases of where the app could be, given app <= store
-	if storeBlockHeight == stateBlockHeight {
+	if storeBlockHeight == stateBlockHeight { //nolint:staticcheck
 		// CometBFT ran Commit and saved the state.
 		// Either the app is asking for replay, or we're all synced up.
 		if appBlockHeight < storeBlockHeight {
