@@ -1,6 +1,6 @@
 module github.com/cometbft/cometbft
 
-go 1.23.0
+go 1.23.6
 
 toolchain go1.24.2
 
@@ -13,7 +13,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/credentials v1.17.59
 	github.com/aws/aws-sdk-go-v2/service/s3 v1.76.1
 	github.com/btcsuite/btcd/btcutil v1.1.6
-	github.com/celestiaorg/go-square/v2 v2.1.0
+	github.com/celestiaorg/go-square/v2 v2.2.0
 	github.com/celestiaorg/nmt v0.23.0
 	github.com/cenkalti/backoff v2.2.1+incompatible // indirect
 	github.com/cometbft/cometbft-db v0.14.1
@@ -57,11 +57,11 @@ require (
 	golang.org/x/sync v0.14.0
 	gonum.org/v1/gonum v0.15.1
 	google.golang.org/grpc v1.70.0
-	google.golang.org/protobuf v1.36.4
+	google.golang.org/protobuf v1.36.6
 )
 
 require (
-	github.com/gogo/protobuf v1.3.2
+	github.com/gogo/protobuf v1.3.2 // indirect
 	github.com/golang/snappy v0.0.4 // indirect
 	github.com/klauspost/reedsolomon v1.12.4
 )
