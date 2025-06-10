@@ -1,7 +1,7 @@
 name: Golang Linter
 # Lint runs golangci-lint over the entire CometBFT repository.
 #
-# This workflow is run on every pull request and push to v0.38.x.
+# This workflow is run on every pull request and push to v0.38.x and main.
 #
 # The `golangci` job will pass without running if no *.{go, mod, sum}
 # files have been modified.
@@ -13,6 +13,7 @@ on:
   push:
     branches:
       - v0.38.x
+      - main
 jobs:
   golangci:
     name: golangci-lint
