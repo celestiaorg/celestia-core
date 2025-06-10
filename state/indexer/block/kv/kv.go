@@ -419,7 +419,7 @@ func (idx *BlockerIndexer) match(
 
 	tmpHeights := make(map[string][]byte)
 
-	switch {
+	switch { //nolint:staticcheck
 	case c.Op == syntax.TEq:
 		it, err := dbm.IteratePrefix(idx.store, startKeyBz)
 		if err != nil {
