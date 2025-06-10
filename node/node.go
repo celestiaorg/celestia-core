@@ -875,7 +875,8 @@ func (n *Node) startRPC() ([]net.Listener, error) {
 			return nil, err
 		}
 		go func() {
-			if err := grpccore.StartGRPCServer(env, listener); err != nil { //nolint:staticcheck
+			//nolint:staticcheck // SA1019: core_grpc.StartGRPCClient is deprecated: A new gRPC API will be introduced after v0.38.
+			if err := grpccore.StartGRPCServer(env, listener); err != nil {
 				n.Logger.Error("Error starting gRPC server", "err", err)
 			}
 		}()

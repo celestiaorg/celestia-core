@@ -435,7 +435,7 @@ func TestPropagationSmokeTest(t *testing.T) {
 		prop, ps, block, metaData := createTestProposal(t, sm, i, 2, 1000000)
 
 		// predistribute portions of the block
-		for _, tx := range block.Data.Txs { //nolint:staticcheck
+		for _, tx := range block.Txs {
 			for j := 0; j < nodes/2; j++ {
 				r := reactors[j]
 				pool := r.mempool.(*mockMempool)
