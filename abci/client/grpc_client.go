@@ -19,6 +19,8 @@ import (
 
 var _ Client = (*grpcClient)(nil)
 
+const mebibyte = 1024 * 1024
+
 // A stripped copy of the remoteClient that makes
 // synchronous calls using grpc
 type grpcClient struct {
@@ -89,7 +91,14 @@ func (cli *grpcClient) OnStart() error {
 
 RETRY_LOOP:
 	for {
-		conn, err := grpc.Dial(cli.addr, grpc.WithTransportCredentials(insecure.NewCredentials()), grpc.WithContextDialer(dialerFunc)) //nolint:staticcheck
+		conn, err := grpc.NewClient(cli.addr,
+			grpc.WithTransportCredentials(insecure.NewCredentials()),
+			grpc.WithContextDialer(dialerFunc),
+			grpc.WithDefaultCallOptions(
+				grpc.MaxCallRecvMsgSize(100*mebibyte),
+				grpc.MaxCallSendMsgSize(100*mebibyte),
+			),
+		)
 		if err != nil {
 			if cli.mustConnect {
 				return err
