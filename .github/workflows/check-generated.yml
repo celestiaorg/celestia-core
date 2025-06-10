@@ -8,6 +8,7 @@ on:
   pull_request:
     branches:
       - v0.38.x
+  merge_group:
 
 permissions:
   contents: read
