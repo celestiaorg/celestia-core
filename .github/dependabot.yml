@@ -1,5 +1,16 @@
 version: 2
 updates:
+  # GitHub Actions configurations
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
+    target-branch: "main"
+    open-pull-requests-limit: 10
+    labels:
+      - dependencies
+      - automerge
+
   - package-ecosystem: github-actions
     directory: "/"
     schedule:
@@ -19,3 +30,26 @@ updates:
     labels:
       - dependencies
       - automerge
+
+  # Go package configurations
+  - package-ecosystem: gomod
+    directory: "/"
+    schedule:
+      interval: weekly
+    target-branch: "main"
+    open-pull-requests-limit: 10
+    labels:
+      - dependencies
+      - automerge
+
+  - package-ecosystem: gomod
+    directory: "/"
+    schedule:
+      interval: weekly
+    target-branch: "v0.38.x-celestia"
+    open-pull-requests-limit: 10
+    labels:
+      - dependencies
+      - automerge
+
+
