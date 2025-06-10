@@ -54,13 +54,13 @@ require (
 	go.opentelemetry.io/otel/sdk v1.34.0
 	golang.org/x/crypto v0.35.0
 	golang.org/x/net v0.34.0
-	golang.org/x/sync v0.11.0
+	golang.org/x/sync v0.15.0
 	gonum.org/v1/gonum v0.15.1
 	google.golang.org/grpc v1.70.0
 	google.golang.org/protobuf v1.36.4
 )
 
-require github.com/golang/snappy v0.0.4
+require github.com/golang/snappy v0.0.4 // indirect
 
 require (
 	dario.cat/mergo v1.0.0 // indirect
