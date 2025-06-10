@@ -1738,7 +1738,7 @@ func TestPrepareProposalReceivesVoteExtensions(t *testing.T) {
 		}
 		extSignBytes, err := protoio.MarshalDelimited(&cve)
 		require.NoError(t, err)
-		pubKey, err := vss[i].PrivValidator.GetPubKey()
+		pubKey, err := vss[i].PrivValidator.GetPubKey() //nolint:staticcheck
 		require.NoError(t, err)
 		require.True(t, pubKey.VerifySignature(extSignBytes, vote.ExtensionSignature))
 	}

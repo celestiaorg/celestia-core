@@ -117,7 +117,7 @@ func (wal *BaseWAL) Group() *auto.Group {
 }
 
 func (wal *BaseWAL) SetLogger(l log.Logger) {
-	wal.BaseService.Logger = l
+	wal.BaseService.Logger = l //nolint:staticcheck
 	wal.group.SetLogger(l)
 }
 

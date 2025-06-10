@@ -353,7 +353,7 @@ func (txi *TxIndex) match(
 
 	tmpHashes := make(map[string][]byte)
 
-	switch {
+	switch { //nolint:staticcheck
 	case c.Op == syntax.TEq:
 		it, err := dbm.IteratePrefix(txi.store, startKeyBz)
 		if err != nil {
@@ -702,7 +702,7 @@ func extractValueFromKey(key []byte) string {
 }
 
 func extractEventSeqFromKey(key []byte) string {
-	parts := strings.SplitN(string(key), tagKeySeparator, -1)
+	parts := strings.SplitN(string(key), tagKeySeparator, -1) //nolint:staticcheck
 
 	lastEl := parts[len(parts)-1]
 
