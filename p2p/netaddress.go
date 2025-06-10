@@ -255,7 +255,7 @@ func (na *NetAddress) Routable() bool {
 		return false
 	}
 	// TODO(oga) bitcoind doesn't include RFC3849 here, but should we?
-	return !(na.RFC1918() || na.RFC3927() || na.RFC4862() ||
+	return !(na.RFC1918() || na.RFC3927() || na.RFC4862() || //nolint:staticcheck
 		na.RFC4193() || na.RFC4843() || na.Local())
 }
 
