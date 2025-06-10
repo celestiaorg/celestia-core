@@ -54,14 +54,14 @@ require (
 	go.opentelemetry.io/otel/sdk v1.34.0
 	golang.org/x/crypto v0.38.0
 	golang.org/x/net v0.40.0
-	golang.org/x/sync v0.14.0
+	golang.org/x/sync v0.15.0
 	gonum.org/v1/gonum v0.15.1
 	google.golang.org/grpc v1.70.0
 	google.golang.org/protobuf v1.36.4
 )
 
 require (
-	github.com/gogo/protobuf v1.3.2
+	github.com/gogo/protobuf v1.3.2 // indirect
 	github.com/golang/snappy v0.0.4 // indirect
 	github.com/klauspost/reedsolomon v1.12.4
 )
