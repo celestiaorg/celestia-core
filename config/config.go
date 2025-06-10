@@ -128,7 +128,7 @@ func TestConfig() *Config {
 
 // SetRoot sets the RootDir for all Config structs
 func (cfg *Config) SetRoot(root string) *Config {
-	cfg.BaseConfig.RootDir = root
+	cfg.BaseConfig.RootDir = root //nolint:staticcheck
 	cfg.RPC.RootDir = root
 	cfg.P2P.RootDir = root
 	cfg.Mempool.RootDir = root
@@ -179,7 +179,7 @@ func (cfg *Config) CheckDeprecated() []string {
 // BaseConfig
 
 // BaseConfig defines the base configuration for a CometBFT node
-type BaseConfig struct { //nolint: maligned
+type BaseConfig struct {
 
 	// The version of the CometBFT binary that created
 	// or last modified the config file
@@ -560,7 +560,7 @@ func (cfg RPCConfig) IsTLSEnabled() bool {
 // P2PConfig
 
 // P2PConfig defines the configuration options for the CometBFT peer-to-peer networking layer
-type P2PConfig struct { //nolint: maligned
+type P2PConfig struct {
 	RootDir string `mapstructure:"home"`
 
 	// Address to listen for incoming connections

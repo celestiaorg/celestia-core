@@ -249,8 +249,8 @@ format:
 
 #? lint: Run latest golangci-lint linter
 lint:
-	@echo "--> Running linter"
-	@go run github.com/golangci/golangci-lint/cmd/golangci-lint@latest run
+	@echo "--> Running golangci-lint"
+	@golangci-lint run
 .PHONY: lint
 
 # https://github.com/cometbft/cometbft/pull/1925#issuecomment-1875127862
