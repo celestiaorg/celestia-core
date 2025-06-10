@@ -13,7 +13,7 @@ on:
   merge_group:
   push:
     branches:
-      - v0.38.x
+      - v0.38.x-celestia
       - main
 jobs:
   golangci:
