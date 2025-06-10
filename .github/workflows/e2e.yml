@@ -1,5 +1,5 @@
 name: e2e
-# Runs the CI end-to-end test network on all pushes to v0.38.x and main
+# Runs the CI end-to-end test network on all pushes to v0.38.x-celestia and main
 # and every pull request, but only if any Go files have been changed.
 on:
   workflow_dispatch:  # allow running workflow manually
