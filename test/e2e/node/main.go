@@ -50,6 +50,11 @@ func main() {
 	}
 }
 
+const (
+	builtin          = "builtin"
+	builtin_connsync = "builtin_connsync"
+)
+
 // run runs the application - basically like main() with error handling.
 func run(configFile string) error {
 	cfg, err := LoadConfig(configFile)
@@ -62,7 +67,7 @@ func run(configFile string) error {
 		if err = startSigner(cfg); err != nil {
 			return err
 		}
-		if cfg.Protocol == "builtin" || cfg.Protocol == "builtin_connsync" {
+		if cfg.Protocol == builtin || cfg.Protocol == builtin_connsync {
 			time.Sleep(1 * time.Second)
 		}
 	}
@@ -71,7 +76,7 @@ func run(configFile string) error {
 	switch cfg.Protocol {
 	case "socket", "grpc":
 		err = startApp(cfg)
-	case "builtin", "builtin_connsync":
+	case builtin, builtin_connsync:
 		if cfg.Mode == string(e2e.ModeLight) {
 			err = startLightClient(cfg)
 		} else {
