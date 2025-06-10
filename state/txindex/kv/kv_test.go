@@ -316,7 +316,7 @@ func TestTxSearchEventMatchByHeight(t *testing.T) {
 			assert.Len(t, results, tc.resultsLength)
 			if tc.resultsLength > 0 {
 				for _, txr := range results {
-					if txr.Height == 1 {
+					if txr.Height == 1 { //nolint:staticcheck
 						assert.True(t, proto.Equal(txResult, txr))
 					} else if txr.Height == 10 {
 						assert.True(t, proto.Equal(txResult10, txr))

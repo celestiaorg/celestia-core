@@ -170,10 +170,10 @@ func TestBlockStoreSaveLoadBlock(t *testing.T) {
 	require.GreaterOrEqual(t, validPartSet.Total(), uint32(2))
 	part2 := validPartSet.GetPart(1)
 
-	seenCommit := makeTestExtCommit(block.Header.Height, cmttime.Now())
+	seenCommit := makeTestExtCommit(block.Header.Height, cmttime.Now()) //nolint:staticcheck
 	bs.SaveBlockWithExtendedCommit(block, validPartSet, seenCommit)
 	require.EqualValues(t, 1, bs.Base(), "expecting the new height to be changed")
-	require.EqualValues(t, block.Header.Height, bs.Height(), "expecting the new height to be changed")
+	require.EqualValues(t, block.Header.Height, bs.Height(), "expecting the new height to be changed") //nolint:staticcheck
 
 	incompletePartSet := types.NewPartSetFromHeader(types.PartSetHeader{Total: 2})
 	uncontiguousPartSet := types.NewPartSetFromHeader(types.PartSetHeader{Total: 0})
@@ -409,7 +409,7 @@ func TestSaveBlockWithExtendedCommitPanicOnAbsentExtension(t *testing.T) {
 			block, ps, err := state.MakeBlock(h, types.MakeData(test.MakeNTxs(h, 10)), new(types.Commit), nil, state.Validators.GetProposer().Address)
 			require.NoError(t, err)
 
-			seenCommit := makeTestExtCommit(block.Header.Height, cmttime.Now())
+			seenCommit := makeTestExtCommit(block.Header.Height, cmttime.Now()) //nolint:staticcheck
 			require.NoError(t, err)
 			testCase.malleateCommit(seenCommit)
 			if testCase.shouldPanic {
@@ -449,7 +449,7 @@ func TestLoadBlockExtendedCommit(t *testing.T) {
 			h := bs.Height() + 1
 			block, ps, err := state.MakeBlock(h, types.MakeData(test.MakeNTxs(h, 10)), new(types.Commit), nil, state.Validators.GetProposer().Address)
 			require.NoError(t, err)
-			seenCommit := makeTestExtCommit(block.Header.Height, cmttime.Now())
+			seenCommit := makeTestExtCommit(block.Header.Height, cmttime.Now()) //nolint:staticcheck
 			if testCase.saveExtended {
 				bs.SaveBlockWithExtendedCommit(block, ps, seenCommit)
 			} else {
@@ -698,9 +698,9 @@ func TestLoadBlockMetaByHash(t *testing.T) {
 	bs.SaveBlock(b1, partSet, seenCommit.ToCommit())
 
 	baseBlock := bs.LoadBlockMetaByHash(b1.Hash())
-	assert.EqualValues(t, b1.Header.Height, baseBlock.Header.Height)
-	assert.EqualValues(t, b1.Header.LastBlockID, baseBlock.Header.LastBlockID)
-	assert.EqualValues(t, b1.Header.ChainID, baseBlock.Header.ChainID)
+	assert.EqualValues(t, b1.Header.Height, baseBlock.Header.Height)           //nolint:staticcheck
+	assert.EqualValues(t, b1.Header.LastBlockID, baseBlock.Header.LastBlockID) //nolint:staticcheck
+	assert.EqualValues(t, b1.Header.ChainID, baseBlock.Header.ChainID)         //nolint:staticcheck
 }
 
 func TestBlockFetchAtHeight(t *testing.T) {
@@ -710,9 +710,9 @@ func TestBlockFetchAtHeight(t *testing.T) {
 	block, partSet, err := state.MakeBlock(bs.Height()+1, types.MakeData(nil), new(types.Commit), nil, state.Validators.GetProposer().Address)
 
 	require.NoError(t, err)
-	seenCommit := makeTestExtCommit(block.Header.Height, cmttime.Now())
+	seenCommit := makeTestExtCommit(block.Header.Height, cmttime.Now()) //nolint:staticcheck
 	bs.SaveBlockWithExtendedCommit(block, partSet, seenCommit)
-	require.Equal(t, bs.Height(), block.Header.Height, "expecting the new height to be changed")
+	require.Equal(t, bs.Height(), block.Header.Height, "expecting the new height to be changed") //nolint:staticcheck
 
 	blockAtHeight := bs.LoadBlock(bs.Height())
 	b1, err := block.ToProto()

@@ -168,7 +168,7 @@ func WriteBlockSummary(client trace.Tracer, block *types.Block, size int) {
 	client.Write(BlockSummary{
 		Height:                   block.Height,
 		UnixMillisecondTimestamp: block.Time.UnixMilli(),
-		TxCount:                  len(block.Data.Txs),
+		TxCount:                  len(block.Data.Txs), //nolint:staticcheck
 		SquareSize:               block.SquareSize,
 		BlockSize:                size,
 		Proposer:                 block.ProposerAddress.String(),
