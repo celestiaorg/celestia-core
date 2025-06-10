@@ -1,5 +1,16 @@
 version: 2
 updates:
+  # GitHub Actions configurations
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
+    target-branch: "main"
+    open-pull-requests-limit: 10
+    labels:
+      - dependencies
+      - automerge
+
   - package-ecosystem: github-actions
     directory: "/"
     schedule:
@@ -15,6 +26,128 @@ updates:
     schedule:
       interval: weekly
     target-branch: "v0.34.x-celestia"
+    open-pull-requests-limit: 10
+    labels:
+      - dependencies
+      - automerge
+
+  # Go package configurations
+  - package-ecosystem: gomod
+    directory: "/"
+    schedule:
+      interval: weekly
+    target-branch: "main"
+    open-pull-requests-limit: 10
+    labels:
+      - dependencies
+      - automerge
+
+  - package-ecosystem: gomod
+    directory: "/"
+    schedule:
+      interval: weekly
+    target-branch: "v0.38.x-celestia"
+    open-pull-requests-limit: 10
+    labels:
+      - dependencies
+      - automerge
+
+  # Docker configurations
+  - package-ecosystem: docker
+    directory: "/DOCKER"
+    schedule:
+      interval: weekly
+    target-branch: "main"
+    open-pull-requests-limit: 10
+    labels:
+      - dependencies
+      - automerge
+
+  - package-ecosystem: docker
+    directory: "/DOCKER"
+    schedule:
+      interval: weekly
+    target-branch: "v0.38.x-celestia"
+    open-pull-requests-limit: 10
+    labels:
+      - dependencies
+      - automerge
+
+  - package-ecosystem: docker
+    directory: "/test/docker"
+    schedule:
+      interval: weekly
+    target-branch: "main"
+    open-pull-requests-limit: 10
+    labels:
+      - dependencies
+      - automerge
+
+  - package-ecosystem: docker
+    directory: "/test/docker"
+    schedule:
+      interval: weekly
+    target-branch: "v0.38.x-celestia"
+    open-pull-requests-limit: 10
+    labels:
+      - dependencies
+      - automerge
+
+  - package-ecosystem: docker
+    directory: "/test/e2e/docker"
+    schedule:
+      interval: weekly
+    target-branch: "main"
+    open-pull-requests-limit: 10
+    labels:
+      - dependencies
+      - automerge
+
+  - package-ecosystem: docker
+    directory: "/test/e2e/docker"
+    schedule:
+      interval: weekly
+    target-branch: "v0.38.x-celestia"
+    open-pull-requests-limit: 10
+    labels:
+      - dependencies
+      - automerge
+
+  - package-ecosystem: docker
+    directory: "/networks/local/localnode"
+    schedule:
+      interval: weekly
+    target-branch: "main"
+    open-pull-requests-limit: 10
+    labels:
+      - dependencies
+      - automerge
+
+  - package-ecosystem: docker
+    directory: "/networks/local/localnode"
+    schedule:
+      interval: weekly
+    target-branch: "v0.38.x-celestia"
+    open-pull-requests-limit: 10
+    labels:
+      - dependencies
+      - automerge
+
+  - package-ecosystem: docker
+    directory: "/spec/ivy-proofs"
+    schedule:
+      interval: weekly
+    target-branch: "main"
+    open-pull-requests-limit: 10
+    labels:
+      - dependencies
+      - automerge
+
+  - package-ecosystem: docker
+    directory: "/spec/ivy-proofs"
+    schedule:
+      interval: weekly
+    target-branch: "v0.38.x-celestia"
     open-pull-requests-limit: 10
     labels:
       - dependencies
