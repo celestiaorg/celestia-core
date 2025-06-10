@@ -147,9 +147,9 @@ func newReactor(
 		// Simulate a commit for the current height
 		vote, err := types.MakeVote(
 			privVals[0],
-			thisBlock.Header.ChainID,
+			thisBlock.Header.ChainID, //nolint:staticcheck
 			idx,
-			thisBlock.Header.Height,
+			thisBlock.Header.Height, //nolint:staticcheck
 			0,
 			cmtproto.PrecommitType,
 			blockID,
@@ -221,7 +221,7 @@ func TestNoBlockResponse(t *testing.T) {
 	}
 
 	for {
-		if reactorPairs[1].reactor.pool.IsCaughtUp() {
+		if reactorPairs[1].reactor.pool.IsCaughtUp() { //nolint:staticcheck
 			break
 		}
 
@@ -318,7 +318,7 @@ func TestBadBlockStopsPeer(t *testing.T) {
 	}
 
 	for {
-		if lastReactorPair.reactor.pool.IsCaughtUp() || lastReactorPair.reactor.Switch.Peers().Size() == 0 {
+		if lastReactorPair.reactor.pool.IsCaughtUp() || lastReactorPair.reactor.Switch.Peers().Size() == 0 { //nolint:staticcheck
 			break
 		}
 

@@ -153,9 +153,6 @@ linters:
       - std-error-handling
     rules:
       - linters:
-          - staticcheck
-        text: "QF1008:|QF1005:|QF1012:|QF1003:|QF1004:|QF1002:|S1021:|QF1001:|QF1006:|QF1009:|QF1011:|"
-      - linters:
           - gosec
         path: _test\.go
       - linters:

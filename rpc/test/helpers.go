@@ -119,6 +119,7 @@ func GetConfig(forceCreate ...bool) *cfg.Config {
 
 func GetGRPCClient() core_grpc.BroadcastAPIClient {
 	grpcAddr := globalConfig.RPC.GRPCListenAddress
+	//nolint:staticcheck // SA1019: core_grpc.StartGRPCClient is deprecated: A new gRPC API will be introduced after v0.38.
 	return core_grpc.StartGRPCClient(grpcAddr)
 }
 
