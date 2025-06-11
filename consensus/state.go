@@ -197,7 +197,7 @@ func NewState(
 		traceClient:          trace.NoOpTracer(),
 		partChan:             partChan,
 		proposalChan:         proposalChan,
-		newHeightOrRoundChan: make(chan struct{}, 50),
+		newHeightOrRoundChan: make(chan struct{}),
 	}
 	for _, option := range options {
 		option(cs)
