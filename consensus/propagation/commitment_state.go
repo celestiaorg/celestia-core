@@ -101,6 +101,12 @@ func (p *ProposalCache) GetProposal(height int64, round int32) (*types.Proposal,
 	return &cb.Proposal, parts.Original(), has
 }
 
+func (p *ProposalCache) GetCurrentHeightAndRound() (int64, int32) {
+	p.pmtx.Lock()
+	defer p.pmtx.Unlock()
+	return p.currentHeight, p.currentRound
+}
+
 func (p *ProposalCache) unfinishedHeights() []*proposalData {
 	p.pmtx.Lock()
 	defer p.pmtx.Unlock()
