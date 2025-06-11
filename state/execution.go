@@ -175,10 +175,10 @@ func (blockExec *BlockExecutor) ProcessProposal(
 	pbHeader := block.Header.ToProto()
 	resp, err := blockExec.proxyApp.ProcessProposal(context.TODO(), &abci.RequestProcessProposal{
 		Hash:               block.Header.Hash(),
-		Height:             block.Header.Height,
-		Time:               block.Header.Time,
-		Txs:                block.Data.Txs.ToSliceOfBytes(),
-		SquareSize:         block.Data.SquareSize,
+		Height:             block.Header.Height,             //nolint:staticcheck
+		Time:               block.Header.Time,               //nolint:staticcheck
+		Txs:                block.Data.Txs.ToSliceOfBytes(), //nolint:staticcheck
+		SquareSize:         block.Data.SquareSize,           //nolint:staticcheck
 		DataRootHash:       block.Data.Hash(),
 		ProposedLastCommit: buildLastCommitInfoFromStore(block, blockExec.store, state.InitialHeight),
 		Misbehavior:        block.Evidence.Evidence.ToABCI(),
@@ -277,8 +277,8 @@ func (blockExec *BlockExecutor) applyBlock(state State, blockID types.BlockID, b
 	)
 
 	// Assert that the application correctly returned tx results for each of the transactions provided in the block
-	if len(block.Data.Txs) != len(abciResponse.TxResults) {
-		return state, fmt.Errorf("expected tx results length to match size of transactions in block. Expected %d, got %d", len(block.Data.Txs), len(abciResponse.TxResults))
+	if len(block.Data.Txs) != len(abciResponse.TxResults) { //nolint:staticcheck
+		return state, fmt.Errorf("expected tx results length to match size of transactions in block. Expected %d, got %d", len(block.Data.Txs), len(abciResponse.TxResults)) //nolint:staticcheck
 	}
 
 	blockExec.logger.Info("executed block", "height", block.Height, "app_hash", fmt.Sprintf("%X", abciResponse.AppHash))
@@ -760,7 +760,7 @@ func fireEvents(
 		}
 	}
 
-	for i, tx := range block.Data.Txs {
+	for i, tx := range block.Data.Txs { //nolint:staticcheck
 		blobTx, isBlobTx := types.UnmarshalBlobTx(tx)
 		if isBlobTx {
 			tx = blobTx.Tx
@@ -817,8 +817,8 @@ func ExecCommitBlock(
 	}
 
 	// Assert that the application correctly returned tx results for each of the transactions provided in the block
-	if len(block.Data.Txs) != len(resp.TxResults) {
-		return nil, fmt.Errorf("expected tx results length to match size of transactions in block. Expected %d, got %d", len(block.Data.Txs), len(resp.TxResults))
+	if len(block.Data.Txs) != len(resp.TxResults) { //nolint:staticcheck
+		return nil, fmt.Errorf("expected tx results length to match size of transactions in block. Expected %d, got %d", len(block.Data.Txs), len(resp.TxResults)) //nolint:staticcheck
 	}
 
 	logger.Info("executed block", "height", block.Height, "app_hash", fmt.Sprintf("%X", resp.AppHash))

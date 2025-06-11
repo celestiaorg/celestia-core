@@ -6,6 +6,7 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"net"
 	"os"
 	"os/signal"
 	"testing"
@@ -67,9 +68,9 @@ func TestMain(m *testing.M) {
 			"POSTGRES_DB=" + dbName,
 			"listen_addresses = '*'",
 		},
-		ExposedPorts: []string{"5432"},
+		ExposedPorts: []string{port},
 		PortBindings: map[docker.Port][]docker.PortBinding{
-			"5432/tcp": {{HostIP: "", HostPort: port}}, // Map host port 5433 to container port 5432
+			"5432/tcp": {{HostPort: fmt.Sprintf("%d", getFreePort())}},
 		},
 	}, func(config *docker.HostConfig) {
 		// set AutoRemove to true so that stopped container goes away by itself
@@ -140,6 +141,21 @@ func TestMain(m *testing.M) {
 	}
 
 	os.Exit(code)
+}
+
+func getFreePort() int {
+	addr, err := net.ResolveTCPAddr("tcp", "localhost:0")
+	if err != nil {
+		panic(err)
+	}
+
+	l, err := net.ListenTCP("tcp", addr)
+	if err != nil {
+		panic(err)
+	}
+	defer l.Close()
+
+	return l.Addr().(*net.TCPAddr).Port
 }
 
 func TestIndexing(t *testing.T) {
