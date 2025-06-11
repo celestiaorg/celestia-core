@@ -182,7 +182,7 @@ func (state *State) ToProto() (*cmtstate.State, error) {
 }
 
 // FromProto takes a state proto message & returns the local state type
-func FromProto(pb *cmtstate.State) (*State, error) { //nolint:golint
+func FromProto(pb *cmtstate.State) (*State, error) {
 	if pb == nil {
 		return nil, errors.New("nil State")
 	}
@@ -260,7 +260,7 @@ func (state State) MakeBlock(
 	}
 
 	// Fill rest of header with state data.
-	block.Header.Populate(
+	block.Header.Populate( //nolint:staticcheck
 		state.Version.Consensus, state.ChainID,
 		timestamp, state.LastBlockID,
 		state.Validators.Hash(), state.NextValidators.Hash(),
