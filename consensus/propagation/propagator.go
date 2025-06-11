@@ -16,5 +16,4 @@ type Propagator interface {
 	SetConsensusRound(height int64, round int32)
 	StartProcessing()
 	SetProposer(proposer crypto.PubKey)
-	GetCurrentHeightAndRound() (int64, int32)
 }
