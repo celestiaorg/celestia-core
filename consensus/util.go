@@ -9,8 +9,8 @@ import (
 	"github.com/cometbft/cometbft/types"
 )
 
-// SaveBlockToFile saves a CometBFT block as JSON to a file in the given directory.
-func SaveBlockToFile(dir string, filename string, block *types.Block) error {
+// saveBlockToFile saves a CometBFT block as JSON to a file in the given directory.
+func saveBlockToFile(dir string, filename string, block *types.Block) error {
 	// Ensure the directory exists
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		return fmt.Errorf("failed to create directory: %w", err)
