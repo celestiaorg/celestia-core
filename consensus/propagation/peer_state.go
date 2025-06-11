@@ -122,7 +122,7 @@ func (d *PeerState) AddRequests(height int64, round int32, requests *bits.BitArr
 }
 
 // SetHave sets the have bit for a given part.
-// Returns an error if the state is not initialised.
+// Returns an error if the state is not initialized.
 func (d *PeerState) SetHave(height int64, round int32, part int) error {
 	d.mtx.RLock()
 	defer d.mtx.RUnlock()
@@ -140,7 +140,7 @@ func (d *PeerState) SetHave(height int64, round int32, part int) error {
 }
 
 // SetWant sets the want bit for a given part.
-// Returns an error if the state is not initialised.
+// Returns an error if the state is not initialized.
 func (d *PeerState) SetWant(height int64, round int32, part int, wants bool) error {
 	d.mtx.RLock()
 	defer d.mtx.RUnlock()
