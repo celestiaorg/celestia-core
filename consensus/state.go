@@ -568,9 +568,10 @@ func (cs *State) SetProposalAndBlock(
 func (cs *State) updateHeight(height int64) {
 	cs.metrics.Height.Set(float64(height))
 	cs.Height = height
-	go func() {
-		cs.newHeightOrRoundChan <- struct{}{}
-	}()
+	select {
+	case cs.newHeightOrRoundChan <- struct{}{}:
+	default:
+	}
 }
 
 func (cs *State) updateRoundStep(round int32, step cstypes.RoundStepType) {
@@ -585,9 +586,10 @@ func (cs *State) updateRoundStep(round int32, step cstypes.RoundStepType) {
 	}
 	cs.Round = round
 	cs.Step = step
-	go func() {
-		cs.newHeightOrRoundChan <- struct{}{}
-	}()
+	select {
+	case cs.newHeightOrRoundChan <- struct{}{}:
+	default:
+	}
 }
 
 // enterNewRound(height, 0) at cs.StartTime.
