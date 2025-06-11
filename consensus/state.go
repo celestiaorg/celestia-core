@@ -2733,7 +2733,7 @@ func (cs *State) syncData() {
 			}
 			propHeight, _ := cs.propagator.GetCurrentHeightAndRound()
 			if propHeight == height {
-				//	already at the latest height, no need to catchup.
+				// already at the latest height, no need to catchup.
 				continue
 			}
 			latestProposal, partset, has := cs.propagator.GetProposal(height, -2)
