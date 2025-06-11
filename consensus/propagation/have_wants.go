@@ -2,9 +2,10 @@ package propagation
 
 import (
 	"fmt"
+	"math"
+
 	"github.com/cometbft/cometbft/crypto/merkle"
 	"github.com/cometbft/cometbft/proto/tendermint/crypto"
-	"math"
 
 	"github.com/cometbft/cometbft/types"
 
