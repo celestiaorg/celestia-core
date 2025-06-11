@@ -156,6 +156,7 @@ func (blockExec *BlockExecutor) CreateProposalBlock(
 	rejectedTxs := len(rawNewData) - len(txs)
 	if rejectedTxs > 0 {
 		blockExec.metrics.RejectedTransactions.Add(float64(rejectedTxs))
+		blockExec.logger.Info("rejected txs while creating a block", "tx count", rejectedTxs)
 	}
 
 	txl := types.ToTxs(rpp.Txs)
