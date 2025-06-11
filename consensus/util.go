@@ -1,7 +1,6 @@
 package consensus
 
 import (
-	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -9,31 +8,31 @@ import (
 	"github.com/cometbft/cometbft/types"
 )
 
-// saveBlockToFile saves a CometBFT block as JSON to a file in the given directory.
+// saveBlockToFile saves a CometBFT block to a file in the given directory.
 func saveBlockToFile(dir string, filename string, block *types.Block) error {
-	// Ensure the directory exists
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		return fmt.Errorf("failed to create directory: %w", err)
 	}
 
-	// Build full file path
 	filePath := filepath.Join(dir, filename)
 
-	// Open file for writing (create if not exists, truncate if exists)
 	file, err := os.Create(filePath)
 	if err != nil {
 		return fmt.Errorf("failed to create file: %w", err)
 	}
 	defer file.Close()
 
-	// Marshal block to JSON (you can use json.Indent if you want pretty output)
-	blockJSON, err := json.MarshalIndent(block, "", "  ")
+	blockPB, err := block.ToProto()
 	if err != nil {
-		return fmt.Errorf("failed to marshal block to JSON: %w", err)
+		return fmt.Errorf("failed to convert block to protobuf: %w", err)
 	}
 
-	// Write JSON to file
-	if _, err := file.Write(blockJSON); err != nil {
+	blockBZ, err := blockPB.Marshal()
+	if err != nil {
+		return fmt.Errorf("failed to marshal block to bytes: %w", err)
+	}
+
+	if _, err := file.Write(blockBZ); err != nil {
 		return fmt.Errorf("failed to write JSON to file: %w", err)
 	}
 
