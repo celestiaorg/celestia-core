@@ -2,7 +2,7 @@ name: Markdown Linter
 on:
   push:
     branches:
-      - v0.38.x
+      - v0.38.x-celestia
       - main
     paths:
       - "**.md"
@@ -10,10 +10,11 @@ on:
       - "**.yaml"
   pull_request:
     branches:
-      - v0.38.x
+      - v0.38.x-celestia
     paths:
       - "**.md"
       - "**.yml"
+  merge_group:
 
 jobs:
   build:
@@ -26,7 +27,7 @@ jobs:
         uses: docker://github/super-linter:v4
         env:
           VALIDATE_ALL_CODEBASE: true
-          DEFAULT_BRANCH: v0.38.x
+          DEFAULT_BRANCH: v0.38.x-celestia
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           VALIDATE_MD: true
           VALIDATE_OPENAPI: true
