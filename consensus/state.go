@@ -2721,6 +2721,41 @@ func (cs *State) syncData() {
 				)
 				cs.peerMsgQueue <- msgInfo{&ProposalMessage{&proposal}, ""}
 			}
+		case <-time.NewTicker(250 * time.Millisecond).C:
+			// catchup case: feeding the already received parts to the consensus reactor
+			// at the right time.
+			cs.mtx.RLock()
+			height, round := cs.Height, cs.Round
+			currentProposalParts := cs.ProposalBlockParts
+			cs.mtx.RUnlock()
+			if currentProposalParts == nil {
+				continue
+			}
+			propHeight, _ := cs.propagator.GetCurrentHeightAndRound()
+			if propHeight == height {
+				// already at the latest height, no need to catchup.
+				continue
+			}
+			latestProposal, partset, has := cs.propagator.GetProposal(height, -2)
+			if !has {
+				continue
+			}
+			if latestProposal.Round > round {
+				// if the latest proposal round is higher than the current round,
+				// then no need to feed any parts for the current round. we should wait
+				// until we're at the right round.
+				continue
+			}
+			for _, indice := range partset.BitArray().GetTrueIndices() {
+				if currentProposalParts.IsComplete() {
+					break
+				}
+				if currentProposalParts.HasPart(indice) {
+					continue
+				}
+				part := partset.GetPart(indice)
+				cs.peerMsgQueue <- msgInfo{&BlockPartMessage{height, round, part}, ""}
+			}
 		}
 	}
 }
