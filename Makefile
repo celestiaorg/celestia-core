@@ -262,7 +262,7 @@ lint:
 
 #? vulncheck: Run latest govulncheck
 vulncheck:
-	@GOTOOLCHAIN=go1.24.4 go run golang.org/x/vuln/cmd/govulncheck@latest ./...
+	@go run golang.org/x/vuln/cmd/govulncheck@latest ./...
 .PHONY: vulncheck
 
 #? lint-typo: Run codespell to check typos
