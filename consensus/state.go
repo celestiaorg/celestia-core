@@ -2721,7 +2721,7 @@ func (cs *State) syncData() {
 				)
 				cs.peerMsgQueue <- msgInfo{&ProposalMessage{&proposal}, ""}
 			}
-		case <-time.NewTicker(500 * time.Millisecond).C:
+		case <-time.NewTicker(250 * time.Millisecond).C:
 			// catchup case: feeding the already received parts to the consensus reactor
 			// at the right time.
 			cs.mtx.RLock()
