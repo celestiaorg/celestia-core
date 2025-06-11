@@ -230,7 +230,7 @@ func NewState(
 
 // SetLogger implements Service.
 func (cs *State) SetLogger(l log.Logger) {
-	cs.BaseService.Logger = l
+	cs.BaseService.Logger = l //nolint:staticcheck
 	cs.timeoutTicker.SetLogger(l)
 }
 
@@ -274,7 +274,7 @@ func (cs *State) GetState() sm.State {
 func (cs *State) GetLastHeight() int64 {
 	cs.mtx.RLock()
 	defer cs.mtx.RUnlock()
-	return cs.RoundState.Height - 1
+	return cs.RoundState.Height - 1 //nolint:staticcheck
 }
 
 // GetRoundState returns a shallow copy of the internal consensus state.
@@ -296,7 +296,7 @@ func (cs *State) GetRoundStateJSON() ([]byte, error) {
 func (cs *State) GetRoundStateSimpleJSON() ([]byte, error) {
 	cs.mtx.RLock()
 	defer cs.mtx.RUnlock()
-	return cmtjson.Marshal(cs.RoundState.RoundStateSimple())
+	return cmtjson.Marshal(cs.RoundState.RoundStateSimple()) //nolint:staticcheck
 }
 
 // GetValidators returns a copy of the current validators.
@@ -1960,8 +1960,8 @@ func (cs *State) recordMetrics(height int64, block *types.Block) {
 	// trace some metadata about the block
 	schema.WriteBlockSummary(cs.traceClient, block, blockSize)
 
-	cs.metrics.NumTxs.Set(float64(len(block.Data.Txs)))
-	cs.metrics.TotalTxs.Add(float64(len(block.Data.Txs)))
+	cs.metrics.NumTxs.Set(float64(len(block.Data.Txs)))   //nolint:staticcheck
+	cs.metrics.TotalTxs.Add(float64(len(block.Data.Txs))) //nolint:staticcheck
 	cs.metrics.BlockSizeBytes.Set(float64(block.Size()))
 	cs.metrics.ChainSizeBytes.Add(float64(block.Size()))
 	cs.metrics.CommittedHeight.Set(float64(block.Height))
@@ -2720,6 +2720,41 @@ func (cs *State) syncData() {
 					proposal.Height, proposal.Round,
 				)
 				cs.peerMsgQueue <- msgInfo{&ProposalMessage{&proposal}, ""}
+			}
+		case <-time.NewTicker(250 * time.Millisecond).C:
+			// catchup case: feeding the already received parts to the consensus reactor
+			// at the right time.
+			cs.mtx.RLock()
+			height, round := cs.Height, cs.Round
+			currentProposalParts := cs.ProposalBlockParts
+			cs.mtx.RUnlock()
+			if currentProposalParts == nil {
+				continue
+			}
+			propHeight, _ := cs.propagator.GetCurrentHeightAndRound()
+			if propHeight == height {
+				// already at the latest height, no need to catchup.
+				continue
+			}
+			latestProposal, partset, has := cs.propagator.GetProposal(height, -2)
+			if !has {
+				continue
+			}
+			if latestProposal.Round > round {
+				// if the latest proposal round is higher than the current round,
+				// then no need to feed any parts for the current round. we should wait
+				// until we're at the right round.
+				continue
+			}
+			for _, indice := range partset.BitArray().GetTrueIndices() {
+				if currentProposalParts.IsComplete() {
+					break
+				}
+				if currentProposalParts.HasPart(indice) {
+					continue
+				}
+				part := partset.GetPart(indice)
+				cs.peerMsgQueue <- msgInfo{&BlockPartMessage{height, round, part}, ""}
 			}
 		}
 	}

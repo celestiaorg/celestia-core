@@ -447,9 +447,9 @@ func (c *Client) HeaderByHash(ctx context.Context, hash cmtbytes.HexBytes) (*cty
 		return nil, err
 	}
 
-	if !bytes.Equal(lb.Header.Hash(), res.Header.Hash()) {
+	if !bytes.Equal(lb.Header.Hash(), res.Header.Hash()) { //nolint:staticcheck
 		return nil, fmt.Errorf("primary header hash does not match trusted header hash. (%X != %X)",
-			lb.Header.Hash(), res.Header.Hash())
+			lb.Header.Hash(), res.Header.Hash()) //nolint:staticcheck
 	}
 
 	return res, nil
@@ -728,12 +728,12 @@ func (c *Client) SignedBlock(ctx context.Context, height *int64) (*ctypes.Result
 		return nil, err
 	}
 
-	if bmH, bH := l.Header.Hash(), res.Header.Hash(); !bytes.Equal(bmH, bH) {
+	if bmH, bH := l.Header.Hash(), res.Header.Hash(); !bytes.Equal(bmH, bH) { //nolint:staticcheck
 		return nil, fmt.Errorf("light client header %X does not match with response header %X",
 			bmH, bH)
 	}
 
-	if bmH, bH := l.Header.DataHash, res.Data.Hash(); !bytes.Equal(bmH, bH) {
+	if bmH, bH := l.Header.DataHash, res.Data.Hash(); !bytes.Equal(bmH, bH) { //nolint:staticcheck
 		return nil, fmt.Errorf("light client data hash %X does not match with response data %X",
 			bmH, bH)
 	}

@@ -68,7 +68,7 @@ func (multi MultiStore) SaveABCIResponses(height int64, abciResponses *cmtstate.
 
 	// If the flag is false then we save the ABCIResponse. This can be used for the /block_results
 	// query or to reindex an event using the command line.
-	if !multi.StoreOptions.DiscardABCIResponses {
+	if !multi.StoreOptions.DiscardABCIResponses { //nolint:staticcheck
 		bz, err := abciResponses.Marshal()
 		if err != nil {
 			return err
