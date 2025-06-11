@@ -1,11 +1,13 @@
 name: Test
 on:
   pull_request:
+  merge_group:
   push:
     paths:
       - "**.go"
     branches:
-      - v0.38.x
+      - v0.38.x-celestia
+      - main
 
 jobs:
   tests:

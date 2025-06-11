@@ -417,8 +417,8 @@ func initializeBlockStore(db dbm.DB, state sm.State, valAddr []byte) (*store.Blo
 		if err != nil {
 			return nil, err
 		}
-		block.Header.Time = defaultEvidenceTime.Add(time.Duration(i) * time.Minute)
-		block.Header.Version = cmtversion.Consensus{Block: version.BlockProtocol, App: 1}
+		block.Header.Time = defaultEvidenceTime.Add(time.Duration(i) * time.Minute)       //nolint:staticcheck
+		block.Header.Version = cmtversion.Consensus{Block: version.BlockProtocol, App: 1} //nolint:staticcheck
 
 		seenCommit := makeExtCommit(i, valAddr)
 		blockStore.SaveBlockWithExtendedCommit(block, partSet, seenCommit)
