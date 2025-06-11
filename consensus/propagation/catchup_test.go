@@ -1,9 +1,10 @@
 package propagation
 
 import (
-	"github.com/stretchr/testify/assert"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/assert"
 
 	"github.com/stretchr/testify/require"
 
@@ -79,7 +80,7 @@ func TestAddCommitment_ReplaceProposalData(t *testing.T) {
 	// set the first partset header
 	r1.AddCommitment(firstProposal.Height, firstProposal.Round, &firstPsh)
 	actualFirstPsh := r1.proposals[firstProposal.Height][firstProposal.Round].block.Original().Header()
-	require.Equal(t, uint32(firstPartset.Total()), actualFirstPsh.Total)
+	require.Equal(t, firstPartset.Total(), actualFirstPsh.Total)
 	require.Equal(t, firstPsh.Hash, actualFirstPsh.Hash)
 
 	// replace the existing partset header with a new one
@@ -89,7 +90,7 @@ func TestAddCommitment_ReplaceProposalData(t *testing.T) {
 
 	// verify if the partset header got updated
 	actualSecondPsh := r1.proposals[secondProposal.Height][secondProposal.Round].block.Original().Header()
-	assert.Equal(t, uint32(secondPartset.Total()), actualSecondPsh.Total)
+	assert.Equal(t, secondPartset.Total(), actualSecondPsh.Total)
 	assert.Equal(t, secondPsh.Hash, actualSecondPsh.Hash)
 }
 
