@@ -143,7 +143,7 @@ func (blockProp *Reactor) requestFromPeer(ps *PeerState) {
 				parts    *proptypes.CombinedPartSet
 				fullReqs *bits.BitArray
 			)
-			for i := canSend; i > 0; {
+			for i := min(canSend, int64(len(ps.receivedHaves))); i > 0; {
 				if len(ps.receivedHaves) == 0 {
 					break
 				}
@@ -151,6 +151,12 @@ func (blockProp *Reactor) requestFromPeer(ps *PeerState) {
 				have, ok := <-ps.receivedHaves
 				if !ok {
 					return
+				}
+
+				if wants != nil && (have.height != wants.Height || have.round != wants.Round) {
+					// haves for a new height, resetting
+					wants = nil
+					parts = nil
 				}
 
 				if !blockProp.relevantHave(have.height, have.round) {
