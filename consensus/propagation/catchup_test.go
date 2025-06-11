@@ -4,6 +4,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
+
 	"github.com/stretchr/testify/require"
 
 	cfg "github.com/cometbft/cometbft/config"
@@ -60,6 +62,36 @@ func TestGapCatchup(t *testing.T) {
 	_, caughtUp, has = n3.GetProposal(prop.Height, prop.Round)
 	require.True(t, has)
 	require.True(t, caughtUp.IsComplete())
+}
+
+func TestAddCommitment_ReplaceProposalData(t *testing.T) {
+	p2pCfg := defaultTestP2PConf()
+	nodes := 1
+	reactors, _ := createTestReactors(nodes, p2pCfg, false, "/tmp/test/add_commitment_replace_proposal_data")
+	r1 := reactors[0]
+	cleanup, _, sm := state.SetupTestCase(t)
+	t.Cleanup(func() {
+		cleanup(t)
+	})
+
+	firstProposal, firstPartset, _, _ := createTestProposal(t, sm, 1, 2, 1000000)
+	firstPsh := firstPartset.Header()
+
+	// set the first partset header
+	r1.AddCommitment(firstProposal.Height, firstProposal.Round, &firstPsh)
+	actualFirstPsh := r1.proposals[firstProposal.Height][firstProposal.Round].block.Original().Header()
+	require.Equal(t, firstPartset.Total(), actualFirstPsh.Total)
+	require.Equal(t, firstPsh.Hash, actualFirstPsh.Hash)
+
+	// replace the existing partset header with a new one
+	secondProposal, secondPartset, _, _ := createTestProposal(t, sm, 1, 10, 1000000)
+	secondPsh := secondPartset.Header()
+	r1.AddCommitment(secondProposal.Height, secondProposal.Round, &secondPsh)
+
+	// verify if the partset header got updated
+	actualSecondPsh := r1.proposals[secondProposal.Height][secondProposal.Round].block.Original().Header()
+	assert.Equal(t, secondPartset.Total(), actualSecondPsh.Total)
+	assert.Equal(t, secondPsh.Hash, actualSecondPsh.Hash)
 }
 
 func defaultTestP2PConf() *cfg.P2PConfig {
