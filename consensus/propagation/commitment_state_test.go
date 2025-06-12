@@ -137,7 +137,7 @@ func TestProposalCache_GetProposalWithRequests(t *testing.T) {
 			height:       5,
 			round:        0,
 			wantProposal: prop1,
-			wantBitArray: bits.NewBitArray(int(prop1.Proposal.BlockID.PartSetHeader.Total * 2)), // totalParts=3
+			wantBitArray: bits.NewBitArray(int(prop1.Proposal.BlockID.PartSetHeader.Total * 2)),
 			wantOk:       true,
 		},
 		{
