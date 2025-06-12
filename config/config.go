@@ -262,7 +262,7 @@ func DefaultBaseConfig() BaseConfig {
 		PrivValidatorState: defaultPrivValStatePath,
 		NodeKey:            defaultNodeKeyPath,
 		Moniker:            defaultMoniker,
-		ProxyApp:           "tcp://127.0.0.1:26658",
+		ProxyApp:           "tcp://127.0.0.1:36658",
 		ABCI:               "socket",
 		LogLevel:           DefaultLogLevel,
 		LogFormat:          LogFormatPlain,
