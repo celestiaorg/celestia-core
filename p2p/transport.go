@@ -2,6 +2,8 @@ package p2p
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"fmt"
 	"net"
 	"time"
@@ -85,6 +87,12 @@ type transportLifecycle interface {
 // been established. The set of exisiting connections is passed along together
 // with all resolved IPs for the new connection.
 type ConnFilterFunc func(ConnSet, net.Conn, []net.IP) error
+
+func generateTraceID() string {
+	b := make([]byte, 8)
+	_, _ = rand.Read(b)
+	return hex.EncodeToString(b)
+}
 
 // ConnDuplicateIPFilter resolves and keeps all ips for an incoming connection
 // and refuses new ones if they come from a known ip.
@@ -424,27 +432,45 @@ func (mt *MultiplexTransport) upgrade(
 	}()
 
 	secretConn, err = upgradeSecretConn(c, mt.handshakeTimeout, mt.nodeKey.PrivKey)
+	var remoteNodeID string
+	if secretConn != nil && secretConn.RemotePubKey() != nil {
+		remoteNodeID = string(PubKeyToID(secretConn.RemotePubKey()))
+	}
+	localNodeID := string(mt.nodeInfo.ID())
+	localAddr := c.LocalAddr().String()
+	remoteAddr := c.RemoteAddr().String()
+
 	if err != nil {
 		return nil, nil, ErrRejected{
-			conn:          c,
-			err:           fmt.Errorf("secret conn failed: %v", err),
-			isAuthFailure: true,
+			conn:              c,
+			err:               fmt.Errorf("secret conn failed: %v", err),
+			isAuthFailure:     true,
+			localNodeID:       localNodeID,
+			remoteNodeID:      remoteNodeID,
+			localAddr:         localAddr,
+			remoteAddr:        remoteAddr,
+			handshakeStage:    "secret-conn-start",
+			traceID:           generateTraceID(),
+			malformedHandshake: false,
 		}
 	}
 
-	// For outgoing conns, ensure connection key matches dialed key.
 	connID := PubKeyToID(secretConn.RemotePubKey())
+	remoteNodeID = string(connID)
+
 	if dialedAddr != nil {
 		if dialedID := dialedAddr.ID; connID != dialedID {
 			return nil, nil, ErrRejected{
-				conn: c,
-				id:   connID,
-				err: fmt.Errorf(
-					"conn.ID (%v) dialed ID (%v) mismatch",
-					connID,
-					dialedID,
-				),
-				isAuthFailure: true,
+				conn:           c,
+				id:             connID,
+				err:            fmt.Errorf("conn.ID (%v) dialed ID (%v) mismatch", connID, dialedID),
+				isAuthFailure:  true,
+				localNodeID:    localNodeID,
+				remoteNodeID:   remoteNodeID,
+				localAddr:      localAddr,
+				remoteAddr:     remoteAddr,
+				handshakeStage: "secret-conn-auth",
+				traceID:        generateTraceID(),
 			}
 		}
 	}
@@ -455,6 +481,12 @@ func (mt *MultiplexTransport) upgrade(
 			conn:          c,
 			err:           fmt.Errorf("handshake failed: %v", err),
 			isAuthFailure: true,
+			localNodeID:   localNodeID,
+			remoteNodeID:  remoteNodeID,
+			localAddr:     localAddr,
+			remoteAddr:    remoteAddr,
+			handshakeStage: "challenge-response",
+			traceID:       generateTraceID(),
 		}
 	}
 
@@ -463,39 +495,66 @@ func (mt *MultiplexTransport) upgrade(
 			conn:              c,
 			err:               err,
 			isNodeInfoInvalid: true,
+			localNodeID:       localNodeID,
+			remoteNodeID:      remoteNodeID,
+			localAddr:         localAddr,
+			remoteAddr:        remoteAddr,
+			handshakeStage:    "handshake-nodeinfo-validate",
+			traceID:           generateTraceID(),
 		}
 	}
 
-	// Ensure connection key matches self reported key.
 	if connID != nodeInfo.ID() {
 		return nil, nil, ErrRejected{
-			conn: c,
-			id:   connID,
-			err: fmt.Errorf(
-				"conn.ID (%v) NodeInfo.ID (%v) mismatch",
-				connID,
-				nodeInfo.ID(),
-			),
-			isAuthFailure: true,
+			conn:           c,
+			id:             connID,
+			err:            fmt.Errorf("conn.ID (%v) NodeInfo.ID (%v) mismatch", connID, nodeInfo.ID()),
+			isAuthFailure:   true,
+			localNodeID:     localNodeID,
+			remoteNodeID:    string(nodeInfo.ID()),
+			localAddr:       localAddr,
+			remoteAddr:      remoteAddr,
+			handshakeStage:  "connid-vs-nodeid",
+			traceID:         generateTraceID(),
 		}
 	}
 
-	// Reject self.
 	if mt.nodeInfo.ID() == nodeInfo.ID() {
 		return nil, nil, ErrRejected{
-			addr:   *NewNetAddress(nodeInfo.ID(), c.RemoteAddr()),
-			conn:   c,
-			id:     nodeInfo.ID(),
-			isSelf: true,
+			addr:           *NewNetAddress(nodeInfo.ID(), c.RemoteAddr()),
+			conn:           c,
+			id:             nodeInfo.ID(),
+			isSelf:         true,
+			localNodeID:    localNodeID,
+			remoteNodeID:   string(nodeInfo.ID()),
+			localAddr:      localAddr,
+			remoteAddr:     remoteAddr,
+			handshakeStage: "self-detect",
+			traceID:        generateTraceID(),
 		}
 	}
 
 	if err := mt.nodeInfo.CompatibleWith(nodeInfo); err != nil {
+		var chainID, peerChainID string
+		if ni, ok := mt.nodeInfo.(DefaultNodeInfo); ok {
+			chainID = ni.Network
+		}
+		if ni, ok := nodeInfo.(DefaultNodeInfo); ok {
+			peerChainID = ni.Network
+		}
 		return nil, nil, ErrRejected{
 			conn:           c,
 			err:            err,
 			id:             nodeInfo.ID(),
 			isIncompatible: true,
+			localNodeID:    localNodeID,
+			remoteNodeID:   string(nodeInfo.ID()),
+			localAddr:      localAddr,
+			remoteAddr:     remoteAddr,
+			handshakeStage: "post-handshake",
+			traceID:        generateTraceID(),
+			chainID:        chainID,
+			peerChainID:    peerChainID,
 		}
 	}
 
@@ -545,45 +604,48 @@ func (mt *MultiplexTransport) wrapPeer(
 }
 
 func handshake(
-	c net.Conn,
-	timeout time.Duration,
-	nodeInfo NodeInfo,
+    c net.Conn,
+    timeout time.Duration,
+    nodeInfo NodeInfo,
 ) (NodeInfo, error) {
-	if err := c.SetDeadline(time.Now().Add(timeout)); err != nil {
-		return nil, err
-	}
+    if err := c.SetDeadline(time.Now().Add(timeout)); err != nil {
+        return nil, err
+    }
 
-	var (
-		errc = make(chan error, 2)
+    var (
+        errc = make(chan error, 2)
+        pbpeerNodeInfo tmp2p.DefaultNodeInfo
+        peerNodeInfo   DefaultNodeInfo
+    )
 
-		pbpeerNodeInfo tmp2p.DefaultNodeInfo
-		peerNodeInfo   DefaultNodeInfo
-		ourNodeInfo    = nodeInfo.(DefaultNodeInfo)
-	)
+    ourNodeInfo, ok := nodeInfo.(DefaultNodeInfo)
+    if !ok {
+        return nil, fmt.Errorf("nodeInfo is not DefaultNodeInfo, got: %T", nodeInfo)
+    }
 
-	go func(errc chan<- error, c net.Conn) {
-		_, err := protoio.NewDelimitedWriter(c).WriteMsg(ourNodeInfo.ToProto())
-		errc <- err
-	}(errc, c)
-	go func(errc chan<- error, c net.Conn) {
-		protoReader := protoio.NewDelimitedReader(c, MaxNodeInfoSize())
-		_, err := protoReader.ReadMsg(&pbpeerNodeInfo)
-		errc <- err
-	}(errc, c)
+    go func(errc chan<- error, c net.Conn) {
+        _, err := protoio.NewDelimitedWriter(c).WriteMsg(ourNodeInfo.ToProto())
+        errc <- err
+    }(errc, c)
+    go func(errc chan<- error, c net.Conn) {
+        protoReader := protoio.NewDelimitedReader(c, MaxNodeInfoSize())
+        _, err := protoReader.ReadMsg(&pbpeerNodeInfo)
+        errc <- err
+    }(errc, c)
 
-	for i := 0; i < cap(errc); i++ {
-		err := <-errc
-		if err != nil {
-			return nil, err
-		}
-	}
+    for i := 0; i < cap(errc); i++ {
+        err := <-errc
+        if err != nil {
+            return nil, err
+        }
+    }
 
-	peerNodeInfo, err := DefaultNodeInfoFromToProto(&pbpeerNodeInfo)
-	if err != nil {
-		return nil, err
-	}
+    peerNodeInfo, err := DefaultNodeInfoFromToProto(&pbpeerNodeInfo)
+    if err != nil {
+        return nil, err
+    }
 
-	return peerNodeInfo, c.SetDeadline(time.Time{})
+    return peerNodeInfo, c.SetDeadline(time.Time{})
 }
 
 func upgradeSecretConn(
