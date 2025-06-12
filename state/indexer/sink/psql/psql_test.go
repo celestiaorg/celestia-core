@@ -40,7 +40,7 @@ var (
 const (
 	user     = "postgres"
 	password = "secret"
-	port     = "5433"
+	port     = "5432"
 	dsn      = "postgres://%s:%s@localhost:%s/%s?sslmode=disable"
 	dbName   = "postgres"
 	chainID  = "test-chainID"
@@ -93,7 +93,7 @@ func TestMain(m *testing.M) {
 
 	// Connect to the database, clear any leftover data, and install the
 	// indexing schema.
-	conn := fmt.Sprintf(dsn, user, password, port, dbName)
+	conn := fmt.Sprintf(dsn, user, password, resource.GetPort(port+"/tcp"), dbName)
 	var db *sql.DB
 
 	if err := pool.Retry(func() error {
