@@ -5,7 +5,7 @@ go 1.23.0
 toolchain go1.24.2
 
 require (
-	github.com/BurntSushi/toml v1.4.0
+	github.com/BurntSushi/toml v1.5.0
 	github.com/Masterminds/semver/v3 v3.3.1
 	github.com/adlio/schema v1.3.6
 	github.com/aws/aws-sdk-go-v2 v1.36.1
@@ -60,7 +60,7 @@ require (
 	google.golang.org/protobuf v1.36.4
 )
 
-require github.com/golang/snappy v0.0.4
+require github.com/golang/snappy v0.0.4 // indirect
 
 require (
 	dario.cat/mergo v1.0.0 // indirect
