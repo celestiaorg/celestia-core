@@ -470,7 +470,7 @@ func (blockProp *Reactor) handleRecoveryPart(peer p2p.ID, part *proptypes.Recove
 	// only send original parts to the consensus reactor
 	if part.Index < parts.Original().Total() {
 		blockProp.partChan <- types.PartInfo{
-			Part: types.Part{
+			Part: &types.Part{
 				Index: part.Index,
 				Bytes: part.Data,
 				Proof: *proof,
@@ -514,10 +514,10 @@ func (blockProp *Reactor) handleRecoveryPart(peer p2p.ID, part *proptypes.Recove
 			// only send original parts to the consensus reactor
 			if p.Index < parts.Original().Total() {
 				blockProp.partChan <- types.PartInfo{
-					Part: types.Part{
+					Part: &types.Part{
 						Index: p.Index,
 						Bytes: p.Bytes,
-						Proof: p.Proof,
+						Proof: p.GetProof(),
 					},
 					Height: part.Height,
 					Round:  part.Round,

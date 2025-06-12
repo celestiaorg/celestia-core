@@ -40,7 +40,7 @@ func (e ErrInvalidPart) Unwrap() error {
 }
 
 type PartInfo struct {
-	Part
+	*Part
 	Height int64
 	Round  int32
 }
