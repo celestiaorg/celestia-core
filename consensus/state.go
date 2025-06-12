@@ -2706,7 +2706,7 @@ func (cs *State) syncData() {
 				}
 			}
 
-			cs.peerMsgQueue <- msgInfo{&BlockPartMessage{h, r, &part.Part}, ""}
+			cs.peerMsgQueue <- msgInfo{&BlockPartMessage{h, r, part.Part}, ""}
 		case proposal, ok := <-cs.proposalChan:
 			if !ok {
 				return
