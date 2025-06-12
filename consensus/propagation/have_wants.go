@@ -575,8 +575,14 @@ func (blockProp *Reactor) clearWants(part *proptypes.RecoveryPart, proof merkle.
 				blockProp.Logger.Error("failed to send part", "peer", peer.peer.ID(), "height", part.Height, "round", part.Round, "part", part.Index)
 				continue
 			}
-			peer.SetHave(part.Height, part.Round, int(part.Index))
-			peer.SetWant(part.Height, part.Round, int(part.Index), false)
+			err := peer.SetHave(part.Height, part.Round, int(part.Index))
+			if err != nil {
+				continue
+			}
+			err = peer.SetWant(part.Height, part.Round, int(part.Index), false)
+			if err != nil {
+				continue
+			}
 			catchup := false
 			blockProp.pmtx.Lock()
 			if part.Height < blockProp.currentHeight {
