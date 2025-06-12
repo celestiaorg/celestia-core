@@ -14,7 +14,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/s3 v1.76.1
 	github.com/btcsuite/btcd/btcutil v1.1.6
 	github.com/celestiaorg/go-square/v2 v2.1.0
-	github.com/celestiaorg/nmt v0.23.0
+	github.com/celestiaorg/nmt v0.24.0
 	github.com/cenkalti/backoff v2.2.1+incompatible // indirect
 	github.com/cometbft/cometbft-db v0.14.1
 	github.com/cosmos/gogoproto v1.7.0
@@ -60,7 +60,7 @@ require (
 	google.golang.org/protobuf v1.36.4
 )
 
-require github.com/golang/snappy v0.0.4
+require github.com/golang/snappy v0.0.4 // indirect
 
 require (
 	dario.cat/mergo v1.0.0 // indirect
