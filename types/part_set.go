@@ -46,6 +46,7 @@ type PartInfo struct {
 }
 
 type Part struct {
+	mtx   cmtsync.Mutex
 	Index uint32            `json:"index"`
 	Bytes cmtbytes.HexBytes `json:"bytes"`
 	Proof merkle.Proof      `json:"proof"`
@@ -67,6 +68,20 @@ func (part *Part) ValidateBasic() error {
 		return ErrInvalidPart{Reason: fmt.Errorf("wrong Proof: %w", err)}
 	}
 	return nil
+}
+
+// GetProof returns the merkle proof while safely handling concurrent access
+func (part *Part) GetProof() merkle.Proof {
+	part.mtx.Lock()
+	defer part.mtx.Unlock()
+	return part.Proof
+}
+
+// SetProof sets the merkle proof while safely handling concurrent access
+func (part *Part) SetProof(proof merkle.Proof) {
+	part.mtx.Lock()
+	defer part.mtx.Unlock()
+	part.Proof = proof
 }
 
 // String returns a string representation of Part.
@@ -381,7 +396,7 @@ func Decode(ops, eps *PartSet, lastPartLen int) (*PartSet, *PartSet, error) {
 	for i, d := range data[:ops.Total()] {
 		ops.partsBitArray.SetIndex(i, true)
 		if ops.parts[i] != nil {
-			ops.parts[i].Proof = *proofs[i]
+			ops.parts[i].SetProof(*proofs[i])
 			continue
 		}
 		ops.parts[i] = &Part{
@@ -406,7 +421,7 @@ func Decode(ops, eps *PartSet, lastPartLen int) (*PartSet, *PartSet, error) {
 	for i := 0; i < int(eps.Total()); i++ {
 		eps.partsBitArray.SetIndex(i, true)
 		if eps.parts[i] != nil {
-			eps.parts[i].Proof = *eproofs[i]
+			eps.parts[i].SetProof(*eproofs[i])
 			continue
 		}
 		eps.parts[i] = &Part{
