@@ -11,16 +11,6 @@ updates:
       - dependencies
       - automerge
 
-  - package-ecosystem: github-actions
-    directory: "/"
-    schedule:
-      interval: weekly
-    target-branch: "v0.34.x-celestia"
-    open-pull-requests-limit: 10
-    labels:
-      - dependencies
-      - automerge
-
   # Go package configurations
   - package-ecosystem: gomod
     directory: "/"
