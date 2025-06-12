@@ -347,11 +347,15 @@ func (blockProp *Reactor) validateCompactBlock(cb *proptypes.CompactBlock) error
 	blockProp.mtx.Lock()
 	proposer := blockProp.currentProposer
 	blockProp.mtx.Unlock()
+	blockProp.pmtx.Lock()
+	currentHeight := blockProp.currentHeight
+	currentRound := blockProp.currentRound
+	blockProp.pmtx.Unlock()
 	if proposer == nil {
 		return errors.New("nil proposer key")
 	}
 	// Does not apply
-	if cb.Proposal.Height != blockProp.currentHeight || cb.Proposal.Round != blockProp.currentRound {
+	if cb.Proposal.Height != currentHeight || cb.Proposal.Round != currentRound {
 		return fmt.Errorf("proposal height %v round %v does not match state height %v round %v", cb.Proposal.Height, cb.Proposal.Round, blockProp.currentHeight, blockProp.currentRound)
 	}
 
