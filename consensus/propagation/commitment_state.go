@@ -84,7 +84,7 @@ func (p *ProposalCache) AddProposal(cb *proptypes.CompactBlock) (added bool) {
 	p.proposals[cb.Proposal.Height][cb.Proposal.Round] = &proposalData{
 		compactBlock: cb,
 		block:        block,
-		maxRequests:  bits.NewBitArray(int(cb.Proposal.BlockID.PartSetHeader.Total)),
+		maxRequests:  bits.NewBitArray(int(block.Total())),
 	}
 
 	p.setCurrentProposalPartsCount(int64(block.Total()))
