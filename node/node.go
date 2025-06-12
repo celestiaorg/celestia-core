@@ -7,7 +7,6 @@ import (
 	"net"
 	"net/http"
 	"os"
-	"runtime"
 	"time"
 
 	"github.com/cometbft/cometbft/consensus/propagation"
@@ -432,7 +431,7 @@ func NewNodeWithContext(ctx context.Context,
 		return nil, fmt.Errorf("could not create blocksync reactor: %w", err)
 	}
 
-	partsChan := make(chan types.PartInfo, 1000)
+	partsChan := make(chan types.PartInfo, 2500)
 	proposalChan := make(chan types.Proposal, 100)
 	propagationReactor := propagation.NewReactor(
 		nodeKey.ID(),
@@ -638,9 +637,6 @@ func (n *Node) OnStart() error {
 			return fmt.Errorf("failed to start state sync: %w", err)
 		}
 	}
-
-	// todo: obviously remove
-	go n.printMemStats(n.tracer)
 
 	return nil
 }
@@ -1054,37 +1050,4 @@ func makeNodeInfo(
 
 	err := nodeInfo.Validate()
 	return nodeInfo, err
-}
-
-type MemStats struct {
-	Alloc      uint64 `json:"alloc"`
-	TotalAlloc uint64 `json:"total_alloc"`
-	Sys        uint64 `json:"sys"`
-	NumGC      uint32 `json:"num_gc"`
-}
-
-func (ms *MemStats) Table() string {
-	return "mem_stats"
-}
-
-func (n *Node) printMemStats(traceClient trace.Tracer) {
-	timer := time.NewTicker(30 * time.Second)
-	for {
-		select {
-		case <-timer.C:
-			var m runtime.MemStats
-			runtime.ReadMemStats(&m)
-			ms := &MemStats{
-				Alloc:      m.Alloc,
-				TotalAlloc: m.TotalAlloc,
-				Sys:        m.Sys,
-				NumGC:      m.NumGC,
-			}
-			if traceClient != nil {
-				traceClient.Write(ms)
-			}
-		case <-n.Quit():
-			return
-		}
-	}
 }

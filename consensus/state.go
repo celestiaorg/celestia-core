@@ -147,9 +147,10 @@ type State struct {
 	// state only emits EventNewRoundStep and EventVote
 	evsw cmtevents.EventSwitch
 
-	propagator   propagation.Propagator
-	partChan     <-chan types.PartInfo
-	proposalChan <-chan types.Proposal
+	propagator           propagation.Propagator
+	partChan             <-chan types.PartInfo
+	proposalChan         <-chan types.Proposal
+	newHeightOrRoundChan chan struct{}
 
 	// for reporting metrics
 	metrics *Metrics
@@ -178,24 +179,25 @@ func NewState(
 	options ...StateOption,
 ) *State {
 	cs := &State{
-		config:           config,
-		blockExec:        blockExec,
-		blockStore:       blockStore,
-		propagator:       propagator,
-		txNotifier:       txNotifier,
-		peerMsgQueue:     make(chan msgInfo, msgQueueSize),
-		internalMsgQueue: make(chan msgInfo, msgQueueSize),
-		timeoutTicker:    NewTimeoutTicker(),
-		statsMsgQueue:    make(chan msgInfo, msgQueueSize),
-		done:             make(chan struct{}),
-		doWALCatchup:     true,
-		wal:              nilWAL{},
-		evpool:           evpool,
-		evsw:             cmtevents.NewEventSwitch(),
-		metrics:          NopMetrics(),
-		traceClient:      trace.NoOpTracer(),
-		partChan:         partChan,
-		proposalChan:     proposalChan,
+		config:               config,
+		blockExec:            blockExec,
+		blockStore:           blockStore,
+		propagator:           propagator,
+		txNotifier:           txNotifier,
+		peerMsgQueue:         make(chan msgInfo, msgQueueSize),
+		internalMsgQueue:     make(chan msgInfo, msgQueueSize),
+		timeoutTicker:        NewTimeoutTicker(),
+		statsMsgQueue:        make(chan msgInfo, msgQueueSize),
+		done:                 make(chan struct{}),
+		doWALCatchup:         true,
+		wal:                  nilWAL{},
+		evpool:               evpool,
+		evsw:                 cmtevents.NewEventSwitch(),
+		metrics:              NopMetrics(),
+		traceClient:          trace.NoOpTracer(),
+		partChan:             partChan,
+		proposalChan:         proposalChan,
+		newHeightOrRoundChan: make(chan struct{}),
 	}
 	for _, option := range options {
 		option(cs)
@@ -566,6 +568,10 @@ func (cs *State) SetProposalAndBlock(
 func (cs *State) updateHeight(height int64) {
 	cs.metrics.Height.Set(float64(height))
 	cs.Height = height
+	select {
+	case cs.newHeightOrRoundChan <- struct{}{}:
+	default:
+	}
 }
 
 func (cs *State) updateRoundStep(round int32, step cstypes.RoundStepType) {
@@ -580,6 +586,10 @@ func (cs *State) updateRoundStep(round int32, step cstypes.RoundStepType) {
 	}
 	cs.Round = round
 	cs.Step = step
+	select {
+	case cs.newHeightOrRoundChan <- struct{}{}:
+	default:
+	}
 }
 
 // enterNewRound(height, 0) at cs.StartTime.
@@ -2720,6 +2730,31 @@ func (cs *State) syncData() {
 					proposal.Height, proposal.Round,
 				)
 				cs.peerMsgQueue <- msgInfo{&ProposalMessage{&proposal}, ""}
+			}
+		case _, ok := <-cs.newHeightOrRoundChan:
+			if !ok {
+				return
+			}
+			cs.mtx.RLock()
+			height, round := cs.Height, cs.Round
+			currentProposalParts := cs.ProposalBlockParts
+			cs.mtx.RUnlock()
+			if currentProposalParts == nil {
+				continue
+			}
+			_, partset, has := cs.propagator.GetProposal(height, round)
+			if !has {
+				continue
+			}
+			for _, indice := range partset.BitArray().GetTrueIndices() {
+				if currentProposalParts.IsComplete() {
+					break
+				}
+				if currentProposalParts.HasPart(indice) {
+					continue
+				}
+				part := partset.GetPart(indice)
+				cs.peerMsgQueue <- msgInfo{&BlockPartMessage{height, round, part}, ""}
 			}
 		}
 	}

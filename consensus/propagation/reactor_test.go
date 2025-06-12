@@ -93,7 +93,7 @@ func createTestReactors(n int, p2pCfg *cfg.P2PConfig, tracer bool, traceDir stri
 		}
 
 		reactors[i] = newPropagationReactor(s, tr, mockPrivVal)
-		reactors[i].SetLogger(log.NewNopLogger())
+		reactors[i].SetLogger(log.TestingLogger())
 		s.AddReactor("BlockProp", reactors[i])
 		switches = append(switches, s)
 		return s
@@ -470,6 +470,19 @@ func TestPropagationSmokeTest(t *testing.T) {
 			r.Prune(i)
 		}
 	}
+}
+
+func TestValidateCompactBlock_InvalidLastLen(t *testing.T) {
+	reactors, _ := testBlockPropReactors(1, cfg.DefaultP2PConfig())
+	reactor1 := reactors[0]
+	reactor1.currentHeight = 10
+	reactor1.currentRound = 3
+	cb, _, _, _ := testCompactBlock(t, 10, 3)
+
+	// put an invalid last len
+	cb.LastLen = types.BlockPartSizeBytes + 1
+
+	assert.Error(t, reactor1.validateCompactBlock(cb))
 }
 
 func TestStopPeerForError(t *testing.T) {
