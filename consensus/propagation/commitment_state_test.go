@@ -137,7 +137,7 @@ func TestProposalCache_GetProposalWithRequests(t *testing.T) {
 			height:       5,
 			round:        0,
 			wantProposal: prop1,
-			wantBitArray: bits.NewBitArray(3), // totalParts=3
+			wantBitArray: bits.NewBitArray(int(prop1.Proposal.BlockID.PartSetHeader.Total * 2)), // totalParts=3
 			wantOk:       true,
 		},
 		{
@@ -145,7 +145,7 @@ func TestProposalCache_GetProposalWithRequests(t *testing.T) {
 			height:       5,
 			round:        1,
 			wantProposal: prop2,
-			wantBitArray: bits.NewBitArray(3),
+			wantBitArray: bits.NewBitArray(int(prop2.Proposal.BlockID.PartSetHeader.Total * 2)),
 			wantOk:       true,
 		},
 		{
@@ -159,7 +159,7 @@ func TestProposalCache_GetProposalWithRequests(t *testing.T) {
 			height:       6,
 			round:        0,
 			wantProposal: prop3,
-			wantBitArray: bits.NewBitArray(4),
+			wantBitArray: bits.NewBitArray(int(prop3.Proposal.BlockID.PartSetHeader.Total * 2)),
 			wantOk:       true,
 		},
 		{
@@ -167,7 +167,7 @@ func TestProposalCache_GetProposalWithRequests(t *testing.T) {
 			height:       5,
 			round:        -2, // meaning "latest round"
 			wantProposal: prop2,
-			wantBitArray: bits.NewBitArray(3),
+			wantBitArray: bits.NewBitArray(int(prop2.Proposal.BlockID.PartSetHeader.Total * 2)),
 			wantOk:       true,
 		},
 		{
