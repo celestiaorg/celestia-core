@@ -4,6 +4,9 @@ import (
 	"fmt"
 	"math"
 
+	"github.com/cometbft/cometbft/crypto/merkle"
+	"github.com/cometbft/cometbft/proto/tendermint/crypto"
+
 	"github.com/cometbft/cometbft/types"
 
 	proptypes "github.com/cometbft/cometbft/consensus/propagation/types"
@@ -537,32 +540,49 @@ func (blockProp *Reactor) handleRecoveryPart(peer p2p.ID, part *proptypes.Recove
 					Index:  p.Index,
 					Data:   pbz,
 				}
-				blockProp.clearWants(msg)
+				blockProp.clearWants(msg, p.Proof)
 			}
 		}(part.Height, part.Round, parts)
 
 		return
 	}
 
-	go blockProp.clearWants(part)
+	go blockProp.clearWants(part, *proof)
 }
 
 // clearWants checks the wantState to see if any peers want the given part, if
 // so, it attempts to send them that part.
-func (blockProp *Reactor) clearWants(part *proptypes.RecoveryPart) {
+func (blockProp *Reactor) clearWants(part *proptypes.RecoveryPart, proof merkle.Proof) {
 	for _, peer := range blockProp.getPeers() {
 		if peer.WantsPart(part.Height, part.Round, part.Index) {
 			e := p2p.Envelope{
 				ChannelID: DataChannel,
-				Message:   &propproto.RecoveryPart{Height: part.Height, Round: part.Round, Index: part.Index, Data: part.Data},
+				Message: &propproto.RecoveryPart{
+					Height: part.Height,
+					Round:  part.Round,
+					Index:  part.Index,
+					Data:   part.Data,
+					Proof: crypto.Proof{
+						Total:    proof.Total,
+						Index:    proof.Index,
+						LeafHash: proof.LeafHash,
+						Aunts:    proof.Aunts,
+					},
+				},
 			}
 
 			if !peer.peer.TrySend(e) {
 				blockProp.Logger.Error("failed to send part", "peer", peer.peer.ID(), "height", part.Height, "round", part.Round, "part", part.Index)
 				continue
 			}
-			peer.SetHave(part.Height, part.Round, int(part.Index))
-			peer.SetWant(part.Height, part.Round, int(part.Index), false)
+			err := peer.SetHave(part.Height, part.Round, int(part.Index))
+			if err != nil {
+				continue
+			}
+			err = peer.SetWant(part.Height, part.Round, int(part.Index), false)
+			if err != nil {
+				continue
+			}
 			catchup := false
 			blockProp.pmtx.Lock()
 			if part.Height < blockProp.currentHeight {
