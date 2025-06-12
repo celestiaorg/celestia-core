@@ -163,16 +163,13 @@ func (blockProp *Reactor) handleCompactBlock(cb *proptypes.CompactBlock, peer p2
 		return
 	}
 
-	blockProp.broadcastCompactBlock(cb, peer)
-
-	if proposer {
-		return
+	if !proposer {
+		blockProp.proposalChan <- cb.Proposal
+		// check if we have any transactions that are in the compact block
+		go blockProp.recoverPartsFromMempool(cb)
 	}
 
-	blockProp.proposalChan <- cb.Proposal
-
-	// check if we have any transactions that are in the compact block
-	go blockProp.recoverPartsFromMempool(cb)
+	blockProp.broadcastCompactBlock(cb, peer)
 }
 
 // recoverPartsFromMempool queries the mempool to see if we can recover any block parts locally.
@@ -356,6 +353,10 @@ func (blockProp *Reactor) validateCompactBlock(cb *proptypes.CompactBlock) error
 	// Does not apply
 	if cb.Proposal.Height != blockProp.currentHeight || cb.Proposal.Round != blockProp.currentRound {
 		return fmt.Errorf("proposal height %v round %v does not match state height %v round %v", cb.Proposal.Height, cb.Proposal.Round, blockProp.currentHeight, blockProp.currentRound)
+	}
+
+	if cb.LastLen > types.BlockPartSizeBytes {
+		return fmt.Errorf("invalid last length %d > %d", cb.LastLen, types.BlockPartSizeBytes)
 	}
 
 	// Verify POLRound, which must be -1 or in range [0, proposal.Round).
