@@ -1153,6 +1153,10 @@ func (cs *State) enterNewRound(height int64, round int32) {
 	}
 
 	cs.propagator.SetConsensusRound(height, round)
+	proposer := cs.Validators.GetProposer()
+	if proposer != nil {
+		cs.propagator.SetProposer(proposer.PubKey)
+	}
 
 	// Wait for txs to be available in the mempool
 	// before we enterPropose in round 0. If the last block changed the app hash,
@@ -1875,8 +1879,11 @@ func (cs *State) finalizeCommit(height int64) {
 	cs.scheduleRound0(&cs.RoundState)
 
 	// prune the propagation reactor
-	cs.propagator.SetProposer(cs.Validators.GetProposer().PubKey)
 	cs.propagator.Prune(height)
+	proposer := cs.Validators.GetProposer()
+	if proposer != nil {
+		cs.propagator.SetProposer(proposer.PubKey)
+	}
 	// By here,
 	// * cs.Height has been increment to height+1
 	// * cs.Step is now cstypes.RoundStepNewHeight
