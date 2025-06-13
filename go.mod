@@ -1,8 +1,8 @@
 module github.com/cometbft/cometbft
 
-go 1.23.0
+go 1.24.0
 
-toolchain go1.24.2
+toolchain go1.24.4
 
 require (
 	github.com/BurntSushi/toml v1.4.0
@@ -60,7 +60,7 @@ require (
 	google.golang.org/protobuf v1.36.4
 )
 
-require github.com/golang/snappy v0.0.4
+require github.com/golang/snappy v0.0.4 // indirect
 
 require (
 	dario.cat/mergo v1.0.0 // indirect
