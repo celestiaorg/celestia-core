@@ -586,6 +586,7 @@ func (cs *State) updateRoundStep(round int32, step cstypes.RoundStepType) {
 	}
 	cs.Round = round
 	cs.Step = step
+	cs.propagator.SetProposer(cs.Validators.GetProposer().PubKey)
 	select {
 	case cs.newHeightOrRoundChan <- struct{}{}:
 	default:
@@ -1875,7 +1876,6 @@ func (cs *State) finalizeCommit(height int64) {
 	cs.scheduleRound0(&cs.RoundState)
 
 	// prune the propagation reactor
-	cs.propagator.SetProposer(cs.Validators.GetProposer().PubKey)
 	cs.propagator.Prune(height)
 	// By here,
 	// * cs.Height has been increment to height+1
