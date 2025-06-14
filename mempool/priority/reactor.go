@@ -156,10 +156,11 @@ func (memR *Reactor) GetChannels() []*p2p.ChannelDescriptor {
 
 // AddPeer implements Reactor.
 // It starts a broadcast routine ensuring all txs are forwarded to the given peer.
-func (memR *Reactor) AddPeer(peer p2p.Peer) {
+func (memR *Reactor) AddPeer(peer p2p.Peer) error {
 	if memR.config.Broadcast {
 		go memR.broadcastTxRoutine(peer)
 	}
+	return nil
 }
 
 // RemovePeer implements Reactor.
