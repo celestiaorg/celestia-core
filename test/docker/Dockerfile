@@ -1,4 +1,4 @@
-FROM golang:1.22
+FROM golang:1.24.0
 
 # Grab deps (jq, hexdump, xxd, killall)
 RUN apt-get update && \
