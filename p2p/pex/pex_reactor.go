@@ -417,28 +417,15 @@ func (r *Reactor) ensurePeersRoutine() {
 
 	// fire once immediately.
 	// ensures we dial the seeds right away if the book is empty
-	out, _, _ := r.Switch.NumPeers()
-	if out < r.Switch.MaxNumOutboundPeers() {
-		r.ensurePeers(true)
-	}
+	r.ensurePeers(true)
 
 	// fire periodically
 	ticker := time.NewTicker(r.ensurePeersPeriod)
 	for {
 		select {
 		case <-ticker.C:
-			// Check outbound peer limit before calling ensurePeers
-			out, _, _ := r.Switch.NumPeers()
-			if out >= r.Switch.MaxNumOutboundPeers() {
-				continue
-			}
 			r.ensurePeers(true)
 		case <-r.ensurePeersCh:
-			// Check outbound peer limit before calling ensurePeers
-			out, _, _ := r.Switch.NumPeers()
-			if out >= r.Switch.MaxNumOutboundPeers() {
-				continue
-			}
 			r.ensurePeers(false)
 		case <-r.Quit():
 			ticker.Stop()
@@ -463,6 +450,12 @@ func (r *Reactor) ensurePeers(ensurePeersPeriodElapsed bool) {
 		"numInPeers", in,
 		"numDialing", dial,
 	)
+
+	fmt.Println("OUT", out, "IN", in, "DIAL", dial, "MAX ensure peers", r.Switch.MaxNumOutboundPeers())
+	if out+dial >= r.Switch.MaxNumOutboundPeers() {
+		r.Logger.Info("Outbound peer limit reached. Skipping ensurePeers")
+		return
+	}
 
 	addrBook := r.book.GetSelection()
 	for _, addr := range addrBook {
@@ -490,7 +483,9 @@ func (r *Reactor) ensurePeers(ensurePeersPeriodElapsed bool) {
 	if r.book.NeedMoreAddrs() {
 		// 1) Pick a random peer and ask for more.
 		peers := r.Switch.Peers().List()
+		fmt.Println("PEERS connected to the switch", len(peers))
 		peersCount := len(peers)
+		fmt.Println("ensure period elapsed", ensurePeersPeriodElapsed)
 		if peersCount > 0 && ensurePeersPeriodElapsed {
 			peer := peers[cmtrand.Int()%peersCount]
 			r.Logger.Info("We need more addresses. Sending pexRequest to random peer", "peer", peer)
