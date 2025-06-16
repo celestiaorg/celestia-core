@@ -889,24 +889,58 @@ func TestSwitchRemovalErr(t *testing.T) {
 	assert.Equal(t, sw2.peers.Add(p).Error(), ErrPeerRemoval{}.Error())
 }
 
-func TestReactorSpecificPeers(t *testing.T) {
+func TestReactorSpecificBroadcast(t *testing.T) {
 	t.Parallel()
-	const totalPeers = 50
-	const peerLimit = 10
+	const (
+		totalPeers       = 50
+		reactorPeerLimit = 10
+		reactorName      = "limited"
+	)
 	switches := MakeConnectedSwitches(cfg, totalPeers, func(i int, sw *Switch) *Switch {
 		tr := NewTestReactor([]*conn.ChannelDescriptor{
-			{ID: byte(0x04), Priority: 10},
-			{ID: byte(0x05), Priority: 10},
+			{ID: byte(0x04), Priority: 10, MessageType: &p2pproto.Message{}},
 		}, false)
-		tr.peerLimit = peerLimit
+		tr.peerLimit = reactorPeerLimit
+		tr.logMessages = true
 		sw = initSwitchFunc(i, sw)
-		sw.AddReactor("foobar", tr)
+		for _, r := range sw.Reactors() {
+			r.(*TestReactor).logMessages = true
+		}
+		sw.AddReactor(reactorName, tr)
 		return sw
 	}, Connect2Switches)
 
 	// make sure all switches are connected
 	for _, sw := range switches {
 		assert.Equal(t, totalPeers-1, sw.Peers().Size())
-		assert.Equal(t, peerLimit, sw.Reactor("foobar").(*TestReactor).peerCnt)
+		assert.Equal(t, reactorPeerLimit, sw.Reactor(reactorName).(*TestReactor).peerCnt)
 	}
+
+	// make some noise - broadcast from the first switch on reactors "foo", "bar" and "limited"
+	channelIDs := []byte{0x01, 0x03, 0x04}
+	for _, channelID := range channelIDs {
+		ok := <-switches[0].Broadcast(Envelope{ChannelID: channelID, Message: &p2pproto.PexRequest{}})
+		assert.True(t, ok)
+	}
+	time.Sleep(1 * time.Second)
+
+	// check other reactors to ensure proper communication
+	fooCnt := 0
+	barCnt := 0
+	limitedCnt := 0
+	for _, sw := range switches[1:] {
+		if len(sw.Reactor("foo").(*TestReactor).getMsgs(byte(0x01))) > 0 {
+			fooCnt++
+		}
+		if len(sw.Reactor("bar").(*TestReactor).getMsgs(byte(0x03))) > 0 {
+			barCnt++
+		}
+		if len(sw.Reactor(reactorName).(*TestReactor).getMsgs(byte(0x04))) > 0 {
+			limitedCnt++
+		}
+	}
+
+	assert.Equal(t, totalPeers-1, fooCnt)
+	assert.Equal(t, totalPeers-1, barCnt)
+	assert.Equal(t, reactorPeerLimit, limitedCnt)
 }
