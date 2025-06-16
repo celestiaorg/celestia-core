@@ -80,6 +80,9 @@ func (*NopMempool) GetTxByKey(types.TxKey) (*types.CachedTx, bool) { return nil,
 // WasRecentlyEvicted always returns false.
 func (*NopMempool) WasRecentlyEvicted(types.TxKey) bool { return false }
 
+// WasRecentlyRejected always returns false.
+func (*NopMempool) WasRecentlyRejected(types.TxKey) bool { return false }
+
 // NopMempoolReactor is a mempool reactor that does nothing.
 type NopMempoolReactor struct {
 	service.BaseService
