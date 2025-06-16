@@ -43,11 +43,15 @@ type PeerMessage struct {
 type TestReactor struct {
 	BaseReactor
 
-	mtx          cmtsync.Mutex
-	channels     []*conn.ChannelDescriptor
-	logMessages  bool
-	msgsCounter  int
+	mtx         cmtsync.Mutex
+	channels    []*conn.ChannelDescriptor
+	logMessages bool
+	msgsCounter int
+
 	msgsReceived map[byte][]PeerMessage
+
+	peerCnt   int
+	peerLimit int
 }
 
 func NewTestReactor(channels []*conn.ChannelDescriptor, logMessages bool) *TestReactor {
@@ -65,9 +69,24 @@ func (tr *TestReactor) GetChannels() []*conn.ChannelDescriptor {
 	return tr.channels
 }
 
-func (tr *TestReactor) AddPeer(Peer) error { return nil }
+func (tr *TestReactor) AddPeer(Peer) error {
+	if tr.peerLimit == 0 {
+		return nil
+	}
 
-func (tr *TestReactor) RemovePeer(Peer, interface{}) {}
+	if tr.peerCnt >= tr.peerLimit {
+		return fmt.Errorf("peer limit reached: %d", tr.peerLimit)
+	}
+	tr.peerCnt++
+	return nil
+}
+
+func (tr *TestReactor) RemovePeer(Peer, interface{}) {
+	if tr.peerLimit == 0 {
+		return
+	}
+	tr.peerCnt--
+}
 
 func (tr *TestReactor) Receive(e Envelope) {
 	if tr.logMessages {
@@ -868,4 +887,26 @@ func TestSwitchRemovalErr(t *testing.T) {
 	sw2.StopPeerForError(p, fmt.Errorf("peer should error"))
 
 	assert.Equal(t, sw2.peers.Add(p).Error(), ErrPeerRemoval{}.Error())
+}
+
+func TestReactorSpecificPeers(t *testing.T) {
+	t.Parallel()
+	const totalPeers = 50
+	const peerLimit = 10
+	switches := MakeConnectedSwitches(cfg, totalPeers, func(i int, sw *Switch) *Switch {
+		tr := NewTestReactor([]*conn.ChannelDescriptor{
+			{ID: byte(0x04), Priority: 10},
+			{ID: byte(0x05), Priority: 10},
+		}, false)
+		tr.peerLimit = peerLimit
+		sw = initSwitchFunc(i, sw)
+		sw.AddReactor("foobar", tr)
+		return sw
+	}, Connect2Switches)
+
+	// make sure all switches are connected
+	for _, sw := range switches {
+		assert.Equal(t, totalPeers-1, sw.Peers().Size())
+		assert.Equal(t, peerLimit, sw.Reactor("foobar").(*TestReactor).peerCnt)
+	}
 }
