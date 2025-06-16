@@ -417,15 +417,28 @@ func (r *Reactor) ensurePeersRoutine() {
 
 	// fire once immediately.
 	// ensures we dial the seeds right away if the book is empty
-	r.ensurePeers(true)
+	out, _, _ := r.Switch.NumPeers()
+	if out < r.Switch.MaxNumOutboundPeers() {
+		r.ensurePeers(true)
+	}
 
 	// fire periodically
 	ticker := time.NewTicker(r.ensurePeersPeriod)
 	for {
 		select {
 		case <-ticker.C:
+			// Check outbound peer limit before calling ensurePeers
+			out, _, _ := r.Switch.NumPeers()
+			if out >= r.Switch.MaxNumOutboundPeers() {
+				continue
+			}
 			r.ensurePeers(true)
 		case <-r.ensurePeersCh:
+			// Check outbound peer limit before calling ensurePeers
+			out, _, _ := r.Switch.NumPeers()
+			if out >= r.Switch.MaxNumOutboundPeers() {
+				continue
+			}
 			r.ensurePeers(false)
 		case <-r.Quit():
 			ticker.Stop()
@@ -440,6 +453,7 @@ func (r *Reactor) ensurePeersRoutine() {
 // the node operator. It should not be used to compute what addresses are
 // already connected or not.
 func (r *Reactor) ensurePeers(ensurePeersPeriodElapsed bool) {
+	fmt.Println("ENSURING PEERS")
 	var (
 		out, in, dial = r.Switch.NumPeers()
 	)
@@ -449,11 +463,6 @@ func (r *Reactor) ensurePeers(ensurePeersPeriodElapsed bool) {
 		"numInPeers", in,
 		"numDialing", dial,
 	)
-
-	// If we have enough outbound connections, don't dial more
-	if out >= r.Switch.MaxNumOutboundPeers() {
-		return
-	}
 
 	addrBook := r.book.GetSelection()
 	for _, addr := range addrBook {
@@ -479,7 +488,6 @@ func (r *Reactor) ensurePeers(ensurePeersPeriodElapsed bool) {
 	}
 
 	if r.book.NeedMoreAddrs() {
-
 		// 1) Pick a random peer and ask for more.
 		peers := r.Switch.Peers().List()
 		peersCount := len(peers)
@@ -650,6 +658,7 @@ type crawlPeerInfo struct {
 
 // crawlPeers will crawl the network looking for new peer addresses.
 func (r *Reactor) crawlPeers(addrs []*p2p.NetAddress) {
+	fmt.Println("CRAWLING PEERS")
 	now := time.Now()
 
 	for _, addr := range addrs {
