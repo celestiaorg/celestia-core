@@ -525,13 +525,6 @@ func (sw *Switch) DialPeersAsync(peers []string) error {
 func (sw *Switch) dialPeersAsync(netAddrs []*NetAddress) {
 	ourAddr := sw.NetAddress()
 
-	// Check outbound peer limit before starting any dials
-	out, _, _ := sw.NumPeers()
-	if out >= sw.config.MaxNumOutboundPeers {
-		sw.Logger.Debug("Not dialing peers: max outbound peers reached", "current", out, "max", sw.config.MaxNumOutboundPeers)
-		return
-	}
-
 	// TODO: this code feels like it's in the wrong place.
 	// The integration tests depend on the addrBook being saved
 	// right away but maybe we can change that. Recall that
