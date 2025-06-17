@@ -439,58 +439,61 @@ func (r *Reactor) ensurePeersRoutine() {
 // heuristic that we haven't perfected yet, or, perhaps is manually edited by
 // the node operator. It should not be used to compute what addresses are
 // already connected or not.
-func (r *Reactor) ensurePeers(force bool) {
-	// Get current peer counts atomically
-	out, _, dial := r.Switch.NumPeers()
-	maxOutbound := r.Switch.MaxNumOutboundPeers()
+func (r *Reactor) ensurePeers(ensurePeersPeriodElapsed bool) {
+	var (
+		out, in, dial = r.Switch.NumPeers()
+		numToDial     = r.Switch.MaxNumOutboundPeers() - (out + dial)
+	)
+	r.Logger.Info(
+		"Ensure peers",
+		"numOutPeers", out,
+		"numInPeers", in,
+		"numDialing", dial,
+		"numToDial", numToDial,
+	)
 
-	// Strictly enforce outbound peer limit
-	if out >= maxOutbound {
-		r.Logger.Debug("Max outbound peers reached, skipping ensurePeers",
-			"outbound", out,
-			"max", maxOutbound)
+	if numToDial <= 0 {
 		return
 	}
 
-	// Check if we're already dialing too many peers
-	if out+dial >= maxOutbound {
-		r.Logger.Debug("Too many dialing peers, skipping ensurePeers",
-			"outbound", out,
-			"dialing", dial,
-			"max", maxOutbound)
-		return
+	addrBook := r.book.GetSelection()
+	for _, addr := range addrBook {
+		if r.Switch.IsDialingOrExistingAddress(addr) {
+			continue
+		}
+		go func(addr *p2p.NetAddress) {
+			err := r.dialPeer(addr)
+			if err != nil {
+				switch err.(type) {
+				case errMaxAttemptsToDial, errTooEarlyToDial:
+					r.Logger.Debug(err.Error(), "addr", addr)
+				default:
+					r.Logger.Debug(err.Error(), "addr", addr)
+				}
+			}
+		}(addr)
 	}
 
-	// Calculate how many more peers we can dial
-	remainingSlots := maxOutbound - (out + dial)
-	if remainingSlots <= 0 {
-		return
+	if r.book.NeedMoreAddrs() {
+		// Check if banned nodes can be reinstated
+		r.book.ReinstateBadPeers()
 	}
 
-	// Get addresses to dial
-	addrs := r.book.GetSelection()
-	if len(addrs) == 0 {
-		return
-	}
-
-	// Only dial up to remaining slots
-	if len(addrs) > remainingSlots {
-		addrs = addrs[:remainingSlots]
-	}
-
-	// Dial peers with strict limit enforcement
-	for _, addr := range addrs {
-		// Double check we haven't exceeded the limit
-		if out, _, _ := r.Switch.NumPeers(); out >= maxOutbound {
-			break
+	if r.book.NeedMoreAddrs() {
+		// 1) Pick a random peer and ask for more.
+		peers := r.Switch.Peers().List()
+		peersCount := len(peers)
+		if peersCount > 0 && ensurePeersPeriodElapsed {
+			peer := peers[cmtrand.Int()%peersCount]
+			r.Logger.Info("We need more addresses. Sending pexRequest to random peer", "peer", peer)
+			r.RequestAddrs(peer)
 		}
 
-		err := r.Switch.DialPeerWithAddress(addr)
-		if err != nil {
-			r.Logger.Debug("Error dialing peer",
-				"addr", addr,
-				"err", err)
-			continue
+		//get updated address book and compare size
+		updatedAddrBook := r.book.GetSelection()
+		if len(updatedAddrBook) == 0 {
+			r.Logger.Info("No addresses to dial. Falling back to seeds")
+			r.dialSeeds()
 		}
 	}
 }

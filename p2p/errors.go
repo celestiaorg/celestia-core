@@ -191,9 +191,9 @@ func (e ErrCurrentlyDialingOrExistingAddress) Error() string {
 }
 
 // ErrMaxOutboundPeers is returned when we've reached the maximum number of outbound peers
-// or we're already in the process of dialing 
+// or we're already in the process of dialing enough peers
 type ErrMaxOutboundPeers struct{}
 
 func (e ErrMaxOutboundPeers) Error() string {
-	return "max number of outbound peers reached or already dialing"
+	return "max number of outbound peers reached or already dialing enough peers"
 }

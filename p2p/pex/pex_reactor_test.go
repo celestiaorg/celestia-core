@@ -704,6 +704,23 @@ func testCreatePeerWithSeed(dir string, id int, seed *p2p.Switch) *p2p.Switch {
 	return testCreatePeerWithConfig(dir, id, conf)
 }
 
+// testCreatePeerWithSeeds creates a peer that knows about the given seeds
+func testCreatePeerWithSeeds(dir string, id int, seeds []*p2p.Switch) *p2p.Switch {
+	// Get seed addresses
+	seedAddrs := make([]string, len(seeds))
+	for i, seed := range seeds {
+		seedAddrs[i] = seed.NetAddress().String()
+	}
+
+	// Create config with seeds
+	config := &ReactorConfig{
+		Seeds:    seedAddrs,
+		SeedMode: false,
+	}
+
+	return testCreatePeerWithConfig(dir, id, config)
+}
+
 func createReactor(conf *ReactorConfig) (r *Reactor, book AddrBook) {
 	// directory to store address book
 	dir, err := os.MkdirTemp("", "pex_reactor")
@@ -763,10 +780,7 @@ func TestPexVectors(t *testing.T) {
 	}
 }
 
-// TestPEXReactorNetworkDiscoveryAndPeerMaintenance tests the network discovery and peer maintenance
-// by only adding seeds to the address book and slowly discovering new peers.
-// Tries to ensure that connected peers linger around the limit.
-func TestPEXReactorNetworkDiscoveryAndPeerMaintenance(t *testing.T) {
+func TestPEXReactorFallsBackToSeedsWhenAddressBookIsEmpty(t *testing.T) {
 	dir, err := os.MkdirTemp("", "pex_reactor")
 	require.Nil(t, err)
 	defer os.RemoveAll(dir)
@@ -802,7 +816,10 @@ func TestPEXReactorNetworkDiscoveryAndPeerMaintenance(t *testing.T) {
 	assert.True(t, sw.Peers().Has(seed.NodeInfo().ID()), "Should have connected to the seed")
 }
 
-func TestPEXReactorWithMultipleSeedsAndNodes(t *testing.T) {
+// Tests the network discovery and peer maintenance
+// by only adding seeds to the address book and slowly discovering new peers.
+// Tries to ensure that connected peers linger around the limit.
+func TestPEXReactorNetworkDiscoveryAndPeerMaintenance(t *testing.T) {
 	// Create a temporary directory for address books
 	dir, err := os.MkdirTemp("", "pex_reactor")
 	require.NoError(t, err)
@@ -846,23 +863,6 @@ func TestPEXReactorWithMultipleSeedsAndNodes(t *testing.T) {
 		outbound, inbound, _ := node.NumPeers()
 		t.Logf("Node %v has %d outbound and %d inbound peers", node.NetAddress(), outbound, inbound)
 		require.Greater(t, outbound+inbound, 5, "Node should have more than five peers")
-		require.LessOrEqual(t, outbound, 20, "Node should have less than twenty peers")
+		require.LessOrEqual(t, outbound, cfg.MaxNumOutboundPeers+5, "Node should not have more than 5 outbound peers over the limit")
 	}
-}
-
-// testCreatePeerWithSeeds creates a peer that knows about the given seeds
-func testCreatePeerWithSeeds(dir string, id int, seeds []*p2p.Switch) *p2p.Switch {
-	// Get seed addresses
-	seedAddrs := make([]string, len(seeds))
-	for i, seed := range seeds {
-		seedAddrs[i] = seed.NetAddress().String()
-	}
-
-	// Create config with seeds
-	config := &ReactorConfig{
-		Seeds:    seedAddrs,
-		SeedMode: false,
-	}
-
-	return testCreatePeerWithConfig(dir, id, config)
 }
