@@ -590,16 +590,29 @@ func (sw *Switch) DialPeerWithAddress(addr *NetAddress) error {
 	if sw.IsDialingOrExistingAddress(addr) {
 		return ErrCurrentlyDialingOrExistingAddress{addr.String()}
 	}
-	fmt.Println("Dialing peer with addres")
-	// get the number of outbound peers
+
+	// Get current peer counts atomically
 	out, _, dial := sw.NumPeers()
-	fmt.Println("OUT", out)
-	fmt.Println("DIAL", dial)
-	if out+dial >= sw.config.MaxNumOutboundPeers {
-		fmt.Println("Max number of outbound peers reached before dialing")
+	maxOutbound := sw.config.MaxNumOutboundPeers
+
+	// Strictly enforce outbound peer limit
+	if out >= maxOutbound {
+		sw.Logger.Debug("Max outbound peers reached",
+			"outbound", out,
+			"max", maxOutbound)
 		return ErrMaxOutboundPeers{}
 	}
 
+	// Check if we're already dialing too many peers
+	if out+dial >= maxOutbound {
+		sw.Logger.Debug("Too many dialing peers",
+			"outbound", out,
+			"dialing", dial,
+			"max", maxOutbound)
+		return ErrMaxOutboundPeers{}
+	}
+
+	// Mark as dialing before starting the dial
 	sw.dialing.Set(string(addr.ID), addr)
 	defer sw.dialing.Delete(string(addr.ID))
 
@@ -784,13 +797,6 @@ func (sw *Switch) addOutboundPeerWithConfig(
 		return fmt.Errorf("dial err (peerConfig.DialFail == true)")
 	}
 
-	// out, _, _ := sw.NumPeers()
-	// fmt.Println("OUT BEFORE DIALING", out, "MAX", sw.config.MaxNumOutboundPeers)
-	// if out >= sw.config.MaxNumOutboundPeers {
-	// 	fmt.Println("Max number of outbound peers reached before dialing")
-	// 	return ErrMaxOutboundPeers{}
-	// }
-
 	p, err := sw.transport.Dial(*addr, peerConfig{
 		chDescs:       sw.chDescs,
 		onPeerError:   sw.StopPeerForError,
@@ -824,18 +830,15 @@ func (sw *Switch) addOutboundPeerWithConfig(
 	// For non-persistent peers, check outbound limit again before adding
 	// This ensures we don't exceed the limit even if other goroutines added peers
 	// between our first check and now
-	// if !sw.IsPeerPersistent(addr) {
-		out, _, _ := sw.NumPeers()
-		if out >= sw.config.MaxNumOutboundPeers {
-			fmt.Println("OUT AFTER DIALING", out, "MAX", sw.config.MaxNumOutboundPeers)
-			fmt.Println("Max number of outbound peers reached after dialing")
-			sw.transport.Cleanup(p)
-			if p.IsRunning() {
-				_ = p.Stop()
-			}
-			return ErrMaxOutboundPeers{}
+
+	out, _, _ := sw.NumPeers()
+	if out >= sw.config.MaxNumOutboundPeers {
+		sw.transport.Cleanup(p)
+		if p.IsRunning() {
+			_ = p.Stop()
 		}
-	// }
+		return ErrMaxOutboundPeers{}
+	}
 
 	if err := sw.addPeer(p); err != nil {
 		sw.transport.Cleanup(p)
@@ -931,11 +934,4 @@ func (sw *Switch) addPeer(p Peer) error {
 	sw.Logger.Debug("Added peer", "peer", p)
 
 	return nil
-}
-
-// ErrMaxOutboundPeers is returned when we've reached the maximum number of outbound peers
-type ErrMaxOutboundPeers struct{}
-
-func (e ErrMaxOutboundPeers) Error() string {
-	return "max number of outbound peers reached"
 }

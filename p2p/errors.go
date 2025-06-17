@@ -189,3 +189,11 @@ type ErrCurrentlyDialingOrExistingAddress struct {
 func (e ErrCurrentlyDialingOrExistingAddress) Error() string {
 	return fmt.Sprintf("connection with %s has been established or dialed", e.Addr)
 }
+
+// ErrMaxOutboundPeers is returned when we've reached the maximum number of outbound peers
+// or we're already in the process of dialing 
+type ErrMaxOutboundPeers struct{}
+
+func (e ErrMaxOutboundPeers) Error() string {
+	return "max number of outbound peers reached or already dialing"
+}

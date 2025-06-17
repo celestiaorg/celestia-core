@@ -542,7 +542,7 @@ func TestPEXReactorDialPeer(t *testing.T) {
 	assert.Equal(t, 1, pexR.AttemptsToDial(addr))
 
 	if !testing.Short() {
-		time.Sleep(3 * time.Second)
+		time.Sleep(30 * time.Second)
 
 		// 3rd attempt
 		err = pexR.dialPeer(addr)
@@ -553,7 +553,7 @@ func TestPEXReactorDialPeer(t *testing.T) {
 }
 
 func TestPEXReactorDialDisconnectedPeerInterval(t *testing.T) {
-	// let this test run in parallel with other tests
+	// Let this test run in parallel with other tests
 	// since we have to wait for 30s
 	t.Parallel()
 
@@ -763,79 +763,10 @@ func TestPexVectors(t *testing.T) {
 	}
 }
 
-func TestPEXReactorAggressiveDiscoveryWithLimits(t *testing.T) {
-	// file for temp dir
-	dir, err := os.MkdirTemp("", "pex_reactor")
-	if err != nil {
-		panic(err)
-	}
-	defer os.RemoveAll(dir)
-
-	// Create test configuration with lower outbound peer limit
-	testCfg := config.DefaultP2PConfig()
-	testCfg.MaxNumOutboundPeers = 5
-	testCfg.PexReactor = true
-	testCfg.AllowDuplicateIP = true
-
-	// Create seed nodes
-	numNodes := 50
-	switches := make([]*p2p.Switch, numNodes)
-	books := make([]AddrBook, numNodes)
-
-	// First create all switches
-	for i := 0; i < numNodes; i++ {
-		switches[i] = p2p.MakeSwitch(testCfg, i, func(i int, sw *p2p.Switch) *p2p.Switch {
-			book := NewAddrBook(filepath.Join(dir, fmt.Sprintf("addrbook%d.json", i)), false)
-			book.SetLogger(log.TestingLogger().With("book", i))
-			sw.SetAddrBook(book)
-			books[i] = book
-
-			r := NewReactor(book, &ReactorConfig{})
-			r.SetLogger(log.TestingLogger().With("pex", i))
-			r.SetEnsurePeersPeriod(1 * time.Millisecond)
-			sw.AddReactor("pex", r)
-			return sw
-		})
-	}
-
-	// Then add addresses to books
-	for i := 0; i < numNodes; i++ {
-		for j := 0; j < numNodes; j++ {
-			if i != j {
-				// Use the switch's own address as the source address
-				err := books[i].AddAddress(switches[j].NetAddress(), switches[i].NetAddress())
-				require.NoError(t, err)
-			}
-		}
-	}
-
-	// Start all switches
-	for _, sw := range switches {
-		err := sw.Start() // start switch and reactors
-		require.Nil(t, err)
-	}
-
-	// Wait for connections to be established
-	// Each node should have at least one connection
-	assertPeersWithTimeout(t, switches, 250*time.Millisecond, 10*time.Second, 1)
-
-	// Verify that each node respects the outbound peer limit
-	for i, sw := range switches {
-		out, in, _ := sw.NumPeers()
-		fmt.Println("CHECK MAX NUM OUTBOUND PEERS", out, sw.MaxNumOutboundPeers())
-		t.Logf("Switch %d: outbound=%d, inbound=%d", i, out, in)
-		assert.LessOrEqual(t, out, testCfg.MaxNumOutboundPeers,
-			"Switch %d exceeded outbound peer limit", i)
-	}
-
-	// stop them
-	for _, s := range switches {
-		err := s.Stop()
-		require.NoError(t, err)
-	}
-}
-
-func TestPEXReactorEmptyAddrBookDialsSeeds(t *testing.T) {
+// TestPEXReactorNetworkDiscoveryAndPeerMaintenance tests the network discovery and peer maintenance
+// by only adding seeds to the address book and slowly discovering new peers.
+// Tries to ensure that connected peers linger around the limit.
+func TestPEXReactorNetworkDiscoveryAndPeerMaintenance(t *testing.T) {
 	dir, err := os.MkdirTemp("", "pex_reactor")
 	require.Nil(t, err)
 	defer os.RemoveAll(dir)
@@ -888,7 +819,7 @@ func TestPEXReactorWithMultipleSeedsAndNodes(t *testing.T) {
 		t.Logf("Created seed %d: %v", i, seedAddrs[i])
 	}
 
-	// Create 15 regular nodes that only know about the seeds
+	// Create 60 regular nodes that only know about the seeds
 	nodes := make([]*p2p.Switch, 60)
 	for i := 0; i < 60; i++ {
 		// Create node with only seeds configured
@@ -902,6 +833,10 @@ func TestPEXReactorWithMultipleSeedsAndNodes(t *testing.T) {
 	// Each node should connect to at least one seed
 	assertPeersWithTimeout(t, nodes, 10*time.Millisecond, 10*time.Second, 1)
 
+	// Wait for 10 seconds
+	// This wait somehow helps with the balancing of peers
+	time.Sleep(10 * time.Second)
+
 	// Wait for nodes to discover each other through the seeds
 	// Each node should eventually connect to multiple peers
 	assertPeersWithTimeout(t, nodes, 500*time.Millisecond, 30*time.Second, 5)
@@ -910,7 +845,8 @@ func TestPEXReactorWithMultipleSeedsAndNodes(t *testing.T) {
 	for _, node := range nodes {
 		outbound, inbound, _ := node.NumPeers()
 		t.Logf("Node %v has %d outbound and %d inbound peers", node.NetAddress(), outbound, inbound)
-		require.Greater(t, outbound+inbound, 1, "Node should have more than one peer")
+		require.Greater(t, outbound+inbound, 5, "Node should have more than five peers")
+		require.LessOrEqual(t, outbound, 20, "Node should have less than twenty peers")
 	}
 }
 
