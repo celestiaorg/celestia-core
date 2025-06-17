@@ -321,10 +321,7 @@ func (txmp *TxPool) TryAddNewTx(tx *types.CachedTx, key types.TxKey, txInfo memp
 	// If a precheck hook is defined, call it before invoking the application.
 	if err := txmp.preCheck(tx); err != nil {
 		txmp.metrics.FailedTxs.Add(1)
-		// Add the transaction to the rejected cache if configured to keep invalid txs
-		if txmp.config.KeepInvalidTxsInCache {
-			txmp.rejectedTxCache.Push(key)
-		}
+		txmp.rejectedTxCache.Push(key)
 		return nil, err
 	}
 
@@ -342,9 +339,7 @@ func (txmp *TxPool) TryAddNewTx(tx *types.CachedTx, key types.TxKey, txInfo memp
 		return rsp, err
 	}
 	if rsp.Code != abci.CodeTypeOK {
-		if txmp.config.KeepInvalidTxsInCache {
-			txmp.rejectedTxCache.Push(key)
-		}
+		txmp.rejectedTxCache.Push(key)
 		txmp.metrics.FailedTxs.Add(1)
 		return rsp, fmt.Errorf("application rejected transaction with code %d (Log: %s)", rsp.Code, rsp.Log)
 	}
@@ -357,16 +352,14 @@ func (txmp *TxPool) TryAddNewTx(tx *types.CachedTx, key types.TxKey, txInfo memp
 	// Perform the post check
 	err = txmp.postCheck(wtx.tx, rsp)
 	if err != nil {
-		if txmp.config.KeepInvalidTxsInCache {
-			txmp.rejectedTxCache.Push(key)
-		}
+		txmp.rejectedTxCache.Push(key)
 		txmp.metrics.FailedTxs.Add(1)
 		return rsp, fmt.Errorf("rejected bad transaction after post check: %w", err)
 	}
 
 	// Now we consider the transaction to be valid. Once a transaction is valid, it
 	// can only become invalid if recheckTx is enabled and RecheckTx returns a non zero code
-	if err := txmp.addNewTransaction(wtx, rsp); err != nil {
+	if err := txmp.addNewTransaction(wtx); err != nil {
 		return nil, err
 	}
 	return rsp, nil
@@ -532,7 +525,7 @@ func (txmp *TxPool) Update(
 // transactions are evicted.
 //
 // Finally, the new transaction is added and size stats updated.
-func (txmp *TxPool) addNewTransaction(wtx *wrappedTx, checkTxRes *abci.ResponseCheckTx) error {
+func (txmp *TxPool) addNewTransaction(wtx *wrappedTx) error {
 	// At this point the application has ruled the transaction valid, but the
 	// mempool might be full. If so, find the lowest-priority items with lower
 	// priority than the application assigned to this new one, and evict as many
