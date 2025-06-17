@@ -307,9 +307,6 @@ func (sw *Switch) Broadcast(e Envelope) chan bool {
 // NumPeers returns the count of outbound/inbound and outbound-dialing peers.
 // unconditional peers are not counted here.
 func (sw *Switch) NumPeers() (outbound, inbound, dialing int) {
-	// sw.peers.mtx.Lock()
-	// defer sw.peers.mtx.Unlock()
-
 	peers := sw.peers.List()
 	for _, peer := range peers {
 		if peer.IsOutbound() {
@@ -808,9 +805,8 @@ func (sw *Switch) addOutboundPeerWithConfig(
 		return err
 	}
 
-	// For non-persistent peers, check outbound limit again before adding
-	// This ensures we don't exceed the limit even if other goroutines added peers
-	// between our first check and now
+	// Check if we've reached the maximum number of outbound peers
+	// or already dialing enough peers
 	out, _, _ := sw.NumPeers()
 	if out >= sw.config.MaxNumOutboundPeers {
 		sw.transport.Cleanup(p)
