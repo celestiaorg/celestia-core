@@ -348,7 +348,7 @@ func TestFinalizeBlockMisbehavior(t *testing.T) {
 
 	block := makeBlock(state, 1, new(types.Commit))
 	block.Evidence = types.EvidenceData{Evidence: ev}
-	block.Header.EvidenceHash = block.Evidence.Hash()
+	block.Header.EvidenceHash = block.Evidence.Hash() //nolint:staticcheck
 	bps, err := block.MakePartSet(testPartSize)
 	require.NoError(t, err)
 
@@ -403,7 +403,7 @@ func TestProcessProposal(t *testing.T) {
 		pk, err := privVal.GetPubKey()
 		require.NoError(t, err)
 		idx, _ := state.Validators.GetByAddress(pk.Address())
-		vote := types.MakeVoteNoError(t, privVal, block0.Header.ChainID, idx, height-1, 0, 2, blockID, time.Now())
+		vote := types.MakeVoteNoError(t, privVal, block0.Header.ChainID, idx, height-1, 0, 2, blockID, time.Now()) //nolint:staticcheck
 		addr := pk.Address()
 		voteInfos = append(voteInfos,
 			abci.VoteInfo{
@@ -427,8 +427,8 @@ func TestProcessProposal(t *testing.T) {
 		Header:      block1.Header.ToProto(),
 		Txs:         block1.Txs.ToSliceOfBytes(),
 		Hash:        block1.Hash(),
-		Height:      block1.Header.Height,
-		Time:        block1.Header.Time,
+		Height:      block1.Header.Height, //nolint:staticcheck
+		Time:        block1.Header.Time,   //nolint:staticcheck
 		Misbehavior: block1.Evidence.Evidence.ToABCI(),
 		ProposedLastCommit: abci.CommitInfo{
 			Round: 0,
@@ -436,7 +436,7 @@ func TestProcessProposal(t *testing.T) {
 		},
 		NextValidatorsHash: block1.NextValidatorsHash,
 		ProposerAddress:    block1.ProposerAddress,
-		DataRootHash:       block1.Header.DataHash,
+		DataRootHash:       block1.Header.DataHash, //nolint:staticcheck
 	}
 
 	acceptBlock, err := blockExec.ProcessProposal(block1, state)
@@ -794,7 +794,7 @@ func TestPrepareProposalTxsAllIncluded(t *testing.T) {
 	block, err := blockExec.CreateProposalBlock(ctx, height, state, commit, pa)
 	require.NoError(t, err)
 
-	for i, tx := range block.Data.Txs {
+	for i, tx := range block.Data.Txs { //nolint:staticcheck
 		require.Equal(t, txs[i], tx)
 	}
 
@@ -848,7 +848,7 @@ func TestPrepareProposalReorderTxs(t *testing.T) {
 	require.NoError(t, err)
 	block, err := blockExec.CreateProposalBlock(ctx, height, state, commit, pa)
 	require.NoError(t, err)
-	for i, tx := range block.Data.Txs {
+	for i, tx := range block.Data.Txs { //nolint:staticcheck
 		require.Equal(t, txs[i], tx)
 	}
 
