@@ -231,6 +231,39 @@ removed from the header in RPC responses as well.
 
 ## Branching Model and Release
 
+### Celestia-specific Contribution Flow  
+
+Celestia-core follows a specific contribution workflow due to its dual-branch maintenance strategy:
+
+- **v0.38.x-celestia branch**: Used in celestia-app v4 (current production)
+- **main branch**: Will be used in celestia-app v5 (future releases)
+
+#### Pull Request Guidelines
+
+**For changes intended for celestia-app v4:**
+- Unless the change is temporary and v4-specific, **always merge to `main` first**
+- After merging to `main`, backport to `v0.38.x-celestia` using mergify
+- Add the `backport-to-v0.38.x-celestia` label to trigger automatic backporting
+- If automatic backporting fails, manually resolve conflicts and create a backport PR
+
+**For changes intended only for celestia-app v5:**
+- Target the `main` branch directly
+- No backporting needed
+
+**For v4-specific changes only:**
+- Target `v0.38.x-celestia` directly (rare case)
+- These should be temporary fixes or configurations specific to v4
+
+#### Backporting Process
+
+We use [Mergify](https://mergify.io) to automate backporting:
+1. Add the `backport-to-v0.38.x-celestia` label to your PR targeting `main`
+2. Once the PR is merged, Mergify will automatically create a backport PR
+3. If backporting fails due to conflicts, Mergify will create a draft PR for you to resolve conflicts
+4. The original PR author is responsible for resolving backport conflicts
+
+### General Release Process
+
 The main development branch is `main`.
 
 Every release is maintained in a release branch named `vX.Y.Z`.
