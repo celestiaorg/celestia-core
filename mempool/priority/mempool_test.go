@@ -832,7 +832,7 @@ func TestConcurrentCheckTxDataRace(t *testing.T) {
 	wg.Wait()
 }
 
-func TestTxMempool_IsRejectedTx(t *testing.T) {
+func TestTxMempool_WasRecentlyRejected(t *testing.T) {
 	t.Run("CheckTx rejection", func(t *testing.T) {
 		txmp := setup(t, 100)
 

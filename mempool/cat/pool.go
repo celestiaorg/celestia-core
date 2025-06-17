@@ -299,7 +299,7 @@ func (txmp *TxPool) markToBeBroadcast(key types.TxKey) {
 // If it passes `CheckTx`, the new transaction is added to the mempool as long as it has
 // sufficient priority and space else if evicted it will return an error
 func (txmp *TxPool) TryAddNewTx(tx *types.CachedTx, key types.TxKey, txInfo mempool.TxInfo) (*abci.ResponseCheckTx, error) {
-	// First the cache to see if we can conclude early. We may have already seen and processed
+	// First check the cache to see if we can conclude early. We may have already seen and processed
 	// the transaction if:
 	// - We are connected to nodes running v0 or v1 which simply flood the network
 	// - If a client submits a transaction to multiple nodes (via RPC)

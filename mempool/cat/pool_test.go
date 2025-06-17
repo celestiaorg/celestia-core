@@ -785,7 +785,7 @@ func TestTxPool_BroadcastQueue(t *testing.T) {
 	wg.Wait()
 }
 
-func TestTxPool_IsRejectedTx(t *testing.T) {
+func TestTxPool_WasRecentlyRejected(t *testing.T) {
 	t.Run("CheckTx rejection", func(t *testing.T) {
 		txmp := setup(t, 100)
 		// Enable keeping invalid txs in cache so rejected txs are tracked
