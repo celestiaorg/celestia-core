@@ -831,7 +831,7 @@ func TestPEXReactorNetworkDiscoveryAndPeerMaintenance(t *testing.T) {
 	for i := 0; i < 2; i++ {
 		seeds[i] = testCreateSeed(dir, i, []*p2p.NetAddress{}, []*p2p.NetAddress{})
 		require.NoError(t, seeds[i].Start())
-		defer seeds[i].Stop()
+		defer seeds[i].Stop() //nolint:errcheck // ignore for tests
 		seedAddrs[i] = seeds[i].NetAddress()
 		t.Logf("Created seed %d: %v", i, seedAddrs[i])
 	}
@@ -841,7 +841,7 @@ func TestPEXReactorNetworkDiscoveryAndPeerMaintenance(t *testing.T) {
 	for i := 0; i < 60; i++ {
 		nodes[i] = testCreatePeerWithSeeds(dir, i+2, seeds)
 		require.NoError(t, nodes[i].Start())
-		defer nodes[i].Stop()
+		defer nodes[i].Stop() //nolint:errcheck // ignore for tests
 		t.Logf("Created node %d: %v", i+2, nodes[i].NetAddress())
 	}
 
