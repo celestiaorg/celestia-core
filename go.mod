@@ -13,8 +13,8 @@ require (
 	github.com/aws/aws-sdk-go-v2/credentials v1.17.69
 	github.com/aws/aws-sdk-go-v2/service/s3 v1.80.2
 	github.com/btcsuite/btcd/btcutil v1.1.6
-	github.com/celestiaorg/go-square/v2 v2.1.0
-	github.com/celestiaorg/nmt v0.23.0
+	github.com/celestiaorg/go-square/v2 v2.3.0
+	github.com/celestiaorg/nmt v0.24.0
 	github.com/cenkalti/backoff v2.2.1+incompatible // indirect
 	github.com/cometbft/cometbft-db v0.14.1
 	github.com/cosmos/gogoproto v1.7.0
