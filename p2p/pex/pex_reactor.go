@@ -520,8 +520,7 @@ func (r *Reactor) dialPeer(addr *p2p.NetAddress) error {
 		return errTooEarlyToDial{minTimeBetweenDials, lastDialed}
 	}
 
-	// If it has been 30s, check if we've been trying for over 1 hour
-	// Each attempt takes at least 30s, so if attempts * 30s > 1h, we've been trying too long
+	// Each attempt takes at least 30s, so if we've been trying for over 1 hour, mark the peer as bad
 	totalTimeSpentDialing := time.Duration(attempts) * minTimeBetweenDials
 	if totalTimeSpentDialing > time.Hour {
 		r.book.MarkBad(addr, defaultBanTime)

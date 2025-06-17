@@ -591,28 +591,16 @@ func (sw *Switch) DialPeerWithAddress(addr *NetAddress) error {
 		return ErrCurrentlyDialingOrExistingAddress{addr.String()}
 	}
 
-	// Get current peer counts atomically
+	// Try to enforce outbound peer limit
 	out, _, dial := sw.NumPeers()
-	maxOutbound := sw.config.MaxNumOutboundPeers
-
-	// Strictly enforce outbound peer limit
-	if out >= maxOutbound {
-		sw.Logger.Debug("Max outbound peers reached",
-			"outbound", out,
-			"max", maxOutbound)
-		return ErrMaxOutboundPeers{}
-	}
-
-	// Check if we're already dialing too many peers
-	if out+dial >= maxOutbound {
-		sw.Logger.Debug("Too many dialing peers",
+	if out+dial >= sw.config.MaxNumOutboundPeers {
+		sw.Logger.Info("Too many dialing peers",
 			"outbound", out,
 			"dialing", dial,
-			"max", maxOutbound)
+			"max", sw.config.MaxNumOutboundPeers)
 		return ErrMaxOutboundPeers{}
 	}
 
-	// Mark as dialing before starting the dial
 	sw.dialing.Set(string(addr.ID), addr)
 	defer sw.dialing.Delete(string(addr.ID))
 
@@ -830,7 +818,6 @@ func (sw *Switch) addOutboundPeerWithConfig(
 	// For non-persistent peers, check outbound limit again before adding
 	// This ensures we don't exceed the limit even if other goroutines added peers
 	// between our first check and now
-
 	out, _, _ := sw.NumPeers()
 	if out >= sw.config.MaxNumOutboundPeers {
 		sw.transport.Cleanup(p)

@@ -839,7 +839,6 @@ func TestPEXReactorNetworkDiscoveryAndPeerMaintenance(t *testing.T) {
 	// Create 60 regular nodes that only know about the seeds
 	nodes := make([]*p2p.Switch, 60)
 	for i := 0; i < 60; i++ {
-		// Create node with only seeds configured
 		nodes[i] = testCreatePeerWithSeeds(dir, i+2, seeds)
 		require.NoError(t, nodes[i].Start())
 		defer nodes[i].Stop()
@@ -847,7 +846,6 @@ func TestPEXReactorNetworkDiscoveryAndPeerMaintenance(t *testing.T) {
 	}
 
 	// Wait for nodes to connect to seeds
-	// Each node should connect to at least one seed
 	assertPeersWithTimeout(t, nodes, 10*time.Millisecond, 10*time.Second, 1)
 
 	// Wait for 10 seconds
@@ -855,7 +853,6 @@ func TestPEXReactorNetworkDiscoveryAndPeerMaintenance(t *testing.T) {
 	time.Sleep(10 * time.Second)
 
 	// Wait for nodes to discover each other through the seeds
-	// Each node should eventually connect to multiple peers
 	assertPeersWithTimeout(t, nodes, 500*time.Millisecond, 30*time.Second, 5)
 
 	// Verify that nodes have learned about each other through the seeds
