@@ -515,8 +515,7 @@ func (r *Reactor) dialPeer(addr *p2p.NetAddress) error {
 	}
 
 	minTimeBetweenDials := 30 * time.Second
-	sinceLastDialed := time.Since(lastDialed)
-	if sinceLastDialed < minTimeBetweenDials {
+	if time.Since(lastDialed) < minTimeBetweenDials {
 		return errTooEarlyToDial{minTimeBetweenDials, lastDialed}
 	}
 
