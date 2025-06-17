@@ -581,7 +581,8 @@ func (sw *Switch) DialPeerWithAddress(addr *NetAddress) error {
 		return ErrCurrentlyDialingOrExistingAddress{addr.String()}
 	}
 
-	// Try to enforce outbound peer limit
+	// If we've reached the maximum number of outbound peers
+	// or already dialing enough peers do not dial
 	out, _, dial := sw.NumPeers()
 	if out+dial >= sw.config.MaxNumOutboundPeers {
 		sw.Logger.Info("Too many dialing peers",
@@ -805,8 +806,7 @@ func (sw *Switch) addOutboundPeerWithConfig(
 		return err
 	}
 
-	// Check if we've reached the maximum number of outbound peers
-	// or already dialing enough peers
+	// Drop connection if we've reached the maximum number of outbound peers
 	out, _, _ := sw.NumPeers()
 	if out >= sw.config.MaxNumOutboundPeers {
 		sw.transport.Cleanup(p)

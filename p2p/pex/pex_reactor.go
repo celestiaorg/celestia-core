@@ -489,7 +489,7 @@ func (r *Reactor) ensurePeers(ensurePeersPeriodElapsed bool) {
 			r.RequestAddrs(peer)
 		}
 
-		//get updated address book and compare size
+		// Get updated address book and if empty, dial seeds
 		updatedAddrBook := r.book.GetSelection()
 		if len(updatedAddrBook) == 0 {
 			r.Logger.Info("No addresses to dial. Falling back to seeds")
