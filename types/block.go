@@ -162,7 +162,10 @@ func (b *Block) MakePartSet(partSize uint32) (*PartSet, error) {
 	if err != nil {
 		return nil, err
 	}
-	ops := NewPartSetFromData(bz, partSize)
+	ops, err := NewPartSetFromData(bz, partSize)
+	if err != nil {
+		return nil, err
+	}
 	ops.TxPos = pos
 	return ops, nil
 }
