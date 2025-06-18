@@ -6,7 +6,7 @@ order: 9
 
 The RPC documentation is hosted here:
 
-- [OpenAPI reference](../rpc)
+- [OpenAPI reference](../../rpc/openapi/index.html)
 
 <!--
 NOTE: The OpenAPI reference (../rpc) is injected into the documentation during
