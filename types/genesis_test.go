@@ -164,9 +164,23 @@ func randomGenesisDoc() *GenesisDoc {
 }
 
 func TestGenesisDocFromFile(t *testing.T) {
-	genDoc, err := GenesisDocFromFile("./testdata/genesis.v3.json")
-	require.NoError(t, err)
-
-	require.Equal(t, "test", genDoc.ChainID)
-	require.Equal(t, uint64(3), genDoc.ConsensusParams.Version.App)
+	t.Run("should populate app version for genesis.v3.json", func(t *testing.T) {
+		genDoc, err := GenesisDocFromFile("./testdata/genesis.v3.json")
+		require.NoError(t, err)
+		require.Equal(t, "test", genDoc.ChainID)
+		require.Equal(t, uint64(3), genDoc.ConsensusParams.Version.App)
+	})
+	t.Run("should load genesis doc for genesis.mocha.json", func(t *testing.T) {
+		genDoc, err := GenesisDocFromFile("./testdata/genesis.mocha.json")
+		require.NoError(t, err)
+		require.Equal(t, "mocha-4", genDoc.ChainID)
+		require.Equal(t, uint64(1), genDoc.ConsensusParams.Version.App)
+	})
+	t.Run("should load genesis doc for genesis.v4.json", func(t *testing.T) {
+		t.Skip()
+		genDoc, err := GenesisDocFromFile("./testdata/genesis.v4.json")
+		require.NoError(t, err)
+		require.Equal(t, "test", genDoc.ChainID)
+		require.Equal(t, uint64(4), genDoc.ConsensusParams.Version.App)
+	})
 }

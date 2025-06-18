@@ -129,18 +129,23 @@ func GenesisDocFromJSON(jsonBlob []byte) (*GenesisDoc, error) {
 		if err := json.Unmarshal(jsonBlob, &v1); err != nil {
 			return nil, fmt.Errorf("failed to unmarshal genesis doc v1: %w", err)
 		}
-		appVersion, err := strconv.ParseUint(v1.ConsensusParams.Version.AppVersion, 10, 64)
-		if err != nil {
-			return nil, fmt.Errorf("failed to parse app version: %w", err)
+		if v1.ChainID == MochaChainID {
+			genDoc.ConsensusParams.Version.App = 1
+		} else {
+			appVersion, err := strconv.ParseUint(v1.ConsensusParams.Version.AppVersion, 10, 64)
+			if err != nil {
+				return nil, fmt.Errorf("failed to parse app version: %w", err)
+			}
+			// Override the version with the one from the genesis doc v1
+			fmt.Printf("Overriding genDoc.ConsensusParams.Version.App to %d\n", appVersion)
+			genDoc.ConsensusParams.Version.App = appVersion
 		}
-		// Override the version with the one from the genesis doc v1
-		genDoc.ConsensusParams.Version.App = appVersion
 	}
 
 	if err := genDoc.ValidateAndComplete(); err != nil {
 		return nil, err
 	}
-	return &genDoc, err
+	return &genDoc, nil
 }
 
 // GenesisDocFromFile reads JSON data from a file and unmarshalls it into a GenesisDoc.
