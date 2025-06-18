@@ -22,6 +22,7 @@ const (
 	TxStatusUnknown   string = "UNKNOWN"
 	TxStatusPending   string = "PENDING"
 	TxStatusEvicted   string = "EVICTED"
+	TxStatusRejected  string = "REJECTED"
 	TxStatusCommitted string = "COMMITTED"
 )
 
@@ -246,6 +247,12 @@ func (env *Environment) TxStatus(ctx *rpctypes.Context, hash []byte) (*ctypes.Re
 	isEvicted := env.Mempool.WasRecentlyEvicted(txKey)
 	if isEvicted {
 		return &ctypes.ResultTxStatus{Status: TxStatusEvicted}, nil
+	}
+
+	// Check if the tx was rejected (this is only the case for recheck-tx)
+	isRejected := env.Mempool.WasRecentlyRejected(txKey)
+	if isRejected {
+		return &ctypes.ResultTxStatus{Status: TxStatusRejected}, nil
 	}
 
 	// If the tx is not in the mempool, evicted, or committed, return unknown
