@@ -509,7 +509,7 @@ func (r *Reactor) dialAttemptsInfo(addr *p2p.NetAddress) (attempts int, lastDial
 
 func (r *Reactor) dialPeer(addr *p2p.NetAddress) error {
 	attempts, lastDialed := r.dialAttemptsInfo(addr)
-	if !r.Switch.IsPeerPersistent(addr) && attempts > maxAttemptsToDial {
+	if attempts > maxAttemptsToDial && !r.Switch.IsPeerPersistent(addr) {
 		r.book.MarkBad(addr, defaultBanTime)
 		return errMaxAttemptsToDial{}
 	}
@@ -517,13 +517,6 @@ func (r *Reactor) dialPeer(addr *p2p.NetAddress) error {
 	minTimeBetweenDials := 30 * time.Second
 	if time.Since(lastDialed) < minTimeBetweenDials {
 		return errTooEarlyToDial{minTimeBetweenDials, lastDialed}
-	}
-
-	// Each attempt takes at least 30s, so if we've been trying for over 1 hour, mark the peer as bad
-	totalTimeSpentDialing := time.Duration(attempts) * minTimeBetweenDials
-	if totalTimeSpentDialing > time.Hour {
-		r.book.MarkBad(addr, defaultBanTime)
-		return errMaxAttemptsToDial{}
 	}
 
 	err := r.Switch.DialPeerWithAddress(addr)
