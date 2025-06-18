@@ -192,7 +192,8 @@ func (blockProp *Reactor) AddPeer(peer p2p.Peer) error {
 
 	cb, _, found := blockProp.GetCurrentCompactBlock()
 	if !found {
-		return fmt.Errorf("failed to get current compact block, peer: %v", peer.ID())
+		blockProp.Logger.Error("failed to get current compact block", "peer", peer.ID())
+		return nil
 	}
 
 	// send the current proposal
