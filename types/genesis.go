@@ -111,45 +111,36 @@ func (genDoc *GenesisDoc) ValidateAndComplete() error {
 
 // GenesisDocFromJSON unmarshalls JSON data into a GenesisDoc.
 func GenesisDocFromJSON(jsonBlob []byte) (*GenesisDoc, error) {
-	genesisVersion, err := getGenesisVersion(jsonBlob)
+	genDoc := GenesisDoc{}
+	err := cmtjson.Unmarshal(jsonBlob, &genDoc)
 	if err != nil {
 		return nil, err
 	}
 
+	// If the genesis version is v1, we need to override the app version in the
+	// genesis doc with the the app version from the actual genesis file because
+	// cmtjson didn't unmarshal it correctly.
+	genesisVersion, err := getGenesisVersion(jsonBlob)
+	if err != nil {
+		return nil, err
+	}
 	if genesisVersion == GenesisVersion1 {
-		genDoc := GenesisDoc{}
-		err := cmtjson.Unmarshal(jsonBlob, &genDoc)
-		if err != nil {
-			return nil, err
-		}
-
 		var v1 genesisDocv1
 		if err := json.Unmarshal(jsonBlob, &v1); err != nil {
 			return nil, fmt.Errorf("failed to unmarshal genesis doc v1: %w", err)
 		}
-		// Override the version with the one from the genesis doc v1
-		if appVersion, err := strconv.ParseUint(v1.ConsensusParams.Version.AppVersion, 10, 64); err == nil {
-			genDoc.ConsensusParams.Version.App = appVersion
-		}
-
-		if err := genDoc.ValidateAndComplete(); err != nil {
-			return nil, err
-		}
-		return &genDoc, nil
-	}
-
-	if genesisVersion == GenesisVersion2 {
-		genDoc := GenesisDoc{}
-		err := cmtjson.Unmarshal(jsonBlob, &genDoc)
+		appVersion, err := strconv.ParseUint(v1.ConsensusParams.Version.AppVersion, 10, 64)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("failed to parse app version: %w", err)
 		}
-		if err := genDoc.ValidateAndComplete(); err != nil {
-			return nil, err
-		}
-		return &genDoc, err
+		// Override the version with the one from the genesis doc v1
+		genDoc.ConsensusParams.Version.App = appVersion
 	}
-	return nil, fmt.Errorf("unsupported genesis version: %d", genesisVersion)
+
+	if err := genDoc.ValidateAndComplete(); err != nil {
+		return nil, err
+	}
+	return &genDoc, err
 }
 
 // GenesisDocFromFile reads JSON data from a file and unmarshalls it into a GenesisDoc.
