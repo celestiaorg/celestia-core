@@ -231,7 +231,7 @@ func TestTxPool_Recheck(t *testing.T) {
 	appConnMem, err := cc.NewABCIClient()
 	require.NoError(t, err)
 	require.NoError(t, appConnMem.Start())
-	defer appConnMem.Stop()
+	defer func() { _ = appConnMem.Stop() }()
 
 	txmp := NewTxPool(
 		log.TestingLogger().With("test", t.Name()),
@@ -244,7 +244,7 @@ func TestTxPool_Recheck(t *testing.T) {
 	txs := checkTxs(t, txmp, 10, 0)
 	require.Equal(t, 10, txmp.Size())
 
-	// Create raw transactions for commit 
+	// Create raw transactions for commit
 	rawTxs := make([]types.Tx, len(txs))
 	for i, tx := range txs {
 		rawTxs[i] = tx.tx
@@ -264,20 +264,20 @@ func TestTxPool_Recheck(t *testing.T) {
 
 	// Should have 5 transactions remaining after committing 5
 	require.Equal(t, 5, txmp.Size())
-	
+
 	// Verify that we can still use the mempool normally after recheck
 	newTxs := checkTxs(t, txmp, 3, 0)
 	require.Equal(t, 8, txmp.Size()) // 5 remaining + 3 new = 8
 	require.Len(t, newTxs, 3)
 }
 
-// TestTxPool_RecheckConcurrency tests that recheck works correctly under 
+// TestTxPool_RecheckConcurrency tests that recheck works correctly under
 // concurrent conditions and doesn't cause deadlocks.
 func TestTxPool_RecheckConcurrency(t *testing.T) {
 	txmp := setup(t, 0)
 	txmp.config.Recheck = true
 
-	// Add initial transactions 
+	// Add initial transactions
 	checkTxs(t, txmp, 50, 0)
 	require.Equal(t, 50, txmp.Size())
 
@@ -305,7 +305,7 @@ func TestTxPool_RecheckConcurrency(t *testing.T) {
 		}
 	}()
 
-	// Worker 2: Add new transactions 
+	// Worker 2: Add new transactions
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
