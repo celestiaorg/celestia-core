@@ -286,7 +286,7 @@ func TestReactorReceiveDoesNotPanicIfAddPeerHasntBeenCalledYet(t *testing.T) {
 				Type:   cmtproto.PrevoteType,
 			},
 		})
-		reactor.AddPeer(peer)
+		require.NoError(t, reactor.AddPeer(peer))
 	})
 }
 
