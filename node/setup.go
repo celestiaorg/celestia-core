@@ -654,8 +654,7 @@ func loadGenesisDoc(db dbm.DB) (*types.GenesisDoc, error) {
 	if len(b) == 0 {
 		return nil, errors.New("genesis doc not found")
 	}
-	var genDoc *types.GenesisDoc
-	err = cmtjson.Unmarshal(b, &genDoc)
+	genDoc, err := types.GenesisDocFromJSON(b)
 	if err != nil {
 		panic(fmt.Sprintf("Failed to load genesis doc due to unmarshaling error: %v (bytes: %X)", err, b))
 	}
