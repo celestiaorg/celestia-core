@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"strconv"
 	"time"
 
 	"github.com/cometbft/cometbft/crypto"
@@ -110,17 +111,45 @@ func (genDoc *GenesisDoc) ValidateAndComplete() error {
 
 // GenesisDocFromJSON unmarshalls JSON data into a GenesisDoc.
 func GenesisDocFromJSON(jsonBlob []byte) (*GenesisDoc, error) {
-	genDoc := GenesisDoc{}
-	err := cmtjson.Unmarshal(jsonBlob, &genDoc)
+	genesisVersion, err := getGenesisVersion(jsonBlob)
 	if err != nil {
 		return nil, err
 	}
 
-	if err := genDoc.ValidateAndComplete(); err != nil {
-		return nil, err
+	if genesisVersion == GenesisVersion1 {
+		genDoc := GenesisDoc{}
+		err := cmtjson.Unmarshal(jsonBlob, &genDoc)
+		if err != nil {
+			return nil, err
+		}
+
+		var v1 genesisDocv1
+		if err := json.Unmarshal(jsonBlob, &v1); err != nil {
+			return nil, fmt.Errorf("failed to unmarshal genesis doc v1: %w", err)
+		}
+		// Override the version with the one from the genesis doc v1
+		if appVersion, err := strconv.ParseUint(v1.ConsensusParams.Version.AppVersion, 10, 64); err == nil {
+			genDoc.ConsensusParams.Version.App = appVersion
+		}
+
+		if err := genDoc.ValidateAndComplete(); err != nil {
+			return nil, err
+		}
+		return &genDoc, nil
 	}
 
-	return &genDoc, err
+	if genesisVersion == GenesisVersion2 {
+		genDoc := GenesisDoc{}
+		err := cmtjson.Unmarshal(jsonBlob, &genDoc)
+		if err != nil {
+			return nil, err
+		}
+		if err := genDoc.ValidateAndComplete(); err != nil {
+			return nil, err
+		}
+		return &genDoc, err
+	}
+	return nil, fmt.Errorf("unsupported genesis version: %d", genesisVersion)
 }
 
 // GenesisDocFromFile reads JSON data from a file and unmarshalls it into a GenesisDoc.
@@ -134,4 +163,59 @@ func GenesisDocFromFile(genDocFile string) (*GenesisDoc, error) {
 		return nil, fmt.Errorf("error reading GenesisDoc at %s: %w", genDocFile, err)
 	}
 	return genDoc, nil
+}
+
+const (
+	MochaChainID = "mocha-4"
+)
+
+type GenesisVersion int
+
+const (
+	GenesisVersion1 GenesisVersion = iota
+	GenesisVersion2
+)
+
+type genesisDocv1 struct {
+	ChainID         string `json:"chain_id"`
+	ConsensusParams struct {
+		Version struct {
+			AppVersion string `json:"app_version"`
+		} `json:"version"`
+	} `json:"consensus_params"`
+}
+
+type genesisDocv2 struct {
+	ChainID   string `json:"chain_id"`
+	Consensus struct {
+		Params struct {
+			Version struct {
+				App string `json:"app"`
+			} `json:"version"`
+		} `json:"params"`
+	} `json:"consensus"`
+}
+
+// getGenesisVersion returns the genesis version for the given genDoc.
+func getGenesisVersion(genDoc []byte) (GenesisVersion, error) {
+	var v1 genesisDocv1
+	if err := json.Unmarshal(genDoc, &v1); err == nil {
+		// The mocha genesis file contains an empty version field so we need to
+		// special case it.
+		if v1.ChainID == MochaChainID {
+			return GenesisVersion1, nil
+		}
+		if v1.ConsensusParams.Version.AppVersion != "" {
+			return GenesisVersion1, nil
+		}
+	}
+
+	var v2 genesisDocv2
+	if err := json.Unmarshal(genDoc, &v2); err == nil {
+		if v2.Consensus.Params.Version.App != "" {
+			return GenesisVersion2, nil
+		}
+	}
+
+	return 0, errors.New("failed to determine genesis version")
 }
