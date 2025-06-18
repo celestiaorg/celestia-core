@@ -162,3 +162,11 @@ func randomGenesisDoc() *GenesisDoc {
 		AppHash:         []byte{1, 2, 3},
 	}
 }
+
+func TestGenesisDocFromFile(t *testing.T) {
+	genDoc, err := GenesisDocFromFile("./testdata/genesis.v3.json")
+	require.NoError(t, err)
+
+	require.Equal(t, "test", genDoc.ChainID)
+	require.Equal(t, uint64(3), genDoc.ConsensusParams.Version.App)
+}

@@ -1,0 +1,353 @@
+{
+    "genesis_time": "2025-05-06T18:54:18.946631Z",
+    "chain_id": "test",
+    "initial_height": "1",
+    "consensus_params": {
+      "block": {
+        "max_bytes": "1974272",
+        "max_gas": "-1",
+        "time_iota_ms": "1"
+      },
+      "evidence": {
+        "max_age_num_blocks": "120961",
+        "max_age_duration": "1814400000000000",
+        "max_bytes": "1048576"
+      },
+      "validator": {
+        "pub_key_types": [
+          "ed25519"
+        ]
+      },
+      "version": {
+        "app_version": "3"
+      }
+    },
+    "app_hash": "",
+    "app_state": {
+      "auth": {
+        "params": {
+          "max_memo_characters": "256",
+          "tx_sig_limit": "7",
+          "tx_size_cost_per_byte": "10",
+          "sig_verify_cost_ed25519": "590",
+          "sig_verify_cost_secp256k1": "1000"
+        },
+        "accounts": [
+          {
+            "@type": "/cosmos.auth.v1beta1.BaseAccount",
+            "address": "celestia1qexcuz3uk63hxhqvhxucj3p2c84ca5q4uxlgd4",
+            "pub_key": null,
+            "account_number": "0",
+            "sequence": "0"
+          }
+        ]
+      },
+      "authz": {
+        "authorization": []
+      },
+      "bank": {
+        "params": {
+          "send_enabled": [],
+          "default_send_enabled": true
+        },
+        "balances": [
+          {
+            "address": "celestia1qexcuz3uk63hxhqvhxucj3p2c84ca5q4uxlgd4",
+            "coins": [
+              {
+                "denom": "utia",
+                "amount": "1000000000000000"
+              }
+            ]
+          }
+        ],
+        "supply": [
+          {
+            "denom": "utia",
+            "amount": "1000000000000000"
+          }
+        ],
+        "denom_metadata": [
+          {
+            "description": "The native token of the Celestia network.",
+            "denom_units": [
+              {
+                "denom": "utia",
+                "exponent": 0,
+                "aliases": [
+                  "microtia"
+                ]
+              },
+              {
+                "denom": "TIA",
+                "exponent": 6,
+                "aliases": []
+              }
+            ],
+            "base": "utia",
+            "display": "TIA",
+            "name": "TIA",
+            "symbol": "TIA",
+            "uri": "",
+            "uri_hash": ""
+          }
+        ]
+      },
+      "blob": {
+        "params": {
+          "gas_per_blob_byte": 8,
+          "gov_max_square_size": "64"
+        }
+      },
+      "capability": {
+        "index": "1",
+        "owners": []
+      },
+      "crisis": {
+        "constant_fee": {
+          "denom": "utia",
+          "amount": "1000"
+        }
+      },
+      "distribution": {
+        "params": {
+          "community_tax": "0.020000000000000000",
+          "base_proposer_reward": "0.000000000000000000",
+          "bonus_proposer_reward": "0.000000000000000000",
+          "withdraw_addr_enabled": true
+        },
+        "fee_pool": {
+          "community_pool": []
+        },
+        "delegator_withdraw_infos": [],
+        "previous_proposer": "",
+        "outstanding_rewards": [],
+        "validator_accumulated_commissions": [],
+        "validator_historical_rewards": [],
+        "validator_current_rewards": [],
+        "delegator_starting_infos": [],
+        "validator_slash_events": []
+      },
+      "evidence": {
+        "evidence": []
+      },
+      "feegrant": {
+        "allowances": []
+      },
+      "genutil": {
+        "gen_txs": [
+          {
+            "body": {
+              "messages": [
+                {
+                  "@type": "/cosmos.staking.v1beta1.MsgCreateValidator",
+                  "description": {
+                    "moniker": "test",
+                    "identity": "",
+                    "website": "",
+                    "security_contact": "",
+                    "details": ""
+                  },
+                  "commission": {
+                    "rate": "0.100000000000000000",
+                    "max_rate": "0.200000000000000000",
+                    "max_change_rate": "0.010000000000000000"
+                  },
+                  "min_self_delegation": "1",
+                  "delegator_address": "celestia1qexcuz3uk63hxhqvhxucj3p2c84ca5q4uxlgd4",
+                  "validator_address": "celestiavaloper1qexcuz3uk63hxhqvhxucj3p2c84ca5q4eea3mn",
+                  "pubkey": {
+                    "@type": "/cosmos.crypto.ed25519.PubKey",
+                    "key": "rcwMlLn51vwh0t7+sxZZCs2e9BPk4ancpi4kX1sChy4="
+                  },
+                  "value": {
+                    "denom": "utia",
+                    "amount": "5000000000"
+                  }
+                }
+              ],
+              "memo": "b69e1a86253cb60ae93f517a2c02a977cff26af3@192.168.1.216:26656",
+              "timeout_height": "0",
+              "extension_options": [],
+              "non_critical_extension_options": []
+            },
+            "auth_info": {
+              "signer_infos": [
+                {
+                  "public_key": {
+                    "@type": "/cosmos.crypto.secp256k1.PubKey",
+                    "key": "ApT9nNiWkzHs08XCro2ej0+jrluB3osjmIrvPhIknRh5"
+                  },
+                  "mode_info": {
+                    "single": {
+                      "mode": "SIGN_MODE_DIRECT"
+                    }
+                  },
+                  "sequence": "0"
+                }
+              ],
+              "fee": {
+                "amount": [
+                  {
+                    "denom": "utia",
+                    "amount": "500"
+                  }
+                ],
+                "gas_limit": "210000",
+                "payer": "",
+                "granter": ""
+              },
+              "tip": null
+            },
+            "signatures": [
+              "zjHY67lBa1DOtUSN8Pnxtw7q2N/HQiRhGBz6rkwH58AF4t9PkqCZWQtA3I0g23gLPOijfHYavZgsSCUmSt3vag=="
+            ]
+          }
+        ]
+      },
+      "gov": {
+        "starting_proposal_id": "1",
+        "deposits": [],
+        "votes": [],
+        "proposals": [],
+        "deposit_params": {
+          "min_deposit": [
+            {
+              "denom": "utia",
+              "amount": "10000000000"
+            }
+          ],
+          "max_deposit_period": "60s"
+        },
+        "voting_params": {
+          "voting_period": "60s"
+        },
+        "tally_params": {
+          "quorum": "0.334000000000000000",
+          "threshold": "0.500000000000000000",
+          "veto_threshold": "0.334000000000000000"
+        }
+      },
+      "ibc": {
+        "client_genesis": {
+          "clients": [],
+          "clients_consensus": [],
+          "clients_metadata": [],
+          "params": {
+            "allowed_clients": [
+              "06-solomachine",
+              "07-tendermint"
+            ]
+          },
+          "create_localhost": false,
+          "next_client_sequence": "0"
+        },
+        "connection_genesis": {
+          "connections": [],
+          "client_connection_paths": [],
+          "next_connection_sequence": "0",
+          "params": {
+            "max_expected_time_per_block": "75000000000"
+          }
+        },
+        "channel_genesis": {
+          "channels": [],
+          "acknowledgements": [],
+          "commitments": [],
+          "receipts": [],
+          "send_sequences": [],
+          "recv_sequences": [],
+          "ack_sequences": [],
+          "next_channel_sequence": "0"
+        }
+      },
+      "interchainaccounts": {
+        "controller_genesis_state": {
+          "active_channels": [],
+          "interchain_accounts": [],
+          "ports": [],
+          "params": {
+            "controller_enabled": false
+          }
+        },
+        "host_genesis_state": {
+          "active_channels": [],
+          "interchain_accounts": [],
+          "port": "icahost",
+          "params": {
+            "host_enabled": true,
+            "allow_messages": [
+              "/ibc.applications.transfer.v1.MsgTransfer",
+              "/cosmos.bank.v1beta1.MsgSend",
+              "/cosmos.staking.v1beta1.MsgDelegate",
+              "/cosmos.staking.v1beta1.MsgBeginRedelegate",
+              "/cosmos.staking.v1beta1.MsgUndelegate",
+              "/cosmos.staking.v1beta1.MsgCancelUnbondingDelegation",
+              "/cosmos.distribution.v1beta1.MsgSetWithdrawAddress",
+              "/cosmos.distribution.v1beta1.MsgWithdrawDelegatorReward",
+              "/cosmos.distribution.v1beta1.MsgFundCommunityPool",
+              "/cosmos.gov.v1.MsgVote",
+              "/cosmos.feegrant.v1beta1.MsgGrantAllowance",
+              "/cosmos.feegrant.v1beta1.MsgRevokeAllowance"
+            ]
+          }
+        }
+      },
+      "minfee": {
+        "network_min_gas_price": "0.000001000000000000"
+      },
+      "mint": {
+        "bond_denom": "utia"
+      },
+      "packetfowardmiddleware": {
+        "params": {
+          "fee_percentage": "0.000000000000000000"
+        },
+        "in_flight_packets": {}
+      },
+      "params": null,
+      "qgb": {
+        "params": {
+          "data_commitment_window": "400"
+        }
+      },
+      "signal": {},
+      "slashing": {
+        "params": {
+          "signed_blocks_window": "5000",
+          "min_signed_per_window": "0.750000000000000000",
+          "downtime_jail_duration": "60s",
+          "slash_fraction_double_sign": "0.020000000000000000",
+          "slash_fraction_downtime": "0.000000000000000000"
+        },
+        "signing_infos": [],
+        "missed_blocks": []
+      },
+      "staking": {
+        "params": {
+          "unbonding_time": "1814400s",
+          "max_validators": 100,
+          "max_entries": 7,
+          "historical_entries": 10000,
+          "bond_denom": "utia",
+          "min_commission_rate": "0.050000000000000000"
+        },
+        "last_total_power": "0",
+        "last_validator_powers": [],
+        "validators": [],
+        "delegations": [],
+        "unbonding_delegations": [],
+        "redelegations": [],
+        "exported": false
+      },
+      "transfer": {
+        "port_id": "transfer",
+        "denom_traces": [],
+        "params": {
+          "send_enabled": true,
+          "receive_enabled": true
+        }
+      },
+      "vesting": {}
+    }
+  }
