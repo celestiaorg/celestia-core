@@ -40,7 +40,7 @@ const (
 	// check some peers every this
 	crawlPeerPeriod = 30 * time.Second
 
-	maxAttemptsToDial = 5 // 5 attempts with min 30s interval
+	maxAttemptsToDial = 8 // 8 attempts with min 30s interval
 
 	// if node connects to seed, it does not have any trusted peers.
 	// Especially in the beginning, node should have more trusted peers than
