@@ -125,8 +125,17 @@ linters:
           - staticcheck
         text: "QF1005:"
       - linters:
+          - staticcheck
+        text: "QF1011:"
+      - linters:
+          - staticcheck
+        text: "QF1012:"
+      - linters:
           - goconst
         path: (.+)_test\.go
+      - linters:
+          - goconst
+        text: "string `builtin` has"
     paths:
       - libs/pubsub/query/query.peg.go
       - third_party$
