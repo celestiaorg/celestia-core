@@ -685,7 +685,8 @@ func extractEventSeqFromKey(key []byte) string {
 	}
 	return "0"
 }
-func keyForEvent(key string, value []byte, result *abci.TxResult, eventSeq int64) []byte {
+
+func keyForEvent(key string, value string, result *abci.TxResult, eventSeq int64) []byte {
 	return []byte(fmt.Sprintf("%s/%s/%d/%d%s",
 		key,
 		value,
