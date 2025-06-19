@@ -127,6 +127,72 @@ func TestBlockResults(t *testing.T) {
 	}
 }
 
+func TestMissingBlocks(t *testing.T) {
+	env := &Environment{}
+	env.StateStore = sm.NewStore(dbm.NewMemDB(), sm.StoreOptions{
+		DiscardABCIResponses: false,
+	})
+	
+	mockstore := &mocks.BlockStore{}
+	mockstore.On("Height").Return(int64(100))
+	mockstore.On("Base").Return(int64(10))
+	// Simulate missing/pruned blocks by returning nil
+	mockstore.On("LoadBlockMeta", int64(50)).Return(nil)
+	mockstore.On("LoadBlock", int64(50)).Return(nil)
+	mockstore.On("LoadBlockMetaByHash", []byte("missing")).Return(nil)
+	mockstore.On("LoadBlockByHash", []byte("missing")).Return(nil)
+	env.BlockStore = mockstore
+
+	testCases := []struct {
+		name       string
+		testFunc   func() error
+		wantErrMsg string
+	}{
+		{
+			name: "Header missing block",
+			testFunc: func() error {
+				height := int64(50)
+				_, err := env.Header(&rpctypes.Context{}, &height)
+				return err
+			},
+			wantErrMsg: "not available",
+		},
+		{
+			name: "HeaderByHash missing block",
+			testFunc: func() error {
+				_, err := env.HeaderByHash(&rpctypes.Context{}, []byte("missing"))
+				return err
+			},
+			wantErrMsg: "not available",
+		},
+		{
+			name: "Block missing block",
+			testFunc: func() error {
+				height := int64(50)
+				_, err := env.Block(&rpctypes.Context{}, &height)
+				return err
+			},
+			wantErrMsg: "not available",
+		},
+		{
+			name: "BlockByHash missing block",
+			testFunc: func() error {
+				_, err := env.BlockByHash(&rpctypes.Context{}, []byte("missing"))
+				return err
+			},
+			wantErrMsg: "not available",
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			err := tc.testFunc()
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), tc.wantErrMsg)
+		})
+	}
+}
+
 func TestEncodeDataRootTuple(t *testing.T) {
 	height := uint64(2)
 	dataRoot, err := hex.DecodeString("82dc1607d84557d3579ce602a45f5872e821c36dbda7ec926dfa17ebc8d5c013")
