@@ -182,7 +182,7 @@ func (state *State) ToProto() (*cmtstate.State, error) {
 }
 
 // FromProto takes a state proto message & returns the local state type
-func FromProto(pb *cmtstate.State) (*State, error) { //nolint:golint
+func FromProto(pb *cmtstate.State) (*State, error) {
 	if pb == nil {
 		return nil, errors.New("nil State")
 	}
@@ -247,8 +247,7 @@ func (state State) MakeBlock(
 	lastCommit *types.Commit,
 	evidence []types.Evidence,
 	proposerAddress []byte,
-) *types.Block {
-
+) (*types.Block, *types.PartSet, error) {
 	// Build base block with block data.
 	block := types.MakeBlock(height, data, lastCommit, evidence)
 
@@ -261,7 +260,7 @@ func (state State) MakeBlock(
 	}
 
 	// Fill rest of header with state data.
-	block.Header.Populate(
+	block.Header.Populate( //nolint:staticcheck
 		state.Version.Consensus, state.ChainID,
 		timestamp, state.LastBlockID,
 		state.Validators.Hash(), state.NextValidators.Hash(),
@@ -269,7 +268,9 @@ func (state State) MakeBlock(
 		proposerAddress,
 	)
 
-	return block
+	ops, err := block.MakePartSet(types.BlockPartSizeBytes)
+
+	return block, ops, err
 }
 
 // MedianTime computes a median time for a given Commit (based on Timestamp field of votes messages) and the

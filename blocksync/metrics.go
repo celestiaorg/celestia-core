@@ -1,8 +1,9 @@
 package blocksync
 
 import (
-	"github.com/cometbft/cometbft/types"
 	"github.com/go-kit/kit/metrics"
+
+	"github.com/cometbft/cometbft/types"
 )
 
 const (
@@ -28,8 +29,8 @@ type Metrics struct {
 }
 
 func (m *Metrics) recordBlockMetrics(block *types.Block) {
-	m.NumTxs.Set(float64(len(block.Data.Txs)))
-	m.TotalTxs.Add(float64(len(block.Data.Txs)))
+	m.NumTxs.Set(float64(len(block.Data.Txs)))   //nolint:staticcheck
+	m.TotalTxs.Add(float64(len(block.Data.Txs))) //nolint:staticcheck
 	m.BlockSizeBytes.Set(float64(block.Size()))
 	m.LatestBlockHeight.Set(float64(block.Height))
 }

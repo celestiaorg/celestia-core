@@ -277,9 +277,9 @@ func TestAppCalls(t *testing.T) {
 		// and we can even check the block is added
 		block, err := c.Block(context.Background(), &apph)
 		require.NoError(err)
-		appHash := block.Block.Header.AppHash
+		appHash := block.Block.Header.AppHash //nolint:staticcheck
 		assert.True(len(appHash) > 0)
-		assert.EqualValues(apph, block.Block.Header.Height)
+		assert.EqualValues(apph, block.Block.Header.Height) //nolint:staticcheck
 
 		blockByHash, err := c.BlockByHash(context.Background(), block.BlockID.Hash)
 		require.NoError(err)
@@ -311,14 +311,14 @@ func TestAppCalls(t *testing.T) {
 			lastMeta := info.BlockMetas[0]
 			assert.EqualValues(apph, lastMeta.Header.Height)
 			blockData := block.Block
-			assert.Equal(blockData.Header.AppHash, lastMeta.Header.AppHash)
+			assert.Equal(blockData.Header.AppHash, lastMeta.Header.AppHash) //nolint:staticcheck
 			assert.Equal(block.BlockID, lastMeta.BlockID)
 		}
 
 		// and get the corresponding commit with the same apphash
 		commit, err := c.Commit(context.Background(), &apph)
 		require.NoError(err)
-		cappHash := commit.Header.AppHash
+		cappHash := commit.Header.AppHash //nolint:staticcheck
 		assert.Equal(appHash, cappHash)
 		assert.NotNil(commit.Commit)
 
@@ -354,7 +354,7 @@ func TestBroadcastTxSync(t *testing.T) {
 		require.Equal(initMempoolSize+1, mempool.Size())
 
 		txs := mempool.ReapMaxTxs(len(tx))
-		require.EqualValues(tx, txs[0])
+		require.EqualValues(tx, txs[0].Tx)
 		mempool.Flush()
 	}
 }
@@ -399,6 +399,38 @@ func TestUnconfirmedTxs(t *testing.T) {
 		assert.Equal(t, 1, res.Total)
 		assert.Equal(t, mempool.SizeBytes(), res.TotalBytes)
 		assert.Exactly(t, types.Txs{tx}, types.Txs(res.Txs))
+	}
+
+	mempool.Flush()
+}
+
+func TestUncappedUnconfirmedTxs(t *testing.T) {
+	mempool := node.Mempool()
+	numberOfTransactions := 120 // needs to be greater than maxPerPage const
+	for i := 0; i < numberOfTransactions; i++ {
+		_, _, tx := MakeTxKV()
+
+		ch := make(chan *abci.ResponseCheckTx, 1)
+		err := mempool.CheckTx(tx, func(resp *abci.ResponseCheckTx) { ch <- resp }, mempl.TxInfo{})
+		require.NoError(t, err)
+
+		// wait for tx to arrive in mempoool.
+		select {
+		case <-ch:
+		case <-time.After(5 * time.Second):
+			t.Error("Timed out waiting for CheckTx callback")
+		}
+	}
+
+	for _, c := range GetClients() {
+		mc := c.(client.MempoolClient)
+		limit := -1 // set the limit to -1 to return everything
+		res, err := mc.UnconfirmedTxs(context.Background(), &limit)
+		require.NoError(t, err)
+
+		assert.Equal(t, numberOfTransactions, res.Count)
+		assert.Equal(t, numberOfTransactions, res.Total)
+		assert.Equal(t, mempool.SizeBytes(), res.TotalBytes)
 	}
 
 	mempool.Flush()
@@ -538,7 +570,8 @@ func TestBlockSearch(t *testing.T) {
 }
 func TestTxSearch(t *testing.T) {
 	c := getHTTPClient()
-
+	status, err := c.Status(context.Background())
+	require.NoError(t, err)
 	// first we broadcast a few txs
 	for i := 0; i < 10; i++ {
 		_, _, tx := MakeTxKV()
@@ -548,7 +581,7 @@ func TestTxSearch(t *testing.T) {
 
 	// since we're not using an isolated test server, we'll have lingering transactions
 	// from other tests as well
-	result, err := c.TxSearch(context.Background(), "tx.height >= 0", true, nil, nil, "asc")
+	result, err := c.TxSearch(context.Background(), fmt.Sprintf("tx.height >= %d", status.SyncInfo.LatestBlockHeight), true, nil, nil, "asc")
 	require.NoError(t, err)
 	txCount := len(result.Txs)
 
@@ -614,14 +647,14 @@ func TestTxSearch(t *testing.T) {
 		require.Len(t, result.Txs, 0)
 
 		// check sorting
-		result, err = c.TxSearch(context.Background(), "tx.height >= 1", false, nil, nil, "asc")
+		result, err = c.TxSearch(context.Background(), fmt.Sprintf("tx.height >= %d", status.SyncInfo.LatestBlockHeight), false, nil, nil, "asc")
 		require.Nil(t, err)
 		for k := 0; k < len(result.Txs)-1; k++ {
 			require.LessOrEqual(t, result.Txs[k].Height, result.Txs[k+1].Height)
 			require.LessOrEqual(t, result.Txs[k].Index, result.Txs[k+1].Index)
 		}
 
-		result, err = c.TxSearch(context.Background(), "tx.height >= 1", false, nil, nil, "desc")
+		result, err = c.TxSearch(context.Background(), fmt.Sprintf("tx.height >= %d", status.SyncInfo.LatestBlockHeight), false, nil, nil, "desc")
 		require.Nil(t, err)
 		for k := 0; k < len(result.Txs)-1; k++ {
 			require.GreaterOrEqual(t, result.Txs[k].Height, result.Txs[k+1].Height)
@@ -638,7 +671,7 @@ func TestTxSearch(t *testing.T) {
 		totalTx := 0
 		for page := 1; page <= pages; page++ {
 			page := page
-			result, err := c.TxSearch(context.Background(), "tx.height >= 1", true, &page, &perPage, "asc")
+			result, err := c.TxSearch(context.Background(), fmt.Sprintf("tx.height >= %d", status.SyncInfo.LatestBlockHeight), true, &page, &perPage, "asc")
 			require.NoError(t, err)
 			if page < pages {
 				require.Len(t, result.Txs, perPage)

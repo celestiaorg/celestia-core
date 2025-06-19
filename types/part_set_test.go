@@ -4,11 +4,15 @@ import (
 	"io"
 	"testing"
 
+	"github.com/cosmos/gogoproto/proto"
+
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/cometbft/cometbft/crypto"
 	"github.com/cometbft/cometbft/crypto/merkle"
 	cmtrand "github.com/cometbft/cometbft/libs/rand"
+	cmtproto "github.com/cometbft/cometbft/proto/tendermint/types"
 )
 
 const (
@@ -61,6 +65,75 @@ func TestBasicPartSet(t *testing.T) {
 	require.NoError(t, err)
 
 	assert.Equal(t, data, data2)
+}
+
+func TestEncodingDecodingRoundTrip(t *testing.T) {
+	type test struct {
+		dataSize int
+	}
+
+	tests := []test{
+		{
+			1000, // test single part
+		},
+		{
+			int(BlockPartSizeBytes), // exactly 1 part
+		},
+		{
+			int(BlockPartSizeBytes) - 1,
+		},
+		{
+			int(BlockPartSizeBytes) + 1,
+		},
+		{
+			100000, // > 1 part
+		},
+		{
+			1000000, // many parts
+		},
+		{
+			int(BlockPartSizeBytes) * 100, // exactly 100 parts
+		},
+	}
+	for _, tt := range tests {
+		b1 := MakeBlock(1, MakeData([]Tx{Tx(cmtrand.Bytes(tt.dataSize))}), &Commit{Signatures: []CommitSig{}}, []Evidence{})
+		b1.ProposerAddress = cmtrand.Bytes(crypto.AddressSize)
+
+		bp, err := b1.ToProto()
+		require.NoError(t, err)
+
+		bz, err := bp.Marshal()
+		require.NoError(t, err)
+
+		ops := NewPartSetFromData(bz, BlockPartSizeBytes)
+
+		eps, lastPartLen, err := Encode(ops, BlockPartSizeBytes)
+		require.NoError(t, err)
+
+		ops.parts[0] = nil
+
+		ops, _, err = Decode(ops, eps, lastPartLen)
+		require.NoError(t, err)
+
+		bz2, err := io.ReadAll(ops.GetReader())
+		require.NoError(t, err)
+
+		pbb := new(cmtproto.Block)
+		err = proto.Unmarshal(bz2, pbb)
+		require.NoError(t, err)
+
+		b2, err := BlockFromProto(pbb)
+		require.NoError(t, err)
+
+		require.Equal(t, b1, b2)
+	}
+}
+
+func TestEncoding(t *testing.T) {
+	data := cmtrand.Bytes(testPartSize * 100)
+	partSet := NewPartSetFromData(data, testPartSize)
+	_, _, err := Encode(partSet, BlockPartSizeBytes)
+	require.NoError(t, err)
 }
 
 func TestWrongProof(t *testing.T) {

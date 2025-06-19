@@ -1,6 +1,8 @@
 package store
 
-import "errors"
+import (
+	"errors"
+)
 
 var (
 	// ErrLightBlockNotFound is returned when a store does not have the

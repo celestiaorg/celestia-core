@@ -373,12 +373,12 @@ func (store mockBlockStore) LoadBlockMeta(height int64) *types.BlockMeta {
 		return nil
 	}
 	block := store.blocks[height]
-	partSet, err := block.MakePartSet(types.BlockPartSizeBytes)
+	ps, err := block.MakePartSet(types.BlockPartSizeBytes)
 	if err != nil {
 		return nil
 	}
 	return &types.BlockMeta{
-		BlockID: types.BlockID{Hash: block.Hash(), PartSetHeader: partSet.Header()},
+		BlockID: types.BlockID{Hash: block.Hash(), PartSetHeader: ps.Header()},
 		Header:  block.Header,
 	}
 }
@@ -392,11 +392,11 @@ func (store mockBlockStore) LoadBlock(height int64) *types.Block {
 
 func (store mockBlockStore) LoadTxInfo(hash []byte) *cmtstore.TxInfo {
 	for _, block := range store.blocks {
-		for i, tx := range block.Data.Txs {
+		for i, tx := range block.Data.Txs { //nolint:staticcheck
 			// Check if transaction hash matches
 			if bytes.Equal(tx.Hash(), hash) {
 				return &cmtstore.TxInfo{
-					Height: block.Header.Height,
+					Height: block.Header.Height, //nolint:staticcheck
 					//nolint:gosec
 					Index: uint32(i),
 					Code:  uint32(0),

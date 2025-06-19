@@ -81,8 +81,11 @@ See the [install guide](./docs/guides/install.md).
 Please abide by the [Code of Conduct](CODE_OF_CONDUCT.md) in all interactions.
 
 Before contributing to the project, please take a look at the [contributing
-guidelines](CONTRIBUTING.md) and the [style guide](STYLE_GUIDE.md). You may also
-find it helpful to read the [specifications](./spec/README.md), and familiarize
+guidelines](CONTRIBUTING.md) and the [style guide](STYLE_GUIDE.md). 
+
+**Important**: Celestia-core follows a specific contribution workflow with dual-branch maintenance. Please read the [Celestia-specific Contribution Flow](CONTRIBUTING.md#celestia-specific-contribution-flow) section to understand how to target your PRs correctly between the `main` branch (for v5) and `v0.38.x-celestia` branch (for v4).
+
+You may also find it helpful to read the [specifications](./spec/README.md), and familiarize
 yourself with our [Architectural Decision Records
 (ADRs)](./docs/architecture/README.md) and [Request For Comments
 (RFCs)](./docs/rfc/README.md).

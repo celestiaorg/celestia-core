@@ -261,12 +261,12 @@ func (p *peer) ID() ID {
 
 // IsOutbound returns true if the connection is outbound, false otherwise.
 func (p *peer) IsOutbound() bool {
-	return p.peerConn.outbound
+	return p.peerConn.outbound //nolint:staticcheck
 }
 
 // IsPersistent returns true if the peer is persitent, false otherwise.
 func (p *peer) IsPersistent() bool {
-	return p.peerConn.persistent
+	return p.peerConn.persistent //nolint:staticcheck
 }
 
 // NodeInfo returns a copy of the peer's NodeInfo.
@@ -291,7 +291,7 @@ func (p *peer) HasIPChanged() bool {
 // For inbound peers, it's the address returned by the underlying connection
 // (not what's reported in the peer's NodeInfo).
 func (p *peer) SocketAddr() *NetAddress {
-	return p.peerConn.socketAddr
+	return p.peerConn.socketAddr //nolint:staticcheck
 }
 
 // Status returns the peer's ConnectionStatus.
@@ -371,7 +371,7 @@ func (p *peer) hasChannel(chID byte) bool {
 
 // CloseConn closes original connection. Used for cleaning up in cases where the peer had not been started at all.
 func (p *peer) CloseConn() error {
-	return p.peerConn.conn.Close()
+	return p.peerConn.conn.Close() //nolint:staticcheck
 }
 
 func (p *peer) SetRemovalFailed() {
@@ -393,7 +393,7 @@ func (pc *peerConn) CloseConn() {
 
 // RemoteAddr returns peer's remote network address.
 func (p *peer) RemoteAddr() net.Addr {
-	return p.peerConn.conn.RemoteAddr()
+	return p.peerConn.conn.RemoteAddr() //nolint:staticcheck
 }
 
 // CanSend returns true if the send queue is not full, false otherwise.
@@ -413,10 +413,10 @@ func PeerMetrics(metrics *Metrics) PeerOption {
 }
 
 func (p *peer) metricsReporter() {
-	queues := make(map[byte]int, len(p.mconn.Status().Channels))
 	for {
 		select {
 		case <-p.metricsTicker.C:
+			queues := make(map[byte]int, len(p.mconn.Status().Channels))
 			status := p.mconn.Status()
 			var sendQueueSize float64
 			for _, chStatus := range status.Channels {

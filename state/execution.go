@@ -104,7 +104,7 @@ func (blockExec *BlockExecutor) CreateProposalBlock(
 	state State,
 	lastExtCommit *types.ExtendedCommit,
 	proposerAddr []byte,
-) (*types.Block, error) {
+) (*types.Block, *types.PartSet, error) {
 
 	maxBytes := state.ConsensusParams.Block.MaxBytes
 	emptyMaxBytes := maxBytes == -1
@@ -125,7 +125,10 @@ func (blockExec *BlockExecutor) CreateProposalBlock(
 
 	txs := blockExec.mempool.ReapMaxBytesMaxGas(maxReapBytes, maxGas)
 	commit := lastExtCommit.ToCommit()
-	block := state.MakeBlock(height, types.MakeData(txs), commit, evidence, proposerAddr)
+	block, _, err := state.MakeBlock(height, types.MakeData(types.TxsFromCachedTxs(txs)), commit, evidence, proposerAddr)
+	if err != nil {
+		return nil, nil, err
+	}
 	rpp, err := blockExec.proxyApp.PrepareProposal(
 		ctx,
 		&abci.RequestPrepareProposal{
@@ -148,7 +151,7 @@ func (blockExec *BlockExecutor) CreateProposalBlock(
 		// Either way, we cannot recover in a meaningful way, unless we skip proposing
 		// this block, repair what caused the error and try again. Hence, we return an
 		// error for now (the production code calling this function is expected to panic).
-		return nil, err
+		return nil, nil, err
 	}
 
 	rawNewData := rpp.GetTxs()
@@ -160,12 +163,26 @@ func (blockExec *BlockExecutor) CreateProposalBlock(
 
 	txl := types.ToTxs(rpp.Txs)
 	if err := txl.Validate(maxDataBytes); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
-	data := types.NewData(txl, rpp.SquareSize, rpp.DataRootHash)
+	newData := types.NewData(txl, rpp.SquareSize, rpp.DataRootHash)
+	block, partset, err := state.MakeBlock(height, newData, commit, evidence, proposerAddr)
+	if err != nil {
+		return nil, nil, err
+	}
 
-	return state.MakeBlock(height, data, commit, evidence, proposerAddr), nil
+	// get the cached hashes
+	// TODO: make sure that the hashes are correct here
+	// via also removing hashes that the application removed!
+	hashes := make([][]byte, len(newData.Txs))
+	for i := 0; i < len(newData.Txs); i++ {
+		hashes[i] = newData.Txs[i].Hash()
+	}
+
+	block.SetCachedHashes(hashes)
+
+	return block, partset, nil
 }
 
 func (blockExec *BlockExecutor) ProcessProposal(
@@ -175,10 +192,10 @@ func (blockExec *BlockExecutor) ProcessProposal(
 	pbHeader := block.Header.ToProto()
 	resp, err := blockExec.proxyApp.ProcessProposal(context.TODO(), &abci.RequestProcessProposal{
 		Hash:               block.Header.Hash(),
-		Height:             block.Header.Height,
-		Time:               block.Header.Time,
-		Txs:                block.Data.Txs.ToSliceOfBytes(),
-		SquareSize:         block.Data.SquareSize,
+		Height:             block.Header.Height,             //nolint:staticcheck
+		Time:               block.Header.Time,               //nolint:staticcheck
+		Txs:                block.Data.Txs.ToSliceOfBytes(), //nolint:staticcheck
+		SquareSize:         block.Data.SquareSize,           //nolint:staticcheck
 		DataRootHash:       block.Data.Hash(),
 		ProposedLastCommit: buildLastCommitInfoFromStore(block, blockExec.store, state.InitialHeight),
 		Misbehavior:        block.Evidence.Evidence.ToABCI(),
@@ -277,8 +294,8 @@ func (blockExec *BlockExecutor) applyBlock(state State, blockID types.BlockID, b
 	)
 
 	// Assert that the application correctly returned tx results for each of the transactions provided in the block
-	if len(block.Data.Txs) != len(abciResponse.TxResults) {
-		return state, fmt.Errorf("expected tx results length to match size of transactions in block. Expected %d, got %d", len(block.Data.Txs), len(abciResponse.TxResults))
+	if len(block.Data.Txs) != len(abciResponse.TxResults) { //nolint:staticcheck
+		return state, fmt.Errorf("expected tx results length to match size of transactions in block. Expected %d, got %d", len(block.Data.Txs), len(abciResponse.TxResults)) //nolint:staticcheck
 	}
 
 	blockExec.logger.Info("executed block", "height", block.Height, "app_hash", fmt.Sprintf("%X", abciResponse.AppHash))
@@ -457,7 +474,7 @@ func (blockExec *BlockExecutor) Commit(
 	// Update mempool.
 	err = blockExec.mempool.Update(
 		block.Height,
-		block.Txs,
+		types.CachedTxFromTxs(block.Txs),
 		abciResponse.TxResults,
 		TxPreCheck(state),
 		TxPostCheck(state),
@@ -760,7 +777,7 @@ func fireEvents(
 		}
 	}
 
-	for i, tx := range block.Data.Txs {
+	for i, tx := range block.Data.Txs { //nolint:staticcheck
 		blobTx, isBlobTx := types.UnmarshalBlobTx(tx)
 		if isBlobTx {
 			tx = blobTx.Tx
@@ -817,8 +834,8 @@ func ExecCommitBlock(
 	}
 
 	// Assert that the application correctly returned tx results for each of the transactions provided in the block
-	if len(block.Data.Txs) != len(resp.TxResults) {
-		return nil, fmt.Errorf("expected tx results length to match size of transactions in block. Expected %d, got %d", len(block.Data.Txs), len(resp.TxResults))
+	if len(block.Data.Txs) != len(resp.TxResults) { //nolint:staticcheck
+		return nil, fmt.Errorf("expected tx results length to match size of transactions in block. Expected %d, got %d", len(block.Data.Txs), len(resp.TxResults)) //nolint:staticcheck
 	}
 
 	logger.Info("executed block", "height", block.Height, "app_hash", fmt.Sprintf("%X", resp.AppHash))

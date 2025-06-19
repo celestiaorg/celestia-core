@@ -11,6 +11,10 @@ import (
 	"sort"
 	"time"
 
+	proptypes "github.com/cometbft/cometbft/consensus/propagation/types"
+
+	"github.com/cometbft/cometbft/consensus/propagation"
+
 	"github.com/cosmos/gogoproto/proto"
 
 	cfg "github.com/cometbft/cometbft/config"
@@ -41,7 +45,8 @@ var (
 	ErrSignatureFoundInPastBlocks = errors.New("found signature from the same key")
 	ErrProposalTooManyParts       = errors.New("proposal block has too many parts")
 
-	errPubKeyIsNotSet = errors.New("pubkey is not set. Look for \"Can't get private validator pubkey\" errors")
+	errPubKeyIsNotSet             = errors.New("pubkey is not set. Look for \"Can't get private validator pubkey\" errors")
+	errInvalidProposalHeightRound = errors.New("invalid proposal height/round")
 )
 
 var msgQueueSize = 1000
@@ -142,6 +147,11 @@ type State struct {
 	// state only emits EventNewRoundStep and EventVote
 	evsw cmtevents.EventSwitch
 
+	propagator           propagation.Propagator
+	partChan             <-chan types.PartInfo
+	proposalChan         <-chan types.Proposal
+	newHeightOrRoundChan chan struct{}
+
 	// for reporting metrics
 	metrics *Metrics
 
@@ -161,26 +171,33 @@ func NewState(
 	state sm.State,
 	blockExec *sm.BlockExecutor,
 	blockStore sm.BlockStore,
+	propagator propagation.Propagator,
 	txNotifier txNotifier,
 	evpool evidencePool,
+	partChan <-chan types.PartInfo,
+	proposalChan <-chan types.Proposal,
 	options ...StateOption,
 ) *State {
 	cs := &State{
-		config:           config,
-		blockExec:        blockExec,
-		blockStore:       blockStore,
-		txNotifier:       txNotifier,
-		peerMsgQueue:     make(chan msgInfo, msgQueueSize),
-		internalMsgQueue: make(chan msgInfo, msgQueueSize),
-		timeoutTicker:    NewTimeoutTicker(),
-		statsMsgQueue:    make(chan msgInfo, msgQueueSize),
-		done:             make(chan struct{}),
-		doWALCatchup:     true,
-		wal:              nilWAL{},
-		evpool:           evpool,
-		evsw:             cmtevents.NewEventSwitch(),
-		metrics:          NopMetrics(),
-		traceClient:      trace.NoOpTracer(),
+		config:               config,
+		blockExec:            blockExec,
+		blockStore:           blockStore,
+		propagator:           propagator,
+		txNotifier:           txNotifier,
+		peerMsgQueue:         make(chan msgInfo, msgQueueSize),
+		internalMsgQueue:     make(chan msgInfo, msgQueueSize),
+		timeoutTicker:        NewTimeoutTicker(),
+		statsMsgQueue:        make(chan msgInfo, msgQueueSize),
+		done:                 make(chan struct{}),
+		doWALCatchup:         true,
+		wal:                  nilWAL{},
+		evpool:               evpool,
+		evsw:                 cmtevents.NewEventSwitch(),
+		metrics:              NopMetrics(),
+		traceClient:          trace.NoOpTracer(),
+		partChan:             partChan,
+		proposalChan:         proposalChan,
+		newHeightOrRoundChan: make(chan struct{}),
 	}
 	for _, option := range options {
 		option(cs)
@@ -215,7 +232,7 @@ func NewState(
 
 // SetLogger implements Service.
 func (cs *State) SetLogger(l log.Logger) {
-	cs.BaseService.Logger = l
+	cs.BaseService.Logger = l //nolint:staticcheck
 	cs.timeoutTicker.SetLogger(l)
 }
 
@@ -259,7 +276,7 @@ func (cs *State) GetState() sm.State {
 func (cs *State) GetLastHeight() int64 {
 	cs.mtx.RLock()
 	defer cs.mtx.RUnlock()
-	return cs.RoundState.Height - 1
+	return cs.RoundState.Height - 1 //nolint:staticcheck
 }
 
 // GetRoundState returns a shallow copy of the internal consensus state.
@@ -281,7 +298,7 @@ func (cs *State) GetRoundStateJSON() ([]byte, error) {
 func (cs *State) GetRoundStateSimpleJSON() ([]byte, error) {
 	cs.mtx.RLock()
 	defer cs.mtx.RUnlock()
-	return cmtjson.Marshal(cs.RoundState.RoundStateSimple())
+	return cmtjson.Marshal(cs.RoundState.RoundStateSimple()) //nolint:staticcheck
 }
 
 // GetValidators returns a copy of the current validators.
@@ -409,6 +426,7 @@ func (cs *State) OnStart() error {
 
 	// now start the receiveRoutine
 	go cs.receiveRoutine(0)
+	go cs.syncData()
 
 	// schedule the first round!
 	// use GetRoundState so we don't race the receiveRoutine for access
@@ -550,6 +568,10 @@ func (cs *State) SetProposalAndBlock(
 func (cs *State) updateHeight(height int64) {
 	cs.metrics.Height.Set(float64(height))
 	cs.Height = height
+	select {
+	case cs.newHeightOrRoundChan <- struct{}{}:
+	default:
+	}
 }
 
 func (cs *State) updateRoundStep(round int32, step cstypes.RoundStepType) {
@@ -559,11 +581,15 @@ func (cs *State) updateRoundStep(round int32, step cstypes.RoundStepType) {
 		}
 		if cs.Step != step {
 			cs.metrics.MarkStep(cs.Step)
-			schema.WriteRoundState(cs.traceClient, cs.Height, round, uint8(step))
+			schema.WriteRoundState(cs.traceClient, cs.Height, round, step.String())
 		}
 	}
 	cs.Round = round
 	cs.Step = step
+	select {
+	case cs.newHeightOrRoundChan <- struct{}{}:
+	default:
+	}
 }
 
 // enterNewRound(height, 0) at cs.StartTime.
@@ -1125,6 +1151,13 @@ func (cs *State) enterNewRound(height int64, round int32) {
 	if err := cs.eventBus.PublishEventNewRound(cs.NewRoundEvent()); err != nil {
 		cs.Logger.Error("failed publishing new round", "err", err)
 	}
+
+	cs.propagator.SetConsensusRound(height, round)
+	proposer := cs.Validators.GetProposer()
+	if proposer != nil {
+		cs.propagator.SetProposer(proposer.PubKey)
+	}
+
 	// Wait for txs to be available in the mempool
 	// before we enterPropose in round 0. If the last block changed the app hash,
 	// we may need an empty "proof" block, and enterPropose immediately.
@@ -1237,7 +1270,7 @@ func (cs *State) defaultDecideProposal(height int64, round int32) {
 	} else {
 		// Create a new proposal block from state/txs from the mempool.
 		var err error
-		block, err = cs.createProposalBlock(context.TODO())
+		block, blockParts, err = cs.createProposalBlock(context.TODO())
 		if err != nil {
 			cs.Logger.Error("unable to create proposal block", "error", err)
 			return
@@ -1245,11 +1278,6 @@ func (cs *State) defaultDecideProposal(height int64, round int32) {
 			panic("Method createProposalBlock should not provide a nil block without errors")
 		}
 		cs.metrics.ProposalCreateCount.Add(1)
-		blockParts, err = block.MakePartSet(types.BlockPartSizeBytes)
-		if err != nil {
-			cs.Logger.Error("unable to create proposal block part set", "error", err)
-			return
-		}
 	}
 
 	// Flush the WAL. Otherwise, we may not recompute the same proposal to sign,
@@ -1267,6 +1295,18 @@ func (cs *State) defaultDecideProposal(height int64, round int32) {
 
 		// send proposal and block parts on internal msg queue
 		cs.sendInternalMessage(msgInfo{&ProposalMessage{proposal}, ""})
+
+		metaData := make([]proptypes.TxMetaData, len(block.Txs))
+		hashes := block.CachedHashes()
+		for i, pos := range blockParts.TxPos {
+			metaData[i] = proptypes.TxMetaData{
+				Start: pos.Start,
+				End:   pos.End,
+				Hash:  hashes[i],
+			}
+		}
+
+		cs.propagator.ProposeBlock(proposal, blockParts, metaData)
 
 		for i := 0; i < int(blockParts.Total()); i++ {
 			part := blockParts.GetPart(i)
@@ -1301,9 +1341,9 @@ func (cs *State) isProposalComplete() bool {
 //
 // NOTE: keep it side-effect free for clarity.
 // CONTRACT: cs.privValidator is not nil.
-func (cs *State) createProposalBlock(ctx context.Context) (*types.Block, error) {
+func (cs *State) createProposalBlock(ctx context.Context) (block *types.Block, blockParts *types.PartSet, err error) {
 	if cs.privValidator == nil {
-		return nil, errors.New("entered createProposalBlock with privValidator being nil")
+		return nil, nil, errors.New("entered createProposalBlock with privValidator being nil")
 	}
 
 	// TODO(sergio): wouldn't it be easier if CreateProposalBlock accepted cs.LastCommit directly?
@@ -1319,22 +1359,18 @@ func (cs *State) createProposalBlock(ctx context.Context) (*types.Block, error) 
 		lastExtCommit = cs.LastCommit.MakeExtendedCommit(cs.state.ConsensusParams.ABCI)
 
 	default: // This shouldn't happen.
-		return nil, errors.New("propose step; cannot propose anything without commit for the previous block")
+		return nil, nil, errors.New("propose step; cannot propose anything without commit for the previous block")
 	}
 
 	if cs.privValidatorPubKey == nil {
 		// If this node is a validator & proposer in the current round, it will
 		// miss the opportunity to create a block.
-		return nil, fmt.Errorf("propose step; empty priv validator public key, error: %w", errPubKeyIsNotSet)
+		return nil, nil, fmt.Errorf("propose step; empty priv validator public key, error: %w", errPubKeyIsNotSet)
 	}
 
 	proposerAddr := cs.privValidatorPubKey.Address()
 
-	ret, err := cs.blockExec.CreateProposalBlock(ctx, cs.Height, cs.state, lastExtCommit, proposerAddr)
-	if err != nil {
-		panic(err)
-	}
-	return ret, nil
+	return cs.blockExec.CreateProposalBlock(ctx, cs.Height, cs.state, lastExtCommit, proposerAddr)
 }
 
 // Enter: `timeoutPropose` after entering Propose.
@@ -1580,6 +1616,8 @@ func (cs *State) enterPrecommit(height int64, round int32) {
 	if !cs.ProposalBlockParts.HasHeader(blockID.PartSetHeader) {
 		cs.ProposalBlock = nil
 		cs.ProposalBlockParts = types.NewPartSetFromHeader(blockID.PartSetHeader)
+		psh := cs.ProposalBlockParts.Header()
+		cs.propagator.AddCommitment(height, round, &psh)
 	}
 
 	if err := cs.eventBus.PublishEventUnlock(cs.RoundStateEvent()); err != nil {
@@ -1675,6 +1713,8 @@ func (cs *State) enterCommit(height int64, commitRound int32) {
 			// Set up ProposalBlockParts and keep waiting.
 			cs.ProposalBlock = nil
 			cs.ProposalBlockParts = types.NewPartSetFromHeader(blockID.PartSetHeader)
+			psh := blockID.PartSetHeader
+			cs.propagator.AddCommitment(height, commitRound, &psh)
 
 			if err := cs.eventBus.PublishEventValidBlock(cs.RoundStateEvent()); err != nil {
 				logger.Error("failed publishing valid block", "err", err)
@@ -1838,6 +1878,12 @@ func (cs *State) finalizeCommit(height int64) {
 	// Schedule Round0 to start soon.
 	cs.scheduleRound0(&cs.RoundState)
 
+	// prune the propagation reactor
+	cs.propagator.Prune(height)
+	proposer := cs.Validators.GetProposer()
+	if proposer != nil {
+		cs.propagator.SetProposer(proposer.PubKey)
+	}
 	// By here,
 	// * cs.Height has been increment to height+1
 	// * cs.Step is now cstypes.RoundStepNewHeight
@@ -1931,8 +1977,8 @@ func (cs *State) recordMetrics(height int64, block *types.Block) {
 	// trace some metadata about the block
 	schema.WriteBlockSummary(cs.traceClient, block, blockSize)
 
-	cs.metrics.NumTxs.Set(float64(len(block.Data.Txs)))
-	cs.metrics.TotalTxs.Add(float64(len(block.Data.Txs)))
+	cs.metrics.NumTxs.Set(float64(len(block.Data.Txs)))   //nolint:staticcheck
+	cs.metrics.TotalTxs.Add(float64(len(block.Data.Txs))) //nolint:staticcheck
 	cs.metrics.BlockSizeBytes.Set(float64(block.Size()))
 	cs.metrics.ChainSizeBytes.Add(float64(block.Size()))
 	cs.metrics.CommittedHeight.Set(float64(block.Height))
@@ -1949,18 +1995,17 @@ func (cs *State) defaultSetProposal(proposal *types.Proposal) error {
 
 	// Does not apply
 	if proposal.Height != cs.Height || proposal.Round != cs.Round {
-		return nil
+		return fmt.Errorf("%w: proposal height %v round %v does not match state height %v round %v", errInvalidProposalHeightRound, proposal.Height, proposal.Round, cs.Height, cs.Round)
 	}
-
 	// Verify POLRound, which must be -1 or in range [0, proposal.Round).
 	if proposal.POLRound < -1 ||
 		(proposal.POLRound >= 0 && proposal.POLRound >= proposal.Round) {
-		return ErrInvalidProposalPOLRound
+		return fmt.Errorf(ErrInvalidProposalPOLRound.Error()+"%v %v", proposal.POLRound, proposal.Round)
 	}
 
+	pubKey := cs.Validators.GetProposer().PubKey
 	p := proposal.ToProto()
 	// Verify signature
-	pubKey := cs.Validators.GetProposer().PubKey
 	if !pubKey.VerifySignature(
 		types.ProposalSignBytes(cs.state.ChainID, p), proposal.Signature,
 	) {
@@ -2337,6 +2382,9 @@ func (cs *State) addVote(vote *types.Vote, peerID p2p.ID) (added bool, err error
 
 				if !cs.ProposalBlockParts.HasHeader(blockID.PartSetHeader) {
 					cs.ProposalBlockParts = types.NewPartSetFromHeader(blockID.PartSetHeader)
+					psh := blockID.PartSetHeader
+					// todo: override in propagator if an existing proposal exists
+					cs.propagator.AddCommitment(height, vote.Round, &psh)
 				}
 
 				cs.evsw.FireEvent(types.EventValidBlock, &cs.RoundState)
@@ -2635,4 +2683,86 @@ func repairWalFile(src, dst string) error {
 	}
 
 	return nil
+}
+
+// syncData continuously listens for and processes block parts or proposals from the propagation reactor.
+// It stops execution when the service is terminated or the channels are closed.
+func (cs *State) syncData() {
+	for {
+		select {
+		case <-cs.Quit():
+			return
+		case part, ok := <-cs.partChan:
+			if !ok {
+				return
+			}
+			cs.mtx.RLock()
+			h, r := cs.Height, cs.Round
+			currentProposalParts := cs.ProposalBlockParts
+			cs.mtx.RUnlock()
+			if part.Height != h || part.Round != r {
+				continue
+			}
+
+			if currentProposalParts != nil {
+				if currentProposalParts.IsComplete() {
+					continue
+				}
+				if currentProposalParts.HasPart(int(part.Index)) {
+					continue
+				}
+			}
+
+			cs.peerMsgQueue <- msgInfo{&BlockPartMessage{h, r, part.Part}, ""}
+		case proposal, ok := <-cs.proposalChan:
+			if !ok {
+				return
+			}
+			cs.mtx.RLock()
+			currentProposal := cs.Proposal
+			h, r := cs.Height, cs.Round
+			completeProp := cs.isProposalComplete()
+			cs.mtx.RUnlock()
+			if completeProp {
+				continue
+			}
+
+			if currentProposal == nil && proposal.Height == h && proposal.Round == r {
+				schema.WriteNote(
+					cs.traceClient,
+					proposal.Height,
+					proposal.Round,
+					"syncData",
+					"found and sent proposal: %v/%v",
+					proposal.Height, proposal.Round,
+				)
+				cs.peerMsgQueue <- msgInfo{&ProposalMessage{&proposal}, ""}
+			}
+		case _, ok := <-cs.newHeightOrRoundChan:
+			if !ok {
+				return
+			}
+			cs.mtx.RLock()
+			height, round := cs.Height, cs.Round
+			currentProposalParts := cs.ProposalBlockParts
+			cs.mtx.RUnlock()
+			if currentProposalParts == nil {
+				continue
+			}
+			_, partset, has := cs.propagator.GetProposal(height, round)
+			if !has {
+				continue
+			}
+			for _, indice := range partset.BitArray().GetTrueIndices() {
+				if currentProposalParts.IsComplete() {
+					break
+				}
+				if currentProposalParts.HasPart(indice) {
+					continue
+				}
+				part := partset.GetPart(indice)
+				cs.peerMsgQueue <- msgInfo{&BlockPartMessage{height, round, part}, ""}
+			}
+		}
+	}
 }

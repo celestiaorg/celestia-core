@@ -1,14 +1,18 @@
 package types
 
 import (
+	"crypto/rand"
 	"fmt"
 	"testing"
 	"time"
 
+	"github.com/cometbft/cometbft/crypto/tmhash"
+
+	"github.com/stretchr/testify/require"
+
 	cmtproto "github.com/cometbft/cometbft/proto/tendermint/types"
 	cmtversion "github.com/cometbft/cometbft/proto/tendermint/version"
 	"github.com/cometbft/cometbft/version"
-	"github.com/stretchr/testify/require"
 )
 
 func MakeExtCommit(blockID BlockID, height int64, round int32,
@@ -137,4 +141,36 @@ func MakeData(txs []Tx) Data {
 	return Data{
 		Txs: txs,
 	}
+}
+
+func RandCommit(now time.Time) *Commit {
+	lastID := MakeBlockIDRandom()
+	h := int64(3)
+	voteSet, _, vals := RandVoteSet(h-1, 1, cmtproto.PrecommitType, 10, 1)
+	commit, err := MakeExtCommit(lastID, h-1, 1, voteSet, vals, now, false)
+	if err != nil {
+		panic(err)
+	}
+	return commit.ToCommit()
+}
+
+func RandVoteSet(
+	height int64,
+	round int32,
+	signedMsgType cmtproto.SignedMsgType,
+	numValidators int,
+	votingPower int64,
+) (*VoteSet, *ValidatorSet, []PrivValidator) {
+	valSet, privValidators := RandValidatorSet(numValidators, votingPower)
+	return NewVoteSet("test_chain_id", height, round, signedMsgType, valSet), valSet, privValidators
+}
+
+func MakeBlockIDRandom() BlockID {
+	var (
+		blockHash   = make([]byte, tmhash.Size)
+		partSetHash = make([]byte, tmhash.Size)
+	)
+	rand.Read(blockHash)   //nolint: errcheck // ignore errcheck for read
+	rand.Read(partSetHash) //nolint: errcheck // ignore errcheck for read
+	return BlockID{blockHash, PartSetHeader{123, partSetHash}}
 }

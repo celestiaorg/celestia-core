@@ -51,10 +51,11 @@ type TxMempool struct {
 	height               int64     // the latest height passed to Update
 	lastPurgeTime        time.Time // the last time we attempted to purge transactions via the TTL
 
-	txs        *clist.CList // valid transactions (passed CheckTx)
-	txByKey    map[types.TxKey]*clist.CElement
-	txBySender map[string]*clist.CElement // for sender != ""
-	evictedTxs mempool.TxCache            // for tracking evicted transactions
+	txs         *clist.CList // valid transactions (passed CheckTx)
+	txByKey     map[types.TxKey]*clist.CElement
+	txBySender  map[string]*clist.CElement // for sender != ""
+	evictedTxs  mempool.TxCache            // for tracking evicted transactions
+	rejectedTxs mempool.TxCache            // for tracking rejected transactions
 }
 
 // NewTxMempool constructs a new, empty priority mempool at the specified
@@ -82,6 +83,7 @@ func NewTxMempool(
 	if cfg.CacheSize > 0 {
 		txmp.cache = mempool.NewLRUTxCache(cfg.CacheSize)
 		txmp.evictedTxs = mempool.NewLRUTxCache(cfg.CacheSize / 5)
+		txmp.rejectedTxs = mempool.NewLRUTxCache(cfg.CacheSize / 5)
 	}
 
 	for _, opt := range options {
@@ -187,9 +189,12 @@ func (txmp *TxMempool) CheckTx(
 		return mempool.ErrTxTooLarge{Max: txmp.config.MaxTxBytes, Actual: len(tx)}
 	}
 
+	cachedTx := tx.ToCachedTx()
 	// If a precheck hook is defined, call it before invoking the application.
-	if err := txmp.preCheck(tx); err != nil {
+	if err := txmp.preCheck(cachedTx); err != nil {
 		txmp.metrics.FailedTxs.Add(1)
+		// Add the transaction to the rejected cache
+		txmp.rejectedTxs.Push(cachedTx)
 		return mempool.ErrPreCheck{Err: err}
 	}
 
@@ -198,7 +203,7 @@ func (txmp *TxMempool) CheckTx(
 		return err
 	}
 
-	txKey := tx.Key()
+	txKey := cachedTx.Key()
 
 	// At this point, we need to ensure that passing CheckTx and adding to
 	// the mempool is atomic.
@@ -206,7 +211,7 @@ func (txmp *TxMempool) CheckTx(
 	defer txmp.Unlock()
 
 	// Check for the transaction in the cache.
-	if !txmp.cache.Push(tx) {
+	if !txmp.cache.Push(cachedTx) {
 		// If the cached transaction is also in the pool, record its sender.
 		if elt, ok := txmp.txByKey[txKey]; ok {
 			txmp.metrics.AlreadySeenTxs.Add(1)
@@ -219,12 +224,11 @@ func (txmp *TxMempool) CheckTx(
 	// Invoke an ABCI CheckTx for this transaction.
 	rsp, err := txmp.proxyAppConn.CheckTx(context.Background(), &abci.RequestCheckTx{Tx: tx})
 	if err != nil {
-		txmp.cache.Remove(tx)
+		txmp.cache.Remove(cachedTx)
 		return err
 	}
 	wtx := &WrappedTx{
-		tx:        tx,
-		hash:      tx.Key(),
+		tx:        cachedTx,
 		timestamp: time.Now().UTC(),
 		height:    txmp.height,
 	}
@@ -248,7 +252,7 @@ func (txmp *TxMempool) RemoveTxByKey(txKey types.TxKey) error {
 
 // GetTxByKey retrieves a transaction based on the key. It returns a bool
 // indicating whether transaction was found in the cache.
-func (txmp *TxMempool) GetTxByKey(txKey types.TxKey) (types.Tx, bool) {
+func (txmp *TxMempool) GetTxByKey(txKey types.TxKey) (*types.CachedTx, bool) {
 	txmp.mtx.RLock()
 	defer txmp.mtx.RUnlock()
 
@@ -262,6 +266,13 @@ func (txmp *TxMempool) GetTxByKey(txKey types.TxKey) (types.Tx, bool) {
 // the specified key was recently evicted and is currently within the evicted cache.
 func (txmp *TxMempool) WasRecentlyEvicted(txKey types.TxKey) bool {
 	return txmp.evictedTxs.HasKey(txKey)
+}
+
+// WasRecentlyRejected returns true if the tx was rejected from the mempool and exists in the
+// rejected cache.
+// Used in the RPC endpoint: TxStatus.
+func (txmp *TxMempool) WasRecentlyRejected(txKey types.TxKey) bool {
+	return txmp.rejectedTxs.HasKey(txKey)
 }
 
 // removeTxByKey removes the specified transaction key from the mempool.
@@ -339,15 +350,15 @@ func (txmp *TxMempool) allEntriesSorted() []*WrappedTx {
 //
 // If the mempool is empty or has no transactions fitting within the given
 // constraints, the result will also be empty.
-func (txmp *TxMempool) ReapMaxBytesMaxGas(maxBytes, maxGas int64) types.Txs {
+func (txmp *TxMempool) ReapMaxBytesMaxGas(maxBytes, maxGas int64) []*types.CachedTx {
 	var totalGas, totalBytes int64
 
-	var keep []types.Tx //nolint:prealloc
+	var keep []*types.CachedTx //nolint:prealloc
 	for _, w := range txmp.allEntriesSorted() {
 		// N.B. When computing byte size, we need to include the overhead for
 		// encoding as protobuf to send to the application. This actually overestimates it
 		// as we add the proto overhead to each transaction
-		txBytes := types.ComputeProtoSizeForTxs([]types.Tx{w.tx})
+		txBytes := types.ComputeProtoSizeForTxs([]types.Tx{w.tx.Tx})
 		if (maxGas >= 0 && totalGas+w.gasWanted > maxGas) || (maxBytes >= 0 && totalBytes+txBytes > maxBytes) {
 			continue
 		}
@@ -374,8 +385,8 @@ func (txmp *TxMempool) TxsFront() *clist.CElement { return txmp.txs.Front() }
 //
 // The result may have fewer than max elements (possibly zero) if the mempool
 // does not have that many transactions available.
-func (txmp *TxMempool) ReapMaxTxs(max int) types.Txs {
-	var keep []types.Tx //nolint:prealloc
+func (txmp *TxMempool) ReapMaxTxs(max int) []*types.CachedTx {
+	var keep []*types.CachedTx //nolint:prealloc
 
 	for _, w := range txmp.allEntriesSorted() {
 		if max >= 0 && len(keep) >= max {
@@ -399,7 +410,7 @@ func (txmp *TxMempool) ReapMaxTxs(max int) types.Txs {
 // calling Update.
 func (txmp *TxMempool) Update(
 	blockHeight int64,
-	blockTxs types.Txs,
+	blockTxs []*types.CachedTx,
 	deliverTxResponses []*abci.ExecTxResult,
 	newPreFn mempool.PreCheckFunc,
 	newPostFn mempool.PostCheckFunc,
@@ -483,6 +494,9 @@ func (txmp *TxMempool) addNewTransaction(wtx *WrappedTx, checkTxRes *abci.Respon
 		)
 
 		txmp.metrics.FailedTxs.Add(1)
+
+		// Add the transaction to the rejected cache
+		txmp.rejectedTxs.Push(wtx.tx)
 
 		// Remove the invalid transaction from the cache, unless the operator has
 		// instructed us to keep invalid transactions.
@@ -619,7 +633,7 @@ func (txmp *TxMempool) insertTx(wtx *WrappedTx) {
 //
 // This method is NOT executed for the initial CheckTx on a new transaction;
 // that case is handled by addNewTransaction instead.
-func (txmp *TxMempool) handleRecheckResult(tx types.Tx, checkTxRes *abci.ResponseCheckTx) {
+func (txmp *TxMempool) handleRecheckResult(tx *types.CachedTx, checkTxRes *abci.ResponseCheckTx) {
 	txmp.metrics.RecheckTimes.Add(1)
 
 	// Find the transaction reported by the ABCI callback. It is possible the
@@ -649,6 +663,7 @@ func (txmp *TxMempool) handleRecheckResult(tx types.Tx, checkTxRes *abci.Respons
 		"err", err,
 		"code", checkTxRes.Code,
 	)
+	txmp.rejectedTxs.Push(wtx.tx)
 	txmp.removeTxByElement(elt)
 	txmp.metrics.FailedTxs.Add(1)
 	if !txmp.config.KeepInvalidTxsInCache {
@@ -686,7 +701,7 @@ func (txmp *TxMempool) recheckTransactions() {
 		wtx := wtx
 		// The response for this CheckTx is handled by the default recheckTxCallback.
 		rsp, err := txmp.proxyAppConn.CheckTx(context.Background(), &abci.RequestCheckTx{
-			Tx:   wtx.tx,
+			Tx:   wtx.tx.Tx,
 			Type: abci.CheckTxType_Recheck,
 		})
 		if err != nil {
@@ -778,7 +793,7 @@ func (txmp *TxMempool) notifyTxsAvailable() {
 	}
 }
 
-func (txmp *TxMempool) preCheck(tx types.Tx) error {
+func (txmp *TxMempool) preCheck(tx *types.CachedTx) error {
 	txmp.mtx.Lock()
 	defer txmp.mtx.Unlock()
 	if txmp.preCheckFn != nil {

@@ -9,6 +9,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cometbft/cometbft/consensus/propagation"
+
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -57,11 +59,13 @@ func TestByzantinePrevoteEquivocation(t *testing.T) {
 		})
 		state, _ := stateStore.LoadFromDBOrGenesisDoc(genDoc)
 		thisConfig := ResetConfig(fmt.Sprintf("%s_%d", testName, i))
+		nodeKey, err := p2p.LoadOrGenNodeKey(thisConfig.NodeKeyFile())
+		require.NoError(t, err)
 		defer os.RemoveAll(thisConfig.RootDir)
 		ensureDir(path.Dir(thisConfig.Consensus.WalFile()), 0o700) // dir for wal
 		app := appFunc()
 		vals := types.TM2PB.ValidatorUpdates(state.Validators)
-		_, err := app.InitChain(context.Background(), &abci.RequestInitChain{Validators: vals})
+		_, err = app.InitChain(context.Background(), &abci.RequestInitChain{Validators: vals})
 		require.NoError(t, err)
 
 		blockDB := dbm.NewMemDB()
@@ -91,10 +95,22 @@ func TestByzantinePrevoteEquivocation(t *testing.T) {
 
 		// Make State
 		blockExec := sm.NewBlockExecutor(stateStore, log.TestingLogger(), proxyAppConnCon, mempool, evpool, blockStore)
-		cs := NewState(thisConfig.Consensus, state, blockExec, blockStore, mempool, evpool)
-		cs.SetLogger(cs.Logger)
+
 		// set private validator
 		pv := privVals[i]
+		partsChan := make(chan types.PartInfo, 1000)
+		proposalChan := make(chan types.Proposal, 100)
+		propagationReactor := propagation.NewReactor(nodeKey.ID(), propagation.Config{
+			Store:         blockStore,
+			Mempool:       mempool,
+			Privval:       pv,
+			ChainID:       state.ChainID,
+			BlockMaxBytes: state.ConsensusParams.Block.MaxBytes,
+			PartChan:      partsChan,
+			ProposalChan:  proposalChan,
+		})
+		cs := NewState(thisConfig.Consensus, state, blockExec, blockStore, propagationReactor, mempool, evpool, partsChan, proposalChan)
+		cs.SetLogger(cs.Logger)
 		cs.SetPrivValidator(pv)
 
 		eventBus := types.NewEventBus()
@@ -114,7 +130,7 @@ func TestByzantinePrevoteEquivocation(t *testing.T) {
 	blocksSubs := make([]types.Subscription, 0)
 	eventBuses := make([]*types.EventBus, nValidators)
 	for i := 0; i < nValidators; i++ {
-		reactors[i] = NewReactor(css[i], true) // so we dont start the consensus states
+		reactors[i] = NewReactor(css[i], css[i].propagator, true) // so we dont start the consensus states
 		reactors[i].SetLogger(css[i].Logger)
 
 		// eventBus is already started with the cs
@@ -210,7 +226,7 @@ func TestByzantinePrevoteEquivocation(t *testing.T) {
 		}
 		proposerAddr := lazyProposer.privValidatorPubKey.Address()
 
-		block, err := lazyProposer.blockExec.CreateProposalBlock(
+		block, _, err := lazyProposer.blockExec.CreateProposalBlock(
 			ctx, lazyProposer.Height, lazyProposer.state, extCommit, proposerAddr)
 		require.NoError(t, err)
 		blockParts, err := block.MakePartSet(types.BlockPartSizeBytes)
@@ -352,7 +368,7 @@ func TestByzantineConflictingProposalsWithPartition(t *testing.T) {
 		blocksSubs[i], err = eventBus.Subscribe(context.Background(), testSubscriber, types.EventQueryNewBlock)
 		require.NoError(t, err)
 
-		conR := NewReactor(css[i], true) // so we don't start the consensus states
+		conR := NewReactor(css[i], css[i].propagator, true) // so we don't start the consensus states
 		conR.SetLogger(logger.With("validator", i))
 		conR.SetEventBus(eventBus)
 
@@ -461,7 +477,7 @@ func byzantineDecideProposalFunc(ctx context.Context, t *testing.T, height int64
 	// Avoid sending on internalMsgQueue and running consensus state.
 
 	// Create a new proposal block from state/txs from the mempool.
-	block1, err := cs.createProposalBlock(ctx)
+	block1, _, err := cs.createProposalBlock(ctx)
 	require.NoError(t, err)
 	blockParts1, err := block1.MakePartSet(types.BlockPartSizeBytes)
 	require.NoError(t, err)
@@ -478,7 +494,7 @@ func byzantineDecideProposalFunc(ctx context.Context, t *testing.T, height int64
 	deliverTxsRange(t, cs, 0, 1)
 
 	// Create a new proposal block from state/txs from the mempool.
-	block2, err := cs.createProposalBlock(ctx)
+	block2, _, err := cs.createProposalBlock(ctx)
 	require.NoError(t, err)
 	blockParts2, err := block2.MakePartSet(types.BlockPartSizeBytes)
 	require.NoError(t, err)

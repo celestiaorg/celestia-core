@@ -3,9 +3,10 @@ package node
 import (
 	"testing"
 
-	dbm "github.com/cometbft/cometbft-db"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	dbm "github.com/cometbft/cometbft-db"
 
 	cfg "github.com/cometbft/cometbft/config"
 )

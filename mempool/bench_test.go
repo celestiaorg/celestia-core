@@ -4,9 +4,12 @@ import (
 	"sync/atomic"
 	"testing"
 
+	"github.com/cometbft/cometbft/types"
+
+	"github.com/stretchr/testify/require"
+
 	"github.com/cometbft/cometbft/abci/example/kvstore"
 	"github.com/cometbft/cometbft/proxy"
-	"github.com/stretchr/testify/require"
 )
 
 func BenchmarkReap(b *testing.B) {
@@ -101,7 +104,7 @@ func BenchmarkUpdate(b *testing.B) {
 		require.Equal(b, len(txs), mp.Size(), len(txs))
 		b.StartTimer()
 
-		doUpdate(b, mp, int64(i), txs)
+		doUpdate(b, mp, int64(i), types.CachedTxFromTxs(txs))
 		require.Zero(b, mp.Size())
 	}
 }
@@ -122,7 +125,7 @@ func BenchmarkUpdateAndRecheck(b *testing.B) {
 		b.StartTimer()
 
 		// Update a part of txs and recheck the rest.
-		doUpdate(b, mp, int64(i), txs[:numTxs/2])
+		doUpdate(b, mp, int64(i), types.CachedTxFromTxs(txs[:numTxs/2]))
 	}
 
 }

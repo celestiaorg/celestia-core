@@ -10,9 +10,10 @@ import (
 	cmtproto "github.com/cometbft/cometbft/proto/tendermint/types"
 	sm "github.com/cometbft/cometbft/state"
 
+	"github.com/stretchr/testify/require"
+
 	abci "github.com/cometbft/cometbft/abci/types"
 	cmtstate "github.com/cometbft/cometbft/proto/tendermint/state"
-	"github.com/stretchr/testify/require"
 )
 
 // Compatibility test across different state proto versions
@@ -67,7 +68,7 @@ func (multi MultiStore) SaveABCIResponses(height int64, abciResponses *cmtstate.
 
 	// If the flag is false then we save the ABCIResponse. This can be used for the /block_results
 	// query or to reindex an event using the command line.
-	if !multi.StoreOptions.DiscardABCIResponses {
+	if !multi.StoreOptions.DiscardABCIResponses { //nolint:staticcheck
 		bz, err := abciResponses.Marshal()
 		if err != nil {
 			return err

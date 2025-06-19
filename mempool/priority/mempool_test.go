@@ -15,9 +15,10 @@ import (
 	"time"
 
 	share "github.com/celestiaorg/go-square/v2/share"
-	db "github.com/cometbft/cometbft-db"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	db "github.com/cometbft/cometbft-db"
 
 	"github.com/cometbft/cometbft/abci/example/kvstore"
 	abci "github.com/cometbft/cometbft/abci/types"
@@ -180,7 +181,7 @@ func TestTxMempool_TxsAvailable(t *testing.T) {
 
 	// commit half the transactions and ensure we fire an event
 	txmp.Lock()
-	require.NoError(t, txmp.Update(1, rawTxs[:50], responses, nil, nil))
+	require.NoError(t, txmp.Update(1, types.CachedTxFromTxs(rawTxs[:50]), responses, nil, nil))
 	txmp.Unlock()
 	ensureTxFire()
 	ensureNoTxFire()
@@ -208,7 +209,7 @@ func TestTxMempool_Size(t *testing.T) {
 	}
 
 	txmp.Lock()
-	require.NoError(t, txmp.Update(1, rawTxs[:50], responses, nil, nil))
+	require.NoError(t, txmp.Update(1, types.CachedTxFromTxs(rawTxs[:50]), responses, nil, nil))
 	txmp.Unlock()
 
 	require.Equal(t, len(rawTxs)/2, txmp.Size())
@@ -311,7 +312,7 @@ func TestTxMempool_Flush(t *testing.T) {
 	}
 
 	txmp.Lock()
-	require.NoError(t, txmp.Update(1, rawTxs[:50], responses, nil, nil))
+	require.NoError(t, txmp.Update(1, types.CachedTxFromTxs(rawTxs[:50]), responses, nil, nil))
 	txmp.Unlock()
 
 	txmp.Flush()
@@ -352,14 +353,14 @@ func TestTxMempool_ReapMaxBytesMaxGas(t *testing.T) {
 
 	// reap by gas capacity only
 	reapedTxs := txmp.ReapMaxBytesMaxGas(-1, 50)
-	ensurePrioritized(reapedTxs)
+	ensurePrioritized(types.TxsFromCachedTxs(reapedTxs))
 	require.Equal(t, len(tTxs), txmp.Size())
 	require.Equal(t, totalSizeBytes, txmp.SizeBytes())
 	require.Len(t, reapedTxs, 50)
 
 	// reap by transaction bytes only
 	reapedTxs = txmp.ReapMaxBytesMaxGas(1000, -1)
-	ensurePrioritized(reapedTxs)
+	ensurePrioritized(types.TxsFromCachedTxs(reapedTxs))
 	require.Equal(t, len(tTxs), txmp.Size())
 	require.Equal(t, totalSizeBytes, txmp.SizeBytes())
 	require.GreaterOrEqual(t, len(reapedTxs), 16)
@@ -367,7 +368,7 @@ func TestTxMempool_ReapMaxBytesMaxGas(t *testing.T) {
 	// Reap by both transaction bytes and gas, where the size yields 31 reaped
 	// transactions and the gas limit reaps 25 transactions.
 	reapedTxs = txmp.ReapMaxBytesMaxGas(1500, 30)
-	ensurePrioritized(reapedTxs)
+	ensurePrioritized(types.TxsFromCachedTxs(reapedTxs))
 	require.Equal(t, len(tTxs), txmp.Size())
 	require.Equal(t, totalSizeBytes, txmp.SizeBytes())
 	require.Len(t, reapedTxs, 25)
@@ -390,7 +391,8 @@ func TestTxMempoolTxLargerThanMaxBytes(t *testing.T) {
 	require.NoError(t, txmp.CheckTx(smallTx, nil, mempool.TxInfo{SenderID: 1}))
 
 	// reap by max bytes less than the large tx
-	reapedTxs := txmp.ReapMaxBytesMaxGas(100, -1)
+	cachedReapedTxs := txmp.ReapMaxBytesMaxGas(100, -1)
+	reapedTxs := types.TxsFromCachedTxs(cachedReapedTxs)
 	require.Len(t, reapedTxs, 1)
 	require.Equal(t, types.Tx(smallTx), reapedTxs[0])
 }
@@ -413,7 +415,7 @@ func TestTxMempool_ReapMaxTxs(t *testing.T) {
 		return priorities[i] > priorities[j]
 	})
 
-	ensurePrioritized := func(reapedTxs types.Txs) {
+	ensurePrioritized := func(reapedTxs []*types.CachedTx) {
 		reapedPriorities := make([]int64, len(reapedTxs))
 		for i, rTx := range reapedTxs {
 			reapedPriorities[i] = txMap[rTx.Key()].priority
@@ -602,7 +604,7 @@ func TestTxMempool_ExpiredTxs_Timestamp(t *testing.T) {
 		if _, ok := txmp.txByKey[tx.tx.Key()]; ok {
 			t.Errorf("Transaction %X should have been purged for TTL", tx.tx.Key())
 		}
-		if txmp.cache.Has(tx.tx) {
+		if txmp.cache.Has(tx.tx.ToCachedTx()) {
 			t.Errorf("Transaction %X should have been removed from the cache", tx.tx.Key())
 		}
 	}
@@ -623,7 +625,7 @@ func TestGetTxByKey_GetsTx(t *testing.T) {
 	for _, tx := range txs {
 		txKey := tx.tx.Key()
 		txFromMempool, exists := txmp.GetTxByKey(txKey)
-		require.Equal(t, tx.tx, txFromMempool)
+		require.Equal(t, tx.tx, txFromMempool.Tx)
 		require.True(t, exists)
 	}
 
@@ -695,7 +697,7 @@ func TestTxMempool_CheckTxPostCheckError(t *testing.T) {
 	for _, tc := range cases {
 		testCase := tc
 		t.Run(testCase.name, func(t *testing.T) {
-			postCheckFn := func(_ types.Tx, _ *abci.ResponseCheckTx) error {
+			postCheckFn := func(tx *types.CachedTx, res *abci.ResponseCheckTx) error {
 				return testCase.err
 			}
 			txmp := setup(t, 1, WithPostCheck(postCheckFn))
@@ -732,7 +734,7 @@ func TestRemoveBlobTx(t *testing.T) {
 	err = txmp.CheckTx(bTx, nil, mempool.TxInfo{})
 	require.NoError(t, err)
 
-	err = txmp.Update(1, []types.Tx{indexWrapper}, abciResponses(1, abci.CodeTypeOK), nil, nil)
+	err = txmp.Update(1, types.CachedTxFromTxs([]types.Tx{indexWrapper}), abciResponses(1, abci.CodeTypeOK), nil, nil)
 	require.NoError(t, err)
 	assert.EqualValues(t, 0, txmp.Size())
 	assert.EqualValues(t, 0, txmp.SizeBytes())
@@ -804,7 +806,7 @@ func TestConcurrentCheckTxDataRace(t *testing.T) {
 				// Use different transactions for different goroutines
 				// but ensure some overlap to trigger the race
 				var tx types.Tx
-				if id%3 == 0 {
+				if id%3 == 0 { //nolint:staticcheck
 					tx = tx1 // Already in cache, will access txByKey
 				} else if id%3 == 1 {
 					tx = tx2 // New transaction
@@ -828,4 +830,91 @@ func TestConcurrentCheckTxDataRace(t *testing.T) {
 
 	// Wait for the test goroutine to complete
 	wg.Wait()
+}
+
+func TestTxMempool_WasRecentlyRejected(t *testing.T) {
+	t.Run("CheckTx rejection", func(t *testing.T) {
+		txmp := setup(t, 100)
+
+		// Create a transaction that will be rejected by CheckTx (invalid format)
+		rejectedTx := []byte("invalid-tx-format")
+		txKey := types.Tx(rejectedTx).Key()
+
+		// The transaction should not be rejected initially
+		require.False(t, txmp.WasRecentlyRejected(txKey))
+
+		// Try to add the transaction - it should be rejected
+		err := txmp.CheckTx(rejectedTx, nil, mempool.TxInfo{})
+		require.NoError(t, err) // CheckTx method itself doesn't return error for app rejection
+
+		// The transaction should now be marked as rejected
+		require.True(t, txmp.WasRecentlyRejected(txKey), "Transaction rejected by CheckTx should appear in IsRejectedTx")
+	})
+
+	t.Run("PreCheck rejection", func(t *testing.T) {
+		// Setup mempool with a precheck function that rejects transactions containing "reject"
+		preCheckFn := func(tx *types.CachedTx) error {
+			if bytes.Contains(tx.Tx, []byte("reject")) {
+				return errors.New("rejected by precheck")
+			}
+			return nil
+		}
+		txmp := setup(t, 100, WithPreCheck(preCheckFn))
+
+		rejectedTx := []byte("reject-me=test=1")
+		txKey := types.Tx(rejectedTx).Key()
+
+		// The transaction should not be rejected initially
+		require.False(t, txmp.WasRecentlyRejected(txKey))
+
+		// Try to add the transaction - it should be rejected by precheck
+		err := txmp.CheckTx(rejectedTx, nil, mempool.TxInfo{})
+		require.Error(t, err) // PreCheck failures return an error
+
+		// The transaction should now be marked as rejected
+		require.True(t, txmp.WasRecentlyRejected(txKey), "Transaction rejected by PreCheck should appear in IsRejectedTx")
+	})
+
+	t.Run("PostCheck rejection", func(t *testing.T) {
+		// Setup mempool with a postcheck function that rejects transactions with priority < 10
+		postCheckFn := func(tx *types.CachedTx, res *abci.ResponseCheckTx) error {
+			if res.Priority < 10 {
+				return errors.New("priority too low")
+			}
+			return nil
+		}
+		txmp := setup(t, 100, WithPostCheck(postCheckFn))
+
+		// Create a transaction with low priority (will pass CheckTx but fail PostCheck)
+		rejectedTx := []byte("sender-1=test=5") // priority = 5
+		txKey := types.Tx(rejectedTx).Key()
+
+		// The transaction should not be rejected initially
+		require.False(t, txmp.WasRecentlyRejected(txKey))
+
+		// Try to add the transaction - it should be rejected by postcheck
+		err := txmp.CheckTx(rejectedTx, nil, mempool.TxInfo{})
+		require.NoError(t, err) // CheckTx method itself doesn't return error for postcheck failure
+
+		// The transaction should now be marked as rejected
+		require.True(t, txmp.WasRecentlyRejected(txKey), "Transaction rejected by PostCheck should appear in IsRejectedTx")
+	})
+
+	t.Run("Valid transaction not rejected", func(t *testing.T) {
+		txmp := setup(t, 100)
+
+		// Create a valid transaction
+		validTx := []byte("sender-1=test=100")
+		txKey := types.Tx(validTx).Key()
+
+		// The transaction should not be rejected initially
+		require.False(t, txmp.WasRecentlyRejected(txKey))
+
+		// Add the valid transaction
+		err := txmp.CheckTx(validTx, nil, mempool.TxInfo{})
+		require.NoError(t, err)
+
+		// The transaction should still not be marked as rejected
+		require.False(t, txmp.WasRecentlyRejected(txKey), "Valid transaction should not appear in IsRejectedTx")
+	})
 }

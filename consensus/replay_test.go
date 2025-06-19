@@ -342,8 +342,6 @@ func setupChainWithChangingValidators(t *testing.T, name string, nBlocks int) (*
 	require.NoError(t, err)
 	t.Cleanup(cleanup)
 
-	partSize := types.BlockPartSizeBytes
-
 	newRoundCh := subscribe(css[0].eventBus, types.EventQueryNewRound)
 	proposalCh := subscribe(css[0].eventBus, types.EventQueryCompleteProposal)
 
@@ -372,9 +370,7 @@ func setupChainWithChangingValidators(t *testing.T, name string, nBlocks int) (*
 	newValidatorTx1 := kvstore.MakeValSetChangeTx(valPubKey1ABCI, testMinPower)
 	err = assertMempool(css[0].txNotifier).CheckTx(newValidatorTx1, nil, mempool.TxInfo{})
 	assert.NoError(t, err)
-	propBlock, err := css[0].createProposalBlock(ctx) // changeProposer(t, cs1, vs2)
-	require.NoError(t, err)
-	propBlockParts, err := propBlock.MakePartSet(partSize)
+	propBlock, propBlockParts, err := css[0].createProposalBlock(ctx) // changeProposer(t, cs1, vs2)
 	require.NoError(t, err)
 	blockID := types.BlockID{Hash: propBlock.Hash(), PartSetHeader: propBlockParts.Header()}
 
@@ -404,9 +400,7 @@ func setupChainWithChangingValidators(t *testing.T, name string, nBlocks int) (*
 	updateValidatorTx1 := kvstore.MakeValSetChangeTx(updatePubKey1ABCI, 25)
 	err = assertMempool(css[0].txNotifier).CheckTx(updateValidatorTx1, nil, mempool.TxInfo{})
 	assert.NoError(t, err)
-	propBlock, err = css[0].createProposalBlock(ctx) // changeProposer(t, cs1, vs2)
-	require.NoError(t, err)
-	propBlockParts, err = propBlock.MakePartSet(partSize)
+	propBlock, propBlockParts, err = css[0].createProposalBlock(ctx) // changeProposer(t, cs1, vs2)
 	require.NoError(t, err)
 	blockID = types.BlockID{Hash: propBlock.Hash(), PartSetHeader: propBlockParts.Header()}
 
@@ -443,9 +437,7 @@ func setupChainWithChangingValidators(t *testing.T, name string, nBlocks int) (*
 	newValidatorTx3 := kvstore.MakeValSetChangeTx(newVal3ABCI, testMinPower)
 	err = assertMempool(css[0].txNotifier).CheckTx(newValidatorTx3, nil, mempool.TxInfo{})
 	assert.NoError(t, err)
-	propBlock, err = css[0].createProposalBlock(ctx) // changeProposer(t, cs1, vs2)
-	require.NoError(t, err)
-	propBlockParts, err = propBlock.MakePartSet(partSize)
+	propBlock, propBlockParts, err = css[0].createProposalBlock(ctx) // changeProposer(t, cs1, vs2)
 	require.NoError(t, err)
 	blockID = types.BlockID{Hash: propBlock.Hash(), PartSetHeader: propBlockParts.Header()}
 	newVss := make([]*validatorStub, nVals+1)
@@ -520,9 +512,7 @@ func setupChainWithChangingValidators(t *testing.T, name string, nBlocks int) (*
 	removeValidatorTx3 := kvstore.MakeValSetChangeTx(newVal3ABCI, 0)
 	err = assertMempool(css[0].txNotifier).CheckTx(removeValidatorTx3, nil, mempool.TxInfo{})
 	assert.NoError(t, err)
-	propBlock, err = css[0].createProposalBlock(ctx) // changeProposer(t, cs1, vs2)
-	require.NoError(t, err)
-	propBlockParts, err = propBlock.MakePartSet(partSize)
+	propBlock, propBlockParts, err = css[0].createProposalBlock(ctx) // changeProposer(t, cs1, vs2)
 	require.NoError(t, err)
 	blockID = types.BlockID{Hash: propBlock.Hash(), PartSetHeader: propBlockParts.Header()}
 	newVss = make([]*validatorStub, nVals+3)
@@ -899,7 +889,10 @@ func makeBlocks(n int, state sm.State, privVals []types.PrivValidator) ([]*types
 		if err != nil {
 			return nil, err
 		}
-		block := state.MakeBlock(height, types.MakeData(test.MakeNTxs(height, 10)), lastCommit, nil, state.LastValidators.Proposer.Address)
+		block, _, err := state.MakeBlock(height, types.MakeData(test.MakeNTxs(height, 10)), lastCommit, nil, state.LastValidators.Proposer.Address)
+		if err != nil {
+			return nil, err
+		}
 		blocks[i] = block
 		state.LastBlockID = blockID
 		state.LastBlockHeight = height

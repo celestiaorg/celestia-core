@@ -128,7 +128,7 @@ func NewReactorWithAddr(state sm.State, blockExec *sm.BlockExecutor, store *stor
 
 // SetLogger implements service.Service by setting the logger on reactor and pool.
 func (bcR *Reactor) SetLogger(l log.Logger) {
-	bcR.BaseService.Logger = l
+	bcR.BaseService.Logger = l //nolint:staticcheck
 	bcR.pool.Logger = l
 }
 
@@ -181,7 +181,7 @@ func (bcR *Reactor) GetChannels() []*p2p.ChannelDescriptor {
 	return []*p2p.ChannelDescriptor{
 		{
 			ID:                  BlocksyncChannel,
-			Priority:            5,
+			Priority:            30,
 			SendQueueCapacity:   1000,
 			RecvBufferCapacity:  50 * 4096,
 			RecvMessageCapacity: MaxMsgSize,

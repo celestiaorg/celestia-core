@@ -332,7 +332,7 @@ func (a *addrBook) ReinstateBadPeers() {
 }
 
 // GetSelection implements AddrBook.
-// It randomly selects some addresses (old & new). Suitable for peer-exchange protocols.
+// It returns all addresses (old & new). Suitable for peer-exchange protocols.
 // Must never return a nil address.
 func (a *addrBook) GetSelection() []*p2p.NetAddress {
 	a.mtx.Lock()
@@ -346,30 +346,18 @@ func (a *addrBook) GetSelection() []*p2p.NetAddress {
 		return nil
 	}
 
-	numAddresses := cmtmath.MaxInt(
-		cmtmath.MinInt(minGetSelection, bookSize),
-		bookSize*getSelectionPercent/100)
-	numAddresses = cmtmath.MinInt(maxGetSelection, numAddresses)
-
-	// XXX: instead of making a list of all addresses, shuffling, and slicing a random chunk,
-	// could we just select a random numAddresses of indexes?
-	allAddr := make([]*p2p.NetAddress, bookSize)
-	i := 0
-	for _, ka := range a.addrLookup {
-		allAddr[i] = ka.Addr
-		i++
+	// Get all addresses from addrLookup
+	addresses := make([]*p2p.NetAddress, 0, len(a.addrLookup))
+	for _, knownAddr := range a.addrLookup {
+		addresses = append(addresses, knownAddr.Addr)
 	}
 
-	// Fisher-Yates shuffle the array. We only need to do the first
-	// `numAddresses' since we are throwing the rest.
-	for i := 0; i < numAddresses; i++ {
-		// pick a number between current index and the end
-		j := cmtrand.Intn(len(allAddr)-i) + i
-		allAddr[i], allAddr[j] = allAddr[j], allAddr[i]
-	}
+	// Fisher-Yates shuffle the addresses
+	rand.Shuffle(len(addresses), func(i, j int) {
+		addresses[i], addresses[j] = addresses[j], addresses[i]
+	})
 
-	// slice off the limit we are willing to share.
-	return allAddr[:numAddresses]
+	return addresses
 }
 
 func percentageOfNum(p, n int) int {

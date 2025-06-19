@@ -10,6 +10,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/cometbft/cometbft/consensus/propagation"
+
 	"github.com/spf13/viper"
 
 	"github.com/cometbft/cometbft/abci/server"
@@ -32,6 +34,12 @@ import (
 )
 
 var logger = log.NewTMLogger(log.NewSyncWriter(os.Stdout))
+
+func init() {
+	// set the global retry time to something closer to the desired e2e block
+	// time.
+	propagation.RetryTime = 1000 * time.Millisecond
+}
 
 // main is the binary entrypoint.
 func main() {
@@ -62,7 +70,7 @@ func run(configFile string) error {
 		if err = startSigner(cfg); err != nil {
 			return err
 		}
-		if cfg.Protocol == "builtin" || cfg.Protocol == "builtin_connsync" {
+		if cfg.Protocol == "builtin" || cfg.Protocol == "builtin_connsync" { //nolint:goconst
 			time.Sleep(1 * time.Second)
 		}
 	}

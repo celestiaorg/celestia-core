@@ -10,6 +10,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/fortytw2/leaktest"
+	"github.com/stretchr/testify/mock"
+	"github.com/stretchr/testify/require"
+
 	abcitypes "github.com/cometbft/cometbft/abci/types"
 	"github.com/cometbft/cometbft/config"
 	"github.com/cometbft/cometbft/inspect"
@@ -20,9 +24,6 @@ import (
 	statemocks "github.com/cometbft/cometbft/state/mocks"
 	txindexmocks "github.com/cometbft/cometbft/state/txindex/mocks"
 	"github.com/cometbft/cometbft/types"
-	"github.com/fortytw2/leaktest"
-	"github.com/stretchr/testify/mock"
-	"github.com/stretchr/testify/require"
 )
 
 func TestInspectConstructor(t *testing.T) {
@@ -58,8 +59,8 @@ func TestInspectRun(t *testing.T) {
 func TestBlock(t *testing.T) {
 	testHeight := int64(1)
 	testBlock := new(types.Block)
-	testBlock.Header.Height = testHeight
-	testBlock.Header.LastCommitHash = []byte("test hash")
+	testBlock.Header.Height = testHeight                  //nolint:staticcheck
+	testBlock.Header.LastCommitHash = []byte("test hash") //nolint:staticcheck
 	stateStoreMock := &statemocks.Store{}
 	stateStoreMock.On("Close").Return(nil)
 
@@ -341,7 +342,7 @@ func TestCommit(t *testing.T) {
 	res, err := cli.Commit(context.Background(), &testHeight)
 	require.NoError(t, err)
 	require.NotNil(t, res)
-	require.Equal(t, res.SignedHeader.Commit.Round, testRound)
+	require.Equal(t, res.SignedHeader.Commit.Round, testRound) //nolint:staticcheck
 
 	cancel()
 	wg.Wait()
@@ -354,8 +355,8 @@ func TestBlockByHash(t *testing.T) {
 	testHeight := int64(1)
 	testHash := []byte("test hash")
 	testBlock := new(types.Block)
-	testBlock.Header.Height = testHeight
-	testBlock.Header.LastCommitHash = testHash
+	testBlock.Header.Height = testHeight       //nolint:staticcheck
+	testBlock.Header.LastCommitHash = testHash //nolint:staticcheck
 	stateStoreMock := &statemocks.Store{}
 	stateStoreMock.On("Close").Return(nil)
 	blockStoreMock := &statemocks.BlockStore{}
@@ -407,8 +408,8 @@ func TestBlockchain(t *testing.T) {
 	testHeight := int64(1)
 	testBlock := new(types.Block)
 	testBlockHash := []byte("test hash")
-	testBlock.Header.Height = testHeight
-	testBlock.Header.LastCommitHash = testBlockHash
+	testBlock.Header.Height = testHeight            //nolint:staticcheck
+	testBlock.Header.LastCommitHash = testBlockHash //nolint:staticcheck
 	stateStoreMock := &statemocks.Store{}
 	stateStoreMock.On("Close").Return(nil)
 
