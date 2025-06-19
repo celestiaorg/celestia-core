@@ -101,6 +101,30 @@ linters:
           - staticcheck
         path: test/fuzz/
       - linters:
+          - staticcheck
+        text: "QF1008:"
+      - linters:
+          - staticcheck
+        text: "QF1006:"
+      - linters:
+          - staticcheck
+        text: "QF1003:"
+      - linters:
+          - staticcheck
+        text: "S1009:"
+      - linters:
+          - staticcheck
+        text: "QF1001:"
+      - linters:
+          - staticcheck
+        text: "QF1002:"
+      - linters:
+          - staticcheck
+        text: "QF1004:"
+      - linters:
+          - staticcheck
+        text: "QF1005:"
+      - linters:
           - goconst
         path: (.+)_test\.go
     paths:
