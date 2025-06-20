@@ -149,7 +149,7 @@ func (txi *TxIndex) indexEvents(result *abci.TxResult, hash []byte, store dbm.Ba
 			}
 
 			// index if `index: true` is set
-			compositeTag := fmt.Sprintf("%s.%s", event.Type, string(attr.Key))
+			compositeTag := fmt.Sprintf("%s.%s", event.Type, attr.Key)
 			if attr.GetIndex() {
 				err := store.Set(keyForEvent(compositeTag, attr.Value, result, txi.eventSeq), hash)
 				if err != nil {
@@ -685,7 +685,8 @@ func extractEventSeqFromKey(key []byte) string {
 	}
 	return "0"
 }
-func keyForEvent(key string, value []byte, result *abci.TxResult, eventSeq int64) []byte {
+
+func keyForEvent(key string, value string, result *abci.TxResult, eventSeq int64) []byte {
 	return []byte(fmt.Sprintf("%s/%s/%d/%d%s",
 		key,
 		value,

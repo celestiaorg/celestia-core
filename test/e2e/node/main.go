@@ -62,7 +62,7 @@ func run(configFile string) error {
 		if err = startSigner(cfg); err != nil {
 			return err
 		}
-		if cfg.Protocol == "builtin" || cfg.Protocol == "builtin_connsync" {
+		if cfg.Protocol == "builtin" || cfg.Protocol == "builtin_connsync" { //nolint:goconst
 			time.Sleep(1 * time.Second)
 		}
 	}
