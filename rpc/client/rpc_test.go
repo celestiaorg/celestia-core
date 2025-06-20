@@ -623,6 +623,9 @@ func TestTxStatus(t *testing.T) {
 func TestTxSearch(t *testing.T) {
 	c := getHTTPClient()
 
+	_, err := c.Status(context.Background())
+	require.NoError(t, err)
+
 	// first we broadcast a few txs
 	for i := 0; i < 10; i++ {
 		_, _, tx := MakeTxKV()
