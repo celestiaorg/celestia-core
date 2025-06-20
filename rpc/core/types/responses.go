@@ -272,6 +272,7 @@ type ResultTxStatus struct {
 	ExecutionCode uint32 `json:"execution_code"`
 	Error         string `json:"error"`
 	Status        string `json:"status"`
+	LatestHeight  int64  `json:"latest_height"`
 }
 
 type ResultDataCommitment struct {
