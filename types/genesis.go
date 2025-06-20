@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"strconv"
 	"time"
 
 	"github.com/cometbft/cometbft/crypto"
@@ -111,16 +112,59 @@ func (genDoc *GenesisDoc) ValidateAndComplete() error {
 // GenesisDocFromJSON unmarshalls JSON data into a GenesisDoc.
 func GenesisDocFromJSON(jsonBlob []byte) (*GenesisDoc, error) {
 	genDoc := GenesisDoc{}
+
+	// HACKHACK this assumes the genesis doc is serialized as a JSON object with
+	// CometBFT v0.38.x types. This assumption is false for all historical
+	// genesis.json files (Arabica, Mocha, Mainnet) and any genesis.json file
+	// created with celestia-app v1, v2, or v3. To workaround this, we try to
+	// deserialize the jsonBlob again below if the genesis version is v1.
 	err := cmtjson.Unmarshal(jsonBlob, &genDoc)
 	if err != nil {
 		return nil, err
 	}
 
+	ok, err := isGenesisVersionV1(jsonBlob)
+	if err != nil {
+		return nil, err
+	}
+	if ok {
+		appVersion, err := getAppVersion(jsonBlob)
+		if err != nil {
+			return nil, err
+		}
+		genDoc.ConsensusParams.Version.App = appVersion
+	}
+
 	if err := genDoc.ValidateAndComplete(); err != nil {
 		return nil, err
 	}
+	return &genDoc, nil
+}
 
-	return &genDoc, err
+func isGenesisVersionV1(jsonBlob []byte) (bool, error) {
+	genesisVersion, err := getGenesisVersion(jsonBlob)
+	if err != nil {
+		return false, err
+	}
+	return genesisVersion == GenesisVersion1, nil
+}
+
+func getAppVersion(jsonBlob []byte) (uint64, error) {
+	var v1 genesisDocv1
+	// Unmarshal the genesis using the v0.34.x-celestia types.
+	if err := json.Unmarshal(jsonBlob, &v1); err != nil {
+		return 0, fmt.Errorf("failed to unmarshal genesis doc v1: %w", err)
+	}
+	// The mocha genesis file contains an empty version field so we need to
+	// special case it.
+	if v1.ChainID == MochaChainID {
+		return 1, nil
+	}
+	appVersion, err := strconv.ParseUint(v1.ConsensusParams.Version.AppVersion, 10, 64)
+	if err != nil {
+		return 0, fmt.Errorf("failed to parse app version: %w", err)
+	}
+	return appVersion, nil
 }
 
 // GenesisDocFromFile reads JSON data from a file and unmarshalls it into a GenesisDoc.
@@ -134,4 +178,59 @@ func GenesisDocFromFile(genDocFile string) (*GenesisDoc, error) {
 		return nil, fmt.Errorf("error reading GenesisDoc at %s: %w", genDocFile, err)
 	}
 	return genDoc, nil
+}
+
+const (
+	MochaChainID = "mocha-4"
+)
+
+type GenesisVersion int
+
+const (
+	GenesisVersion1 GenesisVersion = iota
+	GenesisVersion2
+)
+
+type genesisDocv1 struct {
+	ChainID         string `json:"chain_id"`
+	ConsensusParams struct {
+		Version struct {
+			AppVersion string `json:"app_version"`
+		} `json:"version"`
+	} `json:"consensus_params"`
+}
+
+type genesisDocv2 struct {
+	ChainID   string `json:"chain_id"`
+	Consensus struct {
+		Params struct {
+			Version struct {
+				App string `json:"app"`
+			} `json:"version"`
+		} `json:"params"`
+	} `json:"consensus"`
+}
+
+// getGenesisVersion returns the genesis version for the given genDoc.
+func getGenesisVersion(genDoc []byte) (GenesisVersion, error) {
+	var v1 genesisDocv1
+	if err := json.Unmarshal(genDoc, &v1); err == nil {
+		// The mocha genesis file contains an empty version field so we need to
+		// special case it.
+		if v1.ChainID == MochaChainID {
+			return GenesisVersion1, nil
+		}
+		if v1.ConsensusParams.Version.AppVersion != "" {
+			return GenesisVersion1, nil
+		}
+	}
+
+	var v2 genesisDocv2
+	if err := json.Unmarshal(genDoc, &v2); err == nil {
+		if v2.Consensus.Params.Version.App != "" {
+			return GenesisVersion2, nil
+		}
+	}
+
+	return 0, errors.New("failed to determine genesis version")
 }
