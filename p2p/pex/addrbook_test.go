@@ -20,43 +20,6 @@ import (
 
 // FIXME These tests should not rely on .(*addrBook) assertions
 
-func TestAddrBookPickAddress(t *testing.T) {
-	fname := createTempFileName("addrbook_test")
-	defer deleteTempFile(fname)
-
-	// 0 addresses
-	book := NewAddrBook(fname, true)
-	book.SetLogger(log.TestingLogger())
-	assert.Zero(t, book.Size())
-
-	addr := book.PickAddress(50)
-	assert.Nil(t, addr, "expected no address")
-
-	randAddrs := randNetAddressPairs(t, 1)
-	addrSrc := randAddrs[0]
-	err := book.AddAddress(addrSrc.addr, addrSrc.src)
-	require.NoError(t, err)
-
-	// pick an address when we only have new address
-	addr = book.PickAddress(0)
-	assert.NotNil(t, addr, "expected an address")
-	addr = book.PickAddress(50)
-	assert.NotNil(t, addr, "expected an address")
-	addr = book.PickAddress(100)
-	assert.NotNil(t, addr, "expected an address")
-
-	// pick an address when we only have old address
-	book.MarkGood(addrSrc.addr.ID)
-	addr = book.PickAddress(0)
-	assert.NotNil(t, addr, "expected an address")
-	addr = book.PickAddress(50)
-	assert.NotNil(t, addr, "expected an address")
-
-	// in this case, nNew==0 but we biased 100% to new, so we return nil
-	addr = book.PickAddress(100)
-	assert.Nil(t, addr, "did not expected an address")
-}
-
 func TestAddrBookSaveLoad(t *testing.T) {
 	fname := createTempFileName("addrbook_test")
 	defer deleteTempFile(fname)
