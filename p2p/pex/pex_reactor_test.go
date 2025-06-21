@@ -704,23 +704,6 @@ func testCreatePeerWithSeed(dir string, id int, seed *p2p.Switch) *p2p.Switch {
 	return testCreatePeerWithConfig(dir, id, conf)
 }
 
-// testCreatePeerWithSeeds creates a peer that knows about the given seeds
-func testCreatePeerWithSeeds(dir string, id int, seeds []*p2p.Switch) *p2p.Switch {
-	// Get seed addresses
-	seedAddrs := make([]string, len(seeds))
-	for i, seed := range seeds {
-		seedAddrs[i] = seed.NetAddress().String()
-	}
-
-	// Create config with seeds
-	config := &ReactorConfig{
-		Seeds:    seedAddrs,
-		SeedMode: false,
-	}
-
-	return testCreatePeerWithConfig(dir, id, config)
-}
-
 func createReactor(conf *ReactorConfig) (r *Reactor, book AddrBook) {
 	// directory to store address book
 	dir, err := os.MkdirTemp("", "pex_reactor")

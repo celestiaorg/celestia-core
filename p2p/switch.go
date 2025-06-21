@@ -716,7 +716,6 @@ func (sw *Switch) acceptRoutine() {
 			break
 		}
 
-
 		if err := sw.addPeer(p); err != nil {
 			sw.transport.Cleanup(p)
 			if p.IsRunning() {
