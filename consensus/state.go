@@ -215,7 +215,7 @@ func NewState(
 
 // SetLogger implements Service.
 func (cs *State) SetLogger(l log.Logger) {
-	cs.BaseService.Logger = l
+	cs.BaseService.Logger = l //nolint:staticcheck
 	cs.timeoutTicker.SetLogger(l)
 }
 
@@ -259,7 +259,7 @@ func (cs *State) GetState() sm.State {
 func (cs *State) GetLastHeight() int64 {
 	cs.mtx.RLock()
 	defer cs.mtx.RUnlock()
-	return cs.RoundState.Height - 1
+	return cs.RoundState.Height - 1 //nolint:staticcheck
 }
 
 // GetRoundState returns a shallow copy of the internal consensus state.
@@ -281,7 +281,7 @@ func (cs *State) GetRoundStateJSON() ([]byte, error) {
 func (cs *State) GetRoundStateSimpleJSON() ([]byte, error) {
 	cs.mtx.RLock()
 	defer cs.mtx.RUnlock()
-	return cmtjson.Marshal(cs.RoundState.RoundStateSimple())
+	return cmtjson.Marshal(cs.RoundState.RoundStateSimple()) //nolint:staticcheck
 }
 
 // GetValidators returns a copy of the current validators.
@@ -1931,8 +1931,8 @@ func (cs *State) recordMetrics(height int64, block *types.Block) {
 	// trace some metadata about the block
 	schema.WriteBlockSummary(cs.traceClient, block, blockSize)
 
-	cs.metrics.NumTxs.Set(float64(len(block.Data.Txs)))
-	cs.metrics.TotalTxs.Add(float64(len(block.Data.Txs)))
+	cs.metrics.NumTxs.Set(float64(len(block.Data.Txs)))   //nolint:staticcheck
+	cs.metrics.TotalTxs.Add(float64(len(block.Data.Txs))) //nolint:staticcheck
 	cs.metrics.BlockSizeBytes.Set(float64(block.Size()))
 	cs.metrics.ChainSizeBytes.Add(float64(block.Size()))
 	cs.metrics.CommittedHeight.Set(float64(block.Height))

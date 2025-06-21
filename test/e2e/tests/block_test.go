@@ -31,20 +31,20 @@ func TestBlock_Header(t *testing.T) {
 		}
 
 		for _, block := range blocks {
-			if block.Header.Height < first {
+			if block.Header.Height < first { //nolint:staticcheck
 				continue
 			}
-			if block.Header.Height > last {
+			if block.Header.Height > last { //nolint:staticcheck
 				break
 			}
-			resp, err := client.Block(ctx, &block.Header.Height)
+			resp, err := client.Block(ctx, &block.Header.Height) //nolint:staticcheck
 			require.NoError(t, err)
 
 			require.Equal(t, block, resp.Block,
-				"block mismatch for height %d", block.Header.Height)
+				"block mismatch for height %d", block.Header.Height) //nolint:staticcheck
 
 			require.NoError(t, resp.Block.ValidateBasic(),
-				"block at height %d is invalid", block.Header.Height)
+				"block at height %d is invalid", block.Header.Height) //nolint:staticcheck
 		}
 	})
 }
