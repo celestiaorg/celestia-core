@@ -487,7 +487,6 @@ func (r *Reactor) ensurePeers(ensurePeersPeriodElapsed bool) {
 		r.book.ReinstateBadPeers()
 	}
 
-	// check if we can request more addresses
 	if r.book.NeedMoreAddrs() {
 		// 1) Pick a random peer and ask for more.
 		peers := r.Switch.Peers().List()
