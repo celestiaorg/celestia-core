@@ -457,7 +457,7 @@ func (r *Reactor) ensurePeers(ensurePeersPeriodElapsed bool) {
 	}
 
 	addrBook := r.book.GetSelection()
-	maxDials := r.Switch.MaxNumOutboundPeers() * 3
+	maxDials := r.Switch.MaxNumOutboundPeers() * 4
 	// check if the addressbook is smaller than maxDials
 	if len(addrBook) < maxDials {
 		maxDials = len(addrBook)
