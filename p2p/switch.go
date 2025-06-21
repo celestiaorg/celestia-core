@@ -581,17 +581,6 @@ func (sw *Switch) DialPeerWithAddress(addr *NetAddress) error {
 		return ErrCurrentlyDialingOrExistingAddress{addr.String()}
 	}
 
-	// If we've reached the maximum number of outbound peers
-	// or already dialing enough peers do not dial
-	out, _, dial := sw.NumPeers()
-	if out+dial >= sw.config.MaxNumOutboundPeers {
-		sw.Logger.Info("Too many dialing peers",
-			"outbound", out,
-			"dialing", dial,
-			"max", sw.config.MaxNumOutboundPeers)
-		return ErrMaxOutboundPeers{}
-	}
-
 	sw.dialing.Set(string(addr.ID), addr)
 	defer sw.dialing.Delete(string(addr.ID))
 
@@ -727,23 +716,6 @@ func (sw *Switch) acceptRoutine() {
 			break
 		}
 
-		if !sw.IsPeerUnconditional(p.NodeInfo().ID()) {
-			// Ignore connection if we already have enough peers.
-			_, in, _ := sw.NumPeers()
-			if in >= sw.config.MaxNumInboundPeers {
-				sw.Logger.Info(
-					"Ignoring inbound connection: already have enough inbound peers",
-					"address", p.SocketAddr(),
-					"have", in,
-					"max", sw.config.MaxNumInboundPeers,
-				)
-
-				sw.transport.Cleanup(p)
-
-				continue
-			}
-
-		}
 
 		if err := sw.addPeer(p); err != nil {
 			sw.transport.Cleanup(p)

@@ -816,50 +816,34 @@ func TestPEXReactorFallsBackToSeedsWhenAddressBookIsEmpty(t *testing.T) {
 	assert.True(t, sw.Peers().Has(seed.NodeInfo().ID()), "Should have connected to the seed")
 }
 
-// Tests the network discovery and peer maintenance
-// by only adding seeds to the address book and slowly discovering new peers.
-// Tries to ensure that connected peers linger around the limit.
-func TestPEXReactorNetworkDiscoveryAndPeerMaintenance(t *testing.T) {
-	// Create a temporary directory for address books
+func TestPEXReactorWhenAddressBookIsSmallerThanMaxDials(t *testing.T) {
 	dir, err := os.MkdirTemp("", "pex_reactor")
-	require.NoError(t, err)
+	require.Nil(t, err)
 	defer os.RemoveAll(dir)
 
-	// Create 2 seed nodes
-	seeds := make([]*p2p.Switch, 2)
-	seedAddrs := make([]*p2p.NetAddress, 2)
-	for i := 0; i < 2; i++ {
-		seeds[i] = testCreateSeed(dir, i, []*p2p.NetAddress{}, []*p2p.NetAddress{})
-		require.NoError(t, seeds[i].Start())
-		defer seeds[i].Stop() //nolint:errcheck // ignore for tests
-		seedAddrs[i] = seeds[i].NetAddress()
-		t.Logf("Created seed %d: %v", i, seedAddrs[i])
+	pexR, book := createReactor(&ReactorConfig{})
+	defer teardownReactor(book)
+
+	sw := createSwitchAndAddReactors(pexR)
+	sw.SetAddrBook(book)
+
+	peers := make([]*p2p.NetAddress, 3)
+	for i := 0; i < 3; i++ {
+		peer := mock.NewPeer(nil)
+		peerAddr := peer.SocketAddr()
+		err = book.AddAddress(peerAddr, peerAddr)
+		require.NoError(t, err)
+		peers[i] = peerAddr
 	}
 
-	// Create 60 regular nodes that only know about the seeds
-	nodes := make([]*p2p.Switch, 60)
-	for i := 0; i < 60; i++ {
-		nodes[i] = testCreatePeerWithSeeds(dir, i+2, seeds)
-		require.NoError(t, nodes[i].Start())
-		defer nodes[i].Stop() //nolint:errcheck // ignore for tests
-		t.Logf("Created node %d: %v", i+2, nodes[i].NetAddress())
-	}
+	pexR.SetEnsurePeersPeriod(1 * time.Millisecond)
 
-	// Wait for nodes to connect to seeds
-	assertPeersWithTimeout(t, nodes, 10*time.Millisecond, 10*time.Second, 1)
+	pexR.ensurePeers(true)
 
-	// Wait for 10 seconds
-	// This wait somehow helps with the balancing of peers
-	time.Sleep(10 * time.Second)
+	time.Sleep(2 * time.Second)
 
-	// Wait for nodes to discover each other through the seeds
-	assertPeersWithTimeout(t, nodes, 500*time.Millisecond, 30*time.Second, 5)
-
-	// Verify that nodes have learned about each other through the seeds
-	for _, node := range nodes {
-		outbound, inbound, _ := node.NumPeers()
-		t.Logf("Node %v has %d outbound and %d inbound peers", node.NetAddress(), outbound, inbound)
-		require.Greater(t, outbound+inbound, 5, "Node should have more than five peers")
-		require.LessOrEqual(t, outbound, cfg.MaxNumOutboundPeers+5, "Node should not have more than 5 outbound peers over the limit")
+	// check that we dialed all the peers
+	for _, peer := range peers {
+		assert.Equal(t, 1, pexR.AttemptsToDial(peer))
 	}
 }

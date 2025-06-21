@@ -30,7 +30,7 @@ const (
 	maxMsgSize = maxAddressSize * maxGetSelection
 
 	// ensure we have enough peers
-	defaultEnsurePeersPeriod = 30 * time.Second
+	defaultEnsurePeersPeriod = 10 * time.Second
 
 	// Seed/Crawler constants
 
@@ -40,7 +40,7 @@ const (
 	// check some peers every this
 	crawlPeerPeriod = 30 * time.Second
 
-	maxAttemptsToDial = 8 // 8 attempts with min 30s interval
+	maxAttemptsToDial = 8 // 8 attempts with 5s interval
 
 	// if node connects to seed, it does not have any trusted peers.
 	// Especially in the beginning, node should have more trusted peers than
@@ -98,9 +98,9 @@ type Reactor struct {
 }
 
 func (r *Reactor) minReceiveRequestInterval() time.Duration {
-	// NOTE: must be less than ensurePeersPeriod, otherwise we'll request
+	// NOTE: must be around ensurePeersPeriod, otherwise we'll request
 	// peers too quickly from others and they'll think we're bad!
-	return r.ensurePeersPeriod / 3
+	return r.ensurePeersPeriod
 }
 
 // ReactorConfig holds reactor specific configuration data.
@@ -457,7 +457,15 @@ func (r *Reactor) ensurePeers(ensurePeersPeriodElapsed bool) {
 	}
 
 	addrBook := r.book.GetSelection()
-	for _, addr := range addrBook {
+	maxDials := r.Switch.MaxNumOutboundPeers() * 3
+	// check if the addressbook is smaller than maxDials
+	if len(addrBook) < maxDials {
+		maxDials = len(addrBook)
+	}
+	// We don't need to randomize the addresses since the addressbook is already shuffled
+	for i := 0; i < maxDials; i++ {
+		addr := addrBook[i]
+
 		if r.Switch.IsDialingOrExistingAddress(addr) {
 			continue
 		}
@@ -479,6 +487,7 @@ func (r *Reactor) ensurePeers(ensurePeersPeriodElapsed bool) {
 		r.book.ReinstateBadPeers()
 	}
 
+	// check if we can request more addresses
 	if r.book.NeedMoreAddrs() {
 		// 1) Pick a random peer and ask for more.
 		peers := r.Switch.Peers().List()
