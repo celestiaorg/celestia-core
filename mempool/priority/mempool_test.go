@@ -697,7 +697,7 @@ func TestTxMempool_CheckTxPostCheckError(t *testing.T) {
 	for _, tc := range cases {
 		testCase := tc
 		t.Run(testCase.name, func(t *testing.T) {
-			postCheckFn := func(_ *types.CachedTx, _ *abci.ResponseCheckTx) error {
+			postCheckFn := func(tx *types.CachedTx, res *abci.ResponseCheckTx) error {
 				return testCase.err
 			}
 			txmp := setup(t, 1, WithPostCheck(postCheckFn))
@@ -830,4 +830,91 @@ func TestConcurrentCheckTxDataRace(t *testing.T) {
 
 	// Wait for the test goroutine to complete
 	wg.Wait()
+}
+
+func TestTxMempool_WasRecentlyRejected(t *testing.T) {
+	t.Run("CheckTx rejection", func(t *testing.T) {
+		txmp := setup(t, 100)
+
+		// Create a transaction that will be rejected by CheckTx (invalid format)
+		rejectedTx := []byte("invalid-tx-format")
+		txKey := types.Tx(rejectedTx).Key()
+
+		// The transaction should not be rejected initially
+		require.False(t, txmp.WasRecentlyRejected(txKey))
+
+		// Try to add the transaction - it should be rejected
+		err := txmp.CheckTx(rejectedTx, nil, mempool.TxInfo{})
+		require.NoError(t, err) // CheckTx method itself doesn't return error for app rejection
+
+		// The transaction should now be marked as rejected
+		require.True(t, txmp.WasRecentlyRejected(txKey), "Transaction rejected by CheckTx should appear in IsRejectedTx")
+	})
+
+	t.Run("PreCheck rejection", func(t *testing.T) {
+		// Setup mempool with a precheck function that rejects transactions containing "reject"
+		preCheckFn := func(tx *types.CachedTx) error {
+			if bytes.Contains(tx.Tx, []byte("reject")) {
+				return errors.New("rejected by precheck")
+			}
+			return nil
+		}
+		txmp := setup(t, 100, WithPreCheck(preCheckFn))
+
+		rejectedTx := []byte("reject-me=test=1")
+		txKey := types.Tx(rejectedTx).Key()
+
+		// The transaction should not be rejected initially
+		require.False(t, txmp.WasRecentlyRejected(txKey))
+
+		// Try to add the transaction - it should be rejected by precheck
+		err := txmp.CheckTx(rejectedTx, nil, mempool.TxInfo{})
+		require.Error(t, err) // PreCheck failures return an error
+
+		// The transaction should now be marked as rejected
+		require.True(t, txmp.WasRecentlyRejected(txKey), "Transaction rejected by PreCheck should appear in IsRejectedTx")
+	})
+
+	t.Run("PostCheck rejection", func(t *testing.T) {
+		// Setup mempool with a postcheck function that rejects transactions with priority < 10
+		postCheckFn := func(tx *types.CachedTx, res *abci.ResponseCheckTx) error {
+			if res.Priority < 10 {
+				return errors.New("priority too low")
+			}
+			return nil
+		}
+		txmp := setup(t, 100, WithPostCheck(postCheckFn))
+
+		// Create a transaction with low priority (will pass CheckTx but fail PostCheck)
+		rejectedTx := []byte("sender-1=test=5") // priority = 5
+		txKey := types.Tx(rejectedTx).Key()
+
+		// The transaction should not be rejected initially
+		require.False(t, txmp.WasRecentlyRejected(txKey))
+
+		// Try to add the transaction - it should be rejected by postcheck
+		err := txmp.CheckTx(rejectedTx, nil, mempool.TxInfo{})
+		require.NoError(t, err) // CheckTx method itself doesn't return error for postcheck failure
+
+		// The transaction should now be marked as rejected
+		require.True(t, txmp.WasRecentlyRejected(txKey), "Transaction rejected by PostCheck should appear in IsRejectedTx")
+	})
+
+	t.Run("Valid transaction not rejected", func(t *testing.T) {
+		txmp := setup(t, 100)
+
+		// Create a valid transaction
+		validTx := []byte("sender-1=test=100")
+		txKey := types.Tx(validTx).Key()
+
+		// The transaction should not be rejected initially
+		require.False(t, txmp.WasRecentlyRejected(txKey))
+
+		// Add the valid transaction
+		err := txmp.CheckTx(validTx, nil, mempool.TxInfo{})
+		require.NoError(t, err)
+
+		// The transaction should still not be marked as rejected
+		require.False(t, txmp.WasRecentlyRejected(txKey), "Valid transaction should not appear in IsRejectedTx")
+	})
 }
