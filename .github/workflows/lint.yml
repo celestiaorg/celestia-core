@@ -12,7 +12,7 @@ on:
   pull_request:
   push:
     branches:
-      - v0.38.x
+      - v0.38.x-celestia
 jobs:
   golangci:
     name: golangci-lint
@@ -29,7 +29,7 @@ jobs:
             **/**.go
             go.mod
             go.sum
-      - uses: golangci/golangci-lint-action@v6
+      - uses: golangci/golangci-lint-action@v8
         with:
           version: latest
           args: --timeout 10m

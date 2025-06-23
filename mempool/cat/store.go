@@ -214,3 +214,15 @@ func (s *store) iterateOrderedTxs(fn func(tx *wrappedTx) bool) {
 		}
 	}
 }
+
+// getOrderedTxs returns a copy of all transactions in priority order.
+// This method is safe to call concurrently and the returned slice can be
+// processed without holding any store locks.
+func (s *store) getOrderedTxs() []*wrappedTx {
+	s.mtx.RLock()
+	defer s.mtx.RUnlock()
+	// Return a copy to avoid race conditions when the caller processes the slice
+	txs := make([]*wrappedTx, len(s.orderedTxs))
+	copy(txs, s.orderedTxs)
+	return txs
+}
