@@ -1,18 +1,18 @@
 package types
 
 import (
+	"fmt"
+	"github.com/cometbft/cometbft/crypto"
+	cmtproto "github.com/cometbft/cometbft/proto/tendermint/types"
+	"github.com/cosmos/gogoproto/proto"
 	"io"
 	"testing"
-
-	"github.com/cosmos/gogoproto/proto"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/cometbft/cometbft/crypto"
 	"github.com/cometbft/cometbft/crypto/merkle"
 	cmtrand "github.com/cometbft/cometbft/libs/rand"
-	cmtproto "github.com/cometbft/cometbft/proto/tendermint/types"
 )
 
 const (
@@ -23,7 +23,8 @@ func TestBasicPartSet(t *testing.T) {
 	// Construct random data of size partSize * 100
 	nParts := 100
 	data := cmtrand.Bytes(testPartSize * nParts)
-	partSet := NewPartSetFromData(data, testPartSize)
+	partSet, err := NewPartSetFromData(data, testPartSize)
+	require.NoError(t, err)
 
 	assert.NotEmpty(t, partSet.Hash())
 	assert.EqualValues(t, nParts, partSet.Total())
@@ -96,50 +97,57 @@ func TestEncodingDecodingRoundTrip(t *testing.T) {
 		},
 	}
 	for _, tt := range tests {
-		b1 := MakeBlock(1, MakeData([]Tx{Tx(cmtrand.Bytes(tt.dataSize))}), &Commit{Signatures: []CommitSig{}}, []Evidence{})
-		b1.ProposerAddress = cmtrand.Bytes(crypto.AddressSize)
+		t.Run(fmt.Sprintf("dataSize=%d", tt.dataSize), func(t *testing.T) {
+			b1 := MakeBlock(1, MakeData([]Tx{Tx(cmtrand.Bytes(tt.dataSize))}), &Commit{Signatures: []CommitSig{}}, []Evidence{})
+			b1.ProposerAddress = cmtrand.Bytes(crypto.AddressSize)
 
-		bp, err := b1.ToProto()
-		require.NoError(t, err)
+			bp, err := b1.ToProto()
+			require.NoError(t, err)
 
-		bz, err := bp.Marshal()
-		require.NoError(t, err)
+			bz, err := bp.Marshal()
+			require.NoError(t, err)
 
-		ops := NewPartSetFromData(bz, BlockPartSizeBytes)
+			ops, err := NewPartSetFromData(bz, BlockPartSizeBytes)
+			require.NoError(t, err)
 
-		eps, lastPartLen, err := Encode(ops, BlockPartSizeBytes)
-		require.NoError(t, err)
+			eps, lastPartLen, err := Encode(ops, BlockPartSizeBytes)
+			require.NoError(t, err)
 
-		ops.parts[0] = nil
+			ops.parts[0] = nil
+			ops.count--
+			ops.partsBitArray.SetIndex(0, false)
 
-		ops, _, err = Decode(ops, eps, lastPartLen)
-		require.NoError(t, err)
+			ops, _, err = Decode(ops, eps, lastPartLen)
+			require.NoError(t, err)
 
-		bz2, err := io.ReadAll(ops.GetReader())
-		require.NoError(t, err)
+			bz2, err := io.ReadAll(ops.GetReader())
+			require.NoError(t, err)
 
-		pbb := new(cmtproto.Block)
-		err = proto.Unmarshal(bz2, pbb)
-		require.NoError(t, err)
+			pbb := new(cmtproto.Block)
+			err = proto.Unmarshal(bz2, pbb)
+			require.NoError(t, err)
 
-		b2, err := BlockFromProto(pbb)
-		require.NoError(t, err)
+			b2, err := BlockFromProto(pbb)
+			require.NoError(t, err)
 
-		require.Equal(t, b1, b2)
+			require.Equal(t, b1, b2)
+		})
 	}
 }
 
 func TestEncoding(t *testing.T) {
 	data := cmtrand.Bytes(testPartSize * 100)
-	partSet := NewPartSetFromData(data, testPartSize)
-	_, _, err := Encode(partSet, BlockPartSizeBytes)
+	partSet, err := NewPartSetFromData(data, testPartSize)
+	require.NoError(t, err)
+	_, _, err = Encode(partSet, BlockPartSizeBytes)
 	require.NoError(t, err)
 }
 
 func TestWrongProof(t *testing.T) {
 	// Construct random data of size partSize * 100
 	data := cmtrand.Bytes(testPartSize * 100)
-	partSet := NewPartSetFromData(data, testPartSize)
+	partSet, err := NewPartSetFromData(data, testPartSize)
+	require.NoError(t, err)
 
 	// Test adding a part with wrong data.
 	partSet2 := NewPartSetFromHeader(partSet.Header())
@@ -190,7 +198,8 @@ func TestPartSetHeaderValidateBasic(t *testing.T) {
 		tc := tc
 		t.Run(tc.testName, func(t *testing.T) {
 			data := cmtrand.Bytes(testPartSize * 100)
-			ps := NewPartSetFromData(data, testPartSize)
+			ps, err := NewPartSetFromData(data, testPartSize)
+			require.NoError(t, err)
 			psHeader := ps.Header()
 			tc.malleatePartSetHeader(&psHeader)
 			assert.Equal(t, tc.expectErr, psHeader.ValidateBasic() != nil, "Validate Basic had an unexpected result")
@@ -235,7 +244,8 @@ func TestPart_ValidateBasic(t *testing.T) {
 		tc := tc
 		t.Run(tc.testName, func(t *testing.T) {
 			data := cmtrand.Bytes(testPartSize * 100)
-			ps := NewPartSetFromData(data, testPartSize)
+			ps, err := NewPartSetFromData(data, testPartSize)
+			require.NoError(t, err)
 			part := ps.GetPart(0)
 			tc.malleatePart(part)
 			assert.Equal(t, tc.expectErr, part.ValidateBasic() != nil, "Validate Basic had an unexpected result")
