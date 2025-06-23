@@ -113,6 +113,11 @@ func (*CListMempool) WasRecentlyEvicted(key types.TxKey) bool {
 	return false
 }
 
+// WasRecentlyRejected returns false consistently as this implementation does not support transaction rejection.
+func (*CListMempool) WasRecentlyRejected(key types.TxKey) bool {
+	return false
+}
+
 func (mem *CListMempool) getCElement(txKey types.TxKey) (*clist.CElement, bool) {
 	if e, ok := mem.txsMap.Load(txKey); ok {
 		return e.(*clist.CElement), true
