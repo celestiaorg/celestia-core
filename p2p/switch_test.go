@@ -821,7 +821,7 @@ func TestSwitchInitPeerIsNotCalledBeforeRemovePeer(t *testing.T) {
 	for {
 		time.Sleep(20 * time.Millisecond)
 		if peer := sw.Peers().Get(rp.ID()); peer != nil {
-			go sw.StopPeerForError(peer, "test", "test")
+			go sw.StopPeerForError(peer, "test", "mock")
 			break
 		}
 	}

@@ -159,7 +159,7 @@ func (blockProp *Reactor) handleCompactBlock(cb *proptypes.CompactBlock, peer p2
 	if err != nil {
 		blockProp.DeleteRound(cb.Proposal.Height, cb.Proposal.Round)
 		blockProp.Logger.Error("received invalid compact block", "err", err.Error())
-		blockProp.Switch.StopPeerForError(blockProp.getPeer(peer).peer, err, "propagation")
+		blockProp.Switch.StopPeerForError(blockProp.getPeer(peer).peer, err, blockProp.String())
 		return
 	}
 

@@ -256,7 +256,7 @@ func (bcR *Reactor) respondToPeer(msg *bcproto.BlockRequest, src p2p.Peer) (queu
 func (bcR *Reactor) Receive(e p2p.Envelope) {
 	if err := ValidateMsg(e.Message); err != nil {
 		bcR.Logger.Error("Peer sent us invalid msg", "peer", e.Src, "msg", e.Message, "err", err)
-		bcR.Switch.StopPeerForError(e.Src, err, "blocksync")
+		bcR.Switch.StopPeerForError(e.Src, err, bcR.String())
 		return
 	}
 
@@ -269,7 +269,7 @@ func (bcR *Reactor) Receive(e p2p.Envelope) {
 		bi, err := types.BlockFromProto(msg.Block)
 		if err != nil {
 			bcR.Logger.Error("Peer sent us invalid block", "peer", e.Src, "msg", e.Message, "err", err)
-			bcR.Switch.StopPeerForError(e.Src, err, "blocksync")
+			bcR.Switch.StopPeerForError(e.Src, err, bcR.String())
 			return
 		}
 		var extCommit *types.ExtendedCommit
@@ -280,7 +280,7 @@ func (bcR *Reactor) Receive(e p2p.Envelope) {
 				bcR.Logger.Error("failed to convert extended commit from proto",
 					"peer", e.Src,
 					"err", err)
-				bcR.Switch.StopPeerForError(e.Src, err, "blocksync")
+				bcR.Switch.StopPeerForError(e.Src, err, bcR.String())
 				return
 			}
 		}
@@ -369,7 +369,7 @@ func (bcR *Reactor) poolRoutine(stateSynced bool) {
 			case err := <-bcR.errorsCh:
 				peer := bcR.Switch.Peers().Get(err.peerID)
 				if peer != nil {
-					bcR.Switch.StopPeerForError(peer, err, "blocksync")
+					bcR.Switch.StopPeerForError(peer, err, bcR.String())
 				}
 
 			case <-statusUpdateTicker.C:
@@ -539,14 +539,14 @@ FOR_LOOP:
 				if peer != nil {
 					// NOTE: we've already removed the peer's request, but we
 					// still need to clean up the rest.
-					bcR.Switch.StopPeerForError(peer, ErrReactorValidation{Err: err}, "blocksync")
+					bcR.Switch.StopPeerForError(peer, ErrReactorValidation{Err: err}, bcR.String())
 				}
 				peerID2 := bcR.pool.RemovePeerAndRedoAllPeerRequests(second.Height)
 				peer2 := bcR.Switch.Peers().Get(peerID2)
 				if peer2 != nil && peer2 != peer {
 					// NOTE: we've already removed the peer's request, but we
 					// still need to clean up the rest.
-					bcR.Switch.StopPeerForError(peer2, ErrReactorValidation{Err: err}, "blocksync")
+					bcR.Switch.StopPeerForError(peer2, ErrReactorValidation{Err: err}, bcR.String())
 				}
 				continue FOR_LOOP
 			}
