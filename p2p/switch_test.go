@@ -43,11 +43,15 @@ type PeerMessage struct {
 type TestReactor struct {
 	BaseReactor
 
-	mtx          cmtsync.Mutex
-	channels     []*conn.ChannelDescriptor
-	logMessages  bool
-	msgsCounter  int
+	mtx         cmtsync.Mutex
+	channels    []*conn.ChannelDescriptor
+	logMessages bool
+	msgsCounter int
+
 	msgsReceived map[byte][]PeerMessage
+
+	peerCnt   int
+	peerLimit int
 }
 
 func NewTestReactor(channels []*conn.ChannelDescriptor, logMessages bool) *TestReactor {
@@ -65,9 +69,24 @@ func (tr *TestReactor) GetChannels() []*conn.ChannelDescriptor {
 	return tr.channels
 }
 
-func (tr *TestReactor) AddPeer(Peer) {}
+func (tr *TestReactor) AddPeer(Peer) error {
+	if tr.peerLimit == 0 {
+		return nil
+	}
 
-func (tr *TestReactor) RemovePeer(Peer, interface{}) {}
+	if tr.peerCnt >= tr.peerLimit {
+		return fmt.Errorf("peer limit reached: %d", tr.peerLimit)
+	}
+	tr.peerCnt++
+	return nil
+}
+
+func (tr *TestReactor) RemovePeer(Peer, interface{}) {
+	if tr.peerLimit == 0 {
+		return
+	}
+	tr.peerCnt--
+}
 
 func (tr *TestReactor) Receive(e Envelope) {
 	if tr.logMessages {
@@ -868,4 +887,60 @@ func TestSwitchRemovalErr(t *testing.T) {
 	sw2.StopPeerForError(p, fmt.Errorf("peer should error"))
 
 	assert.Equal(t, sw2.peers.Add(p).Error(), ErrPeerRemoval{}.Error())
+}
+
+func TestReactorSpecificBroadcast(t *testing.T) {
+	t.Parallel()
+	const (
+		totalPeers       = 50
+		reactorPeerLimit = 10
+		reactorName      = "limited"
+	)
+	switches := MakeConnectedSwitches(cfg, totalPeers, func(i int, sw *Switch) *Switch {
+		tr := NewTestReactor([]*conn.ChannelDescriptor{
+			{ID: byte(0x04), Priority: 10, MessageType: &p2pproto.Message{}},
+		}, false)
+		tr.peerLimit = reactorPeerLimit
+		tr.logMessages = true
+		sw = initSwitchFunc(i, sw)
+		for _, r := range sw.Reactors() {
+			r.(*TestReactor).logMessages = true
+		}
+		sw.AddReactor(reactorName, tr)
+		return sw
+	}, Connect2Switches)
+
+	// make sure all switches are connected
+	for _, sw := range switches {
+		assert.Equal(t, totalPeers-1, sw.Peers().Size())
+		assert.Equal(t, reactorPeerLimit, sw.Reactor(reactorName).(*TestReactor).peerCnt)
+	}
+
+	// make some noise - broadcast from the first switch on reactors "foo", "bar" and "limited"
+	channelIDs := []byte{0x01, 0x03, 0x04}
+	for _, channelID := range channelIDs {
+		ok := <-switches[0].Broadcast(Envelope{ChannelID: channelID, Message: &p2pproto.PexRequest{}})
+		assert.True(t, ok)
+	}
+	time.Sleep(1 * time.Second)
+
+	// check other reactors to ensure proper communication
+	fooCnt := 0
+	barCnt := 0
+	limitedCnt := 0
+	for _, sw := range switches[1:] {
+		if len(sw.Reactor("foo").(*TestReactor).getMsgs(byte(0x01))) > 0 {
+			fooCnt++
+		}
+		if len(sw.Reactor("bar").(*TestReactor).getMsgs(byte(0x03))) > 0 {
+			barCnt++
+		}
+		if len(sw.Reactor(reactorName).(*TestReactor).getMsgs(byte(0x04))) > 0 {
+			limitedCnt++
+		}
+	}
+
+	assert.Equal(t, totalPeers-1, fooCnt)
+	assert.Equal(t, totalPeers-1, barCnt)
+	assert.Equal(t, reactorPeerLimit, limitedCnt)
 }
