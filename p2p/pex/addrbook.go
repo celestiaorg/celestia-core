@@ -57,9 +57,6 @@ type AddrBook interface {
 	// address book, or private peers
 	Empty() bool
 
-	// Pick an address to dial
-	PickAddress(biasTowardsNewAddrs int) *p2p.NetAddress
-
 	// Mark address
 	MarkGood(p2p.ID)
 	MarkAttempt(*p2p.NetAddress)
@@ -264,60 +261,6 @@ func (a *addrBook) NeedMoreAddrs() bool {
 // Does not count the peer appearing in its own address book, or private peers.
 func (a *addrBook) Empty() bool {
 	return a.Size() == 0
-}
-
-// PickAddress implements AddrBook. It picks an address to connect to.
-// The address is picked randomly from an old or new bucket according
-// to the biasTowardsNewAddrs argument, which must be between [0, 100] (or else is truncated to that range)
-// and determines how biased we are to pick an address from a new bucket.
-// PickAddress returns nil if the AddrBook is empty or if we try to pick
-// from an empty bucket.
-func (a *addrBook) PickAddress(biasTowardsNewAddrs int) *p2p.NetAddress {
-	a.mtx.Lock()
-	defer a.mtx.Unlock()
-
-	bookSize := a.size()
-	if bookSize <= 0 {
-		if bookSize < 0 {
-			panic(fmt.Sprintf("Addrbook size %d (new: %d + old: %d) is less than 0", a.nNew+a.nOld, a.nNew, a.nOld))
-		}
-		return nil
-	}
-	if biasTowardsNewAddrs > 100 {
-		biasTowardsNewAddrs = 100
-	}
-	if biasTowardsNewAddrs < 0 {
-		biasTowardsNewAddrs = 0
-	}
-
-	// Bias between new and old addresses.
-	oldCorrelation := math.Sqrt(float64(a.nOld)) * (100.0 - float64(biasTowardsNewAddrs))
-	newCorrelation := math.Sqrt(float64(a.nNew)) * float64(biasTowardsNewAddrs)
-
-	// pick a random peer from a random bucket
-	var bucket map[string]*knownAddress
-	pickFromOldBucket := (newCorrelation+oldCorrelation)*a.rand.Float64() < oldCorrelation
-	if (pickFromOldBucket && a.nOld == 0) ||
-		(!pickFromOldBucket && a.nNew == 0) {
-		return nil
-	}
-	// loop until we pick a random non-empty bucket
-	for len(bucket) == 0 {
-		if pickFromOldBucket {
-			bucket = a.bucketsOld[a.rand.Intn(len(a.bucketsOld))]
-		} else {
-			bucket = a.bucketsNew[a.rand.Intn(len(a.bucketsNew))]
-		}
-	}
-	// pick a random index and loop over the map to return that index
-	randIndex := a.rand.Intn(len(bucket))
-	for _, ka := range bucket {
-		if randIndex == 0 {
-			return ka.Addr
-		}
-		randIndex--
-	}
-	return nil
 }
 
 // MarkGood implements AddrBook - it marks the peer as good and
