@@ -354,6 +354,11 @@ func (blockProp *Reactor) handleWants(peer p2p.ID, wants *proptypes.WantParts) {
 		return
 	}
 
+	if wants.Parts.Size() != int(parts.Total()) {
+		blockProp.Logger.Error("received want part with invalid parts size", "peer", peer, "height", height, "round", round, "expected_parts_size", parts.Total(), "received_parts_size", wants.Parts.Size())
+		return
+	}
+
 	// if we have the parts, send them to the peer.
 	wc := wants.Parts.Copy()
 	canSend := parts.BitArray().And(wc)
@@ -420,7 +425,7 @@ func (blockProp *Reactor) handleRecoveryPart(peer p2p.ID, part *proptypes.Recove
 		return
 	}
 
-	if parts.IsComplete() {
+	if parts.HasPart(int(part.Index)) || parts.IsComplete() {
 		return
 	}
 
@@ -512,7 +517,7 @@ func (blockProp *Reactor) handleRecoveryPart(peer p2p.ID, part *proptypes.Recove
 				continue
 			}
 			// only send original parts to the consensus reactor
-			if p.Index < parts.Original().Total() {
+			if i < parts.Original().Total() {
 				blockProp.partChan <- types.PartInfo{
 					Part: &types.Part{
 						Index: p.Index,
@@ -537,7 +542,7 @@ func (blockProp *Reactor) handleRecoveryPart(peer p2p.ID, part *proptypes.Recove
 				msg := &proptypes.RecoveryPart{
 					Height: height,
 					Round:  round,
-					Index:  p.Index,
+					Index:  i,
 					Data:   pbz,
 				}
 				blockProp.clearWants(msg, p.GetProof())

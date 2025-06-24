@@ -1,6 +1,7 @@
 package types
 
 import (
+	"math"
 	"sync"
 	"sync/atomic"
 
@@ -98,7 +99,11 @@ func (cps *CombinedPartSet) MissingOriginal() *bits.BitArray {
 func (cps *CombinedPartSet) Total() uint32 {
 	cps.mtx.Lock()
 	defer cps.mtx.Unlock()
-	return cps.original.Total() + cps.parity.Total()
+	size := cps.totalMap.Size()
+	if size < 0 || uint64(size) > uint64(math.MaxUint32) {
+		return 0
+	}
+	return uint32(size)
 }
 
 func (cps *CombinedPartSet) IsComplete() bool {
@@ -155,6 +160,10 @@ func (cps *CombinedPartSet) AddPart(part *RecoveryPart, proof merkle.Proof) (boo
 		cps.totalMap.SetIndex(int(encodedIndex), true)
 	}
 	return added, err
+}
+
+func (cps *CombinedPartSet) HasPart(index int) bool {
+	return cps.totalMap.GetIndex(index)
 }
 
 func (cps *CombinedPartSet) GetPart(index uint32) (*types.Part, bool) {

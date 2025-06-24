@@ -235,8 +235,6 @@ func (blockProp *Reactor) recoverPartsFromMempool(cb *proptypes.CompactBlock) {
 	for _, p := range parts {
 		p.Proof = *proofs[p.Index]
 
-		// adding the part without checking the proof since the proof was just
-		// created above.
 		added, err := originalParts.AddPart(p)
 		if err != nil {
 			blockProp.Logger.Error("failed to add locally recovered part", "err", err)

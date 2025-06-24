@@ -431,6 +431,10 @@ func NewNodeWithContext(ctx context.Context,
 		return nil, fmt.Errorf("could not create blocksync reactor: %w", err)
 	}
 
+	if state.TimeoutCommit > 0 {
+		// set the catchup retry time to match the block time
+		propagation.RetryTime = state.TimeoutCommit
+	}
 	partsChan := make(chan types.PartInfo, 2500)
 	proposalChan := make(chan types.Proposal, 100)
 	propagationReactor := propagation.NewReactor(
