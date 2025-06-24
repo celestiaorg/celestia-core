@@ -132,7 +132,7 @@ func TestMissingBlocks(t *testing.T) {
 	env.StateStore = sm.NewStore(dbm.NewMemDB(), sm.StoreOptions{
 		DiscardABCIResponses: false,
 	})
-	
+
 	mockstore := &mocks.BlockStore{}
 	mockstore.On("Height").Return(int64(100))
 	mockstore.On("Base").Return(int64(10))
