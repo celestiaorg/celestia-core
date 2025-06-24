@@ -10,6 +10,7 @@
 Currently, the `Switch` component handles all peer connections and interactions with reactors in a centralized manner. Peers are shared across all reactors, and the same logic applies to every reactor during operations such as **peer addition**, **removal**, or **broadcasting**.
 
 However, there are cases where specific reactors may need to operate on different subsets of the peer set. For example:
+
 1. A consensus reactor might need persistent connections with validators but not with non-validator nodes.
 2. A state sync reactor might only require peers currently engaged in state synchronization.
 
@@ -20,6 +21,7 @@ The current design does not allow such flexibility, as all reactors share the sa
 ### Centralized Peer Set
 
 Keep the peer set centralized in the `Switch` and rely on reactor-specific conditions or tags for filtering:
+
 - **Pros**:
     - No additional component or API (`PeerManager`) needed.
     - Reduces coordination between the `Switch` and other components.
@@ -30,6 +32,7 @@ Keep the peer set centralized in the `Switch` and rely on reactor-specific condi
 ### Reactor-Defined Policies with PeerManager Component
 
 Allow reactors to implement custom logic for peer lifecycle management independently with a dedicated `PeerManager` component:
+
 - **Pros**:
     - Greater independence for reactors.
     - Reactors control their own state and subset of peers directly.
@@ -43,6 +46,7 @@ Allow reactors to implement custom logic for peer lifecycle management independe
 ### Minimal Invasive Approach (Chosen Implementation)
 
 Extend the existing `Switch` with per-channel peer sets and reactor-specific peer acceptance logic:
+
 - **Pros**:
     - Minimal changes to existing architecture.
     - Backward compatible with existing reactors.
@@ -63,6 +67,7 @@ This change introduces **reactor-specific peer sets** by extending the existing 
 We chose to extend the existing `Switch` component rather than introducing a new `PeerManager` component for the following reasons:
 
 **Benefits of Extension**:
+
 1. **Minimal Disruption**: Leverages existing architecture without requiring changes across the entire codebase.
 2. **Backward Compatibility**: Existing reactors continue to work without modification.
 3. **Infrastructure-First**: Provides the capability for selective peer management without forcing immediate behavioral changes.
@@ -70,6 +75,7 @@ We chose to extend the existing `Switch` component rather than introducing a new
 5. **Simplified Testing**: Changes are contained within the existing P2P layer.
 
 **Implementation Details**:
+
 - The `Switch` now maintains `peerSetByChID map[byte]*PeerSet` to track peers per channel
 - Reactors can reject peers during `AddPeer()` by returning an error
 - Broadcasting is isolated per reactor using `peersForEnvelope()`
@@ -78,7 +84,8 @@ We chose to extend the existing `Switch` component rather than introducing a new
 - **Graceful peer removal**: Reactors can remove peers from their sets without affecting other reactors
 - **Error-based immediate disconnection**: Bypasses reference counting for error conditions
 
-#### Key Features:
+#### Key Features
+
 - **Per-channel peer sets**: Each reactor's channels get their own peer set
 - **Reactor-specific peer acceptance**: Reactors can implement custom logic in `AddPeer()` to accept or reject peers
 - **Isolated broadcasting**: Messages are only sent to peers that belong to the specific reactor's peer set
@@ -91,7 +98,7 @@ We chose to extend the existing `Switch` component rather than introducing a new
 
 The peer removal logic implements a reference-counting approach to determine when to actually disconnect peers:
 
-#### Removal Scenarios:
+#### Removal Scenarios
 
 1. **Error-based Removal**:
    - When a peer encounters an error (network issues, protocol violations, etc.)
@@ -108,7 +115,7 @@ The peer removal logic implements a reference-counting approach to determine whe
    - When a reactor is stopped, all its peer references are removed
    - Peers are only disconnected if no other reactors reference them
 
-#### Implementation Requirements:
+#### Implementation Requirements
 
 - **Reference Counting**: Track how many reactors have each peer in their peer sets
 - **Conditional Disconnection**: Only drop the connection when reference count reaches zero
@@ -119,7 +126,8 @@ The peer removal logic implements a reference-counting approach to determine whe
 
 This section defines which reactors require which types of peers and the behavior for existing reactors:
 
-#### Reactor Peer Requirements:
+#### Reactor Peer Requirements
+
 1. **Consensus Reactor**:
    - **Peer Types**: Validator nodes, full nodes participating in consensus
    - **Criteria**: Nodes with validator keys or nodes that relay consensus messages
@@ -147,7 +155,8 @@ This section defines which reactors require which types of peers and the behavio
    - **Criteria**: Nodes participating in consensus
    - **Connection Style**: ad hoc
 
-#### Backward Compatibility for Existing Reactors:
+#### Backward Compatibility for Existing Reactors
+
 - **Default Behavior**: Reactors that don't specify peer criteria will receive all available peers (current behavior).
 - **Opt-in Migration**: Existing reactors can gradually adopt peer-specific criteria without breaking changes.
 - **Interface Compatibility**: Current reactor interfaces (`AddPeer`, `RemovePeer`) remain unchanged, with `AddPeer` now returning an error.
@@ -176,11 +185,13 @@ This section defines which reactors require which types of peers and the behavio
     - **Reactor Shutdown**: When a reactor stops, all its peer references are removed, potentially triggering disconnections for peers no longer needed by any reactor.
 
 ### Systems Affected
+
 - The `Switch` now maintains per-channel peer sets alongside the global peer set.
 - All reactor implementations have updated `AddPeer()` signatures to return errors.
 - Broadcasting logic is modified to use reactor-specific peer sets.
 
 ### API Changes
+
 - `AddPeer(peer Peer)` → `AddPeer(peer Peer) error` in the Reactor interface
 - New `peersForEnvelope(e Envelope) []Peer` method in Switch
 - Enhanced `TxStatus` RPC endpoint with `REJECTED` status for mempool transactions
@@ -189,10 +200,12 @@ This section defines which reactors require which types of peers and the behavio
 - **Error-based removal**: Existing `StopPeerForError(peer Peer, reason interface{})` continues to work but now immediately drops connections
 
 ### Efficiency Considerations
+
 - Minimal performance overhead due to maintaining both global and per-channel peer sets.
 - Enhanced filtering enables reactors to scale efficiently by avoiding overhead caused by irrelevant peers.
 
 ### Observability
+
 - Peer management metrics (e.g., peer rejections, reactor-specific peer counts) are tracked within the existing metrics system.
 
 ## Status
@@ -202,6 +215,7 @@ This section defines which reactors require which types of peers and the behavio
 ## Consequences
 
 ### Positive
+
 1. **Reactor-Specific Peer Sets**:
     - Reactors can define and operate on different subsets of peers without affecting other reactors.
 2. **Backward Compatibility**:
@@ -218,6 +232,7 @@ This section defines which reactors require which types of peers and the behavio
     - Reactors can independently manage their peer relationships without affecting others.
 
 ### Negative
+
 1. **Limited Initial Differentiation**:
     - All peer sets are currently identical as most reactors accept all peers.
 2. **Dual Peer Set Maintenance**:
@@ -230,6 +245,7 @@ This section defines which reactors require which types of peers and the behavio
     - Need to ensure reactors can safely remove peers without race conditions.
 
 ### Neutral
+
 - The flexibility provided by this approach may not be needed by all reactors upfront. However, it lays a foundation for future scaling and more sophisticated peer management strategies.
 
 ## References
