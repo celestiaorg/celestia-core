@@ -100,7 +100,7 @@ func (cps *CombinedPartSet) Total() uint32 {
 	cps.mtx.Lock()
 	defer cps.mtx.Unlock()
 	size := cps.totalMap.Size()
-	if size > math.MaxUint32 {
+	if size < 0 || uint64(size) > uint64(math.MaxUint32) {
 		return 0
 	}
 	return uint32(size)
