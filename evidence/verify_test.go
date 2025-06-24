@@ -155,8 +155,8 @@ func TestVerify_ForwardLunaticAttack(t *testing.T) {
 	}
 
 	// modify trusted light block so that it is of a height less than the conflicting one
-	trusted.Header.Height = state.LastBlockHeight
-	trusted.Header.Time = state.LastBlockTime
+	trusted.Header.Height = state.LastBlockHeight //nolint:staticcheck
+	trusted.Header.Time = state.LastBlockTime     //nolint:staticcheck
 
 	stateStore := &smmocks.Store{}
 	stateStore.On("LoadValidators", commonHeight).Return(common.ValidatorSet, nil)
@@ -245,12 +245,12 @@ func TestVerifyLightClientAttack_Equivocation(t *testing.T) {
 
 	// conflicting header has different next validators hash which should have been correctly derived from
 	// the previous round
-	ev.ConflictingBlock.Header.NextValidatorsHash = crypto.CRandBytes(tmhash.Size)
+	ev.ConflictingBlock.Header.NextValidatorsHash = crypto.CRandBytes(tmhash.Size) //nolint:staticcheck
 	err = evidence.VerifyLightClientAttack(ev, trustedSignedHeader, trustedSignedHeader, nil,
 		defaultEvidenceTime.Add(1*time.Minute), 2*time.Hour)
 	assert.Error(t, err)
 	// revert next validators hash
-	ev.ConflictingBlock.Header.NextValidatorsHash = trustedHeader.NextValidatorsHash
+	ev.ConflictingBlock.Header.NextValidatorsHash = trustedHeader.NextValidatorsHash //nolint:staticcheck
 
 	state := sm.State{
 		LastBlockTime:   defaultEvidenceTime.Add(1 * time.Minute),
