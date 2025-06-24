@@ -1,99 +1,11 @@
 package cat
 
 import (
-	"container/list"
 	"time"
 
 	tmsync "github.com/cometbft/cometbft/libs/sync"
 	"github.com/cometbft/cometbft/types"
 )
-
-// LRUTxCache maintains a thread-safe LRU cache of raw transactions. The cache
-// only stores the hash of the raw transaction.
-// NOTE: This has been copied from mempool/cache with the main diffence of using
-// tx keys instead of raw transactions.
-type LRUTxCache struct {
-	staticSize int
-
-	mtx tmsync.Mutex
-	// cacheMap is used as a quick look up table
-	cacheMap map[types.TxKey]*list.Element
-	// list is a doubly linked list used to capture the FIFO nature of the cache
-	list *list.List
-}
-
-func NewLRUTxCache(cacheSize int) *LRUTxCache {
-	return &LRUTxCache{
-		staticSize: cacheSize,
-		cacheMap:   make(map[types.TxKey]*list.Element, cacheSize),
-		list:       list.New(),
-	}
-}
-
-func (c *LRUTxCache) Reset() {
-	c.mtx.Lock()
-	defer c.mtx.Unlock()
-
-	c.cacheMap = make(map[types.TxKey]*list.Element, c.staticSize)
-	c.list.Init()
-}
-
-func (c *LRUTxCache) Push(txKey types.TxKey) bool {
-	if c.staticSize == 0 {
-		return true
-	}
-
-	c.mtx.Lock()
-	defer c.mtx.Unlock()
-
-	moved, ok := c.cacheMap[txKey]
-	if ok {
-		c.list.MoveToBack(moved)
-		return false
-	}
-
-	if c.list.Len() >= c.staticSize {
-		front := c.list.Front()
-		if front != nil {
-			frontKey := front.Value.(types.TxKey)
-			delete(c.cacheMap, frontKey)
-			c.list.Remove(front)
-		}
-	}
-
-	e := c.list.PushBack(txKey)
-	c.cacheMap[txKey] = e
-
-	return true
-}
-
-func (c *LRUTxCache) Remove(txKey types.TxKey) {
-	if c.staticSize == 0 {
-		return
-	}
-
-	c.mtx.Lock()
-	defer c.mtx.Unlock()
-
-	e := c.cacheMap[txKey]
-	delete(c.cacheMap, txKey)
-
-	if e != nil {
-		c.list.Remove(e)
-	}
-}
-
-func (c *LRUTxCache) Has(txKey types.TxKey) bool {
-	if c.staticSize == 0 {
-		return false
-	}
-
-	c.mtx.Lock()
-	defer c.mtx.Unlock()
-
-	_, ok := c.cacheMap[txKey]
-	return ok
-}
 
 // SeenTxSet records transactions that have been
 // seen by other peers but not yet by us
