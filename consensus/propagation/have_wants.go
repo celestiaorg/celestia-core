@@ -420,7 +420,7 @@ func (blockProp *Reactor) handleRecoveryPart(peer p2p.ID, part *proptypes.Recove
 		return
 	}
 
-	if parts.IsComplete() {
+	if parts.HasPart(int(part.Index)) || parts.IsComplete() {
 		return
 	}
 
