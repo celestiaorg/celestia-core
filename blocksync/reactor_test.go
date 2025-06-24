@@ -525,7 +525,7 @@ func (bcR *ByzantineReactor) Receive(e p2p.Envelope) {
 	fmt.Println("Receive", e.Message)
 	if err := ValidateMsg(e.Message); err != nil {
 		bcR.Logger.Error("Peer sent us invalid msg", "peer", e.Src, "msg", e.Message, "err", err)
-		bcR.Switch.StopPeerForError(e.Src, err)
+		bcR.Switch.StopPeerForError(e.Src, err, "blocksync")
 		return
 	}
 
@@ -538,7 +538,7 @@ func (bcR *ByzantineReactor) Receive(e p2p.Envelope) {
 		bi, err := types.BlockFromProto(msg.Block)
 		if err != nil {
 			bcR.Logger.Error("Peer sent us invalid block", "peer", e.Src, "msg", e.Message, "err", err)
-			bcR.Switch.StopPeerForError(e.Src, err)
+			bcR.Switch.StopPeerForError(e.Src, err, "blocksync")
 			return
 		}
 		var extCommit *types.ExtendedCommit
@@ -549,7 +549,7 @@ func (bcR *ByzantineReactor) Receive(e p2p.Envelope) {
 				bcR.Logger.Error("failed to convert extended commit from proto",
 					"peer", e.Src,
 					"err", err)
-				bcR.Switch.StopPeerForError(e.Src, err)
+				bcR.Switch.StopPeerForError(e.Src, err, "blocksync")
 				return
 			}
 		}

@@ -273,13 +273,13 @@ func (conR *Reactor) Receive(e p2p.Envelope) {
 	msg, err := MsgFromProto(e.Message)
 	if err != nil {
 		conR.Logger.Error("Error decoding message", "src", e.Src, "chId", e.ChannelID, "err", err)
-		conR.Switch.StopPeerForError(e.Src, err)
+		conR.Switch.StopPeerForError(e.Src, err, "consensus")
 		return
 	}
 
 	if err = msg.ValidateBasic(); err != nil {
 		conR.Logger.Error("Peer sent us invalid msg", "peer", e.Src, "msg", e.Message, "err", err)
-		conR.Switch.StopPeerForError(e.Src, err)
+		conR.Switch.StopPeerForError(e.Src, err, "consensus")
 		return
 	}
 
@@ -309,7 +309,7 @@ func (conR *Reactor) Receive(e p2p.Envelope) {
 			)
 			if err = msg.ValidateHeight(initialHeight); err != nil {
 				conR.Logger.Error("Peer sent us invalid msg", "peer", e.Src, "msg", msg, "err", err)
-				conR.Switch.StopPeerForError(e.Src, err)
+				conR.Switch.StopPeerForError(e.Src, err, "consensus")
 				return
 			}
 			ps.ApplyNewRoundStepMessage(msg)
@@ -353,7 +353,7 @@ func (conR *Reactor) Receive(e p2p.Envelope) {
 			// Peer claims to have a maj23 for some BlockID at H,R,S,
 			err := votes.SetPeerMaj23(msg.Round, msg.Type, ps.peer.ID(), msg.BlockID)
 			if err != nil {
-				conR.Switch.StopPeerForError(e.Src, err)
+				conR.Switch.StopPeerForError(e.Src, err, "consensus")
 				return
 			}
 			// Respond with a VoteSetBitsMessage showing which votes we have.

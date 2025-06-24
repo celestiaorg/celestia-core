@@ -225,13 +225,13 @@ func (blockProp *Reactor) ReceiveEnvelope(e p2p.Envelope) {
 	msg, err := proptypes.MsgFromProto(m.(*propproto.Message))
 	if err != nil {
 		blockProp.Logger.Error("Error decoding message", "src", e.Src, "chId", e.ChannelID, "err", err)
-		blockProp.Switch.StopPeerForError(e.Src, err)
+		blockProp.Switch.StopPeerForError(e.Src, err, "propagation")
 		return
 	}
 
 	if err = msg.ValidateBasic(); err != nil {
 		blockProp.Logger.Error("Peer sent us invalid msg", "peer", e.Src, "msg", e.Message, "err", err)
-		blockProp.Switch.StopPeerForError(e.Src, err)
+		blockProp.Switch.StopPeerForError(e.Src, err, "propagation")
 		return
 	}
 	switch e.ChannelID {

@@ -206,7 +206,7 @@ func TestBroadcastTxForPeerStopsWhenPeerStops(t *testing.T) {
 
 	// stop peer
 	sw := reactors[1].Switch
-	sw.StopPeerForError(sw.Peers().List()[0], errors.New("some reason"))
+	sw.StopPeerForError(sw.Peers().List()[0], errors.New("some reason"), "mempool")
 
 	// check that we are not leaking any go-routines
 	// i.e. broadcastTxRoutine finishes when peer is stopped

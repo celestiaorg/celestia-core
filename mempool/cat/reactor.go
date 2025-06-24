@@ -255,7 +255,7 @@ func (memR *Reactor) Receive(e p2p.Envelope) {
 		txKey, err := types.TxKeyFromBytes(msg.TxKey)
 		if err != nil {
 			memR.Logger.Error("peer sent SeenTx with incorrect tx key", "err", err)
-			memR.Switch.StopPeerForError(e.Src, err)
+			memR.Switch.StopPeerForError(e.Src, err, "cat")
 			return
 		}
 		schema.WriteMempoolPeerState(
@@ -289,7 +289,7 @@ func (memR *Reactor) Receive(e p2p.Envelope) {
 		txKey, err := types.TxKeyFromBytes(msg.TxKey)
 		if err != nil {
 			memR.Logger.Error("peer sent WantTx with incorrect tx key", "err", err)
-			memR.Switch.StopPeerForError(e.Src, err)
+			memR.Switch.StopPeerForError(e.Src, err, "cat")
 			return
 		}
 		schema.WriteMempoolPeerState(
@@ -320,7 +320,7 @@ func (memR *Reactor) Receive(e p2p.Envelope) {
 
 	default:
 		memR.Logger.Error("unknown message type", "src", e.Src, "chId", e.ChannelID, "msg", fmt.Sprintf("%T", msg))
-		memR.Switch.StopPeerForError(e.Src, fmt.Errorf("mempool cannot handle message of type: %T", msg))
+		memR.Switch.StopPeerForError(e.Src, fmt.Errorf("mempool cannot handle message of type: %T", msg), "cat")
 		return
 	}
 }

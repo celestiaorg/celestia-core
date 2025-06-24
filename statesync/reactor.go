@@ -113,7 +113,7 @@ func (r *Reactor) Receive(e p2p.Envelope) {
 	err := validateMsg(e.Message)
 	if err != nil {
 		r.Logger.Error("Invalid message", "peer", e.Src, "msg", e.Message, "err", err)
-		r.Switch.StopPeerForError(e.Src, err)
+		r.Switch.StopPeerForError(e.Src, err, "statesync")
 		return
 	}
 
