@@ -162,6 +162,10 @@ func (cps *CombinedPartSet) AddPart(part *RecoveryPart, proof merkle.Proof) (boo
 	return added, err
 }
 
+func (cps *CombinedPartSet) HasPart(index int) bool {
+	return cps.totalMap.GetIndex(index)
+}
+
 func (cps *CombinedPartSet) GetPart(index uint32) (*types.Part, bool) {
 	cps.mtx.Lock()
 	defer cps.mtx.Unlock()
