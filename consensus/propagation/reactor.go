@@ -35,7 +35,6 @@ const (
 	WantChannel = byte(0x51)
 )
 
-// todo: avoid endin up in programmer hell by not using a global var
 var RetryTime = 6 * time.Second
 
 type Reactor struct {
