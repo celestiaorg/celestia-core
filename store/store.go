@@ -780,6 +780,7 @@ func (bs *BlockStore) SaveTxInfo(block *types.Block, txResponseCodes []uint32, l
 
 	// Create a new batch
 	batch := bs.db.NewBatch()
+	defer batch.Close()
 
 	// Batch and save txs from the block
 	for i, tx := range block.Txs {
