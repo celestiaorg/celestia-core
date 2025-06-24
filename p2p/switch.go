@@ -1,6 +1,7 @@
 package p2p
 
 import (
+	"errors"
 	"fmt"
 	"math"
 	"sync"
@@ -909,8 +910,7 @@ func (sw *Switch) addPeer(p Peer) error {
 		chs := reactor.GetChannels()
 		if len(chs) > 0 { // for each reactor there is exactly one PeerSet, no need to iterate over channels
 			if err := sw.peerSetByChID[chs[0].ID].Add(p); err != nil {
-				switch err.(type) {
-				case ErrPeerRemoval:
+				if errors.Is(err, ErrPeerRemoval{}) {
 					sw.Logger.Error("Error starting peer ",
 						" err ", "Peer has already errored and removal was attempted.",
 						"peer", p.ID())

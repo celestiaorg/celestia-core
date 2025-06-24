@@ -189,7 +189,7 @@ func (r *Reactor) GetChannels() []*conn.ChannelDescriptor {
 
 // AddPeer implements Reactor by adding peer to the address book (if inbound)
 // or by requesting more addresses (if outbound).
-func (r *Reactor) AddPeer(p p2p.Peer) error {
+func (r *Reactor) AddPeer(p Peer) error {
 	if p.IsOutbound() {
 		// For outbound peers, the address is already in the books -
 		// either via DialPeersAsync or r.Receive.
