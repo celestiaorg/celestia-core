@@ -144,12 +144,6 @@ func (blockProp *Reactor) OnStart() error {
 
 func (blockProp *Reactor) OnStop() {
 	blockProp.cancel()
-	for _, peer := range blockProp.getPeers() {
-		close(peer.receivedHaves)
-		close(peer.receivedParts)
-	}
-	close(blockProp.partChan)
-	close(blockProp.proposalChan)
 }
 
 func (blockProp *Reactor) GetChannels() []*conn.ChannelDescriptor {
@@ -185,7 +179,7 @@ func (blockProp *Reactor) AddPeer(peer p2p.Peer) error {
 		return fmt.Errorf("peer exists in propagation reactors, peer ID: %v", peer.ID())
 	}
 
-	peerState := newPeerState(peer, blockProp.Logger)
+	peerState := newPeerState(blockProp.ctx, peer, blockProp.Logger)
 	blockProp.setPeer(peer.ID(), peerState)
 	go blockProp.requestFromPeer(peerState)
 
@@ -212,8 +206,7 @@ func (blockProp *Reactor) RemovePeer(peer p2p.Peer, reason interface{}) {
 	defer blockProp.mtx.Unlock()
 	p := blockProp.peerstate[peer.ID()]
 	if p != nil {
-		close(p.receivedHaves)
-		close(p.receivedParts)
+		p.cancel()
 	}
 	delete(blockProp.peerstate, peer.ID())
 }

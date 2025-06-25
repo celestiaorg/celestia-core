@@ -1,6 +1,7 @@
 package propagation
 
 import (
+	"context"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -16,7 +17,7 @@ import (
 // newTestPeerState is a helper to create a PeerState with a mock peer.
 func newTestPeerState() *PeerState {
 	peer := mock.Peer{}
-	return newPeerState(&peer, log.NewNopLogger())
+	return newPeerState(context.Background(), &peer, log.NewNopLogger())
 }
 
 func TestPeerState_SetRequests(t *testing.T) {
@@ -204,7 +205,7 @@ func TestPeerState_SetConcurrentReqs(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			ps := newPeerState(nil, nil)
+			ps := newPeerState(context.Background(), nil, nil)
 			ps.SetConcurrentReqs(tt.count)
 
 			got := ps.concurrentReqs.Load()
@@ -248,7 +249,7 @@ func TestPeerState_DecreaseConcurrentReqs(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			ps := newPeerState(nil, nil)
+			ps := newPeerState(context.Background(), nil, nil)
 			ps.SetConcurrentReqs(tt.initialCount)
 
 			ps.DecreaseConcurrentReqs(tt.decrease)
