@@ -191,7 +191,7 @@ func (bcR *Reactor) GetChannels() []*p2p.ChannelDescriptor {
 }
 
 // AddPeer implements Reactor by sending our state to peer.
-func (bcR *Reactor) AddPeer(peer p2p.Peer) {
+func (bcR *Reactor) AddPeer(peer p2p.Peer) error {
 	peer.Send(p2p.Envelope{
 		ChannelID: BlocksyncChannel,
 		Message: &bcproto.StatusResponse{
@@ -203,6 +203,7 @@ func (bcR *Reactor) AddPeer(peer p2p.Peer) {
 
 	// peer is added to the pool once we receive the first
 	// bcStatusResponseMessage from the peer and call pool.SetPeerRange
+	return nil
 }
 
 // RemovePeer implements Reactor by removing peer from the pool.

@@ -109,11 +109,11 @@ func TestCountRequests(t *testing.T) {
 	reactor := reactors[0]
 
 	peer1 := mock.NewPeer(nil)
-	reactor.AddPeer(peer1)
+	require.NoError(t, reactor.AddPeer(peer1))
 	peer2 := mock.NewPeer(nil)
-	reactor.AddPeer(peer2)
+	require.NoError(t, reactor.AddPeer(peer2))
 	peer3 := mock.NewPeer(nil)
-	reactor.AddPeer(peer3)
+	require.NoError(t, reactor.AddPeer(peer3))
 
 	peer1State := reactor.getPeer(peer1.ID())
 	// peer1 requests part=0 at height=10, round=0
@@ -147,7 +147,8 @@ func TestHandleHavesAndWantsAndRecoveryParts(t *testing.T) {
 	reactor3 := reactors[2]
 
 	randomData := cmtrand.Bytes(1000)
-	ps := types.NewPartSetFromData(randomData, types.BlockPartSizeBytes)
+	ps, err := types.NewPartSetFromData(randomData, types.BlockPartSizeBytes)
+	require.NoError(t, err)
 	pse, lastLen, err := types.Encode(ps, types.BlockPartSizeBytes)
 	require.NoError(t, err)
 	psh := ps.Header()
@@ -248,7 +249,8 @@ func TestInvalidPart(t *testing.T) {
 	reactor2 := reactors[1]
 
 	randomData := cmtrand.Bytes(1000)
-	ps := types.NewPartSetFromData(randomData, types.BlockPartSizeBytes)
+	ps, err := types.NewPartSetFromData(randomData, types.BlockPartSizeBytes)
+	require.NoError(t, err)
 	pse, lastLen, err := types.Encode(ps, types.BlockPartSizeBytes)
 	require.NoError(t, err)
 	psh := ps.Header()
@@ -631,7 +633,8 @@ func TestConcurrentRequestLimit(t *testing.T) {
 // testCompactBlock returns a test compact block with the corresponding orignal part set,
 // parity partset, and proofs.
 func testCompactBlock(t *testing.T, height int64, round int32) (*proptypes.CompactBlock, *types.PartSet, *types.PartSet, []*merkle.Proof) {
-	ps := types.NewPartSetFromData(cmtrand.Bytes(1000), types.BlockPartSizeBytes)
+	ps, err := types.NewPartSetFromData(cmtrand.Bytes(1000), types.BlockPartSizeBytes)
+	require.NoError(t, err)
 	pse, lastLen, err := types.Encode(ps, types.BlockPartSizeBytes)
 	require.NoError(t, err)
 	psh := ps.Header()

@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/cometbft/cometbft/libs/cmap"
-	cmtmath "github.com/cometbft/cometbft/libs/math"
 	cmtrand "github.com/cometbft/cometbft/libs/rand"
 	"github.com/cometbft/cometbft/libs/service"
 	"github.com/cometbft/cometbft/p2p"
@@ -31,7 +30,7 @@ const (
 	maxMsgSize = maxAddressSize * maxGetSelection
 
 	// ensure we have enough peers
-	defaultEnsurePeersPeriod = 30 * time.Second
+	defaultEnsurePeersPeriod = 10 * time.Second
 
 	// Seed/Crawler constants
 
@@ -41,7 +40,7 @@ const (
 	// check some peers every this
 	crawlPeerPeriod = 30 * time.Second
 
-	maxAttemptsToDial = 16 // ~ 35h in total (last attempt - 18h)
+	maxAttemptsToDial = 8 // 8 attempts with 10s interval
 
 	// if node connects to seed, it does not have any trusted peers.
 	// Especially in the beginning, node should have more trusted peers than
@@ -99,9 +98,9 @@ type Reactor struct {
 }
 
 func (r *Reactor) minReceiveRequestInterval() time.Duration {
-	// NOTE: must be less than ensurePeersPeriod, otherwise we'll request
+	// NOTE: must be around ensurePeersPeriod, otherwise we'll request
 	// peers too quickly from others and they'll think we're bad!
-	return r.ensurePeersPeriod / 3
+	return r.ensurePeersPeriod
 }
 
 // ReactorConfig holds reactor specific configuration data.
@@ -190,7 +189,7 @@ func (r *Reactor) GetChannels() []*conn.ChannelDescriptor {
 
 // AddPeer implements Reactor by adding peer to the address book (if inbound)
 // or by requesting more addresses (if outbound).
-func (r *Reactor) AddPeer(p Peer) {
+func (r *Reactor) AddPeer(p Peer) error {
 	if p.IsOutbound() {
 		// For outbound peers, the address is already in the books -
 		// either via DialPeersAsync or r.Receive.
@@ -203,7 +202,7 @@ func (r *Reactor) AddPeer(p Peer) {
 		addr, err := p.NodeInfo().NetAddress()
 		if err != nil {
 			r.Logger.Error("Failed to get peer NetAddress", "err", err, "peer", p)
-			return
+			return nil
 		}
 
 		// Make it explicit that addr and src are the same for an inbound peer.
@@ -214,6 +213,7 @@ func (r *Reactor) AddPeer(p Peer) {
 		err = r.book.AddAddress(addr, src)
 		r.logErrAddrBook(err)
 	}
+	return nil
 }
 
 // RemovePeer implements Reactor by resetting peer's requests info.
@@ -457,34 +457,19 @@ func (r *Reactor) ensurePeers(ensurePeersPeriodElapsed bool) {
 		return
 	}
 
-	// bias to prefer more vetted peers when we have fewer connections.
-	// not perfect, but somewhate ensures that we prioritize connecting to more-vetted
-	// NOTE: range here is [10, 90]. Too high ?
-	newBias := cmtmath.MinInt(out, 8)*10 + 10
-
-	toDial := make(map[p2p.ID]*p2p.NetAddress)
-	// Try maxAttempts times to pick numToDial addresses to dial
-	maxAttempts := numToDial * 3
-
-	for i := 0; i < maxAttempts && len(toDial) < numToDial; i++ {
-		try := r.book.PickAddress(newBias)
-		if try == nil {
-			continue
-		}
-		if _, selected := toDial[try.ID]; selected {
-			continue
-		}
-		if r.Switch.IsDialingOrExistingAddress(try) {
-			continue
-		}
-		// TODO: consider moving some checks from toDial into here
-		// so we don't even consider dialing peers that we want to wait
-		// before dialing again, or have dialed too many times already
-		toDial[try.ID] = try
+	addrBook := r.book.GetSelection()
+	maxDials := r.Switch.MaxNumOutboundPeers() * 4
+	// check if the addressbook is smaller than maxDials
+	if len(addrBook) < maxDials {
+		maxDials = len(addrBook)
 	}
+	// We don't need to randomize the addresses since the addressbook is already shuffled
+	for i := 0; i < maxDials; i++ {
+		addr := addrBook[i]
 
-	// Dial picked addresses
-	for _, addr := range toDial {
+		if r.Switch.IsDialingOrExistingAddress(addr) {
+			continue
+		}
 		go func(addr *p2p.NetAddress) {
 			err := r.dialPeer(addr)
 			if err != nil {
@@ -504,7 +489,6 @@ func (r *Reactor) ensurePeers(ensurePeersPeriodElapsed bool) {
 	}
 
 	if r.book.NeedMoreAddrs() {
-
 		// 1) Pick a random peer and ask for more.
 		peers := r.Switch.Peers().List()
 		peersCount := len(peers)
@@ -514,10 +498,9 @@ func (r *Reactor) ensurePeers(ensurePeersPeriodElapsed bool) {
 			r.RequestAddrs(peer)
 		}
 
-		// 2) Dial seeds if we are not dialing anyone.
-		// This is done in addition to asking a peer for addresses to work-around
-		// peers not participating in PEX.
-		if len(toDial) == 0 {
+		// Get updated address book and if empty, dial seeds
+		updatedAddrBook := r.book.GetSelection()
+		if len(updatedAddrBook) == 0 {
 			r.Logger.Info("No addresses to dial. Falling back to seeds")
 			r.dialSeeds()
 		}
@@ -535,20 +518,14 @@ func (r *Reactor) dialAttemptsInfo(addr *p2p.NetAddress) (attempts int, lastDial
 
 func (r *Reactor) dialPeer(addr *p2p.NetAddress) error {
 	attempts, lastDialed := r.dialAttemptsInfo(addr)
-	if !r.Switch.IsPeerPersistent(addr) && attempts > maxAttemptsToDial {
+	if attempts > maxAttemptsToDial && !r.Switch.IsPeerPersistent(addr) {
 		r.book.MarkBad(addr, defaultBanTime)
 		return errMaxAttemptsToDial{}
 	}
 
-	// exponential backoff if it's not our first attempt to dial given address
-	if attempts > 0 {
-		jitter := time.Duration(cmtrand.Float64() * float64(time.Second)) // 1s == (1e9 ns)
-		backoffDuration := jitter + ((1 << uint(attempts)) * time.Second)
-		backoffDuration = r.maxBackoffDurationForPeer(addr, backoffDuration)
-		sinceLastDialed := time.Since(lastDialed)
-		if sinceLastDialed < backoffDuration {
-			return errTooEarlyToDial{backoffDuration, lastDialed}
-		}
+	minTimeBetweenDials := 30 * time.Second
+	if time.Since(lastDialed) < minTimeBetweenDials {
+		return errTooEarlyToDial{minTimeBetweenDials, lastDialed}
 	}
 
 	err := r.Switch.DialPeerWithAddress(addr)
@@ -571,16 +548,6 @@ func (r *Reactor) dialPeer(addr *p2p.NetAddress) error {
 	// cleanup any history
 	r.attemptsToDial.Delete(addr.DialString())
 	return nil
-}
-
-// maxBackoffDurationForPeer caps the backoff duration for persistent peers.
-func (r *Reactor) maxBackoffDurationForPeer(addr *p2p.NetAddress, planned time.Duration) time.Duration {
-	if r.config.PersistentPeersMaxDialPeriod > 0 &&
-		planned > r.config.PersistentPeersMaxDialPeriod &&
-		r.Switch.IsPeerPersistent(addr) {
-		return r.config.PersistentPeersMaxDialPeriod
-	}
-	return planned
 }
 
 // checkSeeds checks that addresses are well formed.

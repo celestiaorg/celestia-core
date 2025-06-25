@@ -148,7 +148,7 @@ func TestLegacyReactorReceiveBasic(t *testing.T) {
 	}()
 
 	reactor.InitPeer(peer)
-	reactor.AddPeer(peer)
+	require.NoError(t, reactor.AddPeer(peer))
 	m := &memproto.Txs{}
 	wm := m.Wrap()
 
