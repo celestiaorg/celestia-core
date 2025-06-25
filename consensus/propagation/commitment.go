@@ -164,7 +164,11 @@ func (blockProp *Reactor) handleCompactBlock(cb *proptypes.CompactBlock, peer p2
 	}
 
 	if !proposer {
-		blockProp.proposalChan <- cb.Proposal
+		select {
+		case <-blockProp.ctx.Done():
+			return
+		case blockProp.proposalChan <- cb.Proposal:
+		}
 		// check if we have any transactions that are in the compact block
 		go blockProp.recoverPartsFromMempool(cb)
 	}

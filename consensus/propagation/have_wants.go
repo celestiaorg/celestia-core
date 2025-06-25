@@ -87,7 +87,8 @@ func (blockProp *Reactor) handleHaves(peer p2p.ID, haves *proptypes.HaveParts) {
 	if p := blockProp.getPeer(peer); p != nil {
 		for _, index := range hc.GetTrueIndices() {
 			select {
-			case <-blockProp.ctx.Done():
+			case <-p.ctx.Done():
+				return
 			case p.receivedHaves <- request{
 				height: height,
 				round:  round,
@@ -119,7 +120,7 @@ func (blockProp *Reactor) requestFromPeer(ps *PeerState) {
 		}
 
 		select {
-		case <-blockProp.ctx.Done():
+		case <-ps.ctx.Done():
 			return
 
 		case part, ok := <-ps.receivedParts:
@@ -461,6 +462,8 @@ func (blockProp *Reactor) handleRecoveryPart(peer p2p.ID, part *proptypes.Recove
 		// avoid blocking if a single peer is backed up. This means that they
 		// are sending us too many parts
 		select {
+		case <-p.ctx.Done():
+			return
 		case p.receivedParts <- partData{height: part.Height, round: part.Round}:
 		default:
 		}
@@ -474,7 +477,10 @@ func (blockProp *Reactor) handleRecoveryPart(peer p2p.ID, part *proptypes.Recove
 
 	// only send original parts to the consensus reactor
 	if part.Index < parts.Original().Total() {
-		blockProp.partChan <- types.PartInfo{
+		select {
+		case <-blockProp.ctx.Done():
+			return
+		case blockProp.partChan <- types.PartInfo{
 			Part: &types.Part{
 				Index: part.Index,
 				Bytes: part.Data,
@@ -482,6 +488,7 @@ func (blockProp *Reactor) handleRecoveryPart(peer p2p.ID, part *proptypes.Recove
 			},
 			Height: part.Height,
 			Round:  part.Round,
+		}:
 		}
 	}
 
@@ -518,7 +525,10 @@ func (blockProp *Reactor) handleRecoveryPart(peer p2p.ID, part *proptypes.Recove
 			}
 			// only send original parts to the consensus reactor
 			if i < parts.Original().Total() {
-				blockProp.partChan <- types.PartInfo{
+				select {
+				case <-blockProp.ctx.Done():
+					return
+				case blockProp.partChan <- types.PartInfo{
 					Part: &types.Part{
 						Index: p.Index,
 						Bytes: p.Bytes,
@@ -526,6 +536,7 @@ func (blockProp *Reactor) handleRecoveryPart(peer p2p.ID, part *proptypes.Recove
 					},
 					Height: part.Height,
 					Round:  part.Round,
+				}:
 				}
 			}
 			haves.Parts = append(haves.Parts, proptypes.PartMetaData{Index: i, Hash: p.Proof.LeafHash})
