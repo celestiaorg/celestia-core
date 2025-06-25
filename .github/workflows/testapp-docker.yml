@@ -4,7 +4,7 @@ name: Docker E2E Node
 on:
   push:
     branches:
-      - v0.38.x
+      - v0.38.x-celestia
     tags:
       - "v[0-9]+.[0-9]+.[0-9]+"               # Push events to matching v*, i.e. v1.0, v20.15.10
       - "v[0-9]+.[0-9]+.[0-9]+-alpha.[0-9]+"  # e.g. v0.37.0-alpha.1, v0.38.0-alpha.10
@@ -41,7 +41,7 @@ jobs:
           platforms: all
 
       - name: Set up Docker Build
-        uses: docker/setup-buildx-action@v3.8.0
+        uses: docker/setup-buildx-action@v3.10.0
 
       - name: Login to DockerHub
         if: ${{ github.event_name != 'pull_request' }}
@@ -51,7 +51,7 @@ jobs:
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
       - name: Publish to Docker Hub
-        uses: docker/build-push-action@v6.13.0
+        uses: docker/build-push-action@v6.18.0
         with:
           context: .
           file: ./test/e2e/docker/Dockerfile

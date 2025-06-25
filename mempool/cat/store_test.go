@@ -264,3 +264,35 @@ func TestStoreExpiredTxs(t *testing.T) {
 	store.purgeExpiredTxs(int64(0), time.Now().Add(time.Second))
 	require.Empty(t, store.getAllTxs())
 }
+
+func TestStoreGetOrderedTxs(t *testing.T) {
+	store := newStore()
+	numTxs := 10
+	// Add transactions with different priorities to test ordering
+	priorities := []int64{5, 1, 8, 3, 7, 2, 6, 4, 9, 0}
+
+	for i, priority := range priorities {
+		tx := types.Tx(fmt.Sprintf("tx%d", i))
+		key := tx.Key()
+		wtx := newWrappedTx(tx, key, priority, 1, 1, "")
+		store.set(wtx)
+	}
+
+	// Get all ordered transactions
+	orderedTxs := store.getOrderedTxs()
+	require.Equal(t, numTxs, len(orderedTxs))
+
+	// Verify they are ordered by priority (highest first)
+	for i := 1; i < len(orderedTxs); i++ {
+		require.GreaterOrEqual(t, orderedTxs[i-1].priority, orderedTxs[i].priority,
+			"Transactions should be ordered by priority (highest first)")
+	}
+
+	// Verify the returned slice is a copy (modifying it doesn't affect the store)
+	originalLen := len(orderedTxs)
+	orderedTxs[0] = nil
+
+	newOrderedTxs := store.getOrderedTxs()
+	require.Equal(t, originalLen, len(newOrderedTxs))
+	require.NotNil(t, newOrderedTxs[0], "Original store data should not be affected by modifying the returned slice")
+}

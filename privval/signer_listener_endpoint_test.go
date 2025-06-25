@@ -194,7 +194,7 @@ func TestDuplicateListenReject(t *testing.T) {
 
 		// wait for successful connection
 		for {
-			if listenerEndpoint.IsConnected() {
+			if listenerEndpoint.IsConnected() { //nolint:staticcheck
 				break
 			}
 		}

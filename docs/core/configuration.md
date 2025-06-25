@@ -35,7 +35,7 @@ version = "0.38.0"
 
 # TCP or UNIX socket address of the ABCI application,
 # or the name of an ABCI application compiled in with the CometBFT binary
-proxy_app = "tcp://127.0.0.1:26658"
+proxy_app = "tcp://127.0.0.1:36658"
 
 # A custom human readable name for this node
 moniker = "anonymous"
