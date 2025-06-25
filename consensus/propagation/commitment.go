@@ -237,6 +237,9 @@ func (blockProp *Reactor) recoverPartsFromMempool(cb *proptypes.CompactBlock) {
 		Parts:  make([]proptypes.PartMetaData, 0),
 	}
 	for _, p := range parts {
+		if originalParts.HasPart(int(p.Index)) {
+			continue
+		}
 		p.Proof = *proofs[p.Index]
 
 		added, err := originalParts.AddPart(p)
