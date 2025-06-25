@@ -36,6 +36,19 @@ func TestPeerLifecycle(t *testing.T) {
 	require.Equal(t, peer1, ids.GetPeer(id))
 	require.Len(t, ids.GetAll(), 1)
 
+	// Test that peer object gets replaced when reserving with same ID
+	peer2 := &mocks.Peer{}
+	peer2.On("ID").Return(peerID) // same ID as peer1
+	
+	require.NotPanics(t, func() {
+		ids.ReserveForPeer(peer2)
+	})
+
+	// Should still have the same ID but now with the new peer object
+	require.Equal(t, id, ids.GetIDForPeer(peerID))
+	require.Equal(t, peer2, ids.GetPeer(id)) // peer2 should have replaced peer1
+	require.Len(t, ids.GetAll(), 1)
+
 	require.Equal(t, ids.Reclaim(peerID), id)
 	require.Nil(t, ids.GetPeer(id))
 	require.Zero(t, ids.GetIDForPeer(peerID))
