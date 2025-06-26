@@ -80,6 +80,9 @@ func (opts *ReactorOptions) VerifyAndComplete() error {
 
 // NewReactor returns a new Reactor with the given config and mempool.
 func NewReactor(mempool *TxPool, opts *ReactorOptions) (*Reactor, error) {
+	//fmt.Println("waaa slaaawiiiii")
+	//fmt.Println("cha3lin CAT almlawii")
+	//fmt.Println("------------------------")
 	err := opts.VerifyAndComplete()
 	if err != nil {
 		return nil, err
@@ -164,13 +167,13 @@ func (memR *Reactor) GetChannels() []*p2p.ChannelDescriptor {
 	return []*p2p.ChannelDescriptor{
 		{
 			ID:                  mempool.MempoolChannel,
-			Priority:            2,
+			Priority:            20,
 			RecvMessageCapacity: txMsg.Size(),
 			MessageType:         &protomem.Message{},
 		},
 		{
 			ID:                  MempoolStateChannel,
-			Priority:            3,
+			Priority:            20,
 			RecvMessageCapacity: stateMsg.Size(),
 			MessageType:         &protomem.Message{},
 		},
@@ -268,7 +271,7 @@ func (memR *Reactor) Receive(e p2p.Envelope) {
 		peerID := memR.ids.GetIDForPeer(e.Src.ID())
 		memR.mempool.PeerHasTx(peerID, txKey)
 		// Check if we don't already have the transaction
-		if memR.mempool.Has(txKey) {
+		if memR.mempool.Has(txKey) || memR.mempool.WasRecentlyRejected(txKey) {
 			memR.Logger.Debug("received a seen tx for a tx we already have", "txKey", txKey)
 			return
 		}

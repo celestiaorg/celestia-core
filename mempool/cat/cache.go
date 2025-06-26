@@ -10,13 +10,13 @@ import (
 
 // LRUTxCache maintains a thread-safe LRU cache of raw transactions. The cache
 // only stores the hash of the raw transaction.
-// NOTE: This has been copied from mempool/cache with the main diffence of using
+// NOTE: This has been copied from mempool/cache with the main difference of using
 // tx keys instead of raw transactions.
 type LRUTxCache struct {
 	staticSize int
 
 	mtx tmsync.Mutex
-	// cacheMap is used as a quick look up table
+	// cacheMap is used as a quick look-up table
 	cacheMap map[types.TxKey]*list.Element
 	// list is a doubly linked list used to capture the FIFO nature of the cache
 	list *list.List
