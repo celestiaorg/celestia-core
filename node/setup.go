@@ -542,6 +542,7 @@ func createAddrBookAndSetOnSwitch(config *cfg.Config, sw *p2p.Switch,
 
 func createPEXReactorAndAddToSwitch(addrBook pex.AddrBook, config *cfg.Config,
 	sw *p2p.Switch, logger log.Logger,
+	traceClient trace.Tracer,
 ) *pex.Reactor {
 	// TODO persistent peers ? so we can have their DNS addrs saved
 	pexReactor := pex.NewReactor(addrBook,
@@ -557,6 +558,7 @@ func createPEXReactorAndAddToSwitch(addrBook pex.AddrBook, config *cfg.Config,
 			PersistentPeersMaxDialPeriod: config.P2P.PersistentPeersMaxDialPeriod,
 		})
 	pexReactor.SetLogger(logger.With("module", "pex"))
+	pexReactor.SetTracer(traceClient)
 	sw.AddReactor("PEX", pexReactor)
 	return pexReactor
 }

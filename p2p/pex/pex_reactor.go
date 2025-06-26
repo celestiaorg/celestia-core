@@ -9,6 +9,8 @@ import (
 	"github.com/cometbft/cometbft/libs/cmap"
 	cmtrand "github.com/cometbft/cometbft/libs/rand"
 	"github.com/cometbft/cometbft/libs/service"
+	"github.com/cometbft/cometbft/libs/trace"
+	pexschema "github.com/cometbft/cometbft/libs/trace/schema"
 	"github.com/cometbft/cometbft/p2p"
 	"github.com/cometbft/cometbft/p2p/conn"
 	tmp2p "github.com/cometbft/cometbft/proto/tendermint/p2p"
@@ -30,7 +32,7 @@ const (
 	maxMsgSize = maxAddressSize * maxGetSelection
 
 	// ensure we have enough peers
-	defaultEnsurePeersPeriod = 10 * time.Second
+	defaultEnsurePeersPeriod = 1 * time.Second
 
 	// Seed/Crawler constants
 
@@ -93,14 +95,17 @@ type Reactor struct {
 
 	attemptsToDial sync.Map // address (string) -> {number of attempts (int), last time dialed (time.Time)}
 
+	lastAddressRequestTime time.Time // Track when we last requested addresses
+
 	// seed/crawled mode fields
 	crawlPeerInfos map[p2p.ID]crawlPeerInfo
+	tracer         trace.Tracer
 }
 
 func (r *Reactor) minReceiveRequestInterval() time.Duration {
 	// NOTE: must be around ensurePeersPeriod, otherwise we'll request
 	// peers too quickly from others and they'll think we're bad!
-	return r.ensurePeersPeriod
+	return r.ensurePeersPeriod * 10 // 10 seconds
 }
 
 // ReactorConfig holds reactor specific configuration data.
@@ -136,6 +141,7 @@ func NewReactor(b AddrBook, config *ReactorConfig) *Reactor {
 		requestsSent:         cmap.NewCMap(),
 		lastReceivedRequests: cmap.NewCMap(),
 		crawlPeerInfos:       make(map[p2p.ID]crawlPeerInfo),
+		tracer:               trace.NoOpTracer(), // Initialize with no-op tracer
 	}
 	r.BaseReactor = *p2p.NewBaseReactor("PEX", r)
 	return r
@@ -213,6 +219,11 @@ func (r *Reactor) AddPeer(p Peer) {
 		err = r.book.AddAddress(addr, src)
 		r.logErrAddrBook(err)
 	}
+}
+
+// SetTracer sets the tracer for the reactor
+func (r *Reactor) SetTracer(tracer trace.Tracer) {
+	r.tracer = tracer
 }
 
 // RemovePeer implements Reactor by resetting peer's requests info.
@@ -341,6 +352,7 @@ func (r *Reactor) RequestAddrs(p Peer) {
 	}
 	r.Logger.Debug("Request addrs", "from", p)
 	r.requestsSent.Set(id, struct{}{})
+
 	p.Send(p2p.Envelope{
 		ChannelID: PexChannel,
 		Message:   &tmp2p.PexRequest{},
@@ -457,11 +469,14 @@ func (r *Reactor) ensurePeers(ensurePeersPeriodElapsed bool) {
 	}
 
 	addrBook := r.book.GetSelection()
-	maxDials := r.Switch.MaxNumOutboundPeers() * 4
+	maxDials := numToDial
 	// check if the addressbook is smaller than maxDials
 	if len(addrBook) < maxDials {
 		maxDials = len(addrBook)
 	}
+
+	// Track dialing attempts
+	dialingAttempts := 0
 	// We don't need to randomize the addresses since the addressbook is already shuffled
 	for i := 0; i < maxDials; i++ {
 		addr := addrBook[i]
@@ -469,6 +484,8 @@ func (r *Reactor) ensurePeers(ensurePeersPeriodElapsed bool) {
 		if r.Switch.IsDialingOrExistingAddress(addr) {
 			continue
 		}
+
+		dialingAttempts++ // Count each peer we're about to dial
 		go func(addr *p2p.NetAddress) {
 			err := r.dialPeer(addr)
 			if err != nil {
@@ -482,19 +499,43 @@ func (r *Reactor) ensurePeers(ensurePeersPeriodElapsed bool) {
 		}(addr)
 	}
 
+	// Trace with the actual dialing attempts count
+	if r.tracer != nil {
+		pexschema.WritePexEvent(
+			r.tracer,
+			"ensure_peers",
+			out, in, dialingAttempts, len(addrBook), "",
+		)
+	}
+
 	if r.book.NeedMoreAddrs() {
 		// Check if banned nodes can be reinstated
 		r.book.ReinstateBadPeers()
 	}
 
-	if r.book.NeedMoreAddrs() {
+	// check if 10s have passed since last pexRequest
+	if  time.Since(r.lastAddressRequestTime) > r.minReceiveRequestInterval() && r.book.NeedMoreAddrs() {
 		// 1) Pick a random peer and ask for more.
 		peers := r.Switch.Peers().List()
 		peersCount := len(peers)
 		if peersCount > 0 && ensurePeersPeriodElapsed {
 			peer := peers[cmtrand.Int()%peersCount]
 			r.Logger.Info("We need more addresses. Sending pexRequest to random peer", "peer", peer)
+
+			// Calculate time since last request
+			requestInterval := time.Since(r.lastAddressRequestTime).String()
+
 			r.RequestAddrs(peer)
+
+			// Trace the address request with interval
+			if r.tracer != nil {
+				pexschema.WritePexEvent(
+					r.tracer,
+					"request_addrs_interval",
+					0, 0, 0, 0, requestInterval,
+				)
+			}
+			r.lastAddressRequestTime = time.Now()
 		}
 
 		// Get updated address book and if empty, dial seeds

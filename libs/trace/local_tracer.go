@@ -184,6 +184,12 @@ func (lt *LocalTracer) saveEventToFile(event Event[Entry]) error {
 		return fmt.Errorf("failed to write event to file: %v", err)
 	}
 
+	// Flush the buffer to ensure data is written to disk immediately
+	// TODO: Remove this once we are done with testing
+	if err := file.Flush(); err != nil {
+		return fmt.Errorf("failed to flush event to file: %v", err)
+	}
+
 	return nil
 }
 
@@ -192,8 +198,12 @@ func (lt *LocalTracer) drainCanal() {
 	// purposefully do not lock, and rely on the channel to provide sync
 	// actions, to avoid overhead of locking with each event save.
 	for ev := range lt.canal {
+		fmt.Printf("DEBUG: drainCanal processing event for table: %s\n", ev.Table)
 		if err := lt.saveEventToFile(ev); err != nil {
 			lt.logger.Error("failed to save event to file", "error", err)
+			fmt.Printf("DEBUG: Error saving event: %v\n", err)
+		} else {
+			fmt.Printf("DEBUG: Successfully saved event to file\n")
 		}
 	}
 }

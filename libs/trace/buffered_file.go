@@ -48,6 +48,16 @@ func (f *bufferedFile) Write(b []byte) (int, error) {
 	return f.wr.Write(b)
 }
 
+// Flush flushes the buffered writer to ensure data is written to disk.
+func (f *bufferedFile) Flush() error {
+	if f.reading.Load() {
+		return nil
+	}
+	f.mut.Lock()
+	defer f.mut.Unlock()
+	return f.wr.Flush()
+}
+
 func (f *bufferedFile) startReading() error {
 	f.reading.Store(true)
 	f.mut.Lock()
