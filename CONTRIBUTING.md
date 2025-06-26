@@ -257,8 +257,16 @@ Celestia-core follows a specific contribution workflow due to its dual-branch ma
 #### Backporting Process
 
 We use [Mergify](https://mergify.io) to automate backporting:
+
+**From main to release branches:**
 1. Add the `backport-to-v0.38.x-celestia` label to your PR targeting `main`
 2. Once the PR is merged, Mergify will automatically create a backport PR
+3. If backporting fails due to conflicts, Mergify will create a draft PR for you to resolve conflicts
+4. The original PR author is responsible for resolving backport conflicts
+
+**From release branches to main:**
+1. Add the `S:backport-to-main` label to your PR targeting `v0.38.x-celestia`
+2. Once the PR is merged, Mergify will automatically create a backport PR to `main`
 3. If backporting fails due to conflicts, Mergify will create a draft PR for you to resolve conflicts
 4. The original PR author is responsible for resolving backport conflicts
 
