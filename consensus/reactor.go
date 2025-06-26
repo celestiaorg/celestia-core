@@ -203,9 +203,9 @@ func (conR *Reactor) InitPeer(peer p2p.Peer) p2p.Peer {
 
 // AddPeer implements Reactor by spawning multiple gossiping goroutines for the
 // peer.
-func (conR *Reactor) AddPeer(peer p2p.Peer) {
+func (conR *Reactor) AddPeer(peer p2p.Peer) error {
 	if !conR.IsRunning() {
-		return
+		return nil
 	}
 
 	peerState, ok := peer.Get(types.PeerStateKey).(*PeerState)
@@ -228,6 +228,7 @@ func (conR *Reactor) AddPeer(peer p2p.Peer) {
 	if !conR.WaitSync() {
 		conR.sendNewRoundStepMessage(peer)
 	}
+	return nil
 }
 
 func isLegacyPropagation(peer p2p.Peer) (bool, error) {

@@ -274,7 +274,7 @@ func TestLegacyReactorReceiveBasic(t *testing.T) {
 	}()
 
 	reactor.InitPeer(peer)
-	reactor.AddPeer(peer)
+	require.NoError(t, reactor.AddPeer(peer))
 
 	msg := &protomem.Message{
 		Sum: &protomem.Message_Txs{

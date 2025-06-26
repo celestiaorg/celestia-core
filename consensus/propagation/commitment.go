@@ -164,7 +164,11 @@ func (blockProp *Reactor) handleCompactBlock(cb *proptypes.CompactBlock, peer p2
 	}
 
 	if !proposer {
-		blockProp.proposalChan <- cb.Proposal
+		select {
+		case <-blockProp.ctx.Done():
+			return
+		case blockProp.proposalChan <- cb.Proposal:
+		}
 		// check if we have any transactions that are in the compact block
 		go blockProp.recoverPartsFromMempool(cb)
 	}
@@ -233,6 +237,9 @@ func (blockProp *Reactor) recoverPartsFromMempool(cb *proptypes.CompactBlock) {
 		Parts:  make([]proptypes.PartMetaData, 0),
 	}
 	for _, p := range parts {
+		if originalParts.HasPart(int(p.Index)) {
+			continue
+		}
 		p.Proof = *proofs[p.Index]
 
 		added, err := originalParts.AddPart(p)

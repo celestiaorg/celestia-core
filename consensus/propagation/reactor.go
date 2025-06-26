@@ -144,12 +144,6 @@ func (blockProp *Reactor) OnStart() error {
 
 func (blockProp *Reactor) OnStop() {
 	blockProp.cancel()
-	for _, peer := range blockProp.getPeers() {
-		close(peer.receivedHaves)
-		close(peer.receivedParts)
-	}
-	close(blockProp.partChan)
-	close(blockProp.proposalChan)
 }
 
 func (blockProp *Reactor) GetChannels() []*conn.ChannelDescriptor {
@@ -174,26 +168,25 @@ func (blockProp *Reactor) GetChannels() []*conn.ChannelDescriptor {
 // AddPeer adds the peer to the block propagation reactor. This should be called when a peer
 // is connected. The proposal is sent to the peer so that it can start catchup
 // or request data.
-func (blockProp *Reactor) AddPeer(peer p2p.Peer) {
+func (blockProp *Reactor) AddPeer(peer p2p.Peer) error {
 	// Ignore the peer if it is ourselves.
 	if peer.ID() == blockProp.self {
-		return
+		return fmt.Errorf("ignoring self peer")
 	}
 
 	// ignore the peer if it already exists.
 	if p := blockProp.getPeer(peer.ID()); p != nil {
-		blockProp.Logger.Error("Peer exists in propagation reactors", "peer", peer.ID())
-		return
+		return fmt.Errorf("peer exists in propagation reactors, peer ID: %v", peer.ID())
 	}
 
-	peerState := newPeerState(peer, blockProp.Logger)
+	peerState := newPeerState(blockProp.ctx, peer, blockProp.Logger)
 	blockProp.setPeer(peer.ID(), peerState)
 	go blockProp.requestFromPeer(peerState)
 
 	cb, _, found := blockProp.GetCurrentCompactBlock()
 	if !found {
-		blockProp.Logger.Error("Failed to get current compact block", "peer", peer.ID())
-		return
+		blockProp.Logger.Error("failed to get current compact block", "peer", peer.ID())
+		return nil
 	}
 
 	// send the current proposal
@@ -205,6 +198,7 @@ func (blockProp *Reactor) AddPeer(peer p2p.Peer) {
 	if !peer.TrySend(e) {
 		blockProp.Logger.Debug("failed to send proposal to peer", "peer", peer.ID())
 	}
+	return nil
 }
 
 func (blockProp *Reactor) RemovePeer(peer p2p.Peer, reason interface{}) {
@@ -212,8 +206,7 @@ func (blockProp *Reactor) RemovePeer(peer p2p.Peer, reason interface{}) {
 	defer blockProp.mtx.Unlock()
 	p := blockProp.peerstate[peer.ID()]
 	if p != nil {
-		close(p.receivedHaves)
-		close(p.receivedParts)
+		p.cancel()
 	}
 	delete(blockProp.peerstate, peer.ID())
 }
