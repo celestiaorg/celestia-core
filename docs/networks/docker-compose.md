@@ -158,7 +158,7 @@ Override the [command](https://github.com/cometbft/cometbft/blob/v0.38.x/network
       - LOG=$${LOG:-cometbft.log}
     volumes:
       - ./build:/cometbft:Z
-    command: node --proxy_app=tcp://abci0:26658
+    command: node --proxy_app=tcp://abci0:36658
     networks:
       localnet:
         ipv4_address: 192.167.10.2
