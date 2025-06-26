@@ -264,7 +264,7 @@ func (r *Reactor) Receive(e p2p.Envelope) {
 			go func() {
 				// In a go-routine so it doesn't block .Receive.
 				e.Src.FlushStop()
-				r.Switch.StopPeerGracefully(e.Src)
+				r.Switch.StopPeerGracefully(e.Src, "TODO(tzdybal)")
 			}()
 
 		} else {
@@ -707,7 +707,7 @@ func (r *Reactor) attemptDisconnects() {
 		if peer.IsPersistent() {
 			continue
 		}
-		r.Switch.StopPeerGracefully(peer)
+		r.Switch.StopPeerGracefully(peer, "TODO(tzdybal)")
 	}
 }
 

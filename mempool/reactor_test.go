@@ -296,7 +296,7 @@ func TestMempoolReactorMaxActiveOutboundConnections(t *testing.T) {
 
 	// Disconnect the second reactor from the first reactor.
 	firstPeer := reactors[0].Switch.Peers().List()[0]
-	reactors[0].Switch.StopPeerGracefully(firstPeer)
+	reactors[0].Switch.StopPeerGracefully(firstPeer, "TODO(tzdybal)")
 
 	// Now the third reactor should start receiving transactions from the first reactor; the fourth
 	// reactor's mempool should still be empty.

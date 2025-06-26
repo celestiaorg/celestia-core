@@ -399,7 +399,7 @@ func (sw *Switch) getPeerAddress(peer Peer) (*NetAddress, error) {
 
 // StopPeerGracefully disconnects from a peer gracefully.
 // TODO: handle graceful disconnects.
-func (sw *Switch) StopPeerGracefully(peer Peer) {
+func (sw *Switch) StopPeerGracefully(peer Peer, reactorName string) {
 	sw.Logger.Info("Stopping peer gracefully")
 	sw.stopAndRemovePeer(peer, nil)
 }
@@ -922,7 +922,7 @@ func (sw *Switch) addPeer(p Peer) error {
 	}
 	if !peerWanted {
 		sw.Logger.Error("Peer not wanted by any reactor", "peer", p)
-		sw.StopPeerGracefully(p)
+		sw.StopPeerGracefully(p, "TODO(tzdybal)")
 	}
 
 	sw.Logger.Debug("Added peer", "peer", p)
