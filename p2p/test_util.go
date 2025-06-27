@@ -153,7 +153,9 @@ func (sw *Switch) addPeerWithConnection(conn net.Conn) error {
 		sw.reactorsByCh,
 		sw.msgTypeByChID,
 		sw.chDescs,
-		sw.StopPeerForError,
+		func(peer Peer, reason interface{}, reactorName string) {
+			sw.StopPeerForError(peer, reason, reactorName)
+		},
 		sw.mlc,
 	)
 

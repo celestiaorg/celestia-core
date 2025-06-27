@@ -157,7 +157,7 @@ func newPeer(
 	reactorsByCh map[byte]Reactor,
 	msgTypeByChID map[byte]proto.Message,
 	chDescs []*cmtconn.ChannelDescriptor,
-	onPeerError func(Peer, interface{}),
+	onPeerError func(Peer, interface{}, string),
 	mlc *metricsLabelCache,
 	options ...PeerOption,
 ) *peer {
@@ -441,7 +441,7 @@ func createMConnection(
 	reactorsByCh map[byte]Reactor,
 	msgTypeByChID map[byte]proto.Message,
 	chDescs []*cmtconn.ChannelDescriptor,
-	onPeerError func(Peer, interface{}),
+	onPeerError func(Peer, interface{}, string),
 	config cmtconn.MConnConfig,
 ) *cmtconn.MConnection {
 
@@ -479,7 +479,7 @@ func createMConnection(
 	}
 
 	onError := func(r interface{}) {
-		onPeerError(p, r)
+		onPeerError(p, r, "p2p")
 	}
 
 	return cmtconn.NewMConnectionWithConfig(
