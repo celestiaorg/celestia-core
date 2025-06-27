@@ -118,7 +118,7 @@ func (blockExec *BlockExecutor) CreateProposalBlock(
 
 	// Fetch a limited amount of valid txs
 	maxDataBytes := types.MaxDataBytes(maxBytes, evSize, state.Validators.Size())
-	maxReapBytes := maxDataBytes
+	var maxReapBytes int64
 	if emptyMaxBytes {
 		maxReapBytes = -1
 	} else {
