@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"path/filepath"
 	"time"
 
 	abci "github.com/cometbft/cometbft/abci/types"
@@ -43,6 +44,9 @@ type BlockExecutor struct {
 	logger log.Logger
 
 	metrics *Metrics
+
+	// root directory for debug file saving
+	rootDir string
 }
 
 type BlockExecutorOption func(executor *BlockExecutor)
@@ -50,6 +54,12 @@ type BlockExecutorOption func(executor *BlockExecutor)
 func BlockExecutorWithMetrics(metrics *Metrics) BlockExecutorOption {
 	return func(blockExec *BlockExecutor) {
 		blockExec.metrics = metrics
+	}
+}
+
+func BlockExecutorWithRootDir(rootDir string) BlockExecutorOption {
+	return func(blockExec *BlockExecutor) {
+		blockExec.rootDir = rootDir
 	}
 }
 
@@ -140,6 +150,9 @@ func (blockExec *BlockExecutor) CreateProposalBlock(
 		},
 	)
 	if err != nil {
+		// Save the failed proposal block before returning the error
+		blockExec.saveFailedProposalBlock(state, block, "prepare_proposal_error")
+
 		// The App MUST ensure that only valid (and hence 'processable') transactions
 		// enter the mempool. Hence, at this point, we can't have any non-processable
 		// transaction causing an error.
@@ -869,4 +882,25 @@ func getLogs(responses []*abci.ExecTxResult) []string {
 		logs[i] = response.Log
 	}
 	return logs
+}
+
+// saveFailedProposalBlock saves a failed proposal block to the debug directory
+func (blockExec *BlockExecutor) saveFailedProposalBlock(state State, block *types.Block, reason string) {
+	if blockExec.rootDir == "" {
+		blockExec.logger.Debug("no root directory configured, skipping failed proposal block save")
+		return
+	}
+
+	debugDir := filepath.Join(blockExec.rootDir, "data", "debug")
+	filename := fmt.Sprintf("%s-%d-%s_failed_proposal.pb",
+		state.ChainID,
+		block.Height,
+		reason,
+	)
+
+	if err := types.SaveBlockToFile(debugDir, filename, block); err != nil {
+		blockExec.logger.Error("failed to save failed proposal block", "err", err.Error(), "reason", reason)
+	} else {
+		blockExec.logger.Info("saved failed proposal block", "file", filepath.Join(debugDir, filename), "reason", reason)
+	}
 }

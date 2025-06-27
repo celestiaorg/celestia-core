@@ -1424,7 +1424,7 @@ func (cs *State) defaultDoPrevote(height int64, round int32) {
 		cs.signAddVote(cmtproto.PrevoteType, nil, types.PartSetHeader{}, nil)
 
 		// save block as a json
-		err := saveBlockToFile(
+		err := types.SaveBlockToFile(
 			filepath.Join(cs.config.RootDir, "data", "debug"),
 			fmt.Sprintf("%s-%d-%d_faulty_proposal.json",
 				cs.state.ChainID,
