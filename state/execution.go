@@ -136,22 +136,37 @@ func (blockExec *BlockExecutor) CreateProposalBlock(
 	txs := blockExec.mempool.ReapMaxBytesMaxGas(maxReapBytes, maxGas)
 	commit := lastExtCommit.ToCommit()
 	block := state.MakeBlock(height, types.MakeData(txs), commit, evidence, proposerAddr)
-	rpp, err := blockExec.proxyApp.PrepareProposal(
-		ctx,
-		&abci.RequestPrepareProposal{
-			MaxTxBytes:         maxDataBytes,
-			Txs:                block.Txs.ToSliceOfBytes(),
-			LocalLastCommit:    buildExtendedCommitInfoFromStore(lastExtCommit, blockExec.store, state.InitialHeight, state.ConsensusParams.ABCI),
-			Misbehavior:        block.Evidence.Evidence.ToABCI(),
-			Height:             block.Height,
-			Time:               block.Time,
-			NextValidatorsHash: block.NextValidatorsHash,
-			ProposerAddress:    block.ProposerAddress,
-		},
-	)
+	
+	var rpp *abci.ResponsePrepareProposal
+	var err error
+	
+	func() {
+		defer func() {
+			if r := recover(); r != nil {
+				blockExec.saveFailedProposalBlock(state, block, "prepare_proposal_panic")
+				err = fmt.Errorf("PrepareProposal panicked: %v", r)
+			}
+		}()
+		
+		rpp, err = blockExec.proxyApp.PrepareProposal(
+			ctx,
+			&abci.RequestPrepareProposal{
+				MaxTxBytes:         maxDataBytes,
+				Txs:                block.Txs.ToSliceOfBytes(),
+				LocalLastCommit:    buildExtendedCommitInfoFromStore(lastExtCommit, blockExec.store, state.InitialHeight, state.ConsensusParams.ABCI),
+				Misbehavior:        block.Evidence.Evidence.ToABCI(),
+				Height:             block.Height,
+				Time:               block.Time,
+				NextValidatorsHash: block.NextValidatorsHash,
+				ProposerAddress:    block.ProposerAddress,
+			},
+		)
+	}()
 	if err != nil {
-		// Save the failed proposal block before returning the error
-		blockExec.saveFailedProposalBlock(state, block, "prepare_proposal_error")
+		// For non-panic errors, also save the failed proposal block
+		if rpp == nil {
+			blockExec.saveFailedProposalBlock(state, block, "prepare_proposal_error")
+		}
 
 		// The App MUST ensure that only valid (and hence 'processable') transactions
 		// enter the mempool. Hence, at this point, we can't have any non-processable
