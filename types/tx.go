@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 
+	gosquaretx "github.com/celestiaorg/go-square/v2/tx"
 	"github.com/cometbft/cometbft/crypto/merkle"
 	"github.com/cometbft/cometbft/crypto/tmhash"
 	cmtbytes "github.com/cometbft/cometbft/libs/bytes"
@@ -33,7 +34,7 @@ func (tx Tx) Hash() []byte {
 	if indexWrapper, isIndexWrapper := UnmarshalIndexWrapper(tx); isIndexWrapper {
 		return tmhash.Sum(indexWrapper.Tx)
 	}
-	if blobTx, isBlobTx := UnmarshalBlobTx(tx); isBlobTx {
+	if blobTx, isBlobTx, _ := gosquaretx.UnmarshalBlobTx(tx); isBlobTx {
 		return tmhash.Sum(blobTx.Tx)
 	}
 	return tmhash.Sum(tx)
@@ -42,7 +43,7 @@ func (tx Tx) Hash() []byte {
 // Key returns the sha256 hash of the wire encoded transaction. It attempts to
 // unwrap the transaction if it is a BlobTx or a IndexWrapper.
 func (tx Tx) Key() TxKey {
-	if blobTx, isBlobTx := UnmarshalBlobTx(tx); isBlobTx {
+	if blobTx, isBlobTx, _ := gosquaretx.UnmarshalBlobTx(tx); isBlobTx {
 		return sha256.Sum256(blobTx.Tx)
 	}
 	if indexWrapper, isIndexWrapper := UnmarshalIndexWrapper(tx); isIndexWrapper {
@@ -242,28 +243,6 @@ func MarshalIndexWrapper(tx Tx, shareIndexes ...uint32) (Tx, error) {
 		TypeId:       consts.ProtoIndexWrapperTypeID,
 	}
 	return proto.Marshal(&wTx)
-}
-
-// UnmarshalBlobTx attempts to unmarshal a transaction into blob transaction. If an
-// error is thrown, false is returned.
-func UnmarshalBlobTx(tx Tx) (bTx cmtproto.BlobTx, isBlob bool) {
-	err := bTx.Unmarshal(tx)
-	if err != nil {
-		return cmtproto.BlobTx{}, false
-	}
-	// perform some quick basic checks to prevent false positives
-	if bTx.TypeId != consts.ProtoBlobTxTypeID {
-		return bTx, false
-	}
-	if len(bTx.Blobs) == 0 {
-		return bTx, false
-	}
-	for _, b := range bTx.Blobs {
-		if len(b.NamespaceId) != consts.NamespaceIDSize {
-			return bTx, false
-		}
-	}
-	return bTx, true
 }
 
 // MarshalBlobTx creates a BlobTx using a normal transaction and some number of

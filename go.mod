@@ -1,6 +1,8 @@
 module github.com/cometbft/cometbft
 
-go 1.22.5
+go 1.23.6
+
+toolchain go1.24.4
 
 require (
 	github.com/BurntSushi/toml v1.2.1
@@ -12,7 +14,8 @@ require (
 	github.com/btcsuite/btcd/btcec/v2 v2.2.1
 	github.com/btcsuite/btcd/btcutil v1.1.2
 	github.com/bufbuild/buf v1.9.0
-	github.com/celestiaorg/nmt v0.22.0
+	github.com/celestiaorg/go-square/v2 v2.3.0
+	github.com/celestiaorg/nmt v0.23.0
 	github.com/cometbft/cometbft-db v0.7.0
 	github.com/creachadair/taskgroup v0.3.2
 	github.com/fortytw2/leaktest v1.3.0
@@ -44,7 +47,7 @@ require (
 	github.com/snikch/goodman v0.0.0-20171125024755-10e37e294daa
 	github.com/spf13/cobra v1.6.1
 	github.com/spf13/viper v1.13.0
-	github.com/stretchr/testify v1.9.0
+	github.com/stretchr/testify v1.10.0
 	github.com/syndtr/goleveldb v1.0.1-0.20210819022825-2ae1ddf74ef7
 	github.com/vektra/mockery/v2 v2.14.0
 	go.opentelemetry.io/otel v1.21.0
@@ -54,7 +57,7 @@ require (
 	golang.org/x/net v0.26.0
 	gonum.org/v1/gonum v0.8.2
 	google.golang.org/grpc v1.59.0
-	google.golang.org/protobuf v1.31.0
+	google.golang.org/protobuf v1.36.6
 )
 
 require (
@@ -274,7 +277,7 @@ require (
 	go.uber.org/atomic v1.10.0 // indirect
 	go.uber.org/multierr v1.8.0 // indirect
 	go.uber.org/zap v1.23.0 // indirect
-	golang.org/x/exp v0.0.0-20220722155223-a9213eeb770e // indirect
+	golang.org/x/exp v0.0.0-20231206192017-f3f8817b8deb // indirect
 	golang.org/x/exp/typeparams v0.0.0-20220827204233-334a2380cb91 // indirect
 	golang.org/x/mod v0.18.0 // indirect
 	golang.org/x/sync v0.7.0 // indirect

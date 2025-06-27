@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"time"
 
+	gosquaretx "github.com/celestiaorg/go-square/v2/tx"
 	abci "github.com/cometbft/cometbft/abci/types"
 	cryptoenc "github.com/cometbft/cometbft/crypto/encoding"
 	"github.com/cometbft/cometbft/crypto/tmhash"
@@ -431,7 +432,7 @@ func execBlockOnProxyApp(
 	// run txs of block
 	for _, tx := range block.Txs {
 		// Unwrap the blob tx if necessary.
-		blobTx, isBlobTx := types.UnmarshalBlobTx(tx)
+		blobTx, isBlobTx, _ := gosquaretx.UnmarshalBlobTx(tx)
 		if isBlobTx {
 			tx = blobTx.Tx
 		}
@@ -657,7 +658,7 @@ func fireEvents(
 	for i, tx := range block.Data.Txs {
 		// Unwrap the blob tx and just publish the PFB without the blobs. We want
 		// the tx indexer to only be concerned with PFBs.
-		blobTx, isBlobTx := types.UnmarshalBlobTx(tx)
+		blobTx, isBlobTx, _ := gosquaretx.UnmarshalBlobTx(tx)
 		if isBlobTx {
 			tx = blobTx.Tx
 		}
