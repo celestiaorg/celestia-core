@@ -361,7 +361,7 @@ func (blockProp *Reactor) validateCompactBlock(cb *proptypes.CompactBlock) error
 	}
 	// Does not apply
 	if cb.Proposal.Height != currentHeight || cb.Proposal.Round != currentRound {
-		return fmt.Errorf("proposal height %v round %v does not match state height %v round %v", cb.Proposal.Height, cb.Proposal.Round, currentHeight, currentRound)
+		return fmt.Errorf("proposal height %v round %v does not match state height %v round %v", cb.Proposal.Height, cb.Proposal.Round, blockProp.currentHeight, blockProp.currentRound)
 	}
 
 	if cb.LastLen > types.BlockPartSizeBytes {

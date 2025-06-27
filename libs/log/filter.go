@@ -47,7 +47,6 @@ func (l *filter) Info(msg string, keyvals ...interface{}) {
 }
 
 func (l *filter) Debug(msg string, keyvals ...interface{}) {
-	//l.Info(msg, keyvals...)
 	levelAllowed := l.allowed&levelDebug != 0
 	if !levelAllowed {
 		return

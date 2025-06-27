@@ -37,38 +37,36 @@ validator05 = 50
 [node.seed01]
 mode = "seed"
 perturb = ["restart"]
-mempool_version = "cat"
 
 [node.validator01]
 perturb = ["disconnect"]
 seeds = ["seed01"]
 snapshot_interval = 5
-mempool_version = "cat"
 
 [node.validator02]
 database = "goleveldb"
+mempool_version = "v2"
 persist_interval = 0
 perturb = ["restart"]
 privval_protocol = "tcp"
 seeds = ["seed01"]
-mempool_version = "cat"
 
 [node.validator03]
 database = "badgerdb"
 key_type = "secp256k1"
+mempool_version = "v1"
 persist_interval = 3
 perturb = ["kill"]
 privval_protocol = "unix"
 retain_blocks = 20
 seeds = ["seed01"]
-mempool_version = "cat"
 
 [node.validator04]
 database = "goleveldb"
 key_type = "sr25519"
+mempool_version = "priority"
 persistent_peers = ["validator01"]
 perturb = ["pause"]
-mempool_version = "cat"
 
 [node.validator05]
 database = "goleveldb"
@@ -76,7 +74,6 @@ persistent_peers = ["validator01", "full01"]
 perturb = ["kill", "pause", "disconnect", "restart"]
 privval_protocol = "tcp"
 start_at = 1005 # Becomes part of the validator set at 1010
-mempool_version = "cat"
 
 [node.full01]
 mode = "full"
@@ -90,7 +87,6 @@ persistent_peers = [
 perturb = ["restart"]
 retain_blocks = 20
 start_at = 1010
-mempool_version = "cat"
 
 [node.full02]
 mode = "full"
@@ -98,7 +94,6 @@ perturb = ["restart"]
 seeds = ["seed01"]
 start_at = 1015
 state_sync = true
-mempool_version = "cat"
 
 [node.light01]
 mode = "light"
