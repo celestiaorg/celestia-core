@@ -1123,6 +1123,110 @@ func stripSignatures(ec *types.ExtendedCommit) {
 	}
 }
 
+// TestCreateProposalBlockReapsMoreThanMaxDataBytes verifies that CreateProposalBlock
+// reaps 125% of maxDataBytes to provide buffer for PrepareProposal
+func TestCreateProposalBlockReapsMoreThanMaxDataBytes(t *testing.T) {
+	app := &testApp{}
+	cc := proxy.NewLocalClientCreator(app)
+	proxyApp := proxy.NewAppConns(cc, proxy.NopMetrics())
+	err := proxyApp.Start()
+	require.NoError(t, err)
+	defer proxyApp.Stop() //nolint:errcheck
+
+	state, stateDB, _ := makeState(1, 1)
+	stateStore := sm.NewStore(stateDB, sm.StoreOptions{
+		DiscardABCIResponses: false,
+	})
+
+	// Set a specific MaxBytes for the test
+	state.ConsensusParams.Block.MaxBytes = 8192
+	evSize := int64(0) // No evidence for simplicity
+	validatorCount := state.Validators.Size()
+
+	// Calculate expected maxDataBytes and expected reap amount
+	expectedMaxDataBytes := types.MaxDataBytes(state.ConsensusParams.Block.MaxBytes, evSize, validatorCount)
+	expectedReapBytes := expectedMaxDataBytes + expectedMaxDataBytes/4 // 125% of maxDataBytes
+
+	// Mock mempool to capture the ReapMaxBytesMaxGas call parameters
+	mp := &mpmocks.Mempool{}
+
+	// This is the key assertion - verify ReapMaxBytesMaxGas is called with 125% of maxDataBytes
+	mp.On("ReapMaxBytesMaxGas", expectedReapBytes, mock.Anything).Return([]*types.CachedTx{})
+
+	blockStore := store.NewBlockStore(dbm.NewMemDB())
+	blockExec := sm.NewBlockExecutor(
+		stateStore,
+		log.TestingLogger(),
+		proxyApp.Consensus(),
+		mp,
+		sm.EmptyEvidencePool{},
+		blockStore,
+	)
+
+	height := int64(1)
+	proposerAddr := state.Validators.Validators[0].Address
+
+	// Create empty commit
+	commit := &types.ExtendedCommit{Height: height - 1}
+
+	// Call CreateProposalBlock
+	ctx := context.Background()
+	_, _, err = blockExec.CreateProposalBlock(ctx, height, state, commit, proposerAddr)
+	require.NoError(t, err)
+
+	// Verify that the mempool mock was called with expected parameters
+	mp.AssertExpectations(t)
+}
+
+// TestCreateProposalBlockUnlimitedReapsAll verifies that CreateProposalBlock
+// reaps unlimited transactions when MaxBytes is -1
+func TestCreateProposalBlockUnlimitedReapsAll(t *testing.T) {
+	app := &testApp{}
+	cc := proxy.NewLocalClientCreator(app)
+	proxyApp := proxy.NewAppConns(cc, proxy.NopMetrics())
+	err := proxyApp.Start()
+	require.NoError(t, err)
+	defer proxyApp.Stop() //nolint:errcheck
+
+	state, stateDB, _ := makeState(1, 1)
+	stateStore := sm.NewStore(stateDB, sm.StoreOptions{
+		DiscardABCIResponses: false,
+	})
+
+	// Set MaxBytes to -1 for unlimited
+	state.ConsensusParams.Block.MaxBytes = -1
+
+	// Mock mempool to capture the ReapMaxBytesMaxGas call parameters
+	mp := &mpmocks.Mempool{}
+
+	// This is the key assertion - verify ReapMaxBytesMaxGas is called with -1 (unlimited)
+	mp.On("ReapMaxBytesMaxGas", int64(-1), mock.Anything).Return([]*types.CachedTx{})
+
+	blockStore := store.NewBlockStore(dbm.NewMemDB())
+	blockExec := sm.NewBlockExecutor(
+		stateStore,
+		log.TestingLogger(),
+		proxyApp.Consensus(),
+		mp,
+		sm.EmptyEvidencePool{},
+		blockStore,
+	)
+
+	height := int64(1)
+	proposerAddr := state.Validators.Validators[0].Address
+
+	// Create empty commit
+	commit := &types.ExtendedCommit{Height: height - 1}
+
+	// Call CreateProposalBlock
+	ctx := context.Background()
+	_, _, err = blockExec.CreateProposalBlock(ctx, height, state, commit, proposerAddr)
+	require.NoError(t, err)
+
+	// Verify that the mempool mock was called with expected parameters
+	mp.AssertExpectations(t)
+}
+
 func makeBlockID(hash []byte, partSetSize uint32, partSetHash []byte) types.BlockID {
 	var (
 		h   = make([]byte, tmhash.Size)
