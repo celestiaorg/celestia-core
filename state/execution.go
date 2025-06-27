@@ -136,10 +136,21 @@ func (blockExec *BlockExecutor) CreateProposalBlock(
 	txs := blockExec.mempool.ReapMaxBytesMaxGas(maxReapBytes, maxGas)
 	commit := lastExtCommit.ToCommit()
 	block := state.MakeBlock(height, types.MakeData(txs), commit, evidence, proposerAddr)
-	
+
+	req := &abci.RequestPrepareProposal{
+		MaxTxBytes:         maxDataBytes,
+		Txs:                block.Txs.ToSliceOfBytes(),
+		LocalLastCommit:    buildExtendedCommitInfoFromStore(lastExtCommit, blockExec.store, state.InitialHeight, state.ConsensusParams.ABCI),
+		Misbehavior:        block.Evidence.Evidence.ToABCI(),
+		Height:             block.Height,
+		Time:               block.Time,
+		NextValidatorsHash: block.NextValidatorsHash,
+		ProposerAddress:    block.ProposerAddress,
+	}
+
 	var rpp *abci.ResponsePrepareProposal
 	var err error
-	
+
 	func() {
 		defer func() {
 			if r := recover(); r != nil {
@@ -147,20 +158,8 @@ func (blockExec *BlockExecutor) CreateProposalBlock(
 				err = fmt.Errorf("PrepareProposal panicked: %v", r)
 			}
 		}()
-		
-		rpp, err = blockExec.proxyApp.PrepareProposal(
-			ctx,
-			&abci.RequestPrepareProposal{
-				MaxTxBytes:         maxDataBytes,
-				Txs:                block.Txs.ToSliceOfBytes(),
-				LocalLastCommit:    buildExtendedCommitInfoFromStore(lastExtCommit, blockExec.store, state.InitialHeight, state.ConsensusParams.ABCI),
-				Misbehavior:        block.Evidence.Evidence.ToABCI(),
-				Height:             block.Height,
-				Time:               block.Time,
-				NextValidatorsHash: block.NextValidatorsHash,
-				ProposerAddress:    block.ProposerAddress,
-			},
-		)
+
+		rpp, err = blockExec.proxyApp.PrepareProposal(ctx, req)
 	}()
 	if err != nil {
 		// For non-panic errors, also save the failed proposal block
