@@ -5,8 +5,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/stretchr/testify/require"
 	cmtlog "github.com/cometbft/cometbft/libs/log"
+	"github.com/stretchr/testify/require"
 )
 
 func Test_cachedFile(t *testing.T) {
