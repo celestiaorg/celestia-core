@@ -28,11 +28,9 @@ type ErrRejected struct {
 	isSelf             bool
 	localNodeID        string
 	remoteNodeID       string
-	remotePubKeyRaw    string
 	localAddr          string
 	remoteAddr         string
 	handshakeStage     string
-	challengeReason    string
 	traceID            string
 	chainID            string
 	peerChainID        string
@@ -84,14 +82,8 @@ func (e ErrRejected) Error() string {
 	if e.remoteAddr != "" {
 		fields = append(fields, "remoteAddr="+e.remoteAddr)
 	}
-	if e.remotePubKeyRaw != "" {
-		fields = append(fields, "remotePubKeyRaw="+e.remotePubKeyRaw)
-	}
 	if e.handshakeStage != "" {
 		fields = append(fields, "handshakeStage="+e.handshakeStage)
-	}
-	if e.challengeReason != "" {
-		fields = append(fields, "challengeReason="+e.challengeReason)
 	}
 	if e.traceID != "" {
 		fields = append(fields, "traceID="+e.traceID)

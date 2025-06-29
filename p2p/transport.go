@@ -430,7 +430,7 @@ func (mt *MultiplexTransport) upgrade(
 			_ = mt.cleanup(c)
 		}
 	}()
-
+	traceID := generateTraceID()
 	secretConn, err = upgradeSecretConn(c, mt.handshakeTimeout, mt.nodeKey.PrivKey)
 	var remoteNodeID string
 	if secretConn != nil && secretConn.RemotePubKey() != nil {
@@ -450,7 +450,7 @@ func (mt *MultiplexTransport) upgrade(
 			localAddr:         localAddr,
 			remoteAddr:        remoteAddr,
 			handshakeStage:    "secret-conn-start",
-			traceID:           generateTraceID(),
+			traceID:           traceID,
 			malformedHandshake: false,
 		}
 	}
@@ -470,7 +470,7 @@ func (mt *MultiplexTransport) upgrade(
 				localAddr:      localAddr,
 				remoteAddr:     remoteAddr,
 				handshakeStage: "secret-conn-auth",
-				traceID:        generateTraceID(),
+				traceID:        traceID,
 			}
 		}
 	}
@@ -486,7 +486,7 @@ func (mt *MultiplexTransport) upgrade(
 			localAddr:     localAddr,
 			remoteAddr:    remoteAddr,
 			handshakeStage: "challenge-response",
-			traceID:       generateTraceID(),
+			traceID:       traceID,
 		}
 	}
 
@@ -500,7 +500,7 @@ func (mt *MultiplexTransport) upgrade(
 			localAddr:         localAddr,
 			remoteAddr:        remoteAddr,
 			handshakeStage:    "handshake-nodeinfo-validate",
-			traceID:           generateTraceID(),
+			traceID:           traceID,
 		}
 	}
 
@@ -515,7 +515,7 @@ func (mt *MultiplexTransport) upgrade(
 			localAddr:       localAddr,
 			remoteAddr:      remoteAddr,
 			handshakeStage:  "connid-vs-nodeid",
-			traceID:         generateTraceID(),
+			traceID:         traceID,
 		}
 	}
 
@@ -530,7 +530,7 @@ func (mt *MultiplexTransport) upgrade(
 			localAddr:      localAddr,
 			remoteAddr:     remoteAddr,
 			handshakeStage: "self-detect",
-			traceID:        generateTraceID(),
+			traceID:        traceID,
 		}
 	}
 
@@ -552,7 +552,7 @@ func (mt *MultiplexTransport) upgrade(
 			localAddr:      localAddr,
 			remoteAddr:     remoteAddr,
 			handshakeStage: "post-handshake",
-			traceID:        generateTraceID(),
+			traceID:        traceID,
 			chainID:        chainID,
 			peerChainID:    peerChainID,
 		}
