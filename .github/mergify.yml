@@ -13,6 +13,14 @@ queue_rules:
     merge_method: squash
 
 pull_request_rules:
+  - name: backport patches to main branch
+    conditions:
+      - base=v0.38.x-celestia
+      - label=S:backport-to-main
+    actions:
+      backport:
+        branches:
+          - main
   - name: backport patches to v0.38.x-celestia branch
     conditions:
       - base=main

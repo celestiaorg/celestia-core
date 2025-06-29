@@ -217,6 +217,112 @@ func TestTxPool_Size(t *testing.T) {
 	require.Equal(t, int64(2900), txmp.SizeBytes())
 }
 
+// TestTxPool_Recheck tests that recheckTransactions works correctly without deadlocking.
+// This test verifies the fix for the issue where the store's read lock was held during
+// iteration while callbacks needed a write lock to remove invalid transactions.
+func TestTxPool_Recheck(t *testing.T) {
+	// Create mempool with recheck enabled
+	app := &application{kvstore.NewApplication(db.NewMemDB())}
+	cc := proxy.NewLocalClientCreator(app)
+
+	cfg := config.TestMempoolConfig()
+	cfg.Recheck = true // Enable recheck to trigger the code path we're testing
+	cfg.CacheSize = 10000
+
+	appConnMem, err := cc.NewABCIClient()
+	require.NoError(t, err)
+	require.NoError(t, appConnMem.Start())
+	defer func() { _ = appConnMem.Stop() }()
+
+	txmp := NewTxPool(
+		log.TestingLogger().With("test", t.Name()),
+		cfg,
+		appConnMem,
+		0,
+	)
+
+	// Add several transactions to the mempool
+	txs := checkTxs(t, txmp, 10, 0)
+	require.Equal(t, 10, txmp.Size())
+
+	// Create raw transactions for commit
+	rawTxs := make([]*types.CachedTx, len(txs))
+	for i, tx := range txs {
+		rawTxs[i] = &types.CachedTx{Tx: tx.tx}
+	}
+
+	// Commit some transactions, leaving others in the mempool
+	// This should trigger recheck on the remaining transactions
+	responses := make([]*abci.ExecTxResult, 5)
+	for i := 0; i < len(responses); i++ {
+		responses[i] = &abci.ExecTxResult{Code: abci.CodeTypeOK}
+	}
+
+	txmp.Lock()
+	err = txmp.Update(1, rawTxs[:5], responses, nil, nil)
+	txmp.Unlock()
+	require.NoError(t, err)
+
+	// Should have 5 transactions remaining after committing 5
+	require.Equal(t, 5, txmp.Size())
+
+	// Verify that we can still use the mempool normally after recheck
+	newTxs := checkTxs(t, txmp, 3, 0)
+	require.Equal(t, 8, txmp.Size()) // 5 remaining + 3 new = 8
+	require.Len(t, newTxs, 3)
+}
+
+// TestTxPool_RecheckConcurrency tests that recheck works correctly under
+// concurrent conditions and doesn't cause deadlocks.
+func TestTxPool_RecheckConcurrency(t *testing.T) {
+	txmp := setup(t, 0)
+	txmp.config.Recheck = true
+
+	// Add initial transactions
+	checkTxs(t, txmp, 50, 0)
+	require.Equal(t, 50, txmp.Size())
+
+	var wg sync.WaitGroup
+
+	// Worker 1: Commit transactions to trigger recheck
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		height := int64(1)
+		for i := 0; i < 5; i++ {
+			time.Sleep(10 * time.Millisecond)
+			reapedTxs := txmp.ReapMaxTxs(5)
+			if len(reapedTxs) > 0 {
+				responses := make([]*abci.ExecTxResult, len(reapedTxs))
+				for j := range responses {
+					responses[j] = &abci.ExecTxResult{Code: abci.CodeTypeOK}
+				}
+				txmp.Lock()
+				err := txmp.Update(height, reapedTxs, responses, nil, nil)
+				txmp.Unlock()
+				require.NoError(t, err)
+				height++
+			}
+		}
+	}()
+
+	// Worker 2: Add new transactions
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		for i := 0; i < 20; i++ {
+			time.Sleep(5 * time.Millisecond)
+			tx := newDefaultTx(fmt.Sprintf("concurrent-tx-%d", i))
+			_ = txmp.CheckTx(tx, nil, mempool.TxInfo{}) // Ignore errors for concurrency testing
+		}
+	}()
+
+	wg.Wait()
+
+	// Verify mempool is still functional
+	require.NoError(t, txmp.CheckTx(newDefaultTx("final-test"), nil, mempool.TxInfo{}))
+}
+
 func TestTxPool_Eviction(t *testing.T) {
 	txmp := setup(t, 1000)
 	txmp.config.Size = 5
