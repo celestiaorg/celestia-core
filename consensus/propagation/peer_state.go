@@ -1,6 +1,7 @@
 package propagation
 
 import (
+	"context"
 	"errors"
 	"sync/atomic"
 
@@ -19,7 +20,9 @@ type request struct {
 // PeerState keeps track of haves and wants for each peer. This is used for
 // block prop and catchup.
 type PeerState struct {
-	peer p2p.Peer
+	ctx    context.Context
+	cancel context.CancelFunc
+	peer   p2p.Peer
 
 	mtx *sync.RWMutex
 	// state organized the haves and wants for each data is indexed by height
@@ -41,8 +44,11 @@ type partData struct {
 
 // newPeerState initializes and returns a new PeerState. This should be
 // called for each peer.
-func newPeerState(peer p2p.Peer, logger log.Logger) *PeerState {
+func newPeerState(ctx context.Context, peer p2p.Peer, logger log.Logger) *PeerState {
+	ctx, cancel := context.WithCancel(ctx)
 	return &PeerState{
+		ctx:           ctx,
+		cancel:        cancel,
 		mtx:           &sync.RWMutex{},
 		state:         make(map[int64]map[int32]*partState),
 		peer:          peer,
