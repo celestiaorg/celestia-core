@@ -39,7 +39,7 @@ func TestPeerLifecycle(t *testing.T) {
 	// Test that peer object gets replaced when reserving with same ID
 	peer2 := &mocks.Peer{}
 	peer2.On("ID").Return(peerID) // same ID as peer1
-	
+
 	require.NotPanics(t, func() {
 		ids.ReserveForPeer(peer2)
 	})
