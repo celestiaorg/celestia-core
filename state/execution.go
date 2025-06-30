@@ -118,9 +118,13 @@ func (blockExec *BlockExecutor) CreateProposalBlock(
 
 	// Fetch a limited amount of valid txs
 	maxDataBytes := types.MaxDataBytes(maxBytes, evSize, state.Validators.Size())
-	maxReapBytes := maxDataBytes
+	var maxReapBytes int64
 	if emptyMaxBytes {
 		maxReapBytes = -1
+	} else {
+		// Reap 25% more transactions than can fit in the block to provide
+		// buffer for PrepareProposal to have sufficient transactions to work with
+		maxReapBytes = maxDataBytes + maxDataBytes/4
 	}
 
 	txs := blockExec.mempool.ReapMaxBytesMaxGas(maxReapBytes, maxGas)
