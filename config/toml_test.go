@@ -85,9 +85,6 @@ func assertValidConfig(t *testing.T, configFile string) {
 
 func TestMempoolTypeTemplate(t *testing.T) {
 	// Test that mempool type is correctly templated and not hardcoded
-	cfg := config.DefaultConfig()
-
-	// Test with different mempool types
 	testCases := []struct {
 		name        string
 		mempoolType string
@@ -100,17 +97,15 @@ func TestMempoolTypeTemplate(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
+			// Create test root with config
+			cfg := test.ResetTestRoot(fmt.Sprintf("mempool-type-%s", tc.mempoolType))
+			defer os.RemoveAll(cfg.RootDir)
+
 			// Set mempool type
 			cfg.Mempool.Type = tc.mempoolType
 
-			// Create temporary directory and file for config
-			tmpDir, err := os.MkdirTemp("", "config-test")
-			require.NoError(t, err)
-			defer os.RemoveAll(tmpDir)
-
-			configFile := filepath.Join(tmpDir, "config.toml")
-
 			// Write config using template
+			configFile := filepath.Join(cfg.RootDir, config.DefaultConfigDir, config.DefaultConfigFileName)
 			config.WriteConfigFile(configFile, cfg)
 
 			// Read generated config file
