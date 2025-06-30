@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net"
 	"reflect"
+	"sync/atomic"
 	"time"
 
 	"github.com/cosmos/gogoproto/proto"
@@ -137,7 +138,8 @@ type peer struct {
 	mlc           *metricsLabelCache
 
 	// When removal of a peer fails, we set this flag
-	removalAttemptFailed bool
+	// 0 = false, 1 = true - accessed atomically
+	removalAttemptFailed int32
 
 	traceClient trace.Tracer
 }
@@ -375,11 +377,11 @@ func (p *peer) CloseConn() error {
 }
 
 func (p *peer) SetRemovalFailed() {
-	p.removalAttemptFailed = true
+	atomic.StoreInt32(&p.removalAttemptFailed, 1)
 }
 
 func (p *peer) GetRemovalFailed() bool {
-	return p.removalAttemptFailed
+	return atomic.LoadInt32(&p.removalAttemptFailed) == 1
 }
 
 //---------------------------------------------------
