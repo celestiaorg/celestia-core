@@ -1,203 +1,83 @@
-# CometBFT
+# celestia-core
 
-[Byzantine-Fault Tolerant][bft] [State Machine Replication][smr]. Or
-[Blockchain], for short.
+celestia-core is a fork of [cometbft/cometbft](https://github.com/cometbft/cometbft), an implementation of the Tendermint protocol, with the following changes:
 
-[![Version][version-badge]][version-url]
-[![API Reference][api-badge]][api-url]
-[![Go version][go-badge]][go-url]
-[![Discord chat][discord-badge]][discord-url]
-[![License][license-badge]][license-url]
-[![Sourcegraph][sg-badge]][sg-url]
+1. Early adoption of the ABCI++ methods: `PrepareProposal` and `ProcessProposal` because they haven't yet landed in a CometBFT release.
+1. Modifications to how `DataHash` in the block header is determined. In CometBFT, `DataHash` is based on the transactions included in a block. In Celestia, block data (including transactions) are erasure coded into a data square to enable data availability sampling. In order for the header to contain a commitment to this data square, `DataHash` was modified to be the Merkle root of the row and column roots of the erasure coded data square. See [ADR 008](https://github.com/celestiaorg/celestia-core/blob/v0.34.x-celestia/docs/celestia-architecture/adr-008-updating-to-tendermint-v0.35.x.md?plain=1#L20) for the motivation or [celestia-app/pkg/da/data_availability_header.go](https://github.com/celestiaorg/celestia-app/blob/2f89956b22c4c3cfdec19b3b8601095af6f69804/pkg/da/data_availability_header.go) for the implementation. Note on the implementation: celestia-app computes the hash in prepare_proposal and returns it to CometBFT via [`blockData.Hash`](https://github.com/celestiaorg/celestia-app/blob/5bbdac2d3f46662a34b2111602b8f964d6e6fba5/app/prepare_proposal.go#L78) so a modification to celestia-core isn't strictly necessary but [comments](https://github.com/celestiaorg/celestia-core/blob/2ec23f804691afc196d0104616e6c880d4c1ca41/types/block.go#L1041-L1042) were added.
 
-| Branch  | Tests                                          | Linting                                     |
-|---------|------------------------------------------------|---------------------------------------------|
-| main    | [![Tests][tests-badge]][tests-url]             | [![Lint][lint-badge]][lint-url]             |
-| v0.38.x | [![Tests][tests-badge-v038x]][tests-url-v038x] | [![Lint][lint-badge-v038x]][lint-url-v038x] |
-| v0.37.x | [![Tests][tests-badge-v037x]][tests-url-v037x] | [![Lint][lint-badge-v037x]][lint-url-v037x] |
-| v0.34.x | [![Tests][tests-badge-v034x]][tests-url-v034x] | [![Lint][lint-badge-v034x]][lint-url-v034x] |
 
-CometBFT is a Byzantine Fault Tolerant (BFT) middleware that takes a
-state transition machine - written in any programming language - and securely
-replicates it on many machines.
+See [./docs/celestia-architecture](./docs/celestia-architecture/) for architecture decision records (ADRs) on Celestia modifications.
 
-It is a fork of [Tendermint Core][tm-core] and implements the Tendermint
-consensus algorithm.
+## Diagram
 
-For protocol details, refer to the [CometBFT Specification](./spec/README.md).
+```ascii
+                ^  +-------------------------------+  ^
+                |  |                               |  |
+                |  |  State-machine = Application  |  |
+                |  |                               |  |   celestia-app (built with Cosmos SDK)
+                |  |            ^      +           |  |
+                |  +----------- | ABCI | ----------+  v
+Celestia        |  |            +      v           |  ^
+validator or    |  |                               |  |
+full consensus  |  |           Consensus           |  |
+node            |  |                               |  |
+                |  +-------------------------------+  |   celestia-core (fork of CometBFT)
+                |  |                               |  |
+                |  |           Networking          |  |
+                |  |                               |  |
+                v  +-------------------------------+  v
+```
 
-For detailed analysis of the consensus protocol, including safety and liveness
-proofs, read our paper, "[The latest gossip on BFT
-consensus](https://arxiv.org/abs/1807.04938)".
+## Install
 
-## Documentation
+See <https://github.com/celestiaorg/celestia-app#install>
 
-Complete documentation can be found on the
-[website](https://docs.cometbft.com/).
+## Usage
 
-## Releases
-
-Please do not depend on `main` as your production branch. Use
-[releases](https://github.com/cometbft/cometbft/releases) instead.
-
-If you intend to run CometBFT in production, we're happy to help. To contact
-us, in order of preference:
-
-- [Create a new discussion on
-  GitHub](https://github.com/cometbft/cometbft/discussions)
-- Reach out to us via [Telegram](https://t.me/CometBFT)
-- [Join the Cosmos Network Discord](https://discord.gg/interchain) and
-  discuss in
-  [`#cometbft`](https://discord.com/channels/669268347736686612/1069933855307472906)
-
-More on how releases are conducted can be found [here](./RELEASES.md).
-
-## Security
-
-To report a security vulnerability, see our [bug bounty
-program](https://hackerone.com/cosmos). For examples of the kinds of bugs we're
-looking for, see [our security policy](SECURITY.md).
-
-## Minimum requirements
-
-| CometBFT version | Requirement | Notes             |
-|------------------|-------------|-------------------|
-| main             | Go version  | Go 1.22 or higher |
-| v0.38.x          | Go version  | Go 1.22 or higher |
-| v0.37.x          | Go version  | Go 1.22 or higher |
-| v0.34.x          | Go version  | Go 1.12 or higher |
-
-### Install
-
-See the [install guide](./docs/guides/install.md).
-
-### Quick Start
-
-- [Single node](./docs/guides/quick-start.md)
-- [Local cluster using docker-compose](./docs/networks/docker-compose.md)
+See <https://github.com/celestiaorg/celestia-app#usage>
 
 ## Contributing
 
-Please abide by the [Code of Conduct](CODE_OF_CONDUCT.md) in all interactions.
+This repo intends on preserving the minimal possible diff with [cometbft/cometbft](https://github.com/cometbft/cometbft) to make fetching upstream changes easy. If the proposed contribution is
 
-Before contributing to the project, please take a look at the [contributing
-guidelines](CONTRIBUTING.md) and the [style guide](STYLE_GUIDE.md). 
+- **specific to Celestia**: consider if [celestia-app](https://github.com/celestiaorg/celestia-app) is a better target
+- **not specific to Celestia**: consider making the contribution upstream in CometBFT
 
-**Important**: Celestia-core follows a specific contribution workflow with dual-branch maintenance. Please read the [Celestia-specific Contribution Flow](CONTRIBUTING.md#celestia-specific-contribution-flow) section to understand how to target your PRs correctly between the `main` branch (for v5) and `v0.38.x-celestia` branch (for v4).
+1. [Install Go](https://go.dev/doc/install) 1.23.6+
+2. Fork this repo
+3. Clone your fork
+4. Find an issue to work on (see [good first issues](https://github.com/celestiaorg/celestia-core/issues?q=is%3Aopen+is%3Aissue+label%3A%22good+first+issue%22))
+5. Work on a change in a branch on your fork
+6. When your change is ready, push your branch and create a PR that targets this repo
 
-You may also find it helpful to read the [specifications](./spec/README.md), and familiarize
-yourself with our [Architectural Decision Records
-(ADRs)](./docs/architecture/README.md) and [Request For Comments
-(RFCs)](./docs/rfc/README.md).
+### Helpful Commands
 
-## Versioning
+```sh
+# Build a new CometBFT binary and output to build/comet
+make build
 
-### Semantic Versioning
+# Install CometBFT binary
+make install
 
-CometBFT uses [Semantic Versioning](http://semver.org/) to determine when and
-how the version changes. According to SemVer, anything in the public API can
-change at any time before version 1.0.0
+# Run tests
+make test
 
-To provide some stability to users of 0.X.X versions of CometBFT, the MINOR
-version is used to signal breaking changes across CometBFT's API. This API
-includes all publicly exposed types, functions, and methods in non-internal Go
-packages as well as the types and methods accessible via the CometBFT RPC
-interface.
+# If you modified any protobuf definitions in a `*.proto` file then
+# you may need to lint, format, and generate updated `*.pb.go` files
+make proto-lint
+make proto-format
+make proto-gen
+```
 
-Breaking changes to these public APIs will be documented in the CHANGELOG.
+## Branches
 
-### Upgrades
+- `main` is the canonical branch for development. Most PRs should target this branch and optionally be backported to a release branch.
+- `v0.38.x-celestia` was based on CometBFT `v0.38.x`. Releases from this branch look like `v1.54.1-tm-v0.38.17` and are used by celestia-app `v4.x`.
+- `v0.34.x-celestia` was based on CometBFT `v0.34.x`. Releases from this branch look like `v1.52.1-tm-v0.34.35` and are used by celestia-app `v3.x`.
 
-In an effort to avoid accumulating technical debt prior to 1.0.0, we do not
-guarantee that breaking changes (i.e. bumps in the MINOR version) will work with
-existing CometBFT blockchains. In these cases you will have to start a new
-blockchain, or write something custom to get the old data into the new chain.
-However, any bump in the PATCH version should be compatible with existing
-blockchain histories.
+## Releases
 
-For more information on upgrading, see [UPGRADING.md](./UPGRADING.md).
+Previous releases are formatted: `v<CELESTIA_CORE_VERSION>-tm-v<COMETBFT_VERSION>`.
+For example: [`v1.4.0-tm-v0.34.20`](https://github.com/celestiaorg/celestia-core/releases/tag/v1.4.0-tm-v0.34.20) is celestia-core version `1.4.0` based on CometBFT `0.34.20`. `CELESTIA_CORE_VERSION` strives to adhere to [Semantic Versioning](http://semver.org/).
 
-### Supported Versions
-
-Because we are a small core team, we have limited capacity to ship patch
-updates, including security updates. Consequently, we strongly recommend keeping
-CometBFT up-to-date. Upgrading instructions can be found in
-[UPGRADING.md](./UPGRADING.md).
-
-Currently supported versions include:
-
-- v0.38.x: CometBFT v0.38 introduces ABCI 2.0, which implements the entirety of
-  ABCI++
-- v0.37.x: CometBFT v0.37 introduces ABCI 1.0, which is the first major step
-  towards the full ABCI++ implementation in ABCI 2.0
-- v0.34.x: The CometBFT v0.34 series is compatible with the Tendermint Core
-  v0.34 series
-
-## Resources
-
-### Libraries
-
-- [Cosmos SDK](http://github.com/cosmos/cosmos-sdk); A framework for building
-  applications in Golang
-- [Tendermint in Rust](https://github.com/informalsystems/tendermint-rs)
-- [ABCI Tower](https://github.com/penumbra-zone/tower-abci)
-
-### Applications
-
-- [Cosmos Hub](https://hub.cosmos.network/)
-- [Terra](https://www.terra.money/)
-- [Celestia](https://celestia.org/)
-- [Anoma](https://anoma.network/)
-- [Vocdoni](https://docs.vocdoni.io/)
-
-### Research
-
-Below are links to the original Tendermint consensus algorithm and relevant
-whitepapers which CometBFT will continue to build on.
-
-- [The latest gossip on BFT consensus](https://arxiv.org/abs/1807.04938)
-- [Master's Thesis on Tendermint](https://atrium.lib.uoguelph.ca/xmlui/handle/10214/9769)
-- [Original Whitepaper: "Tendermint: Consensus Without Mining"](https://tendermint.com/static/docs/tendermint.pdf)
-
-## Join us
-
-CometBFT is currently maintained by [Informal
-Systems](https://informal.systems). If you'd like to work full-time on CometBFT,
-[we're hiring](https://informal.systems/careers)!
-
-Funding for CometBFT development comes primarily from the [Interchain
-Foundation](https://interchain.io), a Swiss non-profit. Informal Systems also
-maintains [cometbft.com](https://cometbft.com).
-
-[bft]: https://en.wikipedia.org/wiki/Byzantine_fault_tolerance
-[smr]: https://en.wikipedia.org/wiki/State_machine_replication
-[Blockchain]: https://en.wikipedia.org/wiki/Blockchain
-[version-badge]: https://img.shields.io/github/v/release/cometbft/cometbft.svg
-[version-url]: https://github.com/cometbft/cometbft/releases/latest
-[api-badge]: https://camo.githubusercontent.com/915b7be44ada53c290eb157634330494ebe3e30a/68747470733a2f2f676f646f632e6f72672f6769746875622e636f6d2f676f6c616e672f6764646f3f7374617475732e737667
-[api-url]: https://pkg.go.dev/github.com/cometbft/cometbft
-[go-badge]: https://img.shields.io/badge/go-1.22-blue.svg
-[go-url]: https://github.com/moovweb/gvm
-[discord-badge]: https://img.shields.io/discord/669268347736686612.svg
-[discord-url]: https://discord.gg/interchain
-[license-badge]: https://img.shields.io/github/license/cometbft/cometbft.svg
-[license-url]: https://github.com/cometbft/cometbft/blob/main/LICENSE
-[sg-badge]: https://sourcegraph.com/github.com/cometbft/cometbft/-/badge.svg
-[sg-url]: https://sourcegraph.com/github.com/cometbft/cometbft?badge
-[tests-url]: https://github.com/cometbft/cometbft/actions/workflows/tests.yml
-[tests-url-v038x]: https://github.com/cometbft/cometbft/actions/workflows/tests.yml?query=branch%3Av0.38.x
-[tests-url-v037x]: https://github.com/cometbft/cometbft/actions/workflows/tests.yml?query=branch%3Av0.37.x
-[tests-url-v034x]: https://github.com/cometbft/cometbft/actions/workflows/tests.yml?query=branch%3Av0.34.x
-[tests-badge]: https://github.com/cometbft/cometbft/actions/workflows/tests.yml/badge.svg?branch=main
-[tests-badge-v038x]: https://github.com/cometbft/cometbft/actions/workflows/tests.yml/badge.svg?branch=v0.38.x
-[tests-badge-v037x]: https://github.com/cometbft/cometbft/actions/workflows/tests.yml/badge.svg?branch=v0.37.x
-[tests-badge-v034x]: https://github.com/cometbft/cometbft/actions/workflows/tests.yml/badge.svg?branch=v0.34.x
-[lint-badge]: https://github.com/cometbft/cometbft/actions/workflows/lint.yml/badge.svg?branch=main
-[lint-badge-v034x]: https://github.com/cometbft/cometbft/actions/workflows/lint.yml/badge.svg?branch=v0.34.x
-[lint-badge-v037x]: https://github.com/cometbft/cometbft/actions/workflows/lint.yml/badge.svg?branch=v0.37.x
-[lint-badge-v038x]: https://github.com/cometbft/cometbft/actions/workflows/lint.yml/badge.svg?branch=v0.38.x
-[lint-url]: https://github.com/cometbft/cometbft/actions/workflows/lint.yml
-[lint-url-v034x]: https://github.com/cometbft/cometbft/actions/workflows/lint.yml?query=branch%3Av0.34.x
-[lint-url-v037x]: https://github.com/cometbft/cometbft/actions/workflows/lint.yml?query=branch%3Av0.37.x
-[lint-url-v038x]: https://github.com/cometbft/cometbft/actions/workflows/lint.yml?query=branch%3Av0.38.x
-[tm-core]: https://github.com/tendermint/tendermint
+Note: future releases from the `main` branch may be released as `v0.39.x` without the TENDERMINT_CORE_VERSION suffix because CometBFT `v0.39.x` was not released.
