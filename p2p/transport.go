@@ -442,15 +442,15 @@ func (mt *MultiplexTransport) upgrade(
 
 	if err != nil {
 		return nil, nil, ErrRejected{
-			conn:              c,
-			err:               fmt.Errorf("secret conn failed: %v", err),
-			isAuthFailure:     true,
-			localNodeID:       localNodeID,
-			remoteNodeID:      remoteNodeID,
-			localAddr:         localAddr,
-			remoteAddr:        remoteAddr,
-			handshakeStage:    "secret-conn-start",
-			traceID:           traceID,
+			conn:               c,
+			err:                fmt.Errorf("secret conn failed: %v", err),
+			isAuthFailure:      true,
+			localNodeID:        localNodeID,
+			remoteNodeID:       remoteNodeID,
+			localAddr:          localAddr,
+			remoteAddr:         remoteAddr,
+			handshakeStage:     "secret-conn-start",
+			traceID:            traceID,
 			malformedHandshake: false,
 		}
 	}
@@ -478,15 +478,15 @@ func (mt *MultiplexTransport) upgrade(
 	nodeInfo, err = handshake(secretConn, mt.handshakeTimeout, mt.nodeInfo)
 	if err != nil {
 		return nil, nil, ErrRejected{
-			conn:          c,
-			err:           fmt.Errorf("handshake failed: %v", err),
-			isAuthFailure: true,
-			localNodeID:   localNodeID,
-			remoteNodeID:  remoteNodeID,
-			localAddr:     localAddr,
-			remoteAddr:    remoteAddr,
+			conn:           c,
+			err:            fmt.Errorf("handshake failed: %v", err),
+			isAuthFailure:  true,
+			localNodeID:    localNodeID,
+			remoteNodeID:   remoteNodeID,
+			localAddr:      localAddr,
+			remoteAddr:     remoteAddr,
 			handshakeStage: "challenge-response",
-			traceID:       traceID,
+			traceID:        traceID,
 		}
 	}
 
@@ -509,13 +509,13 @@ func (mt *MultiplexTransport) upgrade(
 			conn:           c,
 			id:             connID,
 			err:            fmt.Errorf("conn.ID (%v) NodeInfo.ID (%v) mismatch", connID, nodeInfo.ID()),
-			isAuthFailure:   true,
-			localNodeID:     localNodeID,
-			remoteNodeID:    string(nodeInfo.ID()),
-			localAddr:       localAddr,
-			remoteAddr:      remoteAddr,
-			handshakeStage:  "connid-vs-nodeid",
-			traceID:         traceID,
+			isAuthFailure:  true,
+			localNodeID:    localNodeID,
+			remoteNodeID:   string(nodeInfo.ID()),
+			localAddr:      localAddr,
+			remoteAddr:     remoteAddr,
+			handshakeStage: "connid-vs-nodeid",
+			traceID:        traceID,
 		}
 	}
 
@@ -604,48 +604,48 @@ func (mt *MultiplexTransport) wrapPeer(
 }
 
 func handshake(
-    c net.Conn,
-    timeout time.Duration,
-    nodeInfo NodeInfo,
+	c net.Conn,
+	timeout time.Duration,
+	nodeInfo NodeInfo,
 ) (NodeInfo, error) {
-    if err := c.SetDeadline(time.Now().Add(timeout)); err != nil {
-        return nil, err
-    }
+	if err := c.SetDeadline(time.Now().Add(timeout)); err != nil {
+		return nil, err
+	}
 
-    var (
-        errc = make(chan error, 2)
-        pbpeerNodeInfo tmp2p.DefaultNodeInfo
-        peerNodeInfo   DefaultNodeInfo
-    )
+	var (
+		errc           = make(chan error, 2)
+		pbpeerNodeInfo tmp2p.DefaultNodeInfo
+		peerNodeInfo   DefaultNodeInfo
+	)
 
-    ourNodeInfo, ok := nodeInfo.(DefaultNodeInfo)
-    if !ok {
-        return nil, fmt.Errorf("nodeInfo is not DefaultNodeInfo, got: %T", nodeInfo)
-    }
+	ourNodeInfo, ok := nodeInfo.(DefaultNodeInfo)
+	if !ok {
+		return nil, fmt.Errorf("nodeInfo is not DefaultNodeInfo, got: %T", nodeInfo)
+	}
 
-    go func(errc chan<- error, c net.Conn) {
-        _, err := protoio.NewDelimitedWriter(c).WriteMsg(ourNodeInfo.ToProto())
-        errc <- err
-    }(errc, c)
-    go func(errc chan<- error, c net.Conn) {
-        protoReader := protoio.NewDelimitedReader(c, MaxNodeInfoSize())
-        _, err := protoReader.ReadMsg(&pbpeerNodeInfo)
-        errc <- err
-    }(errc, c)
+	go func(errc chan<- error, c net.Conn) {
+		_, err := protoio.NewDelimitedWriter(c).WriteMsg(ourNodeInfo.ToProto())
+		errc <- err
+	}(errc, c)
+	go func(errc chan<- error, c net.Conn) {
+		protoReader := protoio.NewDelimitedReader(c, MaxNodeInfoSize())
+		_, err := protoReader.ReadMsg(&pbpeerNodeInfo)
+		errc <- err
+	}(errc, c)
 
-    for i := 0; i < cap(errc); i++ {
-        err := <-errc
-        if err != nil {
-            return nil, err
-        }
-    }
+	for i := 0; i < cap(errc); i++ {
+		err := <-errc
+		if err != nil {
+			return nil, err
+		}
+	}
 
-    peerNodeInfo, err := DefaultNodeInfoFromToProto(&pbpeerNodeInfo)
-    if err != nil {
-        return nil, err
-    }
+	peerNodeInfo, err := DefaultNodeInfoFromToProto(&pbpeerNodeInfo)
+	if err != nil {
+		return nil, err
+	}
 
-    return peerNodeInfo, c.SetDeadline(time.Time{})
+	return peerNodeInfo, c.SetDeadline(time.Time{})
 }
 
 func upgradeSecretConn(
