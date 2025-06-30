@@ -432,23 +432,21 @@ func (mt *MultiplexTransport) upgrade(
 	}()
 	traceID := generateTraceID()
 	secretConn, err = upgradeSecretConn(c, mt.handshakeTimeout, mt.nodeKey.PrivKey)
-	var remoteNodeID string
-	if secretConn != nil && secretConn.RemotePubKey() != nil {
-		remoteNodeID = string(PubKeyToID(secretConn.RemotePubKey()))
+	getRemoteNodeID := func() string {
+		if secretConn != nil && secretConn.RemotePubKey() != nil {
+			return string(PubKeyToID(secretConn.RemotePubKey()))
+		}
+		return ""
 	}
-	localNodeID := string(mt.nodeInfo.ID())
-	localAddr := c.LocalAddr().String()
-	remoteAddr := c.RemoteAddr().String()
-
 	if err != nil {
 		return nil, nil, ErrRejected{
 			conn:               c,
 			err:                fmt.Errorf("secret conn failed: %v", err),
 			isAuthFailure:      true,
-			localNodeID:        localNodeID,
-			remoteNodeID:       remoteNodeID,
-			localAddr:          localAddr,
-			remoteAddr:         remoteAddr,
+			localNodeID:        string(mt.nodeInfo.ID()),
+			remoteNodeID:       getRemoteNodeID(),
+			localAddr:          c.LocalAddr().String(),
+			remoteAddr:         c.RemoteAddr().String(),
 			handshakeStage:     "secret-conn-start",
 			traceID:            traceID,
 			malformedHandshake: false,
@@ -456,7 +454,6 @@ func (mt *MultiplexTransport) upgrade(
 	}
 
 	connID := PubKeyToID(secretConn.RemotePubKey())
-	remoteNodeID = string(connID)
 
 	if dialedAddr != nil {
 		if dialedID := dialedAddr.ID; connID != dialedID {
@@ -465,10 +462,10 @@ func (mt *MultiplexTransport) upgrade(
 				id:             connID,
 				err:            fmt.Errorf("conn.ID (%v) dialed ID (%v) mismatch", connID, dialedID),
 				isAuthFailure:  true,
-				localNodeID:    localNodeID,
-				remoteNodeID:   remoteNodeID,
-				localAddr:      localAddr,
-				remoteAddr:     remoteAddr,
+				localNodeID:    string(mt.nodeInfo.ID()),
+				remoteNodeID:   string(PubKeyToID(secretConn.RemotePubKey())),
+				localAddr:      c.LocalAddr().String(),
+				remoteAddr:     c.RemoteAddr().String(),
 				handshakeStage: "secret-conn-auth",
 				traceID:        traceID,
 			}
@@ -481,10 +478,10 @@ func (mt *MultiplexTransport) upgrade(
 			conn:           c,
 			err:            fmt.Errorf("handshake failed: %v", err),
 			isAuthFailure:  true,
-			localNodeID:    localNodeID,
-			remoteNodeID:   remoteNodeID,
-			localAddr:      localAddr,
-			remoteAddr:     remoteAddr,
+			localNodeID:    string(mt.nodeInfo.ID()),
+			remoteNodeID:   string(PubKeyToID(secretConn.RemotePubKey())),
+			localAddr:      c.LocalAddr().String(),
+			remoteAddr:     c.RemoteAddr().String(),
 			handshakeStage: "challenge-response",
 			traceID:        traceID,
 		}
@@ -495,10 +492,10 @@ func (mt *MultiplexTransport) upgrade(
 			conn:              c,
 			err:               err,
 			isNodeInfoInvalid: true,
-			localNodeID:       localNodeID,
-			remoteNodeID:      remoteNodeID,
-			localAddr:         localAddr,
-			remoteAddr:        remoteAddr,
+			localNodeID:       string(mt.nodeInfo.ID()),
+			remoteNodeID:      string(PubKeyToID(secretConn.RemotePubKey())),
+			localAddr:         c.LocalAddr().String(),
+			remoteAddr:        c.RemoteAddr().String(),
 			handshakeStage:    "handshake-nodeinfo-validate",
 			traceID:           traceID,
 		}
@@ -510,10 +507,10 @@ func (mt *MultiplexTransport) upgrade(
 			id:             connID,
 			err:            fmt.Errorf("conn.ID (%v) NodeInfo.ID (%v) mismatch", connID, nodeInfo.ID()),
 			isAuthFailure:  true,
-			localNodeID:    localNodeID,
+			localNodeID:    string(mt.nodeInfo.ID()),
 			remoteNodeID:   string(nodeInfo.ID()),
-			localAddr:      localAddr,
-			remoteAddr:     remoteAddr,
+			localAddr:      c.LocalAddr().String(),
+			remoteAddr:     c.RemoteAddr().String(),
 			handshakeStage: "connid-vs-nodeid",
 			traceID:        traceID,
 		}
@@ -525,10 +522,10 @@ func (mt *MultiplexTransport) upgrade(
 			conn:           c,
 			id:             nodeInfo.ID(),
 			isSelf:         true,
-			localNodeID:    localNodeID,
+			localNodeID:    string(mt.nodeInfo.ID()),
 			remoteNodeID:   string(nodeInfo.ID()),
-			localAddr:      localAddr,
-			remoteAddr:     remoteAddr,
+			localAddr:      c.LocalAddr().String(),
+			remoteAddr:     c.RemoteAddr().String(),
 			handshakeStage: "self-detect",
 			traceID:        traceID,
 		}
@@ -547,10 +544,10 @@ func (mt *MultiplexTransport) upgrade(
 			err:            err,
 			id:             nodeInfo.ID(),
 			isIncompatible: true,
-			localNodeID:    localNodeID,
+			localNodeID:    string(mt.nodeInfo.ID()),
 			remoteNodeID:   string(nodeInfo.ID()),
-			localAddr:      localAddr,
-			remoteAddr:     remoteAddr,
+			localAddr:      c.LocalAddr().String(),
+			remoteAddr:     c.RemoteAddr().String(),
 			handshakeStage: "post-handshake",
 			traceID:        traceID,
 			chainID:        chainID,
