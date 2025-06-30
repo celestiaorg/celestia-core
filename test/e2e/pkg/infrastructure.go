@@ -9,8 +9,6 @@ import (
 const (
 	dockerIPv4CIDR = "10.186.73.0/24"
 	dockerIPv6CIDR = "fd80:b10c::/48"
-
-	globalIPv4CIDR = "0.0.0.0/0"
 )
 
 // InfrastructureData contains the relevant information for a set of existing
