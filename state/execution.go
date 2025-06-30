@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"path/filepath"
 	"time"
 
 	abci "github.com/cometbft/cometbft/abci/types"
@@ -43,6 +44,9 @@ type BlockExecutor struct {
 	logger log.Logger
 
 	metrics *Metrics
+
+	// root directory for debug file saving
+	rootDir string
 }
 
 type BlockExecutorOption func(executor *BlockExecutor)
@@ -50,6 +54,12 @@ type BlockExecutorOption func(executor *BlockExecutor)
 func BlockExecutorWithMetrics(metrics *Metrics) BlockExecutorOption {
 	return func(blockExec *BlockExecutor) {
 		blockExec.metrics = metrics
+	}
+}
+
+func BlockExecutorWithRootDir(rootDir string) BlockExecutorOption {
+	return func(blockExec *BlockExecutor) {
+		blockExec.rootDir = rootDir
 	}
 }
 
@@ -133,20 +143,34 @@ func (blockExec *BlockExecutor) CreateProposalBlock(
 	if err != nil {
 		return nil, nil, err
 	}
-	rpp, err := blockExec.proxyApp.PrepareProposal(
-		ctx,
-		&abci.RequestPrepareProposal{
-			MaxTxBytes:         maxDataBytes,
-			Txs:                block.Txs.ToSliceOfBytes(),
-			LocalLastCommit:    buildExtendedCommitInfoFromStore(lastExtCommit, blockExec.store, state.InitialHeight, state.ConsensusParams.ABCI),
-			Misbehavior:        block.Evidence.Evidence.ToABCI(),
-			Height:             block.Height,
-			Time:               block.Time,
-			NextValidatorsHash: block.NextValidatorsHash,
-			ProposerAddress:    block.ProposerAddress,
-		},
-	)
+	req := &abci.RequestPrepareProposal{
+		MaxTxBytes:         maxDataBytes,
+		Txs:                block.Txs.ToSliceOfBytes(),
+		LocalLastCommit:    buildExtendedCommitInfoFromStore(lastExtCommit, blockExec.store, state.InitialHeight, state.ConsensusParams.ABCI),
+		Misbehavior:        block.Evidence.Evidence.ToABCI(),
+		Height:             block.Height,
+		Time:               block.Time,
+		NextValidatorsHash: block.NextValidatorsHash,
+		ProposerAddress:    block.ProposerAddress,
+	}
+
+	var rpp *abci.ResponsePrepareProposal
+
+	func() {
+		defer func() {
+			if r := recover(); r != nil {
+				blockExec.saveFailedProposalBlock(state, block, "prepare_proposal_panic")
+				err = fmt.Errorf("PrepareProposal panicked: %v", r)
+			}
+		}()
+
+		rpp, err = blockExec.proxyApp.PrepareProposal(ctx, req)
+	}()
 	if err != nil {
+		// For non-panic errors, also save the failed proposal block
+		if rpp == nil {
+			blockExec.saveFailedProposalBlock(state, block, "prepare_proposal_error")
+		}
 		// The App MUST ensure that only valid (and hence 'processable') transactions
 		// enter the mempool. Hence, at this point, we can't have any non-processable
 		// transaction causing an error.
@@ -163,6 +187,7 @@ func (blockExec *BlockExecutor) CreateProposalBlock(
 	rejectedTxs := len(rawNewData) - len(txs)
 	if rejectedTxs > 0 {
 		blockExec.metrics.RejectedTransactions.Add(float64(rejectedTxs))
+		blockExec.logger.Debug("rejected txs while creating a block", "tx count", rejectedTxs)
 	}
 
 	txl := types.ToTxs(rpp.Txs)
@@ -889,4 +914,25 @@ func getLogs(responses []*abci.ExecTxResult) []string {
 		logs[i] = response.Log
 	}
 	return logs
+}
+
+// saveFailedProposalBlock saves a failed proposal block to the debug directory
+func (blockExec *BlockExecutor) saveFailedProposalBlock(state State, block *types.Block, reason string) {
+	if blockExec.rootDir == "" {
+		blockExec.logger.Debug("no root directory configured, skipping failed proposal block save")
+		return
+	}
+
+	debugDir := filepath.Join(blockExec.rootDir, "data", "debug")
+	filename := fmt.Sprintf("%s-%d-%s_failed_proposal.pb",
+		state.ChainID,
+		block.Height,
+		reason,
+	)
+
+	if err := types.SaveBlockToFile(debugDir, filename, block); err != nil {
+		blockExec.logger.Error("failed to save failed proposal block", "err", err.Error(), "reason", reason)
+	} else {
+		blockExec.logger.Info("saved failed proposal block", "file", filepath.Join(debugDir, filename), "reason", reason)
+	}
 }
