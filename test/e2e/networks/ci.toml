@@ -69,10 +69,10 @@ persistent_peers = ["validator01"]
 perturb = ["pause"]
 
 [node.validator05]
-database = "goleveldb" 
-persistent_peers = ["validator01", "full01"] 
-perturb = ["kill", "pause", "disconnect", "restart"] 
-privval_protocol = "tcp" 
+database = "goleveldb"
+persistent_peers = ["validator01", "full01"]
+perturb = ["kill", "pause", "disconnect", "restart"]
+privval_protocol = "tcp"
 start_at = 1005 # Becomes part of the validator set at 1010
 
 [node.full01]
