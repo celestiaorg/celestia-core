@@ -3,8 +3,6 @@ package state_test
 import (
 	"context"
 	"errors"
-	"os"
-	"path/filepath"
 	"testing"
 	"time"
 
@@ -1123,44 +1121,6 @@ func stripSignatures(ec *types.ExtendedCommit) {
 		commitSig.ExtensionSignature = nil
 		ec.ExtendedSignatures[i] = commitSig
 	}
-}
-
-func TestFindNextAvailableFilename(t *testing.T) {
-	// This test verifies that FindNextAvailableFilename finds available filenames
-	tmpDir := t.TempDir()
-
-	// Test case 1: No existing file
-	filename, err := sm.FindNextAvailableFilename(tmpDir, "test.txt")
-	assert.NoError(t, err)
-	assert.Equal(t, "test.txt", filename)
-
-	// Create the first file
-	filePath := filepath.Join(tmpDir, "test.txt")
-	err = os.WriteFile(filePath, []byte("test"), 0644)
-	assert.NoError(t, err)
-
-	// Test case 2: One file exists, should return test-{timestamp}.txt
-	filename, err = sm.FindNextAvailableFilename(tmpDir, "test.txt")
-	assert.NoError(t, err)
-	assert.Contains(t, filename, "test-")
-	assert.Contains(t, filename, ".txt")
-	assert.NotEqual(t, "test.txt", filename)
-
-	// Test case 3: Test with different extension
-	filename, err = sm.FindNextAvailableFilename(tmpDir, "test.pb")
-	assert.NoError(t, err)
-	assert.Equal(t, "test.pb", filename)
-
-	// Create the .pb file and test timestamp generation
-	filePath = filepath.Join(tmpDir, "test.pb")
-	err = os.WriteFile(filePath, []byte("test"), 0644)
-	assert.NoError(t, err)
-
-	filename, err = sm.FindNextAvailableFilename(tmpDir, "test.pb")
-	assert.NoError(t, err)
-	assert.Contains(t, filename, "test-")
-	assert.Contains(t, filename, ".pb")
-	assert.NotEqual(t, "test.pb", filename)
 }
 
 func makeBlockID(hash []byte, partSetSize uint32, partSetHash []byte) types.BlockID {

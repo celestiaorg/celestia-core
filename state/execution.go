@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"os"
 	"path/filepath"
 	"time"
 
@@ -917,23 +916,6 @@ func getLogs(responses []*abci.ExecTxResult) []string {
 	return logs
 }
 
-// FindNextAvailableFilename finds an available filename by adding timestamp if file already exists
-func FindNextAvailableFilename(dir, baseFilename string) (string, error) {
-	fullPath := filepath.Join(dir, baseFilename)
-	if _, err := os.Stat(fullPath); os.IsNotExist(err) {
-		// File doesn't exist, we can use this filename
-		return baseFilename, nil
-	}
-
-	// File exists, add timestamp suffix
-	ext := filepath.Ext(baseFilename)
-	nameWithoutExt := baseFilename[:len(baseFilename)-len(ext)]
-	timestamp := time.Now().UnixMilli()
-	filename := fmt.Sprintf("%s-%d%s", nameWithoutExt, timestamp, ext)
-
-	return filename, nil
-}
-
 // saveFailedProposalBlock saves a failed proposal block to the debug directory
 func (blockExec *BlockExecutor) saveFailedProposalBlock(state State, block *types.Block, reason string) {
 	if blockExec.rootDir == "" {
@@ -942,17 +924,13 @@ func (blockExec *BlockExecutor) saveFailedProposalBlock(state State, block *type
 	}
 
 	debugDir := filepath.Join(blockExec.rootDir, "data", "debug")
-	baseFilename := fmt.Sprintf("%s-%d-%s_failed_proposal.pb",
+	timestamp := time.Now().UnixMilli()
+	filename := fmt.Sprintf("%s-%d-%d-%s_failed_proposal.pb",
 		state.ChainID,
 		block.Height,
+		timestamp,
 		reason,
 	)
-
-	filename, err := FindNextAvailableFilename(debugDir, baseFilename)
-	if err != nil {
-		blockExec.logger.Error("failed to find available filename for failed proposal block", "err", err.Error(), "reason", reason)
-		return
-	}
 
 	if err := types.SaveBlockToFile(debugDir, filename, block); err != nil {
 		blockExec.logger.Error("failed to save failed proposal block", "err", err.Error(), "reason", reason)
