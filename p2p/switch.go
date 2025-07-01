@@ -401,7 +401,26 @@ func (sw *Switch) getPeerAddress(peer Peer) (*NetAddress, error) {
 // TODO: handle graceful disconnects.
 func (sw *Switch) StopPeerGracefully(peer Peer, reactorName string) {
 	sw.Logger.Info("Stopping peer gracefully")
-	sw.stopAndRemovePeer(peer, nil)
+
+	reactorCount := 0
+	for _, r := range sw.reactors {
+		peerSet := sw.peerSetForReactor(r)
+		if peerSet != nil && peerSet.Has(peer.ID()) {
+			reactorCount++
+		}
+
+		if r.String() == reactorName {
+			r.RemovePeer(peer, nil)
+			if peerSet != nil {
+				peerSet.Remove(peer)
+			}
+			reactorCount--
+		}
+	}
+
+	if reactorCount == 0 {
+		sw.stopAndRemovePeer(peer, nil)
+	}
 }
 
 func (sw *Switch) stopAndRemovePeer(peer Peer, reason interface{}) {
@@ -410,11 +429,16 @@ func (sw *Switch) stopAndRemovePeer(peer Peer, reason interface{}) {
 		sw.Logger.Error("error while stopping peer", "error", err) // TODO: should return error to be handled accordingly
 	}
 	schema.WritePeerUpdate(sw.traceClient, string(peer.ID()), schema.PeerDisconnect, fmt.Sprintf("%v", reason))
-	for _, reactor := range sw.reactors {
-		reactor.RemovePeer(peer, reason)
-		chs := reactor.GetChannels()
-		if len(chs) > 0 {
-			_ = sw.peerSetByChID[chs[0].ID].Remove(peer) // TODO(tzdybal): error handling
+	if reason != nil {
+		for _, reactor := range sw.reactors {
+			reactor.RemovePeer(peer, reason)
+			chs := reactor.GetChannels()
+			if len(chs) > 0 {
+				if !sw.peerSetByChID[chs[0].ID].Remove(peer) {
+					sw.Logger.Debug("error on peer removal for reactor", "peer", peer.ID(), "reactor", reactor.String())
+				}
+
+			}
 		}
 	}
 
@@ -427,7 +451,7 @@ func (sw *Switch) stopAndRemovePeer(peer Peer, reason interface{}) {
 	} else {
 		// Removal of the peer has failed. The function above sets a flag within the peer to mark this.
 		// We keep this message here as information to the developer.
-		sw.Logger.Debug("error on peer removal", ",", "peer", peer.ID())
+		sw.Logger.Debug("error on peer removal", "peer", peer.ID())
 	}
 }
 
@@ -907,25 +931,32 @@ func (sw *Switch) addPeer(p Peer) error {
 			continue
 		}
 
-		chs := reactor.GetChannels()
-		if len(chs) > 0 { // for each reactor there is exactly one PeerSet, no need to iterate over channels
-			if err := sw.peerSetByChID[chs[0].ID].Add(p); err != nil {
+		peerSet := sw.peerSetForReactor(reactor)
+		if peerSet != nil { // for each reactor there is exactly one PeerSet, no need to iterate over channels
+			if err := peerSet.Add(p); err != nil {
 				if errors.Is(err, ErrPeerRemoval{}) {
-					sw.Logger.Error("Error starting peer ",
-						" err ", "Peer has already errored and removal was attempted.",
+					sw.Logger.Error("Error starting peer",
+						"err", "Peer has already errored and removal was attempted",
 						"peer", p.ID())
 				}
-				return err // TODO(tzdybal): this should never happen, right?
+				return err
 			}
 			peerWanted = true
 		}
 	}
 	if !peerWanted {
 		sw.Logger.Error("Peer not wanted by any reactor", "peer", p)
-		sw.StopPeerGracefully(p, "TODO(tzdybal)")
+		sw.StopPeerGracefully(p, "")
 	}
 
 	sw.Logger.Debug("Added peer", "peer", p)
 
+	return nil
+}
+
+func (sw *Switch) peerSetForReactor(r Reactor) *PeerSet {
+	if len(r.GetChannels()) > 0 {
+		return sw.peerSetByChID[r.GetChannels()[0].ID]
+	}
 	return nil
 }
