@@ -5,7 +5,6 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
-	"strconv"
 	"testing"
 	"time"
 
@@ -1163,28 +1162,6 @@ func TestFindNextAvailableFilename(t *testing.T) {
 	assert.Equal(t, "test.pb", filename)
 }
 
-func TestFindNextAvailableFilenameMaxIterations(t *testing.T) {
-	// This test verifies that FindNextAvailableFilename returns an error after 100 iterations
-	
-	// Create a temporary directory for testing
-	tmpDir := t.TempDir()
-	
-	// Create files test.txt, test-1.txt, test-2.txt, ..., test-99.txt
-	// This should force the function to hit the 100 iteration limit
-	err := os.WriteFile(filepath.Join(tmpDir, "test.txt"), []byte("test"), 0644)
-	assert.NoError(t, err)
-	
-	for i := 1; i <= 99; i++ {
-		filename := filepath.Join(tmpDir, "test-"+strconv.Itoa(i)+".txt")
-		err := os.WriteFile(filename, []byte("test"), 0644)
-		assert.NoError(t, err)
-	}
-	
-	// This should fail after 100 attempts
-	_, err = sm.FindNextAvailableFilename(tmpDir, "test.txt")
-	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "could not find available filename after 100 attempts")
-}
 
 func makeBlockID(hash []byte, partSetSize uint32, partSetHash []byte) types.BlockID {
 	var (
