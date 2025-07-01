@@ -843,7 +843,7 @@ func TestTxMempool_IsRejectedTx(t *testing.T) {
 
 		// Try to add the transaction - it should be rejected
 		err := txmp.CheckTx(rejectedTx, nil, mempool.TxInfo{})
-		require.NoError(t, err) // CheckTx method itself doesn't return error for app rejection
+		require.NoError(t, err) // PostCheck rejection does not throw an error
 
 		// The transaction should now be marked as rejected
 		require.True(t, txmp.IsRejectedTx(txKey), "Transaction rejected by CheckTx should appear in IsRejectedTx")
