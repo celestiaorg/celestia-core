@@ -922,7 +922,7 @@ func FindNextAvailableFilename(dir, baseFilename string) (string, error) {
 	filename := baseFilename
 	suffix := 0
 	maxIterations := 100
-	
+
 	for i := 0; i < maxIterations; i++ {
 		fullPath := filepath.Join(dir, filename)
 		if _, err := os.Stat(fullPath); os.IsNotExist(err) {
@@ -935,7 +935,7 @@ func FindNextAvailableFilename(dir, baseFilename string) (string, error) {
 		nameWithoutExt := baseFilename[:len(baseFilename)-len(ext)]
 		filename = fmt.Sprintf("%s-%d%s", nameWithoutExt, suffix, ext)
 	}
-	
+
 	return "", fmt.Errorf("could not find available filename after %d attempts", maxIterations)
 }
 
