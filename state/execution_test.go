@@ -1128,7 +1128,6 @@ func stripSignatures(ec *types.ExtendedCommit) {
 func TestFindNextAvailableFilename(t *testing.T) {
 	// This test verifies that FindNextAvailableFilename finds available filenames
 	
-	// Create a temporary directory for testing
 	tmpDir := t.TempDir()
 	
 	// Test case 1: No existing file
