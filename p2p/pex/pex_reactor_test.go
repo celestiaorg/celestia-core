@@ -3,6 +3,7 @@ package pex
 import (
 	"encoding/hex"
 	"fmt"
+	"net"
 	"os"
 	"path/filepath"
 	"testing"
@@ -570,7 +571,9 @@ func TestPEXReactorDialDisconnectedPeerInterval(t *testing.T) {
 	// No need to start sw since crawlPeers is called manually here
 	// since this is a seed node
 
-	peer := mock.NewPeer(nil)
+	// Use a documentation/test IP (192.0.2.1) that should consistently timeout
+	// rather than produce connection refused errors
+	peer := mock.NewPeer(net.ParseIP("192.0.2.1"))
 	addr := peer.SocketAddr()
 
 	err = book.AddAddress(addr, addr)

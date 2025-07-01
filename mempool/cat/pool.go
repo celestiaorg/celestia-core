@@ -655,9 +655,14 @@ func (txmp *TxPool) recheckTransactions() {
 		"height", txmp.height,
 	)
 
+	// Get all transactions currently in the mempool requiring recheck.
+	// This avoids holding the store lock during the CheckTx calls which could
+	// cause a deadlock when handleRecheckResult tries to modify the store.
+	wtxs := txmp.store.getOrderedTxs()
+
 	// Issue CheckTx calls for each remaining transaction, and when all the
 	// rechecks are complete signal watchers that transactions may be available.
-	txmp.store.iterateOrderedTxs(func(wtx *wrappedTx) bool {
+	for _, wtx := range wtxs {
 		// The response for this CheckTx is handled by the default recheckTxCallback.
 		rsp, err := txmp.proxyAppConn.CheckTx(context.Background(), &abci.RequestCheckTx{
 			Tx:   wtx.tx.Tx,
@@ -669,8 +674,7 @@ func (txmp *TxPool) recheckTransactions() {
 		} else {
 			txmp.handleRecheckResult(wtx, rsp)
 		}
-		return true
-	})
+	}
 	_ = txmp.proxyAppConn.Flush(context.Background())
 
 	// When recheck is complete, trigger a notification for more transactions.

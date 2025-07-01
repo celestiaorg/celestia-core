@@ -1,6 +1,7 @@
 package config_test
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -79,5 +80,50 @@ func assertValidConfig(t *testing.T, configFile string) {
 	}
 	for _, e := range elems {
 		assert.Contains(t, configFile, e)
+	}
+}
+
+func TestMempoolTypeTemplate(t *testing.T) {
+	// Test that mempool type is correctly templated and not hardcoded
+	testCases := []struct {
+		name        string
+		mempoolType string
+	}{
+		{"default priority", config.MempoolTypePriority},
+		{"flood", config.MempoolTypeFlood},
+		{"nop", config.MempoolTypeNop},
+		{"cat", config.MempoolTypeCAT},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			// Create test root with config
+			cfg := test.ResetTestRoot(fmt.Sprintf("mempool-type-%s", tc.mempoolType))
+			defer os.RemoveAll(cfg.RootDir)
+
+			// Set mempool type
+			cfg.Mempool.Type = tc.mempoolType
+
+			// Write config using template
+			configFile := filepath.Join(cfg.RootDir, config.DefaultConfigDir, config.DefaultConfigFileName)
+			config.WriteConfigFile(configFile, cfg)
+
+			// Read generated config file
+			data, err := os.ReadFile(configFile)
+			require.NoError(t, err)
+			configContent := string(data)
+
+			// Verify mempool type is correctly rendered
+			expectedLine := fmt.Sprintf("type = \"%s\"", tc.mempoolType)
+			assert.Contains(t, configContent, expectedLine,
+				"Config should contain the correct mempool type")
+
+			// Ensure the hardcoded "priority" is not present when using other types
+			if tc.mempoolType != config.MempoolTypePriority {
+				hardcodedLine := "type = \"priority\""
+				assert.NotContains(t, configContent, hardcodedLine,
+					"Config should not contain hardcoded 'priority' when using different mempool type")
+			}
+		})
 	}
 }

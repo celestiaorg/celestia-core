@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net"
 	"reflect"
+	"sync/atomic"
 	"time"
 
 	"github.com/cosmos/gogoproto/proto"
@@ -67,9 +68,6 @@ type peerConn struct {
 	conn       net.Conn // source connection
 
 	socketAddr *NetAddress
-
-	// cached RemoteIP()
-	ip net.IP
 }
 
 func newPeerConn(
@@ -94,10 +92,6 @@ func (pc peerConn) ID() ID {
 
 // Return the IP from the connection RemoteAddr
 func (pc peerConn) RemoteIP() net.IP {
-	if pc.ip != nil {
-		return pc.ip
-	}
-
 	host, _, err := net.SplitHostPort(pc.conn.RemoteAddr().String())
 	if err != nil {
 		panic(err)
@@ -108,9 +102,7 @@ func (pc peerConn) RemoteIP() net.IP {
 		panic(err)
 	}
 
-	pc.ip = ips[0]
-
-	return pc.ip
+	return ips[0]
 }
 
 // peer implements Peer.
@@ -132,14 +124,18 @@ type peer struct {
 	// User data
 	Data *cmap.CMap
 
-	metrics       *Metrics
-	metricsTicker *time.Ticker
-	mlc           *metricsLabelCache
-
-	// When removal of a peer fails, we set this flag
-	removalAttemptFailed bool
-
+	metrics     *Metrics
+	mlc         *metricsLabelCache
 	traceClient trace.Tracer
+
+	// Atomic fields for thread-safe concurrent access
+	removalAttemptFailed atomic.Bool
+	cachedIP             atomic.Pointer[net.IP]
+
+	// Lifecycle coordination: stopped protects metricsTicker from concurrent access
+	// Once stopped transitions from false->true, no further lifecycle operations occur
+	stopped       atomic.Bool
+	metricsTicker *time.Ticker
 }
 
 type PeerOption func(*peer)
@@ -223,8 +219,12 @@ func (p *peer) OnStart() error {
 
 // FlushStop mimics OnStop but additionally ensures that all successful
 // .Send() calls will get flushed before closing the connection.
-// NOTE: it is not safe to call this method more than once.
+// Thread-safe and idempotent - can be called multiple times safely.
 func (p *peer) FlushStop() {
+	if !p.stopped.CompareAndSwap(false, true) {
+		return // Already stopped
+	}
+
 	p.metricsTicker.Stop()
 	p.BaseService.OnStop()
 	p.mconn.FlushStop() // stop everything and close the conn
@@ -243,7 +243,12 @@ func (p *peer) TraceClient() trace.Tracer {
 }
 
 // OnStop implements BaseService.
+// Thread-safe and idempotent - can be called multiple times safely.
 func (p *peer) OnStop() {
+	if !p.stopped.CompareAndSwap(false, true) {
+		return // Already stopped
+	}
+
 	p.metricsTicker.Stop()
 	p.BaseService.OnStop()
 	if err := p.mconn.Stop(); err != nil { // stop everything and close the conn
@@ -274,16 +279,36 @@ func (p *peer) NodeInfo() NodeInfo {
 	return p.nodeInfo
 }
 
-// HasIPChanged returns true and the new IP if the peer's IP has changed.
-func (p *peer) HasIPChanged() bool {
-	oldIP := p.ip
-	if oldIP == nil {
-		return false
+// RemoteIP returns the IP from the connection RemoteAddr with atomic caching
+func (p *peer) RemoteIP() net.IP {
+	// Fast path: return cached IP if available
+	if cached := p.cachedIP.Load(); cached != nil {
+		return *cached
 	}
-	// Reset the IP so we can get the new one
-	p.ip = nil
+
+	// Slow path: perform DNS lookup and cache result
+	result := p.peerConn.RemoteIP()
+	p.cachedIP.Store(&result)
+	return result
+}
+
+// HasIPChanged returns true if the peer's IP has changed.
+// This method clears the cached IP and compares with a fresh lookup.
+func (p *peer) HasIPChanged() bool {
+	// Get the currently cached IP
+	oldIP := p.cachedIP.Load()
+	if oldIP == nil {
+		return false // No cached IP, so no change detected
+	}
+
+	// Clear the cached IP to force a fresh lookup
+	p.cachedIP.Store(nil)
+
+	// Get the current IP (will perform fresh DNS lookup)
 	newIP := p.RemoteIP()
-	return !oldIP.Equal(newIP)
+
+	// Compare the IPs
+	return !(*oldIP).Equal(newIP)
 }
 
 // SocketAddr returns the address of the socket.
@@ -375,11 +400,11 @@ func (p *peer) CloseConn() error {
 }
 
 func (p *peer) SetRemovalFailed() {
-	p.removalAttemptFailed = true
+	p.removalAttemptFailed.Store(true)
 }
 
 func (p *peer) GetRemovalFailed() bool {
-	return p.removalAttemptFailed
+	return p.removalAttemptFailed.Load()
 }
 
 //---------------------------------------------------
