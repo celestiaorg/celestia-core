@@ -929,7 +929,6 @@ func FindNextAvailableFilename(dir, baseFilename string) (string, error) {
 			// File doesn't exist, we can use this filename
 			return filename, nil
 		}
-		// File exists, try next suffix
 		suffix++
 		// Extract extension and add suffix before it
 		ext := filepath.Ext(baseFilename)
