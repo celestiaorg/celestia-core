@@ -326,7 +326,6 @@ func TestCreateProposalBlock(t *testing.T) {
 	block, _, err := blockExec.CreateProposalBlock(
 		ctx,
 		height,
-		0, // round
 		state,
 		extCommit,
 		proposerAddr,
@@ -404,7 +403,6 @@ func TestMaxProposalBlockSize(t *testing.T) {
 	block, _, err := blockExec.CreateProposalBlock(
 		ctx,
 		height,
-		0, // round
 		state,
 		extCommit,
 		proposerAddr,

@@ -227,7 +227,7 @@ func TestByzantinePrevoteEquivocation(t *testing.T) {
 		proposerAddr := lazyProposer.privValidatorPubKey.Address()
 
 		block, _, err := lazyProposer.blockExec.CreateProposalBlock(
-			ctx, lazyProposer.Height, round, lazyProposer.state, extCommit, proposerAddr)
+			ctx, lazyProposer.Height, lazyProposer.state, extCommit, proposerAddr)
 		require.NoError(t, err)
 		blockParts, err := block.MakePartSet(types.BlockPartSizeBytes)
 		require.NoError(t, err)
