@@ -113,8 +113,13 @@ func (*CListMempool) WasRecentlyEvicted(key types.TxKey) bool {
 	return false
 }
 
+<<<<<<< HEAD
 // WasRecentlyRejected returns false consistently as this implementation does not support transaction rejection.
 func (*CListMempool) WasRecentlyRejected(key types.TxKey) bool {
+=======
+// IsRejectedTx returns false consistently as this implementation does not support transaction rejection.
+func (*CListMempool) IsRejectedTx(key types.TxKey) bool {
+>>>>>>> cb865217 (feat: simplify caching and expose rejected txs in TxStatus (#1838))
 	return false
 }
 
@@ -259,6 +264,7 @@ func (mem *CListMempool) CheckTx(
 	defer mem.updateMtx.RUnlock()
 
 	txSize := len(tx)
+	txKey := tx.Key()
 
 	if err := mem.isFull(txSize); err != nil {
 		mem.metrics.RejectedTxs.Add(1)
@@ -284,12 +290,16 @@ func (mem *CListMempool) CheckTx(
 		return ErrAppConnMempool{Err: err}
 	}
 
+<<<<<<< HEAD
 	if !mem.cache.Push(cachedTx) { // if the transaction already exists in the cache
+=======
+	if !mem.cache.Push(txKey) { // if the transaction already exists in the cache
+>>>>>>> cb865217 (feat: simplify caching and expose rejected txs in TxStatus (#1838))
 		// Record a new sender for a tx we've already seen.
 		// Note it's possible a tx is still in the cache but no longer in the mempool
 		// (eg. after committing a block, txs are removed from mempool but not cache),
 		// so we only record the sender for txs still in the mempool.
-		if memTx := mem.getMemTx(tx.Key()); memTx != nil {
+		if memTx := mem.getMemTx(txKey); memTx != nil {
 			memTx.addSender(txInfo.SenderID)
 			// TODO: consider punishing peer for dups,
 			// its non-trivial since invalid txs can become valid,
@@ -445,9 +455,14 @@ func (mem *CListMempool) resCbFirstTime(
 		if (r.CheckTx.Code == abci.CodeTypeOK) && postCheckErr == nil {
 			// Check mempool isn't full again to reduce the chance of exceeding the
 			// limits.
+<<<<<<< HEAD
 			if err := mem.isFull(len(tx.Tx)); err != nil {
+=======
+			txKey := types.Tx(tx).Key()
+			if err := mem.isFull(len(tx)); err != nil {
+>>>>>>> cb865217 (feat: simplify caching and expose rejected txs in TxStatus (#1838))
 				// remove from cache (mempool might have a space later)
-				mem.cache.Remove(tx)
+				mem.cache.Remove(txKey)
 				// use debug level to avoid spamming logs when traffic is high
 				mem.logger.Debug(err.Error())
 				mem.metrics.RejectedTxs.Add(1)
@@ -455,7 +470,11 @@ func (mem *CListMempool) resCbFirstTime(
 			}
 
 			// Check transaction not already in the mempool
+<<<<<<< HEAD
 			if e, ok := mem.txsMap.Load(tx.Key()); ok {
+=======
+			if e, ok := mem.txsMap.Load(txKey); ok {
+>>>>>>> cb865217 (feat: simplify caching and expose rejected txs in TxStatus (#1838))
 				memTx := e.(*clist.CElement).Value.(*mempoolTx)
 				memTx.addSender(txInfo.SenderID)
 				mem.logger.Debug(
@@ -497,7 +516,8 @@ func (mem *CListMempool) resCbFirstTime(
 
 			if !mem.config.KeepInvalidTxsInCache {
 				// remove from cache (it might be good later)
-				mem.cache.Remove(tx)
+				txKey := types.Tx(tx).Key()
+				mem.cache.Remove(txKey)
 			}
 		}
 
@@ -525,11 +545,16 @@ func (mem *CListMempool) resCbRecheck(tx types.Tx, res *abci.ResponseCheckTx) {
 	if (res.Code != abci.CodeTypeOK) || postCheckErr != nil {
 		// Tx became invalidated due to newly committed block.
 		mem.logger.Debug("tx is no longer valid", "tx", tx.Hash(), "res", res, "postCheckErr", postCheckErr)
-		if err := mem.RemoveTxByKey(tx.Key()); err != nil {
+		txKey := tx.Key()
+		if err := mem.RemoveTxByKey(txKey); err != nil {
 			mem.logger.Debug("Transaction could not be removed from mempool", "err", err)
 		}
 		if !mem.config.KeepInvalidTxsInCache {
+<<<<<<< HEAD
 			mem.cache.Remove(tx.ToCachedTx())
+=======
+			mem.cache.Remove(txKey)
+>>>>>>> cb865217 (feat: simplify caching and expose rejected txs in TxStatus (#1838))
 			mem.metrics.EvictedTxs.Add(1)
 		}
 	}
@@ -634,12 +659,13 @@ func (mem *CListMempool) Update(
 
 	mem.metrics.SuccessfulTxs.Add(float64(len(txs)))
 	for i, tx := range txs {
+		txKey := tx.Key()
 		if txResults[i].Code == abci.CodeTypeOK {
 			// Add valid committed tx to the cache (if missing).
-			_ = mem.cache.Push(tx)
+			_ = mem.cache.Push(txKey)
 		} else if !mem.config.KeepInvalidTxsInCache {
 			// Allow invalid transactions to be resubmitted.
-			mem.cache.Remove(tx)
+			mem.cache.Remove(txKey)
 		}
 
 		// Remove committed tx from the mempool.
@@ -652,9 +678,9 @@ func (mem *CListMempool) Update(
 		// Mempool after:
 		//   100
 		// https://github.com/tendermint/tendermint/issues/3322.
-		if err := mem.RemoveTxByKey(tx.Key()); err != nil {
+		if err := mem.RemoveTxByKey(txKey); err != nil {
 			mem.logger.Debug("Committed transaction not in local mempool (not an error)",
-				"key", tx.Key(),
+				"key", txKey,
 				"error", err.Error())
 		}
 	}

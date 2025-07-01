@@ -1,13 +1,13 @@
 package cat
 
 import (
-	"container/list"
 	"time"
 
 	tmsync "github.com/cometbft/cometbft/libs/sync"
 	"github.com/cometbft/cometbft/types"
 )
 
+<<<<<<< HEAD
 // LRUTxCache maintains a thread-safe LRU cache of raw transactions. The cache
 // only stores the hash of the raw transaction.
 // NOTE: This has been copied from mempool/cache with the main difference of using
@@ -95,6 +95,8 @@ func (c *LRUTxCache) Has(txKey types.TxKey) bool {
 	return ok
 }
 
+=======
+>>>>>>> cb865217 (feat: simplify caching and expose rejected txs in TxStatus (#1838))
 // SeenTxSet records transactions that have been
 // seen by other peers but not yet by us
 type SeenTxSet struct {

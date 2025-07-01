@@ -24,9 +24,15 @@ func (emptyMempool) CheckTx(types.Tx, func(*abci.ResponseCheckTx), mempl.TxInfo)
 	return nil
 }
 
+<<<<<<< HEAD
 func (emptyMempool) GetTxByKey(types.TxKey) (*types.CachedTx, bool) { return nil, false }
 func (emptyMempool) WasRecentlyEvicted(types.TxKey) bool            { return false }
 func (emptyMempool) WasRecentlyRejected(types.TxKey) bool           { return false }
+=======
+func (emptyMempool) GetTxByKey(types.TxKey) (types.Tx, bool) { return nil, false }
+func (emptyMempool) WasRecentlyEvicted(types.TxKey) bool     { return false }
+func (emptyMempool) IsRejectedTx(types.TxKey) bool           { return false }
+>>>>>>> cb865217 (feat: simplify caching and expose rejected txs in TxStatus (#1838))
 
 func (txmp emptyMempool) RemoveTxByKey(types.TxKey) error {
 	return nil

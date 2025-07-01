@@ -1,7 +1,6 @@
 package mempool
 
 import (
-	"crypto/sha256"
 	"fmt"
 	"math"
 
@@ -111,10 +110,17 @@ type Mempool interface {
 	// Used in the RPC endpoint: TxStatus.
 	WasRecentlyEvicted(key types.TxKey) bool
 
+<<<<<<< HEAD
 	// WasRecentlyRejected returns true if the tx was rejected from the mempool and exists in the
 	// rejected cache.
 	// Used in the RPC endpoint: TxStatus.
 	WasRecentlyRejected(key types.TxKey) bool
+=======
+	// IsRejectedTx returns true if the tx was rejected from the mempool and exists in the
+	// rejected cache.
+	// Used in the RPC endpoint: TxStatus.
+	IsRejectedTx(key types.TxKey) bool
+>>>>>>> cb865217 (feat: simplify caching and expose rejected txs in TxStatus (#1838))
 }
 
 // PreCheckFunc is an optional filter executed before CheckTx and rejects
@@ -160,6 +166,3 @@ func PostCheckMaxGas(maxGas int64) PostCheckFunc {
 		return nil
 	}
 }
-
-// TxKey is the fixed length array key used as an index.
-type TxKey [sha256.Size]byte

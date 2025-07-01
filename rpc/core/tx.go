@@ -224,11 +224,16 @@ func (env *Environment) ProveShares(
 // with the transaction's height and index if committed, or its pending, evicted, or unknown status.
 // It also includes the execution code and log for failed txs.
 func (env *Environment) TxStatus(ctx *rpctypes.Context, hash []byte) (*ctypes.ResultTxStatus, error) {
-
 	// Check if the tx has been committed
 	txInfo := env.BlockStore.LoadTxInfo(hash)
 	if txInfo != nil {
-		return &ctypes.ResultTxStatus{Height: txInfo.Height, Index: txInfo.Index, ExecutionCode: txInfo.Code, Error: txInfo.Error, Status: TxStatusCommitted}, nil
+		return &ctypes.ResultTxStatus{
+			Height:        txInfo.Height,
+			Index:         txInfo.Index,
+			ExecutionCode: txInfo.Code,
+			Error:         txInfo.Error,
+			Status:        TxStatusCommitted,
+		}, nil
 	}
 
 	// Get the tx key from the hash
@@ -249,13 +254,22 @@ func (env *Environment) TxStatus(ctx *rpctypes.Context, hash []byte) (*ctypes.Re
 		return &ctypes.ResultTxStatus{Status: TxStatusEvicted}, nil
 	}
 
+<<<<<<< HEAD
 	// Check if the tx was rejected (this is only the case for recheck-tx)
 	isRejected := env.Mempool.WasRecentlyRejected(txKey)
+=======
+	// Check if the tx is rejected
+	isRejected := env.Mempool.IsRejectedTx(txKey)
+>>>>>>> cb865217 (feat: simplify caching and expose rejected txs in TxStatus (#1838))
 	if isRejected {
 		return &ctypes.ResultTxStatus{Status: TxStatusRejected}, nil
 	}
 
+<<<<<<< HEAD
 	// If the tx is not in the mempool, evicted, or committed, return unknown
+=======
+	// If the tx is not in the mempool, evicted, rejected or committed, return unknown
+>>>>>>> cb865217 (feat: simplify caching and expose rejected txs in TxStatus (#1838))
 	return &ctypes.ResultTxStatus{Status: TxStatusUnknown}, nil
 }
 
