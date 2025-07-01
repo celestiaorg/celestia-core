@@ -799,7 +799,11 @@ func TestSwitchInitPeerIsNotCalledBeforeRemovePeer(t *testing.T) {
 
 	// make switch
 	sw := MakeSwitch(cfg, 1, func(i int, sw *Switch) *Switch {
-		sw.AddReactor("mock", reactor)
+		sw.AddReactor("mockReactor", reactor)
+		sw.AddReactor("foo", NewTestReactor([]*conn.ChannelDescriptor{
+			{ID: byte(0x00), Priority: 10},
+			{ID: byte(0x01), Priority: 10},
+		}, false))
 		return sw
 	})
 	err := sw.Start()
@@ -821,7 +825,7 @@ func TestSwitchInitPeerIsNotCalledBeforeRemovePeer(t *testing.T) {
 	for {
 		time.Sleep(20 * time.Millisecond)
 		if peer := sw.Peers().Get(rp.ID()); peer != nil {
-			go sw.StopPeerForError(peer, "test", "mock")
+			go sw.StopPeerForError(peer, "test", "mockReactor")
 			break
 		}
 	}
