@@ -714,7 +714,7 @@ OUTER_LOOP:
 			if prs.ProposalBlockParts == nil {
 				blockMeta := conR.conS.blockStore.LoadBlockMeta(prs.Height)
 				if blockMeta == nil {
-					heightLogger.Error("Failed to load block meta",
+					heightLogger.Debug("Failed to load block meta",
 						"blockstoreBase", blockStoreBase, "blockstoreHeight", conR.conS.blockStore.Height())
 					time.Sleep(conR.conS.config.PeerGossipSleepDuration)
 				} else {
@@ -800,7 +800,7 @@ func (conR *Reactor) gossipDataForCatchup(logger log.Logger, rs *cstypes.RoundSt
 		// Ensure that the peer's PartSetHeader is correct
 		blockMeta := conR.conS.blockStore.LoadBlockMeta(prs.Height)
 		if blockMeta == nil {
-			logger.Error("Failed to load block meta", "ourHeight", rs.Height,
+			logger.Debug("Failed to load block meta", "ourHeight", rs.Height,
 				"blockstoreBase", conR.conS.blockStore.Base(), "blockstoreHeight", conR.conS.blockStore.Height())
 			time.Sleep(conR.conS.config.PeerGossipSleepDuration)
 			return
