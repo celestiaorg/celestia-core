@@ -917,8 +917,8 @@ func getLogs(responses []*abci.ExecTxResult) []string {
 	return logs
 }
 
-// FindAvailableFilename finds an available filename by adding suffix if file already exists
-func FindAvailableFilename(dir, baseFilename string) string {
+// findAvailableFilename finds an available filename by adding suffix if file already exists
+func findAvailableFilename(dir, baseFilename string) string {
 	filename := baseFilename
 	suffix := 0
 	for {
@@ -950,7 +950,7 @@ func (blockExec *BlockExecutor) saveFailedProposalBlock(state State, block *type
 		reason,
 	)
 
-	filename := FindAvailableFilename(debugDir, baseFilename)
+	filename := findAvailableFilename(debugDir, baseFilename)
 
 	if err := types.SaveBlockToFile(debugDir, filename, block); err != nil {
 		blockExec.logger.Error("failed to save failed proposal block", "err", err.Error(), "reason", reason)

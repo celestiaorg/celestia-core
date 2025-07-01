@@ -1125,65 +1125,49 @@ func stripSignatures(ec *types.ExtendedCommit) {
 	}
 }
 
-func TestFindAvailableFilename(t *testing.T) {
+func TestSaveFailedProposalBlockAvoidDuplicates(t *testing.T) {
+	// This test verifies that saveFailedProposalBlock avoids overwriting files
+	// by adding suffixes when files with the same name already exist
+	
 	// Create a temporary directory for testing
 	tmpDir := t.TempDir()
-
-	tests := []struct {
-		name             string
-		baseFilename     string
-		existingFiles    []string
-		expectedFilename string
-	}{
-		{
-			name:             "no existing file",
-			baseFilename:     "test.pb",
-			existingFiles:    []string{},
-			expectedFilename: "test.pb",
-		},
-		{
-			name:             "one existing file",
-			baseFilename:     "test.pb",
-			existingFiles:    []string{"test.pb"},
-			expectedFilename: "test-1.pb",
-		},
-		{
-			name:             "multiple existing files",
-			baseFilename:     "test.pb",
-			existingFiles:    []string{"test.pb", "test-1.pb", "test-2.pb"},
-			expectedFilename: "test-3.pb",
-		},
-		{
-			name:             "complex filename with extension",
-			baseFilename:     "chain-123-error_failed_proposal.pb",
-			existingFiles:    []string{"chain-123-error_failed_proposal.pb"},
-			expectedFilename: "chain-123-error_failed_proposal-1.pb",
-		},
-		{
-			name:             "filename without extension",
-			baseFilename:     "testfile",
-			existingFiles:    []string{"testfile"},
-			expectedFilename: "testfile-1",
-		},
+	
+	// Create a mock logger
+	logger := log.NewTestingLogger(t)
+	
+	// Create a block executor with the temporary directory
+	blockExec := &sm.BlockExecutor{
+		rootDir: tmpDir,
+		logger:  logger,
 	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			// Create existing files
-			for _, filename := range tt.existingFiles {
-				filePath := filepath.Join(tmpDir, filename)
-				require.NoError(t, os.WriteFile(filePath, []byte("test"), 0644))
-			}
-
-			// Test the function
-			result := sm.FindAvailableFilename(tmpDir, tt.baseFilename)
-			assert.Equal(t, tt.expectedFilename, result)
-
-			// Clean up for next test
-			for _, filename := range tt.existingFiles {
-				os.Remove(filepath.Join(tmpDir, filename))
-			}
-		})
+	
+	// Create test data
+	state := sm.State{ChainID: "test-chain"}
+	block := &types.Block{
+		Header: types.Header{Height: 1},
+	}
+	
+	// First call should create the original file
+	blockExec.saveFailedProposalBlock(state, block, "test_error")
+	
+	// Second call should create a file with suffix -1
+	blockExec.saveFailedProposalBlock(state, block, "test_error")
+	
+	// Third call should create a file with suffix -2
+	blockExec.saveFailedProposalBlock(state, block, "test_error")
+	
+	// Verify that all three files exist
+	debugDir := filepath.Join(tmpDir, "data", "debug")
+	files := []string{
+		"test-chain-1-test_error_failed_proposal.pb",
+		"test-chain-1-test_error_failed_proposal-1.pb",
+		"test-chain-1-test_error_failed_proposal-2.pb",
+	}
+	
+	for _, filename := range files {
+		filePath := filepath.Join(debugDir, filename)
+		_, err := os.Stat(filePath)
+		assert.NoError(t, err, "Expected file %s to exist", filename)
 	}
 }
 
