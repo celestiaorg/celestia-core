@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strconv"
 	"testing"
 	"time"
 
@@ -1125,50 +1126,64 @@ func stripSignatures(ec *types.ExtendedCommit) {
 	}
 }
 
-func TestSaveFailedProposalBlockAvoidDuplicates(t *testing.T) {
-	// This test verifies that saveFailedProposalBlock avoids overwriting files
-	// by adding suffixes when files with the same name already exist
+func TestFindNextAvailableFilename(t *testing.T) {
+	// This test verifies that FindNextAvailableFilename finds available filenames
 	
 	// Create a temporary directory for testing
 	tmpDir := t.TempDir()
 	
-	// Create a mock logger
-	logger := log.NewTestingLogger(t)
+	// Test case 1: No existing file
+	filename, err := sm.FindNextAvailableFilename(tmpDir, "test.txt")
+	assert.NoError(t, err)
+	assert.Equal(t, "test.txt", filename)
 	
-	// Create a block executor with the temporary directory
-	blockExec := &sm.BlockExecutor{
-		rootDir: tmpDir,
-		logger:  logger,
+	// Create the first file
+	filePath := filepath.Join(tmpDir, "test.txt")
+	err = os.WriteFile(filePath, []byte("test"), 0644)
+	assert.NoError(t, err)
+	
+	// Test case 2: One file exists, should return test-1.txt
+	filename, err = sm.FindNextAvailableFilename(tmpDir, "test.txt")
+	assert.NoError(t, err)
+	assert.Equal(t, "test-1.txt", filename)
+	
+	// Create the second file
+	filePath = filepath.Join(tmpDir, "test-1.txt")
+	err = os.WriteFile(filePath, []byte("test"), 0644)
+	assert.NoError(t, err)
+	
+	// Test case 3: Two files exist, should return test-2.txt
+	filename, err = sm.FindNextAvailableFilename(tmpDir, "test.txt")
+	assert.NoError(t, err)
+	assert.Equal(t, "test-2.txt", filename)
+	
+	// Test case 4: Test with different extension
+	filename, err = sm.FindNextAvailableFilename(tmpDir, "test.pb")
+	assert.NoError(t, err)
+	assert.Equal(t, "test.pb", filename)
+}
+
+func TestFindNextAvailableFilenameMaxIterations(t *testing.T) {
+	// This test verifies that FindNextAvailableFilename returns an error after 100 iterations
+	
+	// Create a temporary directory for testing
+	tmpDir := t.TempDir()
+	
+	// Create files test.txt, test-1.txt, test-2.txt, ..., test-99.txt
+	// This should force the function to hit the 100 iteration limit
+	err := os.WriteFile(filepath.Join(tmpDir, "test.txt"), []byte("test"), 0644)
+	assert.NoError(t, err)
+	
+	for i := 1; i <= 99; i++ {
+		filename := filepath.Join(tmpDir, "test-"+strconv.Itoa(i)+".txt")
+		err := os.WriteFile(filename, []byte("test"), 0644)
+		assert.NoError(t, err)
 	}
 	
-	// Create test data
-	state := sm.State{ChainID: "test-chain"}
-	block := &types.Block{
-		Header: types.Header{Height: 1},
-	}
-	
-	// First call should create the original file
-	blockExec.saveFailedProposalBlock(state, block, "test_error")
-	
-	// Second call should create a file with suffix -1
-	blockExec.saveFailedProposalBlock(state, block, "test_error")
-	
-	// Third call should create a file with suffix -2
-	blockExec.saveFailedProposalBlock(state, block, "test_error")
-	
-	// Verify that all three files exist
-	debugDir := filepath.Join(tmpDir, "data", "debug")
-	files := []string{
-		"test-chain-1-test_error_failed_proposal.pb",
-		"test-chain-1-test_error_failed_proposal-1.pb",
-		"test-chain-1-test_error_failed_proposal-2.pb",
-	}
-	
-	for _, filename := range files {
-		filePath := filepath.Join(debugDir, filename)
-		_, err := os.Stat(filePath)
-		assert.NoError(t, err, "Expected file %s to exist", filename)
-	}
+	// This should fail after 100 attempts
+	_, err = sm.FindNextAvailableFilename(tmpDir, "test.txt")
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "could not find available filename after 100 attempts")
 }
 
 func makeBlockID(hash []byte, partSetSize uint32, partSetHash []byte) types.BlockID {

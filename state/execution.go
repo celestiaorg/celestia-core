@@ -917,15 +917,17 @@ func getLogs(responses []*abci.ExecTxResult) []string {
 	return logs
 }
 
-// findAvailableFilename finds an available filename by adding suffix if file already exists
-func findAvailableFilename(dir, baseFilename string) string {
+// FindNextAvailableFilename finds an available filename by adding suffix if file already exists
+func FindNextAvailableFilename(dir, baseFilename string) (string, error) {
 	filename := baseFilename
 	suffix := 0
-	for {
+	maxIterations := 100
+	
+	for i := 0; i < maxIterations; i++ {
 		fullPath := filepath.Join(dir, filename)
 		if _, err := os.Stat(fullPath); os.IsNotExist(err) {
 			// File doesn't exist, we can use this filename
-			return filename
+			return filename, nil
 		}
 		// File exists, try next suffix
 		suffix++
@@ -934,6 +936,8 @@ func findAvailableFilename(dir, baseFilename string) string {
 		nameWithoutExt := baseFilename[:len(baseFilename)-len(ext)]
 		filename = fmt.Sprintf("%s-%d%s", nameWithoutExt, suffix, ext)
 	}
+	
+	return "", fmt.Errorf("could not find available filename after %d attempts", maxIterations)
 }
 
 // saveFailedProposalBlock saves a failed proposal block to the debug directory
@@ -950,7 +954,11 @@ func (blockExec *BlockExecutor) saveFailedProposalBlock(state State, block *type
 		reason,
 	)
 
-	filename := findAvailableFilename(debugDir, baseFilename)
+	filename, err := FindNextAvailableFilename(debugDir, baseFilename)
+	if err != nil {
+		blockExec.logger.Error("failed to find available filename for failed proposal block", "err", err.Error(), "reason", reason)
+		return
+	}
 
 	if err := types.SaveBlockToFile(debugDir, filename, block); err != nil {
 		blockExec.logger.Error("failed to save failed proposal block", "err", err.Error(), "reason", reason)
