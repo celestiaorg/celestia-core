@@ -542,7 +542,7 @@ func TestPEXReactorDialPeer(t *testing.T) {
 	assert.Equal(t, 1, pexR.AttemptsToDial(addr))
 
 	if !testing.Short() {
-		time.Sleep(3 * time.Second)
+		time.Sleep(30 * time.Second)
 
 		// 3rd attempt
 		err = pexR.dialPeer(addr)
@@ -550,6 +550,54 @@ func TestPEXReactorDialPeer(t *testing.T) {
 
 		assert.Equal(t, 2, pexR.AttemptsToDial(addr))
 	}
+}
+
+func TestPEXReactorDialDisconnectedPeerInterval(t *testing.T) {
+	// Let this test run in parallel with other tests
+	// since we have to wait for 30s
+	t.Parallel()
+
+	// Create a reactor and address book
+	dir, err := os.MkdirTemp("", "pex_reactor")
+	require.Nil(t, err)
+	defer os.RemoveAll(dir)
+
+	pexR, book := createReactor(&ReactorConfig{SeedMode: true})
+	defer teardownReactor(book)
+
+	sw := createSwitchAndAddReactors(pexR)
+	sw.SetAddrBook(book)
+	// No need to start sw since crawlPeers is called manually here
+	// since this is a seed node
+
+	peer := mock.NewPeer(nil)
+	addr := peer.SocketAddr()
+
+	err = book.AddAddress(addr, addr)
+	require.NoError(t, err)
+
+	assert.True(t, book.HasAddress(addr))
+
+	// First dial attempt should fail since it's a mock peer
+	err = pexR.dialPeer(addr)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "timeout")
+	assert.Equal(t, 1, pexR.AttemptsToDial(addr))
+
+	// Try again immediately - should be skipped due to 30s wait
+	err = pexR.dialPeer(addr)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "too early to dial")
+	assert.Equal(t, 1, pexR.AttemptsToDial(addr))
+
+	// Wait for 30s
+	time.Sleep(30 * time.Second)
+
+	// Try again after backoff
+	err = pexR.dialPeer(addr)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "timeout")
+	assert.Equal(t, 2, pexR.AttemptsToDial(addr))
 }
 
 func assertPeersWithTimeout(
@@ -712,5 +760,73 @@ func TestPexVectors(t *testing.T) {
 		require.NoError(t, err)
 
 		require.Equal(t, tc.expBytes, hex.EncodeToString(bz), tc.testName)
+	}
+}
+
+func TestPEXReactorFallsBackToSeedsWhenAddressBookIsEmpty(t *testing.T) {
+	dir, err := os.MkdirTemp("", "pex_reactor")
+	require.Nil(t, err)
+	defer os.RemoveAll(dir)
+
+	// Create a seed node
+	seed := testCreateSeed(dir, 0, []*p2p.NetAddress{}, []*p2p.NetAddress{})
+	require.NoError(t, seed.Start())
+	defer seed.Stop() //nolint:errcheck // ignore for tests
+
+	// Create a reactor with the seed configured in its config
+	// Doing this manually so we can have access to the address book
+	pexR, book := createReactor(&ReactorConfig{
+		Seeds: []string{seed.NetAddress().String()},
+	})
+	defer teardownReactor(book)
+
+	// Create and start the switch
+	sw := createSwitchAndAddReactors(pexR)
+	sw.SetAddrBook(book)
+	err = sw.Start()
+	require.NoError(t, err)
+	defer sw.Stop() //nolint:errcheck // ignore for tests
+
+	// Address book should be empty
+	assert.Equal(t, 0, len(book.GetSelection()))
+
+	// Wait for the reactor to attempt to dial the seed
+	time.Sleep(100 * time.Millisecond)
+
+	// Verify that we connected to the seed
+	outbound, inbound, _ := sw.NumPeers()
+	assert.Equal(t, 1, outbound+inbound, "Should have connected to the seed")
+	assert.True(t, sw.Peers().Has(seed.NodeInfo().ID()), "Should have connected to the seed")
+}
+
+func TestPEXReactorWhenAddressBookIsSmallerThanMaxDials(t *testing.T) {
+	dir, err := os.MkdirTemp("", "pex_reactor")
+	require.Nil(t, err)
+	defer os.RemoveAll(dir)
+
+	pexR, book := createReactor(&ReactorConfig{})
+	defer teardownReactor(book)
+
+	sw := createSwitchAndAddReactors(pexR)
+	sw.SetAddrBook(book)
+
+	peers := make([]*p2p.NetAddress, 3)
+	for i := 0; i < 3; i++ {
+		peer := mock.NewPeer(nil)
+		peerAddr := peer.SocketAddr()
+		err = book.AddAddress(peerAddr, peerAddr)
+		require.NoError(t, err)
+		peers[i] = peerAddr
+	}
+
+	pexR.SetEnsurePeersPeriod(1 * time.Millisecond)
+
+	pexR.ensurePeers(true)
+
+	time.Sleep(2 * time.Second)
+
+	// check that we dialed all the peers
+	for _, peer := range peers {
+		assert.Equal(t, 1, pexR.AttemptsToDial(peer))
 	}
 }
