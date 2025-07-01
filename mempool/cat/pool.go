@@ -344,9 +344,6 @@ func (txmp *TxPool) TryAddNewTx(tx types.Tx, key types.TxKey, txInfo mempool.TxI
 		return rsp, err
 	}
 	if rsp.Code != abci.CodeTypeOK {
-		if txmp.config.KeepInvalidTxsInCache {
-			txmp.rejectedTxCache.Push(key)
-		}
 		txmp.rejectedTxCache.Push(key)
 		txmp.metrics.FailedTxs.Add(1)
 		return rsp, fmt.Errorf("application rejected transaction with code %d (Log: %s)", rsp.Code, rsp.Log)
@@ -360,9 +357,6 @@ func (txmp *TxPool) TryAddNewTx(tx types.Tx, key types.TxKey, txInfo mempool.TxI
 	// Perform the post check
 	err = txmp.postCheck(wtx.tx, rsp)
 	if err != nil {
-		if txmp.config.KeepInvalidTxsInCache {
-			txmp.rejectedTxCache.Push(key)
-		}
 		txmp.rejectedTxCache.Push(key)
 		txmp.metrics.FailedTxs.Add(1)
 		return rsp, fmt.Errorf("rejected bad transaction after post check: %w", err)
