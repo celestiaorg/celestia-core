@@ -917,26 +917,21 @@ func getLogs(responses []*abci.ExecTxResult) []string {
 	return logs
 }
 
-// FindNextAvailableFilename finds an available filename by adding suffix if file already exists
+// FindNextAvailableFilename finds an available filename by adding timestamp if file already exists
 func FindNextAvailableFilename(dir, baseFilename string) (string, error) {
-	filename := baseFilename
-	suffix := 0
-	maxIterations := 100
-
-	for i := 0; i < maxIterations; i++ {
-		fullPath := filepath.Join(dir, filename)
-		if _, err := os.Stat(fullPath); os.IsNotExist(err) {
-			// File doesn't exist, we can use this filename
-			return filename, nil
-		}
-		suffix++
-		// Extract extension and add suffix before it
-		ext := filepath.Ext(baseFilename)
-		nameWithoutExt := baseFilename[:len(baseFilename)-len(ext)]
-		filename = fmt.Sprintf("%s-%d%s", nameWithoutExt, suffix, ext)
+	fullPath := filepath.Join(dir, baseFilename)
+	if _, err := os.Stat(fullPath); os.IsNotExist(err) {
+		// File doesn't exist, we can use this filename
+		return baseFilename, nil
 	}
 
-	return "", fmt.Errorf("could not find available filename after %d attempts", maxIterations)
+	// File exists, add timestamp suffix
+	ext := filepath.Ext(baseFilename)
+	nameWithoutExt := baseFilename[:len(baseFilename)-len(ext)]
+	timestamp := time.Now().UnixMilli()
+	filename := fmt.Sprintf("%s-%d%s", nameWithoutExt, timestamp, ext)
+
+	return filename, nil
 }
 
 // saveFailedProposalBlock saves a failed proposal block to the debug directory
