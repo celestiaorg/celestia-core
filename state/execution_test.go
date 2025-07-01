@@ -3,6 +3,8 @@ package state_test
 import (
 	"context"
 	"errors"
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -1120,6 +1122,68 @@ func stripSignatures(ec *types.ExtendedCommit) {
 		commitSig.Extension = nil
 		commitSig.ExtensionSignature = nil
 		ec.ExtendedSignatures[i] = commitSig
+	}
+}
+
+func TestFindAvailableFilename(t *testing.T) {
+	// Create a temporary directory for testing
+	tmpDir := t.TempDir()
+
+	tests := []struct {
+		name             string
+		baseFilename     string
+		existingFiles    []string
+		expectedFilename string
+	}{
+		{
+			name:             "no existing file",
+			baseFilename:     "test.pb",
+			existingFiles:    []string{},
+			expectedFilename: "test.pb",
+		},
+		{
+			name:             "one existing file",
+			baseFilename:     "test.pb",
+			existingFiles:    []string{"test.pb"},
+			expectedFilename: "test-1.pb",
+		},
+		{
+			name:             "multiple existing files",
+			baseFilename:     "test.pb",
+			existingFiles:    []string{"test.pb", "test-1.pb", "test-2.pb"},
+			expectedFilename: "test-3.pb",
+		},
+		{
+			name:             "complex filename with extension",
+			baseFilename:     "chain-123-error_failed_proposal.pb",
+			existingFiles:    []string{"chain-123-error_failed_proposal.pb"},
+			expectedFilename: "chain-123-error_failed_proposal-1.pb",
+		},
+		{
+			name:             "filename without extension",
+			baseFilename:     "testfile",
+			existingFiles:    []string{"testfile"},
+			expectedFilename: "testfile-1",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Create existing files
+			for _, filename := range tt.existingFiles {
+				filePath := filepath.Join(tmpDir, filename)
+				require.NoError(t, os.WriteFile(filePath, []byte("test"), 0644))
+			}
+
+			// Test the function
+			result := sm.FindAvailableFilename(tmpDir, tt.baseFilename)
+			assert.Equal(t, tt.expectedFilename, result)
+
+			// Clean up for next test
+			for _, filename := range tt.existingFiles {
+				os.Remove(filepath.Join(tmpDir, filename))
+			}
+		})
 	}
 }
 

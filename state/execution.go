@@ -917,6 +917,25 @@ func getLogs(responses []*abci.ExecTxResult) []string {
 	return logs
 }
 
+// FindAvailableFilename finds an available filename by adding suffix if file already exists
+func FindAvailableFilename(dir, baseFilename string) string {
+	filename := baseFilename
+	suffix := 0
+	for {
+		fullPath := filepath.Join(dir, filename)
+		if _, err := os.Stat(fullPath); os.IsNotExist(err) {
+			// File doesn't exist, we can use this filename
+			return filename
+		}
+		// File exists, try next suffix
+		suffix++
+		// Extract extension and add suffix before it
+		ext := filepath.Ext(baseFilename)
+		nameWithoutExt := baseFilename[:len(baseFilename)-len(ext)]
+		filename = fmt.Sprintf("%s-%d%s", nameWithoutExt, suffix, ext)
+	}
+}
+
 // saveFailedProposalBlock saves a failed proposal block to the debug directory
 func (blockExec *BlockExecutor) saveFailedProposalBlock(state State, block *types.Block, reason string) {
 	if blockExec.rootDir == "" {
@@ -930,25 +949,8 @@ func (blockExec *BlockExecutor) saveFailedProposalBlock(state State, block *type
 		block.Height,
 		reason,
 	)
-	
-	// Find an available filename by adding suffix if file already exists
-	filename := baseFilename
-	suffix := 0
-	for {
-		fullPath := filepath.Join(debugDir, filename)
-		if _, err := os.Stat(fullPath); os.IsNotExist(err) {
-			// File doesn't exist, we can use this filename
-			break
-		}
-		// File exists, try next suffix
-		suffix++
-		filename = fmt.Sprintf("%s-%d-%s_failed_proposal-%d.pb",
-			state.ChainID,
-			block.Height,
-			reason,
-			suffix,
-		)
-	}
+
+	filename := FindAvailableFilename(debugDir, baseFilename)
 
 	if err := types.SaveBlockToFile(debugDir, filename, block); err != nil {
 		blockExec.logger.Error("failed to save failed proposal block", "err", err.Error(), "reason", reason)
