@@ -402,23 +402,9 @@ func (sw *Switch) getPeerAddress(peer Peer) (*NetAddress, error) {
 func (sw *Switch) StopPeerGracefully(peer Peer, reactorName string) {
 	sw.Logger.Info("Stopping peer gracefully")
 
-	reactorCount := 0
-	for _, r := range sw.reactors {
-		peerSet := sw.peerSetForReactor(r)
-		if peerSet != nil && peerSet.Has(peer.ID()) {
-			reactorCount++
-		}
+	sw.removePeerFromReactor(peer, reactorName)
 
-		if r.String() == reactorName {
-			r.RemovePeer(peer, nil)
-			if peerSet != nil {
-				peerSet.Remove(peer)
-			}
-			reactorCount--
-		}
-	}
-
-	if reactorCount == 0 {
+	if sw.countActivePeerConnections(peer) == 0 {
 		sw.stopAndRemovePeer(peer, nil)
 	}
 }
@@ -432,12 +418,9 @@ func (sw *Switch) stopAndRemovePeer(peer Peer, reason interface{}) {
 	if reason != nil {
 		for _, reactor := range sw.reactors {
 			reactor.RemovePeer(peer, reason)
-			chs := reactor.GetChannels()
-			if len(chs) > 0 {
-				if !sw.peerSetByChID[chs[0].ID].Remove(peer) {
-					sw.Logger.Debug("error on peer removal for reactor", "peer", peer.ID(), "reactor", reactor.String())
-				}
-
+			peerSet := sw.peerSetForReactor(reactor)
+			if peerSet != nil && !peerSet.Remove(peer) {
+				sw.Logger.Debug("error on peer removal for reactor", "peer", peer.ID(), "reactor", reactor.String())
 			}
 		}
 	}
@@ -954,9 +937,36 @@ func (sw *Switch) addPeer(p Peer) error {
 	return nil
 }
 
+// peerSetForReactor retrieves the PeerSet associated with the first channel of the given Reactor. Returns nil if empty.
 func (sw *Switch) peerSetForReactor(r Reactor) *PeerSet {
 	if len(r.GetChannels()) > 0 {
 		return sw.peerSetByChID[r.GetChannels()[0].ID]
 	}
 	return nil
+}
+
+// removePeerFromReactor removes the peer from the specified reactor
+func (sw *Switch) removePeerFromReactor(peer Peer, reactorName string) {
+	for _, reactor := range sw.reactors {
+		if reactor.String() == reactorName {
+			reactor.RemovePeer(peer, nil)
+			peerSet := sw.peerSetForReactor(reactor)
+			if peerSet != nil {
+				peerSet.Remove(peer)
+			}
+			break
+		}
+	}
+}
+
+// countActivePeerConnections returns the number of reactors that have this peer
+func (sw *Switch) countActivePeerConnections(peer Peer) int {
+	cnt := 0
+	for _, reactor := range sw.reactors {
+		peerSet := sw.peerSetForReactor(reactor)
+		if peerSet != nil && peerSet.Has(peer.ID()) {
+			cnt++
+		}
+	}
+	return cnt
 }
