@@ -111,6 +111,7 @@ func (blockExec *BlockExecutor) SetEventBus(eventBus types.BlockEventPublisher) 
 func (blockExec *BlockExecutor) CreateProposalBlock(
 	ctx context.Context,
 	height int64,
+	round int32,
 	state State,
 	lastExtCommit *types.ExtendedCommit,
 	proposerAddr []byte,
@@ -159,7 +160,7 @@ func (blockExec *BlockExecutor) CreateProposalBlock(
 	func() {
 		defer func() {
 			if r := recover(); r != nil {
-				blockExec.saveFailedProposalBlock(state, block, "prepare_proposal_panic")
+				blockExec.saveFailedProposalBlock(state, block, round, "prepare_proposal_panic")
 				err = fmt.Errorf("PrepareProposal panicked: %v", r)
 			}
 		}()
@@ -169,7 +170,7 @@ func (blockExec *BlockExecutor) CreateProposalBlock(
 	if err != nil {
 		// For non-panic errors, also save the failed proposal block
 		if rpp == nil {
-			blockExec.saveFailedProposalBlock(state, block, "prepare_proposal_error")
+			blockExec.saveFailedProposalBlock(state, block, round, "prepare_proposal_error")
 		}
 		// The App MUST ensure that only valid (and hence 'processable') transactions
 		// enter the mempool. Hence, at this point, we can't have any non-processable
@@ -917,16 +918,17 @@ func getLogs(responses []*abci.ExecTxResult) []string {
 }
 
 // saveFailedProposalBlock saves a failed proposal block to the debug directory
-func (blockExec *BlockExecutor) saveFailedProposalBlock(state State, block *types.Block, reason string) {
+func (blockExec *BlockExecutor) saveFailedProposalBlock(state State, block *types.Block, round int32, reason string) {
 	if blockExec.rootDir == "" {
 		blockExec.logger.Debug("no root directory configured, skipping failed proposal block save")
 		return
 	}
 
 	debugDir := filepath.Join(blockExec.rootDir, "data", "debug")
-	filename := fmt.Sprintf("%s-%d-%s_failed_proposal.pb",
+	filename := fmt.Sprintf("%s-%d-%d-%s_failed_proposal.pb",
 		state.ChainID,
 		block.Height,
+		round,
 		reason,
 	)
 
