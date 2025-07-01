@@ -61,9 +61,9 @@ type TxPool struct {
 	lastPurgeTime        time.Time // the last time we attempted to purge transactions via the TTL
 
 	// Thread-safe cache of rejected transactions for quick look-up
-	rejectedTxCache *LRUTxCache
+	rejectedTxCache mempool.TxCache
 	// Thread-safe cache of evicted transactions for quick look-up
-	evictedTxCache *LRUTxCache
+	evictedTxCache mempool.TxCache
 	// Thread-safe list of transactions peers have seen that we have not yet seen
 	seenByPeersSet *SeenTxSet
 
@@ -91,8 +91,8 @@ func NewTxPool(
 		config:           cfg,
 		proxyAppConn:     proxyAppConn,
 		metrics:          mempool.NopMetrics(),
-		rejectedTxCache:  NewLRUTxCache(cfg.CacheSize),
-		evictedTxCache:   NewLRUTxCache(cfg.CacheSize / 5),
+		rejectedTxCache:  mempool.NopTxCache{},
+		evictedTxCache:   mempool.NopTxCache{},
 		seenByPeersSet:   NewSeenTxSet(),
 		height:           height,
 		preCheckFn:       func(_ types.Tx) error { return nil },
@@ -100,6 +100,11 @@ func NewTxPool(
 		store:            newStore(),
 		broadcastCh:      make(chan *wrappedTx),
 		txsToBeBroadcast: make([]types.TxKey, 0),
+	}
+
+	if cfg.CacheSize > 0 {
+		txmp.rejectedTxCache = mempool.NewLRUTxCache(cfg.CacheSize / 5)
+		txmp.evictedTxCache = mempool.NewLRUTxCache(cfg.CacheSize / 5)
 	}
 
 	for _, opt := range options {
@@ -299,17 +304,11 @@ func (txmp *TxPool) markToBeBroadcast(key types.TxKey) {
 // If it passes `CheckTx`, the new transaction is added to the mempool as long as it has
 // sufficient priority and space else if evicted it will return an error
 func (txmp *TxPool) TryAddNewTx(tx types.Tx, key types.TxKey, txInfo mempool.TxInfo) (*abci.ResponseCheckTx, error) {
-	// First check any of the caches to see if we can conclude early. We may have already seen and processed
+	// First check the caches to see if we can conclude early. We may have already seen and processed
 	// the transaction if:
 	// - We are connected to nodes running v0 or v1 which simply flood the network
 	// - If a client submits a transaction to multiple nodes (via RPC)
 	// - We send multiple requests and the first peer eventually responds after the second peer has already provided the tx
-	if txmp.IsRejectedTx(key) {
-		// The peer has sent us a transaction that we have previously marked as invalid. Since `CheckTx` can
-		// be non-deterministic, we don't punish the peer but instead just ignore the tx
-		return nil, ErrTxAlreadyRejected
-	}
-
 	if txmp.Has(key) {
 		txmp.metrics.AlreadySeenTxs.Add(1)
 		// The peer has sent us a transaction that we have already seen
@@ -326,6 +325,7 @@ func (txmp *TxPool) TryAddNewTx(tx types.Tx, key types.TxKey, txInfo mempool.TxI
 
 	// If a precheck hook is defined, call it before invoking the application.
 	if err := txmp.preCheck(tx); err != nil {
+		txmp.rejectedTxCache.Push(key)
 		txmp.metrics.FailedTxs.Add(1)
 		return nil, err
 	}
@@ -344,9 +344,7 @@ func (txmp *TxPool) TryAddNewTx(tx types.Tx, key types.TxKey, txInfo mempool.TxI
 		return rsp, err
 	}
 	if rsp.Code != abci.CodeTypeOK {
-		if txmp.config.KeepInvalidTxsInCache {
-			txmp.rejectedTxCache.Push(key)
-		}
+		txmp.rejectedTxCache.Push(key)
 		txmp.metrics.FailedTxs.Add(1)
 		return rsp, fmt.Errorf("application rejected transaction with code %d (Log: %s)", rsp.Code, rsp.Log)
 	}
@@ -359,9 +357,7 @@ func (txmp *TxPool) TryAddNewTx(tx types.Tx, key types.TxKey, txInfo mempool.TxI
 	// Perform the post check
 	err = txmp.postCheck(wtx.tx, rsp)
 	if err != nil {
-		if txmp.config.KeepInvalidTxsInCache {
-			txmp.rejectedTxCache.Push(key)
-		}
+		txmp.rejectedTxCache.Push(key)
 		txmp.metrics.FailedTxs.Add(1)
 		return rsp, fmt.Errorf("rejected bad transaction after post check: %w", err)
 	}
@@ -640,6 +636,7 @@ func (txmp *TxPool) handleRecheckResult(wtx *wrappedTx, checkTxRes *abci.Respons
 		txmp.rejectedTxCache.Push(wtx.key)
 	}
 	txmp.metrics.FailedTxs.Add(1)
+	txmp.rejectedTxCache.Push(wtx.key)
 	txmp.metrics.Size.Set(float64(txmp.Size()))
 	txmp.metrics.SizeBytes.Set(float64(txmp.SizeBytes()))
 }

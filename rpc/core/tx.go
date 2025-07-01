@@ -22,6 +22,7 @@ const (
 	TxStatusUnknown   string = "UNKNOWN"
 	TxStatusPending   string = "PENDING"
 	TxStatusEvicted   string = "EVICTED"
+	TxStatusRejected  string = "REJECTED"
 	TxStatusCommitted string = "COMMITTED"
 )
 
@@ -223,11 +224,16 @@ func (env *Environment) ProveShares(
 // with the transaction's height and index if committed, or its pending, evicted, or unknown status.
 // It also includes the execution code and log for failed txs.
 func (env *Environment) TxStatus(ctx *rpctypes.Context, hash []byte) (*ctypes.ResultTxStatus, error) {
-
 	// Check if the tx has been committed
 	txInfo := env.BlockStore.LoadTxInfo(hash)
 	if txInfo != nil {
-		return &ctypes.ResultTxStatus{Height: txInfo.Height, Index: txInfo.Index, ExecutionCode: txInfo.Code, Error: txInfo.Error, Status: TxStatusCommitted}, nil
+		return &ctypes.ResultTxStatus{
+			Height:        txInfo.Height,
+			Index:         txInfo.Index,
+			ExecutionCode: txInfo.Code,
+			Error:         txInfo.Error,
+			Status:        TxStatusCommitted,
+		}, nil
 	}
 
 	// Get the tx key from the hash
@@ -248,7 +254,13 @@ func (env *Environment) TxStatus(ctx *rpctypes.Context, hash []byte) (*ctypes.Re
 		return &ctypes.ResultTxStatus{Status: TxStatusEvicted}, nil
 	}
 
-	// If the tx is not in the mempool, evicted, or committed, return unknown
+	// Check if the tx is rejected
+	isRejected := env.Mempool.IsRejectedTx(txKey)
+	if isRejected {
+		return &ctypes.ResultTxStatus{Status: TxStatusRejected}, nil
+	}
+
+	// If the tx is not in the mempool, evicted, rejected or committed, return unknown
 	return &ctypes.ResultTxStatus{Status: TxStatusUnknown}, nil
 }
 
