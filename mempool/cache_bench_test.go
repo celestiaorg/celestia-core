@@ -3,21 +3,24 @@ package mempool
 import (
 	"encoding/binary"
 	"testing"
+
+	"github.com/cometbft/cometbft/types"
 )
 
 func BenchmarkCacheInsertTime(b *testing.B) {
 	cache := NewLRUTxCache(b.N)
 
-	txs := make([][]byte, b.N)
+	txKeys := make([]types.TxKey, b.N)
 	for i := 0; i < b.N; i++ {
-		txs[i] = make([]byte, 8)
-		binary.BigEndian.PutUint64(txs[i], uint64(i))
+		tx := make([]byte, 8)
+		binary.BigEndian.PutUint64(tx, uint64(i))
+		txKeys[i] = types.Tx(tx).Key()
 	}
 
 	b.ResetTimer()
 
 	for i := 0; i < b.N; i++ {
-		cache.Push(txs[i])
+		cache.Push(txKeys[i])
 	}
 }
 
@@ -26,16 +29,17 @@ func BenchmarkCacheInsertTime(b *testing.B) {
 func BenchmarkCacheRemoveTime(b *testing.B) {
 	cache := NewLRUTxCache(b.N)
 
-	txs := make([][]byte, b.N)
+	txKeys := make([]types.TxKey, b.N)
 	for i := 0; i < b.N; i++ {
-		txs[i] = make([]byte, 8)
-		binary.BigEndian.PutUint64(txs[i], uint64(i))
-		cache.Push(txs[i])
+		tx := make([]byte, 8)
+		binary.BigEndian.PutUint64(tx, uint64(i))
+		txKeys[i] = types.Tx(tx).Key()
+		cache.Push(txKeys[i])
 	}
 
 	b.ResetTimer()
 
 	for i := 0; i < b.N; i++ {
-		cache.Remove(txs[i])
+		cache.Remove(txKeys[i])
 	}
 }

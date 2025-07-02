@@ -92,6 +92,24 @@ func (_m *Mempool) GetTxByKey(key types.TxKey) (types.Tx, bool) {
 	return r0, r1
 }
 
+// IsRejectedTx provides a mock function with given fields: key
+func (_m *Mempool) IsRejectedTx(key types.TxKey) bool {
+	ret := _m.Called(key)
+
+	if len(ret) == 0 {
+		panic("no return value specified for IsRejectedTx")
+	}
+
+	var r0 bool
+	if rf, ok := ret.Get(0).(func(types.TxKey) bool); ok {
+		r0 = rf(key)
+	} else {
+		r0 = ret.Get(0).(bool)
+	}
+
+	return r0
+}
+
 // Lock provides a mock function with no fields
 func (_m *Mempool) Lock() {
 	_m.Called()

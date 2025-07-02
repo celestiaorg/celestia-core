@@ -3,6 +3,7 @@ package mempool
 import (
 	"crypto/rand"
 	"crypto/sha256"
+	"sync"
 	"testing"
 
 	"fmt"
@@ -96,10 +97,21 @@ func TestCacheRemove(t *testing.T) {
 	require.Equal(t, numTxs, cache.list.Len())
 
 	for i := 0; i < numTxs; i++ {
-		cache.Remove(txs[i])
+		cache.Remove(types.TxKey(txs[i]))
 		// make sure its removed from both the map and the linked list
 		require.Len(t, cache.cacheMap, numTxs-(i+1))
 		require.Equal(t, numTxs-(i+1), cache.list.Len())
+	}
+}
+
+func TestLRUTxCacheSize(t *testing.T) {
+	const size = 10
+	cache := NewLRUTxCache(size)
+
+	for i := 0; i < size*2; i++ {
+		tx := types.Tx([]byte(fmt.Sprintf("tx%d", i)))
+		cache.Push(tx.Key())
+		require.Less(t, cache.list.Len(), size+1)
 	}
 }
 
@@ -114,24 +126,37 @@ func populate(cache TxCache, numTxs int) ([][]byte, error) {
 		}
 
 		txs[i] = txBytes
-		cache.Push(txBytes)
+		cache.Push(types.TxKey(txBytes))
 	}
 	return txs, nil
 }
 
-func TestCacheRemoveByKey(t *testing.T) {
+func TestLRUTxCacheConcurrency(t *testing.T) {
 	cache := NewLRUTxCache(100)
-	numTxs := 10
 
-	txs, err := populate(cache, numTxs)
-	require.NoError(t, err)
-	require.Equal(t, numTxs, len(cache.cacheMap))
-	require.Equal(t, numTxs, cache.list.Len())
+	const (
+		concurrency = 10
+		numTx       = 100
+	)
 
-	for i := 0; i < numTxs; i++ {
-		cache.RemoveTxByKey(types.Tx(txs[i]).Key())
-		// make sure its removed from both the map and the linked list
-		require.Equal(t, numTxs-(i+1), len(cache.cacheMap))
-		require.Equal(t, numTxs-(i+1), cache.list.Len())
+	wg := sync.WaitGroup{}
+	for i := 0; i < concurrency; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for i := 0; i < numTx; i++ {
+				tx := types.Tx([]byte(fmt.Sprintf("tx%d", i)))
+				cache.Push(tx.Key())
+			}
+			for i := 0; i < numTx; i++ {
+				tx := types.Tx([]byte(fmt.Sprintf("tx%d", i)))
+				cache.Has(tx.Key())
+			}
+			for i := numTx - 1; i >= 0; i-- {
+				tx := types.Tx([]byte(fmt.Sprintf("tx%d", i)))
+				cache.Remove(tx.Key())
+			}
+		}()
 	}
+	wg.Wait()
 }
