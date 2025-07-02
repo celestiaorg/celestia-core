@@ -37,7 +37,8 @@ func TestNewProvider(t *testing.T) {
 func TestProvider(t *testing.T) {
 	app := kvstore.NewInMemoryApplication()
 	app.RetainBlocks = 10
-	node := rpctest.StartTendermint(app)
+	// Force recreation of config to avoid temp directory reuse issues in multi-run tests
+	node := rpctest.StartTendermint(app, rpctest.RecreateConfig)
 
 	cfg := rpctest.GetConfig()
 	defer os.RemoveAll(cfg.RootDir)

@@ -27,7 +27,7 @@ import (
 // control.
 type Options struct {
 	suppressStdout  bool
-	recreateConfig  bool
+	RecreateConfig  bool // Exported to allow forcing config recreation for each test
 	maxReqBatchSize int
 
 	// SpecificConfig will replace the global config if not nil
@@ -38,7 +38,7 @@ var (
 	globalConfig   *cfg.Config
 	defaultOptions = Options{
 		suppressStdout: false,
-		recreateConfig: false,
+		RecreateConfig: false,
 	}
 )
 
@@ -79,7 +79,9 @@ func makePathname() string {
 	}
 	// fmt.Println(p)
 	sep := string(filepath.Separator)
-	return strings.ReplaceAll(p, sep, "_")
+	// Add timestamp to make it unique for each test run to avoid reusing temp directories
+	baseName := strings.ReplaceAll(p, sep, "_")
+	return fmt.Sprintf("%s_%d", baseName, time.Now().UnixNano())
 }
 
 func randPort() int {
@@ -158,7 +160,7 @@ func StopTendermint(node *nm.Node) {
 // NewTendermint creates a new CometBFT server and sleeps forever
 func NewTendermint(app abci.Application, opts *Options) *nm.Node {
 	// Create & start node
-	config := GetConfig(opts.recreateConfig)
+	config := GetConfig(opts.RecreateConfig)
 	if opts.SpecificConfig != nil {
 		config = opts.SpecificConfig
 	}
@@ -200,7 +202,7 @@ func SuppressStdout(o *Options) {
 // RecreateConfig instructs the RPC test to recreate the configuration each
 // time, instead of treating it as a global singleton.
 func RecreateConfig(o *Options) {
-	o.recreateConfig = true
+	o.RecreateConfig = true
 }
 
 // MaxReqBatchSize is an option to limit the maximum number of requests per batch.
