@@ -54,13 +54,13 @@ type TestReactor struct {
 	peerLimit int
 }
 
-func NewTestReactor(channels []*conn.ChannelDescriptor, logMessages bool) *TestReactor {
+func NewTestReactor(name string, channels []*conn.ChannelDescriptor, logMessages bool) *TestReactor {
 	tr := &TestReactor{
 		channels:     channels,
 		logMessages:  logMessages,
 		msgsReceived: make(map[byte][]PeerMessage),
 	}
-	tr.BaseReactor = *NewBaseReactor("TestReactor", tr)
+	tr.BaseReactor = *NewBaseReactor(name, tr)
 	tr.SetLogger(log.TestingLogger())
 	return tr
 }
@@ -121,11 +121,11 @@ func initSwitchFunc(_ int, sw *Switch) *Switch {
 	})
 
 	// Make two reactors of two channels each
-	sw.AddReactor("foo", NewTestReactor([]*conn.ChannelDescriptor{
+	sw.AddReactor("foo", NewTestReactor("foo", []*conn.ChannelDescriptor{
 		{ID: byte(0x00), Priority: 10, MessageType: &p2pproto.Message{}},
 		{ID: byte(0x01), Priority: 10, MessageType: &p2pproto.Message{}},
 	}, true))
-	sw.AddReactor("bar", NewTestReactor([]*conn.ChannelDescriptor{
+	sw.AddReactor("bar", NewTestReactor("bar", []*conn.ChannelDescriptor{
 		{ID: byte(0x02), Priority: 10, MessageType: &p2pproto.Message{}},
 		{ID: byte(0x03), Priority: 10, MessageType: &p2pproto.Message{}},
 	}, true))
@@ -800,7 +800,7 @@ func TestSwitchInitPeerIsNotCalledBeforeRemovePeer(t *testing.T) {
 	// make switch
 	sw := MakeSwitch(cfg, 1, func(i int, sw *Switch) *Switch {
 		sw.AddReactor("mockReactor", reactor)
-		sw.AddReactor("foo", NewTestReactor([]*conn.ChannelDescriptor{
+		sw.AddReactor("foo", NewTestReactor("foo", []*conn.ChannelDescriptor{
 			{ID: byte(0x00), Priority: 10},
 			{ID: byte(0x01), Priority: 10},
 		}, false))
@@ -843,11 +843,11 @@ func TestSwitchInitPeerIsNotCalledBeforeRemovePeer(t *testing.T) {
 func BenchmarkSwitchBroadcast(b *testing.B) {
 	s1, s2 := MakeSwitchPair(func(i int, sw *Switch) *Switch {
 		// Make bar reactors of bar channels each
-		sw.AddReactor("foo", NewTestReactor([]*conn.ChannelDescriptor{
+		sw.AddReactor("foo", NewTestReactor("foo", []*conn.ChannelDescriptor{
 			{ID: byte(0x00), Priority: 10},
 			{ID: byte(0x01), Priority: 10},
 		}, false))
-		sw.AddReactor("bar", NewTestReactor([]*conn.ChannelDescriptor{
+		sw.AddReactor("bar", NewTestReactor("bar", []*conn.ChannelDescriptor{
 			{ID: byte(0x02), Priority: 10},
 			{ID: byte(0x03), Priority: 10},
 		}, false))
@@ -909,7 +909,7 @@ func TestReactorSpecificBroadcast(t *testing.T) {
 		reactorName      = "limited"
 	)
 	switches := MakeConnectedSwitches(cfg, totalPeers, func(i int, sw *Switch) *Switch {
-		tr := NewTestReactor([]*conn.ChannelDescriptor{
+		tr := NewTestReactor("reactorName", []*conn.ChannelDescriptor{
 			{ID: byte(0x04), Priority: 10, MessageType: &p2pproto.Message{}},
 		}, false)
 		tr.peerLimit = reactorPeerLimit
@@ -955,4 +955,71 @@ func TestReactorSpecificBroadcast(t *testing.T) {
 	assert.Equal(t, totalPeers-1, fooCnt)
 	assert.Equal(t, totalPeers-1, barCnt)
 	assert.Equal(t, reactorPeerLimit, limitedCnt)
+}
+
+func TestReactorSpecificPeerRemoval(t *testing.T) {
+	// Create two switches with the standard setup (foo and bar reactors)
+	sw1, sw2 := MakeSwitchPair(initSwitchFunc)
+
+	t.Cleanup(func() {
+		if err := sw1.Stop(); err != nil {
+			t.Error(err)
+		}
+	})
+	t.Cleanup(func() {
+		if err := sw2.Stop(); err != nil {
+			t.Error(err)
+		}
+	})
+
+	// Wait for connections to establish
+	time.Sleep(100 * time.Millisecond)
+
+	// Verify initial setup
+	require.Equal(t, 1, sw1.Peers().Size(), "Switch 1 should have 1 peer initially")
+	require.Equal(t, 1, sw2.Peers().Size(), "Switch 2 should have 1 peer initially")
+
+	peers := sw1.Peers().List()
+	require.Len(t, peers, 1, "Should have exactly one peer")
+	peer := peers[0]
+
+	// Verify peer is connected to both reactors initially
+	initialConnections := sw1.countActivePeerConnections(peer)
+	require.Equal(t, 2, initialConnections, "Peer should be connected to both reactors initially")
+
+	// Test basic communication works before removal
+	testMsg := &p2pproto.PexAddrs{
+		Addrs: []p2pproto.NetAddress{{ID: "test"}},
+	}
+
+	ok1 := <-sw1.Broadcast(Envelope{ChannelID: byte(0x00), Message: testMsg}) // foo reactor
+	ok2 := <-sw1.Broadcast(Envelope{ChannelID: byte(0x02), Message: testMsg}) // bar reactor
+
+	require.True(t, ok1, "Initial broadcast on foo reactor should succeed")
+	require.True(t, ok2, "Initial broadcast on bar reactor should succeed")
+
+	// Test 1: Call StopPeerGracefully
+	fooReactor := sw1.Reactor("foo")
+	require.NotNil(t, fooReactor, "Should have foo reactor")
+
+	sw1.StopPeerGracefully(peer, fooReactor.String())
+	time.Sleep(100 * time.Millisecond)
+
+	// Check the state after calling StopPeerGracefully first time
+	require.Equal(t, 1, sw1.countActivePeerConnections(peer), "Peer should be connected to only one reactor after removal")
+	require.True(t, peer.IsRunning())
+	require.NotNil(t, sw1.Peers().Get(peer.ID()), "Peer should still be in the peer set")
+
+	// Test 2: Remove from the second reactor
+	barReactor := sw1.Reactor("bar")
+	require.NotNil(t, barReactor, "Should have bar reactor")
+
+	sw1.StopPeerGracefully(peer, barReactor.String())
+	time.Sleep(100 * time.Millisecond)
+
+	// Check the state after calling StopPeerGracefully second time
+	// Peer should be removed from reactor and stopped.
+	require.Equal(t, 0, sw1.countActivePeerConnections(peer), "Peer should be connected to no reactors after second removal")
+	require.Nil(t, sw1.Peers().Get(peer.ID()), "Peer should be removed from the peer set")
+	require.False(t, peer.IsRunning())
 }

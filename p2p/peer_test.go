@@ -83,7 +83,7 @@ func createOutboundPeerAndPerformHandshake(
 	chDescs := []*cmtconn.ChannelDescriptor{
 		{ID: testCh, Priority: 1},
 	}
-	reactorsByCh := map[byte]Reactor{testCh: NewTestReactor(chDescs, true)}
+	reactorsByCh := map[byte]Reactor{testCh: NewTestReactor("TestReactor", chDescs, true)}
 	msgTypeByChID := map[byte]proto.Message{
 		testCh: &p2p.Message{},
 	}
