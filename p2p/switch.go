@@ -416,13 +416,7 @@ func (sw *Switch) stopAndRemovePeer(peer Peer, reason interface{}) {
 	}
 	schema.WritePeerUpdate(sw.traceClient, string(peer.ID()), schema.PeerDisconnect, fmt.Sprintf("%v", reason))
 	if reason != nil {
-		for _, reactor := range sw.reactors {
-			reactor.RemovePeer(peer, reason)
-			peerSet := sw.peerSetForReactor(reactor)
-			if peerSet != nil && !peerSet.Remove(peer) {
-				sw.Logger.Debug("error on peer removal for reactor", "peer", peer.ID(), "reactor", reactor.String())
-			}
-		}
+		sw.removePeerFromAllReactors(peer, reason)
 	}
 
 	// Removing a peer should go last to avoid a situation where a peer
@@ -946,17 +940,29 @@ func (sw *Switch) peerSetForReactor(r Reactor) *PeerSet {
 	return nil
 }
 
+// removePeerFromAllReactors removes the given peer from all reactors
+func (sw *Switch) removePeerFromAllReactors(peer Peer, reason interface{}) {
+	for _, reactor := range sw.reactors {
+		sw.doRemovePeer(peer, reactor, reason)
+	}
+}
+
 // removePeerFromReactor removes the peer from the specified reactor
 func (sw *Switch) removePeerFromReactor(peer Peer, reactorName string) {
 	for _, reactor := range sw.reactors {
 		if reactor.String() == reactorName {
-			reactor.RemovePeer(peer, nil)
-			peerSet := sw.peerSetForReactor(reactor)
-			if peerSet != nil {
-				peerSet.Remove(peer)
-			}
+			sw.doRemovePeer(peer, reactor, nil)
 			break
 		}
+	}
+}
+
+// doRemovePeer removes the specified peer from the given reactor and its corresponding peer set, logging any issues.
+func (sw *Switch) doRemovePeer(peer Peer, reactor Reactor, reason interface{}) {
+	reactor.RemovePeer(peer, reason)
+	peerSet := sw.peerSetForReactor(reactor)
+	if peerSet != nil && !peerSet.Remove(peer) {
+		sw.Logger.Debug("error on peer removal for reactor", "peer", peer.ID(), "reactor", reactor.String())
 	}
 }
 
