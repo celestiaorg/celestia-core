@@ -924,8 +924,8 @@ func (blockExec *BlockExecutor) saveFailedProposalBlock(state State, block *type
 	}
 
 	debugDir := filepath.Join(blockExec.rootDir, "data", "debug")
-	timestamp := time.Now().UnixMilli()
-	filename := fmt.Sprintf("%s-%d-%d-%s_failed_proposal.pb",
+	timestamp := time.Now().Format("20060102-150405.000")
+	filename := fmt.Sprintf("%s-%d-%s-%s_failed_proposal.pb",
 		state.ChainID,
 		block.Height,
 		timestamp,
