@@ -915,7 +915,7 @@ func (sw *Switch) addPeer(p Peer) error {
 		}
 
 		peerSet := sw.peerSetForReactor(reactor)
-		if peerSet != nil { // for each reactor there is exactly one PeerSet, no need to iterate over channels
+		if peerSet != nil {
 			if err := peerSet.Add(p); err != nil {
 				if errors.Is(err, ErrPeerRemoval{}) {
 					sw.Logger.Error("Error starting peer",
@@ -938,6 +938,7 @@ func (sw *Switch) addPeer(p Peer) error {
 }
 
 // peerSetForReactor retrieves the PeerSet associated with the first channel of the given Reactor. Returns nil if empty.
+// For each reactor there is exactly one PeerSet, no need to iterate over channels
 func (sw *Switch) peerSetForReactor(r Reactor) *PeerSet {
 	if len(r.GetChannels()) > 0 {
 		return sw.peerSetByChID[r.GetChannels()[0].ID]
