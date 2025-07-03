@@ -473,7 +473,7 @@ func (a *addrBook) addToNewBucket(ka *knownAddress, bucketIdx int) error {
 
 	// Enforce max addresses.
 	if len(bucket) > newBucketSize {
-		a.Logger.Info("new bucket is full, expiring new")
+		a.Logger.Debug("new bucket is full, expiring new")
 		a.expireNew(bucketIdx)
 	}
 
