@@ -73,11 +73,6 @@ func loadTestnet(t *testing.T) e2e.Testnet {
 	if !filepath.IsAbs(manifestFile) {
 		manifestFile = filepath.Join("..", manifestFile)
 	}
-	ifdType := os.Getenv("INFRASTRUCTURE_TYPE")
-	ifdFile := os.Getenv("INFRASTRUCTURE_FILE")
-	if ifdType != "docker" && ifdFile == "" {
-		t.Fatalf("INFRASTRUCTURE_FILE not set and INFRASTRUCTURE_TYPE is not 'docker'")
-	}
 	testnetCacheMtx.Lock()
 	defer testnetCacheMtx.Unlock()
 	if testnet, ok := testnetCache[manifestFile]; ok {
@@ -86,16 +81,7 @@ func loadTestnet(t *testing.T) e2e.Testnet {
 	m, err := e2e.LoadManifest(manifestFile)
 	require.NoError(t, err)
 
-	var ifd e2e.InfrastructureData
-	switch ifdType {
-	case "docker":
-		ifd, err = e2e.NewDockerInfrastructureData(m)
-		require.NoError(t, err)
-	case "digital-ocean":
-		ifd, err = e2e.InfrastructureDataFromFile(ifdFile)
-		require.NoError(t, err)
-	default:
-	}
+	ifd, err := e2e.NewDockerInfrastructureData(m)
 	require.NoError(t, err)
 
 	testnet, err := e2e.LoadTestnet(manifestFile, ifd)
