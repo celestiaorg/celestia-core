@@ -63,7 +63,7 @@ func TestProvider(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, lb)
 	assert.True(t, lb.Height > 0)
-	
+
 	// Save original height before reassigning lb variable
 	originalHeight := lb.Height
 
@@ -81,7 +81,7 @@ func TestProvider(t *testing.T) {
 	require.Error(t, err)
 	// Both ErrHeightTooHigh and ErrLightBlockNotFound are valid responses for blocks that are too far in the future
 	// depending on the node's internal state and RPC error message format
-	assert.True(t, err == provider.ErrHeightTooHigh || err == provider.ErrLightBlockNotFound, 
+	assert.True(t, err == provider.ErrHeightTooHigh || err == provider.ErrLightBlockNotFound,
 		"expected ErrHeightTooHigh or ErrLightBlockNotFound, got: %v", err)
 
 	_, err = p.LightBlock(context.Background(), 1)
