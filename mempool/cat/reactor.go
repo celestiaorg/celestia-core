@@ -6,6 +6,7 @@ import (
 	"time"
 
 	cfg "github.com/cometbft/cometbft/config"
+	"github.com/cometbft/cometbft/crypto/tmhash"
 	"github.com/cometbft/cometbft/libs/log"
 	"github.com/cometbft/cometbft/libs/trace"
 	"github.com/cometbft/cometbft/libs/trace/schema"
@@ -19,6 +20,12 @@ const (
 	// default duration to wait before considering a peer non-responsive
 	// and searching for the tx from a new peer
 	DefaultGossipDelay = 200 * time.Millisecond
+
+	// MempoolDataChannel channel for SeenTx and blob messages.
+	MempoolDataChannel = byte(0x31)
+
+	// MempoolWantsChannel channel for wantTx messages.
+	MempoolWantsChannel = byte(0x32)
 
 	// peerHeightDiff signifies the tolerance in difference in height between the peer and the height
 	// the node received the tx
@@ -147,12 +154,34 @@ func (memR *Reactor) GetChannels() []*p2p.ChannelDescriptor {
 			Txs: &protomem.Txs{Txs: [][]byte{largestTx}},
 		},
 	}
+
+	stateMsg := protomem.Message{
+		Sum: &protomem.Message_SeenTx{
+			SeenTx: &protomem.SeenTx{
+				TxKey: make([]byte, tmhash.Size),
+			},
+		},
+	}
+
 	return []*p2p.ChannelDescriptor{
 		{
 			ID:                  mempool.MempoolChannel,
-			Priority:            6,
+			Priority:            1,
+			RecvMessageCapacity: txMsg.Size(),
+			MessageType:         &protomem.Message{},
+		},
+		{
+			ID:                  MempoolDataChannel,
+			Priority:            3,
 			SendQueueCapacity:   1000,
 			RecvMessageCapacity: txMsg.Size(),
+			MessageType:         &protomem.Message{},
+		},
+		{
+			ID:                  MempoolWantsChannel,
+			Priority:            3,
+			SendQueueCapacity:   1000,
+			RecvMessageCapacity: stateMsg.Size(),
 			MessageType:         &protomem.Message{},
 		},
 	}
@@ -285,7 +314,7 @@ func (memR *Reactor) Receive(e p2p.Envelope) {
 			peerID := memR.ids.GetIDForPeer(e.Src.ID())
 			memR.Logger.Debug("sending a tx in response to a want msg", "peer", peerID)
 			if e.Src.Send(p2p.Envelope{
-				ChannelID: mempool.MempoolChannel,
+				ChannelID: MempoolDataChannel,
 				Message:   &protomem.Txs{Txs: [][]byte{tx.Tx}},
 			}) {
 				memR.mempool.PeerHasTx(peerID, txKey)
@@ -345,7 +374,7 @@ func (memR *Reactor) broadcastSeenTx(txKey types.TxKey) {
 
 		peer.Send(
 			p2p.Envelope{
-				ChannelID: mempool.MempoolChannel,
+				ChannelID: MempoolDataChannel,
 				Message:   msg,
 			},
 		)
@@ -379,7 +408,7 @@ func (memR *Reactor) broadcastNewTx(wtx *wrappedTx) {
 
 		if peer.Send(
 			p2p.Envelope{
-				ChannelID: mempool.MempoolChannel,
+				ChannelID: MempoolDataChannel,
 				Message:   msg,
 			},
 		) {
@@ -404,7 +433,7 @@ func (memR *Reactor) requestTx(txKey types.TxKey, peer p2p.Peer) {
 
 	success := peer.Send(
 		p2p.Envelope{
-			ChannelID: mempool.MempoolChannel,
+			ChannelID: MempoolWantsChannel,
 			Message:   msg,
 		},
 	)
