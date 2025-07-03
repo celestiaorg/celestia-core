@@ -98,11 +98,7 @@ func TestCacheRemove(t *testing.T) {
 	require.Equal(t, numTxs, cache.list.Len())
 
 	for i := 0; i < numTxs; i++ {
-<<<<<<< HEAD
-		cache.Remove(&types.CachedTx{Tx: txs[i]})
-=======
 		cache.Remove(types.TxKey(txs[i]))
->>>>>>> cb865217 (feat: simplify caching and expose rejected txs in TxStatus (#1838))
 		// make sure its removed from both the map and the linked list
 		require.Len(t, cache.cacheMap, numTxs-(i+1))
 		require.Equal(t, numTxs-(i+1), cache.list.Len())
@@ -131,11 +127,7 @@ func populate(cache TxCache, numTxs int) ([][]byte, error) {
 		}
 
 		txs[i] = txBytes
-<<<<<<< HEAD
-		cache.Push(types.Tx(txBytes).ToCachedTx())
-=======
 		cache.Push(types.TxKey(txBytes))
->>>>>>> cb865217 (feat: simplify caching and expose rejected txs in TxStatus (#1838))
 	}
 	return txs, nil
 }

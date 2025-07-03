@@ -18,28 +18,14 @@ type TxCache interface {
 
 	// Push adds the given raw transaction to the cache and returns true if it was
 	// newly added. Otherwise, it returns false.
-<<<<<<< HEAD
-	Push(tx *types.CachedTx) bool
-
-	// Remove removes the given raw transaction from the cache.
-	Remove(tx *types.CachedTx)
-=======
 	Push(key types.TxKey) bool
 
 	// Remove removes the given raw transaction from the cache.
 	Remove(key types.TxKey)
->>>>>>> cb865217 (feat: simplify caching and expose rejected txs in TxStatus (#1838))
 
 	// Has reports whether tx key is present in the cache. Checking for presence is
 	// not treated as an access of the value.
-<<<<<<< HEAD
-	Has(tx *types.CachedTx) bool
-
-	// HasKey reports whether the given key is present in the cache.
-	HasKey(key types.TxKey) bool
-=======
 	Has(key types.TxKey) bool
->>>>>>> cb865217 (feat: simplify caching and expose rejected txs in TxStatus (#1838))
 }
 
 var _ TxCache = (*LRUTxCache)(nil)
@@ -75,11 +61,7 @@ func (c *LRUTxCache) Reset() {
 	c.list.Init()
 }
 
-<<<<<<< HEAD
-func (c *LRUTxCache) Push(tx *types.CachedTx) bool {
-=======
 func (c *LRUTxCache) Push(key types.TxKey) bool {
->>>>>>> cb865217 (feat: simplify caching and expose rejected txs in TxStatus (#1838))
 	c.mtx.Lock()
 	defer c.mtx.Unlock()
 
@@ -104,16 +86,7 @@ func (c *LRUTxCache) Push(key types.TxKey) bool {
 	return true
 }
 
-<<<<<<< HEAD
-func (c *LRUTxCache) Remove(tx *types.CachedTx) {
-	key := tx.Key()
-	c.RemoveTxByKey(key)
-}
-
-func (c *LRUTxCache) RemoveTxByKey(key types.TxKey) {
-=======
 func (c *LRUTxCache) Remove(key types.TxKey) {
->>>>>>> cb865217 (feat: simplify caching and expose rejected txs in TxStatus (#1838))
 	c.mtx.Lock()
 	defer c.mtx.Unlock()
 
@@ -125,19 +98,7 @@ func (c *LRUTxCache) Remove(key types.TxKey) {
 	}
 }
 
-<<<<<<< HEAD
-func (c *LRUTxCache) Has(tx *types.CachedTx) bool {
-	c.mtx.Lock()
-	defer c.mtx.Unlock()
-
-	_, ok := c.cacheMap[tx.Key()]
-	return ok
-}
-
-func (c *LRUTxCache) HasKey(key types.TxKey) bool {
-=======
 func (c *LRUTxCache) Has(key types.TxKey) bool {
->>>>>>> cb865217 (feat: simplify caching and expose rejected txs in TxStatus (#1838))
 	c.mtx.Lock()
 	defer c.mtx.Unlock()
 
@@ -150,15 +111,7 @@ type NopTxCache struct{}
 
 var _ TxCache = (*NopTxCache)(nil)
 
-<<<<<<< HEAD
-func (NopTxCache) Reset()                    {}
-func (NopTxCache) Push(*types.CachedTx) bool { return true }
-func (NopTxCache) Remove(*types.CachedTx)    {}
-func (NopTxCache) Has(*types.CachedTx) bool  { return false }
-func (NopTxCache) HasKey(types.TxKey) bool   { return false }
-=======
 func (NopTxCache) Reset()                {}
 func (NopTxCache) Push(types.TxKey) bool { return true }
 func (NopTxCache) Remove(types.TxKey)    {}
 func (NopTxCache) Has(types.TxKey) bool  { return false }
->>>>>>> cb865217 (feat: simplify caching and expose rejected txs in TxStatus (#1838))

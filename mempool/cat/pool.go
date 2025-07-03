@@ -303,26 +303,12 @@ func (txmp *TxPool) markToBeBroadcast(key types.TxKey) {
 // to avoid races with the same tx. It then call `CheckTx` so that the application can validate it.
 // If it passes `CheckTx`, the new transaction is added to the mempool as long as it has
 // sufficient priority and space else if evicted it will return an error
-<<<<<<< HEAD
-func (txmp *TxPool) TryAddNewTx(tx *types.CachedTx, key types.TxKey, txInfo mempool.TxInfo) (*abci.ResponseCheckTx, error) {
-	// First check the cache to see if we can conclude early. We may have already seen and processed
-=======
 func (txmp *TxPool) TryAddNewTx(tx types.Tx, key types.TxKey, txInfo mempool.TxInfo) (*abci.ResponseCheckTx, error) {
 	// First check the caches to see if we can conclude early. We may have already seen and processed
->>>>>>> cb865217 (feat: simplify caching and expose rejected txs in TxStatus (#1838))
 	// the transaction if:
 	// - We are connected to nodes running v0 or v1 which simply flood the network
 	// - If a client submits a transaction to multiple nodes (via RPC)
 	// - We send multiple requests and the first peer eventually responds after the second peer has already provided the tx
-<<<<<<< HEAD
-	if txmp.WasRecentlyRejected(key) {
-		// The peer has sent us a transaction that we have previously marked as invalid. Since `CheckTx` can
-		// be non-deterministic, we don't punish the peer but instead just ignore the tx
-		return nil, ErrTxAlreadyRejected
-	}
-
-=======
->>>>>>> cb865217 (feat: simplify caching and expose rejected txs in TxStatus (#1838))
 	if txmp.Has(key) {
 		txmp.metrics.AlreadySeenTxs.Add(1)
 		// The peer has sent us a transaction that we have already seen

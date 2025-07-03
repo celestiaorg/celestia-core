@@ -195,12 +195,7 @@ func (txmp *TxMempool) CheckTx(
 	// If a precheck hook is defined, call it before invoking the application.
 	if err := txmp.preCheck(cachedTx); err != nil {
 		txmp.metrics.FailedTxs.Add(1)
-<<<<<<< HEAD
-		// Add the transaction to the rejected cache
-		txmp.rejectedTxs.Push(cachedTx)
-=======
 		txmp.rejectedTxs.Push(tx.Key())
->>>>>>> cb865217 (feat: simplify caching and expose rejected txs in TxStatus (#1838))
 		return mempool.ErrPreCheck{Err: err}
 	}
 
@@ -217,11 +212,7 @@ func (txmp *TxMempool) CheckTx(
 	defer txmp.Unlock()
 
 	// Check for the transaction in the cache.
-<<<<<<< HEAD
-	if !txmp.cache.Push(cachedTx) {
-=======
 	if !txmp.cache.Push(txKey) {
->>>>>>> cb865217 (feat: simplify caching and expose rejected txs in TxStatus (#1838))
 		// If the cached transaction is also in the pool, record its sender.
 		if elt, ok := txmp.txByKey[txKey]; ok {
 			txmp.metrics.AlreadySeenTxs.Add(1)
@@ -234,11 +225,7 @@ func (txmp *TxMempool) CheckTx(
 	// Invoke an ABCI CheckTx for this transaction.
 	rsp, err := txmp.proxyAppConn.CheckTx(context.Background(), &abci.RequestCheckTx{Tx: tx})
 	if err != nil {
-<<<<<<< HEAD
-		txmp.cache.Remove(cachedTx)
-=======
 		txmp.cache.Remove(txKey)
->>>>>>> cb865217 (feat: simplify caching and expose rejected txs in TxStatus (#1838))
 		return err
 	}
 	wtx := &WrappedTx{

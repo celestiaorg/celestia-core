@@ -366,12 +366,8 @@ func TestMempool_KeepInvalidTxsInCache(t *testing.T) {
 		binary.BigEndian.PutUint64(a, 0)
 
 		// remove a from the cache to test (2)
-<<<<<<< HEAD
-		mp.cache.Remove(types.Tx(a).ToCachedTx())
-=======
 		txKey := types.Tx(a).Key()
 		mp.cache.Remove(txKey)
->>>>>>> cb865217 (feat: simplify caching and expose rejected txs in TxStatus (#1838))
 
 		err := mp.CheckTx(a, nil, TxInfo{})
 		require.NoError(t, err)
@@ -685,12 +681,8 @@ func TestMempoolNoCacheOverflow(t *testing.T) {
 	}
 	err = mp.FlushAppConn()
 	require.NoError(t, err)
-<<<<<<< HEAD
-	assert.False(t, mp.cache.Has(types.Tx(kvstore.NewTxFromID(0)).ToCachedTx()))
-=======
 	txKey := types.Tx(tx0).Key()
 	assert.False(t, mp.cache.Has(txKey))
->>>>>>> cb865217 (feat: simplify caching and expose rejected txs in TxStatus (#1838))
 
 	// add again tx0
 	err = mp.CheckTx(tx0, nil, TxInfo{})

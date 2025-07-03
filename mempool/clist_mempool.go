@@ -113,13 +113,8 @@ func (*CListMempool) WasRecentlyEvicted(key types.TxKey) bool {
 	return false
 }
 
-<<<<<<< HEAD
-// WasRecentlyRejected returns false consistently as this implementation does not support transaction rejection.
-func (*CListMempool) WasRecentlyRejected(key types.TxKey) bool {
-=======
 // IsRejectedTx returns false consistently as this implementation does not support transaction rejection.
 func (*CListMempool) IsRejectedTx(key types.TxKey) bool {
->>>>>>> cb865217 (feat: simplify caching and expose rejected txs in TxStatus (#1838))
 	return false
 }
 
@@ -290,11 +285,7 @@ func (mem *CListMempool) CheckTx(
 		return ErrAppConnMempool{Err: err}
 	}
 
-<<<<<<< HEAD
-	if !mem.cache.Push(cachedTx) { // if the transaction already exists in the cache
-=======
 	if !mem.cache.Push(txKey) { // if the transaction already exists in the cache
->>>>>>> cb865217 (feat: simplify caching and expose rejected txs in TxStatus (#1838))
 		// Record a new sender for a tx we've already seen.
 		// Note it's possible a tx is still in the cache but no longer in the mempool
 		// (eg. after committing a block, txs are removed from mempool but not cache),
@@ -455,12 +446,8 @@ func (mem *CListMempool) resCbFirstTime(
 		if (r.CheckTx.Code == abci.CodeTypeOK) && postCheckErr == nil {
 			// Check mempool isn't full again to reduce the chance of exceeding the
 			// limits.
-<<<<<<< HEAD
-			if err := mem.isFull(len(tx.Tx)); err != nil {
-=======
 			txKey := types.Tx(tx).Key()
 			if err := mem.isFull(len(tx)); err != nil {
->>>>>>> cb865217 (feat: simplify caching and expose rejected txs in TxStatus (#1838))
 				// remove from cache (mempool might have a space later)
 				mem.cache.Remove(txKey)
 				// use debug level to avoid spamming logs when traffic is high
@@ -470,11 +457,7 @@ func (mem *CListMempool) resCbFirstTime(
 			}
 
 			// Check transaction not already in the mempool
-<<<<<<< HEAD
-			if e, ok := mem.txsMap.Load(tx.Key()); ok {
-=======
 			if e, ok := mem.txsMap.Load(txKey); ok {
->>>>>>> cb865217 (feat: simplify caching and expose rejected txs in TxStatus (#1838))
 				memTx := e.(*clist.CElement).Value.(*mempoolTx)
 				memTx.addSender(txInfo.SenderID)
 				mem.logger.Debug(
@@ -550,11 +533,7 @@ func (mem *CListMempool) resCbRecheck(tx types.Tx, res *abci.ResponseCheckTx) {
 			mem.logger.Debug("Transaction could not be removed from mempool", "err", err)
 		}
 		if !mem.config.KeepInvalidTxsInCache {
-<<<<<<< HEAD
-			mem.cache.Remove(tx.ToCachedTx())
-=======
 			mem.cache.Remove(txKey)
->>>>>>> cb865217 (feat: simplify caching and expose rejected txs in TxStatus (#1838))
 			mem.metrics.EvictedTxs.Add(1)
 		}
 	}
