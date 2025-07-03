@@ -70,7 +70,7 @@ func TestReactorSendWantTxAfterReceiveingSeenTx(t *testing.T) {
 
 	peer := genPeer()
 	env := p2p.Envelope{
-		ChannelID: MempoolStateChannel,
+		ChannelID: MempoolWantsChannel,
 		Message:   msgWant,
 	}
 	peer.On("Send", env).Return(true)
@@ -78,7 +78,7 @@ func TestReactorSendWantTxAfterReceiveingSeenTx(t *testing.T) {
 	reactor.InitPeer(peer)
 	reactor.Receive(
 		p2p.Envelope{
-			ChannelID: MempoolStateChannel,
+			ChannelID: MempoolDataChannel,
 			Message:   msgSeen,
 			Src:       peer,
 		},
@@ -94,7 +94,7 @@ func TestReactorSendsTxAfterReceivingWantTx(t *testing.T) {
 	key := tx.Key()
 	txEnvelope := p2p.Envelope{
 		Message:   &protomem.Txs{Txs: [][]byte{tx}},
-		ChannelID: mempool.MempoolChannel,
+		ChannelID: MempoolDataChannel,
 	}
 
 	msgWant := &protomem.WantTx{TxKey: key[:]}
@@ -111,7 +111,7 @@ func TestReactorSendsTxAfterReceivingWantTx(t *testing.T) {
 	// The peer sends a want msg for this tx
 	reactor.Receive(
 		p2p.Envelope{
-			ChannelID: MempoolStateChannel,
+			ChannelID: MempoolWantsChannel,
 			Message:   msgWant,
 			Src:       peer,
 		},
@@ -140,7 +140,7 @@ func TestReactorBroadcastsSeenTxAfterReceivingTx(t *testing.T) {
 	// only peer 1 should receive the seen tx message as peer 0 broadcasted
 	// the transaction in the first place
 	env := p2p.Envelope{
-		ChannelID: MempoolStateChannel,
+		ChannelID: MempoolDataChannel,
 		Message:   seenMsg,
 	}
 	peers[1].On("Send", env).Return(true)
@@ -174,7 +174,7 @@ func TestRemovePeerRequestFromOtherPeer(t *testing.T) {
 		Sum: &protomem.Message_WantTx{WantTx: &protomem.WantTx{TxKey: key[:]}},
 	}
 	env := p2p.Envelope{
-		ChannelID: MempoolStateChannel,
+		ChannelID: MempoolWantsChannel,
 		Message:   wantMsg,
 	}
 	peers[0].On("Send", env).Return(true)
@@ -183,13 +183,13 @@ func TestRemovePeerRequestFromOtherPeer(t *testing.T) {
 	reactor.Receive(p2p.Envelope{
 		Src:       peers[0],
 		Message:   seenMsg,
-		ChannelID: MempoolStateChannel,
+		ChannelID: MempoolDataChannel,
 	})
 	time.Sleep(100 * time.Millisecond)
 	reactor.Receive(p2p.Envelope{
 		Src:       peers[1],
 		Message:   seenMsg,
-		ChannelID: MempoolStateChannel,
+		ChannelID: MempoolDataChannel,
 	})
 
 	reactor.RemovePeer(peers[0], "test")

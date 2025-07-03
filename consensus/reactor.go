@@ -273,13 +273,13 @@ func (conR *Reactor) Receive(e p2p.Envelope) {
 	msg, err := MsgFromProto(e.Message)
 	if err != nil {
 		conR.Logger.Error("Error decoding message", "src", e.Src, "chId", e.ChannelID, "err", err)
-		conR.Switch.StopPeerForError(e.Src, err)
+		conR.Switch.StopPeerForError(e.Src, err, conR.String())
 		return
 	}
 
 	if err = msg.ValidateBasic(); err != nil {
 		conR.Logger.Error("Peer sent us invalid msg", "peer", e.Src, "msg", e.Message, "err", err)
-		conR.Switch.StopPeerForError(e.Src, err)
+		conR.Switch.StopPeerForError(e.Src, err, conR.String())
 		return
 	}
 
@@ -309,7 +309,7 @@ func (conR *Reactor) Receive(e p2p.Envelope) {
 			)
 			if err = msg.ValidateHeight(initialHeight); err != nil {
 				conR.Logger.Error("Peer sent us invalid msg", "peer", e.Src, "msg", msg, "err", err)
-				conR.Switch.StopPeerForError(e.Src, err)
+				conR.Switch.StopPeerForError(e.Src, err, conR.String())
 				return
 			}
 			ps.ApplyNewRoundStepMessage(msg)
@@ -353,7 +353,7 @@ func (conR *Reactor) Receive(e p2p.Envelope) {
 			// Peer claims to have a maj23 for some BlockID at H,R,S,
 			err := votes.SetPeerMaj23(msg.Round, msg.Type, ps.peer.ID(), msg.BlockID)
 			if err != nil {
-				conR.Switch.StopPeerForError(e.Src, err)
+				conR.Switch.StopPeerForError(e.Src, err, conR.String())
 				return
 			}
 			// Respond with a VoteSetBitsMessage showing which votes we have.
@@ -714,7 +714,7 @@ OUTER_LOOP:
 			if prs.ProposalBlockParts == nil {
 				blockMeta := conR.conS.blockStore.LoadBlockMeta(prs.Height)
 				if blockMeta == nil {
-					heightLogger.Error("Failed to load block meta",
+					heightLogger.Debug("Failed to load block meta",
 						"blockstoreBase", blockStoreBase, "blockstoreHeight", conR.conS.blockStore.Height())
 					time.Sleep(conR.conS.config.PeerGossipSleepDuration)
 				} else {
@@ -800,7 +800,7 @@ func (conR *Reactor) gossipDataForCatchup(logger log.Logger, rs *cstypes.RoundSt
 		// Ensure that the peer's PartSetHeader is correct
 		blockMeta := conR.conS.blockStore.LoadBlockMeta(prs.Height)
 		if blockMeta == nil {
-			logger.Error("Failed to load block meta", "ourHeight", rs.Height,
+			logger.Debug("Failed to load block meta", "ourHeight", rs.Height,
 				"blockstoreBase", conR.conS.blockStore.Base(), "blockstoreHeight", conR.conS.blockStore.Height())
 			time.Sleep(conR.conS.config.PeerGossipSleepDuration)
 			return

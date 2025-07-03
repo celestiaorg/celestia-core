@@ -1,18 +1,14 @@
 package e2e
 
 import (
-	"encoding/json"
 	"fmt"
 	"net"
-	"os"
 	"sort"
 )
 
 const (
 	dockerIPv4CIDR = "10.186.73.0/24"
 	dockerIPv6CIDR = "fd80:b10c::/48"
-
-	globalIPv4CIDR = "0.0.0.0/0"
 )
 
 // InfrastructureData contains the relevant information for a set of existing
@@ -21,8 +17,7 @@ type InfrastructureData struct {
 	Path string
 
 	// Provider is the name of infrastructure provider backing the testnet.
-	// For example, 'docker' if it is running locally in a docker network or
-	// 'digital-ocean', 'aws', 'google', etc. if it is from a cloud provider.
+	// Currently, only 'docker' is supported.
 	Provider string `json:"provider"`
 
 	// Instances is a map of all of the machine instances on which to run
@@ -96,22 +91,5 @@ func NewDockerInfrastructureData(m Manifest) (InfrastructureData, error) {
 		}
 
 	}
-	return ifd, nil
-}
-
-func InfrastructureDataFromFile(p string) (InfrastructureData, error) {
-	ifd := InfrastructureData{}
-	b, err := os.ReadFile(p)
-	if err != nil {
-		return InfrastructureData{}, err
-	}
-	err = json.Unmarshal(b, &ifd)
-	if err != nil {
-		return InfrastructureData{}, err
-	}
-	if ifd.Network == "" {
-		ifd.Network = globalIPv4CIDR
-	}
-	ifd.Path = p
 	return ifd, nil
 }

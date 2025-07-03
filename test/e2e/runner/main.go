@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"math/rand"
 	"os"
@@ -13,7 +12,6 @@ import (
 	"github.com/cometbft/cometbft/libs/log"
 	e2e "github.com/cometbft/cometbft/test/e2e/pkg"
 	"github.com/cometbft/cometbft/test/e2e/pkg/infra"
-	"github.com/cometbft/cometbft/test/e2e/pkg/infra/digitalocean"
 	"github.com/cometbft/cometbft/test/e2e/pkg/infra/docker"
 )
 
@@ -64,18 +62,6 @@ func NewCLI() *CLI {
 				if err != nil {
 					return err
 				}
-			case "digital-ocean":
-				p, err := cmd.Flags().GetString("infrastructure-data")
-				if err != nil {
-					return err
-				}
-				if p == "" {
-					return errors.New("'--infrastructure-data' must be set when using the 'digital-ocean' infrastructure-type")
-				}
-				ifd, err = e2e.InfrastructureDataFromFile(p)
-				if err != nil {
-					return fmt.Errorf("parsing infrastructure data: %s", err)
-				}
 			default:
 				return fmt.Errorf("unknown infrastructure type '%s'", inft)
 			}
@@ -89,13 +75,6 @@ func NewCLI() *CLI {
 			switch inft {
 			case "docker":
 				cli.infp = &docker.Provider{
-					ProviderData: infra.ProviderData{
-						Testnet:            testnet,
-						InfrastructureData: ifd,
-					},
-				}
-			case "digital-ocean":
-				cli.infp = &digitalocean.Provider{
 					ProviderData: infra.ProviderData{
 						Testnet:            testnet,
 						InfrastructureData: ifd,
@@ -175,9 +154,7 @@ func NewCLI() *CLI {
 	cli.root.PersistentFlags().StringP("file", "f", "", "Testnet TOML manifest")
 	_ = cli.root.MarkPersistentFlagRequired("file")
 
-	cli.root.PersistentFlags().StringP("infrastructure-type", "", "docker", "Backing infrastructure used to run the testnet. Either 'digital-ocean' or 'docker'")
-
-	cli.root.PersistentFlags().StringP("infrastructure-data", "", "", "path to the json file containing the infrastructure data. Only used if the 'infrastructure-type' is set to a value other than 'docker'")
+	cli.root.PersistentFlags().StringP("infrastructure-type", "", "docker", "Backing infrastructure used to run the testnet. Only 'docker' is supported")
 
 	cli.root.Flags().BoolVarP(&cli.preserve, "preserve", "p", false,
 		"Preserves the running of the test net after tests are completed")

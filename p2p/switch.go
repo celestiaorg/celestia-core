@@ -355,12 +355,12 @@ func (sw *Switch) Peers() IPeerSet {
 // StopPeerForError disconnects from a peer due to external error.
 // If the peer is persistent, it will attempt to reconnect.
 // TODO: make record depending on reason.
-func (sw *Switch) StopPeerForError(peer Peer, reason interface{}) {
+func (sw *Switch) StopPeerForError(peer Peer, reason interface{}, reactorName string) {
 	if !peer.IsRunning() {
 		return
 	}
 
-	sw.Logger.Error("Stopping peer for error", "peer", peer, "err", reason)
+	sw.Logger.Error("Stopping peer for error", "peer", peer, "err", reason, "reactor", reactorName)
 	sw.stopAndRemovePeer(peer, reason)
 
 	if peer.IsPersistent() {
@@ -399,9 +399,14 @@ func (sw *Switch) getPeerAddress(peer Peer) (*NetAddress, error) {
 
 // StopPeerGracefully disconnects from a peer gracefully.
 // TODO: handle graceful disconnects.
-func (sw *Switch) StopPeerGracefully(peer Peer) {
+func (sw *Switch) StopPeerGracefully(peer Peer, reactorName string) {
 	sw.Logger.Info("Stopping peer gracefully")
-	sw.stopAndRemovePeer(peer, nil)
+
+	sw.removePeerFromReactor(peer, reactorName)
+
+	if sw.countActivePeerConnections(peer) == 0 {
+		sw.stopAndRemovePeer(peer, nil)
+	}
 }
 
 func (sw *Switch) stopAndRemovePeer(peer Peer, reason interface{}) {
@@ -410,12 +415,8 @@ func (sw *Switch) stopAndRemovePeer(peer Peer, reason interface{}) {
 		sw.Logger.Error("error while stopping peer", "error", err) // TODO: should return error to be handled accordingly
 	}
 	schema.WritePeerUpdate(sw.traceClient, string(peer.ID()), schema.PeerDisconnect, fmt.Sprintf("%v", reason))
-	for _, reactor := range sw.reactors {
-		reactor.RemovePeer(peer, reason)
-		chs := reactor.GetChannels()
-		if len(chs) > 0 {
-			_ = sw.peerSetByChID[chs[0].ID].Remove(peer) // TODO(tzdybal): error handling
-		}
+	if reason != nil {
+		sw.removePeerFromAllReactors(peer, reason)
 	}
 
 	// Removing a peer should go last to avoid a situation where a peer
@@ -427,7 +428,7 @@ func (sw *Switch) stopAndRemovePeer(peer Peer, reason interface{}) {
 	} else {
 		// Removal of the peer has failed. The function above sets a flag within the peer to mark this.
 		// We keep this message here as information to the developer.
-		sw.Logger.Debug("error on peer removal", ",", "peer", peer.ID())
+		sw.Logger.Debug("error on peer removal", "peer", peer.ID())
 	}
 }
 
@@ -907,25 +908,72 @@ func (sw *Switch) addPeer(p Peer) error {
 			continue
 		}
 
-		chs := reactor.GetChannels()
-		if len(chs) > 0 { // for each reactor there is exactly one PeerSet, no need to iterate over channels
-			if err := sw.peerSetByChID[chs[0].ID].Add(p); err != nil {
+		peerSet := sw.peerSetForReactor(reactor)
+		if peerSet != nil {
+			if err := peerSet.Add(p); err != nil {
 				if errors.Is(err, ErrPeerRemoval{}) {
-					sw.Logger.Error("Error starting peer ",
-						" err ", "Peer has already errored and removal was attempted.",
+					sw.Logger.Error("Error starting peer",
+						"err", "Peer has already errored and removal was attempted",
 						"peer", p.ID())
 				}
-				return err // TODO(tzdybal): this should never happen, right?
+				return err
 			}
 			peerWanted = true
 		}
 	}
 	if !peerWanted {
 		sw.Logger.Error("Peer not wanted by any reactor", "peer", p)
-		sw.StopPeerGracefully(p)
+		sw.StopPeerGracefully(p, "")
 	}
 
 	sw.Logger.Debug("Added peer", "peer", p)
 
 	return nil
+}
+
+// peerSetForReactor retrieves the PeerSet associated with the first channel of the given Reactor. Returns nil if empty.
+// For each reactor there is exactly one PeerSet, no need to iterate over channels
+func (sw *Switch) peerSetForReactor(r Reactor) *PeerSet {
+	if len(r.GetChannels()) > 0 {
+		return sw.peerSetByChID[r.GetChannels()[0].ID]
+	}
+	return nil
+}
+
+// removePeerFromAllReactors removes the given peer from all reactors
+func (sw *Switch) removePeerFromAllReactors(peer Peer, reason interface{}) {
+	for _, reactor := range sw.reactors {
+		sw.doRemovePeer(peer, reactor, reason)
+	}
+}
+
+// removePeerFromReactor removes the peer from the specified reactor
+func (sw *Switch) removePeerFromReactor(peer Peer, reactorName string) {
+	for _, reactor := range sw.reactors {
+		if reactor.String() == reactorName {
+			sw.doRemovePeer(peer, reactor, nil)
+			break
+		}
+	}
+}
+
+// doRemovePeer removes the specified peer from the given reactor and its corresponding peer set, logging any issues.
+func (sw *Switch) doRemovePeer(peer Peer, reactor Reactor, reason interface{}) {
+	reactor.RemovePeer(peer, reason)
+	peerSet := sw.peerSetForReactor(reactor)
+	if peerSet != nil && !peerSet.Remove(peer) {
+		sw.Logger.Debug("error on peer removal for reactor", "peer", peer.ID(), "reactor", reactor.String())
+	}
+}
+
+// countActivePeerConnections returns the number of reactors that have this peer
+func (sw *Switch) countActivePeerConnections(peer Peer) int {
+	cnt := 0
+	for _, reactor := range sw.reactors {
+		peerSet := sw.peerSetForReactor(reactor)
+		if peerSet != nil && peerSet.Has(peer.ID()) {
+			cnt++
+		}
+	}
+	return cnt
 }
