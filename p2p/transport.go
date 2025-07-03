@@ -2,6 +2,8 @@ package p2p
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"fmt"
 	"net"
 	"time"
@@ -45,7 +47,7 @@ type accept struct {
 // TODO(xla): Refactor out with more static Reactor setup and PeerBehaviour.
 type peerConfig struct {
 	chDescs     []*conn.ChannelDescriptor
-	onPeerError func(Peer, interface{})
+	onPeerError func(Peer, interface{}, string)
 	outbound    bool
 	// isPersistent allows you to set a function, which, given socket address
 	// (for outbound peers) OR self-reported address (for inbound peers), tells
@@ -85,6 +87,12 @@ type transportLifecycle interface {
 // been established. The set of exisiting connections is passed along together
 // with all resolved IPs for the new connection.
 type ConnFilterFunc func(ConnSet, net.Conn, []net.IP) error
+
+func generateTraceID() string {
+	b := make([]byte, 8)
+	_, _ = rand.Read(b)
+	return hex.EncodeToString(b)
+}
 
 // ConnDuplicateIPFilter resolves and keeps all ips for an incoming connection
 // and refuses new ones if they come from a known ip.
@@ -422,29 +430,44 @@ func (mt *MultiplexTransport) upgrade(
 			_ = mt.cleanup(c)
 		}
 	}()
-
+	traceID := generateTraceID()
 	secretConn, err = upgradeSecretConn(c, mt.handshakeTimeout, mt.nodeKey.PrivKey)
+	getRemoteNodeID := func() string {
+		if secretConn != nil && secretConn.RemotePubKey() != nil {
+			return string(PubKeyToID(secretConn.RemotePubKey()))
+		}
+		return ""
+	}
 	if err != nil {
 		return nil, nil, ErrRejected{
-			conn:          c,
-			err:           fmt.Errorf("secret conn failed: %v", err),
-			isAuthFailure: true,
+			conn:               c,
+			err:                fmt.Errorf("secret conn failed: %v", err),
+			isAuthFailure:      true,
+			localNodeID:        string(mt.nodeInfo.ID()),
+			remoteNodeID:       getRemoteNodeID(),
+			localAddr:          c.LocalAddr().String(),
+			remoteAddr:         c.RemoteAddr().String(),
+			handshakeStage:     "secret-conn-start",
+			traceID:            traceID,
+			malformedHandshake: false,
 		}
 	}
 
-	// For outgoing conns, ensure connection key matches dialed key.
 	connID := PubKeyToID(secretConn.RemotePubKey())
+
 	if dialedAddr != nil {
 		if dialedID := dialedAddr.ID; connID != dialedID {
 			return nil, nil, ErrRejected{
-				conn: c,
-				id:   connID,
-				err: fmt.Errorf(
-					"conn.ID (%v) dialed ID (%v) mismatch",
-					connID,
-					dialedID,
-				),
-				isAuthFailure: true,
+				conn:           c,
+				id:             connID,
+				err:            fmt.Errorf("conn.ID (%v) dialed ID (%v) mismatch", connID, dialedID),
+				isAuthFailure:  true,
+				localNodeID:    string(mt.nodeInfo.ID()),
+				remoteNodeID:   string(PubKeyToID(secretConn.RemotePubKey())),
+				localAddr:      c.LocalAddr().String(),
+				remoteAddr:     c.RemoteAddr().String(),
+				handshakeStage: "secret-conn-auth",
+				traceID:        traceID,
 			}
 		}
 	}
@@ -452,9 +475,15 @@ func (mt *MultiplexTransport) upgrade(
 	nodeInfo, err = handshake(secretConn, mt.handshakeTimeout, mt.nodeInfo)
 	if err != nil {
 		return nil, nil, ErrRejected{
-			conn:          c,
-			err:           fmt.Errorf("handshake failed: %v", err),
-			isAuthFailure: true,
+			conn:           c,
+			err:            fmt.Errorf("handshake failed: %v", err),
+			isAuthFailure:  true,
+			localNodeID:    string(mt.nodeInfo.ID()),
+			remoteNodeID:   string(PubKeyToID(secretConn.RemotePubKey())),
+			localAddr:      c.LocalAddr().String(),
+			remoteAddr:     c.RemoteAddr().String(),
+			handshakeStage: "challenge-response",
+			traceID:        traceID,
 		}
 	}
 
@@ -463,39 +492,66 @@ func (mt *MultiplexTransport) upgrade(
 			conn:              c,
 			err:               err,
 			isNodeInfoInvalid: true,
+			localNodeID:       string(mt.nodeInfo.ID()),
+			remoteNodeID:      string(PubKeyToID(secretConn.RemotePubKey())),
+			localAddr:         c.LocalAddr().String(),
+			remoteAddr:        c.RemoteAddr().String(),
+			handshakeStage:    "handshake-nodeinfo-validate",
+			traceID:           traceID,
 		}
 	}
 
-	// Ensure connection key matches self reported key.
 	if connID != nodeInfo.ID() {
 		return nil, nil, ErrRejected{
-			conn: c,
-			id:   connID,
-			err: fmt.Errorf(
-				"conn.ID (%v) NodeInfo.ID (%v) mismatch",
-				connID,
-				nodeInfo.ID(),
-			),
-			isAuthFailure: true,
+			conn:           c,
+			id:             connID,
+			err:            fmt.Errorf("conn.ID (%v) NodeInfo.ID (%v) mismatch", connID, nodeInfo.ID()),
+			isAuthFailure:  true,
+			localNodeID:    string(mt.nodeInfo.ID()),
+			remoteNodeID:   string(nodeInfo.ID()),
+			localAddr:      c.LocalAddr().String(),
+			remoteAddr:     c.RemoteAddr().String(),
+			handshakeStage: "connid-vs-nodeid",
+			traceID:        traceID,
 		}
 	}
 
-	// Reject self.
 	if mt.nodeInfo.ID() == nodeInfo.ID() {
 		return nil, nil, ErrRejected{
-			addr:   *NewNetAddress(nodeInfo.ID(), c.RemoteAddr()),
-			conn:   c,
-			id:     nodeInfo.ID(),
-			isSelf: true,
+			addr:           *NewNetAddress(nodeInfo.ID(), c.RemoteAddr()),
+			conn:           c,
+			id:             nodeInfo.ID(),
+			isSelf:         true,
+			localNodeID:    string(mt.nodeInfo.ID()),
+			remoteNodeID:   string(nodeInfo.ID()),
+			localAddr:      c.LocalAddr().String(),
+			remoteAddr:     c.RemoteAddr().String(),
+			handshakeStage: "self-detect",
+			traceID:        traceID,
 		}
 	}
 
 	if err := mt.nodeInfo.CompatibleWith(nodeInfo); err != nil {
+		var chainID, peerChainID string
+		if ni, ok := mt.nodeInfo.(DefaultNodeInfo); ok {
+			chainID = ni.Network
+		}
+		if ni, ok := nodeInfo.(DefaultNodeInfo); ok {
+			peerChainID = ni.Network
+		}
 		return nil, nil, ErrRejected{
 			conn:           c,
 			err:            err,
 			id:             nodeInfo.ID(),
 			isIncompatible: true,
+			localNodeID:    string(mt.nodeInfo.ID()),
+			remoteNodeID:   string(nodeInfo.ID()),
+			localAddr:      c.LocalAddr().String(),
+			remoteAddr:     c.RemoteAddr().String(),
+			handshakeStage: "post-handshake",
+			traceID:        traceID,
+			chainID:        chainID,
+			peerChainID:    peerChainID,
 		}
 	}
 
@@ -554,12 +610,15 @@ func handshake(
 	}
 
 	var (
-		errc = make(chan error, 2)
-
+		errc           = make(chan error, 2)
 		pbpeerNodeInfo tmp2p.DefaultNodeInfo
 		peerNodeInfo   DefaultNodeInfo
-		ourNodeInfo    = nodeInfo.(DefaultNodeInfo)
 	)
+
+	ourNodeInfo, ok := nodeInfo.(DefaultNodeInfo)
+	if !ok {
+		return nil, fmt.Errorf("nodeInfo is not DefaultNodeInfo, got: %T", nodeInfo)
+	}
 
 	go func(errc chan<- error, c net.Conn) {
 		_, err := protoio.NewDelimitedWriter(c).WriteMsg(ourNodeInfo.ToProto())

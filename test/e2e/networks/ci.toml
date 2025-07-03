@@ -45,7 +45,7 @@ snapshot_interval = 5
 
 [node.validator02]
 database = "goleveldb"
-mempool_version = "v2"
+mempool_version = "cat"
 persist_interval = 0
 perturb = ["restart"]
 privval_protocol = "tcp"
@@ -54,7 +54,7 @@ seeds = ["seed01"]
 [node.validator03]
 database = "badgerdb"
 key_type = "secp256k1"
-mempool_version = "v1"
+mempool_version = "cat"
 persist_interval = 3
 perturb = ["kill"]
 privval_protocol = "unix"
@@ -64,15 +64,15 @@ seeds = ["seed01"]
 [node.validator04]
 database = "goleveldb"
 key_type = "sr25519"
-mempool_version = "priority"
+mempool_version = "cat"
 persistent_peers = ["validator01"]
 perturb = ["pause"]
 
 [node.validator05]
-database = "goleveldb" 
-persistent_peers = ["validator01", "full01"] 
-perturb = ["kill", "pause", "disconnect", "restart"] 
-privval_protocol = "tcp" 
+database = "goleveldb"
+persistent_peers = ["validator01", "full01"]
+perturb = ["kill", "pause", "disconnect", "restart"]
+privval_protocol = "tcp"
 start_at = 1005 # Becomes part of the validator set at 1010
 
 [node.full01]

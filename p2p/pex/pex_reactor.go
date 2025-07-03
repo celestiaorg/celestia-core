@@ -264,13 +264,13 @@ func (r *Reactor) Receive(e p2p.Envelope) {
 			go func() {
 				// In a go-routine so it doesn't block .Receive.
 				e.Src.FlushStop()
-				r.Switch.StopPeerGracefully(e.Src)
+				r.Switch.StopPeerGracefully(e.Src, r.String())
 			}()
 
 		} else {
 			// Check we're not receiving requests too frequently.
 			if err := r.receiveRequest(e.Src); err != nil {
-				r.Switch.StopPeerForError(e.Src, err)
+				r.Switch.StopPeerForError(e.Src, err, r.String())
 				r.book.MarkBad(e.Src.SocketAddr(), defaultBanTime)
 				return
 			}
@@ -281,13 +281,13 @@ func (r *Reactor) Receive(e p2p.Envelope) {
 		// If we asked for addresses, add them to the book
 		addrs, err := p2p.NetAddressesFromProto(msg.Addrs)
 		if err != nil {
-			r.Switch.StopPeerForError(e.Src, err)
+			r.Switch.StopPeerForError(e.Src, err, r.String())
 			r.book.MarkBad(e.Src.SocketAddr(), defaultBanTime)
 			return
 		}
 		err = r.ReceiveAddrs(addrs, e.Src)
 		if err != nil {
-			r.Switch.StopPeerForError(e.Src, err)
+			r.Switch.StopPeerForError(e.Src, err, r.String())
 			if err == ErrUnsolicitedList {
 				r.book.MarkBad(e.Src.SocketAddr(), defaultBanTime)
 			}
@@ -707,7 +707,7 @@ func (r *Reactor) attemptDisconnects() {
 		if peer.IsPersistent() {
 			continue
 		}
-		r.Switch.StopPeerGracefully(peer)
+		r.Switch.StopPeerGracefully(peer, r.String())
 	}
 }
 
