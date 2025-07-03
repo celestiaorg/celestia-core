@@ -206,7 +206,7 @@ func TestBroadcastTxForPeerStopsWhenPeerStops(t *testing.T) {
 
 	// stop peer
 	sw := reactors[1].Switch
-	sw.StopPeerForError(sw.Peers().List()[0], errors.New("some reason"))
+	sw.StopPeerForError(sw.Peers().List()[0], errors.New("some reason"), reactors[1].String())
 
 	// check that we are not leaking any go-routines
 	// i.e. broadcastTxRoutine finishes when peer is stopped
@@ -296,7 +296,7 @@ func TestMempoolReactorMaxActiveOutboundConnections(t *testing.T) {
 
 	// Disconnect the second reactor from the first reactor.
 	firstPeer := reactors[0].Switch.Peers().List()[0]
-	reactors[0].Switch.StopPeerGracefully(firstPeer)
+	reactors[0].Switch.StopPeerGracefully(firstPeer, reactors[0].String())
 
 	// Now the third reactor should start receiving transactions from the first reactor; the fourth
 	// reactor's mempool should still be empty.

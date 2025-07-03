@@ -22,6 +22,7 @@ import (
 	cs "github.com/cometbft/cometbft/consensus"
 	"github.com/cometbft/cometbft/evidence"
 	"github.com/cometbft/cometbft/light"
+	"github.com/cometbft/cometbft/mempool/cat"
 
 	"github.com/cometbft/cometbft/libs/log"
 	cmtpubsub "github.com/cometbft/cometbft/libs/pubsub"
@@ -1017,6 +1018,18 @@ func makeNodeInfo(
 		txIndexerStatus = "off"
 	}
 
+	channels := []byte{
+		bc.BlocksyncChannel,
+		cs.StateChannel, cs.DataChannel, cs.VoteChannel, cs.VoteSetBitsChannel,
+		mempl.MempoolChannel,
+		evidence.EvidenceChannel,
+		statesync.SnapshotChannel, statesync.ChunkChannel,
+		propagation.DataChannel, propagation.WantChannel,
+	}
+	if config.Mempool.Type == cfg.MempoolTypeCAT {
+		channels = append(channels, cat.MempoolWantsChannel, cat.MempoolDataChannel)
+	}
+
 	nodeInfo := p2p.DefaultNodeInfo{
 		ProtocolVersion: p2p.NewProtocolVersion(
 			version.P2PProtocol, // global
@@ -1026,15 +1039,8 @@ func makeNodeInfo(
 		DefaultNodeID: nodeKey.ID(),
 		Network:       genDoc.ChainID,
 		Version:       version.TMCoreSemVer,
-		Channels: []byte{
-			bc.BlocksyncChannel,
-			cs.StateChannel, cs.DataChannel, cs.VoteChannel, cs.VoteSetBitsChannel,
-			mempl.MempoolChannel,
-			evidence.EvidenceChannel,
-			statesync.SnapshotChannel, statesync.ChunkChannel,
-			propagation.DataChannel, propagation.WantChannel,
-		},
-		Moniker: config.Moniker,
+		Channels:      channels,
+		Moniker:       config.Moniker,
 		Other: p2p.DefaultNodeInfoOther{
 			TxIndex:    txIndexerStatus,
 			RPCAddress: config.RPC.ListenAddress,
