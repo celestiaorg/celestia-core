@@ -6,7 +6,6 @@ import (
 	"time"
 
 	cfg "github.com/cometbft/cometbft/config"
-	"github.com/cometbft/cometbft/crypto/tmhash"
 	"github.com/cometbft/cometbft/libs/log"
 	"github.com/cometbft/cometbft/libs/trace"
 	"github.com/cometbft/cometbft/libs/trace/schema"
@@ -20,10 +19,6 @@ const (
 	// default duration to wait before considering a peer non-responsive
 	// and searching for the tx from a new peer
 	DefaultGossipDelay = 200 * time.Millisecond
-
-	// Content Addressable Tx Pool gossips state based messages (SeenTx and WantTx) on a separate channel
-	// for cross compatibility
-	MempoolStateChannel = byte(0x31)
 
 	// peerHeightDiff signifies the tolerance in difference in height between the peer and the height
 	// the node received the tx
@@ -152,26 +147,12 @@ func (memR *Reactor) GetChannels() []*p2p.ChannelDescriptor {
 			Txs: &protomem.Txs{Txs: [][]byte{largestTx}},
 		},
 	}
-
-	stateMsg := protomem.Message{
-		Sum: &protomem.Message_SeenTx{
-			SeenTx: &protomem.SeenTx{
-				TxKey: make([]byte, tmhash.Size),
-			},
-		},
-	}
-
 	return []*p2p.ChannelDescriptor{
 		{
 			ID:                  mempool.MempoolChannel,
-			Priority:            2,
+			Priority:            6,
+			SendQueueCapacity:   1000,
 			RecvMessageCapacity: txMsg.Size(),
-			MessageType:         &protomem.Message{},
-		},
-		{
-			ID:                  MempoolStateChannel,
-			Priority:            3,
-			RecvMessageCapacity: stateMsg.Size(),
 			MessageType:         &protomem.Message{},
 		},
 	}
@@ -364,7 +345,7 @@ func (memR *Reactor) broadcastSeenTx(txKey types.TxKey) {
 
 		peer.Send(
 			p2p.Envelope{
-				ChannelID: MempoolStateChannel,
+				ChannelID: mempool.MempoolChannel,
 				Message:   msg,
 			},
 		)
@@ -423,7 +404,7 @@ func (memR *Reactor) requestTx(txKey types.TxKey, peer p2p.Peer) {
 
 	success := peer.Send(
 		p2p.Envelope{
-			ChannelID: MempoolStateChannel,
+			ChannelID: mempool.MempoolChannel,
 			Message:   msg,
 		},
 	)
