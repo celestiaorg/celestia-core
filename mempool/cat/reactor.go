@@ -21,9 +21,11 @@ const (
 	// and searching for the tx from a new peer
 	DefaultGossipDelay = 200 * time.Millisecond
 
-	// Content Addressable Tx Pool gossips state based messages (SeenTx and WantTx) on a separate channel
-	// for cross compatibility
-	MempoolStateChannel = byte(0x31)
+	// MempoolDataChannel channel for SeenTx and blob messages.
+	MempoolDataChannel = byte(0x31)
+
+	// MempoolWantsChannel channel for wantTx messages.
+	MempoolWantsChannel = byte(0x32)
 
 	// peerHeightDiff signifies the tolerance in difference in height between the peer and the height
 	// the node received the tx
@@ -164,13 +166,21 @@ func (memR *Reactor) GetChannels() []*p2p.ChannelDescriptor {
 	return []*p2p.ChannelDescriptor{
 		{
 			ID:                  mempool.MempoolChannel,
-			Priority:            2,
+			Priority:            1,
 			RecvMessageCapacity: txMsg.Size(),
 			MessageType:         &protomem.Message{},
 		},
 		{
-			ID:                  MempoolStateChannel,
+			ID:                  MempoolDataChannel,
 			Priority:            3,
+			SendQueueCapacity:   1000,
+			RecvMessageCapacity: txMsg.Size(),
+			MessageType:         &protomem.Message{},
+		},
+		{
+			ID:                  MempoolWantsChannel,
+			Priority:            3,
+			SendQueueCapacity:   1000,
 			RecvMessageCapacity: stateMsg.Size(),
 			MessageType:         &protomem.Message{},
 		},
@@ -255,7 +265,7 @@ func (memR *Reactor) Receive(e p2p.Envelope) {
 		txKey, err := types.TxKeyFromBytes(msg.TxKey)
 		if err != nil {
 			memR.Logger.Error("peer sent SeenTx with incorrect tx key", "err", err)
-			memR.Switch.StopPeerForError(e.Src, err)
+			memR.Switch.StopPeerForError(e.Src, err, memR.String())
 			return
 		}
 		schema.WriteMempoolPeerState(
@@ -268,7 +278,7 @@ func (memR *Reactor) Receive(e p2p.Envelope) {
 		peerID := memR.ids.GetIDForPeer(e.Src.ID())
 		memR.mempool.PeerHasTx(peerID, txKey)
 		// Check if we don't already have the transaction
-		if memR.mempool.Has(txKey) {
+		if memR.mempool.Has(txKey) || memR.mempool.WasRecentlyRejected(txKey) {
 			memR.Logger.Debug("received a seen tx for a tx we already have", "txKey", txKey)
 			return
 		}
@@ -289,7 +299,7 @@ func (memR *Reactor) Receive(e p2p.Envelope) {
 		txKey, err := types.TxKeyFromBytes(msg.TxKey)
 		if err != nil {
 			memR.Logger.Error("peer sent WantTx with incorrect tx key", "err", err)
-			memR.Switch.StopPeerForError(e.Src, err)
+			memR.Switch.StopPeerForError(e.Src, err, memR.String())
 			return
 		}
 		schema.WriteMempoolPeerState(
@@ -304,7 +314,7 @@ func (memR *Reactor) Receive(e p2p.Envelope) {
 			peerID := memR.ids.GetIDForPeer(e.Src.ID())
 			memR.Logger.Debug("sending a tx in response to a want msg", "peer", peerID)
 			if e.Src.Send(p2p.Envelope{
-				ChannelID: mempool.MempoolChannel,
+				ChannelID: MempoolDataChannel,
 				Message:   &protomem.Txs{Txs: [][]byte{tx.Tx}},
 			}) {
 				memR.mempool.PeerHasTx(peerID, txKey)
@@ -320,7 +330,7 @@ func (memR *Reactor) Receive(e p2p.Envelope) {
 
 	default:
 		memR.Logger.Error("unknown message type", "src", e.Src, "chId", e.ChannelID, "msg", fmt.Sprintf("%T", msg))
-		memR.Switch.StopPeerForError(e.Src, fmt.Errorf("mempool cannot handle message of type: %T", msg))
+		memR.Switch.StopPeerForError(e.Src, fmt.Errorf("mempool cannot handle message of type: %T", msg), memR.String())
 		return
 	}
 }
@@ -364,7 +374,7 @@ func (memR *Reactor) broadcastSeenTx(txKey types.TxKey) {
 
 		peer.Send(
 			p2p.Envelope{
-				ChannelID: MempoolStateChannel,
+				ChannelID: MempoolDataChannel,
 				Message:   msg,
 			},
 		)
@@ -398,7 +408,7 @@ func (memR *Reactor) broadcastNewTx(wtx *wrappedTx) {
 
 		if peer.Send(
 			p2p.Envelope{
-				ChannelID: mempool.MempoolChannel,
+				ChannelID: MempoolDataChannel,
 				Message:   msg,
 			},
 		) {
@@ -423,7 +433,7 @@ func (memR *Reactor) requestTx(txKey types.TxKey, peer p2p.Peer) {
 
 	success := peer.Send(
 		p2p.Envelope{
-			ChannelID: MempoolStateChannel,
+			ChannelID: MempoolWantsChannel,
 			Message:   msg,
 		},
 	)

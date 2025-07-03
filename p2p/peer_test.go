@@ -83,7 +83,7 @@ func createOutboundPeerAndPerformHandshake(
 	chDescs := []*cmtconn.ChannelDescriptor{
 		{ID: testCh, Priority: 1},
 	}
-	reactorsByCh := map[byte]Reactor{testCh: NewTestReactor(chDescs, true)}
+	reactorsByCh := map[byte]Reactor{testCh: NewTestReactor("TestReactor", chDescs, true)}
 	msgTypeByChID := map[byte]proto.Message{
 		testCh: &p2p.Message{},
 	}
@@ -99,7 +99,7 @@ func createOutboundPeerAndPerformHandshake(
 		return nil, err
 	}
 
-	p := newPeer(pc, mConfig, peerNodeInfo, reactorsByCh, msgTypeByChID, chDescs, func(p Peer, r interface{}) {}, newMetricsLabelCache())
+	p := newPeer(pc, mConfig, peerNodeInfo, reactorsByCh, msgTypeByChID, chDescs, func(p Peer, r interface{}, reactorName string) {}, newMetricsLabelCache())
 	p.SetLogger(log.TestingLogger().With("peer", addr))
 	return p, nil
 }

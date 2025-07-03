@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"runtime/debug"
 	"sort"
 	"time"
@@ -1457,6 +1458,22 @@ func (cs *State) defaultDoPrevote(height int64, round int32) {
 		logger.Error("prevote step: state machine rejected a proposed block; this should not happen:"+
 			"the proposer may be misbehaving; prevoting nil", "err", err)
 		cs.signAddVote(cmtproto.PrevoteType, nil, types.PartSetHeader{}, nil)
+
+		// save block as a json
+		timestamp := time.Now().Format("20060102-150405.000")
+		err := types.SaveBlockToFile(
+			filepath.Join(cs.config.RootDir, "data", "debug"),
+			fmt.Sprintf("%s-%d-%s_faulty_proposal.json",
+				cs.state.ChainID,
+				cs.ProposalBlock.Height,
+				timestamp,
+			),
+			cs.ProposalBlock,
+		)
+		if err != nil {
+			cs.Logger.Error("failed to save faulty proposal block", "err", err.Error())
+		}
+
 		return
 	}
 

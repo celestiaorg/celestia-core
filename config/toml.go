@@ -351,7 +351,7 @@ dial_timeout = "{{ .P2P.DialTimeout }}"
 #  not supported.
 #  - "priority" : concurrent linked list mempool with priority queue (default)
 #  - "cat"   : content addressable mempool
-type = "priority"
+type = "{{ .Mempool.Type }}"
 
 # Recheck (default: true) defines whether CometBFT should recheck the
 # validity for all remaining transaction in the mempool after a block.

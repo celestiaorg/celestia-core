@@ -304,6 +304,12 @@ func (txmp *TxPool) TryAddNewTx(tx *types.CachedTx, key types.TxKey, txInfo memp
 	// - We are connected to nodes running v0 or v1 which simply flood the network
 	// - If a client submits a transaction to multiple nodes (via RPC)
 	// - We send multiple requests and the first peer eventually responds after the second peer has already provided the tx
+	if txmp.WasRecentlyRejected(key) {
+		// The peer has sent us a transaction that we have previously marked as invalid. Since `CheckTx` can
+		// be non-deterministic, we don't punish the peer but instead just ignore the tx
+		return nil, ErrTxAlreadyRejected
+	}
+
 	if txmp.Has(key) {
 		txmp.metrics.AlreadySeenTxs.Add(1)
 		// The peer has sent us a transaction that we have already seen
