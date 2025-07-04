@@ -30,7 +30,7 @@ const (
 	maxMsgSize = maxAddressSize * maxGetSelection
 
 	// ensure we have enough peers
-	defaultEnsurePeersPeriod = 30 * time.Second
+	defaultEnsurePeersPeriod = 10 * time.Second
 
 	// Seed/Crawler constants
 
