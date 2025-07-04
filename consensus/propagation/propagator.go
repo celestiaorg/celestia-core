@@ -17,3 +17,14 @@ type Propagator interface {
 	StartProcessing()
 	SetProposer(proposer crypto.PubKey)
 }
+
+// PeerStateEditor defines methods for editing peer state from the propagation layer.
+// This interface allows the propagation reactor to update peer state without causing
+// import cycles with the consensus reactor.
+type PeerStateEditor interface {
+	// SetHasProposal sets the given proposal as known for the peer.
+	SetHasProposal(proposal *types.Proposal)
+	
+	// SetHasProposalBlockPart sets the given block part index as known for the peer.
+	SetHasProposalBlockPart(height int64, round int32, index int)
+}
