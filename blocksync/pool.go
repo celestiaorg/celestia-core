@@ -336,6 +336,13 @@ func (pool *BlockPool) AddBlock(peerID p2p.ID, block *types.Block, extCommit *ty
 	}
 
 	if !requester.setBlock(block, extCommit, peerID) {
+		// Check if this peer was recently banned. If so, this is likely a race condition
+		// where the block arrived after the peer was banned and reset from the requester.
+		// This is not an error, just a timing issue.
+		if pool.isPeerBanned(peerID) {
+			pool.Logger.Debug("Ignoring block from recently banned peer", "peer", peerID, "height", block.Height)
+			return nil
+		}
 		err := fmt.Errorf("requested block #%d from %v, not %s", block.Height, requester.requestedFrom(), peerID)
 		pool.sendError(err, peerID)
 		return err
