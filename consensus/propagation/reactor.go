@@ -185,6 +185,9 @@ func (blockProp *Reactor) AddPeer(peer p2p.Peer) error {
 		if editor, ok := consensusState.(PeerStateEditor); ok {
 			peerState.SetConsensusPeerState(editor)
 			blockProp.Logger.Debug("loaded consensus peer state editor", "peer", peer.ID())
+		} else {
+			blockProp.Logger.Error("failed to load consensus peer state", "peer", peer.ID())
+			peerState.consensusPeerState = noOpPSE{}
 		}
 	}
 

@@ -24,7 +24,12 @@ type Propagator interface {
 type PeerStateEditor interface {
 	// SetHasProposal sets the given proposal as known for the peer.
 	SetHasProposal(proposal *types.Proposal)
-	
+
 	// SetHasProposalBlockPart sets the given block part index as known for the peer.
 	SetHasProposalBlockPart(height int64, round int32, index int)
 }
+
+type noOpPSE struct{}
+
+func (_ noOpPSE) SetHasProposal(_ *types.Proposal)                {}
+func (_ noOpPSE) SetHasProposalBlockPart(_ int64, _ int32, _ int) {}

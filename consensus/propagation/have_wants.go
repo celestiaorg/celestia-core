@@ -64,6 +64,7 @@ func (blockProp *Reactor) handleHaves(peer p2p.ID, haves *proptypes.HaveParts) {
 
 	for _, pmd := range haves.Parts {
 		bm.SetIndex(int(pmd.Index), true)
+		p.consensusPeerState.SetHasProposalBlockPart(height, round, int(pmd.Index))
 	}
 
 	if parts.Original().IsComplete() {
@@ -323,7 +324,11 @@ func (blockProp *Reactor) broadcastHaves(haves *proptypes.HaveParts, from p2p.ID
 			blockProp.Logger.Error("failed to send haves to peer", "peer", peer.peer.ID())
 			continue
 		}
-		peer.AddHaves(haves.Height, haves.Round, haves.BitArray(partSetSize))
+		hb := haves.BitArray(partSetSize)
+		peer.AddHaves(haves.Height, haves.Round, hb)
+		for _, h := range hb.GetTrueIndices() {
+			peer.consensusPeerState.SetHasProposalBlockPart(haves.Height, haves.Round, h)
+		}
 	}
 }
 

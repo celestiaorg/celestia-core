@@ -35,9 +35,10 @@ type PeerState struct {
 	canRequest     chan struct{}
 
 	logger log.Logger
-	
+
 	// consensusPeerState allows the propagation reactor to update peer state
-	// in the consensus reactor without causing import cycles
+	// in the consensus reactor. This enables both reactors to gossip data
+	// while minimizing redundant bandwidth.
 	consensusPeerState PeerStateEditor
 }
 
@@ -51,15 +52,16 @@ type partData struct {
 func newPeerState(ctx context.Context, peer p2p.Peer, logger log.Logger) *PeerState {
 	ctx, cancel := context.WithCancel(ctx)
 	return &PeerState{
-		ctx:           ctx,
-		cancel:        cancel,
-		mtx:           &sync.RWMutex{},
-		state:         make(map[int64]map[int32]*partState),
-		peer:          peer,
-		logger:        logger,
-		receivedHaves: make(chan request, 3000),
-		receivedParts: make(chan partData, 3000),
-		canRequest:    make(chan struct{}, 1),
+		ctx:                ctx,
+		cancel:             cancel,
+		mtx:                &sync.RWMutex{},
+		state:              make(map[int64]map[int32]*partState),
+		peer:               peer,
+		logger:             logger,
+		receivedHaves:      make(chan request, 3000),
+		receivedParts:      make(chan partData, 3000),
+		canRequest:         make(chan struct{}, 1),
+		consensusPeerState: noOpPSE{},
 	}
 }
 

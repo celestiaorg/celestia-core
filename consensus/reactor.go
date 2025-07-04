@@ -1351,7 +1351,7 @@ func (ps *PeerState) SetHasProposalBlockPart(height int64, round int32, index in
 	ps.mtx.Lock()
 	defer ps.mtx.Unlock()
 
-	if ps.PRS.Height != height || ps.PRS.Round != round {
+	if ps.PRS.Height != height || ps.PRS.Round != round || index >= ps.PRS.ProposalBlockParts.Bits {
 		return
 	}
 
