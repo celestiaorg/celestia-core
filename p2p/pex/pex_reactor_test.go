@@ -220,7 +220,7 @@ func TestPEXReactorRequestIntervalAccepted(t *testing.T) {
 	r, book := createReactor(&ReactorConfig{})
 	defer teardownReactor(book)
 
-	// Set a shorter ensurePeersPeriod to avoid long test times  
+	// Set a shorter ensurePeersPeriod to avoid long test times
 	// Using 3 seconds instead of default 30 seconds
 	testEnsurePeersPeriod := 3 * time.Second
 	r.SetEnsurePeersPeriod(testEnsurePeersPeriod)
