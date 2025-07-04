@@ -46,7 +46,7 @@ test_integrations:
 .PHONY: test_integrations
 
 test_release:
-	@go test -tags release -timeout=30m $(PACKAGES)
+	@go test -tags release $(PACKAGES)
 .PHONY: test_release
 
 test100:
@@ -61,15 +61,15 @@ vagrant_test:
 ### go tests
 test:
 	@echo "--> Running go test"
-	@go test -p 1 -timeout=30m $(PACKAGES) -tags deadlock
+	@go test -p 1 $(PACKAGES) -tags deadlock
 .PHONY: test
 
 test_race:
 	@echo "--> Running go test --race"
-	@go test -p 1 -v -race -timeout=30m $(PACKAGES)
+	@go test -p 1 -v -race $(PACKAGES)
 .PHONY: test_race
 
 test_deadlock:
 	@echo "--> Running go test --deadlock"
-	@go test -p 1 -v -timeout=30m $(PACKAGES) -tags deadlock 
+	@go test -p 1 -v  $(PACKAGES) -tags deadlock 
 .PHONY: test_race
