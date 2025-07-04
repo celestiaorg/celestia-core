@@ -20,6 +20,7 @@ import (
 
 	cmtbytes "github.com/cometbft/cometbft/libs/bytes"
 	"github.com/cometbft/cometbft/libs/log"
+	cmtnet "github.com/cometbft/cometbft/libs/net"
 	cmtrand "github.com/cometbft/cometbft/libs/rand"
 
 	client "github.com/cometbft/cometbft/rpc/jsonrpc/client"
@@ -29,14 +30,16 @@ import (
 
 // Client and Server should work over tcp or unix sockets
 const (
-	tcpAddr = "tcp://127.0.0.1:47768"
-
 	unixSocket = "/tmp/rpc_test.sock"
 	unixAddr   = "unix://" + unixSocket
 
 	websocketEndpoint = "/websocket/endpoint"
 
 	testVal = "acbd"
+)
+
+var (
+	tcpAddr string
 )
 
 var ctx = context.Background()
@@ -120,10 +123,17 @@ var colorFn = func(keyvals ...interface{}) term.FgBgColor {
 
 // launch unix and tcp servers
 func setup() {
+	// Get a free port for TCP server
+	port, err := cmtnet.GetFreePort()
+	if err != nil {
+		panic(err)
+	}
+	tcpAddr = fmt.Sprintf("tcp://127.0.0.1:%d", port)
+
 	logger := log.NewTMLoggerWithColorFn(log.NewSyncWriter(os.Stdout), colorFn)
 
 	cmd := exec.Command("rm", "-f", unixSocket)
-	err := cmd.Start()
+	err = cmd.Start()
 	if err != nil {
 		panic(err)
 	}
