@@ -56,7 +56,7 @@ type Reactor struct {
 	traceClient trace.Tracer
 
 	propagator propagation.Propagator
-	
+
 	// gossipDataEnabled controls whether the gossipDataRoutine should run
 	gossipDataEnabled atomic.Bool
 }
@@ -74,7 +74,7 @@ func NewReactor(consensusState *State, propagator propagation.Propagator, waitSy
 		traceClient: trace.NoOpTracer(),
 		propagator:  propagator,
 	}
-	conR.gossipDataEnabled.Store(true) // default to enabled
+	conR.gossipDataEnabled.Store(true)
 	conR.BaseReactor = *p2p.NewBaseReactor(
 		"Consensus",
 		conR,
@@ -243,7 +243,6 @@ func (conR *Reactor) AddPeer(peer p2p.Peer) error {
 	}
 	return nil
 }
-
 
 // RemovePeer is a noop.
 func (conR *Reactor) RemovePeer(p2p.Peer, interface{}) {
