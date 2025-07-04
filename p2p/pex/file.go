@@ -19,7 +19,7 @@ func (a *addrBook) saveToFile(filePath string) {
 	a.mtx.Lock()
 	defer a.mtx.Unlock()
 
-	a.Logger.Info("Saving AddrBook to file", "size", a.size())
+	a.Logger.Debug("Saving AddrBook to file", "size", a.size())
 
 	addrs := make([]*knownAddress, 0, len(a.addrLookup))
 	for _, ka := range a.addrLookup {
