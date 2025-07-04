@@ -180,6 +180,14 @@ func (blockProp *Reactor) AddPeer(peer p2p.Peer) error {
 	}
 
 	peerState := newPeerState(blockProp.ctx, peer, blockProp.Logger)
+
+	if consensusState := peer.Get(types.PeerStateKey); consensusState != nil {
+		if editor, ok := consensusState.(PeerStateEditor); ok {
+			peerState.SetConsensusPeerState(editor)
+			blockProp.Logger.Debug("loaded consensus peer state editor", "peer", peer.ID())
+		}
+	}
+
 	blockProp.setPeer(peer.ID(), peerState)
 	go blockProp.requestFromPeer(peerState)
 
