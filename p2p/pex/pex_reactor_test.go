@@ -171,6 +171,92 @@ func TestPEXReactorRequestMessageAbuse(t *testing.T) {
 	assert.True(t, book.IsBanned(peerAddr))
 }
 
+func TestPEXReactorRequestIntervalValidation(t *testing.T) {
+	r, book := createReactor(&ReactorConfig{})
+	defer teardownReactor(book)
+
+	// Set a shorter ensurePeersPeriod to avoid long test times
+	// Using 3 seconds instead of default 30 seconds
+	testEnsurePeersPeriod := 3 * time.Second
+	r.SetEnsurePeersPeriod(testEnsurePeersPeriod)
+
+	sw := createSwitchAndAddReactors(r)
+	sw.SetAddrBook(book)
+
+	peer := mock.NewPeer(nil)
+	peerAddr := peer.SocketAddr()
+	p2p.AddPeerToSwitchPeerSet(sw, peer)
+	assert.True(t, sw.Peers().Has(peer.ID()))
+	err := book.AddAddress(peerAddr, peerAddr)
+	require.NoError(t, err)
+	require.True(t, book.HasAddress(peerAddr))
+
+	id := string(peer.ID())
+
+	// With ensurePeersPeriod of 3s, minReceiveRequestInterval should be 1s (3s / 3)
+	expectedMinInterval := testEnsurePeersPeriod / 3
+	assert.Equal(t, expectedMinInterval, r.minReceiveRequestInterval())
+
+	// First request should always be accepted (creates the entry)
+	r.Receive(p2p.Envelope{ChannelID: PexChannel, Src: peer, Message: &tmp2p.PexRequest{}})
+	assert.True(t, r.lastReceivedRequests.Has(id))
+	assert.True(t, sw.Peers().Has(peer.ID()))
+
+	// Second request should also be accepted (sets the lastReceived time)
+	r.Receive(p2p.Envelope{ChannelID: PexChannel, Src: peer, Message: &tmp2p.PexRequest{}})
+	assert.True(t, r.lastReceivedRequests.Has(id))
+	assert.True(t, sw.Peers().Has(peer.ID()))
+
+	// Third request sent too soon (within minInterval) should be rejected
+	// Sleep for half the minimum interval to ensure we're too early
+	time.Sleep(expectedMinInterval / 2)
+	r.Receive(p2p.Envelope{ChannelID: PexChannel, Src: peer, Message: &tmp2p.PexRequest{}})
+	assert.False(t, r.lastReceivedRequests.Has(id), "Peer should be disconnected for sending request too soon")
+	assert.False(t, sw.Peers().Has(peer.ID()), "Peer should be removed from switch")
+	assert.True(t, book.IsBanned(peerAddr), "Peer should be banned")
+}
+
+func TestPEXReactorRequestIntervalAccepted(t *testing.T) {
+	r, book := createReactor(&ReactorConfig{})
+	defer teardownReactor(book)
+
+	// Set a shorter ensurePeersPeriod to avoid long test times  
+	// Using 3 seconds instead of default 30 seconds
+	testEnsurePeersPeriod := 3 * time.Second
+	r.SetEnsurePeersPeriod(testEnsurePeersPeriod)
+
+	sw := createSwitchAndAddReactors(r)
+	sw.SetAddrBook(book)
+
+	peer := mock.NewPeer(nil)
+	peerAddr := peer.SocketAddr()
+	p2p.AddPeerToSwitchPeerSet(sw, peer)
+	assert.True(t, sw.Peers().Has(peer.ID()))
+	err := book.AddAddress(peerAddr, peerAddr)
+	require.NoError(t, err)
+	require.True(t, book.HasAddress(peerAddr))
+
+	id := string(peer.ID())
+
+	// With ensurePeersPeriod of 3s, minReceiveRequestInterval should be 1s (3s / 3)
+	expectedMinInterval := testEnsurePeersPeriod / 3
+	assert.Equal(t, expectedMinInterval, r.minReceiveRequestInterval())
+
+	// First and second requests for initialization
+	r.Receive(p2p.Envelope{ChannelID: PexChannel, Src: peer, Message: &tmp2p.PexRequest{}})
+	r.Receive(p2p.Envelope{ChannelID: PexChannel, Src: peer, Message: &tmp2p.PexRequest{}})
+	assert.True(t, sw.Peers().Has(peer.ID()))
+
+	// Wait for the minimum interval to pass
+	time.Sleep(expectedMinInterval + 10*time.Millisecond)
+
+	// Third request sent after appropriate interval should be accepted
+	r.Receive(p2p.Envelope{ChannelID: PexChannel, Src: peer, Message: &tmp2p.PexRequest{}})
+	assert.True(t, r.lastReceivedRequests.Has(id), "Peer should remain connected after sending request at proper interval")
+	assert.True(t, sw.Peers().Has(peer.ID()), "Peer should remain in switch")
+	assert.False(t, book.IsBanned(peerAddr), "Peer should not be banned")
+}
+
 func TestPEXReactorAddrsMessageAbuse(t *testing.T) {
 	r, book := createReactor(&ReactorConfig{})
 	defer teardownReactor(book)
