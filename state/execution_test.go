@@ -221,7 +221,7 @@ func TestFinalizeBlockValidators(t *testing.T) {
 		block, _, err := makeBlock(state, 2, lastCommit.ToCommit())
 		require.NoError(t, err)
 
-		_, err = sm.ExecCommitBlock(proxyApp.Consensus(), block, log.TestingLogger(), stateStore, 1)
+		_, _, err = sm.ExecCommitBlock(proxyApp.Consensus(), state, block, log.TestingLogger(), stateStore, 1)
 		require.NoError(t, err, tc.desc)
 		require.True(t,
 			!tc.shouldHaveTime ||

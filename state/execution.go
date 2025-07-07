@@ -836,11 +836,12 @@ func fireEvents(
 // It returns the application root hash (result of abci.Commit).
 func ExecCommitBlock(
 	appConnConsensus proxy.AppConnConsensus,
+	state State,
 	block *types.Block,
 	logger log.Logger,
 	store Store,
 	initialHeight int64,
-) ([]byte, error) {
+) ([]byte, State, error) {
 	commitInfo := buildLastCommitInfoFromStore(block, store, initialHeight)
 	pbHeader := block.Header.ToProto()
 
@@ -859,12 +860,22 @@ func ExecCommitBlock(
 	})
 	if err != nil {
 		logger.Error("error in proxyAppConn.FinalizeBlock", "err", err)
-		return nil, err
+		return nil, state, err
 	}
 
 	// Assert that the application correctly returned tx results for each of the transactions provided in the block
 	if len(block.Data.Txs) != len(resp.TxResults) { //nolint:staticcheck
-		return nil, fmt.Errorf("expected tx results length to match size of transactions in block. Expected %d, got %d", len(block.Data.Txs), len(resp.TxResults)) //nolint:staticcheck
+		return nil, state, fmt.Errorf("expected tx results length to match size of transactions in block. Expected %d, got %d", len(block.Data.Txs), len(resp.TxResults)) //nolint:staticcheck
+	}
+
+	validatorUpdates, err := types.PB2TM.ValidatorUpdates(resp.ValidatorUpdates)
+	if err != nil {
+		return nil, state, err
+	}
+
+	state, err = updateState(state, block.LastBlockID, &block.Header, resp, validatorUpdates)
+	if err != nil {
+		return nil, state, err
 	}
 
 	logger.Info("executed block", "height", block.Height, "app_hash", fmt.Sprintf("%X", resp.AppHash))
@@ -873,11 +884,11 @@ func ExecCommitBlock(
 	_, err = appConnConsensus.Commit(context.TODO())
 	if err != nil {
 		logger.Error("client error during proxyAppConn.Commit", "err", err)
-		return nil, err
+		return nil, state, err
 	}
 
 	// ResponseCommit has no error or log
-	return resp.AppHash, nil
+	return resp.AppHash, state, nil
 }
 
 func (blockExec *BlockExecutor) pruneBlocks(retainHeight int64, state State) (uint64, error) {
