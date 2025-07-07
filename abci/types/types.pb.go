@@ -1215,7 +1215,7 @@ type RequestProcessProposal struct {
 	SquareSize      uint64 `protobuf:"varint,9,opt,name=square_size,json=squareSize,proto3" json:"square_size,omitempty"`
 	DataRootHash    []byte `protobuf:"bytes,10,opt,name=data_root_hash,json=dataRootHash,proto3" json:"data_root_hash,omitempty"`
 	// header is the header of the block that is being processed
-	// this is needed for v3 to sync with nova as the header is stored in state
+	// this is needed for v3 to sync with multiplexer as the header is stored in state
 	Header *types1.Header `protobuf:"bytes,20,opt,name=header,proto3" json:"header,omitempty"`
 }
 
@@ -1517,7 +1517,7 @@ type RequestFinalizeBlock struct {
 	// proposer_address is the address of the public key of the original proposer of the block.
 	ProposerAddress []byte `protobuf:"bytes,8,opt,name=proposer_address,json=proposerAddress,proto3" json:"proposer_address,omitempty"`
 	// header is the header of the block that is being finalized
-	// this is needed for v3 to sync with nova as the header is stored in state
+	// this is needed for v3 to sync with multiplexer as the header is stored in state
 	Header *types1.Header `protobuf:"bytes,20,opt,name=header,proto3" json:"header,omitempty"`
 }
 
