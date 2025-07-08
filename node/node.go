@@ -418,6 +418,7 @@ func NewNodeWithContext(ctx context.Context,
 		blockStore,
 		sm.BlockExecutorWithMetrics(smMetrics),
 		sm.BlockExecutorWithRootDir(config.RootDir),
+		sm.BlockExecutorWithTracer(tracer),
 	)
 
 	offlineStateSyncHeight := int64(0)
