@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"github.com/cometbft/cometbft/libs/trace"
+	"github.com/cometbft/cometbft/libs/trace/schema"
 	"path/filepath"
 	"time"
 
@@ -47,6 +49,9 @@ type BlockExecutor struct {
 
 	// root directory for debug file saving
 	rootDir string
+
+	// tracer optional tracer
+	tracer trace.Tracer
 }
 
 type BlockExecutorOption func(executor *BlockExecutor)
@@ -60,6 +65,12 @@ func BlockExecutorWithMetrics(metrics *Metrics) BlockExecutorOption {
 func BlockExecutorWithRootDir(rootDir string) BlockExecutorOption {
 	return func(blockExec *BlockExecutor) {
 		blockExec.rootDir = rootDir
+	}
+}
+
+func BlockExecutorWithTracer(tracer trace.Tracer) BlockExecutorOption {
+	return func(blockExec *BlockExecutor) {
+		blockExec.tracer = tracer
 	}
 }
 
@@ -83,6 +94,7 @@ func NewBlockExecutor(
 		logger:     logger,
 		metrics:    NopMetrics(),
 		blockStore: blockStore,
+		tracer:     trace.NoOpTracer(),
 	}
 
 	for _, option := range options {
@@ -164,7 +176,9 @@ func (blockExec *BlockExecutor) CreateProposalBlock(
 			}
 		}()
 
+		schema.WriteABCI(blockExec.tracer, schema.PrepareProposalStart, block.Height, -1)
 		rpp, err = blockExec.proxyApp.PrepareProposal(ctx, req)
+		schema.WriteABCI(blockExec.tracer, schema.PrepareProposalEnd, block.Height, -1)
 	}()
 	if err != nil {
 		// For non-panic errors, also save the failed proposal block
