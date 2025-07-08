@@ -231,7 +231,7 @@ func (blockExec *BlockExecutor) ProcessProposal(
 		ProposerAddress:    block.ProposerAddress,
 		NextValidatorsHash: block.NextValidatorsHash,
 
-		// needed for v3 to sync with nova as the header is stored in state
+		// needed for v3 to sync with multiplexer as the header is stored in state
 		Header: pbHeader,
 	})
 	if err != nil {
@@ -304,7 +304,7 @@ func (blockExec *BlockExecutor) applyBlock(state State, blockID types.BlockID, b
 		Misbehavior:        block.Evidence.Evidence.ToABCI(),
 		Txs:                txs,
 
-		// needed for v3 to sync with nova as the header is stored in state
+		// needed for v3 to sync with multiplexer as the header is stored in state
 		Header: pbHeader,
 	})
 	endTime := time.Now().UnixNano()
@@ -854,7 +854,7 @@ func ExecCommitBlock(
 		Misbehavior:        block.Evidence.Evidence.ToABCI(),
 		Txs:                block.Txs.ToSliceOfBytes(),
 
-		// needed for v3 to sync with nova as the header is stored in state
+		// needed for v3 to sync with multiplexer as the header is stored in state
 		Header: pbHeader,
 	})
 	if err != nil {
