@@ -1,6 +1,7 @@
 package propagation
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -14,6 +15,7 @@ import (
 
 	"github.com/cometbft/cometbft/privval"
 	"github.com/cometbft/cometbft/proto/tendermint/propagation"
+	cmtproto "github.com/cometbft/cometbft/proto/tendermint/types"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -686,4 +688,66 @@ func NewTestPrivval(t *testing.T) types.PrivValidator {
 
 	privVal := privval.GenFilePV(tempKeyFile.Name(), tempStateFile.Name())
 	return privVal
+}
+
+// MockPeerStateEditor tracks calls to consensus peer state methods for testing
+type MockPeerStateEditor struct {
+	proposals   []*types.Proposal
+	blockParts  []BlockPartCall
+}
+
+type BlockPartCall struct {
+	Height int64
+	Round  int32
+	Index  int
+}
+
+func (m *MockPeerStateEditor) SetHasProposal(proposal *types.Proposal) {
+	m.proposals = append(m.proposals, proposal)
+}
+
+func (m *MockPeerStateEditor) SetHasProposalBlockPart(height int64, round int32, index int) {
+	m.blockParts = append(m.blockParts, BlockPartCall{Height: height, Round: round, Index: index})
+}
+
+func TestConsensusPeerStateUpdates(t *testing.T) {
+	// Create mock peer state editor to track calls
+	mockEditor := &MockPeerStateEditor{}
+	
+	// Test the integration at the PeerState level 
+	ctx := context.Background()
+	peer := mock.NewPeer(nil)
+	
+	// Create a new peer state
+	peerState := newPeerState(ctx, peer, log.NewNopLogger())
+	
+	// Test 1: Test that no-op editor is used by default
+	require.NotNil(t, peerState.GetConsensusPeerState())
+	
+	// Test 2: Test setting and using mock editor
+	peerState.SetConsensusPeerState(mockEditor)
+	require.Equal(t, mockEditor, peerState.GetConsensusPeerState())
+	
+	// Test 3: Test SetHasProposal integration
+	proposal := types.Proposal{
+		Height: 1,
+		Round:  0,
+		Type:   cmtproto.ProposalType,
+	}
+	
+	peerState.GetConsensusPeerState().SetHasProposal(&proposal)
+	
+	// Verify SetHasProposal was called
+	require.Len(t, mockEditor.proposals, 1)
+	assert.Equal(t, proposal.Height, mockEditor.proposals[0].Height)
+	assert.Equal(t, proposal.Round, mockEditor.proposals[0].Round)
+	
+	// Test 4: Test SetHasProposalBlockPart integration
+	peerState.GetConsensusPeerState().SetHasProposalBlockPart(1, 0, 5)
+	
+	// Verify SetHasProposalBlockPart was called
+	require.Len(t, mockEditor.blockParts, 1)
+	assert.Equal(t, int64(1), mockEditor.blockParts[0].Height)
+	assert.Equal(t, int32(0), mockEditor.blockParts[0].Round)
+	assert.Equal(t, 5, mockEditor.blockParts[0].Index)
 }
