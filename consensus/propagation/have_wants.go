@@ -40,6 +40,9 @@ func (blockProp *Reactor) handleHaves(peer p2p.ID, haves *proptypes.HaveParts) {
 		return
 	}
 
+	blockProp.recovering <- struct{}{}
+	defer func() { <-blockProp.recovering }()
+
 	cb, parts, fullReqs, has := blockProp.getAllState(height, round, false)
 	if !has {
 		blockProp.Logger.Debug("received have part for unknown proposal", "peer", peer, "height", height, "round", round)
