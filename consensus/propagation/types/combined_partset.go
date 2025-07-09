@@ -133,7 +133,7 @@ func (cps *CombinedPartSet) Decode() error {
 	return nil
 }
 
-// AddPart adds a recovery part to the combined part set. It assumes that the parts being
+// AddPart adds a part to the combined part set. It assumes that the parts being
 // added have already been verified.
 func (cps *CombinedPartSet) AddPart(part *RecoveryPart, proof merkle.Proof) (bool, error) {
 	p := &types.Part{
@@ -158,17 +158,6 @@ func (cps *CombinedPartSet) AddPart(part *RecoveryPart, proof merkle.Proof) (boo
 	added, err := cps.parity.AddPart(p)
 	if added {
 		cps.totalMap.SetIndex(int(encodedIndex), true)
-	}
-	return added, err
-}
-
-// AddOriginalPart adds an original part to the combined partset.
-func (cps *CombinedPartSet) AddOriginalPart(part *types.Part) (bool, error) {
-	cps.mtx.Lock()
-	defer cps.mtx.Unlock()
-	added, err := cps.original.AddPart(part)
-	if added {
-		cps.totalMap.SetIndex(int(part.Index), true)
 	}
 	return added, err
 }

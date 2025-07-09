@@ -170,7 +170,7 @@ func (blockProp *Reactor) handleCompactBlock(cb *proptypes.CompactBlock, peer p2
 		case blockProp.proposalChan <- cb.Proposal:
 		}
 		// check if we have any transactions that are in the compact block
-		blockProp.recoverPartsFromMempool(cb)
+		go blockProp.recoverPartsFromMempool(cb)
 	}
 
 	blockProp.broadcastCompactBlock(cb, peer)
@@ -178,6 +178,8 @@ func (blockProp *Reactor) handleCompactBlock(cb *proptypes.CompactBlock, peer p2
 
 // recoverPartsFromMempool queries the mempool to see if we can recover any block parts locally.
 func (blockProp *Reactor) recoverPartsFromMempool(cb *proptypes.CompactBlock) {
+	blockProp.recovering <- struct{}{}
+	defer func() { <-blockProp.recovering }()
 	// find the compact block transactions that exist in our mempool
 	txsFound := make([]proptypes.UnmarshalledTx, 0)
 	for _, txMetaData := range cb.Blobs {
@@ -229,6 +231,7 @@ func (blockProp *Reactor) recoverPartsFromMempool(cb *proptypes.CompactBlock) {
 		return
 	}
 
+	originalParts := partSet.Original()
 	recoveredCount := 0
 	haves := proptypes.HaveParts{
 		Height: cb.Proposal.Height,
@@ -236,12 +239,12 @@ func (blockProp *Reactor) recoverPartsFromMempool(cb *proptypes.CompactBlock) {
 		Parts:  make([]proptypes.PartMetaData, 0),
 	}
 	for _, p := range parts {
-		if partSet.HasPart(int(p.Index)) {
+		if originalParts.HasPart(int(p.Index)) {
 			continue
 		}
 		p.Proof = *proofs[p.Index]
 
-		added, err := partSet.AddOriginalPart(p)
+		added, err := originalParts.AddPart(p)
 		if err != nil {
 			blockProp.Logger.Error("failed to add locally recovered part", "err", err)
 			continue
