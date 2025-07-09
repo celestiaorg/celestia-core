@@ -283,6 +283,7 @@ func (d *PeerState) prune(prunePastHeight int64) {
 	for height := range d.state {
 		if height < prunePastHeight {
 			delete(d.state, height)
+			delete(d.remainingRequests, height)
 		}
 	}
 	// todo: prune rounds separately from heights
