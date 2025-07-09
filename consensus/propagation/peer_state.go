@@ -107,6 +107,8 @@ func (d *PeerState) DecreaseRemainingRequests(height int64, round int32, sub int
 }
 
 func (d *PeerState) SetRemainingRequests(height int64, round int32, count int) {
+	d.mtx.RLock()
+	defer d.mtx.RUnlock()
 	if d.remainingRequests[height] == nil {
 		d.remainingRequests[height] = make(map[int32]int)
 	}
@@ -114,6 +116,8 @@ func (d *PeerState) SetRemainingRequests(height int64, round int32, count int) {
 }
 
 func (d *PeerState) GetRemainingRequests(height int64, round int32) int {
+	d.mtx.RLock()
+	defer d.mtx.RUnlock()
 	if d.remainingRequests[height] == nil {
 		return 0
 	}
