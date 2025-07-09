@@ -435,7 +435,6 @@ func (blockProp *Reactor) handleRecoveryPart(peer p2p.ID, part *proptypes.Recove
 		// blockProp.Switch.StopPeerForError(p.peer, errors.New("received recovery part for unknown proposal"))
 		return
 	}
-	schema.WriteReceivedPart(blockProp.traceClient, part.Height, part.Round, int(part.Index))
 
 	if parts.HasPart(int(part.Index)) || parts.IsComplete() {
 		return
