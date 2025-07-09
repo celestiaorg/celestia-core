@@ -38,7 +38,6 @@ const (
 var RetryTime = 6 * time.Second
 
 type Reactor struct {
-	recovering      chan struct{}
 	p2p.BaseReactor // BaseService + p2p.Switch
 
 	peerstate map[p2p.ID]*PeerState
@@ -85,7 +84,6 @@ func NewReactor(
 ) *Reactor {
 	ctx, cancel := context.WithCancel(context.Background())
 	reactor := &Reactor{
-		recovering:    make(chan struct{}, 1),
 		self:          self,
 		traceClient:   trace.NoOpTracer(),
 		peerstate:     make(map[p2p.ID]*PeerState),
