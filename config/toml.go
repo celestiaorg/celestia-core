@@ -172,7 +172,6 @@ cors_allowed_methods = [{{ range .RPC.CORSAllowedMethods }}{{ printf "%q, " . }}
 cors_allowed_headers = [{{ range .RPC.CORSAllowedHeaders }}{{ printf "%q, " . }}{{end}}]
 
 # TCP or UNIX socket address for the gRPC server to listen on
-# NOTE: This server only supports /broadcast_tx_commit
 grpc_laddr = "{{ .RPC.GRPCListenAddress }}"
 
 # Maximum number of simultaneous connections.
