@@ -173,8 +173,7 @@ func (blockProp *Reactor) requestFromPeer(ps *PeerState) {
 						blockProp.Logger.Error("couldn't find proposal when filtering requests", "height", have.height, "round", have.round)
 						break
 					}
-					remainingPartsToDecode := int((parts.Total() / 2) + 1)
-					missingPartsCount = int32(max(0, remainingPartsToDecode-len(parts.BitArray().GetTrueIndices())))
+					missingPartsCount = countRemainingParts(int(parts.Total()), len(parts.BitArray().GetTrueIndices()))
 				}
 
 				// don't request a part that is already downloaded
@@ -229,6 +228,12 @@ func (blockProp *Reactor) requestFromPeer(ps *PeerState) {
 			}
 		}
 	}
+}
+
+// countRemainingParts counts the remaining parts to decode a block.
+func countRemainingParts(totalParts, existingParts int) int32 {
+	remainingPartsToDecode := totalParts / 2
+	return int32(max(0, remainingPartsToDecode-existingParts))
 }
 
 func (blockProp *Reactor) sendWantsThenBroadcastHaves(ps *PeerState, wants *proptypes.WantParts) error {

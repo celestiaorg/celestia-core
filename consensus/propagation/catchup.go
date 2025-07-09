@@ -55,9 +55,7 @@ func (blockProp *Reactor) retryWants(currentHeight int64) {
 				continue
 			}
 
-			remainingPartsToDecode := int((prop.block.Total() / 2) + 1)
-			missingPartsCount := int32(max(0, remainingPartsToDecode-len(prop.block.BitArray().GetTrueIndices())))
-
+			missingPartsCount := countRemainingParts(int(prop.block.Total()), len(prop.block.BitArray().GetTrueIndices()))
 			e := p2p.Envelope{
 				ChannelID: WantChannel,
 				Message: &protoprop.WantParts{
