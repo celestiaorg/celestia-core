@@ -150,7 +150,7 @@ func (blockProp *Reactor) handleCompactBlock(cb *proptypes.CompactBlock, peer p2
 	err := blockProp.validateCompactBlock(cb)
 	if !proposer && err != nil {
 		blockProp.DeleteRound(cb.Proposal.Height, cb.Proposal.Round)
-		blockProp.Logger.Info("failed to validate proposal. ignoring", "err", err, "height", cb.Proposal.Height, "round", cb.Proposal.Round)
+		blockProp.Logger.Debug("failed to validate proposal. ignoring", "err", err, "height", cb.Proposal.Height, "round", cb.Proposal.Round)
 		return
 	}
 
