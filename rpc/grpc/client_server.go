@@ -6,6 +6,7 @@ import (
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/reflection"
 
 	cmtnet "github.com/cometbft/cometbft/libs/net"
 	"github.com/cometbft/cometbft/rpc/core"
@@ -27,13 +28,13 @@ func StartGRPCServer(env *core.Environment, ln net.Listener) error {
 	grpcServer := grpc.NewServer()
 	RegisterBroadcastAPIServer(grpcServer, &broadcastAPI{env: env})
 
-	// block api
 	api := NewBlockAPI(env)
 	RegisterBlockAPIServer(grpcServer, api)
 
-	// blobstream api
 	blobstreamAPI := NewBlobstreamAPI(env)
 	RegisterBlobstreamAPIServer(grpcServer, blobstreamAPI)
+
+	reflection.Register(grpcServer)
 
 	errCh := make(chan error, 2)
 	ctx, cancel := context.WithCancel(context.Background())
