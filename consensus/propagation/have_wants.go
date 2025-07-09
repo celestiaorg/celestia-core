@@ -140,9 +140,10 @@ func (blockProp *Reactor) requestFromPeer(ps *PeerState) {
 			}
 
 			var (
-				wants    *proptypes.WantParts
-				parts    *proptypes.CombinedPartSet
-				fullReqs *bits.BitArray
+				wants             *proptypes.WantParts
+				parts             *proptypes.CombinedPartSet
+				missingPartsCount int32
+				fullReqs          *bits.BitArray
 			)
 			for i := min(canSend, int64(len(ps.receivedHaves))); i > 0; {
 				if len(ps.receivedHaves) == 0 {
@@ -158,6 +159,7 @@ func (blockProp *Reactor) requestFromPeer(ps *PeerState) {
 					// haves for a new height, resetting
 					wants = nil
 					parts = nil
+					missingPartsCount = 0
 				}
 
 				if !blockProp.relevantHave(have.height, have.round) {
@@ -171,6 +173,8 @@ func (blockProp *Reactor) requestFromPeer(ps *PeerState) {
 						blockProp.Logger.Error("couldn't find proposal when filtering requests", "height", have.height, "round", have.round)
 						break
 					}
+					remainingPartsToDecode := int((parts.Total() / 2) + 1)
+					missingPartsCount = int32(max(0, remainingPartsToDecode-len(parts.BitArray().GetTrueIndices())))
 				}
 
 				// don't request a part that is already downloaded
@@ -202,9 +206,10 @@ func (blockProp *Reactor) requestFromPeer(ps *PeerState) {
 
 				if wants == nil {
 					wants = &proptypes.WantParts{
-						Height: have.height,
-						Round:  have.round,
-						Parts:  bits.NewBitArray(int(parts.Total())),
+						Height:            have.height,
+						Round:             have.round,
+						Parts:             bits.NewBitArray(int(parts.Total())),
+						MissingPartsCount: missingPartsCount,
 					}
 				}
 
@@ -368,7 +373,10 @@ func (blockProp *Reactor) handleWants(peer p2p.ID, wants *proptypes.WantParts) {
 		return
 	}
 
-	for _, partIndex := range canSend.GetTrueIndices() {
+	for index, partIndex := range canSend.GetTrueIndices() {
+		if index > int(wants.MissingPartsCount) {
+			break
+		}
 		part, _ := parts.GetPart(uint32(partIndex))
 		partBz := make([]byte, len(part.Bytes))
 		copy(partBz, part.Bytes)
