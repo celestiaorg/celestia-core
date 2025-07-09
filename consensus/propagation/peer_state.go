@@ -29,10 +29,11 @@ type PeerState struct {
 	// and round.
 	state map[int64]map[int32]*partState
 
-	concurrentReqs atomic.Int64
-	receivedParts  chan partData
-	receivedHaves  chan request
-	canRequest     chan struct{}
+	concurrentReqs    atomic.Int64
+	receivedParts     chan partData
+	receivedHaves     chan request
+	canRequest        chan struct{}
+	remainingRequests map[int64]map[int32]int
 
 	logger log.Logger
 }
@@ -47,15 +48,16 @@ type partData struct {
 func newPeerState(ctx context.Context, peer p2p.Peer, logger log.Logger) *PeerState {
 	ctx, cancel := context.WithCancel(ctx)
 	return &PeerState{
-		ctx:           ctx,
-		cancel:        cancel,
-		mtx:           &sync.RWMutex{},
-		state:         make(map[int64]map[int32]*partState),
-		peer:          peer,
-		logger:        logger,
-		receivedHaves: make(chan request, 3000),
-		receivedParts: make(chan partData, 3000),
-		canRequest:    make(chan struct{}, 1),
+		ctx:               ctx,
+		cancel:            cancel,
+		mtx:               &sync.RWMutex{},
+		state:             make(map[int64]map[int32]*partState),
+		remainingRequests: make(map[int64]map[int32]int),
+		peer:              peer,
+		logger:            logger,
+		receivedHaves:     make(chan request, 3000),
+		receivedParts:     make(chan partData, 3000),
+		canRequest:        make(chan struct{}, 1),
 	}
 }
 
@@ -85,6 +87,37 @@ func (d *PeerState) IncreaseConcurrentReqs(add int64) {
 
 func (d *PeerState) SetConcurrentReqs(count int64) {
 	d.concurrentReqs.Store(count)
+}
+
+func (d *PeerState) DecreaseRemainingRequests(height int64, round int32, sub int) {
+	d.mtx.Lock()
+	defer d.mtx.Unlock()
+	if d.remainingRequests[height] == nil {
+		return
+	}
+	remainingRequests := d.remainingRequests[height][round]
+	if remainingRequests == 0 {
+		return
+	}
+	if remainingRequests < sub {
+		d.remainingRequests[height][round] = 0
+		return
+	}
+	d.remainingRequests[height][round] -= sub
+}
+
+func (d *PeerState) SetRemainingRequests(height int64, round int32, count int) {
+	if d.remainingRequests[height] == nil {
+		d.remainingRequests[height] = make(map[int32]int)
+	}
+	d.remainingRequests[height][round] = count
+}
+
+func (d *PeerState) GetRemainingRequests(height int64, round int32) int {
+	if d.remainingRequests[height] == nil {
+		return 0
+	}
+	return d.remainingRequests[height][round]
 }
 
 func (d *PeerState) DecreaseConcurrentReqs(sub int64) {

@@ -373,8 +373,9 @@ func (blockProp *Reactor) handleWants(peer p2p.ID, wants *proptypes.WantParts) {
 		return
 	}
 
-	for index, partIndex := range canSend.GetTrueIndices() {
-		if index > int(wants.MissingPartsCount) {
+	p.SetRemainingRequests(height, round, int(wants.MissingPartsCount))
+	for _, partIndex := range canSend.GetTrueIndices() {
+		if p.GetRemainingRequests(height, round) <= 0 {
 			break
 		}
 		part, _ := parts.GetPart(uint32(partIndex))
@@ -398,6 +399,7 @@ func (blockProp *Reactor) handleWants(peer p2p.ID, wants *proptypes.WantParts) {
 			blockProp.Logger.Error("failed to send part", "peer", peer, "height", height, "round", round, "part", partIndex)
 			continue
 		}
+		p.DecreaseRemainingRequests(height, round, 1)
 		// p.SetHave(height, round, int(partIndex))
 		schema.WriteBlockPart(blockProp.traceClient, height, round, part.Index, wants.Prove, string(peer), schema.Upload)
 	}
@@ -580,6 +582,9 @@ func (blockProp *Reactor) handleRecoveryPart(peer p2p.ID, part *proptypes.Recove
 func (blockProp *Reactor) clearWants(part *proptypes.RecoveryPart, proof merkle.Proof) {
 	for _, peer := range blockProp.getPeers() {
 		if peer.WantsPart(part.Height, part.Round, part.Index) {
+			if peer.GetRemainingRequests(part.Height, part.Round) <= 0 {
+				continue
+			}
 			e := p2p.Envelope{
 				ChannelID: DataChannel,
 				Message: &propproto.RecoveryPart{
@@ -614,6 +619,7 @@ func (blockProp *Reactor) clearWants(part *proptypes.RecoveryPart, proof merkle.
 				catchup = true
 			}
 			blockProp.pmtx.Unlock()
+			peer.DecreaseRemainingRequests(part.Height, part.Round, 1)
 			schema.WriteBlockPart(blockProp.traceClient, part.Height, part.Round, part.Index, catchup, string(peer.peer.ID()), schema.Upload)
 		}
 	}
