@@ -76,7 +76,7 @@ func (e errTooEarlyToDial) Error() string {
 // ## Preventing abuse
 //
 // Only accept pexAddrsMsg from peers we sent a corresponding pexRequestMsg too.
-// Only accept one pexRequestMsg every ~defaultEnsurePeersPeriod.
+// All nodes disconnect after exchanging addresses to prevent persistent connections.
 type Reactor struct {
 	p2p.BaseReactor
 
@@ -250,35 +250,25 @@ func (r *Reactor) Receive(e p2p.Envelope) {
 		// 1) restrict how frequently peers can request
 		// 2) limit the output size
 
-		// If we're a seed and this is an inbound peer,
-		// respond once and disconnect.
-		if r.config.SeedMode && !e.Src.IsOutbound() {
-			id := string(e.Src.ID())
-			v := r.lastReceivedRequests.Get(id)
-			if v != nil {
-				// FlushStop/StopPeer are already
-				// running in a go-routine.
-				return
-			}
-			r.lastReceivedRequests.Set(id, time.Now())
-
-			// Send addrs and disconnect
-			r.SendAddrs(e.Src, r.book.GetSelectionWithBias(biasToSelectNewPeers))
-			go func() {
-				// In a go-routine so it doesn't block .Receive.
-				e.Src.FlushStop()
-				r.Switch.StopPeerGracefully(e.Src, r.String())
-			}()
-
-		} else {
-			// Check we're not receiving requests too frequently.
-			if err := r.receiveRequest(e.Src); err != nil {
-				r.Switch.StopPeerForError(e.Src, err, r.String())
-				r.book.MarkBad(e.Src.SocketAddr(), defaultBanTime)
-				return
-			}
-			r.SendAddrs(e.Src, r.book.GetSelection())
+		// All nodes now disconnect after exchanging addresses
+		id := string(e.Src.ID())
+		v := r.lastReceivedRequests.Get(id)
+		if v != nil {
+			// FlushStop/StopPeer are already
+			// running in a go-routine.
+			return
 		}
+		r.lastReceivedRequests.Set(id, time.Now())
+
+		// Send addrs and disconnect
+		r.SendAddrs(e.Src, r.book.GetSelection())
+		go func(peer Peer) {
+			// In a go-routine so it doesn't block .Receive.
+			if peer != nil {
+				peer.FlushStop()
+				r.Switch.StopPeerGracefully(peer, r.String())
+			}
+		}(e.Src)
 
 	case *tmp2p.PexAddrs:
 		// If we asked for addresses, add them to the book
@@ -300,40 +290,6 @@ func (r *Reactor) Receive(e p2p.Envelope) {
 	default:
 		r.Logger.Error(fmt.Sprintf("Unknown message type %T", msg))
 	}
-}
-
-// enforces a minimum amount of time between requests
-func (r *Reactor) receiveRequest(src Peer) error {
-	id := string(src.ID())
-	v := r.lastReceivedRequests.Get(id)
-	if v == nil {
-		// initialize with empty time
-		lastReceived := time.Time{}
-		r.lastReceivedRequests.Set(id, lastReceived)
-		return nil
-	}
-
-	lastReceived := v.(time.Time)
-	if lastReceived.Equal(time.Time{}) {
-		// first time gets a free pass. then we start tracking the time
-		lastReceived = time.Now()
-		r.lastReceivedRequests.Set(id, lastReceived)
-		return nil
-	}
-
-	now := time.Now()
-	minInterval := r.minReceiveRequestInterval()
-	if now.Sub(lastReceived) < minInterval {
-		return fmt.Errorf(
-			"peer (%v) sent next PEX request too soon. lastReceived: %v, now: %v, minInterval: %v. Disconnecting",
-			src.ID(),
-			lastReceived,
-			now,
-			minInterval,
-		)
-	}
-	r.lastReceivedRequests.Set(id, now)
-	return nil
 }
 
 // RequestAddrs asks peer for more addresses if we do not already have a
