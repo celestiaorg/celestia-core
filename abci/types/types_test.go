@@ -7,7 +7,6 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/cometbft/cometbft/abci/types"
 	abci "github.com/cometbft/cometbft/abci/types"
 	"github.com/cometbft/cometbft/crypto/merkle"
 )
@@ -83,7 +82,7 @@ type OldEventAttribute struct {
 
 func TestJsonEventDecoding(t *testing.T) {
 	// 1) JSON from the string‐field type:
-	eventAttr := &types.EventAttribute{Key: "foo", Value: "bar!", Index: true}
+	eventAttr := &abci.EventAttribute{Key: "foo", Value: "bar!", Index: true}
 	stringJSON, err := json.Marshal(eventAttr)
 	require.NoError(t, err)
 	// Try to unmarshal that into the bytes‐field type:
@@ -102,7 +101,7 @@ func TestJsonEventDecoding(t *testing.T) {
 	require.NoError(t, err)
 	// That JSON.Value is base64("bar!") == "YmFyIQ==".
 	// Unmarshal into the string‐field type:
-	var intoNew types.EventAttribute
+	var intoNew abci.EventAttribute
 	err = json.Unmarshal(bytesJSON, &intoNew)
 	require.NoError(t, err)
 	// But intoNew.Value is now the literal base64 string, not the original:
