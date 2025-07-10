@@ -401,81 +401,106 @@ func NewNodeWithContext(ctx context.Context,
 		return nil, err
 	}
 
-	mempool, mempoolReactor := createMempoolAndMempoolReactor(config, proxyApp, state, memplMetrics, logger, tracer)
+	var mempool mempl.Mempool
+	var mempoolReactor p2p.Reactor
+	var evidenceReactor *evidence.Reactor
+	var evidencePool *evidence.Pool
 
-	evidenceReactor, evidencePool, err := createEvidenceReactor(config, dbProvider, stateStore, blockStore, logger)
-	if err != nil {
-		return nil, err
-	}
+	// Skip non-PEX reactors in seed mode
+	if !config.P2P.SeedMode {
+		mempool, mempoolReactor = createMempoolAndMempoolReactor(config, proxyApp, state, memplMetrics, logger, tracer)
 
-	// make block executor for consensus and blocksync reactors to execute blocks
-	blockExec := sm.NewBlockExecutor(
-		stateStore,
-		logger.With("module", "state"),
-		proxyApp.Consensus(),
-		mempool,
-		evidencePool,
-		blockStore,
-		sm.BlockExecutorWithMetrics(smMetrics),
-		sm.BlockExecutorWithRootDir(config.RootDir),
-		sm.BlockExecutorWithTracer(tracer),
-	)
-
-	offlineStateSyncHeight := int64(0)
-	if blockStore.Height() == 0 {
-		offlineStateSyncHeight, err = blockExec.Store().GetOfflineStateSyncHeight()
-		if err != nil && err.Error() != "value empty" {
-			panic(fmt.Sprintf("failed to retrieve statesynced height from store %s; expected state store height to be %v", err, state.LastBlockHeight))
+		evidenceReactor, evidencePool, err = createEvidenceReactor(config, dbProvider, stateStore, blockStore, logger)
+		if err != nil {
+			return nil, err
 		}
 	}
-	// Don't start block sync if we're doing a state sync first.
-	bcReactor, err := createBlocksyncReactor(config, state, blockExec, blockStore, blockSync && !stateSync, localAddr, logger, bsMetrics, offlineStateSyncHeight)
-	if err != nil {
-		return nil, fmt.Errorf("could not create blocksync reactor: %w", err)
+
+	var blockExec *sm.BlockExecutor
+	var bcReactor p2p.Reactor
+	var propagationReactor *propagation.Reactor
+	var consensusReactor *cs.Reactor
+	var consensusState *cs.State
+	var stateSyncReactor *statesync.Reactor
+
+	// Skip non-PEX reactors in seed mode
+	if !config.P2P.SeedMode {
+		// make block executor for consensus and blocksync reactors to execute blocks
+		blockExec = sm.NewBlockExecutor(
+			stateStore,
+			logger.With("module", "state"),
+			proxyApp.Consensus(),
+			mempool,
+			evidencePool,
+			blockStore,
+			sm.BlockExecutorWithMetrics(smMetrics),
+			sm.BlockExecutorWithRootDir(config.RootDir),
+			sm.BlockExecutorWithTracer(tracer),
+		)
+
+		offlineStateSyncHeight := int64(0)
+		if blockStore.Height() == 0 {
+			offlineStateSyncHeight, err = blockExec.Store().GetOfflineStateSyncHeight()
+			if err != nil && err.Error() != "value empty" {
+				panic(fmt.Sprintf("failed to retrieve statesynced height from store %s; expected state store height to be %v", err, state.LastBlockHeight))
+			}
+		}
+		// Don't start block sync if we're doing a state sync first.
+		bcReactor, err = createBlocksyncReactor(config, state, blockExec, blockStore, blockSync && !stateSync, localAddr, logger, bsMetrics, offlineStateSyncHeight)
+		if err != nil {
+			return nil, fmt.Errorf("could not create blocksync reactor: %w", err)
+		}
+
+		if state.TimeoutCommit > 0 {
+			// set the catchup retry time to match the block time
+			propagation.RetryTime = state.TimeoutCommit
+		}
+		partsChan := make(chan types.PartInfo, 2500)
+		proposalChan := make(chan types.Proposal, 100)
+		propagationReactor = propagation.NewReactor(
+			nodeKey.ID(),
+			propagation.Config{
+				Store:         blockStore,
+				Mempool:       mempool,
+				Privval:       privValidator,
+				ChainID:       state.ChainID,
+				BlockMaxBytes: state.ConsensusParams.Block.MaxBytes,
+				PartChan:      partsChan,
+				ProposalChan:  proposalChan,
+			},
+			propagation.WithTracer(tracer),
+		)
+		if !stateSync && !blockSync {
+			propagationReactor.StartProcessing()
+		}
+
+		consensusReactor, consensusState = createConsensusReactor(
+			config, state, blockExec, blockStore, mempool, evidencePool,
+			privValidator, csMetrics, propagationReactor, stateSync || blockSync, eventBus, consensusLogger, offlineStateSyncHeight, tracer, partsChan, proposalChan,
+		)
 	}
 
-	if state.TimeoutCommit > 0 {
-		// set the catchup retry time to match the block time
-		propagation.RetryTime = state.TimeoutCommit
-	}
-	propagationReactor := propagation.NewReactor(
-		nodeKey.ID(),
-		propagation.Config{
-			Store:         blockStore,
-			Mempool:       mempool,
-			Privval:       privValidator,
-			ChainID:       state.ChainID,
-			BlockMaxBytes: state.ConsensusParams.Block.MaxBytes,
-		},
-		propagation.WithTracer(tracer),
-	)
-	if !stateSync && !blockSync {
-		propagationReactor.StartProcessing()
-	}
+	// Skip non-PEX reactors in seed mode
+	if !config.P2P.SeedMode {
+		err = stateStore.SetOfflineStateSyncHeight(0)
+		if err != nil {
+			panic(fmt.Sprintf("failed to reset the offline state sync height %s", err))
+		}
+		propagationReactor.SetLogger(logger.With("module", "propagation"))
 
-	consensusReactor, consensusState := createConsensusReactor(
-		config, state, blockExec, blockStore, mempool, evidencePool,
-		privValidator, csMetrics, propagationReactor, stateSync || blockSync, eventBus, consensusLogger, offlineStateSyncHeight, tracer,
-	)
-
-	err = stateStore.SetOfflineStateSyncHeight(0)
-	if err != nil {
-		panic(fmt.Sprintf("failed to reset the offline state sync height %s", err))
+		logger.Info("Consensus reactor created", "timeout_propose", consensusState.GetState().TimeoutPropose, "timeout_commit", consensusState.GetState().TimeoutCommit)
+		// Set up state sync reactor, and schedule a sync if requested.
+		// FIXME The way we do phased startups (e.g. replay -> block sync -> consensus) is very messy,
+		// we should clean this whole thing up. See:
+		// https://github.com/tendermint/tendermint/issues/4644
+		stateSyncReactor = statesync.NewReactor(
+			*config.StateSync,
+			proxyApp.Snapshot(),
+			proxyApp.Query(),
+			ssMetrics,
+		)
+		stateSyncReactor.SetLogger(logger.With("module", "statesync"))
 	}
-	propagationReactor.SetLogger(logger.With("module", "propagation"))
-
-	logger.Info("Consensus reactor created", "timeout_propose", consensusState.GetState().TimeoutPropose, "timeout_commit", consensusState.GetState().TimeoutCommit)
-	// Set up state sync reactor, and schedule a sync if requested.
-	// FIXME The way we do phased startups (e.g. replay -> block sync -> consensus) is very messy,
-	// we should clean this whole thing up. See:
-	// https://github.com/tendermint/tendermint/issues/4644
-	stateSyncReactor := statesync.NewReactor(
-		*config.StateSync,
-		proxyApp.Snapshot(),
-		proxyApp.Query(),
-		ssMetrics,
-	)
-	stateSyncReactor.SetLogger(logger.With("module", "statesync"))
 
 	nodeInfo, err := makeNodeInfo(config, nodeKey, txIndexer, genDoc, state, softwareVersion)
 	if err != nil {

@@ -493,14 +493,18 @@ func createSwitch(config *cfg.Config,
 		p2p.WithTracer(traceClient),
 	)
 	sw.SetLogger(p2pLogger)
-	if config.Mempool.Type != cfg.MempoolTypeNop {
-		sw.AddReactor("MEMPOOL", mempoolReactor)
+
+	// Skip non-PEX reactors in seed mode
+	if !config.P2P.SeedMode {
+		if config.Mempool.Type != cfg.MempoolTypeNop {
+			sw.AddReactor("MEMPOOL", mempoolReactor)
+		}
+		sw.AddReactor("BLOCKSYNC", bcReactor)
+		sw.AddReactor("CONSENSUS", consensusReactor)
+		sw.AddReactor("EVIDENCE", evidenceReactor)
+		sw.AddReactor("STATESYNC", stateSyncReactor)
+		sw.AddReactor("RECOVERY", propagationReactor)
 	}
-	sw.AddReactor("BLOCKSYNC", bcReactor)
-	sw.AddReactor("CONSENSUS", consensusReactor)
-	sw.AddReactor("EVIDENCE", evidenceReactor)
-	sw.AddReactor("STATESYNC", stateSyncReactor)
-	sw.AddReactor("RECOVERY", propagationReactor)
 
 	sw.SetNodeInfo(nodeInfo)
 	sw.SetNodeKey(nodeKey)
