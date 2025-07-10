@@ -117,6 +117,10 @@ func (r *EventAttribute) MarshalJSON() ([]byte, error) {
 	return []byte(s), err
 }
 
+// UnmarshalJSON is modified to be backwards compatible with the old EventAttribute
+// that was broken in comet v0.38. That message used bytes and not strings, which differs
+// in that the go protobindings that marhalled json would encode bytes as base64. Here we do
+// the conversion, make that a non-issue.
 func (r *EventAttribute) UnmarshalJSON(b []byte) error {
 	// Parse the JSON into a raw struct to inspect the format
 	var raw struct {
