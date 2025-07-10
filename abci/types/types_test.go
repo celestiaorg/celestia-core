@@ -80,7 +80,7 @@ type OldEventAttribute struct {
 	Index bool   `json:"index,omitempty"`
 }
 
-func TestJsonEventDecoding(t *testing.T) {
+func TestV0_34JsonEventDecoding(t *testing.T) {
 	// 1) JSON from the string‐field type:
 	eventAttr := &abci.EventAttribute{Key: "foo", Value: "bar!", Index: true}
 	stringJSON, err := json.Marshal(eventAttr)
