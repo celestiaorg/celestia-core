@@ -124,7 +124,7 @@ func (r *EventAttribute) UnmarshalJSON(b []byte) error {
 		Value string `json:"value,omitempty"`
 		Index bool   `json:"index,omitempty"`
 	}
-	
+
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return err
 	}

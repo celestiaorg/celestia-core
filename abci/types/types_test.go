@@ -82,32 +82,30 @@ type OldEventAttribute struct {
 }
 
 func TestJsonEventDecoding(t *testing.T) {
-	t.Run("json_cross_unmarshal", func(t *testing.T) {
-		// 1) JSON from the string‐field type:
-		eventAttr := &types.EventAttribute{Key: "foo", Value: "bar!", Index: true}
-		stringJSON, err := json.Marshal(eventAttr)
-		require.NoError(t, err)
-		// Try to unmarshal that into the bytes‐field type:
-		var intoOld OldEventAttribute
-		err = json.Unmarshal(stringJSON, &intoOld)
-		// encoding/json for []byte will try to base64‐decode "bar!" and fail:
-		require.Error(t, err, "raw UTF-8 should not decode as base64 when unmarshaled into []byte")
+	// 1) JSON from the string‐field type:
+	eventAttr := &types.EventAttribute{Key: "foo", Value: "bar!", Index: true}
+	stringJSON, err := json.Marshal(eventAttr)
+	require.NoError(t, err)
+	// Try to unmarshal that into the bytes‐field type:
+	var intoOld OldEventAttribute
+	err = json.Unmarshal(stringJSON, &intoOld)
+	// encoding/json for []byte will try to base64‐decode "bar!" and fail:
+	require.Error(t, err)
 
-		// 2) JSON from the bytes‐field type (base64):
-		oldEventAttr := &OldEventAttribute{
-			Key:   []byte("foo"),
-			Value: []byte("bar!"),
-			Index: true,
-		}
-		bytesJSON, err := json.Marshal(oldEventAttr)
-		require.NoError(t, err)
-		// That JSON.Value is base64("bar!") == "YmFyIQ==".
-		// Unmarshal into the string‐field type:
-		var intoNew types.EventAttribute
-		err = json.Unmarshal(bytesJSON, &intoNew)
-		require.NoError(t, err)
-		// But intoNew.Value is now the literal base64 string, not the original:
-		require.NotEqual(t, "bar!", intoNew.Value,
-			"base64 input becomes the literal string when unmarshaled into a Go string field")
-	})
+	// 2) JSON from the bytes‐field type (base64):
+	oldEventAttr := &OldEventAttribute{
+		Key:   []byte("foo"),
+		Value: []byte("bar!"),
+		Index: true,
+	}
+	bytesJSON, err := json.Marshal(oldEventAttr)
+	require.NoError(t, err)
+	// That JSON.Value is base64("bar!") == "YmFyIQ==".
+	// Unmarshal into the string‐field type:
+	var intoNew types.EventAttribute
+	err = json.Unmarshal(bytesJSON, &intoNew)
+	require.NoError(t, err)
+	// But intoNew.Value is now the literal base64 string, not the original:
+	require.Equal(t, "bar!", intoNew.Value,
+		"base64 input becomes the literal string when unmarshaled into a Go string field")
 }
