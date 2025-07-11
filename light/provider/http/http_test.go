@@ -3,7 +3,6 @@ package http_test
 import (
 	"context"
 	"fmt"
-	"os"
 	"testing"
 	"time"
 
@@ -37,10 +36,9 @@ func TestNewProvider(t *testing.T) {
 func TestProvider(t *testing.T) {
 	app := kvstore.NewInMemoryApplication()
 	app.RetainBlocks = 10
-	node := rpctest.StartTendermint(app)
+	node := rpctest.StartTendermint(app, rpctest.RecreateConfig)
 
 	cfg := rpctest.GetConfig()
-	defer os.RemoveAll(cfg.RootDir)
 	rpcAddr := cfg.RPC.ListenAddress
 	genDoc, err := types.GenesisDocFromFile(cfg.GenesisFile())
 	require.NoError(t, err)
