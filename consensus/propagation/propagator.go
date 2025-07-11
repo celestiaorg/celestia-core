@@ -31,5 +31,5 @@ type PeerStateEditor interface {
 
 type noOpPSE struct{}
 
-func (_ noOpPSE) SetHasProposal(_ *types.Proposal)                {}
-func (_ noOpPSE) SetHasProposalBlockPart(_ int64, _ int32, _ int) {}
+func (noOpPSE) SetHasProposal(_ *types.Proposal)                {}
+func (noOpPSE) SetHasProposalBlockPart(_ int64, _ int32, _ int) {}
