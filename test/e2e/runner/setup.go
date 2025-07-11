@@ -281,6 +281,9 @@ func MakeConfig(node *e2e.Node) (*config.Config, error) {
 		cfg.P2P.MaxNumOutboundPeers = node.Testnet.MaxOutboundConnections
 	}
 
+	// Set consensus configuration for propagation reactor
+	cfg.Consensus.DisablePropagationReactor = node.DisablePropagationReactor
+
 	return cfg, nil
 }
 
