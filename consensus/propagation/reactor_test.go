@@ -25,7 +25,6 @@ import (
 	cmtrand "github.com/cometbft/cometbft/libs/rand"
 	"github.com/cometbft/cometbft/libs/trace"
 	"github.com/cometbft/cometbft/p2p"
-	"github.com/cometbft/cometbft/p2p/mock"
 	"github.com/cometbft/cometbft/store"
 )
 
@@ -108,7 +107,6 @@ func createTestReactors(n int, p2pCfg *cfg.P2PConfig, tracer bool, traceDir stri
 				for _, peer := range switches[i].Peers().List() {
 					if peer.ID() == otherReactor.self {
 						peer.Set(types.PeerStateKey, &MockPeerStateEditor{})
-						break
 					}
 				}
 			}
@@ -119,31 +117,32 @@ func createTestReactors(n int, p2pCfg *cfg.P2PConfig, tracer bool, traceDir stri
 }
 
 func TestCountRequests(t *testing.T) {
-	reactors, _ := testBlockPropReactors(1, cfg.DefaultP2PConfig())
+	// Create 4 reactors - one to test and 3 peers
+	reactors, _ := testBlockPropReactors(4, cfg.DefaultP2PConfig())
 	reactor := reactors[0]
+	peer1Reactor := reactors[1]
+	peer2Reactor := reactors[2]
+	peer3Reactor := reactors[3]
 
-	peer1 := mock.NewPeer(nil)
-	peer1.Set(types.PeerStateKey, &MockPeerStateEditor{})
-	require.NoError(t, reactor.AddPeer(peer1))
-	peer2 := mock.NewPeer(nil)
-	peer2.Set(types.PeerStateKey, &MockPeerStateEditor{})
-	require.NoError(t, reactor.AddPeer(peer2))
-	peer3 := mock.NewPeer(nil)
-	peer3.Set(types.PeerStateKey, &MockPeerStateEditor{})
-	require.NoError(t, reactor.AddPeer(peer3))
+	// Get the peer states for the three peer reactors as they appear to the main reactor
+	peer1State := reactor.getPeer(peer1Reactor.self)
+	require.NotNil(t, peer1State, "peer1 should be connected")
+	
+	peer2State := reactor.getPeer(peer2Reactor.self)
+	require.NotNil(t, peer2State, "peer2 should be connected")
+	
+	peer3State := reactor.getPeer(peer3Reactor.self)
+	require.NotNil(t, peer3State, "peer3 should be connected")
 
-	peer1State := reactor.getPeer(peer1.ID())
 	// peer1 requests part=0 at height=10, round=0
-	array := bits.NewBitArray(3)
+	array := bits.NewBitArray(4)
 	array.SetIndex(0, true)
 	peer1State.AddRequests(10, 0, array)
 
-	peer2State := reactor.getPeer(peer2.ID())
-	// peer2 requests part=0 and part=2 and part=3  at height=10, round=0
-	array2 := bits.NewBitArray(3)
+	// peer2 requests part=0 and part=2 at height=10, round=0
+	array2 := bits.NewBitArray(4)
 	array2.SetIndex(0, true)
 	array2.SetIndex(2, true)
-	array2.SetIndex(3, true)
 	peer2State.AddRequests(10, 0, array2)
 
 	// peer3 doesn't request anything
@@ -152,9 +151,9 @@ func TestCountRequests(t *testing.T) {
 	part0Round0Height10RequestsCount := reactor.countRequests(10, 0, 0)
 	assert.Equal(t, 2, len(part0Round0Height10RequestsCount))
 
-	// count requests part=3 at height=10, round=0
-	part3Round0Height10RequestsCount := reactor.countRequests(10, 0, 2)
-	assert.Equal(t, 1, len(part3Round0Height10RequestsCount))
+	// count requests part=2 at height=10, round=0
+	part2Round0Height10RequestsCount := reactor.countRequests(10, 0, 2)
+	assert.Equal(t, 1, len(part2Round0Height10RequestsCount))
 }
 
 func TestHandleHavesAndWantsAndRecoveryParts(t *testing.T) {

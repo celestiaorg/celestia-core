@@ -62,6 +62,7 @@ func newPeerState(ctx context.Context, peer p2p.Peer, logger log.Logger) *PeerSt
 		receivedHaves:      make(chan request, 3000),
 		receivedParts:      make(chan partData, 3000),
 		canRequest:         make(chan struct{}, 1),
+		remainingRequests:  make(map[int64]map[int32]int),
 		consensusPeerState: noOpPSE{},
 	}
 }
