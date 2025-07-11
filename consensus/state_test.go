@@ -361,19 +361,19 @@ func TestStateFullRound1(t *testing.T) {
 	cs, vss := randState(1)
 	height, round := cs.Height, cs.Round
 
-	// NOTE: buffer capacity of 0 ensures we can validate prevote and last commit
-	// before consensus can move to the next height (and cause a race condition)
+	// NOTE: Use small buffer capacity to prevent race conditions while ensuring
+	// events can be processed in order. Using 0 capacity can cause deadlocks.
 	if err := cs.eventBus.Stop(); err != nil {
 		t.Error(err)
 	}
-	eventBus := types.NewEventBusWithBufferCapacity(0)
+	eventBus := types.NewEventBusWithBufferCapacity(10)
 	eventBus.SetLogger(log.TestingLogger().With("module", "events"))
 	cs.SetEventBus(eventBus)
 	if err := eventBus.Start(); err != nil {
 		t.Error(err)
 	}
 
-	voteCh := subscribeUnBuffered(cs.eventBus, types.EventQueryVote)
+	voteCh := subscribe(cs.eventBus, types.EventQueryVote)
 	propCh := subscribe(cs.eventBus, types.EventQueryCompleteProposal)
 	newRoundCh := subscribe(cs.eventBus, types.EventQueryNewRound)
 
@@ -401,7 +401,7 @@ func TestStateFullRoundNil(t *testing.T) {
 	cs, _ := randState(1)
 	height, round := cs.Height, cs.Round
 
-	voteCh := subscribeUnBuffered(cs.eventBus, types.EventQueryVote)
+	voteCh := subscribe(cs.eventBus, types.EventQueryVote)
 
 	cs.enterPrevote(height, round)
 	cs.startRoutines(4)
@@ -417,7 +417,7 @@ func TestStateFullRound2(t *testing.T) {
 	vs2 := vss[1]
 	height, round := cs1.Height, cs1.Round
 
-	voteCh := subscribeUnBuffered(cs1.eventBus, types.EventQueryVote)
+	voteCh := subscribe(cs1.eventBus, types.EventQueryVote)
 	newBlockCh := subscribe(cs1.eventBus, types.EventQueryNewBlock)
 
 	// start round and wait for propose and prevote
@@ -464,7 +464,7 @@ func TestStateLockNoPOL(t *testing.T) {
 
 	timeoutProposeCh := subscribe(cs1.eventBus, types.EventQueryTimeoutPropose)
 	timeoutWaitCh := subscribe(cs1.eventBus, types.EventQueryTimeoutWait)
-	voteCh := subscribeUnBuffered(cs1.eventBus, types.EventQueryVote)
+	voteCh := subscribe(cs1.eventBus, types.EventQueryVote)
 	proposalCh := subscribe(cs1.eventBus, types.EventQueryCompleteProposal)
 	newRoundCh := subscribe(cs1.eventBus, types.EventQueryNewRound)
 
