@@ -95,7 +95,7 @@ func (blockProp *Reactor) ProposeBlock(proposal *types.Proposal, block *types.Pa
 		for _, part := range parts {
 			err := peer.SetHave(proposal.Height, proposal.Round, int(part.GetIndex()))
 			if err != nil {
-				blockProp.Logger.Error("failed to set have part peer state", "peer", peer, "height", proposal.Height, "round", proposal.Round)
+				blockProp.Logger.Error("failed to set have part peer state", "peer", peer, "height", proposal.Height, "round", proposal.Round, "error", err)
 				continue
 			}
 			peer.consensusPeerState.SetHasProposalBlockPart(proposal.Height, proposal.Round, int(part.GetIndex()))
@@ -178,11 +178,6 @@ func (blockProp *Reactor) handleCompactBlock(cb *proptypes.CompactBlock, peer p2
 	}
 
 	if !proposer {
-		select {
-		case <-blockProp.ctx.Done():
-			return
-		case blockProp.proposalChan <- cb.Proposal:
-		}
 		// check if we have any transactions that are in the compact block
 		go blockProp.recoverPartsFromMempool(cb)
 	}
@@ -288,6 +283,12 @@ func (blockProp *Reactor) broadcastCompactBlock(cb *proptypes.CompactBlock, from
 		Message:   cb.ToProto(),
 	}
 
+	select {
+	case <-blockProp.ctx.Done():
+		return
+	case blockProp.proposalChan <- cb.Proposal:
+	}
+
 	peers := blockProp.getPeers()
 
 	for _, peer := range peers {
@@ -301,7 +302,6 @@ func (blockProp *Reactor) broadcastCompactBlock(cb *proptypes.CompactBlock, from
 			continue
 		}
 
-		peer.consensusPeerState.SetHasProposal(&cb.Proposal)
 		schema.WriteProposal(blockProp.traceClient, cb.Proposal.Height, cb.Proposal.Round, string(peer.peer.ID()), schema.Upload)
 	}
 }

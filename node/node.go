@@ -438,37 +438,30 @@ func NewNodeWithContext(ctx context.Context,
 		propagation.RetryTime = state.TimeoutCommit
 	}
 	var propagator propagation.Propagator
-	var propagationReactor *propagation.Reactor
-	var partsChan <-chan types.PartInfo
-	var proposalChan <-chan types.Proposal
+	partsChan := make(chan types.PartInfo, 2500)
+	proposalChan := make(chan types.Proposal, 100)
+	propagationReactor := propagation.NewReactor(
+		nodeKey.ID(),
+		propagation.Config{
+			Store:         blockStore,
+			Mempool:       mempool,
+			Privval:       privValidator,
+			ChainID:       state.ChainID,
+			BlockMaxBytes: state.ConsensusParams.Block.MaxBytes,
+			PartChan:      partsChan,
+			ProposalChan:  proposalChan,
+		},
+		propagation.WithTracer(tracer),
+	)
+
+	propagator = propagationReactor
 
 	if config.Consensus.DisablePropagationReactor {
 		propagator = propagation.NewNoOpPropagator()
-		partsChan = nil
-		proposalChan = nil
 	} else {
-		partsC := make(chan types.PartInfo, 2500)
-		proposalC := make(chan types.Proposal, 100)
-		partsChan = partsC
-		proposalChan = proposalC
-		
-		propagationReactor = propagation.NewReactor(
-			nodeKey.ID(),
-			propagation.Config{
-				Store:         blockStore,
-				Mempool:       mempool,
-				Privval:       privValidator,
-				ChainID:       state.ChainID,
-				BlockMaxBytes: state.ConsensusParams.Block.MaxBytes,
-				PartChan:      partsC,
-				ProposalChan:  proposalC,
-			},
-			propagation.WithTracer(tracer),
-		)
 		if !stateSync && !blockSync {
 			propagationReactor.StartProcessing()
 		}
-		propagator = propagationReactor
 	}
 
 	consensusReactor, consensusState := createConsensusReactor(

@@ -1309,6 +1309,8 @@ func (cs *State) defaultDecideProposal(height int64, round int32) {
 
 		cs.propagator.ProposeBlock(proposal, blockParts, metaData)
 
+		cs.sendInternalMessage(msgInfo{&ProposalMessage{proposal}, ""})
+
 		for i := 0; i < int(blockParts.Total()); i++ {
 			part := blockParts.GetPart(i)
 			cs.sendInternalMessage(msgInfo{&BlockPartMessage{cs.Height, cs.Round, part}, ""})
