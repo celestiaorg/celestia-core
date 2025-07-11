@@ -725,6 +725,8 @@ func (m *MockPeerStateEditor) SetHasProposalBlockPart(height int64, round int32,
 	m.blockParts = append(m.blockParts, BlockPartCall{Height: height, Round: round, Index: index})
 }
 
+// TestPeerStateEditor ensures that the propagation reactor is updating the
+// consensus peer state when the methods are called.
 func TestPeerStateEditor(t *testing.T) {
 	reactors, _ := testBlockPropReactors(1, cfg.DefaultP2PConfig())
 	reactor := reactors[0]
@@ -735,56 +737,48 @@ func TestPeerStateEditor(t *testing.T) {
 
 	require.NoError(t, reactor.AddPeer(peer))
 
-	// Verify the consensus peer state was properly set
 	peerState := reactor.getPeer(peer.ID())
 	require.NotNil(t, peerState)
 	require.NotNil(t, peerState.consensusPeerState)
 	require.IsType(t, &MockPeerStateEditor{}, peerState.consensusPeerState)
 
-	// Set reactor to the right height/round for validation to pass
 	reactor.currentHeight = 1
 	reactor.currentRound = 1
 
 	cb, ps, _, _ := testCompactBlock(t, 1, 1)
 
-	// First add the proposal directly to bypass signature validation,
-	// then call handleCompactBlock to trigger the peer state update
 	added := reactor.AddProposal(cb)
 	require.True(t, added)
-	
-	// Check initial state before calling handleCompactBlock
+
 	assert.Len(t, editor.proposals, 0, "Should start with 0 proposals")
-	
-	// Now simulate receiving it from the peer (this should trigger consensus peer state update)
+
 	reactor.handleCompactBlock(cb, peer.ID(), false)
-	
-	// Debug: check if the peer state is using our editor
+
 	actualEditor := peerState.consensusPeerState.(*MockPeerStateEditor)
 	require.Same(t, editor, actualEditor, "The peer state should be using our mock editor instance")
-	
-	// Verify the consensus peer state was updated
+
 	assert.Len(t, editor.proposals, 1, "Expected 1 proposal to be recorded in consensus peer state")
 	if len(editor.proposals) > 0 {
 		assert.Equal(t, &cb.Proposal, editor.proposals[0])
 	}
 
-	// Test SetHasProposalBlockPart as well
 	part := ps.GetPart(0)
-	// First we need to add the proposal so the recovery part isn't rejected
-	reactor.handleRecoveryPart(peer.ID(), &proptypes.RecoveryPart{
+	reactor.handleHaves(peer.ID(), &proptypes.HaveParts{
 		Height: 1,
 		Round:  1,
-		Index:  0,
-		Data:   part.Bytes,
-		Proof:  nil,
+		Parts: []proptypes.PartMetaData{
+			{
+				Index: part.Index,
+				Hash:  part.GetProof().LeafHash,
+			},
+		},
 	})
 
-	// Note: SetHasProposalBlockPart might not be called if the part is invalid or rejected
-	// The test demonstrates that the consensus peer state integration is working
+	time.Sleep(time.Millisecond * 100)
+
 	t.Logf("Block parts recorded: %d", len(editor.blockParts))
-	if len(editor.blockParts) > 0 {
-		assert.Equal(t, int64(1), editor.blockParts[0].Height)
-		assert.Equal(t, int32(1), editor.blockParts[0].Round)
-		assert.Equal(t, 0, editor.blockParts[0].Index)
-	}
+	require.GreaterOrEqual(t, len(editor.blockParts), 1)
+	assert.Equal(t, int64(1), editor.blockParts[0].Height)
+	assert.Equal(t, int32(1), editor.blockParts[0].Round)
+	assert.Equal(t, 0, editor.blockParts[0].Index)
 }
