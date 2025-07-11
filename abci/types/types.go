@@ -2,6 +2,7 @@ package types
 
 import (
 	"bytes"
+	"encoding/base64"
 	"encoding/json"
 
 	"github.com/cosmos/gogoproto/jsonpb"
@@ -116,9 +117,54 @@ func (r *EventAttribute) MarshalJSON() ([]byte, error) {
 	return []byte(s), err
 }
 
+// UnmarshalJSON is modified to be backwards compatible with the old EventAttribute
+// that was broken in comet v0.38. That message used bytes and not strings, which differs
+// in that the go protobindings that marhalled json would encode bytes as base64. Here we do
+// the conversion, make that a non-issue.
 func (r *EventAttribute) UnmarshalJSON(b []byte) error {
-	reader := bytes.NewBuffer(b)
-	return jsonpbUnmarshaller.Unmarshal(reader, r)
+	// Parse the JSON into a raw struct to inspect the format
+	var raw struct {
+		Key   string `json:"key,omitempty"`
+		Value string `json:"value,omitempty"`
+		Index bool   `json:"index,omitempty"`
+	}
+
+	if err := json.Unmarshal(b, &raw); err != nil {
+		return err
+	}
+
+	// Try to decode Key as base64, fallback to raw string
+	if raw.Key != "" {
+		if keyBytes, err := base64.StdEncoding.DecodeString(raw.Key); err == nil {
+			// Check if the base64 decoded content looks like it should be decoded
+			// (i.e., it's not the same as the original and produces valid output)
+			if string(keyBytes) != raw.Key {
+				r.Key = string(keyBytes)
+			} else {
+				r.Key = raw.Key
+			}
+		} else {
+			r.Key = raw.Key
+		}
+	}
+
+	// Try to decode Value as base64, fallback to raw string
+	if raw.Value != "" {
+		if valueBytes, err := base64.StdEncoding.DecodeString(raw.Value); err == nil {
+			// Check if the base64 decoded content looks like it should be decoded
+			// (i.e., it's not the same as the original and produces valid output)
+			if string(valueBytes) != raw.Value {
+				r.Value = string(valueBytes)
+			} else {
+				r.Value = raw.Value
+			}
+		} else {
+			r.Value = raw.Value
+		}
+	}
+
+	r.Index = raw.Index
+	return nil
 }
 
 // Some compile time assertions to ensure we don't
