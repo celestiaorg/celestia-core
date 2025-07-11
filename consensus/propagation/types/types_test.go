@@ -234,7 +234,7 @@ func TestWantParts_ValidateBasic(t *testing.T) {
 	}{
 		{
 			"valid want parts",
-			WantParts{Height: 1, Round: 1, Parts: &bits.BitArray{}, MissingPartsCount: 10},
+			WantParts{Height: 1, Round: 1, Parts: &bits.BitArray{}},
 			false,
 		},
 		{

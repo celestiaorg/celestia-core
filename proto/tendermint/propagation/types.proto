@@ -50,7 +50,6 @@ message WantParts {
   int64                         height = 2;
   int32                         round  = 3;
   bool                          prove  = 4;
-  int32                         missing_parts_count = 5;
 }
 
 // RecoveryPart is a wire message for sending a portion of the block to a peer.
