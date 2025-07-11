@@ -728,34 +728,27 @@ func (m *MockPeerStateEditor) SetHasProposalBlockPart(height int64, round int32,
 // TestPeerStateEditor ensures that the propagation reactor is updating the
 // consensus peer state when the methods are called.
 func TestPeerStateEditor(t *testing.T) {
-	reactors, _ := testBlockPropReactors(1, cfg.DefaultP2PConfig())
-	reactor := reactors[0]
+	reactors, _ := testBlockPropReactors(2, cfg.DefaultP2PConfig())
+	r0 := reactors[0]
+	r1 := reactors[1]
+	r1pID := r1.self
+	peerState := r0.getPeers()[0]
 
-	peer := mock.NewPeer(nil)
 	editor := &MockPeerStateEditor{}
-	peer.Set(types.PeerStateKey, editor)
+	peerState.consensusPeerState = editor
 
-	require.NoError(t, reactor.AddPeer(peer))
-
-	peerState := reactor.getPeer(peer.ID())
 	require.NotNil(t, peerState)
 	require.NotNil(t, peerState.consensusPeerState)
 	require.IsType(t, &MockPeerStateEditor{}, peerState.consensusPeerState)
 
-	reactor.currentHeight = 1
-	reactor.currentRound = 1
-
 	cb, ps, _, _ := testCompactBlock(t, 1, 1)
 
-	added := reactor.AddProposal(cb)
+	added := r0.AddProposal(cb)
 	require.True(t, added)
 
 	assert.Len(t, editor.proposals, 0, "Should start with 0 proposals")
 
-	reactor.handleCompactBlock(cb, peer.ID(), false)
-
-	actualEditor := peerState.consensusPeerState.(*MockPeerStateEditor)
-	require.Same(t, editor, actualEditor, "The peer state should be using our mock editor instance")
+	r0.handleCompactBlock(cb, r1pID, false)
 
 	assert.Len(t, editor.proposals, 1, "Expected 1 proposal to be recorded in consensus peer state")
 	if len(editor.proposals) > 0 {
@@ -763,7 +756,7 @@ func TestPeerStateEditor(t *testing.T) {
 	}
 
 	part := ps.GetPart(0)
-	reactor.handleHaves(peer.ID(), &proptypes.HaveParts{
+	r0.handleHaves(r1pID, &proptypes.HaveParts{
 		Height: 1,
 		Round:  1,
 		Parts: []proptypes.PartMetaData{
