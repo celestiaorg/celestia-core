@@ -437,35 +437,52 @@ func NewNodeWithContext(ctx context.Context,
 		// set the catchup retry time to match the block time
 		propagation.RetryTime = state.TimeoutCommit
 	}
-	partsChan := make(chan types.PartInfo, 2500)
-	proposalChan := make(chan types.Proposal, 100)
-	propagationReactor := propagation.NewReactor(
-		nodeKey.ID(),
-		propagation.Config{
-			Store:         blockStore,
-			Mempool:       mempool,
-			Privval:       privValidator,
-			ChainID:       state.ChainID,
-			BlockMaxBytes: state.ConsensusParams.Block.MaxBytes,
-			PartChan:      partsChan,
-			ProposalChan:  proposalChan,
-		},
-		propagation.WithTracer(tracer),
-	)
-	if !stateSync && !blockSync {
-		propagationReactor.StartProcessing()
+	var propagator propagation.Propagator
+	var propagationReactor *propagation.Reactor
+	var partsChan <-chan types.PartInfo
+	var proposalChan <-chan types.Proposal
+
+	if config.Consensus.DisablePropagationReactor {
+		propagator = propagation.NewNoOpPropagator()
+		partsChan = nil
+		proposalChan = nil
+	} else {
+		partsC := make(chan types.PartInfo, 2500)
+		proposalC := make(chan types.Proposal, 100)
+		partsChan = partsC
+		proposalChan = proposalC
+		
+		propagationReactor = propagation.NewReactor(
+			nodeKey.ID(),
+			propagation.Config{
+				Store:         blockStore,
+				Mempool:       mempool,
+				Privval:       privValidator,
+				ChainID:       state.ChainID,
+				BlockMaxBytes: state.ConsensusParams.Block.MaxBytes,
+				PartChan:      partsC,
+				ProposalChan:  proposalC,
+			},
+			propagation.WithTracer(tracer),
+		)
+		if !stateSync && !blockSync {
+			propagationReactor.StartProcessing()
+		}
+		propagator = propagationReactor
 	}
 
 	consensusReactor, consensusState := createConsensusReactor(
 		config, state, blockExec, blockStore, mempool, evidencePool,
-		privValidator, csMetrics, propagationReactor, stateSync || blockSync, eventBus, consensusLogger, offlineStateSyncHeight, tracer, partsChan, proposalChan,
+		privValidator, csMetrics, propagator, stateSync || blockSync, eventBus, consensusLogger, offlineStateSyncHeight, tracer, partsChan, proposalChan,
 	)
 
 	err = stateStore.SetOfflineStateSyncHeight(0)
 	if err != nil {
 		panic(fmt.Sprintf("failed to reset the offline state sync height %s", err))
 	}
-	propagationReactor.SetLogger(logger.With("module", "propagation"))
+	if propagationReactor != nil {
+		propagationReactor.SetLogger(logger.With("module", "propagation"))
+	}
 
 	logger.Info("Consensus reactor created", "timeout_propose", consensusState.GetState().TimeoutPropose, "timeout_commit", consensusState.GetState().TimeoutCommit)
 	// Set up state sync reactor, and schedule a sync if requested.

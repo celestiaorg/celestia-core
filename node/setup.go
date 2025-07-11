@@ -504,7 +504,9 @@ func createSwitch(config *cfg.Config,
 	sw.AddReactor("CONSENSUS", consensusReactor)
 	sw.AddReactor("EVIDENCE", evidenceReactor)
 	sw.AddReactor("STATESYNC", stateSyncReactor)
-	sw.AddReactor("RECOVERY", propagationReactor)
+	if propagationReactor != nil {
+		sw.AddReactor("RECOVERY", propagationReactor)
+	}
 
 	sw.SetNodeInfo(nodeInfo)
 	sw.SetNodeKey(nodeKey)

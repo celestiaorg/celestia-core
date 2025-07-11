@@ -33,3 +33,35 @@ type noOpPSE struct{}
 
 func (noOpPSE) SetHasProposal(_ *types.Proposal)                {}
 func (noOpPSE) SetHasProposalBlockPart(_ int64, _ int32, _ int) {}
+
+// NoOpPropagator is a no-operation implementation of the Propagator interface.
+// It provides empty implementations of all methods, effectively disabling
+// the propagation functionality when used in place of the actual propagation reactor.
+type NoOpPropagator struct{}
+
+// NewNoOpPropagator creates a new no-operation Propagator.
+func NewNoOpPropagator() *NoOpPropagator {
+	return &NoOpPropagator{}
+}
+
+func (nop *NoOpPropagator) GetProposal(_ int64, _ int32) (*types.Proposal, *types.PartSet, bool) {
+	return nil, nil, false
+}
+
+func (nop *NoOpPropagator) ProposeBlock(_ *types.Proposal, _ *types.PartSet, _ []proptypes.TxMetaData) {
+}
+
+func (nop *NoOpPropagator) AddCommitment(_ int64, _ int32, _ *types.PartSetHeader) {
+}
+
+func (nop *NoOpPropagator) Prune(_ int64) {
+}
+
+func (nop *NoOpPropagator) SetConsensusRound(_ int64, _ int32) {
+}
+
+func (nop *NoOpPropagator) StartProcessing() {
+}
+
+func (nop *NoOpPropagator) SetProposer(_ crypto.PubKey) {
+}

@@ -1063,6 +1063,9 @@ type ConsensusConfig struct {
 	PeerQueryMaj23SleepDuration time.Duration `mapstructure:"peer_query_maj23_sleep_duration"`
 
 	DoubleSignCheckHeight int64 `mapstructure:"double_sign_check_height"`
+
+	// Disable the propagation reactor for block and proposal recovery
+	DisablePropagationReactor bool `mapstructure:"disable_propagation_reactor"`
 }
 
 // DefaultConsensusConfig returns a default configuration for the consensus service
@@ -1083,6 +1086,7 @@ func DefaultConsensusConfig() *ConsensusConfig {
 		PeerGossipSleepDuration:     100 * time.Millisecond,
 		PeerQueryMaj23SleepDuration: 2000 * time.Millisecond,
 		DoubleSignCheckHeight:       int64(0),
+		DisablePropagationReactor:   false,
 	}
 }
 
