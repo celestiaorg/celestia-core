@@ -29,10 +29,11 @@ type PeerState struct {
 	// and round.
 	state map[int64]map[int32]*partState
 
-	concurrentReqs atomic.Int64
-	receivedParts  chan partData
-	receivedHaves  chan request
-	canRequest     chan struct{}
+	concurrentReqs    atomic.Int64
+	receivedParts     chan partData
+	receivedHaves     chan request
+	canRequest        chan struct{}
+	remainingRequests map[int64]map[int32]int
 
 	logger log.Logger
 
@@ -101,6 +102,41 @@ func (d *PeerState) IncreaseConcurrentReqs(add int64) {
 
 func (d *PeerState) SetConcurrentReqs(count int64) {
 	d.concurrentReqs.Store(count)
+}
+
+func (d *PeerState) DecreaseRemainingRequests(height int64, round int32, sub int) {
+	d.mtx.Lock()
+	defer d.mtx.Unlock()
+	if d.remainingRequests[height] == nil {
+		return
+	}
+	remainingRequests := d.remainingRequests[height][round]
+	if remainingRequests == 0 {
+		return
+	}
+	if remainingRequests < sub {
+		d.remainingRequests[height][round] = 0
+		return
+	}
+	d.remainingRequests[height][round] -= sub
+}
+
+func (d *PeerState) SetRemainingRequests(height int64, round int32, count int) {
+	d.mtx.Lock()
+	defer d.mtx.Unlock()
+	if d.remainingRequests[height] == nil {
+		d.remainingRequests[height] = make(map[int32]int)
+	}
+	d.remainingRequests[height][round] = count
+}
+
+func (d *PeerState) GetRemainingRequests(height int64, round int32) int {
+	d.mtx.Lock()
+	defer d.mtx.Unlock()
+	if d.remainingRequests[height] == nil {
+		return 0
+	}
+	return d.remainingRequests[height][round]
 }
 
 func (d *PeerState) DecreaseConcurrentReqs(sub int64) {
@@ -262,6 +298,7 @@ func (d *PeerState) prune(prunePastHeight int64) {
 	for height := range d.state {
 		if height < prunePastHeight {
 			delete(d.state, height)
+			delete(d.remainingRequests, height)
 		}
 	}
 	// todo: prune rounds separately from heights

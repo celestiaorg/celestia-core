@@ -1,51 +1,22 @@
-queue_rules:
-  - name: default
-    queue_conditions:
-      - base=main
-      - label=automerge
-    merge_conditions:
-      - base=main
-      - label=automerge
-    commit_message_template: |
-      {{ title }} (#{{ number }})
-
-      {{ body }}
-    merge_method: squash
-
 pull_request_rules:
-  - name: backport patches to main branch
+  - name: backport patches to main
     conditions:
-      - base=v0.38.x-celestia
-      - label=S:backport-to-main
+      - label=backport-to-main
     actions:
       backport:
         branches:
           - main
-  - name: backport patches to v0.38.x-celestia branch
+  - name: backport patches to v0.38.x-celestia
     conditions:
-      - base=main
-      - label=backport-to-v0.38.x-celestia
+      - label=backport-to-v0.38.x
     actions:
       backport:
         branches:
           - v0.38.x-celestia
-  - name: backport patches to v0.37.x branch
+  - name: backport patches to v0.34.x-celestia
     conditions:
-      - base=main
-      - label=backport-to-v0.37.x
-    actions:
-      backport:
-        branches:
-          - v0.37.x
-  - name: backport patches to v0.34.x branch
-    conditions:
-      - base=main
       - label=backport-to-v0.34.x
     actions:
       backport:
         branches:
-          - v0.34.x
-  - name: Automerge to main
-    conditions: []
-    actions:
-      queue:
+          - v0.34.x-celestia

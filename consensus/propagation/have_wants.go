@@ -141,9 +141,10 @@ func (blockProp *Reactor) requestFromPeer(ps *PeerState) {
 			}
 
 			var (
-				wants    *proptypes.WantParts
-				parts    *proptypes.CombinedPartSet
-				fullReqs *bits.BitArray
+				wants             *proptypes.WantParts
+				parts             *proptypes.CombinedPartSet
+				missingPartsCount int32
+				fullReqs          *bits.BitArray
 			)
 			for i := min(canSend, int64(len(ps.receivedHaves))); i > 0; {
 				if len(ps.receivedHaves) == 0 {
@@ -159,6 +160,7 @@ func (blockProp *Reactor) requestFromPeer(ps *PeerState) {
 					// haves for a new height, resetting
 					wants = nil
 					parts = nil
+					missingPartsCount = 0
 				}
 
 				if !blockProp.relevantHave(have.height, have.round) {
@@ -172,6 +174,7 @@ func (blockProp *Reactor) requestFromPeer(ps *PeerState) {
 						blockProp.Logger.Error("couldn't find proposal when filtering requests", "height", have.height, "round", have.round)
 						break
 					}
+					missingPartsCount = countRemainingParts(int(parts.Total()), len(parts.BitArray().GetTrueIndices()))
 				}
 
 				// don't request a part that is already downloaded
@@ -203,9 +206,10 @@ func (blockProp *Reactor) requestFromPeer(ps *PeerState) {
 
 				if wants == nil {
 					wants = &proptypes.WantParts{
-						Height: have.height,
-						Round:  have.round,
-						Parts:  bits.NewBitArray(int(parts.Total())),
+						Height:            have.height,
+						Round:             have.round,
+						Parts:             bits.NewBitArray(int(parts.Total())),
+						MissingPartsCount: missingPartsCount,
 					}
 				}
 
@@ -225,6 +229,12 @@ func (blockProp *Reactor) requestFromPeer(ps *PeerState) {
 			}
 		}
 	}
+}
+
+// countRemainingParts counts the remaining parts to decode a block.
+func countRemainingParts(totalParts, existingParts int) int32 {
+	remainingPartsToDecode := totalParts / 2
+	return int32(max(0, remainingPartsToDecode-existingParts))
 }
 
 func (blockProp *Reactor) sendWantsThenBroadcastHaves(ps *PeerState, wants *proptypes.WantParts) error {
@@ -373,7 +383,11 @@ func (blockProp *Reactor) handleWants(peer p2p.ID, wants *proptypes.WantParts) {
 		return
 	}
 
+	p.SetRemainingRequests(height, round, int(wants.MissingPartsCount))
 	for _, partIndex := range canSend.GetTrueIndices() {
+		if p.GetRemainingRequests(height, round) <= 0 {
+			break
+		}
 		part, _ := parts.GetPart(uint32(partIndex))
 		partBz := make([]byte, len(part.Bytes))
 		copy(partBz, part.Bytes)
@@ -395,6 +409,7 @@ func (blockProp *Reactor) handleWants(peer p2p.ID, wants *proptypes.WantParts) {
 			blockProp.Logger.Error("failed to send part", "peer", peer, "height", height, "round", round, "part", partIndex)
 			continue
 		}
+		p.DecreaseRemainingRequests(height, round, 1)
 		// p.SetHave(height, round, int(partIndex))
 		schema.WriteBlockPart(blockProp.traceClient, height, round, part.Index, wants.Prove, string(peer), schema.Upload)
 	}
@@ -426,7 +441,7 @@ func (blockProp *Reactor) handleRecoveryPart(peer p2p.ID, part *proptypes.Recove
 	// not this node must disconnect from them.
 	cb, parts, _, has := blockProp.getAllState(part.Height, part.Round, false)
 	if !has {
-		blockProp.Logger.Error("received part for unknown proposal", "peer", peer, "height", part.Height, "round", part.Round)
+		blockProp.Logger.Debug("received part for unknown proposal", "peer", peer, "height", part.Height, "round", part.Round)
 		// blockProp.Switch.StopPeerForError(p.peer, errors.New("received recovery part for unknown proposal"))
 		return
 	}
@@ -576,6 +591,9 @@ func (blockProp *Reactor) handleRecoveryPart(peer p2p.ID, part *proptypes.Recove
 func (blockProp *Reactor) clearWants(part *proptypes.RecoveryPart, proof merkle.Proof) {
 	for _, peer := range blockProp.getPeers() {
 		if peer.WantsPart(part.Height, part.Round, part.Index) {
+			if peer.GetRemainingRequests(part.Height, part.Round) <= 0 {
+				continue
+			}
 			e := p2p.Envelope{
 				ChannelID: DataChannel,
 				Message: &propproto.RecoveryPart{
@@ -610,6 +628,7 @@ func (blockProp *Reactor) clearWants(part *proptypes.RecoveryPart, proof merkle.
 				catchup = true
 			}
 			blockProp.pmtx.Unlock()
+			peer.DecreaseRemainingRequests(part.Height, part.Round, 1)
 			schema.WriteBlockPart(blockProp.traceClient, part.Height, part.Round, part.Index, catchup, string(peer.peer.ID()), schema.Upload)
 		}
 	}

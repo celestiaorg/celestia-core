@@ -164,7 +164,7 @@ func (blockProp *Reactor) handleCompactBlock(cb *proptypes.CompactBlock, peer p2
 	err := blockProp.validateCompactBlock(cb)
 	if !proposer && err != nil {
 		blockProp.DeleteRound(cb.Proposal.Height, cb.Proposal.Round)
-		blockProp.Logger.Info("failed to validate proposal. ignoring", "err", err, "height", cb.Proposal.Height, "round", cb.Proposal.Round)
+		blockProp.Logger.Debug("failed to validate proposal. ignoring", "err", err, "height", cb.Proposal.Height, "round", cb.Proposal.Round)
 		return
 	}
 
@@ -179,7 +179,7 @@ func (blockProp *Reactor) handleCompactBlock(cb *proptypes.CompactBlock, peer p2
 
 	if !proposer {
 		// check if we have any transactions that are in the compact block
-		go blockProp.recoverPartsFromMempool(cb)
+		blockProp.recoverPartsFromMempool(cb)
 	}
 
 	blockProp.broadcastCompactBlock(cb, peer)
@@ -238,7 +238,6 @@ func (blockProp *Reactor) recoverPartsFromMempool(cb *proptypes.CompactBlock) {
 		return
 	}
 
-	originalParts := partSet.Original()
 	recoveredCount := 0
 	haves := proptypes.HaveParts{
 		Height: cb.Proposal.Height,
@@ -246,12 +245,12 @@ func (blockProp *Reactor) recoverPartsFromMempool(cb *proptypes.CompactBlock) {
 		Parts:  make([]proptypes.PartMetaData, 0),
 	}
 	for _, p := range parts {
-		if originalParts.HasPart(int(p.Index)) {
+		if partSet.HasPart(int(p.Index)) {
 			continue
 		}
 		p.Proof = *proofs[p.Index]
 
-		added, err := originalParts.AddPart(p)
+		added, err := partSet.AddOriginalPart(p)
 		if err != nil {
 			blockProp.Logger.Error("failed to add locally recovered part", "err", err)
 			continue
