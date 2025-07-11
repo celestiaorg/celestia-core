@@ -104,7 +104,7 @@ func TestV0_34JsonEventDecoding(t *testing.T) {
 	var intoNew abci.EventAttribute
 	err = json.Unmarshal(bytesJSON, &intoNew)
 	require.NoError(t, err)
-	// But intoNew.Value is now the literal base64 string, not the original:
+	// But intoNew.Value is now the base64 decoded string, not the original:
 	require.Equal(t, "bar!", intoNew.Value,
-		"base64 input becomes the literal string when unmarshaled into a Go string field")
+		"base64 input becomes the decoded string when unmarshaled into a Go string field")
 }
