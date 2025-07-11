@@ -80,7 +80,7 @@ type Node struct {
 	consensusState    *cs.State               // latest consensus state
 	consensusReactor  *cs.Reactor             // for participating in the consensus
 	pexReactor        *pex.Reactor            // for exchanging peer addresses
-	blockPropReactor  *propagation.Reactor    // the block propagation reactor
+	blockPropReactor  *propagation.Reactor    // the block propagation reactor. potentially nil is disabled.
 	evidencePool      *evidence.Pool          // tracking evidence
 	proxyApp          proxy.AppConns          // connection to the application
 	rpcListeners      []net.Listener          // rpc servers
@@ -458,6 +458,7 @@ func NewNodeWithContext(ctx context.Context,
 
 	if config.Consensus.DisablePropagationReactor {
 		propagator = propagation.NewNoOpPropagator()
+		propagationReactor = nil
 	} else {
 		if !stateSync && !blockSync {
 			propagationReactor.StartProcessing()
@@ -1034,10 +1035,12 @@ func makeNodeInfo(
 		mempl.MempoolChannel,
 		evidence.EvidenceChannel,
 		statesync.SnapshotChannel, statesync.ChunkChannel,
-		propagation.DataChannel, propagation.WantChannel,
 	}
 	if config.Mempool.Type == cfg.MempoolTypeCAT {
 		channels = append(channels, cat.MempoolWantsChannel, cat.MempoolDataChannel)
+	}
+	if !config.Consensus.DisablePropagationReactor {
+		channels = append(channels, propagation.DataChannel, propagation.WantChannel)
 	}
 
 	nodeInfo := p2p.DefaultNodeInfo{
