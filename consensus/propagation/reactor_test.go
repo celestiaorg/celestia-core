@@ -74,9 +74,8 @@ func testBlockPropReactors(n int, p2pCfg *cfg.P2PConfig) ([]*Reactor, []*p2p.Swi
 // createTestReactors will generate n propagation reactors, each using the same key to sign and verify compact blocks.
 func createTestReactors(n int, p2pCfg *cfg.P2PConfig, tracer bool, traceDir string) ([]*Reactor, []*p2p.Switch) {
 	reactors := make([]*Reactor, n)
-	switches := make([]*p2p.Switch, n) //nolint:ineffassign
 
-	switches = p2p.MakeConnectedSwitches(p2pCfg, n, func(i int, s *p2p.Switch) *p2p.Switch {
+	switches := p2p.MakeConnectedSwitches(p2pCfg, n, func(i int, s *p2p.Switch) *p2p.Switch {
 		var (
 			err error
 			tr  = trace.NoOpTracer()
