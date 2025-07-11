@@ -1197,15 +1197,15 @@ func TestReactorGossipDataEnabled(t *testing.T) {
 	N := 1
 	css, cleanup := randConsensusNet(t, N, "consensus_reactor_test", newMockTickerFunc(true), newKVStore)
 	defer cleanup()
-	
+
 	// Test default enabled state
 	reactor := NewReactor(css[0], css[0].propagator, true)
 	assert.True(t, reactor.IsGossipDataEnabled())
-	
+
 	// Test disabled state
 	reactor = NewReactor(css[0], css[0].propagator, true, WithGossipDataEnabled(false))
 	assert.False(t, reactor.IsGossipDataEnabled())
-	
+
 	// Test enabled state
 	reactor = NewReactor(css[0], css[0].propagator, true, WithGossipDataEnabled(true))
 	assert.True(t, reactor.IsGossipDataEnabled())
