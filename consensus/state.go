@@ -1300,10 +1300,19 @@ func (cs *State) defaultDecideProposal(height int64, round int32) {
 		metaData := make([]proptypes.TxMetaData, len(block.Txs))
 		hashes := block.CachedHashes()
 		for i, pos := range blockParts.TxPos {
+			var hash []byte
+			if hashes != nil && i < len(hashes) && len(hashes[i]) > 0 {
+				hash = hashes[i]
+			} else {
+				// Fallback to computing hash from the transaction if cached hash is missing
+				if i < len(block.Txs) {
+					hash = block.Txs[i].Hash()
+				}
+			}
 			metaData[i] = proptypes.TxMetaData{
 				Start: pos.Start,
 				End:   pos.End,
-				Hash:  hashes[i],
+				Hash:  hash,
 			}
 		}
 
