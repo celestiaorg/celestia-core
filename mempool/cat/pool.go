@@ -204,7 +204,6 @@ func (txmp *TxPool) WasRecentlyRejected(txKey types.TxKey) bool {
 	return txmp.rejectedTxCache.Has(txKey)
 }
 
-
 // CheckTx adds the given transaction to the mempool if it fits and passes the
 // application's ABCI CheckTx method. This should be viewed as the entry method for new transactions
 // into the network. In practice this happens via an RPC endpoint
