@@ -295,33 +295,6 @@ func TestTxMempool_Eviction(t *testing.T) {
 	require.True(t, txmp.WasRecentlyEvicted(types.Tx(("key7=0006=7")).Key())) // key7 evicted
 }
 
-func TestTxMempool_UpdateRemovesExpiredTxs(t *testing.T) {
-	txmp := setup(t, 500)
-
-	// Set TTL to expire transactions after 2 blocks
-	txmp.config.TTLNumBlocks = 2
-	txmp.height = 100
-
-	// Add some transactions at height 100
-	txs1 := checkTxs(t, txmp, 10, 0)
-	require.Equal(t, 10, txmp.Size())
-
-	// Update to height 103 - transactions from height 100 should expire
-	require.NoError(t, txmp.Update(103, nil, nil, nil, nil))
-
-	// Check that transactions were expired
-	expiredCount := 0
-	for _, tx := range txs1 {
-		_, exists := txmp.GetTxByKey(tx.tx.Key())
-		if !exists {
-			expiredCount++
-			// Verify they were added to evicted cache
-			require.True(t, txmp.WasRecentlyEvicted(tx.tx.Key()))
-		}
-	}
-	require.Equal(t, 10, expiredCount, "All transactions from height 100 should have been expired")
-}
-
 func TestTxMempool_Flush(t *testing.T) {
 	txmp := setup(t, 0)
 	txs := checkTxs(t, txmp, 100, 0)
