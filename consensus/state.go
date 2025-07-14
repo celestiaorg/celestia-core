@@ -1705,6 +1705,7 @@ func (cs *State) buildNextBlock() {
 		panic("Method createProposalBlock should not provide a nil block without errors")
 	}
 
+	fmt.Println("finished building block preamptively")
 	cs.nextBlock <- &blockWithParts{
 		block: block,
 		parts: blockParts,
