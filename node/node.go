@@ -611,6 +611,9 @@ func (n *Node) OnStart() error {
 	// Start the RPC server before the P2P server
 	// so we can eg. receive txs for the first block
 	if n.config.RPC.ListenAddress != "" {
+		if n.config.P2P.SeedMode {
+			return fmt.Errorf("seed nodes cannot have RPC enabled (rpc.laddr=\"%s\") as per ADR-052. Set rpc.laddr=\"\" to disable RPC on seed nodes", n.config.RPC.ListenAddress)
+		}
 		listeners, err := n.startRPC()
 		if err != nil {
 			return err
