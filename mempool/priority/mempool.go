@@ -67,7 +67,6 @@ func NewTxMempool(
 	height int64,
 	options ...TxMempoolOption,
 ) *TxMempool {
-
 	txmp := &TxMempool{
 		logger:       logger,
 		config:       cfg,

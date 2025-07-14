@@ -793,7 +793,7 @@ func TestConcurrentCheckTxDataRace(t *testing.T) {
 		// simultaneously, which should trigger the race condition
 		numGoroutines := 100
 		var startWg sync.WaitGroup
-		var startCh = make(chan struct{})
+		startCh := make(chan struct{})
 
 		for i := 0; i < numGoroutines; i++ {
 			startWg.Add(1)
