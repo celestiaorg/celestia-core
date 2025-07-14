@@ -1691,7 +1691,7 @@ func (cs *State) enterPrecommitWait(height int64, round int32) {
 
 // buildNextBlock creates the next block pre-amptively if we're the proposer.
 func (cs *State) buildNextBlock() {
-	fmt.Println("building block preamptively")
+	cs.Logger.Info("building block preamptively")
 	select {
 	// flush the next block channel. should only happen when there is already a POL block.
 	case <-cs.nextBlock:
@@ -1705,7 +1705,7 @@ func (cs *State) buildNextBlock() {
 		panic("Method createProposalBlock should not provide a nil block without errors")
 	}
 
-	fmt.Println("finished building block preamptively")
+	cs.Logger.Info("finished building block preamptively")
 	cs.nextBlock <- &blockWithParts{
 		block: block,
 		parts: blockParts,
