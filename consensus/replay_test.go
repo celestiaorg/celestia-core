@@ -1044,7 +1044,7 @@ func makeBlockchainFromWAL(wal WAL) ([]*types.Block, []*types.ExtendedCommit, er
 		switch p := piece.(type) {
 		case EndHeightMessage:
 			// if its not the first one, we have a full block
-			if thisBlockParts != nil {
+			if thisBlockParts != nil && thisBlockParts.IsComplete() {
 				pbb := new(cmtproto.Block)
 				bz, err := io.ReadAll(thisBlockParts.GetReader())
 				if err != nil {
