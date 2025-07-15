@@ -808,6 +808,9 @@ func randConsensusNet(t *testing.T, nValidators int, testName string, tickerFunc
 		css[i] = newStateWithConfigAndBlockStore(thisConfig, state, privVals[i], app, stateDB)
 		css[i].SetTimeoutTicker(tickerFunc())
 		css[i].SetLogger(logger.With("validator", i, "module", "consensus"))
+		// set building the block pre-emptively to an empty channel because several tests alter in different consensus steps after the timeout commit
+		// and fail because the block is already built before
+		css[i].nextBlock = nil
 	}
 	return css, func() {
 		for _, dir := range configRootDirs {
