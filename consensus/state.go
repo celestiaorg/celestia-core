@@ -208,6 +208,7 @@ func NewState(
 		partChan:             partChan,
 		proposalChan:         proposalChan,
 		newHeightOrRoundChan: make(chan struct{}),
+		nextBlock:            make(chan *blockWithParts, 1),
 	}
 	for _, option := range options {
 		option(cs)
