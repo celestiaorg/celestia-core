@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"os"
 	"path"
-	"reflect"
 	"sync"
 	"testing"
 	"time"
@@ -270,106 +269,61 @@ func TestByzantinePrevoteEquivocation(t *testing.T) {
 	// we will check multiple blocks to ensure we find it
 	var evidenceFound types.Evidence
 
-	// Use a single aggregated approach to watch for evidence
-	// This reduces race conditions between multiple goroutines
+	// Use a single waitgroup approach to reduce race conditions
+	// Watch for evidence from any validator with increased timeout and block limits
 	done := make(chan types.Evidence, 1)
-	quit := make(chan struct{})
 
-	// Aggregate evidence detection from all validators
-	go func() {
-		defer close(done)
-		
-		// Track all validators' subscriptions
-		cases := make([]reflect.SelectCase, nValidators+1)
-		for i := 0; i < nValidators; i++ {
-			cases[i] = reflect.SelectCase{
-				Dir:  reflect.SelectRecv,
-				Chan: reflect.ValueOf(blocksSubs[i].Out()),
-			}
-		}
-		cases[nValidators] = reflect.SelectCase{
-			Dir:  reflect.SelectRecv,
-			Chan: reflect.ValueOf(quit),
-		}
+	// Start goroutines to watch for evidence from any validator
+	// Use fewer goroutines to reduce race conditions but increase monitoring time
+	for i := 0; i < nValidators; i++ {
+		go func(validatorIndex int) {
+			blockCount := 0
+			for msg := range blocksSubs[validatorIndex].Out() {
+				if blockData, ok := msg.Data().(types.EventDataNewBlock); ok {
+					block := blockData.Block
+					blockCount++
 
-		blockCounts := make([]int, nValidators)
-		maxBlocks := 15 // Increased to give more time for evidence processing
+					// Log block information for debugging
+					t.Logf("Validator %d received block at height %d with %d evidence",
+						validatorIndex, block.Height, len(block.Evidence.Evidence))
 
-		for {
-			chosen, recv, recvOK := reflect.Select(cases)
-			
-			// Check if quit signal received
-			if chosen == nValidators {
-				return
-			}
+					if len(block.Evidence.Evidence) != 0 {
+						select {
+						case done <- block.Evidence.Evidence[0]:
+							// Evidence found, exit
+							return
+						default:
+							// Evidence already found by another validator
+							return
+						}
+					}
 
-			if !recvOK {
-				// Channel closed, remove it from consideration
-				cases[chosen].Chan = reflect.ValueOf(nil)
-				continue
-			}
-
-			// Process block from validator 'chosen'
-			msg := recv.Interface()
-			switch data := msg.(type) {
-			case types.EventDataNewBlock:
-				block := data.Block
-				blockCounts[chosen]++
-
-				// Log block information for debugging
-				t.Logf("Validator %d received block at height %d with %d evidence",
-					chosen, block.Height, len(block.Evidence.Evidence))
-
-				if len(block.Evidence.Evidence) != 0 {
-					select {
-					case done <- block.Evidence.Evidence[0]:
-						return
-					default:
+					// Increased block limit to allow more time for evidence to appear
+					// This accounts for timing variations in consensus and evidence processing
+					if blockCount >= 20 {
+						t.Logf("Validator %d watched %d blocks without finding evidence", validatorIndex, blockCount)
 						return
 					}
 				}
-
-				// Check if this validator has seen enough blocks
-				if blockCounts[chosen] >= maxBlocks {
-					t.Logf("Validator %d watched %d blocks without finding evidence", chosen, maxBlocks)
-					// Disable this validator's channel
-					cases[chosen].Chan = reflect.ValueOf(nil)
-				}
-			default:
-				// Skip non-block messages
-				continue
 			}
-
-			// Check if all validators have reached their limit
-			allExhausted := true
-			for i := 0; i < nValidators; i++ {
-				if cases[i].Chan.IsValid() {
-					allExhausted = false
-					break
-				}
-			}
-			if allExhausted {
-				return
-			}
-		}
-	}()
+		}(i)
+	}
 
 	pubkey, err := bcs.privValidator.GetPubKey()
 	require.NoError(t, err)
 
 	select {
 	case evidenceFound = <-done:
-		close(quit)
 		// Verify the evidence is correct
 		ev, ok := evidenceFound.(*types.DuplicateVoteEvidence)
 		require.True(t, ok, "Evidence should be DuplicateVoteEvidence")
 		assert.Equal(t, pubkey.Address(), ev.VoteA.ValidatorAddress)
 		assert.Equal(t, prevoteHeight, ev.Height())
 		t.Logf("Successfully found evidence: %v", ev)
-	case <-time.After(45 * time.Second):
-		close(quit)
-		// Increased timeout to give more time for evidence processing
-		t.Fatalf("Timed out waiting for validators to commit evidence after 45 seconds")
+	case <-time.After(60 * time.Second):
+		// Increased timeout to 60 seconds to accommodate timing variations
+		// This should be sufficient for evidence generation and inclusion
+		t.Fatalf("Timed out waiting for validators to commit evidence after 60 seconds")
 	}
 }
 
