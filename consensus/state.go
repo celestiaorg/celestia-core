@@ -81,7 +81,7 @@ type evidencePool interface {
 	ReportConflictingVotes(voteA, voteB *types.Vote)
 }
 
-// blockWithParts intermediary struct to build the block during the precommit timeout
+// blockWithParts intermediary struct to build the block during the commit timeout
 type blockWithParts struct {
 	block *types.Block
 	parts *types.PartSet
@@ -159,7 +159,7 @@ type State struct {
 	proposalChan         <-chan types.Proposal
 	newHeightOrRoundChan chan struct{}
 
-	// to build the block during the timeout precommit
+	// to build the block during the commit timeout
 	nextBlock chan *blockWithParts
 
 	// for reporting metrics
@@ -1076,7 +1076,6 @@ func (cs *State) handleTimeout(ti timeoutInfo, rs cstypes.RoundState) {
 }
 
 func (cs *State) handleTxsAvailable() {
-	fmt.Println("handleTxsAvailable")
 	select {
 	case <-cs.nextBlock:
 	default:
@@ -1697,9 +1696,8 @@ func (cs *State) enterPrecommitWait(height int64, round int32) {
 
 // buildNextBlock creates the next block pre-amptively if we're the proposer.
 func (cs *State) buildNextBlock() {
-	cs.Logger.Info("building block preamptively")
 	select {
-	// flush the next block channel. should only happen when there is already a POL block.
+	// flush the next block channel to ensure only the relevant block is there.
 	case <-cs.nextBlock:
 	default:
 	}
@@ -1711,7 +1709,6 @@ func (cs *State) buildNextBlock() {
 		panic("Method createProposalBlock should not provide a nil block without errors")
 	}
 
-	cs.Logger.Info("finished building block preamptively")
 	cs.nextBlock <- &blockWithParts{
 		block: block,
 		parts: blockParts,
@@ -1943,7 +1940,7 @@ func (cs *State) finalizeCommit(height int64) {
 		cs.propagator.SetProposer(proposer.PubKey)
 	}
 
-	// build the block preamptively if we're the proposer
+	// build the block pre-emptively if we're the proposer
 	if cs.privValidatorPubKey != nil {
 		if address := cs.privValidatorPubKey.Address(); cs.Validators.HasAddress(address) && cs.isProposer(address) {
 			go cs.buildNextBlock()
