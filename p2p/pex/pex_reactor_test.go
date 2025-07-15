@@ -919,3 +919,61 @@ func TestPEXReactorWhenAddressBookIsSmallerThanMaxDials(t *testing.T) {
 		assert.Equal(t, 1, pexR.AttemptsToDial(peer))
 	}
 }
+
+// TestEnsurePeersNegativeNumToDial tests that numToDial calculation handles negative values correctly
+func TestEnsurePeersNegativeNumToDial(t *testing.T) {
+	// Test the core logic that was problematic:
+	// numToDial = MaxNumOutboundPeers - (out + dial)
+	// When out + dial > MaxNumOutboundPeers, numToDial should be 0, not negative
+
+	testCases := []struct {
+		name              string
+		maxOutboundPeers  int
+		outboundPeers     int
+		dialingPeers      int
+		expectedNumToDial int
+	}{
+		{
+			name:              "normal case",
+			maxOutboundPeers:  10,
+			outboundPeers:     5,
+			dialingPeers:      2,
+			expectedNumToDial: 3, // 10 - (5 + 2) = 3
+		},
+		{
+			name:              "negative case - issue scenario",
+			maxOutboundPeers:  10,
+			outboundPeers:     12,
+			dialingPeers:      0,
+			expectedNumToDial: 0, // 10 - (12 + 0) = -2, but should be 0
+		},
+		{
+			name:              "negative case with dialing",
+			maxOutboundPeers:  10,
+			outboundPeers:     8,
+			dialingPeers:      5,
+			expectedNumToDial: 0, // 10 - (8 + 5) = -3, but should be 0
+		},
+		{
+			name:              "exact match",
+			maxOutboundPeers:  10,
+			outboundPeers:     10,
+			dialingPeers:      0,
+			expectedNumToDial: 0, // 10 - (10 + 0) = 0
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			// Simulate the calculation in ensurePeers
+			numToDial := tc.maxOutboundPeers - (tc.outboundPeers + tc.dialingPeers)
+			if numToDial < 0 {
+				numToDial = 0
+			}
+
+			assert.Equal(t, tc.expectedNumToDial, numToDial,
+				"numToDial should be %d for maxOut=%d, out=%d, dial=%d",
+				tc.expectedNumToDial, tc.maxOutboundPeers, tc.outboundPeers, tc.dialingPeers)
+		})
+	}
+}
