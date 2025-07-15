@@ -1044,7 +1044,7 @@ func makeBlockchainFromWAL(wal WAL) ([]*types.Block, []*types.ExtendedCommit, er
 		switch p := piece.(type) {
 		case EndHeightMessage:
 			// if its not the first one, we have a full block
-			if thisBlockParts != nil {
+			if thisBlockParts != nil && thisBlockParts.IsComplete() {
 				pbb := new(cmtproto.Block)
 				bz, err := io.ReadAll(thisBlockParts.GetReader())
 				if err != nil {
@@ -1088,29 +1088,7 @@ func makeBlockchainFromWAL(wal WAL) ([]*types.Block, []*types.ExtendedCommit, er
 			}
 		}
 	}
-	// grab the last block too
-	bz, err := io.ReadAll(thisBlockParts.GetReader())
-	if err != nil {
-		panic(err)
-	}
-	pbb := new(cmtproto.Block)
-	err = proto.Unmarshal(bz, pbb)
-	if err != nil {
-		panic(err)
-	}
-	block, err := types.BlockFromProto(pbb)
-	if err != nil {
-		panic(err)
-	}
-	if block.Height != height+1 {
-		panic(fmt.Sprintf("read bad block from wal. got height %d, expected %d", block.Height, height+1))
-	}
-	commitHeight := thisBlockExtCommit.Height
-	if commitHeight != height+1 {
-		panic(fmt.Sprintf("commit doesnt match. got height %d, expected %d", commitHeight, height+1))
-	}
-	blocks = append(blocks, block)
-	extCommits = append(extCommits, thisBlockExtCommit)
+
 	return blocks, extCommits, nil
 }
 

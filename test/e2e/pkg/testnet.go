@@ -137,6 +137,8 @@ type Node struct {
 	PyroscopeURL          string
 	PyroscopeTrace        bool
 	PyroscopeProfileTypes []string
+
+	DisablePropagationReactor bool
 }
 
 // LoadTestnet loads a testnet from a manifest file, using the filename to
@@ -262,6 +264,8 @@ func NewTestnetFromManifest(manifest Manifest, file string, ifd InfrastructureDa
 			PyroscopeURL:          ifd.PyroscopeURL,
 			PyroscopeTrace:        ifd.PyroscopeTrace,
 			PyroscopeProfileTypes: ifd.PyroscopeProfileTypes,
+
+			DisablePropagationReactor: nodeManifest.DisablePropagationReactor,
 		}
 		if node.StartAt == testnet.InitialHeight {
 			node.StartAt = 0 // normalize to 0 for initial nodes, since code expects this

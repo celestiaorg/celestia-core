@@ -2,6 +2,7 @@ package propagation
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"math"
 	"reflect"
@@ -174,12 +175,27 @@ func (blockProp *Reactor) AddPeer(peer p2p.Peer) error {
 		return fmt.Errorf("ignoring self peer")
 	}
 
+	if legacy, err := isLegacyPropagation(peer); legacy || err != nil {
+		return fmt.Errorf("peer is only using legacy propagation")
+	}
+
 	// ignore the peer if it already exists.
 	if p := blockProp.getPeer(peer.ID()); p != nil {
 		return fmt.Errorf("peer exists in propagation reactors, peer ID: %v", peer.ID())
 	}
 
 	peerState := newPeerState(blockProp.ctx, peer, blockProp.Logger)
+
+	consensusState := peer.Get(types.PeerStateKey)
+
+	if editor, ok := consensusState.(PeerStateEditor); ok {
+		peerState.SetConsensusPeerState(editor)
+		blockProp.Logger.Debug("loaded consensus peer state editor", "peer", peer.ID())
+	} else {
+		blockProp.Logger.Error("failed to load consensus peer state", "peer", peer.ID())
+		peerState.consensusPeerState = noOpPSE{}
+	}
+
 	blockProp.setPeer(peer.ID(), peerState)
 	go blockProp.requestFromPeer(peerState)
 
@@ -340,4 +356,19 @@ func (blockProp *Reactor) setPeer(peer p2p.ID, state *PeerState) {
 	blockProp.mtx.Lock()
 	defer blockProp.mtx.Unlock()
 	blockProp.peerstate[peer] = state
+}
+
+func isLegacyPropagation(peer p2p.Peer) (bool, error) {
+	ni, ok := peer.NodeInfo().(p2p.DefaultNodeInfo)
+	if !ok {
+		return false, errors.New("wrong NodeInfo type. Expected DefaultNodeInfo")
+	}
+
+	for _, ch := range ni.Channels {
+		if ch == DataChannel || ch == WantChannel {
+			return false, nil
+		}
+	}
+
+	return true, nil
 }
