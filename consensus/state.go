@@ -159,7 +159,7 @@ type State struct {
 	proposalChan         <-chan types.Proposal
 	newHeightOrRoundChan chan struct{}
 
-	// to build the block during the commit timeout
+	// nextBlock contains the next block to propose when building blocks during the timeout commit
 	nextBlock chan *blockWithParts
 
 	// for reporting metrics
