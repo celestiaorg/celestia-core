@@ -233,6 +233,7 @@ func TestMempoolVectors(t *testing.T) {
 	}
 }
 
+<<<<<<< HEAD
 func TestReactorEventuallyRemovesExpiredTransaction(t *testing.T) {
 	reactor, _ := setupReactor(t)
 	reactor.mempool.config.TTLDuration = 800 * time.Millisecond
@@ -261,6 +262,8 @@ func TestReactorEventuallyRemovesExpiredTransaction(t *testing.T) {
 		"transaction was not removed after TTL expired")
 }
 
+=======
+>>>>>>> bfc33c73 (fix: only purge expired txs during update (#2199))
 func TestLegacyReactorReceiveBasic(t *testing.T) {
 	config := cfg.TestConfig()
 	// if there were more than two reactors, the order of transactions could not be
