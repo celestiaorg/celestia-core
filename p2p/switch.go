@@ -333,7 +333,18 @@ func (sw *Switch) NumPeers() (outbound, inbound, dialing int) {
 			}
 		}
 	}
-	dialing = sw.dialing.Size()
+	
+	// Count dialing peers that are not already in the peers list
+	// to avoid double-counting during the window where a peer is both
+	// connected and still in the dialing list
+	dialingAddrs := sw.dialing.Values()
+	for _, addr := range dialingAddrs {
+		if netAddr, ok := addr.(*NetAddress); ok {
+			if !sw.peers.Has(netAddr.ID) {
+				dialing++
+			}
+		}
+	}
 	return
 }
 
