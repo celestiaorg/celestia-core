@@ -67,7 +67,6 @@ func NewTxMempool(
 	height int64,
 	options ...TxMempoolOption,
 ) *TxMempool {
-
 	txmp := &TxMempool{
 		logger:       logger,
 		config:       cfg,
@@ -446,6 +445,8 @@ func (txmp *TxMempool) Update(
 		_ = txmp.removeTxByKey(tx.Key())
 	}
 
+	// Purge expired transactions based on TTL. This is the only place where
+	// TTL purging should happen to maintain checkTxState consistency.
 	txmp.purgeExpiredTxs(blockHeight)
 
 	// If there any uncommitted transactions left in the mempool, we either
@@ -733,17 +734,6 @@ func (txmp *TxMempool) canAddTx(wtx *WrappedTx) error {
 	}
 
 	return nil
-}
-
-// CheckToPurgeExpiredTxs checks if there has been adequate time since the last time
-// the txpool looped through all transactions and if so, performs a purge of any transaction
-// that has expired according to the TTLDuration. This is thread safe.
-func (txmp *TxMempool) CheckToPurgeExpiredTxs() {
-	txmp.mtx.Lock()
-	defer txmp.mtx.Unlock()
-	if txmp.config.TTLDuration > 0 && time.Since(txmp.lastPurgeTime) > txmp.config.TTLDuration {
-		txmp.purgeExpiredTxs(txmp.height)
-	}
 }
 
 // purgeExpiredTxs removes all transactions from the mempool that have exceeded
