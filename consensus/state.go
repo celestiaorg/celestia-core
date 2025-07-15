@@ -1075,6 +1075,11 @@ func (cs *State) handleTimeout(ti timeoutInfo, rs cstypes.RoundState) {
 }
 
 func (cs *State) handleTxsAvailable() {
+	fmt.Println("handleTxsAvailable")
+	select {
+	case <-cs.nextBlock:
+	default:
+	}
 	cs.mtx.Lock()
 	defer cs.mtx.Unlock()
 
@@ -1935,6 +1940,13 @@ func (cs *State) finalizeCommit(height int64) {
 	proposer := cs.Validators.GetProposer()
 	if proposer != nil {
 		cs.propagator.SetProposer(proposer.PubKey)
+	}
+
+	// build the block preamptively if we're the proposer
+	if cs.privValidatorPubKey != nil {
+		if address := cs.privValidatorPubKey.Address(); cs.Validators.HasAddress(address) && cs.isProposer(address) {
+			go cs.buildNextBlock()
+		}
 	}
 	// By here,
 	// * cs.Height has been increment to height+1
