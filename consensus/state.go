@@ -1266,6 +1266,8 @@ func (cs *State) defaultDecideProposal(height int64, round int32) {
 
 	// Decide on block
 	if cs.ValidBlock != nil {
+		fmt.Println("we already have a block, so we will propose it")
+		fmt.Println(cs.ValidBlock)
 		// If there is valid block, choose that.
 		block, blockParts = cs.ValidBlock, cs.ValidBlockParts
 	} else {
