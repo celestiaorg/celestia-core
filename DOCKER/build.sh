@@ -17,7 +17,7 @@ echo
 if [[ $REPLY =~ ^[Yy]$ ]]
 then
 		docker build \
-			-t "cometbft/cometbft" \
-			-t "cometbft/cometbft:$TAG" \
-			-t "cometbft/cometbft:$TAG_NO_PATCH" .
+			-t "celestiaorg/celestia-core" \
+			-t "celestiaorg/celestia-core:$TAG" \
+			-t "celestiaorg/celestia-core:$TAG_NO_PATCH" .
 fi
