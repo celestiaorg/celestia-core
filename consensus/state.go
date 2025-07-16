@@ -2700,7 +2700,7 @@ func repairWalFile(src, dst string) error {
 func (cs *State) syncData() {
 	partChan := cs.propagator.GetPartChan()
 	proposalChan := cs.propagator.GetProposalChan()
-	
+
 	for {
 		select {
 		case <-cs.Quit():
