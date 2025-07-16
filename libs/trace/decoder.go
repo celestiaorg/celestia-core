@@ -15,7 +15,7 @@ func DecodeFile[T any](f *os.File) ([]Event[T], error) {
 	var out []Event[T]
 	r := bufio.NewReader(f)
 	for {
-		line, err := r.ReadString('\n')
+		line, err := r.ReadBytes('\n')
 		if err == io.EOF {
 			break
 		} else if err != nil {
@@ -23,7 +23,7 @@ func DecodeFile[T any](f *os.File) ([]Event[T], error) {
 		}
 
 		var e Event[T]
-		if err := json.Unmarshal([]byte(line), &e); err != nil {
+		if err := json.Unmarshal(line, &e); err != nil {
 			return nil, err
 		}
 
