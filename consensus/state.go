@@ -1268,6 +1268,20 @@ func (cs *State) defaultDecideProposal(height int64, round int32) {
 	if cs.ValidBlock != nil {
 		// If there is valid block, choose that.
 		block, blockParts = cs.ValidBlock, cs.ValidBlockParts
+
+		// set the recovery related fields if using an existing block
+		hashes := make([][]byte, len(block.Txs))
+		for i := 0; i < len(block.Txs); i++ {
+			hashes[i] = block.Txs[i].Hash()
+		}
+		block.SetCachedHashes(hashes)
+
+		parts, err := block.MakePartSet(types.BlockPartSizeBytes)
+		if err != nil {
+			cs.Logger.Error("unable to generate the partset from existing block", "error", err)
+			return
+		}
+		blockParts = parts
 	} else {
 		// Create a new proposal block from state/txs from the mempool.
 		var err error
