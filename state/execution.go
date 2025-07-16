@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"os"
 	"path/filepath"
 	"time"
 
@@ -154,7 +155,8 @@ func (blockExec *BlockExecutor) CreateProposalBlock(
 	commit := lastExtCommit.ToCommit()
 	block, _, err := state.MakeBlock(height, types.MakeData(types.TxsFromCachedTxs(txs)), commit, evidence, proposerAddr)
 	if err != nil {
-		return nil, nil, err
+		blockExec.logger.Error("failed to create proposal block", "err", err)
+		os.Exit(5)
 	}
 	req := &abci.RequestPrepareProposal{
 		MaxTxBytes:         maxDataBytes,
@@ -213,7 +215,8 @@ func (blockExec *BlockExecutor) CreateProposalBlock(
 	newData := types.NewData(txl, rpp.SquareSize, rpp.DataRootHash)
 	block, partset, err := state.MakeBlock(height, newData, commit, evidence, proposerAddr)
 	if err != nil {
-		return nil, nil, err
+		blockExec.logger.Error("failed to create proposal block", "err", err)
+		os.Exit(6)
 	}
 
 	// get the cached hashes
@@ -222,6 +225,10 @@ func (blockExec *BlockExecutor) CreateProposalBlock(
 	hashes := make([][]byte, len(newData.Txs))
 	for i := 0; i < len(newData.Txs); i++ {
 		hashes[i] = newData.Txs[i].Hash()
+		if hashes[i] == nil {
+			blockExec.logger.Error("failed to get hash of tx", "tx", fmt.Sprintf("%X", newData.Txs[i]))
+			os.Exit(7)
+		}
 	}
 
 	block.SetCachedHashes(hashes)

@@ -83,6 +83,9 @@ func MarshalBlockWithTxPositions(block proto.Message) ([]byte, []TxPosition, err
 				if err != nil {
 					return b, nil, err
 				}
+				if overallStart >= overallEnd {
+					return b, nil, fmt.Errorf("invalid tx position: start %d >= end %d", overallStart, overallEnd)
+				}
 				positions = append(positions, TxPosition{Start: overallStart, End: overallEnd})
 			}
 			continue

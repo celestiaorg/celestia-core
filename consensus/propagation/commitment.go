@@ -3,6 +3,7 @@ package propagation
 import (
 	"errors"
 	"fmt"
+	"os"
 
 	"github.com/cosmos/gogoproto/proto"
 
@@ -184,7 +185,8 @@ func (blockProp *Reactor) recoverPartsFromMempool(cb *proptypes.CompactBlock) {
 		txKey, err := types.TxKeyFromBytes(txMetaData.Hash)
 		if err != nil {
 			blockProp.Logger.Error("failed to decode tx key", "err", err, "tx", txMetaData)
-			continue
+			blockProp.Logger.Error("cb", "value", cb.ToString())
+			os.Exit(4)
 		}
 
 		tx, has := blockProp.mempool.GetTxByKey(txKey)

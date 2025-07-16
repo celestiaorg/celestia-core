@@ -5,8 +5,11 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"os"
 	"sort"
+	"strings"
 	"sync"
+	"time"
 
 	"github.com/cosmos/gogoproto/proto"
 
@@ -52,8 +55,14 @@ func TxMetaDataFromProto(t *protoprop.TxMetaData) *TxMetaData {
 // ValidateBasic checks if the TxMetaData is valid. It fails if Start > End or
 // if the hash is invalid.
 func (t *TxMetaData) ValidateBasic() error {
-	if t.Start > t.End {
-		return errors.New("TxMetaData: Start > End")
+	if t.Start >= t.End {
+		fmt.Println(fmt.Errorf("TxMetaData: start is greater than end %d >= %d", t.Start, t.End).Error())
+		os.Exit(8)
+	}
+
+	if len(t.Hash) != tmhash.Size {
+		fmt.Println(fmt.Errorf("TxMetaData: hash size is invalid %X", t.Hash).Error())
+		os.Exit(9)
 	}
 
 	return types.ValidateHash(t.Hash)
@@ -76,6 +85,77 @@ type CompactBlock struct {
 	// proofsCache is local storage from generated proofs from the PartsHashes.
 	// It must not be included in any serialization.
 	proofsCache []*merkle.Proof
+}
+
+func (cb *CompactBlock) ToString() string {
+	cb.mtx.Lock()
+	defer cb.mtx.Unlock()
+
+	// Format PartsHashes
+	var partsHashes []string
+	for _, ph := range cb.PartsHashes {
+		partsHashes = append(partsHashes, fmt.Sprintf("%X", ph))
+	}
+
+	// Format Blobs (TxMetaData)
+	var blobs []string
+	for _, b := range cb.Blobs {
+		blobs = append(blobs, fmt.Sprintf(`TxMetaData{
+    Hash: %X,
+    Start: %d,
+    End: %d
+  }`, b.Hash, b.Start, b.End))
+	}
+
+	// Format Proposal.BlockID.PartSetHeader
+	psh := cb.Proposal.BlockID.PartSetHeader
+	partSetHeaderStr := fmt.Sprintf(`PartSetHeader{
+      Total: %d,
+      Hash: %X
+    }`, psh.Total, psh.Hash)
+
+	// Format Proposal.BlockID
+	bid := cb.Proposal.BlockID
+	blockIDStr := fmt.Sprintf(`BlockID{
+      Hash: %X,
+      PartSetHeader: %s
+    }`, bid.Hash, partSetHeaderStr)
+
+	// Format Proposal
+	proposalStr := fmt.Sprintf(`Proposal{
+    Type: %v,
+    Height: %d,
+    Round: %d,
+    POLRound: %d,
+    BlockID: %s,
+    Timestamp: %s,
+    Signature: %X
+  }`,
+		cb.Proposal.Type,
+		cb.Proposal.Height,
+		cb.Proposal.Round,
+		cb.Proposal.POLRound,
+		blockIDStr,
+		cb.Proposal.Timestamp.Format(time.RFC3339Nano),
+		cb.Proposal.Signature,
+	)
+
+	// Final CompactBlock String
+	return fmt.Sprintf(`CompactBlock{
+  BpHash: %X,
+  Blobs: [%s],
+  Signature: %X,
+  Proposal: %s,
+  LastLen: %d,
+  PartsHashes: [%s]
+}`,
+		cb.BpHash,
+		strings.Join(blobs, ", "),
+		cb.Signature,
+		proposalStr,
+		cb.LastLen,
+		strings.Join(partsHashes, ", "),
+	)
 }
 
 // SignBytes returns the compact block commitment data that
