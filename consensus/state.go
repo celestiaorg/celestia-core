@@ -1714,7 +1714,7 @@ func (cs *State) enterCommit(height int64, commitRound int32) {
 	// otherwise they'll be cleared in updateToState.
 	if cs.LockedBlock.HashesTo(blockID.Hash) {
 		logger.Debug("commit is for a locked block; set ProposalBlock=LockedBlock", "block_hash", blockID.Hash)
-		fmt.Println("setting cs.ProposalBlock in enterCommit: ", cs.LockedBlock)
+		fmt.Println("setting cs.ProposalBlock in enterCommit: ", cs.LockedBlock.Height, " ", cs.Round, " ", cs.LockedBlock.CachedHashes())
 		cs.ProposalBlock = cs.LockedBlock
 		cs.ProposalBlockParts = cs.LockedBlockParts
 	}
@@ -2122,7 +2122,7 @@ func (cs *State) addProposalBlockPart(msg *BlockPartMessage, peerID p2p.ID) (add
 			return added, err
 		}
 
-		fmt.Println("setting cs.ProposalBlock in addProposalBlock: ", block)
+		fmt.Println("setting cs.ProposalBlock in addProposalBlock: ", block.Height, " ", cs.Round, " ", block.CachedHashes())
 		cs.ProposalBlock = block
 
 		// NOTE: it's possible to receive complete proposal blocks for future rounds without having the proposal
@@ -2148,7 +2148,7 @@ func (cs *State) handleCompleteProposal(blockHeight int64) {
 			)
 
 			cs.ValidRound = cs.Round
-			fmt.Println("setting ValidBlock in AddVote: ", cs.ProposalBlock)
+			fmt.Println("setting ValidBlock in AddVote: ", cs.ProposalBlock.Height, " ", cs.Round, " ", cs.ProposalBlock.CachedHashes())
 			cs.ValidBlock = cs.ProposalBlock
 			cs.ValidBlockParts = cs.ProposalBlockParts
 		}
@@ -2388,7 +2388,7 @@ func (cs *State) addVote(vote *types.Vote, peerID p2p.ID) (added bool, err error
 				if cs.ProposalBlock.HashesTo(blockID.Hash) {
 					cs.Logger.Debug("updating valid block because of POL", "valid_round", cs.ValidRound, "pol_round", vote.Round)
 					cs.ValidRound = vote.Round
-					fmt.Println("setting ValidBlock in AddVote: ", cs.ProposalBlock)
+					fmt.Println("setting ValidBlock in AddVote: ", cs.ProposalBlock.Height, " ", cs.Round, " ", cs.ProposalBlock.CachedHashes())
 					cs.ValidBlock = cs.ProposalBlock
 					cs.ValidBlockParts = cs.ProposalBlockParts
 				} else {
