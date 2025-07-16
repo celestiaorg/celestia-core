@@ -5,7 +5,6 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
-	"os"
 	"sort"
 	"strings"
 	"sync"
@@ -57,12 +56,12 @@ func TxMetaDataFromProto(t *protoprop.TxMetaData) *TxMetaData {
 func (t *TxMetaData) ValidateBasic() error {
 	if t.Start >= t.End {
 		fmt.Println(fmt.Errorf("TxMetaData: start is greater than end %d >= %d", t.Start, t.End).Error())
-		os.Exit(8)
+		//os.Exit(8)
 	}
 
 	if len(t.Hash) != tmhash.Size {
 		fmt.Println(fmt.Errorf("TxMetaData: hash size is invalid %X", t.Hash).Error())
-		os.Exit(9)
+		//os.Exit(9)
 	}
 
 	return types.ValidateHash(t.Hash)
