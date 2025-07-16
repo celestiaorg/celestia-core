@@ -1267,7 +1267,7 @@ func (cs *State) defaultDecideProposal(height int64, round int32) {
 	// Decide on block
 	if cs.ValidBlock != nil {
 		// If there is valid block, choose that.
-		block, blockParts = cs.ValidBlock, cs.ValidBlockParts
+		block = cs.ValidBlock
 
 		// set the recovery related fields if using an existing block
 		hashes := make([][]byte, len(block.Txs))
