@@ -63,6 +63,7 @@ func (blockProp *Reactor) ProposeBlock(proposal *types.Proposal, block *types.Pa
 
 	cb.Signature = sig
 
+	fmt.Println("proposing compact block: ", cb.ToString())
 	// save the compact block locally and broadcast it to the connected peers
 	blockProp.handleCompactBlock(&cb, blockProp.self, true)
 
