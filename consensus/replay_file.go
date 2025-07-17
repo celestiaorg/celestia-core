@@ -132,7 +132,7 @@ func (pb *playback) replayReset(count int, newStepSub types.Subscription) error 
 	pb.cs.Wait()
 
 	newCS := NewState(pb.cs.config, pb.genesisState.Copy(), pb.cs.blockExec,
-		pb.cs.blockStore, pb.cs.propagator, pb.cs.txNotifier, pb.cs.evpool, pb.cs.partChan, pb.cs.proposalChan)
+		pb.cs.blockStore, pb.cs.propagator, pb.cs.txNotifier, pb.cs.evpool)
 	newCS.SetEventBus(pb.cs.eventBus)
 	newCS.startForReplay()
 
@@ -338,19 +338,15 @@ func newConsensusStateForReplay(config cfg.BaseConfig, csConfig *cfg.ConsensusCo
 		panic(err)
 	}
 	// TODO pass a tracer from here
-	partsChan := make(chan types.PartInfo, 2500)
-	proposalChan := make(chan types.Proposal, 100)
 	propagator := propagation.NewReactor(key.ID(), propagation.Config{
 		Store:         blockStore,
 		Mempool:       mempool,
 		Privval:       nil,
 		ChainID:       state.ChainID,
 		BlockMaxBytes: state.ConsensusParams.Block.MaxBytes,
-		PartChan:      partsChan,
-		ProposalChan:  proposalChan,
 	})
 	consensusState := NewState(csConfig, state.Copy(), blockExec,
-		blockStore, propagator, mempool, evpool, partsChan, proposalChan)
+		blockStore, propagator, mempool, evpool)
 
 	consensusState.SetEventBus(eventBus)
 	return consensusState
