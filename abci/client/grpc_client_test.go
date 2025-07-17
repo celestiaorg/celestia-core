@@ -41,7 +41,7 @@ func TestGRPC(t *testing.T) {
 	})
 
 	// Connect to the socket
-	conn, err := grpc.NewClient(socket, grpc.WithTransportCredentials(insecure.NewCredentials()), grpc.WithContextDialer(dialerFunc)) //nolint:staticcheck
+	conn, err := grpc.NewClient(socket, grpc.WithTransportCredentials(insecure.NewCredentials()), grpc.WithContextDialer(dialerFunc))
 	require.NoError(t, err)
 
 	t.Cleanup(func() {
