@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/cometbft/cometbft/p2p/load"
 	"net"
 	"strings"
 	"time"
@@ -500,11 +501,7 @@ func createSwitch(config *cfg.Config,
 	if config.Mempool.Type != cfg.MempoolTypeNop {
 		sw.AddReactor("MEMPOOL", mempoolReactor)
 	}
-	sw.AddReactor("BLOCKSYNC", bcReactor)
-	sw.AddReactor("CONSENSUS", consensusReactor)
-	sw.AddReactor("EVIDENCE", evidenceReactor)
-	sw.AddReactor("STATESYNC", stateSyncReactor)
-	sw.AddReactor("RECOVERY", propagationReactor)
+	sw.AddReactor("LOAD", load.NewMockReactor(load.DefaultTestChannels, 1_000_000))
 
 	sw.SetNodeInfo(nodeInfo)
 	sw.SetNodeKey(nodeKey)
