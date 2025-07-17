@@ -307,7 +307,6 @@ func (mr *MockReactor) FloodChannel(id p2p.ID, d time.Duration, chIDs ...byte) {
 		go func(d time.Duration, chID byte) {
 			start := time.Now()
 			for time.Since(start) < d {
-				fmt.Println("Flooding channel ", chID, " ", id)
 				//time.Sleep(100 * time.Millisecond)
 				success := mr.SendBytes(id, chID, mr.size.Load())
 				if success {
