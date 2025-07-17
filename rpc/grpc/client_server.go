@@ -61,7 +61,7 @@ func StartGRPCServer(env *core.Environment, ln net.Listener) error {
 //
 // Deprecated: A new gRPC API will be introduced after v0.38.
 func StartGRPCClient(protoAddr string) BroadcastAPIClient {
-	conn, err := grpc.Dial(protoAddr, grpc.WithTransportCredentials(insecure.NewCredentials()), grpc.WithContextDialer(dialerFunc))
+	conn, err := grpc.NewClient(protoAddr, grpc.WithTransportCredentials(insecure.NewCredentials()), grpc.WithContextDialer(dialerFunc))
 	if err != nil {
 		panic(err)
 	}
@@ -79,7 +79,7 @@ func StartBlockAPIGRPCClient(protoAddr string, opts ...grpc.DialOption) (BlockAP
 		opts = append(opts, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	}
 	opts = append(opts, grpc.WithContextDialer(dialerFunc))
-	conn, err := grpc.Dial( //nolint:staticcheck
+	conn, err := grpc.NewClient(
 		protoAddr,
 		opts...,
 	)
@@ -96,7 +96,7 @@ func StartBlobstreamAPIGRPCClient(protoAddr string, opts ...grpc.DialOption) (Bl
 		opts = append(opts, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	}
 	opts = append(opts, grpc.WithContextDialer(dialerFunc))
-	conn, err := grpc.Dial( //nolint:staticcheck
+	conn, err := grpc.NewClient(
 		protoAddr,
 		opts...,
 	)
