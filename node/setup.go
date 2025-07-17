@@ -498,9 +498,6 @@ func createSwitch(config *cfg.Config,
 		p2p.WithTracer(traceClient),
 	)
 	sw.SetLogger(p2pLogger)
-	if config.Mempool.Type != cfg.MempoolTypeNop {
-		sw.AddReactor("MEMPOOL", mempoolReactor)
-	}
 	sw.AddReactor("LOAD", load.NewMockReactor(load.DefaultTestChannels, 1_000_000))
 
 	sw.SetNodeInfo(nodeInfo)

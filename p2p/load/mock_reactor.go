@@ -200,6 +200,7 @@ func (mr *MockReactor) AddPeer(peer p2p.Peer) error {
 	mr.mtx.Lock()
 	defer mr.mtx.Unlock()
 	mr.peers[peer.ID()] = peer
+	mr.Logger.Info("Flooding peer")
 	mr.FloodChannel(peer.ID(), 10*60*time.Minute, FirstChannel)
 	return nil
 }
@@ -306,6 +307,7 @@ func (mr *MockReactor) FloodChannel(id p2p.ID, d time.Duration, chIDs ...byte) {
 		go func(d time.Duration, chID byte) {
 			start := time.Now()
 			for time.Since(start) < d {
+				fmt.Println("Flooding channel ", chID, " ", id)
 				//time.Sleep(100 * time.Millisecond)
 				success := mr.SendBytes(id, chID, mr.size.Load())
 				if success {
