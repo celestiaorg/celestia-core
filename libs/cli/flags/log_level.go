@@ -58,7 +58,11 @@ func ParseLogLevel(lvl string, logger log.Logger, defaultLogLevelValue string) (
 		} else {
 			switch level {
 			case "debug":
-				option = log.AllowDebugWith("module", module)
+				if module == "p2p" {
+					option = log.AllowDebugWith("module", module)
+				} else {
+					option = log.AllowInfoWith("module", module)
+				}
 			case "info":
 				option = log.AllowInfoWith("module", module)
 			case "error":
