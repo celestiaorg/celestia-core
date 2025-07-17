@@ -540,6 +540,13 @@ create_empty_blocks_interval = "{{ .Consensus.CreateEmptyBlocksInterval }}"
 peer_gossip_sleep_duration = "{{ .Consensus.PeerGossipSleepDuration }}"
 peer_query_maj23_sleep_duration = "{{ .Consensus.PeerQueryMaj23SleepDuration }}"
 
+# Buffer sizes for propagation channels
+# Buffer size for block parts channel (impacts memory usage and throughput)
+part_chan_buffer_size = {{ .Consensus.PartChanBufferSize }}
+
+# Buffer size for proposals channel (impacts memory usage and throughput)  
+proposal_chan_buffer_size = {{ .Consensus.ProposalChanBufferSize }}
+
 #######################################################
 ###         Storage Configuration Options           ###
 #######################################################

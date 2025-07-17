@@ -68,11 +68,13 @@ type Reactor struct {
 }
 
 type Config struct {
-	Store         *store.BlockStore
-	Mempool       Mempool
-	Privval       types.PrivValidator
-	ChainID       string
-	BlockMaxBytes int64
+	Store                   *store.BlockStore
+	Mempool                 Mempool
+	Privval                 types.PrivValidator
+	ChainID                 string
+	BlockMaxBytes           int64
+	PartChanBufferSize      int
+	ProposalChanBufferSize  int
 }
 
 func NewReactor(
@@ -81,6 +83,18 @@ func NewReactor(
 	options ...ReactorOption,
 ) *Reactor {
 	ctx, cancel := context.WithCancel(context.Background())
+	
+	// Set default buffer sizes if not configured
+	partChanBufferSize := config.PartChanBufferSize
+	if partChanBufferSize <= 0 {
+		partChanBufferSize = 2500 // Default buffer size for parts
+	}
+	
+	proposalChanBufferSize := config.ProposalChanBufferSize
+	if proposalChanBufferSize <= 0 {
+		proposalChanBufferSize = 100 // Default buffer size for proposals
+	}
+	
 	reactor := &Reactor{
 		self:          self,
 		traceClient:   trace.NoOpTracer(),
@@ -94,8 +108,8 @@ func NewReactor(
 		privval:       config.Privval,
 		chainID:       config.ChainID,
 		BlockMaxBytes: config.BlockMaxBytes,
-		partChan:      make(chan types.PartInfo, 2500),
-		proposalChan:  make(chan types.Proposal, 100),
+		partChan:      make(chan types.PartInfo, partChanBufferSize),
+		proposalChan:  make(chan types.Proposal, proposalChanBufferSize),
 	}
 	reactor.BaseReactor = *p2p.NewBaseReactor("Recovery", reactor)
 

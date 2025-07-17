@@ -195,11 +195,13 @@ func TestReactorWithEvidence(t *testing.T) {
 		key, err := p2p.LoadOrGenNodeKey(thisConfig.NodeKeyFile())
 		require.NoError(t, err)
 		propagator := propagation.NewReactor(key.ID(), propagation.Config{
-			Store:         blockStore,
-			Mempool:       mempool,
-			Privval:       pv,
-			ChainID:       state.ChainID,
-			BlockMaxBytes: state.ConsensusParams.Block.MaxBytes,
+			Store:                   blockStore,
+			Mempool:                 mempool,
+			Privval:                 pv,
+			ChainID:                 state.ChainID,
+			BlockMaxBytes:           state.ConsensusParams.Block.MaxBytes,
+			PartChanBufferSize:      2500,
+			ProposalChanBufferSize:  100,
 		})
 		cs := NewState(thisConfig.Consensus, state, blockExec, blockStore, propagator, mempool, evpool2)
 		cs.SetLogger(log.TestingLogger().With("module", "consensus"))
@@ -412,11 +414,13 @@ func TestSwitchToConsensusVoteExtensions(t *testing.T) {
 			key, err := p2p.LoadOrGenNodeKey(config.NodeKeyFile())
 			require.NoError(t, err)
 			propagator := propagation.NewReactor(key.ID(), propagation.Config{
-				Store:         blockStore,
-				Mempool:       &emptyMempool{},
-				Privval:       cs.privValidator,
-				ChainID:       cs.state.ChainID,
-				BlockMaxBytes: cs.state.ConsensusParams.Block.MaxBytes,
+				Store:                   blockStore,
+				Mempool:                 &emptyMempool{},
+				Privval:                 cs.privValidator,
+				ChainID:                 cs.state.ChainID,
+				BlockMaxBytes:           cs.state.ConsensusParams.Block.MaxBytes,
+				PartChanBufferSize:      2500,
+				ProposalChanBufferSize:  100,
 			})
 			reactor := NewReactor(
 				cs,
