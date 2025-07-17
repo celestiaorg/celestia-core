@@ -3,6 +3,7 @@ package coregrpc
 import (
 	"context"
 	"net"
+	"strings"
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
@@ -69,7 +70,13 @@ func StartGRPCClient(protoAddr string) BroadcastAPIClient {
 }
 
 func dialerFunc(_ context.Context, addr string) (net.Conn, error) {
-	return cmtnet.Connect(addr)
+	cleanAddr := addr
+
+	// Remove protocol prefix if present
+	cleanAddr, _ = strings.CutPrefix(cleanAddr, "unix://")
+	cleanAddr, _ = strings.CutPrefix(cleanAddr, "tcp://")
+
+	return cmtnet.Connect(cleanAddr)
 }
 
 // StartBlockAPIGRPCClient dials the gRPC server using protoAddr and returns a new
