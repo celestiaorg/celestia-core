@@ -86,5 +86,5 @@ func ParseLogLevel(lvl string, logger log.Logger, defaultLogLevelValue string) (
 		options = append(options, option)
 	}
 
-	return log.NewFilter(logger, log.AllowError(), log.AllowInfoWith("module", "consensus"), log.AllowInfoWith("module", "propagation"), log.AllowDebugWith("module", "p2p")), nil
+	return log.NewFilter(logger, log.AllowNone(), log.AllowError(), log.AllowInfoWith("module", "consensus"), log.AllowInfoWith("module", "propagation"), log.AllowDebugWith("module", "p2p")), nil
 }
