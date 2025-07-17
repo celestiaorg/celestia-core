@@ -99,13 +99,11 @@ func TestByzantinePrevoteEquivocation(t *testing.T) {
 		// set private validator
 		pv := privVals[i]
 		propagationReactor := propagation.NewReactor(nodeKey.ID(), propagation.Config{
-			Store:                   blockStore,
-			Mempool:                 mempool,
-			Privval:                 pv,
-			ChainID:                 state.ChainID,
-			BlockMaxBytes:           state.ConsensusParams.Block.MaxBytes,
-			PartChanBufferSize:      2500,
-			ProposalChanBufferSize:  100,
+			Store:         blockStore,
+			Mempool:       mempool,
+			Privval:       pv,
+			ChainID:       state.ChainID,
+			BlockMaxBytes: state.ConsensusParams.Block.MaxBytes,
 		})
 		cs := NewState(thisConfig.Consensus, state, blockExec, blockStore, propagationReactor, mempool, evpool)
 		cs.SetLogger(cs.Logger)

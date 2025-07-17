@@ -1062,10 +1062,6 @@ type ConsensusConfig struct {
 	PeerQueryMaj23SleepDuration time.Duration `mapstructure:"peer_query_maj23_sleep_duration"`
 
 	DoubleSignCheckHeight int64 `mapstructure:"double_sign_check_height"`
-
-	// Buffer sizes for propagation channels
-	PartChanBufferSize     int `mapstructure:"part_chan_buffer_size"`
-	ProposalChanBufferSize int `mapstructure:"proposal_chan_buffer_size"`
 }
 
 // DefaultConsensusConfig returns a default configuration for the consensus service
@@ -1086,8 +1082,6 @@ func DefaultConsensusConfig() *ConsensusConfig {
 		PeerGossipSleepDuration:     100 * time.Millisecond,
 		PeerQueryMaj23SleepDuration: 2000 * time.Millisecond,
 		DoubleSignCheckHeight:       int64(0),
-		PartChanBufferSize:          2500,
-		ProposalChanBufferSize:      100,
 	}
 }
 
@@ -1107,8 +1101,6 @@ func TestConsensusConfig() *ConsensusConfig {
 	cfg.PeerGossipSleepDuration = 5 * time.Millisecond
 	cfg.PeerQueryMaj23SleepDuration = 250 * time.Millisecond
 	cfg.DoubleSignCheckHeight = int64(0)
-	cfg.PartChanBufferSize = 2500
-	cfg.ProposalChanBufferSize = 100
 	return cfg
 }
 
@@ -1218,12 +1210,6 @@ func (cfg *ConsensusConfig) ValidateBasic() error {
 	}
 	if cfg.DoubleSignCheckHeight < 0 {
 		return errors.New("double_sign_check_height can't be negative")
-	}
-	if cfg.PartChanBufferSize < 0 {
-		return errors.New("part_chan_buffer_size can't be negative")
-	}
-	if cfg.ProposalChanBufferSize < 0 {
-		return errors.New("proposal_chan_buffer_size can't be negative")
 	}
 	return nil
 }

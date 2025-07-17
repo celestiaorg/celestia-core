@@ -439,13 +439,11 @@ func newStateWithConfigAndBlockStore(
 		panic(err)
 	}
 	propagator := propagation.NewReactor(key.ID(), propagation.Config{
-		Store:                   blockStore,
-		Mempool:                 mempool,
-		Privval:                 pv,
-		ChainID:                 state.ChainID,
-		BlockMaxBytes:           state.ConsensusParams.Block.MaxBytes,
-		PartChanBufferSize:      2500,
-		ProposalChanBufferSize:  100,
+		Store:         blockStore,
+		Mempool:       mempool,
+		Privval:       pv,
+		ChainID:       state.ChainID,
+		BlockMaxBytes: state.ConsensusParams.Block.MaxBytes,
 	})
 	cs := NewState(thisConfig.Consensus, state, blockExec, blockStore, propagator, mempool, evpool)
 	cs.SetLogger(log.TestingLogger().With("module", "consensus"))

@@ -92,13 +92,11 @@ func WALGenerateNBlocks(t *testing.T, wr io.Writer, numBlocks int, config *cfg.C
 		panic(err)
 	}
 	propagator := propagation.NewReactor(key.ID(), propagation.Config{
-		Store:                   blockStore,
-		Mempool:                 mempool,
-		Privval:                 privValidator,
-		ChainID:                 state.ChainID,
-		BlockMaxBytes:           state.ConsensusParams.Block.MaxBytes,
-		PartChanBufferSize:      2500,
-		ProposalChanBufferSize:  100,
+		Store:         blockStore,
+		Mempool:       mempool,
+		Privval:       privValidator,
+		ChainID:       state.ChainID,
+		BlockMaxBytes: state.ConsensusParams.Block.MaxBytes,
 	})
 	consensusState := NewState(config.Consensus, state.Copy(), blockExec, blockStore, propagator, mempool, evpool)
 	consensusState.SetLogger(logger)

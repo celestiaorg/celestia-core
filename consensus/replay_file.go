@@ -339,13 +339,11 @@ func newConsensusStateForReplay(config cfg.BaseConfig, csConfig *cfg.ConsensusCo
 	}
 	// TODO pass a tracer from here
 	propagator := propagation.NewReactor(key.ID(), propagation.Config{
-		Store:                   blockStore,
-		Mempool:                 mempool,
-		Privval:                 nil,
-		ChainID:                 state.ChainID,
-		BlockMaxBytes:           state.ConsensusParams.Block.MaxBytes,
-		PartChanBufferSize:      2500,
-		ProposalChanBufferSize:  100,
+		Store:         blockStore,
+		Mempool:       mempool,
+		Privval:       nil,
+		ChainID:       state.ChainID,
+		BlockMaxBytes: state.ConsensusParams.Block.MaxBytes,
 	})
 	consensusState := NewState(csConfig, state.Copy(), blockExec,
 		blockStore, propagator, mempool, evpool)

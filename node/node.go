@@ -441,13 +441,11 @@ func NewNodeWithContext(ctx context.Context,
 	propagationReactor := propagation.NewReactor(
 		nodeKey.ID(),
 		propagation.Config{
-			Store:                   blockStore,
-			Mempool:                 mempool,
-			Privval:                 privValidator,
-			ChainID:                 state.ChainID,
-			BlockMaxBytes:           state.ConsensusParams.Block.MaxBytes,
-			PartChanBufferSize:      config.Consensus.PartChanBufferSize,
-			ProposalChanBufferSize:  config.Consensus.ProposalChanBufferSize,
+			Store:         blockStore,
+			Mempool:       mempool,
+			Privval:       privValidator,
+			ChainID:       state.ChainID,
+			BlockMaxBytes: state.ConsensusParams.Block.MaxBytes,
 		},
 		propagation.WithTracer(tracer),
 	)
