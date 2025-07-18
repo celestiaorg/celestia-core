@@ -82,12 +82,18 @@ func dialerFunc(_ context.Context, addr string) (net.Conn, error) {
 // StartBlockAPIGRPCClient dials the gRPC server using protoAddr and returns a new
 // BlockAPIClient.
 func StartBlockAPIGRPCClient(protoAddr string, opts ...grpc.DialOption) (BlockAPIClient, error) {
+	parsedAddr := protoAddr
+
+	// Remove "tcp://" and "unix://" prefix if it exists
+	parsedAddr, _ = strings.CutPrefix(parsedAddr, "tcp://")
+	parsedAddr, _ = strings.CutPrefix(parsedAddr, "unix://")
+
 	if len(opts) == 0 {
 		opts = append(opts, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	}
 	opts = append(opts, grpc.WithContextDialer(dialerFunc))
 	conn, err := grpc.NewClient(
-		protoAddr,
+		parsedAddr,
 		opts...,
 	)
 	if err != nil {
@@ -99,12 +105,18 @@ func StartBlockAPIGRPCClient(protoAddr string, opts ...grpc.DialOption) (BlockAP
 // StartBlobstreamAPIGRPCClient dials the gRPC server using protoAddr and returns a new
 // BlobstreamAPIClient.
 func StartBlobstreamAPIGRPCClient(protoAddr string, opts ...grpc.DialOption) (BlobstreamAPIClient, error) {
+	parsedAddr := protoAddr
+
+	// Remove "tcp://" and "unix://" prefix if it exists
+	parsedAddr, _ = strings.CutPrefix(parsedAddr, "tcp://")
+	parsedAddr, _ = strings.CutPrefix(parsedAddr, "unix://")
+
 	if len(opts) == 0 {
 		opts = append(opts, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	}
 	opts = append(opts, grpc.WithContextDialer(dialerFunc))
 	conn, err := grpc.NewClient(
-		protoAddr,
+		parsedAddr,
 		opts...,
 	)
 	if err != nil {
