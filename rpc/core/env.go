@@ -131,6 +131,24 @@ func (env *Environment) validatePerPage(perPagePtr *int) int {
 	return perPage
 }
 
+func (env *Environment) validateUnconfirmedTxsPerPage(perPagePtr *int) int {
+	if perPagePtr == nil { // no per_page parameter
+		return defaultPerPage
+	}
+
+	perPage := *perPagePtr
+	if perPage < -1 {
+		return defaultPerPage
+	}
+	if perPage == 0 {
+		return defaultPerPage
+	}
+	if perPage > maxPerPage {
+		return maxPerPage
+	}
+	return perPage
+}
+
 // InitGenesisChunks configures the environment and should be called on service
 // startup.
 func (env *Environment) InitGenesisChunks() error {
