@@ -3,7 +3,7 @@ package coregrpc
 import (
 	"context"
 	"net"
-	"strings"
+	"regexp"
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
@@ -62,11 +62,7 @@ func StartGRPCServer(env *core.Environment, ln net.Listener) error {
 //
 // Deprecated: A new gRPC API will be introduced after v0.38.
 func StartGRPCClient(protoAddr string) BroadcastAPIClient {
-	parsedAddr := protoAddr
-
-	// Remove "tcp://" and "unix://" prefix if it exists
-	parsedAddr, _ = strings.CutPrefix(parsedAddr, "tcp://")
-	parsedAddr, _ = strings.CutPrefix(parsedAddr, "unix://")
+	parsedAddr := parseProtoAddr(protoAddr)
 
 	conn, err := grpc.NewClient(parsedAddr, grpc.WithTransportCredentials(insecure.NewCredentials()), grpc.WithContextDialer(dialerFunc))
 	if err != nil {
@@ -82,11 +78,7 @@ func dialerFunc(_ context.Context, addr string) (net.Conn, error) {
 // StartBlockAPIGRPCClient dials the gRPC server using protoAddr and returns a new
 // BlockAPIClient.
 func StartBlockAPIGRPCClient(protoAddr string, opts ...grpc.DialOption) (BlockAPIClient, error) {
-	parsedAddr := protoAddr
-
-	// Remove "tcp://" and "unix://" prefix if it exists
-	parsedAddr, _ = strings.CutPrefix(parsedAddr, "tcp://")
-	parsedAddr, _ = strings.CutPrefix(parsedAddr, "unix://")
+	parsedAddr := parseProtoAddr(protoAddr)
 
 	if len(opts) == 0 {
 		opts = append(opts, grpc.WithTransportCredentials(insecure.NewCredentials()))
@@ -105,11 +97,7 @@ func StartBlockAPIGRPCClient(protoAddr string, opts ...grpc.DialOption) (BlockAP
 // StartBlobstreamAPIGRPCClient dials the gRPC server using protoAddr and returns a new
 // BlobstreamAPIClient.
 func StartBlobstreamAPIGRPCClient(protoAddr string, opts ...grpc.DialOption) (BlobstreamAPIClient, error) {
-	parsedAddr := protoAddr
-
-	// Remove "tcp://" and "unix://" prefix if it exists
-	parsedAddr, _ = strings.CutPrefix(parsedAddr, "tcp://")
-	parsedAddr, _ = strings.CutPrefix(parsedAddr, "unix://")
+	parsedAddr := parseProtoAddr(protoAddr)
 
 	if len(opts) == 0 {
 		opts = append(opts, grpc.WithTransportCredentials(insecure.NewCredentials()))
@@ -123,4 +111,15 @@ func StartBlobstreamAPIGRPCClient(protoAddr string, opts ...grpc.DialOption) (Bl
 		return nil, err
 	}
 	return NewBlobstreamAPIClient(conn), nil
+}
+
+// parseProtoAddr parses the protoAddr and returns the address without the prefix
+func parseProtoAddr(protoAddr string) string {
+	// Regex to match any protocol prefix (xxx://) at the beginning of the string
+	re := regexp.MustCompile(`^[a-zA-Z][a-zA-Z0-9+.-]*://`)
+
+	// Remove the matched prefix
+	parsedAddr := re.ReplaceAllString(protoAddr, "")
+
+	return parsedAddr
 }
