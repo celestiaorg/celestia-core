@@ -62,7 +62,13 @@ func StartGRPCServer(env *core.Environment, ln net.Listener) error {
 //
 // Deprecated: A new gRPC API will be introduced after v0.38.
 func StartGRPCClient(protoAddr string) BroadcastAPIClient {
-	conn, err := grpc.NewClient(protoAddr, grpc.WithTransportCredentials(insecure.NewCredentials()), grpc.WithContextDialer(dialerFunc))
+	parsedAddr := protoAddr
+
+	// Remove "tcp://" and "unix://" prefix if it exists
+	parsedAddr, _ = strings.CutPrefix(parsedAddr, "tcp://")
+	parsedAddr, _ = strings.CutPrefix(parsedAddr, "unix://")
+
+	conn, err := grpc.NewClient(parsedAddr, grpc.WithTransportCredentials(insecure.NewCredentials()), grpc.WithContextDialer(dialerFunc))
 	if err != nil {
 		panic(err)
 	}
@@ -70,13 +76,7 @@ func StartGRPCClient(protoAddr string) BroadcastAPIClient {
 }
 
 func dialerFunc(_ context.Context, addr string) (net.Conn, error) {
-	cleanAddr := addr
-
-	// Remove protocol prefix if present
-	cleanAddr, _ = strings.CutPrefix(cleanAddr, "unix://")
-	cleanAddr, _ = strings.CutPrefix(cleanAddr, "tcp://")
-
-	return cmtnet.Connect(cleanAddr)
+	return cmtnet.Connect(addr)
 }
 
 // StartBlockAPIGRPCClient dials the gRPC server using protoAddr and returns a new
