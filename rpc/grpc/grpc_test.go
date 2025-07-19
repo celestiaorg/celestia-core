@@ -466,6 +466,35 @@ func TestBlobstreamAPI(t *testing.T) {
 	assert.Equal(t, 4, len(resp.Proof.Aunts))
 }
 
+func TestParseProtoAddr(t *testing.T) {
+	tests := []struct {
+		input    string
+		expected string
+	}{
+		// DNS scheme
+		{"dns:localhost:26657", "localhost:26657"},
+		{"dns:example.com:9090", "example.com:9090"},
+		{"dns:127.0.0.1:8080", "127.0.0.1:8080"},
+
+		// Unix sockets
+		{"unix:///tmp/grpc.sock", "/tmp/grpc.sock"},
+		{"unix:///var/run/service.sock", "/var/run/service.sock"},
+
+		// No scheme - should remain unchanged
+		{"localhost:26657", "localhost:26657"},
+		{"127.0.0.1:8080", "127.0.0.1:8080"},
+		{"/tmp/grpc.sock", "/tmp/grpc.sock"},
+
+		// TCP scheme - should be stripped
+		{"tcp://localhost:26657", "localhost:26657"},
+	}
+
+	for _, tt := range tests {
+		result := core_grpc.ParseProtoAddr(tt.input)
+		assert.Equal(t, tt.expected, result)
+	}
+}
+
 func waitForHeight(t *testing.T, height int64) {
 	rpcAddr := rpctest.GetConfig().RPC.ListenAddress
 	c, err := rpchttp.New(rpcAddr, "/websocket")
