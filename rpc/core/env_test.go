@@ -80,3 +80,36 @@ func TestPaginationPerPage(t *testing.T) {
 	p := validatePerPage(nil)
 	assert.Equal(t, defaultPerPage, p)
 }
+
+func TestValidateUnconfirmedTxsPerPage(t *testing.T) {
+	env := &Environment{}
+
+	t.Run("should return default if input is nil", func(t *testing.T) {
+		got := env.validateUnconfirmedTxsPerPage(nil)
+		assert.Equal(t, defaultPerPage, got)
+	})
+
+	type testCase struct {
+		input int
+		want  int
+	}
+
+	cases := []testCase{
+		{-2, defaultPerPage},
+		{-1, -1}, // -1 is now a valid input and means query all unconfirmed txs
+		{0, defaultPerPage},
+		{1, 1},
+		{10, 10},
+		{30, 30},
+		{defaultPerPage, defaultPerPage},
+		{maxPerPage - 1, maxPerPage - 1},
+		{maxPerPage, maxPerPage},
+		{maxPerPage + 1, maxPerPage},
+	}
+	for _, c := range cases {
+		t.Run(fmt.Sprintf("should return %d if input is %d", c.want, c.input), func(t *testing.T) {
+			got := env.validateUnconfirmedTxsPerPage(&c.input)
+			assert.Equal(t, c.want, got)
+		})
+	}
+}
