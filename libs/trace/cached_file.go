@@ -53,7 +53,6 @@ func (f *cachedFile) Cache(b Event[Entry]) {
 // file.
 func (f *cachedFile) startFlushing() {
 	buffer := make([][]byte, 0, f.chunkSize)
-	total := 0
 	defer f.wg.Done()
 
 	for {
@@ -61,7 +60,7 @@ func (f *cachedFile) startFlushing() {
 		if !ok {
 			// Channel closed, flush remaining data and exit
 			if len(buffer) > 0 {
-				_, err := f.flush(total, buffer)
+				_, err := f.flush(buffer)
 				if err != nil {
 					f.logger.Error("failure to flush remaining events", "error", err)
 				}
@@ -78,28 +77,30 @@ func (f *cachedFile) startFlushing() {
 
 		// format the file to jsonl
 		bz = append(bz, '\n')
-		total += len(bz)
 
 		buffer = append(buffer, bz)
 		if len(buffer) >= f.chunkSize {
-			_, err := f.flush(total, buffer)
+			_, err := f.flush(buffer)
 			if err != nil {
 				f.logger.Error("tracer failed to write buffered files to file", "error", err)
 			}
 			buffer = buffer[:0] // reset buffer
-			total = 0
 		}
 	}
 }
 
 // flush writes the given bytes to the file. This method requires that the file
 // be opened with os.O_SYNC in order to write atomically to the file.
-func (f *cachedFile) flush(total int, buffer [][]byte) (int, error) {
-	bz := make([]byte, 0, total)
+func (f *cachedFile) flush(buffer [][]byte) (int, error) {
+	written := 0
 	for _, b := range buffer {
-		bz = append(bz, b...)
+		n, err := f.file.Write(b)
+		written += n
+		if err != nil {
+			return written, err
+		}
 	}
-	return f.file.Write(bz)
+	return written, nil
 }
 
 // Close closes the file.
