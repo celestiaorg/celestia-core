@@ -11,7 +11,7 @@ import (
 
 func TestUnconfirmedTxs(t *testing.T) {
 	mempool := &mempoolmocks.Mempool{}
-	mempool.On("ReapMaxTxs", 30).Return([]*types.CachedTx{})
+	mempool.On("ReapMaxTxs", 30).Return(types.Txs{})
 	mempool.On("Size").Return(0)
 	mempool.On("SizeBytes").Return(int64(0))
 	env := &Environment{
