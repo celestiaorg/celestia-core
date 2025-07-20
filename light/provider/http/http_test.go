@@ -3,7 +3,6 @@ package http_test
 import (
 	"context"
 	"fmt"
-	"os"
 	"testing"
 	"time"
 
@@ -41,7 +40,6 @@ func TestProvider(t *testing.T) {
 	node := rpctest.StartTendermint(app, rpctest.RecreateConfig)
 
 	cfg := rpctest.GetConfig()
-	defer os.RemoveAll(cfg.RootDir)
 	rpcAddr := cfg.RPC.ListenAddress
 	genDoc, err := types.GenesisDocFromFile(cfg.GenesisFile())
 	require.NoError(t, err)

@@ -739,7 +739,7 @@ func (sw *Switch) acceptRoutine() {
 			// Ignore connection if we already have enough peers.
 			_, in, _ := sw.NumPeers()
 			if in >= sw.config.MaxNumInboundPeers {
-				sw.Logger.Info(
+				sw.Logger.Debug(
 					"Ignoring inbound connection: already have enough inbound peers",
 					"address", p.SocketAddr(),
 					"have", in,

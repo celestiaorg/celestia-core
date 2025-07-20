@@ -49,7 +49,7 @@ func TestGapCatchup(t *testing.T) {
 	psh := ps.Header()
 
 	// test two reactors catching up at the same time as that can increase
-	// flakeyness if something is broken
+	// flakiness if something is broken
 	n2.AddCommitment(prop.Height, prop.Round, &psh)
 	n3.AddCommitment(prop.Height, prop.Round, &psh)
 

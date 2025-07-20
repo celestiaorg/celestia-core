@@ -391,15 +391,19 @@ func HavePartFromProto(h *protoprop.HaveParts) (*HaveParts, error) {
 
 // WantParts is a message that requests a set of parts from a peer.
 type WantParts struct {
-	Parts  *bits.BitArray `json:"parts"`
-	Height int64          `json:"height,omitempty"`
-	Round  int32          `json:"round,omitempty"`
-	Prove  bool           `json:"prove,omitempty"`
+	Parts             *bits.BitArray `json:"parts"`
+	Height            int64          `json:"height,omitempty"`
+	Round             int32          `json:"round,omitempty"`
+	Prove             bool           `json:"prove,omitempty"`
+	MissingPartsCount int32          `json:"missing_parts_count,omitempty"`
 }
 
 func (w *WantParts) ValidateBasic() error {
 	if w.Parts == nil {
 		return errors.New("WantParts: Parts cannot be nil")
+	}
+	if w.MissingPartsCount <= 0 {
+		return errors.New("WantParts: MissingPartsCount cannot be negative or zero")
 	}
 	return nil
 }
@@ -407,10 +411,11 @@ func (w *WantParts) ValidateBasic() error {
 // ToProto converts WantParts to its protobuf representation.
 func (w *WantParts) ToProto() *protoprop.WantParts {
 	return &protoprop.WantParts{
-		Parts:  *w.Parts.ToProto(),
-		Height: w.Height,
-		Round:  w.Round,
-		Prove:  w.Prove,
+		Parts:             *w.Parts.ToProto(),
+		Height:            w.Height,
+		Round:             w.Round,
+		Prove:             w.Prove,
+		MissingPartsCount: w.MissingPartsCount,
 	}
 }
 
@@ -426,10 +431,11 @@ func WantPartsFromProto(w *protoprop.WantParts) (*WantParts, error) {
 	}
 	array.FromProto(&w.Parts)
 	wp := &WantParts{
-		Parts:  array,
-		Height: w.Height,
-		Round:  w.Round,
-		Prove:  w.Prove,
+		Parts:             array,
+		Height:            w.Height,
+		Round:             w.Round,
+		Prove:             w.Prove,
+		MissingPartsCount: w.MissingPartsCount,
 	}
 	return wp, wp.ValidateBasic()
 }

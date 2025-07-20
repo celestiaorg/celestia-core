@@ -1421,8 +1421,6 @@ func (cs *State) defaultDoPrevote(height int64, round int32) {
 		return
 	}
 
-	schema.WriteABCI(cs.traceClient, schema.ProcessProposalStart, height, round)
-
 	// Validate proposal block, from consensus' perspective
 	err := cs.blockExec.ValidateBlock(cs.state, cs.ProposalBlock)
 	if err != nil {
@@ -1443,14 +1441,15 @@ func (cs *State) defaultDoPrevote(height int64, round int32) {
 		Please see `PrepareProosal`-`ProcessProposal` coherence and determinism properties
 		in the ABCI++ specification.
 	*/
-	schema.WriteABCI(cs.traceClient, schema.ProcessProposalEnd, height, round)
 
+	schema.WriteABCI(cs.traceClient, schema.ProcessProposalStart, height, round)
 	isAppValid, err := cs.blockExec.ProcessProposal(cs.ProposalBlock, cs.state)
 	if err != nil {
 		panic(fmt.Sprintf(
 			"state machine returned an error (%v) when calling ProcessProposal", err,
 		))
 	}
+	schema.WriteABCI(cs.traceClient, schema.ProcessProposalEnd, height, round)
 	cs.metrics.MarkProposalProcessed(isAppValid)
 
 	// Vote nil if the Application rejected the block

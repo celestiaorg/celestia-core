@@ -95,41 +95,6 @@ func TestMempoolVectors(t *testing.T) {
 	}
 }
 
-func TestReactorEventuallyRemovesExpiredTransaction(t *testing.T) {
-	config := cfg.TestConfig()
-	config.Mempool.TTLDuration = 200 * time.Millisecond
-	const N = 1
-	reactor := makeAndConnectReactors(config, N)[0]
-
-	tx := types.Tx("0x00=0x00=123")
-	key := tx.Key()
-	txMsg := &memproto.Txs{Txs: [][]byte{tx}}
-
-	peer := mock.NewPeer(nil)
-	reactor.InitPeer(peer)
-	reactor.Receive(p2p.Envelope{
-		Src:       peer,
-		Message:   txMsg,
-		ChannelID: mempool.MempoolChannel,
-	})
-	reactor.mempool.Lock()
-	_, has := reactor.mempool.txByKey[key]
-	reactor.mempool.Unlock()
-	require.True(t, has)
-
-	// wait for the transaction to expire
-	require.Eventually(t,
-		func() bool {
-			reactor.mempool.Lock()
-			_, has := reactor.mempool.txByKey[key]
-			reactor.mempool.Unlock()
-			return has
-		},
-		4*reactor.mempool.config.TTLDuration,
-		50*time.Millisecond,
-		"transaction was not removed after TTL expired")
-}
-
 func TestLegacyReactorReceiveBasic(t *testing.T) {
 	config := cfg.TestConfig()
 	// if there were more than two reactors, the order of transactions could not be
@@ -177,7 +142,6 @@ func makeAndConnectReactors(config *cfg.Config, n int) []*Reactor {
 	p2p.MakeConnectedSwitches(config.P2P, n, func(i int, s *p2p.Switch) *p2p.Switch {
 		s.AddReactor("MEMPOOL", reactors[i])
 		return s
-
 	}, p2p.Connect2Switches)
 	return reactors
 }

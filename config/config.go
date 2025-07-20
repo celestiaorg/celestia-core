@@ -354,7 +354,6 @@ type RPCConfig struct {
 	CORSAllowedHeaders []string `mapstructure:"cors_allowed_headers"`
 
 	// TCP or UNIX socket address for the gRPC server to listen on
-	// NOTE: This server only supports /broadcast_tx_commit
 	GRPCListenAddress string `mapstructure:"grpc_laddr"`
 
 	// Maximum number of simultaneous connections.
