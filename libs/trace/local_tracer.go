@@ -69,7 +69,7 @@ func NewLocalTracer(cfg *config.Config, logger log.Logger, chainID, nodeID strin
 			return nil, fmt.Errorf("failed to open or create file %s: %w", fileName, err)
 		}
 
-		fm[table] = newCachedFile(file, logger, cfg.Instrumentation.TraceBufferSize, 10)
+		fm[table] = newCachedFile(file, logger, cfg.Instrumentation.TraceBufferSize)
 	}
 
 	lt := &LocalTracer{

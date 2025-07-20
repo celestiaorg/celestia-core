@@ -36,7 +36,7 @@ func Test_cachedFile(t *testing.T) {
 				f, err := os.OpenFile(fdir, os.O_APPEND|os.O_CREATE|os.O_WRONLY|os.O_SYNC, 0777)
 				require.NoError(t, err)
 
-				cf := newCachedFile(f, logger, tt.cacheSize, 10)
+				cf := newCachedFile(f, logger, tt.cacheSize)
 
 				events := generateEvents(tt.events)
 
