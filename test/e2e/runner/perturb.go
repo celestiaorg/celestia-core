@@ -108,12 +108,25 @@ func PerturbNode(ctx context.Context, node *e2e.Node, perturbation e2e.Perturbat
 		return nil, fmt.Errorf("unexpected perturbation %q", perturbation)
 	}
 
-	status, err := waitForNode(ctx, node, 0, 20*time.Second)
-	if err != nil {
-		return nil, err
+	if node.Mode == e2e.ModeSeed {
+		// Seed nodes don't have RPC, use simple wait
+		err = waitForSeedNode(ctx, node, 20*time.Second)
+		if err != nil {
+			return nil, err
+		}
+		logger.Info("perturb node",
+			"msg",
+			log.NewLazySprintf("Seed node %v recovered", node.Name))
+		return nil, nil // Return nil status for seed nodes since they don't have RPC
+	} else {
+		// Regular nodes use RPC status check
+		status, err := waitForNode(ctx, node, 0, 20*time.Second)
+		if err != nil {
+			return nil, err
+		}
+		logger.Info("perturb node",
+			"msg",
+			log.NewLazySprintf("Node %v recovered at height %v", node.Name, status.SyncInfo.LatestBlockHeight))
+		return status, nil
 	}
-	logger.Info("perturb node",
-		"msg",
-		log.NewLazySprintf("Node %v recovered at height %v", node.Name, status.SyncInfo.LatestBlockHeight))
-	return status, nil
 }
