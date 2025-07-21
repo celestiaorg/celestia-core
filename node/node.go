@@ -438,9 +438,6 @@ func NewNodeWithContext(ctx context.Context,
 		// set the catchup retry time to match the block time
 		propagation.RetryTime = state.TimeoutCommit
 	}
-	var propagator propagation.Propagator
-	partsChan := make(chan types.PartInfo, 2500)
-	proposalChan := make(chan types.Proposal, 100)
 	propagationReactor := propagation.NewReactor(
 		nodeKey.ID(),
 		propagation.Config{
@@ -449,8 +446,6 @@ func NewNodeWithContext(ctx context.Context,
 			Privval:       privValidator,
 			ChainID:       state.ChainID,
 			BlockMaxBytes: state.ConsensusParams.Block.MaxBytes,
-			PartChan:      partsChan,
-			ProposalChan:  proposalChan,
 		},
 		propagation.WithTracer(tracer),
 	)
@@ -468,7 +463,7 @@ func NewNodeWithContext(ctx context.Context,
 
 	consensusReactor, consensusState := createConsensusReactor(
 		config, state, blockExec, blockStore, mempool, evidencePool,
-		privValidator, csMetrics, propagator, stateSync || blockSync, eventBus, consensusLogger, offlineStateSyncHeight, tracer, partsChan, proposalChan,
+		privValidator, csMetrics, propagationReactor, stateSync || blockSync, eventBus, consensusLogger, offlineStateSyncHeight, tracer,
 	)
 
 	err = stateStore.SetOfflineStateSyncHeight(0)

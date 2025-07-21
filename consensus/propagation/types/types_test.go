@@ -63,7 +63,7 @@ func TestTxMetaData_ValidateBasic(t *testing.T) {
 		{
 			"invalid start > end",
 			&TxMetaData{Hash: rand.Bytes(tmhash.Size), Start: 10, End: 5},
-			errors.New("TxMetaData: Start > End"),
+			errors.New("TxMetaData: start 10 >= end 5"),
 		},
 	}
 

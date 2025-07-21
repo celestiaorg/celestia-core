@@ -438,18 +438,14 @@ func newStateWithConfigAndBlockStore(
 	if err != nil {
 		panic(err)
 	}
-	partsChan := make(chan types.PartInfo, 1000)
-	proposalChan := make(chan types.Proposal, 100)
 	propagator := propagation.NewReactor(key.ID(), propagation.Config{
 		Store:         blockStore,
 		Mempool:       mempool,
 		Privval:       pv,
 		ChainID:       state.ChainID,
 		BlockMaxBytes: state.ConsensusParams.Block.MaxBytes,
-		PartChan:      partsChan,
-		ProposalChan:  proposalChan,
 	})
-	cs := NewState(thisConfig.Consensus, state, blockExec, blockStore, propagator, mempool, evpool, partsChan, proposalChan)
+	cs := NewState(thisConfig.Consensus, state, blockExec, blockStore, propagator, mempool, evpool)
 	cs.SetLogger(log.TestingLogger().With("module", "consensus"))
 	cs.SetPrivValidator(pv)
 
@@ -808,6 +804,9 @@ func randConsensusNet(t *testing.T, nValidators int, testName string, tickerFunc
 		css[i] = newStateWithConfigAndBlockStore(thisConfig, state, privVals[i], app, stateDB)
 		css[i].SetTimeoutTicker(tickerFunc())
 		css[i].SetLogger(logger.With("validator", i, "module", "consensus"))
+		// set building the block pre-emptively to an empty channel because several tests alter in different consensus steps after the timeout commit
+		// and fail because the block is already built before
+		css[i].nextBlock = nil
 	}
 	return css, func() {
 		for _, dir := range configRootDirs {
@@ -872,6 +871,9 @@ func randConsensusNetWithPeers(
 		css[i] = newStateWithConfig(thisConfig, state, privVal, app)
 		css[i].SetTimeoutTicker(tickerFunc())
 		css[i].SetLogger(logger.With("validator", i, "module", "consensus"))
+		// set building the block pre-emptively to an empty channel because several tests alter in different consensus steps after the timeout commit
+		// and fail because the block is already built before
+		css[i].nextBlock = nil
 	}
 	return css, genDoc, peer0Config, func() {
 		for _, dir := range configRootDirs {

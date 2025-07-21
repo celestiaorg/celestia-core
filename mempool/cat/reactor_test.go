@@ -229,34 +229,6 @@ func TestMempoolVectors(t *testing.T) {
 	}
 }
 
-func TestReactorEventuallyRemovesExpiredTransaction(t *testing.T) {
-	reactor, _ := setupReactor(t)
-	reactor.mempool.config.TTLDuration = 200 * time.Millisecond
-
-	tx := newDefaultTx("hello")
-	key := tx.Key()
-	txMsg := &protomem.Txs{Txs: [][]byte{tx}}
-
-	peer := genPeer()
-	require.NoError(t, reactor.Start())
-	reactor.InitPeer(peer)
-	reactor.Receive(
-		p2p.Envelope{
-			ChannelID: mempool.MempoolChannel,
-			Message:   txMsg,
-			Src:       peer,
-		},
-	)
-	require.True(t, reactor.mempool.Has(key))
-
-	// wait for the transaction to expire
-	require.Eventually(t,
-		func() bool { return !reactor.mempool.Has(key) },
-		4*reactor.mempool.config.TTLDuration,
-		50*time.Millisecond,
-		"transaction was not removed after TTL expired")
-}
-
 func TestLegacyReactorReceiveBasic(t *testing.T) {
 	config := cfg.TestConfig()
 	// if there were more than two reactors, the order of transactions could not be

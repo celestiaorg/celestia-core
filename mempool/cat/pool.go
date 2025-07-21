@@ -204,26 +204,6 @@ func (txmp *TxPool) WasRecentlyRejected(txKey types.TxKey) bool {
 	return txmp.rejectedTxCache.Has(txKey)
 }
 
-// CheckToPurgeExpiredTxs checks if there has been adequate time since the last time
-// the txpool looped through all transactions and if so, performs a purge of any transaction
-// that has expired according to the TTLDuration. This is thread safe.
-func (txmp *TxPool) CheckToPurgeExpiredTxs() {
-	txmp.mtx.Lock()
-	defer txmp.mtx.Unlock()
-	if txmp.config.TTLDuration > 0 && time.Since(txmp.lastPurgeTime) > txmp.config.TTLDuration {
-		expirationAge := time.Now().Add(-txmp.config.TTLDuration)
-		// A height of 0 means no transactions will be removed because of height
-		// (in other words, no transaction has a height less than 0)
-		purgedTxs, numExpired := txmp.store.purgeExpiredTxs(0, expirationAge)
-		// Add the purged transactions to the evicted cache
-		for _, tx := range purgedTxs {
-			txmp.evictedTxCache.Push(tx.key())
-		}
-		txmp.metrics.EvictedTxs.Add(float64(numExpired))
-		txmp.lastPurgeTime = time.Now()
-	}
-}
-
 // CheckTx adds the given transaction to the mempool if it fits and passes the
 // application's ABCI CheckTx method. This should be viewed as the entry method for new transactions
 // into the network. In practice this happens via an RPC endpoint
@@ -500,6 +480,8 @@ func (txmp *TxPool) Update(
 		txmp.removeTxByKey(tx.Key())
 	}
 
+	// Purge expired transactions based on TTL. This is the only place where
+	// TTL purging should happen to maintain checkTxState consistency.
 	txmp.purgeExpiredTxs(blockHeight)
 
 	// If there any uncommitted transactions left in the mempool, we either
