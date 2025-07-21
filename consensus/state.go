@@ -81,6 +81,12 @@ type evidencePool interface {
 	ReportConflictingVotes(voteA, voteB *types.Vote)
 }
 
+// blockWithParts intermediary struct to build the block during the commit timeout
+type blockWithParts struct {
+	block *types.Block
+	parts *types.PartSet
+}
+
 // State handles execution of the consensus algorithm.
 // It processes votes and proposals, and upon reaching agreement,
 // commits blocks to the chain and executes them against the application.
@@ -153,6 +159,9 @@ type State struct {
 	proposalChan         <-chan types.Proposal
 	newHeightOrRoundChan chan struct{}
 
+	// nextBlock contains the next block to propose when building blocks during the timeout commit
+	nextBlock chan *blockWithParts
+
 	// for reporting metrics
 	metrics *Metrics
 
@@ -199,6 +208,7 @@ func NewState(
 		partChan:             partChan,
 		proposalChan:         proposalChan,
 		newHeightOrRoundChan: make(chan struct{}),
+		nextBlock:            make(chan *blockWithParts, 1),
 	}
 	for _, option := range options {
 		option(cs)
@@ -1066,6 +1076,10 @@ func (cs *State) handleTimeout(ti timeoutInfo, rs cstypes.RoundState) {
 }
 
 func (cs *State) handleTxsAvailable() {
+	select {
+	case <-cs.nextBlock:
+	default:
+	}
 	cs.mtx.Lock()
 	defer cs.mtx.Unlock()
 
@@ -1282,6 +1296,10 @@ func (cs *State) defaultDecideProposal(height int64, round int32) {
 			return
 		}
 		blockParts = parts
+	} else if len(cs.nextBlock) != 0 {
+		bwp := <-cs.nextBlock
+		block = bwp.block
+		blockParts = bwp.parts
 	} else {
 		// Create a new proposal block from state/txs from the mempool.
 		var err error
@@ -1690,6 +1708,27 @@ func (cs *State) enterPrecommitWait(height int64, round int32) {
 	cs.scheduleTimeout(cs.config.Precommit(round), height, round, cstypes.RoundStepPrecommitWait)
 }
 
+// buildNextBlock creates the next block pre-amptively if we're the proposer.
+func (cs *State) buildNextBlock() {
+	select {
+	// flush the next block channel to ensure only the relevant block is there.
+	case <-cs.nextBlock:
+	default:
+	}
+	block, blockParts, err := cs.createProposalBlock(context.TODO())
+	if err != nil {
+		cs.Logger.Error("unable to create proposal block", "error", err)
+		return
+	} else if block == nil {
+		panic("Method createProposalBlock should not provide a nil block without errors")
+	}
+
+	cs.nextBlock <- &blockWithParts{
+		block: block,
+		parts: blockParts,
+	}
+}
+
 // Enter: +2/3 precommits for block
 func (cs *State) enterCommit(height int64, commitRound int32) {
 	logger := cs.Logger.With("height", height, "commit_round", commitRound)
@@ -1913,6 +1952,13 @@ func (cs *State) finalizeCommit(height int64) {
 	proposer := cs.Validators.GetProposer()
 	if proposer != nil {
 		cs.propagator.SetProposer(proposer.PubKey)
+	}
+
+	// build the block pre-emptively if we're the proposer
+	if cs.privValidatorPubKey != nil {
+		if address := cs.privValidatorPubKey.Address(); cs.Validators.HasAddress(address) && cs.isProposer(address) {
+			go cs.buildNextBlock()
+		}
 	}
 	// By here,
 	// * cs.Height has been increment to height+1
