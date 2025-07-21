@@ -512,7 +512,7 @@ func createSwitch(config *cfg.Config,
 	if err != nil {
 		fmt.Println("error ya jedded tania: ", err.Error())
 	}
-
+	load.RecvMessageCapacity = msgSize * 2
 	sw.AddReactor("LOAD", load.NewMockReactor(load.DefaultTestChannels, msgSize, rate))
 
 	sw.SetNodeInfo(nodeInfo)

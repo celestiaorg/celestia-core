@@ -34,13 +34,14 @@ func init() {
 	}
 }
 
+var RecvMessageCapacity int
 var DefaultTestChannels = []*p2p.ChannelDescriptor{
 	{
 		ID:                  FirstChannel,
 		Priority:            1,
-		SendQueueCapacity:   1000,
-		RecvBufferCapacity:  20_000,
-		RecvMessageCapacity: 20_000_000,
+		SendQueueCapacity:   10,
+		RecvBufferCapacity:  200,
+		RecvMessageCapacity: RecvMessageCapacity,
 		MessageType:         &protomem.TestTx{},
 	},
 	//{
@@ -162,14 +163,6 @@ func NewMockReactor(channels []*conn.ChannelDescriptor, msgSize int, sendRate in
 	mr := &MockReactor{
 		channels: channels,
 		peers:    make(map[p2p.ID]p2p.Peer),
-		metrics: metrics{
-			startDownloadTime:       map[string]time.Time{},
-			downloadSpeed:           map[string]float64{},
-			cumulativeReceivedBytes: map[string]int{},
-			startUploadTime:         map[string]time.Time{},
-			cumulativeUploadBytes:   map[string]int{},
-			uploadSpeed:             map[string]float64{},
-		},
 		size:     s,
 		sendRate: sendRate,
 	}
