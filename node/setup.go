@@ -498,7 +498,7 @@ func createSwitch(config *cfg.Config,
 		p2p.WithTracer(traceClient),
 	)
 	sw.SetLogger(p2pLogger)
-	sw.AddReactor("LOAD", load.NewMockReactor(load.DefaultTestChannels, 8_000_000))
+	sw.AddReactor("LOAD", load.NewMockReactor(load.DefaultTestChannels, 1_000_000))
 
 	sw.SetNodeInfo(nodeInfo)
 	sw.SetNodeKey(nodeKey)
