@@ -105,7 +105,7 @@ func (env *Environment) Header(_ *rpctypes.Context, heightPtr *int64) (*ctypes.R
 
 	blockMeta := env.BlockStore.LoadBlockMeta(height)
 	if blockMeta == nil {
-		return &ctypes.ResultHeader{}, nil
+		return nil, fmt.Errorf("height %d is not available", height)
 	}
 
 	return &ctypes.ResultHeader{Header: &blockMeta.Header}, nil
@@ -120,7 +120,7 @@ func (env *Environment) HeaderByHash(_ *rpctypes.Context, hash bytes.HexBytes) (
 
 	blockMeta := env.BlockStore.LoadBlockMetaByHash(hash)
 	if blockMeta == nil {
-		return &ctypes.ResultHeader{}, nil
+		return nil, fmt.Errorf("block with hash %X is not available", hash)
 	}
 
 	return &ctypes.ResultHeader{Header: &blockMeta.Header}, nil
@@ -138,7 +138,7 @@ func (env *Environment) Block(_ *rpctypes.Context, heightPtr *int64) (*ctypes.Re
 	block := env.BlockStore.LoadBlock(height)
 	blockMeta := env.BlockStore.LoadBlockMeta(height)
 	if blockMeta == nil {
-		return &ctypes.ResultBlock{BlockID: types.BlockID{}, Block: block}, nil
+		return nil, fmt.Errorf("height %d is not available", height)
 	}
 	return &ctypes.ResultBlock{BlockID: blockMeta.BlockID, Block: block}, nil
 }
@@ -148,7 +148,7 @@ func (env *Environment) Block(_ *rpctypes.Context, heightPtr *int64) (*ctypes.Re
 func (env *Environment) BlockByHash(_ *rpctypes.Context, hash []byte) (*ctypes.ResultBlock, error) {
 	block := env.BlockStore.LoadBlockByHash(hash)
 	if block == nil {
-		return &ctypes.ResultBlock{BlockID: types.BlockID{}, Block: nil}, nil
+		return nil, fmt.Errorf("block with hash %X is not available", hash)
 	}
 	// If block is not nil, then blockMeta can't be nil.
 	blockMeta := env.BlockStore.LoadBlockMeta(block.Height)
