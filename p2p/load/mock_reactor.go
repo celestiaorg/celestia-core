@@ -39,8 +39,8 @@ var DefaultTestChannels = []*p2p.ChannelDescriptor{
 		ID:                  FirstChannel,
 		Priority:            1,
 		SendQueueCapacity:   1000,
-		RecvBufferCapacity:  100000,
-		RecvMessageCapacity: 20_000_000_000,
+		RecvBufferCapacity:  20_000,
+		RecvMessageCapacity: 20_000_000,
 		MessageType:         &protomem.TestTx{},
 	},
 	//{
@@ -251,21 +251,7 @@ type Payload struct {
 
 // ReceiveEnvelope implements Reactor.
 // It processes one of three messages: Txs, SeenTx, WantTx.
-func (mr *MockReactor) Receive(e p2p.Envelope) {
-	switch msg := e.Message.(type) {
-	case *protomem.TestTx:
-		mr.metrics.mtx.Lock()
-		if _, ok := mr.metrics.startDownloadTime[string(e.Src.ID())]; !ok {
-			mr.metrics.startDownloadTime[string(e.Src.ID())] = time.Now()
-		}
-		mr.metrics.cumulativeReceivedBytes[string(e.Src.ID())] += len(msg.Tx)
-		mr.metrics.downloadSpeed[string(e.Src.ID())] = float64(mr.metrics.cumulativeReceivedBytes[string(e.Src.ID())]) / time.Now().Sub(mr.metrics.startDownloadTime[string(e.Src.ID())]).Seconds()
-		mr.metrics.mtx.Unlock()
-	default:
-		fmt.Printf("Unexpected message type %T\n", e.Message)
-		return
-	}
-}
+func (mr *MockReactor) Receive(e p2p.Envelope) {}
 
 func (mr *MockReactor) SendBytes(id p2p.ID, chID byte, size int64) bool {
 	mr.mtx.Lock()
