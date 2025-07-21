@@ -314,18 +314,9 @@ func (mr *MockReactor) FloodChannel(id p2p.ID, d time.Duration, chIDs ...byte) {
 				sleepTime := time.Duration((payloadSize / float64(bytesPerSecond)) * float64(time.Second))
 
 				success := mr.SendBytes(id, chID, mr.size.Load())
-				if success {
-					mr.metrics.mtx.Lock()
-					if _, ok := mr.metrics.startUploadTime[string(id)]; !ok {
-						mr.metrics.startUploadTime[string(id)] = time.Now()
-					}
-					mr.metrics.cumulativeUploadBytes[string(id)] += int(payloadSize)
-					mr.metrics.uploadSpeed[string(id)] =
-						float64(mr.metrics.cumulativeUploadBytes[string(id)]) /
-							time.Since(mr.metrics.startUploadTime[string(id)]).Seconds()
-					mr.metrics.mtx.Unlock()
+				if !success {
+					fmt.Println("failed to send")
 				}
-
 				time.Sleep(sleepTime) // throttle sending to respect rate limit
 			}
 		}(d, chID)
