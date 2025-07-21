@@ -450,6 +450,7 @@ func NewNodeWithContext(ctx context.Context,
 		propagation.WithTracer(tracer),
 	)
 
+	var propagator propagation.Propagator
 	propagator = propagationReactor
 
 	if config.Consensus.DisablePropagationReactor {
@@ -463,7 +464,7 @@ func NewNodeWithContext(ctx context.Context,
 
 	consensusReactor, consensusState := createConsensusReactor(
 		config, state, blockExec, blockStore, mempool, evidencePool,
-		privValidator, csMetrics, propagationReactor, stateSync || blockSync, eventBus, consensusLogger, offlineStateSyncHeight, tracer,
+		privValidator, csMetrics, propagator, stateSync || blockSync, eventBus, consensusLogger, offlineStateSyncHeight, tracer,
 	)
 
 	err = stateStore.SetOfflineStateSyncHeight(0)

@@ -67,3 +67,11 @@ func (nop *NoOpPropagator) StartProcessing() {
 
 func (nop *NoOpPropagator) SetProposer(_ crypto.PubKey) {
 }
+
+func (nop *NoOpPropagator) GetPartChan() <-chan types.PartInfo {
+	return nil
+}
+
+func (nop *NoOpPropagator) GetProposalChan() <-chan types.Proposal {
+	return nil
+}
