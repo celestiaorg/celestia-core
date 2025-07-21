@@ -40,7 +40,7 @@ var DefaultTestChannels = []*p2p.ChannelDescriptor{
 		Priority:            1,
 		SendQueueCapacity:   1000,
 		RecvBufferCapacity:  100000,
-		RecvMessageCapacity: 20000000000,
+		RecvMessageCapacity: 20_000_000_000,
 		MessageType:         &protomem.TestTx{},
 	},
 	//{
@@ -140,6 +140,7 @@ type MockReactor struct {
 	received atomic.Int64
 	metrics  metrics
 	size     atomic.Int64
+	sendRate int
 
 	tracer trace.Tracer
 }
@@ -155,7 +156,7 @@ type metrics struct {
 }
 
 // NewMockReactor creates a new mock reactor.
-func NewMockReactor(channels []*conn.ChannelDescriptor, msgSize int) *MockReactor {
+func NewMockReactor(channels []*conn.ChannelDescriptor, msgSize int, sendRate int) *MockReactor {
 	s := atomic.Int64{}
 	s.Store(int64(msgSize))
 	mr := &MockReactor{
@@ -169,7 +170,8 @@ func NewMockReactor(channels []*conn.ChannelDescriptor, msgSize int) *MockReacto
 			cumulativeUploadBytes:   map[string]int{},
 			uploadSpeed:             map[string]float64{},
 		},
-		size: s,
+		size:     s,
+		sendRate: sendRate,
 	}
 	mr.BaseReactor = *p2p.NewBaseReactor("MockReactor", mr)
 	return mr
@@ -303,21 +305,28 @@ func (mr *MockReactor) FillChannel(id p2p.ID, chID byte, count, msgSize int) (bo
 }
 
 func (mr *MockReactor) FloodChannel(id p2p.ID, d time.Duration, chIDs ...byte) {
+	bytesPerSecond := mr.sendRate * 1024 * 1024 // Convert MB/s to bytes/s
 	for _, chID := range chIDs {
 		go func(d time.Duration, chID byte) {
 			start := time.Now()
 			for time.Since(start) < d {
-				//time.Sleep(100 * time.Millisecond)
+				payloadSize := float64(mr.size.Load()) // bytes
+				sleepTime := time.Duration((payloadSize / float64(bytesPerSecond)) * float64(time.Second))
+
 				success := mr.SendBytes(id, chID, mr.size.Load())
 				if success {
 					mr.metrics.mtx.Lock()
 					if _, ok := mr.metrics.startUploadTime[string(id)]; !ok {
 						mr.metrics.startUploadTime[string(id)] = time.Now()
 					}
-					mr.metrics.cumulativeUploadBytes[string(id)] += int(mr.size.Load())
-					mr.metrics.uploadSpeed[string(id)] = float64(mr.metrics.cumulativeUploadBytes[string(id)]) / time.Now().Sub(mr.metrics.startUploadTime[string(id)]).Seconds()
+					mr.metrics.cumulativeUploadBytes[string(id)] += int(payloadSize)
+					mr.metrics.uploadSpeed[string(id)] =
+						float64(mr.metrics.cumulativeUploadBytes[string(id)]) /
+							time.Since(mr.metrics.startUploadTime[string(id)]).Seconds()
 					mr.metrics.mtx.Unlock()
 				}
+
+				time.Sleep(sleepTime) // throttle sending to respect rate limit
 			}
 		}(d, chID)
 	}
