@@ -176,7 +176,7 @@ func (blockProp *Reactor) AddPeer(peer p2p.Peer) error {
 	}
 
 	if legacy, err := isLegacyPropagation(peer); legacy || err != nil {
-		return fmt.Errorf("peer is only using legacy propagation")
+		return fmt.Errorf("peer is only using legacy propagation: %w", err)
 	}
 
 	// ignore the peer if it already exists.
