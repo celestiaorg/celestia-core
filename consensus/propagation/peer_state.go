@@ -69,11 +69,15 @@ func newPeerState(ctx context.Context, peer p2p.Peer, logger log.Logger) *PeerSt
 
 // SetConsensusPeerState sets the consensus peer state editor for this peer
 func (ps *PeerState) SetConsensusPeerState(editor PeerStateEditor) {
+	ps.mtx.Lock()
+	defer ps.mtx.Unlock()
 	ps.consensusPeerState = editor
 }
 
 // GetConsensusPeerState returns the consensus peer state editor if available
 func (ps *PeerState) GetConsensusPeerState() PeerStateEditor {
+	ps.mtx.Lock()
+	defer ps.mtx.Unlock()
 	return ps.consensusPeerState
 }
 

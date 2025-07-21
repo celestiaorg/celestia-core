@@ -154,6 +154,9 @@ func (blockProp *Reactor) handleCompactBlock(cb *proptypes.CompactBlock, peer p2
 	added := blockProp.AddProposal(cb)
 	if !added {
 		p := blockProp.getPeer(peer)
+		if p == nil {
+			return
+		}
 		p.consensusPeerState.SetHasProposal(&cb.Proposal)
 		return
 	} else if !proposer {
