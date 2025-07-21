@@ -55,8 +55,8 @@ type Reactor struct {
 	// and eventually remove it.
 	mempool Mempool
 
-	partChan     chan<- types.PartInfo
-	proposalChan chan<- types.Proposal
+	partChan     chan types.PartInfo
+	proposalChan chan types.Proposal
 
 	mtx         *sync.Mutex
 	traceClient trace.Tracer
@@ -73,8 +73,6 @@ type Config struct {
 	Privval       types.PrivValidator
 	ChainID       string
 	BlockMaxBytes int64
-	PartChan      chan<- types.PartInfo
-	ProposalChan  chan<- types.Proposal
 }
 
 func NewReactor(
@@ -96,8 +94,8 @@ func NewReactor(
 		privval:       config.Privval,
 		chainID:       config.ChainID,
 		BlockMaxBytes: config.BlockMaxBytes,
-		partChan:      config.PartChan,
-		proposalChan:  config.ProposalChan,
+		partChan:      make(chan types.PartInfo, 2500),
+		proposalChan:  make(chan types.Proposal, 100),
 	}
 	reactor.BaseReactor = *p2p.NewBaseReactor("Recovery", reactor)
 
@@ -340,4 +338,14 @@ func (blockProp *Reactor) setPeer(peer p2p.ID, state *PeerState) {
 	blockProp.mtx.Lock()
 	defer blockProp.mtx.Unlock()
 	blockProp.peerstate[peer] = state
+}
+
+// GetPartChan returns the channel used for receiving part information.
+func (r *Reactor) GetPartChan() <-chan types.PartInfo {
+	return r.partChan
+}
+
+// GetProposalChan returns the channel used for receiving proposals.
+func (r *Reactor) GetProposalChan() <-chan types.Proposal {
+	return r.proposalChan
 }

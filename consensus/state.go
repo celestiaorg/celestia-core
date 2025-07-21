@@ -155,8 +155,6 @@ type State struct {
 	evsw cmtevents.EventSwitch
 
 	propagator           propagation.Propagator
-	partChan             <-chan types.PartInfo
-	proposalChan         <-chan types.Proposal
 	newHeightOrRoundChan chan struct{}
 
 	// nextBlock contains the next block to propose when building blocks during the timeout commit
@@ -184,8 +182,6 @@ func NewState(
 	propagator propagation.Propagator,
 	txNotifier txNotifier,
 	evpool evidencePool,
-	partChan <-chan types.PartInfo,
-	proposalChan <-chan types.Proposal,
 	options ...StateOption,
 ) *State {
 	cs := &State{
@@ -205,8 +201,6 @@ func NewState(
 		evsw:                 cmtevents.NewEventSwitch(),
 		metrics:              NopMetrics(),
 		traceClient:          trace.NoOpTracer(),
-		partChan:             partChan,
-		proposalChan:         proposalChan,
 		newHeightOrRoundChan: make(chan struct{}),
 		nextBlock:            make(chan *blockWithParts, 1),
 	}
@@ -2764,11 +2758,14 @@ func repairWalFile(src, dst string) error {
 // syncData continuously listens for and processes block parts or proposals from the propagation reactor.
 // It stops execution when the service is terminated or the channels are closed.
 func (cs *State) syncData() {
+	partChan := cs.propagator.GetPartChan()
+	proposalChan := cs.propagator.GetProposalChan()
+
 	for {
 		select {
 		case <-cs.Quit():
 			return
-		case part, ok := <-cs.partChan:
+		case part, ok := <-partChan:
 			if !ok {
 				return
 			}
@@ -2790,7 +2787,7 @@ func (cs *State) syncData() {
 			}
 
 			cs.peerMsgQueue <- msgInfo{&BlockPartMessage{h, r, part.Part}, ""}
-		case proposal, ok := <-cs.proposalChan:
+		case proposal, ok := <-proposalChan:
 			if !ok {
 				return
 			}
