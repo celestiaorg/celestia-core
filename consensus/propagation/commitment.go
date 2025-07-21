@@ -181,6 +181,11 @@ func (blockProp *Reactor) handleCompactBlock(cb *proptypes.CompactBlock, peer p2
 	}
 
 	if !proposer {
+		select {
+		case <-blockProp.ctx.Done():
+			return
+		case blockProp.proposalChan <- cb.Proposal:
+		}
 		// check if we have any transactions that are in the compact block
 		blockProp.recoverPartsFromMempool(cb)
 	}
@@ -283,12 +288,6 @@ func (blockProp *Reactor) broadcastCompactBlock(cb *proptypes.CompactBlock, from
 	e := p2p.Envelope{
 		ChannelID: DataChannel,
 		Message:   cb.ToProto(),
-	}
-
-	select {
-	case <-blockProp.ctx.Done():
-		return
-	case blockProp.proposalChan <- cb.Proposal:
 	}
 
 	peers := blockProp.getPeers()
