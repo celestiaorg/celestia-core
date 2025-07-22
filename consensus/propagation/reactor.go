@@ -2,6 +2,7 @@ package propagation
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"math"
 	"reflect"
@@ -163,20 +164,25 @@ func (blockProp *Reactor) GetChannels() []*conn.ChannelDescriptor {
 	}
 }
 
-// AddPeer adds the peer to the block propagation reactor. This should be called when a peer
-// is connected. The proposal is sent to the peer so that it can start catchup
-// or request data.
-func (blockProp *Reactor) AddPeer(peer p2p.Peer) {
+// InitPeer initializes a new peer by checking if it is different from self or already exists in the peer list.
+func (blockProp *Reactor) InitPeer(peer p2p.Peer) (p2p.Peer, error) {
 	// Ignore the peer if it is ourselves.
 	if peer.ID() == blockProp.self {
-		return
+		return peer, errors.New("cannot connect to self")
 	}
 
 	// ignore the peer if it already exists.
 	if p := blockProp.getPeer(peer.ID()); p != nil {
-		return
+		return peer, errors.New("peer already exists")
 	}
 
+	return peer, nil
+}
+
+// AddPeer adds the peer to the block propagation reactor. This should be called when a peer
+// is connected. The proposal is sent to the peer so that it can start catchup
+// or request data.
+func (blockProp *Reactor) AddPeer(peer p2p.Peer) {
 	peerState := newPeerState(blockProp.ctx, peer, blockProp.Logger)
 	blockProp.setPeer(peer.ID(), peerState)
 	go blockProp.requestFromPeer(peerState)
