@@ -871,8 +871,20 @@ func (sw *Switch) addPeer(p Peer) error {
 	}
 
 	// Add some data to the peer, which is required by reactors.
+	peerReactors := make([]Reactor, 0, len(sw.reactors))
 	for _, reactor := range sw.reactors {
-		p = reactor.InitPeer(p)
+		var err error
+		p, err = reactor.InitPeer(p)
+		if err != nil {
+			sw.Logger.Info("Reactor rejected peer in InitPeer", "peer", p, "err", err, "reactor", reactor.String())
+		} else {
+			peerReactors = append(peerReactors, reactor)
+		}
+	}
+	if len(peerReactors) == 0 {
+		sw.Logger.Error("Peer not wanted by any reactor", "peer", p)
+		sw.StopPeerGracefully(p, "")
+		return errors.New("peer not wanted by any reactor")
 	}
 
 	// Start the peer's send/recv routines.
@@ -901,13 +913,8 @@ func (sw *Switch) addPeer(p Peer) error {
 	schema.WritePeerUpdate(sw.traceClient, string(p.ID()), schema.PeerJoin, "")
 
 	// Start all the reactor protocols on the peer.
-	peerWanted := false
-	for _, reactor := range sw.reactors {
-		if err := reactor.AddPeer(p); err != nil {
-			sw.Logger.Info("Reactor rejected peer", "peer", p, "err", err, "reactor", reactor.String())
-			continue
-		}
-
+	for _, reactor := range peerReactors {
+		reactor.AddPeer(p)
 		peerSet := sw.peerSetForReactor(reactor)
 		if peerSet != nil {
 			if err := peerSet.Add(p); err != nil {
@@ -918,12 +925,7 @@ func (sw *Switch) addPeer(p Peer) error {
 				}
 				return err
 			}
-			peerWanted = true
 		}
-	}
-	if !peerWanted {
-		sw.Logger.Error("Peer not wanted by any reactor", "peer", p)
-		sw.StopPeerGracefully(p, "")
 	}
 
 	sw.Logger.Debug("Added peer", "peer", p)

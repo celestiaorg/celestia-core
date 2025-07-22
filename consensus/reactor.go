@@ -195,17 +195,17 @@ func (conR *Reactor) GetChannels() []*p2p.ChannelDescriptor {
 }
 
 // InitPeer implements Reactor by creating a state for the peer.
-func (conR *Reactor) InitPeer(peer p2p.Peer) p2p.Peer {
+func (conR *Reactor) InitPeer(peer p2p.Peer) (p2p.Peer, error) {
 	peerState := NewPeerState(peer).SetLogger(conR.Logger)
 	peer.Set(types.PeerStateKey, peerState)
-	return peer
+	return peer, nil
 }
 
 // AddPeer implements Reactor by spawning multiple gossiping goroutines for the
 // peer.
-func (conR *Reactor) AddPeer(peer p2p.Peer) error {
+func (conR *Reactor) AddPeer(peer p2p.Peer) {
 	if !conR.IsRunning() {
-		return nil
+		return
 	}
 
 	peerState, ok := peer.Get(types.PeerStateKey).(*PeerState)
@@ -228,7 +228,6 @@ func (conR *Reactor) AddPeer(peer p2p.Peer) error {
 	if !conR.WaitSync() {
 		conR.sendNewRoundStepMessage(peer)
 	}
-	return nil
 }
 
 func isLegacyPropagation(peer p2p.Peer) (bool, error) {

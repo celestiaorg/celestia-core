@@ -100,9 +100,9 @@ func NewReactor(config *cfg.MempoolConfig, mempool *TxMempool) *Reactor {
 }
 
 // InitPeer implements Reactor by creating a state for the peer.
-func (memR *Reactor) InitPeer(peer p2p.Peer) p2p.Peer {
+func (memR *Reactor) InitPeer(peer p2p.Peer) (p2p.Peer, error) {
 	memR.ids.ReserveForPeer(peer)
-	return peer
+	return peer, nil
 }
 
 // SetLogger sets the Logger on the reactor and the underlying mempool.
@@ -141,11 +141,10 @@ func (memR *Reactor) GetChannels() []*p2p.ChannelDescriptor {
 
 // AddPeer implements Reactor.
 // It starts a broadcast routine ensuring all txs are forwarded to the given peer.
-func (memR *Reactor) AddPeer(peer p2p.Peer) error {
+func (memR *Reactor) AddPeer(peer p2p.Peer) {
 	if memR.config.Broadcast {
 		go memR.broadcastTxRoutine(peer)
 	}
-	return nil
 }
 
 // RemovePeer implements Reactor.
