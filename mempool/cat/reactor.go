@@ -99,7 +99,7 @@ func NewReactor(mempool *TxPool, opts *ReactorOptions) (*Reactor, error) {
 
 // SetLogger sets the Logger on the reactor and the underlying mempool.
 func (memR *Reactor) SetLogger(l log.Logger) {
-	memR.Logger = l
+	//memR.Logger = l
 }
 
 // OnStart implements Service.
