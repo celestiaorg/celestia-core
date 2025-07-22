@@ -360,7 +360,11 @@ func (c *MConnection) Send(chID byte, msgBytes []byte) bool {
 		return false
 	}
 
-	c.Logger.Debug("Send", "channel", chID, "conn", c, "msgBytes", log.NewLazySprintf("%X", msgBytes))
+	if len(msgBytes) < 1000 {
+		c.Logger.Debug("Send", "channel", chID, "conn", c, "msgBytes", log.NewLazySprintf("%X", msgBytes))
+	} else {
+		c.Logger.Debug("Send", "channel", chID, "conn", c, "msgBytes", fmt.Sprintf("%X", msgBytes[:1000]), "msgBytesLen", len(msgBytes))
+	}
 
 	// Send message to channel.
 	channel, ok := c.channelsIdx[chID]
