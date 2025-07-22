@@ -268,7 +268,8 @@ func TestReactorReceiveDoesNotPanicIfAddPeerHasntBeenCalledYet(t *testing.T) {
 		peer    = p2pmock.NewPeer(nil)
 	)
 
-	reactor.InitPeer(peer)
+	_, err := reactor.InitPeer(peer)
+	require.NoError(t, err)
 
 	// simulate switch calling Receive before AddPeer
 	assert.NotPanics(t, func() {
@@ -282,7 +283,7 @@ func TestReactorReceiveDoesNotPanicIfAddPeerHasntBeenCalledYet(t *testing.T) {
 				Type:   cmtproto.PrevoteType,
 			},
 		})
-		require.NoError(t, reactor.AddPeer(peer))
+		reactor.AddPeer(peer)
 	})
 }
 

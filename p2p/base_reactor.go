@@ -33,11 +33,11 @@ type Reactor interface {
 	// NOTE: The switch won't call AddPeer nor RemovePeer if it fails to start
 	// the peer. Do not store any data associated with the peer in the reactor
 	// itself unless you don't want to have a state, which is never cleaned up.
-	InitPeer(peer Peer) Peer
+	InitPeer(peer Peer) (Peer, error)
 
 	// AddPeer is called by the switch after the peer is added and successfully
 	// started. Use it to start goroutines communicating with the peer.
-	AddPeer(peer Peer) error
+	AddPeer(peer Peer)
 
 	// RemovePeer is called by the switch when the peer is stopped (due to error
 	// or other reason).
@@ -70,7 +70,7 @@ func (br *BaseReactor) SetSwitch(sw *Switch) {
 	br.Switch = sw
 }
 func (*BaseReactor) GetChannels() []*conn.ChannelDescriptor { return nil }
-func (*BaseReactor) AddPeer(Peer) error                     { return nil }
+func (*BaseReactor) AddPeer(Peer)                           {}
 func (*BaseReactor) RemovePeer(Peer, interface{})           {}
 func (*BaseReactor) Receive(Envelope)                       {}
-func (*BaseReactor) InitPeer(peer Peer) Peer                { return peer }
+func (*BaseReactor) InitPeer(peer Peer) (Peer, error)       { return peer, nil }

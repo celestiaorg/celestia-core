@@ -164,24 +164,29 @@ func (blockProp *Reactor) GetChannels() []*conn.ChannelDescriptor {
 	}
 }
 
-// AddPeer adds the peer to the block propagation reactor. This should be called when a peer
-// is connected. The proposal is sent to the peer so that it can start catchup
-// or request data.
-func (blockProp *Reactor) AddPeer(peer p2p.Peer) error {
+// InitPeer initializes a new peer by checking if it is different from self or already exists in the peer list.
+func (blockProp *Reactor) InitPeer(peer p2p.Peer) (p2p.Peer, error) {
 	// Ignore the peer if it is ourselves.
 	if peer.ID() == blockProp.self {
-		return fmt.Errorf("ignoring self peer")
+		return peer, errors.New("cannot connect to self")
 	}
 
 	if legacy, err := isLegacyPropagation(peer); legacy || err != nil {
-		return fmt.Errorf("peer is only using legacy propagation: %w", err)
+		return nil, fmt.Errorf("peer is only using legacy propagation: %w", err)
 	}
 
 	// ignore the peer if it already exists.
 	if p := blockProp.getPeer(peer.ID()); p != nil {
-		return fmt.Errorf("peer exists in propagation reactors, peer ID: %v", peer.ID())
+		return peer, errors.New("peer already exists")
 	}
 
+	return peer, nil
+}
+
+// AddPeer adds the peer to the block propagation reactor. This should be called when a peer
+// is connected. The proposal is sent to the peer so that it can start catchup
+// or request data.
+func (blockProp *Reactor) AddPeer(peer p2p.Peer) {
 	peerState := newPeerState(blockProp.ctx, peer, blockProp.Logger)
 
 	consensusState := peer.Get(types.PeerStateKey)
@@ -200,7 +205,7 @@ func (blockProp *Reactor) AddPeer(peer p2p.Peer) error {
 	cb, _, found := blockProp.GetCurrentCompactBlock()
 	if !found {
 		blockProp.Logger.Error("failed to get current compact block", "peer", peer.ID())
-		return nil
+		return
 	}
 
 	// send the current proposal
@@ -212,7 +217,6 @@ func (blockProp *Reactor) AddPeer(peer p2p.Peer) error {
 	if !peer.TrySend(e) {
 		blockProp.Logger.Debug("failed to send proposal to peer", "peer", peer.ID())
 	}
-	return nil
 }
 
 func (blockProp *Reactor) RemovePeer(peer p2p.Peer, reason interface{}) {

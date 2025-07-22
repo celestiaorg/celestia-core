@@ -174,9 +174,9 @@ func (memR *Reactor) GetChannels() []*p2p.ChannelDescriptor {
 }
 
 // InitPeer implements Reactor by creating a state for the peer.
-func (memR *Reactor) InitPeer(peer p2p.Peer) p2p.Peer {
+func (memR *Reactor) InitPeer(peer p2p.Peer) (p2p.Peer, error) {
 	memR.ids.ReserveForPeer(peer)
-	return peer
+	return peer, nil
 }
 
 // RemovePeer implements Reactor. For all current outbound requests to this
