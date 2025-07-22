@@ -5,10 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/cometbft/cometbft/p2p/load"
 	"net"
-	"os"
-	"strconv"
 	"strings"
 	"time"
 
@@ -500,20 +497,28 @@ func createSwitch(config *cfg.Config,
 		p2p.WithTracer(traceClient),
 	)
 	sw.SetLogger(p2pLogger)
-	coreRateLimited := os.Getenv("CORE_RATE_LIMITED")
-	coreMsgSize := os.Getenv("CORE_MSG_SIZE")
+	if config.Mempool.Type != cfg.MempoolTypeNop {
+		sw.AddReactor("MEMPOOL", mempoolReactor)
+	}
+	sw.AddReactor("BLOCKSYNC", bcReactor)
+	sw.AddReactor("CONSENSUS", consensusReactor)
+	sw.AddReactor("EVIDENCE", evidenceReactor)
+	sw.AddReactor("STATESYNC", stateSyncReactor)
+	sw.AddReactor("RECOVERY", propagationReactor)
+	//coreRateLimited := os.Getenv("CORE_RATE_LIMITED")
+	//coreMsgSize := os.Getenv("CORE_MSG_SIZE")
 
-	sw.Logger.Info("------> starting network with", "rate_limit", coreRateLimited, "msg_size", coreMsgSize)
-	rate, err := strconv.Atoi(coreRateLimited)
-	if err != nil {
-		fmt.Println("error ya jedded: ", err.Error())
-	}
-	msgSize, err := strconv.Atoi(coreMsgSize)
-	if err != nil {
-		fmt.Println("error ya jedded tania: ", err.Error())
-	}
-	load.RecvMessageCapacity = msgSize * 2
-	sw.AddReactor("LOAD", load.NewMockReactor(load.DefaultTestChannels, msgSize, rate))
+	//sw.Logger.Info("------> starting network with", "rate_limit", coreRateLimited, "msg_size", coreMsgSize)
+	//rate, err := strconv.Atoi(coreRateLimited)
+	//if err != nil {
+	//	fmt.Println("error ya jedded: ", err.Error())
+	//}
+	//msgSize, err := strconv.Atoi(coreMsgSize)
+	//if err != nil {
+	//	fmt.Println("error ya jedded tania: ", err.Error())
+	//}
+	//load.RecvMessageCapacity = msgSize * 2
+	//sw.AddReactor("LOAD", load.NewMockReactor(load.DefaultTestChannels, msgSize, rate))
 
 	sw.SetNodeInfo(nodeInfo)
 	sw.SetNodeKey(nodeKey)

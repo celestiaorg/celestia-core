@@ -1026,7 +1026,6 @@ func makeNodeInfo(
 		evidence.EvidenceChannel,
 		statesync.SnapshotChannel, statesync.ChunkChannel,
 		propagation.DataChannel, propagation.WantChannel,
-		byte(0xee),
 	}
 	if config.Mempool.Type == cfg.MempoolTypeCAT {
 		channels = append(channels, cat.MempoolWantsChannel, cat.MempoolDataChannel)
