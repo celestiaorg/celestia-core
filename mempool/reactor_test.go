@@ -257,7 +257,7 @@ func TestDontExhaustMaxActiveIDs(t *testing.T) {
 			Message:   &memproto.Message{}, // This uses the wrong message type on purpose to stop the peer as in an error state in the reactor.
 		},
 		)
-		require.NoError(t, reactor.AddPeer(peer))
+		reactor.AddPeer(peer)
 	}
 }
 

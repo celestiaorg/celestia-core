@@ -221,7 +221,7 @@ func TestReactorBroadcastEvidenceMemoryLeak(t *testing.T) {
 
 	r := evidence.NewReactor(pool)
 	r.SetLogger(log.TestingLogger())
-	require.NoError(t, r.AddPeer(p))
+	r.AddPeer(p)
 
 	_ = sendEvidence(t, pool, val, 2)
 	r.OnStop()

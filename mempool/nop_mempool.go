@@ -101,10 +101,10 @@ var _ p2p.Reactor = &NopMempoolReactor{}
 func (*NopMempoolReactor) GetChannels() []*p2p.ChannelDescriptor { return nil }
 
 // AddPeer does nothing.
-func (*NopMempoolReactor) AddPeer(p2p.Peer) error { return nil }
+func (*NopMempoolReactor) AddPeer(p2p.Peer) {}
 
 // InitPeer always returns nil.
-func (*NopMempoolReactor) InitPeer(p2p.Peer) p2p.Peer { return nil }
+func (*NopMempoolReactor) InitPeer(p2p.Peer) (p2p.Peer, error) { return nil, nil }
 
 // RemovePeer does nothing.
 func (*NopMempoolReactor) RemovePeer(p2p.Peer, interface{}) {}

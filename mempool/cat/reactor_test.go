@@ -75,7 +75,8 @@ func TestReactorSendWantTxAfterReceiveingSeenTx(t *testing.T) {
 	}
 	peer.On("Send", env).Return(true)
 
-	reactor.InitPeer(peer)
+	_, err := reactor.InitPeer(peer)
+	require.NoError(t, err)
 	reactor.Receive(
 		p2p.Envelope{
 			ChannelID: MempoolDataChannel,
@@ -107,7 +108,8 @@ func TestReactorSendsTxAfterReceivingWantTx(t *testing.T) {
 	require.NoError(t, pool.CheckTx(tx, nil, mempool.TxInfo{}))
 
 	// Add the peer
-	reactor.InitPeer(peer)
+	_, err := reactor.InitPeer(peer)
+	require.NoError(t, err)
 	// The peer sends a want msg for this tx
 	reactor.Receive(
 		p2p.Envelope{
@@ -145,8 +147,10 @@ func TestReactorBroadcastsSeenTxAfterReceivingTx(t *testing.T) {
 	}
 	peers[1].On("Send", env).Return(true)
 
-	reactor.InitPeer(peers[0])
-	reactor.InitPeer(peers[1])
+	_, err := reactor.InitPeer(peers[0])
+	require.NoError(t, err)
+	_, err = reactor.InitPeer(peers[1])
+	require.NoError(t, err)
 	reactor.Receive(
 		p2p.Envelope{
 			ChannelID: mempool.MempoolChannel,
@@ -165,8 +169,10 @@ func TestRemovePeerRequestFromOtherPeer(t *testing.T) {
 	tx := newDefaultTx("hello")
 	key := tx.Key()
 	peers := genPeers(2)
-	reactor.InitPeer(peers[0])
-	reactor.InitPeer(peers[1])
+	_, err := reactor.InitPeer(peers[0])
+	require.NoError(t, err)
+	_, err = reactor.InitPeer(peers[1])
+	require.NoError(t, err)
 
 	seenMsg := &protomem.SeenTx{TxKey: key[:]}
 
@@ -246,8 +252,9 @@ func TestLegacyReactorReceiveBasic(t *testing.T) {
 		assert.NoError(t, err)
 	}()
 
-	reactor.InitPeer(peer)
-	require.NoError(t, reactor.AddPeer(peer))
+	_, err := reactor.InitPeer(peer)
+	require.NoError(t, err)
+	reactor.AddPeer(peer)
 
 	msg := &protomem.Message{
 		Sum: &protomem.Message_Txs{
