@@ -320,6 +320,8 @@ func (bA *BitArray) PickRandom() (int, bool) {
 }
 
 func (bA *BitArray) GetTrueIndices() []int {
+	bA.mtx.Lock()
+	defer bA.mtx.Unlock()
 	trueIndices := make([]int, 0, bA.Bits)
 	curBit := 0
 	numElems := len(bA.Elems)

@@ -27,8 +27,8 @@ const (
 // Range is [start, end).
 type TxMetaData struct {
 	Hash  []byte `protobuf:"bytes,1,opt,name=hash,proto3" json:"hash,omitempty"`
-	Start uint32
-	End   uint32
+	Start uint32 `protobuf:"varint,2,opt,name=start,proto3" json:"start,omitempty"`
+	End   uint32 `protobuf:"varint,3,opt,name=end,proto3" json:"end,omitempty"`
 }
 
 // ToProto converts TxMetaData to its protobuf representation.
@@ -52,11 +52,13 @@ func TxMetaDataFromProto(t *protoprop.TxMetaData) *TxMetaData {
 // ValidateBasic checks if the TxMetaData is valid. It fails if Start > End or
 // if the hash is invalid.
 func (t *TxMetaData) ValidateBasic() error {
-	if t.Start > t.End {
-		return errors.New("TxMetaData: Start > End")
+	if t.Start >= t.End {
+		return fmt.Errorf("TxMetaData: start %d >= end %d", t.Start, t.End)
 	}
-
-	return types.ValidateHash(t.Hash)
+	if len(t.Hash) != tmhash.Size {
+		return fmt.Errorf("TxMetaData: hash size is invalid %X", t.Hash)
+	}
+	return nil
 }
 
 // CompactBlock contains commitments and metadata for reusing transactions that

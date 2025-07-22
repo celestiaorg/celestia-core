@@ -81,6 +81,12 @@ type evidencePool interface {
 	ReportConflictingVotes(voteA, voteB *types.Vote)
 }
 
+// blockWithParts intermediary struct to build the block during the commit timeout
+type blockWithParts struct {
+	block *types.Block
+	parts *types.PartSet
+}
+
 // State handles execution of the consensus algorithm.
 // It processes votes and proposals, and upon reaching agreement,
 // commits blocks to the chain and executes them against the application.
@@ -149,9 +155,10 @@ type State struct {
 	evsw cmtevents.EventSwitch
 
 	propagator           propagation.Propagator
-	partChan             <-chan types.PartInfo
-	proposalChan         <-chan types.Proposal
 	newHeightOrRoundChan chan struct{}
+
+	// nextBlock contains the next block to propose when building blocks during the timeout commit
+	nextBlock chan *blockWithParts
 
 	// for reporting metrics
 	metrics *Metrics
@@ -175,8 +182,6 @@ func NewState(
 	propagator propagation.Propagator,
 	txNotifier txNotifier,
 	evpool evidencePool,
-	partChan <-chan types.PartInfo,
-	proposalChan <-chan types.Proposal,
 	options ...StateOption,
 ) *State {
 	cs := &State{
@@ -196,9 +201,8 @@ func NewState(
 		evsw:                 cmtevents.NewEventSwitch(),
 		metrics:              NopMetrics(),
 		traceClient:          trace.NoOpTracer(),
-		partChan:             partChan,
-		proposalChan:         proposalChan,
 		newHeightOrRoundChan: make(chan struct{}),
+		nextBlock:            make(chan *blockWithParts, 1),
 	}
 	for _, option := range options {
 		option(cs)
@@ -1066,6 +1070,10 @@ func (cs *State) handleTimeout(ti timeoutInfo, rs cstypes.RoundState) {
 }
 
 func (cs *State) handleTxsAvailable() {
+	select {
+	case <-cs.nextBlock:
+	default:
+	}
 	cs.mtx.Lock()
 	defer cs.mtx.Unlock()
 
@@ -1267,7 +1275,25 @@ func (cs *State) defaultDecideProposal(height int64, round int32) {
 	// Decide on block
 	if cs.ValidBlock != nil {
 		// If there is valid block, choose that.
-		block, blockParts = cs.ValidBlock, cs.ValidBlockParts
+		block = cs.ValidBlock
+
+		// set the recovery related fields if using an existing block
+		hashes := make([][]byte, len(block.Txs))
+		for i := 0; i < len(block.Txs); i++ {
+			hashes[i] = block.Txs[i].Hash()
+		}
+		block.SetCachedHashes(hashes)
+
+		parts, err := block.MakePartSet(types.BlockPartSizeBytes)
+		if err != nil {
+			cs.Logger.Error("unable to generate the partset from existing block", "error", err)
+			return
+		}
+		blockParts = parts
+	} else if len(cs.nextBlock) != 0 {
+		bwp := <-cs.nextBlock
+		block = bwp.block
+		blockParts = bwp.parts
 	} else {
 		// Create a new proposal block from state/txs from the mempool.
 		var err error
@@ -1676,6 +1702,27 @@ func (cs *State) enterPrecommitWait(height int64, round int32) {
 	cs.scheduleTimeout(cs.config.Precommit(round), height, round, cstypes.RoundStepPrecommitWait)
 }
 
+// buildNextBlock creates the next block pre-amptively if we're the proposer.
+func (cs *State) buildNextBlock() {
+	select {
+	// flush the next block channel to ensure only the relevant block is there.
+	case <-cs.nextBlock:
+	default:
+	}
+	block, blockParts, err := cs.createProposalBlock(context.TODO())
+	if err != nil {
+		cs.Logger.Error("unable to create proposal block", "error", err)
+		return
+	} else if block == nil {
+		panic("Method createProposalBlock should not provide a nil block without errors")
+	}
+
+	cs.nextBlock <- &blockWithParts{
+		block: block,
+		parts: blockParts,
+	}
+}
+
 // Enter: +2/3 precommits for block
 func (cs *State) enterCommit(height int64, commitRound int32) {
 	logger := cs.Logger.With("height", height, "commit_round", commitRound)
@@ -1899,6 +1946,13 @@ func (cs *State) finalizeCommit(height int64) {
 	proposer := cs.Validators.GetProposer()
 	if proposer != nil {
 		cs.propagator.SetProposer(proposer.PubKey)
+	}
+
+	// build the block pre-emptively if we're the proposer
+	if cs.privValidatorPubKey != nil {
+		if address := cs.privValidatorPubKey.Address(); cs.Validators.HasAddress(address) && cs.isProposer(address) {
+			go cs.buildNextBlock()
+		}
 	}
 	// By here,
 	// * cs.Height has been increment to height+1
@@ -2704,11 +2758,14 @@ func repairWalFile(src, dst string) error {
 // syncData continuously listens for and processes block parts or proposals from the propagation reactor.
 // It stops execution when the service is terminated or the channels are closed.
 func (cs *State) syncData() {
+	partChan := cs.propagator.GetPartChan()
+	proposalChan := cs.propagator.GetProposalChan()
+
 	for {
 		select {
 		case <-cs.Quit():
 			return
-		case part, ok := <-cs.partChan:
+		case part, ok := <-partChan:
 			if !ok {
 				return
 			}
@@ -2730,7 +2787,7 @@ func (cs *State) syncData() {
 			}
 
 			cs.peerMsgQueue <- msgInfo{&BlockPartMessage{h, r, part.Part}, ""}
-		case proposal, ok := <-cs.proposalChan:
+		case proposal, ok := <-proposalChan:
 			if !ok {
 				return
 			}
