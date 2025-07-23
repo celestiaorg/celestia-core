@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net"
 	"time"
 
 	rpchttp "github.com/cometbft/cometbft/rpc/client/http"
@@ -131,4 +132,35 @@ func waitForAllNodes(ctx context.Context, testnet *e2e.Testnet, height int64, ti
 	}
 
 	return lastHeight, nil
+}
+
+// waitForSeedNode waits for a seed node's P2P port to become available.
+// Since seed nodes don't have RPC endpoints, we check P2P connectivity.
+func waitForSeedNode(ctx context.Context, node *e2e.Node, timeout time.Duration) error {
+	logger.Info("Waiting for seed node P2P port", "node", node.Name)
+
+	deadline := time.Now().Add(timeout)
+	ticker := time.NewTicker(500 * time.Millisecond)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-ticker.C:
+			if time.Now().After(deadline) {
+				return fmt.Errorf("timed out waiting for seed node %v P2P port after %v", node.Name, timeout)
+			}
+
+			// Try to connect to the P2P port
+			addr := node.AddressP2P(false)
+			conn, err := net.DialTimeout("tcp", addr, time.Second)
+			if err == nil && conn != nil {
+				conn.Close()
+				logger.Info("Seed node P2P port available", "node", node.Name, "addr", addr)
+				return nil
+			}
+			// Continue trying if connection failed
+		}
+	}
 }

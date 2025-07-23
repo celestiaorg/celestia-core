@@ -227,6 +227,8 @@ func MakeConfig(node *e2e.Node) (*config.Config, error) {
 	case e2e.ModeSeed:
 		cfg.P2P.SeedMode = true
 		cfg.P2P.PexReactor = true
+		// Disable RPC for seed nodes as per ADR-052
+		cfg.RPC.ListenAddress = ""
 	case e2e.ModeFull, e2e.ModeLight:
 		// Don't need to do anything, since we're using a dummy privval key by default.
 	default:

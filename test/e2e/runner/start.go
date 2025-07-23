@@ -52,8 +52,16 @@ func Start(ctx context.Context, testnet *e2e.Testnet, p infra.Provider) error {
 		return err
 	}
 	for _, node := range nodesAtZero {
-		if _, err := waitForNode(ctx, node, 0, 15*time.Second); err != nil {
-			return err
+		if node.Mode == e2e.ModeSeed {
+			// Seed nodes don't have RPC, use simple wait
+			if err := waitForSeedNode(ctx, node, 15*time.Second); err != nil {
+				return err
+			}
+		} else {
+			// Regular nodes use RPC status check
+			if _, err := waitForNode(ctx, node, 0, 15*time.Second); err != nil {
+				return err
+			}
 		}
 		if node.PrometheusProxyPort > 0 {
 			logger.Info("start", "msg",
@@ -123,12 +131,23 @@ func Start(ctx context.Context, testnet *e2e.Testnet, p infra.Provider) error {
 		if err != nil {
 			return err
 		}
-		status, err := waitForNode(ctx, node, node.StartAt, 3*time.Minute)
-		if err != nil {
-			return err
+		if node.Mode == e2e.ModeSeed {
+			// Seed nodes don't have RPC, use simple wait
+			err = waitForSeedNode(ctx, node, 3*time.Minute)
+			if err != nil {
+				return err
+			}
+			logger.Info("start", "msg", log.NewLazySprintf("Seed node %v started",
+				node.Name))
+		} else {
+			// Regular nodes use RPC status check
+			status, err := waitForNode(ctx, node, node.StartAt, 3*time.Minute)
+			if err != nil {
+				return err
+			}
+			logger.Info("start", "msg", log.NewLazySprintf("Node %v up on http://%s:%v at height %v",
+				node.Name, node.ExternalIP, node.ProxyPort, status.SyncInfo.LatestBlockHeight))
 		}
-		logger.Info("start", "msg", log.NewLazySprintf("Node %v up on http://%s:%v at height %v",
-			node.Name, node.ExternalIP, node.ProxyPort, status.SyncInfo.LatestBlockHeight))
 	}
 
 	return nil
