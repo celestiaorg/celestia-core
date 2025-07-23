@@ -284,18 +284,33 @@ func TestBadBlockStopsPeer(t *testing.T) {
 		}
 	}()
 
+	// Wait for all reactors to catch up with better timing and timeout
+	timeout := time.After(30 * time.Second)
+	ticker := time.NewTicker(100 * time.Millisecond)
+	defer ticker.Stop()
+
 	for {
-		time.Sleep(1 * time.Second)
-		caughtUp := true
-		for _, r := range reactorPairs {
-			if !r.reactor.pool.IsCaughtUp() {
-				caughtUp = false
+		select {
+		case <-timeout:
+			var heights []int64
+			for _, r := range reactorPairs {
+				heights = append(heights, r.reactor.store.Height())
+			}
+			t.Fatalf("timeout waiting for reactors to catch up. Heights: %v", heights)
+		case <-ticker.C:
+			caughtUp := true
+			for _, r := range reactorPairs {
+				if !r.reactor.pool.IsCaughtUp() {
+					caughtUp = false
+					break
+				}
+			}
+			if caughtUp {
+				goto afterCatchUp
 			}
 		}
-		if caughtUp {
-			break
-		}
 	}
+afterCatchUp:
 
 	// at this time, reactors[0-3] is the newest
 	assert.Equal(t, 3, reactorPairs[1].reactor.Switch.Peers().Size())
@@ -303,6 +318,9 @@ func TestBadBlockStopsPeer(t *testing.T) {
 	// Mark reactorPairs[3] as an invalid peer. Fiddling with .store without a mutex is a data
 	// race, but can't be easily avoided.
 	reactorPairs[3].reactor.store = otherChain.reactor.store
+
+	// Give a small delay for any ongoing operations to complete
+	time.Sleep(50 * time.Millisecond)
 
 	lastReactorPair := newReactor(t, log.TestingLogger(), genDoc, privVals, 0)
 	reactorPairs = append(reactorPairs, lastReactorPair)
@@ -312,17 +330,32 @@ func TestBadBlockStopsPeer(t *testing.T) {
 		return s
 	}, p2p.Connect2Switches)...)
 
+	// Connect the last reactor to all previous ones
 	for i := 0; i < len(reactorPairs)-1; i++ {
 		p2p.Connect2Switches(switches, i, len(reactorPairs)-1)
 	}
 
-	for {
-		if lastReactorPair.reactor.pool.IsCaughtUp() || lastReactorPair.reactor.Switch.Peers().Size() == 0 { //nolint:staticcheck
-			break
-		}
+	// Give time for peer connections to establish
+	time.Sleep(200 * time.Millisecond)
 
-		time.Sleep(1 * time.Second)
+	// Wait for the last reactor to either catch up or disconnect from bad peers
+	timeout = time.After(30 * time.Second)
+	ticker = time.NewTicker(200 * time.Millisecond)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-timeout:
+			peerCount := lastReactorPair.reactor.Switch.Peers().Size()
+			caughtUp := lastReactorPair.reactor.pool.IsCaughtUp()
+			t.Fatalf("timeout waiting for reactor to catch up or disconnect bad peers. PeerCount: %d, CaughtUp: %v", peerCount, caughtUp)
+		case <-ticker.C:
+			if lastReactorPair.reactor.pool.IsCaughtUp() || lastReactorPair.reactor.Switch.Peers().Size() == 0 {
+				goto afterSync
+			}
+		}
 	}
+afterSync:
 
 	assert.True(t, lastReactorPair.reactor.Switch.Peers().Size() < len(reactorPairs)-1)
 }
