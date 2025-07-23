@@ -1,6 +1,7 @@
 package propagation
 
 import (
+	"github.com/cometbft/cometbft/libs/trace"
 	"github.com/cometbft/cometbft/libs/trace/schema"
 	"sync/atomic"
 	"time"
@@ -31,14 +32,16 @@ type ProposalCache struct {
 
 	// currentProposalPartsCount is the maximum number of concurrent requests allowed for the current proposal.
 	currentProposalPartsCount atomic.Int64
+	traceClient               trace.Tracer
 }
 
 func NewProposalCache(bs *store.BlockStore) *ProposalCache {
 	mtx := sync.Mutex{}
 	pc := &ProposalCache{
-		pmtx:      &mtx,
-		proposals: make(map[int64]map[int32]*proposalData),
-		store:     bs,
+		pmtx:        &mtx,
+		proposals:   make(map[int64]map[int32]*proposalData),
+		store:       bs,
+		traceClient: trace.NoOpTracer(),
 	}
 
 	// if there is a block saved in the store, set the current height and round.
@@ -56,6 +59,11 @@ func (p *ProposalCache) getCurrentProposalPartsCount() int64 {
 // setCurrentProposalPartsCount sets the current proposal number of parts.
 func (p *ProposalCache) setCurrentProposalPartsCount(limit int64) {
 	p.currentProposalPartsCount.Store(limit)
+}
+
+// setCurrentProposalPartsCount sets the current proposal number of parts.
+func (p *ProposalCache) setTraceClient(client trace.Tracer) {
+	p.traceClient = client
 }
 
 func (p *ProposalCache) AddProposal(cb *proptypes.CompactBlock) (added bool) {
@@ -170,7 +178,7 @@ func (p *ProposalCache) getAllState(height int64, round int32, catchup bool) (*p
 	p.pmtx.Lock()
 	defer p.pmtx.Unlock()
 	processingTime := time.Since(start).Nanoseconds()
-	schema.WriteMessageStats(blockProp.traceClient, "propgation", "getAllState.step1", processingTime)
+	schema.WriteMessageStats(p.traceClient, "propgation", "getAllState.step1", processingTime)
 	start = time.Now()
 	if !catchup && !p.relevant(height, round) {
 		return nil, nil, nil, false
@@ -198,7 +206,7 @@ func (p *ProposalCache) getAllState(height int64, round int32, catchup bool) (*p
 		hasStored = p.store.LoadBlockMeta(height)
 	}
 	processingTime = time.Since(start).Nanoseconds()
-	schema.WriteMessageStats(blockProp.traceClient, "propgation", "handleHaves.step2", processingTime)
+	schema.WriteMessageStats(p.traceClient, "propgation", "handleHaves.step2", processingTime)
 
 	switch {
 	case has && hasRound:
@@ -210,11 +218,11 @@ func (p *ProposalCache) getAllState(height int64, round int32, catchup bool) (*p
 			return nil, nil, nil, false
 		}
 		processingTime = time.Since(start).Nanoseconds()
-		schema.WriteMessageStats(blockProp.traceClient, "propgation", "handleHaves.step3", processingTime)
+		schema.WriteMessageStats(p.traceClient, "propgation", "handleHaves.step3", processingTime)
 		start = time.Now()
 		cparts := proptypes.NewCombinedPartSetFromOriginal(parts, false)
 		processingTime = time.Since(start).Nanoseconds()
-		schema.WriteMessageStats(blockProp.traceClient, "propgation", "handleHaves.step4", processingTime)
+		schema.WriteMessageStats(p.traceClient, "propgation", "handleHaves.step4", processingTime)
 		return nil, cparts, cparts.BitArray(), true
 	default:
 		return nil, nil, nil, false

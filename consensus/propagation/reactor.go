@@ -99,7 +99,6 @@ func NewReactor(
 		proposalChan:  make(chan types.Proposal, 100),
 	}
 	reactor.BaseReactor = *p2p.NewBaseReactor("Recovery", reactor)
-
 	for _, option := range options {
 		option(reactor)
 	}
@@ -129,6 +128,7 @@ type ReactorOption func(*Reactor)
 
 func WithTracer(tracer trace.Tracer) func(r *Reactor) {
 	return func(r *Reactor) {
+		r.ProposalCache.setTraceClient(tracer)
 		r.traceClient = tracer
 	}
 }
