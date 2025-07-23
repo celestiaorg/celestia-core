@@ -168,12 +168,12 @@ func (blockProp *Reactor) GetChannels() []*conn.ChannelDescriptor {
 func (blockProp *Reactor) InitPeer(peer p2p.Peer) (p2p.Peer, error) {
 	// Ignore the peer if it is ourselves.
 	if peer.ID() == blockProp.self {
-		return peer, errors.New("cannot connect to self")
+		return nil, errors.New("cannot connect to self")
 	}
 
 	// ignore the peer if it already exists.
 	if p := blockProp.getPeer(peer.ID()); p != nil {
-		return peer, errors.New("peer already exists")
+		return nil, errors.New("peer already exists")
 	}
 
 	return peer, nil
