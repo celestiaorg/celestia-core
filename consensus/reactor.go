@@ -491,6 +491,7 @@ func (conR *Reactor) Receive(e p2p.Envelope) {
 func (conR *Reactor) SetEventBus(b *types.EventBus) {
 	conR.eventBus = b
 	conR.conS.SetEventBus(b)
+	conR.conS.SetSyncChecker(conR)
 }
 
 // WaitSync returns whether the consensus reactor is waiting for state/block sync.
@@ -498,6 +499,12 @@ func (conR *Reactor) WaitSync() bool {
 	conR.mtx.RLock()
 	defer conR.mtx.RUnlock()
 	return conR.waitSync
+}
+
+// IsSyncing implements the SyncChecker interface.
+// It returns whether the consensus reactor is waiting for state/block sync.
+func (conR *Reactor) IsSyncing() bool {
+	return conR.WaitSync()
 }
 
 //--------------------------------------

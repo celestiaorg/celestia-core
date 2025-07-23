@@ -1138,3 +1138,143 @@ func makeBlockID(hash []byte, partSetSize uint32, partSetHash []byte) types.Bloc
 		},
 	}
 }
+
+// mockSyncChecker implements the SyncChecker interface for testing
+type mockSyncChecker struct {
+	syncing bool
+}
+
+func (m *mockSyncChecker) IsSyncing() bool {
+	return m.syncing
+}
+
+// TestSignedBlockEventWithSyncChecker tests that signed block events are not published
+// when the node is syncing
+func TestSignedBlockEventWithSyncChecker(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	app := &testApp{}
+	cc := proxy.NewLocalClientCreator(app)
+	proxyApp := proxy.NewAppConns(cc, proxy.NopMetrics())
+	err := proxyApp.Start()
+	require.NoError(t, err)
+	defer proxyApp.Stop() //nolint:errcheck // ignore for tests
+
+	state, stateDB, privVals := makeState(1, 1)
+	stateStore := sm.NewStore(stateDB, sm.StoreOptions{
+		DiscardABCIResponses: false,
+	})
+	blockStore := store.NewBlockStore(dbm.NewMemDB())
+
+	mp := &mpmocks.Mempool{}
+	mp.On("Lock").Return()
+	mp.On("Unlock").Return()
+	mp.On("FlushAppConn", mock.Anything).Return(nil)
+	mp.On("Update",
+		mock.Anything,
+		mock.Anything,
+		mock.Anything,
+		mock.Anything,
+		mock.Anything,
+		mock.Anything).Return(nil)
+
+	blockExec := sm.NewBlockExecutor(
+		stateStore,
+		log.NewNopLogger(),
+		proxyApp.Consensus(),
+		mp,
+		sm.EmptyEvidencePool{},
+		blockStore,
+	)
+
+	eventBus := types.NewEventBus()
+	err = eventBus.Start()
+	require.NoError(t, err)
+	defer eventBus.Stop() //nolint:errcheck // ignore for tests
+
+	blockExec.SetEventBus(eventBus)
+
+	// Subscribe to signed block events
+	signedBlockSub, err := eventBus.Subscribe(
+		ctx,
+		"TestSignedBlock",
+		types.EventQueryNewSignedBlock,
+	)
+	require.NoError(t, err)
+
+	// Test case 1: Node is not syncing - signed block event should be published
+	syncChecker := &mockSyncChecker{syncing: false}
+	blockExec.SetSyncChecker(syncChecker)
+
+	// Create and apply a block
+	block, bps, err := makeBlock(state, 1, new(types.Commit))
+	require.NoError(t, err)
+	blockID := types.BlockID{Hash: block.Hash(), PartSetHeader: bps.Header()}
+
+	// Create a proper commit for the block
+	lastExtCommit, _, err := makeValidCommit(1, blockID, state.Validators, privVals)
+	require.NoError(t, err)
+	lastCommit := lastExtCommit.ToCommit()
+
+	state, err = blockExec.ApplyBlock(state, blockID, block, lastCommit)
+	require.NoError(t, err)
+
+	// Should receive signed block event
+	select {
+	case msg := <-signedBlockSub.Out():
+		_, ok := msg.Data().(types.EventDataSignedBlock)
+		require.True(t, ok, "Expected signed block event")
+	case <-time.After(1 * time.Second):
+		t.Fatal("Expected to receive signed block event but did not")
+	}
+
+	// Test case 2: Node is syncing - signed block event should NOT be published
+	syncChecker.syncing = true
+
+	// Create and apply another block
+	block2, bps2, err := makeBlock(state, 2, lastCommit)
+	require.NoError(t, err)
+	blockID2 := types.BlockID{Hash: block2.Hash(), PartSetHeader: bps2.Header()}
+
+	// Create a proper commit for the second block
+	lastExtCommit2, _, err := makeValidCommit(2, blockID2, state.Validators, privVals)
+	require.NoError(t, err)
+	lastCommit2 := lastExtCommit2.ToCommit()
+
+	state, err = blockExec.ApplyBlock(state, blockID2, block2, lastCommit2)
+	require.NoError(t, err)
+
+	// Should NOT receive signed block event
+	select {
+	case <-signedBlockSub.Out():
+		t.Fatal("Should not receive signed block event when syncing")
+	case <-time.After(100 * time.Millisecond):
+		// This is expected - no event should be published
+	}
+
+	// Test case 3: syncChecker is nil - signed block event should be published  
+	blockExec.SetSyncChecker(nil)
+
+	// Create and apply another block
+	block3, bps3, err := makeBlock(state, 3, lastCommit2)
+	require.NoError(t, err)
+	blockID3 := types.BlockID{Hash: block3.Hash(), PartSetHeader: bps3.Header()}
+
+	// Create a proper commit for the third block
+	lastExtCommit3, _, err := makeValidCommit(3, blockID3, state.Validators, privVals)
+	require.NoError(t, err)
+	lastCommit3 := lastExtCommit3.ToCommit()
+
+	state, err = blockExec.ApplyBlock(state, blockID3, block3, lastCommit3)
+	require.NoError(t, err)
+
+	// Should receive signed block event when syncChecker is nil
+	select {
+	case msg := <-signedBlockSub.Out():
+		_, ok := msg.Data().(types.EventDataSignedBlock)
+		require.True(t, ok, "Expected signed block event when syncChecker is nil")
+	case <-time.After(1 * time.Second):
+		t.Fatal("Expected to receive signed block event when syncChecker is nil but did not")
+	}
+}

@@ -20,6 +20,12 @@ import (
 	"github.com/cometbft/cometbft/types"
 )
 
+// SyncChecker provides the sync status of the node.
+type SyncChecker interface {
+	// IsSyncing returns true if the node is syncing (catching up).
+	IsSyncing() bool
+}
+
 //-----------------------------------------------------------------------------
 // BlockExecutor handles block execution and state updates.
 // It exposes ApplyBlock(), which validates & executes the block, updates state w/ ABCI responses,
@@ -38,6 +44,9 @@ type BlockExecutor struct {
 
 	// events
 	eventBus types.BlockEventPublisher
+
+	// syncChecker to check if the node is syncing
+	syncChecker SyncChecker
 
 	// manage the mempool lock during commit
 	// and update both with block results after commit.
@@ -113,6 +122,12 @@ func (blockExec *BlockExecutor) Store() Store {
 // If not called, it defaults to types.NopEventBus.
 func (blockExec *BlockExecutor) SetEventBus(eventBus types.BlockEventPublisher) {
 	blockExec.eventBus = eventBus
+}
+
+// SetSyncChecker - sets the sync checker for determining if the node is syncing.
+// If not called, it defaults to nil which means sync status is not checked.
+func (blockExec *BlockExecutor) SetSyncChecker(syncChecker SyncChecker) {
+	blockExec.syncChecker = syncChecker
 }
 
 // CreateProposalBlock calls state.MakeBlock with evidence from the evpool
@@ -418,7 +433,7 @@ func (blockExec *BlockExecutor) applyBlock(state State, blockID types.BlockID, b
 
 	// Events are fired after everything else.
 	// NOTE: if we crash between Commit and Save, events wont be fired during replay
-	fireEvents(blockExec.logger, blockExec.eventBus, block, blockID, abciResponse, validatorUpdates, state.Validators, lastCommit)
+	fireEvents(blockExec.logger, blockExec.eventBus, blockExec.syncChecker, block, blockID, abciResponse, validatorUpdates, state.Validators, lastCommit)
 
 	return state, nil
 }
@@ -769,6 +784,7 @@ func updateState(
 func fireEvents(
 	logger log.Logger,
 	eventBus types.BlockEventPublisher,
+	syncChecker SyncChecker,
 	block *types.Block,
 	blockID types.BlockID,
 	abciResponse *abci.ResponseFinalizeBlock,
@@ -785,14 +801,17 @@ func fireEvents(
 	}
 
 	if lastCommit != nil {
-		err := eventBus.PublishEventSignedBlock(types.EventDataSignedBlock{
-			Header:       block.Header,
-			Commit:       *lastCommit,
-			ValidatorSet: *currentValidators,
-			Data:         block.Data,
-		})
-		if err != nil {
-			logger.Error("failed publishing new signed block", "err", err)
+		// Only publish signed block events if the node is not syncing
+		if syncChecker == nil || !syncChecker.IsSyncing() {
+			err := eventBus.PublishEventSignedBlock(types.EventDataSignedBlock{
+				Header:       block.Header,
+				Commit:       *lastCommit,
+				ValidatorSet: *currentValidators,
+				Data:         block.Data,
+			})
+			if err != nil {
+				logger.Error("failed publishing new signed block", "err", err)
+			}
 		}
 	}
 

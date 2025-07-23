@@ -247,6 +247,11 @@ func (cs *State) SetEventBus(b *types.EventBus) {
 	cs.blockExec.SetEventBus(b)
 }
 
+// SetSyncChecker sets sync checker.
+func (cs *State) SetSyncChecker(syncChecker sm.SyncChecker) {
+	cs.blockExec.SetSyncChecker(syncChecker)
+}
+
 // StateMetrics sets the metrics.
 func StateMetrics(metrics *Metrics) StateOption {
 	return func(cs *State) { cs.metrics = metrics }
