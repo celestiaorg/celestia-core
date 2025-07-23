@@ -1,16 +1,13 @@
 package propagation
 
 import (
-	"github.com/cometbft/cometbft/libs/trace"
-	"github.com/cometbft/cometbft/libs/trace/schema"
-	"sync/atomic"
-	"time"
-
 	proptypes "github.com/cometbft/cometbft/consensus/propagation/types"
 	"github.com/cometbft/cometbft/libs/bits"
 	"github.com/cometbft/cometbft/libs/sync"
+	"github.com/cometbft/cometbft/libs/trace"
 	"github.com/cometbft/cometbft/store"
 	"github.com/cometbft/cometbft/types"
+	"sync/atomic"
 )
 
 type proposalData struct {
@@ -174,12 +171,12 @@ func (p *ProposalCache) relevantHave(height int64, round int32) bool {
 // this node has it stored or cached. It also return the max requests for that
 // block.
 func (p *ProposalCache) getAllState(height int64, round int32, catchup bool) (*proptypes.CompactBlock, *proptypes.CombinedPartSet, *bits.BitArray, bool) {
-	start := time.Now()
+	//start := time.Now()
 	p.pmtx.Lock()
 	defer p.pmtx.Unlock()
-	processingTime := time.Since(start).Nanoseconds()
+	//processingTime := time.Since(start).Nanoseconds()
 	//schema.WriteMessageStats(p.traceClient, "propgation", "getAllState.step1", processingTime)
-	start = time.Now()
+	//start = time.Now()
 	if !catchup && !p.relevant(height, round) {
 		return nil, nil, nil, false
 	}
@@ -205,23 +202,23 @@ func (p *ProposalCache) getAllState(height int64, round int32, catchup bool) (*p
 	if height < p.currentHeight {
 		hasStored = p.store.LoadBlockMeta(height)
 	}
-	processingTime = time.Since(start).Nanoseconds()
+	//processingTime = time.Since(start).Nanoseconds()
 	//schema.WriteMessageStats(p.traceClient, "propgation", "handleHaves.step2", processingTime)
 
 	switch {
 	case has && hasRound:
 		return cachedProp.compactBlock, cachedProp.block, cachedProp.maxRequests, true
 	case hasStored != nil:
-		start = time.Now()
+		//start = time.Now()
 		parts, _, err := p.store.LoadPartSet(height)
 		if err != nil {
 			return nil, nil, nil, false
 		}
-		processingTime = time.Since(start).Nanoseconds()
+		//processingTime = time.Since(start).Nanoseconds()
 		//schema.WriteMessageStats(p.traceClient, "propgation", "handleHaves.step3", processingTime)
-		start = time.Now()
+		//start = time.Now()
 		cparts := proptypes.NewCombinedPartSetFromOriginal(parts, false)
-		processingTime = time.Since(start).Nanoseconds()
+		//processingTime = time.Since(start).Nanoseconds()
 		//schema.WriteMessageStats(p.traceClient, "propgation", "handleHaves.step4", processingTime)
 		return nil, cparts, cparts.BitArray(), true
 	default:
