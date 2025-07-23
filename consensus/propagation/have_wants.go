@@ -24,7 +24,6 @@ import (
 // node will request those parts. The peer must always send the proposal before
 // sending parts. If they did not, this node must disconnect from them.
 func (blockProp *Reactor) handleHaves(peer p2p.ID, haves *proptypes.HaveParts) {
-	start := time.Now()
 	if haves == nil {
 		// TODO handle the disconnection case
 		return
@@ -33,7 +32,7 @@ func (blockProp *Reactor) handleHaves(peer p2p.ID, haves *proptypes.HaveParts) {
 	if !blockProp.started.Load() {
 		return
 	}
-
+	start := time.Now()
 	height := haves.Height
 	round := haves.Round
 	p := blockProp.getPeer(peer)
