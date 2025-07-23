@@ -251,23 +251,13 @@ func TestBadBlockStopsPeer(t *testing.T) {
 
 	maxBlockHeight := int64(148)
 
-	// Other chain needs a different validator set
-	otherGenDoc, otherPrivVals := randGenesisDoc(1, false, 30)
-	otherChain := newReactor(t, log.TestingLogger(), otherGenDoc, otherPrivVals, maxBlockHeight)
-
-	defer func() {
-		err := otherChain.reactor.Stop()
-		require.Error(t, err)
-		err = otherChain.app.Stop()
-		require.NoError(t, err)
-	}()
-
 	reactorPairs := make([]ReactorPair, 4)
 
 	reactorPairs[0] = newReactor(t, log.TestingLogger(), genDoc, privVals, maxBlockHeight)
 	reactorPairs[1] = newReactor(t, log.TestingLogger(), genDoc, privVals, 0)
 	reactorPairs[2] = newReactor(t, log.TestingLogger(), genDoc, privVals, 0)
-	reactorPairs[3] = newReactor(t, log.TestingLogger(), genDoc, privVals, 0)
+	// Create reactor 3 with bad blocks at height maxBlockHeight/2
+	reactorPairs[3] = newReactor(t, log.TestingLogger(), genDoc, privVals, maxBlockHeight, maxBlockHeight/2)
 
 	switches := p2p.MakeConnectedSwitches(config.P2P, 4, func(i int, s *p2p.Switch) *p2p.Switch {
 		s.AddReactor("BLOCKSYNC", reactorPairs[i].reactor)
@@ -312,12 +302,8 @@ func TestBadBlockStopsPeer(t *testing.T) {
 	}
 afterCatchUp:
 
-	// at this time, reactors[0-3] is the newest
+	// at this time, reactors[0-2] have caught up. Reactor 3 provides bad blocks for better test reliability
 	assert.Equal(t, 3, reactorPairs[1].reactor.Switch.Peers().Size())
-
-	// Mark reactorPairs[3] as an invalid peer. Fiddling with .store without a mutex is a data
-	// race, but can't be easily avoided.
-	reactorPairs[3].reactor.store = otherChain.reactor.store
 
 	// Give a small delay for any ongoing operations to complete
 	time.Sleep(50 * time.Millisecond)
