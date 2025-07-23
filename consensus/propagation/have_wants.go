@@ -3,6 +3,7 @@ package propagation
 import (
 	"fmt"
 	"math"
+	"time"
 
 	"github.com/cometbft/cometbft/crypto/merkle"
 	"github.com/cometbft/cometbft/proto/tendermint/crypto"
@@ -23,6 +24,7 @@ import (
 // node will request those parts. The peer must always send the proposal before
 // sending parts. If they did not, this node must disconnect from them.
 func (blockProp *Reactor) handleHaves(peer p2p.ID, haves *proptypes.HaveParts) {
+	start := time.Now()
 	if haves == nil {
 		// TODO handle the disconnection case
 		return
@@ -46,7 +48,10 @@ func (blockProp *Reactor) handleHaves(peer p2p.ID, haves *proptypes.HaveParts) {
 		// blockProp.Switch.StopPeerForError(blockProp.getPeer(peer).peer, errors.New("received part for unknown proposal"))
 		return
 	}
+	processingTime := time.Since(start).Nanoseconds()
+	schema.WriteMessageStats(blockProp.traceClient, "propgation", "handleHaves.step1", processingTime)
 
+	start = time.Now()
 	if cb == nil {
 		// we can't process haves for a compact block we don't have
 		return
@@ -70,6 +75,10 @@ func (blockProp *Reactor) handleHaves(peer p2p.ID, haves *proptypes.HaveParts) {
 		return
 	}
 
+	processingTime = time.Since(start).Nanoseconds()
+	schema.WriteMessageStats(blockProp.traceClient, "propgation", "handleHaves.step2", processingTime)
+
+	start = time.Now()
 	// Check if the sender has parts that we don't have.
 	hc := haves.BitArray(int(parts.Total()))
 	hc.Sub(parts.BitArray())
@@ -98,6 +107,8 @@ func (blockProp *Reactor) handleHaves(peer p2p.ID, haves *proptypes.HaveParts) {
 			}
 		}
 	}
+	processingTime = time.Since(start).Nanoseconds()
+	schema.WriteMessageStats(blockProp.traceClient, "propgation", "handleHaves.step3", processingTime)
 }
 
 // ReqLimit limits the number of requests per part.
