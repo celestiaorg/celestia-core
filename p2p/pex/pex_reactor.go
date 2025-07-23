@@ -447,13 +447,28 @@ func (r *Reactor) ensurePeers(ensurePeersPeriodElapsed bool) {
 		out, in, dial = r.Switch.NumPeers()
 		numToDial     = r.Switch.MaxNumOutboundPeers() - (out + dial)
 	)
-	r.Logger.Info(
-		"Ensure peers",
-		"numOutPeers", out,
-		"numInPeers", in,
-		"numDialing", dial,
-		"numToDial", numToDial,
-	)
+	maxOutbound := r.Switch.MaxNumOutboundPeers()
+	if numToDial > 0 {
+		r.Logger.Info(
+			"Ensure peers",
+			"numOutPeers", out,
+			"numInPeers", in,
+			"numDialing", dial,
+			"numToDial", numToDial,
+			"maxOutbound", maxOutbound,
+		)
+	} else {
+		extraPeers := -numToDial
+		r.Logger.Info(
+			"Ensure peers",
+			"numOutPeers", out,
+			"numInPeers", in,
+			"numDialing", dial,
+			"status", "sufficient",
+			"extraOutbound", extraPeers,
+			"maxOutbound", maxOutbound,
+		)
+	}
 
 	if numToDial <= 0 {
 		return
