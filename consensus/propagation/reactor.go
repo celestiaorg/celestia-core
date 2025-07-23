@@ -221,18 +221,24 @@ func (blockProp *Reactor) ReceiveEnvelope(e p2p.Envelope) {
 		m = wm.Wrap()
 	}
 
+	start := time.Now()
 	msg, err := proptypes.MsgFromProto(m.(*propproto.Message))
 	if err != nil {
 		blockProp.Logger.Error("Error decoding message", "src", e.Src, "chId", e.ChannelID, "err", err)
 		blockProp.Switch.StopPeerForError(e.Src, err, blockProp.String())
 		return
 	}
+	processingTime := time.Since(start).Nanoseconds()
+	schema.WriteMessageStats(blockProp.traceClient, "propgation", fmt.Sprintf("%s: MsgFromProto", proto.MessageName(e.Message)), processingTime)
 
+	start = time.Now()
 	if err = msg.ValidateBasic(); err != nil {
 		blockProp.Logger.Error("Peer sent us invalid msg", "peer", e.Src, "msg", e.Message, "err", err)
 		blockProp.Switch.StopPeerForError(e.Src, err, blockProp.String())
 		return
 	}
+	processingTime = time.Since(start).Nanoseconds()
+	schema.WriteMessageStats(blockProp.traceClient, "propgation", fmt.Sprintf("%s: ValidateBasics", proto.MessageName(e.Message)), processingTime)
 	switch e.ChannelID {
 	case DataChannel:
 		switch msg := msg.(type) {

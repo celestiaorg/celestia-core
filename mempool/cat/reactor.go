@@ -103,6 +103,10 @@ func (memR *Reactor) SetLogger(l log.Logger) {
 	memR.Logger = l
 }
 
+func (memR *Reactor) SetTracer(client trace.Tracer) {
+	memR.traceClient = client
+}
+
 // OnStart implements Service.
 func (memR *Reactor) OnStart() error {
 	if !memR.opts.ListenOnly {

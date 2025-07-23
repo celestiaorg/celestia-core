@@ -315,6 +315,7 @@ func createMempoolAndMempoolReactor(
 			mp.EnableTxsAvailable()
 		}
 		reactor.SetLogger(logger)
+		reactor.SetTracer(traceClient)
 		return mp, reactor
 	default:
 		panic(fmt.Sprintf("unknown mempool type: %q", config.Mempool.Type))
