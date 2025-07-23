@@ -3,6 +3,7 @@ package propagation
 import (
 	"context"
 	"fmt"
+	"github.com/cosmos/gogoproto/proto"
 	"math"
 	"reflect"
 	"sync/atomic"
@@ -257,6 +258,11 @@ func (blockProp *Reactor) ReceiveEnvelope(e p2p.Envelope) {
 }
 
 func (blockProp *Reactor) Receive(e p2p.Envelope) {
+	start := time.Now()
+	defer func() {
+		processingTime := time.Now().Sub(start).Nanoseconds()
+		schema.WriteMessageStats(blockProp.traceClient, "propagation", proto.MessageName(e.Message), processingTime)
+	}()
 	blockProp.ReceiveEnvelope(e)
 }
 
