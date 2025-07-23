@@ -40,15 +40,17 @@ func (blockProp *Reactor) handleHaves(peer p2p.ID, haves *proptypes.HaveParts) {
 		blockProp.Logger.Error("peer not found", "peer", peer)
 		return
 	}
-
+	processingTime := time.Since(start).Nanoseconds()
+	schema.WriteMessageStats(blockProp.traceClient, "propgation", "handleHaves.step1", processingTime)
+	start = time.Now()
 	cb, parts, fullReqs, has := blockProp.getAllState(height, round, false)
 	if !has {
 		blockProp.Logger.Debug("received have part for unknown proposal", "peer", peer, "height", height, "round", round)
 		// blockProp.Switch.StopPeerForError(blockProp.getPeer(peer).peer, errors.New("received part for unknown proposal"))
 		return
 	}
-	processingTime := time.Since(start).Nanoseconds()
-	schema.WriteMessageStats(blockProp.traceClient, "propgation", "handleHaves.step1", processingTime)
+	processingTime = time.Since(start).Nanoseconds()
+	schema.WriteMessageStats(blockProp.traceClient, "propgation", "handleHaves.step2", processingTime)
 
 	start = time.Now()
 	if cb == nil {
@@ -75,7 +77,7 @@ func (blockProp *Reactor) handleHaves(peer p2p.ID, haves *proptypes.HaveParts) {
 	}
 
 	processingTime = time.Since(start).Nanoseconds()
-	schema.WriteMessageStats(blockProp.traceClient, "propgation", "handleHaves.step2", processingTime)
+	schema.WriteMessageStats(blockProp.traceClient, "propgation", "handleHaves.step3", processingTime)
 
 	start = time.Now()
 	// Check if the sender has parts that we don't have.
@@ -107,7 +109,7 @@ func (blockProp *Reactor) handleHaves(peer p2p.ID, haves *proptypes.HaveParts) {
 		}
 	}
 	processingTime = time.Since(start).Nanoseconds()
-	schema.WriteMessageStats(blockProp.traceClient, "propgation", "handleHaves.step3", processingTime)
+	schema.WriteMessageStats(blockProp.traceClient, "propgation", "handleHaves.step4", processingTime)
 }
 
 // ReqLimit limits the number of requests per part.
