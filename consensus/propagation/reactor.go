@@ -246,7 +246,10 @@ func (blockProp *Reactor) ReceiveEnvelope(e p2p.Envelope) {
 			blockProp.handleCompactBlock(msg, e.Src.ID(), false)
 			schema.WriteProposal(blockProp.traceClient, msg.Proposal.Height, msg.Proposal.Round, string(e.Src.ID()), schema.Download)
 		case *proptypes.HaveParts:
+			start = time.Now()
 			blockProp.handleHaves(e.Src.ID(), msg)
+			processingTime = time.Since(start).Nanoseconds()
+			schema.WriteMessageStats(blockProp.traceClient, "propgation", fmt.Sprintf("%s: CallHandleHaves", proto.MessageName(e.Message)), processingTime)
 		case *proptypes.RecoveryPart:
 			schema.WriteReceivedPart(blockProp.traceClient, msg.Height, msg.Round, int(msg.Index))
 			blockProp.handleRecoveryPart(e.Src.ID(), msg)
