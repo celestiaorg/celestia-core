@@ -178,7 +178,7 @@ func (p *ProposalCache) getAllState(height int64, round int32, catchup bool) (*p
 	p.pmtx.Lock()
 	defer p.pmtx.Unlock()
 	processingTime := time.Since(start).Nanoseconds()
-	schema.WriteMessageStats(p.traceClient, "propgation", "getAllState.step1", processingTime)
+	//schema.WriteMessageStats(p.traceClient, "propgation", "getAllState.step1", processingTime)
 	start = time.Now()
 	if !catchup && !p.relevant(height, round) {
 		return nil, nil, nil, false
@@ -206,7 +206,7 @@ func (p *ProposalCache) getAllState(height int64, round int32, catchup bool) (*p
 		hasStored = p.store.LoadBlockMeta(height)
 	}
 	processingTime = time.Since(start).Nanoseconds()
-	schema.WriteMessageStats(p.traceClient, "propgation", "handleHaves.step2", processingTime)
+	//schema.WriteMessageStats(p.traceClient, "propgation", "handleHaves.step2", processingTime)
 
 	switch {
 	case has && hasRound:
@@ -218,11 +218,11 @@ func (p *ProposalCache) getAllState(height int64, round int32, catchup bool) (*p
 			return nil, nil, nil, false
 		}
 		processingTime = time.Since(start).Nanoseconds()
-		schema.WriteMessageStats(p.traceClient, "propgation", "handleHaves.step3", processingTime)
+		//schema.WriteMessageStats(p.traceClient, "propgation", "handleHaves.step3", processingTime)
 		start = time.Now()
 		cparts := proptypes.NewCombinedPartSetFromOriginal(parts, false)
 		processingTime = time.Since(start).Nanoseconds()
-		schema.WriteMessageStats(p.traceClient, "propgation", "handleHaves.step4", processingTime)
+		//schema.WriteMessageStats(p.traceClient, "propgation", "handleHaves.step4", processingTime)
 		return nil, cparts, cparts.BitArray(), true
 	default:
 		return nil, nil, nil, false

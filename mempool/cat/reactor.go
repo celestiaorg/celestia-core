@@ -2,7 +2,6 @@ package cat
 
 import (
 	"fmt"
-	"github.com/cosmos/gogoproto/proto"
 	"math/rand"
 	"time"
 
@@ -203,11 +202,11 @@ func (memR *Reactor) RemovePeer(peer p2p.Peer, reason interface{}) {
 // ReceiveEnvelope implements Reactor.
 // It processes one of three messages: Txs, SeenTx, WantTx.
 func (memR *Reactor) Receive(e p2p.Envelope) {
-	start := time.Now()
-	defer func() {
-		processingTime := time.Now().Sub(start).Nanoseconds()
-		schema.WriteMessageStats(memR.traceClient, "cat", proto.MessageName(e.Message), processingTime)
-	}()
+	//start := time.Now()
+	//defer func() {
+	//	processingTime := time.Now().Sub(start).Nanoseconds()
+	//schema.WriteMessageStats(memR.traceClient, "cat", proto.MessageName(e.Message), processingTime)
+	//}()
 	switch msg := e.Message.(type) {
 
 	// A peer has sent us one or more transactions. This could be either because we requested them

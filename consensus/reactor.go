@@ -3,7 +3,6 @@ package consensus
 import (
 	"errors"
 	"fmt"
-	"github.com/cosmos/gogoproto/proto"
 	"reflect"
 	"strconv"
 	"sync"
@@ -267,11 +266,11 @@ func (conR *Reactor) RemovePeer(p2p.Peer, interface{}) {
 // proposals, block parts, and votes are ordered by the receiveRoutine
 // NOTE: blocks on consensus state for proposals, block parts, and votes
 func (conR *Reactor) Receive(e p2p.Envelope) {
-	start := time.Now()
-	defer func() {
-		processingTime := time.Now().Sub(start).Nanoseconds()
-		schema.WriteMessageStats(conR.traceClient, "consensus", proto.MessageName(e.Message), processingTime)
-	}()
+	//start := time.Now()
+	//defer func() {
+	//processingTime := time.Now().Sub(start).Nanoseconds()
+	//schema.WriteMessageStats(conR.traceClient, "consensus", proto.MessageName(e.Message), processingTime)
+	//}()
 	if !conR.IsRunning() {
 		conR.Logger.Debug("Receive", "src", e.Src, "chId", e.ChannelID)
 		return
