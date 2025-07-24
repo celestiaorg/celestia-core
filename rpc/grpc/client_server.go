@@ -3,6 +3,7 @@ package coregrpc
 import (
 	"context"
 	"net"
+	"regexp"
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
@@ -61,7 +62,9 @@ func StartGRPCServer(env *core.Environment, ln net.Listener) error {
 //
 // Deprecated: A new gRPC API will be introduced after v0.38.
 func StartGRPCClient(protoAddr string) BroadcastAPIClient {
-	conn, err := grpc.Dial(protoAddr, grpc.WithTransportCredentials(insecure.NewCredentials()), grpc.WithContextDialer(dialerFunc))
+	parsedAddr := ParseProtoAddr(protoAddr)
+
+	conn, err := grpc.NewClient(parsedAddr, grpc.WithTransportCredentials(insecure.NewCredentials()), grpc.WithContextDialer(dialerFunc))
 	if err != nil {
 		panic(err)
 	}
@@ -75,12 +78,14 @@ func dialerFunc(_ context.Context, addr string) (net.Conn, error) {
 // StartBlockAPIGRPCClient dials the gRPC server using protoAddr and returns a new
 // BlockAPIClient.
 func StartBlockAPIGRPCClient(protoAddr string, opts ...grpc.DialOption) (BlockAPIClient, error) {
+	parsedAddr := ParseProtoAddr(protoAddr)
+
 	if len(opts) == 0 {
 		opts = append(opts, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	}
 	opts = append(opts, grpc.WithContextDialer(dialerFunc))
-	conn, err := grpc.Dial( //nolint:staticcheck
-		protoAddr,
+	conn, err := grpc.NewClient(
+		parsedAddr,
 		opts...,
 	)
 	if err != nil {
@@ -92,16 +97,29 @@ func StartBlockAPIGRPCClient(protoAddr string, opts ...grpc.DialOption) (BlockAP
 // StartBlobstreamAPIGRPCClient dials the gRPC server using protoAddr and returns a new
 // BlobstreamAPIClient.
 func StartBlobstreamAPIGRPCClient(protoAddr string, opts ...grpc.DialOption) (BlobstreamAPIClient, error) {
+	parsedAddr := ParseProtoAddr(protoAddr)
+
 	if len(opts) == 0 {
 		opts = append(opts, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	}
 	opts = append(opts, grpc.WithContextDialer(dialerFunc))
-	conn, err := grpc.Dial( //nolint:staticcheck
-		protoAddr,
+	conn, err := grpc.NewClient(
+		parsedAddr,
 		opts...,
 	)
 	if err != nil {
 		return nil, err
 	}
 	return NewBlobstreamAPIClient(conn), nil
+}
+
+// ParseProtoAddr parses the protoAddr and returns the address without the prefix
+func ParseProtoAddr(protoAddr string) string {
+	// Single regex to handle all schemes:
+	// - dns:host:port -> host:port
+	// - unix:///path -> /path (removes unix: and up to 2 extra slashes)
+	// - tcp://host:port -> host:port
+	// - any://something -> something
+	re := regexp.MustCompile(`^(?:dns:|unix:/{0,2}|[a-zA-Z][a-zA-Z0-9+.-]*://)`)
+	return re.ReplaceAllString(protoAddr, "")
 }
