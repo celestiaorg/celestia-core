@@ -3,6 +3,7 @@ package propagation
 import (
 	"context"
 	"fmt"
+	"github.com/cosmos/gogoproto/proto"
 	"math"
 	"reflect"
 	"sync/atomic"
@@ -33,6 +34,9 @@ const (
 
 	// WantChannel the propagation reactor channel handling the wants.
 	WantChannel = byte(0x51)
+
+	// ReactorIncomingMessageQueueSize the size of the reactor's message queue.
+	ReactorIncomingMessageQueueSize = 1000
 )
 
 var RetryTime = 6 * time.Second
@@ -97,7 +101,10 @@ func NewReactor(
 		partChan:      make(chan types.PartInfo, 2500),
 		proposalChan:  make(chan types.Proposal, 100),
 	}
-	reactor.BaseReactor = *p2p.NewBaseReactor("Recovery", reactor)
+	reactor.BaseReactor = *p2p.NewBaseReactor("Recovery", reactor,
+		p2p.WithIncomingQueueSize(ReactorIncomingMessageQueueSize),
+		p2p.WithQueueingFunc(reactor.TryQueueUnprocessedEnvelope),
+	)
 	for _, option := range options {
 		option(reactor)
 	}
@@ -245,10 +252,10 @@ func (blockProp *Reactor) ReceiveEnvelope(e p2p.Envelope) {
 			blockProp.handleCompactBlock(msg, e.Src.ID(), false)
 			schema.WriteProposal(blockProp.traceClient, msg.Proposal.Height, msg.Proposal.Round, string(e.Src.ID()), schema.Download)
 		case *proptypes.HaveParts:
-			//start = time.Now()
+			start := time.Now()
 			blockProp.handleHaves(e.Src.ID(), msg)
-			//processingTime = time.Since(start).Nanoseconds()
-			//schema.WriteMessageStats(blockProp.traceClient, "propgation", fmt.Sprintf("%s: CallHandleHaves", proto.MessageName(e.Message)), processingTime)
+			processingTime := time.Since(start).Nanoseconds()
+			schema.WriteMessageStats(blockProp.traceClient, "propgation", fmt.Sprintf("%s: CallHandleHaves", proto.MessageName(e.Message)), processingTime)
 		case *proptypes.RecoveryPart:
 			schema.WriteReceivedPart(blockProp.traceClient, msg.Height, msg.Round, int(msg.Index))
 			blockProp.handleRecoveryPart(e.Src.ID(), msg)

@@ -26,10 +26,7 @@ import (
 func (blockProp *Reactor) handleHaves(peer p2p.ID, haves *proptypes.HaveParts) {
 	schema.WriteMessageStats(blockProp.traceClient, "propgation", "handleHaves.Start", 0)
 	anotherStart := time.Now()
-	defer func() {
-		processingTime := time.Since(anotherStart).Nanoseconds()
-		schema.WriteMessageStats(blockProp.traceClient, "propgation", "handleHaves.AllOfIt", processingTime)
-	}()
+
 	if haves == nil {
 		// TODO handle the disconnection case
 		return
@@ -116,6 +113,8 @@ func (blockProp *Reactor) handleHaves(peer p2p.ID, haves *proptypes.HaveParts) {
 	}
 	processingTime = time.Since(start).Nanoseconds()
 	schema.WriteMessageStats(blockProp.traceClient, "propgation", "handleHaves.step4", processingTime)
+	processingTime = time.Since(anotherStart).Nanoseconds()
+	schema.WriteMessageStats(blockProp.traceClient, "propgation", "handleHaves.AllOfIt", processingTime)
 }
 
 // ReqLimit limits the number of requests per part.

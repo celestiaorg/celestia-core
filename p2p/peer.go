@@ -3,7 +3,6 @@ package p2p
 import (
 	"fmt"
 	"net"
-	"reflect"
 	"sync/atomic"
 	"time"
 
@@ -138,10 +137,6 @@ type peer struct {
 	metricsTicker *time.Ticker
 }
 
-func (p *peer) TraceClient() trace.Tracer {
-	return p.traceClient
-}
-
 type PeerOption func(*peer)
 
 func WithPeerTracer(t trace.Tracer) PeerOption {
@@ -199,14 +194,6 @@ func (p *peer) String() string {
 
 //---------------------------------------------------
 // Implements service.Service
-
-func (p *peer) Metrics() *Metrics {
-	return p.metrics
-}
-
-func (p *peer) ValueToMetricLabel(i any) string {
-	return p.mlc.ValueToMetricLabel(i)
-}
 
 // SetLogger implements BaseService.
 func (p *peer) SetLogger(l log.Logger) {

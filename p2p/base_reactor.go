@@ -2,6 +2,10 @@ package p2p
 
 import (
 	"context"
+	"fmt"
+	"github.com/cometbft/cometbft/libs/trace/schema"
+	"github.com/cosmos/gogoproto/proto"
+	"reflect"
 
 	"github.com/cometbft/cometbft/libs/service"
 	"github.com/cometbft/cometbft/p2p/conn"
@@ -63,7 +67,8 @@ type BaseReactor struct {
 	service.BaseService // Provides Start, Stop, .Quit
 	Switch              *Switch
 
-	incoming chan UnprocessedEnvelope
+	incoming     chan UnprocessedEnvelope
+	queueingFunc func(UnprocessedEnvelope)
 
 	ctx    context.Context
 	cancel context.CancelFunc
@@ -85,6 +90,7 @@ func NewBaseReactor(name string, impl Reactor, opts ...ReactorOptions) *BaseReac
 		incoming:    make(chan UnprocessedEnvelope, 100),
 		processor:   DefaultProcessor(impl),
 	}
+	base.queueingFunc = base.QueueUnprocessedEnvelope
 	for _, opt := range opts {
 		opt(base)
 	}
@@ -111,6 +117,13 @@ func WithProcessor(processor ProcessorFunc) ReactorOptions {
 	}
 }
 
+// WithProcessor sets the parallel processing queueing mechanism.
+func WithQueueingFunc(queuingFunc func(UnprocessedEnvelope)) ReactorOptions {
+	return func(br *BaseReactor) {
+		br.queueingFunc = queuingFunc
+	}
+}
+
 // WithIncomingQueueSize sets the size of the incoming message queue for a
 // reactor.
 func WithIncomingQueueSize(size int) ReactorOptions {
@@ -118,7 +131,6 @@ func WithIncomingQueueSize(size int) ReactorOptions {
 		br.incoming = make(chan UnprocessedEnvelope, size)
 	}
 }
-
 
 // QueueUnprocessedEnvelope is called by the switch when an unprocessed
 // envelope is received. Unprocessed envelopes are immediately buffered in a
@@ -130,6 +142,19 @@ func (br *BaseReactor) QueueUnprocessedEnvelope(e UnprocessedEnvelope) {
 	case <-br.ctx.Done():
 	// if not, add the item to the channel.
 	case br.incoming <- e:
+	}
+}
+
+// TryQueueUnprocessedEnvelope an alternative to QueueUnprocessedEnvelope that attempts to queue an unprocessed envelope.
+// If the queue is full, it drops the envelope.
+func (br *BaseReactor) TryQueueUnprocessedEnvelope(e UnprocessedEnvelope) {
+	select {
+	case <-br.ctx.Done():
+	default:
+		select {
+		case br.incoming <- e:
+		default:
+		}
 	}
 }
 
@@ -185,16 +210,11 @@ func DefaultProcessor(impl Reactor) func(context.Context, <-chan UnprocessedEnve
 				ue.Src.Metrics().PeerReceiveBytesTotal.With(labels...).Add(float64(len(ue.Message)))
 				ue.Src.Metrics().MessageReceiveBytesTotal.With(append(labels, "message_type", ue.Src.ValueToMetricLabel(msg))...).Add(float64(len(ue.Message)))
 				schema.WriteReceivedBytes(ue.Src.TraceClient(), string(ue.Src.ID()), ue.ChannelID, len(ue.Message))
-
-				if nr, ok := impl.(EnvelopeReceiver); ok {
-					nr.ReceiveEnvelope(Envelope{
-						ChannelID: ue.ChannelID,
-						Src:       ue.Src,
-						Message:   msg,
-					})
-				} else {
-					impl.Receive(ue.ChannelID, ue.Src, ue.Message)
-				}
+				impl.Receive(Envelope{
+					ChannelID: ue.ChannelID,
+					Src:       ue.Src,
+					Message:   msg,
+				})
 			}
 		}
 	}
