@@ -59,3 +59,4 @@ proto/spec/**/*.pb.go
 .venv
 go.work.sum
 cometbft
+verify_implementation.sh
