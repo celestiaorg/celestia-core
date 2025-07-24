@@ -71,7 +71,7 @@ func (tr *TestReactor) GetChannels() []*conn.ChannelDescriptor {
 
 func (tr *TestReactor) InitPeer(p Peer) (Peer, error) {
 	if tr.peerLimit != 0 && tr.peerCnt >= tr.peerLimit {
-		return p, errors.New("peer limit reached")
+		return nil, errors.New("peer limit reached")
 	}
 	return p, nil
 }

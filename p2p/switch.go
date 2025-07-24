@@ -873,12 +873,11 @@ func (sw *Switch) addPeer(p Peer) error {
 	// Add some data to the peer, which is required by reactors.
 	peerReactors := make([]Reactor, 0, len(sw.reactors))
 	for _, reactor := range sw.reactors {
-		var err error
-		p, err = reactor.InitPeer(p)
-		if err != nil {
-			sw.Logger.Info("Reactor rejected peer in InitPeer", "peer", p, "err", err, "reactor", reactor.String())
-		} else {
+		if updatedPeer, err := reactor.InitPeer(p); err == nil {
 			peerReactors = append(peerReactors, reactor)
+			p = updatedPeer // only update peer if the reactor accepted it
+		} else {
+			sw.Logger.Info("Reactor rejected peer in InitPeer", "peer", p, "err", err, "reactor", reactor.String())
 		}
 	}
 	if len(peerReactors) == 0 {
