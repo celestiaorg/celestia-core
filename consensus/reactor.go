@@ -11,6 +11,7 @@ import (
 
 	"github.com/cometbft/cometbft/consensus/propagation"
 
+	cfg "github.com/cometbft/cometbft/config"
 	cstypes "github.com/cometbft/cometbft/consensus/types"
 	"github.com/cometbft/cometbft/libs/bits"
 	cmtevents "github.com/cometbft/cometbft/libs/events"
@@ -59,6 +60,9 @@ type Reactor struct {
 
 	// gossipDataEnabled controls whether the gossipDataRoutine should run
 	gossipDataEnabled atomic.Bool
+	
+	// config reference for checking propagation reactor settings
+	config *cfg.ConsensusConfig
 }
 
 type ReactorOption func(*Reactor)
@@ -94,9 +98,47 @@ func WithGossipDataEnabled(enabled bool) ReactorOption {
 	}
 }
 
+// WithConfig sets the consensus config for the reactor
+func WithConfig(config *cfg.ConsensusConfig) ReactorOption {
+	return func(conR *Reactor) {
+		conR.config = config
+	}
+}
+
 // IsGossipDataEnabled returns whether the gossipDataRoutine should run
 func (conR *Reactor) IsGossipDataEnabled() bool {
 	return conR.gossipDataEnabled.Load()
+}
+
+// checkAndDisableOldPropagationRoutine checks if conditions are met to disable
+// the old propagation routine (gossipDataRoutine) when app version >= 5.
+// Conditions:
+// 1. App version >= 5
+// 2. New propagation reactor is not disabled 
+// 3. Old routine is not already disabled
+func (conR *Reactor) checkAndDisableOldPropagationRoutine() {
+	// Only check if we have config and old routine is currently enabled
+	if conR.config == nil || !conR.IsGossipDataEnabled() {
+		return
+	}
+
+	// Check if new propagation reactor is not disabled
+	if conR.config.DisablePropagationReactor {
+		return
+	}
+
+	// Get the current consensus state to check app version
+	conR.conS.mtx.RLock()
+	state := conR.conS.state
+	conR.conS.mtx.RUnlock()
+
+	// Check if app version >= 5
+	if state.ConsensusParams.Version.App >= 5 {
+		conR.Logger.Info("Disabling old propagation routine", 
+			"app_version", state.ConsensusParams.Version.App,
+			"height", state.LastBlockHeight)
+		conR.gossipDataEnabled.Store(false)
+	}
 }
 
 // OnStart implements BaseService by subscribing to events, which later will be
@@ -658,6 +700,9 @@ func (conR *Reactor) updateRoundStateRoutine() {
 		conR.mtx.Lock()
 		conR.rs = rs
 		conR.mtx.Unlock()
+		
+		// Check if we should disable the old propagation routine
+		conR.checkAndDisableOldPropagationRoutine()
 	}
 }
 
