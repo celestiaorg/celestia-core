@@ -473,30 +473,6 @@ func (r *Reactor) ensurePeers(ensurePeersPeriodElapsed bool) {
 		maxDials = len(addrBook)
 	}
 	
-	// Count how many dials we'll actually attempt
-	var plannedDials int
-	for i := 0; i < maxDials; i++ {
-		addr := addrBook[i]
-
-		if r.Switch.IsDialingOrExistingAddress(addr) {
-			continue
-		}
-		// Check if we're already tracking this dial attempt
-		if r.activeDialing.Has(addr.DialString()) {
-			continue
-		}
-		plannedDials++
-	}
-	
-	// Log with the updated count that includes planned dials
-	r.Logger.Info(
-		"Ensure peers",
-		"numOutPeers", out,
-		"numInPeers", in,
-		"numDialing", activeDialing + plannedDials,
-		"numToDial", numToDial,
-	)
-	
 	// We don't need to randomize the addresses since the addressbook is already shuffled
 	for i := 0; i < maxDials; i++ {
 		addr := addrBook[i]
@@ -525,6 +501,16 @@ func (r *Reactor) ensurePeers(ensurePeersPeriodElapsed bool) {
 			}
 		}(addr)
 	}
+
+	// Log after starting dial attempts to show current active dialing count
+	currentDialing := r.activeDialing.Size()
+	r.Logger.Info(
+		"Ensure peers",
+		"numOutPeers", out,
+		"numInPeers", in,
+		"numDialing", currentDialing,
+		"numToDial", numToDial,
+	)
 
 	if r.book.NeedMoreAddrs() {
 		// Check if banned nodes can be reinstated
