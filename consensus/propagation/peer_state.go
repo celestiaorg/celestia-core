@@ -36,6 +36,11 @@ type PeerState struct {
 	remainingRequests map[int64]map[int32]int
 
 	logger log.Logger
+
+	// consensusPeerState allows the propagation reactor to update peer state
+	// in the consensus reactor. This enables both reactors to gossip data
+	// while minimizing redundant bandwidth.
+	consensusPeerState PeerStateEditor
 }
 
 type partData struct {
@@ -48,17 +53,32 @@ type partData struct {
 func newPeerState(ctx context.Context, peer p2p.Peer, logger log.Logger) *PeerState {
 	ctx, cancel := context.WithCancel(ctx)
 	return &PeerState{
-		ctx:               ctx,
-		cancel:            cancel,
-		mtx:               &sync.RWMutex{},
-		state:             make(map[int64]map[int32]*partState),
-		remainingRequests: make(map[int64]map[int32]int),
-		peer:              peer,
-		logger:            logger,
-		receivedHaves:     make(chan request, 3000),
-		receivedParts:     make(chan partData, 3000),
-		canRequest:        make(chan struct{}, 1),
+		ctx:                ctx,
+		cancel:             cancel,
+		mtx:                &sync.RWMutex{},
+		state:              make(map[int64]map[int32]*partState),
+		peer:               peer,
+		logger:             logger,
+		receivedHaves:      make(chan request, 3000),
+		receivedParts:      make(chan partData, 3000),
+		canRequest:         make(chan struct{}, 1),
+		remainingRequests:  make(map[int64]map[int32]int),
+		consensusPeerState: noOpPSE{},
 	}
+}
+
+// SetConsensusPeerState sets the consensus peer state editor for this peer
+func (ps *PeerState) SetConsensusPeerState(editor PeerStateEditor) {
+	ps.mtx.Lock()
+	defer ps.mtx.Unlock()
+	ps.consensusPeerState = editor
+}
+
+// GetConsensusPeerState returns the consensus peer state editor if available
+func (ps *PeerState) GetConsensusPeerState() PeerStateEditor {
+	ps.mtx.Lock()
+	defer ps.mtx.Unlock()
+	return ps.consensusPeerState
 }
 
 // Initialize initializes the state for a given height and round in a

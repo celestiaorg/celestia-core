@@ -392,7 +392,7 @@ func createConsensusReactor(config *cfg.Config,
 	if privValidator != nil {
 		consensusState.SetPrivValidator(privValidator)
 	}
-	consensusReactor := cs.NewReactor(consensusState, propagator, waitSync, cs.ReactorMetrics(csMetrics), cs.ReactorTracing(traceClient))
+	consensusReactor := cs.NewReactor(consensusState, propagator, waitSync, cs.ReactorMetrics(csMetrics), cs.ReactorTracing(traceClient), cs.WithGossipDataEnabled(true))
 	consensusReactor.SetLogger(consensusLogger)
 	// services which will be publishing and/or subscribing for messages (events)
 	// consensusReactor will set it on consensusState and blockExecutor
@@ -500,7 +500,9 @@ func createSwitch(config *cfg.Config,
 	sw.AddReactor("CONSENSUS", consensusReactor)
 	sw.AddReactor("EVIDENCE", evidenceReactor)
 	sw.AddReactor("STATESYNC", stateSyncReactor)
-	sw.AddReactor("RECOVERY", propagationReactor)
+	if propagationReactor != nil {
+		sw.AddReactor("RECOVERY", propagationReactor)
+	}
 
 	sw.SetNodeInfo(nodeInfo)
 	sw.SetNodeKey(nodeKey)

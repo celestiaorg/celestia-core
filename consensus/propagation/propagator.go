@@ -19,3 +19,59 @@ type Propagator interface {
 	GetPartChan() <-chan types.PartInfo
 	GetProposalChan() <-chan types.Proposal
 }
+
+// PeerStateEditor defines methods for editing peer state from the propagation layer.
+// This interface allows the propagation reactor to update peer state without causing
+// import cycles with the consensus reactor.
+type PeerStateEditor interface {
+	// SetHasProposal sets the given proposal as known for the peer.
+	SetHasProposal(proposal *types.Proposal)
+
+	// SetHasProposalBlockPart sets the given block part index as known for the peer.
+	SetHasProposalBlockPart(height int64, round int32, index int)
+}
+
+type noOpPSE struct{}
+
+func (noOpPSE) SetHasProposal(_ *types.Proposal)                {}
+func (noOpPSE) SetHasProposalBlockPart(_ int64, _ int32, _ int) {}
+
+// NoOpPropagator is a no-operation implementation of the Propagator interface.
+// It provides empty implementations of all methods, effectively disabling
+// the propagation functionality when used in place of the actual propagation reactor.
+type NoOpPropagator struct{}
+
+// NewNoOpPropagator creates a new no-operation Propagator.
+func NewNoOpPropagator() *NoOpPropagator {
+	return &NoOpPropagator{}
+}
+
+func (nop *NoOpPropagator) GetProposal(_ int64, _ int32) (*types.Proposal, *types.PartSet, bool) {
+	return nil, nil, false
+}
+
+func (nop *NoOpPropagator) ProposeBlock(_ *types.Proposal, _ *types.PartSet, _ []proptypes.TxMetaData) {
+}
+
+func (nop *NoOpPropagator) AddCommitment(_ int64, _ int32, _ *types.PartSetHeader) {
+}
+
+func (nop *NoOpPropagator) Prune(_ int64) {
+}
+
+func (nop *NoOpPropagator) SetConsensusRound(_ int64, _ int32) {
+}
+
+func (nop *NoOpPropagator) StartProcessing() {
+}
+
+func (nop *NoOpPropagator) SetProposer(_ crypto.PubKey) {
+}
+
+func (nop *NoOpPropagator) GetPartChan() <-chan types.PartInfo {
+	return nil
+}
+
+func (nop *NoOpPropagator) GetProposalChan() <-chan types.Proposal {
+	return nil
+}

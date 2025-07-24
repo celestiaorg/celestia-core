@@ -198,6 +198,10 @@ type ManifestNode struct {
 
 	// MempoolVersion specifies the mempool version to use: "flood" or "priority".
 	MempoolVersion string `toml:"mempool_version"`
+
+	// DisablePropagationReactor disables the propagation reactor for block and proposal recovery.
+	// Defaults to false (propagation reactor enabled).
+	DisablePropagationReactor bool `toml:"disable_propagation_reactor"`
 }
 
 // Save saves the testnet manifest to a file.
