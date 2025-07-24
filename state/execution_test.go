@@ -1151,130 +1151,129 @@ func (m *mockSyncChecker) IsSyncing() bool {
 // TestSignedBlockEventWithSyncChecker tests that signed block events are not published
 // when the node is syncing
 func TestSignedBlockEventWithSyncChecker(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	app := &testApp{}
-	cc := proxy.NewLocalClientCreator(app)
-	proxyApp := proxy.NewAppConns(cc, proxy.NopMetrics())
-	err := proxyApp.Start()
-	require.NoError(t, err)
-	defer proxyApp.Stop() //nolint:errcheck // ignore for tests
-
-	state, stateDB, privVals := makeState(1, 1)
-	stateStore := sm.NewStore(stateDB, sm.StoreOptions{
-		DiscardABCIResponses: false,
-	})
-	blockStore := store.NewBlockStore(dbm.NewMemDB())
-
-	mp := &mpmocks.Mempool{}
-	mp.On("Lock").Return()
-	mp.On("Unlock").Return()
-	mp.On("FlushAppConn", mock.Anything).Return(nil)
-	mp.On("Update",
-		mock.Anything,
-		mock.Anything,
-		mock.Anything,
-		mock.Anything,
-		mock.Anything,
-		mock.Anything).Return(nil)
-
-	blockExec := sm.NewBlockExecutor(
-		stateStore,
-		log.NewNopLogger(),
-		proxyApp.Consensus(),
-		mp,
-		sm.EmptyEvidencePool{},
-		blockStore,
-	)
-
-	eventBus := types.NewEventBus()
-	err = eventBus.Start()
-	require.NoError(t, err)
-	defer eventBus.Stop() //nolint:errcheck // ignore for tests
-
-	blockExec.SetEventBus(eventBus)
-
-	// Subscribe to signed block events
-	signedBlockSub, err := eventBus.Subscribe(
-		ctx,
-		"TestSignedBlock",
-		types.EventQueryNewSignedBlock,
-	)
-	require.NoError(t, err)
-
-	// Test case 1: Node is not syncing - signed block event should be published
-	syncChecker := &mockSyncChecker{syncing: false}
-	blockExec.SetSyncChecker(syncChecker)
-
-	// Create and apply a block
-	block, bps, err := makeBlock(state, 1, new(types.Commit))
-	require.NoError(t, err)
-	blockID := types.BlockID{Hash: block.Hash(), PartSetHeader: bps.Header()}
-
-	// Create a proper commit for the block
-	lastExtCommit, _, err := makeValidCommit(1, blockID, state.Validators, privVals)
-	require.NoError(t, err)
-	lastCommit := lastExtCommit.ToCommit()
-
-	state, err = blockExec.ApplyBlock(state, blockID, block, lastCommit)
-	require.NoError(t, err)
-
-	// Should receive signed block event
-	select {
-	case msg := <-signedBlockSub.Out():
-		_, ok := msg.Data().(types.EventDataSignedBlock)
-		require.True(t, ok, "Expected signed block event")
-	case <-time.After(1 * time.Second):
-		t.Fatal("Expected to receive signed block event but did not")
+	tests := []struct {
+		name                   string
+		syncChecker            sm.SyncChecker
+		expectSignedBlockEvent bool
+	}{
+		{
+			name:                   "no sync checker - event published",
+			syncChecker:            nil,
+			expectSignedBlockEvent: true,
+		},
+		{
+			name:                   "not syncing - event published",
+			syncChecker:            &mockSyncChecker{syncing: false},
+			expectSignedBlockEvent: true,
+		},
+		{
+			name:                   "syncing - event not published",
+			syncChecker:            &mockSyncChecker{syncing: true},
+			expectSignedBlockEvent: false,
+		},
 	}
 
-	// Test case 2: Node is syncing - signed block event should NOT be published
-	syncChecker.syncing = true
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Create a minimal block executor setup
+			app := &testApp{}
+			cc := proxy.NewLocalClientCreator(app)
+			proxyApp := proxy.NewAppConns(cc, proxy.NopMetrics())
+			err := proxyApp.Start()
+			require.NoError(t, err)
+			defer proxyApp.Stop() //nolint:errcheck // ignore for tests
 
-	// Create and apply another block
-	block2, bps2, err := makeBlock(state, 2, lastCommit)
-	require.NoError(t, err)
-	blockID2 := types.BlockID{Hash: block2.Hash(), PartSetHeader: bps2.Header()}
+			state, stateDB, _ := makeState(1, 1)
+			stateStore := sm.NewStore(stateDB, sm.StoreOptions{
+				DiscardABCIResponses: false,
+			})
+			blockStore := store.NewBlockStore(dbm.NewMemDB())
 
-	// Create a proper commit for the second block
-	lastExtCommit2, _, err := makeValidCommit(2, blockID2, state.Validators, privVals)
-	require.NoError(t, err)
-	lastCommit2 := lastExtCommit2.ToCommit()
+			// Use a mock event bus to track calls
+			mockEventBus := &mockBlockEventPublisher{}
 
-	state, err = blockExec.ApplyBlock(state, blockID2, block2, lastCommit2)
-	require.NoError(t, err)
+			// Setup mock mempool with required methods
+			mp := &mpmocks.Mempool{}
+			mp.On("Lock").Return()
+			mp.On("Unlock").Return()
+			mp.On("FlushAppConn", mock.Anything).Return(nil)
+			mp.On("Update",
+				mock.Anything,
+				mock.Anything,
+				mock.Anything,
+				mock.Anything,
+				mock.Anything,
+				mock.Anything).Return(nil)
 
-	// Should NOT receive signed block event
-	select {
-	case <-signedBlockSub.Out():
-		t.Fatal("Should not receive signed block event when syncing")
-	case <-time.After(100 * time.Millisecond):
-		// This is expected - no event should be published
+			blockExec := sm.NewBlockExecutor(
+				stateStore,
+				log.NewNopLogger(),
+				proxyApp.Consensus(),
+				mp,
+				sm.EmptyEvidencePool{},
+				blockStore,
+			)
+			blockExec.SetEventBus(mockEventBus)
+			blockExec.SetSyncChecker(tt.syncChecker)
+
+			// Create minimal block data using helper function
+			block, _, err := makeBlock(state, 1, &types.Commit{})
+			require.NoError(t, err)
+			blockID := types.BlockID{Hash: block.Hash()}
+			lastCommit := &types.Commit{}
+
+			// Apply block to trigger event publishing
+			_, err = blockExec.ApplyBlock(state, blockID, block, lastCommit)
+			require.NoError(t, err)
+
+			// Verify the expected behavior
+			if tt.expectSignedBlockEvent {
+				assert.True(t, mockEventBus.signedBlockCalled, "Expected PublishEventSignedBlock to be called")
+			} else {
+				assert.False(t, mockEventBus.signedBlockCalled, "Expected PublishEventSignedBlock NOT to be called")
+			}
+
+			// Other events should always be published regardless of sync status
+			assert.True(t, mockEventBus.newBlockCalled, "Expected PublishEventNewBlock to always be called")
+			assert.True(t, mockEventBus.newBlockHeaderCalled, "Expected PublishEventNewBlockHeader to always be called")
+		})
 	}
+}
 
-	// Test case 3: syncChecker is nil - signed block event should be published  
-	blockExec.SetSyncChecker(nil)
+// mockBlockEventPublisher implements types.BlockEventPublisher for testing
+type mockBlockEventPublisher struct {
+	newBlockCalled       bool
+	signedBlockCalled    bool
+	newBlockHeaderCalled bool
+}
 
-	// Create and apply another block
-	block3, bps3, err := makeBlock(state, 3, lastCommit2)
-	require.NoError(t, err)
-	blockID3 := types.BlockID{Hash: block3.Hash(), PartSetHeader: bps3.Header()}
+func (m *mockBlockEventPublisher) PublishEventNewBlock(block types.EventDataNewBlock) error {
+	m.newBlockCalled = true
+	return nil
+}
 
-	// Create a proper commit for the third block
-	lastExtCommit3, _, err := makeValidCommit(3, blockID3, state.Validators, privVals)
-	require.NoError(t, err)
-	lastCommit3 := lastExtCommit3.ToCommit()
+func (m *mockBlockEventPublisher) PublishEventSignedBlock(block types.EventDataSignedBlock) error {
+	m.signedBlockCalled = true
+	return nil
+}
 
-	state, err = blockExec.ApplyBlock(state, blockID3, block3, lastCommit3)
-	require.NoError(t, err)
+func (m *mockBlockEventPublisher) PublishEventNewBlockHeader(header types.EventDataNewBlockHeader) error {
+	m.newBlockHeaderCalled = true
+	return nil
+}
 
-	// Should receive signed block event when syncChecker is nil
-	select {
-	case msg := <-signedBlockSub.Out():
-		_, ok := msg.Data().(types.EventDataSignedBlock)
-		require.True(t, ok, "Expected signed block event when syncChecker is nil")
-	case <-time.After(1 * time.Second):
-		t.Fatal("Expected to receive signed block event when syncChecker is nil but did not")
-	}
+func (m *mockBlockEventPublisher) PublishEventNewBlockEvents(events types.EventDataNewBlockEvents) error {
+	return nil
+}
+
+func (m *mockBlockEventPublisher) PublishEventNewEvidence(evidence types.EventDataNewEvidence) error {
+	return nil
+}
+
+func (m *mockBlockEventPublisher) PublishEventTx(tx types.EventDataTx) error {
+	return nil
+}
+
+func (m *mockBlockEventPublisher) PublishEventValidatorSetUpdates(updates types.EventDataValidatorSetUpdates) error {
+	return nil
 }
