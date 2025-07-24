@@ -80,22 +80,31 @@ func (blockProp *Reactor) handleHaves(peer p2p.ID, haves *proptypes.HaveParts) {
 
 	processingTime = time.Since(start).Nanoseconds()
 	schema.WriteMessageStats(blockProp.traceClient, "propgation", fmt.Sprintf("handleHaves.step3: %d", handleHavesID), processingTime)
-
 	start = time.Now()
 	// Check if the sender has parts that we don't have.
 	hc := haves.BitArray(int(parts.Total()))
+	processingTime = time.Since(start).Nanoseconds()
+	schema.WriteMessageStats(blockProp.traceClient, "propgation", fmt.Sprintf("handleHaves.step4: %d", handleHavesID), processingTime)
+	start = time.Now()
 	hc.Sub(parts.BitArray())
 
+	processingTime = time.Since(start).Nanoseconds()
+	schema.WriteMessageStats(blockProp.traceClient, "propgation", fmt.Sprintf("handleHaves.step5: %d", handleHavesID), processingTime)
+	start = time.Now()
 	if hc.IsEmpty() {
 		return
 	}
 
 	hc.Sub(fullReqs)
-
+	processingTime = time.Since(start).Nanoseconds()
+	schema.WriteMessageStats(blockProp.traceClient, "propgation", fmt.Sprintf("handleHaves.step6: %d", handleHavesID), processingTime)
+	start = time.Now()
 	if hc.IsEmpty() {
 		return
 	}
-
+	processingTime = time.Since(start).Nanoseconds()
+	schema.WriteMessageStats(blockProp.traceClient, "propgation", fmt.Sprintf("handleHaves.step7: %d", handleHavesID), processingTime)
+	start = time.Now()
 	if p := blockProp.getPeer(peer); p != nil {
 		for _, index := range hc.GetTrueIndices() {
 			select {
@@ -111,7 +120,7 @@ func (blockProp *Reactor) handleHaves(peer p2p.ID, haves *proptypes.HaveParts) {
 		}
 	}
 	processingTime = time.Since(start).Nanoseconds()
-	schema.WriteMessageStats(blockProp.traceClient, "propgation", fmt.Sprintf("handleHaves.step4: %d", handleHavesID), processingTime)
+	schema.WriteMessageStats(blockProp.traceClient, "propgation", fmt.Sprintf("handleHaves.step8: %d", handleHavesID), processingTime)
 	processingTime = time.Since(anotherStart).Nanoseconds()
 	schema.WriteMessageStats(blockProp.traceClient, "propgation", fmt.Sprintf("handleHaves.AllOfIt: %d", handleHavesID), processingTime)
 	fmt.Println(processingTime)
