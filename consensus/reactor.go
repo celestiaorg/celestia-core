@@ -63,6 +63,9 @@ type Reactor struct {
 	
 	// config reference for checking propagation reactor settings
 	config *cfg.ConsensusConfig
+	
+	// lastCheckedAppVersion tracks the last app version we checked to avoid repeated checks
+	lastCheckedAppVersion uint64
 }
 
 type ReactorOption func(*Reactor)
@@ -130,12 +133,20 @@ func (conR *Reactor) checkAndDisableOldPropagationRoutine() {
 	// Get the current consensus state to check app version
 	conR.conS.mtx.RLock()
 	state := conR.conS.state
+	appVersion := state.ConsensusParams.Version.App
 	conR.conS.mtx.RUnlock()
 
+	// Only check if app version has changed since last check
+	if appVersion == conR.lastCheckedAppVersion {
+		return
+	}
+	
+	conR.lastCheckedAppVersion = appVersion
+
 	// Check if app version >= 5
-	if state.ConsensusParams.Version.App >= 5 {
+	if appVersion >= 5 {
 		conR.Logger.Info("Disabling old propagation routine", 
-			"app_version", state.ConsensusParams.Version.App,
+			"app_version", appVersion,
 			"height", state.LastBlockHeight)
 		conR.gossipDataEnabled.Store(false)
 	}

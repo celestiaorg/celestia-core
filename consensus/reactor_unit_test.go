@@ -127,4 +127,52 @@ func TestCheckAndDisableOldPropagationRoutineUnitConditions(t *testing.T) {
 		// Should remain enabled (app version < 5)
 		assert.True(t, reactor.IsGossipDataEnabled())
 	})
+
+	t.Run("only checks when app version changes", func(t *testing.T) {
+		config := cfg.DefaultConsensusConfig()
+		config.DisablePropagationReactor = false
+
+		state := sm.State{
+			ConsensusParams: types.ConsensusParams{
+				Version: types.VersionParams{
+					App: 4, // Start with app version 4
+				},
+			},
+		}
+
+		cs := &State{
+			state: state,
+		}
+
+		propagator := propagation.NewNoOpPropagator()
+		reactor := NewReactor(cs, propagator, false, WithConfig(config))
+
+		assert.True(t, reactor.IsGossipDataEnabled())
+		assert.Equal(t, uint64(0), reactor.lastCheckedAppVersion) // Not checked yet
+
+		// First call should check and set lastCheckedAppVersion
+		reactor.checkAndDisableOldPropagationRoutine()
+		assert.True(t, reactor.IsGossipDataEnabled()) // Still enabled (version 4)
+		assert.Equal(t, uint64(4), reactor.lastCheckedAppVersion)
+
+		// Second call with same version should not recheck
+		reactor.checkAndDisableOldPropagationRoutine()
+		assert.True(t, reactor.IsGossipDataEnabled())
+		assert.Equal(t, uint64(4), reactor.lastCheckedAppVersion)
+
+		// Change app version to 5
+		cs.state.ConsensusParams.Version.App = 5
+
+		// Now it should check again and disable
+		reactor.checkAndDisableOldPropagationRoutine()
+		assert.False(t, reactor.IsGossipDataEnabled()) // Now disabled
+		assert.Equal(t, uint64(5), reactor.lastCheckedAppVersion)
+
+		// Enable it again to test that subsequent calls don't re-disable
+		reactor.gossipDataEnabled.Store(true)
+		
+		// Call again with same version - should not check or change anything
+		reactor.checkAndDisableOldPropagationRoutine()
+		assert.True(t, reactor.IsGossipDataEnabled()) // Should remain enabled since already disabled is checked first
+	})
 }
