@@ -115,6 +115,7 @@ func (blockProp *Reactor) handleHaves(peer p2p.ID, haves *proptypes.HaveParts) {
 	schema.WriteMessageStats(blockProp.traceClient, "propgation", "handleHaves.step4", processingTime)
 	processingTime = time.Since(anotherStart).Nanoseconds()
 	schema.WriteMessageStats(blockProp.traceClient, "propgation", "handleHaves.AllOfIt", processingTime)
+	fmt.Println(processingTime)
 }
 
 // ReqLimit limits the number of requests per part.
