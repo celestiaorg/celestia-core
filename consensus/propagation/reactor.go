@@ -3,6 +3,7 @@ package propagation
 import (
 	"context"
 	"fmt"
+	"github.com/cometbft/cometbft/libs/rand"
 	"github.com/cosmos/gogoproto/proto"
 	"math"
 	"reflect"
@@ -216,6 +217,8 @@ func (blockProp *Reactor) RemovePeer(peer p2p.Peer, reason interface{}) {
 	delete(blockProp.peerstate, peer.ID())
 }
 
+var handleHavesID int64
+
 func (blockProp *Reactor) ReceiveEnvelope(e p2p.Envelope) {
 	if !blockProp.IsRunning() {
 		blockProp.Logger.Debug("Receive", "src", e.Src, "chId", e.ChannelID)
@@ -252,12 +255,13 @@ func (blockProp *Reactor) ReceiveEnvelope(e p2p.Envelope) {
 			blockProp.handleCompactBlock(msg, e.Src.ID(), false)
 			schema.WriteProposal(blockProp.traceClient, msg.Proposal.Height, msg.Proposal.Round, string(e.Src.ID()), schema.Download)
 		case *proptypes.HaveParts:
+			handleHavesID = rand.Int64()
 			start := time.Now()
 			blockProp.handleHaves(e.Src.ID(), msg)
 			processingTime := time.Since(start).Nanoseconds()
 			fmt.Println(processingTime)
 			fmt.Println("-----------")
-			schema.WriteMessageStats(blockProp.traceClient, "propgation", fmt.Sprintf("%s: CallHandleHaves", proto.MessageName(e.Message)), processingTime)
+			schema.WriteMessageStats(blockProp.traceClient, "propgation", fmt.Sprintf("%s: CallHandleHaves: %d", proto.MessageName(e.Message), handleHavesID), processingTime)
 		case *proptypes.RecoveryPart:
 			schema.WriteReceivedPart(blockProp.traceClient, msg.Height, msg.Round, int(msg.Index))
 			blockProp.handleRecoveryPart(e.Src.ID(), msg)

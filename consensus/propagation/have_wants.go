@@ -24,7 +24,6 @@ import (
 // node will request those parts. The peer must always send the proposal before
 // sending parts. If they did not, this node must disconnect from them.
 func (blockProp *Reactor) handleHaves(peer p2p.ID, haves *proptypes.HaveParts) {
-	schema.WriteMessageStats(blockProp.traceClient, "propgation", "handleHaves.Start", 0)
 	anotherStart := time.Now()
 
 	if haves == nil {
@@ -44,7 +43,7 @@ func (blockProp *Reactor) handleHaves(peer p2p.ID, haves *proptypes.HaveParts) {
 		return
 	}
 	processingTime := time.Since(start).Nanoseconds()
-	schema.WriteMessageStats(blockProp.traceClient, "propgation", "handleHaves.step1", processingTime)
+	schema.WriteMessageStats(blockProp.traceClient, "propgation", fmt.Sprintf("handleHaves.step1: %d", handleHavesID), processingTime)
 	start = time.Now()
 	cb, parts, fullReqs, has := blockProp.getAllState(height, round, false)
 	if !has {
@@ -53,7 +52,7 @@ func (blockProp *Reactor) handleHaves(peer p2p.ID, haves *proptypes.HaveParts) {
 		return
 	}
 	processingTime = time.Since(start).Nanoseconds()
-	schema.WriteMessageStats(blockProp.traceClient, "propgation", "handleHaves.step2", processingTime)
+	schema.WriteMessageStats(blockProp.traceClient, "propgation", fmt.Sprintf("handleHaves.step2: %d", handleHavesID), processingTime)
 
 	start = time.Now()
 	if cb == nil {
@@ -80,7 +79,7 @@ func (blockProp *Reactor) handleHaves(peer p2p.ID, haves *proptypes.HaveParts) {
 	}
 
 	processingTime = time.Since(start).Nanoseconds()
-	schema.WriteMessageStats(blockProp.traceClient, "propgation", "handleHaves.step3", processingTime)
+	schema.WriteMessageStats(blockProp.traceClient, "propgation", fmt.Sprintf("handleHaves.step3: %d", handleHavesID), processingTime)
 
 	start = time.Now()
 	// Check if the sender has parts that we don't have.
@@ -112,9 +111,9 @@ func (blockProp *Reactor) handleHaves(peer p2p.ID, haves *proptypes.HaveParts) {
 		}
 	}
 	processingTime = time.Since(start).Nanoseconds()
-	schema.WriteMessageStats(blockProp.traceClient, "propgation", "handleHaves.step4", processingTime)
+	schema.WriteMessageStats(blockProp.traceClient, "propgation", fmt.Sprintf("handleHaves.step4: %d", handleHavesID), processingTime)
 	processingTime = time.Since(anotherStart).Nanoseconds()
-	schema.WriteMessageStats(blockProp.traceClient, "propgation", "handleHaves.AllOfIt", processingTime)
+	schema.WriteMessageStats(blockProp.traceClient, "propgation", fmt.Sprintf("handleHaves.AllOfIt: %d", handleHavesID), processingTime)
 	fmt.Println(processingTime)
 }
 
