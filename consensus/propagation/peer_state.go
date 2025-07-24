@@ -55,7 +55,7 @@ func newPeerState(ctx context.Context, peer p2p.Peer, logger log.Logger) *PeerSt
 		remainingRequests: make(map[int64]map[int32]int),
 		peer:              peer,
 		logger:            logger,
-		receivedHaves:     make(chan request, 3000),
+		receivedHaves:     make(chan request, 20_000),
 		receivedParts:     make(chan partData, 3000),
 		canRequest:        make(chan struct{}, 1),
 	}

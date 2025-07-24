@@ -259,8 +259,6 @@ func (blockProp *Reactor) ReceiveEnvelope(e p2p.Envelope) {
 			start := time.Now()
 			blockProp.handleHaves(e.Src.ID(), msg)
 			processingTime := time.Since(start).Nanoseconds()
-			fmt.Println(processingTime)
-			fmt.Println("-----------")
 			schema.WriteMessageStats(blockProp.traceClient, "propgation", fmt.Sprintf("%s: CallHandleHaves: %d", proto.MessageName(e.Message), handleHavesID), processingTime)
 		case *proptypes.RecoveryPart:
 			schema.WriteReceivedPart(blockProp.traceClient, msg.Height, msg.Round, int(msg.Index))

@@ -107,6 +107,7 @@ func (blockProp *Reactor) handleHaves(peer p2p.ID, haves *proptypes.HaveParts) {
 	start = time.Now()
 	if p := blockProp.getPeer(peer); p != nil {
 		for _, index := range hc.GetTrueIndices() {
+			addStart := time.Now()
 			select {
 			case <-p.ctx.Done():
 				return
@@ -115,7 +116,12 @@ func (blockProp *Reactor) handleHaves(peer p2p.ID, haves *proptypes.HaveParts) {
 				round:  round,
 				index:  uint32(index),
 			}:
+				processingTime = time.Since(addStart).Nanoseconds()
+				schema.WriteMessageStats(blockProp.traceClient, "propgation", fmt.Sprintf("handleHaves.send_to_receive_haves: %d", handleHavesID), processingTime)
+				anotherAddStart := time.Now()
 				p.RequestsReady()
+				processingTime = time.Since(anotherAddStart).Nanoseconds()
+				schema.WriteMessageStats(blockProp.traceClient, "propgation", fmt.Sprintf("handleHaves.mark_request_ready: %d", handleHavesID), processingTime)
 			}
 		}
 	}
@@ -123,7 +129,6 @@ func (blockProp *Reactor) handleHaves(peer p2p.ID, haves *proptypes.HaveParts) {
 	schema.WriteMessageStats(blockProp.traceClient, "propgation", fmt.Sprintf("handleHaves.step8: %d", handleHavesID), processingTime)
 	processingTime = time.Since(anotherStart).Nanoseconds()
 	schema.WriteMessageStats(blockProp.traceClient, "propgation", fmt.Sprintf("handleHaves.AllOfIt: %d", handleHavesID), processingTime)
-	fmt.Println(processingTime)
 }
 
 // ReqLimit limits the number of requests per part.
@@ -139,27 +144,46 @@ func ReqLimit(partsCount int) int {
 
 func (blockProp *Reactor) requestFromPeer(ps *PeerState) {
 	for {
+		start := time.Now()
 		availableReqs := ConcurrentRequestLimit(len(blockProp.getPeers()), int(blockProp.getCurrentProposalPartsCount())) - ps.concurrentReqs.Load()
+		processingTime := time.Since(start).Nanoseconds()
+		schema.WriteMessageStats(blockProp.traceClient, "propgation", "requestFromPeer.step1", processingTime)
 
+		start = time.Now()
 		if availableReqs > 0 && len(ps.receivedHaves) > 0 {
 			ps.RequestsReady()
 		}
-
+		processingTime = time.Since(start).Nanoseconds()
+		schema.WriteMessageStats(blockProp.traceClient, "propgation", "requestFromPeer.step2", processingTime)
+		start = time.Now()
 		select {
 		case <-ps.ctx.Done():
 			return
 
 		case part, ok := <-ps.receivedParts:
+			processingTime = time.Since(start).Nanoseconds()
+			schema.WriteMessageStats(blockProp.traceClient, "propgation", "requestFromPeer.step3", processingTime)
 			if !ok {
 				return
 			}
+			start = time.Now()
 			if !blockProp.relevantHave(part.height, part.round) {
 				continue
 			}
+			processingTime = time.Since(start).Nanoseconds()
+			schema.WriteMessageStats(blockProp.traceClient, "propgation", "requestFromPeer.step4", processingTime)
+			start = time.Now()
 			ps.DecreaseConcurrentReqs(1)
+			processingTime = time.Since(start).Nanoseconds()
+			schema.WriteMessageStats(blockProp.traceClient, "propgation", "requestFromPeer.step5", processingTime)
 
 		case <-ps.CanRequest():
+			processingTime = time.Since(start).Nanoseconds()
+			schema.WriteMessageStats(blockProp.traceClient, "propgation", "requestFromPeer.step6", processingTime)
+			start = time.Now()
 			canSend := ConcurrentRequestLimit(len(blockProp.getPeers()), int(blockProp.getCurrentProposalPartsCount())) - ps.concurrentReqs.Load()
+			processingTime = time.Since(start).Nanoseconds()
+			schema.WriteMessageStats(blockProp.traceClient, "propgation", "requestFromPeer.step7", processingTime)
 			if canSend <= 0 {
 				// should never be below zero
 				continue
@@ -176,10 +200,15 @@ func (blockProp *Reactor) requestFromPeer(ps *PeerState) {
 					break
 				}
 
+				start = time.Now()
 				have, ok := <-ps.receivedHaves
 				if !ok {
+					processingTime = time.Since(start).Nanoseconds()
+					schema.WriteMessageStats(blockProp.traceClient, "propgation", "requestFromPeer.step8", processingTime)
 					return
 				}
+				processingTime = time.Since(start).Nanoseconds()
+				schema.WriteMessageStats(blockProp.traceClient, "propgation", "requestFromPeer.step9", processingTime)
 
 				if wants != nil && (have.height != wants.Height || have.round != wants.Round) {
 					// haves for a new height, resetting
@@ -188,10 +217,14 @@ func (blockProp *Reactor) requestFromPeer(ps *PeerState) {
 					missingPartsCount = 0
 				}
 
+				start = time.Now()
 				if !blockProp.relevantHave(have.height, have.round) {
 					continue
 				}
+				processingTime = time.Since(start).Nanoseconds()
+				schema.WriteMessageStats(blockProp.traceClient, "propgation", "requestFromPeer.step10", processingTime)
 
+				start = time.Now()
 				if parts == nil {
 					var has bool
 					_, parts, fullReqs, has = blockProp.getAllState(have.height, have.round, false)
@@ -201,22 +234,39 @@ func (blockProp *Reactor) requestFromPeer(ps *PeerState) {
 					}
 					missingPartsCount = countRemainingParts(int(parts.Total()), len(parts.BitArray().GetTrueIndices()))
 				}
+				processingTime = time.Since(start).Nanoseconds()
+				schema.WriteMessageStats(blockProp.traceClient, "propgation", "requestFromPeer.step11", processingTime)
 
 				// don't request a part that is already downloaded
+				start = time.Now()
 				if parts.BitArray().GetIndex(int(have.index)) {
 					continue
 				}
+				processingTime = time.Since(start).Nanoseconds()
+				schema.WriteMessageStats(blockProp.traceClient, "propgation", "requestFromPeer.step12", processingTime)
 
 				// don't request a part that has already hit the request limit
+				start = time.Now()
 				if fullReqs.GetIndex(int(have.index)) {
 					continue
 				}
+				processingTime = time.Since(start).Nanoseconds()
+				schema.WriteMessageStats(blockProp.traceClient, "propgation", "requestFromPeer.step13", processingTime)
 
+				start = time.Now()
 				reqLimit := ReqLimit(int(parts.Total()))
+				processingTime = time.Since(start).Nanoseconds()
+				schema.WriteMessageStats(blockProp.traceClient, "propgation", "requestFromPeer.step14", processingTime)
 
+				start = time.Now()
 				reqs := blockProp.countRequests(have.height, have.round, int(have.index))
+				processingTime = time.Since(start).Nanoseconds()
+				schema.WriteMessageStats(blockProp.traceClient, "propgation", "requestFromPeer.step15", processingTime)
 				if len(reqs) >= reqLimit {
+					start = time.Now()
 					fullReqs.SetIndex(int(have.index), true)
+					processingTime = time.Since(start).Nanoseconds()
+					schema.WriteMessageStats(blockProp.traceClient, "propgation", "requestFromPeer.step16", processingTime)
 					continue
 				}
 
@@ -238,7 +288,10 @@ func (blockProp *Reactor) requestFromPeer(ps *PeerState) {
 					}
 				}
 
+				start = time.Now()
 				wants.Parts.SetIndex(int(have.index), true)
+				processingTime = time.Since(start).Nanoseconds()
+				schema.WriteMessageStats(blockProp.traceClient, "propgation", "requestFromPeer.step17", processingTime)
 				i--
 			}
 
@@ -248,7 +301,10 @@ func (blockProp *Reactor) requestFromPeer(ps *PeerState) {
 				continue
 			}
 
+			start = time.Now()
 			err := blockProp.sendWantsThenBroadcastHaves(ps, wants)
+			processingTime = time.Since(start).Nanoseconds()
+			schema.WriteMessageStats(blockProp.traceClient, "propgation", "requestFromPeer.step18", processingTime)
 			if err != nil {
 				blockProp.Logger.Error("error sending wants", "err", err)
 			}
@@ -263,12 +319,21 @@ func countRemainingParts(totalParts, existingParts int) int32 {
 }
 
 func (blockProp *Reactor) sendWantsThenBroadcastHaves(ps *PeerState, wants *proptypes.WantParts) error {
+	start := time.Now()
 	have, err := blockProp.convertWantToHave(wants)
+	processingTime := time.Since(start).Nanoseconds()
+	schema.WriteMessageStats(blockProp.traceClient, "propgation", "sendWantsThenBroadcastHaves.step1", processingTime)
 	if err != nil {
 		return err
 	}
+	start = time.Now()
 	blockProp.sendWant(ps, wants)
+	processingTime = time.Since(start).Nanoseconds()
+	schema.WriteMessageStats(blockProp.traceClient, "propgation", "sendWantsThenBroadcastHaves.step2", processingTime)
+	start = time.Now()
 	blockProp.broadcastHaves(have, ps.peer.ID(), wants.Parts.Size())
+	processingTime = time.Since(start).Nanoseconds()
+	schema.WriteMessageStats(blockProp.traceClient, "propgation", "sendWantsThenBroadcastHaves.step3", processingTime)
 	return nil
 }
 
