@@ -1,6 +1,7 @@
 package consensus
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"reflect"
@@ -11,7 +12,6 @@ import (
 
 	"github.com/cometbft/cometbft/consensus/propagation"
 
-	cfg "github.com/cometbft/cometbft/config"
 	cstypes "github.com/cometbft/cometbft/consensus/types"
 	"github.com/cometbft/cometbft/libs/bits"
 	cmtevents "github.com/cometbft/cometbft/libs/events"
@@ -61,9 +61,6 @@ type Reactor struct {
 	// gossipDataEnabled controls whether the gossipDataRoutine should run
 	gossipDataEnabled atomic.Bool
 	
-	// config reference for checking propagation reactor settings
-	config *cfg.ConsensusConfig
-	
 	// lastCheckedAppVersion tracks the last app version we checked to avoid repeated checks
 	lastCheckedAppVersion uint64
 }
@@ -101,55 +98,9 @@ func WithGossipDataEnabled(enabled bool) ReactorOption {
 	}
 }
 
-// WithConfig sets the consensus config for the reactor
-func WithConfig(config *cfg.ConsensusConfig) ReactorOption {
-	return func(conR *Reactor) {
-		conR.config = config
-	}
-}
-
 // IsGossipDataEnabled returns whether the gossipDataRoutine should run
 func (conR *Reactor) IsGossipDataEnabled() bool {
 	return conR.gossipDataEnabled.Load()
-}
-
-// checkAndDisableOldPropagationRoutine checks if conditions are met to disable
-// the old propagation routine (gossipDataRoutine) when app version >= 5.
-// Conditions:
-// 1. App version >= 5
-// 2. New propagation reactor is not disabled 
-// 3. Old routine is not already disabled
-func (conR *Reactor) checkAndDisableOldPropagationRoutine() {
-	// Only check if we have config and old routine is currently enabled
-	if conR.config == nil || !conR.IsGossipDataEnabled() {
-		return
-	}
-
-	// Check if new propagation reactor is not disabled
-	if conR.config.DisablePropagationReactor {
-		return
-	}
-
-	// Get the current consensus state to check app version
-	conR.conS.mtx.RLock()
-	state := conR.conS.state
-	appVersion := state.ConsensusParams.Version.App
-	conR.conS.mtx.RUnlock()
-
-	// Only check if app version has changed since last check
-	if appVersion == conR.lastCheckedAppVersion {
-		return
-	}
-	
-	conR.lastCheckedAppVersion = appVersion
-
-	// Check if app version >= 5
-	if appVersion >= 5 {
-		conR.Logger.Info("Disabling old propagation routine", 
-			"app_version", appVersion,
-			"height", state.LastBlockHeight)
-		conR.gossipDataEnabled.Store(false)
-	}
 }
 
 // OnStart implements BaseService by subscribing to events, which later will be
@@ -161,6 +112,7 @@ func (conR *Reactor) OnStart() error {
 	go conR.peerStatsRoutine()
 
 	conR.subscribeToBroadcastEvents()
+	conR.subscribeToNewBlockEvents()
 	go conR.updateRoundStateRoutine()
 
 	if !conR.WaitSync() {
@@ -585,6 +537,63 @@ func (conR *Reactor) unsubscribeFromBroadcastEvents() {
 	conR.conS.evsw.RemoveListener(subscriber)
 }
 
+// subscribeToNewBlockEvents subscribes to EventNewBlock to check app version changes
+func (conR *Reactor) subscribeToNewBlockEvents() {
+	const subscriber = "consensus-reactor-block-events"
+	
+	if conR.eventBus == nil {
+		conR.Logger.Debug("eventBus is nil, cannot subscribe to block events")
+		return
+	}
+	
+	blockSub, err := conR.eventBus.SubscribeUnbuffered(
+		context.Background(),
+		subscriber,
+		types.EventQueryNewBlock)
+	if err != nil {
+		conR.Logger.Error("Error subscribing to new block events", "err", err)
+		return
+	}
+	
+	go func() {
+		for {
+			select {
+			case <-blockSub.Canceled():
+				return
+			case msg := <-blockSub.Out():
+				eventNewBlock := msg.Data().(types.EventDataNewBlock)
+				conR.handleNewBlockEvent(eventNewBlock)
+			}
+		}
+	}()
+}
+
+// handleNewBlockEvent handles new block events to check for app version changes
+func (conR *Reactor) handleNewBlockEvent(event types.EventDataNewBlock) {
+	// Only check if gossip data is currently enabled 
+	if !conR.IsGossipDataEnabled() {
+		return
+	}
+	
+	// Get app version from the finalize block response
+	appVersion := event.ResultFinalizeBlock.ConsensusParamUpdates.GetVersion().GetApp()
+	
+	// Only check if app version has changed since last check
+	if appVersion == conR.lastCheckedAppVersion {
+		return
+	}
+	
+	conR.lastCheckedAppVersion = appVersion
+	
+	// Check if app version >= 5
+	if appVersion >= 5 {
+		conR.Logger.Info("Disabling old propagation routine due to app version upgrade", 
+			"app_version", appVersion,
+			"height", event.Block.Height)
+		conR.gossipDataEnabled.Store(false)
+	}
+}
+
 func (conR *Reactor) broadcastNewRoundStepMessage(rs *cstypes.RoundState) {
 	nrsMsg := makeRoundStepMessage(rs)
 	conR.Switch.Broadcast(p2p.Envelope{
@@ -711,9 +720,6 @@ func (conR *Reactor) updateRoundStateRoutine() {
 		conR.mtx.Lock()
 		conR.rs = rs
 		conR.mtx.Unlock()
-		
-		// Check if we should disable the old propagation routine
-		conR.checkAndDisableOldPropagationRoutine()
 	}
 }
 
