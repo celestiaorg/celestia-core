@@ -74,7 +74,7 @@ func (blockProp *Reactor) ProposeBlock(proposal *types.Proposal, block *types.Pa
 
 	// distribute equal portions of haves to each of the proposer's peers
 	peers := blockProp.getPeers()
-	chunks := chunkParts(parts.BitArray(), len(peers), 1)
+	chunks := chunkParts(parts.Parity().BitArray(), len(peers), 2)
 	// chunks = Shuffle(chunks)
 	for index, peer := range peers {
 		chunksToBeSent := chunkToPartMetaData(chunks[index], parts)
@@ -88,9 +88,9 @@ func (blockProp *Reactor) ProposeBlock(proposal *types.Proposal, block *types.Pa
 		}
 
 		for _, partId := range chunksToBeSent {
-			if partId.Index < parts.Total()/2 {
-				continue
-			}
+			//if partId.Index < parts.Total()/2 {
+			//	continue
+			//}
 			part, has := parts.GetPart(partId.GetIndex())
 			if !has {
 				continue
