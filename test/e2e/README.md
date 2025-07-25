@@ -33,6 +33,12 @@ The tests must take into account the network and/or node configuration, and tole
 
 Testnets are specified as TOML manifests. For an example see [`networks/ci.toml`](networks/ci.toml), and for documentation see [`pkg/manifest.go`](pkg/manifest.go).
 
+### Special Test Networks
+
+- **`ci.toml`**: The primary CI test network with comprehensive configuration testing
+- **`50-50-compatibility.toml`**: Tests backwards compatibility with 50% of nodes having the propagation reactor enabled and 50% disabled. This ensures proper operation during the transition period where both old and new propagation logic coexist
+- **`propagation-test.toml`**: Basic propagation reactor functionality testing
+
 ## Random Testnet Generation
 
 Random (but deterministic) combinations of testnets can be generated with `generator`:
