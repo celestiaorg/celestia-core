@@ -12,8 +12,7 @@ message PacketPong {}
 
 message PacketMsg {
   int32 channel_id = 1 [(gogoproto.customname) = "ChannelID"];
-  bool  eof        = 2 [(gogoproto.customname) = "EOF"];
-  bytes data       = 3;
+  bytes data       = 2;
 }
 
 message Packet {

@@ -39,7 +39,7 @@ const (
 	// TODO: remove values present in config
 	defaultFlushThrottle = 100 * time.Millisecond
 
-	defaultSendQueueCapacity   = 1
+	defaultSendQueueCapacity   = 100
 	defaultRecvBufferCapacity  = 4096
 	defaultRecvMessageCapacity = 22020096 * 2  // 21MB
 	defaultSendRate            = int64(512000) // 500KB/s
@@ -95,6 +95,8 @@ type MConnection struct {
 	onError       errorCbFunc
 	errored       uint32
 	config        MConnConfig
+
+	globalChannelMessage chan tmp2p.Packet
 
 	// Closing quitSendRoutine will cause the sendRoutine to eventually quit.
 	// doneSendRoutine is closed when the sendRoutine actually quits.
@@ -184,17 +186,18 @@ func NewMConnectionWithConfig(
 	}
 
 	mconn := &MConnection{
-		conn:          conn,
-		bufConnReader: bufio.NewReaderSize(conn, minReadBufferSize),
-		bufConnWriter: bufio.NewWriterSize(conn, minWriteBufferSize),
-		sendMonitor:   flow.New(0, 0),
-		recvMonitor:   flow.New(0, 0),
-		send:          make(chan struct{}, 1),
-		pong:          make(chan struct{}, 1),
-		onReceive:     onReceive,
-		onError:       onError,
-		config:        config,
-		created:       time.Now(),
+		conn:                 conn,
+		bufConnReader:        bufio.NewReaderSize(conn, minReadBufferSize),
+		bufConnWriter:        bufio.NewWriterSize(conn, minWriteBufferSize),
+		sendMonitor:          flow.New(0, 0),
+		recvMonitor:          flow.New(0, 0),
+		send:                 make(chan struct{}, 1),
+		pong:                 make(chan struct{}, 1),
+		onReceive:            onReceive,
+		onError:              onError,
+		config:               config,
+		created:              time.Now(),
+		globalChannelMessage: make(chan tmp2p.Packet, 2),
 	}
 
 	// Create channels
@@ -364,24 +367,17 @@ func (c *MConnection) Send(chID byte, msgBytes []byte) bool {
 
 	c.Logger.Debug("Send", "channel", chID, "conn", c, "msgBytes", log.NewLazySprintf("%X", msgBytes))
 
-	// Send message to channel.
-	channel, ok := c.channelsIdx[chID]
-	if !ok {
-		c.Logger.Error(fmt.Sprintf("Cannot send bytes, unknown channel %X", chID))
+	packetMsg := mustWrapPacket(&tmp2p.PacketMsg{
+		ChannelID: int32(chID),
+		Data:      msgBytes,
+	})
+	protoWriter := protoio.NewDelimitedWriter(c.bufConnWriter)
+	_, err := protoWriter.WriteMsg(packetMsg)
+	if err != nil {
+		fmt.Println("error: ", err)
 		return false
 	}
-
-	success := channel.sendBytes(msgBytes)
-	if success {
-		// Wake up sendRoutine if necessary
-		select {
-		case c.send <- struct{}{}:
-		default:
-		}
-	} else {
-		c.Logger.Debug("Send failed", "channel", chID, "conn", c, "msgBytes", log.NewLazySprintf("%X", msgBytes))
-	}
-	return success
+	return true
 }
 
 // Queues a message to be sent to channel.
@@ -665,20 +661,7 @@ FOR_LOOP:
 				c.stopForError(err)
 				break FOR_LOOP
 			}
-
-			msgBytes, err := channel.recvPacketMsg(*pkt.PacketMsg)
-			if err != nil {
-				if c.IsRunning() {
-					c.Logger.Debug("Connection failed @ recvRoutine", "conn", c, "err", err)
-					c.stopForError(err)
-				}
-				break FOR_LOOP
-			}
-			if msgBytes != nil {
-				//c.Logger.Debug("Received bytes", "chID", channelID, "msgBytes", msgBytes)
-				// NOTE: This means the reactor.Receive runs in the same thread as the p2p recv routine
-				c.onReceive(channelID, msgBytes)
-			}
+			c.onReceive(channelID, pkt.PacketMsg.Data)
 		default:
 			err := fmt.Errorf("unknown message type %v", reflect.TypeOf(packet))
 			c.Logger.Error("Connection failed @ recvRoutine", "conn", c, "err", err)
@@ -707,7 +690,6 @@ func (c *MConnection) stopPongTimer() {
 func (c *MConnection) maxPacketMsgSize() int {
 	bz, err := proto.Marshal(mustWrapPacket(&tmp2p.PacketMsg{
 		ChannelID: 0x01,
-		EOF:       true,
 		Data:      make([]byte, c.config.MaxPacketMsgPayloadSize),
 	}))
 	if err != nil {
@@ -869,12 +851,10 @@ func (ch *Channel) nextPacketMsg() tmp2p.PacketMsg {
 	schema.WriteMessageStats(Tracer, "channel", "sending_queue_size", int64(len(ch.sending)))
 	if len(ch.sending) <= maxSize {
 		packet.Data = ch.sending
-		packet.EOF = true
 		ch.sending = nil
 		atomic.AddInt32(&ch.sendQueueSize, -1) // decrement sendQueueSize
 	} else {
 		packet.Data = ch.sending[:maxSize]
-		packet.EOF = false
 		ch.sending = ch.sending[maxSize:]
 	}
 	return packet
@@ -902,17 +882,6 @@ func (ch *Channel) recvPacketMsg(packet tmp2p.PacketMsg) ([]byte, error) {
 		return nil, fmt.Errorf("received message exceeds available capacity: %v < %v", recvCap, recvReceived)
 	}
 	ch.recving = append(ch.recving, packet.Data...)
-	if packet.EOF {
-		msgBytes := make([]byte, len(ch.recving))
-		copy(msgBytes, ch.recving)
-
-		// clear the slice without re-allocating.
-		// http://stackoverflow.com/questions/16971741/how-do-you-clear-a-slice-in-go
-		//   suggests this could be a memory leak, but we might as well keep the memory for the channel until it closes,
-		//	at which point the recving slice stops being used and should be garbage collected
-		ch.recving = ch.recving[:0] // make([]byte, 0, ch.desc.RecvBufferCapacity)
-		return msgBytes, nil
-	}
 	return nil, nil
 }
 
