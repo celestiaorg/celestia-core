@@ -65,12 +65,12 @@ func (privKey PrivKey) Type() string {
 
 // GenPrivKey generates a new ECDSA private key on curve secp256k1 private key.
 // It uses OS randomness to generate the private key.
-func GenPrivKey() PrivKey {
+func GenPrivKey() (PrivKey, error) {
 	return genPrivKey(crypto.CReader())
 }
 
 // genPrivKey generates a new secp256k1 private key using the provided reader.
-func genPrivKey(rand io.Reader) PrivKey {
+func genPrivKey(rand io.Reader) (PrivKey, error) {
 	var privKeyBytes [PrivKeySize]byte
 	d := new(big.Int)
 
@@ -78,7 +78,7 @@ func genPrivKey(rand io.Reader) PrivKey {
 		privKeyBytes = [PrivKeySize]byte{}
 		_, err := io.ReadFull(rand, privKeyBytes[:])
 		if err != nil {
-			panic(err)
+			return nil, err
 		}
 
 		d.SetBytes(privKeyBytes[:])
@@ -89,7 +89,7 @@ func genPrivKey(rand io.Reader) PrivKey {
 		}
 	}
 
-	return PrivKey(privKeyBytes[:])
+	return PrivKey(privKeyBytes[:]), nil
 }
 
 var one = new(big.Int).SetInt64(1)
