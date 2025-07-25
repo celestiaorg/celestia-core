@@ -97,6 +97,7 @@ func NewBaseReactor(name string, impl Reactor, opts ...ReactorOptions) *BaseReac
 
 	go func() {
 		err := base.processor(ctx, base.incoming)
+		fmt.Println("processor exited with error ", err)
 		if err != nil {
 			err = base.Stop()
 			if err != nil {
