@@ -96,7 +96,8 @@ type MConnection struct {
 	errored       uint32
 	config        MConnConfig
 
-	globalChannelMessage chan tmp2p.Packet
+	votesChan chan proto.Message
+	dataChan  chan proto.Message
 
 	// Closing quitSendRoutine will cause the sendRoutine to eventually quit.
 	// doneSendRoutine is closed when the sendRoutine actually quits.
@@ -186,18 +187,19 @@ func NewMConnectionWithConfig(
 	}
 
 	mconn := &MConnection{
-		conn:                 conn,
-		bufConnReader:        bufio.NewReaderSize(conn, minReadBufferSize),
-		bufConnWriter:        bufio.NewWriterSize(conn, minWriteBufferSize),
-		sendMonitor:          flow.New(0, 0),
-		recvMonitor:          flow.New(0, 0),
-		send:                 make(chan struct{}, 1),
-		pong:                 make(chan struct{}, 1),
-		onReceive:            onReceive,
-		onError:              onError,
-		config:               config,
-		created:              time.Now(),
-		globalChannelMessage: make(chan tmp2p.Packet, 2),
+		conn:          conn,
+		bufConnReader: bufio.NewReaderSize(conn, minReadBufferSize),
+		bufConnWriter: bufio.NewWriterSize(conn, minWriteBufferSize),
+		sendMonitor:   flow.New(0, 0),
+		recvMonitor:   flow.New(0, 0),
+		send:          make(chan struct{}, 1),
+		pong:          make(chan struct{}, 1),
+		onReceive:     onReceive,
+		onError:       onError,
+		config:        config,
+		created:       time.Now(),
+		votesChan:     make(chan proto.Message, 30_000),
+		dataChan:      make(chan proto.Message, 30_000),
 	}
 
 	// Create channels
@@ -241,6 +243,7 @@ func (c *MConnection) OnStart() error {
 	c.quitRecvRoutine = make(chan struct{})
 	go c.sendRoutine()
 	go c.recvRoutine()
+	go c.SendDirect()
 	return nil
 }
 
@@ -371,13 +374,35 @@ func (c *MConnection) Send(chID byte, msgBytes []byte) bool {
 		ChannelID: int32(chID),
 		Data:      msgBytes,
 	})
-	protoWriter := protoio.NewDelimitedWriter(c.bufConnWriter)
-	_, err := protoWriter.WriteMsg(packetMsg)
-	if err != nil {
-		fmt.Println("error: ", err)
-		return false
+	switch chID {
+	case byte(0x20), byte(0x22), byte(0x23), byte(0x52):
+		c.votesChan <- packetMsg
+	default:
+		c.dataChan <- packetMsg
 	}
 	return true
+}
+
+// Queues a message to be sent to channel.
+func (c *MConnection) SendDirect() bool {
+	if !c.IsRunning() {
+		return false
+	}
+	protoWriter := protoio.NewDelimitedWriter(c.bufConnWriter)
+	for {
+		select {
+		case packet := <-c.votesChan:
+			_, err := protoWriter.WriteMsg(packet)
+			if err != nil {
+				fmt.Println("error: ", err)
+			}
+		case packet := <-c.dataChan:
+			_, err := protoWriter.WriteMsg(packet)
+			if err != nil {
+				fmt.Println("error: ", err)
+			}
+		}
+	}
 }
 
 // Queues a message to be sent to channel.

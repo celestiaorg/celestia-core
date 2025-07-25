@@ -32,6 +32,10 @@ const (
 	// and the recovery parts.
 	DataChannel = byte(0x50)
 
+	// DataChannel the propagation reactor channel handling the haves, the compact block,
+	// and the recovery parts.
+	ProposalChannel = byte(0x52)
+
 	// WantChannel the propagation reactor channel handling the wants.
 	WantChannel = byte(0x51)
 
@@ -243,11 +247,16 @@ func (blockProp *Reactor) ReceiveEnvelope(e p2p.Envelope) {
 		return
 	}
 	switch e.ChannelID {
-	case DataChannel:
+	case ProposalChannel:
 		switch msg := msg.(type) {
 		case *proptypes.CompactBlock:
 			blockProp.handleCompactBlock(msg, e.Src.ID(), false)
 			schema.WriteProposal(blockProp.traceClient, msg.Proposal.Height, msg.Proposal.Round, string(e.Src.ID()), schema.Download)
+		default:
+			blockProp.Logger.Error(fmt.Sprintf("Unknown message type %v", reflect.TypeOf(msg)))
+		}
+	case DataChannel:
+		switch msg := msg.(type) {
 		case *proptypes.HaveParts:
 			go blockProp.handleHaves(e.Src.ID(), msg)
 		case *proptypes.RecoveryPart:

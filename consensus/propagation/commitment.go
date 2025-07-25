@@ -299,7 +299,7 @@ func (blockProp *Reactor) recoverPartsFromMempool(cb *proptypes.CompactBlock) {
 // a proposal block.
 func (blockProp *Reactor) broadcastCompactBlock(cb *proptypes.CompactBlock, from p2p.ID) {
 	e := p2p.Envelope{
-		ChannelID: DataChannel,
+		ChannelID: ProposalChannel,
 		Message:   cb.ToProto(),
 	}
 
