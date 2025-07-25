@@ -588,7 +588,7 @@ func (c *MConnection) sendPacketMsgOnChannel(w protoio.Writer, sendChannel *Chan
 func (c *MConnection) recvRoutine() {
 	defer c._recover()
 
-	protoReader := protoio.NewDelimitedReader(c.bufConnReader, c._maxPacketMsgSize)
+	protoReader := protoio.NewDelimitedReader(c.bufConnReader, math.MaxInt32)
 
 FOR_LOOP:
 	for {

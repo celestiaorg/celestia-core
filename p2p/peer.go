@@ -475,6 +475,7 @@ func createMConnection(
 			panic(fmt.Sprintf("Unknown channel %X", chID))
 		}
 
+		fmt.Printf("Received message on channel %X: %x\n", chID, msgBytes)
 		reactor.QueueUnprocessedEnvelope(UnprocessedEnvelope{
 			ChannelID: chID,
 			Src:       p,

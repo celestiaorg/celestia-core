@@ -193,7 +193,8 @@ func DefaultProcessor(impl Reactor) func(context.Context, <-chan UnprocessedEnve
 
 				err := proto.Unmarshal(ue.Message, msg)
 				if err != nil {
-					return fmt.Errorf("unmarshaling message: %v into type: %s resulted in error %w", msg, reflect.TypeOf(mt), err)
+					fmt.Println(fmt.Errorf("unmarshaling message: %v into type: %s resulted in error %w", msg, reflect.TypeOf(mt), err))
+					continue
 				}
 
 				if w, ok := msg.(Unwrapper); ok {
