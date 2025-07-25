@@ -433,7 +433,8 @@ func (blockExec *BlockExecutor) applyBlock(state State, blockID types.BlockID, b
 
 	// Events are fired after everything else.
 	// NOTE: if we crash between Commit and Save, events wont be fired during replay
-	fireEvents(blockExec.logger, blockExec.eventBus, blockExec.syncChecker, block, blockID, abciResponse, validatorUpdates, state.Validators, lastCommit)
+	isSyncing := blockExec.syncChecker != nil && blockExec.syncChecker.IsSyncing()
+	fireEvents(blockExec.logger, blockExec.eventBus, isSyncing, block, blockID, abciResponse, validatorUpdates, state.Validators, lastCommit)
 
 	return state, nil
 }
@@ -784,7 +785,7 @@ func updateState(
 func fireEvents(
 	logger log.Logger,
 	eventBus types.BlockEventPublisher,
-	syncChecker SyncChecker,
+	isSyncing bool,
 	block *types.Block,
 	blockID types.BlockID,
 	abciResponse *abci.ResponseFinalizeBlock,
@@ -802,7 +803,7 @@ func fireEvents(
 
 	if lastCommit != nil {
 		// Only publish signed block events if the node is not syncing
-		if syncChecker == nil || !syncChecker.IsSyncing() {
+		if !isSyncing {
 			err := eventBus.PublishEventSignedBlock(types.EventDataSignedBlock{
 				Header:       block.Header,
 				Commit:       *lastCommit,
