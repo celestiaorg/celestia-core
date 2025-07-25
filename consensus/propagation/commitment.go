@@ -3,7 +3,7 @@ package propagation
 import (
 	"errors"
 	"fmt"
-
+	"github.com/cometbft/cometbft/proto/tendermint/crypto"
 	"github.com/cosmos/gogoproto/proto"
 
 	proptypes "github.com/cometbft/cometbft/consensus/propagation/types"
@@ -77,13 +77,43 @@ func (blockProp *Reactor) ProposeBlock(proposal *types.Proposal, block *types.Pa
 	chunks := chunkParts(parts.BitArray(), len(peers), 1)
 	// chunks = Shuffle(chunks)
 	for index, peer := range peers {
+		chunksToBeSent := chunkToPartMetaData(chunks[index], parts)
 		e := p2p.Envelope{
 			ChannelID: DataChannel,
 			Message: &propagation.HaveParts{
 				Height: proposal.Height,
 				Round:  proposal.Round,
-				Parts:  chunkToPartMetaData(chunks[index], parts),
+				Parts:  chunksToBeSent,
 			},
+		}
+
+		for _, partId := range chunksToBeSent {
+			if partId.Index < parts.Total()/2 {
+				continue
+			}
+			part, has := parts.GetPart(partId.GetIndex())
+			if !has {
+				continue
+			}
+			env := p2p.Envelope{
+				ChannelID: DataChannel,
+				Message: &propagation.RecoveryPart{
+					Height: proposal.Height,
+					Round:  proposal.Round,
+					Index:  partId.Index,
+					Data:   part.Bytes,
+					Proof: crypto.Proof{
+						Total:    part.Proof.Total,
+						Index:    part.Proof.Index,
+						LeafHash: part.Proof.LeafHash,
+						Aunts:    part.Proof.Aunts,
+					},
+				},
+			}
+			if !peer.peer.TrySend(env) {
+				blockProp.Logger.Error("failed to send have part", "peer", peer, "height", proposal.Height, "round", proposal.Round, "part", index)
+				continue
+			}
 		}
 
 		if !peer.peer.TrySend(e) {
