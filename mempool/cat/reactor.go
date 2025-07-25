@@ -98,7 +98,7 @@ func NewReactor(mempool *TxPool, opts *ReactorOptions) (*Reactor, error) {
 	}
 	memR.BaseReactor = *p2p.NewBaseReactor("Mempool", memR,
 		p2p.WithIncomingQueueSize(ReactorIncomingMessageQueueSize),
-		p2p.WithQueueingFunc(memR.TryQueueUnprocessedEnvelope),
+		//p2p.WithQueueingFunc(memR.TryQueueUnprocessedEnvelope),
 	)
 	return memR, nil
 }

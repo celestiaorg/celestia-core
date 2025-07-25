@@ -2786,9 +2786,7 @@ func (cs *State) syncData() {
 				}
 			}
 
-			go func() {
-				cs.peerMsgQueue <- msgInfo{&BlockPartMessage{h, r, part.Part}, ""}
-			}()
+			cs.internalMsgQueue <- msgInfo{&BlockPartMessage{h, r, part.Part}, ""}
 		case proposal, ok := <-proposalChan:
 			if !ok {
 				return
@@ -2811,9 +2809,7 @@ func (cs *State) syncData() {
 					"found and sent proposal: %v/%v",
 					proposal.Height, proposal.Round,
 				)
-				go func() {
-					cs.peerMsgQueue <- msgInfo{&ProposalMessage{&proposal}, ""}
-				}()
+				cs.internalMsgQueue <- msgInfo{&ProposalMessage{&proposal}, ""}
 			}
 		case _, ok := <-cs.newHeightOrRoundChan:
 			if !ok {
@@ -2838,9 +2834,7 @@ func (cs *State) syncData() {
 					continue
 				}
 				part := partset.GetPart(indice)
-				go func() {
-					cs.peerMsgQueue <- msgInfo{&BlockPartMessage{height, round, part}, ""}
-				}()
+				cs.internalMsgQueue <- msgInfo{&BlockPartMessage{height, round, part}, ""}
 			}
 		}
 	}
