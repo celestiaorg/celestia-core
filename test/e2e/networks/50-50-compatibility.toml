@@ -1,0 +1,50 @@
+# E2E testnet manifest for 50/50 backwards compatibility testing
+# This network tests the backwards compatibility between nodes with the propagation reactor
+# enabled (new) and disabled (old routine) in a 50/50 split to ensure proper operation
+# during the transition period.
+
+initial_height = 1
+evidence = 0
+abci_protocol = "builtin"
+
+[validators]
+validator01 = 100
+validator02 = 100
+validator03 = 100
+validator04 = 100
+
+[node.validator01]
+mode = "validator"
+# This validator runs with the propagation reactor enabled (new)
+
+[node.validator02]
+mode = "validator"
+# This validator runs with the propagation reactor disabled (old routine)
+disable_propagation_reactor = true
+
+[node.validator03]
+mode = "validator"
+# This validator runs with the propagation reactor enabled (new)
+
+[node.validator04]
+mode = "validator"
+# This validator runs with the propagation reactor disabled (old routine)
+disable_propagation_reactor = true
+
+[node.full01]
+mode = "full"
+# This full node runs with the propagation reactor enabled (new)
+
+[node.full02] 
+mode = "full"
+# This full node runs with the propagation reactor disabled (old routine)
+disable_propagation_reactor = true
+
+[node.full03]
+mode = "full" 
+# This full node runs with the propagation reactor enabled (new)
+
+[node.full04]
+mode = "full"
+# This full node runs with the propagation reactor disabled (old routine)
+disable_propagation_reactor = true

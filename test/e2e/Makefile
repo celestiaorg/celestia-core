@@ -2,7 +2,7 @@ COMETBFT_BUILD_OPTIONS += badgerdb,pebbledb
 
 include ../../common.mk
 
-all: docker generator runner
+all: docker generator runner tests
 
 docker:
 	@echo "Building E2E Docker image"
@@ -22,4 +22,7 @@ generator:
 runner:
 	go build -o build/runner ./runner
 
-.PHONY: all node docker generator runner 
+tests:
+	go test -c -o build/tests ./tests
+
+.PHONY: all node docker generator runner tests 
