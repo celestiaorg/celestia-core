@@ -4,6 +4,8 @@ import (
 	"bufio"
 	"errors"
 	"fmt"
+	"github.com/cometbft/cometbft/libs/trace"
+	"github.com/cometbft/cometbft/libs/trace/schema"
 	"io"
 	"math"
 	"net"
@@ -807,6 +809,8 @@ func (ch *Channel) SetLogger(l log.Logger) {
 	ch.Logger = l
 }
 
+var Tracer trace.Tracer
+
 // Queues message to send to this channel.
 // Goroutine-safe
 // Times out (and returns false) after defaultSendTimeout
@@ -862,6 +866,7 @@ func (ch *Channel) isSendPending() bool {
 func (ch *Channel) nextPacketMsg() tmp2p.PacketMsg {
 	packet := tmp2p.PacketMsg{ChannelID: int32(ch.desc.ID)}
 	maxSize := ch.maxPacketMsgPayloadSize
+	schema.WriteMessageStats(Tracer, "channel", "sending_queue_size", int64(len(ch.sending)))
 	if len(ch.sending) <= maxSize {
 		packet.Data = ch.sending
 		packet.EOF = true

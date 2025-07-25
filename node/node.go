@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"github.com/cometbft/cometbft/p2p/conn"
 	"net"
 	"net/http"
 	"os"
@@ -400,6 +401,7 @@ func NewNodeWithContext(ctx context.Context,
 	if err != nil {
 		return nil, err
 	}
+	conn.Tracer = tracer
 
 	mempool, mempoolReactor := createMempoolAndMempoolReactor(config, proxyApp, state, memplMetrics, logger, tracer)
 
