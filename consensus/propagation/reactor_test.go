@@ -25,6 +25,7 @@ import (
 	cmtrand "github.com/cometbft/cometbft/libs/rand"
 	"github.com/cometbft/cometbft/libs/trace"
 	"github.com/cometbft/cometbft/p2p"
+	"github.com/cometbft/cometbft/p2p/mock"
 	"github.com/cometbft/cometbft/store"
 )
 
@@ -70,8 +71,9 @@ func testBlockPropReactors(n int, p2pCfg *cfg.P2PConfig) ([]*Reactor, []*p2p.Swi
 // createTestReactors will generate n propagation reactors, each using the same key to sign and verify compact blocks.
 func createTestReactors(n int, p2pCfg *cfg.P2PConfig, tracer bool, traceDir string) ([]*Reactor, []*p2p.Switch) {
 	reactors := make([]*Reactor, n)
+	switches := make([]*p2p.Switch, n)
 
-	switches := p2p.MakeConnectedSwitches(p2pCfg, n, func(i int, s *p2p.Switch) *p2p.Switch {
+	p2p.MakeConnectedSwitches(p2pCfg, n, func(i int, s *p2p.Switch) *p2p.Switch {
 		var (
 			err error
 			tr  = trace.NoOpTracer()
@@ -89,55 +91,38 @@ func createTestReactors(n int, p2pCfg *cfg.P2PConfig, tracer bool, traceDir stri
 		reactors[i] = newPropagationReactor(s, tr, mockPrivVal)
 		reactors[i].SetLogger(log.TestingLogger())
 		s.AddReactor("BlockProp", reactors[i])
+		switches = append(switches, s)
 		return s
 	},
 		p2p.Connect2Switches,
 	)
 
-	// Set up consensus peer state for each reactor's peers
-	for i := range reactors {
-		for j, otherReactor := range reactors {
-			if i != j {
-				// Find the peer corresponding to the other reactor
-				for _, peer := range switches[i].Peers().List() {
-					if peer.ID() == otherReactor.self {
-						peer.Set(types.PeerStateKey, &MockPeerStateEditor{})
-					}
-				}
-			}
-		}
-	}
-
 	return reactors, switches
 }
 
 func TestCountRequests(t *testing.T) {
-	// Create 4 reactors - one to test and 3 peers
-	reactors, _ := testBlockPropReactors(4, cfg.DefaultP2PConfig())
+	reactors, _ := testBlockPropReactors(1, cfg.DefaultP2PConfig())
 	reactor := reactors[0]
-	peer1Reactor := reactors[1]
-	peer2Reactor := reactors[2]
-	peer3Reactor := reactors[3]
 
-	// Get the peer states for the three peer reactors as they appear to the main reactor
-	peer1State := reactor.getPeer(peer1Reactor.self)
-	require.NotNil(t, peer1State, "peer1 should be connected")
+	peer1 := mock.NewPeer(nil)
+	reactor.AddPeer(peer1)
+	peer2 := mock.NewPeer(nil)
+	reactor.AddPeer(peer2)
+	peer3 := mock.NewPeer(nil)
+	reactor.AddPeer(peer3)
 
-	peer2State := reactor.getPeer(peer2Reactor.self)
-	require.NotNil(t, peer2State, "peer2 should be connected")
-
-	peer3State := reactor.getPeer(peer3Reactor.self)
-	require.NotNil(t, peer3State, "peer3 should be connected")
-
+	peer1State := reactor.getPeer(peer1.ID())
 	// peer1 requests part=0 at height=10, round=0
-	array := bits.NewBitArray(4)
+	array := bits.NewBitArray(3)
 	array.SetIndex(0, true)
 	peer1State.AddRequests(10, 0, array)
 
-	// peer2 requests part=0 and part=2 at height=10, round=0
-	array2 := bits.NewBitArray(4)
+	peer2State := reactor.getPeer(peer2.ID())
+	// peer2 requests part=0 and part=2 and part=3  at height=10, round=0
+	array2 := bits.NewBitArray(3)
 	array2.SetIndex(0, true)
 	array2.SetIndex(2, true)
+	array2.SetIndex(3, true)
 	peer2State.AddRequests(10, 0, array2)
 
 	// peer3 doesn't request anything
@@ -146,9 +131,9 @@ func TestCountRequests(t *testing.T) {
 	part0Round0Height10RequestsCount := reactor.countRequests(10, 0, 0)
 	assert.Equal(t, 2, len(part0Round0Height10RequestsCount))
 
-	// count requests part=2 at height=10, round=0
-	part2Round0Height10RequestsCount := reactor.countRequests(10, 0, 2)
-	assert.Equal(t, 1, len(part2Round0Height10RequestsCount))
+	// count requests part=3 at height=10, round=0
+	part3Round0Height10RequestsCount := reactor.countRequests(10, 0, 2)
+	assert.Equal(t, 1, len(part3Round0Height10RequestsCount))
 }
 
 func TestHandleHavesAndWantsAndRecoveryParts(t *testing.T) {
@@ -697,75 +682,4 @@ func NewTestPrivval(t *testing.T) types.PrivValidator {
 
 	privVal := privval.GenFilePV(tempKeyFile.Name(), tempStateFile.Name())
 	return privVal
-}
-
-// MockPeerStateEditor tracks calls to consensus peer state methods for testing
-type MockPeerStateEditor struct {
-	proposals  []*types.Proposal
-	blockParts []BlockPartCall
-}
-
-type BlockPartCall struct {
-	Height int64
-	Round  int32
-	Index  int
-}
-
-func (m *MockPeerStateEditor) SetHasProposal(proposal *types.Proposal) {
-	m.proposals = append(m.proposals, proposal)
-}
-
-func (m *MockPeerStateEditor) SetHasProposalBlockPart(height int64, round int32, index int) {
-	m.blockParts = append(m.blockParts, BlockPartCall{Height: height, Round: round, Index: index})
-}
-
-// TestPeerStateEditor ensures that the propagation reactor is updating the
-// consensus peer state when the methods are called.
-func TestPeerStateEditor(t *testing.T) {
-	reactors, _ := testBlockPropReactors(2, cfg.DefaultP2PConfig())
-	r0 := reactors[0]
-	r1 := reactors[1]
-	r1pID := r1.self
-	peerState := r0.getPeers()[0]
-
-	editor := &MockPeerStateEditor{}
-	peerState.consensusPeerState = editor
-
-	require.NotNil(t, peerState)
-	require.NotNil(t, peerState.consensusPeerState)
-	require.IsType(t, &MockPeerStateEditor{}, peerState.consensusPeerState)
-
-	cb, ps, _, _ := testCompactBlock(t, 1, 1)
-
-	added := r0.AddProposal(cb)
-	require.True(t, added)
-
-	assert.Len(t, editor.proposals, 0, "Should start with 0 proposals")
-
-	r0.handleCompactBlock(cb, r1pID, false)
-
-	assert.Len(t, editor.proposals, 1, "Expected 1 proposal to be recorded in consensus peer state")
-	if len(editor.proposals) > 0 {
-		assert.Equal(t, &cb.Proposal, editor.proposals[0])
-	}
-
-	part := ps.GetPart(0)
-	r0.handleHaves(r1pID, &proptypes.HaveParts{
-		Height: 1,
-		Round:  1,
-		Parts: []proptypes.PartMetaData{
-			{
-				Index: part.Index,
-				Hash:  part.GetProof().LeafHash,
-			},
-		},
-	})
-
-	time.Sleep(time.Millisecond * 100)
-
-	t.Logf("Block parts recorded: %d", len(editor.blockParts))
-	require.GreaterOrEqual(t, len(editor.blockParts), 1)
-	assert.Equal(t, int64(1), editor.blockParts[0].Height)
-	assert.Equal(t, int32(1), editor.blockParts[0].Round)
-	assert.Equal(t, 0, editor.blockParts[0].Index)
 }

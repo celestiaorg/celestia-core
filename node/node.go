@@ -80,7 +80,7 @@ type Node struct {
 	consensusState    *cs.State               // latest consensus state
 	consensusReactor  *cs.Reactor             // for participating in the consensus
 	pexReactor        *pex.Reactor            // for exchanging peer addresses
-	blockPropReactor  *propagation.Reactor    // the block propagation reactor. potentially nil is disabled.
+	blockPropReactor  *propagation.Reactor    // the block propagation reactor
 	evidencePool      *evidence.Pool          // tracking evidence
 	proxyApp          proxy.AppConns          // connection to the application
 	rpcListeners      []net.Listener          // rpc servers
@@ -449,31 +449,20 @@ func NewNodeWithContext(ctx context.Context,
 		},
 		propagation.WithTracer(tracer),
 	)
-
-	var propagator propagation.Propagator
-	propagator = propagationReactor
-
-	if config.Consensus.DisablePropagationReactor {
-		propagator = propagation.NewNoOpPropagator()
-		propagationReactor = nil
-	} else {
-		if !stateSync && !blockSync {
-			propagationReactor.StartProcessing()
-		}
+	if !stateSync && !blockSync {
+		propagationReactor.StartProcessing()
 	}
 
 	consensusReactor, consensusState := createConsensusReactor(
 		config, state, blockExec, blockStore, mempool, evidencePool,
-		privValidator, csMetrics, propagator, stateSync || blockSync, eventBus, consensusLogger, offlineStateSyncHeight, tracer,
+		privValidator, csMetrics, propagationReactor, stateSync || blockSync, eventBus, consensusLogger, offlineStateSyncHeight, tracer,
 	)
 
 	err = stateStore.SetOfflineStateSyncHeight(0)
 	if err != nil {
 		panic(fmt.Sprintf("failed to reset the offline state sync height %s", err))
 	}
-	if propagationReactor != nil {
-		propagationReactor.SetLogger(logger.With("module", "propagation"))
-	}
+	propagationReactor.SetLogger(logger.With("module", "propagation"))
 
 	logger.Info("Consensus reactor created", "timeout_propose", consensusState.GetState().TimeoutPropose, "timeout_commit", consensusState.GetState().TimeoutCommit)
 	// Set up state sync reactor, and schedule a sync if requested.
@@ -1032,12 +1021,10 @@ func makeNodeInfo(
 		mempl.MempoolChannel,
 		evidence.EvidenceChannel,
 		statesync.SnapshotChannel, statesync.ChunkChannel,
+		propagation.DataChannel, propagation.WantChannel,
 	}
 	if config.Mempool.Type == cfg.MempoolTypeCAT {
 		channels = append(channels, cat.MempoolWantsChannel, cat.MempoolDataChannel)
-	}
-	if !config.Consensus.DisablePropagationReactor {
-		channels = append(channels, propagation.DataChannel, propagation.WantChannel)
 	}
 
 	nodeInfo := p2p.DefaultNodeInfo{

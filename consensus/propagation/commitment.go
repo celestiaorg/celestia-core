@@ -77,28 +77,19 @@ func (blockProp *Reactor) ProposeBlock(proposal *types.Proposal, block *types.Pa
 	chunks := chunkParts(parts.BitArray(), len(peers), 1)
 	// chunks = Shuffle(chunks)
 	for index, peer := range peers {
-		parts := chunkToPartMetaData(chunks[index], parts)
 		e := p2p.Envelope{
 			ChannelID: DataChannel,
 			Message: &propagation.HaveParts{
 				Height: proposal.Height,
 				Round:  proposal.Round,
-				Parts:  parts,
+				Parts:  chunkToPartMetaData(chunks[index], parts),
 			},
 		}
 
 		if !peer.peer.TrySend(e) {
-			blockProp.Logger.Error("failed to send have part", "peer", peer, "height", proposal.Height, "round", proposal.Round)
+			blockProp.Logger.Error("failed to send have part", "peer", peer, "height", proposal.Height, "round", proposal.Round, "part", index)
+			// TODO retry
 			continue
-		}
-
-		for _, part := range parts {
-			err := peer.SetHave(proposal.Height, proposal.Round, int(part.GetIndex()))
-			if err != nil {
-				blockProp.Logger.Error("failed to set have part peer state", "peer", peer, "height", proposal.Height, "round", proposal.Round, "error", err)
-				continue
-			}
-			peer.consensusPeerState.SetHasProposalBlockPart(proposal.Height, proposal.Round, int(part.GetIndex()))
 		}
 
 		schema.WriteBlockPartState(blockProp.traceClient, proposal.Height, proposal.Round, chunks[index].GetTrueIndices(), true, string(peer.peer.ID()), schema.Upload)
@@ -153,18 +144,7 @@ func chunkToPartMetaData(chunk *bits.BitArray, partSet *proptypes.CombinedPartSe
 func (blockProp *Reactor) handleCompactBlock(cb *proptypes.CompactBlock, peer p2p.ID, proposer bool) {
 	added := blockProp.AddProposal(cb)
 	if !added {
-		p := blockProp.getPeer(peer)
-		if p == nil {
-			return
-		}
-		p.consensusPeerState.SetHasProposal(&cb.Proposal)
 		return
-	} else if !proposer {
-		p := blockProp.getPeer(peer)
-		if p == nil {
-			return
-		}
-		p.consensusPeerState.SetHasProposal(&cb.Proposal)
 	}
 
 	err := blockProp.validateCompactBlock(cb)
@@ -305,7 +285,6 @@ func (blockProp *Reactor) broadcastCompactBlock(cb *proptypes.CompactBlock, from
 			// todo: we need to avoid sending this peer anything else until we can queue this message.
 			continue
 		}
-
 		schema.WriteProposal(blockProp.traceClient, cb.Proposal.Height, cb.Proposal.Round, string(peer.peer.ID()), schema.Upload)
 	}
 }

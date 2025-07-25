@@ -2809,7 +2809,7 @@ func (cs *State) syncData() {
 					"found and sent proposal: %v/%v",
 					proposal.Height, proposal.Round,
 				)
-				cs.internalMsgQueue <- msgInfo{&ProposalMessage{&proposal}, ""}
+				cs.peerMsgQueue <- msgInfo{&ProposalMessage{&proposal}, ""}
 			}
 		case _, ok := <-cs.newHeightOrRoundChan:
 			if !ok {

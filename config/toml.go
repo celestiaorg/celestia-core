@@ -540,9 +540,6 @@ create_empty_blocks_interval = "{{ .Consensus.CreateEmptyBlocksInterval }}"
 peer_gossip_sleep_duration = "{{ .Consensus.PeerGossipSleepDuration }}"
 peer_query_maj23_sleep_duration = "{{ .Consensus.PeerQueryMaj23SleepDuration }}"
 
-# Disable the propagation reactor for block and proposal recovery
-disable_propagation_reactor = {{ .Consensus.DisablePropagationReactor }}
-
 #######################################################
 ###         Storage Configuration Options           ###
 #######################################################

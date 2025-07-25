@@ -6,7 +6,6 @@ import (
 	"reflect"
 	"strconv"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"github.com/cometbft/cometbft/consensus/propagation"
@@ -56,9 +55,6 @@ type Reactor struct {
 	traceClient trace.Tracer
 
 	propagator propagation.Propagator
-
-	// gossipDataEnabled controls whether the gossipDataRoutine should run
-	gossipDataEnabled atomic.Bool
 }
 
 type ReactorOption func(*Reactor)
@@ -74,7 +70,6 @@ func NewReactor(consensusState *State, propagator propagation.Propagator, waitSy
 		traceClient: trace.NoOpTracer(),
 		propagator:  propagator,
 	}
-	conR.gossipDataEnabled.Store(true)
 	conR.BaseReactor = *p2p.NewBaseReactor(
 		"Consensus",
 		conR,
@@ -85,18 +80,6 @@ func NewReactor(consensusState *State, propagator propagation.Propagator, waitSy
 	}
 
 	return conR
-}
-
-// WithGossipDataEnabled sets whether the gossipDataRoutine should run
-func WithGossipDataEnabled(enabled bool) ReactorOption {
-	return func(conR *Reactor) {
-		conR.gossipDataEnabled.Store(enabled)
-	}
-}
-
-// IsGossipDataEnabled returns whether the gossipDataRoutine should run
-func (conR *Reactor) IsGossipDataEnabled() bool {
-	return conR.gossipDataEnabled.Load()
 }
 
 // OnStart implements BaseService by subscribing to events, which later will be
@@ -230,7 +213,11 @@ func (conR *Reactor) AddPeer(peer p2p.Peer) {
 		panic(fmt.Sprintf("peer %v has no state", peer))
 	}
 	// Begin routines for this peer.
-	if conR.IsGossipDataEnabled() {
+	isLegacyPropagationPeer, err := isLegacyPropagation(peer)
+	if err != nil {
+		panic(err)
+	}
+	if isLegacyPropagationPeer {
 		go conR.gossipDataRoutine(peer, peerState)
 	}
 	go conR.gossipVotesRoutine(peer, peerState)
@@ -241,6 +228,21 @@ func (conR *Reactor) AddPeer(peer p2p.Peer) {
 	if !conR.WaitSync() {
 		conR.sendNewRoundStepMessage(peer)
 	}
+}
+
+func isLegacyPropagation(peer p2p.Peer) (bool, error) {
+	ni, ok := peer.NodeInfo().(p2p.DefaultNodeInfo)
+	if !ok {
+		return false, errors.New("wrong NodeInfo type. Expected DefaultNodeInfo")
+	}
+
+	for _, ch := range ni.Channels {
+		if ch == propagation.DataChannel || ch == propagation.WantChannel {
+			return false, nil
+		}
+	}
+
+	return true, nil
 }
 
 // RemovePeer is a noop.
@@ -672,10 +674,6 @@ func (conR *Reactor) gossipDataRoutine(peer p2p.Peer, ps *PeerState) {
 
 OUTER_LOOP:
 	for {
-		// Exit early if gossip data is disabled
-		if !conR.IsGossipDataEnabled() {
-			return
-		}
 		// Manage disconnects from self or peer.
 		if !peer.IsRunning() || !conR.IsRunning() {
 			return
@@ -1351,14 +1349,6 @@ func (ps *PeerState) SetHasProposalBlockPart(height int64, round int32, index in
 	defer ps.mtx.Unlock()
 
 	if ps.PRS.Height != height || ps.PRS.Round != round {
-		return
-	}
-
-	if ps.PRS.ProposalBlockParts == nil {
-		return
-	}
-
-	if index >= ps.PRS.ProposalBlockParts.Bits {
 		return
 	}
 
