@@ -126,15 +126,15 @@ func (privKey *PrivKey) UnmarshalJSON(data []byte) error {
 // GenPrivKey generates a new sr25519 private key.
 // It uses OS randomness in conjunction with the current global random seed
 // in cometbft/libs/rand to generate the private key.
-func GenPrivKey() PrivKey {
+func GenPrivKey() (PrivKey, error) {
 	return genPrivKey(crypto.CReader())
 }
 
 // genPrivKey generates a new sr25519 private key using the provided reader.
-func genPrivKey(rng io.Reader) PrivKey {
+func genPrivKey(rng io.Reader) (PrivKey, error) {
 	msk, err := sr25519.GenerateMiniSecretKey(rng)
 	if err != nil {
-		panic("sr25519: failed to generate MiniSecretKey: " + err.Error())
+		return PrivKey{}, err
 	}
 
 	sk := msk.ExpandEd25519()
@@ -142,7 +142,7 @@ func genPrivKey(rng io.Reader) PrivKey {
 	return PrivKey{
 		msk: *msk,
 		kp:  sk.KeyPair(),
-	}
+	}, nil
 }
 
 // GenPrivKeyFromSecret hashes the secret with SHA2, and uses
