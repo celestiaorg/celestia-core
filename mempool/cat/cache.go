@@ -8,6 +8,11 @@ import (
 	"github.com/cometbft/cometbft/types"
 )
 
+type cacheEntry struct {
+	key  types.TxKey
+	code uint32
+}
+
 // LRUTxCache maintains a thread-safe LRU cache of raw transactions. The cache
 // only stores the hash of the raw transaction.
 // NOTE: This has been copied from mempool/cache with the main difference of using
@@ -65,6 +70,52 @@ func (c *LRUTxCache) Push(txKey types.TxKey) bool {
 	c.cacheMap[txKey] = e
 
 	return true
+}
+
+// PushWithCode pushes a transaction to the cache and sets the code for the transaction
+func (c *LRUTxCache) PushWithCode(tx *types.CachedTx, code uint32) bool {
+	if c.staticSize == 0 {
+		return true
+	}
+
+	c.mtx.Lock()
+	defer c.mtx.Unlock()
+
+	key := tx.Key()
+
+	moved, ok := c.cacheMap[key]
+	if ok {
+		c.list.MoveToBack(moved)
+		return false
+	}
+
+	if c.list.Len() >= c.staticSize {
+		front := c.list.Front()
+		if front != nil {
+			frontKey := front.Value.(cacheEntry).key
+			delete(c.cacheMap, frontKey)
+			c.list.Remove(front)
+		}
+	}
+
+	e := c.list.PushBack(cacheEntry{key: key, code: code})
+	c.cacheMap[key] = e
+
+	return true
+}
+
+// GetCode returns the error code for a transaction if it exists in the cache
+func (c *LRUTxCache) GetWithCode(key types.TxKey) (uint32, bool) {
+	c.mtx.Lock()
+	defer c.mtx.Unlock()
+
+	// return key and code
+	entry, ok := c.cacheMap[key]
+	if !ok {
+		return 0, false
+	}
+
+	return entry.Value.(cacheEntry).code, true
 }
 
 func (c *LRUTxCache) Remove(txKey types.TxKey) {

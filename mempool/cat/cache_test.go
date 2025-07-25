@@ -149,3 +149,56 @@ func TestLRUTxCacheConcurrency(t *testing.T) {
 	}
 	wg.Wait()
 }
+
+func TestLRUTxCacheWithCodes(t *testing.T) {
+	cache := NewLRUTxCache(10)
+
+	// Create a test transaction
+	tx := types.Tx("test-transaction")
+	cachedTx := tx.ToCachedTx()
+	txKey := cachedTx.Key()
+
+	// Test that transaction is not initially in cache
+	require.False(t, cache.Has(cachedTx.Key()))
+	code, ok := cache.GetWithCode(txKey)
+	require.False(t, ok)
+	require.Equal(t, uint32(0), code)
+
+	// Add transaction with rejection code
+	initialCode := uint32(1001)
+	wasNew := cache.PushWithCode(cachedTx, initialCode)
+	require.True(t, wasNew)
+
+	// Verify transaction is now in cache
+	require.True(t, cache.Has(cachedTx.Key()))
+
+	// Verify rejection code is stored correctly
+	code, ok = cache.GetWithCode(txKey)
+	require.True(t, ok)
+	require.Equal(t, initialCode, code)
+
+	// Test adding same transaction again (should not be new)
+	wasNew = cache.PushWithCode(cachedTx, initialCode)
+	require.False(t, wasNew)
+
+	// Test updating the code should not rewrite the existing entry
+	newCode := uint32(2002)
+	wasNew = cache.PushWithCode(cachedTx, newCode)
+	require.False(t, wasNew)
+
+	codeNow, ok := cache.GetWithCode(txKey)
+	require.True(t, ok)
+	require.Equal(t, initialCode, codeNow)
+
+	// Test removing transaction
+	cache.Remove(cachedTx.Key())
+	require.False(t, cache.Has(cachedTx.Key()))
+	code, ok = cache.GetWithCode(txKey)
+	require.False(t, ok)
+
+	// Test reset
+	cache.PushWithCode(cachedTx, initialCode)
+	require.True(t, cache.Has(cachedTx.Key()))
+	cache.Reset()
+	require.False(t, cache.Has(cachedTx.Key()))
+}

@@ -274,6 +274,17 @@ func (txmp *TxMempool) WasRecentlyRejected(txKey types.TxKey) bool {
 	return txmp.rejectedTxs.HasKey(txKey)
 }
 
+func (txmp *TxMempool) GetRejectionReason(txKey types.TxKey) (uint32, bool) {
+	if lruCache, ok := txmp.rejectedTxs.(*mempool.LRUTxCache); ok {
+		code, exists := lruCache.GetRejectionCode(txKey)
+		if !exists {
+			return 0, false
+		}
+		return code, true
+	}
+	return 0, false
+}
+
 // removeTxByKey removes the specified transaction key from the mempool.
 // The caller must hold txmp.mtx excluxively.
 func (txmp *TxMempool) removeTxByKey(key types.TxKey) error {
@@ -498,7 +509,6 @@ func (txmp *TxMempool) addNewTransaction(wtx *WrappedTx, checkTxRes *abci.Respon
 
 		// Add the transaction to the rejected cache
 		txmp.rejectedTxs.Push(wtx.tx)
-
 		// Remove the invalid transaction from the cache, unless the operator has
 		// instructed us to keep invalid transactions.
 		if !txmp.config.KeepInvalidTxsInCache {
