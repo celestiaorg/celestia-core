@@ -387,25 +387,11 @@ func (c *MConnection) TrySend(chID byte, msgBytes []byte) bool {
 		return false
 	}
 
-	//c.Logger.Debug("TrySend", "channel", chID, "conn", c, "msgBytes", log.NewLazySprintf("%X", msgBytes))
+	c.Logger.Debug("TrySend", "channel", chID, "conn", c, "msgBytes", log.NewLazySprintf("%X", msgBytes))
 
-	// Send message to channel.
-	channel, ok := c.channelsIdx[chID]
-	if !ok {
-		c.Logger.Error(fmt.Sprintf("Cannot send bytes, unknown channel %X", chID))
-		return false
-	}
+	go c.Send(chID, msgBytes)
 
-	ok = channel.trySendBytes(msgBytes)
-	if ok {
-		// Wake up sendRoutine if necessary
-		select {
-		case c.send <- struct{}{}:
-		default:
-		}
-	}
-
-	return ok
+	return true
 }
 
 // CanSend returns true if you can send more data onto the chID, false
