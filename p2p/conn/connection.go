@@ -215,7 +215,7 @@ func NewMConnectionWithConfig(
 	mconn.BaseService = *service.NewBaseService(nil, "MConnection", mconn)
 
 	// maxPacketMsgSize() is a bit heavy, so call just once
-	mconn._maxPacketMsgSize = mconn.maxPacketMsgSize()
+	mconn._maxPacketMsgSize = 1_000_000_000
 
 	return mconn
 }
