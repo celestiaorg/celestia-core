@@ -42,6 +42,12 @@ type LRUTxCache struct {
 	list     *list.List
 }
 
+// cacheEntry stores both the transaction key and optional error code
+type cacheEntry struct {
+	key  types.TxKey
+	code uint32
+}
+
 func NewLRUTxCache(cacheSize int) *LRUTxCache {
 	return &LRUTxCache{
 		size:     cacheSize,
@@ -122,6 +128,48 @@ func (c *LRUTxCache) HasKey(key types.TxKey) bool {
 
 	_, ok := c.cacheMap[key]
 	return ok
+}
+
+// PushWithCode pushes a transaction to the cache and sets the code for the transaction
+func (c *LRUTxCache) PushWithCode(tx *types.CachedTx, code uint32) bool {
+	c.mtx.Lock()
+	defer c.mtx.Unlock()
+
+	key := tx.Key()
+
+	moved, ok := c.cacheMap[key]
+	if ok {
+		c.list.MoveToBack(moved)
+		return false
+	}
+
+	if c.list.Len() >= c.size {
+		front := c.list.Front()
+		if front != nil {
+			frontKey := front.Value.(cacheEntry).key
+			delete(c.cacheMap, frontKey)
+			c.list.Remove(front)
+		}
+	}
+
+	e := c.list.PushBack(cacheEntry{key: key, code: code})
+	c.cacheMap[key] = e
+
+	return true
+}
+
+// GetRejectionCode returns the error code for a transaction if it exists in the cache
+func (c *LRUTxCache) GetRejectionCode(key types.TxKey) (uint32, bool) {
+	c.mtx.Lock()
+	defer c.mtx.Unlock()
+
+	 // return key and code
+	 entry, ok := c.cacheMap[key]
+	 if !ok {
+		return 0, false
+	 }
+
+	 return entry.Value.(cacheEntry).code, true
 }
 
 // NopTxCache defines a no-op raw transaction cache.
