@@ -164,6 +164,13 @@ func (blockProp *Reactor) GetChannels() []*conn.ChannelDescriptor {
 			MessageType:         &propproto.Message{},
 		},
 		{
+			ID:                  ProposalChannel,
+			Priority:            45,
+			SendQueueCapacity:   20000,
+			RecvMessageCapacity: maxMsgSize,
+			MessageType:         &propproto.Message{},
+		},
+		{
 			ID:                  DataChannel,
 			Priority:            40,
 			SendQueueCapacity:   20000,
