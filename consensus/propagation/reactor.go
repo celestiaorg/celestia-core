@@ -98,7 +98,7 @@ func NewReactor(
 		privval:       config.Privval,
 		chainID:       config.ChainID,
 		BlockMaxBytes: config.BlockMaxBytes,
-		partChan:      make(chan types.PartInfo, 2500),
+		partChan:      make(chan types.PartInfo, 20_000),
 		proposalChan:  make(chan types.Proposal, 100),
 	}
 	reactor.BaseReactor = *p2p.NewBaseReactor("Recovery", reactor,
@@ -249,17 +249,17 @@ func (blockProp *Reactor) ReceiveEnvelope(e p2p.Envelope) {
 			blockProp.handleCompactBlock(msg, e.Src.ID(), false)
 			schema.WriteProposal(blockProp.traceClient, msg.Proposal.Height, msg.Proposal.Round, string(e.Src.ID()), schema.Download)
 		case *proptypes.HaveParts:
-			blockProp.handleHaves(e.Src.ID(), msg)
+			go blockProp.handleHaves(e.Src.ID(), msg)
 		case *proptypes.RecoveryPart:
 			schema.WriteReceivedPart(blockProp.traceClient, msg.Height, msg.Round, int(msg.Index))
-			blockProp.handleRecoveryPart(e.Src.ID(), msg)
+			go blockProp.handleRecoveryPart(e.Src.ID(), msg)
 		default:
 			blockProp.Logger.Error(fmt.Sprintf("Unknown message type %v", reflect.TypeOf(msg)))
 		}
 	case WantChannel:
 		switch msg := msg.(type) {
 		case *proptypes.WantParts:
-			blockProp.handleWants(e.Src.ID(), msg)
+			go blockProp.handleWants(e.Src.ID(), msg)
 		}
 	default:
 		blockProp.Logger.Error(fmt.Sprintf("Unknown chId %X", e.ChannelID))
