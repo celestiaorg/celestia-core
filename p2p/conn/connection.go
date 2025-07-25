@@ -375,7 +375,7 @@ func (c *MConnection) Send(chID byte, msgBytes []byte) bool {
 		Data:      msgBytes,
 	})
 	switch chID {
-	case byte(0x20), byte(0x22), byte(0x23), byte(0x52):
+	case byte(0x20), byte(0x22), byte(0x23), byte(0x52), byte(0x51):
 		c.votesChan <- packetMsg
 	default:
 		c.dataChan <- packetMsg
