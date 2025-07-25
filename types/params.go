@@ -18,7 +18,7 @@ const (
 	MaxBlockSizeBytes = 230857600
 
 	// BlockPartSizeBytes is the size of one block part.
-	BlockPartSizeBytes uint32 = 655363 * 3 // 64kB
+	BlockPartSizeBytes uint32 = 655363 * 16 // 64kB
 
 	// MaxBlockPartsCount is the maximum number of block parts.
 	MaxBlockPartsCount = (MaxBlockSizeBytes / BlockPartSizeBytes) + 1
