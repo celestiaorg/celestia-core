@@ -75,8 +75,9 @@ func TestProvider(t *testing.T) {
 	assert.Equal(t, lower, lb.Height)
 
 	// fetching missing heights (both future and pruned) should return appropriate errors
-	_, err = p.LightBlock(context.Background(), originalHeight+1000)
+	lb, err = p.LightBlock(context.Background(), originalHeight+1000)
 	require.Error(t, err)
+	require.Nil(t, lb)
 	// Both ErrHeightTooHigh and ErrLightBlockNotFound are valid responses for blocks that are too far in the future
 	// depending on the node's internal state and RPC error message format
 	assert.True(t, err == provider.ErrHeightTooHigh || err == provider.ErrLightBlockNotFound,
