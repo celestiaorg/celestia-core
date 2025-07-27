@@ -615,7 +615,7 @@ func (blockProp *Reactor) clearWants(part *proptypes.RecoveryPart, proof merkle.
 				continue
 			}
 
-			err := peer.SetHave(part.Height, part.Round, int(part.Index), )
+			err := peer.SetHave(part.Height, part.Round, int(part.Index))
 			if err != nil {
 				continue
 			}
