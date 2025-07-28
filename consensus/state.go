@@ -944,9 +944,13 @@ func (cs *State) handleMsg(mi msgInfo) {
 	case *ProposalMessage:
 		// will not cause transition.
 		// once proposal is set, we can receive block parts
+		start := time.Now()
 		err = cs.setProposal(msg.Proposal)
+		processingTime := time.Since(start)
+		schema.WriteMessageStats(cs.traceClient, "state", "state.ProposalMessage", processingTime.Nanoseconds(), fmt.Sprintf("new proposal: %d %d %s", msg.Proposal.Height, msg.Proposal.Round, msg.Proposal.Type.String()))
 
 	case *BlockPartMessage:
+		start := time.Now()
 		// if the proposal is complete, we'll enterPrevote or tryFinalizeCommit
 		added, err = cs.addProposalBlockPart(msg, peerID)
 
@@ -980,14 +984,19 @@ func (cs *State) handleMsg(mi msgInfo) {
 			)
 			err = nil
 		}
+		processingTime := time.Since(start)
+		schema.WriteMessageStats(cs.traceClient, "state", "state.BlockPartMessage", processingTime.Nanoseconds(), fmt.Sprintf("new block part: %d %d %d", msg.Height, msg.Round, msg.Part.Index))
 
 	case *VoteMessage:
+		start := time.Now()
 		// attempt to add the vote and dupeout the validator if its a duplicate signature
 		// if the vote gives us a 2/3-any or 2/3-one, we transition
 		added, err = cs.tryAddVote(msg.Vote, peerID)
 		if added {
 			cs.statsMsgQueue <- mi
 		}
+		processingTime := time.Since(start)
+		schema.WriteMessageStats(cs.traceClient, "state", "state.VoteMessage", processingTime.Nanoseconds(), fmt.Sprintf("new vote: %d %d %s", msg.Vote.Height, msg.Vote.Round, msg.Vote.Type.String()))
 
 		// if err == ErrAddingVote {
 		// TODO: punish peer
