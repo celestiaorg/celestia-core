@@ -614,19 +614,23 @@ func (blockProp *Reactor) clearWants(part *proptypes.RecoveryPart, proof merkle.
 				blockProp.Logger.Error("failed to send part", "peer", peer.peer.ID(), "height", part.Height, "round", part.Round, "part", part.Index)
 				continue
 			}
+
 			err := peer.SetHave(part.Height, part.Round, int(part.Index))
 			if err != nil {
 				continue
 			}
+
 			err = peer.SetWant(part.Height, part.Round, int(part.Index), false)
 			if err != nil {
 				continue
 			}
+
 			catchup := false
 			blockProp.pmtx.Lock()
 			if part.Height < blockProp.currentHeight {
 				catchup = true
 			}
+
 			blockProp.pmtx.Unlock()
 			peer.DecreaseRemainingRequests(part.Height, part.Round, 1)
 			schema.WriteBlockPart(blockProp.traceClient, part.Height, part.Round, part.Index, catchup, string(peer.peer.ID()), schema.Upload)

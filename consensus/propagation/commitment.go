@@ -77,13 +77,13 @@ func (blockProp *Reactor) ProposeBlock(proposal *types.Proposal, block *types.Pa
 	chunks := chunkParts(parts.BitArray(), len(peers), 1)
 	// chunks = Shuffle(chunks)
 	for index, peer := range peers {
-		parts := chunkToPartMetaData(chunks[index], parts)
+		partsMeta := chunkToPartMetaData(chunks[index], parts)
 		e := p2p.Envelope{
 			ChannelID: DataChannel,
 			Message: &propagation.HaveParts{
 				Height: proposal.Height,
 				Round:  proposal.Round,
-				Parts:  parts,
+				Parts:  partsMeta,
 			},
 		}
 
@@ -92,12 +92,23 @@ func (blockProp *Reactor) ProposeBlock(proposal *types.Proposal, block *types.Pa
 			continue
 		}
 
-		for _, part := range parts {
+		peer.Initialize(cb.Proposal.Height, cb.Proposal.Round, int(parts.Total()))
+
+		for _, part := range partsMeta {
+			// since this node is proposing, it already has the data and
+			// there's not a lot of reason to update this peer's have
+			// state other than to be consistent atm.
 			err := peer.SetHave(proposal.Height, proposal.Round, int(part.GetIndex()))
 			if err != nil {
-				blockProp.Logger.Error("failed to set have part peer state", "peer", peer, "height", proposal.Height, "round", proposal.Round, "error", err)
+				blockProp.Logger.Debug("failed to set have part peer state", "peer", peer, "height", proposal.Height, "round", proposal.Round, "error", err)
+				// skip saving the old routine's state if the state here
+				// cannot also be saved
 				continue
 			}
+
+			// this might not get set depending on when the consensus peer
+			// state is getting updated. This will result in sending the
+			// peer redundant parts :shrug:
 			peer.consensusPeerState.SetHasProposalBlockPart(proposal.Height, proposal.Round, int(part.GetIndex()))
 		}
 
