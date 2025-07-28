@@ -2,6 +2,7 @@ package cat
 
 import (
 	"fmt"
+	"github.com/cosmos/gogoproto/proto"
 	"math/rand"
 	"time"
 
@@ -32,7 +33,7 @@ const (
 	peerHeightDiff = 10
 
 	// ReactorIncomingMessageQueueSize the size of the reactor's message queue.
-	ReactorIncomingMessageQueueSize = 100
+	ReactorIncomingMessageQueueSize = 5000
 )
 
 // Reactor handles mempool tx broadcasting logic amongst peers. For the main
@@ -204,6 +205,11 @@ func (memR *Reactor) RemovePeer(peer p2p.Peer, reason interface{}) {
 // ReceiveEnvelope implements Reactor.
 // It processes one of three messages: Txs, SeenTx, WantTx.
 func (memR *Reactor) Receive(e p2p.Envelope) {
+	start := time.Now()
+	defer func() {
+		processingTime := time.Since(start)
+		schema.WriteMessageStats(memR.traceClient, "cat", proto.MessageName(e.Message), processingTime.Nanoseconds(), "")
+	}()
 	switch msg := e.Message.(type) {
 
 	// A peer has sent us one or more transactions. This could be either because we requested them
