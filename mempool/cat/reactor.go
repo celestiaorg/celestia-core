@@ -95,7 +95,7 @@ func NewReactor(mempool *TxPool, opts *ReactorOptions) (*Reactor, error) {
 		mempool:     mempool,
 		ids:         newMempoolIDs(),
 		requests:    newRequestScheduler(opts.MaxGossipDelay, defaultGlobalRequestTimeout),
-		traceClient: trace.NoOpTracer(),
+		traceClient: opts.TraceClient,
 	}
 	memR.BaseReactor = *p2p.NewBaseReactor("Mempool", memR,
 		p2p.WithIncomingQueueSize(ReactorIncomingMessageQueueSize),
@@ -205,6 +205,7 @@ func (memR *Reactor) RemovePeer(peer p2p.Peer, reason interface{}) {
 // ReceiveEnvelope implements Reactor.
 // It processes one of three messages: Txs, SeenTx, WantTx.
 func (memR *Reactor) Receive(e p2p.Envelope) {
+	schema.WriteMempoolSize(memR.traceClient, memR.mempool.SizeBytes())
 	start := time.Now()
 	defer func() {
 		processingTime := time.Since(start)

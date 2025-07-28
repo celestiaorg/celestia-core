@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"github.com/cometbft/cometbft/libs/trace"
-	"github.com/cometbft/cometbft/libs/trace/schema"
 	"sort"
 	"sync"
 	"time"
@@ -357,7 +356,6 @@ func (txmp *TxPool) TryAddNewTx(tx *types.CachedTx, key types.TxKey, txInfo memp
 	if err := txmp.addNewTransaction(wtx); err != nil {
 		return nil, err
 	}
-	schema.WriteMempoolSize(txmp.tracer, txmp.SizeBytes())
 	return rsp, nil
 }
 
