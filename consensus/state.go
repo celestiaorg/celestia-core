@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"runtime/debug"
 	"sort"
+	"sync"
 	"time"
 
 	proptypes "github.com/cometbft/cometbft/consensus/propagation/types"
@@ -2761,81 +2762,108 @@ func (cs *State) syncData() {
 	partChan := cs.propagator.GetPartChan()
 	proposalChan := cs.propagator.GetProposalChan()
 
-	for {
-		select {
-		case <-cs.Quit():
-			return
-		case proposal, ok := <-proposalChan:
-			if !ok {
-				return
-			}
-			cs.mtx.RLock()
-			currentProposal := cs.Proposal
-			h, r := cs.Height, cs.Round
-			completeProp := cs.isProposalComplete()
-			cs.mtx.RUnlock()
-			if completeProp {
-				continue
-			}
+	wg := &sync.WaitGroup{}
 
-			if currentProposal == nil && proposal.Height == h && proposal.Round == r {
-				schema.WriteNote(
-					cs.traceClient,
-					proposal.Height,
-					proposal.Round,
-					"syncData",
-					"found and sent proposal: %v/%v",
-					proposal.Height, proposal.Round,
-				)
-				cs.internalMsgQueue <- msgInfo{&ProposalMessage{&proposal}, ""}
-			}
-		case _, ok := <-cs.newHeightOrRoundChan:
-			if !ok {
+	go func() {
+		wg.Add(1)
+		for {
+			select {
+			case <-cs.Quit():
 				return
-			}
-			cs.mtx.RLock()
-			height, round := cs.Height, cs.Round
-			currentProposalParts := cs.ProposalBlockParts
-			cs.mtx.RUnlock()
-			if currentProposalParts == nil {
-				continue
-			}
-			_, partset, has := cs.propagator.GetProposal(height, round)
-			if !has {
-				continue
-			}
-			for _, indice := range partset.BitArray().GetTrueIndices() {
-				if currentProposalParts.IsComplete() {
-					break
+			case proposal, ok := <-proposalChan:
+				if !ok {
+					return
 				}
-				if currentProposalParts.HasPart(indice) {
+				cs.mtx.RLock()
+				currentProposal := cs.Proposal
+				h, r := cs.Height, cs.Round
+				completeProp := cs.isProposalComplete()
+				cs.mtx.RUnlock()
+				if completeProp {
 					continue
 				}
-				part := partset.GetPart(indice)
-				cs.peerMsgQueue <- msgInfo{&BlockPartMessage{height, round, part}, ""}
-			}
-		case part, ok := <-partChan:
-			if !ok {
-				return
-			}
-			cs.mtx.RLock()
-			h, r := cs.Height, cs.Round
-			currentProposalParts := cs.ProposalBlockParts
-			cs.mtx.RUnlock()
-			if part.Height != h || part.Round != r {
-				continue
-			}
 
-			if currentProposalParts != nil {
-				if currentProposalParts.IsComplete() {
-					continue
-				}
-				if currentProposalParts.HasPart(int(part.Index)) {
-					continue
+				if currentProposal == nil && proposal.Height == h && proposal.Round == r {
+					schema.WriteNote(
+						cs.traceClient,
+						proposal.Height,
+						proposal.Round,
+						"syncData",
+						"found and sent proposal: %v/%v",
+						proposal.Height, proposal.Round,
+					)
+					cs.internalMsgQueue <- msgInfo{&ProposalMessage{&proposal}, ""}
 				}
 			}
-
-			cs.peerMsgQueue <- msgInfo{&BlockPartMessage{h, r, part.Part}, ""}
 		}
-	}
+	}()
+
+	go func() {
+		wg.Add(1)
+		for {
+			select {
+			case <-cs.Quit():
+				return
+			case _, ok := <-cs.newHeightOrRoundChan:
+				if !ok {
+					return
+				}
+				cs.mtx.RLock()
+				height, round := cs.Height, cs.Round
+				currentProposalParts := cs.ProposalBlockParts
+				cs.mtx.RUnlock()
+				if currentProposalParts == nil {
+					continue
+				}
+				_, partset, has := cs.propagator.GetProposal(height, round)
+				if !has {
+					continue
+				}
+				for _, indice := range partset.BitArray().GetTrueIndices() {
+					if currentProposalParts.IsComplete() {
+						break
+					}
+					if currentProposalParts.HasPart(indice) {
+						continue
+					}
+					part := partset.GetPart(indice)
+					cs.peerMsgQueue <- msgInfo{&BlockPartMessage{height, round, part}, ""}
+				}
+			}
+		}
+	}()
+
+	go func() {
+		wg.Add(1)
+		for {
+			select {
+			case <-cs.Quit():
+				return
+			case part, ok := <-partChan:
+				if !ok {
+					return
+				}
+				cs.mtx.RLock()
+				h, r := cs.Height, cs.Round
+				currentProposalParts := cs.ProposalBlockParts
+				cs.mtx.RUnlock()
+				if part.Height != h || part.Round != r {
+					continue
+				}
+
+				if currentProposalParts != nil {
+					if currentProposalParts.IsComplete() {
+						continue
+					}
+					if currentProposalParts.HasPart(int(part.Index)) {
+						continue
+					}
+				}
+
+				cs.peerMsgQueue <- msgInfo{&BlockPartMessage{h, r, part.Part}, ""}
+			}
+		}
+	}()
+
+	wg.Wait()
 }
