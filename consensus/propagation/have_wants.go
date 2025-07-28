@@ -518,6 +518,7 @@ func (blockProp *Reactor) handleRecoveryPart(peer p2p.ID, part *proptypes.Recove
 	// during catchup. todo: use the bool found in the state instead of checking
 	// for nil.
 	if parts.CanDecode() {
+		schema.WriteCompleteBlock(blockProp.traceClient, part.Height, part.Round, true)
 		if parts.IsDecoding.Load() {
 			return
 		}
@@ -615,7 +616,7 @@ func (blockProp *Reactor) clearWants(part *proptypes.RecoveryPart, proof merkle.
 				continue
 			}
 
-			err := peer.SetHave(part.Height, part.Round, int(part.Index), )
+			err := peer.SetHave(part.Height, part.Round, int(part.Index))
 			if err != nil {
 				continue
 			}

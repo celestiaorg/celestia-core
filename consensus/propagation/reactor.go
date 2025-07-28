@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/cosmos/gogoproto/proto"
 	"math"
 	"reflect"
 	"sync/atomic"
@@ -95,7 +96,7 @@ func NewReactor(
 		privval:       config.Privval,
 		chainID:       config.ChainID,
 		BlockMaxBytes: config.BlockMaxBytes,
-		partChan:      make(chan types.PartInfo, 2500),
+		partChan:      make(chan types.PartInfo, 10_500),
 		proposalChan:  make(chan types.Proposal, 100),
 	}
 	reactor.BaseReactor = *p2p.NewBaseReactor("Recovery", reactor)
@@ -256,12 +257,25 @@ func (blockProp *Reactor) ReceiveEnvelope(e p2p.Envelope) {
 	case DataChannel:
 		switch msg := msg.(type) {
 		case *proptypes.CompactBlock:
+			start := time.Now()
 			blockProp.handleCompactBlock(msg, e.Src.ID(), false)
+			processingTime := time.Since(start)
+			schema.WriteMessageStats(blockProp.traceClient, "propagation", proto.MessageName(e.Message), processingTime.Nanoseconds(), fmt.Sprintf("compact block: %d %d", msg.Proposal.Height, msg.Proposal.Round))
 			schema.WriteProposal(blockProp.traceClient, msg.Proposal.Height, msg.Proposal.Round, string(e.Src.ID()), schema.Download)
 		case *proptypes.HaveParts:
+			start := time.Now()
 			blockProp.handleHaves(e.Src.ID(), msg)
+			processingTime := time.Since(start)
+			parts := make([]uint32, len(msg.Parts))
+			for i, p := range msg.Parts {
+				parts[i] = p.Index
+			}
+			schema.WriteMessageStats(blockProp.traceClient, "propagation", proto.MessageName(e.Message), processingTime.Nanoseconds(), fmt.Sprintf("have parts: %d %d %v", msg.Height, msg.Round, parts))
 		case *proptypes.RecoveryPart:
+			start := time.Now()
 			schema.WriteReceivedPart(blockProp.traceClient, msg.Height, msg.Round, int(msg.Index))
+			processingTime := time.Since(start)
+			schema.WriteMessageStats(blockProp.traceClient, "propagation", proto.MessageName(e.Message), processingTime.Nanoseconds(), fmt.Sprintf("recovery part: %d %d %d", msg.Height, msg.Round, msg.Index))
 			blockProp.handleRecoveryPart(e.Src.ID(), msg)
 		default:
 			blockProp.Logger.Error(fmt.Sprintf("Unknown message type %v", reflect.TypeOf(msg)))
@@ -269,7 +283,10 @@ func (blockProp *Reactor) ReceiveEnvelope(e p2p.Envelope) {
 	case WantChannel:
 		switch msg := msg.(type) {
 		case *proptypes.WantParts:
+			start := time.Now()
 			blockProp.handleWants(e.Src.ID(), msg)
+			processingTime := time.Since(start)
+			schema.WriteMessageStats(blockProp.traceClient, "propagation", proto.MessageName(e.Message), processingTime.Nanoseconds(), fmt.Sprintf("want parts: %d %d %v", msg.Height, msg.Round, msg.Parts.GetTrueIndices()))
 		}
 	default:
 		blockProp.Logger.Error(fmt.Sprintf("Unknown chId %X", e.ChannelID))

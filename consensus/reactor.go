@@ -3,6 +3,7 @@ package consensus
 import (
 	"errors"
 	"fmt"
+	"github.com/cosmos/gogoproto/proto"
 	"reflect"
 	"strconv"
 	"sync"
@@ -309,7 +310,10 @@ func (conR *Reactor) Receive(e p2p.Envelope) {
 				conR.Switch.StopPeerForError(e.Src, err, conR.String())
 				return
 			}
+			start := time.Now()
 			ps.ApplyNewRoundStepMessage(msg)
+			processingTime := time.Since(start)
+			schema.WriteMessageStats(conR.traceClient, "consensus", proto.MessageName(e.Message), processingTime.Nanoseconds(), fmt.Sprintf("new round step: %d %d %s", msg.Height, msg.Round, msg.Step.String()))
 		case *NewValidBlockMessage:
 			schema.WriteConsensusState(
 				conR.traceClient,
@@ -319,7 +323,10 @@ func (conR *Reactor) Receive(e p2p.Envelope) {
 				schema.ConsensusNewValidBlock,
 				schema.Download,
 			)
+			start := time.Now()
 			ps.ApplyNewValidBlockMessage(msg)
+			processingTime := time.Since(start)
+			schema.WriteMessageStats(conR.traceClient, "consensus", proto.MessageName(e.Message), processingTime.Nanoseconds(), fmt.Sprintf("new valid block message: %d %d", msg.Height, msg.Round))
 		case *HasVoteMessage:
 			schema.WriteConsensusState(
 				conR.traceClient,
@@ -330,8 +337,12 @@ func (conR *Reactor) Receive(e p2p.Envelope) {
 				schema.Download,
 				msg.Type.String(),
 			)
+			start := time.Now()
 			ps.ApplyHasVoteMessage(msg)
+			processingTime := time.Since(start)
+			schema.WriteMessageStats(conR.traceClient, "consensus", proto.MessageName(e.Message), processingTime.Nanoseconds(), fmt.Sprintf("has vote message: %d %d %d", msg.Height, msg.Round, msg.Index))
 		case *VoteSetMaj23Message:
+			start := time.Now()
 			cs := conR.conS
 			cs.mtx.Lock()
 			height, votes := cs.Height, cs.Votes
@@ -387,6 +398,8 @@ func (conR *Reactor) Receive(e p2p.Envelope) {
 					msg.Type.String(),
 				)
 			}
+			processingTime := time.Since(start)
+			schema.WriteMessageStats(conR.traceClient, "consensus", proto.MessageName(e.Message), processingTime.Nanoseconds(), fmt.Sprintf("vote set maj 2/3: %d %d %s", msg.Height, msg.Round, msg.Type.String()))
 		default:
 			conR.Logger.Error(fmt.Sprintf("Unknown message type %v", reflect.TypeOf(msg)))
 		}
@@ -399,6 +412,7 @@ func (conR *Reactor) Receive(e p2p.Envelope) {
 		switch msg := msg.(type) {
 		// TODO handle the proposal message case in the propagation reactor
 		case *ProposalMessage:
+			start := time.Now()
 			ps.SetHasProposal(msg.Proposal)
 			conR.conS.peerMsgQueue <- msgInfo{msg, e.Src.ID()}
 			schema.WriteProposal(
@@ -408,7 +422,10 @@ func (conR *Reactor) Receive(e p2p.Envelope) {
 				string(e.Src.ID()),
 				schema.Download,
 			)
+			processingTime := time.Since(start)
+			schema.WriteMessageStats(conR.traceClient, "consensus", proto.MessageName(e.Message), processingTime.Nanoseconds(), fmt.Sprintf("proposal message: %d %d %s", msg.Proposal.Height, msg.Proposal.Round, msg.Proposal.Type.String()))
 		case *ProposalPOLMessage:
+			start := time.Now()
 			ps.ApplyProposalPOLMessage(msg)
 			schema.WriteConsensusState(
 				conR.traceClient,
@@ -418,11 +435,16 @@ func (conR *Reactor) Receive(e p2p.Envelope) {
 				schema.ConsensusPOL,
 				schema.Download,
 			)
+			processingTime := time.Since(start)
+			schema.WriteMessageStats(conR.traceClient, "consensus", proto.MessageName(e.Message), processingTime.Nanoseconds(), fmt.Sprintf("proposal POL message: %d %d", msg.Height, msg.ProposalPOLRound))
 		case *BlockPartMessage:
+			start := time.Now()
 			ps.SetHasProposalBlockPart(msg.Height, msg.Round, int(msg.Part.Index))
 			conR.Metrics.BlockParts.With("peer_id", string(e.Src.ID())).Add(1)
 			schema.WriteBlockPart(conR.traceClient, msg.Height, msg.Round, msg.Part.Index, false, string(e.Src.ID()), schema.Download)
 			conR.conS.peerMsgQueue <- msgInfo{msg, e.Src.ID()}
+			processingTime := time.Since(start)
+			schema.WriteMessageStats(conR.traceClient, "consensus", proto.MessageName(e.Message), processingTime.Nanoseconds(), fmt.Sprintf("block part message: %d %d %d", msg.Height, msg.Round, msg.Part.Index))
 		default:
 			conR.Logger.Error(fmt.Sprintf("Unknown message type %v", reflect.TypeOf(msg)))
 		}
@@ -434,6 +456,7 @@ func (conR *Reactor) Receive(e p2p.Envelope) {
 		}
 		switch msg := msg.(type) {
 		case *VoteMessage:
+			start := time.Now()
 			cs := conR.conS
 			cs.mtx.RLock()
 			height, valSize, lastCommitSize := cs.Height, cs.Validators.Size(), cs.LastCommit.Size()
@@ -443,7 +466,8 @@ func (conR *Reactor) Receive(e p2p.Envelope) {
 			ps.SetHasVote(msg.Vote)
 
 			cs.peerMsgQueue <- msgInfo{msg, e.Src.ID()}
-
+			processingTime := time.Since(start)
+			schema.WriteMessageStats(conR.traceClient, "consensus", proto.MessageName(e.Message), processingTime.Nanoseconds(), fmt.Sprintf("vote message: %d %d %s", msg.Vote.Height, msg.Vote.Round, msg.Vote.Type.String()))
 		default:
 			// don't punish (leave room for soft upgrades)
 			conR.Logger.Error(fmt.Sprintf("Unknown message type %v", reflect.TypeOf(msg)))
@@ -456,6 +480,7 @@ func (conR *Reactor) Receive(e p2p.Envelope) {
 		}
 		switch msg := msg.(type) {
 		case *VoteSetBitsMessage:
+			start := time.Now()
 			cs := conR.conS
 			cs.mtx.Lock()
 			height, votes := cs.Height, cs.Votes
@@ -475,6 +500,8 @@ func (conR *Reactor) Receive(e p2p.Envelope) {
 			} else {
 				ps.ApplyVoteSetBitsMessage(msg, nil)
 			}
+			processingTime := time.Since(start)
+			schema.WriteMessageStats(conR.traceClient, "consensus", proto.MessageName(e.Message), processingTime.Nanoseconds(), fmt.Sprintf("vote set bits message: %d %d %s %v", msg.Height, msg.Round, msg.Type.String(), msg.Votes.GetTrueIndices()))
 		default:
 			// don't punish (leave room for soft upgrades)
 			conR.Logger.Error(fmt.Sprintf("Unknown message type %v", reflect.TypeOf(msg)))

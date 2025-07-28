@@ -3,6 +3,7 @@ package propagation
 import (
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/cosmos/gogoproto/proto"
 
@@ -26,6 +27,11 @@ const (
 // ProposeBlock is called when the consensus routine has created a new proposal,
 // and it needs to be gossiped to the rest of the network.
 func (blockProp *Reactor) ProposeBlock(proposal *types.Proposal, block *types.PartSet, txs []proptypes.TxMetaData) {
+	start := time.Now()
+	defer func() {
+		processingTime := time.Since(start)
+		schema.WriteMessageStats(blockProp.traceClient, "propagation", "ProposeBlock", processingTime.Nanoseconds(), fmt.Sprintf("propose block: %d %d %d", proposal.Height, proposal.Round, block.Total()))
+	}()
 	// create the parity data and the compact block
 	parityBlock, lastLen, err := types.Encode(block, types.BlockPartSizeBytes)
 	if err != nil {
@@ -184,6 +190,8 @@ func (blockProp *Reactor) handleCompactBlock(cb *proptypes.CompactBlock, peer p2
 		blockProp.Switch.StopPeerForError(blockProp.getPeer(peer).peer, err, blockProp.String())
 		return
 	}
+
+	schema.WriteCompleteBlock(blockProp.traceClient, cb.Proposal.Height, cb.Proposal.Round, false)
 
 	if !proposer {
 		select {
