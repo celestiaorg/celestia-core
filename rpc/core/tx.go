@@ -228,7 +228,7 @@ func (env *Environment) TxStatus(ctx *rpctypes.Context, hash []byte) (*ctypes.Re
 	// Check if the tx has been committed
 	txInfo := env.BlockStore.LoadTxInfo(hash)
 	if txInfo != nil {
-		return &ctypes.ResultTxStatus{Height: txInfo.Height, Index: txInfo.Index, ExecutionCode: txInfo.Code, Error: txInfo.Error, Status: TxStatusCommitted}, nil
+		return &ctypes.ResultTxStatus{Height: txInfo.Height, Index: txInfo.Index, Code: txInfo.Code, Error: txInfo.Error, Status: TxStatusCommitted}, nil
 	}
 
 	// Get the tx key from the hash
@@ -250,9 +250,9 @@ func (env *Environment) TxStatus(ctx *rpctypes.Context, hash []byte) (*ctypes.Re
 	}
 
 	// Check if the tx was rejected (this is only the case for recheck-tx)
-	isRejected := env.Mempool.WasRecentlyRejected(txKey)
-	if isRejected {
-		return &ctypes.ResultTxStatus{Status: TxStatusRejected}, nil
+	code, wasRejected := env.Mempool.GetRejectionReason(txKey)
+	if wasRejected {
+		return &ctypes.ResultTxStatus{Status: TxStatusRejected, Code: code}, nil
 	}
 
 	// If the tx is not in the mempool, evicted, or committed, return unknown

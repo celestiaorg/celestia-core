@@ -118,6 +118,12 @@ func (*CListMempool) WasRecentlyRejected(key types.TxKey) bool {
 	return false
 }
 
+// GetRejectionReason returns the rejection reason for a transaction if it exists in the
+// rejected cache.
+func (mem *CListMempool) GetRejectionReason(txKey types.TxKey) (uint32, bool) {
+	return 0, false
+}
+
 func (mem *CListMempool) getCElement(txKey types.TxKey) (*clist.CElement, bool) {
 	if e, ok := mem.txsMap.Load(txKey); ok {
 		return e.(*clist.CElement), true

@@ -833,13 +833,24 @@ func TestTxStatus(t *testing.T) {
 	require.True(bres.CheckTx.IsOK())
 	require.True(bres.TxResult.IsOK())
 
+	// Submit a malformed tx
+	malformedTx := []byte("malformed-tx")
+	_, err = c.BroadcastTxCommit(context.Background(), malformedTx)
+	require.Error(err)
+
+	// Get the tx status
+	malformedTxResult, err := c.TxStatus(context.Background(), types.Tx(malformedTx).Hash())
+	require.NoError(err)
+	require.EqualValues(uint32(2), malformedTxResult.Code)
+	require.Equal("REJECTED", malformedTxResult.Status)
+
 	// Get the tx status
 	result, err = c.TxStatus(context.Background(), types.Tx(tx).Hash())
 	require.NoError(err)
 	require.EqualValues(bres.Height, result.Height)
 	require.EqualValues(0, result.Index)
 	require.Equal("COMMITTED", result.Status)
-	require.Equal(abci.CodeTypeOK, result.ExecutionCode)
+	require.Equal(abci.CodeTypeOK, result.Code)
 	require.Equal("", result.Error)
 }
 
