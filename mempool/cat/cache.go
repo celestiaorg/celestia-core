@@ -104,8 +104,8 @@ func (c *LRUTxCache) PushWithCode(tx *types.CachedTx, code uint32) bool {
 	return true
 }
 
-// GetCode returns the error code for a transaction if it exists in the cache
-func (c *LRUTxCache) GetWithCode(key types.TxKey) (uint32, bool) {
+// GetRejectionCode returns the error code for a transaction if it exists in the cache
+func (c *LRUTxCache) GetRejectionCode(key types.TxKey) (uint32, bool) {
 	c.mtx.Lock()
 	defer c.mtx.Unlock()
 
@@ -114,8 +114,15 @@ func (c *LRUTxCache) GetWithCode(key types.TxKey) (uint32, bool) {
 	if !ok {
 		return 0, false
 	}
-
-	return entry.Value.(cacheEntry).code, true
+	// Try to get code from cacheEntry
+	if cacheEntry, ok := entry.Value.(cacheEntry); ok {
+		return cacheEntry.code, true
+	}
+	// If it's not a cacheEntry, it must be a types.TxKey
+	if _, ok := entry.Value.(types.TxKey); ok {
+		return 0, true
+	}
+	return 0, false
 }
 
 func (c *LRUTxCache) Remove(txKey types.TxKey) {

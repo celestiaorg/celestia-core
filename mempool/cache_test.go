@@ -139,53 +139,59 @@ func TestCacheRemoveByKey(t *testing.T) {
 
 func TestLRUTxCacheWithCodes(t *testing.T) {
 	cache := NewLRUTxCache(10)
+	tx := types.Tx("test-transaction").ToCachedTx()
+	txKey := tx.Key()
 
-	// Create a test transaction
-	tx := types.Tx("test-transaction")
-	cachedTx := tx.ToCachedTx()
-	txKey := cachedTx.Key()
+	t.Run("initial state", func(t *testing.T) {
+		require.False(t, cache.HasKey(txKey))
+		code, ok := cache.GetRejectionCode(txKey)
+		require.False(t, ok)
+		require.Equal(t, uint32(0), code)
+	})
 
-	// Test that transaction is not initially in cache
-	require.False(t, cache.HasKey(txKey))
-	code, ok := cache.GetRejectionCode(txKey)
-	require.False(t, ok)
-	require.Equal(t, uint32(0), code)
+	t.Run("add transaction with rejection code", func(t *testing.T) {
+		initialCode := uint32(1001)
+		wasNew := cache.PushWithCode(tx, initialCode)
+		require.True(t, wasNew)
 
-	// Add transaction with rejection code
-	initialCode := uint32(1001)
-	wasNew := cache.PushWithCode(cachedTx, initialCode)
-	require.True(t, wasNew)
+		require.True(t, cache.HasKey(txKey))
+		code, ok := cache.GetRejectionCode(txKey)
+		require.True(t, ok)
+		require.Equal(t, initialCode, code)
+	})
 
-	// Verify transaction is now in cache
-	require.True(t, cache.HasKey(txKey))
+	t.Run("add same transaction again should overwrite", func(t *testing.T) {
+		wasNew := cache.PushWithCode(tx, 1001)
+		require.False(t, wasNew)
+	})
 
-	// Verify rejection code is stored correctly
-	code, ok = cache.GetRejectionCode(txKey)
-	require.True(t, ok)
-	require.Equal(t, initialCode, code)
+	t.Run("updating code should not change existing entry", func(t *testing.T) {
+		newCode := uint32(2002)
+		wasNew := cache.PushWithCode(tx, newCode)
+		require.False(t, wasNew)
 
-	// Test adding same transaction again (should not be new)
-	wasNew = cache.PushWithCode(cachedTx, initialCode)
-	require.False(t, wasNew)
+		retrievedCode, ok := cache.GetRejectionCode(txKey)
+		require.True(t, ok)
+		require.Equal(t, uint32(1001), retrievedCode) // Should still be original code
+	})
 
-	// Test updating the code should not rewrite the existing entry
-	newCode := uint32(2002)
-	wasNew = cache.PushWithCode(cachedTx, newCode)
-	require.False(t, wasNew)
+	t.Run("remove transaction", func(t *testing.T) {
+		cache.Remove(tx)
+		require.False(t, cache.HasKey(txKey))
+		_, ok := cache.GetRejectionCode(txKey)
+		require.False(t, ok)
+	})
 
-	codeNow, ok := cache.GetRejectionCode(txKey)
-	require.True(t, ok)
-	require.Equal(t, initialCode, codeNow)
+	t.Run("backward compatibility with Push()", func(t *testing.T) {
+		cache.Push(tx)
+		require.True(t, cache.HasKey(txKey))
+		codeAfterPush, ok := cache.GetRejectionCode(txKey)
+		require.True(t, ok)
+		require.Equal(t, uint32(0), codeAfterPush) // zero because we didn't index with code
+	})
 
-	// Test removing transaction
-	cache.Remove(cachedTx)
-	require.False(t, cache.HasKey(txKey))
-	code, ok = cache.GetRejectionCode(txKey)
-	require.False(t, ok)
-
-	// Test reset
-	cache.PushWithCode(cachedTx, initialCode)
-	require.True(t, cache.HasKey(txKey))
-	cache.Reset()
-	require.False(t, cache.HasKey(txKey))
+	t.Run("reset cache", func(t *testing.T) {
+		cache.Reset()
+		require.False(t, cache.HasKey(txKey))
+	})
 }

@@ -204,6 +204,16 @@ func (txmp *TxPool) WasRecentlyRejected(txKey types.TxKey) bool {
 	return txmp.rejectedTxCache.Has(txKey)
 }
 
+// GetRejectionReason returns the rejection reason for a transaction if it exists in the
+// rejected cache.
+func (txmp *TxPool) GetRejectionReason(txKey types.TxKey) (uint32, bool) {
+	code, exists := txmp.rejectedTxCache.GetRejectionCode(txKey)
+	if !exists {
+		return 0, false
+	}
+	return code, true
+}
+
 // CheckTx adds the given transaction to the mempool if it fits and passes the
 // application's ABCI CheckTx method. This should be viewed as the entry method for new transactions
 // into the network. In practice this happens via an RPC endpoint
@@ -307,7 +317,7 @@ func (txmp *TxPool) TryAddNewTx(tx *types.CachedTx, key types.TxKey, txInfo memp
 	// If a precheck hook is defined, call it before invoking the application.
 	if err := txmp.preCheck(tx); err != nil {
 		txmp.metrics.FailedTxs.Add(1)
-		txmp.rejectedTxCache.Push(key)
+		txmp.rejectedTxCache.Push(tx.Key())
 		return nil, err
 	}
 
@@ -325,7 +335,7 @@ func (txmp *TxPool) TryAddNewTx(tx *types.CachedTx, key types.TxKey, txInfo memp
 		return rsp, err
 	}
 	if rsp.Code != abci.CodeTypeOK {
-		txmp.rejectedTxCache.Push(key)
+		txmp.rejectedTxCache.PushWithCode(tx, rsp.Code)
 		txmp.metrics.FailedTxs.Add(1)
 		return rsp, fmt.Errorf("application rejected transaction with code %d (Log: %s)", rsp.Code, rsp.Log)
 	}
@@ -338,7 +348,7 @@ func (txmp *TxPool) TryAddNewTx(tx *types.CachedTx, key types.TxKey, txInfo memp
 	// Perform the post check
 	err = txmp.postCheck(wtx.tx, rsp)
 	if err != nil {
-		txmp.rejectedTxCache.Push(key)
+		txmp.rejectedTxCache.Push(wtx.tx.Key())
 		txmp.metrics.FailedTxs.Add(1)
 		return rsp, fmt.Errorf("rejected bad transaction after post check: %w", err)
 	}
@@ -615,7 +625,7 @@ func (txmp *TxPool) handleRecheckResult(wtx *wrappedTx, checkTxRes *abci.Respons
 		"code", checkTxRes.Code,
 	)
 	txmp.store.remove(wtx.key())
-	txmp.rejectedTxCache.Push(wtx.key())
+	txmp.rejectedTxCache.PushWithCode(wtx.tx, checkTxRes.Code)
 	txmp.metrics.FailedTxs.Add(1)
 	txmp.metrics.Size.Set(float64(txmp.Size()))
 	txmp.metrics.SizeBytes.Set(float64(txmp.SizeBytes()))

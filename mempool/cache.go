@@ -163,13 +163,20 @@ func (c *LRUTxCache) GetRejectionCode(key types.TxKey) (uint32, bool) {
 	c.mtx.Lock()
 	defer c.mtx.Unlock()
 
-	 // return key and code
-	 entry, ok := c.cacheMap[key]
-	 if !ok {
+	// return key and code
+	entry, ok := c.cacheMap[key]
+	if !ok {
 		return 0, false
-	 }
-
-	 return entry.Value.(cacheEntry).code, true
+	}
+	// Try to get code from cacheEntry
+	if cacheEntry, ok := entry.Value.(cacheEntry); ok {
+		return cacheEntry.code, true
+	}
+	// If it's not a cacheEntry, it must be a types.TxKey
+	if _, ok := entry.Value.(types.TxKey); ok {
+		return 0, true
+	}
+	return 0, false
 }
 
 // NopTxCache defines a no-op raw transaction cache.

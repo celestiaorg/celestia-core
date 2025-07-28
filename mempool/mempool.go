@@ -163,10 +163,3 @@ func PostCheckMaxGas(maxGas int64) PostCheckFunc {
 
 // TxKey represents the key of a transaction in the mempool.
 type TxKey [sha256.Size]byte
-
-// RejectionResult stores the rejection details for a transaction
-type RejectionResult struct {
-	Code   uint32 `json:"code"`
-	Log    string `json:"log"`
-	Height int64  `json:"height"`
-}
