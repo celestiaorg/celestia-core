@@ -32,7 +32,7 @@ jobs:
         run: make -j2 docker runner tests
         if: "env.GIT_DIFF != ''"
 
-      - name: Run CI testnet
+      - name: Run CI testnets
         working-directory: test/e2e
-        run: ./run-multiple.sh networks/ci.toml
+        run: ./run-multiple.sh networks/ci.toml networks/propagation-reactor-compatibility.toml
         if: "env.GIT_DIFF != ''"
