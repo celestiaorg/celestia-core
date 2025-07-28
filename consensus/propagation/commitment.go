@@ -274,6 +274,16 @@ func (blockProp *Reactor) recoverPartsFromMempool(cb *proptypes.CompactBlock) {
 			continue
 		}
 
+		select {
+		case <-blockProp.ctx.Done():
+			return
+		case blockProp.partChan <- types.PartInfo{
+			Part:   p,
+			Height: cb.Proposal.Height,
+			Round:  cb.Proposal.Round,
+		}:
+		}
+
 		recoveredCount++
 
 		haves.Parts = append(haves.Parts, proptypes.PartMetaData{Index: p.Index, Hash: p.Proof.LeafHash})
