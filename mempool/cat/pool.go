@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/cometbft/cometbft/libs/trace"
+	"github.com/cometbft/cometbft/libs/trace/schema"
 	"sort"
 	"sync"
 	"time"
@@ -75,6 +77,8 @@ type TxPool struct {
 	broadcastCh      chan *wrappedTx
 	broadcastMtx     sync.Mutex
 	txsToBeBroadcast []types.TxKey
+
+	tracer trace.Tracer
 }
 
 // NewTxPool constructs a new, empty content addressable txpool at the specified
@@ -100,6 +104,7 @@ func NewTxPool(
 		store:            newStore(),
 		broadcastCh:      make(chan *wrappedTx),
 		txsToBeBroadcast: make([]types.TxKey, 0),
+		tracer:           trace.NoOpTracer(),
 	}
 
 	for _, opt := range options {
@@ -126,6 +131,10 @@ func WithPostCheck(f mempool.PostCheckFunc) TxPoolOption {
 // WithMetrics sets the mempool's metrics collector.
 func WithMetrics(metrics *mempool.Metrics) TxPoolOption {
 	return func(txmp *TxPool) { txmp.metrics = metrics }
+}
+
+func WithTracer(tracer trace.Tracer) TxPoolOption {
+	return func(txmp *TxPool) { txmp.tracer = tracer }
 }
 
 // Lock locks the mempool, no new transactions can be processed
@@ -348,6 +357,7 @@ func (txmp *TxPool) TryAddNewTx(tx *types.CachedTx, key types.TxKey, txInfo memp
 	if err := txmp.addNewTransaction(wtx); err != nil {
 		return nil, err
 	}
+	schema.WriteMempoolSize(txmp.tracer, txmp.SizeBytes())
 	return rsp, nil
 }
 
