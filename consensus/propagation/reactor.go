@@ -35,6 +35,9 @@ const (
 
 	// WantChannel the propagation reactor channel handling the wants.
 	WantChannel = byte(0x51)
+
+	// ReactorIncomingMessageQueueSize the size of the reactor's message queue.
+	ReactorIncomingMessageQueueSize = 5000
 )
 
 var RetryTime = 6 * time.Second
@@ -99,8 +102,10 @@ func NewReactor(
 		partChan:      make(chan types.PartInfo, 10_500),
 		proposalChan:  make(chan types.Proposal, 100),
 	}
-	reactor.BaseReactor = *p2p.NewBaseReactor("Recovery", reactor)
-
+	reactor.BaseReactor = *p2p.NewBaseReactor("Recovery", reactor,
+		p2p.WithIncomingQueueSize(ReactorIncomingMessageQueueSize),
+		//p2p.WithQueueingFunc(reactor.TryQueueUnprocessedEnvelope),
+	)
 	for _, option := range options {
 		option(reactor)
 	}

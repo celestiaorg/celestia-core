@@ -28,8 +28,8 @@ const (
 	defaultMaxPacketMsgPayloadSize = 1024
 
 	numBatchPacketMsgs = 10
-	minReadBufferSize  = 1024
-	minWriteBufferSize = 65536
+	minReadBufferSize  = 1
+	minWriteBufferSize = 1
 	updateStats        = 2 * time.Second
 
 	// some of these defaults are written in the user config
@@ -37,7 +37,7 @@ const (
 	// TODO: remove values present in config
 	defaultFlushThrottle = 100 * time.Millisecond
 
-	defaultSendQueueCapacity   = 1
+	defaultSendQueueCapacity   = 100
 	defaultRecvBufferCapacity  = 4096
 	defaultRecvMessageCapacity = 22020096 * 2  // 21MB
 	defaultSendRate            = int64(512000) // 500KB/s
