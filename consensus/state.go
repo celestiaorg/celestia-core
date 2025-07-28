@@ -2765,28 +2765,6 @@ func (cs *State) syncData() {
 		select {
 		case <-cs.Quit():
 			return
-		case part, ok := <-partChan:
-			if !ok {
-				return
-			}
-			cs.mtx.RLock()
-			h, r := cs.Height, cs.Round
-			currentProposalParts := cs.ProposalBlockParts
-			cs.mtx.RUnlock()
-			if part.Height != h || part.Round != r {
-				continue
-			}
-
-			if currentProposalParts != nil {
-				if currentProposalParts.IsComplete() {
-					continue
-				}
-				if currentProposalParts.HasPart(int(part.Index)) {
-					continue
-				}
-			}
-
-			cs.peerMsgQueue <- msgInfo{&BlockPartMessage{h, r, part.Part}, ""}
 		case proposal, ok := <-proposalChan:
 			if !ok {
 				return
@@ -2836,6 +2814,28 @@ func (cs *State) syncData() {
 				part := partset.GetPart(indice)
 				cs.peerMsgQueue <- msgInfo{&BlockPartMessage{height, round, part}, ""}
 			}
+		case part, ok := <-partChan:
+			if !ok {
+				return
+			}
+			cs.mtx.RLock()
+			h, r := cs.Height, cs.Round
+			currentProposalParts := cs.ProposalBlockParts
+			cs.mtx.RUnlock()
+			if part.Height != h || part.Round != r {
+				continue
+			}
+
+			if currentProposalParts != nil {
+				if currentProposalParts.IsComplete() {
+					continue
+				}
+				if currentProposalParts.HasPart(int(part.Index)) {
+					continue
+				}
+			}
+
+			cs.peerMsgQueue <- msgInfo{&BlockPartMessage{h, r, part.Part}, ""}
 		}
 	}
 }
