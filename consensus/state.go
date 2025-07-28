@@ -2792,6 +2792,7 @@ func (cs *State) syncData() {
 						"found and sent proposal: %v/%v",
 						proposal.Height, proposal.Round,
 					)
+					fmt.Println("sending proposal: ", proposal.Height, " ", proposal.Round, " current state: ", h, " ", r)
 					cs.internalMsgQueue <- msgInfo{&ProposalMessage{&proposal}, ""}
 				}
 			}
