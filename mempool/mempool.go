@@ -165,5 +165,5 @@ func PostCheckMaxGas(maxGas int64) PostCheckFunc {
 	}
 }
 
-// TxKey represents the key of a transaction in the mempool.
+// TxKey is the fixed length array key used as an index.
 type TxKey [sha256.Size]byte

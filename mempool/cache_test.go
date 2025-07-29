@@ -137,7 +137,7 @@ func TestCacheRemoveByKey(t *testing.T) {
 	}
 }
 
-func TestLRUTxCacheWithCodes(t *testing.T) {
+func TestRejectedTxCache(t *testing.T) {
 	cache := NewRejectedTxCache(10)
 	tx := types.Tx("test-transaction").ToCachedTx()
 	txKey := tx.Key()
@@ -160,12 +160,12 @@ func TestLRUTxCacheWithCodes(t *testing.T) {
 		require.Equal(t, initialCode, code)
 	})
 
-	t.Run("add same transaction again should overwrite", func(t *testing.T) {
+	t.Run("add same transaction again should not overwrite", func(t *testing.T) {
 		wasNew := cache.Push(tx, 1001)
 		require.False(t, wasNew)
 	})
 
-	t.Run("updating code should not change existing entry", func(t *testing.T) {
+	t.Run("should not change existing entry", func(t *testing.T) {
 		newCode := uint32(2002)
 		wasNew := cache.Push(tx, newCode)
 		require.False(t, wasNew)

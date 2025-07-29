@@ -879,7 +879,7 @@ func TestTxMempool_TestRejectionIndexing(t *testing.T) {
 		require.Error(t, err) // PreCheck failures return an error
 		code, ok = txmp.rejectedTxs.Get(txKey)
 		require.True(t, ok)
-		require.Equal(t, uint32(0), code) // what code should precheck return?
+		require.Equal(t, uint32(0), code)
 
 		// The transaction should now be marked as rejected
 		require.True(t, txmp.WasRecentlyRejected(txKey), "Transaction rejected by PreCheck should appear in IsRejectedTx")
@@ -910,7 +910,7 @@ func TestTxMempool_TestRejectionIndexing(t *testing.T) {
 		require.NoError(t, err) // CheckTx method itself doesn't return error for postcheck failure
 		code, ok = txmp.rejectedTxs.Get(txKey)
 		require.True(t, ok)
-		require.Equal(t, uint32(0), code) // what code should postcheck return?
+		require.Equal(t, uint32(0), code)
 
 		// The transaction should now be marked as rejected
 		require.True(t, txmp.WasRecentlyRejected(txKey), "Transaction rejected by PostCheck should appear in IsRejectedTx")

@@ -42,12 +42,6 @@ type LRUTxCache struct {
 	list     *list.List
 }
 
-// cacheEntry stores both the transaction key and error code
-type cacheEntry struct {
-	key  types.TxKey
-	code uint32
-}
-
 func NewLRUTxCache(cacheSize int) *LRUTxCache {
 	return &LRUTxCache{
 		size:     cacheSize,
@@ -141,20 +135,31 @@ func (NopTxCache) Remove(*types.CachedTx)    {}
 func (NopTxCache) Has(*types.CachedTx) bool  { return false }
 func (NopTxCache) HasKey(types.TxKey) bool   { return false }
 
+// cacheEntry stores both the transaction key and error code
+type cacheEntry struct {
+	key  types.TxKey
+	code uint32
+}
+
+// RejectedTxCache is a cache of rejected transactions. It wraps LRUTxCache
+// to store the error code for a transaction that has been rejected.
 type RejectedTxCache struct {
 	cache *LRUTxCache
 }
 
+// NewRejectedTxCache creates a new rejected tx cache.
 func NewRejectedTxCache(cacheSize int) *RejectedTxCache {
 	return &RejectedTxCache{
 		cache: NewLRUTxCache(cacheSize),
 	}
 }
 
+// Reset resets the cache to an empty state.
 func (c *RejectedTxCache) Reset() {
 	c.cache.Reset()
 }
 
+// Push adds a tx key and error code to the cache.
 func (c *RejectedTxCache) Push(tx *types.CachedTx, code uint32) bool {
 	c.cache.mtx.Lock()
 	defer c.cache.mtx.Unlock()
@@ -182,7 +187,7 @@ func (c *RejectedTxCache) Push(tx *types.CachedTx, code uint32) bool {
 	return true
 }
 
-// GetRejectionCode returns the error code for a transaction if it exists in the cache
+// Get returns the error code for a tx key if it exists in the cache.
 func (c *RejectedTxCache) Get(key types.TxKey) (uint32, bool) {
 	c.cache.mtx.Lock()
 	defer c.cache.mtx.Unlock()
@@ -198,10 +203,12 @@ func (c *RejectedTxCache) Get(key types.TxKey) (uint32, bool) {
 	return 0, false
 }
 
+// HasKey returns true if the tx key is present in the cache.
 func (c *RejectedTxCache) HasKey(key types.TxKey) bool {
 	return c.cache.HasKey(key)
 }
 
+// Remove removes a tx from the cache.
 func (c *RejectedTxCache) Remove(tx *types.CachedTx) {
 	c.cache.Remove(tx)
 }
