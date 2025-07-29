@@ -30,6 +30,9 @@ const (
 	// peerHeightDiff signifies the tolerance in difference in height between the peer and the height
 	// the node received the tx
 	peerHeightDiff = 10
+
+	// ReactorIncomingMessageQueueSize the size of the reactor's message queue.
+	ReactorIncomingMessageQueueSize = 5000
 )
 
 // Reactor handles mempool tx broadcasting logic amongst peers. For the main
@@ -93,7 +96,10 @@ func NewReactor(mempool *TxPool, opts *ReactorOptions) (*Reactor, error) {
 		requests:    newRequestScheduler(opts.MaxGossipDelay, defaultGlobalRequestTimeout),
 		traceClient: trace.NoOpTracer(),
 	}
-	memR.BaseReactor = *p2p.NewBaseReactor("Mempool", memR)
+	memR.BaseReactor = *p2p.NewBaseReactor("Mempool", memR,
+		p2p.WithIncomingQueueSize(ReactorIncomingMessageQueueSize),
+		p2p.WithQueueingFunc(memR.TryQueueUnprocessedEnvelope),
+	)
 	return memR, nil
 }
 
