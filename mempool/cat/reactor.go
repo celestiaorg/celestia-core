@@ -86,12 +86,16 @@ func NewReactor(mempool *TxPool, opts *ReactorOptions) (*Reactor, error) {
 	if err != nil {
 		return nil, err
 	}
+	traceClient := opts.TraceClient
+	if traceClient == nil {
+		traceClient = trace.NoOpTracer()
+	}
 	memR := &Reactor{
 		opts:        opts,
 		mempool:     mempool,
 		ids:         newMempoolIDs(),
 		requests:    newRequestScheduler(opts.MaxGossipDelay, defaultGlobalRequestTimeout),
-		traceClient: trace.NoOpTracer(),
+		traceClient: traceClient,
 	}
 	memR.BaseReactor = *p2p.NewBaseReactor("Mempool", memR)
 	return memR, nil
