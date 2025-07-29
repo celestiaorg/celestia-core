@@ -28,8 +28,8 @@ const (
 	defaultMaxPacketMsgPayloadSize = 1024
 
 	numBatchPacketMsgs = 10
-	minReadBufferSize  = 1
-	minWriteBufferSize = 1
+	minReadBufferSize  = 1024
+	minWriteBufferSize = 65536
 	updateStats        = 2 * time.Second
 
 	// some of these defaults are written in the user config
