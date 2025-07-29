@@ -471,22 +471,34 @@ func TestParseProtoAddr(t *testing.T) {
 		input    string
 		expected string
 	}{
-		// DNS scheme
-		{"dns:localhost:26657", "localhost:26657"},
-		{"dns:example.com:9090", "example.com:9090"},
-		{"dns:127.0.0.1:8080", "127.0.0.1:8080"},
+		// DNS scheme, should remain unchanged
+		{"dns:localhost:26657", "dns:localhost:26657"},
+		{"dns:example.com:9090", "dns:example.com:9090"},
+		{"dns:127.0.0.1:8080", "dns:127.0.0.1:8080"},
 
-		// Unix sockets
-		{"unix:///tmp/grpc.sock", "/tmp/grpc.sock"},
-		{"unix:///var/run/service.sock", "/var/run/service.sock"},
+		// Unix sockets, should remain unchanged
+		{"unix:///tmp/grpc.sock", "unix:///tmp/grpc.sock"},
+		{"unix:///var/run/service.sock", "unix:///var/run/service.sock"},
 
 		// No scheme - should remain unchanged
 		{"localhost:26657", "localhost:26657"},
 		{"127.0.0.1:8080", "127.0.0.1:8080"},
+		{"example.com:9090", "example.com:9090"},
 		{"/tmp/grpc.sock", "/tmp/grpc.sock"},
 
 		// TCP scheme - should be stripped
 		{"tcp://localhost:26657", "localhost:26657"},
+		{"tcp://127.0.0.1:8080", "127.0.0.1:8080"},
+		{"tcp://example.com:9090", "example.com:9090"},
+		{"tcp:///tmp/grpc.sock", "/tmp/grpc.sock"},
+
+		// Other schemes - should be stripped
+		{"http://localhost:26657", "localhost:26657"},
+		{"https://example.com:9090", "example.com:9090"},
+		{"grpc://127.0.0.1:8080", "127.0.0.1:8080"},
+		{"grpc+unix:///tmp/grpc.sock", "/tmp/grpc.sock"},
+		{"grpc+tcp://localhost:26657", "localhost:26657"},
+		{"grpc+tcp://127.0.0.1:8080", "127.0.0.1:8080"},
 	}
 
 	for _, tt := range tests {
