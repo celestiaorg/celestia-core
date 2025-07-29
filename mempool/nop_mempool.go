@@ -83,8 +83,8 @@ func (*NopMempool) WasRecentlyEvicted(types.TxKey) bool { return false }
 // WasRecentlyRejected always returns false.
 func (*NopMempool) WasRecentlyRejected(types.TxKey) bool { return false }
 
-// GetRejectionReason always returns 0, false.
-func (*NopMempool) GetRejectionReason(types.TxKey) (uint32, bool) { return 0, false }
+// GetRejectionCode always returns 0, false.
+func (*NopMempool) GetRejectionCode(types.TxKey) (uint32, bool) { return 0, false }
 
 // NopMempoolReactor is a mempool reactor that does nothing.
 type NopMempoolReactor struct {

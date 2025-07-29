@@ -274,9 +274,9 @@ func (txmp *TxMempool) WasRecentlyRejected(txKey types.TxKey) bool {
 	return txmp.rejectedTxs.HasKey(txKey)
 }
 
-// GetRejectionReason returns the rejection reason for a transaction if it exists in the
+// GetRejectionCode returns the rejection reason for a transaction if it exists in the
 // rejected cache.
-func (txmp *TxMempool) GetRejectionReason(txKey types.TxKey) (uint32, bool) {
+func (txmp *TxMempool) GetRejectionCode(txKey types.TxKey) (uint32, bool) {
 	code, exists := txmp.rejectedTxs.GetRejectionCode(txKey)
 	if !exists {
 		return 0, false

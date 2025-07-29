@@ -118,9 +118,9 @@ func (*CListMempool) WasRecentlyRejected(key types.TxKey) bool {
 	return false
 }
 
-// GetRejectionReason returns the rejection reason for a transaction if it exists in the
+// GetRejectionCode returns the rejection code for a transaction if it exists in the
 // rejected cache.
-func (mem *CListMempool) GetRejectionReason(txKey types.TxKey) (uint32, bool) {
+func (mem *CListMempool) GetRejectionCode(txKey types.TxKey) (uint32, bool) {
 	return 0, false
 }
 
