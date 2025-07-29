@@ -55,7 +55,7 @@ type TxMempool struct {
 	txByKey     map[types.TxKey]*clist.CElement
 	txBySender  map[string]*clist.CElement // for sender != ""
 	evictedTxs  mempool.TxCache            // for tracking evicted transactions
-	rejectedTxs *mempool.LRUTxCache        // for tracking rejected transactions
+	rejectedTxs *mempool.RejectedTxCache   // for tracking rejected transactions
 }
 
 // NewTxMempool constructs a new, empty priority mempool at the specified
@@ -82,7 +82,7 @@ func NewTxMempool(
 	if cfg.CacheSize > 0 {
 		txmp.cache = mempool.NewLRUTxCache(cfg.CacheSize)
 		txmp.evictedTxs = mempool.NewLRUTxCache(cfg.CacheSize / 5)
-		txmp.rejectedTxs = mempool.NewLRUTxCache(cfg.CacheSize / 5)
+		txmp.rejectedTxs = mempool.NewRejectedTxCache(cfg.CacheSize / 5)
 	}
 
 	for _, opt := range options {
@@ -193,7 +193,7 @@ func (txmp *TxMempool) CheckTx(
 	if err := txmp.preCheck(cachedTx); err != nil {
 		txmp.metrics.FailedTxs.Add(1)
 		// Add the transaction to the rejected cache
-		txmp.rejectedTxs.Push(cachedTx)
+		txmp.rejectedTxs.Push(cachedTx, 0)
 		return mempool.ErrPreCheck{Err: err}
 	}
 
@@ -271,13 +271,14 @@ func (txmp *TxMempool) WasRecentlyEvicted(txKey types.TxKey) bool {
 // rejected cache.
 // Used in the RPC endpoint: TxStatus.
 func (txmp *TxMempool) WasRecentlyRejected(txKey types.TxKey) bool {
-	return txmp.rejectedTxs.HasKey(txKey)
+	_, exists := txmp.GetRejectionCode(txKey)
+	return exists
 }
 
 // GetRejectionCode returns the rejection reason for a transaction if it exists in the
 // rejected cache.
 func (txmp *TxMempool) GetRejectionCode(txKey types.TxKey) (uint32, bool) {
-	code, exists := txmp.rejectedTxs.GetRejectionCode(txKey)
+	code, exists := txmp.rejectedTxs.Get(txKey)
 	if !exists {
 		return 0, false
 	}
@@ -506,7 +507,7 @@ func (txmp *TxMempool) addNewTransaction(wtx *WrappedTx, checkTxRes *abci.Respon
 
 		txmp.metrics.FailedTxs.Add(1)
 		// Add the transaction to the rejected cache
-		txmp.rejectedTxs.PushWithCode(wtx.tx, checkTxRes.Code)
+		txmp.rejectedTxs.Push(wtx.tx, checkTxRes.Code)
 		// Remove the invalid transaction from the cache, unless the operator has
 		// instructed us to keep invalid transactions.
 		if !txmp.config.KeepInvalidTxsInCache {
@@ -672,7 +673,7 @@ func (txmp *TxMempool) handleRecheckResult(tx *types.CachedTx, checkTxRes *abci.
 		"err", err,
 		"code", checkTxRes.Code,
 	)
-	txmp.rejectedTxs.PushWithCode(wtx.tx, checkTxRes.Code)
+	txmp.rejectedTxs.Push(wtx.tx, checkTxRes.Code)
 	txmp.removeTxByElement(elt)
 	txmp.metrics.FailedTxs.Add(1)
 	if !txmp.config.KeepInvalidTxsInCache {

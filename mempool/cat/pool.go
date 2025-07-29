@@ -61,7 +61,7 @@ type TxPool struct {
 	lastPurgeTime        time.Time // the last time we attempted to purge transactions via the TTL
 
 	// Thread-safe cache of rejected transactions for quick look-up
-	rejectedTxCache *LRUTxCache
+	rejectedTxCache *RejectedTxCache
 	// Thread-safe cache of evicted transactions for quick look-up
 	evictedTxCache *LRUTxCache
 	// Thread-safe list of transactions peers have seen that we have not yet seen
@@ -91,7 +91,7 @@ func NewTxPool(
 		config:           cfg,
 		proxyAppConn:     proxyAppConn,
 		metrics:          mempool.NopMetrics(),
-		rejectedTxCache:  NewLRUTxCache(cfg.CacheSize),
+		rejectedTxCache:  NewRejectedTxCache(cfg.CacheSize),
 		evictedTxCache:   NewLRUTxCache(cfg.CacheSize / 5),
 		seenByPeersSet:   NewSeenTxSet(),
 		height:           height,
@@ -207,7 +207,7 @@ func (txmp *TxPool) WasRecentlyRejected(txKey types.TxKey) bool {
 // GetRejectionCode returns the rejection reason for a transaction if it exists in the
 // rejected cache.
 func (txmp *TxPool) GetRejectionCode(txKey types.TxKey) (uint32, bool) {
-	code, exists := txmp.rejectedTxCache.GetRejectionCode(txKey)
+	code, exists := txmp.rejectedTxCache.Get(txKey)
 	if !exists {
 		return 0, false
 	}
@@ -317,7 +317,7 @@ func (txmp *TxPool) TryAddNewTx(tx *types.CachedTx, key types.TxKey, txInfo memp
 	// If a precheck hook is defined, call it before invoking the application.
 	if err := txmp.preCheck(tx); err != nil {
 		txmp.metrics.FailedTxs.Add(1)
-		txmp.rejectedTxCache.Push(tx.Key())
+		txmp.rejectedTxCache.Push(tx.Key(), 0)
 		return nil, err
 	}
 
@@ -335,7 +335,7 @@ func (txmp *TxPool) TryAddNewTx(tx *types.CachedTx, key types.TxKey, txInfo memp
 		return rsp, err
 	}
 	if rsp.Code != abci.CodeTypeOK {
-		txmp.rejectedTxCache.PushWithCode(tx, rsp.Code)
+		txmp.rejectedTxCache.Push(tx.Key(), rsp.Code)
 		txmp.metrics.FailedTxs.Add(1)
 		return rsp, fmt.Errorf("application rejected transaction with code %d (Log: %s)", rsp.Code, rsp.Log)
 	}
@@ -348,7 +348,7 @@ func (txmp *TxPool) TryAddNewTx(tx *types.CachedTx, key types.TxKey, txInfo memp
 	// Perform the post check
 	err = txmp.postCheck(wtx.tx, rsp)
 	if err != nil {
-		txmp.rejectedTxCache.Push(wtx.tx.Key())
+		txmp.rejectedTxCache.Push(wtx.tx.Key(), 0)
 		txmp.metrics.FailedTxs.Add(1)
 		return rsp, fmt.Errorf("rejected bad transaction after post check: %w", err)
 	}
@@ -370,7 +370,7 @@ func (txmp *TxPool) RemoveTxByKey(txKey types.TxKey) error {
 }
 
 func (txmp *TxPool) removeTxByKey(txKey types.TxKey) {
-	txmp.rejectedTxCache.Push(txKey)
+	txmp.rejectedTxCache.Push(txKey, 0)
 	_ = txmp.store.remove(txKey)
 	txmp.seenByPeersSet.RemoveKey(txKey)
 }
@@ -625,7 +625,7 @@ func (txmp *TxPool) handleRecheckResult(wtx *wrappedTx, checkTxRes *abci.Respons
 		"code", checkTxRes.Code,
 	)
 	txmp.store.remove(wtx.key())
-	txmp.rejectedTxCache.PushWithCode(wtx.tx, checkTxRes.Code)
+	txmp.rejectedTxCache.Push(wtx.tx.Key(), checkTxRes.Code)
 	txmp.metrics.FailedTxs.Add(1)
 	txmp.metrics.Size.Set(float64(txmp.Size()))
 	txmp.metrics.SizeBytes.Set(float64(txmp.SizeBytes()))

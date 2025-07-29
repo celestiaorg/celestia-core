@@ -8,11 +8,6 @@ import (
 	"github.com/cometbft/cometbft/types"
 )
 
-type cacheEntry struct {
-	key  types.TxKey
-	code uint32
-}
-
 // LRUTxCache maintains a thread-safe LRU cache of raw transactions. The cache
 // only stores the hash of the raw transaction.
 // NOTE: This has been copied from mempool/cache with the main difference of using
@@ -72,59 +67,6 @@ func (c *LRUTxCache) Push(txKey types.TxKey) bool {
 	return true
 }
 
-// PushWithCode pushes a transaction to the cache and sets the code for the transaction
-func (c *LRUTxCache) PushWithCode(tx *types.CachedTx, code uint32) bool {
-	if c.staticSize == 0 {
-		return true
-	}
-
-	c.mtx.Lock()
-	defer c.mtx.Unlock()
-
-	key := tx.Key()
-
-	moved, ok := c.cacheMap[key]
-	if ok {
-		c.list.MoveToBack(moved)
-		return false
-	}
-
-	if c.list.Len() >= c.staticSize {
-		front := c.list.Front()
-		if front != nil {
-			frontKey := front.Value.(cacheEntry).key
-			delete(c.cacheMap, frontKey)
-			c.list.Remove(front)
-		}
-	}
-
-	e := c.list.PushBack(cacheEntry{key: key, code: code})
-	c.cacheMap[key] = e
-
-	return true
-}
-
-// GetRejectionCode returns the error code for a transaction if it exists in the cache
-func (c *LRUTxCache) GetRejectionCode(key types.TxKey) (uint32, bool) {
-	c.mtx.Lock()
-	defer c.mtx.Unlock()
-
-	// return key and code
-	entry, ok := c.cacheMap[key]
-	if !ok {
-		return 0, false
-	}
-	// Try to get code from cacheEntry
-	if cacheEntry, ok := entry.Value.(cacheEntry); ok {
-		return cacheEntry.code, true
-	}
-	// If it's not a cacheEntry, it must be a types.TxKey
-	if _, ok := entry.Value.(types.TxKey); ok {
-		return 0, true
-	}
-	return 0, false
-}
-
 func (c *LRUTxCache) Remove(txKey types.TxKey) {
 	if c.staticSize == 0 {
 		return
@@ -151,6 +93,74 @@ func (c *LRUTxCache) Has(txKey types.TxKey) bool {
 
 	_, ok := c.cacheMap[txKey]
 	return ok
+}
+
+type cacheEntry struct {
+	key  types.TxKey
+	code uint32
+}
+
+type RejectedTxCache struct {
+	cache *LRUTxCache
+}
+
+func NewRejectedTxCache(cacheSize int) *RejectedTxCache {
+	return &RejectedTxCache{
+		cache: NewLRUTxCache(cacheSize),
+	}
+}
+
+func (c *RejectedTxCache) Reset() {
+	c.cache.Reset()
+}
+
+func (c *RejectedTxCache) Push(key types.TxKey, code uint32) bool {
+	c.cache.mtx.Lock()
+	defer c.cache.mtx.Unlock()
+
+	moved, ok := c.cache.cacheMap[key]
+	if ok {
+		c.cache.list.MoveToBack(moved)
+		return false
+	}
+
+	if c.cache.list.Len() >= c.cache.staticSize {
+		front := c.cache.list.Front()
+		if front != nil {
+			frontKey := front.Value.(cacheEntry).key
+			delete(c.cache.cacheMap, frontKey)
+			c.cache.list.Remove(front)
+		}
+	}
+
+	e := c.cache.list.PushBack(cacheEntry{key: key, code: code})
+	c.cache.cacheMap[key] = e
+
+	return true
+}
+
+// GetRejectionCode returns the error code for a transaction if it exists in the cache
+func (c *RejectedTxCache) Get(key types.TxKey) (uint32, bool) {
+	c.cache.mtx.Lock()
+	defer c.cache.mtx.Unlock()
+
+	// return key and code
+	entry, ok := c.cache.cacheMap[key]
+	if !ok {
+		return 0, false
+	}
+	if cacheEntry, ok := entry.Value.(cacheEntry); ok {
+		return cacheEntry.code, true
+	}
+	return 0, false
+}
+
+func (c *RejectedTxCache) Has(key types.TxKey) bool {
+	return c.cache.Has(key)
+}
+
+func (c *RejectedTxCache) Remove(txKey types.TxKey) {
+	c.cache.Remove(txKey)
 }
 
 // SeenTxSet records transactions that have been

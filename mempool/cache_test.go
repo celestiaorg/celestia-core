@@ -138,39 +138,39 @@ func TestCacheRemoveByKey(t *testing.T) {
 }
 
 func TestLRUTxCacheWithCodes(t *testing.T) {
-	cache := NewLRUTxCache(10)
+	cache := NewRejectedTxCache(10)
 	tx := types.Tx("test-transaction").ToCachedTx()
 	txKey := tx.Key()
 
 	t.Run("initial state", func(t *testing.T) {
 		require.False(t, cache.HasKey(txKey))
-		code, ok := cache.GetRejectionCode(txKey)
+		code, ok := cache.Get(txKey)
 		require.False(t, ok)
 		require.Equal(t, uint32(0), code)
 	})
 
 	t.Run("add transaction with rejection code", func(t *testing.T) {
 		initialCode := uint32(1001)
-		wasNew := cache.PushWithCode(tx, initialCode)
+		wasNew := cache.Push(tx, initialCode)
 		require.True(t, wasNew)
 
 		require.True(t, cache.HasKey(txKey))
-		code, ok := cache.GetRejectionCode(txKey)
+		code, ok := cache.Get(txKey)
 		require.True(t, ok)
 		require.Equal(t, initialCode, code)
 	})
 
 	t.Run("add same transaction again should overwrite", func(t *testing.T) {
-		wasNew := cache.PushWithCode(tx, 1001)
+		wasNew := cache.Push(tx, 1001)
 		require.False(t, wasNew)
 	})
 
 	t.Run("updating code should not change existing entry", func(t *testing.T) {
 		newCode := uint32(2002)
-		wasNew := cache.PushWithCode(tx, newCode)
+		wasNew := cache.Push(tx, newCode)
 		require.False(t, wasNew)
 
-		retrievedCode, ok := cache.GetRejectionCode(txKey)
+		retrievedCode, ok := cache.Get(txKey)
 		require.True(t, ok)
 		require.Equal(t, uint32(1001), retrievedCode) // Should still be original code
 	})
@@ -178,16 +178,8 @@ func TestLRUTxCacheWithCodes(t *testing.T) {
 	t.Run("remove transaction", func(t *testing.T) {
 		cache.Remove(tx)
 		require.False(t, cache.HasKey(txKey))
-		_, ok := cache.GetRejectionCode(txKey)
+		_, ok := cache.Get(txKey)
 		require.False(t, ok)
-	})
-
-	t.Run("backward compatibility with Push()", func(t *testing.T) {
-		cache.Push(tx)
-		require.True(t, cache.HasKey(txKey))
-		codeAfterPush, ok := cache.GetRejectionCode(txKey)
-		require.True(t, ok)
-		require.Equal(t, uint32(0), codeAfterPush) // zero because we didn't index with code
 	})
 
 	t.Run("reset cache", func(t *testing.T) {
