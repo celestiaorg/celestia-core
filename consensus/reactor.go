@@ -413,7 +413,7 @@ func (conR *Reactor) Receive(e p2p.Envelope) {
 		case *ProposalMessage:
 			start := time.Now()
 			ps.SetHasProposal(msg.Proposal)
-			conR.conS.peerMsgQueue <- msgInfo{msg, e.Src.ID()}
+			conR.conS.votesQueue <- msgInfo{msg, e.Src.ID()}
 			schema.WriteProposal(
 				conR.traceClient,
 				msg.Proposal.Height,
@@ -464,7 +464,7 @@ func (conR *Reactor) Receive(e p2p.Envelope) {
 			ps.EnsureVoteBitArrays(height-1, lastCommitSize)
 			ps.SetHasVote(msg.Vote)
 
-			cs.peerMsgQueue <- msgInfo{msg, e.Src.ID()}
+			cs.votesQueue <- msgInfo{msg, e.Src.ID()}
 			processingTime := time.Since(start)
 			schema.WriteMessageStats(conR.traceClient, "consensus", proto.MessageName(e.Message), processingTime.Nanoseconds(), fmt.Sprintf("vote message: %d %d %s", msg.Vote.Height, msg.Vote.Round, msg.Vote.Type.String()))
 		default:
