@@ -14,6 +14,10 @@ import (
 	"github.com/cometbft/cometbft/rpc/core"
 )
 
+var (
+	strippedSchemeRegex = regexp.MustCompile(`^[a-zA-Z][a-zA-Z0-9+.-]*://`)
+)
+
 // Config is an gRPC server configuration.
 //
 // Deprecated: A new gRPC API will be introduced after v0.38.
@@ -63,7 +67,7 @@ func StartGRPCServer(env *core.Environment, ln net.Listener) error {
 //
 // Deprecated: A new gRPC API will be introduced after v0.38.
 func StartGRPCClient(protoAddr string) BroadcastAPIClient {
-	parsedAddr := ParseProtoAddr(protoAddr)
+	parsedAddr := CanonicalGRPCAddress(protoAddr)
 
 	conn, err := grpc.NewClient(parsedAddr, grpc.WithTransportCredentials(insecure.NewCredentials()), grpc.WithContextDialer(dialerFunc))
 	if err != nil {
@@ -79,7 +83,7 @@ func dialerFunc(_ context.Context, addr string) (net.Conn, error) {
 // StartBlockAPIGRPCClient dials the gRPC server using protoAddr and returns a new
 // BlockAPIClient.
 func StartBlockAPIGRPCClient(protoAddr string, opts ...grpc.DialOption) (BlockAPIClient, error) {
-	parsedAddr := ParseProtoAddr(protoAddr)
+	parsedAddr := CanonicalGRPCAddress(protoAddr)
 
 	if len(opts) == 0 {
 		opts = append(opts, grpc.WithTransportCredentials(insecure.NewCredentials()))
@@ -98,7 +102,7 @@ func StartBlockAPIGRPCClient(protoAddr string, opts ...grpc.DialOption) (BlockAP
 // StartBlobstreamAPIGRPCClient dials the gRPC server using protoAddr and returns a new
 // BlobstreamAPIClient.
 func StartBlobstreamAPIGRPCClient(protoAddr string, opts ...grpc.DialOption) (BlobstreamAPIClient, error) {
-	parsedAddr := ParseProtoAddr(protoAddr)
+	parsedAddr := CanonicalGRPCAddress(protoAddr)
 
 	if len(opts) == 0 {
 		opts = append(opts, grpc.WithTransportCredentials(insecure.NewCredentials()))
@@ -114,7 +118,7 @@ func StartBlobstreamAPIGRPCClient(protoAddr string, opts ...grpc.DialOption) (Bl
 	return NewBlobstreamAPIClient(conn), nil
 }
 
-// ParseProtoAddr parses the protoAddr and returns the address, preserving gRPC-supported
+// CanonicalGRPCAddress parses the protoAddr and returns the address, preserving gRPC-supported
 // schemes (dns:// and unix://) while stripping other URI schemes.
 // Examples:
 //   - dns://host:port -> dns://host:port (preserved)
@@ -122,13 +126,12 @@ func StartBlobstreamAPIGRPCClient(protoAddr string, opts ...grpc.DialOption) (Bl
 //   - unix:/path -> unix:/path (preserved)
 //   - tcp://host:port -> host:port (stripped)
 //   - http://host:port -> host:port (stripped)
-func ParseProtoAddr(protoAddr string) string {
+func CanonicalGRPCAddress(protoAddr string) string {
 	// Check if it starts with gRPC-supported schemes - preserve them
 	if strings.HasPrefix(protoAddr, "dns://") || strings.HasPrefix(protoAddr, "unix://") {
 		return protoAddr
 	}
 
 	// Strip other URI schemes
-	re := regexp.MustCompile(`^[a-zA-Z][a-zA-Z0-9+.-]*://`)
-	return re.ReplaceAllString(protoAddr, "")
+	return strippedSchemeRegex.ReplaceAllString(protoAddr, "")
 }

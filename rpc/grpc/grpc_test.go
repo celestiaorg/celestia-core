@@ -210,16 +210,9 @@ func TestBlockByHash_Streaming(t *testing.T) {
 	for i := int64(1); i < 500; i++ {
 		waitForHeight(t, i+1)
 		blockMeta := env.BlockStore.LoadBlockMeta(i)
-		if blockMeta != nil && blockMeta.BlockID.PartSetHeader.Total > 1 {
+		if blockMeta.BlockID.PartSetHeader.Total > 1 {
 			expectedBlockMeta = *blockMeta
 			foundMultiPart = true
-			break
-		}
-		// If we can't find a multi-part block, use the latest block for basic streaming test
-		if i > 10 && !foundMultiPart {
-			if blockMeta != nil {
-				expectedBlockMeta = *blockMeta
-			}
 			break
 		}
 	}
@@ -368,16 +361,9 @@ func TestBlockQuery_Streaming(t *testing.T) {
 	for i := int64(1); i < 500; i++ {
 		waitForHeight(t, i+1)
 		blockMeta := env.BlockStore.LoadBlockMeta(i)
-		if blockMeta != nil && blockMeta.BlockID.PartSetHeader.Total > 1 {
+		if blockMeta.BlockID.PartSetHeader.Total > 1 {
 			expectedBlockMeta = *blockMeta
 			foundMultiPart = true
-			break
-		}
-		// If we can't find a multi-part block, use the latest block for basic streaming test
-		if i > 10 && !foundMultiPart {
-			if blockMeta != nil {
-				expectedBlockMeta = *blockMeta
-			}
 			break
 		}
 	}
@@ -466,7 +452,7 @@ func TestBlobstreamAPI(t *testing.T) {
 	assert.Equal(t, 4, len(resp.Proof.Aunts))
 }
 
-func TestParseProtoAddr(t *testing.T) {
+func TestCanonicalGRPCAddress(t *testing.T) {
 	tests := []struct {
 		input    string
 		expected string
@@ -502,7 +488,7 @@ func TestParseProtoAddr(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		result := core_grpc.ParseProtoAddr(tt.input)
+		result := core_grpc.CanonicalGRPCAddress(tt.input)
 		assert.Equal(t, tt.expected, result)
 	}
 }
