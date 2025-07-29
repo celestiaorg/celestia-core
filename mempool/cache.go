@@ -192,7 +192,6 @@ func (c *RejectedTxCache) Get(key types.TxKey) (uint32, bool) {
 	c.cache.mtx.Lock()
 	defer c.cache.mtx.Unlock()
 
-	// return key and code
 	entry, ok := c.cache.cacheMap[key]
 	if !ok {
 		return 0, false

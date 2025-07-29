@@ -154,6 +154,7 @@ func TestRejectedTxCache(t *testing.T) {
 	cache := NewRejectedTxCache(10)
 	tx := types.Tx("test-transaction").ToCachedTx()
 	txKey := tx.Key()
+	initialCode := uint32(1001)
 
 	t.Run("initial state", func(t *testing.T) {
 		require.False(t, cache.Has(txKey))
@@ -163,7 +164,6 @@ func TestRejectedTxCache(t *testing.T) {
 	})
 
 	t.Run("add transaction with rejection code", func(t *testing.T) {
-		initialCode := uint32(1001)
 		wasNew := cache.Push(txKey, initialCode)
 		require.True(t, wasNew)
 
@@ -173,8 +173,8 @@ func TestRejectedTxCache(t *testing.T) {
 		require.Equal(t, initialCode, code)
 	})
 
-	t.Run("add same transaction again should overwrite", func(t *testing.T) {
-		wasNew := cache.Push(txKey, 1001)
+	t.Run("add same transaction again should not overwrite", func(t *testing.T) {
+		wasNew := cache.Push(txKey, initialCode)
 		require.False(t, wasNew)
 	})
 
@@ -185,7 +185,7 @@ func TestRejectedTxCache(t *testing.T) {
 
 		retrievedCode, ok := cache.Get(txKey)
 		require.True(t, ok)
-		require.Equal(t, uint32(1001), retrievedCode) // Should still be original code
+		require.Equal(t, initialCode, retrievedCode) // Should still be original code
 	})
 
 	t.Run("remove transaction", func(t *testing.T) {
