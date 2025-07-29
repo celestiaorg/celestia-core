@@ -278,7 +278,12 @@ func setupReactor(t *testing.T) (*Reactor, *TxPool) {
 	cc := proxy.NewLocalClientCreator(app)
 	pool, cleanup := newMempoolWithApp(cc)
 	t.Cleanup(cleanup)
-	reactor, err := NewReactor(pool)
+	reactor, err := NewReactor(pool, &ReactorOptions{
+		ListenOnly:     false,
+		MaxTxSize:      cfg.DefaultMempoolConfig().MaxTxBytes,
+		MaxGossipDelay: DefaultGossipDelay,
+		TraceClient:    nil,
+	})
 	require.NoError(t, err)
 	return reactor, pool
 }

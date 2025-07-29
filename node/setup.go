@@ -299,10 +299,12 @@ func createMempoolAndMempoolReactor(
 
 		reactor, err := cat.NewReactor(
 			mp,
-			cat.WithListenOnly(!config.Mempool.Broadcast),
-			cat.WithMaxTxSize(config.Mempool.MaxTxBytes),
-			cat.WithTracer(traceClient),
-			cat.WithMaxGossipDelay(config.Mempool.MaxGossipDelay),
+			&cat.ReactorOptions{
+				ListenOnly:     !config.Mempool.Broadcast,
+				MaxTxSize:      config.Mempool.MaxTxBytes,
+				TraceClient:    traceClient,
+				MaxGossipDelay: config.Mempool.MaxGossipDelay,
+			},
 		)
 		if err != nil {
 			// TODO: find a more polite way of handling this error
