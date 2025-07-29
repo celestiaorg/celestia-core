@@ -901,13 +901,13 @@ func TestTxMempool_TestRejectionIndexing(t *testing.T) {
 
 		// The transaction should not be rejected initially
 		require.False(t, txmp.WasRecentlyRejected(txKey))
-		code, ok := txmp.rejectedTxCache.Get(txKey)
+		_, ok := txmp.GetRejectionCode(txKey)
 		require.False(t, ok)
 
 		// Try to add the transaction - it should be rejected
 		err := txmp.CheckTx(rejectedTx, nil, mempool.TxInfo{})
 		require.Error(t, err) // CheckTx returns an error for app rejection in CAT
-		code, ok = txmp.rejectedTxCache.Get(txKey)
+		code, ok := txmp.GetRejectionCode(txKey)
 		require.True(t, ok)
 		require.Equal(t, uint32(101), code)
 
@@ -930,13 +930,13 @@ func TestTxMempool_TestRejectionIndexing(t *testing.T) {
 
 		// The transaction should not be rejected initially
 		require.False(t, txmp.WasRecentlyRejected(txKey))
-		code, ok := txmp.rejectedTxCache.Get(txKey)
+		_, ok := txmp.GetRejectionCode(txKey)
 		require.False(t, ok)
 
 		// Try to add the transaction - it should be rejected by precheck
 		_, err := txmp.TryAddNewTx(types.Tx(rejectedTx).ToCachedTx(), txKey, mempool.TxInfo{})
 		require.Error(t, err) // PreCheck failures return an error
-		code, ok = txmp.rejectedTxCache.Get(txKey)
+		code, ok := txmp.GetRejectionCode(txKey)
 		require.True(t, ok)
 		require.Equal(t, uint32(0), code)
 
@@ -962,14 +962,14 @@ func TestTxMempool_TestRejectionIndexing(t *testing.T) {
 
 		// The transaction should not be rejected initially
 		require.False(t, txmp.WasRecentlyRejected(txKey))
-		code, ok := txmp.rejectedTxCache.Get(txKey)
+		code, ok := txmp.GetRejectionCode(txKey)
 		require.False(t, ok)
 		require.Equal(t, uint32(0), code)
 
 		// Try to add the transaction - it should be rejected by postcheck
-		_, err := txmp.TryAddNewTx(types.Tx(rejectedTx).ToCachedTx(), txKey, mempool.TxInfo{})			err := txmp.CheckTx(rejectedTx, nil, mempool.TxInfo{})
+		_, err := txmp.TryAddNewTx(types.Tx(rejectedTx).ToCachedTx(), txKey, mempool.TxInfo{})
 		require.Error(t, err) // PostCheck failures return an error
-		code, ok = txmp.rejectedTxCache.Get(txKey)
+		code, ok = txmp.GetRejectionCode(txKey)
 		require.True(t, ok)
 		require.Equal(t, uint32(0), code)
 
