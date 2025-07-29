@@ -1711,7 +1711,7 @@ func (cs *State) buildNextBlock() {
 	}
 	if cs.config.TimeoutCommit.Seconds() > 2 {
 		// delay pre-emptive block building until the end of the timeout commit
-		time.Sleep(time.Duration(cs.config.TimeoutCommit.Seconds() - 1))
+		time.Sleep(time.Duration(cs.config.TimeoutCommit.Seconds() - 1.8))
 	}
 	block, blockParts, err := cs.createProposalBlock(context.TODO())
 	if err != nil {
