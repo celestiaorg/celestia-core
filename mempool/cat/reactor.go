@@ -60,6 +60,39 @@ type ReactorOptions struct {
 	TraceClient trace.Tracer
 }
 
+// ReactorOption defines a function that configures a Reactor
+type ReactorOption func(*Reactor)
+
+// WithTracer configures the reactor to use the provided tracer
+func WithTracer(tracer trace.Tracer) ReactorOption {
+	return func(r *Reactor) {
+		r.traceClient = tracer
+	}
+}
+
+// WithListenOnly configures whether the reactor should only listen for transactions
+func WithListenOnly(listenOnly bool) ReactorOption {
+	return func(r *Reactor) {
+		r.opts.ListenOnly = listenOnly
+	}
+}
+
+// WithMaxTxSize configures the maximum transaction size
+func WithMaxTxSize(maxTxSize int) ReactorOption {
+	return func(r *Reactor) {
+		r.opts.MaxTxSize = maxTxSize
+	}
+}
+
+// WithMaxGossipDelay configures the maximum gossip delay
+func WithMaxGossipDelay(maxGossipDelay time.Duration) ReactorOption {
+	return func(r *Reactor) {
+		r.opts.MaxGossipDelay = maxGossipDelay
+		// Update the request scheduler with the new delay
+		r.requests = newRequestScheduler(maxGossipDelay, defaultGlobalRequestTimeout)
+	}
+}
+
 func (opts *ReactorOptions) VerifyAndComplete() error {
 	if opts.MaxTxSize == 0 {
 		opts.MaxTxSize = cfg.DefaultMempoolConfig().MaxTxBytes
@@ -80,24 +113,35 @@ func (opts *ReactorOptions) VerifyAndComplete() error {
 	return nil
 }
 
-// NewReactor returns a new Reactor with the given config and mempool.
-func NewReactor(mempool *TxPool, opts *ReactorOptions) (*Reactor, error) {
+// NewReactor returns a new Reactor with the given mempool and functional options.
+func NewReactor(mempool *TxPool, options ...ReactorOption) (*Reactor, error) {
+	// Initialize reactor with default options
+	opts := &ReactorOptions{
+		ListenOnly:     false,
+		MaxTxSize:      cfg.DefaultMempoolConfig().MaxTxBytes,
+		MaxGossipDelay: DefaultGossipDelay,
+		TraceClient:    nil,
+	}
+
 	err := opts.VerifyAndComplete()
 	if err != nil {
 		return nil, err
 	}
-	traceClient := opts.TraceClient
-	if traceClient == nil {
-		traceClient = trace.NoOpTracer()
-	}
+
 	memR := &Reactor{
 		opts:        opts,
 		mempool:     mempool,
 		ids:         newMempoolIDs(),
 		requests:    newRequestScheduler(opts.MaxGossipDelay, defaultGlobalRequestTimeout),
-		traceClient: traceClient,
+		traceClient: trace.NoOpTracer(),
 	}
 	memR.BaseReactor = *p2p.NewBaseReactor("Mempool", memR)
+
+	// Apply functional options
+	for _, option := range options {
+		option(memR)
+	}
+
 	return memR, nil
 }
 

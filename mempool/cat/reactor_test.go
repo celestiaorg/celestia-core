@@ -22,7 +22,6 @@ import (
 	cfg "github.com/cometbft/cometbft/config"
 
 	"github.com/cometbft/cometbft/libs/log"
-	"github.com/cometbft/cometbft/libs/trace"
 	"github.com/cometbft/cometbft/mempool"
 	"github.com/cometbft/cometbft/p2p"
 	"github.com/cometbft/cometbft/p2p/mocks"
@@ -279,7 +278,7 @@ func setupReactor(t *testing.T) (*Reactor, *TxPool) {
 	cc := proxy.NewLocalClientCreator(app)
 	pool, cleanup := newMempoolWithApp(cc)
 	t.Cleanup(cleanup)
-	reactor, err := NewReactor(pool, &ReactorOptions{})
+	reactor, err := NewReactor(pool)
 	require.NoError(t, err)
 	return reactor, pool
 }
@@ -403,41 +402,4 @@ func genPeer() *mocks.Peer {
 	peer.On("ID").Return(nodeKey.ID())
 	peer.On("Get", types.PeerStateKey).Return(nil).Maybe()
 	return peer
-}
-
-// mockTracer is a simple mock implementation of the trace.Tracer interface for testing
-type mockTracer struct {
-	writeCalled bool
-}
-
-func (m *mockTracer) Write(entry trace.Entry) {
-	m.writeCalled = true
-}
-
-func (m *mockTracer) IsCollecting(table string) bool {
-	return true
-}
-
-func (m *mockTracer) Stop() {}
-
-// TestReactorOptionsTraceClient verifies that the TraceClient option is properly used
-func TestReactorOptionsTraceClient(t *testing.T) {
-	app := &application{kvstore.NewApplication(db.NewMemDB())}
-	cc := proxy.NewLocalClientCreator(app)
-	pool, cleanup := newMempoolWithApp(cc)
-	defer cleanup()
-
-	// Test with nil TraceClient (should use NoOpTracer)
-	reactor1, err := NewReactor(pool, &ReactorOptions{})
-	require.NoError(t, err)
-	require.NotNil(t, reactor1.traceClient)
-
-	// Test with custom TraceClient
-	mockTracer := &mockTracer{}
-	reactor2, err := NewReactor(pool, &ReactorOptions{
-		TraceClient: mockTracer,
-	})
-	require.NoError(t, err)
-	require.Equal(t, mockTracer, reactor2.traceClient)
-	require.False(t, mockTracer.writeCalled)
 }
