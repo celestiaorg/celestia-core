@@ -1702,17 +1702,20 @@ func (cs *State) enterPrecommitWait(height int64, round int32) {
 	cs.scheduleTimeout(cs.config.Precommit(round), height, round, cstypes.RoundStepPrecommitWait)
 }
 
-// buildNextBlock creates the next block pre-amptively if we're the proposer.
+// blockBuildingTime the time it takes to build a new 32 mb block and a safety cushion.
+const blockBuildingTime = 1800 * time.Millisecond
+
+// buildNextBlock creates the next block pre-emptively if we're the proposer.
 func (cs *State) buildNextBlock() {
 	select {
 	// flush the next block channel to ensure only the relevant block is there.
 	case <-cs.nextBlock:
 	default:
 	}
-	if cs.config.TimeoutCommit.Seconds() > 2 {
-		// delay pre-emptive block building until the end of the timeout commit
-		time.Sleep(time.Duration(cs.config.TimeoutCommit.Seconds() - 1.8))
-	}
+
+	// delay pre-emptive block building until the end of the timeout commit
+	time.Sleep(cs.config.TimeoutCommit - blockBuildingTime)
+
 	block, blockParts, err := cs.createProposalBlock(context.TODO())
 	if err != nil {
 		cs.Logger.Error("unable to create proposal block", "error", err)
