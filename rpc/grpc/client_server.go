@@ -113,13 +113,17 @@ func StartBlobstreamAPIGRPCClient(protoAddr string, opts ...grpc.DialOption) (Bl
 	return NewBlobstreamAPIClient(conn), nil
 }
 
-// ParseProtoAddr parses the protoAddr and returns the address without the prefix
+// ParseProtoAddr parses the protoAddr and returns the address, preserving gRPC-supported
+// schemes (dns:// and unix://) while stripping other URI schemes.
+// Examples:
+//   - dns://host:port -> dns://host:port (preserved)
+//   - unix:///path -> unix:///path (preserved)
+//   - unix:/path -> unix:/path (preserved)
+//   - tcp://host:port -> host:port (stripped)
+//   - http://host:port -> host:port (stripped)
 func ParseProtoAddr(protoAddr string) string {
-	// Single regex to handle all schemes:
-	// - dns:host:port -> host:port
-	// - unix:///path -> /path (removes unix: and up to 2 extra slashes)
-	// - tcp://host:port -> host:port
-	// - any://something -> something
-	re := regexp.MustCompile(`^(?:dns:|unix:/{0,2}|[a-zA-Z][a-zA-Z0-9+.-]*://)`)
+	// Regex to match non-gRPC schemes that should be stripped
+	// Matches any scheme:// pattern except dns:// and unix://
+	re := regexp.MustCompile(`^(?!(?:dns|unix)://)[a-zA-Z][a-zA-Z0-9+.-]*://`)
 	return re.ReplaceAllString(protoAddr, "")
 }
