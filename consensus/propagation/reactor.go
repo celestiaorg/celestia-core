@@ -95,7 +95,7 @@ func NewReactor(
 		privval:       config.Privval,
 		chainID:       config.ChainID,
 		BlockMaxBytes: config.BlockMaxBytes,
-		partChan:      make(chan types.PartInfo, 2500),
+		partChan:      make(chan types.PartInfo, 30_000),
 		proposalChan:  make(chan types.Proposal, 100),
 	}
 	reactor.BaseReactor = *p2p.NewBaseReactor("Recovery", reactor)
