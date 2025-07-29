@@ -4,6 +4,7 @@ import (
 	"context"
 	"net"
 	"regexp"
+	"strings"
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
@@ -122,8 +123,12 @@ func StartBlobstreamAPIGRPCClient(protoAddr string, opts ...grpc.DialOption) (Bl
 //   - tcp://host:port -> host:port (stripped)
 //   - http://host:port -> host:port (stripped)
 func ParseProtoAddr(protoAddr string) string {
-	// Regex to match non-gRPC schemes that should be stripped
-	// Matches any scheme:// pattern except dns:// and unix://
-	re := regexp.MustCompile(`^(?!(?:dns|unix)://)[a-zA-Z][a-zA-Z0-9+.-]*://`)
+	// Check if it starts with gRPC-supported schemes - preserve them
+	if strings.HasPrefix(protoAddr, "dns://") || strings.HasPrefix(protoAddr, "unix://") {
+		return protoAddr
+	}
+
+	// Strip other URI schemes
+	re := regexp.MustCompile(`^[a-zA-Z][a-zA-Z0-9+.-]*://`)
 	return re.ReplaceAllString(protoAddr, "")
 }
