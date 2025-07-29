@@ -1726,9 +1726,9 @@ func (cs *State) buildNextBlock() {
 	case <-cs.nextBlock:
 	default:
 	}
-	if cs.config.TimeoutCommit.Seconds() > 2 {
-		time.Sleep(time.Duration(cs.config.TimeoutCommit.Nanoseconds() - 1_500_000_000))
-	}
+	//if cs.config.TimeoutCommit.Seconds() > 3 {
+	time.Sleep(time.Duration(cs.config.TimeoutCommit.Nanoseconds() - 2_500_000_000))
+	//}
 	block, blockParts, err := cs.createProposalBlock(context.TODO())
 	if err != nil {
 		cs.Logger.Error("unable to create proposal block", "error", err)
