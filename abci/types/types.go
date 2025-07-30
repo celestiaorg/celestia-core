@@ -124,80 +124,65 @@ func (r *EventAttribute) MarshalJSON() ([]byte, error) {
 // encoded bytes as base64 so here we attempt to base64 decode the keys and
 // values.
 func (r *EventAttribute) UnmarshalJSON(b []byte) error {
-	// Parse the JSON into a raw struct to inspect the format
-	var raw struct {
+	var eventAttribute struct {
 		Key   string `json:"key,omitempty"`
 		Value string `json:"value,omitempty"`
 		Index bool   `json:"index,omitempty"`
 	}
 
-	if err := json.Unmarshal(b, &raw); err != nil {
+	if err := json.Unmarshal(b, &eventAttribute); err != nil {
 		return err
 	}
 
-	// Helper function to check if decoded content is likely from old format
-	isLikelyOldFormat := func(original, decoded string) bool {
-		// Don't decode if they're the same (not actually encoded)
-		if original == decoded {
-			return false
-		}
-
-		// Only decode if the result is printable ASCII/UTF-8 text
-		// This filters out garbage like the "receiver" -> [173 231 30 138 247 171] case
-		for _, r := range decoded {
-			// Allow printable ASCII characters, spaces, and common unicode
-			if r < 32 && r != '\t' && r != '\n' && r != '\r' {
-				return false
-			}
-			// Reject high-value bytes that are likely binary garbage
-			if r > 127 && r == '\ufffd' {
-				return false
-			}
-		}
-
-		// Additional heuristic: old format base64 was typically longer
-		// and had padding or specific characteristics
-		if len(original) < 8 {
-			// Short strings that happen to be valid base64 are probably just normal strings
-			return false
-		}
-
-		return true
-	}
-
-	// Try to decode Key as base64 for backwards compatibility
-	if raw.Key != "" {
-		if keyBytes, err := base64.StdEncoding.DecodeString(raw.Key); err == nil {
-			decoded := string(keyBytes)
-			if isLikelyOldFormat(raw.Key, decoded) {
-				r.Key = decoded
-			} else {
-				r.Key = raw.Key
-			}
-		} else {
-			r.Key = raw.Key
-		}
-	}
-
-	// Same logic for Value
-	if raw.Value != "" {
-		if valueBytes, err := base64.StdEncoding.DecodeString(raw.Value); err == nil {
-			decoded := string(valueBytes)
-			if isLikelyOldFormat(raw.Value, decoded) {
-				r.Value = decoded
-			} else {
-				r.Value = raw.Value
-			}
-		} else {
-			r.Value = raw.Value
-		}
-	}
-
-	r.Index = raw.Index
+	r.Key = maybeBase64Decode(eventAttribute.Key)
+	r.Value = maybeBase64Decode(eventAttribute.Value)
+	r.Index = eventAttribute.Index
 	return nil
 }
 
-func is
+func maybeBase64Decode(input string) string {
+	if isLikelyBase64Encoded(input) {
+		bytes, err := base64.StdEncoding.DecodeString(input)
+		if err != nil {
+			return input // input is not a base64 encoded string so return the input
+		}
+		decoded := string(bytes)
+		return decoded
+	}
+	return input
+}
+
+// isLikelyBase64Encoded returns true if input is likely a base64 encoded string.
+func isLikelyBase64Encoded(input string) bool {
+	bytes, err := base64.StdEncoding.DecodeString(input)
+	if err != nil {
+		return false
+	}
+	decoded := string(bytes)
+	if input == decoded {
+		return false
+	}
+
+	// Only decode if the result is printable ASCII/UTF-8 text
+	for _, r := range decoded {
+		// Allow printable ASCII characters, spaces, and common unicode
+		if r < 32 && r != '\t' && r != '\n' && r != '\r' {
+			return false
+		}
+		// Reject high-value bytes that are likely binary garbage
+		if r > 127 && r == '\ufffd' {
+			return false
+		}
+	}
+
+	// Additional heuristic: old format base64 was typically longer
+	// and had padding or specific characteristics
+	if len(input) < 8 {
+		// Short strings that happen to be valid base64 are probably just normal strings
+		return false
+	}
+	return true
+}
 
 // Some compile time assertions to ensure we don't
 // have accidental runtime surprises later on.

@@ -2,13 +2,10 @@ package types_test
 
 import (
 	"encoding/json"
-	fmt "fmt"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-
-	"encoding/base64"
 
 	abci "github.com/cometbft/cometbft/abci/types"
 	"github.com/cometbft/cometbft/crypto/merkle"
@@ -168,36 +165,4 @@ func TestUnmarshalJSON(t *testing.T) {
 			require.Equal(t, tt.expected.Index, event.Index)
 		})
 	}
-}
-
-func TestEventAttributeBase64Encoding_Analysis(t *testing.T) {
-	// Test to understand why "receiver" gets corrupted but "minter" doesn't
-	tests := []string{"receiver", "minter", "spender", "amount", "bXNnX2luZGV4"}
-
-	for _, str := range tests {
-		t.Run(str, func(t *testing.T) {
-			// Try to base64 decode the string
-			if decoded, err := base64.StdEncoding.DecodeString(str); err == nil {
-				fmt.Printf("String %q can be base64-decoded to: %q (bytes: %v)\n", str, string(decoded), decoded)
-				fmt.Printf("Decoded != original: %v\n", string(decoded) != str)
-				fmt.Printf("Contains non-printable: %v\n", containsNonPrintable(string(decoded)))
-				fmt.Printf("Length >= 8: %v\n", len(str) >= 8)
-			} else {
-				fmt.Printf("String %q cannot be base64-decoded: %v\n", str, err)
-			}
-		})
-	}
-}
-
-// Helper function to check for non-printable characters
-func containsNonPrintable(s string) bool {
-	for _, r := range s {
-		if r < 32 && r != '\t' && r != '\n' && r != '\r' {
-			return true
-		}
-		if r > 127 && r == '\ufffd' {
-			return true
-		}
-	}
-	return false
 }
