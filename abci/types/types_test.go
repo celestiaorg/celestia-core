@@ -169,7 +169,13 @@ func TestUnmarshalJSON(t *testing.T) {
 	}
 }
 
+// TestBlockResults reproduces the issue described in
+// https://github.com/celestiaorg/celestia-app/issues/5312. It isn't meant to be
+// run in CI because it makes an HTTP request which could be flaky if the RPC
+// provider goes down.
 func TestBlockResults(t *testing.T) {
+	t.Skip("skipping TestBlockResults because this test makes an HTTP request.")
+
 	rpcURL := "https://celestia-mainnet-rpc.itrocket.net"
 	height := int64(6680339)
 
@@ -179,6 +185,8 @@ func TestBlockResults(t *testing.T) {
 	results, err := provider.BlockResults(context.Background(), &height)
 	require.NoError(t, err)
 
-	key := results.FinalizeBlockEvents[0].Attributes[0].Key
-	assert.Equal(t, "receiver", key)
+	t.Run("the first finalize block event attribute key is 'receiver' which previously failed to unmarshal correctly", func(t *testing.T) {
+		key := results.FinalizeBlockEvents[0].Attributes[0].Key
+		assert.Equal(t, "receiver", key)
+	})
 }
