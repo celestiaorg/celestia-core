@@ -1,9 +1,9 @@
-//nolint:dupl
 package coregrpc_test
 
 import (
 	"context"
 	"os"
+	"sync"
 	"testing"
 	"time"
 
@@ -20,6 +20,9 @@ import (
 	rpctest "github.com/cometbft/cometbft/rpc/test"
 	"github.com/cometbft/cometbft/types"
 )
+
+var testNode *node.Node
+var once sync.Once
 
 func TestMain(m *testing.M) {
 	// start a CometBFT node in the background to test against
@@ -489,6 +492,9 @@ func waitForHeight(t *testing.T, height int64) {
 }
 
 func initialiseTestNode() *node.Node {
-	app := kvstore.NewInMemoryApplication()
-	return rpctest.StartTendermint(app)
+	once.Do(func() {
+		app := kvstore.NewInMemoryApplication()
+		testNode = rpctest.StartTendermint(app)
+	})
+	return testNode
 }
