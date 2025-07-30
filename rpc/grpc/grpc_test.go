@@ -11,7 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/cometbft/cometbft/abci/example/kvstore"
-	nm "github.com/cometbft/cometbft/node"
+	"github.com/cometbft/cometbft/node"
 	"github.com/cometbft/cometbft/proto/tendermint/crypto"
 	rpcclient "github.com/cometbft/cometbft/rpc/client"
 	rpchttp "github.com/cometbft/cometbft/rpc/client/http"
@@ -21,12 +21,9 @@ import (
 	"github.com/cometbft/cometbft/types"
 )
 
-var testNode *nm.Node
-
 func TestMain(m *testing.M) {
 	// start a CometBFT node in the background to test against
-	app := kvstore.NewInMemoryApplication()
-	testNode = rpctest.StartTendermint(app)
+	testNode := initialiseTestNode()
 
 	code := m.Run()
 
@@ -52,7 +49,8 @@ func setupClient(t *testing.T) core_grpc.BlockAPIClient {
 }
 
 func getEnvironment(t *testing.T) *core.Environment {
-	env, err := testNode.ConfigureRPC()
+	node := initialiseTestNode()
+	env, err := node.ConfigureRPC()
 	require.NoError(t, err)
 	return env
 }
@@ -488,4 +486,9 @@ func waitForHeight(t *testing.T, height int64) {
 	require.NoError(t, err)
 	err = rpcclient.WaitForHeight(c, height, nil)
 	require.NoError(t, err)
+}
+
+func initialiseTestNode() *node.Node {
+	app := kvstore.NewInMemoryApplication()
+	return rpctest.StartTendermint(app)
 }
