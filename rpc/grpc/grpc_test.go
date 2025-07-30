@@ -43,7 +43,7 @@ func (s *GRPCSuite) SetupSuite() {
 	s.env = env
 }
 
-func (s *GRPCSuite) TearDownTest() {
+func (s *GRPCSuite) TearDown() {
 	assert.NoError(s.T(), s.testNode.Stop())
 }
 
