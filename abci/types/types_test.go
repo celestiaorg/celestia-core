@@ -2,6 +2,7 @@ package types_test
 
 import (
 	"encoding/json"
+	fmt "fmt"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -128,11 +129,29 @@ func TestUnmarshalJSON(t *testing.T) {
 			},
 		},
 		{
-			name:     "normal string 'receiver' gets corrupted",
+			name:     "normal string 'receiver' should NOT be corrupted",
 			jsonData: `{"key":"receiver","value":"celestia1m3h30wlvsf8llruxtpukdvsy0km2kum8emkgad","index":true}`,
 			expected: abci.EventAttribute{
-				Key:   "receiver",
+				Key:   "receiver", // Should stay as "receiver", not be base64-decoded to garbage
 				Value: "celestia1m3h30wlvsf8llruxtpukdvsy0km2kum8emkgad",
+				Index: true,
+			},
+		},
+		{
+			name:     "short strings that happen to be valid base64",
+			jsonData: `{"key":"ab","value":"test","index":true}`,
+			expected: abci.EventAttribute{
+				Key:   "ab", // Should NOT be decoded (too short for old format)
+				Value: "test",
+				Index: true,
+			},
+		},
+		{
+			name:     "actual base64 data from old format should be decoded",
+			jsonData: `{"key":"bXNnX2luZGV4","value":"dGVzdF92YWx1ZQ==","index":true}`,
+			expected: abci.EventAttribute{
+				Key:   "msg_index",  // base64 decode of "bXNnX2luZGV4"
+				Value: "test_value", // base64 decode of "dGVzdF92YWx1ZQ=="
 				Index: true,
 			},
 		},
@@ -143,6 +162,7 @@ func TestUnmarshalJSON(t *testing.T) {
 			var event abci.EventAttribute
 			err := json.Unmarshal([]byte(tt.jsonData), &event)
 			require.NoError(t, err)
+
 			require.Equal(t, tt.expected.Key, event.Key)
 			require.Equal(t, tt.expected.Value, event.Value)
 			require.Equal(t, tt.expected.Index, event.Index)
@@ -152,18 +172,32 @@ func TestUnmarshalJSON(t *testing.T) {
 
 func TestEventAttributeBase64Encoding_Analysis(t *testing.T) {
 	// Test to understand why "receiver" gets corrupted but "minter" doesn't
-	tests := []string{"receiver", "minter", "spender", "amount"}
+	tests := []string{"receiver", "minter", "spender", "amount", "bXNnX2luZGV4"}
 
 	for _, str := range tests {
 		t.Run(str, func(t *testing.T) {
 			// Try to base64 decode the string
 			if decoded, err := base64.StdEncoding.DecodeString(str); err == nil {
-				t.Logf("String %q can be base64-decoded to: %v (bytes: %v)",
-					str, string(decoded), decoded)
-				t.Logf("Decoded != original: %v", string(decoded) != str)
+				fmt.Printf("String %q can be base64-decoded to: %q (bytes: %v)\n", str, string(decoded), decoded)
+				fmt.Printf("Decoded != original: %v\n", string(decoded) != str)
+				fmt.Printf("Contains non-printable: %v\n", containsNonPrintable(string(decoded)))
+				fmt.Printf("Length >= 8: %v\n", len(str) >= 8)
 			} else {
-				t.Logf("String %q cannot be base64-decoded: %v", str, err)
+				fmt.Printf("String %q cannot be base64-decoded: %v\n", str, err)
 			}
 		})
 	}
+}
+
+// Helper function to check for non-printable characters
+func containsNonPrintable(s string) bool {
+	for _, r := range s {
+		if r < 32 && r != '\t' && r != '\n' && r != '\r' {
+			return true
+		}
+		if r > 127 && r == '\ufffd' {
+			return true
+		}
+	}
+	return false
 }

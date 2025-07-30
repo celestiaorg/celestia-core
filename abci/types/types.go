@@ -135,13 +135,42 @@ func (r *EventAttribute) UnmarshalJSON(b []byte) error {
 		return err
 	}
 
-	// Try to decode Key as base64, fallback to raw string
+	// Helper function to check if decoded content is likely from old format
+	isLikelyOldFormat := func(original, decoded string) bool {
+		// Don't decode if they're the same (not actually encoded)
+		if original == decoded {
+			return false
+		}
+
+		// Only decode if the result is printable ASCII/UTF-8 text
+		// This filters out garbage like the "receiver" -> [173 231 30 138 247 171] case
+		for _, r := range decoded {
+			// Allow printable ASCII characters, spaces, and common unicode
+			if r < 32 && r != '\t' && r != '\n' && r != '\r' {
+				return false
+			}
+			// Reject high-value bytes that are likely binary garbage
+			if r > 127 && r == '\ufffd' {
+				return false
+			}
+		}
+
+		// Additional heuristic: old format base64 was typically longer
+		// and had padding or specific characteristics
+		if len(original) < 8 {
+			// Short strings that happen to be valid base64 are probably just normal strings
+			return false
+		}
+
+		return true
+	}
+
+	// Try to decode Key as base64 for backwards compatibility
 	if raw.Key != "" {
 		if keyBytes, err := base64.StdEncoding.DecodeString(raw.Key); err == nil {
-			// Check if the base64 decoded content looks like it should be decoded
-			// (i.e., it's not the same as the original and produces valid output)
-			if string(keyBytes) != raw.Key {
-				r.Key = string(keyBytes)
+			decoded := string(keyBytes)
+			if isLikelyOldFormat(raw.Key, decoded) {
+				r.Key = decoded
 			} else {
 				r.Key = raw.Key
 			}
@@ -150,13 +179,12 @@ func (r *EventAttribute) UnmarshalJSON(b []byte) error {
 		}
 	}
 
-	// Try to decode Value as base64, fallback to raw string
+	// Same logic for Value
 	if raw.Value != "" {
 		if valueBytes, err := base64.StdEncoding.DecodeString(raw.Value); err == nil {
-			// Check if the base64 decoded content looks like it should be decoded
-			// (i.e., it's not the same as the original and produces valid output)
-			if string(valueBytes) != raw.Value {
-				r.Value = string(valueBytes)
+			decoded := string(valueBytes)
+			if isLikelyOldFormat(raw.Value, decoded) {
+				r.Value = decoded
 			} else {
 				r.Value = raw.Value
 			}
@@ -168,6 +196,8 @@ func (r *EventAttribute) UnmarshalJSON(b []byte) error {
 	r.Index = raw.Index
 	return nil
 }
+
+func is
 
 // Some compile time assertions to ensure we don't
 // have accidental runtime surprises later on.
