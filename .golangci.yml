@@ -92,6 +92,7 @@ linters:
             - github.com/decred/dcrd/dcrec/secp256k1/v4
             - github.com/celestiaorg/go-square/v2
             - github.com/stretchr/testify/require
+            - github.com/stretchr/testify/suite
     dogsled:
       max-blank-identifiers: 3
     gosec:
