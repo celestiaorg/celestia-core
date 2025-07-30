@@ -1,6 +1,7 @@
 package types_test
 
 import (
+	"context"
 	"encoding/json"
 	"testing"
 
@@ -9,6 +10,7 @@ import (
 
 	abci "github.com/cometbft/cometbft/abci/types"
 	"github.com/cometbft/cometbft/crypto/merkle"
+	"github.com/cometbft/cometbft/rpc/client/http"
 )
 
 func TestHashAndProveResults(t *testing.T) {
@@ -165,4 +167,18 @@ func TestUnmarshalJSON(t *testing.T) {
 			require.Equal(t, tt.expected.Index, event.Index)
 		})
 	}
+}
+
+func TestBlockResults(t *testing.T) {
+	rpcURL := "https://celestia-mainnet-rpc.itrocket.net"
+	height := int64(6680339)
+
+	provider, err := http.New(rpcURL, "/websocket")
+	require.NoError(t, err)
+
+	results, err := provider.BlockResults(context.Background(), &height)
+	require.NoError(t, err)
+
+	key := results.FinalizeBlockEvents[0].Attributes[0].Key
+	assert.Equal(t, "receiver", key)
 }
