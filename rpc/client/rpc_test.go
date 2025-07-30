@@ -841,7 +841,7 @@ func TestTxStatus(t *testing.T) {
 	// Get the tx status
 	malformedTxResult, err := c.TxStatus(context.Background(), types.Tx(malformedTx).Hash())
 	require.NoError(err)
-	require.EqualValues(uint32(2), malformedTxResult.Code)
+	require.EqualValues(uint32(2), malformedTxResult.ExecutionCode)
 	require.Equal("REJECTED", malformedTxResult.Status)
 
 	// Get the tx status
@@ -850,7 +850,7 @@ func TestTxStatus(t *testing.T) {
 	require.EqualValues(bres.Height, result.Height)
 	require.EqualValues(0, result.Index)
 	require.Equal("COMMITTED", result.Status)
-	require.Equal(abci.CodeTypeOK, result.Code)
+	require.Equal(abci.CodeTypeOK, result.ExecutionCode)
 	require.Equal("", result.Error)
 }
 
