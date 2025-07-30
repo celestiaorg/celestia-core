@@ -204,6 +204,10 @@ func (s *GRPCSuite) TestBlockByHash_Streaming() {
 	t := s.T()
 	client := setupClient(t)
 
+	status, err := s.env.Status(nil)
+	require.NoError(t, err)
+	latestBlockHeight := status.SyncInfo.LatestBlockHeight
+
 	// send a big transaction that would result in a block
 	// containing multiple block parts
 	txRes, err := rpctest.GetGRPCClient().BroadcastTx(
@@ -215,7 +219,7 @@ func (s *GRPCSuite) TestBlockByHash_Streaming() {
 	require.EqualValues(t, 0, txRes.TxResult.Code)
 
 	var expectedBlockMeta types.BlockMeta
-	for i := int64(1); i < 500; i++ {
+	for i := latestBlockHeight; i < latestBlockHeight+500; i++ {
 		waitForHeight(t, i+1)
 		blockMeta := s.env.BlockStore.LoadBlockMeta(i)
 		if blockMeta.BlockID.PartSetHeader.Total > 1 {
@@ -348,6 +352,10 @@ func (s *GRPCSuite) TestBlockQuery_Streaming() {
 	t := s.T()
 	client := setupClient(t)
 
+	status, err := s.env.Status(nil)
+	require.NoError(t, err)
+	latestBlockHeight := status.SyncInfo.LatestBlockHeight
+
 	// send a big transaction that would result in a block
 	// containing multiple block parts
 	txRes, err := rpctest.GetGRPCClient().BroadcastTx(
@@ -359,7 +367,7 @@ func (s *GRPCSuite) TestBlockQuery_Streaming() {
 	require.EqualValues(t, 0, txRes.TxResult.Code)
 
 	var expectedBlockMeta types.BlockMeta
-	for i := int64(1); i < 500; i++ {
+	for i := latestBlockHeight; i < latestBlockHeight+500; i++ {
 		waitForHeight(t, i+1)
 		blockMeta := s.env.BlockStore.LoadBlockMeta(i)
 		if blockMeta.BlockID.PartSetHeader.Total > 1 {
