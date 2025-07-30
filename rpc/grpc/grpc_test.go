@@ -24,7 +24,7 @@ import (
 
 func TestGRPC(t *testing.T) {
 	s := new(GRPCSuite)
-	defer s.Teardown()
+	defer s.TearDown()
 	suite.Run(t, s)
 }
 
