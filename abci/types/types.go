@@ -119,10 +119,11 @@ func (r *EventAttribute) MarshalJSON() ([]byte, error) {
 
 // UnmarshalJSON was modified in the Celestia fork to be backwards compatible
 // with the EventAttribute from CometBFT v0.34.x. CometBFT v0.38.x uses the type
-// string for keys and values. CometBFT v0.34.x uses the type bytes for keys and
+// string for keys and values. CometBFT v0.34.x used the type bytes for keys and
 // values. CometBFT v0.34.x event attributes that were marshalled to JSON
-// encoded bytes as base64 so here we attempt to base64 decode the keys and
-// values.
+// previously encoded the keys and values as base64 strings so this method
+// attempts to base64 decode the keys and values if they look like base64
+// encoded data.
 func (r *EventAttribute) UnmarshalJSON(b []byte) error {
 	var eventAttribute struct {
 		Key   string `json:"key,omitempty"`
