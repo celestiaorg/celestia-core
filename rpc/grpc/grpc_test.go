@@ -23,7 +23,9 @@ import (
 )
 
 func TestGRPC(t *testing.T) {
-	suite.Run(t, new(GRPCSuite))
+	s := new(GRPCSuite)
+	defer s.Teardown()
+	suite.Run(t, s)
 }
 
 type GRPCSuite struct {
