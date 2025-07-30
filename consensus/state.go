@@ -1948,8 +1948,8 @@ func (cs *State) finalizeCommit(height int64) {
 		cs.propagator.SetProposer(proposer.PubKey)
 	}
 
-	// build the block pre-emptively if we're the proposer
-	if cs.privValidatorPubKey != nil {
+	// build the block pre-emptively if we're the proposer and the timeout commit is higher than 1 s.
+	if cs.config.TimeoutCommit > time.Second && cs.privValidatorPubKey != nil {
 		if address := cs.privValidatorPubKey.Address(); cs.Validators.HasAddress(address) && cs.isProposer(address) {
 			go cs.buildNextBlock()
 		}
