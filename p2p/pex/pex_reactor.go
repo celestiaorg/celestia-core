@@ -456,7 +456,7 @@ func (r *Reactor) ensurePeers(ensurePeersPeriodElapsed bool) {
 			"Ensure peers",
 			"numOutPeers", out,
 			"numInPeers", in,
-			"numDialing", activeDialing,
+			"numDialing", atomic.LoadInt64(&activeDialing),
 			"peersNeeded", 0,
 			"extraPeers", -peersNeeded,
 		)
@@ -498,7 +498,7 @@ func (r *Reactor) ensurePeers(ensurePeersPeriodElapsed bool) {
 		"Ensure peers",
 		"numOutPeers", out,
 		"numInPeers", in,
-		"numDialing", activeDialing,
+		"numDialing", atomic.LoadInt64(&activeDialing),
 		"peersNeeded", peersNeeded,
 	)
 
