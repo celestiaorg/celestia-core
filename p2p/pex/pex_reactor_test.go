@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -929,14 +930,21 @@ func TestPEXReactorNumDialingTracking(t *testing.T) {
 
 	// Create buffer to capture log output
 	var buf bytes.Buffer
-	logger := log.NewTMLogger(&buf)
+	var mu sync.Mutex
+
+	// Create a thread-safe logger wrapper
+	safeLogger := log.NewTMLogger(writerFunc(func(p []byte) (n int, err error) {
+		mu.Lock()
+		defer mu.Unlock()
+		return buf.Write(p)
+	}))
 
 	book := NewAddrBook(filepath.Join(dir, "addrbook.json"), true)
-	book.SetLogger(logger)
+	book.SetLogger(safeLogger)
 	defer teardownReactor(book)
 
 	pexR := NewReactor(book, &ReactorConfig{})
-	pexR.SetLogger(logger)
+	pexR.SetLogger(safeLogger)
 
 	sw := createSwitchAndAddReactors(pexR)
 	sw.SetAddrBook(book)
@@ -952,7 +960,14 @@ func TestPEXReactorNumDialingTracking(t *testing.T) {
 	// Call ensurePeers which should dial some peers
 	pexR.ensurePeers(true)
 
+	// Wait for goroutines to complete their logging
+	time.Sleep(100 * time.Millisecond)
+
+	// Thread-safe read of the buffer
+	mu.Lock()
 	output := buf.String()
+	mu.Unlock()
+
 	require.Contains(t, output, "Ensure peers")
 
 	// Extract numDialing value
@@ -967,4 +982,11 @@ func TestPEXReactorNumDialingTracking(t *testing.T) {
 
 	// It should be 5 because we have 5 addresses to dial
 	require.Contains(t, dialingLine, "numDialing=5")
+}
+
+// writerFunc wraps a function to implement io.Writer
+type writerFunc func([]byte) (int, error)
+
+func (f writerFunc) Write(p []byte) (int, error) {
+	return f(p)
 }
