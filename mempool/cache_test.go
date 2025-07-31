@@ -138,7 +138,8 @@ func TestCacheRemoveByKey(t *testing.T) {
 }
 
 func TestRejectedTxCache(t *testing.T) {
-	cache := NewRejectedTxCache(10)
+	cacheSize := 10
+	cache := NewRejectedTxCache(cacheSize)
 	tx := types.Tx("test-transaction").ToCachedTx()
 	txKey := tx.Key()
 	initialCode := uint32(1001)
@@ -180,6 +181,15 @@ func TestRejectedTxCache(t *testing.T) {
 		require.False(t, cache.HasKey(txKey))
 		_, ok := cache.Get(txKey)
 		require.False(t, ok)
+	})
+
+	t.Run("make sure that the cache size is respected", func(t *testing.T) {
+		// cache size is 10, adding 15 txs
+		// cache should remain within the size limit
+		for i := 0; i < 15; i++ {
+			cache.Push(tx, initialCode)
+		}
+		require.Equal(t, cacheSize, cache.cache.size)
 	})
 
 	t.Run("reset cache", func(t *testing.T) {
