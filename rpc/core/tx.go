@@ -250,7 +250,7 @@ func (env *Environment) TxStatus(ctx *rpctypes.Context, hash []byte) (*ctypes.Re
 	}
 
 	// Check if the tx was rejected (this is only the case for recheck-tx)
-	code, wasRejected := env.Mempool.GetRejectionCode(txKey)
+	wasRejected, code := env.Mempool.WasRecentlyRejected(txKey)
 	if wasRejected {
 		return &ctypes.ResultTxStatus{Status: TxStatusRejected, ExecutionCode: code}, nil
 	}

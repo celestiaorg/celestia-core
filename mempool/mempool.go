@@ -111,14 +111,10 @@ type Mempool interface {
 	// Used in the RPC endpoint: TxStatus.
 	WasRecentlyEvicted(key types.TxKey) bool
 
-	// WasRecentlyRejected returns true if the tx was rejected from the mempool and exists in the
-	// rejected cache.
+	// WasRecentlyRejected returns a bool indicating if the tx was rejected from the mempool and exists in the
+	// rejected cache alongside the rejection code.
 	// Used in the RPC endpoint: TxStatus.
-	WasRecentlyRejected(key types.TxKey) bool
-
-	// GetRejectionCode returns the rejection code for a transaction if it exists in the
-	// rejected cache.
-	GetRejectionCode(txKey types.TxKey) (uint32, bool)
+	WasRecentlyRejected(key types.TxKey) (bool, uint32)
 }
 
 // PreCheckFunc is an optional filter executed before CheckTx and rejects

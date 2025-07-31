@@ -62,34 +62,6 @@ func (_m *Mempool) FlushAppConn() error {
 	return r0
 }
 
-// GetRejectionCode provides a mock function with given fields: txKey
-func (_m *Mempool) GetRejectionCode(txKey types.TxKey) (uint32, bool) {
-	ret := _m.Called(txKey)
-
-	if len(ret) == 0 {
-		panic("no return value specified for GetRejectionCode")
-	}
-
-	var r0 uint32
-	var r1 bool
-	if rf, ok := ret.Get(0).(func(types.TxKey) (uint32, bool)); ok {
-		return rf(txKey)
-	}
-	if rf, ok := ret.Get(0).(func(types.TxKey) uint32); ok {
-		r0 = rf(txKey)
-	} else {
-		r0 = ret.Get(0).(uint32)
-	}
-
-	if rf, ok := ret.Get(1).(func(types.TxKey) bool); ok {
-		r1 = rf(txKey)
-	} else {
-		r1 = ret.Get(1).(bool)
-	}
-
-	return r0, r1
-}
-
 // GetTxByKey provides a mock function with given fields: key
 func (_m *Mempool) GetTxByKey(key types.TxKey) (*types.CachedTx, bool) {
 	ret := _m.Called(key)
@@ -281,21 +253,31 @@ func (_m *Mempool) WasRecentlyEvicted(key types.TxKey) bool {
 }
 
 // WasRecentlyRejected provides a mock function with given fields: key
-func (_m *Mempool) WasRecentlyRejected(key types.TxKey) bool {
+func (_m *Mempool) WasRecentlyRejected(key types.TxKey) (uint32, bool) {
 	ret := _m.Called(key)
 
 	if len(ret) == 0 {
 		panic("no return value specified for WasRecentlyRejected")
 	}
 
-	var r0 bool
-	if rf, ok := ret.Get(0).(func(types.TxKey) bool); ok {
+	var r0 uint32
+	var r1 bool
+	if rf, ok := ret.Get(0).(func(types.TxKey) (uint32, bool)); ok {
+		return rf(key)
+	}
+	if rf, ok := ret.Get(0).(func(types.TxKey) uint32); ok {
 		r0 = rf(key)
 	} else {
-		r0 = ret.Get(0).(bool)
+		r0 = ret.Get(0).(uint32)
 	}
 
-	return r0
+	if rf, ok := ret.Get(1).(func(types.TxKey) bool); ok {
+		r1 = rf(key)
+	} else {
+		r1 = ret.Get(1).(bool)
+	}
+
+	return r0, r1
 }
 
 // NewMempool creates a new instance of Mempool. It also registers a testing interface on the mock and a cleanup function to assert the mocks expectations.

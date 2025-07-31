@@ -268,21 +268,14 @@ func (txmp *TxMempool) WasRecentlyEvicted(txKey types.TxKey) bool {
 }
 
 // WasRecentlyRejected returns true if the tx was rejected from the mempool and exists in the
-// rejected cache.
+// rejected cache alongside the rejection code.
 // Used in the RPC endpoint: TxStatus.
-func (txmp *TxMempool) WasRecentlyRejected(txKey types.TxKey) bool {
-	_, exists := txmp.GetRejectionCode(txKey)
-	return exists
-}
-
-// GetRejectionCode returns the rejection reason for a transaction if it exists in the
-// rejected cache.
-func (txmp *TxMempool) GetRejectionCode(txKey types.TxKey) (uint32, bool) {
+func (txmp *TxMempool) WasRecentlyRejected(txKey types.TxKey) (bool, uint32) {
 	code, exists := txmp.rejectedTxs.Get(txKey)
 	if !exists {
-		return 0, false
+		return false, 0
 	}
-	return code, true
+	return true, code
 }
 
 // removeTxByKey removes the specified transaction key from the mempool.

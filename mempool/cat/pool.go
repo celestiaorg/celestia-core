@@ -198,20 +198,14 @@ func (txmp *TxPool) WasRecentlyEvicted(txKey types.TxKey) bool {
 	return txmp.evictedTxCache.Has(txKey)
 }
 
-// WasRecentlyRejected returns true if the transaction was recently rejected and is
-// currently within the cache
-func (txmp *TxPool) WasRecentlyRejected(txKey types.TxKey) bool {
-	return txmp.rejectedTxCache.Has(txKey)
-}
-
-// GetRejectionCode returns the rejection reason for a transaction if it exists in the
-// rejected cache.
-func (txmp *TxPool) GetRejectionCode(txKey types.TxKey) (uint32, bool) {
+// WasRecentlyRejected returns a bool indicating if the transaction was recently rejected and is
+// currently within the cache. It also returns the rejection code.
+func (txmp *TxPool) WasRecentlyRejected(txKey types.TxKey) (bool, uint32) {
 	code, exists := txmp.rejectedTxCache.Get(txKey)
 	if !exists {
-		return 0, false
+		return false, 0
 	}
-	return code, true
+	return true, code
 }
 
 // CheckTx adds the given transaction to the mempool if it fits and passes the
@@ -294,7 +288,8 @@ func (txmp *TxPool) TryAddNewTx(tx *types.CachedTx, key types.TxKey, txInfo memp
 	// - We are connected to nodes running v0 or v1 which simply flood the network
 	// - If a client submits a transaction to multiple nodes (via RPC)
 	// - We send multiple requests and the first peer eventually responds after the second peer has already provided the tx
-	if txmp.WasRecentlyRejected(key) {
+	wasRejected, _ := txmp.WasRecentlyRejected(key)
+	if wasRejected {
 		// The peer has sent us a transaction that we have previously marked as invalid. Since `CheckTx` can
 		// be non-deterministic, we don't punish the peer but instead just ignore the tx
 		return nil, ErrTxAlreadyRejected
