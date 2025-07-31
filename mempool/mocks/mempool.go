@@ -253,28 +253,28 @@ func (_m *Mempool) WasRecentlyEvicted(key types.TxKey) bool {
 }
 
 // WasRecentlyRejected provides a mock function with given fields: key
-func (_m *Mempool) WasRecentlyRejected(key types.TxKey) (uint32, bool) {
+func (_m *Mempool) WasRecentlyRejected(key types.TxKey) (bool, uint32) {
 	ret := _m.Called(key)
 
 	if len(ret) == 0 {
 		panic("no return value specified for WasRecentlyRejected")
 	}
 
-	var r0 uint32
-	var r1 bool
-	if rf, ok := ret.Get(0).(func(types.TxKey) (uint32, bool)); ok {
+	var r0 bool
+	var r1 uint32
+	if rf, ok := ret.Get(0).(func(types.TxKey) (bool, uint32)); ok {
 		return rf(key)
 	}
-	if rf, ok := ret.Get(0).(func(types.TxKey) uint32); ok {
+	if rf, ok := ret.Get(0).(func(types.TxKey) bool); ok {
 		r0 = rf(key)
 	} else {
-		r0 = ret.Get(0).(uint32)
+		r0 = ret.Get(0).(bool)
 	}
 
-	if rf, ok := ret.Get(1).(func(types.TxKey) bool); ok {
+	if rf, ok := ret.Get(1).(func(types.TxKey) uint32); ok {
 		r1 = rf(key)
 	} else {
-		r1 = ret.Get(1).(bool)
+		r1 = ret.Get(1).(uint32)
 	}
 
 	return r0, r1
