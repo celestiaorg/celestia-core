@@ -444,7 +444,7 @@ func (r *Reactor) ensurePeersRoutine() {
 // the node operator. It should not be used to compute what addresses are
 // already connected or not.
 func (r *Reactor) ensurePeers(ensurePeersPeriodElapsed bool) {
-	var activeDialing int64 
+	var activeDialing int64
 	var (
 		out, in, _  = r.Switch.NumPeers()
 		peersNeeded = r.Switch.MaxNumOutboundPeers() - out
