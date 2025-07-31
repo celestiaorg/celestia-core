@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/cometbft/cometbft/libs/cmap"
@@ -93,9 +94,6 @@ type Reactor struct {
 
 	attemptsToDial sync.Map // address (string) -> {number of attempts (int), last time dialed (time.Time)}
 
-	// Track active dial attempts for logging purposes
-	activeDialing *cmap.CMap // address (string) -> struct{}: active dial attempts
-
 	// seed/crawled mode fields
 	crawlPeerInfos map[p2p.ID]crawlPeerInfo
 }
@@ -141,7 +139,6 @@ func NewReactor(b AddrBook, config *ReactorConfig) *Reactor {
 		ensurePeersPeriod:    defaultEnsurePeersPeriod,
 		requestsSent:         cmap.NewCMap(),
 		lastReceivedRequests: cmap.NewCMap(),
-		activeDialing:        cmap.NewCMap(),
 		crawlPeerInfos:       make(map[p2p.ID]crawlPeerInfo),
 	}
 	r.BaseReactor = *p2p.NewBaseReactor("PEX", r)
@@ -447,21 +444,21 @@ func (r *Reactor) ensurePeersRoutine() {
 // the node operator. It should not be used to compute what addresses are
 // already connected or not.
 func (r *Reactor) ensurePeers(ensurePeersPeriodElapsed bool) {
+	var activeDialing int64 
 	var (
-		out, in, _        = r.Switch.NumPeers()
-		activeDialing     = r.activeDialing.Size()
-		numToDial         = r.Switch.MaxNumOutboundPeers() - (out + activeDialing)
+		out, in, _  = r.Switch.NumPeers()
+		peersNeeded = r.Switch.MaxNumOutboundPeers() - out
 	)
 
-	if numToDial <= 0 {
-		// Ensure numToDial is never negative for clearer logging
-		logNumToDial := 0
+	// if we have enough peers, don't dial any more
+	if peersNeeded <= 0 {
 		r.Logger.Info(
 			"Ensure peers",
 			"numOutPeers", out,
 			"numInPeers", in,
 			"numDialing", activeDialing,
-			"numToDial", logNumToDial,
+			"peersNeeded", 0,
+			"extraPeers", -peersNeeded,
 		)
 		return
 	}
@@ -472,7 +469,7 @@ func (r *Reactor) ensurePeers(ensurePeersPeriodElapsed bool) {
 	if len(addrBook) < maxDials {
 		maxDials = len(addrBook)
 	}
-	
+
 	// We don't need to randomize the addresses since the addressbook is already shuffled
 	for i := 0; i < maxDials; i++ {
 		addr := addrBook[i]
@@ -480,16 +477,11 @@ func (r *Reactor) ensurePeers(ensurePeersPeriodElapsed bool) {
 		if r.Switch.IsDialingOrExistingAddress(addr) {
 			continue
 		}
-		// Check if we're already tracking this dial attempt
-		if r.activeDialing.Has(addr.DialString()) {
-			continue
-		}
-		
+
 		// Mark as actively dialing before starting the goroutine
-		r.activeDialing.Set(addr.DialString(), struct{}{})
-		
+		atomic.AddInt64(&activeDialing, 1)
 		go func(addr *p2p.NetAddress) {
-			defer r.activeDialing.Delete(addr.DialString())
+			defer atomic.AddInt64(&activeDialing, -1)
 			err := r.dialPeer(addr)
 			if err != nil {
 				switch err.(type) {
@@ -502,14 +494,12 @@ func (r *Reactor) ensurePeers(ensurePeersPeriodElapsed bool) {
 		}(addr)
 	}
 
-	// Log after starting dial attempts to show current active dialing count
-	currentDialing := r.activeDialing.Size()
 	r.Logger.Info(
 		"Ensure peers",
 		"numOutPeers", out,
 		"numInPeers", in,
-		"numDialing", currentDialing,
-		"numToDial", numToDial,
+		"numDialing", activeDialing,
+		"peersNeeded", peersNeeded,
 	)
 
 	if r.book.NeedMoreAddrs() {
@@ -665,9 +655,8 @@ func (r *Reactor) crawlPeersRoutine() {
 // nodeHasSomePeersOrDialingAny returns true if the node is connected to some
 // peers or dialing them currently.
 func (r *Reactor) nodeHasSomePeersOrDialingAny() bool {
-	out, in, _ := r.Switch.NumPeers()
-	activeDialing := r.activeDialing.Size()
-	return out+in+activeDialing > 0
+	out, in, dial := r.Switch.NumPeers()
+	return out+in+dial > 0
 }
 
 // crawlPeerInfo handles temporary data needed for the network crawling
