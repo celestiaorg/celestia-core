@@ -94,6 +94,9 @@ type Reactor struct {
 
 	attemptsToDial sync.Map // address (string) -> {number of attempts (int), last time dialed (time.Time)}
 
+	// tracks the number of active dial attempts
+	activeDialing int64
+
 	// seed/crawled mode fields
 	crawlPeerInfos map[p2p.ID]crawlPeerInfo
 }
@@ -444,7 +447,6 @@ func (r *Reactor) ensurePeersRoutine() {
 // the node operator. It should not be used to compute what addresses are
 // already connected or not.
 func (r *Reactor) ensurePeers(ensurePeersPeriodElapsed bool) {
-	var activeDialing int64
 	var (
 		out, in, _  = r.Switch.NumPeers()
 		peersNeeded = r.Switch.MaxNumOutboundPeers() - out
@@ -456,7 +458,7 @@ func (r *Reactor) ensurePeers(ensurePeersPeriodElapsed bool) {
 			"Ensure peers",
 			"numOutPeers", out,
 			"numInPeers", in,
-			"numDialing", atomic.LoadInt64(&activeDialing),
+			"numDialing", atomic.LoadInt64(&r.activeDialing),
 			"peersNeeded", 0,
 			"extraPeers", -peersNeeded,
 		)
@@ -479,9 +481,9 @@ func (r *Reactor) ensurePeers(ensurePeersPeriodElapsed bool) {
 		}
 
 		// Mark as actively dialing before starting the goroutine
-		atomic.AddInt64(&activeDialing, 1)
+		atomic.AddInt64(&r.activeDialing, 1)
 		go func(addr *p2p.NetAddress) {
-			defer atomic.AddInt64(&activeDialing, -1)
+			defer atomic.AddInt64(&r.activeDialing, -1)
 			err := r.dialPeer(addr)
 			if err != nil {
 				switch err.(type) {
@@ -498,7 +500,7 @@ func (r *Reactor) ensurePeers(ensurePeersPeriodElapsed bool) {
 		"Ensure peers",
 		"numOutPeers", out,
 		"numInPeers", in,
-		"numDialing", atomic.LoadInt64(&activeDialing),
+		"numDialing", atomic.LoadInt64(&r.activeDialing),
 		"peersNeeded", peersNeeded,
 	)
 
