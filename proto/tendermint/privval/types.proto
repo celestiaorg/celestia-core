@@ -56,13 +56,13 @@ message SignedProposalResponse {
   RemoteSignerError         error    = 2;
 }
 
-message SignedP2PMessageRequest {
-  bytes  hash      = 1;
-  string chain_id  = 2;
+message SignRawBytesRequest {
+  string chain_id  = 1;
+  bytes  raw_bytes = 2;
   string unique_id = 3;
 }
 
-message SignedP2PMessageResponse {
+message SignedRawBytesResponse {
   bytes             signature = 1;
   RemoteSignerError error     = 2;
 }
@@ -75,15 +75,15 @@ message PingResponse {}
 
 message Message {
   oneof sum {
-    PubKeyRequest            pub_key_request             = 1;
-    PubKeyResponse           pub_key_response            = 2;
-    SignVoteRequest          sign_vote_request           = 3;
-    SignedVoteResponse       signed_vote_response        = 4;
-    SignProposalRequest      sign_proposal_request       = 5;
-    SignedProposalResponse   signed_proposal_response    = 6;
-    PingRequest              ping_request                = 7;
-    PingResponse             ping_response               = 8;
-    SignedP2PMessageRequest  signed_p2p_message_request  = 9;
-    SignedP2PMessageResponse signed_p2p_message_response = 10;
+    PubKeyRequest          pub_key_request           = 1;
+    PubKeyResponse         pub_key_response          = 2;
+    SignVoteRequest        sign_vote_request         = 3;
+    SignedVoteResponse     signed_vote_response      = 4;
+    SignProposalRequest    sign_proposal_request     = 5;
+    SignedProposalResponse signed_proposal_response  = 6;
+    PingRequest            ping_request              = 7;
+    PingResponse           ping_response             = 8;
+    SignRawBytesRequest    sign_raw_bytes_request    = 9;
+    SignedRawBytesResponse signed_raw_bytes_response = 10;
   }
 }
