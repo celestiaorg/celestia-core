@@ -218,6 +218,7 @@ func (memR *Reactor) Receive(e p2p.Envelope) {
 	// NOTE: This setup also means that we can support older mempool implementations that simply
 	// flooded the network with transactions.
 	case *protomem.Txs:
+		start2 := time.Now()
 		protoTxs := msg.GetTxs()
 		if len(protoTxs) == 0 {
 			memR.Logger.Error("received empty txs from peer", "src", e.Src)
@@ -228,7 +229,10 @@ func (memR *Reactor) Receive(e p2p.Envelope) {
 		txInfo.SenderP2PID = e.Src.ID()
 
 		var err error
+		processingTime := time.Since(start2)
+		schema.WriteMessageStats(memR.traceClient, "cat", "mempool.Txs.Step1", processingTime.Nanoseconds(), "")
 		for _, tx := range protoTxs {
+			start2 = time.Now()
 			ntx := types.Tx(tx)
 			key := ntx.Key()
 			schema.WriteMempoolTx(memR.traceClient, string(e.Src.ID()), key[:], len(tx), schema.Download)
@@ -242,15 +246,23 @@ func (memR *Reactor) Receive(e p2p.Envelope) {
 				memR.mempool.PeerHasTx(peerID, key)
 				memR.Logger.Debug("received new trasaction", "peerID", peerID, "txKey", key)
 			}
+			processingTime = time.Since(start2)
+			schema.WriteMessageStats(memR.traceClient, "cat", "mempool.Txs.Step2", processingTime.Nanoseconds(), "")
+			start2 = time.Now()
 			_, err = memR.mempool.TryAddNewTx(ntx.ToCachedTx(), key, txInfo)
 			if err != nil && err != ErrTxInMempool {
 				memR.Logger.Debug("Could not add tx", "txKey", key, "err", err)
 				return
 			}
+			processingTime = time.Since(start2)
+			schema.WriteMessageStats(memR.traceClient, "cat", "mempool.Txs.Step3", processingTime.Nanoseconds(), "")
+			start2 = time.Now()
 			if !memR.opts.ListenOnly {
 				// We broadcast only transactions that we deem valid and actually have in our mempool.
 				memR.broadcastSeenTx(key)
 			}
+			processingTime = time.Since(start2)
+			schema.WriteMessageStats(memR.traceClient, "cat", "mempool.Txs.Step4", processingTime.Nanoseconds(), "")
 		}
 
 	// A peer has indicated to us that it has a transaction. We first verify the txkey and
