@@ -1,6 +1,7 @@
 package types_test
 
 import (
+	"context"
 	"encoding/json"
 	"testing"
 
@@ -9,6 +10,7 @@ import (
 
 	abci "github.com/cometbft/cometbft/abci/types"
 	"github.com/cometbft/cometbft/crypto/merkle"
+	"github.com/cometbft/cometbft/rpc/client/http"
 )
 
 func TestHashAndProveResults(t *testing.T) {
@@ -74,6 +76,7 @@ func TestHashDeterministicFieldsOnly(t *testing.T) {
 	require.Equal(t, merkle.HashFromByteSlices(r1), merkle.HashFromByteSlices(r2))
 }
 
+// OldEventAttribute is the type of EventAttribute from CometBFT v0.34.x.
 type OldEventAttribute struct {
 	Key   []byte `json:"key,omitempty"`
 	Value []byte `json:"value,omitempty"`
@@ -107,4 +110,83 @@ func TestV0_34JsonEventDecoding(t *testing.T) {
 	// But intoNew.Value is now the base64 decoded string, not the original:
 	require.Equal(t, "bar!", intoNew.Value,
 		"base64 input becomes the decoded string when unmarshaled into a Go string field")
+}
+
+func TestUnmarshalJSON(t *testing.T) {
+	tests := []struct {
+		name     string
+		jsonData string
+		expected abci.EventAttribute
+	}{
+		{
+			name:     "normal string 'minter' works fine",
+			jsonData: `{"key":"minter","value":"celestia1m3h30wlvsf8llruxtpukdvsy0km2kum8emkgad","index":true}`,
+			expected: abci.EventAttribute{
+				Key:   "minter",
+				Value: "celestia1m3h30wlvsf8llruxtpukdvsy0km2kum8emkgad",
+				Index: true,
+			},
+		},
+		{
+			name:     "normal string 'receiver' should NOT be corrupted",
+			jsonData: `{"key":"receiver","value":"celestia1m3h30wlvsf8llruxtpukdvsy0km2kum8emkgad","index":true}`,
+			expected: abci.EventAttribute{
+				Key:   "receiver", // Should stay as "receiver", not be base64-decoded to garbage
+				Value: "celestia1m3h30wlvsf8llruxtpukdvsy0km2kum8emkgad",
+				Index: true,
+			},
+		},
+		{
+			name:     "short strings that happen to be valid base64",
+			jsonData: `{"key":"ab","value":"test","index":true}`,
+			expected: abci.EventAttribute{
+				Key:   "ab", // Should NOT be decoded (too short for old format)
+				Value: "test",
+				Index: true,
+			},
+		},
+		{
+			name:     "actual base64 data from old format should be decoded",
+			jsonData: `{"key":"bXNnX2luZGV4","value":"dGVzdF92YWx1ZQ==","index":true}`,
+			expected: abci.EventAttribute{
+				Key:   "msg_index",  // base64 decode of "bXNnX2luZGV4"
+				Value: "test_value", // base64 decode of "dGVzdF92YWx1ZQ=="
+				Index: true,
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var event abci.EventAttribute
+			err := json.Unmarshal([]byte(tt.jsonData), &event)
+			require.NoError(t, err)
+
+			require.Equal(t, tt.expected.Key, event.Key)
+			require.Equal(t, tt.expected.Value, event.Value)
+			require.Equal(t, tt.expected.Index, event.Index)
+		})
+	}
+}
+
+// TestBlockResults reproduces the issue described in
+// https://github.com/celestiaorg/celestia-app/issues/5312. It isn't meant to be
+// run in CI because it makes an HTTP request which could be flaky if the RPC
+// provider goes down.
+func TestBlockResults(t *testing.T) {
+	t.Skip("skipping TestBlockResults because this test makes an HTTP request.")
+
+	rpcURL := "https://celestia-mainnet-rpc.itrocket.net"
+	height := int64(6680339)
+
+	provider, err := http.New(rpcURL, "/websocket")
+	require.NoError(t, err)
+
+	results, err := provider.BlockResults(context.Background(), &height)
+	require.NoError(t, err)
+
+	t.Run("the first finalize block event attribute key is 'receiver' which previously failed to unmarshal correctly", func(t *testing.T) {
+		key := results.FinalizeBlockEvents[0].Attributes[0].Key
+		assert.Equal(t, "receiver", key)
+	})
 }
