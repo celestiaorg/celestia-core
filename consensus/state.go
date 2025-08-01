@@ -50,7 +50,7 @@ var (
 	errInvalidProposalHeightRound = errors.New("invalid proposal height/round")
 )
 
-var msgQueueSize = 1000
+var msgQueueSize = 20_000
 
 // msgs from the reactor which may update the state
 type msgInfo struct {

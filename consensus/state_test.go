@@ -2188,6 +2188,7 @@ func (n *fakeTxNotifier) Notify() {
 // and third precommit arrives which leads to the commit of that header and the correct
 // start of the next round
 func TestStartNextHeightCorrectlyAfterTimeout(t *testing.T) {
+	config := ResetConfig("consensus_reactor_test")
 	config.Consensus.SkipTimeoutCommit = false
 	cs1, vss := randState(4)
 	cs1.txNotifier = &fakeTxNotifier{ch: make(chan struct{})}
@@ -2252,6 +2253,7 @@ func TestResetTimeoutPrecommitUponNewHeight(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
+	config := ResetConfig("consensus_reactor_test")
 	config.Consensus.SkipTimeoutCommit = false
 	cs1, vss := randState(4)
 

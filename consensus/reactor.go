@@ -203,7 +203,7 @@ func (conR *Reactor) GetChannels() []*p2p.ChannelDescriptor {
 		{
 			ID:                  VoteSetBitsChannel,
 			Priority:            6,
-			SendQueueCapacity:   2,
+			SendQueueCapacity:   10,
 			RecvBufferCapacity:  1024,
 			RecvMessageCapacity: maxMsgSize,
 			MessageType:         &cmtcons.Message{},
