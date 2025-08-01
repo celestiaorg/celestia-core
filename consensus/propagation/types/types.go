@@ -2,15 +2,13 @@ package types
 
 import (
 	"bytes"
-	"encoding/binary"
 	"errors"
 	"fmt"
 	"sort"
 	"sync"
 
-	"github.com/cosmos/gogoproto/proto"
-
 	"github.com/cometbft/cometbft/crypto/tmhash"
+	"github.com/cometbft/cometbft/libs/protoio"
 
 	"github.com/cometbft/cometbft/crypto/merkle"
 	"github.com/cometbft/cometbft/libs/bits"
@@ -82,35 +80,23 @@ type CompactBlock struct {
 
 // SignBytes returns the compact block commitment data that
 // needs to be signed.
-// The sign bytes are the sha256 hash over the following
-// concatenated data:
-// - BpHash
-// - Blobs
-// - Proposal.Signature
-// - Big endian encoding of LastLen
-// - PartsHashes
+// The sign bytes are the field-delimited protobuf encoding of the compact block.
 func (c *CompactBlock) SignBytes() ([]byte, error) {
-	bytes := make([]byte, 0)
-	bytes = append(bytes, c.BpHash...)
+	txMetaData := make([]*protoprop.TxMetaData, 0)
 	for _, md := range c.Blobs {
-		pb, err := proto.Marshal(md.ToProto())
-		if err != nil {
-			return nil, err
-		}
-		bytes = append(bytes, pb...)
+		txMetaData = append(txMetaData, md.ToProto())
 	}
-	bytes = append(bytes, c.Proposal.Signature...)
-
-	// big endian encode the last len
-	lastLenBytes := make([]byte, 4)
-	binary.BigEndian.PutUint32(lastLenBytes, c.LastLen)
-	bytes = append(bytes, lastLenBytes...)
-
-	for _, ph := range c.PartsHashes {
-		bytes = append(bytes, ph...)
+	protoCompactBlock := &protoprop.CompactBlock{
+		BpHash:      c.BpHash,
+		Blobs:       txMetaData,
+		Proposal:    c.Proposal.ToProto(),
+		LastLength:  c.LastLen,
+		PartsHashes: c.PartsHashes,
 	}
-
-	signBytes := tmhash.Sum(bytes)
+	signBytes, err := protoio.MarshalDelimited(protoCompactBlock)
+	if err != nil {
+		return nil, err
+	}
 	return signBytes, nil
 }
 

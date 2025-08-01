@@ -403,6 +403,8 @@ func brokenHandler(_ types.PrivValidator, request privvalproto.Message, _ string
 		res = mustWrapMsg(&privvalproto.PubKeyResponse{PubKey: cryptoproto.PublicKey{}, Error: nil})
 	case *privvalproto.Message_PingRequest:
 		err, res = nil, mustWrapMsg(&privvalproto.PingResponse{})
+	case *privvalproto.Message_SignRawBytesRequest:
+		res = mustWrapMsg(&privvalproto.PubKeyResponse{PubKey: cryptoproto.PublicKey{}, Error: nil})
 	default:
 		err = fmt.Errorf("unknown msg: %v", r)
 	}
@@ -434,5 +436,31 @@ func TestSignerUnexpectedResponse(t *testing.T) {
 
 		e := tc.signerClient.SignVote(tc.chainID, want.ToProto())
 		assert.EqualError(t, e, "empty response")
+	}
+}
+
+func TestSignerRawBytes(t *testing.T) {
+	for _, tc := range getSignerTestCases(t) {
+		rawBytes := cmtrand.Bytes(500)
+		uniqueID := cmtrand.Str(12)
+
+		tc := tc
+		t.Cleanup(func() {
+			if err := tc.signerServer.Stop(); err != nil {
+				t.Error(err)
+			}
+		})
+		t.Cleanup(func() {
+			if err := tc.signerClient.Close(); err != nil {
+				t.Error(err)
+			}
+		})
+
+		want, err := tc.mockPV.SignRawBytes(tc.chainID, uniqueID, rawBytes)
+		require.NoError(t, err)
+		have, err := tc.signerClient.SignRawBytes(tc.chainID, uniqueID, rawBytes)
+		require.NoError(t, err)
+
+		assert.Equal(t, want, have)
 	}
 }

@@ -4,8 +4,6 @@ import (
 	"fmt"
 	"time"
 
-	cmtbytes "github.com/cometbft/cometbft/libs/bytes"
-
 	"github.com/cometbft/cometbft/crypto"
 	cryptoenc "github.com/cometbft/cometbft/crypto/encoding"
 	privvalproto "github.com/cometbft/cometbft/proto/tendermint/privval"
@@ -134,15 +132,17 @@ func (sc *SignerClient) SignProposal(chainID string, proposal *cmtproto.Proposal
 	return nil
 }
 
-func (sc *SignerClient) SignP2PMessage(chainID, uID string, hash cmtbytes.HexBytes) ([]byte, error) {
-	response, err := sc.endpoint.SendRequest(mustWrapMsg(
-		&privvalproto.SignedP2PMessageRequest{Hash: hash.Bytes(), ChainId: chainID, UniqueId: uID},
-	))
+func (sc *SignerClient) SignRawBytes(chainID, uniqueID string, rawBytes []byte) ([]byte, error) {
+	response, err := sc.endpoint.SendRequest(mustWrapMsg(&privvalproto.SignRawBytesRequest{
+		ChainId:  chainID,
+		RawBytes: rawBytes,
+		UniqueId: uniqueID,
+	}))
 	if err != nil {
 		return nil, err
 	}
 
-	resp := response.GetSignedP2PMessageResponse()
+	resp := response.GetSignedRawBytesResponse()
 	if resp == nil {
 		return nil, ErrUnexpectedResponse
 	}
@@ -150,5 +150,5 @@ func (sc *SignerClient) SignP2PMessage(chainID, uID string, hash cmtbytes.HexByt
 		return nil, &RemoteSignerError{Code: int(resp.Error.Code), Description: resp.Error.Description}
 	}
 
-	return resp.Signature, err
+	return resp.Signature, nil
 }
