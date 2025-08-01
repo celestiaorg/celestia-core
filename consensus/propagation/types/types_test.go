@@ -2,8 +2,9 @@ package types
 
 import (
 	"errors"
-	"github.com/cometbft/cometbft/libs/protoio"
 	"testing"
+
+	"github.com/cometbft/cometbft/libs/protoio"
 
 	"github.com/cometbft/cometbft/proto/tendermint/crypto"
 	protobits "github.com/cometbft/cometbft/proto/tendermint/libs/bits"

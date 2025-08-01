@@ -2,8 +2,9 @@ package types
 
 import (
 	"bytes"
-	"github.com/cometbft/cometbft/libs/protoio"
 	"testing"
+
+	"github.com/cometbft/cometbft/libs/protoio"
 
 	"github.com/cometbft/cometbft/proto/tendermint/privval"
 	"github.com/stretchr/testify/assert"
