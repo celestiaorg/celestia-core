@@ -3,7 +3,6 @@ package p2p
 import (
 	"fmt"
 	"net"
-	"reflect"
 	"sync/atomic"
 	"time"
 
@@ -151,7 +150,7 @@ func newPeer(
 	mConfig cmtconn.MConnConfig,
 	nodeInfo NodeInfo,
 	reactorsByCh map[byte]Reactor,
-	msgTypeByChID map[byte]proto.Message,
+	_ map[byte]proto.Message,
 	chDescs []*cmtconn.ChannelDescriptor,
 	onPeerError func(Peer, interface{}, string),
 	mlc *metricsLabelCache,
@@ -172,7 +171,6 @@ func newPeer(
 		pc.conn,
 		p,
 		reactorsByCh,
-		msgTypeByChID,
 		chDescs,
 		onPeerError,
 		mConfig,
@@ -464,7 +462,6 @@ func createMConnection(
 	conn net.Conn,
 	p *peer,
 	reactorsByCh map[byte]Reactor,
-	msgTypeByChID map[byte]proto.Message,
 	chDescs []*cmtconn.ChannelDescriptor,
 	onPeerError func(Peer, interface{}, string),
 	config cmtconn.MConnConfig,
@@ -477,29 +474,11 @@ func createMConnection(
 			// which does onPeerError.
 			panic(fmt.Sprintf("Unknown channel %X", chID))
 		}
-		mt := msgTypeByChID[chID]
-		msg := proto.Clone(mt)
-		err := proto.Unmarshal(msgBytes, msg)
-		if err != nil {
-			panic(fmt.Errorf("unmarshaling message: %s into type: %s", err, reflect.TypeOf(mt)))
-		}
-		labels := []string{
-			"peer_id", string(p.ID()),
-			"chID", fmt.Sprintf("%#x", chID),
-		}
-		if w, ok := msg.(Unwrapper); ok {
-			msg, err = w.Unwrap()
-			if err != nil {
-				panic(fmt.Errorf("unwrapping message: %s", err))
-			}
-		}
-		schema.WriteReceivedBytes(p.traceClient, string(p.ID()), chID, len(msgBytes))
-		p.metrics.PeerReceiveBytesTotal.With(labels...).Add(float64(len(msgBytes)))
-		p.metrics.MessageReceiveBytesTotal.With(append(labels, "message_type", p.mlc.ValueToMetricLabel(msg))...).Add(float64(len(msgBytes)))
-		reactor.Receive(Envelope{
+
+		reactor.QueueUnprocessedEnvelope(UnprocessedEnvelope{
 			ChannelID: chID,
 			Src:       p,
-			Message:   msg,
+			Message:   msgBytes,
 		})
 	}
 

@@ -618,3 +618,7 @@ func (br *ByzantineReactor) Receive(e p2p.Envelope) {
 	br.reactor.Receive(e)
 }
 func (br *ByzantineReactor) InitPeer(peer p2p.Peer) (p2p.Peer, error) { return peer, nil }
+
+func (br *ByzantineReactor) QueueUnprocessedEnvelope(e p2p.UnprocessedEnvelope) {
+	br.reactor.QueueUnprocessedEnvelope(e)
+}

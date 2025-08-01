@@ -15,6 +15,9 @@ import (
 	"github.com/cometbft/cometbft/types"
 )
 
+// ReactorIncomingMessageQueueSize the size of the reactor's message queue.
+const ReactorIncomingMessageQueueSize = 100
+
 // Reactor handles mempool tx broadcasting amongst peers.
 // It maintains a map from peer ID to counter, to prevent gossiping txs to the
 // peers you received it from.
@@ -95,7 +98,7 @@ func NewReactor(config *cfg.MempoolConfig, mempool *TxMempool) *Reactor {
 		mempool: mempool,
 		ids:     newMempoolIDs(),
 	}
-	memR.BaseReactor = *p2p.NewBaseReactor("Mempool", memR)
+	memR.BaseReactor = *p2p.NewBaseReactor("Mempool", memR, p2p.WithIncomingQueueSize(ReactorIncomingMessageQueueSize))
 	return memR
 }
 
