@@ -50,7 +50,7 @@ var (
 	errInvalidProposalHeightRound = errors.New("invalid proposal height/round")
 )
 
-var msgQueueSize = 1000
+var msgQueueSize = 20_000
 
 // msgs from the reactor which may update the state
 type msgInfo struct {
@@ -1702,13 +1702,20 @@ func (cs *State) enterPrecommitWait(height int64, round int32) {
 	cs.scheduleTimeout(cs.config.Precommit(round), height, round, cstypes.RoundStepPrecommitWait)
 }
 
-// buildNextBlock creates the next block pre-amptively if we're the proposer.
+// blockBuildingTime the time it takes to build a new 32 mb block and a safety cushion.
+const blockBuildingTime = 1800 * time.Millisecond
+
+// buildNextBlock creates the next block pre-emptively if we're the proposer.
 func (cs *State) buildNextBlock() {
 	select {
 	// flush the next block channel to ensure only the relevant block is there.
 	case <-cs.nextBlock:
 	default:
 	}
+
+	// delay pre-emptive block building until the end of the timeout commit
+	time.Sleep(cs.config.TimeoutCommit - blockBuildingTime)
+
 	block, blockParts, err := cs.createProposalBlock(context.TODO())
 	if err != nil {
 		cs.Logger.Error("unable to create proposal block", "error", err)
@@ -1948,8 +1955,8 @@ func (cs *State) finalizeCommit(height int64) {
 		cs.propagator.SetProposer(proposer.PubKey)
 	}
 
-	// build the block pre-emptively if we're the proposer
-	if cs.privValidatorPubKey != nil {
+	// build the block pre-emptively if we're the proposer and the timeout commit is higher than 1 s.
+	if cs.config.TimeoutCommit > blockBuildingTime && cs.privValidatorPubKey != nil {
 		if address := cs.privValidatorPubKey.Address(); cs.Validators.HasAddress(address) && cs.isProposer(address) {
 			go cs.buildNextBlock()
 		}
@@ -2065,7 +2072,7 @@ func (cs *State) defaultSetProposal(proposal *types.Proposal) error {
 
 	// Does not apply
 	if proposal.Height != cs.Height || proposal.Round != cs.Round {
-		return fmt.Errorf("%w: proposal height %v round %v does not match state height %v round %v", errInvalidProposalHeightRound, proposal.Height, proposal.Round, cs.Height, cs.Round)
+		return fmt.Errorf("%w: proposal height %v round %v does not match state height %v round %v (if consensus is still reached, please ignore this error as it's a consequence of running two gossip routines at the same time)", errInvalidProposalHeightRound, proposal.Height, proposal.Round, cs.Height, cs.Round)
 	}
 	// Verify POLRound, which must be -1 or in range [0, proposal.Round).
 	if proposal.POLRound < -1 ||
@@ -2765,28 +2772,6 @@ func (cs *State) syncData() {
 		select {
 		case <-cs.Quit():
 			return
-		case part, ok := <-partChan:
-			if !ok {
-				return
-			}
-			cs.mtx.RLock()
-			h, r := cs.Height, cs.Round
-			currentProposalParts := cs.ProposalBlockParts
-			cs.mtx.RUnlock()
-			if part.Height != h || part.Round != r {
-				continue
-			}
-
-			if currentProposalParts != nil {
-				if currentProposalParts.IsComplete() {
-					continue
-				}
-				if currentProposalParts.HasPart(int(part.Index)) {
-					continue
-				}
-			}
-
-			cs.peerMsgQueue <- msgInfo{&BlockPartMessage{h, r, part.Part}, ""}
 		case proposal, ok := <-proposalChan:
 			if !ok {
 				return
@@ -2836,6 +2821,28 @@ func (cs *State) syncData() {
 				part := partset.GetPart(indice)
 				cs.peerMsgQueue <- msgInfo{&BlockPartMessage{height, round, part}, ""}
 			}
+		case part, ok := <-partChan:
+			if !ok {
+				return
+			}
+			cs.mtx.RLock()
+			h, r := cs.Height, cs.Round
+			currentProposalParts := cs.ProposalBlockParts
+			cs.mtx.RUnlock()
+			if part.Height != h || part.Round != r {
+				continue
+			}
+
+			if currentProposalParts != nil {
+				if currentProposalParts.IsComplete() {
+					continue
+				}
+				if currentProposalParts.HasPart(int(part.Index)) {
+					continue
+				}
+			}
+
+			cs.peerMsgQueue <- msgInfo{&BlockPartMessage{h, r, part.Part}, ""}
 		}
 	}
 }

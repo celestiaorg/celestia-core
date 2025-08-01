@@ -89,12 +89,16 @@ func NewReactor(mempool *TxPool, opts *ReactorOptions) (*Reactor, error) {
 	if err != nil {
 		return nil, err
 	}
+	traceClient := opts.TraceClient
+	if traceClient == nil {
+		traceClient = trace.NoOpTracer()
+	}
 	memR := &Reactor{
 		opts:        opts,
 		mempool:     mempool,
 		ids:         newMempoolIDs(),
 		requests:    newRequestScheduler(opts.MaxGossipDelay, defaultGlobalRequestTimeout),
-		traceClient: trace.NoOpTracer(),
+		traceClient: traceClient,
 	}
 	memR.BaseReactor = *p2p.NewBaseReactor("Mempool", memR,
 		p2p.WithIncomingQueueSize(ReactorIncomingMessageQueueSize),
@@ -159,6 +163,7 @@ func (memR *Reactor) GetChannels() []*p2p.ChannelDescriptor {
 		{
 			ID:                  mempool.MempoolChannel,
 			Priority:            1,
+			SendQueueCapacity:   10,
 			RecvMessageCapacity: txMsg.Size(),
 			MessageType:         &protomem.Message{},
 		},
