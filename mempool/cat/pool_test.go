@@ -891,25 +891,25 @@ func TestTxPool_BroadcastQueue(t *testing.T) {
 	wg.Wait()
 }
 
-func TestTxPool_WasRecentlyRejected(t *testing.T) {
+func TestTxMempool_TestRejectionIndexing(t *testing.T) {
 	t.Run("CheckTx rejection", func(t *testing.T) {
 		txmp := setup(t, 100)
-		// Enable keeping invalid txs in cache so rejected txs are tracked
-		txmp.config.KeepInvalidTxsInCache = true
 
 		// Create a transaction that will be rejected by CheckTx (invalid format)
 		rejectedTx := []byte("invalid-tx-format")
 		txKey := types.Tx(rejectedTx).Key()
 
 		// The transaction should not be rejected initially
-		require.False(t, txmp.WasRecentlyRejected(txKey))
+		rejected, code := txmp.WasRecentlyRejected(txKey)
+		require.False(t, rejected)
+		require.Equal(t, uint32(0), code)
 
-		// Try to add the transaction - it should be rejected by the application
+		// Try to add the transaction - it should be rejected
 		err := txmp.CheckTx(rejectedTx, nil, mempool.TxInfo{})
-		require.Error(t, err) // CheckTx method itself doesn't return error for app rejection
-
-		// The transaction should now be marked as rejected
-		require.True(t, txmp.WasRecentlyRejected(txKey), "Transaction rejected by CheckTx should appear in IsRejectedTx")
+		require.Error(t, err) // CheckTx returns an error for app rejection in CAT
+		rejected, code = txmp.WasRecentlyRejected(txKey)
+		require.True(t, rejected)
+		require.Equal(t, uint32(101), code)
 	})
 
 	t.Run("PreCheck rejection", func(t *testing.T) {
@@ -921,21 +921,21 @@ func TestTxPool_WasRecentlyRejected(t *testing.T) {
 			return nil
 		}
 		txmp := setup(t, 100, WithPreCheck(preCheckFn))
-		// Enable keeping invalid txs in cache so rejected txs are tracked
-		txmp.config.KeepInvalidTxsInCache = true
 
 		rejectedTx := []byte("reject-me=test=1")
 		txKey := types.Tx(rejectedTx).Key()
 
 		// The transaction should not be rejected initially
-		require.False(t, txmp.WasRecentlyRejected(txKey))
+		rejected, code := txmp.WasRecentlyRejected(txKey)
+		require.False(t, rejected)
+		require.Equal(t, uint32(0), code)
 
 		// Try to add the transaction - it should be rejected by precheck
 		_, err := txmp.TryAddNewTx(types.Tx(rejectedTx).ToCachedTx(), txKey, mempool.TxInfo{})
 		require.Error(t, err) // PreCheck failures return an error
-
-		// The transaction should now be marked as rejected
-		require.True(t, txmp.WasRecentlyRejected(txKey), "Transaction rejected by PreCheck should appear in IsRejectedTx")
+		rejected, code = txmp.WasRecentlyRejected(txKey)
+		require.True(t, rejected)
+		require.Equal(t, uint32(0), code)
 	})
 
 	t.Run("PostCheck rejection", func(t *testing.T) {
@@ -955,14 +955,16 @@ func TestTxPool_WasRecentlyRejected(t *testing.T) {
 		txKey := types.Tx(rejectedTx).Key()
 
 		// The transaction should not be rejected initially
-		require.False(t, txmp.WasRecentlyRejected(txKey))
+		wasRejected, code := txmp.WasRecentlyRejected(txKey)
+		require.False(t, wasRejected)
+		require.Equal(t, uint32(0), code)
 
 		// Try to add the transaction - it should be rejected by postcheck
 		_, err := txmp.TryAddNewTx(types.Tx(rejectedTx).ToCachedTx(), txKey, mempool.TxInfo{})
 		require.Error(t, err) // PostCheck failures return an error
-
-		// The transaction should now be marked as rejected
-		require.True(t, txmp.WasRecentlyRejected(txKey), "Transaction rejected by PostCheck should appear in IsRejectedTx")
+		wasRejected, code = txmp.WasRecentlyRejected(txKey)
+		require.True(t, wasRejected)
+		require.Equal(t, uint32(0), code)
 	})
 
 	t.Run("Valid transaction not rejected", func(t *testing.T) {
@@ -973,13 +975,17 @@ func TestTxPool_WasRecentlyRejected(t *testing.T) {
 		txKey := types.Tx(validTx).Key()
 
 		// The transaction should not be rejected initially
-		require.False(t, txmp.WasRecentlyRejected(txKey))
+		wasRejected, code := txmp.WasRecentlyRejected(txKey)
+		require.False(t, wasRejected)
+		require.Equal(t, uint32(0), code)
 
 		// Add the valid transaction
 		_, err := txmp.TryAddNewTx(types.Tx(validTx).ToCachedTx(), txKey, mempool.TxInfo{})
 		require.NoError(t, err)
 
 		// The transaction should still not be marked as rejected
-		require.False(t, txmp.WasRecentlyRejected(txKey), "Valid transaction should not appear in IsRejectedTx")
+		wasRejected, code = txmp.WasRecentlyRejected(txKey)
+		require.False(t, wasRejected)
+		require.Equal(t, uint32(0), code)
 	})
 }
