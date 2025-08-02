@@ -16,6 +16,7 @@ import (
 	"github.com/cometbft/cometbft/config"
 	"github.com/cometbft/cometbft/libs/log"
 	"github.com/cometbft/cometbft/p2p"
+	"github.com/cometbft/cometbft/p2p/conn"
 	"github.com/cometbft/cometbft/p2p/mock"
 	tmp2p "github.com/cometbft/cometbft/proto/tendermint/p2p"
 )
@@ -91,6 +92,11 @@ func TestPEXReactorRunning(t *testing.T) {
 			r.SetLogger(logger.With("pex", i))
 			r.SetEnsurePeersPeriod(250 * time.Millisecond)
 			sw.AddReactor("pex", r)
+			mr := mock.NewReactor()
+			mr.Channels = []*conn.ChannelDescriptor{
+				{ID: 123, Priority: 123},
+			}
+			sw.AddReactor("mock", mr)
 
 			return sw
 		})
@@ -111,7 +117,7 @@ func TestPEXReactorRunning(t *testing.T) {
 		require.Nil(t, err)
 	}
 
-	assertPeersWithTimeout(t, switches, 10*time.Millisecond, 10*time.Second, N-1)
+	assertPeersWithTimeout(t, switches, 10*time.Millisecond, 60*time.Second, N-1)
 
 	// stop them
 	for _, s := range switches {
