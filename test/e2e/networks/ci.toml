@@ -35,7 +35,7 @@ validator04 = 100
 validator05 = 50
 
 [node.seed01]
-mode = "seed"
+# mode = "seed"
 perturb = ["restart"]
 
 [node.validator01]
