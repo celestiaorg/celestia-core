@@ -254,7 +254,7 @@ func (r *Reactor) Receive(e p2p.Envelope) {
 
 		// If we're a seed and this is an inbound peer,
 		// respond once and disconnect.
-		if /* r.config.SeedMode && */ !e.Src.IsOutbound() {
+		if !e.Src.IsOutbound() {
 			id := string(e.Src.ID())
 			v := r.lastReceivedRequests.Get(id)
 			if v != nil {
