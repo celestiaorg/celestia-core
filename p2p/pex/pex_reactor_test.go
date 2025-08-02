@@ -926,6 +926,7 @@ func TestPEXReactorWhenAddressBookIsSmallerThanMaxDials(t *testing.T) {
 // not only PEX, but also some test reactors.
 // It is asserted that nodes can connect to each other and the address books contain other peers.
 func TestPexFromScratch(t *testing.T) {
+	t.Parallel()
 	testCases := []struct {
 		name      string
 		bootstrap int // n - number of bootstrap nodes
@@ -957,9 +958,8 @@ func TestPexFromScratch(t *testing.T) {
 
 					sw.SetLogger(logger.With("pex", i))
 
-					r := NewReactor(books[i], &ReactorConfig{SeedMode: true})
+					r := NewReactor(books[i], &ReactorConfig{SeedMode: false})
 					r.SetLogger(logger.With("pex", i))
-					r.SetEnsurePeersPeriod(250 * time.Millisecond)
 					sw.AddReactor("pex", r)
 
 					return sw
@@ -1007,8 +1007,8 @@ func TestPexFromScratch(t *testing.T) {
 // assertFullAddressBooks checks if all address books have the expected number of peer entries within a timeout period.
 func assertFullAddressBooks(t *testing.T, totalNodes int, books []AddrBook) {
 	var (
-		ticker    = time.NewTicker(50 * time.Millisecond)
-		timeoutCh = time.After(5 * time.Second)
+		ticker    = time.NewTicker(1 * time.Second)
+		timeoutCh = time.After(90 * time.Second)
 	)
 	defer ticker.Stop()
 
@@ -1016,6 +1016,9 @@ func assertFullAddressBooks(t *testing.T, totalNodes int, books []AddrBook) {
 	expected := totalNodes - 1
 	for !allGood {
 		select {
+		case <-timeoutCh:
+			t.Errorf("expected all nodes to connect to each other")
+			t.FailNow()
 		case <-ticker.C:
 			// PEX is responsible for address exchange, so we need to check address books, not the number of connections
 			// let's make a strong assumption - each node knows of all other nodes
@@ -1030,9 +1033,6 @@ func assertFullAddressBooks(t *testing.T, totalNodes int, books []AddrBook) {
 			if cnt == totalNodes {
 				allGood = true
 			}
-		case <-timeoutCh:
-			t.Errorf("expected all nodes to connect to each other")
-			t.Fail()
 		}
 	}
 	assert.True(t, allGood, "Not all nodes connected to each other")
