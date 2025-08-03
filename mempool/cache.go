@@ -182,12 +182,12 @@ func (c *RejectedTxCache) Get(key types.TxKey) (uint32, bool) {
 	return 0, false
 }
 
-// HasKey returns true if the tx key is present in the cache.
+// Has returns true if the tx key is present in the cache.
 func (c *RejectedTxCache) Has(key types.TxKey) bool {
 	return c.cache.Has(key)
 }
 
 // Remove removes a tx from the cache.
-func (c *RejectedTxCache) Remove(tx *types.Tx) {
-	c.cache.Remove(tx.Key())
+func (c *RejectedTxCache) Remove(txKey types.TxKey) {
+	c.cache.Remove(txKey)
 }
