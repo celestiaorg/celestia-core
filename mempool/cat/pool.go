@@ -102,11 +102,6 @@ func NewTxPool(
 		txsToBeBroadcast: make([]types.TxKey, 0),
 	}
 
-	if cfg.CacheSize > 0 {
-		txmp.rejectedTxCache = mempool.NewRejectedTxCache(cfg.CacheSize / 5)
-		txmp.evictedTxCache = mempool.NewLRUTxCache(cfg.CacheSize / 5)
-	}
-
 	for _, opt := range options {
 		opt(txmp)
 	}
@@ -316,8 +311,8 @@ func (txmp *TxPool) TryAddNewTx(tx types.Tx, key types.TxKey, txInfo mempool.TxI
 
 	// If a precheck hook is defined, call it before invoking the application.
 	if err := txmp.preCheck(tx); err != nil {
+		txmp.rejectedTxCache.Push(key, 0)
 		txmp.metrics.FailedTxs.Add(1)
-		txmp.rejectedTxCache.Push(tx.Key(), 0)
 		return nil, err
 	}
 
@@ -335,7 +330,7 @@ func (txmp *TxPool) TryAddNewTx(tx types.Tx, key types.TxKey, txInfo mempool.TxI
 		return rsp, err
 	}
 	if rsp.Code != abci.CodeTypeOK {
-		txmp.rejectedTxCache.Push(tx.Key(), rsp.Code)
+		txmp.rejectedTxCache.Push(key, rsp.Code)
 		txmp.metrics.FailedTxs.Add(1)
 		return rsp, fmt.Errorf("application rejected transaction with code %d (Log: %s)", rsp.Code, rsp.Log)
 	}
@@ -348,7 +343,7 @@ func (txmp *TxPool) TryAddNewTx(tx types.Tx, key types.TxKey, txInfo mempool.TxI
 	// Perform the post check
 	err = txmp.postCheck(wtx.tx, rsp)
 	if err != nil {
-		txmp.rejectedTxCache.Push(wtx.tx.Key(), 0)
+		txmp.rejectedTxCache.Push(key, 0)
 		txmp.metrics.FailedTxs.Add(1)
 		return rsp, fmt.Errorf("rejected bad transaction after post check: %w", err)
 	}
@@ -625,8 +620,8 @@ func (txmp *TxPool) handleRecheckResult(wtx *wrappedTx, checkTxRes *abci.Respons
 		"code", checkTxRes.Code,
 	)
 	txmp.store.remove(wtx.key)
-	txmp.rejectedTxCache.Push(wtx.tx.Key(), checkTxRes.Code)
 	txmp.metrics.FailedTxs.Add(1)
+	txmp.rejectedTxCache.Push(wtx.tx.Key(), checkTxRes.Code)
 	txmp.metrics.Size.Set(float64(txmp.Size()))
 	txmp.metrics.SizeBytes.Set(float64(txmp.SizeBytes()))
 }

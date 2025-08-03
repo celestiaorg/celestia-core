@@ -192,7 +192,6 @@ func (txmp *TxMempool) CheckTx(
 	// If a precheck hook is defined, call it before invoking the application.
 	if err := txmp.preCheck(tx); err != nil {
 		txmp.metrics.FailedTxs.Add(1)
-		// Add the transaction to the rejected cache
 		txmp.rejectedTxs.Push(tx.Key(), 0)
 		return mempool.ErrPreCheck{Err: err}
 	}
@@ -501,7 +500,6 @@ func (txmp *TxMempool) addNewTransaction(wtx *WrappedTx, checkTxRes *abci.Respon
 		)
 
 		txmp.metrics.FailedTxs.Add(1)
-		// Add the transaction to the rejected cache
 		txmp.rejectedTxs.Push(wtx.tx.Key(), checkTxRes.Code)
 		// Remove the invalid transaction from the cache, unless the operator has
 		// instructed us to keep invalid transactions.

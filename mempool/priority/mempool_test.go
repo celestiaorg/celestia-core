@@ -839,15 +839,15 @@ func TestTxMempool_TestRejectionIndexing(t *testing.T) {
 		txKey := types.Tx(rejectedTx).Key()
 
 		// The transaction should not be rejected initially
-		wasRejected, code := txmp.WasRecentlyRejected(txKey)
-		require.False(t, wasRejected)
+		rejected, code := txmp.IsRejectedTx(txKey)
+		require.False(t, rejected)
 		require.Equal(t, uint32(0), code)
 
 		// Try to add the transaction - it should be rejected
 		err := txmp.CheckTx(rejectedTx, nil, mempool.TxInfo{})
 		require.NoError(t, err) // CheckTx method itself doesn't return error for app rejection
-		wasRejected, code = txmp.WasRecentlyRejected(txKey)
-		require.True(t, wasRejected)
+		rejected, code = txmp.IsRejectedTx(txKey)
+		require.True(t, rejected)
 		require.Equal(t, uint32(101), code)
 	})
 
@@ -865,15 +865,15 @@ func TestTxMempool_TestRejectionIndexing(t *testing.T) {
 		txKey := types.Tx(rejectedTx).Key()
 
 		// The transaction should not be rejected initially
-		wasRejected, code := txmp.WasRecentlyRejected(txKey)
-		require.False(t, wasRejected)
+		rejected, code := txmp.IsRejectedTx(txKey)
+		require.False(t, rejected)
 		require.Equal(t, uint32(0), code)
 
 		// Try to add the transaction - it should be rejected by precheck
 		err := txmp.CheckTx(rejectedTx, nil, mempool.TxInfo{})
 		require.Error(t, err) // PreCheck failures return an error
-		wasRejected, code = txmp.WasRecentlyRejected(txKey)
-		require.True(t, wasRejected)
+		rejected, code = txmp.IsRejectedTx(txKey)
+		require.True(t, rejected)
 		require.Equal(t, uint32(0), code)
 	})
 
@@ -892,15 +892,15 @@ func TestTxMempool_TestRejectionIndexing(t *testing.T) {
 		txKey := types.Tx(rejectedTx).Key()
 
 		// The transaction should not be rejected initially
-		wasRejected, code := txmp.WasRecentlyRejected(txKey)
-		require.False(t, wasRejected)
+		rejected, code := txmp.IsRejectedTx(txKey)
+		require.False(t, rejected)
 		require.Equal(t, uint32(0), code)
 
 		// Try to add the transaction - it should be rejected by postcheck
 		err := txmp.CheckTx(rejectedTx, nil, mempool.TxInfo{})
 		require.NoError(t, err) // CheckTx method itself doesn't return error for postcheck failure
-		wasRejected, code = txmp.WasRecentlyRejected(txKey)
-		require.True(t, wasRejected)
+		rejected, code = txmp.IsRejectedTx(txKey)
+		require.True(t, rejected)
 		require.Equal(t, uint32(0), code)
 	})
 
@@ -912,8 +912,8 @@ func TestTxMempool_TestRejectionIndexing(t *testing.T) {
 		txKey := types.Tx(validTx).Key()
 
 		// The transaction should not be rejected initially
-		wasRejected, code := txmp.WasRecentlyRejected(txKey)
-		require.False(t, wasRejected)
+		rejected, code := txmp.IsRejectedTx(txKey)
+		require.False(t, rejected)
 		require.Equal(t, uint32(0), code)
 
 		// Add the valid transaction
@@ -921,8 +921,8 @@ func TestTxMempool_TestRejectionIndexing(t *testing.T) {
 		require.NoError(t, err)
 
 		// The transaction should still not be marked as rejected
-		wasRejected, code = txmp.WasRecentlyRejected(txKey)
-		require.False(t, wasRejected)
+		rejected, code = txmp.IsRejectedTx(txKey)
+		require.False(t, rejected)
 		require.Equal(t, uint32(0), code)
 	})
 }
