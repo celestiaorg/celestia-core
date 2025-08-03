@@ -82,43 +82,11 @@ func TestSeenTxSetConcurrency(t *testing.T) {
 	}
 	wg.Wait()
 }
-<<<<<<< HEAD
-=======
-
-func TestLRUTxCacheConcurrency(t *testing.T) {
-	cache := NewLRUTxCache(100)
-
-	const (
-		concurrency = 10
-		numTx       = 100
-	)
-
-	wg := sync.WaitGroup{}
-	for i := 0; i < concurrency; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			for i := 0; i < numTx; i++ {
-				tx := types.Tx([]byte(fmt.Sprintf("tx%d", i)))
-				cache.Push(tx.Key())
-			}
-			for i := 0; i < numTx; i++ {
-				tx := types.Tx([]byte(fmt.Sprintf("tx%d", i)))
-				cache.Has(tx.Key())
-			}
-			for i := numTx - 1; i >= 0; i-- {
-				tx := types.Tx([]byte(fmt.Sprintf("tx%d", i)))
-				cache.Remove(tx.Key())
-			}
-		}()
-	}
-	wg.Wait()
-}
 
 func TestRejectedTxCache(t *testing.T) {
 	cacheSize := 10
 	cache := NewRejectedTxCache(cacheSize)
-	tx := types.Tx("test-transaction").ToCachedTx()
+	tx := types.Tx("test-transaction")
 	txKey := tx.Key()
 	initialCode := uint32(1001)
 
@@ -175,4 +143,3 @@ func TestRejectedTxCache(t *testing.T) {
 		require.False(t, cache.Has(txKey))
 	})
 }
->>>>>>> 4d138bd9 (feat: index error codes for rejected txs (#2242))

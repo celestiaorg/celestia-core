@@ -253,14 +253,9 @@ func (memR *Reactor) Receive(e p2p.Envelope) {
 		)
 		peerID := memR.ids.GetIDForPeer(e.Src.ID())
 		memR.mempool.PeerHasTx(peerID, txKey)
-<<<<<<< HEAD
-		// Check if we don't already have the transaction and that it was recently rejected
-		if memR.mempool.Has(txKey) || memR.mempool.IsRejectedTx(txKey) {
-=======
 		// Check if we don't already have the transaction
-		wasRejected, _ := memR.mempool.WasRecentlyRejected(txKey)
+		wasRejected, _ := memR.mempool.IsRejectedTx(txKey)
 		if memR.mempool.Has(txKey) || wasRejected {
->>>>>>> 4d138bd9 (feat: index error codes for rejected txs (#2242))
 			memR.Logger.Debug("received a seen tx for a tx we already have", "txKey", txKey)
 			return
 		}

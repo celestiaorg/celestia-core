@@ -111,17 +111,11 @@ type NopTxCache struct{}
 
 var _ TxCache = (*NopTxCache)(nil)
 
-<<<<<<< HEAD
-func (NopTxCache) Reset()                {}
-func (NopTxCache) Push(types.TxKey) bool { return true }
-func (NopTxCache) Remove(types.TxKey)    {}
-func (NopTxCache) Has(types.TxKey) bool  { return false }
-=======
-func (NopTxCache) Reset()                    {}
-func (NopTxCache) Push(*types.CachedTx) bool { return true }
-func (NopTxCache) Remove(*types.CachedTx)    {}
-func (NopTxCache) Has(*types.CachedTx) bool  { return false }
-func (NopTxCache) HasKey(types.TxKey) bool   { return false }
+func (NopTxCache) Reset()                  {}
+func (NopTxCache) Push(types.TxKey) bool   { return true }
+func (NopTxCache) Remove(types.TxKey)      {}
+func (NopTxCache) Has(types.TxKey) bool    { return false }
+func (NopTxCache) HasKey(types.TxKey) bool { return false }
 
 // cacheEntry stores both the transaction key and error code
 type cacheEntry struct {
@@ -148,11 +142,9 @@ func (c *RejectedTxCache) Reset() {
 }
 
 // Push adds a tx key and error code to the cache.
-func (c *RejectedTxCache) Push(tx *types.CachedTx, code uint32) bool {
+func (c *RejectedTxCache) Push(key types.TxKey, code uint32) bool {
 	c.cache.mtx.Lock()
 	defer c.cache.mtx.Unlock()
-
-	key := tx.Key()
 
 	moved, ok := c.cache.cacheMap[key]
 	if ok {
@@ -191,12 +183,11 @@ func (c *RejectedTxCache) Get(key types.TxKey) (uint32, bool) {
 }
 
 // HasKey returns true if the tx key is present in the cache.
-func (c *RejectedTxCache) HasKey(key types.TxKey) bool {
-	return c.cache.HasKey(key)
+func (c *RejectedTxCache) Has(key types.TxKey) bool {
+	return c.cache.Has(key)
 }
 
 // Remove removes a tx from the cache.
-func (c *RejectedTxCache) Remove(tx *types.CachedTx) {
-	c.cache.Remove(tx)
+func (c *RejectedTxCache) Remove(tx *types.Tx) {
+	c.cache.Remove(tx.Key())
 }
->>>>>>> 4d138bd9 (feat: index error codes for rejected txs (#2242))

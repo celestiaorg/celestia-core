@@ -254,17 +254,10 @@ func (env *Environment) TxStatus(ctx *rpctypes.Context, hash []byte) (*ctypes.Re
 		return &ctypes.ResultTxStatus{Status: TxStatusEvicted}, nil
 	}
 
-<<<<<<< HEAD
-	// Check if the tx is rejected
-	isRejected := env.Mempool.IsRejectedTx(txKey)
-	if isRejected {
-		return &ctypes.ResultTxStatus{Status: TxStatusRejected}, nil
-=======
 	// Check if the tx was rejected (this is only the case for recheck-tx)
-	wasRejected, code := env.Mempool.WasRecentlyRejected(txKey)
+	wasRejected, code := env.Mempool.IsRejectedTx(txKey)
 	if wasRejected {
 		return &ctypes.ResultTxStatus{Status: TxStatusRejected, ExecutionCode: code}, nil
->>>>>>> 4d138bd9 (feat: index error codes for rejected txs (#2242))
 	}
 
 	// If the tx is not in the mempool, evicted, rejected or committed, return unknown
