@@ -111,7 +111,83 @@ type NopTxCache struct{}
 
 var _ TxCache = (*NopTxCache)(nil)
 
-func (NopTxCache) Reset()                {}
-func (NopTxCache) Push(types.TxKey) bool { return true }
-func (NopTxCache) Remove(types.TxKey)    {}
-func (NopTxCache) Has(types.TxKey) bool  { return false }
+func (NopTxCache) Reset()                  {}
+func (NopTxCache) Push(types.TxKey) bool   { return true }
+func (NopTxCache) Remove(types.TxKey)      {}
+func (NopTxCache) Has(types.TxKey) bool    { return false }
+func (NopTxCache) HasKey(types.TxKey) bool { return false }
+
+// cacheEntry stores both the transaction key and error code
+type cacheEntry struct {
+	key  types.TxKey
+	code uint32
+}
+
+// RejectedTxCache is a cache of rejected transactions. It wraps LRUTxCache
+// to store the error code for a transaction that has been rejected.
+type RejectedTxCache struct {
+	cache *LRUTxCache
+}
+
+// NewRejectedTxCache creates a new rejected tx cache.
+func NewRejectedTxCache(cacheSize int) *RejectedTxCache {
+	return &RejectedTxCache{
+		cache: NewLRUTxCache(cacheSize),
+	}
+}
+
+// Reset resets the cache to an empty state.
+func (c *RejectedTxCache) Reset() {
+	c.cache.Reset()
+}
+
+// Push adds a tx key and error code to the cache.
+func (c *RejectedTxCache) Push(key types.TxKey, code uint32) bool {
+	c.cache.mtx.Lock()
+	defer c.cache.mtx.Unlock()
+
+	moved, ok := c.cache.cacheMap[key]
+	if ok {
+		c.cache.list.MoveToBack(moved)
+		return false
+	}
+
+	if c.cache.list.Len() >= c.cache.size {
+		front := c.cache.list.Front()
+		if front != nil {
+			frontKey := front.Value.(cacheEntry).key
+			delete(c.cache.cacheMap, frontKey)
+			c.cache.list.Remove(front)
+		}
+	}
+
+	e := c.cache.list.PushBack(cacheEntry{key: key, code: code})
+	c.cache.cacheMap[key] = e
+
+	return true
+}
+
+// Get returns the error code for a tx key if it exists in the cache.
+func (c *RejectedTxCache) Get(key types.TxKey) (uint32, bool) {
+	c.cache.mtx.Lock()
+	defer c.cache.mtx.Unlock()
+
+	entry, ok := c.cache.cacheMap[key]
+	if !ok {
+		return 0, false
+	}
+	if cacheEntry, ok := entry.Value.(cacheEntry); ok {
+		return cacheEntry.code, true
+	}
+	return 0, false
+}
+
+// Has returns true if the tx key is present in the cache.
+func (c *RejectedTxCache) Has(key types.TxKey) bool {
+	return c.cache.Has(key)
+}
+
+// Remove removes a tx from the cache.
+func (c *RejectedTxCache) Remove(txKey types.TxKey) {
+	c.cache.Remove(txKey)
+}
