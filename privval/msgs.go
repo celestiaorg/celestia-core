@@ -32,10 +32,10 @@ func mustWrapMsg(pb proto.Message) privvalproto.Message {
 		msg.Sum = &privvalproto.Message_PingRequest{PingRequest: pb}
 	case *privvalproto.PingResponse:
 		msg.Sum = &privvalproto.Message_PingResponse{PingResponse: pb}
-	case *privvalproto.SignedP2PMessageRequest:
-		msg.Sum = &privvalproto.Message_SignedP2PMessageRequest{SignedP2PMessageRequest: pb}
-	case *privvalproto.SignedP2PMessageResponse:
-		msg.Sum = &privvalproto.Message_SignedP2PMessageResponse{SignedP2PMessageResponse: pb}
+	case *privvalproto.SignRawBytesRequest:
+		msg.Sum = &privvalproto.Message_SignRawBytesRequest{SignRawBytesRequest: pb}
+	case *privvalproto.SignedRawBytesResponse:
+		msg.Sum = &privvalproto.Message_SignedRawBytesResponse{SignedRawBytesResponse: pb}
 	default:
 		panic(fmt.Errorf("unknown message type %T", pb))
 	}

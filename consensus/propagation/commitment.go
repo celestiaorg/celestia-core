@@ -11,7 +11,6 @@ import (
 	"github.com/cometbft/cometbft/libs/bits"
 	"github.com/cometbft/cometbft/libs/trace/schema"
 	"github.com/cometbft/cometbft/p2p"
-	"github.com/cometbft/cometbft/privval"
 	"github.com/cometbft/cometbft/proto/tendermint/mempool"
 	"github.com/cometbft/cometbft/proto/tendermint/propagation"
 	"github.com/cometbft/cometbft/types"
@@ -54,7 +53,7 @@ func (blockProp *Reactor) ProposeBlock(proposal *types.Proposal, block *types.Pa
 
 	// sign the hash of the compact block NOTE: p2p message sign bytes are
 	// prepended with the chain id and UID
-	sig, err := blockProp.privval.SignP2PMessage(blockProp.chainID, CompactBlockUID, sbz)
+	sig, err := blockProp.privval.SignRawBytes(blockProp.chainID, CompactBlockUID, sbz)
 	if err != nil {
 		blockProp.Logger.Error("failed to sign compact block", "err", err)
 		return
@@ -438,7 +437,10 @@ func (blockProp *Reactor) validateCompactBlock(cb *proptypes.CompactBlock) error
 		return err
 	}
 
-	p2pBz := privval.P2PMessageSignBytes(blockProp.chainID, CompactBlockUID, cbz)
+	p2pBz, err := types.RawBytesMessageSignBytes(blockProp.chainID, CompactBlockUID, cbz)
+	if err != nil {
+		return err
+	}
 
 	if proposer.VerifySignature(p2pBz, cb.Signature) {
 		return nil
