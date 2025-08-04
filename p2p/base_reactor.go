@@ -158,7 +158,6 @@ func (br *BaseReactor) TryQueueUnprocessedEnvelope(e UnprocessedEnvelope) {
 
 func (br *BaseReactor) OnStop() {
 	br.cancel()
-	close(br.incoming)
 }
 
 // DefaultProcessor unmarshalls the message and calls Receive on the reactor.
