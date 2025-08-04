@@ -201,7 +201,7 @@ func NewState(
 		evsw:                 cmtevents.NewEventSwitch(),
 		metrics:              NopMetrics(),
 		traceClient:          trace.NoOpTracer(),
-		newHeightOrRoundChan: make(chan struct{}),
+		newHeightOrRoundChan: make(chan struct{}, 1),
 		nextBlock:            make(chan *blockWithParts, 1),
 	}
 	for _, option := range options {
@@ -2819,7 +2819,7 @@ func (cs *State) syncData() {
 					continue
 				}
 				part := partset.GetPart(indice)
-				cs.peerMsgQueue <- msgInfo{&BlockPartMessage{height, round, part}, ""}
+				cs.internalMsgQueue <- msgInfo{&BlockPartMessage{height, round, part}, ""}
 			}
 		case part, ok := <-partChan:
 			if !ok {
