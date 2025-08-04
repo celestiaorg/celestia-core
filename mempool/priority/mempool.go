@@ -489,8 +489,6 @@ func (txmp *TxMempool) addNewTransaction(wtx *WrappedTx, checkTxRes *abci.Respon
 		err = txmp.postCheckFn(wtx.tx, checkTxRes)
 	}
 
-	txKey := wtx.tx.Key()
-
 	if err != nil || checkTxRes.Code != abci.CodeTypeOK {
 		txmp.logger.Debug(
 			"rejected bad transaction",
@@ -503,11 +501,11 @@ func (txmp *TxMempool) addNewTransaction(wtx *WrappedTx, checkTxRes *abci.Respon
 
 		txmp.metrics.FailedTxs.Add(1)
 		// Add the transaction to the rejected cache
-		txmp.rejectedTxs.Push(txKey, checkTxRes.Code)
+		txmp.rejectedTxs.Push(wtx.tx.Key(), checkTxRes.Code)
 		// Remove the invalid transaction from the cache, unless the operator has
 		// instructed us to keep invalid transactions.
 		if !txmp.config.KeepInvalidTxsInCache {
-			txmp.cache.Remove(txKey)
+			txmp.cache.Remove(wtx.tx.Key())
 		}
 
 		return
@@ -763,9 +761,8 @@ func (txmp *TxMempool) purgeExpiredTxs(blockHeight int64) {
 		if txmp.config.TTLNumBlocks > 0 && (blockHeight-w.height) > txmp.config.TTLNumBlocks ||
 			txmp.config.TTLDuration > 0 && now.Sub(w.timestamp) > txmp.config.TTLDuration {
 			txmp.removeTxByElement(cur)
-			txKey := w.tx.Key()
-			txmp.cache.Remove(txKey)
-			txmp.evictedTxs.Push(txKey)
+			txmp.cache.Remove(w.tx.Key())
+			txmp.evictedTxs.Push(w.tx.Key())
 			txmp.metrics.ExpiredTxs.Add(1)
 		}
 		cur = next
