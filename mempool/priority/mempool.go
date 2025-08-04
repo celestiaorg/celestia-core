@@ -193,7 +193,7 @@ func (txmp *TxMempool) CheckTx(
 	if err := txmp.preCheck(cachedTx); err != nil {
 		txmp.metrics.FailedTxs.Add(1)
 		// Add the transaction to the rejected cache
-		txmp.rejectedTxs.Push(tx.Key(), 0)
+		txmp.rejectedTxs.Push(cachedTx.Key(), 0)
 		return mempool.ErrPreCheck{Err: err}
 	}
 
@@ -439,14 +439,15 @@ func (txmp *TxMempool) Update(
 		// Add successful committed transactions to the cache (if they are not
 		// already present).  Transactions that failed to commit are removed from
 		// the cache unless the operator has explicitly requested we keep them.
+		txKey := tx.Key()
 		if deliverTxResponses[i].Code == abci.CodeTypeOK {
-			_ = txmp.cache.Push(tx.Key())
+			_ = txmp.cache.Push(txKey)
 		} else if !txmp.config.KeepInvalidTxsInCache {
-			txmp.cache.Remove(tx.Key())
+			txmp.cache.Remove(txKey)
 		}
 
 		// Regardless of success, remove the transaction from the mempool.
-		_ = txmp.removeTxByKey(tx.Key())
+		_ = txmp.removeTxByKey(txKey)
 	}
 
 	// Purge expired transactions based on TTL. This is the only place where
@@ -488,6 +489,8 @@ func (txmp *TxMempool) addNewTransaction(wtx *WrappedTx, checkTxRes *abci.Respon
 		err = txmp.postCheckFn(wtx.tx, checkTxRes)
 	}
 
+	txKey := wtx.tx.Key()
+
 	if err != nil || checkTxRes.Code != abci.CodeTypeOK {
 		txmp.logger.Debug(
 			"rejected bad transaction",
@@ -500,11 +503,11 @@ func (txmp *TxMempool) addNewTransaction(wtx *WrappedTx, checkTxRes *abci.Respon
 
 		txmp.metrics.FailedTxs.Add(1)
 		// Add the transaction to the rejected cache
-		txmp.rejectedTxs.Push(wtx.tx.Key(), checkTxRes.Code)
+		txmp.rejectedTxs.Push(txKey, checkTxRes.Code)
 		// Remove the invalid transaction from the cache, unless the operator has
 		// instructed us to keep invalid transactions.
 		if !txmp.config.KeepInvalidTxsInCache {
-			txmp.cache.Remove(wtx.tx.Key())
+			txmp.cache.Remove(txKey)
 		}
 
 		return
@@ -550,7 +553,7 @@ func (txmp *TxMempool) addNewTransaction(wtx *WrappedTx, checkTxRes *abci.Respon
 		// those candidates is not enough to make room for the new transaction,
 		// drop the new one.
 		if len(victims) == 0 || victimBytes < wtx.Size() {
-			txmp.cache.Remove(wtx.tx.Key())
+			txmp.cache.Remove(txKey)
 			txmp.logger.Error(
 				"rejected valid incoming transaction; mempool is full",
 				"tx", fmt.Sprintf("%X", wtx.tx.Hash()),
@@ -558,7 +561,7 @@ func (txmp *TxMempool) addNewTransaction(wtx *WrappedTx, checkTxRes *abci.Respon
 			)
 			txmp.metrics.EvictedTxs.Add(1)
 			// Add it to evicted transactions cache
-			txmp.evictedTxs.Push(wtx.tx.Key())
+			txmp.evictedTxs.Push(txKey)
 			return
 		}
 
@@ -589,10 +592,10 @@ func (txmp *TxMempool) addNewTransaction(wtx *WrappedTx, checkTxRes *abci.Respon
 				"old_priority", w.priority,
 			)
 			txmp.removeTxByElement(vic)
-			txmp.cache.Remove(w.tx.Key())
+			txmp.cache.Remove(txKey)
 			txmp.metrics.EvictedTxs.Add(1)
 			// Add it to evicted transactions cache
-			txmp.evictedTxs.Push(w.tx.Key())
+			txmp.evictedTxs.Push(txKey)
 			// We may not need to evict all the eligible transactions.  Bail out
 			// early if we have made enough room.
 			evictedBytes += w.Size()
@@ -642,7 +645,8 @@ func (txmp *TxMempool) handleRecheckResult(tx *types.CachedTx, checkTxRes *abci.
 	// Find the transaction reported by the ABCI callback. It is possible the
 	// transaction was evicted during the recheck, in which case the transaction
 	// will be gone.
-	elt, ok := txmp.txByKey[tx.Key()]
+	txKey := tx.Key()
+	elt, ok := txmp.txByKey[txKey]
 	if !ok {
 		return
 	}
@@ -666,11 +670,11 @@ func (txmp *TxMempool) handleRecheckResult(tx *types.CachedTx, checkTxRes *abci.
 		"err", err,
 		"code", checkTxRes.Code,
 	)
-	txmp.rejectedTxs.Push(wtx.tx.Key(), checkTxRes.Code)
+	txmp.rejectedTxs.Push(txKey, checkTxRes.Code)
 	txmp.removeTxByElement(elt)
 	txmp.metrics.FailedTxs.Add(1)
 	if !txmp.config.KeepInvalidTxsInCache {
-		txmp.cache.Remove(wtx.tx.Key())
+		txmp.cache.Remove(txKey)
 	}
 	txmp.metrics.Size.Set(float64(txmp.Size()))
 	txmp.metrics.SizeBytes.Set(float64(txmp.SizeBytes()))
@@ -759,8 +763,9 @@ func (txmp *TxMempool) purgeExpiredTxs(blockHeight int64) {
 		if txmp.config.TTLNumBlocks > 0 && (blockHeight-w.height) > txmp.config.TTLNumBlocks ||
 			txmp.config.TTLDuration > 0 && now.Sub(w.timestamp) > txmp.config.TTLDuration {
 			txmp.removeTxByElement(cur)
-			txmp.cache.Remove(w.tx.Key())
-			txmp.evictedTxs.Push(w.tx.Key())
+			txKey := w.tx.Key()
+			txmp.cache.Remove(txKey)
+			txmp.evictedTxs.Push(txKey)
 			txmp.metrics.ExpiredTxs.Add(1)
 		}
 		cur = next
