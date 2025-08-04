@@ -604,7 +604,7 @@ func TestTxMempool_ExpiredTxs_Timestamp(t *testing.T) {
 		if _, ok := txmp.txByKey[tx.tx.Key()]; ok {
 			t.Errorf("Transaction %X should have been purged for TTL", tx.tx.Key())
 		}
-		if txmp.cache.Has(tx.tx.ToCachedTx()) {
+		if txmp.cache.Has(tx.tx.Key()) {
 			t.Errorf("Transaction %X should have been removed from the cache", tx.tx.Key())
 		}
 	}

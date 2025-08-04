@@ -688,7 +688,7 @@ func TestTxPool_ExpiredTxs_Timestamp(t *testing.T) {
 				t.Errorf("Transaction %X should have been purged for TTL", tx.tx.Key())
 				return false
 			}
-			if txmp.rejectedTxCache.Has(tx.tx.Key()) {
+			if txmp.rejectedTxCache.HasKey(tx.tx.Key()) {
 				t.Errorf("Transaction %X should have been removed from the cache", tx.tx.Key())
 				return false
 			}

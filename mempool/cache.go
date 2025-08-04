@@ -18,14 +18,14 @@ type TxCache interface {
 
 	// Push adds the given raw transaction to the cache and returns true if it was
 	// newly added. Otherwise, it returns false.
-	Push(tx *types.CachedTx) bool
+	Push(key types.TxKey) bool
 
 	// Remove removes the given raw transaction from the cache.
-	Remove(tx *types.CachedTx)
+	Remove(key types.TxKey)
 
 	// Has reports whether tx is present in the cache. Checking for presence is
 	// not treated as an access of the value.
-	Has(tx *types.CachedTx) bool
+	Has(key types.TxKey) bool
 
 	// HasKey reports whether the given key is present in the cache.
 	HasKey(key types.TxKey) bool
@@ -64,11 +64,9 @@ func (c *LRUTxCache) Reset() {
 	c.list.Init()
 }
 
-func (c *LRUTxCache) Push(tx *types.CachedTx) bool {
+func (c *LRUTxCache) Push(key types.TxKey) bool {
 	c.mtx.Lock()
 	defer c.mtx.Unlock()
-
-	key := tx.Key()
 
 	moved, ok := c.cacheMap[key]
 	if ok {
@@ -91,12 +89,7 @@ func (c *LRUTxCache) Push(tx *types.CachedTx) bool {
 	return true
 }
 
-func (c *LRUTxCache) Remove(tx *types.CachedTx) {
-	key := tx.Key()
-	c.RemoveTxByKey(key)
-}
-
-func (c *LRUTxCache) RemoveTxByKey(key types.TxKey) {
+func (c *LRUTxCache) Remove(key types.TxKey) {
 	c.mtx.Lock()
 	defer c.mtx.Unlock()
 
@@ -108,11 +101,11 @@ func (c *LRUTxCache) RemoveTxByKey(key types.TxKey) {
 	}
 }
 
-func (c *LRUTxCache) Has(tx *types.CachedTx) bool {
+func (c *LRUTxCache) Has(key types.TxKey) bool {
 	c.mtx.Lock()
 	defer c.mtx.Unlock()
 
-	_, ok := c.cacheMap[tx.Key()]
+	_, ok := c.cacheMap[key]
 	return ok
 }
 
@@ -130,9 +123,9 @@ type NopTxCache struct{}
 var _ TxCache = (*NopTxCache)(nil)
 
 func (NopTxCache) Reset()                    {}
-func (NopTxCache) Push(*types.CachedTx) bool { return true }
-func (NopTxCache) Remove(*types.CachedTx)    {}
-func (NopTxCache) Has(*types.CachedTx) bool  { return false }
+func (NopTxCache) Push(types.TxKey) bool     { return true }
+func (NopTxCache) Remove(types.TxKey)        {}
+func (NopTxCache) Has(types.TxKey) bool      { return false }
 func (NopTxCache) HasKey(types.TxKey) bool   { return false }
 
 // cacheEntry stores both the transaction key and error code
@@ -160,11 +153,9 @@ func (c *RejectedTxCache) Reset() {
 }
 
 // Push adds a tx key and error code to the cache.
-func (c *RejectedTxCache) Push(tx *types.CachedTx, code uint32) bool {
+func (c *RejectedTxCache) Push(key types.TxKey, code uint32) bool {
 	c.cache.mtx.Lock()
 	defer c.cache.mtx.Unlock()
-
-	key := tx.Key()
 
 	moved, ok := c.cache.cacheMap[key]
 	if ok {
@@ -208,6 +199,6 @@ func (c *RejectedTxCache) HasKey(key types.TxKey) bool {
 }
 
 // Remove removes a tx from the cache.
-func (c *RejectedTxCache) Remove(tx *types.CachedTx) {
-	c.cache.Remove(tx)
+func (c *RejectedTxCache) Remove(key types.TxKey) {
+	c.cache.Remove(key)
 }

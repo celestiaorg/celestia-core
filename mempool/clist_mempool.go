@@ -284,7 +284,7 @@ func (mem *CListMempool) CheckTx(
 		return ErrAppConnMempool{Err: err}
 	}
 
-	if !mem.cache.Push(cachedTx) { // if the transaction already exists in the cache
+	if !mem.cache.Push(tx.Key()) { // if the transaction already exists in the cache
 		// Record a new sender for a tx we've already seen.
 		// Note it's possible a tx is still in the cache but no longer in the mempool
 		// (eg. after committing a block, txs are removed from mempool but not cache),
@@ -447,7 +447,7 @@ func (mem *CListMempool) resCbFirstTime(
 			// limits.
 			if err := mem.isFull(len(tx.Tx)); err != nil {
 				// remove from cache (mempool might have a space later)
-				mem.cache.Remove(tx)
+				mem.cache.Remove(tx.Key())
 				// use debug level to avoid spamming logs when traffic is high
 				mem.logger.Debug(err.Error())
 				mem.metrics.RejectedTxs.Add(1)
@@ -497,7 +497,7 @@ func (mem *CListMempool) resCbFirstTime(
 
 			if !mem.config.KeepInvalidTxsInCache {
 				// remove from cache (it might be good later)
-				mem.cache.Remove(tx)
+				mem.cache.Remove(tx.Key())
 			}
 		}
 
@@ -529,7 +529,7 @@ func (mem *CListMempool) resCbRecheck(tx types.Tx, res *abci.ResponseCheckTx) {
 			mem.logger.Debug("Transaction could not be removed from mempool", "err", err)
 		}
 		if !mem.config.KeepInvalidTxsInCache {
-			mem.cache.Remove(tx.ToCachedTx())
+			mem.cache.Remove(tx.Key())
 			mem.metrics.EvictedTxs.Add(1)
 		}
 	}
@@ -636,10 +636,10 @@ func (mem *CListMempool) Update(
 	for i, tx := range txs {
 		if txResults[i].Code == abci.CodeTypeOK {
 			// Add valid committed tx to the cache (if missing).
-			_ = mem.cache.Push(tx)
+			_ = mem.cache.Push(tx.Key())
 		} else if !mem.config.KeepInvalidTxsInCache {
 			// Allow invalid transactions to be resubmitted.
-			mem.cache.Remove(tx)
+			mem.cache.Remove(tx.Key())
 		}
 
 		// Remove committed tx from the mempool.
