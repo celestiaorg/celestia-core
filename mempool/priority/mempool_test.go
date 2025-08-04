@@ -68,6 +68,7 @@ func (app *application) CheckTx(ctx context.Context, req *abci.RequestCheckTx) (
 			GasWanted: 1,
 			Address:   []byte(sender),
 			Code:      101,
+			Log:      "invalid-tx-format",
 		}, nil
 	}
 
@@ -878,7 +879,7 @@ func TestTxMempool_TestRejectionIndexing(t *testing.T) {
 		rejected, code, log = txmp.IsRejectedTx(txKey)
 		require.True(t, rejected)
 		require.Equal(t, uint32(0), code)
-		require.Equal(t, "rejected by precheck", log)
+		require.Equal(t, "", log)
 	})
 
 	t.Run("PostCheck rejection", func(t *testing.T) {
@@ -907,7 +908,7 @@ func TestTxMempool_TestRejectionIndexing(t *testing.T) {
 		rejected, code, log = txmp.IsRejectedTx(txKey)
 		require.True(t, rejected)
 		require.Equal(t, uint32(0), code)
-		require.Equal(t, "priority too low", log)
+		require.Equal(t, "", log)
 	})
 
 	t.Run("Valid transaction not rejected", func(t *testing.T) {

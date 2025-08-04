@@ -132,10 +132,10 @@ func (app *Application) CheckTx(_ context.Context, req *types.RequestCheckTx) (*
 	if isValidatorTx(req.Tx) {
 		if _, _, _, err := parseValidatorTx(req.Tx); err != nil {
 			//nolint:nilerr
-			return &types.ResponseCheckTx{Code: CodeTypeInvalidTxFormat}, nil
+			return &types.ResponseCheckTx{Code: CodeTypeInvalidTxFormat, Log: "invalid-tx-format"}, nil
 		}
 	} else if !isValidTx(req.Tx) {
-		return &types.ResponseCheckTx{Code: CodeTypeInvalidTxFormat}, nil
+		return &types.ResponseCheckTx{Code: CodeTypeInvalidTxFormat, Log: "invalid-tx-format"}, nil
 	}
 
 	return &types.ResponseCheckTx{Code: CodeTypeOK, GasWanted: 1}, nil

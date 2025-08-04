@@ -498,6 +498,9 @@ func (txmp *TxMempool) addNewTransaction(wtx *WrappedTx, checkTxRes *abci.Respon
 			"code", checkTxRes.Code,
 			"post_check_err", err,
 		)
+		fmt.Println("checkTxRes.Log", checkTxRes.Log)
+		fmt.Println("checkTxRes.Code", checkTxRes.Code)
+		fmt.Println("checkTxRes.Info", checkTxRes.Info)
 
 		txmp.metrics.FailedTxs.Add(1)
 		txmp.rejectedTxs.Push(wtx.tx.Key(), checkTxRes.Code, checkTxRes.Log)
