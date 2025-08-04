@@ -681,7 +681,8 @@ func TestMempoolNoCacheOverflow(t *testing.T) {
 	}
 	err = mp.FlushAppConn()
 	require.NoError(t, err)
-	assert.False(t, mp.cache.Has(types.TxKey(kvstore.NewTxFromID(0))))
+	txKey := types.Tx(tx0).Key()
+	assert.False(t, mp.cache.Has(txKey))
 
 	// add again tx0
 	err = mp.CheckTx(tx0, nil, TxInfo{})
