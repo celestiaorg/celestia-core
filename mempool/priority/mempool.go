@@ -551,7 +551,7 @@ func (txmp *TxMempool) addNewTransaction(wtx *WrappedTx, checkTxRes *abci.Respon
 		// those candidates is not enough to make room for the new transaction,
 		// drop the new one.
 		if len(victims) == 0 || victimBytes < wtx.Size() {
-			txmp.cache.Remove(txKey)
+			txmp.cache.Remove(wtx.tx.Key())
 			txmp.logger.Error(
 				"rejected valid incoming transaction; mempool is full",
 				"tx", fmt.Sprintf("%X", wtx.tx.Hash()),
@@ -559,7 +559,7 @@ func (txmp *TxMempool) addNewTransaction(wtx *WrappedTx, checkTxRes *abci.Respon
 			)
 			txmp.metrics.EvictedTxs.Add(1)
 			// Add it to evicted transactions cache
-			txmp.evictedTxs.Push(txKey)
+			txmp.evictedTxs.Push(wtx.tx.Key())
 			return
 		}
 
@@ -590,10 +590,10 @@ func (txmp *TxMempool) addNewTransaction(wtx *WrappedTx, checkTxRes *abci.Respon
 				"old_priority", w.priority,
 			)
 			txmp.removeTxByElement(vic)
-			txmp.cache.Remove(txKey)
+			txmp.cache.Remove(w.tx.Key())
 			txmp.metrics.EvictedTxs.Add(1)
 			// Add it to evicted transactions cache
-			txmp.evictedTxs.Push(txKey)
+			txmp.evictedTxs.Push(w.tx.Key())
 			// We may not need to evict all the eligible transactions.  Bail out
 			// early if we have made enough room.
 			evictedBytes += w.Size()
