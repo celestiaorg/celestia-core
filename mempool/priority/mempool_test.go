@@ -68,7 +68,7 @@ func (app *application) CheckTx(ctx context.Context, req *abci.RequestCheckTx) (
 			GasWanted: 1,
 			Address:   []byte(sender),
 			Code:      101,
-			Log:      "invalid-tx-format",
+			Log:       "invalid-tx-format",
 		}, nil
 	}
 
