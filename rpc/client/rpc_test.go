@@ -843,7 +843,7 @@ func TestTxStatus(t *testing.T) {
 	require.NoError(err)
 	require.EqualValues(uint32(2), malformedTxResult.ExecutionCode)
 	require.Equal("REJECTED", malformedTxResult.Status)
-
+	require.Equal("invalid-tx-format", malformedTxResult.Error)
 	// Get the tx status
 	result, err = c.TxStatus(context.Background(), types.Tx(tx).Hash())
 	require.NoError(err)

@@ -121,6 +121,7 @@ func (NopTxCache) HasKey(types.TxKey) bool { return false }
 type cacheEntry struct {
 	key  types.TxKey
 	code uint32
+	log  string
 }
 
 // RejectedTxCache is a cache of rejected transactions. It wraps LRUTxCache
@@ -142,7 +143,7 @@ func (c *RejectedTxCache) Reset() {
 }
 
 // Push adds a tx key and error code to the cache.
-func (c *RejectedTxCache) Push(key types.TxKey, code uint32) bool {
+func (c *RejectedTxCache) Push(key types.TxKey, code uint32, log string) bool {
 	c.cache.mtx.Lock()
 	defer c.cache.mtx.Unlock()
 
@@ -161,25 +162,25 @@ func (c *RejectedTxCache) Push(key types.TxKey, code uint32) bool {
 		}
 	}
 
-	e := c.cache.list.PushBack(cacheEntry{key: key, code: code})
+	e := c.cache.list.PushBack(cacheEntry{key: key, code: code, log: log})
 	c.cache.cacheMap[key] = e
 
 	return true
 }
 
 // Get returns the error code for a tx key if it exists in the cache.
-func (c *RejectedTxCache) Get(key types.TxKey) (uint32, bool) {
+func (c *RejectedTxCache) Get(key types.TxKey) (uint32, string, bool) {
 	c.cache.mtx.Lock()
 	defer c.cache.mtx.Unlock()
 
 	entry, ok := c.cache.cacheMap[key]
 	if !ok {
-		return 0, false
+		return 0, "", false
 	}
 	if cacheEntry, ok := entry.Value.(cacheEntry); ok {
-		return cacheEntry.code, true
+		return cacheEntry.code, cacheEntry.log, true
 	}
-	return 0, false
+	return 0, "", false
 }
 
 // Has returns true if the tx key is present in the cache.

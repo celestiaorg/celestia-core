@@ -80,8 +80,8 @@ func (*NopMempool) GetTxByKey(types.TxKey) (types.Tx, bool) { return nil, false 
 // WasRecentlyEvicted always returns false.
 func (*NopMempool) WasRecentlyEvicted(types.TxKey) bool { return false }
 
-// IsRejectedTx always returns false and zero.
-func (*NopMempool) IsRejectedTx(types.TxKey) (bool, uint32) { return false, 0 }
+// IsRejectedTx always returns false, zero and an empty string.
+func (*NopMempool) IsRejectedTx(types.TxKey) (bool, uint32, string) { return false, 0, "" }
 
 // NopMempoolReactor is a mempool reactor that does nothing.
 type NopMempoolReactor struct {

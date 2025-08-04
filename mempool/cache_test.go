@@ -167,43 +167,48 @@ func TestRejectedTxCache(t *testing.T) {
 	tx := types.Tx("test-transaction")
 	txKey := tx.Key()
 	initialCode := uint32(1001)
+	initialLog := "initial-log"
 
 	t.Run("initial state", func(t *testing.T) {
 		require.False(t, cache.Has(txKey))
-		code, ok := cache.Get(txKey)
+		code, log, ok := cache.Get(txKey)
 		require.False(t, ok)
 		require.Equal(t, uint32(0), code)
+		require.Equal(t, "", log)
 	})
 
 	t.Run("add transaction with rejection code", func(t *testing.T) {
-		wasNew := cache.Push(txKey, initialCode)
+		wasNew := cache.Push(txKey, initialCode, initialLog)
 		require.True(t, wasNew)
 
 		require.True(t, cache.Has(txKey))
-		code, ok := cache.Get(txKey)
+		code, log, ok := cache.Get(txKey)
 		require.True(t, ok)
 		require.Equal(t, initialCode, code)
+		require.Equal(t, initialLog, log)
 	})
 
 	t.Run("add same transaction again should not overwrite", func(t *testing.T) {
-		wasNew := cache.Push(txKey, initialCode)
+		wasNew := cache.Push(txKey, initialCode, initialLog)
 		require.False(t, wasNew)
 	})
 
 	t.Run("should not change existing entry", func(t *testing.T) {
 		newCode := uint32(2002)
-		wasNew := cache.Push(txKey, newCode)
+		newLog := "new-log"
+		wasNew := cache.Push(txKey, newCode, newLog)
 		require.False(t, wasNew)
 
-		retrievedCode, ok := cache.Get(txKey)
+		retrievedCode, retrievedLog, ok := cache.Get(txKey)
 		require.True(t, ok)
 		require.Equal(t, initialCode, retrievedCode) // Should still be original code
+		require.Equal(t, initialLog, retrievedLog)
 	})
 
 	t.Run("remove transaction", func(t *testing.T) {
 		cache.Remove(txKey)
 		require.False(t, cache.Has(txKey))
-		_, ok := cache.Get(txKey)
+		_, _, ok := cache.Get(txKey)
 		require.False(t, ok)
 	})
 
@@ -211,7 +216,7 @@ func TestRejectedTxCache(t *testing.T) {
 		// cache size is 10, adding 15 txs
 		// cache should remain within the size limit
 		for i := 0; i < 15; i++ {
-			cache.Push(txKey, initialCode)
+			cache.Push(txKey, initialCode, initialLog)
 		}
 		require.Equal(t, cacheSize, cache.cache.size)
 	})
