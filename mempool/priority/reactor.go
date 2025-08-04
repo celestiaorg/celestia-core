@@ -98,7 +98,7 @@ func NewReactor(config *cfg.MempoolConfig, mempool *TxMempool) *Reactor {
 		mempool: mempool,
 		ids:     newMempoolIDs(),
 	}
-	memR.BaseReactor = *p2p.NewBaseReactor("Mempool", memR, p2p.WithIncomingQueueSize(ReactorIncomingMessageQueueSize))
+	memR.BaseReactor = *p2p.NewBaseReactor("Priority", memR, p2p.WithIncomingQueueSize(ReactorIncomingMessageQueueSize))
 	return memR
 }
 

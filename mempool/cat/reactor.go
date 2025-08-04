@@ -100,7 +100,7 @@ func NewReactor(mempool *TxPool, opts *ReactorOptions) (*Reactor, error) {
 		requests:    newRequestScheduler(opts.MaxGossipDelay, defaultGlobalRequestTimeout),
 		traceClient: traceClient,
 	}
-	memR.BaseReactor = *p2p.NewBaseReactor("Mempool", memR,
+	memR.BaseReactor = *p2p.NewBaseReactor("CAT", memR,
 		p2p.WithIncomingQueueSize(ReactorIncomingMessageQueueSize),
 		p2p.WithQueueingFunc(memR.TryQueueUnprocessedEnvelope),
 	)

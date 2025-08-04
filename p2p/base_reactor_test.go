@@ -48,7 +48,7 @@ type orderedReactor struct {
 
 func newOrderedReactor() *orderedReactor {
 	r := &orderedReactor{Mutex: sync.Mutex{}}
-	r.BaseReactor = *p2p.NewBaseReactor("Ordered Rector", r, p2p.WithIncomingQueueSize(10))
+	r.BaseReactor = *p2p.NewBaseReactor("OrderedRector", r, p2p.WithIncomingQueueSize(10))
 	return r
 }
 

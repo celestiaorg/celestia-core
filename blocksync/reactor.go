@@ -122,7 +122,7 @@ func NewReactorWithAddr(state sm.State, blockExec *sm.BlockExecutor, store *stor
 		errorsCh:     errorsCh,
 		metrics:      metrics,
 	}
-	bcR.BaseReactor = *p2p.NewBaseReactor("Reactor", bcR, p2p.WithIncomingQueueSize(ReactorIncomingMessageQueueSize))
+	bcR.BaseReactor = *p2p.NewBaseReactor("BlockSync", bcR, p2p.WithIncomingQueueSize(ReactorIncomingMessageQueueSize))
 	return bcR
 }
 

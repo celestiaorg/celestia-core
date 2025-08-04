@@ -586,10 +586,12 @@ type ByzantineReactor struct {
 }
 
 func NewByzantineReactor(conR *Reactor) *ByzantineReactor {
-	return &ByzantineReactor{
+	r := &ByzantineReactor{
 		Service: conR,
 		reactor: conR,
 	}
+	r.reactor.BaseReactor = *p2p.NewBaseReactor("ByzantineConsensus", r, p2p.WithIncomingQueueSize(10))
+	return r
 }
 
 func (br *ByzantineReactor) SetSwitch(s *p2p.Switch)               { br.reactor.SetSwitch(s) }
