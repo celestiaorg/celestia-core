@@ -93,6 +93,7 @@ linters:
             - github.com/celestiaorg/go-square/v2
             - github.com/stretchr/testify/require
             - github.com/stretchr/testify/suite
+            - github.com/gogo/protobuf/proto
     dogsled:
       max-blank-identifiers: 3
     gosec:
