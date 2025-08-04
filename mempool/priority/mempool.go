@@ -268,7 +268,7 @@ func (txmp *TxMempool) WasRecentlyEvicted(txKey types.TxKey) bool {
 }
 
 // IsRejected returns true if the tx was rejected from the mempool and exists in the
-// rejected cache alongside the rejection code.
+// rejected cache alongside the rejection code and log.
 // Used in the RPC endpoint: TxStatus.
 func (txmp *TxMempool) IsRejectedTx(txKey types.TxKey) (bool, uint32, string) {
 	code, log, exists := txmp.rejectedTxs.Get(txKey)
@@ -498,9 +498,6 @@ func (txmp *TxMempool) addNewTransaction(wtx *WrappedTx, checkTxRes *abci.Respon
 			"code", checkTxRes.Code,
 			"post_check_err", err,
 		)
-		fmt.Println("checkTxRes.Log", checkTxRes.Log)
-		fmt.Println("checkTxRes.Code", checkTxRes.Code)
-		fmt.Println("checkTxRes.Info", checkTxRes.Info)
 
 		txmp.metrics.FailedTxs.Add(1)
 		txmp.rejectedTxs.Push(wtx.tx.Key(), checkTxRes.Code, checkTxRes.Log)

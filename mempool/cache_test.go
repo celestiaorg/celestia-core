@@ -177,7 +177,7 @@ func TestRejectedTxCache(t *testing.T) {
 		require.Equal(t, "", log)
 	})
 
-	t.Run("add transaction with rejection code", func(t *testing.T) {
+	t.Run("add transaction with rejection code and log", func(t *testing.T) {
 		wasNew := cache.Push(txKey, initialCode, initialLog)
 		require.True(t, wasNew)
 
