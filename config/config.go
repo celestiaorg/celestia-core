@@ -172,6 +172,46 @@ func (cfg *Config) ValidateBasic() error {
 // CheckDeprecated returns any deprecation warnings. These are printed to the operator on startup
 func (cfg *Config) CheckDeprecated() []string {
 	var warnings []string
+
+	// Deprecated Mempool configs
+	if cfg.Mempool.MaxTxBytes != 0 {
+		warnings = append(warnings, "mempool.max_tx_bytes is deprecated and will be removed in a future version")
+	}
+	if cfg.Mempool.TTLDuration != 0 {
+		warnings = append(warnings, "mempool.ttl-duration is deprecated and will be removed in a future version")
+	}
+	if cfg.Mempool.TTLNumBlocks != 0 {
+		warnings = append(warnings, "mempool.ttl-num-blocks is deprecated and will be removed in a future version")
+	}
+	if cfg.Mempool.MaxGossipDelay != 0 {
+		warnings = append(warnings, "mempool.max-gossip-delay is deprecated and will be removed in a future version")
+	}
+
+	// Deprecated Consensus configs
+	if cfg.Consensus.TimeoutPropose != 0 {
+		warnings = append(warnings, "consensus.timeout_propose is deprecated and will be removed in a future version")
+	}
+	if cfg.Consensus.TimeoutProposeDelta != 0 {
+		warnings = append(warnings, "consensus.timeout_propose_delta is deprecated and will be removed in a future version")
+	}
+	if cfg.Consensus.TimeoutPrevote != 0 {
+		warnings = append(warnings, "consensus.timeout_prevote is deprecated and will be removed in a future version")
+	}
+	if cfg.Consensus.TimeoutPrevoteDelta != 0 {
+		warnings = append(warnings, "consensus.timeout_prevote_delta is deprecated and will be removed in a future version")
+	}
+	if cfg.Consensus.TimeoutPrecommit != 0 {
+		warnings = append(warnings, "consensus.timeout_precommit is deprecated and will be removed in a future version")
+	}
+	if cfg.Consensus.TimeoutPrecommitDelta != 0 {
+		warnings = append(warnings, "consensus.timeout_precommit_delta is deprecated and will be removed in a future version")
+	}
+	if cfg.Consensus.TimeoutCommit != 0 {
+		warnings = append(warnings, "consensus.timeout_commit is deprecated and will be removed in a future version")
+	}
+	// CreateEmptyBlocks defaults to true, so we check if it's explicitly set to any value
+	warnings = append(warnings, "consensus.create_empty_blocks is deprecated and will be removed in a future version")
+
 	return warnings
 }
 
