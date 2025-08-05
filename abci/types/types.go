@@ -117,54 +117,72 @@ func (r *EventAttribute) MarshalJSON() ([]byte, error) {
 	return []byte(s), err
 }
 
-// UnmarshalJSON is modified to be backwards compatible with the old EventAttribute
-// that was broken in comet v0.38. That message used bytes and not strings, which differs
-// in that the go protobindings that marhalled json would encode bytes as base64. Here we do
-// the conversion, make that a non-issue.
+// UnmarshalJSON was modified in the Celestia fork to be backwards compatible
+// with the EventAttribute from CometBFT v0.34.x. CometBFT v0.38.x uses the type
+// string for keys and values. CometBFT v0.34.x used the type bytes for keys and
+// values. CometBFT v0.34.x event attributes that were marshaled to JSON
+// previously encoded the keys and values as base64 strings so this method
+// attempts to base64 decode the keys and values if they look like base64
+// encoded data.
 func (r *EventAttribute) UnmarshalJSON(b []byte) error {
-	// Parse the JSON into a raw struct to inspect the format
-	var raw struct {
+	var eventAttribute struct {
 		Key   string `json:"key,omitempty"`
 		Value string `json:"value,omitempty"`
 		Index bool   `json:"index,omitempty"`
 	}
 
-	if err := json.Unmarshal(b, &raw); err != nil {
+	if err := json.Unmarshal(b, &eventAttribute); err != nil {
 		return err
 	}
 
-	// Try to decode Key as base64, fallback to raw string
-	if raw.Key != "" {
-		if keyBytes, err := base64.StdEncoding.DecodeString(raw.Key); err == nil {
-			// Check if the base64 decoded content looks like it should be decoded
-			// (i.e., it's not the same as the original and produces valid output)
-			if string(keyBytes) != raw.Key {
-				r.Key = string(keyBytes)
-			} else {
-				r.Key = raw.Key
-			}
-		} else {
-			r.Key = raw.Key
-		}
-	}
-
-	// Try to decode Value as base64, fallback to raw string
-	if raw.Value != "" {
-		if valueBytes, err := base64.StdEncoding.DecodeString(raw.Value); err == nil {
-			// Check if the base64 decoded content looks like it should be decoded
-			// (i.e., it's not the same as the original and produces valid output)
-			if string(valueBytes) != raw.Value {
-				r.Value = string(valueBytes)
-			} else {
-				r.Value = raw.Value
-			}
-		} else {
-			r.Value = raw.Value
-		}
-	}
-
-	r.Index = raw.Index
+	r.Key = maybeBase64Decode(eventAttribute.Key)
+	r.Value = maybeBase64Decode(eventAttribute.Value)
+	r.Index = eventAttribute.Index
 	return nil
+}
+
+func maybeBase64Decode(input string) string {
+	if isLikelyBase64Encoded(input) {
+		bytes, err := base64.StdEncoding.DecodeString(input)
+		if err != nil {
+			return input // input is not a base64 encoded string so return the input
+		}
+		decoded := string(bytes)
+		return decoded
+	}
+	return input
+}
+
+// isLikelyBase64Encoded returns true if input is likely a base64 encoded string.
+func isLikelyBase64Encoded(input string) bool {
+	bytes, err := base64.StdEncoding.DecodeString(input)
+	if err != nil {
+		return false
+	}
+	decoded := string(bytes)
+	if input == decoded {
+		return false
+	}
+
+	// Only decode if the result is printable ASCII/UTF-8 text
+	for _, r := range decoded {
+		// Allow printable ASCII characters, spaces, and common unicode
+		if r < 32 && r != '\t' && r != '\n' && r != '\r' {
+			return false
+		}
+		// Reject high-value bytes that are likely binary garbage
+		if r > 127 && r == '\ufffd' {
+			return false
+		}
+	}
+
+	// Additional heuristic: old format base64 was typically longer
+	// and had padding or specific characteristics
+	if len(input) < 8 {
+		// Short strings that happen to be valid base64 are probably just normal strings
+		return false
+	}
+	return true
 }
 
 // Some compile time assertions to ensure we don't

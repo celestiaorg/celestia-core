@@ -81,23 +81,23 @@ func DefaultValidationRequestHandler(
 		}
 	case *privvalproto.Message_PingRequest:
 		err, res = nil, mustWrapMsg(&privvalproto.PingResponse{})
-	case *privvalproto.Message_SignedP2PMessageRequest:
-		if r.SignedP2PMessageRequest.ChainId != chainID {
-			res = mustWrapMsg(&privvalproto.SignedP2PMessageResponse{
+	case *privvalproto.Message_SignRawBytesRequest:
+		if r.SignRawBytesRequest.ChainId != chainID {
+			res = mustWrapMsg(&privvalproto.SignedRawBytesResponse{
 				Signature: []byte{}, Error: &privvalproto.RemoteSignerError{
-					Code: 0, Description: "unable to sign p2p message"}})
-			return res, fmt.Errorf("want chainID: %s, got chainID: %s", r.SignedP2PMessageRequest.GetChainId(), chainID)
+					Code: 0, Description: "unable to sign raw bytes"}})
+			return res, fmt.Errorf("want chainID: %s, got chainID: %s", r.SignRawBytesRequest.GetChainId(), chainID)
 		}
 
-		signature, err := privVal.SignP2PMessage(chainID, r.SignedP2PMessageRequest.UniqueId, r.SignedP2PMessageRequest.Hash)
+		signature, err := privVal.SignRawBytes(chainID, r.SignRawBytesRequest.UniqueId, r.SignRawBytesRequest.RawBytes)
 		if err != nil {
-			res = mustWrapMsg(&privvalproto.SignedP2PMessageResponse{
+			res = mustWrapMsg(&privvalproto.SignedRawBytesResponse{
 				Signature: []byte{}, Error: &privvalproto.RemoteSignerError{
-					Code: 0, Description: "unable to sign p2p message"}})
-			return res, fmt.Errorf("failed to sign p2p message: %w", err)
+					Code: 0, Description: "unable to sign raw bytes"}})
+			return res, fmt.Errorf("failed to sign raw bytes: %w", err)
 		}
 
-		res = mustWrapMsg(&privvalproto.SignedP2PMessageResponse{Signature: signature, Error: nil})
+		res = mustWrapMsg(&privvalproto.SignedRawBytesResponse{Signature: signature, Error: nil})
 
 	default:
 		err = fmt.Errorf("unknown msg: %v", r)
