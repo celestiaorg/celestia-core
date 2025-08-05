@@ -446,30 +446,22 @@ func (memR *Reactor) findNewPeerToRequestTx(txKey types.TxKey) {
 		return
 	}
 
-	// pop the next peer in the list of remaining peers that have seen the tx
-	// and does not already have an outbound request for that tx
 	seenMap := memR.mempool.seenByPeersSet.Get(txKey)
-	var peerID uint16
-	for possiblePeer := range seenMap {
-		if !memR.requests.Has(possiblePeer, txKey) {
-			peerID = possiblePeer
-			break
+	for peerID := range seenMap {
+		if memR.requests.Has(peerID, txKey) {
+			continue
+		}
+		peer := memR.ids.GetPeer(peerID)
+		if peer != nil {
+			memR.mempool.metrics.RerequestedTxs.Add(1)
+			memR.requestTx(txKey, peer)
+			return
 		}
 	}
 
-	if peerID == 0 {
-		// No other free peer has the transaction we are looking for.
-		// We give up 🤷‍♂️ and hope either a peer responds late or the tx
-		// is gossiped again
-		memR.Logger.Debug("no other peer has the tx we are looking for", "txKey", txKey)
-		return
-	}
-	peer := memR.ids.GetPeer(peerID)
-	if peer == nil {
-		// we disconnected from that peer, retry again until we exhaust the list
-		memR.findNewPeerToRequestTx(txKey)
-	} else {
-		memR.mempool.metrics.RerequestedTxs.Add(1)
-		memR.requestTx(txKey, peer)
-	}
+	// No other free peer has the transaction we are looking for.
+	// We give up 🤷‍♂️ and hope either a peer responds late or the tx
+	// is gossiped again
+	memR.Logger.Debug("no other peer has the tx we are looking for", "txKey", txKey)
+	return
 }
