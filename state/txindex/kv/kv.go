@@ -65,7 +65,6 @@ func (txi *TxIndex) Get(hash []byte) (*abci.TxResult, error) {
 		panic(err)
 	}
 	if rawBytes == nil {
-		fmt.Println("rawBytes is nil")
 		return nil, nil
 	}
 
