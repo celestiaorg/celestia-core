@@ -463,5 +463,4 @@ func (memR *Reactor) findNewPeerToRequestTx(txKey types.TxKey) {
 	// We give up 🤷‍♂️ and hope either a peer responds late or the tx
 	// is gossiped again
 	memR.Logger.Debug("no other peer has the tx we are looking for", "txKey", txKey)
-	return
 }
