@@ -3,6 +3,7 @@ package propagation
 import (
 	"fmt"
 	"math"
+	"os"
 
 	"github.com/cometbft/cometbft/crypto/merkle"
 	"github.com/cometbft/cometbft/proto/tendermint/crypto"
@@ -53,8 +54,9 @@ func (blockProp *Reactor) handleHaves(peer p2p.ID, haves *proptypes.HaveParts) {
 	}
 	err := haves.ValidatePartHashes(cb.PartsHashes)
 	if err != nil {
-		blockProp.Logger.Error("received invalid have part", "height", haves.Height, "round", haves.Round, "parts", haves.Parts, "err", err)
+		blockProp.Logger.Error("received invalid have part", "height", haves.Height, "round", haves.Round, "parts", haves.Parts, "parts_hashes", cb.PartsHashes, "err", err)
 		blockProp.Switch.StopPeerForError(p.peer, err, blockProp.String())
+		os.Exit(1)
 		return
 	}
 
