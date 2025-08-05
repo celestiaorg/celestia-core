@@ -31,7 +31,7 @@ const (
 	switchToConsensusIntervalSeconds = 1
 
 	// ReactorIncomingMessageQueueSize the size of the reactor's message queue.
-	ReactorIncomingMessageQueueSize = 10
+	ReactorIncomingMessageQueueSize = 100
 )
 
 type consensusReactor interface {
@@ -122,7 +122,7 @@ func NewReactorWithAddr(state sm.State, blockExec *sm.BlockExecutor, store *stor
 		errorsCh:     errorsCh,
 		metrics:      metrics,
 	}
-	bcR.BaseReactor = *p2p.NewBaseReactor("Reactor", bcR)
+	bcR.BaseReactor = *p2p.NewBaseReactor("BlockSync", bcR, p2p.WithIncomingQueueSize(ReactorIncomingMessageQueueSize))
 	return bcR
 }
 

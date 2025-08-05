@@ -49,6 +49,9 @@ const (
 
 	// if a peer is marked bad, it will be banned for at least this time period
 	defaultBanTime = 24 * time.Hour
+
+	// ReactorIncomingMessageQueueSize the size of the reactor's message queue.
+	ReactorIncomingMessageQueueSize = 10
 )
 
 type errMaxAttemptsToDial struct{}
@@ -140,7 +143,7 @@ func NewReactor(b AddrBook, config *ReactorConfig) *Reactor {
 		lastReceivedRequests: cmap.NewCMap(),
 		crawlPeerInfos:       make(map[p2p.ID]crawlPeerInfo),
 	}
-	r.BaseReactor = *p2p.NewBaseReactor("PEX", r)
+	r.BaseReactor = *p2p.NewBaseReactor("PEX", r, p2p.WithIncomingQueueSize(ReactorIncomingMessageQueueSize))
 	return r
 }
 
