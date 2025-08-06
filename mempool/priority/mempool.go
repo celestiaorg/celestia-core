@@ -192,8 +192,12 @@ func (txmp *TxMempool) CheckTx(
 	// If a precheck hook is defined, call it before invoking the application.
 	if err := txmp.preCheck(cachedTx); err != nil {
 		txmp.metrics.FailedTxs.Add(1)
+<<<<<<< HEAD
 		// Add the transaction to the rejected cache
 		txmp.rejectedTxs.Push(cachedTx, 0)
+=======
+		txmp.rejectedTxs.Push(tx.Key(), 0, err.Error())
+>>>>>>> ec6fdcad (feat!: start tracking rejection logs (#2286))
 		return mempool.ErrPreCheck{Err: err}
 	}
 
@@ -267,15 +271,23 @@ func (txmp *TxMempool) WasRecentlyEvicted(txKey types.TxKey) bool {
 	return txmp.evictedTxs.HasKey(txKey)
 }
 
+<<<<<<< HEAD
 // WasRecentlyRejected returns true if the tx was rejected from the mempool and exists in the
 // rejected cache alongside the rejection code.
 // Used in the RPC endpoint: TxStatus.
 func (txmp *TxMempool) WasRecentlyRejected(txKey types.TxKey) (bool, uint32) {
 	code, exists := txmp.rejectedTxs.Get(txKey)
+=======
+// IsRejected returns true if the tx was rejected from the mempool and exists in the
+// rejected cache alongside the rejection code and log.
+// Used in the RPC endpoint: TxStatus.
+func (txmp *TxMempool) IsRejectedTx(txKey types.TxKey) (bool, uint32, string) {
+	code, log, exists := txmp.rejectedTxs.Get(txKey)
+>>>>>>> ec6fdcad (feat!: start tracking rejection logs (#2286))
 	if !exists {
-		return false, 0
+		return false, 0, ""
 	}
-	return true, code
+	return true, code, log
 }
 
 // removeTxByKey removes the specified transaction key from the mempool.
@@ -499,8 +511,12 @@ func (txmp *TxMempool) addNewTransaction(wtx *WrappedTx, checkTxRes *abci.Respon
 		)
 
 		txmp.metrics.FailedTxs.Add(1)
+<<<<<<< HEAD
 		// Add the transaction to the rejected cache
 		txmp.rejectedTxs.Push(wtx.tx, checkTxRes.Code)
+=======
+		txmp.rejectedTxs.Push(wtx.tx.Key(), checkTxRes.Code, checkTxRes.Log)
+>>>>>>> ec6fdcad (feat!: start tracking rejection logs (#2286))
 		// Remove the invalid transaction from the cache, unless the operator has
 		// instructed us to keep invalid transactions.
 		if !txmp.config.KeepInvalidTxsInCache {
@@ -669,6 +685,10 @@ func (txmp *TxMempool) handleRecheckResult(tx *types.CachedTx, checkTxRes *abci.
 	txmp.rejectedTxs.Push(wtx.tx, checkTxRes.Code)
 	txmp.removeTxByElement(elt)
 	txmp.metrics.FailedTxs.Add(1)
+<<<<<<< HEAD
+=======
+	txmp.rejectedTxs.Push(wtx.tx.Key(), checkTxRes.Code, checkTxRes.Log)
+>>>>>>> ec6fdcad (feat!: start tracking rejection logs (#2286))
 	if !txmp.config.KeepInvalidTxsInCache {
 		txmp.cache.Remove(wtx.tx)
 	}

@@ -198,14 +198,21 @@ func (txmp *TxPool) WasRecentlyEvicted(txKey types.TxKey) bool {
 	return txmp.evictedTxCache.Has(txKey)
 }
 
+<<<<<<< HEAD
 // WasRecentlyRejected returns a bool indicating if the transaction was recently rejected and is
 // currently within the cache. It also returns the rejection code.
 func (txmp *TxPool) WasRecentlyRejected(txKey types.TxKey) (bool, uint32) {
 	code, exists := txmp.rejectedTxCache.Get(txKey)
+=======
+// IsRejectedTx returns a bool indicating if the transaction was recently rejected and is
+// currently within the cache. It also returns the rejection code and log.
+func (txmp *TxPool) IsRejectedTx(txKey types.TxKey) (bool, uint32, string) {
+	code, log, exists := txmp.rejectedTxCache.Get(txKey)
+>>>>>>> ec6fdcad (feat!: start tracking rejection logs (#2286))
 	if !exists {
-		return false, 0
+		return false, 0, ""
 	}
-	return true, code
+	return true, code, log
 }
 
 // CheckTx adds the given transaction to the mempool if it fits and passes the
@@ -288,7 +295,11 @@ func (txmp *TxPool) TryAddNewTx(tx *types.CachedTx, key types.TxKey, txInfo memp
 	// - We are connected to nodes running v0 or v1 which simply flood the network
 	// - If a client submits a transaction to multiple nodes (via RPC)
 	// - We send multiple requests and the first peer eventually responds after the second peer has already provided the tx
+<<<<<<< HEAD
 	wasRejected, _ := txmp.WasRecentlyRejected(key)
+=======
+	wasRejected, _, _ := txmp.IsRejectedTx(key)
+>>>>>>> ec6fdcad (feat!: start tracking rejection logs (#2286))
 	if wasRejected {
 		// The peer has sent us a transaction that we have previously marked as invalid. Since `CheckTx` can
 		// be non-deterministic, we don't punish the peer but instead just ignore the tx
@@ -311,6 +322,10 @@ func (txmp *TxPool) TryAddNewTx(tx *types.CachedTx, key types.TxKey, txInfo memp
 
 	// If a precheck hook is defined, call it before invoking the application.
 	if err := txmp.preCheck(tx); err != nil {
+<<<<<<< HEAD
+=======
+		txmp.rejectedTxCache.Push(key, 0, err.Error())
+>>>>>>> ec6fdcad (feat!: start tracking rejection logs (#2286))
 		txmp.metrics.FailedTxs.Add(1)
 		txmp.rejectedTxCache.Push(tx.Key(), 0)
 		return nil, err
@@ -330,7 +345,11 @@ func (txmp *TxPool) TryAddNewTx(tx *types.CachedTx, key types.TxKey, txInfo memp
 		return rsp, err
 	}
 	if rsp.Code != abci.CodeTypeOK {
+<<<<<<< HEAD
 		txmp.rejectedTxCache.Push(tx.Key(), rsp.Code)
+=======
+		txmp.rejectedTxCache.Push(key, rsp.Code, rsp.Log)
+>>>>>>> ec6fdcad (feat!: start tracking rejection logs (#2286))
 		txmp.metrics.FailedTxs.Add(1)
 		return rsp, fmt.Errorf("application rejected transaction with code %d (Log: %s)", rsp.Code, rsp.Log)
 	}
@@ -343,7 +362,11 @@ func (txmp *TxPool) TryAddNewTx(tx *types.CachedTx, key types.TxKey, txInfo memp
 	// Perform the post check
 	err = txmp.postCheck(wtx.tx, rsp)
 	if err != nil {
+<<<<<<< HEAD
 		txmp.rejectedTxCache.Push(wtx.tx.Key(), 0)
+=======
+		txmp.rejectedTxCache.Push(key, 0, err.Error())
+>>>>>>> ec6fdcad (feat!: start tracking rejection logs (#2286))
 		txmp.metrics.FailedTxs.Add(1)
 		return rsp, fmt.Errorf("rejected bad transaction after post check: %w", err)
 	}
@@ -365,7 +388,7 @@ func (txmp *TxPool) RemoveTxByKey(txKey types.TxKey) error {
 }
 
 func (txmp *TxPool) removeTxByKey(txKey types.TxKey) {
-	txmp.rejectedTxCache.Push(txKey, 0)
+	txmp.rejectedTxCache.Push(txKey, 0, "")
 	_ = txmp.store.remove(txKey)
 	txmp.seenByPeersSet.RemoveKey(txKey)
 }
@@ -619,9 +642,15 @@ func (txmp *TxPool) handleRecheckResult(wtx *wrappedTx, checkTxRes *abci.Respons
 		"err", err,
 		"code", checkTxRes.Code,
 	)
+<<<<<<< HEAD
 	txmp.store.remove(wtx.key())
 	txmp.rejectedTxCache.Push(wtx.tx.Key(), checkTxRes.Code)
 	txmp.metrics.FailedTxs.Add(1)
+=======
+	txmp.store.remove(wtx.key)
+	txmp.metrics.FailedTxs.Add(1)
+	txmp.rejectedTxCache.Push(wtx.tx.Key(), checkTxRes.Code, checkTxRes.Log)
+>>>>>>> ec6fdcad (feat!: start tracking rejection logs (#2286))
 	txmp.metrics.Size.Set(float64(txmp.Size()))
 	txmp.metrics.SizeBytes.Set(float64(txmp.SizeBytes()))
 }
