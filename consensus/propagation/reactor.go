@@ -266,14 +266,14 @@ func (blockProp *Reactor) ReceiveEnvelope(e p2p.Envelope) {
 			blockProp.handleHaves(e.Src.ID(), msg)
 		case *proptypes.RecoveryPart:
 			schema.WriteReceivedPart(blockProp.traceClient, msg.Height, msg.Round, int(msg.Index))
-			blockProp.handleRecoveryPart(e.Src.ID(), msg)
+			go blockProp.handleRecoveryPart(e.Src.ID(), msg)
 		default:
 			blockProp.Logger.Error(fmt.Sprintf("Unknown message type %v", reflect.TypeOf(msg)))
 		}
 	case WantChannel:
 		switch msg := msg.(type) {
 		case *proptypes.WantParts:
-			blockProp.handleWants(e.Src.ID(), msg)
+			go blockProp.handleWants(e.Src.ID(), msg)
 		}
 	default:
 		blockProp.Logger.Error(fmt.Sprintf("Unknown chId %X", e.ChannelID))
