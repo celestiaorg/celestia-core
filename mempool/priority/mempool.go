@@ -192,7 +192,7 @@ func (txmp *TxMempool) CheckTx(
 	// If a precheck hook is defined, call it before invoking the application.
 	if err := txmp.preCheck(tx); err != nil {
 		txmp.metrics.FailedTxs.Add(1)
-		txmp.rejectedTxs.Push(tx.Key(), 0, "")
+		txmp.rejectedTxs.Push(tx.Key(), 0, err.Error())
 		return mempool.ErrPreCheck{Err: err}
 	}
 

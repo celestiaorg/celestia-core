@@ -311,7 +311,7 @@ func (txmp *TxPool) TryAddNewTx(tx types.Tx, key types.TxKey, txInfo mempool.TxI
 
 	// If a precheck hook is defined, call it before invoking the application.
 	if err := txmp.preCheck(tx); err != nil {
-		txmp.rejectedTxCache.Push(key, 0, "")
+		txmp.rejectedTxCache.Push(key, 0, err.Error())
 		txmp.metrics.FailedTxs.Add(1)
 		return nil, err
 	}
@@ -343,7 +343,7 @@ func (txmp *TxPool) TryAddNewTx(tx types.Tx, key types.TxKey, txInfo mempool.TxI
 	// Perform the post check
 	err = txmp.postCheck(wtx.tx, rsp)
 	if err != nil {
-		txmp.rejectedTxCache.Push(key, 0, "")
+		txmp.rejectedTxCache.Push(key, 0, err.Error())
 		txmp.metrics.FailedTxs.Add(1)
 		return rsp, fmt.Errorf("rejected bad transaction after post check: %w", err)
 	}
