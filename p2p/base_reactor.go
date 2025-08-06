@@ -75,6 +75,10 @@ type BaseReactor struct {
 	// processor is called with the incoming channel and is responsible for
 	// unmarshalling the messages and calling Receive on the reactor.
 	processor ProcessorFunc
+
+	queueSize int
+
+	name string
 }
 
 type ReactorOptions func(*BaseReactor)
@@ -87,6 +91,7 @@ func NewBaseReactor(name string, impl Reactor, opts ...ReactorOptions) *BaseReac
 		cancel:      cancel,
 		BaseService: *service.NewBaseService(nil, name, impl),
 		Switch:      nil,
+		name:        name,
 		incoming:    make(chan UnprocessedEnvelope, 100),
 		processor:   DefaultProcessor(impl),
 	}
@@ -129,6 +134,7 @@ func WithQueueingFunc(queuingFunc func(UnprocessedEnvelope)) ReactorOptions {
 // reactor.
 func WithIncomingQueueSize(size int) ReactorOptions {
 	return func(br *BaseReactor) {
+		br.queueSize = size
 		br.incoming = make(chan UnprocessedEnvelope, size)
 	}
 }
@@ -138,6 +144,9 @@ func WithIncomingQueueSize(size int) ReactorOptions {
 // queue to avoid blocking. The size of the queue can be changed by passing
 // options to the base reactor.
 func (br *BaseReactor) QueueUnprocessedEnvelope(e UnprocessedEnvelope) {
+	if br.queueSize <= len(br.incoming) {
+		fmt.Printf("%s reactor has full queue %d", br.name, br.queueSize)
+	}
 	select {
 	// if the context is done, do nothing.
 	case <-br.ctx.Done():
@@ -149,6 +158,9 @@ func (br *BaseReactor) QueueUnprocessedEnvelope(e UnprocessedEnvelope) {
 // TryQueueUnprocessedEnvelope an alternative to QueueUnprocessedEnvelope that attempts to queue an unprocessed envelope.
 // If the queue is full, it drops the envelope.
 func (br *BaseReactor) TryQueueUnprocessedEnvelope(e UnprocessedEnvelope) {
+	if br.queueSize <= len(br.incoming) {
+		fmt.Printf("%s reactor has full queue %d", br.name, br.queueSize)
+	}
 	select {
 	case <-br.ctx.Done():
 	case br.incoming <- e:
