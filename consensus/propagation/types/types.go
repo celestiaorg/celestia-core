@@ -123,6 +123,15 @@ func (c *CompactBlock) ValidateBasic() error {
 		return errors.New("CompactBlock: Signature is too big")
 	}
 
+	if len(c.PartsHashes) != (ParityRatio * int(c.Proposal.BlockID.PartSetHeader.Total)) {
+		return fmt.Errorf(
+			"invalid number of partset hashes: expected %d actual %d - %v",
+			ParityRatio*int(c.Proposal.BlockID.PartSetHeader.Total),
+			len(c.PartsHashes),
+			c.PartsHashes,
+		)
+	}
+
 	for index, partHash := range c.PartsHashes {
 		if err := types.ValidateHash(partHash); err != nil {
 			return fmt.Errorf("invalid part hash height %d round %d index %d: %w", c.Proposal.Height, c.Proposal.Round, index, err)
