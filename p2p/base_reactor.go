@@ -159,7 +159,7 @@ func (br *BaseReactor) QueueUnprocessedEnvelope(e UnprocessedEnvelope) {
 // If the queue is full, it drops the envelope.
 func (br *BaseReactor) TryQueueUnprocessedEnvelope(e UnprocessedEnvelope) {
 	if br.queueSize <= len(br.incoming) {
-		fmt.Printf("%s reactor has full queue %d", br.name, br.queueSize)
+		fmt.Printf("%s reactor has full queue %d\n", br.name, br.queueSize)
 	}
 	select {
 	case <-br.ctx.Done():
