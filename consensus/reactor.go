@@ -96,7 +96,7 @@ func WithGossipDataEnabled(enabled bool) ReactorOption {
 
 // IsGossipDataEnabled returns whether the gossipDataRoutine should run
 func (conR *Reactor) IsGossipDataEnabled() bool {
-	return conR.gossipDataEnabled.Load()
+	return false
 }
 
 // OnStart implements BaseService by subscribing to events, which later will be
