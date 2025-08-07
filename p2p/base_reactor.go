@@ -3,6 +3,7 @@ package p2p
 import (
 	"context"
 	"fmt"
+	"github.com/cometbft/cometbft/libs/trace"
 	"reflect"
 
 	"github.com/cometbft/cometbft/libs/service"
@@ -75,6 +76,8 @@ type BaseReactor struct {
 	// processor is called with the incoming channel and is responsible for
 	// unmarshalling the messages and calling Receive on the reactor.
 	processor ProcessorFunc
+	name      string
+	tracer    trace.Tracer
 }
 
 type ReactorOptions func(*BaseReactor)
@@ -89,6 +92,8 @@ func NewBaseReactor(name string, impl Reactor, opts ...ReactorOptions) *BaseReac
 		Switch:      nil,
 		incoming:    make(chan UnprocessedEnvelope, 100),
 		processor:   DefaultProcessor(impl),
+		name:        name,
+		tracer:      trace.NoOpTracer(),
 	}
 	base.queueingFunc = base.QueueUnprocessedEnvelope
 	for _, opt := range opts {
@@ -125,6 +130,12 @@ func WithQueueingFunc(queuingFunc func(UnprocessedEnvelope)) ReactorOptions {
 	}
 }
 
+func WithTraceClient(tracer trace.Tracer) ReactorOptions {
+	return func(br *BaseReactor) {
+		br.tracer = tracer
+	}
+}
+
 // WithIncomingQueueSize sets the size of the incoming message queue for a
 // reactor.
 func WithIncomingQueueSize(size int) ReactorOptions {
@@ -138,6 +149,7 @@ func WithIncomingQueueSize(size int) ReactorOptions {
 // queue to avoid blocking. The size of the queue can be changed by passing
 // options to the base reactor.
 func (br *BaseReactor) QueueUnprocessedEnvelope(e UnprocessedEnvelope) {
+	schema.WriteQueueSize(br.tracer, br.name, len(br.incoming))
 	select {
 	// if the context is done, do nothing.
 	case <-br.ctx.Done():

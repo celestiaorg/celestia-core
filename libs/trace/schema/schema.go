@@ -19,6 +19,7 @@ func AllTables() []string {
 	tables = append(tables, RecoveryTables()...)
 	tables = append(tables, MessageStatsTables()...)
 	tables = append(tables, CompleteBlockTables()...)
+	tables = append(tables, QueueSizeTables()...)
 	return tables
 }
 
