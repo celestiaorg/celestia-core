@@ -79,9 +79,10 @@ func TestTxMetaData_ValidateBasic(t *testing.T) {
 }
 
 func TestCompactBlock_RoundTrip(t *testing.T) {
+	partSetSize := 777
 	mockProposal := types.NewProposal(
 		4, 2, 2,
-		makeBlockID(rand.Bytes(tmhash.Size), 777, rand.Bytes(tmhash.Size)),
+		makeBlockID(rand.Bytes(tmhash.Size), uint32(partSetSize), rand.Bytes(tmhash.Size)),
 	)
 	mockProposal.Signature = rand.Bytes(types.MaxSignatureSize)
 	tests := []struct {
@@ -95,7 +96,7 @@ func TestCompactBlock_RoundTrip(t *testing.T) {
 				Blobs:       []TxMetaData{{Hash: rand.Bytes(tmhash.Size), Start: 0, End: 10}},
 				Signature:   rand.Bytes(types.MaxSignatureSize),
 				Proposal:    *mockProposal,
-				PartsHashes: [][]byte{rand.Bytes(tmhash.Size), rand.Bytes(tmhash.Size)},
+				PartsHashes: generateRandomByteSlices(tmhash.Size, 2*partSetSize),
 			},
 		},
 	}
@@ -111,6 +112,13 @@ func TestCompactBlock_RoundTrip(t *testing.T) {
 	}
 }
 
+func generateRandomByteSlices(itemSize, count int) [][]byte {
+	result := make([][]byte, count)
+	for i := 0; i < count; i++ {
+		result[i] = rand.Bytes(itemSize)
+	}
+	return result
+}
 func TestSignBytes(t *testing.T) {
 	block := CompactBlock{
 		BpHash: []byte("block_part_hash"),
@@ -165,10 +173,11 @@ func TestCompactBlock_ValidateBasic(t *testing.T) {
 		{
 			"valid block",
 			&CompactBlock{
-				BpHash:    rand.Bytes(tmhash.Size),
-				Blobs:     []TxMetaData{{Hash: rand.Bytes(tmhash.Size), Start: 0, End: 10}},
-				Signature: rand.Bytes(types.MaxSignatureSize),
-				Proposal:  *prop,
+				BpHash:      rand.Bytes(tmhash.Size),
+				Blobs:       []TxMetaData{{Hash: rand.Bytes(tmhash.Size), Start: 0, End: 10}},
+				Signature:   rand.Bytes(types.MaxSignatureSize),
+				Proposal:    *prop,
+				PartsHashes: generateRandomByteSlices(tmhash.Size, 2),
 			},
 			nil,
 		},
@@ -188,10 +197,21 @@ func TestCompactBlock_ValidateBasic(t *testing.T) {
 				BpHash:      rand.Bytes(tmhash.Size),
 				Blobs:       []TxMetaData{{Hash: rand.Bytes(tmhash.Size), Start: 0, End: 10}},
 				Signature:   rand.Bytes(types.MaxSignatureSize),
-				PartsHashes: [][]byte{{0x1, 0x2}},
+				PartsHashes: [][]byte{{0x1, 0x2}, {0x1, 0x2}},
 				Proposal:    *prop,
 			},
 			errors.New("invalid part hash height 1 round 0 index 0: expected size to be 32 bytes, got 2 bytes"),
+		},
+		{
+			"invalid part set hashes count",
+			&CompactBlock{
+				BpHash:      rand.Bytes(tmhash.Size),
+				Blobs:       []TxMetaData{{Hash: rand.Bytes(tmhash.Size), Start: 0, End: 10}},
+				Signature:   rand.Bytes(types.MaxSignatureSize),
+				PartsHashes: [][]byte{rand.Bytes(tmhash.Size)},
+				Proposal:    *prop,
+			},
+			errors.New("invalid number of partset hashes: expected 2 actual 1"),
 		},
 		{
 			"too big of signature",
@@ -674,8 +694,7 @@ func TestHaveParts_ValidatePartHashes(t *testing.T) {
 			haveParts: HaveParts{
 				Parts: nil,
 			},
-			expectedHashes: [][]byte{},
-			wantErr:        false,
+			wantErr: true,
 		},
 	}
 
