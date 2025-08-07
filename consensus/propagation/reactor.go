@@ -135,6 +135,7 @@ type ReactorOption func(*Reactor)
 func WithTracer(tracer trace.Tracer) func(r *Reactor) {
 	return func(r *Reactor) {
 		r.traceClient = tracer
+		r.BaseReactor.SetTracer(r.traceClient)
 	}
 }
 

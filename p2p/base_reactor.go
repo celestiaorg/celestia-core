@@ -130,10 +130,8 @@ func WithQueueingFunc(queuingFunc func(UnprocessedEnvelope)) ReactorOptions {
 	}
 }
 
-func WithTraceClient(tracer trace.Tracer) ReactorOptions {
-	return func(br *BaseReactor) {
-		br.tracer = tracer
-	}
+func (br *BaseReactor) SetTracer(tracer trace.Tracer) {
+	br.tracer = tracer
 }
 
 // WithIncomingQueueSize sets the size of the incoming message queue for a
@@ -161,6 +159,7 @@ func (br *BaseReactor) QueueUnprocessedEnvelope(e UnprocessedEnvelope) {
 // TryQueueUnprocessedEnvelope an alternative to QueueUnprocessedEnvelope that attempts to queue an unprocessed envelope.
 // If the queue is full, it drops the envelope.
 func (br *BaseReactor) TryQueueUnprocessedEnvelope(e UnprocessedEnvelope) {
+	schema.WriteQueueSize(br.tracer, br.name, len(br.incoming))
 	select {
 	case <-br.ctx.Done():
 	case br.incoming <- e:
