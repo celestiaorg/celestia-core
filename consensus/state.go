@@ -204,7 +204,7 @@ func NewState(
 		evsw:                 cmtevents.NewEventSwitch(),
 		metrics:              NopMetrics(),
 		traceClient:          trace.NoOpTracer(),
-		newHeightOrRoundChan: make(chan struct{}),
+		newHeightOrRoundChan: make(chan struct{}, 1),
 		nextBlock:            make(chan *blockWithParts, 1),
 	}
 	for _, option := range options {
@@ -1719,16 +1719,20 @@ func (cs *State) enterPrecommitWait(height int64, round int32) {
 	cs.scheduleTimeout(cs.config.Precommit(round), height, round, cstypes.RoundStepPrecommitWait)
 }
 
-// buildNextBlock creates the next block pre-amptively if we're the proposer.
+// blockBuildingTime the time it takes to build a new 32 mb block and a safety cushion.
+const blockBuildingTime = 1800 * time.Millisecond
+
+// buildNextBlock creates the next block pre-emptively if we're the proposer.
 func (cs *State) buildNextBlock() {
 	select {
 	// flush the next block channel to ensure only the relevant block is there.
 	case <-cs.nextBlock:
 	default:
 	}
-	//if cs.config.TimeoutCommit.Seconds() > 3 {
-	time.Sleep(time.Duration(cs.config.TimeoutCommit.Nanoseconds() - 2_500_000_000))
-	//}
+
+	// delay pre-emptive block building until the end of the timeout commit
+	time.Sleep(cs.config.TimeoutCommit - blockBuildingTime)
+
 	block, blockParts, err := cs.createProposalBlock(context.TODO())
 	if err != nil {
 		cs.Logger.Error("unable to create proposal block", "error", err)
@@ -1968,8 +1972,8 @@ func (cs *State) finalizeCommit(height int64) {
 		cs.propagator.SetProposer(proposer.PubKey)
 	}
 
-	// build the block pre-emptively if we're the proposer
-	if cs.privValidatorPubKey != nil {
+	// build the block pre-emptively if we're the proposer and the timeout commit is higher than 1 s.
+	if cs.config.TimeoutCommit > blockBuildingTime && cs.privValidatorPubKey != nil {
 		if address := cs.privValidatorPubKey.Address(); cs.Validators.HasAddress(address) && cs.isProposer(address) {
 			go cs.buildNextBlock()
 		}
@@ -2085,7 +2089,7 @@ func (cs *State) defaultSetProposal(proposal *types.Proposal) error {
 
 	// Does not apply
 	if proposal.Height != cs.Height || proposal.Round != cs.Round {
-		return fmt.Errorf("%w: proposal height %v round %v does not match state height %v round %v", errInvalidProposalHeightRound, proposal.Height, proposal.Round, cs.Height, cs.Round)
+		return fmt.Errorf("%w: proposal height %v round %v does not match state height %v round %v (if consensus is still reached, please ignore this error as it's a consequence of running two gossip routines at the same time)", errInvalidProposalHeightRound, proposal.Height, proposal.Round, cs.Height, cs.Round)
 	}
 	// Verify POLRound, which must be -1 or in range [0, proposal.Round).
 	if proposal.POLRound < -1 ||
@@ -2781,26 +2785,22 @@ func (cs *State) syncData() {
 	partChan := cs.propagator.GetPartChan()
 	proposalChan := cs.propagator.GetProposalChan()
 
-	wg := &sync.WaitGroup{}
-
-	go func() {
-		wg.Add(1)
-		for {
-			select {
-			case <-cs.Quit():
+	for {
+		select {
+		case <-cs.Quit():
+			return
+		case proposal, ok := <-proposalChan:
+			if !ok {
 				return
-			case proposal, ok := <-proposalChan:
-				if !ok {
-					return
-				}
-				cs.mtx.RLock()
-				currentProposal := cs.Proposal
-				h, r := cs.Height, cs.Round
-				completeProp := cs.isProposalComplete()
-				cs.mtx.RUnlock()
-				if completeProp {
-					continue
-				}
+			}
+			cs.mtx.RLock()
+			currentProposal := cs.Proposal
+			h, r := cs.Height, cs.Round
+			completeProp := cs.isProposalComplete()
+			cs.mtx.RUnlock()
+			if completeProp {
+				continue
+			}
 
 				if currentProposal == nil && proposal.Height == h && proposal.Round == r {
 					schema.WriteNote(
@@ -2815,75 +2815,53 @@ func (cs *State) syncData() {
 					cs.internalMsgQueue <- msgInfo{&ProposalMessage{&proposal}, ""}
 				}
 			}
-		}
-	}()
-
-	go func() {
-		wg.Add(1)
-		for {
-			select {
-			case <-cs.Quit():
+		case _, ok := <-cs.newHeightOrRoundChan:
+			if !ok {
 				return
-			case _, ok := <-cs.newHeightOrRoundChan:
-				if !ok {
-					return
+			}
+			cs.mtx.RLock()
+			height, round := cs.Height, cs.Round
+			currentProposalParts := cs.ProposalBlockParts
+			cs.mtx.RUnlock()
+			if currentProposalParts == nil {
+				continue
+			}
+			_, partset, has := cs.propagator.GetProposal(height, round)
+			if !has {
+				continue
+			}
+			for _, indice := range partset.BitArray().GetTrueIndices() {
+				if currentProposalParts.IsComplete() {
+					break
 				}
-				cs.mtx.RLock()
-				height, round := cs.Height, cs.Round
-				currentProposalParts := cs.ProposalBlockParts
-				cs.mtx.RUnlock()
-				if currentProposalParts == nil {
+				if currentProposalParts.HasPart(indice) {
 					continue
 				}
-				_, partset, has := cs.propagator.GetProposal(height, round)
-				if !has {
+				part := partset.GetPart(indice)
+				cs.internalMsgQueue <- msgInfo{&BlockPartMessage{height, round, part}, ""}
+			}
+		case part, ok := <-partChan:
+			if !ok {
+				return
+			}
+			cs.mtx.RLock()
+			h, r := cs.Height, cs.Round
+			currentProposalParts := cs.ProposalBlockParts
+			cs.mtx.RUnlock()
+			if part.Height != h || part.Round != r {
+				continue
+			}
+
+			if currentProposalParts != nil {
+				if currentProposalParts.IsComplete() {
 					continue
 				}
-				for _, indice := range partset.BitArray().GetTrueIndices() {
-					if currentProposalParts.IsComplete() {
-						break
-					}
-					if currentProposalParts.HasPart(indice) {
-						continue
-					}
-					part := partset.GetPart(indice)
-					cs.votesQueue <- msgInfo{&BlockPartMessage{height, round, part}, ""}
+				if currentProposalParts.HasPart(int(part.Index)) {
+					continue
 				}
 			}
+
+			cs.peerMsgQueue <- msgInfo{&BlockPartMessage{h, r, part.Part}, ""}
 		}
-	}()
-
-	go func() {
-		wg.Add(1)
-		for {
-			select {
-			case <-cs.Quit():
-				return
-			case part, ok := <-partChan:
-				if !ok {
-					return
-				}
-				cs.mtx.RLock()
-				h, r := cs.Height, cs.Round
-				currentProposalParts := cs.ProposalBlockParts
-				cs.mtx.RUnlock()
-				if part.Height != h || part.Round != r {
-					continue
-				}
-
-				if currentProposalParts != nil {
-					if currentProposalParts.IsComplete() {
-						continue
-					}
-					if currentProposalParts.HasPart(int(part.Index)) {
-						continue
-					}
-				}
-
-				cs.peerMsgQueue <- msgInfo{&BlockPartMessage{h, r, part.Part}, ""}
-			}
-		}
-	}()
-
-	wg.Wait()
+	}
 }

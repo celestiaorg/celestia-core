@@ -1,11 +1,10 @@
 package types
 
 import (
-	"encoding/binary"
 	"errors"
 	"testing"
 
-	"github.com/cosmos/gogoproto/proto"
+	"github.com/cometbft/cometbft/libs/protoio"
 
 	"github.com/cometbft/cometbft/proto/tendermint/crypto"
 	protobits "github.com/cometbft/cometbft/proto/tendermint/libs/bits"
@@ -130,28 +129,20 @@ func TestSignBytes(t *testing.T) {
 	}
 
 	// Compute expected sign bytes manually
-	expectedBytes := make([]byte, 0)
-	expectedBytes = append(expectedBytes, block.BpHash...)
-
+	txMetaData := make([]*protoprop.TxMetaData, 0)
 	for _, md := range block.Blobs {
-		pb, err := proto.Marshal(md.ToProto())
-		require.NoError(t, err)
-		expectedBytes = append(expectedBytes, pb...)
+		txMetaData = append(txMetaData, md.ToProto())
 	}
-
-	expectedBytes = append(expectedBytes, block.Proposal.Signature...)
-
-	// Encode LastLen in BigEndian
-	lastLenBytes := make([]byte, 4)
-	binary.BigEndian.PutUint32(lastLenBytes, block.LastLen)
-	expectedBytes = append(expectedBytes, lastLenBytes...)
-
-	for _, ph := range block.PartsHashes {
-		expectedBytes = append(expectedBytes, ph...)
+	protoCompactBlock := &protoprop.CompactBlock{
+		BpHash:      block.BpHash,
+		Blobs:       txMetaData,
+		Signature:   block.Signature,
+		Proposal:    block.Proposal.ToProto(),
+		LastLength:  block.LastLen,
+		PartsHashes: block.PartsHashes,
 	}
-
-	// Compute expected hash
-	expectedSignBytes := tmhash.Sum(expectedBytes)
+	expectedSignBytes, err := protoio.MarshalDelimited(protoCompactBlock)
+	require.NoError(t, err)
 
 	// Generate sign bytes from the function
 	actualSignBytes, err := block.SignBytes()

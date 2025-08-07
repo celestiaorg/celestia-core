@@ -36,7 +36,6 @@ func (blockProp *Reactor) handleHaves(peer p2p.ID, haves *proptypes.HaveParts) {
 	round := haves.Round
 	p := blockProp.getPeer(peer)
 	if p == nil || p.peer == nil {
-		blockProp.Logger.Error("peer not found", "peer", peer)
 		return
 	}
 
@@ -355,7 +354,6 @@ func (blockProp *Reactor) handleWants(peer p2p.ID, wants *proptypes.WantParts) {
 
 	p := blockProp.getPeer(peer)
 	if p == nil {
-		blockProp.Logger.Error("peer not found", "peer", peer)
 		return
 	}
 
@@ -434,7 +432,6 @@ func (blockProp *Reactor) handleRecoveryPart(peer p2p.ID, part *proptypes.Recove
 
 	p := blockProp.getPeer(peer)
 	if p == nil && peer != blockProp.self {
-		blockProp.Logger.Error("peer not found", "peer", peer)
 		return
 	}
 	// the peer must always send the proposal before sending parts, if they did

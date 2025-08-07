@@ -78,6 +78,7 @@ func NewReactor(consensusState *State, propagator propagation.Propagator, waitSy
 		traceClient: trace.NoOpTracer(),
 		propagator:  propagator,
 	}
+	conR.gossipDataEnabled.Store(true)
 	conR.BaseReactor = *p2p.NewBaseReactor("Consensus", conR, p2p.WithIncomingQueueSize(ReactorIncomingMessageQueueSize))
 
 	for _, option := range options {
@@ -203,7 +204,7 @@ func (conR *Reactor) GetChannels() []*p2p.ChannelDescriptor {
 		{
 			ID:                  VoteSetBitsChannel,
 			Priority:            6,
-			SendQueueCapacity:   2,
+			SendQueueCapacity:   10,
 			RecvBufferCapacity:  1024,
 			RecvMessageCapacity: maxMsgSize,
 			MessageType:         &cmtcons.Message{},

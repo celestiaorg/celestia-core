@@ -469,10 +469,12 @@ type ByzantineReactor struct {
 }
 
 func NewByzantineReactor(invalidBlock int64, conR *Reactor) *ByzantineReactor {
-	return &ByzantineReactor{
+	r := &ByzantineReactor{
 		Reactor:        conR,
 		corruptedBlock: invalidBlock,
 	}
+	r.BaseReactor = *p2p.NewBaseReactor("ByzantineBlockSync", r, p2p.WithIncomingQueueSize(10))
+	return r
 }
 
 // respondToPeer (overridden method) loads a block and sends it to the requesting peer,

@@ -90,14 +90,18 @@ func NewReactor(mempool *TxPool, opts *ReactorOptions) (*Reactor, error) {
 	if err != nil {
 		return nil, err
 	}
+	traceClient := opts.TraceClient
+	if traceClient == nil {
+		traceClient = trace.NoOpTracer()
+	}
 	memR := &Reactor{
 		opts:        opts,
 		mempool:     mempool,
 		ids:         newMempoolIDs(),
 		requests:    newRequestScheduler(opts.MaxGossipDelay, defaultGlobalRequestTimeout),
-		traceClient: opts.TraceClient,
+		traceClient: traceClient,
 	}
-	memR.BaseReactor = *p2p.NewBaseReactor("Mempool", memR,
+	memR.BaseReactor = *p2p.NewBaseReactor("CAT", memR,
 		p2p.WithIncomingQueueSize(ReactorIncomingMessageQueueSize),
 		p2p.WithQueueingFunc(memR.TryQueueUnprocessedEnvelope),
 	)
@@ -160,6 +164,7 @@ func (memR *Reactor) GetChannels() []*p2p.ChannelDescriptor {
 		{
 			ID:                  mempool.MempoolChannel,
 			Priority:            1,
+			SendQueueCapacity:   10,
 			RecvMessageCapacity: txMsg.Size(),
 			MessageType:         &protomem.Message{},
 		},
@@ -289,7 +294,8 @@ func (memR *Reactor) Receive(e p2p.Envelope) {
 		peerID := memR.ids.GetIDForPeer(e.Src.ID())
 		memR.mempool.PeerHasTx(peerID, txKey)
 		// Check if we don't already have the transaction
-		if memR.mempool.Has(txKey) || memR.mempool.WasRecentlyRejected(txKey) {
+		wasRejected, _ := memR.mempool.WasRecentlyRejected(txKey)
+		if memR.mempool.Has(txKey) || wasRejected {
 			memR.Logger.Debug("received a seen tx for a tx we already have", "txKey", txKey)
 			return
 		}
@@ -465,30 +471,21 @@ func (memR *Reactor) findNewPeerToRequestTx(txKey types.TxKey) {
 		return
 	}
 
-	// pop the next peer in the list of remaining peers that have seen the tx
-	// and does not already have an outbound request for that tx
 	seenMap := memR.mempool.seenByPeersSet.Get(txKey)
-	var peerID uint16
-	for possiblePeer := range seenMap {
-		if !memR.requests.Has(possiblePeer, txKey) {
-			peerID = possiblePeer
-			break
+	for peerID := range seenMap {
+		if memR.requests.Has(peerID, txKey) {
+			continue
+		}
+		peer := memR.ids.GetPeer(peerID)
+		if peer != nil {
+			memR.mempool.metrics.RerequestedTxs.Add(1)
+			memR.requestTx(txKey, peer)
+			return
 		}
 	}
 
-	if peerID == 0 {
-		// No other free peer has the transaction we are looking for.
-		// We give up 🤷‍♂️ and hope either a peer responds late or the tx
-		// is gossiped again
-		memR.Logger.Debug("no other peer has the tx we are looking for", "txKey", txKey)
-		return
-	}
-	peer := memR.ids.GetPeer(peerID)
-	if peer == nil {
-		// we disconnected from that peer, retry again until we exhaust the list
-		memR.findNewPeerToRequestTx(txKey)
-	} else {
-		memR.mempool.metrics.RerequestedTxs.Add(1)
-		memR.requestTx(txKey, peer)
-	}
+	// No other free peer has the transaction we are looking for.
+	// We give up 🤷‍♂️ and hope either a peer responds late or the tx
+	// is gossiped again
+	memR.Logger.Debug("no other peer has the tx we are looking for", "txKey", txKey)
 }

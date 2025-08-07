@@ -12,7 +12,6 @@ import (
 	"github.com/cometbft/cometbft/libs/bits"
 	"github.com/cometbft/cometbft/libs/trace/schema"
 	"github.com/cometbft/cometbft/p2p"
-	"github.com/cometbft/cometbft/privval"
 	"github.com/cometbft/cometbft/proto/tendermint/mempool"
 	"github.com/cometbft/cometbft/proto/tendermint/propagation"
 	"github.com/cometbft/cometbft/types"
@@ -60,7 +59,7 @@ func (blockProp *Reactor) ProposeBlock(proposal *types.Proposal, block *types.Pa
 
 	// sign the hash of the compact block NOTE: p2p message sign bytes are
 	// prepended with the chain id and UID
-	sig, err := blockProp.privval.SignP2PMessage(blockProp.chainID, CompactBlockUID, sbz)
+	sig, err := blockProp.privval.SignRawBytes(blockProp.chainID, CompactBlockUID, sbz)
 	if err != nil {
 		blockProp.Logger.Error("failed to sign compact block", "err", err)
 		return
@@ -101,11 +100,20 @@ func (blockProp *Reactor) ProposeBlock(proposal *types.Proposal, block *types.Pa
 		peer.Initialize(cb.Proposal.Height, cb.Proposal.Round, int(parts.Total()))
 
 		for _, part := range partsMeta {
+			// since this node is proposing, it already has the data and
+			// there's not a lot of reason to update this peer's have
+			// state other than to be consistent atm.
 			err := peer.SetHave(proposal.Height, proposal.Round, int(part.GetIndex()))
 			if err != nil {
 				blockProp.Logger.Debug("failed to set have part peer state", "peer", peer, "height", proposal.Height, "round", proposal.Round, "error", err)
+				// skip saving the old routine's state if the state here
+				// cannot also be saved
 				continue
 			}
+
+			// this might not get set depending on when the consensus peer
+			// state is getting updated. This will result in sending the
+			// peer redundant parts :shrug:
 			peer.consensusPeerState.SetHasProposalBlockPart(proposal.Height, proposal.Round, int(part.GetIndex()))
 		}
 
@@ -437,7 +445,10 @@ func (blockProp *Reactor) validateCompactBlock(cb *proptypes.CompactBlock) error
 		return err
 	}
 
-	p2pBz := privval.P2PMessageSignBytes(blockProp.chainID, CompactBlockUID, cbz)
+	p2pBz, err := types.RawBytesMessageSignBytes(blockProp.chainID, CompactBlockUID, cbz)
+	if err != nil {
+		return err
+	}
 
 	if proposer.VerifySignature(p2pBz, cb.Signature) {
 		return nil

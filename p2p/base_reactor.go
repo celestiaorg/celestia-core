@@ -3,12 +3,12 @@ package p2p
 import (
 	"context"
 	"fmt"
-	"github.com/cometbft/cometbft/libs/trace/schema"
-	"github.com/cosmos/gogoproto/proto"
 	"reflect"
 
 	"github.com/cometbft/cometbft/libs/service"
+	"github.com/cometbft/cometbft/libs/trace/schema"
 	"github.com/cometbft/cometbft/p2p/conn"
+	"github.com/cosmos/gogoproto/proto"
 )
 
 // ProcessorFunc is the message processor function type.
@@ -97,8 +97,8 @@ func NewBaseReactor(name string, impl Reactor, opts ...ReactorOptions) *BaseReac
 
 	go func() {
 		err := base.processor(ctx, base.incoming)
-		fmt.Println("processor exited with error ", err)
 		if err != nil {
+			fmt.Println("processor exited with error ", err)
 			err = base.Stop()
 			if err != nil {
 				panic(err)
@@ -118,7 +118,7 @@ func WithProcessor(processor ProcessorFunc) ReactorOptions {
 	}
 }
 
-// WithProcessor sets the parallel processing queueing mechanism.
+// WithQueueingFunc sets the queuing function to use when receiving a message.
 func WithQueueingFunc(queuingFunc func(UnprocessedEnvelope)) ReactorOptions {
 	return func(br *BaseReactor) {
 		br.queueingFunc = queuingFunc
@@ -151,17 +151,13 @@ func (br *BaseReactor) QueueUnprocessedEnvelope(e UnprocessedEnvelope) {
 func (br *BaseReactor) TryQueueUnprocessedEnvelope(e UnprocessedEnvelope) {
 	select {
 	case <-br.ctx.Done():
+	case br.incoming <- e:
 	default:
-		select {
-		case br.incoming <- e:
-		default:
-		}
 	}
 }
 
 func (br *BaseReactor) OnStop() {
 	br.cancel()
-	close(br.incoming)
 }
 
 // DefaultProcessor unmarshalls the message and calls Receive on the reactor.

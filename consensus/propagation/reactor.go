@@ -99,12 +99,11 @@ func NewReactor(
 		privval:       config.Privval,
 		chainID:       config.ChainID,
 		BlockMaxBytes: config.BlockMaxBytes,
-		partChan:      make(chan types.PartInfo, 10_500),
+		partChan:      make(chan types.PartInfo, 30_000),
 		proposalChan:  make(chan types.Proposal, 100),
 	}
 	reactor.BaseReactor = *p2p.NewBaseReactor("Recovery", reactor,
 		p2p.WithIncomingQueueSize(ReactorIncomingMessageQueueSize),
-		//p2p.WithQueueingFunc(reactor.TryQueueUnprocessedEnvelope),
 	)
 	for _, option := range options {
 		option(reactor)
