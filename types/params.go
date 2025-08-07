@@ -15,7 +15,7 @@ const (
 	// MaxBlockSizeBytes is the maximum permitted size of the blocks.
 	//
 	// todo: revert the technically consensus breaking change to > 100MB
-	MaxBlockSizeBytes = 230857600
+	MaxBlockSizeBytes = 130857600
 
 	// BlockPartSizeBytes is the size of one block part.
 	BlockPartSizeBytes uint32 = 65536 // 64kB

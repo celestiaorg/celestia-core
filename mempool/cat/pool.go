@@ -292,7 +292,7 @@ func (txmp *TxPool) markToBeBroadcast(key types.TxKey) {
 // If it passes `CheckTx`, the new transaction is added to the mempool as long as it has
 // sufficient priority and space else if evicted it will return an error
 func (txmp *TxPool) TryAddNewTx(tx *types.CachedTx, key types.TxKey, txInfo mempool.TxInfo) (*abci.ResponseCheckTx, error) {
-	start2 := time.Now()
+	start := time.Now()
 	// First check the cache to see if we can conclude early. We may have already seen and processed
 	// the transaction if:
 	// - We are connected to nodes running v0 or v1 which simply flood the network
@@ -310,9 +310,9 @@ func (txmp *TxPool) TryAddNewTx(tx *types.CachedTx, key types.TxKey, txInfo memp
 		// The peer has sent us a transaction that we have already seen
 		return nil, ErrTxInMempool
 	}
-	processingTime := time.Since(start2)
+	processingTime := time.Since(start)
 	schema.WriteMessageStats(txmp.tracer, "cat", "mempool.TryAddNewTx.Step1", processingTime.Nanoseconds(), "")
-	start2 = time.Now()
+	start = time.Now()
 
 	// reserve the key
 	if !txmp.store.reserve(key) {
@@ -322,9 +322,9 @@ func (txmp *TxPool) TryAddNewTx(tx *types.CachedTx, key types.TxKey, txInfo memp
 	}
 	defer txmp.store.release(key)
 
-	processingTime = time.Since(start2)
+	processingTime = time.Since(start)
 	schema.WriteMessageStats(txmp.tracer, "cat", "mempool.TryAddNewTx.Step2", processingTime.Nanoseconds(), "")
-	start2 = time.Now()
+	start = time.Now()
 
 	// If a precheck hook is defined, call it before invoking the application.
 	if err := txmp.preCheck(tx); err != nil {
@@ -332,9 +332,9 @@ func (txmp *TxPool) TryAddNewTx(tx *types.CachedTx, key types.TxKey, txInfo memp
 		txmp.rejectedTxCache.Push(tx.Key(), 0)
 		return nil, err
 	}
-	processingTime = time.Since(start2)
+	processingTime = time.Since(start)
 	schema.WriteMessageStats(txmp.tracer, "cat", "mempool.TryAddNewTx.Step3", processingTime.Nanoseconds(), "")
-	start2 = time.Now()
+	start = time.Now()
 
 	// Early exit if the proxy connection has an error.
 	if err := txmp.proxyAppConn.Error(); err != nil {
@@ -343,9 +343,9 @@ func (txmp *TxPool) TryAddNewTx(tx *types.CachedTx, key types.TxKey, txInfo memp
 
 	txmp.mtx.Lock()
 	defer txmp.mtx.Unlock()
-	processingTime = time.Since(start2)
+	processingTime = time.Since(start)
 	schema.WriteMessageStats(txmp.tracer, "cat", "mempool.TryAddNewTx.Step4", processingTime.Nanoseconds(), "")
-	start2 = time.Now()
+	start = time.Now()
 
 	// Invoke an ABCI CheckTx for this transaction.
 	rsp, err := txmp.proxyAppConn.CheckTx(context.Background(), &abci.RequestCheckTx{Tx: tx.Tx})
@@ -357,17 +357,17 @@ func (txmp *TxPool) TryAddNewTx(tx *types.CachedTx, key types.TxKey, txInfo memp
 		txmp.metrics.FailedTxs.Add(1)
 		return rsp, fmt.Errorf("application rejected transaction with code %d (Log: %s)", rsp.Code, rsp.Log)
 	}
-	processingTime = time.Since(start2)
+	processingTime = time.Since(start)
 	schema.WriteMessageStats(txmp.tracer, "cat", "mempool.TryAddNewTx.Step5", processingTime.Nanoseconds(), "")
-	start2 = time.Now()
+	start = time.Now()
 
 	// Create wrapped tx
 	wtx := newWrappedTx(
 		tx, txmp.height, rsp.GasWanted, rsp.Priority, string(rsp.Address),
 	)
-	processingTime = time.Since(start2)
+	processingTime = time.Since(start)
 	schema.WriteMessageStats(txmp.tracer, "cat", "mempool.TryAddNewTx.Step6", processingTime.Nanoseconds(), "")
-	start2 = time.Now()
+	start = time.Now()
 	// Perform the post check
 	err = txmp.postCheck(wtx.tx, rsp)
 	if err != nil {
@@ -375,18 +375,18 @@ func (txmp *TxPool) TryAddNewTx(tx *types.CachedTx, key types.TxKey, txInfo memp
 		txmp.metrics.FailedTxs.Add(1)
 		return rsp, fmt.Errorf("rejected bad transaction after post check: %w", err)
 	}
-	processingTime = time.Since(start2)
+	processingTime = time.Since(start)
 	schema.WriteMessageStats(txmp.tracer, "cat", "mempool.TryAddNewTx.Step7", processingTime.Nanoseconds(), "")
-	start2 = time.Now()
+	start = time.Now()
 
 	// Now we consider the transaction to be valid. Once a transaction is valid, it
 	// can only become invalid if recheckTx is enabled and RecheckTx returns a non zero code
 	if err := txmp.addNewTransaction(wtx); err != nil {
 		return nil, err
 	}
-	processingTime = time.Since(start2)
+	processingTime = time.Since(start)
 	schema.WriteMessageStats(txmp.tracer, "cat", "mempool.TryAddNewTx.Step8", processingTime.Nanoseconds(), "")
-	start2 = time.Now()
+	start = time.Now()
 	return rsp, nil
 }
 

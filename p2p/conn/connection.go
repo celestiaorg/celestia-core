@@ -37,9 +37,9 @@ const (
 	// TODO: remove values present in config
 	defaultFlushThrottle = 100 * time.Millisecond
 
-	defaultSendQueueCapacity   = 100
+	defaultSendQueueCapacity   = 1
 	defaultRecvBufferCapacity  = 4096
-	defaultRecvMessageCapacity = 22020096 * 2  // 21MB
+	defaultRecvMessageCapacity = 22020096      // 21MB
 	defaultSendRate            = int64(512000) // 500KB/s
 	defaultRecvRate            = int64(512000) // 500KB/s
 	defaultSendTimeout         = 10 * time.Second

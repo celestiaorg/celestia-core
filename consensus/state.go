@@ -10,7 +10,6 @@ import (
 	"path/filepath"
 	"runtime/debug"
 	"sort"
-	"sync"
 	"time"
 
 	proptypes "github.com/cometbft/cometbft/consensus/propagation/types"
@@ -124,7 +123,6 @@ type State struct {
 	// msgs from ourself, or by timeouts
 	peerMsgQueue     chan msgInfo
 	internalMsgQueue chan msgInfo
-	votesQueue       chan msgInfo
 	timeoutTicker    TimeoutTicker
 
 	// information about about added votes and block parts are written on this channel
@@ -194,7 +192,6 @@ func NewState(
 		txNotifier:           txNotifier,
 		peerMsgQueue:         make(chan msgInfo, msgQueueSize),
 		internalMsgQueue:     make(chan msgInfo, msgQueueSize),
-		votesQueue:           make(chan msgInfo, msgQueueSize),
 		timeoutTicker:        NewTimeoutTicker(),
 		statsMsgQueue:        make(chan msgInfo, msgQueueSize),
 		done:                 make(chan struct{}),
@@ -515,9 +512,9 @@ func (cs *State) OpenWAL(walFile string) (WAL, error) {
 // AddVote inputs a vote.
 func (cs *State) AddVote(vote *types.Vote, peerID p2p.ID) (added bool, err error) {
 	if peerID == "" {
-		cs.votesQueue <- msgInfo{&VoteMessage{vote}, ""}
+		cs.internalMsgQueue <- msgInfo{&VoteMessage{vote}, ""}
 	} else {
-		cs.votesQueue <- msgInfo{&VoteMessage{vote}, peerID}
+		cs.peerMsgQueue <- msgInfo{&VoteMessage{vote}, peerID}
 	}
 
 	// TODO: wait for event?!
@@ -527,9 +524,9 @@ func (cs *State) AddVote(vote *types.Vote, peerID p2p.ID) (added bool, err error
 // SetProposal inputs a proposal.
 func (cs *State) SetProposal(proposal *types.Proposal, peerID p2p.ID) error {
 	if peerID == "" {
-		cs.votesQueue <- msgInfo{&ProposalMessage{proposal}, ""}
+		cs.internalMsgQueue <- msgInfo{&ProposalMessage{proposal}, ""}
 	} else {
-		cs.votesQueue <- msgInfo{&ProposalMessage{proposal}, peerID}
+		cs.peerMsgQueue <- msgInfo{&ProposalMessage{proposal}, peerID}
 	}
 
 	// TODO: wait for event?!
@@ -882,11 +879,6 @@ func (cs *State) receiveRoutine(maxSteps int) {
 		var mi msgInfo
 
 		select {
-		case mi = <-cs.votesQueue:
-			// handles proposals, block parts, votes
-			// may generate internal events (votes, complete proposals, 2/3 majorities)
-			cs.handleMsg(mi)
-
 		case <-cs.txNotifier.TxsAvailable():
 			cs.handleTxsAvailable()
 
@@ -1338,7 +1330,7 @@ func (cs *State) defaultDecideProposal(height int64, round int32) {
 		proposal.Signature = p.Signature
 
 		// send proposal and block parts on internal msg queue
-		cs.votesQueue <- msgInfo{&ProposalMessage{proposal}, ""}
+		cs.sendInternalMessage(msgInfo{&ProposalMessage{proposal}, ""})
 
 		metaData := make([]proptypes.TxMetaData, len(block.Txs))
 		hashes := block.CachedHashes()
@@ -2651,7 +2643,7 @@ func (cs *State) signAddVote(
 		panic(fmt.Errorf("vote extension absence/presence does not match extensions enabled %t!=%t, height %d, type %v",
 			hasExt, extEnabled, vote.Height, vote.Type))
 	}
-	cs.votesQueue <- msgInfo{&VoteMessage{vote}, ""}
+	cs.sendInternalMessage(msgInfo{&VoteMessage{vote}, ""})
 	cs.Logger.Debug("signed and pushed vote", "height", cs.Height, "round", cs.Round, "vote", vote)
 }
 
@@ -2802,18 +2794,16 @@ func (cs *State) syncData() {
 				continue
 			}
 
-				if currentProposal == nil && proposal.Height == h && proposal.Round == r {
-					schema.WriteNote(
-						cs.traceClient,
-						proposal.Height,
-						proposal.Round,
-						"syncData",
-						"found and sent proposal: %v/%v",
-						proposal.Height, proposal.Round,
-					)
-					fmt.Println("sending proposal: ", proposal.Height, " ", proposal.Round, " current state: ", h, " ", r)
-					cs.internalMsgQueue <- msgInfo{&ProposalMessage{&proposal}, ""}
-				}
+			if currentProposal == nil && proposal.Height == h && proposal.Round == r {
+				schema.WriteNote(
+					cs.traceClient,
+					proposal.Height,
+					proposal.Round,
+					"syncData",
+					"found and sent proposal: %v/%v",
+					proposal.Height, proposal.Round,
+				)
+				cs.internalMsgQueue <- msgInfo{&ProposalMessage{&proposal}, ""}
 			}
 		case _, ok := <-cs.newHeightOrRoundChan:
 			if !ok {
