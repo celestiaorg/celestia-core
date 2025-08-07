@@ -466,6 +466,11 @@ func (memR *Reactor) requestTx(txKey types.TxKey, peer p2p.Peer) {
 // findNewPeerToSendTx finds a new peer that has already seen the transaction to
 // request a transaction from.
 func (memR *Reactor) findNewPeerToRequestTx(txKey types.TxKey) {
+	start := time.Now()
+	defer func() {
+		processingTime := time.Since(start)
+		schema.WriteMessageStats(memR.traceClient, "cat", "mempool.findNewPeerToSendTx", processingTime.Nanoseconds(), "")
+	}()
 	// ensure that we are connected to peers
 	if memR.ids.Len() == 0 {
 		return
