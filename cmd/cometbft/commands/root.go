@@ -35,6 +35,8 @@ func ParseConfig(cmd *cobra.Command) (*cfg.Config, error) {
 		return nil, err
 	}
 
+
+
 	var home string
 	if os.Getenv("CMTHOME") != "" {
 		home = os.Getenv("CMTHOME")
