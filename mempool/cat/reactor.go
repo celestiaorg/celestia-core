@@ -228,6 +228,7 @@ func (memR *Reactor) Receive(e p2p.Envelope) {
 	// NOTE: This setup also means that we can support older mempool implementations that simply
 	// flooded the network with transactions.
 	case *protomem.Txs:
+		fmt.Println("received bunch of txs: ", len(msg.Txs))
 		start := time.Now()
 		protoTxs := msg.GetTxs()
 		if len(protoTxs) == 0 {
@@ -273,6 +274,7 @@ func (memR *Reactor) Receive(e p2p.Envelope) {
 		start = time.Now()
 		if !memR.opts.ListenOnly {
 			// We broadcast only transactions that we deem valid and actually have in our mempool.
+			fmt.Println("broadcasting seen txs: ", len(toBroadcast))
 			memR.broadcastSeenTx(toBroadcast)
 		}
 		processingTime = time.Since(start)
@@ -286,6 +288,7 @@ func (memR *Reactor) Receive(e p2p.Envelope) {
 	// 3. If we recently evicted the tx and still don't have space for it, we do nothing.
 	// 4. Else, we request the transaction from that peer.
 	case *protomem.SeenTx:
+		fmt.Println("received bunch of seen txs: ", len(msg.TxKey))
 		toRequest := make([][]byte, 0)
 		for _, tk := range msg.GetTxKey() {
 			txKey, err := types.TxKeyFromBytes(tk)
@@ -320,11 +323,15 @@ func (memR *Reactor) Receive(e p2p.Envelope) {
 
 		// We don't have the transaction, nor are we requesting it so we send the node
 		// a want msg
+		fmt.Println("requesting txs: ", len(toRequest))
 		memR.requestTx(toRequest, e.Src)
 
 	// A peer is requesting a transaction that we have claimed to have. Find the specified
 	// transaction and broadcast it to the peer. We may no longer have the transaction
 	case *protomem.WantTx:
+		fmt.Println("received bunch of want txs: ", len(msg.TxKey))
+		txs := make([][]byte, 0)
+		cachedTxs := make([]*types.CachedTx, 0)
 		for _, tk := range msg.GetTxKey() {
 			txKey, err := types.TxKeyFromBytes(tk)
 			if err != nil {
@@ -341,21 +348,26 @@ func (memR *Reactor) Receive(e p2p.Envelope) {
 			)
 			tx, has := memR.mempool.GetTxByKey(txKey)
 			if has && !memR.opts.ListenOnly {
-				peerID := memR.ids.GetIDForPeer(e.Src.ID())
-				memR.Logger.Debug("sending a tx in response to a want msg", "peer", peerID)
-				if e.Src.Send(p2p.Envelope{
-					ChannelID: MempoolDataChannel,
-					Message:   &protomem.Txs{Txs: [][]byte{tx.Tx}},
-				}) {
-					memR.mempool.PeerHasTx(peerID, txKey)
-					schema.WriteMempoolTx(
-						memR.traceClient,
-						string(e.Src.ID()),
-						txKey[:],
-						len(tx.Tx),
-						schema.Upload,
-					)
-				}
+				txs = append(txs, tx.Tx)
+				cachedTxs = append(cachedTxs, tx)
+			}
+		}
+		peerID := memR.ids.GetIDForPeer(e.Src.ID())
+		memR.Logger.Debug("sending a tx in response to a want msg", "peer", peerID)
+		fmt.Println("sending bunch of txs: ", len(txs))
+		if e.Src.Send(p2p.Envelope{
+			ChannelID: MempoolDataChannel,
+			Message:   &protomem.Txs{Txs: txs},
+		}) {
+			for _, tx := range cachedTxs {
+				memR.mempool.PeerHasTx(peerID, tx.Key())
+				schema.WriteMempoolTx(
+					memR.traceClient,
+					string(e.Src.ID()),
+					tx.Hash(),
+					len(tx.Tx),
+					schema.Upload,
+				)
 			}
 		}
 
@@ -411,6 +423,7 @@ func (memR *Reactor) broadcastSeenTx(txKey [][]byte) {
 			},
 		}
 
+		fmt.Println("actually sending seen Txs: ", len(toBroadcast))
 		peer.Send(
 			p2p.Envelope{
 				ChannelID: MempoolDataChannel,
