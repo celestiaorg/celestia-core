@@ -248,3 +248,5 @@ func TestBlockstoreDir(t *testing.T) {
 	cfg.BlockstorePath = "/opt/blockstore"
 	assert.Equal(t, "/opt/blockstore", cfg.BlockstoreDir())
 }
+
+
