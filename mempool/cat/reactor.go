@@ -118,7 +118,7 @@ func (memR *Reactor) OnStart() error {
 	if !memR.opts.ListenOnly {
 		go func() {
 			for {
-				//toSend := make([]*wrappedTx, 0)
+				toSend := make([]*wrappedTx, 0)
 				select {
 				case <-memR.Quit():
 					return
@@ -126,11 +126,10 @@ func (memR *Reactor) OnStart() error {
 				// listen in for any newly verified tx via RPC, then immediately
 				// broadcast it to all connected peers.
 				case nextTx := <-memR.mempool.next():
-					memR.broadcastNewTx(nextTx)
-					//toSend = append(toSend, nextTx)
-					//default:
-					//	memR.broadcastNewTx(toSend)
-					//	toSend = make([]*wrappedTx, 0)
+					toSend = append(toSend, nextTx)
+				default:
+					memR.broadcastNewTx(toSend)
+					toSend = make([]*wrappedTx, 0)
 				}
 			}
 		}()
@@ -445,37 +444,48 @@ func (memR *Reactor) broadcastSeenTx(txKey [][]byte) {
 }
 
 // broadcastNewTx broadcast new transaction to all peers unless we are already sure they have seen the tx.
-func (memR *Reactor) broadcastNewTx(wtx *wrappedTx) {
-	msg := &protomem.Message{
-		Sum: &protomem.Message_SeenTx{
-			SeenTx: &protomem.SeenTx{
-				TxKey: [][]byte{wtx.tx.Hash()},
-			},
-		},
+func (memR *Reactor) broadcastNewTx(wtx []*wrappedTx) {
+	if len(wtx) == 0 {
+		return
 	}
-
 	for id, peer := range memR.ids.GetAll() {
 		if p, ok := peer.Get(types.PeerStateKey).(PeerState); ok {
 			// make sure peer isn't too far behind. This can happen
 			// if the peer is blocksyncing still and catching up
 			// in which case we just skip sending the transaction
-			if p.GetHeight() < wtx.height-peerHeightDiff {
+			if p.GetHeight() < wtx[0].height-peerHeightDiff {
 				memR.Logger.Debug("peer is too far behind us. Skipping broadcast of seen tx")
 				continue
 			}
 		}
 
-		if memR.mempool.seenByPeersSet.Has(wtx.key(), id) {
+		toSend := make([][]byte, 0)
+		for _, w := range wtx {
+			if memR.mempool.seenByPeersSet.Has(w.key(), id) {
+				continue
+			}
+			toSend = append(toSend, w.tx.Hash())
+		}
+		if len(toSend) == 0 {
 			continue
 		}
+		msg := &protomem.Message{
+			Sum: &protomem.Message_SeenTx{
+				SeenTx: &protomem.SeenTx{
+					TxKey: toSend,
+				},
+			},
+		}
 
-		if peer.Send(
+		if peer.TrySend(
 			p2p.Envelope{
 				ChannelID: MempoolDataChannel,
 				Message:   msg,
 			},
 		) {
-			memR.mempool.PeerHasTx(id, wtx.key())
+			for _, h := range toSend {
+				memR.mempool.PeerHasTx(id, types.TxKey(h))
+			}
 		}
 	}
 }
