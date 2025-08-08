@@ -102,7 +102,7 @@ func NewTxPool(
 		preCheckFn:       func(_ *types.CachedTx) error { return nil },
 		postCheckFn:      func(_ *types.CachedTx, _ *abci.ResponseCheckTx) error { return nil },
 		store:            newStore(),
-		broadcastCh:      make(chan *wrappedTx),
+		broadcastCh:      make(chan *wrappedTx, 1_000),
 		txsToBeBroadcast: make([]types.TxKey, 0),
 		tracer:           trace.NoOpTracer(),
 	}
