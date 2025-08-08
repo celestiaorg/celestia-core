@@ -114,13 +114,13 @@ func TestMempoolTypeTemplate(t *testing.T) {
 			configContent := string(data)
 
 			// Verify mempool type is correctly rendered
-			expectedLine := fmt.Sprintf("mempool_type = \"%s\"", tc.mempoolType)
+			expectedLine := fmt.Sprintf("type = \"%s\"", tc.mempoolType)
 			assert.Contains(t, configContent, expectedLine,
 				"Config should contain the correct mempool type")
 
 			// Ensure the hardcoded "priority" is not present when using other types
 			if tc.mempoolType != config.MempoolTypePriority {
-				hardcodedLine := "mempool_type = \"priority\""
+				hardcodedLine := "type = \"priority\""
 				assert.NotContains(t, configContent, hardcodedLine,
 					"Config should not contain hardcoded 'priority' when using different mempool type")
 			}
