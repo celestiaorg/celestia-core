@@ -59,7 +59,7 @@ func (nop *NoOpPropagator) AddCommitment(_ int64, _ int32, _ *types.PartSetHeade
 func (nop *NoOpPropagator) Prune(_ int64) {
 }
 
-func (nop *NoOpPropagator) SetConsensusRound(_ int64, _ int32) {
+func (nop *NoOpPropagator) SetConsensusRound(_ int32) {
 }
 
 func (nop *NoOpPropagator) StartProcessing() {
