@@ -96,6 +96,9 @@ func (blockAPI *BlockAPI) StartNewBlockEventListener(ctx context.Context) error 
 				return nil
 			}
 		case event, ok := <-blockAPI.newBlockSubscription.Out():
+			if blockAPI.env.ConsensusReactor.WaitSync() {
+				continue
+			}
 			if !ok {
 				blockAPI.env.Logger.Error("new blocks subscription closed. re-subscribing")
 				ok, err := blockAPI.retryNewBlocksSubscription(ctx)
