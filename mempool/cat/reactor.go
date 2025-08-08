@@ -7,7 +7,6 @@ import (
 	"time"
 
 	cfg "github.com/cometbft/cometbft/config"
-	"github.com/cometbft/cometbft/crypto/tmhash"
 	"github.com/cometbft/cometbft/libs/log"
 	"github.com/cometbft/cometbft/libs/trace"
 	"github.com/cometbft/cometbft/libs/trace/schema"
@@ -150,41 +149,41 @@ func (memR *Reactor) OnStop() {
 // GetChannels implements Reactor by returning the list of channels for this
 // reactor.
 func (memR *Reactor) GetChannels() []*p2p.ChannelDescriptor {
-	largestTx := make([]byte, memR.opts.MaxTxSize)
-	txMsg := protomem.Message{
-		Sum: &protomem.Message_Txs{
-			Txs: &protomem.Txs{Txs: [][]byte{largestTx}},
-		},
-	}
-
-	stateMsg := protomem.Message{
-		Sum: &protomem.Message_SeenTx{
-			SeenTx: &protomem.SeenTx{
-				TxKey: make([][]byte, tmhash.Size),
-			},
-		},
-	}
+	//largestTx := make([]byte, memR.opts.MaxTxSize)
+	//txMsg := protomem.Message{
+	//	Sum: &protomem.Message_Txs{
+	//		Txs: &protomem.Txs{Txs: [][]byte{largestTx}},
+	//	},
+	//}
+	//
+	//stateMsg := protomem.Message{
+	//	Sum: &protomem.Message_SeenTx{
+	//		SeenTx: &protomem.SeenTx{
+	//			TxKey: make([][]byte, tmhash.Size),
+	//		},
+	//	},
+	//}
 
 	return []*p2p.ChannelDescriptor{
 		{
 			ID:                  mempool.MempoolChannel,
 			Priority:            1,
 			SendQueueCapacity:   10,
-			RecvMessageCapacity: txMsg.Size(),
+			RecvMessageCapacity: 2202009600,
 			MessageType:         &protomem.Message{},
 		},
 		{
 			ID:                  MempoolDataChannel,
 			Priority:            3,
 			SendQueueCapacity:   1000,
-			RecvMessageCapacity: txMsg.Size(),
+			RecvMessageCapacity: 2202009600,
 			MessageType:         &protomem.Message{},
 		},
 		{
 			ID:                  MempoolWantsChannel,
 			Priority:            3,
 			SendQueueCapacity:   1000,
-			RecvMessageCapacity: stateMsg.Size(),
+			RecvMessageCapacity: 2202009600,
 			MessageType:         &protomem.Message{},
 		},
 	}
@@ -215,6 +214,7 @@ func (memR *Reactor) RemovePeer(peer p2p.Peer, reason interface{}) {
 // ReceiveEnvelope implements Reactor.
 // It processes one of three messages: Txs, SeenTx, WantTx.
 func (memR *Reactor) Receive(e p2p.Envelope) {
+	fmt.Println("cat received message: ", e)
 	schema.WriteMempoolSize(memR.traceClient, memR.mempool.SizeBytes())
 	startOfReceive := time.Now()
 	defer func() {
