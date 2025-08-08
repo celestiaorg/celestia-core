@@ -97,7 +97,7 @@ func TestCacheRemove(t *testing.T) {
 	require.Equal(t, numTxs, cache.list.Len())
 
 	for i := 0; i < numTxs; i++ {
-		cache.Remove(&types.CachedTx{Tx: txs[i]})
+		cache.Remove(types.TxKey(txs[i]))
 		// make sure its removed from both the map and the linked list
 		require.Len(t, cache.cacheMap, numTxs-(i+1))
 		require.Equal(t, numTxs-(i+1), cache.list.Len())
@@ -115,7 +115,7 @@ func populate(cache TxCache, numTxs int) ([][]byte, error) {
 		}
 
 		txs[i] = txBytes
-		cache.Push(types.Tx(txBytes).ToCachedTx())
+		cache.Push(types.TxKey(txBytes))
 	}
 	return txs, nil
 }
@@ -130,7 +130,7 @@ func TestCacheRemoveByKey(t *testing.T) {
 	require.Equal(t, numTxs, cache.list.Len())
 
 	for i := 0; i < numTxs; i++ {
-		cache.RemoveTxByKey(types.Tx(txs[i]).Key())
+		cache.Remove(types.TxKey(txs[i]))
 		// make sure its removed from both the map and the linked list
 		require.Equal(t, numTxs-(i+1), len(cache.cacheMap))
 		require.Equal(t, numTxs-(i+1), cache.list.Len())
@@ -140,7 +140,7 @@ func TestCacheRemoveByKey(t *testing.T) {
 func TestRejectedTxCache(t *testing.T) {
 	cacheSize := 10
 	cache := NewRejectedTxCache(cacheSize)
-	tx := types.Tx("test-transaction").ToCachedTx()
+	tx := types.Tx("test-transaction")
 	txKey := tx.Key()
 	initialCode := uint32(1001)
 
@@ -152,7 +152,7 @@ func TestRejectedTxCache(t *testing.T) {
 	})
 
 	t.Run("add transaction with rejection code", func(t *testing.T) {
-		wasNew := cache.Push(tx, initialCode)
+		wasNew := cache.Push(txKey, initialCode)
 		require.True(t, wasNew)
 
 		require.True(t, cache.HasKey(txKey))
@@ -162,13 +162,13 @@ func TestRejectedTxCache(t *testing.T) {
 	})
 
 	t.Run("add same transaction again should not overwrite", func(t *testing.T) {
-		wasNew := cache.Push(tx, initialCode)
+		wasNew := cache.Push(txKey, initialCode)
 		require.False(t, wasNew)
 	})
 
 	t.Run("should not change existing entry", func(t *testing.T) {
 		newCode := uint32(2002)
-		wasNew := cache.Push(tx, newCode)
+		wasNew := cache.Push(txKey, newCode)
 		require.False(t, wasNew)
 
 		retrievedCode, ok := cache.Get(txKey)
@@ -177,7 +177,7 @@ func TestRejectedTxCache(t *testing.T) {
 	})
 
 	t.Run("remove transaction", func(t *testing.T) {
-		cache.Remove(tx)
+		cache.Remove(txKey)
 		require.False(t, cache.HasKey(txKey))
 		_, ok := cache.Get(txKey)
 		require.False(t, ok)
@@ -187,7 +187,7 @@ func TestRejectedTxCache(t *testing.T) {
 		// cache size is 10, adding 15 txs
 		// cache should remain within the size limit
 		for i := 0; i < 15; i++ {
-			cache.Push(tx, initialCode)
+			cache.Push(txKey, initialCode)
 		}
 		require.Equal(t, cacheSize, cache.cache.size)
 	})

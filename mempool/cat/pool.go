@@ -61,9 +61,9 @@ type TxPool struct {
 	lastPurgeTime        time.Time // the last time we attempted to purge transactions via the TTL
 
 	// Thread-safe cache of rejected transactions for quick look-up
-	rejectedTxCache *RejectedTxCache
+	rejectedTxCache *mempool.RejectedTxCache
 	// Thread-safe cache of evicted transactions for quick look-up
-	evictedTxCache *LRUTxCache
+	evictedTxCache *mempool.LRUTxCache
 	// Thread-safe list of transactions peers have seen that we have not yet seen
 	seenByPeersSet *SeenTxSet
 
@@ -91,8 +91,8 @@ func NewTxPool(
 		config:           cfg,
 		proxyAppConn:     proxyAppConn,
 		metrics:          mempool.NopMetrics(),
-		rejectedTxCache:  NewRejectedTxCache(cfg.CacheSize),
-		evictedTxCache:   NewLRUTxCache(cfg.CacheSize / 5),
+		rejectedTxCache:  mempool.NewRejectedTxCache(cfg.CacheSize),
+		evictedTxCache:   mempool.NewLRUTxCache(cfg.CacheSize / 5),
 		seenByPeersSet:   NewSeenTxSet(),
 		height:           height,
 		preCheckFn:       func(_ *types.CachedTx) error { return nil },
