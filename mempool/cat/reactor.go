@@ -355,30 +355,20 @@ func (memR *Reactor) Receive(e p2p.Envelope) {
 		peerID := memR.ids.GetIDForPeer(e.Src.ID())
 		memR.Logger.Debug("sending a tx in response to a want msg", "peer", peerID)
 		fmt.Println("sending bunch of txs: ", len(txs))
-		size := 0
-		send := make([][]byte, 0)
-		for _, tx := range txs {
-			if len(tx)+size > 10_000_000 {
-				if e.Src.Send(p2p.Envelope{
-					ChannelID: MempoolDataChannel,
-					Message:   &protomem.Txs{Txs: txs},
-				}) {
-					for _, tx := range cachedTxs {
-						memR.mempool.PeerHasTx(peerID, tx.Key())
-						schema.WriteMempoolTx(
-							memR.traceClient,
-							string(e.Src.ID()),
-							tx.Hash(),
-							len(tx.Tx),
-							schema.Upload,
-						)
-					}
-				}
-				send = make([][]byte, 0)
-				size = 0
+		if e.Src.Send(p2p.Envelope{
+			ChannelID: MempoolDataChannel,
+			Message:   &protomem.Txs{Txs: txs},
+		}) {
+			for _, tx := range cachedTxs {
+				memR.mempool.PeerHasTx(peerID, tx.Key())
+				schema.WriteMempoolTx(
+					memR.traceClient,
+					string(e.Src.ID()),
+					tx.Hash(),
+					len(tx.Tx),
+					schema.Upload,
+				)
 			}
-			send = append(send, tx)
-			size += len(tx)
 		}
 
 	default:
