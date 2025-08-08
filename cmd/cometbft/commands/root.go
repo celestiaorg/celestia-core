@@ -35,6 +35,13 @@ func ParseConfig(cmd *cobra.Command) (*cfg.Config, error) {
 		return nil, err
 	}
 
+	// Handle backward compatibility for mempool type field
+	// If the new mempool_type field is not in the config but the old "type" field is,
+	// use the old field value for backward compatibility
+	if !viper.IsSet("mempool.mempool_type") && viper.IsSet("mempool.type") {
+		conf.Mempool.Type = viper.GetString("mempool.type")
+	}
+
 	var home string
 	if os.Getenv("CMTHOME") != "" {
 		home = os.Getenv("CMTHOME")
