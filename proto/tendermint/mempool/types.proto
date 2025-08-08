@@ -8,11 +8,11 @@ message Txs {
 }
 
 message SeenTx {
-  repeated bytes tx_key = 1;
+  bytes tx_key = 1;
 }
 
 message WantTx {
-  repeated bytes tx_key = 1;
+  bytes tx_key = 1;
 }
 
 message Message {
