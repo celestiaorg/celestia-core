@@ -20,7 +20,7 @@ import (
 const (
 	// default duration to wait before considering a peer non-responsive
 	// and searching for the tx from a new peer
-	DefaultGossipDelay = 200 * time.Millisecond
+	DefaultGossipDelay = 20_000 * time.Millisecond
 
 	// MempoolDataChannel channel for SeenTx and blob messages.
 	MempoolDataChannel = byte(0x31)
@@ -69,9 +69,9 @@ func (opts *ReactorOptions) VerifyAndComplete() error {
 		opts.MaxTxSize = cfg.DefaultMempoolConfig().MaxTxBytes
 	}
 
-	if opts.MaxGossipDelay == 0 {
-		opts.MaxGossipDelay = DefaultGossipDelay
-	}
+	//if opts.MaxGossipDelay == 0 {
+	opts.MaxGossipDelay = DefaultGossipDelay
+	//}
 
 	if opts.MaxTxSize < 0 {
 		return fmt.Errorf("max tx size (%d) cannot be negative", opts.MaxTxSize)
@@ -98,7 +98,7 @@ func NewReactor(mempool *TxPool, opts *ReactorOptions) (*Reactor, error) {
 		opts:        opts,
 		mempool:     mempool,
 		ids:         newMempoolIDs(),
-		requests:    newRequestScheduler(opts.MaxGossipDelay, defaultGlobalRequestTimeout),
+		requests:    newRequestScheduler(20_000, defaultGlobalRequestTimeout),
 		traceClient: traceClient,
 	}
 	memR.BaseReactor = *p2p.NewBaseReactor("CAT", memR,
@@ -201,11 +201,11 @@ func (memR *Reactor) RemovePeer(peer p2p.Peer, reason interface{}) {
 
 	// remove and rerequest all pending outbound requests to that peer since we know
 	// we won't receive any responses from them.
-	outboundRequests := memR.requests.ClearAllRequestsFrom(peerID)
-	for key := range outboundRequests {
-		memR.mempool.metrics.RequestedTxs.Add(1)
-		memR.findNewPeerToRequestTx(key)
-	}
+	memR.requests.ClearAllRequestsFrom(peerID)
+	//for key := range outboundRequests {
+	//	memR.mempool.metrics.RequestedTxs.Add(1)
+	//	memR.findNewPeerToRequestTx(key)
+	//}
 }
 
 // ReceiveEnvelope implements Reactor.
