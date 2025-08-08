@@ -11,6 +11,7 @@ func MempoolTables() []string {
 		MempoolTxTable,
 		MempoolPeerStateTable,
 		MempoolRecoveredPartsTable,
+		MempoolSizeTable,
 	}
 }
 
@@ -129,4 +130,20 @@ func WriteMempoolRecoveredParts(client trace.Tracer, height int64, round int32, 
 		Round:          round,
 		RecoveredParts: parts,
 	})
+}
+
+const (
+	MempoolSizeTable = "mempool_size"
+)
+
+type MempoolSize struct {
+	Size int64 `json:"size"`
+}
+
+func (m MempoolSize) Table() string {
+	return MempoolSizeTable
+}
+
+func WriteMempoolSize(client trace.Tracer, size int64) {
+	client.Write(MempoolSize{Size: size})
 }
