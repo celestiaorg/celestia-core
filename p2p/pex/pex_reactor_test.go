@@ -1,11 +1,14 @@
 package pex
 
 import (
+	"bytes"
 	"encoding/hex"
 	"fmt"
 	"net"
 	"os"
 	"path/filepath"
+	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -918,4 +921,72 @@ func TestPEXReactorWhenAddressBookIsSmallerThanMaxDials(t *testing.T) {
 	for _, peer := range peers {
 		assert.Equal(t, 1, pexR.AttemptsToDial(peer))
 	}
+}
+
+func TestPEXReactorNumDialingTracking(t *testing.T) {
+	dir, err := os.MkdirTemp("", "pex_reactor")
+	require.NoError(t, err)
+	defer os.RemoveAll(dir)
+
+	// Create buffer to capture log output
+	var buf bytes.Buffer
+	var mu sync.Mutex
+
+	// Create a thread-safe logger wrapper
+	safeLogger := log.NewTMLogger(writerFunc(func(p []byte) (n int, err error) {
+		mu.Lock()
+		defer mu.Unlock()
+		return buf.Write(p)
+	}))
+
+	book := NewAddrBook(filepath.Join(dir, "addrbook.json"), true)
+	book.SetLogger(safeLogger)
+	defer teardownReactor(book)
+
+	pexR := NewReactor(book, &ReactorConfig{})
+	pexR.SetLogger(safeLogger)
+
+	sw := createSwitchAndAddReactors(pexR)
+	sw.SetAddrBook(book)
+
+	// Add some addresses to the book so we can dial them
+	for i := 0; i < 5; i++ {
+		peer := p2p.CreateRandomPeer(false)
+		addr := peer.SocketAddr()
+		err := book.AddAddress(addr, addr)
+		require.NoError(t, err)
+	}
+
+	// Call ensurePeers which should dial some peers
+	pexR.ensurePeers(true)
+
+	// Wait for goroutines to complete their logging
+	time.Sleep(100 * time.Millisecond)
+
+	// Thread-safe read of the buffer
+	mu.Lock()
+	output := buf.String()
+	mu.Unlock()
+
+	require.Contains(t, output, "Ensure peers")
+
+	// Extract numDialing value
+	lines := strings.Split(output, "\n")
+	var dialingLine string
+	for _, line := range lines {
+		if strings.Contains(line, "Ensure peers") && strings.Contains(line, "numDialing=") {
+			dialingLine = line
+			break
+		}
+	}
+
+	// It should be 5 because we have 5 addresses to dial
+	require.Contains(t, dialingLine, "numDialing=5")
+}
+
+// writerFunc wraps a function to implement io.Writer
+type writerFunc func([]byte) (int, error)
+
+func (f writerFunc) Write(p []byte) (int, error) {
+	return f(p)
 }

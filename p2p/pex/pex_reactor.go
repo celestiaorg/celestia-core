@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/cometbft/cometbft/libs/cmap"
@@ -95,6 +96,9 @@ type Reactor struct {
 	seedAddrs []*p2p.NetAddress
 
 	attemptsToDial sync.Map // address (string) -> {number of attempts (int), last time dialed (time.Time)}
+
+	// tracks the number of active dial attempts
+	activeDialing int64
 
 	// seed/crawled mode fields
 	crawlPeerInfos map[p2p.ID]crawlPeerInfo
@@ -447,18 +451,20 @@ func (r *Reactor) ensurePeersRoutine() {
 // already connected or not.
 func (r *Reactor) ensurePeers(ensurePeersPeriodElapsed bool) {
 	var (
-		out, in, dial = r.Switch.NumPeers()
-		numToDial     = r.Switch.MaxNumOutboundPeers() - (out + dial)
-	)
-	r.Logger.Info(
-		"Ensure peers",
-		"numOutPeers", out,
-		"numInPeers", in,
-		"numDialing", dial,
-		"numToDial", numToDial,
+		out, in, _  = r.Switch.NumPeers()
+		peersNeeded = r.Switch.MaxNumOutboundPeers() - out
 	)
 
-	if numToDial <= 0 {
+	// if we have enough peers, don't dial any more
+	if peersNeeded <= 0 {
+		r.Logger.Info(
+			"Ensure peers",
+			"numOutPeers", out,
+			"numInPeers", in,
+			"numDialing", atomic.LoadInt64(&r.activeDialing),
+			"peersNeeded", 0,
+			"extraPeers", -peersNeeded,
+		)
 		return
 	}
 
@@ -468,6 +474,7 @@ func (r *Reactor) ensurePeers(ensurePeersPeriodElapsed bool) {
 	if len(addrBook) < maxDials {
 		maxDials = len(addrBook)
 	}
+
 	// We don't need to randomize the addresses since the addressbook is already shuffled
 	for i := 0; i < maxDials; i++ {
 		addr := addrBook[i]
@@ -475,7 +482,11 @@ func (r *Reactor) ensurePeers(ensurePeersPeriodElapsed bool) {
 		if r.Switch.IsDialingOrExistingAddress(addr) {
 			continue
 		}
+
+		// Mark as actively dialing before starting the goroutine
+		atomic.AddInt64(&r.activeDialing, 1)
 		go func(addr *p2p.NetAddress) {
+			defer atomic.AddInt64(&r.activeDialing, -1)
 			err := r.dialPeer(addr)
 			if err != nil {
 				switch err.(type) {
@@ -487,6 +498,14 @@ func (r *Reactor) ensurePeers(ensurePeersPeriodElapsed bool) {
 			}
 		}(addr)
 	}
+
+	r.Logger.Info(
+		"Ensure peers",
+		"numOutPeers", out,
+		"numInPeers", in,
+		"numDialing", atomic.LoadInt64(&r.activeDialing),
+		"peersNeeded", peersNeeded,
+	)
 
 	if r.book.NeedMoreAddrs() {
 		// Check if banned nodes can be reinstated
