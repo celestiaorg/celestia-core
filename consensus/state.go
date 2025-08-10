@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"runtime/debug"
 	"sort"
+	"sync"
 	"time"
 
 	proptypes "github.com/cometbft/cometbft/consensus/propagation/types"
@@ -2128,6 +2129,11 @@ func (cs *State) defaultSetProposal(proposal *types.Proposal) error {
 }
 
 var currentBlock []byte
+var currentCount int
+var remaining map[int][]byte
+var blockPool = sync.Pool{
+	New: func() any { return new(cmtproto.Block) },
+}
 
 // NOTE: block is not necessarily valid.
 // Asynchronously triggers either enterPrevote (before we timeout of propose) or tryFinalizeCommit,
@@ -2135,6 +2141,8 @@ var currentBlock []byte
 func (cs *State) addProposalBlockPart(msg *BlockPartMessage, peerID p2p.ID) (added bool, err error) {
 	if currentBlock == nil {
 		currentBlock = make([]byte, 0)
+		remaining = make(map[int][]byte)
+		currentCount = 0
 	}
 	start := time.Now()
 	height, round, part := msg.Height, msg.Round, msg.Part
@@ -2171,7 +2179,7 @@ func (cs *State) addProposalBlockPart(msg *BlockPartMessage, peerID p2p.ID) (add
 		}
 		return added, err
 	}
-	currentBlock = append(currentBlock, part.Bytes...)
+	addBytes(part)
 	processingTime = time.Since(start)
 	schema.WriteMessageStats(cs.traceClient, "state", "state.addProposalBlockPart.step2", processingTime.Nanoseconds(), fmt.Sprintf("new block part: %d %d %d", msg.Height, msg.Round, msg.Part.Index))
 	start = time.Now()
@@ -2201,7 +2209,10 @@ func (cs *State) addProposalBlockPart(msg *BlockPartMessage, peerID p2p.ID) (add
 		schema.WriteMessageStats(cs.traceClient, "state", "state.addProposalBlockPart.step4", processingTime.Nanoseconds(), fmt.Sprintf("new block part: %d %d %d", msg.Height, msg.Round, msg.Part.Index))
 		start = time.Now()
 
-		pbb := new(cmtproto.Block)
+		pbb := blockPool.Get().(*cmtproto.Block)
+		pbb.Reset()
+		defer blockPool.Put(pbb)
+
 		err = proto.Unmarshal(bz, pbb)
 		if err != nil {
 			return added, err
@@ -2232,6 +2243,23 @@ func (cs *State) addProposalBlockPart(msg *BlockPartMessage, peerID p2p.ID) (add
 		start = time.Now()
 	}
 	return added, nil
+}
+
+func addBytes(part *types.Part) {
+	if int(part.Index) == currentCount {
+		currentBlock = append(currentBlock, part.Bytes...)
+		currentCount++
+	} else {
+		remaining[int(part.Index)] = part.Bytes.Bytes()
+	}
+	for {
+		if remaining[currentCount] != nil {
+			currentBlock = append(currentBlock, remaining[currentCount]...)
+			currentCount++
+		} else {
+			break
+		}
+	}
 }
 
 func (cs *State) handleCompleteProposal(blockHeight int64) {
