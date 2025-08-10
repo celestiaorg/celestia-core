@@ -5,7 +5,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"os"
 	"path/filepath"
 	"runtime/debug"
@@ -2128,10 +2127,15 @@ func (cs *State) defaultSetProposal(proposal *types.Proposal) error {
 	return nil
 }
 
+var currentBlock []byte
+
 // NOTE: block is not necessarily valid.
 // Asynchronously triggers either enterPrevote (before we timeout of propose) or tryFinalizeCommit,
 // once we have the full block.
 func (cs *State) addProposalBlockPart(msg *BlockPartMessage, peerID p2p.ID) (added bool, err error) {
+	if currentBlock == nil {
+		currentBlock = make([]byte, 0)
+	}
 	start := time.Now()
 	height, round, part := msg.Height, msg.Round, msg.Part
 
@@ -2167,6 +2171,7 @@ func (cs *State) addProposalBlockPart(msg *BlockPartMessage, peerID p2p.ID) (add
 		}
 		return added, err
 	}
+	currentBlock = append(currentBlock, part.Bytes...)
 	processingTime = time.Since(start)
 	schema.WriteMessageStats(cs.traceClient, "state", "state.addProposalBlockPart.step2", processingTime.Nanoseconds(), fmt.Sprintf("new block part: %d %d %d", msg.Height, msg.Round, msg.Part.Index))
 	start = time.Now()
@@ -2191,10 +2196,7 @@ func (cs *State) addProposalBlockPart(msg *BlockPartMessage, peerID p2p.ID) (add
 	schema.WriteMessageStats(cs.traceClient, "state", "state.addProposalBlockPart.step3", processingTime.Nanoseconds(), fmt.Sprintf("new block part: %d %d %d", msg.Height, msg.Round, msg.Part.Index))
 	start = time.Now()
 	if added && cs.ProposalBlockParts.IsComplete() {
-		bz, err := io.ReadAll(cs.ProposalBlockParts.GetReader())
-		if err != nil {
-			return added, err
-		}
+		bz := currentBlock
 		processingTime = time.Since(start)
 		schema.WriteMessageStats(cs.traceClient, "state", "state.addProposalBlockPart.step4", processingTime.Nanoseconds(), fmt.Sprintf("new block part: %d %d %d", msg.Height, msg.Round, msg.Part.Index))
 		start = time.Now()
@@ -2214,6 +2216,7 @@ func (cs *State) addProposalBlockPart(msg *BlockPartMessage, peerID p2p.ID) (add
 		}
 
 		cs.ProposalBlock = block
+		currentBlock = nil
 
 		// NOTE: it's possible to receive complete proposal blocks for future rounds without having the proposal
 		cs.Logger.Info("received complete proposal block", "height", cs.ProposalBlock.Height, "hash", cs.ProposalBlock.Hash())
