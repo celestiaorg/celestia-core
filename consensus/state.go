@@ -987,7 +987,7 @@ func (cs *State) handleMsg(mi msgInfo) {
 		schema.WriteMessageStats(cs.traceClient, "state", "state.BlockPartMessage", processingTime.Nanoseconds(), fmt.Sprintf("new block part: %d %d %d", msg.Height, msg.Round, msg.Part.Index))
 
 	case *VoteMessage:
-		fmt.Println("received vote: ", msg.Vote.Height, " ", msg.Vote.Round, " ", msg.Vote.Type, " ", time.Now().String())
+		fmt.Println("received vote: ", msg.Vote.Height, " ", msg.Vote.Round, " ", msg.Vote.Type, " ", msg.Vote.BlockID.Hash, " ", time.Now().String())
 		start := time.Now()
 		// attempt to add the vote and dupeout the validator if its a duplicate signature
 		// if the vote gives us a 2/3-any or 2/3-one, we transition
@@ -2193,7 +2193,7 @@ func (cs *State) addProposalBlockPart(msg *BlockPartMessage, peerID p2p.ID) (add
 		}
 
 		cs.ProposalBlock = block
-
+		fmt.Println("unmarshalled the block: ", time.Now().String())
 		// NOTE: it's possible to receive complete proposal blocks for future rounds without having the proposal
 		cs.Logger.Info("received complete proposal block", "height", cs.ProposalBlock.Height, "hash", cs.ProposalBlock.Hash())
 
