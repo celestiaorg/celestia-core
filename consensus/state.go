@@ -2140,7 +2140,7 @@ var blockPool = sync.Pool{
 // once we have the full block.
 func (cs *State) addProposalBlockPart(msg *BlockPartMessage, peerID p2p.ID) (added bool, err error) {
 	if currentBlock == nil {
-		currentBlock = make([]byte, 0, 3000*types.MaxBlockSizeBytes)
+		currentBlock = make([]byte, 0)
 		remaining = make(map[int][]byte)
 		currentCount = 0
 	}
