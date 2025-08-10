@@ -2129,6 +2129,8 @@ func (cs *State) defaultSetProposal(proposal *types.Proposal) error {
 }
 
 var currentBlock []byte
+var currentCount int
+var remaining map[int][]byte
 var blockPool = sync.Pool{
 	New: func() any { return new(cmtproto.Block) },
 }
@@ -2138,7 +2140,9 @@ var blockPool = sync.Pool{
 // once we have the full block.
 func (cs *State) addProposalBlockPart(msg *BlockPartMessage, peerID p2p.ID) (added bool, err error) {
 	if currentBlock == nil {
-		currentBlock = make([]byte, cs.ProposalBlockParts.Total()*types.BlockPartSizeBytes)
+		currentBlock = make([]byte, 0, 3000*types.MaxBlockSizeBytes)
+		remaining = make(map[int][]byte)
+		currentCount = 0
 	}
 	start := time.Now()
 	height, round, part := msg.Height, msg.Round, msg.Part
@@ -2242,8 +2246,20 @@ func (cs *State) addProposalBlockPart(msg *BlockPartMessage, peerID p2p.ID) (add
 }
 
 func addBytes(part *types.Part) {
-	offset := part.Index * types.BlockPartSizeBytes
-	copy(currentBlock[offset:], part.Bytes)
+	if int(part.Index) == currentCount {
+		currentBlock = append(currentBlock, part.Bytes...)
+		currentCount++
+	} else {
+		remaining[int(part.Index)] = part.Bytes.Bytes()
+	}
+	for {
+		if remaining[currentCount] != nil {
+			currentBlock = append(currentBlock, remaining[currentCount]...)
+			currentCount++
+		} else {
+			break
+		}
+	}
 }
 
 func (cs *State) handleCompleteProposal(blockHeight int64) {
