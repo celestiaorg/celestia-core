@@ -323,7 +323,7 @@ func (blockProp *Reactor) SetProposer(proposer crypto.PubKey) {
 	blockProp.currentProposer = proposer
 }
 
-func (blockProp *Reactor) SetConsensusRound(round int32) {
+func (blockProp *Reactor) SetConsensusRound(height int64, round int32) {
 	blockProp.pmtx.Lock()
 	defer blockProp.pmtx.Unlock()
 	blockProp.consensusRound = round

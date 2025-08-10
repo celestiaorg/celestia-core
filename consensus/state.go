@@ -591,7 +591,6 @@ func (cs *State) updateRoundStep(round int32, step cstypes.RoundStepType) {
 	}
 	cs.Round = round
 	cs.Step = step
-	cs.propagator.SetConsensusRound(round)
 	select {
 	case cs.newHeightOrRoundChan <- struct{}{}:
 	default:
