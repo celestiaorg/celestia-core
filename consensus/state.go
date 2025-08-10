@@ -954,6 +954,9 @@ func (cs *State) handleMsg(mi msgInfo) {
 		// if the proposal is complete, we'll enterPrevote or tryFinalizeCommit
 		added, err = cs.addProposalBlockPart(msg, peerID)
 
+		processingTime := time.Since(start)
+		schema.WriteMessageStats(cs.traceClient, "state", "state.BlockPartMessage.step1", processingTime.Nanoseconds(), fmt.Sprintf("new block part: %d %d %d", msg.Height, msg.Round, msg.Part.Index))
+		start = time.Now()
 		// We unlock here to yield to any routines that need to read the the RoundState.
 		// Previously, this code held the lock from the point at which the final block
 		// part was received until the block executed against the application.
@@ -971,9 +974,15 @@ func (cs *State) handleMsg(mi msgInfo) {
 		if added && cs.ProposalBlockParts.IsComplete() {
 			cs.handleCompleteProposal(msg.Height)
 		}
+		processingTime = time.Since(start)
+		schema.WriteMessageStats(cs.traceClient, "state", "state.BlockPartMessage.step2", processingTime.Nanoseconds(), fmt.Sprintf("new block part: %d %d %d", msg.Height, msg.Round, msg.Part.Index))
+		start = time.Now()
 		if added {
 			cs.statsMsgQueue <- mi
 		}
+		processingTime = time.Since(start)
+		schema.WriteMessageStats(cs.traceClient, "state", "state.BlockPartMessage.step3", processingTime.Nanoseconds(), fmt.Sprintf("new block part: %d %d %d", msg.Height, msg.Round, msg.Part.Index))
+		start = time.Now()
 
 		if err != nil && msg.Round != cs.Round {
 			cs.Logger.Debug(
@@ -984,8 +993,6 @@ func (cs *State) handleMsg(mi msgInfo) {
 			)
 			err = nil
 		}
-		processingTime := time.Since(start)
-		schema.WriteMessageStats(cs.traceClient, "state", "state.BlockPartMessage", processingTime.Nanoseconds(), fmt.Sprintf("new block part: %d %d %d", msg.Height, msg.Round, msg.Part.Index))
 
 	case *VoteMessage:
 		start := time.Now()
@@ -2125,6 +2132,7 @@ func (cs *State) defaultSetProposal(proposal *types.Proposal) error {
 // Asynchronously triggers either enterPrevote (before we timeout of propose) or tryFinalizeCommit,
 // once we have the full block.
 func (cs *State) addProposalBlockPart(msg *BlockPartMessage, peerID p2p.ID) (added bool, err error) {
+	start := time.Now()
 	height, round, part := msg.Height, msg.Round, msg.Part
 
 	// Blocks might be reused, so round mismatch is OK
@@ -2149,6 +2157,9 @@ func (cs *State) addProposalBlockPart(msg *BlockPartMessage, peerID p2p.ID) (add
 		return false, nil
 	}
 
+	processingTime := time.Since(start)
+	schema.WriteMessageStats(cs.traceClient, "state", "state.addProposalBlockPart.step1", processingTime.Nanoseconds(), fmt.Sprintf("new block part: %d %d %d", msg.Height, msg.Round, msg.Part.Index))
+	start = time.Now()
 	added, err = cs.ProposalBlockParts.AddPart(part)
 	if err != nil {
 		if errors.Is(err, types.ErrPartSetInvalidProof) || errors.Is(err, types.ErrPartSetUnexpectedIndex) {
@@ -2156,6 +2167,9 @@ func (cs *State) addProposalBlockPart(msg *BlockPartMessage, peerID p2p.ID) (add
 		}
 		return added, err
 	}
+	processingTime = time.Since(start)
+	schema.WriteMessageStats(cs.traceClient, "state", "state.addProposalBlockPart.step2", processingTime.Nanoseconds(), fmt.Sprintf("new block part: %d %d %d", msg.Height, msg.Round, msg.Part.Index))
+	start = time.Now()
 
 	cs.metrics.BlockGossipPartsReceived.With("matches_current", "true").Add(1)
 	if !added {
@@ -2173,11 +2187,17 @@ func (cs *State) addProposalBlockPart(msg *BlockPartMessage, peerID p2p.ID) (add
 			cs.ProposalBlockParts.ByteSize(), maxBytes,
 		)
 	}
+	processingTime = time.Since(start)
+	schema.WriteMessageStats(cs.traceClient, "state", "state.addProposalBlockPart.step3", processingTime.Nanoseconds(), fmt.Sprintf("new block part: %d %d %d", msg.Height, msg.Round, msg.Part.Index))
+	start = time.Now()
 	if added && cs.ProposalBlockParts.IsComplete() {
 		bz, err := io.ReadAll(cs.ProposalBlockParts.GetReader())
 		if err != nil {
 			return added, err
 		}
+		processingTime = time.Since(start)
+		schema.WriteMessageStats(cs.traceClient, "state", "state.addProposalBlockPart.step4", processingTime.Nanoseconds(), fmt.Sprintf("new block part: %d %d %d", msg.Height, msg.Round, msg.Part.Index))
+		start = time.Now()
 
 		pbb := new(cmtproto.Block)
 		err = proto.Unmarshal(bz, pbb)
@@ -2185,6 +2205,9 @@ func (cs *State) addProposalBlockPart(msg *BlockPartMessage, peerID p2p.ID) (add
 			return added, err
 		}
 
+		processingTime = time.Since(start)
+		schema.WriteMessageStats(cs.traceClient, "state", "state.addProposalBlockPart.step5", processingTime.Nanoseconds(), fmt.Sprintf("new block part: %d %d %d", msg.Height, msg.Round, msg.Part.Index))
+		start = time.Now()
 		block, err := types.BlockFromProto(pbb)
 		if err != nil {
 			return added, err
@@ -2195,9 +2218,15 @@ func (cs *State) addProposalBlockPart(msg *BlockPartMessage, peerID p2p.ID) (add
 		// NOTE: it's possible to receive complete proposal blocks for future rounds without having the proposal
 		cs.Logger.Info("received complete proposal block", "height", cs.ProposalBlock.Height, "hash", cs.ProposalBlock.Hash())
 
+		processingTime = time.Since(start)
+		schema.WriteMessageStats(cs.traceClient, "state", "state.addProposalBlockPart.step6", processingTime.Nanoseconds(), fmt.Sprintf("new block part: %d %d %d", msg.Height, msg.Round, msg.Part.Index))
+		start = time.Now()
 		if err := cs.eventBus.PublishEventCompleteProposal(cs.CompleteProposalEvent()); err != nil {
 			cs.Logger.Error("failed publishing event complete proposal", "err", err)
 		}
+		processingTime = time.Since(start)
+		schema.WriteMessageStats(cs.traceClient, "state", "state.addProposalBlockPart.step7", processingTime.Nanoseconds(), fmt.Sprintf("new block part: %d %d %d", msg.Height, msg.Round, msg.Part.Index))
+		start = time.Now()
 	}
 	return added, nil
 }
