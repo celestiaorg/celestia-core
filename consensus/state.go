@@ -987,6 +987,7 @@ func (cs *State) handleMsg(mi msgInfo) {
 		schema.WriteMessageStats(cs.traceClient, "state", "state.BlockPartMessage", processingTime.Nanoseconds(), fmt.Sprintf("new block part: %d %d %d", msg.Height, msg.Round, msg.Part.Index))
 
 	case *VoteMessage:
+		fmt.Println("received vote: ", msg.Vote.Type, " ", time.Now().String())
 		start := time.Now()
 		// attempt to add the vote and dupeout the validator if its a duplicate signature
 		// if the vote gives us a 2/3-any or 2/3-one, we transition
@@ -1121,6 +1122,7 @@ func (cs *State) handleTxsAvailable() {
 // NOTE: cs.StartTime was already set for height.
 func (cs *State) enterNewRound(height int64, round int32) {
 	logger := cs.Logger.With("height", height, "round", round)
+	fmt.Println("entering new round ", time.Now().String())
 
 	if cs.Height != height || round < cs.Round || (cs.Round == round && cs.Step != cstypes.RoundStepNewHeight) {
 		logger.Debug(
@@ -2173,6 +2175,7 @@ func (cs *State) addProposalBlockPart(msg *BlockPartMessage, peerID p2p.ID) (add
 		)
 	}
 	if added && cs.ProposalBlockParts.IsComplete() {
+		fmt.Println("received complete block: ", time.Now().String())
 		bz, err := io.ReadAll(cs.ProposalBlockParts.GetReader())
 		if err != nil {
 			return added, err
