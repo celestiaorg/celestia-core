@@ -987,7 +987,7 @@ func (cs *State) handleMsg(mi msgInfo) {
 		schema.WriteMessageStats(cs.traceClient, "state", "state.BlockPartMessage", processingTime.Nanoseconds(), fmt.Sprintf("new block part: %d %d %d", msg.Height, msg.Round, msg.Part.Index))
 
 	case *VoteMessage:
-		fmt.Println("received vote: ", msg.Vote.Type, " ", time.Now().String())
+		fmt.Println("received vote: ", msg.Vote.Height, " ", msg.Vote.Round, " ", msg.Vote.Type, " ", time.Now().String())
 		start := time.Now()
 		// attempt to add the vote and dupeout the validator if its a duplicate signature
 		// if the vote gives us a 2/3-any or 2/3-one, we transition
