@@ -967,9 +967,6 @@ func (cs *State) handleMsg(mi msgInfo) {
 		// of RoundState and only locking when switching out State's copy of
 		// RoundState with the updated copy or by emitting RoundState events in
 		// more places for routines depending on it to listen for.
-		cs.mtx.Unlock()
-
-		cs.mtx.Lock()
 		if added && cs.ProposalBlockParts.IsComplete() {
 			cs.handleCompleteProposal(msg.Height)
 		}
