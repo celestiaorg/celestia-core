@@ -293,9 +293,9 @@ func (conR *Reactor) Receive(e p2p.Envelope) {
 	case StateChannel:
 		switch msg := msg.(type) {
 		case *NewRoundStepMessage:
-			conR.conS.mtx.RLock()
+			conR.conS.mtx.Lock()
 			initialHeight := conR.conS.state.InitialHeight
-			conR.conS.mtx.RUnlock()
+			conR.conS.mtx.Unlock()
 			schema.WriteConsensusState(
 				conR.traceClient,
 				msg.Height,
@@ -344,9 +344,9 @@ func (conR *Reactor) Receive(e p2p.Envelope) {
 		case *VoteSetMaj23Message:
 			start := time.Now()
 			cs := conR.conS
-			cs.mtx.RLock()
+			cs.mtx.Lock()
 			height, votes := cs.Height, cs.Votes
-			cs.mtx.RUnlock()
+			cs.mtx.Unlock()
 			schema.WriteConsensusState(
 				conR.traceClient,
 				msg.Height,
@@ -482,9 +482,9 @@ func (conR *Reactor) Receive(e p2p.Envelope) {
 		case *VoteSetBitsMessage:
 			start := time.Now()
 			cs := conR.conS
-			cs.mtx.RLock()
+			cs.mtx.Lock()
 			height, votes := cs.Height, cs.Votes
-			cs.mtx.RUnlock()
+			cs.mtx.Unlock()
 
 			if height == msg.Height {
 				var ourVotes *bits.BitArray

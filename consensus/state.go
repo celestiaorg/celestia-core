@@ -930,6 +930,8 @@ func (cs *State) receiveRoutine(maxSteps int) {
 
 // state transitions on complete-proposal, 2/3-any, 2/3-one
 func (cs *State) handleMsg(mi msgInfo) {
+	cs.mtx.Lock()
+	defer cs.mtx.Unlock()
 	var (
 		added bool
 		err   error
@@ -942,8 +944,6 @@ func (cs *State) handleMsg(mi msgInfo) {
 		// will not cause transition.
 		// once proposal is set, we can receive block parts
 		start := time.Now()
-		cs.mtx.Lock()
-		defer cs.mtx.Unlock()
 		err = cs.setProposal(msg.Proposal)
 		processingTime := time.Since(start)
 		schema.WriteMessageStats(cs.traceClient, "state", "state.ProposalMessage", processingTime.Nanoseconds(), fmt.Sprintf("new proposal: %d %d %s", msg.Proposal.Height, msg.Proposal.Round, msg.Proposal.Type.String()))
@@ -951,7 +951,6 @@ func (cs *State) handleMsg(mi msgInfo) {
 	case *BlockPartMessage:
 		start := time.Now()
 		// if the proposal is complete, we'll enterPrevote or tryFinalizeCommit
-		// Warning: locking inside
 		added, err = cs.addProposalBlockPart(msg, peerID)
 
 		processingTime := time.Since(start)
@@ -968,12 +967,12 @@ func (cs *State) handleMsg(mi msgInfo) {
 		// of RoundState and only locking when switching out State's copy of
 		// RoundState with the updated copy or by emitting RoundState events in
 		// more places for routines depending on it to listen for.
+		cs.mtx.Unlock()
+
 		cs.mtx.Lock()
 		if added && cs.ProposalBlockParts.IsComplete() {
 			cs.handleCompleteProposal(msg.Height)
 		}
-		cs.mtx.Unlock()
-		cs.mtx.RLock()
 		processingTime = time.Since(start)
 		schema.WriteMessageStats(cs.traceClient, "state", "state.BlockPartMessage.step2", processingTime.Nanoseconds(), fmt.Sprintf("new block part: %d %d %d", msg.Height, msg.Round, msg.Part.Index))
 		start = time.Now()
@@ -993,20 +992,15 @@ func (cs *State) handleMsg(mi msgInfo) {
 			)
 			err = nil
 		}
-		cs.mtx.RUnlock()
 
 	case *VoteMessage:
 		fmt.Println("received vote: ", msg.Vote.Height, " ", msg.Vote.Round, " ", msg.Vote.Type, " ", msg.Vote.BlockID.Hash, " ", time.Now().String())
 		start := time.Now()
 		// attempt to add the vote and dupeout the validator if its a duplicate signature
 		// if the vote gives us a 2/3-any or 2/3-one, we transition
-		cs.mtx.Lock()
 		added, err = cs.tryAddVote(msg.Vote, peerID)
-		cs.mtx.Unlock()
 		if added {
-			cs.mtx.RLock()
 			cs.statsMsgQueue <- mi
-			cs.mtx.RUnlock()
 		}
 		processingTime := time.Since(start)
 		schema.WriteMessageStats(cs.traceClient, "state", "state.VoteMessage", processingTime.Nanoseconds(), fmt.Sprintf("new vote: %d %d %s", msg.Vote.Height, msg.Vote.Round, msg.Vote.Type.String()))
@@ -1032,7 +1026,6 @@ func (cs *State) handleMsg(mi msgInfo) {
 	}
 
 	if err != nil {
-		cs.mtx.RLock()
 		cs.Logger.Error(
 			"failed to process message",
 			"height", cs.Height,
@@ -1041,7 +1034,6 @@ func (cs *State) handleMsg(mi msgInfo) {
 			"msg_type", fmt.Sprintf("%T", msg),
 			"err", err,
 		)
-		cs.mtx.RUnlock()
 	}
 }
 
@@ -1099,6 +1091,8 @@ func (cs *State) handleTxsAvailable() {
 	case <-cs.nextBlock:
 	default:
 	}
+	cs.mtx.Lock()
+	defer cs.mtx.Unlock()
 
 	// We only need to do this for round 0.
 	if cs.Round != 0 {
@@ -1107,8 +1101,6 @@ func (cs *State) handleTxsAvailable() {
 
 	switch cs.Step {
 	case cstypes.RoundStepNewHeight: // timeoutCommit phase
-		cs.mtx.RLock()
-		defer cs.mtx.RUnlock()
 		if cs.needProofBlock(cs.Height) {
 			// enterPropose will be called by enterNewRound
 			return
@@ -1119,8 +1111,6 @@ func (cs *State) handleTxsAvailable() {
 		cs.scheduleTimeout(timeoutCommit, cs.Height, 0, cstypes.RoundStepNewRound)
 
 	case cstypes.RoundStepNewRound: // after timeoutCommit
-		cs.mtx.Lock()
-		defer cs.mtx.Unlock()
 		cs.enterPropose(cs.Height, 0)
 	}
 }
@@ -2143,8 +2133,6 @@ func (cs *State) defaultSetProposal(proposal *types.Proposal) error {
 // Asynchronously triggers either enterPrevote (before we timeout of propose) or tryFinalizeCommit,
 // once we have the full block.
 func (cs *State) addProposalBlockPart(msg *BlockPartMessage, peerID p2p.ID) (added bool, err error) {
-	cs.mtx.RLock()
-	defer cs.mtx.RUnlock()
 	start := time.Now()
 	height, round, part := msg.Height, msg.Round, msg.Part
 
@@ -2226,12 +2214,8 @@ func (cs *State) addProposalBlockPart(msg *BlockPartMessage, peerID p2p.ID) (add
 		if err != nil {
 			return added, err
 		}
-		cs.mtx.RUnlock()
-		cs.mtx.Lock()
+
 		cs.ProposalBlock = block
-		cs.mtx.Unlock()
-		cs.mtx.Lock()
-		defer cs.mtx.Unlock()
 		fmt.Println("unmarshalled the block: ", time.Now().String())
 		// NOTE: it's possible to receive complete proposal blocks for future rounds without having the proposal
 		cs.Logger.Info("received complete proposal block", "height", cs.ProposalBlock.Height, "hash", cs.ProposalBlock.Hash())
