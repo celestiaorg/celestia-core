@@ -55,7 +55,14 @@ func (blockProp *Reactor) ProposeBlock(proposal *types.Proposal, block *types.Pa
 	// prepended with the chain id and UID
 	sig, err := blockProp.privval.SignRawBytes(blockProp.chainID, CompactBlockUID, sbz)
 	if err != nil {
-		blockProp.Logger.Error("failed to sign compact block", "err", err)
+		blockProp.Logger.Error("failed to sign compact block - this may indicate an incompatible KMS version that does not support compact block signing",
+			"err", err,
+			"height", proposal.Height,
+			"round", proposal.Round,
+			"chain_id", blockProp.chainID,
+			"unique_id", CompactBlockUID,
+		)
+		blockProp.Logger.Info("compact block signing will be retried on the next proposal - ensure KMS supports compact block signing for v5 compatibility")
 		return
 	}
 
