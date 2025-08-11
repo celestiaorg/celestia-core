@@ -2,6 +2,7 @@ package cat
 
 import (
 	"fmt"
+	"github.com/cosmos/gogoproto/proto"
 	"math/rand"
 	"time"
 
@@ -19,7 +20,7 @@ import (
 const (
 	// default duration to wait before considering a peer non-responsive
 	// and searching for the tx from a new peer
-	DefaultGossipDelay = 200 * time.Millisecond
+	DefaultGossipDelay = 20_000 * time.Millisecond
 
 	// MempoolDataChannel channel for SeenTx and blob messages.
 	MempoolDataChannel = byte(0x31)
@@ -68,9 +69,9 @@ func (opts *ReactorOptions) VerifyAndComplete() error {
 		opts.MaxTxSize = cfg.DefaultMempoolConfig().MaxTxBytes
 	}
 
-	if opts.MaxGossipDelay == 0 {
-		opts.MaxGossipDelay = DefaultGossipDelay
-	}
+	//if opts.MaxGossipDelay == 0 {
+	opts.MaxGossipDelay = DefaultGossipDelay
+	//}
 
 	if opts.MaxTxSize < 0 {
 		return fmt.Errorf("max tx size (%d) cannot be negative", opts.MaxTxSize)
@@ -97,13 +98,14 @@ func NewReactor(mempool *TxPool, opts *ReactorOptions) (*Reactor, error) {
 		opts:        opts,
 		mempool:     mempool,
 		ids:         newMempoolIDs(),
-		requests:    newRequestScheduler(opts.MaxGossipDelay, defaultGlobalRequestTimeout),
+		requests:    newRequestScheduler(20_000, defaultGlobalRequestTimeout),
 		traceClient: traceClient,
 	}
 	memR.BaseReactor = *p2p.NewBaseReactor("CAT", memR,
 		p2p.WithIncomingQueueSize(ReactorIncomingMessageQueueSize),
 		p2p.WithQueueingFunc(memR.TryQueueUnprocessedEnvelope),
 	)
+	memR.BaseReactor.SetTracer(memR.traceClient)
 	return memR, nil
 }
 
@@ -199,16 +201,22 @@ func (memR *Reactor) RemovePeer(peer p2p.Peer, reason interface{}) {
 
 	// remove and rerequest all pending outbound requests to that peer since we know
 	// we won't receive any responses from them.
-	outboundRequests := memR.requests.ClearAllRequestsFrom(peerID)
-	for key := range outboundRequests {
-		memR.mempool.metrics.RequestedTxs.Add(1)
-		memR.findNewPeerToRequestTx(key)
-	}
+	memR.requests.ClearAllRequestsFrom(peerID)
+	//for key := range outboundRequests {
+	//	memR.mempool.metrics.RequestedTxs.Add(1)
+	//	memR.findNewPeerToRequestTx(key)
+	//}
 }
 
 // ReceiveEnvelope implements Reactor.
 // It processes one of three messages: Txs, SeenTx, WantTx.
 func (memR *Reactor) Receive(e p2p.Envelope) {
+	schema.WriteMempoolSize(memR.traceClient, memR.mempool.SizeBytes())
+	startOfReceive := time.Now()
+	defer func() {
+		processingTime := time.Since(startOfReceive)
+		schema.WriteMessageStats(memR.traceClient, "cat", proto.MessageName(e.Message), processingTime.Nanoseconds(), "")
+	}()
 	switch msg := e.Message.(type) {
 
 	// A peer has sent us one or more transactions. This could be either because we requested them
@@ -216,6 +224,7 @@ func (memR *Reactor) Receive(e p2p.Envelope) {
 	// NOTE: This setup also means that we can support older mempool implementations that simply
 	// flooded the network with transactions.
 	case *protomem.Txs:
+		start := time.Now()
 		protoTxs := msg.GetTxs()
 		if len(protoTxs) == 0 {
 			memR.Logger.Error("received empty txs from peer", "src", e.Src)
@@ -226,7 +235,10 @@ func (memR *Reactor) Receive(e p2p.Envelope) {
 		txInfo.SenderP2PID = e.Src.ID()
 
 		var err error
+		processingTime := time.Since(start)
+		schema.WriteMessageStats(memR.traceClient, "cat", "mempool.Txs.Step1", processingTime.Nanoseconds(), "")
 		for _, tx := range protoTxs {
+			start = time.Now()
 			ntx := types.Tx(tx)
 			key := ntx.Key()
 			schema.WriteMempoolTx(memR.traceClient, string(e.Src.ID()), key[:], len(tx), schema.Download)
@@ -240,15 +252,23 @@ func (memR *Reactor) Receive(e p2p.Envelope) {
 				memR.mempool.PeerHasTx(peerID, key)
 				memR.Logger.Debug("received new trasaction", "peerID", peerID, "txKey", key)
 			}
+			processingTime = time.Since(start)
+			schema.WriteMessageStats(memR.traceClient, "cat", "mempool.Txs.Step2", processingTime.Nanoseconds(), "")
+			start = time.Now()
 			_, err = memR.mempool.TryAddNewTx(ntx.ToCachedTx(), key, txInfo)
 			if err != nil && err != ErrTxInMempool {
 				memR.Logger.Debug("Could not add tx", "txKey", key, "err", err)
 				return
 			}
+			processingTime = time.Since(start)
+			schema.WriteMessageStats(memR.traceClient, "cat", "mempool.Txs.Step3", processingTime.Nanoseconds(), "")
+			start = time.Now()
 			if !memR.opts.ListenOnly {
 				// We broadcast only transactions that we deem valid and actually have in our mempool.
 				memR.broadcastSeenTx(key)
 			}
+			processingTime = time.Since(start)
+			schema.WriteMessageStats(memR.traceClient, "cat", "mempool.Txs.Step4", processingTime.Nanoseconds(), "")
 		}
 
 	// A peer has indicated to us that it has a transaction. We first verify the txkey and
@@ -447,6 +467,11 @@ func (memR *Reactor) requestTx(txKey types.TxKey, peer p2p.Peer) {
 // findNewPeerToSendTx finds a new peer that has already seen the transaction to
 // request a transaction from.
 func (memR *Reactor) findNewPeerToRequestTx(txKey types.TxKey) {
+	start := time.Now()
+	defer func() {
+		processingTime := time.Since(start)
+		schema.WriteMessageStats(memR.traceClient, "cat", "mempool.findNewPeerToSendTx", processingTime.Nanoseconds(), "")
+	}()
 	// ensure that we are connected to peers
 	if memR.ids.Len() == 0 {
 		return
