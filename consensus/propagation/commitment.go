@@ -62,7 +62,6 @@ func (blockProp *Reactor) ProposeBlock(proposal *types.Proposal, block *types.Pa
 			"chain_id", blockProp.chainID,
 			"unique_id", CompactBlockUID,
 		)
-		blockProp.Logger.Info("compact block signing will be retried on the next proposal - ensure KMS supports compact block signing for v5 compatibility")
 		return
 	}
 
