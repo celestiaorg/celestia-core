@@ -1,7 +1,6 @@
 package propagation
 
 import (
-	"bytes"
 	"testing"
 	"time"
 
