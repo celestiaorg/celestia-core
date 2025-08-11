@@ -19,7 +19,7 @@ import (
 const (
 	// default duration to wait before considering a peer non-responsive
 	// and searching for the tx from a new peer
-	DefaultGossipDelay = 200 * time.Millisecond
+	DefaultGossipDelay = 60 * time.Second
 
 	// MempoolDataChannel channel for SeenTx and blob messages.
 	MempoolDataChannel = byte(0x31)

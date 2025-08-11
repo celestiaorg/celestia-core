@@ -273,6 +273,69 @@ func TestLegacyReactorReceiveBasic(t *testing.T) {
 	})
 }
 
+func TestDefaultGossipDelay(t *testing.T) {
+	// Test that DefaultGossipDelay is set to the expected value
+	expectedDelay := 60 * time.Second
+	assert.Equal(t, expectedDelay, DefaultGossipDelay, "DefaultGossipDelay should be 60 seconds")
+}
+
+func TestReactorOptionsVerifyAndComplete(t *testing.T) {
+	tests := []struct {
+		name     string
+		opts     ReactorOptions
+		expected ReactorOptions
+		wantErr  bool
+	}{
+		{
+			name: "default options should use DefaultGossipDelay",
+			opts: ReactorOptions{},
+			expected: ReactorOptions{
+				MaxTxSize:      cfg.DefaultMempoolConfig().MaxTxBytes,
+				MaxGossipDelay: DefaultGossipDelay,
+			},
+			wantErr: false,
+		},
+		{
+			name: "custom MaxGossipDelay should be preserved",
+			opts: ReactorOptions{
+				MaxGossipDelay: 30 * time.Second,
+			},
+			expected: ReactorOptions{
+				MaxTxSize:      cfg.DefaultMempoolConfig().MaxTxBytes,
+				MaxGossipDelay: 30 * time.Second,
+			},
+			wantErr: false,
+		},
+		{
+			name: "negative MaxGossipDelay should return error",
+			opts: ReactorOptions{
+				MaxGossipDelay: -1 * time.Second,
+			},
+			wantErr: true,
+		},
+		{
+			name: "negative MaxTxSize should return error",
+			opts: ReactorOptions{
+				MaxTxSize: -1,
+			},
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := tt.opts.VerifyAndComplete()
+			if tt.wantErr {
+				assert.Error(t, err)
+				return
+			}
+			assert.NoError(t, err)
+			assert.Equal(t, tt.expected.MaxTxSize, tt.opts.MaxTxSize)
+			assert.Equal(t, tt.expected.MaxGossipDelay, tt.opts.MaxGossipDelay)
+		})
+	}
+}
+
 func setupReactor(t *testing.T) (*Reactor, *TxPool) {
 	app := &application{kvstore.NewApplication(db.NewMemDB())}
 	cc := proxy.NewLocalClientCreator(app)
