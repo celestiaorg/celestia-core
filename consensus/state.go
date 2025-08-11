@@ -2230,8 +2230,7 @@ func (cs *State) addProposalBlockPart(msg *BlockPartMessage, peerID p2p.ID) (add
 		cs.mtx.Lock()
 		cs.ProposalBlock = block
 		cs.mtx.Unlock()
-		cs.mtx.Lock()
-		defer cs.mtx.Unlock()
+		cs.mtx.RLock()
 		fmt.Println("unmarshalled the block: ", time.Now().String())
 		// NOTE: it's possible to receive complete proposal blocks for future rounds without having the proposal
 		cs.Logger.Info("received complete proposal block", "height", cs.ProposalBlock.Height, "hash", cs.ProposalBlock.Hash())
