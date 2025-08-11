@@ -234,7 +234,7 @@ func decideProposal(
 	require.NoError(t, err)
 	blockParts, err := block.MakePartSet(types.BlockPartSizeBytes)
 	require.NoError(t, err)
-	validRound := cs1.ValidRound
+	validRound := cs1.rs.ValidRound.Load()
 	chainID := cs1.state.ChainID
 	cs1.mtx.Unlock()
 	if block == nil {
@@ -273,7 +273,7 @@ func signAddVotes(
 }
 
 func validatePrevote(t *testing.T, cs *State, round int32, privVal *validatorStub, blockHash []byte) {
-	prevotes := cs.Votes.Prevotes(round)
+	prevotes := cs.rs.GetVotes().Prevotes(round)
 	pubKey, err := privVal.GetPubKey()
 	require.NoError(t, err)
 	address := pubKey.Address()
@@ -293,7 +293,7 @@ func validatePrevote(t *testing.T, cs *State, round int32, privVal *validatorStu
 }
 
 func validateLastPrecommit(t *testing.T, cs *State, privVal *validatorStub, blockHash []byte) {
-	votes := cs.LastCommit
+	votes := cs.rs.GetLastCommit()
 	pv, err := privVal.GetPubKey()
 	require.NoError(t, err)
 	address := pv.Address()
@@ -315,7 +315,7 @@ func validatePrecommit(
 	votedBlockHash,
 	lockedBlockHash []byte,
 ) {
-	precommits := cs.Votes.Precommits(thisRound)
+	precommits := cs.rs.GetVotes().Precommits(thisRound)
 	pv, err := privVal.GetPubKey()
 	require.NoError(t, err)
 	address := pv.Address()
@@ -336,20 +336,20 @@ func validatePrecommit(
 
 	rs := cs.GetRoundState()
 	if lockedBlockHash == nil {
-		if rs.LockedRound != lockRound || rs.LockedBlock != nil {
+		if rs.LockedRound.Load() != lockRound || rs.GetLockedBlock() != nil {
 			panic(fmt.Sprintf(
 				"Expected to be locked on nil at round %d. Got locked at round %d with block %v",
 				lockRound,
-				rs.LockedRound,
-				rs.LockedBlock))
+				rs.LockedRound.Load(),
+				rs.GetLockedBlock()))
 		}
 	} else {
-		if rs.LockedRound != lockRound || !bytes.Equal(rs.LockedBlock.Hash(), lockedBlockHash) {
+		if rs.LockedRound.Load() != lockRound || !bytes.Equal(rs.GetLockedBlock().Hash(), lockedBlockHash) {
 			panic(fmt.Sprintf(
 				"Expected block to be locked on round %d, got %d. Got locked block %X, expected %X",
 				lockRound,
-				rs.LockedRound,
-				rs.LockedBlock.Hash(),
+				rs.LockedRound.Load(),
+				rs.GetLockedBlock().Hash(),
 				lockedBlockHash))
 		}
 	}

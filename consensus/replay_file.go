@@ -252,13 +252,13 @@ func (pb *playback) replayConsoleLoop() int {
 			// "rs short" -> print height/round/step
 			// "rs <field>" -> print another field of the round state
 
-			rs := pb.cs.RoundState
+			rs := &pb.cs.rs
 			if len(tokens) == 1 {
 				fmt.Println(rs)
 			} else {
 				switch tokens[1] {
 				case "short":
-					fmt.Printf("%v/%v/%v\n", rs.Height, rs.Round, rs.Step)
+					fmt.Printf("%v/%v/%v\n", rs.Height.Load(), rs.Round.Load(), rs.Step)
 				case "validators":
 					fmt.Println(rs.Validators)
 				case "proposal":
@@ -266,7 +266,7 @@ func (pb *playback) replayConsoleLoop() int {
 				case "proposal_block":
 					fmt.Printf("%v %v\n", rs.ProposalBlockParts.StringShort(), rs.ProposalBlock.StringShort())
 				case "locked_round":
-					fmt.Println(rs.LockedRound)
+					fmt.Println(rs.LockedRound.Load())
 				case "locked_block":
 					fmt.Printf("%v %v\n", rs.LockedBlockParts.StringShort(), rs.LockedBlock.StringShort())
 				case "votes":

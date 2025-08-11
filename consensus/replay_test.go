@@ -349,7 +349,7 @@ func setupChainWithChangingValidators(t *testing.T, name string, nBlocks int) (*
 	for i := 0; i < nPeers; i++ {
 		vss[i] = newValidatorStub(css[i].privValidator, int32(i))
 	}
-	height, round := css[0].Height, css[0].Round
+	height, round := css[0].rs.Height.Load(), css[0].rs.Round.Load()
 
 	// start the machine
 	startTestRound(css[0], height, round)
@@ -357,7 +357,7 @@ func setupChainWithChangingValidators(t *testing.T, name string, nBlocks int) (*
 	ensureNewRound(newRoundCh, height, 0)
 	ensureNewProposal(proposalCh, height, round)
 	rs := css[0].GetRoundState()
-	signAddVotes(css[0], cmtproto.PrecommitType, rs.ProposalBlock.Hash(), rs.ProposalBlockParts.Header(), true, vss[1:nVals]...)
+	signAddVotes(css[0], cmtproto.PrecommitType, rs.GetProposalBlock().Hash(), rs.GetProposalBlockParts().Header(), true, vss[1:nVals]...)
 	ensureNewRound(newRoundCh, height+1, 0)
 
 	// HEIGHT 2
@@ -387,7 +387,7 @@ func setupChainWithChangingValidators(t *testing.T, name string, nBlocks int) (*
 	}
 	ensureNewProposal(proposalCh, height, round)
 	rs = css[0].GetRoundState()
-	signAddVotes(css[0], cmtproto.PrecommitType, rs.ProposalBlock.Hash(), rs.ProposalBlockParts.Header(), true, vss[1:nVals]...)
+	signAddVotes(css[0], cmtproto.PrecommitType, rs.GetProposalBlock().Hash(), rs.GetProposalBlockParts().Header(), true, vss[1:nVals]...)
 	ensureNewRound(newRoundCh, height+1, 0)
 
 	// HEIGHT 3
@@ -417,7 +417,7 @@ func setupChainWithChangingValidators(t *testing.T, name string, nBlocks int) (*
 	}
 	ensureNewProposal(proposalCh, height, round)
 	rs = css[0].GetRoundState()
-	signAddVotes(css[0], cmtproto.PrecommitType, rs.ProposalBlock.Hash(), rs.ProposalBlockParts.Header(), true, vss[1:nVals]...)
+	signAddVotes(css[0], cmtproto.PrecommitType, rs.GetProposalBlock().Hash(), rs.GetProposalBlockParts().Header(), true, vss[1:nVals]...)
 	ensureNewRound(newRoundCh, height+1, 0)
 
 	// HEIGHT 4
@@ -483,7 +483,7 @@ func setupChainWithChangingValidators(t *testing.T, name string, nBlocks int) (*
 		if i == selfIndex {
 			continue
 		}
-		signAddVotes(css[0], cmtproto.PrecommitType, rs.ProposalBlock.Hash(), rs.ProposalBlockParts.Header(), true, newVss[i])
+		signAddVotes(css[0], cmtproto.PrecommitType, rs.GetProposalBlock().Hash(), rs.GetProposalBlockParts().Header(), true, newVss[i])
 	}
 
 	ensureNewRound(newRoundCh, height+1, 0)
@@ -502,7 +502,7 @@ func setupChainWithChangingValidators(t *testing.T, name string, nBlocks int) (*
 		if i == selfIndex {
 			continue
 		}
-		signAddVotes(css[0], cmtproto.PrecommitType, rs.ProposalBlock.Hash(), rs.ProposalBlockParts.Header(), true, newVss[i])
+		signAddVotes(css[0], cmtproto.PrecommitType, rs.GetProposalBlock().Hash(), rs.GetProposalBlockParts().Header(), true, newVss[i])
 	}
 	ensureNewRound(newRoundCh, height+1, 0)
 
@@ -537,7 +537,7 @@ func setupChainWithChangingValidators(t *testing.T, name string, nBlocks int) (*
 		if i == selfIndex {
 			continue
 		}
-		signAddVotes(css[0], cmtproto.PrecommitType, rs.ProposalBlock.Hash(), rs.ProposalBlockParts.Header(), true, newVss[i])
+		signAddVotes(css[0], cmtproto.PrecommitType, rs.GetProposalBlock().Hash(), rs.GetProposalBlockParts().Header(), true, newVss[i])
 	}
 	ensureNewRound(newRoundCh, height+1, 0)
 
