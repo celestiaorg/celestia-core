@@ -62,7 +62,7 @@ func (idx *BlockerIndexer) Has(height int64) (bool, error) {
 // The following is indexed:
 //
 // primary key: encode(block.height | height) => encode(height)
-// FinalizeBlock events: encode(eventType.eventAttr|eventValue|height|finalize_block|eventSeq) => encode(height)
+// FinalizeBlock events: encode(eventType.eventAttr|eventValue|height|eventSeq) => encode(height)
 func (idx *BlockerIndexer) Index(bh types.EventDataNewBlockEvents) error {
 	batch := idx.store.NewBatch()
 	defer batch.Close()
