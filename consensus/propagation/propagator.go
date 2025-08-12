@@ -42,6 +42,11 @@ func (noOpPSE) SetHasProposalBlockPart(_ int64, _ int32, _ int) {}
 // the propagation functionality when used in place of the actual propagation reactor.
 type NoOpPropagator struct{}
 
+func (nop *NoOpPropagator) PrepareBlock(block *types.PartSet, txs []proptypes.TxMetaData) {
+}
+
+var _ Propagator = &NoOpPropagator{}
+
 // NewNoOpPropagator creates a new no-operation Propagator.
 func NewNoOpPropagator() *NoOpPropagator {
 	return &NoOpPropagator{}
@@ -51,7 +56,7 @@ func (nop *NoOpPropagator) GetProposal(_ int64, _ int32) (*types.Proposal, *type
 	return nil, nil, false
 }
 
-func (nop *NoOpPropagator) ProposeBlock(_ *types.Proposal, _ *types.PartSet, _ []proptypes.TxMetaData) {
+func (nop *NoOpPropagator) ProposeBlock(_ *types.Proposal, _ *types.PartSet) {
 }
 
 func (nop *NoOpPropagator) AddCommitment(_ int64, _ int32, _ *types.PartSetHeader) {
