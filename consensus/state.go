@@ -1295,32 +1295,8 @@ func (cs *State) defaultDecideProposal(height int64, round int32) {
 
 	// Decide on block
 	if cs.rs.GetValidBlock() != nil {
-		// If there is valid block, choose that.
-		block = cs.rs.GetValidBlock()
-
-		// set the recovery related fields if using an existing block
-		hashes := make([][]byte, len(block.Txs))
-		for i := 0; i < len(block.Txs); i++ {
-			hashes[i] = block.Txs[i].Hash()
-		}
-		block.SetCachedHashes(hashes)
-
-		parts, err := block.MakePartSet(types.BlockPartSizeBytes)
-		if err != nil {
-			cs.Logger.Error("unable to generate the partset from existing block", "error", err)
-			return
-		}
-		blockParts = parts
-
-		metaData := make([]proptypes.TxMetaData, len(block.Txs))
-		for i, pos := range blockParts.TxPos {
-			metaData[i] = proptypes.TxMetaData{
-				Start: pos.Start,
-				End:   pos.End,
-				Hash:  hashes[i],
-			}
-		}
-		cs.propagator.PrepareBlock(blockParts, metaData)
+		fmt.Println("returning because no valid block")
+		return
 
 	} else if len(cs.nextBlock) != 0 {
 		bwp := <-cs.nextBlock
@@ -1328,26 +1304,8 @@ func (cs *State) defaultDecideProposal(height int64, round int32) {
 		blockParts = bwp.parts
 	} else {
 		// Create a new proposal block from state/txs from the mempool.
-		var err error
-		block, blockParts, err = cs.createProposalBlock(context.TODO())
-		if err != nil {
-			cs.Logger.Error("unable to create proposal block", "error", err)
-			return
-		} else if block == nil {
-			panic("Method createProposalBlock should not provide a nil block without errors")
-		}
-		cs.metrics.ProposalCreateCount.Add(1)
-		metaData := make([]proptypes.TxMetaData, len(block.Txs))
-		hashes := block.CachedHashes()
-		for i, pos := range blockParts.TxPos {
-			metaData[i] = proptypes.TxMetaData{
-				Start: pos.Start,
-				End:   pos.End,
-				Hash:  hashes[i],
-			}
-		}
-
-		cs.propagator.PrepareBlock(blockParts, metaData)
+		fmt.Println("returning because no else")
+		return
 	}
 
 	// Flush the WAL. Otherwise, we may not recompute the same proposal to sign,
@@ -1770,7 +1728,7 @@ func (cs *State) buildNextBlock() {
 		}
 	}
 
-	cs.propagator.PrepareBlock(blockParts, metaData)
+	go cs.propagator.PrepareBlock(blockParts, metaData)
 
 	cs.nextBlock <- &blockWithParts{
 		block: block,
