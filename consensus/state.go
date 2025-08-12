@@ -1311,6 +1311,17 @@ func (cs *State) defaultDecideProposal(height int64, round int32) {
 			return
 		}
 		blockParts = parts
+
+		metaData := make([]proptypes.TxMetaData, len(block.Txs))
+		for i, pos := range blockParts.TxPos {
+			metaData[i] = proptypes.TxMetaData{
+				Start: pos.Start,
+				End:   pos.End,
+				Hash:  hashes[i],
+			}
+		}
+		cs.propagator.PrepareBlock(blockParts, metaData)
+
 	} else if len(cs.nextBlock) != 0 {
 		bwp := <-cs.nextBlock
 		block = bwp.block
@@ -1344,17 +1355,7 @@ func (cs *State) defaultDecideProposal(height int64, round int32) {
 		// send proposal and block parts on internal msg queue
 		cs.sendInternalMessage(msgInfo{&ProposalMessage{proposal}, ""})
 
-		metaData := make([]proptypes.TxMetaData, len(block.Txs))
-		hashes := block.CachedHashes()
-		for i, pos := range blockParts.TxPos {
-			metaData[i] = proptypes.TxMetaData{
-				Start: pos.Start,
-				End:   pos.End,
-				Hash:  hashes[i],
-			}
-		}
-
-		cs.propagator.ProposeBlock(proposal, blockParts, metaData)
+		cs.propagator.ProposeBlock(proposal, blockParts)
 
 		for i := 0; i < int(blockParts.Total()); i++ {
 			part := blockParts.GetPart(i)
@@ -1498,6 +1499,8 @@ func (cs *State) defaultDoPrevote(height int64, round int32) {
 	}
 	schema.WriteABCI(cs.traceClient, schema.ProcessProposalEnd, height, round)
 	cs.metrics.MarkProposalProcessed(isAppValid)
+
+	fmt.Println("block size: ", cs.rs.GetProposalBlock().Size()/1_000_000)
 
 	// Vote nil if the Application rejected the block
 	if !isAppValid {
@@ -1724,7 +1727,7 @@ func (cs *State) enterPrecommitWait(height int64, round int32) {
 }
 
 // blockBuildingTime the time it takes to build a new 32 mb block and a safety cushion.
-const blockBuildingTime = 1800 * time.Millisecond
+const blockBuildingTime = 2700 * time.Millisecond
 
 // buildNextBlock creates the next block pre-emptively if we're the proposer.
 func (cs *State) buildNextBlock() {
@@ -1744,6 +1747,18 @@ func (cs *State) buildNextBlock() {
 	} else if block == nil {
 		panic("Method createProposalBlock should not provide a nil block without errors")
 	}
+
+	metaData := make([]proptypes.TxMetaData, len(block.Txs))
+	hashes := block.CachedHashes()
+	for i, pos := range blockParts.TxPos {
+		metaData[i] = proptypes.TxMetaData{
+			Start: pos.Start,
+			End:   pos.End,
+			Hash:  hashes[i],
+		}
+	}
+
+	cs.propagator.PrepareBlock(blockParts, metaData)
 
 	cs.nextBlock <- &blockWithParts{
 		block: block,

@@ -23,26 +23,27 @@ const (
 	CompactBlockUID = "compactBlock"
 )
 
-// ProposeBlock is called when the consensus routine has created a new proposal,
-// and it needs to be gossiped to the rest of the network.
-func (blockProp *Reactor) ProposeBlock(proposal *types.Proposal, block *types.PartSet, txs []proptypes.TxMetaData) {
+var cb *proptypes.CompactBlock
+var parityBlock *types.PartSet
+
+func (blockProp *Reactor) PrepareBlock(block *types.PartSet, txs []proptypes.TxMetaData) {
 	start := time.Now()
 	defer func() {
 		processingTime := time.Since(start)
-		schema.WriteMessageStats(blockProp.traceClient, "propagation", "ProposeBlock", processingTime.Nanoseconds(), fmt.Sprintf("propose block: %d %d %d", proposal.Height, proposal.Round, block.Total()))
+		schema.WriteMessageStats(blockProp.traceClient, "propagation", "PrepareBlock", processingTime.Nanoseconds(), "")
 	}()
 	// create the parity data and the compact block
-	parityBlock, lastLen, err := types.Encode(block, types.BlockPartSizeBytes)
+	pb, lastLen, err := types.Encode(block, types.BlockPartSizeBytes)
 	if err != nil {
 		blockProp.Logger.Error("failed to encode block", "err", err)
 		return
 	}
+	parityBlock = pb
 
 	partHashes := extractHashes(block, parityBlock)
 	proofs := extractProofs(block, parityBlock)
 
-	cb := proptypes.CompactBlock{
-		Proposal:    *proposal,
+	cb = &proptypes.CompactBlock{
 		LastLen:     uint32(lastLen),
 		BpHash:      parityBlock.Hash(),
 		Blobs:       txs,
@@ -50,7 +51,12 @@ func (blockProp *Reactor) ProposeBlock(proposal *types.Proposal, block *types.Pa
 	}
 
 	cb.SetProofCache(proofs)
+}
 
+// ProposeBlock is called when the consensus routine has created a new proposal,
+// and it needs to be gossiped to the rest of the network.
+func (blockProp *Reactor) ProposeBlock(proposal *types.Proposal, block *types.PartSet) {
+	cb.Proposal = *proposal
 	sbz, err := cb.SignBytes()
 	if err != nil {
 		blockProp.Logger.Error("failed to create signature for compact block", "err", err)
@@ -67,15 +73,15 @@ func (blockProp *Reactor) ProposeBlock(proposal *types.Proposal, block *types.Pa
 
 	cb.Signature = sig
 
-	// save the compact block locally and broadcast it to the connected peers
-	blockProp.handleCompactBlock(&cb, blockProp.self, true)
-
 	_, parts, _, has := blockProp.getAllState(proposal.Height, proposal.Round, false)
 	if !has {
 		panic(fmt.Sprintf("failed to get all state for this node's proposal %d/%d", proposal.Height, proposal.Round))
 	}
 
 	parts.SetProposalData(block, parityBlock)
+
+	// save the compact block locally and broadcast it to the connected peers
+	blockProp.handleCompactBlock(cb, blockProp.self, true)
 
 	// distribute equal portions of haves to each of the proposer's peers
 	peers := blockProp.getPeers()
