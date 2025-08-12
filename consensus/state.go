@@ -283,7 +283,6 @@ func (cs *State) String() string {
 
 // GetState returns a copy of the chain state.
 func (cs *State) GetState() sm.State {
-	fmt.Println("getting lock14")
 	cs.mtx.RLock()
 	defer cs.mtx.RUnlock()
 	return cs.state.Copy()
@@ -292,7 +291,6 @@ func (cs *State) GetState() sm.State {
 // GetLastHeight returns the last height committed.
 // If there were no blocks, returns 0.
 func (cs *State) GetLastHeight() int64 {
-	fmt.Println("getting lock3")
 	cs.mtx.RLock()
 	defer cs.mtx.RUnlock()
 	return cs.rs.Height.Load() - 1 //nolint:staticcheck
@@ -300,7 +298,6 @@ func (cs *State) GetLastHeight() int64 {
 
 // GetRoundState returns a shallow copy of the internal consensus state.
 func (cs *State) GetRoundState() *cstypes.RoundState {
-	fmt.Println("getting lock4")
 	cs.mtx.RLock()
 	rs := cs.rs // copy
 	cs.mtx.RUnlock()
@@ -309,7 +306,6 @@ func (cs *State) GetRoundState() *cstypes.RoundState {
 
 // GetRoundStateJSON returns a json of RoundState.
 func (cs *State) GetRoundStateJSON() ([]byte, error) {
-	fmt.Println("getting lock5")
 	cs.mtx.RLock()
 	defer cs.mtx.RUnlock()
 	return cmtjson.Marshal(cs.rs)
@@ -317,7 +313,6 @@ func (cs *State) GetRoundStateJSON() ([]byte, error) {
 
 // GetRoundStateSimpleJSON returns a json of RoundStateSimple
 func (cs *State) GetRoundStateSimpleJSON() ([]byte, error) {
-	fmt.Println("getting lock6")
 	cs.mtx.RLock()
 	defer cs.mtx.RUnlock()
 	return cmtjson.Marshal(cs.rs.RoundStateSimple()) //nolint:staticcheck
@@ -325,7 +320,6 @@ func (cs *State) GetRoundStateSimpleJSON() ([]byte, error) {
 
 // GetValidators returns a copy of the current validators.
 func (cs *State) GetValidators() (int64, []*types.Validator) {
-	fmt.Println("getting lock11")
 	cs.mtx.RLock()
 	defer cs.mtx.RUnlock()
 	return cs.state.LastBlockHeight, cs.state.Validators.Copy().Validators
@@ -334,7 +328,6 @@ func (cs *State) GetValidators() (int64, []*types.Validator) {
 // SetPrivValidator sets the private validator account for signing votes. It
 // immediately requests pubkey and caches it.
 func (cs *State) SetPrivValidator(priv types.PrivValidator) {
-	fmt.Println("getting lock12")
 	cs.mtx.Lock()
 	cs.privValidator = priv
 	cs.mtx.Unlock()
@@ -347,7 +340,6 @@ func (cs *State) SetPrivValidator(priv types.PrivValidator) {
 // SetTimeoutTicker sets the local timer. It may be useful to overwrite for
 // testing.
 func (cs *State) SetTimeoutTicker(timeoutTicker TimeoutTicker) {
-	fmt.Println("getting lock13")
 	cs.mtx.Lock()
 	cs.timeoutTicker = timeoutTicker
 	cs.mtx.Unlock()
@@ -832,11 +824,9 @@ func (cs *State) newStep() {
 		cs.Logger.Error("failed writing to WAL", "err", err)
 	}
 
-	fmt.Println("obtaining lock5")
 	cs.mtx.Lock()
 	cs.nSteps++
 	cs.mtx.Unlock()
-	fmt.Println("releasing lock 5")
 
 	// newStep is called by updateToState in NewState before the eventBus is set!
 	if cs.eventBus != nil {
@@ -890,7 +880,6 @@ func (cs *State) receiveRoutine(maxSteps int) {
 		if maxSteps > 0 {
 			if cs.nSteps >= maxSteps {
 				cs.Logger.Debug("reached max steps; exiting receive routine")
-				fmt.Println("getting lock15")
 				cs.mtx.Lock()
 				cs.nSteps = 0
 				cs.mtx.Unlock()
@@ -2400,13 +2389,11 @@ func (cs *State) addVote(vote *types.Vote, peerID p2p.ID) (added bool, err error
 		// corresponding public key.
 
 		var myAddr []byte
-		fmt.Println("obtaining lock1")
 		cs.mtx.RLock()
 		if cs.privValidatorPubKey != nil {
 			myAddr = cs.privValidatorPubKey.Address()
 		}
 		cs.mtx.RUnlock()
-		fmt.Println("released lock1")
 		// Verify VoteExtension if precommit and not nil
 		// https://github.com/tendermint/tendermint/issues/8487
 		if vote.Type == cmtproto.PrecommitType && !vote.BlockID.IsZero() &&

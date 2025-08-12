@@ -201,6 +201,7 @@ func (blockProp *Reactor) handleCompactBlock(cb *proptypes.CompactBlock, peer p2
 
 	schema.WriteCompleteBlock(blockProp.traceClient, cb.Proposal.Height, cb.Proposal.Round, false)
 
+	fmt.Println("received block in propagation ", time.Now())
 	if !proposer {
 		select {
 		case <-blockProp.ctx.Done():
