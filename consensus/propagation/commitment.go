@@ -77,15 +77,15 @@ func (blockProp *Reactor) ProposeBlock(proposal *types.Proposal, block *types.Pa
 	fmt.Println("signed block")
 	cb.Signature = sig
 
+	// save the compact block locally and broadcast it to the connected peers
+	blockProp.handleCompactBlock(cb, blockProp.self, true)
+
 	_, parts, _, has := blockProp.getAllState(proposal.Height, proposal.Round, false)
 	if !has {
 		panic(fmt.Sprintf("failed to get all state for this node's proposal %d/%d", proposal.Height, proposal.Round))
 	}
 
 	parts.SetProposalData(block, parityBlock)
-
-	// save the compact block locally and broadcast it to the connected peers
-	blockProp.handleCompactBlock(cb, blockProp.self, true)
 
 	fmt.Println("distributing")
 	// distribute equal portions of haves to each of the proposer's peers
