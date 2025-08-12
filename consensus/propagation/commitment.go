@@ -27,6 +27,7 @@ var cb *proptypes.CompactBlock
 var parityBlock *types.PartSet
 
 func (blockProp *Reactor) PrepareBlock(block *types.PartSet, txs []proptypes.TxMetaData) {
+	fmt.Println("preparing block")
 	start := time.Now()
 	defer func() {
 		processingTime := time.Since(start)
@@ -51,11 +52,13 @@ func (blockProp *Reactor) PrepareBlock(block *types.PartSet, txs []proptypes.TxM
 	}
 
 	cb.SetProofCache(proofs)
+	fmt.Println("sertting proofsfds")
 }
 
 // ProposeBlock is called when the consensus routine has created a new proposal,
 // and it needs to be gossiped to the rest of the network.
 func (blockProp *Reactor) ProposeBlock(proposal *types.Proposal, block *types.PartSet) {
+	fmt.Println("proposing block")
 	cb.Proposal = *proposal
 	sbz, err := cb.SignBytes()
 	if err != nil {
@@ -71,6 +74,7 @@ func (blockProp *Reactor) ProposeBlock(proposal *types.Proposal, block *types.Pa
 		return
 	}
 
+	fmt.Println("signed block")
 	cb.Signature = sig
 
 	_, parts, _, has := blockProp.getAllState(proposal.Height, proposal.Round, false)
@@ -83,6 +87,7 @@ func (blockProp *Reactor) ProposeBlock(proposal *types.Proposal, block *types.Pa
 	// save the compact block locally and broadcast it to the connected peers
 	blockProp.handleCompactBlock(cb, blockProp.self, true)
 
+	fmt.Println("distributing")
 	// distribute equal portions of haves to each of the proposer's peers
 	peers := blockProp.getPeers()
 	chunks := chunkParts(parts.BitArray(), len(peers), 1)
