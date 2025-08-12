@@ -1001,7 +1001,7 @@ func (cs *State) handleMsg(mi msgInfo) {
 		}
 
 	case *VoteMessage:
-		fmt.Println("received vote: ", msg.Vote.Height, " ", msg.Vote.Round, " ", msg.Vote.Type, " ", msg.Vote.BlockID.Hash, " ", time.Now().String())
+		//fmt.Println("received vote: ", msg.Vote.Height, " ", msg.Vote.Round, " ", msg.Vote.Type, " ", msg.Vote.BlockID.Hash, " ", time.Now().String())
 		start := time.Now()
 		// attempt to add the vote and dupeout the validator if its a duplicate signature
 		// if the vote gives us a 2/3-any or 2/3-one, we transition
