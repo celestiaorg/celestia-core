@@ -1337,6 +1337,17 @@ func (cs *State) defaultDecideProposal(height int64, round int32) {
 			panic("Method createProposalBlock should not provide a nil block without errors")
 		}
 		cs.metrics.ProposalCreateCount.Add(1)
+		metaData := make([]proptypes.TxMetaData, len(block.Txs))
+		hashes := block.CachedHashes()
+		for i, pos := range blockParts.TxPos {
+			metaData[i] = proptypes.TxMetaData{
+				Start: pos.Start,
+				End:   pos.End,
+				Hash:  hashes[i],
+			}
+		}
+
+		cs.propagator.PrepareBlock(blockParts, metaData)
 	}
 
 	// Flush the WAL. Otherwise, we may not recompute the same proposal to sign,
