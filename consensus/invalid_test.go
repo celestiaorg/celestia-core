@@ -69,8 +69,8 @@ func invalidDoPrevoteFunc(t *testing.T, cs *State, sw *p2p.Switch, pv types.Priv
 	// - disable privValidator (so we don't do normal precommits)
 	go func() {
 		cs.mtx.Lock()
-		defer cs.mtx.Unlock()
 		cs.privValidator = pv
+		cs.mtx.Unlock()
 		pubKey, err := cs.privValidator.GetPubKey()
 		if err != nil {
 			panic(err)
@@ -99,7 +99,9 @@ func invalidDoPrevoteFunc(t *testing.T, cs *State, sw *p2p.Switch, pv types.Priv
 		}
 		precommit.Signature = p.Signature
 		precommit.ExtensionSignature = p.ExtensionSignature
+		cs.mtx.Lock()
 		cs.privValidator = nil // disable priv val so we don't do normal votes
+		cs.mtx.Unlock()
 
 		peers := sw.Peers().List()
 		for _, peer := range peers {

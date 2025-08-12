@@ -71,7 +71,7 @@ func (cs *State) ReplayFile(file string, console bool) error {
 		return err
 	}
 
-	pb := newPlayback(file, fp, cs, cs.state.Copy())
+	pb := newPlayback(file, fp, cs, cs.State().Copy())
 	defer pb.fp.Close()
 
 	var nextN int // apply N msgs in a row

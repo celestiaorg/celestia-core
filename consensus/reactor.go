@@ -140,8 +140,6 @@ func (conR *Reactor) SwitchToConsensus(state sm.State, skipWAL bool) {
 
 	func() {
 		// We need to lock, as we are not entering consensus state from State's `handleMsg` or `handleTimeout`
-		conR.conS.mtx.Lock()
-		defer conR.conS.mtx.Unlock()
 		// We have no votes, so reconstruct LastCommit from SeenCommit
 		if state.LastBlockHeight > 0 {
 			conR.conS.reconstructLastCommit(state)
@@ -293,9 +291,7 @@ func (conR *Reactor) Receive(e p2p.Envelope) {
 	case StateChannel:
 		switch msg := msg.(type) {
 		case *NewRoundStepMessage:
-			conR.conS.mtx.Lock()
-			initialHeight := conR.conS.state.InitialHeight
-			conR.conS.mtx.Unlock()
+			initialHeight := conR.conS.State().InitialHeight
 			schema.WriteConsensusState(
 				conR.traceClient,
 				msg.Height,
@@ -344,9 +340,7 @@ func (conR *Reactor) Receive(e p2p.Envelope) {
 		case *VoteSetMaj23Message:
 			start := time.Now()
 			cs := conR.conS
-			cs.mtx.Lock()
 			height, votes := cs.rs.Height.Load(), cs.rs.GetVotes()
-			cs.mtx.Unlock()
 			schema.WriteConsensusState(
 				conR.traceClient,
 				msg.Height,
@@ -458,9 +452,7 @@ func (conR *Reactor) Receive(e p2p.Envelope) {
 		case *VoteMessage:
 			start := time.Now()
 			cs := conR.conS
-			cs.mtx.RLock()
 			height, valSize, lastCommitSize := cs.rs.Height.Load(), cs.rs.GetValidators().Size(), cs.rs.GetLastCommit().Size()
-			cs.mtx.RUnlock()
 			ps.EnsureVoteBitArrays(height, valSize)
 			ps.EnsureVoteBitArrays(height-1, lastCommitSize)
 			ps.SetHasVote(msg.Vote)
@@ -482,9 +474,7 @@ func (conR *Reactor) Receive(e p2p.Envelope) {
 		case *VoteSetBitsMessage:
 			start := time.Now()
 			cs := conR.conS
-			cs.mtx.Lock()
 			height, votes := cs.rs.Height.Load(), cs.rs.GetVotes()
-			cs.mtx.Unlock()
 
 			if height == msg.Height {
 				var ourVotes *bits.BitArray
@@ -935,9 +925,7 @@ OUTER_LOOP:
 			var ec *types.ExtendedCommit
 			var veEnabled bool
 			func() {
-				conR.conS.mtx.RLock()
-				defer conR.conS.mtx.RUnlock()
-				veEnabled = conR.conS.state.ConsensusParams.ABCI.VoteExtensionsEnabled(prs.Height)
+				veEnabled = conR.conS.State().ConsensusParams.ABCI.VoteExtensionsEnabled(prs.Height)
 			}()
 			if veEnabled {
 				ec = conR.conS.blockStore.LoadBlockExtendedCommit(prs.Height)

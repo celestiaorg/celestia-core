@@ -229,14 +229,12 @@ func decideProposal(
 	height int64,
 	round int32,
 ) (*types.Proposal, *types.Block) {
-	cs1.mtx.Lock()
 	block, _, err := cs1.createProposalBlock(ctx)
 	require.NoError(t, err)
 	blockParts, err := block.MakePartSet(types.BlockPartSizeBytes)
 	require.NoError(t, err)
 	validRound := cs1.rs.ValidRound.Load()
 	chainID := cs1.state.ChainID
-	cs1.mtx.Unlock()
 	if block == nil {
 		panic("Failed to createProposalBlock. Did you forget to add commit for previous block?")
 	}

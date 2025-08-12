@@ -170,6 +170,18 @@ type State struct {
 	traceClient trace.Tracer
 }
 
+func (cs *State) State() sm.State {
+	cs.mtx.RLock()
+	defer cs.mtx.RUnlock()
+	return cs.state
+}
+
+func (cs *State) SetState(state sm.State) {
+	cs.mtx.Lock()
+	defer cs.mtx.Unlock()
+	cs.state = state
+}
+
 // StateOption sets an optional parameter on the State.
 type StateOption func(*State)
 
@@ -271,6 +283,7 @@ func (cs *State) String() string {
 
 // GetState returns a copy of the chain state.
 func (cs *State) GetState() sm.State {
+	fmt.Println("getting lock14")
 	cs.mtx.RLock()
 	defer cs.mtx.RUnlock()
 	return cs.state.Copy()
@@ -279,6 +292,7 @@ func (cs *State) GetState() sm.State {
 // GetLastHeight returns the last height committed.
 // If there were no blocks, returns 0.
 func (cs *State) GetLastHeight() int64 {
+	fmt.Println("getting lock3")
 	cs.mtx.RLock()
 	defer cs.mtx.RUnlock()
 	return cs.rs.Height.Load() - 1 //nolint:staticcheck
@@ -286,6 +300,7 @@ func (cs *State) GetLastHeight() int64 {
 
 // GetRoundState returns a shallow copy of the internal consensus state.
 func (cs *State) GetRoundState() *cstypes.RoundState {
+	fmt.Println("getting lock4")
 	cs.mtx.RLock()
 	rs := cs.rs // copy
 	cs.mtx.RUnlock()
@@ -294,6 +309,7 @@ func (cs *State) GetRoundState() *cstypes.RoundState {
 
 // GetRoundStateJSON returns a json of RoundState.
 func (cs *State) GetRoundStateJSON() ([]byte, error) {
+	fmt.Println("getting lock5")
 	cs.mtx.RLock()
 	defer cs.mtx.RUnlock()
 	return cmtjson.Marshal(cs.rs)
@@ -301,6 +317,7 @@ func (cs *State) GetRoundStateJSON() ([]byte, error) {
 
 // GetRoundStateSimpleJSON returns a json of RoundStateSimple
 func (cs *State) GetRoundStateSimpleJSON() ([]byte, error) {
+	fmt.Println("getting lock6")
 	cs.mtx.RLock()
 	defer cs.mtx.RUnlock()
 	return cmtjson.Marshal(cs.rs.RoundStateSimple()) //nolint:staticcheck
@@ -308,6 +325,7 @@ func (cs *State) GetRoundStateSimpleJSON() ([]byte, error) {
 
 // GetValidators returns a copy of the current validators.
 func (cs *State) GetValidators() (int64, []*types.Validator) {
+	fmt.Println("getting lock11")
 	cs.mtx.RLock()
 	defer cs.mtx.RUnlock()
 	return cs.state.LastBlockHeight, cs.state.Validators.Copy().Validators
@@ -316,10 +334,10 @@ func (cs *State) GetValidators() (int64, []*types.Validator) {
 // SetPrivValidator sets the private validator account for signing votes. It
 // immediately requests pubkey and caches it.
 func (cs *State) SetPrivValidator(priv types.PrivValidator) {
+	fmt.Println("getting lock12")
 	cs.mtx.Lock()
-	defer cs.mtx.Unlock()
-
 	cs.privValidator = priv
+	cs.mtx.Unlock()
 
 	if err := cs.updatePrivValidatorPubKey(); err != nil {
 		cs.Logger.Error("failed to get private validator pubkey", "err", err)
@@ -329,6 +347,7 @@ func (cs *State) SetPrivValidator(priv types.PrivValidator) {
 // SetTimeoutTicker sets the local timer. It may be useful to overwrite for
 // testing.
 func (cs *State) SetTimeoutTicker(timeoutTicker TimeoutTicker) {
+	fmt.Println("getting lock13")
 	cs.mtx.Lock()
 	cs.timeoutTicker = timeoutTicker
 	cs.mtx.Unlock()
@@ -336,9 +355,6 @@ func (cs *State) SetTimeoutTicker(timeoutTicker TimeoutTicker) {
 
 // LoadCommit loads the commit for a given height.
 func (cs *State) LoadCommit(height int64) *types.Commit {
-	cs.mtx.RLock()
-	defer cs.mtx.RUnlock()
-
 	if height == cs.blockStore.Height() {
 		return cs.blockStore.LoadSeenCommit(height)
 	}
@@ -697,19 +713,19 @@ func (cs *State) updateToState(state sm.State) {
 		))
 	}
 
-	if !cs.state.IsEmpty() {
-		if cs.state.LastBlockHeight > 0 && cs.state.LastBlockHeight+1 != cs.rs.Height.Load() {
+	if !cs.State().IsEmpty() {
+		if cs.State().LastBlockHeight > 0 && cs.State().LastBlockHeight+1 != cs.rs.Height.Load() {
 			// This might happen when someone else is mutating cs.state.
 			// Someone forgot to pass in state.Copy() somewhere?!
 			panic(fmt.Sprintf(
 				"inconsistent cs.state.LastBlockHeight+1 %v vs cs.Height %v",
-				cs.state.LastBlockHeight+1, cs.rs.Height.Load(),
+				cs.State().LastBlockHeight+1, cs.rs.Height.Load(),
 			))
 		}
-		if cs.state.LastBlockHeight > 0 && cs.rs.Height.Load() == cs.state.InitialHeight {
+		if cs.State().LastBlockHeight > 0 && cs.rs.Height.Load() == cs.State().InitialHeight {
 			panic(fmt.Sprintf(
 				"inconsistent cs.state.LastBlockHeight %v, expected 0 for initial height %v",
-				cs.state.LastBlockHeight, cs.state.InitialHeight,
+				cs.State().LastBlockHeight, cs.State().InitialHeight,
 			))
 		}
 
@@ -718,11 +734,11 @@ func (cs *State) updateToState(state sm.State) {
 		// We don't want to reset e.g. the Votes, but we still want to
 		// signal the new round step, because other services (eg. txNotifier)
 		// depend on having an up-to-date peer state!
-		if state.LastBlockHeight <= cs.state.LastBlockHeight {
+		if state.LastBlockHeight <= cs.State().LastBlockHeight {
 			cs.Logger.Debug(
 				"ignoring updateToState()",
 				"new_height", state.LastBlockHeight+1,
-				"old_height", cs.state.LastBlockHeight+1,
+				"old_height", cs.State().LastBlockHeight+1,
 			)
 			cs.newStep()
 			return
@@ -774,14 +790,14 @@ func (cs *State) updateToState(state sm.State) {
 			// Don't use cs.state.TimeoutCommit because that is zero
 			cs.rs.SetStartTime(cs.config.CommitWithCustomTimeout(cmttime.Now(), state.TimeoutCommit))
 		} else {
-			cs.rs.SetStartTime(cs.config.CommitWithCustomTimeout(cmttime.Now(), cs.state.TimeoutCommit))
+			cs.rs.SetStartTime(cs.config.CommitWithCustomTimeout(cmttime.Now(), cs.State().TimeoutCommit))
 		}
 
 	} else {
 		if state.LastBlockHeight == 0 {
 			cs.rs.SetStartTime(cs.config.CommitWithCustomTimeout(cs.rs.GetCommitTime(), state.TimeoutCommit))
 		} else {
-			cs.rs.SetStartTime(cs.config.CommitWithCustomTimeout(cs.rs.GetCommitTime(), cs.state.TimeoutCommit))
+			cs.rs.SetStartTime(cs.config.CommitWithCustomTimeout(cs.rs.GetCommitTime(), cs.State().TimeoutCommit))
 		}
 	}
 
@@ -804,7 +820,7 @@ func (cs *State) updateToState(state sm.State) {
 	cs.rs.SetLastValidators(state.LastValidators)
 	cs.rs.TriggeredTimeoutPrecommit.Store(false)
 
-	cs.state = state
+	cs.SetState(state)
 
 	// Finally, broadcast RoundState
 	cs.newStep()
@@ -816,7 +832,11 @@ func (cs *State) newStep() {
 		cs.Logger.Error("failed writing to WAL", "err", err)
 	}
 
+	fmt.Println("obtaining lock5")
+	cs.mtx.Lock()
 	cs.nSteps++
+	cs.mtx.Unlock()
+	fmt.Println("releasing lock 5")
 
 	// newStep is called by updateToState in NewState before the eventBus is set!
 	if cs.eventBus != nil {
@@ -870,7 +890,10 @@ func (cs *State) receiveRoutine(maxSteps int) {
 		if maxSteps > 0 {
 			if cs.nSteps >= maxSteps {
 				cs.Logger.Debug("reached max steps; exiting receive routine")
+				fmt.Println("getting lock15")
+				cs.mtx.Lock()
 				cs.nSteps = 0
+				cs.mtx.Unlock()
 				return
 			}
 		}
@@ -929,8 +952,6 @@ func (cs *State) receiveRoutine(maxSteps int) {
 
 // state transitions on complete-proposal, 2/3-any, 2/3-one
 func (cs *State) handleMsg(mi msgInfo) {
-	cs.mtx.Lock()
-	defer cs.mtx.Unlock()
 	var (
 		added bool
 		err   error
@@ -966,9 +987,7 @@ func (cs *State) handleMsg(mi msgInfo) {
 		// of RoundState and only locking when switching out State's copy of
 		// RoundState with the updated copy or by emitting RoundState events in
 		// more places for routines depending on it to listen for.
-		cs.mtx.Unlock()
 
-		cs.mtx.Lock()
 		if added && cs.rs.GetProposalBlockParts().IsComplete() {
 			cs.handleCompleteProposal(msg.Height)
 		}
@@ -1046,8 +1065,6 @@ func (cs *State) handleTimeout(ti timeoutInfo, rs *cstypes.RoundState) {
 	}
 
 	// the timeout will now cause a state transition
-	cs.mtx.Lock()
-	defer cs.mtx.Unlock()
 
 	switch ti.Step {
 	case cstypes.RoundStepNewHeight:
@@ -1090,8 +1107,6 @@ func (cs *State) handleTxsAvailable() {
 	case <-cs.nextBlock:
 	default:
 	}
-	cs.mtx.Lock()
-	defer cs.mtx.Unlock()
 
 	// We only need to do this for round 0.
 	if cs.rs.Round.Load() != 0 {
@@ -1201,18 +1216,18 @@ func (cs *State) enterNewRound(height int64, round int32) {
 // needProofBlock returns true on the first height (so the genesis app hash is signed right away)
 // and where the last block (height-1) caused the app hash to change
 func (cs *State) needProofBlock(height int64) bool {
-	if height == cs.state.InitialHeight {
+	if height == cs.State().InitialHeight {
 		return true
 	}
 
 	lastBlockMeta := cs.blockStore.LoadBlockMeta(height - 1)
 	if lastBlockMeta == nil {
 		// See https://github.com/cometbft/cometbft/issues/370
-		cs.Logger.Info("short-circuited needProofBlock", "height", height, "InitialHeight", cs.state.InitialHeight)
+		cs.Logger.Info("short-circuited needProofBlock", "height", height, "InitialHeight", cs.State().InitialHeight)
 		return true
 	}
 
-	return !bytes.Equal(cs.state.AppHash, lastBlockMeta.Header.AppHash)
+	return !bytes.Equal(cs.State().AppHash, lastBlockMeta.Header.AppHash)
 }
 
 // Enter (CreateEmptyBlocks): from enterNewRound(height,round)
@@ -1334,7 +1349,7 @@ func (cs *State) defaultDecideProposal(height int64, round int32) {
 	propBlockID := types.BlockID{Hash: block.Hash(), PartSetHeader: blockParts.Header()}
 	proposal := types.NewProposal(height, round, cs.rs.ValidRound.Load(), propBlockID)
 	p := proposal.ToProto()
-	if err := cs.privValidator.SignProposal(cs.state.ChainID, p); err == nil {
+	if err := cs.privValidator.SignProposal(cs.State().ChainID, p); err == nil {
 		proposal.Signature = p.Signature
 
 		// send proposal and block parts on internal msg queue
@@ -1393,14 +1408,14 @@ func (cs *State) createProposalBlock(ctx context.Context) (block *types.Block, b
 	// TODO(sergio): wouldn't it be easier if CreateProposalBlock accepted cs.LastCommit directly?
 	var lastExtCommit *types.ExtendedCommit
 	switch {
-	case cs.rs.Height.Load() == cs.state.InitialHeight:
+	case cs.rs.Height.Load() == cs.State().InitialHeight:
 		// We're creating a proposal for the first block.
 		// The commit is empty, but not nil.
 		lastExtCommit = &types.ExtendedCommit{}
 
 	case cs.rs.GetLastCommit().HasTwoThirdsMajority():
 		// Make the commit from LastCommit
-		lastExtCommit = cs.rs.GetLastCommit().MakeExtendedCommit(cs.state.ConsensusParams.ABCI)
+		lastExtCommit = cs.rs.GetLastCommit().MakeExtendedCommit(cs.State().ConsensusParams.ABCI)
 
 	default: // This shouldn't happen.
 		return nil, nil, errors.New("propose step; cannot propose anything without commit for the previous block")
@@ -1414,7 +1429,7 @@ func (cs *State) createProposalBlock(ctx context.Context) (block *types.Block, b
 
 	proposerAddr := cs.privValidatorPubKey.Address()
 
-	return cs.blockExec.CreateProposalBlock(ctx, cs.rs.Height.Load(), cs.state, lastExtCommit, proposerAddr)
+	return cs.blockExec.CreateProposalBlock(ctx, cs.rs.Height.Load(), cs.State(), lastExtCommit, proposerAddr)
 }
 
 // Enter: `timeoutPropose` after entering Propose.
@@ -1465,7 +1480,7 @@ func (cs *State) defaultDoPrevote(height int64, round int32) {
 	}
 
 	// Validate proposal block, from consensus' perspective
-	err := cs.blockExec.ValidateBlock(cs.state, cs.rs.GetProposalBlock())
+	err := cs.blockExec.ValidateBlock(cs.State(), cs.rs.GetProposalBlock())
 	if err != nil {
 		// ProposalBlock is invalid, prevote nil.
 		logger.Error("prevote step: consensus deems this block invalid; prevoting nil",
@@ -1486,7 +1501,7 @@ func (cs *State) defaultDoPrevote(height int64, round int32) {
 	*/
 
 	schema.WriteABCI(cs.traceClient, schema.ProcessProposalStart, height, round)
-	isAppValid, err := cs.blockExec.ProcessProposal(cs.rs.GetProposalBlock(), cs.state)
+	isAppValid, err := cs.blockExec.ProcessProposal(cs.rs.GetProposalBlock(), cs.State())
 	if err != nil {
 		panic(fmt.Sprintf(
 			"state machine returned an error (%v) when calling ProcessProposal", err,
@@ -1506,7 +1521,7 @@ func (cs *State) defaultDoPrevote(height int64, round int32) {
 		err := types.SaveBlockToFile(
 			filepath.Join(cs.config.RootDir, "data", "debug"),
 			fmt.Sprintf("%s-%d-%s_faulty_proposal.json",
-				cs.state.ChainID,
+				cs.State().ChainID,
 				cs.rs.GetProposalBlock().Height,
 				timestamp,
 			),
@@ -1647,7 +1662,7 @@ func (cs *State) enterPrecommit(height int64, round int32) {
 		logger.Debug("precommit step; +2/3 prevoted proposal block; locking", "hash", blockID.Hash)
 
 		// Validate the block.
-		if err := cs.blockExec.ValidateBlock(cs.state, cs.rs.GetProposalBlock()); err != nil {
+		if err := cs.blockExec.ValidateBlock(cs.State(), cs.rs.GetProposalBlock()); err != nil {
 			panic(fmt.Sprintf("precommit step; +2/3 prevoted for an invalid block: %v", err))
 		}
 
@@ -1867,7 +1882,7 @@ func (cs *State) finalizeCommit(height int64) {
 		panic("cannot finalize commit; proposal block does not hash to commit hash")
 	}
 
-	if err := cs.blockExec.ValidateBlock(cs.state, block); err != nil {
+	if err := cs.blockExec.ValidateBlock(cs.State(), block); err != nil {
 		panic(fmt.Errorf("+2/3 committed an invalid block: %w", err))
 	}
 
@@ -1886,9 +1901,9 @@ func (cs *State) finalizeCommit(height int64) {
 	if cs.blockStore.Height() < block.Height {
 		// NOTE: the seenCommit is local justification to commit this block,
 		// but may differ from the LastCommit included in the next block
-		seenExtendedCommit := cs.rs.GetVotes().Precommits(cs.rs.CommitRound.Load()).MakeExtendedCommit(cs.state.ConsensusParams.ABCI)
+		seenExtendedCommit := cs.rs.GetVotes().Precommits(cs.rs.CommitRound.Load()).MakeExtendedCommit(cs.State().ConsensusParams.ABCI)
 		seenCommit = seenExtendedCommit.ToCommit()
-		if cs.state.ConsensusParams.ABCI.VoteExtensionsEnabled(block.Height) {
+		if cs.State().ConsensusParams.ABCI.VoteExtensionsEnabled(block.Height) {
 			cs.blockStore.SaveBlockWithExtendedCommit(block, blockParts, seenExtendedCommit)
 		} else {
 			cs.blockStore.SaveBlock(block, blockParts, seenExtendedCommit.ToCommit())
@@ -1924,7 +1939,7 @@ func (cs *State) finalizeCommit(height int64) {
 	fail.Fail() // XXX
 
 	// Create a copy of the state for staging and an event cache for txs.
-	stateCopy := cs.state.Copy()
+	stateCopy := cs.State().Copy()
 
 	schema.WriteABCI(cs.traceClient, schema.CommitStart, height, 0)
 
@@ -1995,7 +2010,7 @@ func (cs *State) recordMetrics(height int64, block *types.Block) {
 	// height=0 -> MissingValidators and MissingValidatorsPower are both 0.
 	// Remember that the first LastCommit is intentionally empty, so it's not
 	// fair to increment missing validators number.
-	if height > cs.state.InitialHeight {
+	if height > cs.State().InitialHeight {
 		// Sanity check that commit size matches validator set size - only applies
 		// after first block.
 		var (
@@ -2101,13 +2116,13 @@ func (cs *State) defaultSetProposal(proposal *types.Proposal) error {
 	p := proposal.ToProto()
 	// Verify signature
 	if !pubKey.VerifySignature(
-		types.ProposalSignBytes(cs.state.ChainID, p), proposal.Signature,
+		types.ProposalSignBytes(cs.State().ChainID, p), proposal.Signature,
 	) {
 		return ErrInvalidProposalSignature
 	}
 
 	// Validate the proposed block size, derived from its PartSetHeader
-	maxBytes := cs.state.ConsensusParams.Block.MaxBytes
+	maxBytes := cs.State().ConsensusParams.Block.MaxBytes
 	if maxBytes == -1 {
 		maxBytes = int64(types.MaxBlockSizeBytes)
 	}
@@ -2178,21 +2193,22 @@ func (cs *State) addProposalBlockPart(msg *BlockPartMessage, peerID p2p.ID) (add
 		cs.metrics.DuplicateBlockPart.Add(1)
 	}
 
-	maxBytes := cs.state.ConsensusParams.Block.MaxBytes
+	maxBytes := cs.State().ConsensusParams.Block.MaxBytes
 	if maxBytes == -1 {
 		maxBytes = int64(types.MaxBlockSizeBytes)
 	}
-	if cs.rs.GetProposalBlockParts().ByteSize() > maxBytes {
+	proposalBlockParts := cs.rs.GetProposalBlockParts()
+	if proposalBlockParts.ByteSize() > maxBytes {
 		return added, fmt.Errorf("total size of proposal block parts exceeds maximum block bytes (%d > %d)",
-			cs.rs.GetProposalBlockParts().ByteSize(), maxBytes,
+			proposalBlockParts.ByteSize(), maxBytes,
 		)
 	}
 	processingTime = time.Since(start)
 	schema.WriteMessageStats(cs.traceClient, "state", "state.addProposalBlockPart.step3", processingTime.Nanoseconds(), fmt.Sprintf("new block part: %d %d %d", msg.Height, msg.Round, msg.Part.Index))
 	start = time.Now()
-	if added && cs.rs.GetProposalBlockParts().IsComplete() {
+	if added && proposalBlockParts.IsComplete() {
 		fmt.Println("received complete block: ", time.Now().String())
-		bz, err := io.ReadAll(cs.rs.GetProposalBlockParts().GetReader())
+		bz, err := io.ReadAll(proposalBlockParts.GetReader())
 		if err != nil {
 			return added, err
 		}
@@ -2377,16 +2393,20 @@ func (cs *State) addVote(vote *types.Vote, peerID p2p.ID) (added bool, err error
 	}
 
 	// Check to see if the chain is configured to extend votes.
-	extEnabled := cs.state.ConsensusParams.ABCI.VoteExtensionsEnabled(vote.Height)
+	extEnabled := cs.State().ConsensusParams.ABCI.VoteExtensionsEnabled(vote.Height)
 	if extEnabled {
 		// The chain is configured to extend votes, check that the vote is
 		// not for a nil block and verify the extensions signature against the
 		// corresponding public key.
 
 		var myAddr []byte
+		fmt.Println("obtaining lock1")
+		cs.mtx.RLock()
 		if cs.privValidatorPubKey != nil {
 			myAddr = cs.privValidatorPubKey.Address()
 		}
+		cs.mtx.RUnlock()
+		fmt.Println("released lock1")
 		// Verify VoteExtension if precommit and not nil
 		// https://github.com/tendermint/tendermint/issues/8487
 		if vote.Type == cmtproto.PrecommitType && !vote.BlockID.IsZero() &&
@@ -2396,16 +2416,16 @@ func (cs *State) addVote(vote *types.Vote, peerID p2p.ID) (added bool, err error
 			// consensus reactor when the vote was received.
 			// Here, we verify the signature of the vote extension included in the vote
 			// message.
-			_, val := cs.state.Validators.GetByIndex(vote.ValidatorIndex)
+			_, val := cs.State().Validators.GetByIndex(vote.ValidatorIndex)
 			if val == nil { // TODO: we should disconnect from this malicious peer
-				valsCount := cs.state.Validators.Size()
+				valsCount := cs.State().Validators.Size()
 				cs.Logger.Info("Peer sent us vote with invalid ValidatorIndex",
 					"peer", peerID,
 					"validator_index", vote.ValidatorIndex,
 					"len_validators", valsCount)
 				return added, ErrInvalidVote{Reason: fmt.Sprintf("ValidatorIndex %d is out of bounds [0, %d)", vote.ValidatorIndex, valsCount)}
 			}
-			if err := vote.VerifyExtension(cs.state.ChainID, val.PubKey); err != nil {
+			if err := vote.VerifyExtension(cs.State().ChainID, val.PubKey); err != nil {
 				return false, err
 			}
 
@@ -2439,7 +2459,7 @@ func (cs *State) addVote(vote *types.Vote, peerID p2p.ID) (added bool, err error
 		return added, err
 	}
 	if vote.Round == cs.rs.Round.Load() {
-		vals := cs.state.Validators
+		vals := cs.State().Validators
 		_, val := vals.GetByIndex(vote.ValidatorIndex)
 		cs.metrics.MarkVoteReceived(vote.Type, val.VotingPower, vals.TotalVotingPower())
 	}
@@ -2597,12 +2617,12 @@ func (cs *State) signVote(
 		BlockID:          types.BlockID{Hash: hash, PartSetHeader: header},
 	}
 
-	extEnabled := cs.state.ConsensusParams.ABCI.VoteExtensionsEnabled(vote.Height)
+	extEnabled := cs.State().ConsensusParams.ABCI.VoteExtensionsEnabled(vote.Height)
 	if msgType == cmtproto.PrecommitType && !vote.BlockID.IsZero() {
 		// if the signedMessage type is for a non-nil precommit, add
 		// VoteExtension
 		if extEnabled {
-			ext, err := cs.blockExec.ExtendVote(context.TODO(), vote, block, cs.state)
+			ext, err := cs.blockExec.ExtendVote(context.TODO(), vote, block, cs.State())
 			if err != nil {
 				return nil, err
 			}
@@ -2610,7 +2630,7 @@ func (cs *State) signVote(
 		}
 	}
 
-	recoverable, err := types.SignAndCheckVote(vote, cs.privValidator, cs.state.ChainID, extEnabled && (msgType == cmtproto.PrecommitType))
+	recoverable, err := types.SignAndCheckVote(vote, cs.privValidator, cs.State().ChainID, extEnabled && (msgType == cmtproto.PrecommitType))
 	if err != nil && !recoverable {
 		panic(fmt.Sprintf("non-recoverable error when signing vote %v: %v", vote, err))
 	}
@@ -2669,7 +2689,7 @@ func (cs *State) signAddVote(
 		return
 	}
 	hasExt := len(vote.ExtensionSignature) > 0
-	extEnabled := cs.state.ConsensusParams.ABCI.VoteExtensionsEnabled(vote.Height)
+	extEnabled := cs.State().ConsensusParams.ABCI.VoteExtensionsEnabled(vote.Height)
 	if vote.Type == cmtproto.PrecommitType && !vote.BlockID.IsZero() && hasExt != extEnabled {
 		panic(fmt.Errorf("vote extension absence/presence does not match extensions enabled %t!=%t, height %d, type %v",
 			hasExt, extEnabled, vote.Height, vote.Type))
@@ -2682,6 +2702,8 @@ func (cs *State) signAddVote(
 // memoizes it. This func returns an error if the private validator is not
 // responding or responds with an error.
 func (cs *State) updatePrivValidatorPubKey() error {
+	cs.mtx.Lock()
+	defer cs.mtx.Unlock()
 	if cs.privValidator == nil {
 		return nil
 	}
@@ -2816,11 +2838,9 @@ func (cs *State) syncData() {
 			if !ok {
 				return
 			}
-			cs.mtx.RLock()
 			currentProposal := cs.rs.GetProposal()
 			h, r := cs.rs.Height.Load(), cs.rs.Round.Load()
 			completeProp := cs.isProposalComplete()
-			cs.mtx.RUnlock()
 			if completeProp {
 				continue
 			}
@@ -2840,10 +2860,8 @@ func (cs *State) syncData() {
 			if !ok {
 				return
 			}
-			cs.mtx.RLock()
 			height, round := cs.rs.Height.Load(), cs.rs.Round.Load()
 			currentProposalParts := cs.rs.GetProposalBlockParts()
-			cs.mtx.RUnlock()
 			if currentProposalParts == nil {
 				continue
 			}
@@ -2865,10 +2883,8 @@ func (cs *State) syncData() {
 			if !ok {
 				return
 			}
-			cs.mtx.RLock()
 			h, r := cs.rs.Height.Load(), cs.rs.Round.Load()
 			currentProposalParts := cs.rs.GetProposalBlockParts()
-			cs.mtx.RUnlock()
 			if part.Height != h || part.Round != r {
 				continue
 			}

@@ -492,7 +492,7 @@ func byzantineDecideProposalFunc(ctx context.Context, t *testing.T, height int64
 	polRound, propBlockID := cs.rs.ValidRound.Load(), types.BlockID{Hash: block1.Hash(), PartSetHeader: blockParts1.Header()}
 	proposal1 := types.NewProposal(height, round, polRound, propBlockID)
 	p1 := proposal1.ToProto()
-	if err := cs.privValidator.SignProposal(cs.state.ChainID, p1); err != nil {
+	if err := cs.privValidator.SignProposal(cs.State().ChainID, p1); err != nil {
 		t.Error(err)
 	}
 
@@ -563,10 +563,8 @@ func sendProposalAndParts(
 	}
 
 	// votes
-	cs.mtx.Lock()
 	prevote, _ := cs.signVote(cmtproto.PrevoteType, blockHash, parts.Header(), nil)
 	precommit, _ := cs.signVote(cmtproto.PrecommitType, blockHash, parts.Header(), nil)
-	cs.mtx.Unlock()
 	peer.Send(p2p.Envelope{
 		ChannelID: VoteChannel,
 		Message:   &cmtcons.Vote{Vote: prevote.ToProto()},
