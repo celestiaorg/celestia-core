@@ -27,7 +27,7 @@ var cb *proptypes.CompactBlock
 var parityBlock *types.PartSet
 
 func (blockProp *Reactor) PrepareBlock(block *types.PartSet, txs []proptypes.TxMetaData) {
-	fmt.Println("preparing block")
+	fmt.Println("preparing block ", time.Now())
 	start := time.Now()
 	defer func() {
 		processingTime := time.Since(start)
@@ -52,7 +52,7 @@ func (blockProp *Reactor) PrepareBlock(block *types.PartSet, txs []proptypes.TxM
 	}
 
 	cb.SetProofCache(proofs)
-	fmt.Println("sertting proofsfds")
+	fmt.Println("sertting proofsfds ", time.Now())
 }
 
 // ProposeBlock is called when the consensus routine has created a new proposal,
