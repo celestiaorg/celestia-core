@@ -1006,12 +1006,14 @@ func (cs *State) handleMsg(mi msgInfo) {
 		// attempt to add the vote and dupeout the validator if its a duplicate signature
 		// if the vote gives us a 2/3-any or 2/3-one, we transition
 		added, err = cs.tryAddVote(msg.Vote, peerID)
+		processingTime := time.Since(start)
+		schema.WriteMessageStats(cs.traceClient, "state", "state.VoteMessage1", processingTime.Nanoseconds(), fmt.Sprintf("new vote: %d %d %s", msg.Vote.Height, msg.Vote.Round, msg.Vote.Type.String()))
+		start = time.Now()
 		if added {
 			cs.statsMsgQueue <- mi
 		}
-		processingTime := time.Since(start)
-		schema.WriteMessageStats(cs.traceClient, "state", "state.VoteMessage", processingTime.Nanoseconds(), fmt.Sprintf("new vote: %d %d %s", msg.Vote.Height, msg.Vote.Round, msg.Vote.Type.String()))
-
+		processingTime = time.Since(start)
+		schema.WriteMessageStats(cs.traceClient, "state", "state.VoteMessage2", processingTime.Nanoseconds(), fmt.Sprintf("new vote: %d %d %s", msg.Vote.Height, msg.Vote.Round, msg.Vote.Type.String()))
 		// if err == ErrAddingVote {
 		// TODO: punish peer
 		// We probably don't want to stop the peer here. The vote does not
@@ -1728,7 +1730,7 @@ func (cs *State) buildNextBlock() {
 		}
 	}
 
-	go cs.propagator.PrepareBlock(blockParts, metaData)
+	cs.propagator.PrepareBlock(blockParts, metaData)
 
 	cs.nextBlock <- &blockWithParts{
 		block: block,
@@ -1940,8 +1942,10 @@ func (cs *State) finalizeCommit(height int64) {
 	// must be called before we update state
 	cs.recordMetrics(height, block)
 
+	fmt.Println("update to state: ", time.Now())
 	// NewHeightStep!
 	cs.updateToState(stateCopy)
+	fmt.Println("done update to state: ", time.Now())
 
 	fail.Fail() // XXX
 
@@ -1962,7 +1966,7 @@ func (cs *State) finalizeCommit(height int64) {
 	}
 
 	// build the block pre-emptively if we're the proposer and the timeout commit is higher than 1 s.
-	if cs.config.TimeoutCommit > blockBuildingTime && cs.privValidatorPubKey != nil {
+	if cs.privValidatorPubKey != nil {
 		if address := cs.privValidatorPubKey.Address(); cs.rs.GetValidators().HasAddress(address) && cs.isProposer(address) {
 			go cs.buildNextBlock()
 		}
@@ -2259,7 +2263,10 @@ func (cs *State) handleCompleteProposal(blockHeight int64) {
 
 // Attempt to add the vote. if its a duplicate signature, dupeout the validator
 func (cs *State) tryAddVote(vote *types.Vote, peerID p2p.ID) (bool, error) {
+	start := time.Now()
 	added, err := cs.addVote(vote, peerID)
+	processingTime := time.Since(start)
+	schema.WriteMessageStats(cs.traceClient, "state", "tryAddVote", processingTime.Nanoseconds(), "")
 	// NOTE: some of these errors are swallowed here
 	if err != nil {
 		// If the vote height is off, we'll just ignore it,
@@ -2310,6 +2317,7 @@ func (cs *State) tryAddVote(vote *types.Vote, peerID p2p.ID) (bool, error) {
 }
 
 func (cs *State) addVote(vote *types.Vote, peerID p2p.ID) (added bool, err error) {
+	start := time.Now()
 	cs.Logger.Debug(
 		"adding vote",
 		"vote_height", vote.Height,
@@ -2355,10 +2363,15 @@ func (cs *State) addVote(vote *types.Vote, peerID p2p.ID) (added bool, err error
 			// cs.scheduleTimeout(time.Duration(0), cs.Height, 0, cstypes.RoundStepNewHeight)
 			cs.enterNewRound(cs.rs.Height.Load(), 0)
 		}
+		processingTime := time.Since(start)
+		schema.WriteMessageStats(cs.traceClient, "state", "state.AddVote1", processingTime.Nanoseconds(), "")
 
 		return added, err
 	}
 
+	processingTime := time.Since(start)
+	schema.WriteMessageStats(cs.traceClient, "state", "state.AddVote2", processingTime.Nanoseconds(), "")
+	start = time.Now()
 	// Height mismatch is ignored.
 	// Not necessarily a bad peer, but not favorable behavior.
 	if vote.Height != cs.rs.Height.Load() {
@@ -2368,6 +2381,9 @@ func (cs *State) addVote(vote *types.Vote, peerID p2p.ID) (added bool, err error
 
 	// Check to see if the chain is configured to extend votes.
 	extEnabled := cs.State().ConsensusParams.ABCI.VoteExtensionsEnabled(vote.Height)
+	processingTime = time.Since(start)
+	schema.WriteMessageStats(cs.traceClient, "state", "state.AddVote3", processingTime.Nanoseconds(), "")
+	start = time.Now()
 	if extEnabled {
 		// The chain is configured to extend votes, check that the vote is
 		// not for a nil block and verify the extensions signature against the
@@ -2407,6 +2423,9 @@ func (cs *State) addVote(vote *types.Vote, peerID p2p.ID) (added bool, err error
 				return false, err
 			}
 		}
+		processingTime = time.Since(start)
+		schema.WriteMessageStats(cs.traceClient, "state", "state.AddVote3", processingTime.Nanoseconds(), "")
+		start = time.Now()
 	} else {
 		// Vote extensions are not enabled on the network.
 		// Reject the vote, as it is malformed
@@ -2417,10 +2436,16 @@ func (cs *State) addVote(vote *types.Vote, peerID p2p.ID) (added bool, err error
 		if len(vote.Extension) > 0 || len(vote.ExtensionSignature) > 0 {
 			return false, fmt.Errorf("received vote with vote extension for height %v (extensions disabled) from peer ID %s", vote.Height, peerID)
 		}
+		processingTime = time.Since(start)
+		schema.WriteMessageStats(cs.traceClient, "state", "state.AddVote4", processingTime.Nanoseconds(), "")
+		start = time.Now()
 	}
 
 	height := cs.rs.Height.Load()
 	added, err = cs.rs.GetVotes().AddVote(vote, peerID, extEnabled)
+	processingTime = time.Since(start)
+	schema.WriteMessageStats(cs.traceClient, "state", "state.AddVote5", processingTime.Nanoseconds(), "")
+	start = time.Now()
 	if !added {
 		// Either duplicate, or error upon cs.Votes.AddByIndex()
 
@@ -2435,17 +2460,24 @@ func (cs *State) addVote(vote *types.Vote, peerID p2p.ID) (added bool, err error
 		_, val := vals.GetByIndex(vote.ValidatorIndex)
 		cs.metrics.MarkVoteReceived(vote.Type, val.VotingPower, vals.TotalVotingPower())
 	}
-
+	processingTime = time.Since(start)
+	schema.WriteMessageStats(cs.traceClient, "state", "state.AddVote6", processingTime.Nanoseconds(), "")
+	start = time.Now()
 	if err := cs.eventBus.PublishEventVote(types.EventDataVote{Vote: vote}); err != nil {
 		return added, err
 	}
 	cs.evsw.FireEvent(types.EventVote, vote)
-
+	processingTime = time.Since(start)
+	schema.WriteMessageStats(cs.traceClient, "state", "state.AddVote7", processingTime.Nanoseconds(), "")
+	start = time.Now()
 	switch vote.Type {
 	case cmtproto.PrevoteType:
 		prevotes := cs.rs.GetVotes().Prevotes(vote.Round)
 		cs.Logger.Debug("added vote to prevote", "vote", vote, "prevotes", prevotes.StringShort())
 
+		processingTime = time.Since(start)
+		schema.WriteMessageStats(cs.traceClient, "state", "state.AddVote8", processingTime.Nanoseconds(), "")
+		start = time.Now()
 		// If +2/3 prevotes for a block or nil for *any* round:
 		if blockID, ok := prevotes.TwoThirdsMajority(); ok {
 			// There was a polka!
@@ -2469,6 +2501,9 @@ func (cs *State) addVote(vote *types.Vote, peerID p2p.ID) (added bool, err error
 					return added, err
 				}
 			}
+			processingTime = time.Since(start)
+			schema.WriteMessageStats(cs.traceClient, "state", "state.AddVote9", processingTime.Nanoseconds(), "")
+			start = time.Now()
 
 			// Update Valid* if we can.
 			// NOTE: our proposal block may be nil or not what received a polka..
@@ -2496,10 +2531,16 @@ func (cs *State) addVote(vote *types.Vote, peerID p2p.ID) (added bool, err error
 					cs.propagator.AddCommitment(height, vote.Round, &psh)
 				}
 
+				processingTime = time.Since(start)
+				schema.WriteMessageStats(cs.traceClient, "state", "state.AddVote10", processingTime.Nanoseconds(), "")
+				start = time.Now()
 				cs.evsw.FireEvent(types.EventValidBlock, &cs.rs)
 				if err := cs.eventBus.PublishEventValidBlock(cs.rs.RoundStateEvent()); err != nil {
 					return added, err
 				}
+				processingTime = time.Since(start)
+				schema.WriteMessageStats(cs.traceClient, "state", "state.AddVote11", processingTime.Nanoseconds(), "")
+				start = time.Now()
 			}
 		}
 
@@ -2508,7 +2549,9 @@ func (cs *State) addVote(vote *types.Vote, peerID p2p.ID) (added bool, err error
 		case cs.rs.Round.Load() < vote.Round && prevotes.HasTwoThirdsAny():
 			// Round-skip if there is any 2/3+ of votes ahead of us
 			cs.enterNewRound(height, vote.Round)
-
+			processingTime = time.Since(start)
+			schema.WriteMessageStats(cs.traceClient, "state", "state.AddVote12", processingTime.Nanoseconds(), "")
+			start = time.Now()
 		case cs.rs.Round.Load() == vote.Round && cstypes.RoundStepPrevote <= cs.rs.GetStep(): // current round
 			blockID, ok := prevotes.TwoThirdsMajority()
 			if ok && (cs.isProposalComplete() || len(blockID.Hash) == 0) {
@@ -2516,12 +2559,17 @@ func (cs *State) addVote(vote *types.Vote, peerID p2p.ID) (added bool, err error
 			} else if prevotes.HasTwoThirdsAny() {
 				cs.enterPrevoteWait(height, vote.Round)
 			}
-
+			processingTime = time.Since(start)
+			schema.WriteMessageStats(cs.traceClient, "state", "state.AddVote13", processingTime.Nanoseconds(), "")
+			start = time.Now()
 		case cs.rs.GetProposal() != nil && 0 <= cs.rs.GetProposal().POLRound && cs.rs.GetProposal().POLRound == vote.Round:
 			// If the proposal is now complete, enter prevote of cs.Round.
 			if cs.isProposalComplete() {
 				cs.enterPrevote(height, cs.rs.Round.Load())
 			}
+			processingTime = time.Since(start)
+			schema.WriteMessageStats(cs.traceClient, "state", "state.AddVote14", processingTime.Nanoseconds(), "")
+			start = time.Now()
 		}
 
 	case cmtproto.PrecommitType:
@@ -2532,26 +2580,41 @@ func (cs *State) addVote(vote *types.Vote, peerID p2p.ID) (added bool, err error
 			"validator", vote.ValidatorAddress.String(),
 			"vote_timestamp", vote.Timestamp,
 			"data", precommits.LogString())
-
+		processingTime = time.Since(start)
+		schema.WriteMessageStats(cs.traceClient, "state", "state.AddVote15", processingTime.Nanoseconds(), "")
+		start = time.Now()
 		blockID, ok := precommits.TwoThirdsMajority()
 		if ok {
 			// Executed as TwoThirdsMajority could be from a higher round
 			cs.enterNewRound(height, vote.Round)
 			cs.enterPrecommit(height, vote.Round)
-
+			processingTime = time.Since(start)
+			schema.WriteMessageStats(cs.traceClient, "state", "state.AddVote16", processingTime.Nanoseconds(), "")
+			start = time.Now()
 			if len(blockID.Hash) != 0 {
 				cs.enterCommit(height, vote.Round)
 				if cs.config.SkipTimeoutCommit && precommits.HasAll() {
 					cs.enterNewRound(cs.rs.Height.Load(), 0)
 				}
+				processingTime = time.Since(start)
+				schema.WriteMessageStats(cs.traceClient, "state", "state.AddVote17", processingTime.Nanoseconds(), "")
+				start = time.Now()
 			} else {
 				cs.enterPrecommitWait(height, vote.Round)
+				processingTime = time.Since(start)
+				schema.WriteMessageStats(cs.traceClient, "state", "state.AddVote18", processingTime.Nanoseconds(), "")
+				start = time.Now()
 			}
 		} else if cs.rs.Round.Load() <= vote.Round && precommits.HasTwoThirdsAny() {
 			cs.enterNewRound(height, vote.Round)
 			cs.enterPrecommitWait(height, vote.Round)
+			processingTime = time.Since(start)
+			schema.WriteMessageStats(cs.traceClient, "state", "state.AddVote19", processingTime.Nanoseconds(), "")
+			start = time.Now()
 		}
-
+		processingTime = time.Since(start)
+		schema.WriteMessageStats(cs.traceClient, "state", "state.AddVote20", processingTime.Nanoseconds(), "")
+		start = time.Now()
 	default:
 		panic(fmt.Sprintf("unexpected vote type %v", vote.Type))
 	}

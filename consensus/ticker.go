@@ -1,6 +1,7 @@
 package consensus
 
 import (
+	"fmt"
 	"time"
 
 	"github.com/cometbft/cometbft/libs/log"
@@ -127,7 +128,9 @@ func (t *timeoutTicker) timeoutRoutine() {
 			t.timerActive = true
 
 			t.Logger.Debug("Scheduled timeout", "dur", ti.Duration, "height", ti.Height, "round", ti.Round, "step", ti.Step)
+			fmt.Println("scheduled timeout: ", ti.Duration.Milliseconds())
 		case <-t.timer.C:
+			fmt.Println("finished timeout: ", ti.Duration.Milliseconds())
 			t.timerActive = false
 			t.Logger.Info("Timed out", "dur", ti.Duration, "height", ti.Height, "round", ti.Round, "step", ti.Step)
 			// go routine here guarantees timeoutRoutine doesn't block.
