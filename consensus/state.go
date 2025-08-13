@@ -1784,6 +1784,7 @@ func (cs *State) buildNextBlock() {
 
 // Enter: +2/3 precommits for block
 func (cs *State) enterCommit(height int64, commitRound int32) {
+	start := time.Now()
 	logger := cs.Logger.With("height", height, "commit_round", commitRound)
 
 	if cs.rs.Height.Load() != height || cstypes.RoundStepCommit <= cs.rs.GetStep() {
@@ -1796,23 +1797,46 @@ func (cs *State) enterCommit(height int64, commitRound int32) {
 
 	logger.Debug("entering commit step", "current", log.NewLazySprintf("%v/%v/%v", cs.rs.Height.Load(), cs.rs.Round.Load(), cs.rs.GetStep()))
 
+	processingTime := time.Since(start)
+	schema.WriteMessageStats(cs.traceClient, "state", "state.EenterCommit1", processingTime.Nanoseconds(), "")
+	start = time.Now()
 	defer func() {
+		start := time.Now()
 		// Done enterCommit:
 		// keep cs.Round the same, commitRound points to the right Precommits set.
 		cs.updateRoundStep(cs.rs.Round.Load(), cstypes.RoundStepCommit)
+		processingTime := time.Since(start)
+		schema.WriteMessageStats(cs.traceClient, "state", "state.EenterCommit2", processingTime.Nanoseconds(), "")
+		start = time.Now()
 		cs.rs.CommitRound.Store(commitRound)
+		processingTime = time.Since(start)
+		schema.WriteMessageStats(cs.traceClient, "state", "state.EenterCommit2", processingTime.Nanoseconds(), "")
+		start = time.Now()
 		cs.rs.SetCommitTime(cmttime.Now())
+		processingTime = time.Since(start)
+		schema.WriteMessageStats(cs.traceClient, "state", "state.EenterCommit4", processingTime.Nanoseconds(), "")
+		start = time.Now()
 		cs.newStep()
+		processingTime = time.Since(start)
+		schema.WriteMessageStats(cs.traceClient, "state", "state.EenterCommit5", processingTime.Nanoseconds(), "")
+		start = time.Now()
 
 		// Maybe finalize immediately.
 		cs.tryFinalizeCommit(height)
+		processingTime = time.Since(start)
+		schema.WriteMessageStats(cs.traceClient, "state", "state.EenterCommit6", processingTime.Nanoseconds(), "")
 	}()
-
+	processingTime = time.Since(start)
+	schema.WriteMessageStats(cs.traceClient, "state", "state.EenterCommit7", processingTime.Nanoseconds(), "")
+	start = time.Now()
 	blockID, ok := cs.rs.GetVotes().Precommits(commitRound).TwoThirdsMajority()
 	if !ok {
 		panic("RunActionCommit() expects +2/3 precommits")
 	}
 
+	processingTime = time.Since(start)
+	schema.WriteMessageStats(cs.traceClient, "state", "state.EenterCommit8", processingTime.Nanoseconds(), "")
+	start = time.Now()
 	// The Locked* fields no longer matter.
 	// Move them over to ProposalBlock if they match the commit hash,
 	// otherwise they'll be cleared in updateToState.
@@ -1821,6 +1845,9 @@ func (cs *State) enterCommit(height int64, commitRound int32) {
 		cs.rs.SetProposalBlock(cs.rs.GetLockedBlock())
 		cs.rs.SetProposalBlockParts(cs.rs.GetLockedBlockParts())
 	}
+	processingTime = time.Since(start)
+	schema.WriteMessageStats(cs.traceClient, "state", "state.EenterCommit9", processingTime.Nanoseconds(), "")
+	start = time.Now()
 
 	// If we don't have the block being committed, set up to get it.
 	if !cs.rs.GetProposalBlock().HashesTo(blockID.Hash) {
@@ -1831,18 +1858,26 @@ func (cs *State) enterCommit(height int64, commitRound int32) {
 				"commit", blockID.Hash,
 			)
 
+			processingTime = time.Since(start)
+			schema.WriteMessageStats(cs.traceClient, "state", "state.EenterCommit9", processingTime.Nanoseconds(), "")
+			start = time.Now()
 			// We're getting the wrong block.
 			// Set up ProposalBlockParts and keep waiting.
 			cs.rs.SetProposalBlock(nil)
 			cs.rs.SetProposalBlockParts(types.NewPartSetFromHeader(blockID.PartSetHeader))
 			psh := blockID.PartSetHeader
 			cs.propagator.AddCommitment(height, commitRound, &psh)
-
+			processingTime = time.Since(start)
+			schema.WriteMessageStats(cs.traceClient, "state", "state.EenterCommit10", processingTime.Nanoseconds(), "")
+			start = time.Now()
 			if err := cs.eventBus.PublishEventValidBlock(cs.rs.RoundStateEvent()); err != nil {
 				logger.Error("failed publishing valid block", "err", err)
 			}
 
 			cs.evsw.FireEvent(types.EventValidBlock, &cs.rs)
+			processingTime = time.Since(start)
+			schema.WriteMessageStats(cs.traceClient, "state", "state.EenterCommit11", processingTime.Nanoseconds(), "")
+			start = time.Now()
 		}
 	}
 }

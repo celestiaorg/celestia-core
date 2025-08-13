@@ -180,6 +180,7 @@ func chunkToPartMetaData(chunk *bits.BitArray, partSet *proptypes.CombinedPartSe
 // time a proposal is received from a peer or when a proposal is created. If the
 // proposal is new, it will be stored and broadcast to the relevant peers.
 func (blockProp *Reactor) handleCompactBlock(cb *proptypes.CompactBlock, peer p2p.ID, proposer bool) {
+	start := time.Now()
 	added := blockProp.AddProposal(cb)
 	if !added {
 		p := blockProp.getPeer(peer)
@@ -195,13 +196,18 @@ func (blockProp *Reactor) handleCompactBlock(cb *proptypes.CompactBlock, peer p2
 		}
 		p.consensusPeerState.SetHasProposal(&cb.Proposal)
 	}
-
+	processingTime := time.Since(start)
+	schema.WriteMessageStats(blockProp.traceClient, "propagation", "propagation.HandleCompactBlock1", processingTime.Nanoseconds(), "")
+	start = time.Now()
 	err := blockProp.validateCompactBlock(cb)
 	if !proposer && err != nil {
 		blockProp.DeleteRound(cb.Proposal.Height, cb.Proposal.Round)
 		blockProp.Logger.Debug("failed to validate proposal. ignoring", "err", err, "height", cb.Proposal.Height, "round", cb.Proposal.Round)
 		return
 	}
+	processingTime = time.Since(start)
+	schema.WriteMessageStats(blockProp.traceClient, "propagation", "propagation.HandleCompactBlock2", processingTime.Nanoseconds(), "")
+	start = time.Now()
 
 	// generate (and cache) the proofs from the partset hashes in the compact block
 	_, err = cb.Proofs()
@@ -212,6 +218,9 @@ func (blockProp *Reactor) handleCompactBlock(cb *proptypes.CompactBlock, peer p2
 		return
 	}
 
+	processingTime = time.Since(start)
+	schema.WriteMessageStats(blockProp.traceClient, "propagation", "propagation.HandleCompactBlock3", processingTime.Nanoseconds(), "")
+	start = time.Now()
 	schema.WriteCompleteBlock(blockProp.traceClient, cb.Proposal.Height, cb.Proposal.Round, false)
 
 	fmt.Println("received block in propagation ", time.Now())
@@ -221,13 +230,22 @@ func (blockProp *Reactor) handleCompactBlock(cb *proptypes.CompactBlock, peer p2
 			return
 		case blockProp.proposalChan <- cb.Proposal:
 		}
+		processingTime = time.Since(start)
+		schema.WriteMessageStats(blockProp.traceClient, "propagation", "propagation.HandleCompactBlock4", processingTime.Nanoseconds(), "")
+		start = time.Now()
 		// check if we have any transactions that are in the compact block
 		blockProp.recoverPartsFromMempool(cb)
+		processingTime = time.Since(start)
+		schema.WriteMessageStats(blockProp.traceClient, "propagation", "propagation.HandleCompactBlock5", processingTime.Nanoseconds(), "")
+		start = time.Now()
 	}
 
 	fmt.Println("broadcasting compact block ", time.Now())
 	blockProp.broadcastCompactBlock(cb, peer)
 	fmt.Println("done broadcasting compact block ", time.Now())
+	processingTime = time.Since(start)
+	schema.WriteMessageStats(blockProp.traceClient, "propagation", "propagation.HandleCompactBlock6", processingTime.Nanoseconds(), "")
+	start = time.Now()
 }
 
 // recoverPartsFromMempool queries the mempool to see if we can recover any block parts locally.
