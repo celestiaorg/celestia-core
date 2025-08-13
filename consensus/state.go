@@ -1912,6 +1912,7 @@ func (cs *State) tryFinalizeCommit(height int64) {
 
 // Increment height and goto cstypes.RoundStepNewHeight
 func (cs *State) finalizeCommit(height int64) {
+	fmt.Println("finalize commit 1")
 	logger := cs.Logger.With("height", height)
 
 	if cs.rs.Height.Load() != height || cs.rs.GetStep() != cstypes.RoundStepCommit {
@@ -1941,6 +1942,7 @@ func (cs *State) finalizeCommit(height int64) {
 		panic(fmt.Errorf("+2/3 committed an invalid block: %w", err))
 	}
 
+	fmt.Println("finalize commit 2")
 	logger.Info(
 		"finalizing commit of block",
 		"hash", log.NewLazyBlockHash(block),
@@ -1968,6 +1970,7 @@ func (cs *State) finalizeCommit(height int64) {
 		logger.Debug("calling finalizeCommit on already stored block", "height", block.Height)
 	}
 
+	fmt.Println("finalize commit 3")
 	fail.Fail() // XXX
 
 	// Write EndHeightMessage{} for this height, implying that the blockstore
@@ -1995,7 +1998,7 @@ func (cs *State) finalizeCommit(height int64) {
 
 	// Create a copy of the state for staging and an event cache for txs.
 	stateCopy := cs.State().Copy()
-
+	fmt.Println("finalize commit 4")
 	schema.WriteABCI(cs.traceClient, schema.CommitStart, height, 0)
 
 	// Execute and commit the block, update and save the state, and update the mempool.
@@ -2013,7 +2016,7 @@ func (cs *State) finalizeCommit(height int64) {
 	if err != nil {
 		panic(fmt.Sprintf("failed to apply block; error %v", err))
 	}
-
+	fmt.Println("finalize commit 5")
 	schema.WriteABCI(cs.traceClient, schema.CommitEnd, height, 0)
 
 	fail.Fail() // XXX
@@ -2036,7 +2039,7 @@ func (cs *State) finalizeCommit(height int64) {
 	// cs.StartTime is already set.
 	// Schedule Round0 to start soon.
 	cs.scheduleRound0(&cs.rs)
-
+	fmt.Println("finalize commit 6")
 	// prune the propagation reactor
 	cs.propagator.Prune(height)
 	proposer := cs.rs.GetValidators().GetProposer()
@@ -2050,6 +2053,7 @@ func (cs *State) finalizeCommit(height int64) {
 			go cs.buildNextBlock()
 		}
 	}
+	fmt.Println("finalize commit 7")
 	// By here,
 	// * cs.Height has been increment to height+1
 	// * cs.Step is now cstypes.RoundStepNewHeight
