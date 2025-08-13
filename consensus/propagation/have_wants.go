@@ -203,7 +203,7 @@ func (blockProp *Reactor) requestFromPeer(ps *PeerState) {
 					}
 				}
 
-				if wants == nil {
+				if wants == nil && missingPartsCount != 0 {
 					wants = &proptypes.WantParts{
 						Height:            have.height,
 						Round:             have.round,
