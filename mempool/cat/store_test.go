@@ -255,12 +255,14 @@ func TestStoreExpiredTxs(t *testing.T) {
 
 	remainingTxs := store.getAllTxs()
 	require.Equal(t, numTxs/2, len(remainingTxs))
+	require.Equal(t, len(remainingTxs), len(store.orderedTxs))
 	for _, tx := range remainingTxs {
 		require.GreaterOrEqual(t, tx.height, int64(numTxs/2))
 	}
 
 	store.purgeExpiredTxs(int64(0), time.Now().Add(time.Second))
 	require.Empty(t, store.getAllTxs())
+	require.Empty(t, store.orderedTxs)
 }
 
 func TestStoreGetOrderedTxs(t *testing.T) {
