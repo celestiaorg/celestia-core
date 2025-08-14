@@ -192,7 +192,7 @@ func (s *store) deleteOrderedTx(tx *wrappedTx) error {
 		return fmt.Errorf("ordered transactions list is empty")
 	}
 
-	// Find by direct iteration - more reliable than binary search after modifications
+	// Find by direct iteration, binary search is not reliable after modification
 	for i, orderedTx := range s.orderedTxs {
 		if orderedTx == tx {
 			s.orderedTxs = append(s.orderedTxs[:i], s.orderedTxs[i+1:]...)
