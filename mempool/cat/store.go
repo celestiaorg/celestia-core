@@ -164,8 +164,8 @@ func (s *store) purgeExpiredTxs(expirationHeight int64, expirationAge time.Time)
 		if tx.height < expirationHeight || tx.timestamp.Before(expirationAge) {
 			s.bytes -= tx.size()
 			fmt.Printf("Trying to delete: %X\n", tx.key)
-			for _, orderedTx := range s.orderedTxs {
-				fmt.Printf("%X ORDERED TX\n", orderedTx.key)
+			for i, orderedTx := range s.orderedTxs {
+				fmt.Printf("%X ORDERED TX %d\n", orderedTx.key, i)
 			}
 			if err := s.deleteOrderedTx(tx); err != nil {
 				panic(err)
@@ -195,12 +195,16 @@ func (s *store) deleteOrderedTx(tx *wrappedTx) error {
 	if len(s.orderedTxs) == 0 {
 		return fmt.Errorf("ordered transactions list is empty")
 	}
-	idx := s.getTxOrder(tx) - 1
-	if idx >= len(s.orderedTxs) || s.orderedTxs[idx] != tx {
-		return fmt.Errorf("transaction %X not found in ordered list", tx.key)
+
+	// Find by direct iteration - more reliable than binary search after modifications
+	for i, orderedTx := range s.orderedTxs {
+		if orderedTx == tx {
+			s.orderedTxs = append(s.orderedTxs[:i], s.orderedTxs[i+1:]...)
+			return nil
+		}
 	}
-	s.orderedTxs = append(s.orderedTxs[:idx], s.orderedTxs[idx+1:]...)
-	return nil
+
+	return fmt.Errorf("transaction %X not found in ordered list", tx.key)
 }
 
 func (s *store) getTxOrder(tx *wrappedTx) int {
