@@ -252,10 +252,8 @@ func TestStoreExpiredTxs(t *testing.T) {
 		store.set(wtx)
 	}
 
-	fmt.Println("failed here")
 	// half of them should get purged
 	store.purgeExpiredTxs(int64(numTxs/2), time.Time{})
-	fmt.Println("did not make it to this")
 
 	remainingTxs := store.getAllTxs()
 	require.Equal(t, numTxs/2, len(remainingTxs))
