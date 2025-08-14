@@ -163,6 +163,13 @@ func (s *store) purgeExpiredTxs(expirationHeight int64, expirationAge time.Time)
 	for key, tx := range s.txs {
 		if tx.height < expirationHeight || tx.timestamp.Before(expirationAge) {
 			s.bytes -= tx.size()
+			fmt.Printf("Trying to delete: %X\n", tx.key)
+			for _, orderedTx := range s.orderedTxs {
+				fmt.Printf("%X ORDERED TX\n", orderedTx.key)
+			}
+			if err := s.deleteOrderedTx(tx); err != nil {
+				panic(err)
+			}
 			delete(s.txs, key)
 			purgedTxs = append(purgedTxs, tx)
 			counter++
