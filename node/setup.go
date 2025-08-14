@@ -109,19 +109,28 @@ type blockSyncReactor interface {
 
 //------------------------------------------------------------------------------
 
+func DBProvider(ctx *cfg.DBContext) (dbm.DB, error) {
+	blockDB, err := dbm.NewDB(ctx.ID, dbm.PebbleDBBackend, ctx.Config.DBDir())
+	if err != nil {
+		return nil, err
+	}
+	fmt.Println("using pebble db for ", ctx.Config.DBDir())
+	return blockDB, nil
+}
+
 // initDBs opens or creates the blockstore and state databases.
 // If config.BlockstoreDir() differs from config.DBDir(), users must manually
 // migrate their existing blockstore data before changing this configuration.
 // No automatic migration is performed to prevent accidental data inconsistency.
-func initDBs(config *cfg.Config, dbProvider cfg.DBProvider) (blockStore *store.BlockStore, stateDB dbm.DB, err error) {
+func initDBs(config *cfg.Config, _ cfg.DBProvider) (blockStore *store.BlockStore, stateDB dbm.DB, err error) {
 	var blockStoreDB dbm.DB
-	blockStoreDB, err = dbProvider(&cfg.DBContext{ID: "blockstore", Config: config, Path: config.BlockstoreDir()})
+	blockStoreDB, err = DBProvider(&cfg.DBContext{ID: "blockstore", Config: config, Path: config.BlockstoreDir()})
 	if err != nil {
 		return
 	}
 	blockStore = store.NewBlockStore(blockStoreDB)
 
-	stateDB, err = dbProvider(&cfg.DBContext{ID: "state", Config: config, Path: config.DBDir()})
+	stateDB, err = DBProvider(&cfg.DBContext{ID: "state", Config: config, Path: config.DBDir()})
 	if err != nil {
 		return
 	}

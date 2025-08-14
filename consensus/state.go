@@ -1884,6 +1884,7 @@ func (cs *State) enterCommit(height int64, commitRound int32) {
 
 // If we have the block AND +2/3 commits for it, finalize.
 func (cs *State) tryFinalizeCommit(height int64) {
+	start := time.Now()
 	logger := cs.Logger.With("height", height)
 
 	if cs.rs.Height.Load() != height {
@@ -1907,12 +1908,18 @@ func (cs *State) tryFinalizeCommit(height int64) {
 		return
 	}
 
+	processingTime := time.Since(start)
+	schema.WriteMessageStats(cs.traceClient, "consensus", "state.tryFinalizeCommit1", processingTime.Nanoseconds(), "")
+	start = time.Now()
 	cs.finalizeCommit(height)
+	processingTime = time.Since(start)
+	schema.WriteMessageStats(cs.traceClient, "consensus", "state.tryFinalizeCommit2", processingTime.Nanoseconds(), "")
 }
 
 // Increment height and goto cstypes.RoundStepNewHeight
 func (cs *State) finalizeCommit(height int64) {
 	fmt.Println("finalize commit 1")
+	start := time.Now()
 	logger := cs.Logger.With("height", height)
 
 	if cs.rs.Height.Load() != height || cs.rs.GetStep() != cstypes.RoundStepCommit {
@@ -1942,6 +1949,9 @@ func (cs *State) finalizeCommit(height int64) {
 		panic(fmt.Errorf("+2/3 committed an invalid block: %w", err))
 	}
 
+	processingTime := time.Since(start)
+	schema.WriteMessageStats(cs.traceClient, "consensus", "state.finalizeCommit1", processingTime.Nanoseconds(), "")
+	start = time.Now()
 	fmt.Println("finalize commit 2")
 	logger.Info(
 		"finalizing commit of block",
@@ -1965,6 +1975,9 @@ func (cs *State) finalizeCommit(height int64) {
 		} else {
 			cs.blockStore.SaveBlock(block, blockParts, seenExtendedCommit.ToCommit())
 		}
+		processingTime = time.Since(start)
+		schema.WriteMessageStats(cs.traceClient, "consensus", "state.finalizeCommit2", processingTime.Nanoseconds(), "")
+		start = time.Now()
 	} else {
 		// Happens during replay if we already saved the block but didn't commit
 		logger.Debug("calling finalizeCommit on already stored block", "height", block.Height)
@@ -1993,6 +2006,9 @@ func (cs *State) finalizeCommit(height int64) {
 			endMsg, err,
 		))
 	}
+	processingTime = time.Since(start)
+	schema.WriteMessageStats(cs.traceClient, "consensus", "state.finalizeCommit3", processingTime.Nanoseconds(), "")
+	start = time.Now()
 
 	fail.Fail() // XXX
 
