@@ -1705,7 +1705,7 @@ func (cs *State) enterPrecommitWait(height int64, round int32) {
 // blockBuildingTime the time it takes to build a new 32 mb block and a safety cushion.
 const blockBuildingTime = 1800 * time.Millisecond
 
-// buildNextBlock creates the next block pre-emptively if we're the proposer.
+// buildNextBlock creates the next block preemptively if we're the proposer.
 func (cs *State) buildNextBlock() {
 	select {
 	// flush the next block channel to ensure only the relevant block is there.
@@ -1713,7 +1713,7 @@ func (cs *State) buildNextBlock() {
 	default:
 	}
 
-	// delay pre-emptive block building until the end of the timeout commit
+	// delay preemptive block building until the end of the timeout commit
 	tc := cs.state.TimeoutCommit
 	time.Sleep(tc - blockBuildingTime)
 
@@ -1956,7 +1956,7 @@ func (cs *State) finalizeCommit(height int64) {
 		cs.propagator.SetProposer(proposer.PubKey)
 	}
 
-	// build the block pre-emptively if we're the proposer and the timeout commit is higher than 1 s.
+	// build the block preemptively if we're the proposer and the timeout commit is higher than 1 s.
 	tc := cs.state.TimeoutCommit
 	if tc > blockBuildingTime && cs.privValidatorPubKey != nil {
 		if address := cs.privValidatorPubKey.Address(); cs.Validators.HasAddress(address) && cs.isProposer(address) {
