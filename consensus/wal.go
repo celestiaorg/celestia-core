@@ -29,7 +29,7 @@ const (
 )
 
 //--------------------------------------------------------
-// types and functions for savings consensus messages
+// types and functions for saving consensus messages
 
 // TimedWALMessage wraps WALMessage and adds Time for debugging purposes.
 type TimedWALMessage struct {
@@ -335,7 +335,7 @@ func IsDataCorruptionError(err error) bool {
 	return ok
 }
 
-// DataCorruptionError is an error that occures if data on disk was corrupted.
+// DataCorruptionError is an error that occurs if data on disk was corrupted.
 type DataCorruptionError struct {
 	cause error
 }
