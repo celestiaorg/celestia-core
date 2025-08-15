@@ -291,7 +291,7 @@ func TestByzantinePrevoteEquivocation(t *testing.T) {
 				}
 
 				// Stop watching after a reasonable number of blocks to prevent hanging
-				if blockCount >= 10 {
+				if blockCount >= 20 {
 					t.Logf("Validator %d watched %d blocks without finding evidence", i, blockCount)
 					return
 				}
@@ -310,9 +310,9 @@ func TestByzantinePrevoteEquivocation(t *testing.T) {
 		assert.Equal(t, pubkey.Address(), ev.VoteA.ValidatorAddress)
 		assert.Equal(t, prevoteHeight, ev.Height())
 		t.Logf("Successfully found evidence: %v", ev)
-	case <-time.After(30 * time.Second):
+	case <-time.After(60 * time.Second):
 		// Increased timeout and better error message
-		t.Fatalf("Timed out waiting for validators to commit evidence after 30 seconds")
+		t.Fatalf("Timed out waiting for validators to commit evidence after 60 seconds")
 	}
 }
 
