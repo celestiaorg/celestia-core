@@ -268,6 +268,7 @@ func (r *Reactor) Receive(e p2p.Envelope) {
 			r.SendAddrs(e.Src, r.book.GetSelectionWithBias(biasToSelectNewPeers))
 			go func() {
 				// In a go-routine so it doesn't block .Receive.
+				time.Sleep(200 * time.Millisecond)
 				if r.Switch != nil && r.Switch.IsRunning() {
 					r.Switch.StopPeerGracefully(e.Src, r.String())
 				}
