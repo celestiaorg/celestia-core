@@ -6,13 +6,13 @@ pull_request_rules:
       backport:
         branches:
           - main
-  - name: backport patches to v0.39.x-celestia
+  - name: backport patches to v0.39.x
     conditions:
       - label=backport-to-v0.39.x
     actions:
       backport:
         branches:
-          - v0.39.x-celestia
+          - v0.39.x
   - name: backport patches to v0.38.x-celestia
     conditions:
       - label=backport-to-v0.38.x
