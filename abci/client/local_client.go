@@ -45,9 +45,6 @@ func (app *localClient) SetResponseCallback(cb Callback) {
 }
 
 func (app *localClient) CheckTxAsync(ctx context.Context, req *types.RequestCheckTx) (*ReqRes, error) {
-	app.mtx.Lock()
-	defer app.mtx.Unlock()
-
 	res, err := app.Application.CheckTx(ctx, req)
 	if err != nil {
 		return nil, err
@@ -93,9 +90,6 @@ func (app *localClient) Info(ctx context.Context, req *types.RequestInfo) (*type
 }
 
 func (app *localClient) CheckTx(ctx context.Context, req *types.RequestCheckTx) (*types.ResponseCheckTx, error) {
-	app.mtx.Lock()
-	defer app.mtx.Unlock()
-
 	return app.Application.CheckTx(ctx, req)
 }
 
