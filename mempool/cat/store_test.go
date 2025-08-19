@@ -261,8 +261,14 @@ func TestStoreExpiredTxs(t *testing.T) {
 		require.GreaterOrEqual(t, tx.height, int64(numTxs/2))
 	}
 
+	// They should also be removed from orderedTxs
+	for _, tx := range store.orderedTxs {
+		require.GreaterOrEqual(t, tx.height, int64(numTxs/2))
+	}
+
 	store.purgeExpiredTxs(int64(0), time.Now().Add(time.Second))
 	require.Empty(t, store.getAllTxs())
+	require.Empty(t, store.getOrderedTxs())
 }
 
 func TestStoreGetOrderedTxs(t *testing.T) {
