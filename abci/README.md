@@ -30,6 +30,6 @@ To compile the protobuf file, run (from the root of the repo):
 make protoc_abci
 ```
 
-See `protoc --help` and [the Protocol Buffers site](https://developers.google.com/protocol-buffers)
+See `protoc --help` and [the Protocol Buffers site](https://protobuf.dev)
 for details on compiling for other languages. Note we also include a [GRPC](https://www.grpc.io/docs)
 service definition.
