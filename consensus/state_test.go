@@ -2479,7 +2479,7 @@ func TestStateOutputsBlockPartsStats(t *testing.T) {
 		Part:   parts.GetPart(0),
 	}
 
-	cs.ProposalBlockParts = types.NewPartSetFromHeader(parts.Header())
+	cs.ProposalBlockParts = types.NewPartSetFromHeader(parts.Header(), types.BlockPartSizeBytes)
 	cs.handleMsg(msgInfo{msg, peer.ID()})
 
 	statsMessage := <-cs.statsMsgQueue

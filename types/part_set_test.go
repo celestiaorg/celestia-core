@@ -37,7 +37,7 @@ func TestBasicPartSet(t *testing.T) {
 	assert.EqualValues(t, testPartSize*nParts, partSet.ByteSize())
 
 	// Test adding parts to a new partSet.
-	partSet2 := NewPartSetFromHeader(partSet.Header())
+	partSet2 := NewPartSetFromHeader(partSet.Header(), testPartSize)
 
 	assert.True(t, partSet2.HasHeader(partSet.Header()))
 	for i := 0; i < int(partSet.Total()); i++ {
@@ -160,7 +160,7 @@ func TestWrongProof(t *testing.T) {
 	require.NoError(t, err)
 
 	// Test adding a part with wrong data.
-	partSet2 := NewPartSetFromHeader(partSet.Header())
+	partSet2 := NewPartSetFromHeader(partSet.Header(), testPartSize)
 
 	// Test adding a part with wrong trail.
 	part := partSet.GetPart(0)
@@ -386,7 +386,7 @@ func benchPartSetFromData(b *testing.B, data []byte, partSize uint32) (ops *Part
 	ops = NewPartSetFromHeader(PartSetHeader{
 		Total: total,
 		Hash:  root,
-	})
+	}, partSize)
 
 	b.StartTimer()
 	for index, chunk := range chunks {

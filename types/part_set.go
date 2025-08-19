@@ -207,6 +207,9 @@ type PartSet struct {
 	mtx cmtsync.Mutex
 	// Single preallocated buffer for all parts
 	buffer []byte
+
+	// partSize specifies the size of each part in bytes (excluding last part)
+	partSize int
 	// Size of the last part (which may be smaller than BlockPartSizeBytes)
 	lastPartSize int
 	// Separate storage for merkle proofs
@@ -237,7 +240,7 @@ func NewPartSetFromData(data []byte, partSize uint32) (ops *PartSet, err error) 
 	ops = NewPartSetFromHeader(PartSetHeader{
 		Total: total,
 		Hash:  root,
-	})
+	}, partSize)
 
 	for index, chunk := range chunks {
 		added, err := ops.AddPart(&Part{
@@ -308,7 +311,7 @@ func Encode(ops *PartSet, partSize uint32) (*PartSet, int, error) {
 	eps := NewPartSetFromHeader(PartSetHeader{
 		Total: ops.Total(),
 		Hash:  eroot,
-	})
+	}, partSize)
 	for i := uint32(0); i < ops.Total(); i++ {
 		added, err := eps.AddPart(&Part{
 			Index: i,
@@ -435,14 +438,15 @@ func Decode(ops, eps *PartSet, lastPartLen int) (*PartSet, *PartSet, error) {
 }
 
 // Returns an empty PartSet ready to be populated.
-func NewPartSetFromHeader(header PartSetHeader) *PartSet {
+func NewPartSetFromHeader(header PartSetHeader, partSize uint32) *PartSet {
 	// Calculate buffer size: (total-1) full parts + potentially smaller last part
-	bufferSize := int(header.Total) * int(BlockPartSizeBytes)
+	bufferSize := int(header.Total) * int(partSize)
 	return &PartSet{
 		total:         header.Total,
 		hash:          header.Hash,
 		buffer:        make([]byte, bufferSize),
-		lastPartSize:  int(BlockPartSizeBytes), // Default to full size, will be updated when last part is added
+		partSize:      int(partSize),
+		lastPartSize:  0, // default to 0; will be updated when the last part is added
 		proofs:        make([]merkle.Proof, header.Total),
 		partsBitArray: bits.NewBitArray(int(header.Total)),
 		count:         0,
@@ -549,7 +553,7 @@ func (ps *PartSet) addPart(part *Part) (bool, error) {
 	}
 
 	// Calculate buffer position and copy part data
-	start := int(part.Index) * int(BlockPartSizeBytes)
+	start := int(part.Index) * ps.partSize
 	end := start + len(part.Bytes)
 
 	// Ensure we don't exceed buffer bounds
@@ -587,8 +591,8 @@ func (ps *PartSet) getPartBytes(index int) []byte {
 	}
 
 	// Calculate buffer position
-	start := index * int(BlockPartSizeBytes)
-	partSize := int(BlockPartSizeBytes)
+	start := index * ps.partSize
+	partSize := ps.partSize
 
 	// For the last part, use the actual size
 	if index == int(ps.total)-1 {

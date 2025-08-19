@@ -337,7 +337,7 @@ func TestCreateProposalBlock(t *testing.T) {
 	require.NoError(t, err)
 	assert.Less(t, partSet.ByteSize(), maxBytes)
 
-	partSetFromHeader := types.NewPartSetFromHeader(partSet.Header())
+	partSetFromHeader := types.NewPartSetFromHeader(partSet.Header(), partSize)
 	for partSetFromHeader.Count() < partSetFromHeader.Total() {
 		added, err := partSetFromHeader.AddPart(partSet.GetPart(int(partSetFromHeader.Count())))
 		require.NoError(t, err)
