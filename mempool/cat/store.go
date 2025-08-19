@@ -200,7 +200,7 @@ func (s *store) deleteOrderedTx(tx *wrappedTx) error {
 		}
 	}
 
-	return fmt.Errorf("transaction %X not found in ordered list", tx.key)
+	return fmt.Errorf("transaction %X not found in ordered list", tx.key())
 }
 
 func (s *store) getTxOrder(tx *wrappedTx) int {
