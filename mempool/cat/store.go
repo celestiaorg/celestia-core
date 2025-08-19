@@ -191,11 +191,6 @@ func (s *store) deleteOrderedTx(tx *wrappedTx) error {
 	if len(s.orderedTxs) == 0 {
 		return fmt.Errorf("ordered transactions list is empty")
 	}
-<<<<<<< HEAD
-	idx := s.getTxOrder(tx) - 1
-	if idx >= len(s.orderedTxs) || s.orderedTxs[idx] != tx {
-		return fmt.Errorf("transaction %X not found in ordered list", tx.key())
-=======
 
 	// Find by direct iteration, binary search is not reliable after modification
 	for i, orderedTx := range s.orderedTxs {
@@ -203,10 +198,9 @@ func (s *store) deleteOrderedTx(tx *wrappedTx) error {
 			s.orderedTxs = append(s.orderedTxs[:i], s.orderedTxs[i+1:]...)
 			return nil
 		}
->>>>>>> 2b6ae82b (fix: cat not purging txs from ordered cache (#2327))
 	}
 
-	return fmt.Errorf("transaction %X not found in ordered list", tx.key)
+	return fmt.Errorf("transaction %X not found in ordered list", tx.key())
 }
 
 func (s *store) getTxOrder(tx *wrappedTx) int {
