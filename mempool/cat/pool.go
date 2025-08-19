@@ -351,7 +351,7 @@ func (txmp *TxPool) TryAddNewTx(tx types.Tx, key types.TxKey, txInfo mempool.TxI
 	// Now we consider the transaction to be valid. Once a transaction is valid, it
 	// can only become invalid if recheckTx is enabled and RecheckTx returns a non zero code
 	if err := txmp.addNewTransaction(wtx, rsp); err != nil {
-		return rsp, err
+		return nil, err
 	}
 	return rsp, nil
 }
