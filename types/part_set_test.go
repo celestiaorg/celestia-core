@@ -115,9 +115,17 @@ func TestEncodingDecodingRoundTrip(t *testing.T) {
 			eps, lastPartLen, err := Encode(ops, BlockPartSizeBytes)
 			require.NoError(t, err)
 
-			ops.parts[0] = nil
+			// Remove part 0 to test decode functionality
+			ops.mtx.Lock()
 			ops.count--
 			ops.partsBitArray.SetIndex(0, false)
+			// Clear the buffer area for part 0
+			start := 0 * int(BlockPartSizeBytes)
+			end := start + int(BlockPartSizeBytes)
+			for i := start; i < end && i < len(ops.buffer); i++ {
+				ops.buffer[i] = 0
+			}
+			ops.mtx.Unlock()
 
 			ops, _, err = Decode(ops, eps, lastPartLen)
 			require.NoError(t, err)
