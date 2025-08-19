@@ -332,7 +332,7 @@ func (txmp *TxPool) TryAddNewTx(tx types.Tx, key types.TxKey, txInfo mempool.TxI
 	if rsp.Code != abci.CodeTypeOK {
 		txmp.rejectedTxCache.Push(key, rsp.Code, rsp.Log)
 		txmp.metrics.FailedTxs.Add(1)
-		return rsp, fmt.Errorf("application rejected transaction with code %d (Log: %s)", rsp.Code, rsp.Log)
+		return rsp, nil
 	}
 
 	// Create wrapped tx
@@ -351,7 +351,7 @@ func (txmp *TxPool) TryAddNewTx(tx types.Tx, key types.TxKey, txInfo mempool.TxI
 	// Now we consider the transaction to be valid. Once a transaction is valid, it
 	// can only become invalid if recheckTx is enabled and RecheckTx returns a non zero code
 	if err := txmp.addNewTransaction(wtx, rsp); err != nil {
-		return nil, err
+		return rsp, err
 	}
 	return rsp, nil
 }
