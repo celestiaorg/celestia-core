@@ -210,13 +210,13 @@ type PartSet struct {
 
 	// partSize specifies the size of each part in bytes (excluding last part)
 	partSize int
-	// Size of the last part (which may be smaller than BlockPartSizeBytes)
+	// lastPartSize is the size of the last part (which may be smaller than partSize)
 	lastPartSize int
-	// Separate storage for merkle proofs
+	// proofs stores part proofs separately
 	proofs        []merkle.Proof
 	partsBitArray *bits.BitArray
 	count         uint32
-	// a count of the total size (in bytes). Used to ensure that the
+	// byteSize is the total size (in bytes). Used to ensure that the
 	// part set doesn't exceed the maximum block bytes
 	byteSize int64
 
@@ -563,7 +563,6 @@ func (ps *PartSet) addPart(part *Part) (bool, error) {
 
 	copy(ps.buffer[start:end], part.Bytes)
 
-	// Store the proof
 	ps.proofs[part.Index] = part.Proof
 
 	// Track last part size if this is the last part
@@ -585,7 +584,6 @@ func (ps *PartSet) addPart(part *Part) (bool, error) {
 // - The index is out of bounds
 // - Buffer access would be out of bounds
 func (ps *PartSet) getPartBytes(index int) []byte {
-	// Check if part exists
 	if !ps.partsBitArray.GetIndex(index) {
 		return nil
 	}
