@@ -77,7 +77,7 @@ func NewReactor(consensusState *State, propagator propagation.Propagator, waitSy
 		traceClient: trace.NoOpTracer(),
 		propagator:  propagator,
 	}
-	conR.gossipDataEnabled.Store(true)
+	conR.gossipDataEnabled.Store(false)
 	conR.BaseReactor = *p2p.NewBaseReactor("Consensus", conR, p2p.WithIncomingQueueSize(ReactorIncomingMessageQueueSize))
 
 	for _, option := range options {

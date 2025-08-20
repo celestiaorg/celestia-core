@@ -392,7 +392,7 @@ func createConsensusReactor(config *cfg.Config,
 	if privValidator != nil {
 		consensusState.SetPrivValidator(privValidator)
 	}
-	consensusReactor := cs.NewReactor(consensusState, propagator, waitSync, cs.ReactorMetrics(csMetrics), cs.ReactorTracing(traceClient), cs.WithGossipDataEnabled(true))
+	consensusReactor := cs.NewReactor(consensusState, propagator, waitSync, cs.ReactorMetrics(csMetrics), cs.ReactorTracing(traceClient), cs.WithGossipDataEnabled(false))
 	consensusReactor.SetLogger(consensusLogger)
 	// services which will be publishing and/or subscribing for messages (events)
 	// consensusReactor will set it on consensusState and blockExecutor
