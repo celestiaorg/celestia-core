@@ -16,7 +16,7 @@ type RowProof struct {
 	RowRoots []tmbytes.HexBytes `json:"row_roots"`
 	// Proofs is a list of Merkle proofs where each proof proves that a row
 	// exists in a Merkle tree with a given data root.
-	Proofs []*merkle.Proof `json:"proofs"`
+	Proofs []merkle.Proof `json:"proofs"`
 	// StartRow the index of the start row.
 	// Note: currently, StartRow is not validated as part of the proof verification.
 	// If this field is used downstream, Validate(root) should be called along with
@@ -66,10 +66,10 @@ func RowProofFromProto(p *tmproto.RowProof) RowProof {
 		return RowProof{}
 	}
 	rowRoots := make([]tmbytes.HexBytes, len(p.RowRoots))
-	rowProofs := make([]*merkle.Proof, len(p.Proofs))
+	rowProofs := make([]merkle.Proof, len(p.Proofs))
 	for i := range p.Proofs {
 		rowRoots[i] = p.RowRoots[i]
-		rowProofs[i] = &merkle.Proof{
+		rowProofs[i] = merkle.Proof{
 			Total:    p.Proofs[i].Total,
 			Index:    p.Proofs[i].Index,
 			LeafHash: p.Proofs[i].LeafHash,

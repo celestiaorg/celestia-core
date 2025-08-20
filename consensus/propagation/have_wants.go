@@ -467,14 +467,14 @@ func (blockProp *Reactor) handleRecoveryPart(peer p2p.ID, part *proptypes.Recove
 	// sent during catchup.
 	proof := cb.GetProof(part.Index)
 	if proof == nil {
-		if part.Proof == nil {
+		if len(part.Proof.LeafHash) == 0 {
 			blockProp.Logger.Error("proof not found", "peer", peer, "height", part.Height, "round", part.Round, "part", part.Index)
 			return
 		}
 		if len(part.Proof.LeafHash) != tmhash.Size {
 			return
 		}
-		proof = part.Proof
+		proof = &part.Proof
 	}
 
 	added, err := parts.AddPart(part, *proof)
@@ -588,7 +588,7 @@ func (blockProp *Reactor) handleRecoveryPart(peer p2p.ID, part *proptypes.Recove
 		return
 	}
 
-	go blockProp.clearWants(part, *proof)
+	go blockProp.clearWants(part, part.Proof)
 }
 
 // clearWants checks the wantState to see if any peers want the given part, if

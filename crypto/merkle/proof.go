@@ -32,12 +32,12 @@ type Proof struct {
 
 // ProofsFromByteSlices computes inclusion proof for given items.
 // proofs[0] is the proof for items[0].
-func ProofsFromByteSlices(items [][]byte) (rootHash []byte, proofs []*Proof) {
+func ProofsFromByteSlices(items [][]byte) (rootHash []byte, proofs []Proof) {
 	trails, rootSPN := trailsFromByteSlices(items)
 	rootHash = rootSPN.Hash
-	proofs = make([]*Proof, len(items))
+	proofs = make([]Proof, len(items))
 	for i, trail := range trails {
-		proofs[i] = &Proof{
+		proofs[i] = Proof{
 			Total:    int64(len(items)),
 			Index:    int64(i),
 			LeafHash: trail.Hash,
@@ -145,20 +145,20 @@ func (sp *Proof) ToProto() *cmtcrypto.Proof {
 	return pb
 }
 
-func ProofFromProto(pb *cmtcrypto.Proof, optional bool) (*Proof, error) {
+func ProofFromProto(pb *cmtcrypto.Proof, optional bool) (Proof, error) {
 	if pb == nil || (len(pb.LeafHash) == 0 && len(pb.Aunts) == 0) {
 		if optional {
-			return nil, nil
+			return Proof{}, nil
 		}
-		return nil, errors.New("nil proof")
+		return Proof{}, errors.New("nil proof")
 	}
 
-	sp := new(Proof)
-
-	sp.Total = pb.Total
-	sp.Index = pb.Index
-	sp.LeafHash = pb.LeafHash
-	sp.Aunts = pb.Aunts
+	sp := Proof{
+		Total:    pb.Total,
+		Index:    pb.Index,
+		LeafHash: pb.LeafHash,
+		Aunts:    pb.Aunts,
+	}
 
 	return sp, sp.ValidateBasic()
 }
@@ -275,12 +275,12 @@ func trailsFromLeafHashes(leafHashes [][]byte) (trails []*ProofNode, root *Proof
 	}
 }
 
-func ProofsFromLeafHashes(leafHashes [][]byte) (rootHash []byte, proofs []*Proof) {
+func ProofsFromLeafHashes(leafHashes [][]byte) (rootHash []byte, proofs []Proof) {
 	trails, rootNode := trailsFromLeafHashes(leafHashes)
 	rootHash = rootNode.Hash
-	proofs = make([]*Proof, len(leafHashes))
+	proofs = make([]Proof, len(leafHashes))
 	for i, trail := range trails {
-		proofs[i] = &Proof{
+		proofs[i] = Proof{
 			Total:    int64(len(leafHashes)),
 			Index:    int64(i),
 			LeafHash: trail.Hash,
