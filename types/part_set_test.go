@@ -317,6 +317,43 @@ func TestPartProtoBuf(t *testing.T) {
 	}
 }
 
+// TestPartSetsWithDifferentPartSizes verifies the behavior for different data and part sizes.
+func TestPartSetsWithDifferentPartSizes(t *testing.T) {
+	testCases := []struct {
+		dataSize int
+		partSize uint32
+	}{
+		{1000, 256},
+		{12345, 321},
+		{4321, 4321},
+		{2345, BlockPartSizeBytes},
+		{MaxBlockSizeBytes, BlockPartSizeBytes},
+	}
+
+	for tc := range testCases {
+		t.Run(fmt.Sprintf("dataSize=%d,partSize=%d", testCases[tc].dataSize, testCases[tc].partSize), func(t *testing.T) {
+			t.Parallel()
+			data := cmtrand.Bytes(testCases[tc].dataSize)
+			partSet, err := NewPartSetFromData(data, testCases[tc].partSize)
+			require.NoError(t, err)
+			expectedTotal := uint32(testCases[tc].dataSize) / testCases[tc].partSize
+			if uint32(testCases[tc].dataSize)%testCases[tc].partSize > 0 {
+				expectedTotal++
+			}
+			assert.Equal(t, expectedTotal, partSet.Total())
+
+			bz := partSet.GetBytes()
+			assert.Equal(t, testCases[tc].dataSize, len(bz))
+
+			// make sure that returned bytes are valid / usable
+			newPartSet, err := NewPartSetFromData(bz, testCases[tc].partSize)
+			require.NoError(t, err)
+			assert.Equal(t, partSet.Hash(), newPartSet.Hash())
+
+		})
+	}
+}
+
 func BenchmarkPartSetRoundTrip(b *testing.B) {
 	write := func(b *testing.B, dataSize int, partSize uint32) *PartSet {
 		b.ReportAllocs()
