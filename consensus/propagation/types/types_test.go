@@ -791,7 +791,7 @@ func TestRecoveryPart_ValidateBasic(t *testing.T) {
 				Round:  1,
 				Index:  2,
 				Data:   []byte("valid-data"),
-				Proof: &merkle.Proof{
+				Proof: merkle.Proof{
 					LeafHash: merkle.LeafHash([]byte("valid-data")),
 				},
 			},
@@ -844,7 +844,7 @@ func TestRecoveryPart_ValidateBasic(t *testing.T) {
 				Round:  1,
 				Index:  0,
 				Data:   []byte("data"),
-				Proof:  &merkle.Proof{},
+				Proof:  merkle.Proof{},
 			},
 			expectError: "RecoveryPart: invalid proof",
 		},
@@ -855,7 +855,7 @@ func TestRecoveryPart_ValidateBasic(t *testing.T) {
 				Round:  1,
 				Index:  0,
 				Data:   []byte("data"),
-				Proof: &merkle.Proof{
+				Proof: merkle.Proof{
 					LeafHash: merkle.LeafHash([]byte("invalid")),
 				},
 			},

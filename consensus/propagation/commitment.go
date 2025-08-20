@@ -136,16 +136,16 @@ func extractHashes(blocks ...*types.PartSet) [][]byte {
 	return partHashes
 }
 
-func extractProofs(blocks ...*types.PartSet) []*merkle.Proof {
+func extractProofs(blocks ...*types.PartSet) []merkle.Proof {
 	total := uint32(0)
 	for _, block := range blocks {
 		total += block.Total()
 	}
 
-	proofs := make([]*merkle.Proof, 0, total) // Preallocate capacity
+	proofs := make([]merkle.Proof, 0, total) // Preallocate capacity
 	for _, block := range blocks {
 		for i := uint32(0); i < block.Total(); i++ {
-			proofs = append(proofs, &block.GetPart(int(i)).Proof)
+			proofs = append(proofs, block.GetPart(int(i)).Proof)
 		}
 	}
 	return proofs
@@ -275,7 +275,7 @@ func (blockProp *Reactor) recoverPartsFromMempool(cb *proptypes.CompactBlock) {
 		if partSet.HasPart(int(p.Index)) {
 			continue
 		}
-		p.Proof = *proofs[p.Index]
+		p.Proof = proofs[p.Index]
 
 		added, err := partSet.AddOriginalPart(p)
 		if err != nil {

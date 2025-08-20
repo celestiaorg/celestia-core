@@ -643,7 +643,7 @@ func TestConcurrentRequestLimit(t *testing.T) {
 
 // testCompactBlock returns a test compact block with the corresponding orignal part set,
 // parity partset, and proofs.
-func testCompactBlock(t *testing.T, height int64, round int32) (*proptypes.CompactBlock, *types.PartSet, *types.PartSet, []*merkle.Proof) {
+func testCompactBlock(t *testing.T, height int64, round int32) (*proptypes.CompactBlock, *types.PartSet, *types.PartSet, []merkle.Proof) {
 	ps, err := types.NewPartSetFromData(cmtrand.Bytes(1000), types.BlockPartSizeBytes)
 	require.NoError(t, err)
 	pse, lastLen, err := types.Encode(ps, types.BlockPartSizeBytes)

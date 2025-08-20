@@ -189,8 +189,14 @@ func TestVoteProtobuf(t *testing.T) {
 		{"success", &proofs[0], true},
 	}
 	for _, tc := range testCases {
+		if tc.v1 == nil {
+			// Test nil case
+			_, err := ProofFromProto(nil, false)
+			require.Error(t, err)
+			continue
+		}
+		
 		pb := tc.v1.ToProto()
-
 		v, err := ProofFromProto(pb, false)
 		if tc.expPass {
 			require.NoError(t, err)

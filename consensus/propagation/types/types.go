@@ -75,7 +75,7 @@ type CompactBlock struct {
 	mtx sync.Mutex
 	// proofsCache is local storage from generated proofs from the PartsHashes.
 	// It must not be included in any serialization.
-	proofsCache []*merkle.Proof
+	proofsCache []merkle.Proof
 }
 
 // SignBytes returns the compact block commitment data that
@@ -192,7 +192,7 @@ func (c *CompactBlock) ToProto() *protoprop.CompactBlock {
 // thrown if the proofs are generated and the resulting hashes don't match those
 // in the compact block. This method should be called upon first receiving a
 // compact block.
-func (c *CompactBlock) Proofs() ([]*merkle.Proof, error) {
+func (c *CompactBlock) Proofs() ([]merkle.Proof, error) {
 	c.mtx.Lock()
 	defer c.mtx.Unlock()
 
@@ -206,11 +206,11 @@ func (c *CompactBlock) Proofs() ([]*merkle.Proof, error) {
 		return nil, errors.New("invalid number of partset hashes")
 	}
 
-	c.proofsCache = make([]*merkle.Proof, 0, len(c.PartsHashes))
+	c.proofsCache = make([]merkle.Proof, 0, len(c.PartsHashes))
 
 	root, proofs := merkle.ProofsFromLeafHashes(c.PartsHashes[:total])
 	for i := range proofs {
-		c.proofsCache = append(c.proofsCache, &proofs[i])
+		c.proofsCache = append(c.proofsCache, proofs[i])
 	}
 
 	if !bytes.Equal(root, c.Proposal.BlockID.PartSetHeader.Hash) {
@@ -219,7 +219,7 @@ func (c *CompactBlock) Proofs() ([]*merkle.Proof, error) {
 
 	parityRoot, eproofs := merkle.ProofsFromLeafHashes(c.PartsHashes[total:])
 	for i := range eproofs {
-		c.proofsCache = append(c.proofsCache, &eproofs[i])
+		c.proofsCache = append(c.proofsCache, eproofs[i])
 	}
 
 	if !bytes.Equal(c.BpHash, parityRoot) {
@@ -233,12 +233,12 @@ func (c *CompactBlock) GetProof(i uint32) *merkle.Proof {
 	c.mtx.Lock()
 	defer c.mtx.Unlock()
 	if i < uint32(len(c.proofsCache)) {
-		return c.proofsCache[i]
+		return &c.proofsCache[i]
 	}
 	return nil
 }
 
-func (c *CompactBlock) SetProofCache(proofs []*merkle.Proof) {
+func (c *CompactBlock) SetProofCache(proofs []merkle.Proof) {
 	c.mtx.Lock()
 	defer c.mtx.Unlock()
 	c.proofsCache = proofs
@@ -449,7 +449,7 @@ type RecoveryPart struct {
 	Round  int32
 	Index  uint32
 	Data   []byte
-	Proof  *merkle.Proof
+	Proof  merkle.Proof
 }
 
 func (p *RecoveryPart) ValidateBasic() error {
@@ -462,14 +462,12 @@ func (p *RecoveryPart) ValidateBasic() error {
 	if len(p.Data) == 0 {
 		return errors.New("RecoveryPart: Data cannot be nil or empty")
 	}
-	if p.Proof != nil {
-		if err := p.Proof.ValidateBasic(); err != nil {
-			return fmt.Errorf("RecoveryPart: invalid proof: %w", err)
-		}
-		hash := merkle.LeafHash(p.Data)
-		if !bytes.Equal(hash, p.Proof.LeafHash) {
-			return errors.New("RecoveryPart: invalid proof leaf hash")
-		}
+	if err := p.Proof.ValidateBasic(); err != nil {
+		return fmt.Errorf("RecoveryPart: invalid proof: %w", err)
+	}
+	hash := merkle.LeafHash(p.Data)
+	if !bytes.Equal(hash, p.Proof.LeafHash) {
+		return errors.New("RecoveryPart: invalid proof leaf hash")
 	}
 	return nil
 }
@@ -487,7 +485,7 @@ func RecoveryPartFromProto(r *protoprop.RecoveryPart) (*RecoveryPart, error) {
 		Round:  r.Round,
 		Index:  r.Index,
 		Data:   r.Data,
-		Proof:  &proof,
+		Proof:  proof,
 	}
 	return rp, rp.ValidateBasic()
 }

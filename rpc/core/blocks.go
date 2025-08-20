@@ -476,7 +476,7 @@ func (env *Environment) validateDataRootInclusionProofRequest(height uint64, sta
 }
 
 // proveDataRootTuples returns the merkle inclusion proof for a height.
-func (env *Environment) proveDataRootTuples(tuples []DataRootTuple, height int64) (*merkle.Proof, error) {
+func (env *Environment) proveDataRootTuples(tuples []DataRootTuple, height int64) (merkle.Proof, error) {
 	dataRootEncodedTuples := make([][]byte, 0, len(tuples))
 	for _, tuple := range tuples {
 		encodedTuple, err := EncodeDataRootTuple(
@@ -484,13 +484,13 @@ func (env *Environment) proveDataRootTuples(tuples []DataRootTuple, height int64
 			tuple.dataRoot,
 		)
 		if err != nil {
-			return nil, err
+			return merkle.Proof{}, err
 		}
 		dataRootEncodedTuples = append(dataRootEncodedTuples, encodedTuple)
 	}
 	_, proofs := merkle.ProofsFromByteSlices(dataRootEncodedTuples)
 	//nolint:gosec
-	return &proofs[height-int64(tuples[0].height)], nil
+	return proofs[height-int64(tuples[0].height)], nil
 }
 
 // fetchDataRootTuples takes an end exclusive range of heights and fetches its
@@ -544,5 +544,5 @@ func (env *Environment) GenerateDataRootInclusionProof(height int64, start, end 
 	if err != nil {
 		return nil, err
 	}
-	return proof, nil
+	return &proof, nil
 }
