@@ -51,7 +51,7 @@ func ValueOpDecoder(pop cmtcrypto.ProofOp) (ProofOperator, error) {
 	if err != nil {
 		return nil, err
 	}
-	return NewValueOp(pop.Key, sp), nil
+	return NewValueOp(pop.Key, &sp), nil
 }
 
 func (op ValueOp) ProofOp() cmtcrypto.ProofOp {

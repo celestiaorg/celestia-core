@@ -209,14 +209,18 @@ func (c *CompactBlock) Proofs() ([]*merkle.Proof, error) {
 	c.proofsCache = make([]*merkle.Proof, 0, len(c.PartsHashes))
 
 	root, proofs := merkle.ProofsFromLeafHashes(c.PartsHashes[:total])
-	c.proofsCache = append(c.proofsCache, proofs...)
+	for i := range proofs {
+		c.proofsCache = append(c.proofsCache, &proofs[i])
+	}
 
 	if !bytes.Equal(root, c.Proposal.BlockID.PartSetHeader.Hash) {
 		return c.proofsCache, fmt.Errorf("incorrect PartsHash: original root")
 	}
 
 	parityRoot, eproofs := merkle.ProofsFromLeafHashes(c.PartsHashes[total:])
-	c.proofsCache = append(c.proofsCache, eproofs...)
+	for i := range eproofs {
+		c.proofsCache = append(c.proofsCache, &eproofs[i])
+	}
 
 	if !bytes.Equal(c.BpHash, parityRoot) {
 		return c.proofsCache, fmt.Errorf("incorrect PartsHash: parity root")
@@ -483,7 +487,7 @@ func RecoveryPartFromProto(r *protoprop.RecoveryPart) (*RecoveryPart, error) {
 		Round:  r.Round,
 		Index:  r.Index,
 		Data:   r.Data,
-		Proof:  proof,
+		Proof:  &proof,
 	}
 	return rp, rp.ValidateBasic()
 }

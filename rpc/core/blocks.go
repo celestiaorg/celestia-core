@@ -490,7 +490,7 @@ func (env *Environment) proveDataRootTuples(tuples []DataRootTuple, height int64
 	}
 	_, proofs := merkle.ProofsFromByteSlices(dataRootEncodedTuples)
 	//nolint:gosec
-	return proofs[height-int64(tuples[0].height)], nil
+	return &proofs[height-int64(tuples[0].height)], nil
 }
 
 // fetchDataRootTuples takes an end exclusive range of heights and fetches its

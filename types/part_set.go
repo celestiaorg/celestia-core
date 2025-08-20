@@ -131,7 +131,7 @@ func PartFromProto(pb *cmtproto.Part) (*Part, error) {
 	}
 	part.Index = pb.Index
 	part.Bytes = pb.Bytes
-	part.Proof = *proof
+	part.Proof = proof
 
 	return part, part.ValidateBasic()
 }
@@ -238,7 +238,7 @@ func NewPartSetFromData(data []byte, partSize uint32) (ops *PartSet, err error) 
 		added, err := ops.AddPart(&Part{
 			Index: uint32(index),
 			Bytes: chunk,
-			Proof: *proofs[index],
+			Proof: proofs[index],
 		})
 		if err != nil {
 			return nil, err
@@ -308,7 +308,7 @@ func Encode(ops *PartSet, partSize uint32) (*PartSet, int, error) {
 		added, err := eps.AddPart(&Part{
 			Index: i,
 			Bytes: chunks[i],
-			Proof: *eproofs[i],
+			Proof: eproofs[i],
 		})
 		if err != nil {
 			return nil, 0, err
@@ -390,7 +390,7 @@ func Decode(ops, eps *PartSet, lastPartLen int) (*PartSet, *PartSet, error) {
 			added, err := ops.AddPart(&Part{
 				Index: uint32(i),
 				Bytes: d,
-				Proof: *proofs[i],
+				Proof: proofs[i],
 			})
 			if err != nil {
 				return nil, nil, err
@@ -414,7 +414,7 @@ func Decode(ops, eps *PartSet, lastPartLen int) (*PartSet, *PartSet, error) {
 			added, err := eps.AddPart(&Part{
 				Index: uint32(i),
 				Bytes: data[int(ops.Total())+i],
-				Proof: *eproofs[i],
+				Proof: eproofs[i],
 			})
 			if err != nil {
 				return nil, nil, err

@@ -164,7 +164,7 @@ func TestProofValidateBasic(t *testing.T) {
 				[]byte("watermelon"),
 				[]byte("kiwi"),
 			})
-			tc.malleateProof(proofs[0])
+			tc.malleateProof(&proofs[0])
 			err := proofs[0].ValidateBasic()
 			if tc.errStr != "" {
 				assert.Contains(t, err.Error(), tc.errStr)
@@ -186,7 +186,7 @@ func TestVoteProtobuf(t *testing.T) {
 	}{
 		{"empty proof", &Proof{}, false},
 		{"failure nil", nil, false},
-		{"success", proofs[0], true},
+		{"success", &proofs[0], true},
 	}
 	for _, tc := range testCases {
 		pb := tc.v1.ToProto()
@@ -194,7 +194,7 @@ func TestVoteProtobuf(t *testing.T) {
 		v, err := ProofFromProto(pb, false)
 		if tc.expPass {
 			require.NoError(t, err)
-			require.Equal(t, tc.v1, v, tc.testName)
+			require.Equal(t, *tc.v1, v, tc.testName)
 		} else {
 			require.Error(t, err)
 		}

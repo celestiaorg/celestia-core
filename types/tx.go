@@ -171,7 +171,7 @@ func (txs Txs) Proof(i int) TxProof {
 	return TxProof{
 		RootHash: root,
 		Data:     txs[i],
-		Proof:    *proofs[i],
+		Proof:    proofs[i],
 	}
 }
 
@@ -272,7 +272,7 @@ func TxProofFromProto(pb cmtproto.TxProof) (TxProof, error) {
 	pbtp := TxProof{
 		RootHash: pb.RootHash,
 		Data:     pb.Data,
-		Proof:    *pbProof,
+		Proof:    pbProof,
 	}
 
 	return pbtp, nil
