@@ -27,7 +27,6 @@ import (
 	"github.com/cometbft/cometbft/libs/log"
 	cmtrand "github.com/cometbft/cometbft/libs/rand"
 	"github.com/cometbft/cometbft/libs/service"
-	"github.com/cometbft/cometbft/libs/trace"
 	"github.com/cometbft/cometbft/proxy"
 	"github.com/cometbft/cometbft/types"
 )
@@ -147,7 +146,7 @@ func addTxs(tb testing.TB, mp Mempool, first, num int) []types.Tx {
 
 func TestReapMaxBytesMaxGas(t *testing.T) {
 	app := kvstore.NewInMemoryApplication()
-	cc := proxy.NewLocalClientCreator(app, trace.NoOpTracer())
+	cc := proxy.NewLocalClientCreator(app)
 	mp, cleanup := newMempoolWithApp(cc)
 	defer cleanup()
 
@@ -194,7 +193,7 @@ func TestReapMaxBytesMaxGas(t *testing.T) {
 
 func TestMempoolFilters(t *testing.T) {
 	app := kvstore.NewInMemoryApplication()
-	cc := proxy.NewLocalClientCreator(app, trace.NoOpTracer())
+	cc := proxy.NewLocalClientCreator(app)
 	mp, cleanup := newMempoolWithApp(cc)
 	defer cleanup()
 	emptyTxArr := []*types.CachedTx{{Tx: []byte{}}}
@@ -233,7 +232,7 @@ func TestMempoolFilters(t *testing.T) {
 
 func TestMempoolUpdate(t *testing.T) {
 	app := kvstore.NewInMemoryApplication()
-	cc := proxy.NewLocalClientCreator(app, trace.NoOpTracer())
+	cc := proxy.NewLocalClientCreator(app)
 	mp, cleanup := newMempoolWithApp(cc)
 	defer cleanup()
 
@@ -322,7 +321,7 @@ func TestMempoolUpdateDoesNotPanicWhenApplicationMissedTx(t *testing.T) {
 
 func TestMempool_KeepInvalidTxsInCache(t *testing.T) {
 	app := kvstore.NewInMemoryApplication()
-	cc := proxy.NewLocalClientCreator(app, trace.NoOpTracer())
+	cc := proxy.NewLocalClientCreator(app)
 	wcfg := config.DefaultConfig()
 	wcfg.Mempool.KeepInvalidTxsInCache = true
 	mp, cleanup := newMempoolWithAppAndConfig(cc, wcfg)
@@ -377,7 +376,7 @@ func TestMempool_KeepInvalidTxsInCache(t *testing.T) {
 
 func TestTxsAvailable(t *testing.T) {
 	app := kvstore.NewInMemoryApplication()
-	cc := proxy.NewLocalClientCreator(app, trace.NoOpTracer())
+	cc := proxy.NewLocalClientCreator(app)
 	mp, cleanup := newMempoolWithApp(cc)
 	defer cleanup()
 	mp.EnableTxsAvailable()
@@ -421,7 +420,7 @@ func TestTxsAvailable(t *testing.T) {
 
 func TestSerialReap(t *testing.T) {
 	app := kvstore.NewInMemoryApplication()
-	cc := proxy.NewLocalClientCreator(app, trace.NoOpTracer())
+	cc := proxy.NewLocalClientCreator(app)
 
 	mp, cleanup := newMempoolWithApp(cc)
 	defer cleanup()
@@ -530,7 +529,7 @@ func TestSerialReap(t *testing.T) {
 
 func TestMempool_CheckTxChecksTxSize(t *testing.T) {
 	app := kvstore.NewInMemoryApplication()
-	cc := proxy.NewLocalClientCreator(app, trace.NoOpTracer())
+	cc := proxy.NewLocalClientCreator(app)
 
 	mempl, cleanup := newMempoolWithApp(cc)
 	defer cleanup()
@@ -576,7 +575,7 @@ func TestMempool_CheckTxChecksTxSize(t *testing.T) {
 
 func TestMempoolTxsBytes(t *testing.T) {
 	app := kvstore.NewInMemoryApplication()
-	cc := proxy.NewLocalClientCreator(app, trace.NoOpTracer())
+	cc := proxy.NewLocalClientCreator(app)
 
 	cfg := test.ResetTestRoot("mempool_test")
 
@@ -620,7 +619,7 @@ func TestMempoolTxsBytes(t *testing.T) {
 
 	// 6. zero after tx is rechecked and removed due to not being valid anymore
 	app2 := kvstore.NewInMemoryApplication()
-	cc = proxy.NewLocalClientCreator(app2, trace.NoOpTracer())
+	cc = proxy.NewLocalClientCreator(app2)
 
 	mp, cleanup = newMempoolWithApp(cc)
 	defer cleanup()
@@ -734,7 +733,7 @@ func TestMempoolRemoteAppConcurrency(t *testing.T) {
 
 func TestMempoolConcurrentUpdateAndReceiveCheckTxResponse(t *testing.T) {
 	app := kvstore.NewInMemoryApplication()
-	cc := proxy.NewLocalClientCreator(app, trace.NoOpTracer())
+	cc := proxy.NewLocalClientCreator(app)
 
 	cfg := test.ResetTestRoot("mempool_test")
 	mp, cleanup := newMempoolWithAppAndConfig(cc, cfg)
@@ -767,7 +766,7 @@ func TestMempoolConcurrentUpdateAndReceiveCheckTxResponse(t *testing.T) {
 
 func TestMempoolNotifyTxsAvailable(t *testing.T) {
 	app := kvstore.NewInMemoryApplication()
-	cc := proxy.NewLocalClientCreator(app, trace.NoOpTracer())
+	cc := proxy.NewLocalClientCreator(app)
 
 	cfg := test.ResetTestRoot("mempool_test")
 	mp, cleanup := newMempoolWithAppAndConfig(cc, cfg)

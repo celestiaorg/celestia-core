@@ -23,7 +23,6 @@ import (
 	abci "github.com/cometbft/cometbft/abci/types"
 	"github.com/cometbft/cometbft/config"
 	"github.com/cometbft/cometbft/libs/log"
-	"github.com/cometbft/cometbft/libs/trace"
 	"github.com/cometbft/cometbft/mempool"
 	tmproto "github.com/cometbft/cometbft/proto/tendermint/types"
 	"github.com/cometbft/cometbft/proxy"
@@ -89,7 +88,7 @@ func setup(t testing.TB, cacheSize int, options ...TxPoolOption) *TxPool {
 	t.Helper()
 
 	app := &application{kvstore.NewApplication(db.NewMemDB())}
-	cc := proxy.NewLocalClientCreator(app, trace.NoOpTracer())
+	cc := proxy.NewLocalClientCreator(app)
 
 	cfg := config.TestMempoolConfig()
 	cfg.CacheSize = cacheSize
@@ -224,7 +223,7 @@ func TestTxPool_Size(t *testing.T) {
 func TestTxPool_Recheck(t *testing.T) {
 	// Create mempool with recheck enabled
 	app := &application{kvstore.NewApplication(db.NewMemDB())}
-	cc := proxy.NewLocalClientCreator(app, trace.NoOpTracer())
+	cc := proxy.NewLocalClientCreator(app)
 
 	cfg := config.TestMempoolConfig()
 	cfg.Recheck = true // Enable recheck to trigger the code path we're testing
@@ -781,7 +780,7 @@ func TestTxPool_CheckTxPostCheckError(t *testing.T) {
 
 func TestTxPool_RemoveBlobTx(t *testing.T) {
 	app := kvstore.NewApplication(db.NewMemDB())
-	cc := proxy.NewLocalClientCreator(app, trace.NoOpTracer())
+	cc := proxy.NewLocalClientCreator(app)
 
 	cfg := config.TestMempoolConfig()
 	cfg.CacheSize = 100

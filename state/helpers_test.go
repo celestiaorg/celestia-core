@@ -12,7 +12,6 @@ import (
 	"github.com/cometbft/cometbft/crypto"
 	"github.com/cometbft/cometbft/crypto/ed25519"
 	"github.com/cometbft/cometbft/internal/test"
-	"github.com/cometbft/cometbft/libs/trace"
 	cmtproto "github.com/cometbft/cometbft/proto/tendermint/types"
 	"github.com/cometbft/cometbft/proxy"
 	sm "github.com/cometbft/cometbft/state"
@@ -27,7 +26,7 @@ type paramsChangeTestCase struct {
 
 func newTestApp() proxy.AppConns {
 	app := &testApp{}
-	cc := proxy.NewLocalClientCreator(app, trace.NoOpTracer())
+	cc := proxy.NewLocalClientCreator(app)
 	return proxy.NewAppConns(cc, proxy.NopMetrics())
 }
 

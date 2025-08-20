@@ -4,7 +4,6 @@ import (
 	"sync/atomic"
 	"testing"
 
-	"github.com/cometbft/cometbft/libs/trace"
 	"github.com/cometbft/cometbft/types"
 
 	"github.com/stretchr/testify/require"
@@ -15,7 +14,7 @@ import (
 
 func BenchmarkReap(b *testing.B) {
 	app := kvstore.NewInMemoryApplication()
-	cc := proxy.NewLocalClientCreator(app, trace.NoOpTracer())
+	cc := proxy.NewLocalClientCreator(app)
 	mp, cleanup := newMempoolWithApp(cc)
 	defer cleanup()
 
@@ -30,7 +29,7 @@ func BenchmarkReap(b *testing.B) {
 
 func BenchmarkCheckTx(b *testing.B) {
 	app := kvstore.NewInMemoryApplication()
-	cc := proxy.NewLocalClientCreator(app, trace.NoOpTracer())
+	cc := proxy.NewLocalClientCreator(app)
 	mp, cleanup := newMempoolWithApp(cc)
 	defer cleanup()
 
@@ -49,7 +48,7 @@ func BenchmarkCheckTx(b *testing.B) {
 
 func BenchmarkParallelCheckTx(b *testing.B) {
 	app := kvstore.NewInMemoryApplication()
-	cc := proxy.NewLocalClientCreator(app, trace.NoOpTracer())
+	cc := proxy.NewLocalClientCreator(app)
 	mp, cleanup := newMempoolWithApp(cc)
 	defer cleanup()
 
@@ -71,7 +70,7 @@ func BenchmarkParallelCheckTx(b *testing.B) {
 
 func BenchmarkCheckDuplicateTx(b *testing.B) {
 	app := kvstore.NewInMemoryApplication()
-	cc := proxy.NewLocalClientCreator(app, trace.NoOpTracer())
+	cc := proxy.NewLocalClientCreator(app)
 	mp, cleanup := newMempoolWithApp(cc)
 	defer cleanup()
 
@@ -93,7 +92,7 @@ func BenchmarkCheckDuplicateTx(b *testing.B) {
 
 func BenchmarkUpdate(b *testing.B) {
 	app := kvstore.NewInMemoryApplication()
-	cc := proxy.NewLocalClientCreator(app, trace.NoOpTracer())
+	cc := proxy.NewLocalClientCreator(app)
 	mp, cleanup := newMempoolWithApp(cc)
 	defer cleanup()
 
@@ -112,7 +111,7 @@ func BenchmarkUpdate(b *testing.B) {
 
 func BenchmarkUpdateAndRecheck(b *testing.B) {
 	app := kvstore.NewInMemoryApplication()
-	cc := proxy.NewLocalClientCreator(app, trace.NoOpTracer())
+	cc := proxy.NewLocalClientCreator(app)
 	mp, cleanup := newMempoolWithApp(cc)
 	defer cleanup()
 

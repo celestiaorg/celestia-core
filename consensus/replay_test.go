@@ -27,7 +27,6 @@ import (
 	"github.com/cometbft/cometbft/internal/test"
 	"github.com/cometbft/cometbft/libs/log"
 	cmtrand "github.com/cometbft/cometbft/libs/rand"
-	"github.com/cometbft/cometbft/libs/trace"
 	"github.com/cometbft/cometbft/mempool"
 	"github.com/cometbft/cometbft/privval"
 	cmtstore "github.com/cometbft/cometbft/proto/tendermint/store"
@@ -677,7 +676,7 @@ func testHandshakeReplay(t *testing.T, config *cfg.Config, nBlocks int, mode uin
 		_ = kvstoreApp.Close()
 	})
 
-	clientCreator2 := proxy.NewLocalClientCreator(kvstoreApp, trace.NoOpTracer())
+	clientCreator2 := proxy.NewLocalClientCreator(kvstoreApp)
 	if nBlocks > 0 {
 		// run nBlocks against a new client to build up the app state.
 		// use a throwaway CometBFT state
@@ -826,7 +825,9 @@ func buildTMStateFromChain(
 	bs sm.BlockStore,
 ) (sm.State, []byte) {
 	// run the whole chain against this client to build up the CometBFT state
-	clientCreator := proxy.NewLocalClientCreator(kvstore.NewPersistentApplication(filepath.Join(config.DBDir(), fmt.Sprintf("replay_test_%d_%d_t", nBlocks, mode))), trace.NoOpTracer())
+	clientCreator := proxy.NewLocalClientCreator(
+		kvstore.NewPersistentApplication(
+			filepath.Join(config.DBDir(), fmt.Sprintf("replay_test_%d_%d_t", nBlocks, mode))))
 	proxyApp := proxy.NewAppConns(clientCreator, proxy.NopMetrics())
 	if err := proxyApp.Start(); err != nil {
 		panic(err)
@@ -934,7 +935,7 @@ func TestHandshakePanicsIfAppReturnsWrongAppHash(t *testing.T) {
 	//		- 0x03
 	{
 		app := &badApp{numBlocks: 3, allHashesAreWrong: true}
-		clientCreator := proxy.NewLocalClientCreator(app, trace.NoOpTracer())
+		clientCreator := proxy.NewLocalClientCreator(app)
 		proxyApp := proxy.NewAppConns(clientCreator, proxy.NopMetrics())
 		err := proxyApp.Start()
 		require.NoError(t, err)
@@ -959,7 +960,7 @@ func TestHandshakePanicsIfAppReturnsWrongAppHash(t *testing.T) {
 	//		- RANDOM HASH
 	{
 		app := &badApp{numBlocks: 3, onlyLastHashIsWrong: true}
-		clientCreator := proxy.NewLocalClientCreator(app, trace.NoOpTracer())
+		clientCreator := proxy.NewLocalClientCreator(app)
 		proxyApp := proxy.NewAppConns(clientCreator, proxy.NopMetrics())
 		err := proxyApp.Start()
 		require.NoError(t, err)
@@ -1244,7 +1245,7 @@ func TestHandshakeUpdatesValidators(t *testing.T) {
 	app.On("InitChain", mock.Anything, mock.Anything).Return(&abci.ResponseInitChain{
 		Validators: types.TM2PB.ValidatorUpdates(vals),
 	}, nil)
-	clientCreator := proxy.NewLocalClientCreator(app, trace.NoOpTracer())
+	clientCreator := proxy.NewLocalClientCreator(app)
 
 	config := ResetConfig("handshake_test_")
 	defer os.RemoveAll(config.RootDir)

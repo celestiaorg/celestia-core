@@ -11,7 +11,6 @@ import (
 	abci "github.com/cometbft/cometbft/abci/types"
 	"github.com/cometbft/cometbft/internal/test"
 	"github.com/cometbft/cometbft/libs/log"
-	"github.com/cometbft/cometbft/libs/trace"
 
 	cfg "github.com/cometbft/cometbft/config"
 	cmtnet "github.com/cometbft/cometbft/libs/net"
@@ -176,7 +175,7 @@ func NewTendermint(app abci.Application, opts *Options) *nm.Node {
 	pvKeyFile := config.PrivValidatorKeyFile()
 	pvKeyStateFile := config.PrivValidatorStateFile()
 	pv := privval.LoadOrGenFilePV(pvKeyFile, pvKeyStateFile)
-	papp := proxy.NewLocalClientCreator(app, trace.NoOpTracer())
+	papp := proxy.NewLocalClientCreator(app)
 	nodeKey, err := p2p.LoadOrGenNodeKey(config.NodeKeyFile())
 	if err != nil {
 		panic(err)

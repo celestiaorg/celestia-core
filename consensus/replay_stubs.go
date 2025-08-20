@@ -5,7 +5,6 @@ import (
 
 	abci "github.com/cometbft/cometbft/abci/types"
 	"github.com/cometbft/cometbft/libs/clist"
-	"github.com/cometbft/cometbft/libs/trace"
 	mempl "github.com/cometbft/cometbft/mempool"
 	"github.com/cometbft/cometbft/proxy"
 	"github.com/cometbft/cometbft/types"
@@ -66,7 +65,7 @@ func (emptyMempool) CloseWAL()      {}
 func newMockProxyApp(finalizeBlockResponse *abci.ResponseFinalizeBlock) proxy.AppConnConsensus {
 	clientCreator := proxy.NewLocalClientCreator(&mockProxyApp{
 		finalizeBlockResponse: finalizeBlockResponse,
-	}, trace.NoOpTracer())
+	})
 	cli, _ := clientCreator.NewABCIClient()
 	err := cli.Start()
 	if err != nil {

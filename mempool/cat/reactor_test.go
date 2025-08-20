@@ -22,7 +22,6 @@ import (
 	cfg "github.com/cometbft/cometbft/config"
 
 	"github.com/cometbft/cometbft/libs/log"
-	"github.com/cometbft/cometbft/libs/trace"
 	"github.com/cometbft/cometbft/mempool"
 	"github.com/cometbft/cometbft/p2p"
 	"github.com/cometbft/cometbft/p2p/mocks"
@@ -339,7 +338,7 @@ func TestReactorOptionsVerifyAndComplete(t *testing.T) {
 
 func setupReactor(t *testing.T) (*Reactor, *TxPool) {
 	app := &application{kvstore.NewApplication(db.NewMemDB())}
-	cc := proxy.NewLocalClientCreator(app, trace.NoOpTracer())
+	cc := proxy.NewLocalClientCreator(app)
 	pool, cleanup := newMempoolWithApp(cc)
 	t.Cleanup(cleanup)
 	reactor, err := NewReactor(pool, &ReactorOptions{})
