@@ -241,25 +241,24 @@ func NewPartSetFromData(data []byte, partSize uint32) (ops *PartSet, err error) 
 		Hash:  root,
 	}, partSize)
 
-	for index, chunk := range chunks {
-		added, err := ops.AddPart(&Part{
-			Index: uint32(index),
-			Bytes: chunk,
-			Proof: *proofs[index],
-		})
-		if err != nil {
-			return nil, err
-		}
-		if !added {
-			return nil, fmt.Errorf("couldn't add part %d when creating ops", index)
-		}
+	// Fill the buffer in a single copy and populate metadata.
+	copied := copy(ops.buffer, data)
+	if copied != len(data) {
+		return nil, fmt.Errorf("copy failed: %d < %d", copied, len(data))
 	}
 
-	if len(chunks[len(chunks)-1]) < int(partSize) {
-		padded := make([]byte, partSize)
-		copy(padded, chunks[len(chunks)-1])
-		chunks[len(chunks)-1] = padded
+	// Set sizes and bookkeeping.
+	if total > 0 {
+		lastIdx := total - 1
+		ops.lastPartSize = len(chunks[lastIdx])
 	}
+	ops.proofs = make([]merkle.Proof, total)
+	for i := uint32(0); i < total; i++ {
+		ops.proofs[i] = *proofs[i]
+		ops.partsBitArray.SetIndex(int(i), true)
+	}
+	ops.count = total
+	ops.byteSize = int64(len(data))
 
 	return ops, nil
 }
