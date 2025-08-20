@@ -1956,13 +1956,14 @@ func (cs *State) finalizeCommit(height int64) {
 		cs.propagator.SetProposer(proposer.PubKey)
 	}
 
+	// (TODO: enable after investigating the issues happening because of it)
 	// build the block pre-emptively if we're the proposer and the timeout commit is higher than 1 s.
-	tc := cs.state.TimeoutCommit
-	if tc > blockBuildingTime && cs.privValidatorPubKey != nil {
-		if address := cs.privValidatorPubKey.Address(); cs.Validators.HasAddress(address) && cs.isProposer(address) {
-			go cs.buildNextBlock()
-		}
-	}
+	// tc := cs.state.TimeoutCommit
+	// if tc > blockBuildingTime && cs.privValidatorPubKey != nil {
+	// 	  if address := cs.privValidatorPubKey.Address(); cs.Validators.HasAddress(address) && cs.isProposer(address) {
+	//		  go cs.buildNextBlock()
+	//	  }
+	//  }
 	// By here,
 	// * cs.Height has been increment to height+1
 	// * cs.Step is now cstypes.RoundStepNewHeight
