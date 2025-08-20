@@ -168,7 +168,7 @@ func ParseMetricsDir(dir string, structName string) (TemplateData, error) {
 
 	// Grab the package name.
 	var pkgName string
-	//nolint:staticcheck
+	//nolint
 	var pkg *ast.Package
 	for pkgName, pkg = range d {
 	}
