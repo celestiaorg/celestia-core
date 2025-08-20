@@ -2,7 +2,6 @@ package types
 
 import (
 	"fmt"
-	"io"
 	"testing"
 
 	"github.com/cometbft/cometbft/crypto"
@@ -63,9 +62,7 @@ func TestBasicPartSet(t *testing.T) {
 	assert.True(t, partSet2.IsComplete())
 
 	// Reconstruct data, assert that they are equal.
-	data2Reader := partSet2.GetReader()
-	data2, err := io.ReadAll(data2Reader)
-	require.NoError(t, err)
+	data2 := partSet2.GetBytes()
 
 	assert.Equal(t, data, data2)
 }
@@ -130,8 +127,7 @@ func TestEncodingDecodingRoundTrip(t *testing.T) {
 			ops, _, err = Decode(ops, eps, lastPartLen)
 			require.NoError(t, err)
 
-			bz2, err := io.ReadAll(ops.GetReader())
-			require.NoError(t, err)
+			bz2 := ops.GetBytes()
 
 			pbb := new(cmtproto.Block)
 			err = proto.Unmarshal(bz2, pbb)
@@ -335,10 +331,7 @@ func BenchmarkPartSetRoundTrip(b *testing.B) {
 	}
 	read := func(b *testing.B, partSet *PartSet, expectedSize int) {
 		b.ReportAllocs()
-		all, err := io.ReadAll(partSet.GetReader())
-		if err != nil {
-			b.Error(err)
-		}
+		all := partSet.GetBytes()
 		if len(all) != expectedSize {
 			b.Errorf("expected %d bytes, got %d", expectedSize, len(all))
 		}

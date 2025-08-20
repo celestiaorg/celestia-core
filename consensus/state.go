@@ -5,7 +5,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"os"
 	"path/filepath"
 	"runtime/debug"
@@ -2166,10 +2165,7 @@ func (cs *State) addProposalBlockPart(msg *BlockPartMessage, peerID p2p.ID) (add
 		)
 	}
 	if added && cs.ProposalBlockParts.IsComplete() {
-		bz, err := io.ReadAll(cs.ProposalBlockParts.GetReader())
-		if err != nil {
-			return added, err
-		}
+		bz := cs.ProposalBlockParts.GetBytes()
 
 		pbb := new(cmtproto.Block)
 		err = proto.Unmarshal(bz, pbb)

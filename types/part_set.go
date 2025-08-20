@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
-	"io"
 
 	"github.com/klauspost/reedsolomon"
 
@@ -641,14 +640,12 @@ func (ps *PartSet) IsComplete() bool {
 	return ps.count == ps.total
 }
 
-func (ps *PartSet) GetReader() io.Reader {
+func (ps *PartSet) GetBytes() []byte {
 	if !ps.IsComplete() {
-		panic("Cannot GetReader() on incomplete PartSet")
+		panic("Cannot GetBytes() on incomplete PartSet")
 	}
-
-	// Calculate the actual data size (excluding padding in last part)
-	dataSize := int(ps.total-1)*int(BlockPartSizeBytes) + ps.lastPartSize
-	return bytes.NewReader(ps.buffer[:dataSize])
+	dataSize := int(ps.total-1)*ps.partSize + ps.lastPartSize
+	return ps.buffer[:dataSize]
 }
 
 // StringShort returns a short version of String.
