@@ -7,6 +7,7 @@ import (
 	"github.com/cometbft/cometbft/abci/example/kvstore"
 	"github.com/cometbft/cometbft/abci/types"
 	cmtsync "github.com/cometbft/cometbft/libs/sync"
+	"github.com/cometbft/cometbft/libs/trace"
 	e2e "github.com/cometbft/cometbft/test/e2e/app"
 )
 
@@ -22,8 +23,9 @@ type ClientCreator interface {
 // local proxy uses a mutex on an in-proc app
 
 type localClientCreator struct {
-	mtx *cmtsync.Mutex
-	app types.Application
+	mtx         *cmtsync.Mutex
+	app         types.Application
+	traceClient trace.Tracer
 }
 
 // NewLocalClientCreator returns a [ClientCreator] for the given app, which
@@ -32,22 +34,24 @@ type localClientCreator struct {
 // Maintains a single mutex over all new clients created with NewABCIClient. For
 // a local client creator that uses a single mutex per new client, rather use
 // [NewConnSyncLocalClientCreator].
-func NewLocalClientCreator(app types.Application) ClientCreator {
+func NewLocalClientCreator(app types.Application, traceClient trace.Tracer) ClientCreator {
 	return &localClientCreator{
-		mtx: new(cmtsync.Mutex),
-		app: app,
+		mtx:         new(cmtsync.Mutex),
+		app:         app,
+		traceClient: traceClient,
 	}
 }
 
 func (l *localClientCreator) NewABCIClient() (abcicli.Client, error) {
-	return abcicli.NewLocalClient(l.mtx, l.app), nil
+	return abcicli.NewLocalClient(l.mtx, l.app, l.traceClient), nil
 }
 
 //----------------------------------------------------
 // local proxy creates a new mutex for each client
 
 type connSyncLocalClientCreator struct {
-	app types.Application
+	app         types.Application
+	traceClient trace.Tracer
 }
 
 // NewConnSyncLocalClientCreator returns a local [ClientCreator] for the given
@@ -57,16 +61,17 @@ type connSyncLocalClientCreator struct {
 // client creator, meaning each call to NewABCIClient returns an ABCI client
 // that maintains its own mutex over the application (i.e. it is
 // per-"connection" synchronized).
-func NewConnSyncLocalClientCreator(app types.Application) ClientCreator {
+func NewConnSyncLocalClientCreator(app types.Application, traceClient trace.Tracer) ClientCreator {
 	return &connSyncLocalClientCreator{
-		app: app,
+		app:         app,
+		traceClient: traceClient,
 	}
 }
 
 func (c *connSyncLocalClientCreator) NewABCIClient() (abcicli.Client, error) {
 	// Specifying nil for the mutex causes each instance to create its own
 	// mutex.
-	return abcicli.NewLocalClient(nil, c.app), nil
+	return abcicli.NewLocalClient(nil, c.app, c.traceClient), nil
 }
 
 //---------------------------------------------------------------
