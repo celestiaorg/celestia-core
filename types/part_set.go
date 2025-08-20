@@ -204,9 +204,9 @@ type PartSet struct {
 	hash  []byte
 
 	mtx cmtsync.Mutex
-	// Single preallocated buffer for all parts
-	buffer []byte
 
+	// buffer is a single preallocated buffer for all parts
+	buffer []byte
 	// partSize specifies the size of each part in bytes (excluding last part)
 	partSize int
 	// lastPartSize is the size of the last part (which may be smaller than partSize)
