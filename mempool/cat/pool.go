@@ -332,7 +332,7 @@ func (txmp *TxPool) TryAddNewTx(tx types.Tx, key types.TxKey, txInfo mempool.TxI
 	if rsp.Code != abci.CodeTypeOK {
 		txmp.rejectedTxCache.Push(key, rsp.Code, rsp.Log)
 		txmp.metrics.FailedTxs.Add(1)
-		return rsp, fmt.Errorf("application rejected transaction with code %d (Log: %s)", rsp.Code, rsp.Log)
+		return rsp, nil
 	}
 
 	// Create wrapped tx
