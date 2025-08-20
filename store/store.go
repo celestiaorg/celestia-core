@@ -139,7 +139,7 @@ func (bs *BlockStore) LoadPartSet(height int64) (*types.PartSet, *types.BlockMet
 	if meta == nil {
 		return nil, nil, fmt.Errorf("block meta not found")
 	}
-	partSet := types.NewPartSetFromHeader(meta.BlockID.PartSetHeader)
+	partSet := types.NewPartSetFromHeader(meta.BlockID.PartSetHeader, types.BlockPartSizeBytes)
 	for i := 0; i < int(meta.BlockID.PartSetHeader.Total); i++ {
 		part := bs.LoadBlockPart(height, i)
 		if part == nil {

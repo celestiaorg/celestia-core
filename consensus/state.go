@@ -5,7 +5,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"os"
 	"path/filepath"
 	"runtime/debug"
@@ -1696,7 +1695,7 @@ func (cs *State) enterPrecommit(height int64, round int32) {
 
 	if !cs.rs.GetProposalBlockParts().HasHeader(blockID.PartSetHeader) {
 		cs.rs.SetProposalBlock(nil)
-		cs.rs.SetProposalBlockParts(types.NewPartSetFromHeader(blockID.PartSetHeader))
+		cs.rs.SetProposalBlockParts(types.NewPartSetFromHeader(blockID.PartSetHeader, types.BlockPartSizeBytes))
 		psh := cs.rs.GetProposalBlockParts().Header()
 		cs.propagator.AddCommitment(height, round, &psh)
 	}
@@ -1864,7 +1863,7 @@ func (cs *State) enterCommit(height int64, commitRound int32) {
 			// We're getting the wrong block.
 			// Set up ProposalBlockParts and keep waiting.
 			cs.rs.SetProposalBlock(nil)
-			cs.rs.SetProposalBlockParts(types.NewPartSetFromHeader(blockID.PartSetHeader))
+			cs.rs.SetProposalBlockParts(types.NewPartSetFromHeader(blockID.PartSetHeader, types.BlockPartSizeBytes))
 			psh := blockID.PartSetHeader
 			cs.propagator.AddCommitment(height, commitRound, &psh)
 			processingTime = time.Since(start)
@@ -2213,7 +2212,7 @@ func (cs *State) defaultSetProposal(proposal *types.Proposal) error {
 	// This happens if we're already in cstypes.RoundStepCommit or if there is a valid block in the current round.
 	// TODO: We can check if Proposal is for a different block as this is a sign of misbehavior!
 	if cs.rs.GetProposalBlockParts() == nil {
-		cs.rs.SetProposalBlockParts(types.NewPartSetFromHeader(proposal.BlockID.PartSetHeader))
+		cs.rs.SetProposalBlockParts(types.NewPartSetFromHeader(proposal.BlockID.PartSetHeader, types.BlockPartSizeBytes))
 	}
 
 	cs.Logger.Info("received proposal", "proposal", proposal, "proposer", pubKey.Address())
@@ -2285,10 +2284,8 @@ func (cs *State) addProposalBlockPart(msg *BlockPartMessage, peerID p2p.ID) (add
 	start = time.Now()
 	if added && proposalBlockParts.IsComplete() {
 		fmt.Println("received complete block: ", time.Now().String())
-		bz, err := io.ReadAll(proposalBlockParts.GetReader())
-		if err != nil {
-			return added, err
-		}
+		bz := proposalBlockParts.GetBytes()
+
 		processingTime = time.Since(start)
 		schema.WriteMessageStats(cs.traceClient, "state", "state.addProposalBlockPart.step4", processingTime.Nanoseconds(), fmt.Sprintf("new block part: %d %d %d", msg.Height, msg.Round, msg.Part.Index))
 		start = time.Now()
@@ -2624,7 +2621,7 @@ func (cs *State) addVote(vote *types.Vote, peerID p2p.ID) (added bool, err error
 				}
 
 				if !cs.rs.GetProposalBlockParts().HasHeader(blockID.PartSetHeader) {
-					cs.rs.SetProposalBlockParts(types.NewPartSetFromHeader(blockID.PartSetHeader))
+					cs.rs.SetProposalBlockParts(types.NewPartSetFromHeader(blockID.PartSetHeader, types.BlockPartSizeBytes))
 					psh := blockID.PartSetHeader
 					// todo: override in propagator if an existing proposal exists
 					cs.propagator.AddCommitment(height, vote.Round, &psh)

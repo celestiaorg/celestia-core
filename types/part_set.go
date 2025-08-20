@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
-	"io"
 
 	"github.com/klauspost/reedsolomon"
 
@@ -204,11 +203,19 @@ type PartSet struct {
 	total uint32
 	hash  []byte
 
-	mtx           cmtsync.Mutex
-	parts         []*Part
+	mtx cmtsync.Mutex
+
+	// buffer is a single preallocated buffer for all parts
+	buffer []byte
+	// partSize specifies the size of each part in bytes (excluding last part)
+	partSize int
+	// lastPartSize is the size of the last part (which may be smaller than partSize)
+	lastPartSize int
+	// proofs stores part proofs separately
+	proofs        []merkle.Proof
 	partsBitArray *bits.BitArray
 	count         uint32
-	// a count of the total size (in bytes). Used to ensure that the
+	// byteSize is the total size (in bytes). Used to ensure that the
 	// part set doesn't exceed the maximum block bytes
 	byteSize int64
 
@@ -232,27 +239,26 @@ func NewPartSetFromData(data []byte, partSize uint32) (ops *PartSet, err error) 
 	ops = NewPartSetFromHeader(PartSetHeader{
 		Total: total,
 		Hash:  root,
-	})
+	}, partSize)
 
-	for index, chunk := range chunks {
-		added, err := ops.AddPart(&Part{
-			Index: uint32(index),
-			Bytes: chunk,
-			Proof: *proofs[index],
-		})
-		if err != nil {
-			return nil, err
-		}
-		if !added {
-			return nil, fmt.Errorf("couldn't add part %d when creating ops", index)
-		}
+	// Fill the buffer in a single copy and populate metadata.
+	copied := copy(ops.buffer, data)
+	if copied != len(data) {
+		return nil, fmt.Errorf("copy failed: %d < %d", copied, len(data))
 	}
 
-	if len(chunks[len(chunks)-1]) < int(partSize) {
-		padded := make([]byte, partSize)
-		copy(padded, chunks[len(chunks)-1])
-		chunks[len(chunks)-1] = padded
+	// Set sizes and bookkeeping.
+	if total > 0 {
+		lastIdx := total - 1
+		ops.lastPartSize = len(chunks[lastIdx])
 	}
+	ops.proofs = make([]merkle.Proof, total)
+	for i := uint32(0); i < total; i++ {
+		ops.proofs[i] = *proofs[i]
+		ops.partsBitArray.SetIndex(int(i), true)
+	}
+	ops.count = total
+	ops.byteSize = int64(len(data))
 
 	return ops, nil
 }
@@ -303,7 +309,7 @@ func Encode(ops *PartSet, partSize uint32) (*PartSet, int, error) {
 	eps := NewPartSetFromHeader(PartSetHeader{
 		Total: ops.Total(),
 		Hash:  eroot,
-	})
+	}, partSize)
 	for i := uint32(0); i < ops.Total(); i++ {
 		added, err := eps.AddPart(&Part{
 			Index: i,
@@ -339,12 +345,12 @@ func Decode(ops, eps *PartSet, lastPartLen int) (*PartSet, *PartSet, error) {
 
 	data := make([][]byte, ops.Total()+eps.Total())
 	ops.mtx.Lock()
-	for i, part := range ops.parts {
-		if part == nil {
+	for i := 0; i < int(ops.Total()); i++ {
+		chunk := ops.getPartBytes(i)
+		if chunk == nil {
 			data[i] = nil
 			continue
 		}
-		chunk := part.Bytes
 		if len(chunk) != int(BlockPartSizeBytes) {
 			padded := make([]byte, BlockPartSizeBytes)
 			count := copy(padded, chunk)
@@ -358,12 +364,13 @@ func Decode(ops, eps *PartSet, lastPartLen int) (*PartSet, *PartSet, error) {
 	ops.mtx.Unlock()
 
 	eps.mtx.Lock()
-	for i, part := range eps.parts {
-		if part == nil {
+	for i := 0; i < int(eps.Total()); i++ {
+		chunk := eps.getPartBytes(i)
+		if chunk == nil {
 			data[int(ops.Total())+i] = nil
 			continue
 		}
-		data[int(ops.Total())+i] = part.Bytes
+		data[int(ops.Total())+i] = chunk
 	}
 	eps.mtx.Unlock()
 
@@ -429,11 +436,16 @@ func Decode(ops, eps *PartSet, lastPartLen int) (*PartSet, *PartSet, error) {
 }
 
 // Returns an empty PartSet ready to be populated.
-func NewPartSetFromHeader(header PartSetHeader) *PartSet {
+func NewPartSetFromHeader(header PartSetHeader, partSize uint32) *PartSet {
+	// Calculate buffer size: (total-1) full parts + potentially smaller last part
+	bufferSize := int(header.Total) * int(partSize)
 	return &PartSet{
 		total:         header.Total,
 		hash:          header.Hash,
-		parts:         make([]*Part, header.Total),
+		buffer:        make([]byte, bufferSize),
+		partSize:      int(partSize),
+		lastPartSize:  0, // default to 0; will be updated when the last part is added
+		proofs:        make([]merkle.Proof, header.Total),
 		partsBitArray: bits.NewBitArray(int(header.Total)),
 		count:         0,
 		byteSize:      0,
@@ -517,10 +529,10 @@ func (ps *PartSet) AddPart(part *Part) (bool, error) {
 		return false, fmt.Errorf("%w:%w", ErrPartSetInvalidProofHash, err)
 	}
 
-	return ps.AddPartWithoutProof(part)
+	return ps.addPart(part)
 }
 
-func (ps *PartSet) AddPartWithoutProof(part *Part) (bool, error) {
+func (ps *PartSet) addPart(part *Part) (bool, error) {
 	if part == nil {
 		return false, errors.New("nil part")
 	}
@@ -534,22 +546,85 @@ func (ps *PartSet) AddPartWithoutProof(part *Part) (bool, error) {
 	}
 
 	// If part already exists, return false.
-	if ps.parts[part.Index] != nil {
+	if ps.partsBitArray.GetIndex(int(part.Index)) {
 		return false, nil
 	}
 
-	// Add part
-	ps.parts[part.Index] = part
+	// Calculate buffer position and copy part data
+	start := int(part.Index) * ps.partSize
+	end := start + len(part.Bytes)
+
+	// Ensure we don't exceed buffer bounds
+	if end > len(ps.buffer) {
+		return false, fmt.Errorf("part data exceeds buffer bounds")
+	}
+
+	copy(ps.buffer[start:end], part.Bytes)
+
+	ps.proofs[part.Index] = part.Proof
+
+	// Track last part size if this is the last part
+	if part.Index == ps.total-1 {
+		ps.lastPartSize = len(part.Bytes)
+	}
+
 	ps.partsBitArray.SetIndex(int(part.Index), true)
 	ps.count++
 	ps.byteSize += int64(len(part.Bytes))
 	return true, nil
 }
 
+// getPartBytes returns the bytes for a part from the internal buffer.
+// Assumes mutex is already locked.
+//
+// Returns nil if:
+// - The part at given index doesn't exist (not yet received)
+// - The index is out of bounds
+// - Buffer access would be out of bounds
+func (ps *PartSet) getPartBytes(index int) []byte {
+	if !ps.partsBitArray.GetIndex(index) {
+		return nil
+	}
+
+	// Calculate buffer position
+	start := index * ps.partSize
+	partSize := ps.partSize
+
+	// For the last part, use the actual size
+	if index == int(ps.total)-1 {
+		partSize = ps.lastPartSize
+	}
+
+	end := start + partSize
+	if start >= len(ps.buffer) || end > len(ps.buffer) {
+		return nil
+	}
+
+	return ps.buffer[start:end]
+}
+
+// GetPartBytes returns only the bytes for a part, without the proof.
+// This is more efficient when only the data is needed.
+func (ps *PartSet) GetPartBytes(index int) []byte {
+	ps.mtx.Lock()
+	defer ps.mtx.Unlock()
+	return ps.getPartBytes(index)
+}
+
 func (ps *PartSet) GetPart(index int) *Part {
 	ps.mtx.Lock()
 	defer ps.mtx.Unlock()
-	return ps.parts[index]
+
+	bytes := ps.getPartBytes(index)
+	if bytes == nil {
+		return nil
+	}
+
+	return &Part{
+		Index: uint32(index),
+		Bytes: bytes,
+		Proof: ps.proofs[index],
+	}
 }
 
 func (ps *PartSet) HasPart(index int) bool {
@@ -564,46 +639,12 @@ func (ps *PartSet) IsComplete() bool {
 	return ps.count == ps.total
 }
 
-func (ps *PartSet) GetReader() io.Reader {
+func (ps *PartSet) GetBytes() []byte {
 	if !ps.IsComplete() {
-		panic("Cannot GetReader() on incomplete PartSet")
+		panic("Cannot GetBytes() on incomplete PartSet")
 	}
-	return NewPartSetReader(ps.parts)
-}
-
-type PartSetReader struct {
-	i      int
-	parts  []*Part
-	reader *bytes.Reader
-}
-
-func NewPartSetReader(parts []*Part) *PartSetReader {
-	return &PartSetReader{
-		i:      0,
-		parts:  parts,
-		reader: bytes.NewReader(parts[0].Bytes),
-	}
-}
-
-func (psr *PartSetReader) Read(p []byte) (n int, err error) {
-	readerLen := psr.reader.Len()
-	if readerLen >= len(p) {
-		return psr.reader.Read(p)
-	} else if readerLen > 0 {
-		n1, err := psr.Read(p[:readerLen])
-		if err != nil {
-			return n1, err
-		}
-		n2, err := psr.Read(p[readerLen:])
-		return n1 + n2, err
-	}
-
-	psr.i++
-	if psr.i >= len(psr.parts) {
-		return 0, io.EOF
-	}
-	psr.reader = bytes.NewReader(psr.parts[psr.i].Bytes)
-	return psr.Read(p)
+	dataSize := int(ps.total-1)*ps.partSize + ps.lastPartSize
+	return ps.buffer[:dataSize]
 }
 
 // StringShort returns a short version of String.

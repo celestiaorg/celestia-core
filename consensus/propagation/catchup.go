@@ -100,7 +100,7 @@ func (blockProp *Reactor) AddCommitment(height int64, round int32, psh *types.Pa
 		blockProp.proposals[height] = make(map[int32]*proposalData)
 	}
 
-	combinedSet := proptypes.NewCombinedPartSetFromOriginal(types.NewPartSetFromHeader(*psh), true)
+	combinedSet := proptypes.NewCombinedPartSetFromOriginal(types.NewPartSetFromHeader(*psh, types.BlockPartSizeBytes), true)
 
 	if blockProp.proposals[height][round] != nil {
 		existingPSH := blockProp.proposals[height][round].block.Original().Header()
