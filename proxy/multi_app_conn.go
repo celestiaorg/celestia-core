@@ -7,6 +7,7 @@ import (
 	cmtlog "github.com/cometbft/cometbft/libs/log"
 	cmtos "github.com/cometbft/cometbft/libs/os"
 	"github.com/cometbft/cometbft/libs/service"
+	"github.com/cometbft/cometbft/libs/trace"
 )
 
 const (
@@ -29,6 +30,8 @@ type AppConns interface {
 	Query() AppConnQuery
 	// Snapshot connection
 	Snapshot() AppConnSnapshot
+	// SetConsensusTraceClient sets the trace client for the consensus connection
+	SetConsensusTraceClient(traceClient trace.Tracer)
 }
 
 // NewAppConns calls NewMultiAppConn.
@@ -82,6 +85,12 @@ func (app *multiAppConn) Query() AppConnQuery {
 
 func (app *multiAppConn) Snapshot() AppConnSnapshot {
 	return app.snapshotConn
+}
+
+func (app *multiAppConn) SetConsensusTraceClient(traceClient trace.Tracer) {
+	if app.consensusConnClient != nil {
+		app.consensusConnClient.WithTraceClient(traceClient)
+	}
 }
 
 func (app *multiAppConn) OnStart() error {

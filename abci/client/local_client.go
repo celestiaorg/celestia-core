@@ -2,6 +2,7 @@ package abcicli
 
 import (
 	"context"
+	"fmt"
 
 	types "github.com/cometbft/cometbft/abci/types"
 	"github.com/cometbft/cometbft/libs/service"
@@ -43,6 +44,7 @@ func NewLocalClient(mtx *cmtsync.Mutex, app types.Application) Client {
 }
 
 func (app *localClient) WithTraceClient(traceClient trace.Tracer) {
+	fmt.Printf("WithTraceClient: %v\n", traceClient)
 	app.traceClient = traceClient
 }
 

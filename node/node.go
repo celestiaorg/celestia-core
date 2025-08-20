@@ -401,6 +401,9 @@ func NewNodeWithContext(ctx context.Context,
 		return nil, err
 	}
 
+	// Set the trace client for the consensus connection
+	proxyApp.SetConsensusTraceClient(tracer)
+
 	mempool, mempoolReactor := createMempoolAndMempoolReactor(config, proxyApp, state, memplMetrics, logger, tracer)
 
 	evidenceReactor, evidencePool, err := createEvidenceReactor(config, dbProvider, stateStore, blockStore, logger)
