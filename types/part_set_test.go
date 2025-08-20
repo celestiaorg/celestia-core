@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/cometbft/cometbft/crypto"
+	cmtmath "github.com/cometbft/cometbft/libs/math"
 	cmtproto "github.com/cometbft/cometbft/proto/tendermint/types"
 	"github.com/cosmos/gogoproto/proto"
 
@@ -310,4 +311,95 @@ func TestPartProtoBuf(t *testing.T) {
 			require.Equal(t, tc.ps1, p, tc.msg)
 		}
 	}
+}
+
+func BenchmarkPartSetRoundTrip(b *testing.B) {
+	write := func(b *testing.B, dataSize int, partSize uint32) *PartSet {
+		b.ReportAllocs()
+		b.StopTimer()
+		data := cmtrand.Bytes(dataSize)
+		b.StartTimer()
+		partSet, err := benchPartSetFromData(b, data, partSize)
+		if err != nil {
+			b.Error(err)
+		}
+		return partSet
+	}
+	read := func(b *testing.B, partSet *PartSet, expectedSize int) {
+		b.ReportAllocs()
+		all, err := io.ReadAll(partSet.GetReader())
+		if err != nil {
+			b.Error(err)
+		}
+		if len(all) != expectedSize {
+			b.Errorf("expected %d bytes, got %d", expectedSize, len(all))
+		}
+	}
+
+	cases := []struct {
+		dataSize int
+		partSize uint32
+	}{
+		{1000, 256},
+		{MaxBlockSizeBytes, BlockPartSizeBytes},
+		{4 * MaxBlockSizeBytes, BlockPartSizeBytes},
+	}
+
+	for c := range cases {
+		b.Run(fmt.Sprintf("dataSize=%d,partSize=%d", cases[c].dataSize, cases[c].partSize), func(b *testing.B) {
+			partSets := make([]*PartSet, 0, 10)
+			b.Run("write", func(b *testing.B) {
+				for i := 0; i < b.N; i++ {
+					partSet := write(b, cases[c].dataSize, cases[c].partSize)
+					partSets = append(partSets, partSet)
+				}
+			})
+			b.Run("read", func(b *testing.B) {
+				for i := 0; i < b.N; i++ {
+					read(b, partSets[i%len(partSets)], cases[c].dataSize)
+				}
+			})
+		})
+	}
+}
+
+func benchPartSetFromData(b *testing.B, data []byte, partSize uint32) (ops *PartSet, err error) {
+	b.StopTimer()
+	total := (uint32(len(data)) + partSize - 1) / partSize
+	chunks := make([][]byte, total)
+	for i := uint32(0); i < total; i++ {
+		chunk := data[i*partSize : cmtmath.MinInt(len(data), int((i+1)*partSize))]
+		chunks[i] = chunk
+	}
+
+	// Compute merkle proofs
+	root, proofs := merkle.ProofsFromByteSlices(chunks)
+
+	ops = NewPartSetFromHeader(PartSetHeader{
+		Total: total,
+		Hash:  root,
+	})
+
+	b.StartTimer()
+	for index, chunk := range chunks {
+		added, err := ops.AddPart(&Part{
+			Index: uint32(index),
+			Bytes: chunk,
+			Proof: *proofs[index],
+		})
+		if err != nil {
+			return nil, err
+		}
+		if !added {
+			return nil, fmt.Errorf("couldn't add part %d when creating ops", index)
+		}
+	}
+
+	if len(chunks[len(chunks)-1]) < int(partSize) {
+		padded := make([]byte, partSize)
+		copy(padded, chunks[len(chunks)-1])
+		chunks[len(chunks)-1] = padded
+	}
+
+	return ops, nil
 }
