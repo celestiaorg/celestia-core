@@ -25,6 +25,7 @@ import (
 	"github.com/cometbft/cometbft/config"
 	internaltest "github.com/cometbft/cometbft/internal/test"
 	"github.com/cometbft/cometbft/libs/log"
+	"github.com/cometbft/cometbft/libs/trace"
 	"github.com/cometbft/cometbft/mempool"
 	tmproto "github.com/cometbft/cometbft/proto/tendermint/types"
 	"github.com/cometbft/cometbft/proxy"
@@ -84,7 +85,7 @@ func setup(t testing.TB, cacheSize int, options ...TxMempoolOption) *TxMempool {
 	t.Helper()
 
 	app := &application{kvstore.NewApplication(db.NewMemDB())}
-	cc := proxy.NewLocalClientCreator(app)
+	cc := proxy.NewLocalClientCreator(app, trace.NoOpTracer())
 
 	cfg := internaltest.ResetTestRoot(strings.ReplaceAll(t.Name(), "/", "|"))
 	cfg.Mempool.CacheSize = cacheSize
@@ -768,7 +769,7 @@ func TestConcurrentCheckTxDataRace(t *testing.T) {
 
 		// Create a mempool for testing
 		app := kvstore.NewApplication(db.NewMemDB())
-		cc := proxy.NewLocalClientCreator(app)
+		cc := proxy.NewLocalClientCreator(app, trace.NoOpTracer())
 		appConnMem, _ := cc.NewABCIClient()
 		err := appConnMem.Start()
 		require.NoError(t, err)

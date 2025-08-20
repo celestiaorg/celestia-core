@@ -9,13 +9,14 @@ import (
 	"github.com/cometbft/cometbft/abci/example/kvstore"
 	"github.com/cometbft/cometbft/config"
 	cmtsync "github.com/cometbft/cometbft/libs/sync"
+	"github.com/cometbft/cometbft/libs/trace"
 	mempool "github.com/cometbft/cometbft/mempool"
 )
 
 func FuzzMempool(f *testing.F) {
 	app := kvstore.NewInMemoryApplication()
 	mtx := new(cmtsync.Mutex)
-	conn := abciclient.NewLocalClient(mtx, app)
+	conn := abciclient.NewLocalClient(mtx, app, trace.NoOpTracer())
 	err := conn.Start()
 	if err != nil {
 		panic(err)

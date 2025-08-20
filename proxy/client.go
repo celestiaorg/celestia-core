@@ -115,27 +115,27 @@ func (r *remoteClientCreator) NewABCIClient() (abcicli.Client, error) {
 func DefaultClientCreator(addr, transport, dbDir string) ClientCreator {
 	switch addr {
 	case "kvstore":
-		return NewLocalClientCreator(kvstore.NewInMemoryApplication())
+		return NewLocalClientCreator(kvstore.NewInMemoryApplication(), trace.NoOpTracer())
 	case "kvstore_connsync":
-		return NewConnSyncLocalClientCreator(kvstore.NewInMemoryApplication())
+		return NewConnSyncLocalClientCreator(kvstore.NewInMemoryApplication(), trace.NoOpTracer())
 	case "persistent_kvstore":
-		return NewLocalClientCreator(kvstore.NewPersistentApplication(dbDir))
+		return NewLocalClientCreator(kvstore.NewPersistentApplication(dbDir), trace.NoOpTracer())
 	case "persistent_kvstore_connsync":
-		return NewConnSyncLocalClientCreator(kvstore.NewPersistentApplication(dbDir))
+		return NewConnSyncLocalClientCreator(kvstore.NewPersistentApplication(dbDir), trace.NoOpTracer())
 	case "e2e":
 		app, err := e2e.NewApplication(e2e.DefaultConfig(dbDir))
 		if err != nil {
 			panic(err)
 		}
-		return NewLocalClientCreator(app)
+		return NewLocalClientCreator(app, trace.NoOpTracer())
 	case "e2e_connsync":
 		app, err := e2e.NewApplication(e2e.DefaultConfig(dbDir))
 		if err != nil {
 			panic(err)
 		}
-		return NewConnSyncLocalClientCreator(app)
+		return NewConnSyncLocalClientCreator(app, trace.NoOpTracer())
 	case "noop":
-		return NewLocalClientCreator(types.NewBaseApplication())
+		return NewLocalClientCreator(types.NewBaseApplication(), trace.NoOpTracer())
 	default:
 		mustConnect := false // loop retrying
 		return NewRemoteClientCreator(addr, transport, mustConnect)

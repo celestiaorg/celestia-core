@@ -21,6 +21,7 @@ import (
 	"github.com/cometbft/cometbft/crypto/tmhash"
 	"github.com/cometbft/cometbft/internal/test"
 	"github.com/cometbft/cometbft/libs/log"
+	"github.com/cometbft/cometbft/libs/trace"
 	mpmocks "github.com/cometbft/cometbft/mempool/mocks"
 	cmtproto "github.com/cometbft/cometbft/proto/tendermint/types"
 	cmtversion "github.com/cometbft/cometbft/proto/tendermint/version"
@@ -40,7 +41,7 @@ var (
 
 func TestApplyBlock(t *testing.T) {
 	app := &testApp{}
-	cc := proxy.NewLocalClientCreator(app)
+	cc := proxy.NewLocalClientCreator(app, trace.NoOpTracer())
 	proxyApp := proxy.NewAppConns(cc, proxy.NopMetrics())
 	err := proxyApp.Start()
 	require.Nil(t, err)
@@ -84,7 +85,7 @@ func TestApplyBlock(t *testing.T) {
 func TestFinalizeBlockDecidedLastCommit(t *testing.T) {
 	app := &testApp{}
 	baseTime := time.Now()
-	cc := proxy.NewLocalClientCreator(app)
+	cc := proxy.NewLocalClientCreator(app, trace.NoOpTracer())
 	proxyApp := proxy.NewAppConns(cc, proxy.NopMetrics())
 	err := proxyApp.Start()
 	require.NoError(t, err)
@@ -158,7 +159,7 @@ func TestFinalizeBlockDecidedLastCommit(t *testing.T) {
 // TestFinalizeBlockValidators ensures we send absent validators list.
 func TestFinalizeBlockValidators(t *testing.T) {
 	app := &testApp{}
-	cc := proxy.NewLocalClientCreator(app)
+	cc := proxy.NewLocalClientCreator(app, trace.NoOpTracer())
 	proxyApp := proxy.NewAppConns(cc, proxy.NopMetrics())
 	err := proxyApp.Start()
 	require.NoError(t, err)
@@ -247,7 +248,7 @@ func TestFinalizeBlockValidators(t *testing.T) {
 // TestFinalizeBlockMisbehavior ensures we send misbehavior list.
 func TestFinalizeBlockMisbehavior(t *testing.T) {
 	app := &testApp{}
-	cc := proxy.NewLocalClientCreator(app)
+	cc := proxy.NewLocalClientCreator(app, trace.NoOpTracer())
 	proxyApp := proxy.NewAppConns(cc, proxy.NopMetrics())
 	err := proxyApp.Start()
 	require.NoError(t, err)
@@ -365,7 +366,7 @@ func TestProcessProposal(t *testing.T) {
 	app := &abcimocks.Application{}
 	app.On("ProcessProposal", mock.Anything, mock.Anything).Return(&abci.ResponseProcessProposal{Status: abci.ResponseProcessProposal_ACCEPT}, nil)
 
-	cc := proxy.NewLocalClientCreator(app)
+	cc := proxy.NewLocalClientCreator(app, trace.NoOpTracer())
 	proxyApp := proxy.NewAppConns(cc, proxy.NopMetrics())
 	err := proxyApp.Start()
 	require.NoError(t, err)
@@ -575,7 +576,7 @@ func TestUpdateValidators(t *testing.T) {
 // TestFinalizeBlockValidatorUpdates ensures we update validator set and send an event.
 func TestFinalizeBlockValidatorUpdates(t *testing.T) {
 	app := &testApp{}
-	cc := proxy.NewLocalClientCreator(app)
+	cc := proxy.NewLocalClientCreator(app, trace.NoOpTracer())
 	proxyApp := proxy.NewAppConns(cc, proxy.NopMetrics())
 	err := proxyApp.Start()
 	require.NoError(t, err)
@@ -663,7 +664,7 @@ func TestFinalizeBlockValidatorUpdates(t *testing.T) {
 // would result in empty set causes no panic, an error is raised and NextValidators is not updated
 func TestFinalizeBlockValidatorUpdatesResultingInEmptySet(t *testing.T) {
 	app := &testApp{}
-	cc := proxy.NewLocalClientCreator(app)
+	cc := proxy.NewLocalClientCreator(app, trace.NoOpTracer())
 	proxyApp := proxy.NewAppConns(cc, proxy.NopMetrics())
 	err := proxyApp.Start()
 	require.NoError(t, err)
@@ -705,7 +706,7 @@ func TestEmptyPrepareProposal(t *testing.T) {
 	defer cancel()
 
 	app := &abci.BaseApplication{}
-	cc := proxy.NewLocalClientCreator(app)
+	cc := proxy.NewLocalClientCreator(app, trace.NoOpTracer())
 	proxyApp := proxy.NewAppConns(cc, proxy.NopMetrics())
 	err := proxyApp.Start()
 	require.NoError(t, err)
@@ -768,7 +769,7 @@ func TestPrepareProposalTxsAllIncluded(t *testing.T) {
 	app.On("PrepareProposal", mock.Anything, mock.Anything).Return(&abci.ResponsePrepareProposal{
 		Txs: txs.ToSliceOfBytes(),
 	}, nil)
-	cc := proxy.NewLocalClientCreator(app)
+	cc := proxy.NewLocalClientCreator(app, trace.NoOpTracer())
 	proxyApp := proxy.NewAppConns(cc, proxy.NopMetrics())
 	err := proxyApp.Start()
 	require.NoError(t, err)
@@ -824,7 +825,7 @@ func TestPrepareProposalReorderTxs(t *testing.T) {
 		Txs: txs.ToSliceOfBytes(),
 	}, nil)
 
-	cc := proxy.NewLocalClientCreator(app)
+	cc := proxy.NewLocalClientCreator(app, trace.NoOpTracer())
 	proxyApp := proxy.NewAppConns(cc, proxy.NopMetrics())
 	err := proxyApp.Start()
 	require.NoError(t, err)
@@ -881,7 +882,7 @@ func TestPrepareProposalErrorOnTooManyTxs(t *testing.T) {
 		Txs: txs.ToSliceOfBytes(),
 	}, nil)
 
-	cc := proxy.NewLocalClientCreator(app)
+	cc := proxy.NewLocalClientCreator(app, trace.NoOpTracer())
 	proxyApp := proxy.NewAppConns(cc, proxy.NopMetrics())
 	err := proxyApp.Start()
 	require.NoError(t, err)
@@ -939,7 +940,7 @@ func TestPrepareProposalCountSerializationOverhead(t *testing.T) {
 		Txs: txs.ToSliceOfBytes(),
 	}, nil)
 
-	cc := proxy.NewLocalClientCreator(app)
+	cc := proxy.NewLocalClientCreator(app, trace.NoOpTracer())
 	proxyApp := proxy.NewAppConns(cc, proxy.NopMetrics())
 	err := proxyApp.Start()
 	require.NoError(t, err)
@@ -1063,7 +1064,7 @@ func TestCreateProposalAbsentVoteExtensions(t *testing.T) {
 			if !testCase.expectPanic {
 				app.On("PrepareProposal", mock.Anything, mock.Anything).Return(&abci.ResponsePrepareProposal{}, nil)
 			}
-			cc := proxy.NewLocalClientCreator(app)
+			cc := proxy.NewLocalClientCreator(app, trace.NoOpTracer())
 			proxyApp := proxy.NewAppConns(cc, proxy.NopMetrics())
 			err := proxyApp.Start()
 			require.NoError(t, err)

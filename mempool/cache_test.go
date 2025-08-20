@@ -11,13 +11,14 @@ import (
 
 	"github.com/cometbft/cometbft/abci/example/kvstore"
 	abci "github.com/cometbft/cometbft/abci/types"
+	"github.com/cometbft/cometbft/libs/trace"
 	"github.com/cometbft/cometbft/proxy"
 	"github.com/cometbft/cometbft/types"
 )
 
 func TestCacheAfterUpdate(t *testing.T) {
 	app := kvstore.NewInMemoryApplication()
-	cc := proxy.NewLocalClientCreator(app)
+	cc := proxy.NewLocalClientCreator(app, trace.NoOpTracer())
 	mp, cleanup := newMempoolWithApp(cc)
 	defer cleanup()
 
