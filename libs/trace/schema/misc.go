@@ -29,7 +29,7 @@ type ABCI struct {
 // Table returns the table name for the ABCI struct and fulfills the
 // trace.Entry interface.
 func (ABCI) Table() string {
-	return CheckTxTable
+	return ABCITable
 }
 
 // WriteABCI writes a trace for an ABCI method.
