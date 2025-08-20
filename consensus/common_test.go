@@ -31,7 +31,6 @@ import (
 	cmtos "github.com/cometbft/cometbft/libs/os"
 	cmtpubsub "github.com/cometbft/cometbft/libs/pubsub"
 	cmtsync "github.com/cometbft/cometbft/libs/sync"
-	"github.com/cometbft/cometbft/libs/trace"
 	mempl "github.com/cometbft/cometbft/mempool"
 	"github.com/cometbft/cometbft/p2p"
 	"github.com/cometbft/cometbft/privval"
@@ -405,9 +404,8 @@ func newStateWithConfigAndBlockStore(
 	// one for mempool, one for consensus
 	mtx := new(cmtsync.Mutex)
 
-	traceClient := trace.NoOpTracer()
-	proxyAppConnCon := proxy.NewAppConnConsensus(abcicli.NewLocalClient(mtx, app, traceClient), proxy.NopMetrics())
-	proxyAppConnMem := proxy.NewAppConnMempool(abcicli.NewLocalClient(mtx, app, traceClient), proxy.NopMetrics())
+	proxyAppConnCon := proxy.NewAppConnConsensus(abcicli.NewLocalClient(mtx, app), proxy.NopMetrics())
+	proxyAppConnMem := proxy.NewAppConnMempool(abcicli.NewLocalClient(mtx, app), proxy.NopMetrics())
 	// Make Mempool
 	memplMetrics := mempl.NopMetrics()
 

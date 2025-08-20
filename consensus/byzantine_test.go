@@ -22,7 +22,6 @@ import (
 	"github.com/cometbft/cometbft/libs/log"
 	"github.com/cometbft/cometbft/libs/service"
 	cmtsync "github.com/cometbft/cometbft/libs/sync"
-	"github.com/cometbft/cometbft/libs/trace"
 	mempl "github.com/cometbft/cometbft/mempool"
 	"github.com/cometbft/cometbft/proxy"
 
@@ -73,10 +72,9 @@ func TestByzantinePrevoteEquivocation(t *testing.T) {
 		blockStore := store.NewBlockStore(blockDB)
 
 		mtx := new(cmtsync.Mutex)
-		traceClient := trace.NoOpTracer()
 		// one for mempool, one for consensus
-		proxyAppConnCon := proxy.NewAppConnConsensus(abcicli.NewLocalClient(mtx, app, traceClient), proxy.NopMetrics())
-		proxyAppConnMem := proxy.NewAppConnMempool(abcicli.NewLocalClient(mtx, app, traceClient), proxy.NopMetrics())
+		proxyAppConnCon := proxy.NewAppConnConsensus(abcicli.NewLocalClient(mtx, app), proxy.NopMetrics())
+		proxyAppConnMem := proxy.NewAppConnMempool(abcicli.NewLocalClient(mtx, app), proxy.NopMetrics())
 
 		// Make Mempool
 		mempool := mempl.NewCListMempool(config.Mempool,
