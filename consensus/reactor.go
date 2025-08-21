@@ -16,7 +16,6 @@ import (
 	cmtevents "github.com/cometbft/cometbft/libs/events"
 	cmtjson "github.com/cometbft/cometbft/libs/json"
 	"github.com/cometbft/cometbft/libs/log"
-	cmtsync "github.com/cometbft/cometbft/libs/sync"
 	"github.com/cometbft/cometbft/libs/trace"
 	"github.com/cometbft/cometbft/libs/trace/schema"
 	"github.com/cometbft/cometbft/p2p"
@@ -50,10 +49,9 @@ type Reactor struct {
 
 	conS *State
 
-	mtx      cmtsync.RWMutex
-	waitSync bool
+	waitSync atomic.Bool
 	eventBus *types.EventBus
-	rs       *cstypes.RoundState
+	rs       atomic.Pointer[cstypes.RoundState]
 
 	Metrics     *Metrics
 	traceClient trace.Tracer
@@ -71,12 +69,12 @@ type ReactorOption func(*Reactor)
 func NewReactor(consensusState *State, propagator propagation.Propagator, waitSync bool, options ...ReactorOption) *Reactor {
 	conR := &Reactor{
 		conS:        consensusState,
-		waitSync:    waitSync,
-		rs:          consensusState.GetRoundState(),
 		Metrics:     NopMetrics(),
 		traceClient: trace.NoOpTracer(),
 		propagator:  propagator,
 	}
+	conR.waitSync.Store(waitSync)
+	conR.rs.Store(consensusState.GetRoundState())
 	conR.gossipDataEnabled.Store(true)
 	conR.BaseReactor = *p2p.NewBaseReactor("Consensus", conR, p2p.WithIncomingQueueSize(ReactorIncomingMessageQueueSize))
 
@@ -151,9 +149,7 @@ func (conR *Reactor) SwitchToConsensus(state sm.State, skipWAL bool) {
 		conR.conS.updateToState(state)
 	}()
 
-	conR.mtx.Lock()
-	conR.waitSync = false
-	conR.mtx.Unlock()
+	conR.waitSync.Store(false)
 
 	if skipWAL {
 		conR.conS.doWALCatchup = false
@@ -493,9 +489,7 @@ func (conR *Reactor) SetEventBus(b *types.EventBus) {
 
 // WaitSync returns whether the consensus reactor is waiting for state/block sync.
 func (conR *Reactor) WaitSync() bool {
-	conR.mtx.RLock()
-	defer conR.mtx.RUnlock()
-	return conR.waitSync
+	return conR.waitSync.Load()
 }
 
 //--------------------------------------
@@ -655,16 +649,12 @@ func (conR *Reactor) updateRoundStateRoutine() {
 			return
 		}
 		rs := conR.conS.GetRoundState()
-		conR.mtx.Lock()
-		conR.rs = rs
-		conR.mtx.Unlock()
+		conR.rs.Store(rs)
 	}
 }
 
 func (conR *Reactor) getRoundState() *cstypes.RoundState {
-	conR.mtx.RLock()
-	defer conR.mtx.RUnlock()
-	return conR.rs
+	return conR.rs.Load()
 }
 
 func (conR *Reactor) gossipDataRoutine(peer p2p.Peer, ps *PeerState) {
