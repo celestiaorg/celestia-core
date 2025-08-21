@@ -82,7 +82,7 @@ func (blockProp *Reactor) ProposeBlock(proposal *types.Proposal, block *types.Pa
 
 	fmt.Println("handled compact block ", time.Now())
 
-	_, parts, _, has := blockProp.getAllState(proposal.Height, proposal.Round, false)
+	_, parts, _, has := blockProp.getAllState(proposal.Height, proposal.Round, true)
 	if !has {
 		panic(fmt.Sprintf("failed to get all state for this node's proposal %d/%d", proposal.Height, proposal.Round))
 	}
