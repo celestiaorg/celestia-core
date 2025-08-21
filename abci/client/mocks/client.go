@@ -11,8 +11,6 @@ import (
 
 	mock "github.com/stretchr/testify/mock"
 
-	trace "github.com/cometbft/cometbft/libs/trace"
-
 	types "github.com/cometbft/cometbft/abci/types"
 )
 
@@ -696,11 +694,6 @@ func (_m *Client) VerifyVoteExtension(_a0 context.Context, _a1 *types.RequestVer
 	}
 
 	return r0, r1
-}
-
-// WithTraceClient provides a mock function with given fields: _a0
-func (_m *Client) WithTraceClient(_a0 trace.Tracer) {
-	_m.Called(_a0)
 }
 
 // NewClient creates a new instance of Client. It also registers a testing interface on the mock and a cleanup function to assert the mocks expectations.

@@ -8,7 +8,6 @@ import (
 	"github.com/cometbft/cometbft/abci/types"
 	"github.com/cometbft/cometbft/libs/service"
 	cmtsync "github.com/cometbft/cometbft/libs/sync"
-	"github.com/cometbft/cometbft/libs/trace"
 )
 
 const (
@@ -40,9 +39,6 @@ type Client interface {
 	// mempool to remove this vestige behavior.
 	SetResponseCallback(Callback)
 	CheckTxAsync(context.Context, *types.RequestCheckTx) (*ReqRes, error)
-	
-	// WithTraceClient sets the trace client for this ABCI client
-	WithTraceClient(trace.Tracer)
 }
 
 //----------------------------------------

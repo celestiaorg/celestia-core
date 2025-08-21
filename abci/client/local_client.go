@@ -2,13 +2,10 @@ package abcicli
 
 import (
 	"context"
-	"fmt"
 
 	types "github.com/cometbft/cometbft/abci/types"
 	"github.com/cometbft/cometbft/libs/service"
 	cmtsync "github.com/cometbft/cometbft/libs/sync"
-	"github.com/cometbft/cometbft/libs/trace"
-	"github.com/cometbft/cometbft/libs/trace/schema"
 )
 
 // NOTE: use defer to unlock mutex because Application might panic (e.g., in
@@ -21,7 +18,6 @@ type localClient struct {
 	mtx *cmtsync.Mutex
 	types.Application
 	Callback
-	traceClient trace.Tracer
 }
 
 var _ Client = (*localClient)(nil)
@@ -37,15 +33,9 @@ func NewLocalClient(mtx *cmtsync.Mutex, app types.Application) Client {
 	cli := &localClient{
 		mtx:         mtx,
 		Application: app,
-		traceClient: trace.NoOpTracer(),
 	}
 	cli.BaseService = *service.NewBaseService(nil, "localClient", cli)
 	return cli
-}
-
-func (app *localClient) WithTraceClient(traceClient trace.Tracer) {
-	fmt.Printf("WithTraceClient: %v\n", traceClient)
-	app.traceClient = traceClient
 }
 
 func (app *localClient) SetResponseCallback(cb Callback) {
@@ -55,9 +45,7 @@ func (app *localClient) SetResponseCallback(cb Callback) {
 }
 
 func (app *localClient) CheckTxAsync(ctx context.Context, req *types.RequestCheckTx) (*ReqRes, error) {
-	schema.WriteCheckTx(app.traceClient, schema.CheckTxStart)
 	res, err := app.Application.CheckTx(ctx, req)
-	schema.WriteCheckTx(app.traceClient, schema.CheckTxEnd)
 
 	if err != nil {
 		return nil, err
@@ -103,9 +91,7 @@ func (app *localClient) Info(ctx context.Context, req *types.RequestInfo) (*type
 }
 
 func (app *localClient) CheckTx(ctx context.Context, req *types.RequestCheckTx) (*types.ResponseCheckTx, error) {
-	schema.WriteCheckTx(app.traceClient, schema.CheckTxStart)
 	res, err := app.Application.CheckTx(ctx, req)
-	schema.WriteCheckTx(app.traceClient, schema.CheckTxEnd)
 
 	return res, err
 }

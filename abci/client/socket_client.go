@@ -15,7 +15,6 @@ import (
 	cmtnet "github.com/cometbft/cometbft/libs/net"
 	"github.com/cometbft/cometbft/libs/service"
 	"github.com/cometbft/cometbft/libs/timer"
-	"github.com/cometbft/cometbft/libs/trace"
 )
 
 const (
@@ -513,8 +512,4 @@ func (cli *socketClient) stopForError(err error) {
 	if err := cli.Stop(); err != nil {
 		cli.Logger.Error("Error stopping abci.socketClient", "err", err)
 	}
-}
-
-func (cli *socketClient) WithTraceClient(traceClient trace.Tracer) {
-	// No-op for socket client - tracing not implemented yet
 }

@@ -13,7 +13,6 @@ import (
 	"github.com/cometbft/cometbft/abci/types"
 	cmtnet "github.com/cometbft/cometbft/libs/net"
 	"github.com/cometbft/cometbft/libs/service"
-	"github.com/cometbft/cometbft/libs/trace"
 )
 
 var _ Client = (*grpcClient)(nil)
@@ -245,8 +244,4 @@ func (cli *grpcClient) VerifyVoteExtension(ctx context.Context, req *types.Reque
 
 func (cli *grpcClient) FinalizeBlock(ctx context.Context, req *types.RequestFinalizeBlock) (*types.ResponseFinalizeBlock, error) {
 	return cli.client.FinalizeBlock(ctx, types.ToRequestFinalizeBlock(req).GetFinalizeBlock(), grpc.WaitForReady(true))
-}
-
-func (cli *grpcClient) WithTraceClient(traceClient trace.Tracer) {
-	// No-op for grpc client - tracing not implemented yet
 }
