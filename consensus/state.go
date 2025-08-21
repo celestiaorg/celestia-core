@@ -1328,6 +1328,7 @@ func (cs *State) defaultDecideProposal(height int64, round int32) {
 		bwp := <-cs.nextBlock
 		block = bwp.block
 		blockParts = bwp.parts
+		return
 	} else {
 		// Create a new proposal block from state/txs from the mempool.
 		fmt.Println("returning because no else")
@@ -1769,6 +1770,7 @@ func (cs *State) buildNextBlock() {
 
 	// delay pre-emptive block building until the end of the timeout commit
 	//time.Sleep(cs.config.TimeoutCommit - blockBuildingTime)
+	time.Sleep(time.Second)
 
 	fmt.Println("starting build of next block: ", time.Now())
 	block, blockParts, err := cs.createProposalBlock(context.TODO())
@@ -1791,9 +1793,26 @@ func (cs *State) buildNextBlock() {
 
 	cs.propagator.PrepareBlock(blockParts, metaData)
 
-	cs.nextBlock <- &blockWithParts{
-		block: block,
-		parts: blockParts,
+	propBlockID := types.BlockID{Hash: block.Hash(), PartSetHeader: blockParts.Header()}
+	proposal := types.NewProposal(cs.rs.Height.Load(), cs.rs.Round.Load(), cs.rs.ValidRound.Load(), propBlockID)
+	p := proposal.ToProto()
+	if err := cs.privValidator.SignProposal(cs.State().ChainID, p); err == nil {
+		proposal.Signature = p.Signature
+
+		// send proposal and block parts on internal msg queue
+		cs.sendInternalMessage(msgInfo{&ProposalMessage{proposal}, ""})
+
+		cs.propagator.ProposeBlock(proposal, blockParts)
+
+		for i := 0; i < int(blockParts.Total()); i++ {
+			part := blockParts.GetPart(i)
+			cs.sendInternalMessage(msgInfo{&BlockPartMessage{cs.rs.Height.Load(), cs.rs.Round.Load(), part}, ""})
+		}
+
+		cs.nextBlock <- &blockWithParts{
+			block: block,
+			parts: blockParts,
+		}
 	}
 }
 
