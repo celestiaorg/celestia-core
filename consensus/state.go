@@ -1578,6 +1578,15 @@ func (cs *State) enterPrevoteWait(height int64, round int32) {
 	cs.scheduleTimeout(cs.config.Prevote(round), height, round, cstypes.RoundStepPrevoteWait)
 }
 
+// isReadyToPrecommit calculates if the process has waited at least 11 seconds
+// from their start time before they can vote
+func (cs *State) isReadyToPrecommit(height int64, round int32) (bool, time.Duration) {
+	precommitVoteTime := cs.rs.GetStartTime().Add(7 * time.Second)
+	waitTime := time.Until(precommitVoteTime)
+	//schema.WritePrecommitTime(cs.traceClient, height, round, waitTime.Seconds())
+	return waitTime <= 0, waitTime
+}
+
 // Enter: `timeoutPrevote` after any +2/3 prevotes.
 // Enter: `timeoutPrecommit` after any +2/3 precommits.
 // Enter: +2/3 precomits for block or nil.
@@ -1592,6 +1601,13 @@ func (cs *State) enterPrecommit(height int64, round int32) {
 			"entering precommit step with invalid args",
 			"current", log.NewLazySprintf("%v/%v/%v", cs.rs.Height.Load(), cs.rs.Round.Load(), cs.rs.GetStep()),
 		)
+		return
+	}
+
+	if ready, waitTime := cs.isReadyToPrecommit(height, round); !ready {
+		// this will reenter precommit after the waitTime
+		fmt.Println("rescheduling precommit after ", waitTime.Seconds())
+		cs.scheduleTimeout(waitTime, height, round, cstypes.RoundStepPrevoteWait)
 		return
 	}
 
