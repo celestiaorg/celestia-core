@@ -563,10 +563,8 @@ func sendProposalAndParts(
 	}
 
 	// votes
-	cs.mtx.Lock()
 	prevote, _ := cs.signVote(cmtproto.PrevoteType, blockHash, parts.Header(), nil)
 	precommit, _ := cs.signVote(cmtproto.PrecommitType, blockHash, parts.Header(), nil)
-	cs.mtx.Unlock()
 	peer.Send(p2p.Envelope{
 		ChannelID: VoteChannel,
 		Message:   &cmtcons.Vote{Vote: prevote.ToProto()},

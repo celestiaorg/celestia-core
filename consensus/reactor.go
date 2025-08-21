@@ -78,6 +78,9 @@ func NewReactor(consensusState *State, propagator propagation.Propagator, waitSy
 	conR.gossipDataEnabled.Store(true)
 	conR.BaseReactor = *p2p.NewBaseReactor("Consensus", conR, p2p.WithIncomingQueueSize(ReactorIncomingMessageQueueSize))
 
+	// Wire back-reference for direct state change notifications (eliminates polling)
+	consensusState.reactor = conR
+
 	for _, option := range options {
 		option(conR)
 	}
@@ -106,6 +109,7 @@ func (conR *Reactor) OnStart() error {
 	go conR.peerStatsRoutine()
 
 	conR.subscribeToBroadcastEvents()
+	// Keep a lightweight polling loop (lock-free) for compatibility
 	go conR.updateRoundStateRoutine()
 
 	if !conR.WaitSync() {
@@ -136,10 +140,7 @@ func (conR *Reactor) SwitchToConsensus(state sm.State, skipWAL bool) {
 	conR.Logger.Info("SwitchToConsensus")
 
 	func() {
-		// We need to lock, as we are not entering consensus state from State's `handleMsg` or `handleTimeout`
-		conR.conS.mtx.Lock()
-		defer conR.conS.mtx.Unlock()
-		// We have no votes, so reconstruct LastCommit from SeenCommit
+		// We are entering consensus state outside receiveRoutine, but consensus is not running yet in this path.
 		if state.LastBlockHeight > 0 {
 			conR.conS.reconstructLastCommit(state)
 		}
@@ -288,9 +289,8 @@ func (conR *Reactor) Receive(e p2p.Envelope) {
 	case StateChannel:
 		switch msg := msg.(type) {
 		case *NewRoundStepMessage:
-			conR.conS.mtx.Lock()
-			initialHeight := conR.conS.state.InitialHeight
-			conR.conS.mtx.Unlock()
+			initialState := conR.conS.GetBlockchainState()
+			initialHeight := initialState.InitialHeight
 			schema.WriteConsensusState(
 				conR.traceClient,
 				msg.Height,
@@ -329,9 +329,8 @@ func (conR *Reactor) Receive(e p2p.Envelope) {
 			ps.ApplyHasVoteMessage(msg)
 		case *VoteSetMaj23Message:
 			cs := conR.conS
-			cs.mtx.Lock()
-			height, votes := cs.Height, cs.Votes
-			cs.mtx.Unlock()
+			s := cs.currentState.Load()
+			height, votes := s.Height, s.Votes
 			schema.WriteConsensusState(
 				conR.traceClient,
 				msg.Height,
@@ -431,9 +430,8 @@ func (conR *Reactor) Receive(e p2p.Envelope) {
 		switch msg := msg.(type) {
 		case *VoteMessage:
 			cs := conR.conS
-			cs.mtx.RLock()
-			height, valSize, lastCommitSize := cs.Height, cs.Validators.Size(), cs.LastCommit.Size()
-			cs.mtx.RUnlock()
+			s := cs.currentState.Load()
+			height, valSize, lastCommitSize := s.Height, s.Validators.Size(), s.LastCommit.Size()
 			ps.EnsureVoteBitArrays(height, valSize)
 			ps.EnsureVoteBitArrays(height-1, lastCommitSize)
 			ps.SetHasVote(msg.Vote)
@@ -453,9 +451,8 @@ func (conR *Reactor) Receive(e p2p.Envelope) {
 		switch msg := msg.(type) {
 		case *VoteSetBitsMessage:
 			cs := conR.conS
-			cs.mtx.Lock()
-			height, votes := cs.Height, cs.Votes
-			cs.mtx.Unlock()
+			s := cs.currentState.Load()
+			height, votes := s.Height, s.Votes
 
 			if height == msg.Height {
 				var ourVotes *bits.BitArray
@@ -648,9 +645,15 @@ func (conR *Reactor) updateRoundStateRoutine() {
 		if !conR.IsRunning() {
 			return
 		}
+		// lock-free read now
 		rs := conR.conS.GetRoundState()
 		conR.rs.Store(rs)
 	}
+}
+
+// NotifyStateChange is called by the consensus state when a new round state snapshot is available.
+func (conR *Reactor) NotifyStateChange(rs *cstypes.RoundState) {
+	conR.rs.Store(rs)
 }
 
 func (conR *Reactor) getRoundState() *cstypes.RoundState {
@@ -896,11 +899,7 @@ OUTER_LOOP:
 			// which contains precommit signatures for prs.Height.
 			var ec *types.ExtendedCommit
 			var veEnabled bool
-			func() {
-				conR.conS.mtx.RLock()
-				defer conR.conS.mtx.RUnlock()
-				veEnabled = conR.conS.state.ConsensusParams.ABCI.VoteExtensionsEnabled(prs.Height)
-			}()
+			veEnabled = conR.conS.GetBlockchainState().ConsensusParams.ABCI.VoteExtensionsEnabled(prs.Height)
 			if veEnabled {
 				ec = conR.conS.blockStore.LoadBlockExtendedCommit(prs.Height)
 			} else {

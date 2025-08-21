@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"runtime/debug"
 	"sort"
+	"sync/atomic"
 	"time"
 
 	proptypes "github.com/cometbft/cometbft/consensus/propagation/types"
@@ -28,7 +29,6 @@ import (
 	cmtmath "github.com/cometbft/cometbft/libs/math"
 	cmtos "github.com/cometbft/cometbft/libs/os"
 	"github.com/cometbft/cometbft/libs/service"
-	cmtsync "github.com/cometbft/cometbft/libs/sync"
 	"github.com/cometbft/cometbft/libs/trace"
 	"github.com/cometbft/cometbft/libs/trace/schema"
 	"github.com/cometbft/cometbft/p2p"
@@ -87,6 +87,51 @@ type blockWithParts struct {
 	parts *types.PartSet
 }
 
+// CompleteConsensusState bundles all mutable consensus state for lock-free reads.
+// Note: This snapshot is produced only by the single writer (receiveRoutine)
+// and read concurrently by many readers.
+// Fields are pointers when they are consensus objects managed elsewhere.
+// Time fields are values as they are immutable once written.
+// BlockchainState is the sm.State at height-1.
+// WAL and other rarely-changed fields are included for completeness, but not all
+// readers will use them.
+// This struct mirrors the RoundState and related control fields.
+// It must be kept in sync with RoundState evolution.
+// Minimal implementation to satisfy lock-free reads for hot paths.
+//
+// Important: This is a snapshot; do not mutate fields of this struct after publish.
+// Consensus engine replaces the pointer atomically on state transitions.
+type CompleteConsensusState struct {
+	// Core consensus state
+	Height     int64
+	Round      int32
+	Step       cstypes.RoundStepType
+	StartTime  time.Time
+	CommitTime time.Time
+
+	// Consensus objects (pointers)
+	Validators         *types.ValidatorSet
+	Proposal           *types.Proposal
+	ProposalBlock      *types.Block
+	ProposalBlockParts *types.PartSet
+	LockedBlock        *types.Block
+	LockedBlockParts   *types.PartSet
+	ValidBlock         *types.Block
+	ValidBlockParts    *types.PartSet
+	Votes              *cstypes.HeightVoteSet
+	LastCommit         *types.VoteSet
+	LastValidators     *types.ValidatorSet
+
+	// Blockchain state
+	BlockchainState sm.State
+
+	// Control state
+	LockedRound               int32
+	ValidRound                int32
+	CommitRound               int32
+	TriggeredTimeoutPrecommit bool
+}
+
 // State handles execution of the consensus algorithm.
 // It processes votes and proposals, and upon reaching agreement,
 // commits blocks to the chain and executes them against the application.
@@ -94,7 +139,10 @@ type blockWithParts struct {
 type State struct {
 	service.BaseService
 
-	// config details
+	// === ATOMIC STATE (Hot Path) ===
+	currentState atomic.Pointer[CompleteConsensusState]
+
+	// === IMMUTABLE CONFIG (No sync needed) ===
 	config        *cfg.ConsensusConfig
 	privValidator types.PrivValidator // for signing votes
 
@@ -111,13 +159,15 @@ type State struct {
 	// when it's detected
 	evpool evidencePool
 
-	// internal state
-	mtx cmtsync.RWMutex
+	// internal state (legacy, single-writer)
 	cstypes.RoundState
 	state sm.State // State until height-1.
 	// privValidator pubkey, memoized for the duration of one block
 	// to avoid extra requests to HSM
 	privValidatorPubKey crypto.PubKey
+
+	// Back-reference to reactor for direct notifications
+	reactor *Reactor
 
 	// state changes may be triggered by: msgs from peers,
 	// msgs from ourself, or by timeouts
@@ -271,56 +321,76 @@ func (cs *State) String() string {
 
 // GetState returns a copy of the chain state.
 func (cs *State) GetState() sm.State {
-	cs.mtx.RLock()
-	defer cs.mtx.RUnlock()
-	return cs.state.Copy()
+	s := cs.currentState.Load()
+	// currentState is always initialized in NewState via updateToState/newStep
+	return s.BlockchainState.Copy()
 }
 
 // GetLastHeight returns the last height committed.
 // If there were no blocks, returns 0.
 func (cs *State) GetLastHeight() int64 {
-	cs.mtx.RLock()
-	defer cs.mtx.RUnlock()
-	return cs.RoundState.Height - 1 //nolint:staticcheck
+	s := cs.currentState.Load()
+	return s.Height - 1
 }
 
-// GetRoundState returns a shallow copy of the internal consensus state.
+// GetRoundState returns a shallow copy of the internal consensus state without locking.
 func (cs *State) GetRoundState() *cstypes.RoundState {
-	cs.mtx.RLock()
-	rs := cs.RoundState // copy
-	cs.mtx.RUnlock()
-	return &rs
+	s := cs.currentState.Load()
+	return &cstypes.RoundState{
+		Height:                    s.Height,
+		Round:                     s.Round,
+		Step:                      s.Step,
+		StartTime:                 s.StartTime,
+		CommitTime:                s.CommitTime,
+		Validators:                s.Validators,
+		Proposal:                  s.Proposal,
+		ProposalBlock:             s.ProposalBlock,
+		ProposalBlockParts:        s.ProposalBlockParts,
+		LockedRound:               s.LockedRound,
+		LockedBlock:               s.LockedBlock,
+		LockedBlockParts:          s.LockedBlockParts,
+		ValidRound:                s.ValidRound,
+		ValidBlock:                s.ValidBlock,
+		ValidBlockParts:           s.ValidBlockParts,
+		Votes:                     s.Votes,
+		CommitRound:               s.CommitRound,
+		LastCommit:                s.LastCommit,
+		LastValidators:            s.LastValidators,
+		TriggeredTimeoutPrecommit: s.TriggeredTimeoutPrecommit,
+	}
 }
 
 // GetRoundStateJSON returns a json of RoundState.
 func (cs *State) GetRoundStateJSON() ([]byte, error) {
-	cs.mtx.RLock()
-	defer cs.mtx.RUnlock()
-	return cmtjson.Marshal(cs.RoundState)
+	// Lock-free: marshal the current snapshot view
+	rs := cs.GetRoundState()
+	return cmtjson.Marshal(rs)
 }
 
 // GetRoundStateSimpleJSON returns a json of RoundStateSimple
 func (cs *State) GetRoundStateSimpleJSON() ([]byte, error) {
-	cs.mtx.RLock()
-	defer cs.mtx.RUnlock()
-	return cmtjson.Marshal(cs.RoundState.RoundStateSimple()) //nolint:staticcheck
+	rs := cs.GetRoundState()
+	return cmtjson.Marshal(rs.RoundStateSimple())
+}
+
+// GetBlockchainState returns the current blockchain state (height-1) lock-free when available.
+func (cs *State) GetBlockchainState() sm.State {
+	s := cs.currentState.Load()
+	return s.BlockchainState
 }
 
 // GetValidators returns a copy of the current validators.
 func (cs *State) GetValidators() (int64, []*types.Validator) {
-	cs.mtx.RLock()
-	defer cs.mtx.RUnlock()
-	return cs.state.LastBlockHeight, cs.state.Validators.Copy().Validators
+	s := cs.currentState.Load()
+	st := s.BlockchainState
+	return st.LastBlockHeight, st.Validators.Copy().Validators
 }
 
 // SetPrivValidator sets the private validator account for signing votes. It
 // immediately requests pubkey and caches it.
 func (cs *State) SetPrivValidator(priv types.PrivValidator) {
-	cs.mtx.Lock()
-	defer cs.mtx.Unlock()
-
+	// This is typically set before Start; consensus has a single writer otherwise.
 	cs.privValidator = priv
-
 	if err := cs.updatePrivValidatorPubKey(); err != nil {
 		cs.Logger.Error("failed to get private validator pubkey", "err", err)
 	}
@@ -329,20 +399,14 @@ func (cs *State) SetPrivValidator(priv types.PrivValidator) {
 // SetTimeoutTicker sets the local timer. It may be useful to overwrite for
 // testing.
 func (cs *State) SetTimeoutTicker(timeoutTicker TimeoutTicker) {
-	cs.mtx.Lock()
 	cs.timeoutTicker = timeoutTicker
-	cs.mtx.Unlock()
 }
 
 // LoadCommit loads the commit for a given height.
 func (cs *State) LoadCommit(height int64) *types.Commit {
-	cs.mtx.RLock()
-	defer cs.mtx.RUnlock()
-
 	if height == cs.blockStore.Height() {
 		return cs.blockStore.LoadSeenCommit(height)
 	}
-
 	return cs.blockStore.LoadBlockCommit(height)
 }
 
@@ -818,6 +882,66 @@ func (cs *State) newStep() {
 
 	cs.nSteps++
 
+	// Build a complete snapshot and publish atomically for readers.
+	var snap *CompleteConsensusState
+	//if pooled := cs.statePool.Get(); pooled != nil {
+	//	snap, _ = pooled.(*CompleteConsensusState)
+	//} else {
+	snap = &CompleteConsensusState{}
+	//}
+	// Populate snapshot from current single-writer state
+	snap.Height = cs.Height
+	snap.Round = cs.Round
+	snap.Step = cs.Step
+	snap.StartTime = cs.StartTime
+	snap.CommitTime = cs.CommitTime
+	snap.Validators = cs.Validators
+	snap.Proposal = cs.Proposal
+	snap.ProposalBlock = cs.ProposalBlock
+	snap.ProposalBlockParts = cs.ProposalBlockParts
+	snap.LockedRound = cs.LockedRound
+	snap.LockedBlock = cs.LockedBlock
+	snap.LockedBlockParts = cs.LockedBlockParts
+	snap.ValidRound = cs.ValidRound
+	snap.ValidBlock = cs.ValidBlock
+	snap.ValidBlockParts = cs.ValidBlockParts
+	snap.Votes = cs.Votes
+	snap.CommitRound = cs.CommitRound
+	snap.LastCommit = cs.LastCommit
+	snap.LastValidators = cs.LastValidators
+	snap.TriggeredTimeoutPrecommit = cs.TriggeredTimeoutPrecommit
+	snap.BlockchainState = cs.state
+
+	_ = cs.currentState.Swap(snap)
+
+	// Push direct notification to reactor (eliminate polling)
+	if cs.reactor != nil {
+		// construct a RoundState view for reactor readers
+		rsView := &cstypes.RoundState{
+			Height:                    snap.Height,
+			Round:                     snap.Round,
+			Step:                      snap.Step,
+			StartTime:                 snap.StartTime,
+			CommitTime:                snap.CommitTime,
+			Validators:                snap.Validators,
+			Proposal:                  snap.Proposal,
+			ProposalBlock:             snap.ProposalBlock,
+			ProposalBlockParts:        snap.ProposalBlockParts,
+			LockedRound:               snap.LockedRound,
+			LockedBlock:               snap.LockedBlock,
+			LockedBlockParts:          snap.LockedBlockParts,
+			ValidRound:                snap.ValidRound,
+			ValidBlock:                snap.ValidBlock,
+			ValidBlockParts:           snap.ValidBlockParts,
+			Votes:                     snap.Votes,
+			CommitRound:               snap.CommitRound,
+			LastCommit:                snap.LastCommit,
+			LastValidators:            snap.LastValidators,
+			TriggeredTimeoutPrecommit: snap.TriggeredTimeoutPrecommit,
+		}
+		cs.reactor.NotifyStateChange(rsView)
+	}
+
 	// newStep is called by updateToState in NewState before the eventBus is set!
 	if cs.eventBus != nil {
 		if err := cs.eventBus.PublishEventNewRoundStep(rs); err != nil {
@@ -930,8 +1054,6 @@ func (cs *State) receiveRoutine(maxSteps int) {
 
 // state transitions on complete-proposal, 2/3-any, 2/3-one
 func (cs *State) handleMsg(mi msgInfo) {
-	cs.mtx.Lock()
-	defer cs.mtx.Unlock()
 	var (
 		added bool
 		err   error
@@ -960,9 +1082,8 @@ func (cs *State) handleMsg(mi msgInfo) {
 		// of RoundState and only locking when switching out State's copy of
 		// RoundState with the updated copy or by emitting RoundState events in
 		// more places for routines depending on it to listen for.
-		cs.mtx.Unlock()
+		// (no lock needed with single-writer; readers see snapshots)
 
-		cs.mtx.Lock()
 		if added && cs.ProposalBlockParts.IsComplete() {
 			cs.handleCompleteProposal(msg.Height)
 		}
@@ -1030,9 +1151,6 @@ func (cs *State) handleTimeout(ti timeoutInfo, rs cstypes.RoundState) {
 	}
 
 	// the timeout will now cause a state transition
-	cs.mtx.Lock()
-	defer cs.mtx.Unlock()
-
 	switch ti.Step {
 	case cstypes.RoundStepNewHeight:
 		// NewRound event fired from enterNewRound.
@@ -1074,8 +1192,6 @@ func (cs *State) handleTxsAvailable() {
 	case <-cs.nextBlock:
 	default:
 	}
-	cs.mtx.Lock()
-	defer cs.mtx.Unlock()
 
 	// We only need to do this for round 0.
 	if cs.Round != 0 {
@@ -2778,11 +2894,10 @@ func (cs *State) syncData() {
 			if !ok {
 				return
 			}
-			cs.mtx.RLock()
-			currentProposal := cs.Proposal
-			h, r := cs.Height, cs.Round
+			s := cs.currentState.Load()
+			currentProposal := s.Proposal
+			h, r := s.Height, s.Round
 			completeProp := cs.isProposalComplete()
-			cs.mtx.RUnlock()
 			if completeProp {
 				continue
 			}
@@ -2802,10 +2917,9 @@ func (cs *State) syncData() {
 			if !ok {
 				return
 			}
-			cs.mtx.RLock()
-			height, round := cs.Height, cs.Round
-			currentProposalParts := cs.ProposalBlockParts
-			cs.mtx.RUnlock()
+			s := cs.currentState.Load()
+			height, round := s.Height, s.Round
+			currentProposalParts := s.ProposalBlockParts
 			if currentProposalParts == nil {
 				continue
 			}
@@ -2827,10 +2941,9 @@ func (cs *State) syncData() {
 			if !ok {
 				return
 			}
-			cs.mtx.RLock()
-			h, r := cs.Height, cs.Round
-			currentProposalParts := cs.ProposalBlockParts
-			cs.mtx.RUnlock()
+			s := cs.currentState.Load()
+			h, r := s.Height, s.Round
+			currentProposalParts := s.ProposalBlockParts
 			if part.Height != h || part.Round != r {
 				continue
 			}

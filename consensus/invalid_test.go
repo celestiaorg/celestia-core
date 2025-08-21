@@ -46,12 +46,10 @@ func TestReactorInvalidPrecommit(t *testing.T) {
 
 	// update the doPrevote function to just send a valid precommit for a random block
 	// and otherwise disable the priv validator
-	byzVal.mtx.Lock()
 	pv := byzVal.privValidator
 	byzVal.doPrevote = func(int64, int32) {
 		invalidDoPrevoteFunc(t, byzVal, byzR.Switch, pv)
 	}
-	byzVal.mtx.Unlock()
 
 	// wait for a bunch of blocks
 	// TODO: make this tighter by ensuring the halt happens by block 2
@@ -68,23 +66,22 @@ func invalidDoPrevoteFunc(t *testing.T, cs *State, sw *p2p.Switch, pv types.Priv
 	// - send precommit to all peers
 	// - disable privValidator (so we don't do normal precommits)
 	go func() {
-		cs.mtx.Lock()
-		defer cs.mtx.Unlock()
-		cs.privValidator = pv
+		cs.SetPrivValidator(pv)
 		pubKey, err := cs.privValidator.GetPubKey()
 		if err != nil {
 			panic(err)
 		}
 		addr := pubKey.Address()
-		valIndex, _ := cs.Validators.GetByAddress(addr)
+		s := cs.currentState.Load()
+		valIndex, _ := s.Validators.GetByAddress(addr)
 
 		// precommit a random block
 		blockHash := bytes.HexBytes(cmtrand.Bytes(32))
 		precommit := &types.Vote{
 			ValidatorAddress: addr,
 			ValidatorIndex:   valIndex,
-			Height:           cs.Height,
-			Round:            cs.Round,
+			Height:           s.Height,
+			Round:            s.Round,
 			Timestamp:        cs.voteTime(),
 			Type:             cmtproto.PrecommitType,
 			BlockID: types.BlockID{
@@ -93,13 +90,14 @@ func invalidDoPrevoteFunc(t *testing.T, cs *State, sw *p2p.Switch, pv types.Priv
 			},
 		}
 		p := precommit.ToProto()
-		err = cs.privValidator.SignVote(cs.state.ChainID, p)
+		chainState := cs.GetBlockchainState()
+		err = cs.privValidator.SignVote(chainState.ChainID, p)
 		if err != nil {
 			t.Error(err)
 		}
 		precommit.Signature = p.Signature
 		precommit.ExtensionSignature = p.ExtensionSignature
-		cs.privValidator = nil // disable priv val so we don't do normal votes
+		cs.SetPrivValidator(nil) // disable priv val so we don't do normal votes
 
 		peers := sw.Peers().List()
 		for _, peer := range peers {
