@@ -1188,6 +1188,14 @@ func (cs *State) enterNewRound(height int64, round int32) {
 	if proposer != nil {
 		cs.propagator.SetProposer(proposer.PubKey)
 	}
+	if round == 0 {
+		// build the block pre-emptively if we're the proposer and the timeout commit is higher than 1 s.
+		if cs.privValidatorPubKey != nil {
+			if address := cs.privValidatorPubKey.Address(); cs.rs.GetValidators().HasAddress(address) && cs.isProposer(address) {
+				go cs.buildNextBlock()
+			}
+		}
+	}
 
 	// Wait for txs to be available in the mempool
 	// before we enterPropose in round 0. If the last block changed the app hash,
@@ -2095,12 +2103,6 @@ func (cs *State) finalizeCommit(height int64) {
 		cs.propagator.SetProposer(proposer.PubKey)
 	}
 
-	// build the block pre-emptively if we're the proposer and the timeout commit is higher than 1 s.
-	if cs.privValidatorPubKey != nil {
-		if address := cs.privValidatorPubKey.Address(); cs.rs.GetValidators().HasAddress(address) && cs.isProposer(address) {
-			go cs.buildNextBlock()
-		}
-	}
 	fmt.Println("finalize commit 7")
 	// By here,
 	// * cs.Height has been increment to height+1
