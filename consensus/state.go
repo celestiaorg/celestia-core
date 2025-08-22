@@ -771,17 +771,17 @@ func (cs *State) updateToState(state sm.State) {
 		// And alternative solution that relies on clocks:
 		// cs.StartTime = state.LastBlockTime.Add(timeoutCommit)
 		if state.LastBlockHeight == 0 {
-			// Don't use cs.state.TimeoutCommit because that is zero
-			cs.StartTime = cs.config.CommitWithCustomTimeout(cmttime.Now(), state.TimeoutCommit)
+			// Don't use cs.state.Timeouts.TimeoutCommit because that is zero
+			cs.StartTime = cs.config.CommitWithCustomTimeout(cmttime.Now(), state.Timeouts.TimeoutCommit)
 		} else {
-			cs.StartTime = cs.config.CommitWithCustomTimeout(cmttime.Now(), cs.state.TimeoutCommit)
+			cs.StartTime = cs.config.CommitWithCustomTimeout(cmttime.Now(), cs.state.Timeouts.TimeoutCommit)
 		}
 
 	} else {
 		if state.LastBlockHeight == 0 {
-			cs.StartTime = cs.config.CommitWithCustomTimeout(cs.CommitTime, state.TimeoutCommit)
+			cs.StartTime = cs.config.CommitWithCustomTimeout(cs.CommitTime, state.Timeouts.TimeoutCommit)
 		} else {
-			cs.StartTime = cs.config.CommitWithCustomTimeout(cs.CommitTime, cs.state.TimeoutCommit)
+			cs.StartTime = cs.config.CommitWithCustomTimeout(cs.CommitTime, cs.state.Timeouts.TimeoutCommit)
 		}
 	}
 
@@ -1714,7 +1714,7 @@ func (cs *State) buildNextBlock() {
 	}
 
 	// delay pre-emptive block building until the end of the timeout commit
-	tc := cs.state.TimeoutCommit
+	tc := cs.state.Timeouts.TimeoutCommit
 	time.Sleep(tc - blockBuildingTime)
 
 	block, blockParts, err := cs.createProposalBlock(context.TODO())

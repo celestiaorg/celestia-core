@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"time"
 
 	dbm "github.com/cometbft/cometbft-db"
 
@@ -117,6 +118,15 @@ func (app *Application) InitChain(_ context.Context, req *types.RequestInitChain
 	binary.PutVarint(appHash, app.state.Size)
 	return &types.ResponseInitChain{
 		AppHash: appHash,
+		TimeoutInfo: types.TimeoutInfo{
+			TimeoutPropose:        3000 * time.Millisecond,
+			TimeoutCommit:         1000 * time.Millisecond,
+			TimeoutProposeDelta:   500 * time.Millisecond,
+			TimeoutPrevote:        1000 * time.Millisecond,
+			TimeoutPrevoteDelta:   500 * time.Millisecond,
+			TimeoutPrecommit:      1000 * time.Millisecond,
+			TimeoutPrecommitDelta: 500 * time.Millisecond,
+		},
 	}, nil
 }
 
@@ -263,7 +273,20 @@ func (app *Application) FinalizeBlock(_ context.Context, req *types.RequestFinal
 
 	app.state.Height = req.Height
 
-	response := &types.ResponseFinalizeBlock{TxResults: respTxs, ValidatorUpdates: app.valUpdates, AppHash: app.state.Hash()}
+	response := &types.ResponseFinalizeBlock{
+		TxResults:        respTxs,
+		ValidatorUpdates: app.valUpdates,
+		AppHash:          app.state.Hash(),
+		TimeoutInfo: types.TimeoutInfo{
+			TimeoutPropose:        3000 * time.Millisecond,
+			TimeoutCommit:         1000 * time.Millisecond,
+			TimeoutProposeDelta:   500 * time.Millisecond,
+			TimeoutPrevote:        1000 * time.Millisecond,
+			TimeoutPrevoteDelta:   500 * time.Millisecond,
+			TimeoutPrecommit:      1000 * time.Millisecond,
+			TimeoutPrecommitDelta: 500 * time.Millisecond,
+		},
+	}
 	if !app.genBlockEvents {
 		return response, nil
 	}

@@ -434,9 +434,9 @@ func NewNodeWithContext(ctx context.Context,
 		return nil, fmt.Errorf("could not create blocksync reactor: %w", err)
 	}
 
-	if state.TimeoutCommit > 0 {
+	if state.Timeouts.TimeoutCommit > 0 {
 		// set the catchup retry time to match the block time
-		propagation.RetryTime = state.TimeoutCommit
+		propagation.RetryTime = state.Timeouts.TimeoutCommit
 	}
 	propagationReactor := propagation.NewReactor(
 		nodeKey.ID(),
@@ -475,7 +475,7 @@ func NewNodeWithContext(ctx context.Context,
 		propagationReactor.SetLogger(logger.With("module", "propagation"))
 	}
 
-	logger.Info("Consensus reactor created", "timeout_propose", consensusState.GetState().TimeoutPropose, "timeout_commit", consensusState.GetState().TimeoutCommit)
+	logger.Info("Consensus reactor created", "timeout_propose", consensusState.GetState().Timeouts.TimeoutPropose, "timeout_commit", consensusState.GetState().Timeouts.TimeoutCommit)
 	// Set up state sync reactor, and schedule a sync if requested.
 	// FIXME The way we do phased startups (e.g. replay -> block sync -> consensus) is very messy,
 	// we should clean this whole thing up. See:

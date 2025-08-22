@@ -16,6 +16,7 @@ import (
 	"github.com/cometbft/cometbft/libs/log"
 	"github.com/cometbft/cometbft/mempool"
 	cmtproto "github.com/cometbft/cometbft/proto/tendermint/types"
+	cmtstate "github.com/cometbft/cometbft/proto/tendermint/state"
 	"github.com/cometbft/cometbft/proxy"
 	"github.com/cometbft/cometbft/types"
 )
@@ -756,10 +757,17 @@ func updateState(
 		LastHeightValidatorsChanged:      lastHeightValsChanged,
 		ConsensusParams:                  nextParams,
 		LastHeightConsensusParamsChanged: lastHeightParamsChanged,
-		LastResultsHash:                  TxResultsHash(abciResponse.TxResults),
-		AppHash:                          nil,
-		TimeoutCommit:                    abciResponse.TimeoutInfo.TimeoutCommit,
-		TimeoutPropose:                   abciResponse.TimeoutInfo.TimeoutPropose,
+		LastResultsHash: TxResultsHash(abciResponse.TxResults),
+		AppHash:         nil,
+		Timeouts: cmtstate.TimeoutInfo{
+			TimeoutPropose:        abciResponse.TimeoutInfo.TimeoutPropose,
+			TimeoutCommit:         abciResponse.TimeoutInfo.TimeoutCommit,
+			TimeoutProposeDelta:   abciResponse.TimeoutInfo.TimeoutProposeDelta,
+			TimeoutPrevote:        abciResponse.TimeoutInfo.TimeoutPrevote,
+			TimeoutPrevoteDelta:   abciResponse.TimeoutInfo.TimeoutPrevoteDelta,
+			TimeoutPrecommit:      abciResponse.TimeoutInfo.TimeoutPrecommit,
+			TimeoutPrecommitDelta: abciResponse.TimeoutInfo.TimeoutPrecommitDelta,
+		},
 	}, nil
 }
 
