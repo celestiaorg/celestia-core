@@ -284,7 +284,7 @@ func (cs *State) GetState() sm.State {
 func (cs *State) GetLastHeight() int64 {
 	cs.rsMtx.RLock()
 	defer cs.rsMtx.RUnlock()
-	return cs.rs.Height - 1 //nolint:staticcheck
+	return cs.rs.Height - 1
 }
 
 // GetRoundState returns a shallow copy of the internal consensus state.
@@ -306,7 +306,7 @@ func (cs *State) GetRoundStateJSON() ([]byte, error) {
 func (cs *State) GetRoundStateSimpleJSON() ([]byte, error) {
 	cs.rsMtx.RLock()
 	defer cs.rsMtx.RUnlock()
-	return cmtjson.Marshal(cs.rs.RoundStateSimple()) //nolint:staticcheck
+	return cmtjson.Marshal(cs.rs.RoundStateSimple())
 }
 
 // GetValidators returns a copy of the current validators.
