@@ -75,13 +75,13 @@ make proto-gen
 ## Branches
 
 - `main` is the canonical branch for development. Most PRs should target this branch and optionally be backported to a release branch.
-- `v0.39.x` was based on CometBFT `v0.38.x` and includes Celestia-specific breaking changes. Releases from this branch look like `v0.39.0` and are used by celestia-app `v6.x`.
+- `v0.39.x-celestia` was based on CometBFT `v0.38.x`. Releases from this branch look like `v0.39.0` and are used by celestia-app `v6.x`.
 - `v0.38.x-celestia` was based on CometBFT `v0.38.x`. Releases from this branch look like `v1.54.1-tm-v0.38.17` and are used by celestia-app `v4.x`.
 - `v0.34.x-celestia` was based on CometBFT `v0.34.x`. Releases from this branch look like `v1.52.1-tm-v0.34.35` and are used by celestia-app `v3.x`.
 
 ## Releases
 
-Previous releases are formatted: `v<CELESTIA_CORE_VERSION>-tm-v<COMETBFT_VERSION>`.
+Previous releases were formatted: `v<CELESTIA_CORE_VERSION>-tm-v<COMETBFT_VERSION>`.
 For example: [`v1.4.0-tm-v0.34.20`](https://github.com/celestiaorg/celestia-core/releases/tag/v1.4.0-tm-v0.34.20) is celestia-core version `1.4.0` based on CometBFT `0.34.20`. `CELESTIA_CORE_VERSION` strives to adhere to [Semantic Versioning](http://semver.org/).
 
-Note: future releases from the `main` branch may be released as `v0.39.x` without the TENDERMINT_CORE_VERSION suffix because CometBFT `v0.39.x` was not released.
+Recent releases after `v0.39.0` do not include the CometBFT version.
