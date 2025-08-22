@@ -1,7 +1,6 @@
 package propagation
 
 import (
-	"fmt"
 	"sync/atomic"
 
 	proptypes "github.com/cometbft/cometbft/consensus/propagation/types"
@@ -135,7 +134,6 @@ func (p *ProposalCache) unfinishedHeights() []*proposalData {
 // example, passing the height that was already committed is not actionable.
 // Passing a round that has already been surpassed is not actionable.
 func (p *ProposalCache) relevant(height int64, round int32) bool {
-	fmt.Println("not relevant: ", height, " ", round, " ", p.consensusHeight, " ", p.consensusRound)
 	if height < p.consensusHeight {
 		return true
 	}
