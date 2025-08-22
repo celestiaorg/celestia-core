@@ -199,11 +199,6 @@ func (memR *Reactor) RemovePeer(peer p2p.Peer, reason interface{}) {
 
 	// remove and rerequest all pending outbound requests to that peer since we know
 	// we won't receive any responses from them.
-	outboundRequests := memR.requests.ClearAllRequestsFrom(peerID)
-	for key := range outboundRequests {
-		memR.mempool.metrics.RequestedTxs.Add(1)
-		memR.findNewPeerToRequestTx(key)
-	}
 }
 
 // ReceiveEnvelope implements Reactor.
@@ -354,7 +349,11 @@ func (memR *Reactor) broadcastSeenTx(txKey types.TxKey) {
 	// in the network broadcast their seenTx messages.
 	time.Sleep(time.Duration(rand.Intn(10)*10) * time.Millisecond) //nolint:gosec
 
+	i := 0
 	for id, peer := range memR.ids.GetAll() {
+		if i == 10 {
+			break
+		}
 		if p, ok := peer.Get(types.PeerStateKey).(PeerState); ok {
 			// make sure peer isn't too far behind. This can happen
 			// if the peer is blocksyncing still and catching up
@@ -376,6 +375,7 @@ func (memR *Reactor) broadcastSeenTx(txKey types.TxKey) {
 				Message:   msg,
 			},
 		)
+		i++
 	}
 }
 

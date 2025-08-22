@@ -2170,13 +2170,16 @@ func (cs *State) addProposalBlockPart(msg *BlockPartMessage, peerID p2p.ID) (add
 		)
 	}
 	if added && cs.rs.ProposalBlockParts.IsComplete() {
+		fmt.Println("received complete block: ", time.Now().String())
 		bz := cs.rs.ProposalBlockParts.GetBytes()
 
+		fmt.Println("read the block: ", time.Now().String())
 		pbb := new(cmtproto.Block)
 		err = proto.Unmarshal(bz, pbb)
 		if err != nil {
 			return added, err
 		}
+		fmt.Println("unmarshalled the block: ", time.Now().String())
 
 		block, err := types.BlockFromProto(pbb)
 		if err != nil {

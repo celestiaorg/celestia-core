@@ -3,6 +3,7 @@ package propagation
 import (
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/cosmos/gogoproto/proto"
 
@@ -182,6 +183,7 @@ func (blockProp *Reactor) handleCompactBlock(cb *proptypes.CompactBlock, peer p2
 		}
 		p.consensusPeerState.SetHasProposal(&cb.Proposal)
 	}
+	fmt.Println("received compact block: ", time.Now().String())
 
 	err := blockProp.validateCompactBlock(cb)
 	if !proposer && err != nil {
