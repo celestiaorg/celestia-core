@@ -82,7 +82,7 @@ func (blockProp *Reactor) ProposeBlock(proposal *types.Proposal, block *types.Pa
 
 	fmt.Println("handled compact block ", time.Now())
 
-	_, parts, _, has := blockProp.getAllState(proposal.Height, proposal.Round, true)
+	_, parts, _, has := blockProp.getAllState(proposal.Height, proposal.Round, false)
 	if !has {
 		panic(fmt.Sprintf("failed to get all state for this node's proposal %d/%d", proposal.Height, proposal.Round))
 	}
@@ -183,6 +183,7 @@ func (blockProp *Reactor) handleCompactBlock(cb *proptypes.CompactBlock, peer p2
 	start := time.Now()
 	added := blockProp.AddProposal(cb)
 	if !added {
+		fmt.Println("proposal not added !!!")
 		p := blockProp.getPeer(peer)
 		if p == nil {
 			return
@@ -196,6 +197,7 @@ func (blockProp *Reactor) handleCompactBlock(cb *proptypes.CompactBlock, peer p2
 		}
 		p.consensusPeerState.SetHasProposal(&cb.Proposal)
 	}
+	fmt.Println("added proposal")
 	processingTime := time.Since(start)
 	schema.WriteMessageStats(blockProp.traceClient, "propagation", "propagation.HandleCompactBlock1", processingTime.Nanoseconds(), "")
 	start = time.Now()

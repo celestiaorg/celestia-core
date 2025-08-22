@@ -1325,9 +1325,7 @@ func (cs *State) defaultDecideProposal(height int64, round int32) {
 		cs.propagator.PrepareBlock(blockParts, metaData)
 
 	} else if len(cs.nextBlock) != 0 {
-		bwp := <-cs.nextBlock
-		block = bwp.block
-		blockParts = bwp.parts
+		<-cs.nextBlock
 		return
 	} else {
 		// Create a new proposal block from state/txs from the mempool.
