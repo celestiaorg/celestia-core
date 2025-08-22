@@ -1764,7 +1764,8 @@ const blockBuildingTime = 2700 * time.Millisecond
 
 // buildNextBlock creates the next block pre-emptively if we're the proposer.
 func (cs *State) buildNextBlock() {
-	cs.enterPropose(cs.rs.Height.Load(), cs.rs.Round.Load())
+	cs.defaultDecideProposal(cs.rs.Height.Load(), cs.rs.Round.Load())
+	//cs.enterPropose(cs.rs.Height.Load(), cs.rs.Round.Load())
 }
 
 // Enter: +2/3 precommits for block
