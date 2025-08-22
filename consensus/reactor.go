@@ -334,7 +334,7 @@ func (conR *Reactor) Receive(e p2p.Envelope) {
 		case *VoteSetMaj23Message:
 			cs := conR.conS
 			cs.mtx.Lock()
-			height, votes := cs.Height, cs.Votes
+			height, votes := cs.rs.Height, cs.rs.Votes
 			cs.mtx.Unlock()
 			schema.WriteConsensusState(
 				conR.traceClient,
@@ -436,7 +436,7 @@ func (conR *Reactor) Receive(e p2p.Envelope) {
 		case *VoteMessage:
 			cs := conR.conS
 			cs.mtx.RLock()
-			height, valSize, lastCommitSize := cs.Height, cs.Validators.Size(), cs.LastCommit.Size()
+			height, valSize, lastCommitSize := cs.rs.Height, cs.rs.Validators.Size(), cs.rs.LastCommit.Size()
 			cs.mtx.RUnlock()
 			ps.EnsureVoteBitArrays(height, valSize)
 			ps.EnsureVoteBitArrays(height-1, lastCommitSize)
@@ -458,7 +458,7 @@ func (conR *Reactor) Receive(e p2p.Envelope) {
 		case *VoteSetBitsMessage:
 			cs := conR.conS
 			cs.mtx.Lock()
-			height, votes := cs.Height, cs.Votes
+			height, votes := cs.rs.Height, cs.rs.Votes
 			cs.mtx.Unlock()
 
 			if height == msg.Height {
@@ -1205,7 +1205,7 @@ func (conR *Reactor) String() string {
 // StringIndented returns an indented string representation of the Reactor
 func (conR *Reactor) StringIndented(indent string) string {
 	s := "ConsensusReactor{\n"
-	s += indent + "  " + conR.conS.StringIndented(indent+"  ") + "\n"
+	s += indent + "  " + conR.conS.rs.StringIndented(indent+"  ") + "\n"
 	for _, peer := range conR.Switch.Peers().List() {
 		ps, ok := peer.Get(types.PeerStateKey).(*PeerState)
 		if !ok {
