@@ -1288,7 +1288,7 @@ func (cs *State) enterPropose(height int64, round int32) {
 
 	if cs.isProposer(address) {
 		logger.Debug("propose step; our turn to propose", "proposer", address)
-		cs.decideProposal(height, round)
+		//cs.decideProposal(height, round)
 	} else {
 		logger.Debug("propose step; not our turn to propose", "proposer", cs.rs.GetValidators().GetProposer().Address)
 	}
@@ -2051,6 +2051,14 @@ func (cs *State) finalizeCommit(height int64) {
 	proposer := cs.rs.GetValidators().GetProposer()
 	if proposer != nil {
 		cs.propagator.SetProposer(proposer.PubKey)
+	}
+
+	cs.propagator.SetConsensusRound(height, 0)
+	// build the block pre-emptively if we're the proposer and the timeout commit is higher than 1 s.
+	if cs.privValidatorPubKey != nil {
+		if address := cs.privValidatorPubKey.Address(); cs.rs.GetValidators().HasAddress(address) && cs.isProposer(address) {
+			go cs.buildNextBlock()
+		}
 	}
 
 	fmt.Println("finalize commit 7")
