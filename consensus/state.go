@@ -1299,6 +1299,7 @@ func (cs *State) isProposer(address []byte) bool {
 }
 
 func (cs *State) defaultDecideProposal(height int64, round int32) {
+	fmt.Println("defaultDecideProposal ", time.Now().String())
 	var block *types.Block
 	var blockParts *types.PartSet
 
@@ -1342,6 +1343,7 @@ func (cs *State) defaultDecideProposal(height int64, round int32) {
 		} else if block == nil {
 			panic("Method createProposalBlock should not provide a nil block without errors")
 		}
+		fmt.Println("created proposal block ", time.Now().String())
 		cs.metrics.ProposalCreateCount.Add(1)
 		metaData := make([]proptypes.TxMetaData, len(block.Txs))
 		hashes := block.CachedHashes()
@@ -1354,6 +1356,7 @@ func (cs *State) defaultDecideProposal(height int64, round int32) {
 		}
 
 		cs.propagator.PrepareBlock(blockParts, metaData)
+		fmt.Println("prepared proposal block ", time.Now().String())
 	}
 
 	// Flush the WAL. Otherwise, we may not recompute the same proposal to sign,
@@ -1374,6 +1377,7 @@ func (cs *State) defaultDecideProposal(height int64, round int32) {
 
 		cs.propagator.ProposeBlock(proposal, blockParts)
 
+		fmt.Println("proposed block in commitment ", time.Now().String())
 		for i := 0; i < int(blockParts.Total()); i++ {
 			part := blockParts.GetPart(i)
 			cs.sendInternalMessage(msgInfo{&BlockPartMessage{cs.rs.Height.Load(), cs.rs.Round.Load(), part}, ""})
