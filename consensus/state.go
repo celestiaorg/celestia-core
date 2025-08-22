@@ -1063,7 +1063,7 @@ func (cs *State) handleTimeout(ti timeoutInfo, rs *cstypes.RoundState) {
 		cs.enterNewRound(ti.Height, 0)
 
 	case cstypes.RoundStepNewRound:
-		cs.enterPropose(ti.Height, ti.Round)
+		//cs.enterPropose(ti.Height, ti.Round)
 
 	case cstypes.RoundStepPropose:
 		if err := cs.eventBus.PublishEventTimeoutPropose(cs.rs.RoundStateEvent()); err != nil {
@@ -1331,10 +1331,6 @@ func (cs *State) defaultDecideProposal(height int64, round int32) {
 			}
 		}
 		cs.propagator.PrepareBlock(blockParts, metaData)
-
-	} else if len(cs.nextBlock) != 0 {
-		<-cs.nextBlock
-		return
 	} else {
 		// Create a new proposal block from state/txs from the mempool.
 		fmt.Println("-------------> creating proposal block without pre-emptive")
@@ -1768,58 +1764,7 @@ const blockBuildingTime = 2700 * time.Millisecond
 
 // buildNextBlock creates the next block pre-emptively if we're the proposer.
 func (cs *State) buildNextBlock() {
-	select {
-	// flush the next block channel to ensure only the relevant block is there.
-	case <-cs.nextBlock:
-	default:
-	}
-
-	// delay pre-emptive block building until the end of the timeout commit
-	//time.Sleep(cs.config.TimeoutCommit - blockBuildingTime)
-	//time.Sleep(time.Second)
-
-	fmt.Println("starting build of next block: ", time.Now())
-	block, blockParts, err := cs.createProposalBlock(context.TODO())
-	if err != nil {
-		cs.Logger.Error("unable to create proposal block", "error", err)
-		return
-	} else if block == nil {
-		panic("Method createProposalBlock should not provide a nil block without errors")
-	}
-
-	metaData := make([]proptypes.TxMetaData, len(block.Txs))
-	hashes := block.CachedHashes()
-	for i, pos := range blockParts.TxPos {
-		metaData[i] = proptypes.TxMetaData{
-			Start: pos.Start,
-			End:   pos.End,
-			Hash:  hashes[i],
-		}
-	}
-
-	cs.propagator.PrepareBlock(blockParts, metaData)
-
-	propBlockID := types.BlockID{Hash: block.Hash(), PartSetHeader: blockParts.Header()}
-	proposal := types.NewProposal(cs.rs.Height.Load(), cs.rs.Round.Load(), cs.rs.ValidRound.Load(), propBlockID)
-	p := proposal.ToProto()
-	if err := cs.privValidator.SignProposal(cs.State().ChainID, p); err == nil {
-		proposal.Signature = p.Signature
-
-		// send proposal and block parts on internal msg queue
-		cs.sendInternalMessage(msgInfo{&ProposalMessage{proposal}, ""})
-
-		cs.propagator.ProposeBlock(proposal, blockParts)
-
-		for i := 0; i < int(blockParts.Total()); i++ {
-			part := blockParts.GetPart(i)
-			cs.sendInternalMessage(msgInfo{&BlockPartMessage{cs.rs.Height.Load(), cs.rs.Round.Load(), part}, ""})
-		}
-
-		cs.nextBlock <- &blockWithParts{
-			block: block,
-			parts: blockParts,
-		}
-	}
+	cs.enterPropose(cs.rs.Height.Load(), cs.rs.Round.Load())
 }
 
 // Enter: +2/3 precommits for block
