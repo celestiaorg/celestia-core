@@ -1332,32 +1332,9 @@ func (cs *State) defaultDecideProposal(height int64, round int32) {
 		}
 		cs.propagator.PrepareBlock(blockParts, metaData)
 
-	} else if len(cs.nextBlock) != 0 {
+	} else {
 		<-cs.nextBlock
 		return
-	} else {
-		// Create a new proposal block from state/txs from the mempool.
-		fmt.Println("returning because no else")
-		var err error
-		block, blockParts, err = cs.createProposalBlock(context.TODO())
-		if err != nil {
-			cs.Logger.Error("unable to create proposal block", "error", err)
-			return
-		} else if block == nil {
-			panic("Method createProposalBlock should not provide a nil block without errors")
-		}
-		cs.metrics.ProposalCreateCount.Add(1)
-		metaData := make([]proptypes.TxMetaData, len(block.Txs))
-		hashes := block.CachedHashes()
-		for i, pos := range blockParts.TxPos {
-			metaData[i] = proptypes.TxMetaData{
-				Start: pos.Start,
-				End:   pos.End,
-				Hash:  hashes[i],
-			}
-		}
-
-		cs.propagator.PrepareBlock(blockParts, metaData)
 	}
 
 	// Flush the WAL. Otherwise, we may not recompute the same proposal to sign,
