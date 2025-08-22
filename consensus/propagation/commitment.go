@@ -183,7 +183,6 @@ func (blockProp *Reactor) handleCompactBlock(cb *proptypes.CompactBlock, peer p2
 	start := time.Now()
 	added := blockProp.AddProposal(cb)
 	if !added {
-		fmt.Println("proposal not added !!!")
 		p := blockProp.getPeer(peer)
 		if p == nil {
 			return
