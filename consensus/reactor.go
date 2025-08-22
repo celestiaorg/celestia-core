@@ -138,8 +138,8 @@ func (conR *Reactor) SwitchToConsensus(state sm.State, skipWAL bool) {
 
 	func() {
 		// We need to lock, as we are not entering consensus state from State's `handleMsg` or `handleTimeout`
-		conR.conS.mtx.Lock()
-		defer conR.conS.mtx.Unlock()
+		conR.conS.lockAll()
+		defer conR.conS.unlockAll()
 		// We have no votes, so reconstruct LastCommit from SeenCommit
 		if state.LastBlockHeight > 0 {
 			conR.conS.reconstructLastCommit(state)
@@ -291,9 +291,9 @@ func (conR *Reactor) Receive(e p2p.Envelope) {
 	case StateChannel:
 		switch msg := msg.(type) {
 		case *NewRoundStepMessage:
-			conR.conS.mtx.Lock()
+			conR.conS.stateMtx.RLock()
 			initialHeight := conR.conS.state.InitialHeight
-			conR.conS.mtx.Unlock()
+			conR.conS.stateMtx.RUnlock()
 			schema.WriteConsensusState(
 				conR.traceClient,
 				msg.Height,
@@ -332,9 +332,9 @@ func (conR *Reactor) Receive(e p2p.Envelope) {
 			ps.ApplyHasVoteMessage(msg)
 		case *VoteSetMaj23Message:
 			cs := conR.conS
-			cs.mtx.Lock()
+			cs.rsMtx.RLock()
 			height, votes := cs.rs.Height, cs.rs.Votes
-			cs.mtx.Unlock()
+			cs.rsMtx.RUnlock()
 			schema.WriteConsensusState(
 				conR.traceClient,
 				msg.Height,
@@ -434,9 +434,9 @@ func (conR *Reactor) Receive(e p2p.Envelope) {
 		switch msg := msg.(type) {
 		case *VoteMessage:
 			cs := conR.conS
-			cs.mtx.RLock()
+			cs.rsMtx.RLock()
 			height, valSize, lastCommitSize := cs.rs.Height, cs.rs.Validators.Size(), cs.rs.LastCommit.Size()
-			cs.mtx.RUnlock()
+			cs.rsMtx.RUnlock()
 			ps.EnsureVoteBitArrays(height, valSize)
 			ps.EnsureVoteBitArrays(height-1, lastCommitSize)
 			ps.SetHasVote(msg.Vote)
@@ -456,9 +456,9 @@ func (conR *Reactor) Receive(e p2p.Envelope) {
 		switch msg := msg.(type) {
 		case *VoteSetBitsMessage:
 			cs := conR.conS
-			cs.mtx.Lock()
+			cs.rsMtx.RLock()
 			height, votes := cs.rs.Height, cs.rs.Votes
-			cs.mtx.Unlock()
+			cs.rsMtx.RUnlock()
 
 			if height == msg.Height {
 				var ourVotes *bits.BitArray
@@ -906,8 +906,8 @@ OUTER_LOOP:
 			var ec *types.ExtendedCommit
 			var veEnabled bool
 			func() {
-				conR.conS.mtx.RLock()
-				defer conR.conS.mtx.RUnlock()
+				conR.conS.stateMtx.RLock()
+				defer conR.conS.stateMtx.RUnlock()
 				veEnabled = conR.conS.state.ConsensusParams.ABCI.VoteExtensionsEnabled(prs.Height)
 			}()
 			if veEnabled {
@@ -1204,6 +1204,7 @@ func (conR *Reactor) String() string {
 // StringIndented returns an indented string representation of the Reactor
 func (conR *Reactor) StringIndented(indent string) string {
 	s := "ConsensusReactor{\n"
+	// TODO(tzdybal): no lock here, but method is not used
 	s += indent + "  " + conR.conS.rs.StringIndented(indent+"  ") + "\n"
 	for _, peer := range conR.Switch.Peers().List() {
 		ps, ok := peer.Get(types.PeerStateKey).(*PeerState)

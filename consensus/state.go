@@ -110,10 +110,14 @@ type State struct {
 	// when it's detected
 	evpool evidencePool
 
-	// internal state
-	mtx   cmtsync.RWMutex
+	rsMtx cmtsync.RWMutex
 	rs    cstypes.RoundState
-	state sm.State // State until height-1.
+
+	stateMtx cmtsync.RWMutex
+	state    sm.State // State until height-1.
+
+	// internal state
+	mtx cmtsync.Mutex
 	// privValidator pubkey, memoized for the duration of one block
 	// to avoid extra requests to HSM
 	privValidatorPubKey crypto.PubKey
@@ -270,45 +274,45 @@ func (cs *State) String() string {
 
 // GetState returns a copy of the chain state.
 func (cs *State) GetState() sm.State {
-	cs.mtx.RLock()
-	defer cs.mtx.RUnlock()
+	cs.stateMtx.RLock()
+	defer cs.stateMtx.RUnlock()
 	return cs.state.Copy()
 }
 
 // GetLastHeight returns the last height committed.
 // If there were no blocks, returns 0.
 func (cs *State) GetLastHeight() int64 {
-	cs.mtx.RLock()
-	defer cs.mtx.RUnlock()
+	cs.rsMtx.RLock()
+	defer cs.rsMtx.RUnlock()
 	return cs.rs.Height - 1 //nolint:staticcheck
 }
 
 // GetRoundState returns a shallow copy of the internal consensus state.
 func (cs *State) GetRoundState() *cstypes.RoundState {
-	cs.mtx.RLock()
+	cs.rsMtx.RLock()
 	rs := cs.rs // copy
-	cs.mtx.RUnlock()
+	cs.rsMtx.RUnlock()
 	return &rs
 }
 
 // GetRoundStateJSON returns a json of RoundState.
 func (cs *State) GetRoundStateJSON() ([]byte, error) {
-	cs.mtx.RLock()
-	defer cs.mtx.RUnlock()
+	cs.rsMtx.RLock()
+	defer cs.rsMtx.RUnlock()
 	return cmtjson.Marshal(cs.rs)
 }
 
 // GetRoundStateSimpleJSON returns a json of RoundStateSimple
 func (cs *State) GetRoundStateSimpleJSON() ([]byte, error) {
-	cs.mtx.RLock()
-	defer cs.mtx.RUnlock()
+	cs.rsMtx.RLock()
+	defer cs.rsMtx.RUnlock()
 	return cmtjson.Marshal(cs.rs.RoundStateSimple()) //nolint:staticcheck
 }
 
 // GetValidators returns a copy of the current validators.
 func (cs *State) GetValidators() (int64, []*types.Validator) {
-	cs.mtx.RLock()
-	defer cs.mtx.RUnlock()
+	cs.stateMtx.RLock()
+	defer cs.stateMtx.RUnlock()
 	return cs.state.LastBlockHeight, cs.state.Validators.Copy().Validators
 }
 
@@ -336,8 +340,8 @@ func (cs *State) SetTimeoutTicker(timeoutTicker TimeoutTicker) {
 // LoadCommit loads the commit for a given height.
 func (cs *State) LoadCommit(height int64) *types.Commit {
 	// TODO(tzdybal): this should be fine without lock (because of blockStore lock). or maybe not, because of atomicity?
-	cs.mtx.RLock()
-	defer cs.mtx.RUnlock()
+	//cs.mtx.RLock()
+	//defer cs.mtx.RUnlock()
 
 	if height == cs.blockStore.Height() {
 		return cs.blockStore.LoadSeenCommit(height)
@@ -930,8 +934,8 @@ func (cs *State) receiveRoutine(maxSteps int) {
 
 // state transitions on complete-proposal, 2/3-any, 2/3-one
 func (cs *State) handleMsg(mi msgInfo) {
-	cs.mtx.Lock()
-	defer cs.mtx.Unlock()
+	cs.lockAll()
+	defer cs.unlockAll()
 	var (
 		added bool
 		err   error
@@ -960,9 +964,9 @@ func (cs *State) handleMsg(mi msgInfo) {
 		// of RoundState and only locking when switching out State's copy of
 		// RoundState with the updated copy or by emitting RoundState events in
 		// more places for routines depending on it to listen for.
-		cs.mtx.Unlock()
+		cs.unlockAll()
 
-		cs.mtx.Lock()
+		cs.lockAll()
 		if added && cs.rs.ProposalBlockParts.IsComplete() {
 			cs.handleCompleteProposal(msg.Height)
 		}
@@ -1030,8 +1034,8 @@ func (cs *State) handleTimeout(ti timeoutInfo, rs cstypes.RoundState) {
 	}
 
 	// the timeout will now cause a state transition
-	cs.mtx.Lock()
-	defer cs.mtx.Unlock()
+	cs.lockAll()
+	defer cs.unlockAll()
 
 	switch ti.Step {
 	case cstypes.RoundStepNewHeight:
@@ -1074,8 +1078,8 @@ func (cs *State) handleTxsAvailable() {
 	case <-cs.nextBlock:
 	default:
 	}
-	cs.mtx.Lock()
-	defer cs.mtx.Unlock()
+	cs.lockAll()
+	defer cs.unlockAll()
 
 	// We only need to do this for round 0.
 	if cs.rs.Round != 0 {
@@ -2775,11 +2779,11 @@ func (cs *State) syncData() {
 			if !ok {
 				return
 			}
-			cs.mtx.RLock()
+			cs.rsMtx.RLock()
 			currentProposal := cs.rs.Proposal
 			h, r := cs.rs.Height, cs.rs.Round
 			completeProp := cs.isProposalComplete()
-			cs.mtx.RUnlock()
+			cs.rsMtx.RUnlock()
 			if completeProp {
 				continue
 			}
@@ -2799,10 +2803,10 @@ func (cs *State) syncData() {
 			if !ok {
 				return
 			}
-			cs.mtx.RLock()
+			cs.rsMtx.RLock()
 			height, round := cs.rs.Height, cs.rs.Round
 			currentProposalParts := cs.rs.ProposalBlockParts
-			cs.mtx.RUnlock()
+			cs.rsMtx.RUnlock()
 			if currentProposalParts == nil {
 				continue
 			}
@@ -2824,10 +2828,10 @@ func (cs *State) syncData() {
 			if !ok {
 				return
 			}
-			cs.mtx.RLock()
+			cs.rsMtx.RLock()
 			h, r := cs.rs.Height, cs.rs.Round
 			currentProposalParts := cs.rs.ProposalBlockParts
-			cs.mtx.RUnlock()
+			cs.rsMtx.RUnlock()
 			if part.Height != h || part.Round != r {
 				continue
 			}
@@ -2844,4 +2848,16 @@ func (cs *State) syncData() {
 			cs.peerMsgQueue <- msgInfo{&BlockPartMessage{h, r, part.Part}, ""}
 		}
 	}
+}
+
+func (cs *State) lockAll() {
+	cs.mtx.Lock()
+	cs.stateMtx.Lock()
+	cs.rsMtx.Lock()
+}
+
+func (cs *State) unlockAll() {
+	cs.rsMtx.Unlock()
+	cs.stateMtx.Unlock()
+	cs.mtx.Unlock()
 }
