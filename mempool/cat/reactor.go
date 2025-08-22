@@ -20,7 +20,7 @@ import (
 const (
 	// default duration to wait before considering a peer non-responsive
 	// and searching for the tx from a new peer
-	DefaultGossipDelay = 20_000 * time.Millisecond
+	DefaultGossipDelay = 20_000 * time.Second
 
 	// MempoolDataChannel channel for SeenTx and blob messages.
 	MempoolDataChannel = byte(0x31)
@@ -165,21 +165,21 @@ func (memR *Reactor) GetChannels() []*p2p.ChannelDescriptor {
 		{
 			ID:                  mempool.MempoolChannel,
 			Priority:            1,
-			SendQueueCapacity:   10,
+			SendQueueCapacity:   100,
 			RecvMessageCapacity: txMsg.Size(),
 			MessageType:         &protomem.Message{},
 		},
 		{
 			ID:                  MempoolDataChannel,
 			Priority:            3,
-			SendQueueCapacity:   1000,
+			SendQueueCapacity:   10000,
 			RecvMessageCapacity: txMsg.Size(),
 			MessageType:         &protomem.Message{},
 		},
 		{
 			ID:                  MempoolWantsChannel,
 			Priority:            3,
-			SendQueueCapacity:   1000,
+			SendQueueCapacity:   10000,
 			RecvMessageCapacity: stateMsg.Size(),
 			MessageType:         &protomem.Message{},
 		},
@@ -457,10 +457,10 @@ func (memR *Reactor) requestTx(txKey types.TxKey, peer p2p.Peer) {
 	)
 	if success {
 		memR.mempool.metrics.RequestedTxs.Add(1)
-		requested := memR.requests.Add(txKey, memR.ids.GetIDForPeer(peer.ID()), memR.findNewPeerToRequestTx)
-		if !requested {
-			memR.Logger.Error("have already marked a tx as requested", "txKey", txKey, "peerID", peer.ID())
-		}
+		//requested := memR.requests.Add(txKey, memR.ids.GetIDForPeer(peer.ID()), memR.findNewPeerToRequestTx)
+		//if !requested {
+		//	memR.Logger.Error("have already marked a tx as requested", "txKey", txKey, "peerID", peer.ID())
+		//}
 	}
 }
 
