@@ -1201,22 +1201,6 @@ func (conR *Reactor) String() string {
 	return "ConsensusReactor" // conR.StringIndented("")
 }
 
-// StringIndented returns an indented string representation of the Reactor
-func (conR *Reactor) StringIndented(indent string) string {
-	s := "ConsensusReactor{\n"
-	// TODO(tzdybal): no lock here, but method is not used
-	s += indent + "  " + conR.conS.rs.StringIndented(indent+"  ") + "\n"
-	for _, peer := range conR.Switch.Peers().List() {
-		ps, ok := peer.Get(types.PeerStateKey).(*PeerState)
-		if !ok {
-			panic(fmt.Sprintf("Peer %v has no state", peer))
-		}
-		s += indent + "  " + ps.StringIndented(indent+"  ") + "\n"
-	}
-	s += indent + "}"
-	return s
-}
-
 // ReactorMetrics sets the metrics
 func ReactorMetrics(metrics *Metrics) ReactorOption {
 	return func(conR *Reactor) { conR.Metrics = metrics }
