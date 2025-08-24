@@ -10,47 +10,89 @@ import (
 // FuzzParallelImplementations tests that all parallel implementations
 // produce identical results to the original sequential implementation
 func FuzzParallelImplementations(f *testing.F) {
-	// Seed with some test cases
+	// Seed with diverse test cases
 	f.Add([]byte{1, 2, 3, 4, 5})
+	f.Add([]byte{0xFF, 0xAB, 0xCD, 0xEF})
+	f.Add(make([]byte, 1000)) // Large zero-filled data
 
 	f.Fuzz(func(t *testing.T, data []byte) {
 		if len(data) == 0 {
 			return
 		}
 
-		// Split data into chunks to create multiple items
-		var items [][]byte
-		chunkSize := 1 + (len(data) / 10) // Variable chunk size
-		if chunkSize > 256 {
-			chunkSize = 256
-		}
-
-		for i := 0; i < len(data); i += chunkSize {
-			end := i + chunkSize
-			if end > len(data) {
-				end = len(data)
+		// Use data bytes to determine variable parameters for more robust testing
+		dataIdx := 0
+		nextByte := func() byte {
+			if dataIdx >= len(data) {
+				dataIdx = 0
 			}
-			items = append(items, data[i:end])
+			b := data[dataIdx]
+			dataIdx++
+			return b
 		}
 
-		if len(items) == 0 {
-			return
+		// Vary the number of items (1 to 100)
+		numItems := max(1, int(nextByte())%100+1)
+		
+		// Vary leaf size ranges based on fuzz input
+		leafSizeVariant := nextByte() % 4
+		var minLeafSize, maxLeafSize int
+		switch leafSizeVariant {
+		case 0: // Small leaves (1-32 bytes)
+			minLeafSize, maxLeafSize = 1, 32
+		case 1: // Medium leaves (32-512 bytes)
+			minLeafSize, maxLeafSize = 32, 512
+		case 2: // Large leaves (512-8192 bytes)
+			minLeafSize, maxLeafSize = 512, 8192
+		case 3: // Mixed sizes (1-2048 bytes)
+			minLeafSize, maxLeafSize = 1, 2048
 		}
 
-		// Test with the original inputs
+		// Create items with varying sizes
+		items := make([][]byte, numItems)
+		for i := 0; i < numItems; i++ {
+			// Vary leaf size within the range
+			leafSize := minLeafSize + int(nextByte())%(maxLeafSize-minLeafSize+1)
+			
+			// Create leaf data by cycling through available data
+			leaf := make([]byte, leafSize)
+			for j := 0; j < leafSize; j++ {
+				leaf[j] = nextByte()
+			}
+			items[i] = leaf
+		}
+
+		// Test with the generated inputs
 		testParallelCorrectness(t, items)
 
-		// Test with larger versions (simulate 64KiB leaves) but smaller for testing
-		largeItems := make([][]byte, len(items))
-		for i, item := range items {
-			// Create larger version by repeating data
-			large := make([]byte, 0, 1024) // 1KB for testing
-			for len(large) < 512 {
-				large = append(large, item...)
+		// Additional test with different leaf count but same data pattern
+		if numItems > 1 {
+			// Test with fewer items (stress different tree shapes)
+			reducedCount := max(1, numItems/2)
+			reducedItems := make([][]byte, reducedCount)
+			for i := 0; i < reducedCount; i++ {
+				reducedItems[i] = items[i*2 % len(items)] // Sample every other item
 			}
-			largeItems[i] = large[:min(len(large), 1024)]
+			testParallelCorrectness(t, reducedItems)
 		}
-		testParallelCorrectness(t, largeItems)
+
+		// Test with power-of-2 and non-power-of-2 counts (different tree structures)
+		if numItems >= 4 {
+			// Power of 2 test
+			powerOf2Count := 1
+			for powerOf2Count < numItems {
+				powerOf2Count *= 2
+			}
+			powerOf2Count /= 2 // Get largest power of 2 <= numItems
+			
+			if powerOf2Count >= 2 && powerOf2Count != numItems {
+				powerOf2Items := make([][]byte, powerOf2Count)
+				for i := 0; i < powerOf2Count; i++ {
+					powerOf2Items[i] = items[i % len(items)]
+				}
+				testParallelCorrectness(t, powerOf2Items)
+			}
+		}
 	})
 }
 
