@@ -33,7 +33,7 @@ func FuzzParallelImplementations(f *testing.F) {
 
 		// Vary the number of items (1 to 100)
 		numItems := max(1, int(nextByte())%100+1)
-		
+
 		// Vary leaf size ranges based on fuzz input
 		leafSizeVariant := nextByte() % 4
 		var minLeafSize, maxLeafSize int
@@ -53,7 +53,7 @@ func FuzzParallelImplementations(f *testing.F) {
 		for i := 0; i < numItems; i++ {
 			// Vary leaf size within the range
 			leafSize := minLeafSize + int(nextByte())%(maxLeafSize-minLeafSize+1)
-			
+
 			// Create leaf data by cycling through available data
 			leaf := make([]byte, leafSize)
 			for j := 0; j < leafSize; j++ {
@@ -71,7 +71,7 @@ func FuzzParallelImplementations(f *testing.F) {
 			reducedCount := max(1, numItems/2)
 			reducedItems := make([][]byte, reducedCount)
 			for i := 0; i < reducedCount; i++ {
-				reducedItems[i] = items[i*2 % len(items)] // Sample every other item
+				reducedItems[i] = items[i*2%len(items)] // Sample every other item
 			}
 			testParallelCorrectness(t, reducedItems)
 		}
@@ -84,11 +84,11 @@ func FuzzParallelImplementations(f *testing.F) {
 				powerOf2Count *= 2
 			}
 			powerOf2Count /= 2 // Get largest power of 2 <= numItems
-			
+
 			if powerOf2Count >= 2 && powerOf2Count != numItems {
 				powerOf2Items := make([][]byte, powerOf2Count)
 				for i := 0; i < powerOf2Count; i++ {
-					powerOf2Items[i] = items[i % len(items)]
+					powerOf2Items[i] = items[i%len(items)]
 				}
 				testParallelCorrectness(t, powerOf2Items)
 			}

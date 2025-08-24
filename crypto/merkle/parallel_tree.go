@@ -233,10 +233,6 @@ func parallelProofsFromByteSlices(items [][]byte) (rootHash []byte, proofs []*Pr
 // This maintains the same tree structure as the original but uses
 // parallel computation for large subtrees
 func trailsFromLeafHashesParallel(leafHashes [][]byte, maxWorkers int) (trails []*ProofNode, root *ProofNode) {
-	return trailsFromLeafHashesParallelRecursive(leafHashes, maxWorkers)
-}
-
-func trailsFromLeafHashesParallelRecursive(leafHashes [][]byte, maxWorkers int) (trails []*ProofNode, root *ProofNode) {
 	switch len(leafHashes) {
 	case 0:
 		return []*ProofNode{}, &ProofNode{Hash: emptyHash(), Parent: nil, Left: nil, Right: nil}
@@ -256,19 +252,19 @@ func trailsFromLeafHashesParallelRecursive(leafHashes [][]byte, maxWorkers int) 
 
 			go func() {
 				defer wg.Done()
-				lefts, leftRoot = trailsFromLeafHashesParallelRecursive(leafHashes[:k], maxWorkers/2)
+				lefts, leftRoot = trailsFromLeafHashesParallel(leafHashes[:k], maxWorkers/2)
 			}()
 
 			go func() {
 				defer wg.Done()
-				rights, rightRoot = trailsFromLeafHashesParallelRecursive(leafHashes[k:], maxWorkers/2)
+				rights, rightRoot = trailsFromLeafHashesParallel(leafHashes[k:], maxWorkers/2)
 			}()
 
 			wg.Wait()
 		} else {
 			// Sequential for small subtrees
-			lefts, leftRoot = trailsFromLeafHashesParallelRecursive(leafHashes[:k], 1)
-			rights, rightRoot = trailsFromLeafHashesParallelRecursive(leafHashes[k:], 1)
+			lefts, leftRoot = trailsFromLeafHashesParallel(leafHashes[:k], 1)
+			rights, rightRoot = trailsFromLeafHashesParallel(leafHashes[k:], 1)
 		}
 
 		rootHash := innerHash(leftRoot.Hash, rightRoot.Hash)
