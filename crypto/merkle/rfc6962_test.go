@@ -26,10 +26,10 @@ import (
 func TestRFC6962Hasher(t *testing.T) {
 	// Test both original and parallel implementations
 	testImplementations := []struct {
-		name              string
-		trailsFunc        func([][]byte) ([]*ProofNode, *ProofNode)
-		hashFunc          func([][]byte) []byte
-		proofsFunc        func([][]byte) ([]byte, []*Proof)
+		name       string
+		trailsFunc func([][]byte) ([]*ProofNode, *ProofNode)
+		hashFunc   func([][]byte) []byte
+		proofsFunc func([][]byte) ([]byte, []*Proof)
 	}{
 		{
 			name:       "Original",
@@ -38,7 +38,7 @@ func TestRFC6962Hasher(t *testing.T) {
 			proofsFunc: ProofsFromByteSlices,
 		},
 		{
-			name:       "Parallel",
+			name: "Parallel",
 			trailsFunc: func(items [][]byte) ([]*ProofNode, *ProofNode) {
 				if len(items) == 0 {
 					return []*ProofNode{}, &ProofNode{Hash: emptyHash()}

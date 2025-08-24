@@ -253,7 +253,7 @@ func BenchmarkParallelProofGeneration(b *testing.B) {
 		}
 	}
 
-	b.Run("Original_ProofsFromByteSlices", func(b *testing.B) {
+	b.Run("4000 64KiB leaves Original_ProofsFromByteSlices", func(b *testing.B) {
 		b.ReportAllocs()
 		b.SetBytes(int64(numLeaves * leafSize))
 		for i := 0; i < b.N; i++ {
@@ -264,7 +264,7 @@ func BenchmarkParallelProofGeneration(b *testing.B) {
 		}
 	})
 
-	b.Run("Parallel_ProofsFromByteSlices", func(b *testing.B) {
+	b.Run("4000 64KiB leaves Parallel_ProofsFromByteSlices", func(b *testing.B) {
 		b.ReportAllocs()
 		b.SetBytes(int64(numLeaves * leafSize))
 		for i := 0; i < b.N; i++ {
