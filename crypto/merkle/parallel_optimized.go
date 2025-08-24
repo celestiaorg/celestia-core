@@ -154,6 +154,134 @@ func buildBalancedTreeRecursive(hashes [][]byte, maxWorkers int) []byte {
 	}
 }
 
+// ParallelProofsFromByteSlices computes inclusion proofs for all items
+// in parallel using the optimized tree construction. This maintains 100% 
+// compatibility with ProofsFromByteSlices while providing significant
+// performance improvements for large datasets.
+func ParallelProofsFromByteSlices(items [][]byte) (rootHash []byte, proofs []*Proof) {
+	if len(items) == 0 {
+		return emptyHash(), []*Proof{}
+	}
+
+	// Use parallel implementation for tree construction when beneficial
+	if shouldUseParallelProofs(items) {
+		return parallelProofsFromByteSlices(items)
+	}
+
+	// Fall back to original for small datasets
+	return ProofsFromByteSlices(items)
+}
+
+// shouldUseParallelProofs determines if parallel proof generation is beneficial
+func shouldUseParallelProofs(items [][]byte) bool {
+	numItems := len(items)
+	if numItems < 8 {
+		return false // Too small for parallelization overhead
+	}
+
+	avgLeafSize := estimateAverageLeafSize(items)
+	
+	// Use parallel for larger leaves or many items
+	return avgLeafSize >= 1024 || numItems >= 32
+}
+
+// parallelProofsFromByteSlices implements parallel proof generation
+func parallelProofsFromByteSlices(items [][]byte) (rootHash []byte, proofs []*Proof) {
+	numWorkers := runtime.NumCPU()
+	
+	// Phase 1: Compute all leaf hashes in parallel (reuse from tree building)
+	leafHashes := computeLeafHashesParallel(items, numWorkers)
+	
+	// Phase 2: Build tree structure for proof generation
+	trails, rootNode := trailsFromLeafHashesParallel(leafHashes, numWorkers)
+	rootHash = rootNode.Hash
+	
+	// Phase 3: Generate all proofs in parallel
+	proofs = make([]*Proof, len(items))
+	
+	// Use work-stealing pattern for proof generation
+	var wg sync.WaitGroup
+	work := make(chan int, len(items))
+	
+	// Queue all proof work
+	for i := 0; i < len(items); i++ {
+		work <- i
+	}
+	close(work)
+	
+	// Start workers to generate proofs
+	for i := 0; i < numWorkers; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for idx := range work {
+				proofs[idx] = &Proof{
+					Total:    int64(len(items)),
+					Index:    int64(idx),
+					LeafHash: trails[idx].Hash,
+					Aunts:    trails[idx].FlattenAunts(),
+				}
+			}
+		}()
+	}
+	
+	wg.Wait()
+	return rootHash, proofs
+}
+
+// trailsFromLeafHashesParallel builds proof trails in parallel
+// This maintains the same tree structure as the original but uses
+// parallel computation for large subtrees
+func trailsFromLeafHashesParallel(leafHashes [][]byte, maxWorkers int) (trails []*ProofNode, root *ProofNode) {
+	return trailsFromLeafHashesParallelRecursive(leafHashes, maxWorkers)
+}
+
+func trailsFromLeafHashesParallelRecursive(leafHashes [][]byte, maxWorkers int) (trails []*ProofNode, root *ProofNode) {
+	switch len(leafHashes) {
+	case 0:
+		return []*ProofNode{}, &ProofNode{Hash: emptyHash(), Parent: nil, Left: nil, Right: nil}
+	case 1:
+		trail := &ProofNode{Hash: leafHashes[0]}
+		return []*ProofNode{trail}, trail
+	default:
+		k := getSplitPoint(int64(len(leafHashes)))
+		
+		var lefts, rights []*ProofNode
+		var leftRoot, rightRoot *ProofNode
+		
+		// Parallelize subtree construction for larger trees
+		if len(leafHashes) >= 16 && maxWorkers > 1 {
+			var wg sync.WaitGroup
+			wg.Add(2)
+			
+			go func() {
+				defer wg.Done()
+				lefts, leftRoot = trailsFromLeafHashesParallelRecursive(leafHashes[:k], maxWorkers/2)
+			}()
+			
+			go func() {
+				defer wg.Done()
+				rights, rightRoot = trailsFromLeafHashesParallelRecursive(leafHashes[k:], maxWorkers/2)
+			}()
+			
+			wg.Wait()
+		} else {
+			// Sequential for small subtrees
+			lefts, leftRoot = trailsFromLeafHashesParallelRecursive(leafHashes[:k], 1)
+			rights, rightRoot = trailsFromLeafHashesParallelRecursive(leafHashes[k:], 1)
+		}
+		
+		rootHash := innerHash(leftRoot.Hash, rightRoot.Hash)
+		root := &ProofNode{Hash: rootHash}
+		leftRoot.Parent = root
+		leftRoot.Right = rightRoot
+		rightRoot.Parent = root
+		rightRoot.Left = leftRoot
+		
+		return append(lefts, rights...), root
+	}
+}
+
 // min helper function
 func min(a, b int) int {
 	if a < b {
