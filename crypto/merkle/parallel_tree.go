@@ -196,36 +196,17 @@ func parallelProofsFromByteSlices(items [][]byte) (rootHash []byte, proofs []*Pr
 	trails, rootNode := trailsFromLeafHashesParallel(leafHashes, numWorkers)
 	rootHash = rootNode.Hash
 
-	// Phase 3: Generate all proofs in parallel
 	proofs = make([]*Proof, len(items))
 
-	// Use work-stealing pattern for proof generation
-	var wg sync.WaitGroup
-	work := make(chan int, len(items))
-
-	// Queue all proof work
 	for i := 0; i < len(items); i++ {
-		work <- i
-	}
-	close(work)
-
-	// Start workers to generate proofs
-	for i := 0; i < numWorkers; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			for idx := range work {
-				proofs[idx] = &Proof{
-					Total:    int64(len(items)),
-					Index:    int64(idx),
-					LeafHash: trails[idx].Hash,
-					Aunts:    trails[idx].FlattenAunts(),
-				}
-			}
-		}()
+		proofs[i] = &Proof{
+			Total:    int64(len(items)),
+			Index:    int64(i),
+			LeafHash: trails[i].Hash,
+			Aunts:    trails[i].FlattenAunts(),
+		}
 	}
 
-	wg.Wait()
 	return rootHash, proofs
 }
 
