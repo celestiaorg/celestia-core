@@ -75,13 +75,17 @@ func TestParallelVsOriginal(t *testing.T) {
 					make([]byte, 50),
 				}
 				for i := range items {
-					rand.Read(items[i])
+					if _, err := rand.Read(items[i]); err != nil {
+						t.Fatalf("Failed to read random data: %v", err)
+					}
 				}
 			} else {
 				items = make([][]byte, tc.numItems)
 				for i := 0; i < tc.numItems; i++ {
 					items[i] = make([]byte, tc.itemSize)
-					rand.Read(items[i])
+					if _, err := rand.Read(items[i]); err != nil {
+						t.Fatalf("Failed to read random data: %v", err)
+					}
 				}
 			}
 
@@ -177,7 +181,9 @@ func TestParallelEdgeCases(t *testing.T) {
 	}
 
 	// Initialize data for test cases that need it
-	rand.Read(testCases["single_large"][0])
+	if _, err := rand.Read(testCases["single_large"][0]); err != nil {
+		t.Fatalf("Failed to read random data: %v", err)
+	}
 
 	for testName, items := range testCases {
 		t.Run(testName, func(t *testing.T) {
@@ -289,7 +295,9 @@ func BenchmarkParallelComparison(b *testing.B) {
 		items := make([][]byte, tc.numItems)
 		for i := 0; i < tc.numItems; i++ {
 			items[i] = make([]byte, tc.itemSize)
-			rand.Read(items[i])
+			if _, err := rand.Read(items[i]); err != nil {
+				b.Fatalf("Failed to read random data: %v", err)
+			}
 		}
 
 		b.Run(fmt.Sprintf("Original_%s", tc.name), func(b *testing.B) {
@@ -374,48 +382,8 @@ func TestParallelProofGeneration(t *testing.T) {
 // TestParallelProofGenerationCompatibility ensures 100% compatibility
 // with all existing proof test cases from proof_test.go
 func TestParallelProofGenerationCompatibility(t *testing.T) {
-	// Test cases from TestProofsFromLeafHashesAndByteSlices
-	testCases := []struct {
-		name  string
-		input [][]byte
-	}{
-		{
-			name:  "Empty input",
-			input: [][]byte{},
-		},
-		{
-			name:  "Single element",
-			input: [][]byte{[]byte("A")},
-		},
-		{
-			name:  "Two elements",
-			input: [][]byte{[]byte("A"), []byte("B")},
-		},
-		{
-			name:  "Three elements",
-			input: [][]byte{[]byte("A"), []byte("B"), []byte("C")},
-		},
-		{
-			name:  "Four elements",
-			input: [][]byte{[]byte("A"), []byte("B"), []byte("C"), []byte("D")},
-		},
-		{
-			name:  "Duplicates",
-			input: [][]byte{[]byte("A"), []byte("A"), []byte("B"), []byte("B")},
-		},
-		{
-			name:  "Varying sizes",
-			input: [][]byte{[]byte("short"), []byte("medium-size"), []byte("a much longer string with more entropy")},
-		},
-		{
-			name:  "Non-UTF-8 bytes",
-			input: [][]byte{{0xff, 0xfe, 0xfd}, {0x00, 0x01, 0x02}, {0x80, 0x81, 0x82}},
-		},
-		{
-			name:  "Leading/trailing zeros",
-			input: [][]byte{{0x00, 0x00, 0x00}, {0xff, 0xff, 0xff}, {0x00, 0x01, 0x02, 0x00}},
-		},
-	}
+	// Use shared test cases from proof_test.go to avoid duplication
+	testCases := commonProofTestCases
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -495,7 +463,7 @@ func TestParallelProofGenerationConsistency(t *testing.T) {
 	}
 }
 
-// TestParallelProofGenerationLargeDataset tests proof generation with 
+// TestParallelProofGenerationLargeDataset tests proof generation with
 // datasets similar to the actual use case
 func TestParallelProofGenerationLargeDataset(t *testing.T) {
 	if testing.Short() {
@@ -508,7 +476,7 @@ func TestParallelProofGenerationLargeDataset(t *testing.T) {
 		itemSize int
 	}{
 		{"realistic_4000x64KiB", 4000, 64 * 1024}, // Actual target use case
-		{"many_2KiB", 10000, 2 * 1024},           // Many small items
+		{"many_2KiB", 10000, 2 * 1024},            // Many small items
 	}
 
 	for _, tc := range testCases {
@@ -533,7 +501,7 @@ func TestParallelProofGenerationLargeDataset(t *testing.T) {
 				"Should generate proof for each item")
 
 			// Verify a sample of proofs work correctly
-			sampleIndices := []int{0, 1, tc.numItems/2, tc.numItems - 2, tc.numItems - 1}
+			sampleIndices := []int{0, 1, tc.numItems / 2, tc.numItems - 2, tc.numItems - 1}
 			for _, idx := range sampleIndices {
 				if idx < tc.numItems {
 					err := proofs[idx].Verify(root, items[idx])

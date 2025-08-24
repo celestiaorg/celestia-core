@@ -146,7 +146,9 @@ func TestParallelImplementationsProperty(t *testing.T) {
 		items := make([][]byte, numItems)
 		for i := range items {
 			items[i] = make([]byte, itemSize)
-			rand.Read(items[i])
+			if _, err := rand.Read(items[i]); err != nil {
+				t.Fatalf("Failed to read random data: %v", err)
+			}
 		}
 
 		expected := HashFromByteSlices(items)
@@ -180,7 +182,9 @@ func TestParallelImplementationsLargeDataset(t *testing.T) {
 	items := make([][]byte, numItems)
 	for i := range items {
 		items[i] = make([]byte, itemSize)
-		rand.Read(items[i])
+		if _, err := rand.Read(items[i]); err != nil {
+			t.Fatalf("Failed to read random data: %v", err)
+		}
 	}
 
 	expected := HashFromByteSlices(items)
