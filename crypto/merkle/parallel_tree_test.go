@@ -167,11 +167,11 @@ func TestParallelConsistency(t *testing.T) {
 func TestParallelEdgeCases(t *testing.T) {
 	testCases := map[string][][]byte{
 		"nil_input":      nil,
-		"empty_slice":    [][]byte{},
-		"single_empty":   [][]byte{{}},
-		"multiple_empty": [][]byte{{}, {}, {}},
-		"mixed_empty":    [][]byte{{1}, {}, {2, 3}},
-		"single_large":   [][]byte{make([]byte, 100*1024)}, // 100KiB
+		"empty_slice":    {},
+		"single_empty":   {{}},
+		"multiple_empty": {{}, {}, {}},
+		"mixed_empty":    {{1}, {}, {2, 3}},
+		"single_large":   {make([]byte, 100*1024)}, // 100KiB
 		"all_same": {
 			[]byte{1, 2, 3},
 			[]byte{1, 2, 3},
