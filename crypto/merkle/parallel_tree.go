@@ -107,11 +107,7 @@ func computeLeafHashesParallel(items [][]byte, numWorkers int) [][]byte {
 
 // buildBalancedTree builds the merkle tree maintaining the exact same
 // structure as the original HashFromByteSlices implementation
-func buildBalancedTree(leafHashes [][]byte, numWorkers int) []byte {
-	return buildBalancedTreeRecursive(leafHashes, numWorkers)
-}
-
-func buildBalancedTreeRecursive(hashes [][]byte, maxWorkers int) []byte {
+func buildBalancedTree(hashes [][]byte, maxWorkers int) []byte {
 	switch len(hashes) {
 	case 0:
 		return emptyHash()
@@ -134,19 +130,19 @@ func buildBalancedTreeRecursive(hashes [][]byte, maxWorkers int) []byte {
 
 			go func() {
 				defer wg.Done()
-				left = buildBalancedTreeRecursive(hashes[:k], maxWorkers/2)
+				left = buildBalancedTree(hashes[:k], maxWorkers/2)
 			}()
 
 			go func() {
 				defer wg.Done()
-				right = buildBalancedTreeRecursive(hashes[k:], maxWorkers/2)
+				right = buildBalancedTree(hashes[k:], maxWorkers/2)
 			}()
 
 			wg.Wait()
 		} else {
 			// Sequential for small subtrees
-			left = buildBalancedTreeRecursive(hashes[:k], 1)
-			right = buildBalancedTreeRecursive(hashes[k:], 1)
+			left = buildBalancedTree(hashes[:k], 1)
+			right = buildBalancedTree(hashes[k:], 1)
 		}
 
 		sha := sha256.New()
