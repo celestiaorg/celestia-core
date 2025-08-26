@@ -393,11 +393,6 @@ func createConsensusReactor(config *cfg.Config,
 		consensusState.SetPrivValidator(privValidator)
 	}
 	consensusReactor := cs.NewReactor(consensusState, propagator, waitSync, cs.ReactorMetrics(csMetrics), cs.ReactorTracing(traceClient))
-	// Enable gossip data for nodes that have propagation reactor disabled
-	// to ensure they can still communicate consensus data
-	if config.Consensus.DisablePropagationReactor {
-		consensusReactor = cs.NewReactor(consensusState, propagator, waitSync, cs.ReactorMetrics(csMetrics), cs.ReactorTracing(traceClient), cs.WithGossipDataEnabled(true))
-	}
 	consensusReactor.SetLogger(consensusLogger)
 	// services which will be publishing and/or subscribing for messages (events)
 	// consensusReactor will set it on consensusState and blockExecutor
