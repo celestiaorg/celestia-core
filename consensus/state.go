@@ -110,13 +110,15 @@ type State struct {
 	// when it's detected
 	evpool evidencePool
 
+	// rsMtx protects only access to fields of rs
 	rsMtx cmtsync.RWMutex
 	rs    cstypes.RoundState
 
+	// stateMtx protects only access to fields of state
 	stateMtx cmtsync.RWMutex
 	state    sm.State // State until height-1.
 
-	// internal state
+	// mtx protects access to internal fields of State (excluding rs and state!)
 	mtx cmtsync.Mutex
 	// privValidator pubkey, memoized for the duration of one block
 	// to avoid extra requests to HSM
