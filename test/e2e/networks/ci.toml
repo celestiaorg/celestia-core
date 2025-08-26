@@ -67,7 +67,6 @@ key_type = "sr25519"
 mempool_version = "cat"
 persistent_peers = ["validator01"]
 perturb = ["pause"]
-disable_propagation_reactor = true
 
 [node.validator05]
 database = "goleveldb"
