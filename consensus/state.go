@@ -237,6 +237,11 @@ func NewState(
 
 	cs.BaseService = *service.NewBaseService(nil, "State", cs)
 
+	proposer := cs.rs.Validators.GetProposer()
+	if proposer != nil {
+		cs.propagator.SetProposer(proposer.PubKey)
+	}
+
 	return cs
 }
 
@@ -808,11 +813,6 @@ func (cs *State) updateToState(state sm.State) {
 	cs.rs.TriggeredTimeoutPrecommit = false
 
 	cs.state = state
-
-	proposer := cs.rs.Validators.GetProposer()
-	if proposer != nil {
-		cs.propagator.SetProposer(proposer.PubKey)
-	}
 
 	// Finally, broadcast RoundState
 	cs.newStep()
