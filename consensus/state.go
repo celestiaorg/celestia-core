@@ -809,13 +809,13 @@ func (cs *State) updateToState(state sm.State) {
 
 	cs.state = state
 
-	// Finally, broadcast RoundState
-	cs.newStep()
-
 	proposer := cs.rs.Validators.GetProposer()
 	if proposer != nil {
 		cs.propagator.SetProposer(proposer.PubKey)
 	}
+
+	// Finally, broadcast RoundState
+	cs.newStep()
 }
 
 func (cs *State) newStep() {
