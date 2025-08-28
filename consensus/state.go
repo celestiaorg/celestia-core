@@ -341,9 +341,6 @@ func (cs *State) SetTimeoutTicker(timeoutTicker TimeoutTicker) {
 
 // LoadCommit loads the commit for a given height.
 func (cs *State) LoadCommit(height int64) *types.Commit {
-	// TODO(tzdybal): this should be fine without lock (because of blockStore lock). or maybe not, because of atomicity?
-	//cs.mtx.RLock()
-	//defer cs.mtx.RUnlock()
 
 	if height == cs.blockStore.Height() {
 		return cs.blockStore.LoadSeenCommit(height)
