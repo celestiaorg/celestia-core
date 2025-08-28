@@ -475,7 +475,7 @@ func NewNodeWithContext(ctx context.Context,
 		propagationReactor.SetLogger(logger.With("module", "propagation"))
 	}
 
-	logger.Info("Consensus reactor created", "timeout_propose", consensusState.GetState().Timeouts.TimeoutPropose, "timeout_commit", consensusState.GetState().Timeouts.TimeoutCommit)
+	logger.Info("Consensus reactor created")
 	// Set up state sync reactor, and schedule a sync if requested.
 	// FIXME The way we do phased startups (e.g. replay -> block sync -> consensus) is very messy,
 	// we should clean this whole thing up. See:
