@@ -1,6 +1,6 @@
 name: Docker
 # Rebuilds the CometBFT docker image on every push to v0.38.x and creation of tags
-# and pushes the image to https://hub.docker.com/r/cometbft/cometbft
+# and pushes the image to https://hub.docker.com/r/celestiaorg/celestia-core
 on:
   push:
     branches:
@@ -19,7 +19,7 @@ jobs:
       - name: Prepare
         id: prep
         run: |
-          DOCKER_IMAGE=cometbft/cometbft
+          DOCKER_IMAGE=celestiaorg/celestia-core
           VERSION=noop
           if [[ $GITHUB_REF == refs/tags/* ]]; then
             VERSION=${GITHUB_REF#refs/tags/}
