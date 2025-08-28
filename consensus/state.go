@@ -811,6 +811,11 @@ func (cs *State) updateToState(state sm.State) {
 
 	// Finally, broadcast RoundState
 	cs.newStep()
+
+	proposer := cs.rs.Validators.GetProposer()
+	if proposer != nil {
+		cs.propagator.SetProposer(proposer.PubKey)
+	}
 }
 
 func (cs *State) newStep() {
