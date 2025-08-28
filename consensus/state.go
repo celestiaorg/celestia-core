@@ -690,6 +690,10 @@ func (cs *State) votesFromSeenCommit(state sm.State) (*types.VoteSet, error) {
 // Updates State and increments height to match that of state.
 // The round becomes 0 and cs.Step becomes cstypes.RoundStepNewHeight.
 func (cs *State) updateToState(state sm.State) {
+	// Capture timeout values early to avoid races during state transition
+	newStateTimeoutCommit := state.Timeouts.TimeoutCommit
+	currentStateTimeoutCommit := cs.state.Timeouts.TimeoutCommit
+	
 	if cs.CommitRound > -1 && 0 < cs.Height && cs.Height != state.LastBlockHeight {
 		panic(fmt.Sprintf(
 			"updateToState() expected state height of %v but found %v",
@@ -772,16 +776,16 @@ func (cs *State) updateToState(state sm.State) {
 		// cs.StartTime = state.LastBlockTime.Add(timeoutCommit)
 		if state.LastBlockHeight == 0 {
 			// Don't use cs.state.Timeouts.TimeoutCommit because that is zero
-			cs.StartTime = cs.config.CommitWithCustomTimeout(cmttime.Now(), state.Timeouts.TimeoutCommit)
+			cs.StartTime = cs.config.CommitWithCustomTimeout(cmttime.Now(), newStateTimeoutCommit)
 		} else {
-			cs.StartTime = cs.config.CommitWithCustomTimeout(cmttime.Now(), cs.state.Timeouts.TimeoutCommit)
+			cs.StartTime = cs.config.CommitWithCustomTimeout(cmttime.Now(), currentStateTimeoutCommit)
 		}
 
 	} else {
 		if state.LastBlockHeight == 0 {
-			cs.StartTime = cs.config.CommitWithCustomTimeout(cs.CommitTime, state.Timeouts.TimeoutCommit)
+			cs.StartTime = cs.config.CommitWithCustomTimeout(cs.CommitTime, newStateTimeoutCommit)
 		} else {
-			cs.StartTime = cs.config.CommitWithCustomTimeout(cs.CommitTime, cs.state.Timeouts.TimeoutCommit)
+			cs.StartTime = cs.config.CommitWithCustomTimeout(cs.CommitTime, currentStateTimeoutCommit)
 		}
 	}
 
