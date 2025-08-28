@@ -401,6 +401,7 @@ keep-invalid-txs-in-cache = {{ .Mempool.KeepInvalidTxsInCache }}
 
 # Maximum size of a single transaction.
 # NOTE: the max size of a tx transmitted over the network is {max_tx_bytes}.
+# DEPRECATED: max_tx_bytes is deprecated and will be removed in a future version.
 max_tx_bytes = {{ .Mempool.MaxTxBytes }}
 
 # Maximum size of a batch of transactions to send to a peer
@@ -414,6 +415,7 @@ max_batch_bytes = {{ .Mempool.MaxBatchBytes }}
 # Note, if ttl-num-blocks is also defined, a transaction will be removed if it
 # has existed in the mempool at least ttl-num-blocks number of blocks or if it's
 # insertion time into the mempool is beyond ttl-duration.
+# DEPRECATED: ttl-duration is deprecated and will be removed in a future version.
 ttl-duration = "{{ .Mempool.TTLDuration }}"
 
 # ttl-num-blocks, if non-zero, defines the maximum number of blocks a transaction
@@ -422,6 +424,7 @@ ttl-duration = "{{ .Mempool.TTLDuration }}"
 # Note, if ttl-duration is also defined, a transaction will be removed if it
 # has existed in the mempool at least ttl-num-blocks number of blocks or if
 # it's insertion time into the mempool is beyond ttl-duration.
+# DEPRECATED: ttl-num-blocks is deprecated and will be removed in a future version.
 ttl-num-blocks = {{ .Mempool.TTLNumBlocks }}
 
 # Experimental parameters to limit gossiping txs to up to the specified number of peers.
@@ -443,6 +446,7 @@ experimental_max_gossip_connections_to_non_persistent_peers = {{ .Mempool.Experi
 # arrive before issuing a new request to a different peer
 # Only applicable to the v2 / CAT mempool
 # Default is 200ms
+# DEPRECATED: max-gossip-delay is deprecated and will be removed in a future version.
 max-gossip-delay = "{{ .Mempool.MaxGossipDelay }}"
 
 #######################################################
@@ -507,19 +511,26 @@ only_internal_wal = "{{ .Consensus.OnlyInternalWal }}"
 wal_file = "{{ js .Consensus.WalPath }}"
 
 # How long we wait for a proposal block before prevoting nil
+# DEPRECATED: timeout_propose is deprecated and will be removed in a future version.
 timeout_propose = "{{ .Consensus.TimeoutPropose }}"
 # How much timeout_propose increases with each round
+# DEPRECATED: timeout_propose_delta is deprecated and will be removed in a future version.
 timeout_propose_delta = "{{ .Consensus.TimeoutProposeDelta }}"
 # How long we wait after receiving +2/3 prevotes for “anything” (ie. not a single block or nil)
+# DEPRECATED: timeout_prevote is deprecated and will be removed in a future version.
 timeout_prevote = "{{ .Consensus.TimeoutPrevote }}"
 # How much the timeout_prevote increases with each round
+# DEPRECATED: timeout_prevote_delta is deprecated and will be removed in a future version.
 timeout_prevote_delta = "{{ .Consensus.TimeoutPrevoteDelta }}"
 # How long we wait after receiving +2/3 precommits for “anything” (ie. not a single block or nil)
+# DEPRECATED: timeout_precommit is deprecated and will be removed in a future version.
 timeout_precommit = "{{ .Consensus.TimeoutPrecommit }}"
 # How much the timeout_precommit increases with each round
+# DEPRECATED: timeout_precommit_delta is deprecated and will be removed in a future version.
 timeout_precommit_delta = "{{ .Consensus.TimeoutPrecommitDelta }}"
 # How long we wait after committing a block, before starting on the new
 # height (this gives us a chance to receive some more precommits, even
+# DEPRECATED: timeout_commit is deprecated and will be removed in a future version.
 # though we already have +2/3).
 timeout_commit = "{{ .Consensus.TimeoutCommit }}"
 
@@ -533,6 +544,7 @@ double_sign_check_height = {{ .Consensus.DoubleSignCheckHeight }}
 skip_timeout_commit = {{ .Consensus.SkipTimeoutCommit }}
 
 # EmptyBlocks mode and possible interval between empty blocks
+# DEPRECATED: create_empty_blocks is deprecated and will be removed in a future version.
 create_empty_blocks = {{ .Consensus.CreateEmptyBlocks }}
 create_empty_blocks_interval = "{{ .Consensus.CreateEmptyBlocksInterval }}"
 
