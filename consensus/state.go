@@ -776,7 +776,7 @@ func (cs *State) updateToState(state sm.State) {
 		} else {
 			// setting the next block time to now given the delayed pre-commit time.
 			// TODO either set this to 0 or we keep this the way it is but have a very short timeout commit. In all cases, the timeout starts after finalizing the block and saving it. So it should be the same.
-			cs.StartTime = cs.config.CommitWithCustomTimeout(cs.rs.CommitTime, 0)
+			cs.rs.StartTime = cs.config.CommitWithCustomTimeout(cs.rs.CommitTime, 0)
 		}
 	}
 
@@ -2028,7 +2028,7 @@ func (cs *State) isReadyToPrecommit() (bool, time.Duration) {
 		// setting 0 as a special case not to reschedule the pre-commit
 		return true, 0
 	}
-	precommitVoteTime := cs.StartTime.Add(cs.config.DelayedPrecommitTimeout)
+	precommitVoteTime := cs.rs.StartTime.Add(cs.config.DelayedPrecommitTimeout)
 	waitTime := time.Until(precommitVoteTime)
 	return waitTime <= 0, waitTime
 }
