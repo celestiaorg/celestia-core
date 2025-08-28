@@ -775,8 +775,7 @@ func (cs *State) updateToState(state sm.State) {
 			cs.rs.StartTime = cs.config.CommitWithCustomTimeout(cs.rs.CommitTime, state.TimeoutCommit)
 		} else {
 			// setting the next block time to now given the delayed pre-commit time.
-			// TODO either set this to 0 or we keep this the way it is but have a very short timeout commit. In all cases, the timeout starts after finalizing the block and saving it. So it should be the same.
-			cs.rs.StartTime = cs.config.CommitWithCustomTimeout(cs.rs.CommitTime, 0)
+			cs.rs.StartTime = cs.config.CommitWithCustomTimeout(cs.rs.CommitTime, cs.state.TimeoutCommit)
 		}
 	}
 
@@ -2020,7 +2019,7 @@ func (cs *State) recordMetrics(height int64, block *types.Block) {
 	cs.metrics.CommittedHeight.Set(float64(block.Height))
 }
 
-// isReadyToPrecommit calculates if the process has waited at least 6 seconds
+// isReadyToPrecommit calculates if the process has waited at least a certain number of seconds
 // from their start time before they can vote
 // If the cs.config.DelayedPrecommitTimeout is set to 0, no precommit wait is done.
 func (cs *State) isReadyToPrecommit() (bool, time.Duration) {
