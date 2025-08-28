@@ -39,8 +39,6 @@ const (
 	ReactorIncomingMessageQueueSize = 5000
 )
 
-var RetryTime = 6 * time.Second
-
 type Reactor struct {
 	p2p.BaseReactor // BaseService + p2p.Switch
 
@@ -67,8 +65,9 @@ type Reactor struct {
 	self        p2p.ID
 	started     atomic.Bool
 
-	ctx    context.Context
-	cancel context.CancelFunc
+	ctx       context.Context
+	cancel    context.CancelFunc
+	retryTime time.Duration
 }
 
 type Config struct {
@@ -111,7 +110,8 @@ func NewReactor(
 	// start the catchup routine
 	go func() {
 		// TODO dynamically set the ticker depending on how many blocks are missing
-		ticker := time.NewTicker(RetryTime)
+		retryTime := time.Second * 6
+		ticker := time.NewTicker(retryTime)
 		for {
 			select {
 			case <-reactor.ctx.Done():
@@ -134,6 +134,15 @@ type ReactorOption func(*Reactor)
 func WithTracer(tracer trace.Tracer) func(r *Reactor) {
 	return func(r *Reactor) {
 		r.traceClient = tracer
+	}
+}
+
+func WithRetryTime(tc time.Duration) func(r *Reactor) {
+	return func(r *Reactor) {
+		if tc > 0 {
+			// set the catchup retry time to match the block time
+			r.retryTime = tc
+		}
 	}
 }
 
