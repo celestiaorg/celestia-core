@@ -307,7 +307,7 @@ func BenchmarkParallelComparison(b *testing.B) {
 			}
 		})
 
-		b.Run(fmt.Sprintf("_%s", tc.name), func(b *testing.B) {
+		b.Run(fmt.Sprintf("Parallel_%s", tc.name), func(b *testing.B) {
 			b.ReportAllocs()
 			for i := 0; i < b.N; i++ {
 				_ = ParallelHashFromByteSlices(items)
