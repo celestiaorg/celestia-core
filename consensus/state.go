@@ -80,12 +80,6 @@ type evidencePool interface {
 	ReportConflictingVotes(voteA, voteB *types.Vote)
 }
 
-// blockWithParts intermediary struct to build the block during the commit timeout
-type blockWithParts struct {
-	block *types.Block
-	parts *types.PartSet
-}
-
 // State handles execution of the consensus algorithm.
 // It processes votes and proposals, and upon reaching agreement,
 // commits blocks to the chain and executes them against the application.
