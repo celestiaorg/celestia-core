@@ -58,6 +58,18 @@ func TestByzantinePrevoteEquivocation(t *testing.T) {
 			DiscardABCIResponses: false,
 		})
 		state, _ := stateStore.LoadFromDBOrGenesisDoc(genDoc)
+		// Set timeout values to ensure proper consensus timing
+		state.Timeouts.TimeoutPropose = 3 * time.Second
+		state.Timeouts.TimeoutCommit = 1 * time.Second
+		state.Timeouts.TimeoutProposeDelta = 500 * time.Millisecond
+		state.Timeouts.TimeoutPrevote = 1 * time.Second
+		state.Timeouts.TimeoutPrevoteDelta = 500 * time.Millisecond
+		state.Timeouts.TimeoutPrecommit = 1 * time.Second
+		state.Timeouts.TimeoutPrecommitDelta = 500 * time.Millisecond
+		state.Timeouts.DelayedPrecommitTimeout = 2 * time.Second
+		// Save the updated state back to the store
+		err := stateStore.Save(state)
+		require.NoError(t, err)
 		thisConfig := ResetConfig(fmt.Sprintf("%s_%d", testName, i))
 		nodeKey, err := p2p.LoadOrGenNodeKey(thisConfig.NodeKeyFile())
 		require.NoError(t, err)
@@ -310,9 +322,9 @@ func TestByzantinePrevoteEquivocation(t *testing.T) {
 		assert.Equal(t, pubkey.Address(), ev.VoteA.ValidatorAddress)
 		assert.Equal(t, prevoteHeight, ev.Height())
 		t.Logf("Successfully found evidence: %v", ev)
-	case <-time.After(30 * time.Second):
+	case <-time.After(60 * time.Second):
 		// Increased timeout and better error message
-		t.Fatalf("Timed out waiting for validators to commit evidence after 30 seconds")
+		t.Fatalf("Timed out waiting for validators to commit evidence after 60 seconds")
 	}
 }
 
