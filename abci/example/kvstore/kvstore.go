@@ -119,13 +119,14 @@ func (app *Application) InitChain(_ context.Context, req *types.RequestInitChain
 	return &types.ResponseInitChain{
 		AppHash: appHash,
 		TimeoutInfo: types.TimeoutInfo{
-			TimeoutPropose:        3000 * time.Millisecond,
-			TimeoutCommit:         1000 * time.Millisecond,
-			TimeoutProposeDelta:   500 * time.Millisecond,
-			TimeoutPrevote:        1000 * time.Millisecond,
-			TimeoutPrevoteDelta:   500 * time.Millisecond,
-			TimeoutPrecommit:      1000 * time.Millisecond,
-			TimeoutPrecommitDelta: 500 * time.Millisecond,
+			TimeoutPropose:          3000 * time.Millisecond,
+			TimeoutCommit:           1000 * time.Millisecond,
+			TimeoutProposeDelta:     500 * time.Millisecond,
+			TimeoutPrevote:          1000 * time.Millisecond,
+			TimeoutPrevoteDelta:     500 * time.Millisecond,
+			TimeoutPrecommit:        1000 * time.Millisecond,
+			TimeoutPrecommitDelta:   500 * time.Millisecond,
+			DelayedPrecommitTimeout: 2000 * time.Millisecond,
 		},
 	}, nil
 }
@@ -278,13 +279,14 @@ func (app *Application) FinalizeBlock(_ context.Context, req *types.RequestFinal
 		ValidatorUpdates: app.valUpdates,
 		AppHash:          app.state.Hash(),
 		TimeoutInfo: types.TimeoutInfo{
-			TimeoutPropose:        3000 * time.Millisecond,
-			TimeoutCommit:         1000 * time.Millisecond,
-			TimeoutProposeDelta:   500 * time.Millisecond,
-			TimeoutPrevote:        1000 * time.Millisecond,
-			TimeoutPrevoteDelta:   500 * time.Millisecond,
-			TimeoutPrecommit:      1000 * time.Millisecond,
-			TimeoutPrecommitDelta: 500 * time.Millisecond,
+			TimeoutPropose:          3000 * time.Millisecond,
+			TimeoutCommit:           1000 * time.Millisecond,
+			TimeoutProposeDelta:     500 * time.Millisecond,
+			TimeoutPrevote:          1000 * time.Millisecond,
+			TimeoutPrevoteDelta:     500 * time.Millisecond,
+			TimeoutPrecommit:        1000 * time.Millisecond,
+			TimeoutPrecommitDelta:   500 * time.Millisecond,
+			DelayedPrecommitTimeout: 2000 * time.Millisecond,
 		},
 	}
 	if !app.genBlockEvents {

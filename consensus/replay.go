@@ -375,6 +375,7 @@ func (h *Handshaker) ReplayBlocksWithContext(
 			state.Timeouts.TimeoutPrevoteDelta = res.TimeoutInfo.TimeoutPrevoteDelta
 			state.Timeouts.TimeoutPrecommit = res.TimeoutInfo.TimeoutPrecommit
 			state.Timeouts.TimeoutPrecommitDelta = res.TimeoutInfo.TimeoutPrecommitDelta
+			state.Timeouts.DelayedPrecommitTimeout = res.TimeoutInfo.DelayedPrecommitTimeout
 			// We update the last results hash with the empty hash, to conform with RFC-6962.
 			state.LastResultsHash = merkle.HashFromByteSlices(nil)
 			if err := h.stateStore.Save(state); err != nil {

@@ -760,13 +760,14 @@ func updateState(
 		LastResultsHash: TxResultsHash(abciResponse.TxResults),
 		AppHash:         nil,
 		Timeouts: cmtstate.TimeoutInfo{
-			TimeoutPropose:        abciResponse.TimeoutInfo.TimeoutPropose,
-			TimeoutCommit:         abciResponse.TimeoutInfo.TimeoutCommit,
-			TimeoutProposeDelta:   abciResponse.TimeoutInfo.TimeoutProposeDelta,
-			TimeoutPrevote:        abciResponse.TimeoutInfo.TimeoutPrevote,
-			TimeoutPrevoteDelta:   abciResponse.TimeoutInfo.TimeoutPrevoteDelta,
-			TimeoutPrecommit:      abciResponse.TimeoutInfo.TimeoutPrecommit,
-			TimeoutPrecommitDelta: abciResponse.TimeoutInfo.TimeoutPrecommitDelta,
+			TimeoutPropose:          abciResponse.TimeoutInfo.TimeoutPropose,
+			TimeoutCommit:           abciResponse.TimeoutInfo.TimeoutCommit,
+			TimeoutProposeDelta:     abciResponse.TimeoutInfo.TimeoutProposeDelta,
+			TimeoutPrevote:          abciResponse.TimeoutInfo.TimeoutPrevote,
+			TimeoutPrevoteDelta:     abciResponse.TimeoutInfo.TimeoutPrevoteDelta,
+			TimeoutPrecommit:        abciResponse.TimeoutInfo.TimeoutPrecommit,
+			TimeoutPrecommitDelta:   abciResponse.TimeoutInfo.TimeoutPrecommitDelta,
+			DelayedPrecommitTimeout: abciResponse.TimeoutInfo.DelayedPrecommitTimeout,
 		},
 	}, nil
 }

@@ -290,11 +290,11 @@ message ResponseCheckTx {
   // These reserved fields were used until v0.37 by the priority mempool (now
   // removed).
   reserved 9 to 11;
-  reserved "sender",  "mempool_error";
+  reserved "sender", "mempool_error";
 
   // these fields are used in the priority mempool
   bytes  address  = 15;
-  int64 priority = 16;
+  int64  priority = 16;
   uint64 sequence = 17;
 }
 
@@ -519,12 +519,13 @@ message Snapshot {
   bytes  metadata = 5;  // Arbitrary application metadata
 }
 
-  message TimeoutInfo {
-  google.protobuf.Duration timeout_propose         = 1 [(gogoproto.nullable) = false, (gogoproto.stdduration) = true];
-  google.protobuf.Duration timeout_propose_delta   = 2 [(gogoproto.nullable) = false, (gogoproto.stdduration) = true];
-  google.protobuf.Duration timeout_prevote         = 3 [(gogoproto.nullable) = false, (gogoproto.stdduration) = true];
-  google.protobuf.Duration timeout_prevote_delta   = 4 [(gogoproto.nullable) = false, (gogoproto.stdduration) = true];
-  google.protobuf.Duration timeout_precommit       = 5 [(gogoproto.nullable) = false, (gogoproto.stdduration) = true];
-  google.protobuf.Duration timeout_precommit_delta = 6 [(gogoproto.nullable) = false, (gogoproto.stdduration) = true];
-  google.protobuf.Duration timeout_commit          = 7 [(gogoproto.nullable) = false, (gogoproto.stdduration) = true];
+message TimeoutInfo {
+  google.protobuf.Duration timeout_propose           = 1 [(gogoproto.nullable) = false, (gogoproto.stdduration) = true];
+  google.protobuf.Duration timeout_propose_delta     = 2 [(gogoproto.nullable) = false, (gogoproto.stdduration) = true];
+  google.protobuf.Duration timeout_prevote           = 3 [(gogoproto.nullable) = false, (gogoproto.stdduration) = true];
+  google.protobuf.Duration timeout_prevote_delta     = 4 [(gogoproto.nullable) = false, (gogoproto.stdduration) = true];
+  google.protobuf.Duration timeout_precommit         = 5 [(gogoproto.nullable) = false, (gogoproto.stdduration) = true];
+  google.protobuf.Duration timeout_precommit_delta   = 6 [(gogoproto.nullable) = false, (gogoproto.stdduration) = true];
+  google.protobuf.Duration timeout_commit            = 7 [(gogoproto.nullable) = false, (gogoproto.stdduration) = true];
+  google.protobuf.Duration delayed_precommit_timeout = 8 [(gogoproto.nullable) = false, (gogoproto.stdduration) = true];
 }
