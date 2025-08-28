@@ -132,6 +132,7 @@ func startNode(cfg *Config) error {
 	}
 
 	cmtcfg.Instrumentation.TraceType = "local"
+	cmtcfg.Consensus.DelayedPrecommitTimeout = 20 * time.Millisecond
 
 	var clientCreator proxy.ClientCreator
 	if cfg.Protocol == string(e2e.ProtocolBuiltinConnSync) {
@@ -162,6 +163,7 @@ func startLightClient(cfg *Config) error {
 	if err != nil {
 		return err
 	}
+	cmtcfg.Consensus.DelayedPrecommitTimeout = 1000 * time.Millisecond
 
 	dbContext := &config.DBContext{ID: "light", Config: cmtcfg}
 	lightDB, err := config.DefaultDBProvider(dbContext)

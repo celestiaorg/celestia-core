@@ -156,9 +156,6 @@ type State struct {
 	propagator           propagation.Propagator
 	newHeightOrRoundChan chan struct{}
 
-	// nextBlock contains the next block to propose when building blocks during the timeout commit
-	nextBlock chan *blockWithParts
-
 	// for reporting metrics
 	metrics *Metrics
 
@@ -201,7 +198,6 @@ func NewState(
 		metrics:              NopMetrics(),
 		traceClient:          trace.NoOpTracer(),
 		newHeightOrRoundChan: make(chan struct{}, 1),
-		nextBlock:            make(chan *blockWithParts, 1),
 	}
 	for _, option := range options {
 		option(cs)
@@ -780,7 +776,9 @@ func (cs *State) updateToState(state sm.State) {
 		if state.LastBlockHeight == 0 {
 			cs.StartTime = cs.config.CommitWithCustomTimeout(cs.CommitTime, state.TimeoutCommit)
 		} else {
-			cs.StartTime = cs.config.CommitWithCustomTimeout(cs.CommitTime, cs.state.TimeoutCommit)
+			// setting the next block time to now given the delayed pre-commit time.
+			// TODO either set this to 0 or we keep this the way it is but have a very short timeout commit. In all cases, the timeout starts after finalizing the block and saving it. So it should be the same.
+			cs.StartTime = cs.config.CommitWithCustomTimeout(cs.CommitTime, 0)
 		}
 	}
 
@@ -1069,10 +1067,6 @@ func (cs *State) handleTimeout(ti timeoutInfo, rs cstypes.RoundState) {
 }
 
 func (cs *State) handleTxsAvailable() {
-	select {
-	case <-cs.nextBlock:
-	default:
-	}
 	cs.mtx.Lock()
 	defer cs.mtx.Unlock()
 
@@ -1289,10 +1283,6 @@ func (cs *State) defaultDecideProposal(height int64, round int32) {
 			return
 		}
 		blockParts = parts
-	} else if len(cs.nextBlock) != 0 {
-		bwp := <-cs.nextBlock
-		block = bwp.block
-		blockParts = bwp.parts
 	} else {
 		// Create a new proposal block from state/txs from the mempool.
 		var err error
@@ -1556,6 +1546,12 @@ func (cs *State) enterPrecommit(height int64, round int32) {
 		return
 	}
 
+	if ready, waitTime := cs.isReadyToPrecommit(); !ready {
+		logger.Info("rescheduling precommit", "delay(s)", waitTime.Seconds())
+		cs.scheduleTimeout(waitTime, height, round, cstypes.RoundStepPrevoteWait)
+		return
+	}
+
 	logger.Debug("entering precommit step", "current", log.NewLazySprintf("%v/%v/%v", cs.Height, cs.Round, cs.Step))
 
 	defer func() {
@@ -1699,35 +1695,6 @@ func (cs *State) enterPrecommitWait(height int64, round int32) {
 
 	// wait for some more precommits; enterNewRound
 	cs.scheduleTimeout(cs.config.Precommit(round), height, round, cstypes.RoundStepPrecommitWait)
-}
-
-// blockBuildingTime the time it takes to build a new 32 mb block and a safety cushion.
-const blockBuildingTime = 1800 * time.Millisecond
-
-// buildNextBlock creates the next block pre-emptively if we're the proposer.
-func (cs *State) buildNextBlock() {
-	select {
-	// flush the next block channel to ensure only the relevant block is there.
-	case <-cs.nextBlock:
-	default:
-	}
-
-	// delay pre-emptive block building until the end of the timeout commit
-	tc := cs.state.TimeoutCommit
-	time.Sleep(tc - blockBuildingTime)
-
-	block, blockParts, err := cs.createProposalBlock(context.TODO())
-	if err != nil {
-		cs.Logger.Error("unable to create proposal block", "error", err)
-		return
-	} else if block == nil {
-		panic("Method createProposalBlock should not provide a nil block without errors")
-	}
-
-	cs.nextBlock <- &blockWithParts{
-		block: block,
-		parts: blockParts,
-	}
 }
 
 // Enter: +2/3 precommits for block
@@ -1944,10 +1911,6 @@ func (cs *State) finalizeCommit(height int64) {
 		logger.Error("failed to get private validator pubkey", "err", err)
 	}
 
-	// cs.StartTime is already set.
-	// Schedule Round0 to start soon.
-	cs.scheduleRound0(&cs.RoundState)
-
 	// prune the propagation reactor
 	cs.propagator.Prune(height)
 	proposer := cs.Validators.GetProposer()
@@ -1955,13 +1918,10 @@ func (cs *State) finalizeCommit(height int64) {
 		cs.propagator.SetProposer(proposer.PubKey)
 	}
 
-	// build the block pre-emptively if we're the proposer and the timeout commit is higher than 1 s.
-	tc := cs.state.TimeoutCommit
-	if tc > blockBuildingTime && cs.privValidatorPubKey != nil {
-		if address := cs.privValidatorPubKey.Address(); cs.Validators.HasAddress(address) && cs.isProposer(address) {
-			go cs.buildNextBlock()
-		}
-	}
+	// cs.StartTime is already set.
+	// Schedule Round0 to start soon.
+	cs.scheduleRound0(&cs.RoundState)
+
 	// By here,
 	// * cs.Height has been increment to height+1
 	// * cs.Step is now cstypes.RoundStepNewHeight
@@ -2060,6 +2020,19 @@ func (cs *State) recordMetrics(height int64, block *types.Block) {
 	cs.metrics.BlockSizeBytes.Set(float64(block.Size()))
 	cs.metrics.ChainSizeBytes.Add(float64(block.Size()))
 	cs.metrics.CommittedHeight.Set(float64(block.Height))
+}
+
+// isReadyToPrecommit calculates if the process has waited at least 6 seconds
+// from their start time before they can vote
+// If the cs.config.DelayedPrecommitTimeout is set to 0, no precommit wait is done.
+func (cs *State) isReadyToPrecommit() (bool, time.Duration) {
+	if cs.config.DelayedPrecommitTimeout == 0 {
+		// setting 0 as a special case not to reschedule the pre-commit
+		return true, 0
+	}
+	precommitVoteTime := cs.StartTime.Add(cs.config.DelayedPrecommitTimeout)
+	waitTime := time.Until(precommitVoteTime)
+	return waitTime <= 0, waitTime
 }
 
 //-----------------------------------------------------------------------------
