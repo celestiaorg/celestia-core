@@ -774,7 +774,6 @@ func (cs *State) updateToState(state sm.State) {
 		if state.LastBlockHeight == 0 {
 			cs.rs.StartTime = cs.config.CommitWithCustomTimeout(cs.rs.CommitTime, state.TimeoutCommit)
 		} else {
-			// setting the next block time to now given the delayed pre-commit time.
 			cs.rs.StartTime = cs.config.CommitWithCustomTimeout(cs.rs.CommitTime, cs.state.TimeoutCommit)
 		}
 	}
