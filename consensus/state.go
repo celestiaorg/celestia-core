@@ -237,11 +237,6 @@ func NewState(
 
 	cs.BaseService = *service.NewBaseService(nil, "State", cs)
 
-	proposer := cs.rs.Validators.GetProposer()
-	if proposer != nil {
-		cs.propagator.SetProposer(proposer.PubKey)
-	}
-
 	return cs
 }
 
@@ -440,6 +435,11 @@ func (cs *State) OnStart() error {
 	// now start the receiveRoutine
 	go cs.receiveRoutine(0)
 	go cs.syncData()
+
+	proposer := cs.rs.Validators.GetProposer()
+	if proposer != nil {
+		cs.propagator.SetProposer(proposer.PubKey)
+	}
 
 	// schedule the first round!
 	// use GetRoundState so we don't race the receiveRoutine for access
