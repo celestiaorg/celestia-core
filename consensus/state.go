@@ -441,11 +441,6 @@ func (cs *State) OnStart() error {
 	go cs.receiveRoutine(0)
 	go cs.syncData()
 
-	proposer := cs.rs.Validators.GetProposer()
-	if proposer != nil {
-		cs.propagator.SetProposer(proposer.PubKey)
-	}
-
 	// schedule the first round!
 	// use GetRoundState so we don't race the receiveRoutine for access
 	cs.scheduleRound0(cs.GetRoundState())
