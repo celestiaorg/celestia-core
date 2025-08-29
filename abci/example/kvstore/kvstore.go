@@ -104,7 +104,21 @@ func (app *Application) Info(context.Context, *types.RequestInfo) (*types.Respon
 		AppVersion:       AppVersion,
 		LastBlockHeight:  app.state.Height,
 		LastBlockAppHash: app.state.Hash(),
+		TimeoutInfo:      app.timeoutInfo(),
 	}, nil
+}
+
+func (app *Application) timeoutInfo() types.TimeoutInfo {
+	return types.TimeoutInfo{
+		TimeoutPropose:          3000 * time.Millisecond,
+		TimeoutCommit:           1000 * time.Millisecond,
+		TimeoutProposeDelta:     500 * time.Millisecond,
+		TimeoutPrevote:          1000 * time.Millisecond,
+		TimeoutPrevoteDelta:     500 * time.Millisecond,
+		TimeoutPrecommit:        1000 * time.Millisecond,
+		TimeoutPrecommitDelta:   500 * time.Millisecond,
+		DelayedPrecommitTimeout: 1000 * time.Millisecond,
+	}
 }
 
 // InitChain takes the genesis validators and stores them in the kvstore. It returns the application hash in the
@@ -117,17 +131,8 @@ func (app *Application) InitChain(_ context.Context, req *types.RequestInitChain
 	appHash := make([]byte, 8)
 	binary.PutVarint(appHash, app.state.Size)
 	return &types.ResponseInitChain{
-		AppHash: appHash,
-		TimeoutInfo: types.TimeoutInfo{
-			TimeoutPropose:          3000 * time.Millisecond,
-			TimeoutCommit:           1000 * time.Millisecond,
-			TimeoutProposeDelta:     500 * time.Millisecond,
-			TimeoutPrevote:          1000 * time.Millisecond,
-			TimeoutPrevoteDelta:     500 * time.Millisecond,
-			TimeoutPrecommit:        1000 * time.Millisecond,
-			TimeoutPrecommitDelta:   500 * time.Millisecond,
-			DelayedPrecommitTimeout: 2000 * time.Millisecond,
-		},
+		AppHash:     appHash,
+		TimeoutInfo: app.timeoutInfo(),
 	}, nil
 }
 
@@ -278,16 +283,7 @@ func (app *Application) FinalizeBlock(_ context.Context, req *types.RequestFinal
 		TxResults:        respTxs,
 		ValidatorUpdates: app.valUpdates,
 		AppHash:          app.state.Hash(),
-		TimeoutInfo: types.TimeoutInfo{
-			TimeoutPropose:          3000 * time.Millisecond,
-			TimeoutCommit:           1000 * time.Millisecond,
-			TimeoutProposeDelta:     500 * time.Millisecond,
-			TimeoutPrevote:          1000 * time.Millisecond,
-			TimeoutPrevoteDelta:     500 * time.Millisecond,
-			TimeoutPrecommit:        1000 * time.Millisecond,
-			TimeoutPrecommitDelta:   500 * time.Millisecond,
-			DelayedPrecommitTimeout: 2000 * time.Millisecond,
-		},
+		TimeoutInfo:      app.timeoutInfo(),
 	}
 	if !app.genBlockEvents {
 		return response, nil

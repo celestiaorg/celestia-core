@@ -373,20 +373,16 @@ func TestStateFullRound1(t *testing.T) {
 	if err := eventBus.Start(); err != nil {
 		t.Error(err)
 	}
-	fmt.Println("1")
+
 	voteCh := subscribeUnBuffered(cs.eventBus, types.EventQueryVote)
 	propCh := subscribe(cs.eventBus, types.EventQueryCompleteProposal)
 	newRoundCh := subscribe(cs.eventBus, types.EventQueryNewRound)
 
 	// Maybe it would be better to call explicitly startRoutines(4)
 	startTestRound(cs, height, round)
-	fmt.Println("2")
 	ensureNewRound(newRoundCh, height, round)
-	fmt.Println("2.2")
 	ensureNewProposal(propCh, height, round)
-	fmt.Println("2.3")
 	propBlockHash := cs.GetRoundState().ProposalBlock.Hash()
-	fmt.Println("3")
 	ensurePrevote(voteCh, height, round) // wait for prevote
 	validatePrevote(t, cs, round, vss[0], propBlockHash)
 
@@ -394,7 +390,6 @@ func TestStateFullRound1(t *testing.T) {
 
 	// we're going to roll right into new height
 	ensureNewRound(newRoundCh, height+1, 0)
-	fmt.Println("4")
 	validateLastPrecommit(t, cs, vss[0], propBlockHash)
 }
 
