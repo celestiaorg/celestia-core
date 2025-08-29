@@ -3,7 +3,6 @@ package p2p
 import (
 	"context"
 	"fmt"
-	"reflect"
 
 	"github.com/cometbft/cometbft/libs/service"
 	"github.com/cometbft/cometbft/libs/trace/schema"
@@ -88,20 +87,34 @@ func NewBaseReactor(name string, impl Reactor, opts ...ReactorOptions) *BaseReac
 		BaseService: *service.NewBaseService(nil, name, impl),
 		Switch:      nil,
 		incoming:    make(chan UnprocessedEnvelope, 100),
-		processor:   DefaultProcessor(impl),
+		processor:   nil, // Will be set after base is created
 	}
 	base.queueingFunc = base.QueueUnprocessedEnvelope
 	for _, opt := range opts {
 		opt(base)
 	}
 
+	// Set the processor after base is created, only if it hasn't been set by options
+	if base.processor == nil {
+		base.processor = DefaultProcessorWithReactor(impl, base)
+	}
+
 	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				fmt.Printf("processor panicked: %v\n", r)
+				// Try to stop the reactor gracefully
+				if err := base.Stop(); err != nil {
+					fmt.Printf("failed to stop reactor after panic: %v\n", err)
+				}
+			}
+		}()
+
 		err := base.processor(ctx, base.incoming)
 		if err != nil {
-			fmt.Println("processor exited with error ", err)
-			err = base.Stop()
-			if err != nil {
-				panic(err)
+			fmt.Printf("processor exited with error: %v\n", err)
+			if stopErr := base.Stop(); stopErr != nil {
+				fmt.Printf("failed to stop reactor after processor error: %v\n", stopErr)
 			}
 		}
 	}()
@@ -163,6 +176,12 @@ func (br *BaseReactor) OnStop() {
 // DefaultProcessor unmarshalls the message and calls Receive on the reactor.
 // This preserves the sender's original order for all messages.
 func DefaultProcessor(impl Reactor) func(context.Context, <-chan UnprocessedEnvelope) error {
+	return DefaultProcessorWithReactor(impl, nil)
+}
+
+// DefaultProcessorWithReactor unmarshalls the message and calls Receive on the reactor.
+// This preserves the sender's original order for all messages and supports panic recovery with peer disconnection.
+func DefaultProcessorWithReactor(impl Reactor, baseReactor *BaseReactor) func(context.Context, <-chan UnprocessedEnvelope) error {
 	implChannels := impl.GetChannels()
 
 	chIDs := make(map[byte]proto.Message, len(implChannels))
@@ -179,42 +198,64 @@ func DefaultProcessor(impl Reactor) func(context.Context, <-chan UnprocessedEnve
 					// this means the channel was closed.
 					return nil
 				}
-				mt := chIDs[ue.ChannelID]
 
-				if mt == nil {
-					return fmt.Errorf("no message type registered for channel %d", ue.ChannelID)
-				}
+				// Process message with panic recovery for individual peer
+				process := func(ue UnprocessedEnvelope) error {
+					defer func() {
+						if r := recover(); r != nil {
+							disconnectPeer(baseReactor, ue.Src, fmt.Sprintf("panic in reactor: %v", r), impl.String())
+						}
+					}()
 
-				msg := proto.Clone(mt)
-
-				err := proto.Unmarshal(ue.Message, msg)
-				if err != nil {
-					fmt.Println(fmt.Errorf("unmarshaling message: %v into type: %s resulted in error %w", msg, reflect.TypeOf(mt), err))
-					continue
-				}
-
-				if w, ok := msg.(Unwrapper); ok {
-					msg, err = w.Unwrap()
-					if err != nil {
-						return fmt.Errorf("unwrapping message: %v", err)
+					mt := chIDs[ue.ChannelID]
+					if mt == nil {
+						return fmt.Errorf("no message type registered for channel %d\n", ue.ChannelID)
 					}
+
+					msg := proto.Clone(mt)
+
+					err := proto.Unmarshal(ue.Message, msg)
+					if err != nil {
+						return err
+					}
+
+					if w, ok := msg.(Unwrapper); ok {
+						msg, err = w.Unwrap()
+						if err != nil {
+							return err
+						}
+					}
+
+					labels := []string{
+						"peer_id", string(ue.Src.ID()),
+						"chID", fmt.Sprintf("%#x", ue.ChannelID),
+					}
+
+					ue.Src.Metrics().PeerReceiveBytesTotal.With(labels...).Add(float64(len(ue.Message)))
+					ue.Src.Metrics().MessageReceiveBytesTotal.With(append(labels, "message_type", ue.Src.ValueToMetricLabel(msg))...).Add(float64(len(ue.Message)))
+					schema.WriteReceivedBytes(ue.Src.TraceClient(), string(ue.Src.ID()), ue.ChannelID, len(ue.Message))
+					impl.Receive(Envelope{
+						ChannelID: ue.ChannelID,
+						Src:       ue.Src,
+						Message:   msg,
+					})
+
+					return nil
 				}
 
-				labels := []string{
-					"peer_id", string(ue.Src.ID()),
-					"chID", fmt.Sprintf("%#x", ue.ChannelID),
+				err := process(ue)
+				if err != nil {
+					disconnectPeer(baseReactor, ue.Src, fmt.Sprintf("error in reactor processing: %v", err), impl.String())
 				}
-
-				ue.Src.Metrics().PeerReceiveBytesTotal.With(labels...).Add(float64(len(ue.Message)))
-				ue.Src.Metrics().MessageReceiveBytesTotal.With(append(labels, "message_type", ue.Src.ValueToMetricLabel(msg))...).Add(float64(len(ue.Message)))
-				schema.WriteReceivedBytes(ue.Src.TraceClient(), string(ue.Src.ID()), ue.ChannelID, len(ue.Message))
-				impl.Receive(Envelope{
-					ChannelID: ue.ChannelID,
-					Src:       ue.Src,
-					Message:   msg,
-				})
 			}
 		}
+	}
+}
+
+func disconnectPeer(baseReactor *BaseReactor, peer Peer, reason, reactor string) {
+	// If we have access to the BaseReactor and Switch, disconnect the peer
+	if baseReactor != nil && baseReactor.Switch != nil {
+		baseReactor.Switch.StopPeerForError(peer, reason, reactor)
 	}
 }
 
