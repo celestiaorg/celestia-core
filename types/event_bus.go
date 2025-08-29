@@ -10,7 +10,7 @@ import (
 	"github.com/cometbft/cometbft/libs/service"
 )
 
-const defaultCapacity = 0
+const defaultCapacity = 1000
 
 type EventBusSubscriber interface {
 	Subscribe(ctx context.Context, subscriber string, query cmtpubsub.Query, outCapacity ...int) (Subscription, error)
