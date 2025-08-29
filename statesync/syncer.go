@@ -312,10 +312,15 @@ func (s *syncer) Sync(snapshot *snapshot, chunks *chunkQueue) (sm.State, *types.
 		return sm.State{}, nil, err
 	}
 
-	state.TimeoutCommit = timeouts.TimeoutCommit
-	state.TimeoutPropose = timeouts.TimeoutPropose
+	state.Timeouts.TimeoutCommit = timeouts.TimeoutCommit
+	state.Timeouts.TimeoutPropose = timeouts.TimeoutPropose
+	state.Timeouts.TimeoutProposeDelta = timeouts.TimeoutProposeDelta
+	state.Timeouts.TimeoutPrevote = timeouts.TimeoutPrevote
+	state.Timeouts.TimeoutPrevoteDelta = timeouts.TimeoutPrevoteDelta
+	state.Timeouts.TimeoutPrecommit = timeouts.TimeoutPrecommit
+	state.Timeouts.TimeoutPrecommitDelta = timeouts.TimeoutPrecommitDelta
+	state.Timeouts.DelayedPrecommitTimeout = timeouts.DelayedPrecommitTimeout
 
-	// Done! 🎉
 	s.logger.Info("Snapshot restored", "height", snapshot.Height, "format", snapshot.Format,
 		"hash", log.NewLazySprintf("%X", snapshot.Hash))
 

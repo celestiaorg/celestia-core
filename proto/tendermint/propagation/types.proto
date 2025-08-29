@@ -46,10 +46,10 @@ message HaveParts {
 // WantParts is a wire message sent by peers to indicate that they wish to
 // download a specific portion of the block.
 message WantParts {
-  tendermint.libs.bits.BitArray parts  = 1 [(gogoproto.nullable) = false];
-  int64                         height = 2;
-  int32                         round  = 3;
-  bool                          prove  = 4;
+  tendermint.libs.bits.BitArray parts               = 1 [(gogoproto.nullable) = false];
+  int64                         height              = 2;
+  int32                         round               = 3;
+  bool                          prove               = 4;
   int32                         missing_parts_count = 5;
 }
 

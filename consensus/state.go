@@ -771,17 +771,17 @@ func (cs *State) updateToState(state sm.State) {
 		// And alternative solution that relies on clocks:
 		// cs.StartTime = state.LastBlockTime.Add(timeoutCommit)
 		if state.LastBlockHeight == 0 {
-			// Don't use cs.state.TimeoutCommit because that is zero
-			cs.StartTime = cs.config.CommitWithCustomTimeout(cmttime.Now(), state.TimeoutCommit)
+			// Don't use cs.state.Timeouts.TimeoutCommit because that is zero
+			cs.StartTime = cs.config.CommitWithCustomTimeout(cmttime.Now(), state.Timeouts.TimeoutCommit)
 		} else {
-			cs.StartTime = cs.config.CommitWithCustomTimeout(cmttime.Now(), cs.state.TimeoutCommit)
+			cs.StartTime = cs.config.CommitWithCustomTimeout(cmttime.Now(), cs.state.Timeouts.TimeoutCommit)
 		}
 
 	} else {
 		if state.LastBlockHeight == 0 {
-			cs.StartTime = cs.config.CommitWithCustomTimeout(cs.CommitTime, state.TimeoutCommit)
+			cs.StartTime = cs.config.CommitWithCustomTimeout(cs.CommitTime, state.Timeouts.TimeoutCommit)
 		} else {
-			cs.StartTime = cs.config.CommitWithCustomTimeout(cs.CommitTime, cs.state.TimeoutCommit)
+			cs.StartTime = cs.config.CommitWithCustomTimeout(cs.CommitTime, cs.state.Timeouts.TimeoutCommit)
 		}
 	}
 
@@ -1700,35 +1700,6 @@ func (cs *State) enterPrecommitWait(height int64, round int32) {
 
 	// wait for some more precommits; enterNewRound
 	cs.scheduleTimeout(cs.config.Precommit(round), height, round, cstypes.RoundStepPrecommitWait)
-}
-
-// blockBuildingTime the time it takes to build a new 32 mb block and a safety cushion.
-const blockBuildingTime = 1800 * time.Millisecond
-
-// buildNextBlock creates the next block pre-emptively if we're the proposer.
-func (cs *State) buildNextBlock() {
-	select {
-	// flush the next block channel to ensure only the relevant block is there.
-	case <-cs.nextBlock:
-	default:
-	}
-
-	// delay pre-emptive block building until the end of the timeout commit
-	tc := cs.state.TimeoutCommit
-	time.Sleep(tc - blockBuildingTime)
-
-	block, blockParts, err := cs.createProposalBlock(context.TODO())
-	if err != nil {
-		cs.Logger.Error("unable to create proposal block", "error", err)
-		return
-	} else if block == nil {
-		panic("Method createProposalBlock should not provide a nil block without errors")
-	}
-
-	cs.nextBlock <- &blockWithParts{
-		block: block,
-		parts: blockParts,
-	}
 }
 
 // Enter: +2/3 precommits for block
