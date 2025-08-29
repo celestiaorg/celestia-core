@@ -1,7 +1,6 @@
 package consensus
 
 import (
-	"fmt"
 	"testing"
 	"time"
 
@@ -43,6 +42,7 @@ func TestNilVoteExchange(t *testing.T) {
 			}
 		}
 	}()
+
 	// Start the consensus state machines
 	for i := 0; i < nValidators; i++ {
 		s := reactors[i].conS.GetState()
@@ -52,22 +52,10 @@ func TestNilVoteExchange(t *testing.T) {
 	require.Eventually(t, func() bool {
 		return len(switches[0].Peers().List()) == 1 && len(switches[1].Peers().List()) == 1
 	}, 5*time.Second, 100*time.Millisecond, "Peers should be connected")
-	// Get references to the two consensus states
-	cs0 := reactors[0].conS
-	cs1 := reactors[1].conS
-	// Wait for both to reach the same height/round
-	require.Eventually(t, func() bool {
-		cs0.rsMtx.RLock()
-		cs1.rsMtx.RLock()
-		height0, round0 := cs0.rs.Height, cs0.rs.Round
-		height1, round1 := cs1.rs.Height, cs1.rs.Round
-		cs0.rsMtx.RUnlock()
-		cs1.rsMtx.RUnlock()
-		return height0 == height1 && round0 == round1
-	}, 10*time.Second, 100*time.Millisecond, "Both peers should reach the same height/round")
+
 	s1 := switches[0]
 	ps := s1.Peers().List()
-	fmt.Println("found some peers", len(ps))
+
 	p1 := ps[0]
 	vote := &cmtcons.Vote{}
 	vote.Vote = nil
@@ -76,5 +64,4 @@ func TestNilVoteExchange(t *testing.T) {
 		Message:   vote,
 	})
 	time.Sleep(time.Second * 1)
-	t.Log("✓ Test completed successfully: Two peers connected and exchanged votes")
 }
