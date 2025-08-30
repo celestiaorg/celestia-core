@@ -444,11 +444,6 @@ func (cs *State) OnStart() error {
 	go cs.receiveRoutine(0)
 	go cs.syncData()
 
-	proposer := cs.rs.Validators.GetProposer()
-	if proposer != nil {
-		cs.propagator.SetProposer(proposer.PubKey)
-	}
-
 	// schedule the first round!
 	// use GetRoundState so we don't race the receiveRoutine for access
 	cs.scheduleRound0(cs.GetRoundState())
@@ -1785,6 +1780,8 @@ func (cs *State) enterCommit(height int64, commitRound int32) {
 		logger.Debug("commit is for a locked block; set ProposalBlock=LockedBlock", "block_hash", blockID.Hash)
 		cs.rs.ProposalBlock = cs.rs.LockedBlock
 		cs.rs.ProposalBlockParts = cs.rs.LockedBlockParts
+		psh := cs.rs.LockedBlockParts.Header()
+		cs.propagator.AddCommitment(height, commitRound, &psh)
 	}
 
 	// If we don't have the block being committed, set up to get it.
