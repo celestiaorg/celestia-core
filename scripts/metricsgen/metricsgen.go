@@ -166,16 +166,24 @@ func ParseMetricsDir(dir string, structName string) (TemplateData, error) {
 		return TemplateData{}, fmt.Errorf("no go pacakges found in %s", dir)
 	}
 
-	// Grab the package name.
+	// Grab the package name and files.
 	var pkgName string
+<<<<<<< HEAD
 	var pkg *ast.Package //nolint:staticcheck
 	for pkgName, pkg = range d {
+=======
+	var files map[string]*ast.File
+	for name, pkg := range d {
+		pkgName = name
+		files = pkg.Files
+		break
+>>>>>>> 3eaaa4f1 (fix: increase event bus buffer (#2386))
 	}
 	td := TemplateData{
 		Package: pkgName,
 	}
 	// Grab the metrics struct
-	m, mPkgName, err := findMetricsStruct(pkg.Files, structName)
+	m, mPkgName, err := findMetricsStruct(files, structName)
 	if err != nil {
 		return TemplateData{}, err
 	}
