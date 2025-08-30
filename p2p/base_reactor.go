@@ -11,7 +11,7 @@ import (
 )
 
 // ProcessorFunc is the message processor function type.
-type ProcessorFunc func(context.Context, <-chan UnprocessedEnvelope) error
+type ProcessorFunc func(context.Context, <-chan UnprocessedEnvelope)
 
 // Reactor is responsible for handling incoming messages on one or more
 // Channel. Switch calls GetChannels when reactor is added to it. When a new
@@ -85,7 +85,7 @@ func NewBaseReactor(name string, impl Reactor, opts ...ReactorOptions) *BaseReac
 		ctx:         ctx,
 		cancel:      cancel,
 		BaseService: *service.NewBaseService(nil, name, impl),
-		Switch:      nil,
+		Switch:      nil, // set by the switch later
 		incoming:    make(chan UnprocessedEnvelope, 100),
 		processor:   nil, // Will be set after base is created
 	}
@@ -96,7 +96,7 @@ func NewBaseReactor(name string, impl Reactor, opts ...ReactorOptions) *BaseReac
 
 	// Set the processor after base is created, only if it hasn't been set by options
 	if base.processor == nil {
-		base.processor = DefaultProcessorWithReactor(impl, base)
+		base.processor = ProcessorWithReactor(impl, base)
 	}
 
 	go func() {
@@ -110,13 +110,7 @@ func NewBaseReactor(name string, impl Reactor, opts ...ReactorOptions) *BaseReac
 			}
 		}()
 
-		err := base.processor(ctx, base.incoming)
-		if err != nil {
-			fmt.Printf("processor exited with error: %v\n", err)
-			if stopErr := base.Stop(); stopErr != nil {
-				fmt.Printf("failed to stop reactor after processor error: %v\n", stopErr)
-			}
-		}
+		base.processor(ctx, base.incoming)
 	}()
 
 	return base
@@ -173,30 +167,24 @@ func (br *BaseReactor) OnStop() {
 	br.cancel()
 }
 
-// DefaultProcessor unmarshalls the message and calls Receive on the reactor.
-// This preserves the sender's original order for all messages.
-func DefaultProcessor(impl Reactor) func(context.Context, <-chan UnprocessedEnvelope) error {
-	return DefaultProcessorWithReactor(impl, nil)
-}
-
-// DefaultProcessorWithReactor unmarshalls the message and calls Receive on the reactor.
+// ProcessorWithReactor unmarshalls the message and calls Receive on the reactor.
 // This preserves the sender's original order for all messages and supports panic recovery with peer disconnection.
-func DefaultProcessorWithReactor(impl Reactor, baseReactor *BaseReactor) func(context.Context, <-chan UnprocessedEnvelope) error {
+func ProcessorWithReactor(impl Reactor, baseReactor *BaseReactor) func(context.Context, <-chan UnprocessedEnvelope) {
 	implChannels := impl.GetChannels()
 
 	chIDs := make(map[byte]proto.Message, len(implChannels))
 	for _, chDesc := range implChannels {
 		chIDs[chDesc.ID] = chDesc.MessageType
 	}
-	return func(ctx context.Context, incoming <-chan UnprocessedEnvelope) error {
+	return func(ctx context.Context, incoming <-chan UnprocessedEnvelope) {
 		for {
 			select {
 			case <-ctx.Done():
-				return nil
+				return
 			case ue, ok := <-incoming:
 				if !ok {
 					// this means the channel was closed.
-					return nil
+					return
 				}
 
 				// Process message with panic recovery for individual peer
@@ -253,7 +241,8 @@ func DefaultProcessorWithReactor(impl Reactor, baseReactor *BaseReactor) func(co
 }
 
 func disconnectPeer(baseReactor *BaseReactor, peer Peer, reason, reactor string) {
-	// If we have access to the BaseReactor and Switch, disconnect the peer
+	// the switch is added for all reactors so should be here. the worst case if not is
+	// that the peer doesn't get disconnected.
 	if baseReactor != nil && baseReactor.Switch != nil {
 		baseReactor.Switch.StopPeerForError(peer, reason, reactor)
 	}

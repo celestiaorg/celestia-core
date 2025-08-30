@@ -16,7 +16,7 @@ func TestNilVoteExchange(t *testing.T) {
 	css, cleanup := randConsensusNet(t, nValidators, "consensus_two_peer_vote_test", newMockTickerFunc(true), newKVStore)
 	defer cleanup()
 	logger := log.TestingLogger()
-	// Create reactors for the two validators
+
 	reactors := make([]*Reactor, nValidators)
 	for i := 0; i < nValidators; i++ {
 		reactors[i] = NewReactor(css[i], css[i].propagator, true, WithGossipDataEnabled(true))
@@ -28,7 +28,7 @@ func TestNilVoteExchange(t *testing.T) {
 			}
 		}
 	}
-	// Connect the two peers using p2p switches
+
 	switches := p2p.MakeConnectedSwitches(config.P2P, nValidators, func(i int, s *p2p.Switch) *p2p.Switch {
 		s.AddReactor("CONSENSUS", reactors[i])
 		s.SetLogger(reactors[i].conS.Logger.With("module", "p2p"))
@@ -43,12 +43,11 @@ func TestNilVoteExchange(t *testing.T) {
 		}
 	}()
 
-	// Start the consensus state machines
 	for i := 0; i < nValidators; i++ {
 		s := reactors[i].conS.GetState()
 		reactors[i].SwitchToConsensus(s, false)
 	}
-	// Wait for both peers to be connected
+
 	require.Eventually(t, func() bool {
 		return len(switches[0].Peers().List()) == 1 && len(switches[1].Peers().List()) == 1
 	}, 5*time.Second, 100*time.Millisecond, "Peers should be connected")

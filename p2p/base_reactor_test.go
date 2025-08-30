@@ -127,7 +127,7 @@ func (ip *imaginaryPeer) ValueToMetricLabel(i any) string    { return "" }
 // and the reactor continues to function without crashing the node.
 func TestBaseReactorPanicRecovery(t *testing.T) {
 	pr := newPanicReactor()
-	
+
 	// Test with a real switch but mock disconnection tracking
 	cfg := config.DefaultP2PConfig()
 	sw := p2p.MakeSwitch(cfg, 1, func(i int, sw *p2p.Switch) *p2p.Switch { return sw })
@@ -165,7 +165,7 @@ func TestBaseReactorPanicRecovery(t *testing.T) {
 	// Verify that the reactor survived the panic and processed the normal message
 	// The key test is that the reactor doesn't crash and can still process messages
 	require.Contains(t, pr.received, "normal_msg", "reactor should continue processing after panic")
-	
+
 	// Verify that the panic doesn't crash the test (which proves our recovery works)
 	require.True(t, true, "test completed without crashing - panic recovery successful")
 }
@@ -173,7 +173,7 @@ func TestBaseReactorPanicRecovery(t *testing.T) {
 // TestBaseReactorNilMessageHandling tests handling of nil/malformed messages
 func TestBaseReactorNilMessageHandling(t *testing.T) {
 	pr := newPanicReactor()
-	
+
 	// Test with a real switch
 	cfg := config.DefaultP2PConfig()
 	sw := p2p.MakeSwitch(cfg, 1, func(i int, sw *p2p.Switch) *p2p.Switch { return sw })
@@ -218,16 +218,16 @@ func TestBaseReactorNilMessageHandling(t *testing.T) {
 func TestBaseReactorProcessorPanic(t *testing.T) {
 	// Create a reactor with a processor that will panic on startup
 	pr := &panicReactor{Mutex: sync.Mutex{}}
-	pr.BaseReactor = *p2p.NewBaseReactor("PanicReactor", pr, 
+	pr.BaseReactor = *p2p.NewBaseReactor("PanicReactor", pr,
 		p2p.WithIncomingQueueSize(10),
-		p2p.WithProcessor(func(ctx context.Context, incoming <-chan p2p.UnprocessedEnvelope) error {
+		p2p.WithProcessor(func(ctx context.Context, incoming <-chan p2p.UnprocessedEnvelope) {
 			panic("processor startup panic")
 		}))
 
 	// The reactor should not panic the test, even with a panicking processor
 	time.Sleep(100 * time.Millisecond)
 
-	// Verify the reactor is stopped due to the panic
+	// Verify the reactor is stopped due to the panic not caught by the processor
 	require.False(t, pr.IsRunning(), "reactor should be stopped after processor panic")
 }
 
@@ -236,7 +236,7 @@ var _ p2p.Reactor = &panicReactor{}
 // panicReactor is used for testing panic recovery
 type panicReactor struct {
 	p2p.BaseReactor
-	
+
 	sync.Mutex
 	received []string
 }
@@ -265,11 +265,11 @@ func (r *panicReactor) Receive(e p2p.Envelope) {
 
 	envMsg := e.Message.(*mempool.Txs)
 	msgStr := string(envMsg.Txs[0])
-	
+
 	if msgStr == "panic_trigger" {
 		panic("intentional panic for testing")
 	}
-	
+
 	r.received = append(r.received, msgStr)
 }
 
@@ -287,11 +287,11 @@ func (tp *trackablePeer) ID() p2p.ID { return p2p.ID(tp.id) }
 func TestBaseReactorPanicIntegration(t *testing.T) {
 	// Create two connected switches with panic-prone reactors
 	cfg := config.DefaultP2PConfig()
-	
+
 	// Create two reactors that can panic
 	r1 := newPanicReactor()
 	r2 := newPanicReactor()
-	
+
 	switches := p2p.MakeConnectedSwitches(cfg, 2, func(i int, s *p2p.Switch) *p2p.Switch {
 		if i == 0 {
 			s.AddReactor("PANIC", r1)
@@ -300,7 +300,7 @@ func TestBaseReactorPanicIntegration(t *testing.T) {
 		}
 		return s
 	}, p2p.Connect2Switches)
-	
+
 	defer func() {
 		for _, s := range switches {
 			if err := s.Stop(); err != nil {
@@ -314,12 +314,11 @@ func TestBaseReactorPanicIntegration(t *testing.T) {
 		return len(switches[0].Peers().List()) == 1 && len(switches[1].Peers().List()) == 1
 	}, 5*time.Second, 100*time.Millisecond, "Peers should be connected")
 
-	// Get connected peers
 	peers0 := switches[0].Peers().List()
 	peers1 := switches[1].Peers().List()
 	require.Len(t, peers0, 1)
 	require.Len(t, peers1, 1)
-	
+
 	peer0 := peers0[0]
 	peer1 := peers1[0]
 
@@ -330,7 +329,7 @@ func TestBaseReactorPanicIntegration(t *testing.T) {
 	})
 	require.True(t, sent, "Should be able to send panic message")
 
-	// Send a normal message from switch 1 to switch 0  
+	// Send a normal message from switch 1 to switch 0
 	normalMsg := &mempool.Txs{Txs: [][]byte{[]byte("normal_message")}}
 	sent = peer1.Send(p2p.Envelope{
 		ChannelID: 0x88,
@@ -345,7 +344,7 @@ func TestBaseReactorPanicIntegration(t *testing.T) {
 	// The key test is that panics don't bring down the entire system
 	r1.Lock()
 	r2.Lock()
-	
+
 	// Switch 0 should have processed the normal message despite switch 1 panicking
 	// The message is encoded as protobuf, so we check that it received something
 	require.NotEmpty(t, r1.received, "Switch 0 should process messages even after peer panic")
@@ -353,13 +352,12 @@ func TestBaseReactorPanicIntegration(t *testing.T) {
 		// The actual message contains the normal_message as part of the protobuf encoding
 		require.Contains(t, r1.received[0], "normal_message", "Should contain the normal message content")
 	}
-	
+
 	r1.Unlock()
 	r2.Unlock()
 
-	// Both switches should still be running
 	require.True(t, switches[0].IsRunning(), "Switch 0 should still be running")
 	require.True(t, switches[1].IsRunning(), "Switch 1 should still be running")
-	
-	t.Log("✓ Integration test completed: Panic recovery works across connected peers")
+	require.True(t, r1.IsRunning())
+	require.True(t, r2.IsRunning())
 }
