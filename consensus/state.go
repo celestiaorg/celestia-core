@@ -80,12 +80,6 @@ type evidencePool interface {
 	ReportConflictingVotes(voteA, voteB *types.Vote)
 }
 
-// blockWithParts intermediary struct to build the block during the commit timeout
-type blockWithParts struct {
-	block *types.Block
-	parts *types.PartSet
-}
-
 // State handles execution of the consensus algorithm.
 // It processes votes and proposals, and upon reaching agreement,
 // commits blocks to the chain and executes them against the application.
@@ -162,9 +156,6 @@ type State struct {
 	propagator           propagation.Propagator
 	newHeightOrRoundChan chan struct{}
 
-	// nextBlock contains the next block to propose when building blocks during the timeout commit
-	nextBlock chan *blockWithParts
-
 	// for reporting metrics
 	metrics *Metrics
 
@@ -207,7 +198,6 @@ func NewState(
 		metrics:              NopMetrics(),
 		traceClient:          trace.NoOpTracer(),
 		newHeightOrRoundChan: make(chan struct{}, 1),
-		nextBlock:            make(chan *blockWithParts, 1),
 	}
 	for _, option := range options {
 		option(cs)
@@ -1081,10 +1071,6 @@ func (cs *State) handleTimeout(ti timeoutInfo, rs cstypes.RoundState) {
 }
 
 func (cs *State) handleTxsAvailable() {
-	select {
-	case <-cs.nextBlock:
-	default:
-	}
 	cs.lockAll()
 	defer cs.unlockAll()
 
@@ -1301,10 +1287,6 @@ func (cs *State) defaultDecideProposal(height int64, round int32) {
 			return
 		}
 		blockParts = parts
-	} else if len(cs.nextBlock) != 0 {
-		bwp := <-cs.nextBlock
-		block = bwp.block
-		blockParts = bwp.parts
 	} else {
 		// Create a new proposal block from state/txs from the mempool.
 		var err error
@@ -1568,6 +1550,12 @@ func (cs *State) enterPrecommit(height int64, round int32) {
 		return
 	}
 
+	if ready, waitTime := cs.isReadyToPrecommit(); !ready {
+		logger.Info("rescheduling precommit", "delay(ms)", waitTime.Milliseconds())
+		cs.scheduleTimeout(waitTime, height, round, cstypes.RoundStepPrevoteWait)
+		return
+	}
+
 	logger.Debug("entering precommit step", "current", log.NewLazySprintf("%v/%v/%v", cs.rs.Height, cs.rs.Round, cs.rs.Step))
 
 	defer func() {
@@ -1711,35 +1699,6 @@ func (cs *State) enterPrecommitWait(height int64, round int32) {
 
 	// wait for some more precommits; enterNewRound
 	cs.scheduleTimeout(cs.config.Precommit(round), height, round, cstypes.RoundStepPrecommitWait)
-}
-
-// blockBuildingTime the time it takes to build a new 32 mb block and a safety cushion.
-const blockBuildingTime = 1800 * time.Millisecond
-
-// buildNextBlock creates the next block pre-emptively if we're the proposer.
-func (cs *State) buildNextBlock() {
-	select {
-	// flush the next block channel to ensure only the relevant block is there.
-	case <-cs.nextBlock:
-	default:
-	}
-
-	// delay pre-emptive block building until the end of the timeout commit
-	tc := cs.state.TimeoutCommit
-	time.Sleep(tc - blockBuildingTime)
-
-	block, blockParts, err := cs.createProposalBlock(context.TODO())
-	if err != nil {
-		cs.Logger.Error("unable to create proposal block", "error", err)
-		return
-	} else if block == nil {
-		panic("Method createProposalBlock should not provide a nil block without errors")
-	}
-
-	cs.nextBlock <- &blockWithParts{
-		block: block,
-		parts: blockParts,
-	}
 }
 
 // Enter: +2/3 precommits for block
@@ -1956,10 +1915,6 @@ func (cs *State) finalizeCommit(height int64) {
 		logger.Error("failed to get private validator pubkey", "err", err)
 	}
 
-	// cs.StartTime is already set.
-	// Schedule Round0 to start soon.
-	cs.scheduleRound0(&cs.rs)
-
 	// prune the propagation reactor
 	cs.propagator.Prune(height)
 	proposer := cs.rs.Validators.GetProposer()
@@ -1967,13 +1922,10 @@ func (cs *State) finalizeCommit(height int64) {
 		cs.propagator.SetProposer(proposer.PubKey)
 	}
 
-	// build the block pre-emptively if we're the proposer and the timeout commit is higher than 1 s.
-	tc := cs.state.TimeoutCommit
-	if tc > blockBuildingTime && cs.privValidatorPubKey != nil {
-		if address := cs.privValidatorPubKey.Address(); cs.rs.Validators.HasAddress(address) && cs.isProposer(address) {
-			go cs.buildNextBlock()
-		}
-	}
+	// cs.StartTime is already set.
+	// Schedule Round0 to start soon.
+	cs.scheduleRound0(&cs.rs)
+
 	// By here,
 	// * cs.rs.Height has been increment to height+1
 	// * cs.rs.Step is now cstypes.RoundStepNewHeight
@@ -2072,6 +2024,19 @@ func (cs *State) recordMetrics(height int64, block *types.Block) {
 	cs.metrics.BlockSizeBytes.Set(float64(block.Size()))
 	cs.metrics.ChainSizeBytes.Add(float64(block.Size()))
 	cs.metrics.CommittedHeight.Set(float64(block.Height))
+}
+
+// isReadyToPrecommit calculates if the process has waited at least a certain number of seconds
+// from their start time before they can vote
+// If the cs.config.DelayedPrecommitTimeout is set to 0, no precommit wait is done.
+func (cs *State) isReadyToPrecommit() (bool, time.Duration) {
+	if cs.config.DelayedPrecommitTimeout == 0 {
+		// setting 0 as a special case not to reschedule the pre-commit
+		return true, 0
+	}
+	precommitVoteTime := cs.rs.StartTime.Add(cs.config.DelayedPrecommitTimeout)
+	waitTime := time.Until(precommitVoteTime)
+	return waitTime <= 0, waitTime
 }
 
 //-----------------------------------------------------------------------------
