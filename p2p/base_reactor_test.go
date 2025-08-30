@@ -227,8 +227,11 @@ func TestBaseReactorProcessorPanic(t *testing.T) {
 	// The reactor should not panic the test, even with a panicking processor
 	time.Sleep(100 * time.Millisecond)
 
-	// Verify the reactor is stopped due to the panic not caught by the processor
-	require.False(t, pr.IsRunning(), "reactor should be stopped after processor panic")
+	// Wait for the panic handler to complete stopping the reactor
+	// Use a retry loop to avoid race condition between Stop() and IsRunning()
+	require.Eventually(t, func() bool {
+		return !pr.IsRunning()
+	}, time.Second, 10*time.Millisecond, "reactor should be stopped after processor panic")
 }
 
 var _ p2p.Reactor = &panicReactor{}
