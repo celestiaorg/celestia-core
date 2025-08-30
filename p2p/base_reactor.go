@@ -197,7 +197,7 @@ func ProcessorWithReactor(impl Reactor, baseReactor *BaseReactor) func(context.C
 
 					mt := chIDs[ue.ChannelID]
 					if mt == nil {
-						return fmt.Errorf("no message type registered for channel %d\n", ue.ChannelID)
+						return fmt.Errorf("no message type registered for channel %d", ue.ChannelID)
 					}
 
 					msg := proto.Clone(mt)

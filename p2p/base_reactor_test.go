@@ -133,7 +133,7 @@ func TestBaseReactorPanicRecovery(t *testing.T) {
 	sw := p2p.MakeSwitch(cfg, 1, func(i int, sw *p2p.Switch) *p2p.Switch { return sw })
 	sw.AddReactor("PANIC", pr)
 	require.NoError(t, sw.Start())
-	defer sw.Stop()
+	defer sw.Stop() //nolint:errcheck
 
 	peer1 := &trackablePeer{imaginaryPeer: &imaginaryPeer{}, id: "peer1"}
 	peer2 := &trackablePeer{imaginaryPeer: &imaginaryPeer{}, id: "peer2"}
@@ -179,7 +179,7 @@ func TestBaseReactorNilMessageHandling(t *testing.T) {
 	sw := p2p.MakeSwitch(cfg, 1, func(i int, sw *p2p.Switch) *p2p.Switch { return sw })
 	sw.AddReactor("PANIC", pr)
 	require.NoError(t, sw.Start())
-	defer sw.Stop()
+	defer sw.Stop() //nolint:errcheck
 
 	peer := &trackablePeer{imaginaryPeer: &imaginaryPeer{}, id: "test_peer"}
 
@@ -276,8 +276,7 @@ func (r *panicReactor) Receive(e p2p.Envelope) {
 // trackablePeer extends imaginaryPeer to track disconnection
 type trackablePeer struct {
 	*imaginaryPeer
-	id           string
-	disconnected bool
+	id string
 }
 
 func (tp *trackablePeer) ID() p2p.ID { return p2p.ID(tp.id) }
