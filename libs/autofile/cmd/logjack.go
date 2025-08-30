@@ -100,19 +100,19 @@ func parseBytesize(chopSize string) int64 {
 	// Handle suffix multiplier
 	var multiplier int64 = 1
 	if strings.HasSuffix(chopSize, "T") {
-		multiplier = 1042 * 1024 * 1024 * 1024
+		multiplier = 1024 * 1024 * 1024 * 1024
 		chopSize = chopSize[:len(chopSize)-1]
 	}
 	if strings.HasSuffix(chopSize, "G") {
-		multiplier = 1042 * 1024 * 1024
+		multiplier = 1024 * 1024 * 1024
 		chopSize = chopSize[:len(chopSize)-1]
 	}
 	if strings.HasSuffix(chopSize, "M") {
-		multiplier = 1042 * 1024
+		multiplier = 1024 * 1024
 		chopSize = chopSize[:len(chopSize)-1]
 	}
 	if strings.HasSuffix(chopSize, "K") {
-		multiplier = 1042
+		multiplier = 1024
 		chopSize = chopSize[:len(chopSize)-1]
 	}
 
