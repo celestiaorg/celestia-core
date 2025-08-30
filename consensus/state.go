@@ -232,7 +232,7 @@ func NewState(
 
 	cs.BaseService = *service.NewBaseService(nil, "State", cs)
 
-	validators := cs.rs.Validators
+	validators := cs.Validators
 	if validators != nil {
 		proposer := validators.GetProposer()
 		if proposer != nil {
