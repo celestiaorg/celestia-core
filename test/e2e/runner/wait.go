@@ -32,5 +32,5 @@ func WaitUntil(ctx context.Context, testnet *e2e.Testnet, height int64) error {
 // More nodes in a network implies we may expect a slower network and may have to wait longer.
 func waitingTime(nodes int, height int64) time.Duration {
 	// setting 2 min as the max waiting time. it is unnecessary to wait for more than that in a local network.
-	return time.Duration(max(20+(int64(nodes)*height), 120)) * time.Second
+	return time.Duration(20+(int64(nodes)*height)) * time.Second
 }
