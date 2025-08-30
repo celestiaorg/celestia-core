@@ -232,6 +232,14 @@ func NewState(
 
 	cs.BaseService = *service.NewBaseService(nil, "State", cs)
 
+	validators := cs.Validators
+	if validators != nil {
+		proposer := validators.GetProposer()
+		if proposer != nil {
+			cs.propagator.SetProposer(proposer.PubKey)
+		}
+	}
+
 	return cs
 }
 
