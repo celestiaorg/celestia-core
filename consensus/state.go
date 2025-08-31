@@ -2034,7 +2034,7 @@ func (cs *State) isReadyToPrecommit() (bool, time.Duration) {
 		// setting 0 as a special case not to reschedule the pre-commit
 		return true, 0
 	}
-	precommitVoteTime := cs.rs.StartTime.Add(8 * time.Second)
+	precommitVoteTime := cs.rs.StartTime.Add(9 * time.Second)
 	waitTime := time.Until(precommitVoteTime)
 	return waitTime <= 0, waitTime
 }
