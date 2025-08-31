@@ -411,7 +411,7 @@ func benchPartSetFromData(b *testing.B, data []byte, partSize uint32) (ops *Part
 	}
 
 	// Compute merkle proofs
-	root, proofs := merkle.ProofsFromByteSlices(chunks)
+	root, proofs := merkle.ParallelProofsFromByteSlices(chunks)
 
 	ops = NewPartSetFromHeader(PartSetHeader{
 		Total: total,

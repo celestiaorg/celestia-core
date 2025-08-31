@@ -201,48 +201,51 @@ func TestVoteProtobuf(t *testing.T) {
 	}
 }
 
+// commonProofTestCases contains test cases shared between multiple test functions
+var commonProofTestCases = []struct {
+	name  string
+	input [][]byte
+}{
+	{
+		name:  "Empty input",
+		input: [][]byte{},
+	},
+	{
+		name:  "Single element",
+		input: [][]byte{[]byte("A")},
+	},
+	{
+		name:  "Two elements",
+		input: [][]byte{[]byte("A"), []byte("B")},
+	},
+	{
+		name:  "Three elements",
+		input: [][]byte{[]byte("A"), []byte("B"), []byte("C")},
+	},
+	{
+		name:  "Four elements",
+		input: [][]byte{[]byte("A"), []byte("B"), []byte("C"), []byte("D")},
+	},
+	{
+		name:  "Duplicates",
+		input: [][]byte{[]byte("A"), []byte("A"), []byte("B"), []byte("B")},
+	},
+	{
+		name:  "Varying sizes",
+		input: [][]byte{[]byte("short"), []byte("medium-size"), []byte("a much longer string with more entropy")},
+	},
+	{
+		name:  "Non-UTF-8 bytes",
+		input: [][]byte{{0xff, 0xfe, 0xfd}, {0x00, 0x01, 0x02}, {0x80, 0x81, 0x82}},
+	},
+	{
+		name:  "Leading/trailing zeros",
+		input: [][]byte{{0x00, 0x00, 0x00}, {0xff, 0xff, 0xff}, {0x00, 0x01, 0x02, 0x00}},
+	},
+}
+
 func TestProofsFromLeafHashesAndByteSlices(t *testing.T) {
-	testCases := []struct {
-		name  string
-		input [][]byte
-	}{
-		{
-			name:  "Empty input",
-			input: [][]byte{},
-		},
-		{
-			name:  "Single element",
-			input: [][]byte{[]byte("A")},
-		},
-		{
-			name:  "Two elements",
-			input: [][]byte{[]byte("A"), []byte("B")},
-		},
-		{
-			name:  "Three elements",
-			input: [][]byte{[]byte("A"), []byte("B"), []byte("C")},
-		},
-		{
-			name:  "Four elements",
-			input: [][]byte{[]byte("A"), []byte("B"), []byte("C"), []byte("D")},
-		},
-		{
-			name:  "Duplicates",
-			input: [][]byte{[]byte("A"), []byte("A"), []byte("B"), []byte("B")},
-		},
-		{
-			name:  "Varying sizes",
-			input: [][]byte{[]byte("short"), []byte("medium-size"), []byte("a much longer string with more entropy")},
-		},
-		{
-			name:  "Non-UTF-8 bytes",
-			input: [][]byte{{0xff, 0xfe, 0xfd}, {0x00, 0x01, 0x02}, {0x80, 0x81, 0x82}},
-		},
-		{
-			name:  "Leading/trailing zeros",
-			input: [][]byte{{0x00, 0x00, 0x00}, {0xff, 0xff, 0xff}, {0x00, 0x01, 0x02, 0x00}},
-		},
-	}
+	testCases := commonProofTestCases
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
