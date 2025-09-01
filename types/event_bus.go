@@ -10,7 +10,11 @@ import (
 	"github.com/cometbft/cometbft/libs/service"
 )
 
+<<<<<<< HEAD
 const defaultCapacity = 0
+=======
+const defaultCapacity = 1000
+>>>>>>> 37feaa0e (feat: support delayed precommits (#2382))
 
 type EventBusSubscriber interface {
 	Subscribe(ctx context.Context, subscriber string, query cmtpubsub.Query, outCapacity ...int) (Subscription, error)
