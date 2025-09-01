@@ -3,7 +3,6 @@ package cat
 import (
 	"fmt"
 	"math/rand"
-	"strings"
 	"time"
 
 	cfg "github.com/cometbft/cometbft/config"
@@ -246,7 +245,7 @@ func (memR *Reactor) Receive(e p2p.Envelope) {
 				memR.Logger.Debug("Could not add tx", "txKey", key, "err", err)
 				return
 			}
-			if !memR.opts.ListenOnly && !strings.Contains(string(ntx), "MsgPayForBlobs") {
+			if !memR.opts.ListenOnly {
 				fmt.Println("broadcasting tx ")
 				// We broadcast only transactions that we deem valid and actually have in our mempool.
 				memR.broadcastSeenTx(key)
