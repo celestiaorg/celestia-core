@@ -191,11 +191,7 @@ func ProcessorWithReactor(impl Reactor, baseReactor *BaseReactor) func(context.C
 
 				// Process message with panic recovery for individual peer
 				process := func(ue UnprocessedEnvelope) error {
-					defer func() {
-						if r := recover(); r != nil {
-							disconnectPeer(baseReactor, ue.Src, fmt.Sprintf("panic in reactor: %v", r), impl.String())
-						}
-					}()
+					defer baseReactor.ProtectPanic(ue.Src)
 
 					mt := chIDs[ue.ChannelID]
 					if mt == nil {
@@ -239,6 +235,15 @@ func ProcessorWithReactor(impl Reactor, baseReactor *BaseReactor) func(context.C
 				}
 			}
 		}
+	}
+}
+
+// ProtectPanic provides panic recovery for reactor operations involving a specific peer.
+// If a panic occurs, it will disconnect the peer with an appropriate error message.
+// Usage: defer baseReactor.ProtectPanic(peer)
+func (br *BaseReactor) ProtectPanic(peer Peer) {
+	if r := recover(); r != nil {
+		disconnectPeer(br, peer, fmt.Sprintf("panic in reactor: %v", r), br.String())
 	}
 }
 
