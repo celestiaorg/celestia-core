@@ -1551,7 +1551,7 @@ func (cs *State) enterPrecommit(height int64, round int32) {
 	}
 
 	if ready, waitTime := cs.isReadyToPrecommit(); !ready {
-		logger.Info("rescheduling precommit", "delay(ms)", waitTime.Milliseconds())
+		logger.Debug("rescheduling precommit", "delay(ms)", waitTime.Milliseconds())
 		cs.scheduleTimeout(waitTime, height, round, cstypes.RoundStepPrevoteWait)
 		return
 	}
