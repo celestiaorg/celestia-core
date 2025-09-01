@@ -83,7 +83,7 @@ func (blockProp *Reactor) ProposeBlock(proposal *types.Proposal, block *types.Pa
 
 	// distribute equal portions of haves to each of the proposer's peers
 	peers := blockProp.getPeers()
-	chunks := chunkParts(parts.Parity().BitArray(), len(peers), 1)
+	chunks := chunkParts(parts.BitArray(), len(peers), 1)
 	// chunks = Shuffle(chunks)
 	for index, peer := range peers {
 		partsMeta := chunkToPartMetaData(chunks[index], parts)
@@ -158,7 +158,7 @@ func extractProofs(blocks ...*types.PartSet) []*merkle.Proof {
 func chunkToPartMetaData(chunk *bits.BitArray, partSet *proptypes.CombinedPartSet) []*propagation.PartMetaData {
 	partMetaData := make([]*propagation.PartMetaData, 0)
 	for _, partIndex := range chunk.GetTrueIndices() {
-		part := partSet.Parity().GetPart(partIndex)
+		part, _ := partSet.GetPart(uint32(partIndex))
 		partMetaData = append(partMetaData, &propagation.PartMetaData{
 			Index: uint32(partIndex),
 			Hash:  part.Proof.LeafHash,
