@@ -178,7 +178,9 @@ func (blockExec *BlockExecutor) CreateProposalBlock(
 		}()
 
 		schema.WriteABCI(blockExec.tracer, schema.PrepareProposalStart, block.Height, -1)
+		fmt.Println("execution.StartPrepareProposal: ", time.Now())
 		rpp, err = blockExec.proxyApp.PrepareProposal(ctx, req)
+		fmt.Println("execution.DonePrepareProposal: ", time.Now())
 		schema.WriteABCI(blockExec.tracer, schema.PrepareProposalEnd, block.Height, -1)
 	}()
 	if err != nil {
@@ -309,6 +311,7 @@ func (blockExec *BlockExecutor) applyBlock(state State, blockID types.BlockID, b
 	}
 	pbHeader := block.Header.ToProto()
 
+	fmt.Println("execution.FinalizeBlock: ", time.Now())
 	abciResponse, err := blockExec.proxyApp.FinalizeBlock(context.TODO(), &abci.RequestFinalizeBlock{
 		Hash:               block.Hash(),
 		NextValidatorsHash: block.NextValidatorsHash,
@@ -322,6 +325,7 @@ func (blockExec *BlockExecutor) applyBlock(state State, blockID types.BlockID, b
 		// needed for v3 to sync with multiplexer as the header is stored in state
 		Header: pbHeader,
 	})
+	fmt.Println("execution.DoneFinalizeBlock: ", time.Now())
 	endTime := time.Now().UnixNano()
 	blockExec.metrics.BlockProcessingTime.Observe(float64(endTime-startTime) / 1000000)
 	if err != nil {

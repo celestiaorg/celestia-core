@@ -1462,7 +1462,9 @@ func (cs *State) defaultDoPrevote(height int64, round int32) {
 	*/
 
 	schema.WriteABCI(cs.traceClient, schema.ProcessProposalStart, height, round)
+	fmt.Println("state.StartProcessProposal: ", time.Now())
 	isAppValid, err := cs.blockExec.ProcessProposal(cs.rs.ProposalBlock, cs.state)
+	fmt.Println("state.EndProcessProposal: ", time.Now())
 	if err != nil {
 		panic(fmt.Sprintf(
 			"state machine returned an error (%v) when calling ProcessProposal", err,
@@ -2142,6 +2144,7 @@ func (cs *State) addProposalBlockPart(msg *BlockPartMessage, peerID p2p.ID) (add
 		)
 	}
 	if added && cs.rs.ProposalBlockParts.IsComplete() {
+		fmt.Println("state.ReceivedWholeBlock: ", time.Now())
 		bz := cs.rs.ProposalBlockParts.GetBytes()
 
 		pbb := new(cmtproto.Block)
@@ -2150,11 +2153,12 @@ func (cs *State) addProposalBlockPart(msg *BlockPartMessage, peerID p2p.ID) (add
 			return added, err
 		}
 
+		fmt.Println("state.Unmarshalled: ", time.Now())
 		block, err := types.BlockFromProto(pbb)
 		if err != nil {
 			return added, err
 		}
-
+		fmt.Println("state.CreatedBlockFromProto: ", time.Now())
 		cs.rs.ProposalBlock = block
 
 		// NOTE: it's possible to receive complete proposal blocks for future rounds without having the proposal

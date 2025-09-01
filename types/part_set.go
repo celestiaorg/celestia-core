@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/klauspost/reedsolomon"
 
@@ -268,6 +269,7 @@ func NewPartSetFromData(data []byte, partSize uint32) (ops *PartSet, err error) 
 // alongside the length of the last part. The length of the last part is
 // necessary because the last part may be padded with zeros after decoding. These zeros must be removed before computi
 func Encode(ops *PartSet, partSize uint32) (*PartSet, int, error) {
+	fmt.Println("Encode.CreateChunks: ", time.Now())
 	chunks := make([][]byte, 2*ops.Total())
 	for i := range chunks {
 		if i < int(ops.Total()) {
@@ -288,6 +290,7 @@ func Encode(ops *PartSet, partSize uint32) (*PartSet, int, error) {
 		chunks[ops.Total()-1] = padded
 	}
 
+	fmt.Println("Encode.RS: ", time.Now())
 	// init an encoder if it is not already initialized using the original
 	// number of parts.
 	enc, err := reedsolomon.New(int(ops.Total()), int(ops.Total()))
@@ -301,6 +304,7 @@ func Encode(ops *PartSet, partSize uint32) (*PartSet, int, error) {
 		return nil, 0, err
 	}
 
+	fmt.Println("Encode.CreateProofs: ", time.Now())
 	// only the parity data is needed for the new partset.
 	chunks = chunks[ops.Total():]
 	eroot, eproofs := merkle.ParallelProofsFromByteSlices(chunks)
@@ -323,6 +327,7 @@ func Encode(ops *PartSet, partSize uint32) (*PartSet, int, error) {
 			return nil, 0, fmt.Errorf("couldn't add parity part %d", i)
 		}
 	}
+	fmt.Println("Encode.NewPartsetHeader: ", time.Now())
 	return eps, lastLen, nil
 }
 

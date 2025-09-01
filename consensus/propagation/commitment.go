@@ -3,6 +3,7 @@ package propagation
 import (
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/cosmos/gogoproto/proto"
 
@@ -32,8 +33,11 @@ func (blockProp *Reactor) ProposeBlock(proposal *types.Proposal, block *types.Pa
 		return
 	}
 
+	fmt.Println("ProposeBlock.ExtractHashes: ", time.Now())
 	partHashes := extractHashes(block, parityBlock)
+	fmt.Println("ProposeBlock.ExtractProofs: ", time.Now())
 	proofs := extractProofs(block, parityBlock)
+	fmt.Println("ProposeBlock.DoneExtractProofs: ", time.Now())
 
 	cb := proptypes.CompactBlock{
 		Proposal:    *proposal,
@@ -167,6 +171,7 @@ func chunkToPartMetaData(chunk *bits.BitArray, partSet *proptypes.CombinedPartSe
 // time a proposal is received from a peer or when a proposal is created. If the
 // proposal is new, it will be stored and broadcast to the relevant peers.
 func (blockProp *Reactor) handleCompactBlock(cb *proptypes.CompactBlock, peer p2p.ID, proposer bool) {
+	fmt.Println("handleCompactBlock.ReceivedCompactBlock: ", time.Now())
 	added := blockProp.AddProposal(cb)
 	if !added {
 		p := blockProp.getPeer(peer)
