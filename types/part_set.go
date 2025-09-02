@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/klauspost/reedsolomon"
@@ -319,19 +320,27 @@ func Encode(ops *PartSet, partSize uint32) (*PartSet, int, error) {
 		Total: ops.Total(),
 		Hash:  eroot,
 	}, partSize)
+	wg := sync.WaitGroup{}
 	for i := uint32(0); i < ops.Total(); i++ {
-		added, err := eps.AddPart(&Part{
-			Index: i,
-			Bytes: chunks[i],
-			Proof: *eproofs[i],
-		})
-		if err != nil {
-			return nil, 0, err
-		}
-		if !added {
-			return nil, 0, fmt.Errorf("couldn't add parity part %d", i)
-		}
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			added, err := eps.AddPart(&Part{
+				Index: i,
+				Bytes: chunks[i],
+				Proof: *eproofs[i],
+			})
+			if err != nil {
+				fmt.Println(err)
+				return
+			}
+			if !added {
+				fmt.Println(err)
+				return
+			}
+		}()
 	}
+	wg.Wait()
 	fmt.Println("Encode.NewPartsetHeader: ", time.Now())
 	return eps, lastLen, nil
 }
@@ -394,53 +403,81 @@ func Decode(ops, eps *PartSet, lastPartLen int) (*PartSet, *PartSet, error) {
 		data[(ops.Total() - 1)] = data[(ops.Total() - 1)][:lastPartLen]
 	}
 
-	// recalculate all of the proofs since we apparently don't have a function
-	// to generate a single proof... TODO: don't generate proofs for block parts
-	// we already have...
-	root, proofs := merkle.ParallelProofsFromByteSlices(data[:ops.Total()])
-	if !bytes.Equal(root, ops.Hash()) {
-		return nil, nil, fmt.Errorf("reconstructed data has different hash!! want: %X, got: %X", ops.hash, root)
-	}
+	wg := sync.WaitGroup{}
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		// recalculate all of the proofs since we apparently don't have a function
+		// to generate a single proof... TODO: don't generate proofs for block parts
+		// we already have...
+		root, proofs := merkle.ParallelProofsFromByteSlices(data[:ops.Total()])
+		if !bytes.Equal(root, ops.Hash()) {
+			fmt.Println(err)
+			return
+		}
 
-	for i, d := range data[:ops.Total()] {
-		if !ops.HasPart(i) {
-			added, err := ops.AddPart(&Part{
-				Index: uint32(i),
-				Bytes: d,
-				Proof: *proofs[i],
-			})
-			if err != nil {
-				return nil, nil, err
-			}
-			if !added {
-				return nil, nil, fmt.Errorf("couldn't add original part %d when decoding", i)
+		wg2 := sync.WaitGroup{}
+		for i, d := range data[:ops.Total()] {
+			if !ops.HasPart(i) {
+				wg2.Add(1)
+				go func() {
+					defer wg2.Done()
+					added, err := ops.AddPart(&Part{
+						Index: uint32(i),
+						Bytes: d,
+						Proof: *proofs[i],
+					})
+					if err != nil {
+						fmt.Println(err)
+						return
+					}
+					if !added {
+						fmt.Println(err)
+						return
+					}
+				}()
 			}
 		}
-	}
+		wg2.Wait()
+	}()
 
-	// recalculate all of the proofs since we apparently don't have a function
-	// to generate a single proof... TODO: don't generate proofs for block parts
-	// we already have.
-	eroot, eproofs := merkle.ParallelProofsFromByteSlices(data[ops.Total():])
-	if !bytes.Equal(eroot, eps.Hash()) {
-		return nil, nil, fmt.Errorf("reconstructed parity data has different hash!! want: %X, got: %X", eps.hash, eroot)
-	}
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		// recalculate all of the proofs since we apparently don't have a function
+		// to generate a single proof... TODO: don't generate proofs for block parts
+		// we already have.
+		eroot, eproofs := merkle.ParallelProofsFromByteSlices(data[ops.Total():])
+		if !bytes.Equal(eroot, eps.Hash()) {
+			fmt.Println(err)
+			return
+		}
 
-	for i := 0; i < int(eps.Total()); i++ {
-		if !eps.HasPart(i) {
-			added, err := eps.AddPart(&Part{
-				Index: uint32(i),
-				Bytes: data[int(ops.Total())+i],
-				Proof: *eproofs[i],
-			})
-			if err != nil {
-				return nil, nil, err
-			}
-			if !added {
-				return nil, nil, fmt.Errorf("couldn't add parity part %d when decoding", i)
+		wg2 := sync.WaitGroup{}
+		for i := 0; i < int(eps.Total()); i++ {
+			if !eps.HasPart(i) {
+				wg2.Add(1)
+				go func() {
+					defer wg2.Done()
+					added, err := eps.AddPart(&Part{
+						Index: uint32(i),
+						Bytes: data[int(ops.Total())+i],
+						Proof: *eproofs[i],
+					})
+					if err != nil {
+						fmt.Println(err)
+						return
+					}
+					if !added {
+						fmt.Println(err)
+						return
+					}
+				}()
 			}
 		}
-	}
+		wg2.Wait()
+	}()
+	wg.Wait()
 
 	return ops, eps, nil
 }
@@ -547,9 +584,6 @@ func (ps *PartSet) addPart(part *Part) (bool, error) {
 		return false, errors.New("nil part")
 	}
 
-	ps.mtx.Lock()
-	defer ps.mtx.Unlock()
-
 	// Invalid part index
 	if part.Index >= ps.total {
 		return false, ErrPartSetUnexpectedIndex
@@ -560,6 +594,8 @@ func (ps *PartSet) addPart(part *Part) (bool, error) {
 		return false, nil
 	}
 
+	ps.mtx.Lock()
+	defer ps.mtx.Unlock()
 	// Calculate buffer position and copy part data
 	start := int(part.Index) * ps.partSize
 	end := start + len(part.Bytes)
