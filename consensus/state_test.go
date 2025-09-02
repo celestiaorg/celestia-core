@@ -257,6 +257,14 @@ func TestStateBadProposal(t *testing.T) {
 }
 
 func TestStateOversizedBlock(t *testing.T) {
+	// Save original timeout and restore it after test to avoid race conditions
+	// This test needs more time due to oversized block processing
+	originalTimeout := ensureTimeout
+	ensureTimeout = 500 * time.Millisecond
+	defer func() {
+		ensureTimeout = originalTimeout
+	}()
+
 	const maxBytes = int64(types.BlockPartSizeBytes)
 
 	for _, testCase := range []struct {
