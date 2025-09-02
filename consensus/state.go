@@ -773,16 +773,16 @@ func (cs *State) updateToState(state sm.State) {
 		// cs.StartTime = state.LastBlockTime.Add(timeoutCommit)
 		if state.LastBlockHeight == 0 {
 			// Don't use cs.state.Timeouts.TimeoutCommit because that is zero
-			cs.StartTime = cs.config.CommitWithCustomTimeout(cmttime.Now(), state.Timeouts.TimeoutCommit)
+			cs.rs.StartTime = cs.config.CommitWithCustomTimeout(cmttime.Now(), state.Timeouts.TimeoutCommit)
 		} else {
-			cs.StartTime = cs.config.CommitWithCustomTimeout(cmttime.Now(), cs.state.Timeouts.TimeoutCommit)
+			cs.rs.StartTime = cs.config.CommitWithCustomTimeout(cmttime.Now(), cs.state.Timeouts.TimeoutCommit)
 		}
 
 	} else {
 		if state.LastBlockHeight == 0 {
-			cs.StartTime = cs.config.CommitWithCustomTimeout(cs.CommitTime, state.Timeouts.TimeoutCommit)
+			cs.rs.StartTime = cs.config.CommitWithCustomTimeout(cs.rs.CommitTime, state.Timeouts.TimeoutCommit)
 		} else {
-			cs.StartTime = cs.config.CommitWithCustomTimeout(cs.CommitTime, cs.state.Timeouts.TimeoutCommit)
+			cs.rs.StartTime = cs.config.CommitWithCustomTimeout(cs.rs.CommitTime, cs.state.Timeouts.TimeoutCommit)
 		}
 	}
 
@@ -1922,21 +1922,10 @@ func (cs *State) finalizeCommit(height int64) {
 		cs.propagator.SetProposer(proposer.PubKey)
 	}
 
-<<<<<<< HEAD
-	// (TODO: enable after investigating the issues happening because of it)
-	// build the block pre-emptively if we're the proposer and the timeout commit is higher than 1 s.
-	// tc := cs.state.TimeoutCommit
-	// if tc > blockBuildingTime && cs.privValidatorPubKey != nil {
-	// 	  if address := cs.privValidatorPubKey.Address(); cs.Validators.HasAddress(address) && cs.isProposer(address) {
-	//		  go cs.buildNextBlock()
-	//	  }
-	//  }
-=======
 	// cs.StartTime is already set.
 	// Schedule Round0 to start soon.
 	cs.scheduleRound0(&cs.rs)
 
->>>>>>> main
 	// By here,
 	// * cs.rs.Height has been increment to height+1
 	// * cs.rs.Step is now cstypes.RoundStepNewHeight
