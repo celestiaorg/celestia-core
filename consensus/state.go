@@ -1326,12 +1326,13 @@ func (cs *State) defaultDecideProposal(height int64, round int32) {
 			}
 		}
 
+		go func() {
+			for i := 0; i < int(blockParts.Total()); i++ {
+				part := blockParts.GetPart(i)
+				cs.sendInternalMessage(msgInfo{&BlockPartMessage{cs.rs.Height, cs.rs.Round, part}, ""})
+			}
+		}()
 		cs.propagator.ProposeBlock(proposal, blockParts, metaData)
-
-		for i := 0; i < int(blockParts.Total()); i++ {
-			part := blockParts.GetPart(i)
-			cs.sendInternalMessage(msgInfo{&BlockPartMessage{cs.rs.Height, cs.rs.Round, part}, ""})
-		}
 
 		cs.Logger.Debug("signed proposal", "height", height, "round", round, "proposal", proposal)
 	} else if !cs.replayMode {
