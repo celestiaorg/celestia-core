@@ -172,6 +172,9 @@ func (blockProp *Reactor) requestFromPeer(ps *PeerState) {
 						break
 					}
 				}
+				if have.index < parts.Original().Total() {
+					continue
+				}
 
 				missingPartsCount := countRemainingParts(int(parts.Total()), len(parts.BitArray().GetTrueIndices()))
 				if missingPartsCount == 0 {
