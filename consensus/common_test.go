@@ -234,7 +234,7 @@ func decideProposal(
 	require.NoError(t, err)
 	blockParts, err := block.MakePartSet(types.BlockPartSizeBytes)
 	require.NoError(t, err)
-	validRound := cs1.ValidRound
+	validRound := cs1.rs.ValidRound
 	chainID := cs1.state.ChainID
 	cs1.mtx.Unlock()
 	if block == nil {
@@ -273,7 +273,7 @@ func signAddVotes(
 }
 
 func validatePrevote(t *testing.T, cs *State, round int32, privVal *validatorStub, blockHash []byte) {
-	prevotes := cs.Votes.Prevotes(round)
+	prevotes := cs.rs.Votes.Prevotes(round)
 	pubKey, err := privVal.GetPubKey()
 	require.NoError(t, err)
 	address := pubKey.Address()
@@ -293,7 +293,7 @@ func validatePrevote(t *testing.T, cs *State, round int32, privVal *validatorStu
 }
 
 func validateLastPrecommit(t *testing.T, cs *State, privVal *validatorStub, blockHash []byte) {
-	votes := cs.LastCommit
+	votes := cs.rs.LastCommit
 	pv, err := privVal.GetPubKey()
 	require.NoError(t, err)
 	address := pv.Address()
@@ -315,7 +315,7 @@ func validatePrecommit(
 	votedBlockHash,
 	lockedBlockHash []byte,
 ) {
-	precommits := cs.Votes.Precommits(thisRound)
+	precommits := cs.rs.Votes.Precommits(thisRound)
 	pv, err := privVal.GetPubKey()
 	require.NoError(t, err)
 	address := pv.Address()
@@ -804,9 +804,6 @@ func randConsensusNet(t *testing.T, nValidators int, testName string, tickerFunc
 		css[i] = newStateWithConfigAndBlockStore(thisConfig, state, privVals[i], app, stateDB)
 		css[i].SetTimeoutTicker(tickerFunc())
 		css[i].SetLogger(logger.With("validator", i, "module", "consensus"))
-		// set building the block pre-emptively to an empty channel because several tests alter in different consensus steps after the timeout commit
-		// and fail because the block is already built before
-		css[i].nextBlock = nil
 	}
 	return css, func() {
 		for _, dir := range configRootDirs {
@@ -871,9 +868,6 @@ func randConsensusNetWithPeers(
 		css[i] = newStateWithConfig(thisConfig, state, privVal, app)
 		css[i].SetTimeoutTicker(tickerFunc())
 		css[i].SetLogger(logger.With("validator", i, "module", "consensus"))
-		// set building the block pre-emptively to an empty channel because several tests alter in different consensus steps after the timeout commit
-		// and fail because the block is already built before
-		css[i].nextBlock = nil
 	}
 	return css, genDoc, peer0Config, func() {
 		for _, dir := range configRootDirs {

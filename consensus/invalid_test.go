@@ -76,15 +76,15 @@ func invalidDoPrevoteFunc(t *testing.T, cs *State, sw *p2p.Switch, pv types.Priv
 			panic(err)
 		}
 		addr := pubKey.Address()
-		valIndex, _ := cs.Validators.GetByAddress(addr)
+		valIndex, _ := cs.rs.Validators.GetByAddress(addr)
 
 		// precommit a random block
 		blockHash := bytes.HexBytes(cmtrand.Bytes(32))
 		precommit := &types.Vote{
 			ValidatorAddress: addr,
 			ValidatorIndex:   valIndex,
-			Height:           cs.Height,
-			Round:            cs.Round,
+			Height:           cs.rs.Height,
+			Round:            cs.rs.Round,
 			Timestamp:        cs.voteTime(),
 			Type:             cmtproto.PrecommitType,
 			BlockID: types.BlockID{

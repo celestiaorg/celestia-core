@@ -138,7 +138,7 @@ func TestByzantinePrevoteEquivocation(t *testing.T) {
 	blocksSubs := make([]types.Subscription, 0)
 	eventBuses := make([]*types.EventBus, nValidators)
 	for i := 0; i < nValidators; i++ {
-		reactors[i] = NewReactor(css[i], css[i].propagator, true) // so we dont start the consensus states
+		reactors[i] = NewReactor(css[i], css[i].propagator, true, WithGossipDataEnabled(true)) // so we dont start the consensus states
 		reactors[i].SetLogger(css[i].Logger)
 
 		// eventBus is already started with the cs
@@ -169,7 +169,7 @@ func TestByzantinePrevoteEquivocation(t *testing.T) {
 		// allow first height to happen normally so that byzantine validator is no longer proposer
 		if height == prevoteHeight {
 			bcs.Logger.Info("Sending two votes")
-			prevote1, err := bcs.signVote(cmtproto.PrevoteType, bcs.ProposalBlock.Hash(), bcs.ProposalBlockParts.Header(), nil)
+			prevote1, err := bcs.signVote(cmtproto.PrevoteType, bcs.rs.ProposalBlock.Hash(), bcs.rs.ProposalBlockParts.Header(), nil)
 			require.NoError(t, err)
 			prevote2, err := bcs.signVote(cmtproto.PrevoteType, nil, types.PartSetHeader{}, nil)
 			require.NoError(t, err)
@@ -210,14 +210,14 @@ func TestByzantinePrevoteEquivocation(t *testing.T) {
 
 		var extCommit *types.ExtendedCommit
 		switch {
-		case lazyProposer.Height == lazyProposer.state.InitialHeight:
+		case lazyProposer.rs.Height == lazyProposer.state.InitialHeight:
 			// We're creating a proposal for the first block.
 			// The commit is empty, but not nil.
 			extCommit = &types.ExtendedCommit{}
-		case lazyProposer.LastCommit.HasTwoThirdsMajority():
+		case lazyProposer.rs.LastCommit.HasTwoThirdsMajority():
 			// Make the commit from LastCommit
 			veHeightParam := types.ABCIParams{VoteExtensionsEnableHeight: height}
-			extCommit = lazyProposer.LastCommit.MakeExtendedCommit(veHeightParam)
+			extCommit = lazyProposer.rs.LastCommit.MakeExtendedCommit(veHeightParam)
 		default: // This shouldn't happen.
 			lazyProposer.Logger.Error("enterPropose: Cannot propose anything: No commit for the previous block")
 			return
@@ -235,7 +235,7 @@ func TestByzantinePrevoteEquivocation(t *testing.T) {
 		proposerAddr := lazyProposer.privValidatorPubKey.Address()
 
 		block, _, err := lazyProposer.blockExec.CreateProposalBlock(
-			ctx, lazyProposer.Height, lazyProposer.state, extCommit, proposerAddr)
+			ctx, lazyProposer.rs.Height, lazyProposer.state, extCommit, proposerAddr)
 		require.NoError(t, err)
 		blockParts, err := block.MakePartSet(types.BlockPartSizeBytes)
 		require.NoError(t, err)
@@ -248,7 +248,7 @@ func TestByzantinePrevoteEquivocation(t *testing.T) {
 
 		// Make proposal
 		propBlockID := types.BlockID{Hash: block.Hash(), PartSetHeader: blockParts.Header()}
-		proposal := types.NewProposal(height, round, lazyProposer.ValidRound, propBlockID)
+		proposal := types.NewProposal(height, round, lazyProposer.rs.ValidRound, propBlockID)
 		p := proposal.ToProto()
 		if err := lazyProposer.privValidator.SignProposal(lazyProposer.state.ChainID, p); err == nil {
 			proposal.Signature = p.Signature
@@ -257,7 +257,7 @@ func TestByzantinePrevoteEquivocation(t *testing.T) {
 			lazyProposer.sendInternalMessage(msgInfo{&ProposalMessage{proposal}, ""})
 			for i := 0; i < int(blockParts.Total()); i++ {
 				part := blockParts.GetPart(i)
-				lazyProposer.sendInternalMessage(msgInfo{&BlockPartMessage{lazyProposer.Height, lazyProposer.Round, part}, ""})
+				lazyProposer.sendInternalMessage(msgInfo{&BlockPartMessage{lazyProposer.rs.Height, lazyProposer.rs.Round, part}, ""})
 			}
 			lazyProposer.Logger.Info("Signed proposal", "height", height, "round", round, "proposal", proposal)
 			lazyProposer.Logger.Debug(fmt.Sprintf("Signed proposal block: %v", block))
@@ -388,7 +388,7 @@ func TestByzantineConflictingProposalsWithPartition(t *testing.T) {
 		blocksSubs[i], err = eventBus.Subscribe(context.Background(), testSubscriber, types.EventQueryNewBlock)
 		require.NoError(t, err)
 
-		conR := NewReactor(css[i], css[i].propagator, true) // so we don't start the consensus states
+		conR := NewReactor(css[i], css[i].propagator, true, WithGossipDataEnabled(true)) // so we don't start the consensus states
 		conR.SetLogger(logger.With("validator", i))
 		conR.SetEventBus(eventBus)
 
@@ -501,7 +501,7 @@ func byzantineDecideProposalFunc(ctx context.Context, t *testing.T, height int64
 	require.NoError(t, err)
 	blockParts1, err := block1.MakePartSet(types.BlockPartSizeBytes)
 	require.NoError(t, err)
-	polRound, propBlockID := cs.ValidRound, types.BlockID{Hash: block1.Hash(), PartSetHeader: blockParts1.Header()}
+	polRound, propBlockID := cs.rs.ValidRound, types.BlockID{Hash: block1.Hash(), PartSetHeader: blockParts1.Header()}
 	proposal1 := types.NewProposal(height, round, polRound, propBlockID)
 	p1 := proposal1.ToProto()
 	if err := cs.privValidator.SignProposal(cs.state.ChainID, p1); err != nil {
@@ -518,7 +518,7 @@ func byzantineDecideProposalFunc(ctx context.Context, t *testing.T, height int64
 	require.NoError(t, err)
 	blockParts2, err := block2.MakePartSet(types.BlockPartSizeBytes)
 	require.NoError(t, err)
-	polRound, propBlockID = cs.ValidRound, types.BlockID{Hash: block2.Hash(), PartSetHeader: blockParts2.Header()}
+	polRound, propBlockID = cs.rs.ValidRound, types.BlockID{Hash: block2.Hash(), PartSetHeader: blockParts2.Header()}
 	proposal2 := types.NewProposal(height, round, polRound, propBlockID)
 	p2 := proposal2.ToProto()
 	if err := cs.privValidator.SignProposal(cs.state.ChainID, p2); err != nil {

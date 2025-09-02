@@ -31,6 +31,8 @@ import (
 	e2e "github.com/cometbft/cometbft/test/e2e/pkg"
 )
 
+const defaultE2EDelayedPreCommitTimeout = 20 * time.Millisecond
+
 var logger = log.NewTMLogger(log.NewSyncWriter(os.Stdout))
 
 // main is the binary entrypoint.
@@ -124,6 +126,7 @@ func startNode(cfg *Config) error {
 	}
 
 	cmtcfg.Instrumentation.TraceType = "local"
+	cmtcfg.Consensus.DelayedPrecommitTimeout = defaultE2EDelayedPreCommitTimeout
 
 	var clientCreator proxy.ClientCreator
 	if cfg.Protocol == string(e2e.ProtocolBuiltinConnSync) {
@@ -154,6 +157,7 @@ func startLightClient(cfg *Config) error {
 	if err != nil {
 		return err
 	}
+	cmtcfg.Consensus.DelayedPrecommitTimeout = defaultE2EDelayedPreCommitTimeout
 
 	dbContext := &config.DBContext{ID: "light", Config: cmtcfg}
 	lightDB, err := config.DefaultDBProvider(dbContext)
