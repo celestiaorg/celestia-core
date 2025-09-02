@@ -1982,14 +1982,14 @@ func (cs *State) defaultSetProposal(proposal *types.Proposal) error {
 	) {
 		// Save invalid proposal with metadata for debugging
 		metadata := map[string]interface{}{
-			"height":         proposal.Height,
-			"round":          proposal.Round,
-			"chain_id":       cs.state.ChainID,
-			"timestamp":      cmttime.Now(),
-			"reason":         "invalid_signature",
-			"proposer":       cs.Validators.GetProposer().Address.String(),
-			"block_id":       proposal.BlockID.String(),
-			"pol_round":      proposal.POLRound,
+			"height":    proposal.Height,
+			"round":     proposal.Round,
+			"chain_id":  cs.state.ChainID,
+			"timestamp": cmttime.Now(),
+			"reason":    "invalid_signature",
+			"proposer":  cs.Validators.GetProposer().Address.String(),
+			"block_id":  proposal.BlockID.String(),
+			"pol_round": proposal.POLRound,
 		}
 		timestamp := cmttime.Now().Format("20060102-150405.000000")
 		err := types.SaveInvalidProposalWithMetadata(
@@ -2030,7 +2030,6 @@ func (cs *State) defaultSetProposal(proposal *types.Proposal) error {
 	cs.Logger.Info("received proposal", "proposal", proposal, "proposer", pubKey.Address())
 	return nil
 }
-
 
 // NOTE: block is not necessarily valid.
 // Asynchronously triggers either enterPrevote (before we timeout of propose) or tryFinalizeCommit,
