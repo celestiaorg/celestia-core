@@ -205,6 +205,9 @@ func (blockProp *Reactor) handleCompactBlock(cb *proptypes.CompactBlock, peer p2
 		return
 	}
 
+	go func() {
+		blockProp.broadcastCompactBlock(cb, peer)
+	}()
 	if !proposer {
 		select {
 		case <-blockProp.ctx.Done():
@@ -214,8 +217,6 @@ func (blockProp *Reactor) handleCompactBlock(cb *proptypes.CompactBlock, peer p2
 		// check if we have any transactions that are in the compact block
 		blockProp.recoverPartsFromMempool(cb)
 	}
-
-	blockProp.broadcastCompactBlock(cb, peer)
 }
 
 // recoverPartsFromMempool queries the mempool to see if we can recover any block parts locally.
