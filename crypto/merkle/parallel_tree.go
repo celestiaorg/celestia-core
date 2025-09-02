@@ -2,8 +2,10 @@ package merkle
 
 import (
 	"crypto/sha256"
+	"fmt"
 	"runtime"
 	"sync"
+	"time"
 )
 
 // ParallelHashFromByteSlices is the single optimized implementation
@@ -168,6 +170,7 @@ func ParallelProofsFromByteSlices(items [][]byte) (rootHash []byte, proofs []*Pr
 		return parallelProofsFromByteSlices(items)
 	}
 
+	fmt.Println("fallback to original proofs from bytes: ", time.Now())
 	// Fall back to original for small datasets
 	return ProofsFromByteSlices(items)
 }
@@ -188,16 +191,16 @@ func shouldUseParallelProofs(items [][]byte) bool {
 // parallelProofsFromByteSlices implements parallel proof generation
 func parallelProofsFromByteSlices(items [][]byte) (rootHash []byte, proofs []*Proof) {
 	numWorkers := runtime.NumCPU()
-
+	fmt.Println("Encode.parallelProofsFromByteSlices.1: ", time.Now())
 	// Phase 1: Compute all leaf hashes in parallel (reuse from tree building)
 	leafHashes := computeLeafHashesParallel(items, numWorkers)
-
+	fmt.Println("Encode.parallelProofsFromByteSlices.2: ", time.Now())
 	// Phase 2: Build tree structure for proof generation
 	trails, rootNode := trailsFromLeafHashesParallel(leafHashes, numWorkers)
 	rootHash = rootNode.Hash
-
+	fmt.Println("Encode.parallelProofsFromByteSlices.3: ", time.Now())
 	proofs = make([]*Proof, len(items))
-
+	fmt.Println("Encode.parallelProofsFromByteSlices.4: ", time.Now())
 	for i := 0; i < len(items); i++ {
 		proofs[i] = &Proof{
 			Total:    int64(len(items)),
@@ -206,7 +209,7 @@ func parallelProofsFromByteSlices(items [][]byte) (rootHash []byte, proofs []*Pr
 			Aunts:    trails[i].FlattenAunts(),
 		}
 	}
-
+	fmt.Println("Encode.parallelProofsFromByteSlices.5: ", time.Now())
 	return rootHash, proofs
 }
 

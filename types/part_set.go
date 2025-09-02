@@ -227,6 +227,7 @@ type PartSet struct {
 // The data bytes are split into "partSize" chunks, and merkle tree computed.
 // CONTRACT: partSize is greater than zero.
 func NewPartSetFromData(data []byte, partSize uint32) (ops *PartSet, err error) {
+	fmt.Println("NewPartSetFromData.1: ", time.Now())
 	total := (uint32(len(data)) + partSize - 1) / partSize
 	chunks := make([][]byte, total)
 	for i := uint32(0); i < total; i++ {
@@ -234,20 +235,21 @@ func NewPartSetFromData(data []byte, partSize uint32) (ops *PartSet, err error) 
 		chunks[i] = chunk
 	}
 
+	fmt.Println("NewPartSetFromData.2: ", time.Now())
 	// Compute merkle proofs
 	root, proofs := merkle.ParallelProofsFromByteSlices(chunks)
-
+	fmt.Println("NewPartSetFromData.3: ", time.Now())
 	ops = NewPartSetFromHeader(PartSetHeader{
 		Total: total,
 		Hash:  root,
 	}, partSize)
-
+	fmt.Println("NewPartSetFromData.4: ", time.Now())
 	// Fill the buffer in a single copy and populate metadata.
 	copied := copy(ops.buffer, data)
 	if copied != len(data) {
 		return nil, fmt.Errorf("copy failed: %d < %d", copied, len(data))
 	}
-
+	fmt.Println("NewPartSetFromData.5: ", time.Now())
 	// Set sizes and bookkeeping.
 	if total > 0 {
 		lastIdx := total - 1
@@ -260,7 +262,7 @@ func NewPartSetFromData(data []byte, partSize uint32) (ops *PartSet, err error) 
 	}
 	ops.count = total
 	ops.byteSize = int64(len(data))
-
+	fmt.Println("NewPartSetFromData.6: ", time.Now())
 	return ops, nil
 }
 
@@ -271,6 +273,7 @@ func NewPartSetFromData(data []byte, partSize uint32) (ops *PartSet, err error) 
 func Encode(ops *PartSet, partSize uint32) (*PartSet, int, error) {
 	fmt.Println("Encode.CreateChunks: ", time.Now())
 	chunks := make([][]byte, 2*ops.Total())
+	fmt.Println("Encode.CreateChunks.1: ", time.Now())
 	for i := range chunks {
 		if i < int(ops.Total()) {
 			chunks[i] = ops.GetPart(i).Bytes.Bytes()
@@ -278,6 +281,7 @@ func Encode(ops *PartSet, partSize uint32) (*PartSet, int, error) {
 		}
 		chunks[i] = make([]byte, partSize)
 	}
+	fmt.Println("Encode.CreateChunks.2: ", time.Now())
 
 	// pad ONLY the last chunk and not the part with zeros if necessary AFTER the root has been generated
 	lastLen := len(ops.GetPart(int(ops.Total() - 1)).Bytes.Bytes())
@@ -308,6 +312,7 @@ func Encode(ops *PartSet, partSize uint32) (*PartSet, int, error) {
 	// only the parity data is needed for the new partset.
 	chunks = chunks[ops.Total():]
 	eroot, eproofs := merkle.ParallelProofsFromByteSlices(chunks)
+	fmt.Println("Encode.CreateProofs.2: ", time.Now())
 
 	// create a new partset using the new parity parts.
 	eps := NewPartSetFromHeader(PartSetHeader{

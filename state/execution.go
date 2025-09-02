@@ -213,7 +213,9 @@ func (blockExec *BlockExecutor) CreateProposalBlock(
 	}
 
 	newData := types.NewData(txl, rpp.SquareSize, rpp.DataRootHash)
+	fmt.Println("CreateProposalBlock.MakeBlock2.1: ", time.Now())
 	block, partset, err := state.MakeBlock(height, newData, commit, evidence, proposerAddr)
+	fmt.Println("CreateProposalBlock.MakeBlock2.2: ", time.Now())
 	if err != nil {
 		return nil, nil, err
 	}
@@ -227,6 +229,7 @@ func (blockExec *BlockExecutor) CreateProposalBlock(
 	}
 
 	block.SetCachedHashes(hashes)
+	fmt.Println("CreateProposalBlock.MakeBlock2.3: ", time.Now())
 
 	return block, partset, nil
 }

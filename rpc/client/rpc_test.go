@@ -834,7 +834,7 @@ func TestTxStatus(t *testing.T) {
 	require.True(bres.TxResult.IsOK())
 
 	// Submit a malformed tx
-	malformedTx := []byte("malformed-tx")
+	malformedTx := []byte("val==malformed-tx")
 	_, err = c.BroadcastTxCommit(context.Background(), malformedTx)
 	require.Error(err)
 

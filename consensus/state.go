@@ -1690,7 +1690,7 @@ func (cs *State) enterPrecommitWait(height int64, round int32) {
 		))
 	}
 
-	logger.Debug("entering precommit wait step", "current", log.NewLazySprintf("%v/%v/%v", cs.rs.Height, cs.rs.Round, cs.rs.Step))
+	logger.Info("entering precommit wait step", "current", log.NewLazySprintf("%v/%v/%v", cs.rs.Height, cs.rs.Round, cs.rs.Step))
 
 	defer func() {
 		// Done enterPrecommitWait:
@@ -1838,21 +1838,26 @@ func (cs *State) finalizeCommit(height int64) {
 	fail.Fail() // XXX
 
 	// Save to blockStore.
+	fmt.Println("saving the block.step1: ", time.Now())
 	var seenCommit *types.Commit
 	if cs.blockStore.Height() < block.Height {
 		// NOTE: the seenCommit is local justification to commit this block,
 		// but may differ from the LastCommit included in the next block
 		seenExtendedCommit := cs.rs.Votes.Precommits(cs.rs.CommitRound).MakeExtendedCommit(cs.state.ConsensusParams.ABCI)
 		seenCommit = seenExtendedCommit.ToCommit()
+		fmt.Println("saving the block.step11: ", time.Now())
 		if cs.state.ConsensusParams.ABCI.VoteExtensionsEnabled(block.Height) {
 			cs.blockStore.SaveBlockWithExtendedCommit(block, blockParts, seenExtendedCommit)
+			fmt.Println("saving the block.step12: ", time.Now())
 		} else {
 			cs.blockStore.SaveBlock(block, blockParts, seenExtendedCommit.ToCommit())
+			fmt.Println("saving the block.step13: ", time.Now())
 		}
 	} else {
 		// Happens during replay if we already saved the block but didn't commit
 		logger.Debug("calling finalizeCommit on already stored block", "height", block.Height)
 	}
+	fmt.Println("saving the block.step2: ", time.Now())
 
 	fail.Fail() // XXX
 
@@ -1884,6 +1889,7 @@ func (cs *State) finalizeCommit(height int64) {
 
 	schema.WriteABCI(cs.traceClient, schema.CommitStart, height, 0)
 
+	fmt.Println("saving the block.step3: ", time.Now())
 	// Execute and commit the block, update and save the state, and update the mempool.
 	// We use apply verified block here because we have verified the block in this function already.
 	// NOTE The block.AppHash won't reflect these txs until the next block.
@@ -1899,6 +1905,7 @@ func (cs *State) finalizeCommit(height int64) {
 	if err != nil {
 		panic(fmt.Sprintf("failed to apply block; error %v", err))
 	}
+	fmt.Println("saving the block.step4: ", time.Now())
 
 	schema.WriteABCI(cs.traceClient, schema.CommitEnd, height, 0)
 
@@ -1906,9 +1913,10 @@ func (cs *State) finalizeCommit(height int64) {
 
 	// must be called before we update state
 	cs.recordMetrics(height, block)
-
+	fmt.Println("saving the block.step5: ", time.Now())
 	// NewHeightStep!
 	cs.updateToState(stateCopy)
+	fmt.Println("saving the block.step6: ", time.Now())
 
 	fail.Fail() // XXX
 
@@ -2472,6 +2480,7 @@ func (cs *State) addVote(vote *types.Vote, peerID p2p.ID) (added bool, err error
 		}
 
 	case cmtproto.PrecommitType:
+		fmt.Println("adding precommit vote")
 		precommits := cs.rs.Votes.Precommits(vote.Round)
 		cs.Logger.Debug("added vote to precommit",
 			"height", vote.Height,
