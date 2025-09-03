@@ -58,7 +58,7 @@ func startConsensusNet(t *testing.T, css []*State, n int) (
 	for i := 0; i < n; i++ {
 		/*logger, err := cmtflags.ParseLogLevel("consensus:info,*:error", logger, "info")
 		if err != nil {	t.Fatal(err)}*/
-		reactors[i] = NewReactor(css[i], css[i].propagator, true, WithGossipDataEnabled(true)) // so we dont start the consensus states
+		reactors[i] = NewReactor(css[i], css[i].propagator, true) // so we dont start the consensus states
 		reactors[i].SetLogger(css[i].Logger)
 
 		// eventBus is already started with the cs
@@ -1184,4 +1184,22 @@ func TestVoteMessageValidateBasic(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestReactorGossipDataEnabled(t *testing.T) {
+	N := 1
+	css, cleanup := randConsensusNet(t, N, "consensus_reactor_test", newMockTickerFunc(true), newKVStore)
+	defer cleanup()
+
+	// Test default enabled state
+	reactor := NewReactor(css[0], css[0].propagator, true)
+	assert.True(t, reactor.IsGossipDataEnabled())
+
+	// Test disabled state
+	reactor = NewReactor(css[0], css[0].propagator, true, WithGossipDataEnabled(false))
+	assert.False(t, reactor.IsGossipDataEnabled())
+
+	// Test enabled state
+	reactor = NewReactor(css[0], css[0].propagator, true, WithGossipDataEnabled(true))
+	assert.True(t, reactor.IsGossipDataEnabled())
 }
