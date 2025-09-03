@@ -27,8 +27,8 @@ import (
 
 	"github.com/cometbft/cometbft/p2p"
 	cmtcons "github.com/cometbft/cometbft/proto/tendermint/consensus"
-	cmtproto "github.com/cometbft/cometbft/proto/tendermint/types"
 	cmtstate "github.com/cometbft/cometbft/proto/tendermint/state"
+	cmtproto "github.com/cometbft/cometbft/proto/tendermint/types"
 	sm "github.com/cometbft/cometbft/state"
 	"github.com/cometbft/cometbft/store"
 	"github.com/cometbft/cometbft/types"
@@ -58,14 +58,14 @@ func TestByzantinePrevoteEquivocation(t *testing.T) {
 			DiscardABCIResponses: false,
 		})
 		state, _ := stateStore.LoadFromDBOrGenesisDoc(genDoc)
-		
+
 		thisConfig := ResetConfig(fmt.Sprintf("%s_%d", testName, i))
 		nodeKey, err := p2p.LoadOrGenNodeKey(thisConfig.NodeKeyFile())
 		require.NoError(t, err)
 		defer os.RemoveAll(thisConfig.RootDir)
 		ensureDir(path.Dir(thisConfig.Consensus.WalFile()), 0o700) // dir for wal
 		app := appFunc()
-		
+
 		// Initialize timeout values from the application
 		resp, err := app.Info(context.Background(), proxy.RequestInfo)
 		require.NoError(t, err)
@@ -79,7 +79,7 @@ func TestByzantinePrevoteEquivocation(t *testing.T) {
 			TimeoutPrecommitDelta:   resp.TimeoutInfo.TimeoutPrecommitDelta,
 			DelayedPrecommitTimeout: resp.TimeoutInfo.DelayedPrecommitTimeout,
 		}
-		
+
 		// Save the updated state back to the store
 		err = stateStore.Save(state)
 		require.NoError(t, err)
