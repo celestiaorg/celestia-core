@@ -35,6 +35,7 @@ import (
 	"github.com/cometbft/cometbft/p2p"
 	"github.com/cometbft/cometbft/privval"
 	cmtproto "github.com/cometbft/cometbft/proto/tendermint/types"
+	cmtstate "github.com/cometbft/cometbft/proto/tendermint/state"
 	"github.com/cometbft/cometbft/proxy"
 	sm "github.com/cometbft/cometbft/state"
 	"github.com/cometbft/cometbft/store"
@@ -493,6 +494,22 @@ func randStateWithAppImpl(
 ) (*State, []*validatorStub) {
 	// Get State
 	state, privVals := randGenesisState(nValidators, false, 10, consensusParams)
+
+	// Initialize timeouts from application
+	resp, err := app.Info(context.Background(), proxy.RequestInfo)
+	if err != nil {
+		panic(err)
+	}
+	state.Timeouts = cmtstate.TimeoutInfo{
+		TimeoutPropose:          resp.TimeoutInfo.TimeoutPropose,
+		TimeoutCommit:           resp.TimeoutInfo.TimeoutCommit,
+		TimeoutProposeDelta:     resp.TimeoutInfo.TimeoutProposeDelta,
+		TimeoutPrevote:          resp.TimeoutInfo.TimeoutPrevote,
+		TimeoutPrevoteDelta:     resp.TimeoutInfo.TimeoutPrevoteDelta,
+		TimeoutPrecommit:        resp.TimeoutInfo.TimeoutPrecommit,
+		TimeoutPrecommitDelta:   resp.TimeoutInfo.TimeoutPrecommitDelta,
+		DelayedPrecommitTimeout: resp.TimeoutInfo.DelayedPrecommitTimeout,
+	}
 
 	vss := make([]*validatorStub, nValidators)
 
