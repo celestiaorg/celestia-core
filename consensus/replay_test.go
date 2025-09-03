@@ -349,7 +349,7 @@ func setupChainWithChangingValidators(t *testing.T, name string, nBlocks int) (*
 	for i := 0; i < nPeers; i++ {
 		vss[i] = newValidatorStub(css[i].privValidator, int32(i))
 	}
-	height, round := css[0].Height, css[0].Round
+	height, round := css[0].rs.Height, css[0].rs.Round
 
 	// start the machine
 	startTestRound(css[0], height, round)
@@ -1046,10 +1046,7 @@ func makeBlockchainFromWAL(wal WAL) ([]*types.Block, []*types.ExtendedCommit, er
 			// if its not the first one, we have a full block
 			if thisBlockParts != nil {
 				pbb := new(cmtproto.Block)
-				bz, err := io.ReadAll(thisBlockParts.GetReader())
-				if err != nil {
-					panic(err)
-				}
+				bz := thisBlockParts.GetBytes()
 				err = proto.Unmarshal(bz, pbb)
 				if err != nil {
 					panic(err)
@@ -1071,7 +1068,7 @@ func makeBlockchainFromWAL(wal WAL) ([]*types.Block, []*types.ExtendedCommit, er
 				height++
 			}
 		case *types.PartSetHeader:
-			thisBlockParts = types.NewPartSetFromHeader(*p)
+			thisBlockParts = types.NewPartSetFromHeader(*p, types.BlockPartSizeBytes)
 		case *types.Part:
 			_, err := thisBlockParts.AddPart(p)
 			if err != nil {
@@ -1089,10 +1086,7 @@ func makeBlockchainFromWAL(wal WAL) ([]*types.Block, []*types.ExtendedCommit, er
 		}
 	}
 	// grab the last block too
-	bz, err := io.ReadAll(thisBlockParts.GetReader())
-	if err != nil {
-		panic(err)
-	}
+	bz := thisBlockParts.GetBytes()
 	pbb := new(cmtproto.Block)
 	err = proto.Unmarshal(bz, pbb)
 	if err != nil {

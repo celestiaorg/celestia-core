@@ -112,6 +112,7 @@ func ReqLimit(partsCount int) int {
 }
 
 func (blockProp *Reactor) requestFromPeer(ps *PeerState) {
+	defer blockProp.ProtectPanic(ps.peer)
 	for {
 		availableReqs := ConcurrentRequestLimit(len(blockProp.getPeers()), int(blockProp.getCurrentProposalPartsCount())) - ps.concurrentReqs.Load()
 

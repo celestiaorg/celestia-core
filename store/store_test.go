@@ -175,8 +175,8 @@ func TestBlockStoreSaveLoadBlock(t *testing.T) {
 	require.EqualValues(t, 1, bs.Base(), "expecting the new height to be changed")
 	require.EqualValues(t, block.Header.Height, bs.Height(), "expecting the new height to be changed") //nolint:staticcheck
 
-	incompletePartSet := types.NewPartSetFromHeader(types.PartSetHeader{Total: 2})
-	uncontiguousPartSet := types.NewPartSetFromHeader(types.PartSetHeader{Total: 0})
+	incompletePartSet := types.NewPartSetFromHeader(types.PartSetHeader{Total: 2}, types.BlockPartSizeBytes)
+	uncontiguousPartSet := types.NewPartSetFromHeader(types.PartSetHeader{Total: 0}, types.BlockPartSizeBytes)
 	_, err = uncontiguousPartSet.AddPart(part2)
 	require.Error(t, err)
 
