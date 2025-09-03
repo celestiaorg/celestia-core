@@ -69,6 +69,7 @@ func TestStateCopy(t *testing.T) {
 	state.Timeouts.TimeoutPrevoteDelta = 2 * time.Second
 	state.Timeouts.TimeoutPrecommit = 8 * time.Second
 	state.Timeouts.TimeoutPrecommitDelta = 3 * time.Second
+	state.Timeouts.DelayedPrecommitTimeout = 100 * time.Millisecond
 
 	tests := []struct {
 		name        string
