@@ -437,6 +437,9 @@ func (cs *State) OnStart() error {
 	// schedule the first round!
 	// use GetRoundState so we don't race the receiveRoutine for access
 	cs.scheduleRound0(cs.GetRoundState())
+	cs.rsMtx.RLock()
+	cs.propagator.SetHeightAndRound(cs.rs.Height, cs.rs.Round)
+	cs.rsMtx.RUnlock()
 
 	return nil
 }
