@@ -110,14 +110,14 @@ func (app *Application) Info(context.Context, *types.RequestInfo) (*types.Respon
 
 func (app *Application) timeoutInfo() types.TimeoutInfo {
 	return types.TimeoutInfo{
-		TimeoutPropose:          3000 * time.Millisecond,
-		TimeoutCommit:           100 * time.Millisecond,
-		TimeoutProposeDelta:     500 * time.Millisecond,
-		TimeoutPrevote:          1000 * time.Millisecond,
-		TimeoutPrevoteDelta:     500 * time.Millisecond,
-		TimeoutPrecommit:        1000 * time.Millisecond,
-		TimeoutPrecommitDelta:   500 * time.Millisecond,
-		DelayedPrecommitTimeout: 100 * time.Millisecond,
+		TimeoutPropose:          40 * time.Millisecond,
+		TimeoutCommit:           10 * time.Millisecond,
+		TimeoutProposeDelta:     1 * time.Millisecond,
+		TimeoutPrevote:          10 * time.Millisecond,
+		TimeoutPrevoteDelta:     1 * time.Millisecond,
+		TimeoutPrecommit:        10 * time.Millisecond,
+		TimeoutPrecommitDelta:   1 * time.Millisecond,
+		DelayedPrecommitTimeout: 0,
 	}
 }
 
