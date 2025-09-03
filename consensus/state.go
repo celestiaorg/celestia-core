@@ -1980,6 +1980,32 @@ func (cs *State) defaultSetProposal(proposal *types.Proposal) error {
 	if !pubKey.VerifySignature(
 		types.ProposalSignBytes(cs.state.ChainID, p), proposal.Signature,
 	) {
+		// Save invalid proposal with metadata for debugging
+		metadata := map[string]interface{}{
+			"height":    proposal.Height,
+			"round":     proposal.Round,
+			"chain_id":  cs.state.ChainID,
+			"timestamp": cmttime.Now(),
+			"reason":    "invalid_signature",
+			"proposer":  cs.Validators.GetProposer().Address.String(),
+			"block_id":  proposal.BlockID.String(),
+			"pol_round": proposal.POLRound,
+		}
+		timestamp := cmttime.Now().Format("20060102-150405.000000")
+		err := types.SaveInvalidProposalWithMetadata(
+			filepath.Join(cs.config.RootDir, "data", "debug"),
+			fmt.Sprintf("%s-%d-%d_invalid_proposal_signature_%s.json",
+				cs.state.ChainID,
+				proposal.Height,
+				proposal.Round,
+				timestamp,
+			),
+			proposal,
+			metadata,
+		)
+		if err != nil {
+			cs.Logger.Error("failed to save invalid proposal", "err", err.Error())
+		}
 		return ErrInvalidProposalSignature
 	}
 
