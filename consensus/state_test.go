@@ -1708,7 +1708,17 @@ func TestPrepareProposalReceivesVoteExtensions(t *testing.T) {
 
 	m.On("VerifyVoteExtension", mock.Anything, mock.Anything).Return(&abci.ResponseVerifyVoteExtension{Status: abci.ResponseVerifyVoteExtension_ACCEPT}, nil)
 	m.On("Commit", mock.Anything, mock.Anything).Return(&abci.ResponseCommit{}, nil).Maybe()
-	m.On("FinalizeBlock", mock.Anything, mock.Anything).Return(&abci.ResponseFinalizeBlock{}, nil)
+	m.On("FinalizeBlock", mock.Anything, mock.Anything).Return(&abci.ResponseFinalizeBlock{
+		TimeoutInfo: abci.TimeoutInfo{
+			TimeoutPropose:        40 * time.Millisecond,
+			TimeoutCommit:         10 * time.Millisecond,
+			TimeoutProposeDelta:   1 * time.Millisecond,
+			TimeoutPrevote:        10 * time.Millisecond,
+			TimeoutPrevoteDelta:   1 * time.Millisecond,
+			TimeoutPrecommit:      10 * time.Millisecond,
+			TimeoutPrecommitDelta: 1 * time.Millisecond,
+		},
+	}, nil)
 	m.On("Info", mock.Anything, mock.Anything).Return(&abci.ResponseInfo{
 		LastBlockHeight: 0,
 		TimeoutInfo: abci.TimeoutInfo{
