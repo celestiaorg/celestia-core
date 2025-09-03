@@ -59,14 +59,6 @@ func TestByzantinePrevoteEquivocation(t *testing.T) {
 		})
 		state, _ := stateStore.LoadFromDBOrGenesisDoc(genDoc)
 		// Set timeout values to ensure proper consensus timing
-		state.Timeouts.TimeoutPropose = 3 * time.Second
-		state.Timeouts.TimeoutCommit = 300 * time.Millisecond
-		state.Timeouts.TimeoutProposeDelta = 500 * time.Millisecond
-		state.Timeouts.TimeoutPrevote = 1 * time.Second
-		state.Timeouts.TimeoutPrevoteDelta = 500 * time.Millisecond
-		state.Timeouts.TimeoutPrecommit = 1 * time.Second
-		state.Timeouts.TimeoutPrecommitDelta = 500 * time.Millisecond
-		state.Timeouts.DelayedPrecommitTimeout = 1 * time.Second
 		// Save the updated state back to the store
 		err := stateStore.Save(state)
 		require.NoError(t, err)

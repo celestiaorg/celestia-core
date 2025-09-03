@@ -1448,6 +1448,18 @@ func TestProcessProposalAccept(t *testing.T) {
 			}
 			m.On("ProcessProposal", mock.Anything, mock.Anything).Return(&abci.ResponseProcessProposal{Status: status}, nil)
 			m.On("PrepareProposal", mock.Anything, mock.Anything).Return(&abci.ResponsePrepareProposal{}, nil).Maybe()
+			m.On("Info", mock.Anything, mock.Anything).Return(&abci.ResponseInfo{
+				LastBlockHeight: 0,
+				TimeoutInfo: abci.TimeoutInfo{
+					TimeoutPropose:        40 * time.Millisecond,
+					TimeoutCommit:         10 * time.Millisecond,
+					TimeoutProposeDelta:   1 * time.Millisecond,
+					TimeoutPrevote:        10 * time.Millisecond,
+					TimeoutPrevoteDelta:   1 * time.Millisecond,
+					TimeoutPrecommit:      10 * time.Millisecond,
+					TimeoutPrecommitDelta: 1 * time.Millisecond,
+				},
+			}, nil)
 			cs1, _ := randStateWithApp(4, m)
 			height, round := cs1.rs.Height, cs1.rs.Round
 
@@ -1502,6 +1514,18 @@ func TestExtendVoteCalledWhenEnabled(t *testing.T) {
 			}
 			m.On("Commit", mock.Anything, mock.Anything).Return(&abci.ResponseCommit{}, nil).Maybe()
 			m.On("FinalizeBlock", mock.Anything, mock.Anything).Return(&abci.ResponseFinalizeBlock{}, nil).Maybe()
+			m.On("Info", mock.Anything, mock.Anything).Return(&abci.ResponseInfo{
+				LastBlockHeight: 0,
+				TimeoutInfo: abci.TimeoutInfo{
+					TimeoutPropose:        40 * time.Millisecond,
+					TimeoutCommit:         10 * time.Millisecond,
+					TimeoutProposeDelta:   1 * time.Millisecond,
+					TimeoutPrevote:        10 * time.Millisecond,
+					TimeoutPrevoteDelta:   1 * time.Millisecond,
+					TimeoutPrecommit:      10 * time.Millisecond,
+					TimeoutPrecommitDelta: 1 * time.Millisecond,
+				},
+			}, nil)
 			height := int64(1)
 			if !testCase.enabled {
 				height = 0
@@ -1588,6 +1612,18 @@ func TestVerifyVoteExtensionNotCalledOnAbsentPrecommit(t *testing.T) {
 	}, nil)
 	m.On("FinalizeBlock", mock.Anything, mock.Anything).Return(&abci.ResponseFinalizeBlock{}, nil).Maybe()
 	m.On("Commit", mock.Anything, mock.Anything).Return(&abci.ResponseCommit{}, nil).Maybe()
+	m.On("Info", mock.Anything, mock.Anything).Return(&abci.ResponseInfo{
+		LastBlockHeight: 0,
+		TimeoutInfo: abci.TimeoutInfo{
+			TimeoutPropose:        40 * time.Millisecond,
+			TimeoutCommit:         10 * time.Millisecond,
+			TimeoutProposeDelta:   1 * time.Millisecond,
+			TimeoutPrevote:        10 * time.Millisecond,
+			TimeoutPrevoteDelta:   1 * time.Millisecond,
+			TimeoutPrecommit:      10 * time.Millisecond,
+			TimeoutPrecommitDelta: 1 * time.Millisecond,
+		},
+	}, nil)
 	cs1, vss := randStateWithApp(4, m)
 	height, round := cs1.rs.Height, cs1.rs.Round
 	cs1.state.ConsensusParams.ABCI.VoteExtensionsEnableHeight = cs1.rs.Height
@@ -1673,6 +1709,18 @@ func TestPrepareProposalReceivesVoteExtensions(t *testing.T) {
 	m.On("VerifyVoteExtension", mock.Anything, mock.Anything).Return(&abci.ResponseVerifyVoteExtension{Status: abci.ResponseVerifyVoteExtension_ACCEPT}, nil)
 	m.On("Commit", mock.Anything, mock.Anything).Return(&abci.ResponseCommit{}, nil).Maybe()
 	m.On("FinalizeBlock", mock.Anything, mock.Anything).Return(&abci.ResponseFinalizeBlock{}, nil)
+	m.On("Info", mock.Anything, mock.Anything).Return(&abci.ResponseInfo{
+		LastBlockHeight: 0,
+		TimeoutInfo: abci.TimeoutInfo{
+			TimeoutPropose:        40 * time.Millisecond,
+			TimeoutCommit:         10 * time.Millisecond,
+			TimeoutProposeDelta:   1 * time.Millisecond,
+			TimeoutPrevote:        10 * time.Millisecond,
+			TimeoutPrevoteDelta:   1 * time.Millisecond,
+			TimeoutPrecommit:      10 * time.Millisecond,
+			TimeoutPrecommitDelta: 1 * time.Millisecond,
+		},
+	}, nil)
 
 	cs1, vss := randStateWithApp(4, m)
 	height, round := cs1.rs.Height, cs1.rs.Round
@@ -1775,6 +1823,18 @@ func TestFinalizeBlockCalled(t *testing.T) {
 			r := &abci.ResponseFinalizeBlock{AppHash: []byte("the_hash")}
 			m.On("FinalizeBlock", mock.Anything, mock.Anything).Return(r, nil).Maybe()
 			m.On("Commit", mock.Anything, mock.Anything).Return(&abci.ResponseCommit{}, nil).Maybe()
+			m.On("Info", mock.Anything, mock.Anything).Return(&abci.ResponseInfo{
+				LastBlockHeight: 0,
+				TimeoutInfo: abci.TimeoutInfo{
+					TimeoutPropose:        40 * time.Millisecond,
+					TimeoutCommit:         10 * time.Millisecond,
+					TimeoutProposeDelta:   1 * time.Millisecond,
+					TimeoutPrevote:        10 * time.Millisecond,
+					TimeoutPrevoteDelta:   1 * time.Millisecond,
+					TimeoutPrecommit:      10 * time.Millisecond,
+					TimeoutPrecommitDelta: 1 * time.Millisecond,
+				},
+			}, nil)
 
 			cs1, vss := randStateWithApp(4, m)
 			height, round := cs1.rs.Height, cs1.rs.Round
@@ -1891,6 +1951,18 @@ func TestVoteExtensionEnableHeight(t *testing.T) {
 			}
 			m.On("FinalizeBlock", mock.Anything, mock.Anything).Return(&abci.ResponseFinalizeBlock{}, nil).Maybe()
 			m.On("Commit", mock.Anything, mock.Anything).Return(&abci.ResponseCommit{}, nil).Maybe()
+			m.On("Info", mock.Anything, mock.Anything).Return(&abci.ResponseInfo{
+				LastBlockHeight: 0,
+				TimeoutInfo: abci.TimeoutInfo{
+					TimeoutPropose:        40 * time.Millisecond,
+					TimeoutCommit:         10 * time.Millisecond,
+					TimeoutProposeDelta:   1 * time.Millisecond,
+					TimeoutPrevote:        10 * time.Millisecond,
+					TimeoutPrevoteDelta:   1 * time.Millisecond,
+					TimeoutPrecommit:      10 * time.Millisecond,
+					TimeoutPrecommitDelta: 1 * time.Millisecond,
+				},
+			}, nil)
 			cs1, vss := randStateWithAppWithHeight(numValidators, m, testCase.enableHeight)
 			cs1.state.ConsensusParams.ABCI.VoteExtensionsEnableHeight = testCase.enableHeight
 			height, round := cs1.rs.Height, cs1.rs.Round
