@@ -13,7 +13,7 @@ type Propagator interface {
 	ProposeBlock(proposal *types.Proposal, parts *types.PartSet, txs []proptypes.TxMetaData)
 	AddCommitment(height int64, round int32, psh *types.PartSetHeader)
 	Prune(committedHeight int64)
-	SetConsensusRound(height int64, round int32)
+	SetHeightAndRound(height int64, round int32)
 	StartProcessing()
 	SetProposer(proposer crypto.PubKey)
 	GetPartChan() <-chan types.PartInfo
@@ -59,7 +59,7 @@ func (nop *NoOpPropagator) AddCommitment(_ int64, _ int32, _ *types.PartSetHeade
 func (nop *NoOpPropagator) Prune(_ int64) {
 }
 
-func (nop *NoOpPropagator) SetConsensusRound(_ int64, _ int32) {
+func (nop *NoOpPropagator) SetHeightAndRound(_ int64, _ int32) {
 }
 
 func (nop *NoOpPropagator) StartProcessing() {

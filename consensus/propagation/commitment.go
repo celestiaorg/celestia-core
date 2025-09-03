@@ -167,6 +167,20 @@ func chunkToPartMetaData(chunk *bits.BitArray, partSet *proptypes.CombinedPartSe
 // time a proposal is received from a peer or when a proposal is created. If the
 // proposal is new, it will be stored and broadcast to the relevant peers.
 func (blockProp *Reactor) handleCompactBlock(cb *proptypes.CompactBlock, peer p2p.ID, proposer bool) {
+	err := blockProp.validateCompactBlock(cb)
+	if !proposer && err != nil {
+		blockProp.Logger.Error("failed to validate proposal. ignoring", "err", err, "height", cb.Proposal.Height, "round", cb.Proposal.Round)
+		return
+	}
+
+	// generate (and cache) the proofs from the partset hashes in the compact block
+	_, err = cb.Proofs()
+	if err != nil {
+		blockProp.Logger.Error("received invalid compact block", "err", err.Error())
+		blockProp.Switch.StopPeerForError(blockProp.getPeer(peer).peer, err, blockProp.String())
+		return
+	}
+
 	added := blockProp.AddProposal(cb)
 	if !added {
 		p := blockProp.getPeer(peer)
@@ -181,22 +195,6 @@ func (blockProp *Reactor) handleCompactBlock(cb *proptypes.CompactBlock, peer p2
 			return
 		}
 		p.consensusPeerState.SetHasProposal(&cb.Proposal)
-	}
-
-	err := blockProp.validateCompactBlock(cb)
-	if !proposer && err != nil {
-		blockProp.DeleteRound(cb.Proposal.Height, cb.Proposal.Round)
-		blockProp.Logger.Debug("failed to validate proposal. ignoring", "err", err, "height", cb.Proposal.Height, "round", cb.Proposal.Round)
-		return
-	}
-
-	// generate (and cache) the proofs from the partset hashes in the compact block
-	_, err = cb.Proofs()
-	if err != nil {
-		blockProp.DeleteRound(cb.Proposal.Height, cb.Proposal.Round)
-		blockProp.Logger.Error("received invalid compact block", "err", err.Error())
-		blockProp.Switch.StopPeerForError(blockProp.getPeer(peer).peer, err, blockProp.String())
-		return
 	}
 
 	if !proposer {
@@ -399,14 +397,14 @@ func (blockProp *Reactor) validateCompactBlock(cb *proptypes.CompactBlock) error
 	proposer := blockProp.currentProposer
 	blockProp.mtx.Unlock()
 	blockProp.pmtx.Lock()
-	currentHeight := blockProp.currentHeight
-	currentRound := blockProp.currentRound
+	currentHeight := blockProp.height
+	currentRound := blockProp.round
 	blockProp.pmtx.Unlock()
 	if proposer == nil {
 		return errors.New("nil proposer key")
 	}
-	// Does not apply
-	if cb.Proposal.Height != currentHeight || cb.Proposal.Round != currentRound {
+
+	if cb.Proposal.Height != currentHeight || (cb.Proposal.Height == currentHeight && cb.Proposal.Round != currentRound) {
 		return fmt.Errorf("proposal height %v round %v does not match state height %v round %v", cb.Proposal.Height, cb.Proposal.Round, currentHeight, currentRound)
 	}
 

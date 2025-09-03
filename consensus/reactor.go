@@ -159,6 +159,7 @@ func (conR *Reactor) SwitchToConsensus(state sm.State, skipWAL bool) {
 	}
 	conR.propagator.StartProcessing()
 	conR.propagator.SetProposer(state.Validators.GetProposer().PubKey)
+	conR.propagator.SetHeightAndRound(conR.conS.rs.Height, conR.conS.rs.Round)
 	err := conR.conS.Start()
 	if err != nil {
 		panic(fmt.Sprintf(`Failed to start consensus state: %v

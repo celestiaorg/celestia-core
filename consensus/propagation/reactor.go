@@ -118,7 +118,7 @@ func NewReactor(
 				return
 			case <-ticker.C:
 				reactor.pmtx.Lock()
-				currentHeight := reactor.currentHeight
+				currentHeight := reactor.height
 				reactor.pmtx.Unlock()
 				// run the catchup routine to recover any missing parts for past heights.
 				reactor.retryWants(currentHeight)
@@ -295,7 +295,7 @@ func (blockProp *Reactor) Prune(committedHeight int64) {
 	blockProp.prune(prunePast)
 	blockProp.pmtx.Lock()
 	defer blockProp.pmtx.Unlock()
-	blockProp.consensusHeight = committedHeight
+	blockProp.height = committedHeight
 	blockProp.ResetRequestCounts()
 }
 
@@ -305,10 +305,11 @@ func (blockProp *Reactor) SetProposer(proposer crypto.PubKey) {
 	blockProp.currentProposer = proposer
 }
 
-func (blockProp *Reactor) SetConsensusRound(height int64, round int32) {
+func (blockProp *Reactor) SetHeightAndRound(height int64, round int32) {
 	blockProp.pmtx.Lock()
 	defer blockProp.pmtx.Unlock()
-	blockProp.consensusRound = round
+	blockProp.round = round
+	blockProp.height = height
 	blockProp.ResetRequestCounts()
 	// todo: delete the old round data as its no longer relevant don't delete
 	// past round data if it has a POL

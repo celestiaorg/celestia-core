@@ -127,7 +127,7 @@ func (blockProp *Reactor) requestFromPeer(ps *PeerState) {
 			if !ok {
 				return
 			}
-			if !blockProp.relevantHave(part.height, part.round) {
+			if !blockProp.safeRelevant(part.height, part.round) {
 				continue
 			}
 			ps.DecreaseConcurrentReqs(1)
@@ -160,7 +160,7 @@ func (blockProp *Reactor) requestFromPeer(ps *PeerState) {
 					parts = nil
 				}
 
-				if !blockProp.relevantHave(have.height, have.round) {
+				if !blockProp.safeRelevant(have.height, have.round) {
 					continue
 				}
 
@@ -444,7 +444,7 @@ func (blockProp *Reactor) handleRecoveryPart(peer p2p.ID, part *proptypes.Recove
 	}
 	// the peer must always send the proposal before sending parts, if they did
 	// not this node must disconnect from them.
-	cb, parts, _, has := blockProp.getAllState(part.Height, part.Round, false)
+	cb, parts, _, has := blockProp.getAllState(part.Height, part.Round, part.Proof != nil)
 	if !has {
 		blockProp.Logger.Debug("received part for unknown proposal", "peer", peer, "height", part.Height, "round", part.Round)
 		// blockProp.Switch.StopPeerForError(p.peer, errors.New("received recovery part for unknown proposal"))
@@ -632,7 +632,7 @@ func (blockProp *Reactor) clearWants(part *proptypes.RecoveryPart, proof merkle.
 
 			catchup := false
 			blockProp.pmtx.Lock()
-			if part.Height < blockProp.currentHeight {
+			if part.Height < blockProp.height {
 				catchup = true
 			}
 

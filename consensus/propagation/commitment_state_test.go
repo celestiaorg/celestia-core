@@ -93,8 +93,8 @@ func TestProposalCache_AddProposal(t *testing.T) {
 		{
 			name:              "Add proposal with older height - no height/round update",
 			inputProposal:     makeCompactBlock(5, 0, 5),
-			wantAdded:         true, // it doesn't exist yet, so it can be added
-			wantCurrentHeight: 12,   // still remain at 12/0
+			wantAdded:         false,
+			wantCurrentHeight: 12,
 			wantCurrentRound:  0,
 		},
 	}
@@ -103,8 +103,8 @@ func TestProposalCache_AddProposal(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			added := pc.AddProposal(tc.inputProposal)
 			require.Equal(t, tc.wantAdded, added, "added mismatch")
-			require.Equal(t, tc.wantCurrentHeight, pc.currentHeight, "currentHeight mismatch")
-			require.Equal(t, tc.wantCurrentRound, pc.currentRound, "currentRound mismatch")
+			require.Equal(t, tc.wantCurrentHeight, pc.height, "currentHeight mismatch")
+			require.Equal(t, tc.wantCurrentRound, pc.round, "currentRound mismatch")
 		})
 	}
 }
@@ -275,8 +275,8 @@ func TestProposalCache_prune(t *testing.T) {
 		}
 	}
 	// Set current height/round
-	pc.currentHeight = 12
-	pc.currentRound = 2
+	pc.height = 12
+	pc.round = 2
 
 	pc.prune(11)
 

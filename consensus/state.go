@@ -1158,7 +1158,7 @@ func (cs *State) enterNewRound(height int64, round int32) {
 		cs.Logger.Error("failed publishing new round", "err", err)
 	}
 
-	cs.propagator.SetConsensusRound(height, round)
+	cs.propagator.SetHeightAndRound(height, round)
 	proposer := cs.rs.Validators.GetProposer()
 	if proposer != nil {
 		cs.propagator.SetProposer(proposer.PubKey)
