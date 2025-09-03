@@ -615,7 +615,7 @@ func (cs *State) scheduleTimeout(duration time.Duration, height int64, round int
 func (cs *State) Propose(round int32) time.Duration {
 	timeout := cs.state.Timeouts.TimeoutPropose
 	delta := cs.state.Timeouts.TimeoutProposeDelta
-	
+
 	// Fallback to config values if state timeouts are zero
 	if timeout == 0 {
 		timeout = cs.config.TimeoutPropose
@@ -623,7 +623,7 @@ func (cs *State) Propose(round int32) time.Duration {
 	if delta == 0 {
 		delta = cs.config.TimeoutProposeDelta
 	}
-	
+
 	return time.Duration(
 		timeout.Nanoseconds()+delta.Nanoseconds()*int64(round),
 	) * time.Nanosecond
@@ -634,7 +634,7 @@ func (cs *State) Propose(round int32) time.Duration {
 func (cs *State) Prevote(round int32) time.Duration {
 	timeout := cs.state.Timeouts.TimeoutPrevote
 	delta := cs.state.Timeouts.TimeoutPrevoteDelta
-	
+
 	// Fallback to config values if state timeouts are zero
 	if timeout == 0 {
 		timeout = cs.config.TimeoutPrevote
@@ -642,7 +642,7 @@ func (cs *State) Prevote(round int32) time.Duration {
 	if delta == 0 {
 		delta = cs.config.TimeoutPrevoteDelta
 	}
-	
+
 	return time.Duration(
 		timeout.Nanoseconds()+delta.Nanoseconds()*int64(round),
 	) * time.Nanosecond
@@ -653,7 +653,7 @@ func (cs *State) Prevote(round int32) time.Duration {
 func (cs *State) Precommit(round int32) time.Duration {
 	timeout := cs.state.Timeouts.TimeoutPrecommit
 	delta := cs.state.Timeouts.TimeoutPrecommitDelta
-	
+
 	// Fallback to config values if state timeouts are zero
 	if timeout == 0 {
 		timeout = cs.config.TimeoutPrecommit
@@ -661,7 +661,7 @@ func (cs *State) Precommit(round int32) time.Duration {
 	if delta == 0 {
 		delta = cs.config.TimeoutPrecommitDelta
 	}
-	
+
 	return time.Duration(
 		timeout.Nanoseconds()+delta.Nanoseconds()*int64(round),
 	) * time.Nanosecond
