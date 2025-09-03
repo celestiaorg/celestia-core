@@ -28,6 +28,7 @@ import (
 	"github.com/cometbft/cometbft/p2p"
 	cmtcons "github.com/cometbft/cometbft/proto/tendermint/consensus"
 	cmtproto "github.com/cometbft/cometbft/proto/tendermint/types"
+	cmtstate "github.com/cometbft/cometbft/proto/tendermint/state"
 	sm "github.com/cometbft/cometbft/state"
 	"github.com/cometbft/cometbft/store"
 	"github.com/cometbft/cometbft/types"
@@ -45,7 +46,6 @@ func TestByzantinePrevoteEquivocation(t *testing.T) {
 	const byzantineNode = 0
 	const prevoteHeight = int64(2)
 	testName := "consensus_byzantine_test"
-	tickerFunc := newMockTickerFunc(true)
 	appFunc := newKVStore
 
 	genDoc, privVals := randGenesisDoc(nValidators, false, 30, nil)
@@ -58,16 +58,31 @@ func TestByzantinePrevoteEquivocation(t *testing.T) {
 			DiscardABCIResponses: false,
 		})
 		state, _ := stateStore.LoadFromDBOrGenesisDoc(genDoc)
-		// Set timeout values to ensure proper consensus timing
-		// Save the updated state back to the store
-		err := stateStore.Save(state)
-		require.NoError(t, err)
+		
 		thisConfig := ResetConfig(fmt.Sprintf("%s_%d", testName, i))
 		nodeKey, err := p2p.LoadOrGenNodeKey(thisConfig.NodeKeyFile())
 		require.NoError(t, err)
 		defer os.RemoveAll(thisConfig.RootDir)
 		ensureDir(path.Dir(thisConfig.Consensus.WalFile()), 0o700) // dir for wal
 		app := appFunc()
+		
+		// Initialize timeout values from the application
+		resp, err := app.Info(context.Background(), proxy.RequestInfo)
+		require.NoError(t, err)
+		state.Timeouts = cmtstate.TimeoutInfo{
+			TimeoutPropose:          resp.TimeoutInfo.TimeoutPropose,
+			TimeoutCommit:           resp.TimeoutInfo.TimeoutCommit,
+			TimeoutProposeDelta:     resp.TimeoutInfo.TimeoutProposeDelta,
+			TimeoutPrevote:          resp.TimeoutInfo.TimeoutPrevote,
+			TimeoutPrevoteDelta:     resp.TimeoutInfo.TimeoutPrevoteDelta,
+			TimeoutPrecommit:        resp.TimeoutInfo.TimeoutPrecommit,
+			TimeoutPrecommitDelta:   resp.TimeoutInfo.TimeoutPrecommitDelta,
+			DelayedPrecommitTimeout: resp.TimeoutInfo.DelayedPrecommitTimeout,
+		}
+		
+		// Save the updated state back to the store
+		err = stateStore.Save(state)
+		require.NoError(t, err)
 		vals := types.TM2PB.ValidatorUpdates(state.Validators)
 		_, err = app.InitChain(context.Background(), &abci.RequestInitChain{Validators: vals})
 		require.NoError(t, err)
@@ -119,7 +134,10 @@ func TestByzantinePrevoteEquivocation(t *testing.T) {
 		require.NoError(t, err)
 		cs.SetEventBus(eventBus)
 
-		cs.SetTimeoutTicker(tickerFunc())
+		// Set proper timeout ticker for consistent timing
+		ticker := NewTimeoutTicker()
+		ticker.SetLogger(logger)
+		cs.SetTimeoutTicker(ticker)
 		cs.SetLogger(logger)
 
 		css[i] = cs
@@ -314,7 +332,7 @@ func TestByzantinePrevoteEquivocation(t *testing.T) {
 		assert.Equal(t, pubkey.Address(), ev.VoteA.ValidatorAddress)
 		assert.Equal(t, prevoteHeight, ev.Height())
 		t.Logf("Successfully found evidence: %v", ev)
-	case <-time.After(60 * time.Second):
+	case <-time.After(20 * time.Second):
 		// Increased timeout and better error message
 		t.Fatalf("Timed out waiting for validators to commit evidence after 60 seconds")
 	}
