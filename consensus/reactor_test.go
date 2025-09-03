@@ -378,7 +378,7 @@ func TestSwitchToConsensusVoteExtensions(t *testing.T) {
 			require.NoError(t, err)
 
 			// Consensus is preparing to do the next height after the stored height.
-			cs.Height = testCase.storedHeight + 1
+			cs.rs.Height = testCase.storedHeight + 1
 			propBlock.Height = testCase.storedHeight
 
 			var voteSet *types.VoteSet

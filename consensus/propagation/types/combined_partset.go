@@ -26,11 +26,11 @@ type CombinedPartSet struct {
 // CompactBlock using the PartSetHeader in the proposal and the BpHash from the
 // CompactBlock.
 func NewCombinedSetFromCompactBlock(cb *CompactBlock) *CombinedPartSet {
-	original := types.NewPartSetFromHeader(cb.Proposal.BlockID.PartSetHeader)
+	original := types.NewPartSetFromHeader(cb.Proposal.BlockID.PartSetHeader, types.BlockPartSizeBytes)
 	parity := types.NewPartSetFromHeader(types.PartSetHeader{
 		Total: original.Total(),
 		Hash:  cb.BpHash,
-	})
+	}, types.BlockPartSizeBytes)
 	total := bits.NewBitArray(int(original.Total() * 2))
 
 	return &CombinedPartSet{
