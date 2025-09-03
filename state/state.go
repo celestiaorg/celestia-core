@@ -81,6 +81,32 @@ type State struct {
 	Timeouts cmtstate.TimeoutInfo
 }
 
+// Propose returns the amount of time to wait for a proposal using application timeouts
+func (state State) Propose(round int32) time.Duration {
+	return time.Duration(
+		state.Timeouts.TimeoutPropose.Nanoseconds()+state.Timeouts.TimeoutProposeDelta.Nanoseconds()*int64(round),
+	) * time.Nanosecond
+}
+
+// Prevote returns the amount of time to wait for straggler votes after receiving any +2/3 prevotes using application timeouts
+func (state State) Prevote(round int32) time.Duration {
+	return time.Duration(
+		state.Timeouts.TimeoutPrevote.Nanoseconds()+state.Timeouts.TimeoutPrevoteDelta.Nanoseconds()*int64(round),
+	) * time.Nanosecond
+}
+
+// Precommit returns the amount of time to wait for straggler votes after receiving any +2/3 precommits using application timeouts
+func (state State) Precommit(round int32) time.Duration {
+	return time.Duration(
+		state.Timeouts.TimeoutPrecommit.Nanoseconds()+state.Timeouts.TimeoutPrecommitDelta.Nanoseconds()*int64(round),
+	) * time.Nanosecond
+}
+
+// Commit returns the amount of time to wait for straggler votes after receiving +2/3 precommits using application timeouts
+func (state State) Commit(t time.Time) time.Time {
+	return t.Add(state.Timeouts.TimeoutCommit)
+}
+
 // Copy makes a copy of the State for mutating.
 func (state State) Copy() State {
 

@@ -1228,7 +1228,7 @@ func (cs *State) enterPropose(height int64, round int32) {
 	}()
 
 	// If we don't get the proposal and all block parts quick enough, enterPrevote
-	cs.scheduleTimeout(cs.config.Propose(round), height, round, cstypes.RoundStepPropose)
+	cs.scheduleTimeout(cs.state.Propose(round), height, round, cstypes.RoundStepPropose)
 
 	// Nothing more to do if we're not a validator
 	if cs.privValidator == nil {
@@ -1530,7 +1530,7 @@ func (cs *State) enterPrevoteWait(height int64, round int32) {
 	}()
 
 	// Wait for some more prevotes; enterPrecommit
-	cs.scheduleTimeout(cs.config.Prevote(round), height, round, cstypes.RoundStepPrevoteWait)
+	cs.scheduleTimeout(cs.state.Prevote(round), height, round, cstypes.RoundStepPrevoteWait)
 }
 
 // Enter: `timeoutPrevote` after any +2/3 prevotes.
@@ -1698,7 +1698,7 @@ func (cs *State) enterPrecommitWait(height int64, round int32) {
 	}()
 
 	// wait for some more precommits; enterNewRound
-	cs.scheduleTimeout(cs.config.Precommit(round), height, round, cstypes.RoundStepPrecommitWait)
+	cs.scheduleTimeout(cs.state.Precommit(round), height, round, cstypes.RoundStepPrecommitWait)
 }
 
 // Enter: +2/3 precommits for block
