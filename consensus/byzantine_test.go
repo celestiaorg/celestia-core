@@ -334,7 +334,7 @@ func TestByzantinePrevoteEquivocation(t *testing.T) {
 		t.Logf("Successfully found evidence: %v", ev)
 	case <-time.After(20 * time.Second):
 		// Increased timeout and better error message
-		t.Fatalf("Timed out waiting for validators to commit evidence after 60 seconds")
+		t.Fatalf("Timed out waiting for validators to commit evidence after 20 seconds")
 	}
 }
 

@@ -444,7 +444,6 @@ func NewNodeWithContext(ctx context.Context,
 			BlockMaxBytes: state.ConsensusParams.Block.MaxBytes,
 		},
 		propagation.WithTracer(tracer),
-		// propagation.WithRetryTime(timeoutCommit),
 	)
 
 	var propagator propagation.Propagator

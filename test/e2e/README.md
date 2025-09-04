@@ -3,7 +3,8 @@
 Spins up and tests CometBFT networks in Docker Compose based on a testnet manifest. To run the CI testnet:
 
 ```sh
-make ./build/runner -f networks/ci.toml
+make
+./build/runner -f networks/ci.toml
 ```
 
 This creates and runs a testnet named `ci` under `networks/ci/`.
