@@ -34,6 +34,7 @@ import (
 	mempl "github.com/cometbft/cometbft/mempool"
 	"github.com/cometbft/cometbft/p2p"
 	"github.com/cometbft/cometbft/privval"
+	cmtstate "github.com/cometbft/cometbft/proto/tendermint/state"
 	cmtproto "github.com/cometbft/cometbft/proto/tendermint/types"
 	"github.com/cometbft/cometbft/proxy"
 	sm "github.com/cometbft/cometbft/state"
@@ -293,7 +294,9 @@ func validatePrevote(t *testing.T, cs *State, round int32, privVal *validatorStu
 }
 
 func validateLastPrecommit(t *testing.T, cs *State, privVal *validatorStub, blockHash []byte) {
+	cs.rsMtx.RLock()
 	votes := cs.rs.LastCommit
+	cs.rsMtx.RUnlock()
 	pv, err := privVal.GetPubKey()
 	require.NoError(t, err)
 	address := pv.Address()
@@ -493,6 +496,22 @@ func randStateWithAppImpl(
 ) (*State, []*validatorStub) {
 	// Get State
 	state, privVals := randGenesisState(nValidators, false, 10, consensusParams)
+
+	// Initialize timeouts from application
+	resp, err := app.Info(context.Background(), proxy.RequestInfo)
+	if err != nil {
+		panic(err)
+	}
+	state.Timeouts = cmtstate.TimeoutInfo{
+		TimeoutPropose:          resp.TimeoutInfo.TimeoutPropose,
+		TimeoutCommit:           resp.TimeoutInfo.TimeoutCommit,
+		TimeoutProposeDelta:     resp.TimeoutInfo.TimeoutProposeDelta,
+		TimeoutPrevote:          resp.TimeoutInfo.TimeoutPrevote,
+		TimeoutPrevoteDelta:     resp.TimeoutInfo.TimeoutPrevoteDelta,
+		TimeoutPrecommit:        resp.TimeoutInfo.TimeoutPrecommit,
+		TimeoutPrecommitDelta:   resp.TimeoutInfo.TimeoutPrecommitDelta,
+		DelayedPrecommitTimeout: resp.TimeoutInfo.DelayedPrecommitTimeout,
+	}
 
 	vss := make([]*validatorStub, nValidators)
 
