@@ -294,7 +294,9 @@ func validatePrevote(t *testing.T, cs *State, round int32, privVal *validatorStu
 }
 
 func validateLastPrecommit(t *testing.T, cs *State, privVal *validatorStub, blockHash []byte) {
+	cs.rsMtx.RLock()
 	votes := cs.rs.LastCommit
+	cs.rsMtx.RUnlock()
 	pv, err := privVal.GetPubKey()
 	require.NoError(t, err)
 	address := pv.Address()
