@@ -230,9 +230,9 @@ func (conR *Reactor) AddPeer(peer p2p.Peer) {
 		panic(fmt.Sprintf("peer %v has no state", peer))
 	}
 	// Begin routines for this peer.
-	if conR.IsGossipDataEnabled() {
-		go conR.gossipDataRoutine(peer, peerState)
-	}
+	//if conR.IsGossipDataEnabled() {
+	//	go conR.gossipDataRoutine(peer, peerState)
+	//}
 	go conR.gossipVotesRoutine(peer, peerState)
 	go conR.queryMaj23Routine(peer, peerState)
 
@@ -668,6 +668,7 @@ func (conR *Reactor) getRoundState() *cstypes.RoundState {
 }
 
 func (conR *Reactor) gossipDataRoutine(peer p2p.Peer, ps *PeerState) {
+	return
 	logger := conR.Logger.With("peer", peer)
 
 OUTER_LOOP:
