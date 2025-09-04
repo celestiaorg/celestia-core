@@ -62,8 +62,14 @@ func TestStateCopy(t *testing.T) {
 	// the timeouts coming from the setupTestCase are 0,
 	// we change it here just to ensure that they have non-zero values in the
 	// tests below
-	state.TimeoutPropose = 10 * time.Second
-	state.TimeoutCommit = 20 * time.Second
+	state.Timeouts.TimeoutPropose = 10 * time.Second
+	state.Timeouts.TimeoutCommit = 20 * time.Second
+	state.Timeouts.TimeoutProposeDelta = 1 * time.Second
+	state.Timeouts.TimeoutPrevote = 5 * time.Second
+	state.Timeouts.TimeoutPrevoteDelta = 2 * time.Second
+	state.Timeouts.TimeoutPrecommit = 8 * time.Second
+	state.Timeouts.TimeoutPrecommitDelta = 3 * time.Second
+	state.Timeouts.DelayedPrecommitTimeout = 100 * time.Millisecond
 
 	tests := []struct {
 		name        string
@@ -92,8 +98,13 @@ func TestStateCopy(t *testing.T) {
 			name: "modify timeouts",
 			modifyState: func(s sm.State) sm.State {
 				stateCopy := s.Copy()
-				stateCopy.TimeoutPropose = 1 * time.Second
-				stateCopy.TimeoutCommit = 2 * time.Second
+				stateCopy.Timeouts.TimeoutPropose = 1 * time.Second
+				stateCopy.Timeouts.TimeoutCommit = 2 * time.Second
+				stateCopy.Timeouts.TimeoutProposeDelta = 500 * time.Millisecond
+				stateCopy.Timeouts.TimeoutPrevote = 2 * time.Second
+				stateCopy.Timeouts.TimeoutPrevoteDelta = 300 * time.Millisecond
+				stateCopy.Timeouts.TimeoutPrecommit = 3 * time.Second
+				stateCopy.Timeouts.TimeoutPrecommitDelta = 400 * time.Millisecond
 				return stateCopy
 			},
 			expected: false,
