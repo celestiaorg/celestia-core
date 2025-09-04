@@ -77,7 +77,7 @@ func NewReactor(consensusState *State, propagator propagation.Propagator, waitSy
 		traceClient: trace.NoOpTracer(),
 		propagator:  propagator,
 	}
-	conR.gossipDataEnabled.Store(true)
+	conR.gossipDataEnabled.Store(false)
 	conR.BaseReactor = *p2p.NewBaseReactor("Consensus", conR, p2p.WithIncomingQueueSize(ReactorIncomingMessageQueueSize))
 
 	for _, option := range options {
@@ -96,7 +96,7 @@ func WithGossipDataEnabled(enabled bool) ReactorOption {
 
 // IsGossipDataEnabled returns whether the gossipDataRoutine should run
 func (conR *Reactor) IsGossipDataEnabled() bool {
-	return conR.gossipDataEnabled.Load()
+	return false
 }
 
 // OnStart implements BaseService by subscribing to events, which later will be
