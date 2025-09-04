@@ -4,7 +4,6 @@ import (
 	"testing"
 	"time"
 
-	cfg "github.com/cometbft/cometbft/config"
 	"github.com/cometbft/cometbft/libs/bytes"
 	"github.com/cometbft/cometbft/libs/log"
 	cmtrand "github.com/cometbft/cometbft/libs/rand"
@@ -21,13 +20,17 @@ import (
 // Ensure a testnet makes blocks
 func TestReactorInvalidPrecommit(t *testing.T) {
 	N := 4
-	css, cleanup := randConsensusNet(t, N, "consensus_reactor_test", newMockTickerFunc(true), newKVStore,
-		func(c *cfg.Config) {
-			c.Consensus.TimeoutPropose = 3000 * time.Millisecond
-			c.Consensus.TimeoutPrevote = 1000 * time.Millisecond
-			c.Consensus.TimeoutPrecommit = 1000 * time.Millisecond
-		})
+	css, cleanup := randConsensusNet(t, N, "consensus_reactor_test", newMockTickerFunc(true), newKVStore)
 	defer cleanup()
+
+	// Set timeouts in the state since consensus now uses state timeouts instead of config timeouts
+	for i := 0; i < N; i++ {
+		css[i].mtx.Lock()
+		css[i].state.Timeouts.TimeoutPropose = 3000 * time.Millisecond
+		css[i].state.Timeouts.TimeoutPrevote = 1000 * time.Millisecond
+		css[i].state.Timeouts.TimeoutPrecommit = 1000 * time.Millisecond
+		css[i].mtx.Unlock()
+	}
 
 	for i := 0; i < N; i++ {
 		ticker := NewTimeoutTicker()
