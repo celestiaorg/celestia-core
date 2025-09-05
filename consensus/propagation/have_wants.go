@@ -46,8 +46,8 @@ func (blockProp *Reactor) handleHaves(peer p2p.ID, haves *proptypes.HaveParts) {
 		return
 	}
 
-	if cb == nil {
-		// we can't process haves for a compact block we don't have
+	if cb == nil || len(cb.PartsHashes) == 0 {
+		// we can't process haves for a compact block we don't have or if it was created via catchup.
 		return
 	}
 	err := haves.ValidatePartHashes(cb.PartsHashes)

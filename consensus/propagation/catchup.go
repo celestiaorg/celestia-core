@@ -2,7 +2,6 @@ package propagation
 
 import (
 	"bytes"
-	"fmt"
 	"math/rand"
 
 	proptypes "github.com/cometbft/cometbft/consensus/propagation/types"
@@ -34,7 +33,6 @@ func (blockProp *Reactor) retryWants(currentHeight int64) {
 			continue
 		}
 
-		fmt.Println("requesting height: ", height, "round: ", round)
 		schema.WriteRetries(blockProp.traceClient, height, round, missing.String())
 
 		// make requests from different peers
@@ -53,6 +51,9 @@ func (blockProp *Reactor) retryWants(currentHeight int64) {
 			}
 
 			missingPartsCount := countRemainingParts(int(prop.block.Total()), len(prop.block.BitArray().GetTrueIndices()))
+			if missingPartsCount == 0 {
+				continue
+			}
 			e := p2p.Envelope{
 				ChannelID: WantChannel,
 				Message: &protoprop.WantParts{
@@ -118,7 +119,6 @@ func (blockProp *Reactor) AddCommitment(height int64, round int32, psh *types.Pa
 		block:       combinedSet,
 		maxRequests: bits.NewBitArray(int(psh.Total * 2)), // this assumes that the parity parts are the same size
 	}
-	blockProp.Logger.Info("added commitment", "height", height, "round", round)
 
 	// increment the local copies of the height and round
 	blockProp.height = height + 1

@@ -211,6 +211,11 @@ func (blockProp *Reactor) AddPeer(peer p2p.Peer) {
 		blockProp.Logger.Error("failed to get current compact block", "peer", peer.ID())
 		return
 	}
+	if len(cb.PartsHashes) == 0 {
+		// this means the compact block was created from catchup and no need to share it.
+		// otherwise, we need to correctly populate it.
+		return
+	}
 
 	// send the current proposal
 	e := p2p.Envelope{

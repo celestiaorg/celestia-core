@@ -399,7 +399,6 @@ func (conR *Reactor) Receive(e p2p.Envelope) {
 		switch msg := msg.(type) {
 		// TODO handle the proposal message case in the propagation reactor
 		case *ProposalMessage:
-			fmt.Println("received proposal: ", msg.Proposal.Height, " ", msg.Proposal.Round)
 			ps.SetHasProposal(msg.Proposal)
 			conR.conS.peerMsgQueue <- msgInfo{msg, e.Src.ID()}
 			schema.WriteProposal(
@@ -753,7 +752,7 @@ OUTER_LOOP:
 		if rs.Proposal != nil && !prs.Proposal {
 			// Proposal: share the proposal metadata with peer.
 			{
-				logger.Info("Sending proposal", "height", prs.Height, "round", prs.Round)
+				logger.Debug("Sending proposal", "height", prs.Height, "round", prs.Round)
 				if peer.Send(p2p.Envelope{
 					ChannelID: DataChannel,
 					Message:   &cmtcons.Proposal{Proposal: *rs.Proposal.ToProto()},
