@@ -60,12 +60,13 @@ type Reactor struct {
 	mempool Mempool
 
 	partChan     chan types.PartInfo
-	proposalChan chan types.Proposal
+	proposalChan chan ProposalAndFrom
 
 	mtx         *sync.Mutex
 	traceClient trace.Tracer
 	self        p2p.ID
 	started     atomic.Bool
+	ticker      *time.Ticker
 
 	ctx    context.Context
 	cancel context.CancelFunc
@@ -99,7 +100,8 @@ func NewReactor(
 		chainID:       config.ChainID,
 		BlockMaxBytes: config.BlockMaxBytes,
 		partChan:      make(chan types.PartInfo, 30_000),
-		proposalChan:  make(chan types.Proposal, 100),
+		proposalChan:  make(chan ProposalAndFrom, 1000),
+		ticker:        time.NewTicker(RetryTime),
 	}
 	reactor.BaseReactor = *p2p.NewBaseReactor("Recovery", reactor,
 		p2p.WithIncomingQueueSize(ReactorIncomingMessageQueueSize),
@@ -110,13 +112,11 @@ func NewReactor(
 
 	// start the catchup routine
 	go func() {
-		// TODO dynamically set the ticker depending on how many blocks are missing
-		ticker := time.NewTicker(RetryTime)
 		for {
 			select {
 			case <-reactor.ctx.Done():
 				return
-			case <-ticker.C:
+			case <-reactor.ticker.C:
 				reactor.pmtx.Lock()
 				currentHeight := reactor.height
 				reactor.pmtx.Unlock()
@@ -246,7 +246,7 @@ func (blockProp *Reactor) ReceiveEnvelope(e p2p.Envelope) {
 
 	msg, err := proptypes.MsgFromProto(m.(*propproto.Message))
 	if err != nil {
-		blockProp.Logger.Error("Error decoding message", "src", e.Src, "chId", e.ChannelID, "err", err)
+		blockProp.Logger.Error("Error decoding message", "src", e.Src, "chId", e.ChannelID, "err", err, "msg", e.Message)
 		blockProp.Switch.StopPeerForError(e.Src, err, blockProp.String())
 		return
 	}
@@ -297,6 +297,7 @@ func (blockProp *Reactor) Prune(committedHeight int64) {
 	defer blockProp.pmtx.Unlock()
 	blockProp.height = committedHeight
 	blockProp.ResetRequestCounts()
+	blockProp.ticker.Reset(RetryTime)
 }
 
 func (blockProp *Reactor) SetProposer(proposer crypto.PubKey) {
@@ -386,6 +387,6 @@ func (r *Reactor) GetPartChan() <-chan types.PartInfo {
 }
 
 // GetProposalChan returns the channel used for receiving proposals.
-func (r *Reactor) GetProposalChan() <-chan types.Proposal {
+func (r *Reactor) GetProposalChan() <-chan ProposalAndFrom {
 	return r.proposalChan
 }

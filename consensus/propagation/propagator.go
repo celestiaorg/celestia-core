@@ -3,6 +3,7 @@ package propagation
 import (
 	proptypes "github.com/cometbft/cometbft/consensus/propagation/types"
 	"github.com/cometbft/cometbft/crypto"
+	"github.com/cometbft/cometbft/p2p"
 	"github.com/cometbft/cometbft/types"
 )
 
@@ -17,7 +18,12 @@ type Propagator interface {
 	StartProcessing()
 	SetProposer(proposer crypto.PubKey)
 	GetPartChan() <-chan types.PartInfo
-	GetProposalChan() <-chan types.Proposal
+	GetProposalChan() <-chan ProposalAndFrom
+}
+
+type ProposalAndFrom struct {
+	Proposal types.Proposal
+	From     p2p.ID
 }
 
 // PeerStateEditor defines methods for editing peer state from the propagation layer.
@@ -72,6 +78,6 @@ func (nop *NoOpPropagator) GetPartChan() <-chan types.PartInfo {
 	return nil
 }
 
-func (nop *NoOpPropagator) GetProposalChan() <-chan types.Proposal {
+func (nop *NoOpPropagator) GetProposalChan() <-chan ProposalAndFrom {
 	return nil
 }

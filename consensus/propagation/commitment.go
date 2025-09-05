@@ -167,6 +167,7 @@ func chunkToPartMetaData(chunk *bits.BitArray, partSet *proptypes.CombinedPartSe
 // time a proposal is received from a peer or when a proposal is created. If the
 // proposal is new, it will be stored and broadcast to the relevant peers.
 func (blockProp *Reactor) handleCompactBlock(cb *proptypes.CompactBlock, peer p2p.ID, proposer bool) {
+	fmt.Println("received compact block with type: ", cb.Proposal.Type)
 	err := blockProp.validateCompactBlock(cb)
 	if !proposer && err != nil {
 		blockProp.Logger.Error("failed to validate proposal. ignoring", "err", err, "height", cb.Proposal.Height, "round", cb.Proposal.Round)
@@ -179,6 +180,17 @@ func (blockProp *Reactor) handleCompactBlock(cb *proptypes.CompactBlock, peer p2
 		blockProp.Logger.Error("received invalid compact block", "err", err.Error())
 		blockProp.Switch.StopPeerForError(blockProp.getPeer(peer).peer, err, blockProp.String())
 		return
+	}
+
+	if !proposer {
+		select {
+		case <-blockProp.ctx.Done():
+			return
+		case blockProp.proposalChan <- ProposalAndFrom{
+			Proposal: cb.Proposal,
+			From:     peer,
+		}:
+		}
 	}
 
 	added := blockProp.AddProposal(cb)
@@ -198,11 +210,6 @@ func (blockProp *Reactor) handleCompactBlock(cb *proptypes.CompactBlock, peer p2
 	}
 
 	if !proposer {
-		select {
-		case <-blockProp.ctx.Done():
-			return
-		case blockProp.proposalChan <- cb.Proposal:
-		}
 		// check if we have any transactions that are in the compact block
 		blockProp.recoverPartsFromMempool(cb)
 	}

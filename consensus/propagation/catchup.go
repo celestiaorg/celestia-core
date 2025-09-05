@@ -2,6 +2,7 @@ package propagation
 
 import (
 	"bytes"
+	"fmt"
 	"math/rand"
 
 	proptypes "github.com/cometbft/cometbft/consensus/propagation/types"
@@ -22,11 +23,6 @@ func (blockProp *Reactor) retryWants(currentHeight int64) {
 	for _, prop := range data {
 		height, round := prop.compactBlock.Proposal.Height, prop.compactBlock.Proposal.Round
 
-		// don't re-request parts for any round on the current height
-		if height == currentHeight {
-			continue
-		}
-
 		if prop.block.IsComplete() {
 			continue
 		}
@@ -38,6 +34,7 @@ func (blockProp *Reactor) retryWants(currentHeight int64) {
 			continue
 		}
 
+		fmt.Println("requesting height: ", height, "round: ", round)
 		schema.WriteRetries(blockProp.traceClient, height, round, missing.String())
 
 		// make requests from different peers
