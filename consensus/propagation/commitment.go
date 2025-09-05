@@ -435,8 +435,9 @@ func (blockProp *Reactor) validateCompactBlock(cb *proptypes.CompactBlock) error
 	if maxBytes == -1 {
 		maxBytes = int64(types.MaxBlockSizeBytes)
 	}
-	if int64(cb.Proposal.BlockID.PartSetHeader.Total) > (maxBytes-1)/int64(types.BlockPartSizeBytes)+1 {
-		return errors.New("proposal block has too many parts")
+	maxBlockPartsCount := (maxBytes-1)/int64(types.BlockPartSizeBytes) + 1
+	if int64(cb.Proposal.BlockID.PartSetHeader.Total) > maxBlockPartsCount {
+		return fmt.Errorf("proposal block has too many parts: %d > %d", cb.Proposal.BlockID.PartSetHeader.Total, maxBlockPartsCount)
 	}
 
 	// validate the compact block
