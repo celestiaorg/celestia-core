@@ -79,10 +79,9 @@ func (blockProp *Reactor) ProposeBlock(proposal *types.Proposal, block *types.Pa
 
 	// distribute equal portions of haves to each of the proposer's peers
 	peers := blockProp.getPeers()
-	chunks := chunkParts(parts.BitArray(), len(peers), 1)
-	// chunks = Shuffle(chunks)
+	chunks := chunkParts(parts.Parity().BitArray(), len(peers), 1)
 	for index, peer := range peers {
-		partsMeta := chunkToPartMetaData(chunks[index], parts)
+		partsMeta := chunkToPartMetaData(chunks[index], parts.Parity())
 		e := p2p.Envelope{
 			ChannelID: DataChannel,
 			Message: &propagation.HaveParts{
@@ -103,7 +102,7 @@ func (blockProp *Reactor) ProposeBlock(proposal *types.Proposal, block *types.Pa
 			// since this node is proposing, it already has the data and
 			// there's not a lot of reason to update this peer's have
 			// state other than to be consistent atm.
-			err := peer.SetHave(proposal.Height, proposal.Round, int(part.GetIndex()))
+			err := peer.SetHave(proposal.Height, proposal.Round, int(parts.Original().Total()+part.GetIndex()))
 			if err != nil {
 				blockProp.Logger.Debug("failed to set have part peer state", "peer", peer, "height", proposal.Height, "round", proposal.Round, "error", err)
 				// skip saving the old routine's state if the state here
@@ -114,7 +113,7 @@ func (blockProp *Reactor) ProposeBlock(proposal *types.Proposal, block *types.Pa
 			// this might not get set depending on when the consensus peer
 			// state is getting updated. This will result in sending the
 			// peer redundant parts :shrug:
-			peer.consensusPeerState.SetHasProposalBlockPart(proposal.Height, proposal.Round, int(part.GetIndex()))
+			peer.consensusPeerState.SetHasProposalBlockPart(proposal.Height, proposal.Round, int(parts.Original().Total()+part.GetIndex()))
 		}
 
 		schema.WriteBlockPartState(blockProp.traceClient, proposal.Height, proposal.Round, chunks[index].GetTrueIndices(), true, string(peer.peer.ID()), schema.Upload)
@@ -151,12 +150,15 @@ func extractProofs(blocks ...*types.PartSet) []*merkle.Proof {
 	return proofs
 }
 
-func chunkToPartMetaData(chunk *bits.BitArray, partSet *proptypes.CombinedPartSet) []*propagation.PartMetaData {
+func chunkToPartMetaData(chunk *bits.BitArray, partSet *types.PartSet) []*propagation.PartMetaData {
 	partMetaData := make([]*propagation.PartMetaData, 0)
 	for _, partIndex := range chunk.GetTrueIndices() {
-		part, _ := partSet.GetPart(uint32(partIndex))
+		part := partSet.GetPart(partIndex)
+		if part == nil {
+			continue
+		}
 		partMetaData = append(partMetaData, &propagation.PartMetaData{
-			Index: uint32(partIndex),
+			Index: partSet.Total() + uint32(partIndex),
 			Hash:  part.Proof.LeafHash,
 		})
 	}

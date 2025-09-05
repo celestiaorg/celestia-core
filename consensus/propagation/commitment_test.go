@@ -50,11 +50,17 @@ func TestPropose(t *testing.T) {
 	assert.True(t, has)
 	// the parts == total because we only have 2 peers
 	assert.Equal(t, haves.Size(), int(partSet.Total()*2))
+	for _, index := range haves.GetTrueIndices() {
+		assert.GreaterOrEqual(t, index, int(partSet.Total()))
+	}
 
 	haves, has = reactor3.getPeer(reactor1.self).GetHaves(prop.Height, prop.Round)
 	assert.True(t, has)
 	// the parts == total because we only have 2 peers
 	assert.Equal(t, haves.Size(), int(partSet.Total()*2))
+	for _, index := range haves.GetTrueIndices() {
+		assert.GreaterOrEqual(t, index, int(partSet.Total()))
+	}
 
 	time.Sleep(500 * time.Millisecond)
 
