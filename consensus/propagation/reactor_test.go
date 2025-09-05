@@ -482,7 +482,9 @@ func TestPropagationSmokeTest(t *testing.T) {
 
 		for _, r := range reactors {
 			r.Prune(i)
+			r.mtx.Lock()
 			r.height++
+			r.mtx.Unlock()
 		}
 	}
 }
