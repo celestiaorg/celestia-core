@@ -532,6 +532,10 @@ func (ps *PartSet) AddPart(part *Part) (bool, error) {
 	return ps.addPart(part)
 }
 
+func (ps *PartSet) AddPartWithoutProof(part *Part) (bool, error) {
+	return ps.addPart(part)
+}
+
 func (ps *PartSet) addPart(part *Part) (bool, error) {
 	if part == nil {
 		return false, errors.New("nil part")
