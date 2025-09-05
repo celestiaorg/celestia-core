@@ -3,6 +3,7 @@ package consensus
 import (
 	"bytes"
 	"context"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
@@ -1982,14 +1983,15 @@ func (cs *State) defaultSetProposal(proposal *types.Proposal) error {
 	) {
 		// Save invalid proposal with metadata for debugging
 		metadata := map[string]interface{}{
-			"height":    proposal.Height,
-			"round":     proposal.Round,
-			"chain_id":  cs.state.ChainID,
-			"timestamp": cmttime.Now(),
-			"reason":    "invalid_signature",
-			"proposer":  cs.Validators.GetProposer().Address.String(),
-			"block_id":  proposal.BlockID.String(),
-			"pol_round": proposal.POLRound,
+			"proposal_height": proposal.Height,
+			"proposal_round":  proposal.Round,
+			"chain_id":        cs.state.ChainID,
+			"timestamp":       cmttime.Now(),
+			"reason":          "invalid_signature",
+			"proposer":        cs.Validators.GetProposer().Address.String(),
+			"block_id":        proposal.BlockID.String(),
+			"pol_round":       proposal.POLRound,
+			"sign_bytes":      hex.EncodeToString(types.ProposalSignBytes(cs.state.ChainID, p)),
 		}
 		timestamp := cmttime.Now().Format("20060102-150405.000000")
 		err := types.SaveInvalidProposalWithMetadata(
