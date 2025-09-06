@@ -438,6 +438,9 @@ func (cs *State) OnStart() error {
 	// schedule the first round!
 	// use GetRoundState so we don't race the receiveRoutine for access
 	cs.scheduleRound0(cs.GetRoundState())
+	cs.rsMtx.RLock()
+	cs.propagator.SetHeightAndRound(cs.rs.Height, cs.rs.Round)
+	cs.rsMtx.RUnlock()
 
 	return nil
 }
@@ -1216,7 +1219,7 @@ func (cs *State) enterNewRound(height int64, round int32) {
 		cs.Logger.Error("failed publishing new round", "err", err)
 	}
 
-	cs.propagator.SetConsensusRound(height, round)
+	cs.propagator.SetHeightAndRound(height, round)
 	proposer := cs.rs.Validators.GetProposer()
 	if proposer != nil {
 		cs.propagator.SetProposer(proposer.PubKey)
@@ -2148,6 +2151,7 @@ func (cs *State) defaultSetProposal(proposal *types.Proposal) error {
 		cs.rs.ProposalBlockParts = types.NewPartSetFromHeader(proposal.BlockID.PartSetHeader, types.BlockPartSizeBytes)
 	}
 
+	cs.propagator.AddCommitment(proposal.Height, proposal.Round, &proposal.BlockID.PartSetHeader)
 	cs.Logger.Info("received proposal", "proposal", proposal, "proposer", pubKey.Address())
 	return nil
 }
@@ -2810,30 +2814,11 @@ func (cs *State) syncData() {
 		select {
 		case <-cs.Quit():
 			return
-		case proposal, ok := <-proposalChan:
+		case proposalAndFrom, ok := <-proposalChan:
 			if !ok {
 				return
 			}
-			cs.rsMtx.RLock()
-			currentProposal := cs.rs.Proposal
-			h, r := cs.rs.Height, cs.rs.Round
-			completeProp := cs.isProposalComplete()
-			cs.rsMtx.RUnlock()
-			if completeProp {
-				continue
-			}
-
-			if currentProposal == nil && proposal.Height == h && proposal.Round == r {
-				schema.WriteNote(
-					cs.traceClient,
-					proposal.Height,
-					proposal.Round,
-					"syncData",
-					"found and sent proposal: %v/%v",
-					proposal.Height, proposal.Round,
-				)
-				cs.internalMsgQueue <- msgInfo{&ProposalMessage{&proposal}, ""}
-			}
+			cs.peerMsgQueue <- msgInfo{&ProposalMessage{&proposalAndFrom.Proposal}, proposalAndFrom.From}
 		case _, ok := <-cs.newHeightOrRoundChan:
 			if !ok {
 				return

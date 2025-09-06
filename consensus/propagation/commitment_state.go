@@ -18,14 +18,14 @@ type proposalData struct {
 }
 
 type ProposalCache struct {
-	store         *store.BlockStore
-	pmtx          *sync.Mutex
-	proposals     map[int64]map[int32]*proposalData
-	currentHeight int64
-	currentRound  int32
+	store     *store.BlockStore
+	pmtx      *sync.Mutex
+	proposals map[int64]map[int32]*proposalData
 
-	consensusHeight int64
-	consensusRound  int32
+	// height the height we're trying to get consensus on.
+	// the last committed height is height-1.
+	height int64
+	round  int32
 
 	// currentProposalPartsCount is the maximum number of concurrent requests allowed for the current proposal.
 	currentProposalPartsCount atomic.Int64
@@ -41,7 +41,7 @@ func NewProposalCache(bs *store.BlockStore) *ProposalCache {
 
 	// if there is a block saved in the store, set the current height and round.
 	if bs.Height() != 0 {
-		pc.currentHeight = bs.Height()
+		pc.height = bs.Height()
 	}
 	return pc
 }
@@ -73,11 +73,11 @@ func (p *ProposalCache) AddProposal(cb *proptypes.CompactBlock) (added bool) {
 
 	// if we don't have this proposal, and its height is greater than the current
 	// height, update the current height and round.
-	if cb.Proposal.Height > p.currentHeight {
-		p.currentHeight = cb.Proposal.Height
-		p.currentRound = cb.Proposal.Round
-	} else if cb.Proposal.Height == p.currentHeight && cb.Proposal.Round > p.currentRound {
-		p.currentRound = cb.Proposal.Round
+	if cb.Proposal.Height > p.height {
+		p.height = cb.Proposal.Height
+		p.round = cb.Proposal.Round
+	} else if cb.Proposal.Height == p.height && cb.Proposal.Round > p.round {
+		p.round = cb.Proposal.Round
 	}
 
 	block := proptypes.NewCombinedSetFromCompactBlock(cb)
@@ -99,12 +99,6 @@ func (p *ProposalCache) GetProposal(height int64, round int32) (*types.Proposal,
 		return nil, nil, false
 	}
 	return &cb.Proposal, parts.Original(), has
-}
-
-func (p *ProposalCache) GetCurrentHeightAndRound() (int64, int32) {
-	p.pmtx.Lock()
-	defer p.pmtx.Unlock()
-	return p.currentHeight, p.currentRound
 }
 
 func (p *ProposalCache) unfinishedHeights() []*proposalData {
@@ -134,30 +128,20 @@ func (p *ProposalCache) unfinishedHeights() []*proposalData {
 // example, passing the height that was already committed is not actionable.
 // Passing a round that has already been surpassed is not actionable.
 func (p *ProposalCache) relevant(height int64, round int32) bool {
-	if height < p.consensusHeight {
-		return false
-	}
-
-	if round < p.consensusRound {
+	// TODO Ping @evan-forbes whether this should be:
+	// p.height != height || (p.height == height && p.round != round)
+	if p.height > height || (p.height == height && p.round > round) {
 		return false
 	}
 
 	return true
 }
 
-// relevantHave determines if a have messasage is relevant in a thread safe way.
-func (p *ProposalCache) relevantHave(height int64, round int32) bool {
+// safeRelevant determines if a have message is relevant in a thread safe way.
+func (p *ProposalCache) safeRelevant(height int64, round int32) bool {
 	p.pmtx.Lock()
 	defer p.pmtx.Unlock()
-	if height <= p.consensusHeight {
-		return false
-	}
-
-	if round < p.consensusRound {
-		return false
-	}
-
-	return true
+	return p.relevant(height, round)
 }
 
 // GetProposal returns the proposal and block for a given height and round if
@@ -189,7 +173,7 @@ func (p *ProposalCache) getAllState(height int64, round int32, catchup bool) (*p
 	}
 
 	var hasStored *types.BlockMeta
-	if height < p.currentHeight {
+	if height < p.height {
 		hasStored = p.store.LoadBlockMeta(height)
 	}
 
@@ -213,10 +197,10 @@ func (p *ProposalCache) getAllState(height int64, round int32, catchup bool) (*p
 func (p *ProposalCache) GetCurrentProposal() (*types.Proposal, *proptypes.CombinedPartSet, bool) {
 	p.pmtx.Lock()
 	defer p.pmtx.Unlock()
-	if p.proposals[p.currentHeight] == nil {
+	if p.proposals[p.height] == nil {
 		return nil, nil, false
 	}
-	proposalData, has := p.proposals[p.currentHeight][p.currentRound]
+	proposalData, has := p.proposals[p.height][p.round]
 	if !has {
 		return nil, nil, false
 	}
@@ -228,10 +212,10 @@ func (p *ProposalCache) GetCurrentProposal() (*types.Proposal, *proptypes.Combin
 func (p *ProposalCache) GetCurrentCompactBlock() (*proptypes.CompactBlock, *proptypes.CombinedPartSet, bool) {
 	p.pmtx.Lock()
 	defer p.pmtx.Unlock()
-	if p.proposals[p.currentHeight] == nil {
+	if p.proposals[p.height] == nil {
 		return nil, nil, false
 	}
-	proposalData, has := p.proposals[p.currentHeight][p.currentRound]
+	proposalData, has := p.proposals[p.height][p.round]
 	if !has {
 		return nil, nil, false
 	}
