@@ -670,16 +670,13 @@ func (conR *Reactor) getRoundState() *cstypes.RoundState {
 func (conR *Reactor) gossipDataRoutine(peer p2p.Peer, ps *PeerState) {
 	logger := conR.Logger.With("peer", peer)
 	isGossipDataEnabled := conR.IsGossipDataEnabled()
-	conR.conS.mtx.Lock()
 	sleepDuration := conR.conS.config.PeerGossipSleepDuration
 	if !isGossipDataEnabled {
-		// TODO switch to delayed
-		sleepDuration = conR.conS.state.TimeoutCommit
+		sleepDuration = conR.conS.state.Timeouts.DelayedPrecommitTimeout
 		if sleepDuration == 0 {
 			sleepDuration = conR.conS.config.DelayedPrecommitTimeout
 		}
 	}
-	conR.conS.mtx.Unlock()
 OUTER_LOOP:
 	for {
 		// Manage disconnects from self or peer.
