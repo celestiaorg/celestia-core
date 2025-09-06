@@ -39,8 +39,6 @@ const (
 	ReactorIncomingMessageQueueSize = 5000
 )
 
-var RetryTime = 6 * time.Second
-
 type Reactor struct {
 	p2p.BaseReactor // BaseService + p2p.Switch
 
@@ -101,7 +99,7 @@ func NewReactor(
 		BlockMaxBytes: config.BlockMaxBytes,
 		partChan:      make(chan types.PartInfo, 30_000),
 		proposalChan:  make(chan ProposalAndFrom, 1000),
-		ticker:        time.NewTicker(RetryTime),
+		ticker:        time.NewTicker(6*time.Second),
 	}
 	reactor.BaseReactor = *p2p.NewBaseReactor("Recovery", reactor,
 		p2p.WithIncomingQueueSize(ReactorIncomingMessageQueueSize),

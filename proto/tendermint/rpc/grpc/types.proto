@@ -65,131 +65,128 @@ service BlobstreamAPI {
   rpc DataRootInclusionProof(DataRootInclusionProofRequest) returns (DataRootInclusionProofResponse);
 }
 
-
 // BlockByHashRequest is a request to get a block by its hash.
 message BlockByHashRequest {
-    bytes hash  = 1;
-    bool  prove = 2;
-  }
+  bytes hash  = 1;
+  bool  prove = 2;
+}
 
-  // BlockByHeightRequest is a request to get a block by its height.
-  message BlockByHeightRequest {
-    // Height the requested block height.
-    // If height is equal to 0, the latest height stored in the block store
-    // will be used.
-    int64 height = 1;
-    // Prove set to true to return the parts proofs.
-    bool prove = 2;
-  }
+// BlockByHeightRequest is a request to get a block by its height.
+message BlockByHeightRequest {
+  // Height the requested block height.
+  // If height is equal to 0, the latest height stored in the block store
+  // will be used.
+  int64 height = 1;
+  // Prove set to true to return the parts proofs.
+  bool prove = 2;
+}
 
-  // CommitRequest is a request to get the commit of a block.
-  message CommitRequest {
-    // Height the requested block commit height.
-    // If height is equal to 0, the latest height stored in the block store
-    // will be used.
-    int64 height = 1;
-  }
+// CommitRequest is a request to get the commit of a block.
+message CommitRequest {
+  // Height the requested block commit height.
+  // If height is equal to 0, the latest height stored in the block store
+  // will be used.
+  int64 height = 1;
+}
 
-  // ValidatorSetRequest is a request to get the validator set of a block.
-  message ValidatorSetRequest {
-    // Height the requested validator set height.
-    // If height is equal to 0, the latest height stored in the block store
-    // will be used.
-    int64 height = 1;
-  }
+// ValidatorSetRequest is a request to get the validator set of a block.
+message ValidatorSetRequest {
+  // Height the requested validator set height.
+  // If height is equal to 0, the latest height stored in the block store
+  // will be used.
+  int64 height = 1;
+}
 
-  // SubscribeNewHeightsRequest is a request to subscribe to new heights.
-  message SubscribeNewHeightsRequest {}
+// SubscribeNewHeightsRequest is a request to subscribe to new heights.
+message SubscribeNewHeightsRequest {}
 
-  // StatusRequest is a request to get the status of the node.
-  message StatusRequest {}
+// StatusRequest is a request to get the status of the node.
+message StatusRequest {}
 
+// BlockByHashResponse is a response to a BlockByHashRequest.
+message BlockByHashResponse {
+  tendermint.types.Part block_part = 1;
+  // Commit is only set in the first part, and
+  // it stays nil in the remaining ones.
+  tendermint.types.Commit commit = 2;
+  // ValidatorSet is only set in the first part, and
+  // it stays nil in the remaining ones.
+  tendermint.types.ValidatorSet validator_set = 3;
+  bool                          is_last       = 4;
+}
 
-  // BlockByHashResponse is a response to a BlockByHashRequest.
-  message BlockByHashResponse {
-      tendermint.types.Part         block_part    = 1;
-      // Commit is only set in the first part, and
-      // it stays nil in the remaining ones.
-      tendermint.types.Commit       commit        = 2;
-      // ValidatorSet is only set in the first part, and
-      // it stays nil in the remaining ones.
-      tendermint.types.ValidatorSet validator_set = 3;
-      bool                          is_last       = 4;
-    }
+// BlockByHeightResponse is a response to a BlockByHeightRequest.
+message BlockByHeightResponse {
+  tendermint.types.Part block_part = 1;
+  // Commit is only set in the first part, and
+  // it stays nil in the remaining ones.
+  tendermint.types.Commit commit = 2;
+  // ValidatorSet is only set in the first part, and
+  // it stays nil in the remaining ones.
+  tendermint.types.ValidatorSet validator_set = 3;
+  bool                          is_last       = 4;
+}
 
-    // BlockByHeightResponse is a response to a BlockByHeightRequest.
-  message BlockByHeightResponse {
-      tendermint.types.Part block_part = 1;
-      // Commit is only set in the first part, and
-      // it stays nil in the remaining ones.
-      tendermint.types.Commit commit = 2;
-      // ValidatorSet is only set in the first part, and
-      // it stays nil in the remaining ones.
-      tendermint.types.ValidatorSet validator_set = 3;
-      bool                       is_last    = 4;
-    }
+// CommitResponse is a response to a CommitRequest.
+message CommitResponse {
+  tendermint.types.Commit commit = 1;
+}
 
-    // CommitResponse is a response to a CommitRequest.
-    message CommitResponse {
-      tendermint.types.Commit commit = 1;
-    }
+// ValidatorSetResponse is a response to a ValidatorSetRequest.
+message ValidatorSetResponse {
+  // ValidatorSet the requested validator set.
+  tendermint.types.ValidatorSet validator_set = 1;
+  // Height the height corresponding to the returned
+  // validator set.
+  int64 height = 2;
+}
 
-    // ValidatorSetResponse is a response to a ValidatorSetRequest.
-    message ValidatorSetResponse {
-      // ValidatorSet the requested validator set.
-      tendermint.types.ValidatorSet validator_set = 1;
-      // Height the height corresponding to the returned
-      // validator set.
-      int64 height = 2;
-    }
+// NewHeightEvent is an event that indicates a new height.
+message SubscribeNewHeightsResponse {
+  int64 height = 1;
+  bytes hash   = 2;
+}
 
-    // NewHeightEvent is an event that indicates a new height.
-    message SubscribeNewHeightsResponse {
-      int64 height = 1;
-      bytes hash   = 2;
-    }
+// StatusResponse is a response to a StatusRequest.
+message StatusResponse {
+  tendermint.p2p.DefaultNodeInfo node_info      = 1;
+  SyncInfo                       sync_info      = 2;
+  ValidatorInfo                  validator_info = 3;
+}
 
-    // StatusResponse is a response to a StatusRequest.
-    message StatusResponse {
-      tendermint.p2p.DefaultNodeInfo node_info      = 1;
-      SyncInfo                       sync_info      = 2;
-      ValidatorInfo                  validator_info = 3;
-    }
+// SyncInfo is information about the node's sync status.
+message SyncInfo {
+  bytes                     latest_block_hash   = 1;
+  bytes                     latest_app_hash     = 2;
+  int64                     latest_block_height = 3;
+  google.protobuf.Timestamp latest_block_time   = 4
+      [(gogoproto.nullable) = false, (gogoproto.stdtime) = true];
 
-    // SyncInfo is information about the node's sync status.
-    message SyncInfo {
-      bytes                     latest_block_hash   = 1;
-      bytes                     latest_app_hash     = 2;
-      int64                     latest_block_height = 3;
-      google.protobuf.Timestamp latest_block_time   = 4
-          [(gogoproto.nullable) = false, (gogoproto.stdtime) = true];
+  bytes                     earliest_block_hash   = 5;
+  bytes                     earliest_app_hash     = 6;
+  int64                     earliest_block_height = 7;
+  google.protobuf.Timestamp earliest_block_time   = 8
+      [(gogoproto.nullable) = false, (gogoproto.stdtime) = true];
 
-        bytes                     earliest_block_hash   = 5;
-      bytes                     earliest_app_hash     = 6;
-      int64                     earliest_block_height = 7;
-      google.protobuf.Timestamp earliest_block_time   = 8
-          [(gogoproto.nullable) = false, (gogoproto.stdtime) = true];
+  bool catching_up = 9;
+}
 
-      bool catching_up = 9;
-    }
+// ValidatorInfo is information about a validator.
+message ValidatorInfo {
+  bytes                       address      = 1;
+  tendermint.crypto.PublicKey pub_key      = 2;
+  int64                       voting_power = 3;
+}
 
-    // ValidatorInfo is information about a validator.
-    message ValidatorInfo {
-      bytes                       address      = 1;
-      tendermint.crypto.PublicKey pub_key      = 2;
-      int64                       voting_power = 3;
-    }
+message DataRootInclusionProofRequest {
+  // Height the height of block we want to prove.
+  int64 height = 1;
+  // Start the start of the data commitment range containing the block.
+  uint64 start = 2;
+  // End the end exclusive of the data commitment range containing the block.
+  uint64 end = 3;
+}
 
-
-    message DataRootInclusionProofRequest {
-      // Height the height of block we want to prove.
-      int64 height = 1;
-      // Start the start of the data commitment range containing the block.
-      uint64 start = 2;
-      // End the end exclusive of the data commitment range containing the block.
-      uint64 end = 3;
-    }
-
-    message DataRootInclusionProofResponse {
-      tendermint.crypto.Proof proof = 1 [(gogoproto.nullable) = false];
-    }
+message DataRootInclusionProofResponse {
+  tendermint.crypto.Proof proof = 1 [(gogoproto.nullable) = false];
+}

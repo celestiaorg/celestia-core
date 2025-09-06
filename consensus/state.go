@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"runtime/debug"
 	"sort"
+	"sync"
 	"time"
 
 	proptypes "github.com/cometbft/cometbft/consensus/propagation/types"
@@ -613,6 +614,63 @@ func (cs *State) scheduleTimeout(duration time.Duration, height int64, round int
 	cs.timeoutTicker.ScheduleTimeout(timeoutInfo{duration, height, round, step})
 }
 
+// Propose returns the amount of time to wait for a proposal, using application timeouts
+// and falling back to config timeouts if application timeouts are zero
+func (cs *State) Propose(round int32) time.Duration {
+	timeout := cs.state.Timeouts.TimeoutPropose
+	delta := cs.state.Timeouts.TimeoutProposeDelta
+
+	// Fallback to config values if state timeouts are zero
+	if timeout == 0 {
+		timeout = cs.config.TimeoutPropose
+	}
+	if delta == 0 {
+		delta = cs.config.TimeoutProposeDelta
+	}
+
+	return time.Duration(
+		timeout.Nanoseconds()+delta.Nanoseconds()*int64(round),
+	) * time.Nanosecond
+}
+
+// Prevote returns the amount of time to wait for straggler votes after receiving any +2/3 prevotes,
+// using application timeouts and falling back to config timeouts if application timeouts are zero
+func (cs *State) Prevote(round int32) time.Duration {
+	timeout := cs.state.Timeouts.TimeoutPrevote
+	delta := cs.state.Timeouts.TimeoutPrevoteDelta
+
+	// Fallback to config values if state timeouts are zero
+	if timeout == 0 {
+		timeout = cs.config.TimeoutPrevote
+	}
+	if delta == 0 {
+		delta = cs.config.TimeoutPrevoteDelta
+	}
+
+	return time.Duration(
+		timeout.Nanoseconds()+delta.Nanoseconds()*int64(round),
+	) * time.Nanosecond
+}
+
+// Precommit returns the amount of time to wait for straggler votes after receiving any +2/3 precommits,
+// using application timeouts and falling back to config timeouts if application timeouts are zero
+func (cs *State) Precommit(round int32) time.Duration {
+	timeout := cs.state.Timeouts.TimeoutPrecommit
+	delta := cs.state.Timeouts.TimeoutPrecommitDelta
+
+	// Fallback to config values if state timeouts are zero
+	if timeout == 0 {
+		timeout = cs.config.TimeoutPrecommit
+	}
+	if delta == 0 {
+		delta = cs.config.TimeoutPrecommitDelta
+	}
+
+	return time.Duration(
+		timeout.Nanoseconds()+delta.Nanoseconds()*int64(round),
+	) * time.Nanosecond
+}
+
 // send a msg into the receiveRoutine regarding our own proposal, block part, or vote
 func (cs *State) sendInternalMessage(mi msgInfo) {
 	select {
@@ -775,17 +833,17 @@ func (cs *State) updateToState(state sm.State) {
 		// And alternative solution that relies on clocks:
 		// cs.StartTime = state.LastBlockTime.Add(timeoutCommit)
 		if state.LastBlockHeight == 0 {
-			// Don't use cs.state.TimeoutCommit because that is zero
-			cs.rs.StartTime = cs.config.CommitWithCustomTimeout(cmttime.Now(), state.TimeoutCommit)
+			// Don't use cs.state.Timeouts.TimeoutCommit because that is zero
+			cs.rs.StartTime = cs.config.CommitWithCustomTimeout(cmttime.Now(), state.Timeouts.TimeoutCommit)
 		} else {
-			cs.rs.StartTime = cs.config.CommitWithCustomTimeout(cmttime.Now(), cs.state.TimeoutCommit)
+			cs.rs.StartTime = cs.config.CommitWithCustomTimeout(cmttime.Now(), cs.state.Timeouts.TimeoutCommit)
 		}
 
 	} else {
 		if state.LastBlockHeight == 0 {
-			cs.rs.StartTime = cs.config.CommitWithCustomTimeout(cs.rs.CommitTime, state.TimeoutCommit)
+			cs.rs.StartTime = cs.config.CommitWithCustomTimeout(cs.rs.CommitTime, state.Timeouts.TimeoutCommit)
 		} else {
-			cs.rs.StartTime = cs.config.CommitWithCustomTimeout(cs.rs.CommitTime, cs.state.TimeoutCommit)
+			cs.rs.StartTime = cs.config.CommitWithCustomTimeout(cs.rs.CommitTime, cs.state.Timeouts.TimeoutCommit)
 		}
 	}
 
@@ -1231,7 +1289,7 @@ func (cs *State) enterPropose(height int64, round int32) {
 	}()
 
 	// If we don't get the proposal and all block parts quick enough, enterPrevote
-	cs.scheduleTimeout(cs.config.Propose(round), height, round, cstypes.RoundStepPropose)
+	cs.scheduleTimeout(cs.Propose(round), height, round, cstypes.RoundStepPropose)
 
 	// Nothing more to do if we're not a validator
 	if cs.privValidator == nil {
@@ -1329,12 +1387,17 @@ func (cs *State) defaultDecideProposal(height int64, round int32) {
 			}
 		}
 
+		wg := sync.WaitGroup{}
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for i := 0; i < int(blockParts.Total()); i++ {
+				part := blockParts.GetPart(i)
+				cs.sendInternalMessage(msgInfo{&BlockPartMessage{cs.rs.Height, cs.rs.Round, part}, ""})
+			}
+		}()
 		cs.propagator.ProposeBlock(proposal, blockParts, metaData)
-
-		for i := 0; i < int(blockParts.Total()); i++ {
-			part := blockParts.GetPart(i)
-			cs.sendInternalMessage(msgInfo{&BlockPartMessage{cs.rs.Height, cs.rs.Round, part}, ""})
-		}
+		wg.Wait()
 
 		cs.Logger.Debug("signed proposal", "height", height, "round", round, "proposal", proposal)
 	} else if !cs.replayMode {
@@ -1533,7 +1596,7 @@ func (cs *State) enterPrevoteWait(height int64, round int32) {
 	}()
 
 	// Wait for some more prevotes; enterPrecommit
-	cs.scheduleTimeout(cs.config.Prevote(round), height, round, cstypes.RoundStepPrevoteWait)
+	cs.scheduleTimeout(cs.Prevote(round), height, round, cstypes.RoundStepPrevoteWait)
 }
 
 // Enter: `timeoutPrevote` after any +2/3 prevotes.
@@ -1701,7 +1764,7 @@ func (cs *State) enterPrecommitWait(height int64, round int32) {
 	}()
 
 	// wait for some more precommits; enterNewRound
-	cs.scheduleTimeout(cs.config.Precommit(round), height, round, cstypes.RoundStepPrecommitWait)
+	cs.scheduleTimeout(cs.Precommit(round), height, round, cstypes.RoundStepPrecommitWait)
 }
 
 // Enter: +2/3 precommits for block
@@ -2031,13 +2094,13 @@ func (cs *State) recordMetrics(height int64, block *types.Block) {
 
 // isReadyToPrecommit calculates if the process has waited at least a certain number of seconds
 // from their start time before they can vote
-// If the cs.config.DelayedPrecommitTimeout is set to 0, no precommit wait is done.
+// If the application's DelayedPrecommitTimeout is set to 0, no precommit wait is done.
 func (cs *State) isReadyToPrecommit() (bool, time.Duration) {
-	if cs.config.DelayedPrecommitTimeout == 0 {
+	if cs.state.Timeouts.DelayedPrecommitTimeout == 0 {
 		// setting 0 as a special case not to reschedule the pre-commit
 		return true, 0
 	}
-	precommitVoteTime := cs.rs.StartTime.Add(cs.config.DelayedPrecommitTimeout)
+	precommitVoteTime := cs.rs.StartTime.Add(cs.state.Timeouts.DelayedPrecommitTimeout)
 	waitTime := time.Until(precommitVoteTime)
 	return waitTime <= 0, waitTime
 }
