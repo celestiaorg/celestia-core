@@ -38,6 +38,7 @@ const (
 	// ReactorIncomingMessageQueueSize the size of the reactor's message queue.
 	ReactorIncomingMessageQueueSize = 5000
 
+	// RetryTime automatic catchup retry timeout.
 	RetryTime = 6 * time.Second
 )
 
@@ -117,11 +118,8 @@ func NewReactor(
 			case <-reactor.ctx.Done():
 				return
 			case <-reactor.ticker.C:
-				reactor.pmtx.Lock()
-				currentHeight := reactor.height
-				reactor.pmtx.Unlock()
 				// run the catchup routine to recover any missing parts for past heights.
-				reactor.retryWants(currentHeight)
+				reactor.retryWants()
 			}
 		}
 	}()
@@ -319,6 +317,13 @@ func (blockProp *Reactor) SetHeightAndRound(height int64, round int32) {
 	blockProp.ResetRequestCounts()
 	// todo: delete the old round data as its no longer relevant don't delete
 	// past round data if it has a POL
+}
+
+func (blockProp *Reactor) SetRound(round int32) {
+	blockProp.pmtx.Lock()
+	defer blockProp.pmtx.Unlock()
+	blockProp.round = round
+	blockProp.ResetRequestCounts()
 }
 
 func (blockProp *Reactor) ResetRequestCounts() {

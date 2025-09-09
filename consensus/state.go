@@ -1219,7 +1219,7 @@ func (cs *State) enterNewRound(height int64, round int32) {
 		cs.Logger.Error("failed publishing new round", "err", err)
 	}
 
-	cs.propagator.SetHeightAndRound(height, round)
+	cs.propagator.SetRound(round)
 	proposer := cs.rs.Validators.GetProposer()
 	if proposer != nil {
 		cs.propagator.SetProposer(proposer.PubKey)
@@ -2501,7 +2501,6 @@ func (cs *State) addVote(vote *types.Vote, peerID p2p.ID) (added bool, err error
 				if !cs.rs.ProposalBlockParts.HasHeader(blockID.PartSetHeader) {
 					cs.rs.ProposalBlockParts = types.NewPartSetFromHeader(blockID.PartSetHeader, types.BlockPartSizeBytes)
 					psh := blockID.PartSetHeader
-					// todo: override in propagator if an existing proposal exists
 					cs.propagator.AddCommitment(height, vote.Round, &psh)
 				}
 

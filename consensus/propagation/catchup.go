@@ -13,7 +13,7 @@ import (
 )
 
 // retryWants ensure that all data for all unpruned compact blocks is requested.
-func (blockProp *Reactor) retryWants(currentHeight int64) {
+func (blockProp *Reactor) retryWants() {
 	if !blockProp.started.Load() {
 		return
 	}
@@ -21,11 +21,6 @@ func (blockProp *Reactor) retryWants(currentHeight int64) {
 	peers := blockProp.getPeers()
 	for _, prop := range data {
 		height, round := prop.compactBlock.Proposal.Height, prop.compactBlock.Proposal.Round
-
-		// don't re-request parts for any round on the current height
-		if height == currentHeight {
-			continue
-		}
 
 		if prop.block.IsComplete() {
 			continue
@@ -129,8 +124,8 @@ func (blockProp *Reactor) AddCommitment(height int64, round int32, psh *types.Pa
 	// increment the local copies of the height and round
 	blockProp.height = height + 1
 	blockProp.round = 0
-
-	go blockProp.retryWants(height + 1)
+	blockProp.ticker.Reset(RetryTime)
+	go blockProp.retryWants()
 }
 
 func shuffle[T any](slice []T) []T {

@@ -128,9 +128,11 @@ func (p *ProposalCache) unfinishedHeights() []*proposalData {
 // example, passing the height that was already committed is not actionable.
 // Passing a round that has already been surpassed is not actionable.
 func (p *ProposalCache) relevant(height int64, round int32) bool {
-	// TODO Ping @evan-forbes whether this should be:
-	// p.height != height || (p.height == height && p.round != round)
-	if p.height > height || (p.height == height && p.round > round) {
+	if height < p.height {
+		return false
+	}
+
+	if round < p.round {
 		return false
 	}
 
