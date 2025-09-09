@@ -249,7 +249,7 @@ func (blockProp *Reactor) ReceiveEnvelope(e p2p.Envelope) {
 
 	msg, err := proptypes.MsgFromProto(m.(*propproto.Message))
 	if err != nil {
-		blockProp.Logger.Error("Error decoding message", "src", e.Src, "chId", e.ChannelID, "err", err, "msg", e.Message)
+		blockProp.Logger.Error("Error decoding message", "src", e.Src, "chId", e.ChannelID, "err", err)
 		blockProp.Switch.StopPeerForError(e.Src, err, blockProp.String())
 		return
 	}
