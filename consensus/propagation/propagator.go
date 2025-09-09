@@ -15,7 +15,6 @@ type Propagator interface {
 	AddCommitment(height int64, round int32, psh *types.PartSetHeader)
 	Prune(committedHeight int64)
 	SetHeightAndRound(height int64, round int32)
-	SetRound(round int32)
 	StartProcessing()
 	SetProposer(proposer crypto.PubKey)
 	GetPartChan() <-chan types.PartInfo
@@ -69,9 +68,6 @@ func (nop *NoOpPropagator) Prune(_ int64) {
 }
 
 func (nop *NoOpPropagator) SetHeightAndRound(_ int64, _ int32) {
-}
-
-func (nop *NoOpPropagator) SetRound(_ int32) {
 }
 
 func (nop *NoOpPropagator) StartProcessing() {

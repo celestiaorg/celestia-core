@@ -319,13 +319,6 @@ func (blockProp *Reactor) SetHeightAndRound(height int64, round int32) {
 	// past round data if it has a POL
 }
 
-func (blockProp *Reactor) SetRound(round int32) {
-	blockProp.pmtx.Lock()
-	defer blockProp.pmtx.Unlock()
-	blockProp.round = round
-	blockProp.ResetRequestCounts()
-}
-
 func (blockProp *Reactor) ResetRequestCounts() {
 	peers := blockProp.getPeers()
 	for _, p := range peers {
