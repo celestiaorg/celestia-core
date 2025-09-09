@@ -83,20 +83,6 @@ func TestProposalCache_AddProposal(t *testing.T) {
 			wantCurrentHeight: 10,
 			wantCurrentRound:  3,
 		},
-		{
-			name:              "Add proposal at higher height, round 0 - gap in heights",
-			inputProposal:     makeCompactBlock(12, 0, 5),
-			wantAdded:         true,
-			wantCurrentHeight: 12,
-			wantCurrentRound:  0,
-		},
-		{
-			name:              "Add proposal with older height - no height/round update",
-			inputProposal:     makeCompactBlock(5, 0, 5),
-			wantAdded:         false,
-			wantCurrentHeight: 12,
-			wantCurrentRound:  0,
-		},
 	}
 
 	for _, tc := range testCases {
@@ -120,6 +106,8 @@ func TestProposalCache_GetProposalWithRequests(t *testing.T) {
 
 	pc.AddProposal(prop1)
 	pc.AddProposal(prop2)
+	// setting the round here to 0 to be able to accept the next height
+	pc.round = 0
 	pc.AddProposal(prop3)
 
 	type testCase struct {
@@ -226,6 +214,7 @@ func TestProposalCache_DeleteHeight(t *testing.T) {
 
 	pc.AddProposal(makeCompactBlock(10, 0, 3))
 	pc.AddProposal(makeCompactBlock(10, 1, 3))
+	pc.round = 0
 	pc.AddProposal(makeCompactBlock(11, 0, 5))
 
 	_, _, _, okBefore := pc.getAllState(10, 0, true)

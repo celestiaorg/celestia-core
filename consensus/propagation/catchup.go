@@ -122,7 +122,7 @@ func (blockProp *Reactor) AddCommitment(height int64, round int32, psh *types.Pa
 	blockProp.Logger.Info("added commitment", "height", height, "round", round)
 
 	// increment the local copies of the height and round
-	blockProp.height = height + 1
+	blockProp.height = height
 	blockProp.round = 0
 	blockProp.ticker.Reset(RetryTime)
 	go blockProp.retryWants()
