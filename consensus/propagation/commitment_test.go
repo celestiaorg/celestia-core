@@ -98,6 +98,7 @@ func createTestProposal(
 	return prop, partSet, block, metaData
 }
 
+// TODO fix case when consensus starts at a higher height
 // TestRecoverPartsLocally provides a set of transactions to the mempool
 // and attempts to build the block parts from them.
 func TestRecoverPartsLocally(t *testing.T) {
