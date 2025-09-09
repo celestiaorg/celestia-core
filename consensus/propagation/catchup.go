@@ -22,6 +22,11 @@ func (blockProp *Reactor) retryWants(currentHeight int64) {
 	for _, prop := range data {
 		height, round := prop.compactBlock.Proposal.Height, prop.compactBlock.Proposal.Round
 
+		// don't re-request parts for any round on the current height
+		if height == currentHeight {
+			continue
+		}
+
 		if prop.block.IsComplete() {
 			continue
 		}
@@ -119,6 +124,7 @@ func (blockProp *Reactor) AddCommitment(height int64, round int32, psh *types.Pa
 		block:       combinedSet,
 		maxRequests: bits.NewBitArray(int(psh.Total * 2)), // this assumes that the parity parts are the same size
 	}
+	blockProp.Logger.Info("added commitment", "height", height, "round", round)
 
 	// increment the local copies of the height and round
 	blockProp.height = height + 1

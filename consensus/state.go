@@ -2151,7 +2151,6 @@ func (cs *State) defaultSetProposal(proposal *types.Proposal) error {
 		cs.rs.ProposalBlockParts = types.NewPartSetFromHeader(proposal.BlockID.PartSetHeader, types.BlockPartSizeBytes)
 	}
 
-	cs.propagator.AddCommitment(proposal.Height, proposal.Round, &proposal.BlockID.PartSetHeader)
 	cs.Logger.Info("received proposal", "proposal", proposal, "proposer", pubKey.Address())
 	return nil
 }
