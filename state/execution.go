@@ -225,9 +225,9 @@ func (blockExec *BlockExecutor) CreateProposalBlock(
 	workers := make(chan struct{}, numWorkers)
 	var wg sync.WaitGroup
 	for i, tx := range newData.Txs {
+		workers <- struct{}{}
 		wg.Add(1)
 		go func() {
-			workers <- struct{}{}
 			defer func() {
 				<-workers
 				wg.Done()
