@@ -218,10 +218,7 @@ func (blockExec *BlockExecutor) CreateProposalBlock(
 	// TODO: make sure that the hashes are correct here
 	// via also removing hashes that the application removed!
 	hashes := make([][]byte, len(newData.Txs))
-	numWorkers := runtime.NumCPU()
-	if numWorkers > len(newData.Txs) {
-		numWorkers = len(newData.Txs)
-	}
+	numWorkers := min(runtime.NumCPU()-1, len(newData.Txs))
 	workers := make(chan struct{}, numWorkers)
 	var wg sync.WaitGroup
 	for i, tx := range newData.Txs {
