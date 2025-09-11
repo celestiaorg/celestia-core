@@ -463,7 +463,7 @@ func TestReactorOptionsVerifyAndComplete(t *testing.T) {
 	}
 }
 
-func setupReactor(t testing.TB) (*Reactor, *TxPool) {
+func setupReactor(t *testing.T) (*Reactor, *TxPool) {
 	app := &application{kvstore.NewApplication(db.NewMemDB())}
 	cc := proxy.NewLocalClientCreator(app)
 	pool, cleanup := newMempoolWithApp(cc)
@@ -519,8 +519,6 @@ func mempoolLogger() log.Logger {
 
 func newMempoolWithApp(cc proxy.ClientCreator) (*TxPool, func()) {
 	conf := test.ResetTestRoot("mempool_test")
-	conf.Mempool.Size = 2_000_000_000
-	conf.Mempool.MaxTxsBytes = 6_000_000_000
 
 	mp, cu := newMempoolWithAppAndConfig(cc, conf)
 	return mp, cu
