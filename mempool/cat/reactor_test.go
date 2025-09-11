@@ -57,7 +57,134 @@ func TestReactorBroadcastTxsMessage(t *testing.T) {
 	waitForTxsOnReactors(t, transactions, reactors)
 }
 
-func TestReactorSendWantTxAfterReceiveingSeenTx(t *testing.T) {
+func TestShufflePeers(t *testing.T) {
+	tests := []struct {
+		name        string
+		setupPeers  func() map[uint16]p2p.Peer
+		expectedLen int
+		validate    func(t *testing.T, original, shuffled map[uint16]p2p.Peer)
+	}{
+		{
+			name: "empty map",
+			setupPeers: func() map[uint16]p2p.Peer {
+				return make(map[uint16]p2p.Peer)
+			},
+			expectedLen: 0,
+			validate: func(t *testing.T, original, shuffled map[uint16]p2p.Peer) {
+				assert.Empty(t, shuffled)
+				assert.True(t, len(original) == 0 && len(shuffled) == 0)
+			},
+		},
+		{
+			name: "single peer",
+			setupPeers: func() map[uint16]p2p.Peer {
+				peer := &mocks.Peer{}
+				return map[uint16]p2p.Peer{1: peer}
+			},
+			expectedLen: 1,
+			validate: func(t *testing.T, original, shuffled map[uint16]p2p.Peer) {
+				assert.Equal(t, original, shuffled)
+				for id, peer := range original {
+					assert.Contains(t, shuffled, id)
+					assert.Same(t, peer, shuffled[id])
+				}
+			},
+		},
+		{
+			name: "two peers",
+			setupPeers: func() map[uint16]p2p.Peer {
+				peer1 := &mocks.Peer{}
+				peer2 := &mocks.Peer{}
+				return map[uint16]p2p.Peer{
+					1: peer1,
+					2: peer2,
+				}
+			},
+			expectedLen: 2,
+			validate: func(t *testing.T, original, shuffled map[uint16]p2p.Peer) {
+				assert.Equal(t, len(original), len(shuffled))
+				for id, peer := range original {
+					assert.Contains(t, shuffled, id)
+					assert.Same(t, peer, shuffled[id])
+				}
+				assert.True(t, &original != &shuffled, "Expected different map instances")
+			},
+		},
+		{
+			name: "multiple peers",
+			setupPeers: func() map[uint16]p2p.Peer {
+				peers := make(map[uint16]p2p.Peer)
+				for i := uint16(1); i <= 10; i++ {
+					peer := &mocks.Peer{}
+					peers[i] = peer
+				}
+				return peers
+			},
+			expectedLen: 10,
+			validate: func(t *testing.T, original, shuffled map[uint16]p2p.Peer) {
+				assert.Equal(t, len(original), len(shuffled))
+				for id, peer := range original {
+					assert.Contains(t, shuffled, id)
+					assert.Same(t, peer, shuffled[id])
+				}
+				assert.True(t, &original != &shuffled, "Expected different map instances")
+			},
+		},
+		{
+			name: "large peer set",
+			setupPeers: func() map[uint16]p2p.Peer {
+				peers := make(map[uint16]p2p.Peer)
+				for i := uint16(1); i <= 100; i++ {
+					peer := &mocks.Peer{}
+					peers[i] = peer
+				}
+				return peers
+			},
+			expectedLen: 100,
+			validate: func(t *testing.T, original, shuffled map[uint16]p2p.Peer) {
+				assert.Equal(t, len(original), len(shuffled))
+				for id, peer := range original {
+					assert.Contains(t, shuffled, id)
+					assert.Same(t, peer, shuffled[id])
+				}
+				assert.True(t, &original != &shuffled, "Expected different map instances")
+			},
+		},
+		{
+			name: "non-sequential IDs",
+			setupPeers: func() map[uint16]p2p.Peer {
+				peer1 := &mocks.Peer{}
+				peer2 := &mocks.Peer{}
+				peer3 := &mocks.Peer{}
+				return map[uint16]p2p.Peer{
+					5:    peer1,
+					100:  peer2,
+					9999: peer3,
+				}
+			},
+			expectedLen: 3,
+			validate: func(t *testing.T, original, shuffled map[uint16]p2p.Peer) {
+				assert.Equal(t, len(original), len(shuffled))
+				for id, peer := range original {
+					assert.Contains(t, shuffled, id)
+					assert.Same(t, peer, shuffled[id])
+				}
+				assert.True(t, &original != &shuffled, "Expected different map instances")
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			originalPeers := tt.setupPeers()
+			shuffledPeers := ShufflePeers(originalPeers)
+			require.Equal(t, tt.expectedLen, len(shuffledPeers))
+			tt.validate(t, originalPeers, shuffledPeers)
+		})
+	}
+}
+
+func TestReactorSendWantTxAfterReceivingSeenTx(t *testing.T) {
 	reactor, _ := setupReactor(t)
 
 	tx := newDefaultTx("hello")
@@ -336,7 +463,7 @@ func TestReactorOptionsVerifyAndComplete(t *testing.T) {
 	}
 }
 
-func setupReactor(t *testing.T) (*Reactor, *TxPool) {
+func setupReactor(t testing.TB) (*Reactor, *TxPool) {
 	app := &application{kvstore.NewApplication(db.NewMemDB())}
 	cc := proxy.NewLocalClientCreator(app)
 	pool, cleanup := newMempoolWithApp(cc)
@@ -392,6 +519,8 @@ func mempoolLogger() log.Logger {
 
 func newMempoolWithApp(cc proxy.ClientCreator) (*TxPool, func()) {
 	conf := test.ResetTestRoot("mempool_test")
+	conf.Mempool.Size = 2_000_000_000
+	conf.Mempool.MaxTxsBytes = 6_000_000_000
 
 	mp, cu := newMempoolWithAppAndConfig(cc, conf)
 	return mp, cu

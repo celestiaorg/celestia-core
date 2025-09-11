@@ -33,6 +33,9 @@ const (
 
 	// ReactorIncomingMessageQueueSize the size of the reactor's message queue.
 	ReactorIncomingMessageQueueSize = 5000
+
+	// maxSeenTxBroadcast defines the maximum number of peers to which a SeenTx message should be broadcasted.
+	maxSeenTxBroadcast = 10
 )
 
 // Reactor handles mempool tx broadcasting logic amongst peers. For the main
@@ -351,12 +354,11 @@ func (memR *Reactor) broadcastSeenTx(txKey types.TxKey) {
 		},
 	}
 
-	// Add jitter to when the node broadcasts it's seen txs to stagger when nodes
-	// in the network broadcast their seenTx messages.
-	//time.Sleep(time.Duration(rand.Intn(10)*10) * time.Millisecond) //nolint:gosec
-
-	randomPeers := selectRandomPeers(memR.ids.GetAll(), 10)
-	for id, peer := range randomPeers {
+	count := 0
+	for id, peer := range ShufflePeers(memR.ids.GetAll()) {
+		if count >= maxSeenTxBroadcast {
+			break
+		}
 		if p, ok := peer.Get(types.PeerStateKey).(PeerState); ok {
 			// make sure peer isn't too far behind. This can happen
 			// if the peer is blocksyncing still and catching up
@@ -378,37 +380,34 @@ func (memR *Reactor) broadcastSeenTx(txKey types.TxKey) {
 				Message:   msg,
 			},
 		)
+		count++
 	}
 }
 
-// selectRandomPeers selects at most 10 random peers from the input map.
-// This is optimized for speed - it uses direct random index selection without shuffling.
-func selectRandomPeers(peers map[uint16]p2p.Peer, maxPeerCount int) map[uint16]p2p.Peer {
-	if len(peers) <= maxPeerCount {
+// ShufflePeers shuffles the peers map from GetAll() and returns a new shuffled map.
+// Uses Fisher-Yates shuffle algorithm for maximum speed.
+func ShufflePeers(peers map[uint16]p2p.Peer) map[uint16]p2p.Peer {
+	if len(peers) <= 1 {
 		return peers
 	}
 
-	// Convert map keys to slice for indexing
+	// Extract keys into a slice for shuffling
 	keys := make([]uint16, 0, len(peers))
 	for id := range peers {
 		keys = append(keys, id)
 	}
 
-	// Create a fast random number generator
+	// Fast Fisher-Yates shuffle on keys
 	r := rand.New(rand.NewSource(time.Now().UnixNano()))
+	for i := len(keys) - 1; i > 0; i-- {
+		j := r.Intn(i + 1)
+		keys[i], keys[j] = keys[j], keys[i]
+	}
 
-	// Use a map to track selected indices to avoid duplicates
-	selected := make(map[int]struct{}, maxPeerCount)
-	result := make(map[uint16]p2p.Peer, maxPeerCount)
-
-	// Select 10 random unique indices
-	for len(result) < maxPeerCount {
-		idx := r.Intn(len(keys))
-		if _, exists := selected[idx]; !exists {
-			selected[idx] = struct{}{}
-			id := keys[idx]
-			result[id] = peers[id]
-		}
+	// Build a new map with shuffled order
+	result := make(map[uint16]p2p.Peer, len(peers))
+	for _, id := range keys {
+		result[id] = peers[id]
 	}
 
 	return result
