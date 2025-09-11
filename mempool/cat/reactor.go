@@ -355,8 +355,7 @@ func (memR *Reactor) broadcastSeenTx(txKey types.TxKey) {
 	// in the network broadcast their seenTx messages.
 	//time.Sleep(time.Duration(rand.Intn(10)*10) * time.Millisecond) //nolint:gosec
 
-	randomPeers := selectRandomPeers(memR.ids.GetAll(), 10)
-	for id, peer := range randomPeers {
+	for id, peer := range memR.ids.GetAll() {
 		if p, ok := peer.Get(types.PeerStateKey).(PeerState); ok {
 			// make sure peer isn't too far behind. This can happen
 			// if the peer is blocksyncing still and catching up
