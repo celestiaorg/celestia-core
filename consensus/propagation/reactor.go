@@ -105,7 +105,6 @@ func NewReactor(
 	for _, option := range options {
 		option(reactor)
 	}
-	reactor.BaseReactor.SetTracer(reactor.traceClient)
 
 	// start the catchup routine
 	go func() {
