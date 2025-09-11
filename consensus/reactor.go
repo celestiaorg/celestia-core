@@ -83,6 +83,8 @@ func NewReactor(consensusState *State, propagator propagation.Propagator, waitSy
 		option(conR)
 	}
 
+	conR.SetTracer(conR.traceClient)
+
 	return conR
 }
 
