@@ -248,7 +248,7 @@ func (memR *Reactor) Receive(e p2p.Envelope) {
 			}
 			if !memR.opts.ListenOnly {
 				// We broadcast only transactions that we deem valid and actually have in our mempool.
-				go memR.broadcastSeenTx(key)
+				memR.broadcastSeenTx(key)
 			}
 		}
 
