@@ -2,7 +2,7 @@ package cat
 
 import (
 	"fmt"
-	"github.com/cometbft/cometbft/libs/rand"
+	"math/rand"
 	"time"
 
 	cfg "github.com/cometbft/cometbft/config"
@@ -353,9 +353,10 @@ func (memR *Reactor) broadcastSeenTx(txKey types.TxKey) {
 
 	// Add jitter to when the node broadcasts it's seen txs to stagger when nodes
 	// in the network broadcast their seenTx messages.
-	time.Sleep(time.Duration(rand.Intn(10)*10) * time.Millisecond) //nolint:gosec
+	//time.Sleep(time.Duration(rand.Intn(10)*10) * time.Millisecond) //nolint:gosec
 
-	for id, peer := range memR.ids.GetAll() {
+	randomPeers := selectRandomPeers(memR.ids.GetAll(), 10)
+	for id, peer := range randomPeers {
 		if p, ok := peer.Get(types.PeerStateKey).(PeerState); ok {
 			// make sure peer isn't too far behind. This can happen
 			// if the peer is blocksyncing still and catching up
@@ -378,6 +379,39 @@ func (memR *Reactor) broadcastSeenTx(txKey types.TxKey) {
 			},
 		)
 	}
+}
+
+// selectRandomPeers selects at most 10 random peers from the input map.
+// This is optimized for speed - it uses direct random index selection without shuffling.
+func selectRandomPeers(peers map[uint16]p2p.Peer, maxPeerCount int) map[uint16]p2p.Peer {
+	if len(peers) <= maxPeerCount {
+		return peers
+	}
+
+	// Convert map keys to slice for indexing
+	keys := make([]uint16, 0, len(peers))
+	for id := range peers {
+		keys = append(keys, id)
+	}
+
+	// Create a fast random number generator
+	r := rand.New(rand.NewSource(time.Now().UnixNano()))
+
+	// Use a map to track selected indices to avoid duplicates
+	selected := make(map[int]struct{}, maxPeerCount)
+	result := make(map[uint16]p2p.Peer, maxPeerCount)
+
+	// Select 10 random unique indices
+	for len(result) < maxPeerCount {
+		idx := r.Intn(len(keys))
+		if _, exists := selected[idx]; !exists {
+			selected[idx] = struct{}{}
+			id := keys[idx]
+			result[id] = peers[id]
+		}
+	}
+
+	return result
 }
 
 // broadcastNewTx broadcast new transaction to all peers unless we are already sure they have seen the tx.
