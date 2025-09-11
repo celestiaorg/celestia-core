@@ -2,6 +2,7 @@ package cat
 
 import (
 	"fmt"
+	"github.com/cometbft/cometbft/libs/rand"
 	"time"
 
 	cfg "github.com/cometbft/cometbft/config"
@@ -247,7 +248,7 @@ func (memR *Reactor) Receive(e p2p.Envelope) {
 			}
 			if !memR.opts.ListenOnly {
 				// We broadcast only transactions that we deem valid and actually have in our mempool.
-				memR.broadcastSeenTx(key)
+				go memR.broadcastSeenTx(key)
 			}
 		}
 
@@ -352,7 +353,7 @@ func (memR *Reactor) broadcastSeenTx(txKey types.TxKey) {
 
 	// Add jitter to when the node broadcasts it's seen txs to stagger when nodes
 	// in the network broadcast their seenTx messages.
-	//time.Sleep(time.Duration(rand.Intn(10)*10) * time.Millisecond) //nolint:gosec
+	time.Sleep(time.Duration(rand.Intn(10)*10) * time.Millisecond) //nolint:gosec
 
 	for id, peer := range memR.ids.GetAll() {
 		if p, ok := peer.Get(types.PeerStateKey).(PeerState); ok {
