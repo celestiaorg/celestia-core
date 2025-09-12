@@ -157,8 +157,6 @@ func (conR *Reactor) SwitchToConsensus(state sm.State, skipWAL bool) {
 	if skipWAL {
 		conR.conS.doWALCatchup = false
 	}
-	conR.propagator.StartProcessing()
-	conR.propagator.SetProposer(state.Validators.GetProposer().PubKey)
 	err := conR.conS.Start()
 	if err != nil {
 		panic(fmt.Sprintf(`Failed to start consensus state: %v
@@ -169,6 +167,11 @@ conS:
 conR:
 %+v`, err, conR.conS, conR))
 	}
+	conR.propagator.StartProcessing()
+	conR.propagator.SetProposer(state.Validators.GetProposer().PubKey)
+	conR.conS.rsMtx.RLock()
+	conR.propagator.SetHeightAndRound(conR.conS.rs.Height, conR.conS.rs.Round)
+	conR.conS.rsMtx.RUnlock()
 }
 
 // GetChannels implements Reactor

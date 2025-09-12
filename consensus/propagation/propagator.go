@@ -3,6 +3,7 @@ package propagation
 import (
 	proptypes "github.com/cometbft/cometbft/consensus/propagation/types"
 	"github.com/cometbft/cometbft/crypto"
+	"github.com/cometbft/cometbft/p2p"
 	"github.com/cometbft/cometbft/types"
 )
 
@@ -13,11 +14,16 @@ type Propagator interface {
 	ProposeBlock(proposal *types.Proposal, parts *types.PartSet, txs []proptypes.TxMetaData)
 	AddCommitment(height int64, round int32, psh *types.PartSetHeader)
 	Prune(committedHeight int64)
-	SetConsensusRound(height int64, round int32)
+	SetHeightAndRound(height int64, round int32)
 	StartProcessing()
 	SetProposer(proposer crypto.PubKey)
 	GetPartChan() <-chan types.PartInfo
-	GetProposalChan() <-chan types.Proposal
+	GetProposalChan() <-chan ProposalAndSrc
+}
+
+type ProposalAndSrc struct {
+	Proposal types.Proposal
+	From     p2p.ID
 }
 
 // PeerStateEditor defines methods for editing peer state from the propagation layer.
@@ -46,6 +52,8 @@ func NewNoOpPropagator() *NoOpPropagator {
 	return &NoOpPropagator{}
 }
 
+var _ Propagator = &NoOpPropagator{}
+
 func (nop *NoOpPropagator) GetProposal(_ int64, _ int32) (*types.Proposal, *types.PartSet, bool) {
 	return nil, nil, false
 }
@@ -59,7 +67,7 @@ func (nop *NoOpPropagator) AddCommitment(_ int64, _ int32, _ *types.PartSetHeade
 func (nop *NoOpPropagator) Prune(_ int64) {
 }
 
-func (nop *NoOpPropagator) SetConsensusRound(_ int64, _ int32) {
+func (nop *NoOpPropagator) SetHeightAndRound(_ int64, _ int32) {
 }
 
 func (nop *NoOpPropagator) StartProcessing() {
@@ -72,6 +80,6 @@ func (nop *NoOpPropagator) GetPartChan() <-chan types.PartInfo {
 	return nil
 }
 
-func (nop *NoOpPropagator) GetProposalChan() <-chan types.Proposal {
+func (nop *NoOpPropagator) GetProposalChan() <-chan ProposalAndSrc {
 	return nil
 }
