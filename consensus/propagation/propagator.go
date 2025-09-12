@@ -18,10 +18,10 @@ type Propagator interface {
 	StartProcessing()
 	SetProposer(proposer crypto.PubKey)
 	GetPartChan() <-chan types.PartInfo
-	GetProposalChan() <-chan ProposalAndFrom
+	GetProposalChan() <-chan ProposalAndSrc
 }
 
-type ProposalAndFrom struct {
+type ProposalAndSrc struct {
 	Proposal types.Proposal
 	From     p2p.ID
 }
@@ -80,6 +80,6 @@ func (nop *NoOpPropagator) GetPartChan() <-chan types.PartInfo {
 	return nil
 }
 
-func (nop *NoOpPropagator) GetProposalChan() <-chan ProposalAndFrom {
+func (nop *NoOpPropagator) GetProposalChan() <-chan ProposalAndSrc {
 	return nil
 }
