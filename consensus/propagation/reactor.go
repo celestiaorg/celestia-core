@@ -61,7 +61,7 @@ type Reactor struct {
 	mempool Mempool
 
 	partChan     chan types.PartInfo
-	proposalChan chan TrackedProposal
+	proposalChan chan ProposalAndFrom
 
 	mtx         *sync.Mutex
 	traceClient trace.Tracer
@@ -101,7 +101,7 @@ func NewReactor(
 		chainID:       config.ChainID,
 		BlockMaxBytes: config.BlockMaxBytes,
 		partChan:      make(chan types.PartInfo, 30_000),
-		proposalChan:  make(chan TrackedProposal, 1000),
+		proposalChan:  make(chan ProposalAndFrom, 1000),
 		ticker:        time.NewTicker(RetryTime),
 	}
 	reactor.BaseReactor = *p2p.NewBaseReactor("Recovery", reactor,
@@ -390,6 +390,6 @@ func (r *Reactor) GetPartChan() <-chan types.PartInfo {
 }
 
 // GetProposalChan returns the channel used for receiving proposals.
-func (r *Reactor) GetProposalChan() <-chan TrackedProposal {
+func (r *Reactor) GetProposalChan() <-chan ProposalAndFrom {
 	return r.proposalChan
 }
