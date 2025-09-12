@@ -21,7 +21,6 @@ var _ mempool.Mempool = (*TxPool)(nil)
 
 var (
 	ErrTxInMempool       = errors.New("tx already exists in mempool")
-	ErrTxAlreadyRejected = errors.New("tx was previously rejected")
 )
 
 // TxPoolOption sets an optional parameter on the TxPool.
@@ -288,12 +287,6 @@ func (txmp *TxPool) TryAddNewTx(tx *types.CachedTx, key types.TxKey, txInfo memp
 	// - We are connected to nodes running v0 or v1 which simply flood the network
 	// - If a client submits a transaction to multiple nodes (via RPC)
 	// - We send multiple requests and the first peer eventually responds after the second peer has already provided the tx
-	wasRejected, _ := txmp.WasRecentlyRejected(key)
-	if wasRejected {
-		// The peer has sent us a transaction that we have previously marked as invalid. Since `CheckTx` can
-		// be non-deterministic, we don't punish the peer but instead just ignore the tx
-		return nil, ErrTxAlreadyRejected
-	}
 
 	if txmp.Has(key) {
 		txmp.metrics.AlreadySeenTxs.Add(1)
@@ -337,7 +330,7 @@ func (txmp *TxPool) TryAddNewTx(tx *types.CachedTx, key types.TxKey, txInfo memp
 
 	// Create wrapped tx
 	wtx := newWrappedTx(
-		tx, txmp.height, rsp.GasWanted, rsp.Priority, string(rsp.Address),
+		tx, txmp.height, rsp.GasWanted, rsp.Priority, rsp.Address, rsp.Sequence,
 	)
 
 	// Perform the post check
@@ -525,44 +518,46 @@ func (txmp *TxPool) addNewTransaction(wtx *wrappedTx) error {
 	// of them as necessary to make room for tx. If no such items exist, we
 	// discard tx.
 	if !txmp.canAddTx(wtx.size()) {
-		victims, victimBytes := txmp.store.getTxsBelowPriority(wtx.priority)
+		// Set-level eviction: aggregate by signer and compare against the new set's aggregated priority
+		newAggPriority := txmp.store.aggregatedPriorityAfterAdd(wtx)
+		victimSets, victimBytes := txmp.store.getTxSetsBelowPriority(newAggPriority)
 
-		// If there are no suitable eviction candidates, or the total size of
-		// those candidates is not enough to make room for the new transaction,
-		// drop the new one.
-		if len(victims) == 0 || victimBytes < wtx.size() {
+		// If there are no suitable eviction candidates, or the total size is insufficient, drop the new one.
+		if len(victimSets) == 0 || victimBytes < wtx.size() {
 			txmp.metrics.EvictedTxs.Add(1)
 			txmp.evictedTxCache.Push(wtx.key())
 			return fmt.Errorf("rejected valid incoming transaction; mempool is full (%X). Size: (%d:%d)",
 				wtx.key().String(), txmp.Size(), txmp.SizeBytes())
 		}
 
-		txmp.logger.Debug("evicting lower-priority transactions",
-			"new_tx", wtx.key().String(),
-			"new_priority", wtx.priority,
+		txmp.logger.Debug(
+			"evicting lower-priority tx sets",
+			"new_tx", fmt.Sprintf("%X", wtx.key()),
+			"new_set_priority", newAggPriority,
 		)
 
-		// Sort lowest priority items first so they will be evicted first.  Break
-		// ties in favor of newer items (to maintain FIFO semantics in a group).
-		sort.Slice(victims, func(i, j int) bool {
-			iw := victims[i]
-			jw := victims[j]
-			if iw.priority == jw.priority {
-				return iw.timestamp.After(jw.timestamp)
+		// Sort lowest aggregated-priority sets first; ties: newer sets first to preserve FIFO within set groups
+		sort.Slice(victimSets, func(i, j int) bool {
+			is := victimSets[i]
+			js := victimSets[j]
+			if is.aggregatedPriority == js.aggregatedPriority {
+				return is.firstTimestamp.After(js.firstTimestamp)
 			}
-			return iw.priority < jw.priority
+			return is.aggregatedPriority < js.aggregatedPriority
 		})
 
-		// Evict as many of the victims as necessary to make room.
+		// Evict as many sets as needed to make room for the incoming tx
 		availableBytes := txmp.availableBytes()
-		for _, tx := range victims {
-			txmp.evictTx(tx)
-
-			// We may not need to evict all the eligible transactions.  Bail out
-			// early if we have made enough room.
-			availableBytes += tx.size()
-			if availableBytes >= wtx.size() {
-				break
+	outer:
+		for _, set := range victimSets {
+			// Iterate in reverse order removing the higher sequence numbers first
+			for i := len(set.txs) - 1; i >= 0; i-- {
+				tx := set.txs[i]
+				txmp.evictTx(tx)
+				availableBytes += tx.size()
+				if availableBytes >= wtx.size() {
+					break outer
+				}
 			}
 		}
 	}

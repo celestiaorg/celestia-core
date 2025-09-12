@@ -16,10 +16,11 @@ type wrappedTx struct {
 	timestamp time.Time       // time when transaction was entered (for TTL)
 	gasWanted int64           // app: gas required to execute this transaction
 	priority  int64           // app: priority value for this transaction
-	sender    string          // app: assigned sender label
+	sender    []byte          // app: assigned sender label
+	sequence  uint64          // app: sequence number for this transaction
 }
 
-func newWrappedTx(tx *types.CachedTx, height, gasWanted, priority int64, sender string) *wrappedTx {
+func newWrappedTx(tx *types.CachedTx, height, gasWanted, priority int64, sender []byte, sequence uint64) *wrappedTx {
 	return &wrappedTx{
 		tx:        tx,
 		height:    height,
@@ -27,6 +28,7 @@ func newWrappedTx(tx *types.CachedTx, height, gasWanted, priority int64, sender 
 		gasWanted: gasWanted,
 		priority:  priority,
 		sender:    sender,
+		sequence:  sequence,
 	}
 }
 
