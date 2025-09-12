@@ -152,14 +152,14 @@ func (blockProp *Reactor) GetChannels() []*conn.ChannelDescriptor {
 	return []*p2p.ChannelDescriptor{
 		{
 			ID:                  WantChannel,
-			Priority:            45,
+			Priority:            145,
 			SendQueueCapacity:   20000,
 			RecvMessageCapacity: maxMsgSize,
 			MessageType:         &propproto.Message{},
 		},
 		{
 			ID:                  DataChannel,
-			Priority:            40,
+			Priority:            140,
 			SendQueueCapacity:   20000,
 			RecvMessageCapacity: maxMsgSize,
 			MessageType:         &propproto.Message{},
