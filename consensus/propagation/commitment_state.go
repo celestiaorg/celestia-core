@@ -71,14 +71,8 @@ func (p *ProposalCache) AddProposal(cb *proptypes.CompactBlock) (added bool) {
 		return false
 	}
 
-	// if we don't have this proposal, and its height is greater than the current
-	// height, update the current height and round.
-	if cb.Proposal.Height == p.height+1 {
-		p.height = cb.Proposal.Height
-		p.round = cb.Proposal.Round
-	} else if cb.Proposal.Height == p.height && cb.Proposal.Round > p.round {
-		p.round = cb.Proposal.Round
-	}
+	p.height = cb.Proposal.Height
+	p.round = cb.Proposal.Round
 
 	block := proptypes.NewCombinedSetFromCompactBlock(cb)
 	p.proposals[cb.Proposal.Height][cb.Proposal.Round] = &proposalData{
