@@ -266,7 +266,7 @@ func TestStoreExpiredTxs(t *testing.T) {
 	require.Empty(t, store.getOrderedTxs())
 }
 
-func TestPurgeExpiredTxs_RemovesEntireSetWhenFirstTxExpired(t *testing.T) {
+func TestPurgeExpiredTxs(t *testing.T) {
 	store := newStore()
 	signer := []byte("signer1")
 
@@ -290,6 +290,8 @@ func TestPurgeExpiredTxs_RemovesEntireSetWhenFirstTxExpired(t *testing.T) {
 	require.Equal(t, 2, purged)
 	require.Equal(t, 0, store.size())
 	require.Nil(t, store.setsBySigner[string(signer)])
+	require.Empty(t, store.getOrderedTxs())
+	require.Empty(t, store.getAllTxs())
 }
 
 func TestStoreGetOrderedTxsWithoutSigner(t *testing.T) {

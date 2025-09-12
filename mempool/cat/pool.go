@@ -21,7 +21,6 @@ var _ mempool.Mempool = (*TxPool)(nil)
 
 var (
 	ErrTxInMempool       = errors.New("tx already exists in mempool")
-	ErrTxAlreadyRejected = errors.New("tx was previously rejected")
 )
 
 // TxPoolOption sets an optional parameter on the TxPool.
@@ -288,12 +287,6 @@ func (txmp *TxPool) TryAddNewTx(tx *types.CachedTx, key types.TxKey, txInfo memp
 	// - We are connected to nodes running v0 or v1 which simply flood the network
 	// - If a client submits a transaction to multiple nodes (via RPC)
 	// - We send multiple requests and the first peer eventually responds after the second peer has already provided the tx
-	wasRejected, _ := txmp.WasRecentlyRejected(key)
-	if wasRejected {
-		// The peer has sent us a transaction that we have previously marked as invalid. Since `CheckTx` can
-		// be non-deterministic, we don't punish the peer but instead just ignore the tx
-		return nil, ErrTxAlreadyRejected
-	}
 
 	if txmp.Has(key) {
 		txmp.metrics.AlreadySeenTxs.Add(1)
@@ -334,7 +327,6 @@ func (txmp *TxPool) TryAddNewTx(tx *types.CachedTx, key types.TxKey, txInfo memp
 		txmp.metrics.FailedTxs.Add(1)
 		return rsp, nil
 	}
-	// removed noisy print used during debugging
 
 	// Create wrapped tx
 	wtx := newWrappedTx(
@@ -462,7 +454,6 @@ func (txmp *TxPool) Update(
 	newPreFn mempool.PreCheckFunc,
 	newPostFn mempool.PostCheckFunc,
 ) error {
-	// removed noisy print used during debugging
 	// Safety check: Transactions and responses must match in number.
 	if len(blockTxs) != len(deliverTxResponses) {
 		panic(fmt.Sprintf("mempool: got %d transactions but %d DeliverTx responses",
@@ -559,7 +550,7 @@ func (txmp *TxPool) addNewTransaction(wtx *wrappedTx) error {
 		availableBytes := txmp.availableBytes()
 	outer:
 		for _, set := range victimSets {
-			// iterate in reverse order removing the higher sequence numbers first
+			// Iterate in reverse order removing the higher sequence numbers first
 			for i := len(set.txs) - 1; i >= 0; i-- {
 				tx := set.txs[i]
 				txmp.evictTx(tx)

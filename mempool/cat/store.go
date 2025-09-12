@@ -68,7 +68,7 @@ func (s *store) set(wtx *wrappedTx) bool {
 		s.txs[wtx.key()] = wtx
 		s.bytes += wtx.size()
 
-		// if signer is empty use a single-tx set
+		// If signer is empty use a single-tx set
 		signerKey := string(wtx.sender)
 		if signerKey == "" {
 			set := newTxSet(wtx)
@@ -265,6 +265,8 @@ func (s *store) reset() {
 	s.orderedTxSets = make([]*txSet, 0)
 }
 
+// orderSet inserts the txSet into the orderedTxSets slice at the correct index
+// based on its aggregated priority and timestamp.
 func (s *store) orderSet(ts *txSet) {
 	idx := s.getSetOrder(ts)
 	s.orderedTxSets = append(s.orderedTxSets[:idx], append([]*txSet{ts}, s.orderedTxSets[idx:]...)...)
@@ -283,6 +285,8 @@ func (s *store) deleteOrderedSet(ts *txSet) error {
 	return fmt.Errorf("tx set not found in ordered list: %v", ts)
 }
 
+// getSetOrder returns the index of the txSet in the orderedTxSets slice
+// based on its aggregated priority and timestamp.
 func (s *store) getSetOrder(ts *txSet) int {
 	return sort.Search(len(s.orderedTxSets), func(i int) bool {
 		if s.orderedTxSets[i].aggregatedPriority == ts.aggregatedPriority {
