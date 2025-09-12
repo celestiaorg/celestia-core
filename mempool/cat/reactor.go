@@ -353,11 +353,8 @@ func (memR *Reactor) broadcastSeenTx(txKey types.TxKey) {
 		},
 	}
 
-	count := 0
-	for id, peer := range ShufflePeers(memR.ids.GetAll()) {
-		if count >= maxSeenTxBroadcast {
-			break
-		}
+	for id, peer := range memR.ids.GetAll() {
+
 		if p, ok := peer.Get(types.PeerStateKey).(PeerState); ok {
 			// make sure peer isn't too far behind. This can happen
 			// if the peer is blocksyncing still and catching up
@@ -379,7 +376,6 @@ func (memR *Reactor) broadcastSeenTx(txKey types.TxKey) {
 				Message:   msg,
 			},
 		)
-		count++
 	}
 }
 
