@@ -52,6 +52,7 @@ func makeProposal(height int64, round int32, totalParts int32) *types.Proposal {
 func TestProposalCache_AddProposal(t *testing.T) {
 	bs := makeTestBlockStore(t)
 	pc := NewProposalCache(bs)
+	pc.height = 9
 
 	type testCase struct {
 		name              string
@@ -198,11 +199,22 @@ func TestProposalCache_GetCurrentProposal(t *testing.T) {
 	require.Nil(t, block)
 	require.False(t, ok)
 
-	// Add something
+	pc.height = 9
+	// Add a proposal
 	p := makeCompactBlock(10, 1, 5)
 	pc.AddProposal(p)
 
 	gotProp, gotBlock, gotOk := pc.GetCurrentProposal()
+	require.True(t, gotOk, "should have current proposal now")
+	require.Equal(t, p.Proposal, *gotProp)
+	require.NotNil(t, gotBlock)
+	pc.height = 9
+
+	// Add a proposal with a different round
+	p = makeCompactBlock(10, 3, 5)
+	pc.AddProposal(p)
+
+	gotProp, gotBlock, gotOk = pc.GetCurrentProposal()
 	require.True(t, gotOk, "should have current proposal now")
 	require.Equal(t, p.Proposal, *gotProp)
 	require.NotNil(t, gotBlock)
