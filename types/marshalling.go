@@ -28,7 +28,7 @@ func safeAddUint32(a, b uint32) (uint32, error) {
 // MarshalBlockWithTxPositions marshals the given Block message using protobuf
 // and returns both the encoded []byte and a slice of positions marking the
 // boundaries of each nested tx (repeated []byte field) inside Data (field number 1).
-func MarshalBlockWithTxPositions(block proto.Message) ([]byte, []TxPosition, error) {
+func MarshalBlockWithTxPositions(block proto.Message, txsCount int) ([]byte, []TxPosition, error) {
 	// First, marshal the entire message normally.
 	b, err := proto.Marshal(block)
 	if err != nil {
@@ -41,8 +41,9 @@ func MarshalBlockWithTxPositions(block proto.Message) ([]byte, []TxPosition, err
 		return b, nil, err
 	}
 
-	var positions []TxPosition
+	positions := make([]TxPosition, txsCount)
 	var offset uint32 = 0
+	txIndex := 0
 	for offset < uint32(len(dataContent)) {
 		// Read the field tag (a varint).
 		tag, n, err := readVarint(dataContent[offset:])
@@ -83,7 +84,8 @@ func MarshalBlockWithTxPositions(block proto.Message) ([]byte, []TxPosition, err
 				if err != nil {
 					return b, nil, err
 				}
-				positions = append(positions, TxPosition{Start: overallStart, End: overallEnd})
+				positions[txIndex] = TxPosition{Start: overallStart, End: overallEnd}
+				txIndex++
 			}
 			continue
 		}
