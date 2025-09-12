@@ -185,7 +185,7 @@ func (blockProp *Reactor) handleCompactBlock(cb *proptypes.CompactBlock, peer p2
 		select {
 		case <-blockProp.ctx.Done():
 			return
-		case blockProp.proposalChan <- ProposalAndSrc{
+		case blockProp.proposalChan <- TrackedProposal{
 			Proposal: cb.Proposal,
 			From:     peer,
 		}:
