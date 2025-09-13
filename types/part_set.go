@@ -263,6 +263,34 @@ func NewPartSetFromData(data []byte, partSize uint32) (ops *PartSet, err error) 
 	return ops, nil
 }
 
+// newPartSetFromChunks creates a new PartSet from given data chunks, and other data.
+func newPartSetFromChunks(chunks [][]byte, eroot cmtbytes.HexBytes, proofs []*merkle.Proof, partSize int) (*PartSet, error) {
+	total := len(chunks)
+	// create a new partset using the new parity parts.
+	ps := NewPartSetFromHeader(PartSetHeader{
+		Total: uint32(total),
+		Hash:  eroot,
+	}, uint32(partSize))
+	// access ps directly, without mutex, because we know it is not used elsewhere
+	for i := 0; i < total; i++ {
+		start := i * partSize
+		end := start + len(chunks[i])
+
+		// Ensure we don't exceed buffer bounds
+		if end > len(ps.buffer) {
+			return nil, fmt.Errorf("part data exceeds buffer bounds")
+		}
+
+		copy(ps.buffer[start:end], chunks[i])
+		ps.proofs[i] = *proofs[i]
+	}
+	ps.partsBitArray.Fill()
+	ps.count = uint32(total)
+	ps.lastPartSize = len(chunks[total-1])
+	ps.byteSize = int64(len(ps.buffer))
+	return ps, nil
+}
+
 // Encode Extend erasure encodes the block parts. Only the original parts should be
 // provided. The parity data is formed into its own PartSet and returned
 // alongside the length of the last part. The length of the last part is
@@ -310,23 +338,9 @@ func Encode(ops *PartSet, partSize uint32) (*PartSet, int, error) {
 	chunks = chunks[total:]
 	eroot, eproofs := merkle.ParallelProofsFromByteSlices(chunks)
 
-	// create a new partset using the new parity parts.
-	eps := NewPartSetFromHeader(PartSetHeader{
-		Total: uint32(total),
-		Hash:  eroot,
-	}, partSize)
-	for i := 0; i < total; i++ {
-		added, err := eps.AddPart(&Part{
-			Index: uint32(i),
-			Bytes: chunks[i],
-			Proof: *eproofs[i],
-		})
-		if err != nil {
-			return nil, 0, err
-		}
-		if !added {
-			return nil, 0, fmt.Errorf("couldn't add parity part %d", i)
-		}
+	eps, err := newPartSetFromChunks(chunks, eroot, eproofs, ps)
+	if err != nil {
+		return nil, 0, err
 	}
 	return eps, lastLen, nil
 }
