@@ -255,8 +255,8 @@ func NewPartSetFromData(data []byte, partSize uint32) (ops *PartSet, err error) 
 	ops.proofs = make([]merkle.Proof, total)
 	for i := uint32(0); i < total; i++ {
 		ops.proofs[i] = *proofs[i]
-		ops.partsBitArray.SetIndex(int(i), true)
 	}
+	ops.partsBitArray.Fill()
 	ops.count = total
 	ops.byteSize = int64(len(data))
 
