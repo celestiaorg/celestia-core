@@ -268,29 +268,34 @@ func NewPartSetFromData(data []byte, partSize uint32) (ops *PartSet, err error) 
 // alongside the length of the last part. The length of the last part is
 // necessary because the last part may be padded with zeros after decoding. These zeros must be removed before computi
 func Encode(ops *PartSet, partSize uint32) (*PartSet, int, error) {
-	chunks := make([][]byte, 2*ops.Total())
-	for i := range chunks {
-		if i < int(ops.Total()) {
-			chunks[i] = ops.GetPart(i).Bytes.Bytes()
-			continue
-		}
-		chunks[i] = make([]byte, partSize)
+	total := int(ops.Total())
+	chunks := make([][]byte, 2*total)
+	ops.mtx.Lock()
+	for i := range total {
+		chunks[i] = ops.getPartBytes(i)
+	}
+	ops.mtx.Unlock()
+
+	ps := int(partSize)
+	parityBuffer := make([]byte, total*ps) // allocate once, only slice later
+	for i := 0; i < total; i++ {
+		chunks[total+i] = parityBuffer[i*ps : (i+1)*ps]
 	}
 
 	// pad ONLY the last chunk and not the part with zeros if necessary AFTER the root has been generated
-	lastLen := len(ops.GetPart(int(ops.Total() - 1)).Bytes.Bytes())
+	lastLen := len(ops.GetPartBytes(total - 1))
 	if lastLen < int(partSize) {
 		padded := make([]byte, partSize)
-		count := copy(padded, chunks[ops.Total()-1])
-		if count < len(chunks[ops.Total()-1]) {
+		count := copy(padded, chunks[total-1])
+		if count < len(chunks[total-1]) {
 			return nil, 0, fmt.Errorf("copy failed of unpadded part with index %d: %d < %d", ops.Total()-1, count, len(chunks[ops.Total()-1]))
 		}
-		chunks[ops.Total()-1] = padded
+		chunks[total-1] = padded
 	}
 
 	// init an encoder if it is not already initialized using the original
 	// number of parts.
-	enc, err := reedsolomon.New(int(ops.Total()), int(ops.Total()))
+	enc, err := reedsolomon.New(total, total)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -302,17 +307,17 @@ func Encode(ops *PartSet, partSize uint32) (*PartSet, int, error) {
 	}
 
 	// only the parity data is needed for the new partset.
-	chunks = chunks[ops.Total():]
+	chunks = chunks[total:]
 	eroot, eproofs := merkle.ParallelProofsFromByteSlices(chunks)
 
 	// create a new partset using the new parity parts.
 	eps := NewPartSetFromHeader(PartSetHeader{
-		Total: ops.Total(),
+		Total: uint32(total),
 		Hash:  eroot,
 	}, partSize)
-	for i := uint32(0); i < ops.Total(); i++ {
+	for i := 0; i < total; i++ {
 		added, err := eps.AddPart(&Part{
-			Index: i,
+			Index: uint32(i),
 			Bytes: chunks[i],
 			Proof: *eproofs[i],
 		})
