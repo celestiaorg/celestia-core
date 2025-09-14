@@ -51,7 +51,7 @@ func newPropagationReactor(s *p2p.Switch, tr trace.Tracer, pv types.PrivValidato
 		Mempool:       &mockMempool{txs: make(map[types.TxKey]*types.CachedTx)},
 		Privval:       pv,
 		ChainID:       TestChainID,
-		BlockMaxBytes: 100000000,
+		BlockMaxBytes: types.MaxBlockSizeBytes,
 	})
 	blockPropR.traceClient = tr
 	blockPropR.currentProposer = pub
