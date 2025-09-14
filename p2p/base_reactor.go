@@ -3,6 +3,7 @@ package p2p
 import (
 	"context"
 	"fmt"
+	"github.com/cometbft/cometbft/libs/trace"
 
 	"github.com/cometbft/cometbft/libs/service"
 	"github.com/cometbft/cometbft/libs/trace/schema"
@@ -74,6 +75,8 @@ type BaseReactor struct {
 	// processor is called with the incoming channel and is responsible for
 	// unmarshalling the messages and calling Receive on the reactor.
 	processor ProcessorFunc
+	name      string
+	tracer    trace.Tracer
 }
 
 type ReactorOptions func(*BaseReactor)
@@ -88,6 +91,8 @@ func NewBaseReactor(name string, impl Reactor, opts ...ReactorOptions) *BaseReac
 		Switch:      nil, // set by the switch later
 		incoming:    make(chan UnprocessedEnvelope, 100),
 		processor:   nil, // Will be set after base is created
+		name:        name,
+		tracer:      trace.NoOpTracer(),
 	}
 	base.queueingFunc = base.QueueUnprocessedEnvelope
 	for _, opt := range opts {
@@ -134,6 +139,10 @@ func WithQueueingFunc(queuingFunc func(UnprocessedEnvelope)) ReactorOptions {
 	}
 }
 
+func (br *BaseReactor) SetTracer(tracer trace.Tracer) {
+	br.tracer = tracer
+}
+
 // WithIncomingQueueSize sets the size of the incoming message queue for a
 // reactor.
 func WithIncomingQueueSize(size int) ReactorOptions {
@@ -147,6 +156,7 @@ func WithIncomingQueueSize(size int) ReactorOptions {
 // queue to avoid blocking. The size of the queue can be changed by passing
 // options to the base reactor.
 func (br *BaseReactor) QueueUnprocessedEnvelope(e UnprocessedEnvelope) {
+	schema.WriteQueueSize(br.tracer, br.name, len(br.incoming))
 	select {
 	// if the context is done, do nothing.
 	case <-br.ctx.Done():
@@ -158,6 +168,7 @@ func (br *BaseReactor) QueueUnprocessedEnvelope(e UnprocessedEnvelope) {
 // TryQueueUnprocessedEnvelope an alternative to QueueUnprocessedEnvelope that attempts to queue an unprocessed envelope.
 // If the queue is full, it drops the envelope.
 func (br *BaseReactor) TryQueueUnprocessedEnvelope(e UnprocessedEnvelope) {
+	schema.WriteQueueSize(br.tracer, br.name, len(br.incoming))
 	select {
 	case <-br.ctx.Done():
 	case br.incoming <- e:
