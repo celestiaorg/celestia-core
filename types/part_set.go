@@ -560,9 +560,6 @@ func (ps *PartSet) addPart(part *Part) (bool, error) {
 		return false, errors.New("nil part")
 	}
 
-	ps.mtx.Lock()
-	defer ps.mtx.Unlock()
-
 	// Invalid part index
 	if part.Index >= ps.total {
 		return false, ErrPartSetUnexpectedIndex
@@ -582,18 +579,22 @@ func (ps *PartSet) addPart(part *Part) (bool, error) {
 		return false, fmt.Errorf("part data exceeds buffer bounds")
 	}
 
-	copy(ps.buffer[start:end], part.Bytes)
+	ps.mtx.Lock()
 
+	copy(ps.buffer[start:end], part.Bytes)
 	ps.proofs[part.Index] = part.Proof
 
 	// Track last part size if this is the last part
 	if part.Index == ps.total-1 {
 		ps.lastPartSize = len(part.Bytes)
 	}
-
-	ps.partsBitArray.SetIndex(int(part.Index), true)
 	ps.count++
 	ps.byteSize += int64(len(part.Bytes))
+
+	ps.mtx.Unlock()
+
+	ps.partsBitArray.SetIndex(int(part.Index), true)
+
 	return true, nil
 }
 
@@ -651,8 +652,6 @@ func (ps *PartSet) GetPart(index int) *Part {
 }
 
 func (ps *PartSet) HasPart(index int) bool {
-	ps.mtx.Lock()
-	defer ps.mtx.Unlock()
 	return ps.partsBitArray.GetIndex(index)
 }
 
