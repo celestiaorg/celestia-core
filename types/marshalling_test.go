@@ -45,7 +45,7 @@ func TestMarshalBlockWithTxPositions(t *testing.T) {
 			block := makeProtoBlock(t, tt.txSizes)
 
 			// Marshal block and capture the tx positions.
-			b, positions, err := MarshalBlockWithTxPositions(block)
+			b, positions, err := MarshalBlockWithTxPositions(block, len(block.Data.Txs))
 			require.NoError(t, err)
 
 			bzb, err := block.Marshal()
