@@ -25,7 +25,7 @@ func TestGapCatchup(t *testing.T) {
 		cleanup(t)
 	})
 
-	prop, ps, _, metaData := createTestProposal(t, sm, 1, 2, 1000000)
+	prop, ps, _, metaData := createTestProposal(t, sm, 1, 0, 2, 1000000)
 	cb, parityBlock := createCompactBlock(t, prop, ps, metaData)
 
 	added := n1.AddProposal(cb)
@@ -74,7 +74,7 @@ func TestAddCommitment_ReplaceProposalData(t *testing.T) {
 		cleanup(t)
 	})
 
-	firstProposal, firstPartset, _, _ := createTestProposal(t, sm, 1, 2, 1000000)
+	firstProposal, firstPartset, _, _ := createTestProposal(t, sm, 1, 0, 2, 1000000)
 	firstPsh := firstPartset.Header()
 
 	// set the first partset header
@@ -84,7 +84,7 @@ func TestAddCommitment_ReplaceProposalData(t *testing.T) {
 	require.Equal(t, firstPsh.Hash, actualFirstPsh.Hash)
 
 	// replace the existing partset header with a new one
-	secondProposal, secondPartset, _, _ := createTestProposal(t, sm, 1, 10, 1000000)
+	secondProposal, secondPartset, _, _ := createTestProposal(t, sm, 1, 0, 10, 1000000)
 	secondPsh := secondPartset.Header()
 	r1.AddCommitment(secondProposal.Height, secondProposal.Round, &secondPsh)
 
