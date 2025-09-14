@@ -37,6 +37,9 @@ const (
 
 	// ReactorIncomingMessageQueueSize the size of the reactor's message queue.
 	ReactorIncomingMessageQueueSize = 5000
+
+	// RetryTime automatic catchup retry timeout.
+	RetryTime = 6 * time.Second
 )
 
 type Reactor struct {
@@ -58,12 +61,13 @@ type Reactor struct {
 	mempool Mempool
 
 	partChan     chan types.PartInfo
-	proposalChan chan types.Proposal
+	proposalChan chan ProposalAndSrc
 
 	mtx         *sync.Mutex
 	traceClient trace.Tracer
 	self        p2p.ID
 	started     atomic.Bool
+	ticker      *time.Ticker
 
 	ctx    context.Context
 	cancel context.CancelFunc
@@ -97,7 +101,8 @@ func NewReactor(
 		chainID:       config.ChainID,
 		BlockMaxBytes: config.BlockMaxBytes,
 		partChan:      make(chan types.PartInfo, 30_000),
-		proposalChan:  make(chan types.Proposal, 100),
+		proposalChan:  make(chan ProposalAndSrc, 1000),
+		ticker:        time.NewTicker(RetryTime),
 	}
 	reactor.BaseReactor = *p2p.NewBaseReactor("Recovery", reactor,
 		p2p.WithIncomingQueueSize(ReactorIncomingMessageQueueSize),
@@ -108,19 +113,13 @@ func NewReactor(
 
 	// start the catchup routine
 	go func() {
-		// TODO dynamically set the ticker depending on how many blocks are missing
-		retryTime := time.Second * 6
-		ticker := time.NewTicker(retryTime)
 		for {
 			select {
 			case <-reactor.ctx.Done():
 				return
-			case <-ticker.C:
-				reactor.pmtx.Lock()
-				currentHeight := reactor.currentHeight
-				reactor.pmtx.Unlock()
+			case <-reactor.ticker.C:
 				// run the catchup routine to recover any missing parts for past heights.
-				reactor.retryWants(currentHeight)
+				reactor.retryWants()
 			}
 		}
 	}()
@@ -210,6 +209,11 @@ func (blockProp *Reactor) AddPeer(peer p2p.Peer) {
 		blockProp.Logger.Error("failed to get current compact block", "peer", peer.ID())
 		return
 	}
+	if len(cb.PartsHashes) == 0 {
+		// this means the compact block was created from catchup and no need to share it.
+		// otherwise, we need to correctly populate it.
+		return
+	}
 
 	// send the current proposal
 	e := p2p.Envelope{
@@ -294,8 +298,9 @@ func (blockProp *Reactor) Prune(committedHeight int64) {
 	blockProp.prune(prunePast)
 	blockProp.pmtx.Lock()
 	defer blockProp.pmtx.Unlock()
-	blockProp.consensusHeight = committedHeight
+	blockProp.height = committedHeight
 	blockProp.ResetRequestCounts()
+	blockProp.ticker.Reset(RetryTime)
 }
 
 func (blockProp *Reactor) SetProposer(proposer crypto.PubKey) {
@@ -304,10 +309,11 @@ func (blockProp *Reactor) SetProposer(proposer crypto.PubKey) {
 	blockProp.currentProposer = proposer
 }
 
-func (blockProp *Reactor) SetConsensusRound(height int64, round int32) {
+func (blockProp *Reactor) SetHeightAndRound(height int64, round int32) {
 	blockProp.pmtx.Lock()
 	defer blockProp.pmtx.Unlock()
-	blockProp.consensusRound = round
+	blockProp.round = round
+	blockProp.height = height
 	blockProp.ResetRequestCounts()
 	// todo: delete the old round data as its no longer relevant don't delete
 	// past round data if it has a POL
@@ -384,6 +390,6 @@ func (r *Reactor) GetPartChan() <-chan types.PartInfo {
 }
 
 // GetProposalChan returns the channel used for receiving proposals.
-func (r *Reactor) GetProposalChan() <-chan types.Proposal {
+func (r *Reactor) GetProposalChan() <-chan ProposalAndSrc {
 	return r.proposalChan
 }

@@ -88,6 +88,7 @@ func createTestReactors(n int, p2pCfg *cfg.P2PConfig, tracer bool, traceDir stri
 
 		reactors[i] = newPropagationReactor(s, tr, mockPrivVal)
 		reactors[i].SetLogger(log.TestingLogger())
+		reactors[i].height = 1
 		s.AddReactor("BlockProp", reactors[i])
 		return s
 	},
@@ -445,7 +446,7 @@ func TestPropagationSmokeTest(t *testing.T) {
 	})
 
 	for i := int64(1); i < 5; i++ {
-		prop, ps, block, metaData := createTestProposal(t, sm, i, 2, 1000000)
+		prop, ps, block, metaData := createTestProposal(t, sm, i, 0, 2, 1000000)
 
 		// predistribute portions of the block
 		for _, tx := range block.Txs {
@@ -481,16 +482,23 @@ func TestPropagationSmokeTest(t *testing.T) {
 
 		for _, r := range reactors {
 			r.Prune(i)
+			r.pmtx.Lock()
+			r.height++
+			r.pmtx.Unlock()
 		}
 	}
 }
 
 func TestValidateCompactBlock_InvalidLastLen(t *testing.T) {
 	reactors, _ := testBlockPropReactors(1, cfg.DefaultP2PConfig())
+	cleanup, _, sm := state.SetupTestCase(t)
+	t.Cleanup(func() {
+		cleanup(t)
+	})
 	reactor1 := reactors[0]
-	reactor1.currentHeight = 10
-	reactor1.currentRound = 3
-	cb, _, _, _ := testCompactBlock(t, 10, 3)
+	reactor1.height = 10
+	reactor1.round = 3
+	cb, _, _, _ := testCompactBlock(t, sm, 10, 3)
 
 	// put an invalid last len
 	cb.LastLen = types.BlockPartSizeBytes + 1
@@ -503,9 +511,14 @@ func TestStopPeerForError(t *testing.T) {
 		reactors, _ := testBlockPropReactors(2, cfg.DefaultP2PConfig())
 		reactor1 := reactors[0]
 		reactor2 := reactors[1]
-		cb, _, _, _ := testCompactBlock(t, 10, 3)
+		cleanup, _, sm := state.SetupTestCase(t)
+		t.Cleanup(func() {
+			cleanup(t)
+		})
+		cb, _, _, _ := testCompactBlock(t, sm, 10, 3)
 		// put an invalid part set hash
 		cb.Proposal.BlockID.PartSetHeader.Hash = cmtrand.Bytes(32)
+		cb.SetProofCache(nil)
 		require.NotNil(t, reactor1.getPeer(reactor2.self))
 		reactor1.handleCompactBlock(cb, reactor2.self, true)
 		assert.Nil(t, reactor1.getPeer(reactor2.self))
@@ -643,39 +656,30 @@ func TestConcurrentRequestLimit(t *testing.T) {
 
 // testCompactBlock returns a test compact block with the corresponding orignal part set,
 // parity partset, and proofs.
-func testCompactBlock(t *testing.T, height int64, round int32) (*proptypes.CompactBlock, *types.PartSet, *types.PartSet, []*merkle.Proof) {
-	ps, err := types.NewPartSetFromData(cmtrand.Bytes(1000), types.BlockPartSizeBytes)
-	require.NoError(t, err)
+func testCompactBlock(t *testing.T, sm state.State, height int64, round int32) (*proptypes.CompactBlock, *types.PartSet, *types.PartSet, []*merkle.Proof) {
+	prop, ps, _, metaData := createTestProposal(t, sm, height, round, 2, 1000000)
+
 	pse, lastLen, err := types.Encode(ps, types.BlockPartSizeBytes)
 	require.NoError(t, err)
-	psh := ps.Header()
 	pseh := pse.Header()
 
 	hashes := extractHashes(ps, pse)
 	proofs := extractProofs(ps, pse)
 
 	baseCompactBlock := &proptypes.CompactBlock{
-		BpHash:    pseh.Hash,
-		Signature: cmtrand.Bytes(64),
-		LastLen:   uint32(lastLen),
-		Blobs: []proptypes.TxMetaData{
-			{Hash: cmtrand.Bytes(32)},
-			{Hash: cmtrand.Bytes(32)},
-		},
+		BpHash:      pseh.Hash,
+		LastLen:     uint32(lastLen),
+		Blobs:       metaData,
 		PartsHashes: hashes,
+		Proposal:    *prop,
 	}
+	baseCompactBlock.SetProofCache(proofs)
+	signBytes, err := baseCompactBlock.SignBytes()
+	require.NoError(t, err)
 
-	// adding the proposal manually so the haves/wants and recovery
-	// parts are not rejected.
-	p := types.Proposal{
-		BlockID: types.BlockID{
-			Hash:          cmtrand.Bytes(32),
-			PartSetHeader: psh,
-		},
-		Height: height,
-		Round:  round,
-	}
-	baseCompactBlock.Proposal = p
+	sig, err := mockPrivVal.SignRawBytes("test", CompactBlockUID, signBytes)
+	require.NoError(t, err)
+	baseCompactBlock.Signature = sig
 
 	return baseCompactBlock, ps, pse, proofs
 }
@@ -722,6 +726,10 @@ func (m *MockPeerStateEditor) SetHasProposalBlockPart(height int64, round int32,
 // TestPeerStateEditor ensures that the propagation reactor is updating the
 // consensus peer state when the methods are called.
 func TestPeerStateEditor(t *testing.T) {
+	cleanup, _, sm := state.SetupTestCase(t)
+	t.Cleanup(func() {
+		cleanup(t)
+	})
 	reactors, _ := testBlockPropReactors(2, cfg.DefaultP2PConfig())
 	r0 := reactors[0]
 	r1 := reactors[1]
@@ -735,7 +743,7 @@ func TestPeerStateEditor(t *testing.T) {
 	require.NotNil(t, peerState.consensusPeerState)
 	require.IsType(t, &MockPeerStateEditor{}, peerState.consensusPeerState)
 
-	cb, ps, _, _ := testCompactBlock(t, 1, 1)
+	cb, ps, _, _ := testCompactBlock(t, sm, 1, 1)
 
 	added := r0.AddProposal(cb)
 	require.True(t, added)

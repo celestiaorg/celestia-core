@@ -52,6 +52,7 @@ func makeProposal(height int64, round int32, totalParts int32) *types.Proposal {
 func TestProposalCache_AddProposal(t *testing.T) {
 	bs := makeTestBlockStore(t)
 	pc := NewProposalCache(bs)
+	pc.height = 9
 
 	type testCase struct {
 		name              string
@@ -83,28 +84,14 @@ func TestProposalCache_AddProposal(t *testing.T) {
 			wantCurrentHeight: 10,
 			wantCurrentRound:  3,
 		},
-		{
-			name:              "Add proposal at higher height, round 0 - gap in heights",
-			inputProposal:     makeCompactBlock(12, 0, 5),
-			wantAdded:         true,
-			wantCurrentHeight: 12,
-			wantCurrentRound:  0,
-		},
-		{
-			name:              "Add proposal with older height - no height/round update",
-			inputProposal:     makeCompactBlock(5, 0, 5),
-			wantAdded:         true, // it doesn't exist yet, so it can be added
-			wantCurrentHeight: 12,   // still remain at 12/0
-			wantCurrentRound:  0,
-		},
 	}
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			added := pc.AddProposal(tc.inputProposal)
 			require.Equal(t, tc.wantAdded, added, "added mismatch")
-			require.Equal(t, tc.wantCurrentHeight, pc.currentHeight, "currentHeight mismatch")
-			require.Equal(t, tc.wantCurrentRound, pc.currentRound, "currentRound mismatch")
+			require.Equal(t, tc.wantCurrentHeight, pc.height, "currentHeight mismatch")
+			require.Equal(t, tc.wantCurrentRound, pc.round, "currentRound mismatch")
 		})
 	}
 }
@@ -120,6 +107,8 @@ func TestProposalCache_GetProposalWithRequests(t *testing.T) {
 
 	pc.AddProposal(prop1)
 	pc.AddProposal(prop2)
+	// setting the round here to 0 to be able to accept the next height
+	pc.round = 0
 	pc.AddProposal(prop3)
 
 	type testCase struct {
@@ -210,11 +199,22 @@ func TestProposalCache_GetCurrentProposal(t *testing.T) {
 	require.Nil(t, block)
 	require.False(t, ok)
 
-	// Add something
+	pc.height = 9
+	// Add a proposal
 	p := makeCompactBlock(10, 1, 5)
 	pc.AddProposal(p)
 
 	gotProp, gotBlock, gotOk := pc.GetCurrentProposal()
+	require.True(t, gotOk, "should have current proposal now")
+	require.Equal(t, p.Proposal, *gotProp)
+	require.NotNil(t, gotBlock)
+	pc.height = 9
+
+	// Add a proposal with a different round
+	p = makeCompactBlock(10, 3, 5)
+	pc.AddProposal(p)
+
+	gotProp, gotBlock, gotOk = pc.GetCurrentProposal()
 	require.True(t, gotOk, "should have current proposal now")
 	require.Equal(t, p.Proposal, *gotProp)
 	require.NotNil(t, gotBlock)
@@ -226,6 +226,7 @@ func TestProposalCache_DeleteHeight(t *testing.T) {
 
 	pc.AddProposal(makeCompactBlock(10, 0, 3))
 	pc.AddProposal(makeCompactBlock(10, 1, 3))
+	pc.round = 0
 	pc.AddProposal(makeCompactBlock(11, 0, 5))
 
 	_, _, _, okBefore := pc.getAllState(10, 0, true)
@@ -275,8 +276,8 @@ func TestProposalCache_prune(t *testing.T) {
 		}
 	}
 	// Set current height/round
-	pc.currentHeight = 12
-	pc.currentRound = 2
+	pc.height = 12
+	pc.round = 2
 
 	pc.prune(11)
 
