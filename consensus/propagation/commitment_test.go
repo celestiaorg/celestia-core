@@ -82,7 +82,7 @@ func TestPropose_OnlySendParityChunks(t *testing.T) {
 	})
 
 	// 128 mb block
-	prop, partSet, _, metaData := createTestProposal(t, sm, 1, 30, 4_000_000)
+	prop, partSet, _, metaData := createTestProposal(t, sm, 1, 0, 30, 4_000_000)
 
 	reactor1.ProposeBlock(prop, partSet, metaData)
 
