@@ -24,7 +24,7 @@ func TestInvalidHavePartHash(t *testing.T) {
 	t.Cleanup(func() {
 		cleanup(t)
 	})
-	prop, ps, _, metaData := createTestProposal(t, sm, 1, 2, 1000000)
+	prop, ps, _, metaData := createTestProposal(t, sm, 1, 0, 2, 1000000)
 	parityBlock, lastLen, err := types.Encode(ps, types.BlockPartSizeBytes)
 	require.NoError(t, err)
 	partHashes := extractHashes(ps, parityBlock)

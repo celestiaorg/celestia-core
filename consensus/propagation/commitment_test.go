@@ -29,7 +29,7 @@ func TestPropose(t *testing.T) {
 		cleanup(t)
 	})
 
-	prop, partSet, _, metaData := createTestProposal(t, sm, 1, 100, 1000)
+	prop, partSet, _, metaData := createTestProposal(t, sm, 1, 0, 100, 1000)
 
 	reactor1.ProposeBlock(prop, partSet, metaData)
 
@@ -82,7 +82,7 @@ func TestPropose_OnlySendParityChunks(t *testing.T) {
 	})
 
 	// 128 mb block
-	prop, partSet, _, metaData := createTestProposal(t, sm, 1, 30, 4_000_000)
+	prop, partSet, _, metaData := createTestProposal(t, sm, 1, 0, 30, 4_000_000)
 
 	reactor1.ProposeBlock(prop, partSet, metaData)
 
@@ -110,6 +110,7 @@ func createTestProposal(
 	t *testing.T,
 	sm state.State,
 	height int64,
+	round int32,
 	txCount, txSize int,
 ) (*types.Proposal, *types.PartSet, *types.Block, []proptypes.TxMetaData) {
 	txs := make([]types.Tx, txCount)
@@ -130,7 +131,7 @@ func createTestProposal(
 		}
 	}
 	id := types.BlockID{Hash: block.Hash(), PartSetHeader: partSet.Header()}
-	prop := types.NewProposal(block.Height, 0, -1, id)
+	prop := types.NewProposal(block.Height, round, -1, id)
 	protoProp := prop.ToProto()
 	err = mockPrivVal.SignProposal(TestChainID, protoProp)
 	require.NoError(t, err)
