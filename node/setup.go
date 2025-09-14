@@ -295,6 +295,7 @@ func createMempoolAndMempoolReactor(
 			cat.WithMetrics(memplMetrics),
 			cat.WithPreCheck(sm.TxPreCheck(state)),
 			cat.WithPostCheck(sm.TxPostCheck(state)),
+			cat.WithTracer(traceClient),
 		)
 
 		reactor, err := cat.NewReactor(

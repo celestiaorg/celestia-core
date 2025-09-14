@@ -2,6 +2,7 @@ package cat
 
 import (
 	"fmt"
+	"github.com/cosmos/gogoproto/proto"
 	"math/rand"
 	"time"
 
@@ -212,6 +213,11 @@ func (memR *Reactor) RemovePeer(peer p2p.Peer, reason interface{}) {
 // ReceiveEnvelope implements Reactor.
 // It processes one of three messages: Txs, SeenTx, WantTx.
 func (memR *Reactor) Receive(e p2p.Envelope) {
+	startOfReceive := time.Now()
+	defer func() {
+		processingTime := time.Since(startOfReceive)
+		schema.WriteMessageStats(memR.traceClient, "cat", proto.MessageName(e.Message), processingTime.Nanoseconds(), "")
+	}()
 	switch msg := e.Message.(type) {
 
 	// A peer has sent us one or more transactions. This could be either because we requested them
@@ -219,6 +225,7 @@ func (memR *Reactor) Receive(e p2p.Envelope) {
 	// NOTE: This setup also means that we can support older mempool implementations that simply
 	// flooded the network with transactions.
 	case *protomem.Txs:
+		start := time.Now()
 		protoTxs := msg.GetTxs()
 		if len(protoTxs) == 0 {
 			memR.Logger.Error("received empty txs from peer", "src", e.Src)
@@ -229,7 +236,10 @@ func (memR *Reactor) Receive(e p2p.Envelope) {
 		txInfo.SenderP2PID = e.Src.ID()
 
 		var err error
+		processingTime := time.Since(start)
+		schema.WriteMessageStats(memR.traceClient, "cat", "mempool.Txs.Step1", processingTime.Nanoseconds(), "")
 		for _, tx := range protoTxs {
+			start = time.Now()
 			ntx := types.Tx(tx)
 			key := ntx.Key()
 			schema.WriteMempoolTx(memR.traceClient, string(e.Src.ID()), key[:], len(tx), schema.Download)
@@ -243,15 +253,23 @@ func (memR *Reactor) Receive(e p2p.Envelope) {
 				memR.mempool.PeerHasTx(peerID, key)
 				memR.Logger.Debug("received new trasaction", "peerID", peerID, "txKey", key)
 			}
+			processingTime = time.Since(start)
+			schema.WriteMessageStats(memR.traceClient, "cat", "mempool.Txs.Step2", processingTime.Nanoseconds(), "")
+			start = time.Now()
 			_, err = memR.mempool.TryAddNewTx(ntx.ToCachedTx(), key, txInfo)
 			if err != nil && err != ErrTxInMempool {
 				memR.Logger.Debug("Could not add tx", "txKey", key, "err", err)
 				return
 			}
+			processingTime = time.Since(start)
+			schema.WriteMessageStats(memR.traceClient, "cat", "mempool.Txs.Step3", processingTime.Nanoseconds(), "")
+			start = time.Now()
 			if !memR.opts.ListenOnly {
 				// We broadcast only transactions that we deem valid and actually have in our mempool.
 				memR.broadcastSeenTx(key)
 			}
+			processingTime = time.Since(start)
+			schema.WriteMessageStats(memR.traceClient, "cat", "mempool.Txs.Step4", processingTime.Nanoseconds(), "")
 		}
 
 	// A peer has indicated to us that it has a transaction. We first verify the txkey and
@@ -262,12 +280,16 @@ func (memR *Reactor) Receive(e p2p.Envelope) {
 	// 3. If we recently evicted the tx and still don't have space for it, we do nothing.
 	// 4. Else, we request the transaction from that peer.
 	case *protomem.SeenTx:
+		start := time.Now()
 		txKey, err := types.TxKeyFromBytes(msg.TxKey)
 		if err != nil {
 			memR.Logger.Error("peer sent SeenTx with incorrect tx key", "err", err)
 			memR.Switch.StopPeerForError(e.Src, err, memR.String())
 			return
 		}
+		processingTime := time.Since(start)
+		schema.WriteMessageStats(memR.traceClient, "cat", "mempool.SeenTx.Step1", processingTime.Nanoseconds(), "")
+		start = time.Now()
 		schema.WriteMempoolPeerState(
 			memR.traceClient,
 			string(e.Src.ID()),
@@ -279,30 +301,45 @@ func (memR *Reactor) Receive(e p2p.Envelope) {
 		memR.mempool.PeerHasTx(peerID, txKey)
 		// Check if we don't already have the transaction
 		wasRejected, _ := memR.mempool.WasRecentlyRejected(txKey)
+		processingTime = time.Since(start)
+		schema.WriteMessageStats(memR.traceClient, "cat", "mempool.SeenTx.Step2", processingTime.Nanoseconds(), "")
+		start = time.Now()
 		if memR.mempool.Has(txKey) || wasRejected {
 			memR.Logger.Debug("received a seen tx for a tx we already have", "txKey", txKey)
 			return
 		}
 
+		processingTime = time.Since(start)
+		schema.WriteMessageStats(memR.traceClient, "cat", "mempool.SeenTx.Step3", processingTime.Nanoseconds(), "")
+		start = time.Now()
 		// If we are already requesting that tx, then we don't need to go any further.
 		if memR.requests.ForTx(txKey) != 0 {
 			memR.Logger.Debug("received a SeenTx message for a transaction we are already requesting", "txKey", txKey)
 			return
 		}
 
+		processingTime = time.Since(start)
+		schema.WriteMessageStats(memR.traceClient, "cat", "mempool.SeenTx.Step4", processingTime.Nanoseconds(), "")
+		start = time.Now()
 		// We don't have the transaction, nor are we requesting it so we send the node
 		// a want msg
 		memR.requestTx(txKey, e.Src)
+		processingTime = time.Since(start)
+		schema.WriteMessageStats(memR.traceClient, "cat", "mempool.SeenTx.Step5", processingTime.Nanoseconds(), "")
 
 	// A peer is requesting a transaction that we have claimed to have. Find the specified
 	// transaction and broadcast it to the peer. We may no longer have the transaction
 	case *protomem.WantTx:
+		start := time.Now()
 		txKey, err := types.TxKeyFromBytes(msg.TxKey)
 		if err != nil {
 			memR.Logger.Error("peer sent WantTx with incorrect tx key", "err", err)
 			memR.Switch.StopPeerForError(e.Src, err, memR.String())
 			return
 		}
+		processingTime := time.Since(start)
+		schema.WriteMessageStats(memR.traceClient, "cat", "mempool.WantTx.Step1", processingTime.Nanoseconds(), "")
+		start = time.Now()
 		schema.WriteMempoolPeerState(
 			memR.traceClient,
 			string(e.Src.ID()),
@@ -311,6 +348,9 @@ func (memR *Reactor) Receive(e p2p.Envelope) {
 			schema.Download,
 		)
 		tx, has := memR.mempool.GetTxByKey(txKey)
+		processingTime = time.Since(start)
+		schema.WriteMessageStats(memR.traceClient, "cat", "mempool.WantTx.Step2", processingTime.Nanoseconds(), "")
+		start = time.Now()
 		if has && !memR.opts.ListenOnly {
 			peerID := memR.ids.GetIDForPeer(e.Src.ID())
 			memR.Logger.Debug("sending a tx in response to a want msg", "peer", peerID)
@@ -327,6 +367,8 @@ func (memR *Reactor) Receive(e p2p.Envelope) {
 					schema.Upload,
 				)
 			}
+			processingTime = time.Since(start)
+			schema.WriteMessageStats(memR.traceClient, "cat", "mempool.WantTx.Step3", processingTime.Nanoseconds(), "")
 		}
 
 	default:
