@@ -6,6 +6,15 @@ import (
 	"sync"
 )
 
+const (
+	// Thresholds for parallel processing decisions
+	minItemsForParallel         = 8
+	minItemsForSmallLeaves      = 32
+	minLeafSizeForParallel      = 1024  // 1KiB
+	minTreeSizeForParallelBuild = 16
+	leafSizeEstimateSampleSize  = 5
+)
+
 // ParallelHashFromByteSlices is the single optimized implementation
 // that combines the best techniques for both target use cases:
 // 1. 4000 × 64KiB leaves (~256MB total)
@@ -34,13 +43,13 @@ func parallelHash(items [][]byte) []byte {
 
 	// Adaptive threshold based on dataset characteristics
 	var useParallel bool
-	if numItems >= 8 {
+	if numItems >= minItemsForParallel {
 		// Estimate total data size to choose optimal strategy
 		avgLeafSize := estimateAverageLeafSize(items)
 
-		if avgLeafSize >= 1024 { // >= 1KiB leaves (like 2KiB, 64KiB use cases)
+		if avgLeafSize >= minLeafSizeForParallel { // >= 1KiB leaves (like 2KiB, 64KiB use cases)
 			useParallel = true
-		} else if numItems >= 32 { // Small leaves need more items to justify parallel overhead
+		} else if numItems >= minItemsForSmallLeaves { // Small leaves need more items to justify parallel overhead
 			useParallel = true
 		}
 	}
@@ -63,7 +72,7 @@ func estimateAverageLeafSize(items [][]byte) int {
 	}
 
 	// Sample first few items to estimate average size without scanning everything
-	sampleSize := min(len(items), 5)
+	sampleSize := min(len(items), leafSizeEstimateSampleSize)
 	totalSize := 0
 
 	for i := 0; i < sampleSize; i++ {
@@ -124,7 +133,7 @@ func buildBalancedTree(hashes [][]byte, maxWorkers int) []byte {
 
 		// Parallelize tree construction for larger subtrees
 		// This threshold balances parallelization benefit vs overhead
-		if len(hashes) >= 16 && maxWorkers > 1 {
+		if len(hashes) >= minTreeSizeForParallelBuild && maxWorkers > 1 {
 			var wg sync.WaitGroup
 			wg.Add(2)
 
@@ -171,14 +180,14 @@ func ParallelProofsFromByteSlices(items [][]byte) (rootHash []byte, proofs []*Pr
 // shouldUseParallelProofs determines if parallel proof generation is beneficial
 func shouldUseParallelProofs(items [][]byte) bool {
 	numItems := len(items)
-	if numItems < 8 {
+	if numItems < minItemsForParallel {
 		return false // Too small for parallelization overhead
 	}
 
 	avgLeafSize := estimateAverageLeafSize(items)
 
 	// Use parallel for larger leaves or many items
-	return avgLeafSize >= 1024 || numItems >= 32
+	return avgLeafSize >= minLeafSizeForParallel || numItems >= minItemsForSmallLeaves
 }
 
 // parallelProofsFromByteSlices implements parallel proof generation
@@ -223,7 +232,7 @@ func trailsFromLeafHashesParallel(leafHashes [][]byte, maxWorkers int) (trails [
 		var leftRoot, rightRoot *ProofNode
 
 		// Parallelize subtree construction for larger trees
-		if len(leafHashes) >= 16 && maxWorkers > 1 {
+		if len(leafHashes) >= minTreeSizeForParallelBuild && maxWorkers > 1 {
 			var wg sync.WaitGroup
 			wg.Add(2)
 
@@ -253,6 +262,58 @@ func trailsFromLeafHashesParallel(leafHashes [][]byte, maxWorkers int) (trails [
 
 		return append(lefts, rights...), root
 	}
+}
+
+// ParallelProofsFromLeafHashes computes inclusion proofs for leaf hashes
+// in parallel using the optimized tree construction. This maintains 100%
+// compatibility with ProofsFromLeafHashes while providing significant
+// performance improvements for large datasets.
+func ParallelProofsFromLeafHashes(leafHashes [][]byte) (rootHash []byte, proofs []*Proof) {
+	if len(leafHashes) == 0 {
+		return emptyHash(), []*Proof{}
+	}
+
+	// Use parallel implementation for larger datasets when beneficial
+	if shouldUseParallelProofsFromLeafHashes(leafHashes) {
+		return parallelProofsFromLeafHashes(leafHashes)
+	}
+
+	// Fall back to original for small datasets
+	return ProofsFromLeafHashes(leafHashes)
+}
+
+// shouldUseParallelProofsFromLeafHashes determines if parallel proof generation is beneficial for leaf hashes
+func shouldUseParallelProofsFromLeafHashes(leafHashes [][]byte) bool {
+	numItems := len(leafHashes)
+	if numItems < minItemsForParallel {
+		return false // Too small for parallelization overhead
+	}
+
+	// For leaf hashes, we don't need to estimate size since they're already hashed
+	// Use parallel for sufficient number of items
+	return numItems >= minItemsForSmallLeaves
+}
+
+// parallelProofsFromLeafHashes implements parallel proof generation for leaf hashes
+func parallelProofsFromLeafHashes(leafHashes [][]byte) (rootHash []byte, proofs []*Proof) {
+	numWorkers := runtime.NumCPU()
+
+	// Build tree structure for proof generation using parallel approach
+	trails, rootNode := trailsFromLeafHashesParallel(leafHashes, numWorkers)
+	rootHash = rootNode.Hash
+
+	proofs = make([]*Proof, len(leafHashes))
+
+	for i := 0; i < len(leafHashes); i++ {
+		proofs[i] = &Proof{
+			Total:    int64(len(leafHashes)),
+			Index:    int64(i),
+			LeafHash: trails[i].Hash,
+			Aunts:    trails[i].FlattenAunts(),
+		}
+	}
+
+	return rootHash, proofs
 }
 
 // min helper function
