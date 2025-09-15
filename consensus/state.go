@@ -244,7 +244,7 @@ func NewState(
 		for {
 			select {
 			case <-cs.newPart:
-				cs.rsMtx.RLock()
+				cs.lockAll()
 				if cs.rs.ProposalBlockParts.IsComplete() {
 					fmt.Println("complete proposal: ", time.Now())
 					bz := cs.rs.ProposalBlockParts.GetBytes()
@@ -261,11 +261,8 @@ func NewState(
 						fmt.Println("1: ", err)
 						continue
 					}
-					cs.rsMtx.RUnlock()
-					cs.rsMtx.Lock()
+
 					cs.rs.ProposalBlock = block
-					cs.rsMtx.Unlock()
-					cs.rsMtx.RLock()
 
 					// NOTE: it's possible to receive complete proposal blocks for future rounds without having the proposal
 					cs.Logger.Info("received complete proposal block", "height", cs.rs.ProposalBlock.Height, "hash", cs.rs.ProposalBlock.Hash())
@@ -273,13 +270,9 @@ func NewState(
 					if err := cs.eventBus.PublishEventCompleteProposal(cs.rs.CompleteProposalEvent()); err != nil {
 						cs.Logger.Error("failed publishing event complete proposal", "err", err)
 					}
-					cs.rsMtx.RUnlock()
-					cs.lockAll()
 					cs.handleCompleteProposal(cs.rs.Height)
-					cs.unlockAll()
-					cs.rsMtx.RLock()
 				}
-				cs.rsMtx.RUnlock()
+				cs.unlockAll()
 			}
 		}
 	}()
@@ -1054,7 +1047,6 @@ func (cs *State) handleMsg(mi msgInfo) {
 
 	case *BlockPartMessage:
 		// if the proposal is complete, we'll enterPrevote or tryFinalizeCommit
-		cs.unlockAll()
 		go func() {
 			added, err = cs.addProposalBlockPart(msg, peerID)
 			if added {
@@ -1062,7 +1054,6 @@ func (cs *State) handleMsg(mi msgInfo) {
 				cs.newPart <- struct{}{}
 			}
 
-			cs.rsMtx.RLock()
 			if err != nil && msg.Round != cs.rs.Round {
 				cs.Logger.Debug(
 					"received block part from wrong round",
@@ -1072,9 +1063,7 @@ func (cs *State) handleMsg(mi msgInfo) {
 				)
 				err = nil
 			}
-			cs.rsMtx.RUnlock()
 		}()
-		cs.lockAll()
 
 	case *VoteMessage:
 		// attempt to add the vote and dupeout the validator if its a duplicate signature
@@ -2221,8 +2210,6 @@ func (cs *State) addProposalBlockPart(msg *BlockPartMessage, peerID p2p.ID) (add
 	height, round, part := msg.Height, msg.Round, msg.Part
 
 	// Blocks might be reused, so round mismatch is OK
-	cs.rsMtx.RLock()
-	defer cs.rsMtx.RUnlock()
 	if cs.rs.Height != height {
 		cs.Logger.Debug("received block part from wrong height", "height", height, "round", round)
 		cs.metrics.BlockGossipPartsReceived.With("matches_current", "false").Add(1)
