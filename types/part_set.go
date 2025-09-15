@@ -264,13 +264,21 @@ func NewPartSetFromData(data []byte, partSize uint32) (ops *PartSet, err error) 
 }
 
 // newPartSetFromChunks creates a new PartSet from given data chunks, and other data.
-func newPartSetFromChunks(chunks [][]byte, eroot cmtbytes.HexBytes, proofs []*merkle.Proof, partSize int) (*PartSet, error) {
+func newPartSetFromChunks(chunks [][]byte, root cmtbytes.HexBytes, proofs []*merkle.Proof, partSize int) (*PartSet, error) {
 	total := len(chunks)
+	if total != len(proofs) {
+		return nil, fmt.Errorf("chunks and proofs have different lengths: %d != %d", len(chunks), len(proofs))
+	}
+	if root == nil {
+		return nil, fmt.Errorf("root is nil")
+	}
+
 	// create a new partset using the new parity parts.
 	ps := NewPartSetFromHeader(PartSetHeader{
 		Total: uint32(total),
-		Hash:  eroot,
+		Hash:  root,
 	}, uint32(partSize))
+
 	// access ps directly, without mutex, because we know it is not used elsewhere
 	for i := 0; i < total; i++ {
 		start := i * partSize
