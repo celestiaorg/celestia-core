@@ -244,12 +244,8 @@ func NewState(
 		for {
 			select {
 			case <-cs.newPart:
-				if cs.completeBlock.Load() {
-					continue
-				}
 				cs.rsMtx.RLock()
 				if cs.rs.ProposalBlockParts.IsComplete() {
-					cs.completeBlock.Store(true)
 					fmt.Println("complete proposal: ", time.Now())
 					bz := cs.rs.ProposalBlockParts.GetBytes()
 
@@ -1060,6 +1056,7 @@ func (cs *State) handleMsg(mi msgInfo) {
 		// if the proposal is complete, we'll enterPrevote or tryFinalizeCommit
 		cs.unlockAll()
 		go func() {
+			start := time.Now()
 			added, err = cs.addProposalBlockPart(msg, peerID)
 			if added {
 				cs.statsMsgQueue <- mi
@@ -1077,6 +1074,7 @@ func (cs *State) handleMsg(mi msgInfo) {
 				err = nil
 			}
 			cs.rsMtx.RUnlock()
+			fmt.Println("processing time(ms): ", time.Since(start).Milliseconds())
 		}()
 		cs.lockAll()
 
