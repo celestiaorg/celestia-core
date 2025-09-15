@@ -35,7 +35,7 @@ func FuzzParallelImplementations(f *testing.F) {
 		numItems := max(1, int(nextByte())%100+1)
 
 		// Vary leaf size ranges based on fuzz input
-		leafSizeVariant := nextByte() % 4
+		leafSizeVariant := nextByte() % 5
 		var minLeafSize, maxLeafSize int
 		switch leafSizeVariant {
 		case 0: // Small leaves (1-32 bytes)
@@ -46,6 +46,8 @@ func FuzzParallelImplementations(f *testing.F) {
 			minLeafSize, maxLeafSize = 512, 8192
 		case 3: // Mixed sizes (1-2048 bytes)
 			minLeafSize, maxLeafSize = 1, 2048
+		case 4: // Very large leaves (~64KB, like Celestia blocks)
+			minLeafSize, maxLeafSize = 65536-1024, 65536+1024 // ~65KB ± 1KB
 		}
 
 		// Create items with varying sizes
@@ -170,10 +172,8 @@ func testParallelProofCorrectness(t *testing.T, items [][]byte) {
 		}
 
 		// Verify the proof can verify against the root with the original item
-		if len(items) > i {
-			if err := actual.Verify(actualRoot, items[i]); err != nil {
-				t.Errorf("Parallel proof %d failed verification: %v", i, err)
-			}
+		if err := actual.Verify(actualRoot, items[i]); err != nil {
+			t.Errorf("Parallel proof %d failed verification: %v", i, err)
 		}
 	}
 }
@@ -218,8 +218,8 @@ func TestParallelImplementationsProperty(t *testing.T) {
 // TestParallelImplementationsLargeDataset tests with realistic dataset sizes
 func TestParallelImplementationsLargeDataset(t *testing.T) {
 	// Test with dataset similar to actual use case: 4000 items of 64KiB each
-	const numItems = 100  // Reduced for testing, but same pattern
-	const itemSize = 1024 // 1KiB for testing
+	const numItems = 128       // Reduced for testing, but same pattern
+	const itemSize = 1024 * 64 // 1KiB for testing
 
 	items := make([][]byte, numItems)
 	for i := range items {

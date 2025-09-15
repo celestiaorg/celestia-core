@@ -370,10 +370,8 @@ func TestParallelProofGeneration(t *testing.T) {
 				assert.Equal(t, orig.Aunts, par.Aunts, "Aunts mismatch at index %d", i)
 
 				// Verify each proof can verify against the root
-				if len(items) > i {
-					err := par.Verify(parallelRoot, items[i])
-					require.NoError(t, err, "Parallel proof %d should verify", i)
-				}
+				err := par.Verify(parallelRoot, items[i])
+				require.NoError(t, err, "Parallel proof %d should verify", i)
 			}
 		})
 	}
