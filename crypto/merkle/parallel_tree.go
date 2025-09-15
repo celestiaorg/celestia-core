@@ -10,7 +10,7 @@ const (
 	// Thresholds for parallel processing decisions
 	minItemsForParallel         = 8
 	minItemsForSmallLeaves      = 32
-	minLeafSizeForParallel      = 1024  // 1KiB
+	minLeafSizeForParallel      = 1024 // 1KiB
 	minTreeSizeForParallelBuild = 16
 	leafSizeEstimateSampleSize  = 5
 )
