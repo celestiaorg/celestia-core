@@ -274,14 +274,28 @@ func signAddVotes(
 }
 
 func validatePrevote(t *testing.T, cs *State, round int32, privVal *validatorStub, blockHash []byte) {
-	cs.rsMtx.RLock()
-	prevotes := cs.rs.Votes.Prevotes(round)
-	cs.rsMtx.RUnlock()
 	pubKey, err := privVal.GetPubKey()
 	require.NoError(t, err)
 	address := pubKey.Address()
+	
+	// Retry logic to handle race condition where vote event is published before vote is added to state
 	var vote *types.Vote
-	if vote = prevotes.GetByAddress(address); vote == nil {
+	for i := 0; i < 10; i++ {
+		cs.rsMtx.RLock()
+		prevotes := cs.rs.Votes.Prevotes(round)
+		vote = prevotes.GetByAddress(address)
+		cs.rsMtx.RUnlock()
+		
+		if vote != nil {
+			break
+		}
+		
+		if i < 9 { // Don't sleep on the last iteration
+			time.Sleep(1 * time.Millisecond)
+		}
+	}
+	
+	if vote == nil {
 		panic("Failed to find prevote from validator")
 	}
 	if blockHash == nil {
@@ -320,12 +334,26 @@ func validatePrecommit(
 	votedBlockHash,
 	lockedBlockHash []byte,
 ) {
-	precommits := cs.rs.Votes.Precommits(thisRound)
 	pv, err := privVal.GetPubKey()
 	require.NoError(t, err)
 	address := pv.Address()
+	
+	// Retry logic to handle race condition where vote event is published before vote is added to state
 	var vote *types.Vote
-	if vote = precommits.GetByAddress(address); vote == nil {
+	for i := 0; i < 10; i++ {
+		precommits := cs.rs.Votes.Precommits(thisRound)
+		vote = precommits.GetByAddress(address)
+		
+		if vote != nil {
+			break
+		}
+		
+		if i < 9 { // Don't sleep on the last iteration
+			time.Sleep(1 * time.Millisecond)
+		}
+	}
+	
+	if vote == nil {
 		panic("Failed to find precommit from validator")
 	}
 
