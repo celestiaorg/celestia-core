@@ -2560,26 +2560,55 @@ func (cs *State) addVote(vote *types.Vote, peerID p2p.ID) (added bool, err error
 			"vote_timestamp", vote.Timestamp,
 			"data", precommits.LogString())
 
+		processingTime = time.Since(start)
+		schema.WriteMessageStats(cs.traceClient, "consensus", "addVote.step7.1", processingTime.Nanoseconds(), "")
+		start = time.Now()
 		blockID, ok := precommits.TwoThirdsMajority()
+		processingTime = time.Since(start)
+		schema.WriteMessageStats(cs.traceClient, "consensus", "addVote.step7.2", processingTime.Nanoseconds(), "")
+		start = time.Now()
 		if ok {
 			// Executed as TwoThirdsMajority could be from a higher round
 			cs.enterNewRound(height, vote.Round)
+			processingTime = time.Since(start)
+			schema.WriteMessageStats(cs.traceClient, "consensus", "addVote.step7.3", processingTime.Nanoseconds(), "")
+			start = time.Now()
 			cs.enterPrecommit(height, vote.Round)
+			processingTime = time.Since(start)
+			schema.WriteMessageStats(cs.traceClient, "consensus", "addVote.step7.4", processingTime.Nanoseconds(), "")
+			start = time.Now()
 
 			if len(blockID.Hash) != 0 {
 				cs.enterCommit(height, vote.Round)
+				processingTime = time.Since(start)
+				schema.WriteMessageStats(cs.traceClient, "consensus", "addVote.step7.5", processingTime.Nanoseconds(), "")
+				start = time.Now()
 				if cs.config.SkipTimeoutCommit && precommits.HasAll() {
 					cs.enterNewRound(cs.rs.Height, 0)
+					processingTime = time.Since(start)
+					schema.WriteMessageStats(cs.traceClient, "consensus", "addVote.step7.6", processingTime.Nanoseconds(), "")
+					start = time.Now()
 				}
 			} else {
 				cs.enterPrecommitWait(height, vote.Round)
+				processingTime = time.Since(start)
+				schema.WriteMessageStats(cs.traceClient, "consensus", "addVote.step7.7", processingTime.Nanoseconds(), "")
+				start = time.Now()
 			}
 		} else if cs.rs.Round <= vote.Round && precommits.HasTwoThirdsAny() {
+			processingTime = time.Since(start)
+			schema.WriteMessageStats(cs.traceClient, "consensus", "addVote.step7.8", processingTime.Nanoseconds(), "")
+			start = time.Now()
 			cs.enterNewRound(height, vote.Round)
+			processingTime = time.Since(start)
+			schema.WriteMessageStats(cs.traceClient, "consensus", "addVote.step7.9", processingTime.Nanoseconds(), "")
+			start = time.Now()
 			cs.enterPrecommitWait(height, vote.Round)
+			processingTime = time.Since(start)
+			schema.WriteMessageStats(cs.traceClient, "consensus", "addVote.step7.10", processingTime.Nanoseconds(), "")
 		}
-		processingTime = time.Since(start)
-		schema.WriteMessageStats(cs.traceClient, "consensus", "addVote.step7", processingTime.Nanoseconds(), "")
+		//processingTime = time.Since(start)
+		//schema.WriteMessageStats(cs.traceClient, "consensus", "addVote.step7", processingTime.Nanoseconds(), "")
 
 	default:
 		panic(fmt.Sprintf("unexpected vote type %v", vote.Type))
