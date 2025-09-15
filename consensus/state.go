@@ -2156,6 +2156,7 @@ func (cs *State) defaultSetProposal(proposal *types.Proposal) error {
 // Asynchronously triggers either enterPrevote (before we timeout of propose) or tryFinalizeCommit,
 // once we have the full block.
 func (cs *State) addProposalBlockPart(msg *BlockPartMessage, peerID p2p.ID) (added bool, err error) {
+	start := time.Now()
 	height, round, part := msg.Height, msg.Round, msg.Part
 
 	// Blocks might be reused, so round mismatch is OK
@@ -2204,6 +2205,8 @@ func (cs *State) addProposalBlockPart(msg *BlockPartMessage, peerID p2p.ID) (add
 			cs.rs.ProposalBlockParts.ByteSize(), maxBytes,
 		)
 	}
+	processingTime := time.Since(start)
+	schema.WriteMessageStats(cs.traceClient, "consensus", "addProposalBlockPart.All", processingTime.Nanoseconds(), "")
 	if added && cs.rs.ProposalBlockParts.IsComplete() {
 		bz := cs.rs.ProposalBlockParts.GetBytes()
 
@@ -2328,6 +2331,7 @@ func (cs *State) addVote(vote *types.Vote, peerID p2p.ID) (added bool, err error
 		"extSigLen", len(vote.ExtensionSignature),
 	)
 
+	start := time.Now()
 	if vote.Height < cs.rs.Height || (vote.Height == cs.rs.Height && vote.Round < cs.rs.Round) {
 		cs.metrics.MarkLateVote(vote.Type)
 	}
@@ -2364,8 +2368,11 @@ func (cs *State) addVote(vote *types.Vote, peerID p2p.ID) (added bool, err error
 			cs.enterNewRound(cs.rs.Height, 0)
 		}
 
+		processingTime := time.Since(start)
+		schema.WriteMessageStats(cs.traceClient, "consensus", "addVote.step1", processingTime.Nanoseconds(), "")
 		return added, err
 	}
+	start = time.Now()
 
 	// Height mismatch is ignored.
 	// Not necessarily a bad peer, but not favorable behavior.
@@ -2425,6 +2432,9 @@ func (cs *State) addVote(vote *types.Vote, peerID p2p.ID) (added bool, err error
 		}
 	}
 
+	processingTime := time.Since(start)
+	schema.WriteMessageStats(cs.traceClient, "consensus", "addVote.step2", processingTime.Nanoseconds(), "")
+	start = time.Now()
 	height := cs.rs.Height
 	added, err = cs.rs.Votes.AddVote(vote, peerID, extEnabled)
 	if !added {
@@ -2447,6 +2457,9 @@ func (cs *State) addVote(vote *types.Vote, peerID p2p.ID) (added bool, err error
 	}
 	cs.evsw.FireEvent(types.EventVote, vote)
 
+	processingTime = time.Since(start)
+	schema.WriteMessageStats(cs.traceClient, "consensus", "addVote.step3", processingTime.Nanoseconds(), "")
+	start = time.Now()
 	switch vote.Type {
 	case cmtproto.PrevoteType:
 		prevotes := cs.rs.Votes.Prevotes(vote.Round)
@@ -2508,12 +2521,16 @@ func (cs *State) addVote(vote *types.Vote, peerID p2p.ID) (added bool, err error
 				}
 			}
 		}
+		processingTime = time.Since(start)
+		schema.WriteMessageStats(cs.traceClient, "consensus", "addVote.step3", processingTime.Nanoseconds(), "")
 
 		// If +2/3 prevotes for *anything* for future round:
 		switch {
 		case cs.rs.Round < vote.Round && prevotes.HasTwoThirdsAny():
 			// Round-skip if there is any 2/3+ of votes ahead of us
 			cs.enterNewRound(height, vote.Round)
+			processingTime = time.Since(start)
+			schema.WriteMessageStats(cs.traceClient, "consensus", "addVote.step4", processingTime.Nanoseconds(), "")
 
 		case cs.rs.Round == vote.Round && cstypes.RoundStepPrevote <= cs.rs.Step: // current round
 			blockID, ok := prevotes.TwoThirdsMajority()
@@ -2522,12 +2539,16 @@ func (cs *State) addVote(vote *types.Vote, peerID p2p.ID) (added bool, err error
 			} else if prevotes.HasTwoThirdsAny() {
 				cs.enterPrevoteWait(height, vote.Round)
 			}
+			processingTime = time.Since(start)
+			schema.WriteMessageStats(cs.traceClient, "consensus", "addVote.step5", processingTime.Nanoseconds(), "")
 
 		case cs.rs.Proposal != nil && 0 <= cs.rs.Proposal.POLRound && cs.rs.Proposal.POLRound == vote.Round:
 			// If the proposal is now complete, enter prevote of cs.rs.Round.
 			if cs.isProposalComplete() {
 				cs.enterPrevote(height, cs.rs.Round)
 			}
+			processingTime = time.Since(start)
+			schema.WriteMessageStats(cs.traceClient, "consensus", "addVote.step6", processingTime.Nanoseconds(), "")
 		}
 
 	case cmtproto.PrecommitType:
@@ -2557,6 +2578,8 @@ func (cs *State) addVote(vote *types.Vote, peerID p2p.ID) (added bool, err error
 			cs.enterNewRound(height, vote.Round)
 			cs.enterPrecommitWait(height, vote.Round)
 		}
+		processingTime = time.Since(start)
+		schema.WriteMessageStats(cs.traceClient, "consensus", "addVote.step7", processingTime.Nanoseconds(), "")
 
 	default:
 		panic(fmt.Sprintf("unexpected vote type %v", vote.Type))
