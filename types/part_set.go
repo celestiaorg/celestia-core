@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/klauspost/reedsolomon"
 
@@ -532,6 +533,30 @@ func (ps *PartSet) AddPart(part *Part) (bool, error) {
 	return ps.addPart(part)
 }
 
+// CONTRACT: part is validated using ValidateBasic.
+func (ps *PartSet) AddPart2(part *Part) (bool, error) {
+	// TODO: remove this? would be preferable if this only returned (false, nil)
+	// when its a duplicate block part
+	if ps == nil {
+		return false, nil
+	}
+
+	if part == nil {
+		return false, fmt.Errorf("nil part")
+	}
+
+	// The proof should be compatible with the number of parts.
+	if part.Proof.Total != int64(ps.total) {
+		return false, fmt.Errorf(ErrPartSetInvalidProofTotal.Error()+":%v %v", part.Proof.Total, ps.total)
+	}
+
+	if err := part.Proof.Verify(ps.Hash(), part.Bytes); err != nil {
+		return false, fmt.Errorf("%w:%w", ErrPartSetInvalidProofHash, err)
+	}
+
+	return ps.addPart2(part)
+}
+
 func (ps *PartSet) AddPartWithoutProof(part *Part) (bool, error) {
 	return ps.addPart(part)
 }
@@ -543,6 +568,51 @@ func (ps *PartSet) addPart(part *Part) (bool, error) {
 
 	ps.mtx.Lock()
 	defer ps.mtx.Unlock()
+
+	// Invalid part index
+	if part.Index >= ps.total {
+		return false, ErrPartSetUnexpectedIndex
+	}
+
+	// If part already exists, return false.
+	if ps.partsBitArray.GetIndex(int(part.Index)) {
+		return false, nil
+	}
+
+	// Calculate buffer position and copy part data
+	start := int(part.Index) * ps.partSize
+	end := start + len(part.Bytes)
+
+	// Ensure we don't exceed buffer bounds
+	if end > len(ps.buffer) {
+		return false, fmt.Errorf("part data exceeds buffer bounds")
+	}
+
+	copy(ps.buffer[start:end], part.Bytes)
+
+	ps.proofs[part.Index] = part.Proof
+
+	// Track last part size if this is the last part
+	if part.Index == ps.total-1 {
+		ps.lastPartSize = len(part.Bytes)
+	}
+
+	ps.partsBitArray.SetIndex(int(part.Index), true)
+	ps.count++
+	ps.byteSize += int64(len(part.Bytes))
+	return true, nil
+}
+
+func (ps *PartSet) addPart2(part *Part) (bool, error) {
+	if part == nil {
+		return false, errors.New("nil part")
+	}
+
+	ps.mtx.Lock()
+	defer ps.mtx.Unlock()
+	if ps.Count() == 0 {
+		fmt.Println("receiving first part: ", time.Now())
+	}
 
 	// Invalid part index
 	if part.Index >= ps.total {

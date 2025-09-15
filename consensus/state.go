@@ -2181,7 +2181,7 @@ func (cs *State) addProposalBlockPart(msg *BlockPartMessage, peerID p2p.ID) (add
 		return false, nil
 	}
 
-	added, err = cs.rs.ProposalBlockParts.AddPart(part)
+	added, err = cs.rs.ProposalBlockParts.AddPart2(part)
 	if err != nil {
 		if errors.Is(err, types.ErrPartSetInvalidProof) || errors.Is(err, types.ErrPartSetUnexpectedIndex) {
 			cs.metrics.BlockGossipPartsReceived.With("matches_current", "false").Add(1)
@@ -2208,6 +2208,7 @@ func (cs *State) addProposalBlockPart(msg *BlockPartMessage, peerID p2p.ID) (add
 	processingTime := time.Since(start)
 	schema.WriteMessageStats(cs.traceClient, "consensus", "addProposalBlockPart.All", processingTime.Nanoseconds(), "")
 	if added && cs.rs.ProposalBlockParts.IsComplete() {
+		fmt.Println("complete proposal: ", time.Now())
 		bz := cs.rs.ProposalBlockParts.GetBytes()
 
 		pbb := new(cmtproto.Block)
