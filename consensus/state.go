@@ -10,7 +10,6 @@ import (
 	"runtime/debug"
 	"sort"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	proptypes "github.com/cometbft/cometbft/consensus/propagation/types"
@@ -107,10 +106,8 @@ type State struct {
 	evpool evidencePool
 
 	// rsMtx protects only access to fields of rs
-	rsMtx         cmtsync.RWMutex
-	rs            cstypes.RoundState
-	completeBlock atomic.Bool
-	newPart       chan struct{}
+	rsMtx cmtsync.RWMutex
+	rs    cstypes.RoundState
 
 	// stateMtx protects only access to fields of state
 	stateMtx cmtsync.RWMutex
@@ -202,7 +199,6 @@ func NewState(
 		metrics:              NopMetrics(),
 		traceClient:          trace.NoOpTracer(),
 		newHeightOrRoundChan: make(chan struct{}, 1),
-		newPart:              make(chan struct{}, 20_000),
 	}
 	for _, option := range options {
 		option(cs)
@@ -239,43 +235,6 @@ func NewState(
 			cs.propagator.SetProposer(proposer.PubKey)
 		}
 	}
-
-	go func() {
-		for {
-			select {
-			case <-cs.newPart:
-				cs.lockAll()
-				if cs.rs.ProposalBlockParts.IsComplete() {
-					fmt.Println("complete proposal: ", time.Now())
-					bz := cs.rs.ProposalBlockParts.GetBytes()
-
-					pbb := new(cmtproto.Block)
-					err := proto.Unmarshal(bz, pbb)
-					if err != nil {
-						fmt.Println("1: ", err)
-						continue
-					}
-
-					block, err := types.BlockFromProto(pbb)
-					if err != nil {
-						fmt.Println("1: ", err)
-						continue
-					}
-
-					cs.rs.ProposalBlock = block
-
-					// NOTE: it's possible to receive complete proposal blocks for future rounds without having the proposal
-					cs.Logger.Info("received complete proposal block", "height", cs.rs.ProposalBlock.Height, "hash", cs.rs.ProposalBlock.Hash())
-
-					if err := cs.eventBus.PublishEventCompleteProposal(cs.rs.CompleteProposalEvent()); err != nil {
-						cs.Logger.Error("failed publishing event complete proposal", "err", err)
-					}
-					cs.handleCompleteProposal(cs.rs.Height)
-				}
-				cs.unlockAll()
-			}
-		}
-	}()
 
 	return cs
 }
@@ -1047,23 +1006,38 @@ func (cs *State) handleMsg(mi msgInfo) {
 
 	case *BlockPartMessage:
 		// if the proposal is complete, we'll enterPrevote or tryFinalizeCommit
-		go func() {
-			added, err = cs.addProposalBlockPart(msg, peerID)
-			if added {
-				cs.statsMsgQueue <- mi
-				cs.newPart <- struct{}{}
-			}
+		added, err = cs.addProposalBlockPart(msg, peerID)
 
-			if err != nil && msg.Round != cs.rs.Round {
-				cs.Logger.Debug(
-					"received block part from wrong round",
-					"height", cs.rs.Height,
-					"cs_round", cs.rs.Round,
-					"block_round", msg.Round,
-				)
-				err = nil
-			}
-		}()
+		// We unlock here to yield to any routines that need to read the the RoundState.
+		// Previously, this code held the lock from the point at which the final block
+		// part was received until the block executed against the application.
+		// This prevented the reactor from being able to retrieve the most updated
+		// version of the RoundState. The reactor needs the updated RoundState to
+		// gossip the now completed block.
+		//
+		// This code can be further improved by either always operating on a copy
+		// of RoundState and only locking when switching out State's copy of
+		// RoundState with the updated copy or by emitting RoundState events in
+		// more places for routines depending on it to listen for.
+		cs.unlockAll()
+
+		cs.lockAll()
+		if added && cs.rs.ProposalBlockParts.IsComplete() {
+			cs.handleCompleteProposal(msg.Height)
+		}
+		if added {
+			cs.statsMsgQueue <- mi
+		}
+
+		if err != nil && msg.Round != cs.rs.Round {
+			cs.Logger.Debug(
+				"received block part from wrong round",
+				"height", cs.rs.Height,
+				"cs_round", cs.rs.Round,
+				"block_round", msg.Round,
+			)
+			err = nil
+		}
 
 	case *VoteMessage:
 		// attempt to add the vote and dupeout the validator if its a duplicate signature
@@ -1247,7 +1221,6 @@ func (cs *State) enterNewRound(height int64, round int32) {
 	if proposer != nil {
 		cs.propagator.SetProposer(proposer.PubKey)
 	}
-	cs.completeBlock.Store(false)
 
 	// Wait for txs to be available in the mempool
 	// before we enterPropose in round 0. If the last block changed the app hash,
@@ -2257,6 +2230,30 @@ func (cs *State) addProposalBlockPart(msg *BlockPartMessage, peerID p2p.ID) (add
 	}
 	processingTime := time.Since(start)
 	schema.WriteMessageStats(cs.traceClient, "consensus", "addProposalBlockPart.All", processingTime.Nanoseconds(), "")
+	if added && cs.rs.ProposalBlockParts.IsComplete() {
+		fmt.Println("complete proposal: ", time.Now())
+		bz := cs.rs.ProposalBlockParts.GetBytes()
+
+		pbb := new(cmtproto.Block)
+		err = proto.Unmarshal(bz, pbb)
+		if err != nil {
+			return added, err
+		}
+
+		block, err := types.BlockFromProto(pbb)
+		if err != nil {
+			return added, err
+		}
+
+		cs.rs.ProposalBlock = block
+
+		// NOTE: it's possible to receive complete proposal blocks for future rounds without having the proposal
+		cs.Logger.Info("received complete proposal block", "height", cs.rs.ProposalBlock.Height, "hash", cs.rs.ProposalBlock.Hash())
+
+		if err := cs.eventBus.PublishEventCompleteProposal(cs.rs.CompleteProposalEvent()); err != nil {
+			cs.Logger.Error("failed publishing event complete proposal", "err", err)
+		}
+	}
 	return added, nil
 }
 
