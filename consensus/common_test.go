@@ -34,6 +34,7 @@ import (
 	mempl "github.com/cometbft/cometbft/mempool"
 	"github.com/cometbft/cometbft/p2p"
 	"github.com/cometbft/cometbft/privval"
+	cmtstate "github.com/cometbft/cometbft/proto/tendermint/state"
 	cmtproto "github.com/cometbft/cometbft/proto/tendermint/types"
 	"github.com/cometbft/cometbft/proxy"
 	sm "github.com/cometbft/cometbft/state"
@@ -234,7 +235,7 @@ func decideProposal(
 	require.NoError(t, err)
 	blockParts, err := block.MakePartSet(types.BlockPartSizeBytes)
 	require.NoError(t, err)
-	validRound := cs1.ValidRound
+	validRound := cs1.rs.ValidRound
 	chainID := cs1.state.ChainID
 	cs1.mtx.Unlock()
 	if block == nil {
@@ -273,7 +274,9 @@ func signAddVotes(
 }
 
 func validatePrevote(t *testing.T, cs *State, round int32, privVal *validatorStub, blockHash []byte) {
-	prevotes := cs.Votes.Prevotes(round)
+	cs.rsMtx.RLock()
+	prevotes := cs.rs.Votes.Prevotes(round)
+	cs.rsMtx.RUnlock()
 	pubKey, err := privVal.GetPubKey()
 	require.NoError(t, err)
 	address := pubKey.Address()
@@ -293,7 +296,9 @@ func validatePrevote(t *testing.T, cs *State, round int32, privVal *validatorStu
 }
 
 func validateLastPrecommit(t *testing.T, cs *State, privVal *validatorStub, blockHash []byte) {
-	votes := cs.LastCommit
+	cs.rsMtx.RLock()
+	votes := cs.rs.LastCommit
+	cs.rsMtx.RUnlock()
 	pv, err := privVal.GetPubKey()
 	require.NoError(t, err)
 	address := pv.Address()
@@ -315,7 +320,7 @@ func validatePrecommit(
 	votedBlockHash,
 	lockedBlockHash []byte,
 ) {
-	precommits := cs.Votes.Precommits(thisRound)
+	precommits := cs.rs.Votes.Precommits(thisRound)
 	pv, err := privVal.GetPubKey()
 	require.NoError(t, err)
 	address := pv.Address()
@@ -493,6 +498,22 @@ func randStateWithAppImpl(
 ) (*State, []*validatorStub) {
 	// Get State
 	state, privVals := randGenesisState(nValidators, false, 10, consensusParams)
+
+	// Initialize timeouts from application
+	resp, err := app.Info(context.Background(), proxy.RequestInfo)
+	if err != nil {
+		panic(err)
+	}
+	state.Timeouts = cmtstate.TimeoutInfo{
+		TimeoutPropose:          resp.TimeoutInfo.TimeoutPropose,
+		TimeoutCommit:           resp.TimeoutInfo.TimeoutCommit,
+		TimeoutProposeDelta:     resp.TimeoutInfo.TimeoutProposeDelta,
+		TimeoutPrevote:          resp.TimeoutInfo.TimeoutPrevote,
+		TimeoutPrevoteDelta:     resp.TimeoutInfo.TimeoutPrevoteDelta,
+		TimeoutPrecommit:        resp.TimeoutInfo.TimeoutPrecommit,
+		TimeoutPrecommitDelta:   resp.TimeoutInfo.TimeoutPrecommitDelta,
+		DelayedPrecommitTimeout: resp.TimeoutInfo.DelayedPrecommitTimeout,
+	}
 
 	vss := make([]*validatorStub, nValidators)
 
@@ -804,9 +825,6 @@ func randConsensusNet(t *testing.T, nValidators int, testName string, tickerFunc
 		css[i] = newStateWithConfigAndBlockStore(thisConfig, state, privVals[i], app, stateDB)
 		css[i].SetTimeoutTicker(tickerFunc())
 		css[i].SetLogger(logger.With("validator", i, "module", "consensus"))
-		// set building the block pre-emptively to an empty channel because several tests alter in different consensus steps after the timeout commit
-		// and fail because the block is already built before
-		css[i].nextBlock = nil
 	}
 	return css, func() {
 		for _, dir := range configRootDirs {
@@ -871,9 +889,6 @@ func randConsensusNetWithPeers(
 		css[i] = newStateWithConfig(thisConfig, state, privVal, app)
 		css[i].SetTimeoutTicker(tickerFunc())
 		css[i].SetLogger(logger.With("validator", i, "module", "consensus"))
-		// set building the block pre-emptively to an empty channel because several tests alter in different consensus steps after the timeout commit
-		// and fail because the block is already built before
-		css[i].nextBlock = nil
 	}
 	return css, genDoc, peer0Config, func() {
 		for _, dir := range configRootDirs {

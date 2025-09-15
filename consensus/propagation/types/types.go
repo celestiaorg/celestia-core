@@ -324,7 +324,7 @@ func (h *HaveParts) ValidateBasic() error {
 // Returns an error if any hash does not match, indicating the index of the first mismatch.
 func (h *HaveParts) ValidatePartHashes(expectedHashes [][]byte) error {
 	if len(expectedHashes) == 0 {
-		return errors.New("empty expected hashes height")
+		return fmt.Errorf("empty expected hashes for height %d round %d", h.Height, h.Round)
 	}
 	for _, part := range h.Parts {
 		if int(part.Index) >= len(expectedHashes) {

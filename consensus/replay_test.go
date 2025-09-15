@@ -349,7 +349,7 @@ func setupChainWithChangingValidators(t *testing.T, name string, nBlocks int) (*
 	for i := 0; i < nPeers; i++ {
 		vss[i] = newValidatorStub(css[i].privValidator, int32(i))
 	}
-	height, round := css[0].Height, css[0].Round
+	height, round := css[0].rs.Height, css[0].rs.Round
 
 	// start the machine
 	startTestRound(css[0], height, round)

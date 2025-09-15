@@ -29,7 +29,7 @@ func TestPropose(t *testing.T) {
 		cleanup(t)
 	})
 
-	prop, partSet, _, metaData := createTestProposal(t, sm, 1, 100, 1000)
+	prop, partSet, _, metaData := createTestProposal(t, sm, 1, 0, 100, 1000)
 
 	reactor1.ProposeBlock(prop, partSet, metaData)
 
@@ -50,11 +50,17 @@ func TestPropose(t *testing.T) {
 	assert.True(t, has)
 	// the parts == total because we only have 2 peers
 	assert.Equal(t, haves.Size(), int(partSet.Total()*2))
+	for _, index := range haves.GetTrueIndices() {
+		assert.GreaterOrEqual(t, index, int(partSet.Total()))
+	}
 
 	haves, has = reactor3.getPeer(reactor1.self).GetHaves(prop.Height, prop.Round)
 	assert.True(t, has)
 	// the parts == total because we only have 2 peers
 	assert.Equal(t, haves.Size(), int(partSet.Total()*2))
+	for _, index := range haves.GetTrueIndices() {
+		assert.GreaterOrEqual(t, index, int(partSet.Total()))
+	}
 
 	time.Sleep(500 * time.Millisecond)
 
@@ -65,10 +71,46 @@ func TestPropose(t *testing.T) {
 	}
 }
 
+func TestPropose_OnlySendParityChunks(t *testing.T) {
+	reactors, _ := testBlockPropReactors(2, cfg.DefaultP2PConfig())
+	reactor1 := reactors[0]
+	reactor2 := reactors[1]
+
+	cleanup, _, sm := state.SetupTestCase(t)
+	t.Cleanup(func() {
+		cleanup(t)
+	})
+
+	// 128 mb block
+	prop, partSet, _, metaData := createTestProposal(t, sm, 1, 0, 30, 4_000_000)
+
+	reactor1.ProposeBlock(prop, partSet, metaData)
+
+	time.Sleep(200 * time.Millisecond)
+
+	// check that the proposal was saved in reactor 1
+	_, _, has := reactor1.GetProposal(prop.Height, prop.Round)
+	require.True(t, has)
+
+	// Check that the proposal was received by the other reactors
+	_, _, has = reactor2.GetProposal(prop.Height, prop.Round)
+	require.True(t, has)
+
+	// Check whether all the received haves are for parity parts
+	haves, has := reactor2.getPeer(reactor1.self).GetHaves(prop.Height, prop.Round)
+	assert.True(t, has)
+	// the parts == total because we only have 2 peers
+	assert.Equal(t, haves.Size(), int(partSet.Total()*2))
+	for _, index := range haves.GetTrueIndices() {
+		assert.GreaterOrEqual(t, index, int(partSet.Total()))
+	}
+}
+
 func createTestProposal(
 	t *testing.T,
 	sm state.State,
 	height int64,
+	round int32,
 	txCount, txSize int,
 ) (*types.Proposal, *types.PartSet, *types.Block, []proptypes.TxMetaData) {
 	txs := make([]types.Tx, txCount)
@@ -89,7 +131,7 @@ func createTestProposal(
 		}
 	}
 	id := types.BlockID{Hash: block.Hash(), PartSetHeader: partSet.Header()}
-	prop := types.NewProposal(block.Height, 0, -1, id)
+	prop := types.NewProposal(block.Height, round, -1, id)
 	protoProp := prop.ToProto()
 	err = mockPrivVal.SignProposal(TestChainID, protoProp)
 	require.NoError(t, err)

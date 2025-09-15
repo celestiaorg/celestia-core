@@ -5,6 +5,8 @@ import (
 	"context"
 	"fmt"
 	"path/filepath"
+	"runtime"
+	"sync"
 	"time"
 
 	"github.com/cometbft/cometbft/libs/trace"
@@ -15,6 +17,7 @@ import (
 	"github.com/cometbft/cometbft/libs/fail"
 	"github.com/cometbft/cometbft/libs/log"
 	"github.com/cometbft/cometbft/mempool"
+	cmtstate "github.com/cometbft/cometbft/proto/tendermint/state"
 	cmtproto "github.com/cometbft/cometbft/proto/tendermint/types"
 	"github.com/cometbft/cometbft/proxy"
 	"github.com/cometbft/cometbft/types"
@@ -152,10 +155,7 @@ func (blockExec *BlockExecutor) CreateProposalBlock(
 
 	txs := blockExec.mempool.ReapMaxBytesMaxGas(maxReapBytes, maxGas)
 	commit := lastExtCommit.ToCommit()
-	block, _, err := state.MakeBlock(height, types.MakeData(types.TxsFromCachedTxs(txs)), commit, evidence, proposerAddr)
-	if err != nil {
-		return nil, nil, err
-	}
+	block := state.MakeBlockWithoutPartset(height, types.MakeData(types.TxsFromCachedTxs(txs)), commit, evidence, proposerAddr)
 	req := &abci.RequestPrepareProposal{
 		MaxTxBytes:         maxDataBytes,
 		Txs:                block.Txs.ToSliceOfBytes(),
@@ -168,7 +168,7 @@ func (blockExec *BlockExecutor) CreateProposalBlock(
 	}
 
 	var rpp *abci.ResponsePrepareProposal
-
+	var err error
 	func() {
 		defer func() {
 			if r := recover(); r != nil {
@@ -198,7 +198,6 @@ func (blockExec *BlockExecutor) CreateProposalBlock(
 	}
 
 	rawNewData := rpp.GetTxs()
-
 	rejectedTxs := len(rawNewData) - len(txs)
 	if rejectedTxs > 0 {
 		blockExec.metrics.RejectedTransactions.Add(float64(rejectedTxs))
@@ -209,7 +208,6 @@ func (blockExec *BlockExecutor) CreateProposalBlock(
 	if err := txl.Validate(maxDataBytes); err != nil {
 		return nil, nil, err
 	}
-
 	newData := types.NewData(txl, rpp.SquareSize, rpp.DataRootHash)
 	block, partset, err := state.MakeBlock(height, newData, commit, evidence, proposerAddr)
 	if err != nil {
@@ -220,10 +218,21 @@ func (blockExec *BlockExecutor) CreateProposalBlock(
 	// TODO: make sure that the hashes are correct here
 	// via also removing hashes that the application removed!
 	hashes := make([][]byte, len(newData.Txs))
-	for i := 0; i < len(newData.Txs); i++ {
-		hashes[i] = newData.Txs[i].Hash()
+	numWorkers := min(runtime.NumCPU()-1, len(newData.Txs))
+	workers := make(chan struct{}, numWorkers)
+	var wg sync.WaitGroup
+	for i, tx := range newData.Txs {
+		workers <- struct{}{}
+		wg.Add(1)
+		go func() {
+			defer func() {
+				<-workers
+				wg.Done()
+			}()
+			hashes[i] = tx.Hash()
+		}()
 	}
-
+	wg.Wait()
 	block.SetCachedHashes(hashes)
 
 	return block, partset, nil
@@ -758,8 +767,16 @@ func updateState(
 		LastHeightConsensusParamsChanged: lastHeightParamsChanged,
 		LastResultsHash:                  TxResultsHash(abciResponse.TxResults),
 		AppHash:                          nil,
-		TimeoutCommit:                    abciResponse.TimeoutInfo.TimeoutCommit,
-		TimeoutPropose:                   abciResponse.TimeoutInfo.TimeoutPropose,
+		Timeouts: cmtstate.TimeoutInfo{
+			TimeoutPropose:          abciResponse.TimeoutInfo.TimeoutPropose,
+			TimeoutCommit:           abciResponse.TimeoutInfo.TimeoutCommit,
+			TimeoutProposeDelta:     abciResponse.TimeoutInfo.TimeoutProposeDelta,
+			TimeoutPrevote:          abciResponse.TimeoutInfo.TimeoutPrevote,
+			TimeoutPrevoteDelta:     abciResponse.TimeoutInfo.TimeoutPrevoteDelta,
+			TimeoutPrecommit:        abciResponse.TimeoutInfo.TimeoutPrecommit,
+			TimeoutPrecommitDelta:   abciResponse.TimeoutInfo.TimeoutPrecommitDelta,
+			DelayedPrecommitTimeout: abciResponse.TimeoutInfo.DelayedPrecommitTimeout,
+		},
 	}, nil
 }
 

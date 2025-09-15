@@ -10,8 +10,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/cometbft/cometbft/consensus/propagation"
-
 	"github.com/spf13/viper"
 
 	"github.com/cometbft/cometbft/abci/server"
@@ -33,13 +31,9 @@ import (
 	e2e "github.com/cometbft/cometbft/test/e2e/pkg"
 )
 
-var logger = log.NewTMLogger(log.NewSyncWriter(os.Stdout))
+const defaultE2EDelayedPreCommitTimeout = 20 * time.Millisecond
 
-func init() {
-	// set the global retry time to something closer to the desired e2e block
-	// time.
-	propagation.RetryTime = 1000 * time.Millisecond
-}
+var logger = log.NewTMLogger(log.NewSyncWriter(os.Stdout))
 
 // main is the binary entrypoint.
 func main() {
@@ -132,6 +126,7 @@ func startNode(cfg *Config) error {
 	}
 
 	cmtcfg.Instrumentation.TraceType = "local"
+	cmtcfg.Consensus.DelayedPrecommitTimeout = defaultE2EDelayedPreCommitTimeout
 
 	var clientCreator proxy.ClientCreator
 	if cfg.Protocol == string(e2e.ProtocolBuiltinConnSync) {
@@ -162,6 +157,7 @@ func startLightClient(cfg *Config) error {
 	if err != nil {
 		return err
 	}
+	cmtcfg.Consensus.DelayedPrecommitTimeout = defaultE2EDelayedPreCommitTimeout
 
 	dbContext := &config.DBContext{ID: "light", Config: cmtcfg}
 	lightDB, err := config.DefaultDBProvider(dbContext)

@@ -158,7 +158,7 @@ func (b *Block) MakePartSet(partSize uint32) (*PartSet, error) {
 		return nil, err
 	}
 
-	bz, pos, err := MarshalBlockWithTxPositions(pbb)
+	bz, pos, err := MarshalBlockWithTxPositions(pbb, b.Txs.Len())
 	if err != nil {
 		return nil, err
 	}

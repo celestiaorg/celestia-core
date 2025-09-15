@@ -118,6 +118,21 @@ func DefaultConfig(dir string) *Config {
 	}
 }
 
+// timeoutInfo returns timeout configuration for the e2e application
+// Uses the same timeouts as the default consensus config for production-like testing
+func (app *Application) timeoutInfo() abci.TimeoutInfo {
+	return abci.TimeoutInfo{
+		TimeoutPropose:          3000 * time.Millisecond,
+		TimeoutCommit:           1000 * time.Millisecond,
+		TimeoutProposeDelta:     500 * time.Millisecond,
+		TimeoutPrevote:          1000 * time.Millisecond,
+		TimeoutPrevoteDelta:     500 * time.Millisecond,
+		TimeoutPrecommit:        1000 * time.Millisecond,
+		TimeoutPrecommitDelta:   500 * time.Millisecond,
+		DelayedPrecommitTimeout: 20 * time.Millisecond, // e2e uses this specific value
+	}
+}
+
 // NewApplication creates the application.
 func NewApplication(cfg *Config) (*Application, error) {
 	state, err := NewState(cfg.Dir, cfg.PersistInterval)
@@ -195,6 +210,7 @@ func (app *Application) InitChain(_ context.Context, req *abci.RequestInitChain)
 	resp := &abci.ResponseInitChain{
 		ConsensusParams: params,
 		AppHash:         app.state.GetHash(),
+		TimeoutInfo:     app.timeoutInfo(),
 	}
 	if resp.Validators, err = app.validatorUpdates(0); err != nil {
 		return nil, err
@@ -262,6 +278,7 @@ func (app *Application) FinalizeBlock(_ context.Context, req *abci.RequestFinali
 		ValidatorUpdates:      valUpdates,
 		AppHash:               app.state.Finalize(),
 		ConsensusParamUpdates: params,
+		TimeoutInfo:           app.timeoutInfo(),
 		Events: []abci.Event{
 			{
 				Type: "val_updates",
