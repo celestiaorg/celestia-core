@@ -1859,6 +1859,7 @@ func (cs *State) tryFinalizeCommit(height int64) {
 
 // Increment height and goto cstypes.RoundStepNewHeight
 func (cs *State) finalizeCommit(height int64) {
+	start := time.Now()
 	logger := cs.Logger.With("height", height)
 
 	if cs.rs.Height != height || cs.rs.Step != cstypes.RoundStepCommit {
@@ -1874,6 +1875,10 @@ func (cs *State) finalizeCommit(height int64) {
 	blockID, ok := cs.rs.Votes.Precommits(cs.rs.CommitRound).TwoThirdsMajority()
 	block, blockParts := cs.rs.ProposalBlock, cs.rs.ProposalBlockParts
 
+	processingTime := time.Since(start)
+	schema.WriteMessageStats(cs.traceClient, "consensus", "finalizeCommit.step1", processingTime.Nanoseconds(), "")
+	start = time.Now()
+
 	if !ok {
 		panic("cannot finalize commit; commit does not have 2/3 majority")
 	}
@@ -1887,6 +1892,9 @@ func (cs *State) finalizeCommit(height int64) {
 	if err := cs.blockExec.ValidateBlock(cs.state, block); err != nil {
 		panic(fmt.Errorf("+2/3 committed an invalid block: %w", err))
 	}
+	processingTime = time.Since(start)
+	schema.WriteMessageStats(cs.traceClient, "consensus", "finalizeCommit.step2", processingTime.Nanoseconds(), "")
+	start = time.Now()
 
 	logger.Info(
 		"finalizing commit of block",
@@ -1914,6 +1922,9 @@ func (cs *State) finalizeCommit(height int64) {
 		// Happens during replay if we already saved the block but didn't commit
 		logger.Debug("calling finalizeCommit on already stored block", "height", block.Height)
 	}
+	processingTime = time.Since(start)
+	schema.WriteMessageStats(cs.traceClient, "consensus", "finalizeCommit.step3", processingTime.Nanoseconds(), "")
+	start = time.Now()
 
 	fail.Fail() // XXX
 
@@ -1942,7 +1953,9 @@ func (cs *State) finalizeCommit(height int64) {
 
 	// Create a copy of the state for staging and an event cache for txs.
 	stateCopy := cs.state.Copy()
-
+	processingTime = time.Since(start)
+	schema.WriteMessageStats(cs.traceClient, "consensus", "finalizeCommit.step4", processingTime.Nanoseconds(), "")
+	start = time.Now()
 	schema.WriteABCI(cs.traceClient, schema.CommitStart, height, 0)
 
 	// Execute and commit the block, update and save the state, and update the mempool.
@@ -1957,6 +1970,9 @@ func (cs *State) finalizeCommit(height int64) {
 		block,
 		seenCommit,
 	)
+	processingTime = time.Since(start)
+	schema.WriteMessageStats(cs.traceClient, "consensus", "finalizeCommit.step5", processingTime.Nanoseconds(), "")
+	start = time.Now()
 	if err != nil {
 		panic(fmt.Sprintf("failed to apply block; error %v", err))
 	}
@@ -1971,6 +1987,9 @@ func (cs *State) finalizeCommit(height int64) {
 	// NewHeightStep!
 	cs.updateToState(stateCopy)
 
+	processingTime = time.Since(start)
+	schema.WriteMessageStats(cs.traceClient, "consensus", "finalizeCommit.step6", processingTime.Nanoseconds(), "")
+	start = time.Now()
 	fail.Fail() // XXX
 
 	// Private validator might have changed it's key pair => refetch pubkey.
@@ -1985,10 +2004,14 @@ func (cs *State) finalizeCommit(height int64) {
 		cs.propagator.SetProposer(proposer.PubKey)
 	}
 
+	processingTime = time.Since(start)
+	schema.WriteMessageStats(cs.traceClient, "consensus", "finalizeCommit.step7", processingTime.Nanoseconds(), "")
+	start = time.Now()
 	// cs.StartTime is already set.
 	// Schedule Round0 to start soon.
 	cs.scheduleRound0(&cs.rs)
-
+	processingTime = time.Since(start)
+	schema.WriteMessageStats(cs.traceClient, "consensus", "finalizeCommit.step8", processingTime.Nanoseconds(), "")
 	// By here,
 	// * cs.rs.Height has been increment to height+1
 	// * cs.rs.Step is now cstypes.RoundStepNewHeight
