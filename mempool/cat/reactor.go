@@ -35,7 +35,7 @@ const (
 	ReactorIncomingMessageQueueSize = 5000
 
 	// maxSeenTxBroadcast defines the maximum number of peers to which a SeenTx message should be broadcasted.
-	maxSeenTxBroadcast = 10
+	maxSeenTxBroadcast = 15
 )
 
 // Reactor handles mempool tx broadcasting logic amongst peers. For the main
