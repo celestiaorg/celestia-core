@@ -274,25 +274,16 @@ func signAddVotes(
 }
 
 func validatePrevote(t *testing.T, cs *State, round int32, privVal *validatorStub, blockHash []byte) {
+	// Wait for vote to be fully processed into consensus state
+	time.Sleep(10 * time.Millisecond)
+	
+	// Use GetRoundState() which may be safer than direct mutex access
+	rs := cs.GetRoundState()
+	prevotes := rs.Votes.Prevotes(round)
 	pubKey, err := privVal.GetPubKey()
 	require.NoError(t, err)
 	address := pubKey.Address()
-	
-	// Simple retry logic to handle race condition
-	var vote *types.Vote
-	for i := 0; i < 20; i++ {
-		cs.rsMtx.RLock()
-		prevotes := cs.rs.Votes.Prevotes(round)
-		vote = prevotes.GetByAddress(address)
-		cs.rsMtx.RUnlock()
-		
-		if vote != nil {
-			break
-		}
-		
-		// Brief delay between retries
-		time.Sleep(1 * time.Millisecond)
-	}
+	vote := prevotes.GetByAddress(address)
 	
 	if vote == nil {
 		panic("Failed to find prevote from validator")
@@ -307,6 +298,8 @@ func validatePrevote(t *testing.T, cs *State, round int32, privVal *validatorStu
 		}
 	}
 }
+
+
 
 func validateLastPrecommit(t *testing.T, cs *State, privVal *validatorStub, blockHash []byte) {
 	cs.rsMtx.RLock()
@@ -333,25 +326,16 @@ func validatePrecommit(
 	votedBlockHash,
 	lockedBlockHash []byte,
 ) {
+	// Wait for vote to be fully processed into consensus state
+	time.Sleep(10 * time.Millisecond)
+	
+	// Use GetRoundState() which may be safer than direct mutex access
+	rs := cs.GetRoundState()
+	precommits := rs.Votes.Precommits(thisRound)
 	pv, err := privVal.GetPubKey()
 	require.NoError(t, err)
 	address := pv.Address()
-	
-	// Simple retry logic to handle race condition
-	var vote *types.Vote
-	for i := 0; i < 20; i++ {
-		cs.rsMtx.RLock()
-		precommits := cs.rs.Votes.Precommits(thisRound)
-		vote = precommits.GetByAddress(address)
-		cs.rsMtx.RUnlock()
-		
-		if vote != nil {
-			break
-		}
-		
-		// Brief delay between retries
-		time.Sleep(1 * time.Millisecond)
-	}
+	vote := precommits.GetByAddress(address)
 	
 	if vote == nil {
 		panic("Failed to find precommit from validator")
@@ -367,7 +351,6 @@ func validatePrecommit(
 		}
 	}
 
-	rs := cs.GetRoundState()
 	if lockedBlockHash == nil {
 		if rs.LockedRound != lockRound || rs.LockedBlock != nil {
 			panic(fmt.Sprintf(
