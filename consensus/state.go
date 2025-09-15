@@ -1056,7 +1056,6 @@ func (cs *State) handleMsg(mi msgInfo) {
 		// if the proposal is complete, we'll enterPrevote or tryFinalizeCommit
 		cs.unlockAll()
 		go func() {
-			start := time.Now()
 			added, err = cs.addProposalBlockPart(msg, peerID)
 			if added {
 				cs.statsMsgQueue <- mi
@@ -1074,7 +1073,6 @@ func (cs *State) handleMsg(mi msgInfo) {
 				err = nil
 			}
 			cs.rsMtx.RUnlock()
-			fmt.Println("processing time(ms): ", time.Since(start).Milliseconds())
 		}()
 		cs.lockAll()
 
