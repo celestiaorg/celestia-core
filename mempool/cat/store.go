@@ -68,7 +68,7 @@ func (s *store) set(wtx *wrappedTx) bool {
 		s.txs[wtx.key()] = wtx
 		s.bytes += wtx.size()
 
-		// If signer is empty use a single-tx set
+		// If signer is empty use a single-tx set.
 		signerKey := string(wtx.sender)
 		if signerKey == "" {
 			set := newTxSet(wtx)
@@ -76,17 +76,23 @@ func (s *store) set(wtx *wrappedTx) bool {
 			return true
 		}
 
-		if set, ok := s.setsBySigner[signerKey]; ok {
-			if err := s.deleteOrderedSet(set); err != nil {
-				panic(err)
-			}
-			set.addTxToSet(wtx)
-			s.orderSet(set)
-		} else {
+		// Get or create the tx set
+		set, exists := s.setsBySigner[signerKey]
+		// If the tx set does not exist, create it.
+		if !exists {
 			set = newTxSet(wtx)
 			s.setsBySigner[signerKey] = set
 			s.orderSet(set)
+			return true
 		}
+
+		// Remove existing set from ordered list, add tx to it
+		// and reorder.
+		if err := s.deleteOrderedSet(set); err != nil {
+			panic(err)
+		}
+		set.addTxToSet(wtx)
+		s.orderSet(set)
 		return true
 	}
 	return false
@@ -115,7 +121,7 @@ func (s *store) remove(txKey types.TxKey) bool {
 	s.bytes -= tx.size()
 	delete(s.txs, txKey)
 
-	// update the signer's set
+	// Update the signer's set
 	signerKey := string(tx.sender)
 	if signerKey == "" {
 		// Empty-signer sets are single-tx sets: remove the entire set containing tx
@@ -125,19 +131,25 @@ func (s *store) remove(txKey types.TxKey) bool {
 				return true
 			}
 		}
+		// If the set is not found, return false.
+		return false
+	}
+
+	set, ok := s.setsBySigner[signerKey]
+	if !ok {
+		return false
+	}
+	if err := s.deleteOrderedSet(set); err != nil {
+		panic(err)
+	}
+	_ = set.removeTx(tx)
+	// If the set is empty, remove it.
+	if len(set.txs) == 0 {
+		delete(s.setsBySigner, signerKey)
 		return true
 	}
-	if set, ok := s.setsBySigner[signerKey]; ok {
-		if err := s.deleteOrderedSet(set); err != nil {
-			panic(err)
-		}
-		_ = set.removeTx(tx)
-		if len(set.txs) == 0 {
-			delete(s.setsBySigner, signerKey)
-		} else {
-			s.orderSet(set)
-		}
-	}
+	// If the set is not empty, reorder it.
+	s.orderSet(set)
 	return true
 }
 
@@ -184,6 +196,7 @@ func (s *store) totalBytes() int64 {
 func (s *store) getAllKeys() []types.TxKey {
 	s.mtx.RLock()
 	defer s.mtx.RUnlock()
+
 	keys := make([]types.TxKey, len(s.txs))
 	idx := 0
 	for key := range s.txs {
@@ -196,6 +209,7 @@ func (s *store) getAllKeys() []types.TxKey {
 func (s *store) getAllTxs() []*wrappedTx {
 	s.mtx.RLock()
 	defer s.mtx.RUnlock()
+
 	txs := make([]*wrappedTx, len(s.txs))
 	idx := 0
 	for _, tx := range s.txs {
@@ -210,16 +224,16 @@ func (s *store) getAllTxs() []*wrappedTx {
 func (s *store) getTxSetsBelowPriority(priority int64) ([]*txSet, int64) {
 	s.mtx.RLock()
 	defer s.mtx.RUnlock()
+
 	sets := make([]*txSet, 0, len(s.orderedTxSets))
 	bytes := int64(0)
 	for i := len(s.orderedTxSets) - 1; i >= 0; i-- {
 		set := s.orderedTxSets[i]
-		if set.aggregatedPriority < priority {
-			sets = append(sets, set)
-			bytes += set.bytes
-		} else {
+		if set.aggregatedPriority > priority {
 			break
 		}
+		sets = append(sets, set)
+		bytes += set.bytes
 	}
 	return sets, bytes
 }
@@ -242,15 +256,21 @@ func (s *store) purgeExpiredTxs(expirationHeight int64, expirationAge time.Time)
 			if err := s.deleteOrderedSet(set); err != nil {
 				panic(err)
 			}
+			// Update the store's byte count.
+			s.bytes -= set.bytes
+
+			// Remove the set from the store.
 			if set.signerKey != "" {
 				delete(s.setsBySigner, set.signerKey)
 			}
+
+			// Clean up txs in the set and the store.
 			for _, tx := range set.txs {
 				purgedTxs = append(purgedTxs, tx)
 				counter++
+				// Remove the tx from the store.
 				delete(s.txs, tx.key())
 			}
-			continue
 		}
 	}
 	return purgedTxs, counter
@@ -272,6 +292,7 @@ func (s *store) orderSet(ts *txSet) {
 	s.orderedTxSets = append(s.orderedTxSets[:idx], append([]*txSet{ts}, s.orderedTxSets[idx:]...)...)
 }
 
+// deleteOrderedSet removes the txSet from the orderedTxSets slice.
 func (s *store) deleteOrderedSet(ts *txSet) error {
 	if len(s.orderedTxSets) == 0 {
 		return fmt.Errorf("ordered tx sets list is empty")
@@ -299,6 +320,7 @@ func (s *store) getSetOrder(ts *txSet) int {
 func (s *store) iterateOrderedTxs(fn func(tx *wrappedTx) bool) {
 	s.mtx.RLock()
 	defer s.mtx.RUnlock()
+
 	for _, set := range s.orderedTxSets {
 		for _, tx := range set.txs {
 			if !fn(tx) {
@@ -314,6 +336,7 @@ func (s *store) iterateOrderedTxs(fn func(tx *wrappedTx) bool) {
 func (s *store) getOrderedTxs() []*wrappedTx {
 	s.mtx.RLock()
 	defer s.mtx.RUnlock()
+
 	// Return a copy to avoid race conditions when the caller processes the slice
 	total := 0
 	for _, set := range s.orderedTxSets {
@@ -340,6 +363,7 @@ func (set *txSet) addTxToSet(wtx *wrappedTx) {
 	} else {
 		set.txs = append(set.txs[:idx], append([]*wrappedTx{wtx}, set.txs[idx:]...)...)
 	}
+
 	// update gas-weighted aggregation
 	set.totalGasWanted += wtx.gasWanted
 	set.weightedPrioritySum += wtx.priority * wtx.gasWanted
@@ -359,29 +383,29 @@ func (set *txSet) addTxToSet(wtx *wrappedTx) {
 func (set *txSet) removeTx(wtx *wrappedTx) bool {
 	for i, tx := range set.txs {
 		if tx == wtx {
-			set.txs = append(set.txs[:i], set.txs[i+1:]...)
 			set.bytes -= wtx.size()
 			set.totalGasWanted -= wtx.gasWanted
 			set.weightedPrioritySum -= wtx.priority * wtx.gasWanted
-			if len(set.txs) > 0 {
-				// recompute earliest timestamp
-				earliest := set.txs[0].timestamp
-				for _, t := range set.txs {
-					if t.timestamp.Before(earliest) {
-						earliest = t.timestamp
-					}
-				}
-				set.firstTimestamp = earliest
-				if set.totalGasWanted > 0 {
-					set.aggregatedPriority = set.weightedPrioritySum / set.totalGasWanted
-				} else {
-					set.aggregatedPriority = 0
-					set.firstTimestamp = time.Time{}
-				}
-			} else {
+			// Remove the tx from the set
+			set.txs = append(set.txs[:i], set.txs[i+1:]...)
+
+			// If the set is empty, or the total gas wanted is zero
+			// set the aggregated priority to zero
+			if len(set.txs) <= 0 || set.totalGasWanted <= 0 {
 				set.aggregatedPriority = 0
 				set.firstTimestamp = time.Time{}
+				return true
 			}
+
+			// Recompute earliest timestamp
+			earliest := set.txs[0].timestamp
+			for _, t := range set.txs {
+				if t.timestamp.Before(earliest) {
+					earliest = t.timestamp
+				}
+			}
+			set.firstTimestamp = earliest
+			set.aggregatedPriority = set.weightedPrioritySum / set.totalGasWanted
 			return true
 		}
 	}
@@ -393,6 +417,7 @@ func (set *txSet) removeTx(wtx *wrappedTx) bool {
 func (s *store) aggregatedPriorityAfterAdd(wtx *wrappedTx) int64 {
 	s.mtx.RLock()
 	defer s.mtx.RUnlock()
+
 	signerKey := string(wtx.sender)
 	if signerKey == "" {
 		// No existing set is tracked for empty signer; new set would have tx's priority
@@ -401,10 +426,10 @@ func (s *store) aggregatedPriorityAfterAdd(wtx *wrappedTx) int64 {
 	if set, ok := s.setsBySigner[signerKey]; ok {
 		newWeightedSum := set.weightedPrioritySum + (wtx.priority * wtx.gasWanted)
 		newTotalGas := set.totalGasWanted + wtx.gasWanted
-		if newTotalGas > 0 {
-			return newWeightedSum / newTotalGas
+		if newTotalGas <= 0 {
+			return 0
 		}
-		return 0
+		return newWeightedSum / newTotalGas
 	}
 	return wtx.priority
 }
