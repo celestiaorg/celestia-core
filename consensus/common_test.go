@@ -278,9 +278,9 @@ func validatePrevote(t *testing.T, cs *State, round int32, privVal *validatorStu
 	require.NoError(t, err)
 	address := pubKey.Address()
 	
-	// Retry logic to handle race condition where vote event is published before vote is added to state
+	// Simple retry logic to handle race condition
 	var vote *types.Vote
-	for i := 0; i < 10; i++ {
+	for i := 0; i < 20; i++ {
 		cs.rsMtx.RLock()
 		prevotes := cs.rs.Votes.Prevotes(round)
 		vote = prevotes.GetByAddress(address)
@@ -290,9 +290,8 @@ func validatePrevote(t *testing.T, cs *State, round int32, privVal *validatorStu
 			break
 		}
 		
-		if i < 9 { // Don't sleep on the last iteration
-			time.Sleep(1 * time.Millisecond)
-		}
+		// Brief delay between retries
+		time.Sleep(1 * time.Millisecond)
 	}
 	
 	if vote == nil {
@@ -338,19 +337,20 @@ func validatePrecommit(
 	require.NoError(t, err)
 	address := pv.Address()
 	
-	// Retry logic to handle race condition where vote event is published before vote is added to state
+	// Simple retry logic to handle race condition
 	var vote *types.Vote
-	for i := 0; i < 10; i++ {
+	for i := 0; i < 20; i++ {
+		cs.rsMtx.RLock()
 		precommits := cs.rs.Votes.Precommits(thisRound)
 		vote = precommits.GetByAddress(address)
+		cs.rsMtx.RUnlock()
 		
 		if vote != nil {
 			break
 		}
 		
-		if i < 9 { // Don't sleep on the last iteration
-			time.Sleep(1 * time.Millisecond)
-		}
+		// Brief delay between retries
+		time.Sleep(1 * time.Millisecond)
 	}
 	
 	if vote == nil {
