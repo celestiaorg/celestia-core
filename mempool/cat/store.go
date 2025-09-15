@@ -111,6 +111,7 @@ func (s *store) has(txKey types.TxKey) bool {
 	return has
 }
 
+// remove removes a transaction from the store.
 func (s *store) remove(txKey types.TxKey) bool {
 	s.mtx.Lock()
 	defer s.mtx.Unlock()
@@ -142,7 +143,10 @@ func (s *store) remove(txKey types.TxKey) bool {
 	if err := s.deleteOrderedSet(set); err != nil {
 		panic(err)
 	}
-	_ = set.removeTx(tx)
+	removed := set.removeTx(tx)
+	if !removed {
+		return false
+	}
 	// If the set is empty, remove it.
 	if len(set.txs) == 0 {
 		delete(s.setsBySigner, signerKey)

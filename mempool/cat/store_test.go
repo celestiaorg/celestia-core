@@ -76,37 +76,115 @@ func TestStoreOrdering(t *testing.T) {
 	require.Equal(t, wtx1, orderedTxs[2])
 }
 
+func makeTxs(n int, sender []byte, withSequence bool) []*wrappedTx {
+	sequence := uint64(0)
+	txs := make([]*wrappedTx, 0)
+	for i := 1; i <= n; i++ {
+		tx := types.Tx(fmt.Sprintf("tx%d", i))
+		if withSequence {
+			sequence = uint64(i)
+		}
+		wtx := newWrappedTx(tx.ToCachedTx(), int64(i), int64(i), int64(i), sender, sequence)
+		txs = append(txs, wtx)
+	}
+	return txs
+}
+
 func TestStore(t *testing.T) {
-	t.Run("removeUpdatesOrdered", func(*testing.T) {
+	t.Run("remove() empty signer set", func(*testing.T) {
 		store := newStore()
 
-		tx1 := types.Tx("tx1")
-		tx2 := types.Tx("tx2")
-		tx3 := types.Tx("tx3")
+		txs := makeTxs(100, nil, false)
+		// reverse txs so they are in order
+		expectedOrder := make([]*wrappedTx, len(txs))
+		copy(expectedOrder, txs)
+		for i := 0; i < len(expectedOrder)/2; i++ {
+			expectedOrder[i], expectedOrder[len(expectedOrder)-i-1] = expectedOrder[len(expectedOrder)-i-1], expectedOrder[i]
+		}
 
-		// Create wrapped txs with different priorities
-		wtx1 := newWrappedTx(tx1.ToCachedTx(), 1, 1, 1, nil, 0)
-		wtx2 := newWrappedTx(tx2.ToCachedTx(), 2, 2, 2, nil, 0)
-		wtx3 := newWrappedTx(tx3.ToCachedTx(), 3, 3, 3, nil, 0)
+		shuffledTxs := make([]*wrappedTx, len(txs))
+		copy(shuffledTxs, txs)
+		// shuffle txs so they are not in order
+		rand.Shuffle(len(shuffledTxs), func(i, j int) {
+			shuffledTxs[i], shuffledTxs[j] = shuffledTxs[j], shuffledTxs[i]
+		})
 
-		// Add txs in reverse priority order
-		store.set(wtx1)
-		store.set(wtx2)
-		store.set(wtx3)
+		for _, wtx := range shuffledTxs {
+			store.set(wtx)
+		}
 
 		orderedTxs := getOrderedTxs(store)
-		require.Equal(t, []*wrappedTx{wtx3, wtx2, wtx1}, orderedTxs)
+		require.Equal(t, expectedOrder, orderedTxs)
 
-		// remove one and ensure order updates
-		store.remove(wtx2.key())
-		require.Equal(t, []*wrappedTx{wtx3, wtx1}, getOrderedTxs(store))
+		storeBeforeRemoveSize := store.size()
+		storeBeforeRemoveBytes := store.totalBytes()
+		storeBeforeRemoveOrderedTxSets := len(store.orderedTxSets)
+		txToRemove := expectedOrder[30]
+		store.remove(txToRemove.key())
+		expectedOrder = append(expectedOrder[:30], expectedOrder[31:]...)
 
-		store.remove(wtx3.key())
-		require.Equal(t, []*wrappedTx{wtx1}, getOrderedTxs(store))
+		// CHECKS (EXTRACT INTO HELPER FUNCTION)
+		require.Equal(t, expectedOrder, getOrderedTxs(store))
+		require.Equal(t, storeBeforeRemoveSize-1, store.size())
+		require.Nil(t, store.get(txToRemove.key()))
+		require.False(t, store.has(txToRemove.key()))
+		// check that the tx set was removed
+		// iterate over sets and check that no tx inside sets matches this one
+		for _, set := range store.setsBySigner {
+			for _, tx := range set.txs {
+				require.NotEqual(t, tx.key(), txToRemove.key())
+			}
+		}
+		// now check that the bytes size of the store is reduced
+		require.Equal(t, storeBeforeRemoveBytes-txToRemove.size(), store.totalBytes())
+		require.False(t, store.isReserved(txToRemove.key()))
+		require.Equal(t, storeBeforeRemoveOrderedTxSets-1, len(store.orderedTxSets))
 
-		store.remove(wtx1.key())
-		require.Equal(t, []*wrappedTx{}, getOrderedTxs(store))
+		// remove another and ensure order updates
+		removed := store.remove(expectedOrder[60].key())
+		require.True(t, removed)
+		expectedOrder = append(expectedOrder[:60], expectedOrder[61:]...)
+		require.Equal(t, expectedOrder, getOrderedTxs(store))
+
+		// Verify remaining transactions maintain strict priority order (TODO: can be a separate test)
+
+		// For equal priorities, verify timestamp ordering (TODO: separate test)
+
+		// TODO: verify that the sequence does not matter
+
+		// try to remove the same tx again
+		removed = store.remove(txToRemove.key())
+		require.False(t, removed)
+
+		// now remove the rest
+		for _, wtx := range expectedOrder {
+			store.remove(wtx.key())
+		}
+
+		// check that those tx sets were removed
+		require.Equal(t, 0, len(store.setsBySigner))
+		require.Equal(t, 0, len(store.orderedTxSets))
+		require.Equal(t, 0, len(store.txs))
+		require.Equal(t, 0, len(store.getAllKeys()))
+		require.Equal(t, 0, len(store.getAllTxs()))
+		require.Equal(t, 0, len(store.getOrderedTxs()))
 	})
+	t.Run("remove() non-empty signer set", func(*testing.T) {
+		store := newStore()
+
+		txs := makeTxs(10, []byte("signer1"), true)
+		for _, wtx := range txs {
+			store.set(wtx)
+		}
+
+		// Here we also need to check that the sequence order is respected
+
+		// should verify relation between sequence 
+	})
+}
+
+func AssertTxSetRemoval(t *testing.T, store *store, tx *wrappedTx, previousStoreSize int) {
+	// TODO: extract assertions from remove into here
 }
 
 func getOrderedTxs(store *store) []*wrappedTx {
