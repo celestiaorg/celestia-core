@@ -234,7 +234,7 @@ func NewPartSetFromData(data []byte, partSize uint32) (ops *PartSet, err error) 
 	}
 
 	// Compute merkle proofs
-	root, proofs := merkle.ProofsFromByteSlices(chunks)
+	root, proofs := merkle.ParallelProofsFromByteSlices(chunks)
 
 	ops = NewPartSetFromHeader(PartSetHeader{
 		Total: total,
@@ -303,7 +303,7 @@ func Encode(ops *PartSet, partSize uint32) (*PartSet, int, error) {
 
 	// only the parity data is needed for the new partset.
 	chunks = chunks[ops.Total():]
-	eroot, eproofs := merkle.ProofsFromByteSlices(chunks)
+	eroot, eproofs := merkle.ParallelProofsFromByteSlices(chunks)
 
 	// create a new partset using the new parity parts.
 	eps := NewPartSetFromHeader(PartSetHeader{
@@ -387,7 +387,7 @@ func Decode(ops, eps *PartSet, lastPartLen int) (*PartSet, *PartSet, error) {
 	// recalculate all of the proofs since we apparently don't have a function
 	// to generate a single proof... TODO: don't generate proofs for block parts
 	// we already have...
-	root, proofs := merkle.ProofsFromByteSlices(data[:ops.Total()])
+	root, proofs := merkle.ParallelProofsFromByteSlices(data[:ops.Total()])
 	if !bytes.Equal(root, ops.Hash()) {
 		return nil, nil, fmt.Errorf("reconstructed data has different hash!! want: %X, got: %X", ops.hash, root)
 	}
@@ -411,7 +411,7 @@ func Decode(ops, eps *PartSet, lastPartLen int) (*PartSet, *PartSet, error) {
 	// recalculate all of the proofs since we apparently don't have a function
 	// to generate a single proof... TODO: don't generate proofs for block parts
 	// we already have.
-	eroot, eproofs := merkle.ProofsFromByteSlices(data[ops.Total():])
+	eroot, eproofs := merkle.ParallelProofsFromByteSlices(data[ops.Total():])
 	if !bytes.Equal(eroot, eps.Hash()) {
 		return nil, nil, fmt.Errorf("reconstructed parity data has different hash!! want: %X, got: %X", eps.hash, eroot)
 	}
