@@ -7,6 +7,7 @@ import (
 	"github.com/BurntSushi/toml"
 
 	"github.com/cometbft/cometbft/test/e2e/app"
+	e2e "github.com/cometbft/cometbft/test/e2e/pkg"
 )
 
 // Config is the application configuration.
@@ -62,7 +63,7 @@ func (cfg Config) Validate() error {
 	switch {
 	case cfg.ChainID == "":
 		return errors.New("chain_id parameter is required")
-	case cfg.Listen == "" && cfg.Protocol != "builtin" && cfg.Protocol != "builtin_connsync":
+	case cfg.Listen == "" && cfg.Protocol != string(e2e.ProtocolBuiltin) && cfg.Protocol != string(e2e.ProtocolBuiltinConnSync):
 		return errors.New("listen parameter is required")
 	default:
 		return nil
