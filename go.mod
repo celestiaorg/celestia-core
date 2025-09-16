@@ -13,7 +13,11 @@ require (
 	github.com/aws/aws-sdk-go-v2/credentials v1.18.12
 	github.com/aws/aws-sdk-go-v2/service/s3 v1.88.1
 	github.com/btcsuite/btcd/btcutil v1.1.6
+<<<<<<< HEAD
 	github.com/celestiaorg/go-square/v2 v2.3.2
+=======
+	github.com/celestiaorg/go-square/v3 v3.0.0
+>>>>>>> 718cb347 (chore(deps): upgrade to go-square v3.0.0 (#2464))
 	github.com/celestiaorg/nmt v0.24.1
 	github.com/cenkalti/backoff v2.2.1+incompatible // indirect
 	github.com/cometbft/cometbft-db v0.14.1
@@ -45,8 +49,13 @@ require (
 	github.com/rs/cors v1.11.1
 	github.com/sasha-s/go-deadlock v0.3.6
 	github.com/snikch/goodman v0.0.0-20171125024755-10e37e294daa
+<<<<<<< HEAD
 	github.com/spf13/cobra v1.10.1
 	github.com/spf13/viper v1.21.0
+=======
+	github.com/spf13/cobra v1.8.1
+	github.com/spf13/viper v1.19.0
+>>>>>>> 718cb347 (chore(deps): upgrade to go-square v3.0.0 (#2464))
 	github.com/stretchr/testify v1.11.1
 	github.com/syndtr/goleveldb v1.0.1-0.20210819022825-2ae1ddf74ef7
 	go.opentelemetry.io/otel v1.38.0
@@ -56,7 +65,11 @@ require (
 	golang.org/x/net v0.44.0
 	golang.org/x/sync v0.17.0
 	gonum.org/v1/gonum v0.16.0
+<<<<<<< HEAD
 	google.golang.org/grpc v1.75.1
+=======
+	google.golang.org/grpc v1.75.0
+>>>>>>> 718cb347 (chore(deps): upgrade to go-square v3.0.0 (#2464))
 	google.golang.org/protobuf v1.36.9
 )
 

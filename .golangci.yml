@@ -63,7 +63,7 @@ linters:
             - google.golang.org/protobuf/proto
             - google.golang.org/protobuf/types/known/timestamppb
             - gonum.org/v1/gonum/stat
-            - github.com/celestiaorg/go-square/v2
+            - github.com/celestiaorg/go-square/v3
             - github.com/stretchr/testify/assert
             - github.com/klauspost/reedsolomon
         test:
@@ -90,7 +90,7 @@ linters:
             - github.com/spf13
             - github.com/stretchr/testify
             - github.com/decred/dcrd/dcrec/secp256k1/v4
-            - github.com/celestiaorg/go-square/v2
+            - github.com/celestiaorg/go-square/v3
             - github.com/stretchr/testify/require
             - github.com/stretchr/testify/suite
             - github.com/gogo/protobuf/proto
