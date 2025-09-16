@@ -351,7 +351,7 @@ func (blockExec *BlockExecutor) applyBlock(state State, blockID types.BlockID, b
 		return state, fmt.Errorf("expected tx results length to match size of transactions in block. Expected %d, got %d", len(block.Data.Txs), len(abciResponse.TxResults)) //nolint:staticcheck
 	}
 
-	blockExec.logger.Info("executed block", "height", block.Height, "app_hash", fmt.Sprintf("%X", abciResponse.AppHash))
+	blockExec.logger.Debug("executed block", "height", block.Height, "app_hash", fmt.Sprintf("%X", abciResponse.AppHash))
 	// Save indexing info of the transaction.
 	// This needs to be done prior to saving state
 	// for correct crash recovery
@@ -518,7 +518,7 @@ func (blockExec *BlockExecutor) Commit(
 	}
 
 	// ResponseCommit has no error code - just data
-	blockExec.logger.Info(
+	blockExec.logger.Debug(
 		"committed state",
 		"height", block.Height,
 		"block_app_hash", fmt.Sprintf("%X", block.AppHash),
@@ -899,7 +899,7 @@ func ExecCommitBlock(
 		return nil, fmt.Errorf("expected tx results length to match size of transactions in block. Expected %d, got %d", len(block.Data.Txs), len(resp.TxResults)) //nolint:staticcheck
 	}
 
-	logger.Info("executed block", "height", block.Height, "app_hash", fmt.Sprintf("%X", resp.AppHash))
+	logger.Debug("executed block", "height", block.Height, "app_hash", fmt.Sprintf("%X", resp.AppHash))
 
 	// Commit block
 	_, err = appConnConsensus.Commit(context.TODO())
