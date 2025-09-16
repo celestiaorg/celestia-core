@@ -21,33 +21,6 @@ type store struct {
 	orderedTxSets []*txSet
 }
 
-// txSet groups transactions from the same signer and carries an aggregated priority.
-// Transactions within a set are ordered by sequence (ascending). If sequences are
-// equal or unset, order by arrival timestamp.
-type txSet struct {
-	signerKey string
-	signer    []byte
-	// this should be ordered by sequence (ascending)
-	txs                []*wrappedTx
-	aggregatedPriority int64
-	bytes              int64
-	firstTimestamp     time.Time
-	firstHeight        int64
-	// gas-weighted aggregation tracking
-	totalGasWanted      int64
-	weightedPrioritySum int64
-}
-
-func newTxSet(wtx *wrappedTx) *txSet {
-	txSet := &txSet{
-		signerKey: string(wtx.sender),
-		signer:    wtx.sender,
-		txs:       make([]*wrappedTx, 0, 1),
-	}
-	txSet.addTxToSet(wtx)
-	return txSet
-}
-
 func newStore() *store {
 	return &store{
 		bytes:         0,
@@ -233,7 +206,7 @@ func (s *store) getTxSetsBelowPriority(priority int64) ([]*txSet, int64) {
 	bytes := int64(0)
 	for i := len(s.orderedTxSets) - 1; i >= 0; i-- {
 		set := s.orderedTxSets[i]
-		if set.aggregatedPriority > priority {
+		if set.aggregatedPriority >= priority {
 			break
 		}
 		sets = append(sets, set)
@@ -292,7 +265,7 @@ func (s *store) reset() {
 // orderSet inserts the txSet into the orderedTxSets slice at the correct index
 // based on its aggregated priority and timestamp.
 func (s *store) orderSet(ts *txSet) {
-	idx := s.getSetOrder(ts)
+	idx := s.getSetOrderIndex(ts)
 	s.orderedTxSets = append(s.orderedTxSets[:idx], append([]*txSet{ts}, s.orderedTxSets[idx:]...)...)
 }
 
@@ -312,7 +285,7 @@ func (s *store) deleteOrderedSet(ts *txSet) error {
 
 // getSetOrder returns the index of the txSet in the orderedTxSets slice
 // based on its aggregated priority and timestamp.
-func (s *store) getSetOrder(ts *txSet) int {
+func (s *store) getSetOrderIndex(ts *txSet) int {
 	return sort.Search(len(s.orderedTxSets), func(i int) bool {
 		if s.orderedTxSets[i].aggregatedPriority == ts.aggregatedPriority {
 			return ts.firstTimestamp.Before(s.orderedTxSets[i].firstTimestamp)
@@ -321,17 +294,11 @@ func (s *store) getSetOrder(ts *txSet) int {
 	})
 }
 
-func (s *store) iterateOrderedTxs(fn func(tx *wrappedTx) bool) {
+func (s *store) processOrderedTxSets(fn func(txSets []*txSet)) {
 	s.mtx.RLock()
 	defer s.mtx.RUnlock()
 
-	for _, set := range s.orderedTxSets {
-		for _, tx := range set.txs {
-			if !fn(tx) {
-				return
-			}
-		}
-	}
+	fn(s.orderedTxSets)
 }
 
 // getOrderedTxs returns a copy of all transactions in priority order.
@@ -351,69 +318,6 @@ func (s *store) getOrderedTxs() []*wrappedTx {
 		txs = append(txs, set.txs...)
 	}
 	return txs
-}
-
-// addTxToSet inserts wtx into the set maintaining sequence order (ascending).
-// If sequence equal, order by timestamp.
-func (set *txSet) addTxToSet(wtx *wrappedTx) {
-	idx := sort.Search(len(set.txs), func(i int) bool {
-		if set.txs[i].sequence == wtx.sequence {
-			return wtx.timestamp.Before(set.txs[i].timestamp)
-		}
-		return set.txs[i].sequence > wtx.sequence
-	})
-	if idx >= len(set.txs) {
-		set.txs = append(set.txs, wtx)
-	} else {
-		set.txs = append(set.txs[:idx], append([]*wrappedTx{wtx}, set.txs[idx:]...)...)
-	}
-
-	// update gas-weighted aggregation
-	set.totalGasWanted += wtx.gasWanted
-	set.weightedPrioritySum += wtx.priority * wtx.gasWanted
-	if set.totalGasWanted > 0 {
-		set.aggregatedPriority = set.weightedPrioritySum / set.totalGasWanted
-	}
-	set.bytes += wtx.size()
-	if set.firstTimestamp.IsZero() || wtx.timestamp.Before(set.firstTimestamp) {
-		set.firstTimestamp = wtx.timestamp
-	}
-	if set.firstHeight == 0 || wtx.height < set.firstHeight {
-		set.firstHeight = wtx.height
-	}
-}
-
-// removeTx removes the provided wrappedTx from the set and updates aggregation.
-func (set *txSet) removeTx(wtx *wrappedTx) bool {
-	for i, tx := range set.txs {
-		if tx == wtx {
-			set.bytes -= wtx.size()
-			set.totalGasWanted -= wtx.gasWanted
-			set.weightedPrioritySum -= wtx.priority * wtx.gasWanted
-			// Remove the tx from the set
-			set.txs = append(set.txs[:i], set.txs[i+1:]...)
-
-			// If the set is empty, or the total gas wanted is zero
-			// set the aggregated priority to zero
-			if len(set.txs) <= 0 || set.totalGasWanted <= 0 {
-				set.aggregatedPriority = 0
-				set.firstTimestamp = time.Time{}
-				return true
-			}
-
-			// Recompute earliest timestamp
-			earliest := set.txs[0].timestamp
-			for _, t := range set.txs {
-				if t.timestamp.Before(earliest) {
-					earliest = t.timestamp
-				}
-			}
-			set.firstTimestamp = earliest
-			set.aggregatedPriority = set.weightedPrioritySum / set.totalGasWanted
-			return true
-		}
-	}
-	return false
 }
 
 // aggregatedPriorityAfterAdd computes the aggregated priority of the signer's set

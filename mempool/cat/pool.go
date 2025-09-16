@@ -20,7 +20,7 @@ import (
 var _ mempool.Mempool = (*TxPool)(nil)
 
 var (
-	ErrTxInMempool       = errors.New("tx already exists in mempool")
+	ErrTxInMempool = errors.New("tx already exists in mempool")
 )
 
 // TxPoolOption sets an optional parameter on the TxPool.
@@ -399,23 +399,69 @@ func (txmp *TxPool) ReapMaxBytesMaxGas(maxBytes, maxGas int64) []*types.CachedTx
 	var totalGas, totalBytes int64
 
 	var keep []*types.CachedTx
-	txmp.store.iterateOrderedTxs(func(w *wrappedTx) bool {
-		// N.B. When computing byte size, we need to include the overhead for
-		// encoding as protobuf to send to the application. This actually overestimates it
-		// as we add the proto overhead to each transaction
-		txBytes := types.ComputeProtoSizeForTxs([]types.Tx{w.tx.Tx})
-		if (maxGas >= 0 && totalGas+w.gasWanted > maxGas) || (maxBytes >= 0 && totalBytes+txBytes > maxBytes) {
-			return true
+	txmp.store.processOrderedTxSets(func(txSets []*txSet) {
+		for idx, txSet := range txSets {
+			if maxBytes >= 0 && totalBytes+txSet.bytes > maxBytes ||
+				maxGas >= 0 && totalGas+txSet.totalGasWanted > maxGas {
+				// if the next transaction set can not fit, then we need to break down the indidual transactions
+				// and work out the residual set that has the highest accumulative priority and append that
+				keep = append(keep, txmp.determineLeftoverTxs(txSets[idx:], maxBytes-totalBytes, maxGas-totalGas)...)
+				break
+			}
+			totalBytes += txSet.bytes
+			totalGas += txSet.totalGasWanted
+			keep = append(keep, txSet.rawTxs()...)
 		}
-		totalBytes += txBytes
-		totalGas += w.gasWanted
-		keep = append(keep, w.tx)
-		return true
 	})
 	return keep
 }
 
-// ReapMaxTxs returns up to max transactions from the mempool. The results are
+// this function iterates over remaining txSets starting at all possible offsets i.e. from
+// the first, second, third etc. transaction and working out what permutation given the remaining
+// available bytes and gas has the highest aggregated priority
+func (txmp *TxPool) determineLeftoverTxs(txSets []*txSet, remainingBytes, remainingGas int64) []*types.CachedTx {
+	priorities := make([]int64, len(txSets))
+	possibleTxPermutations := make([][]*types.CachedTx, len(txSets))
+	for i := 0; i < len(txSets); i++ {
+		priorities[i], possibleTxPermutations[i] = txmp.getAggregatedPriorityAndTxs(txSets[i:], remainingBytes, remainingGas)
+	}
+	highestPriorityIndex := 0
+	for i := 1; i < len(priorities); i++ {
+		if priorities[i] > priorities[highestPriorityIndex] {
+			highestPriorityIndex = i
+		}
+	}
+	return possibleTxPermutations[highestPriorityIndex]
+}
+
+// getAggregatedPriorityAndTxs return the first n txs in the provided txSets that fit within
+// the remaining bytes and gas and returns the aggregated priority of the resulting txs
+func (txmp *TxPool) getAggregatedPriorityAndTxs(txSets []*txSet, remainingBytes, remainingGas int64) (int64, []*types.CachedTx) {
+	aggregatedTxSubSets := make([]*txSet, 0, len(txSets))
+
+	for _, txSet := range txSets {
+		slicedSet := txSet.sliceTxsByBytesAndGas(remainingBytes, remainingGas)
+		aggregatedTxSubSets = append(aggregatedTxSubSets, slicedSet)
+		// if the full tx set is not returned, that indicates there are no more bytes or gas left
+		if len(slicedSet.txs) != len(txSet.txs) {
+			return aggregatePriorityAcrossSets(aggregatedTxSubSets), flattenTxSets(aggregatedTxSubSets)
+		}
+		remainingBytes -= txSet.bytes
+		remainingGas -= txSet.totalGasWanted
+	}
+	return aggregatePriorityAcrossSets(aggregatedTxSubSets), flattenTxSets(aggregatedTxSubSets)
+}
+
+func flattenTxSets(txSets []*txSet) []*types.CachedTx {
+	txs := make([]*types.CachedTx, 0, len(txSets))
+	for _, txSet := range txSets {
+		txs = append(txs, txSet.rawTxs()...)
+	}
+	return txs
+}
+
+// ReapMaxTxs returns up to m
+// }ax transactions from the mempool. The results are
 // ordered by nonincreasing priority with ties broken by increasing order of
 // arrival. Reaping transactions does not remove them from the mempool.
 //
@@ -426,12 +472,15 @@ func (txmp *TxPool) ReapMaxBytesMaxGas(maxBytes, maxGas int64) []*types.CachedTx
 func (txmp *TxPool) ReapMaxTxs(max int) []*types.CachedTx {
 	var keep []*types.CachedTx
 
-	txmp.store.iterateOrderedTxs(func(w *wrappedTx) bool {
-		if max >= 0 && len(keep) >= max {
-			return false
+	txmp.store.processOrderedTxSets(func(txSets []*txSet) {
+		for _, txSet := range txSets {
+			for _, tx := range txSet.rawTxs() {
+				if max >= 0 && len(keep) >= max {
+					return
+				}
+				keep = append(keep, tx)
+			}
 		}
-		keep = append(keep, w.tx)
-		return true
 	})
 	return keep
 }

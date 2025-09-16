@@ -64,11 +64,7 @@ func TestStoreOrdering(t *testing.T) {
 	store.set(wtx3)
 
 	// Check that iteration returns txs in correct priority order
-	var orderedTxs []*wrappedTx
-	store.iterateOrderedTxs(func(tx *wrappedTx) bool {
-		orderedTxs = append(orderedTxs, tx)
-		return true
-	})
+	orderedTxs := store.getOrderedTxs()
 
 	require.Equal(t, 3, len(orderedTxs))
 	require.Equal(t, wtx3, orderedTxs[0])
@@ -113,7 +109,7 @@ func TestStore(t *testing.T) {
 			store.set(wtx)
 		}
 
-		orderedTxs := getOrderedTxs(store)
+		orderedTxs := store.getOrderedTxs()
 		require.Equal(t, expectedOrder, orderedTxs)
 
 		storeBeforeRemoveSize := store.size()
@@ -124,7 +120,7 @@ func TestStore(t *testing.T) {
 		expectedOrder = append(expectedOrder[:30], expectedOrder[31:]...)
 
 		// CHECKS (EXTRACT INTO HELPER FUNCTION)
-		require.Equal(t, expectedOrder, getOrderedTxs(store))
+		require.Equal(t, expectedOrder, store.getOrderedTxs())
 		require.Equal(t, storeBeforeRemoveSize-1, store.size())
 		require.Nil(t, store.get(txToRemove.key()))
 		require.False(t, store.has(txToRemove.key()))
@@ -144,7 +140,7 @@ func TestStore(t *testing.T) {
 		removed := store.remove(expectedOrder[60].key())
 		require.True(t, removed)
 		expectedOrder = append(expectedOrder[:60], expectedOrder[61:]...)
-		require.Equal(t, expectedOrder, getOrderedTxs(store))
+		require.Equal(t, expectedOrder, store.getOrderedTxs())
 
 		// Verify remaining transactions maintain strict priority order (TODO: can be a separate test)
 
@@ -179,21 +175,12 @@ func TestStore(t *testing.T) {
 
 		// Here we also need to check that the sequence order is respected
 
-		// should verify relation between sequence 
+		// should verify relation between sequence
 	})
 }
 
 func AssertTxSetRemoval(t *testing.T, store *store, tx *wrappedTx, previousStoreSize int) {
 	// TODO: extract assertions from remove into here
-}
-
-func getOrderedTxs(store *store) []*wrappedTx {
-	orderedTxs := []*wrappedTx{}
-	store.iterateOrderedTxs(func(tx *wrappedTx) bool {
-		orderedTxs = append(orderedTxs, tx)
-		return true
-	})
-	return orderedTxs
 }
 
 func TestStoreReservingTxs(t *testing.T) {
