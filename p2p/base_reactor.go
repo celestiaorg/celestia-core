@@ -193,13 +193,14 @@ func ProcessorWithReactor(impl Reactor, baseReactor *BaseReactor) func(context.C
 					return
 				}
 
-				fmt.Println("trying to list")
-				fmt.Println(impl.GetSwitch().peers.List())
-				fmt.Println("finished listing")
-
 				// Process message with panic recovery for individual peer
 				process := func(ue UnprocessedEnvelope) error {
 					defer baseReactor.ProtectPanic(ue.Src)
+
+					if !impl.GetSwitch().peers.Has(ue.Src.ID()) {
+						// peer was disconnected, we can ignore the message
+						return nil
+					}
 
 					mt := chIDs[ue.ChannelID]
 					if mt == nil {
