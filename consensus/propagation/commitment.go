@@ -198,6 +198,7 @@ func (blockProp *Reactor) handleCompactBlock(cb *proptypes.CompactBlock, peer p2
 	if !added {
 		p := blockProp.getPeer(peer)
 		if p == nil {
+			fmt.Printf("peer %v not found1: \n", peer)
 			return
 		}
 		p.consensusPeerState.SetHasProposal(&cb.Proposal)
@@ -205,6 +206,7 @@ func (blockProp *Reactor) handleCompactBlock(cb *proptypes.CompactBlock, peer p2
 	} else if !proposer {
 		p := blockProp.getPeer(peer)
 		if p == nil {
+			fmt.Printf("peer %v not found2: \n", peer)
 			return
 		}
 		p.consensusPeerState.SetHasProposal(&cb.Proposal)

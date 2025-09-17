@@ -227,6 +227,7 @@ func (blockProp *Reactor) AddPeer(peer p2p.Peer) {
 }
 
 func (blockProp *Reactor) RemovePeer(peer p2p.Peer, reason interface{}) {
+	fmt.Println("removing peer recovery: ", peer.ID())
 	blockProp.mtx.Lock()
 	defer blockProp.mtx.Unlock()
 	p := blockProp.peerstate[peer.ID()]
@@ -324,6 +325,7 @@ func (blockProp *Reactor) ResetRequestCounts() {
 	for _, p := range peers {
 		if p == nil {
 			// todo: investigate why nil peers can be present
+			fmt.Printf("peer %v not found5: \n", p)
 			continue
 		}
 		p.SetConcurrentReqs(0)

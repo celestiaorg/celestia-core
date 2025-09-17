@@ -36,6 +36,7 @@ func (blockProp *Reactor) handleHaves(peer p2p.ID, haves *proptypes.HaveParts) {
 	round := haves.Round
 	p := blockProp.getPeer(peer)
 	if p == nil || p.peer == nil {
+		fmt.Printf("peer %v not found3: \n", peer)
 		return
 	}
 
@@ -363,6 +364,7 @@ func (blockProp *Reactor) handleWants(peer p2p.ID, wants *proptypes.WantParts) {
 
 	p := blockProp.getPeer(peer)
 	if p == nil {
+		fmt.Printf("peer %v not found4: \n", peer)
 		return
 	}
 

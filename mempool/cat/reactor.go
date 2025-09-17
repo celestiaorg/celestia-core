@@ -196,6 +196,7 @@ func (memR *Reactor) InitPeer(peer p2p.Peer) (p2p.Peer, error) {
 // RemovePeer implements Reactor. For all current outbound requests to this
 // peer it will find a new peer to rerequest the same transactions.
 func (memR *Reactor) RemovePeer(peer p2p.Peer, reason interface{}) {
+	fmt.Println("removing peer cat: ", peer.ID())
 	peerID := memR.ids.Reclaim(peer.ID())
 	// clear all memory of seen txs by that peer
 	memR.mempool.seenByPeersSet.RemovePeer(peerID)
@@ -453,6 +454,7 @@ func (memR *Reactor) broadcastNewTx(wtx *wrappedTx) {
 func (memR *Reactor) requestTx(txKey types.TxKey, peer p2p.Peer) {
 	if peer == nil {
 		// we have disconnected from the peer
+		fmt.Printf("peer %v not found6: \n", peer)
 		return
 	}
 	memR.Logger.Debug("requesting tx", "txKey", txKey, "peerID", peer.ID())
