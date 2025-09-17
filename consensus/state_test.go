@@ -359,7 +359,6 @@ func TestStateOversizedBlock(t *testing.T) {
 
 // propose, prevote, and precommit a block
 func TestStateFullRound1(t *testing.T) {
-	t.Skip("Skipping TestStateFullRoun1 until it is non-flaky")
 	cs, vss := randState(1)
 	height, round := cs.rs.Height, cs.rs.Round
 
