@@ -199,7 +199,7 @@ func ProcessorWithReactor(impl Reactor, baseReactor *BaseReactor) func(context.C
 
 					if !impl.GetSwitch().peers.Has(ue.Src.ID()) {
 						// peer was disconnected, we can ignore the message
-						return nil
+						//return nil
 					}
 
 					mt := chIDs[ue.ChannelID]
