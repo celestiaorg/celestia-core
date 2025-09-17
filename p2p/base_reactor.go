@@ -188,6 +188,8 @@ func ProcessorWithReactor(impl Reactor, baseReactor *BaseReactor) func(context.C
 					return
 				}
 
+				fmt.Println(baseReactor.Switch.peers.List())
+
 				// Process message with panic recovery for individual peer
 				process := func(ue UnprocessedEnvelope) error {
 					defer baseReactor.ProtectPanic(ue.Src)
