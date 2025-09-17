@@ -192,6 +192,9 @@ func ProcessorWithReactor(impl Reactor, baseReactor *BaseReactor) func(context.C
 				process := func(ue UnprocessedEnvelope) error {
 					defer baseReactor.ProtectPanic(ue.Src)
 
+					fmt.Println("processing message")
+					fmt.Println(ue.Src.ID(), " not in peer set")
+					fmt.Println(baseReactor.Switch.peers.List())
 					if !baseReactor.Switch.peers.Has(ue.Src.ID()) {
 						fmt.Println(ue.Src.ID(), " not in peer set")
 						fmt.Println(baseReactor.Switch.peers.List())
