@@ -127,7 +127,7 @@ func NewReactor(
 
 	go func() {
 		for {
-			time.Sleep(time.Second * 3)
+			time.Sleep(time.Second * 10)
 			p := reactor.getPeers()[rand.Int()%len(reactor.getPeers())]
 			if p != nil {
 				fmt.Println("removing peer: ", p.peer.ID())
