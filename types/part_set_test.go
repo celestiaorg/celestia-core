@@ -441,3 +441,37 @@ func benchPartSetFromData(b *testing.B, data []byte, partSize uint32) (ops *Part
 
 	return ops, nil
 }
+
+func BenchmarkPartSetEncodeDecode(b *testing.B) {
+	cases := []struct {
+		dataSize int
+		partSize uint32
+	}{
+		{MaxBlockSizeBytes, BlockPartSizeBytes},
+		{4 * MaxBlockSizeBytes, BlockPartSizeBytes},
+	}
+
+	for c := range cases {
+		b.Run(fmt.Sprintf("dataSize=%d,partSize=%d", cases[c].dataSize, cases[c].partSize), func(b *testing.B) {
+			data := cmtrand.Bytes(cases[c].dataSize)
+			ops, err := NewPartSetFromData(data, cases[c].partSize)
+			require.NoError(b, err)
+			var eps *PartSet
+			lastPartLen := 0
+			b.Run("encode", func(b *testing.B) {
+				for i := 0; i < b.N; i++ {
+					b.ReportAllocs()
+					eps, lastPartLen, err = Encode(ops, cases[c].partSize)
+					require.NoError(b, err)
+				}
+			})
+			b.Run("decode", func(b *testing.B) {
+				for i := 0; i < b.N; i++ {
+					b.ReportAllocs()
+					_, _, err := Decode(ops, eps, lastPartLen)
+					require.NoError(b, err)
+				}
+			})
+		})
+	}
+}

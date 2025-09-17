@@ -215,7 +215,14 @@ type ProofNode struct {
 // starting from a leaf ProofNode.
 func (spn *ProofNode) FlattenAunts() [][]byte {
 	// Nonrecursive impl.
-	innerHashes := [][]byte{}
+
+	// count the length of the path from the root to the leaf.
+	cnt := 0
+	for p := spn; p != nil; p = p.Parent {
+		cnt++
+	}
+
+	innerHashes := make([][]byte, 0, cnt-1)
 	for spn != nil {
 		switch {
 		case spn.Left != nil:
