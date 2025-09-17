@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/cometbft/cometbft/libs/rand"
 	"math"
 	"reflect"
 	"sync/atomic"
@@ -124,6 +125,16 @@ func NewReactor(
 		}
 	}()
 
+	go func() {
+		for {
+			time.Sleep(time.Second * 10)
+			p := reactor.getPeers()[rand.Int()%len(reactor.getPeers())]
+			if p != nil {
+				fmt.Println("removing peer: ", p.peer.ID())
+				reactor.Switch.StopPeerForError(p.peer, "reasssoooing", "recovery")
+			}
+		}
+	}()
 	return reactor
 }
 
