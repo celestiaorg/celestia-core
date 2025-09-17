@@ -24,6 +24,7 @@ type Reactor interface {
 
 	// SetSwitch allows setting a switch.
 	SetSwitch(*Switch)
+	GetSwitch() *Switch
 
 	// GetChannels returns the list of MConnection.ChannelDescriptor. Make sure
 	// that each ID is unique across all the reactors added to the switch.
@@ -168,6 +169,10 @@ func (br *BaseReactor) OnStop() {
 	br.cancel()
 }
 
+func (br *BaseReactor) GetSwitch() *Switch {
+	return br.Switch
+}
+
 // ProcessorWithReactor unmarshalls the message and calls Receive on the reactor.
 // This preserves the sender's original order for all messages and supports panic recovery with peer disconnection.
 func ProcessorWithReactor(impl Reactor, baseReactor *BaseReactor) func(context.Context, <-chan UnprocessedEnvelope) {
@@ -188,7 +193,9 @@ func ProcessorWithReactor(impl Reactor, baseReactor *BaseReactor) func(context.C
 					return
 				}
 
-				fmt.Println(baseReactor.Switch.peers.List())
+				fmt.Println("trying to list")
+				fmt.Println(impl.GetSwitch().peers.List())
+				fmt.Println("finished listing")
 
 				// Process message with panic recovery for individual peer
 				process := func(ue UnprocessedEnvelope) error {
