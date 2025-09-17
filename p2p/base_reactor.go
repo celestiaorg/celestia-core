@@ -193,10 +193,10 @@ func ProcessorWithReactor(impl Reactor, baseReactor *BaseReactor) func(context.C
 					defer baseReactor.ProtectPanic(ue.Src)
 
 					if !baseReactor.Switch.peers.Has(ue.Src.ID()) {
-						fmt.Println(ue.Src.ID(), "not in peer set")
+						fmt.Println(ue.Src.ID(), " not in peer set")
 						fmt.Println(baseReactor.Switch.peers.List())
 						// peer was disconnected, we can ignore the message
-						return nil
+						//return nil
 					}
 					mt := chIDs[ue.ChannelID]
 					if mt == nil {
