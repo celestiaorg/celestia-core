@@ -3,7 +3,6 @@ package p2p
 import (
 	"context"
 	"fmt"
-
 	"github.com/cometbft/cometbft/libs/service"
 	"github.com/cometbft/cometbft/libs/trace/schema"
 	"github.com/cometbft/cometbft/p2p/conn"
@@ -193,6 +192,10 @@ func ProcessorWithReactor(impl Reactor, baseReactor *BaseReactor) func(context.C
 				process := func(ue UnprocessedEnvelope) error {
 					defer baseReactor.ProtectPanic(ue.Src)
 
+					if !baseReactor.Switch.peers.Has(ue.Src.ID()) {
+						// peer was disconnected, we can ignore the message
+						return nil
+					}
 					mt := chIDs[ue.ChannelID]
 					if mt == nil {
 						return fmt.Errorf("no message type registered for channel %d", ue.ChannelID)
