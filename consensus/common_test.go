@@ -282,7 +282,15 @@ func validatePrevote(t *testing.T, cs *State, round int32, privVal *validatorStu
 	address := pubKey.Address()
 	var vote *types.Vote
 	if vote = prevotes.GetByAddress(address); vote == nil {
-		panic("Failed to find prevote from validator")
+		rs := cs.GetRoundState()
+		panic(fmt.Sprintf("Failed to find prevote from validator: prevotesHeight=%d prevotesRound=%d currentHeight=%d currentRound=%d currentStep=%s expectedRound=%d",
+			prevotes.GetHeight(),
+			prevotes.GetRound(),
+			rs.Height,
+			rs.Round,
+			rs.Step.String(),
+			round,
+		))
 	}
 	if blockHash == nil {
 		if vote.BlockID.Hash != nil {
