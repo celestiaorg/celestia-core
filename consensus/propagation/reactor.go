@@ -126,6 +126,7 @@ func NewReactor(
 	}()
 
 	go func() {
+		time.Sleep(time.Second * 50)
 		for {
 			time.Sleep(time.Second * 10)
 			p := reactor.getPeers()[rand.Int()%len(reactor.getPeers())]
