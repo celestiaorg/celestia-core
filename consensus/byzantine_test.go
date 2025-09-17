@@ -39,7 +39,6 @@ import (
 
 // Byzantine node sends two different prevotes (nil and blockID) to the same validator
 func TestByzantinePrevoteEquivocation(t *testing.T) {
-	t.Skip("Skipping TestByzantinePrevoteEquivocation until it is non-flaky")
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
