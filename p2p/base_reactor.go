@@ -195,6 +195,11 @@ func ProcessorWithReactor(impl Reactor, baseReactor *BaseReactor) func(context.C
 					fmt.Println("processing message")
 					fmt.Println(ue.Src.ID(), " not in peer set")
 					fmt.Println(baseReactor.Switch.Peers().List())
+					for chID, s := range baseReactor.Switch.peerSetByChID {
+						fmt.Println(chID)
+						fmt.Println(s.List())
+						fmt.Println("==============================")
+					}
 					if !baseReactor.Switch.peers.Has(ue.Src.ID()) {
 						fmt.Println(ue.Src.ID(), " not in peer set")
 						fmt.Println(baseReactor.Switch.peers.List())
