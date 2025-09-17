@@ -378,14 +378,11 @@ func TestStateFullRound1(t *testing.T) {
 	voteCh := subscribeUnBuffered(cs.eventBus, types.EventQueryVote)
 	propCh := subscribe(cs.eventBus, types.EventQueryCompleteProposal)
 	newRoundCh := subscribe(cs.eventBus, types.EventQueryNewRound)
-
 	// Maybe it would be better to call explicitly startRoutines(4)
 	startTestRound(cs, height, round)
 	ensureNewRound(newRoundCh, height, round)
-	ensureNewProposal(propCh, height, round)
-	propBlockHash := cs.GetRoundState().ProposalBlock.Hash()
-	ensurePrevote(voteCh, height, round) // wait for prevote
-	validatePrevote(t, cs, round, vss[0], propBlockHash)
+	propBlockHash := waitForProposal(t, propCh, height, round)
+	ensurePrevoteMatch(t, voteCh, height, round, propBlockHash)
 
 	ensurePrecommit(voteCh, height, round) // wait for precommit
 
@@ -2657,6 +2654,21 @@ func subscribeUnBuffered(eventBus *types.EventBus, q cmtpubsub.Query) <-chan cmt
 		panic(fmt.Sprintf("failed to subscribe %s to %v", testSubscriber, q))
 	}
 	return sub.Out()
+}
+
+func waitForProposal(t *testing.T, proposalCh <-chan cmtpubsub.Message, height int64, round int32) []byte {
+	t.Helper()
+	select {
+	case <-time.After(ensureTimeout):
+		t.Fatal("timeout expired while waiting for proposal event")
+	case msg := <-proposalCh:
+		proposalEvent, ok := msg.Data().(types.EventDataCompleteProposal)
+		require.True(t, ok, "expected EventDataCompleteProposal, got %T", msg.Data())
+		require.Equal(t, height, proposalEvent.Height, "proposal height mismatch")
+		require.Equal(t, round, proposalEvent.Round, "proposal round mismatch")
+		return proposalEvent.BlockID.Hash
+	}
+	return nil
 }
 
 func signAddPrecommitWithExtension(
