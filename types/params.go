@@ -13,8 +13,6 @@ import (
 
 const (
 	// MaxBlockSizeBytes is the maximum permitted size of the blocks.
-	//
-	// todo: revert the technically consensus breaking change to > 100MB
 	MaxBlockSizeBytes = 128 * 1024 * 1024
 
 	// BlockPartSizeBytes is the size of one block part.
