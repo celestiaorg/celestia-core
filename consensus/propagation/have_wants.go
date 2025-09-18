@@ -494,7 +494,6 @@ func (blockProp *Reactor) handleRecoveryPart(peer p2p.ID, part *proptypes.Recove
 		case <-p.ctx.Done():
 			return
 		case p.receivedParts <- partData{height: part.Height, round: part.Round}:
-			Times[int(part.Index)] = time.Now()
 		default:
 		}
 	}
@@ -519,6 +518,7 @@ func (blockProp *Reactor) handleRecoveryPart(peer p2p.ID, part *proptypes.Recove
 			Height: part.Height,
 			Round:  part.Round,
 		}:
+			Times[int(part.Index)] = time.Now()
 		}
 	}
 
