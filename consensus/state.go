@@ -992,8 +992,6 @@ func (cs *State) receiveRoutine(maxSteps int) {
 
 // state transitions on complete-proposal, 2/3-any, 2/3-one
 func (cs *State) handleMsg(mi msgInfo) {
-	cs.lockAll()
-	defer cs.unlockAll()
 	var (
 		added bool
 		err   error
@@ -1003,6 +1001,8 @@ func (cs *State) handleMsg(mi msgInfo) {
 
 	switch msg := msg.(type) {
 	case *ProposalMessage:
+		cs.lockAll()
+		defer cs.unlockAll()
 		// will not cause transition.
 		// once proposal is set, we can receive block parts
 		err = cs.setProposal(msg.Proposal)
@@ -1022,9 +1022,7 @@ func (cs *State) handleMsg(mi msgInfo) {
 		// of RoundState and only locking when switching out State's copy of
 		// RoundState with the updated copy or by emitting RoundState events in
 		// more places for routines depending on it to listen for.
-		cs.unlockAll()
 
-		cs.lockAll()
 		if added && cs.rs.ProposalBlockParts.IsComplete() {
 			cs.handleCompleteProposal(msg.Height)
 		}
@@ -1043,6 +1041,8 @@ func (cs *State) handleMsg(mi msgInfo) {
 		}
 
 	case *VoteMessage:
+		cs.lockAll()
+		defer cs.unlockAll()
 		// attempt to add the vote and dupeout the validator if its a duplicate signature
 		// if the vote gives us a 2/3-any or 2/3-one, we transition
 		added, err = cs.tryAddVote(msg.Vote, peerID)
@@ -2165,7 +2165,9 @@ func (cs *State) addProposalBlockPart(msg *BlockPartMessage, peerID p2p.ID) (add
 	height, round, part := msg.Height, msg.Round, msg.Part
 
 	// Blocks might be reused, so round mismatch is OK
+	cs.rsMtx.RLock()
 	if cs.rs.Height != height {
+		cs.rsMtx.RUnlock()
 		cs.Logger.Debug("received block part from wrong height", "height", height, "round", round)
 		cs.metrics.BlockGossipPartsReceived.With("matches_current", "false").Add(1)
 		return false, nil
@@ -2173,6 +2175,7 @@ func (cs *State) addProposalBlockPart(msg *BlockPartMessage, peerID p2p.ID) (add
 
 	// We're not expecting a block part.
 	if cs.rs.ProposalBlockParts == nil {
+		cs.rsMtx.RUnlock()
 		cs.metrics.BlockGossipPartsReceived.With("matches_current", "false").Add(1)
 		// NOTE: this can happen when we've gone to a higher round and
 		// then receive parts from the previous round - not necessarily a bad peer.
@@ -2187,6 +2190,7 @@ func (cs *State) addProposalBlockPart(msg *BlockPartMessage, peerID p2p.ID) (add
 	}
 
 	added, err = cs.rs.ProposalBlockParts.AddPart(part)
+	cs.rsMtx.RUnlock()
 	if err != nil {
 		if errors.Is(err, types.ErrPartSetInvalidProof) || errors.Is(err, types.ErrPartSetUnexpectedIndex) {
 			cs.metrics.BlockGossipPartsReceived.With("matches_current", "false").Add(1)
@@ -2205,12 +2209,17 @@ func (cs *State) addProposalBlockPart(msg *BlockPartMessage, peerID p2p.ID) (add
 	if maxBytes == -1 {
 		maxBytes = int64(types.MaxBlockSizeBytes)
 	}
+	cs.rsMtx.RLock()
 	if cs.rs.ProposalBlockParts.ByteSize() > maxBytes {
+		cs.rsMtx.RUnlock()
 		return added, fmt.Errorf("total size of proposal block parts exceeds maximum block bytes (%d > %d)",
 			cs.rs.ProposalBlockParts.ByteSize(), maxBytes,
 		)
 	}
 	if added && cs.rs.ProposalBlockParts.IsComplete() {
+		cs.rsMtx.RUnlock()
+		cs.lockAll()
+		defer cs.unlockAll()
 		fmt.Println("time to download(ms): ", time.Since(start).Milliseconds())
 		bz := cs.rs.ProposalBlockParts.GetBytes()
 
