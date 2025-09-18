@@ -1008,43 +1008,45 @@ func (cs *State) handleMsg(mi msgInfo) {
 		cs.unlockAll()
 
 	case *BlockPartMessage:
-		// if the proposal is complete, we'll enterPrevote or tryFinalizeCommit
-		added, err = cs.addProposalBlockPart(msg, peerID)
+		go func() {
+			// if the proposal is complete, we'll enterPrevote or tryFinalizeCommit
+			added, err = cs.addProposalBlockPart(msg, peerID)
 
-		// We unlock here to yield to any routines that need to read the the RoundState.
-		// Previously, this code held the lock from the point at which the final block
-		// part was received until the block executed against the application.
-		// This prevented the reactor from being able to retrieve the most updated
-		// version of the RoundState. The reactor needs the updated RoundState to
-		// gossip the now completed block.
-		//
-		// This code can be further improved by either always operating on a copy
-		// of RoundState and only locking when switching out State's copy of
-		// RoundState with the updated copy or by emitting RoundState events in
-		// more places for routines depending on it to listen for.
+			// We unlock here to yield to any routines that need to read the the RoundState.
+			// Previously, this code held the lock from the point at which the final block
+			// part was received until the block executed against the application.
+			// This prevented the reactor from being able to retrieve the most updated
+			// version of the RoundState. The reactor needs the updated RoundState to
+			// gossip the now completed block.
+			//
+			// This code can be further improved by either always operating on a copy
+			// of RoundState and only locking when switching out State's copy of
+			// RoundState with the updated copy or by emitting RoundState events in
+			// more places for routines depending on it to listen for.
 
-		cs.rsMtx.RLock()
-		if added && cs.rs.ProposalBlockParts.IsComplete() {
+			cs.rsMtx.RLock()
+			if added && cs.rs.ProposalBlockParts.IsComplete() {
+				cs.rsMtx.RUnlock()
+				cs.lockAll()
+				cs.handleCompleteProposal(msg.Height)
+				cs.unlockAll()
+			}
+			if added {
+				cs.statsMsgQueue <- mi
+			}
+
+			cs.rsMtx.RLock()
+			if err != nil && msg.Round != cs.rs.Round {
+				cs.Logger.Debug(
+					"received block part from wrong round",
+					"height", cs.rs.Height,
+					"cs_round", cs.rs.Round,
+					"block_round", msg.Round,
+				)
+				err = nil
+			}
 			cs.rsMtx.RUnlock()
-			cs.lockAll()
-			cs.handleCompleteProposal(msg.Height)
-			cs.unlockAll()
-		}
-		if added {
-			cs.statsMsgQueue <- mi
-		}
-
-		cs.rsMtx.RLock()
-		if err != nil && msg.Round != cs.rs.Round {
-			cs.Logger.Debug(
-				"received block part from wrong round",
-				"height", cs.rs.Height,
-				"cs_round", cs.rs.Round,
-				"block_round", msg.Round,
-			)
-			err = nil
-		}
-		cs.rsMtx.RUnlock()
+		}()
 
 	case *VoteMessage:
 		cs.lockAll()
