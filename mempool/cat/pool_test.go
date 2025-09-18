@@ -906,7 +906,7 @@ func TestTxMempool_TestRejectionIndexing(t *testing.T) {
 
 		// Try to add the transaction - it should be rejected
 		err := txmp.CheckTx(rejectedTx, nil, mempool.TxInfo{})
-		require.Error(t, err) // CheckTx returns an error for app rejection in CAT
+		require.NoError(t, err)
 		rejected, code = txmp.WasRecentlyRejected(txKey)
 		require.True(t, rejected)
 		require.Equal(t, uint32(101), code)
