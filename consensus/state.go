@@ -243,10 +243,12 @@ func NewState(
 	go func() {
 		for {
 			for {
+				has := false
 				select {
 				case <-cs.done:
 					return
 				case mi, ok := <-cs.partsChan:
+					has = true
 					if !ok {
 						return
 					}
@@ -287,8 +289,9 @@ func NewState(
 					}
 					cs.unlockAll()
 				default:
+					has = false
 				}
-				if len(cs.partsChan) == 0 {
+				if !has {
 					break
 				}
 			}
