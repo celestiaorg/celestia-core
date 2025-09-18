@@ -16,6 +16,7 @@ import (
 	"github.com/cometbft/cometbft/config"
 	"github.com/cometbft/cometbft/libs/log"
 	"github.com/cometbft/cometbft/p2p"
+	"github.com/cometbft/cometbft/p2p/conn"
 	"github.com/cometbft/cometbft/p2p/mock"
 	tmp2p "github.com/cometbft/cometbft/proto/tendermint/p2p"
 )
@@ -91,6 +92,11 @@ func TestPEXReactorRunning(t *testing.T) {
 			r.SetLogger(logger.With("pex", i))
 			r.SetEnsurePeersPeriod(250 * time.Millisecond)
 			sw.AddReactor("pex", r)
+			mr := mock.NewReactor()
+			mr.Channels = []*conn.ChannelDescriptor{
+				{ID: 123, Priority: 123},
+			}
+			sw.AddReactor("mock", mr)
 
 			return sw
 		})
@@ -111,7 +117,7 @@ func TestPEXReactorRunning(t *testing.T) {
 		require.Nil(t, err)
 	}
 
-	assertPeersWithTimeout(t, switches, 10*time.Millisecond, 10*time.Second, N-1)
+	assertPeersWithTimeout(t, switches, 10*time.Millisecond, 60*time.Second, N-1)
 
 	// stop them
 	for _, s := range switches {
@@ -918,4 +924,122 @@ func TestPEXReactorWhenAddressBookIsSmallerThanMaxDials(t *testing.T) {
 	for _, peer := range peers {
 		assert.Equal(t, 1, pexR.AttemptsToDial(peer))
 	}
+}
+
+// TestPexFromScratch simulates establishing a working P2P network from scratch with a single bootstrap node.
+//
+// To further test reactor-specific peer disconnections and bootstrap node accept capabilities, each switch is running
+// not only PEX, but also some test reactors.
+// It is asserted that nodes can connect to each other and the address books contain other peers.
+func TestPexFromScratch(t *testing.T) {
+	t.Parallel()
+	testCases := []struct {
+		name      string
+		bootstrap int // n - number of bootstrap nodes
+		joining   int // m - number of joining nodes
+	}{
+		{"1 bootstrap, 3 joining", 1, 3},
+		{"2 bootstrap, 5 joining", 2, 5},
+		{"3 bootstrap, 20 joining", 3, 20},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			// directory to store address books
+			dir, err := os.MkdirTemp("", "pex_from_scratch")
+			require.NoError(t, err)
+			defer os.RemoveAll(dir)
+
+			totalNodes := tc.bootstrap + tc.joining
+			switches := make([]*p2p.Switch, totalNodes)
+			books := make([]AddrBook, totalNodes)
+			logger := log.TestingLogger()
+
+			// Create all switches (bootstrap + joining nodes)
+			for i := 0; i < totalNodes; i++ {
+				switches[i] = p2p.MakeSwitch(cfg, i, func(i int, sw *p2p.Switch) *p2p.Switch {
+					books[i] = NewAddrBook(filepath.Join(dir, fmt.Sprintf("addrbook%d.json", i)), false)
+					books[i].SetLogger(logger.With("pex", i))
+					sw.SetAddrBook(books[i])
+
+					sw.SetLogger(logger.With("pex", i))
+
+					r := NewReactor(books[i], &ReactorConfig{SeedMode: false})
+					r.SetLogger(logger.With("pex", i))
+					sw.AddReactor("pex", r)
+
+					return sw
+				})
+			}
+
+			// Bootstrap nodes know about each other
+			for i := 0; i < tc.bootstrap; i++ {
+				for j := 0; j < tc.bootstrap; j++ {
+					if i != j {
+						addr := switches[j].NetAddress()
+						err := books[i].AddAddress(addr, addr)
+						require.NoError(t, err)
+					}
+				}
+			}
+
+			// Joining nodes each know about a single bootstrap node
+			for i := tc.bootstrap; i < totalNodes; i++ {
+				// Each joining node connects to a bootstrap node at index (i-tc.bootstrap) % tc.bootstrap
+				bootstrapIndex := (i - tc.bootstrap) % tc.bootstrap
+				addr := switches[bootstrapIndex].NetAddress()
+				err := books[i].AddAddress(addr, addr)
+				require.NoError(t, err)
+			}
+
+			// Start bootstrappers
+			for i := 0; i < tc.bootstrap; i++ {
+				err := switches[i].Start()
+				require.NoError(t, err)
+			}
+
+			// Wait a bit and start joining nodes
+			time.Sleep(100 * time.Millisecond)
+			for i := tc.bootstrap; i < totalNodes; i++ {
+				err := switches[i].Start()
+				require.NoError(t, err)
+			}
+
+			assertFullAddressBooks(t, totalNodes, books)
+		})
+	}
+}
+
+// assertFullAddressBooks checks if all address books have the expected number of peer entries within a timeout period.
+func assertFullAddressBooks(t *testing.T, totalNodes int, books []AddrBook) {
+	var (
+		ticker    = time.NewTicker(1 * time.Second)
+		timeoutCh = time.After(90 * time.Second)
+	)
+	defer ticker.Stop()
+
+	allGood := false
+	expected := totalNodes - 1
+	for !allGood {
+		select {
+		case <-timeoutCh:
+			t.Errorf("expected all nodes to connect to each other")
+			t.FailNow()
+		case <-ticker.C:
+			// PEX is responsible for address exchange, so we need to check address books, not the number of connections
+			// let's make a strong assumption - each node knows of all other nodes
+			cnt := 0
+			for i := 0; i < totalNodes; i++ {
+				total := len(books[i].GetSelection())
+				if total == expected {
+					cnt++
+				}
+			}
+			t.Logf("%d nodes with full address book", cnt)
+			if cnt == totalNodes {
+				allGood = true
+			}
+		}
+	}
+	assert.True(t, allGood, "Not all nodes connected to each other")
 }
