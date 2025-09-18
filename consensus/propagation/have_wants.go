@@ -506,6 +506,7 @@ func (blockProp *Reactor) handleRecoveryPart(peer p2p.ID, part *proptypes.Recove
 
 	// only send original parts to the consensus reactor
 	if part.Index < parts.Original().Total() {
+		Times[int(part.Index)] = time.Now()
 		select {
 		case <-blockProp.ctx.Done():
 			return
@@ -518,7 +519,6 @@ func (blockProp *Reactor) handleRecoveryPart(peer p2p.ID, part *proptypes.Recove
 			Height: part.Height,
 			Round:  part.Round,
 		}:
-			Times[int(part.Index)] = time.Now()
 		}
 	}
 
