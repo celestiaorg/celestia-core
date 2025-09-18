@@ -2107,6 +2107,8 @@ func (cs *State) isReadyToPrecommit() (bool, time.Duration) {
 
 //-----------------------------------------------------------------------------
 
+var start time.Time
+
 func (cs *State) defaultSetProposal(proposal *types.Proposal) error {
 	// Already have one
 	// TODO: possibly catch double proposals
@@ -2152,6 +2154,7 @@ func (cs *State) defaultSetProposal(proposal *types.Proposal) error {
 	}
 
 	cs.Logger.Info("received proposal", "proposal", proposal, "proposer", pubKey.Address())
+	start = time.Now()
 	return nil
 }
 
@@ -2208,6 +2211,7 @@ func (cs *State) addProposalBlockPart(msg *BlockPartMessage, peerID p2p.ID) (add
 		)
 	}
 	if added && cs.rs.ProposalBlockParts.IsComplete() {
+		fmt.Println("time to download(ms): ", time.Since(start).Milliseconds())
 		bz := cs.rs.ProposalBlockParts.GetBytes()
 
 		pbb := new(cmtproto.Block)
