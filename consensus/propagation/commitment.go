@@ -304,6 +304,7 @@ func (blockProp *Reactor) recoverPartsFromMempool(cb *proptypes.CompactBlock) {
 			Height: cb.Proposal.Height,
 			Round:  cb.Proposal.Round,
 		}:
+			Times[int(p.Index)] = time.Now()
 		}
 
 		recoveredCount++
