@@ -2193,8 +2193,17 @@ func (cs *State) addProposalBlockPart(msg *BlockPartMessage, peerID p2p.ID) (add
 		}
 		return added, err
 	}
-	t := propagation.Times[int(msg.Part.Index)]
-	fmt.Println("part added: ", time.Since(t).Milliseconds())
+	var t time.Time
+	var ok bool
+	t, ok = propagation.Times[int(msg.Part.Index)]
+	if !ok {
+		t, ok = propagation.Times2[int(msg.Part.Index)]
+		if ok {
+			fmt.Println("mempool part added: ", time.Since(t).Milliseconds())
+		}
+	} else {
+		fmt.Println("part added: ", time.Since(t).Milliseconds())
+	}
 
 	cs.metrics.BlockGossipPartsReceived.With("matches_current", "true").Add(1)
 	if !added {

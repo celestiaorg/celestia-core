@@ -430,6 +430,7 @@ func (blockProp *Reactor) handleWants(peer p2p.ID, wants *proptypes.WantParts) {
 }
 
 var Times = make(map[int]time.Time)
+var Times2 = make(map[int]time.Time)
 
 // handleRecoveryPart is called when a peer sends a block part message. This is used
 // to store the part and clear any wants for that part.
