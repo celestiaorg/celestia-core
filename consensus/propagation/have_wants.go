@@ -3,6 +3,7 @@ package propagation
 import (
 	"fmt"
 	"math"
+	"time"
 
 	"github.com/cometbft/cometbft/crypto/merkle"
 	"github.com/cometbft/cometbft/proto/tendermint/crypto"
@@ -428,6 +429,8 @@ func (blockProp *Reactor) handleWants(peer p2p.ID, wants *proptypes.WantParts) {
 	}
 }
 
+var Times = make(map[int]time.Time)
+
 // handleRecoveryPart is called when a peer sends a block part message. This is used
 // to store the part and clear any wants for that part.
 func (blockProp *Reactor) handleRecoveryPart(peer p2p.ID, part *proptypes.RecoveryPart) {
@@ -491,6 +494,7 @@ func (blockProp *Reactor) handleRecoveryPart(peer p2p.ID, part *proptypes.Recove
 		case <-p.ctx.Done():
 			return
 		case p.receivedParts <- partData{height: part.Height, round: part.Round}:
+			Times[int(part.Index)] = time.Now()
 		default:
 		}
 	}
