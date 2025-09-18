@@ -303,7 +303,6 @@ func NewState(
 					return
 				}
 				cs.handleMsg2(mi)
-			default:
 			}
 		}
 	}()
