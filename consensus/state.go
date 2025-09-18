@@ -165,6 +165,9 @@ type State struct {
 
 	// traceClient is used to trace the state machine.
 	traceClient trace.Tracer
+
+	partsChan     chan msgInfo
+	otherMsgsChan chan msgInfo
 }
 
 // StateOption sets an optional parameter on the State.
@@ -199,6 +202,8 @@ func NewState(
 		metrics:              NopMetrics(),
 		traceClient:          trace.NoOpTracer(),
 		newHeightOrRoundChan: make(chan struct{}, 1),
+		partsChan:            make(chan msgInfo, 10_000),
+		otherMsgsChan:        make(chan msgInfo, 10_000),
 	}
 	for _, option := range options {
 		option(cs)
@@ -235,7 +240,69 @@ func NewState(
 			cs.propagator.SetProposer(proposer.PubKey)
 		}
 	}
+	go func() {
+		for {
+			for {
+				select {
+				case <-cs.done:
+					return
+				case mi, ok := <-cs.partsChan:
+					if !ok {
+						return
+					}
+					cs.lockAll()
+					msg := mi.Msg.(*BlockPartMessage)
+					// if the proposal is complete, we'll enterPrevote or tryFinalizeCommit
+					added, err := cs.addProposalBlockPart(msg, mi.PeerID)
 
+					// We unlock here to yield to any routines that need to read the the RoundState.
+					// Previously, this code held the lock from the point at which the final block
+					// part was received until the block executed against the application.
+					// This prevented the reactor from being able to retrieve the most updated
+					// version of the RoundState. The reactor needs the updated RoundState to
+					// gossip the now completed block.
+					//
+					// This code can be further improved by either always operating on a copy
+					// of RoundState and only locking when switching out State's copy of
+					// RoundState with the updated copy or by emitting RoundState events in
+					// more places for routines depending on it to listen for.
+					cs.unlockAll()
+
+					cs.lockAll()
+					if added && cs.rs.ProposalBlockParts.IsComplete() {
+						cs.handleCompleteProposal(msg.Height)
+					}
+					if added {
+						cs.statsMsgQueue <- mi
+					}
+
+					if err != nil && msg.Round != cs.rs.Round {
+						cs.Logger.Debug(
+							"received block part from wrong round",
+							"height", cs.rs.Height,
+							"cs_round", cs.rs.Round,
+							"block_round", msg.Round,
+						)
+						err = nil
+					}
+					cs.unlockAll()
+				default:
+				}
+				if len(cs.partsChan) == 0 {
+					break
+				}
+			}
+			select {
+			case <-cs.done:
+				return
+			case mi, ok := <-cs.otherMsgsChan:
+				if !ok {
+					return
+				}
+				cs.handleMsg2(mi)
+			}
+		}
+	}()
 	return cs
 }
 
@@ -992,6 +1059,18 @@ func (cs *State) receiveRoutine(maxSteps int) {
 
 // state transitions on complete-proposal, 2/3-any, 2/3-one
 func (cs *State) handleMsg(mi msgInfo) {
+	msg := mi.Msg
+
+	switch msg.(type) {
+	case *BlockPartMessage:
+		cs.partsChan <- mi
+	default:
+		cs.otherMsgsChan <- mi
+	}
+}
+
+// state transitions on complete-proposal, 2/3-any, 2/3-one
+func (cs *State) handleMsg2(mi msgInfo) {
 	cs.lockAll()
 	defer cs.unlockAll()
 	var (
