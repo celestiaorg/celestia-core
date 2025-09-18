@@ -1002,10 +1002,10 @@ func (cs *State) handleMsg(mi msgInfo) {
 	switch msg := msg.(type) {
 	case *ProposalMessage:
 		cs.lockAll()
+		defer cs.unlockAll()
 		// will not cause transition.
 		// once proposal is set, we can receive block parts
 		err = cs.setProposal(msg.Proposal)
-		cs.unlockAll()
 
 	case *BlockPartMessage:
 		// if the proposal is complete, we'll enterPrevote or tryFinalizeCommit
@@ -1023,18 +1023,13 @@ func (cs *State) handleMsg(mi msgInfo) {
 		// RoundState with the updated copy or by emitting RoundState events in
 		// more places for routines depending on it to listen for.
 
-		cs.rsMtx.RLock()
 		if added && cs.rs.ProposalBlockParts.IsComplete() {
-			cs.rsMtx.RUnlock()
-			cs.lockAll()
 			cs.handleCompleteProposal(msg.Height)
-			cs.unlockAll()
 		}
 		if added {
 			cs.statsMsgQueue <- mi
 		}
 
-		cs.rsMtx.RLock()
 		if err != nil && msg.Round != cs.rs.Round {
 			cs.Logger.Debug(
 				"received block part from wrong round",
@@ -1044,17 +1039,16 @@ func (cs *State) handleMsg(mi msgInfo) {
 			)
 			err = nil
 		}
-		cs.rsMtx.RUnlock()
 
 	case *VoteMessage:
 		cs.lockAll()
+		defer cs.unlockAll()
 		// attempt to add the vote and dupeout the validator if its a duplicate signature
 		// if the vote gives us a 2/3-any or 2/3-one, we transition
 		added, err = cs.tryAddVote(msg.Vote, peerID)
 		if added {
 			cs.statsMsgQueue <- mi
 		}
-		cs.unlockAll()
 
 		// if err == ErrAddingVote {
 		// TODO: punish peer
@@ -1076,7 +1070,6 @@ func (cs *State) handleMsg(mi msgInfo) {
 		return
 	}
 
-	cs.rsMtx.RLock()
 	if err != nil {
 		cs.Logger.Error(
 			"failed to process message",
@@ -1087,7 +1080,6 @@ func (cs *State) handleMsg(mi msgInfo) {
 			"err", err,
 		)
 	}
-	cs.rsMtx.RUnlock()
 }
 
 func (cs *State) handleTimeout(ti timeoutInfo, rs cstypes.RoundState) {
