@@ -499,7 +499,6 @@ func (blockExec *BlockExecutor) Commit(
 	block *types.Block,
 	abciResponse *abci.ResponseFinalizeBlock,
 ) (int64, error) {
-	start := time.Now()
 	blockExec.mempool.Lock()
 	defer blockExec.mempool.Unlock()
 
@@ -534,7 +533,6 @@ func (blockExec *BlockExecutor) Commit(
 		TxPostCheck(state),
 	)
 
-	fmt.Println("Commit took(ms): ", time.Since(start).Milliseconds())
 	return res.RetainHeight, err
 }
 
