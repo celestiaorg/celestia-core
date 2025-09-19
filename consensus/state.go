@@ -2107,8 +2107,6 @@ func (cs *State) isReadyToPrecommit() (bool, time.Duration) {
 
 //-----------------------------------------------------------------------------
 
-var start time.Time
-
 func (cs *State) defaultSetProposal(proposal *types.Proposal) error {
 	// Already have one
 	// TODO: possibly catch double proposals
@@ -2154,7 +2152,6 @@ func (cs *State) defaultSetProposal(proposal *types.Proposal) error {
 	}
 
 	cs.Logger.Info("received proposal", "proposal", proposal, "proposer", pubKey.Address())
-	start = time.Now()
 	return nil
 }
 
@@ -2193,17 +2190,6 @@ func (cs *State) addProposalBlockPart(msg *BlockPartMessage, peerID p2p.ID) (add
 		}
 		return added, err
 	}
-	//var t time.Time
-	//var ok bool
-	//t, ok = propagation.Times[int(msg.Part.Index)]
-	//if !ok {
-	//	t, ok = propagation.Times2[int(msg.Part.Index)]
-	//	if ok {
-	//		fmt.Println("mempool part added: ", time.Since(t).Milliseconds())
-	//	}
-	//} else {
-	//	fmt.Println("part added: ", time.Since(t).Milliseconds())
-	//}
 
 	cs.metrics.BlockGossipPartsReceived.With("matches_current", "true").Add(1)
 	if !added {
@@ -2222,7 +2208,6 @@ func (cs *State) addProposalBlockPart(msg *BlockPartMessage, peerID p2p.ID) (add
 		)
 	}
 	if added && cs.rs.ProposalBlockParts.IsComplete() {
-		fmt.Println("time to download(ms): ", time.Since(start).Milliseconds())
 		bz := cs.rs.ProposalBlockParts.GetBytes()
 
 		pbb := new(cmtproto.Block)
