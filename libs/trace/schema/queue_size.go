@@ -23,6 +23,8 @@ func (QueueSize) Table() string {
 	return QueueSizeTable
 }
 
-func WriteQueueSize(client trace.Tracer, name string, size int) {
-	client.Write(QueueSize{Name: name, Size: size})
+var TraceClient trace.Tracer
+
+func WriteQueueSize(name string, size int) {
+	TraceClient.Write(QueueSize{Name: name, Size: size})
 }

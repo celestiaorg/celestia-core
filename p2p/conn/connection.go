@@ -4,11 +4,13 @@ import (
 	"bufio"
 	"errors"
 	"fmt"
+	"github.com/cometbft/cometbft/libs/trace/schema"
 	"io"
 	"math"
 	"net"
 	"reflect"
 	"runtime/debug"
+	"strconv"
 	"sync/atomic"
 	"time"
 
@@ -811,6 +813,7 @@ func (ch *Channel) SetLogger(l log.Logger) {
 // Goroutine-safe
 // Times out (and returns false) after defaultSendTimeout
 func (ch *Channel) sendBytes(bytes []byte) bool {
+	schema.WriteQueueSize("send "+strconv.Itoa(int(ch.desc.ID)), len(ch.sendQueue))
 	select {
 	case ch.sendQueue <- bytes:
 		atomic.AddInt32(&ch.sendQueueSize, 1)
@@ -824,6 +827,7 @@ func (ch *Channel) sendBytes(bytes []byte) bool {
 // Nonblocking, returns true if successful.
 // Goroutine-safe
 func (ch *Channel) trySendBytes(bytes []byte) bool {
+	schema.WriteQueueSize("trySend "+strconv.Itoa(int(ch.desc.ID)), len(ch.sendQueue))
 	select {
 	case ch.sendQueue <- bytes:
 		atomic.AddInt32(&ch.sendQueueSize, 1)
@@ -896,6 +900,7 @@ func (ch *Channel) recvPacketMsg(packet tmp2p.PacketMsg) ([]byte, error) {
 	if recvCap < recvReceived {
 		return nil, fmt.Errorf("received message exceeds available capacity: %v < %v", recvCap, recvReceived)
 	}
+	schema.WriteQueueSize("receivePacketMsg "+strconv.Itoa(int(ch.desc.ID)), len(ch.sendQueue))
 	ch.recving = append(ch.recving, packet.Data...)
 	if packet.EOF {
 		msgBytes := make([]byte, len(ch.recving))
