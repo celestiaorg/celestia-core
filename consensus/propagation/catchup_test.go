@@ -102,7 +102,7 @@ func defaultTestP2PConf() *cfg.P2PConfig {
 }
 
 func createCompactBlock(
-	t *testing.T,
+	t testing.TB,
 	prop *types.Proposal,
 	ps *types.PartSet,
 	metaData []proptypes.TxMetaData,
