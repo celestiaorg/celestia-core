@@ -386,9 +386,11 @@ func (txmp *TxPool) PeerHasTx(peer uint16, txKey types.TxKey) {
 }
 
 // ReapMaxBytesMaxGas returns a slice of valid transactions that fit within the
-// size and gas constraints. The results are ordered by nonincreasing priority,
-// with ties broken by increasing order of arrival. Reaping transactions does
-// not remove them from the mempool
+// size and gas constraints. The results are ordered by decreasing priority,
+// with ties broken by increasing order of arrival. Transactions are also
+// grouped together by signer in order of sequence to preserve sequence ordering within a signer.
+//
+// # Reaping transactions does not remove them from the mempool
 //
 // If maxBytes < 0, no limit is set on the total size in bytes.
 // If maxGas < 0, no limit is set on the total gas cost.
@@ -460,10 +462,10 @@ func flattenTxSets(txSets []*txSet) []*types.CachedTx {
 	return txs
 }
 
-// ReapMaxTxs returns up to m
-// }ax transactions from the mempool. The results are
-// ordered by nonincreasing priority with ties broken by increasing order of
-// arrival. Reaping transactions does not remove them from the mempool.
+// ReapMaxTxs returns up to max transactions from the mempool. The results are
+// ordered by decreasing priority with ties broken by increasing order of
+// arrival. Transactions are also ordered to preserve sequence numbers within a signer.
+// Reaping transactions does not remove them from the mempool.
 //
 // If max < 0, all transactions in the mempool are reaped.
 //
@@ -597,16 +599,15 @@ func (txmp *TxPool) addNewTransaction(wtx *wrappedTx) error {
 
 		// Evict as many sets as needed to make room for the incoming tx
 		availableBytes := txmp.availableBytes()
-	outer:
 		for _, set := range victimSets {
 			// Iterate in reverse order removing the higher sequence numbers first
-			for i := len(set.txs) - 1; i >= 0; i-- {
+			for i := len(set.txs) - 1; i >= 0 && availableBytes < wtx.size(); i-- {
 				tx := set.txs[i]
 				txmp.evictTx(tx)
 				availableBytes += tx.size()
-				if availableBytes >= wtx.size() {
-					break outer
-				}
+			}
+			if availableBytes >= wtx.size() {
+				break
 			}
 		}
 	}

@@ -27,7 +27,7 @@ func TestStoreSimple(t *testing.T) {
 	require.Zero(t, store.size())
 	require.Zero(t, store.totalBytes())
 	require.Empty(t, store.getAllKeys())
-	require.Empty(t, store.getAllTxs())
+	require.Empty(t, store.getOrderedTxs())
 
 	// add a tx
 	store.set(wtx)
@@ -162,7 +162,6 @@ func TestStore(t *testing.T) {
 		require.Equal(t, 0, len(store.orderedTxSets))
 		require.Equal(t, 0, len(store.txs))
 		require.Equal(t, 0, len(store.getAllKeys()))
-		require.Equal(t, 0, len(store.getAllTxs()))
 		require.Equal(t, 0, len(store.getOrderedTxs()))
 	})
 	t.Run("remove() non-empty signer set", func(*testing.T) {
@@ -229,7 +228,7 @@ func TestReadReserved(t *testing.T) {
 	require.Nil(t, store.get(tx.Key()))
 	require.False(t, store.has(tx.Key()))
 	require.Len(t, store.getAllKeys(), 0)
-	require.Len(t, store.getAllTxs(), 0)
+	require.Len(t, store.getOrderedTxs(), 0)
 }
 
 func TestStoreConcurrentAccess(t *testing.T) {
@@ -285,7 +284,7 @@ func TestStoreGetTxs(t *testing.T) {
 	require.Equal(t, numTxs, store.size())
 
 	// get all txs
-	txs := store.getAllTxs()
+	txs := store.getOrderedTxs()
 	require.Equal(t, numTxs, len(txs))
 
 	// get txs by keys
@@ -321,13 +320,12 @@ func TestStoreExpiredTxs(t *testing.T) {
 	_, purged := store.purgeExpiredTxs(int64(numTxs/2), time.Time{})
 	require.Equal(t, numTxs/2, purged)
 
-	remainingTxs := store.getAllTxs()
+	remainingTxs := store.getOrderedTxs()
 	for _, tx := range remainingTxs {
 		require.GreaterOrEqual(t, tx.height, int64(numTxs/2))
 	}
 
 	store.purgeExpiredTxs(int64(0), time.Now().Add(time.Second))
-	require.Empty(t, store.getAllTxs())
 	require.Empty(t, store.getOrderedTxs())
 }
 
@@ -356,7 +354,6 @@ func TestPurgeExpiredTxs(t *testing.T) {
 	require.Equal(t, 0, store.size())
 	require.Nil(t, store.setsBySigner[string(signer)])
 	require.Empty(t, store.getOrderedTxs())
-	require.Empty(t, store.getAllTxs())
 }
 
 func TestStoreGetOrderedTxsWithoutSigner(t *testing.T) {

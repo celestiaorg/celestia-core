@@ -45,7 +45,7 @@ Key aspects:
         - transaction index, byte accounting, reservation tracking
 
 - Aggregation:
-    - On insert: update aggregated prioritt `totalGasWanted += gasWanted`, `weightedPrioritySum += priority * gasWanted`, then `aggregatedPriority = weightedPrioritySum / totalGasWanted` (integer division). Aggregated priority is relative to the amount of gasWanted per transaction. Transactions with more gasWanted will have larger weighting. Alternatively we could have used transaction size.
+    - On insert: update aggregated priority `totalGasWanted += gasWanted`, `weightedPrioritySum += priority * gasWanted`, then `aggregatedPriority = weightedPrioritySum / totalGasWanted` (integer division). Aggregated priority is relative to the amount of gasWanted per transaction. Transactions with more gasWanted will have larger weighting. Alternatively we could have used transaction size.
     - On remove: reverse the updates and recompute `aggregatedPriority` (or zero if empty).
 
 - Ordering:

@@ -118,14 +118,14 @@ func (s *store) remove(txKey types.TxKey) bool {
 	}
 	removed := set.removeTx(tx)
 	if !removed {
-		return false
+		panic(fmt.Errorf("remove tx: transaction not found in set: %v", txKey))
 	}
 	// If the set is empty, remove it.
 	if len(set.txs) == 0 {
 		delete(s.setsBySigner, signerKey)
 		return true
 	}
-	// If the set is not empty, reorder it.
+	// If the set is not empty, readd and order it.
 	s.orderSet(set)
 	return true
 }
@@ -181,19 +181,6 @@ func (s *store) getAllKeys() []types.TxKey {
 		idx++
 	}
 	return keys
-}
-
-func (s *store) getAllTxs() []*wrappedTx {
-	s.mtx.RLock()
-	defer s.mtx.RUnlock()
-
-	txs := make([]*wrappedTx, len(s.txs))
-	idx := 0
-	for _, tx := range s.txs {
-		txs[idx] = tx
-		idx++
-	}
-	return txs
 }
 
 // getTxSetsBelowPriority returns sets with aggregated priority below the given value
@@ -294,6 +281,8 @@ func (s *store) getSetOrderIndex(ts *txSet) int {
 	})
 }
 
+// processOrderedTxSets processes the ordered tx sets in a thread-safe manner.
+// no transactions can be added or removed from the store during this process.
 func (s *store) processOrderedTxSets(fn func(txSets []*txSet)) {
 	s.mtx.RLock()
 	defer s.mtx.RUnlock()
