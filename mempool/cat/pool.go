@@ -467,7 +467,7 @@ func (txmp *TxPool) Update(
 			len(blockTxs), len(deliverTxResponses)))
 	}
 	txmp.logger.Debug("updating mempool", "height", blockHeight, "txs", len(blockTxs))
-	txmp.mtx.Lock()
+
 	txmp.height = blockHeight
 	txmp.notifiedTxsAvailable = false
 
@@ -478,7 +478,7 @@ func (txmp *TxPool) Update(
 		txmp.postCheckFn = newPostFn
 	}
 	txmp.lastPurgeTime = time.Now()
-	txmp.mtx.Unlock()
+
 	txmp.metrics.SuccessfulTxs.Add(float64(len(blockTxs)))
 	for _, tx := range blockTxs {
 		// Regardless of success, remove the transaction from the mempool.

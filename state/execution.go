@@ -501,6 +501,7 @@ func (blockExec *BlockExecutor) Commit(
 ) (int64, error) {
 	start := time.Now()
 	blockExec.mempool.Lock()
+	defer blockExec.mempool.Unlock()
 
 	// while mempool is Locked, flush to ensure all async requests have completed
 	// in the ABCI app before Commit.
@@ -509,7 +510,7 @@ func (blockExec *BlockExecutor) Commit(
 		blockExec.logger.Error("client error during mempool.FlushAppConn", "err", err)
 		return 0, err
 	}
-	blockExec.mempool.Unlock()
+
 	// Commit block, get hash back
 	res, err := blockExec.proxyApp.Commit(context.TODO())
 	if err != nil {
