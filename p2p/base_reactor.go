@@ -156,7 +156,7 @@ func WithIncomingQueueSize(size int) ReactorOptions {
 // queue to avoid blocking. The size of the queue can be changed by passing
 // options to the base reactor.
 func (br *BaseReactor) QueueUnprocessedEnvelope(e UnprocessedEnvelope) {
-	schema.WriteQueueSize(br.tracer, br.name, len(br.incoming))
+	schema.WriteQueueSize("parallel_processing_queue_"+br.name, len(br.incoming))
 	select {
 	// if the context is done, do nothing.
 	case <-br.ctx.Done():
@@ -168,7 +168,7 @@ func (br *BaseReactor) QueueUnprocessedEnvelope(e UnprocessedEnvelope) {
 // TryQueueUnprocessedEnvelope an alternative to QueueUnprocessedEnvelope that attempts to queue an unprocessed envelope.
 // If the queue is full, it drops the envelope.
 func (br *BaseReactor) TryQueueUnprocessedEnvelope(e UnprocessedEnvelope) {
-	schema.WriteQueueSize(br.tracer, br.name, len(br.incoming))
+	schema.WriteQueueSize("parallel_processing_queue_"+br.name, len(br.incoming))
 	select {
 	case <-br.ctx.Done():
 	case br.incoming <- e:
