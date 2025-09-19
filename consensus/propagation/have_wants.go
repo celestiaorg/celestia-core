@@ -3,7 +3,6 @@ package propagation
 import (
 	"fmt"
 	"math"
-	"time"
 
 	"github.com/cometbft/cometbft/crypto/merkle"
 	"github.com/cometbft/cometbft/proto/tendermint/crypto"
@@ -429,9 +428,6 @@ func (blockProp *Reactor) handleWants(peer p2p.ID, wants *proptypes.WantParts) {
 	}
 }
 
-var Times = make(map[int]time.Time)
-var Times2 = make(map[int]time.Time)
-
 // handleRecoveryPart is called when a peer sends a block part message. This is used
 // to store the part and clear any wants for that part.
 func (blockProp *Reactor) handleRecoveryPart(peer p2p.ID, part *proptypes.RecoveryPart) {
@@ -519,12 +515,8 @@ func (blockProp *Reactor) handleRecoveryPart(peer p2p.ID, part *proptypes.Recove
 			Height: part.Height,
 			Round:  part.Round,
 		}:
-			fmt.Println("sending recovery part: ", part.Index)
-			Times2[int(part.Index)] = time.Now()
 		}
 	}
-
-	go blockProp.clearWants(part, *proof)
 
 	// attempt to decode the remaining block parts. If they are decoded, then
 	// this node should send all the wanted parts that nodes have requested. cp
@@ -532,14 +524,12 @@ func (blockProp *Reactor) handleRecoveryPart(peer p2p.ID, part *proptypes.Recove
 	// during catchup. todo: use the bool found in the state instead of checking
 	// for nil.
 	if parts.CanDecode() {
-		start := time.Now()
 		if parts.IsDecoding.Load() {
 			return
 		}
 		parts.IsDecoding.Store(true)
 		defer parts.IsDecoding.Store(false)
 
-		existingParts := parts.Original().BitArray().Not()
 		err := parts.Decode()
 		if err != nil {
 			blockProp.Logger.Error("failed to decode parts", "peer", peer, "height", part.Height, "round", part.Round, "error", err)
@@ -553,7 +543,6 @@ func (blockProp *Reactor) handleRecoveryPart(peer p2p.ID, part *proptypes.Recove
 			Round:  part.Round,
 		}
 
-		fmt.Println("time to decode: ", time.Since(start).Milliseconds())
 		for i := uint32(0); i < parts.Total(); i++ {
 			p, has := parts.GetPart(i)
 			if !has {
@@ -561,7 +550,7 @@ func (blockProp *Reactor) handleRecoveryPart(peer p2p.ID, part *proptypes.Recove
 				continue
 			}
 			// only send original parts to the consensus reactor
-			if existingParts.GetIndex(int(i)) && i < parts.Original().Total() {
+			if i < parts.Original().Total() {
 				select {
 				case <-blockProp.ctx.Done():
 					return
@@ -574,8 +563,6 @@ func (blockProp *Reactor) handleRecoveryPart(peer p2p.ID, part *proptypes.Recove
 					Height: part.Height,
 					Round:  part.Round,
 				}:
-					fmt.Println("sending recovery part")
-					Times[int(part.Index)] = time.Now()
 				}
 			}
 			haves.Parts = append(haves.Parts, proptypes.PartMetaData{Index: i, Hash: p.Proof.LeafHash})
@@ -601,6 +588,8 @@ func (blockProp *Reactor) handleRecoveryPart(peer p2p.ID, part *proptypes.Recove
 
 		return
 	}
+
+	go blockProp.clearWants(part, *proof)
 }
 
 // clearWants checks the wantState to see if any peers want the given part, if

@@ -4,8 +4,6 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
-	"sync"
-	"time"
 
 	"github.com/klauspost/reedsolomon"
 
@@ -367,7 +365,6 @@ func (ps *PartSet) IsReadyForDecoding() bool {
 // is different from that in the PartSetHeader. Parts are fully complete with
 // proofs after decoding.
 func Decode(ops, eps *PartSet, lastPartLen int) (*PartSet, *PartSet, error) {
-	start := time.Now()
 	enc, err := reedsolomon.New(int(ops.total), int(eps.total))
 	if err != nil {
 		return nil, nil, err
@@ -392,8 +389,6 @@ func Decode(ops, eps *PartSet, lastPartLen int) (*PartSet, *PartSet, error) {
 		data[i] = chunk
 	}
 	ops.mtx.Unlock()
-	fmt.Println("step1: ", time.Since(start).Milliseconds())
-	start = time.Now()
 
 	eps.mtx.Lock()
 	for i := 0; i < int(eps.Total()); i++ {
@@ -406,22 +401,16 @@ func Decode(ops, eps *PartSet, lastPartLen int) (*PartSet, *PartSet, error) {
 	}
 	eps.mtx.Unlock()
 
-	fmt.Println("step2: ", time.Since(start).Milliseconds())
-	start = time.Now()
 	err = enc.Reconstruct(data)
 	if err != nil {
 		return nil, nil, err
 	}
-	fmt.Println("step3: ", time.Since(start).Milliseconds())
-	start = time.Now()
 
 	// prune the last part if we need to
 	if len(data[:(ops.Total()-1)]) != lastPartLen {
 		data[(ops.Total() - 1)] = data[(ops.Total() - 1)][:lastPartLen]
 	}
 
-	fmt.Println("step4: ", time.Since(start).Milliseconds())
-	start = time.Now()
 	// recalculate all of the proofs since we apparently don't have a function
 	// to generate a single proof... TODO: don't generate proofs for block parts
 	// we already have...
@@ -430,8 +419,6 @@ func Decode(ops, eps *PartSet, lastPartLen int) (*PartSet, *PartSet, error) {
 		return nil, nil, fmt.Errorf("reconstructed data has different hash!! want: %X, got: %X", ops.hash, root)
 	}
 
-	fmt.Println("step5: ", time.Since(start).Milliseconds())
-	start = time.Now()
 	for i, d := range data[:ops.Total()] {
 		if !ops.HasPart(i) {
 			added, err := ops.AddPart(&Part{
@@ -448,8 +435,6 @@ func Decode(ops, eps *PartSet, lastPartLen int) (*PartSet, *PartSet, error) {
 		}
 	}
 
-	fmt.Println("step6: ", time.Since(start).Milliseconds())
-	start = time.Now()
 	// recalculate all of the proofs since we apparently don't have a function
 	// to generate a single proof... TODO: don't generate proofs for block parts
 	// we already have.
@@ -458,32 +443,22 @@ func Decode(ops, eps *PartSet, lastPartLen int) (*PartSet, *PartSet, error) {
 		return nil, nil, fmt.Errorf("reconstructed parity data has different hash!! want: %X, got: %X", eps.hash, eroot)
 	}
 
-	fmt.Println("step7: ", time.Since(start).Milliseconds())
-	start = time.Now()
-	wg := sync.WaitGroup{}
 	for i := 0; i < int(eps.Total()); i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			if !eps.HasPart(i) {
-				added, err := eps.AddPart(&Part{
-					Index: uint32(i),
-					Bytes: data[int(ops.Total())+i],
-					Proof: *eproofs[i],
-				})
-				if err != nil {
-					return
-				}
-				if !added {
-					return
-				}
+		if !eps.HasPart(i) {
+			added, err := eps.AddPart(&Part{
+				Index: uint32(i),
+				Bytes: data[int(ops.Total())+i],
+				Proof: *eproofs[i],
+			})
+			if err != nil {
+				return nil, nil, err
 			}
-		}()
+			if !added {
+				return nil, nil, fmt.Errorf("couldn't add parity part %d when decoding", i)
+			}
+		}
 	}
-	wg.Wait()
 
-	fmt.Println("step8: ", time.Since(start).Milliseconds())
-	start = time.Now()
 	return ops, eps, nil
 }
 

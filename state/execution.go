@@ -240,7 +240,7 @@ func (blockExec *BlockExecutor) CreateProposalBlock(
 
 func (blockExec *BlockExecutor) ProcessProposal(
 	block *types.Block,
-	state State,
+	initialHeight int64,
 ) (bool, error) {
 	pbHeader := block.Header.ToProto()
 	resp, err := blockExec.proxyApp.ProcessProposal(context.TODO(), &abci.RequestProcessProposal{
@@ -250,7 +250,7 @@ func (blockExec *BlockExecutor) ProcessProposal(
 		Txs:                block.Data.Txs.ToSliceOfBytes(), //nolint:staticcheck
 		SquareSize:         block.Data.SquareSize,           //nolint:staticcheck
 		DataRootHash:       block.Data.Hash(),
-		ProposedLastCommit: buildLastCommitInfoFromStore(block, blockExec.store, state.InitialHeight),
+		ProposedLastCommit: buildLastCommitInfoFromStore(block, blockExec.store, initialHeight),
 		Misbehavior:        block.Evidence.Evidence.ToABCI(),
 		ProposerAddress:    block.ProposerAddress,
 		NextValidatorsHash: block.NextValidatorsHash,
@@ -499,7 +499,6 @@ func (blockExec *BlockExecutor) Commit(
 	block *types.Block,
 	abciResponse *abci.ResponseFinalizeBlock,
 ) (int64, error) {
-	start := time.Now()
 	blockExec.mempool.Lock()
 	defer blockExec.mempool.Unlock()
 
@@ -534,7 +533,6 @@ func (blockExec *BlockExecutor) Commit(
 		TxPostCheck(state),
 	)
 
-	fmt.Println("Commit took(ms): ", time.Since(start).Milliseconds())
 	return res.RetainHeight, err
 }
 

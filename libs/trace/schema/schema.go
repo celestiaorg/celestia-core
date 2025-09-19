@@ -17,7 +17,6 @@ func AllTables() []string {
 	tables = append(tables, P2PTables()...)
 	tables = append(tables, ABCITable)
 	tables = append(tables, RecoveryTables()...)
-	tables = append(tables, QueueSizeTables()...)
 	return tables
 }
 
