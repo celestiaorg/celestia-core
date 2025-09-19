@@ -460,19 +460,21 @@ func Decode(ops, eps *PartSet, lastPartLen int) (*PartSet, *PartSet, error) {
 	fmt.Println("step7: ", time.Since(start).Milliseconds())
 	start = time.Now()
 	for i := 0; i < int(eps.Total()); i++ {
-		if !eps.HasPart(i) {
-			added, err := eps.AddPart(&Part{
-				Index: uint32(i),
-				Bytes: data[int(ops.Total())+i],
-				Proof: *eproofs[i],
-			})
-			if err != nil {
-				return nil, nil, err
+		go func() {
+			if !eps.HasPart(i) {
+				added, err := eps.AddPart(&Part{
+					Index: uint32(i),
+					Bytes: data[int(ops.Total())+i],
+					Proof: *eproofs[i],
+				})
+				if err != nil {
+					return
+				}
+				if !added {
+					return
+				}
 			}
-			if !added {
-				return nil, nil, fmt.Errorf("couldn't add parity part %d when decoding", i)
-			}
-		}
+		}()
 	}
 
 	fmt.Println("step8: ", time.Since(start).Milliseconds())
