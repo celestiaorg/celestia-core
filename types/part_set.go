@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/klauspost/reedsolomon"
@@ -459,8 +460,11 @@ func Decode(ops, eps *PartSet, lastPartLen int) (*PartSet, *PartSet, error) {
 
 	fmt.Println("step7: ", time.Since(start).Milliseconds())
 	start = time.Now()
+	wg := sync.WaitGroup{}
 	for i := 0; i < int(eps.Total()); i++ {
+		wg.Add(1)
 		go func() {
+			defer wg.Done()
 			if !eps.HasPart(i) {
 				added, err := eps.AddPart(&Part{
 					Index: uint32(i),
@@ -476,6 +480,7 @@ func Decode(ops, eps *PartSet, lastPartLen int) (*PartSet, *PartSet, error) {
 			}
 		}()
 	}
+	wg.Wait()
 
 	fmt.Println("step8: ", time.Since(start).Milliseconds())
 	start = time.Now()
