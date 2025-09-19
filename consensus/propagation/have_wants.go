@@ -519,7 +519,7 @@ func (blockProp *Reactor) handleRecoveryPart(peer p2p.ID, part *proptypes.Recove
 			Height: part.Height,
 			Round:  part.Round,
 		}:
-			fmt.Println("sending recovery part: ", part.Index)
+			//fmt.Println("sending recovery part: ", part.Index)
 			Times2[int(part.Index)] = time.Now()
 		}
 	}
@@ -574,7 +574,7 @@ func (blockProp *Reactor) handleRecoveryPart(peer p2p.ID, part *proptypes.Recove
 					Height: part.Height,
 					Round:  part.Round,
 				}:
-					fmt.Println("sending recovery part")
+					//fmt.Println("sending recovery part")
 					Times[int(part.Index)] = time.Now()
 				}
 			}
