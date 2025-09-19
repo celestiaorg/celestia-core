@@ -208,14 +208,14 @@ func (c *CompactBlock) Proofs() ([]*merkle.Proof, error) {
 
 	c.proofsCache = make([]*merkle.Proof, 0, len(c.PartsHashes))
 
-	root, proofs := merkle.ProofsFromLeafHashes(c.PartsHashes[:total])
+	root, proofs := merkle.ParallelProofsFromLeafHashes(c.PartsHashes[:total])
 	c.proofsCache = append(c.proofsCache, proofs...)
 
 	if !bytes.Equal(root, c.Proposal.BlockID.PartSetHeader.Hash) {
 		return c.proofsCache, fmt.Errorf("incorrect PartsHash: original root")
 	}
 
-	parityRoot, eproofs := merkle.ProofsFromLeafHashes(c.PartsHashes[total:])
+	parityRoot, eproofs := merkle.ParallelProofsFromLeafHashes(c.PartsHashes[total:])
 	c.proofsCache = append(c.proofsCache, eproofs...)
 
 	if !bytes.Equal(c.BpHash, parityRoot) {

@@ -8,8 +8,8 @@ import (
 
 	"github.com/cosmos/gogoproto/proto"
 
-	share "github.com/celestiaorg/go-square/v2/share"
-	square "github.com/celestiaorg/go-square/v2/tx"
+	share "github.com/celestiaorg/go-square/v3/share"
+	square "github.com/celestiaorg/go-square/v3/tx"
 
 	"github.com/cometbft/cometbft/crypto/merkle"
 	"github.com/cometbft/cometbft/crypto/tmhash"
