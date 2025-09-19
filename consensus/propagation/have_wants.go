@@ -520,6 +520,7 @@ func (blockProp *Reactor) handleRecoveryPart(peer p2p.ID, part *proptypes.Recove
 			Round:  part.Round,
 		}:
 			fmt.Println("sending recovery part: ", part.Index)
+			Times2[int(part.Index)] = time.Now()
 		}
 	}
 
@@ -535,7 +536,7 @@ func (blockProp *Reactor) handleRecoveryPart(peer p2p.ID, part *proptypes.Recove
 		parts.IsDecoding.Store(true)
 		defer parts.IsDecoding.Store(false)
 
-		existingParts := parts.Original().BitArray().Not().GetTrueIndices()
+		existingParts := parts.Original().BitArray().Not()
 		err := parts.Decode()
 		if err != nil {
 			blockProp.Logger.Error("failed to decode parts", "peer", peer, "height", part.Height, "round", part.Round, "error", err)
@@ -549,14 +550,14 @@ func (blockProp *Reactor) handleRecoveryPart(peer p2p.ID, part *proptypes.Recove
 			Round:  part.Round,
 		}
 
-		for _, i := range existingParts {
-			p, has := parts.GetPart(uint32(i))
+		for i := uint32(0); i < parts.Total(); i++ {
+			p, has := parts.GetPart(i)
 			if !has {
 				blockProp.Logger.Error("failed to get decoded part", "peer", peer, "height", part.Height, "round", part.Round, "part", i)
 				continue
 			}
 			// only send original parts to the consensus reactor
-			if i < int(parts.Original().Total()) {
+			if existingParts.GetIndex(int(i)) && i < parts.Original().Total() {
 				select {
 				case <-blockProp.ctx.Done():
 					return
@@ -573,7 +574,7 @@ func (blockProp *Reactor) handleRecoveryPart(peer p2p.ID, part *proptypes.Recove
 					Times[int(part.Index)] = time.Now()
 				}
 			}
-			haves.Parts = append(haves.Parts, proptypes.PartMetaData{Index: uint32(i), Hash: p.Proof.LeafHash})
+			haves.Parts = append(haves.Parts, proptypes.PartMetaData{Index: i, Hash: p.Proof.LeafHash})
 		}
 
 		blockProp.broadcastHaves(haves, peer, int(parts.Total()))
