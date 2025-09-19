@@ -519,6 +519,7 @@ func (blockProp *Reactor) handleRecoveryPart(peer p2p.ID, part *proptypes.Recove
 			Height: part.Height,
 			Round:  part.Round,
 		}:
+			fmt.Println("sending recovery part: ", part.Index)
 		}
 	}
 

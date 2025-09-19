@@ -82,8 +82,30 @@ func (blockProp *Reactor) ProposeBlock(proposal *types.Proposal, block *types.Pa
 	peers := blockProp.getPeers()
 	chunks := chunkParts(parts.Parity().BitArray(), len(peers), 1)
 	for index, peer := range peers {
-		partsMeta := chunkToPartMetaData(chunks[index], parts.Parity())
+		ba := bits.NewBitArray(int(parts.Total()))
+		ba.SetIndex(0, true)
+		ba.SetIndex(1, true)
+		ba.SetIndex(2, true)
+		ba.SetIndex(int(parts.Original().Total()-1), true)
+		ba.SetIndex(int(parts.Original().Total()-2), true)
+		ba.SetIndex(int(parts.Original().Total()-3), true)
+		partsMeta2 := chunkToPartMetaData2(ba, parts.Original())
 		e := p2p.Envelope{
+			ChannelID: DataChannel,
+			Message: &propagation.HaveParts{
+				Height: proposal.Height,
+				Round:  proposal.Round,
+				Parts:  partsMeta2,
+			},
+		}
+
+		if !peer.peer.TrySend(e) {
+			blockProp.Logger.Error("failed to send have part", "peer", peer, "height", proposal.Height, "round", proposal.Round)
+			//continue
+		}
+
+		partsMeta := chunkToPartMetaData(chunks[index], parts.Parity())
+		e = p2p.Envelope{
 			ChannelID: DataChannel,
 			Message: &propagation.HaveParts{
 				Height: proposal.Height,
@@ -160,6 +182,21 @@ func chunkToPartMetaData(chunk *bits.BitArray, partSet *types.PartSet) []*propag
 		}
 		partMetaData = append(partMetaData, &propagation.PartMetaData{
 			Index: partSet.Total() + uint32(partIndex),
+			Hash:  part.Proof.LeafHash,
+		})
+	}
+	return partMetaData
+}
+
+func chunkToPartMetaData2(chunk *bits.BitArray, partSet *types.PartSet) []*propagation.PartMetaData {
+	partMetaData := make([]*propagation.PartMetaData, 0)
+	for _, partIndex := range chunk.GetTrueIndices() {
+		part := partSet.GetPart(partIndex)
+		if part == nil {
+			continue
+		}
+		partMetaData = append(partMetaData, &propagation.PartMetaData{
+			Index: uint32(partIndex),
 			Hash:  part.Proof.LeafHash,
 		})
 	}
