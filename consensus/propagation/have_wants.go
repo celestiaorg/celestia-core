@@ -530,6 +530,7 @@ func (blockProp *Reactor) handleRecoveryPart(peer p2p.ID, part *proptypes.Recove
 	// during catchup. todo: use the bool found in the state instead of checking
 	// for nil.
 	if parts.CanDecode() {
+		start := time.Now()
 		if parts.IsDecoding.Load() {
 			return
 		}
@@ -550,6 +551,7 @@ func (blockProp *Reactor) handleRecoveryPart(peer p2p.ID, part *proptypes.Recove
 			Round:  part.Round,
 		}
 
+		fmt.Println("time to decode: ", time.Since(start).Milliseconds())
 		for i := uint32(0); i < parts.Total(); i++ {
 			p, has := parts.GetPart(i)
 			if !has {
