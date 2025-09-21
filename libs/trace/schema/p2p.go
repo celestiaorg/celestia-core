@@ -8,6 +8,7 @@ func P2PTables() []string {
 		PeersTable,
 		PendingBytesTable,
 		ReceivedBytesTable,
+		ReceivedMessageTypesTable,
 	}
 }
 
@@ -79,4 +80,22 @@ func (ReceivedBytes) Table() string {
 
 func WriteReceivedBytes(client trace.Tracer, peerID string, channel byte, bytes int) {
 	client.Write(ReceivedBytes{PeerID: peerID, Channel: channel, Bytes: bytes})
+}
+
+const (
+	ReceivedMessageTypesTable = "received_message_types"
+)
+
+type ReceivedMessageType struct {
+	PeerID  string `json:"peer_id"`
+	Channel byte   `json:"channel"`
+	Type    string `json:"type"`
+}
+
+func (ReceivedMessageType) Table() string {
+	return ReceivedMessageTypesTable
+}
+
+func WriteReceivedMessageType(client trace.Tracer, peerID string, channel byte, t string) {
+	client.Write(ReceivedMessageType{PeerID: peerID, Channel: channel, Type: t})
 }

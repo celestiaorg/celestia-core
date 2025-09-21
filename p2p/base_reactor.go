@@ -231,6 +231,8 @@ func ProcessorWithReactor(impl Reactor, baseReactor *BaseReactor) func(context.C
 					ue.Src.Metrics().PeerReceiveBytesTotal.With(labels...).Add(float64(len(ue.Message)))
 					ue.Src.Metrics().MessageReceiveBytesTotal.With(append(labels, "message_type", ue.Src.ValueToMetricLabel(msg))...).Add(float64(len(ue.Message)))
 					schema.WriteReceivedBytes(ue.Src.TraceClient(), string(ue.Src.ID()), ue.ChannelID, len(ue.Message))
+					schema.WriteReceivedMessageType(ue.Src.TraceClient(), string(ue.Src.ID()), ue.ChannelID, proto.MessageName(msg))
+
 					impl.Receive(Envelope{
 						ChannelID: ue.ChannelID,
 						Src:       ue.Src,
