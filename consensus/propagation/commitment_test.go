@@ -3,6 +3,8 @@ package propagation
 import (
 	"fmt"
 	"math/rand/v2"
+	"os"
+	"runtime/pprof"
 	"testing"
 	"time"
 
@@ -278,8 +280,16 @@ func BenchmarkMempoolRecovery(b *testing.B) {
 						catchup:      false,
 					}
 
+					f, err := os.Create(fmt.Sprintf("mempool-recovery-%d-%d.pprof", nTxs, missingPercent))
+					require.NoError(b, err)
+					defer f.Close()
+					err = pprof.StartCPUProfile(f)
+					require.NoError(b, err)
+					defer pprof.StopCPUProfile()
+
 					b.ReportAllocs()
 					b.ResetTimer()
+
 					for i := 0; i < b.N; i++ {
 						reactor.recoverPartsFromMempool(cb)
 					}
