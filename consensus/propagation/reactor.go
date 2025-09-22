@@ -144,6 +144,7 @@ func (blockProp *Reactor) OnStart() error {
 }
 
 func (blockProp *Reactor) OnStop() {
+	blockProp.BaseReactor.OnStop()
 	blockProp.cancel()
 }
 

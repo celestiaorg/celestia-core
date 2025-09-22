@@ -283,6 +283,7 @@ func BenchmarkMempoolRecovery(b *testing.B) {
 					for i := 0; i < b.N; i++ {
 						reactor.recoverPartsFromMempool(cb)
 					}
+					reactor.OnStop()
 				})
 			}
 		})
