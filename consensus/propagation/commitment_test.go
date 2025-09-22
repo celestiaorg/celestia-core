@@ -119,7 +119,7 @@ func createTestProposal(
 ) (*types.Proposal, *types.PartSet, *types.Block, []proptypes.TxMetaData) {
 	txs := make([]types.Tx, txCount)
 	for i := 0; i < txCount; i++ {
-		txs[i] = cmtrand.Bytes(txSize)
+		txs[i] = randomBytes(txSize)
 	}
 	data := types.Data{
 		Txs: txs,
@@ -298,4 +298,32 @@ func BenchmarkMempoolRecovery(b *testing.B) {
 			}
 		})
 	}
+}
+
+func randomBytes(n int) []byte {
+	bytes := make([]byte, n)
+
+	// Handle full 8-byte chunks
+	i := 0
+	for ; i <= n-8; i += 8 {
+		val := rand.Uint64()
+		bytes[i] = byte(val)
+		bytes[i+1] = byte(val >> 8)
+		bytes[i+2] = byte(val >> 16)
+		bytes[i+3] = byte(val >> 24)
+		bytes[i+4] = byte(val >> 32)
+		bytes[i+5] = byte(val >> 40)
+		bytes[i+6] = byte(val >> 48)
+		bytes[i+7] = byte(val >> 56)
+	}
+
+	// Handle remainder
+	if i < n {
+		val := rand.Uint64()
+		for j := 0; i+j < n; j++ {
+			bytes[i+j] = byte(val >> (j * 8))
+		}
+	}
+
+	return bytes
 }
