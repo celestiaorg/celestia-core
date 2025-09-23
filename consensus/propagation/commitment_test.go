@@ -270,6 +270,7 @@ func BenchmarkMempoolRecovery(b *testing.B) {
 							BlockMaxBytes: sm.ConsensusParams.Block.MaxBytes,
 						},
 					)
+					require.NoError(b, reactor.Start())
 					reactor.currentProposer = mockPubKey
 					reactor.proposals = make(map[int64]map[int32]*proposalData)
 					reactor.proposals[0] = make(map[int32]*proposalData)
@@ -293,7 +294,7 @@ func BenchmarkMempoolRecovery(b *testing.B) {
 					for i := 0; i < b.N; i++ {
 						reactor.recoverPartsFromMempool(cb)
 					}
-					reactor.OnStop()
+					require.NoError(b, reactor.Stop())
 				})
 			}
 		})
