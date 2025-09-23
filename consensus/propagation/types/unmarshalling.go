@@ -17,7 +17,10 @@ type UnmarshalledTx struct {
 }
 
 func TxsToParts(txs []UnmarshalledTx, partCount, partSize, lastPartLen uint32) ([]*types.Part, error) {
-	result := make([]*types.Part, 0)
+	if len(txs) == 0 {
+		return nil, nil
+	}
+	result := make([]*types.Part, 0, partCount)
 
 	for i, tx := range txs {
 		expectedLen := tx.MetaData.End - tx.MetaData.Start
@@ -27,9 +30,13 @@ func TxsToParts(txs []UnmarshalledTx, partCount, partSize, lastPartLen uint32) (
 		}
 	}
 
-	sort.Slice(txs, func(i, j int) bool {
+	cmp := func(i, j int) bool {
 		return txs[i].MetaData.Start < txs[j].MetaData.Start
-	})
+	}
+
+	if !sort.SliceIsSorted(txs, cmp) {
+		sort.Slice(txs, cmp)
+	}
 
 	for i := uint32(0); i < partCount; i++ {
 		startBoundary := i * partSize
@@ -39,29 +46,21 @@ func TxsToParts(txs []UnmarshalledTx, partCount, partSize, lastPartLen uint32) (
 			endBoundary = startBoundary + lastPartLen
 		}
 
-		// Isolate the transactions overlapping with the current part.
-		var isolatedTxs []UnmarshalledTx
-		for _, tx := range txs {
-			if tx.MetaData.End < startBoundary || tx.MetaData.Start >= endBoundary {
-				continue
-			}
-			isolatedTxs = append(isolatedTxs, tx)
-		}
+		first, _ := sort.Find(len(txs), func(n int) int {
+			return int(startBoundary) - int(txs[n].MetaData.End)
+		})
 
-		cur := startBoundary
-		complete := false
-		for _, tx := range isolatedTxs {
-			if tx.MetaData.Start > cur {
-				break
-			}
-			if tx.MetaData.End > cur {
-				cur = tx.MetaData.End
-			}
-			if cur >= endBoundary {
-				complete = true
-				break
+		last, _ := sort.Find(len(txs), func(n int) int {
+			return int(endBoundary) - int(txs[n].MetaData.Start)
+		})
+
+		boundary := startBoundary
+		for idx := first; idx < last; idx++ {
+			if txs[idx].MetaData.Start <= boundary {
+				boundary = txs[idx].MetaData.End
 			}
 		}
+		complete := boundary >= endBoundary
 
 		if !complete {
 			continue
@@ -71,7 +70,8 @@ func TxsToParts(txs []UnmarshalledTx, partCount, partSize, lastPartLen uint32) (
 		partBytes := make([]byte, partLen)
 
 		var skip bool
-		for _, tx := range isolatedTxs {
+		for idx := first; idx < last; idx++ {
+			tx := &txs[idx]
 			overlapStart := max(tx.MetaData.Start, startBoundary)
 			overlapEnd := min(tx.MetaData.End, endBoundary)
 			if overlapEnd <= overlapStart {
