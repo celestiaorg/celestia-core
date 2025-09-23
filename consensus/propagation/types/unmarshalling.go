@@ -30,9 +30,13 @@ func TxsToParts(txs []UnmarshalledTx, partCount, partSize, lastPartLen uint32) (
 		}
 	}
 
-	sort.Slice(txs, func(i, j int) bool {
+	cmp := func(i, j int) bool {
 		return txs[i].MetaData.Start < txs[j].MetaData.Start
-	})
+	}
+
+	if !sort.SliceIsSorted(txs, cmp) {
+		sort.Slice(txs, cmp)
+	}
 
 	for i := uint32(0); i < partCount; i++ {
 		startBoundary := i * partSize
