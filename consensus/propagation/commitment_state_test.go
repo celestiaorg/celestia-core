@@ -43,7 +43,7 @@ func makeProposal(height int64, round int32, totalParts uint32) *types.Proposal 
 		Round:  round,
 		BlockID: types.BlockID{
 			PartSetHeader: types.PartSetHeader{
-				Total: uint32(totalParts),
+				Total: totalParts,
 			},
 		},
 	}
