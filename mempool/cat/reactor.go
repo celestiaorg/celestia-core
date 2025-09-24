@@ -370,12 +370,14 @@ func (memR *Reactor) broadcastSeenTx(txKey types.TxKey) {
 			continue
 		}
 
-		peer.TrySend(
+		if ok := peer.TrySend(
 			p2p.Envelope{
 				ChannelID: MempoolDataChannel,
 				Message:   msg,
 			},
-		)
+		); ok {
+			schema.WriteMempoolState(memR.traceClient, string(peer.ID()), schema.SeenTx, txKey[:], schema.Upload)
+		}
 	}
 }
 
