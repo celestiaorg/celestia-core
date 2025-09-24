@@ -1801,9 +1801,8 @@ func (cs *State) enterCommit(height int64, commitRound int32) {
 
 		// Maybe finalize immediately.
 		cs.tryFinalizeCommit(height)
+		fmt.Println("committing(ms): ", time.Since(s).Milliseconds())
 	}()
-
-	defer fmt.Println("committing(ms): ", time.Since(s).Milliseconds())
 
 	blockID, ok := cs.rs.Votes.Precommits(commitRound).TwoThirdsMajority()
 	if !ok {
@@ -1913,6 +1912,7 @@ func (cs *State) finalizeCommit(height int64) {
 
 	fail.Fail() // XXX
 
+	s := time.Now()
 	// Save to blockStore.
 	var seenCommit *types.Commit
 	if cs.blockStore.Height() < block.Height {
@@ -1929,6 +1929,8 @@ func (cs *State) finalizeCommit(height int64) {
 		// Happens during replay if we already saved the block but didn't commit
 		logger.Debug("calling finalizeCommit on already stored block", "height", block.Height)
 	}
+
+	fmt.Println("saving the block: ", time.Since(s).Milliseconds())
 
 	fail.Fail() // XXX
 
@@ -1960,6 +1962,7 @@ func (cs *State) finalizeCommit(height int64) {
 
 	schema.WriteABCI(cs.traceClient, schema.CommitStart, height, 0)
 
+	s = time.Now()
 	// Execute and commit the block, update and save the state, and update the mempool.
 	// We use apply verified block here because we have verified the block in this function already.
 	// NOTE The block.AppHash won't reflect these txs until the next block.
@@ -1972,6 +1975,7 @@ func (cs *State) finalizeCommit(height int64) {
 		block,
 		seenCommit,
 	)
+	fmt.Println("applying the block: ", time.Since(s).Milliseconds())
 	if err != nil {
 		panic(fmt.Sprintf("failed to apply block; error %v", err))
 	}
@@ -2000,6 +2004,7 @@ func (cs *State) finalizeCommit(height int64) {
 		cs.propagator.SetProposer(proposer.PubKey)
 	}
 
+	fmt.Println("scheduling new round: ", time.Now())
 	// cs.StartTime is already set.
 	// Schedule Round0 to start soon.
 	cs.scheduleRound0(&cs.rs)
