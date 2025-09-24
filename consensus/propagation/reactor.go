@@ -206,7 +206,7 @@ func (blockProp *Reactor) AddPeer(peer p2p.Peer) {
 
 	cb, _, found := blockProp.GetCurrentCompactBlock()
 	if !found {
-		blockProp.Logger.Error("failed to get current compact block", "peer", peer.ID())
+		blockProp.Logger.Debug("failed to get current compact block", "peer", peer.ID())
 		return
 	}
 	if len(cb.PartsHashes) == 0 {
