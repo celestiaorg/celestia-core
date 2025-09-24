@@ -265,7 +265,7 @@ func (memR *Reactor) Receive(e p2p.Envelope) {
 			memR.Switch.StopPeerForError(e.Src, err, memR.String())
 			return
 		}
-		schema.WriteMempoolPeerState(
+		schema.WriteMempoolState(
 			memR.traceClient,
 			string(e.Src.ID()),
 			schema.SeenTx,
@@ -300,7 +300,7 @@ func (memR *Reactor) Receive(e p2p.Envelope) {
 			memR.Switch.StopPeerForError(e.Src, err, memR.String())
 			return
 		}
-		schema.WriteMempoolPeerState(
+		schema.WriteMempoolState(
 			memR.traceClient,
 			string(e.Src.ID()),
 			schema.WantTx,

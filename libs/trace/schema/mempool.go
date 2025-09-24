@@ -9,7 +9,7 @@ import (
 func MempoolTables() []string {
 	return []string{
 		MempoolTxTable,
-		MempoolPeerStateTable,
+		MempoolStateTable,
 		MempoolRecoveredPartsTable,
 	}
 }
@@ -51,10 +51,10 @@ func WriteMempoolTx(client trace.Tracer, peer string, txHash []byte, size int, t
 }
 
 const (
-	// MempoolPeerState is the tracing "measurement" (aka table) for the mempool
+	// MempoolState is the tracing "measurement" (aka table) for the mempool
 	// that stores tracing data related to mempool state, specifically
 	// the gossipping of "SeenTx" and "WantTx".
-	MempoolPeerStateTable = "mempool_peer_state"
+	MempoolStateTable = "mempool_state"
 )
 
 type MempoolStateUpdateType string
@@ -65,22 +65,22 @@ const (
 	Unknown MempoolStateUpdateType = "Unknown"
 )
 
-// MempoolPeerState describes the schema for the "mempool_peer_state" table.
-type MempoolPeerState struct {
+// MempoolState describes the schema for the "mempool_peer_state" table.
+type MempoolState struct {
 	Peer         string                 `json:"peer"`
 	StateUpdate  MempoolStateUpdateType `json:"state_update"`
 	TxHash       string                 `json:"tx_hash"`
 	TransferType TransferType           `json:"transfer_type"`
 }
 
-// Table returns the table name for the MempoolPeerState struct.
-func (MempoolPeerState) Table() string {
-	return MempoolPeerStateTable
+// Table returns the table name for the MempoolState struct.
+func (MempoolState) Table() string {
+	return MempoolStateTable
 }
 
-// WriteMempoolPeerState writes a tracing point for the mempool state using
+// WriteMempoolState writes a tracing point for the mempool state using
 // the predetermined schema for mempool tracing.
-func WriteMempoolPeerState(
+func WriteMempoolState(
 	client trace.Tracer,
 	peer string,
 	stateUpdate MempoolStateUpdateType,
@@ -89,10 +89,17 @@ func WriteMempoolPeerState(
 ) {
 	// this check is redundant to what is checked during client.Write, although it
 	// is an optimization to avoid allocations from creating the map of fields.
-	if !client.IsCollecting(MempoolPeerStateTable) {
+	if !client.IsCollecting(memR.mempool.PeerHasTx(peerID, txKey)
+	schema.WriteMempoolTx(
+		memR.traceClient,
+		string(e.Src.ID()),
+		txKey[:],
+		len(tx.Tx),
+		schema.Upload,
+	)) {
 		return
 	}
-	client.Write(MempoolPeerState{
+	client.Write(MempoolState{
 		Peer:         peer,
 		StateUpdate:  stateUpdate,
 		TransferType: transferType,
