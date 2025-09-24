@@ -1169,6 +1169,7 @@ func (cs *State) handleTxsAvailable() {
 // Enter: +2/3 prevotes any or +2/3 precommits for block or any from (height, round)
 // NOTE: cs.StartTime was already set for height.
 func (cs *State) enterNewRound(height int64, round int32) {
+	fmt.Println("enterNewRound: ", time.Now())
 	logger := cs.Logger.With("height", height, "round", round)
 
 	if cs.rs.Height != height || round < cs.rs.Round || (cs.rs.Round == round && cs.rs.Step != cstypes.RoundStepNewHeight) {
@@ -1327,6 +1328,8 @@ func (cs *State) isProposer(address []byte) bool {
 }
 
 func (cs *State) defaultDecideProposal(height int64, round int32) {
+	s := time.Now()
+	defer fmt.Println("proposing block(ms): ", time.Since(s).Milliseconds())
 	var block *types.Block
 	var blockParts *types.PartSet
 
@@ -1464,6 +1467,8 @@ func (cs *State) createProposalBlock(ctx context.Context) (block *types.Block, b
 // Prevote for LockedBlock if we're locked, or ProposalBlock if valid.
 // Otherwise vote nil.
 func (cs *State) enterPrevote(height int64, round int32) {
+	s := time.Now()
+	defer fmt.Println("prevoting(ms): ", time.Since(s).Milliseconds())
 	logger := cs.Logger.With("height", height, "round", round)
 
 	if cs.rs.Height != height || round < cs.rs.Round || (cs.rs.Round == round && cstypes.RoundStepPrevote <= cs.rs.Step) {
@@ -1607,6 +1612,8 @@ func (cs *State) enterPrevoteWait(height int64, round int32) {
 // else, precommit nil otherwise.
 func (cs *State) enterPrecommit(height int64, round int32) {
 	logger := cs.Logger.With("height", height, "round", round)
+	s := time.Now()
+	defer fmt.Println("precommitting(ms): ", time.Since(s).Milliseconds())
 
 	if cs.rs.Height != height || round < cs.rs.Round || (cs.rs.Round == round && cstypes.RoundStepPrecommit <= cs.rs.Step) {
 		logger.Debug(
@@ -1770,6 +1777,8 @@ func (cs *State) enterPrecommitWait(height int64, round int32) {
 // Enter: +2/3 precommits for block
 func (cs *State) enterCommit(height int64, commitRound int32) {
 	logger := cs.Logger.With("height", height, "commit_round", commitRound)
+	s := time.Now()
+	defer fmt.Println("committing(ms): ", time.Since(s).Milliseconds())
 
 	if cs.rs.Height != height || cstypes.RoundStepCommit <= cs.rs.Step {
 		logger.Debug(
@@ -2107,6 +2116,8 @@ func (cs *State) isReadyToPrecommit() (bool, time.Duration) {
 
 //-----------------------------------------------------------------------------
 
+var receivedProposal time.Time
+
 func (cs *State) defaultSetProposal(proposal *types.Proposal) error {
 	// Already have one
 	// TODO: possibly catch double proposals
@@ -2152,6 +2163,8 @@ func (cs *State) defaultSetProposal(proposal *types.Proposal) error {
 	}
 
 	cs.Logger.Info("received proposal", "proposal", proposal, "proposer", pubKey.Address())
+	fmt.Println("received proposal: ", time.Now())
+	receivedProposal = time.Now()
 	return nil
 }
 
@@ -2225,6 +2238,7 @@ func (cs *State) addProposalBlockPart(msg *BlockPartMessage, peerID p2p.ID) (add
 
 		// NOTE: it's possible to receive complete proposal blocks for future rounds without having the proposal
 		cs.Logger.Info("received complete proposal block", "height", cs.rs.ProposalBlock.Height, "hash", cs.rs.ProposalBlock.Hash())
+		fmt.Println("received full block(ms): ", time.Since(receivedProposal).Milliseconds())
 
 		if err := cs.eventBus.PublishEventCompleteProposal(cs.rs.CompleteProposalEvent()); err != nil {
 			cs.Logger.Error("failed publishing event complete proposal", "err", err)
