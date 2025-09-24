@@ -245,10 +245,11 @@ func (memR *Reactor) Receive(e p2p.Envelope) {
 			rsp, err := memR.mempool.TryAddNewTx(ntx.ToCachedTx(), key, txInfo)
 
 			// Extract signer/sequence from CheckTx response if available
-			signer, sequence := "", uint64(0)
+			signer, sequence, execCode := "", uint64(0), uint32(0)
 			if rsp != nil {
 				signer = string(rsp.Address)
 				sequence = rsp.Sequence
+				execCode = rsp.Code
 			}
 
 			// Trace the result of adding the transaction to the mempool
@@ -261,10 +262,15 @@ func (memR *Reactor) Receive(e p2p.Envelope) {
 					return
 				}
 			} else {
-				schema.WriteMempoolAddResult(memR.traceClient, string(e.Src.ID()), key[:], schema.Added, nil, signer, sequence)
+				if execCode != 0 {
+					schema.WriteMempoolAddResult(memR.traceClient, string(e.Src.ID()), key[:], schema.Rejected, fmt.Errorf("execution code: %d", execCode), signer, sequence)
+				} else {
+					schema.WriteMempoolAddResult(memR.traceClient, string(e.Src.ID()), key[:], schema.Added, nil, signer, sequence)
+				}
+
 			}
 
-			if !memR.opts.ListenOnly {
+			if !memR.opts.ListenOnly && execCode == 0 {
 				// We broadcast only transactions that we deem valid and actually have in our mempool.
 				memR.broadcastSeenTx(key)
 			}
@@ -293,6 +299,7 @@ func (memR *Reactor) Receive(e p2p.Envelope) {
 		)
 		peerID := memR.ids.GetIDForPeer(e.Src.ID())
 		memR.mempool.PeerHasTx(peerID, txKey)
+
 		// Check if we don't already have the transaction
 		wasRejected, _ := memR.mempool.WasRecentlyRejected(txKey)
 		if memR.mempool.Has(txKey) || wasRejected {
@@ -480,7 +487,7 @@ func (memR *Reactor) requestTx(txKey types.TxKey, peer p2p.Peer) {
 		},
 	}
 
-	success := peer.Send(
+	success := peer.TrySend(
 		p2p.Envelope{
 			ChannelID: MempoolWantsChannel,
 			Message:   msg,
@@ -492,6 +499,8 @@ func (memR *Reactor) requestTx(txKey types.TxKey, peer p2p.Peer) {
 		if !requested {
 			memR.Logger.Error("have already marked a tx as requested", "txKey", txKey, "peerID", peer.ID())
 		}
+
+		schema.WriteMempoolState(memR.traceClient, string(peer.ID()), schema.WantTx, txKey[:], schema.Upload)
 	}
 }
 
