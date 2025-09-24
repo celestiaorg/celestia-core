@@ -225,7 +225,6 @@ func (memR *Reactor) Receive(e p2p.Envelope) {
 		txInfo := mempool.TxInfo{SenderID: peerID}
 		txInfo.SenderP2PID = e.Src.ID()
 
-		var err error
 		for _, tx := range protoTxs {
 			ntx := types.Tx(tx)
 			key := ntx.Key()
@@ -240,11 +239,28 @@ func (memR *Reactor) Receive(e p2p.Envelope) {
 				memR.mempool.PeerHasTx(peerID, key)
 				memR.Logger.Debug("received new trasaction", "peerID", peerID, "txKey", key)
 			}
-			_, err = memR.mempool.TryAddNewTx(ntx.ToCachedTx(), key, txInfo)
-			if err != nil && err != ErrTxInMempool {
-				memR.Logger.Debug("Could not add tx", "txKey", key, "err", err)
-				return
+			rsp, err := memR.mempool.TryAddNewTx(ntx.ToCachedTx(), key, txInfo)
+
+			// Extract signer/sequence from CheckTx response if available
+			signer, sequence := "", uint64(0)
+			if rsp != nil {
+				signer = string(rsp.Address)
+				sequence = rsp.Sequence
 			}
+
+			// Trace the result of adding the transaction to the mempool
+			if err != nil {
+				if err == ErrTxInMempool {
+					schema.WriteMempoolAddResult(memR.traceClient, string(e.Src.ID()), key[:], schema.AlreadyInMempool, err, signer, sequence)
+				} else {
+					schema.WriteMempoolAddResult(memR.traceClient, string(e.Src.ID()), key[:], schema.Rejected, err, signer, sequence)
+					memR.Logger.Debug("Could not add tx", "txKey", key, "err", err)
+					return
+				}
+			} else {
+				schema.WriteMempoolAddResult(memR.traceClient, string(e.Src.ID()), key[:], schema.Added, nil, signer, sequence)
+			}
+
 			if !memR.opts.ListenOnly {
 				// We broadcast only transactions that we deem valid and actually have in our mempool.
 				memR.broadcastSeenTx(key)
