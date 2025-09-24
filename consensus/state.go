@@ -1468,7 +1468,6 @@ func (cs *State) createProposalBlock(ctx context.Context) (block *types.Block, b
 // Otherwise vote nil.
 func (cs *State) enterPrevote(height int64, round int32) {
 	s := time.Now()
-	defer fmt.Println("prevoting(ms): ", time.Since(s).Milliseconds())
 	logger := cs.Logger.With("height", height, "round", round)
 
 	if cs.rs.Height != height || round < cs.rs.Round || (cs.rs.Round == round && cstypes.RoundStepPrevote <= cs.rs.Step) {
@@ -1484,6 +1483,7 @@ func (cs *State) enterPrevote(height int64, round int32) {
 		cs.updateRoundStep(round, cstypes.RoundStepPrevote)
 		cs.newStep()
 	}()
+	defer fmt.Println("prevoting(ms): ", time.Since(s).Milliseconds())
 
 	logger.Debug("entering prevote step", "current", log.NewLazySprintf("%v/%v/%v", cs.rs.Height, cs.rs.Round, cs.rs.Step))
 
@@ -1495,6 +1495,8 @@ func (cs *State) enterPrevote(height int64, round int32) {
 }
 
 func (cs *State) defaultDoPrevote(height int64, round int32) {
+	s := time.Now()
+	defer fmt.Println("defaultDoPrevote(ms): ", time.Since(s).Milliseconds())
 	logger := cs.Logger.With("height", height, "round", round)
 
 	// If a block is locked, prevote that.
@@ -1778,7 +1780,6 @@ func (cs *State) enterPrecommitWait(height int64, round int32) {
 func (cs *State) enterCommit(height int64, commitRound int32) {
 	logger := cs.Logger.With("height", height, "commit_round", commitRound)
 	s := time.Now()
-	defer fmt.Println("committing(ms): ", time.Since(s).Milliseconds())
 
 	if cs.rs.Height != height || cstypes.RoundStepCommit <= cs.rs.Step {
 		logger.Debug(
@@ -1801,6 +1802,8 @@ func (cs *State) enterCommit(height int64, commitRound int32) {
 		// Maybe finalize immediately.
 		cs.tryFinalizeCommit(height)
 	}()
+
+	defer fmt.Println("committing(ms): ", time.Since(s).Milliseconds())
 
 	blockID, ok := cs.rs.Votes.Precommits(commitRound).TwoThirdsMajority()
 	if !ok {
