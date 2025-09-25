@@ -1909,9 +1909,13 @@ func (cs *State) finalizeCommit(height int64) {
 		seenExtendedCommit := cs.rs.Votes.Precommits(cs.rs.CommitRound).MakeExtendedCommit(cs.state.ConsensusParams.ABCI)
 		seenCommit = seenExtendedCommit.ToCommit()
 		if cs.state.ConsensusParams.ABCI.VoteExtensionsEnabled(block.Height) {
+			cs.unlockAll()
 			cs.blockStore.SaveBlockWithExtendedCommit(block, blockParts, seenExtendedCommit)
+			cs.lockAll()
 		} else {
+			cs.unlockAll()
 			cs.blockStore.SaveBlock(block, blockParts, seenExtendedCommit.ToCommit())
+			cs.lockAll()
 		}
 	} else {
 		// Happens during replay if we already saved the block but didn't commit
@@ -1951,6 +1955,7 @@ func (cs *State) finalizeCommit(height int64) {
 	// Execute and commit the block, update and save the state, and update the mempool.
 	// We use apply verified block here because we have verified the block in this function already.
 	// NOTE The block.AppHash won't reflect these txs until the next block.
+	cs.unlockAll()
 	stateCopy, err := cs.blockExec.ApplyVerifiedBlock(
 		stateCopy,
 		types.BlockID{
@@ -1960,6 +1965,7 @@ func (cs *State) finalizeCommit(height int64) {
 		block,
 		seenCommit,
 	)
+	cs.lockAll()
 	if err != nil {
 		panic(fmt.Sprintf("failed to apply block; error %v", err))
 	}
