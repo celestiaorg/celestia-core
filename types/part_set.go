@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/klauspost/reedsolomon"
 
@@ -329,6 +330,7 @@ func Encode(ops *PartSet, partSize uint32) (*PartSet, int, error) {
 		chunks[total-1] = padded
 	}
 
+	s := time.Now()
 	// init an encoder if it is not already initialized using the original
 	// number of parts.
 	enc, err := reedsolomon.New(total, total)
@@ -341,6 +343,7 @@ func Encode(ops *PartSet, partSize uint32) (*PartSet, int, error) {
 	if err != nil {
 		return nil, 0, err
 	}
+	fmt.Println("encode time(ms): ", time.Since(s).Milliseconds())
 
 	// only the parity data is needed for the new partset.
 	chunks = chunks[total:]
