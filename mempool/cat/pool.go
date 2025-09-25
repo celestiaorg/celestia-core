@@ -207,6 +207,23 @@ func (txmp *TxPool) WasRecentlyRejected(txKey types.TxKey) (bool, uint32) {
 	return true, code
 }
 
+// GetLowestSequenceForSigner returns the lowest sequence number
+// currently in the mempool for the given signer. Returns 0 if no
+// transactions from this signer exist.
+func (txmp *TxPool) GetLowestSequenceForSigner(signer []byte) uint64 {
+	txmp.store.mtx.RLock()
+	defer txmp.store.mtx.RUnlock()
+	
+	signerKey := string(signer)
+	set, exists := txmp.store.setsBySigner[signerKey]
+	if !exists || len(set.txs) == 0 {
+		return 0
+	}
+	
+	// Tx sets maintain sequence ordering, so first tx has lowest sequence
+	return set.txs[0].sequence
+}
+
 // CheckTx adds the given transaction to the mempool if it fits and passes the
 // application's ABCI CheckTx method. This should be viewed as the entry method for new transactions
 // into the network. In practice this happens via an RPC endpoint

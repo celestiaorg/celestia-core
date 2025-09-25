@@ -287,6 +287,17 @@ func (memR *Reactor) Receive(e p2p.Envelope) {
 			memR.Switch.StopPeerForError(e.Src, err, memR.String())
 			return
 		}
+
+		// Validate sequence if signer and sequence are provided
+		if len(msg.Signer) > 0 && msg.Sequence > 0 {
+			if !memR.isSequenceExpected(msg.Signer, msg.Sequence) {
+				memR.Logger.Debug("SeenTx has unexpected sequence, ignoring",
+					"signer", string(msg.Signer),
+					"sequence", msg.Sequence,
+					"txKey", txKey)
+				return
+			}
+		}
 		schema.WriteMempoolState(
 			memR.traceClient,
 			string(e.Src.ID()),
@@ -364,11 +375,23 @@ type PeerState interface {
 // broadcastSeenTx broadcasts a SeenTx message to all peers unless we
 // know they have already seen the transaction
 func (memR *Reactor) broadcastSeenTx(txKey types.TxKey) {
+	// Get wrapped transaction to access signer and sequence
+	wtx := memR.mempool.store.get(txKey)
+	if wtx == nil {
+		memR.Logger.Error("attempted to broadcast seen tx that doesn't exist", "txKey", txKey)
+		return
+	}
+
+	signer := wtx.sender
+	sequence := wtx.sequence
+
 	memR.Logger.Debug("broadcasting seen tx to all peers", "tx_key", string(txKey[:]))
 	msg := &protomem.Message{
 		Sum: &protomem.Message_SeenTx{
 			SeenTx: &protomem.SeenTx{
-				TxKey: txKey[:],
+				TxKey:    txKey[:],
+				Signer:   signer,
+				Sequence: sequence,
 			},
 		},
 	}
@@ -409,7 +432,9 @@ func (memR *Reactor) broadcastNewTx(wtx *wrappedTx) {
 	msg := &protomem.Message{
 		Sum: &protomem.Message_SeenTx{
 			SeenTx: &protomem.SeenTx{
-				TxKey: wtx.tx.Hash(),
+				TxKey:    wtx.tx.Hash(),
+				Signer:   wtx.sender,
+				Sequence: wtx.sequence,
 			},
 		},
 	}
@@ -496,4 +521,25 @@ func (memR *Reactor) findNewPeerToRequestTx(txKey types.TxKey) {
 	// We give up 🤷‍♂️ and hope either a peer responds late or the tx
 	// is gossiped again
 	memR.Logger.Debug("no other peer has the tx we are looking for", "txKey", txKey)
+}
+
+// isSequenceExpected checks if the given sequence is the expected next sequence
+// for the signer based on current mempool state
+func (memR *Reactor) isSequenceExpected(signer []byte, sequence uint64) bool {
+	if len(signer) == 0 {
+		return true // Skip validation for transactions without signers
+	}
+
+	lowestSeq := memR.mempool.GetLowestSequenceForSigner(signer)
+
+	// If no transactions from this signer exist, any sequence is acceptable
+	if lowestSeq == 0 {
+		return true
+	}
+
+	// The expected sequence must be exactly lowestSeq - 1
+	// (the transaction that would come immediately before the lowest in mempool)
+	expectedSeq := lowestSeq - 1
+
+	return sequence == expectedSeq
 }
