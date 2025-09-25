@@ -1535,12 +1535,14 @@ func (cs *State) defaultDoPrevote(height int64, round int32) {
 	*/
 
 	schema.WriteABCI(cs.traceClient, schema.ProcessProposalStart, height, round)
+	s := time.Now()
 	isAppValid, err := cs.blockExec.ProcessProposal(cs.rs.ProposalBlock, cs.state)
 	if err != nil {
 		panic(fmt.Sprintf(
 			"state machine returned an error (%v) when calling ProcessProposal", err,
 		))
 	}
+	fmt.Println("ProcessProposal(ms): ", time.Since(s).Milliseconds())
 	schema.WriteABCI(cs.traceClient, schema.ProcessProposalEnd, height, round)
 	cs.metrics.MarkProposalProcessed(isAppValid)
 
