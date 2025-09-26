@@ -221,7 +221,7 @@ func (blockProp *Reactor) handleCompactBlock(cb *proptypes.CompactBlock, peer p2
 // recoverPartsFromMempool queries the mempool to see if we can recover any block parts locally.
 func (blockProp *Reactor) recoverPartsFromMempool(cb *proptypes.CompactBlock) {
 	// find the compact block transactions that exist in our mempool
-	txsFound := make([]proptypes.UnmarshalledTx, 0)
+	txsFound := make([]proptypes.UnmarshalledTx, 0, len(cb.Blobs))
 	for _, txMetaData := range cb.Blobs {
 		txKey, err := types.TxKeyFromBytes(txMetaData.Hash)
 		if err != nil {

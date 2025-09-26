@@ -22,7 +22,7 @@ func makeTestBlockStore(t *testing.T) *store.BlockStore {
 	return store.NewBlockStore(db)
 }
 
-func makeCompactBlock(height int64, round int32, totalParts int32) *proptypes.CompactBlock {
+func makeCompactBlock(height int64, round int32, totalParts uint32) *proptypes.CompactBlock {
 	cb := &proptypes.CompactBlock{
 		BpHash:    cmtrand.Bytes(32),
 		Signature: cmtrand.Bytes(64),
@@ -37,13 +37,13 @@ func makeCompactBlock(height int64, round int32, totalParts int32) *proptypes.Co
 }
 
 // makeProposal is a helper to create a minimal valid Proposal with the given height, round, and total parts.
-func makeProposal(height int64, round int32, totalParts int32) *types.Proposal {
+func makeProposal(height int64, round int32, totalParts uint32) *types.Proposal {
 	return &types.Proposal{
 		Height: height,
 		Round:  round,
 		BlockID: types.BlockID{
 			PartSetHeader: types.PartSetHeader{
-				Total: uint32(totalParts),
+				Total: totalParts,
 			},
 		},
 	}

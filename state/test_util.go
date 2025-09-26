@@ -12,7 +12,7 @@ import (
 	dbm "github.com/cometbft/cometbft-db"
 )
 
-func SetupTestCase(t *testing.T) (func(t *testing.T), dbm.DB, State) {
+func SetupTestCase(t testing.TB) (func(t testing.TB), dbm.DB, State) {
 	config := test.ResetTestRoot("state_")
 	dbType := dbm.BackendType(config.DBBackend)
 	stateDB, err := dbm.NewDB("state", dbType, config.DBDir())
@@ -25,7 +25,7 @@ func SetupTestCase(t *testing.T) (func(t *testing.T), dbm.DB, State) {
 	err = stateStore.Save(state)
 	require.NoError(t, err)
 
-	tearDown := func(t *testing.T) { os.RemoveAll(config.RootDir) }
+	tearDown := func(t testing.TB) { os.RemoveAll(config.RootDir) }
 
 	return tearDown, stateDB, state
 }
