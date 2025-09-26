@@ -500,7 +500,7 @@ func (memR *Reactor) requestTx(txKey types.TxKey, peer p2p.Peer) {
 			memR.Logger.Error("have already marked a tx as requested", "txKey", txKey, "peerID", peer.ID())
 		}
 
-		schema.WriteMempoolState(memR.traceClient, string(peer.ID()), schema.WantTx, txKey[:], schema.Upload)
+		schema.WriteMempoolPeerState(memR.traceClient, string(peer.ID()), schema.WantTx, txKey[:], schema.Upload)
 	}
 }
 
