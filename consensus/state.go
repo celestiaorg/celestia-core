@@ -1168,8 +1168,12 @@ func (cs *State) handleTxsAvailable() {
 // Enter: +2/3 precommits for nil at (height,round-1)
 // Enter: +2/3 prevotes any or +2/3 precommits for block or any from (height, round)
 // NOTE: cs.StartTime was already set for height.
+var roundToProposal time.Time
+
 func (cs *State) enterNewRound(height int64, round int32) {
 	logger := cs.Logger.With("height", height, "round", round)
+	fmt.Println("entering new round: ", time.Now())
+	roundToProposal = time.Now()
 
 	if cs.rs.Height != height || round < cs.rs.Round || (cs.rs.Round == round && cs.rs.Step != cstypes.RoundStepNewHeight) {
 		logger.Debug(
@@ -1351,7 +1355,9 @@ func (cs *State) defaultDecideProposal(height int64, round int32) {
 	} else {
 		// Create a new proposal block from state/txs from the mempool.
 		var err error
+		s := time.Now()
 		block, blockParts, err = cs.createProposalBlock(context.TODO())
+		fmt.Println("createProposalBlock(ms): ", time.Since(s).Milliseconds())
 		if err != nil {
 			cs.Logger.Error("unable to create proposal block", "error", err)
 			return
@@ -1530,6 +1536,7 @@ func (cs *State) defaultDoPrevote(height int64, round int32) {
 	proposalBlock, initialHeight := cs.rs.ProposalBlock, cs.state.InitialHeight
 	schema.WriteABCI(cs.traceClient, schema.ProcessProposalStart, height, round)
 	cs.unlockAll()
+	s := time.Now()
 	isAppValid, err := cs.blockExec.ProcessProposal(proposalBlock, initialHeight)
 	if err != nil {
 		cs.lockAll()
@@ -1537,6 +1544,8 @@ func (cs *State) defaultDoPrevote(height int64, round int32) {
 			"state machine returned an error (%v) when calling ProcessProposal", err,
 		))
 	}
+	fmt.Println("ProcessProposal(ms): ", time.Since(s).Milliseconds())
+	schema.WriteABCI(cs.traceClient, schema.ProcessProposalEnd, height, round)
 	cs.lockAll()
 	schema.WriteABCI(cs.traceClient, schema.ProcessProposalEnd, height, round)
 	cs.metrics.MarkProposalProcessed(isAppValid)
@@ -1866,6 +1875,8 @@ func (cs *State) tryFinalizeCommit(height int64) {
 
 // Increment height and goto cstypes.RoundStepNewHeight
 func (cs *State) finalizeCommit(height int64) {
+	s := time.Now()
+	defer fmt.Println("finalizeCommit(ms): ", time.Since(s).Milliseconds())
 	logger := cs.Logger.With("height", height)
 
 	if cs.rs.Height != height || cs.rs.Step != cstypes.RoundStepCommit {
@@ -1906,6 +1917,7 @@ func (cs *State) finalizeCommit(height int64) {
 	fail.Fail() // XXX
 
 	// Save to blockStore.
+	ss := time.Now()
 	var seenCommit *types.Commit
 	if cs.blockStore.Height() < block.Height {
 		// NOTE: the seenCommit is local justification to commit this block,
@@ -1923,6 +1935,7 @@ func (cs *State) finalizeCommit(height int64) {
 		// Happens during replay if we already saved the block but didn't commit
 		logger.Debug("calling finalizeCommit on already stored block", "height", block.Height)
 	}
+	fmt.Println("SaveBlock(ms): ", time.Since(ss).Milliseconds())
 
 	fail.Fail() // XXX
 
@@ -1958,6 +1971,7 @@ func (cs *State) finalizeCommit(height int64) {
 	// We use apply verified block here because we have verified the block in this function already.
 	// NOTE The block.AppHash won't reflect these txs until the next block.
 	cs.unlockAll()
+	ss = time.Now()
 	stateCopy, err := cs.blockExec.ApplyVerifiedBlock(
 		stateCopy,
 		types.BlockID{
@@ -1967,6 +1981,7 @@ func (cs *State) finalizeCommit(height int64) {
 		block,
 		seenCommit,
 	)
+	fmt.Println("ApplyVerifiedBlock(ms): ", time.Since(ss).Milliseconds())
 	cs.lockAll()
 	if err != nil {
 		panic(fmt.Sprintf("failed to apply block; error %v", err))
@@ -2115,6 +2130,8 @@ func (cs *State) isReadyToPrecommit() (bool, time.Duration) {
 
 //-----------------------------------------------------------------------------
 
+var proposalToFullBlock time.Time
+
 func (cs *State) defaultSetProposal(proposal *types.Proposal) error {
 	// Already have one
 	// TODO: possibly catch double proposals
@@ -2160,6 +2177,8 @@ func (cs *State) defaultSetProposal(proposal *types.Proposal) error {
 	}
 
 	cs.Logger.Info("received proposal", "proposal", proposal, "proposer", pubKey.Address())
+	fmt.Println("received proposal(ms): ", time.Since(roundToProposal).Milliseconds())
+	proposalToFullBlock = time.Now()
 	return nil
 }
 
@@ -2216,6 +2235,7 @@ func (cs *State) addProposalBlockPart(msg *BlockPartMessage, peerID p2p.ID) (add
 		)
 	}
 	if added && cs.rs.ProposalBlockParts.IsComplete() {
+		fmt.Println("received complete block(ms): ", time.Since(proposalToFullBlock).Milliseconds())
 		bz := cs.rs.ProposalBlockParts.GetBytes()
 
 		pbb := new(cmtproto.Block)
@@ -2234,6 +2254,7 @@ func (cs *State) addProposalBlockPart(msg *BlockPartMessage, peerID p2p.ID) (add
 		// NOTE: it's possible to receive complete proposal blocks for future rounds without having the proposal
 		cs.Logger.Info("received complete proposal block", "height", cs.rs.ProposalBlock.Height, "hash", cs.rs.ProposalBlock.Hash())
 
+		fmt.Println("received complete proposal block after decoding (ms): ", time.Since(proposalToFullBlock).Milliseconds())
 		if err := cs.eventBus.PublishEventCompleteProposal(cs.rs.CompleteProposalEvent()); err != nil {
 			cs.Logger.Error("failed publishing event complete proposal", "err", err)
 		}

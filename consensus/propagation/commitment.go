@@ -3,6 +3,7 @@ package propagation
 import (
 	"errors"
 	"fmt"
+	time2 "time"
 
 	"github.com/cosmos/gogoproto/proto"
 
@@ -25,8 +26,11 @@ const (
 // ProposeBlock is called when the consensus routine has created a new proposal,
 // and it needs to be gossiped to the rest of the network.
 func (blockProp *Reactor) ProposeBlock(proposal *types.Proposal, block *types.PartSet, txs []proptypes.TxMetaData) {
+	s := time2.Now()
+	defer fmt.Println("ProposeBlock(ms): ", time2.Since(s).Milliseconds())
 	// create the parity data and the compact block
 	parityBlock, lastLen, err := types.Encode(block, types.BlockPartSizeBytes)
+	fmt.Println("encodeBlock(ms): ", time2.Since(s).Milliseconds())
 	if err != nil {
 		blockProp.Logger.Error("failed to encode block", "err", err)
 		return

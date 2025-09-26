@@ -3,6 +3,7 @@ package propagation
 import (
 	"fmt"
 	"math"
+	"time"
 
 	"github.com/cometbft/cometbft/crypto/merkle"
 	"github.com/cometbft/cometbft/proto/tendermint/crypto"
@@ -530,7 +531,9 @@ func (blockProp *Reactor) handleRecoveryPart(peer p2p.ID, part *proptypes.Recove
 		parts.IsDecoding.Store(true)
 		defer parts.IsDecoding.Store(false)
 
+		s := time.Now()
 		err := parts.Decode()
+		fmt.Println("rs decode time(ms): ", time.Since(s).Milliseconds())
 		if err != nil {
 			blockProp.Logger.Error("failed to decode parts", "peer", peer, "height", part.Height, "round", part.Round, "error", err)
 			return
