@@ -400,6 +400,43 @@ func TestLegacyReactorReceiveBasic(t *testing.T) {
 	})
 }
 
+func TestReactorReceiveRejectedTx(t *testing.T) {
+	reactor, _ := setupReactor(t)
+
+	tx := newDefaultTx("rejected tx")
+	txKey := tx.Key()
+	peer := genPeer()
+
+	// Add transaction to rejection cache to simulate it was previously rejected
+	reactor.mempool.rejectedTxCache.Push(txKey, 1)
+	rejected, _ := reactor.mempool.WasRecentlyRejected(txKey)
+	assert.True(t, rejected)
+
+	// Send SeenTx message
+	envelope := p2p.Envelope{
+		ChannelID: MempoolDataChannel,
+		Message:   &protomem.SeenTx{TxKey: txKey[:]},
+		Src:       peer,
+	}
+
+	// Expect WantTx to be sent back
+	peer.On("Send", p2p.Envelope{
+		ChannelID: MempoolWantsChannel,
+		Message: &protomem.Message{
+			Sum: &protomem.Message_WantTx{
+				WantTx: &protomem.WantTx{TxKey: txKey[:]},
+			},
+		},
+	}).Return(true)
+
+	_, err := reactor.InitPeer(peer)
+	require.NoError(t, err)
+
+	reactor.Receive(envelope)
+
+	peer.AssertExpectations(t)
+}
+
 func TestDefaultGossipDelay(t *testing.T) {
 	// Test that DefaultGossipDelay is set to the expected value
 	expectedDelay := 60 * time.Second
