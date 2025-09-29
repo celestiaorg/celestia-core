@@ -91,8 +91,8 @@ github.com/btcsuite/websocket v0.0.0-20150119174127-31079b680792/go.mod h1:ghJtE
 github.com/btcsuite/winsvc v1.0.0/go.mod h1:jsenWakMcC0zFBFurPLEAyrnc/teJEM1O46fmI40EZs=
 github.com/celestiaorg/go-square/v3 v3.0.1 h1:44xnE3AUiZn/3q/uJ0c20AezFS0lywFTGG2lE/9jYKA=
 github.com/celestiaorg/go-square/v3 v3.0.1/go.mod h1:Xc4ubl/7pbn/STD7w8Bnk/X1/PG3vk0ycOPW6tMOPX4=
-github.com/celestiaorg/nmt v0.24.1 h1:MhGKqp257eq2EQQKcva1H/BSYFqIt0Trk8/t3IWfWSw=
-github.com/celestiaorg/nmt v0.24.1/go.mod h1:IhLnJDgCdP70crZFpgihFmU6G+PGeXN37tnMRm+/4iU=
+github.com/celestiaorg/nmt v0.24.2 h1:LlpJSPOd6/Lw1Ig6HUhZuqiINHLka/ZSRTBzlNJpchg=
+github.com/celestiaorg/nmt v0.24.2/go.mod h1:vgLBpWBi8F5KLxTdXSwb7AU4NhiIQ1AQRGa+PzdcLEA=
 github.com/cenkalti/backoff v2.2.1+incompatible h1:tNowT99t7UNflLxfYYSlKYsBpXdEet03Pg2g16Swow4=
 github.com/cenkalti/backoff v2.2.1+incompatible/go.mod h1:90ReRw6GdpyfrHakVjL/QHaoyV4aDUVVkXQJJJ3NXXM=
 github.com/cenkalti/backoff/v4 v4.1.3 h1:cFAlzYUlVYDysBEH2T5hyJZMh3+5+WCBvSnK6Q8UtC4=
