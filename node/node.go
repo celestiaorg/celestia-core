@@ -452,7 +452,6 @@ func NewNodeWithContext(ctx context.Context,
 	if config.Consensus.DisablePropagationReactor {
 		propagator = propagation.NewNoOpPropagator()
 		propagationReactor = nil
-
 		types.MaxBlockSizeBytes = 8 * 1024 * 1024 // 8mb
 	} else {
 		if !stateSync && !blockSync {
