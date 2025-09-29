@@ -450,17 +450,17 @@ func NewNodeWithContext(ctx context.Context,
 	propagator = propagationReactor
 
 	if config.Consensus.DisablePropagationReactor {
-		propagator = propagation.NewNoOpPropagator()
-		propagationReactor = nil
-		types.MaxBlockSizeBytes = 8 * 1024 * 1024 // 8mb
+		if config.Consensus.EnableLegacyBlockProp {
+			types.MaxBlockSizeBytes = 8 * 1024 * 1024 // reduce the max block size to avoid overloading the legacy block prop mechanism
+			propagator = propagation.NewNoOpPropagator()
+			propagationReactor = nil
+		} else {
+			return nil, fmt.Errorf("cannot have both propagation reactor and legacy block propagation disabled")
+		}
 	} else {
 		if !stateSync && !blockSync {
 			propagationReactor.StartProcessing()
 		}
-	}
-
-	if config.Consensus.EnableLegacyBlockProp {
-		types.MaxBlockSizeBytes = 8 * 1024 * 1024 // 8mb
 	}
 
 	consensusReactor, consensusState := createConsensusReactor(

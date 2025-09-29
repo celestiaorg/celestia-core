@@ -12,6 +12,8 @@ import (
 )
 
 const (
+	DefaultMaxBlockSizeBytes = 128 * 1024 * 1024
+
 	// BlockPartSizeBytes is the size of one block part.
 	BlockPartSizeBytes uint32 = 65536 // 64kB
 
@@ -26,7 +28,7 @@ var ABCIPubKeyTypesToNames = map[string]string{
 
 var (
 	// MaxBlockSizeBytes is the maximum permitted size of the blocks.
-	MaxBlockSizeBytes = 128 * 1024 * 1024
+	MaxBlockSizeBytes = DefaultMaxBlockSizeBytes
 
 	// MaxBlockPartsCount is the maximum number of block parts.
 	MaxBlockPartsCount = (uint32(MaxBlockSizeBytes) / BlockPartSizeBytes) + 1
