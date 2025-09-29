@@ -384,7 +384,7 @@ func (t Testnet) Validate() error {
 	if len(t.Nodes) == 0 {
 		return errors.New("network has no nodes")
 	}
-	if t.BlockMaxBytes > types.MaxBlockSizeBytes {
+	if t.BlockMaxBytes > int64(types.MaxBlockSizeBytes) {
 		return fmt.Errorf("value of BlockMaxBytes cannot be higher than %d", types.MaxBlockSizeBytes)
 	}
 	if t.VoteExtensionsUpdateHeight < -1 {
