@@ -12,6 +12,7 @@ validator02 = 100
 [node.validator01]
 mode = "validator"
 # This validator runs with the propagation reactor enabled (default)
+enable_legacy_block_prop = true
 
 [node.validator02]
 mode = "validator"
@@ -22,6 +23,7 @@ enable_legacy_block_prop = true
 [node.full01]
 mode = "full"
 # This full node runs with the propagation reactor enabled (default)
+enable_legacy_block_prop = true
 
 [node.full02]
 mode = "full"
