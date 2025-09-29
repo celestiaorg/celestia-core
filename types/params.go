@@ -12,16 +12,8 @@ import (
 )
 
 const (
-	// MaxBlockSizeBytes is the maximum permitted size of the blocks.
-	//
-	// todo: revert the technically consensus breaking change to > 100MB
-	MaxBlockSizeBytes = 130857600
-
 	// BlockPartSizeBytes is the size of one block part.
 	BlockPartSizeBytes uint32 = 65536 // 64kB
-
-	// MaxBlockPartsCount is the maximum number of block parts.
-	MaxBlockPartsCount = (MaxBlockSizeBytes / BlockPartSizeBytes) + 1
 
 	ABCIPubKeyTypeEd25519   = ed25519.KeyType
 	ABCIPubKeyTypeSecp256k1 = secp256k1.KeyType
@@ -31,6 +23,14 @@ var ABCIPubKeyTypesToNames = map[string]string{
 	ABCIPubKeyTypeEd25519:   ed25519.PubKeyName,
 	ABCIPubKeyTypeSecp256k1: secp256k1.PubKeyName,
 }
+
+var (
+	// MaxBlockSizeBytes is the maximum permitted size of the blocks.
+	MaxBlockSizeBytes = 128 * 1024 * 1024
+
+	// MaxBlockPartsCount is the maximum number of block parts.
+	MaxBlockPartsCount = (uint32(MaxBlockSizeBytes) / BlockPartSizeBytes) + 1
+)
 
 // ConsensusParams contains consensus critical parameters that determine the
 // validity of blocks.
@@ -153,7 +153,7 @@ func (params ConsensusParams) ValidateBasic() error {
 
 			params.Block.MaxBytes)
 	}
-	if params.Block.MaxBytes > MaxBlockSizeBytes {
+	if params.Block.MaxBytes > int64(MaxBlockSizeBytes) {
 		return fmt.Errorf("block.MaxBytes is too big. %d > %d",
 			params.Block.MaxBytes, MaxBlockSizeBytes)
 	}
