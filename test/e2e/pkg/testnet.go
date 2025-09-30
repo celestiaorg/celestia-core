@@ -139,6 +139,7 @@ type Node struct {
 	PyroscopeProfileTypes []string
 
 	DisablePropagationReactor bool
+	EnableLegacyBlockProp     bool
 }
 
 // LoadTestnet loads a testnet from a manifest file, using the filename to
@@ -266,6 +267,7 @@ func NewTestnetFromManifest(manifest Manifest, file string, ifd InfrastructureDa
 			PyroscopeProfileTypes: ifd.PyroscopeProfileTypes,
 
 			DisablePropagationReactor: nodeManifest.DisablePropagationReactor,
+			EnableLegacyBlockProp:     nodeManifest.EnableLegacyBlockProp,
 		}
 		if node.StartAt == testnet.InitialHeight {
 			node.StartAt = 0 // normalize to 0 for initial nodes, since code expects this
@@ -384,7 +386,7 @@ func (t Testnet) Validate() error {
 	if len(t.Nodes) == 0 {
 		return errors.New("network has no nodes")
 	}
-	if t.BlockMaxBytes > types.MaxBlockSizeBytes {
+	if t.BlockMaxBytes > int64(types.MaxBlockSizeBytes) {
 		return fmt.Errorf("value of BlockMaxBytes cannot be higher than %d", types.MaxBlockSizeBytes)
 	}
 	if t.VoteExtensionsUpdateHeight < -1 {
