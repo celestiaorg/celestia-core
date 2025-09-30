@@ -451,7 +451,7 @@ func NewNodeWithContext(ctx context.Context,
 
 	if config.Consensus.DisablePropagationReactor {
 		if config.Consensus.EnableLegacyBlockProp {
-			types.MaxBlockSizeBytes = 8 * 1024 * 1024 // reduce the max block size to avoid overloading the legacy block prop mechanism
+			types.MaxBlockSizeBytes = types.ReducedMaxBlockSizeBytes // reduce the max block size to avoid overloading the legacy block prop mechanism
 			propagator = propagation.NewNoOpPropagator()
 			propagationReactor = nil
 		} else {

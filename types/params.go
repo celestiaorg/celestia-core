@@ -13,6 +13,8 @@ import (
 
 const (
 	DefaultMaxBlockSizeBytes = 128 * 1024 * 1024
+	// ReducedMaxBlockSizeBytes will be used when disabling the propagation reactor in emergency situations
+	ReducedMaxBlockSizeBytes = 8 * 1024 * 1024
 
 	// BlockPartSizeBytes is the size of one block part.
 	BlockPartSizeBytes uint32 = 65536 // 64kB
