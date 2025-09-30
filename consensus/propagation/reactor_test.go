@@ -1,6 +1,7 @@
 package propagation
 
 import (
+	"net"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -20,11 +21,13 @@ import (
 
 	dbm "github.com/cometbft/cometbft-db"
 	cfg "github.com/cometbft/cometbft/config"
+	"github.com/cometbft/cometbft/crypto/ed25519"
 	"github.com/cometbft/cometbft/crypto/merkle"
 	"github.com/cometbft/cometbft/libs/bits"
 	cmtrand "github.com/cometbft/cometbft/libs/rand"
 	"github.com/cometbft/cometbft/libs/trace"
 	"github.com/cometbft/cometbft/p2p"
+	"github.com/cometbft/cometbft/p2p/conn"
 	"github.com/cometbft/cometbft/store"
 )
 
@@ -777,3 +780,134 @@ func TestPeerStateEditor(t *testing.T) {
 	assert.Equal(t, int32(1), editor.blockParts[0].Round)
 	assert.Equal(t, 0, editor.blockParts[0].Index)
 }
+
+func TestInitPeerLegacyErrorMessage(t *testing.T) {
+	// Test to demonstrate the issue with error formatting when peer is legacy
+	// This tests the fix for: https://github.com/celestiaorg/celestia-core/issues/XXXX
+	reactors, _ := testBlockPropReactors(1, cfg.DefaultP2PConfig())
+	reactor := reactors[0]
+
+	// Create a legacy peer - one that doesn't have DataChannel or WantChannel
+	legacyPeer := &MockLegacyPeer{id: p2p.PubKeyToID(ed25519.GenPrivKey().PubKey())}
+
+	_, err := reactor.InitPeer(legacyPeer)
+
+	// The error should be returned and should not contain "%!w(<nil>)"
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "peer is only using legacy propagation")
+	assert.NotContains(t, err.Error(), "%!w(<nil>)")
+}
+
+func TestInitPeerNodeInfoErrorWrapping(t *testing.T) {
+	// Test to ensure that when there's a real error from isLegacyPropagation, it's properly wrapped
+	reactors, _ := testBlockPropReactors(1, cfg.DefaultP2PConfig())
+	reactor := reactors[0]
+
+	// Create a peer with invalid NodeInfo that will cause an error in isLegacyPropagation
+	badPeer := &MockBadNodeInfoPeer{id: p2p.PubKeyToID(ed25519.GenPrivKey().PubKey())}
+
+	_, err := reactor.InitPeer(badPeer)
+
+	// The error should be returned and should contain the wrapped error
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "peer is only using legacy propagation")
+	assert.Contains(t, err.Error(), "wrong NodeInfo type")
+}
+
+// MockLegacyPeer is a peer that doesn't support the new propagation channels
+type MockLegacyPeer struct {
+	id p2p.ID
+}
+
+func (p *MockLegacyPeer) ID() p2p.ID       { return p.id }
+func (p *MockLegacyPeer) RemoteIP() net.IP { return net.ParseIP("127.0.0.1") }
+func (p *MockLegacyPeer) RemoteAddr() net.Addr {
+	return &net.TCPAddr{IP: net.ParseIP("127.0.0.1"), Port: 26656}
+}
+func (p *MockLegacyPeer) IsOutbound() bool   { return false }
+func (p *MockLegacyPeer) IsPersistent() bool { return false }
+func (p *MockLegacyPeer) CloseConn() error   { return nil }
+func (p *MockLegacyPeer) NodeInfo() p2p.NodeInfo {
+	// Return NodeInfo without DataChannel and WantChannel - this makes it a legacy peer
+	return p2p.DefaultNodeInfo{
+		DefaultNodeID: p.id,
+		ListenAddr:    "127.0.0.1:26656",
+		Channels:      []byte{0x30}, // Some other channel, but not DataChannel or WantChannel
+	}
+}
+func (p *MockLegacyPeer) Status() conn.ConnectionStatus { return conn.ConnectionStatus{} }
+func (p *MockLegacyPeer) SocketAddr() *p2p.NetAddress {
+	return p2p.NewNetAddressIPPort(net.ParseIP("127.0.0.1"), 26656)
+}
+func (p *MockLegacyPeer) Send(envelope p2p.Envelope) bool    { return true }
+func (p *MockLegacyPeer) TrySend(envelope p2p.Envelope) bool { return true }
+func (p *MockLegacyPeer) Set(key string, data interface{})   {}
+func (p *MockLegacyPeer) Get(key string) interface{}         { return nil }
+func (p *MockLegacyPeer) FlushStop()                         {}
+func (p *MockLegacyPeer) SetRemovalFailed()                  {}
+func (p *MockLegacyPeer) GetRemovalFailed() bool             { return false }
+func (p *MockLegacyPeer) HasIPChanged() bool                 { return false }
+
+// service.Service interface methods
+func (p *MockLegacyPeer) Start() error                { return nil }
+func (p *MockLegacyPeer) Stop() error                 { return nil }
+func (p *MockLegacyPeer) Reset() error                { return nil }
+func (p *MockLegacyPeer) OnStart() error              { return nil }
+func (p *MockLegacyPeer) OnStop()                     {}
+func (p *MockLegacyPeer) OnReset() error              { return nil }
+func (p *MockLegacyPeer) IsRunning() bool             { return true }
+func (p *MockLegacyPeer) Quit() <-chan struct{}       { return make(chan struct{}) }
+func (p *MockLegacyPeer) String() string              { return "MockLegacyPeer" }
+func (p *MockLegacyPeer) SetLogger(logger log.Logger) {}
+
+// MockBadNodeInfoPeer is a peer that returns an invalid NodeInfo type
+type MockBadNodeInfoPeer struct {
+	id p2p.ID
+}
+
+func (p *MockBadNodeInfoPeer) ID() p2p.ID       { return p.id }
+func (p *MockBadNodeInfoPeer) RemoteIP() net.IP { return net.ParseIP("127.0.0.1") }
+func (p *MockBadNodeInfoPeer) RemoteAddr() net.Addr {
+	return &net.TCPAddr{IP: net.ParseIP("127.0.0.1"), Port: 26656}
+}
+func (p *MockBadNodeInfoPeer) IsOutbound() bool   { return false }
+func (p *MockBadNodeInfoPeer) IsPersistent() bool { return false }
+func (p *MockBadNodeInfoPeer) CloseConn() error   { return nil }
+func (p *MockBadNodeInfoPeer) NodeInfo() p2p.NodeInfo {
+	// Return a non-DefaultNodeInfo type to trigger the error in isLegacyPropagation
+	return &mockNodeInfo{addr: p2p.NewNetAddressIPPort(net.ParseIP("127.0.0.1"), 26656)}
+}
+func (p *MockBadNodeInfoPeer) Status() conn.ConnectionStatus { return conn.ConnectionStatus{} }
+func (p *MockBadNodeInfoPeer) SocketAddr() *p2p.NetAddress {
+	return p2p.NewNetAddressIPPort(net.ParseIP("127.0.0.1"), 26656)
+}
+func (p *MockBadNodeInfoPeer) Send(envelope p2p.Envelope) bool    { return true }
+func (p *MockBadNodeInfoPeer) TrySend(envelope p2p.Envelope) bool { return true }
+func (p *MockBadNodeInfoPeer) Set(key string, data interface{})   {}
+func (p *MockBadNodeInfoPeer) Get(key string) interface{}         { return nil }
+func (p *MockBadNodeInfoPeer) FlushStop()                         {}
+func (p *MockBadNodeInfoPeer) SetRemovalFailed()                  {}
+func (p *MockBadNodeInfoPeer) GetRemovalFailed() bool             { return false }
+func (p *MockBadNodeInfoPeer) HasIPChanged() bool                 { return false }
+
+// service.Service interface methods
+func (p *MockBadNodeInfoPeer) Start() error                { return nil }
+func (p *MockBadNodeInfoPeer) Stop() error                 { return nil }
+func (p *MockBadNodeInfoPeer) Reset() error                { return nil }
+func (p *MockBadNodeInfoPeer) OnStart() error              { return nil }
+func (p *MockBadNodeInfoPeer) OnStop()                     {}
+func (p *MockBadNodeInfoPeer) OnReset() error              { return nil }
+func (p *MockBadNodeInfoPeer) IsRunning() bool             { return true }
+func (p *MockBadNodeInfoPeer) Quit() <-chan struct{}       { return make(chan struct{}) }
+func (p *MockBadNodeInfoPeer) String() string              { return "MockBadNodeInfoPeer" }
+func (p *MockBadNodeInfoPeer) SetLogger(logger log.Logger) {}
+
+// mockNodeInfo is a simple NodeInfo implementation that's not DefaultNodeInfo
+type mockNodeInfo struct {
+	addr *p2p.NetAddress
+}
+
+func (ni *mockNodeInfo) ID() p2p.ID                           { return ni.addr.ID }
+func (ni *mockNodeInfo) NetAddress() (*p2p.NetAddress, error) { return ni.addr, nil }
+func (ni *mockNodeInfo) Validate() error                      { return nil }
+func (ni *mockNodeInfo) CompatibleWith(p2p.NodeInfo) error    { return nil }
