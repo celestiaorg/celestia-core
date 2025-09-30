@@ -170,6 +170,8 @@ conR:
 	}
 	conR.propagator.StartProcessing()
 	conR.propagator.SetProposer(state.Validators.GetProposer().PubKey)
+	h, _ := state.Validators.GetProposer().Address.Marshal()
+	fmt.Println("proposer: ", state.Validators.GetProposer().Address.String(), " ", h, " ", state.Validators.GetProposer().PubKey.Address().String(), " voting power: ", state.Validators.GetProposer().VotingPower)
 	conR.conS.rsMtx.RLock()
 	conR.propagator.SetHeightAndRound(conR.conS.rs.Height, conR.conS.rs.Round)
 	conR.conS.rsMtx.RUnlock()

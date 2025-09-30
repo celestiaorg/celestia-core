@@ -233,6 +233,8 @@ func NewState(
 		proposer := validators.GetProposer()
 		if proposer != nil {
 			cs.propagator.SetProposer(proposer.PubKey)
+			h, _ := proposer.Address.Marshal()
+			fmt.Println("proposer: ", proposer.Address.String(), " ", h, " ", proposer.PubKey.Address().String(), " voting power: ", proposer.VotingPower)
 		}
 	}
 
@@ -1223,6 +1225,8 @@ func (cs *State) enterNewRound(height int64, round int32) {
 	proposer := cs.rs.Validators.GetProposer()
 	if proposer != nil {
 		cs.propagator.SetProposer(proposer.PubKey)
+		h, _ := proposer.Address.Marshal()
+		fmt.Println("proposer: ", proposer.Address.String(), " ", h, " ", proposer.PubKey.Address().String(), " voting power: ", proposer.VotingPower)
 	}
 
 	// Wait for txs to be available in the mempool
@@ -1994,6 +1998,8 @@ func (cs *State) finalizeCommit(height int64) {
 	proposer := cs.rs.Validators.GetProposer()
 	if proposer != nil {
 		cs.propagator.SetProposer(proposer.PubKey)
+		h, _ := proposer.Address.Marshal()
+		fmt.Println("proposer: ", proposer.Address.String(), " ", h, " ", proposer.PubKey.Address().String(), " voting power: ", proposer.VotingPower)
 	}
 
 	// cs.StartTime is already set.
