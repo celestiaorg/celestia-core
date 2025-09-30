@@ -400,7 +400,7 @@ func (sw *Switch) getPeerAddress(peer Peer) (*NetAddress, error) {
 // StopPeerGracefully disconnects from a peer gracefully.
 // TODO: handle graceful disconnects.
 func (sw *Switch) StopPeerGracefully(peer Peer, reactorName string) {
-	sw.Logger.Info("Stopping peer gracefully")
+	sw.Logger.Info("Stopping peer gracefully", "peer", peer.ID())
 
 	sw.removePeerFromReactor(peer, reactorName)
 

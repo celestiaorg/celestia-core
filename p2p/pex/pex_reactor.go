@@ -242,7 +242,7 @@ func (r *Reactor) logErrAddrBook(err error) {
 
 // Receive implements Reactor by handling incoming PEX messages.
 func (r *Reactor) Receive(e p2p.Envelope) {
-	r.Logger.Debug("Received message", "src", e.Src, "chId", e.ChannelID, "msg", e.Message)
+	r.Logger.Debug("Received message", "src", e.Src, "chId", e.ChannelID, "msg_type", fmt.Sprintf("%T", e.Message))
 
 	switch msg := e.Message.(type) {
 	case *tmp2p.PexRequest:
@@ -254,7 +254,7 @@ func (r *Reactor) Receive(e p2p.Envelope) {
 
 		// If we're a seed and this is an inbound peer,
 		// respond once and disconnect.
-		if r.config.SeedMode && !e.Src.IsOutbound() {
+		if !e.Src.IsOutbound() {
 			id := string(e.Src.ID())
 			v := r.lastReceivedRequests.Get(id)
 			if v != nil {
@@ -268,8 +268,10 @@ func (r *Reactor) Receive(e p2p.Envelope) {
 			r.SendAddrs(e.Src, r.book.GetSelectionWithBias(biasToSelectNewPeers))
 			go func() {
 				// In a go-routine so it doesn't block .Receive.
-				e.Src.FlushStop()
-				r.Switch.StopPeerGracefully(e.Src, r.String())
+				time.Sleep(200 * time.Millisecond)
+				if r.Switch != nil && r.Switch.IsRunning() {
+					r.Switch.StopPeerGracefully(e.Src, r.String())
+				}
 			}()
 
 		} else {
