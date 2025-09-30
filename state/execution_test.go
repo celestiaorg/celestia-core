@@ -802,7 +802,7 @@ func BenchmarkCreateProposalBlock(b *testing.B) {
 	defer cancel()
 
 	state, stateDB, privVals := makeState(1, height)
-	state.ConsensusParams.Block.MaxBytes = types.MaxBlockSizeBytes
+	state.ConsensusParams.Block.MaxBytes = int64(types.MaxBlockSizeBytes)
 	stateStore := sm.NewStore(stateDB, sm.StoreOptions{
 		DiscardABCIResponses: false,
 	})
