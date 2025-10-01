@@ -123,6 +123,15 @@ func (c *CompactBlock) ValidateBasic() error {
 		return errors.New("CompactBlock: Signature is too big")
 	}
 
+	expectedNumberOfPartsHashes := ParityRatio * c.Proposal.BlockID.PartSetHeader.Total
+	if len(c.PartsHashes) != int(expectedNumberOfPartsHashes) {
+		return fmt.Errorf(
+			"invalid number of partset hashes: expected %d actual %d",
+			expectedNumberOfPartsHashes,
+			len(c.PartsHashes),
+		)
+	}
+
 	for index, partHash := range c.PartsHashes {
 		if err := types.ValidateHash(partHash); err != nil {
 			return fmt.Errorf("invalid part hash height %d round %d index %d: %w", c.Proposal.Height, c.Proposal.Round, index, err)
@@ -199,14 +208,14 @@ func (c *CompactBlock) Proofs() ([]*merkle.Proof, error) {
 
 	c.proofsCache = make([]*merkle.Proof, 0, len(c.PartsHashes))
 
-	root, proofs := merkle.ProofsFromLeafHashes(c.PartsHashes[:total])
+	root, proofs := merkle.ParallelProofsFromLeafHashes(c.PartsHashes[:total])
 	c.proofsCache = append(c.proofsCache, proofs...)
 
 	if !bytes.Equal(root, c.Proposal.BlockID.PartSetHeader.Hash) {
 		return c.proofsCache, fmt.Errorf("incorrect PartsHash: original root")
 	}
 
-	parityRoot, eproofs := merkle.ProofsFromLeafHashes(c.PartsHashes[total:])
+	parityRoot, eproofs := merkle.ParallelProofsFromLeafHashes(c.PartsHashes[total:])
 	c.proofsCache = append(c.proofsCache, eproofs...)
 
 	if !bytes.Equal(c.BpHash, parityRoot) {
@@ -314,12 +323,15 @@ func (h *HaveParts) ValidateBasic() error {
 // ValidatePartHashes verifies that each part's hash in the HaveParts struct matches the corresponding expected hash.
 // Returns an error if any hash does not match, indicating the index of the first mismatch.
 func (h *HaveParts) ValidatePartHashes(expectedHashes [][]byte) error {
-	for index, part := range h.Parts {
+	if len(expectedHashes) == 0 {
+		return fmt.Errorf("empty expected hashes for height %d round %d", h.Height, h.Round)
+	}
+	for _, part := range h.Parts {
 		if int(part.Index) >= len(expectedHashes) {
-			return fmt.Errorf("non existing part hash index %d", index)
+			return fmt.Errorf("non existing part hash index %d", part.Index)
 		}
 		if !bytes.Equal(part.Hash, expectedHashes[part.Index]) {
-			return fmt.Errorf("invalid part hash at index %d", index)
+			return fmt.Errorf("invalid part hash at index %d", part.Index)
 		}
 	}
 	return nil

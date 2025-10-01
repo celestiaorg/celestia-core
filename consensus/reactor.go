@@ -77,7 +77,6 @@ func NewReactor(consensusState *State, propagator propagation.Propagator, waitSy
 		traceClient: trace.NoOpTracer(),
 		propagator:  propagator,
 	}
-	conR.gossipDataEnabled.Store(true)
 	conR.BaseReactor = *p2p.NewBaseReactor("Consensus", conR, p2p.WithIncomingQueueSize(ReactorIncomingMessageQueueSize))
 
 	for _, option := range options {
@@ -139,8 +138,8 @@ func (conR *Reactor) SwitchToConsensus(state sm.State, skipWAL bool) {
 
 	func() {
 		// We need to lock, as we are not entering consensus state from State's `handleMsg` or `handleTimeout`
-		conR.conS.mtx.Lock()
-		defer conR.conS.mtx.Unlock()
+		conR.conS.lockAll()
+		defer conR.conS.unlockAll()
 		// We have no votes, so reconstruct LastCommit from SeenCommit
 		if state.LastBlockHeight > 0 {
 			conR.conS.reconstructLastCommit(state)
@@ -158,8 +157,6 @@ func (conR *Reactor) SwitchToConsensus(state sm.State, skipWAL bool) {
 	if skipWAL {
 		conR.conS.doWALCatchup = false
 	}
-	conR.propagator.StartProcessing()
-	conR.propagator.SetProposer(state.Validators.GetProposer().PubKey)
 	err := conR.conS.Start()
 	if err != nil {
 		panic(fmt.Sprintf(`Failed to start consensus state: %v
@@ -170,6 +167,11 @@ conS:
 conR:
 %+v`, err, conR.conS, conR))
 	}
+	conR.propagator.StartProcessing()
+	conR.propagator.SetProposer(state.Validators.GetProposer().PubKey)
+	conR.conS.rsMtx.RLock()
+	conR.propagator.SetHeightAndRound(conR.conS.rs.Height, conR.conS.rs.Round)
+	conR.conS.rsMtx.RUnlock()
 }
 
 // GetChannels implements Reactor
@@ -178,7 +180,7 @@ func (conR *Reactor) GetChannels() []*p2p.ChannelDescriptor {
 	return []*p2p.ChannelDescriptor{
 		{
 			ID:                  StateChannel,
-			Priority:            30,
+			Priority:            230,
 			SendQueueCapacity:   100,
 			RecvMessageCapacity: maxMsgSize,
 			MessageType:         &cmtcons.Message{},
@@ -194,7 +196,7 @@ func (conR *Reactor) GetChannels() []*p2p.ChannelDescriptor {
 		},
 		{
 			ID:                  VoteChannel,
-			Priority:            35,
+			Priority:            235,
 			SendQueueCapacity:   100,
 			RecvBufferCapacity:  100 * 100,
 			RecvMessageCapacity: maxMsgSize,
@@ -202,7 +204,7 @@ func (conR *Reactor) GetChannels() []*p2p.ChannelDescriptor {
 		},
 		{
 			ID:                  VoteSetBitsChannel,
-			Priority:            6,
+			Priority:            206,
 			SendQueueCapacity:   10,
 			RecvBufferCapacity:  1024,
 			RecvMessageCapacity: maxMsgSize,
@@ -292,9 +294,9 @@ func (conR *Reactor) Receive(e p2p.Envelope) {
 	case StateChannel:
 		switch msg := msg.(type) {
 		case *NewRoundStepMessage:
-			conR.conS.mtx.Lock()
+			conR.conS.stateMtx.RLock()
 			initialHeight := conR.conS.state.InitialHeight
-			conR.conS.mtx.Unlock()
+			conR.conS.stateMtx.RUnlock()
 			schema.WriteConsensusState(
 				conR.traceClient,
 				msg.Height,
@@ -333,9 +335,9 @@ func (conR *Reactor) Receive(e p2p.Envelope) {
 			ps.ApplyHasVoteMessage(msg)
 		case *VoteSetMaj23Message:
 			cs := conR.conS
-			cs.mtx.Lock()
-			height, votes := cs.Height, cs.Votes
-			cs.mtx.Unlock()
+			cs.rsMtx.RLock()
+			height, votes := cs.rs.Height, cs.rs.Votes
+			cs.rsMtx.RUnlock()
 			schema.WriteConsensusState(
 				conR.traceClient,
 				msg.Height,
@@ -435,9 +437,9 @@ func (conR *Reactor) Receive(e p2p.Envelope) {
 		switch msg := msg.(type) {
 		case *VoteMessage:
 			cs := conR.conS
-			cs.mtx.RLock()
-			height, valSize, lastCommitSize := cs.Height, cs.Validators.Size(), cs.LastCommit.Size()
-			cs.mtx.RUnlock()
+			cs.rsMtx.RLock()
+			height, valSize, lastCommitSize := cs.rs.Height, cs.rs.Validators.Size(), cs.rs.LastCommit.Size()
+			cs.rsMtx.RUnlock()
 			ps.EnsureVoteBitArrays(height, valSize)
 			ps.EnsureVoteBitArrays(height-1, lastCommitSize)
 			ps.SetHasVote(msg.Vote)
@@ -457,9 +459,9 @@ func (conR *Reactor) Receive(e p2p.Envelope) {
 		switch msg := msg.(type) {
 		case *VoteSetBitsMessage:
 			cs := conR.conS
-			cs.mtx.Lock()
-			height, votes := cs.Height, cs.Votes
-			cs.mtx.Unlock()
+			cs.rsMtx.RLock()
+			height, votes := cs.rs.Height, cs.rs.Votes
+			cs.rsMtx.RUnlock()
 
 			if height == msg.Height {
 				var ourVotes *bits.BitArray
@@ -907,8 +909,8 @@ OUTER_LOOP:
 			var ec *types.ExtendedCommit
 			var veEnabled bool
 			func() {
-				conR.conS.mtx.RLock()
-				defer conR.conS.mtx.RUnlock()
+				conR.conS.stateMtx.RLock()
+				defer conR.conS.stateMtx.RUnlock()
 				veEnabled = conR.conS.state.ConsensusParams.ABCI.VoteExtensionsEnabled(prs.Height)
 			}()
 			if veEnabled {
@@ -1200,21 +1202,6 @@ func (conR *Reactor) peerStatsRoutine() {
 func (conR *Reactor) String() string {
 	// better not to access shared variables
 	return "ConsensusReactor" // conR.StringIndented("")
-}
-
-// StringIndented returns an indented string representation of the Reactor
-func (conR *Reactor) StringIndented(indent string) string {
-	s := "ConsensusReactor{\n"
-	s += indent + "  " + conR.conS.StringIndented(indent+"  ") + "\n"
-	for _, peer := range conR.Switch.Peers().List() {
-		ps, ok := peer.Get(types.PeerStateKey).(*PeerState)
-		if !ok {
-			panic(fmt.Sprintf("Peer %v has no state", peer))
-		}
-		s += indent + "  " + ps.StringIndented(indent+"  ") + "\n"
-	}
-	s += indent + "}"
-	return s
 }
 
 // ReactorMetrics sets the metrics

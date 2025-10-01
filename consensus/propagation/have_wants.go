@@ -52,7 +52,7 @@ func (blockProp *Reactor) handleHaves(peer p2p.ID, haves *proptypes.HaveParts) {
 	}
 	err := haves.ValidatePartHashes(cb.PartsHashes)
 	if err != nil {
-		blockProp.Logger.Error("received invalid have part", "height", haves.Height, "round", haves.Round, "parts", haves.Parts, "err", err)
+		blockProp.Logger.Error("received invalid have part", "height", haves.Height, "round", haves.Round, "err", err)
 		blockProp.Switch.StopPeerForError(p.peer, err, blockProp.String())
 		return
 	}
@@ -112,6 +112,7 @@ func ReqLimit(partsCount int) int {
 }
 
 func (blockProp *Reactor) requestFromPeer(ps *PeerState) {
+	defer blockProp.ProtectPanic(ps.peer)
 	for {
 		availableReqs := ConcurrentRequestLimit(len(blockProp.getPeers()), int(blockProp.getCurrentProposalPartsCount())) - ps.concurrentReqs.Load()
 
@@ -127,7 +128,7 @@ func (blockProp *Reactor) requestFromPeer(ps *PeerState) {
 			if !ok {
 				return
 			}
-			if !blockProp.relevantHave(part.height, part.round) {
+			if !blockProp.safeRelevant(part.height, part.round) {
 				continue
 			}
 			ps.DecreaseConcurrentReqs(1)
@@ -140,10 +141,9 @@ func (blockProp *Reactor) requestFromPeer(ps *PeerState) {
 			}
 
 			var (
-				wants             *proptypes.WantParts
-				parts             *proptypes.CombinedPartSet
-				missingPartsCount int32
-				fullReqs          *bits.BitArray
+				wants    *proptypes.WantParts
+				parts    *proptypes.CombinedPartSet
+				fullReqs *bits.BitArray
 			)
 			for i := min(canSend, int64(len(ps.receivedHaves))); i > 0; {
 				if len(ps.receivedHaves) == 0 {
@@ -159,10 +159,9 @@ func (blockProp *Reactor) requestFromPeer(ps *PeerState) {
 					// haves for a new height, resetting
 					wants = nil
 					parts = nil
-					missingPartsCount = 0
 				}
 
-				if !blockProp.relevantHave(have.height, have.round) {
+				if !blockProp.safeRelevant(have.height, have.round) {
 					continue
 				}
 
@@ -173,7 +172,12 @@ func (blockProp *Reactor) requestFromPeer(ps *PeerState) {
 						blockProp.Logger.Error("couldn't find proposal when filtering requests", "height", have.height, "round", have.round)
 						break
 					}
-					missingPartsCount = countRemainingParts(int(parts.Total()), len(parts.BitArray().GetTrueIndices()))
+				}
+
+				missingPartsCount := countRemainingParts(int(parts.Total()), len(parts.BitArray().GetTrueIndices()))
+				if missingPartsCount == 0 {
+					// we can ignore this have in this case
+					continue
 				}
 
 				// don't request a part that is already downloaded
@@ -205,10 +209,9 @@ func (blockProp *Reactor) requestFromPeer(ps *PeerState) {
 
 				if wants == nil {
 					wants = &proptypes.WantParts{
-						Height:            have.height,
-						Round:             have.round,
-						Parts:             bits.NewBitArray(int(parts.Total())),
-						MissingPartsCount: missingPartsCount,
+						Height: have.height,
+						Round:  have.round,
+						Parts:  bits.NewBitArray(int(parts.Total())),
 					}
 				}
 
@@ -221,6 +224,12 @@ func (blockProp *Reactor) requestFromPeer(ps *PeerState) {
 			if wants == nil {
 				continue
 			}
+			missingPartsCount := countRemainingParts(int(parts.Total()), len(parts.BitArray().GetTrueIndices()))
+			if missingPartsCount == 0 {
+				// no need to send the want in this case
+				continue
+			}
+			wants.MissingPartsCount = missingPartsCount
 
 			err := blockProp.sendWantsThenBroadcastHaves(ps, wants)
 			if err != nil {
@@ -624,7 +633,7 @@ func (blockProp *Reactor) clearWants(part *proptypes.RecoveryPart, proof merkle.
 
 			catchup := false
 			blockProp.pmtx.Lock()
-			if part.Height < blockProp.currentHeight {
+			if part.Height < blockProp.height {
 				catchup = true
 			}
 

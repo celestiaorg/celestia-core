@@ -2,6 +2,7 @@ package schema
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/cometbft/cometbft/libs/trace"
 	"github.com/cometbft/cometbft/types"
@@ -106,15 +107,15 @@ const (
 
 // Vote describes schema for the "consensus_vote" table.
 type Vote struct {
-	Height                   int64        `json:"height"`
-	Round                    int32        `json:"round"`
-	VoteType                 string       `json:"vote_type"`
-	VoteHeight               int64        `json:"vote_height"`
-	VoteRound                int32        `json:"vote_round"`
-	VoteMillisecondTimestamp int64        `json:"vote_unix_millisecond_timestamp"`
-	ValidatorAddress         string       `json:"vote_validator_address"`
-	Peer                     string       `json:"peer"`
-	TransferType             TransferType `json:"transfer_type"`
+	Height           int64        `json:"height"`
+	Round            int32        `json:"round"`
+	VoteType         string       `json:"vote_type"`
+	VoteHeight       int64        `json:"vote_height"`
+	VoteRound        int32        `json:"vote_round"`
+	VoteTimestamp    time.Time    `json:"vote_timestamp"`
+	ValidatorAddress string       `json:"vote_validator_address"`
+	Peer             string       `json:"peer"`
+	TransferType     TransferType `json:"transfer_type"`
 }
 
 func (Vote) Table() string {
@@ -131,15 +132,15 @@ func WriteVote(client trace.Tracer,
 	transferType TransferType, // download (received) or upload(sent)
 ) {
 	client.Write(Vote{
-		Height:                   height,
-		Round:                    round,
-		VoteType:                 vote.Type.String(),
-		VoteHeight:               vote.Height,
-		VoteRound:                vote.Round,
-		VoteMillisecondTimestamp: vote.Timestamp.UnixMilli(),
-		ValidatorAddress:         vote.ValidatorAddress.String(),
-		Peer:                     peer,
-		TransferType:             transferType,
+		Height:           height,
+		Round:            round,
+		VoteType:         vote.Type.String(),
+		VoteHeight:       vote.Height,
+		VoteRound:        vote.Round,
+		VoteTimestamp:    vote.Timestamp,
+		ValidatorAddress: vote.ValidatorAddress.String(),
+		Peer:             peer,
+		TransferType:     transferType,
 	})
 }
 

@@ -221,6 +221,11 @@ func (pv *ErroringMockPV) SignP2PMessage(chainID, uID string, hash cmtbytes.HexB
 	return nil, ErroringMockPVErr
 }
 
+// Implements PrivValidator.
+func (pv *ErroringMockPV) SignRawBytes(chainID, uniqueID string, rawBytes []byte) ([]byte, error) {
+	return nil, ErroringMockPVErr
+}
+
 // NewErroringMockPV returns a MockPV that fails on each signing request. Again, for testing only.
 
 func NewErroringMockPV() *ErroringMockPV {

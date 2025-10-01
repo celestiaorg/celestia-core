@@ -19,7 +19,7 @@ import (
 const (
 	// default duration to wait before considering a peer non-responsive
 	// and searching for the tx from a new peer
-	DefaultGossipDelay = 200 * time.Millisecond
+	DefaultGossipDelay = 60 * time.Second
 
 	// MempoolDataChannel channel for SeenTx and blob messages.
 	MempoolDataChannel = byte(0x31)
@@ -33,6 +33,9 @@ const (
 
 	// ReactorIncomingMessageQueueSize the size of the reactor's message queue.
 	ReactorIncomingMessageQueueSize = 5000
+
+	// maxSeenTxBroadcast defines the maximum number of peers to which a SeenTx message should be broadcasted.
+	maxSeenTxBroadcast = 15
 )
 
 // Reactor handles mempool tx broadcasting logic amongst peers. For the main
@@ -275,12 +278,7 @@ func (memR *Reactor) Receive(e p2p.Envelope) {
 		peerID := memR.ids.GetIDForPeer(e.Src.ID())
 		memR.mempool.PeerHasTx(peerID, txKey)
 		// Check if we don't already have the transaction
-<<<<<<< HEAD
-		wasRejected, _ := memR.mempool.WasRecentlyRejected(txKey)
-=======
-		wasRejected, _, _ := memR.mempool.IsRejectedTx(txKey)
->>>>>>> ec6fdcad (feat!: start tracking rejection logs (#2286))
-		if memR.mempool.Has(txKey) || wasRejected {
+		if memR.mempool.Has(txKey) {
 			memR.Logger.Debug("received a seen tx for a tx we already have", "txKey", txKey)
 			return
 		}
@@ -354,11 +352,11 @@ func (memR *Reactor) broadcastSeenTx(txKey types.TxKey) {
 		},
 	}
 
-	// Add jitter to when the node broadcasts it's seen txs to stagger when nodes
-	// in the network broadcast their seenTx messages.
-	time.Sleep(time.Duration(rand.Intn(10)*10) * time.Millisecond) //nolint:gosec
-
-	for id, peer := range memR.ids.GetAll() {
+	count := 0
+	for id, peer := range ShufflePeers(memR.ids.GetAll()) {
+		if count >= maxSeenTxBroadcast {
+			break
+		}
 		if p, ok := peer.Get(types.PeerStateKey).(PeerState); ok {
 			// make sure peer isn't too far behind. This can happen
 			// if the peer is blocksyncing still and catching up
@@ -380,7 +378,37 @@ func (memR *Reactor) broadcastSeenTx(txKey types.TxKey) {
 				Message:   msg,
 			},
 		)
+		count++
 	}
+}
+
+// ShufflePeers shuffles the peers map from GetAll() and returns a new shuffled map.
+// Uses Fisher-Yates shuffle algorithm for maximum speed.
+func ShufflePeers(peers map[uint16]p2p.Peer) map[uint16]p2p.Peer {
+	if len(peers) <= 1 {
+		return peers
+	}
+
+	// Extract keys into a slice for shuffling
+	keys := make([]uint16, 0, len(peers))
+	for id := range peers {
+		keys = append(keys, id)
+	}
+
+	// Fast Fisher-Yates shuffle on keys
+	r := rand.New(rand.NewSource(time.Now().UnixNano()))
+	for i := len(keys) - 1; i > 0; i-- {
+		j := r.Intn(i + 1)
+		keys[i], keys[j] = keys[j], keys[i]
+	}
+
+	// Build a new map with shuffled order
+	result := make(map[uint16]p2p.Peer, len(peers))
+	for _, id := range keys {
+		result[id] = peers[id]
+	}
+
+	return result
 }
 
 // broadcastNewTx broadcast new transaction to all peers unless we are already sure they have seen the tx.

@@ -2,10 +2,10 @@ package types
 
 import (
 	"fmt"
-	"io"
 	"testing"
 
 	"github.com/cometbft/cometbft/crypto"
+	cmtmath "github.com/cometbft/cometbft/libs/math"
 	cmtproto "github.com/cometbft/cometbft/proto/tendermint/types"
 	"github.com/cosmos/gogoproto/proto"
 
@@ -36,7 +36,7 @@ func TestBasicPartSet(t *testing.T) {
 	assert.EqualValues(t, testPartSize*nParts, partSet.ByteSize())
 
 	// Test adding parts to a new partSet.
-	partSet2 := NewPartSetFromHeader(partSet.Header())
+	partSet2 := NewPartSetFromHeader(partSet.Header(), testPartSize)
 
 	assert.True(t, partSet2.HasHeader(partSet.Header()))
 	for i := 0; i < int(partSet.Total()); i++ {
@@ -62,9 +62,7 @@ func TestBasicPartSet(t *testing.T) {
 	assert.True(t, partSet2.IsComplete())
 
 	// Reconstruct data, assert that they are equal.
-	data2Reader := partSet2.GetReader()
-	data2, err := io.ReadAll(data2Reader)
-	require.NoError(t, err)
+	data2 := partSet2.GetBytes()
 
 	assert.Equal(t, data, data2)
 }
@@ -114,15 +112,22 @@ func TestEncodingDecodingRoundTrip(t *testing.T) {
 			eps, lastPartLen, err := Encode(ops, BlockPartSizeBytes)
 			require.NoError(t, err)
 
-			ops.parts[0] = nil
+			// Remove part 0 to test decode functionality
+			ops.mtx.Lock()
 			ops.count--
 			ops.partsBitArray.SetIndex(0, false)
+			// Clear the buffer area for part 0
+			start := 0 * int(BlockPartSizeBytes)
+			end := start + int(BlockPartSizeBytes)
+			for i := start; i < end && i < len(ops.buffer); i++ {
+				ops.buffer[i] = 0
+			}
+			ops.mtx.Unlock()
 
 			ops, _, err = Decode(ops, eps, lastPartLen)
 			require.NoError(t, err)
 
-			bz2, err := io.ReadAll(ops.GetReader())
-			require.NoError(t, err)
+			bz2 := ops.GetBytes()
 
 			pbb := new(cmtproto.Block)
 			err = proto.Unmarshal(bz2, pbb)
@@ -151,7 +156,7 @@ func TestWrongProof(t *testing.T) {
 	require.NoError(t, err)
 
 	// Test adding a part with wrong data.
-	partSet2 := NewPartSetFromHeader(partSet.Header())
+	partSet2 := NewPartSetFromHeader(partSet.Header(), testPartSize)
 
 	// Test adding a part with wrong trail.
 	part := partSet.GetPart(0)
@@ -309,5 +314,164 @@ func TestPartProtoBuf(t *testing.T) {
 			require.NoError(t, err)
 			require.Equal(t, tc.ps1, p, tc.msg)
 		}
+	}
+}
+
+// TestPartSetsWithDifferentPartSizes verifies the behavior for different data and part sizes.
+func TestPartSetsWithDifferentPartSizes(t *testing.T) {
+	testCases := []struct {
+		dataSize int
+		partSize uint32
+	}{
+		{1000, 256},
+		{12345, 321},
+		{4321, 4321},
+		{2345, BlockPartSizeBytes},
+		{MaxBlockSizeBytes, BlockPartSizeBytes},
+	}
+
+	for tc := range testCases {
+		t.Run(fmt.Sprintf("dataSize=%d,partSize=%d", testCases[tc].dataSize, testCases[tc].partSize), func(t *testing.T) {
+			t.Parallel()
+			data := cmtrand.Bytes(testCases[tc].dataSize)
+			partSet, err := NewPartSetFromData(data, testCases[tc].partSize)
+			require.NoError(t, err)
+			expectedTotal := uint32(testCases[tc].dataSize) / testCases[tc].partSize
+			if uint32(testCases[tc].dataSize)%testCases[tc].partSize > 0 {
+				expectedTotal++
+			}
+			assert.Equal(t, expectedTotal, partSet.Total())
+
+			bz := partSet.GetBytes()
+			assert.Equal(t, testCases[tc].dataSize, len(bz))
+
+			// make sure that returned bytes are valid / usable
+			newPartSet, err := NewPartSetFromData(bz, testCases[tc].partSize)
+			require.NoError(t, err)
+			assert.Equal(t, partSet.Hash(), newPartSet.Hash())
+
+		})
+	}
+}
+
+func BenchmarkPartSetRoundTrip(b *testing.B) {
+	write := func(b *testing.B, dataSize int, partSize uint32) *PartSet {
+		b.ReportAllocs()
+		b.StopTimer()
+		data := cmtrand.Bytes(dataSize)
+		b.StartTimer()
+		partSet, err := benchPartSetFromData(b, data, partSize)
+		if err != nil {
+			b.Error(err)
+		}
+		return partSet
+	}
+	read := func(b *testing.B, partSet *PartSet, expectedSize int) {
+		b.ReportAllocs()
+		all := partSet.GetBytes()
+		if len(all) != expectedSize {
+			b.Errorf("expected %d bytes, got %d", expectedSize, len(all))
+		}
+	}
+
+	cases := []struct {
+		dataSize int
+		partSize uint32
+	}{
+		{1000, 256},
+		{MaxBlockSizeBytes, BlockPartSizeBytes},
+		{4 * MaxBlockSizeBytes, BlockPartSizeBytes},
+	}
+
+	for c := range cases {
+		b.Run(fmt.Sprintf("dataSize=%d,partSize=%d", cases[c].dataSize, cases[c].partSize), func(b *testing.B) {
+			partSets := make([]*PartSet, 0, 10)
+			b.Run("write", func(b *testing.B) {
+				for i := 0; i < b.N; i++ {
+					partSet := write(b, cases[c].dataSize, cases[c].partSize)
+					partSets = append(partSets, partSet)
+				}
+			})
+			b.Run("read", func(b *testing.B) {
+				for i := 0; i < b.N; i++ {
+					read(b, partSets[i%len(partSets)], cases[c].dataSize)
+				}
+			})
+		})
+	}
+}
+
+func benchPartSetFromData(b *testing.B, data []byte, partSize uint32) (ops *PartSet, err error) {
+	b.StopTimer()
+	total := (uint32(len(data)) + partSize - 1) / partSize
+	chunks := make([][]byte, total)
+	for i := uint32(0); i < total; i++ {
+		chunk := data[i*partSize : cmtmath.MinInt(len(data), int((i+1)*partSize))]
+		chunks[i] = chunk
+	}
+
+	// Compute merkle proofs
+	root, proofs := merkle.ParallelProofsFromByteSlices(chunks)
+
+	ops = NewPartSetFromHeader(PartSetHeader{
+		Total: total,
+		Hash:  root,
+	}, partSize)
+
+	b.StartTimer()
+	for index, chunk := range chunks {
+		added, err := ops.AddPart(&Part{
+			Index: uint32(index),
+			Bytes: chunk,
+			Proof: *proofs[index],
+		})
+		if err != nil {
+			return nil, err
+		}
+		if !added {
+			return nil, fmt.Errorf("couldn't add part %d when creating ops", index)
+		}
+	}
+
+	if len(chunks[len(chunks)-1]) < int(partSize) {
+		padded := make([]byte, partSize)
+		copy(padded, chunks[len(chunks)-1])
+		chunks[len(chunks)-1] = padded
+	}
+
+	return ops, nil
+}
+
+func BenchmarkPartSetEncodeDecode(b *testing.B) {
+	cases := []struct {
+		dataSize int
+		partSize uint32
+	}{
+		{MaxBlockSizeBytes, BlockPartSizeBytes},
+		{4 * MaxBlockSizeBytes, BlockPartSizeBytes},
+	}
+
+	for c := range cases {
+		b.Run(fmt.Sprintf("dataSize=%d,partSize=%d", cases[c].dataSize, cases[c].partSize), func(b *testing.B) {
+			data := cmtrand.Bytes(cases[c].dataSize)
+			ops, err := NewPartSetFromData(data, cases[c].partSize)
+			require.NoError(b, err)
+			var eps *PartSet
+			lastPartLen := 0
+			b.Run("encode", func(b *testing.B) {
+				for i := 0; i < b.N; i++ {
+					b.ReportAllocs()
+					eps, lastPartLen, err = Encode(ops, cases[c].partSize)
+					require.NoError(b, err)
+				}
+			})
+			b.Run("decode", func(b *testing.B) {
+				for i := 0; i < b.N; i++ {
+					b.ReportAllocs()
+					_, _, err := Decode(ops, eps, lastPartLen)
+					require.NoError(b, err)
+				}
+			})
+		})
 	}
 }

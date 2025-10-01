@@ -192,12 +192,9 @@ func (txmp *TxMempool) CheckTx(
 	// If a precheck hook is defined, call it before invoking the application.
 	if err := txmp.preCheck(cachedTx); err != nil {
 		txmp.metrics.FailedTxs.Add(1)
-<<<<<<< HEAD
+
 		// Add the transaction to the rejected cache
-		txmp.rejectedTxs.Push(cachedTx, 0)
-=======
 		txmp.rejectedTxs.Push(tx.Key(), 0, err.Error())
->>>>>>> ec6fdcad (feat!: start tracking rejection logs (#2286))
 		return mempool.ErrPreCheck{Err: err}
 	}
 
@@ -214,7 +211,7 @@ func (txmp *TxMempool) CheckTx(
 	defer txmp.Unlock()
 
 	// Check for the transaction in the cache.
-	if !txmp.cache.Push(cachedTx) {
+	if !txmp.cache.Push(txKey) {
 		// If the cached transaction is also in the pool, record its sender.
 		if elt, ok := txmp.txByKey[txKey]; ok {
 			txmp.metrics.AlreadySeenTxs.Add(1)
@@ -227,7 +224,7 @@ func (txmp *TxMempool) CheckTx(
 	// Invoke an ABCI CheckTx for this transaction.
 	rsp, err := txmp.proxyAppConn.CheckTx(context.Background(), &abci.RequestCheckTx{Tx: tx})
 	if err != nil {
-		txmp.cache.Remove(cachedTx)
+		txmp.cache.Remove(txKey)
 		return err
 	}
 	wtx := &WrappedTx{
@@ -271,19 +268,11 @@ func (txmp *TxMempool) WasRecentlyEvicted(txKey types.TxKey) bool {
 	return txmp.evictedTxs.HasKey(txKey)
 }
 
-<<<<<<< HEAD
 // WasRecentlyRejected returns true if the tx was rejected from the mempool and exists in the
-// rejected cache alongside the rejection code.
-// Used in the RPC endpoint: TxStatus.
-func (txmp *TxMempool) WasRecentlyRejected(txKey types.TxKey) (bool, uint32) {
-	code, exists := txmp.rejectedTxs.Get(txKey)
-=======
-// IsRejected returns true if the tx was rejected from the mempool and exists in the
 // rejected cache alongside the rejection code and log.
 // Used in the RPC endpoint: TxStatus.
-func (txmp *TxMempool) IsRejectedTx(txKey types.TxKey) (bool, uint32, string) {
+func (txmp *TxMempool) WasRecentlyRejected(txKey types.TxKey) (bool, uint32, string) {
 	code, log, exists := txmp.rejectedTxs.Get(txKey)
->>>>>>> ec6fdcad (feat!: start tracking rejection logs (#2286))
 	if !exists {
 		return false, 0, ""
 	}
@@ -451,14 +440,15 @@ func (txmp *TxMempool) Update(
 		// Add successful committed transactions to the cache (if they are not
 		// already present).  Transactions that failed to commit are removed from
 		// the cache unless the operator has explicitly requested we keep them.
+		txKey := tx.Key()
 		if deliverTxResponses[i].Code == abci.CodeTypeOK {
-			_ = txmp.cache.Push(tx)
+			_ = txmp.cache.Push(txKey)
 		} else if !txmp.config.KeepInvalidTxsInCache {
-			txmp.cache.Remove(tx)
+			txmp.cache.Remove(txKey)
 		}
 
 		// Regardless of success, remove the transaction from the mempool.
-		_ = txmp.removeTxByKey(tx.Key())
+		_ = txmp.removeTxByKey(txKey)
 	}
 
 	// Purge expired transactions based on TTL. This is the only place where
@@ -511,16 +501,13 @@ func (txmp *TxMempool) addNewTransaction(wtx *WrappedTx, checkTxRes *abci.Respon
 		)
 
 		txmp.metrics.FailedTxs.Add(1)
-<<<<<<< HEAD
 		// Add the transaction to the rejected cache
-		txmp.rejectedTxs.Push(wtx.tx, checkTxRes.Code)
-=======
+
 		txmp.rejectedTxs.Push(wtx.tx.Key(), checkTxRes.Code, checkTxRes.Log)
->>>>>>> ec6fdcad (feat!: start tracking rejection logs (#2286))
 		// Remove the invalid transaction from the cache, unless the operator has
 		// instructed us to keep invalid transactions.
 		if !txmp.config.KeepInvalidTxsInCache {
-			txmp.cache.Remove(wtx.tx)
+			txmp.cache.Remove(wtx.tx.Key())
 		}
 
 		return
@@ -566,7 +553,7 @@ func (txmp *TxMempool) addNewTransaction(wtx *WrappedTx, checkTxRes *abci.Respon
 		// those candidates is not enough to make room for the new transaction,
 		// drop the new one.
 		if len(victims) == 0 || victimBytes < wtx.Size() {
-			txmp.cache.Remove(wtx.tx)
+			txmp.cache.Remove(wtx.tx.Key())
 			txmp.logger.Error(
 				"rejected valid incoming transaction; mempool is full",
 				"tx", fmt.Sprintf("%X", wtx.tx.Hash()),
@@ -574,7 +561,7 @@ func (txmp *TxMempool) addNewTransaction(wtx *WrappedTx, checkTxRes *abci.Respon
 			)
 			txmp.metrics.EvictedTxs.Add(1)
 			// Add it to evicted transactions cache
-			txmp.evictedTxs.Push(wtx.tx)
+			txmp.evictedTxs.Push(wtx.tx.Key())
 			return
 		}
 
@@ -605,10 +592,10 @@ func (txmp *TxMempool) addNewTransaction(wtx *WrappedTx, checkTxRes *abci.Respon
 				"old_priority", w.priority,
 			)
 			txmp.removeTxByElement(vic)
-			txmp.cache.Remove(w.tx)
+			txmp.cache.Remove(w.tx.Key())
 			txmp.metrics.EvictedTxs.Add(1)
 			// Add it to evicted transactions cache
-			txmp.evictedTxs.Push(w.tx)
+			txmp.evictedTxs.Push(w.tx.Key())
 			// We may not need to evict all the eligible transactions.  Bail out
 			// early if we have made enough room.
 			evictedBytes += w.Size()
@@ -658,7 +645,8 @@ func (txmp *TxMempool) handleRecheckResult(tx *types.CachedTx, checkTxRes *abci.
 	// Find the transaction reported by the ABCI callback. It is possible the
 	// transaction was evicted during the recheck, in which case the transaction
 	// will be gone.
-	elt, ok := txmp.txByKey[tx.Key()]
+	txKey := tx.Key()
+	elt, ok := txmp.txByKey[txKey]
 	if !ok {
 		return
 	}
@@ -682,15 +670,12 @@ func (txmp *TxMempool) handleRecheckResult(tx *types.CachedTx, checkTxRes *abci.
 		"err", err,
 		"code", checkTxRes.Code,
 	)
-	txmp.rejectedTxs.Push(wtx.tx, checkTxRes.Code)
+	txmp.rejectedTxs.Push(wtx.tx.Key(), checkTxRes.Code, checkTxRes.Log)
 	txmp.removeTxByElement(elt)
 	txmp.metrics.FailedTxs.Add(1)
-<<<<<<< HEAD
-=======
 	txmp.rejectedTxs.Push(wtx.tx.Key(), checkTxRes.Code, checkTxRes.Log)
->>>>>>> ec6fdcad (feat!: start tracking rejection logs (#2286))
 	if !txmp.config.KeepInvalidTxsInCache {
-		txmp.cache.Remove(wtx.tx)
+		txmp.cache.Remove(txKey)
 	}
 	txmp.metrics.Size.Set(float64(txmp.Size()))
 	txmp.metrics.SizeBytes.Set(float64(txmp.SizeBytes()))
@@ -779,8 +764,8 @@ func (txmp *TxMempool) purgeExpiredTxs(blockHeight int64) {
 		if txmp.config.TTLNumBlocks > 0 && (blockHeight-w.height) > txmp.config.TTLNumBlocks ||
 			txmp.config.TTLDuration > 0 && now.Sub(w.timestamp) > txmp.config.TTLDuration {
 			txmp.removeTxByElement(cur)
-			txmp.cache.Remove(w.tx)
-			txmp.evictedTxs.Push(w.tx)
+			txmp.cache.Remove(w.tx.Key())
+			txmp.evictedTxs.Push(w.tx.Key())
 			txmp.metrics.ExpiredTxs.Add(1)
 		}
 		cur = next

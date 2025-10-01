@@ -92,8 +92,6 @@ func (_m *Mempool) GetTxByKey(key types.TxKey) (*types.CachedTx, bool) {
 	return r0, r1
 }
 
-<<<<<<< HEAD
-=======
 // IsRejectedTx provides a mock function with given fields: key
 func (_m *Mempool) IsRejectedTx(key types.TxKey) (bool, uint32, string) {
 	ret := _m.Called(key)
@@ -129,7 +127,6 @@ func (_m *Mempool) IsRejectedTx(key types.TxKey) (bool, uint32, string) {
 	return r0, r1, r2
 }
 
->>>>>>> ec6fdcad (feat!: start tracking rejection logs (#2286))
 // Lock provides a mock function with no fields
 func (_m *Mempool) Lock() {
 	_m.Called()

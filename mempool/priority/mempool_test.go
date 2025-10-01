@@ -14,7 +14,7 @@ import (
 	"testing"
 	"time"
 
-	share "github.com/celestiaorg/go-square/v2/share"
+	share "github.com/celestiaorg/go-square/v3/share"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -605,7 +605,7 @@ func TestTxMempool_ExpiredTxs_Timestamp(t *testing.T) {
 		if _, ok := txmp.txByKey[tx.tx.Key()]; ok {
 			t.Errorf("Transaction %X should have been purged for TTL", tx.tx.Key())
 		}
-		if txmp.cache.Has(tx.tx.ToCachedTx()) {
+		if txmp.cache.Has(tx.tx.Key()) {
 			t.Errorf("Transaction %X should have been removed from the cache", tx.tx.Key())
 		}
 	}
@@ -842,26 +842,16 @@ func TestTxMempool_TestRejectionIndexing(t *testing.T) {
 		txKey := types.Tx(rejectedTx).Key()
 
 		// The transaction should not be rejected initially
-<<<<<<< HEAD
-		wasRejected, code := txmp.WasRecentlyRejected(txKey)
-		require.False(t, wasRejected)
-=======
 		rejected, code, log := txmp.IsRejectedTx(txKey)
 		require.False(t, rejected)
->>>>>>> ec6fdcad (feat!: start tracking rejection logs (#2286))
 		require.Equal(t, uint32(0), code)
 		require.Equal(t, "", log)
 
 		// Try to add the transaction - it should be rejected
 		err := txmp.CheckTx(rejectedTx, nil, mempool.TxInfo{})
 		require.NoError(t, err) // CheckTx method itself doesn't return error for app rejection
-<<<<<<< HEAD
-		wasRejected, code = txmp.WasRecentlyRejected(txKey)
-		require.True(t, wasRejected)
-=======
 		rejected, code, log = txmp.IsRejectedTx(txKey)
 		require.True(t, rejected)
->>>>>>> ec6fdcad (feat!: start tracking rejection logs (#2286))
 		require.Equal(t, uint32(101), code)
 		require.Equal(t, "invalid-tx-format", log)
 	})
@@ -880,26 +870,16 @@ func TestTxMempool_TestRejectionIndexing(t *testing.T) {
 		txKey := types.Tx(rejectedTx).Key()
 
 		// The transaction should not be rejected initially
-<<<<<<< HEAD
-		wasRejected, code := txmp.WasRecentlyRejected(txKey)
-		require.False(t, wasRejected)
-=======
 		rejected, code, log := txmp.IsRejectedTx(txKey)
 		require.False(t, rejected)
->>>>>>> ec6fdcad (feat!: start tracking rejection logs (#2286))
 		require.Equal(t, uint32(0), code)
 		require.Equal(t, "", log)
 
 		// Try to add the transaction - it should be rejected by precheck
 		err := txmp.CheckTx(rejectedTx, nil, mempool.TxInfo{})
 		require.Error(t, err) // PreCheck failures return an error
-<<<<<<< HEAD
-		wasRejected, code = txmp.WasRecentlyRejected(txKey)
-		require.True(t, wasRejected)
-=======
 		rejected, code, log = txmp.IsRejectedTx(txKey)
 		require.True(t, rejected)
->>>>>>> ec6fdcad (feat!: start tracking rejection logs (#2286))
 		require.Equal(t, uint32(0), code)
 		require.Equal(t, "rejected by precheck", log)
 	})
@@ -919,26 +899,16 @@ func TestTxMempool_TestRejectionIndexing(t *testing.T) {
 		txKey := types.Tx(rejectedTx).Key()
 
 		// The transaction should not be rejected initially
-<<<<<<< HEAD
-		wasRejected, code := txmp.WasRecentlyRejected(txKey)
-		require.False(t, wasRejected)
-=======
 		rejected, code, log := txmp.IsRejectedTx(txKey)
 		require.False(t, rejected)
->>>>>>> ec6fdcad (feat!: start tracking rejection logs (#2286))
 		require.Equal(t, uint32(0), code)
 		require.Equal(t, "", log)
 
 		// Try to add the transaction - it should be rejected by postcheck
 		err := txmp.CheckTx(rejectedTx, nil, mempool.TxInfo{})
 		require.NoError(t, err) // CheckTx method itself doesn't return error for postcheck failure
-<<<<<<< HEAD
-		wasRejected, code = txmp.WasRecentlyRejected(txKey)
-		require.True(t, wasRejected)
-=======
 		rejected, code, log = txmp.IsRejectedTx(txKey)
 		require.True(t, rejected)
->>>>>>> ec6fdcad (feat!: start tracking rejection logs (#2286))
 		require.Equal(t, uint32(0), code)
 		require.Equal(t, "", log)
 	})
@@ -951,13 +921,8 @@ func TestTxMempool_TestRejectionIndexing(t *testing.T) {
 		txKey := types.Tx(validTx).Key()
 
 		// The transaction should not be rejected initially
-<<<<<<< HEAD
-		wasRejected, code := txmp.WasRecentlyRejected(txKey)
-		require.False(t, wasRejected)
-=======
 		rejected, code, log := txmp.IsRejectedTx(txKey)
 		require.False(t, rejected)
->>>>>>> ec6fdcad (feat!: start tracking rejection logs (#2286))
 		require.Equal(t, uint32(0), code)
 		require.Equal(t, "", log)
 
@@ -966,13 +931,8 @@ func TestTxMempool_TestRejectionIndexing(t *testing.T) {
 		require.NoError(t, err)
 
 		// The transaction should still not be marked as rejected
-<<<<<<< HEAD
-		wasRejected, code = txmp.WasRecentlyRejected(txKey)
-		require.False(t, wasRejected)
-=======
 		rejected, code, log = txmp.IsRejectedTx(txKey)
 		require.False(t, rejected)
->>>>>>> ec6fdcad (feat!: start tracking rejection logs (#2286))
 		require.Equal(t, uint32(0), code)
 		require.Equal(t, "", log)
 	})

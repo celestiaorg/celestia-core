@@ -58,7 +58,7 @@ func startConsensusNet(t *testing.T, css []*State, n int) (
 	for i := 0; i < n; i++ {
 		/*logger, err := cmtflags.ParseLogLevel("consensus:info,*:error", logger, "info")
 		if err != nil {	t.Fatal(err)}*/
-		reactors[i] = NewReactor(css[i], css[i].propagator, true) // so we dont start the consensus states
+		reactors[i] = NewReactor(css[i], css[i].propagator, true, WithGossipDataEnabled(true)) // so we dont start the consensus states
 		reactors[i].SetLogger(css[i].Logger)
 
 		// eventBus is already started with the cs
@@ -378,7 +378,7 @@ func TestSwitchToConsensusVoteExtensions(t *testing.T) {
 			require.NoError(t, err)
 
 			// Consensus is preparing to do the next height after the stored height.
-			cs.Height = testCase.storedHeight + 1
+			cs.rs.Height = testCase.storedHeight + 1
 			propBlock.Height = testCase.storedHeight
 
 			var voteSet *types.VoteSet
@@ -905,7 +905,7 @@ func TestNewValidBlockMessageValidateBasic(t *testing.T) {
 		},
 		{
 			func(msg *NewValidBlockMessage) { msg.BlockParts = bits.NewBitArray(int(types.MaxBlockPartsCount) + 1) },
-			"blockParts bit array size 1998 not equal to BlockPartSetHeader.Total 1",
+			fmt.Sprintf("blockParts bit array size %d not equal to BlockPartSetHeader.Total 1", types.MaxBlockPartsCount+1),
 		},
 	}
 
@@ -1184,22 +1184,4 @@ func TestVoteMessageValidateBasic(t *testing.T) {
 			}
 		})
 	}
-}
-
-func TestReactorGossipDataEnabled(t *testing.T) {
-	N := 1
-	css, cleanup := randConsensusNet(t, N, "consensus_reactor_test", newMockTickerFunc(true), newKVStore)
-	defer cleanup()
-
-	// Test default enabled state
-	reactor := NewReactor(css[0], css[0].propagator, true)
-	assert.True(t, reactor.IsGossipDataEnabled())
-
-	// Test disabled state
-	reactor = NewReactor(css[0], css[0].propagator, true, WithGossipDataEnabled(false))
-	assert.False(t, reactor.IsGossipDataEnabled())
-
-	// Test enabled state
-	reactor = NewReactor(css[0], css[0].propagator, true, WithGossipDataEnabled(true))
-	assert.True(t, reactor.IsGossipDataEnabled())
 }

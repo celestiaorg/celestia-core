@@ -1,6 +1,10 @@
 package propagation
 
 import (
+	"fmt"
+	"math/rand/v2"
+	"os"
+	"runtime/pprof"
 	"testing"
 	"time"
 
@@ -29,7 +33,7 @@ func TestPropose(t *testing.T) {
 		cleanup(t)
 	})
 
-	prop, partSet, _, metaData := createTestProposal(t, sm, 1, 100, 1000)
+	prop, partSet, _, metaData := createTestProposal(t, sm, 1, 0, 100, 1000)
 
 	reactor1.ProposeBlock(prop, partSet, metaData)
 
@@ -50,11 +54,17 @@ func TestPropose(t *testing.T) {
 	assert.True(t, has)
 	// the parts == total because we only have 2 peers
 	assert.Equal(t, haves.Size(), int(partSet.Total()*2))
+	for _, index := range haves.GetTrueIndices() {
+		assert.GreaterOrEqual(t, index, int(partSet.Total()))
+	}
 
 	haves, has = reactor3.getPeer(reactor1.self).GetHaves(prop.Height, prop.Round)
 	assert.True(t, has)
 	// the parts == total because we only have 2 peers
 	assert.Equal(t, haves.Size(), int(partSet.Total()*2))
+	for _, index := range haves.GetTrueIndices() {
+		assert.GreaterOrEqual(t, index, int(partSet.Total()))
+	}
 
 	time.Sleep(500 * time.Millisecond)
 
@@ -65,15 +75,51 @@ func TestPropose(t *testing.T) {
 	}
 }
 
+func TestPropose_OnlySendParityChunks(t *testing.T) {
+	reactors, _ := testBlockPropReactors(2, cfg.DefaultP2PConfig())
+	reactor1 := reactors[0]
+	reactor2 := reactors[1]
+
+	cleanup, _, sm := state.SetupTestCase(t)
+	t.Cleanup(func() {
+		cleanup(t)
+	})
+
+	// 128 mb block
+	prop, partSet, _, metaData := createTestProposal(t, sm, 1, 0, 30, 4_000_000)
+
+	reactor1.ProposeBlock(prop, partSet, metaData)
+
+	time.Sleep(200 * time.Millisecond)
+
+	// check that the proposal was saved in reactor 1
+	_, _, has := reactor1.GetProposal(prop.Height, prop.Round)
+	require.True(t, has)
+
+	// Check that the proposal was received by the other reactors
+	_, _, has = reactor2.GetProposal(prop.Height, prop.Round)
+	require.True(t, has)
+
+	// Check whether all the received haves are for parity parts
+	haves, has := reactor2.getPeer(reactor1.self).GetHaves(prop.Height, prop.Round)
+	assert.True(t, has)
+	// the parts == total because we only have 2 peers
+	assert.Equal(t, haves.Size(), int(partSet.Total()*2))
+	for _, index := range haves.GetTrueIndices() {
+		assert.GreaterOrEqual(t, index, int(partSet.Total()))
+	}
+}
+
 func createTestProposal(
-	t *testing.T,
+	t testing.TB,
 	sm state.State,
 	height int64,
+	round int32,
 	txCount, txSize int,
 ) (*types.Proposal, *types.PartSet, *types.Block, []proptypes.TxMetaData) {
 	txs := make([]types.Tx, txCount)
 	for i := 0; i < txCount; i++ {
-		txs[i] = cmtrand.Bytes(txSize)
+		txs[i] = randomBytes(txSize)
 	}
 	data := types.Data{
 		Txs: txs,
@@ -89,7 +135,7 @@ func createTestProposal(
 		}
 	}
 	id := types.BlockID{Hash: block.Hash(), PartSetHeader: partSet.Header()}
-	prop := types.NewProposal(block.Height, 0, -1, id)
+	prop := types.NewProposal(block.Height, round, -1, id)
 	protoProp := prop.ToProto()
 	err = mockPrivVal.SignProposal(TestChainID, protoProp)
 	require.NoError(t, err)
@@ -180,4 +226,105 @@ func (m *mockMempool) AddTx(tx types.Tx) {
 func (m *mockMempool) GetTxByKey(key types.TxKey) (*types.CachedTx, bool) {
 	val, found := m.txs[key]
 	return val, found
+}
+
+func BenchmarkMempoolRecovery(b *testing.B) {
+	nTxss := []int{128, 1024, 8192}
+	missingPercent := []int{50, 75, 95}
+
+	for _, nTxs := range nTxss {
+		b.Run(fmt.Sprintf("Txs=%d", nTxs), func(b *testing.B) {
+			for _, missingPercent := range missingPercent {
+				b.Run(fmt.Sprintf("MissingParts%%=%d", missingPercent), func(b *testing.B) {
+					cleanup, _, sm := state.SetupTestCase(b)
+					defer cleanup(b)
+
+					mempool := &mockMempool{txs: make(map[types.TxKey]*types.CachedTx)}
+					prop, ps, block, metaData := createTestProposal(b, sm, 0, 0, nTxs, types.MaxBlockSizeBytes/nTxs)
+					cb, _ := createCompactBlock(b, prop, ps, metaData)
+					cps := proptypes.NewCombinedPartSetFromOriginal(ps, false)
+
+					parity, _, err := types.Encode(ps, types.BlockPartSizeBytes)
+					require.NoError(b, err)
+					cps.SetProposalData(ps, parity)
+
+					for _, tx := range block.Txs {
+						mempool.AddTx(tx)
+					}
+
+					nParts := int(cps.Total())
+					missingParts := nParts * missingPercent / 100
+					indices := rand.Perm(nParts)[:missingParts]
+					for _, i := range indices {
+						cps.BitArray().SetIndex(i, false)
+					}
+
+					blockStore := store.NewBlockStore(dbm.NewMemDB())
+					reactor := NewReactor(
+						"",
+						Config{
+							Store:         blockStore,
+							Mempool:       mempool,
+							Privval:       mockPrivVal,
+							ChainID:       sm.ChainID,
+							BlockMaxBytes: sm.ConsensusParams.Block.MaxBytes,
+						},
+					)
+					require.NoError(b, reactor.Start())
+					reactor.currentProposer = mockPubKey
+					reactor.proposals = make(map[int64]map[int32]*proposalData)
+					reactor.proposals[0] = make(map[int32]*proposalData)
+					reactor.proposals[0][0] = &proposalData{
+						compactBlock: cb,
+						block:        cps,
+						maxRequests:  nil,
+						catchup:      false,
+					}
+
+					f, err := os.Create(fmt.Sprintf("mempool-recovery-%d-%d.pprof", nTxs, missingPercent))
+					require.NoError(b, err)
+					defer f.Close()
+					err = pprof.StartCPUProfile(f)
+					require.NoError(b, err)
+					defer pprof.StopCPUProfile()
+
+					b.ReportAllocs()
+					b.ResetTimer()
+
+					for i := 0; i < b.N; i++ {
+						reactor.recoverPartsFromMempool(cb)
+					}
+					require.NoError(b, reactor.Stop())
+				})
+			}
+		})
+	}
+}
+
+func randomBytes(n int) []byte {
+	bytes := make([]byte, n)
+
+	// Handle full 8-byte chunks
+	i := 0
+	for ; i <= n-8; i += 8 {
+		val := rand.Uint64()
+		bytes[i] = byte(val)
+		bytes[i+1] = byte(val >> 8)
+		bytes[i+2] = byte(val >> 16)
+		bytes[i+3] = byte(val >> 24)
+		bytes[i+4] = byte(val >> 32)
+		bytes[i+5] = byte(val >> 40)
+		bytes[i+6] = byte(val >> 48)
+		bytes[i+7] = byte(val >> 56)
+	}
+
+	// Handle remainder
+	if i < n {
+		val := rand.Uint64()
+		for j := 0; i+j < n; j++ {
+			bytes[i+j] = byte(val >> (j * 8))
+		}
+	}
+
+	return bytes
 }

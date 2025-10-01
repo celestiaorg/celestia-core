@@ -5,6 +5,8 @@ import (
 	"context"
 	"fmt"
 	"path/filepath"
+	"runtime"
+	"sync"
 	"time"
 
 	"github.com/cometbft/cometbft/libs/trace"
@@ -15,6 +17,7 @@ import (
 	"github.com/cometbft/cometbft/libs/fail"
 	"github.com/cometbft/cometbft/libs/log"
 	"github.com/cometbft/cometbft/mempool"
+	cmtstate "github.com/cometbft/cometbft/proto/tendermint/state"
 	cmtproto "github.com/cometbft/cometbft/proto/tendermint/types"
 	"github.com/cometbft/cometbft/proxy"
 	"github.com/cometbft/cometbft/types"
@@ -152,10 +155,7 @@ func (blockExec *BlockExecutor) CreateProposalBlock(
 
 	txs := blockExec.mempool.ReapMaxBytesMaxGas(maxReapBytes, maxGas)
 	commit := lastExtCommit.ToCommit()
-	block, _, err := state.MakeBlock(height, types.MakeData(types.TxsFromCachedTxs(txs)), commit, evidence, proposerAddr)
-	if err != nil {
-		return nil, nil, err
-	}
+	block := state.MakeBlockWithoutPartset(height, types.MakeData(types.TxsFromCachedTxs(txs)), commit, evidence, proposerAddr)
 	req := &abci.RequestPrepareProposal{
 		MaxTxBytes:         maxDataBytes,
 		Txs:                block.Txs.ToSliceOfBytes(),
@@ -168,7 +168,7 @@ func (blockExec *BlockExecutor) CreateProposalBlock(
 	}
 
 	var rpp *abci.ResponsePrepareProposal
-
+	var err error
 	func() {
 		defer func() {
 			if r := recover(); r != nil {
@@ -198,7 +198,6 @@ func (blockExec *BlockExecutor) CreateProposalBlock(
 	}
 
 	rawNewData := rpp.GetTxs()
-
 	rejectedTxs := len(rawNewData) - len(txs)
 	if rejectedTxs > 0 {
 		blockExec.metrics.RejectedTransactions.Add(float64(rejectedTxs))
@@ -209,7 +208,6 @@ func (blockExec *BlockExecutor) CreateProposalBlock(
 	if err := txl.Validate(maxDataBytes); err != nil {
 		return nil, nil, err
 	}
-
 	newData := types.NewData(txl, rpp.SquareSize, rpp.DataRootHash)
 	block, partset, err := state.MakeBlock(height, newData, commit, evidence, proposerAddr)
 	if err != nil {
@@ -220,10 +218,21 @@ func (blockExec *BlockExecutor) CreateProposalBlock(
 	// TODO: make sure that the hashes are correct here
 	// via also removing hashes that the application removed!
 	hashes := make([][]byte, len(newData.Txs))
-	for i := 0; i < len(newData.Txs); i++ {
-		hashes[i] = newData.Txs[i].Hash()
+	numWorkers := min(runtime.NumCPU()-1, len(newData.Txs))
+	workers := make(chan struct{}, numWorkers)
+	var wg sync.WaitGroup
+	for i, tx := range newData.Txs {
+		workers <- struct{}{}
+		wg.Add(1)
+		go func() {
+			defer func() {
+				<-workers
+				wg.Done()
+			}()
+			hashes[i] = tx.Hash()
+		}()
 	}
-
+	wg.Wait()
 	block.SetCachedHashes(hashes)
 
 	return block, partset, nil
@@ -231,7 +240,7 @@ func (blockExec *BlockExecutor) CreateProposalBlock(
 
 func (blockExec *BlockExecutor) ProcessProposal(
 	block *types.Block,
-	state State,
+	initialHeight int64,
 ) (bool, error) {
 	pbHeader := block.Header.ToProto()
 	resp, err := blockExec.proxyApp.ProcessProposal(context.TODO(), &abci.RequestProcessProposal{
@@ -241,7 +250,7 @@ func (blockExec *BlockExecutor) ProcessProposal(
 		Txs:                block.Data.Txs.ToSliceOfBytes(), //nolint:staticcheck
 		SquareSize:         block.Data.SquareSize,           //nolint:staticcheck
 		DataRootHash:       block.Data.Hash(),
-		ProposedLastCommit: buildLastCommitInfoFromStore(block, blockExec.store, state.InitialHeight),
+		ProposedLastCommit: buildLastCommitInfoFromStore(block, blockExec.store, initialHeight),
 		Misbehavior:        block.Evidence.Evidence.ToABCI(),
 		ProposerAddress:    block.ProposerAddress,
 		NextValidatorsHash: block.NextValidatorsHash,
@@ -342,7 +351,7 @@ func (blockExec *BlockExecutor) applyBlock(state State, blockID types.BlockID, b
 		return state, fmt.Errorf("expected tx results length to match size of transactions in block. Expected %d, got %d", len(block.Data.Txs), len(abciResponse.TxResults)) //nolint:staticcheck
 	}
 
-	blockExec.logger.Info("executed block", "height", block.Height, "app_hash", fmt.Sprintf("%X", abciResponse.AppHash))
+	blockExec.logger.Debug("executed block", "height", block.Height, "app_hash", fmt.Sprintf("%X", abciResponse.AppHash))
 	// Save indexing info of the transaction.
 	// This needs to be done prior to saving state
 	// for correct crash recovery
@@ -509,7 +518,7 @@ func (blockExec *BlockExecutor) Commit(
 	}
 
 	// ResponseCommit has no error code - just data
-	blockExec.logger.Info(
+	blockExec.logger.Debug(
 		"committed state",
 		"height", block.Height,
 		"block_app_hash", fmt.Sprintf("%X", block.AppHash),
@@ -758,8 +767,16 @@ func updateState(
 		LastHeightConsensusParamsChanged: lastHeightParamsChanged,
 		LastResultsHash:                  TxResultsHash(abciResponse.TxResults),
 		AppHash:                          nil,
-		TimeoutCommit:                    abciResponse.TimeoutInfo.TimeoutCommit,
-		TimeoutPropose:                   abciResponse.TimeoutInfo.TimeoutPropose,
+		Timeouts: cmtstate.TimeoutInfo{
+			TimeoutPropose:          abciResponse.TimeoutInfo.TimeoutPropose,
+			TimeoutCommit:           abciResponse.TimeoutInfo.TimeoutCommit,
+			TimeoutProposeDelta:     abciResponse.TimeoutInfo.TimeoutProposeDelta,
+			TimeoutPrevote:          abciResponse.TimeoutInfo.TimeoutPrevote,
+			TimeoutPrevoteDelta:     abciResponse.TimeoutInfo.TimeoutPrevoteDelta,
+			TimeoutPrecommit:        abciResponse.TimeoutInfo.TimeoutPrecommit,
+			TimeoutPrecommitDelta:   abciResponse.TimeoutInfo.TimeoutPrecommitDelta,
+			DelayedPrecommitTimeout: abciResponse.TimeoutInfo.DelayedPrecommitTimeout,
+		},
 	}, nil
 }
 
@@ -882,7 +899,7 @@ func ExecCommitBlock(
 		return nil, fmt.Errorf("expected tx results length to match size of transactions in block. Expected %d, got %d", len(block.Data.Txs), len(resp.TxResults)) //nolint:staticcheck
 	}
 
-	logger.Info("executed block", "height", block.Height, "app_hash", fmt.Sprintf("%X", resp.AppHash))
+	logger.Debug("executed block", "height", block.Height, "app_hash", fmt.Sprintf("%X", resp.AppHash))
 
 	// Commit block
 	_, err = appConnConsensus.Commit(context.TODO())
