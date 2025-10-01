@@ -58,7 +58,7 @@ func startConsensusNet(t *testing.T, css []*State, n int) (
 	for i := 0; i < n; i++ {
 		/*logger, err := cmtflags.ParseLogLevel("consensus:info,*:error", logger, "info")
 		if err != nil {	t.Fatal(err)}*/
-		reactors[i] = NewReactor(css[i], css[i].propagator, true) // so we dont start the consensus states
+		reactors[i] = NewReactor(css[i], css[i].propagator, true, WithGossipDataEnabled(true)) // so we dont start the consensus states
 		reactors[i].SetLogger(css[i].Logger)
 
 		// eventBus is already started with the cs
@@ -905,7 +905,7 @@ func TestNewValidBlockMessageValidateBasic(t *testing.T) {
 		},
 		{
 			func(msg *NewValidBlockMessage) { msg.BlockParts = bits.NewBitArray(int(types.MaxBlockPartsCount) + 1) },
-			"blockParts bit array size 1998 not equal to BlockPartSetHeader.Total 1",
+			"blockParts bit array size 2050 not equal to BlockPartSetHeader.Total 1",
 		},
 	}
 
@@ -1193,7 +1193,7 @@ func TestReactorGossipDataEnabled(t *testing.T) {
 
 	// Test default enabled state
 	reactor := NewReactor(css[0], css[0].propagator, true)
-	assert.True(t, reactor.IsGossipDataEnabled())
+	assert.False(t, reactor.IsGossipDataEnabled())
 
 	// Test disabled state
 	reactor = NewReactor(css[0], css[0].propagator, true, WithGossipDataEnabled(false))

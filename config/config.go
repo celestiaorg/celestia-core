@@ -1121,6 +1121,7 @@ type ConsensusConfig struct {
 
 	// Disable the propagation reactor for block and proposal recovery
 	DisablePropagationReactor bool `mapstructure:"disable_propagation_reactor"`
+	EnableLegacyBlockProp     bool `mapstructure:"enable_legacy_block_prop"`
 }
 
 // DefaultConsensusConfig returns a default configuration for the consensus service
@@ -1143,6 +1144,7 @@ func DefaultConsensusConfig() *ConsensusConfig {
 		PeerQueryMaj23SleepDuration: 2000 * time.Millisecond,
 		DoubleSignCheckHeight:       int64(0),
 		DisablePropagationReactor:   false,
+		EnableLegacyBlockProp:       false,
 	}
 }
 

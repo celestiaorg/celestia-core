@@ -202,6 +202,7 @@ type ManifestNode struct {
 	// DisablePropagationReactor disables the propagation reactor for block and proposal recovery.
 	// Defaults to false (propagation reactor enabled).
 	DisablePropagationReactor bool `toml:"disable_propagation_reactor"`
+	EnableLegacyBlockProp     bool `toml:"enable_legacy_block_prop"`
 }
 
 // Save saves the testnet manifest to a file.
