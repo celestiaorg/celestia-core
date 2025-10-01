@@ -92,41 +92,6 @@ func (_m *Mempool) GetTxByKey(key types.TxKey) (*types.CachedTx, bool) {
 	return r0, r1
 }
 
-// IsRejectedTx provides a mock function with given fields: key
-func (_m *Mempool) IsRejectedTx(key types.TxKey) (bool, uint32, string) {
-	ret := _m.Called(key)
-
-	if len(ret) == 0 {
-		panic("no return value specified for IsRejectedTx")
-	}
-
-	var r0 bool
-	var r1 uint32
-	var r2 string
-	if rf, ok := ret.Get(0).(func(types.TxKey) (bool, uint32, string)); ok {
-		return rf(key)
-	}
-	if rf, ok := ret.Get(0).(func(types.TxKey) bool); ok {
-		r0 = rf(key)
-	} else {
-		r0 = ret.Get(0).(bool)
-	}
-
-	if rf, ok := ret.Get(1).(func(types.TxKey) uint32); ok {
-		r1 = rf(key)
-	} else {
-		r1 = ret.Get(1).(uint32)
-	}
-
-	if rf, ok := ret.Get(2).(func(types.TxKey) string); ok {
-		r2 = rf(key)
-	} else {
-		r2 = ret.Get(2).(string)
-	}
-
-	return r0, r1, r2
-}
-
 // Lock provides a mock function with no fields
 func (_m *Mempool) Lock() {
 	_m.Called()
@@ -288,7 +253,7 @@ func (_m *Mempool) WasRecentlyEvicted(key types.TxKey) bool {
 }
 
 // WasRecentlyRejected provides a mock function with given fields: key
-func (_m *Mempool) WasRecentlyRejected(key types.TxKey) (bool, uint32) {
+func (_m *Mempool) WasRecentlyRejected(key types.TxKey) (bool, uint32, string) {
 	ret := _m.Called(key)
 
 	if len(ret) == 0 {
@@ -297,7 +262,8 @@ func (_m *Mempool) WasRecentlyRejected(key types.TxKey) (bool, uint32) {
 
 	var r0 bool
 	var r1 uint32
-	if rf, ok := ret.Get(0).(func(types.TxKey) (bool, uint32)); ok {
+	var r2 string
+	if rf, ok := ret.Get(0).(func(types.TxKey) (bool, uint32, string)); ok {
 		return rf(key)
 	}
 	if rf, ok := ret.Get(0).(func(types.TxKey) bool); ok {
@@ -312,7 +278,13 @@ func (_m *Mempool) WasRecentlyRejected(key types.TxKey) (bool, uint32) {
 		r1 = ret.Get(1).(uint32)
 	}
 
-	return r0, r1
+	if rf, ok := ret.Get(2).(func(types.TxKey) string); ok {
+		r2 = rf(key)
+	} else {
+		r2 = ret.Get(2).(string)
+	}
+
+	return r0, r1, r2
 }
 
 // NewMempool creates a new instance of Mempool. It also registers a testing interface on the mock and a cleanup function to assert the mocks expectations.
