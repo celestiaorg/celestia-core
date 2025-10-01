@@ -547,6 +547,11 @@ func (ps *PartSet) AddPart(part *Part) (bool, error) {
 		return false, fmt.Errorf("nil part")
 	}
 
+	// If part already exists, return false.
+	if ps.partsBitArray.GetIndex(int(part.Index)) {
+		return false, nil
+	}
+
 	// The proof should be compatible with the number of parts.
 	if part.Proof.Total != int64(ps.total) {
 		return false, fmt.Errorf(ErrPartSetInvalidProofTotal.Error()+":%v %v", part.Proof.Total, ps.total)
