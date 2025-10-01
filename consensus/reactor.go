@@ -33,7 +33,7 @@ const (
 	VoteChannel        = byte(0x22)
 	VoteSetBitsChannel = byte(0x23)
 
-	maxMsgSize = 128 * 1024 // 128kb; NOTE/TODO: keep in sync with types.PartSet sizes.
+	maxMsgSize = 512 * 1024 // 512kb; NOTE/TODO: keep in sync with types.PartSet sizes.
 
 	blocksToContributeToBecomeGoodPeer = 10000
 	votesToContributeToBecomeGoodPeer  = 10000
