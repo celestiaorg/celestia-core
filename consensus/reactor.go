@@ -33,7 +33,7 @@ const (
 	VoteChannel        = byte(0x22)
 	VoteSetBitsChannel = byte(0x23)
 
-	maxMsgSize = 1048576 // 1MB; NOTE/TODO: keep in sync with types.PartSet sizes.
+	maxMsgSize = 128 * 1024 // 128kb; NOTE/TODO: keep in sync with types.PartSet sizes.
 
 	blocksToContributeToBecomeGoodPeer = 10000
 	votesToContributeToBecomeGoodPeer  = 10000
@@ -181,7 +181,7 @@ func (conR *Reactor) GetChannels() []*p2p.ChannelDescriptor {
 		{
 			ID:                  StateChannel,
 			Priority:            230,
-			SendQueueCapacity:   100,
+			SendQueueCapacity:   200,
 			RecvMessageCapacity: maxMsgSize,
 			MessageType:         &cmtcons.Message{},
 		},
@@ -197,7 +197,7 @@ func (conR *Reactor) GetChannels() []*p2p.ChannelDescriptor {
 		{
 			ID:                  VoteChannel,
 			Priority:            235,
-			SendQueueCapacity:   100,
+			SendQueueCapacity:   200,
 			RecvBufferCapacity:  100 * 100,
 			RecvMessageCapacity: maxMsgSize,
 			MessageType:         &cmtcons.Message{},

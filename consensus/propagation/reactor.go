@@ -26,7 +26,7 @@ import (
 )
 
 const (
-	maxMsgSize = 4194304 // 4MiB
+	maxMsgSize = 128 * 1024 // 128kb
 
 	// DataChannel the propagation reactor channel handling the haves, the compact block,
 	// and the recovery parts.
