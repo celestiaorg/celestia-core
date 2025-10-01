@@ -39,7 +39,7 @@ const (
 
 	defaultSendQueueCapacity   = 1
 	defaultRecvBufferCapacity  = 4096
-	defaultRecvMessageCapacity = 256 * 1024    // 256kb
+	defaultRecvMessageCapacity = 22020096      // 21MB
 	defaultSendRate            = int64(512000) // 500KB/s
 	defaultRecvRate            = int64(512000) // 500KB/s
 	defaultSendTimeout         = 10 * time.Second
