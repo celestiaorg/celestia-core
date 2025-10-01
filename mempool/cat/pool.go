@@ -305,7 +305,6 @@ func (txmp *TxPool) TryAddNewTx(tx *types.CachedTx, key types.TxKey, txInfo memp
 	if err := txmp.preCheck(tx); err != nil {
 		txmp.rejectedTxCache.Push(key, 0, err.Error())
 		txmp.metrics.FailedTxs.Add(1)
-		txmp.rejectedTxCache.Push(tx.Key(), 0, err.Error())
 		return nil, err
 	}
 
