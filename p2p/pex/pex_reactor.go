@@ -23,7 +23,7 @@ const (
 	// over-estimate of max NetAddress size
 	// hexID (40) + IP (16) + Port (2) + Name (100) ...
 	// NOTE: dont use massive DNS name ..
-	maxAddressSize = 256
+	maxAddressSize = 512
 
 	// NOTE: amplificaiton factor!
 	// small request results in up to maxMsgSize response
