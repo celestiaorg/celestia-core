@@ -11,18 +11,14 @@ validator02 = 100
 
 [node.validator01]
 mode = "validator"
-# This validator runs with the propagation reactor enabled (default)
 
 [node.validator02]
 mode = "validator"
-# This validator runs with the propagation reactor disabled
 disable_propagation_reactor = true
 
 [node.full01]
 mode = "full"
-# This full node runs with the propagation reactor enabled (default)
 
-[node.full02] 
+[node.full02]
 mode = "full"
-# This full node runs with the propagation reactor disabled
 disable_propagation_reactor = true
