@@ -208,14 +208,14 @@ func (c *CompactBlock) Proofs() ([]*merkle.Proof, error) {
 
 	c.proofsCache = make([]*merkle.Proof, 0, len(c.PartsHashes))
 
-	root, proofs := merkle.ProofsFromLeafHashes(c.PartsHashes[:total])
+	root, proofs := merkle.ParallelProofsFromLeafHashes(c.PartsHashes[:total])
 	c.proofsCache = append(c.proofsCache, proofs...)
 
 	if !bytes.Equal(root, c.Proposal.BlockID.PartSetHeader.Hash) {
 		return c.proofsCache, fmt.Errorf("incorrect PartsHash: original root")
 	}
 
-	parityRoot, eproofs := merkle.ProofsFromLeafHashes(c.PartsHashes[total:])
+	parityRoot, eproofs := merkle.ParallelProofsFromLeafHashes(c.PartsHashes[total:])
 	c.proofsCache = append(c.proofsCache, eproofs...)
 
 	if !bytes.Equal(c.BpHash, parityRoot) {
@@ -324,7 +324,7 @@ func (h *HaveParts) ValidateBasic() error {
 // Returns an error if any hash does not match, indicating the index of the first mismatch.
 func (h *HaveParts) ValidatePartHashes(expectedHashes [][]byte) error {
 	if len(expectedHashes) == 0 {
-		return errors.New("empty expected hashes height")
+		return fmt.Errorf("empty expected hashes for height %d round %d", h.Height, h.Round)
 	}
 	for _, part := range h.Parts {
 		if int(part.Index) >= len(expectedHashes) {

@@ -101,8 +101,8 @@ I[10-04|13:54:30.405] Block{
     Precommits: Vote{0:125B0E3C5512 90/00/2(Precommit) F15AB8BEF9A6 {/FE98E2B956F0.../}}
   }#56FEF2EFDB8B37E9C6E6D635749DF3169D5F005D
 }#F671D562C7B9242900A286E1882EE64E5556FE9E module=consensus
-I[10-04|13:54:30.408] Executed block                               module=state height=91 validTxs=0 invalidTxs=0
-I[10-04|13:54:30.410] Committed state                              module=state height=91 txs=0 hash=E0FBAFBF6FCED8B9786DDFEB1A0D4FA2501BADAD
+D[10-04|13:54:30.408] Executed block                               module=state height=91 validTxs=0 invalidTxs=0
+D[10-04|13:54:30.410] Committed state                              module=state height=91 txs=0 hash=E0FBAFBF6FCED8B9786DDFEB1A0D4FA2501BADAD
 I[10-04|13:54:30.410] Recheck txs                                  module=mempool numtxs=0 height=91
 ```
 

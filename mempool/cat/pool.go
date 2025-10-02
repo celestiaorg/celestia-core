@@ -20,8 +20,7 @@ import (
 var _ mempool.Mempool = (*TxPool)(nil)
 
 var (
-	ErrTxInMempool       = errors.New("tx already exists in mempool")
-	ErrTxAlreadyRejected = errors.New("tx was previously rejected")
+	ErrTxInMempool = errors.New("tx already exists in mempool")
 )
 
 // TxPoolOption sets an optional parameter on the TxPool.
@@ -199,13 +198,13 @@ func (txmp *TxPool) WasRecentlyEvicted(txKey types.TxKey) bool {
 }
 
 // WasRecentlyRejected returns a bool indicating if the transaction was recently rejected and is
-// currently within the cache. It also returns the rejection code.
-func (txmp *TxPool) WasRecentlyRejected(txKey types.TxKey) (bool, uint32) {
-	code, exists := txmp.rejectedTxCache.Get(txKey)
+// currently within the cache. It also returns the rejection code and log.
+func (txmp *TxPool) WasRecentlyRejected(txKey types.TxKey) (bool, uint32, string) {
+	code, log, exists := txmp.rejectedTxCache.Get(txKey)
 	if !exists {
-		return false, 0
+		return false, 0, ""
 	}
-	return true, code
+	return true, code, log
 }
 
 // CheckTx adds the given transaction to the mempool if it fits and passes the
@@ -288,13 +287,6 @@ func (txmp *TxPool) TryAddNewTx(tx *types.CachedTx, key types.TxKey, txInfo memp
 	// - We are connected to nodes running v0 or v1 which simply flood the network
 	// - If a client submits a transaction to multiple nodes (via RPC)
 	// - We send multiple requests and the first peer eventually responds after the second peer has already provided the tx
-	wasRejected, _ := txmp.WasRecentlyRejected(key)
-	if wasRejected {
-		// The peer has sent us a transaction that we have previously marked as invalid. Since `CheckTx` can
-		// be non-deterministic, we don't punish the peer but instead just ignore the tx
-		return nil, ErrTxAlreadyRejected
-	}
-
 	if txmp.Has(key) {
 		txmp.metrics.AlreadySeenTxs.Add(1)
 		// The peer has sent us a transaction that we have already seen
@@ -311,8 +303,8 @@ func (txmp *TxPool) TryAddNewTx(tx *types.CachedTx, key types.TxKey, txInfo memp
 
 	// If a precheck hook is defined, call it before invoking the application.
 	if err := txmp.preCheck(tx); err != nil {
+		txmp.rejectedTxCache.Push(key, 0, err.Error())
 		txmp.metrics.FailedTxs.Add(1)
-		txmp.rejectedTxCache.Push(tx.Key(), 0)
 		return nil, err
 	}
 
@@ -330,20 +322,20 @@ func (txmp *TxPool) TryAddNewTx(tx *types.CachedTx, key types.TxKey, txInfo memp
 		return rsp, err
 	}
 	if rsp.Code != abci.CodeTypeOK {
-		txmp.rejectedTxCache.Push(tx.Key(), rsp.Code)
+		txmp.rejectedTxCache.Push(key, rsp.Code, rsp.Log)
 		txmp.metrics.FailedTxs.Add(1)
 		return rsp, nil
 	}
 
 	// Create wrapped tx
 	wtx := newWrappedTx(
-		tx, txmp.height, rsp.GasWanted, rsp.Priority, string(rsp.Address),
+		tx, txmp.height, rsp.GasWanted, rsp.Priority, rsp.Address, rsp.Sequence,
 	)
 
 	// Perform the post check
 	err = txmp.postCheck(wtx.tx, rsp)
 	if err != nil {
-		txmp.rejectedTxCache.Push(wtx.tx.Key(), 0)
+		txmp.rejectedTxCache.Push(key, 0, err.Error())
 		txmp.metrics.FailedTxs.Add(1)
 		return rsp, fmt.Errorf("rejected bad transaction after post check: %w", err)
 	}
@@ -365,7 +357,7 @@ func (txmp *TxPool) RemoveTxByKey(txKey types.TxKey) error {
 }
 
 func (txmp *TxPool) removeTxByKey(txKey types.TxKey) {
-	txmp.rejectedTxCache.Push(txKey, 0)
+	txmp.rejectedTxCache.Push(txKey, 0, "")
 	_ = txmp.store.remove(txKey)
 	txmp.seenByPeersSet.RemoveKey(txKey)
 }
@@ -393,9 +385,11 @@ func (txmp *TxPool) PeerHasTx(peer uint16, txKey types.TxKey) {
 }
 
 // ReapMaxBytesMaxGas returns a slice of valid transactions that fit within the
-// size and gas constraints. The results are ordered by nonincreasing priority,
-// with ties broken by increasing order of arrival. Reaping transactions does
-// not remove them from the mempool
+// size and gas constraints. The results are ordered by decreasing priority,
+// with ties broken by increasing order of arrival. Transactions are also
+// grouped together by signer in order of sequence to preserve sequence ordering within a signer.
+//
+// # Reaping transactions does not remove them from the mempool
 //
 // If maxBytes < 0, no limit is set on the total size in bytes.
 // If maxGas < 0, no limit is set on the total gas cost.
@@ -406,25 +400,71 @@ func (txmp *TxPool) ReapMaxBytesMaxGas(maxBytes, maxGas int64) []*types.CachedTx
 	var totalGas, totalBytes int64
 
 	var keep []*types.CachedTx
-	txmp.store.iterateOrderedTxs(func(w *wrappedTx) bool {
-		// N.B. When computing byte size, we need to include the overhead for
-		// encoding as protobuf to send to the application. This actually overestimates it
-		// as we add the proto overhead to each transaction
-		txBytes := types.ComputeProtoSizeForTxs([]types.Tx{w.tx.Tx})
-		if (maxGas >= 0 && totalGas+w.gasWanted > maxGas) || (maxBytes >= 0 && totalBytes+txBytes > maxBytes) {
-			return true
+	txmp.store.processOrderedTxSets(func(txSets []*txSet) {
+		for idx, txSet := range txSets {
+			if maxBytes >= 0 && totalBytes+txSet.bytes > maxBytes ||
+				maxGas >= 0 && totalGas+txSet.totalGasWanted > maxGas {
+				// if the next transaction set can not fit, then we need to break down the indidual transactions
+				// and work out the residual set that has the highest accumulative priority and append that
+				keep = append(keep, txmp.determineLeftoverTxs(txSets[idx:], maxBytes-totalBytes, maxGas-totalGas)...)
+				break
+			}
+			totalBytes += txSet.bytes
+			totalGas += txSet.totalGasWanted
+			keep = append(keep, txSet.rawTxs()...)
 		}
-		totalBytes += txBytes
-		totalGas += w.gasWanted
-		keep = append(keep, w.tx)
-		return true
 	})
 	return keep
 }
 
+// this function iterates over remaining txSets starting at all possible offsets i.e. from
+// the first, second, third etc. transaction and working out what permutation given the remaining
+// available bytes and gas has the highest aggregated priority
+func (txmp *TxPool) determineLeftoverTxs(txSets []*txSet, remainingBytes, remainingGas int64) []*types.CachedTx {
+	priorities := make([]int64, len(txSets))
+	possibleTxPermutations := make([][]*types.CachedTx, len(txSets))
+	for i := 0; i < len(txSets); i++ {
+		priorities[i], possibleTxPermutations[i] = txmp.getAggregatedPriorityAndTxs(txSets[i:], remainingBytes, remainingGas)
+	}
+	highestPriorityIndex := 0
+	for i := 1; i < len(priorities); i++ {
+		if priorities[i] > priorities[highestPriorityIndex] {
+			highestPriorityIndex = i
+		}
+	}
+	return possibleTxPermutations[highestPriorityIndex]
+}
+
+// getAggregatedPriorityAndTxs return the first n txs in the provided txSets that fit within
+// the remaining bytes and gas and returns the aggregated priority of the resulting txs
+func (txmp *TxPool) getAggregatedPriorityAndTxs(txSets []*txSet, remainingBytes, remainingGas int64) (int64, []*types.CachedTx) {
+	aggregatedTxSubSets := make([]*txSet, 0, len(txSets))
+
+	for _, txSet := range txSets {
+		slicedSet := txSet.sliceTxsByBytesAndGas(remainingBytes, remainingGas)
+		aggregatedTxSubSets = append(aggregatedTxSubSets, slicedSet)
+		// if the full tx set is not returned, that indicates there are no more bytes or gas left
+		if len(slicedSet.txs) != len(txSet.txs) {
+			return aggregatePriorityAcrossSets(aggregatedTxSubSets), flattenTxSets(aggregatedTxSubSets)
+		}
+		remainingBytes -= txSet.bytes
+		remainingGas -= txSet.totalGasWanted
+	}
+	return aggregatePriorityAcrossSets(aggregatedTxSubSets), flattenTxSets(aggregatedTxSubSets)
+}
+
+func flattenTxSets(txSets []*txSet) []*types.CachedTx {
+	txs := make([]*types.CachedTx, 0, len(txSets))
+	for _, txSet := range txSets {
+		txs = append(txs, txSet.rawTxs()...)
+	}
+	return txs
+}
+
 // ReapMaxTxs returns up to max transactions from the mempool. The results are
-// ordered by nonincreasing priority with ties broken by increasing order of
-// arrival. Reaping transactions does not remove them from the mempool.
+// ordered by decreasing priority with ties broken by increasing order of
+// arrival. Transactions are also ordered to preserve sequence numbers within a signer.
+// Reaping transactions does not remove them from the mempool.
 //
 // If max < 0, all transactions in the mempool are reaped.
 //
@@ -433,12 +473,15 @@ func (txmp *TxPool) ReapMaxBytesMaxGas(maxBytes, maxGas int64) []*types.CachedTx
 func (txmp *TxPool) ReapMaxTxs(max int) []*types.CachedTx {
 	var keep []*types.CachedTx
 
-	txmp.store.iterateOrderedTxs(func(w *wrappedTx) bool {
-		if max >= 0 && len(keep) >= max {
-			return false
+	txmp.store.processOrderedTxSets(func(txSets []*txSet) {
+		for _, txSet := range txSets {
+			for _, tx := range txSet.rawTxs() {
+				if max >= 0 && len(keep) >= max {
+					return
+				}
+				keep = append(keep, tx)
+			}
 		}
-		keep = append(keep, w.tx)
-		return true
 	})
 	return keep
 }
@@ -525,42 +568,43 @@ func (txmp *TxPool) addNewTransaction(wtx *wrappedTx) error {
 	// of them as necessary to make room for tx. If no such items exist, we
 	// discard tx.
 	if !txmp.canAddTx(wtx.size()) {
-		victims, victimBytes := txmp.store.getTxsBelowPriority(wtx.priority)
+		// Set-level eviction: aggregate by signer and compare against the new set's aggregated priority
+		newAggPriority := txmp.store.aggregatedPriorityAfterAdd(wtx)
+		victimSets, victimBytes := txmp.store.getTxSetsBelowPriority(newAggPriority)
 
-		// If there are no suitable eviction candidates, or the total size of
-		// those candidates is not enough to make room for the new transaction,
-		// drop the new one.
-		if len(victims) == 0 || victimBytes < wtx.size() {
+		// If there are no suitable eviction candidates, or the total size is insufficient, drop the new one.
+		if len(victimSets) == 0 || victimBytes < wtx.size() {
 			txmp.metrics.EvictedTxs.Add(1)
 			txmp.evictedTxCache.Push(wtx.key())
 			return fmt.Errorf("rejected valid incoming transaction; mempool is full (%X). Size: (%d:%d)",
 				wtx.key().String(), txmp.Size(), txmp.SizeBytes())
 		}
 
-		txmp.logger.Debug("evicting lower-priority transactions",
-			"new_tx", wtx.key().String(),
-			"new_priority", wtx.priority,
+		txmp.logger.Debug(
+			"evicting lower-priority tx sets",
+			"new_tx", fmt.Sprintf("%X", wtx.key()),
+			"new_set_priority", newAggPriority,
 		)
 
-		// Sort lowest priority items first so they will be evicted first.  Break
-		// ties in favor of newer items (to maintain FIFO semantics in a group).
-		sort.Slice(victims, func(i, j int) bool {
-			iw := victims[i]
-			jw := victims[j]
-			if iw.priority == jw.priority {
-				return iw.timestamp.After(jw.timestamp)
+		// Sort lowest aggregated-priority sets first; ties: newer sets first to preserve FIFO within set groups
+		sort.Slice(victimSets, func(i, j int) bool {
+			is := victimSets[i]
+			js := victimSets[j]
+			if is.aggregatedPriority == js.aggregatedPriority {
+				return is.firstTimestamp.After(js.firstTimestamp)
 			}
-			return iw.priority < jw.priority
+			return is.aggregatedPriority < js.aggregatedPriority
 		})
 
-		// Evict as many of the victims as necessary to make room.
+		// Evict as many sets as needed to make room for the incoming tx
 		availableBytes := txmp.availableBytes()
-		for _, tx := range victims {
-			txmp.evictTx(tx)
-
-			// We may not need to evict all the eligible transactions.  Bail out
-			// early if we have made enough room.
-			availableBytes += tx.size()
+		for _, set := range victimSets {
+			// Iterate in reverse order removing the higher sequence numbers first
+			for i := len(set.txs) - 1; i >= 0 && availableBytes < wtx.size(); i-- {
+				tx := set.txs[i]
+				txmp.evictTx(tx)
+				availableBytes += tx.size()
+			}
 			if availableBytes >= wtx.size() {
 				break
 			}
@@ -620,8 +664,8 @@ func (txmp *TxPool) handleRecheckResult(wtx *wrappedTx, checkTxRes *abci.Respons
 		"code", checkTxRes.Code,
 	)
 	txmp.store.remove(wtx.key())
-	txmp.rejectedTxCache.Push(wtx.tx.Key(), checkTxRes.Code)
 	txmp.metrics.FailedTxs.Add(1)
+	txmp.rejectedTxCache.Push(wtx.tx.Key(), checkTxRes.Code, checkTxRes.Log)
 	txmp.metrics.Size.Set(float64(txmp.Size()))
 	txmp.metrics.SizeBytes.Set(float64(txmp.SizeBytes()))
 }

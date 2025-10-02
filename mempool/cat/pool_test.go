@@ -13,7 +13,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/celestiaorg/go-square/v2/share"
+	"github.com/celestiaorg/go-square/v3/share"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -73,6 +73,7 @@ func (app *application) CheckTx(ctx context.Context, req *abci.RequestCheckTx) (
 			Priority:  priority,
 			Code:      101,
 			GasWanted: 1,
+			Log:       "invalid-tx-format",
 		}, nil
 	}
 
@@ -900,16 +901,18 @@ func TestTxMempool_TestRejectionIndexing(t *testing.T) {
 		txKey := types.Tx(rejectedTx).Key()
 
 		// The transaction should not be rejected initially
-		rejected, code := txmp.WasRecentlyRejected(txKey)
+		rejected, code, log := txmp.WasRecentlyRejected(txKey)
 		require.False(t, rejected)
 		require.Equal(t, uint32(0), code)
+		require.Equal(t, "", log)
 
 		// Try to add the transaction - it should be rejected
 		err := txmp.CheckTx(rejectedTx, nil, mempool.TxInfo{})
-		require.NoError(t, err)
-		rejected, code = txmp.WasRecentlyRejected(txKey)
+		require.Error(t, err) // CheckTx returns an error for app rejection in CAT
+		rejected, code, log = txmp.WasRecentlyRejected(txKey)
 		require.True(t, rejected)
 		require.Equal(t, uint32(101), code)
+		require.Equal(t, "invalid-tx-format", log)
 	})
 
 	t.Run("PreCheck rejection", func(t *testing.T) {
@@ -926,16 +929,18 @@ func TestTxMempool_TestRejectionIndexing(t *testing.T) {
 		txKey := types.Tx(rejectedTx).Key()
 
 		// The transaction should not be rejected initially
-		rejected, code := txmp.WasRecentlyRejected(txKey)
+		rejected, code, log := txmp.WasRecentlyRejected(txKey)
 		require.False(t, rejected)
 		require.Equal(t, uint32(0), code)
+		require.Equal(t, "", log)
 
 		// Try to add the transaction - it should be rejected by precheck
 		_, err := txmp.TryAddNewTx(types.Tx(rejectedTx).ToCachedTx(), txKey, mempool.TxInfo{})
 		require.Error(t, err) // PreCheck failures return an error
-		rejected, code = txmp.WasRecentlyRejected(txKey)
+		rejected, code, log = txmp.WasRecentlyRejected(txKey)
 		require.True(t, rejected)
 		require.Equal(t, uint32(0), code)
+		require.Equal(t, "rejected by precheck", log)
 	})
 
 	t.Run("PostCheck rejection", func(t *testing.T) {
@@ -955,16 +960,18 @@ func TestTxMempool_TestRejectionIndexing(t *testing.T) {
 		txKey := types.Tx(rejectedTx).Key()
 
 		// The transaction should not be rejected initially
-		wasRejected, code := txmp.WasRecentlyRejected(txKey)
-		require.False(t, wasRejected)
+		rejected, code, log := txmp.WasRecentlyRejected(txKey)
+		require.False(t, rejected)
 		require.Equal(t, uint32(0), code)
+		require.Equal(t, "", log)
 
 		// Try to add the transaction - it should be rejected by postcheck
 		_, err := txmp.TryAddNewTx(types.Tx(rejectedTx).ToCachedTx(), txKey, mempool.TxInfo{})
 		require.Error(t, err) // PostCheck failures return an error
-		wasRejected, code = txmp.WasRecentlyRejected(txKey)
-		require.True(t, wasRejected)
+		rejected, code, log = txmp.WasRecentlyRejected(txKey)
+		require.True(t, rejected)
 		require.Equal(t, uint32(0), code)
+		require.Equal(t, "priority too low", log)
 	})
 
 	t.Run("Valid transaction not rejected", func(t *testing.T) {
@@ -975,17 +982,19 @@ func TestTxMempool_TestRejectionIndexing(t *testing.T) {
 		txKey := types.Tx(validTx).Key()
 
 		// The transaction should not be rejected initially
-		wasRejected, code := txmp.WasRecentlyRejected(txKey)
-		require.False(t, wasRejected)
+		rejected, code, log := txmp.WasRecentlyRejected(txKey)
+		require.False(t, rejected)
 		require.Equal(t, uint32(0), code)
+		require.Equal(t, "", log)
 
 		// Add the valid transaction
 		_, err := txmp.TryAddNewTx(types.Tx(validTx).ToCachedTx(), txKey, mempool.TxInfo{})
 		require.NoError(t, err)
 
 		// The transaction should still not be marked as rejected
-		wasRejected, code = txmp.WasRecentlyRejected(txKey)
-		require.False(t, wasRejected)
+		rejected, code, log = txmp.WasRecentlyRejected(txKey)
+		require.False(t, rejected)
 		require.Equal(t, uint32(0), code)
+		require.Equal(t, "", log)
 	})
 }

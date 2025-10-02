@@ -435,7 +435,7 @@ func TestProcessProposal(t *testing.T) {
 		DataRootHash:       block1.Header.DataHash, //nolint:staticcheck
 	}
 
-	acceptBlock, err := blockExec.ProcessProposal(block1, state)
+	acceptBlock, err := blockExec.ProcessProposal(block1, state.InitialHeight)
 	require.NoError(t, err)
 	require.True(t, acceptBlock)
 	app.AssertExpectations(t)
@@ -794,6 +794,57 @@ func TestPrepareProposalTxsAllIncluded(t *testing.T) {
 	}
 
 	mp.AssertExpectations(t)
+}
+
+func BenchmarkCreateProposalBlock(b *testing.B) {
+	const height = 2
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	state, stateDB, privVals := makeState(1, height)
+	state.ConsensusParams.Block.MaxBytes = types.MaxBlockSizeBytes
+	stateStore := sm.NewStore(stateDB, sm.StoreOptions{
+		DiscardABCIResponses: false,
+	})
+	evpool := &mocks.EvidencePool{}
+	evpool.On("PendingEvidence", mock.Anything).Return([]types.Evidence{}, int64(0))
+
+	txs := test.MakeNTxsWithSize(height, 31, 4_000_000)
+	cachedTxs := types.CachedTxFromTxs(txs)
+	mp := &mpmocks.Mempool{}
+	mp.On("ReapMaxBytesMaxGas", mock.Anything, mock.Anything).Return(cachedTxs)
+
+	app := &abcimocks.Application{}
+	app.On("PrepareProposal", mock.Anything, mock.Anything).Return(&abci.ResponsePrepareProposal{
+		Txs: txs.ToSliceOfBytes(),
+	}, nil)
+	cc := proxy.NewLocalClientCreator(app)
+	proxyApp := proxy.NewAppConns(cc, proxy.NopMetrics())
+	err := proxyApp.Start()
+	require.NoError(b, err)
+	defer proxyApp.Stop() //nolint:errcheck // ignore for tests
+
+	blockStore := store.NewBlockStore(dbm.NewMemDB())
+	blockExec := sm.NewBlockExecutor(
+		stateStore,
+		log.TestingLogger(),
+		proxyApp.Consensus(),
+		mp,
+		evpool,
+		blockStore,
+	)
+	pa, _ := state.Validators.GetByIndex(0)
+	commit, _, err := makeValidCommit(height, types.BlockID{}, state.Validators, privVals)
+	require.NoError(b, err)
+	for i := 0; i < b.N; i++ {
+		b.ResetTimer()
+		_, _, err = blockExec.CreateProposalBlock(ctx, height, state, commit, pa)
+		b.StopTimer()
+	}
+	require.NoError(b, err)
+	mp.AssertExpectations(b)
+
+	b.ReportMetric(float64(b.Elapsed().Milliseconds()), "create_proposal_block(ms)")
 }
 
 // TestPrepareProposalReorderTxs tests that CreateBlock produces a block with transactions

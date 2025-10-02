@@ -100,8 +100,14 @@ message State {
 }
 
 // TimeoutInfo represents the timeout info for the next block height
-// this is recreated from ABCI here as we had a proto merged registry issue in the app. 
+// this is recreated from ABCI here as we had a proto merged registry issue in the app.
 message TimeoutInfo {
-  google.protobuf.Duration timeout_propose = 1 [(gogoproto.nullable) = false, (gogoproto.stdduration) = true];
-  google.protobuf.Duration timeout_commit  = 2 [(gogoproto.nullable) = false, (gogoproto.stdduration) = true];
+  google.protobuf.Duration timeout_propose           = 1 [(gogoproto.nullable) = false, (gogoproto.stdduration) = true];
+  google.protobuf.Duration timeout_commit            = 2 [(gogoproto.nullable) = false, (gogoproto.stdduration) = true];
+  google.protobuf.Duration timeout_propose_delta     = 3 [(gogoproto.nullable) = false, (gogoproto.stdduration) = true];
+  google.protobuf.Duration timeout_prevote           = 4 [(gogoproto.nullable) = false, (gogoproto.stdduration) = true];
+  google.protobuf.Duration timeout_prevote_delta     = 5 [(gogoproto.nullable) = false, (gogoproto.stdduration) = true];
+  google.protobuf.Duration timeout_precommit         = 6 [(gogoproto.nullable) = false, (gogoproto.stdduration) = true];
+  google.protobuf.Duration timeout_precommit_delta   = 7 [(gogoproto.nullable) = false, (gogoproto.stdduration) = true];
+  google.protobuf.Duration delayed_precommit_timeout = 8 [(gogoproto.nullable) = false, (gogoproto.stdduration) = true];
 }

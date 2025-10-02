@@ -15,6 +15,7 @@ import (
 	"github.com/cometbft/cometbft/abci/example/kvstore"
 	abci "github.com/cometbft/cometbft/abci/types"
 	mempl "github.com/cometbft/cometbft/mempool"
+	cmtstate "github.com/cometbft/cometbft/proto/tendermint/state"
 	"github.com/cometbft/cometbft/proxy"
 	sm "github.com/cometbft/cometbft/state"
 	"github.com/cometbft/cometbft/types"
@@ -34,9 +35,19 @@ func TestMempoolNoProgressUntilTxsAvailable(t *testing.T) {
 	resp, err := app.Info(context.Background(), proxy.RequestInfo)
 	require.NoError(t, err)
 	state.AppHash = resp.LastBlockAppHash
+	state.Timeouts = cmtstate.TimeoutInfo{
+		TimeoutPropose:          resp.TimeoutInfo.TimeoutPropose,
+		TimeoutCommit:           resp.TimeoutInfo.TimeoutCommit,
+		TimeoutProposeDelta:     resp.TimeoutInfo.TimeoutProposeDelta,
+		TimeoutPrevote:          resp.TimeoutInfo.TimeoutPrevote,
+		TimeoutPrevoteDelta:     resp.TimeoutInfo.TimeoutPrevoteDelta,
+		TimeoutPrecommit:        resp.TimeoutInfo.TimeoutPrecommit,
+		TimeoutPrecommitDelta:   resp.TimeoutInfo.TimeoutPrecommitDelta,
+		DelayedPrecommitTimeout: resp.TimeoutInfo.DelayedPrecommitTimeout,
+	}
 	cs := newStateWithConfig(config, state, privVals[0], app)
 	assertMempool(cs.txNotifier).EnableTxsAvailable()
-	height, round := cs.Height, cs.Round
+	height, round := cs.rs.Height, cs.rs.Round
 	newBlockCh := subscribe(cs.eventBus, types.EventQueryNewBlock)
 	startTestRound(cs, height, round)
 
@@ -58,12 +69,22 @@ func TestMempoolProgressAfterCreateEmptyBlocksInterval(t *testing.T) {
 	resp, err := app.Info(context.Background(), proxy.RequestInfo)
 	require.NoError(t, err)
 	state.AppHash = resp.LastBlockAppHash
+	state.Timeouts = cmtstate.TimeoutInfo{
+		TimeoutPropose:          resp.TimeoutInfo.TimeoutPropose,
+		TimeoutCommit:           resp.TimeoutInfo.TimeoutCommit,
+		TimeoutProposeDelta:     resp.TimeoutInfo.TimeoutProposeDelta,
+		TimeoutPrevote:          resp.TimeoutInfo.TimeoutPrevote,
+		TimeoutPrevoteDelta:     resp.TimeoutInfo.TimeoutPrevoteDelta,
+		TimeoutPrecommit:        resp.TimeoutInfo.TimeoutPrecommit,
+		TimeoutPrecommitDelta:   resp.TimeoutInfo.TimeoutPrecommitDelta,
+		DelayedPrecommitTimeout: resp.TimeoutInfo.DelayedPrecommitTimeout,
+	}
 	cs := newStateWithConfig(config, state, privVals[0], app)
 
 	assertMempool(cs.txNotifier).EnableTxsAvailable()
 
 	newBlockCh := subscribe(cs.eventBus, types.EventQueryNewBlock)
-	startTestRound(cs, cs.Height, cs.Round)
+	startTestRound(cs, cs.rs.Height, cs.rs.Round)
 
 	ensureNewEventOnChannel(newBlockCh)   // first block gets committed
 	ensureNoNewEventOnChannel(newBlockCh) // then we dont make a block ...
@@ -75,14 +96,27 @@ func TestMempoolProgressInHigherRound(t *testing.T) {
 	defer os.RemoveAll(config.RootDir)
 	config.Consensus.CreateEmptyBlocks = false
 	state, privVals := randGenesisState(1, false, 10, nil)
-	cs := newStateWithConfig(config, state, privVals[0], kvstore.NewInMemoryApplication())
+	app := kvstore.NewInMemoryApplication()
+	resp, err := app.Info(context.Background(), proxy.RequestInfo)
+	require.NoError(t, err)
+	state.Timeouts = cmtstate.TimeoutInfo{
+		TimeoutPropose:          resp.TimeoutInfo.TimeoutPropose,
+		TimeoutCommit:           resp.TimeoutInfo.TimeoutCommit,
+		TimeoutProposeDelta:     resp.TimeoutInfo.TimeoutProposeDelta,
+		TimeoutPrevote:          resp.TimeoutInfo.TimeoutPrevote,
+		TimeoutPrevoteDelta:     resp.TimeoutInfo.TimeoutPrevoteDelta,
+		TimeoutPrecommit:        resp.TimeoutInfo.TimeoutPrecommit,
+		TimeoutPrecommitDelta:   resp.TimeoutInfo.TimeoutPrecommitDelta,
+		DelayedPrecommitTimeout: resp.TimeoutInfo.DelayedPrecommitTimeout,
+	}
+	cs := newStateWithConfig(config, state, privVals[0], app)
 	assertMempool(cs.txNotifier).EnableTxsAvailable()
-	height, round := cs.Height, cs.Round
+	height, round := cs.rs.Height, cs.rs.Round
 	newBlockCh := subscribe(cs.eventBus, types.EventQueryNewBlock)
 	newRoundCh := subscribe(cs.eventBus, types.EventQueryNewRound)
 	timeoutCh := subscribe(cs.eventBus, types.EventQueryTimeoutPropose)
 	cs.setProposal = func(proposal *types.Proposal) error {
-		if cs.Height == 2 && cs.Round == 0 {
+		if cs.rs.Height == 2 && cs.rs.Round == 0 {
 			// dont set the proposal in round 0 so we timeout and
 			// go to next round
 			cs.Logger.Info("Ignoring set proposal at height 2, round 0")
@@ -127,7 +161,7 @@ func TestMempoolTxConcurrentWithCommit(t *testing.T) {
 	const numTxs int64 = 3000
 	go deliverTxsRange(t, cs, 0, int(numTxs))
 
-	startTestRound(cs, cs.Height, cs.Round)
+	startTestRound(cs, cs.rs.Height, cs.rs.Round)
 	for n := int64(0); n < numTxs; {
 		select {
 		case msg := <-newBlockEventsCh:

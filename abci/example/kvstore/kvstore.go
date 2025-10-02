@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"time"
 
 	dbm "github.com/cometbft/cometbft-db"
 
@@ -103,7 +104,21 @@ func (app *Application) Info(context.Context, *types.RequestInfo) (*types.Respon
 		AppVersion:       AppVersion,
 		LastBlockHeight:  app.state.Height,
 		LastBlockAppHash: app.state.Hash(),
+		TimeoutInfo:      app.timeoutInfo(),
 	}, nil
+}
+
+func (app *Application) timeoutInfo() types.TimeoutInfo {
+	return types.TimeoutInfo{
+		TimeoutPropose:          40 * time.Millisecond,
+		TimeoutCommit:           10 * time.Millisecond,
+		TimeoutProposeDelta:     1 * time.Millisecond,
+		TimeoutPrevote:          10 * time.Millisecond,
+		TimeoutPrevoteDelta:     1 * time.Millisecond,
+		TimeoutPrecommit:        10 * time.Millisecond,
+		TimeoutPrecommitDelta:   1 * time.Millisecond,
+		DelayedPrecommitTimeout: 0,
+	}
 }
 
 // InitChain takes the genesis validators and stores them in the kvstore. It returns the application hash in the
@@ -116,7 +131,8 @@ func (app *Application) InitChain(_ context.Context, req *types.RequestInitChain
 	appHash := make([]byte, 8)
 	binary.PutVarint(appHash, app.state.Size)
 	return &types.ResponseInitChain{
-		AppHash: appHash,
+		AppHash:     appHash,
+		TimeoutInfo: app.timeoutInfo(),
 	}, nil
 }
 
@@ -132,10 +148,10 @@ func (app *Application) CheckTx(_ context.Context, req *types.RequestCheckTx) (*
 	if isValidatorTx(req.Tx) {
 		if _, _, _, err := parseValidatorTx(req.Tx); err != nil {
 			//nolint:nilerr
-			return &types.ResponseCheckTx{Code: CodeTypeInvalidTxFormat}, nil
+			return &types.ResponseCheckTx{Code: CodeTypeInvalidTxFormat, Log: fmt.Errorf("invalid-tx-format: %w", err).Error()}, nil
 		}
 	} else if !isValidTx(req.Tx) {
-		return &types.ResponseCheckTx{Code: CodeTypeInvalidTxFormat}, nil
+		return &types.ResponseCheckTx{Code: CodeTypeInvalidTxFormat, Log: "invalid-tx-format"}, nil
 	}
 
 	return &types.ResponseCheckTx{Code: CodeTypeOK, GasWanted: 1}, nil
@@ -263,7 +279,12 @@ func (app *Application) FinalizeBlock(_ context.Context, req *types.RequestFinal
 
 	app.state.Height = req.Height
 
-	response := &types.ResponseFinalizeBlock{TxResults: respTxs, ValidatorUpdates: app.valUpdates, AppHash: app.state.Hash()}
+	response := &types.ResponseFinalizeBlock{
+		TxResults:        respTxs,
+		ValidatorUpdates: app.valUpdates,
+		AppHash:          app.state.Hash(),
+		TimeoutInfo:      app.timeoutInfo(),
+	}
 	if !app.genBlockEvents {
 		return response, nil
 	}

@@ -52,7 +52,7 @@ func (blockProp *Reactor) handleHaves(peer p2p.ID, haves *proptypes.HaveParts) {
 	}
 	err := haves.ValidatePartHashes(cb.PartsHashes)
 	if err != nil {
-		blockProp.Logger.Error("received invalid have part", "height", haves.Height, "round", haves.Round, "parts", haves.Parts, "err", err)
+		blockProp.Logger.Error("received invalid have part", "height", haves.Height, "round", haves.Round, "err", err)
 		blockProp.Switch.StopPeerForError(p.peer, err, blockProp.String())
 		return
 	}
@@ -112,6 +112,7 @@ func ReqLimit(partsCount int) int {
 }
 
 func (blockProp *Reactor) requestFromPeer(ps *PeerState) {
+	defer blockProp.ProtectPanic(ps.peer)
 	for {
 		availableReqs := ConcurrentRequestLimit(len(blockProp.getPeers()), int(blockProp.getCurrentProposalPartsCount())) - ps.concurrentReqs.Load()
 
@@ -127,7 +128,7 @@ func (blockProp *Reactor) requestFromPeer(ps *PeerState) {
 			if !ok {
 				return
 			}
-			if !blockProp.relevantHave(part.height, part.round) {
+			if !blockProp.safeRelevant(part.height, part.round) {
 				continue
 			}
 			ps.DecreaseConcurrentReqs(1)
@@ -160,7 +161,7 @@ func (blockProp *Reactor) requestFromPeer(ps *PeerState) {
 					parts = nil
 				}
 
-				if !blockProp.relevantHave(have.height, have.round) {
+				if !blockProp.safeRelevant(have.height, have.round) {
 					continue
 				}
 
@@ -632,7 +633,7 @@ func (blockProp *Reactor) clearWants(part *proptypes.RecoveryPart, proof merkle.
 
 			catchup := false
 			blockProp.pmtx.Lock()
-			if part.Height < blockProp.currentHeight {
+			if part.Height < blockProp.height {
 				catchup = true
 			}
 
