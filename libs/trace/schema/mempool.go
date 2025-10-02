@@ -11,6 +11,7 @@ func MempoolTables() []string {
 		MempoolTxTable,
 		MempoolPeerStateTable,
 		MempoolRecoveredPartsTable,
+		MempoolAddResultTable,
 	}
 }
 
@@ -97,6 +98,67 @@ func WriteMempoolPeerState(
 		StateUpdate:  stateUpdate,
 		TransferType: transferType,
 		TxHash:       bytes.HexBytes(txHash).String(),
+	})
+}
+
+const (
+	// MempoolAddResultTable is the tracing "measurement" (aka table) for the mempool
+	// that stores tracing data related to adding transactions to the mempool.
+	MempoolAddResultTable = "mempool_add_result"
+)
+
+type MempoolAddResultType string
+
+const (
+	Added            MempoolAddResultType = "added"
+	AlreadyInMempool MempoolAddResultType = "already_in_mempool"
+	Rejected         MempoolAddResultType = "rejected"
+)
+
+// MempoolAddResult describes the schema for the "mempool_add_result" table.
+type MempoolAddResult struct {
+	Peer     string               `json:"peer"`
+	TxHash   string               `json:"tx_hash"`
+	Result   MempoolAddResultType `json:"result"`
+	Error    string               `json:"error,omitempty"`
+	Signer   string               `json:"signer,omitempty"`
+	Sequence uint64               `json:"sequence,omitempty"`
+}
+
+// Table returns the table name for the MempoolAddResult struct.
+func (MempoolAddResult) Table() string {
+	return MempoolAddResultTable
+}
+
+// WriteMempoolAddResult writes a tracing point for mempool add results using
+// the predetermined schema for mempool tracing.
+func WriteMempoolAddResult(
+	client trace.Tracer,
+	peer string,
+	txHash []byte,
+	result MempoolAddResultType,
+	err error,
+	signer string,
+	sequence uint64,
+) {
+	// this check is redundant to what is checked during client.Write, although it
+	// is an optimization to avoid allocations from creating the map of fields.
+	if !client.IsCollecting(MempoolAddResultTable) {
+		return
+	}
+
+	errStr := ""
+	if err != nil {
+		errStr = err.Error()
+	}
+
+	client.Write(MempoolAddResult{
+		Peer:     peer,
+		TxHash:   bytes.HexBytes(txHash).String(),
+		Result:   result,
+		Error:    errStr,
+		Signer:   signer,
+		Sequence: sequence,
 	})
 }
 
