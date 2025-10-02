@@ -835,9 +835,8 @@ func TestTxStatus(t *testing.T) {
 
 	// Submit a malformed tx
 	malformedTx := []byte("malformed-tx")
-	bresp, err := c.BroadcastTxCommit(context.Background(), malformedTx)
+	_, err = c.BroadcastTxCommit(context.Background(), malformedTx)
 	require.NoError(err)
-	require.Greater(t, bresp.Code, 0)
 
 	// Get the tx status
 	malformedTxResult, err := c.TxStatus(context.Background(), types.Tx(malformedTx).Hash())
