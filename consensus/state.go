@@ -1771,8 +1771,7 @@ func (cs *State) enterCommit(height int64, commitRound int32) {
 
 	if ready, waitTime := cs.isReadyToPrecommit(); !ready {
 		logger.Debug("rescheduling commit", "delay(ms)", waitTime.Milliseconds())
-		cs.scheduleTimeout(waitTime, height, commitRound, cstypes.RoundStepPrevote)
-		return
+		time.Sleep(waitTime)
 	}
 
 	if cs.rs.Height != height || cstypes.RoundStepCommit <= cs.rs.Step {
