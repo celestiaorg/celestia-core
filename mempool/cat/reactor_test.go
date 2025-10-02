@@ -408,9 +408,11 @@ func TestReactorReceiveRejectedTx(t *testing.T) {
 	peer := genPeer()
 
 	// Add transaction to rejection cache to simulate it was previously rejected
-	reactor.mempool.rejectedTxCache.Push(txKey, 1)
-	rejected, _ := reactor.mempool.WasRecentlyRejected(txKey)
+	reactor.mempool.rejectedTxCache.Push(txKey, 1, "tx rejected")
+	rejected, code, log := reactor.mempool.WasRecentlyRejected(txKey)
 	assert.True(t, rejected)
+	assert.Equal(t, uint32(1), code)
+	assert.Equal(t, "tx rejected", log)
 
 	// Send SeenTx message
 	envelope := p2p.Envelope{
