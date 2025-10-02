@@ -1620,12 +1620,6 @@ func (cs *State) enterPrecommit(height int64, round int32) {
 		return
 	}
 
-	if ready, waitTime := cs.isReadyToPrecommit(); !ready {
-		logger.Debug("rescheduling precommit", "delay(ms)", waitTime.Milliseconds())
-		cs.scheduleTimeout(waitTime, height, round, cstypes.RoundStepPrevoteWait)
-		return
-	}
-
 	logger.Debug("entering precommit step", "current", log.NewLazySprintf("%v/%v/%v", cs.rs.Height, cs.rs.Round, cs.rs.Step))
 
 	defer func() {
@@ -1774,6 +1768,12 @@ func (cs *State) enterPrecommitWait(height int64, round int32) {
 // Enter: +2/3 precommits for block
 func (cs *State) enterCommit(height int64, commitRound int32) {
 	logger := cs.Logger.With("height", height, "commit_round", commitRound)
+
+	if ready, waitTime := cs.isReadyToPrecommit(); !ready {
+		logger.Debug("rescheduling commit", "delay(ms)", waitTime.Milliseconds())
+		cs.scheduleTimeout(waitTime, height, commitRound, cstypes.RoundStepPrecommit)
+		return
+	}
 
 	if cs.rs.Height != height || cstypes.RoundStepCommit <= cs.rs.Step {
 		logger.Debug(
