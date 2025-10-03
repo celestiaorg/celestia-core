@@ -244,7 +244,6 @@ func (r *Reactor) logErrAddrBook(err error) {
 func (r *Reactor) Receive(e p2p.Envelope) {
 	r.Logger.Debug("Received message", "src", e.Src, "chId", e.ChannelID, "msg", e.Message)
 
-	fmt.Println(e.Message.String())
 	switch msg := e.Message.(type) {
 	case *tmp2p.PexRequest:
 
