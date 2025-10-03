@@ -670,6 +670,7 @@ FOR_LOOP:
 					c.Logger.Debug("Connection failed @ recvRoutine", "conn", c, "err", err)
 					c.stopForError(err)
 				}
+				fmt.Println("from: ", c.conn.RemoteAddr().String())
 				break FOR_LOOP
 			}
 			if msgBytes != nil {
@@ -890,16 +891,25 @@ func (ch *Channel) writePacketMsgTo(w protoio.Writer) (n int, err error) {
 // Handles incoming PacketMsgs. It returns a message bytes if message is
 // complete. NOTE message bytes may change on next call to recvPacketMsg.
 // Not goroutine-safe
+var saved bool
+
 func (ch *Channel) recvPacketMsg(packet tmp2p.PacketMsg) ([]byte, error) {
 	//ch.Logger.Debug("Read PacketMsg", "conn", ch.conn, "packet", packet)
 	recvCap, recvReceived := ch.desc.RecvMessageCapacity, len(ch.recving)+len(packet.Data)
 	if recvCap < recvReceived {
+		fmt.Println(packet)
+		fmt.Println("djdjdj")
+		fmt.Println(packet.String())
+		saved = true
 		return nil, fmt.Errorf("received message exceeds available capacity: %v < %v", recvCap, recvReceived)
 	}
 	ch.recving = append(ch.recving, packet.Data...)
 	if packet.EOF {
 		msgBytes := make([]byte, len(ch.recving))
 		copy(msgBytes, ch.recving)
+		if saved {
+			fmt.Println(msgBytes)
+		}
 
 		// clear the slice without re-allocating.
 		// http://stackoverflow.com/questions/16971741/how-do-you-clear-a-slice-in-go
