@@ -50,6 +50,6 @@ CometBFT.
 See the following for more extensive documentation:
 
 - [Interchain Standard for the Light-Client REST API](https://github.com/cosmos/cosmos-sdk/pull/1617) (legacy/deprecated)
-- [CometBFT RPC Docs](../rpc)
+- [CometBFT RPC Docs](../README.md)
 - [CometBFT in Production](../core/running-in-production.md)
-- [ABCI spec](../spec/abci)
+- [ABCI spec](../../spec/abci/README.md)
