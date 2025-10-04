@@ -14,7 +14,7 @@ the block itself is never stored.
 
 Each event contains a type and a list of attributes, which are key-value pairs
 denoting something about what happened during the method's execution. For more
-details on `Events`, see the [ABCI][abci-events] documentation.
+details on `Events`, see the [ABCI](../../spec/abci/abci++_basic_concepts.md#events) documentation.
 
 An `Event` has a composite key associated with it. A `compositeKey` is
 constructed by its type and key separated by a dot.
