@@ -10,7 +10,7 @@ line.
 
 ## Install
 
-Make sure you [have Go installed](https://golang.org/doc/install).
+Make sure you [have Go installed](https://go.dev/doc/install).
 
 Next, install the `abci-cli` tool and example applications:
 
