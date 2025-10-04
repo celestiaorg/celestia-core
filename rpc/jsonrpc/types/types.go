@@ -2,11 +2,10 @@ package types
 
 import (
 	"context"
-	"encoding/json"
-	"fmt"
-	"net/http"
-	"reflect"
-	"strings"
+    "encoding/json"
+    "fmt"
+    "net/http"
+    "reflect"
 
 	cmtjson "github.com/cometbft/cometbft/libs/json"
 )
@@ -315,13 +314,7 @@ func (ctx *Context) Context() context.Context {
 //----------------------------------------
 // SOCKETS
 
-// Determine if its a unix or tcp socket.
-// If tcp, must specify the port; `0.0.0.0` will return incorrectly as "unix" since there's no port
-// TODO: deprecate
-func SocketType(listenAddr string) string {
-	socketType := "unix"
-	if len(strings.Split(listenAddr, ":")) >= 2 {
-		socketType = "tcp"
-	}
-	return socketType
-}
+//
+// Removed legacy helper `SocketType`.
+// It used a brittle heuristic and was unused across the codebase.
+// If a socket type helper is reintroduced, it should be IPv6-safe and have tests.
