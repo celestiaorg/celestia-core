@@ -22,7 +22,7 @@ using CometBFT.
 ### Install
 
 The first apps we will work with are written in Go. To install them, you
-need to [install Go](https://golang.org/doc/install), put
+need to [install Go](https://go.dev/doc/install), put
 `$GOPATH/bin` in your `$PATH` and enable go modules. If you use `bash`,
 follow these instructions:
 
@@ -113,7 +113,7 @@ curl -s localhost:26657/status
 ```
 
 The `-s` just silences `curl`. For nicer output, pipe the result into a
-tool like [jq](https://stedolan.github.io/jq/) or `json_pp`.
+tool like [jq](https://jqlang.org/) or `json_pp`.
 
 Now let's send some transactions to the kvstore.
 
