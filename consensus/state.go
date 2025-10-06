@@ -840,11 +840,22 @@ func (cs *State) updateToState(state sm.State) {
 		}
 
 	} else {
+		var nextStartTime time.Time
 		if state.LastBlockHeight == 0 {
-			cs.rs.StartTime = cs.config.CommitWithCustomTimeout(cs.rs.CommitTime, state.Timeouts.TimeoutCommit)
+			nextStartTime = cs.config.CommitWithCustomTimeout(cs.rs.CommitTime, state.Timeouts.TimeoutCommit)
 		} else {
-			cs.rs.StartTime = cs.config.CommitWithCustomTimeout(cs.rs.CommitTime, cs.state.Timeouts.TimeoutCommit)
+			nextStartTime = cs.config.CommitWithCustomTimeout(cs.rs.CommitTime, cs.state.Timeouts.TimeoutCommit)
 		}
+
+		// Enforce minimum block time equal to the delayed precommit time
+		if !cs.rs.StartTime.IsZero() && cs.state.Timeouts.DelayedPrecommitTimeout != 0 {
+			minStartTime := cs.rs.StartTime.Add(cs.state.Timeouts.DelayedPrecommitTimeout)
+			if nextStartTime.Before(minStartTime) {
+				nextStartTime = minStartTime
+			}
+		}
+
+		cs.rs.StartTime = nextStartTime
 	}
 
 	cs.rs.Validators = validators
@@ -1617,12 +1628,6 @@ func (cs *State) enterPrecommit(height int64, round int32) {
 			"entering precommit step with invalid args",
 			"current", log.NewLazySprintf("%v/%v/%v", cs.rs.Height, cs.rs.Round, cs.rs.Step),
 		)
-		return
-	}
-
-	if ready, waitTime := cs.isReadyToPrecommit(); !ready {
-		logger.Debug("rescheduling precommit", "delay(ms)", waitTime.Milliseconds())
-		cs.scheduleTimeout(waitTime, height, round, cstypes.RoundStepPrevoteWait)
 		return
 	}
 
