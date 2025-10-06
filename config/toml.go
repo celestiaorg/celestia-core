@@ -554,6 +554,7 @@ peer_query_maj23_sleep_duration = "{{ .Consensus.PeerQueryMaj23SleepDuration }}"
 
 # Disable the propagation reactor for block and proposal recovery
 disable_propagation_reactor = {{ .Consensus.DisablePropagationReactor }}
+enable_legacy_block_prop = {{ .Consensus.EnableLegacyBlockProp }}
 
 #######################################################
 ###         Storage Configuration Options           ###

@@ -435,7 +435,7 @@ func TestProcessProposal(t *testing.T) {
 		DataRootHash:       block1.Header.DataHash, //nolint:staticcheck
 	}
 
-	acceptBlock, err := blockExec.ProcessProposal(block1, state)
+	acceptBlock, err := blockExec.ProcessProposal(block1, state.InitialHeight)
 	require.NoError(t, err)
 	require.True(t, acceptBlock)
 	app.AssertExpectations(t)
@@ -802,7 +802,7 @@ func BenchmarkCreateProposalBlock(b *testing.B) {
 	defer cancel()
 
 	state, stateDB, privVals := makeState(1, height)
-	state.ConsensusParams.Block.MaxBytes = types.MaxBlockSizeBytes
+	state.ConsensusParams.Block.MaxBytes = int64(types.MaxBlockSizeBytes)
 	stateStore := sm.NewStore(stateDB, sm.StoreOptions{
 		DiscardABCIResponses: false,
 	})

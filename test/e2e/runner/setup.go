@@ -283,6 +283,7 @@ func MakeConfig(node *e2e.Node) (*config.Config, error) {
 
 	// Set consensus configuration for propagation reactor
 	cfg.Consensus.DisablePropagationReactor = node.DisablePropagationReactor
+	cfg.Consensus.EnableLegacyBlockProp = node.EnableLegacyBlockProp
 
 	return cfg, nil
 }

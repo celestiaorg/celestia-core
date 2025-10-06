@@ -1527,13 +1527,17 @@ func (cs *State) defaultDoPrevote(height int64, round int32) {
 		in the ABCI++ specification.
 	*/
 
+	proposalBlock, initialHeight := cs.rs.ProposalBlock, cs.state.InitialHeight
 	schema.WriteABCI(cs.traceClient, schema.ProcessProposalStart, height, round)
-	isAppValid, err := cs.blockExec.ProcessProposal(cs.rs.ProposalBlock, cs.state)
+	cs.unlockAll()
+	isAppValid, err := cs.blockExec.ProcessProposal(proposalBlock, initialHeight)
 	if err != nil {
+		cs.lockAll()
 		panic(fmt.Sprintf(
 			"state machine returned an error (%v) when calling ProcessProposal", err,
 		))
 	}
+	cs.lockAll()
 	schema.WriteABCI(cs.traceClient, schema.ProcessProposalEnd, height, round)
 	cs.metrics.MarkProposalProcessed(isAppValid)
 
@@ -1908,11 +1912,13 @@ func (cs *State) finalizeCommit(height int64) {
 		// but may differ from the LastCommit included in the next block
 		seenExtendedCommit := cs.rs.Votes.Precommits(cs.rs.CommitRound).MakeExtendedCommit(cs.state.ConsensusParams.ABCI)
 		seenCommit = seenExtendedCommit.ToCommit()
+		cs.unlockAll()
 		if cs.state.ConsensusParams.ABCI.VoteExtensionsEnabled(block.Height) {
 			cs.blockStore.SaveBlockWithExtendedCommit(block, blockParts, seenExtendedCommit)
 		} else {
 			cs.blockStore.SaveBlock(block, blockParts, seenExtendedCommit.ToCommit())
 		}
+		cs.lockAll()
 	} else {
 		// Happens during replay if we already saved the block but didn't commit
 		logger.Debug("calling finalizeCommit on already stored block", "height", block.Height)
@@ -1951,6 +1957,7 @@ func (cs *State) finalizeCommit(height int64) {
 	// Execute and commit the block, update and save the state, and update the mempool.
 	// We use apply verified block here because we have verified the block in this function already.
 	// NOTE The block.AppHash won't reflect these txs until the next block.
+	cs.unlockAll()
 	stateCopy, err := cs.blockExec.ApplyVerifiedBlock(
 		stateCopy,
 		types.BlockID{
@@ -1960,6 +1967,7 @@ func (cs *State) finalizeCommit(height int64) {
 		block,
 		seenCommit,
 	)
+	cs.lockAll()
 	if err != nil {
 		panic(fmt.Sprintf("failed to apply block; error %v", err))
 	}

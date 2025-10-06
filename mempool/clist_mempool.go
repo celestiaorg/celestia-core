@@ -113,9 +113,9 @@ func (*CListMempool) WasRecentlyEvicted(key types.TxKey) bool {
 	return false
 }
 
-// WasRecentlyRejected returns false and zero as this implementation does not support transaction rejection.
-func (*CListMempool) WasRecentlyRejected(key types.TxKey) (bool, uint32) {
-	return false, 0
+// WasRecentlyRejected returns false, zero and an empty string as this implementation does not support transaction rejection.
+func (*CListMempool) WasRecentlyRejected(key types.TxKey) (bool, uint32, string) {
+	return false, 0, ""
 }
 
 func (mem *CListMempool) getCElement(txKey types.TxKey) (*clist.CElement, bool) {

@@ -301,8 +301,7 @@ func (memR *Reactor) Receive(e p2p.Envelope) {
 		memR.mempool.PeerHasTx(peerID, txKey)
 
 		// Check if we don't already have the transaction
-		wasRejected, _ := memR.mempool.WasRecentlyRejected(txKey)
-		if memR.mempool.Has(txKey) || wasRejected {
+		if memR.mempool.Has(txKey) {
 			memR.Logger.Debug("received a seen tx for a tx we already have", "txKey", txKey)
 			return
 		}
@@ -364,48 +363,10 @@ type PeerState interface {
 	GetHeight() int64
 }
 
-// broadcastSeenTx broadcasts a SeenTx message to all peers unless we
+// broadcastSeenTx broadcasts a SeenTx message to limited peers unless we
 // know they have already seen the transaction
 func (memR *Reactor) broadcastSeenTx(txKey types.TxKey) {
-	memR.Logger.Debug("broadcasting seen tx to all peers", "tx_key", string(txKey[:]))
-	msg := &protomem.Message{
-		Sum: &protomem.Message_SeenTx{
-			SeenTx: &protomem.SeenTx{
-				TxKey: txKey[:],
-			},
-		},
-	}
-
-	count := 0
-	for id, peer := range ShufflePeers(memR.ids.GetAll()) {
-		if count >= maxSeenTxBroadcast {
-			break
-		}
-		if p, ok := peer.Get(types.PeerStateKey).(PeerState); ok {
-			// make sure peer isn't too far behind. This can happen
-			// if the peer is blocksyncing still and catching up
-			// in which case we just skip sending the transaction
-			if p.GetHeight() < memR.mempool.Height()-peerHeightDiff {
-				memR.Logger.Debug("peer is too far behind us. Skipping broadcast of seen tx")
-				continue
-			}
-		}
-		// no need to send a seen tx message to a peer that already
-		// has that tx.
-		if memR.mempool.seenByPeersSet.Has(txKey, id) {
-			continue
-		}
-
-		if ok := peer.TrySend(
-			p2p.Envelope{
-				ChannelID: MempoolDataChannel,
-				Message:   msg,
-			},
-		); ok {
-			count++
-			schema.WriteMempoolPeerState(memR.traceClient, string(peer.ID()), schema.SeenTx, txKey[:], schema.Upload)
-		}
-	}
+	memR.broadcastSeenTxWithHeight(txKey, memR.mempool.Height())
 }
 
 // ShufflePeers shuffles the peers map from GetAll() and returns a new shuffled map.
@@ -437,28 +398,38 @@ func ShufflePeers(peers map[uint16]p2p.Peer) map[uint16]p2p.Peer {
 	return result
 }
 
-// broadcastNewTx broadcast new transaction to all peers unless we are already sure they have seen the tx.
+// broadcastNewTx broadcast new transaction to limited peers unless we are already sure they have seen the tx.
 func (memR *Reactor) broadcastNewTx(wtx *wrappedTx) {
+	memR.broadcastSeenTxWithHeight(wtx.key(), wtx.height)
+}
+
+// broadcastSeenTxWithHeight is a helper that broadcasts a SeenTx message with height checking.
+func (memR *Reactor) broadcastSeenTxWithHeight(txKey types.TxKey, height int64) {
+	memR.Logger.Debug("broadcasting seen tx to limited peers", "tx_key", string(txKey[:]))
 	msg := &protomem.Message{
 		Sum: &protomem.Message_SeenTx{
 			SeenTx: &protomem.SeenTx{
-				TxKey: wtx.tx.Hash(),
+				TxKey: txKey[:],
 			},
 		},
 	}
 
-	for id, peer := range memR.ids.GetAll() {
+	count := 0
+	for id, peer := range ShufflePeers(memR.ids.GetAll()) {
+		if count >= maxSeenTxBroadcast {
+			break
+		}
 		if p, ok := peer.Get(types.PeerStateKey).(PeerState); ok {
 			// make sure peer isn't too far behind. This can happen
 			// if the peer is blocksyncing still and catching up
 			// in which case we just skip sending the transaction
-			if p.GetHeight() < wtx.height-peerHeightDiff {
+			if p.GetHeight() < height-peerHeightDiff {
 				memR.Logger.Debug("peer is too far behind us. Skipping broadcast of seen tx")
 				continue
 			}
 		}
 
-		if memR.mempool.seenByPeersSet.Has(wtx.key(), id) {
+		if memR.mempool.seenByPeersSet.Has(txKey, id) {
 			continue
 		}
 
@@ -468,8 +439,10 @@ func (memR *Reactor) broadcastNewTx(wtx *wrappedTx) {
 				Message:   msg,
 			},
 		) {
-			memR.mempool.PeerHasTx(id, wtx.key())
+			memR.mempool.PeerHasTx(id, txKey)
+			schema.WriteMempoolPeerState(memR.traceClient, string(peer.ID()), schema.SeenTx, txKey[:], schema.Upload)
 		}
+		count++
 	}
 }
 

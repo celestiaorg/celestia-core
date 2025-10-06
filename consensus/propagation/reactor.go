@@ -26,7 +26,7 @@ import (
 )
 
 const (
-	maxMsgSize = 4194304 // 4MiB
+	maxMsgSize = 512 * 1024 // 512kb
 
 	// DataChannel the propagation reactor channel handling the haves, the compact block,
 	// and the recovery parts.
@@ -174,7 +174,10 @@ func (blockProp *Reactor) InitPeer(peer p2p.Peer) (p2p.Peer, error) {
 	}
 
 	if legacy, err := isLegacyPropagation(peer); legacy || err != nil {
-		return nil, fmt.Errorf("peer is only using legacy propagation: %w", err)
+		if err != nil {
+			return nil, fmt.Errorf("peer is only using legacy propagation: %w", err)
+		}
+		return nil, errors.New("peer is only using legacy propagation")
 	}
 
 	// ignore the peer if it already exists.
