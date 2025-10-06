@@ -200,7 +200,7 @@ func TestReactorSendWantTxAfterReceivingSeenTx(t *testing.T) {
 		ChannelID: MempoolWantsChannel,
 		Message:   msgWant,
 	}
-	peer.On("Send", env).Return(true)
+	peer.On("TrySend", env).Return(true)
 
 	_, err := reactor.InitPeer(peer)
 	require.NoError(t, err)
@@ -310,8 +310,8 @@ func TestRemovePeerRequestFromOtherPeer(t *testing.T) {
 		ChannelID: MempoolWantsChannel,
 		Message:   wantMsg,
 	}
-	peers[0].On("Send", env).Return(true)
-	peers[1].On("Send", env).Return(true)
+	peers[0].On("TrySend", env).Return(true)
+	peers[1].On("TrySend", env).Return(true)
 
 	reactor.Receive(p2p.Envelope{
 		Src:       peers[0],
@@ -422,7 +422,7 @@ func TestReactorReceiveRejectedTx(t *testing.T) {
 	}
 
 	// Expect WantTx to be sent back
-	peer.On("Send", p2p.Envelope{
+	peer.On("TrySend", p2p.Envelope{
 		ChannelID: MempoolWantsChannel,
 		Message: &protomem.Message{
 			Sum: &protomem.Message_WantTx{
