@@ -403,22 +403,22 @@ func (r *Reactor) SendAddrs(p Peer, netAddrs []*p2p.NetAddress) {
 	p.Send(e)
 }
 
+// safeMaxAddressEstimationMargin is a factor used to estimate the maximum number of addresses fitting into a size limit.
+const safeMaxAddressEstimationMargin = 0.9
+
 // filterAddrs transforms a slice of NetAddress into PexAddrs while ensuring the resulting message size doesn't exceed maxMsgSize.
 func filterAddrs(netAddrs []*p2p.NetAddress) *tmp2p.PexAddrs {
 	msg := tmp2p.PexAddrs{Addrs: p2p.NetAddressesToProto(netAddrs)}
 	if msg.Size() > maxMsgSize {
 		// Calculate how many addresses we can fit based on the ratio
-		ratio := float64(maxMsgSize) / float64(msg.Size())
-		maxAddrs := int(float64(len(netAddrs)) * ratio)
+		avgAddrSize := msg.Size() / len(netAddrs)
+		estimatedMaxAddrs := (maxMsgSize * safeMaxAddressEstimationMargin) / avgAddrSize
 
-		// Use a small safety margin to account for size variations
-		maxAddrs = int(float64(maxAddrs) * 0.9)
-
-		if maxAddrs <= 0 {
-			maxAddrs = 1
+		if estimatedMaxAddrs <= 0 {
+			estimatedMaxAddrs = 1
 		}
 
-		msg = tmp2p.PexAddrs{Addrs: p2p.NetAddressesToProto(netAddrs[:maxAddrs])}
+		msg = tmp2p.PexAddrs{Addrs: p2p.NetAddressesToProto(netAddrs[:estimatedMaxAddrs])}
 	}
 
 	return &msg
