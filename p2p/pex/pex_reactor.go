@@ -407,23 +407,22 @@ func (r *Reactor) SendAddrs(p Peer, netAddrs []*p2p.NetAddress) {
 func filterAddrs(netAddrs []*p2p.NetAddress) *tmp2p.PexAddrs {
 	msg := tmp2p.PexAddrs{Addrs: p2p.NetAddressesToProto(netAddrs)}
 	if msg.Size() > maxMsgSize {
-		if msg.Size() > maxMsgSize {
-			// Calculate how many addresses we can fit based on the ratio
-			ratio := float64(maxMsgSize) / float64(msg.Size())
-			maxAddrs := int(float64(len(netAddrs)) * ratio)
+		// Calculate how many addresses we can fit based on the ratio
+		ratio := float64(maxMsgSize) / float64(msg.Size())
+		maxAddrs := int(float64(len(netAddrs)) * ratio)
 
-			// Use a small safety margin to account for size variations
-			maxAddrs = int(float64(maxAddrs) * 0.9)
+		// Use a small safety margin to account for size variations
+		maxAddrs = int(float64(maxAddrs) * 0.9)
 
-			if maxAddrs <= 0 {
-				maxAddrs = 1
-			}
+		if maxAddrs <= 0 {
+			maxAddrs = 1
+		}
 
-			if maxAddrs < len(netAddrs) {
-				msg = tmp2p.PexAddrs{Addrs: p2p.NetAddressesToProto(netAddrs[:maxAddrs])}
-			}
+		if maxAddrs < len(netAddrs) {
+			msg = tmp2p.PexAddrs{Addrs: p2p.NetAddressesToProto(netAddrs[:maxAddrs])}
 		}
 	}
+
 	return &msg
 }
 
