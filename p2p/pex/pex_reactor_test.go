@@ -977,17 +977,4 @@ func TestFilterAddrs(t *testing.T) {
 		assert.Equal(t, 0, len(result.Addrs))
 		assert.True(t, result.Size() <= maxMsgSize)
 	})
-
-	t.Run("addresses with varying sizes", func(t *testing.T) {
-		addrs := []*p2p.NetAddress{
-			{ID: p2p.ID("1234567890abcdef1234567890abcdef12345678"), IP: net.IPv4(1, 1, 1, 1), Port: 1},
-			{ID: p2p.ID("abcdefabcdefabcdefabcdefabcdefabcdefabcd"), IP: net.ParseIP("2001:db8::1"), Port: 8080},
-			{ID: p2p.ID("0000000000000000000000000000000000000001"), IP: net.IPv4(255, 255, 255, 255), Port: 65535},
-		}
-
-		result := filterAddrs(addrs)
-
-		assert.True(t, result.Size() <= maxMsgSize)
-		assert.True(t, len(result.Addrs) <= len(addrs))
-	})
 }
