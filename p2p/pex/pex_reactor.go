@@ -418,9 +418,7 @@ func filterAddrs(netAddrs []*p2p.NetAddress) *tmp2p.PexAddrs {
 			maxAddrs = 1
 		}
 
-		if maxAddrs < len(netAddrs) {
-			msg = tmp2p.PexAddrs{Addrs: p2p.NetAddressesToProto(netAddrs[:maxAddrs])}
-		}
+		msg = tmp2p.PexAddrs{Addrs: p2p.NetAddressesToProto(netAddrs[:maxAddrs])}
 	}
 
 	return &msg
