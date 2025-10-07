@@ -444,30 +444,65 @@ func benchPartSetFromData(b *testing.B, data []byte, partSize uint32) (ops *Part
 
 func BenchmarkPartSetEncodeDecode(b *testing.B) {
 	cases := []struct {
-		dataSize int
-		partSize uint32
+		dataSize       int
+		partSize       uint32
+		missingPercent int
 	}{
-		{MaxBlockSizeBytes, BlockPartSizeBytes},
-		{4 * MaxBlockSizeBytes, BlockPartSizeBytes},
+		{MaxBlockSizeBytes, BlockPartSizeBytes, 5},
+		{MaxBlockSizeBytes, BlockPartSizeBytes, 25},
+		{MaxBlockSizeBytes, BlockPartSizeBytes, 50},
+		{4 * MaxBlockSizeBytes, BlockPartSizeBytes, 5},
+		{4 * MaxBlockSizeBytes, BlockPartSizeBytes, 25},
+		{4 * MaxBlockSizeBytes, BlockPartSizeBytes, 50},
 	}
 
 	for c := range cases {
-		b.Run(fmt.Sprintf("dataSize=%d,partSize=%d", cases[c].dataSize, cases[c].partSize), func(b *testing.B) {
+		b.Run(fmt.Sprintf("dataSize=%d,partSize=%d,missing=%d%%", cases[c].dataSize, cases[c].partSize, cases[c].missingPercent), func(b *testing.B) {
 			data := cmtrand.Bytes(cases[c].dataSize)
 			ops, err := NewPartSetFromData(data, cases[c].partSize)
 			require.NoError(b, err)
 			var eps *PartSet
 			lastPartLen := 0
 			b.Run("encode", func(b *testing.B) {
+				b.ReportAllocs()
+				b.ResetTimer()
 				for i := 0; i < b.N; i++ {
-					b.ReportAllocs()
 					eps, lastPartLen, err = Encode(ops, cases[c].partSize)
 					require.NoError(b, err)
 				}
 			})
+
+			// Remove parts based on missingPercent
+			totalParts := int(ops.Total())
+			numToRemove := (totalParts * cases[c].missingPercent) / 100
+
+			// Generate random indices to remove
+			indices := cmtrand.Perm(totalParts)[:numToRemove]
+
+			for _, idx := range indices {
+				// Remove from ops
+				ops.count--
+				ops.partsBitArray.SetIndex(idx, false)
+				start := idx * int(cases[c].partSize)
+				end := start + int(cases[c].partSize)
+				for i := start; i < end && i < len(ops.buffer); i++ {
+					ops.buffer[i] = 0
+				}
+
+				// Remove from eps
+				eps.count--
+				eps.partsBitArray.SetIndex(idx, false)
+				start = idx * int(cases[c].partSize)
+				end = start + int(cases[c].partSize)
+				for i := start; i < end && i < len(eps.buffer); i++ {
+					eps.buffer[i] = 0
+				}
+			}
+
 			b.Run("decode", func(b *testing.B) {
+				b.ReportAllocs()
+				b.ResetTimer()
 				for i := 0; i < b.N; i++ {
-					b.ReportAllocs()
 					_, _, err := Decode(ops, eps, lastPartLen)
 					require.NoError(b, err)
 				}
