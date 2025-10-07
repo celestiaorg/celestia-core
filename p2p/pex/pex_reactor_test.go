@@ -919,3 +919,62 @@ func TestPEXReactorWhenAddressBookIsSmallerThanMaxDials(t *testing.T) {
 		assert.Equal(t, 1, pexR.AttemptsToDial(peer))
 	}
 }
+
+// createTestAddresses creates a slice of NetAddress for testing
+func createTestAddresses(count int) []*p2p.NetAddress {
+	addrs := make([]*p2p.NetAddress, count)
+	for i := 0; i < count; i++ {
+		addrs[i] = &p2p.NetAddress{
+			ID:   p2p.ID("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"),
+			IP:   net.ParseIP("ffff:ffff:ffff:ffff:ffff:ffff:ffff:ffff"),
+			Port: uint16(8000 + i),
+		}
+	}
+	return addrs
+}
+
+func TestFilterAddrs(t *testing.T) {
+	t.Run("message fits within limit", func(t *testing.T) {
+		addrs := createTestAddresses(maxGetSelection)
+
+		result := filterAddrs(addrs)
+
+		assert.Equal(t, len(addrs), len(result.Addrs))
+		assert.True(t, result.Size() <= maxMsgSize)
+
+		originalProto := p2p.NetAddressesToProto(addrs)
+		for i, addr := range result.Addrs {
+			assert.Equal(t, originalProto[i], addr)
+		}
+	})
+
+	t.Run("empty address list", func(t *testing.T) {
+		var addrs []*p2p.NetAddress
+
+		result := filterAddrs(addrs)
+
+		assert.Equal(t, 0, len(result.Addrs))
+		assert.True(t, result.Size() <= maxMsgSize)
+	})
+
+	t.Run("message exceeds limit and gets filtered", func(t *testing.T) {
+		addrs := createTestAddresses(maxGetSelection + 2000)
+
+		initialMsg := tmp2p.PexAddrs{Addrs: p2p.NetAddressesToProto(addrs)}
+		require.True(t, initialMsg.Size() > maxMsgSize, "Test setup: initial message should exceed maxMsgSize")
+
+		result := filterAddrs(addrs)
+
+		assert.True(t, result.Size() <= maxMsgSize, "Filtered message should fit within maxMsgSize")
+		assert.Less(t, len(result.Addrs), len(addrs), "Should have fewer addresses after filtering")
+		assert.Greater(t, len(result.Addrs), 0, "Should have at least one address")
+	})
+
+	t.Run("nil input", func(t *testing.T) {
+		result := filterAddrs(nil)
+
+		assert.NotNil(t, result)
+		assert.Equal(t, 0, len(result.Addrs))
+		assert.True(t, result.Size() <= maxMsgSize)
+	})
+}
