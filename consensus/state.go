@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/cometbft/cometbft/privval"
 	"os"
 	"path/filepath"
 	"runtime/debug"
@@ -2110,6 +2111,13 @@ func (cs *State) isReadyToPrecommit() (bool, time.Duration) {
 	}
 	precommitVoteTime := cs.rs.StartTime.Add(cs.state.Timeouts.DelayedPrecommitTimeout)
 	waitTime := time.Until(precommitVoteTime)
+	if _, ok := cs.privValidator.(*privval.FilePV); !ok {
+		waitTime = waitTime - time.Second
+	} else {
+		fmt.Println("file PV mudaffakaaaa")
+		fmt.Println("waitTime: ", waitTime.Milliseconds())
+		fmt.Println("newOne: ", (waitTime - time.Second).Milliseconds())
+	}
 	return waitTime <= 0, waitTime
 }
 
