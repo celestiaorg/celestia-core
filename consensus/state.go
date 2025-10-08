@@ -5,13 +5,14 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/cometbft/cometbft/privval"
 	"os"
 	"path/filepath"
 	"runtime/debug"
 	"sort"
 	"sync"
 	"time"
+
+	"github.com/cometbft/cometbft/privval"
 
 	proptypes "github.com/cometbft/cometbft/consensus/propagation/types"
 
