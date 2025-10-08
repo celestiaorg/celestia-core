@@ -451,9 +451,6 @@ func BenchmarkPartSetEncodeDecode(b *testing.B) {
 		{MaxBlockSizeBytes, BlockPartSizeBytes, 5},
 		{MaxBlockSizeBytes, BlockPartSizeBytes, 25},
 		{MaxBlockSizeBytes, BlockPartSizeBytes, 50},
-		{4 * MaxBlockSizeBytes, BlockPartSizeBytes, 5},
-		{4 * MaxBlockSizeBytes, BlockPartSizeBytes, 25},
-		{4 * MaxBlockSizeBytes, BlockPartSizeBytes, 50},
 	}
 
 	for c := range cases {
