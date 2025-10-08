@@ -12,6 +12,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/cometbft/cometbft/privval"
+
 	proptypes "github.com/cometbft/cometbft/consensus/propagation/types"
 
 	"github.com/cometbft/cometbft/consensus/propagation"
@@ -2100,6 +2102,9 @@ func (cs *State) recordMetrics(height int64, block *types.Block) {
 	cs.metrics.CommittedHeight.Set(float64(block.Height))
 }
 
+// KMSSigningDelay is a constant representing a delay used primarily to adjust for KMS signing latencies.
+const KMSSigningDelay = 200 * time.Millisecond
+
 // isReadyToPrecommit calculates if the process has waited at least a certain number of seconds
 // from their start time before they can vote
 // If the application's DelayedPrecommitTimeout is set to 0, no precommit wait is done.
@@ -2110,6 +2115,9 @@ func (cs *State) isReadyToPrecommit() (bool, time.Duration) {
 	}
 	precommitVoteTime := cs.rs.StartTime.Add(cs.state.Timeouts.DelayedPrecommitTimeout)
 	waitTime := time.Until(precommitVoteTime)
+	if _, ok := cs.privValidator.(*privval.SignerClient); ok {
+		waitTime = waitTime - KMSSigningDelay
+	}
 	return waitTime <= 0, waitTime
 }
 
