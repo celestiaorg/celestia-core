@@ -2114,7 +2114,7 @@ func (cs *State) isReadyToPrecommit() (bool, time.Duration) {
 	}
 	precommitVoteTime := cs.rs.StartTime.Add(cs.state.Timeouts.DelayedPrecommitTimeout)
 	waitTime := time.Until(precommitVoteTime)
-	if _, ok := cs.privValidator.(*privval.FilePV); !ok {
+	if _, ok := cs.privValidator.(*privval.SignerClient); ok {
 		waitTime = waitTime - KMSSigningDelay
 	}
 	return waitTime <= 0, waitTime
