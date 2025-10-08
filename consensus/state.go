@@ -2101,6 +2101,9 @@ func (cs *State) recordMetrics(height int64, block *types.Block) {
 	cs.metrics.CommittedHeight.Set(float64(block.Height))
 }
 
+// KMSSigningDelay is a constant representing a delay of one second, used primarily to adjust for KMS signing latencies.
+const KMSSigningDelay = time.Second
+
 // isReadyToPrecommit calculates if the process has waited at least a certain number of seconds
 // from their start time before they can vote
 // If the application's DelayedPrecommitTimeout is set to 0, no precommit wait is done.
@@ -2112,11 +2115,7 @@ func (cs *State) isReadyToPrecommit() (bool, time.Duration) {
 	precommitVoteTime := cs.rs.StartTime.Add(cs.state.Timeouts.DelayedPrecommitTimeout)
 	waitTime := time.Until(precommitVoteTime)
 	if _, ok := cs.privValidator.(*privval.FilePV); !ok {
-		waitTime = waitTime - time.Second
-	} else {
-		fmt.Println("file PV mudaffakaaaa")
-		fmt.Println("waitTime: ", waitTime.Milliseconds())
-		fmt.Println("newOne: ", (waitTime - time.Second).Milliseconds())
+		waitTime = waitTime - KMSSigningDelay
 	}
 	return waitTime <= 0, waitTime
 }
