@@ -2105,19 +2105,6 @@ func (cs *State) recordMetrics(height int64, block *types.Block) {
 	cs.metrics.CommittedHeight.Set(float64(block.Height))
 }
 
-// isReadyToPrecommit calculates if the process has waited at least a certain number of seconds
-// from their start time before they can vote
-// If the application's DelayedPrecommitTimeout is set to 0, no precommit wait is done.
-func (cs *State) isReadyToPrecommit() (bool, time.Duration) {
-	if cs.state.Timeouts.DelayedPrecommitTimeout == 0 {
-		// setting 0 as a special case not to reschedule the pre-commit
-		return true, 0
-	}
-	precommitVoteTime := cs.rs.StartTime.Add(cs.state.Timeouts.DelayedPrecommitTimeout)
-	waitTime := time.Until(precommitVoteTime)
-	return waitTime <= 0, waitTime
-}
-
 //-----------------------------------------------------------------------------
 
 func (cs *State) defaultSetProposal(proposal *types.Proposal) error {
