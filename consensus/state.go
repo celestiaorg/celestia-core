@@ -827,18 +827,15 @@ func (cs *State) updateToState(state sm.State) {
 	cs.updateRoundStep(0, cstypes.RoundStepNewHeight)
 
 	if cs.rs.CommitTime.IsZero() {
-		fmt.Println("0")
 		// "Now" makes it easier to sync up dev nodes.
 		// We add timeoutCommit to allow transactions
 		// to be gathered for the first block.
 		// And alternative solution that relies on clocks:
 		// cs.StartTime = state.LastBlockTime.Add(timeoutCommit)
 		if state.LastBlockHeight == 0 {
-			fmt.Println("1")
 			// Don't use cs.state.Timeouts.TimeoutCommit because that is zero
 			cs.rs.StartTime = cs.config.CommitWithCustomTimeout(cmttime.Now(), state.Timeouts.TimeoutCommit)
 		} else {
-			fmt.Println("2")
 			cs.rs.StartTime = cs.config.CommitWithCustomTimeout(cmttime.Now(), cs.state.Timeouts.TimeoutCommit)
 		}
 
@@ -846,7 +843,6 @@ func (cs *State) updateToState(state sm.State) {
 		fmt.Println("3")
 		var nextStartTime time.Time
 		if state.LastBlockHeight == 0 {
-			fmt.Println("4")
 			nextStartTime = cs.config.CommitWithCustomTimeout(cs.rs.CommitTime, state.Timeouts.TimeoutCommit)
 		} else {
 			fmt.Println("5")
@@ -856,8 +852,11 @@ func (cs *State) updateToState(state sm.State) {
 		// Enforce minimum block time equal to the delayed precommit time
 		if !cs.rs.StartTime.IsZero() && cs.state.Timeouts.DelayedPrecommitTimeout != 0 {
 			fmt.Println("6")
-			minStartTime := cs.rs.StartTime.Add(cs.state.Timeouts.DelayedPrecommitTimeout)
+			minStartTime := cs.rs.StartTime.Add(cs.state.Timeouts.DelayedPrecommitTimeout * time.Duration(cs.rs.Round+1))
+			fmt.Println("startTime: ", cs.rs.StartTime)
+			fmt.Println("nextStartTime: ", nextStartTime, " minStartTime: ", minStartTime)
 			if nextStartTime.Before(minStartTime) {
+				fmt.Println("7")
 				nextStartTime = minStartTime
 			}
 		}
