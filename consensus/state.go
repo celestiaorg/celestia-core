@@ -851,12 +851,9 @@ func (cs *State) updateToState(state sm.State) {
 
 		// Enforce minimum block time equal to the delayed precommit time
 		if !cs.rs.StartTime.IsZero() && cs.state.Timeouts.DelayedPrecommitTimeout != 0 {
-			fmt.Println("6")
-			minStartTime := cs.rs.StartTime.Add(cs.state.Timeouts.DelayedPrecommitTimeout * time.Duration(cs.rs.Round+1))
-			fmt.Println("startTime: ", cs.rs.StartTime)
-			fmt.Println("nextStartTime: ", nextStartTime, " minStartTime: ", minStartTime)
+			roundsDelay := time.Duration(cs.rs.Round) * (cs.state.Timeouts.TimeoutPropose + cs.state.Timeouts.TimeoutPrevote + cs.state.Timeouts.TimeoutPrecommit)
+			minStartTime := cs.rs.StartTime.Add(cs.state.Timeouts.DelayedPrecommitTimeout + roundsDelay)
 			if nextStartTime.Before(minStartTime) {
-				fmt.Println("7")
 				nextStartTime = minStartTime
 			}
 		}
