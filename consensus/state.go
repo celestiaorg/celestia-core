@@ -2102,7 +2102,7 @@ func (cs *State) recordMetrics(height int64, block *types.Block) {
 }
 
 // KMSSigningDelay is a constant representing a delay of one second, used primarily to adjust for KMS signing latencies.
-const KMSSigningDelay = time.Second
+const KMSSigningDelay = 200 * time.Millisecond
 
 // isReadyToPrecommit calculates if the process has waited at least a certain number of seconds
 // from their start time before they can vote
