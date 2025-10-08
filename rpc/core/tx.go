@@ -228,7 +228,16 @@ func (env *Environment) TxStatus(ctx *rpctypes.Context, hash []byte) (*ctypes.Re
 	// Check if the tx has been committed
 	txInfo := env.BlockStore.LoadTxInfo(hash)
 	if txInfo != nil {
-		return &ctypes.ResultTxStatus{Height: txInfo.Height, Index: txInfo.Index, ExecutionCode: txInfo.Code, Error: txInfo.Error, Status: TxStatusCommitted}, nil
+		return &ctypes.ResultTxStatus{
+			Height:        txInfo.Height,
+			Index:         txInfo.Index,
+			ExecutionCode: txInfo.Code,
+			Error:         txInfo.Error,
+			Status:        TxStatusCommitted,
+			Codespace:     txInfo.Codespace,
+			GasWanted:     txInfo.GasWanted,
+			GasUsed:       txInfo.GasUsed,
+		}, nil
 	}
 
 	// Get the tx key from the hash

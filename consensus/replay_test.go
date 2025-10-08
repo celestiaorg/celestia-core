@@ -1169,7 +1169,7 @@ func newMockBlockStore(t *testing.T, config *cfg.Config, params types.ConsensusP
 	}
 }
 
-func (*mockBlockStore) SaveTxInfo(block *types.Block, txResponseCodes []uint32, logs []string) error {
+func (*mockBlockStore) SaveTxInfo(block *types.Block, txResults []*abci.ExecTxResult) error {
 	return nil
 }
 func (bs *mockBlockStore) LoadTxInfo(hash []byte) *cmtstore.TxInfo { return &cmtstore.TxInfo{} }

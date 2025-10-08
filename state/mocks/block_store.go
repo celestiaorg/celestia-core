@@ -3,8 +3,10 @@
 package mocks
 
 import (
-	state "github.com/cometbft/cometbft/state"
+	abcitypes "github.com/cometbft/cometbft/abci/types"
 	mock "github.com/stretchr/testify/mock"
+
+	state "github.com/cometbft/cometbft/state"
 
 	store "github.com/cometbft/cometbft/proto/tendermint/store"
 
@@ -333,17 +335,17 @@ func (_m *BlockStore) SaveBlockWithExtendedCommit(block *types.Block, blockParts
 	_m.Called(block, blockParts, seenCommit)
 }
 
-// SaveTxInfo provides a mock function with given fields: block, txResponseCodes, logs
-func (_m *BlockStore) SaveTxInfo(block *types.Block, txResponseCodes []uint32, logs []string) error {
-	ret := _m.Called(block, txResponseCodes, logs)
+// SaveTxInfo provides a mock function with given fields: block, txResults
+func (_m *BlockStore) SaveTxInfo(block *types.Block, txResults []*abcitypes.ExecTxResult) error {
+	ret := _m.Called(block, txResults)
 
 	if len(ret) == 0 {
 		panic("no return value specified for SaveTxInfo")
 	}
 
 	var r0 error
-	if rf, ok := ret.Get(0).(func(*types.Block, []uint32, []string) error); ok {
-		r0 = rf(block, txResponseCodes, logs)
+	if rf, ok := ret.Get(0).(func(*types.Block, []*abcitypes.ExecTxResult) error); ok {
+		r0 = rf(block, txResults)
 	} else {
 		r0 = ret.Error(0)
 	}

@@ -11,10 +11,9 @@ import (
 	p2p "github.com/cometbft/cometbft/proto/tendermint/p2p"
 	types1 "github.com/cometbft/cometbft/proto/tendermint/types"
 	_ "github.com/cosmos/gogoproto/gogoproto"
-	grpc1 "github.com/cosmos/gogoproto/grpc"
-	proto "github.com/cosmos/gogoproto/proto"
 	_ "github.com/cosmos/gogoproto/types"
-	github_com_cosmos_gogoproto_types "github.com/cosmos/gogoproto/types"
+	proto "github.com/gogo/protobuf/proto"
+	github_com_gogo_protobuf_types "github.com/gogo/protobuf/types"
 	grpc "google.golang.org/grpc"
 	codes "google.golang.org/grpc/codes"
 	status "google.golang.org/grpc/status"
@@ -1243,10 +1242,10 @@ type BroadcastAPIClient interface {
 }
 
 type broadcastAPIClient struct {
-	cc grpc1.ClientConn
+	cc *grpc.ClientConn
 }
 
-func NewBroadcastAPIClient(cc grpc1.ClientConn) BroadcastAPIClient {
+func NewBroadcastAPIClient(cc *grpc.ClientConn) BroadcastAPIClient {
 	return &broadcastAPIClient{cc}
 }
 
@@ -1285,7 +1284,7 @@ func (*UnimplementedBroadcastAPIServer) BroadcastTx(ctx context.Context, req *Re
 	return nil, status.Errorf(codes.Unimplemented, "method BroadcastTx not implemented")
 }
 
-func RegisterBroadcastAPIServer(s grpc1.Server, srv BroadcastAPIServer) {
+func RegisterBroadcastAPIServer(s *grpc.Server, srv BroadcastAPIServer) {
 	s.RegisterService(&_BroadcastAPI_serviceDesc, srv)
 }
 
@@ -1325,7 +1324,6 @@ func _BroadcastAPI_BroadcastTx_Handler(srv interface{}, ctx context.Context, dec
 	return interceptor(ctx, in, info, handler)
 }
 
-var BroadcastAPI_serviceDesc = _BroadcastAPI_serviceDesc
 var _BroadcastAPI_serviceDesc = grpc.ServiceDesc{
 	ServiceName: "tendermint.rpc.grpc.BroadcastAPI",
 	HandlerType: (*BroadcastAPIServer)(nil),
@@ -1362,10 +1360,10 @@ type BlockAPIClient interface {
 }
 
 type blockAPIClient struct {
-	cc grpc1.ClientConn
+	cc *grpc.ClientConn
 }
 
-func NewBlockAPIClient(cc grpc1.ClientConn) BlockAPIClient {
+func NewBlockAPIClient(cc *grpc.ClientConn) BlockAPIClient {
 	return &blockAPIClient{cc}
 }
 
@@ -1531,7 +1529,7 @@ func (*UnimplementedBlockAPIServer) Status(ctx context.Context, req *StatusReque
 	return nil, status.Errorf(codes.Unimplemented, "method Status not implemented")
 }
 
-func RegisterBlockAPIServer(s grpc1.Server, srv BlockAPIServer) {
+func RegisterBlockAPIServer(s *grpc.Server, srv BlockAPIServer) {
 	s.RegisterService(&_BlockAPI_serviceDesc, srv)
 }
 
@@ -1652,7 +1650,6 @@ func _BlockAPI_Status_Handler(srv interface{}, ctx context.Context, dec func(int
 	return interceptor(ctx, in, info, handler)
 }
 
-var BlockAPI_serviceDesc = _BlockAPI_serviceDesc
 var _BlockAPI_serviceDesc = grpc.ServiceDesc{
 	ServiceName: "tendermint.rpc.grpc.BlockAPI",
 	HandlerType: (*BlockAPIServer)(nil),
@@ -1701,10 +1698,10 @@ type BlobstreamAPIClient interface {
 }
 
 type blobstreamAPIClient struct {
-	cc grpc1.ClientConn
+	cc *grpc.ClientConn
 }
 
-func NewBlobstreamAPIClient(cc grpc1.ClientConn) BlobstreamAPIClient {
+func NewBlobstreamAPIClient(cc *grpc.ClientConn) BlobstreamAPIClient {
 	return &blobstreamAPIClient{cc}
 }
 
@@ -1733,7 +1730,7 @@ func (*UnimplementedBlobstreamAPIServer) DataRootInclusionProof(ctx context.Cont
 	return nil, status.Errorf(codes.Unimplemented, "method DataRootInclusionProof not implemented")
 }
 
-func RegisterBlobstreamAPIServer(s grpc1.Server, srv BlobstreamAPIServer) {
+func RegisterBlobstreamAPIServer(s *grpc.Server, srv BlobstreamAPIServer) {
 	s.RegisterService(&_BlobstreamAPI_serviceDesc, srv)
 }
 
@@ -1755,7 +1752,6 @@ func _BlobstreamAPI_DataRootInclusionProof_Handler(srv interface{}, ctx context.
 	return interceptor(ctx, in, info, handler)
 }
 
-var BlobstreamAPI_serviceDesc = _BlobstreamAPI_serviceDesc
 var _BlobstreamAPI_serviceDesc = grpc.ServiceDesc{
 	ServiceName: "tendermint.rpc.grpc.BlobstreamAPI",
 	HandlerType: (*BlobstreamAPIServer)(nil),
@@ -2409,7 +2405,7 @@ func (m *SyncInfo) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 		i--
 		dAtA[i] = 0x48
 	}
-	n14, err14 := github_com_cosmos_gogoproto_types.StdTimeMarshalTo(m.EarliestBlockTime, dAtA[i-github_com_cosmos_gogoproto_types.SizeOfStdTime(m.EarliestBlockTime):])
+	n14, err14 := github_com_gogo_protobuf_types.StdTimeMarshalTo(m.EarliestBlockTime, dAtA[i-github_com_gogo_protobuf_types.SizeOfStdTime(m.EarliestBlockTime):])
 	if err14 != nil {
 		return 0, err14
 	}
@@ -2436,7 +2432,7 @@ func (m *SyncInfo) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 		i--
 		dAtA[i] = 0x2a
 	}
-	n15, err15 := github_com_cosmos_gogoproto_types.StdTimeMarshalTo(m.LatestBlockTime, dAtA[i-github_com_cosmos_gogoproto_types.SizeOfStdTime(m.LatestBlockTime):])
+	n15, err15 := github_com_gogo_protobuf_types.StdTimeMarshalTo(m.LatestBlockTime, dAtA[i-github_com_gogo_protobuf_types.SizeOfStdTime(m.LatestBlockTime):])
 	if err15 != nil {
 		return 0, err15
 	}
@@ -2847,7 +2843,7 @@ func (m *SyncInfo) Size() (n int) {
 	if m.LatestBlockHeight != 0 {
 		n += 1 + sovTypes(uint64(m.LatestBlockHeight))
 	}
-	l = github_com_cosmos_gogoproto_types.SizeOfStdTime(m.LatestBlockTime)
+	l = github_com_gogo_protobuf_types.SizeOfStdTime(m.LatestBlockTime)
 	n += 1 + l + sovTypes(uint64(l))
 	l = len(m.EarliestBlockHash)
 	if l > 0 {
@@ -2860,7 +2856,7 @@ func (m *SyncInfo) Size() (n int) {
 	if m.EarliestBlockHeight != 0 {
 		n += 1 + sovTypes(uint64(m.EarliestBlockHeight))
 	}
-	l = github_com_cosmos_gogoproto_types.SizeOfStdTime(m.EarliestBlockTime)
+	l = github_com_gogo_protobuf_types.SizeOfStdTime(m.EarliestBlockTime)
 	n += 1 + l + sovTypes(uint64(l))
 	if m.CatchingUp {
 		n += 2
@@ -4613,7 +4609,7 @@ func (m *SyncInfo) Unmarshal(dAtA []byte) error {
 			if postIndex > l {
 				return io.ErrUnexpectedEOF
 			}
-			if err := github_com_cosmos_gogoproto_types.StdTimeUnmarshal(&m.LatestBlockTime, dAtA[iNdEx:postIndex]); err != nil {
+			if err := github_com_gogo_protobuf_types.StdTimeUnmarshal(&m.LatestBlockTime, dAtA[iNdEx:postIndex]); err != nil {
 				return err
 			}
 			iNdEx = postIndex
@@ -4733,7 +4729,7 @@ func (m *SyncInfo) Unmarshal(dAtA []byte) error {
 			if postIndex > l {
 				return io.ErrUnexpectedEOF
 			}
-			if err := github_com_cosmos_gogoproto_types.StdTimeUnmarshal(&m.EarliestBlockTime, dAtA[iNdEx:postIndex]); err != nil {
+			if err := github_com_gogo_protobuf_types.StdTimeUnmarshal(&m.EarliestBlockTime, dAtA[iNdEx:postIndex]); err != nil {
 				return err
 			}
 			iNdEx = postIndex

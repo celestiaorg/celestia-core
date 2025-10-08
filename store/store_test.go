@@ -784,22 +784,35 @@ func TestSaveTxInfo(t *testing.T) {
 		seenCommit := makeTestExtCommit(h, cmttime.Now())
 		blockStore.SaveBlockWithExtendedCommit(block, partSet, seenCommit)
 
-		var txResponseCode uint32
-		var txLog string
+		var txResult *abci.ExecTxResult
 
 		if h%2 == 0 {
-			txResponseCode = 0
-			txLog = "success"
+			txResult = &abci.ExecTxResult{
+				Code:      0,
+				Log:       "success",
+				GasWanted: 100000,
+				GasUsed:   75000,
+				Data:      []byte("success_data"),
+				Info:      "successful execution",
+				Codespace: "",
+			}
 		} else {
-			txResponseCode = 1
-			txLog = "failure"
+			txResult = &abci.ExecTxResult{
+				Code:      1,
+				Log:       "failure",
+				GasWanted: 50000,
+				GasUsed:   25000,
+				Data:      []byte(""),
+				Info:      "failed execution",
+				Codespace: "app",
+			}
 		}
 
 		// Save the tx info
-		err = blockStore.SaveTxInfo(block, []uint32{txResponseCode}, []string{txLog})
+		err = blockStore.SaveTxInfo(block, []*abci.ExecTxResult{txResult})
 		require.NoError(t, err)
-		allTxResponseCodes = append(allTxResponseCodes, txResponseCode)
-		allTxLogs = append(allTxLogs, txLog)
+		allTxResponseCodes = append(allTxResponseCodes, txResult.Code)
+		allTxLogs = append(allTxLogs, txResult.Log)
 	}
 
 	txIndex := 0
