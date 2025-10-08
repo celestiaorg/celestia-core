@@ -853,6 +853,7 @@ func (cs *State) updateToState(state sm.State) {
 		if !cs.rs.StartTime.IsZero() && cs.state.Timeouts.DelayedPrecommitTimeout != 0 {
 			roundsDelay := time.Duration(cs.rs.Round) * (cs.state.Timeouts.TimeoutPropose + cs.state.Timeouts.TimeoutPrevote + cs.state.Timeouts.TimeoutPrecommit)
 			minStartTime := cs.rs.StartTime.Add(cs.state.Timeouts.DelayedPrecommitTimeout + roundsDelay)
+			fmt.Println("startTime: ", cs.rs.StartTime)
 			fmt.Println("minStartTime: ", minStartTime)
 			fmt.Println("nextStartTime: ", nextStartTime)
 			if nextStartTime.Before(minStartTime) {
