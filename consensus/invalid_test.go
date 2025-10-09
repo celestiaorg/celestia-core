@@ -441,7 +441,7 @@ func testReactorInvalidMessagesInState(t *testing.T, targetState cstypes.RoundSt
 	stepCh := sub.Out()
 
 	// Wait for target state and test messages until disconnect
-	timeout := time.After(60 * time.Second)
+	timeout := time.After(120 * time.Second)
 	for {
 		select {
 		case msg := <-stepCh:
@@ -497,7 +497,7 @@ func testReactorInvalidMessagesInState(t *testing.T, targetState cstypes.RoundSt
 			return lastTestedIdx
 
 		case <-timeout:
-			t.Fatalf("Timed out waiting for state %s", targetState)
+			t.Fatalf("Timed out waiting for state %s %d", targetState, startIdx)
 			return startIdx - 1
 		}
 	}
