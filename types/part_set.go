@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"golang.org/x/sync/errgroup"
+	"runtime"
 
 	"github.com/klauspost/reedsolomon"
 
@@ -419,20 +421,29 @@ func Decode(ops, eps *PartSet, lastPartLen int) (*PartSet, *PartSet, error) {
 		return nil, nil, fmt.Errorf("reconstructed data has different hash!! want: %X, got: %X", ops.hash, root)
 	}
 
+	eg := errgroup.Group{}
+	eg.SetLimit(runtime.NumCPU())
 	for i, d := range data[:ops.Total()] {
-		if !ops.HasPart(i) {
-			added, err := ops.AddPart(&Part{
-				Index: uint32(i),
-				Bytes: d,
-				Proof: *proofs[i],
-			})
-			if err != nil {
-				return nil, nil, err
+		eg.Go(func() error {
+			if !ops.HasPart(i) {
+				added, err := ops.AddPart(&Part{
+					Index: uint32(i),
+					Bytes: d,
+					Proof: *proofs[i],
+				})
+				if err != nil {
+					return err
+				}
+				if !added {
+					return fmt.Errorf("couldn't add original part %d when decoding", i)
+				}
 			}
-			if !added {
-				return nil, nil, fmt.Errorf("couldn't add original part %d when decoding", i)
-			}
-		}
+			return nil
+		})
+	}
+	err = eg.Wait()
+	if err != nil {
+		return nil, nil, err
 	}
 
 	// recalculate all of the proofs since we apparently don't have a function
@@ -443,20 +454,29 @@ func Decode(ops, eps *PartSet, lastPartLen int) (*PartSet, *PartSet, error) {
 		return nil, nil, fmt.Errorf("reconstructed parity data has different hash!! want: %X, got: %X", eps.hash, eroot)
 	}
 
+	eg = errgroup.Group{}
+	eg.SetLimit(runtime.NumCPU())
 	for i := 0; i < int(eps.Total()); i++ {
-		if !eps.HasPart(i) {
-			added, err := eps.AddPart(&Part{
-				Index: uint32(i),
-				Bytes: data[int(ops.Total())+i],
-				Proof: *eproofs[i],
-			})
-			if err != nil {
-				return nil, nil, err
+		eg.Go(func() error {
+			if !eps.HasPart(i) {
+				added, err := eps.AddPart(&Part{
+					Index: uint32(i),
+					Bytes: data[int(ops.Total())+i],
+					Proof: *eproofs[i],
+				})
+				if err != nil {
+					return err
+				}
+				if !added {
+					return fmt.Errorf("couldn't add parity part %d when decoding", i)
+				}
 			}
-			if !added {
-				return nil, nil, fmt.Errorf("couldn't add parity part %d when decoding", i)
-			}
-		}
+			return nil
+		})
+	}
+	err = eg.Wait()
+	if err != nil {
+		return nil, nil, err
 	}
 
 	return ops, eps, nil
