@@ -29,6 +29,7 @@ import (
 	"github.com/cometbft/cometbft/light"
 	mempl "github.com/cometbft/cometbft/mempool"
 	"github.com/cometbft/cometbft/mempool/cat"
+	"github.com/cometbft/cometbft/mempool/preconf"
 	"github.com/cometbft/cometbft/mempool/priority"
 	"github.com/cometbft/cometbft/p2p"
 	"github.com/cometbft/cometbft/p2p/pex"
@@ -287,6 +288,12 @@ func createMempoolAndMempoolReactor(
 		reactor.SetLogger(logger)
 		return mp, reactor
 	case cfg.MempoolTypeCAT, cfg.LegacyMempoolTypeCAT:
+		// Create preconfirmation state with current validator set
+		preconfState := preconf.NewPreconfirmationState(
+			logger.With("module", "mempool-preconf"),
+			state.Validators,
+		)
+
 		mp := cat.NewTxPool(
 			logger,
 			config.Mempool,
@@ -295,6 +302,7 @@ func createMempoolAndMempoolReactor(
 			cat.WithMetrics(memplMetrics),
 			cat.WithPreCheck(sm.TxPreCheck(state)),
 			cat.WithPostCheck(sm.TxPostCheck(state)),
+			cat.WithPreconfirmationState(preconfState),
 		)
 
 		reactor, err := cat.NewReactor(

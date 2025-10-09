@@ -22,8 +22,10 @@ import (
 	"github.com/cometbft/cometbft/abci/example/kvstore"
 	abci "github.com/cometbft/cometbft/abci/types"
 	"github.com/cometbft/cometbft/config"
+	"github.com/cometbft/cometbft/crypto/ed25519"
 	"github.com/cometbft/cometbft/libs/log"
 	"github.com/cometbft/cometbft/mempool"
+	"github.com/cometbft/cometbft/mempool/preconf"
 	tmproto "github.com/cometbft/cometbft/proto/tendermint/types"
 	"github.com/cometbft/cometbft/proxy"
 	"github.com/cometbft/cometbft/types"
@@ -997,4 +999,186 @@ func TestTxMempool_TestRejectionIndexing(t *testing.T) {
 		require.Equal(t, uint32(0), code)
 		require.Equal(t, "", log)
 	})
+}
+
+// TestPreconfirmationStateIntegration tests that the PreconfirmationState is properly
+// integrated with the TxPool lifecycle.
+func TestPreconfirmationStateIntegration(t *testing.T) {
+	t.Run("without preconf state", func(t *testing.T) {
+		// Setup pool without preconfirmation state
+		txmp := setup(t, 0)
+
+		// PreconfirmationState should be nil
+		assert.Nil(t, txmp.PreconfirmationState())
+
+		// Add a transaction - should work fine without preconf state
+		tx := newDefaultTx("test-tx")
+		mustCheckTx(t, txmp, string(tx))
+		require.Equal(t, 1, txmp.Size())
+	})
+
+	t.Run("with preconf state", func(t *testing.T) {
+		// Create a test validator set
+		vals := make([]*types.Validator, 3)
+		for i := 0; i < 3; i++ {
+			privKey := ed25519.GenPrivKey()
+			pubKey := privKey.PubKey()
+			vals[i] = types.NewValidator(pubKey, 10)
+		}
+		valSet := types.NewValidatorSet(vals)
+
+		// Create preconf state
+		logger := log.TestingLogger()
+		preconfState := preconf.NewPreconfirmationState(logger, valSet)
+
+		// Setup pool with preconfirmation state
+		txmp := setup(t, 0, WithPreconfirmationState(preconfState))
+
+		// PreconfirmationState should be set
+		require.NotNil(t, txmp.PreconfirmationState())
+		assert.Equal(t, 0, txmp.PreconfirmationState().Size())
+
+		// Add a transaction
+		tx := newDefaultTx("test-tx")
+		mustCheckTx(t, txmp, string(tx))
+		require.Equal(t, 1, txmp.Size())
+
+		// Preconf state should have an entry for the transaction
+		assert.Equal(t, 1, txmp.PreconfirmationState().Size())
+
+		// Voting power should be 0 initially (no validators have preconfirmed yet)
+		txKey := tx.Key()
+		assert.Equal(t, int64(0), txmp.PreconfirmationState().GetTotalVotingPower(txKey))
+
+		// Remove the transaction
+		require.NoError(t, txmp.RemoveTxByKey(txKey))
+		assert.Equal(t, 0, txmp.Size())
+
+		// Preconf entry should be removed
+		assert.Equal(t, 0, txmp.PreconfirmationState().Size())
+	})
+
+	t.Run("flush resets preconf state", func(t *testing.T) {
+		// Create a test validator set
+		vals := make([]*types.Validator, 3)
+		for i := 0; i < 3; i++ {
+			privKey := ed25519.GenPrivKey()
+			pubKey := privKey.PubKey()
+			vals[i] = types.NewValidator(pubKey, 10)
+		}
+		valSet := types.NewValidatorSet(vals)
+
+		// Create preconf state
+		logger := log.TestingLogger()
+		preconfState := preconf.NewPreconfirmationState(logger, valSet)
+
+		// Setup pool with preconfirmation state
+		txmp := setup(t, 0, WithPreconfirmationState(preconfState))
+
+		// Add multiple transactions
+		for i := 0; i < 5; i++ {
+			tx := newDefaultTx(fmt.Sprintf("test-tx-%d", i))
+			mustCheckTx(t, txmp, string(tx))
+		}
+		require.Equal(t, 5, txmp.Size())
+		assert.Equal(t, 5, txmp.PreconfirmationState().Size())
+
+		// Flush the pool
+		txmp.Flush()
+		assert.Equal(t, 0, txmp.Size())
+
+		// Preconf state should also be reset
+		assert.Equal(t, 0, txmp.PreconfirmationState().Size())
+	})
+
+	t.Run("update validator set", func(t *testing.T) {
+		// Create initial validator set
+		vals1 := make([]*types.Validator, 2)
+		for i := 0; i < 2; i++ {
+			privKey := ed25519.GenPrivKey()
+			pubKey := privKey.PubKey()
+			vals1[i] = types.NewValidator(pubKey, 10)
+		}
+		valSet1 := types.NewValidatorSet(vals1)
+
+		// Create preconf state
+		logger := log.TestingLogger()
+		preconfState := preconf.NewPreconfirmationState(logger, valSet1)
+
+		// Setup pool with preconfirmation state
+		txmp := setup(t, 0, WithPreconfirmationState(preconfState))
+
+		// Initial validator set total power should be 20
+		assert.Equal(t, int64(20), txmp.PreconfirmationState().GetValidatorSetTotalPower())
+
+		// Create a new validator set with different validators
+		vals2 := make([]*types.Validator, 3)
+		for i := 0; i < 3; i++ {
+			privKey := ed25519.GenPrivKey()
+			pubKey := privKey.PubKey()
+			vals2[i] = types.NewValidator(pubKey, 15)
+		}
+		valSet2 := types.NewValidatorSet(vals2)
+
+		// Update the validator set
+		txmp.UpdateValidatorSet(valSet2)
+
+		// New validator set total power should be 45
+		assert.Equal(t, int64(45), txmp.PreconfirmationState().GetValidatorSetTotalPower())
+	})
+}
+
+// TestPreconfirmationStateWithMultipleTxs tests adding and removing multiple
+// transactions with preconfirmation state enabled.
+func TestPreconfirmationStateWithMultipleTxs(t *testing.T) {
+	// Create a test validator set
+	vals := make([]*types.Validator, 4)
+	for i := 0; i < 4; i++ {
+		privKey := ed25519.GenPrivKey()
+		pubKey := privKey.PubKey()
+		vals[i] = types.NewValidator(pubKey, 25)
+	}
+	valSet := types.NewValidatorSet(vals)
+
+	// Create preconf state
+	logger := log.TestingLogger()
+	preconfState := preconf.NewPreconfirmationState(logger, valSet)
+
+	// Setup pool with preconfirmation state
+	txmp := setup(t, 0, WithPreconfirmationState(preconfState))
+
+	// Add multiple transactions
+	const numTxs = 10
+	txKeys := make([]types.TxKey, numTxs)
+	for i := 0; i < numTxs; i++ {
+		tx := newDefaultTx(fmt.Sprintf("test-tx-%d", i))
+		mustCheckTx(t, txmp, string(tx))
+		txKeys[i] = tx.Key()
+	}
+
+	require.Equal(t, numTxs, txmp.Size())
+	assert.Equal(t, numTxs, txmp.PreconfirmationState().Size())
+
+	// All transactions should have 0 voting power initially
+	for _, txKey := range txKeys {
+		assert.Equal(t, int64(0), txmp.PreconfirmationState().GetTotalVotingPower(txKey))
+	}
+
+	// Remove some transactions
+	for i := 0; i < numTxs/2; i++ {
+		require.NoError(t, txmp.RemoveTxByKey(txKeys[i]))
+	}
+
+	assert.Equal(t, numTxs/2, txmp.Size())
+	assert.Equal(t, numTxs/2, txmp.PreconfirmationState().Size())
+
+	// Removed transactions should return 0 voting power
+	for i := 0; i < numTxs/2; i++ {
+		assert.Equal(t, int64(0), txmp.PreconfirmationState().GetTotalVotingPower(txKeys[i]))
+	}
+
+	// Remaining transactions should still be tracked
+	for i := numTxs / 2; i < numTxs; i++ {
+		assert.Equal(t, int64(0), txmp.PreconfirmationState().GetTotalVotingPower(txKeys[i]))
+	}
 }

@@ -12,6 +12,7 @@ import (
 	"github.com/cometbft/cometbft/config"
 	"github.com/cometbft/cometbft/libs/log"
 	"github.com/cometbft/cometbft/mempool"
+	"github.com/cometbft/cometbft/mempool/preconf"
 	"github.com/cometbft/cometbft/proxy"
 	"github.com/cometbft/cometbft/types"
 )
@@ -74,6 +75,9 @@ type TxPool struct {
 	broadcastCh      chan *wrappedTx
 	broadcastMtx     sync.Mutex
 	txsToBeBroadcast []types.TxKey
+
+	// Preconfirmation state tracking
+	preconfState *preconf.PreconfirmationState
 }
 
 // NewTxPool constructs a new, empty content addressable txpool at the specified
@@ -127,6 +131,11 @@ func WithMetrics(metrics *mempool.Metrics) TxPoolOption {
 	return func(txmp *TxPool) { txmp.metrics = metrics }
 }
 
+// WithPreconfirmationState sets the mempool's preconfirmation state.
+func WithPreconfirmationState(state *preconf.PreconfirmationState) TxPoolOption {
+	return func(txmp *TxPool) { txmp.preconfState = state }
+}
+
 // Lock locks the mempool, no new transactions can be processed
 func (txmp *TxPool) Lock() {
 	txmp.mtx.Lock()
@@ -168,6 +177,19 @@ func (txmp *TxPool) Height() int64 {
 	txmp.mtx.Lock()
 	defer txmp.mtx.Unlock()
 	return txmp.height
+}
+
+// PreconfirmationState returns the preconfirmation state, or nil if not configured.
+func (txmp *TxPool) PreconfirmationState() *preconf.PreconfirmationState {
+	return txmp.preconfState
+}
+
+// UpdateValidatorSet updates the validator set in the preconfirmation state.
+// This should be called whenever the validator set changes.
+func (txmp *TxPool) UpdateValidatorSet(validatorSet *types.ValidatorSet) {
+	if txmp.preconfState != nil {
+		txmp.preconfState.UpdateValidatorSet(validatorSet)
+	}
 }
 
 // Has returns true if the transaction is currently in the mempool
@@ -360,6 +382,11 @@ func (txmp *TxPool) removeTxByKey(txKey types.TxKey) {
 	txmp.rejectedTxCache.Push(txKey, 0, "")
 	_ = txmp.store.remove(txKey)
 	txmp.seenByPeersSet.RemoveKey(txKey)
+
+	// Remove preconfirmation entry if preconf state is configured
+	if txmp.preconfState != nil {
+		txmp.preconfState.RemoveTx(txKey)
+	}
 }
 
 // Flush purges the contents of the mempool and the cache, leaving both empty.
@@ -376,6 +403,11 @@ func (txmp *TxPool) Flush() {
 	txmp.broadcastMtx.Lock()
 	defer txmp.broadcastMtx.Unlock()
 	txmp.txsToBeBroadcast = make([]types.TxKey, 0)
+
+	// Reset preconfirmation state if configured
+	if txmp.preconfState != nil {
+		txmp.preconfState.Reset()
+	}
 }
 
 // PeerHasTx marks that the transaction has been seen by a peer.
@@ -612,6 +644,11 @@ func (txmp *TxPool) addNewTransaction(wtx *wrappedTx) error {
 	}
 
 	txmp.store.set(wtx)
+
+	// Add preconfirmation entry if preconf state is configured
+	if txmp.preconfState != nil {
+		txmp.preconfState.AddTx(wtx.key())
+	}
 
 	txmp.metrics.TxSizeBytes.Observe(float64(wtx.size()))
 	txmp.metrics.Size.Set(float64(txmp.Size()))
