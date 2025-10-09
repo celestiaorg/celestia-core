@@ -64,6 +64,41 @@ func TestGapCatchup(t *testing.T) {
 	require.True(t, caughtUp.IsComplete())
 }
 
+func TestReceiveHaveOnCatchupBlock(t *testing.T) {
+	p2pCfg := defaultTestP2PConf()
+	nodes := 2
+	reactors, _ := createTestReactors(nodes, p2pCfg, false, "")
+	n1 := reactors[0]
+	n2 := reactors[1]
+	cleanup, _, sm := state.SetupTestCase(t)
+	t.Cleanup(func() {
+		cleanup(t)
+	})
+
+	prop, ps, _, metaData := createTestProposal(t, sm, 1, 0, 2, 1000000)
+	cb, _ := createCompactBlock(t, prop, ps, metaData)
+
+	n1.AddCommitment(prop.Height, prop.Round, &cb.Proposal.BlockID.PartSetHeader)
+	_, _, _, has := n1.getAllState(prop.Height, prop.Round, true)
+	require.True(t, has)
+
+	assert.NotNil(t, n1.getPeer(n2.self))
+	// receive a have for this block added via catchup
+	n1.handleHaves(n2.self, &proptypes.HaveParts{
+		Height: prop.Height,
+		Round:  prop.Round,
+		Parts: []proptypes.PartMetaData{
+			{
+				Index: 0,
+				Hash:  cb.PartsHashes[0],
+			},
+		},
+	})
+
+	// make sure the error didn't happen, and we didn't disconnect from the peer
+	assert.NotNil(t, n1.getPeer(n2.self))
+}
+
 func TestAddCommitment_ReplaceProposalData(t *testing.T) {
 	p2pCfg := defaultTestP2PConf()
 	nodes := 1
