@@ -44,6 +44,7 @@ type TxPreconfirmation struct {
 // NewPreconfirmationState creates a new PreconfirmationState.
 // It starts background goroutines to process preconfirmation messages and sign new ones.
 // If privVal is nil, signing will be disabled but the state will still track preconfirmations from peers.
+// The getTxHashes and broadcastMsg callbacks can be nil and set later via SetCallbacks.
 func NewPreconfirmationState(
 	logger log.Logger,
 	validatorSet *types.ValidatorSet,
@@ -74,6 +75,20 @@ func NewPreconfirmationState(
 	}
 
 	return ps
+}
+
+// SetCallbacks updates the getTxHashes and broadcastMsg callbacks.
+// This is useful when the reactor needs to be created after the preconfirmation state.
+func (ps *PreconfirmationState) SetCallbacks(
+	getTxHashes func() []types.TxKey,
+	broadcastMsg func(*protomemcat.PreconfirmationMessage),
+) {
+	ps.mtx.Lock()
+	defer ps.mtx.Unlock()
+
+	ps.getTxHashes = getTxHashes
+	ps.broadcastMsg = broadcastMsg
+	ps.logger.Debug("updated preconfirmation callbacks")
 }
 
 // newTxPreconfirmation creates a new empty TxPreconfirmation.
@@ -261,9 +276,17 @@ func (ps *PreconfirmationState) processMessage(msg *protomemcat.PreconfirmationM
 		TxHashes:  msg.TxHashes,
 		Timestamp: msg.Timestamp,
 	}
-	signBytes, err := msgCopy.Marshal()
+	rawBytes, err := msgCopy.Marshal()
 	if err != nil {
 		ps.logger.Error("failed to marshal message for verification", "err", err)
+		return
+	}
+
+	// Reconstruct the sign bytes using the same framing as SignRawBytes
+	// All validators on the same chain use the same chainID
+	signBytes, err := types.RawBytesMessageSignBytes(ps.chainID, "preconfirmation", rawBytes)
+	if err != nil {
+		ps.logger.Error("failed to construct sign bytes for verification", "err", err)
 		return
 	}
 
@@ -329,12 +352,20 @@ func (ps *PreconfirmationState) signAndBroadcast() error {
 	if ps.privVal == nil {
 		return fmt.Errorf("private validator is not configured")
 	}
-	if ps.getTxHashes == nil {
-		return fmt.Errorf("getTxHashes callback is not configured")
+
+	// Check if callbacks are configured (they may be set later via SetCallbacks)
+	ps.mtx.RLock()
+	getTxHashes := ps.getTxHashes
+	broadcastMsg := ps.broadcastMsg
+	ps.mtx.RUnlock()
+
+	if getTxHashes == nil {
+		ps.logger.Debug("getTxHashes callback not yet configured, skipping preconfirmation")
+		return nil
 	}
 
 	// Get all transaction keys from the mempool
-	txKeys := ps.getTxHashes()
+	txKeys := getTxHashes()
 	if len(txKeys) == 0 {
 		ps.logger.Debug("no transactions to preconfirm")
 		return nil
@@ -373,7 +404,8 @@ func (ps *PreconfirmationState) signAndBroadcast() error {
 		return fmt.Errorf("failed to marshal preconfirmation message: %w", err)
 	}
 
-	// Sign the message using SignRawBytes
+	// Sign using SignRawBytes which works with remote validators and KMS
+	// This adds consistent framing that we'll verify on the other side
 	signature, err := ps.privVal.SignRawBytes(ps.chainID, "preconfirmation", signBytes)
 	if err != nil {
 		return fmt.Errorf("failed to sign preconfirmation message: %w", err)
@@ -386,8 +418,8 @@ func (ps *PreconfirmationState) signAndBroadcast() error {
 	ps.SendUpdate(msg)
 
 	// Broadcast to peers if callback is configured
-	if ps.broadcastMsg != nil {
-		ps.broadcastMsg(msg)
+	if broadcastMsg != nil {
+		broadcastMsg(msg)
 	}
 
 	ps.logger.Debug("signed and broadcast preconfirmation", "num_txs", len(txHashes))

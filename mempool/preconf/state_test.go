@@ -2,11 +2,13 @@ package preconf
 
 import (
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/cometbft/cometbft/crypto/ed25519"
+	"github.com/cometbft/cometbft/crypto/encoding"
 	"github.com/cometbft/cometbft/libs/log"
 	protomemcat "github.com/cometbft/cometbft/proto/tendermint/mempool/cat"
 	"github.com/cometbft/cometbft/types"
@@ -284,6 +286,279 @@ func TestConcurrentAccess(t *testing.T) {
 	assert.Equal(t, numGoroutines*numOpsPerGoroutine, state.Size())
 }
 
+// TestProcessMessage tests the asynchronous processing of preconfirmation messages.
+func TestProcessMessage(t *testing.T) {
+	logger := log.TestingLogger()
+	privVal := types.NewMockPV()
+	pubKey, _ := privVal.GetPubKey()
+
+	// Create a validator set with our test validator
+	val := types.NewValidator(pubKey, 10)
+	valSet := types.NewValidatorSet([]*types.Validator{val})
+
+	state := NewPreconfirmationState(logger, valSet, nil, "test-chain", nil, nil)
+	defer state.Stop()
+
+	// Add a transaction to track
+	txKey := getTxKey("test-tx")
+	state.AddTx(txKey)
+
+	t.Run("valid message", func(t *testing.T) {
+		// Create and sign a valid preconfirmation message
+		msg := &protomemcat.PreconfirmationMessage{
+			TxHashes: [][]byte{txKey[:]},
+		}
+
+		// Sign it properly
+		signedMsg := signPreconfMessage(t, msg, privVal, "test-chain")
+
+		// Process the message
+		state.processMessage(signedMsg)
+
+		// Verify voting power was updated
+		power := state.GetTotalVotingPower(txKey)
+		assert.Equal(t, int64(10), power)
+	})
+
+	t.Run("invalid signature", func(t *testing.T) {
+		// Create a message with an invalid signature
+		pubKeyObj, _ := privVal.GetPubKey()
+		protoPubKey, _ := encoding.PubKeyToProto(pubKeyObj)
+
+		msg := &protomemcat.PreconfirmationMessage{
+			TxHashes:  [][]byte{txKey[:]},
+			Signature: []byte("invalid-signature"),
+			PubKey:    protoPubKey,
+			Timestamp: testTimestamp(),
+		}
+
+		// Reset the transaction's preconfirmation state
+		state.RemoveTx(txKey)
+		state.AddTx(txKey)
+
+		// Process the message - should be rejected
+		state.processMessage(msg)
+
+		// Verify voting power was NOT updated
+		power := state.GetTotalVotingPower(txKey)
+		assert.Equal(t, int64(0), power)
+	})
+
+	t.Run("unknown validator", func(t *testing.T) {
+		// Create a message from an unknown validator
+		unknownPrivVal := types.NewMockPV()
+		msg := &protomemcat.PreconfirmationMessage{
+			TxHashes: [][]byte{txKey[:]},
+		}
+
+		signedMsg := signPreconfMessage(t, msg, unknownPrivVal, "test-chain")
+
+		// Reset the transaction's preconfirmation state
+		state.RemoveTx(txKey)
+		state.AddTx(txKey)
+
+		// Process the message - should be rejected because validator is not in set
+		state.processMessage(signedMsg)
+
+		// Verify voting power was NOT updated
+		power := state.GetTotalVotingPower(txKey)
+		assert.Equal(t, int64(0), power)
+	})
+
+	t.Run("empty tx hashes", func(t *testing.T) {
+		// Create a message with no transaction hashes
+		msg := &protomemcat.PreconfirmationMessage{
+			TxHashes: [][]byte{},
+		}
+
+		signedMsg := signPreconfMessage(t, msg, privVal, "test-chain")
+
+		// Process the message - should not error, just do nothing
+		state.processMessage(signedMsg)
+	})
+}
+
+// TestSendUpdate tests the SendUpdate method which sends messages to the update channel.
+func TestSendUpdate(t *testing.T) {
+	logger := log.TestingLogger()
+	privVal := types.NewMockPV()
+	pubKey, _ := privVal.GetPubKey()
+
+	val := types.NewValidator(pubKey, 10)
+	valSet := types.NewValidatorSet([]*types.Validator{val})
+
+	state := NewPreconfirmationState(logger, valSet, nil, "test-chain", nil, nil)
+	defer state.Stop()
+
+	txKey := getTxKey("test-tx")
+	state.AddTx(txKey)
+
+	// Create and sign a message
+	msg := &protomemcat.PreconfirmationMessage{
+		TxHashes: [][]byte{txKey[:]},
+	}
+	signedMsg := signPreconfMessage(t, msg, privVal, "test-chain")
+
+	// Send the message
+	state.SendUpdate(signedMsg)
+
+	// Give the goroutine time to process
+	time.Sleep(100 * time.Millisecond)
+
+	// Verify the message was processed
+	power := state.GetTotalVotingPower(txKey)
+	assert.Equal(t, int64(10), power)
+}
+
+// TestVotingPowerAggregation tests that voting power from multiple validators is correctly aggregated.
+func TestVotingPowerAggregation(t *testing.T) {
+	logger := log.TestingLogger()
+
+	// Create 3 validators with different voting powers
+	privVal1 := types.NewMockPV()
+	privVal2 := types.NewMockPV()
+	privVal3 := types.NewMockPV()
+
+	pubKey1, _ := privVal1.GetPubKey()
+	pubKey2, _ := privVal2.GetPubKey()
+	pubKey3, _ := privVal3.GetPubKey()
+
+	val1 := types.NewValidator(pubKey1, 10)
+	val2 := types.NewValidator(pubKey2, 20)
+	val3 := types.NewValidator(pubKey3, 30)
+
+	valSet := types.NewValidatorSet([]*types.Validator{val1, val2, val3})
+
+	state := NewPreconfirmationState(logger, valSet, nil, "test-chain", nil, nil)
+	defer state.Stop()
+
+	txKey := getTxKey("test-tx")
+	state.AddTx(txKey)
+
+	// Send preconfirmation from validator 1
+	msg1 := &protomemcat.PreconfirmationMessage{
+		TxHashes: [][]byte{txKey[:]},
+	}
+	signedMsg1 := signPreconfMessage(t, msg1, privVal1, "test-chain")
+	state.SendUpdate(signedMsg1)
+	time.Sleep(50 * time.Millisecond)
+
+	power := state.GetTotalVotingPower(txKey)
+	assert.Equal(t, int64(10), power)
+
+	// Send preconfirmation from validator 2
+	msg2 := &protomemcat.PreconfirmationMessage{
+		TxHashes: [][]byte{txKey[:]},
+	}
+	signedMsg2 := signPreconfMessage(t, msg2, privVal2, "test-chain")
+	state.SendUpdate(signedMsg2)
+	time.Sleep(50 * time.Millisecond)
+
+	power = state.GetTotalVotingPower(txKey)
+	assert.Equal(t, int64(30), power) // 10 + 20
+
+	// Send preconfirmation from validator 3
+	msg3 := &protomemcat.PreconfirmationMessage{
+		TxHashes: [][]byte{txKey[:]},
+	}
+	signedMsg3 := signPreconfMessage(t, msg3, privVal3, "test-chain")
+	state.SendUpdate(signedMsg3)
+	time.Sleep(50 * time.Millisecond)
+
+	power = state.GetTotalVotingPower(txKey)
+	assert.Equal(t, int64(60), power) // 10 + 20 + 30
+
+	// Sending duplicate from validator 1 should not increase power
+	state.SendUpdate(signedMsg1)
+	time.Sleep(50 * time.Millisecond)
+
+	power = state.GetTotalVotingPower(txKey)
+	assert.Equal(t, int64(60), power) // Still 60
+}
+
+// TestSetCallbacks tests the SetCallbacks method.
+func TestSetCallbacks(t *testing.T) {
+	logger := log.TestingLogger()
+	valSet := createTestValidatorSet(3)
+	privVal := types.NewMockPV()
+
+	// Create state without callbacks
+	state := NewPreconfirmationState(logger, valSet, privVal, "test-chain", nil, nil)
+	defer state.Stop()
+
+	// Verify callbacks are nil
+	assert.Nil(t, state.getTxHashes)
+	assert.Nil(t, state.broadcastMsg)
+
+	// Set callbacks
+	getTxHashesCalled := false
+	broadcastMsgCalled := false
+
+	getTxHashes := func() []types.TxKey {
+		getTxHashesCalled = true
+		return []types.TxKey{getTxKey("test-tx")}
+	}
+
+	broadcastMsg := func(msg *protomemcat.PreconfirmationMessage) {
+		broadcastMsgCalled = true
+	}
+
+	state.SetCallbacks(getTxHashes, broadcastMsg)
+
+	// Verify callbacks were set
+	assert.NotNil(t, state.getTxHashes)
+	assert.NotNil(t, state.broadcastMsg)
+
+	// Trigger signing to verify callbacks are called
+	err := state.signAndBroadcast()
+	require.NoError(t, err)
+
+	assert.True(t, getTxHashesCalled)
+	assert.True(t, broadcastMsgCalled)
+}
+
+// Helper functions
+
+func testTimestamp() time.Time {
+	return time.Now()
+}
+
+func signPreconfMessage(t *testing.T, msg *protomemcat.PreconfirmationMessage, privVal types.PrivValidator, chainID string) *protomemcat.PreconfirmationMessage {
+	t.Helper()
+
+	// Get public key
+	pubKey, err := privVal.GetPubKey()
+	require.NoError(t, err)
+
+	// Convert to proto
+	protoPubKey, err := encoding.PubKeyToProto(pubKey)
+	require.NoError(t, err)
+
+	// Set fields
+	msg.PubKey = protoPubKey
+	msg.Timestamp = testTimestamp()
+
+	// Create a copy WITHOUT the signature for signing (to match processMessage verification)
+	msgCopy := &protomemcat.PreconfirmationMessage{
+		PubKey:    msg.PubKey,
+		TxHashes:  msg.TxHashes,
+		Timestamp: msg.Timestamp,
+	}
+
+	// Marshal for signing
+	rawBytes, err := msgCopy.Marshal()
+	require.NoError(t, err)
+
+	// Sign using SignRawBytes (matching the pattern in signAndBroadcast)
+	signature, err := privVal.SignRawBytes(chainID, "preconfirmation", rawBytes)
+	require.NoError(t, err)
+
+	// Set signature
+	msg.Signature = signature
+
+	return msg
+}
+
 // TestSignAndBroadcast tests the signing logic for preconfirmation messages.
 func TestSignAndBroadcast(t *testing.T) {
 	tests := []struct {
@@ -356,8 +631,7 @@ func TestSignAndBroadcast(t *testing.T) {
 				return NewPreconfirmationState(logger, valSet, privVal, "test-chain", nil, nil)
 			},
 			addTxs:      0,
-			expectError: true,
-			errorMsg:    "getTxHashes callback is not configured",
+			expectError: false, // Changed to false - we now handle this gracefully
 		},
 	}
 

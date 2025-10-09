@@ -192,6 +192,12 @@ func (txmp *TxPool) UpdateValidatorSet(validatorSet *types.ValidatorSet) {
 	}
 }
 
+// GetAllTxKeys returns all transaction keys currently in the mempool.
+// This is used for preconfirmation signing.
+func (txmp *TxPool) GetAllTxKeys() []types.TxKey {
+	return txmp.store.getAllKeys()
+}
+
 // Has returns true if the transaction is currently in the mempool
 func (txmp *TxPool) Has(txKey types.TxKey) bool {
 	return txmp.store.has(txKey)

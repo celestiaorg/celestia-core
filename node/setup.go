@@ -243,6 +243,7 @@ func createMempoolAndMempoolReactor(
 	memplMetrics *mempl.Metrics,
 	logger log.Logger,
 	traceClient trace.Tracer,
+	privValidator types.PrivValidator,
 ) (mempl.Mempool, p2p.Reactor) {
 	switch config.Mempool.Type {
 	// allow empty string for backward compatibility
@@ -288,10 +289,15 @@ func createMempoolAndMempoolReactor(
 		reactor.SetLogger(logger)
 		return mp, reactor
 	case cfg.MempoolTypeCAT, cfg.LegacyMempoolTypeCAT:
-		// Create preconfirmation state with current validator set
+		// Create preconfirmation state with privValidator and chainID.
+		// Callbacks will be wired up after reactor creation.
 		preconfState := preconf.NewPreconfirmationState(
 			logger.With("module", "mempool-preconf"),
 			state.Validators,
+			privValidator,
+			state.ChainID,
+			nil, // getTxHashes callback - will be set after reactor creation
+			nil, // broadcastMsg callback - will be set after reactor creation
 		)
 
 		mp := cat.NewTxPool(
@@ -317,6 +323,14 @@ func createMempoolAndMempoolReactor(
 		if err != nil {
 			// TODO: find a more polite way of handling this error
 			panic(err)
+		}
+
+		// Wire up the preconfirmation callbacks now that the reactor is created
+		if preconfState != nil {
+			preconfState.SetCallbacks(
+				mp.GetAllTxKeys,
+				reactor.BroadcastPreconfirmation,
+			)
 		}
 
 		if config.Consensus.WaitForTxs() {
