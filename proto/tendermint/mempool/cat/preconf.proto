@@ -1,0 +1,15 @@
+syntax = "proto3";
+package tendermint.mempool.cat;
+
+option go_package = "github.com/cometbft/cometbft/proto/tendermint/mempool/cat";
+
+import "gogoproto/gogo.proto";
+import "google/protobuf/timestamp.proto";
+import "tendermint/crypto/keys.proto";
+
+message PreconfirmationMessage {
+  bytes signature = 1;
+  tendermint.crypto.PublicKey pub_key = 2 [(gogoproto.nullable) = false];
+  repeated bytes tx_hashes = 3;
+  google.protobuf.Timestamp timestamp = 4 [(gogoproto.nullable) = false, (gogoproto.stdtime) = true];
+}

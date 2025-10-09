@@ -118,12 +118,13 @@ The CAT mempool reactor will be responsible for handling messages on this channe
 ### `mempool/cat/reactor.go`
 
 *   The CAT reactor will subscribe to the `PreconfirmationChannel`.
-*   Upon receiving a `PreconfirmationMessage`, the reactor will perform initial validation (e.g., message size limits) and then pass it to the `PreconfirmationState`'s update channel for asynchronous processing.
+*   Upon receiving a `PreconfirmationMessage` from a peer, the reactor will perform initial validation (e.g., message size limits) and then pass it to the `PreconfirmationState`'s update channel for asynchronous processing.
 *   A ticker will be added to the CAT reactor. Every 2 seconds, it will trigger a function to:
     1. Get the list of transaction hashes from its local CAT mempool.
     2. Create a `PreconfirmationMessage`.
     3. Sign the message using the node's `PrivValidator`.
-    4. Broadcast the message on the `PreconfirmationChannel`.
+    4. Send the signed message to the `PreconfirmationState`'s update channel (treating its own messages the same as peer messages).
+    5. Broadcast the message on the `PreconfirmationChannel` to peers.
 
 ### `mempool/cat/preconf/state.go` (Processing Goroutine)
 

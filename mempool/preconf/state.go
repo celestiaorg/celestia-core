@@ -1,10 +1,19 @@
 package preconf
 
 import (
+	"fmt"
 	"sync"
+	"time"
 
+	"github.com/cometbft/cometbft/crypto/encoding"
 	"github.com/cometbft/cometbft/libs/log"
+	protomemcat "github.com/cometbft/cometbft/proto/tendermint/mempool/cat"
 	"github.com/cometbft/cometbft/types"
+)
+
+const (
+	// PreconfirmationInterval defines how often validators broadcast preconfirmation messages.
+	PreconfirmationInterval = 2 * time.Second
 )
 
 // PreconfirmationState manages the state of transaction preconfirmations.
@@ -13,7 +22,16 @@ type PreconfirmationState struct {
 	mtx          sync.RWMutex
 	txs          map[types.TxKey]*TxPreconfirmation
 	validatorSet *types.ValidatorSet
+	updateChan   chan *protomemcat.PreconfirmationMessage
 	logger       log.Logger
+	quit         chan struct{}
+
+	// Signing and broadcasting
+	privVal      types.PrivValidator
+	chainID      string
+	getTxHashes  func() []types.TxKey
+	broadcastMsg func(*protomemcat.PreconfirmationMessage)
+	ticker       *time.Ticker
 }
 
 // TxPreconfirmation holds the set of validators that have preconfirmed a transaction.
@@ -24,12 +42,38 @@ type TxPreconfirmation struct {
 }
 
 // NewPreconfirmationState creates a new PreconfirmationState.
-func NewPreconfirmationState(logger log.Logger, validatorSet *types.ValidatorSet) *PreconfirmationState {
-	return &PreconfirmationState{
+// It starts background goroutines to process preconfirmation messages and sign new ones.
+// If privVal is nil, signing will be disabled but the state will still track preconfirmations from peers.
+func NewPreconfirmationState(
+	logger log.Logger,
+	validatorSet *types.ValidatorSet,
+	privVal types.PrivValidator,
+	chainID string,
+	getTxHashes func() []types.TxKey,
+	broadcastMsg func(*protomemcat.PreconfirmationMessage),
+) *PreconfirmationState {
+	ps := &PreconfirmationState{
 		txs:          make(map[types.TxKey]*TxPreconfirmation),
 		validatorSet: validatorSet,
+		updateChan:   make(chan *protomemcat.PreconfirmationMessage, 100),
 		logger:       logger.With("module", "preconf"),
+		quit:         make(chan struct{}),
+		privVal:      privVal,
+		chainID:      chainID,
+		getTxHashes:  getTxHashes,
+		broadcastMsg: broadcastMsg,
 	}
+
+	// Start the processing goroutine
+	go ps.processUpdates()
+
+	// Start the signing loop if we have a private validator
+	if privVal != nil {
+		ps.ticker = time.NewTicker(PreconfirmationInterval)
+		go ps.signingLoop()
+	}
+
+	return ps
 }
 
 // newTxPreconfirmation creates a new empty TxPreconfirmation.
@@ -151,4 +195,201 @@ func (ps *PreconfirmationState) Reset() {
 
 	ps.txs = make(map[types.TxKey]*TxPreconfirmation)
 	ps.logger.Debug("reset preconfirmation state")
+}
+
+// SendUpdate sends a preconfirmation message to the update channel for processing.
+// This is called by the reactor after signing a message or receiving one from a peer.
+func (ps *PreconfirmationState) SendUpdate(msg *protomemcat.PreconfirmationMessage) {
+	select {
+	case ps.updateChan <- msg:
+	default:
+		ps.logger.Error("preconfirmation update channel is full, dropping message")
+	}
+}
+
+// Stop stops the processing and signing goroutines.
+func (ps *PreconfirmationState) Stop() {
+	close(ps.quit)
+	if ps.ticker != nil {
+		ps.ticker.Stop()
+	}
+}
+
+// processUpdates is a goroutine that processes preconfirmation messages from the update channel.
+func (ps *PreconfirmationState) processUpdates() {
+	for {
+		select {
+		case <-ps.quit:
+			return
+		case msg := <-ps.updateChan:
+			ps.processMessage(msg)
+		}
+	}
+}
+
+// processMessage processes a single preconfirmation message.
+// It verifies the signature and updates the preconfirmation state for each transaction hash.
+func (ps *PreconfirmationState) processMessage(msg *protomemcat.PreconfirmationMessage) {
+	ps.mtx.RLock()
+	validatorSet := ps.validatorSet
+	ps.mtx.RUnlock()
+
+	if validatorSet == nil {
+		ps.logger.Debug("validator set is nil, skipping preconfirmation message")
+		return
+	}
+
+	// Convert proto public key to crypto.PubKey
+	pubKey, err := encoding.PubKeyFromProto(msg.PubKey)
+	if err != nil {
+		ps.logger.Error("failed to convert public key", "err", err)
+		return
+	}
+
+	// Find the validator by public key
+	valAddress := pubKey.Address()
+	_, validator := validatorSet.GetByAddress(valAddress)
+	if validator == nil {
+		ps.logger.Debug("preconfirmation from unknown validator", "address", valAddress.String())
+		return
+	}
+
+	// Verify the signature
+	// Create a copy of the message without the signature for verification
+	msgCopy := &protomemcat.PreconfirmationMessage{
+		PubKey:    msg.PubKey,
+		TxHashes:  msg.TxHashes,
+		Timestamp: msg.Timestamp,
+	}
+	signBytes, err := msgCopy.Marshal()
+	if err != nil {
+		ps.logger.Error("failed to marshal message for verification", "err", err)
+		return
+	}
+
+	// Verify using the public key
+	if !pubKey.VerifySignature(signBytes, msg.Signature) {
+		ps.logger.Error("invalid signature on preconfirmation message", "validator", valAddress.String())
+		return
+	}
+
+	// Update preconfirmation state for each transaction hash
+	validatorAddrStr := valAddress.String()
+	ps.mtx.Lock()
+	defer ps.mtx.Unlock()
+
+	for _, txHash := range msg.TxHashes {
+		txKey, err := types.TxKeyFromBytes(txHash)
+		if err != nil {
+			ps.logger.Error("invalid tx hash in preconfirmation message", "err", err)
+			continue
+		}
+
+		// Get or create the preconfirmation entry
+		preconf, exists := ps.txs[txKey]
+		if !exists {
+			preconf = newTxPreconfirmation()
+			ps.txs[txKey] = preconf
+		}
+
+		// Add the validator if not already seen
+		preconf.mtx.Lock()
+		if _, seen := preconf.seenValidators[validatorAddrStr]; !seen {
+			preconf.seenValidators[validatorAddrStr] = struct{}{}
+			preconf.totalPower += validator.VotingPower
+		}
+		preconf.mtx.Unlock()
+	}
+
+	ps.logger.Debug("processed preconfirmation message",
+		"validator", validatorAddrStr,
+		"num_txs", len(msg.TxHashes),
+		"voting_power", validator.VotingPower)
+}
+
+// signingLoop periodically signs and broadcasts preconfirmation messages.
+func (ps *PreconfirmationState) signingLoop() {
+	for {
+		select {
+		case <-ps.quit:
+			return
+		case <-ps.ticker.C:
+			if err := ps.signAndBroadcast(); err != nil {
+				ps.logger.Error("failed to sign and broadcast preconfirmation", "err", err)
+			}
+		}
+	}
+}
+
+// signAndBroadcast gathers transaction hashes from the mempool,
+// creates and signs a PreconfirmationMessage, sends it to the local update channel,
+// and broadcasts it to peers.
+func (ps *PreconfirmationState) signAndBroadcast() error {
+	// Check if we have required dependencies
+	if ps.privVal == nil {
+		return fmt.Errorf("private validator is not configured")
+	}
+	if ps.getTxHashes == nil {
+		return fmt.Errorf("getTxHashes callback is not configured")
+	}
+
+	// Get all transaction keys from the mempool
+	txKeys := ps.getTxHashes()
+	if len(txKeys) == 0 {
+		ps.logger.Debug("no transactions to preconfirm")
+		return nil
+	}
+
+	// Convert TxKeys to byte slices
+	txHashes := make([][]byte, len(txKeys))
+	for i, key := range txKeys {
+		keyBytes := key[:]
+		txHashes[i] = keyBytes
+	}
+
+	// Get the public key
+	pubKey, err := ps.privVal.GetPubKey()
+	if err != nil {
+		return fmt.Errorf("failed to get public key: %w", err)
+	}
+
+	// Convert public key to proto
+	protoPubKey, err := encoding.PubKeyToProto(pubKey)
+	if err != nil {
+		return fmt.Errorf("failed to convert public key to proto: %w", err)
+	}
+
+	// Create the PreconfirmationMessage with timestamp
+	timestamp := time.Now()
+	msg := &protomemcat.PreconfirmationMessage{
+		PubKey:    protoPubKey,
+		TxHashes:  txHashes,
+		Timestamp: timestamp,
+	}
+
+	// Marshal the message without signature for signing
+	signBytes, err := msg.Marshal()
+	if err != nil {
+		return fmt.Errorf("failed to marshal preconfirmation message: %w", err)
+	}
+
+	// Sign the message using SignRawBytes
+	signature, err := ps.privVal.SignRawBytes(ps.chainID, "preconfirmation", signBytes)
+	if err != nil {
+		return fmt.Errorf("failed to sign preconfirmation message: %w", err)
+	}
+
+	// Set the signature
+	msg.Signature = signature
+
+	// Send to our own update channel for processing
+	ps.SendUpdate(msg)
+
+	// Broadcast to peers if callback is configured
+	if ps.broadcastMsg != nil {
+		ps.broadcastMsg(msg)
+	}
+
+	ps.logger.Debug("signed and broadcast preconfirmation", "num_txs", len(txHashes))
+	return nil
 }

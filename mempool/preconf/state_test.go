@@ -8,6 +8,7 @@ import (
 
 	"github.com/cometbft/cometbft/crypto/ed25519"
 	"github.com/cometbft/cometbft/libs/log"
+	protomemcat "github.com/cometbft/cometbft/proto/tendermint/mempool/cat"
 	"github.com/cometbft/cometbft/types"
 )
 
@@ -32,7 +33,8 @@ func TestNewPreconfirmationState(t *testing.T) {
 	logger := log.TestingLogger()
 	valSet := createTestValidatorSet(3)
 
-	state := NewPreconfirmationState(logger, valSet)
+	state := NewPreconfirmationState(logger, valSet, nil, "", nil, nil)
+	defer state.Stop()
 
 	require.NotNil(t, state)
 	assert.NotNil(t, state.txs)
@@ -45,7 +47,8 @@ func TestNewPreconfirmationState(t *testing.T) {
 func TestAddTx(t *testing.T) {
 	logger := log.TestingLogger()
 	valSet := createTestValidatorSet(3)
-	state := NewPreconfirmationState(logger, valSet)
+	state := NewPreconfirmationState(logger, valSet, nil, "", nil, nil)
+	defer state.Stop()
 
 	txKey1 := getTxKey("test-tx-1")
 	txKey2 := getTxKey("test-tx-2")
@@ -68,7 +71,7 @@ func TestAddTx(t *testing.T) {
 func TestRemoveTx(t *testing.T) {
 	logger := log.TestingLogger()
 	valSet := createTestValidatorSet(3)
-	state := NewPreconfirmationState(logger, valSet)
+	state := NewPreconfirmationState(logger, valSet, nil, "", nil, nil)
 
 	txKey1 := getTxKey("test-tx-1")
 	txKey2 := getTxKey("test-tx-2")
@@ -95,7 +98,7 @@ func TestRemoveTx(t *testing.T) {
 func TestReset(t *testing.T) {
 	logger := log.TestingLogger()
 	valSet := createTestValidatorSet(3)
-	state := NewPreconfirmationState(logger, valSet)
+	state := NewPreconfirmationState(logger, valSet, nil, "", nil, nil)
 
 	// Add multiple transactions
 	for i := 0; i < 5; i++ {
@@ -111,7 +114,7 @@ func TestReset(t *testing.T) {
 func TestUpdateValidatorSet(t *testing.T) {
 	logger := log.TestingLogger()
 	valSet1 := createTestValidatorSet(3)
-	state := NewPreconfirmationState(logger, valSet1)
+	state := NewPreconfirmationState(logger, valSet1, nil, "", nil, nil)
 
 	assert.Equal(t, int64(30), state.GetValidatorSetTotalPower())
 
@@ -125,7 +128,7 @@ func TestUpdateValidatorSet(t *testing.T) {
 func TestCalculateVotingPowerLocked(t *testing.T) {
 	logger := log.TestingLogger()
 	valSet := createTestValidatorSet(3)
-	state := NewPreconfirmationState(logger, valSet)
+	state := NewPreconfirmationState(logger, valSet, nil, "", nil, nil)
 
 	// Get validator addresses
 	val1Addr := valSet.Validators[0].Address.String()
@@ -196,7 +199,7 @@ func TestCalculateVotingPowerLocked(t *testing.T) {
 func TestUpdateValidatorSetRecalculates(t *testing.T) {
 	logger := log.TestingLogger()
 	valSet1 := createTestValidatorSet(3)
-	state := NewPreconfirmationState(logger, valSet1)
+	state := NewPreconfirmationState(logger, valSet1, nil, "", nil, nil)
 
 	txKey := getTxKey("test-tx")
 	state.AddTx(txKey)
@@ -229,7 +232,7 @@ func TestUpdateValidatorSetRecalculates(t *testing.T) {
 
 func TestNilValidatorSet(t *testing.T) {
 	logger := log.TestingLogger()
-	state := NewPreconfirmationState(logger, nil)
+	state := NewPreconfirmationState(logger, nil, nil, "", nil, nil)
 
 	txKey := getTxKey("test-tx")
 	state.AddTx(txKey)
@@ -242,7 +245,7 @@ func TestNilValidatorSet(t *testing.T) {
 func TestConcurrentAccess(t *testing.T) {
 	logger := log.TestingLogger()
 	valSet := createTestValidatorSet(10)
-	state := NewPreconfirmationState(logger, valSet)
+	state := NewPreconfirmationState(logger, valSet, nil, "", nil, nil)
 
 	// Test concurrent adds and removes
 	const numGoroutines = 10
@@ -279,4 +282,100 @@ func TestConcurrentAccess(t *testing.T) {
 
 	// Should have added all transactions
 	assert.Equal(t, numGoroutines*numOpsPerGoroutine, state.Size())
+}
+
+// TestSignAndBroadcast tests the signing logic for preconfirmation messages.
+func TestSignAndBroadcast(t *testing.T) {
+	tests := []struct {
+		name        string
+		setupState  func(t *testing.T) *PreconfirmationState
+		addTxs      int
+		expectError bool
+		errorMsg    string
+	}{
+		{
+			name: "sign with transactions",
+			setupState: func(t *testing.T) *PreconfirmationState {
+				logger := log.TestingLogger()
+				valSet := createTestValidatorSet(3)
+				privVal := types.NewMockPV()
+
+				txKeys := []types.TxKey{}
+				getTxHashes := func() []types.TxKey {
+					return txKeys
+				}
+
+				broadcastMsg := func(msg *protomemcat.PreconfirmationMessage) {}
+
+				return NewPreconfirmationState(logger, valSet, privVal, "test-chain", getTxHashes, broadcastMsg)
+			},
+			addTxs:      5,
+			expectError: false,
+		},
+		{
+			name: "sign empty mempool",
+			setupState: func(t *testing.T) *PreconfirmationState {
+				logger := log.TestingLogger()
+				valSet := createTestValidatorSet(3)
+				privVal := types.NewMockPV()
+
+				getTxHashes := func() []types.TxKey {
+					return []types.TxKey{}
+				}
+
+				broadcastMsg := func(msg *protomemcat.PreconfirmationMessage) {}
+
+				return NewPreconfirmationState(logger, valSet, privVal, "test-chain", getTxHashes, broadcastMsg)
+			},
+			addTxs:      0,
+			expectError: false,
+		},
+		{
+			name: "no private validator",
+			setupState: func(t *testing.T) *PreconfirmationState {
+				logger := log.TestingLogger()
+				valSet := createTestValidatorSet(3)
+
+				getTxHashes := func() []types.TxKey {
+					return []types.TxKey{getTxKey("test-tx")}
+				}
+
+				return NewPreconfirmationState(logger, valSet, nil, "test-chain", getTxHashes, nil)
+			},
+			addTxs:      0,
+			expectError: true,
+			errorMsg:    "private validator is not configured",
+		},
+		{
+			name: "no getTxHashes callback",
+			setupState: func(t *testing.T) *PreconfirmationState {
+				logger := log.TestingLogger()
+				valSet := createTestValidatorSet(3)
+				privVal := types.NewMockPV()
+
+				return NewPreconfirmationState(logger, valSet, privVal, "test-chain", nil, nil)
+			},
+			addTxs:      0,
+			expectError: true,
+			errorMsg:    "getTxHashes callback is not configured",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			state := tt.setupState(t)
+			defer state.Stop()
+
+			// Call the signing function
+			err := state.signAndBroadcast()
+
+			if tt.expectError {
+				require.Error(t, err)
+				require.Contains(t, err.Error(), tt.errorMsg)
+				return
+			}
+
+			require.NoError(t, err)
+		})
+	}
 }

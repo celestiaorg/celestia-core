@@ -1029,7 +1029,7 @@ func TestPreconfirmationStateIntegration(t *testing.T) {
 
 		// Create preconf state
 		logger := log.TestingLogger()
-		preconfState := preconf.NewPreconfirmationState(logger, valSet)
+		preconfState := preconf.NewPreconfirmationState(logger, valSet, nil, "", nil, nil)
 
 		// Setup pool with preconfirmation state
 		txmp := setup(t, 0, WithPreconfirmationState(preconfState))
@@ -1070,7 +1070,7 @@ func TestPreconfirmationStateIntegration(t *testing.T) {
 
 		// Create preconf state
 		logger := log.TestingLogger()
-		preconfState := preconf.NewPreconfirmationState(logger, valSet)
+		preconfState := preconf.NewPreconfirmationState(logger, valSet, nil, "", nil, nil)
 
 		// Setup pool with preconfirmation state
 		txmp := setup(t, 0, WithPreconfirmationState(preconfState))
@@ -1103,7 +1103,7 @@ func TestPreconfirmationStateIntegration(t *testing.T) {
 
 		// Create preconf state
 		logger := log.TestingLogger()
-		preconfState := preconf.NewPreconfirmationState(logger, valSet1)
+		preconfState := preconf.NewPreconfirmationState(logger, valSet1, nil, "", nil, nil)
 
 		// Setup pool with preconfirmation state
 		txmp := setup(t, 0, WithPreconfirmationState(preconfState))
@@ -1142,7 +1142,7 @@ func TestPreconfirmationStateWithMultipleTxs(t *testing.T) {
 
 	// Create preconf state
 	logger := log.TestingLogger()
-	preconfState := preconf.NewPreconfirmationState(logger, valSet)
+	preconfState := preconf.NewPreconfirmationState(logger, valSet, nil, "", nil, nil)
 
 	// Setup pool with preconfirmation state
 	txmp := setup(t, 0, WithPreconfirmationState(preconfState))
