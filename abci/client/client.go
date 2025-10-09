@@ -39,6 +39,9 @@ type Client interface {
 	// mempool to remove this vestige behavior.
 	SetResponseCallback(Callback)
 	CheckTxAsync(context.Context, *types.RequestCheckTx) (*ReqRes, error)
+
+	// QuerySequence queries for the sequence of a signer
+	QuerySequence(context.Context, *types.RequestQuerySequence) (*types.ResponseQuerySequence, error)
 }
 
 //----------------------------------------

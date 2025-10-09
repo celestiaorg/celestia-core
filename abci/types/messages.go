@@ -124,6 +124,12 @@ func ToRequestFinalizeBlock(req *RequestFinalizeBlock) *Request {
 	}
 }
 
+func ToRequestQuerySequence(req *RequestQuerySequence) *Request {
+	return &Request{
+		Value: &Request_QuerySequence{req},
+	}
+}
+
 //----------------------------------------
 
 func ToResponseException(errStr string) *Response {
@@ -225,5 +231,11 @@ func ToResponseVerifyVoteExtension(res *ResponseVerifyVoteExtension) *Response {
 func ToResponseFinalizeBlock(res *ResponseFinalizeBlock) *Response {
 	return &Response{
 		Value: &Response_FinalizeBlock{res},
+	}
+}
+
+func ToResponseQuerySequence(res *ResponseQuerySequence) *Response {
+	return &Response{
+		Value: &Response_QuerySequence{res},
 	}
 }

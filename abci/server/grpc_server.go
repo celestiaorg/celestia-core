@@ -78,3 +78,17 @@ func (app *gRPCApplication) Echo(_ context.Context, req *types.RequestEcho) (*ty
 func (app *gRPCApplication) Flush(context.Context, *types.RequestFlush) (*types.ResponseFlush, error) {
 	return &types.ResponseFlush{}, nil
 }
+
+func (app *gRPCApplication) QuerySequence(ctx context.Context, req *types.RequestQuerySequence) (*types.ResponseQuerySequence, error) {
+	// Check if the underlying application implements a QuerySequence method
+	type sequenceQuerier interface {
+		QuerySequence(context.Context, *types.RequestQuerySequence) (*types.ResponseQuerySequence, error)
+	}
+
+	if sq, ok := app.Application.(sequenceQuerier); ok {
+		return sq.QuerySequence(ctx, req)
+	}
+
+	// Return empty response if not implemented
+	return &types.ResponseQuerySequence{}, nil
+}
