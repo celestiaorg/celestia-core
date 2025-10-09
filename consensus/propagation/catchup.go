@@ -2,6 +2,7 @@ package propagation
 
 import (
 	"bytes"
+	"fmt"
 	"math/rand"
 
 	proptypes "github.com/cometbft/cometbft/consensus/propagation/types"
@@ -121,6 +122,7 @@ func (blockProp *Reactor) AddCommitment(height int64, round int32, psh *types.Pa
 	}
 	blockProp.Logger.Info("added commitment", "height", height, "round", round)
 
+	fmt.Println("added cb without parts: ", height, " ", round)
 	// increment the local copies of the height and round
 	blockProp.height = height
 	blockProp.round = 0
