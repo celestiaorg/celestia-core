@@ -1,6 +1,7 @@
 package cat
 
 import (
+	"context"
 	"encoding/hex"
 	"os"
 	"sort"
@@ -15,6 +16,7 @@ import (
 	db "github.com/cometbft/cometbft-db"
 
 	"github.com/cometbft/cometbft/abci/example/kvstore"
+	abcitypes "github.com/cometbft/cometbft/abci/types"
 	"github.com/cometbft/cometbft/crypto/ed25519"
 	"github.com/cometbft/cometbft/internal/test"
 	p2pmock "github.com/cometbft/cometbft/p2p/mock"
@@ -262,7 +264,11 @@ func TestReactorBroadcastsSeenTxAfterReceivingTx(t *testing.T) {
 	txMsg := &protomem.Txs{Txs: [][]byte{tx}}
 
 	seenMsg := &protomem.Message{
-		Sum: &protomem.Message_SeenTx{SeenTx: &protomem.SeenTx{TxKey: key[:]}},
+		Sum: &protomem.Message_SeenTx{SeenTx: &protomem.SeenTx{
+			TxKey:    key[:],
+			Signer:   []byte("sender-000-0"),
+			Sequence: 0,
+		}},
 	}
 
 	peers := genPeers(2)
@@ -631,4 +637,140 @@ func genPeer() *mocks.Peer {
 	peer.On("ID").Return(nodeKey.ID())
 	peer.On("Get", types.PeerStateKey).Return(nil).Maybe()
 	return peer
+}
+
+// sequenceTrackingApp is a test application that implements SequenceQuerier
+type sequenceTrackingApp struct {
+	*kvstore.Application
+	mtx       sync.Mutex
+	sequences map[string]uint64
+}
+
+func newSequenceTrackingApp() *sequenceTrackingApp {
+	return &sequenceTrackingApp{
+		Application: kvstore.NewApplication(db.NewMemDB()),
+		sequences:   make(map[string]uint64),
+	}
+}
+
+func (app *sequenceTrackingApp) QuerySequence(ctx context.Context, req *abcitypes.RequestQuerySequence) (*abcitypes.ResponseQuerySequence, error) {
+	app.mtx.Lock()
+	defer app.mtx.Unlock()
+
+	sequence := app.sequences[string(req.Signer)]
+	return &abcitypes.ResponseQuerySequence{Sequence: sequence}, nil
+}
+
+func (app *sequenceTrackingApp) SetSequence(signer string, sequence uint64) {
+	app.mtx.Lock()
+	defer app.mtx.Unlock()
+	app.sequences[signer] = sequence
+}
+
+func TestReactorSequenceValidation(t *testing.T) {
+	app := newSequenceTrackingApp()
+	cc := proxy.NewLocalClientCreator(app)
+	pool, cleanup := newMempoolWithApp(cc)
+	defer cleanup()
+
+	reactor, err := NewReactor(pool, &ReactorOptions{})
+	require.NoError(t, err)
+
+	signer := []byte("test-signer")
+
+	t.Run("matching sequence requests tx", func(t *testing.T) {
+		tx1 := newDefaultTx("test-tx-1")
+		txKey1 := tx1.Key()
+
+		// Set expected sequence in app
+		app.SetSequence(string(signer), 5)
+
+		peer := genPeer()
+		_, err := reactor.InitPeer(peer)
+		require.NoError(t, err)
+
+		// Expect WantTx to be sent
+		peer.On("TrySend", p2p.Envelope{
+			ChannelID: MempoolWantsChannel,
+			Message: &protomem.Message{
+				Sum: &protomem.Message_WantTx{
+					WantTx: &protomem.WantTx{TxKey: txKey1[:]},
+				},
+			},
+		}).Return(true)
+
+		// Send SeenTx with matching sequence
+		reactor.Receive(p2p.Envelope{
+			ChannelID: MempoolDataChannel,
+			Message: &protomem.SeenTx{
+				TxKey:    txKey1[:],
+				Signer:   signer,
+				Sequence: 5,
+			},
+			Src: peer,
+		})
+
+		peer.AssertExpectations(t)
+	})
+
+	t.Run("mismatched sequence skips tx request", func(t *testing.T) {
+		tx2 := newDefaultTx("test-tx-2")
+		txKey2 := tx2.Key()
+
+		// Set expected sequence in app
+		app.SetSequence(string(signer), 10)
+
+		peer := genPeer()
+		_, err := reactor.InitPeer(peer)
+		require.NoError(t, err)
+
+		// Should NOT expect WantTx to be sent (sequence mismatch)
+		// Don't set up any expectations on the peer mock
+
+		// Send SeenTx with mismatched sequence
+		reactor.Receive(p2p.Envelope{
+			ChannelID: MempoolDataChannel,
+			Message: &protomem.SeenTx{
+				TxKey:    txKey2[:],
+				Signer:   signer,
+				Sequence: 7, // mismatch with expected 10
+			},
+			Src: peer,
+		})
+
+		// Verify no WantTx was sent
+		peer.AssertExpectations(t)
+	})
+
+	t.Run("no sequence info requests tx", func(t *testing.T) {
+		tx3 := newDefaultTx("test-tx-3")
+		txKey3 := tx3.Key()
+
+		peer := genPeer()
+		_, err := reactor.InitPeer(peer)
+		require.NoError(t, err)
+
+		// Expect WantTx to be sent (backward compatibility)
+		peer.On("TrySend", p2p.Envelope{
+			ChannelID: MempoolWantsChannel,
+			Message: &protomem.Message{
+				Sum: &protomem.Message_WantTx{
+					WantTx: &protomem.WantTx{TxKey: txKey3[:]},
+				},
+			},
+		}).Return(true)
+
+		// Send SeenTx without sequence info
+		reactor.Receive(p2p.Envelope{
+			ChannelID: MempoolDataChannel,
+			Message: &protomem.SeenTx{
+				TxKey:    txKey3[:],
+				Signer:   nil,
+				Sequence: 0,
+			},
+			Src: peer,
+		})
+
+		peer.AssertExpectations(t)
+	})
 }

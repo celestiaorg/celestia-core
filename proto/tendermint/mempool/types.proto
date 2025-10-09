@@ -9,6 +9,8 @@ message Txs {
 
 message SeenTx {
   bytes tx_key = 1;
+  uint64 sequence = 2;
+  bytes signer = 3;
 }
 
 message WantTx {
