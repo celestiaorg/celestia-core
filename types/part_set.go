@@ -4,8 +4,9 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
-	"golang.org/x/sync/errgroup"
 	"runtime"
+
+	"golang.org/x/sync/errgroup"
 
 	"github.com/klauspost/reedsolomon"
 
