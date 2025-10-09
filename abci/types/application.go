@@ -34,6 +34,14 @@ type Application interface {
 	ApplySnapshotChunk(context.Context, *RequestApplySnapshotChunk) (*ResponseApplySnapshotChunk, error) // Apply a shapshot chunk
 }
 
+// SequenceQuerier is an optional interface that applications can implement
+// to support sequence queries from the mempool. This allows the mempool to
+// query the expected sequence number for a given signer before requesting
+// a transaction.
+type SequenceQuerier interface {
+	QuerySequence(context.Context, *RequestQuerySequence) (*ResponseQuerySequence, error)
+}
+
 //-------------------------------------------------------
 // BaseApplication is a base form of Application
 

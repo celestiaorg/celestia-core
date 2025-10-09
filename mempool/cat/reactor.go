@@ -1,10 +1,12 @@
 package cat
 
 import (
+	"context"
 	"fmt"
 	"math/rand"
 	"time"
 
+	abci "github.com/cometbft/cometbft/abci/types"
 	cfg "github.com/cometbft/cometbft/config"
 	"github.com/cometbft/cometbft/crypto/tmhash"
 	"github.com/cometbft/cometbft/libs/log"
@@ -157,7 +159,9 @@ func (memR *Reactor) GetChannels() []*p2p.ChannelDescriptor {
 	stateMsg := protomem.Message{
 		Sum: &protomem.Message_SeenTx{
 			SeenTx: &protomem.SeenTx{
-				TxKey: make([]byte, tmhash.Size),
+				TxKey:    make([]byte, tmhash.Size),
+				Signer:   make([]byte, 0),
+				Sequence: 0,
 			},
 		},
 	}
@@ -245,8 +249,9 @@ func (memR *Reactor) Receive(e p2p.Envelope) {
 			rsp, err := memR.mempool.TryAddNewTx(ntx.ToCachedTx(), key, txInfo)
 
 			// Extract signer/sequence from CheckTx response if available
-			signer, sequence, execCode := "", uint64(0), uint32(0)
+			signer, signerBytes, sequence, execCode := "", []byte(nil), uint64(0), uint32(0)
 			if rsp != nil {
+				signerBytes = rsp.Address
 				signer = string(rsp.Address)
 				sequence = rsp.Sequence
 				execCode = rsp.Code
@@ -272,7 +277,7 @@ func (memR *Reactor) Receive(e p2p.Envelope) {
 
 			if !memR.opts.ListenOnly && execCode == 0 {
 				// We broadcast only transactions that we deem valid and actually have in our mempool.
-				memR.broadcastSeenTx(key)
+				memR.broadcastSeenTx(key, signerBytes, sequence)
 			}
 		}
 
@@ -282,7 +287,8 @@ func (memR *Reactor) Receive(e p2p.Envelope) {
 	// 1. If we have the transaction, we do nothing.
 	// 2. If we don't yet have the tx but have an outgoing request for it, we do nothing.
 	// 3. If we recently evicted the tx and still don't have space for it, we do nothing.
-	// 4. Else, we request the transaction from that peer.
+	// 4. Optionally query the sequence from the application to validate before requesting.
+	// 5. Else, we request the transaction from that peer.
 	case *protomem.SeenTx:
 		txKey, err := types.TxKeyFromBytes(msg.TxKey)
 		if err != nil {
@@ -310,6 +316,26 @@ func (memR *Reactor) Receive(e p2p.Envelope) {
 		if memR.requests.ForTx(txKey) != 0 {
 			memR.Logger.Debug("received a SeenTx message for a transaction we are already requesting", "txKey", txKey)
 			return
+		}
+
+		// Optionally query the sequence from the application before requesting the transaction
+		if len(msg.Signer) > 0 && msg.Sequence > 0 {
+			ctx := context.Background()
+			resp, err := memR.mempool.proxyAppConn.QuerySequence(ctx, &abci.RequestQuerySequence{
+				Signer: msg.Signer,
+			})
+			if err == nil && resp != nil && resp.Sequence > 0 {
+				if resp.Sequence != msg.Sequence {
+					memR.Logger.Debug("sequence mismatch for transaction, skipping request",
+						"txKey", txKey,
+						"expected", resp.Sequence,
+						"received", msg.Sequence,
+						"signer", string(msg.Signer),
+					)
+					// Skip requesting the transaction if the sequence doesn't match
+					return
+				}
+			}
 		}
 
 		// We don't have the transaction, nor are we requesting it so we send the node
@@ -365,8 +391,8 @@ type PeerState interface {
 
 // broadcastSeenTx broadcasts a SeenTx message to limited peers unless we
 // know they have already seen the transaction
-func (memR *Reactor) broadcastSeenTx(txKey types.TxKey) {
-	memR.broadcastSeenTxWithHeight(txKey, memR.mempool.Height())
+func (memR *Reactor) broadcastSeenTx(txKey types.TxKey, signer []byte, sequence uint64) {
+	memR.broadcastSeenTxWithHeight(txKey, memR.mempool.Height(), signer, sequence)
 }
 
 // ShufflePeers shuffles the peers map from GetAll() and returns a new shuffled map.
@@ -400,16 +426,18 @@ func ShufflePeers(peers map[uint16]p2p.Peer) map[uint16]p2p.Peer {
 
 // broadcastNewTx broadcast new transaction to limited peers unless we are already sure they have seen the tx.
 func (memR *Reactor) broadcastNewTx(wtx *wrappedTx) {
-	memR.broadcastSeenTxWithHeight(wtx.key(), wtx.height)
+	memR.broadcastSeenTxWithHeight(wtx.key(), wtx.height, wtx.sender, wtx.sequence)
 }
 
 // broadcastSeenTxWithHeight is a helper that broadcasts a SeenTx message with height checking.
-func (memR *Reactor) broadcastSeenTxWithHeight(txKey types.TxKey, height int64) {
+func (memR *Reactor) broadcastSeenTxWithHeight(txKey types.TxKey, height int64, signer []byte, sequence uint64) {
 	memR.Logger.Debug("broadcasting seen tx to limited peers", "tx_key", string(txKey[:]))
 	msg := &protomem.Message{
 		Sum: &protomem.Message_SeenTx{
 			SeenTx: &protomem.SeenTx{
-				TxKey: txKey[:],
+				TxKey:    txKey[:],
+				Signer:   signer,
+				Sequence: sequence,
 			},
 		},
 	}

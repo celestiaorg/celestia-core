@@ -1,6 +1,7 @@
 package cat
 
 import (
+	"context"
 	"encoding/hex"
 	"os"
 	"sort"
@@ -14,6 +15,7 @@ import (
 
 	db "github.com/cometbft/cometbft-db"
 
+	abci "github.com/cometbft/cometbft/abci/types"
 	"github.com/cometbft/cometbft/abci/example/kvstore"
 	"github.com/cometbft/cometbft/crypto/ed25519"
 	"github.com/cometbft/cometbft/internal/test"
@@ -437,6 +439,152 @@ func TestReactorReceiveRejectedTx(t *testing.T) {
 	reactor.Receive(envelope)
 
 	peer.AssertExpectations(t)
+}
+
+// sequenceTrackingApp wraps the kvstore application and adds sequence tracking
+type sequenceTrackingApp struct {
+	*kvstore.Application
+	mtx       sync.Mutex
+	sequences map[string]uint64
+}
+
+func newSequenceTrackingApp() *sequenceTrackingApp {
+	return &sequenceTrackingApp{
+		Application: kvstore.NewApplication(db.NewMemDB()),
+		sequences:   make(map[string]uint64),
+	}
+}
+
+func (app *sequenceTrackingApp) QuerySequence(ctx context.Context, req *abci.RequestQuerySequence) (*abci.ResponseQuerySequence, error) {
+	app.mtx.Lock()
+	defer app.mtx.Unlock()
+
+	signer := string(req.Signer)
+	sequence := app.sequences[signer]
+	return &abci.ResponseQuerySequence{Sequence: sequence}, nil
+}
+
+func (app *sequenceTrackingApp) SetSequence(signer string, sequence uint64) {
+	app.mtx.Lock()
+	defer app.mtx.Unlock()
+	app.sequences[signer] = sequence
+}
+
+func TestReactorSequenceValidation(t *testing.T) {
+	// Setup application with sequence tracking
+	app := newSequenceTrackingApp()
+	cc := proxy.NewLocalClientCreator(app)
+	pool, cleanup := newMempoolWithApp(cc)
+	t.Cleanup(cleanup)
+
+	reactor, err := NewReactor(pool, &ReactorOptions{})
+	require.NoError(t, err)
+
+	signer := []byte("sender-000-0")
+
+	// Test 1: Sequence matches - should request the transaction
+	t.Run("matching sequence requests tx", func(t *testing.T) {
+		tx1 := newDefaultTx("test-tx-1")
+		txKey1 := tx1.Key()
+
+		peer := genPeer()
+		_, err := reactor.InitPeer(peer)
+		require.NoError(t, err)
+
+		// Set expected sequence to 5
+		app.SetSequence(string(signer), 5)
+
+		// Send SeenTx with matching sequence
+		seenTxMsg := &protomem.SeenTx{
+			TxKey:    txKey1[:],
+			Signer:   signer,
+			Sequence: 5,
+		}
+
+		// Expect WantTx to be sent
+		peer.On("TrySend", p2p.Envelope{
+			ChannelID: MempoolWantsChannel,
+			Message: &protomem.Message{
+				Sum: &protomem.Message_WantTx{
+					WantTx: &protomem.WantTx{TxKey: txKey1[:]},
+				},
+			},
+		}).Return(true)
+
+		reactor.Receive(p2p.Envelope{
+			ChannelID: MempoolDataChannel,
+			Message:   seenTxMsg,
+			Src:       peer,
+		})
+
+		peer.AssertExpectations(t)
+	})
+
+	// Test 2: Sequence mismatch - should NOT request the transaction
+	t.Run("mismatched sequence skips tx request", func(t *testing.T) {
+		tx2 := newDefaultTx("test-tx-2")
+		txKey2 := tx2.Key()
+
+		peer := genPeer()
+		_, err := reactor.InitPeer(peer)
+		require.NoError(t, err)
+
+		// Set expected sequence to 10
+		app.SetSequence(string(signer), 10)
+
+		// Send SeenTx with wrong sequence (5 instead of 10)
+		seenTxMsg := &protomem.SeenTx{
+			TxKey:    txKey2[:],
+			Signer:   signer,
+			Sequence: 5,
+		}
+
+		// Do NOT expect WantTx to be sent (no peer.On call)
+
+		reactor.Receive(p2p.Envelope{
+			ChannelID: MempoolDataChannel,
+			Message:   seenTxMsg,
+			Src:       peer,
+		})
+
+		// Verify no WantTx was sent
+		peer.AssertNotCalled(t, "TrySend")
+	})
+
+	// Test 3: No sequence info - should request the transaction (backward compatibility)
+	t.Run("no sequence info requests tx", func(t *testing.T) {
+		tx3 := newDefaultTx("test-tx-3")
+		txKey3 := tx3.Key()
+
+		peer := genPeer()
+		_, err := reactor.InitPeer(peer)
+		require.NoError(t, err)
+
+		// Send SeenTx without sequence info
+		seenTxMsg := &protomem.SeenTx{
+			TxKey:    txKey3[:],
+			Signer:   []byte{},
+			Sequence: 0,
+		}
+
+		// Expect WantTx to be sent
+		peer.On("TrySend", p2p.Envelope{
+			ChannelID: MempoolWantsChannel,
+			Message: &protomem.Message{
+				Sum: &protomem.Message_WantTx{
+					WantTx: &protomem.WantTx{TxKey: txKey3[:]},
+				},
+			},
+		}).Return(true)
+
+		reactor.Receive(p2p.Envelope{
+			ChannelID: MempoolDataChannel,
+			Message:   seenTxMsg,
+			Src:       peer,
+		})
+
+		peer.AssertExpectations(t)
+	})
 }
 
 func TestDefaultGossipDelay(t *testing.T) {

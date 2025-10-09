@@ -184,3 +184,15 @@ func (app *localClient) FinalizeBlock(ctx context.Context, req *types.RequestFin
 
 	return app.Application.FinalizeBlock(ctx, req)
 }
+
+func (app *localClient) QuerySequence(ctx context.Context, req *types.RequestQuerySequence) (*types.ResponseQuerySequence, error) {
+	app.mtx.Lock()
+	defer app.mtx.Unlock()
+
+	// Check if the underlying application implements SequenceQuerier
+	if sq, ok := app.Application.(types.SequenceQuerier); ok {
+		return sq.QuerySequence(ctx, req)
+	}
+	// Return empty response if not implemented
+	return &types.ResponseQuerySequence{}, nil
+}
