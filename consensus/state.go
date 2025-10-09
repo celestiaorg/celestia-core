@@ -927,6 +927,7 @@ func (cs *State) receiveRoutine(maxSteps int) {
 			// some console or secure RPC system, but for now, halting the chain upon
 			// unexpected consensus bugs sounds like the better option.
 			onExit(cs)
+			os.Exit(1)
 		}
 	}()
 
