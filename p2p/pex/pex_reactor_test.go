@@ -933,11 +933,11 @@ func createTestAddresses(count int) []*p2p.NetAddress {
 	return addrs
 }
 
-func TestFilterAddrs(t *testing.T) {
+func TestCapAddresses(t *testing.T) {
 	t.Run("message fits within limit", func(t *testing.T) {
 		addrs := createTestAddresses(maxGetSelection)
 
-		result := filterAddrs(addrs)
+		result := capAddresses(addrs)
 
 		assert.Equal(t, len(addrs), len(result.Addrs))
 		assert.True(t, result.Size() <= maxMsgSize)
@@ -951,7 +951,7 @@ func TestFilterAddrs(t *testing.T) {
 	t.Run("empty address list", func(t *testing.T) {
 		var addrs []*p2p.NetAddress
 
-		result := filterAddrs(addrs)
+		result := capAddresses(addrs)
 
 		assert.Equal(t, 0, len(result.Addrs))
 		assert.True(t, result.Size() <= maxMsgSize)
@@ -963,7 +963,7 @@ func TestFilterAddrs(t *testing.T) {
 		initialMsg := tmp2p.PexAddrs{Addrs: p2p.NetAddressesToProto(addrs)}
 		require.True(t, initialMsg.Size() > maxMsgSize, "Test setup: initial message should exceed maxMsgSize")
 
-		result := filterAddrs(addrs)
+		result := capAddresses(addrs)
 
 		assert.True(t, result.Size() <= maxMsgSize, "Filtered message should fit within maxMsgSize")
 		assert.Less(t, len(result.Addrs), len(addrs), "Should have fewer addresses after filtering")
@@ -971,7 +971,7 @@ func TestFilterAddrs(t *testing.T) {
 	})
 
 	t.Run("nil input", func(t *testing.T) {
-		result := filterAddrs(nil)
+		result := capAddresses(nil)
 
 		assert.NotNil(t, result)
 		assert.Equal(t, 0, len(result.Addrs))
