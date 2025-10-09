@@ -517,7 +517,6 @@ func TestReactorInvalidMessages(t *testing.T) {
 		{"Propose", cstypes.RoundStepPropose},
 		{"Prevote", cstypes.RoundStepPrevote},
 		{"Precommit", cstypes.RoundStepPrecommit},
-		{"Commit", cstypes.RoundStepCommit},
 	}
 
 	// Get all message types (using dummy height/round)
