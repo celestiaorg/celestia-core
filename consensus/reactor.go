@@ -266,7 +266,7 @@ func (conR *Reactor) RemovePeer(p2p.Peer, interface{}) {
 // NOTE: blocks on consensus state for proposals, block parts, and votes
 func (conR *Reactor) Receive(e p2p.Envelope) {
 	if !conR.IsRunning() {
-		conR.Logger.Debug("Receive", "src", e.Src, "chId", e.ChannelID)
+		conR.Logger.Trace("Receive", "src", e.Src, "chId", e.ChannelID)
 		return
 	}
 	msg, err := MsgFromProto(e.Message)
@@ -282,7 +282,7 @@ func (conR *Reactor) Receive(e p2p.Envelope) {
 		return
 	}
 
-	conR.Logger.Debug("Receive", "src", e.Src, "chId", e.ChannelID, "msg", msg)
+	conR.Logger.Trace("Receive", "src", e.Src, "chId", e.ChannelID, "msg", msg)
 
 	// Get peer states
 	ps, ok := e.Src.Get(types.PeerStateKey).(*PeerState)
@@ -693,7 +693,7 @@ OUTER_LOOP:
 				if err != nil {
 					panic(err)
 				}
-				logger.Debug("Sending block part", "height", prs.Height, "round", prs.Round)
+				logger.Trace("Sending block part", "height", prs.Height, "round", prs.Round)
 				if peer.Send(p2p.Envelope{
 					ChannelID: DataChannel,
 					Message: &cmtcons.BlockPart{
@@ -747,7 +747,7 @@ OUTER_LOOP:
 		if rs.Proposal != nil && !prs.Proposal {
 			// Proposal: share the proposal metadata with peer.
 			{
-				logger.Debug("Sending proposal", "height", prs.Height, "round", prs.Round)
+				logger.Trace("Sending proposal", "height", prs.Height, "round", prs.Round)
 				if peer.Send(p2p.Envelope{
 					ChannelID: DataChannel,
 					Message:   &cmtcons.Proposal{Proposal: *rs.Proposal.ToProto()},
@@ -768,7 +768,7 @@ OUTER_LOOP:
 			// rs.Proposal was validated, so rs.Proposal.POLRound <= rs.Round,
 			// so we definitely have rs.Votes.Prevotes(rs.Proposal.POLRound).
 			if 0 <= rs.Proposal.POLRound {
-				logger.Debug("Sending POL", "height", prs.Height, "round", prs.Round)
+				logger.Trace("Sending POL", "height", prs.Height, "round", prs.Round)
 				if peer.Send(p2p.Envelope{
 					ChannelID: DataChannel,
 					Message: &cmtcons.ProposalPOL{
@@ -822,7 +822,7 @@ func (conR *Reactor) gossipDataForCatchup(logger log.Logger, rs *cstypes.RoundSt
 			return
 		}
 		// Send the part
-		logger.Debug("Sending block part for catchup", "round", prs.Round, "index", index)
+		logger.Trace("Sending block part for catchup", "round", prs.Round, "index", index)
 		pp, err := part.ToProto()
 		if err != nil {
 			logger.Error("Could not convert part to proto", "index", index, "error", err)
@@ -848,7 +848,7 @@ func (conR *Reactor) gossipDataForCatchup(logger log.Logger, rs *cstypes.RoundSt
 				schema.Upload,
 			)
 		} else {
-			logger.Debug("Sending block part for catchup failed")
+			logger.Trace("Sending block part for catchup failed")
 			// sleep to avoid retrying too fast
 			time.Sleep(conR.conS.config.PeerGossipSleepDuration)
 		}
@@ -895,7 +895,7 @@ OUTER_LOOP:
 		// If peer is lagging by height 1, send LastCommit.
 		if prs.Height != 0 && rs.Height == prs.Height+1 {
 			if conR.pickSendVoteAndTrace(rs.LastCommit, rs, ps) {
-				logger.Debug("Picked rs.LastCommit to send", "height", prs.Height)
+				logger.Trace("Picked rs.LastCommit to send", "height", prs.Height)
 				continue OUTER_LOOP
 			}
 		}
@@ -927,7 +927,7 @@ OUTER_LOOP:
 			}
 			vote := ps.PickSendVote(ec)
 			if vote != nil {
-				logger.Debug("Picked Catchup commit to send", "height", prs.Height)
+				logger.Trace("Picked Catchup commit to send", "height", prs.Height)
 				continue OUTER_LOOP
 			}
 		}
@@ -935,7 +935,7 @@ OUTER_LOOP:
 		if sleeping == 0 { //nolint:staticcheck
 			// We sent nothing. Sleep...
 			sleeping = 1
-			logger.Debug("No votes to send, sleeping", "rs.Height", rs.Height, "prs.Height", prs.Height,
+			logger.Trace("No votes to send, sleeping", "rs.Height", rs.Height, "prs.Height", prs.Height,
 				"localPV", rs.Votes.Prevotes(rs.Round).BitArray(), "peerPV", prs.Prevotes,
 				"localPC", rs.Votes.Precommits(rs.Round).BitArray(), "peerPC", prs.Precommits)
 		} else if sleeping == 2 {
@@ -970,7 +970,7 @@ func (conR *Reactor) gossipVotesForHeight(
 	// If there are lastCommits to send...
 	if prs.Step == cstypes.RoundStepNewHeight {
 		if conR.pickSendVoteAndTrace(rs.LastCommit, rs, ps) {
-			logger.Debug("Picked rs.LastCommit to send")
+			logger.Trace("Picked rs.LastCommit to send")
 			return true
 		}
 	}
@@ -978,7 +978,7 @@ func (conR *Reactor) gossipVotesForHeight(
 	if prs.Step <= cstypes.RoundStepPropose && prs.Round != -1 && prs.Round <= rs.Round && prs.ProposalPOLRound != -1 {
 		if polPrevotes := rs.Votes.Prevotes(prs.ProposalPOLRound); polPrevotes != nil {
 			if conR.pickSendVoteAndTrace(polPrevotes, rs, ps) {
-				logger.Debug("Picked rs.Prevotes(prs.ProposalPOLRound) to send",
+				logger.Trace("Picked rs.Prevotes(prs.ProposalPOLRound) to send",
 					"round", prs.ProposalPOLRound)
 				return true
 			}
@@ -987,21 +987,21 @@ func (conR *Reactor) gossipVotesForHeight(
 	// If there are prevotes to send...
 	if prs.Step <= cstypes.RoundStepPrevoteWait && prs.Round != -1 && prs.Round <= rs.Round {
 		if conR.pickSendVoteAndTrace(rs.Votes.Prevotes(prs.Round), rs, ps) {
-			logger.Debug("Picked rs.Prevotes(prs.Round) to send", "round", prs.Round)
+			logger.Trace("Picked rs.Prevotes(prs.Round) to send", "round", prs.Round)
 			return true
 		}
 	}
 	// If there are precommits to send...
 	if prs.Step <= cstypes.RoundStepPrecommitWait && prs.Round != -1 && prs.Round <= rs.Round {
 		if conR.pickSendVoteAndTrace(rs.Votes.Precommits(prs.Round), rs, ps) {
-			logger.Debug("Picked rs.Precommits(prs.Round) to send", "round", prs.Round)
+			logger.Trace("Picked rs.Precommits(prs.Round) to send", "round", prs.Round)
 			return true
 		}
 	}
 	// If there are prevotes to send...Needed because of validBlock mechanism
 	if prs.Round != -1 && prs.Round <= rs.Round {
 		if conR.pickSendVoteAndTrace(rs.Votes.Prevotes(prs.Round), rs, ps) {
-			logger.Debug("Picked rs.Prevotes(prs.Round) to send", "round", prs.Round)
+			logger.Trace("Picked rs.Prevotes(prs.Round) to send", "round", prs.Round)
 			return true
 		}
 	}
@@ -1009,7 +1009,7 @@ func (conR *Reactor) gossipVotesForHeight(
 	if prs.ProposalPOLRound != -1 {
 		if polPrevotes := rs.Votes.Prevotes(prs.ProposalPOLRound); polPrevotes != nil {
 			if conR.pickSendVoteAndTrace(polPrevotes, rs, ps) {
-				logger.Debug("Picked rs.Prevotes(prs.ProposalPOLRound) to send",
+				logger.Trace("Picked rs.Prevotes(prs.ProposalPOLRound) to send",
 					"round", prs.ProposalPOLRound)
 				return true
 			}
@@ -1356,7 +1356,7 @@ func (ps *PeerState) SetHasProposalBlockPart(height int64, round int32, index in
 // Returns true if vote was sent.
 func (ps *PeerState) PickSendVote(votes types.VoteSetReader) *types.Vote {
 	if vote, ok := ps.PickVoteToSend(votes); ok {
-		ps.logger.Debug("Sending vote message", "ps", ps, "vote", vote)
+		ps.logger.Trace("Sending vote message", "ps", ps, "vote", vote)
 		if ps.peer.Send(p2p.Envelope{
 			ChannelID: VoteChannel,
 			Message: &cmtcons.Vote{
@@ -1553,7 +1553,7 @@ func (ps *PeerState) SetHasVote(vote *types.Vote) {
 }
 
 func (ps *PeerState) setHasVote(height int64, round int32, voteType cmtproto.SignedMsgType, index int32) {
-	ps.logger.Debug("setHasVote",
+	ps.logger.Trace("setHasVote",
 		"peerH/R",
 		log.NewLazySprintf("%d/%d", ps.PRS.Height, ps.PRS.Round),
 		"H/R",

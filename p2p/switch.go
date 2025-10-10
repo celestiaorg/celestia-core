@@ -286,7 +286,7 @@ func (sw *Switch) OnStop() {
 //
 // NOTE: Broadcast uses goroutines, so order of broadcast may not be preserved.
 func (sw *Switch) Broadcast(e Envelope) chan bool {
-	sw.Logger.Debug("Broadcast", "channel", e.ChannelID)
+	sw.Logger.Trace("Broadcast", "channel", e.ChannelID)
 
 	peers := sw.peersForEnvelope(e)
 	var wg sync.WaitGroup
@@ -552,7 +552,7 @@ func (sw *Switch) dialPeersAsync(netAddrs []*NetAddress) {
 			if !netAddr.Same(ourAddr) {
 				if err := sw.addrBook.AddAddress(netAddr, ourAddr); err != nil {
 					if isPrivateAddr(err) {
-						sw.Logger.Debug("Won't add peer's address to addrbook", "err", err)
+						sw.Logger.Trace("Won't add peer's address to addrbook", "err", err)
 					} else {
 						sw.Logger.Error("Can't add peer's address to addrbook", "err", err)
 					}
@@ -572,7 +572,7 @@ func (sw *Switch) dialPeersAsync(netAddrs []*NetAddress) {
 			addr := netAddrs[j]
 
 			if addr.Same(ourAddr) {
-				sw.Logger.Debug("Ignore attempt to connect to ourselves", "addr", addr, "ourAddr", ourAddr)
+				sw.Logger.Trace("Ignore attempt to connect to ourselves", "addr", addr, "ourAddr", ourAddr)
 				return
 			}
 
@@ -739,7 +739,7 @@ func (sw *Switch) acceptRoutine() {
 			// Ignore connection if we already have enough peers.
 			_, in, _ := sw.NumPeers()
 			if in >= sw.config.MaxNumInboundPeers {
-				sw.Logger.Debug(
+				sw.Logger.Trace(
 					"Ignoring inbound connection: already have enough inbound peers",
 					"address", p.SocketAddr(),
 					"have", in,
@@ -776,7 +776,7 @@ func (sw *Switch) addOutboundPeerWithConfig(
 	addr *NetAddress,
 	cfg *config.P2PConfig,
 ) error {
-	sw.Logger.Debug("Dialing peer", "address", addr)
+	sw.Logger.Trace("Dialing peer", "address", addr)
 
 	// XXX(xla): Remove the leakage of test concerns in implementation.
 	if cfg.TestDialFail {
@@ -927,7 +927,7 @@ func (sw *Switch) addPeer(p Peer) error {
 		}
 	}
 
-	sw.Logger.Debug("Added peer", "peer", p)
+	sw.Logger.Trace("Added peer", "peer", p)
 
 	return nil
 }

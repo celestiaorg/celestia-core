@@ -242,7 +242,7 @@ func (r *Reactor) logErrAddrBook(err error) {
 
 // Receive implements Reactor by handling incoming PEX messages.
 func (r *Reactor) Receive(e p2p.Envelope) {
-	r.Logger.Debug("Received message", "src", e.Src, "chId", e.ChannelID, "msg", e.Message)
+	r.Logger.Trace("Received message", "src", e.Src, "chId", e.ChannelID, "msg", e.Message)
 
 	switch msg := e.Message.(type) {
 	case *tmp2p.PexRequest:
@@ -345,7 +345,7 @@ func (r *Reactor) RequestAddrs(p Peer) {
 	if r.requestsSent.Has(id) {
 		return
 	}
-	r.Logger.Debug("Request addrs", "from", p)
+	r.Logger.Trace("Request addrs", "from", p)
 	r.requestsSent.Set(id, struct{}{})
 	p.Send(p2p.Envelope{
 		ChannelID: PexChannel,

@@ -382,7 +382,7 @@ func (p *peer) hasChannel(chID byte) bool {
 	}
 	// NOTE: probably will want to remove this
 	// but could be helpful while the feature is new
-	p.Logger.Debug(
+	p.Logger.Trace(
 		"Unknown channel for peer",
 		"channel",
 		chID,

@@ -448,7 +448,7 @@ func (c *WSClient) writeRoutine() {
 			c.mtx.Lock()
 			c.sentLastPingAt = time.Now()
 			c.mtx.Unlock()
-			c.Logger.Debug("sent ping")
+			c.Logger.Trace("sent ping")
 		case <-c.readRoutineQuit:
 			return
 		case <-c.Quit():
@@ -483,7 +483,7 @@ func (c *WSClient) readRoutine() {
 		c.mtx.RUnlock()
 		c.PingPongLatencyTimer.UpdateSince(t)
 
-		c.Logger.Debug("got pong")
+		c.Logger.Trace("got pong")
 		return nil
 	})
 

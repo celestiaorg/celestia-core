@@ -340,7 +340,7 @@ func (pool *BlockPool) AddBlock(peerID p2p.ID, block *types.Block, extCommit *ty
 		// where the block arrived after the peer was banned and reset from the requester.
 		// This is not an error, just a timing issue.
 		if pool.isPeerBanned(peerID) {
-			pool.Logger.Debug("Ignoring block from recently banned peer", "peer", peerID, "height", block.Height)
+			pool.Logger.Trace("Ignoring block from recently banned peer", "peer", peerID, "height", block.Height)
 			return nil
 		}
 		err := fmt.Errorf("requested block #%d from %v, not %s", block.Height, requester.requestedFrom(), peerID)
@@ -392,7 +392,7 @@ func (pool *BlockPool) SetPeerRange(peerID p2p.ID, base int64, height int64) {
 		peer.height = height
 	} else {
 		if pool.isPeerBanned(peerID) {
-			pool.Logger.Debug("Ignoring banned peer", "peer", peerID)
+			pool.Logger.Trace("Ignoring banned peer", "peer", peerID)
 			return
 		}
 		peer = newBPPeer(pool, peerID, base, height)

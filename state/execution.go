@@ -201,7 +201,7 @@ func (blockExec *BlockExecutor) CreateProposalBlock(
 	rejectedTxs := len(rawNewData) - len(txs)
 	if rejectedTxs > 0 {
 		blockExec.metrics.RejectedTransactions.Add(float64(rejectedTxs))
-		blockExec.logger.Debug("rejected txs while creating a block", "tx count", rejectedTxs)
+		blockExec.logger.Trace("rejected txs while creating a block", "tx count", rejectedTxs)
 	}
 
 	txl := types.ToTxs(rpp.Txs)
@@ -421,7 +421,7 @@ func (blockExec *BlockExecutor) applyBlock(state State, blockID types.BlockID, b
 		if err != nil {
 			blockExec.logger.Error("failed to prune blocks", "retain_height", retainHeight, "err", err)
 		} else {
-			blockExec.logger.Debug("pruned blocks", "pruned", pruned, "retain_height", retainHeight)
+			blockExec.logger.Trace("pruned blocks", "pruned", pruned, "retain_height", retainHeight)
 		}
 	}
 

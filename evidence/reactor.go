@@ -131,7 +131,7 @@ func (evR *Reactor) broadcastEvidenceRoutine(peer p2p.Peer) {
 		ev := next.Value.(types.Evidence)
 		evis := evR.prepareEvidenceMessage(peer, ev)
 		if len(evis) > 0 {
-			evR.Logger.Debug("Gossiping evidence to peer", "ev", ev, "peer", peer)
+			evR.Logger.Trace("Gossiping evidence to peer", "ev", ev, "peer", peer)
 			evp, err := evidenceListToProto(evis)
 			if err != nil {
 				panic(err)

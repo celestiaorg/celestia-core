@@ -635,7 +635,7 @@ func (c *Client) verifySequential(
 		}
 
 		// 2) Verify them
-		c.logger.Debug("Verify adjacent newLightBlock against verifiedBlock",
+		c.logger.Trace("Verify adjacent newLightBlock against verifiedBlock",
 			"trustedHeight", verifiedBlock.Height,
 			"trustedHash", verifiedBlock.Hash(),
 			"newHeight", interimBlock.Height,
@@ -719,7 +719,7 @@ func (c *Client) verifySkipping(
 	)
 
 	for {
-		c.logger.Debug("Verify non-adjacent newHeader against verifiedBlock",
+		c.logger.Trace("Verify non-adjacent newHeader against verifiedBlock",
 			"trustedHeight", verifiedBlock.Height,
 			"trustedHash", verifiedBlock.Hash(),
 			"newHeight", blockCache[depth].Height,
@@ -908,7 +908,7 @@ func (c *Client) cleanupAfter(height int64) error {
 }
 
 func (c *Client) updateTrustedLightBlock(l *types.LightBlock) error {
-	c.logger.Debug("updating trusted light block", "light_block", l)
+	c.logger.Trace("updating trusted light block", "light_block", l)
 
 	if err := c.trustedStore.SaveLightBlock(l); err != nil {
 		return fmt.Errorf("failed to save trusted header: %w", err)
@@ -946,7 +946,7 @@ func (c *Client) backwards(
 			return fmt.Errorf("failed to obtain the header at height #%d: %w", verifiedHeader.Height-1, err)
 		}
 		interimHeader = interimBlock.Header
-		c.logger.Debug("Verify newHeader against verifiedHeader",
+		c.logger.Trace("Verify newHeader against verifiedHeader",
 			"trustedHeight", verifiedHeader.Height,
 			"trustedHash", verifiedHeader.Hash(),
 			"newHeight", interimHeader.Height,
@@ -1091,7 +1091,7 @@ func (c *Client) findNewPrimary(ctx context.Context, height int64, remove bool) 
 			}
 
 			// promote respondent as the new primary
-			c.logger.Debug("found new primary", "primary", c.witnesses[response.witnessIndex])
+			c.logger.Trace("found new primary", "primary", c.witnesses[response.witnessIndex])
 			c.primary = c.witnesses[response.witnessIndex]
 
 			// add promoted witness to the list of witnesses to be removed

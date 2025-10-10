@@ -111,7 +111,7 @@ func (evpool *Pool) Update(state sm.State, ev types.EvidenceList) {
 			evpool.state.LastBlockHeight,
 		))
 	}
-	evpool.logger.Debug("Updating evidence pool", "last_block_height", state.LastBlockHeight,
+	evpool.logger.Trace("Updating evidence pool", "last_block_height", state.LastBlockHeight,
 		"last_block_time", state.LastBlockTime)
 
 	// flush conflicting vote pairs from the buffer, producing DuplicateVoteEvidence and
@@ -319,7 +319,7 @@ func (evpool *Pool) removePendingEvidence(evidence types.Evidence) {
 		evpool.logger.Error("Unable to delete pending evidence", "err", err)
 	} else {
 		atomic.AddUint32(&evpool.evidenceSize, ^uint32(0))
-		evpool.logger.Debug("Deleted pending evidence", "evidence", evidence)
+		evpool.logger.Trace("Deleted pending evidence", "evidence", evidence)
 	}
 }
 

@@ -347,7 +347,7 @@ func (wsc *wsConnection) readRoutine() {
 			// A Notification is a Request object without an "id" member.
 			// The Server MUST NOT reply to a Notification, including those that are within a batch request.
 			if request.ID == nil {
-				wsc.Logger.Debug(
+				wsc.Logger.Trace(
 					"WSJSONRPC received a notification, skipping... (please send a non-empty ID if you want to call a method)",
 					"req", request,
 				)

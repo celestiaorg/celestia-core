@@ -35,7 +35,7 @@ func (c *Client) detectDivergence(ctx context.Context, primaryTrace []*types.Lig
 		lastVerifiedHeader = lastVerifiedBlock.SignedHeader
 		witnessesToRemove  = make([]int, 0)
 	)
-	c.logger.Debug("Running detector against trace", "finalizeBlockHeight", lastVerifiedHeader.Height,
+	c.logger.Trace("Running detector against trace", "finalizeBlockHeight", lastVerifiedHeader.Height,
 		"endBlockHash", lastVerifiedHeader.Hash, "length", len(primaryTrace))
 
 	c.providerMutex.Lock()
@@ -216,7 +216,7 @@ func (c *Client) compareNewLightBlockWithWitness(ctx context.Context, errc chan 
 		errc <- ErrProposerPrioritiesDiverge{WitnessHash: got, WitnessIndex: witnessIndex, PrimaryHash: wanted}
 	}
 
-	c.logger.Debug("Matching header received by witness", "height", h.Height, "witness", witnessIndex)
+	c.logger.Trace("Matching header received by witness", "height", h.Height, "witness", witnessIndex)
 	errc <- nil
 }
 

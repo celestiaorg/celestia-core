@@ -12,6 +12,7 @@ import (
 const (
 	msgKey    = "_msg" // "_" prefixed to avoid collisions
 	moduleKey = "module"
+	levelKey  = "level"
 )
 
 type tmLogger struct {
@@ -27,12 +28,27 @@ var _ Logger = (*tmLogger)(nil)
 func NewTMLogger(w io.Writer) Logger {
 	// Color by level value
 	colorFn := func(keyvals ...interface{}) term.FgBgColor {
-		if keyvals[0] != kitlevel.Key() {
+		// keyvals can start with either levelKey (for trace) or kitlevel.Key() (for debug/info/error)
+		if len(keyvals) < 2 {
+			return term.FgBgColor{}
+		}
+
+		var levelStr string
+		if keyvals[0] == levelKey {
+			// Custom trace level
+			levelStr = keyvals[1].(string)
+		} else if keyvals[0] == kitlevel.Key() {
+			// Standard go-kit levels
+			levelStr = keyvals[1].(kitlevel.Value).String()
+		} else {
 			panic(fmt.Sprintf("expected level key to be first, got %v", keyvals[0]))
 		}
-		switch keyvals[1].(kitlevel.Value).String() {
-		case "debug":
+
+		switch levelStr {
+		case "trace":
 			return term.FgBgColor{Fg: term.DarkGray}
+		case "debug":
+			return term.FgBgColor{Fg: term.Gray}
 		case "error":
 			return term.FgBgColor{Fg: term.Red}
 		default:
@@ -47,6 +63,16 @@ func NewTMLogger(w io.Writer) Logger {
 // NewTMLogger for documentation.
 func NewTMLoggerWithColorFn(w io.Writer, colorFn func(keyvals ...interface{}) term.FgBgColor) Logger {
 	return &tmLogger{term.NewLogger(w, NewTMFmtLogger, colorFn)}
+}
+
+// Trace logs a message at level Trace.
+func (l *tmLogger) Trace(msg string, keyvals ...interface{}) {
+	lWithLevel := kitlog.WithPrefix(l.srcLogger, levelKey, "trace")
+
+	if err := kitlog.With(lWithLevel, msgKey, msg).Log(keyvals...); err != nil {
+		errLogger := kitlevel.Error(l.srcLogger)
+		kitlog.With(errLogger, msgKey, msg).Log("err", err) //nolint:errcheck // no need to check error again
+	}
 }
 
 // Info logs a message at level Info.
@@ -80,7 +106,7 @@ func (l *tmLogger) Error(msg string, keyvals ...interface{}) {
 }
 
 // With returns a new contextual logger with keyvals prepended to those passed
-// to calls to Info, Debug or Error.
+// to calls to Trace, Info, Debug or Error.
 func (l *tmLogger) With(keyvals ...interface{}) Logger {
 	return &tmLogger{kitlog.With(l.srcLogger, keyvals...)}
 }

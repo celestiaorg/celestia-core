@@ -28,6 +28,10 @@ type tracingLogger struct {
 	next Logger
 }
 
+func (l *tracingLogger) Trace(msg string, keyvals ...interface{}) {
+	l.next.Trace(msg, formatErrors(keyvals)...)
+}
+
 func (l *tracingLogger) Info(msg string, keyvals ...interface{}) {
 	l.next.Info(msg, formatErrors(keyvals)...)
 }

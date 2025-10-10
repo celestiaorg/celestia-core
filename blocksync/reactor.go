@@ -259,7 +259,7 @@ func (bcR *Reactor) Receive(e p2p.Envelope) {
 		return
 	}
 
-	bcR.Logger.Debug("Receive", "e.Src", e.Src, "chID", e.ChannelID, "msg", e.Message)
+	bcR.Logger.Trace("Receive", "e.Src", e.Src, "chID", e.ChannelID, "msg", e.Message)
 
 	switch msg := e.Message.(type) { //nolint:dupl // recreated in a test
 	case *bcproto.BlockRequest:
@@ -300,7 +300,7 @@ func (bcR *Reactor) Receive(e p2p.Envelope) {
 		// Got a peer status. Unverified.
 		bcR.pool.SetPeerRange(e.Src.ID(), msg.Base, msg.Height)
 	case *bcproto.NoBlockResponse:
-		bcR.Logger.Debug("Peer does not have requested block", "peer", e.Src, "height", msg.Height)
+		bcR.Logger.Trace("Peer does not have requested block", "peer", e.Src, "height", msg.Height)
 		bcR.pool.RedoRequestFrom(msg.Height, e.Src.ID())
 	default:
 		bcR.Logger.Error(fmt.Sprintf("Unknown message type %v", reflect.TypeOf(msg)))
@@ -385,7 +385,7 @@ FOR_LOOP:
 		case <-switchToConsensusTicker.C:
 			height, numPending, lenRequesters := bcR.pool.GetStatus()
 			outbound, inbound, _ := bcR.Switch.NumPeers()
-			bcR.Logger.Debug("Consensus ticker", "numPending", numPending, "total", lenRequesters,
+			bcR.Logger.Trace("Consensus ticker", "numPending", numPending, "total", lenRequesters,
 				"outbound", outbound, "inbound", inbound, "lastHeight", state.LastBlockHeight)
 
 			// The "if" statement below is a bit confusing, so here is a breakdown
