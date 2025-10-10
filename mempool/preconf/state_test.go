@@ -242,6 +242,10 @@ func TestNilValidatorSet(t *testing.T) {
 	// With nil validator set, voting power should be 0
 	assert.Equal(t, int64(0), state.GetTotalVotingPower(txKey))
 	assert.Equal(t, int64(0), state.GetValidatorSetTotalPower())
+
+	// Test that UpdateValidatorSet doesn't panic with nil
+	state.UpdateValidatorSet(nil)
+	assert.Equal(t, int64(0), state.GetValidatorSetTotalPower())
 }
 
 func TestConcurrentAccess(t *testing.T) {
@@ -651,5 +655,235 @@ func TestSignAndBroadcast(t *testing.T) {
 
 			require.NoError(t, err)
 		})
+	}
+}
+
+// TestGossipDeduplication tests that transactions are only gossiped once.
+// This verifies the "gossip once" logic in signAndBroadcast.
+func TestGossipDeduplication(t *testing.T) {
+	logger := log.TestingLogger()
+	valSet := createTestValidatorSet(3)
+	privVal := types.NewMockPV()
+
+	// Track which transactions were broadcast
+	var broadcastedTxs [][]byte
+	var broadcastCount int
+
+	txKeys := []types.TxKey{
+		getTxKey("test-tx-1"),
+		getTxKey("test-tx-2"),
+		getTxKey("test-tx-3"),
+	}
+
+	getTxHashes := func() []types.TxKey {
+		return txKeys
+	}
+
+	broadcastMsg := func(msg *protomemcat.PreconfirmationMessage) {
+		broadcastCount++
+		broadcastedTxs = append(broadcastedTxs, msg.TxHashes...)
+	}
+
+	state := NewPreconfirmationState(logger, valSet, privVal, "test-chain", getTxHashes, broadcastMsg)
+	defer state.Stop()
+
+	// First call to signAndBroadcast - should gossip all transactions
+	err := state.signAndBroadcast()
+	require.NoError(t, err)
+
+	// Verify all transactions were broadcast
+	assert.Equal(t, 1, broadcastCount)
+	assert.Equal(t, 3, len(broadcastedTxs))
+
+	// Reset broadcast tracking
+	broadcastedTxs = nil
+
+	// Second call to signAndBroadcast - should NOT gossip any transactions (deduplication)
+	err = state.signAndBroadcast()
+	require.NoError(t, err)
+
+	// Verify NO transactions were broadcast this time
+	assert.Equal(t, 1, broadcastCount) // Should still be 1
+	assert.Equal(t, 0, len(broadcastedTxs))
+
+	// Add a new transaction
+	newTxKey := getTxKey("test-tx-4")
+	txKeys = append(txKeys, newTxKey)
+
+	// Third call to signAndBroadcast - should ONLY gossip the new transaction
+	err = state.signAndBroadcast()
+	require.NoError(t, err)
+
+	// Verify only the new transaction was broadcast
+	assert.Equal(t, 2, broadcastCount) // Should now be 2
+	assert.Equal(t, 1, len(broadcastedTxs))
+}
+
+// TestGarbageCollection tests the realistic lifecycle of add, preconfirm, and remove.
+// This verifies that RemoveTx properly cleans up both the preconfirmation state
+// and the gossiped transactions map, preventing memory leaks.
+func TestGarbageCollection(t *testing.T) {
+	logger := log.TestingLogger()
+	privVal := types.NewMockPV()
+	pubKey, _ := privVal.GetPubKey()
+
+	val := types.NewValidator(pubKey, 10)
+	valSet := types.NewValidatorSet([]*types.Validator{val})
+
+	state := NewPreconfirmationState(logger, valSet, nil, "test-chain", nil, nil)
+	defer state.Stop()
+
+	tests := []struct {
+		name string
+		test func(t *testing.T)
+	}{
+		{
+			name: "add, preconfirm, and remove single transaction",
+			test: func(t *testing.T) {
+				txKey := getTxKey("test-tx-1")
+
+				// Step 1: Add transaction
+				state.AddTx(txKey)
+				assert.Equal(t, 1, state.Size())
+				assert.Equal(t, int64(0), state.GetTotalVotingPower(txKey))
+
+				// Step 2: Preconfirm transaction
+				msg := &protomemcat.PreconfirmationMessage{
+					TxHashes: [][]byte{txKey[:]},
+				}
+				signedMsg := signPreconfMessage(t, msg, privVal, "test-chain")
+				state.SendUpdate(signedMsg)
+				time.Sleep(50 * time.Millisecond) // Allow processing
+
+				// Verify preconfirmation was recorded
+				assert.Equal(t, int64(10), state.GetTotalVotingPower(txKey))
+
+				// Step 3: Remove transaction
+				state.RemoveTx(txKey)
+
+				// Verify complete cleanup
+				assert.Equal(t, 0, state.Size())
+				assert.Equal(t, int64(0), state.GetTotalVotingPower(txKey))
+
+				// Verify gossipedTxs was also cleaned up
+				state.mtx.RLock()
+				_, inGossipedTxs := state.gossipedTxs[txKey]
+				state.mtx.RUnlock()
+				assert.False(t, inGossipedTxs, "transaction should be removed from gossipedTxs")
+			},
+		},
+		{
+			name: "add, preconfirm multiple validators, and remove",
+			test: func(t *testing.T) {
+				// Create multiple validators
+				privVal1 := types.NewMockPV()
+				privVal2 := types.NewMockPV()
+				privVal3 := types.NewMockPV()
+
+				pubKey1, _ := privVal1.GetPubKey()
+				pubKey2, _ := privVal2.GetPubKey()
+				pubKey3, _ := privVal3.GetPubKey()
+
+				val1 := types.NewValidator(pubKey1, 10)
+				val2 := types.NewValidator(pubKey2, 20)
+				val3 := types.NewValidator(pubKey3, 30)
+
+				multiValSet := types.NewValidatorSet([]*types.Validator{val1, val2, val3})
+				multiState := NewPreconfirmationState(logger, multiValSet, nil, "test-chain", nil, nil)
+				defer multiState.Stop()
+
+				txKey := getTxKey("test-tx-2")
+
+				// Add transaction
+				multiState.AddTx(txKey)
+				assert.Equal(t, 1, multiState.Size())
+
+				// Preconfirm from all three validators
+				for _, pv := range []types.PrivValidator{privVal1, privVal2, privVal3} {
+					msg := &protomemcat.PreconfirmationMessage{
+						TxHashes: [][]byte{txKey[:]},
+					}
+					signedMsg := signPreconfMessage(t, msg, pv, "test-chain")
+					multiState.SendUpdate(signedMsg)
+				}
+				time.Sleep(100 * time.Millisecond)
+
+				// Verify total voting power
+				assert.Equal(t, int64(60), multiState.GetTotalVotingPower(txKey))
+
+				// Remove transaction
+				multiState.RemoveTx(txKey)
+
+				// Verify complete cleanup
+				assert.Equal(t, 0, multiState.Size())
+				assert.Equal(t, int64(0), multiState.GetTotalVotingPower(txKey))
+
+				// Verify internal state is clean
+				multiState.mtx.RLock()
+				_, exists := multiState.txs[txKey]
+				_, inGossiped := multiState.gossipedTxs[txKey]
+				multiState.mtx.RUnlock()
+
+				assert.False(t, exists, "transaction should not exist in txs map")
+				assert.False(t, inGossiped, "transaction should not exist in gossipedTxs map")
+			},
+		},
+		{
+			name: "lifecycle with multiple transactions",
+			test: func(t *testing.T) {
+				multiState := NewPreconfirmationState(logger, valSet, nil, "test-chain", nil, nil)
+				defer multiState.Stop()
+
+				// Add multiple transactions
+				txKeys := []types.TxKey{
+					getTxKey("test-tx-3"),
+					getTxKey("test-tx-4"),
+					getTxKey("test-tx-5"),
+				}
+
+				for _, txKey := range txKeys {
+					multiState.AddTx(txKey)
+				}
+				assert.Equal(t, 3, multiState.Size())
+
+				// Preconfirm all transactions
+				for _, txKey := range txKeys {
+					msg := &protomemcat.PreconfirmationMessage{
+						TxHashes: [][]byte{txKey[:]},
+					}
+					signedMsg := signPreconfMessage(t, msg, privVal, "test-chain")
+					multiState.SendUpdate(signedMsg)
+				}
+				time.Sleep(100 * time.Millisecond)
+
+				// Verify all are preconfirmed
+				for _, txKey := range txKeys {
+					assert.Equal(t, int64(10), multiState.GetTotalVotingPower(txKey))
+				}
+
+				// Remove transactions one by one
+				for i, txKey := range txKeys {
+					multiState.RemoveTx(txKey)
+					expectedSize := len(txKeys) - i - 1
+					assert.Equal(t, expectedSize, multiState.Size())
+
+					// Verify removed transaction is cleaned up
+					multiState.mtx.RLock()
+					_, exists := multiState.txs[txKey]
+					_, inGossiped := multiState.gossipedTxs[txKey]
+					multiState.mtx.RUnlock()
+
+					assert.False(t, exists)
+					assert.False(t, inGossiped)
+				}
+
+				// Verify complete cleanup
+				assert.Equal(t, 0, multiState.Size())
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, tt.test)
 	}
 }

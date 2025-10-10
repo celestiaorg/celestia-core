@@ -146,7 +146,12 @@ func (ps *PreconfirmationState) UpdateValidatorSet(validatorSet *types.Validator
 	defer ps.mtx.Unlock()
 
 	ps.validatorSet = validatorSet
-	ps.logger.Debug("updated validator set", "validators", len(validatorSet.Validators))
+
+	if validatorSet == nil {
+		ps.logger.Debug("updated validator set to nil")
+	} else {
+		ps.logger.Debug("updated validator set", "validators", len(validatorSet.Validators))
+	}
 
 	// Recalculate all voting powers with the new validator set
 	ps.recalculateAllVotingPowers()
