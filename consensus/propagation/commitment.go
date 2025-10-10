@@ -80,8 +80,19 @@ func (blockProp *Reactor) ProposeBlock(proposal *types.Proposal, block *types.Pa
 	// distribute equal portions of haves to each of the proposer's peers
 	peers := blockProp.getPeers()
 	chunks := chunkParts(parts.Parity().BitArray(), len(peers), 1)
+	initialPartsMeta := []*propagation.PartMetaData{{Index: 0, Hash: parts.Original().GetPart(0).Proof.LeafHash}}
+	if parts.Original().Total() > 1 {
+		lastPart := parts.Original().GetPart(int(parts.Original().Total() - 1))
+		if lastPart != nil {
+			initialPartsMeta = append(initialPartsMeta, &propagation.PartMetaData{Index: lastPart.Index, Hash: lastPart.Proof.LeafHash})
+		}
+	}
 	for index, peer := range peers {
-		partsMeta := chunkToPartMetaData(chunks[index], parts.Parity())
+		chunkedParts := chunkToPartMetaData(chunks[index], parts.Parity())
+		partsMeta := append([]*propagation.PartMetaData{}, initialPartsMeta...)
+		partsMeta = append(partsMeta, chunkedParts...)
+
+		fmt.Println("parts: ", partsMeta)
 		e := p2p.Envelope{
 			ChannelID: DataChannel,
 			Message: &propagation.HaveParts{
@@ -102,7 +113,7 @@ func (blockProp *Reactor) ProposeBlock(proposal *types.Proposal, block *types.Pa
 			// since this node is proposing, it already has the data and
 			// there's not a lot of reason to update this peer's have
 			// state other than to be consistent atm.
-			err := peer.SetHave(proposal.Height, proposal.Round, int(parts.Original().Total()+part.GetIndex()))
+			err := peer.SetHave(proposal.Height, proposal.Round, int(part.GetIndex()))
 			if err != nil {
 				blockProp.Logger.Debug("failed to set have part peer state", "peer", peer, "height", proposal.Height, "round", proposal.Round, "error", err)
 				// skip saving the old routine's state if the state here
@@ -113,7 +124,7 @@ func (blockProp *Reactor) ProposeBlock(proposal *types.Proposal, block *types.Pa
 			// this might not get set depending on when the consensus peer
 			// state is getting updated. This will result in sending the
 			// peer redundant parts :shrug:
-			peer.consensusPeerState.SetHasProposalBlockPart(proposal.Height, proposal.Round, int(parts.Original().Total()+part.GetIndex()))
+			peer.consensusPeerState.SetHasProposalBlockPart(proposal.Height, proposal.Round, int(part.GetIndex()))
 		}
 
 		schema.WriteBlockPartState(blockProp.traceClient, proposal.Height, proposal.Round, chunks[index].GetTrueIndices(), true, string(peer.peer.ID()), schema.Upload)

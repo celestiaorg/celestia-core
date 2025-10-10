@@ -521,6 +521,8 @@ func (blockProp *Reactor) handleRecoveryPart(peer p2p.ID, part *proptypes.Recove
 		}
 	}
 
+	go blockProp.clearWants(part, *proof)
+
 	// attempt to decode the remaining block parts. If they are decoded, then
 	// this node should send all the wanted parts that nodes have requested. cp
 	// == nil means that there was no compact block available and this was
@@ -591,8 +593,6 @@ func (blockProp *Reactor) handleRecoveryPart(peer p2p.ID, part *proptypes.Recove
 
 		return
 	}
-
-	go blockProp.clearWants(part, *proof)
 }
 
 // clearWants checks the wantState to see if any peers want the given part, if
