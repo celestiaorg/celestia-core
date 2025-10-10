@@ -271,8 +271,8 @@ func (conR *Reactor) Receive(e p2p.Envelope) {
 	}
 }
 
-// receive is an inner function that returns error if the message is incorrect
-// but doesn't disconnect the peer (this allows us to test the behaviour)
+// receive is an inner function that returns an error if the message is incorrect
+// but doesn't disconnect the peer (this allows us to test the behavior of the function)
 func (conR *Reactor) receive(e p2p.Envelope) error {
 	if !conR.IsRunning() {
 		conR.Logger.Debug("Receive", "src", e.Src, "chId", e.ChannelID)
