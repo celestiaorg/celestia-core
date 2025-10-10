@@ -55,8 +55,7 @@ type Reactor struct {
 }
 
 type ReactorOptions struct {
-	// ListenOnly means that the node will never broadcast any of the transactions that
-	// it receives. This is useful for keeping transactions private
+	// ListenOnly prevents the node from broadcasting transactions
 	ListenOnly bool
 
 	// MaxTxSize is the maximum size of a transaction that can be received
@@ -373,10 +372,8 @@ func (memR *Reactor) Receive(e p2p.Envelope) {
 			}
 		}
 
-	// A peer has sent us a preconfirmation message. Perform basic validation and
-	// forward it to the preconfirmation state for processing.
+	// A peer has sent us a preconfirmation message.
 	case *protomemcat.PreconfirmationMessage:
-		// Basic validation
 		if len(msg.Signature) == 0 {
 			memR.Logger.Error("received preconfirmation message with empty signature", "src", e.Src)
 			return
@@ -414,8 +411,7 @@ func (memR *Reactor) broadcastSeenTx(txKey types.TxKey) {
 	memR.broadcastSeenTxWithHeight(txKey, memR.mempool.Height())
 }
 
-// ShufflePeers shuffles the peers map from GetAll() and returns a new shuffled map.
-// Uses Fisher-Yates shuffle algorithm for maximum speed.
+// ShufflePeers shuffles the peers map and returns a new shuffled map.
 func ShufflePeers(peers map[uint16]p2p.Peer) map[uint16]p2p.Peer {
 	if len(peers) <= 1 {
 		return peers
@@ -549,7 +545,12 @@ func (memR *Reactor) findNewPeerToRequestTx(txKey types.TxKey) {
 	memR.Logger.Debug("no other peer has the tx we are looking for", "txKey", txKey)
 }
 
-// BroadcastPreconfirmation broadcasts a preconfirmation message to all connected peers.
+const (
+	// maxPreconfBroadcast defines the maximum number of peers to which a preconfirmation message should be broadcasted.
+	maxPreconfBroadcast = 10
+)
+
+// BroadcastPreconfirmation broadcasts a preconfirmation message to a random subset of connected peers.
 // This is called by the preconfirmation state when a validator signs a new preconfirmation.
 func (memR *Reactor) BroadcastPreconfirmation(msg *protomemcat.PreconfirmationMessage) {
 	if memR.opts.ListenOnly {
@@ -558,11 +559,16 @@ func (memR *Reactor) BroadcastPreconfirmation(msg *protomemcat.PreconfirmationMe
 
 	memR.Logger.Debug("broadcasting preconfirmation message", "num_txs", len(msg.TxHashes))
 
-	// Broadcast to all peers
-	for _, peer := range memR.ids.GetAll() {
+	// Broadcast to a random subset of peers
+	count := 0
+	for _, peer := range ShufflePeers(memR.ids.GetAll()) {
+		if count >= maxPreconfBroadcast {
+			break
+		}
 		peer.Send(p2p.Envelope{
 			ChannelID: PreconfirmationChannel,
 			Message:   msg,
 		})
+		count++
 	}
 }

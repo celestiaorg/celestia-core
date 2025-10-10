@@ -40,9 +40,9 @@ We will introduce a new preconfirmation system within the CAT mempool that lever
 
 The preconfirmation system works as follows:
 
-1.  Every 2 seconds, each validator gathers the hashes of transactions currently in its CAT mempool.
-2.  The validator signs a message containing these hashes, its public key, and a timestamp using its `privval`.
-3.  This signed `PreconfirmationMessage` is broadcast over a new `PreconfirmationChannel`.
+1.  Every 2 seconds, each validator gathers the hashes of transactions currently in its CAT mempool, filtering out transactions it has already gossiped.
+2.  The validator signs a message containing these new transaction hashes, its public key, and a timestamp using its `privval`.
+3.  This signed `PreconfirmationMessage` is broadcast to a random subset of 10 peers over the `PreconfirmationChannel` (ID `0x33`).
 4.  Peers receiving this message validate the signature and the public key against the current validator set.
 5.  Upon successful validation, the receiving node updates its local `PreconfirmationState`. This state holds a mapping of transaction hashes to the cumulative voting power of validators that have acknowledged it.
 6.  The `PreconfirmationState` is updated asynchronously via an internal channel to avoid blocking the CAT mempool's primary operations.
@@ -50,31 +50,33 @@ The preconfirmation system works as follows:
 
 ## 2. New Components & State
 
-### `mempool/cat/preconf/state.go`
+### `mempool/preconf/state.go`
 
-A new struct `PreconfirmationState` will be created within the `cat` package to manage the preconfirmation data. It will be owned and initialized by the CAT `TxPool`.
+A new struct `PreconfirmationState` will be created in the `mempool/preconf` package to manage the preconfirmation data. It will be owned and initialized by the CAT `TxPool`.
 
 ```go
 // PreconfirmationState manages the state of transaction preconfirmations.
 type PreconfirmationState struct {
-    mtx           sync.Mutex
+    mtx           sync.RWMutex
     txs           map[types.TxKey]*TxPreconfirmation
     validatorSet  *types.ValidatorSet
     updateChan    chan types.PreconfirmationMessage
     logger        log.Logger
+    gossipedTxs   map[types.TxKey]struct{} // Track which txs we've already gossiped
 }
 
 // TxPreconfirmation holds the set of validators that have preconfirmed a transaction.
 type TxPreconfirmation struct {
-    mtx             sync.Mutex
+    mtx             sync.RWMutex
     seenValidators  map[string]struct{} // Key: Validator Public Key Address
     totalPower      int64
 }
 ```
 
 *   **`txs`**: A map from a transaction key to a `TxPreconfirmation` struct, which tracks which validators have seen the tx.
-*   **`validatorSet`**: A pointer to the current validator set. This will be updated by the consensus reactor whenever the validator set changes. A callback mechanism will be implemented for the consensus reactor to push updates to the `PreconfirmationState`.
+*   **`validatorSet`**: A pointer to the current validator set. This will be updated whenever the validator set changes via the `UpdateValidatorSet` method.
 *   **`updateChan`**: A buffered channel to receive `PreconfirmationMessage`s from the CAT mempool reactor. A dedicated goroutine will process these messages to update the `txs` map, ensuring that mempool and RPC queries are not blocked.
+*   **`gossipedTxs`**: A map tracking which transactions this validator has already gossiped, preventing redundant broadcasts every 2 seconds. Entries are removed when transactions leave the mempool.
 
 ## 3. New Messages
 
@@ -108,8 +110,9 @@ The signature will be created by the validator's `PrivValidator`. The signed pay
 
 A new P2P channel, `PreconfirmationChannel`, will be added to the CAT reactor.
 
-*   **Channel ID**: `0x31` (example, to be confirmed to avoid collision with `MempoolWantsChannel` and `MempoolDataChannel`)
+*   **Channel ID**: `0x33` (avoids collision with `MempoolDataChannel` (`0x31`) and `MempoolWantsChannel` (`0x32`))
 *   **Message Type**: `PreconfirmationMessage`
+*   **Broadcast Strategy**: Messages are sent to a random subset of 10 peers (controlled by `maxPreconfBroadcast` constant) to reduce network overhead while ensuring adequate propagation.
 
 The CAT mempool reactor will be responsible for handling messages on this channel.
 
@@ -118,27 +121,33 @@ The CAT mempool reactor will be responsible for handling messages on this channe
 ### `mempool/cat/reactor.go`
 
 *   The CAT reactor will subscribe to the `PreconfirmationChannel`.
-*   Upon receiving a `PreconfirmationMessage` from a peer, the reactor will perform initial validation (e.g., message size limits) and then pass it to the `PreconfirmationState`'s update channel for asynchronous processing.
-*   A ticker will be added to the CAT reactor. Every 2 seconds, it will trigger a function to:
-    1. Get the list of transaction hashes from its local CAT mempool.
-    2. Create a `PreconfirmationMessage`.
-    3. Sign the message using the node's `PrivValidator`.
-    4. Send the signed message to the `PreconfirmationState`'s update channel (treating its own messages the same as peer messages).
-    5. Broadcast the message on the `PreconfirmationChannel` to peers.
+*   Upon receiving a `PreconfirmationMessage` from a peer, the reactor will perform initial validation (e.g., non-empty signature, non-empty tx hashes) and then pass it to the `PreconfirmationState`'s update channel for asynchronous processing.
+*   The reactor implements `BroadcastPreconfirmation`, which is called by the `PreconfirmationState` to broadcast signed messages to a random subset of 10 peers using the `ShufflePeers` helper function.
 
-### `mempool/cat/preconf/state.go` (Processing Goroutine)
+### `mempool/preconf/state.go`
 
-A goroutine started by `NewPreconfirmationState` will range over the `updateChan`:
+The `PreconfirmationState` runs two background goroutines:
+
+#### Signing Loop Goroutine
+
+A ticker-driven goroutine that every 2 seconds:
+1.  Gets all transaction hashes from the mempool via the `getTxHashes` callback.
+2.  Filters out transactions already present in `gossipedTxs` to avoid re-broadcasting.
+3.  Creates a `PreconfirmationMessage` with only the new transaction hashes.
+4.  Signs the message using `PrivValidator.SignRawBytes` with chain ID and "preconfirmation" type label.
+5.  Sends the signed message to its own `updateChan` for local processing.
+6.  Calls the `broadcastMsg` callback to broadcast to peers.
+
+#### Processing Goroutine
+
+A goroutine that ranges over the `updateChan`:
 
 1.  Receive a `PreconfirmationMessage`.
-2.  Verify the validator's signature.
+2.  Verify the validator's signature using the public key and reconstructed sign bytes.
 3.  Check if the `pub_key` corresponds to a validator in the current `validatorSet`. If not, discard.
 4.  For each `tx_hash` in the message:
-    *   Acquire a lock on the `PreconfirmationState`.
     *   Look up the `TxPreconfirmation` for the hash. If it doesn't exist, create it.
-    *   Acquire a lock on the `TxPreconfirmation`.
     *   Add the validator's address to `seenValidators`. If it's a new addition, add the validator's voting power to `totalPower`.
-    *   Release locks.
 
 ## 6. RPC & User Interface (`TxStatus`)
 
@@ -202,8 +211,9 @@ USE TABLE DRIVEN TESTS WHERE POSSIBLE
 *   **Key Changes**:
     *   Create the new directory `proto/tendermint/mempool/cat`.
     *   Define `PreconfirmationMessage` in `proto/tendermint/mempool/cat/preconf.proto`.
-    *   Add a 2-second ticker to the CAT reactor (`mempool/cat/reactor.go`).
-    *   Implement the function triggered by the ticker to gather transaction hashes, create the `PreconfirmationMessage`, and sign it using the node's `PrivValidator`.
+    *   Add a 2-second ticker to the `PreconfirmationState` (not the reactor - better encapsulation).
+    *   Implement the function triggered by the ticker to gather transaction hashes, filter out already-gossiped transactions, create the `PreconfirmationMessage`, and sign it using the node's `PrivValidator`.
+    *   Track gossiped transactions in a `gossipedTxs` map to avoid re-broadcasting the same transactions every 2 seconds.
 *   **Testing Strategy**:
     *   **Unit Tests (`mempool/cat/reactor_test.go`)**:
         *   Use a mock `PrivValidator` to test the signing logic.
@@ -215,10 +225,10 @@ USE TABLE DRIVEN TESTS WHERE POSSIBLE
 
 *   **Goal**: Broadcast the signed messages over the P2P network and implement the logic for receiving nodes to process them.
 *   **Key Changes**:
-    *   In `node/setup.go`, add the new `PreconfirmationChannel` to the list of channels for the CAT reactor.
-    *   In `mempool/cat/reactor.go`, implement the logic to broadcast the signed `PreconfirmationMessage` on the new channel.
+    *   In `node/setup.go`, add the new `PreconfirmationChannel` (ID `0x33`) to the list of channels for the CAT reactor.
+    *   In `mempool/cat/reactor.go`, implement the `BroadcastPreconfirmation` function to broadcast the signed `PreconfirmationMessage` to a random subset of 10 peers (via `maxPreconfBroadcast` constant). This reduces network overhead while ensuring adequate propagation.
     *   Implement the `Receive` handler in the CAT reactor for messages on the `PreconfirmationChannel`. This handler will perform basic validation and forward the message to the `PreconfirmationState`'s update channel.
-    *   Implement the asynchronous processing goroutine in `mempool/cat/preconf/state.go`. This routine will read from the update channel, verify the message's signature, check the signer against the current validator set, and update the preconfirmation state for each transaction hash.
+    *   Implement the asynchronous processing goroutine in `mempool/preconf/state.go` (note: `mempool/preconf` not `mempool/cat/preconf`). This routine will read from the update channel, verify the message's signature, check the signer against the current validator set, and update the preconfirmation state for each transaction hash.
 *   **Testing Strategy**:
     *   **Unit Tests (`mempool/cat/preconf/state_test.go`)**:
         *   Test the asynchronous processing logic by sending valid and invalid `PreconfirmationMessage`s to the update channel.
