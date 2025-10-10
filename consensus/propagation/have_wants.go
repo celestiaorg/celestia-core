@@ -534,7 +534,6 @@ func (blockProp *Reactor) handleRecoveryPart(peer p2p.ID, part *proptypes.Recove
 		defer parts.IsDecoding.Store(false)
 
 		missingOriginalParts := parts.Original().BitArray().Not()
-		fmt.Println("missing original parts ", missingOriginalParts.GetTrueIndices())
 
 		err := parts.Decode()
 		if err != nil {
@@ -557,7 +556,6 @@ func (blockProp *Reactor) handleRecoveryPart(peer p2p.ID, part *proptypes.Recove
 			}
 			// only send original parts to the consensus reactor
 			if i < parts.Original().Total() && missingOriginalParts.GetIndex(int(i)) {
-				fmt.Println("sending part ", i)
 				select {
 				case <-blockProp.ctx.Done():
 					return
