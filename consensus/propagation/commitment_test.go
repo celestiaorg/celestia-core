@@ -55,11 +55,12 @@ func TestPropose(t *testing.T) {
 	// the parts == total because we only have 2 peers
 	assert.Equal(t, haves.Size(), int(partSet.Total()*2))
 	for i, index := range haves.GetTrueIndices() {
-		if i == 0 {
+		switch i {
+		case 0:
 			assert.Equal(t, index, 0)
-		} else if i == 1 {
+		case 1:
 			assert.Equal(t, index, int(partSet.Total()-1))
-		} else {
+		default:
 			assert.GreaterOrEqual(t, index, int(partSet.Total()))
 		}
 	}
@@ -69,11 +70,12 @@ func TestPropose(t *testing.T) {
 	// the parts == total because we only have 2 peers
 	assert.Equal(t, haves.Size(), int(partSet.Total()*2))
 	for i, index := range haves.GetTrueIndices() {
-		if i == 0 {
+		switch i {
+		case 0:
 			assert.Equal(t, index, 0)
-		} else if i == 1 {
+		case 1:
 			assert.Equal(t, index, int(partSet.Total()-1))
-		} else {
+		default:
 			assert.GreaterOrEqual(t, index, int(partSet.Total()))
 		}
 	}
@@ -117,11 +119,12 @@ func TestPropose_OnlySendParityChunks(t *testing.T) {
 	assert.True(t, has)
 	assert.Equal(t, haves.Size(), int(partSet.Total()*2))
 	for i, index := range haves.GetTrueIndices() {
-		if i == 0 {
+		switch i {
+		case 0:
 			assert.Equal(t, index, 0)
-		} else if i == 1 {
+		case 1:
 			assert.Equal(t, index, int(partSet.Total()-1))
-		} else {
+		default:
 			assert.GreaterOrEqual(t, index, int(partSet.Total()))
 		}
 	}
