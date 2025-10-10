@@ -270,6 +270,11 @@ func (_m *Mempool) Update(blockHeight int64, blockTxs []*types.CachedTx, deliver
 	return r0
 }
 
+// UpdateValidatorSet provides a mock function with given fields: validatorSet
+func (_m *Mempool) UpdateValidatorSet(validatorSet *types.ValidatorSet) {
+	_m.Called(validatorSet)
+}
+
 // WasRecentlyEvicted provides a mock function with given fields: key
 func (_m *Mempool) WasRecentlyEvicted(key types.TxKey) bool {
 	ret := _m.Called(key)

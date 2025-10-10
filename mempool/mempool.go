@@ -125,6 +125,10 @@ type Mempool interface {
 	// Returns 0 if preconfirmation state is not configured.
 	// Used in the RPC endpoint: TxStatus.
 	GetValidatorSetTotalPower() int64
+
+	// UpdateValidatorSet updates the validator set used for preconfirmation voting power tracking.
+	// This should be called after each block commit to keep validator voting power up to date.
+	UpdateValidatorSet(validatorSet *types.ValidatorSet)
 }
 
 // PreCheckFunc is an optional filter executed before CheckTx and rejects

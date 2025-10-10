@@ -288,6 +288,9 @@ func (txmp *TxMempool) GetValidatorSetTotalPower() int64 {
 	return 0
 }
 
+// UpdateValidatorSet is a no-op (not supported in TxMempool).
+func (txmp *TxMempool) UpdateValidatorSet(*types.ValidatorSet) {}
+
 // removeTxByKey removes the specified transaction key from the mempool.
 // The caller must hold txmp.mtx excluxively.
 func (txmp *TxMempool) removeTxByKey(key types.TxKey) error {

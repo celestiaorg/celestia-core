@@ -128,6 +128,9 @@ func (*CListMempool) GetValidatorSetTotalPower() int64 {
 	return 0
 }
 
+// UpdateValidatorSet is a no-op (not supported in CListMempool).
+func (*CListMempool) UpdateValidatorSet(*types.ValidatorSet) {}
+
 func (mem *CListMempool) getCElement(txKey types.TxKey) (*clist.CElement, bool) {
 	if e, ok := mem.txsMap.Load(txKey); ok {
 		return e.(*clist.CElement), true

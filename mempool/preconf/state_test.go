@@ -565,97 +565,89 @@ func signPreconfMessage(t *testing.T, msg *protomemcat.PreconfirmationMessage, p
 
 // TestSignAndBroadcast tests the signing logic for preconfirmation messages.
 func TestSignAndBroadcast(t *testing.T) {
-	tests := []struct {
-		name        string
-		setupState  func(t *testing.T) *PreconfirmationState
-		addTxs      int
-		expectError bool
-		errorMsg    string
-	}{
-		{
-			name: "sign with transactions",
-			setupState: func(t *testing.T) *PreconfirmationState {
-				logger := log.TestingLogger()
-				valSet := createTestValidatorSet(3)
-				privVal := types.NewMockPV()
+	t.Run("sign with transactions", func(t *testing.T) {
+		logger := log.TestingLogger()
+		valSet := createTestValidatorSet(3)
+		privVal := types.NewMockPV()
 
-				txKeys := []types.TxKey{}
-				getTxHashes := func() []types.TxKey {
-					return txKeys
-				}
+		// Track what was broadcast
+		var broadcastedMsg *protomemcat.PreconfirmationMessage
+		broadcastMsg := func(msg *protomemcat.PreconfirmationMessage) {
+			broadcastedMsg = msg
+		}
 
-				broadcastMsg := func(msg *protomemcat.PreconfirmationMessage) {}
+		// Create a slice that we can modify
+		txKeys := []types.TxKey{
+			getTxKey("test-tx-1"),
+			getTxKey("test-tx-2"),
+			getTxKey("test-tx-3"),
+			getTxKey("test-tx-4"),
+			getTxKey("test-tx-5"),
+		}
 
-				return NewPreconfirmationState(logger, valSet, privVal, "test-chain", getTxHashes, broadcastMsg)
-			},
-			addTxs:      5,
-			expectError: false,
-		},
-		{
-			name: "sign empty mempool",
-			setupState: func(t *testing.T) *PreconfirmationState {
-				logger := log.TestingLogger()
-				valSet := createTestValidatorSet(3)
-				privVal := types.NewMockPV()
+		getTxHashes := func() []types.TxKey {
+			return txKeys
+		}
 
-				getTxHashes := func() []types.TxKey {
-					return []types.TxKey{}
-				}
+		state := NewPreconfirmationState(logger, valSet, privVal, "test-chain", getTxHashes, broadcastMsg)
+		defer state.Stop()
 
-				broadcastMsg := func(msg *protomemcat.PreconfirmationMessage) {}
+		// Call the signing function
+		err := state.signAndBroadcast()
+		require.NoError(t, err)
 
-				return NewPreconfirmationState(logger, valSet, privVal, "test-chain", getTxHashes, broadcastMsg)
-			},
-			addTxs:      0,
-			expectError: false,
-		},
-		{
-			name: "no private validator",
-			setupState: func(t *testing.T) *PreconfirmationState {
-				logger := log.TestingLogger()
-				valSet := createTestValidatorSet(3)
+		// Verify that a message was broadcast with the correct number of transactions
+		require.NotNil(t, broadcastedMsg)
+		assert.Equal(t, 5, len(broadcastedMsg.TxHashes))
+		assert.NotEmpty(t, broadcastedMsg.Signature)
+		assert.NotNil(t, broadcastedMsg.PubKey)
+	})
 
-				getTxHashes := func() []types.TxKey {
-					return []types.TxKey{getTxKey("test-tx")}
-				}
+	t.Run("sign empty mempool", func(t *testing.T) {
+		logger := log.TestingLogger()
+		valSet := createTestValidatorSet(3)
+		privVal := types.NewMockPV()
 
-				return NewPreconfirmationState(logger, valSet, nil, "test-chain", getTxHashes, nil)
-			},
-			addTxs:      0,
-			expectError: true,
-			errorMsg:    "private validator is not configured",
-		},
-		{
-			name: "no getTxHashes callback",
-			setupState: func(t *testing.T) *PreconfirmationState {
-				logger := log.TestingLogger()
-				valSet := createTestValidatorSet(3)
-				privVal := types.NewMockPV()
+		getTxHashes := func() []types.TxKey {
+			return []types.TxKey{}
+		}
 
-				return NewPreconfirmationState(logger, valSet, privVal, "test-chain", nil, nil)
-			},
-			addTxs:      0,
-			expectError: false, // Changed to false - we now handle this gracefully
-		},
-	}
+		broadcastMsg := func(msg *protomemcat.PreconfirmationMessage) {}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			state := tt.setupState(t)
-			defer state.Stop()
+		state := NewPreconfirmationState(logger, valSet, privVal, "test-chain", getTxHashes, broadcastMsg)
+		defer state.Stop()
 
-			// Call the signing function
-			err := state.signAndBroadcast()
+		err := state.signAndBroadcast()
+		require.NoError(t, err)
+	})
 
-			if tt.expectError {
-				require.Error(t, err)
-				require.Contains(t, err.Error(), tt.errorMsg)
-				return
-			}
+	t.Run("no private validator", func(t *testing.T) {
+		logger := log.TestingLogger()
+		valSet := createTestValidatorSet(3)
 
-			require.NoError(t, err)
-		})
-	}
+		getTxHashes := func() []types.TxKey {
+			return []types.TxKey{getTxKey("test-tx")}
+		}
+
+		state := NewPreconfirmationState(logger, valSet, nil, "test-chain", getTxHashes, nil)
+		defer state.Stop()
+
+		err := state.signAndBroadcast()
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "private validator is not configured")
+	})
+
+	t.Run("no getTxHashes callback", func(t *testing.T) {
+		logger := log.TestingLogger()
+		valSet := createTestValidatorSet(3)
+		privVal := types.NewMockPV()
+
+		state := NewPreconfirmationState(logger, valSet, privVal, "test-chain", nil, nil)
+		defer state.Stop()
+
+		err := state.signAndBroadcast()
+		require.NoError(t, err) // Should handle gracefully
+	})
 }
 
 // TestGossipDeduplication tests that transactions are only gossiped once.

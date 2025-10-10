@@ -89,6 +89,9 @@ func (*NopMempool) GetPreconfirmationVotingPower(types.TxKey) int64 { return 0 }
 // GetValidatorSetTotalPower always returns 0.
 func (*NopMempool) GetValidatorSetTotalPower() int64 { return 0 }
 
+// UpdateValidatorSet is a no-op.
+func (*NopMempool) UpdateValidatorSet(*types.ValidatorSet) {}
+
 // NopMempoolReactor is a mempool reactor that does nothing.
 type NopMempoolReactor struct {
 	service.BaseService

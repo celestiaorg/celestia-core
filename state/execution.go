@@ -533,6 +533,10 @@ func (blockExec *BlockExecutor) Commit(
 		TxPostCheck(state),
 	)
 
+	// Update the validator set for preconfirmation voting power tracking.
+	// This ensures that preconfirmation voting power calculations use the current validator set.
+	blockExec.mempool.UpdateValidatorSet(state.Validators)
+
 	return res.RetainHeight, err
 }
 

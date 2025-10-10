@@ -1,6 +1,7 @@
 package preconf
 
 import (
+	"encoding/hex"
 	"fmt"
 	"sync"
 	"time"
@@ -177,12 +178,19 @@ func (ps *PreconfirmationState) calculateVotingPowerLocked(validatorAddrs map[st
 	}
 
 	var totalPower int64
-	for addr := range validatorAddrs {
-		for _, val := range ps.validatorSet.Validators {
-			if val.Address.String() == addr {
-				totalPower += val.VotingPower
-				break
-			}
+	for addrStr := range validatorAddrs {
+		// Parse the hex-encoded address string back to types.Address
+		// Address.String() returns uppercase hex, so decode it
+		addrBytes, err := hex.DecodeString(addrStr)
+		if err != nil {
+			ps.logger.Error("invalid address in validator set", "address", addrStr, "err", err)
+			continue
+		}
+
+		// Use GetByAddress which is more efficient than iterating through all validators
+		_, val := ps.validatorSet.GetByAddress(types.Address(addrBytes))
+		if val != nil {
+			totalPower += val.VotingPower
 		}
 	}
 
