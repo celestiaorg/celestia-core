@@ -401,25 +401,62 @@ func genReactorTestCases(height int64, round int32) []reactorTestCase {
 				Type:   cmtproto.PrevoteType,
 			},
 		},
+		{
+			name:      "votesetbits with invalid type (unknown)",
+			channelID: VoteSetBitsChannel,
+			message: &cmtcons.VoteSetBits{
+				Height: height,
+				Round:  round,
+				Type:   cmtproto.UnknownType,
+			},
+		},
+		{
+			name:      "votesetbits with invalid type (proposal)",
+			channelID: VoteSetBitsChannel,
+			message: &cmtcons.VoteSetBits{
+				Height: height,
+				Round:  round,
+				Type:   cmtproto.ProposalType,
+			},
+		},
+		// Valid VoteSetBits message - this should be processed successfully
+		// and reach the switch statement in reactor.go:477 without panic
+		{
+			name:      "votesetbits valid prevote type",
+			channelID: VoteSetBitsChannel,
+			message: &cmtcons.VoteSetBits{
+				Height: height,
+				Round:  round,
+				Type:   cmtproto.PrevoteType,
+			},
+		},
+		{
+			name:      "votesetbits valid precommit type",
+			channelID: VoteSetBitsChannel,
+			message: &cmtcons.VoteSetBits{
+				Height: height,
+				Round:  round,
+				Type:   cmtproto.PrecommitType,
+			},
+		},
 	}
 
 	return testCases
 }
 
 // testReactorInvalidMessagesInState is a helper that waits for a specific state
-// and tests invalid messages starting from startIdx until a peer disconnects or all messages are tested.
-// Returns the index of the last message that was tested.
-func testReactorInvalidMessagesInState(t *testing.T, targetState cstypes.RoundStepType, allMessages []reactorTestCase, startIdx int) int {
+// and tests all invalid messages to verify they don't cause panics.
+func testReactorInvalidMessagesInState(t *testing.T, targetState cstypes.RoundStepType) {
 	N := 4
 	css, cleanup := randConsensusNet(t, N, "consensus_reactor_state_test", newMockTickerFunc(true), newKVStore)
 	defer cleanup()
 
 	for i := 0; i < N; i++ {
 		css[i].mtx.Lock()
-		css[i].state.Timeouts.TimeoutPropose = 200 * time.Millisecond
-		css[i].state.Timeouts.TimeoutPrevote = 200 * time.Millisecond
-		css[i].state.Timeouts.TimeoutPrecommit = 200 * time.Millisecond
-		css[i].state.Timeouts.TimeoutCommit = 200 * time.Millisecond
+		css[i].state.Timeouts.TimeoutPropose = 100 * time.Millisecond
+		css[i].state.Timeouts.TimeoutPrevote = 100 * time.Millisecond
+		css[i].state.Timeouts.TimeoutPrecommit = 100 * time.Millisecond
+		css[i].state.Timeouts.TimeoutCommit = 100 * time.Millisecond
 		css[i].mtx.Unlock()
 	}
 
@@ -440,8 +477,8 @@ func testReactorInvalidMessagesInState(t *testing.T, targetState cstypes.RoundSt
 	defer eventBuses[0].Unsubscribe(context.Background(), testSubscriber, types.EventQueryNewRoundStep) //nolint:errcheck
 	stepCh := sub.Out()
 
-	// Wait for target state and test messages until disconnect
-	timeout := time.After(120 * time.Second)
+	// Wait for target state and test all messages
+	timeout := time.After(30 * time.Second)
 	for {
 		select {
 		case msg := <-stepCh:
@@ -468,37 +505,25 @@ func testReactorInvalidMessagesInState(t *testing.T, targetState cstypes.RoundSt
 			// Generate messages with current height/round
 			invalidMessages := genReactorTestCases(currentState.Height, currentState.Round)
 
-			// Send messages starting from startIdx until we disconnect a peer
-			lastTestedIdx := startIdx - 1
-			for i := startIdx; i < len(invalidMessages); i++ {
-				invalidMsg := invalidMessages[i]
+			peers := reactor.Switch.Peers().List()
+			require.NotEmpty(t, peers, "No peers available")
+			peer := peers[0]
 
-				peers := reactor.Switch.Peers().List()
-				if len(peers) == 0 {
-					t.Fatalf("No more peers available after testing %d messages", i-startIdx)
-					break
-				}
-				peer := peers[0]
-				reactor.Receive(p2p.Envelope{
+			// Test all messages using receive() which doesn't disconnect peers
+			for _, invalidMsg := range invalidMessages {
+				_ = reactor.receive(p2p.Envelope{
 					ChannelID: invalidMsg.channelID,
 					Src:       peer,
 					Message:   invalidMsg.message,
 				})
-
-				lastTestedIdx = i
-
-				// Check if peer was disconnected
-				if !peer.IsRunning() {
-					break // Stop on disconnect, will restart with fresh peers
-				}
 			}
 
 			cs.mtx.Unlock()
-			return lastTestedIdx
+			t.Logf("Successfully tested all %d messages for state %s", len(invalidMessages), targetState)
+			return
 
 		case <-timeout:
-			t.Fatalf("Timed out waiting for state %s %d", targetState, startIdx)
-			return startIdx - 1
+			t.Fatalf("Timed out waiting for state %s", targetState)
 		}
 	}
 }
@@ -517,26 +542,13 @@ func TestReactorInvalidMessages(t *testing.T) {
 		{"Propose", cstypes.RoundStepPropose},
 		{"Prevote", cstypes.RoundStepPrevote},
 		{"Precommit", cstypes.RoundStepPrecommit},
+		{"Commit", cstypes.RoundStepCommit},
 	}
-
-	// Get all message types (using dummy height/round)
-	allMessages := genReactorTestCases(1, 0)
-	totalMessages := len(allMessages)
-
 	for _, state := range states {
 		state := state // capture range variable
 
 		t.Run(state.name, func(t *testing.T) {
-			t.Logf("Testing %d invalid messages for state %s", totalMessages, state.name)
-			// keep restarting the network until all messages are tested, because incorrect messages cause peer disconnect
-			nextIdx := 0
-			for nextIdx < totalMessages {
-				lastTestedIdx := testReactorInvalidMessagesInState(t, state.state, allMessages, nextIdx)
-				if lastTestedIdx < nextIdx {
-					t.Fatalf("No progress made in iteration (lastTested=%d, next=%d)", lastTestedIdx, nextIdx)
-				}
-				nextIdx = lastTestedIdx + 1
-			}
+			testReactorInvalidMessagesInState(t, state.state)
 		})
 	}
 }
