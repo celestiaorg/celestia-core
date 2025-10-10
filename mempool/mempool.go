@@ -115,6 +115,16 @@ type Mempool interface {
 	// rejected cache alongside the rejection code and log.
 	// Used in the RPC endpoint: TxStatus.
 	WasRecentlyRejected(key types.TxKey) (bool, uint32, string)
+
+	// GetPreconfirmationVotingPower returns the total voting power that has preconfirmed a transaction.
+	// Returns 0 if preconfirmation state is not configured or transaction is not tracked.
+	// Used in the RPC endpoint: TxStatus.
+	GetPreconfirmationVotingPower(key types.TxKey) int64
+
+	// GetValidatorSetTotalPower returns the total voting power of the current validator set.
+	// Returns 0 if preconfirmation state is not configured.
+	// Used in the RPC endpoint: TxStatus.
+	GetValidatorSetTotalPower() int64
 }
 
 // PreCheckFunc is an optional filter executed before CheckTx and rejects

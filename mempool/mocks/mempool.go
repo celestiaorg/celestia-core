@@ -62,6 +62,24 @@ func (_m *Mempool) FlushAppConn() error {
 	return r0
 }
 
+// GetPreconfirmationVotingPower provides a mock function with given fields: key
+func (_m *Mempool) GetPreconfirmationVotingPower(key types.TxKey) int64 {
+	ret := _m.Called(key)
+
+	if len(ret) == 0 {
+		panic("no return value specified for GetPreconfirmationVotingPower")
+	}
+
+	var r0 int64
+	if rf, ok := ret.Get(0).(func(types.TxKey) int64); ok {
+		r0 = rf(key)
+	} else {
+		r0 = ret.Get(0).(int64)
+	}
+
+	return r0
+}
+
 // GetTxByKey provides a mock function with given fields: key
 func (_m *Mempool) GetTxByKey(key types.TxKey) (*types.CachedTx, bool) {
 	ret := _m.Called(key)
@@ -90,6 +108,24 @@ func (_m *Mempool) GetTxByKey(key types.TxKey) (*types.CachedTx, bool) {
 	}
 
 	return r0, r1
+}
+
+// GetValidatorSetTotalPower provides a mock function with no fields
+func (_m *Mempool) GetValidatorSetTotalPower() int64 {
+	ret := _m.Called()
+
+	if len(ret) == 0 {
+		panic("no return value specified for GetValidatorSetTotalPower")
+	}
+
+	var r0 int64
+	if rf, ok := ret.Get(0).(func() int64); ok {
+		r0 = rf()
+	} else {
+		r0 = ret.Get(0).(int64)
+	}
+
+	return r0
 }
 
 // Lock provides a mock function with no fields

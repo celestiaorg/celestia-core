@@ -222,7 +222,7 @@ func (env *Environment) ProveShares(
 
 // TxStatus retrieves the status of a transaction by its hash. It returns a ResultTxStatus
 // with the transaction's height and index if committed, or its pending, evicted, or unknown status.
-// It also includes the execution code and log for failed txs.
+// It also includes the execution code and log for failed txs, and preconfirmation data if available.
 func (env *Environment) TxStatus(ctx *rpctypes.Context, hash []byte) (*ctypes.ResultTxStatus, error) {
 
 	// Check if the tx has been committed
@@ -237,26 +237,52 @@ func (env *Environment) TxStatus(ctx *rpctypes.Context, hash []byte) (*ctypes.Re
 		return nil, fmt.Errorf("failed to get tx key from hash: %v", err)
 	}
 
+	// Get preconfirmation data from the mempool
+	preconfVotingPower := env.Mempool.GetPreconfirmationVotingPower(txKey)
+	totalVotingPower := env.Mempool.GetValidatorSetTotalPower()
+	var preconfProportion float64
+	if totalVotingPower > 0 {
+		preconfProportion = float64(preconfVotingPower) / float64(totalVotingPower)
+	}
+
 	// Check if the tx is in the mempool
 	txInMempool, ok := env.Mempool.GetTxByKey(txKey)
 	if txInMempool != nil && ok {
-		return &ctypes.ResultTxStatus{Status: TxStatusPending}, nil
+		return &ctypes.ResultTxStatus{
+			Status:                     TxStatusPending,
+			PreconfirmationVotingPower: preconfVotingPower,
+			PreconfirmedProportion:     preconfProportion,
+		}, nil
 	}
 
 	// Check if the tx is evicted
 	isEvicted := env.Mempool.WasRecentlyEvicted(txKey)
 	if isEvicted {
-		return &ctypes.ResultTxStatus{Status: TxStatusEvicted}, nil
+		return &ctypes.ResultTxStatus{
+			Status:                     TxStatusEvicted,
+			PreconfirmationVotingPower: preconfVotingPower,
+			PreconfirmedProportion:     preconfProportion,
+		}, nil
 	}
 
 	// Check if the tx was rejected (this is only the case for recheck-tx)
 	wasRejected, code, log := env.Mempool.WasRecentlyRejected(txKey)
 	if wasRejected {
-		return &ctypes.ResultTxStatus{Status: TxStatusRejected, ExecutionCode: code, Error: log}, nil
+		return &ctypes.ResultTxStatus{
+			Status:                     TxStatusRejected,
+			ExecutionCode:              code,
+			Error:                      log,
+			PreconfirmationVotingPower: preconfVotingPower,
+			PreconfirmedProportion:     preconfProportion,
+		}, nil
 	}
 
 	// If the tx is not in the mempool, evicted, or committed, return unknown
-	return &ctypes.ResultTxStatus{Status: TxStatusUnknown}, nil
+	return &ctypes.ResultTxStatus{
+		Status:                     TxStatusUnknown,
+		PreconfirmationVotingPower: preconfVotingPower,
+		PreconfirmedProportion:     preconfProportion,
+	}, nil
 }
 
 // ProveSharesV2 creates a proof for a set of shares to the data root.

@@ -278,6 +278,16 @@ func (txmp *TxMempool) WasRecentlyRejected(txKey types.TxKey) (bool, uint32, str
 	return true, code, log
 }
 
+// GetPreconfirmationVotingPower always returns 0 (not supported in TxMempool).
+func (txmp *TxMempool) GetPreconfirmationVotingPower(types.TxKey) int64 {
+	return 0
+}
+
+// GetValidatorSetTotalPower always returns 0 (not supported in TxMempool).
+func (txmp *TxMempool) GetValidatorSetTotalPower() int64 {
+	return 0
+}
+
 // removeTxByKey removes the specified transaction key from the mempool.
 // The caller must hold txmp.mtx excluxively.
 func (txmp *TxMempool) removeTxByKey(key types.TxKey) error {

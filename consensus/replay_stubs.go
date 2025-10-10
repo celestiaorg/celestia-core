@@ -27,6 +27,8 @@ func (emptyMempool) CheckTx(types.Tx, func(*abci.ResponseCheckTx), mempl.TxInfo)
 func (emptyMempool) GetTxByKey(types.TxKey) (*types.CachedTx, bool)         { return nil, false }
 func (emptyMempool) WasRecentlyEvicted(types.TxKey) bool                    { return false }
 func (emptyMempool) WasRecentlyRejected(types.TxKey) (bool, uint32, string) { return false, 0, "" }
+func (emptyMempool) GetPreconfirmationVotingPower(types.TxKey) int64        { return 0 }
+func (emptyMempool) GetValidatorSetTotalPower() int64                       { return 0 }
 
 func (txmp emptyMempool) RemoveTxByKey(types.TxKey) error {
 	return nil

@@ -118,6 +118,16 @@ func (*CListMempool) WasRecentlyRejected(key types.TxKey) (bool, uint32, string)
 	return false, 0, ""
 }
 
+// GetPreconfirmationVotingPower always returns 0 (not supported in CListMempool).
+func (*CListMempool) GetPreconfirmationVotingPower(types.TxKey) int64 {
+	return 0
+}
+
+// GetValidatorSetTotalPower always returns 0 (not supported in CListMempool).
+func (*CListMempool) GetValidatorSetTotalPower() int64 {
+	return 0
+}
+
 func (mem *CListMempool) getCElement(txKey types.TxKey) (*clist.CElement, bool) {
 	if e, ok := mem.txsMap.Load(txKey); ok {
 		return e.(*clist.CElement), true

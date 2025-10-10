@@ -235,6 +235,24 @@ func (txmp *TxPool) WasRecentlyRejected(txKey types.TxKey) (bool, uint32, string
 	return true, code, log
 }
 
+// GetPreconfirmationVotingPower returns the total voting power that has preconfirmed a transaction.
+// Returns 0 if preconfirmation state is not configured or transaction is not tracked.
+func (txmp *TxPool) GetPreconfirmationVotingPower(txKey types.TxKey) int64 {
+	if txmp.preconfState == nil {
+		return 0
+	}
+	return txmp.preconfState.GetTotalVotingPower(txKey)
+}
+
+// GetValidatorSetTotalPower returns the total voting power of the current validator set.
+// Returns 0 if preconfirmation state is not configured.
+func (txmp *TxPool) GetValidatorSetTotalPower() int64 {
+	if txmp.preconfState == nil {
+		return 0
+	}
+	return txmp.preconfState.GetValidatorSetTotalPower()
+}
+
 // CheckTx adds the given transaction to the mempool if it fits and passes the
 // application's ABCI CheckTx method. This should be viewed as the entry method for new transactions
 // into the network. In practice this happens via an RPC endpoint
