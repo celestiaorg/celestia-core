@@ -92,7 +92,6 @@ func (blockProp *Reactor) ProposeBlock(proposal *types.Proposal, block *types.Pa
 		partsMeta := append([]*propagation.PartMetaData{}, initialPartsMeta...)
 		partsMeta = append(partsMeta, chunkedParts...)
 
-		fmt.Println("parts: ", partsMeta)
 		e := p2p.Envelope{
 			ChannelID: DataChannel,
 			Message: &propagation.HaveParts{
