@@ -29,6 +29,7 @@ import (
 	"github.com/cometbft/cometbft/light"
 	mempl "github.com/cometbft/cometbft/mempool"
 	"github.com/cometbft/cometbft/mempool/cat"
+	"github.com/cometbft/cometbft/mempool/preconf"
 	"github.com/cometbft/cometbft/mempool/priority"
 	"github.com/cometbft/cometbft/p2p"
 	"github.com/cometbft/cometbft/p2p/pex"
@@ -242,6 +243,7 @@ func createMempoolAndMempoolReactor(
 	memplMetrics *mempl.Metrics,
 	logger log.Logger,
 	traceClient trace.Tracer,
+	privValidator types.PrivValidator,
 ) (mempl.Mempool, p2p.Reactor) {
 	switch config.Mempool.Type {
 	// allow empty string for backward compatibility
@@ -287,6 +289,17 @@ func createMempoolAndMempoolReactor(
 		reactor.SetLogger(logger)
 		return mp, reactor
 	case cfg.MempoolTypeCAT, cfg.LegacyMempoolTypeCAT:
+		// Create preconfirmation state with privValidator and chainID.
+		// Callbacks will be wired up after reactor creation.
+		preconfState := preconf.NewPreconfirmationState(
+			logger.With("module", "mempool-preconf"),
+			state.Validators,
+			privValidator,
+			state.ChainID,
+			nil, // getTxHashes callback - will be set after reactor creation
+			nil, // broadcastMsg callback - will be set after reactor creation
+		)
+
 		mp := cat.NewTxPool(
 			logger,
 			config.Mempool,
@@ -295,6 +308,7 @@ func createMempoolAndMempoolReactor(
 			cat.WithMetrics(memplMetrics),
 			cat.WithPreCheck(sm.TxPreCheck(state)),
 			cat.WithPostCheck(sm.TxPostCheck(state)),
+			cat.WithPreconfirmationState(preconfState),
 		)
 
 		reactor, err := cat.NewReactor(
@@ -309,6 +323,14 @@ func createMempoolAndMempoolReactor(
 		if err != nil {
 			// TODO: find a more polite way of handling this error
 			panic(err)
+		}
+
+		// Wire up the preconfirmation callbacks now that the reactor is created
+		if preconfState != nil {
+			preconfState.SetCallbacks(
+				mp.GetAllTxKeys,
+				reactor.BroadcastPreconfirmation,
+			)
 		}
 
 		if config.Consensus.WaitForTxs() {

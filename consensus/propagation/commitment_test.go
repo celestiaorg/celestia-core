@@ -228,6 +228,14 @@ func (m *mockMempool) GetTxByKey(key types.TxKey) (*types.CachedTx, bool) {
 	return val, found
 }
 
+func (m *mockMempool) GetPreconfirmationVotingPower(types.TxKey) int64 {
+	return 0
+}
+
+func (m *mockMempool) GetValidatorSetTotalPower() int64 {
+	return 0
+}
+
 func BenchmarkMempoolRecovery(b *testing.B) {
 	nTxss := []int{128, 1024, 8192}
 	missingPercent := []int{50, 75, 95}

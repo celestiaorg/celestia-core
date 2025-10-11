@@ -632,3 +632,4 @@ func genPeer() *mocks.Peer {
 	peer.On("Get", types.PeerStateKey).Return(nil).Maybe()
 	return peer
 }
+

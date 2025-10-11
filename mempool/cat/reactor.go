@@ -13,6 +13,7 @@ import (
 	"github.com/cometbft/cometbft/mempool"
 	"github.com/cometbft/cometbft/p2p"
 	protomem "github.com/cometbft/cometbft/proto/tendermint/mempool"
+	protomemcat "github.com/cometbft/cometbft/proto/tendermint/mempool/cat"
 	"github.com/cometbft/cometbft/types"
 )
 
@@ -26,6 +27,9 @@ const (
 
 	// MempoolWantsChannel channel for wantTx messages.
 	MempoolWantsChannel = byte(0x32)
+
+	// PreconfirmationChannel channel for preconfirmation messages.
+	PreconfirmationChannel = byte(0x33)
 
 	// peerHeightDiff signifies the tolerance in difference in height between the peer and the height
 	// the node received the tx
@@ -51,8 +55,7 @@ type Reactor struct {
 }
 
 type ReactorOptions struct {
-	// ListenOnly means that the node will never broadcast any of the transactions that
-	// it receives. This is useful for keeping transactions private
+	// ListenOnly prevents the node from broadcasting transactions
 	ListenOnly bool
 
 	// MaxTxSize is the maximum size of a transaction that can be received
@@ -162,6 +165,17 @@ func (memR *Reactor) GetChannels() []*p2p.ChannelDescriptor {
 		},
 	}
 
+	// PreconfirmationMessage with reasonable size estimate
+	// Assume max 1000 transaction hashes per message
+	maxTxHashes := 1000
+	preconfMsg := protomemcat.PreconfirmationMessage{
+		Signature: make([]byte, 64),
+		TxHashes:  make([][]byte, maxTxHashes),
+	}
+	for i := 0; i < maxTxHashes; i++ {
+		preconfMsg.TxHashes[i] = make([]byte, tmhash.Size)
+	}
+
 	return []*p2p.ChannelDescriptor{
 		{
 			ID:                  mempool.MempoolChannel,
@@ -183,6 +197,13 @@ func (memR *Reactor) GetChannels() []*p2p.ChannelDescriptor {
 			SendQueueCapacity:   1000,
 			RecvMessageCapacity: stateMsg.Size(),
 			MessageType:         &protomem.Message{},
+		},
+		{
+			ID:                  PreconfirmationChannel,
+			Priority:            2,
+			SendQueueCapacity:   100,
+			RecvMessageCapacity: preconfMsg.Size(),
+			MessageType:         &protomemcat.PreconfirmationMessage{},
 		},
 	}
 }
@@ -351,6 +372,27 @@ func (memR *Reactor) Receive(e p2p.Envelope) {
 			}
 		}
 
+	// A peer has sent us a preconfirmation message.
+	case *protomemcat.PreconfirmationMessage:
+		if len(msg.Signature) == 0 {
+			memR.Logger.Error("received preconfirmation message with empty signature", "src", e.Src)
+			return
+		}
+		if len(msg.TxHashes) == 0 {
+			memR.Logger.Debug("received preconfirmation message with no transaction hashes", "src", e.Src)
+			return
+		}
+
+		// Forward to preconfirmation state for asynchronous processing
+		if memR.mempool.preconfState != nil {
+			memR.mempool.preconfState.SendUpdate(msg)
+			memR.Logger.Debug("forwarded preconfirmation message to state",
+				"src", e.Src.ID(),
+				"num_txs", len(msg.TxHashes))
+		} else {
+			memR.Logger.Debug("received preconfirmation message but preconfirmation state is not configured")
+		}
+
 	default:
 		memR.Logger.Error("unknown message type", "src", e.Src, "chId", e.ChannelID, "msg", fmt.Sprintf("%T", msg))
 		memR.Switch.StopPeerForError(e.Src, fmt.Errorf("mempool cannot handle message of type: %T", msg), memR.String())
@@ -369,8 +411,7 @@ func (memR *Reactor) broadcastSeenTx(txKey types.TxKey) {
 	memR.broadcastSeenTxWithHeight(txKey, memR.mempool.Height())
 }
 
-// ShufflePeers shuffles the peers map from GetAll() and returns a new shuffled map.
-// Uses Fisher-Yates shuffle algorithm for maximum speed.
+// ShufflePeers shuffles the peers map and returns a new shuffled map.
 func ShufflePeers(peers map[uint16]p2p.Peer) map[uint16]p2p.Peer {
 	if len(peers) <= 1 {
 		return peers
@@ -502,4 +543,32 @@ func (memR *Reactor) findNewPeerToRequestTx(txKey types.TxKey) {
 	// We give up 🤷‍♂️ and hope either a peer responds late or the tx
 	// is gossiped again
 	memR.Logger.Debug("no other peer has the tx we are looking for", "txKey", txKey)
+}
+
+const (
+	// maxPreconfBroadcast defines the maximum number of peers to which a preconfirmation message should be broadcasted.
+	maxPreconfBroadcast = 10
+)
+
+// BroadcastPreconfirmation broadcasts a preconfirmation message to a random subset of connected peers.
+// This is called by the preconfirmation state when a validator signs a new preconfirmation.
+func (memR *Reactor) BroadcastPreconfirmation(msg *protomemcat.PreconfirmationMessage) {
+	if memR.opts.ListenOnly {
+		return
+	}
+
+	memR.Logger.Debug("broadcasting preconfirmation message", "num_txs", len(msg.TxHashes))
+
+	// Broadcast to a random subset of peers
+	count := 0
+	for _, peer := range ShufflePeers(memR.ids.GetAll()) {
+		if count >= maxPreconfBroadcast {
+			break
+		}
+		peer.Send(p2p.Envelope{
+			ChannelID: PreconfirmationChannel,
+			Message:   msg,
+		})
+		count++
+	}
 }

@@ -83,6 +83,15 @@ func (*NopMempool) WasRecentlyEvicted(types.TxKey) bool { return false }
 // WasRecentlyRejected always returns false, zero and an empty string.
 func (*NopMempool) WasRecentlyRejected(types.TxKey) (bool, uint32, string) { return false, 0, "" }
 
+// GetPreconfirmationVotingPower always returns 0.
+func (*NopMempool) GetPreconfirmationVotingPower(types.TxKey) int64 { return 0 }
+
+// GetValidatorSetTotalPower always returns 0.
+func (*NopMempool) GetValidatorSetTotalPower() int64 { return 0 }
+
+// UpdateValidatorSet is a no-op.
+func (*NopMempool) UpdateValidatorSet(*types.ValidatorSet) {}
+
 // NopMempoolReactor is a mempool reactor that does nothing.
 type NopMempoolReactor struct {
 	service.BaseService
