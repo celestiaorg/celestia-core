@@ -791,14 +791,11 @@ func (bs *BlockStore) DeleteLatestBlock() error {
 	return bs.saveStateAndWriteDB(batch, "failed to delete the latest block")
 }
 
-// SaveTxInfo indexes the txs from the block with the given response codes and logs from execution.
+// SaveTxInfo indexes the txs from the block with the given execution results.
 // Only the error logs are saved for failed transactions.
-func (bs *BlockStore) SaveTxInfo(block *types.Block, txResponseCodes []uint32, logs []string) error {
-	if len(txResponseCodes) != len(block.Txs) {
-		return errors.New("txResponseCodes length mismatch with block txs length")
-	}
-	if len(logs) != len(block.Txs) {
-		return errors.New("logs length mismatch with block txs length")
+func (bs *BlockStore) SaveTxInfo(block *types.Block, txResults []*abci.ExecTxResult) error {
+	if len(txResults) != len(block.Txs) {
+		return errors.New("txResults length mismatch with block txs length")
 	}
 
 	// Create a new batch
@@ -806,15 +803,19 @@ func (bs *BlockStore) SaveTxInfo(block *types.Block, txResponseCodes []uint32, l
 
 	// Batch and save txs from the block
 	for i, tx := range block.Txs {
+		result := txResults[i]
 		txInfo := cmtstore.TxInfo{
 			Height: block.Height,
 			//nolint:gosec
-			Index: uint32(i),
-			Code:  txResponseCodes[i],
+			Index:     uint32(i),
+			Code:      result.Code,
+			Codespace: result.Codespace,
+			GasWanted: result.GasWanted,
+			GasUsed:   result.GasUsed,
 		}
 		// Set error log for failed txs
-		if txResponseCodes[i] != abci.CodeTypeOK {
-			txInfo.Error = logs[i]
+		if result.Code != abci.CodeTypeOK {
+			txInfo.Error = result.Log
 		}
 		txInfoBytes, err := proto.Marshal(&txInfo)
 		if err != nil {

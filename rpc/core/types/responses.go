@@ -272,6 +272,9 @@ type ResultTxStatus struct {
 	ExecutionCode uint32 `json:"execution_code"`
 	Error         string `json:"error"`
 	Status        string `json:"status"`
+	Codespace     string `json:"codespace,omitempty"`
+	GasWanted     int64  `json:"gas_wanted,omitempty"`
+	GasUsed       int64  `json:"gas_used,omitempty"`
 }
 
 type ResultDataCommitment struct {
