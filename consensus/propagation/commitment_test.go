@@ -54,16 +54,30 @@ func TestPropose(t *testing.T) {
 	assert.True(t, has)
 	// the parts == total because we only have 2 peers
 	assert.Equal(t, haves.Size(), int(partSet.Total()*2))
-	for _, index := range haves.GetTrueIndices() {
-		assert.GreaterOrEqual(t, index, int(partSet.Total()))
+	for i, index := range haves.GetTrueIndices() {
+		switch i {
+		case 0:
+			assert.Equal(t, index, 0)
+		case 1:
+			assert.Equal(t, index, int(partSet.Total()-1))
+		default:
+			assert.GreaterOrEqual(t, index, int(partSet.Total()))
+		}
 	}
 
 	haves, has = reactor3.getPeer(reactor1.self).GetHaves(prop.Height, prop.Round)
 	assert.True(t, has)
 	// the parts == total because we only have 2 peers
 	assert.Equal(t, haves.Size(), int(partSet.Total()*2))
-	for _, index := range haves.GetTrueIndices() {
-		assert.GreaterOrEqual(t, index, int(partSet.Total()))
+	for i, index := range haves.GetTrueIndices() {
+		switch i {
+		case 0:
+			assert.Equal(t, index, 0)
+		case 1:
+			assert.Equal(t, index, int(partSet.Total()-1))
+		default:
+			assert.GreaterOrEqual(t, index, int(partSet.Total()))
+		}
 	}
 
 	time.Sleep(500 * time.Millisecond)
@@ -103,10 +117,16 @@ func TestPropose_OnlySendParityChunks(t *testing.T) {
 	// Check whether all the received haves are for parity parts
 	haves, has := reactor2.getPeer(reactor1.self).GetHaves(prop.Height, prop.Round)
 	assert.True(t, has)
-	// the parts == total because we only have 2 peers
 	assert.Equal(t, haves.Size(), int(partSet.Total()*2))
-	for _, index := range haves.GetTrueIndices() {
-		assert.GreaterOrEqual(t, index, int(partSet.Total()))
+	for i, index := range haves.GetTrueIndices() {
+		switch i {
+		case 0:
+			assert.Equal(t, index, 0)
+		case 1:
+			assert.Equal(t, index, int(partSet.Total()-1))
+		default:
+			assert.GreaterOrEqual(t, index, int(partSet.Total()))
+		}
 	}
 }
 
