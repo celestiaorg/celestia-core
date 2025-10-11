@@ -74,6 +74,9 @@ type BaseReactor struct {
 	// processor is called with the incoming channel and is responsible for
 	// unmarshalling the messages and calling Receive on the reactor.
 	processor ProcessorFunc
+
+	// panicHandler is called on panic recovery, mainly used for tests
+	panicHandler func(any)
 }
 
 type ReactorOptions func(*BaseReactor)
@@ -102,11 +105,11 @@ func NewBaseReactor(name string, impl Reactor, opts ...ReactorOptions) *BaseReac
 	go func() {
 		defer func() {
 			if r := recover(); r != nil {
-				fmt.Printf("processor panicked: %v\n", r)
+				base.Logger.Error(fmt.Sprintf("processor panicked: %v\n", r))
 				// Try to stop the reactor gracefully only if it's running
 				if base.IsRunning() {
 					if err := base.Stop(); err != nil {
-						fmt.Printf("failed to stop reactor after panic: %v\n", err)
+						base.Logger.Error(fmt.Sprintf("failed to stop reactor after panic: %v", err))
 					}
 				}
 			}
@@ -153,6 +156,11 @@ func (br *BaseReactor) QueueUnprocessedEnvelope(e UnprocessedEnvelope) {
 	// if not, add the item to the channel.
 	case br.incoming <- e:
 	}
+}
+
+// SetOnPanicHandler sets panic handler which is called on occurred while processing messages
+func (br *BaseReactor) SetOnPanicHandler(handler func(any)) {
+	br.panicHandler = handler
 }
 
 // TryQueueUnprocessedEnvelope an alternative to QueueUnprocessedEnvelope that attempts to queue an unprocessed envelope.
@@ -243,6 +251,9 @@ func ProcessorWithReactor(impl Reactor, baseReactor *BaseReactor) func(context.C
 // Usage: defer baseReactor.ProtectPanic(peer)
 func (br *BaseReactor) ProtectPanic(peer Peer) {
 	if r := recover(); r != nil {
+		if br.panicHandler != nil {
+			br.panicHandler(r)
+		}
 		disconnectPeer(br, peer, fmt.Sprintf("panic in reactor: %v", r), br.String())
 	}
 }
