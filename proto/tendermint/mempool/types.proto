@@ -9,6 +9,8 @@ message Txs {
 
 message SeenTx {
   bytes tx_key = 1;
+  bytes signer = 2;    // transaction signer/address for sequence validation
+  uint64 sequence = 3; // transaction sequence number for ordering
 }
 
 message WantTx {

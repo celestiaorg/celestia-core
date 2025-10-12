@@ -191,6 +191,43 @@ func (txmp *TxPool) GetTxByKey(txKey types.TxKey) (*types.CachedTx, bool) {
 	return &types.CachedTx{}, false
 }
 
+// CanProcessSequence checks if a transaction with the given signer and sequence
+// can be processed based on the current mempool state. This is used during
+// gossiping to determine if a transaction should be requested.
+func (txmp *TxPool) CanProcessSequence(signer []byte, sequence uint64) bool {
+	if len(signer) == 0 || sequence == 0 {
+		// If signer or sequence is not provided
+		// so we default to requesting the transaction
+		return true
+	}
+
+	// type assertion to be able to access the underlying client
+	if seqApp, ok := txmp.proxyAppConn.(abci.MempoolSequenceApp); ok {
+		req := &abci.RequestGetMempoolSequence{Signer: signer}
+		resp, err := seqApp.GetMempoolSequence(context.Background(), req)
+		if err != nil {
+			txmp.logger.Debug("failed to query mempool state", "signer", fmt.Sprintf("%X", signer), "error", err)
+			return true
+		}
+
+		currentSequence := resp.Sequence
+		expectedSequence := currentSequence + 1
+
+		canProcess := sequence == expectedSequence
+		if !canProcess {
+			txmp.logger.Debug("sequence validation failed",
+				"signer", fmt.Sprintf("%X", signer),
+				"expected", expectedSequence,
+				"received", sequence)
+		}
+
+		return canProcess
+	}
+
+	// request all txs if no sequence support (backwards compatibility?)
+	return true
+}
+
 // WasRecentlyEvicted returns a bool indicating whether the transaction with
 // the specified key was recently evicted and is currently within the cache.
 func (txmp *TxPool) WasRecentlyEvicted(txKey types.TxKey) bool {

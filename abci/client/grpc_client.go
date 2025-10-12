@@ -245,3 +245,7 @@ func (cli *grpcClient) VerifyVoteExtension(ctx context.Context, req *types.Reque
 func (cli *grpcClient) FinalizeBlock(ctx context.Context, req *types.RequestFinalizeBlock) (*types.ResponseFinalizeBlock, error) {
 	return cli.client.FinalizeBlock(ctx, types.ToRequestFinalizeBlock(req).GetFinalizeBlock(), grpc.WaitForReady(true))
 }
+
+func (cli *grpcClient) GetMempoolSequence(ctx context.Context, req *types.RequestGetMempoolSequence) (*types.ResponseGetMempoolSequence, error) {
+	return cli.client.GetMempoolSequence(ctx, req, grpc.WaitForReady(true))
+}

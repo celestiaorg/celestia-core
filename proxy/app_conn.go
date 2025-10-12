@@ -2,6 +2,7 @@ package proxy
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"github.com/go-kit/kit/metrics"
@@ -33,6 +34,8 @@ type AppConnMempool interface {
 	CheckTx(context.Context, *types.RequestCheckTx) (*types.ResponseCheckTx, error)
 	CheckTxAsync(context.Context, *types.RequestCheckTx) (*abcicli.ReqRes, error)
 	Flush(context.Context) error
+	// not sure if we need to break this
+	// GetMempoolSequence(context.Context, *types.RequestGetMempoolSequence) (*types.ResponseGetMempoolSequence, error)
 }
 
 type AppConnQuery interface {
@@ -145,6 +148,18 @@ func (app *appConnMempool) CheckTx(ctx context.Context, req *types.RequestCheckT
 func (app *appConnMempool) CheckTxAsync(ctx context.Context, req *types.RequestCheckTx) (*abcicli.ReqRes, error) {
 	defer addTimeSample(app.metrics.MethodTimingSeconds.With("method", "check_tx", "type", "async"))()
 	return app.appConn.CheckTxAsync(ctx, req)
+}
+
+func (app *appConnMempool) GetMempoolSequence(ctx context.Context, req *types.RequestGetMempoolSequence) (*types.ResponseGetMempoolSequence, error) {
+	defer addTimeSample(app.metrics.MethodTimingSeconds.With("method", "get_mempool_sequence", "type", "sync"))()
+
+	// Type assert the underlying client to see if it supports sequence queries
+	if seqClient, ok := app.appConn.(types.MempoolSequenceApp); ok {
+		return seqClient.GetMempoolSequence(ctx, req)
+	}
+
+	// Return error if not supported
+	return nil, fmt.Errorf("GetMempoolSequence not supported by underlying client")
 }
 
 //------------------------------------------------

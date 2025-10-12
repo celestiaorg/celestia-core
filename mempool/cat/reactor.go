@@ -3,6 +3,8 @@ package cat
 import (
 	"fmt"
 	"math/rand"
+	"slices"
+	"sync"
 	"time"
 
 	cfg "github.com/cometbft/cometbft/config"
@@ -36,6 +38,12 @@ const (
 
 	// maxSeenTxBroadcast defines the maximum number of peers to which a SeenTx message should be broadcasted.
 	maxSeenTxBroadcast = 15
+
+	// maxSequentialGossipPeers defines the number of peers to use for sequential transaction gossip
+	maxSequentialGossipPeers = 5
+
+	// sequentialPeerCleanupInterval defines how often to cleanup stale sequential peer mappings
+	sequentialPeerCleanupInterval = 30 * time.Second
 )
 
 // Reactor handles mempool tx broadcasting logic amongst peers. For the main
@@ -48,6 +56,10 @@ type Reactor struct {
 	ids         *mempoolIDs
 	requests    *requestScheduler
 	traceClient trace.Tracer
+
+	// account address -> selected peer IDs so we broadcast to the same peers for the same account
+	sequentialPeers    map[string][]uint16
+	sequentialPeersMtx sync.RWMutex
 }
 
 type ReactorOptions struct {
@@ -97,11 +109,12 @@ func NewReactor(mempool *TxPool, opts *ReactorOptions) (*Reactor, error) {
 		traceClient = trace.NoOpTracer()
 	}
 	memR := &Reactor{
-		opts:        opts,
-		mempool:     mempool,
-		ids:         newMempoolIDs(),
-		requests:    newRequestScheduler(opts.MaxGossipDelay, defaultGlobalRequestTimeout),
-		traceClient: traceClient,
+		opts:            opts,
+		mempool:         mempool,
+		ids:             newMempoolIDs(),
+		requests:        newRequestScheduler(opts.MaxGossipDelay, defaultGlobalRequestTimeout),
+		traceClient:     traceClient,
+		sequentialPeers: make(map[string][]uint16),
 	}
 	memR.BaseReactor = *p2p.NewBaseReactor("CAT", memR,
 		p2p.WithIncomingQueueSize(ReactorIncomingMessageQueueSize),
@@ -134,6 +147,20 @@ func (memR *Reactor) OnStart() error {
 	} else {
 		memR.Logger.Info("Tx broadcasting is disabled")
 	}
+
+	// clean up every 30s
+	go func() {
+		ticker := time.NewTicker(sequentialPeerCleanupInterval)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ticker.C:
+				memR.cleanupStaleSequentialPeers()
+			case <-memR.Quit():
+				return
+			}
+		}
+	}()
 
 	return nil
 }
@@ -207,6 +234,9 @@ func (memR *Reactor) RemovePeer(peer p2p.Peer, reason interface{}) {
 		memR.mempool.metrics.RequestedTxs.Add(1)
 		memR.findNewPeerToRequestTx(key)
 	}
+
+	// clean up peer sets that include this peer and replenish the sets
+	memR.removePeerFromSequentialPeerSets(peerID)
 }
 
 // ReceiveEnvelope implements Reactor.
@@ -282,7 +312,8 @@ func (memR *Reactor) Receive(e p2p.Envelope) {
 	// 1. If we have the transaction, we do nothing.
 	// 2. If we don't yet have the tx but have an outgoing request for it, we do nothing.
 	// 3. If we recently evicted the tx and still don't have space for it, we do nothing.
-	// 4. Else, we request the transaction from that peer.
+	// 4. If signer and sequence are provided, check if we can process this transaction based on current mempool state.
+	// 5. Else, we request the transaction from that peer.
 	case *protomem.SeenTx:
 		txKey, err := types.TxKeyFromBytes(msg.TxKey)
 		if err != nil {
@@ -310,6 +341,17 @@ func (memR *Reactor) Receive(e p2p.Envelope) {
 		if memR.requests.ForTx(txKey) != 0 {
 			memR.Logger.Debug("received a SeenTx message for a transaction we are already requesting", "txKey", txKey)
 			return
+		}
+
+		// check if we can process this transaction based on mempool state
+		if len(msg.Signer) > 0 && msg.Sequence > 0 {
+			if !memR.mempool.CanProcessSequence(msg.Signer, msg.Sequence) {
+				memR.Logger.Debug("skipping transaction request due to sequence error",
+					"txKey", txKey,
+					"signer", fmt.Sprintf("%X", msg.Signer),
+					"sequence", msg.Sequence)
+				return
+			}
 		}
 
 		// We don't have the transaction, nor are we requesting it so we send the node
@@ -406,43 +448,91 @@ func (memR *Reactor) broadcastNewTx(wtx *wrappedTx) {
 // broadcastSeenTxWithHeight is a helper that broadcasts a SeenTx message with height checking.
 func (memR *Reactor) broadcastSeenTxWithHeight(txKey types.TxKey, height int64) {
 	memR.Logger.Debug("broadcasting seen tx to limited peers", "tx_key", string(txKey[:]))
+
+	// include signer and sequence in the message
+	var signer []byte
+	var sequence uint64
+	if wtx := memR.mempool.store.get(txKey); wtx != nil {
+		signer = wtx.sender
+		sequence = wtx.sequence
+	}
+
 	msg := &protomem.Message{
 		Sum: &protomem.Message_SeenTx{
 			SeenTx: &protomem.SeenTx{
-				TxKey: txKey[:],
+				TxKey:    txKey[:],
+				Signer:   signer,
+				Sequence: sequence,
 			},
 		},
 	}
 
-	count := 0
-	for id, peer := range ShufflePeers(memR.ids.GetAll()) {
-		if count >= maxSeenTxBroadcast {
-			break
-		}
-		if p, ok := peer.Get(types.PeerStateKey).(PeerState); ok {
-			// make sure peer isn't too far behind. This can happen
-			// if the peer is blocksyncing still and catching up
-			// in which case we just skip sending the transaction
-			if p.GetHeight() < height-peerHeightDiff {
-				memR.Logger.Debug("peer is too far behind us. Skipping broadcast of seen tx")
-				continue
+	// use deterministic peer selection for transactions with known signers
+	var targetPeerIDs []uint16
+	if len(signer) > 0 {
+		targetPeerIDs = memR.getOrCreateSequentialPeers(signer)
+		memR.Logger.Debug("using sequential peer set for transaction",
+			"tx_key", string(txKey[:]),
+			"signer", fmt.Sprintf("%X", signer),
+			"sequence", sequence,
+			"target_peers", targetPeerIDs)
+	}
+
+	// if no sequential peers or signer unknown fall back to random selection
+	if len(targetPeerIDs) == 0 {
+		count := 0
+		for id, peer := range ShufflePeers(memR.ids.GetAll()) {
+			if count >= maxSeenTxBroadcast {
+				break
+			}
+			if memR.shouldBroadcastToPeer(peer, id, txKey, height) {
+				memR.sendSeenTxToPeer(peer, id, msg, txKey)
+				count++
 			}
 		}
+		return
+	}
 
-		if memR.mempool.seenByPeersSet.Has(txKey, id) {
-			continue
+	// use peer sets in order to attempt gossiping txs in the same order
+	allPeers := memR.ids.GetAll()
+	for _, peerID := range targetPeerIDs {
+		if peer, exists := allPeers[peerID]; exists {
+			if memR.shouldBroadcastToPeer(peer, peerID, txKey, height) {
+				memR.sendSeenTxToPeer(peer, peerID, msg, txKey)
+			}
 		}
+	}
+}
 
-		if peer.Send(
-			p2p.Envelope{
-				ChannelID: MempoolDataChannel,
-				Message:   msg,
-			},
-		) {
-			memR.mempool.PeerHasTx(id, txKey)
-			schema.WriteMempoolPeerState(memR.traceClient, string(peer.ID()), schema.SeenTx, txKey[:], schema.Upload)
+// shouldBroadcastToPeer checks if we should broadcast to a specific peer
+func (memR *Reactor) shouldBroadcastToPeer(peer p2p.Peer, peerID uint16, txKey types.TxKey, height int64) bool {
+	// Check if peer is too far behind
+	if p, ok := peer.Get(types.PeerStateKey).(PeerState); ok {
+		if p.GetHeight() < height-peerHeightDiff {
+			memR.Logger.Debug("peer is too far behind us. Skipping broadcast of seen tx",
+				"peer_id", peerID)
+			return false
 		}
-		count++
+	}
+
+	// Check if peer has already seen this transaction
+	if memR.mempool.seenByPeersSet.Has(txKey, peerID) {
+		return false
+	}
+
+	return true
+}
+
+// sendSeenTxToPeer sends a SeenTx message to a specific peer
+func (memR *Reactor) sendSeenTxToPeer(peer p2p.Peer, peerID uint16, msg *protomem.Message, txKey types.TxKey) {
+	if peer.Send(
+		p2p.Envelope{
+			ChannelID: MempoolDataChannel,
+			Message:   msg,
+		},
+	) {
+		memR.mempool.PeerHasTx(peerID, txKey)
+		schema.WriteMempoolPeerState(memR.traceClient, string(peer.ID()), schema.SeenTx, txKey[:], schema.Upload)
 	}
 }
 
@@ -502,4 +592,104 @@ func (memR *Reactor) findNewPeerToRequestTx(txKey types.TxKey) {
 	// We give up 🤷‍♂️ and hope either a peer responds late or the tx
 	// is gossiped again
 	memR.Logger.Debug("no other peer has the tx we are looking for", "txKey", txKey)
+}
+
+// getOrCreateSequentialPeers gets the sequential peer set for an account,
+// creating a new random selection if none exists
+func (memR *Reactor) getOrCreateSequentialPeers(signer []byte) []uint16 {
+	if len(signer) == 0 {
+		return nil
+	}
+	signerKey := string(signer)
+
+	memR.sequentialPeersMtx.Lock()
+	defer memR.sequentialPeersMtx.Unlock()
+
+	// already exists; just return
+	if peers, ok := memR.sequentialPeers[signerKey]; ok {
+		return peers
+	}
+
+	// Create new peer set
+	allPeers := memR.ids.GetAll()
+	if len(allPeers) == 0 {
+		return nil
+	}
+
+	shuffled := ShufflePeers(allPeers)
+	selectedKeys := make([]uint16, 0, maxSequentialGossipPeers)
+	for peerID := range shuffled {
+		selectedKeys = append(selectedKeys, peerID)
+		if len(selectedKeys) >= maxSequentialGossipPeers {
+			break
+		}
+	}
+	memR.sequentialPeers[signerKey] = selectedKeys
+
+	return selectedKeys
+}
+
+// removePeerFromSequentialPeerSets removes a peer from all sequential peer sets
+func (memR *Reactor) removePeerFromSequentialPeerSets(peerID uint16) {
+
+	memR.sequentialPeersMtx.Lock()
+	defer memR.sequentialPeersMtx.Unlock()
+
+	for signer, peers := range memR.sequentialPeers {
+		// Remove the peer if present
+		filtered := make([]uint16, 0, len(peers))
+		for _, id := range peers {
+			if id != peerID {
+				filtered = append(filtered, id)
+			}
+		}
+
+		// if nothing changed skip this signer
+		if len(filtered) == len(peers) {
+			continue
+		}
+
+		// Otherwise replenish the peer set
+		allPeers := memR.ids.GetAll()
+		shuffled := ShufflePeers(allPeers)
+
+		for candidateID := range shuffled {
+			if !slices.Contains(filtered, candidateID) {
+				filtered = append(filtered, candidateID)
+				if len(filtered) >= maxSequentialGossipPeers {
+					break
+				}
+			}
+		}
+
+		memR.sequentialPeers[signer] = filtered
+	}
+}
+
+// cleanupStaleSequentialPeers removes peer sets for signers that no longer have transactions in the mempool.
+func (memR *Reactor) cleanupStaleSequentialPeers() {
+	// snapshot active signers under read lock
+	memR.mempool.store.mtx.RLock()
+	active := make(map[string]struct{}, len(memR.mempool.store.setsBySigner))
+	for signer := range memR.mempool.store.setsBySigner {
+		active[signer] = struct{}{}
+	}
+	memR.mempool.store.mtx.RUnlock()
+
+	// prune stale mappings
+	memR.sequentialPeersMtx.Lock()
+	removed := 0
+	for signer := range memR.sequentialPeers {
+		if _, ok := active[signer]; !ok {
+			delete(memR.sequentialPeers, signer)
+			removed++
+		}
+	}
+	memR.sequentialPeersMtx.Unlock()
+
+	if removed > 0 {
+		memR.Logger.Debug("cleaned up stale sequential peer sets",
+			"removed", removed,
+			"remaining", len(memR.sequentialPeers))
+	}
 }

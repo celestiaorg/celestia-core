@@ -184,3 +184,10 @@ func (app *localClient) FinalizeBlock(ctx context.Context, req *types.RequestFin
 
 	return app.Application.FinalizeBlock(ctx, req)
 }
+
+func (app *localClient) GetMempoolSequence(ctx context.Context, req *types.RequestGetMempoolSequence) (*types.ResponseGetMempoolSequence, error) {
+	app.mtx.Lock()
+	defer app.mtx.Unlock()
+
+	return app.Application.(types.MempoolSequenceApp).GetMempoolSequence(ctx, req)
+}
