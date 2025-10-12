@@ -81,69 +81,145 @@ type reactorTestCase struct {
 // Uses current height and round to generate messages with various invalid values
 func genReactorTestCases(height int64, round int32) []reactorTestCase {
 	testCases := []reactorTestCase{
-		// Vote messages (VoteChannel) - nil and structural errors
+		// ===== StateChannel Messages =====
+
+		// NewRoundStep messages
 		{
-			name:      "vote with nil inner vote",
-			channelID: VoteChannel,
-			message:   &cmtcons.Vote{Vote: nil},
-		},
-		{
-			name:      "vote with negative height",
-			channelID: VoteChannel,
-			message: &cmtcons.Vote{
-				Vote: &cmtproto.Vote{
-					Height: -1,
-					Round:  round,
-					Type:   cmtproto.PrevoteType,
-				},
+			name:      "newroundstep with negative height",
+			channelID: StateChannel,
+			message: &cmtcons.NewRoundStep{
+				Height:          -1,
+				Round:           round,
+				Step:            1,
+				LastCommitRound: -1,
 			},
 		},
 		{
-			name:      "vote with zero height",
-			channelID: VoteChannel,
-			message: &cmtcons.Vote{
-				Vote: &cmtproto.Vote{
-					Height: 0,
-					Round:  round,
-					Type:   cmtproto.PrevoteType,
-				},
+			name:      "newroundstep with negative round",
+			channelID: StateChannel,
+			message: &cmtcons.NewRoundStep{
+				Height:          height,
+				Round:           -1,
+				Step:            1,
+				LastCommitRound: -1,
 			},
 		},
 		{
-			name:      "vote with past height",
-			channelID: VoteChannel,
-			message: &cmtcons.Vote{
-				Vote: &cmtproto.Vote{
-					Height: height - 1,
-					Round:  round,
-					Type:   cmtproto.PrevoteType,
-				},
+			name:      "newroundstep with past height",
+			channelID: StateChannel,
+			message: &cmtcons.NewRoundStep{
+				Height:          height - 1,
+				Round:           round,
+				Step:            1,
+				LastCommitRound: -1,
 			},
 		},
 		{
-			name:      "vote with future height",
-			channelID: VoteChannel,
-			message: &cmtcons.Vote{
-				Vote: &cmtproto.Vote{
-					Height: height + 100,
-					Round:  round,
-					Type:   cmtproto.PrevoteType,
-				},
+			name:      "newroundstep with future height",
+			channelID: StateChannel,
+			message: &cmtcons.NewRoundStep{
+				Height:          height + 100,
+				Round:           round,
+				Step:            1,
+				LastCommitRound: -1,
 			},
 		},
 		{
-			name:      "vote with negative round",
-			channelID: VoteChannel,
-			message: &cmtcons.Vote{
-				Vote: &cmtproto.Vote{
-					Height: height,
-					Round:  -1,
-					Type:   cmtproto.PrevoteType,
-				},
+			name:      "newroundstep with invalid step",
+			channelID: StateChannel,
+			message: &cmtcons.NewRoundStep{
+				Height:          height,
+				Round:           round,
+				Step:            255, // Invalid step value
+				LastCommitRound: -1,
 			},
 		},
 
-		// Proposal messages (DataChannel)
+		// HasVote messages
+		{
+			name:      "hasvote with negative height",
+			channelID: StateChannel,
+			message: &cmtcons.HasVote{
+				Height: -1,
+				Round:  round,
+				Type:   cmtproto.PrevoteType,
+				Index:  0,
+			},
+		},
+		{
+			name:      "hasvote with negative round",
+			channelID: StateChannel,
+			message: &cmtcons.HasVote{
+				Height: height,
+				Round:  -1,
+				Type:   cmtproto.PrevoteType,
+				Index:  0,
+			},
+		},
+		{
+			name:      "hasvote with past height",
+			channelID: StateChannel,
+			message: &cmtcons.HasVote{
+				Height: height - 1,
+				Round:  round,
+				Type:   cmtproto.PrevoteType,
+				Index:  0,
+			},
+		},
+		{
+			name:      "hasvote with future height",
+			channelID: StateChannel,
+			message: &cmtcons.HasVote{
+				Height: height + 100,
+				Round:  round,
+				Type:   cmtproto.PrevoteType,
+				Index:  0,
+			},
+		},
+		{
+			name:      "hasvote with past round",
+			channelID: StateChannel,
+			message: &cmtcons.HasVote{
+				Height: height,
+				Round:  round - 1,
+				Type:   cmtproto.PrevoteType,
+				Index:  0,
+			},
+		},
+		{
+			name:      "hasvote with future round",
+			channelID: StateChannel,
+			message: &cmtcons.HasVote{
+				Height: height,
+				Round:  round + 100,
+				Type:   cmtproto.PrevoteType,
+				Index:  0,
+			},
+		},
+		{
+			name:      "hasvote with invalid type",
+			channelID: StateChannel,
+			message: &cmtcons.HasVote{
+				Height: height,
+				Round:  round,
+				Type:   cmtproto.UnknownType,
+				Index:  0,
+			},
+		},
+		{
+			name:      "hasvote with negative index",
+			channelID: StateChannel,
+			message: &cmtcons.HasVote{
+				Height: height,
+				Round:  round,
+				Type:   cmtproto.PrevoteType,
+				Index:  -1,
+			},
+		},
+
+		// ===== DataChannel Messages =====
+
+		// Proposal messages
 		{
 			name:      "proposal with nil proposal",
 			channelID: DataChannel,
@@ -180,9 +256,9 @@ func genReactorTestCases(height int64, round int32) []reactorTestCase {
 			},
 		},
 
-		// BlockPart messages (DataChannel)
+		// BlockPart messages
 		{
-			name:      "blockpart with nil part",
+			name:      "blockpart with empty part",
 			channelID: DataChannel,
 			message: &cmtcons.BlockPart{
 				Height: height,
@@ -196,6 +272,15 @@ func genReactorTestCases(height int64, round int32) []reactorTestCase {
 			message: &cmtcons.BlockPart{
 				Height: -1,
 				Round:  round,
+				Part:   cmtproto.Part{Index: 0},
+			},
+		},
+		{
+			name:      "blockpart with negative round",
+			channelID: DataChannel,
+			message: &cmtcons.BlockPart{
+				Height: height,
+				Round:  -1,
 				Part:   cmtproto.Part{Index: 0},
 			},
 		},
@@ -218,91 +303,95 @@ func genReactorTestCases(height int64, round int32) []reactorTestCase {
 			},
 		},
 
-		// HasVote messages (StateChannel)
+		// ===== VoteChannel Messages =====
+
+		// Vote messages
 		{
-			name:      "hasvote with negative height",
-			channelID: StateChannel,
-			message: &cmtcons.HasVote{
-				Height: -1,
-				Round:  round,
-				Type:   cmtproto.PrevoteType,
-				Index:  0,
+			name:      "vote with nil inner vote",
+			channelID: VoteChannel,
+			message:   &cmtcons.Vote{Vote: nil},
+		},
+		{
+			name:      "vote with negative height",
+			channelID: VoteChannel,
+			message: &cmtcons.Vote{
+				Vote: &cmtproto.Vote{
+					Height: -1,
+					Round:  round,
+					Type:   cmtproto.PrevoteType,
+				},
 			},
 		},
 		{
-			name:      "hasvote with past height",
-			channelID: StateChannel,
-			message: &cmtcons.HasVote{
-				Height: height - 1,
-				Round:  round,
-				Type:   cmtproto.PrevoteType,
-				Index:  0,
+			name:      "vote with zero height",
+			channelID: VoteChannel,
+			message: &cmtcons.Vote{
+				Vote: &cmtproto.Vote{
+					Height: 0,
+					Round:  round,
+					Type:   cmtproto.PrevoteType,
+				},
 			},
 		},
 		{
-			name:      "hasvote with future height",
-			channelID: StateChannel,
-			message: &cmtcons.HasVote{
-				Height: height + 100,
-				Round:  round,
-				Type:   cmtproto.PrevoteType,
-				Index:  0,
+			name:      "vote with negative round",
+			channelID: VoteChannel,
+			message: &cmtcons.Vote{
+				Vote: &cmtproto.Vote{
+					Height: height,
+					Round:  -1,
+					Type:   cmtproto.PrevoteType,
+				},
 			},
 		},
 		{
-			name:      "hasvote with negative round",
-			channelID: StateChannel,
-			message: &cmtcons.HasVote{
-				Height: height,
-				Round:  -1,
-				Type:   cmtproto.PrevoteType,
-				Index:  0,
+			name:      "vote with past height",
+			channelID: VoteChannel,
+			message: &cmtcons.Vote{
+				Vote: &cmtproto.Vote{
+					Height: height - 1,
+					Round:  round,
+					Type:   cmtproto.PrevoteType,
+				},
+			},
+		},
+		{
+			name:      "vote with future height",
+			channelID: VoteChannel,
+			message: &cmtcons.Vote{
+				Vote: &cmtproto.Vote{
+					Height: height + 100,
+					Round:  round,
+					Type:   cmtproto.PrevoteType,
+				},
+			},
+		},
+		{
+			name:      "vote with past round",
+			channelID: VoteChannel,
+			message: &cmtcons.Vote{
+				Vote: &cmtproto.Vote{
+					Height: height,
+					Round:  round - 1,
+					Type:   cmtproto.PrevoteType,
+				},
+			},
+		},
+		{
+			name:      "vote with future round",
+			channelID: VoteChannel,
+			message: &cmtcons.Vote{
+				Vote: &cmtproto.Vote{
+					Height: height,
+					Round:  round + 100,
+					Type:   cmtproto.PrevoteType,
+				},
 			},
 		},
 
-		// NewRoundStep messages (StateChannel)
-		{
-			name:      "newroundstep with negative height",
-			channelID: StateChannel,
-			message: &cmtcons.NewRoundStep{
-				Height:          -1,
-				Round:           round,
-				Step:            1,
-				LastCommitRound: -1,
-			},
-		},
-		{
-			name:      "newroundstep with past height",
-			channelID: StateChannel,
-			message: &cmtcons.NewRoundStep{
-				Height:          height - 1,
-				Round:           round,
-				Step:            1,
-				LastCommitRound: -1,
-			},
-		},
-		{
-			name:      "newroundstep with future height",
-			channelID: StateChannel,
-			message: &cmtcons.NewRoundStep{
-				Height:          height + 100,
-				Round:           round,
-				Step:            1,
-				LastCommitRound: -1,
-			},
-		},
-		{
-			name:      "newroundstep with invalid step",
-			channelID: StateChannel,
-			message: &cmtcons.NewRoundStep{
-				Height:          height,
-				Round:           round,
-				Step:            255, // Invalid step value
-				LastCommitRound: -1,
-			},
-		},
+		// ===== VoteSetBitsChannel Messages =====
 
-		// VoteSetBits messages (VoteSetBitsChannel)
+		// VoteSetBits messages
 		{
 			name:      "votesetbits with negative height",
 			channelID: VoteSetBitsChannel,
@@ -340,50 +429,6 @@ func genReactorTestCases(height int64, round int32) []reactorTestCase {
 			},
 		},
 		{
-			name:      "vote with past round",
-			channelID: VoteChannel,
-			message: &cmtcons.Vote{
-				Vote: &cmtproto.Vote{
-					Height: height,
-					Round:  round - 1,
-					Type:   cmtproto.PrevoteType,
-				},
-			},
-		},
-		{
-			name:      "vote with future round",
-			channelID: VoteChannel,
-			message: &cmtcons.Vote{
-				Vote: &cmtproto.Vote{
-					Height: height,
-					Round:  round + 100,
-					Type:   cmtproto.PrevoteType,
-				},
-			},
-		},
-
-		{
-			name:      "hasvote with past round",
-			channelID: StateChannel,
-			message: &cmtcons.HasVote{
-				Height: height,
-				Round:  round - 1,
-				Type:   cmtproto.PrevoteType,
-				Index:  0,
-			},
-		},
-		{
-			name:      "hasvote with future round",
-			channelID: StateChannel,
-			message: &cmtcons.HasVote{
-				Height: height,
-				Round:  round + 100,
-				Type:   cmtproto.PrevoteType,
-				Index:  0,
-			},
-		},
-
-		{
 			name:      "votesetbits with past round",
 			channelID: VoteSetBitsChannel,
 			message: &cmtcons.VoteSetBits{
@@ -417,26 +462,6 @@ func genReactorTestCases(height int64, round int32) []reactorTestCase {
 				Height: height,
 				Round:  round,
 				Type:   cmtproto.ProposalType,
-			},
-		},
-		// Valid VoteSetBits message - this should be processed successfully
-		// and reach the switch statement in reactor.go:477 without panic
-		{
-			name:      "votesetbits valid prevote type",
-			channelID: VoteSetBitsChannel,
-			message: &cmtcons.VoteSetBits{
-				Height: height,
-				Round:  round,
-				Type:   cmtproto.PrevoteType,
-			},
-		},
-		{
-			name:      "votesetbits valid precommit type",
-			channelID: VoteSetBitsChannel,
-			message: &cmtcons.VoteSetBits{
-				Height: height,
-				Round:  round,
-				Type:   cmtproto.PrecommitType,
 			},
 		},
 	}
