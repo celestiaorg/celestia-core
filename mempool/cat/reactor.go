@@ -3,7 +3,7 @@ package cat
 import (
 	"context"
 	"fmt"
-	"math/rand"
+	"sync/atomic"
 	"time"
 
 	abci "github.com/cometbft/cometbft/abci/types"
@@ -50,6 +50,7 @@ type Reactor struct {
 	ids         *mempoolIDs
 	requests    *requestScheduler
 	traceClient trace.Tracer
+	stickySalt  atomic.Value // stores []byte
 }
 
 type ReactorOptions struct {
@@ -66,6 +67,10 @@ type ReactorOptions struct {
 
 	// TraceClient is the trace client for collecting trace level events
 	TraceClient trace.Tracer
+
+	// StickyPeerSalt is used to derive the rendezvous hash for sticky peer selection.
+	// If unset, all nodes will derive the same peer ordering.
+	StickyPeerSalt []byte
 }
 
 func (opts *ReactorOptions) VerifyAndComplete() error {
@@ -109,12 +114,46 @@ func NewReactor(mempool *TxPool, opts *ReactorOptions) (*Reactor, error) {
 		p2p.WithIncomingQueueSize(ReactorIncomingMessageQueueSize),
 		p2p.WithQueueingFunc(memR.TryQueueUnprocessedEnvelope),
 	)
+	memR.stickySalt.Store([]byte(nil))
+	memR.SetStickyPeerSalt(opts.StickyPeerSalt)
 	return memR, nil
 }
 
 // SetLogger sets the Logger on the reactor and the underlying mempool.
 func (memR *Reactor) SetLogger(l log.Logger) {
 	memR.Logger = l
+}
+
+// SetStickyPeerSalt configures the salt used for sticky peer selection. Passing nil resets it.
+func (memR *Reactor) SetStickyPeerSalt(salt []byte) {
+	if salt == nil {
+		memR.stickySalt.Store([]byte(nil))
+		return
+	}
+	cp := make([]byte, len(salt))
+	copy(cp, salt)
+	memR.stickySalt.Store(cp)
+}
+
+// SetLocalPeerID configures the sticky peer salt using the node's peer ID.
+func (memR *Reactor) SetLocalPeerID(id p2p.ID) {
+	if len(id) == 0 {
+		memR.SetStickyPeerSalt(nil)
+		return
+	}
+	memR.SetStickyPeerSalt([]byte(id))
+}
+
+func (memR *Reactor) currentStickyPeerSalt() []byte {
+	val := memR.stickySalt.Load()
+	if val == nil {
+		return nil
+	}
+	salt := val.([]byte)
+	if len(salt) == 0 {
+		return nil
+	}
+	return salt
 }
 
 // OnStart implements Service.
@@ -402,35 +441,6 @@ func (memR *Reactor) broadcastSeenTx(txKey types.TxKey, signer []byte, sequence 
 	memR.broadcastSeenTxWithHeight(txKey, memR.mempool.Height(), signer, sequence)
 }
 
-// ShufflePeers shuffles the peers map from GetAll() and returns a new shuffled map.
-// Uses Fisher-Yates shuffle algorithm for maximum speed.
-func ShufflePeers(peers map[uint16]p2p.Peer) map[uint16]p2p.Peer {
-	if len(peers) <= 1 {
-		return peers
-	}
-
-	// Extract keys into a slice for shuffling
-	keys := make([]uint16, 0, len(peers))
-	for id := range peers {
-		keys = append(keys, id)
-	}
-
-	// Fast Fisher-Yates shuffle on keys
-	r := rand.New(rand.NewSource(time.Now().UnixNano()))
-	for i := len(keys) - 1; i > 0; i-- {
-		j := r.Intn(i + 1)
-		keys[i], keys[j] = keys[j], keys[i]
-	}
-
-	// Build a new map with shuffled order
-	result := make(map[uint16]p2p.Peer, len(peers))
-	for _, id := range keys {
-		result[id] = peers[id]
-	}
-
-	return result
-}
-
 // broadcastNewTx broadcast new transaction to limited peers unless we are already sure they have seen the tx.
 func (memR *Reactor) broadcastNewTx(wtx *wrappedTx) {
 	memR.broadcastSeenTxWithHeight(wtx.key(), wtx.height, wtx.sender, wtx.sequence)
@@ -449,11 +459,10 @@ func (memR *Reactor) broadcastSeenTxWithHeight(txKey types.TxKey, height int64, 
 		},
 	}
 
-	count := 0
-	for id, peer := range ShufflePeers(memR.ids.GetAll()) {
-		if count >= maxSeenTxBroadcast {
-			break
-		}
+	selectedPeers := selectStickyPeers(signer, memR.ids.GetAll(), maxSeenTxBroadcast, memR.currentStickyPeerSalt())
+	for _, peerInfo := range selectedPeers {
+		id := peerInfo.id
+		peer := peerInfo.peer
 		if p, ok := peer.Get(types.PeerStateKey).(PeerState); ok {
 			// make sure peer isn't too far behind. This can happen
 			// if the peer is blocksyncing still and catching up
@@ -477,11 +486,9 @@ func (memR *Reactor) broadcastSeenTxWithHeight(txKey types.TxKey, height int64, 
 			memR.mempool.PeerHasTx(id, txKey)
 			schema.WriteMempoolPeerState(memR.traceClient, string(peer.ID()), schema.SeenTx, txKey[:], schema.Upload)
 		}
-		count++
 	}
 }
 
-// requestTx requests a transaction from a peer and tracks it,
 // requesting it from another peer if the first peer does not respond.
 func (memR *Reactor) requestTx(txKey types.TxKey, peer p2p.Peer) {
 	if peer == nil {

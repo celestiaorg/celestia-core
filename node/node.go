@@ -402,6 +402,9 @@ func NewNodeWithContext(ctx context.Context,
 	}
 
 	mempool, mempoolReactor := createMempoolAndMempoolReactor(config, proxyApp, state, memplMetrics, logger, tracer)
+	if catReactor, ok := mempoolReactor.(*cat.Reactor); ok {
+		catReactor.SetLocalPeerID(nodeKey.ID())
+	}
 
 	evidenceReactor, evidencePool, err := createEvidenceReactor(config, dbProvider, stateStore, blockStore, logger)
 	if err != nil {
