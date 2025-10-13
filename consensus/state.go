@@ -407,7 +407,7 @@ func (cs *State) OnStart() error {
 				return err
 			}
 
-			cs.Logger.Trace("backed up WAL file", "src", cs.config.WalFile(), "dst", corruptedFile)
+			cs.Logger.Debug("backed up WAL file", "src", cs.config.WalFile(), "dst", corruptedFile)
 
 			// 3) try to repair (WAL file will be overwritten!)
 			if err := repairWalFile(corruptedFile, cs.config.WalFile()); err != nil {
@@ -783,7 +783,7 @@ func (cs *State) updateToState(state sm.State) {
 		// signal the new round step, because other services (eg. txNotifier)
 		// depend on having an up-to-date peer state!
 		if state.LastBlockHeight <= cs.state.LastBlockHeight {
-			cs.Logger.Trace(
+			cs.Logger.Debug(
 				"ignoring updateToState()",
 				"new_height", state.LastBlockHeight+1,
 				"old_height", cs.state.LastBlockHeight+1,
@@ -933,7 +933,7 @@ func (cs *State) receiveRoutine(maxSteps int) {
 	for {
 		if maxSteps > 0 {
 			if cs.nSteps >= maxSteps {
-				cs.Logger.Trace("reached max steps; exiting receive routine")
+				cs.Logger.Debug("reached max steps; exiting receive routine")
 				cs.nSteps = 0
 				return
 			}

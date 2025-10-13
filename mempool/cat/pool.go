@@ -509,7 +509,7 @@ func (txmp *TxPool) Update(
 		panic(fmt.Sprintf("mempool: got %d transactions but %d DeliverTx responses",
 			len(blockTxs), len(deliverTxResponses)))
 	}
-	txmp.logger.Trace("updating mempool", "height", blockHeight, "txs", len(blockTxs))
+	txmp.logger.Debug("updating mempool", "height", blockHeight, "txs", len(blockTxs))
 
 	txmp.height = blockHeight
 	txmp.notifiedTxsAvailable = false
