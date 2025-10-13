@@ -1,0 +1,19 @@
+name: Nightly Tests
+
+on:
+  schedule:
+    # run nightly at 2 AM UTC
+    - cron: '0 2 * * *'
+  workflow_dispatch:
+
+jobs:
+  nightly-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: "go.mod"
+      - name: Run Nightly Tests
+        run: |
+          make test-nightly

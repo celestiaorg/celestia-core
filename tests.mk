@@ -71,5 +71,10 @@ test_race:
 
 test_deadlock:
 	@echo "--> Running go test --deadlock"
-	@go test -p 1 -v  $(PACKAGES) -tags deadlock 
+	@go test -p 1 -v  $(PACKAGES) -tags deadlock
 .PHONY: test_race
+
+test-nightly:
+	@echo "--> Running nightly tests"
+	@go test -v -tags nightly ./test/nightly/... -timeout 30m
+.PHONY: test-nightly
