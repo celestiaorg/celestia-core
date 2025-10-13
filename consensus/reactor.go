@@ -1168,7 +1168,7 @@ func (conR *Reactor) peerStatsRoutine() {
 			// Get peer
 			peer := conR.Switch.Peers().Get(msg.PeerID)
 			if peer == nil {
-				conR.Logger.Debug("Attempt to update stats for non-existent peer",
+				conR.Logger.Trace("Attempt to update stats for non-existent peer",
 					"peer", msg.PeerID)
 				continue
 			}
