@@ -3,7 +3,8 @@ name: Nightly Tests
 on:
   schedule:
     # run nightly at 2 AM UTC
-    - cron: '0 2 * * *'
+    - cron: "0 2 * * *"
+  push:
   workflow_dispatch:
 
 jobs:
