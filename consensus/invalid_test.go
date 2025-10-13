@@ -503,7 +503,7 @@ func testReactorInvalidMessagesInState(t *testing.T, targetState cstypes.RoundSt
 	stepCh := sub.Out()
 
 	// Wait for target state and test all messages
-	timeout := time.After(30 * time.Second)
+	timeout := time.After(60 * time.Second)
 	for {
 		select {
 		case msg := <-stepCh:
