@@ -189,15 +189,5 @@ func (app *localClient) QuerySequence(ctx context.Context, req *types.RequestQue
 	app.mtx.Lock()
 	defer app.mtx.Unlock()
 
-	// Check if the underlying application implements a QuerySequence method
-	type sequenceQuerier interface {
-		QuerySequence(context.Context, *types.RequestQuerySequence) (*types.ResponseQuerySequence, error)
-	}
-
-	if sq, ok := app.Application.(sequenceQuerier); ok {
-		return sq.QuerySequence(ctx, req)
-	}
-
-	// Return empty response if not implemented
-	return &types.ResponseQuerySequence{}, nil
+	return app.Application.QuerySequence(ctx, req)
 }

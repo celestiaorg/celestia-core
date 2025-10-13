@@ -240,6 +240,12 @@ func (s *SocketServer) handleRequest(ctx context.Context, req *types.Request) (*
 			return nil, err
 		}
 		return types.ToResponseQuery(res), nil
+	case *types.Request_QuerySequence:
+		res, err := s.app.QuerySequence(ctx, r.QuerySequence)
+		if err != nil {
+			return nil, err
+		}
+		return types.ToResponseQuerySequence(res), nil
 	case *types.Request_InitChain:
 		res, err := s.app.InitChain(ctx, r.InitChain)
 		if err != nil {

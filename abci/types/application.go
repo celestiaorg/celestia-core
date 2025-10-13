@@ -10,6 +10,7 @@ type Application interface {
 	// Info/Query Connection
 	Info(context.Context, *RequestInfo) (*ResponseInfo, error)    // Return application info
 	Query(context.Context, *RequestQuery) (*ResponseQuery, error) // Query for state
+	QuerySequence(context.Context, *RequestQuerySequence) (*ResponseQuerySequence, error)
 
 	// Mempool Connection
 	CheckTx(context.Context, *RequestCheckTx) (*ResponseCheckTx, error) // Validate a tx for the mempool
@@ -59,6 +60,10 @@ func (BaseApplication) Commit(context.Context, *RequestCommit) (*ResponseCommit,
 
 func (BaseApplication) Query(context.Context, *RequestQuery) (*ResponseQuery, error) {
 	return &ResponseQuery{Code: CodeTypeOK}, nil
+}
+
+func (BaseApplication) QuerySequence(context.Context, *RequestQuerySequence) (*ResponseQuerySequence, error) {
+	return &ResponseQuerySequence{}, nil
 }
 
 func (BaseApplication) InitChain(context.Context, *RequestInitChain) (*ResponseInitChain, error) {
