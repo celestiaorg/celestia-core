@@ -384,6 +384,11 @@ func (txmp *TxPool) PeerHasTx(peer uint16, txKey types.TxKey) {
 	txmp.seenByPeersSet.Add(txKey, peer)
 }
 
+// lowestSequenceForSigner returns the lowest sequence known locally for the signer.
+func (txmp *TxPool) lowestSequenceForSigner(signer []byte) (uint64, bool) {
+	return txmp.store.lowestSequenceForSigner(signer)
+}
+
 // ReapMaxBytesMaxGas returns a slice of valid transactions that fit within the
 // size and gas constraints. The results are ordered by decreasing priority,
 // with ties broken by increasing order of arrival. Transactions are also
@@ -425,7 +430,7 @@ func (txmp *TxPool) determineLeftoverTxs(txSets []*txSet, remainingBytes, remain
 	possibleTxPermutations := make([][]*types.CachedTx, len(txSets))
 	for i := 0; i < len(txSets); i++ {
 		priorities[i], possibleTxPermutations[i] = txmp.getAggregatedPriorityAndTxs(txSets[i:], remainingBytes, remainingGas)
-	}
+	}	
 	highestPriorityIndex := 0
 	for i := 1; i < len(priorities); i++ {
 		if priorities[i] > priorities[highestPriorityIndex] {

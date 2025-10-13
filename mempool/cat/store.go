@@ -309,6 +309,24 @@ func (s *store) getOrderedTxs() []*wrappedTx {
 	return txs
 }
 
+// lowestSequenceForSigner returns the lowest sequence number tracked for the
+// provided signer along with a bool indicating if any state exists locally.
+func (s *store) lowestSequenceForSigner(signer []byte) (uint64, bool) {
+	if len(signer) == 0 {
+		return 0, false
+	}
+
+	s.mtx.RLock()
+	defer s.mtx.RUnlock()
+
+	set, ok := s.setsBySigner[string(signer)]
+	if !ok || len(set.txs) == 0 {
+		return 0, false
+	}
+
+	return set.txs[0].sequence, true
+}
+
 // aggregatedPriorityAfterAdd computes the aggregated priority of the signer's set
 // if this transaction were to be added.
 func (s *store) aggregatedPriorityAfterAdd(wtx *wrappedTx) int64 {
