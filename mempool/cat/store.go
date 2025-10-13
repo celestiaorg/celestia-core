@@ -327,6 +327,34 @@ func (s *store) lowestSequenceForSigner(signer []byte) (uint64, bool) {
 	return set.txs[0].sequence, true
 }
 
+// nextSequenceForSigner returns the next sequence number expected for the signer
+// based on locally tracked transactions. It identifies the first gap in the
+// sequence ordering and, if no gaps exist, returns the next sequence after the
+// highest contiguous value observed.
+func (s *store) nextSequenceForSigner(signer []byte) (uint64, bool) {
+	if len(signer) == 0 {
+		return 0, false
+	}
+
+	s.mtx.RLock()
+	defer s.mtx.RUnlock()
+
+	set, ok := s.setsBySigner[string(signer)]
+	if !ok || len(set.txs) == 0 {
+		return 0, false
+	}
+
+	expected := set.txs[0].sequence
+	next := expected
+	for _, tx := range set.txs {
+		if tx.sequence > next {
+			return next, true
+		}
+		next = tx.sequence + 1
+	}
+	return next, true
+}
+
 // aggregatedPriorityAfterAdd computes the aggregated priority of the signer's set
 // if this transaction were to be added.
 func (s *store) aggregatedPriorityAfterAdd(wtx *wrappedTx) int64 {

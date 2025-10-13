@@ -1,16 +1,19 @@
 package cat
 
 import (
+	"bytes"
 	"context"
 	"encoding/hex"
 	"os"
 	"sort"
+	"strconv"
 	"sync"
 	"testing"
 	"time"
 
 	"github.com/go-kit/log/term"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 
 	db "github.com/cometbft/cometbft-db"
@@ -528,6 +531,41 @@ func newSequenceTrackingApp() *sequenceTrackingApp {
 	}
 }
 
+func (app *sequenceTrackingApp) CheckTx(ctx context.Context, req *abcitypes.RequestCheckTx) (*abcitypes.ResponseCheckTx, error) {
+	var (
+		priority int64
+		sender   string
+	)
+
+	parts := bytes.Split(req.Tx, []byte("="))
+	if len(parts) == 3 {
+		v, err := strconv.ParseInt(string(parts[2]), 10, 64)
+		if err != nil {
+			return &abcitypes.ResponseCheckTx{
+				Priority:  priority,
+				Code:      100,
+				GasWanted: 1,
+			}, nil
+		}
+		priority = v
+		sender = string(parts[0])
+	} else {
+		return &abcitypes.ResponseCheckTx{
+			Priority:  priority,
+			Code:      101,
+			GasWanted: 1,
+			Log:       "invalid-tx-format",
+		}, nil
+	}
+
+	return &abcitypes.ResponseCheckTx{
+		Priority:  priority,
+		Address:   []byte(sender),
+		Code:      abcitypes.CodeTypeOK,
+		GasWanted: 1,
+	}, nil
+}
+
 func (app *sequenceTrackingApp) QuerySequence(ctx context.Context, req *abcitypes.RequestQuerySequence) (*abcitypes.ResponseQuerySequence, error) {
 	app.mtx.Lock()
 	defer app.mtx.Unlock()
@@ -750,4 +788,188 @@ func TestReactorSequenceValidation(t *testing.T) {
 		peer.AssertExpectations(t)
 		require.Equal(t, 0, app.QueryCallCount())
 	})
+}
+
+func TestReactorRequestsQueuedTxAfterSequenceBecomesAvailable(t *testing.T) {
+	app := newSequenceTrackingApp()
+	cc := proxy.NewLocalClientCreator(app)
+	pool, cleanup := newMempoolWithApp(cc)
+	defer cleanup()
+
+	reactor, err := NewReactor(pool, &ReactorOptions{})
+	require.NoError(t, err)
+
+	signer := []byte("sender-000-0")
+	app.SetSequence(string(signer), 1)
+
+	sourcePeer := genPeer()
+	_, err = reactor.InitPeer(sourcePeer)
+	require.NoError(t, err)
+	sourcePeer.On("Send", mock.Anything).Return(true).Maybe()
+
+	targetTx := newDefaultTx("future-tx")
+	targetKey := targetTx.Key()
+
+	wantEnvelope := p2p.Envelope{
+		ChannelID: MempoolWantsChannel,
+		Message: &protomem.Message{
+			Sum: &protomem.Message_WantTx{
+				WantTx: &protomem.WantTx{TxKey: targetKey[:]},
+			},
+		},
+	}
+	sourcePeer.On("TrySend", wantEnvelope).Return(true)
+
+	reactor.Receive(p2p.Envelope{
+		ChannelID: MempoolDataChannel,
+		Message: &protomem.SeenTx{
+			TxKey:    targetKey[:],
+			Signer:   signer,
+			Sequence: 2,
+		},
+		Src: sourcePeer,
+	})
+
+	require.Len(t, reactor.pendingSeen.entriesForSigner(signer), 1)
+
+	providerPeer := genPeer()
+	_, err = reactor.InitPeer(providerPeer)
+	require.NoError(t, err)
+	providerPeer.On("Send", mock.Anything).Return(true).Maybe()
+
+	app.SetSequence(string(signer), 2)
+
+	priorTx := newDefaultTx("prior-tx")
+	reactor.Receive(p2p.Envelope{
+		ChannelID: MempoolDataChannel,
+		Message:   &protomem.Txs{Txs: [][]byte{priorTx}},
+		Src:       providerPeer,
+	})
+
+	sourcePeer.AssertExpectations(t)
+	require.Empty(t, reactor.pendingSeen.entriesForSigner(signer))
+	require.EqualValues(t, reactor.ids.GetIDForPeer(sourcePeer.ID()), reactor.requests.ForTx(targetKey))
+}
+
+func TestPendingSeenClearedWhenTxArrives(t *testing.T) {
+	app := newSequenceTrackingApp()
+	cc := proxy.NewLocalClientCreator(app)
+	pool, cleanup := newMempoolWithApp(cc)
+	defer cleanup()
+
+	reactor, err := NewReactor(pool, &ReactorOptions{})
+	require.NoError(t, err)
+
+	signer := []byte("sender-000-0")
+	app.SetSequence(string(signer), 1)
+
+	sourcePeer := genPeer()
+	_, err = reactor.InitPeer(sourcePeer)
+	require.NoError(t, err)
+	sourcePeer.On("Send", mock.Anything).Return(true).Maybe()
+
+	targetTx := newDefaultTx("future-tx")
+	targetKey := targetTx.Key()
+
+	reactor.Receive(p2p.Envelope{
+		ChannelID: MempoolDataChannel,
+		Message: &protomem.SeenTx{
+			TxKey:    targetKey[:],
+			Signer:   signer,
+			Sequence: 2,
+		},
+		Src: sourcePeer,
+	})
+
+	require.Len(t, reactor.pendingSeen.entriesForSigner(signer), 1)
+
+	providerPeer := genPeer()
+	_, err = reactor.InitPeer(providerPeer)
+	require.NoError(t, err)
+	providerPeer.On("Send", mock.Anything).Return(true).Maybe()
+
+	reactor.Receive(p2p.Envelope{
+		ChannelID: MempoolDataChannel,
+		Message:   &protomem.Txs{Txs: [][]byte{targetTx}},
+		Src:       providerPeer,
+	})
+
+	require.Empty(t, reactor.pendingSeen.entriesForSigner(signer))
+	sourcePeer.AssertNotCalled(t, "TrySend", mock.Anything)
+}
+
+func TestPendingSeenClearedOnPeerRemoval(t *testing.T) {
+	app := newSequenceTrackingApp()
+	cc := proxy.NewLocalClientCreator(app)
+	pool, cleanup := newMempoolWithApp(cc)
+	defer cleanup()
+
+	reactor, err := NewReactor(pool, &ReactorOptions{})
+	require.NoError(t, err)
+
+	signer := []byte("sender-000-0")
+	app.SetSequence(string(signer), 1)
+
+	sourcePeer := genPeer()
+	_, err = reactor.InitPeer(sourcePeer)
+	require.NoError(t, err)
+
+	targetTx := newDefaultTx("future-tx")
+	targetKey := targetTx.Key()
+
+	reactor.Receive(p2p.Envelope{
+		ChannelID: MempoolDataChannel,
+		Message: &protomem.SeenTx{
+			TxKey:    targetKey[:],
+			Signer:   signer,
+			Sequence: 2,
+		},
+		Src: sourcePeer,
+	})
+
+	require.Len(t, reactor.pendingSeen.entriesForSigner(signer), 1)
+
+	reactor.RemovePeer(sourcePeer, "disconnect")
+
+	require.Empty(t, reactor.pendingSeen.entriesForSigner(signer))
+}
+
+func TestPendingSeenDroppedWhenSequenceAdvances(t *testing.T) {
+	app := newSequenceTrackingApp()
+	cc := proxy.NewLocalClientCreator(app)
+	pool, cleanup := newMempoolWithApp(cc)
+	defer cleanup()
+
+	reactor, err := NewReactor(pool, &ReactorOptions{})
+	require.NoError(t, err)
+
+	signer := []byte("sender-000-0")
+	app.SetSequence(string(signer), 1)
+
+	sourcePeer := genPeer()
+	_, err = reactor.InitPeer(sourcePeer)
+	require.NoError(t, err)
+	sourcePeer.On("TrySend", mock.Anything).Return(true).Maybe()
+	sourcePeer.On("Send", mock.Anything).Return(true).Maybe()
+
+	targetTx := newDefaultTx("future-tx")
+	targetKey := targetTx.Key()
+
+	reactor.Receive(p2p.Envelope{
+		ChannelID: MempoolDataChannel,
+		Message: &protomem.SeenTx{
+			TxKey:    targetKey[:],
+			Signer:   signer,
+			Sequence: 2,
+		},
+		Src: sourcePeer,
+	})
+
+	require.Len(t, reactor.pendingSeen.entriesForSigner(signer), 1)
+
+	app.SetSequence(string(signer), 4)
+	reactor.processPendingSeenForSigner(signer)
+
+	require.Empty(t, reactor.pendingSeen.entriesForSigner(signer))
+	sourcePeer.AssertNotCalled(t, "TrySend", mock.Anything)
 }
