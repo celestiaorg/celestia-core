@@ -359,7 +359,7 @@ func TestStateOversizedBlock(t *testing.T) {
 
 // propose, prevote, and precommit a block
 func TestStateFullRound1(t *testing.T) {
-	cs, vss := randState(1)
+	cs, _ := randState(1)
 	height, round := cs.rs.Height, cs.rs.Round
 
 	// NOTE: buffer capacity of 0 ensures we can validate prevote and last commit
@@ -383,11 +383,15 @@ func TestStateFullRound1(t *testing.T) {
 	propBlockHash := waitForProposal(t, propCh, height, round)
 	ensurePrevoteMatch(t, voteCh, height, round, propBlockHash)
 
-	ensurePrecommit(voteCh, height, round) // wait for precommit
+	ensurePrecommitMatch(t, voteCh, height, round, propBlockHash)
 
 	// we're going to roll right into new height
 	ensureNewRound(newRoundCh, height+1, 0)
-	validateLastPrecommit(t, cs, vss[0], propBlockHash)
+	require.NoError(t, cs.timeoutTicker.Stop())
+	commit := cs.blockStore.LoadBlockCommit(height)
+	require.NotNil(t, commit, "expected commit for height %d", height)
+	assert.True(t, bytes.Equal(commit.BlockID.Hash, propBlockHash),
+		"expected commit hash %X, got %X", propBlockHash, commit.BlockID.Hash)
 }
 
 // nil is proposed, so prevote and precommit nil

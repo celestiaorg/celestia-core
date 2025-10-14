@@ -34,6 +34,34 @@ import (
 	"github.com/cometbft/cometbft/types"
 )
 
+const (
+	minTestRoundTimeout   = 500 * time.Millisecond
+	minTestRoundDelta     = 100 * time.Millisecond
+	minTestCommitTimeout  = 2 * time.Second
+	minTestDelayedTimeout = 500 * time.Millisecond
+)
+
+func applyTestConsensusTimeouts(timeoutInfo *cmtstate.TimeoutInfo) {
+	timeoutInfo.TimeoutPropose = maxDuration(timeoutInfo.TimeoutPropose, minTestRoundTimeout)
+	timeoutInfo.TimeoutPrevote = maxDuration(timeoutInfo.TimeoutPrevote, minTestRoundTimeout)
+	timeoutInfo.TimeoutPrecommit = maxDuration(timeoutInfo.TimeoutPrecommit, minTestRoundTimeout)
+
+	timeoutInfo.TimeoutProposeDelta = maxDuration(timeoutInfo.TimeoutProposeDelta, minTestRoundDelta)
+	timeoutInfo.TimeoutPrevoteDelta = maxDuration(timeoutInfo.TimeoutPrevoteDelta, minTestRoundDelta)
+	timeoutInfo.TimeoutPrecommitDelta = maxDuration(timeoutInfo.TimeoutPrecommitDelta, minTestRoundDelta)
+
+	timeoutInfo.TimeoutCommit = maxDuration(timeoutInfo.TimeoutCommit, minTestCommitTimeout)
+	timeoutInfo.DelayedPrecommitTimeout = maxDuration(timeoutInfo.DelayedPrecommitTimeout, minTestDelayedTimeout)
+}
+
+func maxDuration(current, min time.Duration) time.Duration {
+	if current < min {
+		return min
+	}
+
+	return current
+}
+
 //----------------------------------------------
 // byzantine failures
 
@@ -79,6 +107,8 @@ func TestByzantinePrevoteEquivocation(t *testing.T) {
 			TimeoutPrecommitDelta:   resp.TimeoutInfo.TimeoutPrecommitDelta,
 			DelayedPrecommitTimeout: resp.TimeoutInfo.DelayedPrecommitTimeout,
 		}
+
+		applyTestConsensusTimeouts(&state.Timeouts)
 
 		// Save the updated state back to the store
 		err = stateStore.Save(state)
