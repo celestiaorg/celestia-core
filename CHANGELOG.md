@@ -1,5 +1,51 @@
 # CHANGELOG
 
+## UNRELEASED
+
+### DEPENDENCIES
+
+### BUG FIXES
+
+### IMPROVEMENTS
+
+### FEATURES
+
+### BUG-FIXES
+
+### STATE-BREAKING
+
+### API-BREAKING
+
+## v0.38.19
+
+*October 14, 2025*
+
+This release fixes two security issues, including ([ASA-2025-003](https://github.com/cometbft/cometbft/security/advisories/GHSA-hrhf-2vcr-ghch)).
+Users are encouraged to upgrade as soon as possible.
+
+Additionally included is a bug fix to properly prune extended commits (with
+vote extensions).
+
+### BUG-FIXES
+
+- `[consensus]` Reject oversized proposals
+  ([\#5324](https://github.com/cometbft/cometbft/pull/5324))
+- `[store]` Prune extended commits properly
+  ([5275](https://github.com/cometbft/cometbft/issues/5275))
+- `[bits]` Validate BitArray mismatched Bits and Elems length
+  ([ASA-2025-003](https://github.com/cometbft/cometbft/security/advisories/GHSA-hrhf-2vcr-ghch))
+
+## v0.38.18
+
+*July 3, 2025*
+
+Adds precommit metrics and reindex CLI command.
+
+### IMPROVEMENTS
+
+- Adds metrics that emit precommit data; precommit quorum delay from proposal, and precommit vote count and stake weight within timeout commit period.
+  ([\#5251](https://github.com/cometbft/cometbft/issues/5251))
+
 ## v0.38.17
 
 *February 3, 2025*
@@ -881,4 +927,3 @@ Friendly reminder, we have a [bug bounty program](https://hackerone.com/cosmos).
 ## Previous changes
 
 For changes released before the creation of CometBFT, please refer to the Tendermint Core [CHANGELOG.md](https://github.com/tendermint/tendermint/blob/a9feb1c023e172b542c972605311af83b777855b/CHANGELOG.md).
-
