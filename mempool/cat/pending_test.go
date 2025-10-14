@@ -1,6 +1,7 @@
 package cat
 
 import (
+	"sync"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -110,4 +111,38 @@ func TestPendingSeenTracker(t *testing.T) {
 			tc.run(t, tracker)
 		})
 	}
+}
+
+func TestPendingSeenTrackerConcurrentAccess(t *testing.T) {
+	tracker := newPendingSeenTracker(0)
+	signer := []byte("signer")
+
+	const total = 50
+	var wg sync.WaitGroup
+	wg.Add(3)
+
+	go func() {
+		defer wg.Done()
+		for i := 0; i < total; i++ {
+			key := types.Tx([]byte{byte(i)}).Key()
+			tracker.add(signer, key, uint64(i+1), uint16(i%5+1))
+		}
+	}()
+
+	go func() {
+		defer wg.Done()
+		for i := 0; i < total; i++ {
+			tracker.entriesForSigner(signer)
+		}
+	}()
+
+	go func() {
+		defer wg.Done()
+		for i := 0; i < total; i++ {
+			tracker.removePeer(uint16(i%5 + 1))
+		}
+	}()
+
+	wg.Wait()
+	require.LessOrEqual(t, len(tracker.entriesForSigner(signer)), defaultPendingSeenPerSigner)
 }

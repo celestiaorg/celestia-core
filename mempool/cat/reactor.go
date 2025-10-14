@@ -302,6 +302,7 @@ func (memR *Reactor) Receive(e p2p.Envelope) {
 				if err == ErrTxInMempool {
 					schema.WriteMempoolAddResult(memR.traceClient, string(e.Src.ID()), key[:], schema.AlreadyInMempool, err, signer, sequence)
 				} else {
+					memR.pendingSeen.remove(key)
 					schema.WriteMempoolAddResult(memR.traceClient, string(e.Src.ID()), key[:], schema.Rejected, err, signer, sequence)
 					memR.Logger.Debug("Could not add tx", "txKey", key, "err", err)
 					return
@@ -546,24 +547,12 @@ func (memR *Reactor) sequenceExpectationForSigner(signer []byte, useNext, forceA
 		return 0, false, ""
 	}
 
-	var (
-		expectedSeq  uint64
-		haveExpected bool
-	)
+	expectedSeq, haveExpected := memR.localSequenceExpectation(signer, useNext)
 	sequenceSource := "local-mempool"
-	if useNext {
-		expectedSeq, haveExpected = memR.mempool.nextSequenceForSigner(signer)
-	} else {
-		expectedSeq, haveExpected = memR.mempool.lowestSequenceForSigner(signer)
-	}
 
 	if forceApp || !haveExpected {
-		ctx := context.Background()
-		resp, err := memR.mempool.proxyAppConn.QuerySequence(ctx, &abci.RequestQuerySequence{
-			Signer: signer,
-		})
-		if err == nil && resp != nil && resp.Sequence > 0 {
-			expectedSeq = resp.Sequence
+		if seq, ok := memR.querySequenceFromApplication(signer); ok {
+			expectedSeq = seq
 			haveExpected = true
 			sequenceSource = "application"
 		}
@@ -582,7 +571,7 @@ func (memR *Reactor) processPendingSeenForSigner(signer []byte) {
 		return
 	}
 
-	expectedSeq, haveExpected, sequenceSource := memR.sequenceExpectationForSigner(signer, true, true)
+	expectedSeq, haveExpected, _ := memR.sequenceExpectationForSigner(signer, true, true)
 	if !haveExpected {
 		return
 	}
@@ -597,13 +586,6 @@ func (memR *Reactor) processPendingSeenForSigner(signer []byte) {
 			continue
 		}
 		if expectedSeq > entry.sequence {
-			memR.Logger.Debug("pruning stale queued transaction",
-				"txKey", entry.txKey,
-				"signer", entry.signerKey,
-				"sequence", entry.sequence,
-				"expected", expectedSeq,
-				"source", sequenceSource,
-			)
 			memR.pendingSeen.remove(entry.txKey)
 			continue
 		}
@@ -611,7 +593,6 @@ func (memR *Reactor) processPendingSeenForSigner(signer []byte) {
 			continue
 		}
 
-		memR.Logger.Debug("requesting queued transaction", "txKey", entry.txKey, "signer", entry.signerKey, "sequence", entry.sequence, "source", sequenceSource)
 		if memR.tryRequestQueuedTx(entry) {
 			memR.pendingSeen.remove(entry.txKey)
 		}
@@ -632,6 +613,22 @@ func (memR *Reactor) tryRequestQueuedTx(entry *pendingSeenTx) bool {
 
 	memR.findNewPeerToRequestTx(entry.txKey)
 	return memR.requests.ForTx(entry.txKey) != 0
+}
+
+func (memR *Reactor) localSequenceExpectation(signer []byte, useNext bool) (uint64, bool) {
+	if useNext {
+		return memR.mempool.nextSequenceForSigner(signer)
+	}
+	return memR.mempool.lowestSequenceForSigner(signer)
+}
+
+func (memR *Reactor) querySequenceFromApplication(signer []byte) (uint64, bool) {
+	ctx := context.Background()
+	resp, err := memR.mempool.proxyAppConn.QuerySequence(ctx, &abci.RequestQuerySequence{Signer: signer})
+	if err != nil || resp == nil || resp.Sequence == 0 {
+		return 0, false
+	}
+	return resp.Sequence, true
 }
 
 // findNewPeerToSendTx finds a new peer that has already seen the transaction to

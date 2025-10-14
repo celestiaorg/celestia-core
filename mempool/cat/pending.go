@@ -124,7 +124,16 @@ func (ps *pendingSeenTracker) entriesForSigner(signer []byte) []*pendingSeenTx {
 	}
 
 	out := make([]*pendingSeenTx, len(queue))
-	copy(out, queue)
+	for i, entry := range queue {
+		clone := *entry
+		if len(entry.signer) > 0 {
+			clone.signer = append([]byte(nil), entry.signer...)
+		}
+		if len(entry.peers) > 0 {
+			clone.peers = append([]uint16(nil), entry.peers...)
+		}
+		out[i] = &clone
+	}
 	return out
 }
 
