@@ -601,12 +601,10 @@ func (memR *Reactor) processPendingSeenForSigner(signer []byte) {
 }
 
 func (memR *Reactor) tryRequestQueuedTx(entry *pendingSeenTx) bool {
-	for _, peerID := range entry.peerIDs() {
-		peer := memR.ids.GetPeer(peerID)
-		if peer == nil {
-			continue
-		}
-		if memR.requestTx(entry.txKey, peer) {
+	peerIDs := entry.peerIDs()
+	if len(peerIDs) > 0 {
+		peer := memR.ids.GetPeer(peerIDs[0])
+		if peer != nil && memR.requestTx(entry.txKey, peer) {
 			return true
 		}
 	}

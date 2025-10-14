@@ -321,6 +321,46 @@ func TestReactorReceiveRejectedTx(t *testing.T) {
 	peer.AssertExpectations(t)
 }
 
+func TestTryRequestQueuedTxRequestsFirstPeerOnly(t *testing.T) {
+	reactor, _ := setupReactor(t)
+
+	tx := newDefaultTx("request-first-peer")
+	txKey := tx.Key()
+	wantEnv := p2p.Envelope{
+		ChannelID: MempoolWantsChannel,
+		Message: &protomem.Message{
+			Sum: &protomem.Message_WantTx{
+				WantTx: &protomem.WantTx{TxKey: txKey[:]},
+			},
+		},
+	}
+
+	peers := genPeers(2)
+	for _, peer := range peers {
+		_, err := reactor.InitPeer(peer)
+		require.NoError(t, err)
+	}
+
+	firstPeerID := reactor.ids.GetIDForPeer(peers[0].ID())
+	secondPeerID := reactor.ids.GetIDForPeer(peers[1].ID())
+	require.NotZero(t, firstPeerID)
+	require.NotZero(t, secondPeerID)
+
+	entry := &pendingSeenTx{
+		txKey:    txKey,
+		peers:    []uint16{firstPeerID, secondPeerID},
+		signer:   []byte("signer"),
+		sequence: 1,
+	}
+
+	peers[0].On("TrySend", wantEnv).Return(true).Once()
+
+	require.True(t, reactor.tryRequestQueuedTx(entry))
+
+	peers[0].AssertExpectations(t)
+	peers[1].AssertNotCalled(t, "TrySend", mock.Anything)
+}
+
 func TestDefaultGossipDelay(t *testing.T) {
 	// Test that DefaultGossipDelay is set to the expected value
 	expectedDelay := 60 * time.Second
