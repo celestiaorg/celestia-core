@@ -221,7 +221,7 @@ func genReactorTestCases(height int64, round int32) []reactorTestCase {
 
 		// Proposal messages
 		{
-			name:      "proposal with nil proposal",
+			name:      "proposal with empty proposal",
 			channelID: DataChannel,
 			message:   &cmtcons.Proposal{Proposal: cmtproto.Proposal{}},
 		},
@@ -562,16 +562,14 @@ func TestReactorInvalidMessages(t *testing.T) {
 		// and transitions to NewRound before the test can acquire the lock
 		//
 		// Note: PrevoteWait and PrecommitWait are skipped because they require
-		// specific vote patterns (2/3 votes but no majority) which are difficult
-		// to trigger reliably in a test environment with limited peers
+		// votes for different blocks, which is not straightforward to reproduce
+		// using current test primitives
 		{"Propose", cstypes.RoundStepPropose},
 		{"Prevote", cstypes.RoundStepPrevote},
 		{"Precommit", cstypes.RoundStepPrecommit},
 		{"Commit", cstypes.RoundStepCommit},
 	}
 	for _, state := range states {
-		state := state // capture range variable
-
 		t.Run(state.name, func(t *testing.T) {
 			testReactorInvalidMessagesInState(t, state.state)
 		})
