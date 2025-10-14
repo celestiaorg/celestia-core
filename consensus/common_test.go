@@ -303,22 +303,6 @@ func validatePrevote(t *testing.T, cs *State, round int32, privVal *validatorStu
 	}
 }
 
-func validateLastPrecommit(t *testing.T, cs *State, privVal *validatorStub, blockHash []byte) {
-	cs.rsMtx.RLock()
-	votes := cs.rs.LastCommit
-	cs.rsMtx.RUnlock()
-	pv, err := privVal.GetPubKey()
-	require.NoError(t, err)
-	address := pv.Address()
-	var vote *types.Vote
-	if vote = votes.GetByAddress(address); vote == nil {
-		panic("Failed to find precommit from validator")
-	}
-	if !bytes.Equal(vote.BlockID.Hash, blockHash) {
-		panic(fmt.Sprintf("Expected precommit to be for %X, got %X", blockHash, vote.BlockID.Hash))
-	}
-}
-
 func validatePrecommit(
 	t *testing.T,
 	cs *State,
