@@ -114,12 +114,11 @@ func (ps *pendingSeenTracker) entriesForSigner(signer []byte) []*pendingSeenTx {
 	if len(signer) == 0 {
 		return nil
 	}
-	signerKey := string(signer)
 
 	ps.mu.Lock()
 	defer ps.mu.Unlock()
 
-	queue := ps.perSigner[signerKey]
+	queue := ps.perSigner[string(signer)]
 	if len(queue) == 0 {
 		return nil
 	}
