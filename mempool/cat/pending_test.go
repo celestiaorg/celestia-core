@@ -117,7 +117,7 @@ func TestPendingSeenTrackerConcurrentAccess(t *testing.T) {
 	tracker := newPendingSeenTracker(0)
 	signer := []byte("signer")
 
-	const total = 50
+	const total = 5000
 	var wg sync.WaitGroup
 	wg.Add(3)
 
