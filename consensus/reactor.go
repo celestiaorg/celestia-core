@@ -276,7 +276,7 @@ func (conR *Reactor) Receive(e p2p.Envelope) {
 func (conR *Reactor) receive(e p2p.Envelope) error {
 	if !conR.IsRunning() {
 		conR.Logger.Trace("Receive", "src", e.Src, "chId", e.ChannelID)
-		return
+		return nil
 	}
 	msg, err := MsgFromProto(e.Message)
 	if err != nil {
