@@ -325,7 +325,7 @@ func (memR *Reactor) Receive(e p2p.Envelope) {
 				resp, err := memR.mempool.proxyAppConn.QuerySequence(ctx, &abci.RequestQuerySequence{
 					Signer: msg.Signer,
 				})
-				if err == nil && resp != nil && resp.Sequence > 0 {
+				if err == nil && resp != nil && resp.Sequence >= 0 {
 					expectedSeq = resp.Sequence
 					haveExpected = true
 					sequenceSource = "application"
