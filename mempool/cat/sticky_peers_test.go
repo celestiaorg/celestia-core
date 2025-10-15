@@ -40,6 +40,10 @@ func TestSelectStickyPeersDeterministic(t *testing.T) {
 		2: newMockPeer("peer-2"),
 		3: newMockPeer("peer-3"),
 		4: newMockPeer("peer-4"),
+		5: newMockPeer("peer-5"),
+		6: newMockPeer("peer-6"),
+		7: newMockPeer("peer-7"),
+		8: newMockPeer("peer-8"),
 	}
 	signer := []byte("signer-A")
 	salt := []byte("salt")
@@ -55,6 +59,10 @@ func TestSelectStickyPeersDeterministic(t *testing.T) {
 		2: peers[2],
 		1: peers[1],
 		3: peers[3],
+		6: peers[6],
+		5: peers[5],
+		7: peers[7],
+		8: peers[8],
 	}
 	third := selectStickyPeers(signer, altPeers, 3, salt)
 	require.Equal(t, stickyPeerIDs(first), stickyPeerIDs(third))
