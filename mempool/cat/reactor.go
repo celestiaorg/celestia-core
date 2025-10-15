@@ -604,7 +604,7 @@ func (memR *Reactor) localSequenceExpectation(signer []byte, useNext bool) (uint
 func (memR *Reactor) querySequenceFromApplication(signer []byte) (uint64, bool) {
 	ctx := context.Background()
 	resp, err := memR.mempool.proxyAppConn.QuerySequence(ctx, &abci.RequestQuerySequence{Signer: signer})
-	if err != nil || resp == nil || resp.Sequence == 0 {
+	if err != nil || resp == nil {
 		return 0, false
 	}
 	return resp.Sequence, true
