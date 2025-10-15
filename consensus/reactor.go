@@ -265,6 +265,15 @@ func (conR *Reactor) RemovePeer(p2p.Peer, interface{}) {
 // proposals, block parts, and votes are ordered by the receiveRoutine
 // NOTE: blocks on consensus state for proposals, block parts, and votes
 func (conR *Reactor) Receive(e p2p.Envelope) {
+	err := conR.receive(e)
+	if err != nil {
+		conR.Switch.StopPeerForError(e.Src, err, conR.String())
+	}
+}
+
+// receive is an inner function that returns an error if the message is incorrect
+// but doesn't disconnect the peer (this allows us to test the behavior of the function)
+func (conR *Reactor) receive(e p2p.Envelope) error {
 	if !conR.IsRunning() {
 		conR.Logger.Trace("Receive", "src", e.Src, "chId", e.ChannelID)
 		return
@@ -272,14 +281,12 @@ func (conR *Reactor) Receive(e p2p.Envelope) {
 	msg, err := MsgFromProto(e.Message)
 	if err != nil {
 		conR.Logger.Error("Error decoding message", "src", e.Src, "chId", e.ChannelID, "err", err)
-		conR.Switch.StopPeerForError(e.Src, err, conR.String())
-		return
+		return err
 	}
 
 	if err = msg.ValidateBasic(); err != nil {
 		conR.Logger.Error("Peer sent us invalid msg", "peer", e.Src, "msg", e.Message, "err", err)
-		conR.Switch.StopPeerForError(e.Src, err, conR.String())
-		return
+		return err
 	}
 
 	conR.Logger.Trace("Receive", "src", e.Src, "chId", e.ChannelID, "msg", msg)
@@ -308,8 +315,7 @@ func (conR *Reactor) Receive(e p2p.Envelope) {
 			)
 			if err = msg.ValidateHeight(initialHeight); err != nil {
 				conR.Logger.Error("Peer sent us invalid msg", "peer", e.Src, "msg", msg, "err", err)
-				conR.Switch.StopPeerForError(e.Src, err, conR.String())
-				return
+				return err
 			}
 			ps.ApplyNewRoundStepMessage(msg)
 		case *NewValidBlockMessage:
@@ -347,13 +353,12 @@ func (conR *Reactor) Receive(e p2p.Envelope) {
 				schema.Download,
 			)
 			if height != msg.Height {
-				return
+				return nil
 			}
 			// Peer claims to have a maj23 for some BlockID at H,R,S,
 			err := votes.SetPeerMaj23(msg.Round, msg.Type, ps.peer.ID(), msg.BlockID)
 			if err != nil {
-				conR.Switch.StopPeerForError(e.Src, err, conR.String())
-				return
+				return err
 			}
 			// Respond with a VoteSetBitsMessage showing which votes we have.
 			// (and consequently shows which we don't have)
@@ -396,7 +401,7 @@ func (conR *Reactor) Receive(e p2p.Envelope) {
 	case DataChannel:
 		if conR.WaitSync() {
 			conR.Logger.Info("Ignoring message received during sync", "msg", msg)
-			return
+			return nil
 		}
 		switch msg := msg.(type) {
 		// TODO handle the proposal message case in the propagation reactor
@@ -432,7 +437,7 @@ func (conR *Reactor) Receive(e p2p.Envelope) {
 	case VoteChannel:
 		if conR.WaitSync() {
 			conR.Logger.Info("Ignoring message received during sync", "msg", msg)
-			return
+			return nil
 		}
 		switch msg := msg.(type) {
 		case *VoteMessage:
@@ -454,7 +459,7 @@ func (conR *Reactor) Receive(e p2p.Envelope) {
 	case VoteSetBitsChannel:
 		if conR.WaitSync() {
 			conR.Logger.Info("Ignoring message received during sync", "msg", msg)
-			return
+			return nil
 		}
 		switch msg := msg.(type) {
 		case *VoteSetBitsMessage:
@@ -485,6 +490,7 @@ func (conR *Reactor) Receive(e p2p.Envelope) {
 	default:
 		conR.Logger.Error(fmt.Sprintf("Unknown chId %X", e.ChannelID))
 	}
+	return nil
 }
 
 // SetEventBus sets event bus.

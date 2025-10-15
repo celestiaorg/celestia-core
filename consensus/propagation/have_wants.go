@@ -533,6 +533,8 @@ func (blockProp *Reactor) handleRecoveryPart(peer p2p.ID, part *proptypes.Recove
 		parts.IsDecoding.Store(true)
 		defer parts.IsDecoding.Store(false)
 
+		missingOriginalParts := parts.Original().BitArray().Not()
+
 		err := parts.Decode()
 		if err != nil {
 			blockProp.Logger.Error("failed to decode parts", "peer", peer, "height", part.Height, "round", part.Round, "error", err)
@@ -553,7 +555,7 @@ func (blockProp *Reactor) handleRecoveryPart(peer p2p.ID, part *proptypes.Recove
 				continue
 			}
 			// only send original parts to the consensus reactor
-			if i < parts.Original().Total() {
+			if i < parts.Original().Total() && missingOriginalParts.GetIndex(int(i)) {
 				select {
 				case <-blockProp.ctx.Done():
 					return

@@ -492,6 +492,54 @@ func TestVoteProtobuf(t *testing.T) {
 	}
 }
 
+func TestVoteFromProtoNil(t *testing.T) {
+	testCases := []struct {
+		name        string
+		vote        *cmtproto.Vote
+		expectError bool
+		expectedErr error
+	}{
+		{
+			name:        "nil vote",
+			vote:        nil,
+			expectError: true,
+			expectedErr: ErrVoteNil,
+		},
+		{
+			name: "valid vote",
+			vote: &cmtproto.Vote{
+				Type:   cmtproto.PrevoteType,
+				Height: 1,
+				Round:  0,
+				BlockID: cmtproto.BlockID{
+					Hash: tmhash.Sum([]byte("blockhash")),
+					PartSetHeader: cmtproto.PartSetHeader{
+						Total: 1,
+						Hash:  tmhash.Sum([]byte("partset")),
+					},
+				},
+			},
+			expectError: false,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			vote, err := VoteFromProto(tc.vote)
+			if tc.expectError {
+				require.Error(t, err)
+				if tc.expectedErr != nil {
+					require.Equal(t, tc.expectedErr, err)
+				}
+				require.Nil(t, vote)
+			} else {
+				require.NoError(t, err)
+				require.NotNil(t, vote)
+			}
+		})
+	}
+}
+
 func TestSignAndCheckVote(t *testing.T) {
 	privVal := NewMockPV()
 
