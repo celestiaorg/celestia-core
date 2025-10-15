@@ -97,12 +97,12 @@ func (t *timeoutTicker) stopTimer() {
 // NOTE: timerActive is not concurrency safe, but it's only accessed in NewTimer and timeoutRoutine,
 // making it single-threaded access.
 func (t *timeoutTicker) timeoutRoutine() {
-	t.Logger.Debug("Starting timeout routine")
+	t.Logger.Trace("Starting timeout routine")
 	var ti timeoutInfo
 	for {
 		select {
 		case newti := <-t.tickChan:
-			t.Logger.Debug("Received tick", "old_ti", ti, "new_ti", newti)
+			t.Logger.Trace("Received tick", "old_ti", ti, "new_ti", newti)
 
 			// ignore tickers for old height/round/step
 			if newti.Height < ti.Height {
@@ -126,7 +126,7 @@ func (t *timeoutTicker) timeoutRoutine() {
 			t.timer.Reset(ti.Duration)
 			t.timerActive = true
 
-			t.Logger.Debug("Scheduled timeout", "dur", ti.Duration, "height", ti.Height, "round", ti.Round, "step", ti.Step)
+			t.Logger.Trace("Scheduled timeout", "dur", ti.Duration, "height", ti.Height, "round", ti.Round, "step", ti.Step)
 		case <-t.timer.C:
 			t.timerActive = false
 			t.Logger.Info("Timed out", "dur", ti.Duration, "height", ti.Height, "round", ti.Round, "step", ti.Step)

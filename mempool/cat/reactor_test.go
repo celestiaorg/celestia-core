@@ -633,7 +633,6 @@ func TestReactorSequenceValidation(t *testing.T) {
 	t.Run("matching sequence requests tx", func(t *testing.T) {
 		pool.Flush()
 		t.Cleanup(pool.Flush)
-
 		tx1 := newDefaultTx("test-tx-1")
 		txKey1 := tx1.Key()
 
@@ -671,7 +670,6 @@ func TestReactorSequenceValidation(t *testing.T) {
 	t.Run("mismatched sequence skips tx request", func(t *testing.T) {
 		pool.Flush()
 		t.Cleanup(pool.Flush)
-
 		tx2 := newDefaultTx("test-tx-2")
 		txKey2 := tx2.Key()
 
@@ -703,7 +701,6 @@ func TestReactorSequenceValidation(t *testing.T) {
 	t.Run("no sequence info requests tx", func(t *testing.T) {
 		pool.Flush()
 		t.Cleanup(pool.Flush)
-
 		tx3 := newDefaultTx("test-tx-3")
 		txKey3 := tx3.Key()
 

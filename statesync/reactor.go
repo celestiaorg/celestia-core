@@ -129,7 +129,7 @@ func (r *Reactor) Receive(e p2p.Envelope) {
 				return
 			}
 			for _, snapshot := range snapshots {
-				r.Logger.Debug("Advertising snapshot", "height", snapshot.Height,
+				r.Logger.Trace("Advertising snapshot", "height", snapshot.Height,
 					"format", snapshot.Format, "peer", e.Src.ID())
 				e.Src.Send(p2p.Envelope{
 					ChannelID: e.ChannelID,
@@ -150,7 +150,7 @@ func (r *Reactor) Receive(e p2p.Envelope) {
 				r.Logger.Debug("Received unexpected snapshot, no state sync in progress")
 				return
 			}
-			r.Logger.Debug("Received snapshot", "height", msg.Height, "format", msg.Format, "peer", e.Src.ID())
+			r.Logger.Trace("Received snapshot", "height", msg.Height, "format", msg.Format, "peer", e.Src.ID())
 			_, err := r.syncer.AddSnapshot(e.Src, &snapshot{
 				Height:   msg.Height,
 				Format:   msg.Format,
@@ -172,7 +172,7 @@ func (r *Reactor) Receive(e p2p.Envelope) {
 	case ChunkChannel:
 		switch msg := e.Message.(type) {
 		case *ssproto.ChunkRequest:
-			r.Logger.Debug("Received chunk request", "height", msg.Height, "format", msg.Format,
+			r.Logger.Trace("Received chunk request", "height", msg.Height, "format", msg.Format,
 				"chunk", msg.Index, "peer", e.Src.ID())
 			resp, err := r.conn.LoadSnapshotChunk(context.TODO(), &abci.RequestLoadSnapshotChunk{
 				Height: msg.Height,
@@ -184,7 +184,7 @@ func (r *Reactor) Receive(e p2p.Envelope) {
 					"chunk", msg.Index, "err", err)
 				return
 			}
-			r.Logger.Debug("Sending chunk", "height", msg.Height, "format", msg.Format,
+			r.Logger.Trace("Sending chunk", "height", msg.Height, "format", msg.Format,
 				"chunk", msg.Index, "peer", e.Src.ID())
 			e.Src.Send(p2p.Envelope{
 				ChannelID: ChunkChannel,
@@ -204,7 +204,7 @@ func (r *Reactor) Receive(e p2p.Envelope) {
 				r.Logger.Debug("Received unexpected chunk, no state sync in progress", "peer", e.Src.ID())
 				return
 			}
-			r.Logger.Debug("Received chunk, adding to sync", "height", msg.Height, "format", msg.Format,
+			r.Logger.Trace("Received chunk, adding to sync", "height", msg.Height, "format", msg.Format,
 				"chunk", msg.Index, "peer", e.Src.ID())
 			_, err := r.syncer.AddChunk(&chunk{
 				Height: msg.Height,
@@ -275,7 +275,7 @@ func (r *Reactor) Sync(stateProvider StateProvider, discoveryTime time.Duration)
 	r.mtx.Unlock()
 
 	hook := func() {
-		r.Logger.Debug("Requesting snapshots from known peers")
+		r.Logger.Trace("Requesting snapshots from known peers")
 		// Request snapshots from all currently connected peers
 
 		r.Switch.Broadcast(p2p.Envelope{

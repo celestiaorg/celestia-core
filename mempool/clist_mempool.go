@@ -182,7 +182,7 @@ func WithTraceClient(tc trace.Tracer) CListMempoolOption {
 // Safe for concurrent use by multiple goroutines.
 func (mem *CListMempool) Lock() {
 	if mem.recheck.setRecheckFull() {
-		mem.logger.Debug("the state of recheckFull has flipped")
+		mem.logger.Trace("the state of recheckFull has flipped")
 	}
 	mem.updateMtx.Lock()
 }
@@ -458,7 +458,7 @@ func (mem *CListMempool) resCbFirstTime(
 			if e, ok := mem.txsMap.Load(tx.Key()); ok {
 				memTx := e.(*clist.CElement).Value.(*mempoolTx)
 				memTx.addSender(txInfo.SenderID)
-				mem.logger.Debug(
+				mem.logger.Trace(
 					"transaction already there, not adding it again",
 					"tx", tx.Hash(),
 					"res", r,
@@ -476,7 +476,7 @@ func (mem *CListMempool) resCbFirstTime(
 			}
 			memTx.addSender(txInfo.SenderID)
 			mem.addTx(memTx)
-			mem.logger.Debug(
+			mem.logger.Trace(
 				"added good transaction",
 				"tx", tx.Hash(),
 				"res", r,
@@ -524,7 +524,7 @@ func (mem *CListMempool) resCbRecheck(tx types.Tx, res *abci.ResponseCheckTx) {
 
 	if (res.Code != abci.CodeTypeOK) || postCheckErr != nil {
 		// Tx became invalidated due to newly committed block.
-		mem.logger.Debug("tx is no longer valid", "tx", tx.Hash(), "res", res, "postCheckErr", postCheckErr)
+		mem.logger.Trace("tx is no longer valid", "tx", tx.Hash(), "res", res, "postCheckErr", postCheckErr)
 		if err := mem.RemoveTxByKey(tx.Key()); err != nil {
 			mem.logger.Debug("Transaction could not be removed from mempool", "err", err)
 		}
@@ -619,7 +619,7 @@ func (mem *CListMempool) Update(
 	preCheck PreCheckFunc,
 	postCheck PostCheckFunc,
 ) error {
-	mem.logger.Debug("Update", "height", height, "len(txs)", len(txs))
+	mem.logger.Trace("Update", "height", height, "len(txs)", len(txs))
 
 	// Set height
 	mem.height.Store(height)
@@ -653,7 +653,7 @@ func (mem *CListMempool) Update(
 		//   100
 		// https://github.com/tendermint/tendermint/issues/3322.
 		if err := mem.RemoveTxByKey(tx.Key()); err != nil {
-			mem.logger.Debug("Committed transaction not in local mempool (not an error)",
+			mem.logger.Trace("Committed transaction not in local mempool (not an error)",
 				"key", tx.Key(),
 				"error", err.Error())
 		}
@@ -679,7 +679,7 @@ func (mem *CListMempool) Update(
 // recheckTxs sends all transactions in the mempool to the app for re-validation. When the function
 // returns, all recheck responses from the app have been processed.
 func (mem *CListMempool) recheckTxs() {
-	mem.logger.Debug("recheck txs", "height", mem.height.Load(), "num-txs", mem.Size())
+	mem.logger.Trace("recheck txs", "height", mem.height.Load(), "num-txs", mem.Size())
 
 	if mem.Size() <= 0 {
 		return
@@ -719,7 +719,7 @@ func (mem *CListMempool) recheckTxs() {
 	if n := mem.recheck.numPendingTxs.Load(); n > 0 {
 		mem.logger.Error("not all txs were rechecked", "not-rechecked", n)
 	}
-	mem.logger.Debug("done rechecking txs", "height", mem.height.Load(), "num-txs", mem.Size())
+	mem.logger.Trace("done rechecking txs", "height", mem.height.Load(), "num-txs", mem.Size())
 }
 
 // The cursor and end pointers define a dynamic list of transactions that could be rechecked. The

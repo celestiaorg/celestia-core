@@ -241,7 +241,7 @@ func (blockProp *Reactor) RemovePeer(peer p2p.Peer, reason interface{}) {
 
 func (blockProp *Reactor) ReceiveEnvelope(e p2p.Envelope) {
 	if !blockProp.IsRunning() {
-		blockProp.Logger.Debug("Receive", "src", e.Src, "chId", e.ChannelID)
+		blockProp.Logger.Trace("Receive", "src", e.Src, "chId", e.ChannelID)
 		return
 	}
 

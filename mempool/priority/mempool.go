@@ -521,7 +521,7 @@ func (txmp *TxMempool) addNewTransaction(wtx *WrappedTx, checkTxRes *abci.Respon
 		elt, ok := txmp.txBySender[string(sender)]
 		if ok {
 			w := elt.Value.(*WrappedTx)
-			txmp.logger.Debug(
+			txmp.logger.Trace(
 				"rejected valid incoming transaction; tx already exists for sender",
 				"tx", fmt.Sprintf("%X", w.tx.Hash()),
 				"sender", sender,
@@ -563,7 +563,7 @@ func (txmp *TxMempool) addNewTransaction(wtx *WrappedTx, checkTxRes *abci.Respon
 			return
 		}
 
-		txmp.logger.Debug("evicting lower-priority transactions",
+		txmp.logger.Trace("evicting lower-priority transactions",
 			"new_tx", fmt.Sprintf("%X", wtx.tx.Hash()),
 			"new_priority", priority,
 		)
@@ -611,7 +611,7 @@ func (txmp *TxMempool) addNewTransaction(wtx *WrappedTx, checkTxRes *abci.Respon
 	txmp.metrics.TxSizeBytes.Observe(float64(wtx.Size()))
 	txmp.metrics.Size.Set(float64(txmp.Size()))
 	txmp.metrics.SizeBytes.Set(float64(txmp.SizeBytes()))
-	txmp.logger.Debug(
+	txmp.logger.Trace(
 		"inserted new valid transaction",
 		"priority", wtx.Priority(),
 		"tx", fmt.Sprintf("%X", wtx.tx.Hash()),
@@ -688,7 +688,7 @@ func (txmp *TxMempool) recheckTransactions() {
 	if txmp.Size() == 0 {
 		panic("mempool: cannot run recheck on an empty mempool")
 	}
-	txmp.logger.Debug(
+	txmp.logger.Trace(
 		"executing re-CheckTx for all remaining transactions",
 		"num_txs", txmp.Size(),
 		"height", txmp.height,

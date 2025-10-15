@@ -149,7 +149,7 @@ func (bs *BaseService) Start() error {
 		}
 		return nil
 	}
-	bs.Logger.Debug("service start",
+	bs.Logger.Trace("service start",
 		"msg",
 		log.NewLazySprintf("Not starting %v service -- already started", bs.name),
 		"impl",
@@ -182,7 +182,7 @@ func (bs *BaseService) Stop() error {
 		close(bs.quit)
 		return nil
 	}
-	bs.Logger.Debug("service stop",
+	bs.Logger.Trace("service stop",
 		"msg",
 		log.NewLazySprintf("Stopping %v service (already stopped)", bs.name),
 		"impl",
@@ -199,7 +199,7 @@ func (bs *BaseService) OnStop() {}
 // will be returned if the service is running.
 func (bs *BaseService) Reset() error {
 	if !atomic.CompareAndSwapUint32(&bs.stopped, 1, 0) {
-		bs.Logger.Debug("service reset",
+		bs.Logger.Trace("service reset",
 			"msg",
 			log.NewLazySprintf("Can't reset %v service. Not stopped", bs.name),
 			"impl",

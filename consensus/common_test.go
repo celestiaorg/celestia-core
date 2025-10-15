@@ -56,6 +56,7 @@ var (
 	config                *cfg.Config // NOTE: must be reset for each _test.go file
 	consensusReplayConfig *cfg.Config
 	ensureTimeout         = time.Millisecond * 200
+	ensureProposalTimeout = ensureTimeout * 5 // proposals can be delayed by TimeoutCommit and scheduling jitter
 )
 
 func ensureDir(dir string, mode os.FileMode) {
@@ -625,7 +626,7 @@ func ensureNewTimeout(timeoutCh <-chan cmtpubsub.Message, height int64, round in
 
 func ensureNewProposal(proposalCh <-chan cmtpubsub.Message, height int64, round int32) {
 	select {
-	case <-time.After(ensureTimeout):
+	case <-time.After(ensureProposalTimeout):
 		panic("Timeout expired while waiting for NewProposal event")
 	case msg := <-proposalCh:
 		proposalEvent, ok := msg.Data().(types.EventDataCompleteProposal)
