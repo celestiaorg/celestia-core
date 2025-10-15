@@ -315,33 +315,23 @@ func (memR *Reactor) Receive(e p2p.Envelope) {
 			return
 		}
 
-		// Use local sequence information when available, otherwise query the application.
+		// Optionally query the sequence from the application before requesting the transaction
 		if len(msg.Signer) > 0 && msg.Sequence > 0 {
-			expectedSeq, haveExpected := memR.mempool.lowestSequenceForSigner(msg.Signer)
-			sequenceSource := "local-mempool"
-
-			if !haveExpected {
-				ctx := context.Background()
-				resp, err := memR.mempool.proxyAppConn.QuerySequence(ctx, &abci.RequestQuerySequence{
-					Signer: msg.Signer,
-				})
-				if err == nil && resp != nil && resp.Sequence >= 0 {
-					expectedSeq = resp.Sequence
-					haveExpected = true
-					sequenceSource = "application"
+			ctx := context.Background()
+			resp, err := memR.mempool.proxyAppConn.QuerySequence(ctx, &abci.RequestQuerySequence{
+				Signer: msg.Signer,
+			})
+			if err == nil && resp != nil && resp.Sequence > 0 {
+				if resp.Sequence != msg.Sequence {
+					memR.Logger.Debug("sequence mismatch for transaction, skipping request",
+						"txKey", txKey,
+						"expected", resp.Sequence,
+						"received", msg.Sequence,
+						"signer", string(msg.Signer),
+					)
+					// Skip requesting the transaction if the sequence doesn't match
+					return
 				}
-			}
-
-			if haveExpected && expectedSeq != msg.Sequence {
-				memR.Logger.Debug("sequence mismatch for transaction, skipping request",
-					"txKey", txKey,
-					"expected", expectedSeq,
-					"received", msg.Sequence,
-					"signer", string(msg.Signer),
-					"source", sequenceSource,
-				)
-				// Skip requesting the transaction if the sequence doesn't match
-				return
 			}
 		}
 
