@@ -440,7 +440,7 @@ func makeAndConnectReactors(t *testing.T, config *cfg.Config, n int) []*Reactor 
 	for i := 0; i < n; i++ {
 		var pool *TxPool
 		reactors[i], pool = setupReactor(t)
-		reactors[i].SetStickyPeerSalt([]byte{byte(i + 1)})
+		reactors[i].SetStickySalt([]byte{byte(i + 1)})
 		pool.logger = logger.With("validator", i)
 		reactors[i].SetLogger(logger.With("validator", i))
 	}

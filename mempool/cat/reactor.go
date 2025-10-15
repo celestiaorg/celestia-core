@@ -116,8 +116,8 @@ func NewReactor(mempool *TxPool, opts *ReactorOptions) (*Reactor, error) {
 		p2p.WithIncomingQueueSize(ReactorIncomingMessageQueueSize),
 		p2p.WithQueueingFunc(memR.TryQueueUnprocessedEnvelope),
 	)
-	memR.stickySalt.Store([]byte(nil))
-	memR.SetStickyPeerSalt(opts.StickyPeerSalt)
+	memR.stickySalt.Store([]byte(nil)) // establish concrete []byte type for atomic.Value
+	memR.SetStickySalt(opts.StickyPeerSalt)
 	return memR, nil
 }
 
@@ -126,8 +126,8 @@ func (memR *Reactor) SetLogger(l log.Logger) {
 	memR.Logger = l
 }
 
-// SetStickyPeerSalt configures the salt used for sticky peer selection. Passing nil resets it.
-func (memR *Reactor) SetStickyPeerSalt(salt []byte) {
+// SetStickySalt configures the salt used for sticky peer selection. Passing nil resets it.
+func (memR *Reactor) SetStickySalt(salt []byte) {
 	if salt == nil {
 		memR.stickySalt.Store([]byte(nil))
 		return
@@ -135,15 +135,6 @@ func (memR *Reactor) SetStickyPeerSalt(salt []byte) {
 	cp := make([]byte, len(salt))
 	copy(cp, salt)
 	memR.stickySalt.Store(cp)
-}
-
-// SetLocalPeerID configures the sticky peer salt using the node's peer ID.
-func (memR *Reactor) SetLocalPeerID(id p2p.ID) {
-	if len(id) == 0 {
-		memR.SetStickyPeerSalt(nil)
-		return
-	}
-	memR.SetStickyPeerSalt([]byte(id))
 }
 
 func (memR *Reactor) currentStickyPeerSalt() []byte {
@@ -365,28 +356,24 @@ func (memR *Reactor) Receive(e p2p.Envelope) {
 			return
 		}
 
-		shouldRequest, expectedSeq, sequenceSource, haveExpected := memR.shouldRequestTxForSigner(msg.Signer, msg.Sequence, false, false)
-		if !shouldRequest {
-			if haveExpected && expectedSeq > msg.Sequence {
-				memR.Logger.Debug("sequence already advanced past transaction, dropping pending seen",
-					"txKey", txKey,
-					"expected", expectedSeq,
-					"received", msg.Sequence,
-					"signer", string(msg.Signer),
-					"source", sequenceSource,
-				)
-				memR.pendingSeen.remove(txKey)
-				return
-			}
+		expectedSeq, haveExpected := memR.sequenceExpectationForSigner(msg.Signer, false, false)
 
-			memR.Logger.Debug("sequence mismatch for transaction, delaying request",
-				"txKey", txKey,
-				"expected", expectedSeq,
-				"received", msg.Sequence,
-				"signer", string(msg.Signer),
-				"source", sequenceSource,
-			)
+		switch {
+		case len(msg.Signer) == 0 || msg.Sequence == 0 || !haveExpected:
+			// fallthrough to requesting the transaction immediately
+		case msg.Sequence == expectedSeq:
+			// fallthrough to requesting the transaction immediately
+		case msg.Sequence > expectedSeq:
 			memR.pendingSeen.add(msg.Signer, txKey, msg.Sequence, peerID)
+			return
+		default:
+			memR.Logger.Debug(
+				"dropping SeenTx due to lower than expected sequence",
+				"txKey", txKey,
+				"sequence", msg.Sequence,
+				"expectedSequence", expectedSeq,
+			)
+			memR.pendingSeen.remove(txKey)
 			return
 		}
 
@@ -530,37 +517,30 @@ func (memR *Reactor) requestTx(txKey types.TxKey, peer p2p.Peer) bool {
 	return success
 }
 
-func (memR *Reactor) shouldRequestTxForSigner(signer []byte, sequence uint64, useNext, forceApp bool) (bool, uint64, string, bool) {
-	if len(signer) == 0 || sequence == 0 {
-		return true, 0, "", false
-	}
-
-	expectedSeq, haveExpected, sequenceSource := memR.sequenceExpectationForSigner(signer, useNext, forceApp)
-	if haveExpected && expectedSeq != sequence {
-		return false, expectedSeq, sequenceSource, haveExpected
-	}
-	return true, expectedSeq, sequenceSource, haveExpected
-}
-
-func (memR *Reactor) sequenceExpectationForSigner(signer []byte, useNext, forceApp bool) (uint64, bool, string) {
+func (memR *Reactor) sequenceExpectationForSigner(signer []byte, useNext, forceApp bool) (uint64, bool) {
 	if len(signer) == 0 {
-		return 0, false, ""
+		return 0, false
 	}
 
 	expectedSeq, haveExpected := memR.localSequenceExpectation(signer, useNext)
-	sequenceSource := "local-mempool"
 
 	if forceApp || !haveExpected {
 		if seq, ok := memR.querySequenceFromApplication(signer); ok {
 			expectedSeq = seq
 			haveExpected = true
-			sequenceSource = "application"
 		}
 	}
 
-	return expectedSeq, haveExpected, sequenceSource
+	return expectedSeq, haveExpected
 }
 
+// processPendingSeenForSigner tries to advance the pipeline of queued transactions for a signer.
+// It must be invoked whenever our view of the signer's sequence might have progressed (e.g. right
+// after we successfully added one of their transactions, or after the mempool broadcasts a new one),
+// because those are the moments when we have new evidence about the expected next sequence. The
+// method re-queries the application (`forceApp=true`) so any transactions the signer already had
+// included in a block show up as `expectedSeq > entry.sequence` and are dropped from the pending
+// queue.
 func (memR *Reactor) processPendingSeenForSigner(signer []byte) {
 	if len(signer) == 0 {
 		return
@@ -571,7 +551,7 @@ func (memR *Reactor) processPendingSeenForSigner(signer []byte) {
 		return
 	}
 
-	expectedSeq, haveExpected, _ := memR.sequenceExpectationForSigner(signer, true, true)
+	expectedSeq, haveExpected := memR.sequenceExpectationForSigner(signer, true, true)
 	if !haveExpected {
 		return
 	}
