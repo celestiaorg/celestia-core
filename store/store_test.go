@@ -828,7 +828,13 @@ func TestSaveTxInfo(t *testing.T) {
 			// We don't save the logs for successful transactions
 			if allTxResponseCodes[txIndex] == abci.CodeTypeOK {
 				require.Equal(t, "", txInfo.Error)
+				require.Equal(t, "", txInfo.Codespace)
+				require.Equal(t, int64(75000), txInfo.GasUsed)
+				require.Equal(t, int64(100000), txInfo.GasWanted)
 			} else {
+				require.Equal(t, "app", txInfo.Codespace)
+				require.Equal(t, int64(25000), txInfo.GasUsed)
+				require.Equal(t, int64(50000), txInfo.GasWanted)
 				require.Equal(t, allTxLogs[txIndex], txInfo.Error)
 			}
 			txIndex++
@@ -844,4 +850,7 @@ func TestSaveTxInfo(t *testing.T) {
 	require.Equal(t, txInfo.Height, int64(7))
 	require.Equal(t, uint32(1), txInfo.Code)
 	require.Equal(t, "failure", txInfo.Error)
+	require.Equal(t, "app", txInfo.Codespace)
+	require.Equal(t, int64(50000), txInfo.GasWanted)
+	require.Equal(t, int64(25000), txInfo.GasUsed)
 }

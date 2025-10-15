@@ -335,9 +335,9 @@ func (_m *BlockStore) SaveBlockWithExtendedCommit(block *types.Block, blockParts
 	_m.Called(block, blockParts, seenCommit)
 }
 
-// SaveTxInfo provides a mock function with given fields: block, txResults
-func (_m *BlockStore) SaveTxInfo(block *types.Block, txResults []*abcitypes.ExecTxResult) error {
-	ret := _m.Called(block, txResults)
+// SaveTxInfo provides a mock function with given fields: block, execTxRes
+func (_m *BlockStore) SaveTxInfo(block *types.Block, execTxRes []*abcitypes.ExecTxResult) error {
+	ret := _m.Called(block, execTxRes)
 
 	if len(ret) == 0 {
 		panic("no return value specified for SaveTxInfo")
@@ -345,7 +345,7 @@ func (_m *BlockStore) SaveTxInfo(block *types.Block, txResults []*abcitypes.Exec
 
 	var r0 error
 	if rf, ok := ret.Get(0).(func(*types.Block, []*abcitypes.ExecTxResult) error); ok {
-		r0 = rf(block, txResults)
+		r0 = rf(block, execTxRes)
 	} else {
 		r0 = ret.Error(0)
 	}

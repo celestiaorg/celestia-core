@@ -41,7 +41,7 @@ type BlockStore interface {
 	LoadBlockExtendedCommit(height int64) *types.ExtendedCommit
 
 	LoadTxInfo(hash []byte) *cmtstore.TxInfo
-	SaveTxInfo(block *types.Block, txResults []*abci.ExecTxResult) error
+	SaveTxInfo(block *types.Block, execTxRes []*abci.ExecTxResult) error
 
 	DeleteLatestBlock() error
 

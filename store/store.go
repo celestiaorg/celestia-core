@@ -793,9 +793,9 @@ func (bs *BlockStore) DeleteLatestBlock() error {
 
 // SaveTxInfo indexes the txs from the block with the given execution results.
 // Only the error logs are saved for failed transactions.
-func (bs *BlockStore) SaveTxInfo(block *types.Block, txResults []*abci.ExecTxResult) error {
-	if len(txResults) != len(block.Txs) {
-		return errors.New("txResults length mismatch with block txs length")
+func (bs *BlockStore) SaveTxInfo(block *types.Block, execTxRes []*abci.ExecTxResult) error {
+	if len(execTxRes) != len(block.Txs) {
+		return errors.New("tx execution results length mismatch with block txs length")
 	}
 
 	// Create a new batch
@@ -803,7 +803,7 @@ func (bs *BlockStore) SaveTxInfo(block *types.Block, txResults []*abci.ExecTxRes
 
 	// Batch and save txs from the block
 	for i, tx := range block.Txs {
-		result := txResults[i]
+		result := execTxRes[i]
 		txInfo := cmtstore.TxInfo{
 			Height: block.Height,
 			//nolint:gosec
