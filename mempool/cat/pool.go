@@ -295,7 +295,7 @@ func (txmp *TxPool) TryAddNewTx(tx *types.CachedTx, key types.TxKey, txInfo memp
 
 	// reserve the key
 	if !txmp.store.reserve(key) {
-		txmp.logger.Debug("mempool already attempting to verify and add transaction", "txKey", fmt.Sprintf("%X", key))
+		txmp.logger.Trace("mempool already attempting to verify and add transaction", "txKey", fmt.Sprintf("%X", key))
 		txmp.PeerHasTx(txInfo.SenderID, key)
 		return nil, ErrTxInMempool
 	}
@@ -380,7 +380,7 @@ func (txmp *TxPool) Flush() {
 
 // PeerHasTx marks that the transaction has been seen by a peer.
 func (txmp *TxPool) PeerHasTx(peer uint16, txKey types.TxKey) {
-	txmp.logger.Debug("peer has tx", "peer", peer, "txKey", fmt.Sprintf("%X", txKey))
+	txmp.logger.Trace("peer has tx", "peer", peer, "txKey", fmt.Sprintf("%X", txKey))
 	txmp.seenByPeersSet.Add(txKey, peer)
 }
 
@@ -616,7 +616,7 @@ func (txmp *TxPool) addNewTransaction(wtx *wrappedTx) error {
 	txmp.metrics.TxSizeBytes.Observe(float64(wtx.size()))
 	txmp.metrics.Size.Set(float64(txmp.Size()))
 	txmp.metrics.SizeBytes.Set(float64(txmp.SizeBytes()))
-	txmp.logger.Debug(
+	txmp.logger.Trace(
 		"inserted new valid transaction",
 		"priority", wtx.priority,
 		"tx", fmt.Sprintf("%X", wtx.key()),
@@ -680,7 +680,7 @@ func (txmp *TxPool) recheckTransactions() {
 	if txmp.Size() == 0 {
 		panic("mempool: cannot run recheck on an empty mempool")
 	}
-	txmp.logger.Debug(
+	txmp.logger.Trace(
 		"executing re-CheckTx for all remaining transactions",
 		"num_txs", txmp.Size(),
 		"height", txmp.height,

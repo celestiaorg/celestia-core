@@ -99,10 +99,10 @@ func (s *syncer) AddChunk(chunk *chunk) (bool, error) {
 		return false, err
 	}
 	if added {
-		s.logger.Debug("Added chunk to queue", "height", chunk.Height, "format", chunk.Format,
+		s.logger.Trace("Added chunk to queue", "height", chunk.Height, "format", chunk.Format,
 			"chunk", chunk.Index)
 	} else {
-		s.logger.Debug("Ignoring duplicate chunk in queue", "height", chunk.Height, "format", chunk.Format,
+		s.logger.Trace("Ignoring duplicate chunk in queue", "height", chunk.Height, "format", chunk.Format,
 			"chunk", chunk.Index)
 	}
 	return added, nil
@@ -125,7 +125,7 @@ func (s *syncer) AddSnapshot(peer p2p.Peer, snapshot *snapshot) (bool, error) {
 // AddPeer adds a peer to the pool. For now we just keep it simple and send a single request
 // to discover snapshots, later we may want to do retries and stuff.
 func (s *syncer) AddPeer(peer p2p.Peer) {
-	s.logger.Debug("Requesting snapshots from peer", "peer", peer.ID())
+	s.logger.Trace("Requesting snapshots from peer", "peer", peer.ID())
 	e := p2p.Envelope{
 		ChannelID: SnapshotChannel,
 		Message:   &ssproto.SnapshotsRequest{},
@@ -135,7 +135,7 @@ func (s *syncer) AddPeer(peer p2p.Peer) {
 
 // RemovePeer removes a peer from the pool.
 func (s *syncer) RemovePeer(peer p2p.Peer) {
-	s.logger.Debug("Removing peer from sync", "peer", peer.ID())
+	s.logger.Trace("Removing peer from sync", "peer", peer.ID())
 	s.snapshots.RemovePeer(peer.ID())
 }
 
@@ -480,7 +480,7 @@ func (s *syncer) requestChunk(snapshot *snapshot, chunk uint32) {
 			"format", snapshot.Format, "hash", log.NewLazySprintf("%X", snapshot.Hash))
 		return
 	}
-	s.logger.Debug("Requesting snapshot chunk", "height", snapshot.Height,
+	s.logger.Trace("Requesting snapshot chunk", "height", snapshot.Height,
 		"format", snapshot.Format, "chunk", chunk, "peer", peer.ID())
 	peer.Send(p2p.Envelope{
 		ChannelID: ChunkChannel,

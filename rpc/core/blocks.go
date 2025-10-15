@@ -47,7 +47,7 @@ func (env *Environment) BlockchainInfo(
 	if err != nil {
 		return nil, err
 	}
-	env.Logger.Debug("BlockchainInfoHandler", "maxHeight", maxHeight, "minHeight", minHeight)
+	env.Logger.Trace("BlockchainInfoHandler", "maxHeight", maxHeight, "minHeight", minHeight)
 
 	blockMetas := []*types.BlockMeta{}
 	for height := maxHeight; height >= minHeight; height-- {
