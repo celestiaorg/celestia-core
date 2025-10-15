@@ -51,7 +51,8 @@ type Reactor struct {
 	requests    *requestScheduler
 	pendingSeen *pendingSeenTracker
 	traceClient trace.Tracer
-	stickySalt  atomic.Value // stores []byte
+	// stickySalt stores []byte rendezvous salt for sticky peer selection; nil/empty keeps default ordering.
+	stickySalt atomic.Value
 }
 
 type ReactorOptions struct {
