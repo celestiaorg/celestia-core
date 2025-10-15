@@ -46,7 +46,7 @@ func newPendingSeenTracker(limit int) *pendingSeenTracker {
 }
 
 func (ps *pendingSeenTracker) add(signer []byte, txKey types.TxKey, sequence uint64, peerID uint16) {
-	if len(signer) == 0 || sequence == 0 {
+	if len(signer) == 0 || sequence == 0 || peerID == 0 {
 		return
 	}
 
@@ -56,7 +56,7 @@ func (ps *pendingSeenTracker) add(signer []byte, txKey types.TxKey, sequence uin
 	defer ps.mu.Unlock()
 
 	if existing, ok := ps.byTx[txKey]; ok {
-		if peerID != 0 && !containsPeer(existing.peers, peerID) {
+		if !containsPeer(existing.peers, peerID) {
 			existing.peers = append(existing.peers, peerID)
 		}
 		return
@@ -69,9 +69,8 @@ func (ps *pendingSeenTracker) add(signer []byte, txKey types.TxKey, sequence uin
 		sequence:  sequence,
 		addedAt:   time.Now().UTC(),
 	}
-	if peerID != 0 {
-		entry.peers = []uint16{peerID}
-	}
+
+	entry.peers = []uint16{peerID}
 
 	queue := ps.perSigner[signerKey]
 	queue = append(queue, entry)
