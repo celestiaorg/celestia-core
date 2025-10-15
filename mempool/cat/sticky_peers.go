@@ -17,8 +17,7 @@ type stickyPeer struct {
 
 type stickyPeerScore struct {
 	stickyPeer
-	peerID string
-	score  uint64
+	score uint64
 }
 
 // selectStickyPeers returns up to limit peers deterministically ranked for the signer.
@@ -33,14 +32,12 @@ func selectStickyPeers(signer []byte, peers map[uint16]p2p.Peer, limit int, salt
 		if peer == nil {
 			continue
 		}
-		peerID := string(peer.ID())
 		scored = append(scored, stickyPeerScore{
 			stickyPeer: stickyPeer{
 				id:   id,
 				peer: peer,
 			},
-			peerID: peerID,
-			score:  stickyScore64(signer, peerID, salt),
+			score: stickyScore64(signer, string(peer.ID()), salt),
 		})
 	}
 
@@ -50,10 +47,12 @@ func selectStickyPeers(signer []byte, peers map[uint16]p2p.Peer, limit int, salt
 
 	sort.Slice(scored, func(i, j int) bool {
 		if scored[i].score == scored[j].score {
-			if scored[i].peerID == scored[j].peerID {
+			peerIDI := string(scored[i].peer.ID())
+			peerIDJ := string(scored[j].peer.ID())
+			if peerIDI == peerIDJ {
 				return scored[i].id < scored[j].id
 			}
-			return scored[i].peerID < scored[j].peerID
+			return peerIDI < peerIDJ
 		}
 		return scored[i].score > scored[j].score
 	})
