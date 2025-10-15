@@ -1,6 +1,7 @@
 package state
 
 import (
+	abci "github.com/cometbft/cometbft/abci/types"
 	"github.com/cometbft/cometbft/types"
 
 	cmtstore "github.com/cometbft/cometbft/proto/tendermint/store"
@@ -40,7 +41,7 @@ type BlockStore interface {
 	LoadBlockExtendedCommit(height int64) *types.ExtendedCommit
 
 	LoadTxInfo(hash []byte) *cmtstore.TxInfo
-	SaveTxInfo(block *types.Block, txResponseCodes []uint32, logs []string) error
+	SaveTxInfo(block *types.Block, execTxRes []*abci.ExecTxResult) error
 
 	DeleteLatestBlock() error
 

@@ -8,6 +8,7 @@ import (
 
 // Logger is what any CometBFT library should take.
 type Logger interface {
+	Trace(msg string, keyvals ...interface{})
 	Debug(msg string, keyvals ...interface{})
 	Info(msg string, keyvals ...interface{})
 	Error(msg string, keyvals ...interface{})

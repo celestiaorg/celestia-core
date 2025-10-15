@@ -5,7 +5,8 @@ import "fmt"
 type level byte
 
 const (
-	levelDebug level = 1 << iota
+	levelTrace level = 1 << iota
+	levelDebug
 	levelInfo
 	levelError
 )
@@ -24,8 +25,8 @@ type keyval struct {
 
 // NewFilter wraps next and implements filtering. See the commentary on the
 // Option functions for a detailed description of how to configure levels. If
-// no options are provided, all leveled log events created with Debug, Info or
-// Error helper methods are squelched.
+// no options are provided, all leveled log events created with Trace, Debug,
+// Info or Error helper methods are squelched.
 func NewFilter(next Logger, options ...Option) Logger {
 	l := &filter{
 		next:           next,
@@ -36,6 +37,14 @@ func NewFilter(next Logger, options ...Option) Logger {
 	}
 	l.initiallyAllowed = l.allowed
 	return l
+}
+
+func (l *filter) Trace(msg string, keyvals ...interface{}) {
+	levelAllowed := l.allowed&levelTrace != 0
+	if !levelAllowed {
+		return
+	}
+	l.next.Trace(msg, keyvals...)
 }
 
 func (l *filter) Info(msg string, keyvals ...interface{}) {
@@ -133,6 +142,8 @@ type Option func(*filter)
 // for such level.
 func AllowLevel(lvl string) (Option, error) {
 	switch lvl {
+	case "trace":
+		return AllowTrace(), nil
 	case "debug":
 		return AllowDebug(), nil
 	case "info":
@@ -142,13 +153,18 @@ func AllowLevel(lvl string) (Option, error) {
 	case "none":
 		return AllowNone(), nil
 	default:
-		return nil, fmt.Errorf("expected either \"info\", \"debug\", \"error\" or \"none\" level, given %s", lvl)
+		return nil, fmt.Errorf("expected either \"trace\", \"info\", \"debug\", \"error\" or \"none\" level, given %s", lvl)
 	}
 }
 
-// AllowAll is an alias for AllowDebug.
+// AllowAll is an alias for AllowTrace.
 func AllowAll() Option {
-	return AllowDebug()
+	return AllowTrace()
+}
+
+// AllowTrace allows error, info, debug and trace level log events to pass.
+func AllowTrace() Option {
+	return allowed(levelError | levelInfo | levelDebug | levelTrace)
 }
 
 // AllowDebug allows error, info and debug level log events to pass.
@@ -173,6 +189,13 @@ func AllowNone() Option {
 
 func allowed(allowed level) Option {
 	return func(l *filter) { l.allowed = allowed }
+}
+
+// AllowTraceWith allows error, info, debug and trace level log events to pass for a specific key value pair.
+func AllowTraceWith(key interface{}, value interface{}) Option {
+	return func(l *filter) {
+		l.allowedKeyvals[keyval{key, value}] = levelError | levelInfo | levelDebug | levelTrace
+	}
 }
 
 // AllowDebugWith allows error, info and debug level log events to pass for a specific key value pair.

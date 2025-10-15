@@ -237,12 +237,12 @@ func (memR *Reactor) Receive(e p2p.Envelope) {
 			// If we requested the transaction we mark it as received.
 			if memR.requests.Has(peerID, key) {
 				memR.requests.MarkReceived(peerID, key)
-				memR.Logger.Debug("received a response for a requested transaction", "peerID", peerID, "txKey", key)
+				memR.Logger.Trace("received a response for a requested transaction", "peerID", peerID, "txKey", key)
 			} else {
 				// If we didn't request the transaction we simply mark the peer as having the
 				// tx (we'd have already done it if we were requesting the tx).
 				memR.mempool.PeerHasTx(peerID, key)
-				memR.Logger.Debug("received new trasaction", "peerID", peerID, "txKey", key)
+				memR.Logger.Trace("received new trasaction", "peerID", peerID, "txKey", key)
 			}
 			rsp, err := memR.mempool.TryAddNewTx(ntx.ToCachedTx(), key, txInfo)
 
@@ -305,13 +305,13 @@ func (memR *Reactor) Receive(e p2p.Envelope) {
 
 		// Check if we don't already have the transaction
 		if memR.mempool.Has(txKey) {
-			memR.Logger.Debug("received a seen tx for a tx we already have", "txKey", txKey)
+			memR.Logger.Trace("received a seen tx for a tx we already have", "txKey", txKey)
 			return
 		}
 
 		// If we are already requesting that tx, then we don't need to go any further.
 		if memR.requests.ForTx(txKey) != 0 {
-			memR.Logger.Debug("received a SeenTx message for a transaction we are already requesting", "txKey", txKey)
+			memR.Logger.Trace("received a SeenTx message for a transaction we are already requesting", "txKey", txKey)
 			return
 		}
 
@@ -358,7 +358,7 @@ func (memR *Reactor) Receive(e p2p.Envelope) {
 		tx, has := memR.mempool.GetTxByKey(txKey)
 		if has && !memR.opts.ListenOnly {
 			peerID := memR.ids.GetIDForPeer(e.Src.ID())
-			memR.Logger.Debug("sending a tx in response to a want msg", "peer", peerID)
+			memR.Logger.Trace("sending a tx in response to a want msg", "peer", peerID)
 			if e.Src.Send(p2p.Envelope{
 				ChannelID: MempoolDataChannel,
 				Message:   &protomem.Txs{Txs: [][]byte{tx.Tx}},
@@ -449,7 +449,7 @@ func (memR *Reactor) broadcastSeenTxWithHeight(txKey types.TxKey, height int64, 
 			// if the peer is blocksyncing still and catching up
 			// in which case we just skip sending the transaction
 			if p.GetHeight() < height-peerHeightDiff {
-				memR.Logger.Debug("peer is too far behind us. Skipping broadcast of seen tx")
+				memR.Logger.Trace("peer is too far behind us. Skipping broadcast of seen tx")
 				continue
 			}
 		}
@@ -478,7 +478,7 @@ func (memR *Reactor) requestTx(txKey types.TxKey, peer p2p.Peer) {
 		// we have disconnected from the peer
 		return
 	}
-	memR.Logger.Debug("requesting tx", "txKey", txKey, "peerID", peer.ID())
+	memR.Logger.Trace("requesting tx", "txKey", txKey, "peerID", peer.ID())
 	msg := &protomem.Message{
 		Sum: &protomem.Message_WantTx{
 			WantTx: &protomem.WantTx{TxKey: txKey[:]},
@@ -526,5 +526,5 @@ func (memR *Reactor) findNewPeerToRequestTx(txKey types.TxKey) {
 	// No other free peer has the transaction we are looking for.
 	// We give up 🤷‍♂️ and hope either a peer responds late or the tx
 	// is gossiped again
-	memR.Logger.Debug("no other peer has the tx we are looking for", "txKey", txKey)
+	memR.Logger.Trace("no other peer has the tx we are looking for", "txKey", txKey)
 }

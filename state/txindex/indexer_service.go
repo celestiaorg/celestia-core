@@ -111,7 +111,7 @@ func (is *IndexerService) OnStart() error {
 						return
 					}
 				} else {
-					is.Logger.Debug("indexed transactions", "height", height, "num_txs", numTxs)
+					is.Logger.Trace("indexed transactions", "height", height, "num_txs", numTxs)
 				}
 			}
 		}

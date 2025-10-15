@@ -206,7 +206,7 @@ func (w *byteBufferWAL) Write(m WALMessage) error {
 	}
 
 	if endMsg, ok := m.(EndHeightMessage); ok {
-		w.logger.Debug("WAL write end height message", "height", endMsg.Height, "stopHeight", w.heightToStop)
+		w.logger.Trace("WAL write end height message", "height", endMsg.Height, "stopHeight", w.heightToStop)
 		if endMsg.Height == w.heightToStop {
 			w.logger.Debug("Stopping WAL at height", "height", endMsg.Height)
 			w.signalWhenStopsTo <- struct{}{}
@@ -215,7 +215,7 @@ func (w *byteBufferWAL) Write(m WALMessage) error {
 		}
 	}
 
-	w.logger.Debug("WAL Write Message", "msg", m)
+	w.logger.Trace("WAL Write Message", "msg", m)
 	err := w.enc.Encode(&TimedWALMessage{fixedTime, m})
 	if err != nil {
 		panic(fmt.Sprintf("failed to encode the msg %v", m))
