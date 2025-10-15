@@ -384,16 +384,6 @@ func (txmp *TxPool) PeerHasTx(peer uint16, txKey types.TxKey) {
 	txmp.seenByPeersSet.Add(txKey, peer)
 }
 
-// lowestSequenceForSigner returns the lowest sequence known locally for the signer.
-func (txmp *TxPool) lowestSequenceForSigner(signer []byte) (uint64, bool) {
-	return txmp.store.lowestSequenceForSigner(signer)
-}
-
-// nextSequenceForSigner returns the next sequence expected locally for the signer.
-func (txmp *TxPool) nextSequenceForSigner(signer []byte) (uint64, bool) {
-	return txmp.store.nextSequenceForSigner(signer)
-}
-
 // ReapMaxBytesMaxGas returns a slice of valid transactions that fit within the
 // size and gas constraints. The results are ordered by decreasing priority,
 // with ties broken by increasing order of arrival. Transactions are also

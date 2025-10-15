@@ -518,21 +518,12 @@ func (memR *Reactor) requestTx(txKey types.TxKey, peer p2p.Peer) bool {
 	return success
 }
 
-func (memR *Reactor) sequenceExpectationForSigner(signer []byte, useNext, forceApp bool) (uint64, bool) {
+func (memR *Reactor) sequenceExpectationForSigner(signer []byte, _ bool, _ bool) (uint64, bool) {
 	if len(signer) == 0 {
 		return 0, false
 	}
 
-	expectedSeq, haveExpected := memR.localSequenceExpectation(signer, useNext)
-
-	if forceApp || !haveExpected {
-		if seq, ok := memR.querySequenceFromApplication(signer); ok {
-			expectedSeq = seq
-			haveExpected = true
-		}
-	}
-
-	return expectedSeq, haveExpected
+	return memR.querySequenceFromApplication(signer)
 }
 
 // processPendingSeenForSigner tries to advance the pipeline of queued transactions for a signer.
@@ -592,13 +583,6 @@ func (memR *Reactor) tryRequestQueuedTx(entry *pendingSeenTx) bool {
 
 	memR.findNewPeerToRequestTx(entry.txKey)
 	return memR.requests.ForTx(entry.txKey) != 0
-}
-
-func (memR *Reactor) localSequenceExpectation(signer []byte, useNext bool) (uint64, bool) {
-	if useNext {
-		return memR.mempool.nextSequenceForSigner(signer)
-	}
-	return memR.mempool.lowestSequenceForSigner(signer)
 }
 
 func (memR *Reactor) querySequenceFromApplication(signer []byte) (uint64, bool) {

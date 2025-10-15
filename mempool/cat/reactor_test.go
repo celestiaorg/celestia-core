@@ -559,9 +559,8 @@ func genPeer() *mocks.Peer {
 // sequenceTrackingApp is a test application that implements SequenceQuerier
 type sequenceTrackingApp struct {
 	*kvstore.Application
-	mtx        sync.Mutex
-	sequences  map[string]uint64
-	queryCalls int
+	mtx       sync.Mutex
+	sequences map[string]uint64
 }
 
 func newSequenceTrackingApp() *sequenceTrackingApp {
@@ -610,7 +609,6 @@ func (app *sequenceTrackingApp) QuerySequence(ctx context.Context, req *abcitype
 	app.mtx.Lock()
 	defer app.mtx.Unlock()
 
-	app.queryCalls++
 	sequence := app.sequences[string(req.Signer)]
 	return &abcitypes.ResponseQuerySequence{Sequence: sequence}, nil
 }
@@ -619,18 +617,6 @@ func (app *sequenceTrackingApp) SetSequence(signer string, sequence uint64) {
 	app.mtx.Lock()
 	defer app.mtx.Unlock()
 	app.sequences[signer] = sequence
-}
-
-func (app *sequenceTrackingApp) ResetQueryCount() {
-	app.mtx.Lock()
-	defer app.mtx.Unlock()
-	app.queryCalls = 0
-}
-
-func (app *sequenceTrackingApp) QueryCallCount() int {
-	app.mtx.Lock()
-	defer app.mtx.Unlock()
-	return app.queryCalls
 }
 
 func TestReactorSequenceValidation(t *testing.T) {
@@ -646,9 +632,7 @@ func TestReactorSequenceValidation(t *testing.T) {
 
 	t.Run("matching sequence requests tx", func(t *testing.T) {
 		pool.Flush()
-		app.ResetQueryCount()
 		t.Cleanup(pool.Flush)
-		t.Cleanup(app.ResetQueryCount)
 
 		tx1 := newDefaultTx("test-tx-1")
 		txKey1 := tx1.Key()
@@ -682,14 +666,11 @@ func TestReactorSequenceValidation(t *testing.T) {
 		})
 
 		peer.AssertExpectations(t)
-		require.Equal(t, 1, app.QueryCallCount())
 	})
 
 	t.Run("mismatched sequence skips tx request", func(t *testing.T) {
 		pool.Flush()
-		app.ResetQueryCount()
 		t.Cleanup(pool.Flush)
-		t.Cleanup(app.ResetQueryCount)
 
 		tx2 := newDefaultTx("test-tx-2")
 		txKey2 := tx2.Key()
@@ -717,14 +698,11 @@ func TestReactorSequenceValidation(t *testing.T) {
 
 		// Verify no WantTx was sent
 		peer.AssertExpectations(t)
-		require.Equal(t, 1, app.QueryCallCount())
 	})
 
 	t.Run("no sequence info requests tx", func(t *testing.T) {
 		pool.Flush()
-		app.ResetQueryCount()
 		t.Cleanup(pool.Flush)
-		t.Cleanup(app.ResetQueryCount)
 
 		tx3 := newDefaultTx("test-tx-3")
 		txKey3 := tx3.Key()
@@ -755,78 +733,6 @@ func TestReactorSequenceValidation(t *testing.T) {
 		})
 
 		peer.AssertExpectations(t)
-		require.Equal(t, 0, app.QueryCallCount())
-	})
-
-	t.Run("local sequence match uses mempool state", func(t *testing.T) {
-		pool.Flush()
-		app.ResetQueryCount()
-		t.Cleanup(pool.Flush)
-		t.Cleanup(app.ResetQueryCount)
-
-		existingTx := newDefaultTx("local-seq-match-existing")
-		localWtx := newWrappedTx(existingTx.ToCachedTx(), pool.Height(), 1, 1, signer, 5)
-		require.True(t, pool.store.set(localWtx))
-
-		targetTx := newDefaultTx("local-seq-match-target")
-		txKey := targetTx.Key()
-
-		peer := genPeer()
-		_, err := reactor.InitPeer(peer)
-		require.NoError(t, err)
-
-		peer.On("TrySend", p2p.Envelope{
-			ChannelID: MempoolWantsChannel,
-			Message: &protomem.Message{
-				Sum: &protomem.Message_WantTx{
-					WantTx: &protomem.WantTx{TxKey: txKey[:]},
-				},
-			},
-		}).Return(true)
-
-		reactor.Receive(p2p.Envelope{
-			ChannelID: MempoolDataChannel,
-			Message: &protomem.SeenTx{
-				TxKey:    txKey[:],
-				Signer:   signer,
-				Sequence: 5,
-			},
-			Src: peer,
-		})
-
-		peer.AssertExpectations(t)
-		require.Equal(t, 0, app.QueryCallCount())
-	})
-
-	t.Run("local sequence mismatch skips tx request", func(t *testing.T) {
-		pool.Flush()
-		app.ResetQueryCount()
-		t.Cleanup(pool.Flush)
-		t.Cleanup(app.ResetQueryCount)
-
-		existingTx := newDefaultTx("local-seq-mismatch-existing")
-		localWtx := newWrappedTx(existingTx.ToCachedTx(), pool.Height(), 1, 1, signer, 10)
-		require.True(t, pool.store.set(localWtx))
-
-		targetTx := newDefaultTx("local-seq-mismatch-target")
-		txKey := targetTx.Key()
-
-		peer := genPeer()
-		_, err := reactor.InitPeer(peer)
-		require.NoError(t, err)
-
-		reactor.Receive(p2p.Envelope{
-			ChannelID: MempoolDataChannel,
-			Message: &protomem.SeenTx{
-				TxKey:    txKey[:],
-				Signer:   signer,
-				Sequence: 9,
-			},
-			Src: peer,
-		})
-
-		peer.AssertExpectations(t)
-		require.Equal(t, 0, app.QueryCallCount())
 	})
 }
 
