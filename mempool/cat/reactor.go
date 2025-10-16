@@ -1,10 +1,12 @@
 package cat
 
 import (
+	"context"
 	"fmt"
 	"math/rand"
 	"time"
 
+	abci "github.com/cometbft/cometbft/abci/types"
 	cfg "github.com/cometbft/cometbft/config"
 	"github.com/cometbft/cometbft/crypto/tmhash"
 	"github.com/cometbft/cometbft/libs/log"
@@ -243,14 +245,26 @@ func (memR *Reactor) Receive(e p2p.Envelope) {
 				memR.mempool.PeerHasTx(peerID, key)
 				memR.Logger.Debug("received new trasaction", "peerID", peerID, "txKey", key)
 			}
+<<<<<<< HEAD
 			_, err = memR.mempool.TryAddNewTx(ntx.ToCachedTx(), key, txInfo)
 			if err != nil && err != ErrTxInMempool {
 				memR.Logger.Debug("Could not add tx", "txKey", key, "err", err)
 				return
+=======
+			rsp, err := memR.mempool.TryAddNewTx(ntx.ToCachedTx(), key, txInfo)
+
+			// Extract signer/sequence from CheckTx response if available
+			signer, signerBytes, sequence, execCode := "", []byte(nil), uint64(0), uint32(0)
+			if rsp != nil {
+				signerBytes = rsp.Address
+				signer = string(rsp.Address)
+				sequence = rsp.Sequence
+				execCode = rsp.Code
+>>>>>>> 58490405 (feat: add sequence and signer to the mempool (#2569))
 			}
 			if !memR.opts.ListenOnly {
 				// We broadcast only transactions that we deem valid and actually have in our mempool.
-				memR.broadcastSeenTx(key)
+				memR.broadcastSeenTx(key, signerBytes, sequence)
 			}
 		}
 
@@ -287,6 +301,26 @@ func (memR *Reactor) Receive(e p2p.Envelope) {
 		if memR.requests.ForTx(txKey) != 0 {
 			memR.Logger.Debug("received a SeenTx message for a transaction we are already requesting", "txKey", txKey)
 			return
+		}
+
+		// Optionally query the sequence from the application before requesting the transaction
+		if len(msg.Signer) > 0 && msg.Sequence > 0 {
+			ctx := context.Background()
+			resp, err := memR.mempool.proxyAppConn.QuerySequence(ctx, &abci.RequestQuerySequence{
+				Signer: msg.Signer,
+			})
+			if err == nil && resp != nil && resp.Sequence > 0 {
+				if resp.Sequence != msg.Sequence {
+					memR.Logger.Debug("sequence mismatch for transaction, skipping request",
+						"txKey", txKey,
+						"expected", resp.Sequence,
+						"received", msg.Sequence,
+						"signer", string(msg.Signer),
+					)
+					// Skip requesting the transaction if the sequence doesn't match
+					return
+				}
+			}
 		}
 
 		// We don't have the transaction, nor are we requesting it so we send the node
@@ -342,6 +376,7 @@ type PeerState interface {
 
 // broadcastSeenTx broadcasts a SeenTx message to all peers unless we
 // know they have already seen the transaction
+<<<<<<< HEAD
 func (memR *Reactor) broadcastSeenTx(txKey types.TxKey) {
 	memR.Logger.Debug("broadcasting seen tx to all peers", "tx_key", string(txKey[:]))
 	msg := &protomem.Message{
@@ -380,6 +415,10 @@ func (memR *Reactor) broadcastSeenTx(txKey types.TxKey) {
 		)
 		count++
 	}
+=======
+func (memR *Reactor) broadcastSeenTx(txKey types.TxKey, signer []byte, sequence uint64) {
+	memR.broadcastSeenTxWithHeight(txKey, memR.mempool.Height(), signer, sequence)
+>>>>>>> 58490405 (feat: add sequence and signer to the mempool (#2569))
 }
 
 // ShufflePeers shuffles the peers map from GetAll() and returns a new shuffled map.
@@ -413,10 +452,25 @@ func ShufflePeers(peers map[uint16]p2p.Peer) map[uint16]p2p.Peer {
 
 // broadcastNewTx broadcast new transaction to all peers unless we are already sure they have seen the tx.
 func (memR *Reactor) broadcastNewTx(wtx *wrappedTx) {
+<<<<<<< HEAD
 	msg := &protomem.Message{
 		Sum: &protomem.Message_SeenTx{
 			SeenTx: &protomem.SeenTx{
 				TxKey: wtx.tx.Hash(),
+=======
+	memR.broadcastSeenTxWithHeight(wtx.key(), wtx.height, wtx.sender, wtx.sequence)
+}
+
+// broadcastSeenTxWithHeight is a helper that broadcasts a SeenTx message with height checking.
+func (memR *Reactor) broadcastSeenTxWithHeight(txKey types.TxKey, height int64, signer []byte, sequence uint64) {
+	memR.Logger.Debug("broadcasting seen tx to limited peers", "tx_key", string(txKey[:]))
+	msg := &protomem.Message{
+		Sum: &protomem.Message_SeenTx{
+			SeenTx: &protomem.SeenTx{
+				TxKey:    txKey[:],
+				Signer:   signer,
+				Sequence: sequence,
+>>>>>>> 58490405 (feat: add sequence and signer to the mempool (#2569))
 			},
 		},
 	}

@@ -2658,7 +2658,7 @@ func subscribeUnBuffered(eventBus *types.EventBus, q cmtpubsub.Query) <-chan cmt
 func waitForProposal(t *testing.T, proposalCh <-chan cmtpubsub.Message, height int64, round int32) []byte {
 	t.Helper()
 	select {
-	case <-time.After(ensureTimeout):
+	case <-time.After(ensureProposalTimeout):
 		t.Fatal("timeout expired while waiting for proposal event")
 	case msg := <-proposalCh:
 		proposalEvent, ok := msg.Data().(types.EventDataCompleteProposal)

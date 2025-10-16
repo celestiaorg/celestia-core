@@ -184,3 +184,10 @@ func (app *localClient) FinalizeBlock(ctx context.Context, req *types.RequestFin
 
 	return app.Application.FinalizeBlock(ctx, req)
 }
+
+func (app *localClient) QuerySequence(ctx context.Context, req *types.RequestQuerySequence) (*types.ResponseQuerySequence, error) {
+	app.mtx.Lock()
+	defer app.mtx.Unlock()
+
+	return app.Application.QuerySequence(ctx, req)
+}
