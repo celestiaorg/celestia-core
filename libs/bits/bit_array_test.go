@@ -476,7 +476,7 @@ func TestBitArraySize(t *testing.T) {
 	})
 }
 
-func TestAddBitArray(t *testing.T) {
+func TestAddBitArrayBehavesLikeOr(t *testing.T) {
 	// Helper function to create a BitArray with specified bits
 	createBitArray := func(bits int, elems []uint64) *BitArray {
 		return &BitArray{
@@ -561,20 +561,20 @@ func TestAddBitArray(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			tt.bA.Or(tt.b)
+			got := tt.bA.Or(tt.b)
 
 			// Check if bit count is correct
-			if tt.bA.Bits != tt.expected.Bits {
-				t.Errorf("expected bits %d, got %d", tt.expected.Bits, tt.bA.Bits)
+			if got.Bits != tt.expected.Bits {
+				t.Errorf("expected bits %d, got %d", tt.expected.Bits, got.Bits)
 			}
 
 			// Check if elements match expected result
-			if len(tt.bA.Elems) != len(tt.expected.Elems) {
-				t.Errorf("expected elems length %d, got %d", len(tt.expected.Elems), len(tt.bA.Elems))
+			if len(got.Elems) != len(tt.expected.Elems) {
+				t.Errorf("expected elems length %d, got %d", len(tt.expected.Elems), len(got.Elems))
 			}
 			for i := range tt.expected.Elems {
-				if i < len(tt.bA.Elems) && tt.bA.Elems[i] != tt.expected.Elems[i] {
-					t.Errorf("expected elems %v, got %v", tt.expected.Elems, tt.bA.Elems)
+				if i < len(got.Elems) && got.Elems[i] != tt.expected.Elems[i] {
+					t.Errorf("expected elems %v, got %v", tt.expected.Elems, got.Elems)
 					break
 				}
 			}

@@ -153,11 +153,24 @@ func (bA *BitArray) Or(o *BitArray) *BitArray {
 	}
 	bA.mtx.Lock()
 	o.mtx.Lock()
-	c := bA.copyBits(cmtmath.MaxInt(bA.Bits, o.Bits))
-	smaller := cmtmath.MinInt(len(bA.Elems), len(o.Elems))
-	for i := 0; i < smaller; i++ {
+
+	maxBits := cmtmath.MaxInt(bA.Bits, o.Bits)
+	maxElems := cmtmath.MaxInt(len(bA.Elems), len(o.Elems))
+
+	// Create result array with size based on the larger array
+	c := &BitArray{
+		Bits:  maxBits,
+		Elems: make([]uint64, maxElems),
+	}
+
+	// Copy all elements from bA
+	copy(c.Elems, bA.Elems)
+
+	// OR with all elements from o
+	for i := 0; i < len(o.Elems); i++ {
 		c.Elems[i] |= o.Elems[i]
 	}
+
 	bA.mtx.Unlock()
 	o.mtx.Unlock()
 	return c
