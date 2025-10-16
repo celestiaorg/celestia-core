@@ -112,6 +112,33 @@ func (bA *BitArray) setIndex(i int, v bool) bool {
 	return true
 }
 
+// AddBitArray combines two bit arrays by taking the bitwise OR of the two. If
+// the two bit arrays have different lengths, AddBitArray right-pads the smaller
+// of the two bit-arrays with zeroes. Thus the size of the return value is the
+// maximum of the two provided bit arrays.
+func (bA *BitArray) AddBitArray(b *BitArray) {
+	if bA == nil || b == nil {
+		return
+	}
+	bA.mtx.Lock()
+	defer bA.mtx.Unlock()
+	b.mtx.Lock()
+	defer b.mtx.Unlock()
+
+	// Update bA's Bits count to be the max of the two
+	bA.Bits = cmtmath.MaxInt(bA.Bits, b.Bits)
+
+	// Resize bA's Elems if b is longer
+	if len(b.Elems) > len(bA.Elems) {
+		bA.Elems = append(bA.Elems, make([]uint64, len(b.Elems)-len(bA.Elems))...)
+	}
+
+	// Perform bitwise OR operation up to the length of b
+	for i := 0; i < len(b.Elems); i++ {
+		bA.Elems[i] |= b.Elems[i]
+	}
+}
+
 // Copy returns a copy of the provided bit array.
 func (bA *BitArray) Copy() *BitArray {
 	if bA == nil {
@@ -155,24 +182,11 @@ func (bA *BitArray) Or(o *BitArray) *BitArray {
 	}
 	bA.mtx.Lock()
 	o.mtx.Lock()
-
-	maxBits := cmtmath.MaxInt(bA.Bits, o.Bits)
-	maxElems := cmtmath.MaxInt(len(bA.Elems), len(o.Elems))
-
-	// Create result array with size based on the larger array
-	c := &BitArray{
-		Bits:  maxBits,
-		Elems: make([]uint64, maxElems),
-	}
-
-	// Copy all elements from bA
-	copy(c.Elems, bA.Elems)
-
-	// OR with all elements from o
-	for i := 0; i < len(o.Elems); i++ {
+	c := bA.copyBits(cmtmath.MaxInt(bA.Bits, o.Bits))
+	smaller := cmtmath.MinInt(len(bA.Elems), len(o.Elems))
+	for i := 0; i < smaller; i++ {
 		c.Elems[i] |= o.Elems[i]
 	}
-
 	bA.mtx.Unlock()
 	o.mtx.Unlock()
 	return c
@@ -340,7 +354,7 @@ func (bA *BitArray) GetTrueIndices() []int {
 }
 
 func (bA *BitArray) getNumTrueIndices() int {
-	if bA.Size() == 0 || len(bA.Elems) == 0 || len(bA.Elems) != numElements(bA.Size()) {
+	if bA.Bits == 0 || len(bA.Elems) == 0 || len(bA.Elems) != numElements(bA.Bits) {
 		// size and elements must be valid to do this calc
 		return 0
 	}

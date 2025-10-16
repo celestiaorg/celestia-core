@@ -397,6 +397,112 @@ func TestBitArrayProtoBuf(t *testing.T) {
 	}
 }
 
+func TestAddBitArray(t *testing.T) {
+	// Helper function to create a BitArray with specified bits
+	createBitArray := func(bits int, elems []uint64) *BitArray {
+		return &BitArray{
+			Bits:  bits,
+			Elems: elems,
+		}
+	}
+
+	tests := []struct {
+		name     string
+		bA       *BitArray
+		b        *BitArray
+		expected *BitArray
+	}{
+		{
+			name:     "same length",
+			bA:       createBitArray(8, []uint64{0b10101010}),
+			b:        createBitArray(8, []uint64{0b01010101}),
+			expected: createBitArray(8, []uint64{0b11111111}),
+		},
+		{
+			name:     "b is longer than bA",
+			bA:       createBitArray(8, []uint64{0b1010}),
+			b:        createBitArray(16, []uint64{0b0101, 0b1111}),
+			expected: createBitArray(16, []uint64{0b1111, 0b1111}),
+		},
+		{
+			name:     "bA is longer than b",
+			bA:       createBitArray(16, []uint64{0b1010, 0b0001}),
+			b:        createBitArray(8, []uint64{0b0101}),
+			expected: createBitArray(16, []uint64{0b1111, 0b0001}),
+		},
+		{
+			name:     "both empty",
+			bA:       createBitArray(0, []uint64{}),
+			b:        createBitArray(0, []uint64{}),
+			expected: createBitArray(0, []uint64{}),
+		},
+		{
+			name:     "bA empty, b non-empty",
+			bA:       createBitArray(0, []uint64{}),
+			b:        createBitArray(8, []uint64{0b1111}),
+			expected: createBitArray(8, []uint64{0b1111}),
+		},
+		{
+			name:     "b empty, bA non-empty",
+			bA:       createBitArray(8, []uint64{0b1111}),
+			b:        createBitArray(0, []uint64{}),
+			expected: createBitArray(8, []uint64{0b1111}),
+		},
+		{
+			name:     "bA with nil elements, b non-empty",
+			bA:       createBitArray(8, nil),
+			b:        createBitArray(8, []uint64{0b1010}),
+			expected: createBitArray(8, []uint64{0b1010}),
+		},
+		{
+			name:     "self addition (should remain the same)",
+			bA:       createBitArray(8, []uint64{0b1010}),
+			b:        createBitArray(8, []uint64{0b1010}),
+			expected: createBitArray(8, []uint64{0b1010}),
+		},
+		{
+			name:     "different bit lengths, same element count",
+			bA:       createBitArray(10, []uint64{0b10101010}),
+			b:        createBitArray(8, []uint64{0b01010101}),
+			expected: createBitArray(10, []uint64{0b11111111}),
+		},
+		{
+			name:     "larger arrays",
+			bA:       createBitArray(64, []uint64{0xAAAAAAAA, 0x55555555}),
+			b:        createBitArray(64, []uint64{0x55555555, 0xAAAAAAAA}),
+			expected: createBitArray(64, []uint64{0xFFFFFFFF, 0xFFFFFFFF}),
+		},
+		{
+			name:     "bA shorter than b with multiple elements",
+			bA:       createBitArray(32, []uint64{0x000000FF}),
+			b:        createBitArray(64, []uint64{0xFF000000, 0xFFFFFFFF}),
+			expected: createBitArray(64, []uint64{0xFF0000FF, 0xFFFFFFFF}),
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tt.bA.AddBitArray(tt.b)
+
+			// Check if bit count is correct
+			if tt.bA.Bits != tt.expected.Bits {
+				t.Errorf("expected bits %d, got %d", tt.expected.Bits, tt.bA.Bits)
+			}
+
+			// Check if elements match expected result
+			if len(tt.bA.Elems) != len(tt.expected.Elems) {
+				t.Errorf("expected elems length %d, got %d", len(tt.expected.Elems), len(tt.bA.Elems))
+			}
+			for i := range tt.expected.Elems {
+				if i < len(tt.bA.Elems) && tt.bA.Elems[i] != tt.expected.Elems[i] {
+					t.Errorf("expected elems %v, got %v", tt.expected.Elems, tt.bA.Elems)
+					break
+				}
+			}
+		})
+	}
+}
+
 // Tests that UnmarshalJSON doesn't crash when no bits are passed into the JSON.
 // See issue https://github.com/cometbft/cometbft/issues/2658
 func TestUnmarshalJSONDoesntCrashOnZeroBits(t *testing.T) {
