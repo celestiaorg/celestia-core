@@ -325,15 +325,15 @@ func newpartState(size int, _ int64, _ int32) *partState {
 }
 
 func (p *partState) addHaves(haves *bits.BitArray) {
-	p.haves.Or(haves)
+	p.haves = p.haves.Or(haves)
 }
 
 func (p *partState) addWants(wants *bits.BitArray) {
-	p.wants.Or(wants)
+	p.wants = p.wants.Or(wants)
 }
 
 func (p *partState) addRequests(requests *bits.BitArray) {
-	p.requests.Or(requests)
+	p.requests = p.requests.Or(requests)
 }
 
 // SetHave sets the have bit for a given part.
