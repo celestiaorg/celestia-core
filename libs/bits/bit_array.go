@@ -57,6 +57,8 @@ func (bA *BitArray) Size() int {
 	if bA == nil {
 		return 0
 	}
+	bA.mtx.Lock()
+	defer bA.mtx.Unlock()
 	return bA.Bits
 }
 
