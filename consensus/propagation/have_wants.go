@@ -3,6 +3,7 @@ package propagation
 import (
 	"fmt"
 	"math"
+	"time"
 
 	"github.com/cometbft/cometbft/crypto/merkle"
 	"github.com/cometbft/cometbft/proto/tendermint/crypto"
@@ -535,7 +536,10 @@ func (blockProp *Reactor) handleRecoveryPart(peer p2p.ID, part *proptypes.Recove
 
 		missingOriginalParts := parts.Original().BitArray().Not()
 
+		s := time.Now()
 		err := parts.Decode()
+		schema.WriteMessageStats(blockProp.traceClient, "propagation", "decodeBlock", time.Since(s).Nanoseconds(), "")
+
 		if err != nil {
 			blockProp.Logger.Error("failed to decode parts", "peer", peer, "height", part.Height, "round", part.Round, "error", err)
 			return
@@ -548,6 +552,7 @@ func (blockProp *Reactor) handleRecoveryPart(peer p2p.ID, part *proptypes.Recove
 			Round:  part.Round,
 		}
 
+		s = time.Now()
 		for i := uint32(0); i < parts.Total(); i++ {
 			p, has := parts.GetPart(i)
 			if !has {
@@ -572,6 +577,7 @@ func (blockProp *Reactor) handleRecoveryPart(peer p2p.ID, part *proptypes.Recove
 			}
 			haves.Parts = append(haves.Parts, proptypes.PartMetaData{Index: i, Hash: p.Proof.LeafHash})
 		}
+		schema.WriteMessageStats(blockProp.traceClient, "propagation", "handleRecoverPart.1", time.Since(s).Nanoseconds(), "")
 
 		blockProp.broadcastHaves(haves, peer, int(parts.Total()))
 

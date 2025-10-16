@@ -3,6 +3,7 @@ package propagation
 import (
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/cosmos/gogoproto/proto"
 
@@ -25,15 +26,21 @@ const (
 // ProposeBlock is called when the consensus routine has created a new proposal,
 // and it needs to be gossiped to the rest of the network.
 func (blockProp *Reactor) ProposeBlock(proposal *types.Proposal, block *types.PartSet, txs []proptypes.TxMetaData) {
+	s := time.Now()
 	// create the parity data and the compact block
 	parityBlock, lastLen, err := types.Encode(block, types.BlockPartSizeBytes)
+	schema.WriteMessageStats(blockProp.traceClient, "propagation", "encodeBlock", time.Since(s).Nanoseconds(), "")
 	if err != nil {
 		blockProp.Logger.Error("failed to encode block", "err", err)
 		return
 	}
 
+	s = time.Now()
 	partHashes := extractHashes(block, parityBlock)
+	schema.WriteMessageStats(blockProp.traceClient, "propagation", "extractHashes", time.Since(s).Nanoseconds(), "")
+	s = time.Now()
 	proofs := extractProofs(block, parityBlock)
+	schema.WriteMessageStats(blockProp.traceClient, "propagation", "extractProofs", time.Since(s).Nanoseconds(), "")
 
 	cb := proptypes.CompactBlock{
 		Proposal:    *proposal,
@@ -68,7 +75,9 @@ func (blockProp *Reactor) ProposeBlock(proposal *types.Proposal, block *types.Pa
 	cb.Signature = sig
 
 	// save the compact block locally and broadcast it to the connected peers
+	s = time.Now()
 	blockProp.handleCompactBlock(&cb, blockProp.self, true)
+	schema.WriteMessageStats(blockProp.traceClient, "propagation", "propose.handleCompactBlock", time.Since(s).Nanoseconds(), "")
 
 	_, parts, _, has := blockProp.getAllState(proposal.Height, proposal.Round, false)
 	if !has {
@@ -79,9 +88,13 @@ func (blockProp *Reactor) ProposeBlock(proposal *types.Proposal, block *types.Pa
 
 	// distribute equal portions of haves to each of the proposer's peers
 	peers := blockProp.getPeers()
+	s = time.Now()
 	chunks := chunkParts(parts.Parity().BitArray(), len(peers), 1)
+	schema.WriteMessageStats(blockProp.traceClient, "propagation", "chunkParts", time.Since(s).Nanoseconds(), "")
 	for index, peer := range peers {
+		s = time.Now()
 		partsMeta := chunkToPartMetaData(chunks[index], parts.Parity())
+		schema.WriteMessageStats(blockProp.traceClient, "propagation", "chunkToPartMetaData", time.Since(s).Nanoseconds(), "")
 		e := p2p.Envelope{
 			ChannelID: DataChannel,
 			Message: &propagation.HaveParts{
@@ -169,14 +182,20 @@ func chunkToPartMetaData(chunk *bits.BitArray, partSet *types.PartSet) []*propag
 // time a proposal is received from a peer or when a proposal is created. If the
 // proposal is new, it will be stored and broadcast to the relevant peers.
 func (blockProp *Reactor) handleCompactBlock(cb *proptypes.CompactBlock, peer p2p.ID, proposer bool) {
+	sAll := time.Now()
+	defer schema.WriteMessageStats(blockProp.traceClient, "propagation", "handleCompactBlock", time.Since(sAll).Nanoseconds(), "")
+	s := time.Now()
 	err := blockProp.validateCompactBlock(cb)
+	schema.WriteMessageStats(blockProp.traceClient, "propagation", "validateCompactBlock", time.Since(s).Nanoseconds(), "")
 	if !proposer && err != nil {
 		blockProp.Logger.Debug("failed to validate proposal. ignoring", "err", err, "height", cb.Proposal.Height, "round", cb.Proposal.Round)
 		return
 	}
 
 	// generate (and cache) the proofs from the partset hashes in the compact block
+	s = time.Now()
 	_, err = cb.Proofs()
+	schema.WriteMessageStats(blockProp.traceClient, "propagation", "cb.Proofs()", time.Since(s).Nanoseconds(), "")
 	if err != nil {
 		blockProp.Logger.Error("received invalid compact block", "err", err.Error())
 		blockProp.Switch.StopPeerForError(blockProp.getPeer(peer).peer, err, blockProp.String())
@@ -212,7 +231,9 @@ func (blockProp *Reactor) handleCompactBlock(cb *proptypes.CompactBlock, peer p2
 
 	if !proposer {
 		// check if we have any transactions that are in the compact block
+		s = time.Now()
 		blockProp.recoverPartsFromMempool(cb)
+		schema.WriteMessageStats(blockProp.traceClient, "propagation", "recoverPartsFromMempool", time.Since(s).Nanoseconds(), "")
 	}
 
 	blockProp.broadcastCompactBlock(cb, peer)
@@ -221,6 +242,7 @@ func (blockProp *Reactor) handleCompactBlock(cb *proptypes.CompactBlock, peer p2
 // recoverPartsFromMempool queries the mempool to see if we can recover any block parts locally.
 func (blockProp *Reactor) recoverPartsFromMempool(cb *proptypes.CompactBlock) {
 	// find the compact block transactions that exist in our mempool
+	s := time.Now()
 	txsFound := make([]proptypes.UnmarshalledTx, 0, len(cb.Blobs))
 	for _, txMetaData := range cb.Blobs {
 		txKey, err := types.TxKeyFromBytes(txMetaData.Hash)
@@ -243,12 +265,14 @@ func (blockProp *Reactor) recoverPartsFromMempool(cb *proptypes.CompactBlock) {
 
 		txsFound = append(txsFound, proptypes.UnmarshalledTx{MetaData: txMetaData, Key: txKey, TxBytes: marshalledTx})
 	}
-
+	schema.WriteMessageStats(blockProp.traceClient, "propagation", "recoverPartsFromMempool.1", time.Since(s).Nanoseconds(), "")
 	if len(txsFound) == 0 {
 		return
 	}
 
+	s = time.Now()
 	parts, err := proptypes.TxsToParts(txsFound, cb.Proposal.BlockID.PartSetHeader.Total, types.BlockPartSizeBytes, cb.LastLen)
+	schema.WriteMessageStats(blockProp.traceClient, "propagation", "TxsToParts", time.Since(s).Nanoseconds(), "")
 	if err != nil {
 		blockProp.Logger.Error("invalid compact block", "err", err)
 		return
@@ -259,7 +283,9 @@ func (blockProp *Reactor) recoverPartsFromMempool(cb *proptypes.CompactBlock) {
 		blockProp.Logger.Error("failed to get all state for this node's proposal", "height", cb.Proposal.Height, "round", cb.Proposal.Round)
 	}
 
+	s = time.Now()
 	proofs, err := cb.Proofs()
+	schema.WriteMessageStats(blockProp.traceClient, "propagation", "recoverPartsFromMempool.cb.Proofs()", time.Since(s).Nanoseconds(), "")
 	if err != nil {
 		blockProp.Logger.Error("failed to get proofs from compact block", "err", err)
 		return
@@ -277,6 +303,7 @@ func (blockProp *Reactor) recoverPartsFromMempool(cb *proptypes.CompactBlock) {
 		Round:  cb.Proposal.Round,
 		Parts:  make([]proptypes.PartMetaData, 0),
 	}
+	s = time.Now()
 	for _, p := range parts {
 		if partSet.HasPart(int(p.Index)) {
 			continue
@@ -309,6 +336,7 @@ func (blockProp *Reactor) recoverPartsFromMempool(cb *proptypes.CompactBlock) {
 		haves.Parts = append(haves.Parts, proptypes.PartMetaData{Index: p.Index, Hash: p.Proof.LeafHash})
 	}
 
+	schema.WriteMessageStats(blockProp.traceClient, "propagation", "recoverPartsFromMempool.2", time.Since(s).Nanoseconds(), "")
 	schema.WriteMempoolRecoveredParts(blockProp.traceClient, cb.Proposal.Height, cb.Proposal.Round, recoveredCount)
 
 	if len(haves.Parts) > 0 {

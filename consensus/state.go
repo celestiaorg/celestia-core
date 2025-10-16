@@ -1339,12 +1339,16 @@ func (cs *State) defaultDecideProposal(height int64, round int32) {
 
 		// set the recovery related fields if using an existing block
 		hashes := make([][]byte, len(block.Txs))
+		s := time.Now()
 		for i := 0; i < len(block.Txs); i++ {
 			hashes[i] = block.Txs[i].Hash()
 		}
+		schema.WriteMessageStats(cs.traceClient, "consensus", "defaultDecideProposal.1", time.Since(s).Nanoseconds(), "")
 		block.SetCachedHashes(hashes)
 
+		s = time.Now()
 		parts, err := block.MakePartSet(types.BlockPartSizeBytes)
+		schema.WriteMessageStats(cs.traceClient, "consensus", "defaultDecideProposal.2", time.Since(s).Nanoseconds(), "")
 		if err != nil {
 			cs.Logger.Error("unable to generate the partset from existing block", "error", err)
 			return
@@ -1353,7 +1357,9 @@ func (cs *State) defaultDecideProposal(height int64, round int32) {
 	} else {
 		// Create a new proposal block from state/txs from the mempool.
 		var err error
+		s := time.Now()
 		block, blockParts, err = cs.createProposalBlock(context.TODO())
+		schema.WriteMessageStats(cs.traceClient, "consensus", "createProposalBlock", time.Since(s).Nanoseconds(), "")
 		if err != nil {
 			cs.Logger.Error("unable to create proposal block", "error", err)
 			return
@@ -1381,6 +1387,7 @@ func (cs *State) defaultDecideProposal(height int64, round int32) {
 
 		metaData := make([]proptypes.TxMetaData, len(block.Txs))
 		hashes := block.CachedHashes()
+		s := time.Now()
 		for i, pos := range blockParts.TxPos {
 			metaData[i] = proptypes.TxMetaData{
 				Start: pos.Start,
@@ -1388,6 +1395,7 @@ func (cs *State) defaultDecideProposal(height int64, round int32) {
 				Hash:  hashes[i],
 			}
 		}
+		schema.WriteMessageStats(cs.traceClient, "consensus", "defaultDecideProposal.3", time.Since(s).Nanoseconds(), "")
 
 		wg := sync.WaitGroup{}
 		wg.Add(1)
@@ -1398,7 +1406,9 @@ func (cs *State) defaultDecideProposal(height int64, round int32) {
 				cs.sendInternalMessage(msgInfo{&BlockPartMessage{cs.rs.Height, cs.rs.Round, part}, ""})
 			}
 		}()
+		s = time.Now()
 		cs.propagator.ProposeBlock(proposal, blockParts, metaData)
+		schema.WriteMessageStats(cs.traceClient, "consensus", "defaultDecideProposal.4", time.Since(s).Nanoseconds(), "")
 		wg.Wait()
 
 		cs.Logger.Debug("signed proposal", "height", height, "round", round, "proposal", proposal)
@@ -1532,7 +1542,9 @@ func (cs *State) defaultDoPrevote(height int64, round int32) {
 	proposalBlock, initialHeight := cs.rs.ProposalBlock, cs.state.InitialHeight
 	schema.WriteABCI(cs.traceClient, schema.ProcessProposalStart, height, round)
 	cs.unlockAll()
+	s := time.Now()
 	isAppValid, err := cs.blockExec.ProcessProposal(proposalBlock, initialHeight)
+	schema.WriteMessageStats(cs.traceClient, "consensus", "processProposal", time.Since(s).Nanoseconds(), "")
 	if err != nil {
 		cs.lockAll()
 		panic(fmt.Sprintf(
@@ -1868,6 +1880,8 @@ func (cs *State) tryFinalizeCommit(height int64) {
 
 // Increment height and goto cstypes.RoundStepNewHeight
 func (cs *State) finalizeCommit(height int64) {
+	sall := time.Now()
+	defer schema.WriteMessageStats(cs.traceClient, "consensus", "finalizeCommit", time.Since(sall).Nanoseconds(), "")
 	logger := cs.Logger.With("height", height)
 
 	if cs.rs.Height != height || cs.rs.Step != cstypes.RoundStepCommit {
@@ -1909,6 +1923,7 @@ func (cs *State) finalizeCommit(height int64) {
 
 	// Save to blockStore.
 	var seenCommit *types.Commit
+	s := time.Now()
 	if cs.blockStore.Height() < block.Height {
 		// NOTE: the seenCommit is local justification to commit this block,
 		// but may differ from the LastCommit included in the next block
@@ -1926,6 +1941,7 @@ func (cs *State) finalizeCommit(height int64) {
 		logger.Debug("calling finalizeCommit on already stored block", "height", block.Height)
 	}
 
+	schema.WriteMessageStats(cs.traceClient, "consensus", "saveBlock", time.Since(s).Nanoseconds(), "")
 	fail.Fail() // XXX
 
 	// Write EndHeightMessage{} for this height, implying that the blockstore
@@ -1960,6 +1976,7 @@ func (cs *State) finalizeCommit(height int64) {
 	// We use apply verified block here because we have verified the block in this function already.
 	// NOTE The block.AppHash won't reflect these txs until the next block.
 	cs.unlockAll()
+	s = time.Now()
 	stateCopy, err := cs.blockExec.ApplyVerifiedBlock(
 		stateCopy,
 		types.BlockID{
@@ -1969,6 +1986,7 @@ func (cs *State) finalizeCommit(height int64) {
 		block,
 		seenCommit,
 	)
+	schema.WriteMessageStats(cs.traceClient, "consensus", "ApplyVerifiedBlock", time.Since(s).Nanoseconds(), "")
 	cs.lockAll()
 	if err != nil {
 		panic(fmt.Sprintf("failed to apply block; error %v", err))
@@ -2232,7 +2250,9 @@ func (cs *State) addProposalBlockPart(msg *BlockPartMessage, peerID p2p.ID) (add
 			return added, err
 		}
 
+		s := time.Now()
 		block, err := types.BlockFromProto(pbb)
+		schema.WriteMessageStats(cs.traceClient, "consensus", "BlockFromProto", time.Since(s).Nanoseconds(), "")
 		if err != nil {
 			return added, err
 		}
