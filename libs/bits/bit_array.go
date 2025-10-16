@@ -117,7 +117,7 @@ func (bA *BitArray) setIndex(i int, v bool) bool {
 // of the two bit-arrays with zeroes. Thus the size of the return value is the
 // maximum of the two provided bit arrays.
 func (bA *BitArray) AddBitArray(b *BitArray) {
-	if bA == nil || b == nil {
+	if bA == nil || b == nil || bA.Bits == 0 || b.Bits == 0 {
 		return
 	}
 	bA.mtx.Lock()
@@ -354,7 +354,7 @@ func (bA *BitArray) GetTrueIndices() []int {
 }
 
 func (bA *BitArray) getNumTrueIndices() int {
-	if bA.Bits == 0 || len(bA.Elems) == 0 || len(bA.Elems) != numElements(bA.Bits) {
+	if bA == nil || bA.Bits == 0 || len(bA.Elems) == 0 || len(bA.Elems) != numElements(bA.Bits) {
 		// size and elements must be valid to do this calc
 		return 0
 	}
