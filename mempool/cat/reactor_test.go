@@ -915,4 +915,5 @@ func TestPendingSeenDroppedWhenSequenceAdvances(t *testing.T) {
 
 	require.Empty(t, reactor.pendingSeen.entriesForSigner(signer))
 	sourcePeer.AssertNotCalled(t, "TrySend", mock.Anything)
+
 }

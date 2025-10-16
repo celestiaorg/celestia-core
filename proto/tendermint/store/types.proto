@@ -19,9 +19,9 @@ message TxInfo {
   // The error log output generated if the transaction execution fails.
   string error = 4;
   // The error namespace/module
-  string codespace  = 5;
+  string codespace = 5;
   // Requested gas limit
-  int64  gas_wanted = 6;
+  int64 gas_wanted = 6;
   // Actual gas consumed
-  int64  gas_used   = 7;
+  int64 gas_used = 7;
 }

@@ -360,10 +360,12 @@ func (memR *Reactor) Receive(e p2p.Envelope) {
 		expectedSeq, haveExpected := memR.sequenceExpectationForSigner(msg.Signer, false, false)
 
 		switch {
-		case len(msg.Signer) == 0 || msg.Sequence == 0 || !haveExpected:
-			// fallthrough to requesting the transaction immediately
+		case len(msg.Signer) == 0 || msg.Sequence == 0:
+			// fall through and request immediately when sequence info is missing
+		case !haveExpected:
+			// fall through and request immediately if we cannot query the application
 		case msg.Sequence == expectedSeq:
-			// fallthrough to requesting the transaction immediately
+			// fall through and request immediately for the expected sequence
 		case msg.Sequence > expectedSeq:
 			memR.pendingSeen.add(msg.Signer, txKey, msg.Sequence, peerID)
 			return
