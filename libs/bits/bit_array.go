@@ -117,7 +117,7 @@ func (bA *BitArray) setIndex(i int, v bool) bool {
 // of the two bit-arrays with zeroes. Thus the size of the return value is the
 // maximum of the two provided bit arrays.
 func (bA *BitArray) AddBitArray(b *BitArray) {
-	if bA == nil || b == nil || bA.Bits == 0 || b.Bits == 0 {
+	if bA == nil || b == nil {
 		return
 	}
 	bA.mtx.Lock()
