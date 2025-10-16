@@ -36,6 +36,7 @@ service ABCI {
   rpc ExtendVote(RequestExtendVote) returns (ResponseExtendVote);
   rpc VerifyVoteExtension(RequestVerifyVoteExtension) returns (ResponseVerifyVoteExtension);
   rpc FinalizeBlock(RequestFinalizeBlock) returns (ResponseFinalizeBlock);
+  rpc QuerySequence(RequestQuerySequence) returns (ResponseQuerySequence);
 }
 
 //----------------------------------------
@@ -59,6 +60,7 @@ message Request {
     RequestExtendVote          extend_vote           = 18;
     RequestVerifyVoteExtension verify_vote_extension = 19;
     RequestFinalizeBlock       finalize_block        = 20;
+    RequestQuerySequence       query_sequence        = 21;
   }
   reserved 4, 7, 9, 10;  // SetOption, BeginBlock, DeliverTx, EndBlock
 }
@@ -206,6 +208,10 @@ message RequestFinalizeBlock {
   tendermint.types.Header header = 20;
 }
 
+message RequestQuerySequence {
+  bytes signer = 1;
+}
+
 //----------------------------------------
 // Response types
 
@@ -228,6 +234,7 @@ message Response {
     ResponseExtendVote          extend_vote           = 19;
     ResponseVerifyVoteExtension verify_vote_extension = 20;
     ResponseFinalizeBlock       finalize_block        = 21;
+    ResponseQuerySequence       query_sequence        = 22;
   }
   reserved 5, 8, 10, 11;  // SetOption, BeginBlock, DeliverTx, EndBlock
 }
@@ -389,6 +396,10 @@ message ResponseFinalizeBlock {
   bytes app_hash = 5;
 
   TimeoutInfo timeout_info = 6 [(gogoproto.nullable) = false];
+}
+
+message ResponseQuerySequence {
+  uint64 sequence = 1;
 }
 
 //----------------------------------------
