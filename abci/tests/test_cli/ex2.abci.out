@@ -1,5 +1,7 @@
 > check_tx "abc"
 -> code: 2
+-> log: invalid-tx-format
+
 
 > check_tx "def=567"
 -> code: OK
