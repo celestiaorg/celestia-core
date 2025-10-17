@@ -2,7 +2,7 @@ package cat
 
 import (
 	"fmt"
-	"math/rand"
+	"sync/atomic"
 	"time"
 
 	cfg "github.com/cometbft/cometbft/config"
@@ -47,7 +47,10 @@ type Reactor struct {
 	mempool     *TxPool
 	ids         *mempoolIDs
 	requests    *requestScheduler
+	pendingSeen *pendingSeenTracker
 	traceClient trace.Tracer
+	// stickySalt stores []byte rendezvous salt for sticky peer selection; nil/empty keeps default ordering.
+	stickySalt atomic.Value
 }
 
 type ReactorOptions struct {
@@ -64,6 +67,10 @@ type ReactorOptions struct {
 
 	// TraceClient is the trace client for collecting trace level events
 	TraceClient trace.Tracer
+
+	// StickyPeerSalt is used to derive the rendezvous hash for sticky peer selection.
+	// If unset, all nodes will derive the same peer ordering.
+	StickyPeerSalt []byte
 }
 
 func (opts *ReactorOptions) VerifyAndComplete() error {
@@ -101,18 +108,44 @@ func NewReactor(mempool *TxPool, opts *ReactorOptions) (*Reactor, error) {
 		mempool:     mempool,
 		ids:         newMempoolIDs(),
 		requests:    newRequestScheduler(opts.MaxGossipDelay, defaultGlobalRequestTimeout),
+		pendingSeen: newPendingSeenTracker(0),
 		traceClient: traceClient,
 	}
 	memR.BaseReactor = *p2p.NewBaseReactor("CAT", memR,
 		p2p.WithIncomingQueueSize(ReactorIncomingMessageQueueSize),
 		p2p.WithQueueingFunc(memR.TryQueueUnprocessedEnvelope),
 	)
+	memR.stickySalt.Store([]byte(nil)) // establish concrete []byte type for atomic.Value
+	memR.SetStickySalt(opts.StickyPeerSalt)
 	return memR, nil
 }
 
 // SetLogger sets the Logger on the reactor and the underlying mempool.
 func (memR *Reactor) SetLogger(l log.Logger) {
 	memR.Logger = l
+}
+
+// SetStickySalt configures the salt used for sticky peer selection. Passing nil resets it.
+func (memR *Reactor) SetStickySalt(salt []byte) {
+	if salt == nil {
+		memR.stickySalt.Store([]byte(nil))
+		return
+	}
+	cp := make([]byte, len(salt))
+	copy(cp, salt)
+	memR.stickySalt.Store(cp)
+}
+
+func (memR *Reactor) currentStickyPeerSalt() []byte {
+	val := memR.stickySalt.Load()
+	if val == nil {
+		return nil
+	}
+	salt := val.([]byte)
+	if len(salt) == 0 {
+		return nil
+	}
+	return salt
 }
 
 // OnStart implements Service.
@@ -199,6 +232,7 @@ func (memR *Reactor) RemovePeer(peer p2p.Peer, reason interface{}) {
 	peerID := memR.ids.Reclaim(peer.ID())
 	// clear all memory of seen txs by that peer
 	memR.mempool.seenByPeersSet.RemovePeer(peerID)
+	memR.pendingSeen.removePeer(peerID)
 
 	// remove and rerequest all pending outbound requests to that peer since we know
 	// we won't receive any responses from them.
@@ -248,7 +282,38 @@ func (memR *Reactor) Receive(e p2p.Envelope) {
 				memR.Logger.Debug("Could not add tx", "txKey", key, "err", err)
 				return
 			}
+<<<<<<< HEAD
 			if !memR.opts.ListenOnly {
+=======
+
+			// Trace the result of adding the transaction to the mempool
+			if err != nil {
+				if err == ErrTxInMempool {
+					schema.WriteMempoolAddResult(memR.traceClient, string(e.Src.ID()), key[:], schema.AlreadyInMempool, err, signer, sequence)
+				} else {
+					memR.pendingSeen.remove(key)
+					schema.WriteMempoolAddResult(memR.traceClient, string(e.Src.ID()), key[:], schema.Rejected, err, signer, sequence)
+					memR.Logger.Debug("Could not add tx", "txKey", key, "err", err)
+					return
+				}
+			} else {
+				if execCode != 0 {
+					schema.WriteMempoolAddResult(memR.traceClient, string(e.Src.ID()), key[:], schema.Rejected, fmt.Errorf("execution code: %d", execCode), signer, sequence)
+				} else {
+					schema.WriteMempoolAddResult(memR.traceClient, string(e.Src.ID()), key[:], schema.Added, nil, signer, sequence)
+				}
+
+			}
+
+			if err == nil || err == ErrTxInMempool {
+				memR.pendingSeen.remove(key)
+				if len(signerBytes) > 0 {
+					memR.processPendingSeenForSigner(signerBytes)
+				}
+			}
+
+			if !memR.opts.ListenOnly && execCode == 0 {
+>>>>>>> 217cd0e9 (feat: sequence aware gossiping (#2558))
 				// We broadcast only transactions that we deem valid and actually have in our mempool.
 				memR.broadcastSeenTx(key)
 			}
@@ -289,6 +354,33 @@ func (memR *Reactor) Receive(e p2p.Envelope) {
 			return
 		}
 
+<<<<<<< HEAD
+=======
+		expectedSeq, haveExpected := memR.sequenceExpectationForSigner(msg.Signer, false, false)
+
+		switch {
+		case len(msg.Signer) == 0 || msg.Sequence == 0:
+			// fall through and request immediately when sequence info is missing
+		case !haveExpected:
+			// fall through and request immediately if we cannot query the application
+		case msg.Sequence == expectedSeq:
+			// fall through and request immediately for the expected sequence
+		case msg.Sequence > expectedSeq:
+			memR.pendingSeen.add(msg.Signer, txKey, msg.Sequence, peerID)
+			return
+		default:
+			memR.Logger.Debug(
+				"dropping SeenTx due to lower than expected sequence",
+				"txKey", txKey,
+				"sequence", msg.Sequence,
+				"expectedSequence", expectedSeq,
+			)
+			memR.pendingSeen.remove(txKey)
+			return
+		}
+
+		memR.pendingSeen.remove(txKey)
+>>>>>>> 217cd0e9 (feat: sequence aware gossiping (#2558))
 		// We don't have the transaction, nor are we requesting it so we send the node
 		// a want msg
 		memR.requestTx(txKey, e.Src)
@@ -382,6 +474,7 @@ func (memR *Reactor) broadcastSeenTx(txKey types.TxKey) {
 	}
 }
 
+<<<<<<< HEAD
 // ShufflePeers shuffles the peers map from GetAll() and returns a new shuffled map.
 // Uses Fisher-Yates shuffle algorithm for maximum speed.
 func ShufflePeers(peers map[uint16]p2p.Peer) map[uint16]p2p.Peer {
@@ -413,6 +506,19 @@ func ShufflePeers(peers map[uint16]p2p.Peer) map[uint16]p2p.Peer {
 
 // broadcastNewTx broadcast new transaction to all peers unless we are already sure they have seen the tx.
 func (memR *Reactor) broadcastNewTx(wtx *wrappedTx) {
+=======
+// broadcastNewTx broadcast new transaction to limited peers unless we are already sure they have seen the tx.
+func (memR *Reactor) broadcastNewTx(wtx *wrappedTx) {
+	memR.broadcastSeenTxWithHeight(wtx.key(), wtx.height, wtx.sender, wtx.sequence)
+	if len(wtx.sender) > 0 {
+		memR.processPendingSeenForSigner(wtx.sender)
+	}
+}
+
+// broadcastSeenTxWithHeight is a helper that broadcasts a SeenTx message with height checking.
+func (memR *Reactor) broadcastSeenTxWithHeight(txKey types.TxKey, height int64, signer []byte, sequence uint64) {
+	memR.Logger.Debug("broadcasting seen tx to limited peers", "tx_key", string(txKey[:]))
+>>>>>>> 217cd0e9 (feat: sequence aware gossiping (#2558))
 	msg := &protomem.Message{
 		Sum: &protomem.Message_SeenTx{
 			SeenTx: &protomem.SeenTx{
@@ -421,7 +527,14 @@ func (memR *Reactor) broadcastNewTx(wtx *wrappedTx) {
 		},
 	}
 
+<<<<<<< HEAD
 	for id, peer := range memR.ids.GetAll() {
+=======
+	selectedPeers := selectStickyPeers(signer, memR.ids.GetAll(), maxSeenTxBroadcast, memR.currentStickyPeerSalt())
+	for _, peerInfo := range selectedPeers {
+		id := peerInfo.id
+		peer := peerInfo.peer
+>>>>>>> 217cd0e9 (feat: sequence aware gossiping (#2558))
 		if p, ok := peer.Get(types.PeerStateKey).(PeerState); ok {
 			// make sure peer isn't too far behind. This can happen
 			// if the peer is blocksyncing still and catching up
@@ -447,12 +560,11 @@ func (memR *Reactor) broadcastNewTx(wtx *wrappedTx) {
 	}
 }
 
-// requestTx requests a transaction from a peer and tracks it,
 // requesting it from another peer if the first peer does not respond.
-func (memR *Reactor) requestTx(txKey types.TxKey, peer p2p.Peer) {
+func (memR *Reactor) requestTx(txKey types.TxKey, peer p2p.Peer) bool {
 	if peer == nil {
 		// we have disconnected from the peer
-		return
+		return false
 	}
 	memR.Logger.Debug("requesting tx", "txKey", txKey, "peerID", peer.ID())
 	msg := &protomem.Message{
@@ -474,6 +586,83 @@ func (memR *Reactor) requestTx(txKey types.TxKey, peer p2p.Peer) {
 			memR.Logger.Error("have already marked a tx as requested", "txKey", txKey, "peerID", peer.ID())
 		}
 	}
+	return success
+}
+
+func (memR *Reactor) sequenceExpectationForSigner(signer []byte, _ bool, _ bool) (uint64, bool) {
+	if len(signer) == 0 {
+		return 0, false
+	}
+
+	return memR.querySequenceFromApplication(signer)
+}
+
+// processPendingSeenForSigner tries to advance the pipeline of queued transactions for a signer.
+// It must be invoked whenever our view of the signer's sequence might have progressed (e.g. right
+// after we successfully added one of their transactions, or after the mempool broadcasts a new one),
+// because those are the moments when we have new evidence about the expected next sequence. The
+// method re-queries the application (`forceApp=true`) so any transactions the signer already had
+// included in a block show up as `expectedSeq > entry.sequence` and are dropped from the pending
+// queue.
+func (memR *Reactor) processPendingSeenForSigner(signer []byte) {
+	if len(signer) == 0 {
+		return
+	}
+
+	entries := memR.pendingSeen.entriesForSigner(signer)
+	if len(entries) == 0 {
+		return
+	}
+
+	expectedSeq, haveExpected := memR.sequenceExpectationForSigner(signer, true, true)
+	if !haveExpected {
+		return
+	}
+
+	for _, entry := range entries {
+		if memR.mempool.Has(entry.txKey) {
+			memR.pendingSeen.remove(entry.txKey)
+			continue
+		}
+		if memR.requests.ForTx(entry.txKey) != 0 {
+			memR.pendingSeen.remove(entry.txKey)
+			continue
+		}
+		if expectedSeq > entry.sequence {
+			memR.pendingSeen.remove(entry.txKey)
+			continue
+		}
+		if expectedSeq != entry.sequence {
+			continue
+		}
+
+		if memR.tryRequestQueuedTx(entry) {
+			memR.pendingSeen.remove(entry.txKey)
+		}
+		break
+	}
+}
+
+func (memR *Reactor) tryRequestQueuedTx(entry *pendingSeenTx) bool {
+	peerIDs := entry.peerIDs()
+	if len(peerIDs) > 0 {
+		peer := memR.ids.GetPeer(peerIDs[0])
+		if peer != nil && memR.requestTx(entry.txKey, peer) {
+			return true
+		}
+	}
+
+	memR.findNewPeerToRequestTx(entry.txKey)
+	return memR.requests.ForTx(entry.txKey) != 0
+}
+
+func (memR *Reactor) querySequenceFromApplication(signer []byte) (uint64, bool) {
+	ctx := context.Background()
+	resp, err := memR.mempool.proxyAppConn.QuerySequence(ctx, &abci.RequestQuerySequence{Signer: signer})
+	if err != nil || resp == nil {
+		return 0, false
+	}
+	return resp.Sequence, true
 }
 
 // findNewPeerToSendTx finds a new peer that has already seen the transaction to

@@ -8,7 +8,13 @@ message Txs {
 }
 
 message SeenTx {
+<<<<<<< HEAD
   bytes tx_key = 1;
+=======
+  bytes  tx_key   = 1;
+  uint64 sequence = 2;
+  bytes  signer   = 3;
+>>>>>>> 217cd0e9 (feat: sequence aware gossiping (#2558))
 }
 
 message WantTx {
