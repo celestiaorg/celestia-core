@@ -311,8 +311,7 @@ func (blockProp *Reactor) recoverPartsFromMempool(cb *proptypes.CompactBlock) {
 	partsMetaData := make(chan *proptypes.PartMetaData, len(parts))
 	for _, p := range parts {
 		workers <- struct{}{}
-		g.Add(1)
-		go func() {
+		g.Go(func() {
 			defer func() {
 				<-workers
 			}()
@@ -345,7 +344,7 @@ func (blockProp *Reactor) recoverPartsFromMempool(cb *proptypes.CompactBlock) {
 			recoveredCount++
 
 			partsMetaData <- &proptypes.PartMetaData{Index: p.Index, Hash: p.Proof.LeafHash}
-		}()
+		})
 	}
 	g.Wait()
 	for i := 0; i < len(partsMetaData); i++ {
