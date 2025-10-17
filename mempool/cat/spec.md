@@ -28,7 +28,8 @@ The CAT protocol extends on the existing mempool implementations by introducing 
 ```protobuf
 message SeenTx {
   bytes tx_key = 1;
-  optional string from = 2;
+  uint64 sequence = 2;
+  bytes signer = 3;
 }
 
 message WantTx {
@@ -36,7 +37,7 @@ message WantTx {
 }
 ```
 
-Both `SeenTx` and `WantTx` contain the sha256 hash of the raw transaction bytes. `SeenTx` also contains an optional `p2p.ID` that corresponds to the peer that the node received the tx from. The only validation for both is that the byte slice of the `tx_key` MUST have a length of 32.
+Both `SeenTx` and `WantTx` contain the sha256 hash of the raw transaction bytes. `SeenTx` additionally carries the expected account `sequence` and the `signer` bytes derived from the application response so receiving peers can maintain per-signer ordering when deciding whether to request the transaction. The byte slice of the `tx_key` MUST have a length of 32. A `sequence` of `0` or an empty `signer` indicates that the information was unavailable and MUST NOT be treated as authoritative.
 
 Both messages are sent across a new channel with the ID: `byte(0x31)`. This enables cross-compatibility as discussed in greater detail below.
 
@@ -50,7 +51,7 @@ A node in the protocol has two distinct modes: "broadcast" and "request/response
 > **Note:**
 > Given that one can configure a mempool to switch off broadcast, there are no guarantees when a client submits a transaction via RPC and no error is returned that it will find its way into a proposer's transaction pool.
 
-A `SeenTx` is broadcasted to ALL nodes upon receiving a "new" transaction from a peer. The transaction pool does not need to track every unique inbound transaction, therefore "new" is identified as:
+A `SeenTx` is broadcasted to a bounded set of "sticky" peers upon receiving a "new" transaction from a peer. Implementations currently cap this fanout at fifteen peers. Sticky peers are selected deterministically per signer with rendezvous (highest-random-weight) hashing: each connected peer is scored by hashing the tuple `(namespace="cat/sticky/v1", local salt, signer, peerID)` with SHA-256, taking the highest 64-bit value as the top-ranked peers. The local salt is derived from the node's peer ID (or another operator-provided value) so that each node chooses a consistent but distinct subset of peers per signer. This keeps repeated gossip for the same signer on the same connections and reduces redundant duplicates while still ensuring coverage. The transaction pool does not need to track every unique inbound transaction, therefore "new" is identified as:
 
 - The node does not currently have the transaction
 - The node did not recently reject the transaction or has recently seen the same transaction committed (subject to the size of the cache)
@@ -58,7 +59,7 @@ A `SeenTx` is broadcasted to ALL nodes upon receiving a "new" transaction from a
 
 Given these criteria, it is feasible, yet unlikely that a node receives two `SeenTx` messages from the same peer for the same transaction.
 
-A `SeenTx` MAY be sent for each transaction currently in the transaction pool when a connection with a peer is first established. This acts as a mechanism for syncing pool state across peers.
+A `SeenTx` MAY be sent for each transaction currently in the transaction pool when a connection with a peer is first established. The same sticky peer selection is applied so that each signer continues to map to a stable subset of peers. This acts as a mechanism for syncing pool state across peers.
 
 The `SeenTx` message MUST only be broadcasted after validation and storage. Although it is possible that a node later drops a transaction under load shedding, a `SeenTx` should give as strong guarantees as possible that the node can be relied upon by others that don't yet have the transaction to obtain it.
 
@@ -78,7 +79,7 @@ Upon receiving a `Txs` message:
 - Check whether it is in response to a request or simply an unsolicited broadcast
 - Validate the tx against current resources and the applications `CheckTx`
 - If rejected or evicted, mark accordingly
-- If successful, send a `SeenTx` message to all connected peers excluding the original sender. If it was from an initial broadcast, the `SeenTx` should populate the `From` field with the `p2p.ID` of the recipient else if it is in response to a request `From` should remain empty.
+- If successful, send a `SeenTx` message to the selected sticky peers excluding the original sender so that only a bounded subset relays the new transaction.
 
 Upon receiving a `SeenTx` message:
 
@@ -86,9 +87,13 @@ Upon receiving a `SeenTx` message:
 - If the node has recently rejected that transaction, it SHOULD ignore the message.
 - If the node already has the transaction, it SHOULD ignore the message.
 - If the node does not have the transaction but recently evicted it, it MAY choose to rerequest the transaction if it has adequate resources now to process it.
-- If the node has not seen the transaction or does not have any pending requests for that transaction, it can do one of two things:
-    - It MAY immediately request the tx from the peer with a `WantTx`.
-    - If the node is connected to the peer specified in `FROM`, it is likely, from a non-byzantine peer, that the node will also shortly receive the transaction from the peer. It MAY wait for a `Txs` message for a bounded amount of time but MUST eventually send a `WantMsg` message to either the original peer or any other peer that *has* the specified transaction.
+- If the node has not seen the transaction or does not have any pending requests for that transaction, it MUST evaluate the provided `(signer, sequence)` pair before requesting it:
+    - If there is already a transaction from that signer in the local mempool, the node uses the locally tracked sequences to check whether the new transaction is the next expected sequence. When the sequence is greater than expected, the node defers the request and queues the `SeenTx` until the expected sequence is available.
+    - If there is no transaction from that signer in the local mempool, the node queries the application mempool state for the next sequence before issuing a `WantTx`. This avoids requesting a transaction before the prerequisite sequence is present.
+    - If the expected sequence is greater than the advertised sequence, the node SHOULD mark the transaction as stale and drop the queued `SeenTx`.
+- Once the expected sequence matches the advertised sequence, the node requests the transaction from the peer with a `WantTx`. This ordering enables clients to submit sequential transactions without waiting for previous ones to be committed.
+
+The "next expected sequence" is the first gap in the locally tracked contiguous sequence numbers for that signer: if the mempool has seen sequences `N, N+1, …, M`, then the expectation is `M+1`, or the lowest missing value if a gap exists. When no local transactions exist (or a gap remains unfilled), the node resolves the expectation by querying the application through `QuerySequence`.
 
 Upon receiving a `WantTx` message:
 

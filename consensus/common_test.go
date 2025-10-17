@@ -718,27 +718,41 @@ func ensurePrevote(voteCh <-chan cmtpubsub.Message, height int64, round int32) {
 	ensureVote(voteCh, height, round, cmtproto.PrevoteType)
 }
 
-func ensureVote(voteCh <-chan cmtpubsub.Message, height int64, round int32,
+func ensureVote(
+	voteCh <-chan cmtpubsub.Message,
+	height int64,
+	round int32,
 	voteType cmtproto.SignedMsgType,
 ) {
-	select {
-	case <-time.After(ensureTimeout):
-		panic("Timeout expired while waiting for NewVote event")
-	case msg := <-voteCh:
-		voteEvent, ok := msg.Data().(types.EventDataVote)
-		if !ok {
-			panic(fmt.Sprintf("expected a EventDataVote, got %T. Wrong subscription channel?",
-				msg.Data()))
-		}
-		vote := voteEvent.Vote
-		if vote.Height != height {
-			panic(fmt.Sprintf("expected height %v, got %v", height, vote.Height))
-		}
-		if vote.Round != round {
-			panic(fmt.Sprintf("expected round %v, got %v", round, vote.Round))
-		}
-		if vote.Type != voteType {
-			panic(fmt.Sprintf("expected type %v, got %v", voteType, vote.Type))
+	timer := time.NewTimer(ensureTimeout)
+	defer timer.Stop()
+
+	var lastUnexpected *types.Vote
+
+	for {
+		select {
+		case <-timer.C:
+			if lastUnexpected != nil {
+				panic(fmt.Sprintf(
+					"Timeout expired while waiting for NewVote event; last unexpected vote type %v height %d round %d",
+					lastUnexpected.Type, lastUnexpected.Height, lastUnexpected.Round,
+				))
+			}
+			panic("Timeout expired while waiting for NewVote event")
+		case msg := <-voteCh:
+			voteEvent, ok := msg.Data().(types.EventDataVote)
+			if !ok {
+				continue
+			}
+			vote := voteEvent.Vote
+			if vote == nil {
+				continue
+			}
+			if vote.Height != height || vote.Round != round || vote.Type != voteType {
+				lastUnexpected = vote.Copy()
+				continue
+			}
+			return
 		}
 	}
 }

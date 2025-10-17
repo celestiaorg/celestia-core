@@ -32,6 +32,8 @@ var (
 	ctx = context.Background()
 )
 
+const maxUnconfirmedTxsPerPage = 100 // must match rpc/core/env.go:maxPerPage
+
 func getHTTPClient() *rpchttp.HTTP {
 	rpcAddr := rpctest.GetConfig().RPC.ListenAddress
 	c, err := rpchttp.New(rpcAddr, "/websocket")
@@ -407,30 +409,68 @@ func TestUnconfirmedTxs(t *testing.T) {
 func TestUncappedUnconfirmedTxs(t *testing.T) {
 	mempool := node.Mempool()
 	numberOfTransactions := 120 // needs to be greater than maxPerPage const
-	for i := 0; i < numberOfTransactions; i++ {
+	addTx := func() {
 		_, _, tx := MakeTxKV()
 
 		ch := make(chan *abci.ResponseCheckTx, 1)
 		err := mempool.CheckTx(tx, func(resp *abci.ResponseCheckTx) { ch <- resp }, mempl.TxInfo{})
 		require.NoError(t, err)
 
-		// wait for tx to arrive in mempoool.
+		// wait for tx to arrive in mempool.
 		select {
 		case <-ch:
 		case <-time.After(5 * time.Second):
-			t.Error("Timed out waiting for CheckTx callback")
+			t.Fatal("Timed out waiting for CheckTx callback")
 		}
+	}
+
+	ensureTarget := func() {
+		deadline := time.Now().Add(3 * time.Second)
+		for {
+			for mempool.Size() < numberOfTransactions && time.Now().Before(deadline) {
+				addTx()
+			}
+
+			mempool.Lock()
+			size := mempool.Size()
+			moreThanCap := size > maxUnconfirmedTxsPerPage
+			mempool.Unlock()
+
+			if size >= numberOfTransactions && moreThanCap {
+				return
+			}
+
+			if time.Now().After(deadline) {
+				break
+			}
+		}
+
+		require.FailNowf(t, "mempool target not reached",
+			"mempool never reached target size %d within deadline; final size %d", numberOfTransactions, mempool.Size())
+	}
+
+	for i := 0; i < numberOfTransactions; i++ {
+		addTx()
 	}
 
 	for _, c := range GetClients() {
 		mc := c.(client.MempoolClient)
+		ensureTarget()
+
 		limit := -1 // set the limit to -1 to return everything
+
+		mempool.Lock()
+		expectedCount := mempool.Size()
+		expectedBytes := mempool.SizeBytes()
 		res, err := mc.UnconfirmedTxs(context.Background(), &limit)
+		mempool.Unlock()
+
 		require.NoError(t, err)
 
-		assert.Equal(t, numberOfTransactions, res.Count)
-		assert.Equal(t, numberOfTransactions, res.Total)
-		assert.Equal(t, mempool.SizeBytes(), res.TotalBytes)
+		assert.Equal(t, expectedCount, res.Count)
+		assert.Equal(t, expectedCount, res.Total)
+		assert.Equal(t, expectedBytes, res.TotalBytes)
+		assert.Greater(t, res.Count, maxUnconfirmedTxsPerPage)
 	}
 
 	mempool.Flush()
