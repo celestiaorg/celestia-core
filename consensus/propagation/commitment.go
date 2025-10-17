@@ -3,8 +3,6 @@ package propagation
 import (
 	"errors"
 	"fmt"
-	"runtime"
-	"sync"
 	"time"
 
 	"github.com/cosmos/gogoproto/proto"
@@ -306,50 +304,36 @@ func (blockProp *Reactor) recoverPartsFromMempool(cb *proptypes.CompactBlock) {
 		Parts:  make([]proptypes.PartMetaData, 0),
 	}
 	s = time.Now()
-	g := sync.WaitGroup{}
-	workers := make(chan struct{}, runtime.NumCPU())
-	partsMetaData := make(chan *proptypes.PartMetaData, len(parts))
 	for _, p := range parts {
-		workers <- struct{}{}
-		g.Go(func() {
-			defer func() {
-				<-workers
-			}()
-			if partSet.HasPart(int(p.Index)) {
-				return
-			}
-			p.Proof = *proofs[p.Index]
+		if partSet.HasPart(int(p.Index)) {
+			continue
+		}
+		p.Proof = *proofs[p.Index]
 
-			added, err := partSet.AddOriginalPart(p)
-			if err != nil {
-				blockProp.Logger.Error("failed to add locally recovered part", "err", err)
-				return
-			}
+		added, err := partSet.AddOriginalPart(p)
+		if err != nil {
+			blockProp.Logger.Error("failed to add locally recovered part", "err", err)
+			continue
+		}
 
-			if !added {
-				blockProp.Logger.Error("failed to add locally recovered part", "part", p.Index)
-				return
-			}
+		if !added {
+			blockProp.Logger.Error("failed to add locally recovered part", "part", p.Index)
+			continue
+		}
 
-			select {
-			case <-blockProp.ctx.Done():
-				return
-			case blockProp.partChan <- types.PartInfo{
-				Part:   p,
-				Height: cb.Proposal.Height,
-				Round:  cb.Proposal.Round,
-			}:
-			}
+		select {
+		case <-blockProp.ctx.Done():
+			return
+		case blockProp.partChan <- types.PartInfo{
+			Part:   p,
+			Height: cb.Proposal.Height,
+			Round:  cb.Proposal.Round,
+		}:
+		}
 
-			recoveredCount++
+		recoveredCount++
 
-			partsMetaData <- &proptypes.PartMetaData{Index: p.Index, Hash: p.Proof.LeafHash}
-		})
-	}
-	g.Wait()
-	for i := 0; i < len(partsMetaData); i++ {
-		p := <-partsMetaData
-		haves.Parts = append(haves.Parts, *p)
+		haves.Parts = append(haves.Parts, proptypes.PartMetaData{Index: p.Index, Hash: p.Proof.LeafHash})
 	}
 
 	schema.WriteMessageStats(blockProp.traceClient, "propagation", "recoverPartsFromMempool.2", time.Since(s).Nanoseconds(), "")
