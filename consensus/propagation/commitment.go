@@ -315,6 +315,7 @@ func (blockProp *Reactor) recoverPartsFromMempool(cb *proptypes.CompactBlock) {
 		go func() {
 			defer func() {
 				<-workers
+				g.Done()
 			}()
 			if partSet.HasPart(int(p.Index)) {
 				return
