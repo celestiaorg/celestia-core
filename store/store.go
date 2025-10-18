@@ -26,7 +26,7 @@ import (
 // the maximum size of a block, that will be batch saved, is 640kB. The
 // benchmarks have shown that `goleveldb` still performs well with blocks of
 // this size. However, if the block is larger than 1MB, the performance degrades.
-const maxBlockPartsToBatch = 10_000
+const maxBlockPartsToBatch = 2050
 
 /*
 BlockStore is a simple low level store for blocks.
