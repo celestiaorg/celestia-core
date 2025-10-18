@@ -19,11 +19,7 @@ import (
 	"github.com/cometbft/cometbft/types"
 )
 
-// Assuming the length of a block part is 64kB (`types.BlockPartSizeBytes`),
-// the maximum size of a block, that will be batch saved, is 640kB. The
-// benchmarks have shown that `goleveldb` still performs well with blocks of
-// this size. However, if the block is larger than 1MB, the performance degrades.
-const maxBlockPartsToBatch = 10
+const maxBlockPartsToBatch = 2050
 
 /*
 BlockStore is a simple low level store for blocks.
