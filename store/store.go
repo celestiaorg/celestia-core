@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"strconv"
+	"sync"
 	"time"
 
 	"github.com/cosmos/gogoproto/proto"
@@ -576,10 +577,22 @@ func (bs *BlockStore) saveBlockToBatch(
 	// typically load the block meta first as an indication that the block exists
 	// and then go on to load block parts - we must make sure the block is
 	// complete as soon as the block meta is written.
+	g := sync.WaitGroup{}
+	workers := make(chan struct{}, 4)
 	for i := 0; i < int(blockParts.Total()); i++ {
-		part := blockParts.GetPart(i)
-		bs.saveBlockPart(height, i, part, batch, saveBlockPartsToBatch)
+		workers <- struct{}{}
+		g.Add(1)
+		go func() {
+			defer func() {
+				g.Done()
+				<-workers
+			}()
+			part := blockParts.GetPart(i)
+			bs.saveBlockPart(height, i, part, batch, saveBlockPartsToBatch)
+		}()
+
 	}
+	g.Wait()
 	fmt.Println("saveBlockToBatch.step1: ", time.Since(s))
 	s = time.Now()
 
