@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"strconv"
+	"time"
 
 	"github.com/cosmos/gogoproto/proto"
 	lru "github.com/hashicorp/golang-lru/v2"
@@ -474,22 +475,29 @@ func (bs *BlockStore) SaveBlock(block *types.Block, blockParts *types.PartSet, s
 		panic("BlockStore can only save a non-nil block")
 	}
 
+	s := time.Now()
 	batch := bs.db.NewBatch()
 	defer batch.Close()
 
+	elapsed := time.Since(s)
+	fmt.Println("SaveBlock.step1: ", elapsed.Milliseconds())
+	s = time.Now()
 	if err := bs.saveBlockToBatch(block, blockParts, seenCommit, batch); err != nil {
 		panic(err)
 	}
-
+	fmt.Println("SaveBlock.step2: ", time.Since(s).Milliseconds())
+	s = time.Now()
 	bs.mtx.Lock()
 	defer bs.mtx.Unlock()
 	bs.height = block.Height
 	if bs.base == 0 {
 		bs.base = block.Height
 	}
-
+	fmt.Println("SaveBlock.step3: ", time.Since(s).Milliseconds())
+	s = time.Now()
 	// Save new BlockStoreState descriptor. This also flushes the database.
 	err := bs.saveStateAndWriteDB(batch, "failed to save block")
+	fmt.Println("SaveBlock.step4: ", time.Since(s).Milliseconds())
 	if err != nil {
 		panic(err)
 	}
@@ -563,6 +571,7 @@ func (bs *BlockStore) saveBlockToBatch(
 	// parts individually.
 	saveBlockPartsToBatch := blockParts.Count() <= maxBlockPartsToBatch
 
+	s := time.Now()
 	// Save block parts. This must be done before the block meta, since callers
 	// typically load the block meta first as an indication that the block exists
 	// and then go on to load block parts - we must make sure the block is
@@ -571,6 +580,8 @@ func (bs *BlockStore) saveBlockToBatch(
 		part := blockParts.GetPart(i)
 		bs.saveBlockPart(height, i, part, batch, saveBlockPartsToBatch)
 	}
+	fmt.Println("saveBlockToBatch.step1: ", time.Since(s))
+	s = time.Now()
 
 	// Save block meta
 	blockMeta := types.NewBlockMeta(block, blockParts)
@@ -593,6 +604,8 @@ func (bs *BlockStore) saveBlockToBatch(
 		return err
 	}
 
+	fmt.Println("saveBlockToBatch.step2: ", time.Since(s))
+	s = time.Now()
 	// Save seen commit (seen +2/3 precommits for block)
 	// NOTE: we can delete this at a later height
 	pbsc := seenCommit.ToProto()
@@ -600,6 +613,7 @@ func (bs *BlockStore) saveBlockToBatch(
 	if err := batch.Set(calcSeenCommitKey(height), seenCommitBytes); err != nil {
 		return err
 	}
+	fmt.Println("saveBlockToBatch.step3: ", time.Since(s))
 
 	return nil
 }
@@ -626,9 +640,13 @@ func (bs *BlockStore) saveStateAndWriteDB(batch dbm.Batch, errMsg string) error 
 		Base:   bs.base,
 		Height: bs.height,
 	}
+	s := time.Now()
 	SaveBlockStoreStateBatch(&bss, batch)
+	fmt.Println("saveStateAndWriteDB.step1: ", time.Since(s).Milliseconds())
+	s = time.Now()
 
 	err := batch.WriteSync()
+	fmt.Println("saveStateAndWriteDB.step2: ", time.Since(s).Milliseconds())
 	if err != nil {
 		return fmt.Errorf("error writing batch to DB %q: (base %d, height %d): %w",
 			errMsg, bs.base, bs.height, err)
