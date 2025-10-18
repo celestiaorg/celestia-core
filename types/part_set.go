@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"runtime"
+	"time"
 
 	"golang.org/x/sync/errgroup"
 
@@ -373,6 +374,7 @@ func Decode(ops, eps *PartSet, lastPartLen int) (*PartSet, *PartSet, error) {
 		return nil, nil, err
 	}
 
+	s := time.Now()
 	data := make([][]byte, ops.Total()+eps.Total())
 	ops.mtx.Lock()
 	for i := 0; i < int(ops.Total()); i++ {
@@ -404,6 +406,7 @@ func Decode(ops, eps *PartSet, lastPartLen int) (*PartSet, *PartSet, error) {
 	}
 	eps.mtx.Unlock()
 
+	fmt.Println("decode1: ", time.Since(s))
 	err = enc.Reconstruct(data)
 	if err != nil {
 		return nil, nil, err
