@@ -645,7 +645,7 @@ func (bs *BlockStore) saveStateAndWriteDB(batch dbm.Batch, errMsg string) error 
 	fmt.Println("saveStateAndWriteDB.step1: ", time.Since(s).Milliseconds())
 	s = time.Now()
 
-	err := batch.Write()
+	err := batch.WriteSync()
 	fmt.Println("saveStateAndWriteDB.step2: ", time.Since(s).Milliseconds())
 	if err != nil {
 		return fmt.Errorf("error writing batch to DB %q: (base %d, height %d): %w",
