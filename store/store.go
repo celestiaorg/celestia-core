@@ -3,8 +3,6 @@ package store
 import (
 	"errors"
 	"fmt"
-	"golang.org/x/sync/errgroup"
-	"runtime"
 	"strconv"
 	"time"
 
@@ -578,16 +576,10 @@ func (bs *BlockStore) saveBlockToBatch(
 	// typically load the block meta first as an indication that the block exists
 	// and then go on to load block parts - we must make sure the block is
 	// complete as soon as the block meta is written.
-	g := errgroup.Group{}
-	g.SetLimit(runtime.NumCPU())
 	for i := 0; i < int(blockParts.Total()); i++ {
-		g.Go(func() error {
-			part := blockParts.GetPart(i)
-			bs.saveBlockPart(height, i, part, batch, saveBlockPartsToBatch)
-			return nil
-		})
+		part := blockParts.GetPart(i)
+		bs.saveBlockPart(height, i, part, batch, saveBlockPartsToBatch)
 	}
-	g.Wait()
 	fmt.Println("saveBlockToBatch.step1: ", time.Since(s))
 	s = time.Now()
 
