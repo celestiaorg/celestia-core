@@ -1,7 +1,7 @@
 package crypto
 
 import (
-	sha256 "github.com/minio/sha256-simd"
+	"crypto/sha256"
 )
 
 func Sha256(bytes []byte) []byte {

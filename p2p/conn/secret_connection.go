@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"crypto/cipher"
 	crand "crypto/rand"
+	"crypto/sha256"
 	"encoding/binary"
 	"errors"
 	"fmt"
@@ -13,7 +14,6 @@ import (
 	"time"
 
 	gogotypes "github.com/cosmos/gogoproto/types"
-	sha256 "github.com/minio/sha256-simd"
 	"github.com/oasisprotocol/curve25519-voi/primitives/merlin"
 	"golang.org/x/crypto/chacha20poly1305"
 	"golang.org/x/crypto/curve25519"

@@ -1,10 +1,9 @@
 package merkle
 
 import (
+	"crypto/sha256"
 	"runtime"
 	"sync"
-
-	sha256 "github.com/minio/sha256-simd"
 )
 
 const (

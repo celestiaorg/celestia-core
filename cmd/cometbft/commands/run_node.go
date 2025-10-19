@@ -2,8 +2,8 @@ package commands
 
 import (
 	"bytes"
+	"crypto/sha256"
 	"fmt"
-	sha2
 	"io"
 	"os"
 

@@ -1,9 +1,8 @@
 package tmhash
 
 import (
+	"crypto/sha256"
 	"hash"
-
-	sha256 "github.com/minio/sha256-simd"
 )
 
 const (

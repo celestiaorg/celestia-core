@@ -2,11 +2,11 @@ package types
 
 import (
 	"bytes"
+	"crypto/sha256"
 	"errors"
 	"fmt"
 
 	"github.com/cosmos/gogoproto/proto"
-	sha256 "github.com/minio/sha256-simd"
 
 	share "github.com/celestiaorg/go-square/v3/share"
 	square "github.com/celestiaorg/go-square/v3/tx"

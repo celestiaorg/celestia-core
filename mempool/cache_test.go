@@ -2,7 +2,7 @@ package mempool
 
 import (
 	"crypto/rand"
-	sha256 "github.com/minio/sha256-simd"
+	"crypto/sha256"
 	"testing"
 
 	"fmt"

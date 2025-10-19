@@ -1,7 +1,7 @@
 package consts
 
 import (
-	sha256 "github.com/minio/sha256-simd"
+	"crypto/sha256"
 )
 
 const (

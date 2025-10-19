@@ -1,8 +1,8 @@
 package statesync
 
 import (
+	"crypto/sha256"
 	"fmt"
-	sha256 "git
 	"math/rand"
 	"sort"
 

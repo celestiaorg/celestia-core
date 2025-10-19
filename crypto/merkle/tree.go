@@ -1,10 +1,9 @@
 package merkle
 
 import (
+	"crypto/sha256"
 	"hash"
 	"math/bits"
-
-	sha256 "github.com/minio/sha256-simd"
 )
 
 // HashFromByteSlices computes a Merkle tree where the leaves are the byte slice,

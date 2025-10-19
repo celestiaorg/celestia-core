@@ -1,8 +1,8 @@
 package mempool
 
 import (
+	"crypto/sha256"
 	"fmt"
-	sha256 "github.com/minio/sha256-simd"
 	"math"
 
 	abci "github.com/cometbft/cometbft/abci/types"
