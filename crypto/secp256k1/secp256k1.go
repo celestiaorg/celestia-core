@@ -4,12 +4,12 @@ import (
 	"bytes"
 	"crypto/subtle"
 	"fmt"
+	sha2
 	"io"
 	"math/big"
 
 	"github.com/decred/dcrd/dcrec/secp256k1/v4"
 	"github.com/decred/dcrd/dcrec/secp256k1/v4/ecdsa"
-	sha256 "github.com/minio/sha256-simd"
 	"golang.org/x/crypto/ripemd160" //nolint:staticcheck
 
 	"github.com/cometbft/cometbft/crypto"

@@ -3,10 +3,10 @@ package commands
 import (
 	"bytes"
 	"fmt"
+	sha2
 	"io"
 	"os"
 
-	sha256 "github.com/minio/sha256-simd"
 	"github.com/spf13/cobra"
 
 	cfg "github.com/cometbft/cometbft/config"
