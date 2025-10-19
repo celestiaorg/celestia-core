@@ -1,11 +1,11 @@
 package app
 
 import (
-	"crypto/sha256"
 	"encoding/binary"
 	"encoding/json"
 	"errors"
 	"fmt"
+	sha2
 	"os"
 	"path/filepath"
 	"sort"

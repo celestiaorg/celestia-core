@@ -2,7 +2,7 @@ package tmhash
 
 import (
 	"bytes"
-	"crypto/sha256"
+	sha256 "github.com/minio/sha256-simd"
 	"strings"
 	"testing"
 )

@@ -1,7 +1,7 @@
 package merkle
 
 import (
-	"crypto/sha256"
+	sha256 "github.com/minio/sha256-simd"
 	"strings"
 	"testing"
 )

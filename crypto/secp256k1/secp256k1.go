@@ -2,9 +2,9 @@ package secp256k1
 
 import (
 	"bytes"
-	"crypto/sha256"
 	"crypto/subtle"
 	"fmt"
+	sha2
 	"io"
 	"math/big"
 

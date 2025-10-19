@@ -1,7 +1,7 @@
 package tmhash_test
 
 import (
-	"crypto/sha256"
+	sha256 "github.com/minio/sha256-simd"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
