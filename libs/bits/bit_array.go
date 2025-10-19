@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"math/bits"
 	"regexp"
+	"sort"
 	"strings"
 	"sync"
 
@@ -15,9 +16,10 @@ import (
 
 // BitArray is a thread-safe implementation of a bit array.
 type BitArray struct {
-	mtx   sync.Mutex
-	Bits  int      `json:"bits"`  // NOTE: persisted via reflect, must be exported
-	Elems []uint64 `json:"elems"` // NOTE: persisted via reflect, must be exported
+	mtx         sync.Mutex
+	Bits        int              `json:"bits"`  // NOTE: persisted via reflect, must be exported
+	Elems       []uint64         `json:"elems"` // NOTE: persisted via reflect, must be exported
+	trueIndices map[int]struct{} // cached indices of true bits for O(1) access
 }
 
 // NewBitArray returns a new bit array.
@@ -27,8 +29,9 @@ func NewBitArray(bits int) *BitArray {
 		return nil
 	}
 	return &BitArray{
-		Bits:  bits,
-		Elems: make([]uint64, (bits+63)/64),
+		Bits:        bits,
+		Elems:       make([]uint64, (bits+63)/64),
+		trueIndices: make(map[int]struct{}),
 	}
 }
 
@@ -40,13 +43,15 @@ func NewBitArrayFromFn(bits int, fn func(int) bool) *BitArray {
 		return nil
 	}
 	bA := &BitArray{
-		Bits:  bits,
-		Elems: make([]uint64, (bits+63)/64),
+		Bits:        bits,
+		Elems:       make([]uint64, (bits+63)/64),
+		trueIndices: make(map[int]struct{}),
 	}
 	for i := 0; i < bits; i++ {
 		v := fn(i)
 		if v {
 			bA.Elems[i/64] |= (uint64(1) << uint(i%64))
+			bA.trueIndices[i] = struct{}{}
 		}
 	}
 	return bA
@@ -104,12 +109,48 @@ func (bA *BitArray) setIndex(i int, v bool) bool {
 	if i >= bA.Bits {
 		return false
 	}
+
+	if bA.trueIndices == nil {
+		bA.trueIndices = make(map[int]struct{})
+	}
+
 	if v {
 		bA.Elems[i/64] |= (uint64(1) << uint(i%64))
+		bA.trueIndices[i] = struct{}{}
 	} else {
 		bA.Elems[i/64] &= ^(uint64(1) << uint(i%64))
+		delete(bA.trueIndices, i)
 	}
 	return true
+}
+
+// rebuildTrueIndices rebuilds the trueIndices map from Elems.
+// Must be called with lock held.
+func (bA *BitArray) rebuildTrueIndices() {
+	bA.trueIndices = make(map[int]struct{})
+	curBit := 0
+	numElems := len(bA.Elems)
+
+	for i := 0; i < numElems; i++ {
+		elem := bA.Elems[i]
+		if elem == 0 {
+			curBit += 64
+			continue
+		}
+
+		// Determine how many bits to check in this element
+		bitsToCheck := 64
+		if i == numElems-1 {
+			bitsToCheck = bA.Bits - (numElems-1)*64
+		}
+
+		for j := 0; j < bitsToCheck; j++ {
+			if (elem & (uint64(1) << uint64(j))) > 0 {
+				bA.trueIndices[curBit] = struct{}{}
+			}
+			curBit++
+		}
+	}
 }
 
 // AddBitArray combines two bit arrays by taking the bitwise OR of the two. If
@@ -137,6 +178,9 @@ func (bA *BitArray) AddBitArray(b *BitArray) {
 	for i := 0; i < len(b.Elems); i++ {
 		bA.Elems[i] |= b.Elems[i]
 	}
+
+	// Rebuild trueIndices from scratch after OR operation
+	bA.rebuildTrueIndices()
 }
 
 // Copy returns a copy of the provided bit array.
@@ -152,18 +196,36 @@ func (bA *BitArray) Copy() *BitArray {
 func (bA *BitArray) copy() *BitArray {
 	c := make([]uint64, len(bA.Elems))
 	copy(c, bA.Elems)
+
+	// Copy trueIndices map
+	trueIndicesCopy := make(map[int]struct{}, len(bA.trueIndices))
+	for k := range bA.trueIndices {
+		trueIndicesCopy[k] = struct{}{}
+	}
+
 	return &BitArray{
-		Bits:  bA.Bits,
-		Elems: c,
+		Bits:        bA.Bits,
+		Elems:       c,
+		trueIndices: trueIndicesCopy,
 	}
 }
 
 func (bA *BitArray) copyBits(bits int) *BitArray {
 	c := make([]uint64, (bits+63)/64)
 	copy(c, bA.Elems)
+
+	// Copy only the trueIndices that are within the new size
+	trueIndicesCopy := make(map[int]struct{})
+	for k := range bA.trueIndices {
+		if k < bits {
+			trueIndicesCopy[k] = struct{}{}
+		}
+	}
+
 	return &BitArray{
-		Bits:  bits,
-		Elems: c,
+		Bits:        bits,
+		Elems:       c,
+		trueIndices: trueIndicesCopy,
 	}
 }
 
@@ -189,6 +251,9 @@ func (bA *BitArray) Or(o *BitArray) *BitArray {
 	}
 	bA.mtx.Unlock()
 	o.mtx.Unlock()
+
+	// Rebuild trueIndices after modifying Elems
+	c.rebuildTrueIndices()
 	return c
 }
 
@@ -213,6 +278,8 @@ func (bA *BitArray) and(o *BitArray) *BitArray {
 	for i := 0; i < len(c.Elems); i++ {
 		c.Elems[i] &= o.Elems[i]
 	}
+	// Rebuild trueIndices after modifying Elems
+	c.rebuildTrueIndices()
 	return c
 }
 
@@ -231,6 +298,8 @@ func (bA *BitArray) not() *BitArray {
 	for i := 0; i < len(c.Elems); i++ {
 		c.Elems[i] = ^c.Elems[i]
 	}
+	// Rebuild trueIndices after modifying Elems
+	c.rebuildTrueIndices()
 	return c
 }
 
@@ -258,6 +327,9 @@ func (bA *BitArray) Sub(o *BitArray) *BitArray {
 	}
 	bA.mtx.Unlock()
 	o.mtx.Unlock()
+
+	// Rebuild trueIndices after modifying Elems
+	c.rebuildTrueIndices()
 	return c
 }
 
@@ -322,34 +394,21 @@ func (bA *BitArray) PickRandom() (int, bool) {
 func (bA *BitArray) GetTrueIndices() []int {
 	bA.mtx.Lock()
 	defer bA.mtx.Unlock()
-	trueIndices := make([]int, 0, bA.Bits)
-	curBit := 0
-	numElems := len(bA.Elems)
-	// set all true indices
-	for i := 0; i < numElems-1; i++ {
-		elem := bA.Elems[i]
-		if elem == 0 {
-			curBit += 64
-			continue
-		}
-		for j := 0; j < 64; j++ {
-			//nolint:gosec
-			if (elem & (uint64(1) << uint64(j))) > 0 {
-				trueIndices = append(trueIndices, curBit)
-			}
-			curBit++
-		}
+
+	// If trueIndices map is not initialized, rebuild it
+	if bA.trueIndices == nil {
+		bA.rebuildTrueIndices()
 	}
-	// handle last element
-	lastElem := bA.Elems[numElems-1]
-	numFinalBits := bA.Bits - curBit
-	for i := 0; i < numFinalBits; i++ {
-		//nolint:gosec
-		if (lastElem & (uint64(1) << uint64(i))) > 0 {
-			trueIndices = append(trueIndices, curBit)
-		}
-		curBit++
+
+	// Convert map to sorted slice for consistent ordering
+	trueIndices := make([]int, 0, len(bA.trueIndices))
+	for idx := range bA.trueIndices {
+		trueIndices = append(trueIndices, idx)
 	}
+
+	// Sort the indices to maintain consistent ordering
+	sort.Ints(trueIndices)
+
 	return trueIndices
 }
 
@@ -477,6 +536,13 @@ func (bA *BitArray) Update(o *BitArray) {
 	bA.mtx.Lock()
 	o.mtx.Lock()
 	copy(bA.Elems, o.Elems)
+
+	// Copy trueIndices from o
+	bA.trueIndices = make(map[int]struct{}, len(o.trueIndices))
+	for k := range o.trueIndices {
+		bA.trueIndices[k] = struct{}{}
+	}
+
 	o.mtx.Unlock()
 	bA.mtx.Unlock()
 }
@@ -514,6 +580,7 @@ func (bA *BitArray) UnmarshalJSON(bz []byte) error {
 		// into a pointer with pre-allocated BitArray.
 		bA.Bits = 0
 		bA.Elems = nil
+		bA.trueIndices = nil
 		return nil
 	}
 
@@ -565,5 +632,7 @@ func (bA *BitArray) FromProto(protoBitArray *cmtprotobits.BitArray) {
 	bA.Bits = int(protoBitArray.Bits)
 	if len(protoBitArray.Elems) > 0 {
 		bA.Elems = protoBitArray.Elems
+		// Rebuild trueIndices from the new Elems
+		bA.rebuildTrueIndices()
 	}
 }
