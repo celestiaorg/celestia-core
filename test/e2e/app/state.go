@@ -5,11 +5,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	sha2
 	"os"
 	"path/filepath"
 	"sort"
 	"sync"
+
+	sha256 "github.com/minio/sha256-simd"
 )
 
 const (
