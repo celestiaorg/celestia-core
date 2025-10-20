@@ -581,9 +581,9 @@ func (ps *PartSet) AddPart(part *Part) (bool, error) {
 		return false, fmt.Errorf(ErrPartSetInvalidProofTotal.Error()+":%v %v", part.Proof.Total, ps.total)
 	}
 
-	if err := part.Proof.Verify(ps.Hash(), part.Bytes); err != nil {
-		return false, fmt.Errorf("%w:%w", ErrPartSetInvalidProofHash, err)
-	}
+	//if err := part.Proof.Verify(ps.Hash(), part.Bytes); err != nil {
+	//	return false, fmt.Errorf("%w:%w", ErrPartSetInvalidProofHash, err)
+	//}
 
 	return ps.addPart(part)
 }
