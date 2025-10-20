@@ -266,7 +266,7 @@ func (blockProp *Reactor) recoverPartsFromMempool(cb *proptypes.CompactBlock) {
 
 	_, partSet, _, found := blockProp.getAllState(cb.Proposal.Height, cb.Proposal.Round, false)
 	if !found {
-		blockProp.Logger.Error("failed to get all state for this node's proposal", "height", cb.Proposal.Height, "round", cb.Proposal.Round)
+		blockProp.Logger.Debug("failed to get all state for this node's proposal", "height", cb.Proposal.Height, "round", cb.Proposal.Round)
 	}
 
 	proofs, err := cb.Proofs()
