@@ -322,34 +322,53 @@ func (bA *BitArray) PickRandom() (int, bool) {
 func (bA *BitArray) GetTrueIndices() []int {
 	bA.mtx.Lock()
 	defer bA.mtx.Unlock()
-	trueIndices := make([]int, 0, bA.Bits)
-	curBit := 0
+
+	// Pre-calculate exact capacity to avoid slice growth
+	count := bA.getNumTrueIndices()
+	trueIndices := make([]int, 0, count)
+
 	numElems := len(bA.Elems)
-	// set all true indices
+
+	// Process all elements except the last one
 	for i := 0; i < numElems-1; i++ {
 		elem := bA.Elems[i]
 		if elem == 0 {
-			curBit += 64
 			continue
 		}
-		for j := 0; j < 64; j++ {
-			//nolint:gosec
-			if (elem & (uint64(1) << uint64(j))) > 0 {
-				trueIndices = append(trueIndices, curBit)
-			}
-			curBit++
+
+		// Use TrailingZeros to skip to the next set bit efficiently
+		baseIndex := i * 64
+		for elem != 0 {
+			tzCount := bits.TrailingZeros64(elem)
+			trueIndices = append(trueIndices, baseIndex+tzCount)
+			// Clear the lowest set bit
+			elem &= elem - 1
 		}
 	}
-	// handle last element
-	lastElem := bA.Elems[numElems-1]
-	numFinalBits := bA.Bits - curBit
-	for i := 0; i < numFinalBits; i++ {
-		//nolint:gosec
-		if (lastElem & (uint64(1) << uint64(i))) > 0 {
-			trueIndices = append(trueIndices, curBit)
+
+	// Handle last element with bounds checking
+	if numElems > 0 {
+		lastElem := bA.Elems[numElems-1]
+		baseIndex := (numElems - 1) * 64
+		numFinalBits := bA.Bits - baseIndex
+
+		// Create mask for valid bits in last element
+		var mask uint64
+		if numFinalBits >= 64 {
+			mask = ^uint64(0)
+		} else {
+			mask = (uint64(1) << uint(numFinalBits)) - 1
 		}
-		curBit++
+		lastElem &= mask
+
+		for lastElem != 0 {
+			tzCount := bits.TrailingZeros64(lastElem)
+			trueIndices = append(trueIndices, baseIndex+tzCount)
+			// Clear the lowest set bit
+			lastElem &= lastElem - 1
+		}
 	}
+
 	return trueIndices
 }
 
