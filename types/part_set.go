@@ -433,7 +433,7 @@ func Decode(ops, eps *PartSet, lastPartLen int) (*PartSet, *PartSet, error) {
 	for i, d := range data[:ops.Total()] {
 		eg.Go(func() error {
 			if !ops.HasPart(i) {
-				added, err := ops.AddPart(&Part{
+				added, err := ops.AddPartWithoutProof(&Part{
 					Index: uint32(i),
 					Bytes: d,
 					Proof: *proofs[i],
@@ -466,7 +466,7 @@ func Decode(ops, eps *PartSet, lastPartLen int) (*PartSet, *PartSet, error) {
 	for i := 0; i < int(eps.Total()); i++ {
 		eg.Go(func() error {
 			if !eps.HasPart(i) {
-				added, err := eps.AddPart(&Part{
+				added, err := eps.AddPartWithoutProof(&Part{
 					Index: uint32(i),
 					Bytes: data[int(ops.Total())+i],
 					Proof: *eproofs[i],
