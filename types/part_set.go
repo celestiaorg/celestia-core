@@ -53,6 +53,9 @@ type Part struct {
 	Index uint32            `json:"index"`
 	Bytes cmtbytes.HexBytes `json:"bytes"`
 	Proof merkle.Proof      `json:"proof"`
+	// this is just a cache not to verify the proofs multiple times.
+	// shouldn't be serialised
+	verified bool
 }
 
 // ValidateBasic performs basic validation.
@@ -581,8 +584,11 @@ func (ps *PartSet) AddPart(part *Part) (bool, error) {
 		return false, fmt.Errorf(ErrPartSetInvalidProofTotal.Error()+":%v %v", part.Proof.Total, ps.total)
 	}
 
-	if err := part.Proof.Verify(ps.Hash(), part.Bytes); err != nil {
-		return false, fmt.Errorf("%w:%w", ErrPartSetInvalidProofHash, err)
+	if !part.verified {
+		if err := part.Proof.Verify(ps.Hash(), part.Bytes); err != nil {
+			return false, fmt.Errorf("%w:%w", ErrPartSetInvalidProofHash, err)
+		}
+		part.verified = true
 	}
 
 	return ps.addPart(part)
