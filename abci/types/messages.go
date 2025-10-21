@@ -233,3 +233,9 @@ func ToResponseFinalizeBlock(res *ResponseFinalizeBlock) *Response {
 		Value: &Response_FinalizeBlock{res},
 	}
 }
+
+func ToResponseQuerySequence(res *ResponseQuerySequence) *Response {
+	return &Response{
+		Value: &Response_QuerySequence{res},
+	}
+}
