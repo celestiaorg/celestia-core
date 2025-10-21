@@ -75,18 +75,18 @@ type PeerFilterFunc func(IPeerSet, Peer) error
 type Switch struct {
 	service.BaseService
 
-	config        *config.P2PConfig
-	reactors      map[string]Reactor
-	chDescs       []*conn.ChannelDescriptor
-	reactorsByCh  map[byte]Reactor
-	msgTypeByChID map[byte]proto.Message
-	peerSetByChID map[byte]*PeerSet
-	peers         *PeerSet
-	dialing       *cmap.CMap
-	reconnecting  *cmap.CMap
-	nodeInfo      NodeInfo // our node info
-	nodeKey       *NodeKey // our node privkey
-	addrBook      AddrBook
+	config           *config.P2PConfig
+	reactors         map[string]Reactor
+	chDescs          []*conn.ChannelDescriptor
+	reactorsByCh     map[byte]Reactor
+	msgTypeByChID    map[byte]proto.Message
+	peerSetByReactor map[string]*PeerSet
+	peers            *PeerSet
+	dialing          *cmap.CMap
+	reconnecting     *cmap.CMap
+	nodeInfo         NodeInfo // our node info
+	nodeKey          *NodeKey // our node privkey
+	addrBook         AddrBook
 	// peers addresses with whom we'll maintain constant connection
 	persistentPeersAddrs []*NetAddress
 	unconditionalPeerIDs map[ID]struct{}
@@ -125,7 +125,7 @@ func NewSwitch(
 		chDescs:              make([]*conn.ChannelDescriptor, 0),
 		reactorsByCh:         make(map[byte]Reactor),
 		msgTypeByChID:        make(map[byte]proto.Message),
-		peerSetByChID:        make(map[byte]*PeerSet),
+		peerSetByReactor:     make(map[string]*PeerSet),
 		peers:                NewPeerSet(),
 		dialing:              cmap.NewCMap(),
 		reconnecting:         cmap.NewCMap(),
@@ -176,7 +176,6 @@ func WithTracer(tracer trace.Tracer) SwitchOption {
 // AddReactor adds the given reactor to the switch.
 // NOTE: Not goroutine safe.
 func (sw *Switch) AddReactor(name string, reactor Reactor) Reactor {
-	peerSet := NewPeerSet() // one peer set per reactor
 	for _, chDesc := range reactor.GetChannels() {
 		chID := chDesc.ID
 		// No two reactors can share the same channel.
@@ -185,10 +184,10 @@ func (sw *Switch) AddReactor(name string, reactor Reactor) Reactor {
 		}
 		sw.chDescs = append(sw.chDescs, chDesc)
 		sw.reactorsByCh[chID] = reactor
-		sw.peerSetByChID[chID] = peerSet
 		sw.msgTypeByChID[chID] = chDesc.MessageType
 	}
 	sw.reactors[name] = reactor
+	sw.peerSetByReactor[reactor.String()] = NewPeerSet()
 	reactor.SetSwitch(sw)
 	return reactor
 }
@@ -208,6 +207,7 @@ func (sw *Switch) RemoveReactor(name string, reactor Reactor) {
 		delete(sw.msgTypeByChID, chDesc.ID)
 	}
 	delete(sw.reactors, name)
+	delete(sw.peerSetByReactor, reactor.String())
 	reactor.SetSwitch(nil)
 }
 
@@ -310,9 +310,14 @@ func (sw *Switch) Broadcast(e Envelope) chan bool {
 }
 
 func (sw *Switch) peersForEnvelope(e Envelope) []Peer {
-	set, ok := sw.peerSetByChID[e.ChannelID]
+	reactor, ok := sw.reactorsByCh[e.ChannelID]
+	if !ok || reactor == nil {
+		sw.Logger.Error("no reactor for given channel", "channel", e.ChannelID)
+		return nil
+	}
+	set, ok := sw.peerSetByReactor[reactor.String()]
 	if !ok {
-		sw.Logger.Error("peer set not defined for given channel", "channel", e.ChannelID)
+		sw.Logger.Error("peer set not defined for given reactor", "channel", e.ChannelID, "reactor", reactor.String())
 		return nil
 	}
 	return set.List()
@@ -932,13 +937,10 @@ func (sw *Switch) addPeer(p Peer) error {
 	return nil
 }
 
-// peerSetForReactor retrieves the PeerSet associated with the first channel of the given Reactor. Returns nil if empty.
-// For each reactor there is exactly one PeerSet, no need to iterate over channels
+// peerSetForReactor retrieves the PeerSet associated with the given Reactor.
+// Returns nil if the reactor is not registered.
 func (sw *Switch) peerSetForReactor(r Reactor) *PeerSet {
-	if len(r.GetChannels()) > 0 {
-		return sw.peerSetByChID[r.GetChannels()[0].ID]
-	}
-	return nil
+	return sw.peerSetByReactor[r.String()]
 }
 
 // removePeerFromAllReactors removes the given peer from all reactors
