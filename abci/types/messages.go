@@ -124,6 +124,12 @@ func ToRequestFinalizeBlock(req *RequestFinalizeBlock) *Request {
 	}
 }
 
+func ToRequestQuerySequence(req *RequestQuerySequence) *Request {
+	return &Request{
+		Value: &Request_QuerySequence{req},
+	}
+}
+
 //----------------------------------------
 
 func ToResponseException(errStr string) *Response {
