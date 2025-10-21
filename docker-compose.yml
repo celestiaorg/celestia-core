@@ -20,6 +20,11 @@ services:
     image: "cometbft/localnode"
     ports:
       - "26659-26660:26656-26657"
+      - "2345:2345"
+    security_opt:
+      - apparmor:unconfined
+    cap_add:
+      - SYS_PTRACE
     environment:
       - ID=1
       - LOG=${LOG:-cometbft.log}

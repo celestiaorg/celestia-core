@@ -1,8 +1,10 @@
-FROM alpine:3.19
+FROM golang:1.25.1-alpine3.22
 
 RUN apk update && \
     apk upgrade && \
     apk --no-cache add curl jq file
+
+RUN go install github.com/go-delve/delve/cmd/dlv@latest
 
 VOLUME /cometbft
 WORKDIR /cometbft

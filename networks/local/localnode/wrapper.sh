@@ -27,7 +27,12 @@ fi
 export CMTHOME="/cometbft/node${ID}"
 
 if [ -d "`dirname ${CMTHOME}/${LOG}`" ]; then
-  "$BINARY" "$@" | tee "${CMTHOME}/${LOG}"
+	if [ ${ID} -eq 1 ]; then
+		echo "DEBUG"
+  	dlv --listen=:2345 --headless=true --api-version=2 --accept-multiclient exec "$BINARY" -- "$@" | tee "${CMTHOME}/${LOG}"
+  else
+  	"$BINARY" "$@" | tee "${CMTHOME}/${LOG}"
+  fi
 else
   "$BINARY" "$@"
 fi
