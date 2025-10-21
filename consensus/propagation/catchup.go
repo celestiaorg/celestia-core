@@ -39,6 +39,9 @@ func (blockProp *Reactor) retryWants() {
 		peers = shuffle(peers)
 
 		for _, peer := range peers {
+			if peer.consensusPeerState.GetHeight() < height {
+				continue
+			}
 			mc := missing.Copy()
 
 			reqs, has := peer.GetRequests(height, round)

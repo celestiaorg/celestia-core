@@ -35,12 +35,16 @@ type PeerStateEditor interface {
 
 	// SetHasProposalBlockPart sets the given block part index as known for the peer.
 	SetHasProposalBlockPart(height int64, round int32, index int)
+
+	// GetHeight get the peer's height
+	GetHeight() int64
 }
 
 type noOpPSE struct{}
 
 func (noOpPSE) SetHasProposal(_ *types.Proposal)                {}
 func (noOpPSE) SetHasProposalBlockPart(_ int64, _ int32, _ int) {}
+func (noOpPSE) GetHeight() int64                                { return 1 }
 
 // NoOpPropagator is a no-operation implementation of the Propagator interface.
 // It provides empty implementations of all methods, effectively disabling
