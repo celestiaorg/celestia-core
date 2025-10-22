@@ -12,7 +12,8 @@ type Application interface {
 	Query(context.Context, *RequestQuery) (*ResponseQuery, error) // Query for state
 
 	// Mempool Connection
-	CheckTx(context.Context, *RequestCheckTx) (*ResponseCheckTx, error) // Validate a tx for the mempool
+	CheckTx(context.Context, *RequestCheckTx) (*ResponseCheckTx, error)                   // Validate a tx for the mempool
+	QuerySequence(context.Context, *RequestQuerySequence) (*ResponseQuerySequence, error) // Query sequence for a signer
 
 	// Consensus Connection
 	InitChain(context.Context, *RequestInitChain) (*ResponseInitChain, error) // Initialize blockchain w validators/other info from CometBFT
@@ -116,4 +117,8 @@ func (BaseApplication) FinalizeBlock(_ context.Context, req *RequestFinalizeBloc
 	return &ResponseFinalizeBlock{
 		TxResults: txs,
 	}, nil
+}
+
+func (BaseApplication) QuerySequence(context.Context, *RequestQuerySequence) (*ResponseQuerySequence, error) {
+	return &ResponseQuerySequence{}, nil
 }
