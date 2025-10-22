@@ -102,7 +102,7 @@ func DefaultConsensusParams() *ConsensusParams {
 // DefaultBlockParams returns a default BlockParams.
 func DefaultBlockParams() BlockParams {
 	return BlockParams{
-		MaxBytes: 22020096, // 21MB
+		MaxBytes: DefaultMaxBlockSizeBytes, // 128MB
 		MaxGas:   -1,
 	}
 }
