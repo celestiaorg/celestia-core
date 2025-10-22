@@ -337,7 +337,7 @@ func TestRecoverPendingEvidence(t *testing.T) {
 		LastBlockHeight: height + 15,
 		ConsensusParams: types.ConsensusParams{
 			Block: types.BlockParams{
-				MaxBytes: 22020096,
+				MaxBytes: types.DefaultMaxBlockSizeBytes,
 				MaxGas:   -1,
 			},
 			Evidence: types.EvidenceParams{
@@ -371,7 +371,7 @@ func initializeStateFromValidatorSet(valSet *types.ValidatorSet, height int64) s
 		LastHeightValidatorsChanged: 1,
 		ConsensusParams: types.ConsensusParams{
 			Block: types.BlockParams{
-				MaxBytes: 22020096,
+				MaxBytes: types.DefaultMaxBlockSizeBytes,
 				MaxGas:   -1,
 			},
 			Evidence: types.EvidenceParams{
