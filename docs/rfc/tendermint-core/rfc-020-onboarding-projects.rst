@@ -216,7 +216,7 @@ messages that might be (e.g. increment a counter for certian kinds of errors)
 
 One approach might be to look at various logging statements, particularly
 debug statements or errors that are logged but not returned, and see if
-they're convertable to counters or other metrics.
+they're convertible to counters or other metrics.
 
 Expose Metrics to Tests
 +++++++++++++++++++++++
