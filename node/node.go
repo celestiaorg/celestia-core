@@ -436,7 +436,7 @@ func NewNodeWithContext(ctx context.Context,
 		}
 	}
 	// Don't start block sync if we're doing a state sync first.
-	bcReactor, err := createBlocksyncReactor(config, state, blockExec, blockStore, blockSync && !stateSync, localAddr, logger, bsMetrics, offlineStateSyncHeight)
+	bcReactor, err := createBlocksyncReactor(config, state, blockExec, blockStore, blockSync && !stateSync, localAddr, logger, bsMetrics, offlineStateSyncHeight, tracer)
 	if err != nil {
 		return nil, fmt.Errorf("could not create blocksync reactor: %w", err)
 	}
