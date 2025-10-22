@@ -723,6 +723,10 @@ func (m *MockPeerStateEditor) SetHasProposalBlockPart(height int64, round int32,
 	m.blockParts = append(m.blockParts, BlockPartCall{Height: height, Round: round, Index: index})
 }
 
+func (m *MockPeerStateEditor) GetHeight() int64 {
+	return m.proposals[len(m.proposals)-1].Height
+}
+
 // TestPeerStateEditor ensures that the propagation reactor is updating the
 // consensus peer state when the methods are called.
 func TestPeerStateEditor(t *testing.T) {
