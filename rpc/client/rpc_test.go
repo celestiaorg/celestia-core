@@ -893,6 +893,7 @@ func TestTxStatus(t *testing.T) {
 	require.Equal("COMMITTED", result.Status)
 	require.Equal(abci.CodeTypeOK, result.ExecutionCode)
 	require.Equal("", result.Error)
+	// require.Equal(bres.Signers, result.Signers) // TODO: make this test work properly
 }
 
 func TestDataCommitment(t *testing.T) {
