@@ -48,7 +48,7 @@ var testGenesisFmt = `{
   "initial_height": "1",
 	"consensus_params": {
 		"block": {
-			"max_bytes": "22020096",
+			"max_bytes": "134217728",
 			"max_gas": "-1",
 			"time_iota_ms": "10"
 		},
