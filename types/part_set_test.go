@@ -456,45 +456,52 @@ func BenchmarkPartSetEncodeDecode(b *testing.B) {
 	for c := range cases {
 		b.Run(fmt.Sprintf("dataSize=%d,partSize=%d,missing=%d%%", cases[c].dataSize, cases[c].partSize, cases[c].missingPercent), func(b *testing.B) {
 			data := cmtrand.Bytes(cases[c].dataSize)
-			ops, err := NewPartSetFromData(data, cases[c].partSize)
+			opsOriginal, err := NewPartSetFromData(data, cases[c].partSize)
 			require.NoError(b, err)
-			var eps *PartSet
+			var epsOriginal *PartSet
 			lastPartLen := 0
 			b.Run("encode", func(b *testing.B) {
 				b.ReportAllocs()
 				b.ResetTimer()
 				for i := 0; i < b.N; i++ {
-					eps, lastPartLen, err = Encode(ops, cases[c].partSize)
+					epsOriginal, lastPartLen, err = Encode(opsOriginal, cases[c].partSize)
 					require.NoError(b, err)
 				}
 			})
 
-			// Remove parts based on missingPercent
-			totalParts := int(ops.Total())
+			// Determine which parts to keep
+			totalParts := int(opsOriginal.Total())
 			numToRemove := (totalParts * cases[c].missingPercent) / 100
 
 			// Generate random indices to remove
-			indices := cmtrand.Perm(totalParts)[:numToRemove]
-
-			for _, idx := range indices {
-				// Remove from ops
-				ops.count--
-				ops.partsBitArray.SetIndex(idx, false)
-				start := idx * int(cases[c].partSize)
-				end := start + int(cases[c].partSize)
-				for i := start; i < end && i < len(ops.buffer); i++ {
-					ops.buffer[i] = 0
-				}
-
-				// Remove from eps
-				eps.count--
-				eps.partsBitArray.SetIndex(idx, false)
-				start = idx * int(cases[c].partSize)
-				end = start + int(cases[c].partSize)
-				for i := start; i < end && i < len(eps.buffer); i++ {
-					eps.buffer[i] = 0
-				}
+			indicesToRemove := make(map[int]bool)
+			for _, idx := range cmtrand.Perm(totalParts)[:numToRemove] {
+				indicesToRemove[idx] = true
 			}
+
+			var ops, eps *PartSet
+			// Create new PartSets with only the non-removed parts
+			b.Run("create partial PartSets", func(b *testing.B) {
+				for i := 0; i < b.N; i++ {
+					ops = NewPartSetFromHeader(opsOriginal.Header(), cases[c].partSize)
+					eps = NewPartSetFromHeader(epsOriginal.Header(), cases[c].partSize)
+					for idx := 0; idx < totalParts; idx++ {
+						if !indicesToRemove[idx] {
+							// Add non-removed parts to ops
+							part := opsOriginal.GetPart(idx)
+							added, err := ops.AddPart(part)
+							require.NoError(b, err)
+							require.True(b, added)
+
+							// Add non-removed parts to eps
+							part = epsOriginal.GetPart(idx)
+							added, err = eps.AddPart(part)
+							require.NoError(b, err)
+							require.True(b, added)
+						}
+					}
+				}
+			})
 
 			b.Run("decode", func(b *testing.B) {
 				b.ReportAllocs()
