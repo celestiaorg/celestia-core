@@ -267,14 +267,15 @@ type ResultSignedBlock struct {
 // ResultTxStatus represents the status of a transaction during its life cycle.
 // It contains info to locate a tx in a committed block as well as its execution code, log if it fails and status.
 type ResultTxStatus struct {
-	Height        int64  `json:"height"`
-	Index         uint32 `json:"index"`
-	ExecutionCode uint32 `json:"execution_code"`
-	Error         string `json:"error"`
-	Status        string `json:"status"`
-	Codespace     string `json:"codespace,omitempty"`
-	GasWanted     int64  `json:"gas_wanted,omitempty"`
-	GasUsed       int64  `json:"gas_used,omitempty"`
+	Height        int64    `json:"height"`
+	Index         uint32   `json:"index"`
+	ExecutionCode uint32   `json:"execution_code"`
+	Error         string   `json:"error"`
+	Status        string   `json:"status"`
+	Codespace     string   `json:"codespace,omitempty"`
+	GasWanted     int64    `json:"gas_wanted,omitempty"`
+	GasUsed       int64    `json:"gas_used,omitempty"`
+	Signers       []string `json:"signers,omitempty"`
 }
 
 type ResultDataCommitment struct {

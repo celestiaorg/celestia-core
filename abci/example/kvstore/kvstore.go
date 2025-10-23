@@ -273,6 +273,7 @@ func (app *Application) FinalizeBlock(_ context.Context, req *types.RequestFinal
 					},
 				},
 			},
+			Signers: []string{"kvstore-app"}, // set signers for the tx
 		}
 		app.state.Size++
 	}

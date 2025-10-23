@@ -812,6 +812,7 @@ func (bs *BlockStore) SaveTxInfo(block *types.Block, execTxRes []*abci.ExecTxRes
 			Codespace: result.Codespace,
 			GasWanted: result.GasWanted,
 			GasUsed:   result.GasUsed,
+			Signers:   result.Signers,
 		}
 		// Set error log for failed txs
 		if result.Code != abci.CodeTypeOK {
