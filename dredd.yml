@@ -3,7 +3,7 @@ dry-run: null
 hookfiles: build/contract_tests
 language: go
 require: null
-# server: # localnet functionality has been removed - see CONTRIBUTING.md for current status
+# server: # localnet functionality has been removed - contract tests not currently available
 server-wait: 30
 init: false
 custom: {}
