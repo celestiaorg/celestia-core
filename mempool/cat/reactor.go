@@ -255,6 +255,8 @@ func (memR *Reactor) Receive(e p2p.Envelope) {
 	// NOTE: This setup also means that we can support older mempool implementations that simply
 	// flooded the network with transactions.
 	case *protomem.Txs:
+		s := time.Now()
+		defer schema.WriteMessageStats(memR.traceClient, "cat", "Txs", time.Since(s).Nanoseconds(), "")
 		protoTxs := msg.GetTxs()
 		if len(protoTxs) == 0 {
 			memR.Logger.Error("received empty txs from peer", "src", e.Src)
@@ -329,6 +331,8 @@ func (memR *Reactor) Receive(e p2p.Envelope) {
 	// 3. If we recently evicted the tx and still don't have space for it, we do nothing.
 	// 4. Else, we request the transaction from that peer.
 	case *protomem.SeenTx:
+		s := time.Now()
+		defer schema.WriteMessageStats(memR.traceClient, "cat", "SeenTx", time.Since(s).Nanoseconds(), "")
 		txKey, err := types.TxKeyFromBytes(msg.TxKey)
 		if err != nil {
 			memR.Logger.Error("peer sent SeenTx with incorrect tx key", "err", err)
@@ -388,6 +392,8 @@ func (memR *Reactor) Receive(e p2p.Envelope) {
 	// A peer is requesting a transaction that we have claimed to have. Find the specified
 	// transaction and broadcast it to the peer. We may no longer have the transaction
 	case *protomem.WantTx:
+		s := time.Now()
+		defer schema.WriteMessageStats(memR.traceClient, "cat", "WantTx", time.Since(s).Nanoseconds(), "")
 		txKey, err := types.TxKeyFromBytes(msg.TxKey)
 		if err != nil {
 			memR.Logger.Error("peer sent WantTx with incorrect tx key", "err", err)

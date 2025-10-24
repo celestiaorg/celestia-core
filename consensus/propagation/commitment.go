@@ -3,6 +3,7 @@ package propagation
 import (
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/cosmos/gogoproto/proto"
 
@@ -25,6 +26,8 @@ const (
 // ProposeBlock is called when the consensus routine has created a new proposal,
 // and it needs to be gossiped to the rest of the network.
 func (blockProp *Reactor) ProposeBlock(proposal *types.Proposal, block *types.PartSet, txs []proptypes.TxMetaData) {
+	s := time.Now()
+	defer schema.WriteMessageStats(blockProp.traceClient, "recovery", "proposeBlock", time.Since(s).Nanoseconds(), "")
 	// create the parity data and the compact block
 	parityBlock, lastLen, err := types.Encode(block, types.BlockPartSizeBytes)
 	if err != nil {
@@ -179,6 +182,8 @@ func chunkToPartMetaData(chunk *bits.BitArray, partSet *types.PartSet) []*propag
 // time a proposal is received from a peer or when a proposal is created. If the
 // proposal is new, it will be stored and broadcast to the relevant peers.
 func (blockProp *Reactor) handleCompactBlock(cb *proptypes.CompactBlock, peer p2p.ID, proposer bool) {
+	s := time.Now()
+	defer schema.WriteMessageStats(blockProp.traceClient, "recovery", "handleCompactBlock", time.Since(s).Nanoseconds(), "")
 	err := blockProp.validateCompactBlock(cb)
 	if !proposer && err != nil {
 		blockProp.Logger.Debug("failed to validate proposal. ignoring", "err", err, "height", cb.Proposal.Height, "round", cb.Proposal.Round)
@@ -230,6 +235,8 @@ func (blockProp *Reactor) handleCompactBlock(cb *proptypes.CompactBlock, peer p2
 
 // recoverPartsFromMempool queries the mempool to see if we can recover any block parts locally.
 func (blockProp *Reactor) recoverPartsFromMempool(cb *proptypes.CompactBlock) {
+	s := time.Now()
+	defer schema.WriteMessageStats(blockProp.traceClient, "recovery", "recoverPartsFromMempool", time.Since(s).Nanoseconds(), "")
 	// find the compact block transactions that exist in our mempool
 	txsFound := make([]proptypes.UnmarshalledTx, 0, len(cb.Blobs))
 	for _, txMetaData := range cb.Blobs {
