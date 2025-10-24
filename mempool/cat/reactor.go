@@ -256,7 +256,7 @@ func (memR *Reactor) Receive(e p2p.Envelope) {
 	// flooded the network with transactions.
 	case *protomem.Txs:
 		s := time.Now()
-		defer schema.WriteMessageStats(memR.traceClient, "cat", "Txs", time.Since(s).Nanoseconds(), "")
+		defer func() { schema.WriteMessageStats(memR.traceClient, "cat", "Txs", time.Since(s).Nanoseconds(), "") }()
 		protoTxs := msg.GetTxs()
 		if len(protoTxs) == 0 {
 			memR.Logger.Error("received empty txs from peer", "src", e.Src)
@@ -332,7 +332,7 @@ func (memR *Reactor) Receive(e p2p.Envelope) {
 	// 4. Else, we request the transaction from that peer.
 	case *protomem.SeenTx:
 		s := time.Now()
-		defer schema.WriteMessageStats(memR.traceClient, "cat", "SeenTx", time.Since(s).Nanoseconds(), "")
+		defer func() { schema.WriteMessageStats(memR.traceClient, "cat", "SeenTx", time.Since(s).Nanoseconds(), "") }()
 		txKey, err := types.TxKeyFromBytes(msg.TxKey)
 		if err != nil {
 			memR.Logger.Error("peer sent SeenTx with incorrect tx key", "err", err)
@@ -393,7 +393,7 @@ func (memR *Reactor) Receive(e p2p.Envelope) {
 	// transaction and broadcast it to the peer. We may no longer have the transaction
 	case *protomem.WantTx:
 		s := time.Now()
-		defer schema.WriteMessageStats(memR.traceClient, "cat", "WantTx", time.Since(s).Nanoseconds(), "")
+		defer func() { schema.WriteMessageStats(memR.traceClient, "cat", "WantTx", time.Since(s).Nanoseconds(), "") }()
 		txKey, err := types.TxKeyFromBytes(msg.TxKey)
 		if err != nil {
 			memR.Logger.Error("peer sent WantTx with incorrect tx key", "err", err)

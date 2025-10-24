@@ -25,7 +25,9 @@ import (
 // sending parts. If they did not, this node must disconnect from them.
 func (blockProp *Reactor) handleHaves(peer p2p.ID, haves *proptypes.HaveParts) {
 	s := time.Now()
-	defer schema.WriteMessageStats(blockProp.traceClient, "recovery", "handleHaves", time.Since(s).Nanoseconds(), "")
+	defer func() {
+		schema.WriteMessageStats(blockProp.traceClient, "recovery", "handleHaves", time.Since(s).Nanoseconds(), "")
+	}()
 	if haves == nil {
 		// TODO handle the disconnection case
 		return
@@ -361,7 +363,9 @@ func (blockProp *Reactor) broadcastHaves(haves *proptypes.HaveParts, from p2p.ID
 // in the future.
 func (blockProp *Reactor) handleWants(peer p2p.ID, wants *proptypes.WantParts) {
 	s := time.Now()
-	defer schema.WriteMessageStats(blockProp.traceClient, "recovery", "handleWants", time.Since(s).Nanoseconds(), "")
+	defer func() {
+		schema.WriteMessageStats(blockProp.traceClient, "recovery", "handleWants", time.Since(s).Nanoseconds(), "")
+	}()
 	if !blockProp.started.Load() {
 		return
 	}
@@ -440,7 +444,9 @@ func (blockProp *Reactor) handleWants(peer p2p.ID, wants *proptypes.WantParts) {
 // to store the part and clear any wants for that part.
 func (blockProp *Reactor) handleRecoveryPart(peer p2p.ID, part *proptypes.RecoveryPart) {
 	s := time.Now()
-	defer schema.WriteMessageStats(blockProp.traceClient, "recovery", "handleRecoveryPart", time.Since(s).Nanoseconds(), "")
+	defer func() {
+		schema.WriteMessageStats(blockProp.traceClient, "recovery", "handleRecoveryPart", time.Since(s).Nanoseconds(), "")
+	}()
 	if peer == "" {
 		peer = blockProp.self
 	}
@@ -608,7 +614,9 @@ func (blockProp *Reactor) handleRecoveryPart(peer p2p.ID, part *proptypes.Recove
 // so, it attempts to send them that part.
 func (blockProp *Reactor) clearWants(part *proptypes.RecoveryPart, proof merkle.Proof) {
 	s := time.Now()
-	defer schema.WriteMessageStats(blockProp.traceClient, "recovery", "clearWants", time.Since(s).Nanoseconds(), "")
+	defer func() {
+		schema.WriteMessageStats(blockProp.traceClient, "recovery", "clearWants", time.Since(s).Nanoseconds(), "")
+	}()
 	for _, peer := range blockProp.getPeers() {
 		if peer.WantsPart(part.Height, part.Round, part.Index) {
 			if peer.GetRemainingRequests(part.Height, part.Round) <= 0 {

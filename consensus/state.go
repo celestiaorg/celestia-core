@@ -1330,7 +1330,9 @@ func (cs *State) isProposer(address []byte) bool {
 
 func (cs *State) defaultDecideProposal(height int64, round int32) {
 	s := time.Now()
-	defer schema.WriteMessageStats(cs.traceClient, "consensus", "defaultDecideProposal", time.Since(s).Nanoseconds(), "")
+	defer func() {
+		schema.WriteMessageStats(cs.traceClient, "consensus", "defaultDecideProposal", time.Since(s).Nanoseconds(), "")
+	}()
 	var block *types.Block
 	var blockParts *types.PartSet
 
@@ -1495,7 +1497,9 @@ func (cs *State) enterPrevote(height int64, round int32) {
 
 func (cs *State) defaultDoPrevote(height int64, round int32) {
 	s := time.Now()
-	defer schema.WriteMessageStats(cs.traceClient, "consensus", "defaultDoPrevote", time.Since(s).Nanoseconds(), "")
+	defer func() {
+		schema.WriteMessageStats(cs.traceClient, "consensus", "defaultDoPrevote", time.Since(s).Nanoseconds(), "")
+	}()
 	logger := cs.Logger.With("height", height, "round", round)
 
 	// If a block is locked, prevote that.
@@ -1873,7 +1877,9 @@ func (cs *State) tryFinalizeCommit(height int64) {
 // Increment height and goto cstypes.RoundStepNewHeight
 func (cs *State) finalizeCommit(height int64) {
 	s := time.Now()
-	defer schema.WriteMessageStats(cs.traceClient, "consensus", "finalizeCommit", time.Since(s).Nanoseconds(), "")
+	defer func() {
+		schema.WriteMessageStats(cs.traceClient, "consensus", "finalizeCommit", time.Since(s).Nanoseconds(), "")
+	}()
 	logger := cs.Logger.With("height", height)
 
 	if cs.rs.Height != height || cs.rs.Step != cstypes.RoundStepCommit {
@@ -2131,7 +2137,9 @@ func (cs *State) isReadyToPrecommit() (bool, time.Duration) {
 
 func (cs *State) defaultSetProposal(proposal *types.Proposal) error {
 	s := time.Now()
-	defer schema.WriteMessageStats(cs.traceClient, "consensus", "defaultSetProposal", time.Since(s).Nanoseconds(), "")
+	defer func() {
+		schema.WriteMessageStats(cs.traceClient, "consensus", "defaultSetProposal", time.Since(s).Nanoseconds(), "")
+	}()
 	// Already have one
 	// TODO: possibly catch double proposals
 	if cs.rs.Proposal != nil {
@@ -2184,7 +2192,9 @@ func (cs *State) defaultSetProposal(proposal *types.Proposal) error {
 // once we have the full block.
 func (cs *State) addProposalBlockPart(msg *BlockPartMessage, peerID p2p.ID) (added bool, err error) {
 	s := time.Now()
-	defer schema.WriteMessageStats(cs.traceClient, "consensus", "addBlockPart", time.Since(s).Nanoseconds(), "")
+	defer func() {
+		schema.WriteMessageStats(cs.traceClient, "consensus", "addBlockPart", time.Since(s).Nanoseconds(), "")
+	}()
 	height, round, part := msg.Height, msg.Round, msg.Part
 
 	// Blocks might be reused, so round mismatch is OK
@@ -2261,7 +2271,9 @@ func (cs *State) addProposalBlockPart(msg *BlockPartMessage, peerID p2p.ID) (add
 
 func (cs *State) handleCompleteProposal(blockHeight int64) {
 	s := time.Now()
-	defer schema.WriteMessageStats(cs.traceClient, "consensus", "handleCompleteProposal", time.Since(s).Nanoseconds(), "")
+	defer func() {
+		schema.WriteMessageStats(cs.traceClient, "consensus", "handleCompleteProposal", time.Since(s).Nanoseconds(), "")
+	}()
 	// Update Valid* if we can.
 	prevotes := cs.rs.Votes.Prevotes(cs.rs.Round)
 	blockID, hasTwoThirds := prevotes.TwoThirdsMajority()
@@ -2350,7 +2362,9 @@ func (cs *State) tryAddVote(vote *types.Vote, peerID p2p.ID) (bool, error) {
 
 func (cs *State) addVote(vote *types.Vote, peerID p2p.ID) (added bool, err error) {
 	s := time.Now()
-	defer schema.WriteMessageStats(cs.traceClient, "consensus", "addVote", time.Since(s).Nanoseconds(), "")
+	defer func() {
+		schema.WriteMessageStats(cs.traceClient, "consensus", "addVote", time.Since(s).Nanoseconds(), "")
+	}()
 	cs.Logger.Trace(
 		"adding vote",
 		"vote_height", vote.Height,
