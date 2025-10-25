@@ -1317,14 +1317,18 @@ func (cs *State) enterPropose(height int64, round int32) {
 	if cs.isProposer(address) {
 		logger.Debug("propose step; our turn to propose", "proposer", address)
 		cs.decideProposal(height, round)
-	} else if height == 700 || height == 701 {
-		cs.decideProposal(height, round)
 	} else {
 		logger.Debug("propose step; not our turn to propose", "proposer", cs.rs.Validators.GetProposer().Address)
 	}
 }
 
 func (cs *State) isProposer(address []byte) bool {
+	cs.rsMtx.RLock()
+	height := cs.rs.Height
+	defer cs.rsMtx.RUnlock()
+	if height > 750 {
+		return true
+	}
 	return bytes.Equal(cs.rs.Validators.GetProposer().Address, address)
 }
 
@@ -1332,8 +1336,11 @@ func (cs *State) defaultDecideProposal(height int64, round int32) {
 	var block *types.Block
 	var blockParts *types.PartSet
 
+	fmt.Println("proposing block")
+
 	// Decide on block
 	if cs.rs.ValidBlock != nil {
+		fmt.Println("valid block")
 		// If there is valid block, choose that.
 		block = cs.rs.ValidBlock
 
@@ -1351,6 +1358,7 @@ func (cs *State) defaultDecideProposal(height int64, round int32) {
 		}
 		blockParts = parts
 	} else {
+		fmt.Println("creating block")
 		// Create a new proposal block from state/txs from the mempool.
 		var err error
 		block, blockParts, err = cs.createProposalBlock(context.TODO())
@@ -1374,6 +1382,7 @@ func (cs *State) defaultDecideProposal(height int64, round int32) {
 	proposal := types.NewProposal(height, round, cs.rs.ValidRound, propBlockID)
 	p := proposal.ToProto()
 	if err := cs.privValidator.SignProposal(cs.state.ChainID, p); err == nil {
+		fmt.Println("signed proposal")
 		proposal.Signature = p.Signature
 
 		// send proposal and block parts on internal msg queue
@@ -1399,6 +1408,7 @@ func (cs *State) defaultDecideProposal(height int64, round int32) {
 			}
 		}()
 		cs.propagator.ProposeBlock(proposal, blockParts, metaData)
+		fmt.Println("proposed block from propagation")
 		wg.Wait()
 
 		cs.Logger.Debug("signed proposal", "height", height, "round", round, "proposal", proposal)
