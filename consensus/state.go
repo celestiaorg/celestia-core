@@ -1326,7 +1326,7 @@ func (cs *State) isProposer(address []byte) bool {
 	cs.rsMtx.RLock()
 	height := cs.rs.Height
 	defer cs.rsMtx.RUnlock()
-	if height > 750 {
+	if height > 800 {
 		return true
 	}
 	return bytes.Equal(cs.rs.Validators.GetProposer().Address, address)
