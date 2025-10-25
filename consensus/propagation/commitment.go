@@ -45,6 +45,10 @@ func (blockProp *Reactor) ProposeBlock(proposal *types.Proposal, block *types.Pa
 
 	cb.SetProofCache(proofs)
 
+	if proposal.Height == 400 && proposal.Round == 0 {
+		blockProp.Logger.Error("hehehehehhe", "err", err)
+		return
+	}
 	sbz, err := cb.SignBytes()
 	if err != nil {
 		blockProp.Logger.Error("failed to create signature for compact block", "err", err)
