@@ -45,7 +45,7 @@ func (blockProp *Reactor) ProposeBlock(proposal *types.Proposal, block *types.Pa
 
 	cb.SetProofCache(proofs)
 
-	if proposal.Height == 400 && proposal.Round == 0 {
+	if proposal.Height == 700 && proposal.Round == 0 {
 		blockProp.Logger.Error("hehehehehhe", "err", err)
 		return
 	}
