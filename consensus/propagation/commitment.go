@@ -50,8 +50,10 @@ func (blockProp *Reactor) ProposeBlock(proposal *types.Proposal, block *types.Pa
 
 	cb.SetProofCache(proofs)
 
-	blockProp.Logger.Error("hehehehehhe", "err", err)
-	return
+	if proposal.Height == 450 && proposal.Round == 0 {
+		blockProp.Logger.Error("hehehehehhe", "err", err)
+		return
+	}
 
 	sbz, err := cb.SignBytes()
 	if err != nil {
