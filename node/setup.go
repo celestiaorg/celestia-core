@@ -347,10 +347,11 @@ func createBlocksyncReactor(config *cfg.Config,
 	logger log.Logger,
 	metrics *blocksync.Metrics,
 	offlineStateSyncHeight int64,
+	tracer trace.Tracer,
 ) (bcReactor p2p.Reactor, err error) {
 	switch config.BlockSync.Version {
 	case "v0":
-		// Use sliding window configuration from config
+		// Use sliding window configuration from config with tracer
 		bcReactor = blocksync.NewReactorWithSlidingWindow(
 			state.Copy(),
 			blockExec,
@@ -361,6 +362,7 @@ func createBlocksyncReactor(config *cfg.Config,
 			offlineStateSyncHeight,
 			config.BlockSync.WindowSize,
 			config.BlockSync.MaxRequesters,
+			tracer,
 		)
 	case "v1", "v2":
 		return nil, fmt.Errorf("block sync version %s has been deprecated. Please use v0", config.BlockSync.Version)

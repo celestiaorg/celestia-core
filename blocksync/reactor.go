@@ -8,6 +8,8 @@ import (
 
 	"github.com/cometbft/cometbft/crypto"
 	"github.com/cometbft/cometbft/libs/log"
+	"github.com/cometbft/cometbft/libs/trace"
+	"github.com/cometbft/cometbft/libs/trace/schema"
 	"github.com/cometbft/cometbft/p2p"
 	bcproto "github.com/cometbft/cometbft/proto/tendermint/blocksync"
 	sm "github.com/cometbft/cometbft/state"
@@ -59,6 +61,7 @@ type Reactor struct {
 	blockExec     *sm.BlockExecutor
 	store         sm.BlockStore
 	pool          BlockPoolInterface
+	traceClient   trace.Tracer
 	blockSync     bool
 	localAddr     crypto.Address
 	poolRoutineWg sync.WaitGroup
@@ -75,21 +78,21 @@ type Reactor struct {
 func NewReactor(state sm.State, blockExec *sm.BlockExecutor, store *store.BlockStore,
 	blockSync bool, metrics *Metrics, offlineStateSyncHeight int64,
 ) *Reactor {
-	return NewReactorWithAddr(state, blockExec, store, blockSync, nil, metrics, offlineStateSyncHeight)
+	return NewReactorWithAddr(state, blockExec, store, blockSync, nil, metrics, offlineStateSyncHeight, trace.NoOpTracer())
 }
 
 // Function added to keep existing API.
 func NewReactorWithAddr(state sm.State, blockExec *sm.BlockExecutor, store *store.BlockStore,
-	blockSync bool, localAddr crypto.Address, metrics *Metrics, offlineStateSyncHeight int64,
+	blockSync bool, localAddr crypto.Address, metrics *Metrics, offlineStateSyncHeight int64, traceClient trace.Tracer,
 ) *Reactor {
 	// Use default sliding window settings
-	return NewReactorWithSlidingWindow(state, blockExec, store, blockSync, localAddr, metrics, offlineStateSyncHeight, 20, 20)
+	return NewReactorWithSlidingWindow(state, blockExec, store, blockSync, localAddr, metrics, offlineStateSyncHeight, 20, 20, traceClient)
 }
 
 // NewReactorWithSlidingWindow creates a new reactor with configurable sliding window parameters.
 func NewReactorWithSlidingWindow(state sm.State, blockExec *sm.BlockExecutor, store *store.BlockStore,
 	blockSync bool, localAddr crypto.Address, metrics *Metrics, offlineStateSyncHeight int64,
-	windowSize int64, maxRequesters int32,
+	windowSize int64, maxRequesters int32, traceClient trace.Tracer,
 ) *Reactor {
 
 	storeHeight := store.Height()
@@ -138,6 +141,7 @@ func NewReactorWithSlidingWindow(state sm.State, blockExec *sm.BlockExecutor, st
 		requestsCh:   requestsCh,
 		errorsCh:     errorsCh,
 		metrics:      metrics,
+		traceClient:  traceClient,
 	}
 	bcR.BaseReactor = *p2p.NewBaseReactor("BlockSync", bcR, p2p.WithIncomingQueueSize(ReactorIncomingMessageQueueSize))
 	return bcR
@@ -300,6 +304,8 @@ func (bcR *Reactor) Receive(e p2p.Envelope) {
 				return
 			}
 		}
+
+		schema.WriteBlocksyncBlockReceived(bcR.traceClient, bi.Height, string(e.Src.ID()), msg.Block.Size())
 
 		if err := bcR.pool.AddBlock(e.Src.ID(), bi, extCommit, msg.Block.Size()); err != nil {
 			bcR.Logger.Error("failed to add block", "peer", e.Src, "err", err)
@@ -579,6 +585,13 @@ FOR_LOOP:
 				// but this may change so using second.LastCommit is safer.
 				bcR.store.SaveBlock(first, firstParts, second.LastCommit)
 			}
+
+			// Trace block saved after successful validation
+			var blockSize int
+			if firstParts != nil {
+				blockSize = int(firstParts.ByteSize())
+			}
+			schema.WriteBlocksyncBlockSaved(bcR.traceClient, first.Height, blockSize)
 
 			// TODO: same thing for app - but we would need a way to
 			// get the hash without persisting the state
