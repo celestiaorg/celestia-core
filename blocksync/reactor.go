@@ -58,7 +58,7 @@ type Reactor struct {
 
 	blockExec     *sm.BlockExecutor
 	store         sm.BlockStore
-	pool          *BlockPool
+	pool          BlockPoolInterface
 	blockSync     bool
 	localAddr     crypto.Address
 	poolRoutineWg sync.WaitGroup
@@ -81,6 +81,15 @@ func NewReactor(state sm.State, blockExec *sm.BlockExecutor, store *store.BlockS
 // Function added to keep existing API.
 func NewReactorWithAddr(state sm.State, blockExec *sm.BlockExecutor, store *store.BlockStore,
 	blockSync bool, localAddr crypto.Address, metrics *Metrics, offlineStateSyncHeight int64,
+) *Reactor {
+	// Use default sliding window settings
+	return NewReactorWithSlidingWindow(state, blockExec, store, blockSync, localAddr, metrics, offlineStateSyncHeight, 20, 20)
+}
+
+// NewReactorWithSlidingWindow creates a new reactor with configurable sliding window parameters.
+func NewReactorWithSlidingWindow(state sm.State, blockExec *sm.BlockExecutor, store *store.BlockStore,
+	blockSync bool, localAddr crypto.Address, metrics *Metrics, offlineStateSyncHeight int64,
+	windowSize int64, maxRequesters int32,
 ) *Reactor {
 
 	storeHeight := store.Height()
@@ -109,7 +118,15 @@ func NewReactorWithAddr(state sm.State, blockExec *sm.BlockExecutor, store *stor
 	if startHeight == 1 {
 		startHeight = state.InitialHeight
 	}
-	pool := NewBlockPool(startHeight, requestsCh, errorsCh)
+
+	// Create SlidingWindowPool with configured parameters
+	var pool BlockPoolInterface
+	if windowSize > 0 && maxRequesters > 0 {
+		pool = NewSlidingWindowPool(startHeight, windowSize, maxRequesters, requestsCh, errorsCh, log.NewNopLogger())
+	} else {
+		// Fallback to old BlockPool if invalid config
+		pool = NewBlockPool(startHeight, requestsCh, errorsCh)
+	}
 
 	bcR := &Reactor{
 		initialState: state,
@@ -129,7 +146,7 @@ func NewReactorWithAddr(state sm.State, blockExec *sm.BlockExecutor, store *stor
 // SetLogger implements service.Service by setting the logger on reactor and pool.
 func (bcR *Reactor) SetLogger(l log.Logger) {
 	bcR.BaseService.Logger = l //nolint:staticcheck
-	bcR.pool.Logger = l
+	bcR.pool.SetLogger(l)
 }
 
 // OnStart implements service.Service.
@@ -153,7 +170,7 @@ func (bcR *Reactor) SwitchToBlockSync(state sm.State) error {
 	bcR.blockSync = true
 	bcR.initialState = state
 
-	bcR.pool.height = state.LastBlockHeight + 1
+	bcR.pool.SetHeight(state.LastBlockHeight + 1)
 	err := bcR.pool.Start()
 	if err != nil {
 		return err
@@ -575,7 +592,7 @@ FOR_LOOP:
 
 			if blocksSynced%100 == 0 {
 				lastRate = 0.9*lastRate + 0.1*(100/time.Since(lastHundred).Seconds())
-				bcR.Logger.Info("Block Sync Rate", "height", bcR.pool.height,
+				bcR.Logger.Info("Block Sync Rate", "height", bcR.pool.Height(),
 					"max_peer_height", bcR.pool.MaxPeerHeight(), "blocks/s", lastRate)
 				lastHundred = time.Now()
 			}

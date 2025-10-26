@@ -364,6 +364,12 @@ func (pool *BlockPool) Height() int64 {
 	return pool.height
 }
 
+func (pool *BlockPool) SetHeight(height int64) {
+	pool.mtx.Lock()
+	defer pool.mtx.Unlock()
+	pool.height = height
+}
+
 // MaxPeerHeight returns the highest reported height.
 func (pool *BlockPool) MaxPeerHeight() int64 {
 	pool.mtx.Lock()
@@ -528,16 +534,14 @@ func (pool *BlockPool) makeNextRequester(nextHeight int64) {
 }
 
 func (pool *BlockPool) sendRequest(height int64, peerID p2p.ID) {
-	if !pool.IsRunning() {
-		return
-	}
+	// Note: We don't check IsRunning() here because:
+	// 1. This method may be called from a fake BlockPool created by SlidingWindowPool
+	// 2. The channel will be closed when the actual pool service stops anyway
 	pool.requestsCh <- BlockRequest{height, peerID}
 }
 
 func (pool *BlockPool) sendError(err error, peerID p2p.ID) {
-	if !pool.IsRunning() {
-		return
-	}
+	// Note: We don't check IsRunning() here for the same reason as sendRequest
 	pool.errorsCh <- peerError{err, peerID}
 }
 

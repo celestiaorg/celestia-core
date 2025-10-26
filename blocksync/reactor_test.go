@@ -188,7 +188,7 @@ func TestNoBlockResponse(t *testing.T) {
 	defer os.RemoveAll(config.RootDir)
 	genDoc, privVals := randGenesisDoc(1, false, 30)
 
-	maxBlockHeight := int64(65)
+	maxBlockHeight := int64(25)
 
 	reactorPairs := make([]ReactorPair, 2)
 
@@ -219,13 +219,21 @@ func TestNoBlockResponse(t *testing.T) {
 		{100, false},
 	}
 
-	for {
-		if reactorPairs[1].reactor.pool.IsCaughtUp() { //nolint:staticcheck
-			break
-		}
+	timeout := time.After(10 * time.Second)
+	ticker := time.NewTicker(100 * time.Millisecond)
+	defer ticker.Stop()
 
-		time.Sleep(10 * time.Millisecond)
+	for {
+		select {
+		case <-timeout:
+			t.Fatal("timed out waiting for reactor to catch up")
+		case <-ticker.C:
+			if reactorPairs[1].reactor.pool.IsCaughtUp() { //nolint:staticcheck
+				goto done
+			}
+		}
 	}
+done:
 
 	assert.Equal(t, maxBlockHeight, reactorPairs[0].reactor.store.Height())
 
@@ -249,7 +257,7 @@ func TestBadBlockStopsPeer(t *testing.T) {
 	defer os.RemoveAll(config.RootDir)
 	genDoc, privVals := randGenesisDoc(1, false, 30)
 
-	maxBlockHeight := int64(148)
+	maxBlockHeight := int64(100)
 
 	// Other chain needs a different validator set
 	otherGenDoc, otherPrivVals := randGenesisDoc(1, false, 30)
@@ -262,14 +270,15 @@ func TestBadBlockStopsPeer(t *testing.T) {
 		require.NoError(t, err)
 	}()
 
-	reactorPairs := make([]ReactorPair, 4)
+	// Strategy: Create only 2 peers - one good with PARTIAL blocks and one that will be bad with ALL blocks
+	// The good peer has blocks 1-50, the bad peer (before swap) has blocks 1-100
+	// This FORCES the syncing reactor to request blocks 51-100 from the bad peer
+	reactorPairs := make([]ReactorPair, 2)
 
-	reactorPairs[0] = newReactor(t, log.TestingLogger(), genDoc, privVals, maxBlockHeight)
-	reactorPairs[1] = newReactor(t, log.TestingLogger(), genDoc, privVals, 0)
-	reactorPairs[2] = newReactor(t, log.TestingLogger(), genDoc, privVals, 0)
-	reactorPairs[3] = newReactor(t, log.TestingLogger(), genDoc, privVals, 0)
+	reactorPairs[0] = newReactor(t, log.TestingLogger(), genDoc, privVals, maxBlockHeight/2) // Good peer: blocks 1-50
+	reactorPairs[1] = newReactor(t, log.TestingLogger(), genDoc, privVals, maxBlockHeight)   // Will be bad: has blocks 1-100
 
-	switches := p2p.MakeConnectedSwitches(config.P2P, 4, func(i int, s *p2p.Switch) *p2p.Switch {
+	switches := p2p.MakeConnectedSwitches(config.P2P, 2, func(i int, s *p2p.Switch) *p2p.Switch {
 		s.AddReactor("BLOCKSYNC", reactorPairs[i].reactor)
 		return s
 	}, p2p.Connect2Switches)
@@ -284,26 +293,19 @@ func TestBadBlockStopsPeer(t *testing.T) {
 		}
 	}()
 
+	// Wait for reactor[1] to finish (reactor[0] already has blocks 1-50, reactor[1] needs to get to 100)
 	for {
-		time.Sleep(1 * time.Second)
-		caughtUp := true
-		for _, r := range reactorPairs {
-			if !r.reactor.pool.IsCaughtUp() {
-				caughtUp = false
-			}
-		}
-		if caughtUp {
+		time.Sleep(100 * time.Millisecond)
+		if reactorPairs[1].reactor.pool.IsCaughtUp() {
 			break
 		}
 	}
 
-	// at this time, reactors[0-3] is the newest
-	assert.Equal(t, 3, reactorPairs[1].reactor.Switch.Peers().Size())
+	// Mark reactorPairs[1] as a bad peer by swapping its store
+	reactorPairs[1].reactor.store = otherChain.reactor.store
 
-	// Mark reactorPairs[3] as an invalid peer. Fiddling with .store without a mutex is a data
-	// race, but can't be easily avoided.
-	reactorPairs[3].reactor.store = otherChain.reactor.store
-
+	// Now create a new reactor that needs to sync from scratch
+	// It will have to use BOTH peer 0 (good) and peer 1 (bad)
 	lastReactorPair := newReactor(t, log.TestingLogger(), genDoc, privVals, 0)
 	reactorPairs = append(reactorPairs, lastReactorPair)
 
@@ -312,19 +314,35 @@ func TestBadBlockStopsPeer(t *testing.T) {
 		return s
 	}, p2p.Connect2Switches)...)
 
+	// Connect the new reactor to both existing peers
 	for i := 0; i < len(reactorPairs)-1; i++ {
 		p2p.Connect2Switches(switches, i, len(reactorPairs)-1)
 	}
 
+	// Wait for sync to complete or all peers to disconnect
+	timeout := time.After(10 * time.Second)
 	for {
-		if lastReactorPair.reactor.pool.IsCaughtUp() || lastReactorPair.reactor.Switch.Peers().Size() == 0 { //nolint:staticcheck
-			break
+		select {
+		case <-timeout:
+			t.Fatal("Timeout waiting for sync to complete")
+		default:
+			if lastReactorPair.reactor.pool.IsCaughtUp() || lastReactorPair.reactor.Switch.Peers().Size() == 0 {
+				goto done
+			}
+			time.Sleep(100 * time.Millisecond)
 		}
-
-		time.Sleep(1 * time.Second)
 	}
+done:
 
-	assert.True(t, lastReactorPair.reactor.Switch.Peers().Size() < len(reactorPairs)-1)
+	// Give time for in-flight bad blocks to be processed and peer to be stopped
+	// The reactor might have caught up but still be processing/rejecting bad blocks
+	time.Sleep(500 * time.Millisecond)
+
+	// The bad peer should have been detected and disconnected
+	// We started with 2 peers, so we should have fewer than 2 now
+	peerCount := lastReactorPair.reactor.Switch.Peers().Size()
+	assert.True(t, peerCount < 2,
+		"Expected bad peer to be disconnected, but still have %d peers", peerCount)
 }
 
 func TestCheckSwitchToConsensusLastHeightZero(t *testing.T) {

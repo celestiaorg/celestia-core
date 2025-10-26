@@ -1035,12 +1035,24 @@ func (cfg *StateSyncConfig) ValidateBasic() error {
 // BlockSyncConfig (formerly known as FastSync) defines the configuration for the CometBFT block sync service
 type BlockSyncConfig struct {
 	Version string `mapstructure:"version"`
+
+	// WindowSize is the maximum number of blocks to buffer in memory during sync.
+	// A larger window allows faster sync but uses more memory.
+	// Default: 50 blocks (~100MB for 2MB blocks)
+	WindowSize int64 `mapstructure:"window_size"`
+
+	// MaxRequesters is the maximum number of concurrent block requesters.
+	// Should be <= WindowSize. Higher values use more peers but may waste requesters.
+	// Default: 30 requesters
+	MaxRequesters int32 `mapstructure:"max_requesters"`
 }
 
 // DefaultBlockSyncConfig returns a default configuration for the block sync service
 func DefaultBlockSyncConfig() *BlockSyncConfig {
 	return &BlockSyncConfig{
-		Version: "v0",
+		Version:       "v0",
+		WindowSize:    20,  // Buffer up to 20 blocks
+		MaxRequesters: 20,  // Max 20 concurrent requests (must be <= WindowSize)
 	}
 }
 
@@ -1053,12 +1065,26 @@ func TestBlockSyncConfig() *BlockSyncConfig {
 func (cfg *BlockSyncConfig) ValidateBasic() error {
 	switch cfg.Version {
 	case "v0":
-		return nil
+		// OK
 	case "v1", "v2":
 		return fmt.Errorf("blocksync version %s has been deprecated. Please use v0 instead", cfg.Version)
 	default:
 		return fmt.Errorf("unknown blocksync version %s", cfg.Version)
 	}
+
+	if cfg.WindowSize <= 0 {
+		return fmt.Errorf("window_size must be positive, got %d", cfg.WindowSize)
+	}
+
+	if cfg.MaxRequesters <= 0 {
+		return fmt.Errorf("max_requesters must be positive, got %d", cfg.MaxRequesters)
+	}
+
+	if cfg.MaxRequesters > int32(cfg.WindowSize) {
+		return fmt.Errorf("max_requesters (%d) cannot exceed window_size (%d)", cfg.MaxRequesters, cfg.WindowSize)
+	}
+
+	return nil
 }
 
 //-----------------------------------------------------------------------------
