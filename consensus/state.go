@@ -1314,21 +1314,12 @@ func (cs *State) enterPropose(height int64, round int32) {
 		return
 	}
 
-	if cs.isProposer(address) {
-		logger.Debug("propose step; our turn to propose", "proposer", address)
-		cs.decideProposal(height, round)
-	} else {
-		logger.Debug("propose step; not our turn to propose", "proposer", cs.rs.Validators.GetProposer().Address)
-	}
+	logger.Debug("propose step; our turn to propose", "proposer", address)
+	cs.decideProposal(height, round)
+
 }
 
 func (cs *State) isProposer(address []byte) bool {
-	cs.rsMtx.RLock()
-	height := cs.rs.Height
-	cs.rsMtx.RUnlock()
-	if height > 8_590_643 {
-		return true
-	}
 	return bytes.Equal(cs.rs.Validators.GetProposer().Address, address)
 }
 
