@@ -72,6 +72,9 @@ type Reactor struct {
 	switchToConsensusMs int
 
 	metrics *Metrics
+
+	// messagePool pools protobuf messages to reduce allocations
+	messagePool *MessagePool
 }
 
 // NewReactor returns new reactor instance.
@@ -131,6 +134,8 @@ func NewReactorWithSlidingWindow(state sm.State, blockExec *sm.BlockExecutor, st
 		pool = NewBlockPool(startHeight, requestsCh, errorsCh)
 	}
 
+	messagePool := NewMessagePool()
+
 	bcR := &Reactor{
 		initialState: state,
 		blockExec:    blockExec,
@@ -142,8 +147,19 @@ func NewReactorWithSlidingWindow(state sm.State, blockExec *sm.BlockExecutor, st
 		errorsCh:     errorsCh,
 		metrics:      metrics,
 		traceClient:  traceClient,
+		messagePool:  messagePool,
 	}
-	bcR.BaseReactor = *p2p.NewBaseReactor("BlockSync", bcR, p2p.WithIncomingQueueSize(ReactorIncomingMessageQueueSize))
+
+	// Configure message pooling hooks
+	hooks := &p2p.MessagePoolHooks{
+		GetMessage: messagePool.GetMessageByChannel,
+		PutMessage: messagePool.PutMessageByChannel,
+	}
+
+	bcR.BaseReactor = *p2p.NewBaseReactor("BlockSync", bcR,
+		p2p.WithIncomingQueueSize(ReactorIncomingMessageQueueSize),
+		p2p.WithMessagePoolHooks(hooks),
+	)
 	return bcR
 }
 

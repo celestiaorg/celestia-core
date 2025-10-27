@@ -13,6 +13,19 @@ import (
 // ProcessorFunc is the message processor function type.
 type ProcessorFunc func(context.Context, <-chan UnprocessedEnvelope)
 
+// MessagePoolHooks provides hooks for message pooling to reduce allocations.
+// If configured, the base reactor will get messages from the pool before unmarshaling
+// and return them to the pool after processing (via defer).
+type MessagePoolHooks struct {
+	// GetMessage retrieves a pre-allocated message from the pool for the given channel.
+	// Should return nil if no pool is configured for this channel.
+	GetMessage func(channelID byte) proto.Message
+
+	// PutMessage returns a message to the pool after processing.
+	// The message will be reset before being returned to the pool.
+	PutMessage func(channelID byte, msg proto.Message)
+}
+
 // Reactor is responsible for handling incoming messages on one or more
 // Channel. Switch calls GetChannels when reactor is added to it. When a new
 // peer joins our node, InitPeer and AddPeer are called. RemovePeer is called
@@ -74,6 +87,9 @@ type BaseReactor struct {
 	// processor is called with the incoming channel and is responsible for
 	// unmarshalling the messages and calling Receive on the reactor.
 	processor ProcessorFunc
+
+	// messagePoolHooks provides optional message pooling to reduce allocations
+	messagePoolHooks *MessagePoolHooks
 }
 
 type ReactorOptions func(*BaseReactor)
@@ -142,6 +158,14 @@ func WithIncomingQueueSize(size int) ReactorOptions {
 	}
 }
 
+// WithMessagePoolHooks configures message pooling hooks for the reactor.
+// This enables message reuse during unmarshaling, significantly reducing allocations.
+func WithMessagePoolHooks(hooks *MessagePoolHooks) ReactorOptions {
+	return func(br *BaseReactor) {
+		br.messagePoolHooks = hooks
+	}
+}
+
 // QueueUnprocessedEnvelope is called by the switch when an unprocessed
 // envelope is received. Unprocessed envelopes are immediately buffered in a
 // queue to avoid blocking. The size of the queue can be changed by passing
@@ -193,12 +217,37 @@ func ProcessorWithReactor(impl Reactor, baseReactor *BaseReactor) func(context.C
 				process := func(ue UnprocessedEnvelope) error {
 					defer baseReactor.ProtectPanic(ue.Src)
 
+					// Return buffer to pool after processing
+					defer func() {
+						if ue.ReturnBuffer != nil {
+							ue.ReturnBuffer()
+						}
+					}()
+
 					mt := chIDs[ue.ChannelID]
 					if mt == nil {
 						return fmt.Errorf("no message type registered for channel %d", ue.ChannelID)
 					}
 
-					msg := proto.Clone(mt)
+					// Get message from pool if hooks are configured
+					var msg proto.Message
+					var pooled bool
+					if baseReactor.messagePoolHooks != nil && baseReactor.messagePoolHooks.GetMessage != nil {
+						msg = baseReactor.messagePoolHooks.GetMessage(ue.ChannelID)
+						if msg != nil {
+							pooled = true
+						}
+					}
+
+					// Fallback to normal allocation if no pool
+					if msg == nil {
+						msg = proto.Clone(mt)
+					}
+
+					// Return message to pool after processing (if it came from pool)
+					if pooled && baseReactor.messagePoolHooks != nil && baseReactor.messagePoolHooks.PutMessage != nil {
+						defer baseReactor.messagePoolHooks.PutMessage(ue.ChannelID, msg)
+					}
 
 					err := proto.Unmarshal(ue.Message, msg)
 					if err != nil {

@@ -467,6 +467,18 @@ func createMConnection(
 	config cmtconn.MConnConfig,
 ) *cmtconn.MConnection {
 
+	// Create the MConnection first so we can access its buffer pool
+	mconn := cmtconn.NewMConnectionWithConfig(
+		conn,
+		chDescs,
+		nil, // Set onReceive below
+		func(r interface{}) {
+			onPeerError(p, r, "p2p")
+		},
+		config,
+	)
+
+	// Now create onReceive with access to mconn
 	onReceive := func(chID byte, msgBytes []byte) {
 		reactor := reactorsByCh[chID]
 		if reactor == nil {
@@ -475,22 +487,26 @@ func createMConnection(
 			panic(fmt.Sprintf("Unknown channel %X", chID))
 		}
 
+		// Create buffer return callback if buffer pool is configured
+		var returnBuf func()
+		if pool := mconn.BufferPool(); pool != nil {
+			// Capture msgBytes in closure to return to pool later
+			buf := msgBytes
+			returnBuf = func() {
+				pool.Put(buf)
+			}
+		}
+
 		reactor.QueueUnprocessedEnvelope(UnprocessedEnvelope{
-			ChannelID: chID,
-			Src:       p,
-			Message:   msgBytes,
+			ChannelID:    chID,
+			Src:          p,
+			Message:      msgBytes,
+			ReturnBuffer: returnBuf,
 		})
 	}
 
-	onError := func(r interface{}) {
-		onPeerError(p, r, "p2p")
-	}
+	// Set the onReceive callback now that we have access to mconn
+	mconn.SetOnReceive(onReceive)
 
-	return cmtconn.NewMConnectionWithConfig(
-		conn,
-		chDescs,
-		onReceive,
-		onError,
-		config,
-	)
+	return mconn
 }
