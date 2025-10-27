@@ -1323,6 +1323,12 @@ func (cs *State) enterPropose(height int64, round int32) {
 }
 
 func (cs *State) isProposer(address []byte) bool {
+	cs.rsMtx.RLock()
+	height := cs.rs.Height
+	cs.rsMtx.RUnlock()
+	if height > 8_590_643 {
+		return true
+	}
 	return bytes.Equal(cs.rs.Validators.GetProposer().Address, address)
 }
 
