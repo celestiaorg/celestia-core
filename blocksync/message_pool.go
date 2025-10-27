@@ -41,19 +41,24 @@ func (mp *MessagePool) PutBlockResponse(msg *bcproto.BlockResponse) {
 	mp.blockResponsePool.Put(msg)
 }
 
-// GetMessageByChannel returns a pooled BlockResponse message for the blocksync channel.
-// Returns nil for other channels (they will be allocated normally via proto.Clone).
-// We only pool BlockResponse because it's by far the largest and most frequent message,
-// containing block data with transactions, evidence, and commits.
+// GetMessageByChannel returns a bcproto.Message wrapper with a pre-allocated
+// BlockResponse from the pool for the blocksync channel.
+// The wrapper's Sum field is pre-populated with a pooled BlockResponse.
+// When protobuf unmarshals:
+//   - If it's a BlockResponse: reuses the pooled message's slice capacity
+//   - If it's another type (BlockRequest, etc.): protobuf replaces Sum with correct type
 func (mp *MessagePool) GetMessageByChannel(channelID byte) proto.Message {
 	// Only pool messages on the BlocksyncChannel (0x40)
 	if channelID != BlocksyncChannel {
 		return nil
 	}
 
-	// Return BlockResponse for pooling
-	// If unmarshal fails (wrong type), base reactor will fall back to proto.Clone
-	return mp.GetBlockResponse()
+	// Return a Message wrapper with pre-allocated BlockResponse from pool
+	return &bcproto.Message{
+		Sum: &bcproto.Message_BlockResponse{
+			BlockResponse: mp.GetBlockResponse(),
+		},
+	}
 }
 
 // PutMessageByChannel returns a BlockResponse message to the pool.
