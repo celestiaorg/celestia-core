@@ -20,10 +20,10 @@ import (
 )
 
 // Assuming the length of a block part is 64kB (`types.BlockPartSizeBytes`),
-// the maximum size of a block, that will be batch saved, is 640kB. The
-// benchmarks have shown that `goleveldb` still performs well with blocks of
-// this size. However, if the block is larger than 1MB, the performance degrades.
-const maxBlockPartsToBatch = 10
+// the maximum size of a block, that will be batch saved, is ~131MB (2050 * 64kB).
+// This larger batch size provides significant performance improvements for PebbleDB
+// (~500ms improvement), while not affecting LevelDB performance.
+const maxBlockPartsToBatch = 2050
 
 /*
 BlockStore is a simple low level store for blocks.
