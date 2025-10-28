@@ -509,7 +509,7 @@ func (txmp *TxPool) Update(
 		panic(fmt.Sprintf("mempool: got %d transactions but %d DeliverTx responses",
 			len(blockTxs), len(deliverTxResponses)))
 	}
-	txmp.logger.Debug("updating mempool", "height", blockHeight, "txs", len(blockTxs))
+	txmp.logger.Info("updating mempool", "height", blockHeight, "txs", len(blockTxs))
 
 	txmp.height = blockHeight
 	txmp.notifiedTxsAvailable = false
@@ -580,7 +580,7 @@ func (txmp *TxPool) addNewTransaction(wtx *wrappedTx) error {
 				wtx.key().String(), txmp.Size(), txmp.SizeBytes())
 		}
 
-		txmp.logger.Debug(
+		txmp.logger.Info(
 			"evicting lower-priority tx sets",
 			"new_tx", fmt.Sprintf("%X", wtx.key()),
 			"new_set_priority", newAggPriority,
@@ -616,7 +616,7 @@ func (txmp *TxPool) addNewTransaction(wtx *wrappedTx) error {
 	txmp.metrics.TxSizeBytes.Observe(float64(wtx.size()))
 	txmp.metrics.Size.Set(float64(txmp.Size()))
 	txmp.metrics.SizeBytes.Set(float64(txmp.SizeBytes()))
-	txmp.logger.Trace(
+	txmp.logger.Info(
 		"inserted new valid transaction",
 		"priority", wtx.priority,
 		"tx", fmt.Sprintf("%X", wtx.key()),
@@ -631,7 +631,7 @@ func (txmp *TxPool) evictTx(wtx *wrappedTx) {
 	txmp.store.remove(wtx.key())
 	txmp.evictedTxCache.Push(wtx.key())
 	txmp.metrics.EvictedTxs.Add(1)
-	txmp.logger.Debug(
+	txmp.logger.Info(
 		"evicted valid existing transaction; mempool full",
 		"old_tx", fmt.Sprintf("%X", wtx.key()),
 		"old_priority", wtx.priority,
@@ -699,6 +699,11 @@ func (txmp *TxPool) recheckTransactions() {
 			Tx:   wtx.tx.Tx,
 			Type: abci.CheckTxType_Recheck,
 		})
+		fmt.Printf("CheckTx for tx %X, sender %s, sequence %d\n",
+			wtx.tx.Hash(),
+			string(wtx.sender),
+			wtx.sequence)
+		fmt.Printf("CheckTx response: %+v\n", rsp)
 		if err != nil {
 			txmp.logger.Error("failed to execute CheckTx during recheck",
 				"err", err, "key", fmt.Sprintf("%x", wtx.key()))
