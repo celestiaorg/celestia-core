@@ -390,6 +390,25 @@ func TestStoreGetTxs(t *testing.T) {
 	require.Equal(t, actualBz, bz)
 }
 
+func TestStoreGetOrderedTxsSingleSignerSequential(t *testing.T) {
+	store := newStore()
+	signer := []byte("single-signer")
+
+	const numTxs = 50
+	for seq := 1; seq <= numTxs; seq++ {
+		tx := types.Tx(fmt.Sprintf("tx-seq-%d", seq))
+		wtx := newWrappedTx(tx.ToCachedTx(), int64(seq), 1, 1, signer, uint64(seq))
+		require.True(t, store.set(wtx))
+	}
+
+	ordered := store.getOrderedTxs()
+	require.Len(t, ordered, numTxs)
+	for idx, wtx := range ordered {
+		expectedSeq := uint64(idx + 1)
+		require.Equalf(t, expectedSeq, wtx.sequence, "sequence mismatch at index %d", idx)
+	}
+}
+
 func TestStoreExpiredTxs(t *testing.T) {
 	store := newStore()
 	numTxs := 100
@@ -413,6 +432,78 @@ func TestStoreExpiredTxs(t *testing.T) {
 
 	store.purgeExpiredTxs(int64(0), time.Now().Add(time.Second))
 	require.Empty(t, store.getOrderedTxs())
+}
+
+func TestStoreGetOrderedTxsConcurrentAdds(t *testing.T) {
+	store := newStore()
+	signer := []byte("concurrent-signer")
+
+	const numTxs = 100
+	wg := &sync.WaitGroup{}
+	done := make(chan struct{})
+	errCh := make(chan error, 1)
+	sendErr := func(err error) {
+		if err == nil {
+			return
+		}
+		select {
+		case errCh <- err:
+		default:
+		}
+	}
+
+	// Writer: add sequential transactions every millisecond.
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		for seq := 1; seq <= numTxs; seq++ {
+			tx := types.Tx(fmt.Sprintf("concurrent-tx-%d", seq))
+			wtx := newWrappedTx(tx.ToCachedTx(), int64(seq), 1, 1, signer, uint64(seq))
+			if !store.set(wtx) {
+				sendErr(fmt.Errorf("failed to insert sequence %d", seq))
+				return
+			}
+			time.Sleep(100 * time.Millisecond)
+		}
+		close(done)
+	}()
+
+	// Reader: repeatedly snapshot ordering while writer runs.
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		ticker := time.NewTicker(500 * time.Microsecond)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ticker.C:
+				ordered := store.getOrderedTxs()
+				if len(ordered) == 0 {
+					continue
+				}
+				for idx, wtx := range ordered {
+					if wtx.sequence != uint64(idx+1) {
+						sendErr(fmt.Errorf("expected sequence %d got %d", idx+1, wtx.sequence))
+						return
+					}
+				}
+				if len(ordered) == numTxs {
+					return
+				}
+			case <-done:
+				return
+			}
+		}
+	}()
+
+	wg.Wait()
+	select {
+	case err := <-errCh:
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+	default:
+	}
 }
 
 func TestPurgeExpiredTxs(t *testing.T) {

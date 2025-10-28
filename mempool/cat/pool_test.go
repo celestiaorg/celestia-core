@@ -90,7 +90,6 @@ func setup(t testing.TB, cacheSize int, options ...TxPoolOption) *TxPool {
 
 	app := &application{kvstore.NewApplication(db.NewMemDB())}
 	cc := proxy.NewLocalClientCreator(app)
-
 	cfg := config.TestMempoolConfig()
 	cfg.CacheSize = cacheSize
 
