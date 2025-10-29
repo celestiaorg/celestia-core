@@ -317,6 +317,10 @@ func (memR *Reactor) Receive(e p2p.Envelope) {
 					continue
 				}
 				needsRefresh = true
+				// Process pending queue for this signer to request next sequential tx
+				if len(signerBytes) > 0 {
+					memR.processPendingSeenForSigner(signerBytes)
+				}
 			}
 
 			if !memR.opts.ListenOnly && execCode == 0 {
@@ -606,6 +610,12 @@ func (memR *Reactor) processPendingSeenForSigner(signer []byte) {
 			continue
 		}
 
+		// Only request if this is the next expected sequence
+		// If there's a gap, stop here and wait for the missing sequence
+		if haveExpected && entry.sequence != expectedSeq {
+			break
+		}
+
 		_ = memR.tryRequestQueuedTx(entry)
 		break
 	}
@@ -676,6 +686,12 @@ func (memR *Reactor) refreshPendingSeenQueues() {
 
 		if haveExpected && entry.sequence < expectedSeq {
 			memR.pendingSeen.remove(entry.txKey)
+			continue
+		}
+
+		// Only request if this is the next expected sequence
+		// If there's a gap, skip this signer and wait for the missing sequence
+		if haveExpected && entry.sequence != expectedSeq {
 			continue
 		}
 
