@@ -18,8 +18,9 @@ type ProcessorFunc func(context.Context, <-chan UnprocessedEnvelope)
 // and return them to the pool after processing (via defer).
 type MessagePoolHooks struct {
 	// GetMessage retrieves a pre-allocated message from the pool for the given channel.
-	// Should return nil if no pool is configured for this channel.
-	GetMessage func(channelID byte) proto.Message
+	// The data parameter allows peeking at the wire format to determine message type.
+	// Should return nil if no pool is configured for this channel or message type.
+	GetMessage func(channelID byte, data []byte) proto.Message
 
 	// PutMessage returns a message to the pool after processing.
 	// The message will be reset before being returned to the pool.
@@ -230,10 +231,11 @@ func ProcessorWithReactor(impl Reactor, baseReactor *BaseReactor) func(context.C
 					}
 
 					// Get message from pool if hooks are configured
+					// Pass raw bytes to allow peeking at wire format for type detection
 					var msg proto.Message
 					var pooled bool
 					if baseReactor.messagePoolHooks != nil && baseReactor.messagePoolHooks.GetMessage != nil {
-						msg = baseReactor.messagePoolHooks.GetMessage(ue.ChannelID)
+						msg = baseReactor.messagePoolHooks.GetMessage(ue.ChannelID, ue.Message)
 						if msg != nil {
 							pooled = true
 						}
@@ -244,11 +246,13 @@ func ProcessorWithReactor(impl Reactor, baseReactor *BaseReactor) func(context.C
 						msg = proto.Clone(mt)
 					}
 
+					// Unmarshal into the message (wrapper or regular message)
 					err := proto.Unmarshal(ue.Message, msg)
 					if err != nil {
 						return err
 					}
 
+					// Unwrap to get the actual message for processing
 					if w, ok := msg.(Unwrapper); ok {
 						msg, err = w.Unwrap()
 						if err != nil {
@@ -256,8 +260,9 @@ func ProcessorWithReactor(impl Reactor, baseReactor *BaseReactor) func(context.C
 						}
 					}
 
-					// Return message to pool after processing (if it came from pool)
-					// Defer is set AFTER unwrapping so it captures the final unwrapped message
+					// If pooled and the message is a BlockResponse, defer return it to pool
+					// For other message types (StatusRequest, etc.), the pre-allocated BlockResponse
+					// in the wrapper Sum field gets replaced and lost - this is unavoidable
 					if pooled && baseReactor.messagePoolHooks != nil && baseReactor.messagePoolHooks.PutMessage != nil {
 						defer baseReactor.messagePoolHooks.PutMessage(ue.ChannelID, msg)
 					}

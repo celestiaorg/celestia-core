@@ -7,6 +7,16 @@ import (
 	"github.com/cometbft/cometbft/libs/trace/schema"
 	bcproto "github.com/cometbft/cometbft/proto/tendermint/blocksync"
 	"github.com/cosmos/gogoproto/proto"
+	"google.golang.org/protobuf/encoding/protowire"
+)
+
+const (
+	// Protobuf field numbers for the Message oneof wrapper
+	FieldBlockRequest    = 1
+	FieldNoBlockResponse = 2
+	FieldBlockResponse   = 3
+	FieldStatusRequest   = 4
+	FieldStatusResponse  = 5
 )
 
 // MessagePool pools BlockResponse messages to reduce allocations during unmarshaling.
@@ -45,42 +55,87 @@ func (mp *MessagePool) PutBlockResponse(msg *bcproto.BlockResponse) {
 	mp.blockResponsePool.Put(msg)
 }
 
-// GetMessageByChannel returns a bcproto.Message wrapper with a pre-allocated
-// BlockResponse from the pool for the blocksync channel.
-// The wrapper's Sum field is pre-populated with a pooled BlockResponse.
-// When protobuf unmarshals:
-//   - If it's a BlockResponse: reuses the pooled message's slice capacity
-//   - If it's another type (BlockRequest, etc.): protobuf replaces Sum with correct type
-func (mp *MessagePool) GetMessageByChannel(channelID byte) proto.Message {
+// peekMessageType reads the protobuf field tag from wire format to determine message type
+// without unmarshaling the entire message. Returns the field number (1-5) or 0 if unknown.
+func (mp *MessagePool) peekMessageType(data []byte) int {
+	if len(data) == 0 {
+		return 0
+	}
+
+	// Read just the field tag from the wire format (typically 1-2 bytes)
+	fieldNum, wireType, n := protowire.ConsumeTag(data)
+	if n < 0 {
+		return 0 // Invalid tag
+	}
+
+	// Verify it's a length-delimited field (wireType 2, used by all Message types)
+	if wireType != protowire.BytesType {
+		return 0 // Unexpected wire type
+	}
+
+	return int(fieldNum)
+}
+
+// GetMessageByChannel returns a bcproto.Message wrapper for the blocksync channel.
+// It peeks at the wire format to determine message type:
+//   - If BlockResponse (field 3): returns wrapper with pre-allocated BlockResponse from pool
+//   - For other types: returns nil (caller should allocate normally)
+//
+// This eliminates the memory leak where we pre-allocated BlockResponse for ALL messages
+// but only ~15% were actually BlockResponse (the rest leaked when protobuf replaced Sum field).
+func (mp *MessagePool) GetMessageByChannel(channelID byte, data []byte) proto.Message {
 	// Only pool messages on the BlocksyncChannel (0x40)
 	if channelID != BlocksyncChannel {
 		return nil
 	}
 
-	// Trace: getting message from pool
-	schema.WriteBlocksyncMessagePoolGet(mp.traceClient, channelID)
+	// Peek at wire format to determine message type
+	fieldNum := mp.peekMessageType(data)
 
-	// Return a Message wrapper with pre-allocated BlockResponse from pool
-	return &bcproto.Message{
-		Sum: &bcproto.Message_BlockResponse{
-			BlockResponse: mp.GetBlockResponse(),
-		},
+	// Only get from pool if it's actually a BlockResponse
+	if fieldNum == FieldBlockResponse {
+		// Trace: getting message from pool
+		schema.WriteBlocksyncMessagePoolGet(mp.traceClient, channelID)
+
+		// Return a Message wrapper with pre-allocated BlockResponse from pool
+		return &bcproto.Message{
+			Sum: &bcproto.Message_BlockResponse{
+				BlockResponse: mp.GetBlockResponse(),
+			},
+		}
 	}
+
+	// For other message types (BlockRequest, StatusRequest, etc.), return nil
+	// Caller will allocate normally, avoiding the leak
+	return nil
 }
 
 // PutMessageByChannel returns a BlockResponse message to the pool.
-// Only BlockResponse messages are pooled; other message types are ignored.
+// It accepts either:
+// 1. The Message wrapper (bcproto.Message) - extracts BlockResponse from Sum field
+// 2. The unwrapped BlockResponse directly
 func (mp *MessagePool) PutMessageByChannel(channelID byte, msg proto.Message) {
 	if msg == nil {
 		return
 	}
 
-	// Only pool and trace BlockResponse messages
+	// Check if it's the Message wrapper
+	if wrapper, ok := msg.(*bcproto.Message); ok {
+		// Extract BlockResponse from the wrapper's Sum field
+		if brMsg, ok := wrapper.GetSum().(*bcproto.Message_BlockResponse); ok && brMsg.BlockResponse != nil {
+			mp.PutBlockResponse(brMsg.BlockResponse)
+			// Trace: returning message to pool
+			schema.WriteBlocksyncMessagePoolPut(mp.traceClient, channelID, "BlockResponse")
+		}
+		// Note: If Sum was replaced by protobuf (BlockRequest, etc.), the original
+		// BlockResponse is lost and cannot be recovered
+		return
+	}
+
+	// Check if it's an unwrapped BlockResponse
 	if blockResp, ok := msg.(*bcproto.BlockResponse); ok {
 		mp.PutBlockResponse(blockResp)
 		// Trace: returning message to pool
 		schema.WriteBlocksyncMessagePoolPut(mp.traceClient, channelID, "BlockResponse")
 	}
-	// Note: Other message types (BlockRequest, StatusRequest, etc.) are not pooled
-	// and are garbage collected normally
 }

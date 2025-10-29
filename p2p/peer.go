@@ -467,6 +467,19 @@ func createMConnection(
 	config cmtconn.MConnConfig,
 ) *cmtconn.MConnection {
 
+	// Configure buffer pool to reduce allocations during block sync
+	// Uses power-of-2 size class pooling (e.g., 64MB, 128MB, 256MB buckets)
+	// Note: We create one pool per connection, but they all share similar sizes
+	// TODO: This creates a pool per connection, might want to share pools globally
+	if config.BufferPool == nil && p.traceClient != nil {
+		// Create power-of-2 buffer pool with trace client
+		// The actual channel ID will be passed during Get/Put operations
+		config.BufferPool = cmtconn.NewPowerOf2BufferPool(
+			p.traceClient,
+			0, // channel ID - will be overridden by actual channel
+		)
+	}
+
 	// Create the MConnection first so we can access its buffer pool
 	mconn := cmtconn.NewMConnectionWithConfig(
 		conn,
