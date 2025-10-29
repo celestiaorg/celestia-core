@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"runtime"
+	"time"
 
 	"golang.org/x/sync/errgroup"
 
@@ -368,6 +369,7 @@ func (ps *PartSet) IsReadyForDecoding() bool {
 // is different from that in the PartSetHeader. Parts are fully complete with
 // proofs after decoding.
 func Decode(ops, eps *PartSet, lastPartLen int) (*PartSet, *PartSet, error) {
+	s := time.Now()
 	enc, err := reedsolomon.New(int(ops.total), int(eps.total))
 	if err != nil {
 		return nil, nil, err
@@ -480,6 +482,7 @@ func Decode(ops, eps *PartSet, lastPartLen int) (*PartSet, *PartSet, error) {
 		return nil, nil, err
 	}
 
+	fmt.Println("decode time: ", time.Since(s))
 	return ops, eps, nil
 }
 
