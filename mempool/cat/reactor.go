@@ -242,6 +242,7 @@ func (memR *Reactor) RemovePeer(peer p2p.Peer, reason interface{}) {
 	// we won't receive any responses from them.
 	outboundRequests := memR.requests.ClearAllRequestsFrom(peerID)
 	for key := range outboundRequests {
+		memR.pendingSeen.markRequestFailed(key, peerID)
 		memR.mempool.metrics.RequestedTxs.Add(1)
 		memR.findNewPeerToRequestTx(key)
 	}
@@ -266,6 +267,7 @@ func (memR *Reactor) Receive(e p2p.Envelope) {
 		txInfo := mempool.TxInfo{SenderID: peerID}
 		txInfo.SenderP2PID = e.Src.ID()
 
+		needsRefresh := false
 		for _, tx := range protoTxs {
 			ntx := types.Tx(tx)
 			key := ntx.Key()
@@ -307,20 +309,24 @@ func (memR *Reactor) Receive(e p2p.Envelope) {
 				} else {
 					schema.WriteMempoolAddResult(memR.traceClient, string(e.Src.ID()), key[:], schema.Added, nil, signer, sequence)
 				}
-
 			}
 
 			if err == nil || err == ErrTxInMempool {
-				memR.pendingSeen.remove(key)
-				if len(signerBytes) > 0 {
-					memR.processPendingSeenForSigner(signerBytes)
+				removed := memR.pendingSeen.remove(key)
+				if len(signerBytes) == 0 && (removed == nil || len(removed.signer) == 0) {
+					continue
 				}
+				needsRefresh = true
 			}
 
 			if !memR.opts.ListenOnly && execCode == 0 {
 				// We broadcast only transactions that we deem valid and actually have in our mempool.
 				memR.broadcastSeenTx(key, signerBytes, sequence)
 			}
+		}
+
+		if needsRefresh {
+			memR.refreshPendingSeenQueues()
 		}
 
 	// A peer has indicated to us that it has a transaction. We first verify the txkey and
@@ -526,6 +532,8 @@ func (memR *Reactor) requestTx(txKey types.TxKey, peer p2p.Peer) bool {
 		// we have disconnected from the peer
 		return false
 	}
+
+	peerID := memR.ids.GetIDForPeer(peer.ID())
 	memR.Logger.Trace("requesting tx", "txKey", txKey, "peerID", peer.ID())
 	msg := &protomem.Message{
 		Sum: &protomem.Message_WantTx{
@@ -541,9 +549,11 @@ func (memR *Reactor) requestTx(txKey types.TxKey, peer p2p.Peer) bool {
 	)
 	if success {
 		memR.mempool.metrics.RequestedTxs.Add(1)
-		requested := memR.requests.Add(txKey, memR.ids.GetIDForPeer(peer.ID()), memR.findNewPeerToRequestTx)
+		requested := memR.requests.Add(txKey, peerID, memR.onRequestTimeout)
 		if !requested {
 			memR.Logger.Error("have already marked a tx as requested", "txKey", txKey, "peerID", peer.ID())
+		} else {
+			memR.pendingSeen.markRequested(txKey, peerID, time.Now().UTC())
 		}
 
 		schema.WriteMempoolPeerState(memR.traceClient, string(peer.ID()), schema.WantTx, txKey[:], schema.Upload)
@@ -586,21 +596,17 @@ func (memR *Reactor) processPendingSeenForSigner(signer []byte) {
 			memR.pendingSeen.remove(entry.txKey)
 			continue
 		}
-		if memR.requests.ForTx(entry.txKey) != 0 {
+
+		if haveExpected && expectedSeq > entry.sequence {
 			memR.pendingSeen.remove(entry.txKey)
-			continue
-		}
-		if expectedSeq > entry.sequence {
-			memR.pendingSeen.remove(entry.txKey)
-			continue
-		}
-		if expectedSeq != entry.sequence {
 			continue
 		}
 
-		if memR.tryRequestQueuedTx(entry) {
-			memR.pendingSeen.remove(entry.txKey)
+		if memR.requests.ForTx(entry.txKey) != 0 || entry.requested {
+			continue
 		}
+
+		_ = memR.tryRequestQueuedTx(entry)
 		break
 	}
 }
@@ -616,6 +622,11 @@ func (memR *Reactor) tryRequestQueuedTx(entry *pendingSeenTx) bool {
 
 	memR.findNewPeerToRequestTx(entry.txKey)
 	return memR.requests.ForTx(entry.txKey) != 0
+}
+
+func (memR *Reactor) onRequestTimeout(txKey types.TxKey, peerID uint16) {
+	memR.pendingSeen.markRequestFailed(txKey, peerID)
+	memR.findNewPeerToRequestTx(txKey)
 }
 
 func (memR *Reactor) heightSignalLoop() {
@@ -646,10 +657,12 @@ func (memR *Reactor) refreshPendingSeenQueues() {
 	for _, signer := range signers {
 		expectedSeq, haveExpected := memR.sequenceExpectationForSigner(signer, true, true)
 		if !haveExpected {
-			continue
+			expectedSeq = 0
 		}
 
-		memR.pendingSeen.pruneBelowSequence(signer, expectedSeq)
+		if haveExpected {
+			memR.pendingSeen.pruneBelowSequence(signer, expectedSeq)
+		}
 
 		entry := memR.pendingSeen.firstEntry(signer)
 		if entry == nil {
@@ -661,18 +674,12 @@ func (memR *Reactor) refreshPendingSeenQueues() {
 			continue
 		}
 
-		if memR.requests.ForTx(entry.txKey) != 0 {
+		if haveExpected && entry.sequence < expectedSeq {
 			memR.pendingSeen.remove(entry.txKey)
 			continue
 		}
 
-		if entry.sequence != expectedSeq {
-			continue
-		}
-
-		if memR.tryRequestQueuedTx(entry) {
-			memR.pendingSeen.remove(entry.txKey)
-		}
+		_ = memR.tryRequestQueuedTx(entry)
 	}
 }
 
@@ -680,6 +687,12 @@ func (memR *Reactor) querySequenceFromApplication(signer []byte) (uint64, bool) 
 	ctx := context.Background()
 	resp, err := memR.mempool.proxyAppConn.QuerySequence(ctx, &abci.RequestQuerySequence{Signer: signer})
 	if err != nil || resp == nil {
+		return 0, false
+	}
+	// If the response is 0, treat it as "sequence tracking not available"
+	// to maintain backward compatibility with apps that don't implement QuerySequence.
+	// This prevents transactions from being stuck in pendingSeen when the app returns 0.
+	if resp.Sequence == 0 {
 		return 0, false
 	}
 	return resp.Sequence, true

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/hex"
+	"fmt"
 	"os"
 	"sort"
 	"strconv"
@@ -843,8 +844,15 @@ func TestReactorRequestsQueuedTxAfterSequenceBecomesAvailable(t *testing.T) {
 		Src:       providerPeer,
 	})
 
+	require.Eventually(t, func() bool {
+		return reactor.requests.ForTx(targetKey) != 0
+	}, time.Second, 10*time.Millisecond)
+
 	sourcePeer.AssertExpectations(t)
-	require.Empty(t, reactor.pendingSeen.entriesForSigner(signer))
+	entries := reactor.pendingSeen.entriesForSigner(signer)
+	require.Len(t, entries, 1)
+	require.True(t, entries[0].requested)
+	require.Equal(t, reactor.ids.GetIDForPeer(sourcePeer.ID()), entries[0].lastPeer)
 	require.EqualValues(t, reactor.ids.GetIDForPeer(sourcePeer.ID()), reactor.requests.ForTx(targetKey))
 }
 
@@ -933,7 +941,53 @@ func TestRefreshPendingSeenQueuesPrunesAndRequests(t *testing.T) {
 
 	reactor.refreshPendingSeenQueues()
 
-	require.Nil(t, reactor.pendingSeen.entriesForSigner(signer))
+	entries := reactor.pendingSeen.entriesForSigner(signer)
+	require.Len(t, entries, 1)
+	require.True(t, entries[0].requested)
+	require.Equal(t, targetKey, entries[0].txKey)
+	require.Equal(t, peerID, entries[0].lastPeer)
+	peer.AssertExpectations(t)
+	require.NotEqual(t, uint16(0), reactor.requests.ForTx(targetKey))
+}
+
+func TestProcessPendingSeenRequestsWhenSequenceAhead(t *testing.T) {
+	app := newSequenceTrackingApp()
+	cc := proxy.NewLocalClientCreator(app)
+	pool, cleanup := newMempoolWithApp(cc)
+	defer cleanup()
+
+	reactor, err := NewReactor(pool, &ReactorOptions{})
+	require.NoError(t, err)
+
+	signer := []byte("sequence-gap")
+	app.SetSequence(string(signer), 3)
+
+	peer := genPeer()
+	_, err = reactor.InitPeer(peer)
+	require.NoError(t, err)
+	peer.On("Send", mock.Anything).Return(true).Maybe()
+
+	targetTx := newDefaultTx("future-gap")
+	targetKey := targetTx.Key()
+
+	reactor.pendingSeen.add(signer, targetKey, 5, reactor.ids.GetIDForPeer(peer.ID()))
+
+	wantEnvelope := p2p.Envelope{
+		ChannelID: MempoolWantsChannel,
+		Message: &protomem.Message{
+			Sum: &protomem.Message_WantTx{
+				WantTx: &protomem.WantTx{TxKey: targetKey[:]},
+			},
+		},
+	}
+	peer.On("TrySend", wantEnvelope).Return(true)
+
+	reactor.processPendingSeenForSigner(signer)
+
+	entries := reactor.pendingSeen.entriesForSigner(signer)
+	require.Len(t, entries, 1)
+	require.True(t, entries[0].requested)
+	require.Equal(t, targetKey, entries[0].txKey)
 	peer.AssertExpectations(t)
 	require.NotEqual(t, uint16(0), reactor.requests.ForTx(targetKey))
 }
@@ -971,7 +1025,10 @@ func TestPendingSeenClearedOnPeerRemoval(t *testing.T) {
 
 	reactor.RemovePeer(sourcePeer, "disconnect")
 
-	require.Empty(t, reactor.pendingSeen.entriesForSigner(signer))
+	entries := reactor.pendingSeen.entriesForSigner(signer)
+	require.Len(t, entries, 1)
+	require.False(t, entries[0].requested)
+	require.Nil(t, entries[0].peerIDs())
 }
 
 func TestPendingSeenDroppedWhenSequenceAdvances(t *testing.T) {
@@ -1013,4 +1070,253 @@ func TestPendingSeenDroppedWhenSequenceAdvances(t *testing.T) {
 	require.Empty(t, reactor.pendingSeen.entriesForSigner(signer))
 	sourcePeer.AssertNotCalled(t, "TrySend", mock.Anything)
 
+}
+
+func TestPendingSeenSingleOutstandingRequestPerSigner(t *testing.T) {
+	app := newSequenceTrackingApp()
+	cc := proxy.NewLocalClientCreator(app)
+	pool, cleanup := newMempoolWithApp(cc)
+	defer cleanup()
+
+	reactor, err := NewReactor(pool, &ReactorOptions{})
+	require.NoError(t, err)
+
+	signer := []byte("serial-signer")
+	app.SetSequence(string(signer), 1)
+
+	peer := genPeer()
+	_, err = reactor.InitPeer(peer)
+	require.NoError(t, err)
+	peer.On("Send", mock.Anything).Return(true).Maybe()
+
+	tx1 := newDefaultTx("seq-1")
+	tx2 := newDefaultTx("seq-2")
+	key1 := tx1.Key()
+	key2 := tx2.Key()
+	keyToSeq := map[string]uint64{
+		string(key1[:]): 1,
+		string(key2[:]): 2,
+	}
+
+	var (
+		mu        sync.Mutex
+		requested []uint64
+	)
+
+	peer.On("TrySend", mock.Anything).Maybe().Return(true).Run(func(args mock.Arguments) {
+		env := args.Get(0).(p2p.Envelope)
+		msg, ok := env.Message.(*protomem.Message)
+		require.True(t, ok)
+		want := msg.GetWantTx()
+		require.NotNil(t, want)
+		key, err := types.TxKeyFromBytes(want.TxKey)
+		require.NoError(t, err)
+		seq := keyToSeq[string(key[:])]
+		mu.Lock()
+		defer mu.Unlock()
+		requested = append(requested, seq)
+		if len(requested) > 2 {
+			t.Fatalf("unexpected number of WantTx requests: %v", requested)
+		}
+	})
+
+	sendSeen := func(tx types.Tx, seq uint64) {
+		key := tx.Key()
+		reactor.Receive(p2p.Envelope{
+			ChannelID: MempoolDataChannel,
+			Message: &protomem.SeenTx{
+				TxKey:    key[:],
+				Signer:   signer,
+				Sequence: seq,
+			},
+			Src: peer,
+		})
+	}
+
+	sendSeen(tx1, 1)
+	sendSeen(tx2, 2)
+
+	require.Eventually(t, func() bool {
+		mu.Lock()
+		defer mu.Unlock()
+		return len(requested) == 1
+	}, time.Second, 10*time.Millisecond)
+
+	time.Sleep(100 * time.Millisecond)
+	mu.Lock()
+	require.Equal(t, []uint64{1}, requested)
+	mu.Unlock()
+
+	app.SetSequence(string(signer), 2)
+	reactor.Receive(p2p.Envelope{
+		ChannelID: MempoolDataChannel,
+		Message:   &protomem.Txs{Txs: [][]byte{tx1}},
+		Src:       peer,
+	})
+
+	entries := reactor.pendingSeen.entriesForSigner(signer)
+	require.Len(t, entries, 1)
+	require.True(t, entries[0].requested)
+	require.Equal(t, signer, entries[0].signer)
+	require.Len(t, entries[0].peerIDs(), 1)
+	require.NotZero(t, entries[0].peerIDs()[0])
+	require.NotZero(t, reactor.requests.ForTx(tx2.Key()))
+	expected, have := reactor.sequenceExpectationForSigner(signer, true, true)
+	require.True(t, have)
+	require.EqualValues(t, 2, expected)
+
+	require.Eventually(t, func() bool {
+		mu.Lock()
+		defer mu.Unlock()
+		return len(requested) == 2
+	}, 2*time.Second, 10*time.Millisecond)
+
+	mu.Lock()
+	require.Equal(t, []uint64{1, 2}, requested)
+	mu.Unlock()
+
+	peer.AssertExpectations(t)
+}
+
+func TestPendingSeenRequestScenarios(t *testing.T) {
+	type scenario struct {
+		name               string
+		initialExpected    uint64
+		seenSequences      []uint64
+		autoDeliver        bool
+		advanceAfterSeen   map[uint64]uint64
+		expectedWant       []uint64
+		expectedPendingLen int
+	}
+
+	makeSequence := func(start, end int) []uint64 {
+		out := make([]uint64, 0, end-start+1)
+		for i := start; i <= end; i++ {
+			out = append(out, uint64(i))
+		}
+		return out
+	}
+
+	cases := []scenario{
+		{
+			name:            "single-gap",
+			initialExpected: 1,
+			seenSequences:   []uint64{1, 2},
+			autoDeliver:     true,
+			expectedWant:    []uint64{1, 2},
+		},
+		{
+			name:               "sequential-burst-80",
+			initialExpected:    1,
+			seenSequences:      makeSequence(1, 80),
+			autoDeliver:        true,
+			expectedWant:       makeSequence(1, 80),
+			expectedPendingLen: 0,
+		},
+		{
+			name:               "already-confirmed",
+			initialExpected:    5,
+			seenSequences:      []uint64{3},
+			autoDeliver:        false,
+			expectedWant:       nil,
+			expectedPendingLen: 0,
+		},
+	}
+
+	for _, tc := range cases {
+		tc := tc
+		if tc.advanceAfterSeen == nil {
+			tc.advanceAfterSeen = make(map[uint64]uint64)
+		}
+
+		t.Run(tc.name, func(t *testing.T) {
+			app := newSequenceTrackingApp()
+			cc := proxy.NewLocalClientCreator(app)
+			pool, cleanup := newMempoolWithApp(cc)
+			defer cleanup()
+
+			reactor, err := NewReactor(pool, &ReactorOptions{})
+			require.NoError(t, err)
+
+			signer := []byte("sender-000-0")
+			app.SetSequence(string(signer), tc.initialExpected)
+
+			peer := genPeer()
+			_, err = reactor.InitPeer(peer)
+			require.NoError(t, err)
+			peer.On("Send", mock.Anything).Return(true).Maybe()
+
+			txBySeq := make(map[uint64]types.Tx, len(tc.seenSequences))
+			keyToSeq := make(map[types.TxKey]uint64, len(tc.seenSequences))
+			for _, seq := range tc.seenSequences {
+				tx := newDefaultTx(fmt.Sprintf("%s-%03d", tc.name, seq))
+				txBySeq[seq] = tx
+				keyToSeq[tx.Key()] = seq
+			}
+
+			var (
+				mu        sync.Mutex
+				requested []uint64
+			)
+
+			peer.On("TrySend", mock.Anything).Maybe().Return(true).Run(func(args mock.Arguments) {
+				env := args.Get(0).(p2p.Envelope)
+				msg, ok := env.Message.(*protomem.Message)
+				require.True(t, ok)
+				want := msg.GetWantTx()
+				require.NotNil(t, want)
+
+				key, err := types.TxKeyFromBytes(want.TxKey)
+				require.NoError(t, err)
+				seq, ok := keyToSeq[key]
+				require.True(t, ok, "unexpected tx key")
+
+				mu.Lock()
+				requested = append(requested, seq)
+				mu.Unlock()
+
+				if tc.autoDeliver {
+					tx := txBySeq[seq]
+					go reactor.Receive(p2p.Envelope{
+						ChannelID: MempoolDataChannel,
+						Message:   &protomem.Txs{Txs: [][]byte{tx}},
+						Src:       peer,
+					})
+				}
+			})
+
+			for _, seq := range tc.seenSequences {
+				tx := txBySeq[seq]
+				key := tx.Key()
+				reactor.Receive(p2p.Envelope{
+					ChannelID: MempoolDataChannel,
+					Message: &protomem.SeenTx{
+						TxKey:    key[:],
+						Signer:   signer,
+						Sequence: seq,
+					},
+					Src: peer,
+				})
+
+				if next, ok := tc.advanceAfterSeen[seq]; ok {
+					app.SetSequence(string(signer), next)
+					reactor.refreshPendingSeenQueues()
+				}
+			}
+
+			require.Eventually(t, func() bool {
+				mu.Lock()
+				defer mu.Unlock()
+				return len(requested) == len(tc.expectedWant)
+			}, 2*time.Second, 10*time.Millisecond)
+
+			mu.Lock()
+			require.Equal(t, tc.expectedWant, requested)
+			mu.Unlock()
+
+			entries := reactor.pendingSeen.entriesForSigner(signer)
+			require.Len(t, entries, tc.expectedPendingLen)
+			peer.AssertExpectations(t)
+		})
+	}
 }

@@ -1,8 +1,10 @@
 package cat
 
 import (
+	"fmt"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 
@@ -48,7 +50,25 @@ func TestPendingSeenTracker(t *testing.T) {
 			},
 		},
 		{
-			name:  "enforces per-signer limit and evicts oldest",
+			name: "adding beyond nominal limit retains entries",
+			run: func(t *testing.T, tracker *pendingSeenTracker) {
+				key1 := txKey("a")
+				key2 := txKey("b")
+				key3 := txKey("c")
+
+				tracker.add(signer, key1, 1, 1)
+				tracker.add(signer, key2, 2, 2)
+				tracker.add(signer, key3, 3, 3)
+
+				entries := tracker.entriesForSigner(signer)
+				require.Len(t, entries, 3)
+				require.Equal(t, []types.TxKey{key1, key2, key3}, []types.TxKey{entries[0].txKey, entries[1].txKey, entries[2].txKey})
+
+				require.Nil(t, tracker.entriesForSigner(otherSigner))
+			},
+		},
+		{
+			name:  "enforces per-signer limit",
 			limit: 2,
 			run: func(t *testing.T, tracker *pendingSeenTracker) {
 				key1 := txKey("a")
@@ -57,13 +77,11 @@ func TestPendingSeenTracker(t *testing.T) {
 
 				tracker.add(signer, key1, 1, 1)
 				tracker.add(signer, key2, 2, 2)
-				tracker.add(signer, key3, 3, 3) // should evict key3 (highest sequence)
+				tracker.add(signer, key3, 3, 3)
 
 				entries := tracker.entriesForSigner(signer)
 				require.Len(t, entries, 2)
 				require.Equal(t, []types.TxKey{key1, key2}, []types.TxKey{entries[0].txKey, entries[1].txKey})
-
-				require.Nil(t, tracker.entriesForSigner(otherSigner))
 			},
 		},
 		{
@@ -77,19 +95,22 @@ func TestPendingSeenTracker(t *testing.T) {
 			},
 		},
 		{
-			name: "remove peer updates peer list",
+			name: "remove peer keeps entry but clears pending state",
 			run: func(t *testing.T, tracker *pendingSeenTracker) {
 				key := txKey("tx4")
 				tracker.add(signer, key, 4, 9)
 				tracker.add(signer, key, 4, 11)
+				tracker.markRequested(key, 9, time.Now())
 
 				tracker.removePeer(9)
-
 				entry := tracker.entriesForSigner(signer)[0]
 				require.Equal(t, []uint16{11}, entry.peerIDs())
+				require.False(t, entry.requested)
+				require.Equal(t, uint16(0), entry.lastPeer)
 
 				tracker.removePeer(11)
-				require.Empty(t, tracker.entriesForSigner(signer))
+				entry = tracker.entriesForSigner(signer)[0]
+				require.Nil(t, entry.peerIDs())
 			},
 		},
 		{
@@ -134,6 +155,27 @@ func TestPendingSeenTracker(t *testing.T) {
 				require.Equal(t, key2, entries[0].txKey)
 			},
 		},
+		{
+			name: "mark requested and failed updates state",
+			run: func(t *testing.T, tracker *pendingSeenTracker) {
+				key := txKey("tx6")
+				tracker.add(signer, key, 7, 12)
+				now := time.Now()
+				tracker.markRequested(key, 12, now)
+
+				entry := tracker.entriesForSigner(signer)[0]
+				require.True(t, entry.requested)
+				require.Equal(t, uint16(12), entry.lastPeer)
+				require.Equal(t, now.UnixNano(), entry.requestedAt.UnixNano())
+
+				tracker.markRequestFailed(key, 12)
+
+				entry = tracker.entriesForSigner(signer)[0]
+				require.False(t, entry.requested)
+				require.Equal(t, uint16(0), entry.lastPeer)
+				require.Nil(t, entry.peerIDs())
+			},
+		},
 	}
 
 	for _, tc := range cases {
@@ -155,7 +197,7 @@ func TestPendingSeenTrackerConcurrentAccess(t *testing.T) {
 	go func() {
 		defer wg.Done()
 		for i := 0; i < total; i++ {
-			key := types.Tx([]byte{byte(i)}).Key()
+			key := types.Tx(fmt.Sprintf("tx-%d", i)).Key()
 			tracker.add(signer, key, uint64(i+1), uint16(i%5+1))
 		}
 	}()

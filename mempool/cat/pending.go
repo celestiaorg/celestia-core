@@ -8,15 +8,18 @@ import (
 	"github.com/cometbft/cometbft/types"
 )
 
-const defaultPendingSeenPerSigner = 64
+const defaultPendingSeenPerSigner = 128
 
 type pendingSeenTx struct {
-	signerKey string
-	signer    []byte
-	txKey     types.TxKey
-	sequence  uint64
-	peers     []uint16
-	addedAt   time.Time
+	signerKey   string
+	signer      []byte
+	txKey       types.TxKey
+	sequence    uint64
+	peers       []uint16
+	addedAt     time.Time
+	requested   bool
+	lastPeer    uint16
+	requestedAt time.Time
 }
 
 func (p *pendingSeenTx) peerIDs() []uint16 {
@@ -81,21 +84,29 @@ func (ps *pendingSeenTracker) add(signer []byte, txKey types.TxKey, sequence uin
 	queue[insertIdx] = entry
 	ps.perSigner[signerKey] = queue
 	ps.byTx[txKey] = entry
-
-	if len(queue) > ps.limit {
-		removed := queue[len(queue)-1]
+	for len(queue) > ps.limit {
+		lastIdx := len(queue) - 1
+		removed := queue[lastIdx]
+		if removed.requested {
+			break
+		}
+		queue = queue[:lastIdx]
 		delete(ps.byTx, removed.txKey)
-		ps.perSigner[signerKey] = queue[:len(queue)-1]
+	}
+	if len(queue) == 0 {
+		delete(ps.perSigner, signerKey)
+	} else {
+		ps.perSigner[signerKey] = queue
 	}
 }
 
-func (ps *pendingSeenTracker) remove(txKey types.TxKey) {
+func (ps *pendingSeenTracker) remove(txKey types.TxKey) *pendingSeenTx {
 	ps.mu.Lock()
 	defer ps.mu.Unlock()
 
 	entry, ok := ps.byTx[txKey]
 	if !ok {
-		return
+		return nil
 	}
 
 	signerKey := entry.signerKey
@@ -112,6 +123,7 @@ func (ps *pendingSeenTracker) remove(txKey types.TxKey) {
 		ps.perSigner[signerKey] = queue
 	}
 	delete(ps.byTx, txKey)
+	return entry
 }
 
 func (ps *pendingSeenTracker) entriesForSigner(signer []byte) []*pendingSeenTx {
@@ -136,6 +148,9 @@ func (ps *pendingSeenTracker) entriesForSigner(signer []byte) []*pendingSeenTx {
 		if len(entry.peers) > 0 {
 			clone.peers = append([]uint16(nil), entry.peers...)
 		}
+		clone.requested = entry.requested
+		clone.lastPeer = entry.lastPeer
+		clone.requestedAt = entry.requestedAt
 		out[i] = &clone
 	}
 	return out
@@ -149,20 +164,14 @@ func (ps *pendingSeenTracker) removePeer(peerID uint16) {
 	ps.mu.Lock()
 	defer ps.mu.Unlock()
 
-	for signerKey, queue := range ps.perSigner {
-		dst := queue[:0]
+	for _, queue := range ps.perSigner {
 		for _, entry := range queue {
 			entry.peers = removePeerFromSlice(entry.peers, peerID)
-			if len(entry.peers) == 0 {
-				delete(ps.byTx, entry.txKey)
-				continue
+			if entry.lastPeer == peerID {
+				entry.requested = false
+				entry.lastPeer = 0
+				entry.requestedAt = time.Time{}
 			}
-			dst = append(dst, entry)
-		}
-		if len(dst) == 0 {
-			delete(ps.perSigner, signerKey)
-		} else {
-			ps.perSigner[signerKey] = dst
 		}
 	}
 }
@@ -215,18 +224,21 @@ func (ps *pendingSeenTracker) pruneBelowSequence(signer []byte, minSequence uint
 	defer ps.mu.Unlock()
 
 	queue := ps.perSigner[signerKey]
-	for len(queue) > 0 && queue[0].sequence < minSequence {
-		entry := queue[0]
-		delete(ps.byTx, entry.txKey)
-		queue = queue[1:]
+	dst := queue[:0]
+	for _, entry := range queue {
+		if entry.sequence < minSequence {
+			delete(ps.byTx, entry.txKey)
+			continue
+		}
+		dst = append(dst, entry)
 	}
 
-	if len(queue) == 0 {
+	if len(dst) == 0 {
 		delete(ps.perSigner, signerKey)
 		return
 	}
 
-	ps.perSigner[signerKey] = queue
+	ps.perSigner[signerKey] = dst
 }
 
 func (ps *pendingSeenTracker) firstEntry(signer []byte) *pendingSeenTx {
@@ -242,12 +254,56 @@ func (ps *pendingSeenTracker) firstEntry(signer []byte) *pendingSeenTx {
 		return nil
 	}
 
-	entry := *queue[0]
+	candidate := queue[0]
+	if candidate.requested {
+		return nil
+	}
+	entry := *candidate
 	if len(entry.signer) > 0 {
 		entry.signer = append([]byte(nil), entry.signer...)
 	}
 	if len(entry.peers) > 0 {
 		entry.peers = append([]uint16(nil), entry.peers...)
 	}
+	entry.requested = candidate.requested
+	entry.lastPeer = candidate.lastPeer
+	entry.requestedAt = candidate.requestedAt
 	return &entry
+}
+
+func (ps *pendingSeenTracker) markRequested(txKey types.TxKey, peerID uint16, at time.Time) {
+	if peerID == 0 {
+		return
+	}
+
+	ps.mu.Lock()
+	defer ps.mu.Unlock()
+
+	entry, ok := ps.byTx[txKey]
+	if !ok {
+		return
+	}
+	entry.requested = true
+	entry.lastPeer = peerID
+	entry.requestedAt = at
+}
+
+func (ps *pendingSeenTracker) markRequestFailed(txKey types.TxKey, peerID uint16) {
+	if peerID == 0 {
+		return
+	}
+
+	ps.mu.Lock()
+	defer ps.mu.Unlock()
+
+	entry, ok := ps.byTx[txKey]
+	if !ok {
+		return
+	}
+	if entry.lastPeer == peerID {
+		entry.requested = false
+		entry.lastPeer = 0
+		entry.requestedAt = time.Time{}
+	}
+	entry.peers = removePeerFromSlice(entry.peers, peerID)
 }
