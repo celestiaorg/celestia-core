@@ -35,7 +35,8 @@ func TestPropose(t *testing.T) {
 
 	prop, partSet, _, metaData := createTestProposal(t, sm, 1, 0, 100, 1000)
 
-	reactor1.ProposeBlock(prop, partSet, metaData)
+	err := reactor1.ProposeBlock(prop, partSet, metaData)
+	require.NoError(t, err)
 
 	time.Sleep(200 * time.Millisecond)
 
@@ -102,7 +103,8 @@ func TestPropose_OnlySendParityChunks(t *testing.T) {
 	// 128 mb block
 	prop, partSet, _, metaData := createTestProposal(t, sm, 1, 0, 30, 4_000_000)
 
-	reactor1.ProposeBlock(prop, partSet, metaData)
+	err := reactor1.ProposeBlock(prop, partSet, metaData)
+	require.NoError(t, err)
 
 	time.Sleep(200 * time.Millisecond)
 
@@ -217,7 +219,8 @@ func TestRecoverPartsLocally(t *testing.T) {
 		}
 	}
 
-	blockPropR.ProposeBlock(prop, partSet, metaData)
+	err = blockPropR.ProposeBlock(prop, partSet, metaData)
+	require.NoError(t, err)
 
 	_, actualParts, _ := blockPropR.GetProposal(prop.Height, prop.Round)
 
