@@ -2,8 +2,10 @@ package types
 
 import (
 	"bytes"
+	"crypto/sha256"
 	"errors"
 	"fmt"
+	mathbits "math/bits"
 	"runtime"
 	"time"
 
@@ -203,6 +205,14 @@ func ProtoPartSetHeaderIsZero(ppsh *cmtproto.PartSetHeader) bool {
 
 //-------------------------------------
 
+// TreeNode represents an inner node in the merkle tree
+// Leaf nodes are NOT stored here - they exist in PartSet.buffer and PartSet.proofs[i].LeafHash
+type TreeNode struct {
+	hash  []byte    // 32 bytes - the hash value
+	left  *TreeNode // pointer to left child (can be nil if not computed yet)
+	right *TreeNode // pointer to right child (can be nil if not computed yet)
+}
+
 type PartSet struct {
 	total uint32
 	hash  []byte
@@ -222,6 +232,9 @@ type PartSet struct {
 	// byteSize is the total size (in bytes). Used to ensure that the
 	// part set doesn't exceed the maximum block bytes
 	byteSize int64
+
+	// merkleTree is the root of the inner node tree, can be nil initially
+	merkleTree *TreeNode
 
 	TxPos []TxPosition
 }
@@ -357,6 +370,126 @@ func Encode(ops *PartSet, partSize uint32) (*PartSet, int, error) {
 	return eps, lastLen, nil
 }
 
+// getSplitPoint returns the largest power of 2 less than length
+// Duplicated from crypto/merkle/tree.go to avoid export
+func getSplitPoint(length int64) int64 {
+	if length < 1 {
+		panic("Trying to split a tree with size < 1")
+	}
+	uLength := uint(length)
+	bitlen := mathbits.Len(uLength)
+	k := int64(1 << uint(bitlen-1))
+	if k == length {
+		k >>= 1
+	}
+	return k
+}
+
+// buildProofPath constructs the path from a leaf to root using getSplitPoint logic
+// Returns the path decisions (true=left, false=right) from root to leaf
+func buildProofPath(leafIndex int64, total int64) []bool {
+	if total == 1 {
+		return []bool{}
+	}
+
+	path := []bool{}
+	currentIndex := leafIndex
+	currentTotal := total
+
+	for currentTotal > 1 {
+		split := getSplitPoint(currentTotal)
+		if currentIndex < split {
+			path = append(path, true) // went left
+			currentTotal = split
+		} else {
+			path = append(path, false) // went right
+			currentIndex -= split
+			currentTotal = currentTotal - split
+		}
+	}
+
+	return path
+}
+
+// navigateToNode walks the tree following the path, creating nodes as needed
+func navigateToNode(root **TreeNode, path []bool) *TreeNode {
+	if len(path) == 0 {
+		if *root == nil {
+			*root = &TreeNode{}
+		}
+		return *root
+	}
+
+	if *root == nil {
+		*root = &TreeNode{}
+	}
+
+	if path[0] { // go left
+		return navigateToNode(&(*root).left, path[1:])
+	} else { // go right
+		return navigateToNode(&(*root).right, path[1:])
+	}
+}
+
+// innerHash returns the hash of the concatenation of left and right
+// Duplicated from crypto/merkle to avoid export
+func innerHash(left, right []byte) []byte {
+	data := make([]byte, len(left)+len(right))
+	copy(data, left)
+	copy(data[len(left):], right)
+	hash := sha256.Sum256(data)
+	return hash[:]
+}
+
+// extractInnerNodesFromProof walks the proof path and stores inner nodes
+func (ps *PartSet) extractInnerNodesFromProof(leafIndex int64, proof merkle.Proof) {
+	// Build path from root to this leaf
+	path := buildProofPath(leafIndex, int64(ps.total))
+
+	// Aunts are in leaf-to-root order
+	// Walk from root toward leaf, placing aunts (siblings) in tree
+	currentHash := proof.LeafHash
+
+	for level := len(proof.Aunts) - 1; level >= 0; level-- {
+		aunt := proof.Aunts[level]
+
+		// Navigate to the parent node at this level
+		parentPath := path[:len(path)-level-1]
+
+		// Need mutex for tree modification
+		ps.mtx.Lock()
+		parentNode := navigateToNode(&ps.merkleTree, parentPath)
+
+		// Determine if current node is left or right child
+		isLeftChild := path[len(path)-level-1]
+
+		if isLeftChild {
+			// Current is left child, aunt is right sibling
+			if parentNode.right == nil {
+				parentNode.right = &TreeNode{hash: make([]byte, len(aunt))}
+				copy(parentNode.right.hash, aunt)
+			}
+			// Compute parent hash if not set
+			if parentNode.hash == nil {
+				parentNode.hash = innerHash(currentHash, aunt)
+			}
+			currentHash = parentNode.hash
+		} else {
+			// Current is right child, aunt is left sibling
+			if parentNode.left == nil {
+				parentNode.left = &TreeNode{hash: make([]byte, len(aunt))}
+				copy(parentNode.left.hash, aunt)
+			}
+			// Compute parent hash if not set
+			if parentNode.hash == nil {
+				parentNode.hash = innerHash(aunt, currentHash)
+			}
+			currentHash = parentNode.hash
+		}
+		ps.mtx.Unlock()
+	}
+}
+
 // IsReadyForDecoding returns true if the PartSet has every single part, not just
 // ready to be decoded.
 // TODO: this here only requires 2/3rd. We need all the data now because we have no erasure encoding.
@@ -416,70 +549,70 @@ func Decode(ops, eps *PartSet, lastPartLen int) (*PartSet, *PartSet, error) {
 		data[(ops.Total() - 1)] = data[(ops.Total() - 1)][:lastPartLen]
 	}
 
-	// recalculate all of the proofs since we apparently don't have a function
-	// to generate a single proof... TODO: don't generate proofs for block parts
-	// we already have...
-	root, proofs := merkle.ParallelProofsFromByteSlices(data[:ops.Total()])
-	if !bytes.Equal(root, ops.Hash()) {
-		return nil, nil, fmt.Errorf("reconstructed data has different hash!! want: %X, got: %X", ops.hash, root)
+	// Generate proofs only for missing parts
+	missingIndices := make([]int, 0)
+	for i := 0; i < int(ops.Total()); i++ {
+		if !ops.HasPart(i) {
+			missingIndices = append(missingIndices, i)
+		}
 	}
 
-	eg := errgroup.Group{}
-	eg.SetLimit(runtime.NumCPU())
-	for i, d := range data[:ops.Total()] {
-		eg.Go(func() error {
-			if !ops.HasPart(i) {
-				added, err := ops.AddPart(&Part{
-					Index: uint32(i),
-					Bytes: d,
-					Proof: *proofs[i],
-				})
-				if err != nil {
-					return err
-				}
-				if !added {
-					return fmt.Errorf("couldn't add original part %d when decoding", i)
-				}
+	if len(missingIndices) > 0 {
+		// Build complete tree for missing proofs
+		// For now, use existing implementation (future optimization: reuse ops.merkleTree)
+		root, proofs := merkle.ParallelProofsFromByteSlices(data[:ops.Total()])
+
+		if !bytes.Equal(root, ops.Hash()) {
+			return nil, nil, fmt.Errorf("reconstructed data has different hash!! want: %X, got: %X", ops.hash, root)
+		}
+
+		// Add only the missing parts with their proofs
+		for _, idx := range missingIndices {
+			added, err := ops.AddPart(&Part{
+				Index: uint32(idx),
+				Bytes: data[idx],
+				Proof: *proofs[idx],
+			})
+			if err != nil {
+				return nil, nil, err
 			}
-			return nil
-		})
-	}
-	err = eg.Wait()
-	if err != nil {
-		return nil, nil, err
+			if !added {
+				return nil, nil, fmt.Errorf("couldn't add original part %d when decoding", idx)
+			}
+		}
 	}
 
-	// recalculate all of the proofs since we apparently don't have a function
-	// to generate a single proof... TODO: don't generate proofs for block parts
-	// we already have.
-	eroot, eproofs := merkle.ParallelProofsFromByteSlices(data[ops.Total():])
-	if !bytes.Equal(eroot, eps.Hash()) {
-		return nil, nil, fmt.Errorf("reconstructed parity data has different hash!! want: %X, got: %X", eps.hash, eroot)
-	}
-
-	eg = errgroup.Group{}
-	eg.SetLimit(runtime.NumCPU())
+	// Generate proofs only for missing parity parts
+	missingParityIndices := make([]int, 0)
 	for i := 0; i < int(eps.Total()); i++ {
-		eg.Go(func() error {
-			if !eps.HasPart(i) {
-				added, err := eps.AddPart(&Part{
-					Index: uint32(i),
-					Bytes: data[int(ops.Total())+i],
-					Proof: *eproofs[i],
-				})
-				if err != nil {
-					return err
-				}
-				if !added {
-					return fmt.Errorf("couldn't add parity part %d when decoding", i)
-				}
-			}
-			return nil
-		})
+		if !eps.HasPart(i) {
+			missingParityIndices = append(missingParityIndices, i)
+		}
 	}
-	err = eg.Wait()
-	if err != nil {
-		return nil, nil, err
+
+	if len(missingParityIndices) > 0 {
+		// Build complete tree for missing parity proofs
+		// For now, use existing implementation (future optimization: reuse eps.merkleTree)
+		eroot, eproofs := merkle.ParallelProofsFromByteSlices(data[ops.Total():])
+
+		if !bytes.Equal(eroot, eps.Hash()) {
+			return nil, nil, fmt.Errorf("reconstructed parity data has different hash!! want: %X, got: %X", eps.hash, eroot)
+		}
+
+		// Add only the missing parity parts with their proofs
+		for _, idx := range missingParityIndices {
+			added, err := eps.AddPart(&Part{
+				Index: uint32(idx),
+				Bytes: data[int(ops.Total())+idx],
+				Proof: *eproofs[idx],
+			})
+			if err != nil {
+				return nil, nil, err
+			}
+			if !added {
+				return nil, nil, fmt.Errorf("couldn't add parity part %d when decoding", idx)
+			}
+		}
 	}
 
 	fmt.Println("decode time: ", time.Since(s))
@@ -631,6 +764,11 @@ func (ps *PartSet) addPart(part *Part) (bool, error) {
 	ps.mtx.Unlock()
 
 	ps.partsBitArray.SetIndex(int(part.Index), true)
+
+	// Extract inner nodes from proof and add to tree
+	if part.Proof.Total > 0 && len(part.Proof.Aunts) > 0 {
+		ps.extractInnerNodesFromProof(int64(part.Index), part.Proof)
+	}
 
 	return true, nil
 }
