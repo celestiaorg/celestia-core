@@ -24,12 +24,12 @@ const (
 
 // ProposeBlock is called when the consensus routine has created a new proposal,
 // and it needs to be gossiped to the rest of the network.
-func (blockProp *Reactor) ProposeBlock(proposal *types.Proposal, block *types.PartSet, txs []proptypes.TxMetaData) {
+func (blockProp *Reactor) ProposeBlock(proposal *types.Proposal, block *types.PartSet, txs []proptypes.TxMetaData) error {
 	// create the parity data and the compact block
 	parityBlock, lastLen, err := types.Encode(block, types.BlockPartSizeBytes)
 	if err != nil {
 		blockProp.Logger.Error("failed to encode block", "err", err)
-		return
+		return err
 	}
 
 	partHashes := extractHashes(block, parityBlock)
@@ -48,7 +48,7 @@ func (blockProp *Reactor) ProposeBlock(proposal *types.Proposal, block *types.Pa
 	sbz, err := cb.SignBytes()
 	if err != nil {
 		blockProp.Logger.Error("failed to create signature for compact block", "err", err)
-		return
+		return err
 	}
 
 	// sign the hash of the compact block NOTE: p2p message sign bytes are
@@ -62,7 +62,7 @@ func (blockProp *Reactor) ProposeBlock(proposal *types.Proposal, block *types.Pa
 			"chain_id", blockProp.chainID,
 			"unique_id", CompactBlockUID,
 		)
-		return
+		return err
 	}
 
 	cb.Signature = sig
@@ -128,6 +128,7 @@ func (blockProp *Reactor) ProposeBlock(proposal *types.Proposal, block *types.Pa
 
 		schema.WriteBlockPartState(blockProp.traceClient, proposal.Height, proposal.Round, chunks[index].GetTrueIndices(), true, string(peer.peer.ID()), schema.Upload)
 	}
+	return nil
 }
 
 func extractHashes(blocks ...*types.PartSet) [][]byte {
