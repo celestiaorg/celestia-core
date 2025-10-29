@@ -77,6 +77,9 @@ type TxPool struct {
 	broadcastCh      chan *wrappedTx
 	broadcastMtx     sync.Mutex
 	txsToBeBroadcast []types.TxKey
+
+	// heightSignal notifies listeners whenever the mempool height advances.
+	heightSignal chan struct{}
 }
 
 // NewTxPool constructs a new, empty content addressable txpool at the specified
@@ -103,6 +106,7 @@ func NewTxPool(
 		store:            newStore(),
 		broadcastCh:      make(chan *wrappedTx),
 		txsToBeBroadcast: make([]types.TxKey, 0),
+		heightSignal:     make(chan struct{}, 1),
 	}
 
 	for _, opt := range options {
@@ -177,6 +181,11 @@ func (txmp *TxPool) Height() int64 {
 	txmp.mtx.Lock()
 	defer txmp.mtx.Unlock()
 	return txmp.height
+}
+
+// HeightSignal returns a channel that fires whenever the mempool height advances.
+func (txmp *TxPool) HeightSignal() <-chan struct{} {
+	return txmp.heightSignal
 }
 
 // Has returns true if the transaction is currently in the mempool
@@ -591,6 +600,12 @@ func (txmp *TxPool) Update(
 			txmp.notifyTxsAvailable()
 		}
 	}
+
+	select {
+	case txmp.heightSignal <- struct{}{}:
+	default:
+	}
+
 	return nil
 }
 

@@ -895,6 +895,49 @@ func TestPendingSeenClearedWhenTxArrives(t *testing.T) {
 	sourcePeer.AssertNotCalled(t, "TrySend", mock.Anything)
 }
 
+func TestRefreshPendingSeenQueuesPrunesAndRequests(t *testing.T) {
+	app := newSequenceTrackingApp()
+	cc := proxy.NewLocalClientCreator(app)
+	pool, cleanup := newMempoolWithApp(cc)
+	defer cleanup()
+
+	reactor, err := NewReactor(pool, &ReactorOptions{})
+	require.NoError(t, err)
+
+	signer := []byte("sender-maintenance")
+	app.SetSequence(string(signer), 5)
+
+	peer := genPeer()
+	_, err = reactor.InitPeer(peer)
+	require.NoError(t, err)
+	peer.On("Send", mock.Anything).Return(true).Maybe()
+
+	peerID := reactor.ids.GetIDForPeer(peer.ID())
+
+	oldKey := types.Tx("old-seq").Key()
+	targetTx := types.Tx("expected-seq")
+	targetKey := targetTx.Key()
+
+	reactor.pendingSeen.add(signer, oldKey, 3, peerID)
+	reactor.pendingSeen.add(signer, targetKey, 5, peerID)
+
+	wantEnvelope := p2p.Envelope{
+		ChannelID: MempoolWantsChannel,
+		Message: &protomem.Message{
+			Sum: &protomem.Message_WantTx{
+				WantTx: &protomem.WantTx{TxKey: targetKey[:]},
+			},
+		},
+	}
+	peer.On("TrySend", wantEnvelope).Return(true)
+
+	reactor.refreshPendingSeenQueues()
+
+	require.Nil(t, reactor.pendingSeen.entriesForSigner(signer))
+	peer.AssertExpectations(t)
+	require.NotEqual(t, uint16(0), reactor.requests.ForTx(targetKey))
+}
+
 func TestPendingSeenClearedOnPeerRemoval(t *testing.T) {
 	app := newSequenceTrackingApp()
 	cc := proxy.NewLocalClientCreator(app)

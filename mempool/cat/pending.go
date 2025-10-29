@@ -1,6 +1,7 @@
 package cat
 
 import (
+	"sort"
 	"sync"
 	"time"
 
@@ -68,19 +69,23 @@ func (ps *pendingSeenTracker) add(signer []byte, txKey types.TxKey, sequence uin
 		txKey:     txKey,
 		sequence:  sequence,
 		addedAt:   time.Now().UTC(),
+		peers:     []uint16{peerID},
 	}
 
-	entry.peers = []uint16{peerID}
-
 	queue := ps.perSigner[signerKey]
-	queue = append(queue, entry)
+	insertIdx := sort.Search(len(queue), func(i int) bool {
+		return queue[i].sequence >= sequence
+	})
+	queue = append(queue, nil)
+	copy(queue[insertIdx+1:], queue[insertIdx:])
+	queue[insertIdx] = entry
 	ps.perSigner[signerKey] = queue
 	ps.byTx[txKey] = entry
 
 	if len(queue) > ps.limit {
-		removed := queue[0]
+		removed := queue[len(queue)-1]
 		delete(ps.byTx, removed.txKey)
-		ps.perSigner[signerKey] = queue[1:]
+		ps.perSigner[signerKey] = queue[:len(queue)-1]
 	}
 }
 
@@ -182,4 +187,67 @@ func removePeerFromSlice(peers []uint16, peerID uint16) []uint16 {
 		}
 	}
 	return out
+}
+
+func (ps *pendingSeenTracker) signerKeys() [][]byte {
+	ps.mu.Lock()
+	defer ps.mu.Unlock()
+
+	if len(ps.perSigner) == 0 {
+		return nil
+	}
+
+	out := make([][]byte, 0, len(ps.perSigner))
+	for signerKey := range ps.perSigner {
+		out = append(out, []byte(signerKey))
+	}
+	return out
+}
+
+func (ps *pendingSeenTracker) pruneBelowSequence(signer []byte, minSequence uint64) {
+	if len(signer) == 0 {
+		return
+	}
+
+	signerKey := string(signer)
+
+	ps.mu.Lock()
+	defer ps.mu.Unlock()
+
+	queue := ps.perSigner[signerKey]
+	for len(queue) > 0 && queue[0].sequence < minSequence {
+		entry := queue[0]
+		delete(ps.byTx, entry.txKey)
+		queue = queue[1:]
+	}
+
+	if len(queue) == 0 {
+		delete(ps.perSigner, signerKey)
+		return
+	}
+
+	ps.perSigner[signerKey] = queue
+}
+
+func (ps *pendingSeenTracker) firstEntry(signer []byte) *pendingSeenTx {
+	if len(signer) == 0 {
+		return nil
+	}
+
+	ps.mu.Lock()
+	defer ps.mu.Unlock()
+
+	queue := ps.perSigner[string(signer)]
+	if len(queue) == 0 {
+		return nil
+	}
+
+	entry := *queue[0]
+	if len(entry.signer) > 0 {
+		entry.signer = append([]byte(nil), entry.signer...)
+	}
+	if len(entry.peers) > 0 {
+		entry.peers = append([]uint16(nil), entry.peers...)
+	}
+	return &entry
 }

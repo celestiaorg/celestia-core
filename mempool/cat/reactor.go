@@ -170,6 +170,8 @@ func (memR *Reactor) OnStart() error {
 		memR.Logger.Info("Tx broadcasting is disabled")
 	}
 
+	go memR.heightSignalLoop()
+
 	return nil
 }
 
@@ -614,6 +616,64 @@ func (memR *Reactor) tryRequestQueuedTx(entry *pendingSeenTx) bool {
 
 	memR.findNewPeerToRequestTx(entry.txKey)
 	return memR.requests.ForTx(entry.txKey) != 0
+}
+
+func (memR *Reactor) heightSignalLoop() {
+	heightSignal := memR.mempool.HeightSignal()
+	if heightSignal == nil {
+		return
+	}
+
+	for {
+		select {
+		case <-memR.Quit():
+			return
+		case _, ok := <-heightSignal:
+			if !ok {
+				return
+			}
+			memR.refreshPendingSeenQueues()
+		}
+	}
+}
+
+func (memR *Reactor) refreshPendingSeenQueues() {
+	signers := memR.pendingSeen.signerKeys()
+	if len(signers) == 0 {
+		return
+	}
+
+	for _, signer := range signers {
+		expectedSeq, haveExpected := memR.sequenceExpectationForSigner(signer, true, true)
+		if !haveExpected {
+			continue
+		}
+
+		memR.pendingSeen.pruneBelowSequence(signer, expectedSeq)
+
+		entry := memR.pendingSeen.firstEntry(signer)
+		if entry == nil {
+			continue
+		}
+
+		if memR.mempool.Has(entry.txKey) {
+			memR.pendingSeen.remove(entry.txKey)
+			continue
+		}
+
+		if memR.requests.ForTx(entry.txKey) != 0 {
+			memR.pendingSeen.remove(entry.txKey)
+			continue
+		}
+
+		if entry.sequence != expectedSeq {
+			continue
+		}
+
+		if memR.tryRequestQueuedTx(entry) {
+			memR.pendingSeen.remove(entry.txKey)
+		}
+	}
 }
 
 func (memR *Reactor) querySequenceFromApplication(signer []byte) (uint64, bool) {

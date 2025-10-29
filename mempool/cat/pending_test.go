@@ -57,11 +57,11 @@ func TestPendingSeenTracker(t *testing.T) {
 
 				tracker.add(signer, key1, 1, 1)
 				tracker.add(signer, key2, 2, 2)
-				tracker.add(signer, key3, 3, 3) // should evict key1
+				tracker.add(signer, key3, 3, 3) // should evict key3 (highest sequence)
 
 				entries := tracker.entriesForSigner(signer)
 				require.Len(t, entries, 2)
-				require.Equal(t, []types.TxKey{key2, key3}, []types.TxKey{entries[0].txKey, entries[1].txKey})
+				require.Equal(t, []types.TxKey{key1, key2}, []types.TxKey{entries[0].txKey, entries[1].txKey})
 
 				require.Nil(t, tracker.entriesForSigner(otherSigner))
 			},
@@ -101,6 +101,37 @@ func TestPendingSeenTracker(t *testing.T) {
 
 				peers[0] = 99
 				require.Equal(t, []uint16{21}, tracker.entriesForSigner(signer)[0].peerIDs())
+			},
+		},
+		{
+			name: "entries stored in ascending sequence order",
+			run: func(t *testing.T, tracker *pendingSeenTracker) {
+				key1 := txKey("seq10")
+				key2 := txKey("seq5")
+				key3 := txKey("seq7")
+
+				tracker.add(signer, key1, 10, 1)
+				tracker.add(signer, key2, 5, 1)
+				tracker.add(signer, key3, 7, 1)
+
+				entries := tracker.entriesForSigner(signer)
+				require.Len(t, entries, 3)
+				require.Equal(t, []uint64{5, 7, 10}, []uint64{entries[0].sequence, entries[1].sequence, entries[2].sequence})
+			},
+		},
+		{
+			name: "pruneBelowSequence removes outdated entries",
+			run: func(t *testing.T, tracker *pendingSeenTracker) {
+				key1 := txKey("old")
+				key2 := txKey("current")
+
+				tracker.add(signer, key1, 4, 1)
+				tracker.add(signer, key2, 6, 1)
+
+				tracker.pruneBelowSequence(signer, 6)
+				entries := tracker.entriesForSigner(signer)
+				require.Len(t, entries, 1)
+				require.Equal(t, key2, entries[0].txKey)
 			},
 		},
 	}
