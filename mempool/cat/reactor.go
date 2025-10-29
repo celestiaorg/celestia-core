@@ -362,8 +362,26 @@ func (memR *Reactor) Receive(e p2p.Envelope) {
 		switch {
 		case len(msg.Signer) == 0 || msg.Sequence == 0:
 			// fall through and request immediately when sequence info is missing
+			schema.WriteMempoolPeerStateWithSeq(
+				memR.traceClient,
+				string(e.Src.ID()),
+				schema.MissingSequence,
+				txKey[:],
+				schema.Download,
+				msg.Signer,
+				msg.Sequence,
+			)
 		case !haveExpected:
 			// fall through and request immediately if we cannot query the application
+			schema.WriteMempoolPeerStateWithSeq(
+				memR.traceClient,
+				string(e.Src.ID()),
+				schema.MissingSequence,
+				txKey[:],
+				schema.Download,
+				msg.Signer,
+				msg.Sequence,
+			)
 		case msg.Sequence == expectedSeq:
 			// fall through and request immediately for the expected sequence
 		case msg.Sequence > expectedSeq:
@@ -459,8 +477,18 @@ func (memR *Reactor) broadcastSeenTxWithHeight(txKey types.TxKey, height int64, 
 		},
 	}
 
-	selectedPeers := selectStickyPeers(signer, memR.ids.GetAll(), maxSeenTxBroadcast, memR.currentStickyPeerSalt())
-	for _, peerInfo := range selectedPeers {
+	peers := memR.ids.GetAll()
+	if len(peers) == 0 {
+		return
+	}
+
+	orderedPeers := selectStickyPeers(signer, peers, len(peers), memR.currentStickyPeerSalt())
+	sent := 0
+	for _, peerInfo := range orderedPeers {
+		if sent >= maxSeenTxBroadcast {
+			break
+		}
+
 		id := peerInfo.id
 		peer := peerInfo.peer
 		if p, ok := peer.Get(types.PeerStateKey).(PeerState); ok {
@@ -485,6 +513,7 @@ func (memR *Reactor) broadcastSeenTxWithHeight(txKey types.TxKey, height int64, 
 		) {
 			memR.mempool.PeerHasTx(id, txKey)
 			schema.WriteMempoolPeerState(memR.traceClient, string(peer.ID()), schema.SeenTx, txKey[:], schema.Upload)
+			sent++
 		}
 	}
 }

@@ -172,6 +172,60 @@ func TestReactorBroadcastsSeenTxAfterReceivingTx(t *testing.T) {
 	peers[1].AssertExpectations(t)
 }
 
+func TestBroadcastSeenTxTargetsUninformedPeers(t *testing.T) {
+	reactor, _ := setupReactor(t)
+
+	const extraPeers = 3
+	totalPeers := maxSeenTxBroadcast + extraPeers
+
+	peers := genPeers(totalPeers)
+	for _, peer := range peers {
+		_, err := reactor.InitPeer(peer)
+		require.NoError(t, err)
+	}
+
+	signer := []byte("sticky-signer")
+	tx := newDefaultTx("spread")
+	key := tx.Key()
+
+	peerMap := reactor.ids.GetAll()
+	require.Len(t, peerMap, totalPeers)
+
+	ordered := selectStickyPeers(signer, peerMap, len(peerMap), reactor.currentStickyPeerSalt())
+	require.Len(t, ordered, totalPeers)
+
+	for i := 0; i < maxSeenTxBroadcast; i++ {
+		reactor.mempool.PeerHasTx(ordered[i].id, key)
+	}
+
+	envelopeMatcher := mock.MatchedBy(func(env p2p.Envelope) bool {
+		if env.ChannelID != MempoolDataChannel {
+			return false
+		}
+		msg, ok := env.Message.(*protomem.Message)
+		if !ok {
+			return false
+		}
+		seen := msg.GetSeenTx()
+		if seen == nil {
+			return false
+		}
+		return bytes.Equal(seen.TxKey, key[:])
+	})
+
+	for i := maxSeenTxBroadcast; i < len(ordered); i++ {
+		mPeer := ordered[i].peer.(*mocks.Peer)
+		mPeer.On("Send", envelopeMatcher).Return(true)
+	}
+
+	reactor.broadcastSeenTxWithHeight(key, reactor.mempool.Height(), signer, 1)
+
+	for i := maxSeenTxBroadcast; i < len(ordered); i++ {
+		mPeer := ordered[i].peer.(*mocks.Peer)
+		mPeer.AssertExpectations(t)
+	}
+}
+
 func TestRemovePeerRequestFromOtherPeer(t *testing.T) {
 	reactor, _ := setupReactor(t)
 
