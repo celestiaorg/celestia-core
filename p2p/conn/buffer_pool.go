@@ -3,6 +3,9 @@ package conn
 import (
 	"sync"
 	"sync/atomic"
+
+	"github.com/cometbft/cometbft/libs/trace"
+	"github.com/cometbft/cometbft/libs/trace/schema"
 )
 
 // BufferPool is an interface for getting and returning byte buffers.
@@ -17,9 +20,11 @@ type BufferPool interface {
 
 // SyncBufferPool implements BufferPool using sync.Pool with leak detection.
 type SyncBufferPool struct {
-	pool       sync.Pool
-	defaultCap int
-	maxCap     int
+	pool        sync.Pool
+	defaultCap  int
+	maxCap      int
+	traceClient trace.Tracer
+	channelID   int
 
 	// Leak detection - tracks Get/Put calls
 	getCount atomic.Int64
@@ -29,15 +34,19 @@ type SyncBufferPool struct {
 // NewSyncBufferPool creates a new buffer pool with the specified default and max capacities.
 // defaultCap: the initial capacity of buffers created by the pool (e.g., 80MB for Celestia blocks)
 // maxCap: buffers larger than this will be discarded instead of returned to the pool (e.g., 160MB)
-func NewSyncBufferPool(defaultCap, maxCap int) *SyncBufferPool {
+// traceClient: optional tracer for tracking buffer pool operations
+// channelID: the p2p channel ID for tracing context
+func NewSyncBufferPool(defaultCap, maxCap int, traceClient trace.Tracer, channelID int) *SyncBufferPool {
 	return &SyncBufferPool{
 		pool: sync.Pool{
 			New: func() interface{} {
 				return make([]byte, 0, defaultCap)
 			},
 		},
-		defaultCap: defaultCap,
-		maxCap:     maxCap,
+		defaultCap:  defaultCap,
+		maxCap:      maxCap,
+		traceClient: traceClient,
+		channelID:   channelID,
 	}
 }
 
@@ -52,6 +61,9 @@ func (p *SyncBufferPool) Get(minCap int) []byte {
 		buf = make([]byte, 0, minCap)
 	}
 
+	// Trace buffer retrieval
+	schema.WriteP2PBufferPoolGet(p.traceClient, minCap, cap(buf), p.channelID)
+
 	return buf
 }
 
@@ -59,8 +71,13 @@ func (p *SyncBufferPool) Get(minCap int) []byte {
 // Buffers larger than maxCap are discarded to prevent the pool from
 // holding onto extremely large buffers.
 func (p *SyncBufferPool) Put(buf []byte) {
+	discarded := false
+
 	// Don't return oversized buffers to pool
 	if cap(buf) > p.maxCap {
+		discarded = true
+		// Trace discarded buffer
+		schema.WriteP2PBufferPoolPut(p.traceClient, cap(buf), p.channelID, discarded)
 		return
 	}
 
@@ -69,6 +86,9 @@ func (p *SyncBufferPool) Put(buf []byte) {
 	// Reset length but keep capacity
 	buf = buf[:0]
 	p.pool.Put(buf)
+
+	// Trace buffer return
+	schema.WriteP2PBufferPoolPut(p.traceClient, cap(buf), p.channelID, discarded)
 }
 
 // Stats returns the number of Get and Put calls made to the pool.

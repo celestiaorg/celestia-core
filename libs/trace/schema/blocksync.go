@@ -10,6 +10,7 @@ func BlocksyncTables() []string {
 	return []string{
 		BlocksyncBlockReceivedTable,
 		BlocksyncBlockSavedTable,
+		BlocksyncMessagePoolTable,
 	}
 }
 
@@ -70,5 +71,58 @@ func WriteBlocksyncBlockSaved(client trace.Tracer, height int64, blockSize int) 
 	client.Write(BlocksyncBlockSaved{
 		Height:    height,
 		BlockSize: blockSize,
+	})
+}
+
+// Schema constants for blocksync message pool tracing.
+const (
+	// BlocksyncMessagePoolTable stores traces of message pool operations (get and put).
+	BlocksyncMessagePoolTable = "blocksync_message_pool"
+)
+
+// BlocksyncMessagePoolOperation is an enum that represents the different types of message pool operations.
+type BlocksyncMessagePoolOperation string
+
+const (
+	// BlocksyncMessagePoolOpGet is the action for getting a message from the pool.
+	BlocksyncMessagePoolOpGet BlocksyncMessagePoolOperation = "get"
+	// BlocksyncMessagePoolOpPut is the action for returning a message to the pool.
+	BlocksyncMessagePoolOpPut BlocksyncMessagePoolOperation = "put"
+)
+
+// BlocksyncMessagePool describes schema for the "blocksync_message_pool" table.
+// This event is traced when a message is retrieved from or returned to the pool.
+type BlocksyncMessagePool struct {
+	Action      string `json:"action"`       // "get" or "put"
+	ChannelID   byte   `json:"channel_id"`
+	MessageType string `json:"message_type"` // For put: type of message being returned. For get: empty string
+}
+
+// Table returns the table name for the BlocksyncMessagePool struct.
+func (BlocksyncMessagePool) Table() string {
+	return BlocksyncMessagePoolTable
+}
+
+// WriteBlocksyncMessagePoolGet writes a tracing point for getting a message from the pool.
+func WriteBlocksyncMessagePoolGet(client trace.Tracer, channelID byte) {
+	if client == nil || !client.IsCollecting(BlocksyncMessagePoolTable) {
+		return
+	}
+	client.Write(BlocksyncMessagePool{
+		Action:      string(BlocksyncMessagePoolOpGet),
+		ChannelID:   channelID,
+		MessageType: "",
+	})
+}
+
+// WriteBlocksyncMessagePoolPut writes a tracing point for returning a message to the pool.
+func WriteBlocksyncMessagePoolPut(client trace.Tracer, channelID byte, messageType string) {
+	if client == nil || !client.IsCollecting(BlocksyncMessagePoolTable) {
+		return
+	}
+	client.Write(BlocksyncMessagePool{
+		Action:      string(BlocksyncMessagePoolOpPut),
+		ChannelID:   channelID,
+		MessageType: messageType,
 	})
 }

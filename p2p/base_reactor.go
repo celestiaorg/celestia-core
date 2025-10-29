@@ -244,11 +244,6 @@ func ProcessorWithReactor(impl Reactor, baseReactor *BaseReactor) func(context.C
 						msg = proto.Clone(mt)
 					}
 
-					// Return message to pool after processing (if it came from pool)
-					if pooled && baseReactor.messagePoolHooks != nil && baseReactor.messagePoolHooks.PutMessage != nil {
-						defer baseReactor.messagePoolHooks.PutMessage(ue.ChannelID, msg)
-					}
-
 					err := proto.Unmarshal(ue.Message, msg)
 					if err != nil {
 						return err
@@ -259,6 +254,12 @@ func ProcessorWithReactor(impl Reactor, baseReactor *BaseReactor) func(context.C
 						if err != nil {
 							return err
 						}
+					}
+
+					// Return message to pool after processing (if it came from pool)
+					// Defer is set AFTER unwrapping so it captures the final unwrapped message
+					if pooled && baseReactor.messagePoolHooks != nil && baseReactor.messagePoolHooks.PutMessage != nil {
+						defer baseReactor.messagePoolHooks.PutMessage(ue.ChannelID, msg)
 					}
 
 					labels := []string{

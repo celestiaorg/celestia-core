@@ -8,6 +8,7 @@ func P2PTables() []string {
 		PeersTable,
 		PendingBytesTable,
 		ReceivedBytesTable,
+		P2PBufferPoolTable,
 	}
 }
 
@@ -79,4 +80,63 @@ func (ReceivedBytes) Table() string {
 
 func WriteReceivedBytes(client trace.Tracer, peerID string, channel byte, bytes int) {
 	client.Write(ReceivedBytes{PeerID: peerID, Channel: channel, Bytes: bytes})
+}
+
+// Schema constants for p2p buffer pool tracing.
+const (
+	// P2PBufferPoolTable stores traces of buffer pool operations (get and put).
+	P2PBufferPoolTable = "p2p_buffer_pool"
+)
+
+// P2PBufferPoolOperation is an enum that represents the different types of buffer pool operations.
+type P2PBufferPoolOperation string
+
+const (
+	// P2PBufferPoolGet is the action for getting a buffer from the pool.
+	P2PBufferPoolGet P2PBufferPoolOperation = "get"
+	// P2PBufferPoolPut is the action for returning a buffer to the pool.
+	P2PBufferPoolPut P2PBufferPoolOperation = "put"
+)
+
+// P2PBufferPool describes schema for the "p2p_buffer_pool" table.
+// This event is traced when a buffer is retrieved from or returned to the connection pool.
+type P2PBufferPool struct {
+	Action    string `json:"action"`    // "get" or "put"
+	MinCap    int    `json:"min_cap"`   // For get: requested minimum capacity. For put: 0
+	BufferCap int    `json:"buffer_cap"` // For get: actual capacity returned. For put: capacity being returned
+	Discarded bool   `json:"discarded"`  // For put: whether buffer was discarded. For get: false
+	ChannelID int    `json:"channel_id"`
+}
+
+// Table returns the table name for the P2PBufferPool struct.
+func (P2PBufferPool) Table() string {
+	return P2PBufferPoolTable
+}
+
+// WriteP2PBufferPoolGet writes a tracing point for getting a buffer from the pool.
+func WriteP2PBufferPoolGet(client trace.Tracer, minCap, actualCap, channelID int) {
+	if client == nil || !client.IsCollecting(P2PBufferPoolTable) {
+		return
+	}
+	client.Write(P2PBufferPool{
+		Action:    string(P2PBufferPoolGet),
+		MinCap:    minCap,
+		BufferCap: actualCap,
+		Discarded: false,
+		ChannelID: channelID,
+	})
+}
+
+// WriteP2PBufferPoolPut writes a tracing point for returning a buffer to the pool.
+func WriteP2PBufferPoolPut(client trace.Tracer, bufferCap, channelID int, discarded bool) {
+	if client == nil || !client.IsCollecting(P2PBufferPoolTable) {
+		return
+	}
+	client.Write(P2PBufferPool{
+		Action:    string(P2PBufferPoolPut),
+		MinCap:    0,
+		BufferCap: bufferCap,
+		Discarded: discarded,
+		ChannelID: channelID,
+	})
 }

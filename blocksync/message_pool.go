@@ -3,6 +3,8 @@ package blocksync
 import (
 	"sync"
 
+	"github.com/cometbft/cometbft/libs/trace"
+	"github.com/cometbft/cometbft/libs/trace/schema"
 	bcproto "github.com/cometbft/cometbft/proto/tendermint/blocksync"
 	"github.com/cosmos/gogoproto/proto"
 )
@@ -14,16 +16,18 @@ import (
 // slice capacity instead of allocating new slices, significantly reducing memory pressure.
 type MessagePool struct {
 	blockResponsePool sync.Pool
+	traceClient       trace.Tracer
 }
 
 // NewMessagePool creates a new message pool for blocksync BlockResponse messages.
-func NewMessagePool() *MessagePool {
+func NewMessagePool(traceClient trace.Tracer) *MessagePool {
 	return &MessagePool{
 		blockResponsePool: sync.Pool{
 			New: func() interface{} {
 				return &bcproto.BlockResponse{}
 			},
 		},
+		traceClient: traceClient,
 	}
 }
 
@@ -53,6 +57,9 @@ func (mp *MessagePool) GetMessageByChannel(channelID byte) proto.Message {
 		return nil
 	}
 
+	// Trace: getting message from pool
+	schema.WriteBlocksyncMessagePoolGet(mp.traceClient, channelID)
+
 	// Return a Message wrapper with pre-allocated BlockResponse from pool
 	return &bcproto.Message{
 		Sum: &bcproto.Message_BlockResponse{
@@ -68,9 +75,12 @@ func (mp *MessagePool) PutMessageByChannel(channelID byte, msg proto.Message) {
 		return
 	}
 
-	// Only pool BlockResponse messages
+	// Only pool and trace BlockResponse messages
 	if blockResp, ok := msg.(*bcproto.BlockResponse); ok {
 		mp.PutBlockResponse(blockResp)
+		// Trace: returning message to pool
+		schema.WriteBlocksyncMessagePoolPut(mp.traceClient, channelID, "BlockResponse")
 	}
-	// Other message types are not pooled and will be garbage collected normally
+	// Note: Other message types (BlockRequest, StatusRequest, etc.) are not pooled
+	// and are garbage collected normally
 }

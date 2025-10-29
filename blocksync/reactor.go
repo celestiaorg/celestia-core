@@ -134,7 +134,7 @@ func NewReactorWithSlidingWindow(state sm.State, blockExec *sm.BlockExecutor, st
 		pool = NewBlockPool(startHeight, requestsCh, errorsCh)
 	}
 
-	messagePool := NewMessagePool()
+	messagePool := NewMessagePool(traceClient)
 
 	bcR := &Reactor{
 		initialState: state,
