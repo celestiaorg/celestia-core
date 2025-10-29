@@ -360,6 +360,10 @@ func (memR *Reactor) Receive(e p2p.Envelope) {
 		// Check if we don't already have the transaction
 		if memR.mempool.Has(txKey) {
 			memR.Logger.Trace("received a seen tx for a tx we already have", "txKey", txKey)
+			// Process pending queue in case this was a gap-filling transaction
+			if len(msg.Signer) > 0 {
+				memR.processPendingSeenForSigner(msg.Signer)
+			}
 			return
 		}
 
@@ -406,11 +410,11 @@ func (memR *Reactor) Receive(e p2p.Envelope) {
 				"sequence", msg.Sequence,
 				"expectedSequence", expectedSeq,
 			)
-			memR.pendingSeen.remove(txKey)
+			// memR.pendingSeen.remove(txKey)
 			return
 		}
 
-		memR.pendingSeen.remove(txKey)
+		// memR.pendingSeen.remove(txKey)
 		// We don't have the transaction, nor are we requesting it so we send the node
 		// a want msg
 		memR.requestTx(txKey, e.Src)
