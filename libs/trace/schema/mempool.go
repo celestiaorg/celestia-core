@@ -12,6 +12,8 @@ func MempoolTables() []string {
 		MempoolPeerStateTable,
 		MempoolRecoveredPartsTable,
 		MempoolAddResultTable,
+		MempoolTxStatusTable,
+		MempoolRecheckTable,
 	}
 }
 
@@ -61,9 +63,10 @@ const (
 type MempoolStateUpdateType string
 
 const (
-	SeenTx  MempoolStateUpdateType = "SeenTx"
-	WantTx  MempoolStateUpdateType = "WantTx"
-	Unknown MempoolStateUpdateType = "Unknown"
+	SeenTx           MempoolStateUpdateType = "SeenTx"
+	WantTx           MempoolStateUpdateType = "WantTx"
+	MissingSequence  MempoolStateUpdateType = "MissingSequence"
+	Unknown          MempoolStateUpdateType = "Unknown"
 )
 
 // MempoolPeerState describes the schema for the "mempool_peer_state" table.
@@ -72,6 +75,8 @@ type MempoolPeerState struct {
 	StateUpdate  MempoolStateUpdateType `json:"state_update"`
 	TxHash       string                 `json:"tx_hash"`
 	TransferType TransferType           `json:"transfer_type"`
+	Signer       string                 `json:"signer,omitempty"`
+	Sequence     uint64                 `json:"sequence,omitempty"`
 }
 
 // Table returns the table name for the MempoolPeerState struct.
@@ -88,16 +93,38 @@ func WriteMempoolPeerState(
 	txHash []byte,
 	transferType TransferType,
 ) {
+	WriteMempoolPeerStateWithSeq(client, peer, stateUpdate, txHash, transferType, nil, 0)
+}
+
+// WriteMempoolPeerStateWithSeq writes a tracing point for the mempool state
+// including signer and sequence information.
+func WriteMempoolPeerStateWithSeq(
+	client trace.Tracer,
+	peer string,
+	stateUpdate MempoolStateUpdateType,
+	txHash []byte,
+	transferType TransferType,
+	signer []byte,
+	sequence uint64,
+) {
 	// this check is redundant to what is checked during client.Write, although it
 	// is an optimization to avoid allocations from creating the map of fields.
 	if !client.IsCollecting(MempoolPeerStateTable) {
 		return
 	}
+
+	signerStr := ""
+	if len(signer) > 0 {
+		signerStr = string(signer)
+	}
+
 	client.Write(MempoolPeerState{
 		Peer:         peer,
 		StateUpdate:  stateUpdate,
 		TransferType: transferType,
 		TxHash:       bytes.HexBytes(txHash).String(),
+		Signer:       signerStr,
+		Sequence:     sequence,
 	})
 }
 
@@ -190,5 +217,121 @@ func WriteMempoolRecoveredParts(client trace.Tracer, height int64, round int32, 
 		Height:         height,
 		Round:          round,
 		RecoveredParts: parts,
+	})
+}
+
+const (
+	// MempoolTxStatusTable is the tracing "measurement" (aka table) for the
+	// mempool that stores tracing data related to transaction status changes
+	// (evictions, rejections, confirmations).
+	MempoolTxStatusTable = "mempool_tx_status"
+)
+
+type MempoolTxStatusType string
+
+const (
+	TxEvicted   MempoolTxStatusType = "evicted"
+	TxRejected  MempoolTxStatusType = "rejected"
+	TxConfirmed MempoolTxStatusType = "confirmed"
+	TxExpired   MempoolTxStatusType = "expired"
+)
+
+// MempoolTxStatus describes the schema for the "mempool_tx_status" table.
+type MempoolTxStatus struct {
+	TxHash   string              `json:"tx_hash"`
+	Status   MempoolTxStatusType `json:"status"`
+	Error    string              `json:"error,omitempty"`
+	Signer   string              `json:"signer,omitempty"`
+	Sequence uint64              `json:"sequence,omitempty"`
+}
+
+// Table returns the table name for the MempoolTxStatus struct.
+func (MempoolTxStatus) Table() string {
+	return MempoolTxStatusTable
+}
+
+// WriteMempoolTxStatus writes a tracing point for mempool transaction status
+// changes using the predetermined schema for mempool tracing.
+func WriteMempoolTxStatus(
+	client trace.Tracer,
+	txHash []byte,
+	status MempoolTxStatusType,
+	err error,
+	signer []byte,
+	sequence uint64,
+) {
+	if !client.IsCollecting(MempoolTxStatusTable) {
+		return
+	}
+
+	errStr := ""
+	if err != nil {
+		errStr = err.Error()
+	}
+
+	signerStr := ""
+	if len(signer) > 0 {
+		signerStr = string(signer)
+	}
+
+	client.Write(MempoolTxStatus{
+		TxHash:   bytes.HexBytes(txHash).String(),
+		Status:   status,
+		Error:    errStr,
+		Signer:   signerStr,
+		Sequence: sequence,
+	})
+}
+
+const (
+	// MempoolRecheckTable is the tracing "measurement" (aka table) for the
+	// mempool that stores tracing data related to transaction rechecks.
+	MempoolRecheckTable = "mempool_recheck"
+)
+
+// MempoolRecheck describes the schema for the "mempool_recheck" table.
+type MempoolRecheck struct {
+	TxHash   string `json:"tx_hash"`
+	Signer   string `json:"signer,omitempty"`
+	Sequence uint64 `json:"sequence,omitempty"`
+	Kept     bool   `json:"kept"`
+	Error    string `json:"error,omitempty"`
+}
+
+// Table returns the table name for the MempoolRecheck struct.
+func (MempoolRecheck) Table() string {
+	return MempoolRecheckTable
+}
+
+// WriteMempoolRecheck writes a tracing point for mempool recheck events using
+// the predetermined schema for mempool tracing.
+func WriteMempoolRecheck(
+	client trace.Tracer,
+	txHash []byte,
+	signer []byte,
+	sequence uint64,
+	kept bool,
+	err error,
+) {
+	if !client.IsCollecting(MempoolRecheckTable) {
+		return
+	}
+
+	errStr := ""
+	if err != nil {
+		errStr = err.Error()
+	}
+
+	signerStr := ""
+	if len(signer) > 0 {
+		signerStr = string(signer)
+	}
+
+	client.Write(MempoolRecheck{
+		TxHash:   bytes.HexBytes(txHash).String(),
+		Signer:   signerStr,
+		Sequence: sequence,
+		Kept:     kept,
+		Error:    errStr,
 	})
 }
