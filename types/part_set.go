@@ -6,10 +6,7 @@ import (
 	"errors"
 	"fmt"
 	mathbits "math/bits"
-	"runtime"
 	"time"
-
-	"golang.org/x/sync/errgroup"
 
 	"github.com/klauspost/reedsolomon"
 
