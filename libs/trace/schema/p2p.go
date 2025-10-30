@@ -96,16 +96,21 @@ const (
 	P2PBufferPoolGet P2PBufferPoolOperation = "get"
 	// P2PBufferPoolPut is the action for returning a buffer to the pool.
 	P2PBufferPoolPut P2PBufferPoolOperation = "put"
+	// P2PBufferPoolCreate is the action for creating a buffer pool for a peer connection.
+	P2PBufferPoolCreate P2PBufferPoolOperation = "create"
+	// P2PBufferPoolNil is traced when buffer pool is unexpectedly nil during receive.
+	P2PBufferPoolNil P2PBufferPoolOperation = "nil"
 )
 
 // P2PBufferPool describes schema for the "p2p_buffer_pool" table.
 // This event is traced when a buffer is retrieved from or returned to the connection pool.
 type P2PBufferPool struct {
-	Action    string `json:"action"`    // "get" or "put"
-	MinCap    int    `json:"min_cap"`   // For get: requested minimum capacity. For put: 0
-	BufferCap int    `json:"buffer_cap"` // For get: actual capacity returned. For put: capacity being returned
-	Discarded bool   `json:"discarded"`  // For put: whether buffer was discarded. For get: false
-	ChannelID int    `json:"channel_id"`
+	Action    string `json:"action"`     // "get", "put", "create", or "nil"
+	MinCap    int    `json:"min_cap"`    // For get: requested minimum capacity. For others: 0
+	BufferCap int    `json:"buffer_cap"` // For get: actual capacity returned. For put: capacity being returned. For others: 0
+	Discarded bool   `json:"discarded"`  // For put: whether buffer was discarded. For others: false
+	ChannelID int    `json:"channel_id"` // Channel ID (0 for create/nil if not channel-specific)
+	PeerID    string `json:"peer_id,omitempty"` // Peer ID (for create/nil operations)
 }
 
 // Table returns the table name for the P2PBufferPool struct.
@@ -138,5 +143,35 @@ func WriteP2PBufferPoolPut(client trace.Tracer, bufferCap, channelID int, discar
 		BufferCap: bufferCap,
 		Discarded: discarded,
 		ChannelID: channelID,
+	})
+}
+
+// WriteP2PBufferPoolCreate writes a tracing point for creating a buffer pool.
+func WriteP2PBufferPoolCreate(client trace.Tracer, peerID string) {
+	if client == nil || !client.IsCollecting(P2PBufferPoolTable) {
+		return
+	}
+	client.Write(P2PBufferPool{
+		Action:    string(P2PBufferPoolCreate),
+		MinCap:    0,
+		BufferCap: 0,
+		Discarded: false,
+		ChannelID: 0,
+		PeerID:    peerID,
+	})
+}
+
+// WriteP2PBufferPoolNil writes a tracing point when buffer pool is unexpectedly nil.
+func WriteP2PBufferPoolNil(client trace.Tracer, channelID int, msgSize int) {
+	if client == nil || !client.IsCollecting(P2PBufferPoolTable) {
+		return
+	}
+	client.Write(P2PBufferPool{
+		Action:    string(P2PBufferPoolNil),
+		MinCap:    msgSize, // Store message size in MinCap field
+		BufferCap: 0,
+		Discarded: false,
+		ChannelID: channelID,
+		PeerID:    "",
 	})
 }
