@@ -580,7 +580,7 @@ func (memR *Reactor) processPendingSeenForSigner(signer []byte) {
 	}
 
 	for _, entry := range entries {
-		fmt.Println("expected sequence", expectedSeq, "entry ---", *entry)
+		fmt.Println("expected sequence", expectedSeq, "signer", string(signer), "entry seq", entry.sequence, entry.requested, entry.txKey.String(), entry.peers, entry.addedAt)
 		if haveExpected && expectedSeq > entry.sequence {
 			memR.pendingSeen.remove(entry.txKey)
 			continue
