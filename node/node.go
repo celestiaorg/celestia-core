@@ -319,6 +319,8 @@ func NewNodeWithContext(ctx context.Context,
 		return nil, err
 	}
 
+	fmt.Println("state: ", state)
+
 	csMetrics, p2pMetrics, memplMetrics, smMetrics, abciMetrics, bsMetrics, ssMetrics := metricsProvider(genDoc.ChainID)
 
 	// Create the proxyApp and establish connections to the ABCI app (consensus, mempool, query).
