@@ -3,6 +3,7 @@ package cat
 import (
 	"context"
 	"fmt"
+	"math/rand"
 	"strconv"
 	"sync"
 	"testing"
@@ -32,8 +33,8 @@ import (
 // 4. State changes match expectations across all reactors
 func TestReactorSequentialTxsAcrossMultipleReactors(t *testing.T) {
 	const (
-		numReactors = 3
-		numTxs      = 50
+		numReactors = 20
+		numTxs      = 100
 	)
 
 	config := cfg.TestConfig()
@@ -56,11 +57,49 @@ func TestReactorSequentialTxsAcrossMultipleReactors(t *testing.T) {
 		reactors[i] = reactor
 	}
 
-	// Connect reactors in a full mesh
-	switches := p2p.MakeConnectedSwitches(config.P2P, numReactors, func(i int, s *p2p.Switch) *p2p.Switch {
-		s.AddReactor("MEMPOOL", reactors[i])
-		return s
-	}, p2p.Connect2Switches)
+	// Create switches without connecting them
+	switches := make([]*p2p.Switch, numReactors)
+	for i := 0; i < numReactors; i++ {
+		switches[i] = p2p.MakeSwitch(config.P2P, i, func(idx int, sw *p2p.Switch) *p2p.Switch {
+			sw.AddReactor("MEMPOOL", reactors[idx])
+			return sw
+		})
+	}
+
+	err := p2p.StartSwitches(switches)
+	require.NoError(t, err)
+
+	// Connect reactors randomly with max 30 peers each
+	const maxPeers = 5
+	rng := rand.New(rand.NewSource(time.Now().UnixNano()))
+
+	for i := 0; i < numReactors; i++ {
+		// Create a list of potential peers (all other nodes)
+		potentialPeers := make([]int, 0, numReactors-1)
+		for j := 0; j < numReactors; j++ {
+			if i != j {
+				potentialPeers = append(potentialPeers, j)
+			}
+		}
+
+		// Shuffle and select up to maxPeers
+		rng.Shuffle(len(potentialPeers), func(a, b int) {
+			potentialPeers[a], potentialPeers[b] = potentialPeers[b], potentialPeers[a]
+		})
+
+		numToConnect := maxPeers
+		if len(potentialPeers) < maxPeers {
+			numToConnect = len(potentialPeers)
+		}
+
+		// Connect to selected peers (only if not already connected)
+		for _, peerIdx := range potentialPeers[:numToConnect] {
+			// Check if already connected (bidirectional connection)
+			if !switches[i].Peers().Has(switches[peerIdx].NodeInfo().ID()) {
+				p2p.Connect2Switches(switches, i, peerIdx)
+			}
+		}
+	}
 
 	t.Cleanup(func() {
 		for _, s := range switches {
@@ -154,10 +193,46 @@ func TestReactorSequentialTxsAcrossMultipleReactors(t *testing.T) {
 			reactors2[i] = reactor
 		}
 
-		switches2 := p2p.MakeConnectedSwitches(config.P2P, numReactors, func(i int, s *p2p.Switch) *p2p.Switch {
-			s.AddReactor("MEMPOOL", reactors2[i])
-			return s
-		}, p2p.Connect2Switches)
+		// Create switches without connecting them
+		switches2 := make([]*p2p.Switch, numReactors)
+		for i := 0; i < numReactors; i++ {
+			switches2[i] = p2p.MakeSwitch(config.P2P, i, func(idx int, sw *p2p.Switch) *p2p.Switch {
+				sw.AddReactor("MEMPOOL", reactors2[idx])
+				return sw
+			})
+		}
+
+		err := p2p.StartSwitches(switches2)
+		require.NoError(t, err)
+
+		// Connect reactors randomly with max 30 peers each
+		for i := 0; i < numReactors; i++ {
+			// Create a list of potential peers (all other nodes)
+			potentialPeers := make([]int, 0, numReactors-1)
+			for j := 0; j < numReactors; j++ {
+				if i != j {
+					potentialPeers = append(potentialPeers, j)
+				}
+			}
+
+			// Shuffle and select up to maxPeers
+			rng.Shuffle(len(potentialPeers), func(a, b int) {
+				potentialPeers[a], potentialPeers[b] = potentialPeers[b], potentialPeers[a]
+			})
+
+			numToConnect := maxPeers
+			if len(potentialPeers) < maxPeers {
+				numToConnect = len(potentialPeers)
+			}
+
+			// Connect to selected peers (only if not already connected)
+			for _, peerIdx := range potentialPeers[:numToConnect] {
+				// Check if already connected (bidirectional connection)
+				if !switches2[i].Peers().Has(switches2[peerIdx].NodeInfo().ID()) {
+					p2p.Connect2Switches(switches2, i, peerIdx)
+				}
+			}
+		}
 
 		t.Cleanup(func() {
 			for _, s := range switches2 {
