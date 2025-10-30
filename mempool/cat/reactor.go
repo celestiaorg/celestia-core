@@ -21,7 +21,7 @@ import (
 const (
 	// default duration to wait before considering a peer non-responsive
 	// and searching for the tx from a new peer
-	DefaultGossipDelay = 60 * time.Second
+	DefaultGossipDelay = 20 * time.Second
 
 	// MempoolDataChannel channel for SeenTx and blob messages.
 	MempoolDataChannel = byte(0x31)
@@ -430,6 +430,15 @@ func (memR *Reactor) Receive(e p2p.Envelope) {
 					string(e.Src.ID()),
 					txKey[:],
 					len(tx.Tx),
+					schema.Upload,
+				)
+			} else {
+				memR.Logger.Error("------ FAILED TO SEND TX IN RESPONSE TO WANTTX (send queue likely full) ------", "peer", peerID, "txKey", txKey)
+				schema.WriteMempoolTx(
+					memR.traceClient,
+					string(e.Src.ID()),
+					txKey[:],
+					-1, // negative size indicates failed send
 					schema.Upload,
 				)
 			}
