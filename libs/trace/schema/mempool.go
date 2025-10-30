@@ -63,10 +63,10 @@ const (
 type MempoolStateUpdateType string
 
 const (
-	SeenTx           MempoolStateUpdateType = "SeenTx"
-	WantTx           MempoolStateUpdateType = "WantTx"
-	MissingSequence  MempoolStateUpdateType = "MissingSequence"
-	Unknown          MempoolStateUpdateType = "Unknown"
+	SeenTx          MempoolStateUpdateType = "SeenTx"
+	WantTx          MempoolStateUpdateType = "WantTx"
+	MissingSequence MempoolStateUpdateType = "MissingSequence"
+	Unknown         MempoolStateUpdateType = "Unknown"
 )
 
 // MempoolPeerState describes the schema for the "mempool_peer_state" table.

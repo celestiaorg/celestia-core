@@ -182,14 +182,14 @@ func TestPendingSeenTracker(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			tracker := newPendingSeenTracker(tc.limit, nil)
+			tracker := newPendingSeenTracker(tc.limit)
 			tc.run(t, tracker)
 		})
 	}
 }
 
 func TestPendingSeenTrackerConcurrentAccess(t *testing.T) {
-	tracker := newPendingSeenTracker(0, nil)
+	tracker := newPendingSeenTracker(0)
 	signer := []byte("signer")
 
 	const total = 5000

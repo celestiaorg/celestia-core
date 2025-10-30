@@ -110,7 +110,7 @@ func NewReactor(mempool *TxPool, opts *ReactorOptions) (*Reactor, error) {
 		mempool:     mempool,
 		ids:         newMempoolIDs(),
 		requests:    newRequestScheduler(opts.MaxGossipDelay, defaultGlobalRequestTimeout),
-		pendingSeen: newPendingSeenTracker(0, traceClient),
+		pendingSeen: newPendingSeenTracker(0),
 		traceClient: traceClient,
 	}
 	memR.BaseReactor = *p2p.NewBaseReactor("CAT", memR,
@@ -430,14 +430,6 @@ func (memR *Reactor) Receive(e p2p.Envelope) {
 					string(e.Src.ID()),
 					txKey[:],
 					len(tx.Tx),
-					schema.Upload,
-				)
-			} else {
-				schema.WriteMempoolTx(
-					memR.traceClient,
-					string(e.Src.ID()),
-					txKey[:],
-					-1, // negative size indicates failed send
 					schema.Upload,
 				)
 			}

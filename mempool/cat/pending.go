@@ -1,13 +1,10 @@
 package cat
 
 import (
-	"fmt"
 	"sort"
 	"sync"
 	"time"
 
-	"github.com/cometbft/cometbft/libs/trace"
-	"github.com/cometbft/cometbft/libs/trace/schema"
 	"github.com/cometbft/cometbft/types"
 )
 
@@ -31,25 +28,20 @@ func (p *pendingSeenTx) peerIDs() []uint16 {
 }
 
 type pendingSeenTracker struct {
-	mu          sync.Mutex
-	perSigner   map[string][]*pendingSeenTx
-	byTx        map[types.TxKey]*pendingSeenTx
-	limit       int
-	traceClient trace.Tracer
+	mu        sync.Mutex
+	perSigner map[string][]*pendingSeenTx
+	byTx      map[types.TxKey]*pendingSeenTx
+	limit     int
 }
 
-func newPendingSeenTracker(limit int, traceClient trace.Tracer) *pendingSeenTracker {
+func newPendingSeenTracker(limit int) *pendingSeenTracker {
 	if limit <= 0 {
 		limit = defaultPendingSeenPerSigner
 	}
-	if traceClient == nil {
-		traceClient = trace.NoOpTracer()
-	}
 	return &pendingSeenTracker{
-		perSigner:   make(map[string][]*pendingSeenTx),
-		byTx:        make(map[types.TxKey]*pendingSeenTx),
-		limit:       limit,
-		traceClient: traceClient,
+		perSigner: make(map[string][]*pendingSeenTx),
+		byTx:      make(map[types.TxKey]*pendingSeenTx),
+		limit:     limit,
 	}
 }
 
@@ -74,9 +66,6 @@ func (ps *pendingSeenTracker) add(signer []byte, txKey types.TxKey, sequence uin
 	queue := ps.perSigner[signerKey]
 	for _, existingEntry := range queue {
 		if existingEntry.sequence == sequence {
-			// Trace this duplicate (signer, sequence) with different txKey
-			// Size -2 indicates duplicate sequence detection
-			schema.WriteMempoolTx(ps.traceClient, fmt.Sprintf("peer-%d", peerID), txKey[:], -2, schema.Download)
 			return
 		}
 	}
@@ -182,7 +171,6 @@ func (ps *pendingSeenTracker) removePeer(peerID uint16) {
 		}
 	}
 }
-
 
 func (ps *pendingSeenTracker) signerKeys() [][]byte {
 	ps.mu.Lock()

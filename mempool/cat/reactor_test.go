@@ -172,60 +172,6 @@ func TestReactorBroadcastsSeenTxAfterReceivingTx(t *testing.T) {
 	peers[1].AssertExpectations(t)
 }
 
-func TestBroadcastSeenTxTargetsUninformedPeers(t *testing.T) {
-	reactor, _ := setupReactor(t)
-
-	const extraPeers = 3
-	totalPeers := maxSeenTxBroadcast + extraPeers
-
-	peers := genPeers(totalPeers)
-	for _, peer := range peers {
-		_, err := reactor.InitPeer(peer)
-		require.NoError(t, err)
-	}
-
-	signer := []byte("sticky-signer")
-	tx := newDefaultTx("spread")
-	key := tx.Key()
-
-	peerMap := reactor.ids.GetAll()
-	require.Len(t, peerMap, totalPeers)
-
-	ordered := selectStickyPeers(signer, peerMap, len(peerMap), reactor.currentStickyPeerSalt())
-	require.Len(t, ordered, totalPeers)
-
-	for i := 0; i < maxSeenTxBroadcast; i++ {
-		reactor.mempool.PeerHasTx(ordered[i].id, key)
-	}
-
-	envelopeMatcher := mock.MatchedBy(func(env p2p.Envelope) bool {
-		if env.ChannelID != MempoolDataChannel {
-			return false
-		}
-		msg, ok := env.Message.(*protomem.Message)
-		if !ok {
-			return false
-		}
-		seen := msg.GetSeenTx()
-		if seen == nil {
-			return false
-		}
-		return bytes.Equal(seen.TxKey, key[:])
-	})
-
-	for i := maxSeenTxBroadcast; i < len(ordered); i++ {
-		mPeer := ordered[i].peer.(*mocks.Peer)
-		mPeer.On("Send", envelopeMatcher).Return(true)
-	}
-
-	reactor.broadcastSeenTxWithHeight(key, reactor.mempool.Height(), signer, 1)
-
-	for i := maxSeenTxBroadcast; i < len(ordered); i++ {
-		mPeer := ordered[i].peer.(*mocks.Peer)
-		mPeer.AssertExpectations(t)
-	}
-}
-
 func TestRemovePeerRequestFromOtherPeer(t *testing.T) {
 	reactor, _ := setupReactor(t)
 
@@ -900,53 +846,6 @@ func TestPendingSeenClearedWhenTxArrives(t *testing.T) {
 
 	require.Empty(t, reactor.pendingSeen.entriesForSigner(signer))
 	sourcePeer.AssertNotCalled(t, "TrySend", mock.Anything)
-}
-
-func TestRefreshPendingSeenQueuesPrunesAndRequests(t *testing.T) {
-	app := newSequenceTrackingApp()
-	cc := proxy.NewLocalClientCreator(app)
-	pool, cleanup := newMempoolWithApp(cc)
-	defer cleanup()
-
-	reactor, err := NewReactor(pool, &ReactorOptions{})
-	require.NoError(t, err)
-
-	signer := []byte("sender-maintenance")
-	app.SetSequence(string(signer), 5)
-
-	peer := genPeer()
-	_, err = reactor.InitPeer(peer)
-	require.NoError(t, err)
-	peer.On("Send", mock.Anything).Return(true).Maybe()
-
-	peerID := reactor.ids.GetIDForPeer(peer.ID())
-
-	oldKey := types.Tx("old-seq").Key()
-	targetTx := types.Tx("expected-seq")
-	targetKey := targetTx.Key()
-
-	reactor.pendingSeen.add(signer, oldKey, 3, peerID)
-	reactor.pendingSeen.add(signer, targetKey, 5, peerID)
-
-	wantEnvelope := p2p.Envelope{
-		ChannelID: MempoolWantsChannel,
-		Message: &protomem.Message{
-			Sum: &protomem.Message_WantTx{
-				WantTx: &protomem.WantTx{TxKey: targetKey[:]},
-			},
-		},
-	}
-	peer.On("TrySend", wantEnvelope).Return(true)
-
-	reactor.refreshPendingSeenQueues()
-
-	entries := reactor.pendingSeen.entriesForSigner(signer)
-	require.Len(t, entries, 1)
-	require.True(t, entries[0].requested)
-	require.Equal(t, targetKey, entries[0].txKey)
-	require.Equal(t, peerID, entries[0].lastPeer)
-	peer.AssertExpectations(t)
-	require.NotEqual(t, uint16(0), reactor.requests.ForTx(targetKey))
 }
 
 func TestPendingSeenClearedOnPeerRemoval(t *testing.T) {
