@@ -11,7 +11,7 @@ import (
 )
 
 // ProcessorFunc is the message processor function type.
-type ProcessorFunc func(context.Context, <-chan UnprocessedEnvelope)
+type ProcessorFunc func(context.Context, <-chan Envelope)
 
 // MessagePoolHooks provides hooks for message pooling to reduce allocations.
 // If configured, the base reactor will get messages from the pool before unmarshaling
@@ -80,17 +80,20 @@ type BaseReactor struct {
 	service.BaseService // Provides Start, Stop, .Quit
 	Switch              *Switch
 
-	incoming     chan UnprocessedEnvelope
+	incoming     chan Envelope
 	queueingFunc func(UnprocessedEnvelope)
 
 	ctx    context.Context
 	cancel context.CancelFunc
 	// processor is called with the incoming channel and is responsible for
-	// unmarshalling the messages and calling Receive on the reactor.
+	// calling Receive on the reactor with already-unmarshalled messages.
 	processor ProcessorFunc
 
 	// messagePoolHooks provides optional message pooling to reduce allocations
 	messagePoolHooks *MessagePoolHooks
+
+	// chIDs maps channel IDs to their message types for unmarshalling
+	chIDs map[byte]proto.Message
 }
 
 type ReactorOptions func(*BaseReactor)
@@ -98,13 +101,22 @@ type ReactorOptions func(*BaseReactor)
 func NewBaseReactor(name string, impl Reactor, opts ...ReactorOptions) *BaseReactor {
 	ctx := context.Background()
 	ctx, cancel := context.WithCancel(ctx)
+
+	// Build chIDs map from reactor channels
+	implChannels := impl.GetChannels()
+	chIDs := make(map[byte]proto.Message, len(implChannels))
+	for _, chDesc := range implChannels {
+		chIDs[chDesc.ID] = chDesc.MessageType
+	}
+
 	base := &BaseReactor{
 		ctx:         ctx,
 		cancel:      cancel,
 		BaseService: *service.NewBaseService(nil, name, impl),
 		Switch:      nil, // set by the switch later
-		incoming:    make(chan UnprocessedEnvelope, 100),
+		incoming:    make(chan Envelope, 100),
 		processor:   nil, // Will be set after base is created
+		chIDs:       chIDs,
 	}
 	base.queueingFunc = base.QueueUnprocessedEnvelope
 	for _, opt := range opts {
@@ -155,7 +167,7 @@ func WithQueueingFunc(queuingFunc func(UnprocessedEnvelope)) ReactorOptions {
 // reactor.
 func WithIncomingQueueSize(size int) ReactorOptions {
 	return func(br *BaseReactor) {
-		br.incoming = make(chan UnprocessedEnvelope, size)
+		br.incoming = make(chan Envelope, size)
 	}
 }
 
@@ -167,26 +179,106 @@ func WithMessagePoolHooks(hooks *MessagePoolHooks) ReactorOptions {
 	}
 }
 
+// unmarshalEnvelope synchronously unmarshals an UnprocessedEnvelope into an Envelope.
+// This is called in the connection receive goroutine before queueing.
+func (br *BaseReactor) unmarshalEnvelope(ue UnprocessedEnvelope) (Envelope, error) {
+	// Save message length for metrics before we lose the bytes
+	msgLen := len(ue.Message)
+
+	mt := br.chIDs[ue.ChannelID]
+	if mt == nil {
+		return Envelope{}, fmt.Errorf("no message type registered for channel %d", ue.ChannelID)
+	}
+
+	// Get message from pool if hooks are configured
+	// Pass raw bytes to allow peeking at wire format for type detection
+	var msg proto.Message
+	if br.messagePoolHooks != nil && br.messagePoolHooks.GetMessage != nil {
+		msg = br.messagePoolHooks.GetMessage(ue.ChannelID, ue.Message)
+	}
+
+	// Fallback to normal allocation if no pool
+	if msg == nil {
+		msg = proto.Clone(mt)
+	}
+
+	// Unmarshal into the message (wrapper or regular message)
+	err := proto.Unmarshal(ue.Message, msg)
+	if err != nil {
+		return Envelope{}, err
+	}
+
+	// Unwrap to get the actual message for processing
+	if w, ok := msg.(Unwrapper); ok {
+		msg, err = w.Unwrap()
+		if err != nil {
+			return Envelope{}, err
+		}
+	}
+
+	// Update metrics and tracing
+	labels := []string{
+		"peer_id", string(ue.Src.ID()),
+		"chID", fmt.Sprintf("%#x", ue.ChannelID),
+	}
+	ue.Src.Metrics().PeerReceiveBytesTotal.With(labels...).Add(float64(msgLen))
+	ue.Src.Metrics().MessageReceiveBytesTotal.With(append(labels, "message_type", ue.Src.ValueToMetricLabel(msg))...).Add(float64(msgLen))
+	schema.WriteReceivedBytes(ue.Src.TraceClient(), string(ue.Src.ID()), ue.ChannelID, msgLen)
+
+	envelope := Envelope{
+		ChannelID: ue.ChannelID,
+		Src:       ue.Src,
+		Message:   msg,
+	}
+
+	return envelope, nil
+}
+
 // QueueUnprocessedEnvelope is called by the switch when an unprocessed
-// envelope is received. Unprocessed envelopes are immediately buffered in a
-// queue to avoid blocking. The size of the queue can be changed by passing
-// options to the base reactor.
+// envelope is received. It synchronously unmarshals the message bytes
+// and queues the resulting proto.Message to avoid blocking the connection
+// receive loop with queuing operations.
 func (br *BaseReactor) QueueUnprocessedEnvelope(e UnprocessedEnvelope) {
+	// Unmarshal synchronously in the connection receive goroutine
+	envelope, err := br.unmarshalEnvelope(e)
+	if err != nil {
+		// Log error and disconnect peer
+		if br.Logger != nil {
+			br.Logger.Error("failed to unmarshal envelope", "err", err, "channel", e.ChannelID)
+		}
+		disconnectPeer(br, e.Src, fmt.Sprintf("unmarshal error: %v", err), br.String())
+		return
+	}
+
+	// Queue the already-unmarshalled envelope
 	select {
 	// if the context is done, do nothing.
 	case <-br.ctx.Done():
 	// if not, add the item to the channel.
-	case br.incoming <- e:
+	case br.incoming <- envelope:
 	}
 }
 
 // TryQueueUnprocessedEnvelope an alternative to QueueUnprocessedEnvelope that attempts to queue an unprocessed envelope.
 // If the queue is full, it drops the envelope.
 func (br *BaseReactor) TryQueueUnprocessedEnvelope(e UnprocessedEnvelope) {
+	// Unmarshal synchronously in the connection receive goroutine
+	envelope, err := br.unmarshalEnvelope(e)
+	if err != nil {
+		// Log error and disconnect peer
+		if br.Logger != nil {
+			br.Logger.Error("failed to unmarshal envelope", "err", err, "channel", e.ChannelID)
+		}
+		disconnectPeer(br, e.Src, fmt.Sprintf("unmarshal error: %v", err), br.String())
+		return
+	}
+
+	// Try to queue the already-unmarshalled envelope
 	select {
 	case <-br.ctx.Done():
-	case br.incoming <- e:
+	case br.incoming <- envelope:
 	default:
+		// Queue is full, drop the envelope
 	}
 }
 
@@ -194,99 +286,41 @@ func (br *BaseReactor) OnStop() {
 	br.cancel()
 }
 
-// ProcessorWithReactor unmarshalls the message and calls Receive on the reactor.
+// ProcessorWithReactor processes already-unmarshalled messages and calls Receive on the reactor.
+// Messages are unmarshalled synchronously in QueueUnprocessedEnvelope before being queued.
 // This preserves the sender's original order for all messages and supports panic recovery with peer disconnection.
-func ProcessorWithReactor(impl Reactor, baseReactor *BaseReactor) func(context.Context, <-chan UnprocessedEnvelope) {
-	implChannels := impl.GetChannels()
-
-	chIDs := make(map[byte]proto.Message, len(implChannels))
-	for _, chDesc := range implChannels {
-		chIDs[chDesc.ID] = chDesc.MessageType
-	}
-	return func(ctx context.Context, incoming <-chan UnprocessedEnvelope) {
+func ProcessorWithReactor(impl Reactor, baseReactor *BaseReactor) func(context.Context, <-chan Envelope) {
+	return func(ctx context.Context, incoming <-chan Envelope) {
 		for {
 			select {
 			case <-ctx.Done():
 				return
-			case ue, ok := <-incoming:
+			case envelope, ok := <-incoming:
 				if !ok {
 					// this means the channel was closed.
 					return
 				}
 
 				// Process message with panic recovery for individual peer
-				process := func(ue UnprocessedEnvelope) error {
-					defer baseReactor.ProtectPanic(ue.Src)
+				process := func(envelope Envelope) error {
+					defer baseReactor.ProtectPanic(envelope.Src)
 
-					// Return buffer to pool after processing
-					defer func() {
-						if ue.ReturnBuffer != nil {
-							ue.ReturnBuffer()
-						}
-					}()
-
-					mt := chIDs[ue.ChannelID]
-					if mt == nil {
-						return fmt.Errorf("no message type registered for channel %d", ue.ChannelID)
+					// If pooled message, return it to pool after processing
+					if baseReactor.messagePoolHooks != nil && baseReactor.messagePoolHooks.PutMessage != nil {
+						defer baseReactor.messagePoolHooks.PutMessage(envelope.ChannelID, envelope.Message)
 					}
 
-					// Get message from pool if hooks are configured
-					// Pass raw bytes to allow peeking at wire format for type detection
-					var msg proto.Message
-					var pooled bool
-					if baseReactor.messagePoolHooks != nil && baseReactor.messagePoolHooks.GetMessage != nil {
-						msg = baseReactor.messagePoolHooks.GetMessage(ue.ChannelID, ue.Message)
-						if msg != nil {
-							pooled = true
-						}
-					}
-
-					// Fallback to normal allocation if no pool
-					if msg == nil {
-						msg = proto.Clone(mt)
-					}
-
-					// Unmarshal into the message (wrapper or regular message)
-					err := proto.Unmarshal(ue.Message, msg)
-					if err != nil {
-						return err
-					}
-
-					// Unwrap to get the actual message for processing
-					if w, ok := msg.(Unwrapper); ok {
-						msg, err = w.Unwrap()
-						if err != nil {
-							return err
-						}
-					}
-
-					// If pooled and the message is a BlockResponse, defer return it to pool
-					// For other message types (StatusRequest, etc.), the pre-allocated BlockResponse
-					// in the wrapper Sum field gets replaced and lost - this is unavoidable
-					if pooled && baseReactor.messagePoolHooks != nil && baseReactor.messagePoolHooks.PutMessage != nil {
-						defer baseReactor.messagePoolHooks.PutMessage(ue.ChannelID, msg)
-					}
-
-					labels := []string{
-						"peer_id", string(ue.Src.ID()),
-						"chID", fmt.Sprintf("%#x", ue.ChannelID),
-					}
-
-					ue.Src.Metrics().PeerReceiveBytesTotal.With(labels...).Add(float64(len(ue.Message)))
-					ue.Src.Metrics().MessageReceiveBytesTotal.With(append(labels, "message_type", ue.Src.ValueToMetricLabel(msg))...).Add(float64(len(ue.Message)))
-					schema.WriteReceivedBytes(ue.Src.TraceClient(), string(ue.Src.ID()), ue.ChannelID, len(ue.Message))
-					impl.Receive(Envelope{
-						ChannelID: ue.ChannelID,
-						Src:       ue.Src,
-						Message:   msg,
-					})
+					// Note: We don't have the original byte length here anymore
+					// Metrics and tracing are handled in unmarshalEnvelope
+					// Just call Receive with the already-unmarshalled message
+					impl.Receive(envelope)
 
 					return nil
 				}
 
-				err := process(ue)
+				err := process(envelope)
 				if err != nil {
-					disconnectPeer(baseReactor, ue.Src, fmt.Sprintf("error in reactor processing: %v", err), impl.String())
+					disconnectPeer(baseReactor, envelope.Src, fmt.Sprintf("error in reactor processing: %v", err), impl.String())
 				}
 			}
 		}

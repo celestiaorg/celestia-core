@@ -117,9 +117,6 @@ type MConnection struct {
 
 	created time.Time // time of creation
 
-	// Optional buffer pool for message receives
-	bufferPool BufferPool
-
 	_maxPacketMsgSize int
 }
 
@@ -143,10 +140,6 @@ type MConnConfig struct {
 	// Fuzz connection
 	TestFuzz       bool                   `mapstructure:"test_fuzz"`
 	TestFuzzConfig *config.FuzzConnConfig `mapstructure:"test_fuzz_config"`
-
-	// Optional buffer pool for message receives
-	// If nil, allocates normally (backwards compatible)
-	BufferPool BufferPool `mapstructure:"-"`
 }
 
 // DefaultMConnConfig returns the default config.
@@ -199,7 +192,6 @@ func NewMConnectionWithConfig(
 		onReceive:     onReceive,
 		onError:       onError,
 		config:        config,
-		bufferPool:    config.BufferPool,
 		created:       time.Now(),
 	}
 
@@ -230,13 +222,7 @@ func (c *MConnection) SetLogger(l log.Logger) {
 	}
 }
 
-// BufferPool returns the buffer pool configured for this connection, or nil if none.
-func (c *MConnection) BufferPool() BufferPool {
-	return c.bufferPool
-}
-
-// SetOnReceive sets the onReceive callback. This is needed to set up buffer return logic
-// after the MConnection is created.
+// SetOnReceive sets the onReceive callback.
 func (c *MConnection) SetOnReceive(onReceive receiveCbFunc) {
 	c.onReceive = onReceive
 }
@@ -917,18 +903,9 @@ func (ch *Channel) recvPacketMsg(packet tmp2p.PacketMsg) ([]byte, error) {
 	}
 	ch.recving = append(ch.recving, packet.Data...)
 	if packet.EOF {
-		var msgBytes []byte
-
-		// Use buffer pool if available
-		if ch.conn.bufferPool != nil {
-			msgBytes = ch.conn.bufferPool.Get(len(ch.recving))
-			msgBytes = msgBytes[:len(ch.recving)]
-			copy(msgBytes, ch.recving)
-		} else {
-			// Backwards compatible: allocate normally
-			msgBytes = make([]byte, len(ch.recving))
-			copy(msgBytes, ch.recving)
-		}
+		// Return ch.recving directly without copying
+		// The onReceive callback will unmarshal synchronously before we reuse the buffer
+		msgBytes := ch.recving
 
 		// clear the slice without re-allocating.
 		// http://stackoverflow.com/questions/16971741/how-do-you-clear-a-slice-in-go

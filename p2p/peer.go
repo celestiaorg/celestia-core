@@ -466,34 +466,8 @@ func createMConnection(
 	config cmtconn.MConnConfig,
 ) *cmtconn.MConnection {
 
-	// Configure buffer pool to reduce allocations during block sync
-	// Uses power-of-2 size class pooling (e.g., 64MB, 128MB, 256MB buckets)
-	// Note: We create one pool per connection, but they all share similar sizes
-	// TODO: This creates a pool per connection, might want to share pools globally
-	if config.BufferPool == nil {
-		config.BufferPool = cmtconn.NewPowerOf2BufferPool(
-			p.traceClient,
-			0,
-		)
-		peerID := ""
-		if p.nodeInfo != nil {
-			peerID = string(p.ID())
-		}
-		schema.WriteP2PBufferPoolCreate(p.traceClient, peerID)
-	}
-
-	// Create the MConnection first so we can access its buffer pool
-	mconn := cmtconn.NewMConnectionWithConfig(
-		conn,
-		chDescs,
-		nil, // Set onReceive below
-		func(r interface{}) {
-			onPeerError(p, r, "p2p")
-		},
-		config,
-	)
-
-	// Now create onReceive with access to mconn
+	// Create onReceive callback that queues messages
+	// Messages are unmarshalled synchronously in QueueUnprocessedEnvelope
 	onReceive := func(chID byte, msgBytes []byte) {
 		reactor := reactorsByCh[chID]
 		if reactor == nil {
@@ -502,26 +476,23 @@ func createMConnection(
 			panic(fmt.Sprintf("Unknown channel %X", chID))
 		}
 
-		// Create buffer return callback if buffer pool is configured
-		var returnBuf func()
-		if pool := mconn.BufferPool(); pool != nil {
-			// Capture msgBytes in closure to return to pool later
-			buf := msgBytes
-			returnBuf = func() {
-				pool.Put(buf)
-			}
-		}
-
 		reactor.QueueUnprocessedEnvelope(UnprocessedEnvelope{
-			ChannelID:    chID,
-			Src:          p,
-			Message:      msgBytes,
-			ReturnBuffer: returnBuf,
+			ChannelID: chID,
+			Src:       p,
+			Message:   msgBytes, // ch.recving buffer, consumed immediately by synchronous unmarshal
 		})
 	}
 
-	// Set the onReceive callback now that we have access to mconn
-	mconn.SetOnReceive(onReceive)
+	// Create the MConnection
+	mconn := cmtconn.NewMConnectionWithConfig(
+		conn,
+		chDescs,
+		onReceive,
+		func(r interface{}) {
+			onPeerError(p, r, "p2p")
+		},
+		config,
+	)
 
 	return mconn
 }

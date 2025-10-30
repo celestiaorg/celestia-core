@@ -14,12 +14,6 @@ type UnprocessedEnvelope struct {
 	Src       IntrospectivePeer
 	Message   []byte
 	ChannelID byte
-
-	// ReturnBuffer is called after Message is processed to return
-	// the buffer to the connection's buffer pool (if configured).
-	// This callback MUST be called exactly once via defer to prevent leaks.
-	// Can be nil if no buffer pool is configured.
-	ReturnBuffer func()
 }
 
 // Envelope contains a message with sender routing info.
