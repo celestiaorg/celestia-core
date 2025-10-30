@@ -14,24 +14,20 @@ import (
 const defaultPendingSeenPerSigner = 1028
 
 type pendingSeenTx struct {
-	signerKey   string
-	signer      []byte
-	txKey       types.TxKey
-	sequence    uint64
-	peers       []uint16
-	addedAt     time.Time
-	requested   bool
-	lastPeer    uint16
-	requestedAt time.Time
+	signerKey string
+	signer    []byte
+	txKey     types.TxKey
+	sequence  uint64
+	peer      uint16
+	requested bool
+	lastPeer  uint16
 }
 
 func (p *pendingSeenTx) peerIDs() []uint16 {
-	if len(p.peers) == 0 {
+	if p.peer == 0 {
 		return nil
 	}
-	out := make([]uint16, len(p.peers))
-	copy(out, p.peers)
-	return out
+	return []uint16{p.peer}
 }
 
 type pendingSeenTracker struct {
@@ -68,10 +64,8 @@ func (ps *pendingSeenTracker) add(signer []byte, txKey types.TxKey, sequence uin
 	defer ps.mu.Unlock()
 
 	// First check if we already have this exact txKey
-	if existing, ok := ps.byTx[txKey]; ok {
-		if !containsPeer(existing.peers, peerID) {
-			existing.peers = append(existing.peers, peerID)
-		}
+	if _, ok := ps.byTx[txKey]; ok {
+		// Already tracking this tx, keep the first peer
 		return
 	}
 
@@ -93,8 +87,7 @@ func (ps *pendingSeenTracker) add(signer []byte, txKey types.TxKey, sequence uin
 		signer:    append([]byte(nil), signer...),
 		txKey:     txKey,
 		sequence:  sequence,
-		addedAt:   time.Now().UTC(),
-		peers:     []uint16{peerID},
+		peer:      peerID,
 	}
 
 	insertIdx := sort.Search(len(queue), func(i int) bool {
@@ -111,7 +104,6 @@ func (ps *pendingSeenTracker) add(signer []byte, txKey types.TxKey, sequence uin
 		removed := queue[lastIdx]
 		queue = queue[:lastIdx]
 		delete(ps.byTx, removed.txKey)
-		fmt.Println("removing a tx from the queue cause it was over sized")
 	}
 	if len(queue) == 0 {
 		delete(ps.perSigner, signerKey)
@@ -165,12 +157,6 @@ func (ps *pendingSeenTracker) entriesForSigner(signer []byte) []*pendingSeenTx {
 		if len(entry.signer) > 0 {
 			clone.signer = append([]byte(nil), entry.signer...)
 		}
-		if len(entry.peers) > 0 {
-			clone.peers = append([]uint16(nil), entry.peers...)
-		}
-		clone.requested = entry.requested
-		clone.lastPeer = entry.lastPeer
-		clone.requestedAt = entry.requestedAt
 		out[i] = &clone
 	}
 	return out
@@ -186,37 +172,17 @@ func (ps *pendingSeenTracker) removePeer(peerID uint16) {
 
 	for _, queue := range ps.perSigner {
 		for _, entry := range queue {
-			entry.peers = removePeerFromSlice(entry.peers, peerID)
+			if entry.peer == peerID {
+				entry.peer = 0
+			}
 			if entry.lastPeer == peerID {
 				entry.requested = false
 				entry.lastPeer = 0
-				entry.requestedAt = time.Time{}
 			}
 		}
 	}
 }
 
-func containsPeer(peers []uint16, peerID uint16) bool {
-	for _, id := range peers {
-		if id == peerID {
-			return true
-		}
-	}
-	return false
-}
-
-func removePeerFromSlice(peers []uint16, peerID uint16) []uint16 {
-	if len(peers) == 0 {
-		return peers
-	}
-	out := peers[:0]
-	for _, id := range peers {
-		if id != peerID {
-			out = append(out, id)
-		}
-	}
-	return out
-}
 
 func (ps *pendingSeenTracker) signerKeys() [][]byte {
 	ps.mu.Lock()
@@ -233,64 +199,6 @@ func (ps *pendingSeenTracker) signerKeys() [][]byte {
 	return out
 }
 
-func (ps *pendingSeenTracker) pruneBelowSequence(signer []byte, minSequence uint64) {
-	if len(signer) == 0 {
-		return
-	}
-
-	signerKey := string(signer)
-
-	ps.mu.Lock()
-	defer ps.mu.Unlock()
-
-	queue := ps.perSigner[signerKey]
-	dst := queue[:0]
-	for _, entry := range queue {
-		if entry.sequence < minSequence {
-			delete(ps.byTx, entry.txKey)
-			continue
-		}
-		dst = append(dst, entry)
-	}
-
-	if len(dst) == 0 {
-		delete(ps.perSigner, signerKey)
-		return
-	}
-
-	ps.perSigner[signerKey] = dst
-}
-
-func (ps *pendingSeenTracker) firstEntry(signer []byte) *pendingSeenTx {
-	if len(signer) == 0 {
-		return nil
-	}
-
-	ps.mu.Lock()
-	defer ps.mu.Unlock()
-
-	queue := ps.perSigner[string(signer)]
-	if len(queue) == 0 {
-		return nil
-	}
-
-	candidate := queue[0]
-	if candidate.requested {
-		return nil
-	}
-	entry := *candidate
-	if len(entry.signer) > 0 {
-		entry.signer = append([]byte(nil), entry.signer...)
-	}
-	if len(entry.peers) > 0 {
-		entry.peers = append([]uint16(nil), entry.peers...)
-	}
-	entry.requested = candidate.requested
-	entry.lastPeer = candidate.lastPeer
-	entry.requestedAt = candidate.requestedAt
-	return &entry
-}
-
 func (ps *pendingSeenTracker) markRequested(txKey types.TxKey, peerID uint16, at time.Time) {
 	if peerID == 0 {
 		return
@@ -305,7 +213,6 @@ func (ps *pendingSeenTracker) markRequested(txKey types.TxKey, peerID uint16, at
 	}
 	entry.requested = true
 	entry.lastPeer = peerID
-	entry.requestedAt = at
 }
 
 func (ps *pendingSeenTracker) markRequestFailed(txKey types.TxKey, peerID uint16) {
@@ -323,7 +230,8 @@ func (ps *pendingSeenTracker) markRequestFailed(txKey types.TxKey, peerID uint16
 	if entry.lastPeer == peerID {
 		entry.requested = false
 		entry.lastPeer = 0
-		entry.requestedAt = time.Time{}
 	}
-	entry.peers = removePeerFromSlice(entry.peers, peerID)
+	if entry.peer == peerID {
+		entry.peer = 0
+	}
 }

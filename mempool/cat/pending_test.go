@@ -38,15 +38,15 @@ func TestPendingSeenTracker(t *testing.T) {
 			},
 		},
 		{
-			name: "deduplicate and append peer ids",
+			name: "re-adding same tx keeps first peer",
 			run: func(t *testing.T, tracker *pendingSeenTracker) {
 				key := txKey("tx2")
 				tracker.add(signer, key, 2, 5)
 				tracker.add(signer, key, 2, 5) // duplicate peer
-				tracker.add(signer, key, 2, 7) // new peer
+				tracker.add(signer, key, 2, 7) // different peer, should be ignored
 
 				entry := tracker.entriesForSigner(signer)[0]
-				require.ElementsMatch(t, []uint16{5, 7}, entry.peerIDs())
+				require.Equal(t, []uint16{5}, entry.peerIDs())
 			},
 		},
 		{
@@ -95,22 +95,17 @@ func TestPendingSeenTracker(t *testing.T) {
 			},
 		},
 		{
-			name: "remove peer keeps entry but clears pending state",
+			name: "remove peer clears peer and pending state",
 			run: func(t *testing.T, tracker *pendingSeenTracker) {
 				key := txKey("tx4")
 				tracker.add(signer, key, 4, 9)
-				tracker.add(signer, key, 4, 11)
 				tracker.markRequested(key, 9, time.Now())
 
 				tracker.removePeer(9)
 				entry := tracker.entriesForSigner(signer)[0]
-				require.Equal(t, []uint16{11}, entry.peerIDs())
+				require.Nil(t, entry.peerIDs())
 				require.False(t, entry.requested)
 				require.Equal(t, uint16(0), entry.lastPeer)
-
-				tracker.removePeer(11)
-				entry = tracker.entriesForSigner(signer)[0]
-				require.Nil(t, entry.peerIDs())
 			},
 		},
 		{
@@ -141,21 +136,6 @@ func TestPendingSeenTracker(t *testing.T) {
 			},
 		},
 		{
-			name: "pruneBelowSequence removes outdated entries",
-			run: func(t *testing.T, tracker *pendingSeenTracker) {
-				key1 := txKey("old")
-				key2 := txKey("current")
-
-				tracker.add(signer, key1, 4, 1)
-				tracker.add(signer, key2, 6, 1)
-
-				tracker.pruneBelowSequence(signer, 6)
-				entries := tracker.entriesForSigner(signer)
-				require.Len(t, entries, 1)
-				require.Equal(t, key2, entries[0].txKey)
-			},
-		},
-		{
 			name: "mark requested and failed updates state",
 			run: func(t *testing.T, tracker *pendingSeenTracker) {
 				key := txKey("tx6")
@@ -166,7 +146,6 @@ func TestPendingSeenTracker(t *testing.T) {
 				entry := tracker.entriesForSigner(signer)[0]
 				require.True(t, entry.requested)
 				require.Equal(t, uint16(12), entry.lastPeer)
-				require.Equal(t, now.UnixNano(), entry.requestedAt.UnixNano())
 
 				tracker.markRequestFailed(key, 12)
 
@@ -177,32 +156,25 @@ func TestPendingSeenTracker(t *testing.T) {
 			},
 		},
 		{
-			name: "same signer and sequence with different txKeys creates single entry",
+			name: "same signer and sequence with different txKeys rejected",
 			run: func(t *testing.T, tracker *pendingSeenTracker) {
 				key1 := txKey("tx-version-1")
 				key2 := txKey("tx-version-2")
 
 				// Add same (signer, sequence) with different txKeys
 				tracker.add(signer, key1, 10, 5)
-				tracker.add(signer, key2, 10, 7)
+				tracker.add(signer, key2, 10, 7) // Should be rejected
 
 				// Should only have one entry in the queue
 				entries := tracker.entriesForSigner(signer)
 				require.Len(t, entries, 1)
 				require.Equal(t, uint64(10), entries[0].sequence)
 
-				// Should have both peers
-				require.ElementsMatch(t, []uint16{5, 7}, entries[0].peerIDs())
+				// Should have first peer only
+				require.Equal(t, []uint16{5}, entries[0].peerIDs())
 
-				// Both txKeys should map to the same entry
+				// Only first txKey should be tracked
 				require.NotNil(t, tracker.byTx[key1])
-				require.NotNil(t, tracker.byTx[key2])
-				require.Equal(t, tracker.byTx[key1], tracker.byTx[key2])
-
-				// Removing by either txKey should remove the entire entry
-				tracker.remove(key1)
-				require.Empty(t, tracker.entriesForSigner(signer))
-				require.Nil(t, tracker.byTx[key1])
 				require.Nil(t, tracker.byTx[key2])
 			},
 		},
