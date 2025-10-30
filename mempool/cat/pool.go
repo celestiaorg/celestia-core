@@ -849,8 +849,12 @@ func (txmp *TxPool) purgeExpiredTxs(blockHeight int64) {
 	}
 
 	now := time.Now()
+	expirationTime := time.Time{}
+	if txmp.config.TTLDuration > 0 {
+		expirationTime = now.Add(-txmp.config.TTLDuration)
+	}
 
-	purgedTxs, numExpired := txmp.store.purgeExpiredTxs(expirationHeight, time.Time{})
+	purgedTxs, numExpired := txmp.store.purgeExpiredTxs(expirationHeight, expirationTime)
 	// Add the purged transactions to the evicted cache
 	for _, tx := range purgedTxs {
 		txKey := tx.key()
