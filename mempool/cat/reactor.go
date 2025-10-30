@@ -634,12 +634,11 @@ func (memR *Reactor) heightSignalLoop() {
 }
 
 func (memR *Reactor) refreshPendingSeenQueues() {
+	fmt.Println("pending seen size", len(memR.pendingSeen.byTx), "signers", len(memR.pendingSeen.perSigner))
 	signers := memR.pendingSeen.signerKeys()
 	if len(signers) == 0 {
 		return
 	}
-
-	fmt.Println("pending seen size", len(memR.pendingSeen.byTx), "signers", len(memR.pendingSeen.perSigner))
 
 	for _, signer := range signers {
 		memR.processPendingSeenForSigner(signer)
