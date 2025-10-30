@@ -392,11 +392,10 @@ func (memR *Reactor) Receive(e p2p.Envelope) {
 				"sequence", msg.Sequence,
 				"expectedSequence", expectedSeq,
 			)
-			// memR.pendingSeen.remove(txKey)
+
 			return
 		}
 
-		// memR.pendingSeen.remove(txKey)
 		// We don't have the transaction, nor are we requesting it so we send the node
 		// a want msg
 		memR.requestTx(txKey, e.Src)
