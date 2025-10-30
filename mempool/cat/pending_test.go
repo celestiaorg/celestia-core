@@ -176,18 +176,48 @@ func TestPendingSeenTracker(t *testing.T) {
 				require.Nil(t, entry.peerIDs())
 			},
 		},
+		{
+			name: "same signer and sequence with different txKeys creates single entry",
+			run: func(t *testing.T, tracker *pendingSeenTracker) {
+				key1 := txKey("tx-version-1")
+				key2 := txKey("tx-version-2")
+
+				// Add same (signer, sequence) with different txKeys
+				tracker.add(signer, key1, 10, 5)
+				tracker.add(signer, key2, 10, 7)
+
+				// Should only have one entry in the queue
+				entries := tracker.entriesForSigner(signer)
+				require.Len(t, entries, 1)
+				require.Equal(t, uint64(10), entries[0].sequence)
+
+				// Should have both peers
+				require.ElementsMatch(t, []uint16{5, 7}, entries[0].peerIDs())
+
+				// Both txKeys should map to the same entry
+				require.NotNil(t, tracker.byTx[key1])
+				require.NotNil(t, tracker.byTx[key2])
+				require.Equal(t, tracker.byTx[key1], tracker.byTx[key2])
+
+				// Removing by either txKey should remove the entire entry
+				tracker.remove(key1)
+				require.Empty(t, tracker.entriesForSigner(signer))
+				require.Nil(t, tracker.byTx[key1])
+				require.Nil(t, tracker.byTx[key2])
+			},
+		},
 	}
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			tracker := newPendingSeenTracker(tc.limit)
+			tracker := newPendingSeenTracker(tc.limit, nil)
 			tc.run(t, tracker)
 		})
 	}
 }
 
 func TestPendingSeenTrackerConcurrentAccess(t *testing.T) {
-	tracker := newPendingSeenTracker(0)
+	tracker := newPendingSeenTracker(0, nil)
 	signer := []byte("signer")
 
 	const total = 5000

@@ -6,6 +6,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/cometbft/cometbft/libs/trace"
+	"github.com/cometbft/cometbft/libs/trace/schema"
 	"github.com/cometbft/cometbft/types"
 )
 
@@ -33,20 +35,25 @@ func (p *pendingSeenTx) peerIDs() []uint16 {
 }
 
 type pendingSeenTracker struct {
-	mu        sync.Mutex
-	perSigner map[string][]*pendingSeenTx
-	byTx      map[types.TxKey]*pendingSeenTx
-	limit     int
+	mu          sync.Mutex
+	perSigner   map[string][]*pendingSeenTx
+	byTx        map[types.TxKey]*pendingSeenTx
+	limit       int
+	traceClient trace.Tracer
 }
 
-func newPendingSeenTracker(limit int) *pendingSeenTracker {
+func newPendingSeenTracker(limit int, traceClient trace.Tracer) *pendingSeenTracker {
 	if limit <= 0 {
 		limit = defaultPendingSeenPerSigner
 	}
+	if traceClient == nil {
+		traceClient = trace.NoOpTracer()
+	}
 	return &pendingSeenTracker{
-		perSigner: make(map[string][]*pendingSeenTx),
-		byTx:      make(map[types.TxKey]*pendingSeenTx),
-		limit:     limit,
+		perSigner:   make(map[string][]*pendingSeenTx),
+		byTx:        make(map[types.TxKey]*pendingSeenTx),
+		limit:       limit,
+		traceClient: traceClient,
 	}
 }
 
@@ -60,6 +67,7 @@ func (ps *pendingSeenTracker) add(signer []byte, txKey types.TxKey, sequence uin
 	ps.mu.Lock()
 	defer ps.mu.Unlock()
 
+	// First check if we already have this exact txKey
 	if existing, ok := ps.byTx[txKey]; ok {
 		if !containsPeer(existing.peers, peerID) {
 			existing.peers = append(existing.peers, peerID)
@@ -67,6 +75,19 @@ func (ps *pendingSeenTracker) add(signer []byte, txKey types.TxKey, sequence uin
 		return
 	}
 
+	// Check if we already have an entry for this (signer, sequence) pair
+	// If so, don't create a duplicate entry - just track this txKey and peer
+	queue := ps.perSigner[signerKey]
+	for _, existingEntry := range queue {
+		if existingEntry.sequence == sequence {
+			// Trace this duplicate (signer, sequence) with different txKey
+			// Size -2 indicates duplicate sequence detection
+			schema.WriteMempoolTx(ps.traceClient, fmt.Sprintf("peer-%d", peerID), txKey[:], -2, schema.Download)
+			return
+		}
+	}
+
+	// No existing entry for this (signer, sequence), so create a new one
 	entry := &pendingSeenTx{
 		signerKey: signerKey,
 		signer:    append([]byte(nil), signer...),
@@ -76,7 +97,6 @@ func (ps *pendingSeenTracker) add(signer []byte, txKey types.TxKey, sequence uin
 		peers:     []uint16{peerID},
 	}
 
-	queue := ps.perSigner[signerKey]
 	insertIdx := sort.Search(len(queue), func(i int) bool {
 		return queue[i].sequence >= sequence
 	})

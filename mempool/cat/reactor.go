@@ -110,7 +110,7 @@ func NewReactor(mempool *TxPool, opts *ReactorOptions) (*Reactor, error) {
 		mempool:     mempool,
 		ids:         newMempoolIDs(),
 		requests:    newRequestScheduler(opts.MaxGossipDelay, defaultGlobalRequestTimeout),
-		pendingSeen: newPendingSeenTracker(0),
+		pendingSeen: newPendingSeenTracker(0, traceClient),
 		traceClient: traceClient,
 	}
 	memR.BaseReactor = *p2p.NewBaseReactor("CAT", memR,
@@ -433,7 +433,6 @@ func (memR *Reactor) Receive(e p2p.Envelope) {
 					schema.Upload,
 				)
 			} else {
-				memR.Logger.Error("------ FAILED TO SEND TX IN RESPONSE TO WANTTX (send queue likely full) ------", "peer", peerID, "txKey", txKey)
 				schema.WriteMempoolTx(
 					memR.traceClient,
 					string(e.Src.ID()),
