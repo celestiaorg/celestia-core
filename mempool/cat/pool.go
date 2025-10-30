@@ -849,12 +849,8 @@ func (txmp *TxPool) purgeExpiredTxs(blockHeight int64) {
 	}
 
 	now := time.Now()
-	expirationAge := now.Add(-txmp.config.TTLDuration)
-	if txmp.config.TTLDuration == 0 {
-		expirationAge = time.Time{}
-	}
 
-	purgedTxs, numExpired := txmp.store.purgeExpiredTxs(expirationHeight, expirationAge)
+	purgedTxs, numExpired := txmp.store.purgeExpiredTxs(expirationHeight, time.Time{})
 	// Add the purged transactions to the evicted cache
 	for _, tx := range purgedTxs {
 		txKey := tx.key()
@@ -870,12 +866,7 @@ func (txmp *TxPool) purgeExpiredTxs(blockHeight int64) {
 	}
 	txmp.metrics.ExpiredTxs.Add(float64(numExpired))
 
-	// purge old evicted and seen transactions
-	if txmp.config.TTLDuration == 0 {
-		// ensure that seenByPeersSet are eventually pruned
-		expirationAge = now.Add(-time.Hour)
-	}
-	txmp.seenByPeersSet.Prune(expirationAge)
+	txmp.seenByPeersSet.Prune(now.Add(-time.Hour))
 }
 
 func (txmp *TxPool) notifyTxsAvailable() {

@@ -1161,7 +1161,7 @@ func TestPendingSeenSingleOutstandingRequestPerSigner(t *testing.T) {
 	require.Len(t, entries[0].peerIDs(), 1)
 	require.NotZero(t, entries[0].peerIDs()[0])
 	require.NotZero(t, reactor.requests.ForTx(tx2.Key()))
-	expected, have := reactor.sequenceExpectationForSigner(signer, true, true)
+	expected, have := reactor.querySequenceFromApplication(signer)
 	require.True(t, have)
 	require.EqualValues(t, 2, expected)
 

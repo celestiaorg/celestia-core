@@ -1,6 +1,7 @@
 package cat
 
 import (
+	"fmt"
 	"sort"
 	"sync"
 	"time"
@@ -8,7 +9,7 @@ import (
 	"github.com/cometbft/cometbft/types"
 )
 
-const defaultPendingSeenPerSigner = 128
+const defaultPendingSeenPerSigner = 1028
 
 type pendingSeenTx struct {
 	signerKey   string
@@ -84,14 +85,13 @@ func (ps *pendingSeenTracker) add(signer []byte, txKey types.TxKey, sequence uin
 	queue[insertIdx] = entry
 	ps.perSigner[signerKey] = queue
 	ps.byTx[txKey] = entry
+
 	for len(queue) > ps.limit {
 		lastIdx := len(queue) - 1
 		removed := queue[lastIdx]
-		if removed.requested {
-			break
-		}
 		queue = queue[:lastIdx]
 		delete(ps.byTx, removed.txKey)
+		fmt.Println("removing a tx from the queue cause it was over sized")
 	}
 	if len(queue) == 0 {
 		delete(ps.perSigner, signerKey)
