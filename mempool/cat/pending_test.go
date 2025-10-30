@@ -156,26 +156,23 @@ func TestPendingSeenTracker(t *testing.T) {
 			},
 		},
 		{
-			name: "same signer and sequence with different txKeys rejected",
+			name: "same signer and sequence with different txKeys",
 			run: func(t *testing.T, tracker *pendingSeenTracker) {
 				key1 := txKey("tx-version-1")
 				key2 := txKey("tx-version-2")
 
 				// Add same (signer, sequence) with different txKeys
 				tracker.add(signer, key1, 10, 5)
-				tracker.add(signer, key2, 10, 7) // Should be rejected
+				tracker.add(signer, key2, 10, 7)
 
-				// Should only have one entry in the queue
+				// Should have both in the queue
 				entries := tracker.entriesForSigner(signer)
-				require.Len(t, entries, 1)
+				require.Len(t, entries, 2)
 				require.Equal(t, uint64(10), entries[0].sequence)
-
-				// Should have first peer only
-				require.Equal(t, []uint16{5}, entries[0].peerIDs())
 
 				// Only first txKey should be tracked
 				require.NotNil(t, tracker.byTx[key1])
-				require.Nil(t, tracker.byTx[key2])
+				require.NotNil(t, tracker.byTx[key2])
 			},
 		},
 	}

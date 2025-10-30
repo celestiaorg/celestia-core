@@ -61,14 +61,7 @@ func (ps *pendingSeenTracker) add(signer []byte, txKey types.TxKey, sequence uin
 		return
 	}
 
-	// Check if we already have an entry for this (signer, sequence) pair
-	// If so, don't create a duplicate entry - just track this txKey and peer
 	queue := ps.perSigner[signerKey]
-	for _, existingEntry := range queue {
-		if existingEntry.sequence == sequence {
-			return
-		}
-	}
 
 	// No existing entry for this (signer, sequence), so create a new one
 	entry := &pendingSeenTx{
