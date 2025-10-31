@@ -607,8 +607,8 @@ FOR_LOOP:
 			if firstParts != nil {
 				blockSize = int(firstParts.ByteSize())
 			}
-			first, second, _ = bcR.pool.PeekTwoBlocks()
-			schema.WriteBlocksyncBlockSaved(bcR.traceClient, first.Height, blockSize, first != nil && second != nil)
+			nextFirst, nextSecond, _ := bcR.pool.PeekTwoBlocks()
+			schema.WriteBlocksyncBlockSaved(bcR.traceClient, first.Height, blockSize, nextFirst != nil && nextSecond != nil)
 
 			// TODO: same thing for app - but we would need a way to
 			// get the hash without persisting the state

@@ -8,6 +8,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/cometbft/cometbft/libs/log"
+	"github.com/cometbft/cometbft/libs/trace"
 	"github.com/cometbft/cometbft/p2p"
 )
 
@@ -17,7 +18,7 @@ func TestSlidingWindowPool_BasicFlow(t *testing.T) {
 	requestsCh := make(chan BlockRequest, 100)
 	errorsCh := make(chan peerError, 100)
 
-	pool := NewSlidingWindowPool(100, 10, 5, requestsCh, errorsCh, logger)
+	pool := NewSlidingWindowPool(100, 10, 5, requestsCh, errorsCh, logger, trace.NoOpTracer())
 	err := pool.Start()
 	require.NoError(t, err)
 	defer pool.Stop()
@@ -56,7 +57,7 @@ func TestSlidingWindowPool_RejectOutsideWindow(t *testing.T) {
 	requestsCh := make(chan BlockRequest, 100)
 	errorsCh := make(chan peerError, 100)
 
-	pool := NewSlidingWindowPool(100, 10, 5, requestsCh, errorsCh, logger)
+	pool := NewSlidingWindowPool(100, 10, 5, requestsCh, errorsCh, logger, trace.NoOpTracer())
 	err := pool.Start()
 	require.NoError(t, err)
 	defer pool.Stop()
@@ -91,7 +92,7 @@ func TestSlidingWindowPool_WindowAdvancement(t *testing.T) {
 	errorsCh := make(chan peerError, 100)
 
 	windowSize := int64(10)
-	pool := NewSlidingWindowPool(100, windowSize, 5, requestsCh, errorsCh, logger)
+	pool := NewSlidingWindowPool(100, windowSize, 5, requestsCh, errorsCh, logger, trace.NoOpTracer())
 	err := pool.Start()
 	require.NoError(t, err)
 	defer pool.Stop()
@@ -130,7 +131,7 @@ func TestSlidingWindowPool_OutOfOrderDelivery(t *testing.T) {
 	requestsCh := make(chan BlockRequest, 100)
 	errorsCh := make(chan peerError, 100)
 
-	pool := NewSlidingWindowPool(100, 20, 10, requestsCh, errorsCh, logger)
+	pool := NewSlidingWindowPool(100, 20, 10, requestsCh, errorsCh, logger, trace.NoOpTracer())
 	err := pool.Start()
 	require.NoError(t, err)
 	defer pool.Stop()
@@ -170,7 +171,7 @@ func TestSlidingWindowPool_MultiplePeers(t *testing.T) {
 	requestsCh := make(chan BlockRequest, 100)
 	errorsCh := make(chan peerError, 100)
 
-	pool := NewSlidingWindowPool(100, 20, 10, requestsCh, errorsCh, logger)
+	pool := NewSlidingWindowPool(100, 20, 10, requestsCh, errorsCh, logger, trace.NoOpTracer())
 	err := pool.Start()
 	require.NoError(t, err)
 	defer pool.Stop()
@@ -204,7 +205,7 @@ func TestSlidingWindowPool_DuplicateBlocks(t *testing.T) {
 	requestsCh := make(chan BlockRequest, 100)
 	errorsCh := make(chan peerError, 100)
 
-	pool := NewSlidingWindowPool(100, 20, 10, requestsCh, errorsCh, logger)
+	pool := NewSlidingWindowPool(100, 20, 10, requestsCh, errorsCh, logger, trace.NoOpTracer())
 	err := pool.Start()
 	require.NoError(t, err)
 	defer pool.Stop()
@@ -235,7 +236,7 @@ func TestSlidingWindowPool_BlockRemovalOnError(t *testing.T) {
 	requestsCh := make(chan BlockRequest, 100)
 	errorsCh := make(chan peerError, 100)
 
-	pool := NewSlidingWindowPool(100, 20, 10, requestsCh, errorsCh, logger)
+	pool := NewSlidingWindowPool(100, 20, 10, requestsCh, errorsCh, logger, trace.NoOpTracer())
 	err := pool.Start()
 	require.NoError(t, err)
 	defer pool.Stop()
@@ -265,7 +266,7 @@ func TestSlidingWindowPool_MaxRequestersLimit(t *testing.T) {
 	errorsCh := make(chan peerError, 100)
 
 	maxRequesters := int32(5)
-	pool := NewSlidingWindowPool(100, 20, maxRequesters, requestsCh, errorsCh, logger)
+	pool := NewSlidingWindowPool(100, 20, maxRequesters, requestsCh, errorsCh, logger, trace.NoOpTracer())
 	err := pool.Start()
 	require.NoError(t, err)
 	defer pool.Stop()
@@ -287,7 +288,7 @@ func TestSlidingWindowPool_IsCaughtUp(t *testing.T) {
 	requestsCh := make(chan BlockRequest, 100)
 	errorsCh := make(chan peerError, 100)
 
-	pool := NewSlidingWindowPool(100, 20, 10, requestsCh, errorsCh, logger)
+	pool := NewSlidingWindowPool(100, 20, 10, requestsCh, errorsCh, logger, trace.NoOpTracer())
 	err := pool.Start()
 	require.NoError(t, err)
 	defer pool.Stop()
@@ -318,7 +319,7 @@ func TestSlidingWindowPool_PeerHeightRegression(t *testing.T) {
 	requestsCh := make(chan BlockRequest, 100)
 	errorsCh := make(chan peerError, 100)
 
-	pool := NewSlidingWindowPool(100, 20, 10, requestsCh, errorsCh, logger)
+	pool := NewSlidingWindowPool(100, 20, 10, requestsCh, errorsCh, logger, trace.NoOpTracer())
 	err := pool.Start()
 	require.NoError(t, err)
 	defer pool.Stop()
@@ -353,7 +354,7 @@ func TestSlidingWindowPool_Stats(t *testing.T) {
 	requestsCh := make(chan BlockRequest, 100)
 	errorsCh := make(chan peerError, 100)
 
-	pool := NewSlidingWindowPool(100, 20, 10, requestsCh, errorsCh, logger)
+	pool := NewSlidingWindowPool(100, 20, 10, requestsCh, errorsCh, logger, trace.NoOpTracer())
 	err := pool.Start()
 	require.NoError(t, err)
 	defer pool.Stop()
