@@ -9,6 +9,7 @@ import (
 func BlocksyncTables() []string {
 	return []string{
 		BlocksyncBlockReceivedTable,
+		BlocksyncBlockRequestTable,
 		BlocksyncBlockSavedTable,
 		BlocksyncMessagePoolTable,
 	}
@@ -45,6 +46,37 @@ func WriteBlocksyncBlockReceived(client trace.Tracer, height int64, peerID strin
 	})
 }
 
+// Schema constants for blocksync block request table.
+const (
+	// BlocksyncBlockRequestTable stores traces of block requests sent to peers.
+	BlocksyncBlockRequestTable = "blocksync_block_request"
+)
+
+// BlocksyncBlockRequest describes schema for the "blocksync_block_request" table.
+// This event is traced when we request a block from a peer.
+type BlocksyncBlockRequest struct {
+	Height  int64  `json:"height"`
+	PeerID  string `json:"peer_id"`
+	CurRate int64  `json:"cur_rate"`
+}
+
+// Table returns the table name for the BlocksyncBlockRequest struct.
+func (BlocksyncBlockRequest) Table() string {
+	return BlocksyncBlockRequestTable
+}
+
+// WriteBlocksyncBlockRequest writes a tracing point for a block request sent to a peer.
+func WriteBlocksyncBlockRequest(client trace.Tracer, height int64, peerID string, curRate int64) {
+	if !client.IsCollecting(BlocksyncBlockRequestTable) {
+		return
+	}
+	client.Write(BlocksyncBlockRequest{
+		Height:  height,
+		PeerID:  peerID,
+		CurRate: curRate,
+	})
+}
+
 // Schema constants for blocksync block saved table.
 const (
 	// BlocksyncBlockSavedTable stores traces of blocks successfully validated and saved to store.
@@ -54,8 +86,9 @@ const (
 // BlocksyncBlockSaved describes schema for the "blocksync_block_saved" table.
 // This event is traced after a block is successfully validated and saved to the block store.
 type BlocksyncBlockSaved struct {
-	Height    int64 `json:"height"`
-	BlockSize int   `json:"block_size"`
+	Height        int64 `json:"height"`
+	BlockSize     int   `json:"block_size"`
+	NextAvailable bool  `json:"next_available"`
 }
 
 // Table returns the table name for the BlocksyncBlockSaved struct.
@@ -64,13 +97,14 @@ func (BlocksyncBlockSaved) Table() string {
 }
 
 // WriteBlocksyncBlockSaved writes a tracing point for a successfully validated and saved block.
-func WriteBlocksyncBlockSaved(client trace.Tracer, height int64, blockSize int) {
+func WriteBlocksyncBlockSaved(client trace.Tracer, height int64, blockSize int, nextAvailable bool) {
 	if !client.IsCollecting(BlocksyncBlockSavedTable) {
 		return
 	}
 	client.Write(BlocksyncBlockSaved{
-		Height:    height,
-		BlockSize: blockSize,
+		Height:        height,
+		BlockSize:     blockSize,
+		NextAvailable: nextAvailable,
 	})
 }
 
@@ -93,7 +127,7 @@ const (
 // BlocksyncMessagePool describes schema for the "blocksync_message_pool" table.
 // This event is traced when a message is retrieved from or returned to the pool.
 type BlocksyncMessagePool struct {
-	Action      string `json:"action"`       // "get" or "put"
+	Action      string `json:"action"` // "get" or "put"
 	ChannelID   byte   `json:"channel_id"`
 	MessageType string `json:"message_type"` // For put: type of message being returned. For get: empty string
 }

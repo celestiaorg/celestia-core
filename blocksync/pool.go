@@ -12,6 +12,8 @@ import (
 	"github.com/cometbft/cometbft/libs/log"
 	"github.com/cometbft/cometbft/libs/service"
 	cmtsync "github.com/cometbft/cometbft/libs/sync"
+	"github.com/cometbft/cometbft/libs/trace"
+	"github.com/cometbft/cometbft/libs/trace/schema"
 	"github.com/cometbft/cometbft/p2p"
 	"github.com/cometbft/cometbft/types"
 	cmttime "github.com/cometbft/cometbft/types/time"
@@ -523,7 +525,7 @@ func (pool *BlockPool) makeNextRequester(nextHeight int64) {
 	pool.mtx.Lock()
 	defer pool.mtx.Unlock()
 
-	request := newBPRequester(pool, nextHeight)
+	request := newBPRequester(pool, nextHeight, trace.NoOpTracer())
 
 	pool.requesters[nextHeight] = request
 	atomic.AddInt32(&pool.numPending, 1)
@@ -666,9 +668,10 @@ type bpRequester struct {
 	gotBlockFrom p2p.ID
 	block        *types.Block
 	extCommit    *types.ExtendedCommit
+	tracer       trace.Tracer
 }
 
-func newBPRequester(pool *BlockPool, height int64) *bpRequester {
+func newBPRequester(pool *BlockPool, height int64, tracer trace.Tracer) *bpRequester {
 	bpr := &bpRequester{
 		pool:        pool,
 		height:      height,
@@ -679,6 +682,7 @@ func newBPRequester(pool *BlockPool, height int64) *bpRequester {
 		peerID:       "",
 		secondPeerID: "",
 		block:        nil,
+		tracer:       tracer,
 	}
 	bpr.BaseService = *service.NewBaseService(nil, "bpRequester", bpr)
 	return bpr
@@ -808,7 +812,7 @@ PICK_PEER_LOOP:
 	bpr.mtx.Lock()
 	bpr.peerID = peer.id
 	bpr.mtx.Unlock()
-
+	schema.WriteBlocksyncBlockRequest(bpr.tracer, bpr.height, string(peer.id), peer.curRate)
 	bpr.pool.sendRequest(bpr.height, peer.id)
 }
 

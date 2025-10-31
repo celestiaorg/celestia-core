@@ -128,7 +128,7 @@ func NewReactorWithSlidingWindow(state sm.State, blockExec *sm.BlockExecutor, st
 	// Create SlidingWindowPool with configured parameters
 	var pool BlockPoolInterface
 	if windowSize > 0 && maxRequesters > 0 {
-		pool = NewSlidingWindowPool(startHeight, windowSize, maxRequesters, requestsCh, errorsCh, log.NewNopLogger())
+		pool = NewSlidingWindowPool(startHeight, windowSize, maxRequesters, requestsCh, errorsCh, log.NewNopLogger(), traceClient)
 	} else {
 		// Fallback to old BlockPool if invalid config
 		pool = NewBlockPool(startHeight, requestsCh, errorsCh)
@@ -607,7 +607,8 @@ FOR_LOOP:
 			if firstParts != nil {
 				blockSize = int(firstParts.ByteSize())
 			}
-			schema.WriteBlocksyncBlockSaved(bcR.traceClient, first.Height, blockSize)
+			first, second, _ = bcR.pool.PeekTwoBlocks()
+			schema.WriteBlocksyncBlockSaved(bcR.traceClient, first.Height, blockSize, first != nil && second != nil)
 
 			// TODO: same thing for app - but we would need a way to
 			// get the hash without persisting the state

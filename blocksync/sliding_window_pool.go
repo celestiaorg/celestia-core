@@ -9,6 +9,7 @@ import (
 
 	"github.com/cometbft/cometbft/libs/log"
 	"github.com/cometbft/cometbft/libs/service"
+	"github.com/cometbft/cometbft/libs/trace"
 	"github.com/cometbft/cometbft/p2p"
 	"github.com/cometbft/cometbft/types"
 )
@@ -33,12 +34,12 @@ type SlidingWindowPool struct {
 	mtx sync.Mutex
 
 	// Core components
-	buffer       *BlockBuffer
+	buffer        *BlockBuffer
 	maxRequesters int32
 
 	// Peer management (reuse existing pool structures)
-	peers       map[p2p.ID]*bpPeer
-	sortedPeers []*bpPeer
+	peers         map[p2p.ID]*bpPeer
+	sortedPeers   []*bpPeer
 	maxPeerHeight int64
 
 	// Requester management
@@ -53,8 +54,10 @@ type SlidingWindowPool struct {
 	startTime time.Time
 
 	// Peer bans
-	bannedPeers    map[p2p.ID]time.Time
-	banDuration    time.Duration
+	bannedPeers map[p2p.ID]time.Time
+	banDuration time.Duration
+
+	tracer trace.Tracer
 
 	logger log.Logger
 }
@@ -67,6 +70,7 @@ func NewSlidingWindowPool(
 	requestsCh chan<- BlockRequest,
 	errorsCh chan<- peerError,
 	logger log.Logger,
+	traceClient trace.Tracer,
 ) *SlidingWindowPool {
 
 	if windowSize <= 0 {
@@ -92,6 +96,7 @@ func NewSlidingWindowPool(
 		bannedPeers:   make(map[p2p.ID]time.Time),
 		banDuration:   60 * time.Second,
 		logger:        logger,
+		tracer:        traceClient,
 	}
 
 	pool.BaseService = *service.NewBaseService(logger, "SlidingWindowPool", pool)
@@ -182,7 +187,7 @@ func (pool *SlidingWindowPool) makeRequesterForHeight(height int64) {
 		return
 	}
 
-	request := newBPRequester(pool.toBlockPoolLocked(), height)
+	request := newBPRequester(pool.toBlockPoolLocked(), height, pool.tracer)
 	pool.requesters[height] = request
 	atomic.AddInt32(&pool.numPending, 1)
 
