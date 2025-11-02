@@ -117,6 +117,11 @@ type State struct {
 
 	// mtx protects access to internal fields of State (excluding rs and state!)
 	mtx cmtsync.Mutex
+
+	// voteSigningMtx ensures that vote signing (prevote/precommit) happens atomically
+	// and prevents step regression when unlocking during ProcessProposal.
+	// It must be acquired before signing any vote and held until the vote is signed.
+	voteSigningMtx cmtsync.Mutex
 	// privValidator pubkey, memoized for the duration of one block
 	// to avoid extra requests to HSM
 	privValidatorPubKey crypto.PubKey
@@ -1489,6 +1494,12 @@ func (cs *State) enterPrevote(height int64, round int32) {
 
 	logger.Debug("entering prevote step", "current", log.NewLazySprintf("%v/%v/%v", cs.rs.Height, cs.rs.Round, cs.rs.Step))
 
+	// Acquire vote signing lock to prevent step regression during ProcessProposal
+	// This ensures that if we unlock during ProcessProposal, another goroutine
+	// cannot enter precommit and sign a precommit vote before we finish signing prevote
+	cs.voteSigningMtx.Lock()
+	defer cs.voteSigningMtx.Unlock()
+
 	// Sign and broadcast vote as necessary
 	cs.doPrevote(height, round)
 
@@ -1640,6 +1651,11 @@ func (cs *State) enterPrecommit(height int64, round int32) {
 		cs.updateRoundStep(round, cstypes.RoundStepPrecommit)
 		cs.newStep()
 	}()
+
+	// Acquire vote signing lock to ensure atomic vote signing
+	// This prevents concurrent prevote signing from causing step regression
+	cs.voteSigningMtx.Lock()
+	defer cs.voteSigningMtx.Unlock()
 
 	// check for a polka
 	blockID, ok := cs.rs.Votes.Prevotes(round).TwoThirdsMajority()
