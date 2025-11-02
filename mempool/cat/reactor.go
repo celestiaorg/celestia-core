@@ -448,7 +448,7 @@ func (memR *Reactor) broadcastNewTx(wtx *wrappedTx) {
 
 // broadcastSeenTxWithHeight is a helper that broadcasts a SeenTx message with height checking.
 func (memR *Reactor) broadcastSeenTxWithHeight(txKey types.TxKey, height int64, signer []byte, sequence uint64) {
-	memR.Logger.Debug("broadcasting seen tx to limited peers", "tx_key", string(txKey[:]))
+	memR.Logger.Debug("broadcasting seen tx to limited peers", "tx_key", txKey.String())
 	msg := &protomem.Message{
 		Sum: &protomem.Message_SeenTx{
 			SeenTx: &protomem.SeenTx{

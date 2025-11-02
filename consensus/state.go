@@ -1312,7 +1312,7 @@ func (cs *State) enterPropose(height int64, round int32) {
 
 	// if not a validator, we're done
 	if !cs.rs.Validators.HasAddress(address) {
-		logger.Debug("node is not a validator", "addr", address, "vals", cs.rs.Validators)
+		logger.Trace("node is not a validator", "addr", address, "vals", cs.rs.Validators)
 		return
 	}
 
@@ -1623,7 +1623,7 @@ func (cs *State) enterPrecommit(height int64, round int32) {
 	}
 
 	if ready, waitTime := cs.isReadyToPrecommit(); !ready {
-		logger.Debug("rescheduling precommit", "delay(ms)", waitTime.Milliseconds())
+		logger.Trace("rescheduling precommit", "delay(ms)", waitTime.Milliseconds())
 		cs.scheduleTimeout(waitTime, height, round, cstypes.RoundStepPrevoteWait)
 		return
 	}
