@@ -54,6 +54,12 @@ const (
 	// send 2 parallel requests to 2 peers for the same block. If we're further
 	// away, we send a single request.
 	minBlocksForSingleRequest = 50
+
+	// Default window size for sliding window buffer
+	defaultWindowSize = 20
+
+	// Default maximum number of concurrent block requesters
+	defaultMaxRequesters = 20
 )
 
 var peerTimeout = 120 * time.Second // not const so we can override with tests
@@ -70,7 +76,7 @@ var peerTimeout = 120 * time.Second // not const so we can override with tests
 */
 
 // BlockPool keeps track of the block sync peers, block requests and block responses.
-// Uses a sliding window buffer to limit memory usage.
+// Uses a sliding window to limit memory usage.
 type BlockPool struct {
 	service.BaseService
 	startTime   time.Time
@@ -78,13 +84,13 @@ type BlockPool struct {
 
 	mtx cmtsync.Mutex
 
-	// Sliding window buffer
-	buffer        *BlockBuffer
-	maxRequesters int64
+	// Sliding window parameters
+	height        int64 // current base height of the sliding window
+	windowSize    int64 // maximum window size
+	maxRequesters int64 // maximum number of concurrent requesters
 
 	// block requests
 	requesters map[int64]*bpRequester
-	height     int64 // deprecated: use buffer.BaseHeight()
 
 	// peers
 	peers         map[p2p.ID]*bpPeer
@@ -104,16 +110,16 @@ type BlockPool struct {
 // NewBlockPool returns a new BlockPool with the height equal to start and sliding window semantics.
 // Block requests and errors will be sent to requestsCh and errorsCh accordingly.
 func NewBlockPool(start int64, requestsCh chan<- BlockRequest, errorsCh chan<- peerError) *BlockPool {
-	return NewBlockPoolWithParams(start, 20, 20, requestsCh, errorsCh, trace.NoOpTracer())
+	return NewBlockPoolWithParams(start, defaultWindowSize, defaultMaxRequesters, requestsCh, errorsCh, trace.NoOpTracer())
 }
 
 // NewBlockPoolWithParams creates a BlockPool with custom window size and max requesters.
 func NewBlockPoolWithParams(start int64, windowSize int64, maxRequesters int64, requestsCh chan<- BlockRequest, errorsCh chan<- peerError, tracer trace.Tracer) *BlockPool {
 	if windowSize <= 0 {
-		windowSize = 20
+		windowSize = defaultWindowSize
 	}
 	if maxRequesters <= 0 {
-		maxRequesters = 20
+		maxRequesters = defaultMaxRequesters
 	}
 	if maxRequesters > windowSize {
 		maxRequesters = windowSize
@@ -124,6 +130,7 @@ func NewBlockPoolWithParams(start int64, windowSize int64, maxRequesters int64, 
 		bannedPeers:   make(map[p2p.ID]time.Time),
 		requesters:    make(map[int64]*bpRequester),
 		height:        start,
+		windowSize:    windowSize,
 		startHeight:   start,
 		numPending:    0,
 		requestsCh:    requestsCh,
@@ -132,8 +139,6 @@ func NewBlockPoolWithParams(start int64, windowSize int64, maxRequesters int64, 
 		tracer:        tracer,
 	}
 	bp.BaseService = *service.NewBaseService(nil, "BlockPool", bp)
-	// Create buffer with logger from BaseService
-	bp.buffer = NewBlockBuffer(start, windowSize, bp.Logger)
 	return bp
 }
 
@@ -161,15 +166,15 @@ func (pool *BlockPool) makeRequestersRoutine() {
 		}
 
 		pool.mtx.Lock()
-		baseHeight := pool.buffer.BaseHeight()
-		maxHeight := pool.buffer.MaxHeight()
+		baseHeight := pool.height
+		maxHeight := pool.height + pool.windowSize - 1
 		numRequesters := len(pool.requesters)
 		numPeers := len(pool.peers)
 
 		// Find next missing height within window
 		var nextHeight int64 = -1
 		for h := baseHeight; h <= maxHeight; h++ {
-			if _, exists := pool.requesters[h]; !exists && !pool.buffer.HasBlock(h) {
+			if _, exists := pool.requesters[h]; !exists {
 				nextHeight = h
 				break
 			}
@@ -249,14 +254,13 @@ func (pool *BlockPool) IsCaughtUp() bool {
 	// and that we're synced to the highest known height.
 	// Note we use maxPeerHeight - 1 because to sync block H requires block H+1
 	// to verify the LastCommit.
-	baseHeight := pool.buffer.BaseHeight()
-	receivedBlockOrTimedOut := baseHeight > pool.startHeight || time.Since(pool.startTime) > 5*time.Second
-	ourChainIsLongestAmongPeers := pool.maxPeerHeight == 0 || baseHeight >= (pool.maxPeerHeight-1)
+	receivedBlockOrTimedOut := pool.height > pool.startHeight || time.Since(pool.startTime) > 5*time.Second
+	ourChainIsLongestAmongPeers := pool.maxPeerHeight == 0 || pool.height >= (pool.maxPeerHeight-1)
 	isCaughtUp := receivedBlockOrTimedOut && ourChainIsLongestAmongPeers
 	return isCaughtUp
 }
 
-// PeekTwoBlocks returns blocks at the base height and base height+1 from the buffer.
+// PeekTwoBlocks returns blocks at the base height and base height+1 from requesters.
 // We need to see the second block's Commit to validate the first block. So we peek two
 // blocks at a time. We return an extended commit, containing vote extensions
 // and their associated signatures, as this is critical to consensus in ABCI++
@@ -267,43 +271,43 @@ func (pool *BlockPool) PeekTwoBlocks() (first, second *types.Block, firstExtComm
 	pool.mtx.Lock()
 	defer pool.mtx.Unlock()
 
-	firstBuf, secondBuf := pool.buffer.PeekTwoNext()
-	if firstBuf != nil {
-		first = firstBuf.Block
-		firstExtCommit = firstBuf.ExtCommit
+	firstReq := pool.requesters[pool.height]
+	secondReq := pool.requesters[pool.height+1]
+
+	if firstReq != nil {
+		first = firstReq.getBlock()
+		firstExtCommit = firstReq.getExtendedCommit()
 	}
-	if secondBuf != nil {
-		second = secondBuf.Block
+	if secondReq != nil {
+		second = secondReq.getBlock()
 	}
 	return
 }
 
-// PopRequest removes the block at the base height from the buffer, advances the window,
+// PopRequest removes the requester at the base height, advances the window,
 // and cleans up the associated requester.
 func (pool *BlockPool) PopRequest() {
 	pool.mtx.Lock()
 	defer pool.mtx.Unlock()
 
-	baseHeight := pool.buffer.BaseHeight()
-	r := pool.requesters[baseHeight]
+	r := pool.requesters[pool.height]
 	if r == nil {
-		panic(fmt.Sprintf("Expected requester to pop, got nothing at height %v", baseHeight))
+		panic(fmt.Sprintf("Expected requester to pop, got nothing at height %v", pool.height))
 	}
 
-	// Pop block from buffer (this advances the window)
-	popped := pool.buffer.PopNext()
-	if popped == nil {
-		panic(fmt.Sprintf("Expected block in buffer at height %v, got nothing", baseHeight))
+	// Check that we have a block
+	if r.getBlock() == nil {
+		panic(fmt.Sprintf("Expected block at height %v, got nothing", pool.height))
 	}
 
 	// Clean up requester
 	if err := r.Stop(); err != nil {
 		pool.Logger.Error("Error stopping requester", "err", err)
 	}
-	delete(pool.requesters, baseHeight)
+	delete(pool.requesters, pool.height)
 
-	// Update pool height to match buffer base height
-	pool.height = pool.buffer.BaseHeight()
+	// Advance window
+	pool.height++
 
 	// Notify the next minBlocksForSingleRequest requesters about new height, so
 	// they can potentially request a block from the second peer.
@@ -316,7 +320,7 @@ func (pool *BlockPool) PopRequest() {
 
 // RemovePeerAndRedoAllPeerRequests retries the request at the given height and
 // all the requests made to the same peer. The peer is removed from the pool.
-// All blocks from this peer are removed from the buffer.
+// All blocks from this peer are reset in requesters.
 // Returns the ID of the removed peer.
 func (pool *BlockPool) RemovePeerAndRedoAllPeerRequests(height int64) p2p.ID {
 	pool.mtx.Lock()
@@ -325,7 +329,7 @@ func (pool *BlockPool) RemovePeerAndRedoAllPeerRequests(height int64) p2p.ID {
 	request := pool.requesters[height]
 	peerID := request.gotBlockFromPeerID()
 
-	// RemovePeer will remove all blocks from this peer and redo all requesters associated with this peer.
+	// RemovePeer will reset all requesters associated with this peer.
 	pool.removePeer(peerID)
 	pool.banPeer(peerID)
 	return peerID
@@ -350,7 +354,7 @@ func (pool *BlockPool) RedoRequest(height int64) p2p.ID {
 }
 
 // AddBlock validates that the block comes from the peer it was expected from
-// and stores it in the sliding window buffer.
+// and stores it in the requester.
 //
 // This requires an extended commit at the same height as the supplied block -
 // the block contains the last commit, but we need the latest commit in case we
@@ -374,10 +378,10 @@ func (pool *BlockPool) AddBlock(peerID p2p.ID, block *types.Block, extCommit *ty
 		// receive a block we've already processed from a second peer. Hence, we
 		// can't punish it. But if the peer sent us a block we clearly didn't
 		// request, we disconnect.
-		baseHeight := pool.buffer.BaseHeight()
-		if block.Height > pool.buffer.MaxHeight() || block.Height < baseHeight {
+		maxHeight := pool.height + pool.windowSize - 1
+		if block.Height > maxHeight || block.Height < pool.height {
 			err := fmt.Errorf("peer sent us block #%d we didn't expect (current height: %d, start height: %d)",
-				block.Height, baseHeight, pool.startHeight)
+				block.Height, pool.height, pool.startHeight)
 			pool.sendError(err, peerID)
 			return err
 		}
@@ -386,6 +390,7 @@ func (pool *BlockPool) AddBlock(peerID p2p.ID, block *types.Block, extCommit *ty
 	}
 
 	// Validate that the block came from an expected peer
+	// setBlock will store the block in the requester
 	if !requester.setBlock(block, extCommit, peerID) {
 		// Check if this peer was recently banned. If so, this is likely a race condition
 		// where the block arrived after the peer was banned and reset from the requester.
@@ -399,13 +404,6 @@ func (pool *BlockPool) AddBlock(peerID p2p.ID, block *types.Block, extCommit *ty
 		return err
 	}
 
-	// Add block to sliding window buffer
-	if err := pool.buffer.AddBlock(block.Height, block, extCommit, peerID, blockSize); err != nil {
-		pool.Logger.Error("Failed to add block to buffer", "height", block.Height, "err", err)
-		pool.sendError(err, peerID)
-		return err
-	}
-
 	atomic.AddInt32(&pool.numPending, -1)
 	peer := pool.peers[peerID]
 	if peer != nil {
@@ -415,18 +413,26 @@ func (pool *BlockPool) AddBlock(peerID p2p.ID, block *types.Block, extCommit *ty
 	return nil
 }
 
-// Height returns the pool's current base height (from the buffer).
+// Height returns the pool's current base height.
 func (pool *BlockPool) Height() int64 {
 	pool.mtx.Lock()
 	defer pool.mtx.Unlock()
-	return pool.buffer.BaseHeight()
+	return pool.height
 }
 
-// SetHeight clears the buffer and resets it to the given height.
+// SetHeight clears all requesters and resets the pool to the given height.
 func (pool *BlockPool) SetHeight(height int64) {
 	pool.mtx.Lock()
 	defer pool.mtx.Unlock()
-	pool.buffer.Clear(height)
+
+	// Stop and remove all requesters
+	for h, req := range pool.requesters {
+		if err := req.Stop(); err != nil {
+			pool.Logger.Error("Error stopping requester", "height", h, "err", err)
+		}
+		delete(pool.requesters, h)
+	}
+
 	pool.height = height
 }
 
@@ -485,13 +491,8 @@ func (pool *BlockPool) RemovePeer(peerID p2p.ID) {
 
 // CONTRACT: pool.mtx must be locked.
 func (pool *BlockPool) removePeer(peerID p2p.ID) {
-	// Remove all blocks from this peer in the buffer
-	removedCount := pool.buffer.RemoveBlocksFromPeer(peerID)
-	if removedCount > 0 {
-		pool.Logger.Debug("Removed blocks from peer", "peer", peerID, "count", removedCount)
-	}
-
 	// Redo all requesters that were waiting for blocks from this peer
+	// This will reset the blocks in requesters if they came from this peer
 	for _, requester := range pool.requesters {
 		if requester.didRequestFrom(peerID) {
 			requester.redo(peerID)
@@ -620,11 +621,14 @@ func (pool *BlockPool) debug() string {
 	defer pool.mtx.Unlock()
 
 	str := ""
-	baseHeight := pool.buffer.BaseHeight()
-	maxHeight := pool.buffer.MaxHeight()
-	for h := baseHeight; h <= maxHeight; h++ {
-		hasBlock := pool.buffer.HasBlock(h)
-		hasRequester := pool.requesters[h] != nil
+	maxHeight := pool.height + pool.windowSize - 1
+	for h := pool.height; h <= maxHeight; h++ {
+		req := pool.requesters[h]
+		hasRequester := req != nil
+		hasBlock := false
+		if req != nil {
+			hasBlock = req.getBlock() != nil
+		}
 		str += fmt.Sprintf("H(%v):", h)
 		str += fmt.Sprintf("B?(%v) ", hasBlock)
 		str += fmt.Sprintf("R?(%v) ", hasRequester)

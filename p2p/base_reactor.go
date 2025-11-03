@@ -193,14 +193,14 @@ func (br *BaseReactor) unmarshalEnvelope(ue UnprocessedEnvelope) (Envelope, erro
 	// Get message from pool if hooks are configured
 	// Pass raw bytes to allow peeking at wire format for type detection
 	var msg proto.Message
-	if br.messagePoolHooks != nil && br.messagePoolHooks.GetMessage != nil {
-		msg = br.messagePoolHooks.GetMessage(ue.ChannelID, ue.Message)
-	}
+	//if br.messagePoolHooks != nil && br.messagePoolHooks.GetMessage != nil {
+	//	msg = br.messagePoolHooks.GetMessage(ue.ChannelID, ue.Message)
+	//}
 
 	// Fallback to normal allocation if no pool
-	if msg == nil {
-		msg = proto.Clone(mt)
-	}
+	//if msg == nil {
+	msg = proto.Clone(mt)
+	//}
 
 	// Unmarshal into the message (wrapper or regular message)
 	err := proto.Unmarshal(ue.Message, msg)
@@ -306,9 +306,9 @@ func ProcessorWithReactor(impl Reactor, baseReactor *BaseReactor) func(context.C
 					defer baseReactor.ProtectPanic(envelope.Src)
 
 					// If pooled message, return it to pool after processing
-					if baseReactor.messagePoolHooks != nil && baseReactor.messagePoolHooks.PutMessage != nil {
-						defer baseReactor.messagePoolHooks.PutMessage(envelope.ChannelID, envelope.Message)
-					}
+					//if baseReactor.messagePoolHooks != nil && baseReactor.messagePoolHooks.PutMessage != nil {
+					//	defer baseReactor.messagePoolHooks.PutMessage(envelope.ChannelID, envelope.Message)
+					//}
 
 					// Note: We don't have the original byte length here anymore
 					// Metrics and tracing are handled in unmarshalEnvelope
