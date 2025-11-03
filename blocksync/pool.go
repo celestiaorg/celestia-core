@@ -57,6 +57,9 @@ const (
 
 	// Default window size for sliding window buffer
 	defaultWindowSize = 20
+
+	// Keep last N stopped requesters to avoid false peer banning on late responses
+	maxStoppedRequestersToKeep = 10
 )
 
 var peerTimeout = 120 * time.Second // not const so we can override with tests
@@ -86,7 +89,8 @@ type BlockPool struct {
 	windowSize int64 // maximum window size
 
 	// block requests
-	requesters map[int64]*bpRequester
+	requesters        map[int64]*bpRequester
+	stoppedRequesters map[int64]*bpRequester // recently stopped requesters to avoid false peer banning
 
 	// peers
 	peers         map[p2p.ID]*bpPeer
@@ -116,16 +120,17 @@ func NewBlockPoolWithParams(start int64, windowSize int64, requestsCh chan<- Blo
 	}
 
 	bp := &BlockPool{
-		peers:       make(map[p2p.ID]*bpPeer),
-		bannedPeers: make(map[p2p.ID]time.Time),
-		requesters:  make(map[int64]*bpRequester),
-		height:      start,
-		windowSize:  windowSize,
-		startHeight: start,
-		numPending:  0,
-		requestsCh:  requestsCh,
-		errorsCh:    errorsCh,
-		tracer:      tracer,
+		peers:             make(map[p2p.ID]*bpPeer),
+		bannedPeers:       make(map[p2p.ID]time.Time),
+		requesters:        make(map[int64]*bpRequester),
+		stoppedRequesters: make(map[int64]*bpRequester),
+		height:            start,
+		windowSize:        windowSize,
+		startHeight:       start,
+		numPending:        0,
+		requestsCh:        requestsCh,
+		errorsCh:          errorsCh,
+		tracer:            tracer,
 	}
 	bp.BaseService = *service.NewBaseService(nil, "BlockPool", bp)
 	return bp
@@ -281,16 +286,23 @@ func (pool *BlockPool) PopRequest() {
 		panic(fmt.Sprintf("Expected requester to pop, got nothing at height %v", pool.height))
 	}
 
-	// Check that we have a block
-	if r.getBlock() == nil {
-		panic(fmt.Sprintf("Expected block at height %v, got nothing", pool.height))
-	}
-
-	// Clean up requester
+	// Stop requester and move to stoppedRequesters to avoid false peer banning
 	if err := r.Stop(); err != nil {
 		pool.Logger.Error("Error stopping requester", "err", err)
 	}
 	delete(pool.requesters, pool.height)
+	pool.stoppedRequesters[pool.height] = r
+
+	// Cleanup old stopped requesters to limit memory usage
+	if len(pool.stoppedRequesters) > maxStoppedRequestersToKeep {
+		// Find and remove the oldest stopped requester
+		oldestHeight := pool.height - maxStoppedRequestersToKeep
+		for height := range pool.stoppedRequesters {
+			if height < oldestHeight {
+				delete(pool.stoppedRequesters, height)
+			}
+		}
+	}
 
 	// Advance window
 	pool.height++
@@ -360,6 +372,20 @@ func (pool *BlockPool) AddBlock(peerID p2p.ID, block *types.Block, extCommit *ty
 
 	requester := pool.requesters[block.Height]
 	if requester == nil {
+		// Check if this block was from a recently stopped requester (late response to dual request)
+		if stoppedReq, exists := pool.stoppedRequesters[block.Height]; exists {
+			// Check if this peer was one we requested from
+			requestedPeers := stoppedReq.requestedFrom()
+			for _, reqPeerID := range requestedPeers {
+				if reqPeerID == peerID {
+					// This is a late response to a request we made - not an error
+					pool.Logger.Debug("Received late block response from stopped requester",
+						"height", block.Height, "peer", peerID, "currentHeight", pool.height)
+					return nil
+				}
+			}
+		}
+
 		// Because we're issuing 2nd requests for closer blocks, it's possible to
 		// receive a block we've already processed from a second peer. Hence, we
 		// can't punish it. But if the peer sent us a block we clearly didn't
