@@ -1,30 +1,30 @@
 package cat
 
 import (
+	"sort"
 	"sync"
 	"time"
 
 	"github.com/cometbft/cometbft/types"
 )
 
-const defaultPendingSeenPerSigner = 64
+const defaultPendingSeenPerSigner = 128
 
 type pendingSeenTx struct {
 	signerKey string
 	signer    []byte
 	txKey     types.TxKey
 	sequence  uint64
-	peers     []uint16
-	addedAt   time.Time
+	peer      uint16
+	requested bool
+	lastPeer  uint16
 }
 
 func (p *pendingSeenTx) peerIDs() []uint16 {
-	if len(p.peers) == 0 {
+	if p.peer == 0 {
 		return nil
 	}
-	out := make([]uint16, len(p.peers))
-	copy(out, p.peers)
-	return out
+	return []uint16{p.peer}
 }
 
 type pendingSeenTracker struct {
@@ -55,42 +55,52 @@ func (ps *pendingSeenTracker) add(signer []byte, txKey types.TxKey, sequence uin
 	ps.mu.Lock()
 	defer ps.mu.Unlock()
 
-	if existing, ok := ps.byTx[txKey]; ok {
-		if !containsPeer(existing.peers, peerID) {
-			existing.peers = append(existing.peers, peerID)
-		}
+	// First check if we already have this exact txKey
+	if _, ok := ps.byTx[txKey]; ok {
+		// Already tracking this tx, keep the first peer
 		return
 	}
 
+	queue := ps.perSigner[signerKey]
+
+	// No existing entry for this (signer, sequence), so create a new one
 	entry := &pendingSeenTx{
 		signerKey: signerKey,
 		signer:    append([]byte(nil), signer...),
 		txKey:     txKey,
 		sequence:  sequence,
-		addedAt:   time.Now().UTC(),
+		peer:      peerID,
 	}
 
-	entry.peers = []uint16{peerID}
-
-	queue := ps.perSigner[signerKey]
-	queue = append(queue, entry)
+	insertIdx := sort.Search(len(queue), func(i int) bool {
+		return queue[i].sequence >= sequence
+	})
+	queue = append(queue, nil)
+	copy(queue[insertIdx+1:], queue[insertIdx:])
+	queue[insertIdx] = entry
 	ps.perSigner[signerKey] = queue
 	ps.byTx[txKey] = entry
 
-	if len(queue) > ps.limit {
-		removed := queue[0]
+	for len(queue) > ps.limit {
+		lastIdx := len(queue) - 1
+		removed := queue[lastIdx]
+		queue = queue[:lastIdx]
 		delete(ps.byTx, removed.txKey)
-		ps.perSigner[signerKey] = queue[1:]
+	}
+	if len(queue) == 0 {
+		delete(ps.perSigner, signerKey)
+	} else {
+		ps.perSigner[signerKey] = queue
 	}
 }
 
-func (ps *pendingSeenTracker) remove(txKey types.TxKey) {
+func (ps *pendingSeenTracker) remove(txKey types.TxKey) *pendingSeenTx {
 	ps.mu.Lock()
 	defer ps.mu.Unlock()
 
 	entry, ok := ps.byTx[txKey]
 	if !ok {
-		return
+		return nil
 	}
 
 	signerKey := entry.signerKey
@@ -107,6 +117,7 @@ func (ps *pendingSeenTracker) remove(txKey types.TxKey) {
 		ps.perSigner[signerKey] = queue
 	}
 	delete(ps.byTx, txKey)
+	return entry
 }
 
 func (ps *pendingSeenTracker) entriesForSigner(signer []byte) []*pendingSeenTx {
@@ -128,9 +139,6 @@ func (ps *pendingSeenTracker) entriesForSigner(signer []byte) []*pendingSeenTx {
 		if len(entry.signer) > 0 {
 			clone.signer = append([]byte(nil), entry.signer...)
 		}
-		if len(entry.peers) > 0 {
-			clone.peers = append([]uint16(nil), entry.peers...)
-		}
 		out[i] = &clone
 	}
 	return out
@@ -144,42 +152,67 @@ func (ps *pendingSeenTracker) removePeer(peerID uint16) {
 	ps.mu.Lock()
 	defer ps.mu.Unlock()
 
-	for signerKey, queue := range ps.perSigner {
-		dst := queue[:0]
+	for _, queue := range ps.perSigner {
 		for _, entry := range queue {
-			entry.peers = removePeerFromSlice(entry.peers, peerID)
-			if len(entry.peers) == 0 {
-				delete(ps.byTx, entry.txKey)
-				continue
+			if entry.peer == peerID {
+				entry.peer = 0
 			}
-			dst = append(dst, entry)
-		}
-		if len(dst) == 0 {
-			delete(ps.perSigner, signerKey)
-		} else {
-			ps.perSigner[signerKey] = dst
+			if entry.lastPeer == peerID {
+				entry.requested = false
+				entry.lastPeer = 0
+			}
 		}
 	}
 }
 
-func containsPeer(peers []uint16, peerID uint16) bool {
-	for _, id := range peers {
-		if id == peerID {
-			return true
-		}
-	}
-	return false
-}
+func (ps *pendingSeenTracker) signerKeys() [][]byte {
+	ps.mu.Lock()
+	defer ps.mu.Unlock()
 
-func removePeerFromSlice(peers []uint16, peerID uint16) []uint16 {
-	if len(peers) == 0 {
-		return peers
+	if len(ps.perSigner) == 0 {
+		return nil
 	}
-	out := peers[:0]
-	for _, id := range peers {
-		if id != peerID {
-			out = append(out, id)
-		}
+
+	out := make([][]byte, 0, len(ps.perSigner))
+	for signerKey := range ps.perSigner {
+		out = append(out, []byte(signerKey))
 	}
 	return out
+}
+
+func (ps *pendingSeenTracker) markRequested(txKey types.TxKey, peerID uint16, at time.Time) {
+	if peerID == 0 {
+		return
+	}
+
+	ps.mu.Lock()
+	defer ps.mu.Unlock()
+
+	entry, ok := ps.byTx[txKey]
+	if !ok {
+		return
+	}
+	entry.requested = true
+	entry.lastPeer = peerID
+}
+
+func (ps *pendingSeenTracker) markRequestFailed(txKey types.TxKey, peerID uint16) {
+	if peerID == 0 {
+		return
+	}
+
+	ps.mu.Lock()
+	defer ps.mu.Unlock()
+
+	entry, ok := ps.byTx[txKey]
+	if !ok {
+		return
+	}
+	if entry.lastPeer == peerID {
+		entry.requested = false
+		entry.lastPeer = 0
+	}
+	if entry.peer == peerID {
+		entry.peer = 0
+	}
 }

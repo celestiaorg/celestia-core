@@ -1131,6 +1131,46 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+  /tx_status:
+    get:
+      summary: Get transaction status by hash
+      operationId: tx_status
+      parameters:
+        - in: query
+          name: hash
+          description: Transaction hash to query
+          required: true
+          schema:
+            type: string
+            example: "145c8332ce4cbd96b78605e1a6fcefda8d29750870b4bec653795b99d995de11"
+      tags:
+        - Tx
+      description: |
+        Get the status of a transaction by its hash. This endpoint provides information
+        about a transaction's current state in its lifecycle.
+
+        The possible status values are:
+        - **UNKNOWN**: Transaction is not found anywhere (not in mempool, not evicted, not committed)
+        - **PENDING**: Transaction is currently in the mempool awaiting inclusion in a block
+        - **EVICTED**: Transaction was removed from the mempool (e.g., due to mempool being full)
+        - **REJECTED**: Transaction was rejected by the application (e.g., during recheck after a block)
+        - **COMMITTED**: Transaction has been included in a block
+
+        For REJECTED transactions, the response includes the execution code and error message.
+        For COMMITTED transactions, the response includes block height, index, execution details, gas usage, and signers.
+      responses:
+        "200":
+          description: Transaction status information
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TxStatusResponse"
+        "500":
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
 
 components:
   schemas:
@@ -2395,6 +2435,75 @@ components:
             tx:
               type: string
               example: "5wHwYl3uCkaoo2GaChQmSIu8hxpJxLcCuIi8fiHN4TMwrRIU/Af1cEG7Rcs/6LjTl7YjRSymJfYaFAoFdWF0b20SCzE0OTk5OTk1MDAwEhMKDQoFdWF0b20SBDUwMDAQwJoMGmoKJuta6YchAwswBShaB1wkZBctLIhYqBC3JrAI28XGzxP+rVEticGEEkAc+khTkKL9CDE47aDvjEHvUNt+izJfT4KVF2v2JkC+bmlH9K08q3PqHeMI9Z5up+XMusnTqlP985KF+SI5J3ZOIhhNYWRlIGJ5IENpcmNsZSB3aXRoIGxvdmU="
+          type: object
+
+    TxStatusResponse:
+      type: object
+      required:
+        - "jsonrpc"
+        - "id"
+        - "result"
+      properties:
+        jsonrpc:
+          type: string
+          example: "2.0"
+        id:
+          type: integer
+          example: 0
+        result:
+          required:
+            - "status"
+          properties:
+            height:
+              type: string
+              example: "12345"
+              description: "Block height where the transaction was included (only for COMMITTED status)"
+            index:
+              type: integer
+              example: 0
+              description: "Index of the transaction within the block (only for COMMITTED status)"
+            execution_code:
+              type: integer
+              example: 0
+              description: "Execution code from the application (0 means success, non-zero means failure)"
+            error:
+              type: string
+              example: ""
+              description: "Error message if the transaction failed (for REJECTED or failed COMMITTED transactions)"
+            status:
+              type: string
+              enum:
+                - "UNKNOWN"
+                - "PENDING"
+                - "EVICTED"
+                - "REJECTED"
+                - "COMMITTED"
+              example: "COMMITTED"
+              description: |
+                Current status of the transaction:
+                - UNKNOWN: Not found in mempool, cache, or blockchain
+                - PENDING: Currently in the mempool awaiting inclusion in a block
+                - EVICTED: Removed from mempool due to space constraints/priority
+                - REJECTED: Rejected by the application (during recheck)
+                - COMMITTED: Included in a block
+            codespace:
+              type: string
+              example: "sdk"
+              description: "ABCI codespace for the error (only present if execution failed)"
+            gas_wanted:
+              type: string
+              example: "200000"
+              description: "Gas requested by the transaction (only for COMMITTED status)"
+            gas_used:
+              type: string
+              example: "85000"
+              description: "Gas actually used by the transaction (only for COMMITTED status)"
+            signers:
+              type: array
+              items:
+                type: string
+              example: ["celestia1abc...", "celestia1def..."]
+              description: "List of signer addresses (only for COMMITTED status)"
           type: object
 
     ABCIInfoResponse:

@@ -1376,9 +1376,6 @@ func (cs *State) defaultDecideProposal(height int64, round int32) {
 	if err := cs.privValidator.SignProposal(cs.state.ChainID, p); err == nil {
 		proposal.Signature = p.Signature
 
-		// send proposal and block parts on internal msg queue
-		cs.sendInternalMessage(msgInfo{&ProposalMessage{proposal}, ""})
-
 		metaData := make([]proptypes.TxMetaData, len(block.Txs))
 		hashes := block.CachedHashes()
 		for i, pos := range blockParts.TxPos {
@@ -1389,6 +1386,15 @@ func (cs *State) defaultDecideProposal(height int64, round int32) {
 			}
 		}
 
+		err = cs.propagator.ProposeBlock(proposal, blockParts, metaData)
+		if err != nil {
+			cs.Logger.Error("propagation reactor failed to propose the block", "err", err)
+			return
+		}
+
+		// send proposal and block parts on internal msg queue
+		cs.sendInternalMessage(msgInfo{&ProposalMessage{proposal}, ""})
+
 		wg := sync.WaitGroup{}
 		wg.Add(1)
 		go func() {
@@ -1398,7 +1404,6 @@ func (cs *State) defaultDecideProposal(height int64, round int32) {
 				cs.sendInternalMessage(msgInfo{&BlockPartMessage{cs.rs.Height, cs.rs.Round, part}, ""})
 			}
 		}()
-		cs.propagator.ProposeBlock(proposal, blockParts, metaData)
 		wg.Wait()
 
 		cs.Logger.Debug("signed proposal", "height", height, "round", round, "proposal", proposal)

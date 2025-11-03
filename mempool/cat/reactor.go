@@ -170,6 +170,8 @@ func (memR *Reactor) OnStart() error {
 		memR.Logger.Info("Tx broadcasting is disabled")
 	}
 
+	go memR.heightSignalLoop()
+
 	return nil
 }
 
@@ -240,6 +242,7 @@ func (memR *Reactor) RemovePeer(peer p2p.Peer, reason interface{}) {
 	// we won't receive any responses from them.
 	outboundRequests := memR.requests.ClearAllRequestsFrom(peerID)
 	for key := range outboundRequests {
+		memR.pendingSeen.markRequestFailed(key, peerID)
 		memR.mempool.metrics.RequestedTxs.Add(1)
 		memR.findNewPeerToRequestTx(key)
 	}
@@ -294,7 +297,6 @@ func (memR *Reactor) Receive(e p2p.Envelope) {
 				if err == ErrTxInMempool {
 					schema.WriteMempoolAddResult(memR.traceClient, string(e.Src.ID()), key[:], schema.AlreadyInMempool, err, signer, sequence)
 				} else {
-					memR.pendingSeen.remove(key)
 					schema.WriteMempoolAddResult(memR.traceClient, string(e.Src.ID()), key[:], schema.Rejected, err, signer, sequence)
 					memR.Logger.Debug("Could not add tx", "txKey", key, "err", err)
 					return
@@ -305,14 +307,10 @@ func (memR *Reactor) Receive(e p2p.Envelope) {
 				} else {
 					schema.WriteMempoolAddResult(memR.traceClient, string(e.Src.ID()), key[:], schema.Added, nil, signer, sequence)
 				}
-
 			}
 
-			if err == nil || err == ErrTxInMempool {
-				memR.pendingSeen.remove(key)
-				if len(signerBytes) > 0 {
-					memR.processPendingSeenForSigner(signerBytes)
-				}
+			if len(signerBytes) > 0 {
+				memR.processPendingSeenForSigner(signerBytes)
 			}
 
 			if !memR.opts.ListenOnly && execCode == 0 {
@@ -357,13 +355,31 @@ func (memR *Reactor) Receive(e p2p.Envelope) {
 			return
 		}
 
-		expectedSeq, haveExpected := memR.sequenceExpectationForSigner(msg.Signer, false, false)
+		expectedSeq, haveExpected := memR.querySequenceFromApplication(msg.Signer)
 
 		switch {
 		case len(msg.Signer) == 0 || msg.Sequence == 0:
 			// fall through and request immediately when sequence info is missing
+			schema.WriteMempoolPeerStateWithSeq(
+				memR.traceClient,
+				string(e.Src.ID()),
+				schema.MissingSequence,
+				txKey[:],
+				schema.Download,
+				msg.Signer,
+				msg.Sequence,
+			)
 		case !haveExpected:
 			// fall through and request immediately if we cannot query the application
+			schema.WriteMempoolPeerStateWithSeq(
+				memR.traceClient,
+				string(e.Src.ID()),
+				schema.MissingSequence,
+				txKey[:],
+				schema.Download,
+				msg.Signer,
+				msg.Sequence,
+			)
 		case msg.Sequence == expectedSeq:
 			// fall through and request immediately for the expected sequence
 		case msg.Sequence > expectedSeq:
@@ -376,11 +392,10 @@ func (memR *Reactor) Receive(e p2p.Envelope) {
 				"sequence", msg.Sequence,
 				"expectedSequence", expectedSeq,
 			)
-			memR.pendingSeen.remove(txKey)
+
 			return
 		}
 
-		memR.pendingSeen.remove(txKey)
 		// We don't have the transaction, nor are we requesting it so we send the node
 		// a want msg
 		memR.requestTx(txKey, e.Src)
@@ -441,9 +456,6 @@ func (memR *Reactor) broadcastSeenTx(txKey types.TxKey, signer []byte, sequence 
 // broadcastNewTx broadcast new transaction to limited peers unless we are already sure they have seen the tx.
 func (memR *Reactor) broadcastNewTx(wtx *wrappedTx) {
 	memR.broadcastSeenTxWithHeight(wtx.key(), wtx.height, wtx.sender, wtx.sequence)
-	if len(wtx.sender) > 0 {
-		memR.processPendingSeenForSigner(wtx.sender)
-	}
 }
 
 // broadcastSeenTxWithHeight is a helper that broadcasts a SeenTx message with height checking.
@@ -459,8 +471,18 @@ func (memR *Reactor) broadcastSeenTxWithHeight(txKey types.TxKey, height int64, 
 		},
 	}
 
-	selectedPeers := selectStickyPeers(signer, memR.ids.GetAll(), maxSeenTxBroadcast, memR.currentStickyPeerSalt())
-	for _, peerInfo := range selectedPeers {
+	peers := memR.ids.GetAll()
+	if len(peers) == 0 {
+		return
+	}
+
+	orderedPeers := selectStickyPeers(signer, peers, len(peers), memR.currentStickyPeerSalt())
+	sent := 0
+	for _, peerInfo := range orderedPeers {
+		if sent >= maxSeenTxBroadcast {
+			break
+		}
+
 		id := peerInfo.id
 		peer := peerInfo.peer
 		if p, ok := peer.Get(types.PeerStateKey).(PeerState); ok {
@@ -485,6 +507,7 @@ func (memR *Reactor) broadcastSeenTxWithHeight(txKey types.TxKey, height int64, 
 		) {
 			memR.mempool.PeerHasTx(id, txKey)
 			schema.WriteMempoolPeerState(memR.traceClient, string(peer.ID()), schema.SeenTx, txKey[:], schema.Upload)
+			sent++
 		}
 	}
 }
@@ -495,6 +518,8 @@ func (memR *Reactor) requestTx(txKey types.TxKey, peer p2p.Peer) bool {
 		// we have disconnected from the peer
 		return false
 	}
+
+	peerID := memR.ids.GetIDForPeer(peer.ID())
 	memR.Logger.Trace("requesting tx", "txKey", txKey, "peerID", peer.ID())
 	msg := &protomem.Message{
 		Sum: &protomem.Message_WantTx{
@@ -510,22 +535,16 @@ func (memR *Reactor) requestTx(txKey types.TxKey, peer p2p.Peer) bool {
 	)
 	if success {
 		memR.mempool.metrics.RequestedTxs.Add(1)
-		requested := memR.requests.Add(txKey, memR.ids.GetIDForPeer(peer.ID()), memR.findNewPeerToRequestTx)
+		requested := memR.requests.Add(txKey, peerID, memR.onRequestTimeout)
 		if !requested {
 			memR.Logger.Error("have already marked a tx as requested", "txKey", txKey, "peerID", peer.ID())
+		} else {
+			memR.pendingSeen.markRequested(txKey, peerID, time.Now().UTC())
 		}
 
 		schema.WriteMempoolPeerState(memR.traceClient, string(peer.ID()), schema.WantTx, txKey[:], schema.Upload)
 	}
 	return success
-}
-
-func (memR *Reactor) sequenceExpectationForSigner(signer []byte, _ bool, _ bool) (uint64, bool) {
-	if len(signer) == 0 {
-		return 0, false
-	}
-
-	return memR.querySequenceFromApplication(signer)
 }
 
 // processPendingSeenForSigner tries to advance the pipeline of queued transactions for a signer.
@@ -545,31 +564,34 @@ func (memR *Reactor) processPendingSeenForSigner(signer []byte) {
 		return
 	}
 
-	expectedSeq, haveExpected := memR.sequenceExpectationForSigner(signer, true, true)
+	expectedSeq, haveExpected := memR.querySequenceFromApplication(signer)
 	if !haveExpected {
+		memR.Logger.Error("no signer found in application")
 		return
 	}
 
 	for _, entry := range entries {
+		if haveExpected && expectedSeq > entry.sequence {
+			memR.pendingSeen.remove(entry.txKey)
+			continue
+		}
+
 		if memR.mempool.Has(entry.txKey) {
 			memR.pendingSeen.remove(entry.txKey)
 			continue
 		}
-		if memR.requests.ForTx(entry.txKey) != 0 {
-			memR.pendingSeen.remove(entry.txKey)
-			continue
-		}
-		if expectedSeq > entry.sequence {
-			memR.pendingSeen.remove(entry.txKey)
-			continue
-		}
-		if expectedSeq != entry.sequence {
+
+		if memR.requests.ForTx(entry.txKey) != 0 || entry.requested {
 			continue
 		}
 
-		if memR.tryRequestQueuedTx(entry) {
-			memR.pendingSeen.remove(entry.txKey)
+		// Only request if this is the next expected sequence
+		// If there's a gap, stop here and wait for the missing sequence
+		if haveExpected && entry.sequence != expectedSeq {
+			continue
 		}
+
+		_ = memR.tryRequestQueuedTx(entry)
 		break
 	}
 }
@@ -587,10 +609,51 @@ func (memR *Reactor) tryRequestQueuedTx(entry *pendingSeenTx) bool {
 	return memR.requests.ForTx(entry.txKey) != 0
 }
 
+func (memR *Reactor) onRequestTimeout(txKey types.TxKey, peerID uint16) {
+	memR.pendingSeen.markRequestFailed(txKey, peerID)
+	memR.findNewPeerToRequestTx(txKey)
+}
+
+func (memR *Reactor) heightSignalLoop() {
+	heightSignal := memR.mempool.HeightSignal()
+	if heightSignal == nil {
+		return
+	}
+
+	for {
+		select {
+		case <-memR.Quit():
+			return
+		case _, ok := <-heightSignal:
+			if !ok {
+				return
+			}
+			memR.refreshPendingSeenQueues()
+		}
+	}
+}
+
+func (memR *Reactor) refreshPendingSeenQueues() {
+	signers := memR.pendingSeen.signerKeys()
+	if len(signers) == 0 {
+		return
+	}
+
+	for _, signer := range signers {
+		memR.processPendingSeenForSigner(signer)
+	}
+}
+
 func (memR *Reactor) querySequenceFromApplication(signer []byte) (uint64, bool) {
 	ctx := context.Background()
 	resp, err := memR.mempool.proxyAppConn.QuerySequence(ctx, &abci.RequestQuerySequence{Signer: signer})
 	if err != nil || resp == nil {
+		return 0, false
+	}
+	// If the response is 0, treat it as "sequence tracking not available"
+	// to maintain backward compatibility with apps that don't implement QuerySequence.
+	// This prevents transactions from being stuck in pendingSeen when the app returns 0.
+	if resp.Sequence == 0 {
 		return 0, false
 	}
 	return resp.Sequence, true

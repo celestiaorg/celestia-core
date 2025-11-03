@@ -11,7 +11,7 @@ import (
 // consensus reactor and state.
 type Propagator interface {
 	GetProposal(height int64, round int32) (*types.Proposal, *types.PartSet, bool)
-	ProposeBlock(proposal *types.Proposal, parts *types.PartSet, txs []proptypes.TxMetaData)
+	ProposeBlock(proposal *types.Proposal, parts *types.PartSet, txs []proptypes.TxMetaData) error
 	AddCommitment(height int64, round int32, psh *types.PartSetHeader)
 	Prune(committedHeight int64)
 	SetHeightAndRound(height int64, round int32)
@@ -62,7 +62,8 @@ func (nop *NoOpPropagator) GetProposal(_ int64, _ int32) (*types.Proposal, *type
 	return nil, nil, false
 }
 
-func (nop *NoOpPropagator) ProposeBlock(_ *types.Proposal, _ *types.PartSet, _ []proptypes.TxMetaData) {
+func (nop *NoOpPropagator) ProposeBlock(_ *types.Proposal, _ *types.PartSet, _ []proptypes.TxMetaData) error {
+	return nil
 }
 
 func (nop *NoOpPropagator) AddCommitment(_ int64, _ int32, _ *types.PartSetHeader) {
