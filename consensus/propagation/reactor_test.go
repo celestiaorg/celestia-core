@@ -457,7 +457,8 @@ func TestPropagationSmokeTest(t *testing.T) {
 			}
 		}
 
-		reactors[1].ProposeBlock(prop, ps, metaData)
+		err := reactors[1].ProposeBlock(prop, ps, metaData)
+		require.NoError(t, err)
 
 		distributing := true
 		for distributing {
