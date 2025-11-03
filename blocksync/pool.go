@@ -723,6 +723,7 @@ type bpRequester struct {
 	block        *types.Block
 	extCommit    *types.ExtendedCommit
 	tracer       trace.Tracer
+	startTime    time.Time // time when requester started and first request was made
 }
 
 func newBPRequester(pool *BlockPool, height int64, tracer trace.Tracer) *bpRequester {
@@ -743,6 +744,9 @@ func newBPRequester(pool *BlockPool, height int64, tracer trace.Tracer) *bpReque
 }
 
 func (bpr *bpRequester) OnStart() error {
+	bpr.mtx.Lock()
+	bpr.startTime = time.Now()
+	bpr.mtx.Unlock()
 	go bpr.requestRoutine()
 	return nil
 }
@@ -762,6 +766,13 @@ func (bpr *bpRequester) setBlock(block *types.Block, extCommit *types.ExtendedCo
 	bpr.block = block
 	bpr.extCommit = extCommit
 	bpr.gotBlockFrom = peerID
+
+	// Calculate and trace request latency
+	if !bpr.startTime.IsZero() {
+		latency := time.Since(bpr.startTime)
+		schema.WriteBlocksyncBlockRequestLatency(bpr.tracer, bpr.height, string(peerID), latency.Milliseconds())
+	}
+
 	bpr.mtx.Unlock()
 
 	select {

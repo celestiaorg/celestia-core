@@ -494,6 +494,9 @@ FOR_LOOP:
 			// coupling them as it's written here.  TODO uncouple from request
 			// routine.
 
+			// Start timing: getting blocks from requesters
+			startTime := time.Now()
+
 			// See if there are any blocks to sync.
 			first, second, extCommit := bcR.pool.PeekTwoBlocks()
 			if first == nil || second == nil {
@@ -520,6 +523,9 @@ FOR_LOOP:
 			}
 			// Try again quickly next loop.
 			didProcessCh <- struct{}{}
+
+			// Start validation timing
+			validationStart := time.Now()
 
 			firstParts, err := first.MakePartSet(types.BlockPartSizeBytes)
 			if err != nil {
@@ -570,6 +576,10 @@ FOR_LOOP:
 				// if vote extensions were required at this height, ensure they exist.
 				err = extCommit.EnsureExtensions(true)
 			}
+
+			// End validation timing
+			validationEnd := time.Now()
+			validationTimeMs := validationEnd.Sub(validationStart).Milliseconds()
 			if err != nil {
 				bcR.Logger.Error("Error in validation", "err", err)
 				peerID := bcR.pool.RemovePeerAndRedoAllPeerRequests(first.Height)
@@ -591,6 +601,9 @@ FOR_LOOP:
 
 			bcR.pool.PopRequest()
 
+			// Start database save timing
+			dbSaveStart := time.Now()
+
 			// TODO: batch saves so we dont persist to disk every block
 			if extensionsEnabled {
 				bcR.store.SaveBlockWithExtendedCommit(first, firstParts, extCommit)
@@ -602,13 +615,20 @@ FOR_LOOP:
 				bcR.store.SaveBlock(first, firstParts, second.LastCommit)
 			}
 
-			// Trace block saved after successful validation
+			// End database save timing
+			dbSaveEnd := time.Now()
+			dbSaveTimeMs := dbSaveEnd.Sub(dbSaveStart).Milliseconds()
+
+			// Calculate total processing time from requester to database
+			totalProcessingTimeMs := dbSaveEnd.Sub(startTime).Milliseconds()
+
+			// Trace block saved after successful validation with timing info
 			var blockSize int
 			if firstParts != nil {
 				blockSize = int(firstParts.ByteSize())
 			}
 			nextFirst, nextSecond, _ := bcR.pool.PeekTwoBlocks()
-			schema.WriteBlocksyncBlockSaved(bcR.traceClient, first.Height, blockSize, nextFirst != nil && nextSecond != nil)
+			schema.WriteBlocksyncBlockSaved(bcR.traceClient, first.Height, blockSize, nextFirst != nil && nextSecond != nil, totalProcessingTimeMs, validationTimeMs, dbSaveTimeMs)
 
 			// TODO: same thing for app - but we would need a way to
 			// get the hash without persisting the state

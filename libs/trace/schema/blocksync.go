@@ -12,6 +12,7 @@ func BlocksyncTables() []string {
 		BlocksyncBlockRequestTable,
 		BlocksyncBlockSavedTable,
 		BlocksyncMessagePoolTable,
+		BlocksyncBlockRequestLatencyTable,
 	}
 }
 
@@ -86,9 +87,12 @@ const (
 // BlocksyncBlockSaved describes schema for the "blocksync_block_saved" table.
 // This event is traced after a block is successfully validated and saved to the block store.
 type BlocksyncBlockSaved struct {
-	Height        int64 `json:"height"`
-	BlockSize     int   `json:"block_size"`
-	NextAvailable bool  `json:"next_available"`
+	Height             int64 `json:"height"`
+	BlockSize          int   `json:"block_size"`
+	NextAvailable      bool  `json:"next_available"`
+	ProcessingTimeMs   int64 `json:"processing_time_ms"`    // Time from PeekTwoBlocks to database save in milliseconds
+	ValidationTimeMs   int64 `json:"validation_time_ms"`    // Time spent in validation
+	DatabaseSaveTimeMs int64 `json:"database_save_time_ms"` // Time spent saving to database
 }
 
 // Table returns the table name for the BlocksyncBlockSaved struct.
@@ -97,14 +101,17 @@ func (BlocksyncBlockSaved) Table() string {
 }
 
 // WriteBlocksyncBlockSaved writes a tracing point for a successfully validated and saved block.
-func WriteBlocksyncBlockSaved(client trace.Tracer, height int64, blockSize int, nextAvailable bool) {
+func WriteBlocksyncBlockSaved(client trace.Tracer, height int64, blockSize int, nextAvailable bool, processingTimeMs, validationTimeMs, databaseSaveTimeMs int64) {
 	if !client.IsCollecting(BlocksyncBlockSavedTable) {
 		return
 	}
 	client.Write(BlocksyncBlockSaved{
-		Height:        height,
-		BlockSize:     blockSize,
-		NextAvailable: nextAvailable,
+		Height:             height,
+		BlockSize:          blockSize,
+		NextAvailable:      nextAvailable,
+		ProcessingTimeMs:   processingTimeMs,
+		ValidationTimeMs:   validationTimeMs,
+		DatabaseSaveTimeMs: databaseSaveTimeMs,
 	})
 }
 
@@ -158,5 +165,37 @@ func WriteBlocksyncMessagePoolPut(client trace.Tracer, channelID byte, messageTy
 		Action:      string(BlocksyncMessagePoolOpPut),
 		ChannelID:   channelID,
 		MessageType: messageType,
+	})
+}
+
+// Schema constants for blocksync block request latency table.
+const (
+	// BlocksyncBlockRequestLatencyTable stores traces of latency from request to receive.
+	BlocksyncBlockRequestLatencyTable = "blocksync_block_request_latency"
+)
+
+// BlocksyncBlockRequestLatency describes schema for the "blocksync_block_request_latency" table.
+// This event is traced when a block is received to measure the latency from when
+// the request was sent to when the response was received.
+type BlocksyncBlockRequestLatency struct {
+	Height    int64  `json:"height"`
+	PeerID    string `json:"peer_id"`
+	LatencyMs int64  `json:"latency_ms"` // Time from request sent to block received in milliseconds
+}
+
+// Table returns the table name for the BlocksyncBlockRequestLatency struct.
+func (BlocksyncBlockRequestLatency) Table() string {
+	return BlocksyncBlockRequestLatencyTable
+}
+
+// WriteBlocksyncBlockRequestLatency writes a tracing point for block request latency.
+func WriteBlocksyncBlockRequestLatency(client trace.Tracer, height int64, peerID string, latencyMs int64) {
+	if client == nil || !client.IsCollecting(BlocksyncBlockRequestLatencyTable) {
+		return
+	}
+	client.Write(BlocksyncBlockRequestLatency{
+		Height:    height,
+		PeerID:    peerID,
+		LatencyMs: latencyMs,
 	})
 }
