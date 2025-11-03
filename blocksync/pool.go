@@ -57,9 +57,6 @@ const (
 
 	// Default window size for sliding window buffer
 	defaultWindowSize = 20
-
-	// Default maximum number of concurrent block requesters
-	defaultMaxRequesters = 20
 )
 
 var peerTimeout = 120 * time.Second // not const so we can override with tests
@@ -85,9 +82,8 @@ type BlockPool struct {
 	mtx cmtsync.Mutex
 
 	// Sliding window parameters
-	height        int64 // current base height of the sliding window
-	windowSize    int64 // maximum window size
-	maxRequesters int64 // maximum number of concurrent requesters
+	height     int64 // current base height of the sliding window
+	windowSize int64 // maximum window size
 
 	// block requests
 	requesters map[int64]*bpRequester
@@ -110,33 +106,26 @@ type BlockPool struct {
 // NewBlockPool returns a new BlockPool with the height equal to start and sliding window semantics.
 // Block requests and errors will be sent to requestsCh and errorsCh accordingly.
 func NewBlockPool(start int64, requestsCh chan<- BlockRequest, errorsCh chan<- peerError) *BlockPool {
-	return NewBlockPoolWithParams(start, defaultWindowSize, defaultMaxRequesters, requestsCh, errorsCh, trace.NoOpTracer())
+	return NewBlockPoolWithParams(start, defaultWindowSize, requestsCh, errorsCh, trace.NoOpTracer())
 }
 
 // NewBlockPoolWithParams creates a BlockPool with custom window size and max requesters.
-func NewBlockPoolWithParams(start int64, windowSize int64, maxRequesters int64, requestsCh chan<- BlockRequest, errorsCh chan<- peerError, tracer trace.Tracer) *BlockPool {
+func NewBlockPoolWithParams(start int64, windowSize int64, requestsCh chan<- BlockRequest, errorsCh chan<- peerError, tracer trace.Tracer) *BlockPool {
 	if windowSize <= 0 {
 		windowSize = defaultWindowSize
 	}
-	if maxRequesters <= 0 {
-		maxRequesters = defaultMaxRequesters
-	}
-	if maxRequesters > windowSize {
-		maxRequesters = windowSize
-	}
 
 	bp := &BlockPool{
-		peers:         make(map[p2p.ID]*bpPeer),
-		bannedPeers:   make(map[p2p.ID]time.Time),
-		requesters:    make(map[int64]*bpRequester),
-		height:        start,
-		windowSize:    windowSize,
-		startHeight:   start,
-		numPending:    0,
-		requestsCh:    requestsCh,
-		errorsCh:      errorsCh,
-		maxRequesters: maxRequesters,
-		tracer:        tracer,
+		peers:       make(map[p2p.ID]*bpPeer),
+		bannedPeers: make(map[p2p.ID]time.Time),
+		requesters:  make(map[int64]*bpRequester),
+		height:      start,
+		windowSize:  windowSize,
+		startHeight: start,
+		numPending:  0,
+		requestsCh:  requestsCh,
+		errorsCh:    errorsCh,
+		tracer:      tracer,
 	}
 	bp.BaseService = *service.NewBaseService(nil, "BlockPool", bp)
 	return bp
@@ -168,7 +157,6 @@ func (pool *BlockPool) makeRequestersRoutine() {
 		pool.mtx.Lock()
 		baseHeight := pool.height
 		maxHeight := pool.height + pool.windowSize - 1
-		numRequesters := len(pool.requesters)
 		numPeers := len(pool.peers)
 
 		// Find next missing height within window
@@ -179,11 +167,9 @@ func (pool *BlockPool) makeRequestersRoutine() {
 				break
 			}
 		}
-
-		shouldCreate := nextHeight != -1 && int64(numRequesters) < pool.maxRequesters && numPeers > 0
 		pool.mtx.Unlock()
 
-		if shouldCreate {
+		if nextHeight != -1 && numPeers > 0 {
 			pool.makeNextRequester(nextHeight)
 			time.Sleep(requestIntervalMS * time.Millisecond)
 		} else {
@@ -924,11 +910,7 @@ func (bpr *bpRequester) requestRoutine() {
 OUTER_LOOP:
 	for {
 		bpr.pickPeerAndSendRequest()
-
-		poolHeight := bpr.pool.Height()
-		if bpr.height-poolHeight < minBlocksForSingleRequest {
-			bpr.pickSecondPeerAndSendRequest()
-		}
+		bpr.pickSecondPeerAndSendRequest()
 
 		retryTimer := time.NewTimer(requestRetrySeconds * time.Second)
 		defer retryTimer.Stop()

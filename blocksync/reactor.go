@@ -128,7 +128,7 @@ func NewReactorWithSlidingWindow(state sm.State, blockExec *sm.BlockExecutor, st
 	// Create BlockPool with sliding window configured parameters
 	var pool *BlockPool
 	if windowSize > 0 && maxRequesters > 0 {
-		pool = NewBlockPoolWithParams(startHeight, windowSize, int64(maxRequesters), requestsCh, errorsCh, traceClient)
+		pool = NewBlockPoolWithParams(startHeight, windowSize, requestsCh, errorsCh, traceClient)
 	} else {
 		// Fallback to default window size and max requesters
 		pool = NewBlockPool(startHeight, requestsCh, errorsCh)
