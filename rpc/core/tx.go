@@ -265,7 +265,12 @@ func (env *Environment) TxStatus(ctx *rpctypes.Context, hash []byte) (*ctypes.Re
 		return &ctypes.ResultTxStatus{Status: TxStatusRejected, ExecutionCode: code, Error: log}, nil
 	}
 
-	// If the tx is not in the mempool, evicted, or committed, return unknown
+	// If the tx is not in the mempool, evicted, or committed, return unknown.
+	// This can happen in the following cases:
+	// - Tx was never submitted to this node
+	// - Tx was evicted/rejected and has expired from the cache
+	// - Tx was submitted to a different node and not yet propagated
+	// - Tx is invalid and was immediately rejected without caching
 	return &ctypes.ResultTxStatus{Status: TxStatusUnknown}, nil
 }
 

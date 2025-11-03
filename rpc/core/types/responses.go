@@ -267,15 +267,30 @@ type ResultSignedBlock struct {
 // ResultTxStatus represents the status of a transaction during its life cycle.
 // It contains info to locate a tx in a committed block as well as its execution code, log if it fails and status.
 type ResultTxStatus struct {
-	Height        int64    `json:"height"`
-	Index         uint32   `json:"index"`
-	ExecutionCode uint32   `json:"execution_code"`
-	Error         string   `json:"error"`
-	Status        string   `json:"status"`
-	Codespace     string   `json:"codespace,omitempty"`
-	GasWanted     int64    `json:"gas_wanted,omitempty"`
-	GasUsed       int64    `json:"gas_used,omitempty"`
-	Signers       []string `json:"signers,omitempty"`
+	// Height is the block height where the transaction was committed. Only populated for COMMITTED status.
+	Height int64 `json:"height"`
+	// Index is the index of the transaction in the block. Only populated for COMMITTED status.
+	Index uint32 `json:"index"`
+	// ExecutionCode is the ABCI code returned by the application (0 = success, non-zero = error).
+	// Populated for REJECTED and COMMITTED statuses.
+	ExecutionCode uint32 `json:"execution_code"`
+	// Error contains the error message if the transaction failed. Populated for REJECTED and failed COMMITTED transactions.
+	Error string `json:"error"`
+	// Status represents the current state of the transaction. Possible values:
+	// - UNKNOWN: Transaction not found (never submitted, expired from cache, or submitted to different node)
+	// - PENDING: Transaction is in the mempool awaiting inclusion
+	// - EVICTED: Transaction was removed from mempool due to space constraints
+	// - REJECTED: Transaction was rejected by the application (e.g., during recheck)
+	// - COMMITTED: Transaction was included in a block
+	Status string `json:"status"`
+	// Codespace is the ABCI codespace for the error. Only populated for failed transactions.
+	Codespace string `json:"codespace,omitempty"`
+	// GasWanted is the maximum gas requested by the transaction. Only populated for COMMITTED status.
+	GasWanted int64 `json:"gas_wanted,omitempty"`
+	// GasUsed is the actual gas consumed during execution. Only populated for COMMITTED status.
+	GasUsed int64 `json:"gas_used,omitempty"`
+	// Signers contains the list of addresses that signed the transaction. Only populated for COMMITTED status.
+	Signers []string `json:"signers,omitempty"`
 }
 
 type ResultDataCommitment struct {
