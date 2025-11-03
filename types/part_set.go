@@ -231,6 +231,8 @@ type PartSet struct {
 
 	// merkleTree is the root of the inner node tree, can be nil initially
 	merkleTree *TreeNode
+	// leafHashes caches the leaf hashes for each part index to avoid recomputation
+	leafHashes [][]byte
 
 	TxPos []TxPosition
 }
@@ -430,15 +432,29 @@ func navigateToNode(root **TreeNode, path []bool) *TreeNode {
 // innerHash returns the hash of the concatenation of left and right
 // Duplicated from crypto/merkle to avoid export
 func innerHash(left, right []byte) []byte {
-	data := make([]byte, len(left)+len(right))
-	copy(data, left)
-	copy(data[len(left):], right)
-	hash := sha256.Sum256(data)
-	return hash[:]
+	// Must include 0x01 prefix per merkle tree spec
+	// Equivalent to: tmhash.SumMany(innerPrefix, left, right)
+	h := sha256.New()
+	h.Write([]byte{1}) // innerPrefix
+	h.Write(left)
+	h.Write(right)
+	return h.Sum(nil)
 }
 
 // extractInnerNodesFromProof walks the proof path and stores inner nodes
 func (ps *PartSet) extractInnerNodesFromProof(leafIndex int64, proof merkle.Proof) {
+	// Initialize leaf hashes array if needed
+	ps.mtx.Lock()
+	if ps.leafHashes == nil {
+		ps.leafHashes = make([][]byte, ps.total)
+	}
+	// Store the leaf hash for this index
+	if ps.leafHashes[leafIndex] == nil {
+		ps.leafHashes[leafIndex] = make([]byte, len(proof.LeafHash))
+		copy(ps.leafHashes[leafIndex], proof.LeafHash)
+	}
+	ps.mtx.Unlock()
+
 	// Build path from root to this leaf
 	path := buildProofPath(leafIndex, int64(ps.total))
 
@@ -484,6 +500,124 @@ func (ps *PartSet) extractInnerNodesFromProof(leafIndex int64, proof merkle.Proo
 		}
 		ps.mtx.Unlock()
 	}
+}
+
+// fillMissingTreeNodes completes the tree with missing leaf hashes from reconstructed data.
+// This must be called before generating proofs for missing parts.
+// IMPORTANT: This recomputes ALL leaf hashes from the provided data to ensure consistency,
+// even for parts that already have proofs. This is necessary because reconstructed data
+// might differ slightly from original due to padding.
+func (ps *PartSet) fillMissingTreeNodes(data [][]byte) {
+	ps.mtx.Lock()
+	defer ps.mtx.Unlock()
+
+	if ps.leafHashes == nil {
+		ps.leafHashes = make([][]byte, ps.total)
+	}
+
+	// Recompute ALL leaf hashes from reconstructed data for consistency
+	for i := 0; i < int(ps.total); i++ {
+		ps.leafHashes[i] = merkle.LeafHash(data[i])
+	}
+
+	// Clear the tree to rebuild it from scratch with consistent hashes
+	ps.merkleTree = nil
+
+	// Now walk the tree bottom-up to fill all nodes
+	ps.fillInnerNodesRange(0, int64(ps.total), []bool{})
+}
+
+// fillInnerNodesRange recursively fills inner nodes in the tree for a given range.
+// Returns the hash of the root of this subtree.
+// path is the path from the root to this node.
+func (ps *PartSet) fillInnerNodesRange(start, length int64, path []bool) []byte {
+	// Navigate to this node first
+	node := navigateToNode(&ps.merkleTree, path)
+
+	if length == 1 {
+		// Leaf node - store the cached leaf hash in the tree node for proof generation
+		if node.hash == nil {
+			node.hash = ps.leafHashes[start]
+		}
+		return node.hash
+	}
+
+	split := getSplitPoint(length)
+
+	// Ensure left child exists before recursing into it
+	if node.left == nil {
+		node.left = &TreeNode{}
+	}
+	// Ensure right child exists before recursing into it
+	if node.right == nil {
+		node.right = &TreeNode{}
+	}
+
+	// Recursively fill left and right subtrees
+	leftPath := append(path, true)
+	leftHash := ps.fillInnerNodesRange(start, split, leftPath)
+
+	rightPath := append(path, false)
+	rightHash := ps.fillInnerNodesRange(start+split, length-split, rightPath)
+
+	// Set this node's hash if not already set
+	if node.hash == nil {
+		node.hash = innerHash(leftHash, rightHash)
+	}
+
+	return node.hash
+}
+
+// generateProofFromTree extracts a proof for the given index from the cached tree.
+// The tree must be complete (fillMissingTreeNodes must be called first).
+func (ps *PartSet) generateProofFromTree(index int64) (*merkle.Proof, error) {
+	ps.mtx.Lock()
+	defer ps.mtx.Unlock()
+
+	if ps.leafHashes == nil || index >= int64(len(ps.leafHashes)) || ps.leafHashes[index] == nil {
+		return nil, fmt.Errorf("leaf hash not available for index %d", index)
+	}
+
+	// Build path from root to this leaf
+	path := buildProofPath(index, int64(ps.total))
+
+	// Walk the tree collecting aunts (siblings)
+	aunts := make([][]byte, 0, len(path))
+	currentNode := ps.merkleTree
+
+	for _, goLeft := range path {
+		if currentNode == nil {
+			return nil, fmt.Errorf("incomplete tree at index %d", index)
+		}
+
+		if goLeft {
+			// Going left, aunt is right sibling
+			if currentNode.right == nil || currentNode.right.hash == nil {
+				return nil, fmt.Errorf("missing right sibling in tree at index %d", index)
+			}
+			aunts = append(aunts, currentNode.right.hash)
+			currentNode = currentNode.left
+		} else {
+			// Going right, aunt is left sibling
+			if currentNode.left == nil || currentNode.left.hash == nil {
+				return nil, fmt.Errorf("missing left sibling in tree at index %d", index)
+			}
+			aunts = append(aunts, currentNode.left.hash)
+			currentNode = currentNode.right
+		}
+	}
+
+	// Reverse aunts to be in leaf-to-root order (as expected by Proof)
+	for i, j := 0, len(aunts)-1; i < j; i, j = i+1, j-1 {
+		aunts[i], aunts[j] = aunts[j], aunts[i]
+	}
+
+	return &merkle.Proof{
+		Total:    int64(ps.total),
+		Index:    index,
+		LeafHash: ps.leafHashes[index],
+		Aunts:    aunts,
+	}, nil
 }
 
 // IsReadyForDecoding returns true if the PartSet has every single part, not just
@@ -540,8 +674,9 @@ func Decode(ops, eps *PartSet, lastPartLen int) (*PartSet, *PartSet, error) {
 	}
 
 	// prune the last part if we need to
-	if len(data[:(ops.Total()-1)]) != lastPartLen {
-		data[(ops.Total() - 1)] = data[(ops.Total() - 1)][:lastPartLen]
+	lastPartIndex := ops.Total() - 1
+	if lastPartLen > 0 && len(data[lastPartIndex]) > lastPartLen {
+		data[lastPartIndex] = data[lastPartIndex][:lastPartLen]
 	}
 
 	// Generate proofs only for missing parts
@@ -553,20 +688,28 @@ func Decode(ops, eps *PartSet, lastPartLen int) (*PartSet, *PartSet, error) {
 	}
 
 	if len(missingIndices) > 0 {
-		// Build complete tree for missing proofs
-		// For now, use existing implementation (future optimization: reuse ops.merkleTree)
-		root, proofs := merkle.ParallelProofsFromByteSlices(data[:ops.Total()])
+		// Complete the tree with reconstructed data using cached tree nodes
+		ops.fillMissingTreeNodes(data[:ops.Total()])
 
-		if !bytes.Equal(root, ops.Hash()) {
-			return nil, nil, fmt.Errorf("reconstructed data has different hash!! want: %X, got: %X", ops.hash, root)
+		// Verify root hash matches
+		if ops.merkleTree == nil {
+			return nil, nil, fmt.Errorf("merkle tree not initialized after filling")
+		}
+		if !bytes.Equal(ops.merkleTree.hash, ops.Hash()) {
+			return nil, nil, fmt.Errorf("reconstructed data has different hash!! want: %X, got: %X", ops.hash, ops.merkleTree.hash)
 		}
 
-		// Add only the missing parts with their proofs
+		// Generate proofs only for missing parts using the cached tree
 		for _, idx := range missingIndices {
+			proof, err := ops.generateProofFromTree(int64(idx))
+			if err != nil {
+				return nil, nil, fmt.Errorf("failed to generate proof for part %d: %w", idx, err)
+			}
+
 			added, err := ops.AddPart(&Part{
 				Index: uint32(idx),
 				Bytes: data[idx],
-				Proof: *proofs[idx],
+				Proof: *proof,
 			})
 			if err != nil {
 				return nil, nil, err
@@ -586,20 +729,28 @@ func Decode(ops, eps *PartSet, lastPartLen int) (*PartSet, *PartSet, error) {
 	}
 
 	if len(missingParityIndices) > 0 {
-		// Build complete tree for missing parity proofs
-		// For now, use existing implementation (future optimization: reuse eps.merkleTree)
-		eroot, eproofs := merkle.ParallelProofsFromByteSlices(data[ops.Total():])
+		// Complete the tree with reconstructed parity data using cached tree nodes
+		eps.fillMissingTreeNodes(data[ops.Total():])
 
-		if !bytes.Equal(eroot, eps.Hash()) {
-			return nil, nil, fmt.Errorf("reconstructed parity data has different hash!! want: %X, got: %X", eps.hash, eroot)
+		// Verify root hash matches
+		if eps.merkleTree == nil {
+			return nil, nil, fmt.Errorf("merkle tree not initialized after filling")
+		}
+		if !bytes.Equal(eps.merkleTree.hash, eps.Hash()) {
+			return nil, nil, fmt.Errorf("reconstructed parity data has different hash!! want: %X, got: %X", eps.hash, eps.merkleTree.hash)
 		}
 
-		// Add only the missing parity parts with their proofs
+		// Generate proofs only for missing parity parts using the cached tree
 		for _, idx := range missingParityIndices {
+			proof, err := eps.generateProofFromTree(int64(idx))
+			if err != nil {
+				return nil, nil, fmt.Errorf("failed to generate proof for parity part %d: %w", idx, err)
+			}
+
 			added, err := eps.AddPart(&Part{
 				Index: uint32(idx),
 				Bytes: data[int(ops.Total())+idx],
-				Proof: *eproofs[idx],
+				Proof: *proof,
 			})
 			if err != nil {
 				return nil, nil, err
