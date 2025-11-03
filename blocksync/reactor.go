@@ -60,7 +60,7 @@ type Reactor struct {
 
 	blockExec     *sm.BlockExecutor
 	store         sm.BlockStore
-	pool          BlockPoolInterface
+	pool          *BlockPool
 	traceClient   trace.Tracer
 	blockSync     bool
 	localAddr     crypto.Address
@@ -125,12 +125,12 @@ func NewReactorWithSlidingWindow(state sm.State, blockExec *sm.BlockExecutor, st
 		startHeight = state.InitialHeight
 	}
 
-	// Create SlidingWindowPool with configured parameters
-	var pool BlockPoolInterface
+	// Create BlockPool with sliding window configured parameters
+	var pool *BlockPool
 	if windowSize > 0 && maxRequesters > 0 {
-		pool = NewSlidingWindowPool(startHeight, windowSize, maxRequesters, requestsCh, errorsCh, log.NewNopLogger(), traceClient)
+		pool = NewBlockPoolWithParams(startHeight, windowSize, int64(maxRequesters), requestsCh, errorsCh, traceClient)
 	} else {
-		// Fallback to old BlockPool if invalid config
+		// Fallback to default window size and max requesters
 		pool = NewBlockPool(startHeight, requestsCh, errorsCh)
 	}
 

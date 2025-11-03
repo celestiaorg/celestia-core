@@ -7,18 +7,16 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/cometbft/cometbft/libs/log"
 	"github.com/cometbft/cometbft/libs/trace"
 	"github.com/cometbft/cometbft/p2p"
 )
 
 // TestSlidingWindowPool_BasicFlow tests the basic flow of the sliding window pool
 func TestSlidingWindowPool_BasicFlow(t *testing.T) {
-	logger := log.NewNopLogger()
 	requestsCh := make(chan BlockRequest, 100)
 	errorsCh := make(chan peerError, 100)
 
-	pool := NewSlidingWindowPool(100, 10, 5, requestsCh, errorsCh, logger, trace.NoOpTracer())
+	pool := NewBlockPoolWithParams(100, 10, 5, requestsCh, errorsCh, trace.NoOpTracer())
 	err := pool.Start()
 	require.NoError(t, err)
 	defer pool.Stop()
@@ -53,11 +51,10 @@ func TestSlidingWindowPool_BasicFlow(t *testing.T) {
 
 // TestSlidingWindowPool_RejectOutsideWindow tests that blocks outside the window are rejected
 func TestSlidingWindowPool_RejectOutsideWindow(t *testing.T) {
-	logger := log.NewNopLogger()
 	requestsCh := make(chan BlockRequest, 100)
 	errorsCh := make(chan peerError, 100)
 
-	pool := NewSlidingWindowPool(100, 10, 5, requestsCh, errorsCh, logger, trace.NoOpTracer())
+	pool := NewBlockPoolWithParams(100, 10, 5, requestsCh, errorsCh, trace.NoOpTracer())
 	err := pool.Start()
 	require.NoError(t, err)
 	defer pool.Stop()
@@ -87,12 +84,11 @@ func TestSlidingWindowPool_RejectOutsideWindow(t *testing.T) {
 
 // TestSlidingWindowPool_WindowAdvancement tests that the window advances correctly
 func TestSlidingWindowPool_WindowAdvancement(t *testing.T) {
-	logger := log.NewNopLogger()
 	requestsCh := make(chan BlockRequest, 100)
 	errorsCh := make(chan peerError, 100)
 
 	windowSize := int64(10)
-	pool := NewSlidingWindowPool(100, windowSize, 5, requestsCh, errorsCh, logger, trace.NoOpTracer())
+	pool := NewBlockPoolWithParams(100, windowSize, 5, requestsCh, errorsCh, trace.NoOpTracer())
 	err := pool.Start()
 	require.NoError(t, err)
 	defer pool.Stop()
@@ -127,11 +123,10 @@ func TestSlidingWindowPool_WindowAdvancement(t *testing.T) {
 
 // TestSlidingWindowPool_OutOfOrderDelivery tests handling of out-of-order block delivery
 func TestSlidingWindowPool_OutOfOrderDelivery(t *testing.T) {
-	logger := log.NewNopLogger()
 	requestsCh := make(chan BlockRequest, 100)
 	errorsCh := make(chan peerError, 100)
 
-	pool := NewSlidingWindowPool(100, 20, 10, requestsCh, errorsCh, logger, trace.NoOpTracer())
+	pool := NewBlockPoolWithParams(100, 20, 10, requestsCh, errorsCh, trace.NoOpTracer())
 	err := pool.Start()
 	require.NoError(t, err)
 	defer pool.Stop()
@@ -167,11 +162,10 @@ func TestSlidingWindowPool_OutOfOrderDelivery(t *testing.T) {
 
 // TestSlidingWindowPool_MultiplePeers tests handling blocks from multiple peers
 func TestSlidingWindowPool_MultiplePeers(t *testing.T) {
-	logger := log.NewNopLogger()
 	requestsCh := make(chan BlockRequest, 100)
 	errorsCh := make(chan peerError, 100)
 
-	pool := NewSlidingWindowPool(100, 20, 10, requestsCh, errorsCh, logger, trace.NoOpTracer())
+	pool := NewBlockPoolWithParams(100, 20, 10, requestsCh, errorsCh, trace.NoOpTracer())
 	err := pool.Start()
 	require.NoError(t, err)
 	defer pool.Stop()
@@ -201,11 +195,10 @@ func TestSlidingWindowPool_MultiplePeers(t *testing.T) {
 
 // TestSlidingWindowPool_DuplicateBlocks tests that duplicate blocks are handled gracefully
 func TestSlidingWindowPool_DuplicateBlocks(t *testing.T) {
-	logger := log.NewNopLogger()
 	requestsCh := make(chan BlockRequest, 100)
 	errorsCh := make(chan peerError, 100)
 
-	pool := NewSlidingWindowPool(100, 20, 10, requestsCh, errorsCh, logger, trace.NoOpTracer())
+	pool := NewBlockPoolWithParams(100, 20, 10, requestsCh, errorsCh, trace.NoOpTracer())
 	err := pool.Start()
 	require.NoError(t, err)
 	defer pool.Stop()
@@ -232,11 +225,10 @@ func TestSlidingWindowPool_DuplicateBlocks(t *testing.T) {
 
 // TestSlidingWindowPool_BlockRemovalOnError tests block removal when validation fails
 func TestSlidingWindowPool_BlockRemovalOnError(t *testing.T) {
-	logger := log.NewNopLogger()
 	requestsCh := make(chan BlockRequest, 100)
 	errorsCh := make(chan peerError, 100)
 
-	pool := NewSlidingWindowPool(100, 20, 10, requestsCh, errorsCh, logger, trace.NoOpTracer())
+	pool := NewBlockPoolWithParams(100, 20, 10, requestsCh, errorsCh, trace.NoOpTracer())
 	err := pool.Start()
 	require.NoError(t, err)
 	defer pool.Stop()
@@ -261,12 +253,11 @@ func TestSlidingWindowPool_BlockRemovalOnError(t *testing.T) {
 
 // TestSlidingWindowPool_MaxRequestersLimit tests that requester count is limited
 func TestSlidingWindowPool_MaxRequestersLimit(t *testing.T) {
-	logger := log.NewNopLogger()
 	requestsCh := make(chan BlockRequest, 100)
 	errorsCh := make(chan peerError, 100)
 
 	maxRequesters := int32(5)
-	pool := NewSlidingWindowPool(100, 20, maxRequesters, requestsCh, errorsCh, logger, trace.NoOpTracer())
+	pool := NewBlockPoolWithParams(100, 20, int64(maxRequesters), requestsCh, errorsCh, trace.NoOpTracer())
 	err := pool.Start()
 	require.NoError(t, err)
 	defer pool.Stop()
@@ -284,11 +275,10 @@ func TestSlidingWindowPool_MaxRequestersLimit(t *testing.T) {
 
 // TestSlidingWindowPool_IsCaughtUp tests the caught-up detection logic
 func TestSlidingWindowPool_IsCaughtUp(t *testing.T) {
-	logger := log.NewNopLogger()
 	requestsCh := make(chan BlockRequest, 100)
 	errorsCh := make(chan peerError, 100)
 
-	pool := NewSlidingWindowPool(100, 20, 10, requestsCh, errorsCh, logger, trace.NoOpTracer())
+	pool := NewBlockPoolWithParams(100, 20, 10, requestsCh, errorsCh, trace.NoOpTracer())
 	err := pool.Start()
 	require.NoError(t, err)
 	defer pool.Stop()
@@ -315,11 +305,10 @@ func TestSlidingWindowPool_IsCaughtUp(t *testing.T) {
 
 // TestSlidingWindowPool_PeerHeightRegression tests security fix for height regression
 func TestSlidingWindowPool_PeerHeightRegression(t *testing.T) {
-	logger := log.NewNopLogger()
 	requestsCh := make(chan BlockRequest, 100)
 	errorsCh := make(chan peerError, 100)
 
-	pool := NewSlidingWindowPool(100, 20, 10, requestsCh, errorsCh, logger, trace.NoOpTracer())
+	pool := NewBlockPoolWithParams(100, 20, 10, requestsCh, errorsCh, trace.NoOpTracer())
 	err := pool.Start()
 	require.NoError(t, err)
 	defer pool.Stop()
@@ -350,11 +339,10 @@ func TestSlidingWindowPool_PeerHeightRegression(t *testing.T) {
 
 // TestSlidingWindowPool_Stats tests statistics reporting
 func TestSlidingWindowPool_Stats(t *testing.T) {
-	logger := log.NewNopLogger()
 	requestsCh := make(chan BlockRequest, 100)
 	errorsCh := make(chan peerError, 100)
 
-	pool := NewSlidingWindowPool(100, 20, 10, requestsCh, errorsCh, logger, trace.NoOpTracer())
+	pool := NewBlockPoolWithParams(100, 20, 10, requestsCh, errorsCh, trace.NoOpTracer())
 	err := pool.Start()
 	require.NoError(t, err)
 	defer pool.Stop()

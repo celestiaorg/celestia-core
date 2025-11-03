@@ -253,3 +253,25 @@ func (bb *BlockBuffer) RemoveBlock(height int64) {
 		bb.logger.Debug("Block removed from buffer", "height", height)
 	}
 }
+
+// RemoveBlocksFromPeer removes all blocks that were received from a specific peer.
+// Returns the number of blocks removed.
+func (bb *BlockBuffer) RemoveBlocksFromPeer(peerID p2p.ID) int {
+	bb.mtx.Lock()
+	defer bb.mtx.Unlock()
+
+	removed := 0
+	for height, block := range bb.blocks {
+		if block.PeerID == peerID {
+			delete(bb.blocks, height)
+			removed++
+			bb.logger.Debug("Block from peer removed from buffer", "height", height, "peer", peerID)
+		}
+	}
+
+	if removed > 0 {
+		bb.logger.Info("Removed blocks from peer", "peer", peerID, "count", removed)
+	}
+
+	return removed
+}

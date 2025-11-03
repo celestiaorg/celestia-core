@@ -631,3 +631,120 @@ func stopAll(t *testing.T, stoppers ...stopper) func() {
 		}
 	}
 }
+
+// TestChannelBufferShrinking tests the two-window buffer shrinking logic
+func TestChannelBufferShrinking(t *testing.T) {
+	// Create a test channel with a small initial buffer
+	chDesc := ChannelDescriptor{
+		ID:                 0x01,
+		Priority:           1,
+		SendQueueCapacity:  1,
+		RecvBufferCapacity: 1024,
+	}
+
+	server, client := NetPipe()
+	defer server.Close()
+	defer client.Close()
+
+	onReceive := func(chID byte, msgBytes []byte) {}
+	onError := func(r interface{}) {}
+
+	cfg := DefaultMConnConfig()
+	mconn := NewMConnectionWithConfig(server, []*ChannelDescriptor{&chDesc}, onReceive, onError, cfg)
+	mconn.SetLogger(log.TestingLogger())
+
+	ch := mconn.channels[0]
+
+	// Helper to send a message of specific size
+	sendMessage := func(size int) {
+		data := make([]byte, size)
+		packet := tmp2p.PacketMsg{
+			ChannelID: 0x01,
+			EOF:       true,
+			Data:      data,
+		}
+		msgBytes, err := ch.recvPacketMsg(packet)
+		require.NoError(t, err)
+
+		// Simulate what happens in recvRoutine: onReceive is called,
+		// then buffer shrinking logic (rotate, track, shrink)
+		if msgBytes != nil {
+			onReceive(0x01, msgBytes)
+
+			// This does: rotate windows, track message size, check if buffer should shrink
+			ch.maybeShrinkRecvBuffer(len(msgBytes))
+		}
+	}
+
+	// Test 1: Send large message, buffer should grow
+	t.Run("buffer grows with large message", func(t *testing.T) {
+		largeSize := 10000
+		sendMessage(largeSize)
+
+		capacity := cap(ch.recving)
+		assert.GreaterOrEqual(t, capacity, largeSize, "buffer should grow to accommodate large message")
+		assert.Equal(t, largeSize, ch.currentRecvWindowMax, "should track max message size")
+	})
+
+	// Test 2: Send smaller messages, buffer should not shrink yet (within same window)
+	t.Run("buffer doesn't shrink within same window", func(t *testing.T) {
+		oldCapacity := cap(ch.recving)
+
+		for i := 0; i < 5; i++ {
+			sendMessage(100)
+		}
+
+		newCapacity := cap(ch.recving)
+		assert.Equal(t, oldCapacity, newCapacity, "buffer should not shrink within same window")
+	})
+
+	// Test 3: Rotate window by advancing time
+	t.Run("window rotation", func(t *testing.T) {
+		// Force window rotation by setting lastRotationTime to past
+		ch.lastRotationTime = time.Now().Add(-65 * time.Second)
+
+		// Send a small message to trigger rotation check
+		sendMessage(100)
+
+		// After rotation, lastRecvWindowMax should have the old currentRecvWindowMax
+		assert.Equal(t, 10000, ch.lastRecvWindowMax, "lastRecvWindowMax should be updated after rotation")
+		assert.Equal(t, 100, ch.currentRecvWindowMax, "currentRecvWindowMax should be reset with new message")
+	})
+
+	// Test 4: After two windows of small messages, buffer should shrink
+	t.Run("buffer shrinks after two windows of small messages", func(t *testing.T) {
+		oldCapacity := cap(ch.recving)
+
+		// Force another window rotation
+		ch.lastRotationTime = time.Now().Add(-65 * time.Second)
+
+		// Send small message to trigger rotation and shrinking
+		smallSize := 200
+		sendMessage(smallSize)
+
+		// Now both windows have small messages (100 and 200)
+		// maxSeen = 200, threshold = 200 * 2.0 = 400
+		// oldCapacity should be much larger (around 10000), so it should shrink
+		// target = 200 * 1.5 = 300
+
+		newCapacity := cap(ch.recving)
+		assert.Less(t, newCapacity, oldCapacity, "buffer should shrink")
+
+		// The target should be around maxSeen * 1.5 = 200 * 1.5 = 300
+		// but not less than RecvBufferCapacity (1024)
+		assert.GreaterOrEqual(t, newCapacity, chDesc.RecvBufferCapacity, "should not shrink below minimum")
+	})
+
+	// Test 5: Verify buffer doesn't shrink below configured minimum
+	t.Run("buffer doesn't shrink below minimum", func(t *testing.T) {
+		// Force rotation twice with very small messages
+		for rotation := 0; rotation < 2; rotation++ {
+			ch.lastRotationTime = time.Now().Add(-65 * time.Second)
+			sendMessage(10)
+		}
+
+		capacity := cap(ch.recving)
+		assert.GreaterOrEqual(t, capacity, chDesc.RecvBufferCapacity,
+			"buffer should never shrink below RecvBufferCapacity")
+	})
+}

@@ -45,6 +45,11 @@ const (
 	defaultSendTimeout         = 10 * time.Second
 	defaultPingInterval        = 60 * time.Second
 	defaultPongTimeout         = 45 * time.Second
+
+	// Buffer shrinking configuration
+	bufferShrinkWindowDuration = 60 * time.Second // Window rotation period
+	bufferShrinkThreshold      = 2.0              // Shrink if capacity > max_seen * threshold
+	bufferShrinkTarget         = 1.5              // Shrink to max_seen * target
 )
 
 type (
@@ -681,6 +686,9 @@ FOR_LOOP:
 				//c.Logger.Debug("Received bytes", "chID", channelID, "msgBytes", msgBytes)
 				// NOTE: This means the reactor.Receive runs in the same thread as the p2p recv routine
 				c.onReceive(channelID, msgBytes)
+
+				// After onReceive returns, the buffer is empty - check if we should shrink it
+				channel.maybeShrinkRecvBuffer(len(msgBytes))
 			}
 		default:
 			err := fmt.Errorf("unknown message type %v", reflect.TypeOf(packet))
@@ -791,6 +799,11 @@ type Channel struct {
 
 	maxPacketMsgPayloadSize int
 
+	// Buffer shrinking: track max message size in two time windows
+	lastRecvWindowMax    int       // Max message size in previous window
+	currentRecvWindowMax int       // Max message size in current window
+	lastRotationTime     time.Time // When we last rotated the windows
+
 	Logger log.Logger
 }
 
@@ -805,6 +818,7 @@ func newChannel(conn *MConnection, desc ChannelDescriptor) *Channel {
 		sendQueue:               make(chan []byte, desc.SendQueueCapacity),
 		recving:                 make([]byte, 0, desc.RecvBufferCapacity),
 		maxPacketMsgPayloadSize: conn.config.MaxPacketMsgPayloadSize,
+		lastRotationTime:        time.Now(),
 	}
 }
 
@@ -911,7 +925,7 @@ func (ch *Channel) recvPacketMsg(packet tmp2p.PacketMsg) ([]byte, error) {
 		// http://stackoverflow.com/questions/16971741/how-do-you-clear-a-slice-in-go
 		//   suggests this could be a memory leak, but we might as well keep the memory for the channel until it closes,
 		//	at which point the recving slice stops being used and should be garbage collected
-		ch.recving = ch.recving[:0] // make([]byte, 0, ch.desc.RecvBufferCapacity)
+		ch.recving = ch.recving[:0]
 		return msgBytes, nil
 	}
 	return nil, nil
@@ -923,6 +937,45 @@ func (ch *Channel) updateStats() {
 	// Exponential decay of stats.
 	// TODO: optimize.
 	atomic.StoreInt64(&ch.recentlySent, int64(float64(atomic.LoadInt64(&ch.recentlySent))*0.8))
+}
+
+// maybeShrinkRecvBuffer checks if the buffer should be shrunk and performs the shrinking.
+// Not goroutine-safe
+func (ch *Channel) maybeShrinkRecvBuffer(msgSize int) {
+	// rotate windows if needed
+	now := time.Now()
+	if now.Sub(ch.lastRotationTime) >= bufferShrinkWindowDuration {
+		ch.lastRecvWindowMax = ch.currentRecvWindowMax
+		ch.currentRecvWindowMax = 0
+		ch.lastRotationTime = now
+	}
+
+	// track message size in current window (after rotation)
+	if msgSize > ch.currentRecvWindowMax {
+		ch.currentRecvWindowMax = msgSize
+	}
+
+	// check if we should shrink
+	maxSeen := ch.lastRecvWindowMax
+	if ch.currentRecvWindowMax > maxSeen {
+		maxSeen = ch.currentRecvWindowMax
+	}
+
+	currentCapacity := cap(ch.recving)
+
+	if maxSeen > 0 {
+		shrinkThreshold := int(float64(maxSeen) * bufferShrinkThreshold)
+		if currentCapacity > shrinkThreshold {
+			targetCapacity := int(float64(maxSeen) * bufferShrinkTarget)
+			if targetCapacity < ch.desc.RecvBufferCapacity {
+				targetCapacity = ch.desc.RecvBufferCapacity
+			}
+
+			if targetCapacity < currentCapacity {
+				ch.recving = make([]byte, 0, targetCapacity)
+			}
+		}
+	}
 }
 
 //----------------------------------------
