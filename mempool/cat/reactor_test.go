@@ -348,7 +348,7 @@ func TestTryRequestQueuedTxRequestsFirstPeerOnly(t *testing.T) {
 
 	entry := &pendingSeenTx{
 		txKey:    txKey,
-		peers:    []uint16{firstPeerID, secondPeerID},
+		peer:     firstPeerID,
 		signer:   []byte("signer"),
 		sequence: 1,
 	}
@@ -789,8 +789,15 @@ func TestReactorRequestsQueuedTxAfterSequenceBecomesAvailable(t *testing.T) {
 		Src:       providerPeer,
 	})
 
+	require.Eventually(t, func() bool {
+		return reactor.requests.ForTx(targetKey) != 0
+	}, time.Second, 10*time.Millisecond)
+
 	sourcePeer.AssertExpectations(t)
-	require.Empty(t, reactor.pendingSeen.entriesForSigner(signer))
+	entries := reactor.pendingSeen.entriesForSigner(signer)
+	require.Len(t, entries, 1)
+	require.True(t, entries[0].requested)
+	require.Equal(t, reactor.ids.GetIDForPeer(sourcePeer.ID()), entries[0].lastPeer)
 	require.EqualValues(t, reactor.ids.GetIDForPeer(sourcePeer.ID()), reactor.requests.ForTx(targetKey))
 }
 
@@ -874,7 +881,10 @@ func TestPendingSeenClearedOnPeerRemoval(t *testing.T) {
 
 	reactor.RemovePeer(sourcePeer, "disconnect")
 
-	require.Empty(t, reactor.pendingSeen.entriesForSigner(signer))
+	entries := reactor.pendingSeen.entriesForSigner(signer)
+	require.Len(t, entries, 1)
+	require.False(t, entries[0].requested)
+	require.Nil(t, entries[0].peerIDs())
 }
 
 func TestPendingSeenDroppedWhenSequenceAdvances(t *testing.T) {

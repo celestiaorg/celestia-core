@@ -11,6 +11,8 @@ import (
 	abci "github.com/cometbft/cometbft/abci/types"
 	"github.com/cometbft/cometbft/config"
 	"github.com/cometbft/cometbft/libs/log"
+	"github.com/cometbft/cometbft/libs/trace"
+	"github.com/cometbft/cometbft/libs/trace/schema"
 	"github.com/cometbft/cometbft/mempool"
 	"github.com/cometbft/cometbft/proxy"
 	"github.com/cometbft/cometbft/types"
@@ -49,6 +51,7 @@ type TxPool struct {
 	config       *config.MempoolConfig
 	proxyAppConn proxy.AppConnMempool
 	metrics      *mempool.Metrics
+	traceClient  trace.Tracer
 
 	// these values are modified once per height
 	mtx                  sync.Mutex
@@ -74,6 +77,9 @@ type TxPool struct {
 	broadcastCh      chan *wrappedTx
 	broadcastMtx     sync.Mutex
 	txsToBeBroadcast []types.TxKey
+
+	// heightSignal notifies listeners whenever the mempool height advances.
+	heightSignal chan struct{}
 }
 
 // NewTxPool constructs a new, empty content addressable txpool at the specified
@@ -90,6 +96,7 @@ func NewTxPool(
 		config:           cfg,
 		proxyAppConn:     proxyAppConn,
 		metrics:          mempool.NopMetrics(),
+		traceClient:      trace.NoOpTracer(),
 		rejectedTxCache:  mempool.NewRejectedTxCache(cfg.CacheSize),
 		evictedTxCache:   mempool.NewLRUTxCache(cfg.CacheSize / 5),
 		seenByPeersSet:   NewSeenTxSet(),
@@ -99,6 +106,7 @@ func NewTxPool(
 		store:            newStore(),
 		broadcastCh:      make(chan *wrappedTx),
 		txsToBeBroadcast: make([]types.TxKey, 0),
+		heightSignal:     make(chan struct{}, 1),
 	}
 
 	for _, opt := range options {
@@ -125,6 +133,11 @@ func WithPostCheck(f mempool.PostCheckFunc) TxPoolOption {
 // WithMetrics sets the mempool's metrics collector.
 func WithMetrics(metrics *mempool.Metrics) TxPoolOption {
 	return func(txmp *TxPool) { txmp.metrics = metrics }
+}
+
+// WithTracer sets the mempool's trace client.
+func WithTracer(tracer trace.Tracer) TxPoolOption {
+	return func(txmp *TxPool) { txmp.traceClient = tracer }
 }
 
 // Lock locks the mempool, no new transactions can be processed
@@ -168,6 +181,11 @@ func (txmp *TxPool) Height() int64 {
 	txmp.mtx.Lock()
 	defer txmp.mtx.Unlock()
 	return txmp.height
+}
+
+// HeightSignal returns a channel that fires whenever the mempool height advances.
+func (txmp *TxPool) HeightSignal() <-chan struct{} {
+	return txmp.heightSignal
 }
 
 // Has returns true if the transaction is currently in the mempool
@@ -305,6 +323,14 @@ func (txmp *TxPool) TryAddNewTx(tx *types.CachedTx, key types.TxKey, txInfo memp
 	if err := txmp.preCheck(tx); err != nil {
 		txmp.rejectedTxCache.Push(key, 0, err.Error())
 		txmp.metrics.FailedTxs.Add(1)
+		schema.WriteMempoolTxStatus(
+			txmp.traceClient,
+			key[:],
+			schema.TxRejected,
+			err,
+			nil,
+			0,
+		)
 		return nil, err
 	}
 
@@ -324,6 +350,14 @@ func (txmp *TxPool) TryAddNewTx(tx *types.CachedTx, key types.TxKey, txInfo memp
 	if rsp.Code != abci.CodeTypeOK {
 		txmp.rejectedTxCache.Push(key, rsp.Code, rsp.Log)
 		txmp.metrics.FailedTxs.Add(1)
+		schema.WriteMempoolTxStatus(
+			txmp.traceClient,
+			key[:],
+			schema.TxRejected,
+			fmt.Errorf("code %d: %s", rsp.Code, rsp.Log),
+			rsp.Address,
+			rsp.Sequence,
+		)
 		return rsp, nil
 	}
 
@@ -337,6 +371,14 @@ func (txmp *TxPool) TryAddNewTx(tx *types.CachedTx, key types.TxKey, txInfo memp
 	if err != nil {
 		txmp.rejectedTxCache.Push(key, 0, err.Error())
 		txmp.metrics.FailedTxs.Add(1)
+		schema.WriteMempoolTxStatus(
+			txmp.traceClient,
+			key[:],
+			schema.TxRejected,
+			err,
+			wtx.sender,
+			wtx.sequence,
+		)
 		return rsp, fmt.Errorf("rejected bad transaction after post check: %w", err)
 	}
 
@@ -525,7 +567,20 @@ func (txmp *TxPool) Update(
 	txmp.metrics.SuccessfulTxs.Add(float64(len(blockTxs)))
 	for _, tx := range blockTxs {
 		// Regardless of success, remove the transaction from the mempool.
-		txmp.removeTxByKey(tx.Key())
+		txKey := tx.Key()
+		wtx := txmp.store.get(txKey)
+		txmp.removeTxByKey(txKey)
+		// Write trace for confirmed transaction if we have the wrapped tx info
+		if wtx != nil {
+			schema.WriteMempoolTxStatus(
+				txmp.traceClient,
+				txKey[:],
+				schema.TxConfirmed,
+				nil,
+				wtx.sender,
+				wtx.sequence,
+			)
+		}
 	}
 
 	// Purge expired transactions based on TTL. This is the only place where
@@ -545,6 +600,12 @@ func (txmp *TxPool) Update(
 			txmp.notifyTxsAvailable()
 		}
 	}
+
+	select {
+	case txmp.heightSignal <- struct{}{}:
+	default:
+	}
+
 	return nil
 }
 
@@ -575,9 +636,19 @@ func (txmp *TxPool) addNewTransaction(wtx *wrappedTx) error {
 		// If there are no suitable eviction candidates, or the total size is insufficient, drop the new one.
 		if len(victimSets) == 0 || victimBytes < wtx.size() {
 			txmp.metrics.EvictedTxs.Add(1)
-			txmp.evictedTxCache.Push(wtx.key())
-			return fmt.Errorf("rejected valid incoming transaction; mempool is full (%X). Size: (%d:%d)",
-				wtx.key().String(), txmp.Size(), txmp.SizeBytes())
+			txKey := wtx.key()
+			txmp.evictedTxCache.Push(txKey)
+			err := fmt.Errorf("rejected valid incoming transaction; mempool is full (%X). Size: (%d:%d)",
+				txKey.String(), txmp.Size(), txmp.SizeBytes())
+			schema.WriteMempoolTxStatus(
+				txmp.traceClient,
+				txKey[:],
+				schema.TxEvicted,
+				err,
+				wtx.sender,
+				wtx.sequence,
+			)
+			return err
 		}
 
 		txmp.logger.Debug(
@@ -628,13 +699,22 @@ func (txmp *TxPool) addNewTransaction(wtx *wrappedTx) error {
 }
 
 func (txmp *TxPool) evictTx(wtx *wrappedTx) {
-	txmp.store.remove(wtx.key())
-	txmp.evictedTxCache.Push(wtx.key())
+	txKey := wtx.key()
+	txmp.store.remove(txKey)
+	txmp.evictedTxCache.Push(txKey)
 	txmp.metrics.EvictedTxs.Add(1)
 	txmp.logger.Debug(
 		"evicted valid existing transaction; mempool full",
-		"old_tx", fmt.Sprintf("%X", wtx.key()),
+		"old_tx", fmt.Sprintf("%X", txKey),
 		"old_priority", wtx.priority,
+	)
+	schema.WriteMempoolTxStatus(
+		txmp.traceClient,
+		txKey[:],
+		schema.TxEvicted,
+		nil,
+		wtx.sender,
+		wtx.sequence,
 	)
 }
 
@@ -653,7 +733,21 @@ func (txmp *TxPool) handleRecheckResult(wtx *wrappedTx, checkTxRes *abci.Respons
 	if checkTxRes.Code == abci.CodeTypeOK && err == nil {
 		// Note that we do not update the transaction with any of the values returned in
 		// recheck tx
+		txKey := wtx.key()
+		schema.WriteMempoolRecheck(
+			txmp.traceClient,
+			txKey[:],
+			wtx.sender,
+			wtx.sequence,
+			true,
+			nil,
+		)
 		return // N.B. Size of mempool did not change
+	}
+
+	recheckErr := err
+	if recheckErr == nil && checkTxRes.Code != abci.CodeTypeOK {
+		recheckErr = fmt.Errorf("code %d: %s", checkTxRes.Code, checkTxRes.Log)
 	}
 
 	txmp.logger.Debug(
@@ -663,11 +757,21 @@ func (txmp *TxPool) handleRecheckResult(wtx *wrappedTx, checkTxRes *abci.Respons
 		"err", err,
 		"code", checkTxRes.Code,
 	)
-	txmp.store.remove(wtx.key())
+	txKey := wtx.key()
+	txmp.store.remove(txKey)
 	txmp.metrics.FailedTxs.Add(1)
 	txmp.rejectedTxCache.Push(wtx.tx.Key(), checkTxRes.Code, checkTxRes.Log)
 	txmp.metrics.Size.Set(float64(txmp.Size()))
 	txmp.metrics.SizeBytes.Set(float64(txmp.SizeBytes()))
+
+	schema.WriteMempoolRecheck(
+		txmp.traceClient,
+		txKey[:],
+		wtx.sender,
+		wtx.sequence,
+		false,
+		recheckErr,
+	)
 }
 
 // recheckTransactions initiates re-CheckTx ABCI calls for all the transactions
@@ -745,24 +849,28 @@ func (txmp *TxPool) purgeExpiredTxs(blockHeight int64) {
 	}
 
 	now := time.Now()
-	expirationAge := now.Add(-txmp.config.TTLDuration)
-	if txmp.config.TTLDuration == 0 {
-		expirationAge = time.Time{}
+	expirationTime := time.Time{}
+	if txmp.config.TTLDuration > 0 {
+		expirationTime = now.Add(-txmp.config.TTLDuration)
 	}
 
-	purgedTxs, numExpired := txmp.store.purgeExpiredTxs(expirationHeight, expirationAge)
+	purgedTxs, numExpired := txmp.store.purgeExpiredTxs(expirationHeight, expirationTime)
 	// Add the purged transactions to the evicted cache
 	for _, tx := range purgedTxs {
-		txmp.evictedTxCache.Push(tx.key())
+		txKey := tx.key()
+		txmp.evictedTxCache.Push(txKey)
+		schema.WriteMempoolTxStatus(
+			txmp.traceClient,
+			txKey[:],
+			schema.TxExpired,
+			nil,
+			tx.sender,
+			tx.sequence,
+		)
 	}
 	txmp.metrics.ExpiredTxs.Add(float64(numExpired))
 
-	// purge old evicted and seen transactions
-	if txmp.config.TTLDuration == 0 {
-		// ensure that seenByPeersSet are eventually pruned
-		expirationAge = now.Add(-time.Hour)
-	}
-	txmp.seenByPeersSet.Prune(expirationAge)
+	txmp.seenByPeersSet.Prune(now.Add(-time.Hour))
 }
 
 func (txmp *TxPool) notifyTxsAvailable() {
