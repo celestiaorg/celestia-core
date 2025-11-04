@@ -2106,7 +2106,7 @@ const (
 	// KMSSigningDelay is a constant representing a delay used primarily to adjust for KMS signing latencies.
 	KMSSigningDelay = 200 * time.Millisecond
 	// precommit delay rescheduling tolerance
-	precommitDelayTolerance = 5 * time.Millisecond
+	precommitDelayTolerance = 100 * time.Millisecond
 )
 
 // isReadyToPrecommit calculates if the process has waited at least a certain number of seconds
