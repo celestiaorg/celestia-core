@@ -24,4 +24,5 @@ message TxInfo {
   int64 gas_wanted = 6;
   // Actual gas consumed
   int64 gas_used = 7;
+  repeated string signers = 8; // tx signers
 }

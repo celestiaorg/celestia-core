@@ -43,7 +43,7 @@ func newRequestScheduler(responseTime, globalTimeout time.Duration) *requestSche
 	}
 }
 
-func (r *requestScheduler) Add(key types.TxKey, peer uint16, onTimeout func(key types.TxKey)) bool {
+func (r *requestScheduler) Add(key types.TxKey, peer uint16, onTimeout func(key types.TxKey, peer uint16)) bool {
 	if peer == 0 {
 		return false
 	}
@@ -62,7 +62,7 @@ func (r *requestScheduler) Add(key types.TxKey, peer uint16, onTimeout func(key 
 
 		// trigger callback. Callback can `Add` the tx back to the scheduler
 		if onTimeout != nil {
-			onTimeout(key)
+			onTimeout(key, peer)
 		}
 
 		// We set another timeout because the peer could still send
