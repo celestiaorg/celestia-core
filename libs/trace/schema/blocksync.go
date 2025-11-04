@@ -10,6 +10,7 @@ func BlocksyncTables() []string {
 	return []string{
 		BlocksyncBlockReceivedTable,
 		BlocksyncBlockSavedTable,
+		BlocksyncBlockRequestedTable,
 	}
 }
 
@@ -70,5 +71,36 @@ func WriteBlocksyncBlockSaved(client trace.Tracer, height int64, blockSize int) 
 	client.Write(BlocksyncBlockSaved{
 		Height:    height,
 		BlockSize: blockSize,
+	})
+}
+
+// Schema constants for blocksync block requested table.
+const (
+	// BlocksyncBlockRequestedTable stores traces of block requests sent to peers.
+	BlocksyncBlockRequestedTable = "blocksync_block_requested"
+)
+
+// BlocksyncBlockRequested describes schema for the "blocksync_block_requested" table.
+// This event is traced when we request a block from a peer.
+type BlocksyncBlockRequested struct {
+	Height   int64  `json:"height"`
+	PeerID   string `json:"peer_id"`
+	IsSecond bool   `json:"is_second"` // true if this is a second parallel request
+}
+
+// Table returns the table name for the BlocksyncBlockRequested struct.
+func (BlocksyncBlockRequested) Table() string {
+	return BlocksyncBlockRequestedTable
+}
+
+// WriteBlocksyncBlockRequested writes a tracing point for a block request sent to a peer.
+func WriteBlocksyncBlockRequested(client trace.Tracer, height int64, peerID string, isSecond bool) {
+	if !client.IsCollecting(BlocksyncBlockRequestedTable) {
+		return
+	}
+	client.Write(BlocksyncBlockRequested{
+		Height:   height,
+		PeerID:   peerID,
+		IsSecond: isSecond,
 	})
 }

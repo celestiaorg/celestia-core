@@ -12,6 +12,8 @@ import (
 	"github.com/cometbft/cometbft/libs/log"
 	"github.com/cometbft/cometbft/libs/service"
 	cmtsync "github.com/cometbft/cometbft/libs/sync"
+	"github.com/cometbft/cometbft/libs/trace"
+	"github.com/cometbft/cometbft/libs/trace/schema"
 	"github.com/cometbft/cometbft/p2p"
 	"github.com/cometbft/cometbft/types"
 	cmttime "github.com/cometbft/cometbft/types/time"
@@ -93,11 +95,13 @@ type BlockPool struct {
 
 	requestsCh chan<- BlockRequest
 	errorsCh   chan<- peerError
+
+	traceClient trace.Tracer
 }
 
 // NewBlockPool returns a new BlockPool with the height equal to start. Block
 // requests and errors will be sent to requestsCh and errorsCh accordingly.
-func NewBlockPool(start int64, maxRequesters int, requestsCh chan<- BlockRequest, errorsCh chan<- peerError) *BlockPool {
+func NewBlockPool(start int64, maxRequesters int, requestsCh chan<- BlockRequest, errorsCh chan<- peerError, traceClient trace.Tracer) *BlockPool {
 	bp := &BlockPool{
 		peers:         make(map[p2p.ID]*bpPeer),
 		bannedPeers:   make(map[p2p.ID]time.Time),
@@ -107,8 +111,9 @@ func NewBlockPool(start int64, maxRequesters int, requestsCh chan<- BlockRequest
 		maxRequesters: maxRequesters,
 		numPending:    0,
 
-		requestsCh: requestsCh,
-		errorsCh:   errorsCh,
+		requestsCh:  requestsCh,
+		errorsCh:    errorsCh,
+		traceClient: traceClient,
 	}
 	bp.BaseService = *service.NewBaseService(nil, "BlockPool", bp)
 	return bp
@@ -813,6 +818,7 @@ PICK_PEER_LOOP:
 	bpr.peerID = peer.id
 	bpr.mtx.Unlock()
 
+	schema.WriteBlocksyncBlockRequested(bpr.pool.traceClient, bpr.height, string(peer.id), false)
 	bpr.pool.sendRequest(bpr.height, peer.id)
 }
 
@@ -833,6 +839,7 @@ func (bpr *bpRequester) pickSecondPeerAndSendRequest() (picked bool) {
 		bpr.secondPeerID = secondPeer.id
 		bpr.mtx.Unlock()
 
+		schema.WriteBlocksyncBlockRequested(bpr.pool.traceClient, bpr.height, string(secondPeer.id), true)
 		bpr.pool.sendRequest(bpr.height, secondPeer.id)
 		return true
 	}
@@ -863,12 +870,10 @@ OUTER_LOOP:
 		bpr.pickPeerAndSendRequest()
 
 		poolHeight := bpr.pool.Height()
-		if bpr.height-poolHeight < minBlocksForSingleRequest {
-			bpr.pickSecondPeerAndSendRequest()
-		}
-
 		retryTimer := time.NewTimer(requestRetrySeconds * time.Second)
 		defer retryTimer.Stop()
+		secondPeerTimer := time.NewTimer(10 * time.Second)
+		defer secondPeerTimer.Stop()
 
 		for {
 			select {
@@ -879,6 +884,10 @@ OUTER_LOOP:
 				return
 			case <-bpr.Quit():
 				return
+			case <-secondPeerTimer.C:
+				if bpr.height-poolHeight < minBlocksForSingleRequest {
+					bpr.pickSecondPeerAndSendRequest()
+				}
 			case <-retryTimer.C:
 				if !gotBlock {
 					bpr.Logger.Debug("Retrying block request(s) after timeout", "height", bpr.height, "peer", bpr.peerID, "secondPeerID", bpr.secondPeerID)
