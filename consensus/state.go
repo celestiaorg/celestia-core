@@ -2123,7 +2123,10 @@ func (cs *State) isReadyToPrecommit() (bool, time.Duration) {
 	if _, ok := cs.privValidator.(*privval.SignerClient); ok {
 		waitTime = waitTime - KMSSigningDelay
 	}
-	return waitTime <= 0, waitTime
+	// return the wait time plus some overhead to guarantee that p
+	// this call doesn't accidently hit this wait a second time with
+	// a few nanoseconds
+	return waitTime <= 0, waitTime + (20 * time.Millisecond)
 }
 
 //-----------------------------------------------------------------------------
