@@ -1630,6 +1630,7 @@ func (cs *State) enterPrecommit(height int64, round int32) {
 		t := time.NewTimer(waitTime)
 		select {
 		case <-cs.Quit():
+			cs.lockAll()
 			return
 		case <-t.C:
 		}
