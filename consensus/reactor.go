@@ -1216,7 +1216,10 @@ func ReactorMetrics(metrics *Metrics) ReactorOption {
 }
 
 func ReactorTracing(traceClient trace.Tracer) ReactorOption {
-	return func(conR *Reactor) { conR.traceClient = traceClient }
+	return func(conR *Reactor) {
+		conR.traceClient = traceClient
+		conR.BaseReactor.SetTracer(conR.traceClient)
+	}
 }
 
 //-----------------------------------------------------------------------------

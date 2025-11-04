@@ -119,6 +119,7 @@ func NewReactor(mempool *TxPool, opts *ReactorOptions) (*Reactor, error) {
 	)
 	memR.stickySalt.Store([]byte(nil)) // establish concrete []byte type for atomic.Value
 	memR.SetStickySalt(opts.StickyPeerSalt)
+	memR.BaseReactor.SetTracer(memR.traceClient)
 	return memR, nil
 }
 
