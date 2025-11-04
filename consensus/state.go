@@ -10,6 +10,7 @@ import (
 	"runtime/debug"
 	"sort"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/cometbft/cometbft/privval"
@@ -145,9 +146,10 @@ type State struct {
 	nSteps int
 
 	// some functions can be overwritten for testing
-	decideProposal func(height int64, round int32)
-	doPrevote      func(height int64, round int32)
-	setProposal    func(proposal *types.Proposal) error
+	decideProposal        func(height int64, round int32)
+	doPrevote             func(height int64, round int32)
+	setProposal           func(proposal *types.Proposal) error
+	StartedPrecommitSleep atomic.Bool
 
 	// closed when we finish shutting down
 	done chan struct{}
@@ -1627,7 +1629,7 @@ func (cs *State) enterPrecommit(height int64, round int32) {
 		return
 	}
 
-	if cs.rs.StartedPrecommitSleep.CompareAndSwap(false, true) {
+	if cs.StartedPrecommitSleep.CompareAndSwap(false, true) {
 		waitTime := cs.precommitDelay()
 		logger.Debug("delaying precommit", "delay", waitTime)
 		cs.unlockAll()
@@ -1639,7 +1641,7 @@ func (cs *State) enterPrecommit(height int64, round int32) {
 		case <-t.C:
 		}
 		cs.lockAll()
-		cs.rs.StartedPrecommitSleep.Store(false)
+		cs.StartedPrecommitSleep.Store(false)
 	} else {
 		logger.Debug("already entered precommit delay")
 		// if any other routine tries to enter precommit, we just return
