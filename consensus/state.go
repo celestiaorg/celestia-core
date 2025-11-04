@@ -1622,9 +1622,16 @@ func (cs *State) enterPrecommit(height int64, round int32) {
 		return
 	}
 
-	if ready, waitTime := cs.isReadyToPrecommit(); !ready {
-		logger.Debug("rescheduling precommit", "delay(ms)", waitTime.Milliseconds())
-		cs.scheduleTimeout(waitTime, height, round, cstypes.RoundStepPrevoteWait)
+	if !cs.rs.StartedPrecommitSleep.Load() {
+		cs.rs.StartedPrecommitSleep.Store(true)
+		waitTime := cs.precommitDelay()
+		logger.Debug("delaying precommit", "delay", waitTime)
+		cs.unlockAll()
+		time.Sleep(waitTime)
+		cs.lockAll()
+		cs.rs.StartedPrecommitSleep.Store(false)
+	} else {
+		// if any other routine tries to enter precommit, we just return
 		return
 	}
 
@@ -2102,27 +2109,23 @@ func (cs *State) recordMetrics(height int64, block *types.Block) {
 	cs.metrics.CommittedHeight.Set(float64(block.Height))
 }
 
-const (
-	// KMSSigningDelay is a constant representing a delay used primarily to adjust for KMS signing latencies.
-	KMSSigningDelay = 200 * time.Millisecond
-	// precommit delay rescheduling tolerance
-	precommitDelayTolerance = 5 * time.Millisecond
-)
+// KMSSigningDelay is a constant representing a delay used primarily to adjust for KMS signing latencies.
+const KMSSigningDelay = 200 * time.Millisecond
 
-// isReadyToPrecommit calculates if the process has waited at least a certain number of seconds
+// precommitDelay calculates if the process has waited at least a certain number of seconds
 // from their start time before they can vote
 // If the application's DelayedPrecommitTimeout is set to 0, no precommit wait is done.
-func (cs *State) isReadyToPrecommit() (bool, time.Duration) {
+func (cs *State) precommitDelay() time.Duration {
 	if cs.state.Timeouts.DelayedPrecommitTimeout == 0 {
 		// setting 0 as a special case not to reschedule the pre-commit
-		return true, 0
+		return 0
 	}
 	precommitVoteTime := cs.rs.StartTime.Add(cs.state.Timeouts.DelayedPrecommitTimeout)
 	waitTime := time.Until(precommitVoteTime)
 	if _, ok := cs.privValidator.(*privval.SignerClient); ok {
 		waitTime = waitTime - KMSSigningDelay
 	}
-	return waitTime <= precommitDelayTolerance, waitTime
+	return waitTime
 }
 
 //-----------------------------------------------------------------------------
