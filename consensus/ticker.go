@@ -115,7 +115,7 @@ func (t *timeoutTicker) timeoutRoutine() {
 					continue
 				} else if newti.Round == ti.Round {
 					if ti.Step > 0 && newti.Step <= ti.Step {
-						fmt.Println("continue 3")
+						fmt.Println("continue 3: ", newti.Step, " <= ", ti.Step)
 						continue
 					}
 				}
