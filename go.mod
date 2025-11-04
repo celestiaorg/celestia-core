@@ -2,7 +2,7 @@ module github.com/cometbft/cometbft
 
 go 1.24.0
 
-toolchain go1.24.6
+toolchain go1.24.9
 
 require (
 	github.com/BurntSushi/toml v1.4.0
