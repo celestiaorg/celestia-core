@@ -1631,6 +1631,7 @@ func (cs *State) enterPrecommit(height int64, round int32) {
 		cs.lockAll()
 		cs.rs.StartedPrecommitSleep.Store(false)
 	} else {
+		logger.Debug("already entered precommit sleep")
 		// if any other routine tries to enter precommit, we just return
 		return
 	}
