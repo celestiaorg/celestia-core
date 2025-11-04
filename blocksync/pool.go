@@ -51,7 +51,7 @@ const (
 	// If we're within minBlocksForSingleRequest blocks of the pool's height, we
 	// send 2 parallel requests to 2 peers for the same block. If we're further
 	// away, we send a single request.
-	minBlocksForSingleRequest = 50
+	minBlocksForSingleRequest = 10
 
 	// Default maximum number of concurrent block requesters
 	defaultMaxRequesters = 20
@@ -661,6 +661,7 @@ type bpRequester struct {
 	gotBlockCh  chan struct{}
 	redoCh      chan p2p.ID // redo may got multiple messages, add peerId to identify repeat
 	newHeightCh chan int64
+	usedPeers   map[p2p.ID]struct{}
 
 	mtx          cmtsync.Mutex
 	peerID       p2p.ID
@@ -677,6 +678,7 @@ func newBPRequester(pool *BlockPool, height int64) *bpRequester {
 		gotBlockCh:  make(chan struct{}, 1),
 		redoCh:      make(chan p2p.ID, 1),
 		newHeightCh: make(chan int64, 1),
+		usedPeers:   make(map[p2p.ID]struct{}),
 
 		peerID:       "",
 		secondPeerID: "",
@@ -694,7 +696,7 @@ func (bpr *bpRequester) OnStart() error {
 // Returns true if the peer(s) match and block doesn't already exist.
 func (bpr *bpRequester) setBlock(block *types.Block, extCommit *types.ExtendedCommit, peerID p2p.ID) bool {
 	bpr.mtx.Lock()
-	if bpr.peerID != peerID && bpr.secondPeerID != peerID {
+	if !bpr.isRequestedFromPeer(peerID) {
 		bpr.mtx.Unlock()
 		return false
 	}
@@ -774,7 +776,7 @@ func (bpr *bpRequester) reset(peerID p2p.ID) (removedBlock bool) {
 	} else {
 		bpr.secondPeerID = ""
 	}
-
+	bpr.usedPeers[peerID] = struct{}{}
 	return removedBlock
 }
 
@@ -844,6 +846,11 @@ func (bpr *bpRequester) newHeight(height int64) {
 	case bpr.newHeightCh <- height:
 	default:
 	}
+}
+
+func (bpr *bpRequester) isRequestedFromPeer(id p2p.ID) bool {
+	_, ok := bpr.usedPeers[id]
+	return ok || bpr.peerID == id || bpr.secondPeerID == id
 }
 
 // Responsible for making more requests as necessary
