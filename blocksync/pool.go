@@ -52,6 +52,9 @@ const (
 	// send 2 parallel requests to 2 peers for the same block. If we're further
 	// away, we send a single request.
 	minBlocksForSingleRequest = 50
+
+	// Default maximum number of concurrent block requesters
+	defaultMaxRequesters = 20
 )
 
 var peerTimeout = 120 * time.Second // not const so we can override with tests
@@ -83,6 +86,8 @@ type BlockPool struct {
 	sortedPeers   []*bpPeer // sorted by curRate, highest first
 	maxPeerHeight int64     // the biggest reported height
 
+	maxRequesters int
+
 	// atomic
 	numPending int32 // number of requests pending assignment or block response
 
@@ -92,14 +97,15 @@ type BlockPool struct {
 
 // NewBlockPool returns a new BlockPool with the height equal to start. Block
 // requests and errors will be sent to requestsCh and errorsCh accordingly.
-func NewBlockPool(start int64, requestsCh chan<- BlockRequest, errorsCh chan<- peerError) *BlockPool {
+func NewBlockPool(start int64, maxRequesters int, requestsCh chan<- BlockRequest, errorsCh chan<- peerError) *BlockPool {
 	bp := &BlockPool{
-		peers:       make(map[p2p.ID]*bpPeer),
-		bannedPeers: make(map[p2p.ID]time.Time),
-		requesters:  make(map[int64]*bpRequester),
-		height:      start,
-		startHeight: start,
-		numPending:  0,
+		peers:         make(map[p2p.ID]*bpPeer),
+		bannedPeers:   make(map[p2p.ID]time.Time),
+		requesters:    make(map[int64]*bpRequester),
+		height:        start,
+		startHeight:   start,
+		maxRequesters: maxRequesters,
+		numPending:    0,
 
 		requestsCh: requestsCh,
 		errorsCh:   errorsCh,
@@ -133,7 +139,7 @@ func (pool *BlockPool) makeRequestersRoutine() {
 
 		pool.mtx.Lock()
 		var (
-			maxRequestersCreated = len(pool.requesters) >= len(pool.peers)*maxPendingRequestsPerPeer
+			maxRequestersCreated = len(pool.requesters) >= pool.maxRequesters
 
 			nextHeight           = pool.height + int64(len(pool.requesters))
 			maxPeerHeightReached = nextHeight > pool.maxPeerHeight
