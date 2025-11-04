@@ -1613,6 +1613,7 @@ func (cs *State) enterPrevoteWait(height int64, round int32) {
 // else, precommit nil otherwise.
 func (cs *State) enterPrecommit(height int64, round int32) {
 	logger := cs.Logger.With("height", height, "round", round)
+	logger.Debug("entering precommit step", "current", log.NewLazySprintf("%v/%v/%v", cs.rs.Height, cs.rs.Round, cs.rs.Step))
 
 	if cs.rs.Height != height || round < cs.rs.Round || (cs.rs.Round == round && cstypes.RoundStepPrecommit <= cs.rs.Step) {
 		logger.Debug(

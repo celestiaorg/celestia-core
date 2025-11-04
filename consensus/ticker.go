@@ -1,6 +1,7 @@
 package consensus
 
 import (
+	"fmt"
 	"time"
 
 	"github.com/cometbft/cometbft/libs/log"
@@ -102,16 +103,19 @@ func (t *timeoutTicker) timeoutRoutine() {
 	for {
 		select {
 		case newti := <-t.tickChan:
-			t.Logger.Trace("Received tick", "old_ti", ti, "new_ti", newti)
+			t.Logger.Debug("Received tick", "old_ti", ti, "new_ti", newti)
 
 			// ignore tickers for old height/round/step
 			if newti.Height < ti.Height {
+				fmt.Println("continue 1")
 				continue
 			} else if newti.Height == ti.Height {
 				if newti.Round < ti.Round {
+					fmt.Println("continue 2")
 					continue
 				} else if newti.Round == ti.Round {
 					if ti.Step > 0 && newti.Step <= ti.Step {
+						fmt.Println("continue 3")
 						continue
 					}
 				}
@@ -126,7 +130,7 @@ func (t *timeoutTicker) timeoutRoutine() {
 			t.timer.Reset(ti.Duration)
 			t.timerActive = true
 
-			t.Logger.Trace("Scheduled timeout", "dur", ti.Duration, "height", ti.Height, "round", ti.Round, "step", ti.Step)
+			t.Logger.Debug("Scheduled timeout", "dur", ti.Duration, "height", ti.Height, "round", ti.Round, "step", ti.Step)
 		case <-t.timer.C:
 			t.timerActive = false
 			t.Logger.Info("Timed out", "dur", ti.Duration, "height", ti.Height, "round", ti.Round, "step", ti.Step)
