@@ -1622,8 +1622,7 @@ func (cs *State) enterPrecommit(height int64, round int32) {
 		return
 	}
 
-	if !cs.rs.StartedPrecommitSleep.Load() {
-		cs.rs.StartedPrecommitSleep.Store(true)
+	if cs.rs.StartedPrecommitSleep.CompareAndSwap(false, true) {
 		waitTime := cs.precommitDelay()
 		logger.Debug("delaying precommit", "delay", waitTime)
 		cs.unlockAll()
