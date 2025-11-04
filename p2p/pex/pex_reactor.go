@@ -502,9 +502,9 @@ func (r *Reactor) ensurePeers(ensurePeersPeriodElapsed bool) {
 			if err != nil {
 				switch err.(type) {
 				case errMaxAttemptsToDial, errTooEarlyToDial:
-					r.Logger.Debug(err.Error(), "addr", addr)
+					r.Logger.Trace(err.Error(), "addr", addr)
 				default:
-					r.Logger.Debug(err.Error(), "addr", addr)
+					r.Logger.Trace(err.Error(), "addr", addr)
 				}
 			}
 		}(addr)
