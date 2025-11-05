@@ -355,46 +355,46 @@ func (memR *Reactor) Receive(e p2p.Envelope) {
 			return
 		}
 
-		// expectedSeq, haveExpected := memR.querySequenceFromApplication(msg.Signer)
+		expectedSeq, haveExpected := memR.querySequenceFromApplication(msg.Signer)
 
-		// switch {
-		// case len(msg.Signer) == 0 || msg.Sequence == 0:
-		// 	// fall through and request immediately when sequence info is missing
-		// 	schema.WriteMempoolPeerStateWithSeq(
-		// 		memR.traceClient,
-		// 		string(e.Src.ID()),
-		// 		schema.MissingSequence,
-		// 		txKey[:],
-		// 		schema.Download,
-		// 		msg.Signer,
-		// 		msg.Sequence,
-		// 	)
-		// case !haveExpected:
+		switch {
+		case len(msg.Signer) == 0 || msg.Sequence == 0:
+			// fall through and request immediately when sequence info is missing
+			schema.WriteMempoolPeerStateWithSeq(
+				memR.traceClient,
+				string(e.Src.ID()),
+				schema.MissingSequence,
+				txKey[:],
+				schema.Download,
+				msg.Signer,
+				msg.Sequence,
+			)
+		case !haveExpected:
 			// fall through and request immediately if we cannot query the application
-		// 	schema.WriteMempoolPeerStateWithSeq(
-		// 		memR.traceClient,
-		// 		string(e.Src.ID()),
-		// 		schema.MissingSequence,
-		// 		txKey[:],
-		// 		schema.Download,
-		// 		msg.Signer,
-		// 		msg.Sequence,
-		// 	)
-		// case msg.Sequence == expectedSeq:
-		// 	// fall through and request immediately for the expected sequence
-		// case msg.Sequence > expectedSeq:
-		// 	memR.pendingSeen.add(msg.Signer, txKey, msg.Sequence, peerID)
-		// 	return
-		// default:
-		// 	memR.Logger.Debug(
-		// 		"dropping SeenTx due to lower than expected sequence",
-		// 		"txKey", txKey,
-		// 		"sequence", msg.Sequence,
-		// 		"expectedSequence", expectedSeq,
-		// 	)
+			schema.WriteMempoolPeerStateWithSeq(
+				memR.traceClient,
+				string(e.Src.ID()),
+				schema.MissingSequence,
+				txKey[:],
+				schema.Download,
+				msg.Signer,
+				msg.Sequence,
+			)
+		case msg.Sequence == expectedSeq:
+			// fall through and request immediately for the expected sequence
+		case msg.Sequence > expectedSeq:
+			memR.pendingSeen.add(msg.Signer, txKey, msg.Sequence, peerID)
+			return
+		default:
+			memR.Logger.Debug(
+				"dropping SeenTx due to lower than expected sequence",
+				"txKey", txKey,
+				"sequence", msg.Sequence,
+				"expectedSequence", expectedSeq,
+			)
 
-		// 	return
-		// }
+			return
+		}
 
 		// We don't have the transaction, nor are we requesting it so we send the node
 		// a want msg
@@ -461,6 +461,11 @@ func (memR *Reactor) broadcastNewTx(wtx *wrappedTx) {
 // broadcastSeenTxWithHeight is a helper that broadcasts a SeenTx message with height checking.
 func (memR *Reactor) broadcastSeenTxWithHeight(txKey types.TxKey, height int64, signer []byte, sequence uint64) {
 	memR.Logger.Debug("broadcasting seen tx to limited peers", "tx_key", string(txKey[:]))
+
+	// EXPERIMENT: Force signer to empty string to disable sequence-aware gossiping
+	// but still use sticky peers with the forced empty string address
+	signer = []byte("")
+
 	msg := &protomem.Message{
 		Sum: &protomem.Message_SeenTx{
 			SeenTx: &protomem.SeenTx{
