@@ -126,14 +126,8 @@ func NewReactorWithSlidingWindow(state sm.State, blockExec *sm.BlockExecutor, st
 	}
 
 	// Create SlidingWindowPool with configured parameters
-	var pool BlockPoolInterface
-	if windowSize > 0 && maxRequesters > 0 {
-		pool = NewSlidingWindowPool(startHeight, windowSize, maxRequesters, requestsCh, errorsCh, log.NewNopLogger(), traceClient)
-	} else {
-		// Fallback to old BlockPool if invalid config
-		pool = NewBlockPool(startHeight, requestsCh, errorsCh)
-	}
 
+	pool := NewSlidingWindowPool(startHeight, windowSize, maxRequesters, requestsCh, errorsCh, log.NewNopLogger(), traceClient)
 	messagePool := NewMessagePool(traceClient)
 
 	bcR := &Reactor{

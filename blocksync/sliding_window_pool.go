@@ -142,9 +142,17 @@ func (pool *SlidingWindowPool) makeRequestersRoutine() {
 		maxHeight := pool.buffer.MaxHeight()
 		numRequesters := len(pool.requesters)
 
-		// Find next missing height within window
+		// Don't request beyond what peers have
+		// maxPeerHeight is the highest block peers have, so we can request up to maxPeerHeight + 1
+		// (we need block H+1 to verify block H)
+		effectiveMaxHeight := maxHeight
+		if pool.maxPeerHeight > 0 && pool.maxPeerHeight+1 < effectiveMaxHeight {
+			effectiveMaxHeight = pool.maxPeerHeight + 1
+		}
+
+		// Find next missing height within window (but not beyond peer heights)
 		var nextHeight int64 = -1
-		for h := baseHeight; h <= maxHeight; h++ {
+		for h := baseHeight; h <= effectiveMaxHeight; h++ {
 			if _, exists := pool.requesters[h]; !exists && !pool.buffer.HasBlock(h) {
 				nextHeight = h
 				break
@@ -243,6 +251,16 @@ func (pool *SlidingWindowPool) PeekTwoBlocks() (first, second *types.Block, firs
 	firstBuf, secondBuf := pool.buffer.PeekTwoNext()
 
 	if firstBuf == nil || secondBuf == nil {
+		pool.mtx.Lock()
+		stats := pool.buffer.Stats()
+		pool.mtx.Unlock()
+
+		pool.logger.Debug("PeekTwoBlocks returned nil",
+			"baseHeight", stats.BaseHeight,
+			"bufferSize", stats.BufferSize,
+			"missingHeights", stats.MissingHeights,
+			"firstNil", firstBuf == nil,
+			"secondNil", secondBuf == nil)
 		return nil, nil, nil
 	}
 
@@ -339,13 +357,23 @@ func (pool *SlidingWindowPool) IsCaughtUp() bool {
 	defer pool.mtx.Unlock()
 
 	if len(pool.peers) == 0 {
+		pool.logger.Debug("IsCaughtUp: no peers")
 		return false
 	}
 
 	receivedBlockOrTimedOut := pool.buffer.BaseHeight() > 0 || time.Since(pool.startTime) > 5*time.Second
-	ourChainIsLongestAmongPeers := pool.maxPeerHeight == 0 || pool.buffer.BaseHeight() >= (pool.maxPeerHeight-1)
+	ourChainIsLongestAmongPeers := pool.maxPeerHeight == 0 || pool.buffer.BaseHeight() >= pool.maxPeerHeight
+	isCaughtUp := receivedBlockOrTimedOut && ourChainIsLongestAmongPeers
 
-	return receivedBlockOrTimedOut && ourChainIsLongestAmongPeers
+	pool.logger.Info("IsCaughtUp check",
+		"baseHeight", pool.buffer.BaseHeight(),
+		"maxPeerHeight", pool.maxPeerHeight,
+		"receivedBlockOrTimedOut", receivedBlockOrTimedOut,
+		"ourChainIsLongestAmongPeers", ourChainIsLongestAmongPeers,
+		"isCaughtUp", isCaughtUp,
+		"timeSinceStart", time.Since(pool.startTime))
+
+	return isCaughtUp
 }
 
 // MaxPeerHeight returns the maximum height reported by peers
@@ -428,6 +456,13 @@ func (pool *SlidingWindowPool) SetPeerRange(peerID p2p.ID, base int64, height in
 
 	pool.updateMaxPeerHeight()
 	pool.updateSortedPeers()
+
+	pool.logger.Info("SetPeerRange updated",
+		"peer", peerID,
+		"base", base,
+		"height", height,
+		"maxPeerHeight", pool.maxPeerHeight,
+		"numPeers", len(pool.peers))
 }
 
 func (pool *SlidingWindowPool) RemovePeer(peerID p2p.ID) {
