@@ -490,9 +490,13 @@ func (pool *BlockPool) banPeer(peerID p2p.ID) {
 
 // Pick an available peer with the given height available.
 // If no peers are available, returns nil.
-func (pool *BlockPool) pickIncrAvailablePeer(height int64, excludePeerID p2p.ID) *bpPeer {
+// preferExcludePeerID is a peer to avoid if possible (e.g., peer used for previous height).
+// This promotes peer diversity by alternating between peers across consecutive blocks.
+func (pool *BlockPool) pickIncrAvailablePeer(height int64, excludePeerID p2p.ID, preferExcludePeerID p2p.ID) *bpPeer {
 	pool.mtx.Lock()
 	defer pool.mtx.Unlock()
+
+	var fallbackPeer *bpPeer // Peer that matches all criteria except preferExcludePeerID
 
 	for _, peer := range pool.sortedPeers {
 		if peer.id == excludePeerID {
@@ -508,8 +512,24 @@ func (pool *BlockPool) pickIncrAvailablePeer(height int64, excludePeerID p2p.ID)
 		if height < peer.base || height > peer.height {
 			continue
 		}
+
+		// If this is the preferExcludePeerID, save as fallback but continue looking
+		if peer.id == preferExcludePeerID {
+			if fallbackPeer == nil {
+				fallbackPeer = peer
+			}
+			continue
+		}
+
+		// Found a peer that's not the preferExcludePeerID - use it immediately
 		peer.incrPending()
 		return peer
+	}
+
+	// No preferred peer found, use fallback if available
+	if fallbackPeer != nil {
+		fallbackPeer.incrPending()
+		return fallbackPeer
 	}
 
 	return nil
@@ -800,13 +820,21 @@ func (bpr *bpRequester) pickPeerAndSendRequest() {
 	secondPeerID := bpr.secondPeerID
 	bpr.mtx.Unlock()
 
+	// Try to get the peer used for the previous height to promote diversity
+	var prevPeerID p2p.ID
+	bpr.pool.mtx.Lock()
+	if prevRequester := bpr.pool.requesters[bpr.height-1]; prevRequester != nil {
+		prevPeerID = prevRequester.gotBlockFromPeerID()
+	}
+	bpr.pool.mtx.Unlock()
+
 	var peer *bpPeer
 PICK_PEER_LOOP:
 	for {
 		if !bpr.IsRunning() || !bpr.pool.IsRunning() {
 			return
 		}
-		peer = bpr.pool.pickIncrAvailablePeer(bpr.height, secondPeerID)
+		peer = bpr.pool.pickIncrAvailablePeer(bpr.height, secondPeerID, prevPeerID)
 		if peer == nil {
 			bpr.Logger.Debug("No peers currently available; will retry shortly", "height", bpr.height)
 			time.Sleep(requestIntervalMS * time.Millisecond)
@@ -833,7 +861,8 @@ func (bpr *bpRequester) pickSecondPeerAndSendRequest() (picked bool) {
 	peerID := bpr.peerID
 	bpr.mtx.Unlock()
 
-	secondPeer := bpr.pool.pickIncrAvailablePeer(bpr.height, peerID)
+	// For second peer, we just exclude the first peer, no preference needed
+	secondPeer := bpr.pool.pickIncrAvailablePeer(bpr.height, peerID, "")
 	if secondPeer != nil {
 		bpr.mtx.Lock()
 		bpr.secondPeerID = secondPeer.id
