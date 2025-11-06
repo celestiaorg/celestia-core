@@ -12,7 +12,7 @@ import (
 )
 
 const (
-	DefaultMaxBlockSizeBytes = 128 * 1024 * 1024
+	DefaultMaxBlockSizeBytes = 128 * 1024 * 1024 * 10
 	// ReducedMaxBlockSizeBytes will be used when disabling the propagation reactor in emergency situations
 	ReducedMaxBlockSizeBytes = 8 * 1024 * 1024
 
