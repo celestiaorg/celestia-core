@@ -33,7 +33,7 @@ eg, L = latency = 0.1s
 
 const (
 	requestIntervalMS         = 2
-	maxPendingRequestsPerPeer = 2
+	maxPendingRequestsPerPeer = 20
 	requestRetrySeconds       = 45
 
 	// Minimum recv rate to ensure we're receiving blocks from a peer fast
@@ -144,7 +144,7 @@ func (pool *BlockPool) makeRequestersRoutine() {
 
 		pool.mtx.Lock()
 		var (
-			maxRequestersCreated = len(pool.requesters) >= pool.maxRequesters
+			maxRequestersCreated = len(pool.requesters) >= len(pool.peers)*maxPendingRequestsPerPeer
 
 			nextHeight           = pool.height + int64(len(pool.requesters))
 			maxPeerHeightReached = nextHeight > pool.maxPeerHeight
