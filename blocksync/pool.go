@@ -322,7 +322,7 @@ func (pool *BlockPool) RedoRequest(height int64) p2p.ID {
 func (pool *BlockPool) AddBlock(peerID p2p.ID, block *types.Block, extCommit *types.ExtendedCommit, blockSize int) error {
 	pool.mtx.Lock()
 	defer pool.mtx.Unlock()
-
+	fmt.Println("add block", peerID, block.Height)
 	if extCommit != nil && block.Height != extCommit.Height {
 		err := fmt.Errorf("block height %d != extCommit height %d", block.Height, extCommit.Height)
 		// Peer sent us an invalid block => remove it.
@@ -354,7 +354,7 @@ func (pool *BlockPool) AddBlock(peerID p2p.ID, block *types.Block, extCommit *ty
 			pool.Logger.Trace("Ignoring block from recently banned peer", "peer", peerID, "height", block.Height)
 			return nil
 		}
-		err := fmt.Errorf("requested block #%d from %v, not %s", block.Height, requester.requestedFrom(), peerID)
+		err := fmt.Errorf("requested block #%d from %v, not %s", block.Height, requester.active(), peerID)
 		pool.sendError(err, peerID)
 		return err
 	}
@@ -507,6 +507,7 @@ func (pool *BlockPool) pickIncrAvailablePeer(height int64, excludePeerID p2p.ID,
 			continue
 		}
 		if peer.numPending >= maxPendingRequestsPerPeer {
+			//pool.Logger.Debug("Peer at capacity", "peer", peer.id, "numPending", peer.numPending, "max", maxPendingRequestsPerPeer, "height", height)
 			continue
 		}
 		if height < peer.base || height > peer.height {
@@ -520,12 +521,28 @@ func (pool *BlockPool) pickIncrAvailablePeer(height int64, excludePeerID p2p.ID,
 			}
 			continue
 		}
-
+		//fmt.Println("take peer", peer.id, height, excludePeerID == "")
 		// Found a peer that's not the preferExcludePeerID - use it immediately
 		peer.incrPending()
 		return peer
 	}
 
+	//badHeight, goodHeight, good1Height := int64(-1), int64(-1), int64(-1)
+	//badPending, goodPending, good1Pending := int32(-1), int32(-1), int32(-1)
+	//if p := pool.peers["bad"]; p != nil {
+	//	badHeight = p.height
+	//	badPending = p.numPending
+	//}
+	//if p := pool.peers["good"]; p != nil {
+	//	goodHeight = p.height
+	//	goodPending = p.numPending
+	//}
+	//if p := pool.peers["good1"]; p != nil {
+	//	good1Height = p.height
+	//	good1Pending = p.numPending
+	//}
+	//fmt.Println("no peer available", pool.height, badHeight, goodHeight, good1Height)
+	//fmt.Println("pending", height, badPending, goodPending, good1Pending)
 	// No preferred peer found, use fallback if available
 	if fallbackPeer != nil {
 		fallbackPeer.incrPending()
@@ -681,12 +698,12 @@ func (peer *bpPeer) onTimeout() {
 type bpRequester struct {
 	service.BaseService
 
-	pool        *BlockPool
-	height      int64
-	gotBlockCh  chan struct{}
-	redoCh      chan p2p.ID // redo may got multiple messages, add peerId to identify repeat
-	newHeightCh chan int64
-	usedPeers   map[p2p.ID]struct{}
+	pool               *BlockPool
+	height             int64
+	gotBlockCh         chan struct{}
+	redoCh             chan p2p.ID // redo may got multiple messages, add peerId to identify repeat
+	activeRequests     map[p2p.ID]struct{}
+	requestedFromPeers map[p2p.ID]struct{}
 
 	mtx          cmtsync.Mutex
 	peerID       p2p.ID
@@ -698,12 +715,13 @@ type bpRequester struct {
 
 func newBPRequester(pool *BlockPool, height int64) *bpRequester {
 	bpr := &bpRequester{
-		pool:        pool,
-		height:      height,
-		gotBlockCh:  make(chan struct{}, 1),
-		redoCh:      make(chan p2p.ID, 1),
-		newHeightCh: make(chan int64, 1),
-		usedPeers:   make(map[p2p.ID]struct{}),
+		pool:       pool,
+		height:     height,
+		gotBlockCh: make(chan struct{}, 1),
+		redoCh:     make(chan p2p.ID, 1),
+		//newHeightCh:        make(chan int64, 1),
+		activeRequests:     make(map[p2p.ID]struct{}),
+		requestedFromPeers: make(map[p2p.ID]struct{}),
 
 		peerID:       "",
 		secondPeerID: "",
@@ -723,8 +741,10 @@ func (bpr *bpRequester) setBlock(block *types.Block, extCommit *types.ExtendedCo
 	bpr.mtx.Lock()
 	if !bpr.isRequestedFromPeer(peerID) {
 		bpr.mtx.Unlock()
+		fmt.Println("setBlock false", peerID, block.Height)
 		return false
 	}
+	delete(bpr.activeRequests, peerID)
 	if bpr.block != nil {
 		bpr.mtx.Unlock()
 		return true // getting a block from both peers is not an error
@@ -733,6 +753,7 @@ func (bpr *bpRequester) setBlock(block *types.Block, extCommit *types.ExtendedCo
 	bpr.block = block
 	bpr.extCommit = extCommit
 	bpr.gotBlockFrom = peerID
+	fmt.Println("setBlock true", peerID, block.Height)
 	bpr.mtx.Unlock()
 
 	select {
@@ -755,15 +776,12 @@ func (bpr *bpRequester) getExtendedCommit() *types.ExtendedCommit {
 }
 
 // Returns the IDs of peers we've requested a block from.
-func (bpr *bpRequester) requestedFrom() []p2p.ID {
+func (bpr *bpRequester) active() []p2p.ID {
 	bpr.mtx.Lock()
 	defer bpr.mtx.Unlock()
-	peerIDs := make([]p2p.ID, 0, 2)
-	if bpr.peerID != "" {
-		peerIDs = append(peerIDs, bpr.peerID)
-	}
-	if bpr.secondPeerID != "" {
-		peerIDs = append(peerIDs, bpr.secondPeerID)
+	peerIDs := make([]p2p.ID, 0, len(bpr.activeRequests))
+	for peerID := range bpr.activeRequests {
+		peerIDs = append(peerIDs, peerID)
 	}
 	return peerIDs
 }
@@ -772,7 +790,8 @@ func (bpr *bpRequester) requestedFrom() []p2p.ID {
 func (bpr *bpRequester) didRequestFrom(peerID p2p.ID) bool {
 	bpr.mtx.Lock()
 	defer bpr.mtx.Unlock()
-	return bpr.peerID == peerID || bpr.secondPeerID == peerID
+	_, ok := bpr.requestedFromPeers[peerID]
+	return ok
 }
 
 // Returns the ID of the peer who sent us the block.
@@ -782,26 +801,32 @@ func (bpr *bpRequester) gotBlockFromPeerID() p2p.ID {
 	return bpr.gotBlockFrom
 }
 
+func (bpr *bpRequester) resetAll() {
+	bpr.mtx.Lock()
+	defer bpr.mtx.Unlock()
+	for peerID := range bpr.activeRequests {
+		bpr.tryRemoveBlock(peerID)
+		delete(bpr.activeRequests, peerID)
+	}
+}
+
+func (bpr *bpRequester) tryRemoveBlock(peerID p2p.ID) bool {
+	if bpr.gotBlockFrom == peerID {
+		bpr.block = nil
+		bpr.extCommit = nil
+		bpr.gotBlockFrom = ""
+		return true
+	}
+	return false
+}
+
 // Removes the block (IF we got it from the given peer) and resets the peer.
 func (bpr *bpRequester) reset(peerID p2p.ID) (removedBlock bool) {
 	bpr.mtx.Lock()
 	defer bpr.mtx.Unlock()
 
-	// Only remove the block if we got it from that peer.
-	if bpr.gotBlockFrom == peerID {
-		bpr.block = nil
-		bpr.extCommit = nil
-		bpr.gotBlockFrom = ""
-		removedBlock = true
-		atomic.AddInt32(&bpr.pool.numPending, 1)
-	}
-
-	if bpr.peerID == peerID {
-		bpr.peerID = ""
-	} else {
-		bpr.secondPeerID = ""
-	}
-	bpr.usedPeers[peerID] = struct{}{}
+	removedBlock = bpr.tryRemoveBlock(peerID)
+	delete(bpr.activeRequests, peerID)
 	return removedBlock
 }
 
@@ -816,10 +841,6 @@ func (bpr *bpRequester) redo(peerID p2p.ID) {
 }
 
 func (bpr *bpRequester) pickPeerAndSendRequest() {
-	bpr.mtx.Lock()
-	secondPeerID := bpr.secondPeerID
-	bpr.mtx.Unlock()
-
 	// Try to get the peer used for the previous height to promote diversity
 	var prevPeerID p2p.ID
 	bpr.pool.mtx.Lock()
@@ -828,13 +849,25 @@ func (bpr *bpRequester) pickPeerAndSendRequest() {
 	}
 	bpr.pool.mtx.Unlock()
 
+	bpr.mtx.Lock()
+	if len(bpr.activeRequests) == 2 {
+		bpr.mtx.Unlock()
+		return
+	}
+	var activePeer p2p.ID
+	for peerID := range bpr.activeRequests {
+		activePeer = peerID
+		break
+	}
+	bpr.mtx.Unlock()
+
 	var peer *bpPeer
 PICK_PEER_LOOP:
 	for {
 		if !bpr.IsRunning() || !bpr.pool.IsRunning() {
 			return
 		}
-		peer = bpr.pool.pickIncrAvailablePeer(bpr.height, secondPeerID, prevPeerID)
+		peer = bpr.pool.pickIncrAvailablePeer(bpr.height, activePeer, prevPeerID)
 		if peer == nil {
 			bpr.Logger.Debug("No peers currently available; will retry shortly", "height", bpr.height)
 			time.Sleep(requestIntervalMS * time.Millisecond)
@@ -843,50 +876,25 @@ PICK_PEER_LOOP:
 		break PICK_PEER_LOOP
 	}
 	bpr.mtx.Lock()
-	bpr.peerID = peer.id
+	if len(bpr.activeRequests) == 2 {
+		bpr.mtx.Unlock()
+		return
+	}
+	bpr.activeRequests[peer.id] = struct{}{}
+	bpr.requestedFromPeers[peer.id] = struct{}{}
 	bpr.mtx.Unlock()
 
 	schema.WriteBlocksyncBlockRequested(bpr.pool.traceClient, bpr.height, string(peer.id), false)
 	bpr.pool.sendRequest(bpr.height, peer.id)
 }
 
-// Picks a second peer and sends a request to it. If the second peer is already
-// set, does nothing.
-func (bpr *bpRequester) pickSecondPeerAndSendRequest() (picked bool) {
-	bpr.mtx.Lock()
-	if bpr.secondPeerID != "" {
-		bpr.mtx.Unlock()
-		return false
-	}
-	peerID := bpr.peerID
-	bpr.mtx.Unlock()
-
-	// For second peer, we just exclude the first peer, no preference needed
-	secondPeer := bpr.pool.pickIncrAvailablePeer(bpr.height, peerID, "")
-	if secondPeer != nil {
-		bpr.mtx.Lock()
-		bpr.secondPeerID = secondPeer.id
-		bpr.mtx.Unlock()
-
-		schema.WriteBlocksyncBlockRequested(bpr.pool.traceClient, bpr.height, string(secondPeer.id), true)
-		bpr.pool.sendRequest(bpr.height, secondPeer.id)
-		return true
-	}
-
-	return false
-}
-
 // Informs the requester of a new pool's height.
 func (bpr *bpRequester) newHeight(height int64) {
-	select {
-	case bpr.newHeightCh <- height:
-	default:
-	}
 }
 
 func (bpr *bpRequester) isRequestedFromPeer(id p2p.ID) bool {
-	_, ok := bpr.usedPeers[id]
-	return ok || bpr.peerID == id || bpr.secondPeerID == id
+	_, ok := bpr.requestedFromPeers[id]
+	return ok
 }
 
 // Responsible for making more requests as necessary
@@ -897,8 +905,6 @@ func (bpr *bpRequester) requestRoutine() {
 OUTER_LOOP:
 	for {
 		bpr.pickPeerAndSendRequest()
-
-		poolHeight := bpr.pool.Height()
 		retryTimer := time.NewTimer(requestRetrySeconds * time.Second)
 		defer retryTimer.Stop()
 		secondPeerTimer := time.NewTimer(10 * time.Second)
@@ -914,41 +920,27 @@ OUTER_LOOP:
 			case <-bpr.Quit():
 				return
 			case <-secondPeerTimer.C:
-				if bpr.height-poolHeight < minBlocksForSingleRequest {
-					bpr.pickSecondPeerAndSendRequest()
-				}
+				bpr.pickPeerAndSendRequest()
 			case <-retryTimer.C:
 				if !gotBlock {
 					bpr.Logger.Debug("Retrying block request(s) after timeout", "height", bpr.height, "peer", bpr.peerID, "secondPeerID", bpr.secondPeerID)
-					bpr.reset(bpr.peerID)
-					bpr.reset(bpr.secondPeerID)
+					bpr.resetAll()
 					continue OUTER_LOOP
 				}
 			case peerID := <-bpr.redoCh:
-				if bpr.didRequestFrom(peerID) {
-					removedBlock := bpr.reset(peerID)
-					if removedBlock {
-						gotBlock = false
-					}
+				//if bpr.didRequestFrom(peerID) {
+				removedBlock := bpr.reset(peerID)
+				if removedBlock {
+					fmt.Println("remove block", peerID, bpr.height, len(bpr.active()), bpr.peerID, bpr.secondPeerID)
+					gotBlock = false
 				}
+				//}
 				// If both peers returned NoBlockResponse or bad block, reschedule both
 				// requests. If not, wait for the other peer.
-				if len(bpr.requestedFrom()) == 0 {
+				if len(bpr.active()) == 0 {
+					fmt.Println("requested from peer", peerID, bpr.height)
 					retryTimer.Stop()
 					continue OUTER_LOOP
-				}
-			case newHeight := <-bpr.newHeightCh:
-				if !gotBlock && bpr.height-newHeight < minBlocksForSingleRequest {
-					// The operation is a noop if the second peer is already set. The cost is checking a mutex.
-					//
-					// If the second peer was just set, reset the retryTimer to give the
-					// second peer a chance to respond.
-					if picked := bpr.pickSecondPeerAndSendRequest(); picked {
-						if !retryTimer.Stop() {
-							<-retryTimer.C
-						}
-						retryTimer.Reset(requestRetrySeconds * time.Second)
-					}
 				}
 			case <-bpr.gotBlockCh:
 				gotBlock = true

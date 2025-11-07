@@ -62,6 +62,7 @@ func (p testPeer) simulateInput(input inputData) {
 			block.LastCommit = nil // Fake block, no LastCommit
 			// or provide no block at all, if we are close to the real height
 			if input.request.Height <= realHeight+BlackholeSize {
+				fmt.Println("redo request", p.id, input.request.Height)
 				input.pool.RedoRequestFrom(input.request.Height, p.id)
 				return
 			}
@@ -330,7 +331,8 @@ func TestBlockPoolMaliciousNode(t *testing.T) {
 				return
 			case <-ticker.C:
 				for _, peer := range peers {
-					peer.height++                                      // Network height increases on all peers
+					peer.height++ // Network height increases on all peers
+					fmt.Println("height", peer.id, peer.height)
 					pool.SetPeerRange(peer.id, peer.base, peer.height) // Tell the pool that a new height is available
 				}
 			}
@@ -351,8 +353,10 @@ func TestBlockPoolMaliciousNode(t *testing.T) {
 					if second.LastCommit == nil {
 						// Second block is fake
 						pool.RemovePeerAndRedoAllPeerRequests(second.Height)
+						fmt.Println("redo", pool.height)
 					} else {
 						pool.PopRequest()
+						fmt.Println("pop", pool.height)
 					}
 				}
 			}
@@ -371,6 +375,7 @@ func TestBlockPoolMaliciousNode(t *testing.T) {
 		case err := <-errorsCh:
 			t.Error(err)
 		case request := <-requestsCh:
+			fmt.Println("request", request.Height, request.PeerID)
 			// Process request
 			peers[request.PeerID].inputChan <- inputData{t, pool, request}
 		case <-testTicker.C:
