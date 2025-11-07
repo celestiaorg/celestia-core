@@ -10,6 +10,7 @@ import (
 	"runtime/debug"
 	"sort"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/cometbft/cometbft/privval"
@@ -145,9 +146,10 @@ type State struct {
 	nSteps int
 
 	// some functions can be overwritten for testing
-	decideProposal func(height int64, round int32)
-	doPrevote      func(height int64, round int32)
-	setProposal    func(proposal *types.Proposal) error
+	decideProposal        func(height int64, round int32)
+	doPrevote             func(height int64, round int32)
+	setProposal           func(proposal *types.Proposal) error
+	StartedPrecommitSleep atomic.Bool
 
 	// closed when we finish shutting down
 	done chan struct{}
@@ -1312,7 +1314,7 @@ func (cs *State) enterPropose(height int64, round int32) {
 
 	// if not a validator, we're done
 	if !cs.rs.Validators.HasAddress(address) {
-		logger.Debug("node is not a validator", "addr", address, "vals", cs.rs.Validators)
+		logger.Trace("node is not a validator", "addr", address, "vals", cs.rs.Validators)
 		return
 	}
 
@@ -1627,9 +1629,22 @@ func (cs *State) enterPrecommit(height int64, round int32) {
 		return
 	}
 
-	if ready, waitTime := cs.isReadyToPrecommit(); !ready {
-		logger.Debug("rescheduling precommit", "delay(ms)", waitTime.Milliseconds())
-		cs.scheduleTimeout(waitTime, height, round, cstypes.RoundStepPrevoteWait)
+	if cs.StartedPrecommitSleep.CompareAndSwap(false, true) {
+		waitTime := cs.precommitDelay()
+		logger.Debug("delaying precommit", "delay", waitTime)
+		cs.unlockAll()
+		t := time.NewTimer(waitTime)
+		select {
+		case <-cs.Quit():
+			cs.lockAll()
+			return
+		case <-t.C:
+		}
+		cs.lockAll()
+		cs.StartedPrecommitSleep.Store(false)
+	} else {
+		logger.Debug("already entered precommit delay")
+		// if any other routine tries to enter precommit, we just return
 		return
 	}
 
@@ -2110,20 +2125,20 @@ func (cs *State) recordMetrics(height int64, block *types.Block) {
 // KMSSigningDelay is a constant representing a delay used primarily to adjust for KMS signing latencies.
 const KMSSigningDelay = 200 * time.Millisecond
 
-// isReadyToPrecommit calculates if the process has waited at least a certain number of seconds
+// precommitDelay calculates if the process has waited at least a certain number of seconds
 // from their start time before they can vote
 // If the application's DelayedPrecommitTimeout is set to 0, no precommit wait is done.
-func (cs *State) isReadyToPrecommit() (bool, time.Duration) {
+func (cs *State) precommitDelay() time.Duration {
 	if cs.state.Timeouts.DelayedPrecommitTimeout == 0 {
 		// setting 0 as a special case not to reschedule the pre-commit
-		return true, 0
+		return 0
 	}
 	precommitVoteTime := cs.rs.StartTime.Add(cs.state.Timeouts.DelayedPrecommitTimeout)
 	waitTime := time.Until(precommitVoteTime)
 	if _, ok := cs.privValidator.(*privval.SignerClient); ok {
 		waitTime = waitTime - KMSSigningDelay
 	}
-	return waitTime <= 0, waitTime
+	return waitTime
 }
 
 //-----------------------------------------------------------------------------
