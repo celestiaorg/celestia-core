@@ -322,7 +322,6 @@ func (pool *BlockPool) RedoRequest(height int64) p2p.ID {
 func (pool *BlockPool) AddBlock(peerID p2p.ID, block *types.Block, extCommit *types.ExtendedCommit, blockSize int) error {
 	pool.mtx.Lock()
 	defer pool.mtx.Unlock()
-	fmt.Println("add block", peerID, block.Height)
 	if extCommit != nil && block.Height != extCommit.Height {
 		err := fmt.Errorf("block height %d != extCommit height %d", block.Height, extCommit.Height)
 		// Peer sent us an invalid block => remove it.
@@ -741,7 +740,6 @@ func (bpr *bpRequester) setBlock(block *types.Block, extCommit *types.ExtendedCo
 	bpr.mtx.Lock()
 	if !bpr.isRequestedFromPeer(peerID) {
 		bpr.mtx.Unlock()
-		fmt.Println("setBlock false", peerID, block.Height)
 		return false
 	}
 	delete(bpr.activeRequests, peerID)
@@ -753,7 +751,6 @@ func (bpr *bpRequester) setBlock(block *types.Block, extCommit *types.ExtendedCo
 	bpr.block = block
 	bpr.extCommit = extCommit
 	bpr.gotBlockFrom = peerID
-	fmt.Println("setBlock true", peerID, block.Height)
 	bpr.mtx.Unlock()
 
 	select {
@@ -931,14 +928,12 @@ OUTER_LOOP:
 				//if bpr.didRequestFrom(peerID) {
 				removedBlock := bpr.reset(peerID)
 				if removedBlock {
-					fmt.Println("remove block", peerID, bpr.height, len(bpr.active()), bpr.peerID, bpr.secondPeerID)
 					gotBlock = false
 				}
 				//}
 				// If both peers returned NoBlockResponse or bad block, reschedule both
 				// requests. If not, wait for the other peer.
 				if len(bpr.active()) == 0 {
-					fmt.Println("requested from peer", peerID, bpr.height)
 					retryTimer.Stop()
 					continue OUTER_LOOP
 				}
