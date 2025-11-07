@@ -397,6 +397,7 @@ cache_size = {{ .Mempool.CacheSize }}
 # Do not remove invalid transactions from the cache (default: false)
 # Set to true if it's not possible for any invalid transaction to become valid
 # again in the future.
+# DEPRECATED: keep-invalid-txs-in-cache is deprecated and will be removed in a future version.
 keep-invalid-txs-in-cache = {{ .Mempool.KeepInvalidTxsInCache }}
 
 # Maximum size of a single transaction.
