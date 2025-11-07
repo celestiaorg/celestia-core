@@ -506,7 +506,7 @@ func (pool *BlockPool) pickIncrAvailablePeer(height int64, excludePeerID p2p.ID,
 			continue
 		}
 		if peer.numPending >= maxPendingRequestsPerPeer {
-			//pool.Logger.Debug("Peer at capacity", "peer", peer.id, "numPending", peer.numPending, "max", maxPendingRequestsPerPeer, "height", height)
+			pool.Logger.Debug("Peer at capacity", "peer", peer.id, "numPending", peer.numPending, "max", maxPendingRequestsPerPeer, "height", height)
 			continue
 		}
 		if height < peer.base || height > peer.height {
@@ -520,29 +520,10 @@ func (pool *BlockPool) pickIncrAvailablePeer(height int64, excludePeerID p2p.ID,
 			}
 			continue
 		}
-		//fmt.Println("take peer", peer.id, height, excludePeerID == "")
-		// Found a peer that's not the preferExcludePeerID - use it immediately
 		peer.incrPending()
 		return peer
 	}
 
-	//badHeight, goodHeight, good1Height := int64(-1), int64(-1), int64(-1)
-	//badPending, goodPending, good1Pending := int32(-1), int32(-1), int32(-1)
-	//if p := pool.peers["bad"]; p != nil {
-	//	badHeight = p.height
-	//	badPending = p.numPending
-	//}
-	//if p := pool.peers["good"]; p != nil {
-	//	goodHeight = p.height
-	//	goodPending = p.numPending
-	//}
-	//if p := pool.peers["good1"]; p != nil {
-	//	good1Height = p.height
-	//	good1Pending = p.numPending
-	//}
-	//fmt.Println("no peer available", pool.height, badHeight, goodHeight, good1Height)
-	//fmt.Println("pending", height, badPending, goodPending, good1Pending)
-	// No preferred peer found, use fallback if available
 	if fallbackPeer != nil {
 		fallbackPeer.incrPending()
 		return fallbackPeer
@@ -879,9 +860,10 @@ PICK_PEER_LOOP:
 	}
 	bpr.activeRequests[peer.id] = struct{}{}
 	bpr.requestedFromPeers[peer.id] = struct{}{}
+	lenReqs := len(bpr.activeRequests)
 	bpr.mtx.Unlock()
 
-	schema.WriteBlocksyncBlockRequested(bpr.pool.traceClient, bpr.height, string(peer.id), false)
+	schema.WriteBlocksyncBlockRequested(bpr.pool.traceClient, bpr.height, string(peer.id), lenReqs == 2)
 	bpr.pool.sendRequest(bpr.height, peer.id)
 }
 
