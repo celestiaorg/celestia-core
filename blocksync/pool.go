@@ -38,7 +38,7 @@ const (
 	// Border values for dynamic retry timer calculation
 	// Small blocks (1 KB) retry after 5 seconds
 	// Large blocks (20 MB+) retry after 60 seconds
-	minBlockSizeBytes = 1024         // 1 KB
+	minBlockSizeBytes = 1024             // 1 KB
 	maxBlockSizeBytes = 20 * 1024 * 1024 // 20 MB
 	minRetrySeconds   = 5
 	maxRetrySeconds   = 60
@@ -77,7 +77,10 @@ const (
 	minBlocksForSingleRequest = 10
 
 	// Default maximum number of concurrent block requesters
-	defaultMaxRequesters = 20
+	defaultMaxRequesters = 100
+
+	// Maximum memory to use for pending block requests (2.2 GB)
+	maxMemoryForRequesters = 2.2 * 1024 * 1024 * 1024 // 2.2 GB in bytes
 )
 
 var peerTimeout = 120 * time.Second // not const so we can override with tests
@@ -170,8 +173,53 @@ func (pool *BlockPool) makeRequestersRoutine() {
 
 		pool.mtx.Lock()
 		maxPending := pool.getMaxPendingPerPeer()
+
+		// Calculate max requesters using min of:
+		// 1. Peer-based limit: numPeers * maxPending
+		// 2. Memory-based limit: maxMem / avgBlockSize
+		// 3. Absolute cap: maxRequesters
+		peerBasedLimit := len(pool.peers) * maxPending
+		avgBlockSize := pool.blockSizeBuffer.GetAverage()
+		memoryBasedLimit := pool.maxRequesters
+		if avgBlockSize > 0 {
+			memoryBasedLimit = int(maxMemoryForRequesters / avgBlockSize)
+		}
+
+		maxRequestersAllowed := min(peerBasedLimit, memoryBasedLimit, pool.maxRequesters)
+
+		// Drop excess requesters if we exceed the limit
+		numRequesters := len(pool.requesters)
+		if numRequesters > maxRequestersAllowed {
+			// Find the highest height requesters to drop (they're furthest from completion)
+			heights := make([]int64, 0, numRequesters)
+			for height := range pool.requesters {
+				heights = append(heights, height)
+			}
+			sort.Slice(heights, func(i, j int) bool {
+				return heights[i] > heights[j] // sort descending
+			})
+
+			// Drop requesters from highest to lowest until we're at the limit
+			numToDrop := numRequesters - maxRequestersAllowed
+			pool.Logger.Info("Dropping excess requesters due to maxPending change",
+				"numRequesters", numRequesters,
+				"maxAllowed", maxRequestersAllowed,
+				"dropping", numToDrop,
+				"maxPending", maxPending)
+
+			for i := 0; i < numToDrop && i < len(heights); i++ {
+				height := heights[i]
+				if requester, ok := pool.requesters[height]; ok {
+					if err := requester.Stop(); err != nil {
+						pool.Logger.Error("Error stopping requester", "height", height, "err", err)
+					}
+					delete(pool.requesters, height)
+				}
+			}
+		}
+
 		var (
-			maxRequestersCreated = len(pool.requesters) >= len(pool.peers)*maxPending
+			maxRequestersCreated = len(pool.requesters) >= maxRequestersAllowed
 
 			nextHeight           = pool.height + int64(len(pool.requesters))
 			maxPeerHeightReached = nextHeight > pool.maxPeerHeight
@@ -312,6 +360,10 @@ func (pool *BlockPool) RemovePeerAndRedoAllPeerRequests(height int64) p2p.ID {
 	defer pool.mtx.Unlock()
 
 	request := pool.requesters[height]
+	if request == nil {
+		// Requester was already removed (e.g., by cleanup)
+		return ""
+	}
 	peerID := request.gotBlockFromPeerID()
 	// RemovePeer will redo all requesters associated with this peer.
 	pool.removePeer(peerID)
@@ -400,12 +452,23 @@ func (pool *BlockPool) AddBlock(peerID p2p.ID, block *types.Block, extCommit *ty
 		maxPending := pool.getMaxPendingPerPeer()
 		avgBlockSize := pool.blockSizeBuffer.GetAverage()
 		numRequesters := len(pool.requesters)
+		numPeers := len(pool.peers)
+
+		// Calculate limits to show in log
+		peerBasedLimit := numPeers * maxPending
+		memoryBasedLimit := int(maxMemoryForRequesters / avgBlockSize)
+		effectiveLimit := min(peerBasedLimit, memoryBasedLimit, pool.maxRequesters)
+
 		pool.Logger.Info("Block added, current maxPending",
 			"height", block.Height,
 			"blockSize", fmt.Sprintf("%.2f KB", float64(blockSize)/1024),
 			"avgBlockSize", fmt.Sprintf("%.2f KB", avgBlockSize/1024),
 			"maxPending", maxPending,
 			"numRequesters", numRequesters,
+			"numPeers", numPeers,
+			"peerLimit", peerBasedLimit,
+			"memLimit", memoryBasedLimit,
+			"effectiveLimit", effectiveLimit,
 			"samples", pool.blockSizeBuffer.Size())
 	}
 
