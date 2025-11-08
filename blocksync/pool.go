@@ -32,9 +32,30 @@ eg, L = latency = 0.1s
 */
 
 const (
-	requestIntervalMS         = 2
-	maxPendingRequestsPerPeer = 20
-	requestRetrySeconds       = 45
+	requestIntervalMS   = 2
+	requestRetrySeconds = 45 // deprecated: now calculated dynamically based on block size
+
+	// Border values for dynamic retry timer calculation
+	// Small blocks (1 KB) retry after 5 seconds
+	// Large blocks (256 MB) retry after 60 seconds
+	minBlockSizeBytes = 1024              // 1 KB
+	maxBlockSizeBytes = 256 * 1024 * 1024 // 256 MB
+	minRetrySeconds   = 5
+	maxRetrySeconds   = 60
+
+	// Border values for dynamic maxPendingRequestsPerPeer
+	// Small blocks can have more concurrent requests
+	// Large blocks should have fewer to avoid bandwidth saturation
+	maxPendingForSmallBlocks = 40
+	maxPendingForLargeBlocks = 2
+
+	// Number of block sizes to track for averaging
+	blockSizeBufferCapacity = 70
+
+	// Minimum samples before using dynamic values
+	minSamplesForDynamic = 5
+
+	maxPendingRequestsPerPeer = 20 // deprecated: now calculated dynamically
 
 	// Minimum recv rate to ensure we're receiving blocks from a peer fast
 	// enough. If a peer is not sending us data at at least that rate, we
@@ -97,6 +118,9 @@ type BlockPool struct {
 	errorsCh   chan<- peerError
 
 	traceClient trace.Tracer
+
+	// Track average block size for dynamic timeout and pending calculations
+	blockSizeBuffer *RotatingBuffer
 }
 
 // NewBlockPool returns a new BlockPool with the height equal to start. Block
@@ -114,6 +138,8 @@ func NewBlockPool(start int64, maxRequesters int, requestsCh chan<- BlockRequest
 		requestsCh:  requestsCh,
 		errorsCh:    errorsCh,
 		traceClient: traceClient,
+
+		blockSizeBuffer: NewRotatingBuffer(blockSizeBufferCapacity),
 	}
 	bp.BaseService = *service.NewBaseService(nil, "BlockPool", bp)
 	return bp
@@ -143,8 +169,9 @@ func (pool *BlockPool) makeRequestersRoutine() {
 		}
 
 		pool.mtx.Lock()
+		maxPending := pool.getMaxPendingPerPeer()
 		var (
-			maxRequestersCreated = len(pool.requesters) >= len(pool.peers)*maxPendingRequestsPerPeer
+			maxRequestersCreated = len(pool.requesters) >= len(pool.peers)*maxPending
 
 			nextHeight           = pool.height + int64(len(pool.requesters))
 			maxPeerHeightReached = nextHeight > pool.maxPeerHeight
@@ -345,7 +372,8 @@ func (pool *BlockPool) AddBlock(peerID p2p.ID, block *types.Block, extCommit *ty
 		return fmt.Errorf("got an already committed block #%d (possibly from the slow peer %s)", block.Height, peerID)
 	}
 
-	if !requester.setBlock(block, extCommit, peerID) {
+	blockSet, err := requester.setBlock(block, extCommit, peerID)
+	if err != nil {
 		// Check if this peer was recently banned. If so, this is likely a race condition
 		// where the block arrived after the peer was banned and reset from the requester.
 		// This is not an error, just a timing issue.
@@ -353,7 +381,7 @@ func (pool *BlockPool) AddBlock(peerID p2p.ID, block *types.Block, extCommit *ty
 			pool.Logger.Trace("Ignoring block from recently banned peer", "peer", peerID, "height", block.Height)
 			return nil
 		}
-		err := fmt.Errorf("requested block #%d from %v, not %s", block.Height, requester.active(), peerID)
+		err := fmt.Errorf("requested block #%d from %v, not %s, %w", block.Height, requester.active(), peerID, err)
 		pool.sendError(err, peerID)
 		return err
 	}
@@ -362,6 +390,11 @@ func (pool *BlockPool) AddBlock(peerID p2p.ID, block *types.Block, extCommit *ty
 	peer := pool.peers[peerID]
 	if peer != nil {
 		peer.decrPending(blockSize)
+	}
+
+	if blockSet {
+		// Track block size for dynamic timeout and pending calculations
+		pool.blockSizeBuffer.Add(float64(blockSize))
 	}
 
 	return nil
@@ -487,6 +520,96 @@ func (pool *BlockPool) banPeer(peerID p2p.ID) {
 	pool.bannedPeers[peerID] = cmttime.Now()
 }
 
+// getRetryTimeout calculates dynamic retry timeout based on average block size.
+// Uses exponential curve: small blocks retry faster, large blocks retry slower.
+// Returns value between minRetrySeconds and maxRetrySeconds.
+func (pool *BlockPool) getRetryTimeout() time.Duration {
+	// Use default if we don't have enough samples
+	if pool.blockSizeBuffer.Size() < minSamplesForDynamic {
+		pool.Logger.Debug("Using default retry timeout, not enough samples",
+			"samples", pool.blockSizeBuffer.Size(),
+			"minRequired", minSamplesForDynamic,
+			"defaultRetry", requestRetrySeconds)
+		return requestRetrySeconds * time.Second
+	}
+
+	avgBlockSize := pool.blockSizeBuffer.GetAverage()
+
+	// Clamp to min/max bounds
+	if avgBlockSize <= minBlockSizeBytes {
+		pool.Logger.Info("Dynamic retry timeout (min bound)",
+			"avgBlockSize", fmt.Sprintf("%.2f KB", avgBlockSize/1024),
+			"retrySeconds", minRetrySeconds)
+		return minRetrySeconds * time.Second
+	}
+	if avgBlockSize >= maxBlockSizeBytes {
+		pool.Logger.Info("Dynamic retry timeout (max bound)",
+			"avgBlockSize", fmt.Sprintf("%.2f MB", avgBlockSize/1024/1024),
+			"retrySeconds", maxRetrySeconds)
+		return maxRetrySeconds * time.Second
+	}
+
+	// Calculate normalized position [0, 1] in the range
+	normalized := (avgBlockSize - minBlockSizeBytes) / (maxBlockSizeBytes - minBlockSizeBytes)
+
+	// Apply exponential curve for smoother scaling
+	curve := math.Pow(normalized, 2)
+
+	// Calculate retry seconds
+	retrySeconds := minRetrySeconds + (maxRetrySeconds-minRetrySeconds)*curve
+
+	pool.Logger.Info("Dynamic retry timeout calculated",
+		"avgBlockSize", fmt.Sprintf("%.2f KB", avgBlockSize/1024),
+		"retrySeconds", fmt.Sprintf("%.2f", retrySeconds),
+		"samples", pool.blockSizeBuffer.Size())
+
+	return time.Duration(retrySeconds * float64(time.Second))
+}
+
+// getMaxPendingPerPeer calculates dynamic max pending requests based on average block size.
+// Uses inverse linear relationship: small blocks allow more concurrent requests,
+// large blocks allow fewer to avoid bandwidth saturation.
+// Returns value between maxPendingForLargeBlocks and maxPendingForSmallBlocks.
+func (pool *BlockPool) getMaxPendingPerPeer() int {
+	// Use default if we don't have enough samples
+	if pool.blockSizeBuffer.Size() < minSamplesForDynamic {
+		pool.Logger.Debug("Using default maxPending, not enough samples",
+			"samples", pool.blockSizeBuffer.Size(),
+			"minRequired", minSamplesForDynamic,
+			"defaultMaxPending", maxPendingRequestsPerPeer)
+		return maxPendingRequestsPerPeer
+	}
+
+	avgBlockSize := pool.blockSizeBuffer.GetAverage()
+
+	// Clamp to min/max bounds
+	if avgBlockSize <= minBlockSizeBytes {
+		pool.Logger.Info("Dynamic maxPending (small blocks)",
+			"avgBlockSize", fmt.Sprintf("%.2f KB", avgBlockSize/1024),
+			"maxPending", maxPendingForSmallBlocks)
+		return maxPendingForSmallBlocks
+	}
+	if avgBlockSize >= maxBlockSizeBytes {
+		pool.Logger.Info("Dynamic maxPending (large blocks)",
+			"avgBlockSize", fmt.Sprintf("%.2f MB", avgBlockSize/1024/1024),
+			"maxPending", maxPendingForLargeBlocks)
+		return maxPendingForLargeBlocks
+	}
+
+	// Calculate normalized position [0, 1] in the range
+	normalized := (avgBlockSize - minBlockSizeBytes) / (maxBlockSizeBytes - minBlockSizeBytes)
+
+	// Inverse linear: as block size increases, max pending decreases
+	maxPending := maxPendingForSmallBlocks - int((maxPendingForSmallBlocks-maxPendingForLargeBlocks)*normalized)
+
+	pool.Logger.Info("Dynamic maxPending calculated",
+		"avgBlockSize", fmt.Sprintf("%.2f KB", avgBlockSize/1024),
+		"maxPending", maxPending,
+		"samples", pool.blockSizeBuffer.Size())
+
+	return maxPending
+}
+
 // Pick an available peer with the given height available.
 // If no peers are available, returns nil.
 // preferExcludePeerID is a peer to avoid if possible (e.g., peer used for previous height).
@@ -495,6 +618,7 @@ func (pool *BlockPool) pickIncrAvailablePeer(height int64, excludePeerID p2p.ID,
 	pool.mtx.Lock()
 	defer pool.mtx.Unlock()
 
+	maxPending := pool.getMaxPendingPerPeer()
 	var fallbackPeer *bpPeer // Peer that matches all criteria except preferExcludePeerID
 
 	for _, peer := range pool.sortedPeers {
@@ -505,8 +629,8 @@ func (pool *BlockPool) pickIncrAvailablePeer(height int64, excludePeerID p2p.ID,
 			pool.removePeer(peer.id)
 			continue
 		}
-		if peer.numPending >= maxPendingRequestsPerPeer {
-			pool.Logger.Debug("Peer at capacity", "peer", peer.id, "numPending", peer.numPending, "max", maxPendingRequestsPerPeer, "height", height)
+		if peer.numPending >= int32(maxPending) {
+			pool.Logger.Debug("Peer at capacity", "peer", peer.id, "numPending", peer.numPending, "max", maxPending, "height", height)
 			continue
 		}
 		if height < peer.base || height > peer.height {
@@ -717,16 +841,16 @@ func (bpr *bpRequester) OnStart() error {
 }
 
 // Returns true if the peer(s) match and block doesn't already exist.
-func (bpr *bpRequester) setBlock(block *types.Block, extCommit *types.ExtendedCommit, peerID p2p.ID) bool {
+func (bpr *bpRequester) setBlock(block *types.Block, extCommit *types.ExtendedCommit, peerID p2p.ID) (bool, error) {
 	bpr.mtx.Lock()
 	if !bpr.isRequestedFromPeer(peerID) {
 		bpr.mtx.Unlock()
-		return false
+		return false, fmt.Errorf("block not requested from peer")
 	}
 	delete(bpr.activeRequests, peerID)
 	if bpr.block != nil {
 		bpr.mtx.Unlock()
-		return true // getting a block from both peers is not an error
+		return false, nil // getting a block from both peers is not an error
 	}
 
 	bpr.block = block
@@ -738,7 +862,7 @@ func (bpr *bpRequester) setBlock(block *types.Block, extCommit *types.ExtendedCo
 	case bpr.gotBlockCh <- struct{}{}:
 	default:
 	}
-	return true
+	return true, nil
 }
 
 func (bpr *bpRequester) getBlock() *types.Block {
@@ -884,10 +1008,9 @@ func (bpr *bpRequester) requestRoutine() {
 OUTER_LOOP:
 	for {
 		bpr.pickPeerAndSendRequest()
-		retryTimer := time.NewTimer(requestRetrySeconds * time.Second)
+		retryTimeout := bpr.pool.getRetryTimeout()
+		retryTimer := time.NewTimer(retryTimeout)
 		defer retryTimer.Stop()
-		secondPeerTimer := time.NewTimer(10 * time.Second)
-		defer secondPeerTimer.Stop()
 
 		for {
 			select {
@@ -898,8 +1021,6 @@ OUTER_LOOP:
 				return
 			case <-bpr.Quit():
 				return
-			case <-secondPeerTimer.C:
-				bpr.pickPeerAndSendRequest()
 			case <-retryTimer.C:
 				if !gotBlock {
 					bpr.Logger.Debug("Retrying block request(s) after timeout", "height", bpr.height, "peer", bpr.peerID, "secondPeerID", bpr.secondPeerID)
@@ -907,12 +1028,10 @@ OUTER_LOOP:
 					continue OUTER_LOOP
 				}
 			case peerID := <-bpr.redoCh:
-				//if bpr.didRequestFrom(peerID) {
 				removedBlock := bpr.reset(peerID)
 				if removedBlock {
 					gotBlock = false
 				}
-				//}
 				// If both peers returned NoBlockResponse or bad block, reschedule both
 				// requests. If not, wait for the other peer.
 				if len(bpr.active()) == 0 {
