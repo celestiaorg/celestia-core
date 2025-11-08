@@ -399,11 +399,13 @@ func (pool *BlockPool) AddBlock(peerID p2p.ID, block *types.Block, extCommit *ty
 		// Log current maxPending after adding block
 		maxPending := pool.getMaxPendingPerPeer()
 		avgBlockSize := pool.blockSizeBuffer.GetAverage()
+		numRequesters := len(pool.requesters)
 		pool.Logger.Info("Block added, current maxPending",
 			"height", block.Height,
 			"blockSize", fmt.Sprintf("%.2f KB", float64(blockSize)/1024),
 			"avgBlockSize", fmt.Sprintf("%.2f KB", avgBlockSize/1024),
 			"maxPending", maxPending,
+			"numRequesters", numRequesters,
 			"samples", pool.blockSizeBuffer.Size())
 	}
 
