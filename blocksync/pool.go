@@ -537,15 +537,15 @@ func (pool *BlockPool) getRetryTimeout() time.Duration {
 
 	// Clamp to min/max bounds
 	if avgBlockSize <= minBlockSizeBytes {
-		// pool.Logger.Info("Dynamic retry timeout (min bound)",
-		// 	"avgBlockSize", fmt.Sprintf("%.2f KB", avgBlockSize/1024),
-		// 	"retrySeconds", minRetrySeconds)
+		pool.Logger.Info("Dynamic retry timeout (min bound)",
+			"avgBlockSize", fmt.Sprintf("%.2f KB", avgBlockSize/1024),
+			"retrySeconds", minRetrySeconds)
 		return minRetrySeconds * time.Second
 	}
 	if avgBlockSize >= maxBlockSizeBytes {
-		// pool.Logger.Info("Dynamic retry timeout (max bound)",
-		// 	"avgBlockSize", fmt.Sprintf("%.2f MB", avgBlockSize/1024/1024),
-		// 	"retrySeconds", maxRetrySeconds)
+		pool.Logger.Info("Dynamic retry timeout (max bound)",
+			"avgBlockSize", fmt.Sprintf("%.2f MB", avgBlockSize/1024/1024),
+			"retrySeconds", maxRetrySeconds)
 		return maxRetrySeconds * time.Second
 	}
 
@@ -558,10 +558,10 @@ func (pool *BlockPool) getRetryTimeout() time.Duration {
 	// Calculate retry seconds
 	retrySeconds := minRetrySeconds + (maxRetrySeconds-minRetrySeconds)*curve
 
-	// pool.Logger.Info("Dynamic retry timeout calculated",
-	// 	"avgBlockSize", fmt.Sprintf("%.2f KB", avgBlockSize/1024),
-	// 	"retrySeconds", fmt.Sprintf("%.2f", retrySeconds),
-	// 	"samples", pool.blockSizeBuffer.Size())
+	pool.Logger.Info("Dynamic retry timeout calculated",
+		"avgBlockSize", fmt.Sprintf("%.2f KB", avgBlockSize/1024),
+		"retrySeconds", fmt.Sprintf("%.2f", retrySeconds),
+		"samples", pool.blockSizeBuffer.Size())
 
 	return time.Duration(retrySeconds * float64(time.Second))
 }
@@ -584,15 +584,15 @@ func (pool *BlockPool) getMaxPendingPerPeer() int {
 
 	// Clamp to min/max bounds
 	if avgBlockSize <= minBlockSizeBytes {
-		// pool.Logger.Info("Dynamic maxPending (small blocks)",
-		// 	"avgBlockSize", fmt.Sprintf("%.2f KB", avgBlockSize/1024),
-		// 	"maxPending", maxPendingForSmallBlocks)
+		pool.Logger.Info("Dynamic maxPending (small blocks)",
+			"avgBlockSize", fmt.Sprintf("%.2f KB", avgBlockSize/1024),
+			"maxPending", maxPendingForSmallBlocks)
 		return maxPendingForSmallBlocks
 	}
 	if avgBlockSize >= maxBlockSizeBytes {
-		// pool.Logger.Info("Dynamic maxPending (large blocks)",
-		// 	"avgBlockSize", fmt.Sprintf("%.2f MB", avgBlockSize/1024/1024),
-		// 	"maxPending", maxPendingForLargeBlocks)
+		pool.Logger.Info("Dynamic maxPending (large blocks)",
+			"avgBlockSize", fmt.Sprintf("%.2f MB", avgBlockSize/1024/1024),
+			"maxPending", maxPendingForLargeBlocks)
 		return maxPendingForLargeBlocks
 	}
 
@@ -602,10 +602,10 @@ func (pool *BlockPool) getMaxPendingPerPeer() int {
 	// Inverse linear: as block size increases, max pending decreases
 	maxPending := maxPendingForSmallBlocks - int((maxPendingForSmallBlocks-maxPendingForLargeBlocks)*normalized)
 
-	// pool.Logger.Info("Dynamic maxPending calculated",
-	// 	"avgBlockSize", fmt.Sprintf("%.2f KB", avgBlockSize/1024),
-	// 	"maxPending", maxPending,
-	// 	"samples", pool.blockSizeBuffer.Size())
+	pool.Logger.Info("Dynamic maxPending calculated",
+		"avgBlockSize", fmt.Sprintf("%.2f KB", avgBlockSize/1024),
+		"maxPending", maxPending,
+		"samples", pool.blockSizeBuffer.Size())
 
 	return maxPending
 }
