@@ -85,6 +85,22 @@ const (
 
 var peerTimeout = 120 * time.Second // not const so we can override with tests
 
+// newPoolConfig creates a poolConfig from the constants
+func newPoolConfig() poolConfig {
+	return poolConfig{
+		minBlockSizeBytes:        minBlockSizeBytes,
+		maxBlockSizeBytes:        maxBlockSizeBytes,
+		minRetrySeconds:          minRetrySeconds,
+		maxRetrySeconds:          maxRetrySeconds,
+		maxPendingForSmallBlocks: maxPendingForSmallBlocks,
+		maxPendingForLargeBlocks: maxPendingForLargeBlocks,
+		minSamplesForDynamic:     minSamplesForDynamic,
+		defaultMaxPendingPerPeer: maxPendingRequestsPerPeer,
+		defaultRetrySeconds:      requestRetrySeconds,
+		maxMemoryForRequesters:   maxMemoryForRequesters,
+	}
+}
+
 /*
 	Peers self report their heights when we join the block pool.
 	Starting from our latest pool.height, we request blocks
@@ -122,8 +138,11 @@ type BlockPool struct {
 
 	traceClient trace.Tracer
 
-	// Track average block size for dynamic timeout and pending calculations
-	blockSizeBuffer *RotatingBuffer
+	// Track dropped requesters to avoid banning peers for blocks we requested but dropped
+	droppedRequesters map[int64]p2p.ID
+
+	// Cached calculated parameters
+	params *BlockPoolParams
 }
 
 // NewBlockPool returns a new BlockPool with the height equal to start. Block
@@ -142,8 +161,11 @@ func NewBlockPool(start int64, maxRequesters int, requestsCh chan<- BlockRequest
 		errorsCh:    errorsCh,
 		traceClient: traceClient,
 
-		blockSizeBuffer: NewRotatingBuffer(blockSizeBufferCapacity),
+		droppedRequesters: make(map[int64]p2p.ID),
 	}
+	// Initialize with default parameters
+	blockSizeBuffer := NewRotatingBuffer(blockSizeBufferCapacity)
+	bp.params = NewBlockPoolParams(newPoolConfig(), blockSizeBuffer, maxRequesters)
 	bp.BaseService = *service.NewBaseService(nil, "BlockPool", bp)
 	return bp
 }
@@ -172,51 +194,13 @@ func (pool *BlockPool) makeRequestersRoutine() {
 		}
 
 		pool.mtx.Lock()
-		maxPending := pool.getMaxPendingPerPeer()
 
-		// Calculate max requesters using min of:
-		// 1. Peer-based limit: numPeers * maxPending
-		// 2. Memory-based limit: maxMem / avgBlockSize
-		// 3. Absolute cap: maxRequesters
-		peerBasedLimit := len(pool.peers) * maxPending
-		avgBlockSize := pool.blockSizeBuffer.GetAverage()
-		memoryBasedLimit := pool.maxRequesters
-		if avgBlockSize > 0 {
-			memoryBasedLimit = int(maxMemoryForRequesters / avgBlockSize)
-		}
-
-		maxRequestersAllowed := min(peerBasedLimit, memoryBasedLimit, pool.maxRequesters)
+		// Use cached parameters
+		maxRequestersAllowed := pool.params.requestersLimit
+		maxPending := pool.params.maxPendingPerPeer
 
 		// Drop excess requesters if we exceed the limit
-		numRequesters := len(pool.requesters)
-		if numRequesters > maxRequestersAllowed {
-			// Find the highest height requesters to drop (they're furthest from completion)
-			heights := make([]int64, 0, numRequesters)
-			for height := range pool.requesters {
-				heights = append(heights, height)
-			}
-			sort.Slice(heights, func(i, j int) bool {
-				return heights[i] > heights[j] // sort descending
-			})
-
-			// Drop requesters from highest to lowest until we're at the limit
-			numToDrop := numRequesters - maxRequestersAllowed
-			pool.Logger.Info("Dropping excess requesters due to maxPending change",
-				"numRequesters", numRequesters,
-				"maxAllowed", maxRequestersAllowed,
-				"dropping", numToDrop,
-				"maxPending", maxPending)
-
-			for i := 0; i < numToDrop && i < len(heights); i++ {
-				height := heights[i]
-				if requester, ok := pool.requesters[height]; ok {
-					if err := requester.Stop(); err != nil {
-						pool.Logger.Error("Error stopping requester", "height", height, "err", err)
-					}
-					delete(pool.requesters, height)
-				}
-			}
-		}
+		pool.dropExcessRequesters(maxRequestersAllowed, maxPending)
 
 		var (
 			maxRequestersCreated = len(pool.requesters) >= maxRequestersAllowed
@@ -237,6 +221,53 @@ func (pool *BlockPool) makeRequestersRoutine() {
 			pool.makeNextRequester(nextHeight)
 			// Sleep for a bit to make the requests more ordered.
 			time.Sleep(requestIntervalMS * time.Millisecond)
+		}
+	}
+}
+
+// dropExcessRequesters removes requesters that exceed the allowed limit.
+// Drops requesters from highest height to lowest (furthest from completion).
+// CONTRACT: pool.mtx must be locked.
+func (pool *BlockPool) dropExcessRequesters(maxRequestersAllowed int, maxPending int) {
+	numRequesters := len(pool.requesters)
+	if numRequesters <= maxRequestersAllowed {
+		return
+	}
+
+	// Find the highest height requesters to drop (they're furthest from completion)
+	heights := make([]int64, 0, numRequesters)
+	for height := range pool.requesters {
+		heights = append(heights, height)
+	}
+	sort.Slice(heights, func(i, j int) bool {
+		return heights[i] > heights[j] // sort descending
+	})
+
+	// Drop requesters from highest to lowest until we're at the limit
+	numToDrop := numRequesters - maxRequestersAllowed
+	pool.Logger.Info("Dropping excess requesters due to maxPending change",
+		"numRequesters", numRequesters,
+		"maxAllowed", maxRequestersAllowed,
+		"dropping", numToDrop,
+		"maxPending", maxPending)
+
+	for i := 0; i < numToDrop && i < len(heights); i++ {
+		height := heights[i]
+		if requester, ok := pool.requesters[height]; ok {
+			// Track which peer we requested from before dropping
+			activePeers := requester.active()
+			if len(activePeers) > 0 {
+				// Store the first active peer for this height
+				pool.droppedRequesters[height] = activePeers[0]
+				pool.Logger.Debug("Tracking dropped requester",
+					"height", height,
+					"peer", activePeers[0])
+			}
+
+			if err := requester.Stop(); err != nil {
+				pool.Logger.Error("Error stopping requester", "height", height, "err", err)
+			}
+			delete(pool.requesters, height)
 		}
 	}
 }
@@ -410,6 +441,17 @@ func (pool *BlockPool) AddBlock(peerID p2p.ID, block *types.Block, extCommit *ty
 
 	requester := pool.requesters[block.Height]
 	if requester == nil {
+		// Check if this was from a dropped requester
+		if droppedPeerID, wasDropped := pool.droppedRequesters[block.Height]; wasDropped {
+			pool.Logger.Debug("Received block from dropped requester, ignoring",
+				"height", block.Height,
+				"peer", peerID,
+				"droppedPeer", droppedPeerID)
+			// Clean up the dropped requester entry
+			delete(pool.droppedRequesters, block.Height)
+			return nil
+		}
+
 		// Because we're issuing 2nd requests for closer blocks, it's possible to
 		// receive a block we've already processed from a second peer. Hence, we
 		// can't punish it. But if the peer sent us a block we clearly didn't
@@ -445,34 +487,32 @@ func (pool *BlockPool) AddBlock(peerID p2p.ID, block *types.Block, extCommit *ty
 	}
 
 	if blockSet {
-		// Track block size for dynamic timeout and pending calculations
-		pool.blockSizeBuffer.Add(float64(blockSize))
-
-		// Log current maxPending after adding block
-		maxPending := pool.getMaxPendingPerPeer()
-		avgBlockSize := pool.blockSizeBuffer.GetAverage()
-		numRequesters := len(pool.requesters)
-		numPeers := len(pool.peers)
-
-		// Calculate limits to show in log
-		peerBasedLimit := numPeers * maxPending
-		memoryBasedLimit := int(maxMemoryForRequesters / avgBlockSize)
-		effectiveLimit := min(peerBasedLimit, memoryBasedLimit, pool.maxRequesters)
-
-		pool.Logger.Info("Block added, current maxPending",
-			"height", block.Height,
-			"blockSize", fmt.Sprintf("%.2f KB", float64(blockSize)/1024),
-			"avgBlockSize", fmt.Sprintf("%.2f KB", avgBlockSize/1024),
-			"maxPending", maxPending,
-			"numRequesters", numRequesters,
-			"numPeers", numPeers,
-			"peerLimit", peerBasedLimit,
-			"memLimit", memoryBasedLimit,
-			"effectiveLimit", effectiveLimit,
-			"samples", pool.blockSizeBuffer.Size())
+		pool.addBlock(block.Height, blockSize)
 	}
 
 	return nil
+}
+
+// addBlock handles block size tracking and parameter recalculation
+// when a new block is successfully added to the pool.
+// CONTRACT: pool.mtx must be locked.
+func (pool *BlockPool) addBlock(height int64, blockSize int) {
+	// Add block and trigger all calculations
+	pool.params.addBlock(blockSize, len(pool.peers))
+
+	// Log current parameters after adding block
+	pool.Logger.Info("Block added, current maxPending",
+		"height", height,
+		"blockSize", fmt.Sprintf("%.2f KB", float64(blockSize)/1024),
+		"avgBlockSize", fmt.Sprintf("%.2f KB", pool.params.avgBlockSize/1024),
+		"maxPending", pool.params.maxPendingPerPeer,
+		"retryTimeout", pool.params.retryTimeout.Seconds(),
+		"numRequesters", len(pool.requesters),
+		"numPeers", len(pool.peers),
+		"peerLimit", pool.params.peerBasedLimit,
+		"memLimit", pool.params.memoryBasedLimit,
+		"effectiveLimit", pool.params.requestersLimit,
+		"samples", pool.params.numSamples)
 }
 
 // Height returns the pool's height.
@@ -519,6 +559,9 @@ func (pool *BlockPool) SetPeerRange(peerID p2p.ID, base int64, height int64) {
 		// no need to sort because curRate is 0 at start.
 		// just add to the beginning so it's picked first by pickIncrAvailablePeer.
 		pool.sortedPeers = append([]*bpPeer{peer}, pool.sortedPeers...)
+
+		// Recalculate parameters when peer count changes
+		pool.params.recalculate(len(pool.peers))
 	}
 
 	if height > pool.maxPeerHeight {
@@ -562,6 +605,9 @@ func (pool *BlockPool) removePeer(peerID p2p.ID) {
 		if peer.height == pool.maxPeerHeight {
 			pool.updateMaxPeerHeight()
 		}
+
+		// Recalculate parameters when peer count changes
+		pool.params.recalculate(len(pool.peers))
 	}
 }
 
@@ -595,72 +641,11 @@ func (pool *BlockPool) banPeer(peerID p2p.ID) {
 	pool.bannedPeers[peerID] = cmttime.Now()
 }
 
-// getRetryTimeout calculates dynamic retry timeout based on average block size.
-// Uses exponential curve: small blocks retry faster, large blocks retry slower.
-// Returns value between minRetrySeconds and maxRetrySeconds.
+// getRetryTimeout returns the current retry timeout (thread-safe)
 func (pool *BlockPool) getRetryTimeout() time.Duration {
-	// Use default if we don't have enough samples
-	if pool.blockSizeBuffer.Size() < minSamplesForDynamic {
-		pool.Logger.Debug("Using default retry timeout, not enough samples",
-			"samples", pool.blockSizeBuffer.Size(),
-			"minRequired", minSamplesForDynamic,
-			"defaultRetry", requestRetrySeconds)
-		return requestRetrySeconds * time.Second
-	}
-
-	avgBlockSize := pool.blockSizeBuffer.GetAverage()
-
-	// Clamp to min/max bounds
-	if avgBlockSize <= minBlockSizeBytes {
-		return minRetrySeconds * time.Second
-	}
-	if avgBlockSize >= maxBlockSizeBytes {
-		return maxRetrySeconds * time.Second
-	}
-
-	// Calculate normalized position [0, 1] in the range
-	normalized := (avgBlockSize - minBlockSizeBytes) / (maxBlockSizeBytes - minBlockSizeBytes)
-
-	// Apply exponential curve for smoother scaling
-	curve := math.Pow(normalized, 2)
-
-	// Calculate retry seconds
-	retrySeconds := minRetrySeconds + (maxRetrySeconds-minRetrySeconds)*curve
-
-	return time.Duration(retrySeconds * float64(time.Second))
-}
-
-// getMaxPendingPerPeer calculates dynamic max pending requests based on average block size.
-// Uses inverse linear relationship: small blocks allow more concurrent requests,
-// large blocks allow fewer to avoid bandwidth saturation.
-// Returns value between maxPendingForLargeBlocks and maxPendingForSmallBlocks.
-func (pool *BlockPool) getMaxPendingPerPeer() int {
-	// Use default if we don't have enough samples
-	if pool.blockSizeBuffer.Size() < minSamplesForDynamic {
-		pool.Logger.Debug("Using default maxPending, not enough samples",
-			"samples", pool.blockSizeBuffer.Size(),
-			"minRequired", minSamplesForDynamic,
-			"defaultMaxPending", maxPendingRequestsPerPeer)
-		return maxPendingRequestsPerPeer
-	}
-
-	avgBlockSize := pool.blockSizeBuffer.GetAverage()
-
-	// Clamp to min/max bounds
-	if avgBlockSize <= minBlockSizeBytes {
-		return maxPendingForSmallBlocks
-	}
-	if avgBlockSize >= maxBlockSizeBytes {
-		return maxPendingForLargeBlocks
-	}
-
-	// Calculate normalized position [0, 1] in the range
-	normalized := (avgBlockSize - minBlockSizeBytes) / (maxBlockSizeBytes - minBlockSizeBytes)
-
-	// Inverse linear: as block size increases, max pending decreases
-	maxPending := maxPendingForSmallBlocks - int((maxPendingForSmallBlocks-maxPendingForLargeBlocks)*normalized)
-
-	return maxPending
+	pool.mtx.Lock()
+	defer pool.mtx.Unlock()
+	return pool.params.retryTimeout
 }
 
 // Pick an available peer with the given height available.
@@ -671,7 +656,7 @@ func (pool *BlockPool) pickIncrAvailablePeer(height int64, excludePeerID p2p.ID,
 	pool.mtx.Lock()
 	defer pool.mtx.Unlock()
 
-	maxPending := pool.getMaxPendingPerPeer()
+	maxPending := pool.params.maxPendingPerPeer
 	var fallbackPeer *bpPeer // Peer that matches all criteria except preferExcludePeerID
 
 	for _, peer := range pool.sortedPeers {
