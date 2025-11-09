@@ -505,6 +505,7 @@ func (pool *BlockPool) addBlock(height int64, blockSize int) {
 		"height", height,
 		"blockSize", fmt.Sprintf("%.2f KB", float64(blockSize)/1024),
 		"avgBlockSize", fmt.Sprintf("%.2f KB", pool.params.avgBlockSize/1024),
+		"maxBlockSize", fmt.Sprintf("%.2f KB", pool.params.maxBlockSize/1024),
 		"maxPending", pool.params.maxPendingPerPeer,
 		"retryTimeout", pool.params.retryTimeout.Seconds(),
 		"numRequesters", len(pool.requesters),

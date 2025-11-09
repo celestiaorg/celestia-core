@@ -38,7 +38,8 @@ type BlockPoolParams struct {
 	maxRequesters     int
 
 	// Cached calculated values for logging
-	avgBlockSize     float64
+	avgBlockSize     float64 // kept for logging purposes
+	maxBlockSize     float64 // used for calculations
 	peerBasedLimit   int
 	memoryBasedLimit int
 	numSamples       int
@@ -59,6 +60,7 @@ func NewBlockPoolParams(config poolConfig, blockSizeBuffer *RotatingBuffer, maxR
 // numPeers is passed in since it's external state from BlockPool
 func (p *BlockPoolParams) recalculate(numPeers int) {
 	p.avgBlockSize = p.blockSizeBuffer.GetAverage()
+	p.maxBlockSize = p.blockSizeBuffer.GetMax()
 	p.numSamples = p.blockSizeBuffer.Size()
 
 	// Use defaults if not enough samples
@@ -66,42 +68,43 @@ func (p *BlockPoolParams) recalculate(numPeers int) {
 		p.maxPendingPerPeer = p.config.defaultMaxPendingPerPeer
 		p.retryTimeout = time.Duration(p.config.defaultRetrySeconds * float64(time.Second))
 	} else {
-		p.maxPendingPerPeer = p.calculateMaxPendingLadder(p.avgBlockSize)
-		p.retryTimeout = p.calculateRetryTimeout(p.avgBlockSize)
+		// Use max block size for calculations (worst-case planning)
+		p.maxPendingPerPeer = p.calculateMaxPendingLadder(p.maxBlockSize)
+		p.retryTimeout = p.calculateRetryTimeout(p.maxBlockSize)
 	}
 
-	// Calculate requesters limit
+	// Calculate requesters limit based on max block size (worst-case memory usage)
 	p.peerBasedLimit = numPeers * p.maxPendingPerPeer
 	p.memoryBasedLimit = p.maxRequesters
-	if p.avgBlockSize > 0 {
-		p.memoryBasedLimit = int(p.config.maxMemoryForRequesters / p.avgBlockSize)
+	if p.maxBlockSize > 0 {
+		p.memoryBasedLimit = int(p.config.maxMemoryForRequesters / p.maxBlockSize)
 	}
 	p.requestersLimit = min(p.peerBasedLimit, p.memoryBasedLimit, p.maxRequesters)
 }
 
 // addBlock updates parameters after adding a new block
-// This triggers recalculation of all dynamic parameters based on the new block size
+// This triggers recalculation of all dynamic parameters based on the max block size
 func (p *BlockPoolParams) addBlock(blockSize int, numPeers int) {
 	// Track block size
 	p.blockSizeBuffer.Add(float64(blockSize))
 
-	// Recalculate all parameters with new average
+	// Recalculate all parameters with new max
 	p.recalculate(numPeers)
 }
 
 // calculateMaxPendingLadder returns maxPending in discrete steps (ladder effect)
 // Returns values in steps of 5: 40, 35, 30, 25, 20, 15, 10, 5, 2
-func (p *BlockPoolParams) calculateMaxPendingLadder(avgBlockSize float64) int {
+func (p *BlockPoolParams) calculateMaxPendingLadder(blockSize float64) int {
 	// Clamp to min/max bounds
-	if avgBlockSize <= p.config.minBlockSizeBytes {
+	if blockSize <= p.config.minBlockSizeBytes {
 		return p.config.maxPendingForSmallBlocks
 	}
-	if avgBlockSize >= p.config.maxBlockSizeBytes {
+	if blockSize >= p.config.maxBlockSizeBytes {
 		return p.config.maxPendingForLargeBlocks
 	}
 
 	// Calculate normalized position [0, 1] in the range
-	normalized := (avgBlockSize - p.config.minBlockSizeBytes) / (p.config.maxBlockSizeBytes - p.config.minBlockSizeBytes)
+	normalized := (blockSize - p.config.minBlockSizeBytes) / (p.config.maxBlockSizeBytes - p.config.minBlockSizeBytes)
 
 	// Inverse linear: as block size increases, max pending decreases
 	rawMaxPending := p.config.maxPendingForSmallBlocks - int(float64(p.config.maxPendingForSmallBlocks-p.config.maxPendingForLargeBlocks)*normalized)
@@ -118,18 +121,18 @@ func (p *BlockPoolParams) calculateMaxPendingLadder(avgBlockSize float64) int {
 	return maxPending
 }
 
-// calculateRetryTimeout returns retry timeout based on average block size
-func (p *BlockPoolParams) calculateRetryTimeout(avgBlockSize float64) time.Duration {
+// calculateRetryTimeout returns retry timeout based on block size
+func (p *BlockPoolParams) calculateRetryTimeout(blockSize float64) time.Duration {
 	// Clamp to min/max bounds
-	if avgBlockSize <= p.config.minBlockSizeBytes {
+	if blockSize <= p.config.minBlockSizeBytes {
 		return time.Duration(p.config.minRetrySeconds * float64(time.Second))
 	}
-	if avgBlockSize >= p.config.maxBlockSizeBytes {
+	if blockSize >= p.config.maxBlockSizeBytes {
 		return time.Duration(p.config.maxRetrySeconds * float64(time.Second))
 	}
 
 	// Calculate normalized position [0, 1] in the range
-	normalized := (avgBlockSize - p.config.minBlockSizeBytes) / (p.config.maxBlockSizeBytes - p.config.minBlockSizeBytes)
+	normalized := (blockSize - p.config.minBlockSizeBytes) / (p.config.maxBlockSizeBytes - p.config.minBlockSizeBytes)
 
 	// Apply exponential curve for smoother scaling
 	curve := math.Pow(normalized, 2)
