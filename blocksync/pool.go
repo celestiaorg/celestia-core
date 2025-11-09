@@ -437,7 +437,7 @@ func (pool *BlockPool) AddBlock(peerID p2p.ID, block *types.Block, extCommit *ty
 	if requester == nil {
 		// Check if this was from a dropped requester
 		if _, wasDropped := pool.droppedRequesters[block.Height]; wasDropped {
-			pool.Logger.Debug("Received block from dropped requester, ignoring",
+			pool.Logger.Info("Received block from dropped requester, ignoring",
 				"height", block.Height,
 				"peer", peerID)
 			// Clean up the dropped requester entry
