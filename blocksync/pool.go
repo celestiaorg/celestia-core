@@ -139,7 +139,7 @@ type BlockPool struct {
 	traceClient trace.Tracer
 
 	// Track dropped requesters to avoid banning peers for blocks we requested but dropped
-	droppedRequesters map[int64]p2p.ID
+	droppedRequesters map[int64]struct{}
 
 	// Cached calculated parameters
 	params *BlockPoolParams
@@ -161,7 +161,7 @@ func NewBlockPool(start int64, maxRequesters int, requestsCh chan<- BlockRequest
 		errorsCh:    errorsCh,
 		traceClient: traceClient,
 
-		droppedRequesters: make(map[int64]p2p.ID),
+		droppedRequesters: make(map[int64]struct{}),
 	}
 	// Initialize with default parameters
 	blockSizeBuffer := NewRotatingBuffer(blockSizeBufferCapacity)
@@ -254,15 +254,9 @@ func (pool *BlockPool) dropExcessRequesters(maxRequestersAllowed int, maxPending
 	for i := 0; i < numToDrop && i < len(heights); i++ {
 		height := heights[i]
 		if requester, ok := pool.requesters[height]; ok {
-			// Track which peer we requested from before dropping
-			activePeers := requester.active()
-			if len(activePeers) > 0 {
-				// Store the first active peer for this height
-				pool.droppedRequesters[height] = activePeers[0]
-				pool.Logger.Debug("Tracking dropped requester",
-					"height", height,
-					"peer", activePeers[0])
-			}
+			// Always track dropped requesters to avoid banning peers for late-arriving blocks
+			pool.droppedRequesters[height] = struct{}{}
+			pool.Logger.Debug("Tracking dropped requester", "height", height)
 
 			if err := requester.Stop(); err != nil {
 				pool.Logger.Error("Error stopping requester", "height", height, "err", err)
@@ -442,11 +436,10 @@ func (pool *BlockPool) AddBlock(peerID p2p.ID, block *types.Block, extCommit *ty
 	requester := pool.requesters[block.Height]
 	if requester == nil {
 		// Check if this was from a dropped requester
-		if droppedPeerID, wasDropped := pool.droppedRequesters[block.Height]; wasDropped {
+		if _, wasDropped := pool.droppedRequesters[block.Height]; wasDropped {
 			pool.Logger.Debug("Received block from dropped requester, ignoring",
 				"height", block.Height,
-				"peer", peerID,
-				"droppedPeer", droppedPeerID)
+				"peer", peerID)
 			// Clean up the dropped requester entry
 			delete(pool.droppedRequesters, block.Height)
 			return nil
