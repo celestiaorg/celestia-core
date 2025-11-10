@@ -536,7 +536,82 @@ func (bs *BlockStore) SaveBlockWithExtendedCommit(block *types.Block, blockParts
 	}
 }
 
-func (bs *BlockStore) saveBlockToBatch(
+// SaveBlockBatch saves multiple blocks in a single database batch write.
+// This is more efficient than calling SaveBlock multiple times as it reduces
+// the number of fsync operations from N to 1.
+func (bs *BlockStore) SaveBlockBatch(blocks []types.BlockBatchEntry) error {
+	if len(blocks) == 0 {
+		return nil
+	}
+
+	batch := bs.db.NewBatch()
+	defer batch.Close()
+
+	// Track expected height for contiguity checking within the batch
+	expectedHeight := bs.Height() + 1
+
+	// Add all blocks to the batch
+	for i, entry := range blocks {
+		if entry.Block == nil {
+			panic("BlockStore can only save a non-nil block")
+		}
+
+		// Check contiguity within the batch
+		if bs.Base() > 0 || i > 0 {
+			if entry.Block.Height != expectedHeight {
+				return fmt.Errorf("BlockStore can only save contiguous blocks. Wanted %v, got %v", expectedHeight, entry.Block.Height)
+			}
+		}
+		expectedHeight = entry.Block.Height + 1
+
+		// Determine which commit to use
+		var commit *types.Commit
+		if entry.SeenExtendedCommit != nil {
+			if err := entry.SeenExtendedCommit.EnsureExtensions(true); err != nil {
+				return fmt.Errorf("problems saving block with extensions: %w", err)
+			}
+			commit = entry.SeenExtendedCommit.ToCommit()
+		} else {
+			commit = entry.SeenCommit
+		}
+
+		// Save block to batch (skip contiguity check since we already checked)
+		if err := bs.saveBlockToBatchUnchecked(entry.Block, entry.BlockParts, commit, batch); err != nil {
+			return err
+		}
+
+		// Save extended commit if present
+		if entry.SeenExtendedCommit != nil {
+			pbec := entry.SeenExtendedCommit.ToProto()
+			extCommitBytes := mustEncode(pbec)
+			if err := batch.Set(calcExtCommitKey(entry.Block.Height), extCommitBytes); err != nil {
+				return err
+			}
+		}
+	}
+
+	// Update store height to the last block in the batch
+	bs.mtx.Lock()
+	defer bs.mtx.Unlock()
+
+	lastBlock := blocks[len(blocks)-1].Block
+	bs.height = lastBlock.Height
+	if bs.base == 0 {
+		bs.base = blocks[0].Block.Height
+	}
+
+	// Save new BlockStoreState descriptor. This also flushes the database with a single fsync.
+	err := bs.saveStateAndWriteDB(batch, "failed to save block batch")
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// saveBlockToBatchUnchecked saves a block to a batch without contiguity checking.
+// Used internally by SaveBlockBatch which does its own contiguity checking.
+func (bs *BlockStore) saveBlockToBatchUnchecked(
 	block *types.Block,
 	blockParts *types.PartSet,
 	seenCommit *types.Commit,
@@ -549,9 +624,6 @@ func (bs *BlockStore) saveBlockToBatch(
 	height := block.Height
 	hash := block.Hash()
 
-	if g, w := height, bs.Height()+1; bs.Base() > 0 && g != w {
-		return fmt.Errorf("BlockStore can only save contiguous blocks. Wanted %v, got %v", w, g)
-	}
 	if !blockParts.IsComplete() {
 		return errors.New("BlockStore can only save complete block part sets")
 	}
@@ -602,6 +674,27 @@ func (bs *BlockStore) saveBlockToBatch(
 	}
 
 	return nil
+}
+
+func (bs *BlockStore) saveBlockToBatch(
+	block *types.Block,
+	blockParts *types.PartSet,
+	seenCommit *types.Commit,
+	batch dbm.Batch,
+) error {
+	if block == nil {
+		panic("BlockStore can only save a non-nil block")
+	}
+
+	height := block.Height
+
+	// Check contiguity
+	if g, w := height, bs.Height()+1; bs.Base() > 0 && g != w {
+		return fmt.Errorf("BlockStore can only save contiguous blocks. Wanted %v, got %v", w, g)
+	}
+
+	// Delegate to unchecked version
+	return bs.saveBlockToBatchUnchecked(block, blockParts, seenCommit, batch)
 }
 
 func (bs *BlockStore) saveBlockPart(height int64, index int, part *types.Part, batch dbm.Batch, saveBlockPartsToBatch bool) {

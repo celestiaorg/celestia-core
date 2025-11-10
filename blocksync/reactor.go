@@ -34,6 +34,9 @@ const (
 
 	// ReactorIncomingMessageQueueSize the size of the reactor's message queue.
 	ReactorIncomingMessageQueueSize = 100
+
+	// blockBatchSize is the number of blocks to accumulate before flushing to disk
+	blockBatchSize = 10
 )
 
 type consensusReactor interface {
@@ -49,6 +52,18 @@ type peerError struct {
 
 func (e peerError) Error() string {
 	return fmt.Sprintf("error with peer %v: %s", e.peerID, e.err.Error())
+}
+
+// blockSaveData holds block data and timing information for batch saving
+type blockSaveData struct {
+	block              *types.Block
+	blockParts         *types.PartSet
+	seenCommit         *types.Commit
+	seenExtendedCommit *types.ExtendedCommit
+	blockSize          int
+	validationDuration int64 // milliseconds
+	saveDuration       int64 // milliseconds (will be set during batch flush)
+	totalDuration      int64 // milliseconds (will be set during batch flush)
 }
 
 // Reactor handles long-term catchup syncing.
@@ -72,6 +87,11 @@ type Reactor struct {
 	switchToConsensusMs int
 
 	metrics *Metrics
+
+	// Batch saving
+	blockBatchMtx  sync.Mutex
+	blockBatch     []blockSaveData
+	batchStartTime time.Time // time when first block was added to batch
 }
 
 // NewReactor returns new reactor instance.
@@ -322,6 +342,90 @@ func (bcR *Reactor) localNodeBlocksTheChain(state sm.State) bool {
 	return val.VotingPower >= total/3
 }
 
+// addBlockToBatch adds a block to the save batch and flushes if the batch is full.
+func (bcR *Reactor) addBlockToBatch(data blockSaveData) {
+	bcR.blockBatchMtx.Lock()
+	defer bcR.blockBatchMtx.Unlock()
+
+	if len(bcR.blockBatch) == 0 {
+		bcR.batchStartTime = time.Now()
+	}
+
+	bcR.blockBatch = append(bcR.blockBatch, data)
+
+	// Flush if batch is full
+	if len(bcR.blockBatch) >= blockBatchSize {
+		bcR.flushBlockBatchLocked()
+	}
+}
+
+// flushBlockBatch flushes any pending blocks in the batch to disk.
+// Must be called with blockBatchMtx held.
+func (bcR *Reactor) flushBlockBatchLocked() {
+	if len(bcR.blockBatch) == 0 {
+		return
+	}
+
+	// Start timing the batch save
+	saveStart := time.Now()
+
+	// Convert to types.BlockBatchEntry
+	entries := make([]types.BlockBatchEntry, len(bcR.blockBatch))
+	for i, data := range bcR.blockBatch {
+		entries[i] = types.BlockBatchEntry{
+			Block:              data.block,
+			BlockParts:         data.blockParts,
+			SeenCommit:         data.seenCommit,
+			SeenExtendedCommit: data.seenExtendedCommit,
+		}
+	}
+
+	// Save batch to disk (single fsync)
+	err := bcR.store.SaveBlockBatch(entries)
+	if err != nil {
+		panic(fmt.Sprintf("Failed to save block batch: %v", err))
+	}
+
+	// Calculate timing
+	saveDuration := time.Since(saveStart).Milliseconds()
+
+	// Calculate batch statistics
+	startHeight := bcR.blockBatch[0].block.Height
+	endHeight := bcR.blockBatch[len(bcR.blockBatch)-1].block.Height
+	totalSize := 0
+	for _, data := range bcR.blockBatch {
+		totalSize += data.blockSize
+	}
+
+	// Log batch save
+	bcR.Logger.Info("Saved block batch",
+		"start_height", startHeight,
+		"end_height", endHeight,
+		"num_blocks", len(bcR.blockBatch),
+		"total_size_kb", totalSize/1024,
+		"save_duration_ms", saveDuration)
+
+	// Trace the batch save operation
+	schema.WriteBlocksyncBatchSaved(bcR.traceClient, startHeight, endHeight, len(bcR.blockBatch), totalSize, saveDuration)
+
+	// Write traces for all blocks in the batch
+	for _, data := range bcR.blockBatch {
+		totalDuration := time.Since(bcR.batchStartTime).Milliseconds()
+		schema.WriteBlocksyncBlockSaved(bcR.traceClient, data.block.Height, data.blockSize,
+			data.validationDuration, saveDuration, totalDuration)
+	}
+
+	// Clear the batch
+	bcR.blockBatch = nil
+}
+
+// flushBlockBatch is the public version that acquires the lock.
+func (bcR *Reactor) flushBlockBatch() {
+	bcR.blockBatchMtx.Lock()
+	defer bcR.blockBatchMtx.Unlock()
+	bcR.flushBlockBatchLocked()
+}
+
 // Handle messages from the poolReactor telling the reactor what to do.
 // NOTE: Don't sleep in the FOR_LOOP or otherwise slow it down!
 func (bcR *Reactor) poolRoutine(stateSynced bool) {
@@ -432,6 +536,8 @@ FOR_LOOP:
 			}
 			if bcR.pool.IsCaughtUp() || bcR.localNodeBlocksTheChain(state) {
 				bcR.Logger.Info("Time to switch to consensus reactor!", "height", height)
+				// Flush any remaining blocks before switching to consensus
+				bcR.flushBlockBatch()
 				if err := bcR.pool.Stop(); err != nil {
 					bcR.Logger.Error("Error stopping pool", "err", err)
 				}
@@ -532,6 +638,13 @@ FOR_LOOP:
 			// Calculate validation duration
 			validationDuration := time.Since(validationStart)
 
+			// Trace block validation timing
+			var blockSize int
+			if firstParts != nil {
+				blockSize = int(firstParts.ByteSize())
+			}
+			schema.WriteBlocksyncBlockValidated(bcR.traceClient, first.Height, blockSize, validationDuration.Milliseconds())
+
 			presentExtCommit := extCommit != nil
 			extensionsEnabled := state.ConsensusParams.ABCI.VoteExtensionsEnabled(first.Height)
 			if presentExtCommit != extensionsEnabled {
@@ -565,39 +678,40 @@ FOR_LOOP:
 
 			bcR.pool.PopRequest()
 
-			// Start timing block save
-			saveStart := time.Now()
-
-			// TODO: batch saves so we dont persist to disk every block
-			if extensionsEnabled {
-				bcR.store.SaveBlockWithExtendedCommit(first, firstParts, extCommit)
-			} else {
-				// We use LastCommit here instead of extCommit. extCommit is not
-				// guaranteed to be populated by the peer if extensions are not enabled.
-				// Currently, the peer should provide an extCommit even if the vote extension data are absent
-				// but this may change so using second.LastCommit is safer.
-				bcR.store.SaveBlock(first, firstParts, second.LastCommit)
-			}
-
-			// Calculate save duration
-			saveDuration := time.Since(saveStart)
-			totalDuration := time.Since(validationStart)
-
-			// Trace block saved after successful validation
-			var blockSize int
-			if firstParts != nil {
-				blockSize = int(firstParts.ByteSize())
-			}
-			schema.WriteBlocksyncBlockSaved(bcR.traceClient, first.Height, blockSize,
-				validationDuration.Milliseconds(), saveDuration.Milliseconds(), totalDuration.Milliseconds())
-
-			// TODO: same thing for app - but we would need a way to
-			// get the hash without persisting the state
+			// Apply block to update state BEFORE batching the save
+			// This must happen immediately so the next block can be validated
 			state, err = bcR.blockExec.ApplyVerifiedBlock(state, firstID, first, second.LastCommit)
 			if err != nil {
 				// TODO This is bad, are we zombie?
 				panic(fmt.Sprintf("Failed to process committed block (%d:%X): %v", first.Height, first.Hash(), err))
 			}
+
+			// Add block to save batch (will flush when batch reaches 10 blocks)
+			var commit *types.Commit
+			var extendedCommit *types.ExtendedCommit
+			if extensionsEnabled {
+				extendedCommit = extCommit
+			} else {
+				// We use LastCommit here instead of extCommit. extCommit is not
+				// guaranteed to be populated by the peer if extensions are not enabled.
+				commit = second.LastCommit
+			}
+			bcR.addBlockToBatch(blockSaveData{
+				block:              first,
+				blockParts:         firstParts,
+				seenCommit:         commit,
+				seenExtendedCommit: extendedCommit,
+				blockSize:          blockSize,
+				validationDuration: validationDuration.Milliseconds(),
+			})
+
+			// Flush batch immediately if we're caught up or close to it
+			// This prevents race conditions in tests where store height is checked
+			// while blocks are still in the batch buffer
+			if bcR.pool.IsCaughtUp() || bcR.pool.height >= bcR.pool.MaxPeerHeight()-1 {
+				bcR.flushBlockBatch()
+			}
+
 			bcR.metrics.recordBlockMetrics(first)
 			blocksSynced++
 
@@ -616,6 +730,9 @@ FOR_LOOP:
 			break FOR_LOOP
 		}
 	}
+
+	// Flush any remaining blocks in the batch before exiting
+	bcR.flushBlockBatch()
 }
 
 // BroadcastStatusRequest broadcasts `BlockStore` base and height.

@@ -11,6 +11,8 @@ func BlocksyncTables() []string {
 		BlocksyncBlockReceivedTable,
 		BlocksyncBlockSavedTable,
 		BlocksyncBlockRequestedTable,
+		BlocksyncBlockValidatedTable,
+		BlocksyncBatchSavedTable,
 	}
 }
 
@@ -106,5 +108,71 @@ func WriteBlocksyncBlockRequested(client trace.Tracer, height int64, peerID stri
 	client.Write(BlocksyncBlockRequested{
 		Height: height,
 		PeerID: peerID,
+	})
+}
+
+// Schema constants for blocksync block validated table.
+const (
+	// BlocksyncBlockValidatedTable stores traces of block validation timing.
+	BlocksyncBlockValidatedTable = "blocksync_block_validated"
+)
+
+// BlocksyncBlockValidated describes schema for the "blocksync_block_validated" table.
+// This event is traced after a block is successfully validated (before saving).
+type BlocksyncBlockValidated struct {
+	Height             int64 `json:"height"`
+	BlockSize          int   `json:"block_size"`
+	ValidationDuration int64 `json:"validation_duration"` // Duration in milliseconds
+}
+
+// Table returns the table name for the BlocksyncBlockValidated struct.
+func (BlocksyncBlockValidated) Table() string {
+	return BlocksyncBlockValidatedTable
+}
+
+// WriteBlocksyncBlockValidated writes a tracing point for a validated block.
+func WriteBlocksyncBlockValidated(client trace.Tracer, height int64, blockSize int, validationDuration int64) {
+	if !client.IsCollecting(BlocksyncBlockValidatedTable) {
+		return
+	}
+	client.Write(BlocksyncBlockValidated{
+		Height:             height,
+		BlockSize:          blockSize,
+		ValidationDuration: validationDuration,
+	})
+}
+
+// Schema constants for blocksync batch saved table.
+const (
+	// BlocksyncBatchSavedTable stores traces of batch save operations.
+	BlocksyncBatchSavedTable = "blocksync_batch_saved"
+)
+
+// BlocksyncBatchSaved describes schema for the "blocksync_batch_saved" table.
+// This event is traced when a batch of blocks is saved to disk.
+type BlocksyncBatchSaved struct {
+	StartHeight  int64 `json:"start_height"`  // First block height in batch
+	EndHeight    int64 `json:"end_height"`    // Last block height in batch
+	NumBlocks    int   `json:"num_blocks"`    // Number of blocks in batch
+	TotalSize    int   `json:"total_size"`    // Total size of all blocks in bytes
+	SaveDuration int64 `json:"save_duration"` // Duration in milliseconds
+}
+
+// Table returns the table name for the BlocksyncBatchSaved struct.
+func (BlocksyncBatchSaved) Table() string {
+	return BlocksyncBatchSavedTable
+}
+
+// WriteBlocksyncBatchSaved writes a tracing point for a batch save operation.
+func WriteBlocksyncBatchSaved(client trace.Tracer, startHeight, endHeight int64, numBlocks, totalSize int, saveDuration int64) {
+	if !client.IsCollecting(BlocksyncBatchSavedTable) {
+		return
+	}
+	client.Write(BlocksyncBatchSaved{
+		StartHeight:  startHeight,
+		EndHeight:    endHeight,
+		NumBlocks:    numBlocks,
+		TotalSize:    totalSize,
+		SaveDuration: saveDuration,
 	})
 }

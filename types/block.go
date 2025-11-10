@@ -1621,3 +1621,11 @@ func BlockIDFromProto(bID *cmtproto.BlockID) (*BlockID, error) {
 func ProtoBlockIDIsNil(bID *cmtproto.BlockID) bool {
 	return len(bID.Hash) == 0 && ProtoPartSetHeaderIsZero(&bID.PartSetHeader)
 }
+
+// BlockBatchEntry represents a single block to be saved in a batch.
+type BlockBatchEntry struct {
+	Block              *Block
+	BlockParts         *PartSet
+	SeenCommit         *Commit
+	SeenExtendedCommit *ExtendedCommit // optional, if nil, uses SeenCommit
+}

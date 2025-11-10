@@ -858,3 +858,170 @@ func TestSaveTxInfo(t *testing.T) {
 	require.Equal(t, int64(50000), txInfo.GasWanted)
 	require.Equal(t, int64(25000), txInfo.GasUsed)
 }
+
+func TestSaveBlockBatch(t *testing.T) {
+	state, bs, cleanup := makeStateAndBlockStore()
+	defer cleanup()
+
+	require.Equal(t, int64(0), bs.Base(), "initially the base should be zero")
+	require.Equal(t, int64(0), bs.Height(), "initially the height should be zero")
+
+	// Create 10 test blocks
+	numBlocks := 10
+	blocks := make([]types.BlockBatchEntry, numBlocks)
+
+	for i := 0; i < numBlocks; i++ {
+		height := int64(i + 1)
+		block, partSet, err := state.MakeBlock(
+			height,
+			types.MakeData([]types.Tx{}),
+			new(types.Commit),
+			nil,
+			state.Validators.GetProposer().Address,
+		)
+		require.NoError(t, err)
+
+		seenCommit := makeTestExtCommit(block.Header.Height, cmttime.Now())
+		blocks[i] = types.BlockBatchEntry{
+			Block:              block,
+			BlockParts:         partSet,
+			SeenExtendedCommit: seenCommit,
+		}
+	}
+
+	// Save batch
+	err := bs.SaveBlockBatch(blocks)
+	require.NoError(t, err)
+
+	// Verify all blocks were saved
+	require.Equal(t, int64(1), bs.Base(), "base should be 1")
+	require.Equal(t, int64(numBlocks), bs.Height(), "height should be 10")
+
+	// Verify each block can be loaded
+	for i := 0; i < numBlocks; i++ {
+		height := int64(i + 1)
+		loadedBlock := bs.LoadBlock(height)
+		require.NotNil(t, loadedBlock, "block at height %d should exist", height)
+		require.Equal(t, height, loadedBlock.Height)
+		require.Equal(t, blocks[i].Block.Hash(), loadedBlock.Hash())
+	}
+
+	// Verify commits are saved
+	for i := 0; i < numBlocks; i++ {
+		height := int64(i + 1)
+		seenCommit := bs.LoadSeenCommit(height)
+		require.NotNil(t, seenCommit, "seen commit at height %d should exist", height)
+		require.Equal(t, height, seenCommit.Height)
+	}
+}
+
+func TestSaveBlockBatchWithExtendedCommits(t *testing.T) {
+	state, bs, cleanup := makeStateAndBlockStore()
+	defer cleanup()
+
+	// Create 5 blocks with extended commits
+	numBlocks := 5
+	blocks := make([]types.BlockBatchEntry, numBlocks)
+
+	for i := 0; i < numBlocks; i++ {
+		height := int64(i + 1)
+		block, partSet, err := state.MakeBlock(
+			height,
+			types.MakeData([]types.Tx{}),
+			new(types.Commit),
+			nil,
+			state.Validators.GetProposer().Address,
+		)
+		require.NoError(t, err)
+
+		extCommit := makeTestExtCommit(block.Header.Height, cmttime.Now())
+		blocks[i] = types.BlockBatchEntry{
+			Block:              block,
+			BlockParts:         partSet,
+			SeenExtendedCommit: extCommit,
+		}
+	}
+
+	// Save batch with extended commits
+	err := bs.SaveBlockBatch(blocks)
+	require.NoError(t, err)
+
+	// Verify extended commits are saved
+	for i := 0; i < numBlocks; i++ {
+		height := int64(i + 1)
+		extCommit := bs.LoadBlockExtendedCommit(height)
+		require.NotNil(t, extCommit, "extended commit at height %d should exist", height)
+		require.Equal(t, height, extCommit.Height)
+	}
+}
+
+func TestSaveBlockBatchEmpty(t *testing.T) {
+	_, bs, cleanup := makeStateAndBlockStore()
+	defer cleanup()
+
+	// Saving empty batch should not error
+	err := bs.SaveBlockBatch([]types.BlockBatchEntry{})
+	require.NoError(t, err)
+
+	// Store should still be empty
+	require.Equal(t, int64(0), bs.Height())
+}
+
+func TestSaveBlockBatchContiguity(t *testing.T) {
+	state, bs, cleanup := makeStateAndBlockStore()
+	defer cleanup()
+
+	// Save first batch (heights 1-5)
+	firstBatch := make([]types.BlockBatchEntry, 5)
+	for i := 0; i < 5; i++ {
+		height := int64(i + 1)
+		block, partSet, err := state.MakeBlock(
+			height,
+			types.MakeData([]types.Tx{}),
+			new(types.Commit),
+			nil,
+			state.Validators.GetProposer().Address,
+		)
+		require.NoError(t, err)
+
+		seenCommit := makeTestExtCommit(block.Header.Height, cmttime.Now())
+		firstBatch[i] = types.BlockBatchEntry{
+			Block:              block,
+			BlockParts:         partSet,
+			SeenExtendedCommit: seenCommit,
+		}
+	}
+	err := bs.SaveBlockBatch(firstBatch)
+	require.NoError(t, err)
+	require.Equal(t, int64(5), bs.Height())
+
+	// Save second batch (heights 6-10)
+	secondBatch := make([]types.BlockBatchEntry, 5)
+	for i := 0; i < 5; i++ {
+		height := int64(i + 6)
+		block, partSet, err := state.MakeBlock(
+			height,
+			types.MakeData([]types.Tx{}),
+			new(types.Commit),
+			nil,
+			state.Validators.GetProposer().Address,
+		)
+		require.NoError(t, err)
+
+		seenCommit := makeTestExtCommit(block.Header.Height, cmttime.Now())
+		secondBatch[i] = types.BlockBatchEntry{
+			Block:              block,
+			BlockParts:         partSet,
+			SeenExtendedCommit: seenCommit,
+		}
+	}
+	err = bs.SaveBlockBatch(secondBatch)
+	require.NoError(t, err)
+	require.Equal(t, int64(10), bs.Height())
+
+	// Verify all 10 blocks are accessible
+	for i := 1; i <= 10; i++ {
+		block := bs.LoadBlock(int64(i))
+		require.NotNil(t, block, "block at height %d should exist", i)
+	}
+}
