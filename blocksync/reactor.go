@@ -35,8 +35,9 @@ const (
 	// ReactorIncomingMessageQueueSize the size of the reactor's message queue.
 	ReactorIncomingMessageQueueSize = 100
 
-	// blockBatchSize is the number of blocks to accumulate before flushing to disk
-	blockBatchSize = 10
+	// maxBlockBatchSize is the maximum number of blocks to accumulate before flushing
+	maxBlockBatchSize    = 40
+	targetBatchSizeBytes = 2 * 1024 * 1024 * 1024
 )
 
 type consensusReactor interface {
@@ -61,9 +62,9 @@ type blockSaveData struct {
 	seenCommit         *types.Commit
 	seenExtendedCommit *types.ExtendedCommit
 	blockSize          int
-	validationDuration int64 // milliseconds
-	saveDuration       int64 // milliseconds (will be set during batch flush)
-	totalDuration      int64 // milliseconds (will be set during batch flush)
+	validationDuration int64     // milliseconds
+	saveDuration       int64     // milliseconds (will be set during batch flush)
+	totalDuration      int64     // milliseconds (will be set during batch flush)
 	batchStartTime     time.Time // time when this batch was started
 }
 
@@ -90,11 +91,13 @@ type Reactor struct {
 	metrics *Metrics
 
 	// Batch saving
-	blockBatchMtx  sync.Mutex
-	blockBatch     []blockSaveData
-	batchStartTime time.Time // time when first block was added to batch
-	batchSaveCh    chan []blockSaveData
-	batchSaveWg    sync.WaitGroup
+	blockBatchMtx       sync.Mutex
+	blockBatch          []blockSaveData
+	blockBatchTotalSize int       // total size in bytes of current batch
+	batchStartTime      time.Time // time when first block was added to batch
+	batchSaveCh         chan []blockSaveData
+	batchSaveChClosed   bool           // tracks if channel is already closed
+	batchSaveWg         sync.WaitGroup // tracks the background goroutine lifecycle
 }
 
 // NewReactor returns new reactor instance.
@@ -210,7 +213,14 @@ func (bcR *Reactor) OnStop() {
 
 		// Stop background batch save goroutine
 		// Close the channel to signal no more batches, goroutine will drain and exit
-		close(bcR.batchSaveCh)
+		bcR.blockBatchMtx.Lock()
+		if !bcR.batchSaveChClosed {
+			close(bcR.batchSaveCh)
+			bcR.batchSaveChClosed = true
+		}
+		bcR.blockBatchMtx.Unlock()
+
+		// Wait for the background goroutine to finish processing all batches
 		bcR.batchSaveWg.Wait()
 	}
 }
@@ -358,18 +368,26 @@ func (bcR *Reactor) localNodeBlocksTheChain(state sm.State) bool {
 }
 
 // addBlockToBatch adds a block to the save batch and flushes if the batch is full.
+// Batch is flushed when either:
+// - Number of blocks reaches maxBlockBatchSize (20 blocks), OR
+// - Total batch size reaches targetBatchSizeBytes (5MB)
 func (bcR *Reactor) addBlockToBatch(data blockSaveData) {
 	bcR.blockBatchMtx.Lock()
 	defer bcR.blockBatchMtx.Unlock()
 
 	if len(bcR.blockBatch) == 0 {
 		bcR.batchStartTime = time.Now()
+		bcR.blockBatchTotalSize = 0
 	}
 
 	bcR.blockBatch = append(bcR.blockBatch, data)
+	bcR.blockBatchTotalSize += data.blockSize
 
-	// Flush if batch is full
-	if len(bcR.blockBatch) >= blockBatchSize {
+	// Flush if batch reached max blocks or target size
+	shouldFlush := len(bcR.blockBatch) >= maxBlockBatchSize ||
+		bcR.blockBatchTotalSize >= targetBatchSizeBytes
+
+	if shouldFlush {
 		bcR.flushBlockBatchLocked()
 	}
 }
@@ -458,12 +476,15 @@ func (bcR *Reactor) flushBlockBatchLocked() {
 	batchCopy := make([]blockSaveData, len(bcR.blockBatch))
 	copy(batchCopy, bcR.blockBatch)
 
-	// Send batch to background goroutine for async save
+	// Send batch to background goroutine for async save (if channel is still open)
 	// Blocking send - provides natural backpressure if disk can't keep up
-	bcR.batchSaveCh <- batchCopy
+	if !bcR.batchSaveChClosed {
+		bcR.batchSaveCh <- batchCopy
+	}
 
 	// Clear the batch so we can start accumulating the next one
 	bcR.blockBatch = nil
+	bcR.blockBatchTotalSize = 0
 }
 
 // flushBlockBatch is the public version that acquires the lock.
@@ -583,8 +604,19 @@ FOR_LOOP:
 			}
 			if bcR.pool.IsCaughtUp() || bcR.localNodeBlocksTheChain(state) {
 				bcR.Logger.Info("Time to switch to consensus reactor!", "height", height)
-				// Flush any remaining blocks before switching to consensus
+				// Flush any remaining blocks
 				bcR.flushBlockBatch()
+				// Close channel to signal no more batches, then wait for goroutine to finish
+				bcR.blockBatchMtx.Lock()
+				if !bcR.batchSaveChClosed {
+					close(bcR.batchSaveCh)
+					bcR.batchSaveChClosed = true
+				}
+				bcR.blockBatchMtx.Unlock()
+				// Wait for goroutine to drain all batches and exit
+				bcR.Logger.Info("Waiting for batch saves to complete before switching to consensus")
+				bcR.batchSaveWg.Wait()
+				bcR.Logger.Info("All batches saved, switching to consensus")
 				if err := bcR.pool.Stop(); err != nil {
 					bcR.Logger.Error("Error stopping pool", "err", err)
 				}
