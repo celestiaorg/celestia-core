@@ -54,8 +54,11 @@ const (
 // BlocksyncBlockSaved describes schema for the "blocksync_block_saved" table.
 // This event is traced after a block is successfully validated and saved to the block store.
 type BlocksyncBlockSaved struct {
-	Height    int64 `json:"height"`
-	BlockSize int   `json:"block_size"`
+	Height             int64 `json:"height"`
+	BlockSize          int   `json:"block_size"`
+	ValidationDuration int64 `json:"validation_duration"` // Duration in milliseconds
+	SaveDuration       int64 `json:"save_duration"`       // Duration in milliseconds
+	TotalDuration      int64 `json:"total_duration"`      // Duration in milliseconds
 }
 
 // Table returns the table name for the BlocksyncBlockSaved struct.
@@ -64,13 +67,16 @@ func (BlocksyncBlockSaved) Table() string {
 }
 
 // WriteBlocksyncBlockSaved writes a tracing point for a successfully validated and saved block.
-func WriteBlocksyncBlockSaved(client trace.Tracer, height int64, blockSize int) {
+func WriteBlocksyncBlockSaved(client trace.Tracer, height int64, blockSize int, validationDuration, saveDuration, totalDuration int64) {
 	if !client.IsCollecting(BlocksyncBlockSavedTable) {
 		return
 	}
 	client.Write(BlocksyncBlockSaved{
-		Height:    height,
-		BlockSize: blockSize,
+		Height:             height,
+		BlockSize:          blockSize,
+		ValidationDuration: validationDuration,
+		SaveDuration:       saveDuration,
+		TotalDuration:      totalDuration,
 	})
 }
 

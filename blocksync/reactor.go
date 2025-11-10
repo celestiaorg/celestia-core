@@ -497,6 +497,10 @@ FOR_LOOP:
 			}
 			firstPartSetHeader := firstParts.Header()
 			firstID := types.BlockID{Hash: first.Hash(), PartSetHeader: firstPartSetHeader}
+
+			// Start timing validation
+			validationStart := time.Now()
+
 			// Finally, verify the first block using the second's commit
 			// NOTE: we can probably make this more efficient, but note that calling
 			// first.Hash() doesn't verify the tx contents, so MakePartSet() is
@@ -524,6 +528,9 @@ FOR_LOOP:
 					err = fmt.Errorf("application has rejected syncing block (%X) at height %d, %w", first.Hash(), first.Height, err)
 				}
 			}
+
+			// Calculate validation duration
+			validationDuration := time.Since(validationStart)
 
 			presentExtCommit := extCommit != nil
 			extensionsEnabled := state.ConsensusParams.ABCI.VoteExtensionsEnabled(first.Height)
@@ -558,6 +565,9 @@ FOR_LOOP:
 
 			bcR.pool.PopRequest()
 
+			// Start timing block save
+			saveStart := time.Now()
+
 			// TODO: batch saves so we dont persist to disk every block
 			if extensionsEnabled {
 				bcR.store.SaveBlockWithExtendedCommit(first, firstParts, extCommit)
@@ -569,12 +579,17 @@ FOR_LOOP:
 				bcR.store.SaveBlock(first, firstParts, second.LastCommit)
 			}
 
+			// Calculate save duration
+			saveDuration := time.Since(saveStart)
+			totalDuration := time.Since(validationStart)
+
 			// Trace block saved after successful validation
 			var blockSize int
 			if firstParts != nil {
 				blockSize = int(firstParts.ByteSize())
 			}
-			schema.WriteBlocksyncBlockSaved(bcR.traceClient, first.Height, blockSize)
+			schema.WriteBlocksyncBlockSaved(bcR.traceClient, first.Height, blockSize,
+				validationDuration.Milliseconds(), saveDuration.Milliseconds(), totalDuration.Milliseconds())
 
 			// TODO: same thing for app - but we would need a way to
 			// get the hash without persisting the state
