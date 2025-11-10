@@ -64,6 +64,7 @@ type blockSaveData struct {
 	validationDuration int64 // milliseconds
 	saveDuration       int64 // milliseconds (will be set during batch flush)
 	totalDuration      int64 // milliseconds (will be set during batch flush)
+	batchStartTime     time.Time // time when this batch was started
 }
 
 // Reactor handles long-term catchup syncing.
@@ -92,6 +93,8 @@ type Reactor struct {
 	blockBatchMtx  sync.Mutex
 	blockBatch     []blockSaveData
 	batchStartTime time.Time // time when first block was added to batch
+	batchSaveCh    chan []blockSaveData
+	batchSaveWg    sync.WaitGroup
 }
 
 // NewReactor returns new reactor instance.
@@ -145,6 +148,7 @@ func NewReactorWithAddr(state sm.State, blockExec *sm.BlockExecutor, store *stor
 		errorsCh:     errorsCh,
 		metrics:      metrics,
 		traceClient:  traceClient,
+		batchSaveCh:  make(chan []blockSaveData, 10), // buffer 10 batches
 	}
 	bcR.BaseReactor = *p2p.NewBaseReactor("BlockSync", bcR, p2p.WithIncomingQueueSize(ReactorIncomingMessageQueueSize))
 	return bcR
@@ -168,6 +172,9 @@ func (bcR *Reactor) OnStart() error {
 			defer bcR.poolRoutineWg.Done()
 			bcR.poolRoutine(false)
 		}()
+		// Start background batch save goroutine
+		bcR.batchSaveWg.Add(1)
+		go bcR.batchSaveRoutine()
 	}
 	return nil
 }
@@ -197,6 +204,14 @@ func (bcR *Reactor) OnStop() {
 			bcR.Logger.Error("Error stopping pool", "err", err)
 		}
 		bcR.poolRoutineWg.Wait()
+
+		// Flush any pending batch before stopping
+		bcR.flushBlockBatch()
+
+		// Stop background batch save goroutine
+		// Close the channel to signal no more batches, goroutine will drain and exit
+		close(bcR.batchSaveCh)
+		bcR.batchSaveWg.Wait()
 	}
 }
 
@@ -359,19 +374,29 @@ func (bcR *Reactor) addBlockToBatch(data blockSaveData) {
 	}
 }
 
-// flushBlockBatch flushes any pending blocks in the batch to disk.
-// Must be called with blockBatchMtx held.
-func (bcR *Reactor) flushBlockBatchLocked() {
-	if len(bcR.blockBatch) == 0 {
+// batchSaveRoutine runs in the background and saves batches to disk.
+func (bcR *Reactor) batchSaveRoutine() {
+	defer bcR.batchSaveWg.Done()
+
+	// Process batches until channel is closed
+	for batch := range bcR.batchSaveCh {
+		bcR.saveBatchToDisk(batch)
+	}
+}
+
+// saveBatchToDisk performs the actual disk save operation.
+func (bcR *Reactor) saveBatchToDisk(batch []blockSaveData) {
+	if len(batch) == 0 {
 		return
 	}
 
 	// Start timing the batch save
 	saveStart := time.Now()
+	batchStartTime := batch[0].batchStartTime // Use the actual batch start time
 
 	// Convert to types.BlockBatchEntry
-	entries := make([]types.BlockBatchEntry, len(bcR.blockBatch))
-	for i, data := range bcR.blockBatch {
+	entries := make([]types.BlockBatchEntry, len(batch))
+	for i, data := range batch {
 		entries[i] = types.BlockBatchEntry{
 			Block:              data.block,
 			BlockParts:         data.blockParts,
@@ -390,10 +415,10 @@ func (bcR *Reactor) flushBlockBatchLocked() {
 	saveDuration := time.Since(saveStart).Milliseconds()
 
 	// Calculate batch statistics
-	startHeight := bcR.blockBatch[0].block.Height
-	endHeight := bcR.blockBatch[len(bcR.blockBatch)-1].block.Height
+	startHeight := batch[0].block.Height
+	endHeight := batch[len(batch)-1].block.Height
 	totalSize := 0
-	for _, data := range bcR.blockBatch {
+	for _, data := range batch {
 		totalSize += data.blockSize
 	}
 
@@ -401,21 +426,43 @@ func (bcR *Reactor) flushBlockBatchLocked() {
 	bcR.Logger.Info("Saved block batch",
 		"start_height", startHeight,
 		"end_height", endHeight,
-		"num_blocks", len(bcR.blockBatch),
+		"num_blocks", len(batch),
 		"total_size_kb", totalSize/1024,
 		"save_duration_ms", saveDuration)
 
 	// Trace the batch save operation
-	schema.WriteBlocksyncBatchSaved(bcR.traceClient, startHeight, endHeight, len(bcR.blockBatch), totalSize, saveDuration)
+	schema.WriteBlocksyncBatchSaved(bcR.traceClient, startHeight, endHeight, len(batch), totalSize, saveDuration)
 
 	// Write traces for all blocks in the batch
-	for _, data := range bcR.blockBatch {
-		totalDuration := time.Since(bcR.batchStartTime).Milliseconds()
+	for _, data := range batch {
+		totalDuration := time.Since(batchStartTime).Milliseconds()
 		schema.WriteBlocksyncBlockSaved(bcR.traceClient, data.block.Height, data.blockSize,
 			data.validationDuration, saveDuration, totalDuration)
 	}
+}
 
-	// Clear the batch
+// flushBlockBatch flushes any pending blocks in the batch to disk.
+// Must be called with blockBatchMtx held.
+func (bcR *Reactor) flushBlockBatchLocked() {
+	if len(bcR.blockBatch) == 0 {
+		return
+	}
+
+	// Set batchStartTime for all blocks in this batch
+	batchStartTime := bcR.batchStartTime
+	for i := range bcR.blockBatch {
+		bcR.blockBatch[i].batchStartTime = batchStartTime
+	}
+
+	// Make a copy of the batch to send to background goroutine
+	batchCopy := make([]blockSaveData, len(bcR.blockBatch))
+	copy(batchCopy, bcR.blockBatch)
+
+	// Send batch to background goroutine for async save
+	// Blocking send - provides natural backpressure if disk can't keep up
+	bcR.batchSaveCh <- batchCopy
+
+	// Clear the batch so we can start accumulating the next one
 	bcR.blockBatch = nil
 }
 
