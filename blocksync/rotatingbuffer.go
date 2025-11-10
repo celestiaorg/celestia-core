@@ -31,12 +31,10 @@ func (rb *RotatingBuffer) Add(value float64) {
 	needRecalculateMax := false
 
 	if rb.size < rb.capacity {
-		// Buffer is not full yet
 		rb.buffer[rb.head] = value
 		rb.sum += value
 		rb.size++
 
-		// Update max if needed
 		if rb.size == 1 || value > rb.max {
 			rb.max = value
 		}
@@ -46,7 +44,6 @@ func (rb *RotatingBuffer) Add(value float64) {
 		rb.buffer[rb.head] = value
 		rb.sum = rb.sum - oldValue + value
 
-		// If we're removing the max value, we need to recalculate
 		if oldValue == rb.max {
 			needRecalculateMax = true
 		} else if value > rb.max {
@@ -54,10 +51,8 @@ func (rb *RotatingBuffer) Add(value float64) {
 		}
 	}
 
-	// Move head to next position (circular)
 	rb.head = (rb.head + 1) % rb.capacity
 
-	// Recalculate max if necessary (only when we removed the max value)
 	if needRecalculateMax {
 		rb.recalculateMax()
 	}
@@ -80,7 +75,6 @@ func (rb *RotatingBuffer) recalculateMax() {
 }
 
 // GetAverage returns the average of all elements in the buffer
-// Time complexity: O(1)
 func (rb *RotatingBuffer) GetAverage() float64 {
 	if rb.size == 0 {
 		return 0
@@ -89,7 +83,6 @@ func (rb *RotatingBuffer) GetAverage() float64 {
 }
 
 // GetMax returns the maximum value in the buffer
-// Time complexity: O(1) amortized
 func (rb *RotatingBuffer) GetMax() float64 {
 	return rb.max
 }
@@ -102,24 +95,4 @@ func (rb *RotatingBuffer) Size() int {
 // Capacity returns the maximum capacity of the buffer
 func (rb *RotatingBuffer) Capacity() int {
 	return rb.capacity
-}
-
-// GetAll returns all current elements in the buffer (in insertion order)
-func (rb *RotatingBuffer) GetAll() []float64 {
-	if rb.size == 0 {
-		return []float64{}
-	}
-
-	result := make([]float64, rb.size)
-	if rb.size < rb.capacity {
-		// Buffer not full yet, elements are from 0 to size-1
-		copy(result, rb.buffer[:rb.size])
-	} else {
-		// Buffer is full, need to handle circular nature
-		// Oldest element is at head position
-		for i := 0; i < rb.size; i++ {
-			result[i] = rb.buffer[(rb.head+i)%rb.capacity]
-		}
-	}
-	return result
 }

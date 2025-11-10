@@ -1,7 +1,6 @@
 package blocksync
 
 import (
-	"math"
 	"time"
 )
 
@@ -26,6 +25,10 @@ type poolConfig struct {
 
 	// Maximum memory to use for pending block requests
 	maxMemoryForRequesters float64
+
+	// ladder step to which we round the value of requesters, e.g. 31 will be rounded to 30
+	// if step is 5
+	step int
 }
 
 // BlockPoolParams holds dynamically calculated parameters for the block pool
@@ -110,7 +113,7 @@ func (p *BlockPoolParams) calculateMaxPendingLadder(blockSize float64) int {
 	rawMaxPending := p.config.maxPendingForSmallBlocks - int(float64(p.config.maxPendingForSmallBlocks-p.config.maxPendingForLargeBlocks)*normalized)
 
 	// Round to nearest step of 5 for ladder effect
-	step := 5
+	step := p.config.step
 	maxPending := ((rawMaxPending + step/2) / step) * step
 
 	// Ensure we don't go below minimum
@@ -134,11 +137,8 @@ func (p *BlockPoolParams) calculateRetryTimeout(blockSize float64) time.Duration
 	// Calculate normalized position [0, 1] in the range
 	normalized := (blockSize - p.config.minBlockSizeBytes) / (p.config.maxBlockSizeBytes - p.config.minBlockSizeBytes)
 
-	// Apply exponential curve for smoother scaling
-	curve := math.Pow(normalized, 2)
-
 	// Calculate retry seconds
-	retrySeconds := p.config.minRetrySeconds + (p.config.maxRetrySeconds-p.config.minRetrySeconds)*curve
+	retrySeconds := p.config.minRetrySeconds + (p.config.maxRetrySeconds-p.config.minRetrySeconds)*normalized
 
 	return time.Duration(retrySeconds * float64(time.Second))
 }

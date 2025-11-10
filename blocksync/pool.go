@@ -32,8 +32,10 @@ eg, L = latency = 0.1s
 */
 
 const (
-	requestIntervalMS   = 2
-	requestRetrySeconds = 45 // deprecated: now calculated dynamically based on block size
+	requestIntervalMS = 2
+	// Request retry seconds is calculated dynamically,
+	// this is used when we don't have enough samples
+	requestRetrySeconds = 45
 
 	// Border values for dynamic retry timer calculation
 	// Small blocks (1 KB) retry after 5 seconds
@@ -55,7 +57,9 @@ const (
 	// Minimum samples before using dynamic values
 	minSamplesForDynamic = 5
 
-	maxPendingRequestsPerPeer = 20 // deprecated: now calculated dynamically
+	// Max pending requests are calculated dynamically,
+	// this is used when we don't have enough samples
+	defaultMaxPendingRequestsPerPeer = 20
 
 	// Minimum recv rate to ensure we're receiving blocks from a peer fast
 	// enough. If a peer is not sending us data at at least that rate, we
@@ -71,16 +75,17 @@ const (
 	// routine time to connect to peers.
 	peerConnWait = 3 * time.Second
 
-	// If we're within minBlocksForSingleRequest blocks of the pool's height, we
-	// send 2 parallel requests to 2 peers for the same block. If we're further
-	// away, we send a single request.
-	minBlocksForSingleRequest = 10
-
 	// Default maximum number of concurrent block requesters
 	defaultMaxRequesters = 100
 
-	// Maximum memory to use for pending block requests (2.2 GB)
-	maxMemoryForRequesters = 2.2 * 1024 * 1024 * 1024 // 2.2 GB in bytes
+	// Maximum memory to use for pending block requests (3 GB).
+	// Empirically determined to avoid excessive memory usage, because most
+	// memory usage actually comes from connection buffers, not from requesters.
+	maxMemoryForRequesters = 3 * 1024 * 1024 * 1024
+
+	// This value rounds the calculated max requesters to the step value,
+	// e.g. if step is 5, 31 would be rounded to 30
+	defaultRequestersIncreaseStep = 5
 )
 
 var peerTimeout = 120 * time.Second // not const so we can override with tests
@@ -95,9 +100,10 @@ func newPoolConfig() poolConfig {
 		maxPendingForSmallBlocks: maxPendingForSmallBlocks,
 		maxPendingForLargeBlocks: maxPendingForLargeBlocks,
 		minSamplesForDynamic:     minSamplesForDynamic,
-		defaultMaxPendingPerPeer: maxPendingRequestsPerPeer,
+		defaultMaxPendingPerPeer: defaultMaxPendingRequestsPerPeer,
 		defaultRetrySeconds:      requestRetrySeconds,
 		maxMemoryForRequesters:   maxMemoryForRequesters,
+		step:                     defaultRequestersIncreaseStep,
 	}
 }
 
@@ -128,8 +134,6 @@ type BlockPool struct {
 	sortedPeers   []*bpPeer // sorted by curRate, highest first
 	maxPeerHeight int64     // the biggest reported height
 
-	maxRequesters int
-
 	// atomic
 	numPending int32 // number of requests pending assignment or block response
 
@@ -149,13 +153,12 @@ type BlockPool struct {
 // requests and errors will be sent to requestsCh and errorsCh accordingly.
 func NewBlockPool(start int64, maxRequesters int, requestsCh chan<- BlockRequest, errorsCh chan<- peerError, traceClient trace.Tracer) *BlockPool {
 	bp := &BlockPool{
-		peers:         make(map[p2p.ID]*bpPeer),
-		bannedPeers:   make(map[p2p.ID]time.Time),
-		requesters:    make(map[int64]*bpRequester),
-		height:        start,
-		startHeight:   start,
-		maxRequesters: maxRequesters,
-		numPending:    0,
+		peers:       make(map[p2p.ID]*bpPeer),
+		bannedPeers: make(map[p2p.ID]time.Time),
+		requesters:  make(map[int64]*bpRequester),
+		height:      start,
+		startHeight: start,
+		numPending:  0,
 
 		requestsCh:  requestsCh,
 		errorsCh:    errorsCh,
@@ -245,11 +248,6 @@ func (pool *BlockPool) dropExcessRequesters(maxRequestersAllowed int, maxPending
 
 	// Drop requesters from highest to lowest until we're at the limit
 	numToDrop := numRequesters - maxRequestersAllowed
-	pool.Logger.Info("Dropping excess requesters due to maxPending change",
-		"numRequesters", numRequesters,
-		"maxAllowed", maxRequestersAllowed,
-		"dropping", numToDrop,
-		"maxPending", maxPending)
 
 	for i := 0; i < numToDrop && i < len(heights); i++ {
 		height := heights[i]
@@ -369,12 +367,6 @@ func (pool *BlockPool) PopRequest() {
 	}
 	delete(pool.requesters, pool.height)
 	pool.height++
-
-	// Notify the next minBlocksForSingleRequest requesters about new height, so
-	// they can potentially request a block from the second peer.
-	for i := int64(0); i < minBlocksForSingleRequest && i < int64(len(pool.requesters)); i++ {
-		pool.requesters[pool.height+i].newHeight(pool.height)
-	}
 }
 
 // RemovePeerAndRedoAllPeerRequests retries the request at the given height and
@@ -435,20 +427,13 @@ func (pool *BlockPool) AddBlock(peerID p2p.ID, block *types.Block, extCommit *ty
 
 	requester := pool.requesters[block.Height]
 	if requester == nil {
-		// Check if this was from a dropped requester
+		// Check if this was from a dropped requester, due to max size of the block increase
 		if _, wasDropped := pool.droppedRequesters[block.Height]; wasDropped {
-			pool.Logger.Info("Received block from dropped requester, ignoring",
-				"height", block.Height,
-				"peer", peerID)
-			// Clean up the dropped requester entry
 			delete(pool.droppedRequesters, block.Height)
 			return nil
 		}
 
-		// Because we're issuing 2nd requests for closer blocks, it's possible to
-		// receive a block we've already processed from a second peer. Hence, we
-		// can't punish it. But if the peer sent us a block we clearly didn't
-		// request, we disconnect.
+		// If the peer sent us a block we clearly didn't request, we disconnect.
 		if block.Height > pool.height || block.Height < pool.startHeight {
 			err := fmt.Errorf("peer sent us block #%d we didn't expect (current height: %d, start height: %d)",
 				block.Height, pool.height, pool.startHeight)
@@ -494,7 +479,7 @@ func (pool *BlockPool) addBlock(height int64, blockSize int) {
 	pool.params.addBlock(blockSize, len(pool.peers))
 
 	// Log current parameters after adding block
-	pool.Logger.Info("Block added, current maxPending",
+	pool.Logger.Debug("Block added, current maxPending",
 		"height", height,
 		"blockSize", fmt.Sprintf("%.2f KB", float64(blockSize)/1024),
 		"avgBlockSize", fmt.Sprintf("%.2f KB", pool.params.avgBlockSize/1024),
@@ -670,6 +655,8 @@ func (pool *BlockPool) pickIncrAvailablePeer(height int64, excludePeerID p2p.ID,
 		}
 
 		// If this is the preferExcludePeerID, save as fallback but continue looking
+		// the idea is that we want to add diversity to peers, so we will try to alternate peers when loading
+		// this works a bit better with less amount of peers and large blocks
 		if peer.id == preferExcludePeerID {
 			if fallbackPeer == nil {
 				fallbackPeer = peer
@@ -837,13 +824,11 @@ type bpRequester struct {
 	pool               *BlockPool
 	height             int64
 	gotBlockCh         chan struct{}
-	redoCh             chan p2p.ID // redo may got multiple messages, add peerId to identify repeat
-	activeRequests     map[p2p.ID]struct{}
-	requestedFromPeers map[p2p.ID]struct{}
+	redoCh             chan p2p.ID         // redo may got multiple messages, add peerId to identify repeat
+	activeRequests     map[p2p.ID]struct{} // activeRequests are requests currently in flight
+	requestedFromPeers map[p2p.ID]struct{} // requestedFromPeers are all peers used by this requester
 
 	mtx          cmtsync.Mutex
-	peerID       p2p.ID
-	secondPeerID p2p.ID // alternative peer to request from (if close to pool's height)
 	gotBlockFrom p2p.ID
 	block        *types.Block
 	extCommit    *types.ExtendedCommit
@@ -851,17 +836,14 @@ type bpRequester struct {
 
 func newBPRequester(pool *BlockPool, height int64) *bpRequester {
 	bpr := &bpRequester{
-		pool:       pool,
-		height:     height,
-		gotBlockCh: make(chan struct{}, 1),
-		redoCh:     make(chan p2p.ID, 1),
-		//newHeightCh:        make(chan int64, 1),
+		pool:               pool,
+		height:             height,
+		gotBlockCh:         make(chan struct{}, 1),
+		redoCh:             make(chan p2p.ID, 1),
 		activeRequests:     make(map[p2p.ID]struct{}),
 		requestedFromPeers: make(map[p2p.ID]struct{}),
 
-		peerID:       "",
-		secondPeerID: "",
-		block:        nil,
+		block: nil,
 	}
 	bpr.BaseService = *service.NewBaseService(nil, "bpRequester", bpr)
 	return bpr
@@ -1023,10 +1005,6 @@ PICK_PEER_LOOP:
 	bpr.pool.sendRequest(bpr.height, peer.id)
 }
 
-// Informs the requester of a new pool's height.
-func (bpr *bpRequester) newHeight(height int64) {
-}
-
 func (bpr *bpRequester) isRequestedFromPeer(id p2p.ID) bool {
 	_, ok := bpr.requestedFromPeers[id]
 	return ok
@@ -1055,7 +1033,6 @@ OUTER_LOOP:
 				return
 			case <-retryTimer.C:
 				if !gotBlock {
-					bpr.Logger.Debug("Retrying block request(s) after timeout", "height", bpr.height, "peer", bpr.peerID, "secondPeerID", bpr.secondPeerID)
 					bpr.resetAll()
 					continue OUTER_LOOP
 				}
@@ -1064,8 +1041,7 @@ OUTER_LOOP:
 				if removedBlock {
 					gotBlock = false
 				}
-				// If both peers returned NoBlockResponse or bad block, reschedule both
-				// requests. If not, wait for the other peer.
+				// If peers returned NoBlockResponse or bad block, reschedule requests.
 				if len(bpr.active()) == 0 {
 					retryTimer.Stop()
 					continue OUTER_LOOP

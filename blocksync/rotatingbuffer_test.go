@@ -58,31 +58,6 @@ func TestRotatingBehavior(t *testing.T) {
 	}
 }
 
-func TestGetAll(t *testing.T) {
-	rb := NewRotatingBuffer(3)
-
-	rb.Add(10)
-	rb.Add(20)
-	rb.Add(30)
-
-	all := rb.GetAll()
-	if len(all) != 3 {
-		t.Errorf("Expected 3 elements, got %d", len(all))
-	}
-
-	// Add one more to trigger rotation
-	rb.Add(40)
-	all = rb.GetAll()
-
-	// Should have [20, 30, 40]
-	expected := []float64{20, 30, 40}
-	for i, v := range expected {
-		if all[i] != v {
-			t.Errorf("Expected element %d to be %f, got %f", i, v, all[i])
-		}
-	}
-}
-
 func TestEmptyBuffer(t *testing.T) {
 	rb := NewRotatingBuffer(5)
 	if rb.GetAverage() != 0 {
