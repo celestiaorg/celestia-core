@@ -78,6 +78,11 @@ func BlockExecutorWithTracer(tracer trace.Tracer) BlockExecutorOption {
 	}
 }
 
+// ProxyApp returns the consensus connection to the application.
+func (blockExec *BlockExecutor) ProxyApp() proxy.AppConnConsensus {
+	return blockExec.proxyApp
+}
+
 // NewBlockExecutor returns a new BlockExecutor with a NopEventBus.
 // Call SetEventBus to provide one.
 func NewBlockExecutor(

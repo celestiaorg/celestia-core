@@ -335,6 +335,24 @@ func (_m *BlockStore) SaveBlockWithExtendedCommit(block *types.Block, blockParts
 	_m.Called(block, blockParts, seenCommit)
 }
 
+// SaveBlockBatch provides a mock function with given fields: blocks
+func (_m *BlockStore) SaveBlockBatch(blocks []types.BlockBatchEntry) error {
+	ret := _m.Called(blocks)
+
+	if len(ret) == 0 {
+		panic("no return value specified for SaveBlockBatch")
+	}
+
+	var r0 error
+	if rf, ok := ret.Get(0).(func([]types.BlockBatchEntry) error); ok {
+		r0 = rf(blocks)
+	} else {
+		r0 = ret.Error(0)
+	}
+
+	return r0
+}
+
 // SaveTxInfo provides a mock function with given fields: block, execTxRes
 func (_m *BlockStore) SaveTxInfo(block *types.Block, execTxRes []*abcitypes.ExecTxResult) error {
 	ret := _m.Called(block, execTxRes)

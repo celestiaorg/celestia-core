@@ -1,6 +1,7 @@
 package blocksync
 
 import (
+	"context"
 	"fmt"
 	"reflect"
 	"sync"
@@ -12,6 +13,7 @@ import (
 	"github.com/cometbft/cometbft/libs/trace/schema"
 	"github.com/cometbft/cometbft/p2p"
 	bcproto "github.com/cometbft/cometbft/proto/tendermint/blocksync"
+	"github.com/cometbft/cometbft/proxy"
 	sm "github.com/cometbft/cometbft/state"
 	"github.com/cometbft/cometbft/store"
 	"github.com/cometbft/cometbft/types"
@@ -166,6 +168,13 @@ func (bcR *Reactor) SetLogger(l log.Logger) {
 // OnStart implements service.Service.
 func (bcR *Reactor) OnStart() error {
 	if bcR.blockSync {
+		// Enable batched commit mode for the application
+		// This prevents the app from persisting commits immediately during blocksync
+		if err := bcR.blockExec.ProxyApp().SetCommitMode(proxy.CommitModeBatched); err != nil {
+			return fmt.Errorf("failed to set batched commit mode: %w", err)
+		}
+		bcR.Logger.Info("Enabled batched commit mode for blocksync")
+
 		err := bcR.pool.Start()
 		if err != nil {
 			return err
@@ -187,6 +196,12 @@ func (bcR *Reactor) SwitchToBlockSync(state sm.State) error {
 	bcR.blockSync = true
 	bcR.initialState = state
 
+	// Enable batched commit mode for the application
+	if err := bcR.blockExec.ProxyApp().SetCommitMode(proxy.CommitModeBatched); err != nil {
+		return fmt.Errorf("failed to set batched commit mode: %w", err)
+	}
+	bcR.Logger.Info("Enabled batched commit mode for blocksync")
+
 	bcR.pool.height = state.LastBlockHeight + 1
 	err := bcR.pool.Start()
 	if err != nil {
@@ -197,6 +212,9 @@ func (bcR *Reactor) SwitchToBlockSync(state sm.State) error {
 		defer bcR.poolRoutineWg.Done()
 		bcR.poolRoutine(true)
 	}()
+	// Start background batch save goroutine
+	bcR.batchSaveWg.Add(1)
+	go bcR.batchSaveRoutine()
 	return nil
 }
 
@@ -222,6 +240,13 @@ func (bcR *Reactor) OnStop() {
 
 		// Wait for the background goroutine to finish processing all batches
 		bcR.batchSaveWg.Wait()
+
+		// Switch back to immediate commit mode
+		if err := bcR.blockExec.ProxyApp().SetCommitMode(proxy.CommitModeImmediate); err != nil {
+			bcR.Logger.Error("Failed to switch back to immediate commit mode", "err", err)
+		} else {
+			bcR.Logger.Info("Switched back to immediate commit mode")
+		}
 	}
 }
 
@@ -398,21 +423,32 @@ func (bcR *Reactor) batchSaveRoutine() {
 
 	// Process batches until channel is closed
 	for batch := range bcR.batchSaveCh {
-		bcR.saveBatchToDisk(batch)
+		if err := bcR.saveBatchToDisk(batch); err != nil {
+			bcR.Logger.Error("Failed to save batch to disk", "err", err)
+			// TODO: Consider more sophisticated error handling (retry, halt, etc.)
+		}
 	}
 }
 
 // saveBatchToDisk performs the actual disk save operation.
-func (bcR *Reactor) saveBatchToDisk(batch []blockSaveData) {
+// It flushes app commits, saves blocks to blockstore, and ensures all databases are synchronized.
+func (bcR *Reactor) saveBatchToDisk(batch []blockSaveData) error {
 	if len(batch) == 0 {
-		return
+		return nil
 	}
 
 	// Start timing the batch save
 	saveStart := time.Now()
 	batchStartTime := batch[0].batchStartTime // Use the actual batch start time
 
-	// Convert to types.BlockBatchEntry
+	// Step 1: Flush all pending app commits
+	// This ensures application.db is synchronized with the blocks we're about to save
+	ctx := context.Background()
+	if err := bcR.blockExec.ProxyApp().FlushCommitBatch(ctx); err != nil {
+		return fmt.Errorf("failed to flush commit batch: %w", err)
+	}
+
+	// Step 2: Convert to types.BlockBatchEntry
 	entries := make([]types.BlockBatchEntry, len(batch))
 	for i, data := range batch {
 		entries[i] = types.BlockBatchEntry{
@@ -423,10 +459,9 @@ func (bcR *Reactor) saveBatchToDisk(batch []blockSaveData) {
 		}
 	}
 
-	// Save batch to disk (single fsync)
-	err := bcR.store.SaveBlockBatch(entries)
-	if err != nil {
-		panic(fmt.Sprintf("Failed to save block batch: %v", err))
+	// Step 3: Save blocks to blockstore (single fsync)
+	if err := bcR.store.SaveBlockBatch(entries); err != nil {
+		return fmt.Errorf("failed to save block batch: %w", err)
 	}
 
 	// Calculate timing
@@ -440,8 +475,8 @@ func (bcR *Reactor) saveBatchToDisk(batch []blockSaveData) {
 		totalSize += data.blockSize
 	}
 
-	// Log batch save
-	bcR.Logger.Info("Saved block batch",
+	// Log batch save - all 3 databases (application.db, blockstore.db, state.db) are now synchronized
+	bcR.Logger.Info("Saved block batch (all databases synchronized)",
 		"start_height", startHeight,
 		"end_height", endHeight,
 		"num_blocks", len(batch),
@@ -457,6 +492,8 @@ func (bcR *Reactor) saveBatchToDisk(batch []blockSaveData) {
 		schema.WriteBlocksyncBlockSaved(bcR.traceClient, data.block.Height, data.blockSize,
 			data.validationDuration, saveDuration, totalDuration)
 	}
+
+	return nil
 }
 
 // flushBlockBatch flushes any pending blocks in the batch to disk.
@@ -617,6 +654,14 @@ FOR_LOOP:
 				bcR.Logger.Info("Waiting for batch saves to complete before switching to consensus")
 				bcR.batchSaveWg.Wait()
 				bcR.Logger.Info("All batches saved, switching to consensus")
+
+				// Switch back to immediate commit mode before switching to consensus
+				if err := bcR.blockExec.ProxyApp().SetCommitMode(proxy.CommitModeImmediate); err != nil {
+					bcR.Logger.Error("Failed to switch back to immediate commit mode", "err", err)
+				} else {
+					bcR.Logger.Info("Switched back to immediate commit mode")
+				}
+
 				if err := bcR.pool.Stop(); err != nil {
 					bcR.Logger.Error("Error stopping pool", "err", err)
 				}
