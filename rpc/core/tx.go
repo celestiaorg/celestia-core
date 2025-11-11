@@ -236,6 +236,7 @@ func (env *Environment) TxStatus(ctx *rpctypes.Context, hash []byte) (*ctypes.Re
 			Codespace:     txInfo.Codespace,
 			GasWanted:     txInfo.GasWanted,
 			GasUsed:       txInfo.GasUsed,
+			Signers:       txInfo.Signers,
 		}, nil
 	}
 

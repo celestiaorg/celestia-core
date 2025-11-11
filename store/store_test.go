@@ -802,6 +802,7 @@ func TestSaveTxInfo(t *testing.T) {
 				Data:      []byte("success_data"),
 				Info:      "successful execution",
 				Codespace: "",
+				Signers:   []string{"signer1"},
 			}
 		} else {
 			txResult = &abci.ExecTxResult{
@@ -812,6 +813,7 @@ func TestSaveTxInfo(t *testing.T) {
 				Data:      []byte(""),
 				Info:      "failed execution",
 				Codespace: "app",
+				Signers:   []string{"signer2"},
 			}
 		}
 
@@ -838,11 +840,13 @@ func TestSaveTxInfo(t *testing.T) {
 				require.Equal(t, "", txInfo.Codespace)
 				require.Equal(t, int64(75000), txInfo.GasUsed)
 				require.Equal(t, int64(100000), txInfo.GasWanted)
+				require.Equal(t, []string{"signer1"}, txInfo.Signers)
 			} else {
 				require.Equal(t, "app", txInfo.Codespace)
 				require.Equal(t, int64(25000), txInfo.GasUsed)
 				require.Equal(t, int64(50000), txInfo.GasWanted)
 				require.Equal(t, allTxLogs[txIndex], txInfo.Error)
+				require.Equal(t, []string{"signer2"}, txInfo.Signers)
 			}
 			txIndex++
 		}
