@@ -314,9 +314,7 @@ func (blockExec *BlockExecutor) applyBlock(state State, blockID types.BlockID, b
 	// This needs to be done prior to saving state
 	// for correct crash recovery
 	if blockExec.blockStore != nil {
-		respCodes := getResponseCodes(abciResponse.TxResults)
-		logs := getLogs(abciResponse.TxResults)
-		if err := blockExec.blockStore.SaveTxInfo(block, respCodes, logs); err != nil {
+		if err := blockExec.blockStore.SaveTxInfo(block, abciResponse.TxResults); err != nil {
 			return state, err
 		}
 	}
@@ -878,24 +876,6 @@ func (blockExec *BlockExecutor) pruneBlocks(retainHeight int64, state State) (ui
 		return 0, fmt.Errorf("failed to prune state store: %w", err)
 	}
 	return amountPruned, nil
-}
-
-// getResponseCodes gets response codes from a list of ResponseDeliverTx.
-func getResponseCodes(responses []*abci.ExecTxResult) []uint32 {
-	responseCodes := make([]uint32, len(responses))
-	for i, response := range responses {
-		responseCodes[i] = response.Code
-	}
-	return responseCodes
-}
-
-// getLogs gets logs from a list of ResponseDeliverTx.
-func getLogs(responses []*abci.ExecTxResult) []string {
-	logs := make([]string, len(responses))
-	for i, response := range responses {
-		logs[i] = response.Log
-	}
-	return logs
 }
 
 // saveFailedProposalBlock saves a failed proposal block to the debug directory

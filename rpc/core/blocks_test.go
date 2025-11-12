@@ -364,7 +364,7 @@ func (mockBlockStore) SaveBlockWithExtendedCommit(block *types.Block, blockParts
 func (mockBlockStore) SaveBlock(block *types.Block, blockParts *types.PartSet, seenCommit *types.Commit) {
 }
 
-func (mockBlockStore) SaveTxInfo(block *types.Block, txResponseCodes []uint32, logs []string) error {
+func (mockBlockStore) SaveTxInfo(block *types.Block, txResults []*abci.ExecTxResult) error {
 	return nil
 }
 

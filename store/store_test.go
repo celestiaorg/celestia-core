@@ -791,22 +791,37 @@ func TestSaveTxInfo(t *testing.T) {
 		seenCommit := makeTestExtCommit(h, cmttime.Now())
 		blockStore.SaveBlockWithExtendedCommit(block, partSet, seenCommit)
 
-		var txResponseCode uint32
-		var txLog string
+		var txResult *abci.ExecTxResult
 
 		if h%2 == 0 {
-			txResponseCode = 0
-			txLog = "success"
+			txResult = &abci.ExecTxResult{
+				Code:      0,
+				Log:       "success",
+				GasWanted: 100000,
+				GasUsed:   75000,
+				Data:      []byte("success_data"),
+				Info:      "successful execution",
+				Codespace: "",
+				Signers:   []string{"signer1"},
+			}
 		} else {
-			txResponseCode = 1
-			txLog = "failure"
+			txResult = &abci.ExecTxResult{
+				Code:      1,
+				Log:       "failure",
+				GasWanted: 50000,
+				GasUsed:   25000,
+				Data:      []byte(""),
+				Info:      "failed execution",
+				Codespace: "app",
+				Signers:   []string{"signer2"},
+			}
 		}
 
 		// Save the tx info
-		err = blockStore.SaveTxInfo(block, []uint32{txResponseCode}, []string{txLog})
+		err = blockStore.SaveTxInfo(block, []*abci.ExecTxResult{txResult})
 		require.NoError(t, err)
-		allTxResponseCodes = append(allTxResponseCodes, txResponseCode)
-		allTxLogs = append(allTxLogs, txLog)
+		allTxResponseCodes = append(allTxResponseCodes, txResult.Code)
+		allTxLogs = append(allTxLogs, txResult.Log)
 	}
 
 	txIndex := 0
@@ -822,8 +837,16 @@ func TestSaveTxInfo(t *testing.T) {
 			// We don't save the logs for successful transactions
 			if allTxResponseCodes[txIndex] == abci.CodeTypeOK {
 				require.Equal(t, "", txInfo.Error)
+				require.Equal(t, "", txInfo.Codespace)
+				require.Equal(t, int64(75000), txInfo.GasUsed)
+				require.Equal(t, int64(100000), txInfo.GasWanted)
+				require.Equal(t, []string{"signer1"}, txInfo.Signers)
 			} else {
+				require.Equal(t, "app", txInfo.Codespace)
+				require.Equal(t, int64(25000), txInfo.GasUsed)
+				require.Equal(t, int64(50000), txInfo.GasWanted)
 				require.Equal(t, allTxLogs[txIndex], txInfo.Error)
+				require.Equal(t, []string{"signer2"}, txInfo.Signers)
 			}
 			txIndex++
 		}
@@ -838,4 +861,7 @@ func TestSaveTxInfo(t *testing.T) {
 	require.Equal(t, txInfo.Height, int64(7))
 	require.Equal(t, uint32(1), txInfo.Code)
 	require.Equal(t, "failure", txInfo.Error)
+	require.Equal(t, "app", txInfo.Codespace)
+	require.Equal(t, int64(50000), txInfo.GasWanted)
+	require.Equal(t, int64(25000), txInfo.GasUsed)
 }

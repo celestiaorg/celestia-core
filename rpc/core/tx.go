@@ -233,6 +233,10 @@ func (env *Environment) TxStatus(ctx *rpctypes.Context, hash []byte) (*ctypes.Re
 			ExecutionCode: txInfo.Code,
 			Error:         txInfo.Error,
 			Status:        TxStatusCommitted,
+			Codespace:     txInfo.Codespace,
+			GasWanted:     txInfo.GasWanted,
+			GasUsed:       txInfo.GasUsed,
+			Signers:       txInfo.Signers,
 		}, nil
 	}
 
