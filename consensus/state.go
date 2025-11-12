@@ -169,6 +169,9 @@ type State struct {
 
 	// traceClient is used to trace the state machine.
 	traceClient trace.Tracer
+
+	// gossipDataEnabled controls whether the gossipDataRoutine should run
+	gossipDataEnabled atomic.Bool
 }
 
 // StateOption sets an optional parameter on the State.
@@ -263,6 +266,13 @@ func StateMetrics(metrics *Metrics) StateOption {
 // SetTraceClient sets the remote event collector.
 func SetTraceClient(ec trace.Tracer) StateOption {
 	return func(cs *State) { cs.traceClient = ec }
+}
+
+// SetGossipDataEnabled specifies whether the legacy block prop is enabled.
+func SetGossipDataEnabled(enabled bool) StateOption {
+	return func(cs *State) {
+		cs.gossipDataEnabled.Store(enabled)
+	}
 }
 
 // OfflineStateSyncHeight indicates the height at which the node
@@ -1391,7 +1401,9 @@ func (cs *State) defaultDecideProposal(height int64, round int32) {
 		err = cs.propagator.ProposeBlock(proposal, blockParts, metaData)
 		if err != nil {
 			cs.Logger.Error("propagation reactor failed to propose the block", "err", err)
-			return
+			if !cs.gossipDataEnabled.Load() {
+				return
+			}
 		}
 
 		// send proposal and block parts on internal msg queue
