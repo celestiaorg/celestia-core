@@ -209,6 +209,8 @@ func BootstrapStateWithGenProvider(ctx context.Context, config *cfg.Config, dbPr
 	if err != nil {
 		return err
 	}
+	fmt.Println("----------state---------------")
+	fmt.Println(state)
 
 	if !state.IsEmpty() {
 		return fmt.Errorf("state not empty, trying to initialize non empty state")

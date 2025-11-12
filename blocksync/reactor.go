@@ -532,6 +532,10 @@ FOR_LOOP:
 				err = extCommit.EnsureExtensions(true)
 			}
 			if err != nil {
+				fmt.Println("----------first---------------")
+				fmt.Println(first)
+				fmt.Println("-----------second--------------")
+				fmt.Println(second)
 				bcR.Logger.Error("Error in validation", "err", err)
 				peerID := bcR.pool.RemovePeerAndRedoAllPeerRequests(first.Height)
 				peer := bcR.Switch.Peers().Get(peerID)
