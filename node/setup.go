@@ -349,6 +349,8 @@ func createBlocksyncReactor(config *cfg.Config,
 	metrics *blocksync.Metrics,
 	offlineStateSyncHeight int64,
 ) (bcReactor p2p.Reactor, err error) {
+	fmt.Println("----------state---------------")
+	fmt.Println(state)
 	switch config.BlockSync.Version {
 	case "v0":
 		bcReactor = blocksync.NewReactorWithAddr(state.Copy(), blockExec, blockStore, blockSync, localAddr, metrics, offlineStateSyncHeight)
