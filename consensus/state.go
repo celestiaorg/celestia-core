@@ -1391,7 +1391,7 @@ func (cs *State) defaultDecideProposal(height int64, round int32) {
 		err = cs.propagator.ProposeBlock(proposal, blockParts, metaData)
 		if err != nil {
 			cs.Logger.Error("propagation reactor failed to propose the block", "err", err)
-			return
+			//return
 		}
 
 		// send proposal and block parts on internal msg queue
