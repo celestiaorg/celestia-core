@@ -1313,10 +1313,10 @@ func (cs *State) enterPropose(height int64, round int32) {
 	address := cs.privValidatorPubKey.Address()
 
 	// if not a validator, we're done
-	if !cs.rs.Validators.HasAddress(address) {
-		logger.Trace("node is not a validator", "addr", address, "vals", cs.rs.Validators)
-		return
-	}
+	//if !cs.rs.Validators.HasAddress(address) {
+	//	logger.Trace("node is not a validator", "addr", address, "vals", cs.rs.Validators)
+	//	return
+	//}
 
 	if cs.isProposer(address) {
 		logger.Info("propose step; our turn to propose", "proposer", address)
