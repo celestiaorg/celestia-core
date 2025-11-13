@@ -220,7 +220,7 @@ func TestBaseReactorProcessorPanic(t *testing.T) {
 	pr := &panicReactor{Mutex: sync.Mutex{}}
 	pr.BaseReactor = *p2p.NewBaseReactor("PanicReactor", pr,
 		p2p.WithIncomingQueueSize(10),
-		p2p.WithProcessor(func(ctx context.Context, incoming <-chan p2p.UnprocessedEnvelope) {
+		p2p.WithProcessor(func(ctx context.Context, incoming <-chan p2p.UnmarshalResult) {
 			panic("processor startup panic")
 		}))
 

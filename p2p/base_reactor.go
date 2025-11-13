@@ -11,7 +11,7 @@ import (
 )
 
 // ProcessorFunc is the message processor function type.
-type ProcessorFunc func(context.Context, <-chan UnprocessedEnvelope)
+type ProcessorFunc func(context.Context, <-chan UnmarshalResult)
 
 // Reactor is responsible for handling incoming messages on one or more
 // Channel. Switch calls GetChannels when reactor is added to it. When a new
@@ -62,15 +62,24 @@ type Reactor interface {
 
 //--------------------------------------
 
+type UnmarshalResult struct {
+	Src           IntrospectivePeer
+	Msg           proto.Message
+	BytesReceived int
+	ChannelID     byte
+	Err           error
+}
+
 type BaseReactor struct {
 	service.BaseService // Provides Start, Stop, .Quit
 	Switch              *Switch
 
-	incoming     chan UnprocessedEnvelope
+	incoming     chan UnmarshalResult
 	queueingFunc func(UnprocessedEnvelope)
 
 	ctx    context.Context
 	cancel context.CancelFunc
+	chIDs  map[byte]proto.Message
 	// processor is called with the incoming channel and is responsible for
 	// unmarshalling the messages and calling Receive on the reactor.
 	processor ProcessorFunc
@@ -81,12 +90,19 @@ type ReactorOptions func(*BaseReactor)
 func NewBaseReactor(name string, impl Reactor, opts ...ReactorOptions) *BaseReactor {
 	ctx := context.Background()
 	ctx, cancel := context.WithCancel(ctx)
+	implChannels := impl.GetChannels()
+
+	chIDs := make(map[byte]proto.Message, len(implChannels))
+	for _, chDesc := range implChannels {
+		chIDs[chDesc.ID] = chDesc.MessageType
+	}
 	base := &BaseReactor{
 		ctx:         ctx,
 		cancel:      cancel,
 		BaseService: *service.NewBaseService(nil, name, impl),
 		Switch:      nil, // set by the switch later
-		incoming:    make(chan UnprocessedEnvelope, 100),
+		incoming:    make(chan UnmarshalResult, 100),
+		chIDs:       chIDs,
 		processor:   nil, // Will be set after base is created
 	}
 	base.queueingFunc = base.QueueUnprocessedEnvelope
@@ -102,11 +118,11 @@ func NewBaseReactor(name string, impl Reactor, opts ...ReactorOptions) *BaseReac
 	go func() {
 		defer func() {
 			if r := recover(); r != nil {
-				base.Logger.Error("processor panicked", "err", r)
+				base.Logger.Error("processor panicked", "Err", r)
 				// Try to stop the reactor gracefully only if it's running
 				if base.IsRunning() {
 					if err := base.Stop(); err != nil {
-						base.Logger.Error("failed to stop reactor after panic", "err", err)
+						base.Logger.Error("failed to stop reactor after panic", "Err", err)
 					}
 				}
 			}
@@ -120,7 +136,7 @@ func NewBaseReactor(name string, impl Reactor, opts ...ReactorOptions) *BaseReac
 
 // WithProcessor sets the processor function for the reactor. The processor
 // function is called with the incoming channel and is responsible for
-// unmarshalling the messages and calling Receive on the reactor.
+// calling Receive on the reactor.
 func WithProcessor(processor ProcessorFunc) ReactorOptions {
 	return func(br *BaseReactor) {
 		br.processor = processor
@@ -138,7 +154,7 @@ func WithQueueingFunc(queuingFunc func(UnprocessedEnvelope)) ReactorOptions {
 // reactor.
 func WithIncomingQueueSize(size int) ReactorOptions {
 	return func(br *BaseReactor) {
-		br.incoming = make(chan UnprocessedEnvelope, size)
+		br.incoming = make(chan UnmarshalResult, size)
 	}
 }
 
@@ -151,7 +167,7 @@ func (br *BaseReactor) QueueUnprocessedEnvelope(e UnprocessedEnvelope) {
 	// if the context is done, do nothing.
 	case <-br.ctx.Done():
 	// if not, add the item to the channel.
-	case br.incoming <- e:
+	case br.incoming <- br.unmarshalEnvelope(e):
 	}
 }
 
@@ -160,9 +176,28 @@ func (br *BaseReactor) QueueUnprocessedEnvelope(e UnprocessedEnvelope) {
 func (br *BaseReactor) TryQueueUnprocessedEnvelope(e UnprocessedEnvelope) {
 	select {
 	case <-br.ctx.Done():
-	case br.incoming <- e:
+	case br.incoming <- br.unmarshalEnvelope(e):
 	default:
 	}
+}
+
+func (br *BaseReactor) unmarshalEnvelope(e UnprocessedEnvelope) UnmarshalResult {
+	var (
+		mt  = br.chIDs[e.ChannelID]
+		res = UnmarshalResult{
+			Src:           e.Src,
+			BytesReceived: len(e.Message),
+			ChannelID:     e.ChannelID,
+		}
+	)
+	if mt == nil {
+		res.Err = fmt.Errorf("no message type registered for channel %d", e.ChannelID)
+		return res
+	}
+
+	res.Msg = proto.Clone(mt)
+	res.Err = proto.Unmarshal(e.Message, res.Msg)
+	return res
 }
 
 func (br *BaseReactor) OnStop() {
@@ -171,40 +206,28 @@ func (br *BaseReactor) OnStop() {
 
 // ProcessorWithReactor unmarshalls the message and calls Receive on the reactor.
 // This preserves the sender's original order for all messages and supports panic recovery with peer disconnection.
-func ProcessorWithReactor(impl Reactor, baseReactor *BaseReactor) func(context.Context, <-chan UnprocessedEnvelope) {
-	implChannels := impl.GetChannels()
-
-	chIDs := make(map[byte]proto.Message, len(implChannels))
-	for _, chDesc := range implChannels {
-		chIDs[chDesc.ID] = chDesc.MessageType
-	}
-	return func(ctx context.Context, incoming <-chan UnprocessedEnvelope) {
+func ProcessorWithReactor(impl Reactor, baseReactor *BaseReactor) ProcessorFunc {
+	return func(ctx context.Context, incoming <-chan UnmarshalResult) {
 		for {
 			select {
 			case <-ctx.Done():
 				return
-			case ue, ok := <-incoming:
+			case res, ok := <-incoming:
 				if !ok {
 					// this means the channel was closed.
 					return
 				}
-
 				// Process message with panic recovery for individual peer
-				process := func(ue UnprocessedEnvelope) error {
-					defer baseReactor.ProtectPanic(ue.Src)
-
-					mt := chIDs[ue.ChannelID]
-					if mt == nil {
-						return fmt.Errorf("no message type registered for channel %d", ue.ChannelID)
+				process := func(res UnmarshalResult) error {
+					defer baseReactor.ProtectPanic(res.Src)
+					if res.Err != nil {
+						return res.Err
 					}
-
-					msg := proto.Clone(mt)
-
-					err := proto.Unmarshal(ue.Message, msg)
-					if err != nil {
-						return err
-					}
-
+					var (
+						err              error
+						msg              = res.Msg
+						logBytesReceived = float64(res.BytesReceived)
+					)
 					if w, ok := msg.(Unwrapper); ok {
 						msg, err = w.Unwrap()
 						if err != nil {
@@ -213,25 +236,25 @@ func ProcessorWithReactor(impl Reactor, baseReactor *BaseReactor) func(context.C
 					}
 
 					labels := []string{
-						"peer_id", string(ue.Src.ID()),
-						"chID", fmt.Sprintf("%#x", ue.ChannelID),
+						"peer_id", string(res.Src.ID()),
+						"chID", fmt.Sprintf("%#x", res.ChannelID),
 					}
 
-					ue.Src.Metrics().PeerReceiveBytesTotal.With(labels...).Add(float64(len(ue.Message)))
-					ue.Src.Metrics().MessageReceiveBytesTotal.With(append(labels, "message_type", ue.Src.ValueToMetricLabel(msg))...).Add(float64(len(ue.Message)))
-					schema.WriteReceivedBytes(ue.Src.TraceClient(), string(ue.Src.ID()), ue.ChannelID, len(ue.Message))
+					res.Src.Metrics().PeerReceiveBytesTotal.With(labels...).Add(logBytesReceived)
+					res.Src.Metrics().MessageReceiveBytesTotal.With(append(labels, "message_type", res.Src.ValueToMetricLabel(msg))...).Add(logBytesReceived)
+					schema.WriteReceivedBytes(res.Src.TraceClient(), string(res.Src.ID()), res.ChannelID, res.BytesReceived)
 					impl.Receive(Envelope{
-						ChannelID: ue.ChannelID,
-						Src:       ue.Src,
+						ChannelID: res.ChannelID,
+						Src:       res.Src,
 						Message:   msg,
 					})
 
 					return nil
 				}
 
-				err := process(ue)
+				err := process(res)
 				if err != nil {
-					disconnectPeer(baseReactor, ue.Src, fmt.Sprintf("error in reactor processing: %v", err), impl.String())
+					disconnectPeer(baseReactor, res.Src, fmt.Sprintf("error in reactor processing: %v", err), impl.String())
 				}
 			}
 		}
