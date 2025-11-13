@@ -389,9 +389,33 @@ func (blockExec *BlockExecutor) applyBlock(state State, blockID types.BlockID, b
 	}
 
 	// Update the state with the block and responses.
+	oldVersion := state.Version.Consensus.App
 	state, err = updateState(state, blockID, &block.Header, abciResponse, validatorUpdates)
 	if err != nil {
 		return state, fmt.Errorf("commit failed for application: %v", err)
+	}
+	newVersion := state.Version.Consensus.App
+	if oldVersion != newVersion {
+		blockExec.logger.Info("app version updated",
+			"height", block.Height,
+			"old_version", oldVersion,
+			"new_version", newVersion,
+			"block_version", block.Version.App,
+			"has_consensus_param_updates", abciResponse.ConsensusParamUpdates != nil,
+		)
+		if abciResponse.ConsensusParamUpdates != nil && abciResponse.ConsensusParamUpdates.Version != nil {
+			blockExec.logger.Info("consensus param updates version",
+				"height", block.Height,
+				"update_version", abciResponse.ConsensusParamUpdates.Version.App,
+			)
+		}
+	} else {
+		blockExec.logger.Debug("app version unchanged",
+			"height", block.Height,
+			"version", oldVersion,
+			"block_version", block.Version.App,
+			"has_consensus_param_updates", abciResponse.ConsensusParamUpdates != nil,
+		)
 	}
 
 	// Lock mempool, commit app state, update mempoool.
@@ -727,6 +751,7 @@ func updateState(
 	// Update the params with the latest abciResponse.
 	nextParams := state.ConsensusParams
 	lastHeightParamsChanged := state.LastHeightConsensusParamsChanged
+	versionUpdated := false
 	if abciResponse.ConsensusParamUpdates != nil {
 		// NOTE: must not mutate state.ConsensusParams
 		nextParams = state.ConsensusParams.Update(abciResponse.ConsensusParamUpdates)
@@ -740,10 +765,38 @@ func updateState(
 			return state, fmt.Errorf("updating consensus params: %w", err)
 		}
 
-		state.Version.Consensus.App = nextParams.Version.App
+		// Update version from ConsensusParamUpdates if provided.
+		// The application should always return the app version in ConsensusParamUpdates
+		// via BaseApp.GetConsensusParams(), which reads from the param store that was
+		// updated by SetAppVersion() in EndBlocker.
+		if abciResponse.ConsensusParamUpdates.Version != nil {
+			state.Version.Consensus.App = nextParams.Version.App
+			versionUpdated = true
+		} else {
+			// If ConsensusParamUpdates is provided but Version is nil, check if
+			// nextParams.Version.App was preserved from the current state (via Update method).
+			// If it differs from current state, it means the version should be updated.
+			if nextParams.Version.App != state.Version.Consensus.App {
+				state.Version.Consensus.App = nextParams.Version.App
+				versionUpdated = true
+			}
+		}
 
 		// Change results from this height but only applies to the next height.
 		lastHeightParamsChanged = header.Height + 1
+	}
+
+	// Fallback: Ensure state version matches block header version if not updated above.
+	// This handles edge cases during block sync where ConsensusParamUpdates might not
+	// be provided or might not include version updates. The block header version
+	// represents the version that was used to process this block, and for the next
+	// block validation, the state should reflect what version will be used.
+	// Note: This is a defensive measure - the application should always return
+	// the version via ConsensusParamUpdates.
+	if !versionUpdated && header.Version.App != state.Version.Consensus.App {
+		state.Version.Consensus.App = header.Version.App
+		// Also update nextParams to reflect the version change
+		nextParams.Version.App = header.Version.App
 	}
 
 	nextVersion := state.Version

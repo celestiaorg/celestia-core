@@ -501,6 +501,14 @@ FOR_LOOP:
 
 			if err == nil {
 				// validate the block before we persist it
+				bcR.Logger.Debug("validating block for block sync",
+					"height", first.Height,
+					"state_app_version", state.Version.Consensus.App,
+					"state_block_version", state.Version.Consensus.Block,
+					"block_app_version", first.Version.App,
+					"block_block_version", first.Version.Block,
+					"last_block_height", state.LastBlockHeight,
+				)
 				err = bcR.blockExec.ValidateBlock(state, first)
 			}
 
@@ -565,11 +573,20 @@ FOR_LOOP:
 
 			// TODO: same thing for app - but we would need a way to
 			// get the hash without persisting the state
+			oldStateVersion := state.Version.Consensus.App
 			state, err = bcR.blockExec.ApplyVerifiedBlock(state, firstID, first, second.LastCommit)
 			if err != nil {
 				// TODO This is bad, are we zombie?
 				panic(fmt.Sprintf("Failed to process committed block (%d:%X): %v", first.Height, first.Hash(), err))
 			}
+			newStateVersion := state.Version.Consensus.App
+			bcR.Logger.Debug("applied block during block sync",
+				"height", first.Height,
+				"old_state_app_version", oldStateVersion,
+				"new_state_app_version", newStateVersion,
+				"block_app_version", first.Version.App,
+				"version_changed", oldStateVersion != newStateVersion,
+			)
 			bcR.metrics.recordBlockMetrics(first)
 			blocksSynced++
 
