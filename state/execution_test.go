@@ -1189,3 +1189,91 @@ func makeBlockID(hash []byte, partSetSize uint32, partSetHash []byte) types.Bloc
 		},
 	}
 }
+
+func TestApplyBlockWithAppVersion2(t *testing.T) {
+	// Create a test app that returns version 2 in FinalizeBlock consensus param updates
+	app := &testAppWithVersion2{}
+	cc := proxy.NewLocalClientCreator(app)
+	proxyApp := proxy.NewAppConns(cc, proxy.NopMetrics())
+	err := proxyApp.Start()
+	require.NoError(t, err)
+	defer proxyApp.Stop()
+
+	state, stateDB, _ := makeState(1, 1)
+	stateStore := sm.NewStore(stateDB, sm.StoreOptions{DiscardABCIResponses: false})
+	mp := &mpmocks.Mempool{}
+	mp.On("Lock").Return()
+	mp.On("Unlock").Return()
+	mp.On("FlushAppConn", mock.Anything).Return(nil)
+	mp.On("Update", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil)
+	blockStore := store.NewBlockStore(dbm.NewMemDB())
+	blockExecutor := sm.NewBlockExecutor(stateStore, log.TestingLogger(), proxyApp.Consensus(), mp, sm.EmptyEvidencePool{}, blockStore)
+
+	block, bps, err := makeBlock(state, 1, new(types.Commit))
+	require.NoError(t, err)
+	blockID := types.BlockID{Hash: block.Hash(), PartSetHeader: bps.Header()}
+
+	state, err = blockExecutor.ApplyBlock(state, blockID, block, nil)
+	require.NoError(t, err)
+	require.Equal(t, uint64(2), state.Version.Consensus.App)
+}
+
+// testAppWithVersion2 is a test app that returns version 2 in FinalizeBlock consensus param updates
+type testAppWithVersion2 struct {
+	abci.BaseApplication
+}
+
+var _ abci.Application = (*testAppWithVersion2)(nil)
+
+func (app *testAppWithVersion2) FinalizeBlock(_ context.Context, req *abci.RequestFinalizeBlock) (*abci.ResponseFinalizeBlock, error) {
+	txResults := make([]*abci.ExecTxResult, len(req.Txs))
+	for idx := range req.Txs {
+		txResults[idx] = &abci.ExecTxResult{
+			Code: abci.CodeTypeOK,
+		}
+	}
+
+	return &abci.ResponseFinalizeBlock{
+		ConsensusParamUpdates: &cmtproto.ConsensusParams{
+			Version: &cmtproto.VersionParams{
+				App: 2,
+			},
+		},
+		TxResults: txResults,
+	}, nil
+}
+
+func (app *testAppWithVersion2) Commit(_ context.Context, _ *abci.RequestCommit) (*abci.ResponseCommit, error) {
+	return &abci.ResponseCommit{RetainHeight: 1}, nil
+}
+
+func (app *testAppWithVersion2) PrepareProposal(
+	_ context.Context,
+	req *abci.RequestPrepareProposal,
+) (*abci.ResponsePrepareProposal, error) {
+	txs := make([][]byte, 0, len(req.Txs))
+	var totalBytes int64
+	for _, tx := range req.Txs {
+		if len(tx) == 0 {
+			continue
+		}
+		totalBytes += int64(len(tx))
+		if totalBytes > req.MaxTxBytes {
+			break
+		}
+		txs = append(txs, tx)
+	}
+	return &abci.ResponsePrepareProposal{Txs: txs}, nil
+}
+
+func (app *testAppWithVersion2) ProcessProposal(
+	_ context.Context,
+	req *abci.RequestProcessProposal,
+) (*abci.ResponseProcessProposal, error) {
+	for _, tx := range req.Txs {
+		if len(tx) == 0 {
+			return &abci.ResponseProcessProposal{Status: abci.ResponseProcessProposal_REJECT}, nil
+		}
+	}
+	return &abci.ResponseProcessProposal{Status: abci.ResponseProcessProposal_ACCEPT}, nil
+}
