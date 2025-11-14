@@ -742,14 +742,9 @@ func updateState(
 			return state, fmt.Errorf("updating consensus params: %w", err)
 		}
 
-		// Update version from ConsensusParamUpdates if provided.
-		// The application should always return the app version in ConsensusParamUpdates
-		// via BaseApp.GetConsensusParams(), which reads from the param store that was
-		// updated by SetAppVersion() in EndBlocker.
-		if abciResponse.ConsensusParamUpdates.Version != nil {
-			fmt.Printf("line 776, Setting state.version.Consensus.App to %v\n", nextParams.Version.App)
-			state.Version.Consensus.App = nextParams.Version.App
-		}
+		fmt.Printf("line 745 without the fix, nextParams.Version.App: %v, state.Version.Consensus.App: %v\n", nextParams.Version.App, state.Version.Consensus.App)
+		state.Version.Consensus.App = nextParams.Version.App
+		fmt.Printf("line 747 without the fix, state.Version.Consensus.App: %v\n", state.Version.Consensus.App)
 
 		// Change results from this height but only applies to the next height.
 		lastHeightParamsChanged = header.Height + 1
