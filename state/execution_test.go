@@ -720,3 +720,69 @@ func makeRejectedBlock(state sm.State, height int) (block *types.Block) {
 	block.Txs[0] = types.Tx{}
 	return block
 }
+
+func TestApplyBlockWithAppVersion2(t *testing.T) {
+	// Create a test app that returns version 2 in EndBlock consensus param updates
+	app := &testAppWithVersion2{}
+	cc := proxy.NewLocalClientCreator(app)
+	proxyApp := proxy.NewAppConns(cc)
+	err := proxyApp.Start()
+	require.NoError(t, err)
+	defer proxyApp.Stop()
+
+	state, stateDB, _ := makeState(1, 1)
+	stateStore := sm.NewStore(stateDB, sm.StoreOptions{DiscardABCIResponses: false})
+	blockExecutor := sm.NewBlockExecutor(stateStore, log.TestingLogger(), proxyApp.Consensus(), mmock.Mempool{}, sm.EmptyEvidencePool{})
+
+	block := makeBlock(state, 1)
+	blockID := types.BlockID{Hash: block.Hash(), PartSetHeader: block.MakePartSet(testPartSize).Header()}
+
+	state, _, err = blockExecutor.ApplyBlock(state, blockID, block, nil)
+	require.NoError(t, err)
+	require.Equal(t, uint64(2), state.Version.Consensus.App)
+}
+
+// testAppWithVersion2 is a test app that returns version 2 in EndBlock consensus param updates
+type testAppWithVersion2 struct {
+	abci.BaseApplication
+}
+
+var _ abci.Application = (*testAppWithVersion2)(nil)
+
+func (app *testAppWithVersion2) Info(req abci.RequestInfo) (resInfo abci.ResponseInfo) {
+	return abci.ResponseInfo{}
+}
+
+func (app *testAppWithVersion2) BeginBlock(req abci.RequestBeginBlock) abci.ResponseBeginBlock {
+	return abci.ResponseBeginBlock{}
+}
+
+func (app *testAppWithVersion2) EndBlock(req abci.RequestEndBlock) abci.ResponseEndBlock {
+	return abci.ResponseEndBlock{
+		ConsensusParamUpdates: &abci.ConsensusParams{
+			Version: &cmtproto.VersionParams{
+				AppVersion: 2,
+			},
+		},
+	}
+}
+
+func (app *testAppWithVersion2) DeliverTx(req abci.RequestDeliverTx) abci.ResponseDeliverTx {
+	return abci.ResponseDeliverTx{Events: []abci.Event{}}
+}
+
+func (app *testAppWithVersion2) CheckTx(req abci.RequestCheckTx) abci.ResponseCheckTx {
+	return abci.ResponseCheckTx{}
+}
+
+func (app *testAppWithVersion2) Commit() abci.ResponseCommit {
+	return abci.ResponseCommit{RetainHeight: 1}
+}
+
+func (app *testAppWithVersion2) Query(reqQuery abci.RequestQuery) (resQuery abci.ResponseQuery) {
+	return
+}
+
+func (app *testAppWithVersion2) ProcessProposal(req abci.RequestProcessProposal) abci.ResponseProcessProposal {
+	return abci.ResponseProcessProposal{Result: abci.ResponseProcessProposal_ACCEPT}
+}
