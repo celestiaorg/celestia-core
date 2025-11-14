@@ -729,6 +729,7 @@ func updateState(
 	abciResponse *abci.ResponseFinalizeBlock,
 	validatorUpdates []*types.Validator,
 ) (State, error) {
+	fmt.Printf("updateState called with state: %+v and abciResponse: %+v\n", state, abciResponse)
 
 	// Copy the valset so we can apply changes from EndBlock
 	// and update s.LastValidators and s.Validators.
@@ -753,8 +754,10 @@ func updateState(
 	lastHeightParamsChanged := state.LastHeightConsensusParamsChanged
 	versionUpdated := false
 	if abciResponse.ConsensusParamUpdates != nil {
+		fmt.Printf("abciResponse.ConsensusParamUpdates is not nil")
 		// NOTE: must not mutate state.ConsensusParams
 		nextParams = state.ConsensusParams.Update(abciResponse.ConsensusParamUpdates)
+		fmt.Printf("nextParams: %+v\n", nextParams)
 		err := nextParams.ValidateBasic()
 		if err != nil {
 			return state, fmt.Errorf("validating new consensus params: %w", err)
@@ -770,6 +773,7 @@ func updateState(
 		// via BaseApp.GetConsensusParams(), which reads from the param store that was
 		// updated by SetAppVersion() in EndBlocker.
 		if abciResponse.ConsensusParamUpdates.Version != nil {
+			fmt.Printf("line 776, Setting state.version.Consensus.App to %v\n", nextParams.Version.App)
 			state.Version.Consensus.App = nextParams.Version.App
 			versionUpdated = true
 		} else {
@@ -777,6 +781,7 @@ func updateState(
 			// nextParams.Version.App was preserved from the current state (via Update method).
 			// If it differs from current state, it means the version should be updated.
 			if nextParams.Version.App != state.Version.Consensus.App {
+				fmt.Printf("line 784, Setting state.version.Consensus.App to %v\n", nextParams.Version.App)
 				state.Version.Consensus.App = nextParams.Version.App
 				versionUpdated = true
 			}
@@ -797,9 +802,11 @@ func updateState(
 		state.Version.Consensus.App = header.Version.App
 		// Also update nextParams to reflect the version change
 		nextParams.Version.App = header.Version.App
+		fmt.Printf("line 805, Setting nextParams.Version.App to %v\n", nextParams.Version.App)
 	}
 
 	nextVersion := state.Version
+	fmt.Printf("Setting nextVersion to state.Version: %+v\n", state.Version)
 
 	// NOTE: the AppHash and the VoteExtension has not been populated.
 	// It will be filled on state.Save.
