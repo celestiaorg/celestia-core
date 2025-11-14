@@ -752,7 +752,6 @@ func updateState(
 	// Update the params with the latest abciResponse.
 	nextParams := state.ConsensusParams
 	lastHeightParamsChanged := state.LastHeightConsensusParamsChanged
-	versionUpdated := false
 	if abciResponse.ConsensusParamUpdates != nil {
 		fmt.Printf("abciResponse.ConsensusParamUpdates is not nil")
 		// NOTE: must not mutate state.ConsensusParams
@@ -775,34 +774,10 @@ func updateState(
 		if abciResponse.ConsensusParamUpdates.Version != nil {
 			fmt.Printf("line 776, Setting state.version.Consensus.App to %v\n", nextParams.Version.App)
 			state.Version.Consensus.App = nextParams.Version.App
-			versionUpdated = true
-		} else {
-			// If ConsensusParamUpdates is provided but Version is nil, check if
-			// nextParams.Version.App was preserved from the current state (via Update method).
-			// If it differs from current state, it means the version should be updated.
-			if nextParams.Version.App != state.Version.Consensus.App {
-				fmt.Printf("line 784, Setting state.version.Consensus.App to %v\n", nextParams.Version.App)
-				state.Version.Consensus.App = nextParams.Version.App
-				versionUpdated = true
-			}
 		}
 
 		// Change results from this height but only applies to the next height.
 		lastHeightParamsChanged = header.Height + 1
-	}
-
-	// Fallback: Ensure state version matches block header version if not updated above.
-	// This handles edge cases during block sync where ConsensusParamUpdates might not
-	// be provided or might not include version updates. The block header version
-	// represents the version that was used to process this block, and for the next
-	// block validation, the state should reflect what version will be used.
-	// Note: This is a defensive measure - the application should always return
-	// the version via ConsensusParamUpdates.
-	if !versionUpdated && header.Version.App != state.Version.Consensus.App {
-		state.Version.Consensus.App = header.Version.App
-		// Also update nextParams to reflect the version change
-		nextParams.Version.App = header.Version.App
-		fmt.Printf("line 805, Setting nextParams.Version.App to %v\n", nextParams.Version.App)
 	}
 
 	nextVersion := state.Version
