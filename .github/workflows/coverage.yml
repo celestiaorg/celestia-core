@@ -65,14 +65,14 @@ jobs:
             **/**.go
             go.mod
             go.sum
-      - uses: actions/download-artifact@v4.1.8
+      - uses: actions/download-artifact@v4.3.0
         with:
           name: "${{ github.sha }}-coverage"
         if: env.GIT_DIFF
       - run: |
           cat ./profile.out | grep -v "mode: atomic" >> coverage.txt
         if: env.GIT_DIFF
-      - uses: codecov/codecov-action@v4
+      - uses: codecov/codecov-action@v5
         with:
-          file: ./coverage.txt
+          files: ./coverage.txt
         if: env.GIT_DIFF
