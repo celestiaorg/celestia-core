@@ -389,33 +389,9 @@ func (blockExec *BlockExecutor) applyBlock(state State, blockID types.BlockID, b
 	}
 
 	// Update the state with the block and responses.
-	oldVersion := state.Version.Consensus.App
 	state, err = updateState(state, blockID, &block.Header, abciResponse, validatorUpdates)
 	if err != nil {
 		return state, fmt.Errorf("commit failed for application: %v", err)
-	}
-	newVersion := state.Version.Consensus.App
-	if oldVersion != newVersion {
-		blockExec.logger.Info("app version updated",
-			"height", block.Height,
-			"old_version", oldVersion,
-			"new_version", newVersion,
-			"block_version", block.Version.App,
-			"has_consensus_param_updates", abciResponse.ConsensusParamUpdates != nil,
-		)
-		if abciResponse.ConsensusParamUpdates != nil && abciResponse.ConsensusParamUpdates.Version != nil {
-			blockExec.logger.Info("consensus param updates version",
-				"height", block.Height,
-				"update_version", abciResponse.ConsensusParamUpdates.Version.App,
-			)
-		}
-	} else {
-		blockExec.logger.Debug("app version unchanged",
-			"height", block.Height,
-			"version", oldVersion,
-			"block_version", block.Version.App,
-			"has_consensus_param_updates", abciResponse.ConsensusParamUpdates != nil,
-		)
 	}
 
 	// Lock mempool, commit app state, update mempoool.
@@ -729,7 +705,6 @@ func updateState(
 	abciResponse *abci.ResponseFinalizeBlock,
 	validatorUpdates []*types.Validator,
 ) (State, error) {
-	fmt.Printf("updateState called with state: %+v and abciResponse: %+v\n", state, abciResponse)
 
 	// Copy the valset so we can apply changes from EndBlock
 	// and update s.LastValidators and s.Validators.
