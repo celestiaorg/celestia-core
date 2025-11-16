@@ -533,11 +533,11 @@ message Snapshot {
 
 message TimeoutInfo {
   google.protobuf.Duration timeout_propose           = 1 [(gogoproto.nullable) = false, (gogoproto.stdduration) = true];
-  google.protobuf.Duration timeout_propose_delta     = 2 [(gogoproto.nullable) = false, (gogoproto.stdduration) = true];
+  google.protobuf.Duration timeout_commit            = 2 [(gogoproto.nullable) = false, (gogoproto.stdduration) = true];
   google.protobuf.Duration timeout_prevote           = 3 [(gogoproto.nullable) = false, (gogoproto.stdduration) = true];
   google.protobuf.Duration timeout_prevote_delta     = 4 [(gogoproto.nullable) = false, (gogoproto.stdduration) = true];
   google.protobuf.Duration timeout_precommit         = 5 [(gogoproto.nullable) = false, (gogoproto.stdduration) = true];
   google.protobuf.Duration timeout_precommit_delta   = 6 [(gogoproto.nullable) = false, (gogoproto.stdduration) = true];
-  google.protobuf.Duration timeout_commit            = 7 [(gogoproto.nullable) = false, (gogoproto.stdduration) = true];
+  google.protobuf.Duration timeout_propose_delta     = 7 [(gogoproto.nullable) = false, (gogoproto.stdduration) = true];
   google.protobuf.Duration delayed_precommit_timeout = 8 [(gogoproto.nullable) = false, (gogoproto.stdduration) = true];
 }
