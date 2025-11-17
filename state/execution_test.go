@@ -728,7 +728,7 @@ func TestApplyBlockWithAppVersion2(t *testing.T) {
 	proxyApp := proxy.NewAppConns(cc)
 	err := proxyApp.Start()
 	require.NoError(t, err)
-	defer proxyApp.Stop()
+	defer proxyApp.Stop() //nolint:errcheck // ignore for tests
 
 	state, stateDB, _ := makeState(1, 1)
 	stateStore := sm.NewStore(stateDB, sm.StoreOptions{DiscardABCIResponses: false})
