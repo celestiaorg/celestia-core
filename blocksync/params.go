@@ -4,36 +4,8 @@ import (
 	"time"
 )
 
-// poolConfig holds configuration for block pool parameter calculations
-type poolConfig struct {
-	// Border values for dynamic retry timer calculation
-	minBlockSizeBytes float64
-	maxBlockSizeBytes float64
-	minRetrySeconds   float64
-	maxRetrySeconds   float64
-
-	// Border values for dynamic maxPendingRequestsPerPeer
-	maxPendingForSmallBlocks int
-	maxPendingForLargeBlocks int
-
-	// Minimum samples before using dynamic values
-	minSamplesForDynamic int
-
-	// Default values when not enough samples
-	defaultMaxPendingPerPeer int
-	defaultRetrySeconds      float64
-
-	// Maximum memory to use for pending block requests
-	maxMemoryForRequesters float64
-
-	// ladder step to which we round the value of requesters, e.g. 31 will be rounded to 30
-	// if step is 5
-	step int
-}
-
 // BlockPoolParams holds dynamically calculated parameters for the block pool
 type BlockPoolParams struct {
-	config            poolConfig
 	maxPendingPerPeer int
 	retryTimeout      time.Duration
 	requestersLimit   int
@@ -49,9 +21,8 @@ type BlockPoolParams struct {
 }
 
 // NewBlockPoolParams creates a new BlockPoolParams with the given configuration
-func NewBlockPoolParams(config poolConfig, blockSizeBuffer *RotatingBuffer, maxRequesters int) *BlockPoolParams {
+func NewBlockPoolParams(blockSizeBuffer *RotatingBuffer, maxRequesters int) *BlockPoolParams {
 	params := &BlockPoolParams{
-		config:          config,
 		blockSizeBuffer: blockSizeBuffer,
 		maxRequesters:   maxRequesters,
 	}
@@ -67,9 +38,9 @@ func (p *BlockPoolParams) recalculate(numPeers int) {
 	p.numSamples = p.blockSizeBuffer.Size()
 
 	// Use defaults if not enough samples
-	if p.numSamples < p.config.minSamplesForDynamic {
-		p.maxPendingPerPeer = p.config.defaultMaxPendingPerPeer
-		p.retryTimeout = time.Duration(p.config.defaultRetrySeconds * float64(time.Second))
+	if p.numSamples < minSamplesForDynamic {
+		p.maxPendingPerPeer = defaultMaxPendingRequestsPerPeer
+		p.retryTimeout = time.Duration(defaultRetrySeconds * float64(time.Second))
 	} else {
 		// Use max block size for calculations (worst-case planning)
 		p.maxPendingPerPeer = p.calculateMaxPendingLadder(p.maxBlockSize)
@@ -80,7 +51,7 @@ func (p *BlockPoolParams) recalculate(numPeers int) {
 	p.peerBasedLimit = numPeers * p.maxPendingPerPeer
 	p.memoryBasedLimit = p.maxRequesters
 	if p.maxBlockSize > 0 {
-		p.memoryBasedLimit = int(p.config.maxMemoryForRequesters / p.maxBlockSize)
+		p.memoryBasedLimit = int(maxMemoryForRequesters / p.maxBlockSize)
 	}
 	p.requestersLimit = min(p.peerBasedLimit, p.memoryBasedLimit, p.maxRequesters)
 }
@@ -95,30 +66,28 @@ func (p *BlockPoolParams) addBlock(blockSize int, numPeers int) {
 	p.recalculate(numPeers)
 }
 
-// calculateMaxPendingLadder returns maxPending in discrete steps (ladder effect)
-// Returns values in steps of 5: 40, 35, 30, 25, 20, 15, 10, 5, 2
 func (p *BlockPoolParams) calculateMaxPendingLadder(blockSize float64) int {
 	// Clamp to min/max bounds
-	if blockSize <= p.config.minBlockSizeBytes {
-		return p.config.maxPendingForSmallBlocks
+	if blockSize <= minBlockSizeBytes {
+		return maxPendingForSmallBlocks
 	}
-	if blockSize >= p.config.maxBlockSizeBytes {
-		return p.config.maxPendingForLargeBlocks
+	if blockSize >= maxBlockSizeBytes {
+		return maxPendingForLargeBlocks
 	}
 
 	// Calculate normalized position [0, 1] in the range
-	normalized := (blockSize - p.config.minBlockSizeBytes) / (p.config.maxBlockSizeBytes - p.config.minBlockSizeBytes)
+	normalized := (blockSize - minBlockSizeBytes) / (maxBlockSizeBytes - minBlockSizeBytes)
 
 	// Inverse linear: as block size increases, max pending decreases
-	rawMaxPending := p.config.maxPendingForSmallBlocks - int(float64(p.config.maxPendingForSmallBlocks-p.config.maxPendingForLargeBlocks)*normalized)
+	rawMaxPending := maxPendingForSmallBlocks - int(float64(maxPendingForSmallBlocks-maxPendingForLargeBlocks)*normalized)
 
-	// Round to nearest step of 5 for ladder effect
-	step := p.config.step
+	// Round to nearest minRequesterIncrease of 5 for ladder effect
+	step := minRequesterIncrease
 	maxPending := ((rawMaxPending + step/2) / step) * step
 
 	// Ensure we don't go below minimum
-	if maxPending < p.config.maxPendingForLargeBlocks {
-		maxPending = p.config.maxPendingForLargeBlocks
+	if maxPending < maxPendingForLargeBlocks {
+		maxPending = maxPendingForLargeBlocks
 	}
 
 	return maxPending
@@ -127,18 +96,18 @@ func (p *BlockPoolParams) calculateMaxPendingLadder(blockSize float64) int {
 // calculateRetryTimeout returns retry timeout based on block size
 func (p *BlockPoolParams) calculateRetryTimeout(blockSize float64) time.Duration {
 	// Clamp to min/max bounds
-	if blockSize <= p.config.minBlockSizeBytes {
-		return time.Duration(p.config.minRetrySeconds * float64(time.Second))
+	if blockSize <= minBlockSizeBytes {
+		return time.Duration(minRetrySeconds * float64(time.Second))
 	}
-	if blockSize >= p.config.maxBlockSizeBytes {
-		return time.Duration(p.config.maxRetrySeconds * float64(time.Second))
+	if blockSize >= maxBlockSizeBytes {
+		return time.Duration(maxRetrySeconds * float64(time.Second))
 	}
 
 	// Calculate normalized position [0, 1] in the range
-	normalized := (blockSize - p.config.minBlockSizeBytes) / (p.config.maxBlockSizeBytes - p.config.minBlockSizeBytes)
+	normalized := (blockSize - minBlockSizeBytes) / (maxBlockSizeBytes - minBlockSizeBytes)
 
 	// Calculate retry seconds
-	retrySeconds := p.config.minRetrySeconds + (p.config.maxRetrySeconds-p.config.minRetrySeconds)*normalized
+	retrySeconds := minRetrySeconds + (maxRetrySeconds-minRetrySeconds)*normalized
 
 	return time.Duration(retrySeconds * float64(time.Second))
 }

@@ -22,22 +22,20 @@ func almostEqualRelative(a, b, epsilon float64) bool {
 }
 
 func TestBlockPoolParams_DefaultValues(t *testing.T) {
-	config := newPoolConfig()
 	buffer := NewRotatingBuffer(blockSizeBufferCapacity)
-	params := NewBlockPoolParams(config, buffer, defaultMaxRequesters)
+	params := NewBlockPoolParams(buffer, defaultMaxRequesters)
 
 	// With no samples, should use default values
 	assert.Equal(t, defaultMaxPendingRequestsPerPeer, params.maxPendingPerPeer)
-	assert.Equal(t, time.Duration(requestRetrySeconds*float64(time.Second)), params.retryTimeout)
+	assert.Equal(t, time.Duration(defaultRetrySeconds*float64(time.Second)), params.retryTimeout)
 	assert.Equal(t, 0, params.numSamples)
 	assert.Equal(t, 0.0, params.avgBlockSize)
 	assert.Equal(t, 0.0, params.maxBlockSize)
 }
 
 func TestBlockPoolParams_SmallBlocks(t *testing.T) {
-	config := newPoolConfig()
 	buffer := NewRotatingBuffer(blockSizeBufferCapacity)
-	params := NewBlockPoolParams(config, buffer, defaultMaxRequesters)
+	params := NewBlockPoolParams(buffer, defaultMaxRequesters)
 
 	// Add small blocks (1 KB)
 	smallBlockSize := 1024
@@ -54,9 +52,8 @@ func TestBlockPoolParams_SmallBlocks(t *testing.T) {
 }
 
 func TestBlockPoolParams_LargeBlocks(t *testing.T) {
-	config := newPoolConfig()
 	buffer := NewRotatingBuffer(blockSizeBufferCapacity)
-	params := NewBlockPoolParams(config, buffer, defaultMaxRequesters)
+	params := NewBlockPoolParams(buffer, defaultMaxRequesters)
 
 	// Add large blocks (20 MB+)
 	largeBlockSize := 20 * 1024 * 1024
@@ -73,9 +70,8 @@ func TestBlockPoolParams_LargeBlocks(t *testing.T) {
 }
 
 func TestBlockPoolParams_MediumBlocks(t *testing.T) {
-	config := newPoolConfig()
 	buffer := NewRotatingBuffer(blockSizeBufferCapacity)
-	params := NewBlockPoolParams(config, buffer, defaultMaxRequesters)
+	params := NewBlockPoolParams(buffer, defaultMaxRequesters)
 
 	// Add medium blocks (5 MB - in the middle of the range)
 	mediumBlockSize := 5 * 1024 * 1024
@@ -91,8 +87,6 @@ func TestBlockPoolParams_MediumBlocks(t *testing.T) {
 }
 
 func TestBlockPoolParams_MaxPendingByBlockSize(t *testing.T) {
-	config := newPoolConfig()
-
 	tests := []struct {
 		name            string
 		blockSize       int
@@ -138,7 +132,7 @@ func TestBlockPoolParams_MaxPendingByBlockSize(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			buffer := NewRotatingBuffer(blockSizeBufferCapacity)
-			params := NewBlockPoolParams(config, buffer, defaultMaxRequesters)
+			params := NewBlockPoolParams(buffer, defaultMaxRequesters)
 
 			// Add enough samples to trigger dynamic calculation
 			for i := 0; i < minSamplesForDynamic; i++ {
@@ -151,8 +145,6 @@ func TestBlockPoolParams_MaxPendingByBlockSize(t *testing.T) {
 }
 
 func TestBlockPoolParams_RetryTimeoutByBlockSize(t *testing.T) {
-	config := newPoolConfig()
-
 	tests := []struct {
 		name            string
 		blockSize       int
@@ -203,7 +195,7 @@ func TestBlockPoolParams_RetryTimeoutByBlockSize(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			buffer := NewRotatingBuffer(blockSizeBufferCapacity)
-			params := NewBlockPoolParams(config, buffer, defaultMaxRequesters)
+			params := NewBlockPoolParams(buffer, defaultMaxRequesters)
 
 			// Add enough samples to trigger dynamic calculation
 			for i := 0; i < minSamplesForDynamic; i++ {
@@ -218,7 +210,6 @@ func TestBlockPoolParams_RetryTimeoutByBlockSize(t *testing.T) {
 }
 
 func TestBlockPoolParams_RequestersLimit(t *testing.T) {
-	config := newPoolConfig()
 	maxRequesters := 100
 
 	tests := []struct {
@@ -258,7 +249,7 @@ func TestBlockPoolParams_RequestersLimit(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			buffer := NewRotatingBuffer(blockSizeBufferCapacity)
-			params := NewBlockPoolParams(config, buffer, maxRequesters)
+			params := NewBlockPoolParams(buffer, maxRequesters)
 
 			// Add enough samples to trigger dynamic calculation
 			for i := 0; i < minSamplesForDynamic; i++ {
@@ -273,9 +264,8 @@ func TestBlockPoolParams_RequestersLimit(t *testing.T) {
 }
 
 func TestBlockPoolParams_MixedBlockSizes(t *testing.T) {
-	config := newPoolConfig()
 	buffer := NewRotatingBuffer(blockSizeBufferCapacity)
-	params := NewBlockPoolParams(config, buffer, defaultMaxRequesters)
+	params := NewBlockPoolParams(buffer, defaultMaxRequesters)
 
 	// Add mix of small and large blocks
 	blockSizes := []int{
@@ -301,9 +291,8 @@ func TestBlockPoolParams_MixedBlockSizes(t *testing.T) {
 }
 
 func TestBlockPoolParams_InsufficientSamples(t *testing.T) {
-	config := newPoolConfig()
 	buffer := NewRotatingBuffer(blockSizeBufferCapacity)
-	params := NewBlockPoolParams(config, buffer, defaultMaxRequesters)
+	params := NewBlockPoolParams(buffer, defaultMaxRequesters)
 
 	// Add fewer samples than required
 	for i := 0; i < minSamplesForDynamic-1; i++ {
@@ -312,14 +301,13 @@ func TestBlockPoolParams_InsufficientSamples(t *testing.T) {
 
 	// Should still use defaults despite large blocks
 	assert.Equal(t, defaultMaxPendingRequestsPerPeer, params.maxPendingPerPeer, "Should use default with insufficient samples")
-	assert.Equal(t, time.Duration(requestRetrySeconds*float64(time.Second)), params.retryTimeout, "Should use default retry timeout with insufficient samples")
+	assert.Equal(t, time.Duration(defaultRetrySeconds*float64(time.Second)), params.retryTimeout, "Should use default retry timeout with insufficient samples")
 	assert.Equal(t, minSamplesForDynamic-1, params.numSamples)
 }
 
 func TestBlockPoolParams_Recalculate(t *testing.T) {
-	config := newPoolConfig()
 	buffer := NewRotatingBuffer(blockSizeBufferCapacity)
-	params := NewBlockPoolParams(config, buffer, defaultMaxRequesters)
+	params := NewBlockPoolParams(buffer, defaultMaxRequesters)
 
 	// Add initial blocks
 	for i := 0; i < minSamplesForDynamic; i++ {
@@ -341,9 +329,8 @@ func TestBlockPoolParams_Recalculate(t *testing.T) {
 }
 
 func TestBlockPoolParams_CalculateMaxPendingLadder(t *testing.T) {
-	config := newPoolConfig()
 	buffer := NewRotatingBuffer(blockSizeBufferCapacity)
-	params := NewBlockPoolParams(config, buffer, defaultMaxRequesters)
+	params := NewBlockPoolParams(buffer, defaultMaxRequesters)
 
 	tests := []struct {
 		blockSize       float64
@@ -372,9 +359,8 @@ func TestBlockPoolParams_CalculateMaxPendingLadder(t *testing.T) {
 }
 
 func TestBlockPoolParams_CalculateRetryTimeout(t *testing.T) {
-	config := newPoolConfig()
 	buffer := NewRotatingBuffer(blockSizeBufferCapacity)
-	params := NewBlockPoolParams(config, buffer, defaultMaxRequesters)
+	params := NewBlockPoolParams(buffer, defaultMaxRequesters)
 
 	tests := []struct {
 		blockSize       float64
@@ -398,9 +384,8 @@ func TestBlockPoolParams_CalculateRetryTimeout(t *testing.T) {
 }
 
 func TestBlockPoolParams_ZeroMaxBlockSize(t *testing.T) {
-	config := newPoolConfig()
 	buffer := NewRotatingBuffer(blockSizeBufferCapacity)
-	params := NewBlockPoolParams(config, buffer, 50)
+	params := NewBlockPoolParams(buffer, 50)
 
 	// With zero max block size, memory limit should default to maxRequesters
 	params.recalculate(10)

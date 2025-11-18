@@ -35,7 +35,7 @@ const (
 	requestIntervalMS = 2
 	// Request retry seconds is calculated dynamically,
 	// this is used when we don't have enough samples
-	requestRetrySeconds = 45
+	defaultRetrySeconds = 45
 
 	// Border values for dynamic retry timer calculation
 	// Small blocks (1 KB) retry after 5 seconds
@@ -83,29 +83,12 @@ const (
 	// memory usage actually comes from connection buffers, not from requesters.
 	maxMemoryForRequesters = 3 * 1024 * 1024 * 1024
 
-	// This value rounds the calculated max requesters to the step value,
-	// e.g. if step is 5, 31 would be rounded to 30
-	defaultRequestersIncreaseStep = 5
+	// This value rounds the calculated max requesters to the minRequesterIncrease value,
+	// e.g. if minRequesterIncrease is 5, 31 would be rounded to 30
+	minRequesterIncrease = 5
 )
 
 var peerTimeout = 120 * time.Second // not const so we can override with tests
-
-// newPoolConfig creates a poolConfig from the constants
-func newPoolConfig() poolConfig {
-	return poolConfig{
-		minBlockSizeBytes:        minBlockSizeBytes,
-		maxBlockSizeBytes:        maxBlockSizeBytes,
-		minRetrySeconds:          minRetrySeconds,
-		maxRetrySeconds:          maxRetrySeconds,
-		maxPendingForSmallBlocks: maxPendingForSmallBlocks,
-		maxPendingForLargeBlocks: maxPendingForLargeBlocks,
-		minSamplesForDynamic:     minSamplesForDynamic,
-		defaultMaxPendingPerPeer: defaultMaxPendingRequestsPerPeer,
-		defaultRetrySeconds:      requestRetrySeconds,
-		maxMemoryForRequesters:   maxMemoryForRequesters,
-		step:                     defaultRequestersIncreaseStep,
-	}
-}
 
 /*
 	Peers self report their heights when we join the block pool.
@@ -151,7 +134,7 @@ type BlockPool struct {
 
 // NewBlockPool returns a new BlockPool with the height equal to start. Block
 // requests and errors will be sent to requestsCh and errorsCh accordingly.
-func NewBlockPool(start int64, maxRequesters int, requestsCh chan<- BlockRequest, errorsCh chan<- peerError, traceClient trace.Tracer) *BlockPool {
+func NewBlockPool(start int64, requestsCh chan<- BlockRequest, errorsCh chan<- peerError, traceClient trace.Tracer) *BlockPool {
 	bp := &BlockPool{
 		peers:       make(map[p2p.ID]*bpPeer),
 		bannedPeers: make(map[p2p.ID]time.Time),
@@ -168,7 +151,7 @@ func NewBlockPool(start int64, maxRequesters int, requestsCh chan<- BlockRequest
 	}
 	// Initialize with default parameters
 	blockSizeBuffer := NewRotatingBuffer(blockSizeBufferCapacity)
-	bp.params = NewBlockPoolParams(newPoolConfig(), blockSizeBuffer, maxRequesters)
+	bp.params = NewBlockPoolParams(blockSizeBuffer, defaultMaxRequesters)
 	bp.BaseService = *service.NewBaseService(nil, "BlockPool", bp)
 	return bp
 }

@@ -112,7 +112,7 @@ func NewReactorWithAddr(state sm.State, blockExec *sm.BlockExecutor, store *stor
 	if startHeight == 1 {
 		startHeight = state.InitialHeight
 	}
-	pool := NewBlockPool(startHeight, defaultMaxRequesters, requestsCh, errorsCh, traceClient)
+	pool := NewBlockPool(startHeight, requestsCh, errorsCh, traceClient)
 
 	bcR := &Reactor{
 		initialState: state,
@@ -265,7 +265,7 @@ func (bcR *Reactor) Receive(e p2p.Envelope) {
 
 	bcR.Logger.Trace("Receive", "e.Src", e.Src, "chID", e.ChannelID, "msg", e.Message)
 
-	switch msg := e.Message.(type) { //nolint:dupl // recreated in a test
+	switch msg := e.Message.(type) {
 	case *bcproto.BlockRequest:
 		bcR.respondToPeer(msg, e.Src)
 	case *bcproto.BlockResponse:
@@ -519,7 +519,7 @@ FOR_LOOP:
 				// Block sync doesn't check that the `Data` in a block is valid.
 				// Since celestia-core can't determine if the `Data` in a block
 				// is valid, the next line asks celestia-app to check if the
-				// block is valid via ProcessProposal. If this step wasn't
+				// block is valid via ProcessProposal. If this minRequesterIncrease wasn't
 				// performed, a malicious node could fabricate an alternative
 				// set of transactions that would cause a different app hash and
 				// thus cause this node to panic.
