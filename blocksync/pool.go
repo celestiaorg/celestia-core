@@ -600,7 +600,7 @@ func (pool *BlockPool) getRetryTimeout() time.Duration {
 // If no peers are available, returns nil.
 // prevPeerID is a peer to avoid if possible (e.g., peer used for previous height).
 // This promotes peer diversity by alternating between peers across consecutive blocks.
-func (pool *BlockPool) pickIncrAvailablePeer(height int64, prevPeerID p2p.ID) *bpPeer {
+func (pool *BlockPool) pickIncrAvailablePeer(height int64, ignorePeerID, prevPeerID p2p.ID) *bpPeer {
 	pool.mtx.Lock()
 	defer pool.mtx.Unlock()
 
@@ -608,6 +608,9 @@ func (pool *BlockPool) pickIncrAvailablePeer(height int64, prevPeerID p2p.ID) *b
 	var fallbackPeer *bpPeer // Peer that matches all criteria except prevPeerID
 
 	for _, peer := range pool.sortedPeers {
+		if peer.id == ignorePeerID {
+			continue
+		}
 		if peer.didTimeout {
 			pool.removePeer(peer.id)
 			continue
@@ -897,13 +900,15 @@ func (bpr *bpRequester) gotBlockFromPeerID() p2p.ID {
 	return bpr.gotBlockFrom
 }
 
-func (bpr *bpRequester) resetAll() {
+func (bpr *bpRequester) resetAll() p2p.ID {
 	bpr.mtx.Lock()
 	defer bpr.mtx.Unlock()
+	cur := bpr.peerID
 	if bpr.hasActiveRequest() {
 		bpr.tryRemoveBlock(bpr.peerID)
 		bpr.clearActivePeer()
 	}
+	return cur
 }
 
 func (bpr *bpRequester) tryRemoveBlock(peerID p2p.ID) bool {
@@ -941,7 +946,7 @@ func (bpr *bpRequester) redo(peerID p2p.ID) {
 
 // pickPeerAndSendRequest picks a peer and sends a block request.
 // Only sends a request if there is no active request already.
-func (bpr *bpRequester) pickPeerAndSendRequest() {
+func (bpr *bpRequester) pickPeerAndSendRequest(ignorePeerID p2p.ID) {
 	// Check if there's already an active request - if so, don't make another one
 	bpr.mtx.Lock()
 	if bpr.hasActiveRequest() {
@@ -964,7 +969,7 @@ PICK_PEER_LOOP:
 		if !bpr.IsRunning() || !bpr.pool.IsRunning() {
 			return
 		}
-		peer = bpr.pool.pickIncrAvailablePeer(bpr.height, prevPeerID)
+		peer = bpr.pool.pickIncrAvailablePeer(bpr.height, ignorePeerID, prevPeerID)
 		if peer == nil {
 			bpr.Logger.Debug("No peers currently available; will retry shortly", "height", bpr.height)
 			time.Sleep(requestIntervalMS * time.Millisecond)
@@ -990,10 +995,10 @@ func (bpr *bpRequester) isRequestedFromPeer(id p2p.ID) bool {
 // Returns only when a block is found (e.g. AddBlock() is called)
 func (bpr *bpRequester) requestRoutine() {
 	gotBlock := false
-
+	var ignorePeerID p2p.ID
 OUTER_LOOP:
 	for {
-		bpr.pickPeerAndSendRequest()
+		bpr.pickPeerAndSendRequest(ignorePeerID)
 		retryTimeout := bpr.pool.getRetryTimeout()
 		retryTimer := time.NewTimer(retryTimeout)
 		defer retryTimer.Stop()
@@ -1009,7 +1014,7 @@ OUTER_LOOP:
 				return
 			case <-retryTimer.C:
 				if !gotBlock {
-					bpr.resetAll()
+					ignorePeerID = bpr.resetAll()
 					continue OUTER_LOOP
 				}
 			case peerID := <-bpr.redoCh:
@@ -1020,6 +1025,7 @@ OUTER_LOOP:
 				// If peers returned NoBlockResponse or bad block, reschedule requests.
 				if !bpr.hasActiveRequest() {
 					retryTimer.Stop()
+					ignorePeerID = peerID
 					continue OUTER_LOOP
 				}
 			case <-bpr.gotBlockCh:
