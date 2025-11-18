@@ -1,7 +1,6 @@
 package log
 
 import (
-//	"fmt"
 	"io"
 
 	kitlog "github.com/go-kit/log"
@@ -26,49 +25,49 @@ var _ Logger = (*tmLogger)(nil)
 // using go-kit's log as an underlying logger and our custom formatter. Note
 // that underlying logger could be swapped with something else.
 func NewTMLogger(w io.Writer) Logger {
-    colorFn := func(keyvals ...interface{}) term.FgBgColor {
-        if len(keyvals) < 2 {
-            return term.FgBgColor{}
-        }
+	colorFn := func(keyvals ...interface{}) term.FgBgColor {
+		if len(keyvals) < 2 {
+			return term.FgBgColor{}
+		}
 
-        var levelStr string
+		var levelStr string
 
-        // Handle custom trace level
-        if keyvals[0] == levelKey {
-            // Safely handle this case
-            if strVal, ok := keyvals[1].(string); ok {
-                levelStr = strVal
-            } else {
-                return term.FgBgColor{}
-            }
-        // Handle standard go-kit levels
-        } else if keyvals[0] == kitlevel.Key() {
-            // Type-safe extraction for current go-kit/log (pointer and value types)
-            if stringer, ok := keyvals[1].(interface{ String() string }); ok {
-                levelStr = stringer.String()
-            } else if strVal, ok := keyvals[1].(string); ok {
-                levelStr = strVal
-            } else {
-                return term.FgBgColor{}
-            }
-        } else {
-            // Never panic: just return default color for unknown key types
-            return term.FgBgColor{}
-        }
+		// Handle custom trace level
+		if keyvals[0] == levelKey {
+			// Safely handle this case
+			if strVal, ok := keyvals[1].(string); ok {
+				levelStr = strVal
+			} else {
+				return term.FgBgColor{}
+			}
+			// Handle standard go-kit levels
+		} else if keyvals[0] == kitlevel.Key() {
+			// Type-safe extraction for current go-kit/log (pointer and value types)
+			if stringer, ok := keyvals[1].(interface{ String() string }); ok {
+				levelStr = stringer.String()
+			} else if strVal, ok := keyvals[1].(string); ok {
+				levelStr = strVal
+			} else {
+				return term.FgBgColor{}
+			}
+		} else {
+			// Never panic: just return default color for unknown key types
+			return term.FgBgColor{}
+		}
 
-        switch levelStr {
-        case "trace":
-            return term.FgBgColor{Fg: term.DarkGray}
-        case "debug":
-            return term.FgBgColor{Fg: term.Gray}
-        case "error":
-            return term.FgBgColor{Fg: term.Red}
-        default:
-            return term.FgBgColor{}
-        }
-    }
+		switch levelStr {
+		case "trace":
+			return term.FgBgColor{Fg: term.DarkGray}
+		case "debug":
+			return term.FgBgColor{Fg: term.Gray}
+		case "error":
+			return term.FgBgColor{Fg: term.Red}
+		default:
+			return term.FgBgColor{}
+		}
+	}
 
-    return &tmLogger{term.NewLogger(w, NewTMFmtLogger, colorFn)}
+	return &tmLogger{term.NewLogger(w, NewTMFmtLogger, colorFn)}
 }
 
 // NewTMLoggerWithColorFn allows you to provide your own color function. See
