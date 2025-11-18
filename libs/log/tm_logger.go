@@ -1,7 +1,6 @@
 package log
 
 import (
-	"fmt"
 	"io"
 
 	kitlog "github.com/go-kit/log"
@@ -26,22 +25,34 @@ var _ Logger = (*tmLogger)(nil)
 // using go-kit's log as an underlying logger and our custom formatter. Note
 // that underlying logger could be swapped with something else.
 func NewTMLogger(w io.Writer) Logger {
-	// Color by level value
 	colorFn := func(keyvals ...interface{}) term.FgBgColor {
-		// keyvals can start with either levelKey (for trace) or kitlevel.Key() (for debug/info/error)
 		if len(keyvals) < 2 {
 			return term.FgBgColor{}
 		}
 
 		var levelStr string
+
+		// Handle custom trace level
 		if keyvals[0] == levelKey {
-			// Custom trace level
-			levelStr = keyvals[1].(string)
+			// Safely handle this case
+			if strVal, ok := keyvals[1].(string); ok {
+				levelStr = strVal
+			} else {
+				return term.FgBgColor{}
+			}
+			// Handle standard go-kit levels
 		} else if keyvals[0] == kitlevel.Key() {
-			// Standard go-kit levels
-			levelStr = keyvals[1].(kitlevel.Value).String()
+			// Type-safe extraction for current go-kit/log (pointer and value types)
+			if stringer, ok := keyvals[1].(interface{ String() string }); ok {
+				levelStr = stringer.String()
+			} else if strVal, ok := keyvals[1].(string); ok {
+				levelStr = strVal
+			} else {
+				return term.FgBgColor{}
+			}
 		} else {
-			panic(fmt.Sprintf("expected level key to be first, got %v", keyvals[0]))
+			// Never panic: just return default color for unknown key types
+			return term.FgBgColor{}
 		}
 
 		switch levelStr {
