@@ -134,6 +134,9 @@ type Metrics struct {
 	ApplicationRejectedProposals metrics.Counter
 	// TimedOutProposals is the number of proposals that failed to be received in time.
 	TimedOutProposals metrics.Counter
+
+	// ProposerMissedProposals is the number of proposals missed by each proposer.
+	ProposerMissedProposals metrics.Counter `metrics_labels:"proposer_address"`
 }
 
 func (m *Metrics) MarkProposalProcessed(accepted bool) {
