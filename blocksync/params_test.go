@@ -22,7 +22,7 @@ func almostEqualRelative(a, b, epsilon float64) bool {
 }
 
 func TestBlockPoolParams_DefaultValues(t *testing.T) {
-	buffer := NewRotatingBuffer(blockSizeBufferCapacity)
+	buffer := NewBlockStats(blockSizeBufferCapacity)
 	params := NewBlockPoolParams(buffer, defaultMaxRequesters)
 
 	// With no samples, should use default values
@@ -34,7 +34,7 @@ func TestBlockPoolParams_DefaultValues(t *testing.T) {
 }
 
 func TestBlockPoolParams_SmallBlocks(t *testing.T) {
-	buffer := NewRotatingBuffer(blockSizeBufferCapacity)
+	buffer := NewBlockStats(blockSizeBufferCapacity)
 	params := NewBlockPoolParams(buffer, defaultMaxRequesters)
 
 	// Add small blocks (1 KB)
@@ -52,7 +52,7 @@ func TestBlockPoolParams_SmallBlocks(t *testing.T) {
 }
 
 func TestBlockPoolParams_LargeBlocks(t *testing.T) {
-	buffer := NewRotatingBuffer(blockSizeBufferCapacity)
+	buffer := NewBlockStats(blockSizeBufferCapacity)
 	params := NewBlockPoolParams(buffer, defaultMaxRequesters)
 
 	// Add large blocks (20 MB+)
@@ -70,7 +70,7 @@ func TestBlockPoolParams_LargeBlocks(t *testing.T) {
 }
 
 func TestBlockPoolParams_MediumBlocks(t *testing.T) {
-	buffer := NewRotatingBuffer(blockSizeBufferCapacity)
+	buffer := NewBlockStats(blockSizeBufferCapacity)
 	params := NewBlockPoolParams(buffer, defaultMaxRequesters)
 
 	// Add medium blocks (5 MB - in the middle of the range)
@@ -131,7 +131,7 @@ func TestBlockPoolParams_MaxPendingByBlockSize(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			buffer := NewRotatingBuffer(blockSizeBufferCapacity)
+			buffer := NewBlockStats(blockSizeBufferCapacity)
 			params := NewBlockPoolParams(buffer, defaultMaxRequesters)
 
 			// Add enough samples to trigger dynamic calculation
@@ -194,7 +194,7 @@ func TestBlockPoolParams_RetryTimeoutByBlockSize(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			buffer := NewRotatingBuffer(blockSizeBufferCapacity)
+			buffer := NewBlockStats(blockSizeBufferCapacity)
 			params := NewBlockPoolParams(buffer, defaultMaxRequesters)
 
 			// Add enough samples to trigger dynamic calculation
@@ -248,7 +248,7 @@ func TestBlockPoolParams_RequestersLimit(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			buffer := NewRotatingBuffer(blockSizeBufferCapacity)
+			buffer := NewBlockStats(blockSizeBufferCapacity)
 			params := NewBlockPoolParams(buffer, maxRequesters)
 
 			// Add enough samples to trigger dynamic calculation
@@ -264,7 +264,7 @@ func TestBlockPoolParams_RequestersLimit(t *testing.T) {
 }
 
 func TestBlockPoolParams_MixedBlockSizes(t *testing.T) {
-	buffer := NewRotatingBuffer(blockSizeBufferCapacity)
+	buffer := NewBlockStats(blockSizeBufferCapacity)
 	params := NewBlockPoolParams(buffer, defaultMaxRequesters)
 
 	// Add mix of small and large blocks
@@ -291,7 +291,7 @@ func TestBlockPoolParams_MixedBlockSizes(t *testing.T) {
 }
 
 func TestBlockPoolParams_InsufficientSamples(t *testing.T) {
-	buffer := NewRotatingBuffer(blockSizeBufferCapacity)
+	buffer := NewBlockStats(blockSizeBufferCapacity)
 	params := NewBlockPoolParams(buffer, defaultMaxRequesters)
 
 	// Add fewer samples than required
@@ -306,7 +306,7 @@ func TestBlockPoolParams_InsufficientSamples(t *testing.T) {
 }
 
 func TestBlockPoolParams_Recalculate(t *testing.T) {
-	buffer := NewRotatingBuffer(blockSizeBufferCapacity)
+	buffer := NewBlockStats(blockSizeBufferCapacity)
 	params := NewBlockPoolParams(buffer, defaultMaxRequesters)
 
 	// Add initial blocks
@@ -328,8 +328,8 @@ func TestBlockPoolParams_Recalculate(t *testing.T) {
 	assert.Equal(t, 10*params.maxPendingPerPeer, params.peerBasedLimit, "peer-based limit should update")
 }
 
-func TestBlockPoolParams_CalculateMaxPendingLadder(t *testing.T) {
-	buffer := NewRotatingBuffer(blockSizeBufferCapacity)
+func TestBlockPoolParams_CalculateMaxPending(t *testing.T) {
+	buffer := NewBlockStats(blockSizeBufferCapacity)
 	params := NewBlockPoolParams(buffer, defaultMaxRequesters)
 
 	tests := []struct {
@@ -348,7 +348,7 @@ func TestBlockPoolParams_CalculateMaxPendingLadder(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		result := params.calculateMaxPendingLadder(tt.blockSize)
+		result := params.calculateMaxPending(tt.blockSize)
 		assert.Equal(t, tt.expectedPending, result, "Block size %.0f should have pending %d, got %d", tt.blockSize, tt.expectedPending, result)
 
 		// Verify ladder effect (should be multiple of 5 or exactly 2)
@@ -359,7 +359,7 @@ func TestBlockPoolParams_CalculateMaxPendingLadder(t *testing.T) {
 }
 
 func TestBlockPoolParams_CalculateRetryTimeout(t *testing.T) {
-	buffer := NewRotatingBuffer(blockSizeBufferCapacity)
+	buffer := NewBlockStats(blockSizeBufferCapacity)
 	params := NewBlockPoolParams(buffer, defaultMaxRequesters)
 
 	tests := []struct {
@@ -384,7 +384,7 @@ func TestBlockPoolParams_CalculateRetryTimeout(t *testing.T) {
 }
 
 func TestBlockPoolParams_ZeroMaxBlockSize(t *testing.T) {
-	buffer := NewRotatingBuffer(blockSizeBufferCapacity)
+	buffer := NewBlockStats(blockSizeBufferCapacity)
 	params := NewBlockPoolParams(buffer, 50)
 
 	// With zero max block size, memory limit should default to maxRequesters

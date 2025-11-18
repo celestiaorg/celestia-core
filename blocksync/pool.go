@@ -150,7 +150,7 @@ func NewBlockPool(start int64, requestsCh chan<- BlockRequest, errorsCh chan<- p
 		droppedRequesters: make(map[int64]struct{}),
 	}
 	// Initialize with default parameters
-	blockSizeBuffer := NewRotatingBuffer(blockSizeBufferCapacity)
+	blockSizeBuffer := NewBlockStats(blockSizeBufferCapacity)
 	bp.params = NewBlockPoolParams(blockSizeBuffer, defaultMaxRequesters)
 	bp.BaseService = *service.NewBaseService(nil, "BlockPool", bp)
 	return bp
@@ -237,7 +237,7 @@ func (pool *BlockPool) dropExcessRequesters(maxRequestersAllowed int, maxPending
 		if requester, ok := pool.requesters[height]; ok {
 			// Always track dropped requesters to avoid banning peers for late-arriving blocks
 			pool.droppedRequesters[height] = struct{}{}
-			pool.Logger.Debug("Tracking dropped requester", "height", height)
+			pool.Logger.Trace("Tracking dropped requester", "height", height)
 
 			if err := requester.Stop(); err != nil {
 				pool.Logger.Error("Error stopping requester", "height", height, "err", err)
@@ -299,7 +299,7 @@ func (pool *BlockPool) IsCaughtUp() bool {
 
 	// Need at least 1 peer to be considered caught up.
 	if len(pool.peers) == 0 {
-		pool.Logger.Debug("Blockpool has no peers")
+		pool.Logger.Trace("Blockpool has no peers")
 		return false
 	}
 
@@ -445,7 +445,7 @@ func (pool *BlockPool) AddBlock(peerID p2p.ID, block *types.Block, extCommit *ty
 
 	if blockSet {
 		pool.params.addBlock(blockSize, len(pool.peers))
-		pool.Logger.Debug("Block added, current maxPending",
+		pool.Logger.Trace("Block added, current maxPending",
 			"height", block.Height,
 			"blockSize", fmt.Sprintf("%.2f KB", float64(blockSize)/1024),
 			"avgBlockSize", fmt.Sprintf("%.2f KB", pool.params.avgBlockSize/1024),
@@ -585,7 +585,7 @@ func (pool *BlockPool) isPeerBanned(peerID p2p.ID) bool {
 
 // CONTRACT: pool.mtx must be locked.
 func (pool *BlockPool) banPeer(peerID p2p.ID) {
-	pool.Logger.Debug("Banning peer", peerID)
+	pool.Logger.Trace("Banning peer", peerID)
 	pool.bannedPeers[peerID] = cmttime.Now()
 }
 
@@ -971,7 +971,7 @@ PICK_PEER_LOOP:
 		}
 		peer = bpr.pool.pickIncrAvailablePeer(bpr.height, ignorePeerID, prevPeerID)
 		if peer == nil {
-			bpr.Logger.Debug("No peers currently available; will retry shortly", "height", bpr.height)
+			bpr.Logger.Trace("No peers currently available; will retry shortly", "height", bpr.height)
 			time.Sleep(requestIntervalMS * time.Millisecond)
 			continue PICK_PEER_LOOP
 		}

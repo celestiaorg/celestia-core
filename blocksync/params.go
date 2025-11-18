@@ -9,7 +9,7 @@ type BlockPoolParams struct {
 	maxPendingPerPeer int
 	retryTimeout      time.Duration
 	requestersLimit   int
-	blockSizeBuffer   *RotatingBuffer
+	blockSizeBuffer   *BlockStats
 	maxRequesters     int
 
 	// Cached calculated values for logging
@@ -21,7 +21,7 @@ type BlockPoolParams struct {
 }
 
 // NewBlockPoolParams creates a new BlockPoolParams with the given configuration
-func NewBlockPoolParams(blockSizeBuffer *RotatingBuffer, maxRequesters int) *BlockPoolParams {
+func NewBlockPoolParams(blockSizeBuffer *BlockStats, maxRequesters int) *BlockPoolParams {
 	params := &BlockPoolParams{
 		blockSizeBuffer: blockSizeBuffer,
 		maxRequesters:   maxRequesters,
@@ -43,7 +43,7 @@ func (p *BlockPoolParams) recalculate(numPeers int) {
 		p.retryTimeout = time.Duration(defaultRetrySeconds * float64(time.Second))
 	} else {
 		// Use max block size for calculations (worst-case planning)
-		p.maxPendingPerPeer = p.calculateMaxPendingLadder(p.maxBlockSize)
+		p.maxPendingPerPeer = p.calculateMaxPending(p.maxBlockSize)
 		p.retryTimeout = p.calculateRetryTimeout(p.maxBlockSize)
 	}
 
@@ -66,7 +66,7 @@ func (p *BlockPoolParams) addBlock(blockSize int, numPeers int) {
 	p.recalculate(numPeers)
 }
 
-func (p *BlockPoolParams) calculateMaxPendingLadder(blockSize float64) int {
+func (p *BlockPoolParams) calculateMaxPending(blockSize float64) int {
 	// Clamp to min/max bounds
 	if blockSize <= minBlockSizeBytes {
 		return maxPendingForSmallBlocks
