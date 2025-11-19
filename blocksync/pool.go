@@ -835,7 +835,8 @@ func (bpr *bpRequester) OnStart() error {
 // Returns true if the peer(s) match and block doesn't already exist.
 func (bpr *bpRequester) setBlock(block *types.Block, extCommit *types.ExtendedCommit, peerID p2p.ID) (bool, error) {
 	bpr.mtx.Lock()
-	if !bpr.isRequestedFromPeer(peerID) {
+	_, isRequested := bpr.requestedFromPeers[peerID]
+	if !isRequested {
 		bpr.mtx.Unlock()
 		return false, fmt.Errorf("block not requested from peer")
 	}
@@ -1009,7 +1010,10 @@ OUTER_LOOP:
 					gotBlock = false
 				}
 				// If peers returned NoBlockResponse or bad block, reschedule requests.
-				if bpr.peerID == "" {
+				bpr.mtx.Lock()
+				peerIDEmpty := bpr.peerID == ""
+				bpr.mtx.Unlock()
+				if peerIDEmpty {
 					retryTimer.Stop()
 					ignorePeerID = peerID
 					continue OUTER_LOOP
