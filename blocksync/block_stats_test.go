@@ -6,7 +6,7 @@ import (
 )
 
 func TestNewRotatingBuffer(t *testing.T) {
-	rb := NewBlockStats(5)
+	rb := newBlockStats(5)
 	if rb.Capacity() != 5 {
 		t.Errorf("Expected capacity 5, got %d", rb.Capacity())
 	}
@@ -16,7 +16,7 @@ func TestNewRotatingBuffer(t *testing.T) {
 }
 
 func TestAddAndGetAverage(t *testing.T) {
-	rb := NewBlockStats(3)
+	rb := newBlockStats(3)
 
 	// Add first element
 	rb.Add(10)
@@ -38,7 +38,7 @@ func TestAddAndGetAverage(t *testing.T) {
 }
 
 func TestRotatingBehavior(t *testing.T) {
-	rb := NewBlockStats(3)
+	rb := newBlockStats(3)
 
 	// Fill the buffer
 	rb.Add(10)
@@ -59,14 +59,14 @@ func TestRotatingBehavior(t *testing.T) {
 }
 
 func TestEmptyBuffer(t *testing.T) {
-	rb := NewBlockStats(5)
+	rb := newBlockStats(5)
 	if rb.GetAverage() != 0 {
 		t.Errorf("Expected average 0 for empty buffer, got %f", rb.GetAverage())
 	}
 }
 
 func TestSingleElement(t *testing.T) {
-	rb := NewBlockStats(1)
+	rb := newBlockStats(1)
 	rb.Add(42)
 
 	if rb.GetAverage() != 42 {
@@ -81,7 +81,7 @@ func TestSingleElement(t *testing.T) {
 }
 
 func TestFloatingPointPrecision(t *testing.T) {
-	rb := NewBlockStats(4)
+	rb := newBlockStats(4)
 	rb.Add(1.1)
 	rb.Add(2.2)
 	rb.Add(3.3)
@@ -94,7 +94,7 @@ func TestFloatingPointPrecision(t *testing.T) {
 }
 
 func TestGetMax(t *testing.T) {
-	rb := NewBlockStats(5)
+	rb := newBlockStats(5)
 
 	// Empty buffer
 	if rb.GetMax() != 0 {
@@ -133,7 +133,7 @@ func TestGetMax(t *testing.T) {
 }
 
 func TestGetMaxWithRotation(t *testing.T) {
-	rb := NewBlockStats(3)
+	rb := newBlockStats(3)
 
 	// Fill buffer with [10, 20, 30]
 	rb.Add(10)
@@ -188,7 +188,7 @@ func TestGetMaxWithRotation(t *testing.T) {
 }
 
 func TestGetMaxSingleElement(t *testing.T) {
-	rb := NewBlockStats(1)
+	rb := newBlockStats(1)
 
 	rb.Add(42)
 	if rb.GetMax() != 42 {
@@ -207,7 +207,7 @@ func TestGetMaxSingleElement(t *testing.T) {
 }
 
 func TestGetMaxMultipleMaxValues(t *testing.T) {
-	rb := NewBlockStats(4)
+	rb := newBlockStats(4)
 
 	// Add [30, 30, 20, 10]
 	rb.Add(30)

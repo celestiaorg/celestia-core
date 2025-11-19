@@ -33,32 +33,37 @@ eg, L = latency = 0.1s
 
 const (
 	requestIntervalMS = 2
-	// Request retry seconds is calculated dynamically,
-	// this is used when we don't have enough samples
+
+	// defaultRetrySeconds is the request retry timeout used when we don't have enough samples.
 	defaultRetrySeconds = 45
 
-	// Border values for dynamic retry timer calculation
-	// Small blocks (1 KB) retry after 5 seconds
-	// Large blocks (20 MB+) retry after 60 seconds
-	minBlockSizeBytes = 1024             // 1 KB
-	maxBlockSizeBytes = 20 * 1024 * 1024 // 20 MB
-	minRetrySeconds   = 5
-	maxRetrySeconds   = 60
+	// minBlockSizeBytes is the minimum block size (1 KB) used for dynamic retry timer calculation.
+	minBlockSizeBytes = 1024
 
-	// Border values for dynamic maxPendingRequestsPerPeer
-	// Small blocks can have more concurrent requests
-	// Large blocks should have fewer to avoid bandwidth saturation
+	// maxBlockSizeBytes is the maximum block size (20 MB) used for dynamic retry timer calculation.
+	maxBlockSizeBytes = 20 * 1024 * 1024
+
+	// minRetrySeconds is the minimum retry timeout for small blocks.
+	minRetrySeconds = 5
+
+	// maxRetrySeconds is the maximum retry timeout for large blocks.
+	maxRetrySeconds = 60
+
+	// maxPendingForSmallBlocks is the maximum concurrent requests per peer for small blocks.
+	// Small blocks can have more concurrent requests.
 	maxPendingForSmallBlocks = 40
+
+	// maxPendingForLargeBlocks is the maximum concurrent requests per peer for large blocks.
+	// Large blocks should have fewer to avoid bandwidth saturation.
 	maxPendingForLargeBlocks = 2
 
-	// Number of block sizes to track for averaging
+	// blockSizeBufferCapacity is the number of block sizes to track for averaging.
 	blockSizeBufferCapacity = 70
 
-	// Minimum samples before using dynamic values
+	// minSamplesForDynamic is the minimum samples before using dynamic values.
 	minSamplesForDynamic = 5
 
-	// Max pending requests are calculated dynamically,
-	// this is used when we don't have enough samples
+	// defaultMaxPendingRequestsPerPeer is the max pending requests used when we don't have enough samples.
 	defaultMaxPendingRequestsPerPeer = 20
 
 	// Minimum recv rate to ensure we're receiving blocks from a peer fast
@@ -75,16 +80,16 @@ const (
 	// routine time to connect to peers.
 	peerConnWait = 3 * time.Second
 
-	// Default maximum number of concurrent block requesters
+	// defaultMaxRequesters is the default maximum number of concurrent block requesters.
 	defaultMaxRequesters = 100
 
-	// Maximum memory to use for pending block requests (3 GB).
+	// maxMemoryForRequesters is the maximum memory to use for pending block requests (3 GB).
 	// Empirically determined to avoid excessive memory usage, because most
 	// memory usage actually comes from connection buffers, not from requesters.
 	maxMemoryForRequesters = 3 * 1024 * 1024 * 1024
 
-	// This value rounds the calculated max requesters to the minRequesterIncrease value,
-	// e.g. if minRequesterIncrease is 5, 31 would be rounded to 30
+	// minRequesterIncrease is the value used to round the calculated max requesters.
+	// For example, if minRequesterIncrease is 5, 31 would be rounded to 30.
 	minRequesterIncrease = 5
 )
 
@@ -125,16 +130,21 @@ type BlockPool struct {
 
 	traceClient trace.Tracer
 
-	// Track dropped requesters to avoid banning peers for blocks we requested but dropped
+	// droppedRequesters is a map which tracks dropped requesters to avoid banning peers for blocks we requested but dropped
 	droppedRequesters map[int64]struct{}
 
-	// Cached calculated parameters
+	// params determine main properties of the block pool like number of requesters etc, based on the block suze
 	params *BlockPoolParams
 }
 
 // NewBlockPool returns a new BlockPool with the height equal to start. Block
 // requests and errors will be sent to requestsCh and errorsCh accordingly.
-func NewBlockPool(start int64, requestsCh chan<- BlockRequest, errorsCh chan<- peerError, traceClient trace.Tracer) *BlockPool {
+func NewBlockPool(start int64, requestsCh chan<- BlockRequest, errorsCh chan<- peerError) *BlockPool {
+	return newBlockPoolWithTracer(start, requestsCh, errorsCh, trace.NoOpTracer())
+}
+
+// newBlockPoolWithTracer returns a new BlockPool with custom tracer
+func newBlockPoolWithTracer(start int64, requestsCh chan<- BlockRequest, errorsCh chan<- peerError, traceClient trace.Tracer) *BlockPool {
 	bp := &BlockPool{
 		peers:       make(map[p2p.ID]*bpPeer),
 		bannedPeers: make(map[p2p.ID]time.Time),
@@ -150,8 +160,8 @@ func NewBlockPool(start int64, requestsCh chan<- BlockRequest, errorsCh chan<- p
 		droppedRequesters: make(map[int64]struct{}),
 	}
 	// Initialize with default parameters
-	blockSizeBuffer := NewBlockStats(blockSizeBufferCapacity)
-	bp.params = NewBlockPoolParams(blockSizeBuffer, defaultMaxRequesters)
+	blockSizeBuffer := newBlockStats(blockSizeBufferCapacity)
+	bp.params = newBlockPoolParams(blockSizeBuffer, defaultMaxRequesters)
 	bp.BaseService = *service.NewBaseService(nil, "BlockPool", bp)
 	return bp
 }
@@ -237,7 +247,7 @@ func (pool *BlockPool) dropExcessRequesters(maxRequestersAllowed int, maxPending
 		if requester, ok := pool.requesters[height]; ok {
 			// Always track dropped requesters to avoid banning peers for late-arriving blocks
 			pool.droppedRequesters[height] = struct{}{}
-			pool.Logger.Trace("Tracking dropped requester", "height", height)
+			pool.Logger.Trace("Dropping requester", "height", height)
 
 			if err := requester.Stop(); err != nil {
 				pool.Logger.Error("Error stopping requester", "height", height, "err", err)
@@ -585,7 +595,7 @@ func (pool *BlockPool) isPeerBanned(peerID p2p.ID) bool {
 
 // CONTRACT: pool.mtx must be locked.
 func (pool *BlockPool) banPeer(peerID p2p.ID) {
-	pool.Logger.Trace("Banning peer", peerID)
+	pool.Logger.Debug("Banning peer", peerID)
 	pool.bannedPeers[peerID] = cmttime.Now()
 }
 
@@ -817,30 +827,6 @@ func newBPRequester(pool *BlockPool, height int64) *bpRequester {
 	return bpr
 }
 
-// isActiveRequest returns true if there's an active request for the given peer.
-// CONTRACT: bpr.mtx must be locked.
-func (bpr *bpRequester) isActiveRequest(peerID p2p.ID) bool {
-	return bpr.peerID == peerID
-}
-
-// setActivePeer sets the active peer for this requester.
-// CONTRACT: bpr.mtx must be locked.
-func (bpr *bpRequester) setActivePeer(peerID p2p.ID) {
-	bpr.peerID = peerID
-}
-
-// clearActivePeer clears the active peer for this requester.
-// CONTRACT: bpr.mtx must be locked.
-func (bpr *bpRequester) clearActivePeer() {
-	bpr.peerID = ""
-}
-
-// hasActiveRequest returns true if there's any active request.
-// CONTRACT: bpr.mtx must be locked.
-func (bpr *bpRequester) hasActiveRequest() bool {
-	return bpr.peerID != ""
-}
-
 func (bpr *bpRequester) OnStart() error {
 	go bpr.requestRoutine()
 	return nil
@@ -853,8 +839,8 @@ func (bpr *bpRequester) setBlock(block *types.Block, extCommit *types.ExtendedCo
 		bpr.mtx.Unlock()
 		return false, fmt.Errorf("block not requested from peer")
 	}
-	if bpr.isActiveRequest(peerID) {
-		bpr.clearActivePeer()
+	if bpr.peerID == peerID {
+		bpr.peerID = ""
 	}
 	if bpr.block != nil {
 		bpr.mtx.Unlock()
@@ -904,9 +890,9 @@ func (bpr *bpRequester) resetAll() p2p.ID {
 	bpr.mtx.Lock()
 	defer bpr.mtx.Unlock()
 	cur := bpr.peerID
-	if bpr.hasActiveRequest() {
+	if bpr.peerID != "" {
 		bpr.tryRemoveBlock(bpr.peerID)
-		bpr.clearActivePeer()
+		bpr.peerID = ""
 	}
 	return cur
 }
@@ -928,8 +914,8 @@ func (bpr *bpRequester) reset(peerID p2p.ID) (removedBlock bool) {
 	defer bpr.mtx.Unlock()
 
 	removedBlock = bpr.tryRemoveBlock(peerID)
-	if bpr.isActiveRequest(peerID) {
-		bpr.clearActivePeer()
+	if bpr.peerID == peerID {
+		bpr.peerID = ""
 	}
 	return removedBlock
 }
@@ -949,7 +935,7 @@ func (bpr *bpRequester) redo(peerID p2p.ID) {
 func (bpr *bpRequester) pickPeerAndSendRequest(ignorePeerID p2p.ID) {
 	// Check if there's already an active request - if so, don't make another one
 	bpr.mtx.Lock()
-	if bpr.hasActiveRequest() {
+	if bpr.peerID != "" {
 		bpr.mtx.Unlock()
 		return
 	}
@@ -978,7 +964,7 @@ PICK_PEER_LOOP:
 		break PICK_PEER_LOOP
 	}
 	bpr.mtx.Lock()
-	bpr.setActivePeer(peer.id)
+	bpr.peerID = peer.id
 	bpr.requestedFromPeers[peer.id] = struct{}{}
 	bpr.mtx.Unlock()
 
@@ -1023,7 +1009,7 @@ OUTER_LOOP:
 					gotBlock = false
 				}
 				// If peers returned NoBlockResponse or bad block, reschedule requests.
-				if !bpr.hasActiveRequest() {
+				if bpr.peerID == "" {
 					retryTimer.Stop()
 					ignorePeerID = peerID
 					continue OUTER_LOOP

@@ -9,7 +9,7 @@ type BlockPoolParams struct {
 	maxPendingPerPeer int
 	retryTimeout      time.Duration
 	requestersLimit   int
-	blockSizeBuffer   *BlockStats
+	blockSizeBuffer   *blockStats
 	maxRequesters     int
 
 	// Cached calculated values for logging
@@ -20,8 +20,8 @@ type BlockPoolParams struct {
 	numSamples       int
 }
 
-// NewBlockPoolParams creates a new BlockPoolParams with the given configuration
-func NewBlockPoolParams(blockSizeBuffer *BlockStats, maxRequesters int) *BlockPoolParams {
+// newBlockPoolParams creates a new BlockPoolParams with the given configuration
+func newBlockPoolParams(blockSizeBuffer *blockStats, maxRequesters int) *BlockPoolParams {
 	params := &BlockPoolParams{
 		blockSizeBuffer: blockSizeBuffer,
 		maxRequesters:   maxRequesters,

@@ -118,11 +118,11 @@ func NewBaseReactor(name string, impl Reactor, opts ...ReactorOptions) *BaseReac
 	go func() {
 		defer func() {
 			if r := recover(); r != nil {
-				base.Logger.Error("processor panicked", "Err", r)
+				base.Logger.Error("processor panicked", "err", r)
 				// Try to stop the reactor gracefully only if it's running
 				if base.IsRunning() {
 					if err := base.Stop(); err != nil {
-						base.Logger.Error("failed to stop reactor after panic", "Err", err)
+						base.Logger.Error("failed to stop reactor after panic", "err", err)
 					}
 				}
 			}

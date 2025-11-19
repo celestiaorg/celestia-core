@@ -1,8 +1,8 @@
 package blocksync
 
-// BlockStats is a circular buffer that holds at most n elements
+// blockStats is a circular buffer that holds at most n elements
 // and provides O(1) average calculation and O(1) max retrieval
-type BlockStats struct {
+type blockStats struct {
 	buffer   []float64
 	capacity int
 	size     int     // current number of elements
@@ -11,12 +11,12 @@ type BlockStats struct {
 	max      float64 // maximum value in the buffer
 }
 
-// NewBlockStats creates a new rotating buffer with given capacity
-func NewBlockStats(capacity int) *BlockStats {
+// newBlockStats creates a new rotating buffer with given capacity
+func newBlockStats(capacity int) *blockStats {
 	if capacity <= 0 {
 		panic("capacity must be positive")
 	}
-	return &BlockStats{
+	return &blockStats{
 		buffer:   make([]float64, capacity),
 		capacity: capacity,
 		size:     0,
@@ -27,7 +27,7 @@ func NewBlockStats(capacity int) *BlockStats {
 
 // Add adds a new element to the buffer
 // If the buffer is full, it removes the oldest element
-func (rb *BlockStats) Add(value float64) {
+func (rb *blockStats) Add(value float64) {
 	needRecalculateMax := false
 
 	if rb.size < rb.capacity {
@@ -60,7 +60,7 @@ func (rb *BlockStats) Add(value float64) {
 
 // recalculateMax recalculates the maximum value by scanning the buffer
 // This is only called when the previous max value is removed
-func (rb *BlockStats) recalculateMax() {
+func (rb *blockStats) recalculateMax() {
 	if rb.size == 0 {
 		rb.max = 0
 		return
@@ -75,7 +75,7 @@ func (rb *BlockStats) recalculateMax() {
 }
 
 // GetAverage returns the average of all elements in the buffer
-func (rb *BlockStats) GetAverage() float64 {
+func (rb *blockStats) GetAverage() float64 {
 	if rb.size == 0 {
 		return 0
 	}
@@ -83,16 +83,16 @@ func (rb *BlockStats) GetAverage() float64 {
 }
 
 // GetMax returns the maximum value in the buffer
-func (rb *BlockStats) GetMax() float64 {
+func (rb *blockStats) GetMax() float64 {
 	return rb.max
 }
 
 // Size returns the current number of elements in the buffer
-func (rb *BlockStats) Size() int {
+func (rb *blockStats) Size() int {
 	return rb.size
 }
 
 // Capacity returns the maximum capacity of the buffer
-func (rb *BlockStats) Capacity() int {
+func (rb *blockStats) Capacity() int {
 	return rb.capacity
 }

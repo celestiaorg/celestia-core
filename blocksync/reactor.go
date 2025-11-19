@@ -112,7 +112,7 @@ func NewReactorWithAddr(state sm.State, blockExec *sm.BlockExecutor, store *stor
 	if startHeight == 1 {
 		startHeight = state.InitialHeight
 	}
-	pool := NewBlockPool(startHeight, requestsCh, errorsCh, traceClient)
+	pool := newBlockPoolWithTracer(startHeight, requestsCh, errorsCh, traceClient)
 
 	bcR := &Reactor{
 		initialState: state,

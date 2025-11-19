@@ -11,7 +11,6 @@ import (
 
 	"github.com/cometbft/cometbft/libs/log"
 	cmtrand "github.com/cometbft/cometbft/libs/rand"
-	"github.com/cometbft/cometbft/libs/trace"
 	"github.com/cometbft/cometbft/p2p"
 	"github.com/cometbft/cometbft/types"
 )
@@ -110,7 +109,7 @@ func TestBlockPoolBasic(t *testing.T) {
 		errorsCh   = make(chan peerError)
 		requestsCh = make(chan BlockRequest)
 	)
-	pool := NewBlockPool(start, requestsCh, errorsCh, trace.NoOpTracer())
+	pool := NewBlockPool(start, requestsCh, errorsCh)
 	pool.SetLogger(log.TestingLogger())
 
 	err := pool.Start()
@@ -173,7 +172,7 @@ func TestBlockPoolTimeout(t *testing.T) {
 		requestsCh = make(chan BlockRequest)
 	)
 
-	pool := NewBlockPool(start, requestsCh, errorsCh, trace.NoOpTracer())
+	pool := NewBlockPool(start, requestsCh, errorsCh)
 	pool.SetLogger(log.TestingLogger())
 	err := pool.Start()
 	if err != nil {
@@ -241,7 +240,7 @@ func TestBlockPoolRemovePeer(t *testing.T) {
 	requestsCh := make(chan BlockRequest)
 	errorsCh := make(chan peerError)
 
-	pool := NewBlockPool(1, requestsCh, errorsCh, trace.NoOpTracer())
+	pool := NewBlockPool(1, requestsCh, errorsCh)
 	pool.SetLogger(log.TestingLogger())
 	err := pool.Start()
 	require.NoError(t, err)
@@ -298,7 +297,7 @@ func TestBlockPoolMaliciousNode(t *testing.T) {
 	errorsCh := make(chan peerError)
 	requestsCh := make(chan BlockRequest)
 
-	pool := NewBlockPool(1, requestsCh, errorsCh, trace.NoOpTracer())
+	pool := NewBlockPool(1, requestsCh, errorsCh)
 	pool.SetLogger(log.TestingLogger())
 
 	err := pool.Start()
@@ -409,7 +408,7 @@ func TestBlockPoolMaliciousNodeMaxInt64(t *testing.T) {
 	errorsCh := make(chan peerError, 3)
 	requestsCh := make(chan BlockRequest)
 
-	pool := NewBlockPool(1, requestsCh, errorsCh, trace.NoOpTracer())
+	pool := NewBlockPool(1, requestsCh, errorsCh)
 	pool.SetLogger(log.TestingLogger())
 
 	err := pool.Start()
