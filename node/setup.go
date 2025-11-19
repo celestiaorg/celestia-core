@@ -389,6 +389,7 @@ func createConsensusReactor(config *cfg.Config,
 		cs.StateMetrics(csMetrics),
 		cs.OfflineStateSyncHeight(offlineStateSyncHeight),
 		cs.SetTraceClient(traceClient),
+		cs.SetGossipDataEnabled(config.Consensus.EnableLegacyBlockProp),
 	)
 	consensusState.SetLogger(consensusLogger)
 	if privValidator != nil {

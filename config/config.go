@@ -821,6 +821,7 @@ type MempoolConfig struct {
 	// Do not remove invalid transactions from the cache (default: false)
 	// Set to true if it's not possible for any invalid transaction to become
 	// valid again in the future.
+	// Deprecated: KeepInvalidTxsInCache is deprecated and will be removed in a future version.
 	KeepInvalidTxsInCache bool `mapstructure:"keep-invalid-txs-in-cache"`
 	// Maximum size of a single transaction
 	// NOTE: the max size of a tx transmitted over the network is {max_tx_bytes}.
