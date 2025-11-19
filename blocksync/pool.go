@@ -973,11 +973,6 @@ PICK_PEER_LOOP:
 	bpr.pool.sendRequest(bpr.height, peer.id)
 }
 
-func (bpr *bpRequester) isRequestedFromPeer(id p2p.ID) bool {
-	_, ok := bpr.requestedFromPeers[id]
-	return ok
-}
-
 // Responsible for making more requests as necessary
 // Returns only when a block is found (e.g. AddBlock() is called)
 func (bpr *bpRequester) requestRoutine() {
