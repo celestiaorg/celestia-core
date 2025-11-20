@@ -193,10 +193,9 @@ func (pool *BlockPool) makeRequestersRoutine() {
 
 		// Use cached parameters
 		maxRequestersAllowed := pool.params.requestersLimit
-		maxPending := pool.params.maxPendingPerPeer
 
 		// Drop excess requesters if we exceed the limit
-		pool.dropExcessRequesters(maxRequestersAllowed, maxPending)
+		pool.dropExcessRequesters(pool.params.memoryBasedLimit)
 
 		var (
 			maxRequestersCreated = len(pool.requesters) >= maxRequestersAllowed
@@ -224,7 +223,7 @@ func (pool *BlockPool) makeRequestersRoutine() {
 // dropExcessRequesters removes requesters that exceed the allowed limit.
 // Drops requesters from highest height to lowest (furthest from completion).
 // CONTRACT: pool.mtx must be locked.
-func (pool *BlockPool) dropExcessRequesters(maxRequestersAllowed int, maxPending int) {
+func (pool *BlockPool) dropExcessRequesters(maxRequestersAllowed int) {
 	numRequesters := len(pool.requesters)
 	if numRequesters <= maxRequestersAllowed {
 		return
