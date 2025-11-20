@@ -151,8 +151,7 @@ func (pool *BlockPool) OnStart() error {
 	return nil
 }
 
-// recalculateParams updates all parameters based on current conditions
-// numPeers is passed in since it's external state from BlockPool
+// recalculateParams updates request limit and retry timeout based on block size
 func (pool *BlockPool) recalculateParams() {
 	blockSize := pool.lastReceivedBlocks.GetMax()
 	if pool.lastReceivedBlocks.Size() == 0 {
