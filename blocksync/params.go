@@ -4,6 +4,8 @@ import (
 	"time"
 )
 
+var RequesterLimitHardCap = 40
+
 // BlockPoolParams holds dynamically calculated parameters for the block pool
 type BlockPoolParams struct {
 	maxPendingPerPeer int
@@ -53,7 +55,7 @@ func (p *BlockPoolParams) recalculate(numPeers int) {
 	if p.maxBlockSize > 0 {
 		p.memoryBasedLimit = int(maxMemoryForRequesters / p.maxBlockSize)
 	}
-	p.requestersLimit = min(p.peerBasedLimit, p.memoryBasedLimit, p.maxRequesters)
+	p.requestersLimit = RequesterLimitHardCap
 }
 
 // addBlock updates parameters after adding a new block
