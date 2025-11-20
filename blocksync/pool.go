@@ -46,15 +46,15 @@ const (
 	// maxRetrySeconds is the maximum retry timeout for large blocks.
 	maxRetrySeconds = 60
 
-	// minReqLimit is the maximum concurrent requests per peer for small blocks.
-	// Small blocks can have more concurrent requests.
+	// minReqLimit is the maximum concurrent requests per peer for large blocks.
+	// Large blocks should have fewer to avoid bandwidth saturation.
 	minReqLimit = 2
 
 	// maxReqLimit is the maximum concurrent requests per peer for large blocks.
-	// Large blocks should have fewer to avoid bandwidth saturation.
+	// Small blocks can have more concurrent requests.
 	maxReqLimit = 10
 
-	// blockSizeBufferCapacity is the number of block sizes to track for averaging.
+	// blockSizeBufferCapacity is the number of block sizes to track for calculating max or average.
 	blockSizeBufferCapacity = 70
 
 	// Minimum recv rate to ensure we're receiving blocks from a peer fast
@@ -99,13 +99,13 @@ type BlockPool struct {
 	requesters map[int64]*bpRequester
 	height     int64 // the lowest key in requesters.
 	// peers
-	peers           map[p2p.ID]*bpPeer
-	bannedPeers     map[p2p.ID]time.Time
-	sortedPeers     []*bpPeer // sorted by curRate, highest first
-	maxPeerHeight   int64     // the biggest reported height
-	reqLimit        int
-	retryTimeout    time.Duration
-	blockSizeBuffer *blockStats
+	peers              map[p2p.ID]*bpPeer
+	bannedPeers        map[p2p.ID]time.Time
+	sortedPeers        []*bpPeer // sorted by curRate, highest first
+	maxPeerHeight      int64     // the biggest reported height
+	reqLimit           int
+	retryTimeout       time.Duration
+	lastReceivedBlocks *blockStats
 
 	// atomic
 	numPending int32 // number of requests pending assignment or block response
@@ -132,10 +132,10 @@ func newBlockPoolWithTracer(start int64, requestsCh chan<- BlockRequest, errorsC
 		startHeight: start,
 		numPending:  0,
 
-		requestsCh:      requestsCh,
-		errorsCh:        errorsCh,
-		traceClient:     traceClient,
-		blockSizeBuffer: newBlockStats(blockSizeBufferCapacity),
+		requestsCh:         requestsCh,
+		errorsCh:           errorsCh,
+		traceClient:        traceClient,
+		lastReceivedBlocks: newBlockStats(blockSizeBufferCapacity),
 	}
 	// Initialize with default parameters
 	bp.BaseService = *service.NewBaseService(nil, "BlockPool", bp)
@@ -154,12 +154,15 @@ func (pool *BlockPool) OnStart() error {
 // recalculateParams updates all parameters based on current conditions
 // numPeers is passed in since it's external state from BlockPool
 func (pool *BlockPool) recalculateParams() {
-	blockSize := pool.blockSizeBuffer.GetMax()
-	if pool.blockSizeBuffer.Size() == 0 {
+	blockSize := pool.lastReceivedBlocks.GetMax()
+	if pool.lastReceivedBlocks.Size() == 0 {
 		pool.reqLimit = maxReqLimit / 2
 		pool.retryTimeout = time.Duration((maxRetrySeconds / 2) * float64(time.Second))
 	} else {
+		// setting some value between maxReqLimit and minReqLimit to limit the number of requests we send to one peer
+		// this is done to maintain peer diversity
 		pool.reqLimit = interpolate(blockSize, minBlockSizeBytes, maxBlockSizeBytes, maxReqLimit, minReqLimit)
+		// in the same way finding an adequate timeout given the block size
 		pool.retryTimeout = time.Second * time.Duration(
 			interpolate(blockSize, minBlockSizeBytes, maxBlockSizeBytes, minRetrySeconds, maxRetrySeconds))
 	}
@@ -396,7 +399,7 @@ func (pool *BlockPool) AddBlock(peerID p2p.ID, block *types.Block, extCommit *ty
 	}
 
 	if blockSet {
-		pool.blockSizeBuffer.Add(blockSize)
+		pool.lastReceivedBlocks.Add(blockSize)
 		pool.recalculateParams()
 		pool.Logger.Trace("Block added, current maxPending",
 			"height", block.Height,
