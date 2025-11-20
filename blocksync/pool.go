@@ -48,11 +48,11 @@ const (
 
 	// minReqLimit is the maximum concurrent requests per peer for small blocks.
 	// Small blocks can have more concurrent requests.
-	minReqLimit = 10
+	minReqLimit = 2
 
 	// maxReqLimit is the maximum concurrent requests per peer for large blocks.
 	// Large blocks should have fewer to avoid bandwidth saturation.
-	maxReqLimit = 2
+	maxReqLimit = 10
 
 	// blockSizeBufferCapacity is the number of block sizes to track for averaging.
 	blockSizeBufferCapacity = 70
@@ -139,6 +139,7 @@ func newBlockPoolWithTracer(start int64, requestsCh chan<- BlockRequest, errorsC
 	}
 	// Initialize with default parameters
 	bp.BaseService = *service.NewBaseService(nil, "BlockPool", bp)
+	bp.recalculateParams()
 	return bp
 }
 
@@ -156,10 +157,10 @@ func (pool *BlockPool) recalculateParams() {
 	blockSize := pool.blockSizeBuffer.GetMax()
 	if pool.blockSizeBuffer.Size() == 0 {
 		pool.reqLimit = maxReqLimit / 2
-		pool.retryTimeout = time.Duration(maxRetrySeconds / 2 * float64(time.Second))
+		pool.retryTimeout = time.Duration((maxRetrySeconds / 2) * float64(time.Second))
 	} else {
 		pool.reqLimit = interpolate(blockSize, minBlockSizeBytes, maxBlockSizeBytes, maxReqLimit, minReqLimit)
-		pool.retryTimeout = time.Duration(
+		pool.retryTimeout = time.Second * time.Duration(
 			interpolate(blockSize, minBlockSizeBytes, maxBlockSizeBytes, minRetrySeconds, maxRetrySeconds))
 	}
 }
@@ -399,8 +400,9 @@ func (pool *BlockPool) AddBlock(peerID p2p.ID, block *types.Block, extCommit *ty
 		pool.recalculateParams()
 		pool.Logger.Trace("Block added, current maxPending",
 			"height", block.Height,
-			"blockSize", fmt.Sprintf("%.2f KB", blockSize/1024),
-			"blockSize", fmt.Sprintf("%.2f KB", blockSize/1024),
+			"peer", peerID,
+			"blockSize", fmt.Sprintf("%.2f KB", float64(blockSize)/1024),
+			"blockSize", fmt.Sprintf("%.2f KB", float64(blockSize)/1024),
 			"maxPending", pool.reqLimit,
 			"retryTimeout", pool.retryTimeout.Seconds(),
 			"numRequesters", len(pool.requesters),
@@ -958,4 +960,43 @@ OUTER_LOOP:
 type BlockRequest struct {
 	Height int64
 	PeerID p2p.ID
+}
+
+// interpolate performs an inverse-linear interpolation between two integer
+// bounds based on a floating-point input within a numeric range.
+//
+// Arguments:
+//
+//	value:      The input value to interpolate over.
+//	minValue:   The minimum value of the input range.
+//	maxValue:   The maximum value of the input range.
+//	maxOut:     The output when value <= minValue.
+//	minOut:     The output when value >= maxValue.
+//
+// Behavior:
+//   - Clamps the input into [minValue, maxValue].
+//   - Maps the input inversely from maxOut → minOut.
+//   - Ensures the output does not fall below minOut.
+func interpolate(value, minValue, maxValue int, maxOut, minOut int) int {
+	// Clamp to lower bound
+	if value <= minValue {
+		return maxOut
+	}
+	// Clamp to upper bound
+	if value >= maxValue {
+		return minOut
+	}
+
+	// Normalize into [0, 1]
+	normalized := float64(value-minValue) / float64(maxValue-minValue)
+
+	// Inverse linear interpolation from maxOut → minOut
+	raw := maxOut - int(float64(maxOut-minOut)*normalized)
+
+	// Floor to minimum
+	if raw < minOut {
+		raw = minOut
+	}
+
+	return raw
 }
