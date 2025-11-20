@@ -3,12 +3,12 @@ package blocksync
 // blockStats is a circular buffer that holds at most n elements
 // and provides O(1) average calculation and O(1) max retrieval
 type blockStats struct {
-	buffer   []float64
+	buffer   []int
 	capacity int
-	size     int     // current number of elements
-	head     int     // index where the next element will be written
-	sum      float64 // running sum of all elements
-	max      float64 // maximum value in the buffer
+	size     int // current number of elements
+	head     int // index where the next element will be written
+	sum      int // running sum of all elements
+	max      int // maximum value in the buffer
 }
 
 // newBlockStats creates a new rotating buffer with given capacity
@@ -17,7 +17,7 @@ func newBlockStats(capacity int) *blockStats {
 		panic("capacity must be positive")
 	}
 	return &blockStats{
-		buffer:   make([]float64, capacity),
+		buffer:   make([]int, capacity),
 		capacity: capacity,
 		size:     0,
 		head:     0,
@@ -27,7 +27,7 @@ func newBlockStats(capacity int) *blockStats {
 
 // Add adds a new element to the buffer
 // If the buffer is full, it removes the oldest element
-func (rb *blockStats) Add(value float64) {
+func (rb *blockStats) Add(value int) {
 	needRecalculateMax := false
 
 	if rb.size < rb.capacity {
@@ -75,15 +75,15 @@ func (rb *blockStats) recalculateMax() {
 }
 
 // GetAverage returns the average of all elements in the buffer
-func (rb *blockStats) GetAverage() float64 {
+func (rb *blockStats) GetAverage() int {
 	if rb.size == 0 {
 		return 0
 	}
-	return rb.sum / float64(rb.size)
+	return int(float64(rb.sum) / float64(rb.size))
 }
 
 // GetMax returns the maximum value in the buffer
-func (rb *blockStats) GetMax() float64 {
+func (rb *blockStats) GetMax() int {
 	return rb.max
 }
 

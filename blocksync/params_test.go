@@ -26,10 +26,10 @@ func TestBlockPoolParams_DefaultValues(t *testing.T) {
 	params := newBlockPoolParams(buffer, defaultMaxRequesters)
 
 	// With no samples, should use default values
-	assert.Equal(t, defaultMaxPendingRequestsPerPeer, params.maxPendingPerPeer)
+	assert.Equal(t, defaultMaxPendingRequestsPerPeer, params.reqLimit)
 	assert.Equal(t, time.Duration(defaultRetrySeconds*float64(time.Second)), params.retryTimeout)
 	assert.Equal(t, 0, params.numSamples)
-	assert.Equal(t, 0.0, params.avgBlockSize)
+	assert.Equal(t, 0.0, params.blockSize)
 	assert.Equal(t, 0.0, params.maxBlockSize)
 }
 
@@ -44,10 +44,10 @@ func TestBlockPoolParams_SmallBlocks(t *testing.T) {
 	}
 
 	// Should use max pending for small blocks
-	assert.Equal(t, maxPendingForSmallBlocks, params.maxPendingPerPeer, "Small blocks should have max pending requests")
+	assert.Equal(t, minReqLimit, params.reqLimit, "Small blocks should have max pending requests")
 	assert.Equal(t, time.Duration(minRetrySeconds*float64(time.Second)), params.retryTimeout, "Small blocks should have min retry timeout")
 	assert.Equal(t, minSamplesForDynamic, params.numSamples)
-	assert.Equal(t, float64(smallBlockSize), params.avgBlockSize)
+	assert.Equal(t, float64(smallBlockSize), params.blockSize)
 	assert.Equal(t, float64(smallBlockSize), params.maxBlockSize)
 }
 
@@ -62,10 +62,10 @@ func TestBlockPoolParams_LargeBlocks(t *testing.T) {
 	}
 
 	// Should use min pending for large blocks
-	assert.Equal(t, maxPendingForLargeBlocks, params.maxPendingPerPeer, "Large blocks should have min pending requests")
+	assert.Equal(t, maxReqLimit, params.reqLimit, "Large blocks should have min pending requests")
 	assert.Equal(t, time.Duration(maxRetrySeconds*float64(time.Second)), params.retryTimeout, "Large blocks should have max retry timeout")
 	assert.Equal(t, minSamplesForDynamic, params.numSamples)
-	assert.Equal(t, float64(largeBlockSize), params.avgBlockSize)
+	assert.Equal(t, float64(largeBlockSize), params.blockSize)
 	assert.Equal(t, float64(largeBlockSize), params.maxBlockSize)
 }
 
@@ -80,8 +80,8 @@ func TestBlockPoolParams_MediumBlocks(t *testing.T) {
 	}
 
 	// Should have intermediate values
-	assert.Greater(t, params.maxPendingPerPeer, maxPendingForLargeBlocks, "Medium blocks should have more pending than large blocks")
-	assert.Less(t, params.maxPendingPerPeer, maxPendingForSmallBlocks, "Medium blocks should have less pending than small blocks")
+	assert.Greater(t, params.reqLimit, maxReqLimit, "Medium blocks should have more pending than large blocks")
+	assert.Less(t, params.reqLimit, minReqLimit, "Medium blocks should have less pending than small blocks")
 	assert.Greater(t, params.retryTimeout, time.Duration(minRetrySeconds*float64(time.Second)), "Medium blocks should have longer retry than small blocks")
 	assert.Less(t, params.retryTimeout, time.Duration(maxRetrySeconds*float64(time.Second)), "Medium blocks should have shorter retry than large blocks")
 }
@@ -139,7 +139,7 @@ func TestBlockPoolParams_MaxPendingByBlockSize(t *testing.T) {
 				params.addBlock(tt.blockSize, 10)
 			}
 
-			assert.Equal(t, tt.expectedPending, params.maxPendingPerPeer, "maxPendingPerPeer should be %d for %s", tt.expectedPending, tt.name)
+			assert.Equal(t, tt.expectedPending, params.reqLimit, "maxReqLimit should be %d for %s", tt.expectedPending, tt.name)
 		})
 	}
 }
@@ -284,10 +284,10 @@ func TestBlockPoolParams_MixedBlockSizes(t *testing.T) {
 	assert.Equal(t, float64(10*1024*1024), params.maxBlockSize, "Should track max block size")
 
 	// Average should be lower than max
-	assert.Less(t, params.avgBlockSize, params.maxBlockSize, "Average should be less than max")
+	assert.Less(t, params.blockSize, params.maxBlockSize, "Average should be less than max")
 
 	// Max pending should be based on the largest block (10 MB = 20 pending)
-	assert.LessOrEqual(t, params.maxPendingPerPeer, 25, "Should use conservative pending based on max block size")
+	assert.LessOrEqual(t, params.reqLimit, 25, "Should use conservative pending based on max block size")
 }
 
 func TestBlockPoolParams_InsufficientSamples(t *testing.T) {
@@ -300,7 +300,7 @@ func TestBlockPoolParams_InsufficientSamples(t *testing.T) {
 	}
 
 	// Should still use defaults despite large blocks
-	assert.Equal(t, defaultMaxPendingRequestsPerPeer, params.maxPendingPerPeer, "Should use default with insufficient samples")
+	assert.Equal(t, defaultMaxPendingRequestsPerPeer, params.reqLimit, "Should use default with insufficient samples")
 	assert.Equal(t, time.Duration(defaultRetrySeconds*float64(time.Second)), params.retryTimeout, "Should use default retry timeout with insufficient samples")
 	assert.Equal(t, minSamplesForDynamic-1, params.numSamples)
 }
@@ -314,18 +314,18 @@ func TestBlockPoolParams_Recalculate(t *testing.T) {
 		params.addBlock(1024, 2) // Small blocks, 2 peers (low peer count)
 	}
 
-	initialPending := params.maxPendingPerPeer
+	initialPending := params.reqLimit
 	initialLimit := params.requestersLimit
 
 	// Recalculate with more peers
 	params.recalculate(10)
 
-	// maxPendingPerPeer should stay the same (based on block size)
-	assert.Equal(t, initialPending, params.maxPendingPerPeer, "maxPendingPerPeer should not change")
+	// maxReqLimit should stay the same (based on block size)
+	assert.Equal(t, initialPending, params.reqLimit, "maxReqLimit should not change")
 
 	// requestersLimit should change (based on num peers)
 	assert.NotEqual(t, initialLimit, params.requestersLimit, "requestersLimit should update with peer count")
-	assert.Equal(t, 10*params.maxPendingPerPeer, params.peerBasedLimit, "peer-based limit should update")
+	assert.Equal(t, 10*params.reqLimit, params.peerBasedLimit, "peer-based limit should update")
 }
 
 func TestBlockPoolParams_CalculateMaxPending(t *testing.T) {
