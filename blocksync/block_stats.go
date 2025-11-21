@@ -74,12 +74,12 @@ func (rb *blockStats) GetMax() int {
 	return rb.max
 }
 
-// Size returns the current number of elements in the blockSizes
-func (rb *blockStats) Size() int {
+// GetSize returns the current number of elements in the blockSizes
+func (rb *blockStats) GetSize() int {
 	return rb.size
 }
 
-// Capacity returns the maximum capacity of the blockSizes
-func (rb *blockStats) Capacity() int {
+// GetCapacity returns the maximum capacity of the blockSizes
+func (rb *blockStats) GetCapacity() int {
 	return rb.capacity
 }

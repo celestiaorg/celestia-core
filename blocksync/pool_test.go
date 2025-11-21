@@ -483,7 +483,11 @@ func TestBlockPoolMaliciousNodeMaxInt64(t *testing.T) {
 	for {
 		select {
 		case err := <-errorsCh:
-			t.Error(err)
+			if err.peerID == "bad" { // ignore errors from the malicious peer
+				t.Log(err)
+			} else {
+				t.Error(err)
+			}
 		case request := <-requestsCh:
 			// Process request
 			peers[request.PeerID].inputChan <- inputData{t, pool, request}

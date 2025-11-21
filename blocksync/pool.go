@@ -154,7 +154,7 @@ func (pool *BlockPool) OnStart() error {
 // recalculateParams updates request limit and retry timeout based on block size
 func (pool *BlockPool) recalculateParams() {
 	blockSize := pool.lastReceivedBlocks.GetMax()
-	if pool.lastReceivedBlocks.Size() == 0 {
+	if pool.lastReceivedBlocks.GetSize() == 0 {
 		pool.reqLimit = maxReqLimit / 2
 		pool.retryTimeout = time.Duration((maxRetrySeconds / 2) * float64(time.Second))
 	} else {
@@ -322,6 +322,7 @@ func (pool *BlockPool) RemovePeerAndRedoAllPeerRequests(height int64) p2p.ID {
 	request := pool.requesters[height]
 	if request == nil {
 		// this shouldn't happen, but to be on the safe side, let's ignore
+		pool.Logger.Error("Unable to remove peer request, because the requester is nil", "height", height)
 		return ""
 	}
 	peerID := request.gotBlockFromPeerID()
@@ -896,7 +897,7 @@ PICK_PEER_LOOP:
 		}
 		peer = bpr.pool.pickIncrAvailablePeer(bpr.height, ignorePeerID, prevPeerID)
 		if peer == nil {
-			bpr.Logger.Trace("No peers currently available; will retry shortly", "height", bpr.height)
+			bpr.Logger.Debug("No peers currently available; will retry shortly", "height", bpr.height)
 			time.Sleep(requestIntervalMS * time.Millisecond)
 			continue PICK_PEER_LOOP
 		}

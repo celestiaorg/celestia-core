@@ -12,8 +12,8 @@ func TestNewBlockStats(t *testing.T) {
 		rb := newBlockStats(5)
 		require.NotNil(t, rb)
 
-		assert.Equal(t, 5, rb.Capacity())
-		assert.Equal(t, 0, rb.Size())
+		assert.Equal(t, 5, rb.GetCapacity())
+		assert.Equal(t, 0, rb.GetSize())
 		assert.Equal(t, 0, rb.GetMax())
 	})
 
@@ -28,20 +28,20 @@ func TestAddAndGetMax_BelowCapacity(t *testing.T) {
 
 	t.Run("add first element", func(t *testing.T) {
 		rb.Add(5)
-		assert.Equal(t, 1, rb.Size())
-		assert.Equal(t, 3, rb.Capacity())
+		assert.Equal(t, 1, rb.GetSize())
+		assert.Equal(t, 3, rb.GetCapacity())
 		assert.Equal(t, 5, rb.GetMax())
 	})
 
 	t.Run("add smaller element", func(t *testing.T) {
 		rb.Add(3)
-		assert.Equal(t, 2, rb.Size())
+		assert.Equal(t, 2, rb.GetSize())
 		assert.Equal(t, 5, rb.GetMax())
 	})
 
 	t.Run("add larger element", func(t *testing.T) {
 		rb.Add(10)
-		assert.Equal(t, 3, rb.Size())
+		assert.Equal(t, 3, rb.GetSize())
 		assert.Equal(t, 10, rb.GetMax())
 	})
 }
@@ -54,7 +54,8 @@ func TestAddAndGetMax_AtAndBeyondCapacity(t *testing.T) {
 	rb.Add(4)
 	rb.Add(3)
 
-	assert.Equal(t, 3, rb.Size())
+	assert.Equal(t, 3, rb.GetSize())
+	assert.Equal(t, 3, rb.GetCapacity())
 	assert.Equal(t, 5, rb.GetMax())
 
 	t.Run("overwrite non-max element", func(t *testing.T) {
@@ -72,7 +73,8 @@ func TestAddAndGetMax_AtAndBeyondCapacity(t *testing.T) {
 		// Now overwrite index 0 with a *larger* value.
 		rb2.Add(6) // oldValue=5 (max), value=6 -> need recalc? no, value>max so max=6
 
-		assert.Equal(t, 3, rb2.Size())
+		assert.Equal(t, 3, rb2.GetCapacity())
+		assert.Equal(t, 3, rb2.GetSize())
 		assert.Equal(t, 6, rb2.GetMax())
 	})
 
@@ -88,7 +90,8 @@ func TestAddAndGetMax_AtAndBeyondCapacity(t *testing.T) {
 		// Use a value that is not larger than the remaining ones to force recalc.
 		rb3.Add(2) // now buffer is [2,4,3] in some rotation; max should be 4.
 
-		assert.Equal(t, 3, rb3.Size())
+		assert.Equal(t, 3, rb3.GetCapacity())
+		assert.Equal(t, 3, rb3.GetSize())
 		assert.Equal(t, 4, rb3.GetMax())
 	})
 
@@ -102,10 +105,14 @@ func TestAddAndGetMax_AtAndBeyondCapacity(t *testing.T) {
 
 		// Overwrite 5 with 2 -> recalc, max should become 4
 		rb4.Add(2)
+		assert.Equal(t, 3, rb4.GetCapacity())
+		assert.Equal(t, 3, rb4.GetSize())
 		assert.Equal(t, 4, rb4.GetMax())
 
 		// Now add a new bigger value, should update max immediately
 		rb4.Add(10)
+		assert.Equal(t, 3, rb4.GetCapacity())
+		assert.Equal(t, 3, rb4.GetSize())
 		assert.Equal(t, 10, rb4.GetMax())
 	})
 }
@@ -114,15 +121,19 @@ func TestSizeNeverExceedsCapacity(t *testing.T) {
 	rb := newBlockStats(2)
 
 	rb.Add(1)
-	assert.Equal(t, 1, rb.Size())
+	assert.Equal(t, 2, rb.GetCapacity())
+	assert.Equal(t, 1, rb.GetSize())
 
 	rb.Add(2)
-	assert.Equal(t, 2, rb.Size())
+	assert.Equal(t, 2, rb.GetCapacity())
+	assert.Equal(t, 2, rb.GetSize())
 
 	// Now the buffer is full; further adds should keep size == capacity
 	rb.Add(3)
-	assert.Equal(t, 2, rb.Size())
+	assert.Equal(t, 2, rb.GetCapacity())
+	assert.Equal(t, 2, rb.GetSize())
 
 	rb.Add(4)
-	assert.Equal(t, 2, rb.Size())
+	assert.Equal(t, 2, rb.GetCapacity())
+	assert.Equal(t, 2, rb.GetSize())
 }
