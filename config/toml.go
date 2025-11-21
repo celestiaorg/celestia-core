@@ -499,6 +499,11 @@ chunk_fetchers = "{{ .StateSync.ChunkFetchers }}"
 #   1) "v0" - the default block sync implementation
 version = "{{ .BlockSync.Version }}"
 
+# Verify data root during block sync.
+# When enabled, the node will verify the data root of each block during sync.
+# This adds extra validation but may slow down the sync process.
+verify_data_root = {{ .BlockSync.VerifyDataRoot }}
+
 #######################################################
 ###         Consensus Configuration Options         ###
 #######################################################

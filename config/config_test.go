@@ -144,6 +144,9 @@ func TestBlockSyncConfigValidateBasic(t *testing.T) {
 	cfg := config.TestBlockSyncConfig()
 	assert.NoError(t, cfg.ValidateBasic())
 
+	// verify default value for VerifyDataRoot
+	assert.True(t, cfg.VerifyDataRoot)
+
 	// tamper with version
 	cfg.Version = "v1"
 	assert.Error(t, cfg.ValidateBasic())

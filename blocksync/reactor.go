@@ -6,6 +6,7 @@ import (
 	"sync"
 	"time"
 
+	cfg "github.com/cometbft/cometbft/config"
 	"github.com/cometbft/cometbft/crypto"
 	"github.com/cometbft/cometbft/libs/log"
 	"github.com/cometbft/cometbft/libs/trace"
@@ -64,6 +65,7 @@ type Reactor struct {
 	traceClient   trace.Tracer
 	blockSync     bool
 	localAddr     crypto.Address
+	config        *cfg.BlockSyncConfig
 	poolRoutineWg sync.WaitGroup
 
 	requestsCh <-chan BlockRequest
@@ -78,13 +80,17 @@ type Reactor struct {
 func NewReactor(state sm.State, blockExec *sm.BlockExecutor, store *store.BlockStore,
 	blockSync bool, metrics *Metrics, offlineStateSyncHeight int64,
 ) *Reactor {
-	return NewReactorWithAddr(state, blockExec, store, blockSync, nil, metrics, offlineStateSyncHeight, trace.NoOpTracer())
+	return NewReactorWithAddr(state, blockExec, store, blockSync, nil, metrics, offlineStateSyncHeight, trace.NoOpTracer(), nil)
 }
 
 // Function added to keep existing API.
 func NewReactorWithAddr(state sm.State, blockExec *sm.BlockExecutor, store *store.BlockStore,
-	blockSync bool, localAddr crypto.Address, metrics *Metrics, offlineStateSyncHeight int64, traceClient trace.Tracer,
+	blockSync bool, localAddr crypto.Address, metrics *Metrics, offlineStateSyncHeight int64, traceClient trace.Tracer, config *cfg.BlockSyncConfig,
 ) *Reactor {
+	// Use default config if nil
+	if config == nil {
+		config = cfg.DefaultBlockSyncConfig()
+	}
 
 	storeHeight := store.Height()
 	if storeHeight == 0 {
@@ -121,6 +127,7 @@ func NewReactorWithAddr(state sm.State, blockExec *sm.BlockExecutor, store *stor
 		pool:         pool,
 		blockSync:    blockSync,
 		localAddr:    localAddr,
+		config:       config,
 		requestsCh:   requestsCh,
 		errorsCh:     errorsCh,
 		metrics:      metrics,
@@ -514,7 +521,7 @@ FOR_LOOP:
 				err = bcR.blockExec.ValidateBlock(state, first)
 			}
 
-			if err == nil {
+			if err == nil && bcR.config.VerifyDataRoot {
 				var stateMachineValid bool
 				// Block sync doesn't check that the `Data` in a block is valid.
 				// Since celestia-core can't determine if the `Data` in a block

@@ -1035,13 +1035,15 @@ func (cfg *StateSyncConfig) ValidateBasic() error {
 
 // BlockSyncConfig (formerly known as FastSync) defines the configuration for the CometBFT block sync service
 type BlockSyncConfig struct {
-	Version string `mapstructure:"version"`
+	Version        string `mapstructure:"version"`
+	VerifyDataRoot bool   `mapstructure:"verify_data_root"`
 }
 
 // DefaultBlockSyncConfig returns a default configuration for the block sync service
 func DefaultBlockSyncConfig() *BlockSyncConfig {
 	return &BlockSyncConfig{
-		Version: "v0",
+		Version:        "v0",
+		VerifyDataRoot: true,
 	}
 }
 
