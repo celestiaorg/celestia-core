@@ -373,7 +373,10 @@ func (pool *BlockPool) AddBlock(peerID p2p.ID, block *types.Block, extCommit *ty
 			pool.sendError(err, peerID)
 			return err
 		}
-
+		peer := pool.peers[peerID]
+		if peer != nil {
+			peer.decrPending(blockSize)
+		}
 		return fmt.Errorf("got an already committed block #%d (possibly from the slow peer %s)", block.Height, peerID)
 	}
 
