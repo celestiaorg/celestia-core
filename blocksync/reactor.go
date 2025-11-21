@@ -42,6 +42,16 @@ type consensusReactor interface {
 	SwitchToConsensus(state sm.State, skipWAL bool)
 }
 
+// ReactorOption defines a function argument for Reactor.
+type ReactorOption func(*Reactor)
+
+// ReactorVerifyData sets the verifyData field of the reactor.
+func ReactorVerifyData(verifyData bool) ReactorOption {
+	return func(bcR *Reactor) {
+		bcR.verifyData = verifyData
+	}
+}
+
 type peerError struct {
 	err    error
 	peerID p2p.ID
@@ -63,6 +73,7 @@ type Reactor struct {
 	pool          *BlockPool
 	traceClient   trace.Tracer
 	blockSync     bool
+	verifyData    bool
 	localAddr     crypto.Address
 	poolRoutineWg sync.WaitGroup
 
@@ -76,14 +87,14 @@ type Reactor struct {
 
 // NewReactor returns new reactor instance.
 func NewReactor(state sm.State, blockExec *sm.BlockExecutor, store *store.BlockStore,
-	blockSync bool, metrics *Metrics, offlineStateSyncHeight int64,
+	blockSync bool, metrics *Metrics, offlineStateSyncHeight int64, options ...ReactorOption,
 ) *Reactor {
-	return NewReactorWithAddr(state, blockExec, store, blockSync, nil, metrics, offlineStateSyncHeight, trace.NoOpTracer())
+	return NewReactorWithAddr(state, blockExec, store, blockSync, nil, metrics, offlineStateSyncHeight, trace.NoOpTracer(), options...)
 }
 
 // Function added to keep existing API.
 func NewReactorWithAddr(state sm.State, blockExec *sm.BlockExecutor, store *store.BlockStore,
-	blockSync bool, localAddr crypto.Address, metrics *Metrics, offlineStateSyncHeight int64, traceClient trace.Tracer,
+	blockSync bool, localAddr crypto.Address, metrics *Metrics, offlineStateSyncHeight int64, traceClient trace.Tracer, options ...ReactorOption,
 ) *Reactor {
 
 	storeHeight := store.Height()
@@ -120,6 +131,7 @@ func NewReactorWithAddr(state sm.State, blockExec *sm.BlockExecutor, store *stor
 		store:        store,
 		pool:         pool,
 		blockSync:    blockSync,
+		verifyData:   true,
 		localAddr:    localAddr,
 		requestsCh:   requestsCh,
 		errorsCh:     errorsCh,
@@ -127,6 +139,11 @@ func NewReactorWithAddr(state sm.State, blockExec *sm.BlockExecutor, store *stor
 		traceClient:  traceClient,
 	}
 	bcR.BaseReactor = *p2p.NewBaseReactor("BlockSync", bcR, p2p.WithIncomingQueueSize(ReactorIncomingMessageQueueSize))
+
+	for _, option := range options {
+		option(bcR)
+	}
+
 	return bcR
 }
 
@@ -514,7 +531,7 @@ FOR_LOOP:
 				err = bcR.blockExec.ValidateBlock(state, first)
 			}
 
-			if err == nil {
+			if err == nil && bcR.verifyData {
 				var stateMachineValid bool
 				// Block sync doesn't check that the `Data` in a block is valid.
 				// Since celestia-core can't determine if the `Data` in a block
