@@ -8,6 +8,8 @@ import (
 
 	"github.com/cometbft/cometbft/crypto"
 	"github.com/cometbft/cometbft/libs/log"
+	"github.com/cometbft/cometbft/libs/trace"
+	"github.com/cometbft/cometbft/libs/trace/schema"
 	"github.com/cometbft/cometbft/p2p"
 	bcproto "github.com/cometbft/cometbft/proto/tendermint/blocksync"
 	sm "github.com/cometbft/cometbft/state"
@@ -59,6 +61,7 @@ type Reactor struct {
 	blockExec     *sm.BlockExecutor
 	store         sm.BlockStore
 	pool          *BlockPool
+	traceClient   trace.Tracer
 	blockSync     bool
 	localAddr     crypto.Address
 	poolRoutineWg sync.WaitGroup
@@ -75,12 +78,12 @@ type Reactor struct {
 func NewReactor(state sm.State, blockExec *sm.BlockExecutor, store *store.BlockStore,
 	blockSync bool, metrics *Metrics, offlineStateSyncHeight int64,
 ) *Reactor {
-	return NewReactorWithAddr(state, blockExec, store, blockSync, nil, metrics, offlineStateSyncHeight)
+	return NewReactorWithAddr(state, blockExec, store, blockSync, nil, metrics, offlineStateSyncHeight, trace.NoOpTracer())
 }
 
 // Function added to keep existing API.
 func NewReactorWithAddr(state sm.State, blockExec *sm.BlockExecutor, store *store.BlockStore,
-	blockSync bool, localAddr crypto.Address, metrics *Metrics, offlineStateSyncHeight int64,
+	blockSync bool, localAddr crypto.Address, metrics *Metrics, offlineStateSyncHeight int64, traceClient trace.Tracer,
 ) *Reactor {
 
 	storeHeight := store.Height()
@@ -109,7 +112,7 @@ func NewReactorWithAddr(state sm.State, blockExec *sm.BlockExecutor, store *stor
 	if startHeight == 1 {
 		startHeight = state.InitialHeight
 	}
-	pool := NewBlockPool(startHeight, requestsCh, errorsCh)
+	pool := newBlockPoolWithTracer(startHeight, requestsCh, errorsCh, traceClient)
 
 	bcR := &Reactor{
 		initialState: state,
@@ -121,6 +124,7 @@ func NewReactorWithAddr(state sm.State, blockExec *sm.BlockExecutor, store *stor
 		requestsCh:   requestsCh,
 		errorsCh:     errorsCh,
 		metrics:      metrics,
+		traceClient:  traceClient,
 	}
 	bcR.BaseReactor = *p2p.NewBaseReactor("BlockSync", bcR, p2p.WithIncomingQueueSize(ReactorIncomingMessageQueueSize))
 	return bcR
@@ -261,7 +265,7 @@ func (bcR *Reactor) Receive(e p2p.Envelope) {
 
 	bcR.Logger.Trace("Receive", "e.Src", e.Src, "chID", e.ChannelID, "msg", e.Message)
 
-	switch msg := e.Message.(type) { //nolint:dupl // recreated in a test
+	switch msg := e.Message.(type) {
 	case *bcproto.BlockRequest:
 		bcR.respondToPeer(msg, e.Src)
 	case *bcproto.BlockResponse:
@@ -283,6 +287,8 @@ func (bcR *Reactor) Receive(e p2p.Envelope) {
 				return
 			}
 		}
+
+		schema.WriteBlocksyncBlockReceived(bcR.traceClient, bi.Height, string(e.Src.ID()), msg.Block.Size())
 
 		if err := bcR.pool.AddBlock(e.Src.ID(), bi, extCommit, msg.Block.Size()); err != nil {
 			bcR.Logger.Error("failed to add block", "peer", e.Src, "err", err)
@@ -491,6 +497,10 @@ FOR_LOOP:
 			}
 			firstPartSetHeader := firstParts.Header()
 			firstID := types.BlockID{Hash: first.Hash(), PartSetHeader: firstPartSetHeader}
+
+			// Start timing validation
+			validationStart := time.Now()
+
 			// Finally, verify the first block using the second's commit
 			// NOTE: we can probably make this more efficient, but note that calling
 			// first.Hash() doesn't verify the tx contents, so MakePartSet() is
@@ -509,7 +519,7 @@ FOR_LOOP:
 				// Block sync doesn't check that the `Data` in a block is valid.
 				// Since celestia-core can't determine if the `Data` in a block
 				// is valid, the next line asks celestia-app to check if the
-				// block is valid via ProcessProposal. If this step wasn't
+				// block is valid via ProcessProposal. If this minRequesterIncrease wasn't
 				// performed, a malicious node could fabricate an alternative
 				// set of transactions that would cause a different app hash and
 				// thus cause this node to panic.
@@ -518,6 +528,9 @@ FOR_LOOP:
 					err = fmt.Errorf("application has rejected syncing block (%X) at height %d, %w", first.Hash(), first.Height, err)
 				}
 			}
+
+			// Calculate validation duration
+			validationDuration := time.Since(validationStart)
 
 			presentExtCommit := extCommit != nil
 			extensionsEnabled := state.ConsensusParams.ABCI.VoteExtensionsEnabled(first.Height)
@@ -552,6 +565,9 @@ FOR_LOOP:
 
 			bcR.pool.PopRequest()
 
+			// Start timing block save
+			saveStart := time.Now()
+
 			// TODO: batch saves so we dont persist to disk every block
 			if extensionsEnabled {
 				bcR.store.SaveBlockWithExtendedCommit(first, firstParts, extCommit)
@@ -562,6 +578,18 @@ FOR_LOOP:
 				// but this may change so using second.LastCommit is safer.
 				bcR.store.SaveBlock(first, firstParts, second.LastCommit)
 			}
+
+			// Calculate save duration
+			saveDuration := time.Since(saveStart)
+			totalDuration := time.Since(validationStart)
+
+			// Trace block saved after successful validation
+			var blockSize int
+			if firstParts != nil {
+				blockSize = int(firstParts.ByteSize())
+			}
+			schema.WriteBlocksyncBlockSaved(bcR.traceClient, first.Height, blockSize,
+				validationDuration.Milliseconds(), saveDuration.Milliseconds(), totalDuration.Milliseconds())
 
 			// TODO: same thing for app - but we would need a way to
 			// get the hash without persisting the state
