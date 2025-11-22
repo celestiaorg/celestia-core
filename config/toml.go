@@ -499,6 +499,11 @@ chunk_fetchers = "{{ .StateSync.ChunkFetchers }}"
 #   1) "v0" - the default block sync implementation
 version = "{{ .BlockSync.Version }}"
 
+# If true, the node will verify the application data in the block via ProcessProposal
+# during block sync. If false, this verification is skipped.
+# Default: true
+verify_data = {{ .BlockSync.VerifyData }}
+
 #######################################################
 ###         Consensus Configuration Options         ###
 #######################################################
