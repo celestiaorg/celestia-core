@@ -158,12 +158,14 @@ func (pool *BlockPool) recalculateParams() {
 		pool.reqLimit = maxReqLimit / 2
 		pool.retryTimeout = time.Duration((maxRetrySeconds / 2) * float64(time.Second))
 	} else {
-		// setting some value between maxReqLimit and minReqLimit to limit the number of requests we send to one peer
-		// this is done to maintain peer diversity
-		pool.reqLimit = interpolate(blockSize, minBlockSizeBytes, maxBlockSizeBytes, maxReqLimit, minReqLimit)
-		// in the same way finding an adequate timeout given the block size
+		// setting some value between minReqLimit and maxReqLimit to limit the number of requests we send to one peer
+		// this is done to maintain peer diversity, using inverse here, because for larger blocks we want to send smaller
+		// number of concurrent requests
+		pool.reqLimit = interpolate(true, blockSize, minBlockSizeBytes, maxBlockSizeBytes, minReqLimit, maxReqLimit)
+		// in the same way finding an adequate timeout given the block size,
+		// here for larger blocks we want to have larger timeouts
 		pool.retryTimeout = time.Second * time.Duration(
-			interpolate(blockSize, minBlockSizeBytes, maxBlockSizeBytes, minRetrySeconds, maxRetrySeconds))
+			interpolate(false, blockSize, minBlockSizeBytes, maxBlockSizeBytes, minRetrySeconds, maxRetrySeconds))
 	}
 }
 
@@ -968,41 +970,22 @@ type BlockRequest struct {
 	PeerID p2p.ID
 }
 
-// interpolate performs an inverse-linear interpolation between two integer
-// bounds based on a floating-point input within a numeric range.
-//
-// Arguments:
-//
-//	value:      The input value to interpolate over.
-//	minValue:   The minimum value of the input range.
-//	maxValue:   The maximum value of the input range.
-//	maxOut:     The output when value <= minValue.
-//	minOut:     The output when value >= maxValue.
-//
-// Behavior:
-//   - Clamps the input into [minValue, maxValue].
-//   - Maps the input inversely from maxOut → minOut.
-//   - Ensures the output does not fall below minOut.
-func interpolate(value, minValue, maxValue int, maxOut, minOut int) int {
-	// Clamp to lower bound
-	if value <= minValue {
-		return maxOut
-	}
-	// Clamp to upper bound
-	if value >= maxValue {
-		return minOut
+// interpolate performs a linear interpolation between two integer values
+// use inverse == true if you want to have an inverse dependency, i.e.
+// the closer is the value to maxValue, the closer is out value to minOut
+func interpolate(isInverse bool, value, minValue, maxValue, minOut, maxOut int) (out int) {
+	var (
+		// normalize into [0, 1]
+		normalized = float64(value-minValue) / float64(maxValue-minValue)
+		// scale back to [minOut, maxOut]
+		valBetweenMinMax = int(float64(maxOut-minOut) * normalized)
+	)
+	if !isInverse {
+		out = minOut + valBetweenMinMax
+	} else {
+		out = maxOut - valBetweenMinMax
 	}
 
-	// Normalize into [0, 1]
-	normalized := float64(value-minValue) / float64(maxValue-minValue)
-
-	// Inverse linear interpolation from maxOut → minOut
-	raw := maxOut - int(float64(maxOut-minOut)*normalized)
-
-	// Floor to minimum
-	if raw < minOut {
-		raw = minOut
-	}
-
-	return raw
+	// clamp the out value
+	return max(min(out, maxOut), minOut)
 }
