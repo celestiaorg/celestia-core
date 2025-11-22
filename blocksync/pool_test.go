@@ -507,3 +507,35 @@ func TestBlockPoolMaliciousNodeMaxInt64(t *testing.T) {
 		}
 	}
 }
+
+func TestRecalculateParams(t *testing.T) {
+	type testCase struct {
+		blockSize    int
+		expRetrySecs int
+		expReqLimit  int
+	}
+	const mebibyte = 1024 * 1024
+	cases := []testCase{
+		{1024, 5, 10},
+		{mebibyte, 7, 10},
+		{2 * mebibyte, 10, 10},
+		{4 * mebibyte, 15, 9},
+		{8 * mebibyte, 26, 7},
+		{12 * mebibyte, 37, 6},
+		{16 * mebibyte, 48, 4},
+		{20 * mebibyte, 60, 2},
+		{32 * mebibyte, 60, 2},
+	}
+	for _, tc := range cases {
+		pool := BlockPool{lastReceivedBlocks: newBlockStats(1)}
+		pool.lastReceivedBlocks.Add(tc.blockSize)
+		pool.recalculateParams()
+		assert.Equal(t, time.Duration(tc.expRetrySecs)*time.Second, pool.retryTimeout, "expected retry seconds to be equal for block size %d", tc.blockSize)
+		assert.Equal(t, tc.expReqLimit, pool.reqLimit, "expected retry limit to be equal for block size %d", tc.blockSize)
+	}
+	// testing default case
+	pool := BlockPool{lastReceivedBlocks: newBlockStats(1)}
+	pool.recalculateParams()
+	assert.Equal(t, 30*time.Second, pool.retryTimeout, "expected retry seconds to be equal for empty buffer")
+	assert.Equal(t, 5, pool.reqLimit, "expected retry limit to be equal for empty buffer")
+}
