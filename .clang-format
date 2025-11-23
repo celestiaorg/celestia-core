@@ -1,11 +1,37 @@
+# Configuration file for clang-format, ensuring consistent code style
+# across the project, primarily for Protocol Buffer definitions.
+
 ---
+# Define the language subset these rules apply to (Protocol Buffers).
 Language: Proto
+# Base the style on the widely adopted Google C++ style guide.
 BasedOnStyle: Google
+
+# --- Formatting Rules ---
+
+# The width of indentation in spaces.
 IndentWidth: 2
+
+# Maximum characters in a single line. 
+# Set to 0 to disable line length limit (Default Google is 80/100).
 ColumnLimit: 0
+
+# Align consecutive assignments (e.g., =).
 AlignConsecutiveAssignments: true
+
+# Align consecutive declarations (e.g., variable type, return type).
 AlignConsecutiveDeclarations: true
+
+# Add spaces inside square brackets (e.g., `int[ 5 ]`).
 SpacesInSquareBrackets: true
-ReflowComments:  true
-SortIncludes:    true
+
+# Reflow and reformat block comments and line comments.
+ReflowComments: true
+
+# Sort #include directives alphabetically.
+SortIncludes: true
+
+# Sort using declarations alphabetically.
 SortUsingDeclarations: true
+
+... # End of configuration
