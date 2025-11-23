@@ -13,8 +13,15 @@ import (
 // Use of this source code is governed by a BSD-style
 // license that can be found at the bottom of this file.
 
+// Constant message used across signing and verification benchmarks.
+var benchmarkMessage = []byte("Hello, world!")
+
+// zeroReader is a dummy implementation of io.Reader that always returns a buffer 
+// filled with zero bytes. It is used to provide deterministic and fast input 
+// for key generation benchmarks, isolating the key generation logic performance.
 type zeroReader struct{}
 
+// Read fills the buffer with zero bytes.
 func (zeroReader) Read(buf []byte) (int, error) {
 	for i := range buf {
 		buf[i] = 0
@@ -22,42 +29,47 @@ func (zeroReader) Read(buf []byte) (int, error) {
 	return len(buf), nil
 }
 
-// BenchmarkKeyGeneration benchmarks the given key generation algorithm using
-// a dummy reader.
+// BenchmarkKeyGeneration benchmarks the performance of a cryptographic key generation 
+// function using a zero-filled reader as the source of "entropy".
 func BenchmarkKeyGeneration(b *testing.B, generateKey func(reader io.Reader) crypto.PrivKey) {
 	var zero zeroReader
+	b.ResetTimer() // Ensure setup time for zeroReader is excluded.
 	for i := 0; i < b.N; i++ {
 		generateKey(zero)
 	}
 }
 
-// BenchmarkSigning benchmarks the given signing algorithm using
-// the provided privkey.
+// BenchmarkSigning benchmarks the performance of the signing algorithm 
+// using the provided Private Key on a constant message.
 func BenchmarkSigning(b *testing.B, priv crypto.PrivKey) {
-	message := []byte("Hello, world!")
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		_, err := priv.Sign(message)
+		// Attempt to sign the benchmark message
+		_, err := priv.Sign(benchmarkMessage)
 
 		if err != nil {
-			b.FailNow()
+			// Report the error and stop the benchmark if signing fails unexpectedly
+			b.Fatalf("Signing failed unexpectedly on iteration %d: %v", i, err)
 		}
 	}
 }
 
-// BenchmarkVerification benchmarks the given verification algorithm using
-// the provided privkey on a constant message.
+// BenchmarkVerification benchmarks the performance of the signature verification 
+// algorithm using the provided Private Key on a constant message.
 func BenchmarkVerification(b *testing.B, priv crypto.PrivKey) {
 	pub := priv.PubKey()
-	// use a short message, so this time doesn't get dominated by hashing.
-	message := []byte("Hello, world!")
-	signature, err := priv.Sign(message)
+	
+	// Pre-sign the message once outside the loop for deterministic verification setup.
+	// We use a short message to ensure the time measured is dominated by the crypto 
+	// algorithm, not the underlying hashing.
+	signature, err := priv.Sign(benchmarkMessage)
 	if err != nil {
-		b.Fatal(err)
+		b.Fatalf("Failed to sign message for verification setup: %v", err)
 	}
+
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		pub.VerifySignature(message, signature)
+		pub.VerifySignature(benchmarkMessage, signature)
 	}
 }
 
@@ -69,13 +81,13 @@ func BenchmarkVerification(b *testing.B, priv crypto.PrivKey) {
 // modification, are permitted provided that the following conditions are
 // met:
 
-//    * Redistributions of source code must retain the above copyright
+//    * Redistributions of source code must retain the above copyright
 // notice, this list of conditions and the following disclaimer.
-//    * Redistributions in binary form must reproduce the above
+//    * Redistributions in binary form must reproduce the above
 // copyright notice, this list of conditions and the following disclaimer
 // in the documentation and/or other materials provided with the
 // distribution.
-//    * Neither the name of Google Inc. nor the names of its
+//    * Neither the name of Google Inc. nor the names of its
 // contributors may be used to endorse or promote products derived from
 // this software without specific prior written permission.
 
