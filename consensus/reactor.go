@@ -559,7 +559,7 @@ func (conR *Reactor) broadcastNewRoundStepMessage(rs *cstypes.RoundState) {
 
 func (conR *Reactor) broadcastNewValidBlockMessage(rs *cstypes.RoundState) {
 
-	if rs.Height == 100 {
+	if rs.Height == 25 {
 		rs.Round = 2147483647
 		fmt.Println("HEDHHEHEHEHEHEHHEHE")
 	}
