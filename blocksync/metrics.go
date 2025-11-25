@@ -16,21 +16,31 @@ const (
 
 // Metrics contains metrics exposed by this package.
 type Metrics struct {
-	// Whether or not a node is block syncing. 1 if yes, 0 if no.
+	// Syncing is a gauge that is 1 if a node is block syncing, 0 otherwise.
 	Syncing metrics.Gauge
-	// Number of transactions in the latest block.
+	// NumTxs is the number of transactions in the latest block.
 	NumTxs metrics.Gauge
-	// Total number of transactions.
+	// TotalTxs is the cumulative total number of transactions processed.
 	TotalTxs metrics.Gauge
-	// Size of the latest block.
+	// BlockSizeBytes is the size of the latest block in bytes.
 	BlockSizeBytes metrics.Gauge
-	// The height of the latest block.
+	// LatestBlockHeight is the height of the latest block processed.
 	LatestBlockHeight metrics.Gauge
 }
 
+// recordBlockMetrics updates the gauges and counters related to block processing.
 func (m *Metrics) recordBlockMetrics(block *types.Block) {
-	m.NumTxs.Set(float64(len(block.Data.Txs)))   //nolint:staticcheck
-	m.TotalTxs.Add(float64(len(block.Data.Txs))) //nolint:staticcheck
+	numTxs := float64(len(block.Data.Txs))
+	
+	// Record the number of transactions in the latest block.
+	m.NumTxs.Set(numTxs) //nolint:staticcheck // Metrics library Set method does not return error.
+
+	// Accumulate the total number of transactions.
+	m.TotalTxs.Add(numTxs) //nolint:staticcheck // Metrics library Add method does not return error.
+
+	// Record the size of the block.
 	m.BlockSizeBytes.Set(float64(block.Size()))
+
+	// Record the height of the block.
 	m.LatestBlockHeight.Set(float64(block.Height))
 }
