@@ -700,6 +700,10 @@ func (c *Client) TxStatus(ctx context.Context, hash []byte) (*ctypes.ResultTxSta
 	return c.next.TxStatus(ctx, hash)
 }
 
+func (c *Client) TxStatusBatch(ctx context.Context, hashes [][]byte) (*ctypes.ResultTxStatusBatch, error) {
+	return c.next.TxStatusBatch(ctx, hashes)
+}
+
 // SignedBlock calls rpcclient#SignedBlock and then verifies the result.
 func (c *Client) SignedBlock(ctx context.Context, height *int64) (*ctypes.ResultSignedBlock, error) {
 	res, err := c.next.SignedBlock(ctx, height)

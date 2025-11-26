@@ -53,7 +53,8 @@ func RPCRoutes(c *lrpc.Client) map[string]*rpcserver.RPCFunc {
 		"broadcast_evidence": rpcserver.NewRPCFunc(makeBroadcastEvidenceFunc(c), "evidence"),
 
 		// Celestia Specific RPCs
-		"tx_status": rpcserver.NewRPCFunc(makeTxStatusFunc(c), "hash"),
+		"tx_status":       rpcserver.NewRPCFunc(makeTxStatusFunc(c), "hash"),
+		"tx_status_batch": rpcserver.NewRPCFunc(makeTxStatusBatchFunc(c), "hashes"),
 	}
 }
 
@@ -309,5 +310,13 @@ type rpcTxStatusFunc func(ctx *rpctypes.Context, hash []byte) (*ctypes.ResultTxS
 func makeTxStatusFunc(c *lrpc.Client) rpcTxStatusFunc {
 	return func(ctx *rpctypes.Context, hash []byte) (*ctypes.ResultTxStatus, error) {
 		return c.TxStatus(ctx.Context(), hash)
+	}
+}
+
+type rpcTxStatusBatchFunc func(ctx *rpctypes.Context, hashes [][]byte) (*ctypes.ResultTxStatusBatch, error)
+
+func makeTxStatusBatchFunc(c *lrpc.Client) rpcTxStatusBatchFunc {
+	return func(ctx *rpctypes.Context, hashes [][]byte) (*ctypes.ResultTxStatusBatch, error) {
+		return c.TxStatusBatch(ctx.Context(), hashes)
 	}
 }
