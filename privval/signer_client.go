@@ -2,9 +2,10 @@ package privval
 
 import (
 	"fmt"
+	"time"
+
 	"github.com/cometbft/cometbft/libs/trace"
 	"github.com/cometbft/cometbft/libs/trace/schema"
-	"time"
 
 	"github.com/cometbft/cometbft/crypto"
 	cryptoenc "github.com/cometbft/cometbft/crypto/encoding"
