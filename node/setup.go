@@ -686,6 +686,7 @@ func createAndStartPrivValidatorSocketClient(
 	listenAddr,
 	chainID string,
 	logger log.Logger,
+	tracer trace.Tracer,
 ) (types.PrivValidator, error) {
 	pve, err := privval.NewSignerListener(listenAddr, logger)
 	if err != nil {
@@ -696,6 +697,8 @@ func createAndStartPrivValidatorSocketClient(
 	if err != nil {
 		return nil, fmt.Errorf("failed to start private validator: %w", err)
 	}
+
+	pvsc.SetTracer(tracer)
 
 	// try to get a pubkey from private validate first time
 	_, err = pvsc.GetPubKey()
