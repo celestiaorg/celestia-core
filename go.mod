@@ -66,6 +66,8 @@ require (
 	github.com/klauspost/reedsolomon v1.12.5
 )
 
+require github.com/prysmaticlabs/gohashtree v0.0.5-beta
+
 require (
 	dario.cat/mergo v1.0.0 // indirect
 	github.com/Azure/go-ansiterm v0.0.0-20230124172434-306776ec8161 // indirect
