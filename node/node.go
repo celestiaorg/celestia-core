@@ -342,11 +342,22 @@ func NewNodeWithContext(ctx context.Context,
 		return nil, err
 	}
 
+	// create an optional tracer client to collect trace data.
+	tracer, err := trace.NewTracer(
+		config,
+		logger,
+		genDoc.ChainID,
+		string(nodeKey.ID()),
+	)
+	if err != nil {
+		return nil, err
+	}
+
 	// If an address is provided, listen on the socket for a connection from an
 	// external signing process.
 	if config.PrivValidatorListenAddr != "" {
 		// FIXME: we should start services inside OnStart
-		privValidator, err = createAndStartPrivValidatorSocketClient(config.PrivValidatorListenAddr, genDoc.ChainID, logger)
+		privValidator, err = createAndStartPrivValidatorSocketClient(config.PrivValidatorListenAddr, genDoc.ChainID, logger, tracer)
 		if err != nil {
 			return nil, fmt.Errorf("error with private validator socket client: %w", err)
 		}
@@ -389,17 +400,6 @@ func NewNodeWithContext(ctx context.Context,
 	blockSync := !onlyValidatorIsUs(state, localAddr)
 
 	logNodeStartupInfo(state, pubKey, logger, consensusLogger)
-
-	// create an optional tracer client to collect trace data.
-	tracer, err := trace.NewTracer(
-		config,
-		logger,
-		genDoc.ChainID,
-		string(nodeKey.ID()),
-	)
-	if err != nil {
-		return nil, err
-	}
 
 	mempool, mempoolReactor := createMempoolAndMempoolReactor(config, proxyApp, state, memplMetrics, logger, tracer)
 	if catReactor, ok := mempoolReactor.(*cat.Reactor); ok {

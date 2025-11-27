@@ -22,6 +22,7 @@ func ConsensusTables() []string {
 		RetriesTable,
 		CatchupRequestsTable,
 		MissedProposalsTable,
+		SigningLatencyTable,
 	}
 }
 
@@ -450,5 +451,38 @@ func WriteMissedProposal(
 		Height:   height,
 		Round:    round,
 		Proposer: proposerAddress,
+	})
+}
+
+const (
+	SigningLatencyTable = "signing_latency"
+	PrecommitType       = "precommit"
+	PrevoteType         = "prevote"
+	ProposalType        = "proposal"
+)
+
+type SignatureLatency struct {
+	Height      int64  `json:"height"`
+	Round       int32  `json:"round"`
+	Latency     int64  `json:"latency"`
+	MessageType string `json:"message_type"`
+}
+
+func (b SignatureLatency) Table() string {
+	return SigningLatencyTable
+}
+
+func WriteSignatureLatency(
+	client trace.Tracer,
+	height int64,
+	round int32,
+	latency int64,
+	msgType string,
+) {
+	client.Write(SignatureLatency{
+		Height:      height,
+		Round:       round,
+		Latency:     latency,
+		MessageType: msgType,
 	})
 }
