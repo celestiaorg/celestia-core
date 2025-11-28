@@ -222,6 +222,7 @@ func (blockProp *Reactor) handleCompactBlock(cb *proptypes.CompactBlock, peer p2
 	}
 
 	if !proposer {
+		fmt.Println("----- not fucking recovering --------")
 		// check if we have any transactions that are in the compact block
 		//blockProp.recoverPartsFromMempool(cb)
 	}
