@@ -3,7 +3,6 @@ package cat
 import (
 	"context"
 	"fmt"
-	"math/rand"
 	"sync/atomic"
 	"time"
 
@@ -598,20 +597,9 @@ func (memR *Reactor) processPendingSeenForSigner(signer []byte) {
 }
 
 func (memR *Reactor) tryRequestQueuedTx(entry *pendingSeenTx) bool {
-	// Get ALL peers that have seen this tx for random selection
-	seenMap := memR.mempool.seenByPeersSet.Get(entry.txKey)
-
-	if len(seenMap) > 0 {
-		// Collect available peers
-		peerIDs := make([]uint16, 0, len(seenMap))
-		for peerID := range seenMap {
-			peerIDs = append(peerIDs, peerID)
-		}
-
-		// Randomly select a peer to distribute load
-		selectedIdx := rand.Intn(len(peerIDs))
-		peer := memR.ids.GetPeer(peerIDs[selectedIdx])
-
+	peerIDs := entry.peerIDs()
+	if len(peerIDs) > 0 {
+		peer := memR.ids.GetPeer(peerIDs[0])
 		if peer != nil && memR.requestTx(entry.txKey, peer) {
 			return true
 		}
@@ -671,8 +659,8 @@ func (memR *Reactor) querySequenceFromApplication(signer []byte) (uint64, bool) 
 	return resp.Sequence, true
 }
 
-// findNewPeerToRequestTx finds a new peer that has already seen the transaction to
-// request a transaction from, using random selection to distribute load.
+// findNewPeerToSendTx finds a new peer that has already seen the transaction to
+// request a transaction from.
 func (memR *Reactor) findNewPeerToRequestTx(txKey types.TxKey) {
 	// ensure that we are connected to peers
 	if memR.ids.Len() == 0 {
@@ -680,28 +668,20 @@ func (memR *Reactor) findNewPeerToRequestTx(txKey types.TxKey) {
 	}
 
 	seenMap := memR.mempool.seenByPeersSet.Get(txKey)
-
-	// Collect available peers (not already requested from)
-	available := make([]uint16, 0, len(seenMap))
 	for peerID := range seenMap {
-		if !memR.requests.Has(peerID, txKey) {
-			available = append(available, peerID)
+		if memR.requests.Has(peerID, txKey) {
+			continue
+		}
+		peer := memR.ids.GetPeer(peerID)
+		if peer != nil {
+			memR.mempool.metrics.RerequestedTxs.Add(1)
+			memR.requestTx(txKey, peer)
+			return
 		}
 	}
 
-	if len(available) == 0 {
-		// No other free peer has the transaction we are looking for.
-		// We give up and hope either a peer responds late or the tx
-		// is gossiped again
-		memR.Logger.Trace("no other peer has the tx we are looking for", "txKey", txKey)
-		return
-	}
-
-	// Randomly select from available peers to distribute load
-	selectedIdx := rand.Intn(len(available))
-	peer := memR.ids.GetPeer(available[selectedIdx])
-	if peer != nil {
-		memR.mempool.metrics.RerequestedTxs.Add(1)
-		memR.requestTx(txKey, peer)
-	}
+	// No other free peer has the transaction we are looking for.
+	// We give up 🤷‍♂️ and hope either a peer responds late or the tx
+	// is gossiped again
+	memR.Logger.Trace("no other peer has the tx we are looking for", "txKey", txKey)
 }

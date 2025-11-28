@@ -321,10 +321,10 @@ func TestReactorReceiveRejectedTx(t *testing.T) {
 	peer.AssertExpectations(t)
 }
 
-func TestTryRequestQueuedTxRequestsRandomPeer(t *testing.T) {
+func TestTryRequestQueuedTxRequestsFirstPeerOnly(t *testing.T) {
 	reactor, _ := setupReactor(t)
 
-	tx := newDefaultTx("request-random-peer")
+	tx := newDefaultTx("request-first-peer")
 	txKey := tx.Key()
 	wantEnv := p2p.Envelope{
 		ChannelID: MempoolWantsChannel,
@@ -346,10 +346,6 @@ func TestTryRequestQueuedTxRequestsRandomPeer(t *testing.T) {
 	require.NotZero(t, firstPeerID)
 	require.NotZero(t, secondPeerID)
 
-	// Register both peers as having seen the tx (required for random selection)
-	reactor.mempool.PeerHasTx(firstPeerID, txKey)
-	reactor.mempool.PeerHasTx(secondPeerID, txKey)
-
 	entry := &pendingSeenTx{
 		txKey:    txKey,
 		peer:     firstPeerID,
@@ -357,16 +353,12 @@ func TestTryRequestQueuedTxRequestsRandomPeer(t *testing.T) {
 		sequence: 1,
 	}
 
-	// Either peer could be selected randomly, so we accept TrySend from either
-	peers[0].On("TrySend", wantEnv).Return(true).Maybe()
-	peers[1].On("TrySend", wantEnv).Return(true).Maybe()
+	peers[0].On("TrySend", wantEnv).Return(true).Once()
 
 	require.True(t, reactor.tryRequestQueuedTx(entry))
 
-	// Verify exactly one peer was called
-	peer0Called := len(peers[0].Calls) > 0
-	peer1Called := len(peers[1].Calls) > 0
-	require.True(t, peer0Called || peer1Called, "at least one peer should be called")
+	peers[0].AssertExpectations(t)
+	peers[1].AssertNotCalled(t, "TrySend", mock.Anything)
 }
 
 func TestDefaultGossipDelay(t *testing.T) {
