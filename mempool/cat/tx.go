@@ -121,17 +121,23 @@ func (set *txSet) removeTx(wtx *wrappedTx) bool {
 			if len(set.txs) <= 0 || set.totalGasWanted <= 0 {
 				set.aggregatedPriority = 0
 				set.firstTimestamp = time.Time{}
+				set.firstHeight = 0
 				return true
 			}
 
-			// Recompute earliest timestamp
+			// Recompute earliest timestamp and lowest height
 			earliest := set.txs[0].timestamp
+			lowestHeight := set.txs[0].height
 			for _, t := range set.txs {
 				if t.timestamp.Before(earliest) {
 					earliest = t.timestamp
 				}
+				if t.height < lowestHeight {
+					lowestHeight = t.height
+				}
 			}
 			set.firstTimestamp = earliest
+			set.firstHeight = lowestHeight
 			set.aggregatedPriority = set.weightedPrioritySum / set.totalGasWanted
 			return true
 		}
