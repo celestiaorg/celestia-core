@@ -223,7 +223,7 @@ func (blockProp *Reactor) handleCompactBlock(cb *proptypes.CompactBlock, peer p2
 
 	if !proposer {
 		// check if we have any transactions that are in the compact block
-		blockProp.recoverPartsFromMempool(cb)
+		//blockProp.recoverPartsFromMempool(cb)
 	}
 
 	blockProp.broadcastCompactBlock(cb, peer)
