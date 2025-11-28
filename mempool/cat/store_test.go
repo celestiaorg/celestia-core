@@ -693,3 +693,38 @@ func TestTxSetAddRemoveProperties(t *testing.T) {
 	require.True(t, set.firstTimestamp.IsZero())
 	require.Equal(t, int64(0), set.aggregatedPriority)
 }
+
+func TestTxSetFirstHeightRecalculationOnRemove(t *testing.T) {
+	signer := []byte("alice")
+
+	// Create txs at different heights
+	tx1 := newWrappedTx(types.Tx("tx1").ToCachedTx(), 100, 1, 10, signer, 1) // height=100
+	tx2 := newWrappedTx(types.Tx("tx2").ToCachedTx(), 150, 1, 10, signer, 2) // height=150
+	tx3 := newWrappedTx(types.Tx("tx3").ToCachedTx(), 120, 1, 10, signer, 3) // height=120
+
+	set := newTxSet(tx1)
+	require.Equal(t, int64(100), set.firstHeight)
+
+	// Add tx2 (height=150) - firstHeight should remain 100
+	set.addTxToSet(tx2)
+	require.Equal(t, int64(100), set.firstHeight)
+
+	// Add tx3 (height=120) - firstHeight should remain 100
+	set.addTxToSet(tx3)
+	require.Equal(t, int64(100), set.firstHeight)
+
+	// Remove tx1 (the one with lowest height) - firstHeight should update to 120 (tx3)
+	removed := set.removeTx(tx1)
+	require.True(t, removed)
+	require.Equal(t, int64(120), set.firstHeight, "firstHeight should be recalculated to lowest remaining height")
+
+	// Remove tx3 (now the lowest) - firstHeight should update to 150 (tx2)
+	removed = set.removeTx(tx3)
+	require.True(t, removed)
+	require.Equal(t, int64(150), set.firstHeight, "firstHeight should be recalculated after removing lowest")
+
+	// Remove last tx - firstHeight should reset to 0
+	removed = set.removeTx(tx2)
+	require.True(t, removed)
+	require.Equal(t, int64(0), set.firstHeight, "firstHeight should be 0 when set is empty")
+}
