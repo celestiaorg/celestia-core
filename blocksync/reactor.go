@@ -138,7 +138,7 @@ func NewReactorWithAddr(state sm.State, blockExec *sm.BlockExecutor, store *stor
 		metrics:      metrics,
 		traceClient:  traceClient,
 	}
-	bcR.BaseReactor = *p2p.NewBaseReactor("BlockSync", bcR, p2p.WithIncomingQueueSize(ReactorIncomingMessageQueueSize))
+	bcR.BaseReactor = *p2p.NewBaseReactor("BlockSync", bcR, p2p.WithIncomingQueueSize(ReactorIncomingMessageQueueSize), p2p.WithTraceClient(traceClient))
 
 	for _, option := range options {
 		option(bcR)

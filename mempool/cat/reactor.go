@@ -116,6 +116,7 @@ func NewReactor(mempool *TxPool, opts *ReactorOptions) (*Reactor, error) {
 	memR.BaseReactor = *p2p.NewBaseReactor("CAT", memR,
 		p2p.WithIncomingQueueSize(ReactorIncomingMessageQueueSize),
 		p2p.WithQueueingFunc(memR.TryQueueUnprocessedEnvelope),
+		p2p.WithTraceClient(traceClient),
 	)
 	memR.stickySalt.Store([]byte(nil)) // establish concrete []byte type for atomic.Value
 	memR.SetStickySalt(opts.StickyPeerSalt)
