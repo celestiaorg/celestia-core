@@ -41,6 +41,10 @@ const (
 
 	// maxSeenTxBroadcast defines the maximum number of peers to which a SeenTx message should be broadcasted.
 	maxSeenTxBroadcast = 15
+
+	// maxParallelSequenceRequests defines the maximum number of consecutive sequences
+	// to request in parallel from the same peer when catching up on a backlog.
+	maxParallelSequenceRequests = 64
 )
 
 // Reactor handles mempool tx broadcasting logic amongst peers. For the main
@@ -577,6 +581,10 @@ func (memR *Reactor) requestTx(txKey types.TxKey, peer p2p.Peer) bool {
 // method re-queries the application (`forceApp=true`) so any transactions the signer already had
 // included in a block show up as `expectedSeq > entry.sequence` and are dropped from the pending
 // queue.
+//
+// Optimization: When consecutive sequences are available from the same peer, we request all of them
+// in parallel rather than waiting for each one sequentially. This dramatically reduces propagation
+// latency when a validator is catching up on a backlog of transactions from the same signer.
 func (memR *Reactor) processPendingSeenForSigner(signer []byte) {
 	if len(signer) == 0 {
 		return
@@ -593,6 +601,8 @@ func (memR *Reactor) processPendingSeenForSigner(signer []byte) {
 		return
 	}
 
+	// Clean up entries that are already processed or in mempool
+	var pendingEntries []*pendingSeenTx
 	for _, entry := range entries {
 		if haveExpected && expectedSeq > entry.sequence {
 			memR.pendingSeen.remove(entry.txKey)
@@ -608,14 +618,70 @@ func (memR *Reactor) processPendingSeenForSigner(signer []byte) {
 			continue
 		}
 
-		// Only request if this is the next expected sequence
-		// If there's a gap, stop here and wait for the missing sequence
-		if haveExpected && entry.sequence != expectedSeq {
-			continue
+		pendingEntries = append(pendingEntries, entry)
+	}
+
+	if len(pendingEntries) == 0 {
+		return
+	}
+
+	// Find the index of the entry for the expected sequence
+	startIdx := -1
+	for i, entry := range pendingEntries {
+		if entry.sequence == expectedSeq {
+			startIdx = i
+			break
+		}
+	}
+
+	if startIdx < 0 || startIdx >= len(pendingEntries) {
+		// Expected sequence not in pending entries, wait for it
+		return
+	}
+
+	firstEntry := pendingEntries[startIdx]
+
+	// Get the peer for the expected sequence
+	peerIDs := firstEntry.peerIDs()
+	if len(peerIDs) == 0 {
+		memR.findNewPeerToRequestTx(firstEntry.txKey)
+		return
+	}
+
+	firstPeer := peerIDs[0]
+	peer := memR.ids.GetPeer(firstPeer)
+	if peer == nil {
+		memR.findNewPeerToRequestTx(firstEntry.txKey)
+		return
+	}
+
+	// Find all consecutive sequences from the SAME peer and request them all
+	// This allows parallel fetching when catching up on a backlog
+	nextExpected := expectedSeq
+	requested := 0
+	for i := startIdx; i < len(pendingEntries); i++ {
+		entry := pendingEntries[i]
+
+		if requested >= maxParallelSequenceRequests {
+			// Cap parallel requests to avoid overwhelming a single peer
+			break
 		}
 
-		_ = memR.tryRequestQueuedTx(entry)
-		break
+		if entry.sequence != nextExpected {
+			// Gap in sequence, stop here
+			break
+		}
+
+		entryPeerIDs := entry.peerIDs()
+		if len(entryPeerIDs) == 0 || entryPeerIDs[0] != firstPeer {
+			// Different peer or no peer, stop here
+			break
+		}
+
+		// Request this tx from the same peer
+		memR.requestTx(entry.txKey, peer)
+		nextExpected++
+		requested++
 	}
 }
 
