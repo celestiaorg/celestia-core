@@ -77,11 +77,11 @@ func NewReactor(consensusState *State, propagator propagation.Propagator, waitSy
 		traceClient: trace.NoOpTracer(),
 		propagator:  propagator,
 	}
-	conR.BaseReactor = *p2p.NewBaseReactor("Consensus", conR, p2p.WithIncomingQueueSize(ReactorIncomingMessageQueueSize))
 
 	for _, option := range options {
 		option(conR)
 	}
+	conR.BaseReactor = *p2p.NewBaseReactor("Consensus", conR, p2p.WithIncomingQueueSize(ReactorIncomingMessageQueueSize), p2p.WithTraceClient(conR.traceClient))
 
 	return conR
 }
@@ -1216,7 +1216,10 @@ func ReactorMetrics(metrics *Metrics) ReactorOption {
 }
 
 func ReactorTracing(traceClient trace.Tracer) ReactorOption {
-	return func(conR *Reactor) { conR.traceClient = traceClient }
+	return func(conR *Reactor) {
+		conR.traceClient = traceClient
+		conR.SetTraceClient(traceClient)
+	}
 }
 
 //-----------------------------------------------------------------------------

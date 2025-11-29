@@ -8,6 +8,7 @@ func P2PTables() []string {
 		PeersTable,
 		PendingBytesTable,
 		ReceivedBytesTable,
+		QueueLimitTable,
 	}
 }
 
@@ -79,4 +80,26 @@ func (ReceivedBytes) Table() string {
 
 func WriteReceivedBytes(client trace.Tracer, peerID string, channel byte, bytes int) {
 	client.Write(ReceivedBytes{PeerID: peerID, Channel: channel, Bytes: bytes})
+}
+
+const (
+	QueueLimitTable = "queue_limit"
+)
+
+type QueueLimit struct {
+	Channel  byte   `json:"channel"`
+	Reactor  string `json:"reactor"`
+	LimitHit bool   `json:"limit_hit"`
+}
+
+func (QueueLimit) Table() string {
+	return QueueLimitTable
+}
+
+func WriteQueueLimit(client trace.Tracer, channel byte, reactor string, limitHit bool) {
+	client.Write(QueueLimit{
+		Channel:  channel,
+		Reactor:  reactor,
+		LimitHit: limitHit,
+	})
 }

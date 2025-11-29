@@ -23,6 +23,7 @@ func ConsensusTables() []string {
 		CatchupRequestsTable,
 		MissedProposalsTable,
 		SigningLatencyTable,
+		FullBlockReceivingTimeTable,
 	}
 }
 
@@ -484,5 +485,36 @@ func WriteSignatureLatency(
 		Round:       round,
 		Latency:     latency,
 		MessageType: msgType,
+	})
+}
+
+const (
+	FullBlockReceivingTimeTable = "full_block_receiving_time"
+)
+
+type FullBlockReceivingTime struct {
+	Height int64     `json:"height"`
+	Round  int32     `json:"round"`
+	Time   time.Time `json:"time"`
+	// Complete set to false when we receive the proposal. Set to true when the full block is received
+	Complete bool `json:"complete"`
+}
+
+func (b FullBlockReceivingTime) Table() string {
+	return FullBlockReceivingTimeTable
+}
+
+func WriteFullBlockReceivingTime(
+	client trace.Tracer,
+	height int64,
+	round int32,
+	t time.Time,
+	complete bool,
+) {
+	client.Write(FullBlockReceivingTime{
+		Height:   height,
+		Round:    round,
+		Time:     t,
+		Complete: complete,
 	})
 }

@@ -3,6 +3,7 @@ package propagation
 import (
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/cosmos/gogoproto/proto"
 
@@ -231,6 +232,7 @@ func (blockProp *Reactor) handleCompactBlock(cb *proptypes.CompactBlock, peer p2
 
 // recoverPartsFromMempool queries the mempool to see if we can recover any block parts locally.
 func (blockProp *Reactor) recoverPartsFromMempool(cb *proptypes.CompactBlock) {
+	startTime := time.Now()
 	// find the compact block transactions that exist in our mempool
 	txsFound := make([]proptypes.UnmarshalledTx, 0, len(cb.Blobs))
 	for _, txMetaData := range cb.Blobs {
@@ -320,7 +322,7 @@ func (blockProp *Reactor) recoverPartsFromMempool(cb *proptypes.CompactBlock) {
 		haves.Parts = append(haves.Parts, proptypes.PartMetaData{Index: p.Index, Hash: p.Proof.LeafHash})
 	}
 
-	schema.WriteMempoolRecoveredParts(blockProp.traceClient, cb.Proposal.Height, cb.Proposal.Round, recoveredCount)
+	schema.WriteMempoolRecoveredParts(blockProp.traceClient, cb.Proposal.Height, cb.Proposal.Round, recoveredCount, time.Since(startTime).Nanoseconds())
 
 	if len(haves.Parts) > 0 {
 		blockProp.broadcastHaves(&haves, blockProp.self, int(partSet.Total()))

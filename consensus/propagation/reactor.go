@@ -104,12 +104,13 @@ func NewReactor(
 		proposalChan:  make(chan ProposalAndSrc, 1000),
 		ticker:        time.NewTicker(RetryTime),
 	}
-	reactor.BaseReactor = *p2p.NewBaseReactor("Recovery", reactor,
-		p2p.WithIncomingQueueSize(ReactorIncomingMessageQueueSize),
-	)
 	for _, option := range options {
 		option(reactor)
 	}
+	reactor.BaseReactor = *p2p.NewBaseReactor("Recovery", reactor,
+		p2p.WithIncomingQueueSize(ReactorIncomingMessageQueueSize),
+		p2p.WithTraceClient(reactor.traceClient),
+	)
 
 	// start the catchup routine
 	go func() {
@@ -132,6 +133,7 @@ type ReactorOption func(*Reactor)
 func WithTracer(tracer trace.Tracer) func(r *Reactor) {
 	return func(r *Reactor) {
 		r.traceClient = tracer
+		r.SetTraceClient(tracer)
 	}
 }
 
