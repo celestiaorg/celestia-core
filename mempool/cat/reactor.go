@@ -485,21 +485,17 @@ func (memR *Reactor) broadcastSeenTxWithHeight(txKey types.TxKey, height int64, 
 
 	orderedPeers := selectStickyPeers(signer, peers, len(peers), memR.currentStickyPeerSalt())
 
-	// Shuffle the top peers to randomize send order, so different peers
-	// receive SeenTx first for different transactions. This distributes
-	// the load of being the "first SeenTx sender" across multiple peers.
-	topN := maxSeenTxBroadcast
-	if topN > len(orderedPeers) {
-		topN = len(orderedPeers)
-	}
-	if topN > 1 {
+	// Shuffle ALL peers to randomize who receives SeenTx for each transaction.
+	// This ensures no validator is consistently far from the source - over many
+	// transactions, each validator has equal chance of being in the first wave.
+	if len(orderedPeers) > 1 {
 		var seed int64
 		var seedBytes [8]byte
 		if _, err := crand.Read(seedBytes[:]); err == nil {
 			seed = int64(binary.BigEndian.Uint64(seedBytes[:]))
 		}
 		rng := rand.New(rand.NewSource(seed))
-		rng.Shuffle(topN, func(i, j int) {
+		rng.Shuffle(len(orderedPeers), func(i, j int) {
 			orderedPeers[i], orderedPeers[j] = orderedPeers[j], orderedPeers[i]
 		})
 	}
