@@ -23,6 +23,7 @@ func ConsensusTables() []string {
 		CatchupRequestsTable,
 		MissedProposalsTable,
 		SigningLatencyTable,
+		FullBlockReceivingTimeTable,
 	}
 }
 
@@ -484,5 +485,32 @@ func WriteSignatureLatency(
 		Round:       round,
 		Latency:     latency,
 		MessageType: msgType,
+	})
+}
+
+const (
+	FullBlockReceivingTimeTable = "full_block_receiving_time"
+)
+
+type FullBlockReceivingTime struct {
+	Height   int64 `json:"height"`
+	Round    int32 `json:"round"`
+	Duration int64 `json:"duration"`
+}
+
+func (b FullBlockReceivingTime) Table() string {
+	return FullBlockReceivingTimeTable
+}
+
+func WriteFullBlockReceivingTime(
+	client trace.Tracer,
+	height int64,
+	round int32,
+	duration int64,
+) {
+	client.Write(FullBlockReceivingTime{
+		Height:   height,
+		Round:    round,
+		Duration: duration,
 	})
 }

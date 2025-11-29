@@ -3,6 +3,7 @@ package p2p
 import (
 	"context"
 	"fmt"
+	"github.com/cometbft/cometbft/libs/trace"
 
 	"github.com/cometbft/cometbft/libs/service"
 	"github.com/cometbft/cometbft/libs/trace/schema"
@@ -82,7 +83,9 @@ type BaseReactor struct {
 	chIDs  map[byte]proto.Message
 	// processor is called with the incoming channel and is responsible for
 	// unmarshalling the messages and calling Receive on the reactor.
-	processor ProcessorFunc
+	processor   ProcessorFunc
+	name        string
+	traceClient trace.Tracer
 }
 
 type ReactorOptions func(*BaseReactor)
@@ -104,6 +107,8 @@ func NewBaseReactor(name string, impl Reactor, opts ...ReactorOptions) *BaseReac
 		incoming:    make(chan UnmarshalResult, 100),
 		chIDs:       chIDs,
 		processor:   nil, // Will be set after base is created
+		name:        name,
+		traceClient: trace.NoOpTracer(),
 	}
 	base.queueingFunc = base.QueueUnprocessedEnvelope
 	for _, opt := range opts {
@@ -143,6 +148,13 @@ func WithProcessor(processor ProcessorFunc) ReactorOptions {
 	}
 }
 
+// WithTraceClient sets the tracing client.
+func WithTraceClient(traceClient trace.Tracer) ReactorOptions {
+	return func(br *BaseReactor) {
+		br.traceClient = traceClient
+	}
+}
+
 // WithQueueingFunc sets the queuing function to use when receiving a message.
 func WithQueueingFunc(queuingFunc func(UnprocessedEnvelope)) ReactorOptions {
 	return func(br *BaseReactor) {
@@ -163,6 +175,9 @@ func WithIncomingQueueSize(size int) ReactorOptions {
 // queue to avoid blocking. The size of the queue can be changed by passing
 // options to the base reactor.
 func (br *BaseReactor) QueueUnprocessedEnvelope(e UnprocessedEnvelope) {
+	if len(br.incoming) == cap(br.incoming) {
+		schema.WriteQueueLimit(br.traceClient, e.ChannelID, br.name, true)
+	}
 	select {
 	// if the context is done, do nothing.
 	case <-br.ctx.Done():
@@ -174,6 +189,9 @@ func (br *BaseReactor) QueueUnprocessedEnvelope(e UnprocessedEnvelope) {
 // TryQueueUnprocessedEnvelope an alternative to QueueUnprocessedEnvelope that attempts to queue an unprocessed envelope.
 // If the queue is full, it drops the envelope.
 func (br *BaseReactor) TryQueueUnprocessedEnvelope(e UnprocessedEnvelope) {
+	if len(br.incoming) == cap(br.incoming) {
+		schema.WriteQueueLimit(br.traceClient, e.ChannelID, br.name, true)
+	}
 	select {
 	case <-br.ctx.Done():
 	case br.incoming <- br.unmarshalEnvelope(e):
