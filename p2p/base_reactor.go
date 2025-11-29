@@ -3,6 +3,7 @@ package p2p
 import (
 	"context"
 	"fmt"
+
 	"github.com/cometbft/cometbft/libs/trace"
 
 	"github.com/cometbft/cometbft/libs/service"

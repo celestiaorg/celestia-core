@@ -1218,7 +1218,7 @@ func ReactorMetrics(metrics *Metrics) ReactorOption {
 func ReactorTracing(traceClient trace.Tracer) ReactorOption {
 	return func(conR *Reactor) {
 		conR.traceClient = traceClient
-		conR.BaseReactor.SetTraceClient(traceClient)
+		conR.SetTraceClient(traceClient)
 	}
 }
 
