@@ -148,11 +148,16 @@ func WithProcessor(processor ProcessorFunc) ReactorOptions {
 	}
 }
 
-// WithTraceClient sets the tracing client.
+// WithTraceClient sets the tracing client using options
 func WithTraceClient(traceClient trace.Tracer) ReactorOptions {
 	return func(br *BaseReactor) {
 		br.traceClient = traceClient
 	}
+}
+
+// SetTraceClient sets the tracing client.
+func (br *BaseReactor) SetTraceClient(traceClient trace.Tracer) {
+	br.traceClient = traceClient
 }
 
 // WithQueueingFunc sets the queuing function to use when receiving a message.

@@ -493,9 +493,11 @@ const (
 )
 
 type FullBlockReceivingTime struct {
-	Height   int64 `json:"height"`
-	Round    int32 `json:"round"`
-	Duration int64 `json:"duration"`
+	Height int64     `json:"height"`
+	Round  int32     `json:"round"`
+	Time   time.Time `json:"time"`
+	// Complete set to false when we receive the proposal. Set to true when the full block is received
+	Complete bool `json:"complete"`
 }
 
 func (b FullBlockReceivingTime) Table() string {
@@ -506,11 +508,13 @@ func WriteFullBlockReceivingTime(
 	client trace.Tracer,
 	height int64,
 	round int32,
-	duration int64,
+	t time.Time,
+	complete bool,
 ) {
 	client.Write(FullBlockReceivingTime{
 		Height:   height,
 		Round:    round,
-		Duration: duration,
+		Time:     t,
+		Complete: complete,
 	})
 }

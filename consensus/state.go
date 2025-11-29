@@ -2211,6 +2211,7 @@ func (cs *State) defaultSetProposal(proposal *types.Proposal) error {
 	}
 
 	cs.Logger.Info("received proposal", "proposal", proposal, "proposer", pubKey.Address())
+	schema.WriteFullBlockReceivingTime(cs.traceClient, proposal.Height, proposal.Round, time.Now(), false)
 	return nil
 }
 
@@ -2267,6 +2268,7 @@ func (cs *State) addProposalBlockPart(msg *BlockPartMessage, peerID p2p.ID) (add
 		)
 	}
 	if added && cs.rs.ProposalBlockParts.IsComplete() {
+		schema.WriteFullBlockReceivingTime(cs.traceClient, msg.Height, msg.Round, time.Now(), true)
 		bz := cs.rs.ProposalBlockParts.GetBytes()
 
 		pbb := new(cmtproto.Block)
