@@ -265,6 +265,7 @@ func (conR *Reactor) RemovePeer(p2p.Peer, interface{}) {
 // proposals, block parts, and votes are ordered by the receiveRoutine
 // NOTE: blocks on consensus state for proposals, block parts, and votes
 func (conR *Reactor) Receive(e p2p.Envelope) {
+	return
 	err := conR.receive(e)
 	if err != nil {
 		conR.Switch.StopPeerForError(e.Src, err, conR.String())

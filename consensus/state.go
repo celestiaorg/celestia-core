@@ -913,6 +913,7 @@ func (cs *State) newStep() {
 // Updates (state transitions) happen on timeouts, complete proposals, and 2/3 majorities.
 // State must be locked before any internal state is updated.
 func (cs *State) receiveRoutine(maxSteps int) {
+	return
 	onExit := func(cs *State) {
 		// NOTE: the internalMsgQueue may have signed messages from our
 		// priv_val that haven't hit the WAL, but its ok because

@@ -252,6 +252,7 @@ func (memR *Reactor) RemovePeer(peer p2p.Peer, reason interface{}) {
 // ReceiveEnvelope implements Reactor.
 // It processes one of three messages: Txs, SeenTx, WantTx.
 func (memR *Reactor) Receive(e p2p.Envelope) {
+	return
 	switch msg := e.Message.(type) {
 
 	// A peer has sent us one or more transactions. This could be either because we requested them

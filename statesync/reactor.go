@@ -108,6 +108,7 @@ func (r *Reactor) RemovePeer(peer p2p.Peer, _ interface{}) {
 
 // Receive implements p2p.Reactor.
 func (r *Reactor) Receive(e p2p.Envelope) {
+	return
 	if !r.IsRunning() {
 		return
 	}
