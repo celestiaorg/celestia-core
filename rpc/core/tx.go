@@ -24,6 +24,9 @@ const (
 	TxStatusEvicted   string = "EVICTED"
 	TxStatusRejected  string = "REJECTED"
 	TxStatusCommitted string = "COMMITTED"
+
+	// MaxTxStatusBatchSize max number of tx hashes queried in a single batch request.
+	MaxTxStatusBatchSize = 20
 )
 
 // Tx allows you to query the transaction results. `nil` could mean the
@@ -272,6 +275,32 @@ func (env *Environment) TxStatus(ctx *rpctypes.Context, hash []byte) (*ctypes.Re
 	// - Tx was submitted to a different node and not yet propagated
 	// - Tx is invalid and was immediately rejected without caching
 	return &ctypes.ResultTxStatus{Status: TxStatusUnknown}, nil
+}
+
+// TxStatusBatch returns the status of each queried tx and info with their hashes.
+func (env *Environment) TxStatusBatch(ctx *rpctypes.Context, hashes [][]byte) (*ctypes.ResultTxStatusBatch, error) {
+	if len(hashes) == 0 {
+		return &ctypes.ResultTxStatusBatch{Statuses: []ctypes.TxStatusResponse{}}, nil
+	}
+
+	if len(hashes) > MaxTxStatusBatchSize {
+		return nil, fmt.Errorf("batch request exceeds maximum (%d) allowed number of transaction hashes", MaxTxStatusBatchSize)
+	}
+
+	statuses := make([]ctypes.TxStatusResponse, len(hashes))
+
+	for i, hash := range hashes {
+		status, err := env.TxStatus(ctx, hash)
+		if err != nil {
+			return nil, err
+		}
+		statuses[i] = ctypes.TxStatusResponse{
+			Hash:   hash,
+			Result: *status,
+		}
+	}
+
+	return &ctypes.ResultTxStatusBatch{Statuses: statuses}, nil
 }
 
 // ProveSharesV2 creates a proof for a set of shares to the data root.

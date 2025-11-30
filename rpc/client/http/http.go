@@ -640,6 +640,23 @@ func (c *baseRPCClient) TxStatus(
 	return result, nil
 }
 
+func (c *baseRPCClient) TxStatusBatch(
+	ctx context.Context,
+	hashes [][]byte,
+) (*ctypes.ResultTxStatusBatch, error) {
+	result := new(ctypes.ResultTxStatusBatch)
+	params := map[string]interface{}{
+		"hashes": hashes,
+	}
+
+	_, err := c.caller.Call(ctx, "tx_status_batch", params, result)
+	if err != nil {
+		return nil, err
+	}
+
+	return result, nil
+}
+
 func (c *baseRPCClient) DataRootInclusionProof(
 	ctx context.Context,
 	height uint64,

@@ -15,6 +15,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	abci "github.com/cometbft/cometbft/abci/types"
+	cmtbytes "github.com/cometbft/cometbft/libs/bytes"
 	cmtjson "github.com/cometbft/cometbft/libs/json"
 	"github.com/cometbft/cometbft/libs/log"
 	cmtmath "github.com/cometbft/cometbft/libs/math"
@@ -894,6 +895,112 @@ func TestTxStatus(t *testing.T) {
 	require.Equal(abci.CodeTypeOK, result.ExecutionCode)
 	require.Equal("", result.Error)
 	require.Equal(bres.TxResult.Signers, result.Signers)
+}
+
+func TestTxStatusBatch(t *testing.T) {
+	c := getHTTPClient()
+	require := require.New(t)
+	mempool := node.Mempool()
+
+	_, _, tx1 := MakeTxKV()
+	_, _, tx2 := MakeTxKV()
+	unknownHash := types.Tx([]byte("non-existent-tx")).Hash()
+
+	// add tx1 and tx2 to mempool
+	err := mempool.CheckTx(tx1, nil, mempl.TxInfo{})
+	require.NoError(err)
+	err = mempool.CheckTx(tx2, nil, mempl.TxInfo{})
+	require.NoError(err)
+
+	hashes := [][]byte{
+		types.Tx(tx1).Hash(),
+		types.Tx(tx2).Hash(),
+		unknownHash,
+	}
+
+	result, err := c.TxStatusBatch(context.Background(), hashes)
+	require.NoError(err)
+	require.Len(result.Statuses, 3)
+
+	// verify results are in the same order as input
+	require.Equal("PENDING", result.Statuses[0].Result.Status)
+	require.Equal(cmtbytes.HexBytes(types.Tx(tx1).Hash()), result.Statuses[0].Hash)
+
+	require.Equal("PENDING", result.Statuses[1].Result.Status)
+	require.Equal(cmtbytes.HexBytes(types.Tx(tx2).Hash()), result.Statuses[1].Hash)
+
+	require.Equal("UNKNOWN", result.Statuses[2].Result.Status)
+	require.Equal(cmtbytes.HexBytes(unknownHash), result.Statuses[2].Hash)
+
+	// flush mempool
+	mempool.Flush()
+	require.Equal(0, mempool.Size())
+
+	// get tx1 and tx3 committed in a block
+	bres1, err := c.BroadcastTxCommit(context.Background(), tx1)
+	require.NoError(err)
+	require.True(bres1.CheckTx.IsOK())
+	require.True(bres1.TxResult.IsOK())
+
+	bres3, err := c.BroadcastTxCommit(context.Background(), tx2)
+	require.NoError(err)
+	require.True(bres3.CheckTx.IsOK())
+	require.True(bres3.TxResult.IsOK())
+
+	// submit a malformed tx for REJECTED status
+	malformedTx := []byte("malformed-tx")
+	_, err = c.BroadcastTxCommit(context.Background(), malformedTx)
+	require.NoError(err)
+
+	hashes = [][]byte{
+		types.Tx(tx1).Hash(),
+		types.Tx(tx2).Hash(),
+		types.Tx(malformedTx).Hash(),
+		unknownHash,
+	}
+
+	result, err = c.TxStatusBatch(context.Background(), hashes)
+	require.NoError(err)
+	require.Len(result.Statuses, 4)
+
+	// Verify COMMITTED transactions
+	tx1Res := result.Statuses[0].Result
+	require.Equal("COMMITTED", tx1Res.Status)
+	require.EqualValues(bres1.Height, tx1Res.Height)
+	require.EqualValues(0, tx1Res.Index)
+	require.Equal(abci.CodeTypeOK, tx1Res.ExecutionCode)
+	require.Equal("", tx1Res.Error)
+	require.Equal(cmtbytes.HexBytes(types.Tx(tx1).Hash()), result.Statuses[0].Hash)
+
+	tx2Res := result.Statuses[1].Result
+	require.Equal("COMMITTED", tx2Res.Status)
+	require.EqualValues(bres3.Height, tx2Res.Height)
+	require.EqualValues(0, tx2Res.Index)
+	require.Equal(abci.CodeTypeOK, tx2Res.ExecutionCode)
+	require.Equal("", tx2Res.Error)
+	require.Equal(cmtbytes.HexBytes(types.Tx(tx2).Hash()), result.Statuses[1].Hash)
+
+	malformedTxRes := result.Statuses[2].Result
+	require.Equal("REJECTED", malformedTxRes.Status)
+	require.EqualValues(uint32(2), malformedTxRes.ExecutionCode)
+	require.Equal("invalid-tx-format", malformedTxRes.Error)
+	require.Equal(cmtbytes.HexBytes(types.Tx(malformedTx).Hash()), result.Statuses[2].Hash)
+
+	unknownTxRes := result.Statuses[3].Result
+	require.Equal("UNKNOWN", unknownTxRes.Status)
+	require.Equal(cmtbytes.HexBytes(unknownHash), result.Statuses[3].Hash)
+
+	// empty batch
+	emptyResult, err := c.TxStatusBatch(context.Background(), [][]byte{})
+	require.NoError(err)
+	require.NotNil(emptyResult)
+	require.Len(emptyResult.Statuses, 0)
+
+	// batch size limit (should fail on client side)
+	tooManyHashes := make([][]byte, 21)
+	_, err = c.TxStatusBatch(context.Background(), tooManyHashes)
+	require.Error(err)
+	require.Contains(err.Error(), "batch request exceeds maximum (20) allowed number of transaction hashes")
 }
 
 func TestDataCommitment(t *testing.T) {

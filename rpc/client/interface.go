@@ -109,6 +109,9 @@ type SignClient interface {
 
 	// TxStatus returns the transaction status for a given transaction hash.
 	TxStatus(ctx context.Context, hash []byte) (*ctypes.ResultTxStatus, error)
+
+	// TxStatusBatch returns the transaction status for multiple transaction hashes in a single request.
+	TxStatusBatch(ctx context.Context, hashes [][]byte) (*ctypes.ResultTxStatusBatch, error)
 }
 
 // HistoryClient provides access to data from genesis to now in large chunks.

@@ -293,6 +293,20 @@ type ResultTxStatus struct {
 	Signers []string `json:"signers,omitempty"`
 }
 
+// TxStatusResponse single transaction status in a batch query.
+type TxStatusResponse struct {
+	// Hash tx hash.
+	Hash bytes.HexBytes `json:"hash"`
+	// Result contains the tx info.
+	Result ResultTxStatus `json:"result"`
+}
+
+// ResultTxStatusBatch multiple transactions status.
+type ResultTxStatusBatch struct {
+	// Statuses each queried tx info and their hashes.
+	Statuses []TxStatusResponse `json:"statuses"`
+}
+
 type ResultDataCommitment struct {
 	DataCommitment bytes.HexBytes `json:"data_commitment"`
 }

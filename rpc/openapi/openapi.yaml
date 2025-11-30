@@ -1171,6 +1171,56 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+  /tx_status_batch:
+    get:
+      summary: Get transaction status for multiple transactions
+      operationId: tx_status_batch
+      parameters:
+        - in: query
+          name: hashes
+          description: Array of transaction hashes to query
+          required: true
+          schema:
+            type: array
+            items:
+              type: string
+            example:
+              [
+                "145c8332ce4cbd96b78605e1a6fcefda8d29750870b4bec653795b99d995de11",
+                "245d9443df5dce07c89716f2b7fcfgeb9e40861981c5ced764ba00e106df22",
+              ]
+      tags:
+        - Tx
+      description: |
+        Get the status of multiple transactions by their hashes in a single request.
+        This is more efficient than making multiple individual tx_status calls.
+
+        The results are returned in the same order as the input hashes.
+
+        **Note:** The maximum number of transaction hashes that can be queried in a single request currently limited to 20.
+
+        The possible status values for each transaction are:
+        - **UNKNOWN**: Transaction is not found anywhere (not in mempool, not evicted, not committed)
+        - **PENDING**: Transaction is currently in the mempool awaiting inclusion in a block
+        - **EVICTED**: Transaction was removed from the mempool (e.g., due to mempool being full)
+        - **REJECTED**: Transaction was rejected by the application (e.g., during recheck after a block)
+        - **COMMITTED**: Transaction has been included in a block
+
+        For REJECTED transactions, the response includes the execution code and error message.
+        For COMMITTED transactions, the response includes block height, index, execution details, gas usage, and signers.
+      responses:
+        "200":
+          description: Batch transaction status information
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TxStatusBatchResponse"
+        "500":
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
 
 components:
   schemas:

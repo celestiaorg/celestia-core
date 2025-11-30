@@ -356,3 +356,7 @@ func (c *Local) ProveSharesV2(
 func (c *Local) TxStatus(ctx context.Context, hash []byte) (*ctypes.ResultTxStatus, error) {
 	return c.env.TxStatus(c.ctx, hash)
 }
+
+func (c *Local) TxStatusBatch(ctx context.Context, hashes [][]byte) (*ctypes.ResultTxStatusBatch, error) {
+	return c.env.TxStatusBatch(c.ctx, hashes)
+}
