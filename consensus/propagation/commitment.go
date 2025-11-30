@@ -303,7 +303,7 @@ func (blockProp *Reactor) recoverPartsFromMempool(cb *proptypes.CompactBlock) {
 		}
 
 		if !added {
-			blockProp.Logger.Error("failed to add locally recovered part", "part", p.Index)
+			blockProp.Logger.Debug("failed to add locally recovered part", "part", p.Index)
 			continue
 		}
 
