@@ -181,28 +181,11 @@ func WithIncomingQueueSize(size int) ReactorOptions {
 // queue to avoid blocking. The size of the queue can be changed by passing
 // options to the base reactor.
 func (br *BaseReactor) QueueUnprocessedEnvelope(e UnprocessedEnvelope) {
-	if len(br.incoming) == cap(br.incoming) {
-		schema.WriteQueueLimit(br.traceClient, e.ChannelID, br.name, true)
-	}
-	select {
-	// if the context is done, do nothing.
-	case <-br.ctx.Done():
-	// if not, add the item to the channel.
-	case br.incoming <- br.unmarshalEnvelope(e):
-	}
 }
 
 // TryQueueUnprocessedEnvelope an alternative to QueueUnprocessedEnvelope that attempts to queue an unprocessed envelope.
 // If the queue is full, it drops the envelope.
 func (br *BaseReactor) TryQueueUnprocessedEnvelope(e UnprocessedEnvelope) {
-	if len(br.incoming) == cap(br.incoming) {
-		schema.WriteQueueLimit(br.traceClient, e.ChannelID, br.name, true)
-	}
-	select {
-	case <-br.ctx.Done():
-	case br.incoming <- br.unmarshalEnvelope(e):
-	default:
-	}
 }
 
 func (br *BaseReactor) unmarshalEnvelope(e UnprocessedEnvelope) UnmarshalResult {
