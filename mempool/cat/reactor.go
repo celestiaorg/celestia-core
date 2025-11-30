@@ -38,6 +38,10 @@ const (
 
 	// maxSeenTxBroadcast defines the maximum number of peers to which a SeenTx message should be broadcasted.
 	maxSeenTxBroadcast = 15
+
+	// maxParallelSequenceRequests limits how many consecutive sequences can be
+	// requested in parallel from different peers.
+	maxParallelSequenceRequests = 30
 )
 
 // Reactor handles mempool tx broadcasting logic amongst peers. For the main
@@ -45,12 +49,13 @@ const (
 // spec under /.spec.md
 type Reactor struct {
 	p2p.BaseReactor
-	opts        *ReactorOptions
-	mempool     *TxPool
-	ids         *mempoolIDs
-	requests    *requestScheduler
-	pendingSeen *pendingSeenTracker
-	traceClient trace.Tracer
+	opts           *ReactorOptions
+	mempool        *TxPool
+	ids            *mempoolIDs
+	requests       *requestScheduler
+	pendingSeen    *pendingSeenTracker
+	receivedBuffer *receivedTxBuffer // buffer for out-of-order tx arrivals
+	traceClient    trace.Tracer
 	// stickySalt stores []byte rendezvous salt for sticky peer selection; nil/empty keeps default ordering.
 	stickySalt atomic.Value
 }
@@ -106,12 +111,13 @@ func NewReactor(mempool *TxPool, opts *ReactorOptions) (*Reactor, error) {
 		traceClient = trace.NoOpTracer()
 	}
 	memR := &Reactor{
-		opts:        opts,
-		mempool:     mempool,
-		ids:         newMempoolIDs(),
-		requests:    newRequestScheduler(opts.MaxGossipDelay, defaultGlobalRequestTimeout),
-		pendingSeen: newPendingSeenTracker(0),
-		traceClient: traceClient,
+		opts:           opts,
+		mempool:        mempool,
+		ids:            newMempoolIDs(),
+		requests:       newRequestScheduler(opts.MaxGossipDelay, defaultGlobalRequestTimeout),
+		pendingSeen:    newPendingSeenTracker(0),
+		receivedBuffer: newReceivedTxBuffer(),
+		traceClient:    traceClient,
 	}
 	memR.BaseReactor = *p2p.NewBaseReactor("CAT", memR,
 		p2p.WithIncomingQueueSize(ReactorIncomingMessageQueueSize),
@@ -271,53 +277,42 @@ func (memR *Reactor) Receive(e p2p.Envelope) {
 		for _, tx := range protoTxs {
 			ntx := types.Tx(tx)
 			key := ntx.Key()
+			cachedTx := ntx.ToCachedTx()
 			schema.WriteMempoolTx(memR.traceClient, string(e.Src.ID()), key[:], len(tx), schema.Download)
+
 			// If we requested the transaction we mark it as received.
 			if memR.requests.Has(peerID, key) {
 				memR.requests.MarkReceived(peerID, key)
-				memR.Logger.Trace("received a response for a requested transaction", "peerID", peerID, "txKey", key)
+				memR.Logger.Info("received a response for a requested transaction", "peerID", peerID, "txKey", key)
 			} else {
 				// If we didn't request the transaction we simply mark the peer as having the
 				// tx (we'd have already done it if we were requesting the tx).
 				memR.mempool.PeerHasTx(peerID, key)
-				memR.Logger.Trace("received new trasaction", "peerID", peerID, "txKey", key)
-			}
-			rsp, err := memR.mempool.TryAddNewTx(ntx.ToCachedTx(), key, txInfo)
-
-			// Extract signer/sequence from CheckTx response if available
-			signer, signerBytes, sequence, execCode := "", []byte(nil), uint64(0), uint32(0)
-			if rsp != nil {
-				signerBytes = rsp.Address
-				signer = string(rsp.Address)
-				sequence = rsp.Sequence
-				execCode = rsp.Code
+				memR.Logger.Info("received new transaction", "peerID", peerID, "txKey", key)
 			}
 
-			// Trace the result of adding the transaction to the mempool
-			if err != nil {
-				if err == ErrTxInMempool {
-					schema.WriteMempoolAddResult(memR.traceClient, string(e.Src.ID()), key[:], schema.AlreadyInMempool, err, signer, sequence)
-				} else {
-					schema.WriteMempoolAddResult(memR.traceClient, string(e.Src.ID()), key[:], schema.Rejected, err, signer, sequence)
-					memR.Logger.Debug("Could not add tx", "txKey", key, "err", err)
-					return
-				}
-			} else {
-				if execCode != 0 {
-					schema.WriteMempoolAddResult(memR.traceClient, string(e.Src.ID()), key[:], schema.Rejected, fmt.Errorf("execution code: %d", execCode), signer, sequence)
-				} else {
-					schema.WriteMempoolAddResult(memR.traceClient, string(e.Src.ID()), key[:], schema.Added, nil, signer, sequence)
+			// Look up signer/sequence from pending tracker
+			pendingEntry := memR.pendingSeen.get(key)
+			if pendingEntry != nil && len(pendingEntry.signer) > 0 && pendingEntry.sequence > 0 {
+				// We have sequence info - check if we should buffer or process
+				expectedSeq, haveExpected := memR.querySequenceFromApplication(pendingEntry.signer)
+
+				if haveExpected && pendingEntry.sequence > expectedSeq {
+					// Future sequence - buffer it for later
+					if memR.receivedBuffer.add(pendingEntry.signer, pendingEntry.sequence, cachedTx, key, txInfo) {
+						// Successfully buffered - clear the pending entry since we have the tx
+						memR.pendingSeen.remove(key)
+						memR.Logger.Info("buffered out-of-order tx",
+							"txKey", key,
+							"sequence", pendingEntry.sequence,
+							"expectedSeq", expectedSeq)
+					}
+					continue
 				}
 			}
 
-			if len(signerBytes) > 0 {
-				memR.processPendingSeenForSigner(signerBytes)
-			}
-
-			if !memR.opts.ListenOnly && execCode == 0 {
-				// We broadcast only transactions that we deem valid and actually have in our mempool.
-				memR.broadcastSeenTx(key, signerBytes, sequence)
-			}
+			// Process this tx through CheckTx
+			memR.processReceivedTx(cachedTx, key, txInfo, e.Src)
 		}
 
 	// A peer has indicated to us that it has a transaction. We first verify the txkey and
@@ -548,13 +543,119 @@ func (memR *Reactor) requestTx(txKey types.TxKey, peer p2p.Peer) bool {
 	return success
 }
 
+// processReceivedTx handles a received transaction by running CheckTx and then
+// draining any buffered transactions for the same signer.
+func (memR *Reactor) processReceivedTx(cachedTx *types.CachedTx, key types.TxKey, txInfo mempool.TxInfo, src p2p.Peer) {
+	rsp, err := memR.mempool.TryAddNewTx(cachedTx, key, txInfo)
+
+	// Extract signer/sequence from CheckTx response if available
+	signer, signerBytes, sequence, execCode := "", []byte(nil), uint64(0), uint32(0)
+	if rsp != nil {
+		signerBytes = rsp.Address
+		signer = string(rsp.Address)
+		sequence = rsp.Sequence
+		execCode = rsp.Code
+	}
+
+	// Trace the result of adding the transaction to the mempool
+	if err != nil {
+		if err == ErrTxInMempool {
+			schema.WriteMempoolAddResult(memR.traceClient, string(src.ID()), key[:], schema.AlreadyInMempool, err, signer, sequence)
+		} else {
+			schema.WriteMempoolAddResult(memR.traceClient, string(src.ID()), key[:], schema.Rejected, err, signer, sequence)
+			memR.Logger.Debug("Could not add tx", "txKey", key, "err", err)
+			return
+		}
+	} else {
+		if execCode != 0 {
+			schema.WriteMempoolAddResult(memR.traceClient, string(src.ID()), key[:], schema.Rejected, fmt.Errorf("execution code: %d", execCode), signer, sequence)
+		} else {
+			schema.WriteMempoolAddResult(memR.traceClient, string(src.ID()), key[:], schema.Added, nil, signer, sequence)
+		}
+	}
+
+	// Clean up pending entry
+	memR.pendingSeen.remove(key)
+
+	if len(signerBytes) > 0 {
+		// Process any buffered transactions for this signer
+		memR.processReceivedBuffer(signerBytes)
+		// Request more pending transactions
+		memR.processPendingSeenForSigner(signerBytes)
+	}
+
+	if !memR.opts.ListenOnly && execCode == 0 {
+		// We broadcast only transactions that we deem valid and actually have in our mempool.
+		memR.broadcastSeenTx(key, signerBytes, sequence)
+	}
+}
+
+// processReceivedBuffer drains buffered transactions for a signer in sequence order.
+// It processes buffered txs as long as they match the next expected sequence.
+func (memR *Reactor) processReceivedBuffer(signer []byte) {
+	if len(signer) == 0 {
+		return
+	}
+
+	for {
+		expectedSeq, haveExpected := memR.querySequenceFromApplication(signer)
+		if !haveExpected {
+			return
+		}
+
+		// Check if we have the next expected sequence buffered
+		buffered := memR.receivedBuffer.get(signer, expectedSeq)
+		if buffered == nil {
+			// No buffered tx for expected sequence, done
+			return
+		}
+
+		// Remove from buffer before processing
+		memR.receivedBuffer.remove(signer, expectedSeq)
+
+		memR.Logger.Info("processing buffered tx",
+			"sequence", expectedSeq,
+			"txKey", buffered.txKey)
+
+		// Process through CheckTx
+		rsp, err := memR.mempool.TryAddNewTx(buffered.tx, buffered.txKey, buffered.txInfo)
+
+		signerStr, execCode := "", uint32(0)
+		if rsp != nil {
+			signerStr = string(rsp.Address)
+			execCode = rsp.Code
+		}
+
+		if err != nil {
+			if err == ErrTxInMempool {
+				schema.WriteMempoolAddResult(memR.traceClient, "", buffered.txKey[:], schema.AlreadyInMempool, err, signerStr, expectedSeq)
+			} else {
+				schema.WriteMempoolAddResult(memR.traceClient, "", buffered.txKey[:], schema.Rejected, err, signerStr, expectedSeq)
+				memR.Logger.Debug("Could not add buffered tx", "txKey", buffered.txKey, "err", err)
+				return
+			}
+		} else {
+			if execCode != 0 {
+				schema.WriteMempoolAddResult(memR.traceClient, "", buffered.txKey[:], schema.Rejected, fmt.Errorf("execution code: %d", execCode), signerStr, expectedSeq)
+			} else {
+				schema.WriteMempoolAddResult(memR.traceClient, "", buffered.txKey[:], schema.Added, nil, signerStr, expectedSeq)
+			}
+		}
+
+		// Clean up pending entry
+		memR.pendingSeen.remove(buffered.txKey)
+
+		if !memR.opts.ListenOnly && execCode == 0 {
+			memR.broadcastSeenTx(buffered.txKey, signer, expectedSeq)
+		}
+
+		// Continue loop to check for next buffered sequence
+	}
+}
+
 // processPendingSeenForSigner tries to advance the pipeline of queued transactions for a signer.
-// It must be invoked whenever our view of the signer's sequence might have progressed (e.g. right
-// after we successfully added one of their transactions, or after the mempool broadcasts a new one),
-// because those are the moments when we have new evidence about the expected next sequence. The
-// method re-queries the application (`forceApp=true`) so any transactions the signer already had
-// included in a block show up as `expectedSeq > entry.sequence` and are dropped from the pending
-// queue.
+// It requests consecutive sequences in parallel from different peers, buffering out-of-order
+// arrivals for later processing. This allows fast catch-up even when tx sources are distributed.
 func (memR *Reactor) processPendingSeenForSigner(signer []byte) {
 	if len(signer) == 0 {
 		return
@@ -571,29 +672,46 @@ func (memR *Reactor) processPendingSeenForSigner(signer []byte) {
 		return
 	}
 
+	// Clean up old entries and request consecutive sequences in parallel
+	nextSeq := expectedSeq
+	requested := 0
+
 	for _, entry := range entries {
-		if haveExpected && expectedSeq > entry.sequence {
+		// Clean up entries that are already processed
+		if entry.sequence < expectedSeq {
 			memR.pendingSeen.remove(entry.txKey)
 			continue
 		}
 
+		// Gap detected - stop requesting beyond the gap
+		if entry.sequence != nextSeq {
+			break
+		}
+
+		// Check limits
+		if requested >= maxParallelSequenceRequests {
+			break
+		}
+
+		// Skip if already in mempool
 		if memR.mempool.Has(entry.txKey) {
 			memR.pendingSeen.remove(entry.txKey)
+			nextSeq++
 			continue
 		}
 
+		// Skip if already being requested, but count it
 		if memR.requests.ForTx(entry.txKey) != 0 || entry.requested {
+			nextSeq++
+			requested++
 			continue
 		}
 
-		// Only request if this is the next expected sequence
-		// If there's a gap, stop here and wait for the missing sequence
-		if haveExpected && entry.sequence != expectedSeq {
-			continue
+		// Request from first available peer
+		if memR.tryRequestQueuedTx(entry) {
+			requested++
 		}
-
-		_ = memR.tryRequestQueuedTx(entry)
-		break
+		nextSeq++
 	}
 }
 

@@ -120,6 +120,25 @@ func (ps *pendingSeenTracker) remove(txKey types.TxKey) *pendingSeenTx {
 	return entry
 }
 
+// get returns the pending entry for a txKey without removing it.
+// Returns nil if not found.
+func (ps *pendingSeenTracker) get(txKey types.TxKey) *pendingSeenTx {
+	ps.mu.Lock()
+	defer ps.mu.Unlock()
+
+	entry, ok := ps.byTx[txKey]
+	if !ok {
+		return nil
+	}
+
+	// Return a copy to avoid data races
+	clone := *entry
+	if len(entry.signer) > 0 {
+		clone.signer = append([]byte(nil), entry.signer...)
+	}
+	return &clone
+}
+
 func (ps *pendingSeenTracker) entriesForSigner(signer []byte) []*pendingSeenTx {
 	if len(signer) == 0 {
 		return nil
