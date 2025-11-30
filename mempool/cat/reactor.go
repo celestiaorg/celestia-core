@@ -566,7 +566,12 @@ func (memR *Reactor) requestTx(txKey types.TxKey, peer p2p.Peer) bool {
 // tryAddNewTx attempts to add a tx to the mempool and traces the result.
 // Returns the response and true if processing should continue (success or already in mempool).
 func (memR *Reactor) tryAddNewTx(cachedTx *types.CachedTx, key types.TxKey, txInfo mempool.TxInfo, peerID string) (*abci.ResponseCheckTx, bool) {
+	start := time.Now()
 	rsp, err := memR.mempool.TryAddNewTx(cachedTx, key, txInfo)
+	elapsed := time.Since(start)
+	if elapsed > 50*time.Millisecond {
+		memR.Logger.Info("SLOW tryAddNewTx (CheckTx)", "elapsed", elapsed, "txKey", key, "peerID", peerID)
+	}
 
 	signer, sequence, execCode := "", uint64(0), uint32(0)
 	if rsp != nil {
@@ -619,7 +624,11 @@ func (memR *Reactor) processReceivedTx(cachedTx *types.CachedTx, key types.TxKey
 		memR.processPendingSeenForSigner(signerBytes)
 	}
 
-	if !memR.opts.ListenOnly && execCode == 0 {
+	// Only broadcast SeenTx if we actually added the tx (rsp != nil) and the tx is now in mempool.
+	// When ErrTxInMempool is returned, rsp is nil, and we should NOT broadcast
+	// because we already broadcast when we first added the tx.
+	// The mempool.Has check is a defensive safeguard against race conditions.
+	if !memR.opts.ListenOnly && rsp != nil && execCode == 0 && memR.mempool.Has(key) {
 		memR.broadcastSeenTx(key, signerBytes, sequence)
 	}
 }
@@ -630,6 +639,9 @@ func (memR *Reactor) processReceivedBuffer(signer []byte) {
 	if len(signer) == 0 {
 		return
 	}
+
+	loopStart := time.Now()
+	iterations := 0
 
 	for {
 		expectedSeq, haveExpected := memR.querySequenceFromApplication(signer)
@@ -642,6 +654,9 @@ func (memR *Reactor) processReceivedBuffer(signer []byte) {
 			break
 		}
 
+		iterations++
+
+		// Remove from buffer before processing (we don't want to retry bad txs)
 		memR.receivedBuffer.removeLowerSeqs(signer, expectedSeq)
 
 		memR.Logger.Info("processing buffered tx",
@@ -660,10 +675,24 @@ func (memR *Reactor) processReceivedBuffer(signer []byte) {
 			execCode = rsp.Code
 		}
 
-		if !memR.opts.ListenOnly && execCode == 0 {
+		// Only broadcast SeenTx if we actually added the tx (rsp != nil) and the tx is now in mempool.
+		// When ErrTxInMempool is returned, rsp is nil, and we should NOT broadcast
+		// because we already broadcast when we first added the tx.
+		// The mempool.Has check is a defensive safeguard against race conditions.
+		if !memR.opts.ListenOnly && rsp != nil && execCode == 0 && memR.mempool.Has(buffered.txKey) {
 			memR.broadcastSeenTx(buffered.txKey, signer, expectedSeq)
 		}
 	}
+
+	loopElapsed := time.Since(loopStart)
+	if iterations > 0 || loopElapsed > 10*time.Millisecond {
+		memR.Logger.Info("processReceivedBuffer completed",
+			"iterations", iterations,
+			"elapsed", loopElapsed,
+			"signer", fmt.Sprintf("%X", signer))
+	}
+
+	// Clean up any expired entries
 	memR.receivedBuffer.cleanup()
 }
 
@@ -810,8 +839,13 @@ func (memR *Reactor) refreshPendingSeenQueues() {
 }
 
 func (memR *Reactor) querySequenceFromApplication(signer []byte) (uint64, bool) {
+	start := time.Now()
 	ctx := context.Background()
 	resp, err := memR.mempool.proxyAppConn.QuerySequence(ctx, &abci.RequestQuerySequence{Signer: signer})
+	elapsed := time.Since(start)
+	if elapsed > 10*time.Millisecond {
+		memR.Logger.Info("SLOW querySequenceFromApplication", "elapsed", elapsed, "signer", fmt.Sprintf("%X", signer))
+	}
 	if err != nil || resp == nil {
 		return 0, false
 	}
