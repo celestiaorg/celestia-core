@@ -273,6 +273,7 @@ type BlockPartState struct {
 	Have         bool         `json:"have"`
 	Peer         string       `json:"peer"`
 	TransferType TransferType `json:"transfer_type"`
+	MessageType  string       `json:"message_type"`
 }
 
 // Table returns the table name for the BlockPart struct.
@@ -290,6 +291,7 @@ func WriteBlockPartState(
 	have bool,
 	peer string,
 	transferType TransferType,
+	messageType string,
 ) {
 	// this check is redundant to what is checked during client.Write, although it
 	// is an optimization to avoid allocations from the map of fields.
@@ -304,6 +306,7 @@ func WriteBlockPartState(
 		Have:         have,
 		Peer:         peer,
 		TransferType: transferType,
+		MessageType:  messageType,
 	})
 }
 
@@ -493,11 +496,10 @@ const (
 )
 
 type FullBlockReceivingTime struct {
-	Height int64     `json:"height"`
-	Round  int32     `json:"round"`
-	Time   time.Time `json:"time"`
-	// Complete set to false when we receive the proposal. Set to true when the full block is received
-	Complete bool `json:"complete"`
+	Height int64 `json:"height"`
+	Round  int32 `json:"round"`
+	// Duration in milliseconds from when the proposal was received to when the full block was received
+	DurationMs int64 `json:"duration_ms"`
 }
 
 func (b FullBlockReceivingTime) Table() string {
@@ -508,13 +510,11 @@ func WriteFullBlockReceivingTime(
 	client trace.Tracer,
 	height int64,
 	round int32,
-	t time.Time,
-	complete bool,
+	duration time.Duration,
 ) {
 	client.Write(FullBlockReceivingTime{
-		Height:   height,
-		Round:    round,
-		Time:     t,
-		Complete: complete,
+		Height:     height,
+		Round:      round,
+		DurationMs: duration.Milliseconds(),
 	})
 }
