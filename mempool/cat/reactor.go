@@ -782,12 +782,25 @@ func (memR *Reactor) heightSignalLoop() {
 }
 
 func (memR *Reactor) refreshPendingSeenQueues() {
-	signers := memR.pendingSeen.signerKeys()
-	if len(signers) == 0 {
+	// Collect signers from both pending seen and buffer
+	seenSigners := make(map[string][]byte)
+
+	for _, signer := range memR.pendingSeen.signerKeys() {
+		seenSigners[string(signer)] = signer
+	}
+	for _, signer := range memR.receivedBuffer.signerKeys() {
+		seenSigners[string(signer)] = signer
+	}
+
+	if len(seenSigners) == 0 {
 		return
 	}
 
-	for _, signer := range signers {
+	for _, signer := range seenSigners {
+		// First drain any buffered txs that can now be processed
+		// (their expected sequence may have advanced due to block commit)
+		memR.processReceivedBuffer(signer)
+		// Then request more pending txs
 		memR.processPendingSeenForSigner(signer)
 	}
 }

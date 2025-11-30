@@ -150,6 +150,22 @@ func (b *receivedTxBuffer) size() int {
 	return total
 }
 
+// signerKeys returns all signers that have buffered transactions
+func (b *receivedTxBuffer) signerKeys() [][]byte {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+
+	if len(b.buffers) == 0 {
+		return nil
+	}
+
+	signers := make([][]byte, 0, len(b.buffers))
+	for signerKey := range b.buffers {
+		signers = append(signers, []byte(signerKey))
+	}
+	return signers
+}
+
 // signerSize returns number of buffered transactions for a specific signer
 func (b *receivedTxBuffer) signerSize(signer []byte) int {
 	if len(signer) == 0 {
