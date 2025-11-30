@@ -176,6 +176,9 @@ func (blockProp *Reactor) InitPeer(peer p2p.Peer) (p2p.Peer, error) {
 	}
 
 	if legacy, err := isLegacyPropagation(peer); legacy || err != nil {
+		fmt.Println("-------------------")
+		fmt.Printf("&&&&&&legacy peer: %v@%s\n", peer.ID(), peer.RemoteIP().String())
+		fmt.Println("-------------------")
 		if err != nil {
 			return nil, fmt.Errorf("peer is only using legacy propagation: %w", err)
 		}
