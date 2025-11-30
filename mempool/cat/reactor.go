@@ -297,6 +297,12 @@ func (memR *Reactor) Receive(e p2p.Envelope) {
 				// We have sequence info - check if we should buffer or process
 				expectedSeq, haveExpected := memR.querySequenceFromApplication(pendingEntry.signer)
 
+				memR.Logger.Info("received tx with sequence info",
+					"txKey", key,
+					"txSequence", pendingEntry.sequence,
+					"expectedSeq", expectedSeq,
+					"haveExpected", haveExpected)
+
 				if haveExpected && pendingEntry.sequence > expectedSeq {
 					// Future sequence - buffer it for later
 					if memR.receivedBuffer.add(pendingEntry.signer, pendingEntry.sequence, cachedTx, key, txInfo) {
@@ -309,6 +315,10 @@ func (memR *Reactor) Receive(e p2p.Envelope) {
 					}
 					continue
 				}
+			} else {
+				memR.Logger.Info("received tx without pending sequence info",
+					"txKey", key,
+					"hasPendingEntry", pendingEntry != nil)
 			}
 
 			// Process this tx through CheckTx
@@ -672,6 +682,14 @@ func (memR *Reactor) processPendingSeenForSigner(signer []byte) {
 		return
 	}
 
+	// Log the state for debugging
+	if len(entries) > 0 {
+		memR.Logger.Info("processPendingSeenForSigner",
+			"expectedSeq", expectedSeq,
+			"numEntries", len(entries),
+			"firstEntrySeq", entries[0].sequence)
+	}
+
 	// Clean up old entries and request consecutive sequences in parallel
 	nextSeq := expectedSeq
 	requested := 0
@@ -685,6 +703,10 @@ func (memR *Reactor) processPendingSeenForSigner(signer []byte) {
 
 		// Gap detected - stop requesting beyond the gap
 		if entry.sequence != nextSeq {
+			memR.Logger.Info("gap detected in pending entries",
+				"expectedSeq", expectedSeq,
+				"nextSeq", nextSeq,
+				"entrySeq", entry.sequence)
 			break
 		}
 
@@ -709,9 +731,16 @@ func (memR *Reactor) processPendingSeenForSigner(signer []byte) {
 
 		// Request from first available peer
 		if memR.tryRequestQueuedTx(entry) {
+			memR.Logger.Info("requested tx in parallel",
+				"sequence", entry.sequence,
+				"txKey", entry.txKey)
 			requested++
 		}
 		nextSeq++
+	}
+
+	if requested > 0 {
+		memR.Logger.Info("parallel requests sent", "count", requested)
 	}
 }
 
