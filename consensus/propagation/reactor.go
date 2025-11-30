@@ -36,7 +36,7 @@ const (
 	WantChannel = byte(0x51)
 
 	// ReactorIncomingMessageQueueSize the size of the reactor's message queue.
-	ReactorIncomingMessageQueueSize = 5000
+	ReactorIncomingMessageQueueSize = 20000
 
 	// RetryTime automatic catchup retry timeout.
 	RetryTime = 6 * time.Second
