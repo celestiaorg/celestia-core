@@ -177,6 +177,10 @@ func (blockProp *Reactor) requestFromPeer(ps *PeerState) {
 					}
 				}
 
+				if parts.IsDecoding.Load() {
+					continue
+				}
+
 				missingPartsCount := countRemainingParts(int(parts.Total()), len(parts.BitArray().GetTrueIndices()))
 				if missingPartsCount == 0 {
 					// we can ignore this have in this case
@@ -533,65 +537,68 @@ func (blockProp *Reactor) handleRecoveryPart(peer p2p.ID, part *proptypes.Recove
 			return
 		}
 		parts.IsDecoding.Store(true)
-		defer parts.IsDecoding.Store(false)
 
-		missingOriginalParts := parts.Original().BitArray().Not()
+		go func() {
+			defer parts.IsDecoding.Store(false)
 
-		err := parts.Decode()
-		if err != nil {
-			blockProp.Logger.Error("failed to decode parts", "peer", peer, "height", part.Height, "round", part.Round, "error", err)
-			return
-		}
+			missingOriginalParts := parts.Original().BitArray().Not()
 
-		// broadcast haves for all parts since we've decoded the entire block.
-		// rely on the broadcast method to ensure that parts are only sent once.
-		haves := &proptypes.HaveParts{
-			Height: part.Height,
-			Round:  part.Round,
-		}
-
-		for i := uint32(0); i < parts.Total(); i++ {
-			p, has := parts.GetPart(i)
-			if !has {
-				blockProp.Logger.Error("failed to get decoded part", "peer", peer, "height", part.Height, "round", part.Round, "part", i)
-				continue
+			err := parts.Decode()
+			if err != nil {
+				blockProp.Logger.Error("failed to decode parts", "peer", peer, "height", part.Height, "round", part.Round, "error", err)
+				return
 			}
-			// only send original parts to the consensus reactor
-			if i < parts.Original().Total() && missingOriginalParts.GetIndex(int(i)) {
-				select {
-				case <-blockProp.ctx.Done():
-					return
-				case blockProp.partChan <- types.PartInfo{
-					Part: &types.Part{
-						Index: p.Index,
-						Bytes: p.Bytes,
-						Proof: p.GetProof(),
-					},
-					Height: part.Height,
-					Round:  part.Round,
-				}:
-				}
+
+			// broadcast haves for all parts since we've decoded the entire block.
+			// rely on the broadcast method to ensure that parts are only sent once.
+			haves := &proptypes.HaveParts{
+				Height: part.Height,
+				Round:  part.Round,
 			}
-			haves.Parts = append(haves.Parts, proptypes.PartMetaData{Index: i, Hash: p.Proof.LeafHash})
-		}
 
-		blockProp.broadcastHaves(haves, peer, int(parts.Total()))
-
-		// clear all the wants if they exist
-		go func(height int64, round int32, parts *proptypes.CombinedPartSet) {
 			for i := uint32(0); i < parts.Total(); i++ {
-				p, _ := parts.GetPart(i)
-				pbz := make([]byte, len(p.Bytes))
-				copy(pbz, p.Bytes)
-				msg := &proptypes.RecoveryPart{
-					Height: height,
-					Round:  round,
-					Index:  i,
-					Data:   pbz,
+				p, has := parts.GetPart(i)
+				if !has {
+					blockProp.Logger.Error("failed to get decoded part", "peer", peer, "height", part.Height, "round", part.Round, "part", i)
+					continue
 				}
-				blockProp.clearWants(msg, p.GetProof())
+				// only send original parts to the consensus reactor
+				if i < parts.Original().Total() && missingOriginalParts.GetIndex(int(i)) {
+					select {
+					case <-blockProp.ctx.Done():
+						return
+					case blockProp.partChan <- types.PartInfo{
+						Part: &types.Part{
+							Index: p.Index,
+							Bytes: p.Bytes,
+							Proof: p.GetProof(),
+						},
+						Height: part.Height,
+						Round:  part.Round,
+					}:
+					}
+				}
+				haves.Parts = append(haves.Parts, proptypes.PartMetaData{Index: i, Hash: p.Proof.LeafHash})
 			}
-		}(part.Height, part.Round, parts)
+
+			blockProp.broadcastHaves(haves, peer, int(parts.Total()))
+
+			// clear all the wants if they exist
+			go func(height int64, round int32, parts *proptypes.CombinedPartSet) {
+				for i := uint32(0); i < parts.Total(); i++ {
+					p, _ := parts.GetPart(i)
+					pbz := make([]byte, len(p.Bytes))
+					copy(pbz, p.Bytes)
+					msg := &proptypes.RecoveryPart{
+						Height: height,
+						Round:  round,
+						Index:  i,
+						Data:   pbz,
+					}
+					blockProp.clearWants(msg, p.GetProof())
+				}
+			}(part.Height, part.Round, parts)
+		}()
 
 		return
 	}
