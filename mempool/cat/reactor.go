@@ -2,6 +2,7 @@ package cat
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sync/atomic"
 	"time"
@@ -39,9 +40,9 @@ const (
 	// maxSeenTxBroadcast defines the maximum number of peers to which a SeenTx message should be broadcasted.
 	maxSeenTxBroadcast = 15
 
-	// maxParallelSequenceRequests limits how many consecutive sequences can be
-	// requested in parallel from different peers.
-	maxParallelSequenceRequests = 30
+	// maxLookaheadSize limits how far ahead of the expected sequence we will
+	// request/buffer transactions. Txs with sequence > expected + maxLookaheadSize are rejected.
+	maxLookaheadSize = 30
 )
 
 // Reactor handles mempool tx broadcasting logic amongst peers. For the main
@@ -245,7 +246,7 @@ func (memR *Reactor) RemovePeer(peer p2p.Peer, reason interface{}) {
 	memR.mempool.seenByPeersSet.RemovePeer(peerID)
 	memR.pendingSeen.removePeer(peerID)
 
-	// remove and rerequest all pending outbound requests to that peer since we know
+	// removeLowerSeqs and rerequest all pending outbound requests to that peer since we know
 	// we won't receive any responses from them.
 	outboundRequests := memR.requests.ClearAllRequestsFrom(peerID)
 	for key := range outboundRequests {
@@ -304,9 +305,18 @@ func (memR *Reactor) Receive(e p2p.Envelope) {
 					"haveExpected", haveExpected)
 
 				if haveExpected && pendingEntry.sequence > expectedSeq {
-					// Future sequence - buffer it for later
-					if memR.receivedBuffer.add(pendingEntry.signer, pendingEntry.sequence, cachedTx, key, txInfo) {
-						// Successfully buffered - clear the pending entry since we have the tx
+					// Reject txs too far ahead
+					if pendingEntry.sequence > expectedSeq+maxLookaheadSize {
+						memR.Logger.Debug("rejecting tx too far ahead",
+							"txKey", key,
+							"sequence", pendingEntry.sequence,
+							"expectedSeq", expectedSeq,
+							"maxLookahead", maxLookaheadSize)
+						continue
+					}
+
+					// Future sequence within lookahead - buffer it for later
+					if memR.receivedBuffer.add(pendingEntry.signer, pendingEntry.sequence, cachedTx, key, txInfo, string(e.Src.ID())) {
 						memR.pendingSeen.remove(key)
 						memR.Logger.Info("buffered out-of-order tx",
 							"txKey", key,
@@ -321,7 +331,7 @@ func (memR *Reactor) Receive(e p2p.Envelope) {
 					"hasPendingEntry", pendingEntry != nil)
 			}
 
-			// Process this tx through CheckTx
+			// Process this tx through CheckTx without putting into buffer
 			memR.processReceivedTx(cachedTx, key, txInfo, e.Src)
 		}
 
@@ -553,49 +563,63 @@ func (memR *Reactor) requestTx(txKey types.TxKey, peer p2p.Peer) bool {
 	return success
 }
 
-// processReceivedTx handles a received transaction by running CheckTx and then
-// draining any buffered transactions for the same signer.
-func (memR *Reactor) processReceivedTx(cachedTx *types.CachedTx, key types.TxKey, txInfo mempool.TxInfo, src p2p.Peer) {
+// tryAddNewTx attempts to add a tx to the mempool and traces the result.
+// Returns the response and true if processing should continue (success or already in mempool).
+func (memR *Reactor) tryAddNewTx(cachedTx *types.CachedTx, key types.TxKey, txInfo mempool.TxInfo, peerID string) (*abci.ResponseCheckTx, bool) {
 	rsp, err := memR.mempool.TryAddNewTx(cachedTx, key, txInfo)
 
-	// Extract signer/sequence from CheckTx response if available
-	signer, signerBytes, sequence, execCode := "", []byte(nil), uint64(0), uint32(0)
+	signer, sequence, execCode := "", uint64(0), uint32(0)
 	if rsp != nil {
-		signerBytes = rsp.Address
 		signer = string(rsp.Address)
 		sequence = rsp.Sequence
 		execCode = rsp.Code
 	}
 
-	// Trace the result of adding the transaction to the mempool
 	if err != nil {
-		if err == ErrTxInMempool {
-			schema.WriteMempoolAddResult(memR.traceClient, string(src.ID()), key[:], schema.AlreadyInMempool, err, signer, sequence)
-		} else {
-			schema.WriteMempoolAddResult(memR.traceClient, string(src.ID()), key[:], schema.Rejected, err, signer, sequence)
-			memR.Logger.Debug("Could not add tx", "txKey", key, "err", err)
-			return
+		if errors.Is(err, ErrTxInMempool) {
+			schema.WriteMempoolAddResult(memR.traceClient, peerID, key[:], schema.AlreadyInMempool, err, signer, sequence)
+			return rsp, true
 		}
-	} else {
-		if execCode != 0 {
-			schema.WriteMempoolAddResult(memR.traceClient, string(src.ID()), key[:], schema.Rejected, fmt.Errorf("execution code: %d", execCode), signer, sequence)
-		} else {
-			schema.WriteMempoolAddResult(memR.traceClient, string(src.ID()), key[:], schema.Added, nil, signer, sequence)
-		}
+		schema.WriteMempoolAddResult(memR.traceClient, peerID, key[:], schema.Rejected, err, signer, sequence)
+		memR.Logger.Debug("Could not add tx", "txKey", key, "err", err)
+		return rsp, false
 	}
 
-	// Clean up pending entry
+	if execCode != 0 {
+		schema.WriteMempoolAddResult(memR.traceClient, peerID, key[:], schema.Rejected, fmt.Errorf("execution code: %d", execCode), signer, sequence)
+	} else {
+		schema.WriteMempoolAddResult(memR.traceClient, peerID, key[:], schema.Added, nil, signer, sequence)
+	}
+	return rsp, true
+}
+
+// processReceivedTx handles a received transaction by running CheckTx and then
+// draining any buffered transactions for the same signer.
+func (memR *Reactor) processReceivedTx(cachedTx *types.CachedTx, key types.TxKey, txInfo mempool.TxInfo, src p2p.Peer) {
+	rsp, ok := memR.tryAddNewTx(cachedTx, key, txInfo, string(src.ID()))
+	if !ok {
+		return
+	}
+
 	memR.pendingSeen.remove(key)
 
+	var (
+		signerBytes []byte
+		sequence    uint64
+		execCode    uint32
+	)
+	if rsp != nil {
+		signerBytes = rsp.Address
+		sequence = rsp.Sequence
+		execCode = rsp.Code
+	}
+
 	if len(signerBytes) > 0 {
-		// Process any buffered transactions for this signer
 		memR.processReceivedBuffer(signerBytes)
-		// Request more pending transactions
 		memR.processPendingSeenForSigner(signerBytes)
 	}
 
 	if !memR.opts.ListenOnly && execCode == 0 {
-		// We broadcast only transactions that we deem valid and actually have in our mempool.
 		memR.broadcastSeenTx(key, signerBytes, sequence)
 	}
 }
@@ -610,57 +634,37 @@ func (memR *Reactor) processReceivedBuffer(signer []byte) {
 	for {
 		expectedSeq, haveExpected := memR.querySequenceFromApplication(signer)
 		if !haveExpected {
-			return
+			break
 		}
 
-		// Check if we have the next expected sequence buffered
 		buffered := memR.receivedBuffer.get(signer, expectedSeq)
 		if buffered == nil {
-			// No buffered tx for expected sequence, done
-			return
+			break
 		}
 
-		// Remove from buffer before processing
-		memR.receivedBuffer.remove(signer, expectedSeq)
+		memR.receivedBuffer.removeLowerSeqs(signer, expectedSeq)
 
 		memR.Logger.Info("processing buffered tx",
 			"sequence", expectedSeq,
 			"txKey", buffered.txKey)
 
-		// Process through CheckTx
-		rsp, err := memR.mempool.TryAddNewTx(buffered.tx, buffered.txKey, buffered.txInfo)
+		rsp, ok := memR.tryAddNewTx(buffered.tx, buffered.txKey, buffered.txInfo, buffered.peerID)
+		if !ok {
+			return
+		}
 
-		signerStr, execCode := "", uint32(0)
+		memR.pendingSeen.remove(buffered.txKey)
+
+		execCode := uint32(0)
 		if rsp != nil {
-			signerStr = string(rsp.Address)
 			execCode = rsp.Code
 		}
-
-		if err != nil {
-			if err == ErrTxInMempool {
-				schema.WriteMempoolAddResult(memR.traceClient, "", buffered.txKey[:], schema.AlreadyInMempool, err, signerStr, expectedSeq)
-			} else {
-				schema.WriteMempoolAddResult(memR.traceClient, "", buffered.txKey[:], schema.Rejected, err, signerStr, expectedSeq)
-				memR.Logger.Debug("Could not add buffered tx", "txKey", buffered.txKey, "err", err)
-				return
-			}
-		} else {
-			if execCode != 0 {
-				schema.WriteMempoolAddResult(memR.traceClient, "", buffered.txKey[:], schema.Rejected, fmt.Errorf("execution code: %d", execCode), signerStr, expectedSeq)
-			} else {
-				schema.WriteMempoolAddResult(memR.traceClient, "", buffered.txKey[:], schema.Added, nil, signerStr, expectedSeq)
-			}
-		}
-
-		// Clean up pending entry
-		memR.pendingSeen.remove(buffered.txKey)
 
 		if !memR.opts.ListenOnly && execCode == 0 {
 			memR.broadcastSeenTx(buffered.txKey, signer, expectedSeq)
 		}
-
-		// Continue loop to check for next buffered sequence
 	}
+	memR.receivedBuffer.cleanup()
 }
 
 // processPendingSeenForSigner tries to advance the pipeline of queued transactions for a signer.
@@ -711,7 +715,7 @@ func (memR *Reactor) processPendingSeenForSigner(signer []byte) {
 		}
 
 		// Check limits
-		if requested >= maxParallelSequenceRequests {
+		if requested >= maxLookaheadSize {
 			break
 		}
 

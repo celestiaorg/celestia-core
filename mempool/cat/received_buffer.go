@@ -13,7 +13,7 @@ const (
 	maxBufferedPerSigner = 64
 
 	// bufferEntryTTL is how long a buffered tx lives before expiry
-	bufferEntryTTL = 30 * time.Second
+	bufferEntryTTL = 60 * time.Second
 )
 
 // bufferedTx holds a transaction that arrived out-of-order, waiting to be processed
@@ -21,6 +21,7 @@ type bufferedTx struct {
 	tx       *types.CachedTx
 	txKey    types.TxKey
 	txInfo   mempool.TxInfo
+	peerID   string
 	sequence uint64
 	addedAt  time.Time
 }
@@ -43,7 +44,7 @@ func newReceivedTxBuffer() *receivedTxBuffer {
 
 // add stores a transaction in the buffer for later processing.
 // Returns false if the buffer is full for this signer or tx already exists.
-func (b *receivedTxBuffer) add(signer []byte, seq uint64, tx *types.CachedTx, txKey types.TxKey, txInfo mempool.TxInfo) bool {
+func (b *receivedTxBuffer) add(signer []byte, seq uint64, tx *types.CachedTx, txKey types.TxKey, txInfo mempool.TxInfo, peerID string) bool {
 	if len(signer) == 0 {
 		return false
 	}
@@ -72,6 +73,7 @@ func (b *receivedTxBuffer) add(signer []byte, seq uint64, tx *types.CachedTx, tx
 		tx:       tx,
 		txKey:    txKey,
 		txInfo:   txInfo,
+		peerID:   peerID,
 		sequence: seq,
 		addedAt:  time.Now(),
 	}
@@ -97,8 +99,8 @@ func (b *receivedTxBuffer) get(signer []byte, seq uint64) *bufferedTx {
 	return signerBuf[seq]
 }
 
-// remove deletes a buffered transaction
-func (b *receivedTxBuffer) remove(signer []byte, seq uint64) {
+// removeLowerSeqs deletes all buffered transactions with lower sequence
+func (b *receivedTxBuffer) removeLowerSeqs(signer []byte, seq uint64) {
 	if len(signer) == 0 {
 		return
 	}
@@ -111,8 +113,11 @@ func (b *receivedTxBuffer) remove(signer []byte, seq uint64) {
 	if !exists {
 		return
 	}
-
-	delete(signerBuf, seq)
+	for ent := range signerBuf {
+		if ent <= seq {
+			delete(signerBuf, ent)
+		}
+	}
 
 	// Clean up empty signer map
 	if len(signerBuf) == 0 {
@@ -164,20 +169,4 @@ func (b *receivedTxBuffer) signerKeys() [][]byte {
 		signers = append(signers, []byte(signerKey))
 	}
 	return signers
-}
-
-// signerSize returns number of buffered transactions for a specific signer
-func (b *receivedTxBuffer) signerSize(signer []byte) int {
-	if len(signer) == 0 {
-		return 0
-	}
-
-	b.mu.Lock()
-	defer b.mu.Unlock()
-
-	signerKey := string(signer)
-	if signerBuf, exists := b.buffers[signerKey]; exists {
-		return len(signerBuf)
-	}
-	return 0
 }
