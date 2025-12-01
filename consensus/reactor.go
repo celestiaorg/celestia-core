@@ -426,6 +426,7 @@ func (conR *Reactor) receive(e p2p.Envelope) error {
 				schema.Download,
 			)
 		case *BlockPartMessage:
+			fmt.Println("received block part from legacy reactor: ", msg.Height, " ", msg.Round, " ", msg.Part.Index)
 			ps.SetHasProposalBlockPart(msg.Height, msg.Round, int(msg.Part.Index))
 			conR.Metrics.BlockParts.With("peer_id", string(e.Src.ID())).Add(1)
 			schema.WriteBlockPart(conR.traceClient, msg.Height, msg.Round, msg.Part.Index, false, string(e.Src.ID()), schema.Download)

@@ -281,6 +281,7 @@ func (memR *Reactor) Receive(e p2p.Envelope) {
 				// tx (we'd have already done it if we were requesting the tx).
 				memR.mempool.PeerHasTx(peerID, key)
 				memR.Logger.Trace("received new trasaction", "peerID", peerID, "txKey", key)
+				fmt.Println("received transaction we didn't ask")
 			}
 			rsp, err := memR.mempool.TryAddNewTx(ntx.ToCachedTx(), key, txInfo)
 
