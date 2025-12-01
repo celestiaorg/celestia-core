@@ -138,3 +138,45 @@ func TestRequestSchedulerConcurrencyAddsAndReads(t *testing.T) {
 		require.Zero(t, requests.ForTx(key))
 	}
 }
+
+func TestRequestSchedulerCountForPeer(t *testing.T) {
+	requests := newRequestScheduler(time.Minute, time.Minute)
+	t.Cleanup(requests.Close)
+
+	var peerA uint16 = 1
+	var peerB uint16 = 2
+
+	// Initially zero
+	require.Equal(t, 0, requests.CountForPeer(peerA))
+	require.Equal(t, 0, requests.CountForPeer(peerB))
+
+	// Add requests to peerA
+	for i := 0; i < 5; i++ {
+		tx := types.Tx(fmt.Sprintf("tx-a-%d", i))
+		require.True(t, requests.Add(tx.Key(), peerA, nil))
+	}
+
+	require.Equal(t, 5, requests.CountForPeer(peerA))
+	require.Equal(t, 0, requests.CountForPeer(peerB))
+
+	// Add requests to peerB
+	for i := 0; i < 3; i++ {
+		tx := types.Tx(fmt.Sprintf("tx-b-%d", i))
+		require.True(t, requests.Add(tx.Key(), peerB, nil))
+	}
+
+	require.Equal(t, 5, requests.CountForPeer(peerA))
+	require.Equal(t, 3, requests.CountForPeer(peerB))
+
+	// Mark some as received
+	tx := types.Tx("tx-a-0")
+	requests.MarkReceived(peerA, tx.Key())
+
+	require.Equal(t, 4, requests.CountForPeer(peerA))
+
+	// Clear all from peerB
+	requests.ClearAllRequestsFrom(peerB)
+
+	require.Equal(t, 4, requests.CountForPeer(peerA))
+	require.Equal(t, 0, requests.CountForPeer(peerB))
+}
