@@ -339,21 +339,11 @@ func (txmp *TxPool) TryAddNewTx(tx *types.CachedTx, key types.TxKey, txInfo memp
 		return nil, err
 	}
 
-	lockStart := time.Now()
 	txmp.mtx.Lock()
-	lockWait := time.Since(lockStart)
 	defer txmp.mtx.Unlock()
 
 	// Invoke an ABCI CheckTx for this transaction.
-	checkTxStart := time.Now()
 	rsp, err := txmp.proxyAppConn.CheckTx(context.Background(), &abci.RequestCheckTx{Tx: tx.Tx})
-	checkTxElapsed := time.Since(checkTxStart)
-	if lockWait > 10*time.Millisecond || checkTxElapsed > 50*time.Millisecond {
-		txmp.logger.Info("TryAddNewTx timing",
-			"lockWait", lockWait,
-			"checkTxElapsed", checkTxElapsed,
-			"txKey", key)
-	}
 	if err != nil {
 		return rsp, err
 	}

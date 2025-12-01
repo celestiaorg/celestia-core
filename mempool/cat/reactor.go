@@ -624,8 +624,8 @@ func (memR *Reactor) processReceivedBuffer(signer []byte) {
 }
 
 // processPendingSeenForSigner tries to advance the pipeline of queued transactions for a signer.
-// It requests consecutive sequences in parallel from different peers, buffering out-of-order
-// arrivals for later processing. This allows fast catch-up even when tx sources are distributed.
+// It requests consecutive sequences in parallel from different peers whenever we have seen a consecutive sequence numbers,
+// buffering out-of-order arrivals for later processing. This allows fast catch-up even when tx sources are distributed.
 func (memR *Reactor) processPendingSeenForSigner(signer []byte) {
 	if len(signer) == 0 {
 		return
@@ -642,14 +642,6 @@ func (memR *Reactor) processPendingSeenForSigner(signer []byte) {
 		return
 	}
 
-	// Log the state for debugging
-	if len(entries) > 0 {
-		memR.Logger.Info("processPendingSeenForSigner",
-			"expectedSeq", expectedSeq,
-			"numEntries", len(entries),
-			"firstEntrySeq", entries[0].sequence)
-	}
-
 	// Clean up old entries and request consecutive sequences in parallel
 	nextSeq := expectedSeq
 	requested := 0
@@ -661,12 +653,7 @@ func (memR *Reactor) processPendingSeenForSigner(signer []byte) {
 			continue
 		}
 
-		// Gap detected - stop requesting beyond the gap
 		if entry.sequence != nextSeq {
-			memR.Logger.Info("gap detected in pending entries",
-				"expectedSeq", expectedSeq,
-				"nextSeq", nextSeq,
-				"entrySeq", entry.sequence)
 			break
 		}
 
@@ -691,16 +678,13 @@ func (memR *Reactor) processPendingSeenForSigner(signer []byte) {
 
 		// Request from first available peer
 		if memR.tryRequestQueuedTx(entry) {
-			memR.Logger.Info("requested tx in parallel",
-				"sequence", entry.sequence,
-				"txKey", entry.txKey)
 			requested++
 		}
 		nextSeq++
 	}
 
 	if requested > 0 {
-		memR.Logger.Info("parallel requests sent", "count", requested)
+		memR.Logger.Trace("parallel requests sent", "count", requested)
 	}
 }
 
