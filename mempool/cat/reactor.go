@@ -248,7 +248,7 @@ func (memR *Reactor) RemovePeer(peer p2p.Peer, reason interface{}) {
 	memR.mempool.seenByPeersSet.RemovePeer(peerID)
 	memR.pendingSeen.removePeer(peerID)
 
-	// removeLowerSeqs and rerequest all pending outbound requests to that peer since we know
+	// remove and rerequest all pending outbound requests to that peer since we know
 	// we won't receive any responses from them.
 	outboundRequests := memR.requests.ClearAllRequestsFrom(peerID)
 	for key := range outboundRequests {
@@ -687,8 +687,7 @@ func (memR *Reactor) processPendingSeenForSigner(signer []byte) {
 	}
 
 	if requested > 0 {
-		// TODO: remove after debugging
-		memR.Logger.Info("parallel requests sent", "count", requested)
+		memR.Logger.Trace("parallel requests sent", "count", requested)
 	}
 }
 
@@ -754,13 +753,8 @@ func (memR *Reactor) refreshPendingSeenQueues() {
 }
 
 func (memR *Reactor) querySequenceFromApplication(signer []byte) (uint64, bool) {
-	start := time.Now()
 	ctx := context.Background()
 	resp, err := memR.mempool.proxyAppConn.QuerySequence(ctx, &abci.RequestQuerySequence{Signer: signer})
-	elapsed := time.Since(start)
-	if elapsed > 10*time.Millisecond {
-		memR.Logger.Info("SLOW querySequenceFromApplication", "elapsed", elapsed, "signer", fmt.Sprintf("%X", signer))
-	}
 	if err != nil || resp == nil {
 		return 0, false
 	}

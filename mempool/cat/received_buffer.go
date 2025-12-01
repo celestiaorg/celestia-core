@@ -23,7 +23,7 @@ type bufferedTx struct {
 // once earlier sequences complete.
 type receivedTxBuffer struct {
 	mu sync.Mutex
-	// signer (as string) -> sequence -> buffered tx
+	// buffers contains mapping: signer (as string) -> sequence -> buffered tx
 	buffers map[string]map[uint64]*bufferedTx
 }
 
