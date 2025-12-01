@@ -177,20 +177,11 @@ conR:
 // GetChannels implements Reactor
 func (conR *Reactor) GetChannels() []*p2p.ChannelDescriptor {
 	// TODO optimize
-	return []*p2p.ChannelDescriptor{
+	channels := []*p2p.ChannelDescriptor{
 		{
 			ID:                  StateChannel,
 			Priority:            230,
 			SendQueueCapacity:   200,
-			RecvMessageCapacity: maxMsgSize,
-			MessageType:         &cmtcons.Message{},
-		},
-		{
-			ID: DataChannel, // maybe split between gossiping current block and catchup stuff
-			// once we gossip the whole block there's nothing left to send until next height or round
-			Priority:            10,
-			SendQueueCapacity:   100,
-			RecvBufferCapacity:  50 * 4096,
 			RecvMessageCapacity: maxMsgSize,
 			MessageType:         &cmtcons.Message{},
 		},
@@ -211,6 +202,20 @@ func (conR *Reactor) GetChannels() []*p2p.ChannelDescriptor {
 			MessageType:         &cmtcons.Message{},
 		},
 	}
+
+	if conR.IsGossipDataEnabled() {
+		channels = append(channels, &p2p.ChannelDescriptor{
+			ID: DataChannel, // maybe split between gossiping current block and catchup stuff
+			// once we gossip the whole block there's nothing left to send until next height or round
+			Priority:            10,
+			SendQueueCapacity:   100,
+			RecvBufferCapacity:  50 * 4096,
+			RecvMessageCapacity: maxMsgSize,
+			MessageType:         &cmtcons.Message{},
+		})
+	}
+
+	return channels
 }
 
 // InitPeer implements Reactor by creating a state for the peer.
@@ -233,7 +238,12 @@ func (conR *Reactor) AddPeer(peer p2p.Peer) {
 	}
 	// Begin routines for this peer.
 	if conR.IsGossipDataEnabled() {
-		go conR.gossipDataRoutine(peer, peerState)
+		// Only start gossip data routine if the peer supports the DataChannel
+		if nodeInfo, ok := peer.NodeInfo().(p2p.DefaultNodeInfo); ok {
+			if nodeInfo.HasChannel(DataChannel) {
+				go conR.gossipDataRoutine(peer, peerState)
+			}
+		}
 	}
 	go conR.gossipVotesRoutine(peer, peerState)
 	go conR.queryMaj23Routine(peer, peerState)
