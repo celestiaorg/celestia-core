@@ -45,6 +45,17 @@ const (
 	// maxReceivedBufferSize limits how far ahead of the expected sequence we will
 	// request/buffer transactions. Txs with sequence > expected + maxReceivedBufferSize are rejected.
 	maxReceivedBufferSize = 30
+
+	// maxRequestsPerPeer limits the number of concurrent outstanding requests to a single peer.
+	// When a peer reaches this limit, requests will be sent to alternative peers instead.
+	maxRequestsPerPeer = 30
+
+	// maxSignerLength is the maximum allowed length for a signer field in SeenTx messages.
+	maxSignerLength = 64
+)
+
+var (
+	errSignerTooLong = errors.New("signer field exceeds maximum length")
 )
 
 // Reactor handles mempool tx broadcasting logic amongst peers. For the main
@@ -328,6 +339,11 @@ func (memR *Reactor) Receive(e p2p.Envelope) {
 			memR.Switch.StopPeerForError(e.Src, err, memR.String())
 			return
 		}
+		if len(msg.Signer) > maxSignerLength {
+			memR.Logger.Error("peer sent SeenTx with signer too long", "len", len(msg.Signer))
+			memR.Switch.StopPeerForError(e.Src, errSignerTooLong, memR.String())
+			return
+		}
 		schema.WriteMempoolPeerState(
 			memR.traceClient,
 			string(e.Src.ID()),
@@ -378,6 +394,7 @@ func (memR *Reactor) Receive(e p2p.Envelope) {
 		case msg.Sequence == expectedSeq:
 			// fall through and request immediately for the expected sequence
 		case msg.Sequence > expectedSeq:
+			// TODO: add per-peer limits or something similar to pendingSeen to prevent overflowing
 			memR.pendingSeen.add(msg.Signer, txKey, msg.Sequence, peerID)
 			return
 		default:
@@ -546,7 +563,6 @@ func (memR *Reactor) requestTx(txKey types.TxKey, peer p2p.Peer) bool {
 // Returns the response and true if processing should continue (success or already in mempool).
 func (memR *Reactor) tryAddNewTx(cachedTx *types.CachedTx, key types.TxKey, txInfo mempool.TxInfo, peerID string) (*abci.ResponseCheckTx, error) {
 	rsp, err := memR.mempool.TryAddNewTx(cachedTx, key, txInfo)
-
 	if err != nil {
 		signer, sequence := "", uint64(0)
 		if rsp != nil {
@@ -692,14 +708,18 @@ func (memR *Reactor) processPendingSeenForSigner(signer []byte) {
 }
 
 func (memR *Reactor) tryRequestQueuedTx(entry *pendingSeenTx) bool {
-	peerIDs := entry.peerIDs()
-	if len(peerIDs) > 0 {
-		peer := memR.ids.GetPeer(peerIDs[0])
+	// Try each peer that has seen this tx, skipping those at capacity
+	for _, peerID := range entry.peerIDs() {
+		if memR.requests.CountForPeer(peerID) >= maxRequestsPerPeer {
+			continue
+		}
+		peer := memR.ids.GetPeer(peerID)
 		if peer != nil && memR.requestTx(entry.txKey, peer) {
 			return true
 		}
 	}
 
+	// No known peer available, try to find a new one
 	memR.findNewPeerToRequestTx(entry.txKey)
 	return memR.requests.ForTx(entry.txKey) != 0
 }
@@ -778,6 +798,9 @@ func (memR *Reactor) findNewPeerToRequestTx(txKey types.TxKey) {
 	seenMap := memR.mempool.seenByPeersSet.Get(txKey)
 	for peerID := range seenMap {
 		if memR.requests.Has(peerID, txKey) {
+			continue
+		}
+		if memR.requests.CountForPeer(peerID) >= maxRequestsPerPeer {
 			continue
 		}
 		peer := memR.ids.GetPeer(peerID)

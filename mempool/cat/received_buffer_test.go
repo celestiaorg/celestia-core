@@ -98,21 +98,93 @@ func TestReceivedTxBuffer(t *testing.T) {
 	t.Run("respects max buffer size per signer", func(t *testing.T) {
 		buf := newReceivedTxBuffer()
 
-		// Fill buffer to max
+		// Fill buffer to max for signer using different peers to avoid per-peer limit
 		for i := uint64(0); i < maxReceivedBufferSize; i++ {
 			tx, key := makeTx("tx" + string(rune(i)))
-			added := buf.add(signer1, i+100, tx, key, mempool.TxInfo{}, "peer1")
+			peerID := "peer" + string(rune(i%10)) // rotate through 10 peers
+			added := buf.add(signer1, i+100, tx, key, mempool.TxInfo{}, peerID)
 			require.True(t, added, "should add tx at sequence %d", i+100)
 		}
 
-		// Next add should fail
+		// Next add should fail (signer buffer full)
 		tx, key := makeTx("overflow")
-		added := buf.add(signer1, 200, tx, key, mempool.TxInfo{}, "peer1")
+		added := buf.add(signer1, 200, tx, key, mempool.TxInfo{}, "peer-new")
 		require.False(t, added)
 
 		// But adding for a different signer should work
-		added = buf.add(signer2, 100, tx, key, mempool.TxInfo{}, "peer1")
+		added = buf.add(signer2, 100, tx, key, mempool.TxInfo{}, "peer-new")
 		require.True(t, added)
+	})
+
+	t.Run("respects max buffer size per peer", func(t *testing.T) {
+		buf := newReceivedTxBuffer()
+
+		// Fill buffer to max for peer1 using different signers
+		for i := uint64(0); i < uint64(maxRequestsPerPeer); i++ {
+			tx, key := makeTx("tx" + string(rune(i)))
+			signer := []byte("signer" + string(rune(i)))
+			added := buf.add(signer, i+100, tx, key, mempool.TxInfo{}, "peer1")
+			require.True(t, added, "should add tx at sequence %d", i+100)
+		}
+
+		require.Equal(t, maxRequestsPerPeer, buf.countForPeer("peer1"))
+
+		// Next add from peer1 should fail
+		tx, key := makeTx("overflow")
+		newSigner := []byte("new-signer")
+		added := buf.add(newSigner, 200, tx, key, mempool.TxInfo{}, "peer1")
+		require.False(t, added)
+
+		// But adding from a different peer should work
+		added = buf.add(newSigner, 200, tx, key, mempool.TxInfo{}, "peer2")
+		require.True(t, added)
+		require.Equal(t, 1, buf.countForPeer("peer2"))
+	})
+
+	t.Run("peer count decrements on removeLowerSeqs", func(t *testing.T) {
+		buf := newReceivedTxBuffer()
+
+		// Add 5 txs from peer1
+		for i := uint64(1); i <= 5; i++ {
+			tx, key := makeTx("tx" + string(rune(i)))
+			buf.add(signer1, i, tx, key, mempool.TxInfo{}, "peer1")
+		}
+
+		require.Equal(t, 5, buf.countForPeer("peer1"))
+
+		// Remove sequences <= 3
+		buf.removeLowerSeqs(signer1, 3)
+
+		// Only 2 txs should remain (seq 4 and 5)
+		require.Equal(t, 2, buf.countForPeer("peer1"))
+
+		// Remove remaining
+		buf.removeLowerSeqs(signer1, 10)
+
+		// Peer count should be 0 (and cleaned up)
+		require.Equal(t, 0, buf.countForPeer("peer1"))
+	})
+
+	t.Run("peer count tracks multiple peers correctly", func(t *testing.T) {
+		buf := newReceivedTxBuffer()
+
+		// Add txs from different peers
+		tx1, key1 := makeTx("tx1")
+		tx2, key2 := makeTx("tx2")
+		tx3, key3 := makeTx("tx3")
+
+		buf.add(signer1, 1, tx1, key1, mempool.TxInfo{}, "peer1")
+		buf.add(signer1, 2, tx2, key2, mempool.TxInfo{}, "peer2")
+		buf.add(signer1, 3, tx3, key3, mempool.TxInfo{}, "peer1")
+
+		require.Equal(t, 2, buf.countForPeer("peer1"))
+		require.Equal(t, 1, buf.countForPeer("peer2"))
+
+		// Remove seq 1 (from peer1)
+		buf.removeLowerSeqs(signer1, 1)
+
+		require.Equal(t, 1, buf.countForPeer("peer1"))
+		require.Equal(t, 1, buf.countForPeer("peer2"))
 	})
 
 	t.Run("removeLowerSeqs removes transactions", func(t *testing.T) {

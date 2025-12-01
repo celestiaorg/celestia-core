@@ -25,17 +25,20 @@ type receivedTxBuffer struct {
 	mu sync.Mutex
 	// buffers contains mapping: signer (as string) -> sequence -> buffered tx
 	buffers map[string]map[uint64]*bufferedTx
+	// countByPeer tracks how many transactions are buffered from each peer
+	countByPeer map[string]int
 }
 
 // newReceivedTxBuffer creates a new buffer for out-of-order transactions
 func newReceivedTxBuffer() *receivedTxBuffer {
 	return &receivedTxBuffer{
-		buffers: make(map[string]map[uint64]*bufferedTx),
+		buffers:     make(map[string]map[uint64]*bufferedTx),
+		countByPeer: make(map[string]int),
 	}
 }
 
 // add stores a transaction in the buffer for later processing.
-// Returns false if the buffer is full for this signer or tx already exists.
+// Returns false if the buffer is full for this signer, peer is at capacity, or tx already exists.
 func (b *receivedTxBuffer) add(signer []byte, seq uint64, tx *types.CachedTx, txKey types.TxKey, txInfo mempool.TxInfo, peerID string) bool {
 	if len(signer) == 0 {
 		return false
@@ -43,6 +46,11 @@ func (b *receivedTxBuffer) add(signer []byte, seq uint64, tx *types.CachedTx, tx
 
 	b.mu.Lock()
 	defer b.mu.Unlock()
+
+	// Check buffer limit per peer
+	if b.countByPeer[peerID] >= maxRequestsPerPeer {
+		return false
+	}
 
 	signerKey := string(signer)
 	signerBuf, exists := b.buffers[signerKey]
@@ -69,6 +77,7 @@ func (b *receivedTxBuffer) add(signer []byte, seq uint64, tx *types.CachedTx, tx
 		sequence: seq,
 		addedAt:  time.Now(),
 	}
+	b.countByPeer[peerID]++
 	return true
 }
 
@@ -90,7 +99,7 @@ func (b *receivedTxBuffer) get(signer []byte, seq uint64) *bufferedTx {
 	return signerBuf[seq]
 }
 
-// removeLowerSeqs deletes all buffered transactions with lower sequence
+// removeLowerSeqs deletes all buffered transactions with sequence <= seq
 func (b *receivedTxBuffer) removeLowerSeqs(signer []byte, seq uint64) {
 	if len(signer) == 0 {
 		return
@@ -104,9 +113,16 @@ func (b *receivedTxBuffer) removeLowerSeqs(signer []byte, seq uint64) {
 	if !exists {
 		return
 	}
-	for ent := range signerBuf {
-		if ent <= seq {
-			delete(signerBuf, ent)
+	for entSeq, entry := range signerBuf {
+		if entSeq <= seq {
+			// Decrement peer count before removing
+			if entry.peerID != "" {
+				b.countByPeer[entry.peerID]--
+				if b.countByPeer[entry.peerID] <= 0 {
+					delete(b.countByPeer, entry.peerID)
+				}
+			}
+			delete(signerBuf, entSeq)
 		}
 	}
 
@@ -130,4 +146,12 @@ func (b *receivedTxBuffer) signerKeys() [][]byte {
 		signers = append(signers, []byte(signerKey))
 	}
 	return signers
+}
+
+// countForPeer returns the number of buffered transactions from a specific peer
+func (b *receivedTxBuffer) countForPeer(peerID string) int {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+
+	return b.countByPeer[peerID]
 }

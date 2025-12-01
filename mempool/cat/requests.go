@@ -105,6 +105,14 @@ func (r *requestScheduler) Has(peer uint16, key types.TxKey) bool {
 	return ok
 }
 
+// CountForPeer returns the number of active requests to a specific peer.
+func (r *requestScheduler) CountForPeer(peer uint16) int {
+	r.mtx.Lock()
+	defer r.mtx.Unlock()
+
+	return len(r.requestsByPeer[peer])
+}
+
 func (r *requestScheduler) ClearAllRequestsFrom(peer uint16) requestSet {
 	r.mtx.Lock()
 	defer r.mtx.Unlock()
