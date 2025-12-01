@@ -21,10 +21,3 @@ This document lists all the P2P channel identifiers used by the various reactors
 | SnapshotChannel | 0x60 | 96 | State Sync | `statesync/reactor.go:21` | State sync snapshot messages |
 | ChunkChannel | 0x61 | 97 | State Sync | `statesync/reactor.go:23` | State sync chunk messages |
 
-## Notes
-
-- Channel values are defined as `byte` constants in their respective reactor files
-- The mempool data channel you mentioned is actually 0x31 (49 in decimal), not 40 or 80
-- There are two different `DataChannel` constants: one for consensus (0x21) and one for propagation (0x50)
-- The CAT (Content Addressable Transaction) mempool uses separate channels for data and wants
-- All channels use hexadecimal byte values to avoid conflicts
