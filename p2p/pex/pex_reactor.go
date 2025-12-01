@@ -3,12 +3,14 @@ package pex
 import (
 	"errors"
 	"fmt"
+	"net"
 	"sync"
 	"time"
 
 	"github.com/cometbft/cometbft/libs/cmap"
 	cmtrand "github.com/cometbft/cometbft/libs/rand"
 	"github.com/cometbft/cometbft/libs/service"
+	"github.com/cometbft/cometbft/libs/trace/schema"
 	"github.com/cometbft/cometbft/p2p"
 	"github.com/cometbft/cometbft/p2p/conn"
 	tmp2p "github.com/cometbft/cometbft/proto/tendermint/p2p"
@@ -119,6 +121,14 @@ type ReactorConfig struct {
 	// disconnecting.
 	SeedDisconnectWaitPeriod time.Duration
 
+	// CrawlerMode enables aggressive peer discovery mode where the node
+	// acts as a normal node but rotates peers periodically
+	CrawlerMode bool
+
+	// CrawlerPeerRotationPeriod is how long to keep a non-persistent peer
+	// connected before rotating them out (only applies when CrawlerMode is true)
+	CrawlerPeerRotationPeriod time.Duration
+
 	// Maximum pause when redialing a persistent peer (if zero, exponential backoff is used)
 	PersistentPeersMaxDialPeriod time.Duration
 
@@ -165,11 +175,21 @@ func (r *Reactor) OnStart() error {
 
 	// Check if this node should run
 	// in seed/crawler mode
+	if r.config.SeedMode && r.config.CrawlerMode {
+		return errors.New("cannot enable both SeedMode and CrawlerMode")
+	}
+
 	if r.config.SeedMode {
 		go r.crawlPeersRoutine()
 	} else {
 		go r.ensurePeersRoutine()
 	}
+
+	// If crawler mode is enabled, start the peer rotation routine
+	if r.config.CrawlerMode {
+		go r.crawlerRotatePeersRoutine()
+	}
+
 	return nil
 }
 
@@ -196,6 +216,11 @@ func (r *Reactor) GetChannels() []*conn.ChannelDescriptor {
 // AddPeer implements Reactor by adding peer to the address book (if inbound)
 // or by requesting more addresses (if outbound).
 func (r *Reactor) AddPeer(p Peer) {
+	// Trace peer in crawler mode
+	if r.config.CrawlerMode {
+		r.tracePeer(p)
+	}
+
 	if p.IsOutbound() {
 		// For outbound peers, the address is already in the books -
 		// either via DialPeersAsync or r.Receive.
@@ -736,6 +761,129 @@ func (r *Reactor) attemptDisconnects() {
 		}
 		r.Switch.StopPeerGracefully(peer, r.String())
 	}
+}
+
+// crawlerRotatePeersRoutine periodically rotates peers in crawler mode
+func (r *Reactor) crawlerRotatePeersRoutine() {
+	ticker := time.NewTicker(crawlPeerPeriod) // Use same 30 second interval as seed mode
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ticker.C:
+			r.attemptCrawlerDisconnects()
+		case <-r.Quit():
+			return
+		}
+	}
+}
+
+// attemptCrawlerDisconnects checks if we've been with each peer long enough
+// to rotate them out. Similar to attemptDisconnects but uses CrawlerPeerRotationPeriod
+// instead of SeedDisconnectWaitPeriod
+func (r *Reactor) attemptCrawlerDisconnects() {
+	rotationPeriod := r.config.CrawlerPeerRotationPeriod
+	if rotationPeriod == 0 {
+		rotationPeriod = 5 * time.Minute // Default fallback
+	}
+
+	peers := r.Switch.Peers().List()
+	r.Logger.Debug("Crawler mode: checking peers for rotation",
+		"num_peers", len(peers),
+		"rotation_period", rotationPeriod,
+	)
+
+	disconnected := 0
+	for _, peer := range peers {
+		// Never disconnect persistent peers
+		if peer.IsPersistent() {
+			continue
+		}
+
+		// Check if peer has been connected long enough to rotate
+		if peer.Status().Duration < rotationPeriod {
+			continue
+		}
+
+		r.Logger.Info("Crawler mode: rotating out peer",
+			"peer", peer.ID(),
+			"duration", peer.Status().Duration,
+		)
+
+		r.Switch.StopPeerGracefully(peer, r.String())
+		disconnected++
+	}
+
+	if disconnected > 0 {
+		r.Logger.Info("Crawler mode: rotated peers",
+			"disconnected", disconnected,
+			"remaining", len(peers)-disconnected,
+		)
+	}
+}
+
+// tracePeer traces a peer's information
+func (r *Reactor) tracePeer(p Peer) {
+	peerID := p.ID()
+
+	// Get node info
+	nodeInfo, ok := p.NodeInfo().(p2p.DefaultNodeInfo)
+	if !ok {
+		r.Logger.Debug("Crawler mode: peer has non-default NodeInfo", "peer", peerID)
+		return
+	}
+
+	// Extract IP and port from remote address
+	ip, port := extractIPAndPort(p.RemoteAddr().String())
+
+	// Convert channels from []byte to []int
+	channels := make([]int, len(nodeInfo.Channels))
+	for i, ch := range nodeInfo.Channels {
+		channels[i] = int(ch)
+	}
+
+	isLegacy := schema.IsLegacyPropagation(channels)
+	hasCAT := schema.HasCAT(channels)
+
+	// Trace the peer
+	r.Logger.Info("Crawler mode: discovered peer",
+		"peer_id", peerID,
+		"moniker", nodeInfo.Moniker,
+		"version", nodeInfo.Version,
+		"chain_id", nodeInfo.Network,
+		"ip", ip,
+		"port", port,
+		"channels", channels,
+		"is_legacy_propagation", isLegacy,
+		"has_cat", hasCAT,
+	)
+
+	// Write trace
+	schema.WriteCrawlerPeer(
+		r.GetTraceClient(),
+		string(peerID),
+		ip,
+		port,
+		nodeInfo.Moniker,
+		nodeInfo.Version,
+		nodeInfo.Network,
+		channels,
+		isLegacy,
+		hasCAT,
+	)
+}
+
+// extractIPAndPort extracts IP and port from an address string
+func extractIPAndPort(addr string) (string, int) {
+	// addr format is typically "ip:port"
+	host, portStr, err := net.SplitHostPort(addr)
+	if err != nil {
+		return addr, 0
+	}
+
+	var port int
+	fmt.Sscanf(portStr, "%d", &port)
+	return host, port
 }
 
 func markAddrInBookBasedOnErr(addr *p2p.NetAddress, book AddrBook, err error) {

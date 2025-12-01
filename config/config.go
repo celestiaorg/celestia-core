@@ -655,6 +655,30 @@ type P2PConfig struct {
 	// Does not work if the peer-exchange reactor is disabled.
 	SeedMode bool `mapstructure:"seed_mode"`
 
+	// CrawlerMode enables aggressive peer discovery mode where the node:
+	// - Acts as a normal node (participates in all protocols)
+	// - Accepts many inbound connections (respects MaxNumInboundPeers)
+	// - Rotates non-persistent peers periodically based on CrawlerPeerRotationPeriod
+	// - Always makes room for new peers by disconnecting old ones
+	//
+	// This is useful for network analysis and monitoring while still being a
+	// fully functional node. Unlike SeedMode, crawler mode participates in
+	// consensus, mempool, and other protocols.
+	//
+	// Does not work if the peer-exchange reactor is disabled.
+	// Cannot be enabled together with SeedMode.
+	CrawlerMode bool `mapstructure:"crawler_mode"`
+
+	// CrawlerPeerRotationPeriod is how long to keep a non-persistent peer
+	// connected before rotating them out. Only applies when CrawlerMode is true.
+	//
+	// Lower values mean faster peer discovery but more connection churn.
+	// Higher values mean slower discovery but more stable connections.
+	//
+	// Default: 5 minutes
+	// Recommended range: 1m - 30m
+	CrawlerPeerRotationPeriod time.Duration `mapstructure:"crawler_peer_rotation_period"`
+
 	// Comma separated list of peer IDs to keep private (will not be gossiped to
 	// other peers)
 	PrivatePeerIDs string `mapstructure:"private_peer_ids"`
@@ -690,6 +714,8 @@ func DefaultP2PConfig() *P2PConfig {
 		RecvRate:                     5120000, // 5 mB/s
 		PexReactor:                   true,
 		SeedMode:                     false,
+		CrawlerMode:                  true,
+		CrawlerPeerRotationPeriod:    1 * time.Minute,
 		AllowDuplicateIP:             false,
 		HandshakeTimeout:             20 * time.Second,
 		DialTimeout:                  3 * time.Second,

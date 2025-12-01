@@ -542,7 +542,7 @@ func createAddrBookAndSetOnSwitch(config *cfg.Config, sw *p2p.Switch,
 }
 
 func createPEXReactorAndAddToSwitch(addrBook pex.AddrBook, config *cfg.Config,
-	sw *p2p.Switch, logger log.Logger,
+	sw *p2p.Switch, logger log.Logger, tracer trace.Tracer,
 ) *pex.Reactor {
 	// TODO persistent peers ? so we can have their DNS addrs saved
 	pexReactor := pex.NewReactor(addrBook,
@@ -555,9 +555,12 @@ func createPEXReactorAndAddToSwitch(addrBook pex.AddrBook, config *cfg.Config,
 			// from the live network.
 			// https://github.com/tendermint/tendermint/issues/3523
 			SeedDisconnectWaitPeriod:     28 * time.Hour,
+			CrawlerMode:                  config.P2P.CrawlerMode,
+			CrawlerPeerRotationPeriod:    config.P2P.CrawlerPeerRotationPeriod,
 			PersistentPeersMaxDialPeriod: config.P2P.PersistentPeersMaxDialPeriod,
 		})
 	pexReactor.SetLogger(logger.With("module", "pex"))
+	pexReactor.SetTraceClient(tracer)
 	sw.AddReactor("PEX", pexReactor)
 	return pexReactor
 }

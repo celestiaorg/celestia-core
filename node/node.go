@@ -538,7 +538,7 @@ func NewNodeWithContext(ctx context.Context,
 	// Note we currently use the addrBook regardless at least for AddOurAddress
 	var pexReactor *pex.Reactor
 	if config.P2P.PexReactor {
-		pexReactor = createPEXReactorAndAddToSwitch(addrBook, config, sw, logger)
+		pexReactor = createPEXReactorAndAddToSwitch(addrBook, config, sw, logger, tracer)
 	}
 
 	// Add private IDs to addrbook to block those peers being added

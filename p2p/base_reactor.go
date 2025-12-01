@@ -161,6 +161,11 @@ func (br *BaseReactor) SetTraceClient(traceClient trace.Tracer) {
 	br.traceClient = traceClient
 }
 
+// GetTraceClient returns the tracing client.
+func (br *BaseReactor) GetTraceClient() trace.Tracer {
+	return br.traceClient
+}
+
 // WithQueueingFunc sets the queuing function to use when receiving a message.
 func WithQueueingFunc(queuingFunc func(UnprocessedEnvelope)) ReactorOptions {
 	return func(br *BaseReactor) {
