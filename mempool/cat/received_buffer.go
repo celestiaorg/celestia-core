@@ -8,15 +8,7 @@ import (
 	"github.com/cometbft/cometbft/types"
 )
 
-const (
-	// maxBufferedPerSigner limits buffered txs per signer to prevent memory attacks
-	maxBufferedPerSigner = 64
-
-	// bufferEntryTTL is how long a buffered tx lives before expiry
-	bufferEntryTTL = 60 * time.Second
-)
-
-// bufferedTx holds a transaction that arrived out-of-order, waiting to be processed
+// bufferedTx holds a transaction that are requested out-of-order within certain bounds, waiting to be processed
 type bufferedTx struct {
 	tx       *types.CachedTx
 	txKey    types.TxKey
@@ -26,7 +18,7 @@ type bufferedTx struct {
 	addedAt  time.Time
 }
 
-// receivedTxBuffer holds transactions that arrived out-of-order.
+// receivedTxBuffer holds transactions that are requested out-of-order.
 // Transactions are buffered by (signer, sequence) and processed in order
 // once earlier sequences complete.
 type receivedTxBuffer struct {
@@ -65,7 +57,7 @@ func (b *receivedTxBuffer) add(signer []byte, seq uint64, tx *types.CachedTx, tx
 	}
 
 	// Check buffer limit per signer
-	if len(signerBuf) >= maxBufferedPerSigner {
+	if len(signerBuf) >= maxReceivedBufferSize {
 		return false
 	}
 
@@ -90,8 +82,7 @@ func (b *receivedTxBuffer) get(signer []byte, seq uint64) *bufferedTx {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 
-	signerKey := string(signer)
-	signerBuf, exists := b.buffers[signerKey]
+	signerBuf, exists := b.buffers[string(signer)]
 	if !exists {
 		return nil
 	}
@@ -123,36 +114,6 @@ func (b *receivedTxBuffer) removeLowerSeqs(signer []byte, seq uint64) {
 	if len(signerBuf) == 0 {
 		delete(b.buffers, signerKey)
 	}
-}
-
-// cleanup removes expired entries from all buffers
-func (b *receivedTxBuffer) cleanup() {
-	b.mu.Lock()
-	defer b.mu.Unlock()
-
-	now := time.Now()
-	for signerKey, signerBuf := range b.buffers {
-		for seq, entry := range signerBuf {
-			if now.Sub(entry.addedAt) > bufferEntryTTL {
-				delete(signerBuf, seq)
-			}
-		}
-		if len(signerBuf) == 0 {
-			delete(b.buffers, signerKey)
-		}
-	}
-}
-
-// size returns total number of buffered transactions across all signers
-func (b *receivedTxBuffer) size() int {
-	b.mu.Lock()
-	defer b.mu.Unlock()
-
-	total := 0
-	for _, signerBuf := range b.buffers {
-		total += len(signerBuf)
-	}
-	return total
 }
 
 // signerKeys returns all signers that have buffered transactions

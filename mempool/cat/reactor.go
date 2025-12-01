@@ -40,9 +40,9 @@ const (
 	// maxSeenTxBroadcast defines the maximum number of peers to which a SeenTx message should be broadcasted.
 	maxSeenTxBroadcast = 15
 
-	// maxLookaheadSize limits how far ahead of the expected sequence we will
-	// request/buffer transactions. Txs with sequence > expected + maxLookaheadSize are rejected.
-	maxLookaheadSize = 30
+	// maxReceivedBufferSize limits how far ahead of the expected sequence we will
+	// request/buffer transactions. Txs with sequence > expected + maxReceivedBufferSize are rejected.
+	maxReceivedBufferSize = 30
 )
 
 // Reactor handles mempool tx broadcasting logic amongst peers. For the main
@@ -297,38 +297,16 @@ func (memR *Reactor) Receive(e p2p.Envelope) {
 			if pendingEntry != nil && len(pendingEntry.signer) > 0 && pendingEntry.sequence > 0 {
 				// We have sequence info - check if we should buffer or process
 				expectedSeq, haveExpected := memR.querySequenceFromApplication(pendingEntry.signer)
-
-				memR.Logger.Info("received tx with sequence info",
-					"txKey", key,
-					"txSequence", pendingEntry.sequence,
-					"expectedSeq", expectedSeq,
-					"haveExpected", haveExpected)
-
 				if haveExpected && pendingEntry.sequence > expectedSeq {
-					// Reject txs too far ahead
-					if pendingEntry.sequence > expectedSeq+maxLookaheadSize {
-						memR.Logger.Debug("rejecting tx too far ahead",
-							"txKey", key,
-							"sequence", pendingEntry.sequence,
-							"expectedSeq", expectedSeq,
-							"maxLookahead", maxLookaheadSize)
+					if pendingEntry.sequence > expectedSeq+maxReceivedBufferSize {
 						continue
 					}
-
 					// Future sequence within lookahead - buffer it for later
 					if memR.receivedBuffer.add(pendingEntry.signer, pendingEntry.sequence, cachedTx, key, txInfo, string(e.Src.ID())) {
 						memR.pendingSeen.remove(key)
-						memR.Logger.Info("buffered out-of-order tx",
-							"txKey", key,
-							"sequence", pendingEntry.sequence,
-							"expectedSeq", expectedSeq)
 					}
 					continue
 				}
-			} else {
-				memR.Logger.Info("received tx without pending sequence info",
-					"txKey", key,
-					"hasPendingEntry", pendingEntry != nil)
 			}
 
 			// Process this tx through CheckTx without putting into buffer
@@ -629,27 +607,20 @@ func (memR *Reactor) processReceivedBuffer(signer []byte) {
 		if buffered == nil {
 			break
 		}
-		// Remove from buffer before processing (we don't want to retry bad txs)
 		memR.receivedBuffer.removeLowerSeqs(signer, expectedSeq)
-		memR.Logger.Info("processing buffered tx",
-			"sequence", expectedSeq,
-			"txKey", buffered.txKey)
 
 		rsp, err := memR.tryAddNewTx(buffered.tx, buffered.txKey, buffered.txInfo, buffered.peerID)
 		if err == nil || errors.Is(err, ErrTxInMempool) {
 			memR.pendingSeen.remove(buffered.txKey)
 		}
 		if err != nil {
-			return
+			break
 		}
 
 		if !memR.opts.ListenOnly && rsp.Code == 0 {
 			memR.broadcastSeenTx(buffered.txKey, signer, expectedSeq)
 		}
 	}
-
-	// Clean up any expired entries, debugging
-	//memR.receivedBuffer.cleanup()
 }
 
 // processPendingSeenForSigner tries to advance the pipeline of queued transactions for a signer.
@@ -700,7 +671,7 @@ func (memR *Reactor) processPendingSeenForSigner(signer []byte) {
 		}
 
 		// Check limits
-		if requested >= maxLookaheadSize {
+		if requested >= maxReceivedBufferSize {
 			break
 		}
 

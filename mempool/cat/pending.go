@@ -131,7 +131,6 @@ func (ps *pendingSeenTracker) get(txKey types.TxKey) *pendingSeenTx {
 		return nil
 	}
 
-	// Return a copy to avoid data races
 	clone := *entry
 	if len(entry.signer) > 0 {
 		clone.signer = append([]byte(nil), entry.signer...)
