@@ -1,9 +1,11 @@
 package cat
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"sync/atomic"
 	"time"
 
@@ -280,16 +282,15 @@ func (memR *Reactor) Receive(e p2p.Envelope) {
 			key := ntx.Key()
 			cachedTx := ntx.ToCachedTx()
 			schema.WriteMempoolTx(memR.traceClient, string(e.Src.ID()), key[:], len(tx), schema.Download)
-
 			// If we requested the transaction we mark it as received.
 			if memR.requests.Has(peerID, key) {
 				memR.requests.MarkReceived(peerID, key)
-				memR.Logger.Info("received a response for a requested transaction", "peerID", peerID, "txKey", key)
+				memR.Logger.Trace("received a response for a requested transaction", "peerID", peerID, "txKey", key)
 			} else {
 				// If we didn't request the transaction we simply mark the peer as having the
 				// tx (we'd have already done it if we were requesting the tx).
 				memR.mempool.PeerHasTx(peerID, key)
-				memR.Logger.Info("received new transaction", "peerID", peerID, "txKey", key)
+				memR.Logger.Trace("received new transaction", "peerID", peerID, "txKey", key)
 			}
 
 			// Look up signer/sequence from pending tracker
@@ -635,7 +636,9 @@ func (memR *Reactor) processPendingSeenForSigner(signer []byte) {
 	if len(entries) == 0 {
 		return
 	}
-
+	slices.SortFunc(entries, func(a, b *pendingSeenTx) int {
+		return cmp.Compare(a.sequence, b.sequence)
+	})
 	expectedSeq, haveExpected := memR.querySequenceFromApplication(signer)
 	if !haveExpected {
 		memR.Logger.Error("no signer found in application")
@@ -684,7 +687,8 @@ func (memR *Reactor) processPendingSeenForSigner(signer []byte) {
 	}
 
 	if requested > 0 {
-		memR.Logger.Trace("parallel requests sent", "count", requested)
+		// TODO: remove after debugging
+		memR.Logger.Info("parallel requests sent", "count", requested)
 	}
 }
 
