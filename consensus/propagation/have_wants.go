@@ -69,7 +69,7 @@ func (blockProp *Reactor) handleHaves(peer p2p.ID, haves *proptypes.HaveParts) {
 		p.consensusPeerState.SetHasProposalBlockPart(height, round, int(pmd.Index))
 	}
 
-	if parts.Original().IsComplete() {
+	if parts.Original().IsComplete() || parts.IsDecoding.Load() {
 		return
 	}
 
