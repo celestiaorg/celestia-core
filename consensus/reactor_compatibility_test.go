@@ -24,7 +24,6 @@ func TestLegacyAndNewReactorCompatibility(t *testing.T) {
 
 	reactors := make([]*Reactor, N)
 	eventBuses := make([]*types.EventBus, N)
-	blocksSubs := make([]types.Subscription, 0)
 
 	// Node 0: Legacy Propagation Enabled (Has DataChannel)
 	// Node 1: Legacy Propagation Disabled (No DataChannel)
@@ -43,9 +42,8 @@ func TestLegacyAndNewReactorCompatibility(t *testing.T) {
 		eventBuses[i] = css[i].eventBus
 		r.SetEventBus(eventBuses[i])
 
-		blocksSub, err := eventBuses[i].Subscribe(context.Background(), testSubscriber, types.EventQueryNewBlock)
+		_, err := eventBuses[i].Subscribe(context.Background(), testSubscriber, types.EventQueryNewBlock)
 		require.NoError(t, err)
-		blocksSubs = append(blocksSubs, blocksSub)
 
 		reactors[i] = r
 
