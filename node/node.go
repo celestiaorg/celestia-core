@@ -1036,13 +1036,10 @@ func makeNodeInfo(
 
 	channels := []byte{
 		bc.BlocksyncChannel,
-		cs.StateChannel, cs.VoteChannel, cs.VoteSetBitsChannel,
+		cs.StateChannel, cs.DataChannel, cs.VoteChannel, cs.VoteSetBitsChannel,
 		mempl.MempoolChannel,
 		evidence.EvidenceChannel,
 		statesync.SnapshotChannel, statesync.ChunkChannel,
-	}
-	if config.Consensus.EnableLegacyBlockProp {
-		channels = append(channels, cs.DataChannel)
 	}
 	if config.Mempool.Type == cfg.MempoolTypeCAT {
 		channels = append(channels, cat.MempoolWantsChannel, cat.MempoolDataChannel)
