@@ -419,10 +419,11 @@ func (sw *Switch) stopAndRemovePeer(peer Peer, reason interface{}) {
 	if err := peer.Stop(); err != nil {
 		sw.Logger.Error("error while stopping peer", "error", err) // TODO: should return error to be handled accordingly
 	}
-	schema.WritePeerUpdate(sw.traceClient, string(peer.ID()), schema.PeerDisconnect, fmt.Sprintf("%v", reason))
-	if reason != nil {
-		sw.removePeerFromAllReactors(peer, reason)
+	if reason == nil {
+		reason = "stopping"
 	}
+	schema.WritePeerUpdate(sw.traceClient, string(peer.ID()), schema.PeerDisconnect, fmt.Sprintf("%v", reason))
+	sw.removePeerFromAllReactors(peer, reason)
 
 	// Removing a peer should go last to avoid a situation where a peer
 	// reconnect to our node and the switch calls InitPeer before
