@@ -52,6 +52,7 @@ func (blockProp *Reactor) ProposeBlock(proposal *types.Proposal, block *types.Pa
 		return err
 	}
 
+	fmt.Println("proposing block")
 	// sign the hash of the compact block NOTE: p2p message sign bytes are
 	// prepended with the chain id and UID
 	sig, err := blockProp.privval.SignRawBytes(blockProp.chainID, CompactBlockUID, sbz)
@@ -68,6 +69,7 @@ func (blockProp *Reactor) ProposeBlock(proposal *types.Proposal, block *types.Pa
 
 	cb.Signature = sig
 
+	fmt.Println("signed compact block")
 	// save the compact block locally and broadcast it to the connected peers
 	blockProp.handleCompactBlock(&cb, blockProp.self, true)
 
@@ -181,12 +183,14 @@ func chunkToPartMetaData(chunk *bits.BitArray, partSet *types.PartSet) []*propag
 // time a proposal is received from a peer or when a proposal is created. If the
 // proposal is new, it will be stored and broadcast to the relevant peers.
 func (blockProp *Reactor) handleCompactBlock(cb *proptypes.CompactBlock, peer p2p.ID, proposer bool) {
+	fmt.Println("validating compact block")
 	err := blockProp.validateCompactBlock(cb)
 	if !proposer && err != nil {
 		blockProp.Logger.Debug("failed to validate proposal. ignoring", "err", err, "height", cb.Proposal.Height, "round", cb.Proposal.Round)
 		return
 	}
 
+	fmt.Println("valid compact block")
 	// generate (and cache) the proofs from the partset hashes in the compact block
 	_, err = cb.Proofs()
 	if err != nil {
@@ -227,6 +231,7 @@ func (blockProp *Reactor) handleCompactBlock(cb *proptypes.CompactBlock, peer p2
 		blockProp.recoverPartsFromMempool(cb)
 	}
 
+	fmt.Println("broadcasting compact block")
 	blockProp.broadcastCompactBlock(cb, peer)
 }
 
@@ -340,7 +345,9 @@ func (blockProp *Reactor) broadcastCompactBlock(cb *proptypes.CompactBlock, from
 
 	peers := blockProp.getPeers()
 
+	fmt.Println("peers: ", peers)
 	for _, peer := range peers {
+		fmt.Println("sending to peer ", peer.peer.ID(), "")
 		if peer.peer.ID() == from {
 			continue
 		}
@@ -350,6 +357,7 @@ func (blockProp *Reactor) broadcastCompactBlock(cb *proptypes.CompactBlock, from
 			// todo: we need to avoid sending this peer anything else until we can queue this message.
 			continue
 		}
+		fmt.Println("sent proposal to peer ", peer.peer.ID())
 
 		schema.WriteProposal(blockProp.traceClient, cb.Proposal.Height, cb.Proposal.Round, string(peer.peer.ID()), schema.Upload)
 	}
