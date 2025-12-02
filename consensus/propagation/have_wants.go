@@ -300,7 +300,8 @@ func (blockProp *Reactor) sendWant(ps *PeerState, want *proptypes.WantParts) {
 		want.Parts.GetTrueIndices(),
 		false,
 		string(ps.peer.ID()),
-		schema.Haves,
+		schema.Upload,
+		"want",
 	)
 
 	// keep track of the parts that this node has requested.
