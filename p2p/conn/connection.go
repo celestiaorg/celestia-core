@@ -377,7 +377,7 @@ func (c *MConnection) Send(chID byte, msgBytes []byte) bool {
 		default:
 		}
 	} else {
-		c.Logger.Trace("Send failed", "channel", chID, "conn", c, "msgBytes", log.NewLazySprintf("%X", msgBytes))
+		c.Logger.Info("Send failed", "channel", chID, "conn", c, "msgBytes", log.NewLazySprintf("%X", msgBytes))
 	}
 	return success
 }
@@ -407,6 +407,7 @@ func (c *MConnection) TrySend(chID byte, msgBytes []byte) bool {
 		}
 	}
 
+	fmt.Println("trysend: ", ok)
 	return ok
 }
 
