@@ -175,7 +175,7 @@ func (blockProp *Reactor) InitPeer(peer p2p.Peer) (p2p.Peer, error) {
 		return nil, errors.New("cannot connect to self")
 	}
 
-	if legacy, err := IsLegacyPropagation(peer); legacy || err != nil {
+	if legacy, err := isLegacyPropagation(peer); legacy || err != nil {
 		if err != nil {
 			return nil, fmt.Errorf("peer is only using legacy propagation: %w", err)
 		}
@@ -374,7 +374,7 @@ func (blockProp *Reactor) setPeer(peer p2p.ID, state *PeerState) {
 	blockProp.peerstate[peer] = state
 }
 
-func IsLegacyPropagation(peer p2p.Peer) (bool, error) {
+func isLegacyPropagation(peer p2p.Peer) (bool, error) {
 	ni, ok := peer.NodeInfo().(p2p.DefaultNodeInfo)
 	if !ok {
 		return false, errors.New("wrong NodeInfo type. Expected DefaultNodeInfo")
