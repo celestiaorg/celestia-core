@@ -1,0 +1,28 @@
+# E2E testnet manifest for testing propagation reactor disable functionality
+# This network demonstrates how to configure nodes with and without the propagation reactor
+
+initial_height = 1
+evidence = 0
+abci_protocol = "builtin"
+
+[validators]
+validator01 = 100
+validator02 = 100
+
+[node.validator01]
+mode = "validator"
+enable_legacy_block_prop = true
+
+[node.validator02]
+mode = "validator"
+disable_propagation_reactor = true
+enable_legacy_block_prop = true
+
+[node.full01]
+mode = "full"
+enable_legacy_block_prop = true
+
+[node.full02]
+mode = "full"
+disable_propagation_reactor = true
+enable_legacy_block_prop = true
