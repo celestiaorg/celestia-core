@@ -1409,6 +1409,7 @@ func (cs *State) defaultDecideProposal(height int64, round int32) {
 			}
 		}
 
+		fmt.Println("calling propose block")
 		err = cs.propagator.ProposeBlock(proposal, blockParts, metaData)
 		if err != nil {
 			cs.Logger.Error("propagation reactor failed to propose the block", "err", err)

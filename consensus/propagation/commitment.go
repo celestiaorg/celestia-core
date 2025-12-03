@@ -36,6 +36,7 @@ func (blockProp *Reactor) ProposeBlock(proposal *types.Proposal, block *types.Pa
 	partHashes := extractHashes(block, parityBlock)
 	proofs := extractProofs(block, parityBlock)
 
+	fmt.Println("parts hashes")
 	cb := proptypes.CompactBlock{
 		Proposal:    *proposal,
 		LastLen:     uint32(lastLen),
@@ -52,6 +53,7 @@ func (blockProp *Reactor) ProposeBlock(proposal *types.Proposal, block *types.Pa
 		return err
 	}
 
+	fmt.Println("sign bytes")
 	// sign the hash of the compact block NOTE: p2p message sign bytes are
 	// prepended with the chain id and UID
 	sig, err := blockProp.privval.SignRawBytes(blockProp.chainID, CompactBlockUID, sbz)
@@ -65,6 +67,8 @@ func (blockProp *Reactor) ProposeBlock(proposal *types.Proposal, block *types.Pa
 		)
 		return err
 	}
+
+	fmt.Println("signed compact block")
 
 	cb.Signature = sig
 
@@ -182,6 +186,9 @@ func chunkToPartMetaData(chunk *bits.BitArray, partSet *types.PartSet) []*propag
 // proposal is new, it will be stored and broadcast to the relevant peers.
 func (blockProp *Reactor) handleCompactBlock(cb *proptypes.CompactBlock, peer p2p.ID, proposer bool) {
 	err := blockProp.validateCompactBlock(cb)
+	if err != nil {
+		fmt.Println("compact block validation failed: ", err)
+	}
 	if !proposer && err != nil {
 		blockProp.Logger.Debug("failed to validate proposal. ignoring", "err", err, "height", cb.Proposal.Height, "round", cb.Proposal.Round)
 		return
@@ -194,6 +201,7 @@ func (blockProp *Reactor) handleCompactBlock(cb *proptypes.CompactBlock, peer p2
 		blockProp.Switch.StopPeerForError(blockProp.getPeer(peer).peer, err, blockProp.String())
 		return
 	}
+	fmt.Println("got proofs")
 
 	if !proposer {
 		select {
@@ -203,30 +211,38 @@ func (blockProp *Reactor) handleCompactBlock(cb *proptypes.CompactBlock, peer p2
 			Proposal: cb.Proposal,
 			From:     peer,
 		}:
+			fmt.Println("sent proposal to proposal channel")
 		}
 	}
 
 	added := blockProp.AddProposal(cb)
+	fmt.Println("adding proposal")
 	if !added {
 		p := blockProp.getPeer(peer)
 		if p == nil {
+			fmt.Println("not added 1")
 			return
 		}
 		p.consensusPeerState.SetHasProposal(&cb.Proposal)
+		fmt.Println("not added 2")
 		return
 	} else if !proposer {
+		fmt.Println("not added 3")
 		p := blockProp.getPeer(peer)
 		if p == nil {
+			fmt.Println("not added 4")
 			return
 		}
 		p.consensusPeerState.SetHasProposal(&cb.Proposal)
 	}
 
 	if !proposer {
+		fmt.Println("recovering parts from the mempool")
 		// check if we have any transactions that are in the compact block
 		blockProp.recoverPartsFromMempool(cb)
 	}
 
+	fmt.Println("broadcasting proposal")
 	blockProp.broadcastCompactBlock(cb, peer)
 }
 
