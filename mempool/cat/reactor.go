@@ -247,8 +247,31 @@ func (memR *Reactor) GetChannels() []*p2p.ChannelDescriptor {
 
 // InitPeer implements Reactor by creating a state for the peer.
 func (memR *Reactor) InitPeer(peer p2p.Peer) (p2p.Peer, error) {
+	runningCAT, err := isRunningCAT(peer)
+	if err != nil {
+		return nil, err
+	}
+	if !runningCAT {
+		memR.Logger.Info("peer is not running CAT", "peer", peer.ID())
+		return peer, errors.New("peer is not running CAT")
+	}
 	memR.ids.ReserveForPeer(peer)
 	return peer, nil
+}
+
+func isRunningCAT(peer p2p.Peer) (bool, error) {
+	ni, ok := peer.NodeInfo().(p2p.DefaultNodeInfo)
+	if !ok {
+		return false, errors.New("wrong NodeInfo type. Expected DefaultNodeInfo")
+	}
+
+	for _, ch := range ni.Channels {
+		if ch == MempoolWantsChannel || ch == MempoolDataChannel {
+			return true, nil
+		}
+	}
+
+	return false, nil
 }
 
 // RemovePeer implements Reactor. For all current outbound requests to this

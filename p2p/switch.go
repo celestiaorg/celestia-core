@@ -884,6 +884,7 @@ func (sw *Switch) addPeer(p Peer) error {
 			p = updatedPeer // only update peer if the reactor accepted it
 		} else {
 			sw.Logger.Info("Reactor rejected peer in InitPeer", "peer", p, "err", err, "reactor", reactor.String())
+			sw.StopPeerGracefully(p, reactor.String())
 		}
 	}
 	if len(peerReactors) == 0 {
