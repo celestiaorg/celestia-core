@@ -464,39 +464,6 @@ func createTransport(
 		)
 	}
 
-	// Filter peers that don't support the new block propagation or CAT mempool.
-	peerFilters = append(peerFilters, func(_ p2p.IPeerSet, p p2p.Peer) error {
-		// Check for legacy block propagation
-		if legacy, err := propagation.IsLegacyPropagation(p); legacy || err != nil {
-			if err != nil {
-				return fmt.Errorf("peer is only using legacy propagation: %w", err)
-			}
-			return errors.New("peer is only using legacy propagation")
-		}
-
-		// Check for CAT mempool
-		ni, ok := p.NodeInfo().(p2p.DefaultNodeInfo)
-		if !ok {
-			return errors.New("wrong NodeInfo type. Expected DefaultNodeInfo")
-		}
-
-		hasData := false
-		hasWant := false
-		for _, ch := range ni.Channels {
-			if ch == cat.MempoolDataChannel {
-				hasData = true
-			}
-			if ch == cat.MempoolWantsChannel {
-				hasWant = true
-			}
-		}
-		if !hasData || !hasWant {
-			return errors.New("peer is not using CAT mempool")
-		}
-
-		return nil
-	})
-
 	p2p.MultiplexTransportConnFilters(connFilters...)(transport)
 
 	// Limit the number of incoming connections.
