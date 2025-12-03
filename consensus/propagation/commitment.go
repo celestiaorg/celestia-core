@@ -340,13 +340,15 @@ func (blockProp *Reactor) broadcastCompactBlock(cb *proptypes.CompactBlock, from
 
 	peers := blockProp.getPeers()
 
+	fmt.Println("broadcasting proposal to peers:")
 	for _, peer := range peers {
 		if peer.peer.ID() == from {
 			continue
 		}
 
+		fmt.Println("sending to peer: ", peer.peer.ID())
 		if !peer.peer.TrySend(e) {
-			blockProp.Logger.Debug("failed to send proposal to peer", "peer", peer.peer.ID())
+			blockProp.Logger.Error("failed to send proposal to peer", "peer", peer.peer.ID())
 			// todo: we need to avoid sending this peer anything else until we can queue this message.
 			continue
 		}
