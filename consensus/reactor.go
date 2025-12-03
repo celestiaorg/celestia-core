@@ -699,7 +699,7 @@ OUTER_LOOP:
 				if err != nil {
 					panic(err)
 				}
-				logger.Info("Sending block part", "height", prs.Height, "round", prs.Round)
+				logger.Info("Sending block part", "height", prs.Height, "round", prs.Round, "peer", peer.ID())
 				if peer.Send(p2p.Envelope{
 					ChannelID: DataChannel,
 					Message: &cmtcons.BlockPart{
@@ -753,7 +753,7 @@ OUTER_LOOP:
 		if rs.Proposal != nil && !prs.Proposal {
 			// Proposal: share the proposal metadata with peer.
 			{
-				logger.Info("Sending proposal", "height", prs.Height, "round", prs.Round)
+				logger.Info("Sending proposal", "height", prs.Height, "round", prs.Round, "peer", peer.ID())
 				if peer.Send(p2p.Envelope{
 					ChannelID: DataChannel,
 					Message:   &cmtcons.Proposal{Proposal: *rs.Proposal.ToProto()},
@@ -774,7 +774,7 @@ OUTER_LOOP:
 			// rs.Proposal was validated, so rs.Proposal.POLRound <= rs.Round,
 			// so we definitely have rs.Votes.Prevotes(rs.Proposal.POLRound).
 			if 0 <= rs.Proposal.POLRound {
-				logger.Info("Sending POL", "height", prs.Height, "round", prs.Round)
+				logger.Info("Sending POL", "height", prs.Height, "round", prs.Round, "peer", peer.ID())
 				if peer.Send(p2p.Envelope{
 					ChannelID: DataChannel,
 					Message: &cmtcons.ProposalPOL{
