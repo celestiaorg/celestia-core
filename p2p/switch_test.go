@@ -841,6 +841,59 @@ func TestSwitchInitPeerIsNotCalledBeforeRemovePeer(t *testing.T) {
 	assert.False(t, reactor.InitCalledBeforeRemoveFinished())
 }
 
+// TestPeerRemovedFromReactorOnStopWithNilReason verifies that peers are properly
+// removed from reactors even when stopAndRemovePeer is called with reason=nil
+func TestPeerRemovedFromReactorOnStopWithNilReason(t *testing.T) {
+	// make reactor
+	reactor := NewTestReactor("foo", []*conn.ChannelDescriptor{
+		{ID: byte(0x00), Priority: 10},
+		{ID: byte(0x01), Priority: 10},
+	}, false)
+
+	// make switch
+	sw := MakeSwitch(cfg, 1, func(i int, sw *Switch) *Switch {
+		sw.AddReactor("foo", reactor)
+		return sw
+	})
+	err := sw.Start()
+	require.NoError(t, err)
+	defer func() {
+		if err := sw.Stop(); err != nil {
+			t.Error(err)
+		}
+	}()
+
+	// add peer
+	rp := &remotePeer{PrivKey: ed25519.GenPrivKey(), Config: cfg}
+	rp.Start()
+	defer rp.Stop()
+	_, err = rp.Dial(sw.NetAddress())
+	require.NoError(t, err)
+
+	// wait till the switch adds rp to the peer set
+	var peer Peer
+	for {
+		time.Sleep(20 * time.Millisecond)
+		if peer = sw.Peers().Get(rp.ID()); peer != nil {
+			break
+		}
+	}
+
+	// verify peer is in reactor's peer set
+	reactorPeerSet := sw.peerSetForReactor(reactor)
+	require.NotNil(t, reactorPeerSet)
+	require.True(t, reactorPeerSet.Has(peer.ID()), "peer should be in reactor peer set")
+
+	// stop and remove peer with nil reason (simulating OnStop or StopPeerGracefully)
+	sw.stopAndRemovePeer(peer, nil)
+
+	// verify peer is removed from reactor's peer set
+	assert.False(t, reactorPeerSet.Has(peer.ID()), "peer should be removed from reactor peer set even with nil reason")
+
+	// verify peer is removed from switch's peer set
+	assert.False(t, sw.Peers().Has(peer.ID()), "peer should be removed from switch peer set")
+}
+
 func BenchmarkSwitchBroadcast(b *testing.B) {
 	s1, s2 := MakeSwitchPair(func(i int, sw *Switch) *Switch {
 		// Make bar reactors of bar channels each
