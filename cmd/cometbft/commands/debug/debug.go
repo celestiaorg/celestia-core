@@ -38,4 +38,5 @@ func init() {
 
 	DebugCmd.AddCommand(killCmd)
 	DebugCmd.AddCommand(dumpCmd)
+	DebugCmd.AddCommand(crawlCmd)
 }
