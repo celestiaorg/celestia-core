@@ -72,6 +72,9 @@ type Reactor struct {
 	traceClient    trace.Tracer
 	// stickySalt stores []byte rendezvous salt for sticky peer selection; nil/empty keeps default ordering.
 	stickySalt atomic.Value
+	// confirmedTxs caches recently confirmed transactions so they can be served
+	// to slow peers that request them via WantTx after block commit.
+	confirmedTxs *confirmedTxCache
 }
 
 type ReactorOptions struct {
@@ -132,6 +135,7 @@ func NewReactor(mempool *TxPool, opts *ReactorOptions) (*Reactor, error) {
 		pendingSeen:    newPendingSeenTracker(0),
 		receivedBuffer: newReceivedTxBuffer(),
 		traceClient:    traceClient,
+		confirmedTxs:   newConfirmedTxCache(),
 	}
 	memR.BaseReactor = *p2p.NewBaseReactor("CAT", memR,
 		p2p.WithIncomingQueueSize(ReactorIncomingMessageQueueSize),
@@ -495,20 +499,38 @@ func (memR *Reactor) Receive(e p2p.Envelope) {
 			txKey[:],
 			schema.Download,
 		)
+		if memR.opts.ListenOnly {
+			return
+		}
+
+		// First check if we have the tx in mempool
 		tx, has := memR.mempool.GetTxByKey(txKey)
-		if has && !memR.opts.ListenOnly {
+		var txBytes []byte
+		if has {
+			txBytes = tx.Tx
+		} else {
+			// If not in mempool, check the confirmed tx cache.
+			// This allows us to serve txs to slow peers who request them
+			// after the tx has been confirmed and removed from our mempool.
+			cachedTx, hasCached := memR.confirmedTxs.Get(txKey)
+			if hasCached {
+				txBytes = cachedTx
+			}
+		}
+
+		if txBytes != nil {
 			peerID := memR.ids.GetIDForPeer(e.Src.ID())
 			memR.Logger.Trace("sending a tx in response to a want msg", "peer", peerID)
 			if e.Src.Send(p2p.Envelope{
 				ChannelID: MempoolDataChannel,
-				Message:   &protomem.Txs{Txs: [][]byte{tx.Tx}},
+				Message:   &protomem.Txs{Txs: [][]byte{txBytes}},
 			}) {
 				memR.mempool.PeerHasTx(peerID, txKey)
 				schema.WriteMempoolTx(
 					memR.traceClient,
 					string(e.Src.ID()),
 					txKey[:],
-					len(tx.Tx),
+					len(txBytes),
 					schema.Upload,
 				)
 			}
@@ -534,6 +556,10 @@ func (memR *Reactor) broadcastSeenTx(txKey types.TxKey, signer []byte, sequence 
 
 // broadcastNewTx broadcast new transaction to limited peers unless we are already sure they have seen the tx.
 func (memR *Reactor) broadcastNewTx(wtx *wrappedTx) {
+	// Cache the tx so we can serve it to slow peers who request it via WantTx
+	// after the tx has been confirmed and removed from our mempool.
+	memR.confirmedTxs.Add(wtx.key(), wtx.tx.Tx, wtx.height)
+
 	memR.broadcastSeenTxWithHeight(wtx.key(), wtx.height, wtx.sender, wtx.sequence)
 }
 
@@ -820,6 +846,13 @@ func (memR *Reactor) heightSignalLoop() {
 				return
 			}
 			memR.refreshPendingSeenQueues()
+
+			// Prune old entries from the confirmed tx cache.
+			// Keep txs for defaultConfirmedTxCacheHeightTTL blocks.
+			currentHeight := memR.mempool.Height()
+			if currentHeight > defaultConfirmedTxCacheHeightTTL {
+				memR.confirmedTxs.PruneOlderThan(currentHeight - defaultConfirmedTxCacheHeightTTL)
+			}
 		}
 	}
 }
