@@ -705,6 +705,9 @@ func (memR *Reactor) processReceivedTx(cachedTx *types.CachedTx, key types.TxKey
 	}
 
 	if !memR.opts.ListenOnly && rsp.Code == 0 {
+		// Cache the tx so we can serve it to slow peers who request it via WantTx
+		// after the tx has been confirmed and removed from our mempool.
+		memR.confirmedTxs.Add(key, cachedTx.Tx, memR.mempool.Height())
 		memR.broadcastSeenTx(key, rsp.Address, rsp.Sequence)
 	}
 }
@@ -737,6 +740,9 @@ func (memR *Reactor) processReceivedBuffer(signer []byte) {
 		}
 
 		if !memR.opts.ListenOnly && rsp.Code == 0 {
+			// Cache the tx so we can serve it to slow peers who request it via WantTx
+			// after the tx has been confirmed and removed from our mempool.
+			memR.confirmedTxs.Add(buffered.txKey, buffered.tx.Tx, memR.mempool.Height())
 			memR.broadcastSeenTx(buffered.txKey, signer, expectedSeq)
 		}
 	}
