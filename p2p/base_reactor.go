@@ -89,6 +89,11 @@ type BaseReactor struct {
 	traceClient trace.Tracer
 }
 
+// QueueDepth returns the current number of messages in the incoming queue.
+func (br *BaseReactor) QueueDepth() int {
+	return len(br.incoming)
+}
+
 type ReactorOptions func(*BaseReactor)
 
 func NewBaseReactor(name string, impl Reactor, opts ...ReactorOptions) *BaseReactor {

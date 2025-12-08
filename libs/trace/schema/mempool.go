@@ -14,6 +14,7 @@ func MempoolTables() []string {
 		MempoolAddResultTable,
 		MempoolTxStatusTable,
 		MempoolRecheckTable,
+		MempoolSeenTxProcessingTable,
 	}
 }
 
@@ -335,5 +336,64 @@ func WriteMempoolRecheck(
 		Sequence: sequence,
 		Kept:     kept,
 		Error:    errStr,
+	})
+}
+
+const (
+	// MempoolSeenTxProcessingTable is the tracing "measurement" (aka table) for
+	// debugging SeenTx processing delays.
+	MempoolSeenTxProcessingTable = "mempool_seentx_processing"
+)
+
+// SeenTxProcessingOutcome represents the outcome of SeenTx processing.
+type SeenTxProcessingOutcome string
+
+const (
+	SeenTxOutcomeAlreadyHave      SeenTxProcessingOutcome = "already_have"
+	SeenTxOutcomeAlreadyRequested SeenTxProcessingOutcome = "already_requested"
+	SeenTxOutcomeBuffered         SeenTxProcessingOutcome = "buffered"
+	SeenTxOutcomeRequested        SeenTxProcessingOutcome = "requested"
+	SeenTxOutcomeDroppedOldSeq    SeenTxProcessingOutcome = "dropped_old_seq"
+)
+
+// MempoolSeenTxProcessing describes the schema for debugging SeenTx processing.
+type MempoolSeenTxProcessing struct {
+	TxHash           string                  `json:"tx_hash"`
+	Peer             string                  `json:"peer"`
+	Outcome          SeenTxProcessingOutcome `json:"outcome"`
+	QueueDepth       int                     `json:"queue_depth"`
+	ProcessingTimeUs int64                   `json:"processing_time_us"` // microseconds
+	HasCheckTimeUs   int64                   `json:"has_check_time_us"`
+	SeqQueryTimeUs   int64                   `json:"seq_query_time_us"`
+}
+
+// Table returns the table name for the MempoolSeenTxProcessing struct.
+func (MempoolSeenTxProcessing) Table() string {
+	return MempoolSeenTxProcessingTable
+}
+
+// WriteMempoolSeenTxProcessing writes a tracing point for SeenTx processing debug info.
+func WriteMempoolSeenTxProcessing(
+	client trace.Tracer,
+	txHash []byte,
+	peer string,
+	outcome SeenTxProcessingOutcome,
+	queueDepth int,
+	processingTimeUs int64,
+	hasCheckTimeUs int64,
+	seqQueryTimeUs int64,
+) {
+	if !client.IsCollecting(MempoolSeenTxProcessingTable) {
+		return
+	}
+
+	client.Write(MempoolSeenTxProcessing{
+		TxHash:           bytes.HexBytes(txHash).String(),
+		Peer:             peer,
+		Outcome:          outcome,
+		QueueDepth:       queueDepth,
+		ProcessingTimeUs: processingTimeUs,
+		HasCheckTimeUs:   hasCheckTimeUs,
+		SeqQueryTimeUs:   seqQueryTimeUs,
 	})
 }
