@@ -48,7 +48,7 @@ const (
 
 	// maxRequestsPerPeer limits the number of concurrent outstanding requests to a single peer.
 	// When a peer reaches this limit, requests will be sent to alternative peers instead.
-	maxRequestsPerPeer = 30
+	maxRequestsPerPeer = 300
 
 	// maxSignerLength is the maximum allowed length for a signer field in SeenTx messages.
 	maxSignerLength = 64
