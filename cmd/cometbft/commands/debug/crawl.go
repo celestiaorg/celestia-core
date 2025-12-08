@@ -22,11 +22,13 @@ import (
 )
 
 var (
-	crawlSeeds     string
-	crawlNetwork   string
-	crawlDuration  time.Duration
-	crawlOutputDir string
-	crawlListen    string
+	crawlSeeds       string
+	crawlNetwork     string
+	crawlDuration    time.Duration
+	crawlOutputDir   string
+	crawlListen      string
+	crawlAddrBook    string
+	crawlDialTimeout time.Duration
 )
 
 var crawlCmd = &cobra.Command{
@@ -56,6 +58,10 @@ func init() {
 		"Directory to write JSONL output (traces written to {output-dir}/data/traces/)")
 	crawlCmd.Flags().StringVar(&crawlListen, "listen", "tcp://0.0.0.0:26656",
 		"Address to listen on for incoming connections")
+	crawlCmd.Flags().StringVar(&crawlAddrBook, "addrbook", "",
+		"Path to existing address book file to load peers from")
+	crawlCmd.Flags().DurationVar(&crawlDialTimeout, "dial-timeout", 3*time.Second,
+		"Timeout for dialing peers")
 }
 
 func runCrawl(cmd *cobra.Command, args []string) error {
@@ -90,6 +96,7 @@ func runCrawl(cmd *cobra.Command, args []string) error {
 	config.P2P.MaxNumOutboundPeers = 100
 	config.P2P.MaxNumInboundPeers = 100
 	config.P2P.AllowDuplicateIP = true
+	config.P2P.DialTimeout = crawlDialTimeout
 	config.Instrumentation.TraceType = "local"
 	config.Instrumentation.TracingTables = schema.PeerDiscoveryTable
 	config.Instrumentation.TraceBufferSize = 1000
@@ -125,8 +132,13 @@ func runCrawl(cmd *cobra.Command, args []string) error {
 	sw.SetNodeInfo(nodeInfo)
 	sw.SetNodeKey(nodeKey)
 
-	// Create AddrBook
+	// Create AddrBook - either load from existing file or create new one
 	addrBookFile := filepath.Join(crawlOutputDir, "addrbook.json")
+	if crawlAddrBook != "" {
+		// Copy the provided addrbook to our output directory so we can modify it
+		addrBookFile = crawlAddrBook
+		logger.Info("Loading address book", "file", crawlAddrBook)
+	}
 	addrBook := pex.NewAddrBook(addrBookFile, false)
 	addrBook.SetLogger(logger.With("module", "addrbook"))
 	sw.SetAddrBook(addrBook)

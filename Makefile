@@ -88,6 +88,12 @@ install:
 	CGO_ENABLED=$(CGO_ENABLED) go install $(BUILD_FLAGS) -tags $(BUILD_TAGS) ./cmd/cometbft
 .PHONY: install
 
+#? build-talis-bins: Build cometbft binary for talis VMs (ubuntu 22.04 LTS)
+build-talis-bins:
+	mkdir -p build
+	GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build $(BUILD_FLAGS) -tags '$(BUILD_TAGS)' -o build/cometbft ./cmd/cometbft/
+.PHONY: build-talis-bins
+
 ###############################################################################
 ###                               Metrics                                   ###
 ###############################################################################

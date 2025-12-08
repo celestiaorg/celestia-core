@@ -12,9 +12,33 @@ import (
 	tmp2p "github.com/cometbft/cometbft/proto/tendermint/p2p"
 )
 
+// Channel IDs that we need to handle to stay connected to peers.
+// We register handlers for all channels that peers might send us messages on.
 const (
-	// ScraperChannel is an unused channel ID for the scraper reactor
-	ScraperChannel = byte(0x70)
+	// Consensus channels
+	StateChannel       = byte(0x20)
+	DataChannel        = byte(0x21)
+	VoteChannel        = byte(0x22)
+	VoteSetBitsChannel = byte(0x23)
+
+	// Mempool channels
+	MempoolChannel      = byte(0x30)
+	MempoolDataChannel  = byte(0x31)
+	MempoolWantsChannel = byte(0x32)
+
+	// Evidence channel
+	EvidenceChannel = byte(0x38)
+
+	// BlockSync channel
+	BlocksyncChannel = byte(0x40)
+
+	// Propagation channels
+	PropagationDataChannel = byte(0x50)
+	PropagationWantChannel = byte(0x51)
+
+	// StateSync channels
+	SnapshotChannel = byte(0x60)
+	ChunkChannel    = byte(0x61)
 )
 
 // ScraperReactor captures peer information during handshakes.
@@ -42,18 +66,38 @@ func NewScraperReactor(tracer trace.Tracer, logger log.Logger) *ScraperReactor {
 	return r
 }
 
-// GetChannels returns a minimal channel for the reactor.
-// We don't actually use this channel, but we need one to be a valid reactor.
+// GetChannels returns channel descriptors for all channels we might receive messages on.
+// We register all channels so that peers can send us messages without getting disconnected.
+// We don't actually process these messages - we just need to accept them.
 func (r *ScraperReactor) GetChannels() []*conn.ChannelDescriptor {
-	return []*conn.ChannelDescriptor{
-		{
-			ID:                  ScraperChannel,
+	// Create a channel descriptor for each channel we advertise
+	channels := []byte{
+		StateChannel,
+		DataChannel,
+		VoteChannel,
+		VoteSetBitsChannel,
+		MempoolChannel,
+		MempoolDataChannel,
+		MempoolWantsChannel,
+		EvidenceChannel,
+		BlocksyncChannel,
+		PropagationDataChannel,
+		PropagationWantChannel,
+		SnapshotChannel,
+		ChunkChannel,
+	}
+
+	descriptors := make([]*conn.ChannelDescriptor, len(channels))
+	for i, ch := range channels {
+		descriptors[i] = &conn.ChannelDescriptor{
+			ID:                  ch,
 			Priority:            1,
 			SendQueueCapacity:   1,
-			RecvMessageCapacity: 1024,
+			RecvMessageCapacity: 1024 * 1024, // 1MB to handle block parts
 			MessageType:         &tmp2p.Message{},
-		},
+		}
 	}
+	return descriptors
 }
 
 // AddPeer is called when a new peer successfully connects and handshakes.
