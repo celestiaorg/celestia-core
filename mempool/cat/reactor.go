@@ -702,9 +702,7 @@ func (memR *Reactor) processPendingSeenForSigner(signer []byte) {
 		nextSeq++
 	}
 
-	if requested > 0 {
-		memR.Logger.Trace("parallel requests sent", "count", requested)
-	}
+	memR.Logger.Info("parallel requests sent", "count", requested, "window", memR.buildWindowState(signer, expectedSeq))
 }
 
 func (memR *Reactor) tryRequestQueuedTx(entry *pendingSeenTx) bool {
@@ -785,6 +783,30 @@ func (memR *Reactor) querySequenceFromApplication(signer []byte) (uint64, bool) 
 		return 0, false
 	}
 	return resp.Sequence, true
+}
+
+func (memR *Reactor) buildWindowState(signer []byte, expectedSeq uint64) string {
+	entries := memR.pendingSeen.entriesForSigner(signer)
+	entryBySeq := make(map[uint64]*pendingSeenTx)
+	for _, e := range entries {
+		entryBySeq[e.sequence] = e
+	}
+
+	var window []byte
+	for seq := expectedSeq; seq < expectedSeq+maxReceivedBufferSize; seq++ {
+		if memR.receivedBuffer.get(signer, seq) != nil {
+			window = append(window, '+') // received/buffered
+		} else if entry, ok := entryBySeq[seq]; ok {
+			if entry.requested || memR.requests.ForTx(entry.txKey) != 0 {
+				window = append(window, '*') // requested
+			} else {
+				window = append(window, '?') // seen but not requested
+			}
+		} else {
+			window = append(window, '-') // not seen
+		}
+	}
+	return string(window)
 }
 
 // findNewPeerToSendTx finds a new peer that has already seen the transaction to
