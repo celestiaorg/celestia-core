@@ -581,14 +581,26 @@ func (memR *Reactor) requestTx(txKey types.TxKey, peer p2p.Peer) bool {
 	)
 	if success {
 		memR.mempool.metrics.RequestedTxs.Add(1)
+		now := time.Now().UTC()
 		requested := memR.requests.Add(txKey, peerID, memR.onRequestTimeout)
 		if !requested {
 			memR.Logger.Error("have already marked a tx as requested", "txKey", txKey, "peerID", peer.ID())
 		} else {
-			memR.pendingSeen.markRequested(txKey, peerID, time.Now().UTC())
+			memR.pendingSeen.markRequested(txKey, peerID, now)
 		}
 
-		schema.WriteMempoolPeerState(memR.traceClient, string(peer.ID()), schema.WantTx, txKey[:], schema.Upload)
+		// Get timing info from pendingSeen for trace
+		var timeSinceSeenTxMs int64
+		var signer []byte
+		var sequence uint64
+		if pending := memR.pendingSeen.get(txKey); pending != nil {
+			if !pending.seenAt.IsZero() {
+				timeSinceSeenTxMs = now.Sub(pending.seenAt).Milliseconds()
+			}
+			signer = pending.signer
+			sequence = pending.sequence
+		}
+		schema.WriteMempoolWantTx(memR.traceClient, string(peer.ID()), txKey[:], schema.Upload, signer, sequence, timeSinceSeenTxMs)
 	}
 	return success
 }
@@ -764,8 +776,34 @@ func (memR *Reactor) processPendingSeenForSigner(signer []byte) {
 		}
 	}
 	if requested > 0 {
-		memR.Logger.Info("parallel requests sent", "count", requested)
+		memR.Logger.Info("parallel requests sent", "count", requested, "window", memR.buildWindowState(signer, expectedSeq))
 	}
+}
+
+// buildWindowState builds a visual representation of the sliding window state for a signer.
+// Legend: ? = seen (not requested), * = requested, + = received/buffered, - = not seen
+func (memR *Reactor) buildWindowState(signer []byte, expectedSeq uint64) string {
+	entries := memR.pendingSeen.entriesForSigner(signer)
+	entryBySeq := make(map[uint64]*pendingSeenTx)
+	for _, e := range entries {
+		entryBySeq[e.sequence] = e
+	}
+
+	var window []byte
+	for seq := expectedSeq; seq < expectedSeq+maxReceivedBufferSize; seq++ {
+		if memR.receivedBuffer.get(signer, seq) != nil {
+			window = append(window, '+') // received/buffered
+		} else if entry, ok := entryBySeq[seq]; ok {
+			if entry.requested || memR.requests.ForTx(entry.txKey) != 0 {
+				window = append(window, '*') // requested
+			} else {
+				window = append(window, '?') // seen but not requested
+			}
+		} else {
+			window = append(window, '-') // not seen
+		}
+	}
+	return string(window)
 }
 
 func (memR *Reactor) tryRequestQueuedTx(entry *pendingSeenTx) bool {

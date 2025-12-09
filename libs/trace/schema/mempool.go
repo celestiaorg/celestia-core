@@ -71,12 +71,13 @@ const (
 
 // MempoolPeerState describes the schema for the "mempool_peer_state" table.
 type MempoolPeerState struct {
-	Peer         string                 `json:"peer"`
-	StateUpdate  MempoolStateUpdateType `json:"state_update"`
-	TxHash       string                 `json:"tx_hash"`
-	TransferType TransferType           `json:"transfer_type"`
-	Signer       string                 `json:"signer,omitempty"`
-	Sequence     uint64                 `json:"sequence,omitempty"`
+	Peer             string                 `json:"peer"`
+	StateUpdate      MempoolStateUpdateType `json:"state_update"`
+	TxHash           string                 `json:"tx_hash"`
+	TransferType     TransferType           `json:"transfer_type"`
+	Signer           string                 `json:"signer,omitempty"`
+	Sequence         uint64                 `json:"sequence,omitempty"`
+	TimeSinceSeenTx  int64                  `json:"time_since_seen_tx_ms,omitempty"` // milliseconds since first SeenTx (for WantTx)
 }
 
 // Table returns the table name for the MempoolPeerState struct.
@@ -125,6 +126,36 @@ func WriteMempoolPeerStateWithSeq(
 		TxHash:       bytes.HexBytes(txHash).String(),
 		Signer:       signerStr,
 		Sequence:     sequence,
+	})
+}
+
+// WriteMempoolWantTx writes a tracing point for WantTx with timing information.
+func WriteMempoolWantTx(
+	client trace.Tracer,
+	peer string,
+	txHash []byte,
+	transferType TransferType,
+	signer []byte,
+	sequence uint64,
+	timeSinceSeenTxMs int64,
+) {
+	if !client.IsCollecting(MempoolPeerStateTable) {
+		return
+	}
+
+	signerStr := ""
+	if len(signer) > 0 {
+		signerStr = string(signer)
+	}
+
+	client.Write(MempoolPeerState{
+		Peer:            peer,
+		StateUpdate:     WantTx,
+		TransferType:    transferType,
+		TxHash:          bytes.HexBytes(txHash).String(),
+		Signer:          signerStr,
+		Sequence:        sequence,
+		TimeSinceSeenTx: timeSinceSeenTxMs,
 	})
 }
 
