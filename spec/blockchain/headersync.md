@@ -20,13 +20,21 @@ The Header Sync reactor enables nodes to synchronize block headers ahead of bloc
 
 *Rationale: Nodes need to know which peers have headers they don't, similar to how blocksync discovers peer block heights.*
 
-**R1.2** Nodes MUST periodically broadcast status requests to discover peer header heights.
+**R1.2** Nodes MUST broadcast their status to peers when their header height advances.
 
-*Rationale: Peer heights change over time; periodic polling ensures nodes can continue syncing as new headers become available.*
+*Rationale: Push-based status updates save a round trip compared to pull-based polling. Peers learn about new headers immediately when they become available.*
 
 **R1.3** Nodes MUST track the maximum header height reported by any peer.
 
 *Rationale: This determines the target height for header synchronization.*
+
+**R1.4** Nodes MUST disconnect and ban peers that send status updates with the same or lower height than previously reported.
+
+*Rationale: DoS protection. Since peers should only broadcast when height increases, sending redundant updates indicates misbehavior or a faulty peer.*
+
+**R1.5** When connecting to a new peer, nodes SHOULD send a status with height-1 to avoid triggering DoS protection if a status broadcast occurs shortly after.
+
+*Rationale: If a node's height advances right after adding a peer and it broadcasts the new status, the peer might see two updates with close heights. Sending height-1 initially provides a safety margin.*
 
 ### R2: Header Request and Response
 
@@ -53,6 +61,10 @@ The Header Sync reactor enables nodes to synchronize block headers ahead of bloc
 **R2.6** Nodes MUST NOT have more than a configured maximum number of outstanding batch requests.
 
 *Rationale: Prevents resource exhaustion and ensures fair bandwidth distribution.*
+
+**R2.7** Nodes MUST rate-limit incoming GetHeaders requests per peer.
+
+*Rationale: Prevents DoS attacks where a malicious peer spams GetHeaders requests to exhaust disk I/O reading old headers. The rate limit applies per peer with a sliding time window.*
 
 ### R3: Header Verification
 
@@ -144,15 +156,11 @@ The Header Sync reactor enables nodes to synchronize block headers ahead of bloc
 
 *Rationale: Enables selection of faster peers and detection of misbehavior.*
 
-**R7.2** Nodes MUST implement timeout-based retry for unresponsive peers.
+**R7.2** Nodes MUST implement timeout-based retry for unresponsive peers. When a request times out, the peer MUST be marked as timed out and subsequent requests MUST be sent to different peers until the timed-out peer responds successfully.
 
-*Rationale: Prevents stalling due to slow or dead peers.*
+*Rationale: Prevents stalling due to slow or dead peers. Also mitigates eclipse attacks where a malicious peer with the highest height attempts to capture all requests by not responding, forcing the node to try other peers.*
 
-**R7.3** Nodes SHOULD rotate between available peers to ensure diversity.
-
-*Rationale: Reduces dependency on any single peer; improves resilience.*
-
-**R7.4** Nodes MUST ban peers that repeatedly send invalid data.
+**R7.3** Nodes MUST ban peers that repeatedly send invalid data.
 
 *Rationale: Protects against resource exhaustion attacks.*
 
@@ -168,15 +176,19 @@ The Header Sync reactor enables nodes to synchronize block headers ahead of bloc
 
 ## Message Types
 
-### StatusRequest
-
-Request for a peer's current header height. Sent periodically and on connection.
-
 ### StatusResponse
 
-Response containing the peer's:
-- Base header height (lowest header they have)
-- Height (highest header they have)
+Contains a peer's header range. Sent proactively when:
+- A new peer is added (with height-1 for safety)
+- The node's header height advances
+
+Fields:
+- Base: lowest header height available
+- Height: highest header height available
+
+**Important**: Peers MUST NOT send a StatusResponse with the same or lower height as previously reported. Doing so results in disconnection and banning.
+
+Note: Unlike blocksync, there is no StatusRequest message. Header sync uses a purely push-based model where peers broadcast their status when it changes, eliminating the round-trip overhead of request/response polling.
 
 ### GetHeaders
 
@@ -222,8 +234,8 @@ Response containing:
 
 1. **Long-range attacks**: Header sync relies on knowing the correct validator set. Nodes MUST be bootstrapped with a trusted state or use state sync to establish initial trust.
 
-2. **Eclipse attacks**: Syncing from multiple diverse peers reduces the risk of being fed a false chain by a set of colluding malicious peers.
+2. **Eclipse attacks**: Syncing from multiple diverse peers reduces the risk of being fed a false chain by a set of colluding malicious peers. Additionally, peers that time out are marked and skipped for subsequent requests, preventing a malicious peer from capturing all requests by claiming the highest height but not responding.
 
-3. **Resource exhaustion**: Request limits and peer banning prevent attackers from overwhelming nodes with invalid data.
+3. **Resource exhaustion**: Request limits, rate limiting, and peer banning prevent attackers from overwhelming nodes with invalid data or excessive requests.
 
 4. **Commit verification**: Light verification (+2/3 voting power) provides the same security guarantees as full verification for honest validators.

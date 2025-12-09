@@ -88,6 +88,7 @@ type Config struct {
 	Mempool         *MempoolConfig         `mapstructure:"mempool"`
 	StateSync       *StateSyncConfig       `mapstructure:"statesync"`
 	BlockSync       *BlockSyncConfig       `mapstructure:"blocksync"`
+	HeaderSync      *HeaderSyncConfig      `mapstructure:"headersync"`
 	Consensus       *ConsensusConfig       `mapstructure:"consensus"`
 	Storage         *StorageConfig         `mapstructure:"storage"`
 	TxIndex         *TxIndexConfig         `mapstructure:"tx_index"`
@@ -103,6 +104,7 @@ func DefaultConfig() *Config {
 		Mempool:         DefaultMempoolConfig(),
 		StateSync:       DefaultStateSyncConfig(),
 		BlockSync:       DefaultBlockSyncConfig(),
+		HeaderSync:      DefaultHeaderSyncConfig(),
 		Consensus:       DefaultConsensusConfig(),
 		Storage:         DefaultStorageConfig(),
 		TxIndex:         DefaultTxIndexConfig(),
@@ -119,6 +121,7 @@ func TestConfig() *Config {
 		Mempool:         TestMempoolConfig(),
 		StateSync:       TestStateSyncConfig(),
 		BlockSync:       TestBlockSyncConfig(),
+		HeaderSync:      TestHeaderSyncConfig(),
 		Consensus:       TestConsensusConfig(),
 		Storage:         TestStorageConfig(),
 		TxIndex:         TestTxIndexConfig(),
@@ -156,6 +159,9 @@ func (cfg *Config) ValidateBasic() error {
 	}
 	if err := cfg.BlockSync.ValidateBasic(); err != nil {
 		return fmt.Errorf("error in [blocksync] section: %w", err)
+	}
+	if err := cfg.HeaderSync.ValidateBasic(); err != nil {
+		return fmt.Errorf("error in [headersync] section: %w", err)
 	}
 	if err := cfg.Consensus.ValidateBasic(); err != nil {
 		return fmt.Errorf("error in [consensus] section: %w", err)
@@ -1062,6 +1068,56 @@ func (cfg *BlockSyncConfig) ValidateBasic() error {
 	default:
 		return fmt.Errorf("unknown blocksync version %s", cfg.Version)
 	}
+}
+
+//-----------------------------------------------------------------------------
+// HeaderSyncConfig
+
+// HeaderSyncConfig defines the configuration for the header sync service.
+type HeaderSyncConfig struct {
+	// Enable header sync reactor.
+	Enable bool `mapstructure:"enable"`
+
+	// Maximum headers per batch request (max 50).
+	BatchSize int64 `mapstructure:"batch_size"`
+
+	// Maximum concurrent batch requests.
+	MaxPendingBatches int `mapstructure:"max_pending_batches"`
+
+	// Request timeout for a batch (e.g., "15s").
+	RequestTimeout time.Duration `mapstructure:"request_timeout"`
+}
+
+// DefaultHeaderSyncConfig returns a default configuration for the header sync service.
+func DefaultHeaderSyncConfig() *HeaderSyncConfig {
+	return &HeaderSyncConfig{
+		Enable:            false, // Disabled by default for now
+		BatchSize:         50,
+		MaxPendingBatches: 10,
+		RequestTimeout:    15 * time.Second,
+	}
+}
+
+// TestHeaderSyncConfig returns a configuration for testing.
+func TestHeaderSyncConfig() *HeaderSyncConfig {
+	return DefaultHeaderSyncConfig()
+}
+
+// ValidateBasic performs basic validation.
+func (cfg *HeaderSyncConfig) ValidateBasic() error {
+	if cfg.BatchSize < 1 {
+		return fmt.Errorf("batch_size must be at least 1")
+	}
+	if cfg.BatchSize > 50 {
+		return fmt.Errorf("batch_size cannot exceed 50")
+	}
+	if cfg.MaxPendingBatches < 1 {
+		return fmt.Errorf("max_pending_batches must be at least 1")
+	}
+	if cfg.RequestTimeout < time.Second {
+		return fmt.Errorf("request_timeout must be at least 1s")
+	}
+	return nil
 }
 
 //-----------------------------------------------------------------------------

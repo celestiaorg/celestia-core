@@ -93,8 +93,10 @@ headersync/
 ```protobuf
 // proto/tendermint/headersync/types.proto
 
-message StatusRequest {}
-
+// StatusResponse contains a peer's header sync status.
+// Sent proactively when a peer connects or when header height advances.
+// Peers MUST NOT send status updates with the same or lower height as previously
+// reported - doing so results in disconnection (DoS protection).
 message StatusResponse {
   int64 base = 1;
   int64 height = 2;
@@ -112,27 +114,30 @@ message GetHeaders {
   int64 count = 2;  // max 50
 }
 
-// Headers is the response containing sequential signed headers
+// HeadersResponse is the response containing sequential signed headers
 // An empty array indicates the peer has no headers from start_height
-message Headers {
+message HeadersResponse {
   repeated SignedHeader headers = 1;
 }
 
 message Message {
   oneof sum {
-    StatusRequest status_request = 1;
-    StatusResponse status_response = 2;
-    GetHeaders get_headers = 3;
-    Headers headers = 4;
+    StatusResponse status_response = 1;
+    GetHeaders get_headers = 2;
+    HeadersResponse headers_response = 3;
   }
 }
 ```
 
-The protocol uses only 4 message types:
-- `StatusRequest` / `StatusResponse`: Peer discovery and height tracking
-- `GetHeaders` / `Headers`: Batch header fetching
+The protocol uses only 3 message types:
+- `StatusResponse`: Push-based peer status updates (no request message needed)
+- `GetHeaders` / `HeadersResponse`: Batch header fetching
 
-This is simpler than blocksync's 5-message protocol while supporting batch requests for efficiency.
+This is simpler than blocksync's 5-message protocol.
+
+**Push-Based Status Updates**: Unlike blocksync which polls peers for status, header sync uses push-based status updates. Peers broadcast their status when their header height advances, saving a round trip. To prevent DoS attacks from peers spamming status updates, peers that send updates with the same or lower height than previously reported are disconnected and banned.
+
+**Initial Status on Peer Connection**: When a new peer connects, nodes send their status with `height - 1` as a safety margin. This prevents triggering DoS protection if the node's height advances immediately after the peer connects and a status broadcast occurs (which would otherwise send two updates with close heights to the same peer).
 
 ### Channel Configuration
 
@@ -478,21 +483,19 @@ type Metrics struct {
 
 ### Sync Algorithm
 
-The sync loop follows blocksync's pattern but uses batch requests:
+The sync loop uses push-based status updates (peers broadcast when height changes) rather than polling:
 
 ```go
 func (r *Reactor) poolRoutine() {
-    statusTicker := time.NewTicker(statusUpdateIntervalSeconds * time.Second)
-    defer statusTicker.Stop()
+    trySyncTicker := time.NewTicker(trySyncIntervalMS * time.Millisecond)
+    defer trySyncTicker.Stop()
+
+    lastBroadcastHeight := r.blockStore.HeaderHeight()
 
     for {
         select {
         case <-r.Quit():
             return
-
-        case <-statusTicker.C:
-            // Broadcast status request to all peers
-            r.BroadcastStatusRequest()
 
         case request := <-r.requestsCh:
             // Send batch header request to peer
@@ -502,10 +505,17 @@ func (r *Reactor) poolRoutine() {
             // Handle peer error (timeout, invalid data)
             r.handlePeerError(err)
 
-        default:
+        case <-trySyncTicker.C:
             // Try to process completed batch responses
             r.processCompletedBatches()
-            time.Sleep(trySyncIntervalMS * time.Millisecond)
+
+            // Broadcast our status if height has advanced
+            // (push-based model saves a round trip vs polling)
+            currentHeight := r.blockStore.HeaderHeight()
+            if currentHeight > lastBroadcastHeight {
+                r.BroadcastStatus()
+                lastBroadcastHeight = currentHeight
+            }
         }
     }
 }
@@ -589,16 +599,16 @@ func (r *Reactor) sendGetHeaders(req HeaderBatchRequest) {
 // Receive handles incoming messages
 func (r *Reactor) Receive(e p2p.Envelope) {
     switch msg := e.Message.(type) {
-    case *hsproto.StatusRequest:
-        r.respondStatus(e.Src)
-
     case *hsproto.StatusResponse:
-        r.pool.SetPeerRange(e.Src.ID(), msg.Base, msg.Height)
+        // SetPeerRange returns false if this is a DoS attempt (same or lower height)
+        if !r.pool.SetPeerRange(e.Src.ID(), msg.Base, msg.Height) {
+            r.Switch.StopPeerForError(e.Src, errors.New("status update with non-increasing height"))
+        }
 
     case *hsproto.GetHeaders:
         r.respondGetHeaders(msg, e.Src)
 
-    case *hsproto.Headers:
+    case *hsproto.HeadersResponse:
         r.pool.AddBatchResponse(e.Src.ID(), msg.Headers)
     }
 }
