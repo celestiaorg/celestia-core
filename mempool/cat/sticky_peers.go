@@ -3,7 +3,7 @@ package cat
 import (
 	"crypto/sha256"
 	"encoding/binary"
-	"sort"
+	"math/rand"
 
 	"github.com/cometbft/cometbft/p2p"
 )
@@ -20,53 +20,39 @@ type stickyPeerScore struct {
 	score uint64
 }
 
-// selectStickyPeers returns up to limit peers deterministically ranked for the signer.
-// Uses rendezvous (highest random weight) hashing to compute the ranking.
+// selectStickyPeers returns up to limit peers in random order.
+// Sticky peer selection is disabled - peers are shuffled randomly.
 func selectStickyPeers(signer []byte, peers map[uint16]p2p.Peer, limit int, salt []byte) []stickyPeer {
 	if limit <= 0 || len(peers) == 0 {
 		return nil
 	}
 
-	scored := make([]stickyPeerScore, 0, len(peers))
+	// Collect all peers
+	allPeers := make([]stickyPeer, 0, len(peers))
 	for id, peer := range peers {
 		if peer == nil {
 			continue
 		}
-		scored = append(scored, stickyPeerScore{
-			stickyPeer: stickyPeer{
-				id:   id,
-				peer: peer,
-			},
-			score: stickyScore64(signer, string(peer.ID()), salt),
+		allPeers = append(allPeers, stickyPeer{
+			id:   id,
+			peer: peer,
 		})
 	}
 
-	if len(scored) == 0 {
+	if len(allPeers) == 0 {
 		return nil
 	}
 
-	sort.Slice(scored, func(i, j int) bool {
-		if scored[i].score == scored[j].score {
-			peerIDI := string(scored[i].peer.ID())
-			peerIDJ := string(scored[j].peer.ID())
-			if peerIDI == peerIDJ {
-				return scored[i].id < scored[j].id
-			}
-			return peerIDI < peerIDJ
-		}
-		return scored[i].score > scored[j].score
+	// Shuffle randomly instead of deterministic ordering
+	rand.Shuffle(len(allPeers), func(i, j int) {
+		allPeers[i], allPeers[j] = allPeers[j], allPeers[i]
 	})
 
-	if limit > len(scored) {
-		limit = len(scored)
+	if limit > len(allPeers) {
+		limit = len(allPeers)
 	}
 
-	out := make([]stickyPeer, 0, limit)
-	for i := 0; i < limit; i++ {
-		out = append(out, scored[i].stickyPeer)
-	}
-
-	return out
+	return allPeers[:limit]
 }
 
 // stickyScore64 hashes (signer, peerID, salt) -> uint64.
