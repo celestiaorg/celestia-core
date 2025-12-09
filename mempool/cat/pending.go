@@ -18,6 +18,7 @@ type pendingSeenTx struct {
 	peer      uint16
 	requested bool
 	lastPeer  uint16
+	seenAt    time.Time // when we first saw the SeenTx for this tx
 }
 
 func (p *pendingSeenTx) peerIDs() []uint16 {
@@ -70,6 +71,7 @@ func (ps *pendingSeenTracker) add(signer []byte, txKey types.TxKey, sequence uin
 		txKey:     txKey,
 		sequence:  sequence,
 		peer:      peerID,
+		seenAt:    time.Now(),
 	}
 
 	insertIdx := sort.Search(len(queue), func(i int) bool {

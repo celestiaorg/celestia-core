@@ -349,10 +349,6 @@ func (memR *Reactor) Receive(e p2p.Envelope) {
 	// 3. If we recently evicted the tx and still don't have space for it, we do nothing.
 	// 4. Else, we request the transaction from that peer.
 	case *protomem.SeenTx:
-		// Capture timing for debugging SeenTx processing delays
-		seenTxStart := time.Now()
-		queueDepth := memR.BaseReactor.QueueDepth()
-
 		txKey, err := types.TxKeyFromBytes(msg.TxKey)
 		if err != nil {
 			memR.Logger.Error("peer sent SeenTx with incorrect tx key", "err", err)
@@ -375,44 +371,18 @@ func (memR *Reactor) Receive(e p2p.Envelope) {
 		memR.mempool.PeerHasTx(peerID, txKey)
 
 		// Check if we don't already have the transaction
-		hasCheckStart := time.Now()
-		hasTx := memR.mempool.Has(txKey)
-		hasCheckTimeUs := time.Since(hasCheckStart).Microseconds()
-
-		if hasTx {
+		if memR.mempool.Has(txKey) {
 			memR.Logger.Trace("received a seen tx for a tx we already have", "txKey", txKey)
-			schema.WriteMempoolSeenTxProcessing(
-				memR.traceClient,
-				txKey[:],
-				string(e.Src.ID()),
-				schema.SeenTxOutcomeAlreadyHave,
-				queueDepth,
-				time.Since(seenTxStart).Microseconds(),
-				hasCheckTimeUs,
-				0,
-			)
 			return
 		}
 
 		// If we are already requesting that tx, then we don't need to go any further.
 		if memR.requests.ForTx(txKey) != 0 {
 			memR.Logger.Trace("received a SeenTx message for a transaction we are already requesting", "txKey", txKey)
-			schema.WriteMempoolSeenTxProcessing(
-				memR.traceClient,
-				txKey[:],
-				string(e.Src.ID()),
-				schema.SeenTxOutcomeAlreadyRequested,
-				queueDepth,
-				time.Since(seenTxStart).Microseconds(),
-				hasCheckTimeUs,
-				0,
-			)
 			return
 		}
 
-		seqQueryStart := time.Now()
 		expectedSeq, haveExpected := memR.querySequenceFromApplication(msg.Signer)
-		seqQueryTimeUs := time.Since(seqQueryStart).Microseconds()
 
 		switch {
 		case len(msg.Signer) == 0 || msg.Sequence == 0:
@@ -442,16 +412,6 @@ func (memR *Reactor) Receive(e p2p.Envelope) {
 		case msg.Sequence > expectedSeq:
 			// TODO: add per-peer limits or something similar to pendingSeen to prevent overflowing
 			memR.pendingSeen.add(msg.Signer, txKey, msg.Sequence, peerID)
-			schema.WriteMempoolSeenTxProcessing(
-				memR.traceClient,
-				txKey[:],
-				string(e.Src.ID()),
-				schema.SeenTxOutcomeBuffered,
-				queueDepth,
-				time.Since(seenTxStart).Microseconds(),
-				hasCheckTimeUs,
-				seqQueryTimeUs,
-			)
 			return
 		default:
 			memR.Logger.Debug(
@@ -460,32 +420,12 @@ func (memR *Reactor) Receive(e p2p.Envelope) {
 				"sequence", msg.Sequence,
 				"expectedSequence", expectedSeq,
 			)
-			schema.WriteMempoolSeenTxProcessing(
-				memR.traceClient,
-				txKey[:],
-				string(e.Src.ID()),
-				schema.SeenTxOutcomeDroppedOldSeq,
-				queueDepth,
-				time.Since(seenTxStart).Microseconds(),
-				hasCheckTimeUs,
-				seqQueryTimeUs,
-			)
 			return
 		}
 
 		// We don't have the transaction, nor are we requesting it so we send the node
 		// a want msg
 		memR.requestTx(txKey, e.Src)
-		schema.WriteMempoolSeenTxProcessing(
-			memR.traceClient,
-			txKey[:],
-			string(e.Src.ID()),
-			schema.SeenTxOutcomeRequested,
-			queueDepth,
-			time.Since(seenTxStart).Microseconds(),
-			hasCheckTimeUs,
-			seqQueryTimeUs,
-		)
 
 	// A peer is requesting a transaction that we have claimed to have. Find the specified
 	// transaction and broadcast it to the peer. We may no longer have the transaction
@@ -657,9 +597,16 @@ func (memR *Reactor) requestTx(txKey types.TxKey, peer p2p.Peer) bool {
 }
 
 // tryAddNewTx attempts to add a tx to the mempool and traces the result.
+// seenAt is the time when we first saw the SeenTx for this tx (zero if unknown).
 // Returns the response and true if processing should continue (success or already in mempool).
-func (memR *Reactor) tryAddNewTx(cachedTx *types.CachedTx, key types.TxKey, txInfo mempool.TxInfo, peerID string) (*abci.ResponseCheckTx, error) {
+func (memR *Reactor) tryAddNewTx(cachedTx *types.CachedTx, key types.TxKey, txInfo mempool.TxInfo, peerID string, seenAt time.Time) (*abci.ResponseCheckTx, error) {
 	rsp, err := memR.mempool.TryAddNewTx(cachedTx, key, txInfo)
+
+	var timeSinceFirstSeeMs int64
+	if !seenAt.IsZero() {
+		timeSinceFirstSeeMs = time.Since(seenAt).Milliseconds()
+	}
+
 	if err != nil {
 		signer, sequence := "", uint64(0)
 		if rsp != nil {
@@ -667,18 +614,18 @@ func (memR *Reactor) tryAddNewTx(cachedTx *types.CachedTx, key types.TxKey, txIn
 			sequence = rsp.Sequence
 		}
 		if errors.Is(err, ErrTxInMempool) {
-			schema.WriteMempoolAddResult(memR.traceClient, peerID, key[:], schema.AlreadyInMempool, err, signer, sequence)
+			schema.WriteMempoolAddResult(memR.traceClient, peerID, key[:], schema.AlreadyInMempool, err, signer, sequence, timeSinceFirstSeeMs)
 			return nil, err
 		}
-		schema.WriteMempoolAddResult(memR.traceClient, peerID, key[:], schema.Rejected, err, signer, sequence)
+		schema.WriteMempoolAddResult(memR.traceClient, peerID, key[:], schema.Rejected, err, signer, sequence, timeSinceFirstSeeMs)
 		memR.Logger.Debug("Could not add tx", "txKey", key, "err", err)
 		return nil, err
 	}
 
 	if rsp.Code != 0 {
-		schema.WriteMempoolAddResult(memR.traceClient, peerID, key[:], schema.Rejected, fmt.Errorf("execution code: %d", rsp.Code), string(rsp.Address), rsp.Sequence)
+		schema.WriteMempoolAddResult(memR.traceClient, peerID, key[:], schema.Rejected, fmt.Errorf("execution code: %d", rsp.Code), string(rsp.Address), rsp.Sequence, timeSinceFirstSeeMs)
 	} else {
-		schema.WriteMempoolAddResult(memR.traceClient, peerID, key[:], schema.Added, nil, string(rsp.Address), rsp.Sequence)
+		schema.WriteMempoolAddResult(memR.traceClient, peerID, key[:], schema.Added, nil, string(rsp.Address), rsp.Sequence, timeSinceFirstSeeMs)
 	}
 	return rsp, nil
 }
@@ -688,7 +635,13 @@ func (memR *Reactor) tryAddNewTx(cachedTx *types.CachedTx, key types.TxKey, txIn
 // If wasRequested is true and the tx is successfully added (or already in mempool),
 // it marks the request as received to prevent duplicate WantTx messages.
 func (memR *Reactor) processReceivedTx(cachedTx *types.CachedTx, key types.TxKey, txInfo mempool.TxInfo, src p2p.Peer, peerID uint16, wasRequested bool) {
-	rsp, err := memR.tryAddNewTx(cachedTx, key, txInfo, string(src.ID()))
+	// Get seenAt before tryAddNewTx (which may remove from pendingSeen)
+	var seenAt time.Time
+	if pending := memR.pendingSeen.get(key); pending != nil {
+		seenAt = pending.seenAt
+	}
+
+	rsp, err := memR.tryAddNewTx(cachedTx, key, txInfo, string(src.ID()), seenAt)
 	if err == nil || errors.Is(err, ErrTxInMempool) {
 		memR.pendingSeen.remove(key)
 		// Mark the request as received after successfully adding to mempool (or if already there).
@@ -735,7 +688,13 @@ func (memR *Reactor) processReceivedBuffer(signer []byte) {
 		}
 		memR.receivedBuffer.removeLowerSeqs(signer, expectedSeq)
 
-		rsp, err := memR.tryAddNewTx(buffered.tx, buffered.txKey, buffered.txInfo, buffered.peerID)
+		// Get seenAt before tryAddNewTx
+		var seenAt time.Time
+		if pending := memR.pendingSeen.get(buffered.txKey); pending != nil {
+			seenAt = pending.seenAt
+		}
+
+		rsp, err := memR.tryAddNewTx(buffered.tx, buffered.txKey, buffered.txInfo, buffered.peerID, seenAt)
 		if err == nil || errors.Is(err, ErrTxInMempool) {
 			memR.pendingSeen.remove(buffered.txKey)
 		}
