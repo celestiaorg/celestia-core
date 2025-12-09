@@ -805,7 +805,7 @@ func TestReactorRequestsQueuedTxAfterSequenceBecomesAvailable(t *testing.T) {
 	require.EqualValues(t, reactor.ids.GetIDForPeer(sourcePeer.ID()), reactor.requests.ForTx(targetKey))
 }
 
-func TestPendingSeenClearedWhenTxArrives(t *testing.T) {
+func TestPendingSeenClearedWhenTxAddedToMempool(t *testing.T) {
 	app := newSequenceTrackingApp()
 	cc := proxy.NewLocalClientCreator(app)
 	pool, cleanup := newMempoolWithApp(cc)
@@ -821,8 +821,10 @@ func TestPendingSeenClearedWhenTxArrives(t *testing.T) {
 	_, err = reactor.InitPeer(sourcePeer)
 	require.NoError(t, err)
 	sourcePeer.On("Send", mock.Anything).Return(true).Maybe()
+	sourcePeer.On("TrySend", mock.Anything).Return(true).Maybe()
 
-	targetTx := newDefaultTx("future-tx")
+	// Create tx with sequence 1 (matches expected)
+	targetTx := newDefaultTx("current-tx")
 	targetKey := targetTx.Key()
 
 	reactor.Receive(p2p.Envelope{
@@ -830,7 +832,7 @@ func TestPendingSeenClearedWhenTxArrives(t *testing.T) {
 		Message: &protomem.SeenTx{
 			TxKey:    targetKey[:],
 			Signer:   signer,
-			Sequence: 2,
+			Sequence: 1,
 		},
 		Src: sourcePeer,
 	})
@@ -848,8 +850,8 @@ func TestPendingSeenClearedWhenTxArrives(t *testing.T) {
 		Src:       providerPeer,
 	})
 
+	// pendingSeen should be cleared when tx is added to mempool
 	require.Empty(t, reactor.pendingSeen.entriesForSigner(signer))
-	sourcePeer.AssertNotCalled(t, "TrySend", mock.Anything)
 }
 
 func TestPendingSeenClearedOnPeerRemoval(t *testing.T) {

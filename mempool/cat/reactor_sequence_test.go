@@ -457,7 +457,7 @@ func TestReactorPendingQueueSorting(t *testing.T) {
 
 // TestReactorSingleOutstandingRequestPerSigner validates that the pending queue
 // mechanism limits concurrent requests for the same signer
-func TestReactorSingleOutstandingRequestPerSigner(t *testing.T) {
+func TestReactorParallelRequestsForConsecutiveSequences(t *testing.T) {
 	app := newSequenceTrackingTestApp()
 	cc := proxy.NewLocalClientCreator(app)
 	pool, cleanup := newMempoolWithApp(cc)
@@ -476,7 +476,7 @@ func TestReactorSingleOutstandingRequestPerSigner(t *testing.T) {
 	peer.On("TrySend", matchAny).Return(true).Maybe()
 	peer.On("Send", matchAny).Return(true).Maybe()
 
-	// Send multiple SeenTx messages with different sequences
+	// Send multiple SeenTx messages with consecutive sequences
 	txs := make([]types.Tx, 10)
 	for i := 1; i <= 10; i++ {
 		tx := types.Tx(fmt.Sprintf("%s=seq-%03d=%d", signer, i, i))
@@ -497,16 +497,14 @@ func TestReactorSingleOutstandingRequestPerSigner(t *testing.T) {
 	// Allow processing
 	time.Sleep(100 * time.Millisecond)
 
-	// Check that only the first tx is requested (sequence 1)
-	// All others should be in pending queue
+	// Check that the first tx is requested (sequence 1)
 	firstKey := txs[0].Key()
 	require.NotZero(t, reactor.requests.ForTx(firstKey), "first tx should be requested")
 
-	// Check that subsequent txs are in pending queue, not requested
+	// With parallel request design, pending entries may be empty as all are requested
 	entries := reactor.pendingSeen.entriesForSigner(signer)
-	require.NotEmpty(t, entries, "should have pending entries")
 
-	// Verify that only one is actively requested
+	// Verify that all consecutive sequences are actively requested (parallel request design)
 	activeRequests := 0
 	for _, tx := range txs {
 		if reactor.requests.ForTx(tx.Key()) != 0 {
@@ -514,8 +512,9 @@ func TestReactorSingleOutstandingRequestPerSigner(t *testing.T) {
 		}
 	}
 
-	// Should have at most 1 active request for this signer
-	require.LessOrEqual(t, activeRequests, 1, "should have at most 1 active request for the signer")
+	// With the parallel request design, all consecutive sequences should be requested
+	// since they're within maxReceivedBufferSize
+	require.Equal(t, 10, activeRequests, "all 10 consecutive transactions should be requested in parallel")
 
 	// Verify pending queue is sorted
 	if len(entries) > 1 {

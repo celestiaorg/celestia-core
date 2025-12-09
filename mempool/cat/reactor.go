@@ -382,10 +382,9 @@ func (memR *Reactor) Receive(e p2p.Envelope) {
 		}
 
 		expectedSeq, haveExpected := memR.querySequenceFromApplication(msg.Signer)
-
 		switch {
 		case len(msg.Signer) == 0 || msg.Sequence == 0:
-			// fall through and request immediately when sequence info is missing
+			// Missing sequence info - request immediately without sequence validation
 			schema.WriteMempoolPeerStateWithSeq(
 				memR.traceClient,
 				string(e.Src.ID()),
@@ -395,8 +394,10 @@ func (memR *Reactor) Receive(e p2p.Envelope) {
 				msg.Signer,
 				msg.Sequence,
 			)
+			memR.requestTx(txKey, e.Src)
+			return
 		case !haveExpected:
-			// fall through and request immediately if we cannot query the application
+			// Can't query application - request immediately without sequence validation
 			schema.WriteMempoolPeerStateWithSeq(
 				memR.traceClient,
 				string(e.Src.ID()),
@@ -406,6 +407,8 @@ func (memR *Reactor) Receive(e p2p.Envelope) {
 				msg.Signer,
 				msg.Sequence,
 			)
+			memR.requestTx(txKey, e.Src)
+			return
 		case msg.Sequence >= expectedSeq:
 			// TODO: add per-peer limits or something similar to pendingSeen to prevent overflowing
 			memR.pendingSeen.add(msg.Signer, txKey, msg.Sequence, peerID)
@@ -730,7 +733,7 @@ func (memR *Reactor) processPendingSeenForSigner(signer []byte) {
 		entryIdx  = 0
 		requested = 0
 	)
-	for entries[entryIdx].sequence < expectedSeq && entryIdx < len(entries) {
+	for entryIdx < len(entries) && entries[entryIdx].sequence < expectedSeq {
 		memR.pendingSeen.remove(entries[entryIdx].txKey)
 		entryIdx++
 	}
