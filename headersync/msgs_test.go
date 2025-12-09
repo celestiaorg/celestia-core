@@ -63,12 +63,13 @@ func TestValidateMsg(t *testing.T) {
 		},
 		{
 			name:    "valid headers response - empty",
-			msg:     &hsproto.HeadersResponse{Headers: []*hsproto.SignedHeader{}},
+			msg:     &hsproto.HeadersResponse{StartHeight: 1, Headers: []*hsproto.SignedHeader{}},
 			wantErr: false,
 		},
 		{
 			name: "valid headers response - with headers",
 			msg: &hsproto.HeadersResponse{
+				StartHeight: 1,
 				Headers: []*hsproto.SignedHeader{
 					{Header: &cmtproto.Header{}, Commit: &cmtproto.Commit{}},
 				},
@@ -76,15 +77,25 @@ func TestValidateMsg(t *testing.T) {
 			wantErr: false,
 		},
 		{
+			name: "invalid headers response - start height < 1",
+			msg: &hsproto.HeadersResponse{
+				StartHeight: 0,
+				Headers:     []*hsproto.SignedHeader{},
+			},
+			wantErr: true,
+		},
+		{
 			name: "invalid headers response - nil header in array",
 			msg: &hsproto.HeadersResponse{
-				Headers: []*hsproto.SignedHeader{nil},
+				StartHeight: 1,
+				Headers:     []*hsproto.SignedHeader{nil},
 			},
 			wantErr: true,
 		},
 		{
 			name: "invalid headers response - nil Header field",
 			msg: &hsproto.HeadersResponse{
+				StartHeight: 1,
 				Headers: []*hsproto.SignedHeader{
 					{Header: nil, Commit: &cmtproto.Commit{}},
 				},
@@ -94,6 +105,7 @@ func TestValidateMsg(t *testing.T) {
 		{
 			name: "invalid headers response - nil Commit field",
 			msg: &hsproto.HeadersResponse{
+				StartHeight: 1,
 				Headers: []*hsproto.SignedHeader{
 					{Header: &cmtproto.Header{}, Commit: nil},
 				},

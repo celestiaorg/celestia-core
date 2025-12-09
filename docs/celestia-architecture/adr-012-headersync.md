@@ -114,10 +114,13 @@ message GetHeaders {
   int64 count = 2;  // max 50
 }
 
-// HeadersResponse is the response containing sequential signed headers
-// An empty array indicates the peer has no headers from start_height
+// HeadersResponse is the response containing sequential signed headers.
+// start_height identifies which request this response is for, enabling O(1)
+// lookup and allowing multiple concurrent requests to the same peer.
+// An empty headers array indicates the peer has no headers from start_height.
 message HeadersResponse {
-  repeated SignedHeader headers = 1;
+  int64 start_height = 1;
+  repeated SignedHeader headers = 2;
 }
 
 message Message {
@@ -520,58 +523,50 @@ func (r *Reactor) poolRoutine() {
     }
 }
 
-// processCompletedBatches verifies and stores headers from completed batch requests
+// processCompletedBatches uses streaming to verify and store headers as they arrive.
+// Headers are processed one at a time in order, rather than waiting for entire batches.
 func (r *Reactor) processCompletedBatches() {
     for {
-        // Get next batch of headers ready for processing (in height order)
-        batch, peer := r.pool.PeekCompletedBatch()
-        if batch == nil {
+        // Get next header ready for processing (streaming: one at a time)
+        sh, peer, batchStartHeight := r.pool.PeekNextHeader()
+        if sh == nil {
             return
         }
 
-        // Verify all headers in the batch sequentially
-        allValid := true
-        for _, sh := range batch.headers {
-            if err := r.verifyHeader(sh.Header, sh.Commit, r.lastHeader); err != nil {
-                r.Logger.Error("Header verification failed",
-                    "height", sh.Header.Height,
-                    "peer", peer,
-                    "err", err)
-                r.pool.RedoBatch(batch.startHeight)
-                r.Switch.StopPeerForError(peer, err)
-                r.metrics.VerificationFailures.Add(1)
-                allValid = false
-                break
-            }
-
-            // Store header
-            if err := r.blockStore.SaveHeader(sh.Header, sh.Commit); err != nil {
-                r.Logger.Error("Failed to save header", "err", err)
-                allValid = false
-                break
-            }
-
-            // Notify subscribers
-            vh := &VerifiedHeader{
-                Header:  sh.Header,
-                Commit:  sh.Commit,
-                BlockID: types.BlockID{
-                    Hash:          sh.Header.Hash(),
-                    PartSetHeader: sh.Commit.BlockID.PartSetHeader,
-                },
-            }
-            r.notifySubscribers(vh)
-
-            r.lastHeader = sh.Header
-            r.metrics.HeaderHeight.Set(float64(sh.Header.Height))
-            r.metrics.HeadersSynced.Add(1)
-        }
-
-        if allValid {
-            r.pool.PopBatch(batch.startHeight)
-        } else {
+        if err := r.verifyHeader(sh.Header, sh.Commit, r.lastHeader); err != nil {
+            r.Logger.Error("Header verification failed",
+                "height", sh.Header.Height,
+                "peer", peer,
+                "err", err)
+            r.pool.RedoBatch(batchStartHeight)
+            r.Switch.StopPeerForError(peer, err)
+            r.metrics.VerificationFailures.Add(1)
             break
         }
+
+        // Store header
+        if err := r.blockStore.SaveHeader(sh.Header, sh.Commit); err != nil {
+            r.Logger.Error("Failed to save header", "err", err)
+            break
+        }
+
+        // Notify subscribers
+        vh := &VerifiedHeader{
+            Header:  sh.Header,
+            Commit:  sh.Commit,
+            BlockID: types.BlockID{
+                Hash:          sh.Header.Hash(),
+                PartSetHeader: sh.Commit.BlockID.PartSetHeader,
+            },
+        }
+        r.notifySubscribers(vh)
+
+        r.lastHeader = sh.Header
+        r.metrics.HeaderHeight.Set(float64(sh.Header.Height))
+        r.metrics.HeadersSynced.Add(1)
+
+        // Mark this header as processed (advances pool height)
+        r.pool.MarkHeaderProcessed()
     }
 }
 
@@ -690,7 +685,7 @@ min_peers = 2
 
 ## Status
 
-Proposed
+Implemented
 
 ## Consequences
 

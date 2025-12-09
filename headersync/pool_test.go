@@ -105,77 +105,65 @@ func TestHeaderPool_RemovePeer(t *testing.T) {
 	pool.mtx.Unlock()
 }
 
-func TestHeaderPool_AddBatchResponse(t *testing.T) {
+// TestHeaderPool_BatchLifecycle tests the complete lifecycle of a batch:
+// pending -> response received -> peek -> pop
+func TestHeaderPool_BatchLifecycle(t *testing.T) {
 	pool := newTestPool(1, 50)
 
 	peerID := p2p.ID("peer1")
 	pool.SetPeerRange(peerID, 1, 100)
 
-	// Simulate a pending batch
-	pool.mtx.Lock()
-	pool.pendingBatches[1] = &headerBatch{
-		startHeight: 1,
-		count:       10,
-		peerID:      peerID,
-		requestTime: time.Now(),
-		received:    false,
-	}
-	pool.mtx.Unlock()
-
-	// Add response
-	headers := []*SignedHeader{
-		{Header: &types.Header{Height: 1}, Commit: &types.Commit{}},
-	}
-	err := pool.AddBatchResponse(peerID, headers)
-	require.NoError(t, err)
-
-	pool.mtx.Lock()
-	batch := pool.pendingBatches[1]
-	assert.True(t, batch.received)
-	assert.Len(t, batch.headers, 1)
-	pool.mtx.Unlock()
-}
-
-func TestHeaderPool_PeekAndPopCompletedBatch(t *testing.T) {
-	pool := newTestPool(1, 50)
-
-	peerID := p2p.ID("peer1")
-	pool.SetPeerRange(peerID, 1, 100)
-
-	// No completed batch yet
+	// Phase 1: No completed batch yet
 	batch, _ := pool.PeekCompletedBatch()
-	assert.Nil(t, batch)
+	assert.Nil(t, batch, "should have no completed batch initially")
 
-	// Add a completed batch at the current height
-	headers := []*SignedHeader{
-		{Header: &types.Header{Height: 1}, Commit: &types.Commit{}},
-		{Header: &types.Header{Height: 2}, Commit: &types.Commit{}},
-	}
+	// Phase 2: Simulate a pending batch
 	pool.mtx.Lock()
 	pool.pendingBatches[1] = &headerBatch{
 		startHeight: 1,
 		count:       2,
 		peerID:      peerID,
 		requestTime: time.Now(),
-		headers:     headers,
-		received:    true,
+		received:    false,
 	}
 	pool.mtx.Unlock()
 
-	// Now peek should return the batch
+	// Still no completed batch (not received yet)
+	batch, _ = pool.PeekCompletedBatch()
+	assert.Nil(t, batch, "should have no completed batch before response")
+
+	// Phase 3: Add response
+	headers := []*SignedHeader{
+		{Header: &types.Header{Height: 1}, Commit: &types.Commit{}},
+		{Header: &types.Header{Height: 2}, Commit: &types.Commit{}},
+	}
+	err := pool.AddBatchResponse(peerID, 1, headers)
+	require.NoError(t, err)
+
+	pool.mtx.Lock()
+	pendingBatch := pool.pendingBatches[1]
+	assert.True(t, pendingBatch.received, "batch should be marked as received")
+	assert.Len(t, pendingBatch.headers, 2)
+	pool.mtx.Unlock()
+
+	// Phase 4: Peek should now return the batch
 	batch, returnedPeerID := pool.PeekCompletedBatch()
 	require.NotNil(t, batch)
 	assert.Equal(t, int64(1), batch.startHeight)
 	assert.Equal(t, peerID, returnedPeerID)
 	assert.Len(t, batch.headers, 2)
 
-	// Pop the batch
+	// Phase 5: Pop the batch
 	pool.PopBatch(1)
 
 	pool.mtx.Lock()
-	assert.Nil(t, pool.pendingBatches[1])
-	assert.Equal(t, int64(3), pool.height) // height advances by number of headers
+	assert.Nil(t, pool.pendingBatches[1], "batch should be removed after pop")
+	assert.Equal(t, int64(3), pool.height, "height should advance by number of headers")
 	pool.mtx.Unlock()
+
+	// Phase 6: No more completed batches
+	batch, _ = pool.PeekCompletedBatch()
+	assert.Nil(t, batch, "should have no completed batch after pop")
 }
 
 func TestHeaderPool_IsCaughtUp(t *testing.T) {
@@ -225,7 +213,9 @@ func TestHeaderPool_BanPeer(t *testing.T) {
 	pool.mtx.Unlock()
 }
 
-func TestHeaderPool_TimeoutSelectsDifferentPeer(t *testing.T) {
+// TestHeaderPool_TimeoutLifecycle tests the complete timeout lifecycle:
+// peer times out -> skipped for selection -> successful response clears timeout
+func TestHeaderPool_TimeoutLifecycle(t *testing.T) {
 	pool := newTestPool(1, 50)
 
 	// Add two peers with the same height range
@@ -234,59 +224,50 @@ func TestHeaderPool_TimeoutSelectsDifferentPeer(t *testing.T) {
 	pool.SetPeerRange(peer1, 1, 100)
 	pool.SetPeerRange(peer2, 1, 100)
 
-	// pickPeer should return one of the peers (deterministically the first in sorted order)
+	// Phase 1: pickPeer returns one of the peers
 	pool.mtx.Lock()
 	firstPeer := pool.pickPeer(1)
 	require.NotNil(t, firstPeer)
 	firstPeerID := firstPeer.id
 	pool.mtx.Unlock()
 
-	// Mark the first peer as timed out
+	// Phase 2: Mark the first peer as timed out
 	pool.mtx.Lock()
 	pool.peers[firstPeerID].didTimeout = true
 	pool.mtx.Unlock()
 
-	// Now pickPeer should return the other peer
+	// Phase 3: pickPeer should now return the other peer
 	pool.mtx.Lock()
 	secondPeer := pool.pickPeer(1)
 	require.NotNil(t, secondPeer)
 	assert.NotEqual(t, firstPeerID, secondPeer.id, "should pick different peer after timeout")
 	pool.mtx.Unlock()
-}
 
-func TestHeaderPool_TimeoutClearedOnSuccess(t *testing.T) {
-	pool := newTestPool(1, 50)
-
-	peerID := p2p.ID("peer1")
-	pool.SetPeerRange(peerID, 1, 100)
-
-	// Simulate a pending batch with timeout flag set
+	// Phase 4: Simulate a pending batch for the timed-out peer
 	pool.mtx.Lock()
-	pool.peers[peerID].didTimeout = true
 	pool.pendingBatches[1] = &headerBatch{
 		startHeight: 1,
 		count:       10,
-		peerID:      peerID,
+		peerID:      firstPeerID,
 		requestTime: time.Now(),
 		received:    false,
 	}
 	pool.mtx.Unlock()
 
-	// Peer should be skipped by pickPeer
-	pool.mtx.Lock()
-	peer := pool.pickPeer(1)
-	assert.Nil(t, peer, "should skip timed out peer")
-	pool.mtx.Unlock()
-
-	// Add successful response
+	// Phase 5: Successful response clears timeout flag
 	headers := []*SignedHeader{
 		{Header: &types.Header{Height: 1}, Commit: &types.Commit{}},
 	}
-	err := pool.AddBatchResponse(peerID, headers)
+	err := pool.AddBatchResponse(firstPeerID, 1, headers)
 	require.NoError(t, err)
 
-	// didTimeout should be cleared
 	pool.mtx.Lock()
-	assert.False(t, pool.peers[peerID].didTimeout, "timeout flag should be cleared on success")
+	assert.False(t, pool.peers[firstPeerID].didTimeout, "timeout flag should be cleared on success")
+	pool.mtx.Unlock()
+
+	// Phase 6: Peer can be selected again
+	pool.mtx.Lock()
+	peer := pool.pickPeer(1)
+	require.NotNil(t, peer, "peer should be selectable after timeout cleared")
 	pool.mtx.Unlock()
 }

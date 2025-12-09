@@ -196,11 +196,14 @@ Request for a batch of headers:
 - StartHeight: the first header height to retrieve
 - Count: number of headers requested (max 50)
 
-### Headers
+### HeadersResponse
 
 Response containing:
+- StartHeight: echoes the requested start height, enabling O(1) response matching
 - Headers: array of (Header, Commit) pairs, sequential starting from StartHeight
 - An empty array indicates the peer has no headers from the requested StartHeight
+
+The StartHeight field allows the receiver to match responses to requests without scanning all pending requests. This also enables multiple concurrent requests to the same peer.
 
 ## State Machine
 
@@ -229,6 +232,18 @@ Response containing:
                    │ Notify subscribers                       │
                    └──────────────────────────────────────────┘
 ```
+
+## Streaming Header Processing
+
+Header sync uses a streaming architecture for improved performance:
+
+1. **Header-by-header verification**: Headers are verified and stored individually as they arrive in order, rather than waiting for an entire batch to complete. This reduces latency to first header.
+
+2. **Pipelined requests**: New batch requests can be issued while previous batches are still being processed, as long as the maximum pending batch limit is not exceeded.
+
+3. **Fine-grained error recovery**: If a header fails verification, only that batch is re-requested from a different peer. Headers already verified from prior batches are preserved.
+
+This streaming approach improves sync throughput by overlapping network I/O with verification and storage.
 
 ## Security Considerations
 

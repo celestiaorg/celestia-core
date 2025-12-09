@@ -14,6 +14,7 @@ import (
 	"github.com/cometbft/cometbft/internal/test"
 	"github.com/cometbft/cometbft/libs/log"
 	"github.com/cometbft/cometbft/p2p"
+	hsproto "github.com/cometbft/cometbft/proto/tendermint/headersync"
 	cmtproto "github.com/cometbft/cometbft/proto/tendermint/types"
 	sm "github.com/cometbft/cometbft/state"
 	"github.com/cometbft/cometbft/store"
@@ -290,6 +291,25 @@ func stopTestNode(t *testing.T, node *testNode) {
 	}
 }
 
+// stopTestNodes stops multiple test nodes.
+func stopTestNodes(t *testing.T, nodes ...*testNode) {
+	for _, node := range nodes {
+		stopTestNode(t, node)
+	}
+}
+
+// copyHeaders copies headers from source to destination block store.
+func copyHeaders(t *testing.T, dst, src *store.BlockStore, startHeight, endHeight int64) {
+	for h := startHeight; h <= endHeight; h++ {
+		meta := src.LoadBlockMeta(h)
+		commit := src.LoadBlockCommit(h)
+		if meta != nil && commit != nil {
+			err := dst.SaveHeader(&meta.Header, commit)
+			require.NoError(t, err)
+		}
+	}
+}
+
 // waitForHeight waits for a node's header height to reach the target.
 func waitForHeight(t *testing.T, node *testNode, targetHeight int64, timeout time.Duration) {
 	deadline := time.Now().Add(timeout)
@@ -331,10 +351,7 @@ func TestHeaderSync_BasicSync(t *testing.T) {
 	// stateHeight=maxHeight ensures validators are available for verification
 	node1 := newTestNodeWithStateHeight(t, log.TestingLogger(), genDoc, privVals, 0, maxHeight)
 
-	defer func() {
-		stopTestNode(t, node0)
-		stopTestNode(t, node1)
-	}()
+	defer stopTestNodes(t, node0, node1)
 
 	// Connect reactors via switches
 	p2p.MakeConnectedSwitches(config.P2P, 2, func(i int, s *p2p.Switch) *p2p.Switch {
@@ -375,24 +392,13 @@ func TestHeaderSync_MultiPeerSync(t *testing.T) {
 	// Copy headers to nodes 1 and 2 (they have all headers)
 	for i := 1; i <= 2; i++ {
 		nodes[i] = newTestNodeWithStateHeight(t, log.TestingLogger(), genDoc, privVals, 0, maxHeight)
-		for h := int64(1); h <= maxHeight; h++ {
-			meta := sourceNode.blockStore.LoadBlockMeta(h)
-			commit := sourceNode.blockStore.LoadBlockCommit(h)
-			if meta != nil && commit != nil {
-				err := nodes[i].blockStore.SaveHeader(&meta.Header, commit)
-				require.NoError(t, err)
-			}
-		}
+		copyHeaders(t, nodes[i].blockStore, sourceNode.blockStore, 1, maxHeight)
 	}
 
 	// Node 3: syncing node (no headers, but has state for verification)
 	nodes[3] = newTestNodeWithStateHeight(t, log.TestingLogger(), genDoc, privVals, 0, maxHeight)
 
-	defer func() {
-		for _, node := range nodes {
-			stopTestNode(t, node)
-		}
-	}()
+	defer stopTestNodes(t, nodes...)
 
 	// Connect all nodes
 	p2p.MakeConnectedSwitches(config.P2P, 4, func(i int, s *p2p.Switch) *p2p.Switch {
@@ -422,10 +428,7 @@ func TestHeaderSync_StatusBroadcast(t *testing.T) {
 	// before creating the reactor, so the pool starts at the correct height.
 	node1 := newTestNodeWithHeaders(t, log.TestingLogger(), genDoc, privVals, node0.blockStore, 10, maxHeight)
 
-	defer func() {
-		stopTestNode(t, node0)
-		stopTestNode(t, node1)
-	}()
+	defer stopTestNodes(t, node0, node1)
 
 	// Connect via switches
 	p2p.MakeConnectedSwitches(config.P2P, 2, func(i int, s *p2p.Switch) *p2p.Switch {
@@ -458,10 +461,7 @@ func TestHeaderSync_SubscriberNotification(t *testing.T) {
 	// Node 1: will sync and notify (has state for verification)
 	node1 := newTestNodeWithStateHeight(t, log.TestingLogger(), genDoc, privVals, 0, maxHeight)
 
-	defer func() {
-		stopTestNode(t, node0)
-		stopTestNode(t, node1)
-	}()
+	defer stopTestNodes(t, node0, node1)
 
 	// Subscribe to verified headers on node1
 	headerCh := make(chan *VerifiedHeader, 100)
@@ -507,14 +507,11 @@ func TestHeaderSync_DoSProtection(t *testing.T) {
 
 	genDoc, privVals := randGenesisDoc(1, false, 30)
 
-	// Create two nodes
+	// Create two nodes with the same height
 	node0 := newTestNode(t, log.TestingLogger(), genDoc, privVals, 50)
 	node1 := newTestNode(t, log.TestingLogger(), genDoc, privVals, 50)
 
-	defer func() {
-		stopTestNode(t, node0)
-		stopTestNode(t, node1)
-	}()
+	defer stopTestNodes(t, node0, node1)
 
 	// Connect via switches
 	switches := p2p.MakeConnectedSwitches(config.P2P, 2, func(i int, s *p2p.Switch) *p2p.Switch {
@@ -531,12 +528,29 @@ func TestHeaderSync_DoSProtection(t *testing.T) {
 	time.Sleep(500 * time.Millisecond)
 
 	// Verify both nodes have 1 peer
-	assert.Equal(t, 1, switches[0].Peers().Size())
-	assert.Equal(t, 1, switches[1].Peers().Size())
+	require.Equal(t, 1, switches[0].Peers().Size())
+	require.Equal(t, 1, switches[1].Peers().Size())
 
-	// The DoS protection is tested through the pool - if a peer sends the same height twice,
-	// they get banned. This is tested in pool_test.go but here we verify the integration
-	// works as expected (peers stay connected with normal operation).
+	// Get the peer from node0's perspective
+	peers := switches[0].Peers().List()
+	require.Len(t, peers, 1)
+	peer := peers[0]
+
+	// Send a duplicate status update with the same height (DoS attempt)
+	// This should trigger disconnection
+	peer.Send(p2p.Envelope{
+		ChannelID: HeaderSyncChannel,
+		Message: &hsproto.StatusResponse{
+			Base:   node1.blockStore.Base(),
+			Height: node1.blockStore.HeaderHeight() - 1, // Same or lower height
+		},
+	})
+
+	// Wait for the peer to be disconnected
+	time.Sleep(500 * time.Millisecond)
+
+	// Node0 should have disconnected node1 due to DoS protection
+	assert.Equal(t, 0, switches[0].Peers().Size(), "peer should be disconnected after duplicate status")
 }
 
 // TestHeaderSync_InvalidHeaderDisconnectsPeer tests that peers sending invalid headers are disconnected.
@@ -558,10 +572,7 @@ func TestHeaderSync_InvalidHeaderDisconnectsPeer(t *testing.T) {
 	// Create node1 with the OTHER genDoc (different validators)
 	node1 := newTestNodeWithStateHeight(t, log.TestingLogger(), otherGenDoc, privVals, 0, maxHeight)
 
-	defer func() {
-		stopTestNode(t, node0)
-		stopTestNode(t, node1)
-	}()
+	defer stopTestNodes(t, node0, node1)
 
 	// Connect via switches
 	switches := p2p.MakeConnectedSwitches(config.P2P, 2, func(i int, s *p2p.Switch) *p2p.Switch {
@@ -597,10 +608,7 @@ func TestHeaderSync_CatchUpFromBehind(t *testing.T) {
 	// Node 1: starts from 0 but has state for verification
 	node1 := newTestNodeWithStateHeight(t, log.TestingLogger(), genDoc, privVals, 0, maxHeight)
 
-	defer func() {
-		stopTestNode(t, node0)
-		stopTestNode(t, node1)
-	}()
+	defer stopTestNodes(t, node0, node1)
 
 	// Connect via switches
 	p2p.MakeConnectedSwitches(config.P2P, 2, func(i int, s *p2p.Switch) *p2p.Switch {
@@ -634,10 +642,7 @@ func TestHeaderSync_PartialSync(t *testing.T) {
 	// Node 1: already has headers up to 50 (copied from node0 before reactor created), will sync rest
 	node1 := newTestNodeWithHeaders(t, log.TestingLogger(), genDoc, privVals, node0.blockStore, 50, maxHeight)
 
-	defer func() {
-		stopTestNode(t, node0)
-		stopTestNode(t, node1)
-	}()
+	defer stopTestNodes(t, node0, node1)
 
 	// Connect via switches
 	p2p.MakeConnectedSwitches(config.P2P, 2, func(i int, s *p2p.Switch) *p2p.Switch {
@@ -670,10 +675,7 @@ func TestHeaderSync_ReconnectAfterDisconnect(t *testing.T) {
 	// Node 1: empty but has state for verification
 	node1 := newTestNodeWithStateHeight(t, log.TestingLogger(), genDoc, privVals, 0, maxHeight)
 
-	defer func() {
-		stopTestNode(t, node0)
-		stopTestNode(t, node1)
-	}()
+	defer stopTestNodes(t, node0, node1)
 
 	// Connect via switches
 	switches := p2p.MakeConnectedSwitches(config.P2P, 2, func(i int, s *p2p.Switch) *p2p.Switch {
@@ -756,24 +758,12 @@ func TestHeaderSync_PeerProvidesPartialResponse(t *testing.T) {
 	// Node 0: copy blocks from node1 but only up to height 30.
 	// This simulates a peer that's still catching up.
 	node0 := newTestNodeWithStateHeight(t, log.TestingLogger(), genDoc, privVals, 0, maxHeight)
-	// Copy headers 1-30 from node1 to node0
-	for h := int64(1); h <= 30; h++ {
-		meta := node1.blockStore.LoadBlockMeta(h)
-		commit := node1.blockStore.LoadBlockCommit(h)
-		if meta != nil && commit != nil {
-			err := node0.blockStore.SaveHeader(&meta.Header, commit)
-			require.NoError(t, err)
-		}
-	}
+	copyHeaders(t, node0.blockStore, node1.blockStore, 1, 30)
 
 	// Node 2: syncing node (has state for verification)
 	node2 := newTestNodeWithStateHeight(t, log.TestingLogger(), genDoc, privVals, 0, maxHeight)
 
-	defer func() {
-		stopTestNode(t, node0)
-		stopTestNode(t, node1)
-		stopTestNode(t, node2)
-	}()
+	defer stopTestNodes(t, node0, node1, node2)
 
 	// Connect all nodes
 	p2p.MakeConnectedSwitches(config.P2P, 3, func(i int, s *p2p.Switch) *p2p.Switch {

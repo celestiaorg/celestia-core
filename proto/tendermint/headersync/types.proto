@@ -27,9 +27,12 @@ message GetHeaders {
 }
 
 // HeadersResponse is the response containing sequential signed headers.
-// An empty array indicates the peer has no headers from start_height.
+// start_height identifies which request this response is for, enabling O(1)
+// lookup and allowing multiple concurrent requests to the same peer.
+// An empty headers array indicates the peer has no headers from start_height.
 message HeadersResponse {
-  repeated SignedHeader headers = 1;
+  int64               start_height = 1;
+  repeated SignedHeader headers    = 2;
 }
 
 message Message {

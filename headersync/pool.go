@@ -52,12 +52,13 @@ type HeaderBatchRequest struct {
 
 // headerBatch tracks a pending batch request.
 type headerBatch struct {
-	startHeight int64
-	count       int64
-	peerID      p2p.ID
-	requestTime time.Time
-	headers     []*SignedHeader // filled in as response arrives
-	received    bool
+	startHeight    int64
+	count          int64
+	peerID         p2p.ID
+	requestTime    time.Time
+	headers        []*SignedHeader // filled in as response arrives
+	received       bool
+	processedCount int // number of headers already processed (for streaming)
 }
 
 // peerError represents an error associated with a peer.
@@ -75,7 +76,6 @@ type hsPeer struct {
 	id         p2p.ID
 	base       int64
 	height     int64
-	numPending int32
 	didTimeout bool
 }
 
@@ -153,23 +153,30 @@ func (pool *HeaderPool) makeRequestersRoutine() {
 		}
 
 		pool.mtx.Lock()
-
-		// Clean up timed out requests and peers.
 		pool.cleanupTimedOut()
 
-		// Check if we need to make more requests.
-		numPending := len(pool.pendingBatches)
-		maxPendingReached := numPending >= pool.maxPendingBatches
-		maxHeightReached := pool.height > pool.maxPeerHeight
-
-		if !maxPendingReached && !maxHeightReached && len(pool.peers) > 0 {
+		if pool.shouldMakeRequest() {
 			pool.makeNextBatchRequest()
 		}
 
 		pool.mtx.Unlock()
-
 		time.Sleep(requestIntervalMS * time.Millisecond)
 	}
+}
+
+// shouldMakeRequest returns true if we should make a new batch request.
+// CONTRACT: pool.mtx must be held.
+func (pool *HeaderPool) shouldMakeRequest() bool {
+	if len(pool.peers) == 0 {
+		return false
+	}
+	if len(pool.pendingBatches) >= pool.maxPendingBatches {
+		return false
+	}
+	if pool.height > pool.maxPeerHeight {
+		return false
+	}
+	return true
 }
 
 // cleanupTimedOut removes timed out requests and peers.
@@ -187,7 +194,7 @@ func (pool *HeaderPool) cleanupTimedOut() {
 			if peer := pool.peers[batch.peerID]; peer != nil {
 				peer.didTimeout = true
 			}
-			pool.redoBatch(startHeight)
+			delete(pool.pendingBatches, startHeight)
 			pool.sendError(errors.New("header batch request timed out"), batch.peerID)
 		}
 	}
@@ -238,7 +245,6 @@ func (pool *HeaderPool) makeNextBatchRequest() {
 		received:    false,
 	}
 	pool.pendingBatches[startHeight] = batch
-	peer.numPending++
 
 	// Send request via channel.
 	select {
@@ -280,31 +286,9 @@ func (pool *HeaderPool) SetPeerRange(peerID p2p.ID, base, height int64) bool {
 	}
 
 	peer := pool.peers[peerID]
-	if peer != nil {
-		// DoS protection: peers must only send updates when height increases.
-		// Sending the same height or lower indicates misbehavior.
-		if height <= peer.height {
-			pool.Logger.Info("Peer sent status update with non-increasing height, disconnecting",
-				"peer", peerID,
-				"height", height,
-				"prevHeight", peer.height)
-			pool.removePeer(peerID)
-			pool.banPeer(peerID)
-			return false
-		}
-		// Also check base hasn't decreased.
-		if base < peer.base {
-			pool.Logger.Info("Peer sent status update with decreased base, disconnecting",
-				"peer", peerID,
-				"base", base,
-				"prevBase", peer.base)
-			pool.removePeer(peerID)
-			pool.banPeer(peerID)
-			return false
-		}
-		peer.base = base
-		peer.height = height
-	} else {
+
+	// New peer: add and return early.
+	if peer == nil {
 		peer = &hsPeer{
 			id:     peerID,
 			base:   base,
@@ -312,14 +296,44 @@ func (pool *HeaderPool) SetPeerRange(peerID p2p.ID, base, height int64) bool {
 		}
 		pool.peers[peerID] = peer
 		pool.sortedPeers = append(pool.sortedPeers, peer)
+		pool.updateMaxPeerHeightIfNeeded(height)
+		pool.sortPeers()
+		return true
 	}
 
+	// Existing peer - DoS protection checks.
+	if height <= peer.height {
+		pool.Logger.Info("Peer sent status update with non-increasing height, disconnecting",
+			"peer", peerID,
+			"height", height,
+			"prevHeight", peer.height)
+		pool.removePeer(peerID)
+		pool.banPeer(peerID)
+		return false
+	}
+	if base < peer.base {
+		pool.Logger.Info("Peer sent status update with decreased base, disconnecting",
+			"peer", peerID,
+			"base", base,
+			"prevBase", peer.base)
+		pool.removePeer(peerID)
+		pool.banPeer(peerID)
+		return false
+	}
+
+	peer.base = base
+	peer.height = height
+	pool.updateMaxPeerHeightIfNeeded(height)
+	pool.sortPeers()
+	return true
+}
+
+// updateMaxPeerHeightIfNeeded updates maxPeerHeight if the given height is higher.
+// CONTRACT: pool.mtx must be held.
+func (pool *HeaderPool) updateMaxPeerHeightIfNeeded(height int64) {
 	if height > pool.maxPeerHeight {
 		pool.maxPeerHeight = height
 	}
-
-	pool.sortPeers()
-	return true
 }
 
 // RemovePeer removes the peer from the pool.
@@ -335,7 +349,7 @@ func (pool *HeaderPool) removePeer(peerID p2p.ID) {
 	// Redo pending requests from this peer.
 	for startHeight, batch := range pool.pendingBatches {
 		if batch.peerID == peerID && !batch.received {
-			pool.redoBatchUnsafe(startHeight)
+			delete(pool.pendingBatches, startHeight)
 		}
 	}
 
@@ -402,29 +416,27 @@ func (pool *HeaderPool) sortPeers() {
 }
 
 // AddBatchResponse adds a response to a pending batch request.
-func (pool *HeaderPool) AddBatchResponse(peerID p2p.ID, headers []*SignedHeader) error {
+// Uses startHeight for O(1) lookup instead of scanning all pending batches.
+func (pool *HeaderPool) AddBatchResponse(peerID p2p.ID, startHeight int64, headers []*SignedHeader) error {
 	pool.mtx.Lock()
 	defer pool.mtx.Unlock()
 
-	// Find the batch this response belongs to.
-	var batch *headerBatch
-	for _, b := range pool.pendingBatches {
-		if b.peerID == peerID && !b.received {
-			batch = b
-			break
-		}
-	}
-
+	batch := pool.pendingBatches[startHeight]
 	if batch == nil {
-		return fmt.Errorf("no pending batch from peer %s", peerID)
+		return fmt.Errorf("no pending batch at height %d", startHeight)
+	}
+	if batch.peerID != peerID {
+		return fmt.Errorf("batch at height %d is from peer %s, not %s", startHeight, batch.peerID, peerID)
+	}
+	if batch.received {
+		return fmt.Errorf("batch at height %d already received", startHeight)
 	}
 
 	batch.headers = headers
 	batch.received = true
 
-	// Decrease pending count for peer and clear timeout flag on successful response.
+	// Clear timeout flag on successful response.
 	if peer := pool.peers[peerID]; peer != nil {
-		peer.numPending--
 		peer.didTimeout = false
 	}
 
@@ -441,6 +453,61 @@ func (pool *HeaderPool) PeekCompletedBatch() (*headerBatch, p2p.ID) {
 		return nil, ""
 	}
 	return batch, batch.peerID
+}
+
+// PeekNextHeader returns the next header to verify, if available.
+// This enables streaming: headers can be verified as soon as they arrive in order,
+// without waiting for the entire batch to complete.
+// Returns the signed header, peer ID, and the batch's start height (for error handling).
+func (pool *HeaderPool) PeekNextHeader() (*SignedHeader, p2p.ID, int64) {
+	pool.mtx.Lock()
+	defer pool.mtx.Unlock()
+
+	batch := pool.findBatchForHeight(pool.height)
+	if batch == nil || !batch.received {
+		return nil, "", 0
+	}
+
+	// Calculate the index within this batch
+	idx := int(pool.height - batch.startHeight)
+	if idx < 0 || idx >= len(batch.headers) {
+		return nil, "", 0
+	}
+
+	return batch.headers[idx], batch.peerID, batch.startHeight
+}
+
+// findBatchForHeight finds the batch that contains the given height.
+// CONTRACT: pool.mtx must be held.
+func (pool *HeaderPool) findBatchForHeight(height int64) *headerBatch {
+	for startHeight, batch := range pool.pendingBatches {
+		if height >= startHeight && height < startHeight+int64(len(batch.headers)) {
+			return batch
+		}
+	}
+	return nil
+}
+
+// MarkHeaderProcessed marks the current header as processed and advances.
+// Returns true if the batch is complete and should be removed.
+func (pool *HeaderPool) MarkHeaderProcessed() bool {
+	pool.mtx.Lock()
+	defer pool.mtx.Unlock()
+
+	batch := pool.findBatchForHeight(pool.height)
+	if batch == nil {
+		return false
+	}
+
+	pool.height++
+
+	// Check if we've moved past this batch
+	if pool.height >= batch.startHeight+int64(len(batch.headers)) {
+		delete(pool.pendingBatches, batch.startHeight)
+		return true
+	}
+
+	return false
 }
 
 // PopBatch removes a completed batch from the pool and advances the height.
@@ -465,28 +532,6 @@ func (pool *HeaderPool) PopBatch(startHeight int64) {
 func (pool *HeaderPool) RedoBatch(startHeight int64) {
 	pool.mtx.Lock()
 	defer pool.mtx.Unlock()
-	pool.redoBatch(startHeight)
-}
-
-// redoBatch marks a batch as needing to be re-requested.
-// CONTRACT: pool.mtx must be held.
-func (pool *HeaderPool) redoBatch(startHeight int64) {
-	batch := pool.pendingBatches[startHeight]
-	if batch == nil {
-		return
-	}
-
-	// Decrease pending count for peer.
-	if peer := pool.peers[batch.peerID]; peer != nil && !batch.received {
-		peer.numPending--
-	}
-
-	delete(pool.pendingBatches, startHeight)
-}
-
-// redoBatchUnsafe is like redoBatch but doesn't modify peer pending count.
-// CONTRACT: pool.mtx must be held.
-func (pool *HeaderPool) redoBatchUnsafe(startHeight int64) {
 	delete(pool.pendingBatches, startHeight)
 }
 

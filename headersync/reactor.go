@@ -295,14 +295,17 @@ func (r *Reactor) respondGetHeaders(msg *hsproto.GetHeaders, src p2p.Peer) {
 
 	src.TrySend(p2p.Envelope{
 		ChannelID: HeaderSyncChannel,
-		Message:   &hsproto.HeadersResponse{Headers: headers},
+		Message: &hsproto.HeadersResponse{
+			StartHeight: msg.StartHeight,
+			Headers:     headers,
+		},
 	})
 }
 
 // handleHeaders processes a HeadersResponse.
 func (r *Reactor) handleHeaders(msg *hsproto.HeadersResponse, src p2p.Peer) {
 	if len(msg.Headers) == 0 {
-		r.Logger.Debug("Received empty headers response", "peer", src.ID())
+		r.Logger.Debug("Received empty headers response", "peer", src.ID(), "startHeight", msg.StartHeight)
 		return
 	}
 
@@ -327,8 +330,8 @@ func (r *Reactor) handleHeaders(msg *hsproto.HeadersResponse, src p2p.Peer) {
 		})
 	}
 
-	if err := r.pool.AddBatchResponse(src.ID(), signedHeaders); err != nil {
-		r.Logger.Debug("Failed to add batch response", "peer", src.ID(), "err", err)
+	if err := r.pool.AddBatchResponse(src.ID(), msg.StartHeight, signedHeaders); err != nil {
+		r.Logger.Debug("Failed to add batch response", "peer", src.ID(), "startHeight", msg.StartHeight, "err", err)
 	}
 }
 
@@ -362,19 +365,21 @@ func (r *Reactor) poolRoutine() {
 			}
 
 		case <-trySyncTicker.C:
-			// Process completed batches.
+			// Process headers as they arrive (streaming).
+			// This allows verification to start immediately when headers arrive in order,
+			// rather than waiting for the entire batch to complete.
 			for {
-				batch, peerID := r.pool.PeekCompletedBatch()
-				if batch == nil {
+				sh, peerID, batchStartHeight := r.pool.PeekNextHeader()
+				if sh == nil {
 					break
 				}
 
-				if !r.processCompletedBatch(batch, peerID) {
+				if !r.processNextHeader(sh, peerID, batchStartHeight) {
 					break
 				}
 
-				r.pool.PopBatch(batch.startHeight)
-				headersSynced += int64(len(batch.headers))
+				r.pool.MarkHeaderProcessed()
+				headersSynced++
 
 				if headersSynced%100 == 0 && headersSynced > 0 {
 					rate := 100.0 / time.Since(lastHundred).Seconds()
@@ -404,43 +409,42 @@ func (r *Reactor) poolRoutine() {
 	}
 }
 
-// processCompletedBatch verifies and stores headers from a completed batch.
-func (r *Reactor) processCompletedBatch(batch *headerBatch, peerID p2p.ID) bool {
-	for _, sh := range batch.headers {
-		if err := r.verifyHeader(sh.Header, sh.Commit, r.lastHeader); err != nil {
-			r.Logger.Error("Header verification failed",
-				"height", sh.Header.Height,
-				"peer", peerID,
-				"err", err)
-			r.pool.RedoBatch(batch.startHeight)
-			peer := r.Switch.Peers().Get(peerID)
-			if peer != nil {
-				r.Switch.StopPeerForError(peer, err, r.String())
-			}
-			r.metrics.VerificationFailures.Add(1)
-			return false
+// processNextHeader verifies and stores a single header.
+// Returns true if processing succeeded, false if it failed.
+func (r *Reactor) processNextHeader(sh *SignedHeader, peerID p2p.ID, batchStartHeight int64) bool {
+	if err := r.verifyHeader(sh.Header, sh.Commit, r.lastHeader); err != nil {
+		r.Logger.Error("Header verification failed",
+			"height", sh.Header.Height,
+			"peer", peerID,
+			"err", err)
+		r.pool.RedoBatch(batchStartHeight)
+		peer := r.Switch.Peers().Get(peerID)
+		if peer != nil {
+			r.Switch.StopPeerForError(peer, err, r.String())
 		}
-
-		// Store header.
-		if err := r.blockStore.SaveHeader(sh.Header, sh.Commit); err != nil {
-			r.Logger.Error("Failed to save header", "err", err)
-			return false
-		}
-
-		// Notify subscribers.
-		vh := &VerifiedHeader{
-			Header: sh.Header,
-			Commit: sh.Commit,
-			BlockID: types.BlockID{
-				Hash:          sh.Header.Hash(),
-				PartSetHeader: sh.Commit.BlockID.PartSetHeader,
-			},
-		}
-		r.notifySubscribers(vh)
-
-		r.lastHeader = sh.Header
-		r.metrics.HeadersSynced.Add(1)
+		r.metrics.VerificationFailures.Add(1)
+		return false
 	}
+
+	// Store header.
+	if err := r.blockStore.SaveHeader(sh.Header, sh.Commit); err != nil {
+		r.Logger.Error("Failed to save header", "err", err)
+		return false
+	}
+
+	// Notify subscribers.
+	vh := &VerifiedHeader{
+		Header: sh.Header,
+		Commit: sh.Commit,
+		BlockID: types.BlockID{
+			Hash:          sh.Header.Hash(),
+			PartSetHeader: sh.Commit.BlockID.PartSetHeader,
+		},
+	}
+	r.notifySubscribers(vh)
+
+	r.lastHeader = sh.Header
+	r.metrics.HeadersSynced.Add(1)
 
 	return true
 }
@@ -465,51 +469,13 @@ func (r *Reactor) verifyHeader(
 	}
 
 	// 3. Verify commit has +2/3 voting power.
-	err = vals.VerifyCommitLight(
-		r.chainID,
-		blockID,
-		header.Height,
-		commit,
-	)
-	if err != nil {
+	if err := vals.VerifyCommitLight(r.chainID, blockID, header.Height, commit); err != nil {
 		return fmt.Errorf("commit verification failed: %w", err)
 	}
 
 	// 4. Verify chain linkage (if not first header).
-	if prevHeader != nil {
-		// Load the previous commit to get the PartSetHeader.
-		prevCommit := r.blockStore.LoadSeenCommit(prevHeader.Height)
-		if prevCommit == nil {
-			prevCommit = r.blockStore.LoadBlockCommit(prevHeader.Height)
-		}
-
-		var prevBlockID types.BlockID
-		if prevCommit != nil {
-			prevBlockID = types.BlockID{
-				Hash:          prevHeader.Hash(),
-				PartSetHeader: prevCommit.BlockID.PartSetHeader,
-			}
-		} else {
-			// If we don't have the commit, just check the hash.
-			prevBlockID = types.BlockID{
-				Hash: prevHeader.Hash(),
-			}
-		}
-
-		if !header.LastBlockID.Equals(prevBlockID) {
-			// If PartSetHeader doesn't match but hash does, allow it.
-			// This handles the case where we don't have the previous commit.
-			if !bytes.Equal(header.LastBlockID.Hash, prevBlockID.Hash) {
-				return fmt.Errorf("header LastBlockID hash mismatch: got %X, want %X",
-					header.LastBlockID.Hash, prevBlockID.Hash)
-			}
-		}
-
-		// Check ValidatorsHash continuity.
-		if !bytes.Equal(header.ValidatorsHash, prevHeader.NextValidatorsHash) {
-			return fmt.Errorf("validators hash mismatch: got %X, want %X",
-				header.ValidatorsHash, prevHeader.NextValidatorsHash)
-		}
+	if err := r.verifyChainLinkage(header, prevHeader); err != nil {
+		return err
 	}
 
 	// 5. Verify header.ValidatorsHash matches loaded validators.
@@ -519,6 +485,47 @@ func (r *Reactor) verifyHeader(
 	}
 
 	return nil
+}
+
+// verifyChainLinkage verifies that the header correctly links to the previous header.
+func (r *Reactor) verifyChainLinkage(header, prevHeader *types.Header) error {
+	if prevHeader == nil {
+		return nil
+	}
+
+	// Verify LastBlockID hash matches previous header.
+	prevBlockID := r.loadPrevBlockID(prevHeader)
+	if !bytes.Equal(header.LastBlockID.Hash, prevBlockID.Hash) {
+		return fmt.Errorf("header LastBlockID hash mismatch: got %X, want %X",
+			header.LastBlockID.Hash, prevBlockID.Hash)
+	}
+
+	// Verify ValidatorsHash continuity.
+	if !bytes.Equal(header.ValidatorsHash, prevHeader.NextValidatorsHash) {
+		return fmt.Errorf("validators hash mismatch: got %X, want %X",
+			header.ValidatorsHash, prevHeader.NextValidatorsHash)
+	}
+
+	return nil
+}
+
+// loadPrevBlockID loads the BlockID for the previous header.
+// If the commit is available, includes the PartSetHeader; otherwise just the hash.
+func (r *Reactor) loadPrevBlockID(prevHeader *types.Header) types.BlockID {
+	prevCommit := r.blockStore.LoadSeenCommit(prevHeader.Height)
+	if prevCommit == nil {
+		prevCommit = r.blockStore.LoadBlockCommit(prevHeader.Height)
+	}
+
+	if prevCommit != nil {
+		return types.BlockID{
+			Hash:          prevHeader.Hash(),
+			PartSetHeader: prevCommit.BlockID.PartSetHeader,
+		}
+	}
+
+	// If we don't have the commit, just use the hash.
+	return types.BlockID{Hash: prevHeader.Hash()}
 }
 
 // sendGetHeaders sends a GetHeaders request to a peer.

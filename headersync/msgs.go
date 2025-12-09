@@ -51,6 +51,9 @@ func ValidateMsg(pb proto.Message) error {
 		}
 		return nil
 	case *hsproto.HeadersResponse:
+		if msg.StartHeight < 1 {
+			return errors.New("start height must be at least 1")
+		}
 		if len(msg.Headers) > MaxHeaderBatchSize {
 			return fmt.Errorf("headers count %d exceeds max batch size %d", len(msg.Headers), MaxHeaderBatchSize)
 		}
