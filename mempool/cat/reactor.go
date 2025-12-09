@@ -407,12 +407,16 @@ func (memR *Reactor) Receive(e p2p.Envelope) {
 				msg.Signer,
 				msg.Sequence,
 			)
+			memR.pendingSeen.add(msg.Signer, txKey, msg.Sequence, peerID)
+			memR.requestTx(txKey, e.Src)
+			return
+		case msg.Sequence == expectedSeq:
+			memR.pendingSeen.add(msg.Signer, txKey, msg.Sequence, peerID)
 			memR.requestTx(txKey, e.Src)
 			return
 		case msg.Sequence >= expectedSeq:
 			// TODO: add per-peer limits or something similar to pendingSeen to prevent overflowing
 			memR.pendingSeen.add(msg.Signer, txKey, msg.Sequence, peerID)
-			memR.processPendingSeenForSigner(msg.Signer)
 			return
 		default:
 			memR.Logger.Debug(
@@ -749,12 +753,16 @@ func (memR *Reactor) processPendingSeenForSigner(signer []byte) {
 		memR.pendingSeen.remove(entries[entryIdx].txKey)
 		entryIdx++
 	}
+	window := make([]byte, maxReceivedBufferSize)
+	windowIdx := expectedSeq + uint64(len(window))
 	for curSeq := expectedSeq; curSeq < expectedSeq+maxReceivedBufferSize; curSeq++ {
 		if entryIdx >= len(entries) {
+			windowIdx = curSeq
 			break
 		}
 		entry := entries[entryIdx]
 		if memR.receivedBuffer.get(signer, curSeq) != nil {
+			window[curSeq-expectedSeq] = '+'
 			if entry.sequence == curSeq {
 				entryIdx++
 			}
@@ -762,21 +770,28 @@ func (memR *Reactor) processPendingSeenForSigner(signer []byte) {
 		}
 		entryIdx++
 		if entry.sequence != curSeq {
+			windowIdx = curSeq
 			break
 		}
 		if memR.mempool.Has(entry.txKey) {
+			window[curSeq-expectedSeq] = '+'
 			memR.pendingSeen.remove(entry.txKey)
 			continue
 		}
 		if memR.requests.ForTx(entry.txKey) != 0 || entry.requested {
+			window[curSeq-expectedSeq] = '*'
 			continue
 		}
+		window[curSeq-expectedSeq] = '?'
 		if memR.tryRequestQueuedTx(entry) {
 			requested++
 		}
 	}
+	for i := int(windowIdx - expectedSeq); i < len(window); i++ {
+		window[i] = '-'
+	}
 	if requested > 0 {
-		memR.Logger.Info("parallel requests sent", "count", requested, "window", memR.buildWindowState(signer, expectedSeq))
+		memR.Logger.Info("parallel requests sent", "count", requested, "window", string(window))
 	}
 }
 
