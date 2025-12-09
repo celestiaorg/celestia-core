@@ -314,9 +314,7 @@ func (memR *Reactor) Receive(e p2p.Envelope) {
 						continue
 					}
 					// Future sequence within lookahead - buffer it for later
-					if memR.receivedBuffer.add(pendingEntry.signer, pendingEntry.sequence, cachedTx, key, txInfo, string(e.Src.ID())) {
-						memR.pendingSeen.remove(key)
-					}
+					memR.receivedBuffer.add(pendingEntry.signer, pendingEntry.sequence, cachedTx, key, txInfo, string(e.Src.ID()))
 					continue
 				}
 			}
@@ -661,48 +659,42 @@ func (memR *Reactor) processPendingSeenForSigner(signer []byte) {
 		return
 	}
 
-	// Clean up old entries and request consecutive sequences in parallel
-	nextSeq := expectedSeq
-	requested := 0
-
-	for _, entry := range entries {
-		// Clean up entries that are already processed
-		if entry.sequence < expectedSeq {
-			memR.pendingSeen.remove(entry.txKey)
+	var (
+		entryIdx  = 0
+		requested = 0
+	)
+	for entryIdx < len(entries) && entries[entryIdx].sequence < expectedSeq {
+		memR.pendingSeen.remove(entries[entryIdx].txKey)
+		entryIdx++
+	}
+	for curSeq := expectedSeq; curSeq < expectedSeq+maxReceivedBufferSize; curSeq++ {
+		if entryIdx >= len(entries) {
+			break
+		}
+		entry := entries[entryIdx]
+		if memR.receivedBuffer.get(signer, curSeq) != nil {
+			if entry.sequence == curSeq {
+				entryIdx++
+			}
 			continue
 		}
-
-		if entry.sequence != nextSeq {
+		entryIdx++
+		if entry.sequence != curSeq {
 			break
 		}
-
-		// Check limits
-		if requested >= maxReceivedBufferSize {
-			break
-		}
-
-		// Skip if already in mempool
 		if memR.mempool.Has(entry.txKey) {
-			memR.pendingSeen.remove(entry.txKey)
-			nextSeq++
 			continue
 		}
-
-		// Skip if already being requested, but count it
 		if memR.requests.ForTx(entry.txKey) != 0 || entry.requested {
-			nextSeq++
-			requested++
 			continue
 		}
-
-		// Request from first available peer
 		if memR.tryRequestQueuedTx(entry) {
 			requested++
 		}
-		nextSeq++
 	}
-
-	memR.Logger.Info("parallel requests sent", "count", requested, "window", memR.buildWindowState(signer, expectedSeq))
+	if requested > 0 {
+		memR.Logger.Info("parallel requests sent", "count", requested, "window", memR.buildWindowState(signer, expectedSeq))
+	}
 }
 
 func (memR *Reactor) tryRequestQueuedTx(entry *pendingSeenTx) bool {
@@ -747,6 +739,9 @@ func (memR *Reactor) heightSignalLoop() {
 }
 
 func (memR *Reactor) refreshPendingSeenQueues() {
+	// Log mempool state on each height update
+	memR.logMempoolSignerState()
+
 	// Collect signers from both pending seen and buffer
 	seenSigners := make(map[string][]byte)
 
@@ -768,6 +763,32 @@ func (memR *Reactor) refreshPendingSeenQueues() {
 		// Then request more pending txs
 		memR.processPendingSeenForSigner(signer)
 	}
+}
+
+// logMempoolSignerState logs the state of all signers in the mempool
+func (memR *Reactor) logMempoolSignerState() {
+	memR.mempool.store.processOrderedTxSets(func(txSets []*txSet) {
+		for _, set := range txSets {
+			if len(set.signer) == 0 {
+				continue
+			}
+			// Get sequence range from the set
+			var minSeq, maxSeq uint64
+			if len(set.txs) > 0 {
+				minSeq = set.txs[0].sequence
+				maxSeq = set.txs[len(set.txs)-1].sequence
+			}
+			// Get expected sequence from application
+			expectedSeq, _ := memR.querySequenceFromApplication(set.signer)
+
+			memR.Logger.Info("mempool signer state",
+				"signer", string(set.signer),
+				"txCount", len(set.txs),
+				"seqRange", fmt.Sprintf("[%d-%d]", minSeq, maxSeq),
+				"expectedSeq", expectedSeq,
+			)
+		}
+	})
 }
 
 func (memR *Reactor) querySequenceFromApplication(signer []byte) (uint64, bool) {
