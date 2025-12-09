@@ -116,7 +116,7 @@ func NewReactor(
 
 // SetLogger implements service.Service by setting the logger on reactor and pool.
 func (r *Reactor) SetLogger(l log.Logger) {
-	r.BaseService.Logger = l
+	r.Logger = l
 	r.pool.Logger = l
 }
 

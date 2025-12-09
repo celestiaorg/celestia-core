@@ -52,13 +52,12 @@ type HeaderBatchRequest struct {
 
 // headerBatch tracks a pending batch request.
 type headerBatch struct {
-	startHeight    int64
-	count          int64
-	peerID         p2p.ID
-	requestTime    time.Time
-	headers        []*SignedHeader // filled in as response arrives
-	received       bool
-	processedCount int // number of headers already processed (for streaming)
+	startHeight int64
+	count       int64
+	peerID      p2p.ID
+	requestTime time.Time
+	headers     []*SignedHeader // filled in as response arrives
+	received    bool
 }
 
 // peerError represents an error associated with a peer.
@@ -213,10 +212,11 @@ func (pool *HeaderPool) makeNextBatchRequest() {
 	// Find the next height range to request.
 	startHeight := pool.height
 	for {
-		if _, exists := pool.pendingBatches[startHeight]; !exists {
+		batch := pool.findBatchForHeight(startHeight)
+		if batch == nil {
 			break
 		}
-		startHeight += pool.batchSize
+		startHeight = batch.startHeight + batch.count
 		if startHeight > pool.maxPeerHeight {
 			return // All heights are covered.
 		}
