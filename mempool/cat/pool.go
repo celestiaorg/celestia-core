@@ -158,6 +158,9 @@ func (txmp *TxPool) Size() int { return txmp.store.size() }
 // mempool. It is thread-safe.
 func (txmp *TxPool) SizeBytes() int64 { return txmp.store.totalBytes() }
 
+// MaxTxsBytes returns the maximum size of the mempool in bytes.
+func (txmp *TxPool) MaxTxsBytes() int64 { return txmp.config.MaxTxsBytes }
+
 // FlushAppConn executes FlushSync on the mempool's proxyAppConn.
 //
 // The caller must hold an exclusive mempool lock (by calling txmp.Lock) before

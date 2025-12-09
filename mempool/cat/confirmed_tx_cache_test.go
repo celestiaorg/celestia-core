@@ -9,7 +9,7 @@ import (
 )
 
 func TestConfirmedTxCache_AddAndGet(t *testing.T) {
-	cache := newConfirmedTxCache()
+	cache := newConfirmedTxCache(1024 * 1024) // 1MB
 
 	tx := types.Tx("test transaction")
 	txKey := tx.Key()
@@ -24,7 +24,7 @@ func TestConfirmedTxCache_AddAndGet(t *testing.T) {
 }
 
 func TestConfirmedTxCache_NotFound(t *testing.T) {
-	cache := newConfirmedTxCache()
+	cache := newConfirmedTxCache(1024 * 1024) // 1MB
 
 	tx := types.Tx("test transaction")
 	txKey := tx.Key()
@@ -34,113 +34,200 @@ func TestConfirmedTxCache_NotFound(t *testing.T) {
 	assert.False(t, ok)
 }
 
-func TestConfirmedTxCache_PruneOlderThan(t *testing.T) {
-	cache := newConfirmedTxCache()
+func TestConfirmedTxCache_MemoryLimit(t *testing.T) {
+	cache := newConfirmedTxCache(100) // Small limit for testing
 
-	tx1 := types.Tx("test transaction 1")
-	tx2 := types.Tx("test transaction 2")
-	tx3 := types.Tx("test transaction 3")
+	// Add txs that exceed the limit
+	tx1 := types.Tx("transaction 1 - 30 bytes!!!!")
+	tx2 := types.Tx("transaction 2 - 30 bytes!!!!")
+	tx3 := types.Tx("transaction 3 - 30 bytes!!!!")
+	tx4 := types.Tx("transaction 4 - 30 bytes!!!!")
 
-	// Add txs at different heights
 	cache.Add(tx1.Key(), tx1, 100)
-	cache.Add(tx2.Key(), tx2, 105)
+	cache.Add(tx2.Key(), tx2, 101)
+	cache.Add(tx3.Key(), tx3, 102)
+
+	assert.Equal(t, 3, cache.Size())
+	assert.LessOrEqual(t, cache.Bytes(), int64(100))
+
+	// Adding tx4 should evict tx1 (lowest height)
+	cache.Add(tx4.Key(), tx4, 103)
+
+	assert.Equal(t, 3, cache.Size())
+
+	// tx1 should be evicted (lowest height)
+	_, ok := cache.Get(tx1.Key())
+	assert.False(t, ok, "tx1 should be evicted")
+
+	// tx2, tx3, tx4 should still exist
+	_, ok = cache.Get(tx2.Key())
+	assert.True(t, ok, "tx2 should exist")
+
+	_, ok = cache.Get(tx3.Key())
+	assert.True(t, ok, "tx3 should exist")
+
+	_, ok = cache.Get(tx4.Key())
+	assert.True(t, ok, "tx4 should exist")
+}
+
+func TestConfirmedTxCache_EvictsLowestHeightFirst(t *testing.T) {
+	cache := newConfirmedTxCache(100)
+
+	// Add txs in non-sequential height order
+	tx1 := types.Tx("tx at height 105!!!!!!!!!!!")
+	tx2 := types.Tx("tx at height 100!!!!!!!!!!!")
+	tx3 := types.Tx("tx at height 110!!!!!!!!!!!")
+
+	cache.Add(tx1.Key(), tx1, 105)
+	cache.Add(tx2.Key(), tx2, 100) // Lowest height
 	cache.Add(tx3.Key(), tx3, 110)
 
 	assert.Equal(t, 3, cache.Size())
 
-	// Prune entries at or before height 105
-	cache.PruneOlderThan(105)
+	// Add another tx to trigger eviction
+	tx4 := types.Tx("tx at height 115!!!!!!!!!!!")
+	cache.Add(tx4.Key(), tx4, 115)
 
-	// Only tx3 should remain
-	assert.Equal(t, 1, cache.Size())
+	// tx2 should be evicted (lowest height 100)
+	_, ok := cache.Get(tx2.Key())
+	assert.False(t, ok, "tx2 (height 100) should be evicted first")
 
-	_, ok := cache.Get(tx1.Key())
-	assert.False(t, ok, "tx1 should be pruned")
-
-	_, ok = cache.Get(tx2.Key())
-	assert.False(t, ok, "tx2 should be pruned")
+	// Others should exist
+	_, ok = cache.Get(tx1.Key())
+	assert.True(t, ok, "tx1 (height 105) should exist")
 
 	_, ok = cache.Get(tx3.Key())
-	assert.True(t, ok, "tx3 should still exist")
+	assert.True(t, ok, "tx3 (height 110) should exist")
+
+	_, ok = cache.Get(tx4.Key())
+	assert.True(t, ok, "tx4 (height 115) should exist")
 }
 
-func TestConfirmedTxCache_MaxSize(t *testing.T) {
-	cache := newConfirmedTxCache()
-	cache.maxSize = 3
+func TestConfirmedTxCache_NoDuplicates(t *testing.T) {
+	cache := newConfirmedTxCache(1024 * 1024)
 
-	// Add 3 txs
-	for i := 0; i < 3; i++ {
-		tx := types.Tx([]byte{byte(i)})
-		cache.Add(tx.Key(), tx, int64(100+i))
-	}
+	tx := types.Tx("test transaction")
+	txKey := tx.Key()
 
-	assert.Equal(t, 3, cache.Size())
+	cache.Add(txKey, tx, 100)
+	initialBytes := cache.Bytes()
 
-	// Adding a 4th tx when at max size should not increase size
-	tx4 := types.Tx([]byte{4})
-	cache.Add(tx4.Key(), tx4, 103)
+	// Adding same tx again should not increase size
+	cache.Add(txKey, tx, 101)
 
-	// Size should not exceed max
-	assert.Equal(t, 3, cache.Size())
+	assert.Equal(t, 1, cache.Size())
+	assert.Equal(t, initialBytes, cache.Bytes())
+}
 
-	// tx4 should not be found (wasn't added due to max size)
-	_, ok := cache.Get(tx4.Key())
+func TestConfirmedTxCache_LargeTxRejected(t *testing.T) {
+	cache := newConfirmedTxCache(50)
+
+	// Try to add a tx larger than maxBytes
+	largeTx := types.Tx("this transaction is way too large to fit in the cache!!!!!!")
+
+	cache.Add(largeTx.Key(), largeTx, 100)
+
+	// Should not be added
+	assert.Equal(t, 0, cache.Size())
+	_, ok := cache.Get(largeTx.Key())
 	assert.False(t, ok)
 }
 
-func TestConfirmedTxCache_HeightTTL(t *testing.T) {
-	cache := newConfirmedTxCache()
+func TestConfirmedTxCache_BytesTracking(t *testing.T) {
+	cache := newConfirmedTxCache(1024 * 1024)
 
-	// Add tx at height 100
-	tx := types.Tx("test transaction")
-	cache.Add(tx.Key(), tx, 100)
+	tx1 := types.Tx("short")
+	tx2 := types.Tx("medium length tx")
+	tx3 := types.Tx("this is a longer transaction")
 
-	// Prune entries at or before height 99 - tx at 100 should still exist
-	cache.PruneOlderThan(99)
-	_, ok := cache.Get(tx.Key())
-	assert.True(t, ok, "tx at height 100 should exist when pruning <= 99")
+	cache.Add(tx1.Key(), tx1, 100)
+	assert.Equal(t, int64(len(tx1)), cache.Bytes())
 
-	// Prune entries at or before height 100 - tx at 100 should be pruned
-	cache.PruneOlderThan(100)
-	_, ok = cache.Get(tx.Key())
-	assert.False(t, ok, "tx at height 100 should be pruned when pruning <= 100")
+	cache.Add(tx2.Key(), tx2, 101)
+	assert.Equal(t, int64(len(tx1)+len(tx2)), cache.Bytes())
+
+	cache.Add(tx3.Key(), tx3, 102)
+	assert.Equal(t, int64(len(tx1)+len(tx2)+len(tx3)), cache.Bytes())
 }
 
-func TestConfirmedTxCache_HeightBasedCleanup(t *testing.T) {
-	// Simulate the cleanup logic used in heightSignalLoop
-	cache := newConfirmedTxCache()
-	heightTTL := int64(15)
+func TestConfirmedTxCache_Prune(t *testing.T) {
+	cache := newConfirmedTxCache(1024 * 1024)
 
-	// Add txs at heights 100, 105, 110
+	// Add txs at different heights
 	tx1 := types.Tx("tx at height 100")
 	tx2 := types.Tx("tx at height 105")
 	tx3 := types.Tx("tx at height 110")
+	tx4 := types.Tx("tx at height 115")
+	tx5 := types.Tx("tx at height 120")
 
 	cache.Add(tx1.Key(), tx1, 100)
 	cache.Add(tx2.Key(), tx2, 105)
 	cache.Add(tx3.Key(), tx3, 110)
+	cache.Add(tx4.Key(), tx4, 115)
+	cache.Add(tx5.Key(), tx5, 120)
 
-	// At current height 115, prune entries older than 115-15=100
-	// This should remove tx1 (height 100 <= 100)
-	currentHeight := int64(115)
-	cache.PruneOlderThan(currentHeight - heightTTL)
+	assert.Equal(t, 5, cache.Size())
 
+	// Prune everything below height 110
+	cache.Prune(110)
+
+	assert.Equal(t, 3, cache.Size())
+
+	// tx1 and tx2 should be gone
 	_, ok := cache.Get(tx1.Key())
-	assert.False(t, ok, "tx1 at height 100 should be pruned at height 115")
+	assert.False(t, ok, "tx1 (height 100) should be pruned")
 
 	_, ok = cache.Get(tx2.Key())
-	assert.True(t, ok, "tx2 at height 105 should exist at height 115")
+	assert.False(t, ok, "tx2 (height 105) should be pruned")
 
+	// tx3, tx4, tx5 should still exist
 	_, ok = cache.Get(tx3.Key())
-	assert.True(t, ok, "tx3 at height 110 should exist at height 115")
+	assert.True(t, ok, "tx3 (height 110) should exist")
 
-	// At current height 120, prune entries older than 120-15=105
-	currentHeight = 120
-	cache.PruneOlderThan(currentHeight - heightTTL)
+	_, ok = cache.Get(tx4.Key())
+	assert.True(t, ok, "tx4 (height 115) should exist")
 
-	_, ok = cache.Get(tx2.Key())
-	assert.False(t, ok, "tx2 at height 105 should be pruned at height 120")
+	_, ok = cache.Get(tx5.Key())
+	assert.True(t, ok, "tx5 (height 120) should exist")
 
-	_, ok = cache.Get(tx3.Key())
-	assert.True(t, ok, "tx3 at height 110 should exist at height 120")
+	// Verify bytes are tracked correctly
+	expectedBytes := int64(len(tx3) + len(tx4) + len(tx5))
+	assert.Equal(t, expectedBytes, cache.Bytes())
+}
+
+func TestConfirmedTxCache_PruneAll(t *testing.T) {
+	cache := newConfirmedTxCache(1024 * 1024)
+
+	tx1 := types.Tx("tx at height 100")
+	tx2 := types.Tx("tx at height 105")
+
+	cache.Add(tx1.Key(), tx1, 100)
+	cache.Add(tx2.Key(), tx2, 105)
+
+	assert.Equal(t, 2, cache.Size())
+
+	// Prune everything (min height higher than all entries)
+	cache.Prune(200)
+
+	assert.Equal(t, 0, cache.Size())
+	assert.Equal(t, int64(0), cache.Bytes())
+}
+
+func TestConfirmedTxCache_PruneNone(t *testing.T) {
+	cache := newConfirmedTxCache(1024 * 1024)
+
+	tx1 := types.Tx("tx at height 100")
+	tx2 := types.Tx("tx at height 105")
+
+	cache.Add(tx1.Key(), tx1, 100)
+	cache.Add(tx2.Key(), tx2, 105)
+
+	initialSize := cache.Size()
+	initialBytes := cache.Bytes()
+
+	// Prune nothing (min height lower than all entries)
+	cache.Prune(50)
+
+	assert.Equal(t, initialSize, cache.Size())
+	assert.Equal(t, initialBytes, cache.Bytes())
 }

@@ -52,6 +52,10 @@ const (
 
 	// maxSignerLength is the maximum allowed length for a signer field in SeenTx messages.
 	maxSignerLength = 64
+
+	// confirmedTxCacheRetentionHeight is the number of heights to retain txs in the confirmed cache.
+	// Txs older than (currentHeight - confirmedTxCacheRetentionHeight) are pruned.
+	confirmedTxCacheRetentionHeight = 10
 )
 
 var (
@@ -135,7 +139,7 @@ func NewReactor(mempool *TxPool, opts *ReactorOptions) (*Reactor, error) {
 		pendingSeen:    newPendingSeenTracker(0),
 		receivedBuffer: newReceivedTxBuffer(),
 		traceClient:    traceClient,
-		confirmedTxs:   newConfirmedTxCache(),
+		confirmedTxs:   newConfirmedTxCache(mempool.MaxTxsBytes()),
 	}
 	memR.BaseReactor = *p2p.NewBaseReactor("CAT", memR,
 		p2p.WithIncomingQueueSize(ReactorIncomingMessageQueueSize),
@@ -852,13 +856,8 @@ func (memR *Reactor) heightSignalLoop() {
 				return
 			}
 			memR.refreshPendingSeenQueues()
-
-			// Prune old entries from the confirmed tx cache.
-			// Keep txs for defaultConfirmedTxCacheHeightTTL blocks.
-			currentHeight := memR.mempool.Height()
-			if currentHeight > defaultConfirmedTxCacheHeightTTL {
-				memR.confirmedTxs.PruneOlderThan(currentHeight - defaultConfirmedTxCacheHeightTTL)
-			}
+			// Prune old entries from confirmed tx cache
+			memR.confirmedTxs.Prune(memR.mempool.Height() - confirmedTxCacheRetentionHeight)
 		}
 	}
 }
