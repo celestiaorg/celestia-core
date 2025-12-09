@@ -114,20 +114,6 @@ func (c *confirmedTxCache) Get(txKey types.TxKey) (types.Tx, bool) {
 	return entry.tx, true
 }
 
-// Size returns the number of entries in the cache.
-func (c *confirmedTxCache) Size() int {
-	c.mtx.RLock()
-	defer c.mtx.RUnlock()
-	return len(c.txs)
-}
-
-// Bytes returns the total bytes used by the cache.
-func (c *confirmedTxCache) Bytes() int64 {
-	c.mtx.RLock()
-	defer c.mtx.RUnlock()
-	return c.bytes
-}
-
 // Prune removes all entries with height less than minHeight.
 func (c *confirmedTxCache) Prune(minHeight int64) {
 	c.mtx.Lock()

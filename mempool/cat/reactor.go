@@ -326,7 +326,6 @@ func (memR *Reactor) Receive(e p2p.Envelope) {
 					}
 					// Future sequence within lookahead - buffer it for later
 					if memR.receivedBuffer.add(pendingEntry.signer, pendingEntry.sequence, cachedTx, key, txInfo, string(e.Src.ID())) {
-						memR.pendingSeen.remove(key)
 						// Mark received after successfully buffering
 						if wasRequested {
 							memR.requests.MarkReceived(peerID, key)
@@ -407,11 +406,10 @@ func (memR *Reactor) Receive(e p2p.Envelope) {
 				msg.Signer,
 				msg.Sequence,
 			)
-		case msg.Sequence == expectedSeq:
-			// fall through and request immediately for the expected sequence
-		case msg.Sequence > expectedSeq:
+		case msg.Sequence >= expectedSeq:
 			// TODO: add per-peer limits or something similar to pendingSeen to prevent overflowing
 			memR.pendingSeen.add(msg.Signer, txKey, msg.Sequence, peerID)
+			memR.processPendingSeenForSigner(msg.Signer)
 			return
 		default:
 			memR.Logger.Debug(
@@ -422,10 +420,6 @@ func (memR *Reactor) Receive(e p2p.Envelope) {
 			)
 			return
 		}
-
-		// We don't have the transaction, nor are we requesting it so we send the node
-		// a want msg
-		memR.requestTx(txKey, e.Src)
 
 	// A peer is requesting a transaction that we have claimed to have. Find the specified
 	// transaction and broadcast it to the peer. We may no longer have the transaction
@@ -732,47 +726,40 @@ func (memR *Reactor) processPendingSeenForSigner(signer []byte) {
 		return
 	}
 
-	// Clean up old entries and request consecutive sequences in parallel
-	nextSeq := expectedSeq
-	requested := 0
-
-	for _, entry := range entries {
-		// Clean up entries that are already processed
-		if entry.sequence < expectedSeq {
-			memR.pendingSeen.remove(entry.txKey)
+	var (
+		entryIdx  = 0
+		requested = 0
+	)
+	for entries[entryIdx].sequence < expectedSeq && entryIdx < len(entries) {
+		memR.pendingSeen.remove(entries[entryIdx].txKey)
+		entryIdx++
+	}
+	for curSeq := expectedSeq; curSeq < expectedSeq+maxReceivedBufferSize; curSeq++ {
+		if entryIdx >= len(entries) {
+			break
+		}
+		entry := entries[entryIdx]
+		if memR.receivedBuffer.get(signer, curSeq) != nil {
+			if entry.sequence == curSeq {
+				entryIdx++
+			}
 			continue
 		}
-
-		if entry.sequence != nextSeq {
+		entryIdx++
+		if entry.sequence != curSeq {
 			break
 		}
-
-		// Check limits
-		if requested >= maxReceivedBufferSize {
-			break
-		}
-
-		// Skip if already in mempool
 		if memR.mempool.Has(entry.txKey) {
 			memR.pendingSeen.remove(entry.txKey)
-			nextSeq++
 			continue
 		}
-
-		// Skip if already being requested, but count it
 		if memR.requests.ForTx(entry.txKey) != 0 || entry.requested {
-			nextSeq++
-			requested++
 			continue
 		}
-
-		// Request from first available peer
 		if memR.tryRequestQueuedTx(entry) {
 			requested++
 		}
-		nextSeq++
 	}
-
 	if requested > 0 {
 		memR.Logger.Info("parallel requests sent", "count", requested)
 	}
