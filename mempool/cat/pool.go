@@ -648,6 +648,7 @@ func (txmp *TxPool) addNewTransaction(wtx *wrappedTx) error {
 				wtx.sender,
 				wtx.sequence,
 			)
+			txmp.logMempoolState(wtx.sender, wtx.sequence)
 			return err
 		}
 
@@ -903,4 +904,29 @@ func (txmp *TxPool) postCheck(tx *types.CachedTx, res *abci.ResponseCheckTx) err
 		return txmp.postCheckFn(tx, res)
 	}
 	return nil
+}
+
+// logMempoolState logs the state for the rejected signer when mempool is full.
+func (txmp *TxPool) logMempoolState(rejectedSigner []byte, rejectedSequence uint64) {
+	if len(rejectedSigner) == 0 {
+		return
+	}
+
+	set := txmp.store.getSetBySigner(rejectedSigner)
+	if set == nil || len(set.txs) == 0 {
+		txmp.logger.Info("mempool is full",
+			"signer", string(rejectedSigner),
+			"existingSeqRange", "none",
+			"addedSequence", rejectedSequence,
+		)
+		return
+	}
+
+	minSeq := set.txs[0].sequence
+	maxSeq := set.txs[len(set.txs)-1].sequence
+	txmp.logger.Info("mempool is full",
+		"signer", string(rejectedSigner),
+		"existingSeqRange", fmt.Sprintf("[%d-%d]", minSeq, maxSeq),
+		"addedSequence", rejectedSequence,
+	)
 }

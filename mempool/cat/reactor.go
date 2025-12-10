@@ -739,8 +739,12 @@ func (memR *Reactor) heightSignalLoop() {
 }
 
 func (memR *Reactor) refreshPendingSeenQueues() {
+
 	// Log mempool state on each height update
 	memR.logMempoolSignerState()
+
+	// Log sticky peers for each signer on height update
+	memR.logStickyPeers()
 
 	// Collect signers from both pending seen and buffer
 	seenSigners := make(map[string][]byte)
@@ -786,6 +790,37 @@ func (memR *Reactor) logMempoolSignerState() {
 				"txCount", len(set.txs),
 				"seqRange", fmt.Sprintf("[%d-%d]", minSeq, maxSeq),
 				"expectedSeq", expectedSeq,
+			)
+		}
+	})
+}
+
+// logStickyPeers logs the sticky peers for each signer in the mempool
+func (memR *Reactor) logStickyPeers() {
+	peers := memR.ids.GetAll()
+	if len(peers) == 0 {
+		return
+	}
+
+	memR.mempool.store.processOrderedTxSets(func(txSets []*txSet) {
+		for _, set := range txSets {
+			if len(set.signer) == 0 {
+				continue
+			}
+
+			stickyPeers := selectStickyPeers(set.signer, peers, maxSeenTxBroadcast, memR.currentStickyPeerSalt())
+			if len(stickyPeers) == 0 {
+				continue
+			}
+
+			peerIDs := make([]string, 0, len(stickyPeers))
+			for _, sp := range stickyPeers {
+				peerIDs = append(peerIDs, string(sp.peer.ID()))
+			}
+
+			memR.Logger.Info("sticky peers for signer",
+				"signer", string(set.signer),
+				"stickyPeers", peerIDs,
 			)
 		}
 	})

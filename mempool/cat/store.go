@@ -84,6 +84,12 @@ func (s *store) has(txKey types.TxKey) bool {
 	return has
 }
 
+func (s *store) getSetBySigner(signer []byte) *txSet {
+	s.mtx.RLock()
+	defer s.mtx.RUnlock()
+	return s.setsBySigner[string(signer)]
+}
+
 // remove removes a transaction from the store.
 func (s *store) remove(txKey types.TxKey) bool {
 	s.mtx.Lock()
