@@ -771,6 +771,17 @@ func (memR *Reactor) refreshPendingSeenQueues() {
 
 // logMempoolSignerState logs the state of all signers in the mempool
 func (memR *Reactor) logMempoolSignerState() {
+	height := memR.mempool.Height()
+	size := memR.mempool.Size()
+	sizeBytes := memR.mempool.SizeBytes()
+
+	memR.Logger.Info("mempool state on height update",
+		"height", height,
+		"numTxs", size,
+		"sizeBytes", sizeBytes,
+	)
+
+	// Log mempool txs per signer
 	memR.mempool.store.processOrderedTxSets(func(txSets []*txSet) {
 		for _, set := range txSets {
 			if len(set.signer) == 0 {
@@ -786,6 +797,7 @@ func (memR *Reactor) logMempoolSignerState() {
 			expectedSeq, _ := memR.querySequenceFromApplication(set.signer)
 
 			memR.Logger.Info("mempool signer state",
+				"height", height,
 				"signer", string(set.signer),
 				"txCount", len(set.txs),
 				"seqRange", fmt.Sprintf("[%d-%d]", minSeq, maxSeq),
@@ -793,6 +805,30 @@ func (memR *Reactor) logMempoolSignerState() {
 			)
 		}
 	})
+
+	// Log pending SeenTx entries per signer
+	for _, signer := range memR.pendingSeen.signerKeys() {
+		entries := memR.pendingSeen.entriesForSigner(signer)
+		if len(entries) == 0 {
+			continue
+		}
+
+		// Collect sequences
+		seqs := make([]uint64, 0, len(entries))
+		for _, e := range entries {
+			seqs = append(seqs, e.sequence)
+		}
+
+		expectedSeq, _ := memR.querySequenceFromApplication(signer)
+
+		memR.Logger.Info("pending seen txs for signer",
+			"height", height,
+			"signer", string(signer),
+			"pendingCount", len(entries),
+			"pendingSeqs", seqs,
+			"expectedSeq", expectedSeq,
+		)
+	}
 }
 
 // logStickyPeers logs the sticky peers for each signer in the mempool
@@ -813,14 +849,14 @@ func (memR *Reactor) logStickyPeers() {
 				continue
 			}
 
-			peerIDs := make([]string, 0, len(stickyPeers))
+			peerInfos := make([]string, 0, len(stickyPeers))
 			for _, sp := range stickyPeers {
-				peerIDs = append(peerIDs, string(sp.peer.ID()))
+				peerInfos = append(peerInfos, fmt.Sprintf("%s@%s", sp.peer.ID(), sp.peer.RemoteIP()))
 			}
 
 			memR.Logger.Info("sticky peers for signer",
 				"signer", string(set.signer),
-				"stickyPeers", peerIDs,
+				"stickyPeers", peerInfos,
 			)
 		}
 	})
