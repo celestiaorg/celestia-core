@@ -3,12 +3,14 @@ package propagation
 import (
 	"bytes"
 	"errors"
+	"sync/atomic"
 	"time"
 
 	"github.com/cometbft/cometbft/crypto/merkle"
 	"github.com/cometbft/cometbft/libs/bits"
 	"github.com/cometbft/cometbft/libs/log"
 	"github.com/cometbft/cometbft/libs/sync"
+	"github.com/cometbft/cometbft/store"
 	"github.com/cometbft/cometbft/types"
 
 	proptypes "github.com/cometbft/cometbft/consensus/propagation/types"
@@ -28,18 +30,15 @@ var (
 type PendingBlockState int
 
 const (
-	// BlockStateHeaderOnly - we have a verified header but no compact block yet.
-	BlockStateHeaderOnly PendingBlockState = iota
-	// BlockStateActive - we have a compact block and are downloading parts.
-	BlockStateActive
+	// BlockStateActive - we have block metadata and are downloading parts.
+	BlockStateActive PendingBlockState = iota
 	// BlockStateComplete - all original parts received.
 	BlockStateComplete
 )
 
-// PendingBlock represents a block being downloaded.
-// Created when either:
-// 1. A compact block arrives AND headersync has verified its header
-// 2. A verified header arrives from headersync (without compact block yet)
+// PendingBlock represents a block being downloaded or served.
+// This unified structure handles both "live" blocks (from compact blocks)
+// and "catchup" blocks (from verified headers or commitments).
 type PendingBlock struct {
 	Height int64
 	Round  int32
@@ -50,8 +49,11 @@ type PendingBlock struct {
 	// Block data - the combined original + parity part set.
 	Parts *proptypes.CombinedPartSet
 
-	// Compact block metadata (nil if header arrived first without compact block).
+	// Compact block metadata (nil for catchup-only blocks).
 	CompactBlock *proptypes.CompactBlock
+
+	// Request tracking for this block.
+	MaxRequests *bits.BitArray
 
 	// Whether header has been verified by headersync.
 	HeaderVerified bool
@@ -82,22 +84,26 @@ type HeaderVerifier interface {
 	// GetVerifiedHeader returns a verified header if available.
 	// Returns the header, blockID, and whether it was found.
 	GetVerifiedHeader(height int64) (*types.Header, *types.BlockID, bool)
-
-	// Subscribe returns a channel that receives newly verified headers.
-	Subscribe() <-chan *headersync.VerifiedHeader
 }
 
-// PendingBlocksManager manages concurrent block downloads.
-// It routes parts to the correct block by height and prioritizes older blocks.
+// PendingBlocksManager manages all block downloads - both live and catchup.
+// This is the unified replacement for ProposalCache + catchup coordination.
 type PendingBlocksManager struct {
 	mtx    sync.RWMutex
 	logger log.Logger
+
+	// Block store for loading committed blocks.
+	store *store.BlockStore
 
 	// Pending blocks indexed by height.
 	blocks map[int64]*PendingBlock
 
 	// Heights sorted ascending (lowest = highest priority).
 	heights []int64
+
+	// Current consensus height and round.
+	height int64
+	round  int32
 
 	// Constraints.
 	config        PendingBlocksConfig
@@ -108,11 +114,15 @@ type PendingBlocksManager struct {
 
 	// Output channel for forwarding parts to consensus.
 	partsChan chan<- types.PartInfo
+
+	// Current proposal parts count for request limiting.
+	currentProposalPartsCount atomic.Int64
 }
 
-// NewPendingBlocksManager creates a new manager for concurrent block downloads.
+// NewPendingBlocksManager creates a new unified manager for block downloads.
 func NewPendingBlocksManager(
 	logger log.Logger,
+	store *store.BlockStore,
 	partsChan chan<- types.PartInfo,
 	headerVerifier HeaderVerifier,
 	config PendingBlocksConfig,
@@ -124,89 +134,263 @@ func NewPendingBlocksManager(
 		config.MemoryBudget = 100 * 1024 * 1024
 	}
 
-	return &PendingBlocksManager{
+	m := &PendingBlocksManager{
 		logger:         logger,
+		store:          store,
 		blocks:         make(map[int64]*PendingBlock),
 		heights:        make([]int64, 0),
 		config:         config,
 		headerVerifier: headerVerifier,
 		partsChan:      partsChan,
 	}
+
+	// Initialize height from store.
+	if store != nil && store.Height() != 0 {
+		m.height = store.Height()
+	}
+
+	return m
 }
 
-// HandleCompactBlock processes an incoming compact block.
-// Returns nil if the block was accepted (or is a duplicate), error otherwise.
-func (m *PendingBlocksManager) HandleCompactBlock(cb *proptypes.CompactBlock) error {
+// --- Proposal Management (replaces ProposalCache) ---
+
+// AddProposal adds a new compact block for the live consensus round.
+// This is called when we receive a compact block from a peer or propose one ourselves.
+func (m *PendingBlocksManager) AddProposal(cb *proptypes.CompactBlock) bool {
 	m.mtx.Lock()
 	defer m.mtx.Unlock()
 
 	height := cb.Proposal.Height
 	round := cb.Proposal.Round
 
-	// Already have this block?
+	if !m.relevantLocked(height, round) {
+		return false
+	}
+
+	// Check if we already have this height.
 	if pending, exists := m.blocks[height]; exists {
+		// If we already have a compact block, skip.
 		if pending.CompactBlock != nil {
-			return nil // Duplicate, silently accept.
+			return false
 		}
-		// We had header-only, now we have compact block - activate it.
-		return m.activateBlockLocked(pending, cb)
+		// We had a header-only entry, attach the compact block.
+		return m.activateWithCompactBlockLocked(pending, cb)
 	}
 
-	// Check if headersync has verified the header.
-	header, blockID, verified := m.getVerifiedHeader(height)
-	if !verified {
-		// Header not verified yet - this is the "live" case at chain tip.
-		// The propagation reactor handles verification via proposer signature.
-		//
-		// TODO: Future enhancement - queue unverified compact blocks briefly
-		// in case the header arrives shortly after. For now, return nil to
-		// indicate we're not handling this block.
-		return nil
+	// Check capacity before adding new block.
+	if !m.hasCapacityLocked(cb) {
+		return false
 	}
 
-	// Header is verified - validate that compact block matches.
-	if !bytes.Equal(blockID.Hash, cb.Proposal.BlockID.Hash) {
-		return ErrBlockIDMismatch
+	// Create new pending block.
+	m.height = height
+	m.round = round
+
+	parts := proptypes.NewCombinedSetFromCompactBlock(cb)
+	pending := &PendingBlock{
+		Height:       height,
+		Round:        round,
+		CompactBlock: cb,
+		Parts:        parts,
+		MaxRequests:  bits.NewBitArray(int(parts.Total())),
+		CreatedAt:    time.Now(),
+		State:        BlockStateActive,
 	}
 
-	return m.addVerifiedBlockLocked(cb, header, blockID, height, round)
+	// Check if header is verified.
+	if m.headerVerifier != nil {
+		_, blockID, verified := m.headerVerifier.GetVerifiedHeader(height)
+		if verified {
+			pending.BlockID = *blockID
+			pending.HeaderVerified = true
+		}
+	}
+
+	m.blocks[height] = pending
+	m.insertHeightLocked(height)
+	m.currentMemory += m.estimateMemory(cb)
+	m.currentProposalPartsCount.Store(int64(parts.Total()))
+
+	return true
 }
 
-// activateBlockLocked transitions a header-only block to active when compact block arrives.
-// Caller must hold m.mtx.
-func (m *PendingBlocksManager) activateBlockLocked(pending *PendingBlock, cb *proptypes.CompactBlock) error {
-	// Verify compact block matches our verified header.
+// activateWithCompactBlockLocked attaches a compact block to a header-only entry.
+func (m *PendingBlocksManager) activateWithCompactBlockLocked(pending *PendingBlock, cb *proptypes.CompactBlock) bool {
+	// Verify hash matches if we have a verified header.
 	if pending.HeaderVerified && !bytes.Equal(pending.BlockID.Hash, cb.Proposal.BlockID.Hash) {
-		return ErrBlockIDMismatch
+		m.logger.Error("compact block hash mismatch with verified header",
+			"height", pending.Height,
+			"verified_hash", pending.BlockID.Hash,
+			"compact_hash", cb.Proposal.BlockID.Hash)
+		return false
 	}
 
 	pending.CompactBlock = cb
 	pending.Round = cb.Proposal.Round
-	pending.Parts = proptypes.NewCombinedSetFromCompactBlock(cb)
+	// Keep existing Parts if already allocated, otherwise create new.
+	if pending.Parts == nil {
+		pending.Parts = proptypes.NewCombinedSetFromCompactBlock(cb)
+	}
+	pending.MaxRequests = bits.NewBitArray(int(pending.Parts.Total()))
 	pending.State = BlockStateActive
 
+	m.height = pending.Height
+	m.round = pending.Round
 	m.currentMemory += m.estimateMemory(cb)
-	return nil
+	m.currentProposalPartsCount.Store(int64(pending.Parts.Total()))
+
+	return true
 }
 
-// addVerifiedBlockLocked adds a new block that has a verified header.
-// Caller must hold m.mtx.
-func (m *PendingBlocksManager) addVerifiedBlockLocked(
-	cb *proptypes.CompactBlock,
-	blockID *types.BlockID,
-	height int64,
-	round int32,
-) error {
-	if !m.hasCapacityLocked(cb) {
-		return ErrNoCapacity
+// GetProposal returns the proposal and part set for a given height and round.
+func (m *PendingBlocksManager) GetProposal(height int64, round int32) (*types.Proposal, *types.PartSet, bool) {
+	cb, parts, _, has := m.GetAllState(height, round, true)
+	if !has {
+		return nil, nil, false
 	}
+	// For catchup blocks, cb may be nil but parts are available.
+	if cb == nil {
+		return nil, parts.Original(), true
+	}
+	return &cb.Proposal, parts.Original(), true
+}
+
+// GetCurrentProposal returns the current proposal for the current height/round.
+func (m *PendingBlocksManager) GetCurrentProposal() (*types.Proposal, *proptypes.CombinedPartSet, bool) {
+	m.mtx.RLock()
+	defer m.mtx.RUnlock()
+
+	pending, exists := m.blocks[m.height]
+	if !exists || pending.CompactBlock == nil {
+		return nil, nil, false
+	}
+	return &pending.CompactBlock.Proposal, pending.Parts, true
+}
+
+// GetCurrentCompactBlock returns the current compact block.
+func (m *PendingBlocksManager) GetCurrentCompactBlock() (*proptypes.CompactBlock, *proptypes.CombinedPartSet, bool) {
+	m.mtx.RLock()
+	defer m.mtx.RUnlock()
+
+	pending, exists := m.blocks[m.height]
+	if !exists || pending.CompactBlock == nil {
+		return nil, nil, false
+	}
+	return pending.CompactBlock, pending.Parts, true
+}
+
+// GetAllState returns the full state for a height/round.
+// This also checks the block store for committed blocks.
+func (m *PendingBlocksManager) GetAllState(height int64, round int32, catchup bool) (*proptypes.CompactBlock, *proptypes.CombinedPartSet, *bits.BitArray, bool) {
+	m.mtx.RLock()
+	defer m.mtx.RUnlock()
+
+	if !catchup && !m.relevantLocked(height, round) {
+		return nil, nil, nil, false
+	}
+
+	// Check pending blocks.
+	if pending, exists := m.blocks[height]; exists {
+		if pending.Round == round || round < -1 {
+			return pending.CompactBlock, pending.Parts, pending.MaxRequests, true
+		}
+	}
+
+	// Check store for committed blocks.
+	if height < m.height && m.store != nil {
+		if meta := m.store.LoadBlockMeta(height); meta != nil {
+			parts, _, err := m.store.LoadPartSet(height)
+			if err != nil {
+				return nil, nil, nil, false
+			}
+			cparts := proptypes.NewCombinedPartSetFromOriginal(parts, false)
+			return nil, cparts, cparts.BitArray(), true
+		}
+	}
+
+	return nil, nil, nil, false
+}
+
+// --- Header/Commitment Integration ---
+
+// OnHeaderVerified handles notification that a header has been verified by headersync.
+// This creates an active pending block that can start downloading parts immediately.
+func (m *PendingBlocksManager) OnHeaderVerified(vh *headersync.VerifiedHeader) {
+	m.mtx.Lock()
+	defer m.mtx.Unlock()
+
+	height := vh.Header.Height
+
+	// Already tracking this height?
+	if pending, exists := m.blocks[height]; exists {
+		if !pending.HeaderVerified {
+			// Verify any existing compact block matches.
+			if pending.CompactBlock != nil && !bytes.Equal(vh.BlockID.Hash, pending.CompactBlock.Proposal.BlockID.Hash) {
+				m.logger.Error("compact block hash mismatch with verified header, evicting",
+					"height", height,
+					"compact_hash", pending.CompactBlock.Proposal.BlockID.Hash,
+					"verified_hash", vh.BlockID.Hash)
+				m.evictBlockLocked(height)
+				return
+			}
+			pending.BlockID = vh.BlockID
+			pending.HeaderVerified = true
+		}
+		return
+	}
+
+	// Check capacity before adding.
+	if !m.hasCapacityLocked(nil) {
+		return
+	}
+
+	// Create an active block from the verified header.
+	m.addFromBlockIDLocked(height, vh.BlockID)
+}
+
+// AddCommitment adds a block for download based on a PartSetHeader from a commit.
+// This handles the edge case where consensus learns about a committed block
+// before headersync verifies the header.
+func (m *PendingBlocksManager) AddCommitment(height int64, round int32, psh *types.PartSetHeader) {
+	m.mtx.Lock()
+	defer m.mtx.Unlock()
+
+	// Already tracking this height?
+	if pending, exists := m.blocks[height]; exists {
+		// Update round if needed.
+		if pending.Round == 0 && round != 0 {
+			pending.Round = round
+		}
+		return
+	}
+
+	// Check capacity.
+	if !m.hasCapacityLocked(nil) {
+		m.logger.Debug("no capacity for commitment", "height", height)
+		return
+	}
+
+	blockID := types.BlockID{PartSetHeader: *psh}
+	m.logger.Info("adding commitment for download", "height", height, "round", round, "parts", psh.Total)
+	m.addFromBlockIDLocked(height, blockID)
+
+	// Update round.
+	if pending, exists := m.blocks[height]; exists {
+		pending.Round = round
+	}
+}
+
+// addFromBlockIDLocked creates an active pending block from a BlockID.
+func (m *PendingBlocksManager) addFromBlockIDLocked(height int64, blockID types.BlockID) {
+	original := types.NewPartSetFromHeader(blockID.PartSetHeader, types.BlockPartSizeBytes)
+	parts := proptypes.NewCombinedPartSetFromOriginal(original, true)
 
 	pending := &PendingBlock{
 		Height:         height,
-		Round:          round,
-		BlockID:        *blockID,
-		CompactBlock:   cb,
-		Parts:          proptypes.NewCombinedSetFromCompactBlock(cb),
+		Round:          0,
+		BlockID:        blockID,
+		Parts:          parts,
+		MaxRequests:    bits.NewBitArray(int(parts.Total())),
 		HeaderVerified: true,
 		CreatedAt:      time.Now(),
 		State:          BlockStateActive,
@@ -214,13 +398,16 @@ func (m *PendingBlocksManager) addVerifiedBlockLocked(
 
 	m.blocks[height] = pending
 	m.insertHeightLocked(height)
-	m.currentMemory += m.estimateMemory(cb)
 
-	return nil
+	// Estimate memory.
+	partSize := int64(types.BlockPartSizeBytes)
+	totalParts := int64(blockID.PartSetHeader.Total * 2)
+	m.currentMemory += totalParts * partSize
 }
 
+// --- Part Handling ---
+
 // HandlePart routes a received part to the appropriate pending block.
-// Returns error if part cannot be handled (unknown height, invalid, etc).
 func (m *PendingBlocksManager) HandlePart(
 	height int64,
 	round int32,
@@ -239,19 +426,18 @@ func (m *PendingBlocksManager) HandlePart(
 		return false, ErrBlockNotActive
 	}
 
-	if pending.Round != round {
-		// Part is for a different round - ignore.
+	if pending.Round != round && pending.Round != 0 {
 		return false, nil
 	}
 
-	// Add part to combined part set (handles original vs parity routing).
+	// Add part to combined part set.
 	added, err = pending.Parts.AddPart(part, proof)
 	if err != nil {
 		return false, err
 	}
 
 	if !added {
-		return false, nil // Duplicate part.
+		return false, nil
 	}
 
 	// Forward original parts to consensus.
@@ -259,7 +445,7 @@ func (m *PendingBlocksManager) HandlePart(
 		m.forwardPartToConsensus(part, proof, height, round)
 	}
 
-	// Check if we have all original parts.
+	// Check completion.
 	if pending.Parts.Original().IsComplete() {
 		pending.State = BlockStateComplete
 	}
@@ -274,6 +460,9 @@ func (m *PendingBlocksManager) forwardPartToConsensus(
 	height int64,
 	round int32,
 ) {
+	if m.partsChan == nil {
+		return
+	}
 	select {
 	case m.partsChan <- types.PartInfo{
 		Part: &types.Part{
@@ -290,50 +479,7 @@ func (m *PendingBlocksManager) forwardPartToConsensus(
 	}
 }
 
-// OnHeaderVerified handles notification that a header has been verified by headersync.
-// This may activate a pending header-only block or create a new one.
-func (m *PendingBlocksManager) OnHeaderVerified(vh *headersync.VerifiedHeader) {
-	m.mtx.Lock()
-	defer m.mtx.Unlock()
-
-	height := vh.Header.Height
-
-	// Already tracking this height?
-	if pending, exists := m.blocks[height]; exists {
-		// Update verification status if we had an unverified compact block.
-		if !pending.HeaderVerified {
-			if pending.CompactBlock != nil && !bytes.Equal(vh.BlockID.Hash, pending.CompactBlock.Proposal.BlockID.Hash) {
-				// Compact block we had was wrong - evict it.
-				m.logger.Error("compact block hash mismatch with verified header, evicting",
-					"height", height,
-					"compact_hash", pending.CompactBlock.Proposal.BlockID.Hash,
-					"verified_hash", vh.BlockID.Hash)
-				m.evictBlockLocked(height)
-				return
-			}
-			pending.BlockID = vh.BlockID
-			pending.HeaderVerified = true
-		}
-		return
-	}
-
-	// No compact block yet - create header-only entry if we have capacity.
-	// This allows us to be ready when the compact block arrives.
-	if !m.hasCapacityLocked(nil) {
-		return
-	}
-
-	pending := &PendingBlock{
-		Height:         height,
-		BlockID:        vh.BlockID,
-		HeaderVerified: true,
-		CreatedAt:      time.Now(),
-		State:          BlockStateHeaderOnly,
-	}
-
-	m.blocks[height] = pending
-	m.insertHeightLocked(height)
-}
+// --- Missing Parts / Request Scheduling ---
 
 // GetMissingParts returns parts that still need to be requested for active blocks.
 // Parts are returned grouped by height, in priority order (lowest height first).
@@ -345,7 +491,7 @@ func (m *PendingBlocksManager) GetMissingParts() []MissingPartsInfo {
 
 	for _, height := range m.heights {
 		pending := m.blocks[height]
-		if pending.State != BlockStateActive {
+		if pending.State != BlockStateActive || pending.Parts == nil {
 			continue
 		}
 
@@ -358,11 +504,28 @@ func (m *PendingBlocksManager) GetMissingParts() []MissingPartsInfo {
 		result = append(result, MissingPartsInfo{
 			Height:         height,
 			Round:          pending.Round,
+			TotalParts:     pending.Parts.Original().Total(),
 			MissingIndices: indices,
 			Priority:       m.getPriorityWeight(height),
+			Catchup:        pending.Parts.IsCatchup(),
 		})
 	}
 
+	return result
+}
+
+// UnfinishedHeights returns all blocks that are not complete (for catchup).
+func (m *PendingBlocksManager) UnfinishedHeights() []*PendingBlock {
+	m.mtx.RLock()
+	defer m.mtx.RUnlock()
+
+	result := make([]*PendingBlock, 0)
+	for _, height := range m.heights {
+		pending := m.blocks[height]
+		if pending.State != BlockStateComplete && pending.Parts != nil && !pending.Parts.IsComplete() {
+			result = append(result, pending)
+		}
+	}
 	return result
 }
 
@@ -370,44 +533,26 @@ func (m *PendingBlocksManager) GetMissingParts() []MissingPartsInfo {
 type MissingPartsInfo struct {
 	Height         int64
 	Round          int32
+	TotalParts     uint32
 	MissingIndices []int
-	Priority       float64 // Higher = more important (oldest blocks get 1.0).
+	Priority       float64
+	Catchup        bool // True if this is a catchup-only block (no parity data).
 }
+
+// --- Accessors ---
 
 // GetBlock returns the pending block at the given height, if it exists.
 func (m *PendingBlocksManager) GetBlock(height int64) (*PendingBlock, bool) {
 	m.mtx.RLock()
 	defer m.mtx.RUnlock()
-
 	pending, exists := m.blocks[height]
 	return pending, exists
-}
-
-// DeleteHeight removes a block from tracking (e.g., after commit).
-func (m *PendingBlocksManager) DeleteHeight(height int64) {
-	m.mtx.Lock()
-	defer m.mtx.Unlock()
-
-	m.evictBlockLocked(height)
-}
-
-// Prune removes all blocks below the given height.
-func (m *PendingBlocksManager) Prune(minHeight int64) {
-	m.mtx.Lock()
-	defer m.mtx.Unlock()
-
-	for height := range m.blocks {
-		if height < minHeight {
-			m.evictBlockLocked(height)
-		}
-	}
 }
 
 // Heights returns the currently tracked heights in priority order.
 func (m *PendingBlocksManager) Heights() []int64 {
 	m.mtx.RLock()
 	defer m.mtx.RUnlock()
-
 	result := make([]int64, len(m.heights))
 	copy(result, m.heights)
 	return result
@@ -420,7 +565,81 @@ func (m *PendingBlocksManager) Len() int {
 	return len(m.blocks)
 }
 
-// getVerifiedHeader checks if headersync has verified a header.
+// GetCurrentProposalPartsCount returns the current proposal parts count.
+func (m *PendingBlocksManager) GetCurrentProposalPartsCount() int64 {
+	return m.currentProposalPartsCount.Load()
+}
+
+// Relevant checks if a height/round is currently actionable.
+func (m *PendingBlocksManager) Relevant(height int64, round int32) bool {
+	m.mtx.RLock()
+	defer m.mtx.RUnlock()
+	return m.relevantLocked(height, round)
+}
+
+func (m *PendingBlocksManager) relevantLocked(height int64, round int32) bool {
+	if height < m.height {
+		return false
+	}
+	if height == m.height && round < m.round {
+		return false
+	}
+	return true
+}
+
+// --- Height/Round Management ---
+
+// SetHeightAndRound updates the current consensus height and round.
+func (m *PendingBlocksManager) SetHeightAndRound(height int64, round int32) {
+	m.mtx.Lock()
+	defer m.mtx.Unlock()
+	m.height = height
+	m.round = round
+}
+
+// GetHeight returns the current height.
+func (m *PendingBlocksManager) GetHeight() int64 {
+	m.mtx.RLock()
+	defer m.mtx.RUnlock()
+	return m.height
+}
+
+// GetRound returns the current round.
+func (m *PendingBlocksManager) GetRound() int32 {
+	m.mtx.RLock()
+	defer m.mtx.RUnlock()
+	return m.round
+}
+
+// Store returns the block store.
+func (m *PendingBlocksManager) Store() *store.BlockStore {
+	return m.store
+}
+
+// --- Cleanup ---
+
+// DeleteHeight removes a block from tracking.
+func (m *PendingBlocksManager) DeleteHeight(height int64) {
+	m.mtx.Lock()
+	defer m.mtx.Unlock()
+	m.evictBlockLocked(height)
+}
+
+// Prune removes all blocks at or below the given height.
+func (m *PendingBlocksManager) Prune(committedHeight int64) {
+	m.mtx.Lock()
+	defer m.mtx.Unlock()
+
+	for height := range m.blocks {
+		if height <= committedHeight {
+			m.evictBlockLocked(height)
+		}
+	}
+	m.height = committedHeight
+}
+
+// --- Internal Helpers ---
+
 func (m *PendingBlocksManager) getVerifiedHeader(height int64) (*types.Header, *types.BlockID, bool) {
 	if m.headerVerifier == nil {
 		return nil, nil, false
@@ -428,65 +647,52 @@ func (m *PendingBlocksManager) getVerifiedHeader(height int64) (*types.Header, *
 	return m.headerVerifier.GetVerifiedHeader(height)
 }
 
-// hasCapacityLocked checks if we can add another block.
-// Caller must hold m.mtx.
 func (m *PendingBlocksManager) hasCapacityLocked(cb *proptypes.CompactBlock) bool {
 	if len(m.blocks) >= m.config.MaxConcurrent {
 		return false
 	}
-
 	if cb != nil {
 		estimated := m.estimateMemory(cb)
-		if m.currentMemory+estimated > m.config.MemoryBudget {
+		// Allow adding a single block even if it exceeds the budget (when manager is empty).
+		// This ensures the proposer can always propose their own block.
+		if m.currentMemory+estimated > m.config.MemoryBudget && len(m.blocks) > 0 {
 			return false
 		}
 	}
-
 	return true
 }
 
-// estimateMemory estimates memory usage for a compact block.
 func (m *PendingBlocksManager) estimateMemory(cb *proptypes.CompactBlock) int64 {
 	if cb == nil {
 		return 0
 	}
-	// Estimate: total parts * part size.
 	partSize := int64(types.BlockPartSizeBytes)
-	totalParts := int64(cb.Proposal.BlockID.PartSetHeader.Total * 2) // Original + parity.
+	totalParts := int64(cb.Proposal.BlockID.PartSetHeader.Total * 2)
 	return totalParts * partSize
 }
 
-// insertHeightLocked inserts height in sorted order.
-// Caller must hold m.mtx.
 func (m *PendingBlocksManager) insertHeightLocked(height int64) {
-	// Binary search for insertion point.
 	i := 0
 	for i < len(m.heights) && m.heights[i] < height {
 		i++
 	}
-
-	// Insert at position i.
 	m.heights = append(m.heights, 0)
 	copy(m.heights[i+1:], m.heights[i:])
 	m.heights[i] = height
 }
 
-// evictBlockLocked removes a block and reclaims its memory.
-// Caller must hold m.mtx.
 func (m *PendingBlocksManager) evictBlockLocked(height int64) {
 	pending, exists := m.blocks[height]
 	if !exists {
 		return
 	}
 
-	// Reclaim memory.
 	if pending.CompactBlock != nil {
 		m.currentMemory -= m.estimateMemory(pending.CompactBlock)
 	}
 
 	delete(m.blocks, height)
 
-	// Remove from sorted heights.
 	for i, h := range m.heights {
 		if h == height {
 			m.heights = append(m.heights[:i], m.heights[i+1:]...)
@@ -495,8 +701,6 @@ func (m *PendingBlocksManager) evictBlockLocked(height int64) {
 	}
 }
 
-// getPriorityWeight returns priority weight for a height.
-// Lowest height gets weight 1.0, each subsequent halves.
 func (m *PendingBlocksManager) getPriorityWeight(height int64) float64 {
 	if len(m.heights) == 0 {
 		return 1.0
@@ -510,87 +714,14 @@ func (m *PendingBlocksManager) getPriorityWeight(height int64) float64 {
 		}
 	}
 
-	// Exponential decay: priority 0 = 1.0, priority 1 = 0.5, priority 2 = 0.25.
 	return 1.0 / float64(int(1)<<idx)
 }
 
-// --- Request tracking helper (used by reactor for scheduling) ---
+// --- Request Tracking (for peer request limits) ---
 
-// RequestTracker tracks outstanding part requests for a single block.
-type RequestTracker struct {
-	mtx       sync.Mutex
-	total     int
-	requested *bits.BitArray // Parts we've requested.
-	received  *bits.BitArray // Parts we've received.
-	reqCounts []int          // Number of times each part requested.
-	reqLimit  int            // Max requests per part.
-}
-
-// NewRequestTracker creates a tracker for a block with the given part count.
-func NewRequestTracker(total int, reqLimit int) *RequestTracker {
-	return &RequestTracker{
-		total:     total,
-		requested: bits.NewBitArray(total),
-		received:  bits.NewBitArray(total),
-		reqCounts: make([]int, total),
-		reqLimit:  reqLimit,
-	}
-}
-
-// MarkRequested marks a part as requested.
-func (rt *RequestTracker) MarkRequested(index uint32) {
-	rt.mtx.Lock()
-	defer rt.mtx.Unlock()
-
-	if int(index) >= rt.total {
-		return
-	}
-	rt.requested.SetIndex(int(index), true)
-	rt.reqCounts[index]++
-}
-
-// MarkReceived marks a part as received.
-func (rt *RequestTracker) MarkReceived(index uint32) {
-	rt.mtx.Lock()
-	defer rt.mtx.Unlock()
-
-	if int(index) >= rt.total {
-		return
-	}
-	rt.received.SetIndex(int(index), true)
-}
-
-// GetUnrequestedMissing returns indices of parts that are missing and haven't been requested.
-func (rt *RequestTracker) GetUnrequestedMissing() []int {
-	rt.mtx.Lock()
-	defer rt.mtx.Unlock()
-
-	result := make([]int, 0)
-	for i := 0; i < rt.total; i++ {
-		if !rt.received.GetIndex(i) && !rt.requested.GetIndex(i) {
-			result = append(result, i)
-		}
-	}
-	return result
-}
-
-// GetRetryableMissing returns indices of parts that can be re-requested (under limit).
-func (rt *RequestTracker) GetRetryableMissing() []int {
-	rt.mtx.Lock()
-	defer rt.mtx.Unlock()
-
-	result := make([]int, 0)
-	for i := 0; i < rt.total; i++ {
-		if !rt.received.GetIndex(i) && rt.reqCounts[i] < rt.reqLimit {
-			result = append(result, i)
-		}
-	}
-	return result
-}
-
-// IsComplete returns true if all parts have been received.
-func (rt *RequestTracker) IsComplete() bool {
-	rt.mtx.Lock()
-	defer rt.mtx.Unlock()
-	return rt.received.IsFull()
+// CountRequests returns the peers that have requested a specific part.
+func (m *PendingBlocksManager) CountRequests(height int64, round int32, partIndex int) []string {
+	// This is tracked at the peer level, not here.
+	// Keeping interface for compatibility.
+	return nil
 }

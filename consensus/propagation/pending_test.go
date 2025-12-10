@@ -17,13 +17,11 @@ import (
 // mockHeaderVerifier implements HeaderVerifier for testing.
 type mockHeaderVerifier struct {
 	headers map[int64]*headersync.VerifiedHeader
-	subCh   chan *headersync.VerifiedHeader
 }
 
 func newMockHeaderVerifier() *mockHeaderVerifier {
 	return &mockHeaderVerifier{
 		headers: make(map[int64]*headersync.VerifiedHeader),
-		subCh:   make(chan *headersync.VerifiedHeader, 100),
 	}
 }
 
@@ -33,10 +31,6 @@ func (m *mockHeaderVerifier) GetVerifiedHeader(height int64) (*types.Header, *ty
 		return nil, nil, false
 	}
 	return vh.Header, &vh.BlockID, true
-}
-
-func (m *mockHeaderVerifier) Subscribe() <-chan *headersync.VerifiedHeader {
-	return m.subCh
 }
 
 func (m *mockHeaderVerifier) AddVerifiedHeader(height int64, hash []byte) {
@@ -178,7 +172,7 @@ func TestPendingBlocksManager_HandleCompactBlock_MaxConcurrent(t *testing.T) {
 	require.ErrorIs(t, err, ErrNoCapacity)
 }
 
-func TestPendingBlocksManager_OnHeaderVerified_CreatesPendingBlock(t *testing.T) {
+func TestPendingBlocksManager_OnHeaderVerified_CreatesActiveBlock(t *testing.T) {
 	partsChan := make(chan types.PartInfo, 100)
 	verifier := newMockHeaderVerifier()
 	mgr := NewPendingBlocksManager(log.NewNopLogger(), partsChan, verifier, DefaultPendingBlocksConfig())
@@ -199,33 +193,37 @@ func TestPendingBlocksManager_OnHeaderVerified_CreatesPendingBlock(t *testing.T)
 	require.Equal(t, 1, mgr.Len())
 	pending, exists := mgr.GetBlock(10)
 	require.True(t, exists)
-	require.Equal(t, BlockStateHeaderOnly, pending.State)
+	// Block should be active immediately - we have the PartSetHeader so we can start downloading.
+	require.Equal(t, BlockStateActive, pending.State)
 	require.True(t, pending.HeaderVerified)
-	require.Nil(t, pending.CompactBlock)
+	require.Nil(t, pending.CompactBlock) // No compact block, but we can still download.
+	require.NotNil(t, pending.Parts)     // Parts should be allocated.
 }
 
-func TestPendingBlocksManager_OnHeaderVerified_ActivatesExistingBlock(t *testing.T) {
+func TestPendingBlocksManager_OnHeaderVerified_ThenCompactBlock(t *testing.T) {
 	partsChan := make(chan types.PartInfo, 100)
 	verifier := newMockHeaderVerifier()
 	mgr := NewPendingBlocksManager(log.NewNopLogger(), partsChan, verifier, DefaultPendingBlocksConfig())
 
 	hash := cmtrand.Bytes(32)
+	pshHash := cmtrand.Bytes(32)
 
-	// First add via header.
+	// First add via header - creates active block immediately.
 	vh := &headersync.VerifiedHeader{
 		Header: &types.Header{Height: 10},
 		BlockID: types.BlockID{
 			Hash: hash,
 			PartSetHeader: types.PartSetHeader{
 				Total: 4,
-				Hash:  cmtrand.Bytes(32),
+				Hash:  pshHash,
 			},
 		},
 	}
 	mgr.OnHeaderVerified(vh)
-	require.Equal(t, BlockStateHeaderOnly, mgr.blocks[10].State)
+	require.Equal(t, BlockStateActive, mgr.blocks[10].State)
+	require.Nil(t, mgr.blocks[10].CompactBlock)
 
-	// Now add compact block.
+	// Now add compact block - should attach to existing pending block.
 	verifier.AddVerifiedHeader(10, hash)
 	cb := makeCompactBlockWithHash(10, 0, 4, hash)
 	err := mgr.HandleCompactBlock(cb)
@@ -450,4 +448,78 @@ func TestRequestTracker_RetryLimit(t *testing.T) {
 	rt.MarkRequested(1)
 	retryable = rt.GetRetryableMissing()
 	require.Equal(t, []int{1}, retryable) // Part 1 still under limit.
+}
+
+func TestPendingBlocksManager_AddCommitment_CreatesActiveBlock(t *testing.T) {
+	partsChan := make(chan types.PartInfo, 100)
+	mgr := NewPendingBlocksManager(log.NewNopLogger(), partsChan, nil, DefaultPendingBlocksConfig())
+
+	psh := &types.PartSetHeader{
+		Total: 8,
+		Hash:  cmtrand.Bytes(32),
+	}
+
+	mgr.AddCommitment(10, 2, psh)
+
+	require.Equal(t, 1, mgr.Len())
+	pending, exists := mgr.GetBlock(10)
+	require.True(t, exists)
+	require.Equal(t, BlockStateActive, pending.State)
+	require.Equal(t, int32(2), pending.Round)
+	require.True(t, pending.HeaderVerified)
+	require.NotNil(t, pending.Parts)
+	require.Equal(t, uint32(8), pending.Parts.Original().Total())
+}
+
+func TestPendingBlocksManager_AddCommitment_SkipsDuplicate(t *testing.T) {
+	partsChan := make(chan types.PartInfo, 100)
+	verifier := newMockHeaderVerifier()
+	mgr := NewPendingBlocksManager(log.NewNopLogger(), partsChan, verifier, DefaultPendingBlocksConfig())
+
+	// First add via header.
+	hash := cmtrand.Bytes(32)
+	vh := &headersync.VerifiedHeader{
+		Header: &types.Header{Height: 10},
+		BlockID: types.BlockID{
+			Hash: hash,
+			PartSetHeader: types.PartSetHeader{
+				Total: 4,
+				Hash:  cmtrand.Bytes(32),
+			},
+		},
+	}
+	mgr.OnHeaderVerified(vh)
+	require.Equal(t, 1, mgr.Len())
+
+	// AddCommitment for same height should be ignored.
+	psh := &types.PartSetHeader{
+		Total: 8,
+		Hash:  cmtrand.Bytes(32),
+	}
+	mgr.AddCommitment(10, 2, psh)
+
+	// Still only one block.
+	require.Equal(t, 1, mgr.Len())
+	pending, _ := mgr.GetBlock(10)
+	// Original parts count should be from header, not commitment.
+	require.Equal(t, uint32(4), pending.Parts.Original().Total())
+}
+
+func TestPendingBlocksManager_AddCommitment_RespectsCapacity(t *testing.T) {
+	partsChan := make(chan types.PartInfo, 100)
+	config := PendingBlocksConfig{
+		MaxConcurrent: 1,
+		MemoryBudget:  100 * 1024 * 1024,
+	}
+	mgr := NewPendingBlocksManager(log.NewNopLogger(), partsChan, nil, config)
+
+	// Add first commitment.
+	psh1 := &types.PartSetHeader{Total: 4, Hash: cmtrand.Bytes(32)}
+	mgr.AddCommitment(10, 0, psh1)
+	require.Equal(t, 1, mgr.Len())
+
+	// Second commitment should be ignored due to capacity.
+	psh2 := &types.PartSetHeader{Total: 4, Hash: cmtrand.Bytes(32)}
+	mgr.AddCommitment(11, 0, psh2)
+	require.Equal(t, 1, mgr.Len())
 }

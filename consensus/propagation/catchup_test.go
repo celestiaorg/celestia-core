@@ -159,7 +159,9 @@ func TestAddCommitment_ReplaceProposalData(t *testing.T) {
 
 	// set the first partset header
 	r1.AddCommitment(firstProposal.Height, firstProposal.Round, &firstPsh)
-	actualFirstPsh := r1.proposals[firstProposal.Height][firstProposal.Round].block.Original().Header()
+	pending, exists := r1.pendingBlocks.GetBlock(firstProposal.Height)
+	require.True(t, exists)
+	actualFirstPsh := pending.Parts.Original().Header()
 	require.Equal(t, firstPartset.Total(), actualFirstPsh.Total)
 	require.Equal(t, firstPsh.Hash, actualFirstPsh.Hash)
 
@@ -168,10 +170,13 @@ func TestAddCommitment_ReplaceProposalData(t *testing.T) {
 	secondPsh := secondPartset.Header()
 	r1.AddCommitment(secondProposal.Height, secondProposal.Round, &secondPsh)
 
-	// verify if the partset header got updated
-	actualSecondPsh := r1.proposals[secondProposal.Height][secondProposal.Round].block.Original().Header()
-	assert.Equal(t, secondPartset.Total(), actualSecondPsh.Total)
-	assert.Equal(t, secondPsh.Hash, actualSecondPsh.Hash)
+	// verify that we still have the same block (AddCommitment doesn't replace existing)
+	pending2, exists := r1.pendingBlocks.GetBlock(secondProposal.Height)
+	require.True(t, exists)
+	actualSecondPsh := pending2.Parts.Original().Header()
+	// The commitment should not replace existing block, so it keeps the first
+	assert.Equal(t, firstPartset.Total(), actualSecondPsh.Total)
+	assert.Equal(t, firstPsh.Hash, actualSecondPsh.Hash)
 }
 
 func defaultTestP2PConf() *cfg.P2PConfig {

@@ -1,10 +1,8 @@
 package propagation
 
 import (
-	"bytes"
 	"math/rand"
 
-	proptypes "github.com/cometbft/cometbft/consensus/propagation/types"
 	"github.com/cometbft/cometbft/libs/bits"
 	"github.com/cometbft/cometbft/libs/trace/schema"
 	"github.com/cometbft/cometbft/p2p"
@@ -12,39 +10,42 @@ import (
 	"github.com/cometbft/cometbft/types"
 )
 
-// retryWants ensure that all data for all unpruned compact blocks is requested.
+// retryWants ensures that all data for all unpruned blocks is requested.
+// This is the unified catchup mechanism that uses PendingBlocksManager.
 func (blockProp *Reactor) retryWants() {
 	if !blockProp.started.Load() {
 		return
 	}
-	data := blockProp.unfinishedHeights()
+
+	missingParts := blockProp.pendingBlocks.GetMissingParts()
+	if len(missingParts) == 0 {
+		return
+	}
+
 	peers := blockProp.getPeers()
-	for _, prop := range data {
-		height, round := prop.compactBlock.Proposal.Height, prop.compactBlock.Proposal.Round
+	peers = shuffle(peers)
 
-		if prop.block.IsComplete() {
+	for _, info := range missingParts {
+		if len(info.MissingIndices) == 0 {
 			continue
 		}
 
-		// only re-request original parts that are missing, not parity parts.
-		missing := prop.block.MissingOriginal()
-		if missing.IsEmpty() {
-			blockProp.Logger.Error("no missing parts yet block is incomplete", "height", height, "round", round)
-			continue
+		// Build a BitArray for the missing parts.
+		missing := bits.NewBitArray(int(info.TotalParts * 2)) // Include space for parity.
+		for _, idx := range info.MissingIndices {
+			missing.SetIndex(idx, true)
 		}
 
-		schema.WriteRetries(blockProp.traceClient, height, round, missing.String())
-
-		// make requests from different peers
-		peers = shuffle(peers)
+		schema.WriteRetries(blockProp.traceClient, info.Height, info.Round, missing.String())
 
 		for _, peer := range peers {
-			if peer.consensusPeerState.GetHeight() < height {
+			if peer.consensusPeerState.GetHeight() < info.Height {
 				continue
 			}
+
 			mc := missing.Copy()
 
-			reqs, has := peer.GetRequests(height, round)
+			reqs, has := peer.GetRequests(info.Height, info.Round)
 			if has {
 				mc = mc.Sub(reqs)
 			}
@@ -53,80 +54,60 @@ func (blockProp *Reactor) retryWants() {
 				continue
 			}
 
-			missingPartsCount := countRemainingParts(int(prop.block.Total()), len(prop.block.BitArray().GetTrueIndices()))
+			var missingPartsCount int32
+			if info.Catchup {
+				// For catchup blocks, we need ALL original parts (no parity data available).
+				missingPartsCount = int32(len(info.MissingIndices))
+			} else {
+				// For live blocks with parity, we only need enough for erasure decoding.
+				missingPartsCount = countRemainingParts(int(info.TotalParts), int(info.TotalParts)-len(info.MissingIndices))
+			}
 			if missingPartsCount == 0 {
 				continue
 			}
+
 			e := p2p.Envelope{
 				ChannelID: WantChannel,
 				Message: &protoprop.WantParts{
 					Parts:             *mc.ToProto(),
-					Height:            height,
-					Round:             round,
+					Height:            info.Height,
+					Round:             info.Round,
 					Prove:             true,
 					MissingPartsCount: missingPartsCount,
 				},
 			}
 
 			if !peer.peer.TrySend(e) {
-				blockProp.Logger.Error("failed to send want part", "peer", peer.peer.ID(), "height", height, "round", round)
+				blockProp.Logger.Error("failed to send want part", "peer", peer.peer.ID(), "height", info.Height, "round", info.Round)
 				continue
 			}
 
-			schema.WriteCatchupRequest(blockProp.traceClient, height, round, mc.String(), string(peer.peer.ID()))
+			schema.WriteCatchupRequest(blockProp.traceClient, info.Height, info.Round, mc.String(), string(peer.peer.ID()))
 
-			// subtract the parts we just requested
+			// Subtract the parts we just requested.
 			for _, partIndex := range mc.GetTrueIndices() {
-				reqLimit := ReqLimit(int(prop.block.Total()))
-				reqsCount := blockProp.countRequests(height, round, partIndex)
+				reqLimit := ReqLimit(int(info.TotalParts))
+				reqsCount := blockProp.countRequests(info.Height, info.Round, partIndex)
 				if len(reqsCount) >= reqLimit {
 					missing.SetIndex(partIndex, false)
 				}
 			}
 
-			// keep track of which requests we've made this attempt.
-			peer.AddRequests(height, round, mc)
+			// Keep track of which requests we've made.
+			peer.AddRequests(info.Height, info.Round, mc)
 		}
 	}
 }
 
+// AddCommitment adds a block for download based on a PartSetHeader from a commit.
+// This handles the edge case where consensus learns about a committed block
+// before headersync verifies the header.
 func (blockProp *Reactor) AddCommitment(height int64, round int32, psh *types.PartSetHeader) {
 	blockProp.Logger.Info("adding commitment", "height", height, "round", round, "psh", psh)
-	blockProp.pmtx.Lock()
-	defer blockProp.pmtx.Unlock()
 
 	schema.WriteGap(blockProp.traceClient, height, round)
 
-	if blockProp.proposals[height] == nil {
-		blockProp.proposals[height] = make(map[int32]*proposalData)
-	}
-
-	combinedSet := proptypes.NewCombinedPartSetFromOriginal(types.NewPartSetFromHeader(*psh, types.BlockPartSizeBytes), true)
-
-	if blockProp.proposals[height][round] != nil {
-		existingPSH := blockProp.proposals[height][round].block.Original().Header()
-		if existingPSH.Total == psh.Total && bytes.Equal(existingPSH.Hash, psh.Hash) {
-			return
-		}
-		blockProp.Logger.Info("replacing existing proposal with new one", "height", height, "round", round, "psh", psh, "existingPSH", existingPSH)
-	}
-
-	blockProp.proposals[height][round] = &proposalData{
-		compactBlock: &proptypes.CompactBlock{
-			Proposal: types.Proposal{
-				Height: height,
-				Round:  round,
-			},
-		},
-		catchup:     true,
-		block:       combinedSet,
-		maxRequests: bits.NewBitArray(int(psh.Total * 2)), // this assumes that the parity parts are the same size
-	}
-	blockProp.Logger.Info("added commitment", "height", height, "round", round)
-
-	// increment the local copies of the height and round
-	blockProp.height = height
-	blockProp.round = 0
+	blockProp.pendingBlocks.AddCommitment(height, round, psh)
 	blockProp.ticker.Reset(RetryTime)
 	go blockProp.retryWants()
 }

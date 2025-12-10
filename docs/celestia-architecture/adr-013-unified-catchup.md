@@ -2,6 +2,7 @@
 
 ## Changelog
 
+- 2025-12-10: Updated to reflect implementation - unified PendingBlocksManager replaces ProposalCache
 - 2025-12-09: Initial draft
 
 ## Context
@@ -69,27 +70,28 @@ Verified Headers                    Compact Blocks
 ```go
 // PendingBlock represents a block being downloaded.
 // Created when either:
-// 1. A compact block arrives AND headersync has verified its header
-// 2. A verified header arrives from headersync (without compact block yet)
+// 1. A compact block arrives (live proposal)
+// 2. A verified header arrives from headersync
+// 3. A commitment is received (edge case: consensus learns about committed block before headersync)
 type PendingBlock struct {
     Height        int64
     Round         int32
-    BlockID       types.BlockID  // From verified header
+    BlockID       types.BlockID  // From verified header or commitment
 
-    // Block data - allocated lazily
-    Parts         *types.PartSet
-    PartsReceived *bits.BitArray
+    // Block data - combined original + parity parts
+    Parts         *proptypes.CombinedPartSet
 
-    // Compact block metadata (may be nil if header arrived first)
+    // Compact block metadata (nil for catchup-only blocks)
     CompactBlock  *proptypes.CompactBlock
-    TxsAvailable  []bool  // Which txs we have in mempool
 
-    // Request tracking
-    Requests      *RequestTracker
+    // Request tracking for this block
+    MaxRequests   *bits.BitArray
+
+    // Whether header has been verified by headersync
+    HeaderVerified bool
 
     // Timing
-    HeaderVerified time.Time
-    StartedAt      time.Time
+    CreatedAt     time.Time
 
     // State
     State         PendingBlockState
@@ -97,113 +99,155 @@ type PendingBlock struct {
 
 type PendingBlockState int
 const (
-    // BlockStateHeaderOnly - we have a verified header but no compact block
-    BlockStateHeaderOnly PendingBlockState = iota
-    // BlockStateActive - we have both header and compact block, downloading parts
-    BlockStateActive
-    // BlockStateComplete - all parts received
+    // BlockStateActive - downloading parts
+    BlockStateActive PendingBlockState = iota
+    // BlockStateComplete - all original parts received
     BlockStateComplete
 )
 
-// PendingBlocksManager manages concurrent block downloads.
+// PendingBlocksManager manages all block downloads - both live and catchup.
+// This is the unified replacement for ProposalCache.
 type PendingBlocksManager struct {
     mtx           sync.RWMutex
+    logger        log.Logger
+
+    // Block store for loading committed blocks
+    store         *store.BlockStore
 
     // Pending blocks indexed by height
     blocks        map[int64]*PendingBlock
 
-    // Priority queue by height (lowest = highest priority)
+    // Heights sorted ascending (lowest = highest priority)
     heights       []int64
 
+    // Current consensus height and round
+    height        int64
+    round         int32
+
     // Constraints
-    maxConcurrent int    // e.g., 5 blocks
-    memoryBudget  int64  // e.g., 100 MB
+    config        PendingBlocksConfig
     currentMemory int64
 
     // Verified headers from headersync
-    headerStore   HeaderVerifier
+    headerVerifier HeaderVerifier
 
-    // Output
+    // Output channel for forwarding parts to consensus
     partsChan     chan<- types.PartInfo
+
+    // Current proposal parts count for request limiting
+    currentProposalPartsCount atomic.Int64
 }
 
 // HeaderVerifier provides access to verified headers.
 type HeaderVerifier interface {
     // GetVerifiedHeader returns a verified header if available.
     GetVerifiedHeader(height int64) (*types.Header, *types.BlockID, bool)
+}
 
-    // Subscribe returns a channel of newly verified headers.
-    Subscribe() <-chan *headersync.VerifiedHeader
+// MissingPartsInfo describes parts needed for a block.
+type MissingPartsInfo struct {
+    Height         int64
+    Round          int32
+    TotalParts     uint32
+    MissingIndices []int
+    Priority       float64
+    Catchup        bool  // True if catchup-only block (no parity data)
 }
 ```
 
 ### Compact Block Processing Flow
 
 ```go
-func (m *PendingBlocksManager) HandleCompactBlock(cb *proptypes.CompactBlock) error {
+// AddProposal adds a new compact block for the live consensus round.
+func (m *PendingBlocksManager) AddProposal(cb *proptypes.CompactBlock) bool {
     m.mtx.Lock()
     defer m.mtx.Unlock()
 
     height := cb.Proposal.Height
+    round := cb.Proposal.Round
 
-    // Case 1: Already have this block in progress
+    if !m.relevantLocked(height, round) {
+        return false
+    }
+
+    // Case 1: Already have this height
     if pending, exists := m.blocks[height]; exists {
         if pending.CompactBlock != nil {
-            return nil // Duplicate, ignore
+            return false // Duplicate
         }
-        // We had header-only, now we have compact block
-        return m.activateBlock(pending, cb)
+        // We had a header-only entry, attach the compact block
+        return m.activateWithCompactBlockLocked(pending, cb)
     }
 
-    // Case 2: New block - verify header first
-    header, blockID, verified := m.headerStore.GetVerifiedHeader(height)
-    if !verified {
-        // Header not yet verified - this is the "live" case
-        // We can still process it, but we trust the proposer signature
-        // This maintains backwards compatibility
-        return m.addUnverifiedBlock(cb)
+    // Case 2: Check capacity, evicting lower heights if needed
+    if !m.hasCapacityLocked(cb) {
+        if !m.evictLowerHeightsLocked(height, cb) {
+            return false
+        }
     }
 
-    // Case 3: Header verified - validate compact block matches
-    if !bytes.Equal(blockID.Hash, cb.BlockID().Hash) {
-        return fmt.Errorf("compact block hash %X doesn't match verified header %X",
-            cb.BlockID().Hash, blockID.Hash)
+    // Create new pending block
+    m.height = height
+    m.round = round
+
+    parts := proptypes.NewCombinedSetFromCompactBlock(cb)
+    pending := &PendingBlock{
+        Height:       height,
+        Round:        round,
+        CompactBlock: cb,
+        Parts:        parts,
+        MaxRequests:  bits.NewBitArray(int(parts.Total())),
+        CreatedAt:    time.Now(),
+        State:        BlockStateActive,
     }
 
-    // Add as verified block
-    return m.addVerifiedBlock(cb, header, blockID)
+    // Check if header is verified
+    if m.headerVerifier != nil {
+        _, blockID, verified := m.headerVerifier.GetVerifiedHeader(height)
+        if verified {
+            pending.BlockID = *blockID
+            pending.HeaderVerified = true
+        }
+    }
+
+    m.blocks[height] = pending
+    m.insertHeightLocked(height)
+    m.currentMemory += m.estimateMemory(cb)
+
+    return true
 }
 
-func (m *PendingBlocksManager) addVerifiedBlock(
-    cb *proptypes.CompactBlock,
-    header *types.Header,
-    blockID *types.BlockID,
-) error {
-    // Check capacity
-    if !m.hasCapacity(int64(cb.Proposal.PartSetHeader.Total)) {
-        return ErrNoCapacity
+// AddCommitment handles the edge case where consensus learns about a committed
+// block before headersync verifies the header.
+func (m *PendingBlocksManager) AddCommitment(height int64, round int32, psh *types.PartSetHeader) {
+    m.mtx.Lock()
+    defer m.mtx.Unlock()
+
+    if _, exists := m.blocks[height]; exists {
+        return // Already tracking
     }
 
+    if !m.hasCapacityLocked(nil) {
+        return
+    }
+
+    // Create catchup block from PartSetHeader only
+    original := types.NewPartSetFromHeader(*psh, types.BlockPartSizeBytes)
+    parts := proptypes.NewCombinedPartSetFromOriginal(original, true) // catchup=true
+
     pending := &PendingBlock{
-        Height:         cb.Proposal.Height,
-        Round:          cb.Proposal.Round,
-        BlockID:        *blockID,
-        CompactBlock:   cb,
-        HeaderVerified: time.Now(),
-        StartedAt:      time.Now(),
+        Height:         height,
+        Round:          round,
+        BlockID:        types.BlockID{PartSetHeader: *psh},
+        Parts:          parts,
+        MaxRequests:    bits.NewBitArray(int(parts.Total())),
+        HeaderVerified: true, // Trusted from commit
+        CreatedAt:      time.Now(),
         State:          BlockStateActive,
     }
 
-    // Allocate part set based on verified header
-    pending.Parts = types.NewPartSetFromHeader(blockID.PartSetHeader)
-    pending.PartsReceived = bits.NewBitArray(int(blockID.PartSetHeader.Total))
-    pending.Requests = NewRequestTracker(int(blockID.PartSetHeader.Total))
-
-    m.blocks[cb.Proposal.Height] = pending
-    m.insertHeight(cb.Proposal.Height)
-    m.currentMemory += m.estimateMemory(pending)
-
-    return nil
+    m.blocks[height] = pending
+    m.insertHeightLocked(height)
 }
 ```
 
@@ -309,59 +353,77 @@ func (m *PendingBlocksManager) getPriorityWeight(height int64) float64 {
 ### Integration with Reactor
 
 ```go
-// Reactor now uses PendingBlocksManager instead of ProposalCache for block downloads.
+// Reactor uses PendingBlocksManager as the single source of truth for all blocks.
+// ProposalCache has been removed - PendingBlocksManager handles both live and catchup.
 type Reactor struct {
     // ... existing fields ...
 
-    // Replaces ProposalCache for multi-block management
+    // Unified block manager - handles live proposals and catchup
     pendingBlocks *PendingBlocksManager
-
-    // Still keep ProposalCache for serving block data to peers
-    // (we may have complete blocks in store that others need)
-    proposalCache *ProposalCache
 }
 
-func (r *Reactor) handleCompactBlock(cb *proptypes.CompactBlock, from p2p.ID) {
-    // Route to pending blocks manager
-    if err := r.pendingBlocks.HandleCompactBlock(cb); err != nil {
-        if errors.Is(err, ErrNoCapacity) {
-            r.Logger.Debug("No capacity for new block", "height", cb.Proposal.Height)
-            return
-        }
-        r.Logger.Error("Failed to handle compact block", "err", err)
+// AddProposal forwards to PendingBlocksManager
+func (r *Reactor) AddProposal(cb *proptypes.CompactBlock) bool {
+    return r.pendingBlocks.AddProposal(cb)
+}
+
+// getAllState retrieves block state from PendingBlocksManager
+func (r *Reactor) getAllState(height int64, round int32, catchup bool) (
+    *proptypes.CompactBlock, *proptypes.CombinedPartSet, *bits.BitArray, bool,
+) {
+    return r.pendingBlocks.GetAllState(height, round, catchup)
+}
+
+// GetProposal retrieves a proposal for consensus
+func (r *Reactor) GetProposal(height int64, round int32) (*types.Proposal, *types.PartSet, bool) {
+    return r.pendingBlocks.GetProposal(height, round)
+}
+```
+
+### Catchup Request Handling
+
+```go
+// retryWants is the unified catchup mechanism using PendingBlocksManager.
+func (r *Reactor) retryWants() {
+    missingParts := r.pendingBlocks.GetMissingParts()
+    if len(missingParts) == 0 {
         return
     }
 
-    // Also keep in proposal cache for serving to peers
-    r.proposalCache.AddProposal(cb)
+    peers := r.getPeers()
+    for _, info := range missingParts {
+        // Build BitArray for missing parts
+        missing := bits.NewBitArray(int(info.TotalParts * 2))
+        for _, idx := range info.MissingIndices {
+            missing.SetIndex(idx, true)
+        }
 
-    // Broadcast to other peers
-    r.broadcastCompactBlock(cb, from)
+        // Calculate how many parts to request
+        var missingPartsCount int32
+        if info.Catchup {
+            // Catchup blocks need ALL original parts (no parity data)
+            missingPartsCount = int32(len(info.MissingIndices))
+        } else {
+            // Live blocks with parity only need enough for erasure decoding
+            missingPartsCount = countRemainingParts(int(info.TotalParts),
+                int(info.TotalParts)-len(info.MissingIndices))
+        }
+
+        // Send wants to peers
+        for _, peer := range peers {
+            if peer.consensusPeerState.GetHeight() < info.Height {
+                continue
+            }
+            // ... send WantParts message
+        }
+    }
 }
 
-func (r *Reactor) handleRecoveryPart(peer p2p.ID, part *proptypes.RecoveryPart) {
-    // ... validation ...
-
-    typedPart := &types.Part{
-        Index: part.Index,
-        Bytes: part.Data,
-        Proof: *part.Proof,
-    }
-
-    // Route to pending blocks manager
-    if err := r.pendingBlocks.HandlePart(
-        part.Height, part.Round, part.Index, typedPart, peer,
-    ); err != nil {
-        if errors.Is(err, ErrUnknownHeight) {
-            // Maybe this is for a height we're not tracking
-            // Could be out-of-order delivery
-            r.Logger.Debug("Part for unknown height", "height", part.Height)
-        }
-        return
-    }
-
-    // Clear wants and propagate
-    go r.clearWants(part, typedPart.Proof)
+// AddCommitment handles consensus learning about a committed block
+func (r *Reactor) AddCommitment(height int64, round int32, psh *types.PartSetHeader) {
+    r.pendingBlocks.AddCommitment(height, round, psh)
+    r.ticker.Reset(RetryTime)
+    go r.retryWants()
 }
 ```
 
@@ -471,23 +533,87 @@ Fixed maximum concurrent blocks and memory budget. Backpressure naturally flows 
 
 ## Migration
 
-### Phase 1: Add PendingBlocksManager
+### Phase 1: Add PendingBlocksManager ✅ COMPLETE
 
-1. Create `consensus/propagation/pending.go` with new types
-2. Wire into reactor alongside existing ProposalCache
-3. Route parts through PendingBlocksManager first, fall back to ProposalCache
+1. Created `consensus/propagation/pending.go` with unified types
+2. `PendingBlocksManager` replaces `ProposalCache` entirely
+3. All block state managed through single unified path
 
-### Phase 2: Integrate Headersync
+### Phase 2: Merge ProposalCache into PendingBlocksManager ✅ COMPLETE
+
+1. Removed `ProposalCache` embedding from Reactor
+2. Reactor forwards all calls to `PendingBlocksManager`
+3. Unified catchup mechanism via `AddCommitment` and `retryWants`
+4. Key changes:
+   - `AddProposal` handles live compact blocks with capacity management
+   - `AddCommitment` handles catchup blocks (consensus learns about committed block before headersync)
+   - `GetMissingParts` returns missing parts info with `Catchup` flag
+   - Catchup blocks request ALL original parts; live blocks use erasure coding
+   - Lower heights have priority - at capacity, higher-height proposals are rejected (FIFO completion)
+
+### Phase 3: Integrate Headersync (Future)
 
 1. Subscribe to headersync verified headers
 2. Verify compact blocks against verified headers
 3. Enable header-only pending blocks
 
-### Phase 4: Remove Blocksync
+### Phase 4: Remove Blocksync (Future)
 
 1. Remove blocksync reactor
 2. Remove SwitchToConsensus handoff
 3. Update state sync to use new mechanism
+
+## Key Implementation Details
+
+### Catchup vs Live Block Distinction
+
+The `CombinedPartSet` tracks whether a block is "catchup-only" via the `catchup` field:
+
+```go
+// IsCatchup returns true if this is a catchup-only block (no parity data available).
+func (cps *CombinedPartSet) IsCatchup() bool {
+    return cps.catchup
+}
+```
+
+- **Live blocks** (from compact blocks): Have parity data, can use erasure coding to decode with only half the parts
+- **Catchup blocks** (from commitments): No parity data, must download ALL original parts
+
+### Capacity Management
+
+**Lower heights have priority** - blocks must be completed in FIFO order. When at capacity, higher-height proposals are rejected (not evicted):
+
+```go
+func (m *PendingBlocksManager) hasCapacityLocked(cb *proptypes.CompactBlock) bool {
+    if len(m.blocks) >= m.config.MaxConcurrent {
+        return false
+    }
+    if cb != nil {
+        estimated := m.estimateMemory(cb)
+        // Allow adding a single block even if it exceeds the budget (when manager is empty).
+        // This ensures the proposer can always propose their own block.
+        if m.currentMemory+estimated > m.config.MemoryBudget && len(m.blocks) > 0 {
+            return false
+        }
+    }
+    return true
+}
+```
+
+This ensures:
+- Oldest blocks complete first (FIFO)
+- The proposer can always propose their own block (even if it exceeds memory budget when manager is empty)
+- Backpressure naturally flows when at capacity
+
+### Round 0 Special Case
+
+Round 0 is treated as "unknown" for catchup blocks, meaning parts with any round will be accepted:
+
+```go
+if pending.Round != round && pending.Round != 0 {
+    return false, nil // Wrong round
+}
+```
 
 ## Configuration
 

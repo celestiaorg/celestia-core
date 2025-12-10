@@ -112,6 +112,13 @@ func (cps *CombinedPartSet) IsComplete() bool {
 	return cps.original.IsComplete()
 }
 
+// IsCatchup returns true if this is a catchup-only block (no parity data available).
+func (cps *CombinedPartSet) IsCatchup() bool {
+	cps.mtx.Lock()
+	defer cps.mtx.Unlock()
+	return cps.catchup
+}
+
 // CanDecode determines if enough parts have been added to decode the block.
 func (cps *CombinedPartSet) CanDecode() bool {
 	cps.mtx.Lock()

@@ -11,10 +11,12 @@ import (
 
 	"github.com/cometbft/cometbft/crypto"
 
+	"github.com/cometbft/cometbft/libs/bits"
 	"github.com/cometbft/cometbft/libs/log"
 	"github.com/cometbft/cometbft/libs/trace/schema"
 	"github.com/cometbft/cometbft/p2p/conn"
 
+	"github.com/cometbft/cometbft/headersync"
 	"github.com/cometbft/cometbft/libs/sync"
 	"github.com/cometbft/cometbft/store"
 	"github.com/cometbft/cometbft/types"
@@ -47,9 +49,9 @@ type Reactor struct {
 
 	peerstate map[p2p.ID]*PeerState
 
-	// ProposalCache temporarily stores recently active proposals and their
-	// block data for gossiping.
-	*ProposalCache
+	// pendingBlocks is the unified block manager that handles both live proposals
+	// and catchup block downloads. It replaces the old ProposalCache.
+	pendingBlocks   *PendingBlocksManager
 	currentProposer crypto.PubKey
 
 	privval       types.PrivValidator
@@ -71,6 +73,10 @@ type Reactor struct {
 
 	ctx    context.Context
 	cancel context.CancelFunc
+
+	// Headersync integration for pipelined block downloads.
+	headerSyncReactor *headersync.Reactor
+	headerChan        chan *headersync.VerifiedHeader
 }
 
 type Config struct {
@@ -87,12 +93,12 @@ func NewReactor(
 	options ...ReactorOption,
 ) *Reactor {
 	ctx, cancel := context.WithCancel(context.Background())
+	partChan := make(chan types.PartInfo, 30_000)
 	reactor := &Reactor{
 		self:          self,
 		traceClient:   trace.NoOpTracer(),
 		peerstate:     make(map[p2p.ID]*PeerState),
 		mtx:           &sync.Mutex{},
-		ProposalCache: NewProposalCache(config.Store),
 		mempool:       config.Mempool,
 		started:       atomic.Bool{},
 		ctx:           ctx,
@@ -100,7 +106,7 @@ func NewReactor(
 		privval:       config.Privval,
 		chainID:       config.ChainID,
 		BlockMaxBytes: config.BlockMaxBytes,
-		partChan:      make(chan types.PartInfo, 30_000),
+		partChan:      partChan,
 		proposalChan:  make(chan ProposalAndSrc, 1000),
 		ticker:        time.NewTicker(RetryTime),
 	}
@@ -110,6 +116,23 @@ func NewReactor(
 	reactor.BaseReactor = *p2p.NewBaseReactor("Recovery", reactor,
 		p2p.WithIncomingQueueSize(ReactorIncomingMessageQueueSize),
 		p2p.WithTraceClient(reactor.traceClient),
+	)
+
+	// Initialize PendingBlocksManager - this is the unified block manager.
+	// HeaderVerifier is optional - if headersync is configured, it will provide
+	// header verification. Otherwise the manager works without header verification.
+	var headerVerifier HeaderVerifier
+	if reactor.headerSyncReactor != nil {
+		reactor.headerChan = make(chan *headersync.VerifiedHeader, 1000)
+		headerVerifier = reactor.headerSyncReactor
+	}
+
+	reactor.pendingBlocks = NewPendingBlocksManager(
+		reactor.Logger,
+		config.Store,
+		partChan,
+		headerVerifier,
+		DefaultPendingBlocksConfig(),
 	)
 
 	// start the catchup routine
@@ -137,15 +160,91 @@ func WithTracer(tracer trace.Tracer) func(r *Reactor) {
 	}
 }
 
+// WithHeaderSync enables headersync integration for pipelined block downloads.
+func WithHeaderSync(hsReactor *headersync.Reactor) func(r *Reactor) {
+	return func(r *Reactor) {
+		r.headerSyncReactor = hsReactor
+	}
+}
+
 func (blockProp *Reactor) SetLogger(logger log.Logger) {
 	blockProp.Logger = logger
 }
 
 func (blockProp *Reactor) OnStart() error {
+	// Subscribe to verified headers from headersync if enabled.
+	if blockProp.headerSyncReactor != nil {
+		blockProp.headerSyncReactor.Subscribe(blockProp.headerChan)
+
+		// Load any existing headers without block data (startup recovery).
+		blockProp.loadUnprocessedHeaders()
+
+		// Start goroutine to handle verified headers.
+		go blockProp.handleVerifiedHeaders()
+	}
+
 	return nil
 }
 
+// loadUnprocessedHeaders loads headers that exist in the store but don't have
+// corresponding block data. This handles the case where we synced headers,
+// then restarted before downloading all the block data.
+func (blockProp *Reactor) loadUnprocessedHeaders() {
+	if blockProp.pendingBlocks == nil {
+		return
+	}
+
+	store := blockProp.pendingBlocks.Store()
+	if store == nil {
+		return
+	}
+	blockHeight := store.Height()
+	headerHeight := store.HeaderHeight()
+
+	// Headers ahead of blocks need to be downloaded.
+	for h := blockHeight + 1; h <= headerHeight; h++ {
+		header, blockID, ok := blockProp.headerSyncReactor.GetVerifiedHeader(h)
+		if !ok {
+			continue
+		}
+
+		vh := &headersync.VerifiedHeader{
+			Header:  header,
+			BlockID: *blockID,
+		}
+		blockProp.pendingBlocks.OnHeaderVerified(vh)
+		blockProp.Logger.Debug("loaded unprocessed header for download", "height", h)
+	}
+
+	if headerHeight > blockHeight {
+		blockProp.Logger.Info("loaded headers for catchup",
+			"block_height", blockHeight,
+			"header_height", headerHeight,
+			"pending_blocks", blockProp.pendingBlocks.Len())
+	}
+}
+
+// handleVerifiedHeaders processes verified headers from headersync.
+func (blockProp *Reactor) handleVerifiedHeaders() {
+	for {
+		select {
+		case <-blockProp.ctx.Done():
+			return
+		case vh := <-blockProp.headerChan:
+			if vh == nil {
+				continue
+			}
+			blockProp.pendingBlocks.OnHeaderVerified(vh)
+			blockProp.Logger.Debug("received verified header", "height", vh.Header.Height)
+		}
+	}
+}
+
 func (blockProp *Reactor) OnStop() {
+	// Unsubscribe from headersync before canceling context.
+	if blockProp.headerSyncReactor != nil && blockProp.headerChan != nil {
+		blockProp.headerSyncReactor.Unsubscribe(blockProp.headerChan)
+	}
 	blockProp.cancel()
 }
 
@@ -300,10 +399,8 @@ func (blockProp *Reactor) Prune(committedHeight int64) {
 	for _, peer := range peers {
 		peer.prune(prunePast)
 	}
-	blockProp.prune(prunePast)
-	blockProp.pmtx.Lock()
-	defer blockProp.pmtx.Unlock()
-	blockProp.height = committedHeight
+
+	blockProp.pendingBlocks.Prune(prunePast)
 	blockProp.ResetRequestCounts()
 	blockProp.ticker.Reset(RetryTime)
 }
@@ -315,13 +412,8 @@ func (blockProp *Reactor) SetProposer(proposer crypto.PubKey) {
 }
 
 func (blockProp *Reactor) SetHeightAndRound(height int64, round int32) {
-	blockProp.pmtx.Lock()
-	defer blockProp.pmtx.Unlock()
-	blockProp.round = round
-	blockProp.height = height
+	blockProp.pendingBlocks.SetHeightAndRound(height, round)
 	blockProp.ResetRequestCounts()
-	// todo: delete the old round data as its no longer relevant don't delete
-	// past round data if it has a POL
 }
 
 func (blockProp *Reactor) ResetRequestCounts() {
@@ -397,4 +489,41 @@ func (r *Reactor) GetPartChan() <-chan types.PartInfo {
 // GetProposalChan returns the channel used for receiving proposals.
 func (r *Reactor) GetProposalChan() <-chan ProposalAndSrc {
 	return r.proposalChan
+}
+
+// --- Methods forwarding to PendingBlocksManager ---
+
+// AddProposal adds a compact block to the unified block manager.
+func (r *Reactor) AddProposal(cb *proptypes.CompactBlock) bool {
+	return r.pendingBlocks.AddProposal(cb)
+}
+
+// GetProposal returns the proposal and part set for a given height and round.
+func (r *Reactor) GetProposal(height int64, round int32) (*types.Proposal, *types.PartSet, bool) {
+	return r.pendingBlocks.GetProposal(height, round)
+}
+
+// GetCurrentProposal returns the current proposal for the current height/round.
+func (r *Reactor) GetCurrentProposal() (*types.Proposal, *proptypes.CombinedPartSet, bool) {
+	return r.pendingBlocks.GetCurrentProposal()
+}
+
+// GetCurrentCompactBlock returns the current compact block.
+func (r *Reactor) GetCurrentCompactBlock() (*proptypes.CompactBlock, *proptypes.CombinedPartSet, bool) {
+	return r.pendingBlocks.GetCurrentCompactBlock()
+}
+
+// getAllState returns the full state for a height/round (internal use).
+func (r *Reactor) getAllState(height int64, round int32, catchup bool) (*proptypes.CompactBlock, *proptypes.CombinedPartSet, *bits.BitArray, bool) {
+	return r.pendingBlocks.GetAllState(height, round, catchup)
+}
+
+// safeRelevant checks if a height/round is currently actionable (thread-safe).
+func (r *Reactor) safeRelevant(height int64, round int32) bool {
+	return r.pendingBlocks.Relevant(height, round)
+}
+
+// getCurrentProposalPartsCount returns the current proposal parts count.
+func (r *Reactor) getCurrentProposalPartsCount() int64 {
+	return r.pendingBlocks.GetCurrentProposalPartsCount()
 }

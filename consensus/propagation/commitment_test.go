@@ -295,14 +295,8 @@ func BenchmarkMempoolRecovery(b *testing.B) {
 					)
 					require.NoError(b, reactor.Start())
 					reactor.currentProposer = mockPubKey
-					reactor.proposals = make(map[int64]map[int32]*proposalData)
-					reactor.proposals[0] = make(map[int32]*proposalData)
-					reactor.proposals[0][0] = &proposalData{
-						compactBlock: cb,
-						block:        cps,
-						maxRequests:  nil,
-						catchup:      false,
-					}
+					// Add the proposal through the proper API
+					reactor.AddProposal(cb)
 
 					f, err := os.Create(fmt.Sprintf("mempool-recovery-%d-%d.pprof", nTxs, missingPercent))
 					require.NoError(b, err)

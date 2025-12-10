@@ -417,10 +417,11 @@ func (blockProp *Reactor) validateCompactBlock(cb *proptypes.CompactBlock) error
 	blockProp.mtx.Lock()
 	proposer := blockProp.currentProposer
 	blockProp.mtx.Unlock()
-	blockProp.pmtx.Lock()
-	currentHeight := blockProp.height
-	currentRound := blockProp.round
-	blockProp.pmtx.Unlock()
+
+	// Get current height/round from PendingBlocksManager.
+	currentHeight := blockProp.pendingBlocks.GetHeight()
+	currentRound := blockProp.pendingBlocks.GetRound()
+
 	if proposer == nil {
 		return errors.New("nil proposer key")
 	}

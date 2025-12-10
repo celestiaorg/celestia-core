@@ -88,7 +88,7 @@ func createTestReactors(n int, p2pCfg *cfg.P2PConfig, tracer bool, traceDir stri
 
 		reactors[i] = newPropagationReactor(s, tr, mockPrivVal)
 		reactors[i].SetLogger(log.TestingLogger())
-		reactors[i].height = 1
+		reactors[i].SetHeightAndRound(1, 0)
 		s.AddReactor("BlockProp", reactors[i])
 		return s
 	},
@@ -483,9 +483,8 @@ func TestPropagationSmokeTest(t *testing.T) {
 
 		for _, r := range reactors {
 			r.Prune(i)
-			r.pmtx.Lock()
-			r.height++
-			r.pmtx.Unlock()
+			newHeight := r.pendingBlocks.GetHeight() + 1
+			r.SetHeightAndRound(newHeight, 0)
 		}
 	}
 }
@@ -497,8 +496,7 @@ func TestValidateCompactBlock_InvalidLastLen(t *testing.T) {
 		cleanup(t)
 	})
 	reactor1 := reactors[0]
-	reactor1.height = 10
-	reactor1.round = 3
+	reactor1.SetHeightAndRound(10, 3)
 	cb, _, _, _ := testCompactBlock(t, sm, 10, 3)
 
 	// put an invalid last len
@@ -725,6 +723,9 @@ func (m *MockPeerStateEditor) SetHasProposalBlockPart(height int64, round int32,
 }
 
 func (m *MockPeerStateEditor) GetHeight() int64 {
+	if len(m.proposals) == 0 {
+		return 1 // Default to height 1 if no proposals seen.
+	}
 	return m.proposals[len(m.proposals)-1].Height
 }
 

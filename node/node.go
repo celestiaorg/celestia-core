@@ -449,6 +449,14 @@ func NewNodeWithContext(ctx context.Context,
 		hsReactor = createHeaderSyncReactor(config, stateStore, blockStore, genDoc.ChainID, logger, hsMetrics)
 	}
 
+	// Build propagation reactor options.
+	propOptions := []propagation.ReactorOption{
+		propagation.WithTracer(tracer),
+	}
+	if hsReactor != nil {
+		propOptions = append(propOptions, propagation.WithHeaderSync(hsReactor))
+	}
+
 	propagationReactor := propagation.NewReactor(
 		nodeKey.ID(),
 		propagation.Config{
@@ -458,7 +466,7 @@ func NewNodeWithContext(ctx context.Context,
 			ChainID:       state.ChainID,
 			BlockMaxBytes: state.ConsensusParams.Block.MaxBytes,
 		},
-		propagation.WithTracer(tracer),
+		propOptions...,
 	)
 
 	var propagator propagation.Propagator

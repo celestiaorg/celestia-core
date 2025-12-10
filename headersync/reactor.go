@@ -591,6 +591,32 @@ func (r *Reactor) IsCaughtUp() bool {
 	return r.pool.IsCaughtUp()
 }
 
+// GetVerifiedHeader returns a verified header from the block store if available.
+// This is used by the propagation reactor to check if a header has been verified
+// before processing a compact block.
+func (r *Reactor) GetVerifiedHeader(height int64) (*types.Header, *types.BlockID, bool) {
+	header := r.blockStore.LoadHeader(height)
+	if header == nil {
+		return nil, nil, false
+	}
+
+	// Load the commit to get the PartSetHeader for the BlockID.
+	commit := r.blockStore.LoadSeenCommit(height)
+	if commit == nil {
+		commit = r.blockStore.LoadBlockCommit(height)
+	}
+	if commit == nil {
+		return nil, nil, false
+	}
+
+	blockID := types.BlockID{
+		Hash:          header.Hash(),
+		PartSetHeader: commit.BlockID.PartSetHeader,
+	}
+
+	return header, &blockID, true
+}
+
 // Height returns the current header sync height.
 func (r *Reactor) Height() int64 {
 	return r.pool.Height()

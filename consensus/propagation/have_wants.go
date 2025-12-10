@@ -446,12 +446,11 @@ func (blockProp *Reactor) handleRecoveryPart(peer p2p.ID, part *proptypes.Recove
 	if p == nil && peer != blockProp.self {
 		return
 	}
-	// the peer must always send the proposal before sending parts, if they did
-	// not this node must disconnect from them.
+
+	// Get block state from PendingBlocksManager.
 	cb, parts, _, has := blockProp.getAllState(part.Height, part.Round, false)
 	if !has {
 		blockProp.Logger.Debug("received part for unknown proposal", "peer", peer, "height", part.Height, "round", part.Round)
-		// blockProp.Switch.StopPeerForError(p.peer, errors.New("received recovery part for unknown proposal"))
 		return
 	}
 
@@ -459,17 +458,15 @@ func (blockProp *Reactor) handleRecoveryPart(peer p2p.ID, part *proptypes.Recove
 		return
 	}
 
-	// todo: add these defensive checks in a better way
-	if cb == nil {
-		return
-	}
 	if parts == nil {
 		return
 	}
 
-	// todo: we need to figure out a way to get the proof for a part that was
-	// sent during catchup.
-	proof := cb.GetProof(part.Index)
+	// Get proof - for live blocks it's in the compact block, for catchup it's in the message.
+	var proof *merkle.Proof
+	if cb != nil {
+		proof = cb.GetProof(part.Index)
+	}
 	if proof == nil {
 		if part.Proof == nil {
 			blockProp.Logger.Error("proof not found", "peer", peer, "height", part.Height, "round", part.Round, "part", part.Index)
@@ -524,10 +521,7 @@ func (blockProp *Reactor) handleRecoveryPart(peer p2p.ID, part *proptypes.Recove
 	go blockProp.clearWants(part, *proof)
 
 	// attempt to decode the remaining block parts. If they are decoded, then
-	// this node should send all the wanted parts that nodes have requested. cp
-	// == nil means that there was no compact block available and this was
-	// during catchup. todo: use the bool found in the state instead of checking
-	// for nil.
+	// this node should send all the wanted parts that nodes have requested.
 	if parts.CanDecode() {
 		if parts.IsDecoding.Load() {
 			return
@@ -600,6 +594,8 @@ func (blockProp *Reactor) handleRecoveryPart(peer p2p.ID, part *proptypes.Recove
 // clearWants checks the wantState to see if any peers want the given part, if
 // so, it attempts to send them that part.
 func (blockProp *Reactor) clearWants(part *proptypes.RecoveryPart, proof merkle.Proof) {
+	currentHeight := blockProp.pendingBlocks.GetHeight()
+
 	for _, peer := range blockProp.getPeers() {
 		if peer.WantsPart(part.Height, part.Round, part.Index) {
 			if peer.GetRemainingRequests(part.Height, part.Round) <= 0 {
@@ -636,13 +632,7 @@ func (blockProp *Reactor) clearWants(part *proptypes.RecoveryPart, proof merkle.
 				continue
 			}
 
-			catchup := false
-			blockProp.pmtx.Lock()
-			if part.Height < blockProp.height {
-				catchup = true
-			}
-
-			blockProp.pmtx.Unlock()
+			catchup := part.Height < currentHeight
 			peer.DecreaseRemainingRequests(part.Height, part.Round, 1)
 			schema.WriteBlockPart(blockProp.traceClient, part.Height, part.Round, part.Index, catchup, string(peer.peer.ID()), schema.Upload)
 		}
