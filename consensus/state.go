@@ -546,6 +546,20 @@ func (cs *State) OnStop() {
 	// WAL is stopped in receiveRoutine.
 }
 
+// OnReset implements service.Service to allow consensus to be restarted after Stop.
+func (cs *State) OnReset() error {
+	// Reset internal services that were stopped
+	if err := cs.evsw.Reset(); err != nil {
+		return err
+	}
+	if err := cs.timeoutTicker.Reset(); err != nil {
+		return err
+	}
+	// Recreate the done channel
+	cs.done = make(chan struct{})
+	return nil
+}
+
 // Wait waits for the the main routine to return.
 // NOTE: be sure to Stop() the event switch and drain
 // any event channels or this may deadlock

@@ -669,6 +669,10 @@ func (conR *Reactor) initiateBlockSyncSwitch() {
 		conR.mtx.Lock()
 		conR.waitSync = false
 		conR.mtx.Unlock()
+		// Need to Reset() before Start() since consensus was stopped
+		if err := conR.conS.Reset(); err != nil {
+			conR.Logger.Error("Failed to reset consensus", "err", err)
+		}
 		if err := conR.conS.Start(); err != nil {
 			conR.Logger.Error("Failed to restart consensus after blocksync failure", "err", err)
 		}

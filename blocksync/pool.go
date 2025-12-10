@@ -151,6 +151,12 @@ func (pool *BlockPool) OnStart() error {
 	return nil
 }
 
+// OnReset implements service.Service to allow the pool to be restarted after Stop.
+func (pool *BlockPool) OnReset() error {
+	// Pool state is reset externally by SwitchToBlockSync before calling Reset
+	return nil
+}
+
 // recalculateParams updates request limit and retry timeout based on block size
 func (pool *BlockPool) recalculateParams() {
 	blockSize := pool.lastReceivedBlocks.GetMax()

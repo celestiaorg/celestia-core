@@ -202,10 +202,15 @@ func (bcR *Reactor) SwitchToBlockSync(state sm.State) error {
 	bcR.pool.mtx.Unlock()
 
 	// Start the pool if not already running
+	// If the pool was previously stopped, we need to Reset() it first
 	if !bcR.pool.IsRunning() {
-		err := bcR.pool.Start()
-		if err != nil {
-			return err
+		// Try to reset the pool first (in case it was stopped)
+		if err := bcR.pool.Reset(); err != nil {
+			bcR.Logger.Debug("Pool reset returned error (may be expected if not stopped)", "err", err)
+		}
+		if err := bcR.pool.Start(); err != nil {
+			bcR.Logger.Error("Error starting pool", "err", err)
+			return fmt.Errorf("failed to start pool: %w", err)
 		}
 	}
 
