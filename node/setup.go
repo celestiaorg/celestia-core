@@ -540,6 +540,12 @@ func createSwitch(config *cfg.Config,
 	}
 	sw.AddReactor("BLOCKSYNC", bcReactor)
 	sw.AddReactor("CONSENSUS", consensusReactor)
+
+	// Wire consensus reactor to blocksync reactor for dynamic switching
+	if bcr, ok := bcReactor.(blockSyncReactor); ok {
+		consensusReactor.SetBlockSyncReactor(bcr)
+	}
+
 	sw.AddReactor("EVIDENCE", evidenceReactor)
 	sw.AddReactor("STATESYNC", stateSyncReactor)
 	if propagationReactor != nil {
