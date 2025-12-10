@@ -205,45 +205,50 @@ Response containing:
 
 The StartHeight field allows the receiver to match responses to requests without scanning all pending requests. This also enables multiple concurrent requests to the same peer.
 
-## State Machine
+## Event-Driven Architecture
+
+Header sync uses an event-driven architecture rather than timer-based polling:
+
+### Processing Flow
 
 ```
-                    ┌─────────────────────────────────────────┐
-                    │                                         │
-                    ▼                                         │
-              ┌──────────┐                                    │
-              │   Idle   │◄────────────────────────────┐      │
-              └────┬─────┘                             │      │
-                   │                                   │      │
-                   │ Peer reports higher header height │      │
-                   ▼                                   │      │
-              ┌──────────┐                             │      │
-              │ Syncing  │────────────────────────────►│      │
-              └────┬─────┘  Caught up / error          │      │
-                   │                                   │      │
-                   │ All requested headers received    │      │
-                   │ and verified                      │      │
-                   ▼                                   │      │
-              ┌──────────┐                             │      │
-              │Verifying │────────────────────────────►│      │
-              └────┬─────┘  Verification failed        │      │
-                   │                                          │
-                   │ Verification passed, stored              │
-                   │ Notify subscribers                       │
-                   └──────────────────────────────────────────┘
+Peer Status Update ──► tryMakeRequests() ──► Send GetHeaders to peers
+                                                    │
+                                                    ▼
+Headers Arrive ──────► tryProcessHeaders() ──► Verify & Store
+                              │                     │
+                              │                     ▼
+                              │              Notify Subscribers
+                              │                     │
+                              ▼                     ▼
+                       tryMakeRequests() ◄───── Continue
 ```
 
-## Streaming Header Processing
+### Key Principles
 
-Header sync uses a streaming architecture for improved performance:
+1. **Immediate processing**: When headers arrive, they are processed immediately rather than waiting for a timer tick. This minimizes latency.
 
-1. **Header-by-header verification**: Headers are verified and stored individually as they arrive in order, rather than waiting for an entire batch to complete. This reduces latency to first header.
+2. **Event-triggered requests**: New batch requests are sent in response to events (peer status updates, headers received) rather than on a polling interval.
 
-2. **Pipelined requests**: New batch requests can be issued while previous batches are still being processed, as long as the maximum pending batch limit is not exceeded.
+3. **Passive pool**: The pool is a passive data structure that stores state. All logic is driven by the reactor in response to events.
 
-3. **Fine-grained error recovery**: If a header fails verification, only that batch is re-requested from a different peer. Headers already verified from prior batches are preserved.
+4. **Streaming verification**: Headers are verified one at a time as they arrive in order, rather than waiting for entire batches to complete.
 
-This streaming approach improves sync throughput by overlapping network I/O with verification and storage.
+### Request Triggering Events
+
+Batch requests are made when:
+- A peer sends a status update with a higher height
+- Headers are received and processed (freeing pending batch slots)
+- A periodic timeout check runs (to handle timed-out requests)
+
+### Error Recovery
+
+If a header fails verification:
+1. The batch is marked for re-request
+2. The peer is disconnected
+3. The next request will be sent to a different peer
+
+Headers already verified from prior batches are preserved.
 
 ## Security Considerations
 

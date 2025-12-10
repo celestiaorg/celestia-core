@@ -178,19 +178,22 @@ type HeaderBatchRequest struct {
     PeerID      p2p.ID
 }
 
-// HeaderPool manages peer connections and header requests
+// HeaderPool manages peer connections and header requests.
+// It is a passive data structure - the reactor drives all logic.
 type HeaderPool struct {
-    service.BaseService
+    Logger log.Logger
 
-    mtx           sync.Mutex
-    peers         map[p2p.ID]*hsPeer
+    mtx            sync.Mutex
+    peers          map[p2p.ID]*hsPeer
+    sortedPeers    []*hsPeer // sorted by height, highest first
+    bannedPeers    map[p2p.ID]time.Time
     pendingBatches map[int64]*headerBatch  // startHeight -> batch
-    height        int64  // Next header height to request
-    maxPeerHeight int64  // Highest header height reported by any peer
+    height         int64  // Next header height to request
+    maxPeerHeight  int64  // Highest header height reported by any peer
 
-    // Channels for communication
-    requestsCh    chan<- HeaderBatchRequest
-    errorsCh      chan<- peerError
+    batchSize         int64
+    maxPendingBatches int
+    requestTimeout    time.Duration
 }
 
 // headerBatch tracks a pending batch request
@@ -199,7 +202,8 @@ type headerBatch struct {
     count       int64
     peerID      p2p.ID
     requestTime time.Time
-    headers     []*SignedHeader  // filled in as response arrives
+    headers     []*SignedHeader  // filled in when response arrives
+    received    bool
 }
 
 // SignedHeader pairs a header with its commit (mirrors proto)
@@ -215,7 +219,9 @@ type VerifiedHeader struct {
     BlockID  types.BlockID
 }
 
-// Reactor coordinates header synchronization
+// Reactor coordinates header synchronization.
+// It uses an event-driven architecture: headers are processed immediately
+// when they arrive, not on a timer.
 type Reactor struct {
     p2p.BaseReactor
 
@@ -224,9 +230,16 @@ type Reactor struct {
     blockStore  sm.BlockStore // For storing headers and checking existing data
     chainID     string
 
+    // Last verified header for chain linkage verification
+    lastHeader *types.Header
+
     // Subscriber management
     subscribersMtx sync.RWMutex
     subscribers    []chan<- *VerifiedHeader
+
+    // Rate limiting for incoming GetHeaders requests
+    peerRequestsMtx sync.Mutex
+    peerRequests    map[p2p.ID]*peerRequestTracker
 
     metrics *Metrics
 }
@@ -484,111 +497,61 @@ type Metrics struct {
 }
 ```
 
-### Sync Algorithm
+### Event-Driven Architecture
 
-The sync loop uses push-based status updates (peers broadcast when height changes) rather than polling:
+The reactor uses an event-driven architecture rather than timer-based polling. Headers are processed immediately when they arrive, and requests are made in response to events rather than on a schedule.
 
 ```go
-func (r *Reactor) poolRoutine() {
-    trySyncTicker := time.NewTicker(trySyncIntervalMS * time.Millisecond)
-    defer trySyncTicker.Stop()
+// handleHeaders processes a HeadersResponse - called when headers arrive from a peer.
+func (r *Reactor) handleHeaders(msg *hsproto.HeadersResponse, src p2p.Peer) {
+    // Convert proto to domain types...
+    signedHeaders := convertFromProto(msg.Headers)
 
-    lastBroadcastHeight := r.blockStore.HeaderHeight()
-
-    for {
-        select {
-        case <-r.Quit():
-            return
-
-        case request := <-r.requestsCh:
-            // Send batch header request to peer
-            r.sendGetHeaders(request)
-
-        case err := <-r.errorsCh:
-            // Handle peer error (timeout, invalid data)
-            r.handlePeerError(err)
-
-        case <-trySyncTicker.C:
-            // Try to process completed batch responses
-            r.processCompletedBatches()
-
-            // Broadcast our status if height has advanced
-            // (push-based model saves a round trip vs polling)
-            currentHeight := r.blockStore.HeaderHeight()
-            if currentHeight > lastBroadcastHeight {
-                r.BroadcastStatus()
-                lastBroadcastHeight = currentHeight
-            }
-        }
+    if err := r.pool.AddBatchResponse(src.ID(), msg.StartHeight, signedHeaders); err != nil {
+        r.Logger.Debug("Failed to add batch response", "err", err)
+        return
     }
+
+    // Process headers immediately as they arrive.
+    r.tryProcessHeaders()
+
+    // After processing, try to make more requests.
+    r.tryMakeRequests()
 }
 
-// processCompletedBatches uses streaming to verify and store headers as they arrive.
-// Headers are processed one at a time in order, rather than waiting for entire batches.
-func (r *Reactor) processCompletedBatches() {
+// tryProcessHeaders processes all available headers in order.
+func (r *Reactor) tryProcessHeaders() {
     for {
-        // Get next header ready for processing (streaming: one at a time)
-        sh, peer, batchStartHeight := r.pool.PeekNextHeader()
+        sh, peerID, batchStartHeight := r.pool.PeekNextHeader()
         if sh == nil {
             return
         }
 
-        if err := r.verifyHeader(sh.Header, sh.Commit, r.lastHeader); err != nil {
-            r.Logger.Error("Header verification failed",
-                "height", sh.Header.Height,
-                "peer", peer,
-                "err", err)
-            r.pool.RedoBatch(batchStartHeight)
-            r.Switch.StopPeerForError(peer, err)
-            r.metrics.VerificationFailures.Add(1)
-            break
+        if !r.processNextHeader(sh, peerID, batchStartHeight) {
+            return
         }
 
-        // Store header
-        if err := r.blockStore.SaveHeader(sh.Header, sh.Commit); err != nil {
-            r.Logger.Error("Failed to save header", "err", err)
-            break
-        }
-
-        // Notify subscribers
-        vh := &VerifiedHeader{
-            Header:  sh.Header,
-            Commit:  sh.Commit,
-            BlockID: types.BlockID{
-                Hash:          sh.Header.Hash(),
-                PartSetHeader: sh.Commit.BlockID.PartSetHeader,
-            },
-        }
-        r.notifySubscribers(vh)
-
-        r.lastHeader = sh.Header
-        r.metrics.HeaderHeight.Set(float64(sh.Header.Height))
-        r.metrics.HeadersSynced.Add(1)
-
-        // Mark this header as processed (advances pool height)
         r.pool.MarkHeaderProcessed()
+        r.headersSynced++
     }
 }
 
-// sendGetHeaders sends a GetHeaders request to a peer
-func (r *Reactor) sendGetHeaders(req HeaderBatchRequest) {
-    peer := r.Switch.Peers().Get(req.PeerID)
-    if peer == nil {
-        return
+// tryMakeRequests sends batch requests if slots are available.
+func (r *Reactor) tryMakeRequests() {
+    for {
+        req := r.pool.GetNextRequest()
+        if req == nil {
+            break
+        }
+        r.sendGetHeaders(*req)
     }
 
-    r.Logger.Debug("Requesting headers",
-        "peer", req.PeerID,
-        "start", req.StartHeight,
-        "count", req.Count)
-
-    peer.TrySend(p2p.Envelope{
-        ChannelID: HeaderSyncChannel,
-        Message: &hsproto.GetHeaders{
-            StartHeight: req.StartHeight,
-            Count:       req.Count,
-        },
-    })
+    // Broadcast status if height advanced.
+    currentHeight := r.blockStore.HeaderHeight()
+    if currentHeight > r.lastBroadcastHeight {
+        r.BroadcastStatus()
+        r.lastBroadcastHeight = currentHeight
+    }
 }
 
 // Receive handles incoming messages
@@ -598,47 +561,53 @@ func (r *Reactor) Receive(e p2p.Envelope) {
         // SetPeerRange returns false if this is a DoS attempt (same or lower height)
         if !r.pool.SetPeerRange(e.Src.ID(), msg.Base, msg.Height) {
             r.Switch.StopPeerForError(e.Src, errors.New("status update with non-increasing height"))
+            return
         }
+        // Peer has new headers - try to make requests.
+        r.tryMakeRequests()
 
     case *hsproto.GetHeaders:
         r.respondGetHeaders(msg, e.Src)
 
     case *hsproto.HeadersResponse:
-        r.pool.AddBatchResponse(e.Src.ID(), msg.Headers)
+        r.handleHeaders(msg, e.Src)
     }
 }
 
-// respondGetHeaders responds to a GetHeaders request
-func (r *Reactor) respondGetHeaders(msg *hsproto.GetHeaders, src p2p.Peer) {
-    count := msg.Count
-    if count > MaxHeaderBatchSize {
-        count = MaxHeaderBatchSize
-    }
+// timeoutRoutine periodically checks for timed out requests.
+// This is the only timer-based component - everything else is event-driven.
+func (r *Reactor) timeoutRoutine() {
+    ticker := time.NewTicker(timeoutCheckInterval)
+    defer ticker.Stop()
 
-    headers := make([]*hsproto.SignedHeader, 0, count)
-    for h := msg.StartHeight; h < msg.StartHeight+count; h++ {
-        meta := r.blockStore.LoadBlockMeta(h)
-        if meta == nil {
-            break  // Return what we have
+    for {
+        select {
+        case <-r.Quit():
+            return
+        case <-ticker.C:
+            r.tryMakeRequests()
         }
-        commit := r.blockStore.LoadSeenCommit(h)
-        if commit == nil {
-            commit = r.blockStore.LoadBlockCommit(h)
-        }
-        if commit == nil {
-            break
-        }
-        headers = append(headers, &hsproto.SignedHeader{
-            Header: meta.Header.ToProto(),
-            Commit: commit.ToProto(),
-        })
     }
-
-    src.TrySend(p2p.Envelope{
-        ChannelID: HeaderSyncChannel,
-        Message:   &hsproto.Headers{Headers: headers},
-    })
 }
+```
+
+### Pool Methods
+
+The pool is a passive data structure. The reactor calls these methods to drive sync logic:
+
+```go
+// GetNextRequest returns the next batch request to make, if any.
+// Also cleans up timed out requests and marks those peers as timed out.
+func (pool *HeaderPool) GetNextRequest() *HeaderBatchRequest
+
+// AddBatchResponse adds headers from a peer response.
+func (pool *HeaderPool) AddBatchResponse(peerID p2p.ID, startHeight int64, headers []*SignedHeader) error
+
+// PeekNextHeader returns the next header to verify, if available.
+func (pool *HeaderPool) PeekNextHeader() (*SignedHeader, p2p.ID, int64)
+
+// MarkHeaderProcessed advances the pool height after a header is verified.
+func (pool *HeaderPool) MarkHeaderProcessed() bool
 ```
 
 ### Testing Strategy
