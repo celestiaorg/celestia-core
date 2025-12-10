@@ -173,6 +173,11 @@ func (conR *Reactor) SwitchToConsensus(state sm.State, skipWAL bool) {
 	if skipWAL {
 		conR.conS.doWALCatchup = false
 	}
+	// Reset consensus if it was previously stopped (e.g., when switching to blocksync)
+	// This is safe to call even if consensus wasn't stopped - Reset() will just return an error
+	if err := conR.conS.Reset(); err != nil {
+		conR.Logger.Debug("Consensus reset returned error (may be expected)", "err", err)
+	}
 	err := conR.conS.Start()
 	if err != nil {
 		panic(fmt.Sprintf(`Failed to start consensus state: %v
