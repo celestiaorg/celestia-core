@@ -413,6 +413,7 @@ func (memR *Reactor) Receive(e p2p.Envelope) {
 	// A peer is requesting a transaction that we have claimed to have. Find the specified
 	// transaction and broadcast it to the peer. We may no longer have the transaction
 	case *protomem.WantTx:
+		wantTxStart := time.Now()
 		txKey, err := types.TxKeyFromBytes(msg.TxKey)
 		if err != nil {
 			memR.Logger.Error("peer sent WantTx with incorrect tx key", "err", err)
@@ -427,8 +428,8 @@ func (memR *Reactor) Receive(e p2p.Envelope) {
 			schema.Download,
 		)
 		tx, has := memR.mempool.GetTxByKey(txKey)
+		peerID := memR.ids.GetIDForPeer(e.Src.ID())
 		if has && !memR.opts.ListenOnly {
-			peerID := memR.ids.GetIDForPeer(e.Src.ID())
 			memR.Logger.Trace("sending a tx in response to a want msg", "peer", peerID)
 			if e.Src.Send(p2p.Envelope{
 				ChannelID: MempoolDataChannel,
@@ -442,7 +443,23 @@ func (memR *Reactor) Receive(e p2p.Envelope) {
 					len(tx.Tx),
 					schema.Upload,
 				)
+				memR.Logger.Info("handled WantTx request",
+					"txKey", txKey,
+					"peer", e.Src.ID(),
+					"peerID", peerID,
+					"txSize", len(tx.Tx),
+					"handleTime", time.Since(wantTxStart),
+				)
 			}
+		} else {
+			memR.Logger.Info("received WantTx but tx not found or listen only",
+				"txKey", txKey,
+				"peer", e.Src.ID(),
+				"peerID", peerID,
+				"hasTx", has,
+				"listenOnly", memR.opts.ListenOnly,
+				"handleTime", time.Since(wantTxStart),
+			)
 		}
 
 	default:
@@ -488,6 +505,7 @@ func (memR *Reactor) broadcastSeenTxWithHeight(txKey types.TxKey, height int64, 
 
 	orderedPeers := selectStickyPeers(signer, peers, len(peers), memR.currentStickyPeerSalt())
 	sent := 0
+	sentPeerIDs := make([]string, 0, maxSeenTxBroadcast)
 	for _, peerInfo := range orderedPeers {
 		if sent >= maxSeenTxBroadcast {
 			break
@@ -517,8 +535,19 @@ func (memR *Reactor) broadcastSeenTxWithHeight(txKey types.TxKey, height int64, 
 		) {
 			memR.mempool.PeerHasTx(id, txKey)
 			schema.WriteMempoolPeerState(memR.traceClient, string(peer.ID()), schema.SeenTx, txKey[:], schema.Upload)
+			sentPeerIDs = append(sentPeerIDs, string(peer.ID()))
 			sent++
 		}
+	}
+
+	if sent > 0 {
+		memR.Logger.Info("broadcast SeenTx",
+			"txKey", txKey,
+			"signer", string(signer),
+			"sequence", sequence,
+			"sentToPeers", sent,
+			"peerIDs", sentPeerIDs,
+		)
 	}
 }
 
