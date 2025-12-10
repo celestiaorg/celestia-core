@@ -8,7 +8,7 @@ import (
 	"github.com/cometbft/cometbft/types"
 )
 
-const defaultPendingSeenPerSigner = 128
+const defaultPendingSeenPerSigner = 600
 
 type pendingSeenTx struct {
 	signerKey string
