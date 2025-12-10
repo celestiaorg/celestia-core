@@ -557,22 +557,27 @@ func (conR *Reactor) checkFallingBehindOnHeight(height int64) {
 		return
 	}
 
+	// Skip if any consensus delay is > 100ms (likely testing/debugging)
+	const maxDelayForSwitch = 100 * time.Millisecond
+	proposeDelay, prevoteDelay, precommitDelay := conR.conS.GetConsensusDelays()
+	if proposeDelay > maxDelayForSwitch || prevoteDelay > maxDelayForSwitch || precommitDelay > maxDelayForSwitch {
+		return
+	}
+
 	// Check if we should switch to blocksync
-	if conR.shouldSwitchToBlockSync(threshold) {
-		conR.initiateBlockSyncSwitch()
+	if conR.shouldSwitchToBlockSync(height, threshold) {
+		// Run in goroutine to avoid blocking event handler and potential deadlock
+		// since initiateBlockSyncSwitch stops the consensus state machine
+		go conR.initiateBlockSyncSwitch()
 	}
 }
 
 // shouldSwitchToBlockSync determines if majority of peers are threshold+ blocks ahead.
-func (conR *Reactor) shouldSwitchToBlockSync(threshold int64) bool {
+func (conR *Reactor) shouldSwitchToBlockSync(ourHeight int64, threshold int64) bool {
 	peers := conR.Switch.Peers().List()
 	if len(peers) == 0 {
 		return false
 	}
-
-	// Get our current height
-	rs := conR.getRoundState()
-	ourHeight := rs.Height
 
 	// Count peers that are significantly ahead
 	aheadCount := 0
@@ -613,11 +618,21 @@ func (conR *Reactor) shouldSwitchToBlockSync(threshold int64) bool {
 
 // initiateBlockSyncSwitch handles the switch from consensus to blocksync.
 func (conR *Reactor) initiateBlockSyncSwitch() {
+	// Use mutex to atomically check waitSync and cooldown, and set waitSync
+	conR.mtx.Lock()
+
+	// Skip if already syncing (could happen due to race with goroutine)
+	if conR.waitSync {
+		conR.mtx.Unlock()
+		return
+	}
+
 	// Anti-thrashing: check cooldown
 	conR.lastSwitchMtx.Lock()
 	cooldown := conR.conS.config.MinSwitchCooldown
 	if time.Since(conR.lastSwitchTime) < cooldown {
 		conR.lastSwitchMtx.Unlock()
+		conR.mtx.Unlock()
 		conR.Logger.Debug("Skipping blocksync switch due to cooldown",
 			"time_since_last_switch", time.Since(conR.lastSwitchTime),
 			"cooldown", cooldown)
@@ -627,27 +642,27 @@ func (conR *Reactor) initiateBlockSyncSwitch() {
 	conR.lastSwitchMtx.Unlock()
 
 	if conR.blocksyncR == nil {
+		conR.mtx.Unlock()
 		conR.Logger.Error("Cannot switch to blocksync: blocksyncReactor not set")
 		return
 	}
 
-	conR.Logger.Info("Switching from consensus to blocksync mode")
-
-	// 1. Set waitSync flag
-	conR.mtx.Lock()
+	// Set waitSync flag while still holding mutex
 	conR.waitSync = true
 	conR.mtx.Unlock()
 
-	// 2. Stop consensus state machine
+	conR.Logger.Info("Switching from consensus to blocksync mode")
+
+	// Stop consensus state machine
 	if err := conR.conS.Stop(); err != nil {
 		conR.Logger.Error("Error stopping consensus state", "err", err)
 	}
 	conR.conS.Wait()
 
-	// 3. Get current state for blocksync
+	// Get current state for blocksync
 	state := conR.conS.GetState()
 
-	// 4. Switch to blocksync
+	// Switch to blocksync
 	if err := conR.blocksyncR.SwitchToBlockSync(state); err != nil {
 		conR.Logger.Error("Failed to switch to blocksync", "err", err)
 		// Attempt to recover by restarting consensus

@@ -177,9 +177,28 @@ func (bcR *Reactor) SwitchToBlockSync(state sm.State) error {
 	bcR.blockSync = true
 	bcR.initialState = state
 
-	// Reset pool height to start syncing from current state
+	// Reset pool state for re-entry
 	bcR.pool.mtx.Lock()
 	bcR.pool.height = state.LastBlockHeight + 1
+	// Stop peer timeout timers and clear stale peer data
+	for _, peer := range bcR.pool.peers {
+		if peer.timeout != nil {
+			peer.timeout.Stop()
+		}
+	}
+	bcR.pool.peers = make(map[p2p.ID]*bpPeer)
+	bcR.pool.sortedPeers = nil
+	bcR.pool.maxPeerHeight = 0
+	// Stop and clear any old requesters to prevent leaked goroutines
+	for _, requester := range bcR.pool.requesters {
+		if requester.IsRunning() {
+			if err := requester.Stop(); err != nil {
+				bcR.Logger.Error("Error stopping requester", "height", requester.height, "err", err)
+			}
+		}
+	}
+	bcR.pool.requesters = make(map[int64]*bpRequester)
+	bcR.pool.numPending = 0
 	bcR.pool.mtx.Unlock()
 
 	// Start the pool if not already running
@@ -190,6 +209,9 @@ func (bcR *Reactor) SwitchToBlockSync(state sm.State) error {
 		}
 	}
 
+	// Request fresh status from all connected peers
+	bcR.requestStatusFromPeers()
+
 	// Start pool routine
 	// Pass true to skip WAL replay when switching back to consensus,
 	// since we came from a cleanly stopped consensus (not a crash)
@@ -199,6 +221,19 @@ func (bcR *Reactor) SwitchToBlockSync(state sm.State) error {
 		bcR.poolRoutine(true)
 	}()
 	return nil
+}
+
+// requestStatusFromPeers sends status requests to all connected peers
+// to get their current heights for blocksync.
+func (bcR *Reactor) requestStatusFromPeers() {
+	peers := bcR.Switch.Peers().List()
+	bcR.Logger.Info("Requesting status from peers for blocksync", "num_peers", len(peers))
+	for _, peer := range peers {
+		peer.TrySend(p2p.Envelope{
+			ChannelID: BlocksyncChannel,
+			Message:   &bcproto.StatusRequest{},
+		})
+	}
 }
 
 // OnStop implements service.Service.
