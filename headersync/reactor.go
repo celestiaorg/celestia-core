@@ -20,9 +20,6 @@ const (
 	// HeaderSyncChannel is the channel ID for header sync messages.
 	HeaderSyncChannel = byte(0x60)
 
-	// trySyncIntervalMS is how often to check for completed batches.
-	trySyncIntervalMS = 10
-
 	// ReactorIncomingMessageQueueSize is the size of the reactor's message queue.
 	ReactorIncomingMessageQueueSize = 100
 
@@ -32,6 +29,9 @@ const (
 
 	// peerRequestWindowSeconds is the time window for rate limiting.
 	peerRequestWindowSeconds = 1
+
+	// timeoutCheckInterval is how often to check for timed out requests.
+	timeoutCheckInterval = time.Second
 )
 
 // peerRequestTracker tracks request timestamps for rate limiting.
@@ -40,6 +40,8 @@ type peerRequestTracker struct {
 }
 
 // Reactor handles header synchronization.
+// It uses an event-driven architecture: headers are processed immediately
+// when they arrive, not on a timer.
 type Reactor struct {
 	p2p.BaseReactor
 
@@ -59,12 +61,11 @@ type Reactor struct {
 	peerRequestsMtx sync.Mutex
 	peerRequests    map[p2p.ID]*peerRequestTracker
 
-	requestsCh <-chan HeaderBatchRequest
-	errorsCh   <-chan peerError
-
-	poolWg sync.WaitGroup
-
-	metrics *Metrics
+	// Metrics tracking.
+	metrics          *Metrics
+	headersSynced    int64
+	lastHundredTime  time.Time
+	lastBroadcastHeight int64
 }
 
 // ReactorOption defines a function argument for Reactor.
@@ -83,26 +84,19 @@ func NewReactor(
 		metrics = NopMetrics()
 	}
 
-	requestsCh := make(chan HeaderBatchRequest, 100)
-	errorsCh := make(chan peerError, 100)
-
 	// Start syncing from one past the current header height.
 	startHeight := blockStore.HeaderHeight() + 1
 	if startHeight < 1 {
 		startHeight = 1
 	}
 
-	pool := NewHeaderPool(startHeight, batchSize, requestsCh, errorsCh)
-
 	r := &Reactor{
-		pool:         pool,
+		pool:         NewHeaderPool(startHeight, batchSize),
 		stateStore:   stateStore,
 		blockStore:   blockStore,
 		chainID:      chainID,
 		subscribers:  make([]chan<- *VerifiedHeader, 0),
 		peerRequests: make(map[p2p.ID]*peerRequestTracker),
-		requestsCh:   requestsCh,
-		errorsCh:     errorsCh,
 		metrics:      metrics,
 	}
 	r.BaseReactor = *p2p.NewBaseReactor("HeaderSync", r, p2p.WithIncomingQueueSize(ReactorIncomingMessageQueueSize))
@@ -128,25 +122,19 @@ func (r *Reactor) OnStart() error {
 		r.lastHeader = r.blockStore.LoadHeader(lastHeight)
 	}
 
-	if err := r.pool.Start(); err != nil {
-		return err
-	}
+	r.lastHundredTime = time.Now()
+	r.lastBroadcastHeight = r.blockStore.HeaderHeight()
+	r.metrics.Syncing.Set(1)
 
-	r.poolWg.Add(1)
-	go func() {
-		defer r.poolWg.Done()
-		r.poolRoutine()
-	}()
+	// Start a goroutine to periodically check for timed out requests.
+	go r.timeoutRoutine()
 
 	return nil
 }
 
 // OnStop implements service.Service.
 func (r *Reactor) OnStop() {
-	if err := r.pool.Stop(); err != nil {
-		r.Logger.Error("Error stopping pool", "err", err)
-	}
-	r.poolWg.Wait()
+	r.metrics.Syncing.Set(0)
 }
 
 // GetChannels implements Reactor.
@@ -245,7 +233,10 @@ func (r *Reactor) Receive(e p2p.Envelope) {
 		// SetPeerRange returns false if this is a DoS attempt (same or lower height).
 		if !r.pool.SetPeerRange(e.Src.ID(), msg.Base, msg.Height) {
 			r.Switch.StopPeerForError(e.Src, errors.New("status update with non-increasing height"), r.String())
+			return
 		}
+		// Peer has new headers - try to make requests.
+		r.tryMakeRequests()
 
 	case *hsproto.GetHeaders:
 		if !r.checkPeerRateLimit(e.Src.ID()) {
@@ -332,81 +323,80 @@ func (r *Reactor) handleHeaders(msg *hsproto.HeadersResponse, src p2p.Peer) {
 
 	if err := r.pool.AddBatchResponse(src.ID(), msg.StartHeight, signedHeaders); err != nil {
 		r.Logger.Debug("Failed to add batch response", "peer", src.ID(), "startHeight", msg.StartHeight, "err", err)
+		return
 	}
+
+	// Process headers immediately as they arrive.
+	r.tryProcessHeaders()
+
+	// After processing, try to make more requests.
+	r.tryMakeRequests()
 }
 
-// poolRoutine handles header verification and storage.
-func (r *Reactor) poolRoutine() {
-	r.metrics.Syncing.Set(1)
-	defer r.metrics.Syncing.Set(0)
-
-	trySyncTicker := time.NewTicker(trySyncIntervalMS * time.Millisecond)
-	defer trySyncTicker.Stop()
-
-	lastHundred := time.Now()
-	headersSynced := int64(0)
-	lastBroadcastHeight := r.blockStore.HeaderHeight()
+// timeoutRoutine periodically checks for timed out requests.
+func (r *Reactor) timeoutRoutine() {
+	ticker := time.NewTicker(timeoutCheckInterval)
+	defer ticker.Stop()
 
 	for {
 		select {
 		case <-r.Quit():
 			return
-
-		case <-r.pool.Quit():
-			return
-
-		case request := <-r.requestsCh:
-			r.sendGetHeaders(request)
-
-		case err := <-r.errorsCh:
-			peer := r.Switch.Peers().Get(err.peerID)
-			if peer != nil {
-				r.Switch.StopPeerForError(peer, err, r.String())
-			}
-
-		case <-trySyncTicker.C:
-			// Process headers as they arrive (streaming).
-			// This allows verification to start immediately when headers arrive in order,
-			// rather than waiting for the entire batch to complete.
-			for {
-				sh, peerID, batchStartHeight := r.pool.PeekNextHeader()
-				if sh == nil {
-					break
-				}
-
-				if !r.processNextHeader(sh, peerID, batchStartHeight) {
-					break
-				}
-
-				r.pool.MarkHeaderProcessed()
-				headersSynced++
-
-				if headersSynced%100 == 0 && headersSynced > 0 {
-					rate := 100.0 / time.Since(lastHundred).Seconds()
-					r.Logger.Info("Header Sync Rate",
-						"height", r.pool.Height(),
-						"max_peer_height", r.pool.MaxPeerHeight(),
-						"headers/s", rate)
-					r.metrics.SyncRate.Set(rate)
-					lastHundred = time.Now()
-				}
-			}
-
-			// Broadcast our new status if height has advanced.
-			// Peers use push-based status updates rather than pull-based requests.
-			currentHeight := r.blockStore.HeaderHeight()
-			if currentHeight > lastBroadcastHeight {
-				r.BroadcastStatus()
-				lastBroadcastHeight = currentHeight
-			}
-
-			// Update metrics.
-			height, numPending, numPeers := r.pool.GetStatus()
-			r.metrics.HeaderHeight.Set(float64(height - 1))
-			r.metrics.PendingRequests.Set(float64(numPending))
-			r.metrics.Peers.Set(float64(numPeers))
+		case <-ticker.C:
+			r.tryMakeRequests()
 		}
 	}
+}
+
+// tryProcessHeaders processes all available headers in order.
+func (r *Reactor) tryProcessHeaders() {
+	for {
+		sh, peerID, batchStartHeight := r.pool.PeekNextHeader()
+		if sh == nil {
+			return
+		}
+
+		if !r.processNextHeader(sh, peerID, batchStartHeight) {
+			return
+		}
+
+		r.pool.MarkHeaderProcessed()
+		r.headersSynced++
+
+		if r.headersSynced%100 == 0 {
+			rate := 100.0 / time.Since(r.lastHundredTime).Seconds()
+			r.Logger.Info("Header Sync Rate",
+				"height", r.pool.Height(),
+				"max_peer_height", r.pool.MaxPeerHeight(),
+				"headers/s", rate)
+			r.metrics.SyncRate.Set(rate)
+			r.lastHundredTime = time.Now()
+		}
+	}
+}
+
+// tryMakeRequests sends batch requests if slots are available.
+func (r *Reactor) tryMakeRequests() {
+	for {
+		req := r.pool.GetNextRequest()
+		if req == nil {
+			break
+		}
+		r.sendGetHeaders(*req)
+	}
+
+	// Broadcast status if height advanced.
+	currentHeight := r.blockStore.HeaderHeight()
+	if currentHeight > r.lastBroadcastHeight {
+		r.BroadcastStatus()
+		r.lastBroadcastHeight = currentHeight
+	}
+
+	// Update metrics.
+	height, numPending, numPeers := r.pool.GetStatus()
+	r.metrics.HeaderHeight.Set(float64(height - 1))
+	r.metrics.PendingRequests.Set(float64(numPending))
+	r.metrics.Peers.Set(float64(numPeers))
 }
 
 // processNextHeader verifies and stores a single header.

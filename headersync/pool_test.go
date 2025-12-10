@@ -14,9 +14,7 @@ import (
 
 // newTestPool creates a HeaderPool for testing with a nop logger.
 func newTestPool(startHeight, batchSize int64) *HeaderPool {
-	requestsCh := make(chan HeaderBatchRequest, 100)
-	errorsCh := make(chan peerError, 100)
-	pool := NewHeaderPool(startHeight, batchSize, requestsCh, errorsCh)
+	pool := NewHeaderPool(startHeight, batchSize)
 	pool.Logger = log.NewNopLogger()
 	return pool
 }
