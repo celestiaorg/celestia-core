@@ -237,7 +237,8 @@ func (txmp *TxPool) CheckTx(tx types.Tx, cb func(*abci.ResponseCheckTx), txInfo 
 	// This is a new transaction that we haven't seen before. Verify it against the app and attempt
 	// to add it to the transaction pool.
 	cachedTx := tx.ToCachedTx()
-	rsp, err := txmp.TryAddNewTx(cachedTx, cachedTx.Key(), txInfo)
+	key := cachedTx.Key()
+	rsp, err := txmp.TryAddNewTx(cachedTx, key, txInfo)
 	if err != nil {
 		return err
 	}
@@ -248,8 +249,13 @@ func (txmp *TxPool) CheckTx(tx types.Tx, cb func(*abci.ResponseCheckTx), txInfo 
 		}
 	}()
 
+	// Trace added RPC transactions
+	if rsp.Code == 0 {
+		schema.WriteMempoolAddResult(txmp.traceClient, "rpc", key[:], schema.Added, nil, string(rsp.Address), rsp.Sequence)
+	}
+
 	// push to the broadcast queue that a new transaction is ready
-	txmp.markToBeBroadcast(cachedTx.Key())
+	txmp.markToBeBroadcast(key)
 	return nil
 }
 

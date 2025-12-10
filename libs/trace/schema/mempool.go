@@ -14,6 +14,7 @@ func MempoolTables() []string {
 		MempoolAddResultTable,
 		MempoolTxStatusTable,
 		MempoolRecheckTable,
+		MempoolStateTable,
 	}
 }
 
@@ -335,5 +336,55 @@ func WriteMempoolRecheck(
 		Sequence: sequence,
 		Kept:     kept,
 		Error:    errStr,
+	})
+}
+
+const (
+	// MempoolStateTable is the tracing "measurement" (aka table) for the
+	// mempool that stores per-signer state snapshots on height changes.
+	MempoolStateTable = "mempool_state"
+)
+
+// MempoolState describes the schema for the "mempool_state" table.
+// This captures per-signer mempool state at each height change.
+type MempoolState struct {
+	Height      int64  `json:"height"`
+	Signer      string `json:"signer"`
+	ExpectedSeq uint64 `json:"expected_seq"`
+	TxCount     int    `json:"tx_count"`
+	MinSeq      uint64 `json:"min_seq"`
+	MaxSeq      uint64 `json:"max_seq"`
+	Window      string `json:"window"`
+}
+
+// Table returns the table name for the MempoolState struct.
+func (MempoolState) Table() string {
+	return MempoolStateTable
+}
+
+// WriteMempoolState writes a tracing point for per-signer mempool state
+// using the predetermined schema for mempool tracing.
+func WriteMempoolState(
+	client trace.Tracer,
+	height int64,
+	signer []byte,
+	expectedSeq uint64,
+	txCount int,
+	minSeq uint64,
+	maxSeq uint64,
+	window string,
+) {
+	if !client.IsCollecting(MempoolStateTable) {
+		return
+	}
+
+	client.Write(MempoolState{
+		Height:      height,
+		Signer:      bytes.HexBytes(signer).String(),
+		ExpectedSeq: expectedSeq,
+		TxCount:     txCount,
+		MinSeq:      minSeq,
+		MaxSeq:      maxSeq,
+		Window:      window,
 	})
 }
