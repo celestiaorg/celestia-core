@@ -2,6 +2,7 @@
 
 ## Changelog
 
+- 2025-12-10: Final refactor - clean event-driven architecture with BlockSource tracking
 - 2025-12-10: Updated to reflect implementation - unified PendingBlocksManager replaces ProposalCache
 - 2025-12-09: Initial draft
 
@@ -68,14 +69,27 @@ Verified Headers                    Compact Blocks
 ### Core Data Structures
 
 ```go
+// BlockSource identifies how a block was added to the manager.
+type BlockSource int
+
+const (
+    // SourceCompactBlock - block added via compact block from proposal gossip.
+    SourceCompactBlock BlockSource = iota
+    // SourceHeaderSync - block added via verified header from headersync.
+    SourceHeaderSync
+    // SourceCommitment - block added via PartSetHeader from consensus commit.
+    SourceCommitment
+)
+
 // PendingBlock represents a block being downloaded.
 // Created when either:
-// 1. A compact block arrives (live proposal)
-// 2. A verified header arrives from headersync
-// 3. A commitment is received (edge case: consensus learns about committed block before headersync)
+// 1. A compact block arrives (live proposal) - SourceCompactBlock
+// 2. A verified header arrives from headersync - SourceHeaderSync
+// 3. A commitment is received (edge case: consensus learns about committed block before headersync) - SourceCommitment
 type PendingBlock struct {
     Height        int64
     Round         int32
+    Source        BlockSource  // How this block was added
     BlockID       types.BlockID  // From verified header or commitment
 
     // Block data - combined original + parity parts
@@ -134,9 +148,16 @@ type PendingBlocksManager struct {
     // Output channel for forwarding parts to consensus
     partsChan     chan<- types.PartInfo
 
+    // Callback when a block is added (for triggering catchup)
+    onBlockAdded  BlockAddedCallback
+
     // Current proposal parts count for request limiting
     currentProposalPartsCount atomic.Int64
 }
+
+// BlockAddedCallback is called when a new block is added to the manager.
+// This allows the reactor to trigger catchup immediately when needed.
+type BlockAddedCallback func(height int64, source BlockSource)
 
 // HeaderVerifier provides access to verified headers.
 type HeaderVerifier interface {
@@ -383,6 +404,17 @@ func (r *Reactor) GetProposal(height int64, round int32) (*types.Proposal, *type
 ### Catchup Request Handling
 
 ```go
+// onBlockAdded is the callback triggered by PendingBlocksManager when a block is added.
+// This triggers immediate catchup for commitment and header-sync sourced blocks.
+func (r *Reactor) onBlockAdded(height int64, source BlockSource) {
+    // Only trigger immediate catchup for catchup-sourced blocks.
+    // Compact blocks from live gossip don't need immediate catchup.
+    if source == SourceCommitment || source == SourceHeaderSync {
+        r.ticker.Reset(RetryTime)
+        go r.retryWants()
+    }
+}
+
 // retryWants is the unified catchup mechanism using PendingBlocksManager.
 func (r *Reactor) retryWants() {
     missingParts := r.pendingBlocks.GetMissingParts()
@@ -419,11 +451,10 @@ func (r *Reactor) retryWants() {
     }
 }
 
-// AddCommitment handles consensus learning about a committed block
+// AddCommitment handles consensus learning about a committed block.
+// The onBlockAdded callback triggers catchup automatically.
 func (r *Reactor) AddCommitment(height int64, round int32, psh *types.PartSetHeader) {
-    r.pendingBlocks.AddCommitment(height, round, psh)
-    r.ticker.Reset(RetryTime)
-    go r.retryWants()
+    r.pendingBlocks.AddFromCommitment(height, round, psh)
 }
 ```
 
@@ -542,11 +573,17 @@ Fixed maximum concurrent blocks and memory budget. Backpressure naturally flows 
 ### Phase 2: Merge ProposalCache into PendingBlocksManager ✅ COMPLETE
 
 1. Removed `ProposalCache` embedding from Reactor
-2. Reactor forwards all calls to `PendingBlocksManager`
-3. Unified catchup mechanism via `AddCommitment` and `retryWants`
-4. Key changes:
-   - `AddProposal` handles live compact blocks with capacity management
-   - `AddCommitment` handles catchup blocks (consensus learns about committed block before headersync)
+2. Removed dead code: `commitment_state.go` and `commitment_state_test.go`
+3. Reactor forwards all calls to `PendingBlocksManager`
+4. Unified catchup mechanism via event-driven callback:
+   - `BlockSource` enum tracks how each block was added
+   - `BlockAddedCallback` triggers immediate catchup for header/commitment sources
+   - `onBlockAdded` in reactor handles the callback
+5. Three clean entry points:
+   - `AddProposal(cb)` - live compact blocks from proposal gossip
+   - `AddFromHeader(vh)` - verified headers from headersync
+   - `AddFromCommitment(height, round, psh)` - PartSetHeader from consensus commit
+6. Key behaviors:
    - `GetMissingParts` returns missing parts info with `Catchup` flag
    - Catchup blocks request ALL original parts; live blocks use erasure coding
    - Lower heights have priority - at capacity, higher-height proposals are rejected (FIFO completion)

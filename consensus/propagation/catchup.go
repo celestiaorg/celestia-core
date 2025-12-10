@@ -102,14 +102,28 @@ func (blockProp *Reactor) retryWants() {
 // AddCommitment adds a block for download based on a PartSetHeader from a commit.
 // This handles the edge case where consensus learns about a committed block
 // before headersync verifies the header.
+//
+// The actual download is triggered via the BlockAddedCallback mechanism,
+// which resets the retry ticker and immediately triggers retryWants.
 func (blockProp *Reactor) AddCommitment(height int64, round int32, psh *types.PartSetHeader) {
 	blockProp.Logger.Info("adding commitment", "height", height, "round", round, "psh", psh)
-
 	schema.WriteGap(blockProp.traceClient, height, round)
 
-	blockProp.pendingBlocks.AddCommitment(height, round, psh)
-	blockProp.ticker.Reset(RetryTime)
-	go blockProp.retryWants()
+	// AddFromCommitment will trigger the onBlockAdded callback if a new block is added.
+	blockProp.pendingBlocks.AddFromCommitment(height, round, psh)
+}
+
+// onBlockAdded is called by PendingBlocksManager when a new block is added.
+// This triggers immediate catchup for commitment and header-sync sourced blocks.
+func (blockProp *Reactor) onBlockAdded(height int64, source BlockSource) {
+	// Only trigger immediate catchup for catchup-sourced blocks.
+	// Compact blocks from live gossip don't need immediate catchup.
+	if source == SourceCommitment || source == SourceHeaderSync {
+		blockProp.Logger.Debug("block added, triggering catchup",
+			"height", height, "source", source.String())
+		blockProp.ticker.Reset(RetryTime)
+		go blockProp.retryWants()
+	}
 }
 
 func shuffle[T any](slice []T) []T {

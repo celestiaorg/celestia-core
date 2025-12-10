@@ -76,31 +76,35 @@ func makeCompactBlockWithHash(height int64, round int32, totalParts uint32, hash
 	return cb
 }
 
-func TestPendingBlocksManager_HandleCompactBlock_NoVerifier(t *testing.T) {
-	partsChan := make(chan types.PartInfo, 100)
-	mgr := NewPendingBlocksManager(log.NewNopLogger(), partsChan, nil, DefaultPendingBlocksConfig())
-
-	cb := makeCompactBlock(10, 0, 4)
-
-	// Without a header verifier, compact blocks are not tracked here
-	// (they go to ProposalCache for "live" verification).
-	err := mgr.HandleCompactBlock(cb)
-	require.NoError(t, err)
-	require.Equal(t, 0, mgr.Len(), "should not track unverified blocks")
+// newTestPendingBlocksManager creates a PendingBlocksManager for testing.
+func newTestPendingBlocksManager(partsChan chan types.PartInfo, verifier HeaderVerifier, config PendingBlocksConfig) *PendingBlocksManager {
+	return NewPendingBlocksManager(log.NewNopLogger(), nil, partsChan, verifier, config)
 }
 
-func TestPendingBlocksManager_HandleCompactBlock_Verified(t *testing.T) {
+func TestPendingBlocksManager_AddProposal_NoVerifier(t *testing.T) {
+	partsChan := make(chan types.PartInfo, 100)
+	mgr := newTestPendingBlocksManager(partsChan, nil, DefaultPendingBlocksConfig())
+
+	cb := makePendingTestCompactBlock(10, 0, 4)
+
+	// Without a header verifier, compact blocks are still tracked (live proposals).
+	added := mgr.AddProposal(cb)
+	require.True(t, added)
+	require.Equal(t, 1, mgr.Len())
+}
+
+func TestPendingBlocksManager_AddProposal_Verified(t *testing.T) {
 	partsChan := make(chan types.PartInfo, 100)
 	verifier := newMockHeaderVerifier()
-	mgr := NewPendingBlocksManager(log.NewNopLogger(), partsChan, verifier, DefaultPendingBlocksConfig())
+	mgr := newTestPendingBlocksManager(partsChan, verifier, DefaultPendingBlocksConfig())
 
 	hash := cmtrand.Bytes(32)
 	verifier.AddVerifiedHeader(10, hash)
 
 	cb := makeCompactBlockWithHash(10, 0, 4, hash)
 
-	err := mgr.HandleCompactBlock(cb)
-	require.NoError(t, err)
+	added := mgr.AddProposal(cb)
+	require.True(t, added)
 	require.Equal(t, 1, mgr.Len())
 
 	pending, exists := mgr.GetBlock(10)
@@ -110,72 +114,78 @@ func TestPendingBlocksManager_HandleCompactBlock_Verified(t *testing.T) {
 	require.NotNil(t, pending.Parts)
 }
 
-func TestPendingBlocksManager_HandleCompactBlock_HashMismatch(t *testing.T) {
+func TestPendingBlocksManager_AddProposal_HashMismatch(t *testing.T) {
 	partsChan := make(chan types.PartInfo, 100)
 	verifier := newMockHeaderVerifier()
-	mgr := NewPendingBlocksManager(log.NewNopLogger(), partsChan, verifier, DefaultPendingBlocksConfig())
+	mgr := newTestPendingBlocksManager(partsChan, verifier, DefaultPendingBlocksConfig())
 
-	verifier.AddVerifiedHeader(10, cmtrand.Bytes(32))
+	// Add a verified header first via OnHeaderVerified.
+	headerHash := cmtrand.Bytes(32)
+	vh := &headersync.VerifiedHeader{
+		Header: &types.Header{Height: 10},
+		BlockID: types.BlockID{
+			Hash: headerHash,
+			PartSetHeader: types.PartSetHeader{
+				Total: 4,
+				Hash:  cmtrand.Bytes(32),
+			},
+		},
+	}
+	mgr.AddFromHeader(vh)
+	require.Equal(t, 1, mgr.Len())
 
-	// Create compact block with different hash.
+	// Try to add compact block with different hash - should fail.
 	cb := makeCompactBlockWithHash(10, 0, 4, cmtrand.Bytes(32))
-
-	err := mgr.HandleCompactBlock(cb)
-	require.ErrorIs(t, err, ErrBlockIDMismatch)
-	require.Equal(t, 0, mgr.Len())
+	added := mgr.AddProposal(cb)
+	require.False(t, added) // Hash mismatch, not added.
 }
 
-func TestPendingBlocksManager_HandleCompactBlock_Duplicate(t *testing.T) {
+func TestPendingBlocksManager_AddProposal_Duplicate(t *testing.T) {
 	partsChan := make(chan types.PartInfo, 100)
 	verifier := newMockHeaderVerifier()
-	mgr := NewPendingBlocksManager(log.NewNopLogger(), partsChan, verifier, DefaultPendingBlocksConfig())
+	mgr := newTestPendingBlocksManager(partsChan, verifier, DefaultPendingBlocksConfig())
 
 	hash := cmtrand.Bytes(32)
 	verifier.AddVerifiedHeader(10, hash)
 
 	cb := makeCompactBlockWithHash(10, 0, 4, hash)
 
-	err := mgr.HandleCompactBlock(cb)
-	require.NoError(t, err)
+	added := mgr.AddProposal(cb)
+	require.True(t, added)
 	require.Equal(t, 1, mgr.Len())
 
-	// Second time should be silently accepted (duplicate).
-	err = mgr.HandleCompactBlock(cb)
-	require.NoError(t, err)
+	// Second time should return false (duplicate).
+	added = mgr.AddProposal(cb)
+	require.False(t, added)
 	require.Equal(t, 1, mgr.Len())
 }
 
-func TestPendingBlocksManager_HandleCompactBlock_MaxConcurrent(t *testing.T) {
+func TestPendingBlocksManager_AddProposal_MaxConcurrent(t *testing.T) {
 	partsChan := make(chan types.PartInfo, 100)
-	verifier := newMockHeaderVerifier()
 	config := PendingBlocksConfig{
 		MaxConcurrent: 2,
 		MemoryBudget:  100 * 1024 * 1024,
 	}
-	mgr := NewPendingBlocksManager(log.NewNopLogger(), partsChan, verifier, config)
+	mgr := newTestPendingBlocksManager(partsChan, nil, config)
 
 	// Add 2 blocks (at capacity).
 	for i := int64(10); i < 12; i++ {
-		hash := cmtrand.Bytes(32)
-		verifier.AddVerifiedHeader(i, hash)
-		cb := makeCompactBlockWithHash(i, 0, 4, hash)
-		err := mgr.HandleCompactBlock(cb)
-		require.NoError(t, err)
+		cb := makePendingTestCompactBlock(i, 0, 4)
+		added := mgr.AddProposal(cb)
+		require.True(t, added)
 	}
 	require.Equal(t, 2, mgr.Len())
 
-	// Third should fail.
-	hash := cmtrand.Bytes(32)
-	verifier.AddVerifiedHeader(12, hash)
-	cb := makeCompactBlockWithHash(12, 0, 4, hash)
-	err := mgr.HandleCompactBlock(cb)
-	require.ErrorIs(t, err, ErrNoCapacity)
+	// Third should fail due to capacity.
+	cb := makePendingTestCompactBlock(12, 0, 4)
+	added := mgr.AddProposal(cb)
+	require.False(t, added)
 }
 
-func TestPendingBlocksManager_OnHeaderVerified_CreatesActiveBlock(t *testing.T) {
+func TestPendingBlocksManager_AddFromHeader_CreatesActiveBlock(t *testing.T) {
 	partsChan := make(chan types.PartInfo, 100)
 	verifier := newMockHeaderVerifier()
-	mgr := NewPendingBlocksManager(log.NewNopLogger(), partsChan, verifier, DefaultPendingBlocksConfig())
+	mgr := newTestPendingBlocksManager(partsChan, verifier, DefaultPendingBlocksConfig())
 
 	vh := &headersync.VerifiedHeader{
 		Header: &types.Header{Height: 10},
@@ -188,7 +198,7 @@ func TestPendingBlocksManager_OnHeaderVerified_CreatesActiveBlock(t *testing.T) 
 		},
 	}
 
-	mgr.OnHeaderVerified(vh)
+	mgr.AddFromHeader(vh)
 
 	require.Equal(t, 1, mgr.Len())
 	pending, exists := mgr.GetBlock(10)
@@ -200,10 +210,10 @@ func TestPendingBlocksManager_OnHeaderVerified_CreatesActiveBlock(t *testing.T) 
 	require.NotNil(t, pending.Parts)     // Parts should be allocated.
 }
 
-func TestPendingBlocksManager_OnHeaderVerified_ThenCompactBlock(t *testing.T) {
+func TestPendingBlocksManager_AddFromHeader_ThenCompactBlock(t *testing.T) {
 	partsChan := make(chan types.PartInfo, 100)
 	verifier := newMockHeaderVerifier()
-	mgr := NewPendingBlocksManager(log.NewNopLogger(), partsChan, verifier, DefaultPendingBlocksConfig())
+	mgr := newTestPendingBlocksManager(partsChan, verifier, DefaultPendingBlocksConfig())
 
 	hash := cmtrand.Bytes(32)
 	pshHash := cmtrand.Bytes(32)
@@ -219,15 +229,15 @@ func TestPendingBlocksManager_OnHeaderVerified_ThenCompactBlock(t *testing.T) {
 			},
 		},
 	}
-	mgr.OnHeaderVerified(vh)
+	mgr.AddFromHeader(vh)
 	require.Equal(t, BlockStateActive, mgr.blocks[10].State)
 	require.Nil(t, mgr.blocks[10].CompactBlock)
 
 	// Now add compact block - should attach to existing pending block.
 	verifier.AddVerifiedHeader(10, hash)
 	cb := makeCompactBlockWithHash(10, 0, 4, hash)
-	err := mgr.HandleCompactBlock(cb)
-	require.NoError(t, err)
+	added := mgr.AddProposal(cb)
+	require.True(t, added)
 
 	pending, _ := mgr.GetBlock(10)
 	require.Equal(t, BlockStateActive, pending.State)
@@ -236,17 +246,14 @@ func TestPendingBlocksManager_OnHeaderVerified_ThenCompactBlock(t *testing.T) {
 
 func TestPendingBlocksManager_HeightPriority(t *testing.T) {
 	partsChan := make(chan types.PartInfo, 100)
-	verifier := newMockHeaderVerifier()
-	mgr := NewPendingBlocksManager(log.NewNopLogger(), partsChan, verifier, DefaultPendingBlocksConfig())
+	mgr := newTestPendingBlocksManager(partsChan, nil, DefaultPendingBlocksConfig())
 
-	// Add blocks out of order.
-	heights := []int64{15, 10, 12}
+	// Add blocks in ascending order (required by relevantLocked).
+	heights := []int64{10, 12, 15}
 	for _, h := range heights {
-		hash := cmtrand.Bytes(32)
-		verifier.AddVerifiedHeader(h, hash)
-		cb := makeCompactBlockWithHash(h, 0, 4, hash)
-		err := mgr.HandleCompactBlock(cb)
-		require.NoError(t, err)
+		cb := makePendingTestCompactBlock(h, 0, 4)
+		added := mgr.AddProposal(cb)
+		require.True(t, added)
 	}
 
 	// Heights should be sorted ascending.
@@ -256,19 +263,14 @@ func TestPendingBlocksManager_HeightPriority(t *testing.T) {
 
 func TestPendingBlocksManager_GetMissingParts(t *testing.T) {
 	partsChan := make(chan types.PartInfo, 100)
-	verifier := newMockHeaderVerifier()
-	mgr := NewPendingBlocksManager(log.NewNopLogger(), partsChan, verifier, DefaultPendingBlocksConfig())
+	mgr := newTestPendingBlocksManager(partsChan, nil, DefaultPendingBlocksConfig())
 
 	// Add two blocks.
-	hash1 := cmtrand.Bytes(32)
-	verifier.AddVerifiedHeader(10, hash1)
-	cb1 := makeCompactBlockWithHash(10, 0, 4, hash1)
-	_ = mgr.HandleCompactBlock(cb1)
+	cb1 := makePendingTestCompactBlock(10, 0, 4)
+	mgr.AddProposal(cb1)
 
-	hash2 := cmtrand.Bytes(32)
-	verifier.AddVerifiedHeader(11, hash2)
-	cb2 := makeCompactBlockWithHash(11, 0, 4, hash2)
-	_ = mgr.HandleCompactBlock(cb2)
+	cb2 := makePendingTestCompactBlock(11, 0, 4)
+	mgr.AddProposal(cb2)
 
 	missing := mgr.GetMissingParts()
 	require.Len(t, missing, 2)
@@ -285,13 +287,10 @@ func TestPendingBlocksManager_GetMissingParts(t *testing.T) {
 
 func TestPendingBlocksManager_DeleteHeight(t *testing.T) {
 	partsChan := make(chan types.PartInfo, 100)
-	verifier := newMockHeaderVerifier()
-	mgr := NewPendingBlocksManager(log.NewNopLogger(), partsChan, verifier, DefaultPendingBlocksConfig())
+	mgr := newTestPendingBlocksManager(partsChan, nil, DefaultPendingBlocksConfig())
 
-	hash := cmtrand.Bytes(32)
-	verifier.AddVerifiedHeader(10, hash)
-	cb := makeCompactBlockWithHash(10, 0, 4, hash)
-	_ = mgr.HandleCompactBlock(cb)
+	cb := makePendingTestCompactBlock(10, 0, 4)
+	mgr.AddProposal(cb)
 
 	require.Equal(t, 1, mgr.Len())
 
@@ -304,21 +303,18 @@ func TestPendingBlocksManager_DeleteHeight(t *testing.T) {
 
 func TestPendingBlocksManager_Prune(t *testing.T) {
 	partsChan := make(chan types.PartInfo, 100)
-	verifier := newMockHeaderVerifier()
-	mgr := NewPendingBlocksManager(log.NewNopLogger(), partsChan, verifier, DefaultPendingBlocksConfig())
+	mgr := newTestPendingBlocksManager(partsChan, nil, DefaultPendingBlocksConfig())
 
 	// Add blocks at heights 10, 11, 12.
 	for i := int64(10); i <= 12; i++ {
-		hash := cmtrand.Bytes(32)
-		verifier.AddVerifiedHeader(i, hash)
-		cb := makeCompactBlockWithHash(i, 0, 4, hash)
-		_ = mgr.HandleCompactBlock(cb)
+		cb := makePendingTestCompactBlock(i, 0, 4)
+		mgr.AddProposal(cb)
 	}
 
 	require.Equal(t, 3, mgr.Len())
 
-	// Prune below height 12.
-	mgr.Prune(12)
+	// Prune at height 11 - removes heights <= 11.
+	mgr.Prune(11)
 
 	require.Equal(t, 1, mgr.Len())
 	_, exists := mgr.GetBlock(12)
@@ -329,13 +325,10 @@ func TestPendingBlocksManager_HandlePart(t *testing.T) {
 	// This test validates routing logic. Proof validation is tested elsewhere.
 	// We test that parts are correctly forwarded to the channel.
 	partsChan := make(chan types.PartInfo, 100)
-	verifier := newMockHeaderVerifier()
-	mgr := NewPendingBlocksManager(log.NewNopLogger(), partsChan, verifier, DefaultPendingBlocksConfig())
+	mgr := newTestPendingBlocksManager(partsChan, nil, DefaultPendingBlocksConfig())
 
-	hash := cmtrand.Bytes(32)
-	verifier.AddVerifiedHeader(10, hash)
-	cb := makeCompactBlockWithHash(10, 0, 4, hash)
-	_ = mgr.HandleCompactBlock(cb)
+	cb := makePendingTestCompactBlock(10, 0, 4)
+	mgr.AddProposal(cb)
 
 	// Verify block is active and can receive parts.
 	pending, exists := mgr.GetBlock(10)
@@ -346,7 +339,7 @@ func TestPendingBlocksManager_HandlePart(t *testing.T) {
 
 func TestPendingBlocksManager_HandlePart_UnknownHeight(t *testing.T) {
 	partsChan := make(chan types.PartInfo, 100)
-	mgr := NewPendingBlocksManager(log.NewNopLogger(), partsChan, nil, DefaultPendingBlocksConfig())
+	mgr := newTestPendingBlocksManager(partsChan, nil, DefaultPendingBlocksConfig())
 
 	part := &proptypes.RecoveryPart{
 		Height: 10,
@@ -362,24 +355,22 @@ func TestPendingBlocksManager_HandlePart_UnknownHeight(t *testing.T) {
 
 func TestPendingBlocksManager_HandlePart_WrongRound(t *testing.T) {
 	partsChan := make(chan types.PartInfo, 100)
-	verifier := newMockHeaderVerifier()
-	mgr := NewPendingBlocksManager(log.NewNopLogger(), partsChan, verifier, DefaultPendingBlocksConfig())
+	mgr := newTestPendingBlocksManager(partsChan, nil, DefaultPendingBlocksConfig())
 
-	hash := cmtrand.Bytes(32)
-	verifier.AddVerifiedHeader(10, hash)
-	cb := makeCompactBlockWithHash(10, 0, 4, hash)
-	_ = mgr.HandleCompactBlock(cb)
+	// Create block with round 1 (not 0, which is treated as "any round").
+	cb := makePendingTestCompactBlock(10, 1, 4)
+	mgr.AddProposal(cb)
 
 	// Part with wrong round should be ignored.
 	part := &proptypes.RecoveryPart{
 		Height: 10,
-		Round:  1, // Wrong round.
+		Round:  2, // Wrong round.
 		Index:  0,
 		Data:   cmtrand.Bytes(100),
 	}
 	proof := merkle.Proof{}
 
-	added, err := mgr.HandlePart(10, 1, part, proof)
+	added, err := mgr.HandlePart(10, 2, part, proof)
 	require.NoError(t, err)
 	require.False(t, added)
 }
@@ -388,13 +379,10 @@ func TestPendingBlocksManager_HandlePart_ParityNotForwarded(t *testing.T) {
 	// This test verifies that parity parts (index >= original total) are not
 	// forwarded to consensus. The actual part validation is tested elsewhere.
 	partsChan := make(chan types.PartInfo, 100)
-	verifier := newMockHeaderVerifier()
-	mgr := NewPendingBlocksManager(log.NewNopLogger(), partsChan, verifier, DefaultPendingBlocksConfig())
+	mgr := newTestPendingBlocksManager(partsChan, nil, DefaultPendingBlocksConfig())
 
-	hash := cmtrand.Bytes(32)
-	verifier.AddVerifiedHeader(10, hash)
-	cb := makeCompactBlockWithHash(10, 0, 4, hash)
-	_ = mgr.HandleCompactBlock(cb)
+	cb := makePendingTestCompactBlock(10, 0, 4)
+	mgr.AddProposal(cb)
 
 	pending, exists := mgr.GetBlock(10)
 	require.True(t, exists)
@@ -406,53 +394,9 @@ func TestPendingBlocksManager_HandlePart_ParityNotForwarded(t *testing.T) {
 	// Parts with index >= 4 would be parity parts and should not be forwarded.
 }
 
-// --- RequestTracker tests ---
-
-func TestRequestTracker_Basic(t *testing.T) {
-	rt := NewRequestTracker(4, 3)
-
-	// Initially nothing requested or received.
-	unreq := rt.GetUnrequestedMissing()
-	require.Equal(t, []int{0, 1, 2, 3}, unreq)
-	require.False(t, rt.IsComplete())
-
-	// Mark part 0 as requested.
-	rt.MarkRequested(0)
-	unreq = rt.GetUnrequestedMissing()
-	require.Equal(t, []int{1, 2, 3}, unreq)
-
-	// Mark part 0 as received.
-	rt.MarkReceived(0)
-	unreq = rt.GetUnrequestedMissing()
-	require.Equal(t, []int{1, 2, 3}, unreq)
-
-	// Mark all as received.
-	rt.MarkReceived(1)
-	rt.MarkReceived(2)
-	rt.MarkReceived(3)
-	require.True(t, rt.IsComplete())
-}
-
-func TestRequestTracker_RetryLimit(t *testing.T) {
-	rt := NewRequestTracker(2, 2) // Limit of 2 requests per part.
-
-	// Request part 0 twice.
-	rt.MarkRequested(0)
-	rt.MarkRequested(0)
-
-	// Part 0 should no longer be retryable.
-	retryable := rt.GetRetryableMissing()
-	require.Equal(t, []int{1}, retryable) // Only part 1 is retryable.
-
-	// Part 1 can still be requested.
-	rt.MarkRequested(1)
-	retryable = rt.GetRetryableMissing()
-	require.Equal(t, []int{1}, retryable) // Part 1 still under limit.
-}
-
 func TestPendingBlocksManager_AddCommitment_CreatesActiveBlock(t *testing.T) {
 	partsChan := make(chan types.PartInfo, 100)
-	mgr := NewPendingBlocksManager(log.NewNopLogger(), partsChan, nil, DefaultPendingBlocksConfig())
+	mgr := newTestPendingBlocksManager(partsChan, nil, DefaultPendingBlocksConfig())
 
 	psh := &types.PartSetHeader{
 		Total: 8,
@@ -466,7 +410,8 @@ func TestPendingBlocksManager_AddCommitment_CreatesActiveBlock(t *testing.T) {
 	require.True(t, exists)
 	require.Equal(t, BlockStateActive, pending.State)
 	require.Equal(t, int32(2), pending.Round)
-	require.True(t, pending.HeaderVerified)
+	// Commitments are NOT header verified - they come from consensus commits, not headersync.
+	require.False(t, pending.HeaderVerified)
 	require.NotNil(t, pending.Parts)
 	require.Equal(t, uint32(8), pending.Parts.Original().Total())
 }
@@ -474,7 +419,7 @@ func TestPendingBlocksManager_AddCommitment_CreatesActiveBlock(t *testing.T) {
 func TestPendingBlocksManager_AddCommitment_SkipsDuplicate(t *testing.T) {
 	partsChan := make(chan types.PartInfo, 100)
 	verifier := newMockHeaderVerifier()
-	mgr := NewPendingBlocksManager(log.NewNopLogger(), partsChan, verifier, DefaultPendingBlocksConfig())
+	mgr := newTestPendingBlocksManager(partsChan, verifier, DefaultPendingBlocksConfig())
 
 	// First add via header.
 	hash := cmtrand.Bytes(32)
@@ -488,7 +433,7 @@ func TestPendingBlocksManager_AddCommitment_SkipsDuplicate(t *testing.T) {
 			},
 		},
 	}
-	mgr.OnHeaderVerified(vh)
+	mgr.AddFromHeader(vh)
 	require.Equal(t, 1, mgr.Len())
 
 	// AddCommitment for same height should be ignored.
@@ -511,7 +456,7 @@ func TestPendingBlocksManager_AddCommitment_RespectsCapacity(t *testing.T) {
 		MaxConcurrent: 1,
 		MemoryBudget:  100 * 1024 * 1024,
 	}
-	mgr := NewPendingBlocksManager(log.NewNopLogger(), partsChan, nil, config)
+	mgr := newTestPendingBlocksManager(partsChan, nil, config)
 
 	// Add first commitment.
 	psh1 := &types.PartSetHeader{Total: 4, Hash: cmtrand.Bytes(32)}
@@ -522,4 +467,87 @@ func TestPendingBlocksManager_AddCommitment_RespectsCapacity(t *testing.T) {
 	psh2 := &types.PartSetHeader{Total: 4, Hash: cmtrand.Bytes(32)}
 	mgr.AddCommitment(11, 0, psh2)
 	require.Equal(t, 1, mgr.Len())
+}
+
+func TestPendingBlocksManager_BlockSource(t *testing.T) {
+	partsChan := make(chan types.PartInfo, 100)
+	mgr := newTestPendingBlocksManager(partsChan, nil, DefaultPendingBlocksConfig())
+
+	// Add via compact block.
+	cb := makePendingTestCompactBlock(10, 0, 4)
+	mgr.AddProposal(cb)
+	pending, _ := mgr.GetBlock(10)
+	require.Equal(t, SourceCompactBlock, pending.Source)
+
+	// Add via header.
+	vh := &headersync.VerifiedHeader{
+		Header: &types.Header{Height: 11},
+		BlockID: types.BlockID{
+			Hash: cmtrand.Bytes(32),
+			PartSetHeader: types.PartSetHeader{
+				Total: 4,
+				Hash:  cmtrand.Bytes(32),
+			},
+		},
+	}
+	mgr.AddFromHeader(vh)
+	pending, _ = mgr.GetBlock(11)
+	require.Equal(t, SourceHeaderSync, pending.Source)
+
+	// Add via commitment.
+	psh := &types.PartSetHeader{Total: 4, Hash: cmtrand.Bytes(32)}
+	mgr.AddCommitment(12, 0, psh)
+	pending, _ = mgr.GetBlock(12)
+	require.Equal(t, SourceCommitment, pending.Source)
+}
+
+func TestBlockSource_String(t *testing.T) {
+	require.Equal(t, "compact_block", SourceCompactBlock.String())
+	require.Equal(t, "header_sync", SourceHeaderSync.String())
+	require.Equal(t, "commitment", SourceCommitment.String())
+	require.Equal(t, "unknown", BlockSource(99).String())
+}
+
+func TestPendingBlocksManager_OnBlockAddedCallback(t *testing.T) {
+	partsChan := make(chan types.PartInfo, 100)
+	mgr := newTestPendingBlocksManager(partsChan, nil, DefaultPendingBlocksConfig())
+
+	var callbackCalls []struct {
+		height int64
+		source BlockSource
+	}
+
+	mgr.SetOnBlockAdded(func(height int64, source BlockSource) {
+		callbackCalls = append(callbackCalls, struct {
+			height int64
+			source BlockSource
+		}{height, source})
+	})
+
+	// Callback should fire for header and commitment sources.
+	vh := &headersync.VerifiedHeader{
+		Header: &types.Header{Height: 10},
+		BlockID: types.BlockID{
+			Hash: cmtrand.Bytes(32),
+			PartSetHeader: types.PartSetHeader{
+				Total: 4,
+				Hash:  cmtrand.Bytes(32),
+			},
+		},
+	}
+	mgr.AddFromHeader(vh)
+	require.Len(t, callbackCalls, 1)
+	require.Equal(t, int64(10), callbackCalls[0].height)
+	require.Equal(t, SourceHeaderSync, callbackCalls[0].source)
+
+	psh := &types.PartSetHeader{Total: 4, Hash: cmtrand.Bytes(32)}
+	mgr.AddFromCommitment(11, 0, psh)
+	require.Len(t, callbackCalls, 2)
+	require.Equal(t, int64(11), callbackCalls[1].height)
+	require.Equal(t, SourceCommitment, callbackCalls[1].source)
+
+	// AddProposal does not trigger the callback (live path doesn't need catchup).
+	cb := makePendingTestCompactBlock(12, 0, 4)
+	mgr.AddProposal(cb)
+	require.Len(t, callbackCalls, 2) // Still 2, no new callback.
 }

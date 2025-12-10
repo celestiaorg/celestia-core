@@ -135,6 +135,9 @@ func NewReactor(
 		DefaultPendingBlocksConfig(),
 	)
 
+	// Set up the callback for when blocks are added (triggers immediate catchup).
+	reactor.pendingBlocks.SetOnBlockAdded(reactor.onBlockAdded)
+
 	// start the catchup routine
 	go func() {
 		for {
@@ -212,7 +215,8 @@ func (blockProp *Reactor) loadUnprocessedHeaders() {
 			Header:  header,
 			BlockID: *blockID,
 		}
-		blockProp.pendingBlocks.OnHeaderVerified(vh)
+		// Use AddFromHeader (callback is triggered only for new blocks).
+		blockProp.pendingBlocks.AddFromHeader(vh)
 		blockProp.Logger.Debug("loaded unprocessed header for download", "height", h)
 	}
 
@@ -225,6 +229,8 @@ func (blockProp *Reactor) loadUnprocessedHeaders() {
 }
 
 // handleVerifiedHeaders processes verified headers from headersync.
+// Headers are added via AddFromHeader, which triggers the onBlockAdded callback
+// to start catchup immediately.
 func (blockProp *Reactor) handleVerifiedHeaders() {
 	for {
 		select {
@@ -234,7 +240,8 @@ func (blockProp *Reactor) handleVerifiedHeaders() {
 			if vh == nil {
 				continue
 			}
-			blockProp.pendingBlocks.OnHeaderVerified(vh)
+			// AddFromHeader will trigger onBlockAdded callback if a new block is added.
+			blockProp.pendingBlocks.AddFromHeader(vh)
 			blockProp.Logger.Debug("received verified header", "height", vh.Header.Height)
 		}
 	}
