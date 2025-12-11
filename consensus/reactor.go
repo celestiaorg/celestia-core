@@ -177,6 +177,9 @@ func (conR *Reactor) SwitchToConsensus(state sm.State, skipWAL bool) {
 	// This is safe to call even if consensus wasn't stopped - Reset() will just return an error
 	if err := conR.conS.Reset(); err != nil {
 		conR.Logger.Debug("Consensus reset returned error (may be expected)", "err", err)
+	} else {
+		// If reset succeeded, we need to re-subscribe to events since they were cleared
+		conR.subscribeToBroadcastEvents()
 	}
 	err := conR.conS.Start()
 	if err != nil {
