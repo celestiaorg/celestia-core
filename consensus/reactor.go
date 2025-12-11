@@ -555,6 +555,10 @@ func (conR *Reactor) SetBlockSyncReactor(bcR blockSyncReactor) {
 // checkFallingBehindOnHeight checks if we're falling behind peers when entering a new height.
 // This is called once per height from the event subscription.
 func (conR *Reactor) checkFallingBehindOnHeight(height int64) {
+	// Safety checks
+	if conR.conS == nil || conR.conS.config == nil {
+		return
+	}
 	threshold := conR.conS.config.BlocksBehindThreshold
 	if threshold <= 0 {
 		// Feature disabled
@@ -595,6 +599,9 @@ func (conR *Reactor) checkFallingBehindOnHeight(height int64) {
 
 // shouldSwitchToBlockSync determines if majority of peers are threshold+ blocks ahead.
 func (conR *Reactor) shouldSwitchToBlockSync(ourHeight int64, threshold int64) bool {
+	if conR.Switch == nil {
+		return false
+	}
 	peers := conR.Switch.Peers().List()
 	if len(peers) == 0 {
 		return false
@@ -713,11 +720,19 @@ func (conR *Reactor) subscribeToBroadcastEvents() {
 	conR.Logger.Info("subscribeToBroadcastEvents called")
 	if err := conR.conS.evsw.AddListenerForEvent(subscriber, types.EventNewRoundStep,
 		func(data cmtevents.EventData) {
+			// Recover from panics to prevent crashing receiveRoutine
+			defer func() {
+				if r := recover(); r != nil {
+					conR.Logger.Error("PANIC in EventNewRoundStep handler", "panic", r)
+				}
+			}()
 			rs := data.(*cstypes.RoundState)
 			conR.Logger.Info("EventNewRoundStep received", "height", rs.Height, "round", rs.Round, "step", rs.Step)
 			conR.broadcastNewRoundStepMessage(rs)
-			// Check if we're falling behind peers on each new height
-			conR.checkFallingBehindOnHeight(rs.Height)
+			// Check if we're falling behind peers - run async to avoid blocking
+			// the event callback (which runs with consensus locks held)
+			height := rs.Height
+			go conR.checkFallingBehindOnHeight(height)
 		}); err != nil {
 		conR.Logger.Error("Error adding listener for events", "err", err)
 	}

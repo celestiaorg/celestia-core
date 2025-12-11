@@ -557,6 +557,10 @@ func (cs *State) OnReset() error {
 	}
 	// Recreate the done channel
 	cs.done = make(chan struct{})
+	// Reset delay sleep flags (they may have been left true if Stop() interrupted a sleep)
+	cs.StartedProposeSleep.Store(false)
+	cs.StartedPrevoteSleep.Store(false)
+	cs.StartedPrecommitSleep.Store(false)
 	return nil
 }
 
@@ -1054,6 +1058,7 @@ func (cs *State) receiveRoutine(maxSteps int) {
 			cs.handleMsg(mi)
 
 		case ti := <-cs.timeoutTicker.Chan(): // tockChan:
+			cs.Logger.Info("receiveRoutine: received from tockChan", "height", ti.Height, "round", ti.Round, "step", ti.Step)
 			if err := cs.wal.Write(ti); err != nil {
 				cs.Logger.Error("failed writing to WAL", "err", err)
 			}
@@ -1162,13 +1167,15 @@ func (cs *State) handleMsg(mi msgInfo) {
 }
 
 func (cs *State) handleTimeout(ti timeoutInfo, rs cstypes.RoundState) {
-	cs.Logger.Trace("received tock", "timeout", ti.Duration, "height", ti.Height, "round", ti.Round, "step", ti.Step)
+	cs.Logger.Info("handleTimeout: received tock", "timeout", ti.Duration, "height", ti.Height, "round", ti.Round, "step", ti.Step)
 
 	// timeouts must be for current height, round, step
 	if ti.Height != rs.Height || ti.Round < rs.Round || (ti.Round == rs.Round && ti.Step < rs.Step) {
-		cs.Logger.Trace("ignoring tock because we are ahead", "height", rs.Height, "round", rs.Round, "step", rs.Step)
+		cs.Logger.Info("handleTimeout: ignoring tock because we are ahead", "height", rs.Height, "round", rs.Round, "step", rs.Step)
 		return
 	}
+
+	cs.Logger.Info("handleTimeout: processing timeout", "step", ti.Step)
 
 	// the timeout will now cause a state transition
 	cs.lockAll()
