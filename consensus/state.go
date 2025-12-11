@@ -723,7 +723,9 @@ func (cs *State) reconstructLastCommit(state sm.State) {
 	}
 	votes, err := cs.votesFromExtendedCommit(state)
 	if err != nil {
-		panic(fmt.Sprintf("failed to reconstruct last extended commit; %s", err))
+		cs.Logger.Error("failed to reconstruct last extended commit; falling back to seen commit", "err", err)
+		cs.reconstructSeenCommit(state)
+		return
 	}
 	cs.rs.LastCommit = votes
 }

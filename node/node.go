@@ -69,23 +69,23 @@ type Node struct {
 
 	// services
 	eventBus          *types.EventBus // pub/sub for services
-	stateStore         sm.Store
-	blockStore         *store.BlockStore // store the blockchain to disk
-	bcReactor          p2p.Reactor       // for block-syncing
-	headerSyncReactor  *headersync.Reactor    // for syncing headers ahead of blocks
-	mempoolReactor     p2p.Reactor            // for gossipping transactions
-	mempool            mempl.Mempool
-	stateSync          bool                    // whether the node should state sync on startup
-	stateSyncReactor   *statesync.Reactor      // for hosting and restoring state sync snapshots
-	stateSyncProvider  statesync.StateProvider // provides state data for bootstrapping a node
-	stateSyncGenesis   sm.State                // provides the genesis state for state sync
-	consensusState     *cs.State               // latest consensus state
-	consensusReactor   *cs.Reactor             // for participating in the consensus
-	pexReactor         *pex.Reactor            // for exchanging peer addresses
-	blockPropReactor   *propagation.Reactor    // the block propagation reactor. potentially nil is disabled.
-	evidencePool       *evidence.Pool          // tracking evidence
-	proxyApp           proxy.AppConns          // connection to the application
-	blockExec          *sm.BlockExecutor       // for executing blocks during catchup
+	stateStore        sm.Store
+	blockStore        *store.BlockStore   // store the blockchain to disk
+	bcReactor         p2p.Reactor         // for block-syncing
+	headerSyncReactor *headersync.Reactor // for syncing headers ahead of blocks
+	mempoolReactor    p2p.Reactor         // for gossipping transactions
+	mempool           mempl.Mempool
+	stateSync         bool                    // whether the node should state sync on startup
+	stateSyncReactor  *statesync.Reactor      // for hosting and restoring state sync snapshots
+	stateSyncProvider statesync.StateProvider // provides state data for bootstrapping a node
+	stateSyncGenesis  sm.State                // provides the genesis state for state sync
+	consensusState    *cs.State               // latest consensus state
+	consensusReactor  *cs.Reactor             // for participating in the consensus
+	pexReactor        *pex.Reactor            // for exchanging peer addresses
+	blockPropReactor  *propagation.Reactor    // the block propagation reactor. potentially nil is disabled.
+	evidencePool      *evidence.Pool          // tracking evidence
+	proxyApp          proxy.AppConns          // connection to the application
+	blockExec         *sm.BlockExecutor       // for executing blocks during catchup
 	rpcListeners      []net.Listener          // rpc servers
 	txIndexer         txindex.TxIndexer
 	blockIndexer      indexer.BlockIndexer
@@ -438,10 +438,20 @@ func NewNodeWithContext(ctx context.Context,
 			panic(fmt.Sprintf("failed to retrieve statesynced height from store %s; expected state store height to be %v", err, state.LastBlockHeight))
 		}
 	}
-	// Don't start block sync if we're doing a state sync first.
-	bcReactor, err := createBlocksyncReactor(config, state, blockExec, blockStore, blockSync && !stateSync, localAddr, logger, bsMetrics, offlineStateSyncHeight, tracer)
-	if err != nil {
-		return nil, fmt.Errorf("could not create blocksync reactor: %w", err)
+	// Determine if we should run the legacy blocksync reactor.
+	// With propagation-based catchup enabled, blocksync is redundant and can
+	// conflict with consensus startup (double SwitchToConsensus). We only
+	// instantiate blocksync when propagation is disabled or legacy block
+	// propagation is explicitly enabled.
+	useBlocksync := config.Consensus.DisablePropagationReactor || config.Consensus.EnableLegacyBlockProp
+
+	var bcReactor p2p.Reactor
+	if useBlocksync {
+		// Don't start block sync if we're doing a state sync first.
+		bcReactor, err = createBlocksyncReactor(config, state, blockExec, blockStore, blockSync && !stateSync, localAddr, logger, bsMetrics, offlineStateSyncHeight, tracer)
+		if err != nil {
+			return nil, fmt.Errorf("could not create blocksync reactor: %w", err)
+		}
 	}
 
 	// Create header sync reactor if enabled.
@@ -482,18 +492,18 @@ func NewNodeWithContext(ctx context.Context,
 			return nil, fmt.Errorf("cannot have both propagation reactor and legacy block propagation disabled")
 		}
 	} else {
-		if !stateSync && !blockSync {
+		if !stateSync {
 			propagationReactor.StartProcessing()
 		}
 	}
 
-	// With the new propagation-based catchup (Phase 5), we only need to wait
-	// for state sync. Block sync catchup happens via CatchupBlockMessage from
-	// the propagation reactor, allowing consensus to run immediately.
-	// State sync is special because it bootstraps state from scratch.
+	// With propagation-based catchup, consensus only needs to wait for state
+	// sync. If blocksync is in use (legacy/disabled propagation), we must also
+	// wait for it to finish to avoid double-starting consensus.
+	waitSync := stateSync || (useBlocksync && blockSync)
 	consensusReactor, consensusState := createConsensusReactor(
 		config, state, blockExec, blockStore, mempool, evidencePool,
-		privValidator, csMetrics, propagator, stateSync, eventBus, consensusLogger, offlineStateSyncHeight, tracer,
+		privValidator, csMetrics, propagator, waitSync, eventBus, consensusLogger, offlineStateSyncHeight, tracer,
 	)
 
 	err = stateStore.SetOfflineStateSyncHeight(0)

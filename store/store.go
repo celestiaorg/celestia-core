@@ -752,6 +752,22 @@ func (bs *BlockStore) SaveSeenCommit(height int64, seenCommit *types.Commit) err
 	return bs.db.Set(calcSeenCommitKey(height), seenCommitBytes)
 }
 
+// SaveSeenExtendedCommit saves a seen extended commit. This is used by state
+// sync when vote extensions are enabled so that consensus can reconstruct the
+// last commit at the synced height without having the full block stored.
+func (bs *BlockStore) SaveSeenExtendedCommit(height int64, seenExtCommit *types.ExtendedCommit) error {
+	if err := seenExtCommit.EnsureExtensions(true); err != nil {
+		return fmt.Errorf("extended commit missing required extensions: %w", err)
+	}
+
+	pbec := seenExtCommit.ToProto()
+	seenExtCommitBytes, err := proto.Marshal(pbec)
+	if err != nil {
+		return fmt.Errorf("unable to marshal extended commit: %w", err)
+	}
+	return bs.db.Set(calcExtCommitKey(height), seenExtCommitBytes)
+}
+
 func (bs *BlockStore) Close() error {
 	return bs.db.Close()
 }

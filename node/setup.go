@@ -565,7 +565,9 @@ func createSwitch(config *cfg.Config,
 	if config.Mempool.Type != cfg.MempoolTypeNop {
 		sw.AddReactor("MEMPOOL", mempoolReactor)
 	}
-	sw.AddReactor("BLOCKSYNC", bcReactor)
+	if bcReactor != nil {
+		sw.AddReactor("BLOCKSYNC", bcReactor)
+	}
 	if hsReactor != nil {
 		sw.AddReactor("HEADERSYNC", hsReactor)
 	}
@@ -735,9 +737,23 @@ func startStateSyncWithCatchup(
 			ssR.Logger.Error("Failed to store last seen commit", "err", err)
 			return
 		}
+		// If vote extensions are enabled at this height, also persist the
+		// extended commit so consensus can reconstruct LastCommit on startup.
+		if state.ConsensusParams.ABCI.VoteExtensionsEnabled(state.LastBlockHeight) {
+			extCommit := commit.WrappedExtendedCommit()
+			if err := blockStore.SaveSeenExtendedCommit(state.LastBlockHeight, extCommit); err != nil {
+				// Extensions may be absent in the state-sync commit; log and fall back to seen commit.
+				ssR.Logger.Error("Failed to store last seen extended commit; will fall back to seen commit", "err", err)
+			}
+		}
 
-		// Use propagation reactor for catchup instead of blocksync.
-		err = propR.SwitchToCatchup(state, blockExec, conR)
+		// Start consensus at the state-sync height so it can execute catchup blocks
+		// delivered by the propagation reactor.
+		conR.SwitchToConsensus(state, true)
+
+		// Use propagation reactor for catchup instead of blocksync. Consensus is
+		// already running, so we don't need another switch when caught up.
+		err = propR.SwitchToCatchup(state, blockExec, nil)
 		if err != nil {
 			ssR.Logger.Error("Failed to switch to catchup", "err", err)
 			return
