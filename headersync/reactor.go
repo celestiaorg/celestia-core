@@ -137,6 +137,20 @@ func (r *Reactor) OnStop() {
 	r.metrics.Syncing.Set(0)
 }
 
+// ResetHeight resets the reactor to the given height.
+// This is used when switching to catchup after state sync.
+func (r *Reactor) ResetHeight(height int64) {
+	// Load the header at this height to be the trust anchor for the next one.
+	if height > 0 {
+		r.lastHeader = r.blockStore.LoadHeader(height)
+	} else {
+		r.lastHeader = nil
+	}
+
+	// Pool should start fetching from height + 1.
+	r.pool.ResetHeight(height + 1)
+}
+
 // GetChannels implements Reactor.
 func (r *Reactor) GetChannels() []*p2p.ChannelDescriptor {
 	return []*p2p.ChannelDescriptor{

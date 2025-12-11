@@ -476,7 +476,18 @@ func (pool *HeaderPool) MarkHeaderProcessed() bool {
 		return true
 	}
 
-	return false
+	return pool.height >= batch.startHeight+int64(len(batch.headers))
+}
+
+// ResetHeight resets the pool to start syncing from the given height.
+// This is used when the node state jumps (e.g. after state sync).
+func (pool *HeaderPool) ResetHeight(height int64) {
+	pool.mtx.Lock()
+	defer pool.mtx.Unlock()
+
+	pool.height = height
+	// Clear pending batches as they are likely for old heights
+	pool.pendingBatches = make(map[int64]*headerBatch)
 }
 
 // PopBatch removes a completed batch from the pool and advances the height.

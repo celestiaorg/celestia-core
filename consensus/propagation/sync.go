@@ -36,6 +36,18 @@ func (r *Reactor) SwitchToCatchup(state sm.State, blockExec *sm.BlockExecutor, c
 		"height", state.LastBlockHeight,
 		"from_state_sync", true)
 
+	// Update the pending blocks manager with the new height from state sync.
+	// This ensures we start downloading from the correct height (H+1).
+	r.pendingBlocks.Prune(state.LastBlockHeight)
+
+	// If headersync is enabled, we need to reset it to the new height as well.
+	if r.headerSyncReactor != nil {
+		r.headerSyncReactor.ResetHeight(state.LastBlockHeight)
+	}
+
+	// Load any unprocessed headers that might be available now.
+	r.loadUnprocessedHeaders()
+
 	// Enable processing.
 	r.StartProcessing()
 

@@ -224,17 +224,36 @@ func (m *PendingBlocksManager) AddProposal(cb *proptypes.CompactBlock) bool {
 
 	// Check if we already have this height.
 	if pending, exists := m.blocks[height]; exists {
-		// If we already have a compact block, skip.
+		// If we already have a compact block (live block).
 		if pending.CompactBlock != nil {
-			return false
+			// If we receive a proposal for a higher round, we should replace the existing one.
+			// This happens when the consensus moves to a new round and we (or someone else) proposes.
+			if round > pending.Round {
+				m.logger.Info("replacing proposal with higher round",
+					"height", height,
+					"old_round", pending.Round,
+					"new_round", round)
+				m.evictBlockLocked(height)
+				// Fall through to add the new block.
+			} else {
+				return false
+			}
+		} else {
+			// We had a header-only entry, attach the compact block.
+			return m.attachCompactBlockLocked(pending, cb)
 		}
-		// We had a header-only entry, attach the compact block.
-		return m.attachCompactBlockLocked(pending, cb)
 	}
 
 	// Check capacity before adding new block.
 	if !m.hasCapacityLocked(cb, 0) {
-		return false
+		// Attempt to evict a lower priority block (higher height) to make room.
+		if !m.evictLowerPriorityLocked(height) {
+			return false
+		}
+		// Check capacity again after eviction.
+		if !m.hasCapacityLocked(cb, 0) {
+			return false
+		}
 	}
 
 	// Create new pending block.
@@ -301,8 +320,14 @@ func (m *PendingBlocksManager) AddFromHeader(vh *headersync.VerifiedHeader) bool
 
 	// Check capacity before adding.
 	if !m.hasCapacityLocked(nil, vh.BlockID.PartSetHeader.Total) {
-		m.mtx.Unlock()
-		return false
+		if !m.evictLowerPriorityLocked(height) {
+			m.mtx.Unlock()
+			return false
+		}
+		if !m.hasCapacityLocked(nil, vh.BlockID.PartSetHeader.Total) {
+			m.mtx.Unlock()
+			return false
+		}
 	}
 
 	// Create an active block from the verified header.
@@ -335,9 +360,16 @@ func (m *PendingBlocksManager) AddFromCommitment(height int64, round int32, psh 
 
 	// Check capacity.
 	if !m.hasCapacityLocked(nil, psh.Total) {
-		m.logger.Debug("no capacity for commitment", "height", height)
-		m.mtx.Unlock()
-		return false
+		if !m.evictLowerPriorityLocked(height) {
+			m.logger.Debug("no capacity for commitment", "height", height)
+			m.mtx.Unlock()
+			return false
+		}
+		if !m.hasCapacityLocked(nil, psh.Total) {
+			m.logger.Debug("no capacity for commitment after eviction", "height", height)
+			m.mtx.Unlock()
+			return false
+		}
 	}
 
 	blockID := types.BlockID{PartSetHeader: *psh}
@@ -789,6 +821,26 @@ func (m *PendingBlocksManager) insertHeightLocked(height int64) {
 	m.heights = append(m.heights, 0)
 	copy(m.heights[i+1:], m.heights[i:])
 	m.heights[i] = height
+}
+
+func (m *PendingBlocksManager) evictLowerPriorityLocked(newHeight int64) bool {
+	if len(m.heights) == 0 {
+		return false
+	}
+
+	// Get the highest height (lowest priority).
+	maxHeight := m.heights[len(m.heights)-1]
+
+	// Only evict if the new block has higher priority (lower height).
+	if newHeight < maxHeight {
+		m.logger.Info("evicting lower priority block to make room",
+			"evicted_height", maxHeight,
+			"new_height", newHeight)
+		m.evictBlockLocked(maxHeight)
+		return true
+	}
+
+	return false
 }
 
 func (m *PendingBlocksManager) evictBlockLocked(height int64) {
