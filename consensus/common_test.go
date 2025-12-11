@@ -1017,6 +1017,8 @@ func (m *mockTicker) Chan() <-chan timeoutInfo {
 
 func (*mockTicker) SetLogger(log.Logger) {}
 
+func (*mockTicker) Reset() error { return nil }
+
 func newPersistentKVStore() abci.Application {
 	dir, err := os.MkdirTemp("", "persistent-kvstore")
 	if err != nil {

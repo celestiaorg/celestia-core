@@ -17,18 +17,18 @@ func (env *Environment) UnsafeFlushMempool(*rpctypes.Context) (*ctypes.ResultUns
 
 // UnsafeSetConsensusDelay sets configurable delays for consensus phases.
 // Duration format: "100ms", "1s", "500us", etc. Empty string = no change.
+// Note: precommit delay is not configurable via RPC (handled by app).
 func (env *Environment) UnsafeSetConsensusDelay(
 	_ *rpctypes.Context,
 	proposeDelay *string,
 	prevoteDelay *string,
-	precommitDelay *string,
 ) (*ctypes.ResultUnsafeSetConsensusDelay, error) {
 	state, ok := env.ConsensusState.(*cs.State)
 	if !ok {
 		return nil, fmt.Errorf("consensus state is not of expected type")
 	}
 
-	currentPropose, currentPrevote, currentPrecommit := state.GetConsensusDelays()
+	currentPropose, currentPrevote, _ := state.GetConsensusDelays()
 
 	if proposeDelay != nil && *proposeDelay != "" {
 		d, err := time.ParseDuration(*proposeDelay)
@@ -52,27 +52,16 @@ func (env *Environment) UnsafeSetConsensusDelay(
 		currentPrevote = d
 	}
 
-	if precommitDelay != nil && *precommitDelay != "" {
-		d, err := time.ParseDuration(*precommitDelay)
-		if err != nil {
-			return nil, fmt.Errorf("invalid precommit_delay: %w", err)
-		}
-		if d < 0 {
-			return nil, fmt.Errorf("precommit_delay cannot be negative")
-		}
-		currentPrecommit = d
-	}
-
-	state.SetConsensusDelays(currentPropose, currentPrevote, currentPrecommit)
+	state.SetConsensusDelays(currentPropose, currentPrevote, 0)
 
 	return &ctypes.ResultUnsafeSetConsensusDelay{
-		ProposeDelay:   currentPropose.String(),
-		PrevoteDelay:   currentPrevote.String(),
-		PrecommitDelay: currentPrecommit.String(),
+		ProposeDelay: currentPropose.String(),
+		PrevoteDelay: currentPrevote.String(),
 	}, nil
 }
 
 // UnsafeGetConsensusDelay returns current consensus phase delays.
+// Note: precommit delay is not configurable via RPC (handled by app).
 func (env *Environment) UnsafeGetConsensusDelay(
 	_ *rpctypes.Context,
 ) (*ctypes.ResultUnsafeGetConsensusDelay, error) {
@@ -81,11 +70,10 @@ func (env *Environment) UnsafeGetConsensusDelay(
 		return nil, fmt.Errorf("consensus state is not of expected type")
 	}
 
-	propose, prevote, precommit := state.GetConsensusDelays()
+	propose, prevote, _ := state.GetConsensusDelays()
 
 	return &ctypes.ResultUnsafeGetConsensusDelay{
-		ProposeDelay:   propose.String(),
-		PrevoteDelay:   prevote.String(),
-		PrecommitDelay: precommit.String(),
+		ProposeDelay: propose.String(),
+		PrevoteDelay: prevote.String(),
 	}, nil
 }

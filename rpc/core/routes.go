@@ -70,6 +70,6 @@ func (env *Environment) AddUnsafeRoutes(routes RoutesMap) {
 	routes["dial_peers"] = rpc.NewRPCFunc(env.UnsafeDialPeers, "peers,persistent,unconditional,private")
 	routes["unsafe_flush_mempool"] = rpc.NewRPCFunc(env.UnsafeFlushMempool, "")
 	// consensus delay control
-	routes["unsafe_set_consensus_delay"] = rpc.NewRPCFunc(env.UnsafeSetConsensusDelay, "propose_delay,prevote_delay,precommit_delay")
+	routes["unsafe_set_consensus_delay"] = rpc.NewRPCFunc(env.UnsafeSetConsensusDelay, "propose_delay,prevote_delay")
 	routes["unsafe_get_consensus_delay"] = rpc.NewRPCFunc(env.UnsafeGetConsensusDelay, "")
 }

@@ -178,12 +178,9 @@ type State struct {
 	nSteps int
 
 	// some functions can be overwritten for testing
-	decideProposal        func(height int64, round int32)
-	doPrevote             func(height int64, round int32)
-	setProposal           func(proposal *types.Proposal) error
-	StartedPrecommitSleep atomic.Bool
-	StartedProposeSleep   atomic.Bool
-	StartedPrevoteSleep   atomic.Bool
+	decideProposal func(height int64, round int32)
+	doPrevote      func(height int64, round int32)
+	setProposal    func(proposal *types.Proposal) error
 
 	// configurable consensus phase delays (set via RPC)
 	consensusDelays ConsensusDelays
@@ -557,10 +554,6 @@ func (cs *State) OnReset() error {
 	}
 	// Recreate the done channel
 	cs.done = make(chan struct{})
-	// Reset delay sleep flags (they may have been left true if Stop() interrupted a sleep)
-	cs.StartedProposeSleep.Store(false)
-	cs.StartedPrevoteSleep.Store(false)
-	cs.StartedPrecommitSleep.Store(false)
 	return nil
 }
 
@@ -1028,6 +1021,7 @@ func (cs *State) receiveRoutine(maxSteps int) {
 			cs.handleTxsAvailable()
 
 		case mi = <-cs.peerMsgQueue:
+			cs.Logger.Info("receiveRoutine: got peerMsg", "msg_type", fmt.Sprintf("%T", mi.Msg))
 			if !cs.config.OnlyInternalWal {
 				if err := cs.wal.Write(mi); err != nil {
 					cs.Logger.Error("failed writing to WAL", "err", err)
@@ -1036,8 +1030,10 @@ func (cs *State) receiveRoutine(maxSteps int) {
 			// handles proposals, block parts, votes
 			// may generate internal events (votes, complete proposals, 2/3 majorities)
 			cs.handleMsg(mi)
+			cs.Logger.Info("receiveRoutine: done handling peerMsg")
 
 		case mi = <-cs.internalMsgQueue:
+			cs.Logger.Info("receiveRoutine: got internalMsg", "msg_type", fmt.Sprintf("%T", mi.Msg))
 			err := cs.wal.WriteSync(mi) // NOTE: fsync
 			if err != nil {
 				panic(fmt.Sprintf(
@@ -1056,6 +1052,7 @@ func (cs *State) receiveRoutine(maxSteps int) {
 
 			// handles proposals, block parts, votes
 			cs.handleMsg(mi)
+			cs.Logger.Info("receiveRoutine: done handling internalMsg")
 
 		case ti := <-cs.timeoutTicker.Chan(): // tockChan:
 			cs.Logger.Info("receiveRoutine: received from tockChan", "height", ti.Height, "round", ti.Round, "step", ti.Step)
@@ -1370,26 +1367,19 @@ func (cs *State) enterPropose(height int64, round int32) {
 		return
 	}
 
-	// Configurable propose delay
+	// Configurable propose delay (via RPC)
 	proposeDelay := cs.consensusDelays.GetProposeDelay()
 	if proposeDelay > 0 {
-		if cs.StartedProposeSleep.CompareAndSwap(false, true) {
-			logger.Debug("delaying propose", "delay", proposeDelay)
-			cs.unlockAll()
-			t := time.NewTimer(proposeDelay)
-			select {
-			case <-cs.Quit():
-				cs.lockAll()
-				cs.StartedProposeSleep.Store(false)
-				return
-			case <-t.C:
-			}
+		logger.Debug("delaying propose", "delay", proposeDelay)
+		cs.unlockAll()
+		t := time.NewTimer(proposeDelay)
+		select {
+		case <-cs.Quit():
 			cs.lockAll()
-			cs.StartedProposeSleep.Store(false)
-		} else {
-			logger.Debug("already entered propose delay")
 			return
+		case <-t.C:
 		}
+		cs.lockAll()
 	}
 
 	logger.Debug("entering propose step", "current", log.NewLazySprintf("%v/%v/%v", cs.rs.Height, cs.rs.Round, cs.rs.Step))
@@ -1600,26 +1590,19 @@ func (cs *State) enterPrevote(height int64, round int32) {
 		return
 	}
 
-	// Configurable prevote delay
+	// Configurable prevote delay (via RPC)
 	prevoteDelay := cs.consensusDelays.GetPrevoteDelay()
 	if prevoteDelay > 0 {
-		if cs.StartedPrevoteSleep.CompareAndSwap(false, true) {
-			logger.Debug("delaying prevote", "delay", prevoteDelay)
-			cs.unlockAll()
-			t := time.NewTimer(prevoteDelay)
-			select {
-			case <-cs.Quit():
-				cs.lockAll()
-				cs.StartedPrevoteSleep.Store(false)
-				return
-			case <-t.C:
-			}
+		logger.Debug("delaying prevote", "delay", prevoteDelay)
+		cs.unlockAll()
+		t := time.NewTimer(prevoteDelay)
+		select {
+		case <-cs.Quit():
 			cs.lockAll()
-			cs.StartedPrevoteSleep.Store(false)
-		} else {
-			logger.Debug("already entered prevote delay")
 			return
+		case <-t.C:
 		}
+		cs.lockAll()
 	}
 
 	defer func() {
@@ -1768,34 +1751,19 @@ func (cs *State) enterPrecommit(height int64, round int32) {
 		return
 	}
 
-	if cs.StartedPrecommitSleep.CompareAndSwap(false, true) {
-		existingWaitTime := cs.precommitDelay()
-		configuredDelay := cs.consensusDelays.GetPrecommitDelay()
-
-		// Use the maximum of both delays
-		waitTime := existingWaitTime
-		if configuredDelay > waitTime {
-			waitTime = configuredDelay
-		}
-
-		if waitTime > 0 {
-			logger.Debug("delaying precommit", "delay", waitTime, "app_delay", existingWaitTime, "configured_delay", configuredDelay)
-			cs.unlockAll()
-			t := time.NewTimer(waitTime)
-			select {
-			case <-cs.Quit():
-				cs.lockAll()
-				cs.StartedPrecommitSleep.Store(false)
-				return
-			case <-t.C:
-			}
+	// Apply existing app-provided precommit delay (if any)
+	existingWaitTime := cs.precommitDelay()
+	if existingWaitTime > 0 {
+		logger.Debug("delaying precommit", "delay", existingWaitTime)
+		cs.unlockAll()
+		t := time.NewTimer(existingWaitTime)
+		select {
+		case <-cs.Quit():
 			cs.lockAll()
+			return
+		case <-t.C:
 		}
-		cs.StartedPrecommitSleep.Store(false)
-	} else {
-		logger.Debug("already entered precommit delay")
-		// if any other routine tries to enter precommit, we just return
-		return
+		cs.lockAll()
 	}
 
 	logger.Debug("entering precommit step", "current", log.NewLazySprintf("%v/%v/%v", cs.rs.Height, cs.rs.Round, cs.rs.Step))
@@ -1963,10 +1931,13 @@ func (cs *State) enterCommit(height int64, commitRound int32) {
 		cs.updateRoundStep(cs.rs.Round, cstypes.RoundStepCommit)
 		cs.rs.CommitRound = commitRound
 		cs.rs.CommitTime = cmttime.Now()
+		logger.Info("enterCommit: about to call newStep()")
 		cs.newStep()
+		logger.Info("enterCommit: newStep() returned, calling tryFinalizeCommit")
 
 		// Maybe finalize immediately.
 		cs.tryFinalizeCommit(height)
+		logger.Info("enterCommit: tryFinalizeCommit returned, defer complete")
 	}()
 
 	blockID, ok := cs.rs.Votes.Precommits(commitRound).TwoThirdsMajority()
@@ -2736,7 +2707,9 @@ func (cs *State) addVote(vote *types.Vote, peerID p2p.ID) (added bool, err error
 			cs.enterPrecommit(height, vote.Round)
 
 			if len(blockID.Hash) != 0 {
+				cs.Logger.Info("addVote: calling enterCommit", "height", height, "round", vote.Round)
 				cs.enterCommit(height, vote.Round)
+				cs.Logger.Info("addVote: enterCommit returned", "height", height, "round", vote.Round)
 				if cs.config.SkipTimeoutCommit && precommits.HasAll() {
 					cs.enterNewRound(cs.rs.Height, 0)
 				}
