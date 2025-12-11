@@ -18,7 +18,7 @@ import (
 
 const (
 	// HeaderSyncChannel is the channel ID for header sync messages.
-	HeaderSyncChannel = byte(0x60)
+	HeaderSyncChannel = byte(0x69)
 
 	// ReactorIncomingMessageQueueSize is the size of the reactor's message queue.
 	ReactorIncomingMessageQueueSize = 100
@@ -62,9 +62,9 @@ type Reactor struct {
 	peerRequests    map[p2p.ID]*peerRequestTracker
 
 	// Metrics tracking.
-	metrics          *Metrics
-	headersSynced    int64
-	lastHundredTime  time.Time
+	metrics             *Metrics
+	headersSynced       int64
+	lastHundredTime     time.Time
 	lastBroadcastHeight int64
 }
 
