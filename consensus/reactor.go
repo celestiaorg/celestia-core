@@ -558,21 +558,19 @@ func (conR *Reactor) checkFallingBehindOnHeight(height int64) {
 	threshold := conR.conS.config.BlocksBehindThreshold
 	if threshold <= 0 {
 		// Feature disabled
-		conR.Logger.Debug("checkFallingBehind: disabled (threshold <= 0)")
 		return
 	}
 
 	// Only check once per height
 	if height <= conR.lastCheckedHeight {
-		conR.Logger.Debug("checkFallingBehind: skipping (already checked)", "height", height, "lastChecked", conR.lastCheckedHeight)
 		return
 	}
 	conR.lastCheckedHeight = height
-	conR.Logger.Debug("checkFallingBehind: checking", "height", height)
+	conR.Logger.Info("checkFallingBehind: checking", "height", height, "lastChecked", conR.lastCheckedHeight)
 
 	// Skip if we're already in sync mode
 	if conR.WaitSync() {
-		conR.Logger.Debug("checkFallingBehind: skipping (in sync mode)")
+		conR.Logger.Info("checkFallingBehind: skipping (in sync mode)")
 		return
 	}
 
@@ -580,7 +578,7 @@ func (conR *Reactor) checkFallingBehindOnHeight(height int64) {
 	const maxDelayForSwitch = 100 * time.Millisecond
 	proposeDelay, prevoteDelay, precommitDelay := conR.conS.GetConsensusDelays()
 	if proposeDelay > maxDelayForSwitch || prevoteDelay > maxDelayForSwitch || precommitDelay > maxDelayForSwitch {
-		conR.Logger.Debug("checkFallingBehind: skipping (delays too high)", "propose", proposeDelay, "prevote", prevoteDelay, "precommit", precommitDelay)
+		conR.Logger.Info("checkFallingBehind: skipping (delays too high)", "propose", proposeDelay, "prevote", prevoteDelay, "precommit", precommitDelay)
 		return
 	}
 
@@ -591,7 +589,7 @@ func (conR *Reactor) checkFallingBehindOnHeight(height int64) {
 		// since initiateBlockSyncSwitch stops the consensus state machine
 		go conR.initiateBlockSyncSwitch()
 	} else {
-		conR.Logger.Debug("checkFallingBehind: no need to switch")
+		conR.Logger.Info("checkFallingBehind: no need to switch", "height", height)
 	}
 }
 
@@ -716,6 +714,7 @@ func (conR *Reactor) subscribeToBroadcastEvents() {
 	if err := conR.conS.evsw.AddListenerForEvent(subscriber, types.EventNewRoundStep,
 		func(data cmtevents.EventData) {
 			rs := data.(*cstypes.RoundState)
+			conR.Logger.Info("EventNewRoundStep received", "height", rs.Height, "round", rs.Round, "step", rs.Step)
 			conR.broadcastNewRoundStepMessage(rs)
 			// Check if we're falling behind peers on each new height
 			conR.checkFallingBehindOnHeight(rs.Height)
