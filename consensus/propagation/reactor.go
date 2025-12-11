@@ -272,6 +272,12 @@ func (blockProp *Reactor) ReceiveEnvelope(e p2p.Envelope) {
 			schema.WriteProposal(blockProp.traceClient, msg.Proposal.Height, msg.Proposal.Round, string(e.Src.ID()), schema.Download)
 		case *proptypes.HaveParts:
 			blockProp.handleHaves(e.Src.ID(), msg)
+			// Trace the received HaveParts message
+			indexes := make([]int, len(msg.Parts))
+			for i, part := range msg.Parts {
+				indexes[i] = int(part.Index)
+			}
+			schema.WriteBlockPartState(blockProp.traceClient, msg.Height, msg.Round, indexes, true, string(e.Src.ID()), schema.Download, "have")
 		case *proptypes.RecoveryPart:
 			schema.WriteReceivedPart(blockProp.traceClient, msg.Height, msg.Round, int(msg.Index))
 			blockProp.handleRecoveryPart(e.Src.ID(), msg)
@@ -282,6 +288,8 @@ func (blockProp *Reactor) ReceiveEnvelope(e p2p.Envelope) {
 		switch msg := msg.(type) {
 		case *proptypes.WantParts:
 			blockProp.handleWants(e.Src.ID(), msg)
+			// Trace the received WantParts message
+			schema.WriteBlockPartState(blockProp.traceClient, msg.Height, msg.Round, msg.Parts.GetTrueIndices(), false, string(e.Src.ID()), schema.Download, "want")
 		}
 	default:
 		blockProp.Logger.Error(fmt.Sprintf("Unknown chId %X", e.ChannelID))
