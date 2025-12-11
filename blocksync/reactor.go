@@ -201,6 +201,9 @@ func (bcR *Reactor) SwitchToBlockSync(state sm.State) error {
 	bcR.pool.numPending = 0
 	bcR.pool.mtx.Unlock()
 
+	// Wait for any existing poolRoutine to finish before starting a new one
+	bcR.poolRoutineWg.Wait()
+
 	// Start the pool if not already running
 	// If the pool was previously stopped, we need to Reset() it first
 	if !bcR.pool.IsRunning() {

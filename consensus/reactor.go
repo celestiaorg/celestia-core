@@ -150,7 +150,7 @@ func (conR *Reactor) OnStop() {
 // SwitchToConsensus switches from block_sync mode to consensus mode.
 // It resets the state, turns off block_sync, and starts the consensus state-machine
 func (conR *Reactor) SwitchToConsensus(state sm.State, skipWAL bool) {
-	conR.Logger.Info("SwitchToConsensus")
+	conR.Logger.Info("SwitchToConsensus", "skipWAL", skipWAL, "stateHeight", state.LastBlockHeight)
 
 	func() {
 		// We need to lock, as we are not entering consensus state from State's `handleMsg` or `handleTimeout`
@@ -170,15 +170,22 @@ func (conR *Reactor) SwitchToConsensus(state sm.State, skipWAL bool) {
 	conR.waitSync = false
 	conR.mtx.Unlock()
 
+	// Reset lastCheckedHeight so falling-behind detection can trigger again
+	conR.lastCheckedHeight = 0
+	conR.Logger.Info("Reset lastCheckedHeight to 0")
+
 	if skipWAL {
 		conR.conS.doWALCatchup = false
 	}
 	// Reset consensus if it was previously stopped (e.g., when switching to blocksync)
 	// This is safe to call even if consensus wasn't stopped - Reset() will just return an error
+	conR.Logger.Info("About to call conS.Reset()")
 	if err := conR.conS.Reset(); err != nil {
-		conR.Logger.Debug("Consensus reset returned error (may be expected)", "err", err)
+		conR.Logger.Info("Consensus reset returned error (may be expected)", "err", err)
 	} else {
-		// If reset succeeded, we need to re-subscribe to events since they were cleared
+		conR.Logger.Info("Consensus reset succeeded, re-subscribing to events")
+		// Only re-subscribe if reset succeeded (which clears the listeners)
+		// If reset failed, the original subscription from OnStart() is still valid
 		conR.subscribeToBroadcastEvents()
 	}
 	err := conR.conS.Start()
@@ -551,17 +558,21 @@ func (conR *Reactor) checkFallingBehindOnHeight(height int64) {
 	threshold := conR.conS.config.BlocksBehindThreshold
 	if threshold <= 0 {
 		// Feature disabled
+		conR.Logger.Debug("checkFallingBehind: disabled (threshold <= 0)")
 		return
 	}
 
 	// Only check once per height
 	if height <= conR.lastCheckedHeight {
+		conR.Logger.Debug("checkFallingBehind: skipping (already checked)", "height", height, "lastChecked", conR.lastCheckedHeight)
 		return
 	}
 	conR.lastCheckedHeight = height
+	conR.Logger.Debug("checkFallingBehind: checking", "height", height)
 
 	// Skip if we're already in sync mode
 	if conR.WaitSync() {
+		conR.Logger.Debug("checkFallingBehind: skipping (in sync mode)")
 		return
 	}
 
@@ -569,14 +580,18 @@ func (conR *Reactor) checkFallingBehindOnHeight(height int64) {
 	const maxDelayForSwitch = 100 * time.Millisecond
 	proposeDelay, prevoteDelay, precommitDelay := conR.conS.GetConsensusDelays()
 	if proposeDelay > maxDelayForSwitch || prevoteDelay > maxDelayForSwitch || precommitDelay > maxDelayForSwitch {
+		conR.Logger.Debug("checkFallingBehind: skipping (delays too high)", "propose", proposeDelay, "prevote", prevoteDelay, "precommit", precommitDelay)
 		return
 	}
 
 	// Check if we should switch to blocksync
 	if conR.shouldSwitchToBlockSync(height, threshold) {
+		conR.Logger.Info("checkFallingBehind: SHOULD SWITCH, initiating blocksync switch")
 		// Run in goroutine to avoid blocking event handler and potential deadlock
 		// since initiateBlockSyncSwitch stops the consensus state machine
 		go conR.initiateBlockSyncSwitch()
+	} else {
+		conR.Logger.Debug("checkFallingBehind: no need to switch")
 	}
 }
 
@@ -680,6 +695,9 @@ func (conR *Reactor) initiateBlockSyncSwitch() {
 		// Need to Reset() before Start() since consensus was stopped
 		if err := conR.conS.Reset(); err != nil {
 			conR.Logger.Error("Failed to reset consensus", "err", err)
+		} else {
+			// Re-subscribe since reset cleared listeners
+			conR.subscribeToBroadcastEvents()
 		}
 		if err := conR.conS.Start(); err != nil {
 			conR.Logger.Error("Failed to restart consensus after blocksync failure", "err", err)
@@ -694,6 +712,7 @@ func (conR *Reactor) initiateBlockSyncSwitch() {
 // them to peers upon receiving.
 func (conR *Reactor) subscribeToBroadcastEvents() {
 	const subscriber = "consensus-reactor"
+	conR.Logger.Info("subscribeToBroadcastEvents called")
 	if err := conR.conS.evsw.AddListenerForEvent(subscriber, types.EventNewRoundStep,
 		func(data cmtevents.EventData) {
 			rs := data.(*cstypes.RoundState)
