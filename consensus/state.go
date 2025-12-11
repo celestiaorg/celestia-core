@@ -1090,7 +1090,9 @@ func (cs *State) handleMsg(mi msgInfo) {
 
 	case *BlockPartMessage:
 		// if the proposal is complete, we'll enterPrevote or tryFinalizeCommit
+		cs.Logger.Info("BlockPartMessage: calling addProposalBlockPart", "height", msg.Height, "round", msg.Round, "part_index", msg.Part.Index)
 		added, err = cs.addProposalBlockPart(msg, peerID)
+		cs.Logger.Info("BlockPartMessage: addProposalBlockPart returned", "added", added, "err", err)
 
 		// We unlock here to yield to any routines that need to read the the RoundState.
 		// Previously, this code held the lock from the point at which the final block
@@ -1103,11 +1105,16 @@ func (cs *State) handleMsg(mi msgInfo) {
 		// of RoundState and only locking when switching out State's copy of
 		// RoundState with the updated copy or by emitting RoundState events in
 		// more places for routines depending on it to listen for.
+		cs.Logger.Info("BlockPartMessage: about to unlockAll")
 		cs.unlockAll()
+		cs.Logger.Info("BlockPartMessage: unlockAll done, about to lockAll")
 
 		cs.lockAll()
+		cs.Logger.Info("BlockPartMessage: lockAll done")
 		if added && cs.rs.ProposalBlockParts.IsComplete() {
+			cs.Logger.Info("BlockPartMessage: calling handleCompleteProposal", "height", msg.Height)
 			cs.handleCompleteProposal(msg.Height)
+			cs.Logger.Info("BlockPartMessage: handleCompleteProposal returned")
 		}
 		if added {
 			cs.statsMsgQueue <- mi
@@ -2393,6 +2400,7 @@ func (cs *State) addProposalBlockPart(msg *BlockPartMessage, peerID p2p.ID) (add
 }
 
 func (cs *State) handleCompleteProposal(blockHeight int64) {
+	cs.Logger.Info("handleCompleteProposal: start", "blockHeight", blockHeight, "step", cs.rs.Step)
 	// Update Valid* if we can.
 	prevotes := cs.rs.Votes.Prevotes(cs.rs.Round)
 	blockID, hasTwoThirds := prevotes.TwoThirdsMajority()
@@ -2417,14 +2425,21 @@ func (cs *State) handleCompleteProposal(blockHeight int64) {
 
 	if cs.rs.Step <= cstypes.RoundStepPropose && cs.isProposalComplete() {
 		// Move onto the next step
+		cs.Logger.Info("handleCompleteProposal: calling enterPrevote", "blockHeight", blockHeight, "round", cs.rs.Round)
 		cs.enterPrevote(blockHeight, cs.rs.Round)
+		cs.Logger.Info("handleCompleteProposal: enterPrevote returned", "hasTwoThirds", hasTwoThirds)
 		if hasTwoThirds { // this is optimisation as this will be triggered when prevote is added
+			cs.Logger.Info("handleCompleteProposal: calling enterPrecommit", "blockHeight", blockHeight, "round", cs.rs.Round)
 			cs.enterPrecommit(blockHeight, cs.rs.Round)
+			cs.Logger.Info("handleCompleteProposal: enterPrecommit returned")
 		}
 	} else if cs.rs.Step == cstypes.RoundStepCommit {
 		// If we're waiting on the proposal block...
+		cs.Logger.Info("handleCompleteProposal: calling tryFinalizeCommit", "blockHeight", blockHeight)
 		cs.tryFinalizeCommit(blockHeight)
+		cs.Logger.Info("handleCompleteProposal: tryFinalizeCommit returned")
 	}
+	cs.Logger.Info("handleCompleteProposal: done", "blockHeight", blockHeight)
 }
 
 // Attempt to add the vote. if its a duplicate signature, dupeout the validator

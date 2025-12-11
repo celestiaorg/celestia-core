@@ -187,6 +187,9 @@ func (conR *Reactor) SwitchToConsensus(state sm.State, skipWAL bool) {
 		// Only re-subscribe if reset succeeded (which clears the listeners)
 		// If reset failed, the original subscription from OnStart() is still valid
 		conR.subscribeToBroadcastEvents()
+		// Restart peerStatsRoutine since it exited when consensus was stopped
+		// (it watches conR.conS.Quit() which was closed during Stop())
+		go conR.peerStatsRoutine()
 	}
 	err := conR.conS.Start()
 	if err != nil {
@@ -559,6 +562,12 @@ func (conR *Reactor) checkFallingBehindOnHeight(height int64) {
 	if conR.conS == nil || conR.conS.config == nil {
 		return
 	}
+
+	// Skip if consensus is not actually running (prevents race during SwitchToConsensus)
+	if !conR.conS.IsRunning() {
+		return
+	}
+
 	threshold := conR.conS.config.BlocksBehindThreshold
 	if threshold <= 0 {
 		// Feature disabled
