@@ -81,6 +81,10 @@ func newTestPendingBlocksManager(partsChan chan types.PartInfo, verifier HeaderV
 	return NewPendingBlocksManager(log.NewNopLogger(), nil, partsChan, verifier, config)
 }
 
+func estimateBytes(total uint32) int64 {
+	return int64(total*2) * int64(types.BlockPartSizeBytes)
+}
+
 func TestPendingBlocksManager_AddProposal_NoVerifier(t *testing.T) {
 	partsChan := make(chan types.PartInfo, 100)
 	mgr := newTestPendingBlocksManager(partsChan, nil, DefaultPendingBlocksConfig())
@@ -232,6 +236,7 @@ func TestPendingBlocksManager_AddFromHeader_ThenCompactBlock(t *testing.T) {
 	mgr.AddFromHeader(vh)
 	require.Equal(t, BlockStateActive, mgr.blocks[10].State)
 	require.Nil(t, mgr.blocks[10].CompactBlock)
+	initialMem := mgr.currentMemory
 
 	// Now add compact block - should attach to existing pending block.
 	verifier.AddVerifiedHeader(10, hash)
@@ -242,6 +247,10 @@ func TestPendingBlocksManager_AddFromHeader_ThenCompactBlock(t *testing.T) {
 	pending, _ := mgr.GetBlock(10)
 	require.Equal(t, BlockStateActive, pending.State)
 	require.NotNil(t, pending.CompactBlock)
+
+	// Memory should reflect compact block size (not double-counted).
+	require.GreaterOrEqual(t, mgr.currentMemory, initialMem)
+	require.Equal(t, estimateBytes(cb.Proposal.BlockID.PartSetHeader.Total), pending.allocatedBytes)
 }
 
 func TestPendingBlocksManager_HeightPriority(t *testing.T) {
@@ -319,6 +328,21 @@ func TestPendingBlocksManager_Prune(t *testing.T) {
 	require.Equal(t, 1, mgr.Len())
 	_, exists := mgr.GetBlock(12)
 	require.True(t, exists)
+}
+
+func TestPendingBlocksManager_MemoryAccounting_PruneCommitment(t *testing.T) {
+	partsChan := make(chan types.PartInfo, 100)
+	mgr := newTestPendingBlocksManager(partsChan, nil, DefaultPendingBlocksConfig())
+
+	psh := &types.PartSetHeader{Total: 4, Hash: cmtrand.Bytes(32)}
+	expected := estimateBytes(psh.Total)
+
+	mgr.AddCommitment(10, 0, psh)
+	require.Equal(t, expected, mgr.currentMemory)
+
+	// Prune should release memory.
+	mgr.Prune(10)
+	require.Equal(t, int64(0), mgr.currentMemory)
 }
 
 func TestPendingBlocksManager_HandlePart(t *testing.T) {
@@ -410,7 +434,7 @@ func TestPendingBlocksManager_AddCommitment_CreatesActiveBlock(t *testing.T) {
 	require.True(t, exists)
 	require.Equal(t, BlockStateActive, pending.State)
 	require.Equal(t, int32(2), pending.Round)
-	// Commitments are NOT header verified - they come from consensus commits, not headersync.
+	// Commitments are not headersync-verified.
 	require.False(t, pending.HeaderVerified)
 	require.NotNil(t, pending.Parts)
 	require.Equal(t, uint32(8), pending.Parts.Original().Total())
@@ -467,6 +491,73 @@ func TestPendingBlocksManager_AddCommitment_RespectsCapacity(t *testing.T) {
 	psh2 := &types.PartSetHeader{Total: 4, Hash: cmtrand.Bytes(32)}
 	mgr.AddCommitment(11, 0, psh2)
 	require.Equal(t, 1, mgr.Len())
+}
+
+func TestPendingBlocksManager_MemoryBudget_AppliesToHeaderAndCommitment(t *testing.T) {
+	partsChan := make(chan types.PartInfo, 100)
+	// Budget just enough for one block of 4 parts (2x for parity).
+	budget := estimateBytes(4)
+	config := PendingBlocksConfig{
+		MaxConcurrent: 5,
+		MemoryBudget:  budget,
+	}
+	mgr := newTestPendingBlocksManager(partsChan, nil, config)
+
+	// First commitment fits.
+	psh1 := &types.PartSetHeader{Total: 4, Hash: cmtrand.Bytes(32)}
+	added := mgr.AddFromCommitment(10, 0, psh1)
+	require.True(t, added)
+	require.Equal(t, budget, mgr.currentMemory)
+
+	// Second (same size) should be rejected due to budget.
+	psh2 := &types.PartSetHeader{Total: 4, Hash: cmtrand.Bytes(32)}
+	added = mgr.AddFromCommitment(11, 0, psh2)
+	require.False(t, added)
+	require.Equal(t, budget, mgr.currentMemory)
+
+	// After pruning, memory is freed and we can add again.
+	mgr.Prune(10)
+	require.Equal(t, int64(0), mgr.currentMemory)
+	added = mgr.AddFromCommitment(11, 0, psh2)
+	require.True(t, added)
+	require.Equal(t, budget, mgr.currentMemory)
+}
+
+func TestPendingBlocksManager_MemoryBudget_AppliesToHeader(t *testing.T) {
+	partsChan := make(chan types.PartInfo, 100)
+	budget := estimateBytes(4)
+	config := PendingBlocksConfig{
+		MaxConcurrent: 5,
+		MemoryBudget:  budget,
+	}
+	mgr := newTestPendingBlocksManager(partsChan, nil, config)
+
+	vh := &headersync.VerifiedHeader{
+		Header: &types.Header{Height: 10},
+		BlockID: types.BlockID{
+			Hash: cmtrand.Bytes(32),
+			PartSetHeader: types.PartSetHeader{
+				Total: 4,
+				Hash:  cmtrand.Bytes(32),
+			},
+		},
+	}
+	require.True(t, mgr.AddFromHeader(vh))
+	require.Equal(t, budget, mgr.currentMemory)
+
+	// Second header of same size should be rejected.
+	vh2 := &headersync.VerifiedHeader{
+		Header: &types.Header{Height: 11},
+		BlockID: types.BlockID{
+			Hash: cmtrand.Bytes(32),
+			PartSetHeader: types.PartSetHeader{
+				Total: 4,
+				Hash:  cmtrand.Bytes(32),
+			},
+		},
+	}
+	require.False(t, mgr.AddFromHeader(vh2))
+	require.Equal(t, budget, mgr.currentMemory)
 }
 
 func TestPendingBlocksManager_BlockSource(t *testing.T) {

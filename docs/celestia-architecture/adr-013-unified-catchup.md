@@ -2,8 +2,10 @@
 
 ## Changelog
 
+- 2025-12-10: Phase 4 complete - unified catchup replaces blocksync as the default sync mechanism
 - 2025-12-10: Final refactor - clean event-driven architecture with BlockSource tracking
 - 2025-12-10: Updated to reflect implementation - unified PendingBlocksManager replaces ProposalCache
+- 2025-12-11: Clarified memory accounting for header/commit catchup blocks (budget enforced and released on prune)
 - 2025-12-09: Initial draft
 
 ## Context
@@ -588,17 +590,58 @@ Fixed maximum concurrent blocks and memory budget. Backpressure naturally flows 
    - Catchup blocks request ALL original parts; live blocks use erasure coding
    - Lower heights have priority - at capacity, higher-height proposals are rejected (FIFO completion)
 
-### Phase 3: Integrate Headersync (Future)
+### Phase 3: Integrate Headersync ✅ COMPLETE
 
 1. Subscribe to headersync verified headers
 2. Verify compact blocks against verified headers
 3. Enable header-only pending blocks
 
-### Phase 4: Remove Blocksync (Future)
+### Phase 4: Replace Blocksync with Unified Catchup ✅ COMPLETE
 
-1. Remove blocksync reactor
-2. Remove SwitchToConsensus handoff
-3. Update state sync to use new mechanism
+The propagation reactor now provides the `SwitchToCatchup` interface that replaces blocksync.
+
+The key insight is that the propagation reactor **already has all the catchup machinery**:
+- `loadUnprocessedHeaders()` on startup loads headers without block data
+- `handleVerifiedHeaders()` processes new headers from headersync
+- `retryWants()` requests missing parts on a timer
+- `onBlockAdded()` triggers immediate catchup for new blocks
+- `PendingBlocksManager` tracks all blocks and their download state
+
+**What `SwitchToCatchup` adds** (`consensus/propagation/sync.go`):
+- Monitoring routine that checks `IsCaughtUp()` every second
+- `GetMaxPeerHeight()` to determine network height (from headersync or peer state)
+- Handoff to consensus reactor when caught up
+
+```go
+// SwitchToCatchup starts the catchup sync process.
+// The propagation reactor already handles block downloads - this just
+// monitors progress and switches to consensus when caught up.
+func (r *Reactor) SwitchToCatchup(state sm.State, blockExec *sm.BlockExecutor, conR ConsensusReactor) error {
+    r.StartProcessing()
+    go r.catchupRoutine(state, conR)
+    return nil
+}
+
+// IsCaughtUp returns true when we've synced to the network height.
+func (r *Reactor) IsCaughtUp() bool {
+    storeHeight := r.pendingBlocks.Store().Height()
+    maxPeerHeight := r.GetMaxPeerHeight()
+    // Similar to blocksync: caught up when height >= maxPeerHeight - 1
+    return maxPeerHeight == 0 || storeHeight >= (maxPeerHeight-1)
+}
+```
+
+**State Sync Integration** (`node/setup.go`, `node/node.go`):
+- `startStateSyncWithCatchup()` uses propagation reactor when available
+- Falls back to legacy blocksync if propagation reactor is disabled
+- Uses `propagation.ConsensusReactor` interface for handoff
+
+**Key Benefits over Blocksync**:
+- Single unified code path for all block downloads
+- Reuses existing `PendingBlocksManager` and part request infrastructure
+- Naturally supports pipelining multiple blocks (via headersync)
+- Memory bounded by existing `PendingBlocksManager` limits
+- No separate "blocksync mode" - same code handles live and catchup
 
 ## Key Implementation Details
 
@@ -618,22 +661,12 @@ func (cps *CombinedPartSet) IsCatchup() bool {
 
 ### Capacity Management
 
-**Lower heights have priority** - blocks must be completed in FIFO order. When at capacity, higher-height proposals are rejected (not evicted):
+**Lower heights have priority** - blocks must be completed in FIFO order. When at capacity, higher-height proposals are rejected (not evicted). **Memory accounting is per-block regardless of source (compact, headersync, or commitment) and released on prune/evict.** Budget is enforced for header/commit catchup blocks the same way as compact blocks:
 
 ```go
-func (m *PendingBlocksManager) hasCapacityLocked(cb *proptypes.CompactBlock) bool {
-    if len(m.blocks) >= m.config.MaxConcurrent {
-        return false
-    }
-    if cb != nil {
-        estimated := m.estimateMemory(cb)
-        // Allow adding a single block even if it exceeds the budget (when manager is empty).
-        // This ensures the proposer can always propose their own block.
-        if m.currentMemory+estimated > m.config.MemoryBudget && len(m.blocks) > 0 {
-            return false
-        }
-    }
-    return true
+estimated := estimateFromCompactBlock(cb) or estimateFromPartSetHeader(psh.Total)
+if m.currentMemory + estimated > MemoryBudget && len(m.blocks) > 0 {
+    return false
 }
 ```
 
@@ -686,7 +719,7 @@ require_header_verification = true
 
 - **Complexity**: More complex than single-block-at-a-time
 - **Testing**: Requires careful testing of concurrent scenarios
-- **Headersync dependency**: Optimal behavior requires headersync to be fast
+- **Headersync dependency**: Optimal behavior requires headersync to be fast; without headersync, blocks are still admitted but header verification is deferred
 
 ### Neutral
 

@@ -109,6 +109,11 @@ type blockSyncReactor interface {
 	SwitchToBlockSync(sm.State) error
 }
 
+// catchupReactor is the interface for the propagation reactor's catchup sync.
+type catchupReactor interface {
+	SwitchToCatchup(state sm.State, blockExec *sm.BlockExecutor, conR propagation.ConsensusReactor) error
+}
+
 //------------------------------------------------------------------------------
 
 // initDBs opens or creates the blockstore and state databases.
@@ -626,7 +631,8 @@ func createPEXReactorAndAddToSwitch(addrBook pex.AddrBook, config *cfg.Config,
 	return pexReactor
 }
 
-// startStateSync starts an asynchronous state sync process, then switches to block sync mode.
+// startStateSync starts an asynchronous state sync process, then switches to catchup mode.
+// This now uses the propagation reactor for catchup instead of blocksync.
 func startStateSync(
 	ssR *statesync.Reactor,
 	bcR blockSyncReactor,
@@ -675,6 +681,65 @@ func startStateSync(
 		err = bcR.SwitchToBlockSync(state)
 		if err != nil {
 			ssR.Logger.Error("Failed to switch to block sync", "err", err)
+			return
+		}
+	}()
+	return nil
+}
+
+// startStateSyncWithCatchup starts state sync and uses the propagation reactor for catchup.
+// This is the new sync flow that replaces blocksync with propagation catchup.
+func startStateSyncWithCatchup(
+	ssR *statesync.Reactor,
+	propR catchupReactor,
+	blockExec *sm.BlockExecutor,
+	conR propagation.ConsensusReactor,
+	stateProvider statesync.StateProvider,
+	config *cfg.StateSyncConfig,
+	stateStore sm.Store,
+	blockStore *store.BlockStore,
+	state sm.State,
+) error {
+	ssR.Logger.Info("Starting state sync (with propagation catchup)")
+
+	if stateProvider == nil {
+		var err error
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		stateProvider, err = statesync.NewLightClientStateProvider(
+			ctx,
+			state.ChainID, state.Version, state.InitialHeight,
+			config.RPCServers, light.TrustOptions{
+				Period: config.TrustPeriod,
+				Height: config.TrustHeight,
+				Hash:   config.TrustHashBytes(),
+			}, ssR.Logger.With("module", "light"))
+		if err != nil {
+			return fmt.Errorf("failed to set up light client state provider: %w", err)
+		}
+	}
+
+	go func() {
+		state, commit, err := ssR.Sync(stateProvider, config.DiscoveryTime)
+		if err != nil {
+			ssR.Logger.Error("State sync failed", "err", err)
+			return
+		}
+		err = stateStore.Bootstrap(state)
+		if err != nil {
+			ssR.Logger.Error("Failed to bootstrap node with new state", "err", err)
+			return
+		}
+		err = blockStore.SaveSeenCommit(state.LastBlockHeight, commit)
+		if err != nil {
+			ssR.Logger.Error("Failed to store last seen commit", "err", err)
+			return
+		}
+
+		// Use propagation reactor for catchup instead of blocksync.
+		err = propR.SwitchToCatchup(state, blockExec, conR)
+		if err != nil {
+			ssR.Logger.Error("Failed to switch to catchup", "err", err)
 			return
 		}
 	}()

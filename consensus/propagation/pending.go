@@ -74,6 +74,9 @@ type PendingBlock struct {
 	// BlockID from verified header (if available).
 	BlockID types.BlockID
 
+	// Bytes accounted against the manager's memory budget for this block.
+	allocatedBytes int64
+
 	// Block data - the combined original + parity part set.
 	Parts *proptypes.CombinedPartSet
 
@@ -102,8 +105,8 @@ type PendingBlocksConfig struct {
 // DefaultPendingBlocksConfig returns sensible defaults.
 func DefaultPendingBlocksConfig() PendingBlocksConfig {
 	return PendingBlocksConfig{
-		MaxConcurrent: 5,
-		MemoryBudget:  100 * 1024 * 1024, // 100 MB
+		MaxConcurrent: 200,
+		MemoryBudget:  12 * 1024 * 1024 * 1024, // 12GiB
 	}
 }
 
@@ -230,7 +233,7 @@ func (m *PendingBlocksManager) AddProposal(cb *proptypes.CompactBlock) bool {
 	}
 
 	// Check capacity before adding new block.
-	if !m.hasCapacityLocked(cb) {
+	if !m.hasCapacityLocked(cb, 0) {
 		return false
 	}
 
@@ -239,15 +242,17 @@ func (m *PendingBlocksManager) AddProposal(cb *proptypes.CompactBlock) bool {
 	m.round = round
 
 	parts := proptypes.NewCombinedSetFromCompactBlock(cb)
+	estimated := m.estimateMemory(cb)
 	pending := &PendingBlock{
-		Height:       height,
-		Round:        round,
-		Source:       SourceCompactBlock,
-		CompactBlock: cb,
-		Parts:        parts,
-		MaxRequests:  bits.NewBitArray(int(parts.Total())),
-		CreatedAt:    time.Now(),
-		State:        BlockStateActive,
+		Height:         height,
+		Round:          round,
+		Source:         SourceCompactBlock,
+		CompactBlock:   cb,
+		Parts:          parts,
+		MaxRequests:    bits.NewBitArray(int(parts.Total())),
+		allocatedBytes: estimated,
+		CreatedAt:      time.Now(),
+		State:          BlockStateActive,
 	}
 
 	// Check if header is verified.
@@ -261,7 +266,7 @@ func (m *PendingBlocksManager) AddProposal(cb *proptypes.CompactBlock) bool {
 
 	m.blocks[height] = pending
 	m.insertHeightLocked(height)
-	m.currentMemory += m.estimateMemory(cb)
+	m.currentMemory += estimated
 	m.currentProposalPartsCount.Store(int64(parts.Total()))
 
 	return true
@@ -295,7 +300,7 @@ func (m *PendingBlocksManager) AddFromHeader(vh *headersync.VerifiedHeader) bool
 	}
 
 	// Check capacity before adding.
-	if !m.hasCapacityLocked(nil) {
+	if !m.hasCapacityLocked(nil, vh.BlockID.PartSetHeader.Total) {
 		m.mtx.Unlock()
 		return false
 	}
@@ -329,7 +334,7 @@ func (m *PendingBlocksManager) AddFromCommitment(height int64, round int32, psh 
 	}
 
 	// Check capacity.
-	if !m.hasCapacityLocked(nil) {
+	if !m.hasCapacityLocked(nil, psh.Total) {
 		m.logger.Debug("no capacity for commitment", "height", height)
 		m.mtx.Unlock()
 		return false
@@ -392,7 +397,13 @@ func (m *PendingBlocksManager) attachCompactBlockLocked(pending *PendingBlock, c
 
 	m.height = pending.Height
 	m.round = pending.Round
-	m.currentMemory += m.estimateMemory(cb)
+	newEstimate := m.estimateMemory(cb)
+	if pending.allocatedBytes == 0 {
+		m.currentMemory += newEstimate
+	} else {
+		m.currentMemory += newEstimate - pending.allocatedBytes
+	}
+	pending.allocatedBytes = newEstimate
 	m.currentProposalPartsCount.Store(int64(pending.Parts.Total()))
 
 	return true
@@ -402,6 +413,7 @@ func (m *PendingBlocksManager) attachCompactBlockLocked(pending *PendingBlock, c
 func (m *PendingBlocksManager) addFromBlockIDLocked(height int64, blockID types.BlockID, source BlockSource) {
 	original := types.NewPartSetFromHeader(blockID.PartSetHeader, types.BlockPartSizeBytes)
 	parts := proptypes.NewCombinedPartSetFromOriginal(original, true)
+	estimated := m.estimateMemoryFromTotal(blockID.PartSetHeader.Total)
 
 	pending := &PendingBlock{
 		Height:         height,
@@ -410,18 +422,15 @@ func (m *PendingBlocksManager) addFromBlockIDLocked(height int64, blockID types.
 		BlockID:        blockID,
 		Parts:          parts,
 		MaxRequests:    bits.NewBitArray(int(parts.Total())),
-		HeaderVerified: source == SourceHeaderSync, // Only header sync provides verified headers.
+		HeaderVerified: source == SourceHeaderSync, // only headersync provides verified headers
+		allocatedBytes: estimated,
 		CreatedAt:      time.Now(),
 		State:          BlockStateActive,
 	}
 
 	m.blocks[height] = pending
 	m.insertHeightLocked(height)
-
-	// Estimate memory.
-	partSize := int64(types.BlockPartSizeBytes)
-	totalParts := int64(blockID.PartSetHeader.Total * 2)
-	m.currentMemory += totalParts * partSize
+	m.currentMemory += estimated
 }
 
 // =============================================================================
@@ -740,17 +749,20 @@ func (m *PendingBlocksManager) Prune(committedHeight int64) {
 // Internal Helpers
 // =============================================================================
 
-func (m *PendingBlocksManager) hasCapacityLocked(cb *proptypes.CompactBlock) bool {
+func (m *PendingBlocksManager) hasCapacityLocked(cb *proptypes.CompactBlock, partsTotal uint32) bool {
 	if len(m.blocks) >= m.config.MaxConcurrent {
 		return false
 	}
+	var estimated int64
 	if cb != nil {
-		estimated := m.estimateMemory(cb)
-		// Allow adding a single block even if it exceeds the budget (when manager is empty).
-		// This ensures the proposer can always propose their own block.
-		if m.currentMemory+estimated > m.config.MemoryBudget && len(m.blocks) > 0 {
-			return false
-		}
+		estimated = m.estimateMemory(cb)
+	} else if partsTotal > 0 {
+		estimated = m.estimateMemoryFromTotal(partsTotal)
+	}
+
+	// Allow adding a single block even if it exceeds the budget (when manager is empty).
+	if estimated > 0 && m.currentMemory+estimated > m.config.MemoryBudget && len(m.blocks) > 0 {
+		return false
 	}
 	return true
 }
@@ -762,6 +774,11 @@ func (m *PendingBlocksManager) estimateMemory(cb *proptypes.CompactBlock) int64 
 	partSize := int64(types.BlockPartSizeBytes)
 	totalParts := int64(cb.Proposal.BlockID.PartSetHeader.Total * 2)
 	return totalParts * partSize
+}
+
+func (m *PendingBlocksManager) estimateMemoryFromTotal(total uint32) int64 {
+	partSize := int64(types.BlockPartSizeBytes)
+	return int64(total*2) * partSize
 }
 
 func (m *PendingBlocksManager) insertHeightLocked(height int64) {
@@ -780,8 +797,9 @@ func (m *PendingBlocksManager) evictBlockLocked(height int64) {
 		return
 	}
 
-	if pending.CompactBlock != nil {
-		m.currentMemory -= m.estimateMemory(pending.CompactBlock)
+	m.currentMemory -= pending.allocatedBytes
+	if m.currentMemory < 0 {
+		m.currentMemory = 0
 	}
 
 	delete(m.blocks, height)

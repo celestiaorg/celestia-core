@@ -85,6 +85,7 @@ type Node struct {
 	blockPropReactor   *propagation.Reactor    // the block propagation reactor. potentially nil is disabled.
 	evidencePool       *evidence.Pool          // tracking evidence
 	proxyApp           proxy.AppConns          // connection to the application
+	blockExec          *sm.BlockExecutor       // for executing blocks during catchup
 	rpcListeners      []net.Listener          // rpc servers
 	txIndexer         txindex.TxIndexer
 	blockIndexer      indexer.BlockIndexer
@@ -586,6 +587,7 @@ func NewNodeWithContext(ctx context.Context,
 		blockPropReactor:  propagationReactor,
 		evidencePool:      evidencePool,
 		proxyApp:          proxyApp,
+		blockExec:         blockExec,
 		txIndexer:         txIndexer,
 		indexerService:    indexerService,
 		blockIndexer:      blockIndexer,
@@ -666,14 +668,25 @@ func (n *Node) OnStart() error {
 
 	// Run state sync
 	if n.stateSync {
-		bcR, ok := n.bcReactor.(blockSyncReactor)
-		if !ok {
-			return fmt.Errorf("this blocksync reactor does not support switching from state sync")
-		}
-		err := startStateSync(n.stateSyncReactor, bcR, n.stateSyncProvider,
-			n.config.StateSync, n.stateStore, n.blockStore, n.stateSyncGenesis)
-		if err != nil {
-			return fmt.Errorf("failed to start state sync: %w", err)
+		// Use propagation reactor catchup when available (the default).
+		// This replaces blocksync with the unified catchup mechanism.
+		if n.blockPropReactor != nil {
+			err := startStateSyncWithCatchup(n.stateSyncReactor, n.blockPropReactor, n.blockExec, n.consensusReactor,
+				n.stateSyncProvider, n.config.StateSync, n.stateStore, n.blockStore, n.stateSyncGenesis)
+			if err != nil {
+				return fmt.Errorf("failed to start state sync with catchup: %w", err)
+			}
+		} else {
+			// Fall back to legacy blocksync if propagation reactor is disabled.
+			bcR, ok := n.bcReactor.(blockSyncReactor)
+			if !ok {
+				return fmt.Errorf("this blocksync reactor does not support switching from state sync")
+			}
+			err := startStateSync(n.stateSyncReactor, bcR, n.stateSyncProvider,
+				n.config.StateSync, n.stateStore, n.blockStore, n.stateSyncGenesis)
+			if err != nil {
+				return fmt.Errorf("failed to start state sync: %w", err)
+			}
 		}
 	}
 
