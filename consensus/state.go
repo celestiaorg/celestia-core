@@ -1079,6 +1079,11 @@ func (cs *State) handleMsg(mi msgInfo) {
 		// the peer is sending us CatchupCommit precommits.
 		// We could make note of this and help filter in broadcastHasVoteMessage().
 
+	case *CatchupBlockMessage:
+		// Catchup block with verified commit from headersync - execute directly.
+		// This bypasses the normal vote-based finalization.
+		cs.executeCatchupBlock(msg)
+
 	default:
 		cs.Logger.Error("unknown msg type", "type", fmt.Sprintf("%T", msg))
 		return
@@ -2051,6 +2056,65 @@ func (cs *State) finalizeCommit(height int64) {
 	// * cs.StartTime is set to when we will start round0.
 }
 
+// executeCatchupBlock saves and applies a block during catchup.
+// This is a simplified version of finalizeCommit that doesn't require votes.
+// It's called when we receive a CatchupBlockMessage from propagation with a
+// verified commit from headersync.
+func (cs *State) executeCatchupBlock(msg *CatchupBlockMessage) {
+	height := msg.Height
+	block := msg.Block
+	blockParts := msg.Parts
+	commit := msg.Commit
+
+	logger := cs.Logger.With("height", height, "mode", "catchup")
+
+	// Must be the next block in sequence
+	if height != cs.state.LastBlockHeight+1 {
+		logger.Debug("catchup block not next in sequence",
+			"expected", cs.state.LastBlockHeight+1,
+			"got", height)
+		return
+	}
+
+	// Validate block against current state
+	if err := cs.blockExec.ValidateBlock(cs.state, block); err != nil {
+		logger.Error("catchup block validation failed", "err", err)
+		return
+	}
+
+	// Build the BlockID for commit verification
+	blockID := types.BlockID{Hash: block.Hash(), PartSetHeader: blockParts.Header()}
+
+	// Verify commit has +2/3 voting power
+	if err := cs.state.Validators.VerifyCommit(
+		cs.state.ChainID, blockID, height, commit); err != nil {
+		logger.Error("catchup commit verification failed", "err", err)
+		return
+	}
+
+	logger.Info("executing catchup block", "hash", block.Hash())
+
+	// Save to block store
+	if cs.blockStore.Height() < height {
+		cs.blockStore.SaveBlock(block, blockParts, commit)
+	}
+
+	// Apply block and update state (blockID already computed above for verification)
+	stateCopy, err := cs.blockExec.ApplyVerifiedBlock(cs.state.Copy(), blockID, block, commit)
+	if err != nil {
+		logger.Error("failed to apply catchup block", "err", err)
+		return
+	}
+
+	// Update state
+	cs.updateToState(stateCopy)
+
+	// Prune propagation reactor
+	cs.propagator.Prune(height)
+
+	logger.Info("catchup block applied", "new_height", cs.state.LastBlockHeight)
+}
+
 func (cs *State) recordMetrics(height int64, block *types.Block) {
 	cs.metrics.Validators.Set(float64(cs.rs.Validators.Size()))
 	cs.metrics.ValidatorsPower.Set(float64(cs.rs.Validators.TotalVotingPower()))
@@ -2864,10 +2928,12 @@ func repairWalFile(src, dst string) error {
 }
 
 // syncData continuously listens for and processes block parts or proposals from the propagation reactor.
+// It also handles catchup blocks that have verified commits from headersync.
 // It stops execution when the service is terminated or the channels are closed.
 func (cs *State) syncData() {
 	partChan := cs.propagator.GetPartChan()
 	proposalChan := cs.propagator.GetProposalChan()
+	catchupChan := cs.propagator.GetCatchupBlockChan()
 
 	for {
 		select {
@@ -2878,6 +2944,21 @@ func (cs *State) syncData() {
 				return
 			}
 			cs.peerMsgQueue <- msgInfo{&ProposalMessage{&proposalAndFrom.Proposal}, proposalAndFrom.From}
+
+		case catchupBlock, ok := <-catchupChan:
+			if !ok || catchupBlock == nil {
+				continue
+			}
+			// Convert CatchupBlockInfo to CatchupBlockMessage and send to internal queue.
+			// This will be processed by handleMsg which calls executeCatchupBlock.
+			msg := &CatchupBlockMessage{
+				Height: catchupBlock.Height,
+				Block:  catchupBlock.Block,
+				Parts:  catchupBlock.Parts,
+				Commit: catchupBlock.Commit,
+			}
+			cs.internalMsgQueue <- msgInfo{msg, ""}
+
 		case _, ok := <-cs.newHeightOrRoundChan:
 			if !ok {
 				return

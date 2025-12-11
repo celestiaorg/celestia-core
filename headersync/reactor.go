@@ -631,6 +631,34 @@ func (r *Reactor) GetVerifiedHeader(height int64) (*types.Header, *types.BlockID
 	return header, &blockID, true
 }
 
+// GetCommit returns the commit for a given height.
+// The commit for height H is found as the LastCommit in the header at H+1.
+// This is used by the propagation reactor to provide commits for catchup blocks.
+func (r *Reactor) GetCommit(height int64) *types.Commit {
+	// First try to get it from the next block's commit
+	nextHeader := r.blockStore.LoadHeader(height + 1)
+	if nextHeader != nil {
+		// The commit for height is stored as SeenCommit at height
+		// or as the LastCommit in the block at height+1
+		commit := r.blockStore.LoadSeenCommit(height)
+		if commit != nil {
+			return commit
+		}
+		commit = r.blockStore.LoadBlockCommit(height)
+		if commit != nil {
+			return commit
+		}
+	}
+
+	// If we have the header but not the next block, check if we stored a SeenCommit
+	commit := r.blockStore.LoadSeenCommit(height)
+	if commit != nil {
+		return commit
+	}
+
+	return nil
+}
+
 // Height returns the current header sync height.
 func (r *Reactor) Height() int64 {
 	return r.pool.Height()

@@ -487,9 +487,13 @@ func NewNodeWithContext(ctx context.Context,
 		}
 	}
 
+	// With the new propagation-based catchup (Phase 5), we only need to wait
+	// for state sync. Block sync catchup happens via CatchupBlockMessage from
+	// the propagation reactor, allowing consensus to run immediately.
+	// State sync is special because it bootstraps state from scratch.
 	consensusReactor, consensusState := createConsensusReactor(
 		config, state, blockExec, blockStore, mempool, evidencePool,
-		privValidator, csMetrics, propagator, stateSync || blockSync, eventBus, consensusLogger, offlineStateSyncHeight, tracer,
+		privValidator, csMetrics, propagator, stateSync, eventBus, consensusLogger, offlineStateSyncHeight, tracer,
 	)
 
 	err = stateStore.SetOfflineStateSyncHeight(0)

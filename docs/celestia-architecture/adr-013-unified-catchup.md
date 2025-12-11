@@ -2,6 +2,7 @@
 
 ## Changelog
 
+- 2025-12-10: Phase 5 designed - consensus-based block execution for catchup (blocks downloaded but never executed)
 - 2025-12-10: Phase 4 complete - unified catchup replaces blocksync as the default sync mechanism
 - 2025-12-10: Final refactor - clean event-driven architecture with BlockSource tracking
 - 2025-12-10: Updated to reflect implementation - unified PendingBlocksManager replaces ProposalCache
@@ -752,6 +753,406 @@ Download all verified headers in parallel:
 - Network congestion
 
 Bounded concurrency is necessary.
+
+### Phase 5: Consensus-Based Block Execution (PENDING)
+
+Phase 4 implemented the catchup download machinery, but **blocks are never executed**. The propagation reactor downloads block parts, but there's no code path that:
+1. Saves completed blocks to the block store
+2. Applies blocks via the block executor
+3. Advances state
+
+This is why state sync nodes get stuck: `IsCaughtUp()` checks `store.Height()`, but the store height never advances because blocks are never saved.
+
+#### The Problem
+
+The current Phase 4 implementation has a critical gap:
+
+```go
+func (r *Reactor) SwitchToCatchup(state sm.State, blockExec *sm.BlockExecutor, conR ConsensusReactor) error {
+    // blockExec is received but NEVER USED
+    r.StartProcessing()
+    go r.catchupRoutine(state, conR)
+    return nil
+}
+```
+
+Compare to blocksync, which has an execution loop:
+
+```go
+// blocksync/reactor.go poolRoutine
+bcR.store.SaveBlock(first, firstParts, second.LastCommit)
+state, err = bcR.blockExec.ApplyVerifiedBlock(state, firstID, first, second.LastCommit)
+```
+
+#### The Solution: Message-Driven Catchup via Consensus
+
+Instead of using `SwitchToConsensus` with state handoff, we add a new internal message type that the propagation reactor uses to feed complete blocks (with commits) directly to consensus. This mirrors the old catchup pattern:
+
+1. Verify commit (via headersync)
+2. Download block parts
+3. Send complete block + commit to consensus
+4. Consensus executes via normal `handleMsg` path
+
+**Key insight**: Consensus should start normally (not via `SwitchToConsensus`). The propagation reactor feeds catchup blocks as messages. When no commit is available, parts flow normally via `syncData()`. When a commit IS available, we send a `CatchupBlockMessage` that bypasses the vote requirement.
+
+#### Design: CatchupBlockMessage
+
+A new internal message type for complete blocks with commits:
+
+```go
+// consensus/reactor.go
+
+// CatchupBlockMessage is sent internally when propagation has a complete block
+// with a verified commit. This bypasses the normal vote-based finalization.
+type CatchupBlockMessage struct {
+    Height int64
+    Block  *types.Block
+    Parts  *types.PartSet
+    Commit *types.Commit
+}
+
+// ValidateBasic performs basic validation.
+func (m *CatchupBlockMessage) ValidateBasic() error {
+    if m.Height < 1 {
+        return errors.New("invalid height")
+    }
+    if m.Block == nil {
+        return errors.New("nil block")
+    }
+    if m.Parts == nil || !m.Parts.IsComplete() {
+        return errors.New("incomplete parts")
+    }
+    if m.Commit == nil {
+        return errors.New("nil commit")
+    }
+    return nil
+}
+
+func (m *CatchupBlockMessage) String() string {
+    return fmt.Sprintf("[CatchupBlock H:%v Hash:%v]", m.Height, m.Block.Hash())
+}
+```
+
+#### Propagation Reactor: Feeding Blocks in Order
+
+The propagation reactor maintains a channel to feed catchup blocks to consensus **in height order**:
+
+```go
+// consensus/propagation/reactor.go
+
+type Reactor struct {
+    // ... existing fields ...
+
+    // Channel to send complete catchup blocks to consensus.
+    // Blocks are sent in height order.
+    catchupBlockChan chan *CatchupBlockMessage
+}
+
+// feedCatchupBlocks runs as a goroutine, checking for complete blocks
+// and sending them to consensus in height order.
+func (r *Reactor) feedCatchupBlocks() {
+    ticker := time.NewTicker(100 * time.Millisecond)
+    defer ticker.Stop()
+
+    for {
+        select {
+        case <-r.ctx.Done():
+            return
+        case <-ticker.C:
+            r.tryFeedNextBlock()
+        }
+    }
+}
+
+func (r *Reactor) tryFeedNextBlock() {
+    store := r.pendingBlocks.Store()
+    if store == nil {
+        return
+    }
+
+    nextHeight := store.Height() + 1
+
+    // Check if we have the block complete
+    _, parts, ok := r.pendingBlocks.GetProposal(nextHeight, 0)
+    if !ok || !parts.IsComplete() {
+        return
+    }
+
+    // Check if we have a commit from headersync
+    commit := r.getCommitForHeight(nextHeight)
+    if commit == nil {
+        // No commit yet - parts will flow via normal syncData path
+        // when consensus reaches this height
+        return
+    }
+
+    // Reconstruct the block
+    block, err := r.reconstructBlock(parts)
+    if err != nil {
+        r.Logger.Error("failed to reconstruct block", "height", nextHeight, "err", err)
+        return
+    }
+
+    // Validate commit against block
+    if err := r.validateCommit(nextHeight, block, commit); err != nil {
+        r.Logger.Error("invalid commit", "height", nextHeight, "err", err)
+        return
+    }
+
+    // Send to consensus
+    msg := &CatchupBlockMessage{
+        Height: nextHeight,
+        Block:  block,
+        Parts:  parts,
+        Commit: commit,
+    }
+
+    select {
+    case r.catchupBlockChan <- msg:
+        r.Logger.Debug("sent catchup block to consensus", "height", nextHeight)
+    default:
+        // Channel full - will retry next tick
+    }
+}
+
+func (r *Reactor) getCommitForHeight(height int64) *types.Commit {
+    // Headersync provides commits via the next block's LastCommit
+    if r.headerSyncReactor != nil {
+        if _, _, ok := r.headerSyncReactor.GetVerifiedHeader(height); ok {
+            // We need height+1's header to get the commit for height
+            if nextHeader, _, ok := r.headerSyncReactor.GetVerifiedHeader(height + 1); ok {
+                // The header itself doesn't have LastCommit, but headersync
+                // should store it. Need to check headersync API.
+                return r.headerSyncReactor.GetCommit(height)
+            }
+        }
+    }
+    return nil
+}
+
+// GetCatchupBlockChan returns the channel for receiving catchup blocks.
+// Consensus subscribes to this channel.
+func (r *Reactor) GetCatchupBlockChan() <-chan *CatchupBlockMessage {
+    return r.catchupBlockChan
+}
+```
+
+#### Consensus: Handling CatchupBlockMessage
+
+The consensus state's `syncData()` is extended to also receive catchup blocks:
+
+```go
+// consensus/state.go
+
+func (cs *State) syncData() {
+    partChan := cs.propagator.GetPartChan()
+    proposalChan := cs.propagator.GetProposalChan()
+    catchupChan := cs.propagator.GetCatchupBlockChan() // NEW
+
+    for {
+        select {
+        case <-cs.Quit():
+            return
+
+        // ... existing proposal and part handling ...
+
+        case catchupBlock, ok := <-catchupChan:
+            if !ok {
+                return
+            }
+            // Send as internal message - will be processed by handleMsg
+            cs.internalMsgQueue <- msgInfo{catchupBlock, ""}
+        }
+    }
+}
+```
+
+The `handleMsg` function processes the new message type:
+
+```go
+// consensus/state.go handleMsg()
+
+case *CatchupBlockMessage:
+    // Catchup block with verified commit - execute directly
+    cs.executeCatchupBlock(msg)
+```
+
+The execution path:
+
+```go
+// consensus/state.go
+
+func (cs *State) executeCatchupBlock(msg *CatchupBlockMessage) {
+    logger := cs.Logger.With("height", msg.Height, "mode", "catchup")
+
+    // Must be the next block in sequence
+    if msg.Height != cs.state.LastBlockHeight+1 {
+        logger.Debug("catchup block not next in sequence",
+            "expected", cs.state.LastBlockHeight+1,
+            "got", msg.Height)
+        return
+    }
+
+    // Validate block against current state
+    if err := cs.blockExec.ValidateBlock(cs.state, msg.Block); err != nil {
+        logger.Error("catchup block validation failed", "err", err)
+        return
+    }
+
+    // Verify commit has +2/3 voting power
+    if err := cs.state.Validators.VerifyCommit(
+        cs.state.ChainID, msg.Block.Hash(), msg.Height, msg.Commit); err != nil {
+        logger.Error("catchup commit verification failed", "err", err)
+        return
+    }
+
+    logger.Info("executing catchup block", "hash", msg.Block.Hash())
+
+    // Save to block store
+    if cs.blockStore.Height() < msg.Height {
+        cs.blockStore.SaveBlock(msg.Block, msg.Parts, msg.Commit)
+    }
+
+    // Apply block
+    blockID := types.BlockID{Hash: msg.Block.Hash(), PartSetHeader: msg.Parts.Header()}
+    stateCopy, err := cs.blockExec.ApplyVerifiedBlock(cs.state.Copy(), blockID, msg.Block, msg.Commit)
+    if err != nil {
+        logger.Error("failed to apply catchup block", "err", err)
+        return
+    }
+
+    // Update state
+    cs.updateToState(stateCopy)
+
+    // Prune propagation
+    cs.propagator.Prune(msg.Height)
+
+    logger.Info("catchup block applied", "new_height", cs.state.LastBlockHeight)
+}
+```
+
+#### Two Paths: With Commit vs Without
+
+| Scenario | Commit Available? | Path |
+|----------|-------------------|------|
+| Live consensus | No (votes pending) | `syncData` → parts → `addProposalBlockPart` → votes → `tryFinalizeCommit` |
+| Catchup with headersync | Yes | `feedCatchupBlocks` → `CatchupBlockMessage` → `executeCatchupBlock` |
+| Catchup without headersync | No | Parts accumulate, then normal consensus path when we catch up |
+
+#### State Sync: The Exception
+
+State sync is special because it bootstraps state from scratch. After state sync:
+
+1. State is bootstrapped via `stateStore.Bootstrap(state)`
+2. SeenCommit is saved via `blockStore.SaveSeenCommit()`
+3. Consensus needs to be started with this new state
+
+For state sync only, we still call `SwitchToConsensus(state, skipWAL)` because:
+- Consensus hasn't started yet (`waitSync=true`)
+- State needs to be loaded into consensus via `updateToState(state)`
+- `reconstructLastCommit` needs the new state
+
+```go
+// node/setup.go - state sync completion
+
+// State sync is the ONLY case where SwitchToConsensus is needed
+conR.SwitchToConsensus(state, true) // skipWAL=true after state sync
+```
+
+#### Normal Startup: No SwitchToConsensus
+
+For normal startup (including nodes that are behind):
+
+1. Consensus starts immediately with `waitSync=false`
+2. Propagation reactor starts downloading blocks via headersync
+3. Catchup blocks flow via `CatchupBlockMessage` channel
+4. When caught up, there's nothing to "switch" - we're already in consensus
+
+```go
+// node/node.go - normal startup
+
+// Consensus starts immediately, no waiting for blocksync
+conR := cs.NewReactor(consensusState, propagator, false) // waitSync=false
+```
+
+#### Flow Diagram
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                     Propagation Reactor                          │
+│  ┌─────────────────┐    ┌─────────────────┐                     │
+│  │  Headersync     │───▶│ PendingBlocks   │                     │
+│  │  (commits)      │    │ (parts)         │                     │
+│  └─────────────────┘    └────────┬────────┘                     │
+│                                  │                               │
+│         ┌────────────────────────┼────────────────────────┐     │
+│         │                        │                        │     │
+│         ▼                        ▼                        │     │
+│  ┌──────────────┐         ┌──────────────┐               │     │
+│  │ Has commit?  │──Yes───▶│ feedCatchup  │               │     │
+│  │              │         │ Blocks()     │               │     │
+│  └──────┬───────┘         └──────┬───────┘               │     │
+│         │No                      │                        │     │
+│         │                        ▼                        │     │
+│         │              ┌──────────────────┐              │     │
+│         │              │ CatchupBlockMsg  │              │     │
+│         │              │ (height order)   │              │     │
+│         ▼              └────────┬─────────┘              │     │
+│  ┌──────────────┐               │                        │     │
+│  │ partChan     │               │                        │     │
+│  └──────┬───────┘               │                        │     │
+└─────────┼───────────────────────┼────────────────────────┘     │
+          │                       │                               │
+          ▼                       ▼                               │
+┌─────────────────────────────────────────────────────────────────┐
+│                      Consensus State                             │
+│                                                                  │
+│  syncData() receives:                                           │
+│  ├── parts (current height) → addProposalBlockPart → votes     │
+│  └── CatchupBlockMessage → executeCatchupBlock (direct)        │
+│                                                                  │
+│  Both paths end at:                                             │
+│  SaveBlock + ApplyVerifiedBlock + updateToState                 │
+└──────────────────────────────────────────────────────────────────┘
+```
+
+#### Key Benefits
+
+1. **No mode switching**: Consensus runs continuously; blocks flow in as messages
+2. **No state handoff**: State stays in consensus; no passing between reactors
+3. **Seamless catchup→live**: When caught up, catchup channel is empty; live path takes over
+4. **Height ordering**: Propagation sends blocks in order; consensus applies sequentially
+5. **Graceful degradation**: Without headersync/commits, falls back to normal part-based sync
+6. **Reuses existing code**: `ValidateBlock`, `ApplyVerifiedBlock`, `updateToState` unchanged
+
+#### Implementation Steps
+
+1. Add `CatchupBlockMessage` type to `consensus/reactor.go`
+2. Add `catchupBlockChan` to propagation reactor
+3. Add `feedCatchupBlocks()` goroutine to propagation
+4. Add `getCommitForHeight()` to get commits from headersync
+5. Extend `syncData()` to receive from catchup channel
+6. Add `executeCatchupBlock()` to consensus state
+7. Modify startup to use `waitSync=false` (except state sync)
+8. Remove `SwitchToCatchup` from propagation (no longer needed)
+
+#### Commit Source: Headersync
+
+Headersync verifies headers using light client verification. For each verified header at height H, the commit for H is found in the header at H+1 (as `LastCommit`).
+
+```go
+// headersync needs to expose commits
+type HeaderSyncReactor interface {
+    GetVerifiedHeader(height int64) (*types.Header, *types.BlockID, bool)
+    GetCommit(height int64) *types.Commit  // Returns LastCommit from height+1
+}
+```
+
+The commit verification chain:
+1. Headersync verifies header H+1 using light client (trusting validators)
+2. Header H+1 contains `LastCommit` which is the commit for block H
+3. This commit has +2/3 signatures from validators at height H
+4. We can use this commit to finalize block H without participating in consensus
 
 ## References
 

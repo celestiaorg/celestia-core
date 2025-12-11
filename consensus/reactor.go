@@ -1934,6 +1934,40 @@ func (m *BlockPartMessage) String() string {
 
 //-------------------------------------
 
+// CatchupBlockMessage is sent internally when propagation has a complete block
+// with a verified commit from headersync. This bypasses the normal vote-based
+// finalization and allows direct block execution during catchup.
+type CatchupBlockMessage struct {
+	Height int64
+	Block  *types.Block
+	Parts  *types.PartSet
+	Commit *types.Commit
+}
+
+// ValidateBasic performs basic validation.
+func (m *CatchupBlockMessage) ValidateBasic() error {
+	if m.Height < 1 {
+		return errors.New("invalid Height")
+	}
+	if m.Block == nil {
+		return errors.New("nil Block")
+	}
+	if m.Parts == nil || !m.Parts.IsComplete() {
+		return errors.New("incomplete Parts")
+	}
+	if m.Commit == nil {
+		return errors.New("nil Commit")
+	}
+	return nil
+}
+
+// String returns a string representation.
+func (m *CatchupBlockMessage) String() string {
+	return fmt.Sprintf("[CatchupBlock H:%v Hash:%v]", m.Height, m.Block.Hash())
+}
+
+//-------------------------------------
+
 // VoteMessage is sent when voting for a proposal (or lack thereof).
 type VoteMessage struct {
 	Vote *types.Vote

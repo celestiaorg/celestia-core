@@ -9,6 +9,8 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/cosmos/gogoproto/proto"
+
 	"github.com/cometbft/cometbft/crypto"
 
 	"github.com/cometbft/cometbft/libs/bits"
@@ -18,6 +20,7 @@ import (
 
 	"github.com/cometbft/cometbft/headersync"
 	"github.com/cometbft/cometbft/libs/sync"
+	cmtproto "github.com/cometbft/cometbft/proto/tendermint/types"
 	"github.com/cometbft/cometbft/store"
 	"github.com/cometbft/cometbft/types"
 
@@ -77,6 +80,20 @@ type Reactor struct {
 	// Headersync integration for pipelined block downloads.
 	headerSyncReactor *headersync.Reactor
 	headerChan        chan *headersync.VerifiedHeader
+
+	// Channel to send complete catchup blocks to consensus.
+	// Blocks are sent in height order when we have both parts and commit.
+	catchupBlockChan chan *CatchupBlockInfo
+}
+
+// CatchupBlockInfo contains a complete block with its commit for catchup execution.
+// This is sent to consensus when propagation has downloaded all parts and
+// headersync has provided a verified commit.
+type CatchupBlockInfo struct {
+	Height int64
+	Block  *types.Block
+	Parts  *types.PartSet
+	Commit *types.Commit
 }
 
 type Config struct {
@@ -106,9 +123,10 @@ func NewReactor(
 		privval:       config.Privval,
 		chainID:       config.ChainID,
 		BlockMaxBytes: config.BlockMaxBytes,
-		partChan:      partChan,
-		proposalChan:  make(chan ProposalAndSrc, 1000),
-		ticker:        time.NewTicker(RetryTime),
+		partChan:         partChan,
+		proposalChan:     make(chan ProposalAndSrc, 1000),
+		catchupBlockChan: make(chan *CatchupBlockInfo, 100),
+		ticker:           time.NewTicker(RetryTime),
 	}
 	for _, option := range options {
 		option(reactor)
@@ -151,7 +169,107 @@ func NewReactor(
 		}
 	}()
 
+	// Start the goroutine that feeds complete catchup blocks to consensus.
+	go reactor.feedCatchupBlocks()
+
 	return reactor
+}
+
+// feedCatchupBlocks runs as a goroutine, checking for complete blocks
+// and sending them to consensus in height order.
+func (r *Reactor) feedCatchupBlocks() {
+	ticker := time.NewTicker(100 * time.Millisecond)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-r.ctx.Done():
+			return
+		case <-ticker.C:
+			r.tryFeedNextBlock()
+		}
+	}
+}
+
+// tryFeedNextBlock checks if the next sequential block is complete with a commit
+// and sends it to consensus if so.
+func (r *Reactor) tryFeedNextBlock() {
+	store := r.pendingBlocks.Store()
+	if store == nil {
+		return
+	}
+
+	nextHeight := store.Height() + 1
+
+	// Check if we have the block complete
+	_, parts, ok := r.pendingBlocks.GetProposal(nextHeight, 0)
+	if !ok || parts == nil || !parts.IsComplete() {
+		return
+	}
+
+	// Check if we have a commit from headersync
+	commit := r.getCommitForHeight(nextHeight)
+	if commit == nil {
+		// No commit yet - parts will flow via normal syncData path
+		// when consensus reaches this height via voting
+		return
+	}
+
+	// Reconstruct the block from parts
+	block, err := r.reconstructBlock(parts)
+	if err != nil {
+		r.Logger.Error("failed to reconstruct catchup block", "height", nextHeight, "err", err)
+		return
+	}
+
+	// Create catchup block info
+	info := &CatchupBlockInfo{
+		Height: nextHeight,
+		Block:  block,
+		Parts:  parts,
+		Commit: commit,
+	}
+
+	// Send to consensus (non-blocking)
+	select {
+	case r.catchupBlockChan <- info:
+		r.Logger.Debug("sent catchup block to consensus", "height", nextHeight)
+	default:
+		// Channel full - will retry next tick
+		r.Logger.Debug("catchup block channel full, will retry", "height", nextHeight)
+	}
+}
+
+// getCommitForHeight retrieves the commit for a height from headersync.
+// The commit for height H is found in the header at H+1 (as LastCommit).
+func (r *Reactor) getCommitForHeight(height int64) *types.Commit {
+	if r.headerSyncReactor == nil {
+		return nil
+	}
+
+	// We need the header at height+1 to get the commit for height
+	return r.headerSyncReactor.GetCommit(height)
+}
+
+// reconstructBlock reconstructs a block from its complete part set.
+func (r *Reactor) reconstructBlock(parts *types.PartSet) (*types.Block, error) {
+	if parts == nil || !parts.IsComplete() {
+		return nil, errors.New("parts not complete")
+	}
+
+	bz := parts.GetBytes()
+
+	pbb := new(cmtproto.Block)
+	if err := proto.Unmarshal(bz, pbb); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal block proto: %w", err)
+	}
+
+	block, err := types.BlockFromProto(pbb)
+	if err != nil {
+		return nil, fmt.Errorf("failed to convert block from proto: %w", err)
+	}
+
+	return block, nil
 }
 
 type ReactorOption func(*Reactor)
@@ -496,6 +614,12 @@ func (r *Reactor) GetPartChan() <-chan types.PartInfo {
 // GetProposalChan returns the channel used for receiving proposals.
 func (r *Reactor) GetProposalChan() <-chan ProposalAndSrc {
 	return r.proposalChan
+}
+
+// GetCatchupBlockChan returns the channel for receiving complete catchup blocks.
+// Consensus subscribes to this channel to receive blocks that are ready for execution.
+func (r *Reactor) GetCatchupBlockChan() <-chan *CatchupBlockInfo {
+	return r.catchupBlockChan
 }
 
 // --- Methods forwarding to PendingBlocksManager ---

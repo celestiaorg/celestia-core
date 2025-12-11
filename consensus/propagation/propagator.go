@@ -19,6 +19,7 @@ type Propagator interface {
 	SetProposer(proposer crypto.PubKey)
 	GetPartChan() <-chan types.PartInfo
 	GetProposalChan() <-chan ProposalAndSrc
+	GetCatchupBlockChan() <-chan *CatchupBlockInfo
 }
 
 type ProposalAndSrc struct {
@@ -86,5 +87,9 @@ func (nop *NoOpPropagator) GetPartChan() <-chan types.PartInfo {
 }
 
 func (nop *NoOpPropagator) GetProposalChan() <-chan ProposalAndSrc {
+	return nil
+}
+
+func (nop *NoOpPropagator) GetCatchupBlockChan() <-chan *CatchupBlockInfo {
 	return nil
 }

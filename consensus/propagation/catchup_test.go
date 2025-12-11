@@ -438,3 +438,175 @@ func createCompactBlock(
 	cb.SetProofCache(proofs)
 	return cb, parityBlock
 }
+
+//-------------------------------------------
+// Tests for CatchupBlockInfo channel functionality
+//-------------------------------------------
+
+// TestGetCatchupBlockChan verifies that GetCatchupBlockChan returns the correct channel.
+func TestGetCatchupBlockChan(t *testing.T) {
+	p2pCfg := defaultTestP2PConf()
+	nodes := 1
+	reactors, _ := createTestReactors(nodes, p2pCfg, false, "")
+	r := reactors[0]
+
+	// Get the channel
+	ch := r.GetCatchupBlockChan()
+	require.NotNil(t, ch, "catchup block channel should not be nil")
+
+	// Verify it's a receive-only channel
+	// This is a type assertion test - the returned channel should be read-only
+	_, ok := interface{}(ch).(<-chan *CatchupBlockInfo)
+	require.True(t, ok, "channel should be read-only")
+}
+
+// TestReconstructBlock verifies that reconstructBlock properly reconstructs a block from parts.
+func TestReconstructBlock(t *testing.T) {
+	p2pCfg := defaultTestP2PConf()
+	nodes := 1
+	reactors, _ := createTestReactors(nodes, p2pCfg, false, "")
+	r := reactors[0]
+	cleanup, _, sm := state.SetupTestCase(t)
+	t.Cleanup(func() {
+		cleanup(t)
+	})
+
+	// Create a test proposal with a block
+	_, ps, block, _ := createTestProposal(t, sm, 1, 0, 2, 100000)
+
+	// Reconstruct the block from the parts
+	reconstructedBlock, err := r.reconstructBlock(ps)
+	require.NoError(t, err)
+	require.NotNil(t, reconstructedBlock)
+
+	// Verify the reconstructed block matches the original
+	require.Equal(t, block.Height, reconstructedBlock.Height)
+	require.Equal(t, block.Hash(), reconstructedBlock.Hash())
+}
+
+// TestReconstructBlock_NilParts verifies that reconstructBlock returns error for nil parts.
+func TestReconstructBlock_NilParts(t *testing.T) {
+	p2pCfg := defaultTestP2PConf()
+	nodes := 1
+	reactors, _ := createTestReactors(nodes, p2pCfg, false, "")
+	r := reactors[0]
+
+	_, err := r.reconstructBlock(nil)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "not complete")
+}
+
+// TestReconstructBlock_IncompleteParts verifies that reconstructBlock returns error for incomplete parts.
+func TestReconstructBlock_IncompleteParts(t *testing.T) {
+	p2pCfg := defaultTestP2PConf()
+	nodes := 1
+	reactors, _ := createTestReactors(nodes, p2pCfg, false, "")
+	r := reactors[0]
+
+	// Create incomplete parts (empty partset with header)
+	incompleteParts := types.NewPartSetFromHeader(types.PartSetHeader{
+		Total: 10,
+		Hash:  cmtrand.Bytes(32),
+	}, types.BlockPartSizeBytes)
+
+	_, err := r.reconstructBlock(incompleteParts)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "not complete")
+}
+
+// TestGetCommitForHeight_NoHeadersyncReactor verifies that getCommitForHeight returns nil when headerSyncReactor is nil.
+func TestGetCommitForHeight_NoHeadersyncReactor(t *testing.T) {
+	p2pCfg := defaultTestP2PConf()
+	nodes := 1
+	reactors, _ := createTestReactors(nodes, p2pCfg, false, "")
+	r := reactors[0]
+
+	// headerSyncReactor is nil by default in test setup
+	commit := r.getCommitForHeight(10)
+	require.Nil(t, commit, "should return nil when headerSyncReactor is nil")
+}
+
+// TestTryFeedNextBlock_StoreEmpty verifies that tryFeedNextBlock handles empty store gracefully.
+// When the store is at height 0 and there are no complete blocks, nothing should be sent.
+func TestTryFeedNextBlock_StoreEmpty(t *testing.T) {
+	p2pCfg := defaultTestP2PConf()
+	nodes := 1
+	reactors, _ := createTestReactors(nodes, p2pCfg, false, "")
+	r := reactors[0]
+
+	// Store is at height 0 (empty), so nextHeight would be 1
+	// There are no proposals at height 1, so nothing should be sent
+	r.tryFeedNextBlock()
+
+	// Verify nothing was sent
+	select {
+	case <-r.GetCatchupBlockChan():
+		t.Fatal("should not receive a catchup block when no proposals exist")
+	default:
+		// Expected - no message
+	}
+}
+
+// TestTryFeedNextBlock_NoParts verifies that tryFeedNextBlock does nothing when no complete parts exist.
+func TestTryFeedNextBlock_NoParts(t *testing.T) {
+	p2pCfg := defaultTestP2PConf()
+	nodes := 1
+	reactors, _ := createTestReactors(nodes, p2pCfg, false, "")
+	r := reactors[0]
+	cleanup, _, sm := state.SetupTestCase(t)
+	t.Cleanup(func() {
+		cleanup(t)
+	})
+
+	// Add a commitment but don't complete the parts
+	prop, ps, _, _ := createTestProposal(t, sm, 1, 0, 2, 100000)
+	psh := ps.Header()
+	r.AddCommitment(prop.Height, prop.Round, &psh)
+
+	// Try to feed - should not send anything (parts not complete)
+	r.tryFeedNextBlock()
+
+	// Verify nothing was sent
+	select {
+	case <-r.GetCatchupBlockChan():
+		t.Fatal("should not receive a catchup block when parts are incomplete")
+	default:
+		// Expected - no message
+	}
+}
+
+// TestCatchupBlockChanCapacity verifies the channel buffer capacity.
+func TestCatchupBlockChanCapacity(t *testing.T) {
+	p2pCfg := defaultTestP2PConf()
+	nodes := 1
+	reactors, _ := createTestReactors(nodes, p2pCfg, false, "")
+	r := reactors[0]
+
+	// The channel should have a buffer (100 in the implementation)
+	ch := r.GetCatchupBlockChan()
+
+	// Try to send 100 items (should not block)
+	sent := 0
+	for i := 0; i < 100; i++ {
+		select {
+		case r.catchupBlockChan <- &CatchupBlockInfo{Height: int64(i + 1)}:
+			sent++
+		default:
+			break
+		}
+	}
+	require.Equal(t, 100, sent, "should be able to send 100 items to buffer")
+
+	// 101st should fail (non-blocking)
+	select {
+	case r.catchupBlockChan <- &CatchupBlockInfo{Height: 101}:
+		t.Fatal("should not be able to send to full channel")
+	default:
+		// Expected
+	}
+
+	// Drain the channel for cleanup
+	for i := 0; i < 100; i++ {
+		<-ch
+	}
+}
