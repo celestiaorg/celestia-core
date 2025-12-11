@@ -2901,7 +2901,7 @@ func (cs *State) syncData() {
 					continue
 				}
 				part := partset.GetPart(indice)
-				cs.internalMsgQueue <- msgInfo{&BlockPartMessage{height, round, part}, ""}
+				cs.peerMsgQueue <- msgInfo{&BlockPartMessage{height, round, part}, ""}
 			}
 		case part, ok := <-partChan:
 			if !ok {
