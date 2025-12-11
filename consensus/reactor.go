@@ -690,6 +690,9 @@ func (conR *Reactor) initiateBlockSyncSwitch() {
 
 	conR.Logger.Info("Switching from consensus to blocksync mode")
 
+	// Broadcast syncing status BEFORE stopping consensus to tell peers to stop sending us consensus messages
+	conR.broadcastSyncingStatus()
+
 	// Stop consensus state machine
 	if err := conR.conS.Stop(); err != nil {
 		conR.Logger.Error("Error stopping consensus state", "err", err)
@@ -767,7 +770,8 @@ func (conR *Reactor) unsubscribeFromBroadcastEvents() {
 }
 
 func (conR *Reactor) broadcastNewRoundStepMessage(rs *cstypes.RoundState) {
-	nrsMsg := makeRoundStepMessage(rs)
+	nrsMsg := makeRoundStepMessage(rs, false)
+	conR.Logger.Info("Broadcasting NewRoundStep", "height", rs.Height, "round", rs.Round, "step", rs.Step, "syncing", false)
 	conR.Switch.Broadcast(p2p.Envelope{
 		ChannelID: StateChannel,
 		Message:   nrsMsg,
@@ -851,20 +855,22 @@ func (conR *Reactor) broadcastHasVoteMessage(vote *types.Vote) {
 	*/
 }
 
-func makeRoundStepMessage(rs *cstypes.RoundState) (nrsMsg *cmtcons.NewRoundStep) {
+func makeRoundStepMessage(rs *cstypes.RoundState, syncing bool) (nrsMsg *cmtcons.NewRoundStep) {
 	nrsMsg = &cmtcons.NewRoundStep{
 		Height:                rs.Height,
 		Round:                 rs.Round,
 		Step:                  uint32(rs.Step),
 		SecondsSinceStartTime: int64(time.Since(rs.StartTime).Seconds()),
 		LastCommitRound:       rs.LastCommit.GetRound(),
+		Syncing:               syncing,
 	}
 	return
 }
 
 func (conR *Reactor) sendNewRoundStepMessage(peer p2p.Peer) {
 	rs := conR.getRoundState()
-	nrsMsg := makeRoundStepMessage(rs)
+	nrsMsg := makeRoundStepMessage(rs, false)
+	conR.Logger.Info("Sending NewRoundStep to peer", "peer", peer.ID(), "height", rs.Height, "round", rs.Round, "step", rs.Step, "syncing", false)
 	if peer.Send(p2p.Envelope{
 		ChannelID: StateChannel,
 		Message:   nrsMsg,
@@ -879,6 +885,18 @@ func (conR *Reactor) sendNewRoundStepMessage(peer p2p.Peer) {
 			strconv.FormatUint(uint64(nrsMsg.Step), 10),
 		)
 	}
+}
+
+// broadcastSyncingStatus broadcasts that this node is entering blocksync mode.
+// This tells peers to stop sending consensus messages to us.
+func (conR *Reactor) broadcastSyncingStatus() {
+	rs := conR.getRoundState()
+	nrsMsg := makeRoundStepMessage(rs, true)
+	conR.Logger.Info("Broadcasting syncing status", "height", rs.Height, "round", rs.Round, "syncing", true)
+	conR.Switch.Broadcast(p2p.Envelope{
+		ChannelID: StateChannel,
+		Message:   nrsMsg,
+	})
 }
 
 func (conR *Reactor) updateRoundStateRoutine() {
@@ -1807,6 +1825,22 @@ func (ps *PeerState) ApplyNewRoundStepMessage(msg *NewRoundStepMessage) {
 	ps.mtx.Lock()
 	defer ps.mtx.Unlock()
 
+	// If peer is syncing, set their height to 0 so we stop gossiping to them
+	if msg.Syncing {
+		ps.logger.Info("Peer is syncing, setting height to 0", "peer_height", msg.Height)
+		ps.PRS.Height = 0
+		ps.PRS.Round = 0
+		ps.PRS.Step = 0
+		ps.PRS.Proposal = false
+		ps.PRS.ProposalBlockPartSetHeader = types.PartSetHeader{}
+		ps.PRS.ProposalBlockParts = nil
+		ps.PRS.ProposalPOLRound = -1
+		ps.PRS.ProposalPOL = nil
+		ps.PRS.Prevotes = nil
+		ps.PRS.Precommits = nil
+		return
+	}
+
 	// Ignore duplicates or decreases
 	if CompareHRS(msg.Height, msg.Round, msg.Step, ps.PRS.Height, ps.PRS.Round, ps.PRS.Step) <= 0 {
 		return
@@ -1973,6 +2007,7 @@ type NewRoundStepMessage struct {
 	Step                  cstypes.RoundStepType
 	SecondsSinceStartTime int64
 	LastCommitRound       int32
+	Syncing               bool // true if node is in blocksync mode
 }
 
 // ValidateBasic performs basic validation.
@@ -2018,8 +2053,8 @@ func (m *NewRoundStepMessage) ValidateHeight(initialHeight int64) error {
 
 // String returns a string representation.
 func (m *NewRoundStepMessage) String() string {
-	return fmt.Sprintf("[NewRoundStep H:%v R:%v S:%v LCR:%v]",
-		m.Height, m.Round, m.Step, m.LastCommitRound)
+	return fmt.Sprintf("[NewRoundStep H:%v R:%v S:%v LCR:%v Syncing:%v]",
+		m.Height, m.Round, m.Step, m.LastCommitRound, m.Syncing)
 }
 
 //-------------------------------------

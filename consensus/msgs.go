@@ -137,6 +137,7 @@ func MsgFromProto(p proto.Message) (Message, error) {
 			Step:                  cstypes.RoundStepType(rs),
 			SecondsSinceStartTime: msg.SecondsSinceStartTime,
 			LastCommitRound:       msg.LastCommitRound,
+			Syncing:               msg.Syncing,
 		}
 	case *cmtcons.NewValidBlock:
 		pbPartSetHeader, err := types.PartSetHeaderFromProto(&msg.BlockPartSetHeader)

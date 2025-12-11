@@ -564,6 +564,7 @@ enable_legacy_block_prop = {{ .Consensus.EnableLegacyBlockProp }}
 
 # Dynamic blocksync switching configuration
 # Number of blocks behind majority of peers before switching to blocksync.
+# Also used to stop gossiping consensus messages to peers that are too far behind.
 # Set to 0 to disable automatic switching.
 blocks_behind_threshold = {{ .Consensus.BlocksBehindThreshold }}
 

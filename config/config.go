@@ -1127,8 +1127,9 @@ type ConsensusConfig struct {
 	EnableLegacyBlockProp     bool `mapstructure:"enable_legacy_block_prop"`
 
 	// BlocksBehindThreshold is the number of blocks behind the majority of peers
-	// before switching to blocksync mode. Set to 0 to disable automatic switching.
-	// Default: 3
+	// before switching to blocksync mode. Also used to stop gossiping to peers
+	// that are too far behind. Set to 0 to disable automatic switching.
+	// Default: 4
 	BlocksBehindThreshold int64 `mapstructure:"blocks_behind_threshold"`
 
 	// MinSwitchCooldown is the minimum time to wait after switching modes before
@@ -1157,7 +1158,7 @@ func DefaultConsensusConfig() *ConsensusConfig {
 		DoubleSignCheckHeight:       int64(0),
 		DisablePropagationReactor:   false,
 		EnableLegacyBlockProp:       false,
-		BlocksBehindThreshold:       3, // switch to blocksync if majority of peers are 3+ blocks ahead
+		BlocksBehindThreshold:       4, // switch to blocksync if majority of peers are 4+ blocks ahead; also stops gossip to peers this far behind
 		MinSwitchCooldown:           10 * time.Second,
 	}
 }
