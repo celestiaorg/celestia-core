@@ -143,6 +143,13 @@ func (r *Reactor) IsCaughtUp() bool {
 		return false
 	}
 
+	// If we have headersync, ensure it has discovered peers before we trust maxPeerHeight.
+	// After a reset (e.g. state sync), headersync might need time to receive status updates
+	// from peers, even if p2p connections are established.
+	if r.headerSyncReactor != nil && r.headerSyncReactor.PeersCount() == 0 {
+		return false
+	}
+
 	// Similar logic to blocksync: we're caught up if our height >= maxPeerHeight - 1
 	// (because we need the next block's commit to verify).
 	receivedBlockOrTimedOut := storeHeight > 0

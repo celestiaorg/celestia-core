@@ -640,3 +640,9 @@ func (r *Reactor) Height() int64 {
 func (r *Reactor) MaxPeerHeight() int64 {
 	return r.pool.MaxPeerHeight()
 }
+
+// PeersCount returns the number of connected peers in the pool.
+func (r *Reactor) PeersCount() int {
+	_, _, numPeers := r.pool.GetStatus()
+	return numPeers
+}
