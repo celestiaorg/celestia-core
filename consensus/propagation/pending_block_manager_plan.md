@@ -1119,43 +1119,56 @@ go func() {
 
 ---
 
-## Phase 8: Transition from Blocksync Reactor
+## Phase 8: Transition from Blocksync Reactor (IMPLEMENTED)
 
 ### Step 8.1: Disable blocksync reactor when propagation is used
 
-The blocksync reactor should be disabled when propagation + headersync handles syncing.
+When propagation + headersync handles syncing, simply don't add a blocksync reactor to the switch.
+No NoOpReactor is needed - the blocksync reactor can be omitted entirely.
 
-```go
-// In node setup
-if config.PropagationEnabled && config.HeaderSyncEnabled {
-    // Use propagation-based blocksync
-    blocksyncReactor = blocksync.NewNoOpReactor()
-} else {
-    // Use traditional blocksync
-    blocksyncReactor = blocksync.NewReactor(...)
-}
-```
+**Note**: The `SwitchToConsensus` interface is still needed for state sync, but that's handled
+separately from blocksync.
 
-**Testing Criteria**:
-- [ ] Integration test: `TestPropagationBlocksync_ReplacesTraditional` - propagation handles sync
-- [ ] Integration test: `TestPropagationBlocksync_Disabled` - falls back to traditional
+### Step 8.2: Implement `IsCaughtUp` check (IMPLEMENTED)
 
-### Step 8.2: Implement `IsCaughtUp` check
+Added `IsCaughtUp()` method to propagation reactor.
+
+**File**: `consensus/propagation/reactor.go`
 
 ```go
 func (r *Reactor) IsCaughtUp() bool {
-    // Caught up if:
-    // 1. No pending blocks with height < consensus height
-    // 2. Headersync is caught up
-    // 3. At least one peer connected
-    return r.pendingBlocks.LowestHeight() >= r.consensusHeight() &&
-           r.headerSync.IsCaughtUp() &&
-           len(r.getPeers()) > 0
+    // Legacy mode - not applicable
+    if r.pendingBlocks == nil || r.hsReader == nil {
+        return false
+    }
+
+    // Check if headersync is caught up
+    if !r.hsReader.IsCaughtUp() {
+        return false
+    }
+
+    // Check if we have peers
+    if len(r.getPeers()) == 0 {
+        return false
+    }
+
+    // Check if all pending blocks are at or above consensus height
+    lowestPending := r.pendingBlocks.LowestHeight()
+    return lowestPending == 0 || lowestPending >= consensusHeight
 }
 ```
 
+**Reactor Options Added**:
+- `WithHeaderSyncReader(reader)` - configures the HeaderSyncReader for IsCaughtUp checks
+
 **Testing Criteria**:
-- [ ] Unit test: `TestIsCaughtUp_AllConditions` - all conditions checked
+- [x] Unit test: `TestIsCaughtUp_LegacyMode` - returns false when not configured (IMPLEMENTED)
+- [x] Unit test: `TestIsCaughtUp_NoPeers` - returns false when no peers (IMPLEMENTED)
+- [x] Unit test: `TestIsCaughtUp_HeaderSyncNotCaughtUp` - returns false when HS not caught up (IMPLEMENTED)
+- [x] Unit test: `TestIsCaughtUp_PendingBlocksBelowConsensusHeight` - returns false (IMPLEMENTED)
+- [x] Unit test: `TestIsCaughtUp_AllConditionsMet` - returns true when all conditions met (IMPLEMENTED)
+- [x] Unit test: `TestIsCaughtUp_PendingBlocksAtConsensusHeight` - returns true (IMPLEMENTED)
+- [x] Unit test: `TestIsCaughtUp_PendingBlocksAboveConsensusHeight` - returns true (IMPLEMENTED)
 - [ ] Integration test: `TestCaughtUp_SwitchesToConsensus` - triggers consensus switch
 
 ---

@@ -80,6 +80,10 @@ type Reactor struct {
 	// blockDelivery ensures blocksync blocks are delivered to consensus in order.
 	// Only used when pendingBlocks is configured.
 	blockDelivery *BlockDeliveryManager
+
+	// hsReader provides access to headersync state for IsCaughtUp checks.
+	// Only used when pendingBlocks is configured for propagation-based blocksync.
+	hsReader HeaderSyncReader
 }
 
 type Config struct {
@@ -163,6 +167,14 @@ func WithPendingBlocksManager(mgr *PendingBlocksManager) func(r *Reactor) {
 func WithBlockDeliveryManager(mgr *BlockDeliveryManager) func(r *Reactor) {
 	return func(r *Reactor) {
 		r.blockDelivery = mgr
+	}
+}
+
+// WithHeaderSyncReader configures the HeaderSyncReader for IsCaughtUp checks.
+// This is required for propagation-based blocksync to know when to switch to consensus.
+func WithHeaderSyncReader(reader HeaderSyncReader) func(r *Reactor) {
+	return func(r *Reactor) {
+		r.hsReader = reader
 	}
 }
 
@@ -436,4 +448,42 @@ func (r *Reactor) GetBlockChan() <-chan *CompletedBlock {
 		return nil
 	}
 	return r.blockDelivery.BlockChan()
+}
+
+// IsCaughtUp returns true if the propagation reactor has caught up with the network.
+// This is used to determine when to switch from blocksync mode to live consensus.
+//
+// The reactor is considered caught up when ALL of these conditions are met:
+// 1. No pending blocks with height < consensus height (all historical blocks processed)
+// 2. Headersync is caught up to peers (we have all necessary headers)
+// 3. At least one peer is connected (we can participate in consensus)
+//
+// If pendingBlocks or hsReader is not configured, this returns false (legacy mode
+// should use the blocksync reactor's IsCaughtUp instead).
+func (r *Reactor) IsCaughtUp() bool {
+	// Legacy mode - not applicable
+	if r.pendingBlocks == nil || r.hsReader == nil {
+		return false
+	}
+
+	// Check if headersync is caught up
+	if !r.hsReader.IsCaughtUp() {
+		return false
+	}
+
+	// Check if we have peers
+	if len(r.getPeers()) == 0 {
+		return false
+	}
+
+	// Check if all pending blocks are at or above consensus height
+	// Get the current consensus height from the reactor's internal state
+	r.pmtx.Lock()
+	consensusHeight := r.height
+	r.pmtx.Unlock()
+
+	lowestPending := r.pendingBlocks.LowestHeight()
+	// If there are no pending blocks, or the lowest pending block is at/above
+	// the consensus height, we're caught up
+	return lowestPending == 0 || lowestPending >= consensusHeight
 }
