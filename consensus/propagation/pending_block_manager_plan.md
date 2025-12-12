@@ -1173,24 +1173,43 @@ func (r *Reactor) IsCaughtUp() bool {
 
 ---
 
-## Phase 9: Full Integration Tests
+## Phase 9: Full Integration Tests (PARTIALLY IMPLEMENTED)
 
-### Step 9.1: Single node blocksync
+### Step 9.1: Single node blocksync (IMPLEMENTED)
 
-```go
-func TestSingleNodeBlocksync(t *testing.T) {
-    // 1. Create network with 2 nodes (one ahead by 100 blocks)
-    // 2. Start lagging node
-    // 3. Verify it syncs to current height
-    // 4. Verify blocks applied in order
-    // 5. Verify consensus switches correctly
-}
-```
+**File**: `consensus/propagation/blocksync_integration_test.go`
+
+The following integration tests have been implemented:
+
+1. **`TestSingleNodeBlocksync`** - Full blocksync workflow:
+   - Creates 2 reactors (ahead and lagging)
+   - Creates 5 blocks on the ahead node
+   - Sets up PendingBlocksManager with MockHeaderSyncReader
+   - Fills capacity from headers
+   - Simulates receiving parts from ahead node
+   - Verifies blocks are delivered in order via BlockDeliveryManager
+
+2. **`TestSingleNodeBlocksync_OutOfOrderParts`** - Out-of-order handling:
+   - Sends parts in reverse height order (height 3, 2, 1)
+   - Verifies blocks are still delivered in correct order (1, 2, 3)
+   - Tests BlockDeliveryManager's buffering logic
+
+3. **`TestSingleNodeBlocksync_PartialProgress`** - Gap handling:
+   - Completes block 1 first (delivered immediately)
+   - Completes block 3 (buffered, waiting for block 2)
+   - Completes block 2 (both 2 and 3 delivered in order)
+   - Tests that gaps don't block earlier blocks
+
+4. **`TestSingleNodeBlocksync_StateConsistency`** - State verification:
+   - Verifies initial state (0 blocks, has capacity)
+   - Verifies all blocks tracked after TryFillCapacity
+   - Verifies all blocks marked Complete after receiving parts
+   - Verifies Prune correctly removes old blocks
 
 **Testing Criteria**:
-- [ ] Integration test: `TestSingleNodeBlocksync` - node catches up
-- [ ] Verify: Blocks applied in strictly increasing order
-- [ ] Verify: State is consistent after sync
+- [x] Integration test: `TestSingleNodeBlocksync` - node catches up (IMPLEMENTED)
+- [x] Verify: Blocks applied in strictly increasing order (IMPLEMENTED)
+- [x] Verify: State is consistent after sync (IMPLEMENTED)
 
 ### Step 9.2: Multi-node parallel blocksync
 
