@@ -19,6 +19,9 @@ type Propagator interface {
 	SetProposer(proposer crypto.PubKey)
 	GetPartChan() <-chan types.PartInfo
 	GetProposalChan() <-chan ProposalAndSrc
+	// SetPaused pauses or resumes propagation. When paused, the reactor
+	// will not request new block parts (used during blocksync catchup).
+	SetPaused(paused bool)
 }
 
 type ProposalAndSrc struct {
@@ -87,4 +90,7 @@ func (nop *NoOpPropagator) GetPartChan() <-chan types.PartInfo {
 
 func (nop *NoOpPropagator) GetProposalChan() <-chan ProposalAndSrc {
 	return nil
+}
+
+func (nop *NoOpPropagator) SetPaused(_ bool) {
 }

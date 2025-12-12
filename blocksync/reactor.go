@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"reflect"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/cometbft/cometbft/crypto"
@@ -83,6 +84,17 @@ type Reactor struct {
 	switchToConsensusMs int
 
 	metrics *Metrics
+
+	// providerMode when true, validated blocks are sent to blockChan
+	// instead of being saved and applied directly
+	providerMode atomic.Bool
+
+	// providerModeStartedPool tracks if we started the pool for provider mode
+	// so we know to stop it when exiting provider mode
+	providerModeStartedPool atomic.Bool
+
+	// blockChan is used to send validated blocks to consensus when in provider mode
+	blockChan chan *types.ValidatedBlock
 }
 
 // NewReactor returns new reactor instance.
@@ -137,6 +149,7 @@ func NewReactorWithAddr(state sm.State, blockExec *sm.BlockExecutor, store *stor
 		errorsCh:     errorsCh,
 		metrics:      metrics,
 		traceClient:  traceClient,
+		blockChan:    make(chan *types.ValidatedBlock, 100),
 	}
 	bcR.BaseReactor = *p2p.NewBaseReactor("BlockSync", bcR, p2p.WithIncomingQueueSize(ReactorIncomingMessageQueueSize), p2p.WithTraceClient(traceClient))
 
@@ -447,6 +460,13 @@ FOR_LOOP:
 				)
 				continue FOR_LOOP
 			}
+
+			// In provider mode, don't switch to consensus - just keep running
+			// and providing blocks. Consensus will disable provider mode when caught up.
+			if bcR.providerMode.Load() {
+				continue FOR_LOOP
+			}
+
 			if bcR.pool.IsCaughtUp() || bcR.localNodeBlocksTheChain(state) {
 				bcR.Logger.Info("Time to switch to consensus reactor!", "height", height)
 				if err := bcR.pool.Stop(); err != nil {
@@ -608,12 +628,27 @@ FOR_LOOP:
 			schema.WriteBlocksyncBlockSaved(bcR.traceClient, first.Height, blockSize,
 				validationDuration.Milliseconds(), saveDuration.Milliseconds(), totalDuration.Milliseconds())
 
-			// TODO: same thing for app - but we would need a way to
-			// get the hash without persisting the state
-			state, err = bcR.blockExec.ApplyVerifiedBlock(state, firstID, first, second.LastCommit)
-			if err != nil {
-				// TODO This is bad, are we zombie?
-				panic(fmt.Sprintf("Failed to process committed block (%d:%X): %v", first.Height, first.Hash(), err))
+			if bcR.providerMode.Load() {
+				validatedBlock := &types.ValidatedBlock{
+					Block:      first,
+					Commit:     second.LastCommit,
+					BlockParts: firstParts,
+					BlockID:    firstID,
+				}
+				select {
+				case bcR.blockChan <- validatedBlock:
+					bcR.Logger.Debug("Sent validated block to consensus", "height", first.Height)
+				case <-bcR.Quit():
+					break FOR_LOOP
+				}
+			} else {
+				// TODO: same thing for app - but we would need a way to
+				// get the hash without persisting the state
+				state, err = bcR.blockExec.ApplyVerifiedBlock(state, firstID, first, second.LastCommit)
+				if err != nil {
+					// TODO This is bad, are we zombie?
+					panic(fmt.Sprintf("Failed to process committed block (%d:%X): %v", first.Height, first.Hash(), err))
+				}
 			}
 			bcR.metrics.recordBlockMetrics(first)
 			blocksSynced++
@@ -641,4 +676,48 @@ func (bcR *Reactor) BroadcastStatusRequest() {
 		ChannelID: BlocksyncChannel,
 		Message:   &bcproto.StatusRequest{},
 	})
+}
+
+// SetProviderMode enables or disables provider mode.
+// When enabled, validated blocks are sent to BlockChan instead of being applied.
+// If the pool is not running when enabling, it will be started.
+// When disabled, if we started the pool for provider mode, it will be stopped.
+func (bcR *Reactor) SetProviderMode(enabled bool) {
+	bcR.providerMode.Store(enabled)
+	if enabled {
+		bcR.Logger.Info("Blocksync provider mode enabled")
+		// Start pool if not running
+		if !bcR.pool.IsRunning() {
+			bcR.Logger.Info("Starting blocksync pool for provider mode")
+			// Update pool height to start from next block after store
+			bcR.pool.height = bcR.store.Height() + 1
+			if err := bcR.pool.Start(); err != nil {
+				bcR.Logger.Error("Failed to start pool for provider mode", "err", err)
+				return
+			}
+			bcR.providerModeStartedPool.Store(true)
+			bcR.poolRoutineWg.Add(1)
+			go func() {
+				defer bcR.poolRoutineWg.Done()
+				bcR.poolRoutine(false)
+			}()
+		}
+	} else {
+		bcR.Logger.Info("Blocksync provider mode disabled")
+		// Stop pool if we started it for provider mode
+		if bcR.providerModeStartedPool.Load() {
+			bcR.Logger.Info("Stopping blocksync pool (was started for provider mode)")
+			if err := bcR.pool.Stop(); err != nil {
+				bcR.Logger.Error("Error stopping pool", "err", err)
+			}
+			bcR.poolRoutineWg.Wait()
+			bcR.providerModeStartedPool.Store(false)
+		}
+	}
+}
+
+// BlockChan returns the channel for receiving validated blocks.
+// Blocks are only sent when provider mode is enabled.
+func (bcR *Reactor) BlockChan() <-chan *types.ValidatedBlock {
+	return bcR.blockChan
 }

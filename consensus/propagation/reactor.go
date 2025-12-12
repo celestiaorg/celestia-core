@@ -67,6 +67,7 @@ type Reactor struct {
 	traceClient trace.Tracer
 	self        p2p.ID
 	started     atomic.Bool
+	paused      atomic.Bool
 	ticker      *time.Ticker
 
 	ctx    context.Context
@@ -337,6 +338,17 @@ func (blockProp *Reactor) ResetRequestCounts() {
 
 func (blockProp *Reactor) StartProcessing() {
 	blockProp.started.Store(true)
+}
+
+// SetPaused pauses or resumes the propagation reactor.
+// When paused, the reactor will not request new block parts.
+func (blockProp *Reactor) SetPaused(paused bool) {
+	blockProp.paused.Store(paused)
+	if paused {
+		blockProp.Logger.Info("Propagation reactor paused (blocksync catchup active)")
+	} else {
+		blockProp.Logger.Info("Propagation reactor resumed")
+	}
 }
 
 func ConcurrentRequestLimit(peersCount, partsCount int) int64 {

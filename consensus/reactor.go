@@ -328,6 +328,8 @@ func (conR *Reactor) receive(e p2p.Envelope) error {
 				return err
 			}
 			ps.ApplyNewRoundStepMessage(msg)
+			// Track maximum peer height for catchup detection
+			conR.conS.UpdateMaxPeerHeight(msg.Height)
 		case *NewValidBlockMessage:
 			schema.WriteConsensusState(
 				conR.traceClient,

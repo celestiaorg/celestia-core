@@ -1621,3 +1621,12 @@ func BlockIDFromProto(bID *cmtproto.BlockID) (*BlockID, error) {
 func ProtoBlockIDIsNil(bID *cmtproto.BlockID) bool {
 	return len(bID.Hash) == 0 && ProtoPartSetHeaderIsZero(&bID.PartSetHeader)
 }
+
+// ValidatedBlock contains a block that has been validated by blocksync
+// and is ready to be applied by consensus.
+type ValidatedBlock struct {
+	Block      *Block
+	Commit     *Commit
+	BlockParts *PartSet
+	BlockID    BlockID
+}

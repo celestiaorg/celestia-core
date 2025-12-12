@@ -84,6 +84,16 @@ type evidencePool interface {
 	ReportConflictingVotes(voteA, voteB *types.Vote)
 }
 
+// BlockSyncProvider provides validated blocks from blocksync when consensus
+// is behind and needs to catch up quickly.
+type BlockSyncProvider interface {
+	// SetProviderMode enables or disables provider mode.
+	// When enabled, blocksync sends validated blocks to BlockChan.
+	SetProviderMode(enabled bool)
+	// BlockChan returns the channel for receiving validated blocks.
+	BlockChan() <-chan *types.ValidatedBlock
+}
+
 // State handles execution of the consensus algorithm.
 // It processes votes and proposals, and upon reaching agreement,
 // commits blocks to the chain and executes them against the application.
@@ -172,6 +182,15 @@ type State struct {
 
 	// gossipDataEnabled controls whether the gossipDataRoutine should run
 	gossipDataEnabled atomic.Bool
+
+	// blockSyncProvider provides validated blocks from blocksync when we're behind
+	blockSyncProvider BlockSyncProvider
+
+	// maxPeerHeight tracks the maximum height reported by peers
+	maxPeerHeight atomic.Int64
+
+	// catchupThreshold is the number of blocks behind before using blocksync
+	catchupThreshold int64
 }
 
 // StateOption sets an optional parameter on the State.
@@ -206,6 +225,7 @@ func NewState(
 		metrics:              NopMetrics(),
 		traceClient:          trace.NoOpTracer(),
 		newHeightOrRoundChan: make(chan struct{}, 1),
+		catchupThreshold:     2, // Use blocksync when more than 2 blocks behind
 	}
 	for _, option := range options {
 		option(cs)
@@ -352,6 +372,94 @@ func (cs *State) SetTimeoutTicker(timeoutTicker TimeoutTicker) {
 	cs.mtx.Unlock()
 }
 
+// SetBlockSyncProvider sets the blocksync provider for catching up.
+func (cs *State) SetBlockSyncProvider(provider BlockSyncProvider) {
+	cs.mtx.Lock()
+	cs.blockSyncProvider = provider
+	cs.mtx.Unlock()
+}
+
+// UpdateMaxPeerHeight updates the maximum peer height if the new height is higher.
+// This is called by the reactor when it receives NewRoundStepMessage from peers.
+func (cs *State) UpdateMaxPeerHeight(height int64) {
+	for {
+		current := cs.maxPeerHeight.Load()
+		if height <= current {
+			return
+		}
+		if cs.maxPeerHeight.CompareAndSwap(current, height) {
+			return
+		}
+	}
+}
+
+// GetMaxPeerHeight returns the maximum peer height.
+func (cs *State) GetMaxPeerHeight() int64 {
+	return cs.maxPeerHeight.Load()
+}
+
+// IsBehind returns true if we're more than catchupThreshold blocks behind peers.
+func (cs *State) IsBehind() bool {
+	cs.rsMtx.RLock()
+	ourHeight := cs.rs.Height
+	cs.rsMtx.RUnlock()
+
+	maxPeer := cs.maxPeerHeight.Load()
+	return maxPeer > 0 && maxPeer >= ourHeight+cs.catchupThreshold
+}
+
+// applyValidatedBlock applies a block that has already been validated by blocksync.
+// This is used during catchup when receiving blocks from the blocksync channel.
+func (cs *State) applyValidatedBlock(vb *types.ValidatedBlock) error {
+	height := vb.Block.Height
+
+	cs.Logger.Info("Applying validated block from blocksync", "height", height)
+
+	// Get current state
+	cs.stateMtx.RLock()
+	stateCopy := cs.state.Copy()
+	cs.stateMtx.RUnlock()
+
+	// Save to blockstore if not already saved
+	if cs.blockStore.Height() < height {
+		cs.blockStore.SaveBlock(vb.Block, vb.BlockParts, vb.Commit)
+	}
+
+	// Write EndHeightMessage for WAL consistency
+	endMsg := EndHeightMessage{height}
+	if err := cs.wal.WriteSync(endMsg); err != nil {
+		return fmt.Errorf("failed to write EndHeightMessage to WAL: %w", err)
+	}
+
+	// Apply the block (blocksync already validated it)
+	newState, err := cs.blockExec.ApplyVerifiedBlock(stateCopy, vb.BlockID, vb.Block, vb.Commit)
+	if err != nil {
+		return fmt.Errorf("failed to apply block: %w", err)
+	}
+
+	// Update consensus state using the same pattern as SwitchToConsensus:
+	// hold all locks, reconstruct LastCommit from blockstore, then updateToState
+	cs.lockAll()
+	defer cs.unlockAll()
+
+	// We have no votes, so reconstruct LastCommit from SeenCommit (same as SwitchToConsensus)
+	cs.reconstructLastCommit(newState)
+
+	// Update to the new state - this handles all the round state reset
+	cs.updateToState(newState)
+
+	// Prune propagation reactor
+	cs.propagator.Prune(height)
+	proposer := newState.Validators.GetProposer()
+	if proposer != nil {
+		cs.propagator.SetProposer(proposer.PubKey)
+	}
+
+	cs.Logger.Info("Successfully applied validated block from blocksync", "height", height, "new_height", height+1)
+
+	return nil
+}
+
 // LoadCommit loads the commit for a given height.
 func (cs *State) LoadCommit(height int64) *types.Commit {
 
@@ -448,6 +556,7 @@ func (cs *State) OnStart() error {
 	// now start the receiveRoutine
 	go cs.receiveRoutine(0)
 	go cs.syncData()
+	go cs.catchupRoutine()
 
 	// schedule the first round!
 	// use GetRoundState so we don't race the receiveRoutine for access
@@ -2939,4 +3048,101 @@ func (cs *State) unlockAll() {
 	cs.rsMtx.Unlock()
 	cs.stateMtx.Unlock()
 	cs.mtx.Unlock()
+}
+
+// catchupRoutine monitors if we're behind and enables blocksync provider mode
+// to receive validated blocks through a channel. This allows consensus to catch up
+// using blocksync without stopping the state machine.
+func (cs *State) catchupRoutine() {
+	ticker := time.NewTicker(100 * time.Millisecond)
+	defer ticker.Stop()
+
+	providerModeEnabled := false
+
+	// Get the block channel from provider (may be nil if no provider set)
+	cs.mtx.Lock()
+	provider := cs.blockSyncProvider
+	cs.mtx.Unlock()
+
+	var blockChan <-chan *types.ValidatedBlock
+	if provider != nil {
+		blockChan = provider.BlockChan()
+	}
+
+	for {
+		select {
+		case <-ticker.C:
+			// Re-check provider in case it was set after startup
+			if provider == nil {
+				cs.mtx.Lock()
+				provider = cs.blockSyncProvider
+				cs.mtx.Unlock()
+				if provider != nil {
+					blockChan = provider.BlockChan()
+				}
+			}
+
+			if provider == nil {
+				continue
+			}
+
+			isBehind := cs.IsBehind()
+
+			if isBehind && !providerModeEnabled {
+				// We're behind - enable provider mode and pause propagation
+				cs.Logger.Info("Consensus is behind, enabling blocksync provider mode",
+					"our_height", cs.GetLastHeight()+1,
+					"max_peer_height", cs.GetMaxPeerHeight())
+				provider.SetProviderMode(true)
+				cs.propagator.SetPaused(true)
+				providerModeEnabled = true
+			} else if !isBehind && providerModeEnabled {
+				// We caught up - disable provider mode and resume propagation
+				cs.Logger.Info("Consensus caught up, disabling blocksync provider mode")
+				provider.SetProviderMode(false)
+				cs.propagator.SetPaused(false)
+				providerModeEnabled = false
+			}
+
+		case vb := <-blockChan:
+			if vb == nil {
+				continue
+			}
+
+			// Verify the block height matches what we expect
+			cs.rsMtx.RLock()
+			expectedHeight := cs.rs.Height
+			cs.rsMtx.RUnlock()
+
+			if vb.Block.Height != expectedHeight {
+				cs.Logger.Debug("Received block with unexpected height, skipping",
+					"expected", expectedHeight,
+					"received", vb.Block.Height)
+				continue
+			}
+
+			// Apply the validated block
+			if err := cs.applyValidatedBlock(vb); err != nil {
+				cs.Logger.Error("Failed to apply validated block from blocksync",
+					"height", vb.Block.Height,
+					"err", err)
+				continue
+			}
+
+			// Check if we're still behind
+			if !cs.IsBehind() && providerModeEnabled {
+				cs.Logger.Info("Consensus caught up via blocksync provider")
+				provider.SetProviderMode(false)
+				cs.propagator.SetPaused(false)
+				providerModeEnabled = false
+			}
+
+		case <-cs.done:
+			if providerModeEnabled && provider != nil {
+				provider.SetProviderMode(false)
+				cs.propagator.SetPaused(false)
+			}
+			return
+		}
+	}
 }

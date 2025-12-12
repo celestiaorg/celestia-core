@@ -17,6 +17,10 @@ func (blockProp *Reactor) retryWants() {
 	if !blockProp.started.Load() {
 		return
 	}
+	// Don't request parts if paused (blocksync catchup is active)
+	if blockProp.paused.Load() {
+		return
+	}
 	data := blockProp.unfinishedHeights()
 	peers := blockProp.getPeers()
 	for _, prop := range data {
@@ -91,6 +95,11 @@ func (blockProp *Reactor) retryWants() {
 }
 
 func (blockProp *Reactor) AddCommitment(height int64, round int32, psh *types.PartSetHeader) {
+	// Don't add commitments if paused (blocksync catchup is active)
+	if blockProp.paused.Load() {
+		blockProp.Logger.Debug("ignoring commitment, propagation is paused", "height", height, "round", round)
+		return
+	}
 	blockProp.Logger.Info("adding commitment", "height", height, "round", round, "psh", psh)
 	blockProp.pmtx.Lock()
 	defer blockProp.pmtx.Unlock()

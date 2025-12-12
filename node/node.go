@@ -475,6 +475,11 @@ func NewNodeWithContext(ctx context.Context,
 		privValidator, csMetrics, propagator, stateSync || blockSync, eventBus, consensusLogger, offlineStateSyncHeight, tracer,
 	)
 
+	// Wire up blocksync as block provider for consensus catchup
+	if bcReactorTyped, ok := bcReactor.(*bc.Reactor); ok {
+		consensusState.SetBlockSyncProvider(bcReactorTyped)
+	}
+
 	err = stateStore.SetOfflineStateSyncHeight(0)
 	if err != nil {
 		panic(fmt.Sprintf("failed to reset the offline state sync height %s", err))
