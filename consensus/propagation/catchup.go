@@ -139,3 +139,101 @@ func shuffle[T any](slice []T) []T {
 	}
 	return slice
 }
+
+// requestMissingParts uses the PendingBlocksManager to request missing parts
+// for all tracked pending blocks. This is the unified request routine that
+// replaces the old retryWants for both catchup and blocksync scenarios.
+//
+// It iterates through pending blocks (ordered by height - lowest first) and
+// requests missing parts from peers that are at or above each block's height.
+func (blockProp *Reactor) requestMissingParts() {
+	if !blockProp.started.Load() {
+		return
+	}
+
+	if blockProp.pendingBlocks == nil {
+		// Fall back to legacy retryWants if PendingBlocksManager not configured
+		blockProp.retryWants()
+		return
+	}
+
+	// Get missing parts info for up to 100 blocks, ordered by height (lowest first)
+	missing := blockProp.pendingBlocks.GetMissingParts(100)
+	if len(missing) == 0 {
+		return
+	}
+
+	peers := blockProp.getPeers()
+	if len(peers) == 0 {
+		return
+	}
+
+	for _, info := range missing {
+		// Shuffle peers to distribute load
+		peers = shuffle(peers)
+
+		for _, peer := range peers {
+			// Skip peers that don't have this height yet
+			if peer.consensusPeerState.GetHeight() < info.Height {
+				continue
+			}
+
+			// Get what parts we still need to request (subtract already requested)
+			mc := info.Missing.Copy()
+
+			reqs, has := peer.GetRequests(info.Height, info.Round)
+			if has {
+				mc = mc.Sub(reqs)
+			}
+
+			if mc.IsEmpty() {
+				continue
+			}
+
+			// Calculate how many parts we still need to decode
+			// (need half the total parts with erasure coding)
+			pendingBlock := blockProp.pendingBlocks.GetBlock(info.Height)
+			if pendingBlock == nil {
+				continue
+			}
+			haveParts := len(pendingBlock.Parts.BitArray().GetTrueIndices())
+			missingPartsCount := countRemainingParts(int(info.Total), haveParts)
+			if missingPartsCount == 0 {
+				continue
+			}
+
+			// Build and send WantParts message
+			e := p2p.Envelope{
+				ChannelID: WantChannel,
+				Message: &protoprop.WantParts{
+					Parts:             *mc.ToProto(),
+					Height:            info.Height,
+					Round:             info.Round,
+					Prove:             info.NeedsProofs, // Use proof requirement from manager
+					MissingPartsCount: missingPartsCount,
+				},
+			}
+
+			if !peer.peer.TrySend(e) {
+				blockProp.Logger.Error("failed to send want part", "peer", peer.peer.ID(),
+					"height", info.Height, "round", info.Round)
+				continue
+			}
+
+			schema.WriteCatchupRequest(blockProp.traceClient, info.Height, info.Round,
+				mc.String(), string(peer.peer.ID()))
+
+			// Limit requests per part to avoid over-requesting
+			for _, partIndex := range mc.GetTrueIndices() {
+				reqLimit := ReqLimit(int(info.Total))
+				reqsCount := blockProp.countRequests(info.Height, info.Round, partIndex)
+				if len(reqsCount) >= reqLimit {
+					info.Missing.SetIndex(partIndex, false)
+				}
+			}
+
+			// Track which requests we've made
+			peer.AddRequests(info.Height, info.Round, mc)
+		}
+	}
+}

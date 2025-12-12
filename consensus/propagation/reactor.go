@@ -71,6 +71,15 @@ type Reactor struct {
 
 	ctx    context.Context
 	cancel context.CancelFunc
+
+	// pendingBlocks manages pending blocks for both catchup and blocksync.
+	// When set, the reactor uses this for unified part tracking and requests.
+	// When nil, falls back to legacy ProposalCache-based catchup.
+	pendingBlocks *PendingBlocksManager
+
+	// blockDelivery ensures blocksync blocks are delivered to consensus in order.
+	// Only used when pendingBlocks is configured.
+	blockDelivery *BlockDeliveryManager
 }
 
 type Config struct {
@@ -112,15 +121,17 @@ func NewReactor(
 		p2p.WithTraceClient(reactor.traceClient),
 	)
 
-	// start the catchup routine
+	// start the catchup/blocksync retry routine
 	go func() {
 		for {
 			select {
 			case <-reactor.ctx.Done():
 				return
 			case <-reactor.ticker.C:
-				// run the catchup routine to recover any missing parts for past heights.
-				reactor.retryWants()
+				// Run the unified request routine to recover missing parts.
+				// If pendingBlocks is configured, uses the new unified manager.
+				// Otherwise falls back to legacy retryWants.
+				reactor.requestMissingParts()
 			}
 		}
 	}()
@@ -134,6 +145,24 @@ func WithTracer(tracer trace.Tracer) func(r *Reactor) {
 	return func(r *Reactor) {
 		r.traceClient = tracer
 		r.SetTraceClient(tracer)
+	}
+}
+
+// WithPendingBlocksManager configures the reactor to use the unified
+// PendingBlocksManager for both catchup and blocksync. When set, the reactor
+// uses part-level parallelism for downloading blocks from multiple peers.
+// If not set, the reactor falls back to legacy ProposalCache-based catchup.
+func WithPendingBlocksManager(mgr *PendingBlocksManager) func(r *Reactor) {
+	return func(r *Reactor) {
+		r.pendingBlocks = mgr
+	}
+}
+
+// WithBlockDeliveryManager configures the BlockDeliveryManager for ordered
+// block delivery to consensus during blocksync.
+func WithBlockDeliveryManager(mgr *BlockDeliveryManager) func(r *Reactor) {
+	return func(r *Reactor) {
+		r.blockDelivery = mgr
 	}
 }
 
@@ -401,7 +430,10 @@ func (r *Reactor) GetProposalChan() <-chan ProposalAndSrc {
 
 // GetBlockChan returns the channel used for receiving complete blocksync blocks.
 // Blocks on this channel are guaranteed to arrive in strictly increasing height order.
-// TODO: This will be implemented when BlockDeliveryManager is integrated into the reactor.
+// Returns nil if BlockDeliveryManager is not configured (legacy mode or NoOpPropagator).
 func (r *Reactor) GetBlockChan() <-chan *CompletedBlock {
-	return nil
+	if r.blockDelivery == nil {
+		return nil
+	}
+	return r.blockDelivery.BlockChan()
 }
