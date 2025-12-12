@@ -782,3 +782,184 @@ func TestPeerStateEditor(t *testing.T) {
 	assert.Equal(t, int32(1), editor.blockParts[0].Round)
 	assert.Equal(t, 0, editor.blockParts[0].Index)
 }
+
+// ============================================================================
+// Phase 6.2: handleRecoveryPart Routing Tests
+// ============================================================================
+
+// TestHandleRecoveryPart_LiveConsensus verifies that parts for the current
+// consensus height are sent to partChan (live consensus mode).
+func TestHandleRecoveryPart_LiveConsensus(t *testing.T) {
+	reactors, _ := testBlockPropReactors(2, cfg.DefaultP2PConfig())
+	reactor1 := reactors[0]
+	reactor2 := reactors[1]
+
+	randomData := cmtrand.Bytes(1000)
+	ps, err := types.NewPartSetFromData(randomData, types.BlockPartSizeBytes)
+	require.NoError(t, err)
+	pse, lastLen, err := types.Encode(ps, types.BlockPartSizeBytes)
+	require.NoError(t, err)
+	psh := ps.Header()
+	pseh := pse.Header()
+
+	hashes := extractHashes(ps, pse)
+	proofs := extractProofs(ps, pse)
+
+	// Use height 5, which is > the reactor's current height (1)
+	height, round := int64(5), int32(0)
+
+	// Set reactor's current height to match the part height (live consensus)
+	reactor1.SetHeightAndRound(height, round)
+
+	baseCompactBlock := &proptypes.CompactBlock{
+		BpHash:      pseh.Hash,
+		Signature:   cmtrand.Bytes(64),
+		LastLen:     uint32(lastLen),
+		PartsHashes: hashes,
+		Proposal: types.Proposal{
+			BlockID: types.BlockID{
+				Hash:          cmtrand.Bytes(32),
+				PartSetHeader: psh,
+			},
+			Height: height,
+			Round:  round,
+		},
+	}
+	baseCompactBlock.SetProofCache(proofs)
+
+	added := reactor1.AddProposal(baseCompactBlock)
+	require.True(t, added)
+
+	// Start the reactor processing to enable partChan handling
+	reactor1.StartProcessing()
+
+	// Send a recovery part at the current consensus height
+	reactor1.handleRecoveryPart(reactor2.self, &proptypes.RecoveryPart{
+		Height: height,
+		Round:  round,
+		Index:  0,
+		Data:   ps.GetPart(0).Bytes.Bytes(),
+	})
+
+	// Verify the part was sent to partChan (live consensus mode)
+	select {
+	case part := <-reactor1.GetPartChan():
+		require.Equal(t, height, part.Height)
+		require.Equal(t, round, part.Round)
+		require.Equal(t, uint32(0), part.Part.Index)
+	case <-time.After(time.Second):
+		t.Fatal("timeout waiting for part on partChan - part should be delivered for live consensus height")
+	}
+}
+
+// TestHandleRecoveryPart_HeightRouting verifies that parts are only sent to
+// partChan when they match the current consensus height.
+// Parts for any other height (whether above or below) should NOT go to partChan.
+//
+// NOTE: This test verifies the core routing logic introduced in Phase 6.2.
+// Full blocksync/catchup integration requires PendingBlocksManager which will
+// be completed in later phases.
+func TestHandleRecoveryPart_HeightRouting(t *testing.T) {
+	reactors, _ := testBlockPropReactors(2, cfg.DefaultP2PConfig())
+	reactor1 := reactors[0]
+	reactor2 := reactors[1]
+
+	randomData := cmtrand.Bytes(1000)
+	ps, err := types.NewPartSetFromData(randomData, types.BlockPartSizeBytes)
+	require.NoError(t, err)
+	pse, lastLen, err := types.Encode(ps, types.BlockPartSizeBytes)
+	require.NoError(t, err)
+	psh := ps.Header()
+	pseh := pse.Header()
+
+	hashes := extractHashes(ps, pse)
+	proofs := extractProofs(ps, pse)
+
+	// Test at height 5
+	height, round := int64(5), int32(0)
+	reactor1.SetHeightAndRound(height, round)
+
+	cb := &proptypes.CompactBlock{
+		BpHash:      pseh.Hash,
+		Signature:   cmtrand.Bytes(64),
+		LastLen:     uint32(lastLen),
+		PartsHashes: hashes,
+		Proposal: types.Proposal{
+			BlockID: types.BlockID{
+				Hash:          cmtrand.Bytes(32),
+				PartSetHeader: psh,
+			},
+			Height: height,
+			Round:  round,
+		},
+	}
+	cb.SetProofCache(proofs)
+	added := reactor1.AddProposal(cb)
+	require.True(t, added)
+
+	reactor1.StartProcessing()
+
+	// Send part at current height - should go to partChan
+	reactor1.handleRecoveryPart(reactor2.self, &proptypes.RecoveryPart{
+		Height: height,
+		Round:  round,
+		Index:  0,
+		Data:   ps.GetPart(0).Bytes.Bytes(),
+	})
+
+	select {
+	case part := <-reactor1.GetPartChan():
+		require.Equal(t, height, part.Height)
+		require.Equal(t, round, part.Round)
+	case <-time.After(time.Second):
+		t.Fatal("part at current height should be sent to partChan")
+	}
+
+	// Now test that advancing height stops parts from going to partChan
+	newHeight := int64(10)
+	reactor1.SetHeightAndRound(newHeight, 0)
+
+	// Add proposal at new height
+	cb2 := &proptypes.CompactBlock{
+		BpHash:      pseh.Hash,
+		Signature:   cmtrand.Bytes(64),
+		LastLen:     uint32(lastLen),
+		PartsHashes: hashes,
+		Proposal: types.Proposal{
+			BlockID: types.BlockID{
+				Hash:          cmtrand.Bytes(32),
+				PartSetHeader: psh,
+			},
+			Height: newHeight,
+			Round:  0,
+		},
+	}
+	cb2.SetProofCache(proofs)
+	added = reactor1.AddProposal(cb2)
+	require.True(t, added)
+
+	// Send part at NEW current height - should go to partChan
+	reactor1.handleRecoveryPart(reactor2.self, &proptypes.RecoveryPart{
+		Height: newHeight,
+		Round:  0,
+		Index:  0,
+		Data:   ps.GetPart(0).Bytes.Bytes(),
+	})
+
+	select {
+	case part := <-reactor1.GetPartChan():
+		require.Equal(t, newHeight, part.Height)
+	case <-time.After(time.Second):
+		t.Fatal("part at new current height should be sent to partChan")
+	}
+
+	// Verify the old height's part was stored
+	_, parts, found := reactor1.GetProposal(height, round)
+	require.True(t, found)
+	require.Equal(t, uint32(1), parts.Count())
+
+	// Verify the new height's part was stored
+	_, parts, found = reactor1.GetProposal(newHeight, 0)
+	require.True(t, found)
+	require.Equal(t, uint32(1), parts.Count())
+}

@@ -820,6 +820,8 @@ func (d *BlockDeliveryManager) Run() {
 ```
 
 **Testing Criteria**:
+- [x] Unit test: `TestBlockDeliveryManager_Creation` - verify creation (IMPLEMENTED)
+- [x] Unit test: `TestBlockDeliveryManager_BlockChan` - verify channel access (IMPLEMENTED)
 - [ ] Unit test: `TestDelivery_InOrder` - delivers in height order
 - [ ] Unit test: `TestDelivery_WaitsForGaps` - waits for missing heights
 - [ ] Unit test: `TestDelivery_BatchDelivery` - delivers multiple consecutive blocks
@@ -827,7 +829,7 @@ func (d *BlockDeliveryManager) Run() {
 - [ ] Unit test: `TestDelivery_Backpressure` - blocks are buffered correctly when `blockChan` is slow/full
 - [ ] Unit test: `TestDelivery_DuplicateOrStaleCompletion` - completions for heights < nextHeight are ignored without panicking
 
-### Step 6.2: Modify `handleRecoveryPart` for dual routing
+### Step 6.2: Modify `handleRecoveryPart` for dual routing (IMPLEMENTED)
 
 The existing `handleRecoveryPart` must route parts to BOTH live consensus AND the pending blocks manager:
 
@@ -887,11 +889,12 @@ func (blockProp *Reactor) handleRecoveryPart(peer p2p.ID, part *RecoveryPart) {
 ```
 
 **Testing Criteria**:
-- [ ] Unit test: `TestHandleRecoveryPart_LiveConsensus` - routes to partChan
-- [ ] Unit test: `TestHandleRecoveryPart_Blocksync` - does NOT route to partChan
-- [ ] Unit test: `TestHandleRecoveryPart_BothPaths` - PendingBlocksManager always gets part
+- [x] Unit test: `TestHandleRecoveryPart_LiveConsensus` - routes to partChan (IMPLEMENTED)
+- [x] Unit test: `TestHandleRecoveryPart_HeightRouting` - verifies height-based routing (IMPLEMENTED)
+- [ ] Unit test: `TestHandleRecoveryPart_Blocksync` - does NOT route to partChan (requires PendingBlocksManager integration)
+- [ ] Unit test: `TestHandleRecoveryPart_BothPaths` - PendingBlocksManager always gets part (requires PendingBlocksManager integration)
 
-### Step 6.3: Modify consensus `syncData` for blocksync
+### Step 6.3: Modify consensus `syncData` for blocksync (IMPLEMENTED)
 
 The existing `syncData` adds a new case for complete blocksync blocks:
 
@@ -937,7 +940,7 @@ func (cs *State) syncData() {
 }
 ```
 
-### Step 6.4: Implement `applyBlocksyncBlock`
+### Step 6.4: Implement `applyBlocksyncBlock` (IMPLEMENTED)
 
 This is the core blocksync application logic, similar to what `blocksync.Reactor.poolRoutine` does:
 
@@ -1009,7 +1012,9 @@ func (cs *State) applyBlocksyncBlock(completed *CompletedBlock) error {
 - [ ] Unit test: `TestApplyBlocksyncBlock_InvalidBlock` - rejects malformed block
 - [ ] Integration test: `TestBlocksyncToConsensus` - full flow works
 
-### Step 6.5: Add `GetBlockChan` to Propagator interface
+### Step 6.5: Add `GetBlockChan` to Propagator interface (PARTIALLY IMPLEMENTED)
+
+The interface and stub implementation exist. The reactor currently returns `nil` - needs integration with `BlockDeliveryManager` when reactor is wired up.
 
 ```go
 // In propagator.go
@@ -1018,14 +1023,16 @@ type Propagator interface {
     GetBlockChan() <-chan *CompletedBlock  // NEW
 }
 
-// In reactor.go
+// In reactor.go - currently returns nil, needs BlockDeliveryManager integration
 func (r *Reactor) GetBlockChan() <-chan *CompletedBlock {
-    return r.blockDelivery.blockChan
+    return nil  // TODO: return r.blockDelivery.blockChan when integrated
 }
 ```
 
 **Testing Criteria**:
-- [ ] Unit test: `TestGetBlockChan` - returns valid channel
+- [x] Interface added to `Propagator` (IMPLEMENTED)
+- [x] `NoOpPropagator.GetBlockChan()` returns nil (IMPLEMENTED)
+- [ ] Unit test: `TestGetBlockChan` - returns valid channel (requires BlockDeliveryManager integration)
 - [ ] Unit test: `TestNoOpPropagator_GetBlockChan` - returns nil
 
 ---

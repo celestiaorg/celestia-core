@@ -2868,6 +2868,7 @@ func repairWalFile(src, dst string) error {
 func (cs *State) syncData() {
 	partChan := cs.propagator.GetPartChan()
 	proposalChan := cs.propagator.GetProposalChan()
+	blockChan := cs.propagator.GetBlockChan() // For complete blocksync blocks
 
 	for {
 		select {
@@ -2925,8 +2926,85 @@ func (cs *State) syncData() {
 			}
 
 			cs.peerMsgQueue <- msgInfo{&BlockPartMessage{h, r, part.Part}, ""}
+
+		// Complete blocksync blocks - delivered in strictly increasing height order
+		case block, ok := <-blockChan:
+			if !ok || block == nil {
+				// blockChan is nil when blocksync is disabled (NoOpPropagator)
+				// or closed when shutting down
+				continue
+			}
+			if err := cs.applyBlocksyncBlock(block); err != nil {
+				cs.Logger.Error("failed to apply blocksync block", "height", block.Height, "err", err)
+			}
 		}
 	}
+}
+
+// applyBlocksyncBlock applies a complete block received from blocksync.
+// This is similar to what blocksync.Reactor.poolRoutine does, but operates
+// on blocks delivered through the propagation reactor's blockChan.
+//
+// The block has already been verified to have a valid commit from headersync.
+// Blocks are guaranteed to arrive in strictly increasing height order.
+func (cs *State) applyBlocksyncBlock(completed *propagation.CompletedBlock) error {
+	// 1. Validate this is the next expected height
+	cs.stateMtx.RLock()
+	expectedHeight := cs.state.LastBlockHeight + 1
+	state := cs.state
+	cs.stateMtx.RUnlock()
+
+	if completed.Height != expectedHeight {
+		return fmt.Errorf("unexpected blocksync height: got %d, want %d",
+			completed.Height, expectedHeight)
+	}
+
+	// 2. Reconstruct block from parts
+	bz := completed.Parts.GetBytes()
+	pbb := new(cmtproto.Block)
+	if err := proto.Unmarshal(bz, pbb); err != nil {
+		return fmt.Errorf("failed to unmarshal block: %w", err)
+	}
+	block, err := types.BlockFromProto(pbb)
+	if err != nil {
+		return fmt.Errorf("failed to convert block from proto: %w", err)
+	}
+
+	// 3. Verify commit (commit is from headersync's verified header)
+	if completed.Commit == nil {
+		return fmt.Errorf("blocksync block missing commit")
+	}
+
+	if err := state.Validators.VerifyCommitLight(
+		cs.state.ChainID, completed.BlockID, completed.Height, completed.Commit,
+	); err != nil {
+		return fmt.Errorf("commit verification failed: %w", err)
+	}
+
+	// 4. Validate block structure
+	if err := cs.blockExec.ValidateBlock(state, block); err != nil {
+		return fmt.Errorf("block validation failed: %w", err)
+	}
+
+	// 5. Save block to store
+	cs.blockStore.SaveBlock(block, completed.Parts, completed.Commit)
+
+	// 6. Apply to state using ApplyVerifiedBlock (same as blocksync reactor)
+	newState, err := cs.blockExec.ApplyVerifiedBlock(state, completed.BlockID, block, completed.Commit)
+	if err != nil {
+		return fmt.Errorf("failed to apply block: %w", err)
+	}
+
+	// 7. Update consensus state
+	cs.stateMtx.Lock()
+	cs.state = newState
+	cs.stateMtx.Unlock()
+
+	// 8. Prune propagator state
+	cs.propagator.Prune(completed.Height)
+
+	cs.Logger.Info("Applied blocksync block", "height", completed.Height)
+	return nil
 }
 
 func (cs *State) lockAll() {

@@ -504,8 +504,14 @@ func (blockProp *Reactor) handleRecoveryPart(peer p2p.ID, part *proptypes.Recove
 		return
 	}
 
-	// only send original parts to the consensus reactor
-	if part.Index < parts.Original().Total() {
+	// Determine if this is a live consensus height or a blocksync height.
+	// Only send original parts to partChan for LIVE consensus height.
+	// Blocksync blocks are delivered via blockChan when complete (through BlockDeliveryManager).
+	blockProp.pmtx.Lock()
+	isLiveConsensus := part.Height == blockProp.height
+	blockProp.pmtx.Unlock()
+
+	if isLiveConsensus && part.Index < parts.Original().Total() {
 		select {
 		case <-blockProp.ctx.Done():
 			return
@@ -556,8 +562,9 @@ func (blockProp *Reactor) handleRecoveryPart(peer p2p.ID, part *proptypes.Recove
 				blockProp.Logger.Error("failed to get decoded part", "peer", peer, "height", part.Height, "round", part.Round, "part", i)
 				continue
 			}
-			// only send original parts to the consensus reactor
-			if i < parts.Original().Total() && missingOriginalParts.GetIndex(int(i)) {
+			// Only send original parts to partChan for LIVE consensus height.
+			// Blocksync blocks are delivered via blockChan when complete.
+			if isLiveConsensus && i < parts.Original().Total() && missingOriginalParts.GetIndex(int(i)) {
 				select {
 				case <-blockProp.ctx.Done():
 					return
