@@ -18,7 +18,7 @@ import (
 
 const (
 	// HeaderSyncChannel is the channel ID for header sync messages.
-	HeaderSyncChannel = byte(0x60)
+	HeaderSyncChannel = byte(0x69)
 
 	// ReactorIncomingMessageQueueSize is the size of the reactor's message queue.
 	ReactorIncomingMessageQueueSize = 100
@@ -599,4 +599,71 @@ func (r *Reactor) Height() int64 {
 // MaxPeerHeight returns the highest peer header height.
 func (r *Reactor) MaxPeerHeight() int64 {
 	return r.pool.MaxPeerHeight()
+}
+
+// ResetHeight resets the reactor state to start syncing from the given height.
+// This is used when the node state jumps (e.g. after state sync).
+func (r *Reactor) ResetHeight(height int64) {
+	r.lastHeader = r.blockStore.LoadHeader(height)
+	r.pool.ResetHeight(height + 1)
+}
+
+// GetVerifiedHeader returns a verified header from the block store if available.
+// This is used by the propagation reactor to check if a header has been verified
+// before processing a compact block.
+func (r *Reactor) GetVerifiedHeader(height int64) (*types.Header, *types.BlockID, bool) {
+	header := r.blockStore.LoadHeader(height)
+	if header == nil {
+		return nil, nil, false
+	}
+
+	// Load the commit to get the PartSetHeader for the BlockID.
+	commit := r.blockStore.LoadSeenCommit(height)
+	if commit == nil {
+		commit = r.blockStore.LoadBlockCommit(height)
+	}
+	if commit == nil {
+		return nil, nil, false
+	}
+
+	blockID := types.BlockID{
+		Hash:          header.Hash(),
+		PartSetHeader: commit.BlockID.PartSetHeader,
+	}
+
+	return header, &blockID, true
+}
+
+// GetCommit returns the commit for a given height.
+// The commit for height H is found as the LastCommit in the header at H+1.
+// This is used by the propagation reactor to provide commits for catchup blocks.
+func (r *Reactor) GetCommit(height int64) *types.Commit {
+	// First try to get it from the next block's commit
+	nextHeader := r.blockStore.LoadHeader(height + 1)
+	if nextHeader != nil {
+		// The commit for height is stored as SeenCommit at height
+		// or as the LastCommit in the block at height+1
+		commit := r.blockStore.LoadSeenCommit(height)
+		if commit != nil {
+			return commit
+		}
+		commit = r.blockStore.LoadBlockCommit(height)
+		if commit != nil {
+			return commit
+		}
+	}
+
+	// If we have the header but not the next block, check if we stored a SeenCommit
+	commit := r.blockStore.LoadSeenCommit(height)
+	if commit != nil {
+		return commit
+	}
+
+	return nil
+}
+
+// PeersCount returns the number of connected peers in the pool.
+func (r *Reactor) PeersCount() int {
+	_, _, numPeers := r.pool.GetStatus()
+	return numPeers
 }

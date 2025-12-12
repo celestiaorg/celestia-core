@@ -470,13 +470,13 @@ func (pool *HeaderPool) MarkHeaderProcessed() bool {
 
 	pool.height++
 
-	// Check if we've moved past this batch
-	if pool.height >= batch.startHeight+int64(len(batch.headers)) {
+	// Check if we've completed this batch
+	complete := pool.height >= batch.startHeight+int64(len(batch.headers))
+	if complete {
 		delete(pool.pendingBatches, batch.startHeight)
-		return true
 	}
 
-	return false
+	return complete
 }
 
 // PopBatch removes a completed batch from the pool and advances the height.
@@ -537,4 +537,15 @@ func (pool *HeaderPool) IsCaughtUp() bool {
 	receivedHeaderOrTimedOut := pool.height > 0 || time.Since(pool.startTime) > 5*time.Second
 	ourChainIsLongestAmongPeers := pool.maxPeerHeight == 0 || pool.height >= pool.maxPeerHeight
 	return receivedHeaderOrTimedOut && ourChainIsLongestAmongPeers
+}
+
+// ResetHeight resets the pool to start syncing from the given height.
+// This is used when the node state jumps (e.g. after state sync).
+func (pool *HeaderPool) ResetHeight(height int64) {
+	pool.mtx.Lock()
+	defer pool.mtx.Unlock()
+
+	pool.height = height
+	// Clear pending batches as they are likely for old heights
+	pool.pendingBatches = make(map[int64]*headerBatch)
 }

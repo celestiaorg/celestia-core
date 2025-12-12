@@ -1091,10 +1091,10 @@ type HeaderSyncConfig struct {
 // DefaultHeaderSyncConfig returns a default configuration for the header sync service.
 func DefaultHeaderSyncConfig() *HeaderSyncConfig {
 	return &HeaderSyncConfig{
-		Enable:            false, // Disabled by default for now
+		Enable:            true,
 		BatchSize:         50,
-		MaxPendingBatches: 10,
-		RequestTimeout:    15 * time.Second,
+		MaxPendingBatches: 50,
+		RequestTimeout:    20 * time.Second,
 	}
 }
 
