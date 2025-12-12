@@ -27,8 +27,8 @@ const (
 	// within this much of the system time.
 	// stopSyncingDurationMinutes = 10
 
-	// ask for best height every 10s
-	statusUpdateIntervalSeconds = 10
+	// ask for best height every 3s
+	statusUpdateIntervalSeconds = 3
 	// check if we should switch to consensus reactor
 	switchToConsensusIntervalSeconds = 1
 
@@ -674,6 +674,13 @@ FOR_LOOP:
 			}
 			bcR.metrics.recordBlockMetrics(first)
 			blocksSynced++
+
+			bcR.Logger.Info("Blocksync block processed",
+				"height", first.Height,
+				"max_peer_height", bcR.pool.MaxPeerHeight(),
+				"consecutive_ready", bcR.pool.CountConsecutiveReady(),
+				"blocks_synced", blocksSynced,
+			)
 
 			if blocksSynced%100 == 0 {
 				lastRate = 0.9*lastRate + 0.1*(100/time.Since(lastHundred).Seconds())

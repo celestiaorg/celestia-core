@@ -259,6 +259,30 @@ func (pool *BlockPool) GetStatus() (height int64, numPending int32, lenRequester
 	return pool.height, atomic.LoadInt32(&pool.numPending), len(pool.requesters)
 }
 
+// CountConsecutiveReady returns the number of consecutive blocks that are
+// ready (downloaded) starting from pool.height.
+func (pool *BlockPool) CountConsecutiveReady() int {
+	pool.mtx.Lock()
+	defer pool.mtx.Unlock()
+
+	count := 0
+	for h := pool.height; ; h++ {
+		r := pool.requesters[h]
+		if r == nil || r.getBlock() == nil {
+			break
+		}
+		count++
+	}
+	return count
+}
+
+// NumPeers returns the number of peers in the pool.
+func (pool *BlockPool) NumPeers() int {
+	pool.mtx.Lock()
+	defer pool.mtx.Unlock()
+	return len(pool.peers)
+}
+
 // IsCaughtUp returns true if this node is caught up, false - otherwise.
 // TODO: relax conditions, prevent abuse.
 func (pool *BlockPool) IsCaughtUp() bool {
