@@ -78,6 +78,10 @@ type Reactor struct {
 
 	// lastCheckedHeight tracks the last height at which we checked for falling behind
 	lastCheckedHeight int64
+
+	// isSyncing prevents broadcast events from being sent while in blocksync mode
+	// Protected by mtx
+	isSyncing bool
 }
 
 type ReactorOption func(*Reactor)
@@ -168,6 +172,7 @@ func (conR *Reactor) SwitchToConsensus(state sm.State, skipWAL bool) {
 
 	conR.mtx.Lock()
 	conR.waitSync = false
+	conR.isSyncing = false
 	conR.mtx.Unlock()
 
 	// Reset lastCheckedHeight so falling-behind detection can trigger again
@@ -690,9 +695,6 @@ func (conR *Reactor) initiateBlockSyncSwitch() {
 
 	conR.Logger.Info("Switching from consensus to blocksync mode")
 
-	// Broadcast syncing status BEFORE stopping consensus to tell peers to stop sending us consensus messages
-	conR.broadcastSyncingStatus()
-
 	// Stop consensus state machine
 	if err := conR.conS.Stop(); err != nil {
 		conR.Logger.Error("Error stopping consensus state", "err", err)
@@ -719,6 +721,8 @@ func (conR *Reactor) initiateBlockSyncSwitch() {
 		if err := conR.conS.Start(); err != nil {
 			conR.Logger.Error("Failed to restart consensus after blocksync failure", "err", err)
 		}
+	} else {
+		conR.broadcastSyncing()
 	}
 }
 
@@ -770,6 +774,15 @@ func (conR *Reactor) unsubscribeFromBroadcastEvents() {
 }
 
 func (conR *Reactor) broadcastNewRoundStepMessage(rs *cstypes.RoundState) {
+	// Skip broadcasting if we're in syncing mode
+	conR.mtx.RLock()
+	if conR.isSyncing {
+		conR.mtx.RUnlock()
+		conR.Logger.Info("Skipping NewRoundStep broadcast - node is syncing", "height", rs.Height)
+		return
+	}
+	conR.mtx.RUnlock()
+
 	nrsMsg := makeRoundStepMessage(rs, false)
 	conR.Logger.Info("Broadcasting NewRoundStep", "height", rs.Height, "round", rs.Round, "step", rs.Step, "syncing", false)
 	conR.Switch.Broadcast(p2p.Envelope{
@@ -887,12 +900,17 @@ func (conR *Reactor) sendNewRoundStepMessage(peer p2p.Peer) {
 	}
 }
 
-// broadcastSyncingStatus broadcasts that this node is entering blocksync mode.
-// This tells peers to stop sending consensus messages to us.
-func (conR *Reactor) broadcastSyncingStatus() {
-	rs := conR.getRoundState()
-	nrsMsg := makeRoundStepMessage(rs, true)
-	conR.Logger.Info("Broadcasting syncing status", "height", rs.Height, "round", rs.Round, "syncing", true)
+// broadcastSyncing sets the syncing flag and optionally broadcasts the status to peers.
+// When syncing=true, this prevents broadcastNewRoundStepMessage from broadcasting
+// and tells peers to stop sending consensus messages to us.
+// When syncing=false, this re-enables broadcasts (called when returning to consensus).
+func (conR *Reactor) broadcastSyncing() {
+	conR.mtx.Lock()
+	conR.isSyncing = true
+	nrsMsg := makeRoundStepMessage(conR.rs, true)
+	conR.mtx.Unlock()
+
+	conR.Logger.Info("Broadcasting syncing status", "height", nrsMsg.Height, "round", nrsMsg.Round, "syncing", true)
 	conR.Switch.Broadcast(p2p.Envelope{
 		ChannelID: StateChannel,
 		Message:   nrsMsg,

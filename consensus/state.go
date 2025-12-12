@@ -1021,7 +1021,6 @@ func (cs *State) receiveRoutine(maxSteps int) {
 			cs.handleTxsAvailable()
 
 		case mi = <-cs.peerMsgQueue:
-			cs.Logger.Info("receiveRoutine: got peerMsg", "msg_type", fmt.Sprintf("%T", mi.Msg))
 			if !cs.config.OnlyInternalWal {
 				if err := cs.wal.Write(mi); err != nil {
 					cs.Logger.Error("failed writing to WAL", "err", err)
@@ -1030,10 +1029,8 @@ func (cs *State) receiveRoutine(maxSteps int) {
 			// handles proposals, block parts, votes
 			// may generate internal events (votes, complete proposals, 2/3 majorities)
 			cs.handleMsg(mi)
-			cs.Logger.Info("receiveRoutine: done handling peerMsg")
 
 		case mi = <-cs.internalMsgQueue:
-			cs.Logger.Info("receiveRoutine: got internalMsg", "msg_type", fmt.Sprintf("%T", mi.Msg))
 			err := cs.wal.WriteSync(mi) // NOTE: fsync
 			if err != nil {
 				panic(fmt.Sprintf(
@@ -1052,10 +1049,8 @@ func (cs *State) receiveRoutine(maxSteps int) {
 
 			// handles proposals, block parts, votes
 			cs.handleMsg(mi)
-			cs.Logger.Info("receiveRoutine: done handling internalMsg")
 
 		case ti := <-cs.timeoutTicker.Chan(): // tockChan:
-			cs.Logger.Info("receiveRoutine: received from tockChan", "height", ti.Height, "round", ti.Round, "step", ti.Step)
 			if err := cs.wal.Write(ti); err != nil {
 				cs.Logger.Error("failed writing to WAL", "err", err)
 			}
@@ -1090,9 +1085,7 @@ func (cs *State) handleMsg(mi msgInfo) {
 
 	case *BlockPartMessage:
 		// if the proposal is complete, we'll enterPrevote or tryFinalizeCommit
-		cs.Logger.Info("BlockPartMessage: calling addProposalBlockPart", "height", msg.Height, "round", msg.Round, "part_index", msg.Part.Index)
 		added, err = cs.addProposalBlockPart(msg, peerID)
-		cs.Logger.Info("BlockPartMessage: addProposalBlockPart returned", "added", added, "err", err)
 
 		// We unlock here to yield to any routines that need to read the the RoundState.
 		// Previously, this code held the lock from the point at which the final block
@@ -1105,16 +1098,11 @@ func (cs *State) handleMsg(mi msgInfo) {
 		// of RoundState and only locking when switching out State's copy of
 		// RoundState with the updated copy or by emitting RoundState events in
 		// more places for routines depending on it to listen for.
-		cs.Logger.Info("BlockPartMessage: about to unlockAll")
 		cs.unlockAll()
-		cs.Logger.Info("BlockPartMessage: unlockAll done, about to lockAll")
 
 		cs.lockAll()
-		cs.Logger.Info("BlockPartMessage: lockAll done")
 		if added && cs.rs.ProposalBlockParts.IsComplete() {
-			cs.Logger.Info("BlockPartMessage: calling handleCompleteProposal", "height", msg.Height)
 			cs.handleCompleteProposal(msg.Height)
-			cs.Logger.Info("BlockPartMessage: handleCompleteProposal returned")
 		}
 		if added {
 			cs.statsMsgQueue <- mi
@@ -1171,15 +1159,11 @@ func (cs *State) handleMsg(mi msgInfo) {
 }
 
 func (cs *State) handleTimeout(ti timeoutInfo, rs cstypes.RoundState) {
-	cs.Logger.Info("handleTimeout: received tock", "timeout", ti.Duration, "height", ti.Height, "round", ti.Round, "step", ti.Step)
-
 	// timeouts must be for current height, round, step
 	if ti.Height != rs.Height || ti.Round < rs.Round || (ti.Round == rs.Round && ti.Step < rs.Step) {
-		cs.Logger.Info("handleTimeout: ignoring tock because we are ahead", "height", rs.Height, "round", rs.Round, "step", rs.Step)
+		cs.Logger.Debug("ignoring tock because we are ahead", "height", rs.Height, "round", rs.Round, "step", rs.Step)
 		return
 	}
-
-	cs.Logger.Info("handleTimeout: processing timeout", "step", ti.Step)
 
 	// the timeout will now cause a state transition
 	cs.lockAll()
@@ -2400,7 +2384,6 @@ func (cs *State) addProposalBlockPart(msg *BlockPartMessage, peerID p2p.ID) (add
 }
 
 func (cs *State) handleCompleteProposal(blockHeight int64) {
-	cs.Logger.Info("handleCompleteProposal: start", "blockHeight", blockHeight, "step", cs.rs.Step)
 	// Update Valid* if we can.
 	prevotes := cs.rs.Votes.Prevotes(cs.rs.Round)
 	blockID, hasTwoThirds := prevotes.TwoThirdsMajority()
@@ -2425,21 +2408,14 @@ func (cs *State) handleCompleteProposal(blockHeight int64) {
 
 	if cs.rs.Step <= cstypes.RoundStepPropose && cs.isProposalComplete() {
 		// Move onto the next step
-		cs.Logger.Info("handleCompleteProposal: calling enterPrevote", "blockHeight", blockHeight, "round", cs.rs.Round)
 		cs.enterPrevote(blockHeight, cs.rs.Round)
-		cs.Logger.Info("handleCompleteProposal: enterPrevote returned", "hasTwoThirds", hasTwoThirds)
 		if hasTwoThirds { // this is optimisation as this will be triggered when prevote is added
-			cs.Logger.Info("handleCompleteProposal: calling enterPrecommit", "blockHeight", blockHeight, "round", cs.rs.Round)
 			cs.enterPrecommit(blockHeight, cs.rs.Round)
-			cs.Logger.Info("handleCompleteProposal: enterPrecommit returned")
 		}
 	} else if cs.rs.Step == cstypes.RoundStepCommit {
 		// If we're waiting on the proposal block...
-		cs.Logger.Info("handleCompleteProposal: calling tryFinalizeCommit", "blockHeight", blockHeight)
 		cs.tryFinalizeCommit(blockHeight)
-		cs.Logger.Info("handleCompleteProposal: tryFinalizeCommit returned")
 	}
-	cs.Logger.Info("handleCompleteProposal: done", "blockHeight", blockHeight)
 }
 
 // Attempt to add the vote. if its a duplicate signature, dupeout the validator
@@ -2722,9 +2698,7 @@ func (cs *State) addVote(vote *types.Vote, peerID p2p.ID) (added bool, err error
 			cs.enterPrecommit(height, vote.Round)
 
 			if len(blockID.Hash) != 0 {
-				cs.Logger.Info("addVote: calling enterCommit", "height", height, "round", vote.Round)
 				cs.enterCommit(height, vote.Round)
-				cs.Logger.Info("addVote: enterCommit returned", "height", height, "round", vote.Round)
 				if cs.config.SkipTimeoutCommit && precommits.HasAll() {
 					cs.enterNewRound(cs.rs.Height, 0)
 				}
