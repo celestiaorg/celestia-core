@@ -1,6 +1,7 @@
 package propagation
 
 import (
+	"sync"
 	"testing"
 	"time"
 
@@ -896,6 +897,633 @@ func TestMultiNodeParallelBlocksync_DifferentSpeeds(t *testing.T) {
 	// Verify both got all blocks
 	require.Len(t, fastDelivered, numBlocks)
 	require.Len(t, slowDelivered, numBlocks)
+}
+
+// ============================================================================
+// Phase 9.3: Blocksync + Live Consensus Integration Tests
+// ============================================================================
+
+// TestBlocksyncWithLiveConsensus verifies that a lagging node can:
+// 1. Catch up using blocksync while the network continues producing blocks
+// 2. Transition from blocksync mode to live consensus mode
+// 3. Receive new blocks via the live partChan mechanism
+//
+// This tests the critical transition from blocksync to live consensus.
+func TestBlocksyncWithLiveConsensus(t *testing.T) {
+	p2pCfg := defaultTestP2PConf()
+	cleanup, _, sm := state.SetupTestCase(t)
+	t.Cleanup(func() {
+		cleanup(t)
+	})
+
+	reactors, _ := createTestReactors(2, p2pCfg, false, "")
+	ahead := reactors[0]
+	lagging := reactors[1]
+
+	// Network has produced 5 blocks, lagging node is at height 0
+	const initialBlocks = 5
+
+	blocks := make(map[int64]*testBlockData, initialBlocks+5)
+
+	// Create initial blocks on ahead node
+	for height := int64(1); height <= initialBlocks; height++ {
+		prop, ps, block, metaData := createTestProposal(t, sm, height, 0, 2, 100000)
+		cb, parity := createCompactBlock(t, prop, ps, metaData)
+
+		added := ahead.AddProposal(cb)
+		require.True(t, added)
+
+		_, parts, _, has := ahead.getAllState(height, 0, true)
+		require.True(t, has)
+		parts.SetProposalData(ps, parity)
+
+		blocks[height] = &testBlockData{
+			cb:     cb,
+			ps:     ps,
+			parity: parity,
+			block:  block,
+			prop:   prop,
+		}
+
+		ahead.pmtx.Lock()
+		ahead.height = height + 1
+		ahead.pmtx.Unlock()
+	}
+
+	logger := log.TestingLogger()
+
+	// Setup lagging node with dynamic mock that simulates headersync progress
+	// Initially, headersync is NOT caught up (caughtUpThreshold > currentHeight)
+	// This simulates the blocksync phase where we're still behind
+	mockHS := &dynamicMockHeaderSyncReader{
+		blocks:            blocks,
+		currentHeight:     initialBlocks,
+		maxPeerHeight:     initialBlocks,
+		caughtUpThreshold: initialBlocks + 1, // Will be caught up when we reach height 6
+	}
+
+	pendingBlocks := NewPendingBlocksManager(logger.With("node", "lagging"), nil, PendingBlocksConfig{
+		MaxConcurrent: 100,
+		MemoryBudget:  1 << 30,
+	})
+	pendingBlocks.SetHeaderSyncReader(mockHS)
+	pendingBlocks.SetLastCommittedHeight(0)
+
+	blockDelivery := NewBlockDeliveryManager(pendingBlocks, 1, logger.With("node", "lagging"))
+	blockDelivery.Start()
+	defer blockDelivery.Stop()
+
+	lagging.pendingBlocks = pendingBlocks
+	lagging.hsReader = mockHS
+	lagging.started.Store(true)
+
+	// Lagging node fills capacity (blocksync mode)
+	fetched := pendingBlocks.TryFillCapacity()
+	require.Equal(t, initialBlocks, fetched, "should fetch all initial headers")
+
+	// Verify lagging is NOT caught up (still doing blocksync)
+	require.False(t, lagging.IsCaughtUp(), "should not be caught up initially")
+
+	// Complete blocksync blocks 1-4 (leaving block 5)
+	for height := int64(1); height <= initialBlocks-1; height++ {
+		bd := blocks[height]
+		for i := uint32(0); i < bd.ps.Total(); i++ {
+			part := bd.ps.GetPart(int(i))
+			proof := bd.cb.GetProof(i)
+			recoveryPart := &proptypes.RecoveryPart{
+				Height: height,
+				Round:  0,
+				Index:  i,
+				Data:   part.Bytes.Bytes(),
+			}
+			_, _, err := pendingBlocks.HandlePart(height, 0, recoveryPart, proof)
+			require.NoError(t, err)
+		}
+	}
+
+	// Receive blocksync blocks 1-4
+	deliveredBlocks := make([]*CompletedBlock, 0, initialBlocks-1)
+	timeout := time.After(5 * time.Second)
+	for len(deliveredBlocks) < initialBlocks-1 {
+		select {
+		case block := <-blockDelivery.BlockChan():
+			deliveredBlocks = append(deliveredBlocks, block)
+			// Simulate consensus committing the block
+			pendingBlocks.Prune(block.Height)
+			pendingBlocks.SetLastCommittedHeight(block.Height)
+		case <-timeout:
+			t.Fatalf("timeout waiting for blocksync blocks, got %d/%d", len(deliveredBlocks), initialBlocks-1)
+		}
+	}
+
+	// Verify blocks 1-4 delivered in order
+	for i, block := range deliveredBlocks {
+		require.Equal(t, int64(i+1), block.Height)
+	}
+
+	// Now complete block 5 (last blocksync block)
+	bd5 := blocks[5]
+	for i := uint32(0); i < bd5.ps.Total(); i++ {
+		part := bd5.ps.GetPart(int(i))
+		proof := bd5.cb.GetProof(i)
+		recoveryPart := &proptypes.RecoveryPart{
+			Height: 5,
+			Round:  0,
+			Index:  i,
+			Data:   part.Bytes.Bytes(),
+		}
+		_, _, err := pendingBlocks.HandlePart(5, 0, recoveryPart, proof)
+		require.NoError(t, err)
+	}
+
+	// Receive block 5
+	select {
+	case block := <-blockDelivery.BlockChan():
+		require.Equal(t, int64(5), block.Height)
+		pendingBlocks.Prune(block.Height)
+		pendingBlocks.SetLastCommittedHeight(block.Height)
+	case <-time.After(2 * time.Second):
+		t.Fatal("timeout waiting for block 5")
+	}
+
+	// Set lagging node's consensus height to 6 (transitioning to live consensus)
+	lagging.pmtx.Lock()
+	lagging.height = 6
+	lagging.pmtx.Unlock()
+
+	// ====== TRANSITION TO LIVE CONSENSUS ======
+	// The network produces block 6 - this should flow through partChan (live mode)
+
+	// Create block 6 on ahead node
+	prop6, ps6, block6, metaData6 := createTestProposal(t, sm, 6, 0, 2, 100000)
+	cb6, parity6 := createCompactBlock(t, prop6, ps6, metaData6)
+
+	added := ahead.AddProposal(cb6)
+	require.True(t, added)
+
+	_, parts6, _, has := ahead.getAllState(6, 0, true)
+	require.True(t, has)
+	parts6.SetProposalData(ps6, parity6)
+
+	blocks[6] = &testBlockData{
+		cb:     cb6,
+		ps:     ps6,
+		parity: parity6,
+		block:  block6,
+		prop:   prop6,
+	}
+
+	ahead.pmtx.Lock()
+	ahead.height = 7
+	ahead.pmtx.Unlock()
+
+	// Update mock to reflect network progress and that headersync is now caught up
+	mockHS.mtx.Lock()
+	mockHS.currentHeight = 6
+	mockHS.maxPeerHeight = 6
+	mockHS.caughtUpThreshold = 6 // Now headersync considers itself caught up
+	mockHS.mtx.Unlock()
+
+	// Now the node should be caught up (headersync caught up, no pending blocks below consensus height)
+	require.True(t, lagging.IsCaughtUp(), "should be caught up after receiving all blocksync blocks")
+
+	// Add the compact block to lagging node (simulating proposal receipt in live consensus)
+	addedToLagging := lagging.AddProposal(cb6)
+	require.True(t, addedToLagging, "lagging node should accept live compact block")
+
+	// Verify proposal was added but parts are NOT yet filled in
+	// (parts will arrive via handleRecoveryPart)
+	_, laggingParts6, _, hasLagging := lagging.getAllState(6, 0, true)
+	require.True(t, hasLagging)
+	require.False(t, laggingParts6.IsComplete(), "parts should not be complete yet")
+
+	// Send parts for block 6 to lagging node - should go to partChan (live mode)
+	partChan := lagging.GetPartChan()
+	require.NotNil(t, partChan, "partChan should be available")
+
+	// Create recovery parts and send them through handleRecoveryPart
+	// This simulates receiving parts from peers during live consensus
+	for i := uint32(0); i < ps6.Total(); i++ {
+		part := ps6.GetPart(int(i))
+		proof := cb6.GetProof(i)
+
+		recoveryPart := &proptypes.RecoveryPart{
+			Height: 6,
+			Round:  0,
+			Index:  i,
+			Data:   part.Bytes.Bytes(),
+			Proof:  proof,
+		}
+
+		// Process the part through the reactor's handleRecoveryPart
+		lagging.handleRecoveryPart(ahead.self, recoveryPart)
+	}
+
+	// Verify parts arrived via partChan (live consensus mode)
+	receivedParts := make([]types.PartInfo, 0, ps6.Total())
+	partsTimeout := time.After(3 * time.Second)
+
+	for len(receivedParts) < int(ps6.Total()) {
+		select {
+		case partInfo := <-partChan:
+			if partInfo.Height == 6 {
+				receivedParts = append(receivedParts, partInfo)
+			}
+		case <-partsTimeout:
+			t.Fatalf("timeout waiting for live parts on partChan, got %d/%d parts",
+				len(receivedParts), ps6.Total())
+		}
+	}
+
+	// Verify all parts received for live consensus
+	require.Len(t, receivedParts, int(ps6.Total()),
+		"should receive all parts via partChan for live consensus")
+
+	// Verify the block did NOT go through blockChan (it's live, not blocksync)
+	select {
+	case block := <-blockDelivery.BlockChan():
+		t.Fatalf("block %d should NOT be delivered via blockChan in live mode", block.Height)
+	case <-time.After(500 * time.Millisecond):
+		// Expected - no block on blockChan
+	}
+}
+
+// TestBlocksyncToLiveTransition_NoPendingBlocks verifies the transition from
+// blocksync to live consensus when there are no pending blocks left.
+func TestBlocksyncToLiveTransition_NoPendingBlocks(t *testing.T) {
+	p2pCfg := defaultTestP2PConf()
+	cleanup, _, sm := state.SetupTestCase(t)
+	t.Cleanup(func() {
+		cleanup(t)
+	})
+
+	reactors, _ := createTestReactors(2, p2pCfg, false, "")
+	ahead := reactors[0]
+	lagging := reactors[1]
+
+	const numBlocks = 3
+
+	blocks := make(map[int64]*testBlockData, numBlocks)
+
+	for height := int64(1); height <= numBlocks; height++ {
+		prop, ps, block, metaData := createTestProposal(t, sm, height, 0, 2, 100000)
+		cb, parity := createCompactBlock(t, prop, ps, metaData)
+
+		added := ahead.AddProposal(cb)
+		require.True(t, added)
+
+		_, parts, _, has := ahead.getAllState(height, 0, true)
+		require.True(t, has)
+		parts.SetProposalData(ps, parity)
+
+		blocks[height] = &testBlockData{
+			cb:     cb,
+			ps:     ps,
+			parity: parity,
+			block:  block,
+			prop:   prop,
+		}
+
+		ahead.pmtx.Lock()
+		ahead.height = height + 1
+		ahead.pmtx.Unlock()
+	}
+
+	logger := log.TestingLogger()
+
+	mockHS := &dynamicMockHeaderSyncReader{
+		blocks:            blocks,
+		currentHeight:     numBlocks,
+		maxPeerHeight:     numBlocks,
+		caughtUpThreshold: numBlocks,
+	}
+
+	pendingBlocks := NewPendingBlocksManager(logger, nil, PendingBlocksConfig{})
+	pendingBlocks.SetHeaderSyncReader(mockHS)
+	pendingBlocks.SetLastCommittedHeight(0)
+
+	blockDelivery := NewBlockDeliveryManager(pendingBlocks, 1, logger)
+	blockDelivery.Start()
+	defer blockDelivery.Stop()
+
+	lagging.pendingBlocks = pendingBlocks
+	lagging.hsReader = mockHS
+	lagging.started.Store(true)
+
+	// Fill and sync all blocks
+	pendingBlocks.TryFillCapacity()
+
+	for height := int64(1); height <= numBlocks; height++ {
+		bd := blocks[height]
+		for i := uint32(0); i < bd.ps.Total(); i++ {
+			part := bd.ps.GetPart(int(i))
+			proof := bd.cb.GetProof(i)
+			recoveryPart := &proptypes.RecoveryPart{
+				Height: height,
+				Round:  0,
+				Index:  i,
+				Data:   part.Bytes.Bytes(),
+			}
+			_, _, err := pendingBlocks.HandlePart(height, 0, recoveryPart, proof)
+			require.NoError(t, err)
+		}
+	}
+
+	// Receive all blocks
+	for height := int64(1); height <= numBlocks; height++ {
+		select {
+		case block := <-blockDelivery.BlockChan():
+			require.Equal(t, height, block.Height)
+			pendingBlocks.Prune(block.Height)
+			pendingBlocks.SetLastCommittedHeight(block.Height)
+		case <-time.After(2 * time.Second):
+			t.Fatalf("timeout waiting for block %d", height)
+		}
+	}
+
+	// Set consensus height to next block
+	lagging.pmtx.Lock()
+	lagging.height = numBlocks + 1
+	lagging.pmtx.Unlock()
+
+	// Verify state after complete sync
+	require.Equal(t, 0, pendingBlocks.BlockCount(), "no pending blocks after sync")
+	require.True(t, lagging.IsCaughtUp(), "should be caught up")
+	require.Equal(t, int64(0), pendingBlocks.LowestHeight(), "no lowest height when empty")
+}
+
+// TestBlocksyncWithContinuousBlockProduction verifies that blocksync works
+// correctly even when the network continues producing blocks during sync.
+func TestBlocksyncWithContinuousBlockProduction(t *testing.T) {
+	p2pCfg := defaultTestP2PConf()
+	cleanup, _, sm := state.SetupTestCase(t)
+	t.Cleanup(func() {
+		cleanup(t)
+	})
+
+	reactors, _ := createTestReactors(2, p2pCfg, false, "")
+	ahead := reactors[0]
+	lagging := reactors[1]
+
+	logger := log.TestingLogger()
+
+	// Dynamic blocks map - new blocks added as network progresses
+	blocks := make(map[int64]*testBlockData)
+	blocksMtx := sync.Mutex{}
+
+	// Helper to create a block
+	createBlock := func(height int64) {
+		prop, ps, block, metaData := createTestProposal(t, sm, height, 0, 2, 100000)
+		cb, parity := createCompactBlock(t, prop, ps, metaData)
+
+		added := ahead.AddProposal(cb)
+		require.True(t, added)
+
+		_, parts, _, has := ahead.getAllState(height, 0, true)
+		require.True(t, has)
+		parts.SetProposalData(ps, parity)
+
+		blocksMtx.Lock()
+		blocks[height] = &testBlockData{
+			cb:     cb,
+			ps:     ps,
+			parity: parity,
+			block:  block,
+			prop:   prop,
+		}
+		blocksMtx.Unlock()
+
+		ahead.pmtx.Lock()
+		ahead.height = height + 1
+		ahead.pmtx.Unlock()
+	}
+
+	// Create initial 3 blocks
+	for height := int64(1); height <= 3; height++ {
+		createBlock(height)
+	}
+
+	// Setup lagging node with dynamic mock
+	mockHS := &dynamicMockHeaderSyncReaderWithMtx{
+		blocks:            blocks,
+		blocksMtx:         &blocksMtx,
+		currentHeight:     3,
+		maxPeerHeight:     3,
+		caughtUpThreshold: 10, // Won't be caught up until height 10
+	}
+
+	pendingBlocks := NewPendingBlocksManager(logger, nil, PendingBlocksConfig{})
+	pendingBlocks.SetHeaderSyncReader(mockHS)
+	pendingBlocks.SetLastCommittedHeight(0)
+
+	blockDelivery := NewBlockDeliveryManager(pendingBlocks, 1, logger)
+	blockDelivery.Start()
+	defer blockDelivery.Stop()
+
+	lagging.pendingBlocks = pendingBlocks
+	lagging.hsReader = mockHS
+	lagging.started.Store(true)
+
+	// Lagging node starts syncing
+	fetched := pendingBlocks.TryFillCapacity()
+	require.Equal(t, 3, fetched)
+
+	// Sync block 1
+	blocksMtx.Lock()
+	bd1 := blocks[1]
+	blocksMtx.Unlock()
+	for i := uint32(0); i < bd1.ps.Total(); i++ {
+		part := bd1.ps.GetPart(int(i))
+		proof := bd1.cb.GetProof(i)
+		recoveryPart := &proptypes.RecoveryPart{Height: 1, Round: 0, Index: i, Data: part.Bytes.Bytes()}
+		_, _, err := pendingBlocks.HandlePart(1, 0, recoveryPart, proof)
+		require.NoError(t, err)
+	}
+
+	select {
+	case block := <-blockDelivery.BlockChan():
+		require.Equal(t, int64(1), block.Height)
+		pendingBlocks.Prune(block.Height)
+		pendingBlocks.SetLastCommittedHeight(block.Height)
+	case <-time.After(2 * time.Second):
+		t.Fatal("timeout waiting for block 1")
+	}
+
+	// Network produces blocks 4 and 5 while lagging is syncing
+	createBlock(4)
+	createBlock(5)
+
+	// Update mock headersync height
+	mockHS.mtx.Lock()
+	mockHS.currentHeight = 5
+	mockHS.maxPeerHeight = 5
+	mockHS.mtx.Unlock()
+
+	// Lagging node tries to fill capacity again - should get new headers
+	fetched = pendingBlocks.TryFillCapacity()
+	require.Equal(t, 2, fetched, "should fetch 2 new headers (4 and 5)")
+
+	// Complete remaining blocks (2, 3, 4, 5)
+	for height := int64(2); height <= 5; height++ {
+		blocksMtx.Lock()
+		bd := blocks[height]
+		blocksMtx.Unlock()
+
+		for i := uint32(0); i < bd.ps.Total(); i++ {
+			part := bd.ps.GetPart(int(i))
+			proof := bd.cb.GetProof(i)
+			recoveryPart := &proptypes.RecoveryPart{Height: height, Round: 0, Index: i, Data: part.Bytes.Bytes()}
+			_, _, err := pendingBlocks.HandlePart(height, 0, recoveryPart, proof)
+			require.NoError(t, err)
+		}
+	}
+
+	// Receive all remaining blocks in order
+	for height := int64(2); height <= 5; height++ {
+		select {
+		case block := <-blockDelivery.BlockChan():
+			require.Equal(t, height, block.Height)
+			pendingBlocks.Prune(block.Height)
+			pendingBlocks.SetLastCommittedHeight(block.Height)
+		case <-time.After(2 * time.Second):
+			t.Fatalf("timeout waiting for block %d", height)
+		}
+	}
+
+	// Verify state
+	require.Equal(t, 0, pendingBlocks.BlockCount())
+	require.Equal(t, int64(5), pendingBlocks.GetLastCommittedHeight())
+}
+
+// dynamicMockHeaderSyncReader simulates a headersync that progresses over time.
+type dynamicMockHeaderSyncReader struct {
+	mtx               sync.RWMutex
+	blocks            map[int64]*testBlockData
+	currentHeight     int64
+	maxPeerHeight     int64
+	caughtUpThreshold int64 // IsCaughtUp returns true when currentHeight >= this
+}
+
+func (m *dynamicMockHeaderSyncReader) GetVerifiedHeader(height int64) (*types.Header, *types.BlockID, bool) {
+	m.mtx.RLock()
+	defer m.mtx.RUnlock()
+
+	if height > m.currentHeight {
+		return nil, nil, false
+	}
+
+	bd, exists := m.blocks[height]
+	if !exists {
+		return nil, nil, false
+	}
+
+	header := &types.Header{
+		Height:  height,
+		ChainID: TestChainID,
+	}
+	blockID := bd.cb.Proposal.BlockID
+	return header, &blockID, true
+}
+
+func (m *dynamicMockHeaderSyncReader) GetCommit(height int64) *types.Commit {
+	m.mtx.RLock()
+	defer m.mtx.RUnlock()
+
+	if height > m.currentHeight {
+		return nil
+	}
+	return &types.Commit{
+		Height:  height,
+		Round:   0,
+		BlockID: types.BlockID{Hash: cmtrand.Bytes(32)},
+	}
+}
+
+func (m *dynamicMockHeaderSyncReader) Height() int64 {
+	m.mtx.RLock()
+	defer m.mtx.RUnlock()
+	return m.currentHeight
+}
+
+func (m *dynamicMockHeaderSyncReader) MaxPeerHeight() int64 {
+	m.mtx.RLock()
+	defer m.mtx.RUnlock()
+	return m.maxPeerHeight
+}
+
+func (m *dynamicMockHeaderSyncReader) IsCaughtUp() bool {
+	m.mtx.RLock()
+	defer m.mtx.RUnlock()
+	return m.currentHeight >= m.caughtUpThreshold
+}
+
+// dynamicMockHeaderSyncReaderWithMtx is like dynamicMockHeaderSyncReader but uses
+// an external mutex for the blocks map (for tests where blocks are added dynamically).
+type dynamicMockHeaderSyncReaderWithMtx struct {
+	mtx               sync.RWMutex
+	blocks            map[int64]*testBlockData
+	blocksMtx         *sync.Mutex
+	currentHeight     int64
+	maxPeerHeight     int64
+	caughtUpThreshold int64
+}
+
+func (m *dynamicMockHeaderSyncReaderWithMtx) GetVerifiedHeader(height int64) (*types.Header, *types.BlockID, bool) {
+	m.mtx.RLock()
+	currentHeight := m.currentHeight
+	m.mtx.RUnlock()
+
+	if height > currentHeight {
+		return nil, nil, false
+	}
+
+	m.blocksMtx.Lock()
+	bd, exists := m.blocks[height]
+	m.blocksMtx.Unlock()
+
+	if !exists {
+		return nil, nil, false
+	}
+
+	header := &types.Header{
+		Height:  height,
+		ChainID: TestChainID,
+	}
+	blockID := bd.cb.Proposal.BlockID
+	return header, &blockID, true
+}
+
+func (m *dynamicMockHeaderSyncReaderWithMtx) GetCommit(height int64) *types.Commit {
+	m.mtx.RLock()
+	currentHeight := m.currentHeight
+	m.mtx.RUnlock()
+
+	if height > currentHeight {
+		return nil
+	}
+	return &types.Commit{
+		Height:  height,
+		Round:   0,
+		BlockID: types.BlockID{Hash: cmtrand.Bytes(32)},
+	}
+}
+
+func (m *dynamicMockHeaderSyncReaderWithMtx) Height() int64 {
+	m.mtx.RLock()
+	defer m.mtx.RUnlock()
+	return m.currentHeight
+}
+
+func (m *dynamicMockHeaderSyncReaderWithMtx) MaxPeerHeight() int64 {
+	m.mtx.RLock()
+	defer m.mtx.RUnlock()
+	return m.maxPeerHeight
+}
+
+func (m *dynamicMockHeaderSyncReaderWithMtx) IsCaughtUp() bool {
+	m.mtx.RLock()
+	defer m.mtx.RUnlock()
+	return m.currentHeight >= m.caughtUpThreshold
 }
 
 // TestMultiNodeParallelBlocksync_SharedParts verifies that the same parts

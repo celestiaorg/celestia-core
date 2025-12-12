@@ -1245,21 +1245,39 @@ The following multi-node integration tests have been implemented:
 - [x] Integration test: `TestMultiNodeParallelBlocksync_SharedParts` - gossip simulation (IMPLEMENTED)
 - [ ] Benchmark: Part-level parallelism faster than block-level (deferred - not required for functionality)
 
-### Step 9.3: Blocksync + live consensus
+### Step 9.3: Blocksync + live consensus (IMPLEMENTED)
 
-```go
-func TestBlocksyncWithLiveConsensus(t *testing.T) {
-    // 1. Network producing blocks
-    // 2. Add lagging node
-    // 3. Verify it catches up while network continues
-    // 4. Verify it transitions to live consensus
-    // 5. Verify it participates in new blocks
-}
-```
+**File**: `consensus/propagation/blocksync_integration_test.go`
+
+The following blocksync-to-live-consensus integration tests have been implemented:
+
+1. **`TestBlocksyncWithLiveConsensus`** - Full transition workflow:
+   - Network produces 5 initial blocks
+   - Lagging node catches up via blocksync (verifies `IsCaughtUp` returns false during sync)
+   - Receives all blocksync blocks in order via `blockChan`
+   - Transitions to live consensus at height 6
+   - Network produces block 6, node receives parts via `partChan` (live mode)
+   - Verifies live block does NOT go through `blockChan`
+
+2. **`TestBlocksyncToLiveTransition_NoPendingBlocks`** - Clean transition:
+   - Syncs all blocks via blocksync
+   - Verifies no pending blocks after sync
+   - Verifies `IsCaughtUp` returns true
+   - Verifies `LowestHeight()` returns 0 when empty
+
+3. **`TestBlocksyncWithContinuousBlockProduction`** - Continuous production:
+   - Network produces initial 3 blocks
+   - Lagging node starts syncing
+   - Network produces 2 more blocks while syncing
+   - Lagging node refills capacity to get new headers
+   - All 5 blocks delivered in order
+   - Verifies state consistency after sync
 
 **Testing Criteria**:
-- [ ] Integration test: `TestBlocksyncWithLiveConsensus` - full workflow
-- [ ] Verify: No blocks missed during transition
+- [x] Integration test: `TestBlocksyncWithLiveConsensus` - full workflow (IMPLEMENTED)
+- [x] Verify: No blocks missed during transition (IMPLEMENTED - blocks delivered in order)
+- [x] Additional test: `TestBlocksyncToLiveTransition_NoPendingBlocks` - clean state after sync (IMPLEMENTED)
+- [x] Additional test: `TestBlocksyncWithContinuousBlockProduction` - handles network progress (IMPLEMENTED)
 
 ### Step 9.4: Error recovery
 
