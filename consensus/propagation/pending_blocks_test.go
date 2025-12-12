@@ -997,3 +997,593 @@ func TestHasHeight(t *testing.T) {
 	require.True(t, manager.HasHeight(10))
 	require.False(t, manager.HasHeight(999))
 }
+
+// ============================================================================
+// Phase 4: Memory Management & Pruning Tests
+// ============================================================================
+
+func TestHasCapacity_UnderLimit(t *testing.T) {
+	manager := NewPendingBlocksManager(log.NewNopLogger(), nil, PendingBlocksConfig{
+		MaxConcurrent: 10,
+		MemoryBudget:  1 << 30, // 1GiB
+	})
+
+	require.True(t, manager.HasCapacity())
+	require.Equal(t, 10, manager.AvailableCapacity())
+
+	// Add one block
+	psh := types.PartSetHeader{Total: 5, Hash: cmtrand.Bytes(32)}
+	manager.AddFromCommitment(10, 0, &psh)
+
+	// Still has capacity
+	require.True(t, manager.HasCapacity())
+	require.Equal(t, 9, manager.AvailableCapacity())
+}
+
+func TestHasCapacity_AtLimit(t *testing.T) {
+	manager := NewPendingBlocksManager(log.NewNopLogger(), nil, PendingBlocksConfig{
+		MaxConcurrent: 2,
+		MemoryBudget:  1 << 30, // 1GiB
+	})
+
+	// Add blocks to reach max concurrent limit
+	psh1 := types.PartSetHeader{Total: 5, Hash: cmtrand.Bytes(32)}
+	manager.AddFromCommitment(10, 0, &psh1)
+	psh2 := types.PartSetHeader{Total: 5, Hash: cmtrand.Bytes(32)}
+	manager.AddFromCommitment(11, 0, &psh2)
+
+	// At capacity
+	require.False(t, manager.HasCapacity())
+	require.Equal(t, 0, manager.AvailableCapacity())
+}
+
+func TestHasCapacity_MemoryLimit(t *testing.T) {
+	// Set memory budget to fit ~50 parts worth of average blocks
+	// HasCapacity uses 100 parts * 2 * BlockPartSizeBytes as average estimate
+	avgBlockMemory := int64(types.BlockPartSizeBytes) * 100 * 2
+	memBudget := avgBlockMemory / 2 // Half of one "average" block
+
+	manager := NewPendingBlocksManager(log.NewNopLogger(), nil, PendingBlocksConfig{
+		MaxConcurrent: 100,
+		MemoryBudget:  memBudget,
+	})
+
+	// Should not have capacity even though MaxConcurrent allows it
+	// because adding an average block would exceed memory budget
+	require.False(t, manager.HasCapacity())
+}
+
+func TestAvailableCapacity(t *testing.T) {
+	manager := NewPendingBlocksManager(log.NewNopLogger(), nil, PendingBlocksConfig{
+		MaxConcurrent: 5,
+		MemoryBudget:  1 << 30,
+	})
+
+	require.Equal(t, 5, manager.AvailableCapacity())
+
+	// Add some blocks
+	for h := int64(10); h < 13; h++ {
+		psh := types.PartSetHeader{Total: 5, Hash: cmtrand.Bytes(32)}
+		manager.AddFromCommitment(h, 0, &psh)
+	}
+
+	require.Equal(t, 2, manager.AvailableCapacity())
+}
+
+func TestCurrentMemory(t *testing.T) {
+	manager := NewPendingBlocksManager(log.NewNopLogger(), nil, PendingBlocksConfig{})
+
+	require.Equal(t, int64(0), manager.CurrentMemory())
+
+	// Add a block with known parts count
+	psh := types.PartSetHeader{Total: 10, Hash: cmtrand.Bytes(32)}
+	manager.AddFromCommitment(10, 0, &psh)
+
+	// Memory should be partSize * totalParts * 2
+	expectedMemory := int64(types.BlockPartSizeBytes) * 10 * 2
+	require.Equal(t, expectedMemory, manager.CurrentMemory())
+}
+
+func TestBlockCount(t *testing.T) {
+	manager := NewPendingBlocksManager(log.NewNopLogger(), nil, PendingBlocksConfig{})
+
+	require.Equal(t, 0, manager.BlockCount())
+
+	// Add some blocks
+	for h := int64(10); h < 15; h++ {
+		psh := types.PartSetHeader{Total: 5, Hash: cmtrand.Bytes(32)}
+		manager.AddFromCommitment(h, 0, &psh)
+	}
+
+	require.Equal(t, 5, manager.BlockCount())
+}
+
+func TestPrune_RemovesOld(t *testing.T) {
+	manager := NewPendingBlocksManager(log.NewNopLogger(), nil, PendingBlocksConfig{})
+
+	// Add blocks at heights 10, 11, 12, 13, 14
+	for h := int64(10); h < 15; h++ {
+		psh := types.PartSetHeader{Total: 5, Hash: cmtrand.Bytes(32)}
+		manager.AddFromCommitment(h, 0, &psh)
+	}
+
+	require.Equal(t, 5, manager.BlockCount())
+
+	// Prune up to and including height 12
+	manager.Prune(12)
+
+	// Should have removed heights 10, 11, 12
+	require.Equal(t, 2, manager.BlockCount())
+	require.False(t, manager.HasHeight(10))
+	require.False(t, manager.HasHeight(11))
+	require.False(t, manager.HasHeight(12))
+	require.True(t, manager.HasHeight(13))
+	require.True(t, manager.HasHeight(14))
+}
+
+func TestPrune_KeepsNew(t *testing.T) {
+	manager := NewPendingBlocksManager(log.NewNopLogger(), nil, PendingBlocksConfig{})
+
+	// Add blocks at heights 10, 11, 12
+	for h := int64(10); h < 13; h++ {
+		psh := types.PartSetHeader{Total: 5, Hash: cmtrand.Bytes(32)}
+		manager.AddFromCommitment(h, 0, &psh)
+	}
+
+	// Prune up to height 5 (below all blocks)
+	manager.Prune(5)
+
+	// All blocks should remain
+	require.Equal(t, 3, manager.BlockCount())
+	require.True(t, manager.HasHeight(10))
+	require.True(t, manager.HasHeight(11))
+	require.True(t, manager.HasHeight(12))
+}
+
+func TestPrune_MemoryUpdate(t *testing.T) {
+	manager := NewPendingBlocksManager(log.NewNopLogger(), nil, PendingBlocksConfig{})
+
+	// Add blocks with known memory
+	for h := int64(10); h < 15; h++ {
+		psh := types.PartSetHeader{Total: 10, Hash: cmtrand.Bytes(32)}
+		manager.AddFromCommitment(h, 0, &psh)
+	}
+
+	// Each block uses partSize * 10 * 2 bytes
+	perBlockMemory := int64(types.BlockPartSizeBytes) * 10 * 2
+	require.Equal(t, perBlockMemory*5, manager.CurrentMemory())
+
+	// Prune 3 blocks (10, 11, 12)
+	manager.Prune(12)
+
+	// Memory should be reduced by 3 blocks worth
+	require.Equal(t, perBlockMemory*2, manager.CurrentMemory())
+}
+
+func TestPrune_EmptyManager(t *testing.T) {
+	manager := NewPendingBlocksManager(log.NewNopLogger(), nil, PendingBlocksConfig{})
+
+	// Should not panic
+	manager.Prune(100)
+
+	require.Equal(t, 0, manager.BlockCount())
+	require.Equal(t, int64(0), manager.CurrentMemory())
+}
+
+func TestPrune_AllBlocks(t *testing.T) {
+	manager := NewPendingBlocksManager(log.NewNopLogger(), nil, PendingBlocksConfig{})
+
+	// Add blocks
+	for h := int64(10); h < 15; h++ {
+		psh := types.PartSetHeader{Total: 5, Hash: cmtrand.Bytes(32)}
+		manager.AddFromCommitment(h, 0, &psh)
+	}
+
+	// Prune all
+	manager.Prune(100)
+
+	require.Equal(t, 0, manager.BlockCount())
+	require.Equal(t, int64(0), manager.CurrentMemory())
+	require.Equal(t, int64(0), manager.LowestHeight())
+	require.Equal(t, int64(0), manager.HighestHeight())
+}
+
+func TestLowestHeight(t *testing.T) {
+	manager := NewPendingBlocksManager(log.NewNopLogger(), nil, PendingBlocksConfig{})
+
+	// Empty manager
+	require.Equal(t, int64(0), manager.LowestHeight())
+
+	// Add blocks out of order
+	for _, h := range []int64{15, 10, 12} {
+		psh := types.PartSetHeader{Total: 5, Hash: cmtrand.Bytes(32)}
+		manager.AddFromCommitment(h, 0, &psh)
+	}
+
+	require.Equal(t, int64(10), manager.LowestHeight())
+}
+
+func TestHighestHeight(t *testing.T) {
+	manager := NewPendingBlocksManager(log.NewNopLogger(), nil, PendingBlocksConfig{})
+
+	// Empty manager
+	require.Equal(t, int64(0), manager.HighestHeight())
+
+	// Add blocks out of order
+	for _, h := range []int64{15, 10, 12} {
+		psh := types.PartSetHeader{Total: 5, Hash: cmtrand.Bytes(32)}
+		manager.AddFromCommitment(h, 0, &psh)
+	}
+
+	require.Equal(t, int64(15), manager.HighestHeight())
+}
+
+// ============================================================================
+// Phase 5: Headersync Integration Tests
+// ============================================================================
+
+// mockHeaderSyncReader is a mock implementation of HeaderSyncReader for testing.
+type mockHeaderSyncReader struct {
+	headers      map[int64]*types.Header
+	blockIDs     map[int64]*types.BlockID
+	commits      map[int64]*types.Commit
+	height       int64
+	maxPeerHeight int64
+	caughtUp     bool
+}
+
+func newMockHeaderSyncReader() *mockHeaderSyncReader {
+	return &mockHeaderSyncReader{
+		headers:      make(map[int64]*types.Header),
+		blockIDs:     make(map[int64]*types.BlockID),
+		commits:      make(map[int64]*types.Commit),
+		height:       0,
+		maxPeerHeight: 0,
+		caughtUp:     false,
+	}
+}
+
+func (m *mockHeaderSyncReader) GetVerifiedHeader(height int64) (*types.Header, *types.BlockID, bool) {
+	header, ok := m.headers[height]
+	if !ok {
+		return nil, nil, false
+	}
+	blockID, ok := m.blockIDs[height]
+	if !ok {
+		return nil, nil, false
+	}
+	return header, blockID, true
+}
+
+func (m *mockHeaderSyncReader) GetCommit(height int64) *types.Commit {
+	return m.commits[height]
+}
+
+func (m *mockHeaderSyncReader) Height() int64 {
+	return m.height
+}
+
+func (m *mockHeaderSyncReader) MaxPeerHeight() int64 {
+	return m.maxPeerHeight
+}
+
+func (m *mockHeaderSyncReader) IsCaughtUp() bool {
+	return m.caughtUp
+}
+
+// addHeader adds a verified header at the given height to the mock.
+func (m *mockHeaderSyncReader) addHeader(height int64, numParts uint32) {
+	psh := types.PartSetHeader{
+		Total: numParts,
+		Hash:  cmtrand.Bytes(32),
+	}
+	blockID := types.BlockID{
+		Hash:          cmtrand.Bytes(32),
+		PartSetHeader: psh,
+	}
+	m.headers[height] = &types.Header{Height: height}
+	m.blockIDs[height] = &blockID
+	m.commits[height] = &types.Commit{Height: height}
+	if height > m.height {
+		m.height = height
+	}
+}
+
+func TestSetHeaderSyncReader(t *testing.T) {
+	manager := NewPendingBlocksManager(log.NewNopLogger(), nil, PendingBlocksConfig{})
+
+	mock := newMockHeaderSyncReader()
+	manager.SetHeaderSyncReader(mock)
+
+	// Should not panic when reader is set
+	fetched := manager.TryFillCapacity()
+	require.Equal(t, 0, fetched, "should fetch 0 when no headers available")
+}
+
+func TestSetLastCommittedHeight(t *testing.T) {
+	manager := NewPendingBlocksManager(log.NewNopLogger(), nil, PendingBlocksConfig{})
+
+	require.Equal(t, int64(0), manager.GetLastCommittedHeight())
+
+	manager.SetLastCommittedHeight(100)
+	require.Equal(t, int64(100), manager.GetLastCommittedHeight())
+}
+
+func TestLowestNeededHeight(t *testing.T) {
+	manager := NewPendingBlocksManager(log.NewNopLogger(), nil, PendingBlocksConfig{})
+
+	// No committed height, no pending blocks
+	require.Equal(t, int64(1), manager.LowestNeededHeight())
+
+	// Set committed height
+	manager.SetLastCommittedHeight(50)
+	require.Equal(t, int64(51), manager.LowestNeededHeight())
+
+	// Add a pending block below the needed height (gap scenario)
+	psh := types.PartSetHeader{Total: 5, Hash: cmtrand.Bytes(32)}
+	manager.AddFromCommitment(48, 0, &psh) // Below committed height
+
+	// Should use the lower pending block height
+	require.Equal(t, int64(48), manager.LowestNeededHeight())
+
+	// Add higher pending block
+	psh2 := types.PartSetHeader{Total: 5, Hash: cmtrand.Bytes(32)}
+	manager.AddFromCommitment(55, 0, &psh2)
+
+	// Still returns lowest pending
+	require.Equal(t, int64(48), manager.LowestNeededHeight())
+}
+
+func TestTryFillCapacity_NoReader(t *testing.T) {
+	manager := NewPendingBlocksManager(log.NewNopLogger(), nil, PendingBlocksConfig{})
+
+	// No reader set
+	fetched := manager.TryFillCapacity()
+	require.Equal(t, 0, fetched)
+}
+
+func TestTryFillCapacity_Available(t *testing.T) {
+	manager := NewPendingBlocksManager(log.NewNopLogger(), nil, PendingBlocksConfig{
+		MaxConcurrent: 10,
+		MemoryBudget:  1 << 30,
+	})
+
+	mock := newMockHeaderSyncReader()
+	// Add headers at heights 1, 2, 3
+	for h := int64(1); h <= 3; h++ {
+		mock.addHeader(h, 5)
+	}
+	manager.SetHeaderSyncReader(mock)
+
+	// Should fetch all 3
+	fetched := manager.TryFillCapacity()
+	require.Equal(t, 3, fetched)
+	require.Equal(t, 3, manager.BlockCount())
+
+	// Verify blocks were added
+	for h := int64(1); h <= 3; h++ {
+		require.True(t, manager.HasHeight(h))
+		pb := manager.GetBlock(h)
+		require.NotNil(t, pb)
+		require.True(t, pb.HeaderVerified)
+		require.NotNil(t, pb.Commit)
+	}
+}
+
+func TestTryFillCapacity_StartsFromLowest(t *testing.T) {
+	manager := NewPendingBlocksManager(log.NewNopLogger(), nil, PendingBlocksConfig{
+		MaxConcurrent: 10,
+		MemoryBudget:  1 << 30,
+	})
+
+	// Set committed height to 10
+	manager.SetLastCommittedHeight(10)
+
+	mock := newMockHeaderSyncReader()
+	// Add headers at heights 11, 12, 13, 14, 15
+	for h := int64(11); h <= 15; h++ {
+		mock.addHeader(h, 5)
+	}
+	manager.SetHeaderSyncReader(mock)
+
+	fetched := manager.TryFillCapacity()
+	require.Equal(t, 5, fetched)
+
+	// Verify they were fetched in order from 11
+	require.Equal(t, int64(11), manager.LowestHeight())
+	require.Equal(t, int64(15), manager.HighestHeight())
+}
+
+func TestTryFillCapacity_StopsAtCapacity(t *testing.T) {
+	manager := NewPendingBlocksManager(log.NewNopLogger(), nil, PendingBlocksConfig{
+		MaxConcurrent: 3, // Only allow 3 blocks
+		MemoryBudget:  1 << 30,
+	})
+
+	mock := newMockHeaderSyncReader()
+	// Add headers at heights 1-10
+	for h := int64(1); h <= 10; h++ {
+		mock.addHeader(h, 5)
+	}
+	manager.SetHeaderSyncReader(mock)
+
+	// Should only fetch 3 due to capacity
+	fetched := manager.TryFillCapacity()
+	require.Equal(t, 3, fetched)
+	require.Equal(t, 3, manager.BlockCount())
+
+	// Should be the lowest 3
+	require.True(t, manager.HasHeight(1))
+	require.True(t, manager.HasHeight(2))
+	require.True(t, manager.HasHeight(3))
+	require.False(t, manager.HasHeight(4))
+}
+
+func TestTryFillCapacity_SkipsExisting(t *testing.T) {
+	manager := NewPendingBlocksManager(log.NewNopLogger(), nil, PendingBlocksConfig{
+		MaxConcurrent: 10,
+		MemoryBudget:  1 << 30,
+	})
+
+	// Pre-add a block from commitment at height 2
+	psh := types.PartSetHeader{Total: 5, Hash: cmtrand.Bytes(32)}
+	manager.AddFromCommitment(2, 0, &psh)
+
+	mock := newMockHeaderSyncReader()
+	// Add headers at heights 1, 2, 3
+	for h := int64(1); h <= 3; h++ {
+		mock.addHeader(h, 5)
+	}
+	manager.SetHeaderSyncReader(mock)
+
+	// Should fetch 1 and 3, skip 2
+	fetched := manager.TryFillCapacity()
+	require.Equal(t, 2, fetched)
+	require.Equal(t, 3, manager.BlockCount())
+
+	// Height 2 should still be from commitment (not upgraded)
+	pb := manager.GetBlock(2)
+	require.NotNil(t, pb)
+	require.Equal(t, SourceCommitment, pb.Source)
+}
+
+func TestTryFillCapacity_UpgradesCommitmentBlock(t *testing.T) {
+	manager := NewPendingBlocksManager(log.NewNopLogger(), nil, PendingBlocksConfig{
+		MaxConcurrent: 10,
+		MemoryBudget:  1 << 30,
+	})
+
+	mock := newMockHeaderSyncReader()
+	mock.addHeader(1, 5)
+	manager.SetHeaderSyncReader(mock)
+
+	// Pre-add a block from commitment with matching PSH
+	psh := mock.blockIDs[1].PartSetHeader
+	manager.AddFromCommitment(1, 0, &psh)
+
+	pb := manager.GetBlock(1)
+	require.False(t, pb.HeaderVerified)
+	require.Nil(t, pb.Commit)
+
+	// Fetch - should upgrade the existing block
+	fetched := manager.TryFillCapacity()
+	require.Equal(t, 1, fetched)
+
+	pb = manager.GetBlock(1)
+	require.True(t, pb.HeaderVerified)
+	require.NotNil(t, pb.Commit)
+	require.Equal(t, SourceCommitment, pb.Source) // Source doesn't change
+}
+
+func TestTryFetchHeader_Available(t *testing.T) {
+	manager := NewPendingBlocksManager(log.NewNopLogger(), nil, PendingBlocksConfig{
+		MaxConcurrent: 10,
+		MemoryBudget:  1 << 30,
+	})
+
+	mock := newMockHeaderSyncReader()
+	mock.addHeader(10, 5)
+	manager.SetHeaderSyncReader(mock)
+
+	// Fetch single header
+	success := manager.TryFetchHeader(10)
+	require.True(t, success)
+	require.True(t, manager.HasHeight(10))
+}
+
+func TestTryFetchHeader_NotYetAvailable(t *testing.T) {
+	manager := NewPendingBlocksManager(log.NewNopLogger(), nil, PendingBlocksConfig{
+		MaxConcurrent: 10,
+		MemoryBudget:  1 << 30,
+	})
+
+	mock := newMockHeaderSyncReader()
+	// Don't add header at height 10
+	manager.SetHeaderSyncReader(mock)
+
+	// Should return false
+	success := manager.TryFetchHeader(10)
+	require.False(t, success)
+	require.False(t, manager.HasHeight(10))
+}
+
+func TestTryFetchHeader_HeaderWithoutCommit(t *testing.T) {
+	manager := NewPendingBlocksManager(log.NewNopLogger(), nil, PendingBlocksConfig{
+		MaxConcurrent: 10,
+		MemoryBudget:  1 << 30,
+	})
+
+	mock := newMockHeaderSyncReader()
+	// Add header but NOT commit
+	psh := types.PartSetHeader{Total: 5, Hash: cmtrand.Bytes(32)}
+	blockID := types.BlockID{Hash: cmtrand.Bytes(32), PartSetHeader: psh}
+	mock.headers[10] = &types.Header{Height: 10}
+	mock.blockIDs[10] = &blockID
+	// Don't add commit: mock.commits[10] = nil
+	mock.height = 10
+	manager.SetHeaderSyncReader(mock)
+
+	// Should return false because commit is missing
+	success := manager.TryFetchHeader(10)
+	require.False(t, success)
+	require.False(t, manager.HasHeight(10))
+}
+
+func TestTryFetchHeader_Idempotent(t *testing.T) {
+	manager := NewPendingBlocksManager(log.NewNopLogger(), nil, PendingBlocksConfig{
+		MaxConcurrent: 10,
+		MemoryBudget:  1 << 30,
+	})
+
+	mock := newMockHeaderSyncReader()
+	mock.addHeader(10, 5)
+	manager.SetHeaderSyncReader(mock)
+
+	// First fetch
+	success := manager.TryFetchHeader(10)
+	require.True(t, success)
+
+	// Second fetch - should return false (already have header)
+	success = manager.TryFetchHeader(10)
+	require.False(t, success)
+
+	// But block count should still be 1
+	require.Equal(t, 1, manager.BlockCount())
+}
+
+func TestOnBlockComplete_TriggersRefill(t *testing.T) {
+	manager := NewPendingBlocksManager(log.NewNopLogger(), nil, PendingBlocksConfig{
+		MaxConcurrent: 2, // Limit to 2
+		MemoryBudget:  1 << 30,
+	})
+
+	mock := newMockHeaderSyncReader()
+	for h := int64(1); h <= 5; h++ {
+		mock.addHeader(h, 5)
+	}
+	manager.SetHeaderSyncReader(mock)
+
+	// Fill to capacity
+	fetched := manager.TryFillCapacity()
+	require.Equal(t, 2, fetched)
+	require.Equal(t, 2, manager.BlockCount())
+	require.True(t, manager.HasHeight(1))
+	require.True(t, manager.HasHeight(2))
+
+	// Simulate block 1 being committed: update lastCommittedHeight and prune
+	manager.SetLastCommittedHeight(1)
+	manager.Prune(1)
+	require.Equal(t, 1, manager.BlockCount())
+	require.False(t, manager.HasHeight(1))
+	require.True(t, manager.HasHeight(2))
+
+	// OnBlockComplete should trigger refill
+	// Now lowest needed is 2 (lastCommittedHeight + 1), but we already have 2
+	// So it should fetch 3
+	manager.OnBlockComplete(1)
+
+	// Should have fetched one more (height 3)
+	require.Equal(t, 2, manager.BlockCount())
+	require.True(t, manager.HasHeight(2))
+	require.True(t, manager.HasHeight(3)) // Next in sequence
+}

@@ -16,6 +16,21 @@ import (
 	cmttypes "github.com/cometbft/cometbft/types"
 )
 
+// HeaderSyncReader is the interface for reading verified headers from headersync.
+// This allows the PendingBlocksManager to fetch headers on-demand.
+type HeaderSyncReader interface {
+	// GetVerifiedHeader returns the header and BlockID for a given height if verified.
+	GetVerifiedHeader(height int64) (*cmttypes.Header, *cmttypes.BlockID, bool)
+	// GetCommit returns the commit for a given height if available.
+	GetCommit(height int64) *cmttypes.Commit
+	// Height returns the current highest verified header height.
+	Height() int64
+	// MaxPeerHeight returns the highest peer height seen.
+	MaxPeerHeight() int64
+	// IsCaughtUp returns whether headersync is caught up to peers.
+	IsCaughtUp() bool
+}
+
 const (
 	defaultMaxConcurrent = 500
 	defaultMemoryBudget  = int64(12 * (1 << 30)) // 12GiB
@@ -82,6 +97,10 @@ type PendingBlocksManager struct {
 
 	// Output channel for completed blocks
 	completedBlocks chan *CompletedBlock
+
+	// Headersync integration
+	hsReader           HeaderSyncReader
+	lastCommittedHeight int64
 }
 
 type CompletedBlock struct {
@@ -465,4 +484,271 @@ func (m *PendingBlocksManager) HasHeight(height int64) bool {
 // CompletedBlocksChan returns the channel for receiving completed blocks.
 func (m *PendingBlocksManager) CompletedBlocksChan() <-chan *CompletedBlock {
 	return m.completedBlocks
+}
+
+// HasCapacity returns true if we can add at least one more block.
+// Called by tryFillCapacity BEFORE fetching headers.
+func (m *PendingBlocksManager) HasCapacity() bool {
+	m.mtx.RLock()
+	defer m.mtx.RUnlock()
+	// Conservative estimate - assume average block size (~100 parts)
+	avgBlockMemory := int64(cmttypes.BlockPartSizeBytes) * 100 * 2
+	return m.currentMemory+avgBlockMemory <= m.config.MemoryBudget &&
+		len(m.blocks) < m.config.MaxConcurrent
+}
+
+// AvailableCapacity returns how many more blocks we can track.
+// Used to determine how many headers to fetch.
+func (m *PendingBlocksManager) AvailableCapacity() int {
+	m.mtx.RLock()
+	defer m.mtx.RUnlock()
+	return m.config.MaxConcurrent - len(m.blocks)
+}
+
+// CurrentMemory returns the current memory usage in bytes.
+func (m *PendingBlocksManager) CurrentMemory() int64 {
+	m.mtx.RLock()
+	defer m.mtx.RUnlock()
+	return m.currentMemory
+}
+
+// BlockCount returns the number of blocks currently being tracked.
+func (m *PendingBlocksManager) BlockCount() int {
+	m.mtx.RLock()
+	defer m.mtx.RUnlock()
+	return len(m.blocks)
+}
+
+// Prune removes all blocks with height <= committedHeight.
+// This should be called after a block has been committed.
+func (m *PendingBlocksManager) Prune(committedHeight int64) {
+	m.mtx.Lock()
+	defer m.mtx.Unlock()
+
+	// Find the cutoff index in the sorted heights slice
+	cutoffIdx := 0
+	for i, h := range m.heights {
+		if h > committedHeight {
+			cutoffIdx = i
+			break
+		}
+		cutoffIdx = i + 1
+	}
+
+	// Remove blocks and update memory
+	for i := 0; i < cutoffIdx; i++ {
+		height := m.heights[i]
+		if pb, exists := m.blocks[height]; exists {
+			m.currentMemory -= pb.allocatedBytes
+			delete(m.blocks, height)
+		}
+	}
+
+	// Trim the heights slice
+	if cutoffIdx > 0 {
+		m.heights = m.heights[cutoffIdx:]
+	}
+}
+
+// LowestHeight returns the lowest height being tracked, or 0 if none.
+func (m *PendingBlocksManager) LowestHeight() int64 {
+	m.mtx.RLock()
+	defer m.mtx.RUnlock()
+	if len(m.heights) == 0 {
+		return 0
+	}
+	return m.heights[0]
+}
+
+// HighestHeight returns the highest height being tracked, or 0 if none.
+func (m *PendingBlocksManager) HighestHeight() int64 {
+	m.mtx.RLock()
+	defer m.mtx.RUnlock()
+	if len(m.heights) == 0 {
+		return 0
+	}
+	return m.heights[len(m.heights)-1]
+}
+
+// SetHeaderSyncReader sets the HeaderSyncReader for on-demand header fetching.
+// This should be called during reactor setup before any headers are needed.
+func (m *PendingBlocksManager) SetHeaderSyncReader(reader HeaderSyncReader) {
+	m.mtx.Lock()
+	defer m.mtx.Unlock()
+	m.hsReader = reader
+}
+
+// SetLastCommittedHeight updates the last committed height.
+// This is used to determine the lowest needed height for fetching.
+func (m *PendingBlocksManager) SetLastCommittedHeight(height int64) {
+	m.mtx.Lock()
+	defer m.mtx.Unlock()
+	m.lastCommittedHeight = height
+}
+
+// GetLastCommittedHeight returns the last committed height.
+func (m *PendingBlocksManager) GetLastCommittedHeight() int64 {
+	m.mtx.RLock()
+	defer m.mtx.RUnlock()
+	return m.lastCommittedHeight
+}
+
+// lowestNeededHeight returns the lowest height we should be fetching.
+// This is typically lastCommittedHeight + 1.
+// Caller must hold at least a read lock on mtx.
+func (m *PendingBlocksManager) lowestNeededHeightLocked() int64 {
+	if len(m.heights) == 0 {
+		return m.lastCommittedHeight + 1
+	}
+	// If we have pending blocks, start from lowest pending
+	// (in case there are gaps below it)
+	lowestPending := m.heights[0]
+	lowestNeeded := m.lastCommittedHeight + 1
+	if lowestPending < lowestNeeded {
+		return lowestPending
+	}
+	return lowestNeeded
+}
+
+// LowestNeededHeight returns the lowest height we should be fetching headers for.
+func (m *PendingBlocksManager) LowestNeededHeight() int64 {
+	m.mtx.RLock()
+	defer m.mtx.RUnlock()
+	return m.lowestNeededHeightLocked()
+}
+
+// TryFillCapacity fetches headers for consecutive heights starting from
+// the lowest height we need, up to available capacity.
+// This is the main entry point - always fills from lowest height first.
+//
+// KEY: Capacity is checked HERE, before fetching. We never request
+// headers we can't handle.
+//
+// Returns the number of headers successfully fetched and added/upgraded.
+func (m *PendingBlocksManager) TryFillCapacity() int {
+	m.mtx.Lock()
+	defer m.mtx.Unlock()
+
+	if m.hsReader == nil {
+		return 0
+	}
+
+	hsHeight := m.hsReader.Height() // Highest verified header available
+	startHeight := m.lowestNeededHeightLocked()
+
+	fetched := 0
+	for height := startHeight; height <= hsHeight; height++ {
+		// Check if we already have this height with a verified header
+		existing := m.blocks[height]
+		if existing != nil && existing.HeaderVerified {
+			continue // Already have verified header, skip
+		}
+
+		// If no existing block, check capacity before adding new one
+		if existing == nil {
+			avgBlockMemory := int64(cmttypes.BlockPartSizeBytes) * 100 * 2
+			if m.currentMemory+avgBlockMemory > m.config.MemoryBudget ||
+				len(m.blocks) >= m.config.MaxConcurrent {
+				break // At capacity, don't request more headers
+			}
+		}
+
+		// Fetch and add/upgrade this header
+		if m.fetchAndAddHeaderLocked(height) {
+			fetched++
+		}
+	}
+
+	return fetched
+}
+
+// fetchAndAddHeaderLocked fetches a header from headersync and adds it.
+// Only called when we've already confirmed we have capacity.
+// Caller must hold mtx (write lock).
+// Returns true if a header was successfully added.
+func (m *PendingBlocksManager) fetchAndAddHeaderLocked(height int64) bool {
+	if m.hsReader == nil {
+		return false
+	}
+
+	_, blockID, ok := m.hsReader.GetVerifiedHeader(height)
+	if !ok {
+		return false // Header not yet verified by headersync
+	}
+
+	commit := m.hsReader.GetCommit(height)
+	if commit == nil {
+		return false // Commit not available yet
+	}
+
+	// Check if block already exists (may have been added via commitment or compact block)
+	existing := m.blocks[height]
+	if existing != nil {
+		if existing.HeaderVerified {
+			return false // Already have verified header
+		}
+
+		// UPGRADE existing block (was created from commitment or compact block)
+		// Validate PSH matches
+		if existing.HasCommitment {
+			if !existing.BlockID.PartSetHeader.Equals(blockID.PartSetHeader) {
+				m.logger.Error("header PSH mismatch with commitment during fetch",
+					"height", height,
+					"existing", existing.BlockID.PartSetHeader.Hash,
+					"header", blockID.PartSetHeader.Hash)
+				return false
+			}
+		}
+
+		// Validate against CompactBlock if present
+		if existing.CompactBlock != nil {
+			if !existing.CompactBlock.Proposal.BlockID.Equals(*blockID) {
+				m.logger.Error("header BlockID mismatch with CompactBlock during fetch",
+					"height", height)
+				return false
+			}
+		}
+
+		existing.BlockID = *blockID
+		existing.HeaderVerified = true
+		existing.Commit = commit
+		return true
+	}
+
+	// NEW block from header
+	psh := blockID.PartSetHeader
+	memNeeded := m.estimateBlockMemory(&psh)
+
+	pb := &PendingBlock{
+		Height:         height,
+		Round:          0, // Round comes from commit or CompactBlock later
+		Source:         SourceHeaderSync,
+		BlockID:        *blockID,
+		HeaderVerified: true,
+		Commit:         commit,
+		Parts:          proptypes.NewCombinedPartSetFromOriginal(cmttypes.NewPartSetFromHeader(psh, cmttypes.BlockPartSizeBytes), false),
+		MaxRequests:    bits.NewBitArray(int(psh.Total * 2)),
+		CreatedAt:      time.Now(),
+		State:          BlockStateActive,
+		allocatedBytes: memNeeded,
+	}
+	m.addBlock(pb)
+	m.currentMemory += memNeeded
+	return true
+}
+
+// TryFetchHeader attempts to fetch a single header at the given height.
+// This is useful for immediate header fetch when a commitment arrives.
+// Returns true if the header was successfully fetched and added/upgraded.
+func (m *PendingBlocksManager) TryFetchHeader(height int64) bool {
+	m.mtx.Lock()
+	defer m.mtx.Unlock()
+	return m.fetchAndAddHeaderLocked(height)
+}
+
+// OnBlockComplete should be called when a block completes.
+// It triggers a capacity refill from headersync.
+func (m *PendingBlocksManager) OnBlockComplete(height int64) {
+	// Space freed up - try to fill with next headers starting from lowest needed
+	m.TryFillCapacity()
 }
