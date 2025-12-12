@@ -464,6 +464,28 @@ func (pool *BlockPool) MaxPeerHeight() int64 {
 	return pool.maxPeerHeight
 }
 
+// UpdatePeerHeight updates a peer's height if it's higher than currently known.
+// This is used by consensus reactor to feed fresh heights from NewRoundStepMessage.
+// Unlike SetPeerRange, this doesn't create new peers or ban for lower heights -
+// it only updates existing peers and maxPeerHeight.
+func (pool *BlockPool) UpdatePeerHeight(peerID p2p.ID, height int64) {
+	pool.mtx.Lock()
+	defer pool.mtx.Unlock()
+
+	// Update existing peer's height if higher
+	if peer := pool.peers[peerID]; peer != nil {
+		if height > peer.height {
+			peer.height = height
+		}
+	}
+
+	// Always update maxPeerHeight if this is higher
+	// (even if peer isn't in our pool, we want to know the network tip)
+	if height > pool.maxPeerHeight {
+		pool.maxPeerHeight = height
+	}
+}
+
 // SetPeerRange sets the peer's alleged blockchain base and height.
 func (pool *BlockPool) SetPeerRange(peerID p2p.ID, base int64, height int64) {
 	pool.mtx.Lock()

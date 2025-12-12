@@ -48,6 +48,9 @@ const (
 // This allows the consensus reactor to trigger a switch to blocksync when falling behind.
 type blockSyncReactor interface {
 	SwitchToBlockSync(sm.State) error
+	// UpdatePeerHeight updates a peer's height in the blocksync pool.
+	// This allows consensus reactor to feed fresh heights from NewRoundStepMessage.
+	UpdatePeerHeight(peerID p2p.ID, height int64)
 }
 
 // Reactor defines a reactor for the consensus service.
@@ -367,6 +370,10 @@ func (conR *Reactor) receive(e p2p.Envelope) error {
 				return err
 			}
 			ps.ApplyNewRoundStepMessage(msg)
+			// Update blocksync pool with fresh peer height (if in blocksync mode)
+			if conR.WaitSync() && conR.blocksyncR != nil {
+				conR.blocksyncR.UpdatePeerHeight(e.Src.ID(), msg.Height)
+			}
 		case *NewValidBlockMessage:
 			schema.WriteConsensusState(
 				conR.traceClient,

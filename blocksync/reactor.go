@@ -706,3 +706,13 @@ func (bcR *Reactor) BroadcastStatusRequest() {
 		Message:   &bcproto.StatusRequest{},
 	})
 }
+
+// UpdatePeerHeight updates a peer's height in the blocksync pool.
+// This is called by the consensus reactor when it receives NewRoundStepMessage
+// to keep maxPeerHeight fresh without waiting for StatusResponse.
+func (bcR *Reactor) UpdatePeerHeight(peerID p2p.ID, height int64) {
+	if bcR.pool == nil {
+		return
+	}
+	bcR.pool.UpdatePeerHeight(peerID, height)
+}
