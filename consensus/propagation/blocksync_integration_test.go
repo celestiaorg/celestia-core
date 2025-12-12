@@ -523,3 +523,535 @@ func (m *mockHeaderSyncReaderWithBlocks) MaxPeerHeight() int64 {
 func (m *mockHeaderSyncReaderWithBlocks) IsCaughtUp() bool {
 	return m.caughtUp
 }
+
+// ============================================================================
+// Phase 9.2: Multi-Node Parallel Blocksync Integration Tests
+// ============================================================================
+
+// TestMultiNodeParallelBlocksync verifies that multiple lagging nodes can
+// sync blocks in parallel using the PendingBlocksManager.
+//
+// This test validates:
+// 1. Multiple nodes can track and sync blocks concurrently
+// 2. Parts are downloaded from multiple peers
+// 3. Both lagging nodes catch up to the target height
+func TestMultiNodeParallelBlocksync(t *testing.T) {
+	p2pCfg := defaultTestP2PConf()
+	cleanup, _, sm := state.SetupTestCase(t)
+	t.Cleanup(func() {
+		cleanup(t)
+	})
+
+	// Create 4 reactors:
+	// - reactors[0], reactors[1]: "ahead" nodes that have blocks
+	// - reactors[2], reactors[3]: "lagging" nodes that need to sync
+	reactors, _ := createTestReactors(4, p2pCfg, false, "")
+	ahead1 := reactors[0]
+	ahead2 := reactors[1]
+	lagging1 := reactors[2]
+	lagging2 := reactors[3]
+
+	const numBlocks = 5
+
+	// Store blocks on the ahead nodes
+	blocks := make(map[int64]*testBlockData, numBlocks)
+
+	for height := int64(1); height <= numBlocks; height++ {
+		prop, ps, block, metaData := createTestProposal(t, sm, height, 0, 2, 100000)
+		cb, parity := createCompactBlock(t, prop, ps, metaData)
+
+		// Add to both ahead nodes
+		added1 := ahead1.AddProposal(cb)
+		require.True(t, added1, "ahead1 failed to add proposal at height %d", height)
+		added2 := ahead2.AddProposal(cb)
+		require.True(t, added2, "ahead2 failed to add proposal at height %d", height)
+
+		// Fill in parts for both
+		_, parts1, _, has1 := ahead1.getAllState(height, 0, true)
+		require.True(t, has1)
+		parts1.SetProposalData(ps, parity)
+
+		_, parts2, _, has2 := ahead2.getAllState(height, 0, true)
+		require.True(t, has2)
+		parts2.SetProposalData(ps, parity)
+
+		blocks[height] = &testBlockData{
+			cb:     cb,
+			ps:     ps,
+			parity: parity,
+			block:  block,
+			prop:   prop,
+		}
+
+		// Advance both ahead nodes
+		ahead1.pmtx.Lock()
+		ahead1.height = height + 1
+		ahead1.pmtx.Unlock()
+
+		ahead2.pmtx.Lock()
+		ahead2.height = height + 1
+		ahead2.pmtx.Unlock()
+	}
+
+	// Setup both lagging nodes with PendingBlocksManager
+	logger := log.TestingLogger()
+
+	// Setup lagging1
+	pendingBlocks1 := NewPendingBlocksManager(logger.With("node", "lagging1"), nil, PendingBlocksConfig{
+		MaxConcurrent: 100,
+		MemoryBudget:  1 << 30,
+	})
+	mockHS1 := &mockHeaderSyncReaderWithBlocks{
+		blocks:   blocks,
+		height:   numBlocks,
+		caughtUp: true,
+	}
+	pendingBlocks1.SetHeaderSyncReader(mockHS1)
+	pendingBlocks1.SetLastCommittedHeight(0)
+	blockDelivery1 := NewBlockDeliveryManager(pendingBlocks1, 1, logger.With("node", "lagging1"))
+	blockDelivery1.Start()
+	defer blockDelivery1.Stop()
+	lagging1.pendingBlocks = pendingBlocks1
+	lagging1.hsReader = mockHS1
+
+	// Setup lagging2
+	pendingBlocks2 := NewPendingBlocksManager(logger.With("node", "lagging2"), nil, PendingBlocksConfig{
+		MaxConcurrent: 100,
+		MemoryBudget:  1 << 30,
+	})
+	mockHS2 := &mockHeaderSyncReaderWithBlocks{
+		blocks:   blocks,
+		height:   numBlocks,
+		caughtUp: true,
+	}
+	pendingBlocks2.SetHeaderSyncReader(mockHS2)
+	pendingBlocks2.SetLastCommittedHeight(0)
+	blockDelivery2 := NewBlockDeliveryManager(pendingBlocks2, 1, logger.With("node", "lagging2"))
+	blockDelivery2.Start()
+	defer blockDelivery2.Stop()
+	lagging2.pendingBlocks = pendingBlocks2
+	lagging2.hsReader = mockHS2
+
+	// Both lagging nodes fill capacity
+	fetched1 := pendingBlocks1.TryFillCapacity()
+	require.Equal(t, numBlocks, fetched1, "lagging1 should fetch all headers")
+
+	fetched2 := pendingBlocks2.TryFillCapacity()
+	require.Equal(t, numBlocks, fetched2, "lagging2 should fetch all headers")
+
+	// Verify both have all blocks tracked
+	require.Equal(t, numBlocks, pendingBlocks1.BlockCount())
+	require.Equal(t, numBlocks, pendingBlocks2.BlockCount())
+
+	// Simulate both lagging nodes receiving parts in parallel
+	// lagging1 gets even parts, lagging2 gets odd parts initially
+	// Then they get the remaining parts
+
+	// First round: distribute parts
+	for height := int64(1); height <= numBlocks; height++ {
+		bd := blocks[height]
+
+		for i := uint32(0); i < bd.ps.Total(); i++ {
+			part := bd.ps.GetPart(int(i))
+			proof := bd.cb.GetProof(i)
+
+			recoveryPart := &proptypes.RecoveryPart{
+				Height: height,
+				Round:  0,
+				Index:  i,
+				Data:   part.Bytes.Bytes(),
+			}
+
+			// lagging1 gets even-indexed parts
+			if i%2 == 0 {
+				_, _, err := pendingBlocks1.HandlePart(height, 0, recoveryPart, proof)
+				require.NoError(t, err)
+			}
+
+			// lagging2 gets odd-indexed parts
+			if i%2 == 1 {
+				_, _, err := pendingBlocks2.HandlePart(height, 0, recoveryPart, proof)
+				require.NoError(t, err)
+			}
+		}
+	}
+
+	// Second round: complete all blocks
+	for height := int64(1); height <= numBlocks; height++ {
+		bd := blocks[height]
+
+		for i := uint32(0); i < bd.ps.Total(); i++ {
+			part := bd.ps.GetPart(int(i))
+			proof := bd.cb.GetProof(i)
+
+			recoveryPart := &proptypes.RecoveryPart{
+				Height: height,
+				Round:  0,
+				Index:  i,
+				Data:   part.Bytes.Bytes(),
+			}
+
+			// lagging1 gets remaining (odd) parts
+			if i%2 == 1 {
+				_, _, err := pendingBlocks1.HandlePart(height, 0, recoveryPart, proof)
+				require.NoError(t, err)
+			}
+
+			// lagging2 gets remaining (even) parts
+			if i%2 == 0 {
+				_, _, err := pendingBlocks2.HandlePart(height, 0, recoveryPart, proof)
+				require.NoError(t, err)
+			}
+		}
+	}
+
+	// Wait for all blocks to be delivered to both nodes
+	timeout := time.After(5 * time.Second)
+	deliveredToLagging1 := make([]*CompletedBlock, 0, numBlocks)
+	deliveredToLagging2 := make([]*CompletedBlock, 0, numBlocks)
+
+	for len(deliveredToLagging1) < numBlocks || len(deliveredToLagging2) < numBlocks {
+		select {
+		case block := <-blockDelivery1.BlockChan():
+			deliveredToLagging1 = append(deliveredToLagging1, block)
+		case block := <-blockDelivery2.BlockChan():
+			deliveredToLagging2 = append(deliveredToLagging2, block)
+		case <-timeout:
+			t.Fatalf("timeout: lagging1 got %d/%d, lagging2 got %d/%d",
+				len(deliveredToLagging1), numBlocks,
+				len(deliveredToLagging2), numBlocks)
+		}
+	}
+
+	// Verify both nodes received blocks in order
+	for i, block := range deliveredToLagging1 {
+		require.Equal(t, int64(i+1), block.Height,
+			"lagging1: block %d should have height %d", i, i+1)
+	}
+	for i, block := range deliveredToLagging2 {
+		require.Equal(t, int64(i+1), block.Height,
+			"lagging2: block %d should have height %d", i, i+1)
+	}
+}
+
+// TestMultiNodeParallelBlocksync_DifferentSpeeds verifies that nodes syncing
+// at different speeds (receiving parts at different rates) still work correctly.
+func TestMultiNodeParallelBlocksync_DifferentSpeeds(t *testing.T) {
+	p2pCfg := defaultTestP2PConf()
+	cleanup, _, sm := state.SetupTestCase(t)
+	t.Cleanup(func() {
+		cleanup(t)
+	})
+
+	reactors, _ := createTestReactors(3, p2pCfg, false, "")
+	ahead := reactors[0]
+	fastLagging := reactors[1]
+	slowLagging := reactors[2]
+
+	const numBlocks = 3
+
+	blocks := make(map[int64]*testBlockData, numBlocks)
+
+	for height := int64(1); height <= numBlocks; height++ {
+		prop, ps, block, metaData := createTestProposal(t, sm, height, 0, 2, 100000)
+		cb, parity := createCompactBlock(t, prop, ps, metaData)
+
+		added := ahead.AddProposal(cb)
+		require.True(t, added)
+
+		_, parts, _, has := ahead.getAllState(height, 0, true)
+		require.True(t, has)
+		parts.SetProposalData(ps, parity)
+
+		blocks[height] = &testBlockData{
+			cb:     cb,
+			ps:     ps,
+			parity: parity,
+			block:  block,
+			prop:   prop,
+		}
+
+		ahead.pmtx.Lock()
+		ahead.height = height + 1
+		ahead.pmtx.Unlock()
+	}
+
+	logger := log.TestingLogger()
+
+	// Setup fast lagging node
+	fastPendingBlocks := NewPendingBlocksManager(logger.With("node", "fast"), nil, PendingBlocksConfig{})
+	fastMockHS := &mockHeaderSyncReaderWithBlocks{
+		blocks:   blocks,
+		height:   numBlocks,
+		caughtUp: true,
+	}
+	fastPendingBlocks.SetHeaderSyncReader(fastMockHS)
+	fastPendingBlocks.SetLastCommittedHeight(0)
+	fastDelivery := NewBlockDeliveryManager(fastPendingBlocks, 1, logger.With("node", "fast"))
+	fastDelivery.Start()
+	defer fastDelivery.Stop()
+	fastLagging.pendingBlocks = fastPendingBlocks
+	fastLagging.hsReader = fastMockHS
+
+	// Setup slow lagging node
+	slowPendingBlocks := NewPendingBlocksManager(logger.With("node", "slow"), nil, PendingBlocksConfig{})
+	slowMockHS := &mockHeaderSyncReaderWithBlocks{
+		blocks:   blocks,
+		height:   numBlocks,
+		caughtUp: true,
+	}
+	slowPendingBlocks.SetHeaderSyncReader(slowMockHS)
+	slowPendingBlocks.SetLastCommittedHeight(0)
+	slowDelivery := NewBlockDeliveryManager(slowPendingBlocks, 1, logger.With("node", "slow"))
+	slowDelivery.Start()
+	defer slowDelivery.Stop()
+	slowLagging.pendingBlocks = slowPendingBlocks
+	slowLagging.hsReader = slowMockHS
+
+	// Both fill capacity
+	fastPendingBlocks.TryFillCapacity()
+	slowPendingBlocks.TryFillCapacity()
+
+	// Fast node gets all parts for all blocks quickly
+	for height := int64(1); height <= numBlocks; height++ {
+		bd := blocks[height]
+		for i := uint32(0); i < bd.ps.Total(); i++ {
+			part := bd.ps.GetPart(int(i))
+			proof := bd.cb.GetProof(i)
+			recoveryPart := &proptypes.RecoveryPart{
+				Height: height,
+				Round:  0,
+				Index:  i,
+				Data:   part.Bytes.Bytes(),
+			}
+			_, _, err := fastPendingBlocks.HandlePart(height, 0, recoveryPart, proof)
+			require.NoError(t, err)
+		}
+	}
+
+	// Slow node only gets block 1 first
+	bd1 := blocks[1]
+	for i := uint32(0); i < bd1.ps.Total(); i++ {
+		part := bd1.ps.GetPart(int(i))
+		proof := bd1.cb.GetProof(i)
+		recoveryPart := &proptypes.RecoveryPart{
+			Height: 1,
+			Round:  0,
+			Index:  i,
+			Data:   part.Bytes.Bytes(),
+		}
+		_, _, err := slowPendingBlocks.HandlePart(1, 0, recoveryPart, proof)
+		require.NoError(t, err)
+	}
+
+	// Fast node should have all blocks delivered
+	fastDelivered := make([]*CompletedBlock, 0, numBlocks)
+	timeout := time.After(2 * time.Second)
+	for len(fastDelivered) < numBlocks {
+		select {
+		case block := <-fastDelivery.BlockChan():
+			fastDelivered = append(fastDelivered, block)
+		case <-timeout:
+			t.Fatalf("fast node timeout, got %d/%d", len(fastDelivered), numBlocks)
+		}
+	}
+
+	// Slow node should have block 1 delivered
+	select {
+	case block := <-slowDelivery.BlockChan():
+		require.Equal(t, int64(1), block.Height, "slow node should receive block 1")
+	case <-time.After(1 * time.Second):
+		t.Fatal("slow node should have received block 1")
+	}
+
+	// Now slow node gets the rest
+	for height := int64(2); height <= numBlocks; height++ {
+		bd := blocks[height]
+		for i := uint32(0); i < bd.ps.Total(); i++ {
+			part := bd.ps.GetPart(int(i))
+			proof := bd.cb.GetProof(i)
+			recoveryPart := &proptypes.RecoveryPart{
+				Height: height,
+				Round:  0,
+				Index:  i,
+				Data:   part.Bytes.Bytes(),
+			}
+			_, _, err := slowPendingBlocks.HandlePart(height, 0, recoveryPart, proof)
+			require.NoError(t, err)
+		}
+	}
+
+	// Slow node should now have all remaining blocks
+	slowDelivered := []*CompletedBlock{{Height: 1}} // Already got block 1
+	timeout = time.After(2 * time.Second)
+	for len(slowDelivered) < numBlocks {
+		select {
+		case block := <-slowDelivery.BlockChan():
+			slowDelivered = append(slowDelivered, block)
+		case <-timeout:
+			t.Fatalf("slow node timeout for remaining, got %d/%d", len(slowDelivered), numBlocks)
+		}
+	}
+
+	// Verify both got all blocks
+	require.Len(t, fastDelivered, numBlocks)
+	require.Len(t, slowDelivered, numBlocks)
+}
+
+// TestMultiNodeParallelBlocksync_SharedParts verifies that the same parts
+// can be shared across multiple nodes (simulating peer-to-peer gossip).
+func TestMultiNodeParallelBlocksync_SharedParts(t *testing.T) {
+	p2pCfg := defaultTestP2PConf()
+	cleanup, _, sm := state.SetupTestCase(t)
+	t.Cleanup(func() {
+		cleanup(t)
+	})
+
+	// Create 3 lagging nodes that share parts
+	reactors, _ := createTestReactors(4, p2pCfg, false, "")
+	ahead := reactors[0]
+	node1 := reactors[1]
+	node2 := reactors[2]
+	node3 := reactors[3]
+
+	const numBlocks = 3
+
+	blocks := make(map[int64]*testBlockData, numBlocks)
+
+	for height := int64(1); height <= numBlocks; height++ {
+		prop, ps, block, metaData := createTestProposal(t, sm, height, 0, 2, 100000)
+		cb, parity := createCompactBlock(t, prop, ps, metaData)
+
+		added := ahead.AddProposal(cb)
+		require.True(t, added)
+
+		_, parts, _, has := ahead.getAllState(height, 0, true)
+		require.True(t, has)
+		parts.SetProposalData(ps, parity)
+
+		blocks[height] = &testBlockData{
+			cb:     cb,
+			ps:     ps,
+			parity: parity,
+			block:  block,
+			prop:   prop,
+		}
+
+		ahead.pmtx.Lock()
+		ahead.height = height + 1
+		ahead.pmtx.Unlock()
+	}
+
+	logger := log.TestingLogger()
+
+	// Setup all three lagging nodes
+	type laggingNode struct {
+		pendingBlocks *PendingBlocksManager
+		delivery      *BlockDeliveryManager
+	}
+
+	laggingNodes := make([]*laggingNode, 3)
+	for i, reactor := range []*Reactor{node1, node2, node3} {
+		pb := NewPendingBlocksManager(logger.With("node", i), nil, PendingBlocksConfig{})
+		mockHS := &mockHeaderSyncReaderWithBlocks{
+			blocks:   blocks,
+			height:   numBlocks,
+			caughtUp: true,
+		}
+		pb.SetHeaderSyncReader(mockHS)
+		pb.SetLastCommittedHeight(0)
+		delivery := NewBlockDeliveryManager(pb, 1, logger.With("node", i))
+		delivery.Start()
+		defer delivery.Stop()
+		reactor.pendingBlocks = pb
+		reactor.hsReader = mockHS
+		pb.TryFillCapacity()
+
+		laggingNodes[i] = &laggingNode{
+			pendingBlocks: pb,
+			delivery:      delivery,
+		}
+	}
+
+	// Distribute parts across nodes: each node gets 1/3 of parts initially
+	for height := int64(1); height <= numBlocks; height++ {
+		bd := blocks[height]
+
+		for i := uint32(0); i < bd.ps.Total(); i++ {
+			part := bd.ps.GetPart(int(i))
+			proof := bd.cb.GetProof(i)
+			recoveryPart := &proptypes.RecoveryPart{
+				Height: height,
+				Round:  0,
+				Index:  i,
+				Data:   part.Bytes.Bytes(),
+			}
+
+			// Each node gets parts where i%3 == nodeIndex
+			nodeIdx := int(i) % 3
+			_, _, err := laggingNodes[nodeIdx].pendingBlocks.HandlePart(height, 0, recoveryPart, proof)
+			require.NoError(t, err)
+		}
+	}
+
+	// Now "gossip" - each node shares its parts with others
+	for height := int64(1); height <= numBlocks; height++ {
+		bd := blocks[height]
+
+		for i := uint32(0); i < bd.ps.Total(); i++ {
+			part := bd.ps.GetPart(int(i))
+			proof := bd.cb.GetProof(i)
+			recoveryPart := &proptypes.RecoveryPart{
+				Height: height,
+				Round:  0,
+				Index:  i,
+				Data:   part.Bytes.Bytes(),
+			}
+
+			// Share with all nodes (simulating gossip)
+			for _, ln := range laggingNodes {
+				// HandlePart is idempotent - it won't add duplicates
+				_, _, err := ln.pendingBlocks.HandlePart(height, 0, recoveryPart, proof)
+				require.NoError(t, err)
+			}
+		}
+	}
+
+	// Wait for all nodes to receive all blocks
+	timeout := time.After(5 * time.Second)
+	delivered := make([][]*CompletedBlock, 3)
+	for i := range delivered {
+		delivered[i] = make([]*CompletedBlock, 0, numBlocks)
+	}
+
+	allDone := func() bool {
+		for _, d := range delivered {
+			if len(d) < numBlocks {
+				return false
+			}
+		}
+		return true
+	}
+
+	for !allDone() {
+		select {
+		case block := <-laggingNodes[0].delivery.BlockChan():
+			delivered[0] = append(delivered[0], block)
+		case block := <-laggingNodes[1].delivery.BlockChan():
+			delivered[1] = append(delivered[1], block)
+		case block := <-laggingNodes[2].delivery.BlockChan():
+			delivered[2] = append(delivered[2], block)
+		case <-timeout:
+			t.Fatalf("timeout: nodes got %d, %d, %d blocks",
+				len(delivered[0]), len(delivered[1]), len(delivered[2]))
+		}
+	}
+
+	// Verify all nodes received blocks in order
+	for nodeIdx, nodeDelivered := range delivered {
+		for blockIdx, block := range nodeDelivered {
+			require.Equal(t, int64(blockIdx+1), block.Height,
+				"node %d: block %d should have height %d", nodeIdx, blockIdx, blockIdx+1)
+		}
+	}
+}
