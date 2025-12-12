@@ -6,6 +6,9 @@ import (
 	"sync"
 	"time"
 
+	"github.com/cometbft/cometbft/crypto/merkle"
+	"github.com/cometbft/cometbft/crypto/tmhash"
+
 	proptypes "github.com/cometbft/cometbft/consensus/propagation/types"
 	"github.com/cometbft/cometbft/libs/bits"
 	"github.com/cometbft/cometbft/libs/log"
@@ -86,6 +89,7 @@ type CompletedBlock struct {
 	Round   int32
 	Parts   *cmttypes.PartSet
 	BlockID cmttypes.BlockID
+	Commit  *cmttypes.Commit // From headersync (for blocksync application)
 }
 
 // NewPendingBlocksManager constructs a manager with sane defaults for configuration
@@ -103,7 +107,7 @@ func NewPendingBlocksManager(logger log.Logger, blockStore *store.BlockStore, cf
 		heights:         []int64{},
 		blocks:          make(map[int64]*PendingBlock),
 		config:          cfg,
-		completedBlocks: make(chan *CompletedBlock),
+		completedBlocks: make(chan *CompletedBlock, cfg.MaxConcurrent), // Buffered to avoid blocking
 	}
 }
 
@@ -312,4 +316,153 @@ func (m *PendingBlocksManager) AddFromCommitment(height int64, round int32, psh 
 	m.addBlock(pb) // Bypasses capacity check
 	m.currentMemory += memNeeded
 	return true
+}
+
+// MissingPartsInfo contains information about missing parts for a pending block.
+type MissingPartsInfo struct {
+	Height        int64
+	Round         int32
+	Missing       *bits.BitArray
+	Total         uint32
+	NeedsProofs   bool // Whether requested parts must include inline Merkle proofs
+	HasCommitment bool // Whether this block has a consensus commitment (prioritize)
+}
+
+// HandlePart receives a part for a pending block, verifies it, and adds it to the CombinedPartSet.
+// Returns (added, complete, error) where:
+//   - added: true if the part was successfully added
+//   - complete: true if this part completed the original part set
+//   - error: any validation error
+func (m *PendingBlocksManager) HandlePart(height int64, round int32, part *proptypes.RecoveryPart, proof *merkle.Proof) (bool, bool, error) {
+	m.mtx.Lock()
+	defer m.mtx.Unlock()
+
+	pb := m.blocks[height]
+	if pb == nil {
+		// Unknown height - could be already pruned or never tracked
+		return false, false, nil
+	}
+
+	// If block is already complete, ignore the part
+	if pb.State == BlockStateComplete {
+		return false, false, nil
+	}
+
+	// Check if we already have this part
+	if pb.Parts.HasPart(int(part.Index)) {
+		return false, false, nil
+	}
+
+	// Verify the part using either proof cache (from CompactBlock) or inline proof
+	var verifiedProof merkle.Proof
+	if pb.CanUseProofCache() {
+		// Use proof from CompactBlock's proof cache
+		cachedProof := pb.CompactBlock.GetProof(part.Index)
+		if cachedProof == nil {
+			return false, false, fmt.Errorf("no cached proof for part %d at height %d", part.Index, height)
+		}
+		verifiedProof = *cachedProof
+	} else {
+		// Must have inline proof
+		if proof == nil {
+			return false, false, fmt.Errorf("missing inline proof for part %d at height %d (no CompactBlock)", part.Index, height)
+		}
+		if len(proof.LeafHash) != tmhash.Size {
+			return false, false, fmt.Errorf("invalid proof leaf hash size for part %d at height %d", part.Index, height)
+		}
+		verifiedProof = *proof
+	}
+
+	// Add part to CombinedPartSet (AddPart verifies the proof internally)
+	added, err := pb.Parts.AddPart(part, verifiedProof)
+	if err != nil {
+		return false, false, fmt.Errorf("failed to add part %d at height %d: %w", part.Index, height, err)
+	}
+
+	if !added {
+		return false, false, nil
+	}
+
+	// Check if original parts are now complete
+	complete := pb.Parts.IsComplete()
+	if complete {
+		pb.State = BlockStateComplete
+		// Send to completedBlocks channel (non-blocking to avoid deadlock)
+		// The caller is responsible for consuming this channel
+		select {
+		case m.completedBlocks <- &CompletedBlock{
+			Height:  pb.Height,
+			Round:   pb.Round,
+			Parts:   pb.Parts.Original(),
+			BlockID: pb.BlockID,
+			Commit:  pb.Commit,
+		}:
+		default:
+			m.logger.Error("completedBlocks channel full, dropping completion", "height", height)
+		}
+	}
+
+	return true, complete, nil
+}
+
+// GetMissingParts returns information about missing parts for up to maxBlocks pending blocks.
+// Results are ordered by height (lowest first) to prioritize older blocks.
+// Only returns blocks in Active state.
+func (m *PendingBlocksManager) GetMissingParts(maxBlocks int) []*MissingPartsInfo {
+	m.mtx.RLock()
+	defer m.mtx.RUnlock()
+
+	result := make([]*MissingPartsInfo, 0, maxBlocks)
+
+	for _, height := range m.heights {
+		if len(result) >= maxBlocks {
+			break
+		}
+
+		pb := m.blocks[height]
+		if pb == nil || pb.State != BlockStateActive {
+			continue
+		}
+
+		// Get missing parts bitmap (inverted from what we have)
+		// Total map includes both original and parity parts
+		haveBits := pb.Parts.BitArray()
+		missingBits := haveBits.Not()
+
+		// Check if there are any missing parts
+		if missingBits.IsEmpty() {
+			continue
+		}
+
+		result = append(result, &MissingPartsInfo{
+			Height:        pb.Height,
+			Round:         pb.Round,
+			Missing:       missingBits.Copy(),
+			Total:         pb.Parts.Total(),
+			NeedsProofs:   pb.NeedsInlineProofs(),
+			HasCommitment: pb.HasCommitment,
+		})
+	}
+
+	return result
+}
+
+// GetBlock returns the pending block at the given height, or nil if not found.
+func (m *PendingBlocksManager) GetBlock(height int64) *PendingBlock {
+	m.mtx.RLock()
+	defer m.mtx.RUnlock()
+	return m.blocks[height]
+}
+
+// HasHeight returns true if the manager is tracking the given height.
+func (m *PendingBlocksManager) HasHeight(height int64) bool {
+	m.mtx.RLock()
+	defer m.mtx.RUnlock()
+	_, exists := m.blocks[height]
+	return exists
+}
+
+// CompletedBlocksChan returns the channel for receiving completed blocks.
+func (m *PendingBlocksManager) CompletedBlocksChan() <-chan *CompletedBlock {
+	return m.completedBlocks
 }

@@ -5,6 +5,7 @@ import (
 	"time"
 
 	proptypes "github.com/cometbft/cometbft/consensus/propagation/types"
+	"github.com/cometbft/cometbft/crypto/merkle"
 	"github.com/cometbft/cometbft/internal/test"
 	"github.com/cometbft/cometbft/libs/log"
 	cmtrand "github.com/cometbft/cometbft/libs/rand"
@@ -578,4 +579,421 @@ func TestMemoryEstimation(t *testing.T) {
 
 	actual := manager.estimateBlockMemory(&psh)
 	require.Equal(t, expected, actual)
+}
+
+// ============================================================================
+// Phase 3: HandlePart Tests
+// ============================================================================
+
+// Helper to create a valid partset with real merkle proofs
+func makeTestPartSet(t *testing.T, totalParts int) (*types.PartSet, []byte) {
+	t.Helper()
+	// Create random data that will generate the desired number of parts
+	data := cmtrand.Bytes(int(types.BlockPartSizeBytes) * totalParts)
+	partSet, err := types.NewPartSetFromData(data, types.BlockPartSizeBytes)
+	require.NoError(t, err)
+	require.Equal(t, uint32(totalParts), partSet.Total())
+	return partSet, data
+}
+
+// Helper to create a RecoveryPart from a types.Part
+func makeRecoveryPart(height int64, round int32, part *types.Part) *proptypes.RecoveryPart {
+	return &proptypes.RecoveryPart{
+		Height: height,
+		Round:  round,
+		Index:  part.Index,
+		Data:   part.Bytes,
+		Proof:  &part.Proof,
+	}
+}
+
+func TestHandlePart_Valid(t *testing.T) {
+	manager := NewPendingBlocksManager(log.NewNopLogger(), nil, PendingBlocksConfig{})
+
+	// Create a real partset with valid merkle proofs
+	partSet, _ := makeTestPartSet(t, 5)
+
+	// Add a block from commitment (needs inline proofs)
+	height := int64(10)
+	round := int32(1)
+	psh := partSet.Header()
+	manager.AddFromCommitment(height, round, &psh)
+
+	// Get first part from the source partset
+	sourcePart := partSet.GetPart(0)
+	require.NotNil(t, sourcePart)
+
+	recoveryPart := makeRecoveryPart(height, round, sourcePart)
+
+	// Handle the part with its proof
+	added, complete, err := manager.HandlePart(height, round, recoveryPart, &sourcePart.Proof)
+	require.NoError(t, err)
+	require.True(t, added)
+	require.False(t, complete, "should not be complete after 1 of 5 parts")
+
+	// Verify the part was added
+	pb := manager.GetBlock(height)
+	require.NotNil(t, pb)
+	require.True(t, pb.Parts.HasPart(0))
+}
+
+func TestHandlePart_InvalidProof(t *testing.T) {
+	manager := NewPendingBlocksManager(log.NewNopLogger(), nil, PendingBlocksConfig{})
+
+	// Create a real partset
+	partSet, _ := makeTestPartSet(t, 5)
+	psh := partSet.Header()
+
+	// Add block from commitment
+	height := int64(10)
+	round := int32(1)
+	manager.AddFromCommitment(height, round, &psh)
+
+	// Create a part with invalid proof
+	sourcePart := partSet.GetPart(0)
+	recoveryPart := makeRecoveryPart(height, round, sourcePart)
+
+	// Create an invalid proof (wrong leaf hash)
+	invalidProof := sourcePart.Proof
+	invalidProof.LeafHash = cmtrand.Bytes(32) // Wrong hash
+
+	// Handle should fail due to invalid proof
+	added, _, err := manager.HandlePart(height, round, recoveryPart, &invalidProof)
+	require.Error(t, err)
+	require.False(t, added)
+}
+
+func TestHandlePart_UnknownHeight(t *testing.T) {
+	manager := NewPendingBlocksManager(log.NewNopLogger(), nil, PendingBlocksConfig{})
+
+	// Create a part for a height that doesn't exist
+	recoveryPart := &proptypes.RecoveryPart{
+		Height: 999,
+		Round:  0,
+		Index:  0,
+		Data:   cmtrand.Bytes(100),
+	}
+
+	// Should return false, nil (gracefully ignored)
+	added, complete, err := manager.HandlePart(999, 0, recoveryPart, nil)
+	require.NoError(t, err)
+	require.False(t, added)
+	require.False(t, complete)
+}
+
+func TestHandlePart_Completion(t *testing.T) {
+	manager := NewPendingBlocksManager(log.NewNopLogger(), nil, PendingBlocksConfig{})
+
+	// Create a partset with 3 parts for simpler testing
+	partSet, _ := makeTestPartSet(t, 3)
+	psh := partSet.Header()
+
+	height := int64(10)
+	round := int32(1)
+	manager.AddFromCommitment(height, round, &psh)
+
+	// Add all parts except the last one
+	for i := 0; i < 2; i++ {
+		sourcePart := partSet.GetPart(i)
+		recoveryPart := makeRecoveryPart(height, round, sourcePart)
+		added, complete, err := manager.HandlePart(height, round, recoveryPart, &sourcePart.Proof)
+		require.NoError(t, err)
+		require.True(t, added)
+		require.False(t, complete, "should not be complete yet")
+	}
+
+	// Consume any messages from completedBlocks channel (non-blocking)
+	select {
+	case <-manager.CompletedBlocksChan():
+		t.Fatal("should not have completion yet")
+	default:
+	}
+
+	// Add the last part
+	lastPart := partSet.GetPart(2)
+	recoveryPart := makeRecoveryPart(height, round, lastPart)
+	added, complete, err := manager.HandlePart(height, round, recoveryPart, &lastPart.Proof)
+	require.NoError(t, err)
+	require.True(t, added)
+	require.True(t, complete, "should be complete now")
+
+	// Verify state transition
+	pb := manager.GetBlock(height)
+	require.Equal(t, BlockStateComplete, pb.State)
+
+	// Verify completion was sent to channel
+	select {
+	case completedBlock := <-manager.CompletedBlocksChan():
+		require.Equal(t, height, completedBlock.Height)
+		require.Equal(t, round, completedBlock.Round)
+		require.NotNil(t, completedBlock.Parts)
+		require.True(t, completedBlock.Parts.IsComplete())
+	default:
+		t.Fatal("expected completion message in channel")
+	}
+}
+
+func TestHandlePart_ProofCacheFromCompactBlock(t *testing.T) {
+	manager := NewPendingBlocksManager(log.NewNopLogger(), nil, PendingBlocksConfig{})
+
+	// Create a real partset
+	partSet, _ := makeTestPartSet(t, 5)
+	psh := partSet.Header()
+
+	// Create CompactBlock with proof cache
+	cb := &proptypes.CompactBlock{
+		BpHash:      cmtrand.Bytes(32),
+		Signature:   cmtrand.Bytes(64),
+		LastLen:     100,
+		PartsHashes: make([][]byte, 10), // 5 original + 5 parity
+		Proposal: types.Proposal{
+			Height: 10,
+			Round:  1,
+			BlockID: types.BlockID{
+				Hash:          cmtrand.Bytes(32),
+				PartSetHeader: psh,
+			},
+		},
+	}
+	for i := range cb.PartsHashes {
+		cb.PartsHashes[i] = cmtrand.Bytes(32)
+	}
+
+	// Build proof cache from actual parts
+	proofs := make([]*merkle.Proof, partSet.Total())
+	for i := 0; i < int(partSet.Total()); i++ {
+		part := partSet.GetPart(i)
+		proof := part.Proof
+		proofs[i] = &proof
+	}
+	cb.SetProofCache(proofs)
+
+	// Add the proposal
+	added, err := manager.AddProposal(cb)
+	require.NoError(t, err)
+	require.True(t, added)
+
+	// Verify we can use proof cache
+	pb := manager.GetBlock(10)
+	require.True(t, pb.CanUseProofCache())
+
+	// Handle part WITHOUT inline proof - should use cache
+	sourcePart := partSet.GetPart(0)
+	recoveryPart := &proptypes.RecoveryPart{
+		Height: 10,
+		Round:  1,
+		Index:  0,
+		Data:   sourcePart.Bytes,
+		Proof:  nil, // No inline proof
+	}
+
+	addedPart, _, err := manager.HandlePart(10, 1, recoveryPart, nil)
+	require.NoError(t, err)
+	require.True(t, addedPart)
+}
+
+func TestHandlePart_DuplicateOrStale(t *testing.T) {
+	manager := NewPendingBlocksManager(log.NewNopLogger(), nil, PendingBlocksConfig{})
+
+	// Create a partset
+	partSet, _ := makeTestPartSet(t, 5)
+	psh := partSet.Header()
+
+	height := int64(10)
+	round := int32(1)
+	manager.AddFromCommitment(height, round, &psh)
+
+	// Add a part
+	sourcePart := partSet.GetPart(0)
+	recoveryPart := makeRecoveryPart(height, round, sourcePart)
+	added, _, err := manager.HandlePart(height, round, recoveryPart, &sourcePart.Proof)
+	require.NoError(t, err)
+	require.True(t, added)
+
+	// Try to add the same part again (duplicate)
+	added, complete, err := manager.HandlePart(height, round, recoveryPart, &sourcePart.Proof)
+	require.NoError(t, err)
+	require.False(t, added, "duplicate part should be ignored")
+	require.False(t, complete)
+}
+
+func TestHandlePart_MissingProofWithoutCompactBlock(t *testing.T) {
+	manager := NewPendingBlocksManager(log.NewNopLogger(), nil, PendingBlocksConfig{})
+
+	// Add block from commitment (needs inline proofs, no CompactBlock)
+	psh := types.PartSetHeader{
+		Total: 5,
+		Hash:  cmtrand.Bytes(32),
+	}
+	manager.AddFromCommitment(10, 1, &psh)
+
+	// Try to add part without proof
+	recoveryPart := &proptypes.RecoveryPart{
+		Height: 10,
+		Round:  1,
+		Index:  0,
+		Data:   cmtrand.Bytes(100),
+		Proof:  nil, // No proof
+	}
+
+	added, _, err := manager.HandlePart(10, 1, recoveryPart, nil)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "missing inline proof")
+	require.False(t, added)
+}
+
+// ============================================================================
+// Phase 3: GetMissingParts Tests
+// ============================================================================
+
+func TestGetMissingParts_Ordering(t *testing.T) {
+	manager := NewPendingBlocksManager(log.NewNopLogger(), nil, PendingBlocksConfig{})
+
+	// Add blocks at various heights (out of order)
+	psh := types.PartSetHeader{Total: 5, Hash: cmtrand.Bytes(32)}
+	manager.AddFromCommitment(15, 0, &psh)
+	psh2 := types.PartSetHeader{Total: 5, Hash: cmtrand.Bytes(32)}
+	manager.AddFromCommitment(10, 0, &psh2)
+	psh3 := types.PartSetHeader{Total: 5, Hash: cmtrand.Bytes(32)}
+	manager.AddFromCommitment(12, 0, &psh3)
+
+	// Get missing parts
+	missing := manager.GetMissingParts(10)
+
+	// Should be ordered by height (lowest first)
+	require.Len(t, missing, 3)
+	require.Equal(t, int64(10), missing[0].Height)
+	require.Equal(t, int64(12), missing[1].Height)
+	require.Equal(t, int64(15), missing[2].Height)
+}
+
+func TestGetMissingParts_OnlyActive(t *testing.T) {
+	manager := NewPendingBlocksManager(log.NewNopLogger(), nil, PendingBlocksConfig{})
+
+	// Create two partsets
+	partSet1, _ := makeTestPartSet(t, 3)
+	psh1 := partSet1.Header()
+
+	psh2 := types.PartSetHeader{Total: 5, Hash: cmtrand.Bytes(32)}
+
+	// Add two blocks
+	manager.AddFromCommitment(10, 0, &psh1)
+	manager.AddFromCommitment(11, 0, &psh2)
+
+	// Complete block at height 10
+	for i := 0; i < int(partSet1.Total()); i++ {
+		sourcePart := partSet1.GetPart(i)
+		recoveryPart := makeRecoveryPart(10, 0, sourcePart)
+		_, _, err := manager.HandlePart(10, 0, recoveryPart, &sourcePart.Proof)
+		require.NoError(t, err)
+	}
+
+	// Drain the completed channel
+	select {
+	case <-manager.CompletedBlocksChan():
+	default:
+	}
+
+	// Get missing parts - should only return height 11 (height 10 is complete)
+	missing := manager.GetMissingParts(10)
+	require.Len(t, missing, 1)
+	require.Equal(t, int64(11), missing[0].Height)
+}
+
+func TestGetMissingParts_Limit(t *testing.T) {
+	manager := NewPendingBlocksManager(log.NewNopLogger(), nil, PendingBlocksConfig{})
+
+	// Add many blocks
+	for h := int64(10); h < 20; h++ {
+		psh := types.PartSetHeader{Total: 5, Hash: cmtrand.Bytes(32)}
+		manager.AddFromCommitment(h, 0, &psh)
+	}
+
+	// Request only 3
+	missing := manager.GetMissingParts(3)
+	require.Len(t, missing, 3)
+
+	// Should be the lowest 3 heights
+	require.Equal(t, int64(10), missing[0].Height)
+	require.Equal(t, int64(11), missing[1].Height)
+	require.Equal(t, int64(12), missing[2].Height)
+}
+
+func TestGetMissingParts_NeedsProofsFlag(t *testing.T) {
+	manager := NewPendingBlocksManager(log.NewNopLogger(), nil, PendingBlocksConfig{})
+
+	// Add block from commitment (needs proofs)
+	psh := types.PartSetHeader{Total: 5, Hash: cmtrand.Bytes(32)}
+	manager.AddFromCommitment(10, 0, &psh)
+
+	// Add block from compact block (doesn't need proofs)
+	cb := makeTestCompactBlock(11, 0, 5)
+	_, err := manager.AddProposal(cb)
+	require.NoError(t, err)
+
+	missing := manager.GetMissingParts(10)
+	require.Len(t, missing, 2)
+
+	// Block from commitment needs proofs
+	require.Equal(t, int64(10), missing[0].Height)
+	require.True(t, missing[0].NeedsProofs)
+
+	// Block from compact block doesn't need proofs
+	require.Equal(t, int64(11), missing[1].Height)
+	require.False(t, missing[1].NeedsProofs)
+}
+
+func TestGetMissingParts_HasCommitmentFlag(t *testing.T) {
+	manager := NewPendingBlocksManager(log.NewNopLogger(), nil, PendingBlocksConfig{})
+
+	// Add block from commitment
+	psh := types.PartSetHeader{Total: 5, Hash: cmtrand.Bytes(32)}
+	manager.AddFromCommitment(10, 0, &psh)
+
+	// Add block from header (no commitment)
+	blockID := test.MakeBlockID()
+	header := &types.Header{Height: 11}
+	_, err := manager.AddFromHeader(header, blockID, nil)
+	require.NoError(t, err)
+
+	missing := manager.GetMissingParts(10)
+	require.Len(t, missing, 2)
+
+	// Block from commitment
+	require.Equal(t, int64(10), missing[0].Height)
+	require.True(t, missing[0].HasCommitment)
+
+	// Block from header
+	require.Equal(t, int64(11), missing[1].Height)
+	require.False(t, missing[1].HasCommitment)
+}
+
+// ============================================================================
+// Helper Method Tests
+// ============================================================================
+
+func TestGetBlock(t *testing.T) {
+	manager := NewPendingBlocksManager(log.NewNopLogger(), nil, PendingBlocksConfig{})
+
+	psh := types.PartSetHeader{Total: 5, Hash: cmtrand.Bytes(32)}
+	manager.AddFromCommitment(10, 1, &psh)
+
+	// Get existing block
+	pb := manager.GetBlock(10)
+	require.NotNil(t, pb)
+	require.Equal(t, int64(10), pb.Height)
+
+	// Get non-existing block
+	pb = manager.GetBlock(999)
+	require.Nil(t, pb)
+}
+
+func TestHasHeight(t *testing.T) {
+	manager := NewPendingBlocksManager(log.NewNopLogger(), nil, PendingBlocksConfig{})
+
+	psh := types.PartSetHeader{Total: 5, Hash: cmtrand.Bytes(32)}
+	manager.AddFromCommitment(10, 1, &psh)
+
+	require.True(t, manager.HasHeight(10))
+	require.False(t, manager.HasHeight(999))
 }
