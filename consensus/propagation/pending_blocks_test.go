@@ -1587,3 +1587,353 @@ func TestOnBlockComplete_TriggersRefill(t *testing.T) {
 	require.True(t, manager.HasHeight(2))
 	require.True(t, manager.HasHeight(3)) // Next in sequence
 }
+
+// ============================================================================
+// Phase 6: BlockDeliveryManager Tests
+// ============================================================================
+
+func TestBlockDeliveryManager_Creation(t *testing.T) {
+	manager := NewPendingBlocksManager(log.NewNopLogger(), nil, PendingBlocksConfig{})
+	delivery := NewBlockDeliveryManager(manager, 1, log.NewNopLogger())
+
+	require.NotNil(t, delivery)
+	require.Equal(t, int64(1), delivery.NextHeight())
+	require.Equal(t, 0, delivery.PendingCount())
+	require.NotNil(t, delivery.BlockChan())
+}
+
+func TestDelivery_InOrder(t *testing.T) {
+	manager := NewPendingBlocksManager(log.NewNopLogger(), nil, PendingBlocksConfig{})
+	delivery := NewBlockDeliveryManager(manager, 1, log.NewNopLogger())
+	delivery.Start()
+	defer delivery.Stop()
+
+	// Send blocks in order: 1, 2, 3
+	for height := int64(1); height <= 3; height++ {
+		manager.completedBlocks <- &CompletedBlock{
+			Height:  height,
+			Round:   0,
+			BlockID: types.BlockID{Hash: cmtrand.Bytes(32)},
+		}
+	}
+
+	// Receive and verify order
+	for expectedHeight := int64(1); expectedHeight <= 3; expectedHeight++ {
+		select {
+		case block := <-delivery.BlockChan():
+			require.Equal(t, expectedHeight, block.Height, "block should be delivered in order")
+		case <-time.After(time.Second):
+			t.Fatalf("timeout waiting for block %d", expectedHeight)
+		}
+	}
+
+	require.Equal(t, int64(4), delivery.NextHeight())
+}
+
+func TestDelivery_WaitsForGaps(t *testing.T) {
+	manager := NewPendingBlocksManager(log.NewNopLogger(), nil, PendingBlocksConfig{})
+	delivery := NewBlockDeliveryManager(manager, 1, log.NewNopLogger())
+	delivery.Start()
+	defer delivery.Stop()
+
+	// Send block 3 first (out of order)
+	manager.completedBlocks <- &CompletedBlock{
+		Height:  3,
+		Round:   0,
+		BlockID: types.BlockID{Hash: cmtrand.Bytes(32)},
+	}
+
+	// Give time for processing
+	time.Sleep(50 * time.Millisecond)
+
+	// Block 3 should be buffered, not delivered yet
+	require.Equal(t, 1, delivery.PendingCount(), "block 3 should be buffered")
+	require.Equal(t, int64(1), delivery.NextHeight(), "still waiting for block 1")
+
+	// Nothing should be on the channel yet
+	select {
+	case block := <-delivery.BlockChan():
+		t.Fatalf("unexpected block delivered: %d", block.Height)
+	default:
+		// Good - no block delivered yet
+	}
+
+	// Now send block 1
+	manager.completedBlocks <- &CompletedBlock{
+		Height:  1,
+		Round:   0,
+		BlockID: types.BlockID{Hash: cmtrand.Bytes(32)},
+	}
+
+	// Block 1 should be delivered
+	select {
+	case block := <-delivery.BlockChan():
+		require.Equal(t, int64(1), block.Height)
+	case <-time.After(time.Second):
+		t.Fatal("timeout waiting for block 1")
+	}
+
+	// Small delay to let the delivery loop update nextHeight after sending
+	time.Sleep(20 * time.Millisecond)
+
+	// Still waiting for block 2
+	require.Equal(t, int64(2), delivery.NextHeight())
+	require.Equal(t, 1, delivery.PendingCount(), "block 3 still buffered")
+}
+
+func TestDelivery_BatchDelivery(t *testing.T) {
+	manager := NewPendingBlocksManager(log.NewNopLogger(), nil, PendingBlocksConfig{})
+	delivery := NewBlockDeliveryManager(manager, 1, log.NewNopLogger())
+	delivery.Start()
+	defer delivery.Stop()
+
+	// Send blocks out of order: 3, 2, 5, 4, 1
+	heights := []int64{3, 2, 5, 4, 1}
+	for _, h := range heights {
+		manager.completedBlocks <- &CompletedBlock{
+			Height:  h,
+			Round:   0,
+			BlockID: types.BlockID{Hash: cmtrand.Bytes(32)},
+		}
+		// Small delay to ensure processing
+		time.Sleep(10 * time.Millisecond)
+	}
+
+	// All should be delivered in order now
+	for expectedHeight := int64(1); expectedHeight <= 5; expectedHeight++ {
+		select {
+		case block := <-delivery.BlockChan():
+			require.Equal(t, expectedHeight, block.Height, "blocks should be delivered in strict order")
+		case <-time.After(time.Second):
+			t.Fatalf("timeout waiting for block %d", expectedHeight)
+		}
+	}
+
+	require.Equal(t, int64(6), delivery.NextHeight())
+	require.Equal(t, 0, delivery.PendingCount())
+}
+
+func TestDelivery_DuplicateOrStaleCompletion(t *testing.T) {
+	manager := NewPendingBlocksManager(log.NewNopLogger(), nil, PendingBlocksConfig{})
+	delivery := NewBlockDeliveryManager(manager, 5, log.NewNopLogger()) // Start at height 5
+	delivery.Start()
+	defer delivery.Stop()
+
+	// Send a stale block (height 3 < nextHeight 5)
+	manager.completedBlocks <- &CompletedBlock{
+		Height:  3,
+		Round:   0,
+		BlockID: types.BlockID{Hash: cmtrand.Bytes(32)},
+	}
+
+	time.Sleep(50 * time.Millisecond)
+
+	// Should be ignored
+	require.Equal(t, int64(5), delivery.NextHeight(), "nextHeight should be unchanged")
+	require.Equal(t, 0, delivery.PendingCount(), "stale block should not be buffered")
+
+	// Send block 5
+	manager.completedBlocks <- &CompletedBlock{
+		Height:  5,
+		Round:   0,
+		BlockID: types.BlockID{Hash: cmtrand.Bytes(32)},
+	}
+
+	select {
+	case block := <-delivery.BlockChan():
+		require.Equal(t, int64(5), block.Height)
+	case <-time.After(time.Second):
+		t.Fatal("timeout waiting for block 5")
+	}
+
+	// Send duplicate block 6
+	manager.completedBlocks <- &CompletedBlock{
+		Height:  6,
+		Round:   0,
+		BlockID: types.BlockID{Hash: cmtrand.Bytes(32)},
+	}
+
+	select {
+	case block := <-delivery.BlockChan():
+		require.Equal(t, int64(6), block.Height)
+	case <-time.After(time.Second):
+		t.Fatal("timeout waiting for block 6")
+	}
+
+	// Send a second "completion" for block 6 (which is now stale since nextHeight=7)
+	manager.completedBlocks <- &CompletedBlock{
+		Height:  6,
+		Round:   0,
+		BlockID: types.BlockID{Hash: cmtrand.Bytes(32)},
+	}
+
+	time.Sleep(50 * time.Millisecond)
+
+	// Should not cause issues - nextHeight should still be 7
+	require.Equal(t, int64(7), delivery.NextHeight())
+}
+
+func TestDelivery_Backpressure(t *testing.T) {
+	manager := NewPendingBlocksManager(log.NewNopLogger(), nil, PendingBlocksConfig{})
+	delivery := NewBlockDeliveryManager(manager, 1, log.NewNopLogger())
+	delivery.Start()
+	defer delivery.Stop()
+
+	// Fill the blockChan buffer (size 10) plus some extra
+	// The delivery manager should buffer blocks that can't be sent
+	for height := int64(1); height <= 15; height++ {
+		manager.completedBlocks <- &CompletedBlock{
+			Height:  height,
+			Round:   0,
+			BlockID: types.BlockID{Hash: cmtrand.Bytes(32)},
+		}
+	}
+
+	// Give time for all completions to be processed
+	time.Sleep(100 * time.Millisecond)
+
+	// Now drain the channel and verify order
+	for expectedHeight := int64(1); expectedHeight <= 15; expectedHeight++ {
+		select {
+		case block := <-delivery.BlockChan():
+			require.Equal(t, expectedHeight, block.Height, "blocks should still be in order under backpressure")
+		case <-time.After(time.Second):
+			t.Fatalf("timeout waiting for block %d", expectedHeight)
+		}
+	}
+}
+
+func TestDelivery_SetNextHeight(t *testing.T) {
+	manager := NewPendingBlocksManager(log.NewNopLogger(), nil, PendingBlocksConfig{})
+	delivery := NewBlockDeliveryManager(manager, 1, log.NewNopLogger())
+	delivery.Start()
+	defer delivery.Stop()
+
+	// Buffer some blocks
+	for _, h := range []int64{3, 4, 5, 6} {
+		manager.completedBlocks <- &CompletedBlock{
+			Height:  h,
+			Round:   0,
+			BlockID: types.BlockID{Hash: cmtrand.Bytes(32)},
+		}
+	}
+
+	time.Sleep(50 * time.Millisecond)
+
+	// All should be buffered waiting for height 1
+	require.Equal(t, 4, delivery.PendingCount())
+
+	// Now set next height to 5 (skipping 1-4)
+	// This should:
+	// 1. Delete blocks 3 and 4 as stale
+	// 2. Immediately deliver blocks 5 and 6 since they're consecutive from nextHeight
+	delivery.SetNextHeight(5)
+
+	// Block 5 and 6 should be delivered immediately by SetNextHeight
+	select {
+	case block := <-delivery.BlockChan():
+		require.Equal(t, int64(5), block.Height)
+	case <-time.After(time.Second):
+		t.Fatal("timeout waiting for block 5")
+	}
+
+	select {
+	case block := <-delivery.BlockChan():
+		require.Equal(t, int64(6), block.Height)
+	case <-time.After(time.Second):
+		t.Fatal("timeout waiting for block 6")
+	}
+
+	// After delivery, nextHeight should be 7 and no pending blocks
+	time.Sleep(20 * time.Millisecond) // Allow delivery loop to update state
+	require.Equal(t, int64(7), delivery.NextHeight())
+	require.Equal(t, 0, delivery.PendingCount())
+}
+
+func TestDelivery_StopDuringDelivery(t *testing.T) {
+	manager := NewPendingBlocksManager(log.NewNopLogger(), nil, PendingBlocksConfig{})
+	delivery := NewBlockDeliveryManager(manager, 1, log.NewNopLogger())
+	delivery.Start()
+
+	// Send a few blocks
+	for h := int64(1); h <= 3; h++ {
+		manager.completedBlocks <- &CompletedBlock{
+			Height:  h,
+			Round:   0,
+			BlockID: types.BlockID{Hash: cmtrand.Bytes(32)},
+		}
+	}
+
+	// Read one block
+	select {
+	case block := <-delivery.BlockChan():
+		require.Equal(t, int64(1), block.Height)
+	case <-time.After(time.Second):
+		t.Fatal("timeout")
+	}
+
+	// Stop should not panic or deadlock
+	done := make(chan struct{})
+	go func() {
+		delivery.Stop()
+		close(done)
+	}()
+
+	select {
+	case <-done:
+		// Good - stopped successfully
+	case <-time.After(2 * time.Second):
+		t.Fatal("Stop() deadlocked")
+	}
+}
+
+func TestDelivery_StartStopIdempotent(t *testing.T) {
+	manager := NewPendingBlocksManager(log.NewNopLogger(), nil, PendingBlocksConfig{})
+	delivery := NewBlockDeliveryManager(manager, 1, log.NewNopLogger())
+
+	// Multiple starts should be safe
+	delivery.Start()
+	delivery.Start()
+	delivery.Start()
+
+	// Send a block to verify it's working
+	manager.completedBlocks <- &CompletedBlock{
+		Height:  1,
+		Round:   0,
+		BlockID: types.BlockID{Hash: cmtrand.Bytes(32)},
+	}
+
+	select {
+	case block := <-delivery.BlockChan():
+		require.Equal(t, int64(1), block.Height)
+	case <-time.After(time.Second):
+		t.Fatal("timeout")
+	}
+
+	// Multiple stops should be safe
+	delivery.Stop()
+	delivery.Stop()
+	delivery.Stop()
+}
+
+// ============================================================================
+// Step 6.5: GetBlockChan Tests
+// ============================================================================
+
+func TestNoOpPropagator_GetBlockChan(t *testing.T) {
+	nop := NewNoOpPropagator()
+	require.Nil(t, nop.GetBlockChan(), "NoOpPropagator.GetBlockChan should return nil")
+}
+
+func TestBlockDeliveryManager_BlockChan(t *testing.T) {
+	manager := NewPendingBlocksManager(log.NewNopLogger(), nil, PendingBlocksConfig{})
+	delivery := NewBlockDeliveryManager(manager, 1, log.NewNopLogger())
+
+	// BlockChan should return a valid channel
+	ch := delivery.BlockChan()
+	require.NotNil(t, ch, "BlockDeliveryManager.BlockChan should return a valid channel")
+
+	// The channel should be receive-only
+	// (compile-time check - if this compiles, it's receive-only)
+	var _ <-chan *CompletedBlock = ch
+}

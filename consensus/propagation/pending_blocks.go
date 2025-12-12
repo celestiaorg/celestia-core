@@ -752,3 +752,170 @@ func (m *PendingBlocksManager) OnBlockComplete(height int64) {
 	// Space freed up - try to fill with next headers starting from lowest needed
 	m.TryFillCapacity()
 }
+
+// BlockDeliveryManager ensures that completed blocks are delivered to consensus
+// in strictly increasing height order. This is critical for blocksync mode where
+// blocks must be applied sequentially.
+//
+// Live consensus parts continue to flow through partChan immediately (unchanged).
+// This manager only handles blocksync (historical) blocks.
+type BlockDeliveryManager struct {
+	mtx           sync.Mutex
+	pendingBlocks *PendingBlocksManager
+	nextHeight    int64                    // Next blocksync height to deliver
+	readyBlocks   map[int64]*CompletedBlock // Completed blocks waiting for earlier heights
+	blockChan     chan *CompletedBlock      // Output to consensus
+	logger        log.Logger
+	running       bool
+	stopCh        chan struct{}
+}
+
+// NewBlockDeliveryManager creates a new BlockDeliveryManager.
+// startHeight is the first height that should be delivered (typically lastCommittedHeight + 1).
+func NewBlockDeliveryManager(pendingBlocks *PendingBlocksManager, startHeight int64, logger log.Logger) *BlockDeliveryManager {
+	if logger == nil {
+		logger = log.NewNopLogger()
+	}
+	return &BlockDeliveryManager{
+		pendingBlocks: pendingBlocks,
+		nextHeight:    startHeight,
+		readyBlocks:   make(map[int64]*CompletedBlock),
+		blockChan:     make(chan *CompletedBlock, 10), // Small buffer to avoid blocking
+		logger:        logger,
+		stopCh:        make(chan struct{}),
+	}
+}
+
+// Start begins the block delivery routine.
+func (d *BlockDeliveryManager) Start() {
+	d.mtx.Lock()
+	if d.running {
+		d.mtx.Unlock()
+		return
+	}
+	d.running = true
+	d.mtx.Unlock()
+
+	go d.run()
+}
+
+// Stop stops the block delivery routine.
+func (d *BlockDeliveryManager) Stop() {
+	d.mtx.Lock()
+	if !d.running {
+		d.mtx.Unlock()
+		return
+	}
+	d.running = false
+	d.mtx.Unlock()
+
+	close(d.stopCh)
+}
+
+// run is the main delivery loop that processes completed blocks and delivers
+// them in strictly increasing height order.
+func (d *BlockDeliveryManager) run() {
+	completedChan := d.pendingBlocks.CompletedBlocksChan()
+
+	for {
+		select {
+		case <-d.stopCh:
+			return
+		case completed, ok := <-completedChan:
+			if !ok {
+				return
+			}
+			d.handleCompletion(completed)
+		}
+	}
+}
+
+// handleCompletion processes a completed block, buffering it if necessary
+// and delivering all consecutive ready blocks in order.
+func (d *BlockDeliveryManager) handleCompletion(completed *CompletedBlock) {
+	d.mtx.Lock()
+	defer d.mtx.Unlock()
+
+	// Ignore stale blocks (already delivered or before our start point)
+	if completed.Height < d.nextHeight {
+		d.logger.Debug("ignoring stale completed block",
+			"height", completed.Height,
+			"nextHeight", d.nextHeight)
+		return
+	}
+
+	// Ignore duplicate completions
+	if _, exists := d.readyBlocks[completed.Height]; exists {
+		d.logger.Debug("ignoring duplicate completed block",
+			"height", completed.Height)
+		return
+	}
+
+	// Buffer the completed block
+	d.readyBlocks[completed.Height] = completed
+
+	// Deliver all consecutive ready blocks IN ORDER
+	d.deliverReadyBlocksLocked()
+}
+
+// deliverReadyBlocksLocked delivers all consecutive ready blocks starting from nextHeight.
+// Caller must hold mtx.
+func (d *BlockDeliveryManager) deliverReadyBlocksLocked() {
+	for {
+		block, ok := d.readyBlocks[d.nextHeight]
+		if !ok {
+			break
+		}
+		delete(d.readyBlocks, d.nextHeight)
+
+		// Deliver to consensus (this may block if consensus is slow)
+		// We release the lock during delivery to avoid deadlock
+		d.mtx.Unlock()
+		select {
+		case <-d.stopCh:
+			d.mtx.Lock()
+			return
+		case d.blockChan <- block:
+			d.logger.Debug("delivered block to consensus", "height", block.Height)
+		}
+		d.mtx.Lock()
+
+		d.nextHeight++
+	}
+}
+
+// BlockChan returns the channel for receiving ordered completed blocks.
+// Blocks on this channel are guaranteed to arrive in strictly increasing height order.
+func (d *BlockDeliveryManager) BlockChan() <-chan *CompletedBlock {
+	return d.blockChan
+}
+
+// NextHeight returns the next height that will be delivered.
+func (d *BlockDeliveryManager) NextHeight() int64 {
+	d.mtx.Lock()
+	defer d.mtx.Unlock()
+	return d.nextHeight
+}
+
+// SetNextHeight updates the next height to deliver.
+// This should only be called during initialization or after a state reset.
+func (d *BlockDeliveryManager) SetNextHeight(height int64) {
+	d.mtx.Lock()
+	defer d.mtx.Unlock()
+	d.nextHeight = height
+	// Clear any buffered blocks that are now stale
+	for h := range d.readyBlocks {
+		if h < height {
+			delete(d.readyBlocks, h)
+		}
+	}
+	// Try to deliver any ready blocks at or after the new height
+	d.deliverReadyBlocksLocked()
+}
+
+// PendingCount returns the number of blocks buffered waiting for earlier heights.
+func (d *BlockDeliveryManager) PendingCount() int {
+	d.mtx.Lock()
+	defer d.mtx.Unlock()
+	return len(d.readyBlocks)
+}

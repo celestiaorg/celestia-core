@@ -398,3 +398,10 @@ func (r *Reactor) GetPartChan() <-chan types.PartInfo {
 func (r *Reactor) GetProposalChan() <-chan ProposalAndSrc {
 	return r.proposalChan
 }
+
+// GetBlockChan returns the channel used for receiving complete blocksync blocks.
+// Blocks on this channel are guaranteed to arrive in strictly increasing height order.
+// TODO: This will be implemented when BlockDeliveryManager is integrated into the reactor.
+func (r *Reactor) GetBlockChan() <-chan *CompletedBlock {
+	return nil
+}
