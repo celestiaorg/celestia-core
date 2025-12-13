@@ -457,25 +457,18 @@ func (cs *State) IsBehind() bool {
 	return maxPeer > 0 && maxPeer >= ourHeight+cs.catchupThreshold
 }
 
-// applyNewState applies a validated block from blocksync.
-// The block has been validated but not yet applied to the app state.
+// applyNewState applies a state that has already been validated and applied by blocksync.
 // This is used during catchup when receiving blocks from the blocksync channel.
 func (cs *State) applyNewState(vb *types.ValidatedBlock) error {
-	// Type-assert the state from the validated block (pre-apply state)
-	preState, ok := vb.State.(sm.State)
+	// Type-assert the state from the validated block
+	newState, ok := vb.State.(sm.State)
 	if !ok {
 		return fmt.Errorf("invalid state type in validated block")
 	}
 
 	height := vb.Block.Height
 
-	cs.Logger.Info("Applying block from blocksync", "height", height)
-
-	// Apply the block to get the new state
-	newState, err := cs.blockExec.ApplyVerifiedBlock(preState, vb.BlockID, vb.Block, vb.Commit)
-	if err != nil {
-		return fmt.Errorf("failed to apply block from blocksync: %w", err)
-	}
+	cs.Logger.Info("Applying new state from blocksync", "height", height)
 
 	// Update consensus state using the same pattern as SwitchToConsensus:
 	// hold all locks, reconstruct LastCommit from blockstore, then updateToState
@@ -495,7 +488,7 @@ func (cs *State) applyNewState(vb *types.ValidatedBlock) error {
 		cs.propagator.SetProposer(proposer.PubKey)
 	}
 
-	cs.Logger.Info("Successfully applied block from blocksync", "height", height, "new_height", newState.LastBlockHeight+1)
+	cs.Logger.Info("Successfully applied new state from blocksync", "height", height, "new_height", newState.LastBlockHeight+1)
 
 	return nil
 }
