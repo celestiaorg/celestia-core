@@ -312,6 +312,10 @@ func TestGetBlockChan_WithoutDeliveryManager(t *testing.T) {
 	p2pCfg := defaultTestP2PConf()
 	reactors, _ := createTestReactors(1, p2pCfg, false, "")
 
+	// Since NewReactor now auto-creates the blockDelivery manager,
+	// we need to nil it out to test the legacy/disabled mode behavior
+	reactors[0].blockDelivery = nil
+
 	ch := reactors[0].GetBlockChan()
 	require.Nil(t, ch, "GetBlockChan should return nil when delivery manager is not set")
 }

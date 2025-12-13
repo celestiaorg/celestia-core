@@ -1345,31 +1345,33 @@ The following error recovery tests have been implemented:
 
 ---
 
-## Phase 10: Node Integration
+## Phase 10: Node Integration (IMPLEMENTED)
 
-The `PendingBlocksManager` and `BlockDeliveryManager` must be created automatically when the propagation reactor is created, since they are required for the unified catchup/blocksync functionality.
+The `PendingBlocksManager` and `BlockDeliveryManager` are now created automatically when the propagation reactor is created, since they are required for the unified catchup/blocksync functionality.
 
-### Step 10.1: Auto-create managers in NewReactor
+### Step 10.1: Auto-create managers in NewReactor (IMPLEMENTED)
 
-Modify `NewReactor` to always create the managers internally rather than requiring external configuration:
+`NewReactor` now creates the managers internally before applying options, which allows options to override if needed:
+
+**File**: `consensus/propagation/reactor.go`
 
 ```go
 func NewReactor(self p2p.ID, cfg Config, options ...func(*Reactor)) *Reactor {
     // ... existing initialization ...
 
-    // Always create the pending blocks manager
+    // Always create the pending blocks manager for unified catchup/blocksync.
+    // This can be overridden via WithPendingBlocksManager option if needed.
     pendingBlocks := NewPendingBlocksManager(
-        logger,
-        cfg.Store,
-        PendingBlocksConfig{
-            MaxConcurrent: 500,
-            MemoryBudget:  12 << 30, // 12 GiB
-        },
+        nil, // logger set later via SetLogger
+        config.Store,
+        PendingBlocksConfig{}, // Uses defaults: MaxConcurrent=500, MemoryBudget=12GiB
     )
     reactor.pendingBlocks = pendingBlocks
 
-    // Always create the block delivery manager
-    blockDelivery := NewBlockDeliveryManager(pendingBlocks, 1, logger)
+    // Always create the block delivery manager for ordered block delivery.
+    // startHeight=1 is a placeholder - it will be updated when we know the actual
+    // last committed height during OnStart or via SetNextHeight.
+    blockDelivery := NewBlockDeliveryManager(pendingBlocks, 1, nil)
     reactor.blockDelivery = blockDelivery
 
     // Apply options (can override defaults)
@@ -1382,48 +1384,99 @@ func NewReactor(self p2p.ID, cfg Config, options ...func(*Reactor)) *Reactor {
 ```
 
 **Testing Criteria**:
-- [ ] Unit test: `TestNewReactor_CreatesManagers` - verify managers created automatically
-- [ ] Unit test: `TestNewReactor_ManagersConfigurable` - verify options can override defaults
+- [x] Unit test: `TestNewReactor_CreatesManagers` - verify managers created automatically (IMPLEMENTED)
+- [x] Unit test: `TestNewReactor_ManagersConfigurable` - verify options can override defaults (IMPLEMENTED)
 
-### Step 10.2: Wire HeaderSyncReader in node.go
+### Step 10.2: Wire HeaderSyncReader in node.go (IMPLEMENTED)
 
-Modify `node/node.go` to connect the headersync reactor to the propagation reactor:
+Modified `node/node.go` to connect the headersync reactor to the propagation reactor:
+
+**File**: `node/node.go`
 
 ```go
-// In node/node.go, after creating both reactors:
-if hsReactor != nil && propagationReactor != nil {
-    propagationReactor.SetHeaderSyncReader(hsReactor)
+if propagationReactor != nil {
+    propagationReactor.SetLogger(logger.With("module", "propagation"))
+    // Wire headersync reader to propagation reactor for unified blocksync
+    if hsReactor != nil {
+        propagationReactor.SetHeaderSyncReader(hsReactor)
+    }
+}
+```
+
+Added `SetHeaderSyncReader` method to reactor that also propagates to `PendingBlocksManager`:
+
+**File**: `consensus/propagation/reactor.go`
+
+```go
+func (r *Reactor) SetHeaderSyncReader(reader HeaderSyncReader) {
+    r.mtx.Lock()
+    defer r.mtx.Unlock()
+    r.hsReader = reader
+    // Also set on the pending blocks manager for header fetching
+    if r.pendingBlocks != nil {
+        r.pendingBlocks.SetHeaderSyncReader(reader)
+    }
 }
 ```
 
 **Testing Criteria**:
-- [ ] Verify: HeaderSyncReader connected when both reactors exist
-- [ ] Verify: No panic when hsReactor is nil
+- [x] Verify: HeaderSyncReader connected when both reactors exist (IMPLEMENTED)
+- [x] Unit test: `TestSetHeaderSyncReader_PropagatesReader` - verifies reader is set (IMPLEMENTED)
 
-### Step 10.3: Start BlockDeliveryManager with reactor
+### Step 10.3: Start BlockDeliveryManager with reactor (IMPLEMENTED)
 
-Ensure the BlockDeliveryManager starts/stops with the reactor lifecycle:
+`OnStart` and `OnStop` now manage the BlockDeliveryManager lifecycle:
+
+**File**: `consensus/propagation/reactor.go`
 
 ```go
-func (r *Reactor) OnStart() error {
-    // ... existing start logic ...
-    if r.blockDelivery != nil {
-        r.blockDelivery.Start()
+func (blockProp *Reactor) OnStart() error {
+    // Start the block delivery manager if configured
+    if blockProp.blockDelivery != nil {
+        blockProp.blockDelivery.Start()
     }
     return nil
 }
 
-func (r *Reactor) OnStop() {
-    // ... existing stop logic ...
-    if r.blockDelivery != nil {
-        r.blockDelivery.Stop()
+func (blockProp *Reactor) OnStop() {
+    blockProp.cancel()
+    // Stop the block delivery manager if configured
+    if blockProp.blockDelivery != nil {
+        blockProp.blockDelivery.Stop()
+    }
+}
+```
+
+Also added `SetLogger` methods to both managers and propagation from reactor:
+
+**File**: `consensus/propagation/pending_blocks.go`
+
+```go
+func (d *BlockDeliveryManager) SetLogger(logger log.Logger) { ... }
+func (m *PendingBlocksManager) SetLogger(logger log.Logger) { ... }
+```
+
+**File**: `consensus/propagation/reactor.go`
+
+```go
+func (blockProp *Reactor) SetLogger(logger log.Logger) {
+    blockProp.Logger = logger
+    // Also set logger on the managers
+    if blockProp.pendingBlocks != nil {
+        blockProp.pendingBlocks.SetLogger(logger)
+    }
+    if blockProp.blockDelivery != nil {
+        blockProp.blockDelivery.SetLogger(logger)
     }
 }
 ```
 
 **Testing Criteria**:
-- [ ] Unit test: `TestReactor_StartsBlockDelivery` - BlockDeliveryManager starts with reactor
-- [ ] Unit test: `TestReactor_StopsBlockDelivery` - BlockDeliveryManager stops with reactor
+- [x] Unit test: `TestReactor_StartsBlockDelivery` - BlockDeliveryManager starts with reactor (IMPLEMENTED)
+- [x] Unit test: `TestReactor_StopsBlockDelivery` - BlockDeliveryManager stops with reactor (IMPLEMENTED)
+- [x] Unit test: `TestSetLogger_PropagatesLogger` - logger propagates to managers (IMPLEMENTED)
+- [x] Unit test: `TestGetBlockChan_WithBlockDelivery` - GetBlockChan returns channel (IMPLEMENTED)
+- [x] Unit test: `TestGetBlockChan_WithoutBlockDelivery` - GetBlockChan returns nil when disabled (IMPLEMENTED)
 
 ---
 

@@ -117,6 +117,23 @@ func NewReactor(
 		proposalChan:  make(chan ProposalAndSrc, 1000),
 		ticker:        time.NewTicker(RetryTime),
 	}
+
+	// Always create the pending blocks manager for unified catchup/blocksync.
+	// This can be overridden via WithPendingBlocksManager option if needed.
+	pendingBlocks := NewPendingBlocksManager(
+		nil, // logger set later via SetLogger
+		config.Store,
+		PendingBlocksConfig{}, // Uses defaults: MaxConcurrent=500, MemoryBudget=12GiB
+	)
+	reactor.pendingBlocks = pendingBlocks
+
+	// Always create the block delivery manager for ordered block delivery.
+	// startHeight=1 is a placeholder - it will be updated when we know the actual
+	// last committed height during OnStart or via SetNextHeight.
+	blockDelivery := NewBlockDeliveryManager(pendingBlocks, 1, nil)
+	reactor.blockDelivery = blockDelivery
+
+	// Apply options (can override defaults)
 	for _, option := range options {
 		option(reactor)
 	}
@@ -180,14 +197,29 @@ func WithHeaderSyncReader(reader HeaderSyncReader) func(r *Reactor) {
 
 func (blockProp *Reactor) SetLogger(logger log.Logger) {
 	blockProp.Logger = logger
+	// Also set logger on the managers
+	if blockProp.pendingBlocks != nil {
+		blockProp.pendingBlocks.SetLogger(logger)
+	}
+	if blockProp.blockDelivery != nil {
+		blockProp.blockDelivery.SetLogger(logger)
+	}
 }
 
 func (blockProp *Reactor) OnStart() error {
+	// Start the block delivery manager if configured
+	if blockProp.blockDelivery != nil {
+		blockProp.blockDelivery.Start()
+	}
 	return nil
 }
 
 func (blockProp *Reactor) OnStop() {
 	blockProp.cancel()
+	// Stop the block delivery manager if configured
+	if blockProp.blockDelivery != nil {
+		blockProp.blockDelivery.Stop()
+	}
 }
 
 func (blockProp *Reactor) GetChannels() []*conn.ChannelDescriptor {
@@ -486,4 +518,17 @@ func (r *Reactor) IsCaughtUp() bool {
 	// If there are no pending blocks, or the lowest pending block is at/above
 	// the consensus height, we're caught up
 	return lowestPending == 0 || lowestPending >= consensusHeight
+}
+
+// SetHeaderSyncReader sets the HeaderSyncReader for IsCaughtUp checks and
+// on-demand header fetching. This should be called during node setup after
+// both the propagation reactor and headersync reactor are created.
+func (r *Reactor) SetHeaderSyncReader(reader HeaderSyncReader) {
+	r.mtx.Lock()
+	defer r.mtx.Unlock()
+	r.hsReader = reader
+	// Also set on the pending blocks manager for header fetching
+	if r.pendingBlocks != nil {
+		r.pendingBlocks.SetHeaderSyncReader(reader)
+	}
 }

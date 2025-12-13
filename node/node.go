@@ -489,6 +489,10 @@ func NewNodeWithContext(ctx context.Context,
 	}
 	if propagationReactor != nil {
 		propagationReactor.SetLogger(logger.With("module", "propagation"))
+		// Wire headersync reader to propagation reactor for unified blocksync
+		if hsReactor != nil {
+			propagationReactor.SetHeaderSyncReader(hsReactor)
+		}
 	}
 
 	logger.Info("Consensus reactor created")

@@ -919,3 +919,17 @@ func (d *BlockDeliveryManager) PendingCount() int {
 	defer d.mtx.Unlock()
 	return len(d.readyBlocks)
 }
+
+// SetLogger sets the logger for the BlockDeliveryManager.
+func (d *BlockDeliveryManager) SetLogger(logger log.Logger) {
+	d.mtx.Lock()
+	defer d.mtx.Unlock()
+	d.logger = logger
+}
+
+// SetLogger sets the logger for the PendingBlocksManager.
+func (m *PendingBlocksManager) SetLogger(logger log.Logger) {
+	m.mtx.Lock()
+	defer m.mtx.Unlock()
+	m.logger = logger
+}
