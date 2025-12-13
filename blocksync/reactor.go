@@ -707,6 +707,8 @@ func (bcR *Reactor) SetProviderMode(enabled bool) {
 		bcR.Logger.Info("Blocksync provider mode enabled")
 		// Update pool height to current store height + 1 before unpausing
 		bcR.pool.SetHeight(bcR.store.Height() + 1)
+		// Reset peer states to clear stale numPending and rate monitors
+		bcR.pool.ResetPeers()
 		// Signal that state needs to be reloaded (consensus may have applied blocks)
 		bcR.stateNeedsReload.Store(true)
 		// Unpause the pool to resume block fetching

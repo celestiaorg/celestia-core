@@ -272,6 +272,18 @@ func (pool *BlockPool) SetHeight(height int64) {
 	pool.Logger.Info("Pool height updated", "height", height)
 }
 
+// ResetPeers resets all peer states (numPending and recvMonitor).
+// Used when resuming the pool after a pause to clear stale tracking data.
+func (pool *BlockPool) ResetPeers() {
+	pool.mtx.Lock()
+	defer pool.mtx.Unlock()
+
+	for _, peer := range pool.peers {
+		peer.numPending = 0
+		peer.resetMonitor()
+	}
+}
+
 // IsCaughtUp returns true if this node is caught up, false - otherwise.
 // TODO: relax conditions, prevent abuse.
 func (pool *BlockPool) IsCaughtUp() bool {
