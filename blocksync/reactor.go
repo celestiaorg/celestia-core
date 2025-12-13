@@ -648,29 +648,14 @@ FOR_LOOP:
 			schema.WriteBlocksyncBlockSaved(bcR.traceClient, first.Height, blockSize,
 				validationDuration.Milliseconds(), saveDuration.Milliseconds(), totalDuration.Milliseconds())
 
-			// TODO: same thing for app - but we would need a way to
-			// get the hash without persisting the state
-			state, err = bcR.blockExec.ApplyVerifiedBlock(state, firstID, first, second.LastCommit)
-			if err != nil {
-				// TODO This is bad, are we zombie?
-				panic(fmt.Sprintf("Failed to process committed block (%d:%X): %v", first.Height, first.Hash(), err))
-			}
-			bcR.metrics.recordBlockMetrics(first)
-			blocksSynced++
-
-			if blocksSynced%100 == 0 {
-				lastRate = 0.9*lastRate + 0.1*(100/time.Since(lastHundred).Seconds())
-				bcR.Logger.Info("Block Sync Rate", "height", bcR.pool.height,
-					"max_peer_height", bcR.pool.MaxPeerHeight(), "blocks/s", lastRate)
-				lastHundred = time.Now()
-			}
+			// In provider mode, don't apply blocks here - send to consensus to apply
 			if bcR.providerMode.Load() {
 				validatedBlock := &types.ValidatedBlock{
 					Block:      first,
 					Commit:     second.LastCommit,
 					BlockParts: firstParts,
 					BlockID:    firstID,
-					State:      state.Copy(),
+					State:      state.Copy(), // pre-apply state, consensus will apply
 				}
 				select {
 				case bcR.blockChan <- validatedBlock:
@@ -678,6 +663,23 @@ FOR_LOOP:
 				case <-bcR.Quit():
 					break FOR_LOOP
 				}
+			} else {
+				// TODO: same thing for app - but we would need a way to
+				// get the hash without persisting the state
+				state, err = bcR.blockExec.ApplyVerifiedBlock(state, firstID, first, second.LastCommit)
+				if err != nil {
+					// TODO This is bad, are we zombie?
+					panic(fmt.Sprintf("Failed to process committed block (%d:%X): %v", first.Height, first.Hash(), err))
+				}
+				bcR.metrics.recordBlockMetrics(first)
+			}
+			blocksSynced++
+
+			if blocksSynced%100 == 0 {
+				lastRate = 0.9*lastRate + 0.1*(100/time.Since(lastHundred).Seconds())
+				bcR.Logger.Info("Block Sync Rate", "height", bcR.pool.height,
+					"max_peer_height", bcR.pool.MaxPeerHeight(), "blocks/s", lastRate)
+				lastHundred = time.Now()
 			}
 
 			continue FOR_LOOP
