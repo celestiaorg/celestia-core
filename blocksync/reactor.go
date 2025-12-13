@@ -89,9 +89,9 @@ type Reactor struct {
 	// instead of being saved and applied directly
 	providerMode atomic.Bool
 
-	// providerModeStartedPool tracks if we started the pool for provider mode
-	// so we know to stop it when exiting provider mode
-	providerModeStartedPool atomic.Bool
+	// poolPaused when true, the poolRoutine skips block processing
+	// This is set when switching to consensus mode
+	poolPaused atomic.Bool
 
 	// blockChan is used to send validated blocks to consensus when in provider mode
 	blockChan chan *types.ValidatedBlock
@@ -467,20 +467,21 @@ FOR_LOOP:
 				continue FOR_LOOP
 			}
 
+			// If already paused (switched to consensus), just keep waiting
+			if bcR.poolPaused.Load() {
+				continue FOR_LOOP
+			}
+
 			if bcR.pool.IsCaughtUp() || bcR.localNodeBlocksTheChain(state) {
 				bcR.Logger.Info("Time to switch to consensus reactor!", "height", height)
-				if err := bcR.pool.Stop(); err != nil {
-					bcR.Logger.Error("Error stopping pool", "err", err)
-				}
+				// Pause the pool instead of stopping it - we may need it for provider mode later
+				bcR.poolPaused.Store(true)
 				conR, ok := bcR.Switch.Reactor("CONSENSUS").(consensusReactor)
 				if ok {
 					conR.SwitchToConsensus(state, blocksSynced > 0 || stateSynced)
 				}
-				// else {
-				// should only happen during testing
-				// }
-
-				break FOR_LOOP
+				// Don't break - keep the routine running in paused state
+				continue FOR_LOOP
 			}
 
 		case <-trySyncTicker.C: // chan time
@@ -497,6 +498,10 @@ FOR_LOOP:
 			// Consequently, it is better to split these routines rather than
 			// coupling them as it's written here.  TODO uncouple from request
 			// routine.
+
+			if bcR.poolPaused.Load() {
+				continue FOR_LOOP
+			}
 
 			// See if there are any blocks to sync.
 			first, second, extCommit := bcR.pool.PeekTwoBlocks()
@@ -680,39 +685,20 @@ func (bcR *Reactor) BroadcastStatusRequest() {
 
 // SetProviderMode enables or disables provider mode.
 // When enabled, validated blocks are sent to BlockChan instead of being applied.
-// If the pool is not running when enabling, it will be started.
-// When disabled, if we started the pool for provider mode, it will be stopped.
+// The pool is unpaused when enabling and paused when disabling.
 func (bcR *Reactor) SetProviderMode(enabled bool) {
 	bcR.providerMode.Store(enabled)
 	if enabled {
 		bcR.Logger.Info("Blocksync provider mode enabled")
-		// Start pool if not running
-		if !bcR.pool.IsRunning() {
-			bcR.Logger.Info("Starting blocksync pool for provider mode")
-			// Update pool height to start from next block after store
-			bcR.pool.height = bcR.store.Height() + 1
-			if err := bcR.pool.Start(); err != nil {
-				bcR.Logger.Error("Failed to start pool for provider mode", "err", err)
-				return
-			}
-			bcR.providerModeStartedPool.Store(true)
-			bcR.poolRoutineWg.Add(1)
-			go func() {
-				defer bcR.poolRoutineWg.Done()
-				bcR.poolRoutine(false)
-			}()
-		}
+		// Update pool height to current store height + 1 before unpausing
+		bcR.pool.SetHeight(bcR.store.Height() + 1)
+		// Unpause the pool to resume block fetching
+		bcR.poolPaused.Store(false)
+		bcR.Logger.Info("Blocksync pool unpaused for provider mode", "height", bcR.store.Height()+1)
 	} else {
 		bcR.Logger.Info("Blocksync provider mode disabled")
-		// Stop pool if we started it for provider mode
-		if bcR.providerModeStartedPool.Load() {
-			bcR.Logger.Info("Stopping blocksync pool (was started for provider mode)")
-			if err := bcR.pool.Stop(); err != nil {
-				bcR.Logger.Error("Error stopping pool", "err", err)
-			}
-			bcR.poolRoutineWg.Wait()
-			bcR.providerModeStartedPool.Store(false)
-		}
+		// Pause the pool
+		bcR.poolPaused.Store(true)
 	}
 }
 

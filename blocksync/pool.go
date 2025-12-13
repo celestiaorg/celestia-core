@@ -253,6 +253,25 @@ func (pool *BlockPool) GetStatus() (height int64, numPending int32, lenRequester
 	return pool.height, atomic.LoadInt32(&pool.numPending), len(pool.requesters)
 }
 
+// SetHeight updates the pool's height to the given value.
+// This is used when resuming blocksync after consensus has applied some blocks.
+// It clears any stale requesters for heights below the new height.
+func (pool *BlockPool) SetHeight(height int64) {
+	pool.mtx.Lock()
+	defer pool.mtx.Unlock()
+
+	// Remove requesters for heights we've already processed
+	for h, requester := range pool.requesters {
+		if h < height {
+			requester.Stop()
+			delete(pool.requesters, h)
+		}
+	}
+
+	pool.height = height
+	pool.Logger.Info("Pool height updated", "height", height)
+}
+
 // IsCaughtUp returns true if this node is caught up, false - otherwise.
 // TODO: relax conditions, prevent abuse.
 func (pool *BlockPool) IsCaughtUp() bool {
