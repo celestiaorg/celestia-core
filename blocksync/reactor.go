@@ -628,27 +628,12 @@ FOR_LOOP:
 			schema.WriteBlocksyncBlockSaved(bcR.traceClient, first.Height, blockSize,
 				validationDuration.Milliseconds(), saveDuration.Milliseconds(), totalDuration.Milliseconds())
 
-			if bcR.providerMode.Load() {
-				validatedBlock := &types.ValidatedBlock{
-					Block:      first,
-					Commit:     second.LastCommit,
-					BlockParts: firstParts,
-					BlockID:    firstID,
-				}
-				select {
-				case bcR.blockChan <- validatedBlock:
-					bcR.Logger.Debug("Sent validated block to consensus", "height", first.Height)
-				case <-bcR.Quit():
-					break FOR_LOOP
-				}
-			} else {
-				// TODO: same thing for app - but we would need a way to
-				// get the hash without persisting the state
-				state, err = bcR.blockExec.ApplyVerifiedBlock(state, firstID, first, second.LastCommit)
-				if err != nil {
-					// TODO This is bad, are we zombie?
-					panic(fmt.Sprintf("Failed to process committed block (%d:%X): %v", first.Height, first.Hash(), err))
-				}
+			// TODO: same thing for app - but we would need a way to
+			// get the hash without persisting the state
+			state, err = bcR.blockExec.ApplyVerifiedBlock(state, firstID, first, second.LastCommit)
+			if err != nil {
+				// TODO This is bad, are we zombie?
+				panic(fmt.Sprintf("Failed to process committed block (%d:%X): %v", first.Height, first.Hash(), err))
 			}
 			bcR.metrics.recordBlockMetrics(first)
 			blocksSynced++
@@ -658,6 +643,21 @@ FOR_LOOP:
 				bcR.Logger.Info("Block Sync Rate", "height", bcR.pool.height,
 					"max_peer_height", bcR.pool.MaxPeerHeight(), "blocks/s", lastRate)
 				lastHundred = time.Now()
+			}
+			if bcR.providerMode.Load() {
+				validatedBlock := &types.ValidatedBlock{
+					Block:      first,
+					Commit:     second.LastCommit,
+					BlockParts: firstParts,
+					BlockID:    firstID,
+					State:      state.Copy(),
+				}
+				select {
+				case bcR.blockChan <- validatedBlock:
+					bcR.Logger.Debug("Sent validated block to consensus", "height", first.Height)
+				case <-bcR.Quit():
+					break FOR_LOOP
+				}
 			}
 
 			continue FOR_LOOP

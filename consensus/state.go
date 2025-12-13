@@ -457,34 +457,18 @@ func (cs *State) IsBehind() bool {
 	return maxPeer > 0 && maxPeer >= ourHeight+cs.catchupThreshold
 }
 
-// applyValidatedBlock applies a block that has already been validated by blocksync.
+// applyNewState applies a state that has already been validated and applied by blocksync.
 // This is used during catchup when receiving blocks from the blocksync channel.
-func (cs *State) applyValidatedBlock(vb *types.ValidatedBlock) error {
+func (cs *State) applyNewState(vb *types.ValidatedBlock) error {
+	// Type-assert the state from the validated block
+	newState, ok := vb.State.(sm.State)
+	if !ok {
+		return fmt.Errorf("invalid state type in validated block")
+	}
+
 	height := vb.Block.Height
 
-	cs.Logger.Info("Applying validated block from blocksync", "height", height)
-
-	// Get current state
-	cs.stateMtx.RLock()
-	stateCopy := cs.state.Copy()
-	cs.stateMtx.RUnlock()
-
-	// Save to blockstore if not already saved
-	if cs.blockStore.Height() < height {
-		cs.blockStore.SaveBlock(vb.Block, vb.BlockParts, vb.Commit)
-	}
-
-	// Write EndHeightMessage for WAL consistency
-	endMsg := EndHeightMessage{height}
-	if err := cs.wal.WriteSync(endMsg); err != nil {
-		return fmt.Errorf("failed to write EndHeightMessage to WAL: %w", err)
-	}
-
-	// Apply the block (blocksync already validated it)
-	newState, err := cs.blockExec.ApplyVerifiedBlock(stateCopy, vb.BlockID, vb.Block, vb.Commit)
-	if err != nil {
-		return fmt.Errorf("failed to apply block: %w", err)
-	}
+	cs.Logger.Info("Applying new state from blocksync", "height", height)
 
 	// Update consensus state using the same pattern as SwitchToConsensus:
 	// hold all locks, reconstruct LastCommit from blockstore, then updateToState
@@ -504,7 +488,7 @@ func (cs *State) applyValidatedBlock(vb *types.ValidatedBlock) error {
 		cs.propagator.SetProposer(proposer.PubKey)
 	}
 
-	cs.Logger.Info("Successfully applied validated block from blocksync", "height", height, "new_height", height+1)
+	cs.Logger.Info("Successfully applied new state from blocksync", "height", height, "new_height", newState.LastBlockHeight+1)
 
 	return nil
 }
@@ -3194,14 +3178,14 @@ func (cs *State) catchupRoutine() {
 			cs.rsMtx.RUnlock()
 
 			if vb.Block.Height != expectedHeight {
-				cs.Logger.Debug("Received block with unexpected height, skipping",
+				cs.Logger.Error("Received block with unexpected height, skipping",
 					"expected", expectedHeight,
 					"received", vb.Block.Height)
 				continue
 			}
 
 			// Apply the validated block
-			if err := cs.applyValidatedBlock(vb); err != nil {
+			if err := cs.applyNewState(vb); err != nil {
 				cs.Logger.Error("Failed to apply validated block from blocksync",
 					"height", vb.Block.Height,
 					"err", err)
