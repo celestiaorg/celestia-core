@@ -3151,7 +3151,10 @@ func (cs *State) catchupRoutine() {
 
 			isBehind := cs.IsBehind()
 
-			if isBehind && !providerModeEnabled {
+			// Don't enable provider mode if delays are set (node is intentionally slowed)
+			hasDelays := cs.consensusDelays.GetProposeDelay() > 0 || cs.consensusDelays.GetPrevoteDelay() > 0
+
+			if isBehind && !providerModeEnabled && !hasDelays {
 				// We're behind - enable provider mode and pause propagation
 				cs.Logger.Info("Consensus is behind, enabling blocksync provider mode",
 					"our_height", cs.GetLastHeight()+1,
