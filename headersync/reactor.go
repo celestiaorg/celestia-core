@@ -62,9 +62,9 @@ type Reactor struct {
 	peerRequests    map[p2p.ID]*peerRequestTracker
 
 	// Metrics tracking.
-	metrics          *Metrics
-	headersSynced    int64
-	lastHundredTime  time.Time
+	metrics             *Metrics
+	headersSynced       int64
+	lastHundredTime     time.Time
 	lastBroadcastHeight int64
 }
 
@@ -162,6 +162,7 @@ func (r *Reactor) AddPeer(peer p2p.Peer) {
 	if height > 0 {
 		height--
 	}
+	r.Logger.Info("headersync add peer", "peer", peer.ID(), "advertised_height", height) // TODO(evan): remove
 	peer.Send(p2p.Envelope{
 		ChannelID: HeaderSyncChannel,
 		Message: &hsproto.StatusResponse{
@@ -173,6 +174,7 @@ func (r *Reactor) AddPeer(peer p2p.Peer) {
 
 // RemovePeer implements Reactor by removing the peer from the pool.
 func (r *Reactor) RemovePeer(peer p2p.Peer, _ interface{}) {
+	r.Logger.Info("headersync remove peer", "peer", peer.ID()) // TODO(evan): remove
 	r.pool.RemovePeer(peer.ID())
 
 	// Clean up rate limiting state for this peer.

@@ -245,21 +245,26 @@ func (blockProp *Reactor) GetChannels() []*conn.ChannelDescriptor {
 func (blockProp *Reactor) InitPeer(peer p2p.Peer) (p2p.Peer, error) {
 	// Ignore the peer if it is ourselves.
 	if peer.ID() == blockProp.self {
+		blockProp.Logger.Debug("rejecting self connection", "peer", peer.ID())
 		return nil, errors.New("cannot connect to self")
 	}
 
 	if legacy, err := IsLegacyPropagation(peer); legacy || err != nil {
 		if err != nil {
+			blockProp.Logger.Debug("rejecting peer: legacy propagation with error", "peer", peer.ID(), "err", err)
 			return nil, fmt.Errorf("peer is only using legacy propagation: %w", err)
 		}
+		blockProp.Logger.Debug("rejecting peer: legacy propagation", "peer", peer.ID())
 		return nil, errors.New("peer is only using legacy propagation")
 	}
 
 	// ignore the peer if it already exists.
 	if p := blockProp.getPeer(peer.ID()); p != nil {
+		blockProp.Logger.Debug("rejecting peer: already connected", "peer", peer.ID())
 		return nil, errors.New("peer already exists")
 	}
 
+	blockProp.Logger.Debug("InitPeer accepted", "peer", peer.ID())
 	return peer, nil
 }
 
@@ -268,6 +273,7 @@ func (blockProp *Reactor) InitPeer(peer p2p.Peer) (p2p.Peer, error) {
 // or request data.
 func (blockProp *Reactor) AddPeer(peer p2p.Peer) {
 	peerState := newPeerState(blockProp.ctx, peer, blockProp.Logger)
+	blockProp.Logger.Info("propagation add peer", "peer", peer.ID())
 
 	consensusState := peer.Get(types.PeerStateKey)
 
@@ -307,6 +313,7 @@ func (blockProp *Reactor) AddPeer(peer p2p.Peer) {
 func (blockProp *Reactor) RemovePeer(peer p2p.Peer, reason interface{}) {
 	blockProp.mtx.Lock()
 	defer blockProp.mtx.Unlock()
+	blockProp.Logger.Info("propagation remove peer", "peer", peer.ID(), "reason", reason)
 	p := blockProp.peerstate[peer.ID()]
 	if p != nil {
 		p.cancel()
@@ -337,6 +344,7 @@ func (blockProp *Reactor) ReceiveEnvelope(e p2p.Envelope) {
 		blockProp.Switch.StopPeerForError(e.Src, err, blockProp.String())
 		return
 	}
+	blockProp.Logger.Debug("propagation received", "peer", e.Src.ID(), "chId", e.ChannelID, "type", fmt.Sprintf("%T", msg))
 	switch e.ChannelID {
 	case DataChannel:
 		switch msg := msg.(type) {
