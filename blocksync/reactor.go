@@ -93,6 +93,10 @@ type Reactor struct {
 	// This is set when switching to consensus mode
 	poolPaused atomic.Bool
 
+	// stateNeedsReload signals that poolRoutine should reload state from store
+	// This is set when unpausing after consensus has applied blocks
+	stateNeedsReload atomic.Bool
+
 	// blockChan is used to send validated blocks to consensus when in provider mode
 	blockChan chan *types.ValidatedBlock
 }
@@ -503,6 +507,17 @@ FOR_LOOP:
 				continue FOR_LOOP
 			}
 
+			// Reload state if signaled (after consensus applied blocks)
+			if bcR.stateNeedsReload.CompareAndSwap(true, false) {
+				var err error
+				state, err = bcR.blockExec.Store().Load()
+				if err != nil {
+					bcR.Logger.Error("Failed to reload state", "err", err)
+					continue FOR_LOOP
+				}
+				bcR.Logger.Info("State reloaded for provider mode", "height", state.LastBlockHeight)
+			}
+
 			// See if there are any blocks to sync.
 			first, second, extCommit := bcR.pool.PeekTwoBlocks()
 			if first == nil || second == nil {
@@ -692,6 +707,8 @@ func (bcR *Reactor) SetProviderMode(enabled bool) {
 		bcR.Logger.Info("Blocksync provider mode enabled")
 		// Update pool height to current store height + 1 before unpausing
 		bcR.pool.SetHeight(bcR.store.Height() + 1)
+		// Signal that state needs to be reloaded (consensus may have applied blocks)
+		bcR.stateNeedsReload.Store(true)
 		// Unpause the pool to resume block fetching
 		bcR.poolPaused.Store(false)
 		bcR.Logger.Info("Blocksync pool unpaused for provider mode", "height", bcR.store.Height()+1)
