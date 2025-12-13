@@ -69,22 +69,22 @@ type Node struct {
 
 	// services
 	eventBus          *types.EventBus // pub/sub for services
-	stateStore         sm.Store
-	blockStore         *store.BlockStore // store the blockchain to disk
-	bcReactor          p2p.Reactor       // for block-syncing
-	headerSyncReactor  *headersync.Reactor    // for syncing headers ahead of blocks
-	mempoolReactor     p2p.Reactor            // for gossipping transactions
-	mempool            mempl.Mempool
-	stateSync          bool                    // whether the node should state sync on startup
-	stateSyncReactor   *statesync.Reactor      // for hosting and restoring state sync snapshots
-	stateSyncProvider  statesync.StateProvider // provides state data for bootstrapping a node
-	stateSyncGenesis   sm.State                // provides the genesis state for state sync
-	consensusState     *cs.State               // latest consensus state
-	consensusReactor   *cs.Reactor             // for participating in the consensus
-	pexReactor         *pex.Reactor            // for exchanging peer addresses
-	blockPropReactor   *propagation.Reactor    // the block propagation reactor. potentially nil is disabled.
-	evidencePool       *evidence.Pool          // tracking evidence
-	proxyApp           proxy.AppConns          // connection to the application
+	stateStore        sm.Store
+	blockStore        *store.BlockStore   // store the blockchain to disk
+	bcReactor         p2p.Reactor         // for block-syncing
+	headerSyncReactor *headersync.Reactor // for syncing headers ahead of blocks
+	mempoolReactor    p2p.Reactor         // for gossipping transactions
+	mempool           mempl.Mempool
+	stateSync         bool                    // whether the node should state sync on startup
+	stateSyncReactor  *statesync.Reactor      // for hosting and restoring state sync snapshots
+	stateSyncProvider statesync.StateProvider // provides state data for bootstrapping a node
+	stateSyncGenesis  sm.State                // provides the genesis state for state sync
+	consensusState    *cs.State               // latest consensus state
+	consensusReactor  *cs.Reactor             // for participating in the consensus
+	pexReactor        *pex.Reactor            // for exchanging peer addresses
+	blockPropReactor  *propagation.Reactor    // the block propagation reactor. potentially nil is disabled.
+	evidencePool      *evidence.Pool          // tracking evidence
+	proxyApp          proxy.AppConns          // connection to the application
 	rpcListeners      []net.Listener          // rpc servers
 	txIndexer         txindex.TxIndexer
 	blockIndexer      indexer.BlockIndexer
@@ -397,9 +397,10 @@ func NewNodeWithContext(ctx context.Context,
 		}
 	}
 
-	// Determine whether we should do block sync. This must happen after the handshake, since the
-	// app may modify the validator set, specifying ourself as the only validator.
-	blockSync := !onlyValidatorIsUs(state, localAddr)
+	// Determine whether we should do block sync. When the new propagation reactor is enabled,
+	// we expect block bodies to flow via propagation + headersync, so we disable legacy blocksync.
+	// This must happen after the handshake, since the app may modify the validator set.
+	blockSync := config.BlockSync.Enable && config.Consensus.DisablePropagationReactor && !onlyValidatorIsUs(state, localAddr)
 
 	logNodeStartupInfo(state, pubKey, logger, consensusLogger)
 
@@ -437,10 +438,14 @@ func NewNodeWithContext(ctx context.Context,
 			panic(fmt.Sprintf("failed to retrieve statesynced height from store %s; expected state store height to be %v", err, state.LastBlockHeight))
 		}
 	}
-	// Don't start block sync if we're doing a state sync first.
-	bcReactor, err := createBlocksyncReactor(config, state, blockExec, blockStore, blockSync && !stateSync, localAddr, logger, bsMetrics, offlineStateSyncHeight, tracer)
-	if err != nil {
-		return nil, fmt.Errorf("could not create blocksync reactor: %w", err)
+	var bcReactor p2p.Reactor
+	// Only create blocksync if explicitly enabled (or needed for state sync handoff when enabled).
+	if config.BlockSync.Enable && (blockSync || stateSync) {
+		// Don't start block sync if we're doing a state sync first.
+		bcReactor, err = createBlocksyncReactor(config, state, blockExec, blockStore, blockSync && !stateSync, localAddr, logger, bsMetrics, offlineStateSyncHeight, tracer)
+		if err != nil {
+			return nil, fmt.Errorf("could not create blocksync reactor: %w", err)
+		}
 	}
 
 	// Create header sync reactor if enabled.
@@ -662,12 +667,17 @@ func (n *Node) OnStart() error {
 
 	// Run state sync
 	if n.stateSync {
-		bcR, ok := n.bcReactor.(blockSyncReactor)
-		if !ok {
-			return fmt.Errorf("this blocksync reactor does not support switching from state sync")
+		allowBlockSync := n.config.BlockSync.Enable && n.config.Consensus.DisablePropagationReactor
+		var bcR blockSyncReactor
+		if allowBlockSync {
+			var ok bool
+			bcR, ok = n.bcReactor.(blockSyncReactor)
+			if !ok {
+				return fmt.Errorf("this blocksync reactor does not support switching from state sync")
+			}
 		}
 		err := startStateSync(n.stateSyncReactor, bcR, n.stateSyncProvider,
-			n.config.StateSync, n.stateStore, n.blockStore, n.stateSyncGenesis)
+			n.config.StateSync, n.stateStore, n.blockStore, n.stateSyncGenesis, allowBlockSync)
 		if err != nil {
 			return fmt.Errorf("failed to start state sync: %w", err)
 		}
@@ -1048,11 +1058,13 @@ func makeNodeInfo(
 	}
 
 	channels := []byte{
-		bc.BlocksyncChannel,
 		cs.StateChannel, cs.VoteChannel, cs.VoteSetBitsChannel,
 		mempl.MempoolChannel,
 		evidence.EvidenceChannel,
 		statesync.SnapshotChannel, statesync.ChunkChannel,
+	}
+	if config.BlockSync.Enable {
+		channels = append(channels, bc.BlocksyncChannel)
 	}
 	if config.Consensus.EnableLegacyBlockProp {
 		channels = append(channels, cs.DataChannel)

@@ -497,6 +497,7 @@ chunk_fetchers = "{{ .StateSync.ChunkFetchers }}"
 # Please use v0 instead.
 #
 #   1) "v0" - the default block sync implementation
+enable = {{ .BlockSync.Enable }}
 version = "{{ .BlockSync.Version }}"
 
 # If true, the node will verify the application data in the block via ProcessProposal

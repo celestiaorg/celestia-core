@@ -262,6 +262,9 @@ func MakeConfig(node *e2e.Node) (*config.Config, error) {
 		cfg.P2P.PersistentPeers += peer.AddressP2P(true)
 	}
 
+	// Use headersync + propagation for block data in E2E runs; disable legacy blocksync.
+	cfg.BlockSync.Enable = false
+
 	if node.Testnet.LogLevel != "" {
 		cfg.LogLevel = node.Testnet.LogLevel
 	}
