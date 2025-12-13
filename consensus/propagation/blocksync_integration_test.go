@@ -1526,6 +1526,627 @@ func (m *dynamicMockHeaderSyncReaderWithMtx) IsCaughtUp() bool {
 	return m.currentHeight >= m.caughtUpThreshold
 }
 
+// ============================================================================
+// Phase 9.4: Error Recovery Tests
+// ============================================================================
+
+// TestBlocksyncErrorRecovery_PeerDisconnect verifies that blocksync continues
+// correctly when a peer disconnects mid-sync. The node should:
+// 1. Continue downloading parts from remaining peers
+// 2. Complete sync without errors
+func TestBlocksyncErrorRecovery_PeerDisconnect(t *testing.T) {
+	p2pCfg := defaultTestP2PConf()
+	cleanup, _, sm := state.SetupTestCase(t)
+	t.Cleanup(func() {
+		cleanup(t)
+	})
+
+	// Create 3 reactors: 2 ahead nodes (peers), 1 lagging node
+	reactors, _ := createTestReactors(3, p2pCfg, false, "")
+	peer1 := reactors[0]
+	peer2 := reactors[1]
+	lagging := reactors[2]
+
+	const numBlocks = 5
+
+	blocks := make(map[int64]*testBlockData, numBlocks)
+
+	// Create blocks on both peer nodes
+	for height := int64(1); height <= numBlocks; height++ {
+		prop, ps, block, metaData := createTestProposal(t, sm, height, 0, 2, 100000)
+		cb, parity := createCompactBlock(t, prop, ps, metaData)
+
+		// Add to both peers
+		added1 := peer1.AddProposal(cb)
+		require.True(t, added1)
+		added2 := peer2.AddProposal(cb)
+		require.True(t, added2)
+
+		_, parts1, _, has1 := peer1.getAllState(height, 0, true)
+		require.True(t, has1)
+		parts1.SetProposalData(ps, parity)
+
+		_, parts2, _, has2 := peer2.getAllState(height, 0, true)
+		require.True(t, has2)
+		parts2.SetProposalData(ps, parity)
+
+		blocks[height] = &testBlockData{
+			cb:     cb,
+			ps:     ps,
+			parity: parity,
+			block:  block,
+			prop:   prop,
+		}
+
+		peer1.pmtx.Lock()
+		peer1.height = height + 1
+		peer1.pmtx.Unlock()
+
+		peer2.pmtx.Lock()
+		peer2.height = height + 1
+		peer2.pmtx.Unlock()
+	}
+
+	logger := log.TestingLogger()
+
+	pendingBlocks := NewPendingBlocksManager(logger, nil, PendingBlocksConfig{})
+	mockHS := &mockHeaderSyncReaderWithBlocks{
+		blocks:   blocks,
+		height:   numBlocks,
+		caughtUp: true,
+	}
+	pendingBlocks.SetHeaderSyncReader(mockHS)
+	pendingBlocks.SetLastCommittedHeight(0)
+
+	blockDelivery := NewBlockDeliveryManager(pendingBlocks, 1, logger)
+	blockDelivery.Start()
+	defer blockDelivery.Stop()
+
+	lagging.pendingBlocks = pendingBlocks
+	lagging.hsReader = mockHS
+
+	pendingBlocks.TryFillCapacity()
+
+	// Receive some parts from peer1 for blocks 1-3
+	for height := int64(1); height <= 3; height++ {
+		bd := blocks[height]
+		// Only get half the parts from peer1
+		for i := uint32(0); i < bd.ps.Total()/2; i++ {
+			part := bd.ps.GetPart(int(i))
+			proof := bd.cb.GetProof(i)
+			recoveryPart := &proptypes.RecoveryPart{
+				Height: height,
+				Round:  0,
+				Index:  i,
+				Data:   part.Bytes.Bytes(),
+			}
+			_, _, err := pendingBlocks.HandlePart(height, 0, recoveryPart, proof)
+			require.NoError(t, err)
+		}
+	}
+
+	// Simulate peer1 disconnect - lagging node removes it from peer list
+	lagging.mtx.Lock()
+	delete(lagging.peerstate, peer1.self)
+	lagging.mtx.Unlock()
+
+	// Now peer2 provides the remaining parts
+	for height := int64(1); height <= numBlocks; height++ {
+		bd := blocks[height]
+		// Get all parts from peer2 (some are duplicates, which should be handled gracefully)
+		for i := uint32(0); i < bd.ps.Total(); i++ {
+			part := bd.ps.GetPart(int(i))
+			proof := bd.cb.GetProof(i)
+			recoveryPart := &proptypes.RecoveryPart{
+				Height: height,
+				Round:  0,
+				Index:  i,
+				Data:   part.Bytes.Bytes(),
+			}
+			_, _, err := pendingBlocks.HandlePart(height, 0, recoveryPart, proof)
+			require.NoError(t, err)
+		}
+	}
+
+	// Verify all blocks are delivered despite peer1 disconnect
+	deliveredBlocks := make([]*CompletedBlock, 0, numBlocks)
+	timeout := time.After(5 * time.Second)
+
+	for len(deliveredBlocks) < numBlocks {
+		select {
+		case block := <-blockDelivery.BlockChan():
+			deliveredBlocks = append(deliveredBlocks, block)
+		case <-timeout:
+			t.Fatalf("timeout waiting for blocks, got %d/%d", len(deliveredBlocks), numBlocks)
+		}
+	}
+
+	// Verify order
+	for i, block := range deliveredBlocks {
+		require.Equal(t, int64(i+1), block.Height)
+	}
+}
+
+// TestBlocksyncErrorRecovery_InvalidParts verifies that invalid parts are rejected
+// and don't corrupt the block state.
+func TestBlocksyncErrorRecovery_InvalidParts(t *testing.T) {
+	p2pCfg := defaultTestP2PConf()
+	cleanup, _, sm := state.SetupTestCase(t)
+	t.Cleanup(func() {
+		cleanup(t)
+	})
+
+	reactors, _ := createTestReactors(2, p2pCfg, false, "")
+	ahead := reactors[0]
+	lagging := reactors[1]
+
+	const numBlocks = 2
+
+	blocks := make(map[int64]*testBlockData, numBlocks)
+
+	for height := int64(1); height <= numBlocks; height++ {
+		prop, ps, block, metaData := createTestProposal(t, sm, height, 0, 2, 100000)
+		cb, parity := createCompactBlock(t, prop, ps, metaData)
+
+		added := ahead.AddProposal(cb)
+		require.True(t, added)
+
+		_, parts, _, has := ahead.getAllState(height, 0, true)
+		require.True(t, has)
+		parts.SetProposalData(ps, parity)
+
+		blocks[height] = &testBlockData{
+			cb:     cb,
+			ps:     ps,
+			parity: parity,
+			block:  block,
+			prop:   prop,
+		}
+
+		ahead.pmtx.Lock()
+		ahead.height = height + 1
+		ahead.pmtx.Unlock()
+	}
+
+	logger := log.TestingLogger()
+
+	pendingBlocks := NewPendingBlocksManager(logger, nil, PendingBlocksConfig{})
+	mockHS := &mockHeaderSyncReaderWithBlocks{
+		blocks:   blocks,
+		height:   numBlocks,
+		caughtUp: true,
+	}
+	pendingBlocks.SetHeaderSyncReader(mockHS)
+	pendingBlocks.SetLastCommittedHeight(0)
+
+	blockDelivery := NewBlockDeliveryManager(pendingBlocks, 1, logger)
+	blockDelivery.Start()
+	defer blockDelivery.Stop()
+
+	lagging.pendingBlocks = pendingBlocks
+	lagging.hsReader = mockHS
+
+	pendingBlocks.TryFillCapacity()
+
+	bd1 := blocks[1]
+
+	// Test 1: Part with corrupted data
+	corruptedPart := &proptypes.RecoveryPart{
+		Height: 1,
+		Round:  0,
+		Index:  0,
+		Data:   cmtrand.Bytes(len(bd1.ps.GetPart(0).Bytes.Bytes())), // Random data
+	}
+	proof := bd1.cb.GetProof(0)
+	added, _, err := pendingBlocks.HandlePart(1, 0, corruptedPart, proof)
+	// The part should be rejected because the hash won't match the proof
+	require.False(t, added, "corrupted part should not be added")
+	// Note: err may or may not be set depending on implementation - the key is that added=false
+
+	// Verify the block is still active (not corrupted)
+	pb := pendingBlocks.GetBlock(1)
+	require.NotNil(t, pb)
+	require.Equal(t, BlockStateActive, pb.State, "block state should still be active")
+
+	// Test 2: Part with wrong height
+	wrongHeightPart := &proptypes.RecoveryPart{
+		Height: 999, // Height we're not tracking
+		Round:  0,
+		Index:  0,
+		Data:   bd1.ps.GetPart(0).Bytes.Bytes(),
+	}
+	added, _, err = pendingBlocks.HandlePart(999, 0, wrongHeightPart, proof)
+	require.False(t, added, "part for unknown height should not be added")
+	_ = err // Error is expected but not required
+
+	// Test 3: Part with out-of-range index
+	outOfRangePart := &proptypes.RecoveryPart{
+		Height: 1,
+		Round:  0,
+		Index:  9999, // Way beyond valid range
+		Data:   bd1.ps.GetPart(0).Bytes.Bytes(),
+	}
+	added, _, err = pendingBlocks.HandlePart(1, 0, outOfRangePart, proof)
+	require.False(t, added, "part with out-of-range index should not be added")
+	_ = err
+
+	// Now send valid parts and verify the block can still complete
+	for i := uint32(0); i < bd1.ps.Total(); i++ {
+		part := bd1.ps.GetPart(int(i))
+		proof := bd1.cb.GetProof(i)
+		recoveryPart := &proptypes.RecoveryPart{
+			Height: 1,
+			Round:  0,
+			Index:  i,
+			Data:   part.Bytes.Bytes(),
+		}
+		added, _, err := pendingBlocks.HandlePart(1, 0, recoveryPart, proof)
+		require.NoError(t, err)
+		require.True(t, added, "valid part %d should be added", i)
+	}
+
+	// Block 1 should complete successfully
+	select {
+	case block := <-blockDelivery.BlockChan():
+		require.Equal(t, int64(1), block.Height)
+		require.True(t, block.Parts.IsComplete())
+	case <-time.After(2 * time.Second):
+		t.Fatal("timeout waiting for block 1")
+	}
+}
+
+// TestBlocksyncErrorRecovery_DuplicateParts verifies that duplicate parts
+// are handled gracefully without errors or state corruption.
+func TestBlocksyncErrorRecovery_DuplicateParts(t *testing.T) {
+	p2pCfg := defaultTestP2PConf()
+	cleanup, _, sm := state.SetupTestCase(t)
+	t.Cleanup(func() {
+		cleanup(t)
+	})
+
+	reactors, _ := createTestReactors(1, p2pCfg, false, "")
+	_ = reactors[0]
+
+	const numBlocks = 2
+
+	blocks := make(map[int64]*testBlockData, numBlocks)
+
+	for height := int64(1); height <= numBlocks; height++ {
+		prop, ps, _, metaData := createTestProposal(t, sm, height, 0, 2, 100000)
+		cb, parity := createCompactBlock(t, prop, ps, metaData)
+		blocks[height] = &testBlockData{cb: cb, ps: ps, parity: parity}
+	}
+
+	logger := log.TestingLogger()
+
+	pendingBlocks := NewPendingBlocksManager(logger, nil, PendingBlocksConfig{})
+	mockHS := &mockHeaderSyncReaderWithBlocks{
+		blocks:   blocks,
+		height:   numBlocks,
+		caughtUp: true,
+	}
+	pendingBlocks.SetHeaderSyncReader(mockHS)
+	pendingBlocks.SetLastCommittedHeight(0)
+
+	blockDelivery := NewBlockDeliveryManager(pendingBlocks, 1, logger)
+	blockDelivery.Start()
+	defer blockDelivery.Stop()
+
+	pendingBlocks.TryFillCapacity()
+
+	bd1 := blocks[1]
+
+	// Send the first part
+	part0 := bd1.ps.GetPart(0)
+	proof0 := bd1.cb.GetProof(0)
+	recoveryPart0 := &proptypes.RecoveryPart{
+		Height: 1,
+		Round:  0,
+		Index:  0,
+		Data:   part0.Bytes.Bytes(),
+	}
+
+	added, _, err := pendingBlocks.HandlePart(1, 0, recoveryPart0, proof0)
+	require.NoError(t, err)
+	require.True(t, added, "first send should add part")
+
+	// Send the same part again (duplicate)
+	added, _, err = pendingBlocks.HandlePart(1, 0, recoveryPart0, proof0)
+	require.NoError(t, err)
+	require.False(t, added, "duplicate part should not be added again")
+
+	// Send it a third time
+	added, _, err = pendingBlocks.HandlePart(1, 0, recoveryPart0, proof0)
+	require.NoError(t, err)
+	require.False(t, added, "third send should also return added=false")
+
+	// Verify part count is still 1
+	pb := pendingBlocks.GetBlock(1)
+	require.NotNil(t, pb)
+	partsReceived := 0
+	for i := uint32(0); i < bd1.ps.Total(); i++ {
+		if pb.Parts.Original().HasPart(int(i)) {
+			partsReceived++
+		}
+	}
+	require.Equal(t, 1, partsReceived, "should only have 1 part despite duplicates")
+
+	// Complete the block normally
+	for i := uint32(1); i < bd1.ps.Total(); i++ {
+		part := bd1.ps.GetPart(int(i))
+		proof := bd1.cb.GetProof(i)
+		recoveryPart := &proptypes.RecoveryPart{
+			Height: 1,
+			Round:  0,
+			Index:  i,
+			Data:   part.Bytes.Bytes(),
+		}
+		_, _, err := pendingBlocks.HandlePart(1, 0, recoveryPart, proof)
+		require.NoError(t, err)
+	}
+
+	select {
+	case block := <-blockDelivery.BlockChan():
+		require.Equal(t, int64(1), block.Height)
+	case <-time.After(2 * time.Second):
+		t.Fatal("timeout waiting for block 1")
+	}
+}
+
+// TestBlocksyncErrorRecovery_StaleHeightParts verifies that parts for already
+// committed (pruned) heights are ignored gracefully.
+func TestBlocksyncErrorRecovery_StaleHeightParts(t *testing.T) {
+	p2pCfg := defaultTestP2PConf()
+	cleanup, _, sm := state.SetupTestCase(t)
+	t.Cleanup(func() {
+		cleanup(t)
+	})
+
+	reactors, _ := createTestReactors(1, p2pCfg, false, "")
+	_ = reactors[0]
+
+	const numBlocks = 3
+
+	blocks := make(map[int64]*testBlockData, numBlocks)
+
+	for height := int64(1); height <= numBlocks; height++ {
+		prop, ps, _, metaData := createTestProposal(t, sm, height, 0, 2, 100000)
+		cb, parity := createCompactBlock(t, prop, ps, metaData)
+		blocks[height] = &testBlockData{cb: cb, ps: ps, parity: parity}
+	}
+
+	logger := log.TestingLogger()
+
+	pendingBlocks := NewPendingBlocksManager(logger, nil, PendingBlocksConfig{})
+	mockHS := &mockHeaderSyncReaderWithBlocks{
+		blocks:   blocks,
+		height:   numBlocks,
+		caughtUp: true,
+	}
+	pendingBlocks.SetHeaderSyncReader(mockHS)
+	pendingBlocks.SetLastCommittedHeight(0)
+
+	blockDelivery := NewBlockDeliveryManager(pendingBlocks, 1, logger)
+	blockDelivery.Start()
+	defer blockDelivery.Stop()
+
+	pendingBlocks.TryFillCapacity()
+
+	// Complete and receive blocks 1 and 2
+	for height := int64(1); height <= 2; height++ {
+		bd := blocks[height]
+		for i := uint32(0); i < bd.ps.Total(); i++ {
+			part := bd.ps.GetPart(int(i))
+			proof := bd.cb.GetProof(i)
+			recoveryPart := &proptypes.RecoveryPart{
+				Height: height,
+				Round:  0,
+				Index:  i,
+				Data:   part.Bytes.Bytes(),
+			}
+			_, _, err := pendingBlocks.HandlePart(height, 0, recoveryPart, proof)
+			require.NoError(t, err)
+		}
+	}
+
+	// Receive both blocks
+	for height := int64(1); height <= 2; height++ {
+		select {
+		case block := <-blockDelivery.BlockChan():
+			require.Equal(t, height, block.Height)
+			pendingBlocks.Prune(block.Height)
+			pendingBlocks.SetLastCommittedHeight(block.Height)
+		case <-time.After(2 * time.Second):
+			t.Fatalf("timeout waiting for block %d", height)
+		}
+	}
+
+	// Verify heights 1 and 2 are pruned
+	require.False(t, pendingBlocks.HasHeight(1))
+	require.False(t, pendingBlocks.HasHeight(2))
+	require.True(t, pendingBlocks.HasHeight(3))
+
+	// Now try to send parts for already-pruned heights
+	bd1 := blocks[1]
+	part := bd1.ps.GetPart(0)
+	proof := bd1.cb.GetProof(0)
+	stalePart := &proptypes.RecoveryPart{
+		Height: 1, // Already pruned
+		Round:  0,
+		Index:  0,
+		Data:   part.Bytes.Bytes(),
+	}
+
+	added, _, err := pendingBlocks.HandlePart(1, 0, stalePart, proof)
+	require.NoError(t, err) // Should not error
+	require.False(t, added, "part for pruned height should not be added")
+
+	// Verify block 3 can still complete
+	bd3 := blocks[3]
+	for i := uint32(0); i < bd3.ps.Total(); i++ {
+		part := bd3.ps.GetPart(int(i))
+		proof := bd3.cb.GetProof(i)
+		recoveryPart := &proptypes.RecoveryPart{
+			Height: 3,
+			Round:  0,
+			Index:  i,
+			Data:   part.Bytes.Bytes(),
+		}
+		_, _, err := pendingBlocks.HandlePart(3, 0, recoveryPart, proof)
+		require.NoError(t, err)
+	}
+
+	select {
+	case block := <-blockDelivery.BlockChan():
+		require.Equal(t, int64(3), block.Height)
+	case <-time.After(2 * time.Second):
+		t.Fatal("timeout waiting for block 3")
+	}
+}
+
+// TestBlocksyncErrorRecovery_MultipleSimultaneousFailures verifies that the
+// system handles multiple error conditions simultaneously.
+func TestBlocksyncErrorRecovery_MultipleSimultaneousFailures(t *testing.T) {
+	p2pCfg := defaultTestP2PConf()
+	cleanup, _, sm := state.SetupTestCase(t)
+	t.Cleanup(func() {
+		cleanup(t)
+	})
+
+	reactors, _ := createTestReactors(4, p2pCfg, false, "")
+	peer1 := reactors[0]
+	peer2 := reactors[1]
+	peer3 := reactors[2]
+	lagging := reactors[3]
+
+	const numBlocks = 5
+
+	blocks := make(map[int64]*testBlockData, numBlocks)
+
+	for height := int64(1); height <= numBlocks; height++ {
+		prop, ps, block, metaData := createTestProposal(t, sm, height, 0, 2, 100000)
+		cb, parity := createCompactBlock(t, prop, ps, metaData)
+
+		// Add to all peers
+		for _, peer := range []*Reactor{peer1, peer2, peer3} {
+			added := peer.AddProposal(cb)
+			require.True(t, added)
+			_, parts, _, has := peer.getAllState(height, 0, true)
+			require.True(t, has)
+			parts.SetProposalData(ps, parity)
+			peer.pmtx.Lock()
+			peer.height = height + 1
+			peer.pmtx.Unlock()
+		}
+
+		blocks[height] = &testBlockData{
+			cb:     cb,
+			ps:     ps,
+			parity: parity,
+			block:  block,
+			prop:   prop,
+		}
+	}
+
+	logger := log.TestingLogger()
+
+	pendingBlocks := NewPendingBlocksManager(logger, nil, PendingBlocksConfig{})
+	mockHS := &mockHeaderSyncReaderWithBlocks{
+		blocks:   blocks,
+		height:   numBlocks,
+		caughtUp: true,
+	}
+	pendingBlocks.SetHeaderSyncReader(mockHS)
+	pendingBlocks.SetLastCommittedHeight(0)
+
+	blockDelivery := NewBlockDeliveryManager(pendingBlocks, 1, logger)
+	blockDelivery.Start()
+	defer blockDelivery.Stop()
+
+	lagging.pendingBlocks = pendingBlocks
+	lagging.hsReader = mockHS
+
+	pendingBlocks.TryFillCapacity()
+
+	// Simulate chaotic part reception:
+	// - peer1 sends some valid parts
+	// - peer2 sends duplicates and some invalid parts
+	// - peer3 completes what's missing
+	// All interspersed
+
+	for height := int64(1); height <= numBlocks; height++ {
+		bd := blocks[height]
+
+		for i := uint32(0); i < bd.ps.Total(); i++ {
+			part := bd.ps.GetPart(int(i))
+			proof := bd.cb.GetProof(i)
+
+			// peer1: send half the parts
+			if i%2 == 0 {
+				validPart := &proptypes.RecoveryPart{
+					Height: height,
+					Round:  0,
+					Index:  i,
+					Data:   part.Bytes.Bytes(),
+				}
+				pendingBlocks.HandlePart(height, 0, validPart, proof)
+			}
+
+			// peer2: send duplicates of what peer1 sent
+			if i%2 == 0 {
+				duplicatePart := &proptypes.RecoveryPart{
+					Height: height,
+					Round:  0,
+					Index:  i,
+					Data:   part.Bytes.Bytes(),
+				}
+				pendingBlocks.HandlePart(height, 0, duplicatePart, proof)
+			}
+
+			// peer2: also try to send some corrupted parts
+			if i%3 == 0 {
+				corruptedPart := &proptypes.RecoveryPart{
+					Height: height,
+					Round:  0,
+					Index:  i,
+					Data:   cmtrand.Bytes(len(part.Bytes.Bytes())), // Corrupted
+				}
+				pendingBlocks.HandlePart(height, 0, corruptedPart, proof) // Should be rejected
+			}
+
+			// peer3: complete the remaining parts
+			if i%2 == 1 {
+				validPart := &proptypes.RecoveryPart{
+					Height: height,
+					Round:  0,
+					Index:  i,
+					Data:   part.Bytes.Bytes(),
+				}
+				pendingBlocks.HandlePart(height, 0, validPart, proof)
+			}
+		}
+	}
+
+	// Despite all the chaos, all blocks should be delivered correctly
+	deliveredBlocks := make([]*CompletedBlock, 0, numBlocks)
+	timeout := time.After(5 * time.Second)
+
+	for len(deliveredBlocks) < numBlocks {
+		select {
+		case block := <-blockDelivery.BlockChan():
+			deliveredBlocks = append(deliveredBlocks, block)
+		case <-timeout:
+			t.Fatalf("timeout waiting for blocks, got %d/%d", len(deliveredBlocks), numBlocks)
+		}
+	}
+
+	// Verify all blocks received in order
+	for i, block := range deliveredBlocks {
+		require.Equal(t, int64(i+1), block.Height)
+		require.True(t, block.Parts.IsComplete())
+	}
+}
+
 // TestMultiNodeParallelBlocksync_SharedParts verifies that the same parts
 // can be shared across multiple nodes (simulating peer-to-peer gossip).
 func TestMultiNodeParallelBlocksync_SharedParts(t *testing.T) {
