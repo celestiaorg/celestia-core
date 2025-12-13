@@ -470,6 +470,14 @@ func (cs *State) applyNewState(vb *types.ValidatedBlock) error {
 
 	cs.Logger.Info("Applying new state from blocksync", "height", height)
 
+	// Write EndHeightMessage to WAL so replay doesn't try to redo this height.
+	// This is important if consensus had started working on this height before
+	// blocksync took over.
+	endMsg := EndHeightMessage{height}
+	if err := cs.wal.WriteSync(endMsg); err != nil {
+		return fmt.Errorf("failed to write EndHeightMessage to WAL: %w", err)
+	}
+
 	// Update consensus state using the same pattern as SwitchToConsensus:
 	// hold all locks, reconstruct LastCommit from blockstore, then updateToState
 	cs.lockAll()
@@ -2146,7 +2154,23 @@ func (cs *State) finalizeCommit(height int64) {
 		if storeState.LastBlockHeight >= height {
 			logger.Info("Block already applied (likely by blocksync), skipping apply",
 				"height", height, "stateHeight", storeState.LastBlockHeight)
-			cs.updateToState(storeState)
+
+			// Write EndHeightMessage to WAL so replay doesn't try to redo this height
+			endMsg := EndHeightMessage{height}
+			if err := cs.wal.WriteSync(endMsg); err != nil {
+				panic(fmt.Sprintf(
+					"failed to write %v msg to consensus WAL due to %v; check your file system and restart the node",
+					endMsg, err,
+				))
+			}
+
+			// Only call updateToState if state matches our height exactly.
+			// If blocksync is ahead (LastBlockHeight > height), the catchupRoutine
+			// will handle updating our state via applyNewState.
+			if storeState.LastBlockHeight == height {
+				cs.updateToState(storeState)
+				cs.finalizeCommitCleanup(height)
+			}
 			return
 		}
 		// Block saved but not applied - this is crash recovery, continue to apply
@@ -2213,26 +2237,28 @@ func (cs *State) finalizeCommit(height int64) {
 
 	fail.Fail() // XXX
 
-	// Private validator might have changed it's key pair => refetch pubkey.
+	cs.finalizeCommitCleanup(height)
+
+	// By here,
+	// * cs.rs.Height has been increment to height+1
+	// * cs.rs.Step is now cstypes.RoundStepNewHeight
+	// * cs.StartTime is set to when we will start round0.
+}
+
+// finalizeCommitCleanup performs post-commit cleanup: updates validator pubkey,
+// prunes propagator, and schedules the next round.
+func (cs *State) finalizeCommitCleanup(height int64) {
 	if err := cs.updatePrivValidatorPubKey(); err != nil {
-		logger.Error("failed to get private validator pubkey", "err", err)
+		cs.Logger.Error("failed to get private validator pubkey", "err", err)
 	}
 
-	// prune the propagation reactor
 	cs.propagator.Prune(height)
 	proposer := cs.rs.Validators.GetProposer()
 	if proposer != nil {
 		cs.propagator.SetProposer(proposer.PubKey)
 	}
 
-	// cs.StartTime is already set.
-	// Schedule Round0 to start soon.
 	cs.scheduleRound0(&cs.rs)
-
-	// By here,
-	// * cs.rs.Height has been increment to height+1
-	// * cs.rs.Step is now cstypes.RoundStepNewHeight
-	// * cs.StartTime is set to when we will start round0.
 }
 
 func (cs *State) recordMetrics(height int64, block *types.Block) {

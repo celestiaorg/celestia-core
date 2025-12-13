@@ -527,7 +527,28 @@ FOR_LOOP:
 			}
 			// Some sanity checks on heights
 			if state.LastBlockHeight > 0 && state.LastBlockHeight+1 != first.Height {
-				// Panicking because the block pool's height  MUST keep consistent with the state; the block pool is totally under our control
+				// In provider mode, consensus might have applied this block while we were fetching.
+				// Reload state and check if we should skip this block.
+				if bcR.providerMode.Load() {
+					var err error
+					state, err = bcR.blockExec.Store().Load()
+					if err != nil {
+						bcR.Logger.Error("Failed to reload state after height mismatch", "err", err)
+						continue FOR_LOOP
+					}
+					// If the block was already applied, skip it
+					if state.LastBlockHeight >= first.Height {
+						bcR.Logger.Info("Block already applied by consensus, skipping",
+							"height", first.Height, "stateHeight", state.LastBlockHeight)
+						bcR.pool.PopRequest()
+						continue FOR_LOOP
+					}
+					// State still doesn't match - this is unexpected
+					bcR.Logger.Error("State height mismatch after reload",
+						"expected", state.LastBlockHeight+1, "got", first.Height)
+					continue FOR_LOOP
+				}
+				// Not in provider mode - this is a bug
 				panic(fmt.Errorf("peeked first block has unexpected height; expected %d, got %d", state.LastBlockHeight+1, first.Height))
 			}
 			if first.Height+1 != second.Height {
@@ -554,6 +575,16 @@ FOR_LOOP:
 			}
 			firstPartSetHeader := firstParts.Header()
 			firstID := types.BlockID{Hash: first.Hash(), PartSetHeader: firstPartSetHeader}
+
+			// In provider mode, check if consensus applied this block while we were preparing
+			if bcR.providerMode.Load() && bcR.store.Height() >= first.Height {
+				bcR.Logger.Info("Block already in store (applied by consensus), skipping validation",
+					"height", first.Height, "storeHeight", bcR.store.Height())
+				bcR.pool.PopRequest()
+				// Reload state to stay in sync
+				state, _ = bcR.blockExec.Store().Load()
+				continue FOR_LOOP
+			}
 
 			// Start timing validation
 			validationStart := time.Now()
