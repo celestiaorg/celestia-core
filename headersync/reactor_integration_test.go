@@ -429,7 +429,7 @@ done:
 	assert.GreaterOrEqual(t, len(receivedHeaders), int(maxHeight)-5)
 }
 
-// TestHeaderSync_DoSProtection tests that peers sending duplicate status updates are disconnected.
+// TestHeaderSync_DoSProtection tests that peers regressing their height are disconnected.
 func TestHeaderSync_DoSProtection(t *testing.T) {
 	config := test.ResetTestRoot("headersync_dos_test")
 	defer os.RemoveAll(config.RootDir)

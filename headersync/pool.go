@@ -228,8 +228,9 @@ func (pool *HeaderPool) pickPeer(height int64) *hsPeer {
 
 // SetPeerRange sets the peer's reported blockchain base and height.
 // Returns true if the update was accepted, false if the peer should be disconnected.
-// Peers should only send updates when their height increases. Sending an update
-// for the same or lower height is considered a DoS attempt and results in disconnection.
+// Peers must not regress (lower height or base). Duplicate (unchanged) updates are
+// tolerated and simply ignored to avoid false-positive DoS disconnects when nodes
+// send periodic status messages while stalled at the same height.
 func (pool *HeaderPool) SetPeerRange(peerID p2p.ID, base, height int64) bool {
 	pool.mtx.Lock()
 	defer pool.mtx.Unlock()
@@ -255,16 +256,16 @@ func (pool *HeaderPool) SetPeerRange(peerID p2p.ID, base, height int64) bool {
 	}
 
 	// Existing peer - DoS protection checks.
-	if height <= peer.height {
-		pool.Logger.Error("Peer sent status update with non-increasing height, disconnecting",
+	switch {
+	case height < peer.height:
+		pool.Logger.Error("Peer sent status update with lower height, disconnecting",
 			"peer", peerID,
 			"height", height,
 			"prevHeight", peer.height)
 		pool.removePeer(peerID)
 		pool.banPeer(peerID)
 		return false
-	}
-	if base < peer.base {
+	case base < peer.base:
 		pool.Logger.Error("Peer sent status update with decreased base, disconnecting",
 			"peer", peerID,
 			"base", base,
@@ -272,6 +273,11 @@ func (pool *HeaderPool) SetPeerRange(peerID p2p.ID, base, height int64) bool {
 		pool.removePeer(peerID)
 		pool.banPeer(peerID)
 		return false
+	case height == peer.height && base == peer.base:
+		// Duplicate update; ignore but keep peer connected.
+		pool.Logger.Debug("Ignoring duplicate status update",
+			"peer", peerID, "height", height, "base", base)
+		return true
 	}
 
 	peer.base = base

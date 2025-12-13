@@ -230,7 +230,7 @@ func (r *Reactor) Receive(e p2p.Envelope) {
 
 	switch msg := e.Message.(type) {
 	case *hsproto.StatusResponse:
-		// SetPeerRange returns false if this is a DoS attempt (same or lower height).
+		// SetPeerRange returns false if the peer regresses (lower height/base).
 		if !r.pool.SetPeerRange(e.Src.ID(), msg.Base, msg.Height) {
 			r.Switch.StopPeerForError(e.Src, errors.New("status update with non-increasing height"), r.String())
 			return
