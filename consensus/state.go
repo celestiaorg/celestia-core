@@ -2137,7 +2137,19 @@ func (cs *State) finalizeCommit(height int64) {
 		}
 		cs.lockAll()
 	} else {
-		// Happens during replay if we already saved the block but didn't commit
+		// Block already in store - check if it was also applied (e.g., by blocksync)
+		// If so, just load the state and update, don't apply again
+		storeState, err := cs.blockExec.Store().Load()
+		if err != nil {
+			panic(fmt.Sprintf("failed to load state: %v", err))
+		}
+		if storeState.LastBlockHeight >= height {
+			logger.Info("Block already applied (likely by blocksync), skipping apply",
+				"height", height, "stateHeight", storeState.LastBlockHeight)
+			cs.updateToState(storeState)
+			return
+		}
+		// Block saved but not applied - this is crash recovery, continue to apply
 		logger.Debug("calling finalizeCommit on already stored block", "height", block.Height)
 	}
 
@@ -3163,8 +3175,8 @@ func (cs *State) catchupRoutine() {
 				cs.propagator.SetPaused(true)
 				providerModeEnabled = true
 			} else if !isBehind && providerModeEnabled {
-				// We caught up - disable provider mode and resume propagation
-				cs.Logger.Info("Consensus caught up, disabling blocksync provider mode")
+				// We caught up to peers - disable provider mode
+				cs.Logger.Info("Caught up to peers, stopping blocksync provider mode")
 				provider.SetProviderMode(false)
 				cs.propagator.SetPaused(false)
 				providerModeEnabled = false
@@ -3195,9 +3207,9 @@ func (cs *State) catchupRoutine() {
 				continue
 			}
 
-			// Check if we're still behind
+			// Check if we're still behind - if not, stop blocksync
 			if !cs.IsBehind() && providerModeEnabled {
-				cs.Logger.Info("Consensus caught up via blocksync provider")
+				cs.Logger.Info("Caught up to peers via blocksync, stopping provider mode")
 				provider.SetProviderMode(false)
 				cs.propagator.SetPaused(false)
 				providerModeEnabled = false
