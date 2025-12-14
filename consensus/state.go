@@ -103,6 +103,9 @@ type BlockSyncProvider interface {
 	SetProviderMode(enabled bool)
 	// BlockChan returns the channel for receiving validated blocks.
 	BlockChan() <-chan *types.ValidatedBlock
+	// UpdatePeerHeight updates a peer's height in the pool.
+	// Called by consensus when receiving NewRoundStepMessage from peers.
+	UpdatePeerHeight(peerID p2p.ID, height int64)
 }
 
 // ConsensusDelays holds configurable delays for consensus phases.
@@ -439,17 +442,25 @@ func (cs *State) SetBlockSyncProvider(provider BlockSyncProvider) {
 	cs.mtx.Unlock()
 }
 
-// UpdateMaxPeerHeight updates the maximum peer height if the new height is higher.
+// UpdatePeerHeight updates the peer's height and the maximum peer height if needed.
 // This is called by the reactor when it receives NewRoundStepMessage from peers.
-func (cs *State) UpdateMaxPeerHeight(height int64) {
+func (cs *State) UpdatePeerHeight(peerID p2p.ID, height int64) {
 	for {
 		current := cs.maxPeerHeight.Load()
 		if height <= current {
-			return
+			break
 		}
 		if cs.maxPeerHeight.CompareAndSwap(current, height) {
-			return
+			break
 		}
+	}
+
+	// Also update blocksync pool's peer height to keep it in sync
+	cs.mtx.Lock()
+	provider := cs.blockSyncProvider
+	cs.mtx.Unlock()
+	if provider != nil {
+		provider.UpdatePeerHeight(peerID, height)
 	}
 }
 

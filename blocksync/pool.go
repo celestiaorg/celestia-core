@@ -465,6 +465,22 @@ func (pool *BlockPool) MaxPeerHeight() int64 {
 	return pool.maxPeerHeight
 }
 
+// UpdatePeerHeight updates a peer's height if it's higher than what we know.
+// Called by consensus when receiving NewRoundStepMessage from peers.
+func (pool *BlockPool) UpdatePeerHeight(peerID p2p.ID, height int64) {
+	pool.mtx.Lock()
+	defer pool.mtx.Unlock()
+
+	peer := pool.peers[peerID]
+	if peer != nil && height > peer.height {
+		peer.height = height
+	}
+
+	if height > pool.maxPeerHeight {
+		pool.maxPeerHeight = height
+	}
+}
+
 // SetPeerRange sets the peer's alleged blockchain base and height.
 func (pool *BlockPool) SetPeerRange(peerID p2p.ID, base int64, height int64) {
 	pool.mtx.Lock()

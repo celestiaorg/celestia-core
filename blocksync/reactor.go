@@ -783,3 +783,9 @@ func (bcR *Reactor) SetProviderMode(enabled bool) {
 func (bcR *Reactor) BlockChan() <-chan *types.ValidatedBlock {
 	return bcR.blockChan
 }
+
+// UpdatePeerHeight updates a peer's height in the pool.
+// Called by consensus when receiving NewRoundStepMessage from peers.
+func (bcR *Reactor) UpdatePeerHeight(peerID p2p.ID, height int64) {
+	bcR.pool.UpdatePeerHeight(peerID, height)
+}
