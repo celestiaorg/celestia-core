@@ -253,6 +253,23 @@ func (pool *BlockPool) GetStatus() (height int64, numPending int32, lenRequester
 	return pool.height, atomic.LoadInt32(&pool.numPending), len(pool.requesters)
 }
 
+// GetReadyBlocks returns the number of blocks that have been downloaded and are
+// ready to be processed, starting from the current pool height.
+func (pool *BlockPool) GetReadyBlocks() int {
+	pool.mtx.Lock()
+	defer pool.mtx.Unlock()
+
+	ready := 0
+	for h := pool.height; ; h++ {
+		r := pool.requesters[h]
+		if r == nil || r.getBlock() == nil {
+			break
+		}
+		ready++
+	}
+	return ready
+}
+
 // SetHeight updates the pool's height to the given value.
 // This is used when resuming blocksync after consensus has applied some blocks.
 // It clears any stale requesters for heights below the new height.
@@ -465,41 +482,54 @@ func (pool *BlockPool) MaxPeerHeight() int64 {
 	return pool.maxPeerHeight
 }
 
-// UpdatePeerHeight updates a peer's height if it's higher than what we know.
+// UpdatePeerHeight updates peer height based on NewRoundStepMessage from consensus.
 // Called by consensus when receiving NewRoundStepMessage from peers.
+// This updates maxPeerHeight and the individual peer's height (but not statusHeight).
+// The peer.height can be higher than peer.statusHeight due to gossip arriving faster
+// than StatusResponse. SetPeerRange only bans if StatusResponse < previous StatusResponse.
 func (pool *BlockPool) UpdatePeerHeight(peerID p2p.ID, height int64) {
 	pool.mtx.Lock()
 	defer pool.mtx.Unlock()
 
+	if height > pool.maxPeerHeight {
+		pool.maxPeerHeight = height
+	}
+
+	// Update individual peer height if we know about this peer
 	peer := pool.peers[peerID]
 	if peer != nil && height > peer.height {
 		peer.height = height
 	}
-
-	if height > pool.maxPeerHeight {
-		pool.maxPeerHeight = height
-	}
 }
 
 // SetPeerRange sets the peer's alleged blockchain base and height.
+// Called when receiving StatusResponse from a peer.
 func (pool *BlockPool) SetPeerRange(peerID p2p.ID, base int64, height int64) {
 	pool.mtx.Lock()
 	defer pool.mtx.Unlock()
 
 	peer := pool.peers[peerID]
 	if peer != nil {
-		if base < peer.base || height < peer.height {
-			pool.Logger.Info("Peer is reporting height/base that is lower than what it previously reported",
+		// Ban if StatusResponse height/base decreased from previous StatusResponse.
+		// This detects malicious peers (e.g., reporting MaxInt64 then a normal height).
+		// Note: we compare against statusHeight (previous StatusResponse), not height
+		// (which may have been updated by gossip via UpdatePeerHeight).
+		if base < peer.base || height < peer.statusHeight {
+			pool.Logger.Info("Peer is reporting height/base lower than previous StatusResponse",
 				"peer", peerID,
 				"height", height, "base", base,
-				"prevHeight", peer.height, "prevBase", peer.base)
+				"prevStatusHeight", peer.statusHeight, "prevBase", peer.base)
 			// RemovePeer will redo all requesters associated with this peer.
 			pool.removePeer(peerID)
 			pool.banPeer(peerID)
 			return
 		}
 		peer.base = base
-		peer.height = height
+		peer.statusHeight = height
+		// Update height if StatusResponse reports higher than current (gossip-derived) height
+		if height > peer.height {
+			peer.height = height
+		}
 	} else {
 		if pool.isPeerBanned(peerID) {
 			pool.Logger.Trace("Ignoring banned peer", "peer", peerID)
@@ -702,14 +732,15 @@ func (pool *BlockPool) debug() string {
 //-------------------------------------
 
 type bpPeer struct {
-	didTimeout  bool
-	curRate     int64
-	numPending  int32
-	height      int64
-	base        int64
-	pool        *BlockPool
-	id          p2p.ID
-	recvMonitor *flow.Monitor
+	didTimeout   bool
+	curRate      int64
+	numPending   int32
+	height       int64 // max height (used for block requests), can come from StatusResponse or gossip
+	statusHeight int64 // height from last StatusResponse (authoritative, used for ban checking)
+	base         int64
+	pool         *BlockPool
+	id           p2p.ID
+	recvMonitor  *flow.Monitor
 
 	timeout *time.Timer
 
@@ -718,12 +749,13 @@ type bpPeer struct {
 
 func newBPPeer(pool *BlockPool, peerID p2p.ID, base int64, height int64) *bpPeer {
 	peer := &bpPeer{
-		pool:       pool,
-		id:         peerID,
-		base:       base,
-		height:     height,
-		numPending: 0,
-		logger:     log.NewNopLogger(),
+		pool:         pool,
+		id:           peerID,
+		base:         base,
+		height:       height,
+		statusHeight: height,
+		numPending:   0,
+		logger:       log.NewNopLogger(),
 	}
 	return peer
 }

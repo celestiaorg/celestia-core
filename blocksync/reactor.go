@@ -381,6 +381,7 @@ func (bcR *Reactor) poolRoutine(stateSynced bool) {
 
 	lastHundred := time.Now()
 	lastRate := 0.0
+	lastBlockTime := time.Now() // Track time since last block was processed
 
 	didProcessCh := make(chan struct{}, 1)
 
@@ -667,10 +668,11 @@ FOR_LOOP:
 					ResponseChan: responseChan,
 				}
 
+				sendStart := time.Now()
+
 				// Send block to consensus
 				select {
 				case bcR.blockChan <- validatedBlock:
-					bcR.Logger.Debug("Sent validated block to consensus", "height", first.Height)
 				case <-bcR.Quit():
 					break FOR_LOOP
 				}
@@ -687,7 +689,17 @@ FOR_LOOP:
 					}
 					// Update our state with the applied state from consensus
 					state = response.State.(sm.State)
-					bcR.Logger.Debug("Received applied state from consensus", "height", first.Height)
+					consensusDuration := time.Since(sendStart)
+					totalDuration := time.Since(validationStart)
+					sinceLastBlock := time.Since(lastBlockTime)
+					readyBlocks := bcR.pool.GetReadyBlocks()
+					bcR.Logger.Info("Blocksync provider mode: block applied",
+						"height", first.Height,
+						"since_last_ms", sinceLastBlock.Milliseconds(),
+						"validation_ms", validationDuration.Milliseconds(),
+						"consensus_ms", consensusDuration.Milliseconds(),
+						"total_ms", totalDuration.Milliseconds(),
+						"ready_blocks", readyBlocks)
 				case <-bcR.Quit():
 					break FOR_LOOP
 				}
@@ -710,21 +722,36 @@ FOR_LOOP:
 
 				// Calculate save duration
 				saveDuration := time.Since(saveStart)
-				totalDuration := time.Since(validationStart)
 
 				// Trace block saved after successful validation
 				var blockSize int
 				if firstParts != nil {
 					blockSize = int(firstParts.ByteSize())
 				}
-				schema.WriteBlocksyncBlockSaved(bcR.traceClient, first.Height, blockSize,
-					validationDuration.Milliseconds(), saveDuration.Milliseconds(), totalDuration.Milliseconds())
 
+				// Time the apply step
+				applyStart := time.Now()
 				state, err = bcR.blockExec.ApplyVerifiedBlock(state, firstID, first, second.LastCommit)
 				if err != nil {
 					// TODO This is bad, are we zombie?
 					panic(fmt.Sprintf("Failed to process committed block (%d:%X): %v", first.Height, first.Hash(), err))
 				}
+				applyDuration := time.Since(applyStart)
+				totalDuration := time.Since(validationStart)
+				sinceLastBlock := time.Since(lastBlockTime)
+
+				schema.WriteBlocksyncBlockSaved(bcR.traceClient, first.Height, blockSize,
+					validationDuration.Milliseconds(), saveDuration.Milliseconds(), totalDuration.Milliseconds())
+
+				readyBlocks := bcR.pool.GetReadyBlocks()
+				bcR.Logger.Info("Blocksync: block applied",
+					"height", first.Height,
+					"since_last_ms", sinceLastBlock.Milliseconds(),
+					"validation_ms", validationDuration.Milliseconds(),
+					"save_ms", saveDuration.Milliseconds(),
+					"apply_ms", applyDuration.Milliseconds(),
+					"total_ms", totalDuration.Milliseconds(),
+					"ready_blocks", readyBlocks)
 			}
 
 			bcR.metrics.recordBlockMetrics(first)
@@ -736,7 +763,7 @@ FOR_LOOP:
 					"max_peer_height", bcR.pool.MaxPeerHeight(), "blocks/s", lastRate)
 				lastHundred = time.Now()
 			}
-
+			lastBlockTime = time.Now()
 			continue FOR_LOOP
 
 		case <-bcR.Quit():
