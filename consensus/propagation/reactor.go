@@ -313,6 +313,7 @@ func (blockProp *Reactor) AddPeer(peer p2p.Peer) {
 func (blockProp *Reactor) RemovePeer(peer p2p.Peer, reason interface{}) {
 	blockProp.mtx.Lock()
 	defer blockProp.mtx.Unlock()
+	fmt.Println("removing peer")
 	blockProp.Logger.Info("propagation remove peer", "peer", peer.ID(), "reason", reason)
 	p := blockProp.peerstate[peer.ID()]
 	if p != nil {
@@ -376,6 +377,7 @@ func (blockProp *Reactor) Receive(e p2p.Envelope) {
 // Prune removes all peer and proposal state from the block propagation reactor.
 // This should be called only after a block has been committed.
 func (blockProp *Reactor) Prune(committedHeight int64) {
+	fmt.Println("pruning", committedHeight)
 	prunePast := committedHeight
 	peers := blockProp.getPeers()
 	for _, peer := range peers {
@@ -401,6 +403,9 @@ func (blockProp *Reactor) SetHeightAndRound(height int64, round int32) {
 	blockProp.round = round
 	blockProp.height = height
 	blockProp.ResetRequestCounts()
+	// Align pending blocks/block delivery with new consensus height.
+	blockProp.pendingBlocks.SetLastCommittedHeight(height - 1)
+	blockProp.blockDelivery.SetNextHeight(height)
 	// todo: delete the old round data as its no longer relevant don't delete
 	// past round data if it has a POL
 }

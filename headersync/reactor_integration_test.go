@@ -117,6 +117,8 @@ func createNode(t *testing.T, logger log.Logger, cfg nodeConfig) *testNode {
 		blockStore,
 		cfg.genDoc.ChainID,
 		MaxHeaderBatchSize,
+		state.InitialHeight,
+		state.Validators,
 		NopMetrics(),
 	)
 	reactor.SetLogger(logger.With("module", "headersync"))
@@ -644,4 +646,171 @@ func TestHeaderSync_PeerProvidesPartialResponse(t *testing.T) {
 	waitForCaughtUp(t, node2, 30*time.Second)
 
 	assert.GreaterOrEqual(t, node2.blockStore.HeaderHeight(), int64(55))
+}
+
+// TestHeaderSync_StatusExchange tests that peers exchange status messages
+// and that the pool properly tracks peer heights.
+func TestHeaderSync_StatusExchange(t *testing.T) {
+	config := test.ResetTestRoot("headersync_status_exchange_test")
+	defer os.RemoveAll(config.RootDir)
+
+	genDoc, privVals := randGenesisDoc(1, false, 30)
+
+	// Node0 has 100 headers
+	node0 := createNode(t, log.TestingLogger().With("node", "node0"), nodeConfig{
+		genDoc:      genDoc,
+		privVals:    privVals,
+		headersUpTo: 100,
+	})
+
+	// Node1 has 0 headers but needs to sync
+	node1 := createNode(t, log.TestingLogger().With("node", "node1"), nodeConfig{
+		genDoc:      genDoc,
+		privVals:    privVals,
+		headersUpTo: 0,
+		stateUpTo:   100,
+	})
+
+	defer stopTestNodes(t, node0, node1)
+
+	// Create network
+	switches := makeNetwork(t, config, node0, node1)
+
+	// Wait for switch to start and peers to connect
+	time.Sleep(500 * time.Millisecond)
+
+	// Verify peers connected
+	require.Equal(t, 1, switches[0].Peers().Size(), "node0 should have 1 peer")
+	require.Equal(t, 1, switches[1].Peers().Size(), "node1 should have 1 peer")
+
+	// Get pool status from node1 - this is the syncing node
+	height, numPending, numPeers := node1.reactor.pool.GetStatus()
+	t.Logf("node1 pool status: height=%d, numPending=%d, numPeers=%d", height, numPending, numPeers)
+
+	// Wait a bit for status messages to be exchanged
+	time.Sleep(2 * time.Second)
+
+	// Check again
+	height, numPending, numPeers = node1.reactor.pool.GetStatus()
+	t.Logf("node1 pool status after wait: height=%d, numPending=%d, numPeers=%d", height, numPending, numPeers)
+
+	// The syncing node should know about the peer's height
+	require.Equal(t, 1, numPeers, "node1 should know about 1 peer in pool")
+	require.Equal(t, int64(100), node1.reactor.MaxPeerHeight(), "node1 should know peer is at height 100")
+
+	// Now verify that syncing actually happens
+	waitForCaughtUp(t, node1, 30*time.Second)
+
+	assert.GreaterOrEqual(t, node1.blockStore.HeaderHeight(), int64(95))
+}
+
+// TestHeaderSync_ChannelRegistration tests that the HeaderSyncChannel is properly
+// registered in the node info and that peers can communicate on it.
+func TestHeaderSync_ChannelRegistration(t *testing.T) {
+	config := test.ResetTestRoot("headersync_channel_test")
+	defer os.RemoveAll(config.RootDir)
+
+	genDoc, privVals := randGenesisDoc(1, false, 30)
+
+	node0 := createNode(t, log.TestingLogger().With("node", "node0"), nodeConfig{
+		genDoc:      genDoc,
+		privVals:    privVals,
+		headersUpTo: 50,
+	})
+
+	node1 := createNode(t, log.TestingLogger().With("node", "node1"), nodeConfig{
+		genDoc:      genDoc,
+		privVals:    privVals,
+		headersUpTo: 0,
+		stateUpTo:   50,
+	})
+
+	defer stopTestNodes(t, node0, node1)
+
+	switches := makeNetwork(t, config, node0, node1)
+
+	// Wait for peers to connect
+	time.Sleep(500 * time.Millisecond)
+
+	require.Equal(t, 1, switches[0].Peers().Size())
+	require.Equal(t, 1, switches[1].Peers().Size())
+
+	// Check that the channel is registered
+	peers := switches[0].Peers().List()
+	require.Len(t, peers, 1)
+	peer := peers[0]
+
+	// Try to send a status message - should succeed if channel is registered
+	sent := peer.TrySend(p2p.Envelope{
+		ChannelID: HeaderSyncChannel,
+		Message: &hsproto.StatusResponse{
+			Base:   1,
+			Height: 50,
+		},
+	})
+	require.True(t, sent, "should be able to send on HeaderSyncChannel")
+
+	t.Logf("Successfully sent message on HeaderSyncChannel (0x%x)", HeaderSyncChannel)
+}
+
+// TestHeaderSync_DebugPoolState provides detailed debugging of pool state changes.
+func TestHeaderSync_DebugPoolState(t *testing.T) {
+	config := test.ResetTestRoot("headersync_debug_pool_test")
+	defer os.RemoveAll(config.RootDir)
+
+	genDoc, privVals := randGenesisDoc(1, false, 30)
+
+	node0 := createNode(t, log.TestingLogger().With("node", "ahead"), nodeConfig{
+		genDoc:      genDoc,
+		privVals:    privVals,
+		headersUpTo: 50,
+	})
+
+	node1 := createNode(t, log.TestingLogger().With("node", "syncing"), nodeConfig{
+		genDoc:      genDoc,
+		privVals:    privVals,
+		headersUpTo: 0,
+		stateUpTo:   50,
+	})
+
+	defer stopTestNodes(t, node0, node1)
+
+	t.Log("Creating network...")
+	switches := makeNetwork(t, config, node0, node1)
+
+	t.Log("Waiting for peer connection...")
+	time.Sleep(500 * time.Millisecond)
+
+	t.Logf("node0 peers: %d", switches[0].Peers().Size())
+	t.Logf("node1 peers: %d", switches[1].Peers().Size())
+
+	// Log initial pool state
+	height, pending, peers := node1.reactor.pool.GetStatus()
+	t.Logf("Initial pool state - height: %d, pending: %d, peers: %d", height, pending, peers)
+
+	// Manually trigger a status broadcast from node0
+	t.Log("Triggering status broadcast from node0...")
+	node0.reactor.BroadcastStatus()
+
+	// Wait and check
+	for i := 0; i < 10; i++ {
+		time.Sleep(500 * time.Millisecond)
+		height, pending, peers = node1.reactor.pool.GetStatus()
+		maxPeerHeight := node1.reactor.MaxPeerHeight()
+		t.Logf("Pool state iteration %d - height: %d, pending: %d, peers: %d, maxPeerHeight: %d",
+			i, height, pending, peers, maxPeerHeight)
+
+		if peers > 0 && maxPeerHeight > 0 {
+			t.Log("Peer registered in pool, proceeding with sync...")
+			break
+		}
+	}
+
+	// Final check
+	require.Equal(t, 1, switches[0].Peers().Size(), "node0 should still have peer")
+	require.Equal(t, 1, switches[1].Peers().Size(), "node1 should still have peer")
+
+	_, _, finalPeers := node1.reactor.pool.GetStatus()
+	require.Equal(t, 1, finalPeers, "node1 pool should have 1 peer registered")
+	require.Equal(t, int64(50), node1.reactor.MaxPeerHeight(), "node1 should know peer height is 50")
 }

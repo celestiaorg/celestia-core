@@ -16,7 +16,7 @@ const (
 	requestTimeout = 15 * time.Second
 
 	// defaultMaxPendingBatches is the default maximum number of concurrent batch requests.
-	defaultMaxPendingBatches = 10
+	defaultMaxPendingBatches = 1000
 
 	// banDuration is how long a misbehaving peer is banned.
 	banDuration = 60 * time.Second
@@ -121,15 +121,19 @@ func (pool *HeaderPool) GetNextRequest() *HeaderBatchRequest {
 	pool.cleanupTimedOut()
 
 	if len(pool.peers) == 0 {
+		fmt.Println("GetNextRequest: no peers")
 		return nil
 	}
 	if len(pool.pendingBatches) >= pool.maxPendingBatches {
+		fmt.Println("GetNextRequest: at capacity", len(pool.pendingBatches), pool.maxPendingBatches)
 		return nil
 	}
 	if pool.height > pool.maxPeerHeight {
+		fmt.Println("GetNextRequest: caught up", pool.height, pool.maxPeerHeight)
 		return nil
 	}
 
+	fmt.Println("GetNextRequest: making request", pool.height, pool.maxPeerHeight)
 	return pool.makeNextBatchRequest()
 }
 
@@ -141,7 +145,9 @@ func (pool *HeaderPool) cleanupTimedOut() []p2p.ID {
 
 	// Check for timed out batch requests.
 	for startHeight, batch := range pool.pendingBatches {
-		if !batch.received && now.Sub(batch.requestTime) > pool.requestTimeout {
+		age := now.Sub(batch.requestTime)
+		if !batch.received && age > pool.requestTimeout {
+			fmt.Println("cleanupTimedOut: batch timed out", "startHeight", startHeight, "peer", batch.peerID, "age", age)
 			pool.Logger.Debug("Header batch request timed out",
 				"startHeight", startHeight,
 				"peer", batch.peerID)
@@ -151,6 +157,8 @@ func (pool *HeaderPool) cleanupTimedOut() []p2p.ID {
 			}
 			delete(pool.pendingBatches, startHeight)
 			timedOutPeers = append(timedOutPeers, batch.peerID)
+		} else if !batch.received {
+			fmt.Println("cleanupTimedOut: batch pending", "startHeight", startHeight, "peer", batch.peerID, "age", age, "timeout", pool.requestTimeout)
 		}
 	}
 
@@ -177,6 +185,7 @@ func (pool *HeaderPool) makeNextBatchRequest() *HeaderBatchRequest {
 		}
 		startHeight = batch.startHeight + batch.count
 		if startHeight > pool.maxPeerHeight {
+			fmt.Println("makeNextBatchRequest: all heights covered by pending batches")
 			return nil // All heights are covered.
 		}
 	}
@@ -186,14 +195,20 @@ func (pool *HeaderPool) makeNextBatchRequest() *HeaderBatchRequest {
 		count = pool.maxPeerHeight - startHeight + 1
 	}
 	if count < 1 {
+		fmt.Println("makeNextBatchRequest: count < 1")
 		return nil
 	}
 
 	// Pick a peer that has the requested height range.
 	peer := pool.pickPeer(startHeight)
 	if peer == nil {
+		fmt.Println("makeNextBatchRequest: no peer for height", startHeight, "numPeers:", len(pool.sortedPeers))
+		for _, p := range pool.sortedPeers {
+			fmt.Println("  peer:", p.id, "base:", p.base, "height:", p.height, "timedOut:", p.didTimeout)
+		}
 		return nil
 	}
+	fmt.Println("makeNextBatchRequest: picked peer", peer.id, "for height", startHeight)
 
 	batch := &headerBatch{
 		startHeight: startHeight,
@@ -235,7 +250,10 @@ func (pool *HeaderPool) SetPeerRange(peerID p2p.ID, base, height int64) bool {
 	pool.mtx.Lock()
 	defer pool.mtx.Unlock()
 
+	fmt.Println("SetPeerRange called", peerID, base, height)
+
 	if pool.isPeerBanned(peerID) {
+		fmt.Println("SetPeerRange: peer banned", peerID)
 		return false
 	}
 
@@ -243,6 +261,7 @@ func (pool *HeaderPool) SetPeerRange(peerID p2p.ID, base, height int64) bool {
 
 	// New peer: add and return early.
 	if peer == nil {
+		fmt.Println("SetPeerRange: adding new peer", peerID, base, height)
 		peer = &hsPeer{
 			id:     peerID,
 			base:   base,
@@ -252,6 +271,7 @@ func (pool *HeaderPool) SetPeerRange(peerID p2p.ID, base, height int64) bool {
 		pool.sortedPeers = append(pool.sortedPeers, peer)
 		pool.updateMaxPeerHeightIfNeeded(height)
 		pool.sortPeers()
+		fmt.Println("SetPeerRange: pool now has", len(pool.peers), "peers, maxPeerHeight:", pool.maxPeerHeight)
 		return true
 	}
 
@@ -282,6 +302,8 @@ func (pool *HeaderPool) SetPeerRange(peerID p2p.ID, base, height int64) bool {
 
 	peer.base = base
 	peer.height = height
+	// Clear timeout flag when peer updates their status - they're clearly responsive.
+	peer.didTimeout = false
 	pool.updateMaxPeerHeightIfNeeded(height)
 	pool.sortPeers()
 	return true
@@ -380,6 +402,8 @@ func (pool *HeaderPool) AddBatchResponse(peerID p2p.ID, startHeight int64, heade
 	pool.mtx.Lock()
 	defer pool.mtx.Unlock()
 
+	fmt.Println("AddBatchResponse: received", len(headers), "headers from", peerID, "at startHeight", startHeight)
+
 	batch := pool.pendingBatches[startHeight]
 	if batch == nil {
 		return fmt.Errorf("no pending batch at height %d", startHeight)
@@ -393,6 +417,7 @@ func (pool *HeaderPool) AddBatchResponse(peerID p2p.ID, startHeight int64, heade
 
 	batch.headers = headers
 	batch.received = true
+	fmt.Println("AddBatchResponse: marked batch as received, pendingBatches now has", len(pool.pendingBatches), "entries")
 
 	// Clear timeout flag on successful response.
 	if peer := pool.peers[peerID]; peer != nil {
@@ -550,6 +575,7 @@ func (pool *HeaderPool) IsCaughtUp() bool {
 func (pool *HeaderPool) ResetHeight(height int64) {
 	pool.mtx.Lock()
 	defer pool.mtx.Unlock()
+	fmt.Println("reset height -------------- ", height)
 
 	pool.height = height
 	// Clear pending batches as they are likely for old heights

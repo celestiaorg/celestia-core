@@ -451,7 +451,17 @@ func NewNodeWithContext(ctx context.Context,
 	// Create header sync reactor if enabled.
 	var hsReactor *headersync.Reactor
 	if config.HeaderSync.Enable {
-		hsReactor = createHeaderSyncReactor(config, stateStore, blockStore, genDoc.ChainID, logger, hsMetrics)
+		fmt.Printf("headersync: creating reactor with state.LastBlockHeight=%d state.Validators.Hash=%X\n",
+			state.LastBlockHeight, state.Validators.Hash())
+		// Header sync requires valid validators for verification. For fresh nodes (LastBlockHeight=0),
+		// the validator set comes from genesis and may not match the actual chain if InitChain
+		// modified validators. In such cases, block sync or state sync should be used first.
+		if state.LastBlockHeight == 0 {
+			logger.Info("Header sync disabled for fresh node - use block sync or state sync first",
+				"LastBlockHeight", state.LastBlockHeight)
+		} else {
+			hsReactor = createHeaderSyncReactor(config, stateStore, blockStore, genDoc.ChainID, state.InitialHeight, state.Validators, logger, hsMetrics)
+		}
 	}
 
 	propagationReactor := propagation.NewReactor(
@@ -676,8 +686,15 @@ func (n *Node) OnStart() error {
 				return fmt.Errorf("this blocksync reactor does not support switching from state sync")
 			}
 		}
-		err := startStateSync(n.stateSyncReactor, bcR, n.stateSyncProvider,
-			n.config.StateSync, n.stateStore, n.blockStore, n.stateSyncGenesis, allowBlockSync)
+		err := startStateSync(n.stateSyncReactor, bcR, n.headerSyncReactor, n.stateSyncProvider,
+			n.config.StateSync, n.stateStore, n.blockStore, n.stateSyncGenesis, allowBlockSync,
+			func(state sm.State) {
+				// Start consensus with the newly synced state
+				n.consensusReactor.SwitchToConsensus(state, true)
+				// Start propagation and align heights for unified blocksync
+				n.blockPropReactor.StartProcessing()
+				n.blockPropReactor.SetHeightAndRound(state.LastBlockHeight+1, 0)
+			})
 		if err != nil {
 			return fmt.Errorf("failed to start state sync: %w", err)
 		}
@@ -1074,6 +1091,9 @@ func makeNodeInfo(
 	}
 	if !config.Consensus.DisablePropagationReactor {
 		channels = append(channels, propagation.DataChannel, propagation.WantChannel)
+	}
+	if config.HeaderSync.Enable {
+		channels = append(channels, headersync.HeaderSyncChannel)
 	}
 
 	nodeInfo := p2p.DefaultNodeInfo{

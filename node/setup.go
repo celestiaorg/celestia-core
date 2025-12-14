@@ -370,6 +370,8 @@ func createHeaderSyncReactor(
 	stateStore sm.Store,
 	blockStore *store.BlockStore,
 	chainID string,
+	initialHeight int64,
+	validators *types.ValidatorSet,
 	logger log.Logger,
 	metrics *headersync.Metrics,
 ) *headersync.Reactor {
@@ -378,6 +380,8 @@ func createHeaderSyncReactor(
 		blockStore,
 		chainID,
 		config.HeaderSync.BatchSize,
+		initialHeight,
+		validators,
 		metrics,
 	)
 	hsReactor.SetLogger(logger.With("module", "headersync"))
@@ -632,12 +636,14 @@ func createPEXReactorAndAddToSwitch(addrBook pex.AddrBook, config *cfg.Config,
 func startStateSync(
 	ssR *statesync.Reactor,
 	bcR blockSyncReactor,
+	hsR *headersync.Reactor,
 	stateProvider statesync.StateProvider,
 	config *cfg.StateSyncConfig,
 	stateStore sm.Store,
 	blockStore *store.BlockStore,
 	state sm.State,
 	allowBlockSync bool,
+	onComplete func(sm.State),
 ) error {
 	ssR.Logger.Info("Starting state sync")
 
@@ -675,6 +681,12 @@ func startStateSync(
 			return
 		}
 
+		// Align headersync to the state-sync height so header requests
+		// start just after the trusted snapshot height instead of from genesis.
+		if hsR != nil {
+			hsR.ResetHeight(state.LastBlockHeight)
+		}
+
 		if allowBlockSync && bcR != nil {
 			err = bcR.SwitchToBlockSync(state)
 			if err != nil {
@@ -683,6 +695,9 @@ func startStateSync(
 			}
 		} else {
 			ssR.Logger.Info("Skipping switch to block sync (disabled), relying on propagation to catch up", "height", state.LastBlockHeight)
+			if onComplete != nil {
+				onComplete(state)
+			}
 		}
 	}()
 	return nil

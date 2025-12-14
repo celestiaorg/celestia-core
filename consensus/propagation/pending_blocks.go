@@ -99,7 +99,7 @@ type PendingBlocksManager struct {
 	completedBlocks chan *CompletedBlock
 
 	// Headersync integration
-	hsReader           HeaderSyncReader
+	hsReader            HeaderSyncReader
 	lastCommittedHeight int64
 }
 
@@ -142,9 +142,11 @@ func applyPendingBlocksDefaults(cfg PendingBlocksConfig) PendingBlocksConfig {
 
 // addBlock inserts the pending block into the manager. Caller must hold mtx.
 func (m *PendingBlocksManager) addBlock(pb *PendingBlock) {
+	fmt.Println("adding pending block", pb.Height, pb.Source)
 	if _, exists := m.blocks[pb.Height]; !exists {
 		m.insertHeight(pb.Height)
 	}
+
 	m.blocks[pb.Height] = pb
 }
 
@@ -177,6 +179,7 @@ func (m *PendingBlocksManager) canAddBlock(memoryNeeded int64) bool {
 // AddProposal adds a CompactBlock from live gossip. It can either create a new
 // PendingBlock or attach to an existing one if header/commitment arrived first.
 func (m *PendingBlocksManager) AddProposal(cb *proptypes.CompactBlock) (bool, error) {
+	fmt.Println("trying to adding proposal", cb.Proposal.Height)
 	m.mtx.Lock()
 	defer m.mtx.Unlock()
 
@@ -184,6 +187,7 @@ func (m *PendingBlocksManager) AddProposal(cb *proptypes.CompactBlock) (bool, er
 
 	existing := m.blocks[height]
 	if existing != nil {
+		fmt.Println("didn't exist yet")
 		// ATTACH to existing block (header or commitment arrived first)
 		if existing.CompactBlock != nil {
 			return false, nil // Already have CompactBlock, ignore duplicate
@@ -626,6 +630,7 @@ func (m *PendingBlocksManager) LowestNeededHeight() int64 {
 //
 // Returns the number of headers successfully fetched and added/upgraded.
 func (m *PendingBlocksManager) TryFillCapacity() int {
+	fmt.Println("try fill capacity")
 	m.mtx.Lock()
 	defer m.mtx.Unlock()
 
@@ -667,6 +672,7 @@ func (m *PendingBlocksManager) TryFillCapacity() int {
 // Caller must hold mtx (write lock).
 // Returns true if a header was successfully added.
 func (m *PendingBlocksManager) fetchAndAddHeaderLocked(height int64) bool {
+	fmt.Println("fetch and add header locked")
 	if m.hsReader == nil {
 		return false
 	}
@@ -762,7 +768,7 @@ func (m *PendingBlocksManager) OnBlockComplete(height int64) {
 type BlockDeliveryManager struct {
 	mtx           sync.Mutex
 	pendingBlocks *PendingBlocksManager
-	nextHeight    int64                    // Next blocksync height to deliver
+	nextHeight    int64                     // Next blocksync height to deliver
 	readyBlocks   map[int64]*CompletedBlock // Completed blocks waiting for earlier heights
 	blockChan     chan *CompletedBlock      // Output to consensus
 	logger        log.Logger

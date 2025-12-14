@@ -1126,6 +1126,12 @@ go func() {
 When propagation + headersync handles syncing, simply don't add a blocksync reactor to the switch.
 No NoOpReactor is needed - the blocksync reactor can be omitted entirely.
 
+**State sync handoff (implemented):** When state sync finishes and legacy blocksync is disabled, immediately:
+- switch the consensus reactor to the synced state (`SwitchToConsensus`)
+- start the propagation reactor processing and set its height/round to `state.LastBlockHeight+1`
+- align `PendingBlocksManager`/`BlockDeliveryManager` by setting last committed height to `state.LastBlockHeight` and next delivery height to `state.LastBlockHeight+1`
+- if the extended commit at that height is missing (common after state sync), consensus falls back to the seen commit to avoid panic
+
 **Note**: The `SwitchToConsensus` interface is still needed for state sync, but that's handled
 separately from blocksync.
 
