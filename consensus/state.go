@@ -3207,19 +3207,7 @@ func (cs *State) catchupRoutine() {
 				continue
 			}
 
-			// Verify the block height matches what we expect
-			cs.rsMtx.RLock()
-			expectedHeight := cs.rs.Height
-			cs.rsMtx.RUnlock()
-
-			if vb.Block.Height != expectedHeight {
-				cs.Logger.Error("Received block with unexpected height, skipping",
-					"expected", expectedHeight,
-					"received", vb.Block.Height)
-				continue
-			}
-
-			// Apply the validated block
+			// Apply the validated block (applyNewState handles already-applied case)
 			if err := cs.applyNewState(vb); err != nil {
 				cs.Logger.Error("Failed to apply validated block from blocksync",
 					"height", vb.Block.Height,
