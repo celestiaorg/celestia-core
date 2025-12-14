@@ -274,7 +274,7 @@ func NewState(
 		metrics:              NopMetrics(),
 		traceClient:          trace.NoOpTracer(),
 		newHeightOrRoundChan: make(chan struct{}, 1),
-		catchupThreshold:     2, // Use blocksync when more than 2 blocks behind
+		catchupThreshold:     3, // Use blocksync when 3+ blocks behind, exit when <2 behind
 	}
 	for _, option := range options {
 		option(cs)
@@ -480,9 +480,7 @@ func (cs *State) IsBehind() bool {
 }
 
 // IsCaughtUp returns true if we're within (catchupThreshold - 1) blocks of peers.
-// This overlaps with IsBehind to ensure smooth handoff - we keep provider mode active
-// a bit longer to avoid races at the boundary.
-// With catchupThreshold=2: start when 2+ behind, stop when <1 behind (i.e., 0 behind).
+// With catchupThreshold=3: start when 3+ behind, stop when <2 behind (0-1 behind).
 func (cs *State) IsCaughtUp() bool {
 	cs.rsMtx.RLock()
 	ourHeight := cs.rs.Height
