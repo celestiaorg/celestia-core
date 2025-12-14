@@ -73,6 +73,17 @@ func (ti *timeoutInfo) String() string {
 	return fmt.Sprintf("%v ; %d/%d %v", ti.Duration, ti.Height, ti.Round, ti.Step)
 }
 
+// BlockSyncBlockMessage is sent from catchupRoutine to receiveRoutine
+// when blocksync has a validated block ready to be applied.
+type BlockSyncBlockMessage struct {
+	Block *types.ValidatedBlock
+}
+
+// ValidateBasic implements Message interface
+func (m *BlockSyncBlockMessage) ValidateBasic() error {
+	return nil
+}
+
 // interface to the mempool
 type txNotifier interface {
 	TxsAvailable() <-chan struct{}
@@ -457,15 +468,30 @@ func (cs *State) IsBehind() bool {
 	return maxPeer > 0 && maxPeer >= ourHeight+cs.catchupThreshold
 }
 
-// applyNewState applies a block received from blocksync and sends the result back.
-// This is used during catchup when receiving blocks from the blocksync channel.
-// Only consensus applies blocks - blocksync validates and saves to blockstore, then waits for us.
-func (cs *State) applyNewState(vb *types.ValidatedBlock) error {
+// IsCaughtUp returns true if we're within (catchupThreshold - 1) blocks of peers.
+// This overlaps with IsBehind to ensure smooth handoff - we keep provider mode active
+// a bit longer to avoid races at the boundary.
+// With catchupThreshold=2: start when 2+ behind, stop when <1 behind (i.e., 0 behind).
+func (cs *State) IsCaughtUp() bool {
+	cs.rsMtx.RLock()
+	ourHeight := cs.rs.Height
+	cs.rsMtx.RUnlock()
+
+	maxPeer := cs.maxPeerHeight.Load()
+	// Stop provider mode when maxPeer < ourHeight + (catchupThreshold - 1)
+	return maxPeer == 0 || maxPeer < ourHeight+cs.catchupThreshold-1
+}
+
+// applyBlockSyncBlock applies a block received from blocksync and sends the result back.
+// This is called from handleMsg with locks already held.
+// The function follows the same pattern as finalizeCommit: unlock for heavy work, re-lock for state update.
+func (cs *State) applyBlockSyncBlock(vb *types.ValidatedBlock) error {
 	height := vb.Block.Height
 
 	cs.Logger.Info("Applying block from blocksync", "height", height)
 
 	// Check if this block was already applied (by normal consensus operation)
+	// Since we hold the lock and both paths go through handleMsg, we can check cs.state directly
 	if cs.state.LastBlockHeight >= height {
 		cs.Logger.Info("Block already applied, sending current state to blocksync",
 			"height", height, "stateHeight", cs.state.LastBlockHeight)
@@ -476,8 +502,6 @@ func (cs *State) applyNewState(vb *types.ValidatedBlock) error {
 	}
 
 	// Write EndHeightMessage to WAL so replay doesn't try to redo this height.
-	// This is important if consensus had started working on this height before
-	// blocksync took over.
 	endMsg := EndHeightMessage{height}
 	if err := cs.wal.WriteSync(endMsg); err != nil {
 		err = fmt.Errorf("failed to write EndHeightMessage to WAL: %w", err)
@@ -492,8 +516,18 @@ func (cs *State) applyNewState(vb *types.ValidatedBlock) error {
 		cs.blockStore.SaveBlock(vb.Block, vb.BlockParts, vb.Commit)
 	}
 
-	// Apply the block - ONLY consensus does this, blocksync waits for the result
-	newState, err := cs.blockExec.ApplyVerifiedBlock(cs.state, vb.BlockID, vb.Block, vb.Commit)
+	// Create a copy of state before unlocking (same pattern as finalizeCommit)
+	stateCopy := cs.state.Copy()
+
+	// Unlock for heavy work (same pattern as finalizeCommit)
+	cs.unlockAll()
+
+	// Apply the block
+	newState, err := cs.blockExec.ApplyVerifiedBlock(stateCopy, vb.BlockID, vb.Block, vb.Commit)
+
+	// Re-lock for state update
+	cs.lockAll()
+
 	if err != nil {
 		cs.Logger.Error("Failed to apply block from blocksync", "height", height, "err", err)
 		if vb.ResponseChan != nil {
@@ -502,16 +536,10 @@ func (cs *State) applyNewState(vb *types.ValidatedBlock) error {
 		return err
 	}
 
-	// Send response back to blocksync BEFORE updating consensus state
-	// This allows blocksync to continue fetching while we update our state
+	// Send response back to blocksync
 	if vb.ResponseChan != nil {
 		vb.ResponseChan <- types.ValidatedBlockResponse{State: newState}
 	}
-
-	// Update consensus state using the same pattern as SwitchToConsensus:
-	// hold all locks, reconstruct LastCommit from blockstore, then updateToState
-	cs.lockAll()
-	defer cs.unlockAll()
 
 	// We have no votes, so reconstruct LastCommit from SeenCommit (same as SwitchToConsensus)
 	cs.reconstructLastCommit(newState)
@@ -519,7 +547,7 @@ func (cs *State) applyNewState(vb *types.ValidatedBlock) error {
 	// Update to the new state - this handles all the round state reset
 	cs.updateToState(newState)
 
-	// Prune propagation reactor
+	// Prune propagation reactor and update proposer
 	cs.propagator.Prune(height)
 	proposer := newState.Validators.GetProposer()
 	if proposer != nil {
@@ -1258,6 +1286,10 @@ func (cs *State) handleMsg(mi msgInfo) {
 		// TODO: If rs.Height == vote.Height && rs.Round < vote.Round,
 		// the peer is sending us CatchupCommit precommits.
 		// We could make note of this and help filter in broadcastHasVoteMessage().
+
+	case *BlockSyncBlockMessage:
+		// Block from blocksync - apply it through the same path as normal consensus
+		err = cs.applyBlockSyncBlock(msg.Block)
 
 	default:
 		cs.Logger.Error("unknown msg type", "type", fmt.Sprintf("%T", msg))
@@ -2201,6 +2233,21 @@ func (cs *State) finalizeCommit(height int64) {
 
 	fail.Fail() // XXX
 
+	// Check if block was already applied by blocksync (applyNewState).
+	// We must check the store because there's a race window where applyNewState
+	// has applied a block to the app but hasn't yet updated cs.state/cs.rs.
+	storeState, err := cs.blockExec.Store().Load()
+	if err != nil {
+		panic(fmt.Sprintf("failed to load state: %v", err))
+	}
+	if storeState.LastBlockHeight >= height {
+		logger.Info("Block already applied (by blocksync), skipping apply",
+			"height", height, "stateHeight", storeState.LastBlockHeight)
+		cs.updateToState(storeState)
+		cs.finalizeCommitCleanup(height)
+		return
+	}
+
 	// Create a copy of the state for staging and an event cache for txs.
 	stateCopy := cs.state.Copy()
 
@@ -2210,7 +2257,7 @@ func (cs *State) finalizeCommit(height int64) {
 	// We use apply verified block here because we have verified the block in this function already.
 	// NOTE The block.AppHash won't reflect these txs until the next block.
 	cs.unlockAll()
-	stateCopy, err := cs.blockExec.ApplyVerifiedBlock(
+	stateCopy, err = cs.blockExec.ApplyVerifiedBlock(
 		stateCopy,
 		types.BlockID{
 			Hash:          block.Hash(),
@@ -3199,9 +3246,11 @@ func (cs *State) catchupRoutine() {
 				provider.SetProviderMode(true)
 				cs.propagator.SetPaused(true)
 				providerModeEnabled = true
-			} else if !isBehind && providerModeEnabled {
-				// We caught up to peers - disable provider mode
-				cs.Logger.Info("Caught up to peers, stopping blocksync provider mode")
+			} else if cs.IsCaughtUp() && providerModeEnabled {
+				// We've caught up - disable provider mode
+				cs.Logger.Info("Caught up to peers, stopping blocksync provider mode",
+					"our_height", cs.GetLastHeight()+1,
+					"max_peer_height", cs.GetMaxPeerHeight())
 				provider.SetProviderMode(false)
 				cs.propagator.SetPaused(false)
 				providerModeEnabled = false
@@ -3212,17 +3261,19 @@ func (cs *State) catchupRoutine() {
 				continue
 			}
 
-			// Apply the validated block (applyNewState handles already-applied case)
-			if err := cs.applyNewState(vb); err != nil {
-				cs.Logger.Error("Failed to apply validated block from blocksync",
-					"height", vb.Block.Height,
-					"err", err)
-				continue
+			// Send block to receiveRoutine via internal message queue
+			// This ensures all block application goes through the same path with proper locking
+			select {
+			case cs.internalMsgQueue <- msgInfo{Msg: &BlockSyncBlockMessage{Block: vb}}:
+			case <-cs.done:
+				return
 			}
 
-			// Check if we're still behind - if not, stop blocksync
-			if !cs.IsBehind() && providerModeEnabled {
-				cs.Logger.Info("Caught up to peers via blocksync, stopping provider mode")
+			// Check if we've caught up - stop provider mode to let consensus take over
+			if cs.IsCaughtUp() && providerModeEnabled {
+				cs.Logger.Info("Caught up to peers via blocksync, stopping provider mode",
+					"our_height", cs.GetLastHeight()+1,
+					"max_peer_height", cs.GetMaxPeerHeight())
 				provider.SetProviderMode(false)
 				cs.propagator.SetPaused(false)
 				providerModeEnabled = false
