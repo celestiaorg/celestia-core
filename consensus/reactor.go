@@ -371,8 +371,8 @@ func (conR *Reactor) receive(e p2p.Envelope) error {
 			}
 			ps.ApplyNewRoundStepMessage(msg)
 			// Update blocksync pool with fresh peer height (if in blocksync mode)
-			if conR.WaitSync() && conR.blocksyncR != nil {
-				conR.blocksyncR.UpdatePeerHeight(e.Src.ID(), msg.Height)
+			if conR.WaitSync() && conR.blocksyncR != nil && msg.Height > 1 {
+				conR.blocksyncR.UpdatePeerHeight(e.Src.ID(), msg.Height-1)
 			}
 		case *NewValidBlockMessage:
 			schema.WriteConsensusState(
