@@ -1622,13 +1622,22 @@ func ProtoBlockIDIsNil(bID *cmtproto.BlockID) bool {
 	return len(bID.Hash) == 0 && ProtoPartSetHeaderIsZero(&bID.PartSetHeader)
 }
 
-// ValidatedBlock contains a block that has been validated and applied by blocksync,
-// along with the resulting state to be applied by consensus.
+// ValidatedBlock contains a block that has been validated by blocksync,
+// ready for consensus to apply.
 type ValidatedBlock struct {
 	Block      *Block
 	Commit     *Commit
 	BlockParts *PartSet
 	BlockID    BlockID
-	// State is the sm.State after applying this block (type any to avoid import cycle)
+	// ResponseChan receives the result after consensus applies the block.
+	// Blocksync waits on this channel before proceeding to the next block.
+	ResponseChan chan<- ValidatedBlockResponse
+}
+
+// ValidatedBlockResponse is sent from consensus to blocksync after applying a block.
+type ValidatedBlockResponse struct {
+	// State is the sm.State after applying the block (type any to avoid import cycle)
 	State any
+	// Err is set if block application failed
+	Err error
 }

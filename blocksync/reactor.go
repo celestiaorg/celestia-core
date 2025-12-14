@@ -679,13 +679,52 @@ FOR_LOOP:
 			schema.WriteBlocksyncBlockSaved(bcR.traceClient, first.Height, blockSize,
 				validationDuration.Milliseconds(), saveDuration.Milliseconds(), totalDuration.Milliseconds())
 
-			// TODO: same thing for app - but we would need a way to
-			// get the hash without persisting the state
-			state, err = bcR.blockExec.ApplyVerifiedBlock(state, firstID, first, second.LastCommit)
-			if err != nil {
-				// TODO This is bad, are we zombie?
-				panic(fmt.Sprintf("Failed to process committed block (%d:%X): %v", first.Height, first.Hash(), err))
+			if bcR.providerMode.Load() {
+				// In provider mode, delegate block application to consensus.
+				// Create a response channel to receive the applied state.
+				responseChan := make(chan types.ValidatedBlockResponse, 1)
+
+				validatedBlock := &types.ValidatedBlock{
+					Block:        first,
+					Commit:       second.LastCommit,
+					BlockParts:   firstParts,
+					BlockID:      firstID,
+					ResponseChan: responseChan,
+				}
+
+				// Send block to consensus
+				select {
+				case bcR.blockChan <- validatedBlock:
+					bcR.Logger.Debug("Sent validated block to consensus", "height", first.Height)
+				case <-bcR.Quit():
+					break FOR_LOOP
+				}
+
+				// Wait for consensus to apply the block and return the result
+				select {
+				case response := <-responseChan:
+					if response.Err != nil {
+						bcR.Logger.Error("Consensus failed to apply block",
+							"height", first.Height, "err", response.Err)
+						// Reload state since consensus might have applied other blocks
+						state, _ = bcR.blockExec.Store().Load()
+						continue FOR_LOOP
+					}
+					// Update our state with the applied state from consensus
+					state = response.State.(sm.State)
+					bcR.Logger.Debug("Received applied state from consensus", "height", first.Height)
+				case <-bcR.Quit():
+					break FOR_LOOP
+				}
+			} else {
+				// Normal mode: apply block locally
+				state, err = bcR.blockExec.ApplyVerifiedBlock(state, firstID, first, second.LastCommit)
+				if err != nil {
+					// TODO This is bad, are we zombie?
+					panic(fmt.Sprintf("Failed to process committed block (%d:%X): %v", first.Height, first.Hash(), err))
+				}
 			}
+
 			bcR.metrics.recordBlockMetrics(first)
 			blocksSynced++
 
@@ -694,21 +733,6 @@ FOR_LOOP:
 				bcR.Logger.Info("Block Sync Rate", "height", bcR.pool.height,
 					"max_peer_height", bcR.pool.MaxPeerHeight(), "blocks/s", lastRate)
 				lastHundred = time.Now()
-			}
-			if bcR.providerMode.Load() {
-				validatedBlock := &types.ValidatedBlock{
-					Block:      first,
-					Commit:     second.LastCommit,
-					BlockParts: firstParts,
-					BlockID:    firstID,
-					State:      state.Copy(),
-				}
-				select {
-				case bcR.blockChan <- validatedBlock:
-					bcR.Logger.Debug("Sent validated block to consensus", "height", first.Height)
-				case <-bcR.Quit():
-					break FOR_LOOP
-				}
 			}
 
 			continue FOR_LOOP

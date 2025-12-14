@@ -457,25 +457,50 @@ func (cs *State) IsBehind() bool {
 	return maxPeer > 0 && maxPeer >= ourHeight+cs.catchupThreshold
 }
 
-// applyNewState applies a state that has already been validated and applied by blocksync.
+// applyNewState applies a block received from blocksync and sends the result back.
 // This is used during catchup when receiving blocks from the blocksync channel.
+// Only consensus applies blocks - blocksync validates and saves to blockstore, then waits for us.
 func (cs *State) applyNewState(vb *types.ValidatedBlock) error {
-	// Type-assert the state from the validated block
-	newState, ok := vb.State.(sm.State)
-	if !ok {
-		return fmt.Errorf("invalid state type in validated block")
-	}
-
 	height := vb.Block.Height
 
-	cs.Logger.Info("Applying new state from blocksync", "height", height)
+	cs.Logger.Info("Applying block from blocksync", "height", height)
+
+	// Check if this block was already applied (by normal consensus operation)
+	if cs.state.LastBlockHeight >= height {
+		cs.Logger.Info("Block already applied, sending current state to blocksync",
+			"height", height, "stateHeight", cs.state.LastBlockHeight)
+		if vb.ResponseChan != nil {
+			vb.ResponseChan <- types.ValidatedBlockResponse{State: cs.state}
+		}
+		return nil
+	}
 
 	// Write EndHeightMessage to WAL so replay doesn't try to redo this height.
 	// This is important if consensus had started working on this height before
 	// blocksync took over.
 	endMsg := EndHeightMessage{height}
 	if err := cs.wal.WriteSync(endMsg); err != nil {
-		return fmt.Errorf("failed to write EndHeightMessage to WAL: %w", err)
+		err = fmt.Errorf("failed to write EndHeightMessage to WAL: %w", err)
+		if vb.ResponseChan != nil {
+			vb.ResponseChan <- types.ValidatedBlockResponse{Err: err}
+		}
+		return err
+	}
+
+	// Apply the block - ONLY consensus does this, blocksync waits for the result
+	newState, err := cs.blockExec.ApplyVerifiedBlock(cs.state, vb.BlockID, vb.Block, vb.Commit)
+	if err != nil {
+		cs.Logger.Error("Failed to apply block from blocksync", "height", height, "err", err)
+		if vb.ResponseChan != nil {
+			vb.ResponseChan <- types.ValidatedBlockResponse{Err: err}
+		}
+		return err
+	}
+
+	// Send response back to blocksync BEFORE updating consensus state
+	// This allows blocksync to continue fetching while we update our state
+	if vb.ResponseChan != nil {
+		vb.ResponseChan <- types.ValidatedBlockResponse{State: newState}
 	}
 
 	// Update consensus state using the same pattern as SwitchToConsensus:
@@ -496,7 +521,7 @@ func (cs *State) applyNewState(vb *types.ValidatedBlock) error {
 		cs.propagator.SetProposer(proposer.PubKey)
 	}
 
-	cs.Logger.Info("Successfully applied new state from blocksync", "height", height, "new_height", newState.LastBlockHeight+1)
+	cs.Logger.Info("Successfully applied block from blocksync", "height", height, "new_height", newState.LastBlockHeight+1)
 
 	return nil
 }
@@ -2144,37 +2169,6 @@ func (cs *State) finalizeCommit(height int64) {
 			cs.blockStore.SaveBlock(block, blockParts, seenExtendedCommit.ToCommit())
 		}
 		cs.lockAll()
-	} else {
-		// Block already in store - check if it was also applied (e.g., by blocksync)
-		// If so, just load the state and update, don't apply again
-		storeState, err := cs.blockExec.Store().Load()
-		if err != nil {
-			panic(fmt.Sprintf("failed to load state: %v", err))
-		}
-		if storeState.LastBlockHeight >= height {
-			logger.Info("Block already applied (likely by blocksync), skipping apply",
-				"height", height, "stateHeight", storeState.LastBlockHeight)
-
-			// Write EndHeightMessage to WAL so replay doesn't try to redo this height
-			endMsg := EndHeightMessage{height}
-			if err := cs.wal.WriteSync(endMsg); err != nil {
-				panic(fmt.Sprintf(
-					"failed to write %v msg to consensus WAL due to %v; check your file system and restart the node",
-					endMsg, err,
-				))
-			}
-
-			// Only call updateToState if state matches our height exactly.
-			// If blocksync is ahead (LastBlockHeight > height), the catchupRoutine
-			// will handle updating our state via applyNewState.
-			if storeState.LastBlockHeight == height {
-				cs.updateToState(storeState)
-				cs.finalizeCommitCleanup(height)
-			}
-			return
-		}
-		// Block saved but not applied - this is crash recovery, continue to apply
-		logger.Debug("calling finalizeCommit on already stored block", "height", block.Height)
 	}
 
 	fail.Fail() // XXX
