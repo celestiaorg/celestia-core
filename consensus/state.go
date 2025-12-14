@@ -1177,20 +1177,24 @@ func (cs *State) receiveRoutine(maxSteps int) {
 			cs.handleMsg(mi)
 
 		case mi = <-cs.internalMsgQueue:
-			err := cs.wal.WriteSync(mi) // NOTE: fsync
-			if err != nil {
-				panic(fmt.Sprintf(
-					"failed to write %v msg to consensus WAL due to %v; check your file system and restart the node",
-					mi, err,
-				))
-			}
+			// Skip WAL for blocksync messages - they contain channels and don't need replay
+			// (blocksync will re-fetch blocks on restart)
+			if _, ok := mi.Msg.(*BlockSyncBlockMessage); !ok {
+				err := cs.wal.WriteSync(mi) // NOTE: fsync
+				if err != nil {
+					panic(fmt.Sprintf(
+						"failed to write %v msg to consensus WAL due to %v; check your file system and restart the node",
+						mi, err,
+					))
+				}
 
-			if _, ok := mi.Msg.(*VoteMessage); ok {
-				// we actually want to simulate failing during
-				// the previous WriteSync, but this isn't easy to do.
-				// Equivalent would be to fail here and manually remove
-				// some bytes from the end of the wal.
-				fail.Fail() // XXX
+				if _, ok := mi.Msg.(*VoteMessage); ok {
+					// we actually want to simulate failing during
+					// the previous WriteSync, but this isn't easy to do.
+					// Equivalent would be to fail here and manually remove
+					// some bytes from the end of the wal.
+					fail.Fail() // XXX
+				}
 			}
 
 			// handles proposals, block parts, votes
