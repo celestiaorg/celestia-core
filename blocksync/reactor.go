@@ -653,32 +653,7 @@ FOR_LOOP:
 
 			bcR.pool.PopRequest()
 
-			// Start timing block save
-			saveStart := time.Now()
-
-			// TODO: batch saves so we dont persist to disk every block
-			if extensionsEnabled {
-				bcR.store.SaveBlockWithExtendedCommit(first, firstParts, extCommit)
-			} else {
-				// We use LastCommit here instead of extCommit. extCommit is not
-				// guaranteed to be populated by the peer if extensions are not enabled.
-				// Currently, the peer should provide an extCommit even if the vote extension data are absent
-				// but this may change so using second.LastCommit is safer.
-				bcR.store.SaveBlock(first, firstParts, second.LastCommit)
-			}
-
-			// Calculate save duration
-			saveDuration := time.Since(saveStart)
-			totalDuration := time.Since(validationStart)
-
-			// Trace block saved after successful validation
-			var blockSize int
-			if firstParts != nil {
-				blockSize = int(firstParts.ByteSize())
-			}
-			schema.WriteBlocksyncBlockSaved(bcR.traceClient, first.Height, blockSize,
-				validationDuration.Milliseconds(), saveDuration.Milliseconds(), totalDuration.Milliseconds())
-
+			// In provider mode, delegate saving and application to consensus
 			if bcR.providerMode.Load() {
 				// In provider mode, delegate block application to consensus.
 				// Create a response channel to receive the applied state.
@@ -717,7 +692,34 @@ FOR_LOOP:
 					break FOR_LOOP
 				}
 			} else {
-				// Normal mode: apply block locally
+				// Normal mode: save block and apply locally
+
+				// Start timing block save
+				saveStart := time.Now()
+
+				// TODO: batch saves so we dont persist to disk every block
+				if extensionsEnabled {
+					bcR.store.SaveBlockWithExtendedCommit(first, firstParts, extCommit)
+				} else {
+					// We use LastCommit here instead of extCommit. extCommit is not
+					// guaranteed to be populated by the peer if extensions are not enabled.
+					// Currently, the peer should provide an extCommit even if the vote extension data are absent
+					// but this may change so using second.LastCommit is safer.
+					bcR.store.SaveBlock(first, firstParts, second.LastCommit)
+				}
+
+				// Calculate save duration
+				saveDuration := time.Since(saveStart)
+				totalDuration := time.Since(validationStart)
+
+				// Trace block saved after successful validation
+				var blockSize int
+				if firstParts != nil {
+					blockSize = int(firstParts.ByteSize())
+				}
+				schema.WriteBlocksyncBlockSaved(bcR.traceClient, first.Height, blockSize,
+					validationDuration.Milliseconds(), saveDuration.Milliseconds(), totalDuration.Milliseconds())
+
 				state, err = bcR.blockExec.ApplyVerifiedBlock(state, firstID, first, second.LastCommit)
 				if err != nil {
 					// TODO This is bad, are we zombie?

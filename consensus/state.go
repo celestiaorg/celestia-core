@@ -487,6 +487,11 @@ func (cs *State) applyNewState(vb *types.ValidatedBlock) error {
 		return err
 	}
 
+	// Save block to blockstore (blocksync delegates this to us in provider mode)
+	if cs.blockStore.Height() < height {
+		cs.blockStore.SaveBlock(vb.Block, vb.BlockParts, vb.Commit)
+	}
+
 	// Apply the block - ONLY consensus does this, blocksync waits for the result
 	newState, err := cs.blockExec.ApplyVerifiedBlock(cs.state, vb.BlockID, vb.Block, vb.Commit)
 	if err != nil {
