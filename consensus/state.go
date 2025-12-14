@@ -444,6 +444,7 @@ func (cs *State) SetBlockSyncProvider(provider BlockSyncProvider) {
 
 // UpdatePeerHeight updates the peer's height and the maximum peer height if needed.
 // This is called by the reactor when it receives NewRoundStepMessage from peers.
+// Note: height is the consensus height (what peer is working on), so committed height is height-1.
 func (cs *State) UpdatePeerHeight(peerID p2p.ID, height int64) {
 	for {
 		current := cs.maxPeerHeight.Load()
@@ -455,12 +456,14 @@ func (cs *State) UpdatePeerHeight(peerID p2p.ID, height int64) {
 		}
 	}
 
-	// Also update blocksync pool's peer height to keep it in sync
+	// Also update blocksync pool's peer height to keep it in sync.
+	// Use height-1 because NewRoundStepMessage.Height is the height being worked on,
+	// not the committed height. Blocksync cares about committed blocks.
 	cs.mtx.Lock()
 	provider := cs.blockSyncProvider
 	cs.mtx.Unlock()
-	if provider != nil {
-		provider.UpdatePeerHeight(peerID, height)
+	if provider != nil && height > 1 {
+		provider.UpdatePeerHeight(peerID, height-1)
 	}
 }
 
