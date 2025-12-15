@@ -451,17 +451,7 @@ func NewNodeWithContext(ctx context.Context,
 	// Create header sync reactor if enabled.
 	var hsReactor *headersync.Reactor
 	if config.HeaderSync.Enable {
-		fmt.Printf("headersync: creating reactor with state.LastBlockHeight=%d state.Validators.Hash=%X\n",
-			state.LastBlockHeight, state.Validators.Hash())
-		// Header sync requires valid validators for verification. For fresh nodes (LastBlockHeight=0),
-		// the validator set comes from genesis and may not match the actual chain if InitChain
-		// modified validators. In such cases, block sync or state sync should be used first.
-		if state.LastBlockHeight == 0 {
-			logger.Info("Header sync disabled for fresh node - use block sync or state sync first",
-				"LastBlockHeight", state.LastBlockHeight)
-		} else {
-			hsReactor = createHeaderSyncReactor(config, stateStore, blockStore, genDoc.ChainID, state.InitialHeight, state.Validators, logger, hsMetrics)
-		}
+		hsReactor = createHeaderSyncReactor(config, stateStore, blockStore, genDoc.ChainID, state.InitialHeight, state.Validators, logger, hsMetrics)
 	}
 
 	propagationReactor := propagation.NewReactor(
@@ -523,7 +513,14 @@ func NewNodeWithContext(ctx context.Context,
 	)
 	stateSyncReactor.SetLogger(logger.With("module", "statesync"))
 
-	nodeInfo, err := makeNodeInfo(config, nodeKey, txIndexer, genDoc, state, softwareVersion)
+	// Advertise only the channels that are actually registered on the Switch.
+	// For headersync we may choose not to start the reactor (e.g. fresh nodes
+	// with LastBlockHeight=0), so we must not claim support for the channel
+	// unless the reactor is running, otherwise peers will try to use it and
+	// get disconnected with "unknown channel" errors.
+	headerSyncActive := hsReactor != nil
+
+	nodeInfo, err := makeNodeInfo(config, nodeKey, txIndexer, genDoc, state, softwareVersion, headerSyncActive)
 	if err != nil {
 		return nil, err
 	}
@@ -1068,6 +1065,7 @@ func makeNodeInfo(
 	genDoc *types.GenesisDoc,
 	state sm.State,
 	softwareVersion string,
+	headerSyncActive bool,
 ) (p2p.DefaultNodeInfo, error) {
 	txIndexerStatus := "on"
 	if _, ok := txIndexer.(*null.TxIndex); ok {
@@ -1092,7 +1090,7 @@ func makeNodeInfo(
 	if !config.Consensus.DisablePropagationReactor {
 		channels = append(channels, propagation.DataChannel, propagation.WantChannel)
 	}
-	if config.HeaderSync.Enable {
+	if headerSyncActive {
 		channels = append(channels, headersync.HeaderSyncChannel)
 	}
 

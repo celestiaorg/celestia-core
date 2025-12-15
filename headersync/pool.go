@@ -22,10 +22,11 @@ const (
 	banDuration = 60 * time.Second
 )
 
-// SignedHeader pairs a header with its commit.
+// SignedHeader pairs a header with its commit and optional validator set.
 type SignedHeader struct {
-	Header *types.Header
-	Commit *types.Commit
+	Header       *types.Header
+	Commit       *types.Commit
+	ValidatorSet *types.ValidatorSet // non-nil when validator set changed at this height
 }
 
 // VerifiedHeader contains a header that has been fully verified.

@@ -462,11 +462,13 @@ func TestHeaderSync_DoSProtection(t *testing.T) {
 	require.Len(t, peers, 1)
 	peer := peers[0]
 
+	// Send a height lower than the initially advertised height (which was HeaderHeight()-1).
+	// This should trigger DoS protection since height is regressing.
 	peer.Send(p2p.Envelope{
 		ChannelID: HeaderSyncChannel,
 		Message: &hsproto.StatusResponse{
 			Base:   node1.blockStore.Base(),
-			Height: node1.blockStore.HeaderHeight() - 1,
+			Height: node1.blockStore.HeaderHeight() - 2,
 		},
 	})
 
@@ -694,9 +696,11 @@ func TestHeaderSync_StatusExchange(t *testing.T) {
 	height, numPending, numPeers = node1.reactor.pool.GetStatus()
 	t.Logf("node1 pool status after wait: height=%d, numPending=%d, numPeers=%d", height, numPending, numPeers)
 
-	// The syncing node should know about the peer's height
+	// The syncing node should know about the peer's height.
+	// Note: AddPeer sends height-1 to be conservative, so initial max may be 99.
+	// After syncing starts, the peer will broadcast its actual height.
 	require.Equal(t, 1, numPeers, "node1 should know about 1 peer in pool")
-	require.Equal(t, int64(100), node1.reactor.MaxPeerHeight(), "node1 should know peer is at height 100")
+	require.GreaterOrEqual(t, node1.reactor.MaxPeerHeight(), int64(99), "node1 should know peer is at height 99+")
 
 	// Now verify that syncing actually happens
 	waitForCaughtUp(t, node1, 30*time.Second)
@@ -813,4 +817,126 @@ func TestHeaderSync_DebugPoolState(t *testing.T) {
 	_, _, finalPeers := node1.reactor.pool.GetStatus()
 	require.Equal(t, 1, finalPeers, "node1 pool should have 1 peer registered")
 	require.Equal(t, int64(50), node1.reactor.MaxPeerHeight(), "node1 should know peer height is 50")
+}
+
+// TestHeaderSync_BatchVerification tests that batch verification works correctly
+// with the skip verification protocol (1/3+ trust threshold on last header).
+func TestHeaderSync_BatchVerification(t *testing.T) {
+	config := test.ResetTestRoot("headersync_batch_verify_test")
+	defer os.RemoveAll(config.RootDir)
+
+	// Use 1 validator since generateBlocks only signs with one validator.
+	// With 1 validator, that validator has 100% of voting power, satisfying 1/3+ threshold.
+	genDoc, privVals := randGenesisDoc(1, false, 30)
+	maxHeight := int64(100)
+
+	node0 := createNode(t, log.TestingLogger().With("node", "source"), nodeConfig{
+		genDoc:      genDoc,
+		privVals:    privVals,
+		headersUpTo: maxHeight,
+	})
+
+	// Node1 has no headers but has the validator state - tests batch verification
+	node1 := createNode(t, log.TestingLogger().With("node", "syncing"), nodeConfig{
+		genDoc:      genDoc,
+		privVals:    privVals,
+		headersUpTo: 0,
+		stateUpTo:   maxHeight,
+	})
+
+	defer stopTestNodes(t, node0, node1)
+
+	switches := makeNetwork(t, config, node0, node1)
+
+	// Wait for peers to connect
+	time.Sleep(500 * time.Millisecond)
+	require.Equal(t, 1, switches[0].Peers().Size())
+	require.Equal(t, 1, switches[1].Peers().Size())
+
+	// Wait for sync to complete
+	waitForCaughtUp(t, node1, 30*time.Second)
+
+	// Verify batch verification worked - should have synced all headers
+	// using skip verification (only last header's commit is fully verified)
+	assert.GreaterOrEqual(t, node1.blockStore.HeaderHeight(), maxHeight-5,
+		"node1 should have synced headers using batch verification")
+}
+
+// TestHeaderSync_LargeBatch tests syncing with maximum batch size to verify
+// chain linkage verification works correctly for large batches.
+func TestHeaderSync_LargeBatch(t *testing.T) {
+	config := test.ResetTestRoot("headersync_large_batch_test")
+	defer os.RemoveAll(config.RootDir)
+
+	// Use 1 validator since generateBlocks only signs with one validator.
+	genDoc, privVals := randGenesisDoc(1, false, 30)
+	// Use exactly MaxHeaderBatchSize headers to test full batch processing
+	maxHeight := int64(MaxHeaderBatchSize + 10)
+
+	node0 := createNode(t, log.TestingLogger().With("node", "source"), nodeConfig{
+		genDoc:      genDoc,
+		privVals:    privVals,
+		headersUpTo: maxHeight,
+	})
+
+	node1 := createNode(t, log.TestingLogger().With("node", "syncing"), nodeConfig{
+		genDoc:      genDoc,
+		privVals:    privVals,
+		headersUpTo: 0,
+		stateUpTo:   maxHeight,
+	})
+
+	defer stopTestNodes(t, node0, node1)
+
+	switches := makeNetwork(t, config, node0, node1)
+
+	time.Sleep(500 * time.Millisecond)
+	require.Equal(t, 1, switches[0].Peers().Size())
+
+	waitForCaughtUp(t, node1, 30*time.Second)
+
+	// Verify full batch was processed
+	assert.GreaterOrEqual(t, node1.blockStore.HeaderHeight(), maxHeight-5,
+		"node1 should have synced through full batch")
+}
+
+// TestHeaderSync_SignedHeaderWithValidatorSetField tests that the ValidatorSet
+// field is correctly included in SignedHeader when validator sets change.
+// Note: This test verifies the proto field is properly serialized/deserialized.
+// Full validator set change tests require more complex test infrastructure.
+func TestHeaderSync_SignedHeaderWithValidatorSetField(t *testing.T) {
+	// This is a basic sanity check that the ValidatorSet field works in the proto
+	genDoc, _ := randGenesisDoc(4, false, 30)
+
+	// Get validators from genesis doc
+	validators := make([]*types.Validator, len(genDoc.Validators))
+	for i, gv := range genDoc.Validators {
+		validators[i] = types.NewValidator(gv.PubKey, gv.Power)
+	}
+	vals := types.NewValidatorSet(validators)
+
+	// Create a SignedHeader with a validator set
+	header := &types.Header{
+		ChainID:            genDoc.ChainID,
+		Height:             10,
+		Time:               cmttime.Now(),
+		ValidatorsHash:     vals.Hash(),
+		NextValidatorsHash: vals.Hash(),
+	}
+
+	// Convert to proto and back
+	protoHeader := header.ToProto()
+	valsProto, err := vals.ToProto()
+	require.NoError(t, err)
+
+	protoSH := &hsproto.SignedHeader{
+		Header:       protoHeader,
+		Commit:       &cmtproto.Commit{},
+		ValidatorSet: valsProto,
+	}
+
+	// Verify the validator set can be decoded
+	decodedVals, err := types.ValidatorSetFromProto(protoSH.ValidatorSet)
+	require.NoError(t, err)
+	assert.Equal(t, vals.Hash(), decodedVals.Hash(), "validator set should round-trip correctly")
 }

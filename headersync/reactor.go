@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/cometbft/cometbft/libs/log"
+	cmtmath "github.com/cometbft/cometbft/libs/math"
 	"github.com/cometbft/cometbft/p2p"
 	hsproto "github.com/cometbft/cometbft/proto/tendermint/headersync"
 	sm "github.com/cometbft/cometbft/state"
@@ -53,6 +54,8 @@ type Reactor struct {
 
 	// currentValidators is the validator set used to verify incoming headers.
 	// Updated when NextValidatorsHash changes (indicating a validator set change).
+	// Protected by validatorsMtx for concurrent access from consensus handoff.
+	validatorsMtx     sync.RWMutex
 	currentValidators *types.ValidatorSet
 
 	// Last verified header for chain linkage verification.
@@ -326,10 +329,34 @@ func (r *Reactor) respondGetHeaders(msg *hsproto.GetHeaders, src p2p.Peer) {
 		headerProto := meta.Header.ToProto()
 		commitProto := commit.ToProto()
 
-		headers = append(headers, &hsproto.SignedHeader{
+		sh := &hsproto.SignedHeader{
 			Header: headerProto,
 			Commit: commitProto,
-		})
+		}
+
+		// Attach validator set if it changed at this height.
+		// The validator set changed if the previous header's NextValidatorsHash
+		// differs from this header's ValidatorsHash.
+		if h > 1 {
+			prevMeta := r.blockStore.LoadBlockMeta(h - 1)
+			if prevMeta != nil && !bytes.Equal(prevMeta.Header.NextValidatorsHash, meta.Header.ValidatorsHash) {
+				// Validator set changed - attach the new validator set.
+				vals, err := r.stateStore.LoadValidators(h)
+				if err == nil {
+					valsProto, err := vals.ToProto()
+					if err == nil {
+						sh.ValidatorSet = valsProto
+						r.Logger.Debug("Attaching validator set to header", "height", h)
+					} else {
+						r.Logger.Error("Failed to convert validators to proto", "height", h, "err", err)
+					}
+				} else {
+					r.Logger.Error("Failed to load validators for header", "height", h, "err", err)
+				}
+			}
+		}
+
+		headers = append(headers, sh)
 	}
 	fmt.Printf("respondGetHeaders: sending %d headers starting at %d to %s\n",
 		len(headers), msg.StartHeight, src.ID())
@@ -373,10 +400,24 @@ func (r *Reactor) handleHeaders(msg *hsproto.HeadersResponse, src p2p.Peer) {
 			r.Switch.StopPeerForError(src, err, r.String())
 			return
 		}
-		signedHeaders = append(signedHeaders, &SignedHeader{
+
+		sh := &SignedHeader{
 			Header: &header,
 			Commit: commit,
-		})
+		}
+
+		// Decode validator set if present.
+		if protoSH.ValidatorSet != nil {
+			valSet, err := types.ValidatorSetFromProto(protoSH.ValidatorSet)
+			if err != nil {
+				r.Logger.Error("Failed to convert validator set from proto", "peer", src.ID(), "err", err)
+				r.Switch.StopPeerForError(src, err, r.String())
+				return
+			}
+			sh.ValidatorSet = valSet
+		}
+
+		signedHeaders = append(signedHeaders, sh)
 	}
 
 	if err := r.pool.AddBatchResponse(src.ID(), msg.StartHeight, signedHeaders); err != nil {
@@ -406,20 +447,20 @@ func (r *Reactor) timeoutRoutine() {
 	}
 }
 
-// tryProcessHeaders processes all available headers in order.
+// tryProcessHeaders processes all available batches in order.
 func (r *Reactor) tryProcessHeaders() {
 	for {
-		sh, peerID, batchStartHeight := r.pool.PeekNextHeader()
-		if sh == nil {
+		batch, peerID := r.pool.PeekCompletedBatch()
+		if batch == nil {
 			return
 		}
 
-		if !r.processNextHeader(sh, peerID, batchStartHeight) {
+		if !r.processBatch(batch.headers, peerID, batch.startHeight) {
 			return
 		}
 
-		r.pool.MarkHeaderProcessed()
-		r.headersSynced++
+		r.pool.PopBatch(batch.startHeight)
+		r.headersSynced += int64(len(batch.headers))
 
 		if r.headersSynced%100 == 0 {
 			rate := 100.0 / time.Since(r.lastHundredTime).Seconds()
@@ -458,130 +499,245 @@ func (r *Reactor) tryMakeRequests() {
 	r.metrics.Peers.Set(float64(numPeers))
 }
 
-// processNextHeader verifies and stores a single header.
+// processBatch verifies and stores a batch of headers.
 // Returns true if processing succeeded, false if it failed.
-func (r *Reactor) processNextHeader(sh *SignedHeader, peerID p2p.ID, batchStartHeight int64) bool {
-	if err := r.verifyHeader(sh.Header, sh.Commit, r.lastHeader); err != nil {
-		r.Logger.Error("Header verification failed",
-			"height", sh.Header.Height,
+func (r *Reactor) processBatch(headers []*SignedHeader, peerID p2p.ID, batchStartHeight int64) bool {
+	if len(headers) == 0 {
+		return true
+	}
+
+	// Verify the batch using skip verification.
+	if err := r.verifyBatch(headers); err != nil {
+		r.Logger.Error("Batch verification failed",
+			"startHeight", batchStartHeight,
+			"count", len(headers),
 			"peer", peerID,
 			"err", err)
 		r.pool.RedoBatch(batchStartHeight)
+		// Disconnect the peer that sent invalid headers.
 		peer := r.Switch.Peers().Get(peerID)
 		if peer != nil {
-			// TODO: re-enable
-			// r.Switch.StopPeerForError(peer, err, r.String())
+			r.Switch.StopPeerForError(peer, err, r.String())
 		}
 		r.metrics.VerificationFailures.Add(1)
 		return false
 	}
 
-	// Store header.
-	if err := r.blockStore.SaveHeader(sh.Header, sh.Commit); err != nil {
-		r.Logger.Error("Failed to save header", "err", err)
-		return false
+	// Store all headers in the batch.
+	for _, sh := range headers {
+		if err := r.blockStore.SaveHeader(sh.Header, sh.Commit); err != nil {
+			r.Logger.Error("Failed to save header", "height", sh.Header.Height, "err", err)
+			return false
+		}
+
+		// Notify subscribers.
+		vh := &VerifiedHeader{
+			Header: sh.Header,
+			Commit: sh.Commit,
+			BlockID: types.BlockID{
+				Hash:          sh.Header.Hash(),
+				PartSetHeader: sh.Commit.BlockID.PartSetHeader,
+			},
+		}
+		r.notifySubscribers(vh)
+
+		r.metrics.HeadersSynced.Add(1)
 	}
 
-	// Notify subscribers.
-	vh := &VerifiedHeader{
-		Header: sh.Header,
-		Commit: sh.Commit,
-		BlockID: types.BlockID{
-			Hash:          sh.Header.Hash(),
-			PartSetHeader: sh.Commit.BlockID.PartSetHeader,
-		},
-	}
-	r.notifySubscribers(vh)
-
-	r.lastHeader = sh.Header
-	r.metrics.HeadersSynced.Add(1)
+	// Update lastHeader to the last header in the batch.
+	r.lastHeader = headers[len(headers)-1].Header
 
 	return true
 }
 
-// verifyHeader verifies a header against the current validator set and chain linkage.
-func (r *Reactor) verifyHeader(
-	header *types.Header,
-	commit *types.Commit,
-	prevHeader *types.Header,
-) error {
-	// 1. Verify header's ValidatorsHash matches our current validators.
-	if !bytes.Equal(header.ValidatorsHash, r.currentValidators.Hash()) {
-		return fmt.Errorf("header validators hash mismatch: header has %X, we have %X",
-			header.ValidatorsHash, r.currentValidators.Hash())
+// verifyBatch verifies a batch of headers using skip verification.
+// This verifies that 1/3+ of the trusted validator set signed the last header,
+// then verifies chain linkage backwards from last to first.
+func (r *Reactor) verifyBatch(batch []*SignedHeader) error {
+	if len(batch) == 0 {
+		return errors.New("empty batch")
 	}
 
-	// 2. Compute expected BlockID from header.
-	blockID := types.BlockID{
-		Hash: header.Hash(),
-		// PartSetHeader comes from the commit, which was signed by +2/3 validators.
-		PartSetHeader: commit.BlockID.PartSetHeader,
+	// Get current validators under read lock.
+	r.validatorsMtx.RLock()
+	validators := r.currentValidators
+	r.validatorsMtx.RUnlock()
+
+	// Step 1: Skip verify last header (1/3+ of trusted validators must have signed).
+	lastHeader := batch[len(batch)-1]
+	if err := r.skipVerifyHeader(lastHeader, validators); err != nil {
+		// <1/3 overlap - try to find an intermediate trust anchor.
+		r.Logger.Debug("Skip verification failed, trying intermediate anchors",
+			"height", lastHeader.Header.Height, "err", err)
+		return r.verifyBatchWithIntermediateTrust(batch, validators)
 	}
 
-	// 3. Verify commit has +2/3 voting power from current validators.
-	if err := r.currentValidators.VerifyCommitLight(r.chainID, blockID, header.Height, commit); err != nil {
-		return fmt.Errorf("commit verification failed: %w", err)
-	}
-
-	// 4. Verify chain linkage (if not first header).
-	if err := r.verifyChainLinkage(header, prevHeader); err != nil {
+	// Step 2: Verify chain linkage backwards from last to first.
+	if err := r.verifyChainLinkageBackward(batch); err != nil {
 		return err
 	}
 
-	// 5. Check if validators will change for the next block.
-	// If NextValidatorsHash differs from ValidatorsHash, we need to update.
-	// TODO: For now, we require validators to remain unchanged. To support
-	// validator changes, we'd need to fetch the new validator set from peers.
-	if !bytes.Equal(header.NextValidatorsHash, header.ValidatorsHash) {
-		r.Logger.Info("Validator set change detected but not yet supported",
-			"height", header.Height,
-			"currentHash", header.ValidatorsHash,
-			"nextHash", header.NextValidatorsHash)
-		// For now, continue - the next header verification will fail if validators changed.
-	}
+	// Step 3: Update validator set from batch if it contains a change.
+	r.updateValidatorSetFromBatch(batch)
 
 	return nil
 }
 
-// verifyChainLinkage verifies that the header correctly links to the previous header.
-func (r *Reactor) verifyChainLinkage(header, prevHeader *types.Header) error {
-	if prevHeader == nil {
-		return nil
-	}
-
-	// Verify LastBlockID hash matches previous header.
-	prevBlockID := r.loadPrevBlockID(prevHeader)
-	if !bytes.Equal(header.LastBlockID.Hash, prevBlockID.Hash) {
-		return fmt.Errorf("header LastBlockID hash mismatch: got %X, want %X",
-			header.LastBlockID.Hash, prevBlockID.Hash)
-	}
-
-	// Verify ValidatorsHash continuity.
-	if !bytes.Equal(header.ValidatorsHash, prevHeader.NextValidatorsHash) {
-		return fmt.Errorf("validators hash mismatch: got %X, want %X",
-			header.ValidatorsHash, prevHeader.NextValidatorsHash)
-	}
-
-	return nil
+// skipVerifyHeader verifies that 1/3+ of the trusted validators signed the header.
+func (r *Reactor) skipVerifyHeader(sh *SignedHeader, validators *types.ValidatorSet) error {
+	// Use 1/3 trust threshold.
+	trustLevel := cmtmath.Fraction{Numerator: 1, Denominator: 3}
+	return types.VerifyCommitLightTrusting(
+		r.chainID,
+		validators,
+		sh.Commit,
+		trustLevel,
+	)
 }
 
-// loadPrevBlockID loads the BlockID for the previous header.
-// If the commit is available, includes the PartSetHeader; otherwise just the hash.
-func (r *Reactor) loadPrevBlockID(prevHeader *types.Header) types.BlockID {
-	prevCommit := r.blockStore.LoadSeenCommit(prevHeader.Height)
-	if prevCommit == nil {
-		prevCommit = r.blockStore.LoadBlockCommit(prevHeader.Height)
-	}
-
-	if prevCommit != nil {
-		return types.BlockID{
-			Hash:          prevHeader.Hash(),
-			PartSetHeader: prevCommit.BlockID.PartSetHeader,
+// verifyChainLinkageBackward verifies hash chain from last header back to first.
+func (r *Reactor) verifyChainLinkageBackward(batch []*SignedHeader) error {
+	// First, verify linkage to our last known header.
+	if r.lastHeader != nil {
+		firstInBatch := batch[0]
+		expectedHash := r.lastHeader.Hash()
+		if !bytes.Equal(firstInBatch.Header.LastBlockID.Hash, expectedHash) {
+			return fmt.Errorf("first header LastBlockID.Hash %X doesn't match previous header hash %X",
+				firstInBatch.Header.LastBlockID.Hash, expectedHash)
+		}
+		// Verify ValidatorsHash continuity from our last header.
+		if !bytes.Equal(firstInBatch.Header.ValidatorsHash, r.lastHeader.NextValidatorsHash) {
+			return fmt.Errorf("first header ValidatorsHash %X doesn't match previous NextValidatorsHash %X",
+				firstInBatch.Header.ValidatorsHash, r.lastHeader.NextValidatorsHash)
 		}
 	}
 
-	// If we don't have the commit, just use the hash.
-	return types.BlockID{Hash: prevHeader.Hash()}
+	// Verify internal chain linkage.
+	for i := len(batch) - 1; i > 0; i-- {
+		current := batch[i]
+		prev := batch[i-1]
+		expectedHash := prev.Header.Hash()
+		if !bytes.Equal(current.Header.LastBlockID.Hash, expectedHash) {
+			return fmt.Errorf("header %d LastBlockID.Hash %X doesn't match header %d hash %X",
+				current.Header.Height, current.Header.LastBlockID.Hash,
+				prev.Header.Height, expectedHash)
+		}
+		// Verify ValidatorsHash continuity within batch.
+		if !bytes.Equal(current.Header.ValidatorsHash, prev.Header.NextValidatorsHash) {
+			return fmt.Errorf("header %d ValidatorsHash %X doesn't match header %d NextValidatorsHash %X",
+				current.Header.Height, current.Header.ValidatorsHash,
+				prev.Header.Height, prev.Header.NextValidatorsHash)
+		}
+	}
+
+	return nil
+}
+
+// updateValidatorSetFromBatch updates currentValidators if the batch contains
+// a validator set change. Takes the last validator set in the batch.
+func (r *Reactor) updateValidatorSetFromBatch(batch []*SignedHeader) {
+	// Scan backwards to find the last header with an attached validator set.
+	for i := len(batch) - 1; i >= 0; i-- {
+		if batch[i].ValidatorSet != nil {
+			// Validate that the attached validator set matches the header's hash.
+			expectedHash := batch[i].Header.ValidatorsHash
+			actualHash := batch[i].ValidatorSet.Hash()
+			if !bytes.Equal(expectedHash, actualHash) {
+				r.Logger.Error("Validator set hash mismatch, ignoring",
+					"height", batch[i].Header.Height,
+					"expected", expectedHash,
+					"actual", actualHash)
+				continue
+			}
+
+			r.validatorsMtx.Lock()
+			r.currentValidators = batch[i].ValidatorSet
+			r.validatorsMtx.Unlock()
+
+			r.Logger.Info("Updated validator set from batch",
+				"height", batch[i].Header.Height,
+				"validatorsHash", actualHash)
+			return
+		}
+	}
+}
+
+// verifyBatchWithIntermediateTrust handles the rare case where <1/3 of trusted
+// validators signed the last header. Searches for an intermediate header where
+// we still have 1/3+ overlap.
+func (r *Reactor) verifyBatchWithIntermediateTrust(batch []*SignedHeader, validators *types.ValidatorSet) error {
+	// Linear scan to find a header we can trust.
+	for i := len(batch) - 2; i >= 0; i-- {
+		if err := r.skipVerifyHeader(batch[i], validators); err == nil {
+			// Found a trustable header - verify linkage from start to this point.
+			if err := r.verifyChainLinkageBackward(batch[:i+1]); err != nil {
+				return err
+			}
+
+			// Update validator set from this header if it has one.
+			if batch[i].ValidatorSet != nil {
+				expectedHash := batch[i].Header.ValidatorsHash
+				actualHash := batch[i].ValidatorSet.Hash()
+				if bytes.Equal(expectedHash, actualHash) {
+					r.validatorsMtx.Lock()
+					validators = batch[i].ValidatorSet
+					r.currentValidators = validators
+					r.validatorsMtx.Unlock()
+				}
+			}
+
+			// Recursively verify the rest of the batch with updated validators.
+			return r.verifyBatchRecursive(batch[i+1:], validators)
+		}
+	}
+	return fmt.Errorf("no header in batch has 1/3+ overlap with trusted validators")
+}
+
+// verifyBatchRecursive is a helper for verifyBatchWithIntermediateTrust.
+func (r *Reactor) verifyBatchRecursive(batch []*SignedHeader, validators *types.ValidatorSet) error {
+	if len(batch) == 0 {
+		return nil
+	}
+
+	// Try to skip verify the last header.
+	lastHeader := batch[len(batch)-1]
+	if err := r.skipVerifyHeader(lastHeader, validators); err != nil {
+		// Need to find another intermediate anchor.
+		return r.verifyBatchWithIntermediateTrust(batch, validators)
+	}
+
+	// Verify chain linkage for this sub-batch.
+	for i := len(batch) - 1; i > 0; i-- {
+		current := batch[i]
+		prev := batch[i-1]
+		expectedHash := prev.Header.Hash()
+		if !bytes.Equal(current.Header.LastBlockID.Hash, expectedHash) {
+			return fmt.Errorf("header %d LastBlockID.Hash %X doesn't match header %d hash %X",
+				current.Header.Height, current.Header.LastBlockID.Hash,
+				prev.Header.Height, expectedHash)
+		}
+		if !bytes.Equal(current.Header.ValidatorsHash, prev.Header.NextValidatorsHash) {
+			return fmt.Errorf("header %d ValidatorsHash %X doesn't match header %d NextValidatorsHash %X",
+				current.Header.Height, current.Header.ValidatorsHash,
+				prev.Header.Height, prev.Header.NextValidatorsHash)
+		}
+	}
+
+	// Update validator set from this sub-batch.
+	for i := len(batch) - 1; i >= 0; i-- {
+		if batch[i].ValidatorSet != nil {
+			expectedHash := batch[i].Header.ValidatorsHash
+			actualHash := batch[i].ValidatorSet.Hash()
+			if bytes.Equal(expectedHash, actualHash) {
+				r.validatorsMtx.Lock()
+				r.currentValidators = batch[i].ValidatorSet
+				r.validatorsMtx.Unlock()
+			}
+			break
+		}
+	}
+
+	return nil
 }
 
 // sendGetHeaders sends a GetHeaders request to a peer.
@@ -739,4 +895,14 @@ func (r *Reactor) GetCommit(height int64) *types.Commit {
 func (r *Reactor) PeersCount() int {
 	_, _, numPeers := r.pool.GetStatus()
 	return numPeers
+}
+
+// UpdateValidatorSet updates the reactor's current validator set.
+// Called by consensus when a new block is committed that changes the validator set.
+// This ensures headersync has the correct validator set when catching up to tip.
+func (r *Reactor) UpdateValidatorSet(validators *types.ValidatorSet) {
+	r.validatorsMtx.Lock()
+	defer r.validatorsMtx.Unlock()
+	r.currentValidators = validators
+	r.Logger.Info("Validator set updated by consensus", "hash", validators.Hash())
 }
