@@ -678,7 +678,7 @@ FOR_LOOP:
 			bcR.Logger.Info("Blocksync block processed",
 				"height", first.Height,
 				"max_peer_height", bcR.pool.MaxPeerHeight(),
-				"consecutive_ready", bcR.pool.CountConsecutiveReady(),
+				"next_blocks", bcR.pool.countNextBlocks(),
 				"blocks_synced", blocksSynced,
 			)
 

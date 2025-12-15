@@ -259,9 +259,9 @@ func (pool *BlockPool) GetStatus() (height int64, numPending int32, lenRequester
 	return pool.height, atomic.LoadInt32(&pool.numPending), len(pool.requesters)
 }
 
-// CountConsecutiveReady returns the number of consecutive blocks that are
+// countNextBlocks returns the number of consecutive blocks that are
 // ready (downloaded) starting from pool.height.
-func (pool *BlockPool) CountConsecutiveReady() int {
+func (pool *BlockPool) countNextBlocks() int {
 	pool.mtx.Lock()
 	defer pool.mtx.Unlock()
 
@@ -274,13 +274,6 @@ func (pool *BlockPool) CountConsecutiveReady() int {
 		count++
 	}
 	return count
-}
-
-// NumPeers returns the number of peers in the pool.
-func (pool *BlockPool) NumPeers() int {
-	pool.mtx.Lock()
-	defer pool.mtx.Unlock()
-	return len(pool.peers)
 }
 
 // IsCaughtUp returns true if this node is caught up, false - otherwise.
@@ -465,10 +458,6 @@ func (pool *BlockPool) MaxPeerHeight() int64 {
 }
 
 // UpdatePeerHeight updates peer height based on NewRoundStepMessage from consensus.
-// Called by consensus when receiving NewRoundStepMessage from peers.
-// This updates maxPeerHeight and the individual peer's height (but not statusHeight).
-// The peer.height can be higher than peer.statusHeight due to gossip arriving faster
-// than StatusResponse. SetPeerRange only bans if StatusResponse < previous StatusResponse.
 func (pool *BlockPool) UpdatePeerHeight(peerID p2p.ID, height int64) {
 	pool.mtx.Lock()
 	defer pool.mtx.Unlock()
@@ -508,7 +497,6 @@ func (pool *BlockPool) SetPeerRange(peerID p2p.ID, base int64, height int64) {
 		}
 		peer.base = base
 		peer.statusHeight = height
-		// Update height if StatusResponse reports higher than current (gossip-derived) height
 		if height > peer.height {
 			peer.height = height
 		}
@@ -717,8 +705,8 @@ type bpPeer struct {
 	didTimeout   bool
 	curRate      int64
 	numPending   int32
-	height       int64 // max height (used for block requests), can come from StatusResponse or gossip
-	statusHeight int64 // height from last StatusResponse (authoritative, used for ban checking)
+	height       int64
+	statusHeight int64
 	base         int64
 	pool         *BlockPool
 	id           p2p.ID

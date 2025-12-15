@@ -178,9 +178,10 @@ type State struct {
 	nSteps int
 
 	// some functions can be overwritten for testing
-	decideProposal func(height int64, round int32)
-	doPrevote      func(height int64, round int32)
-	setProposal    func(proposal *types.Proposal) error
+	decideProposal        func(height int64, round int32)
+	doPrevote             func(height int64, round int32)
+	setProposal           func(proposal *types.Proposal) error
+	StartedPrecommitSleep atomic.Bool
 
 	// configurable consensus phase delays (set via RPC)
 	consensusDelays ConsensusDelays
@@ -1159,9 +1160,11 @@ func (cs *State) handleMsg(mi msgInfo) {
 }
 
 func (cs *State) handleTimeout(ti timeoutInfo, rs cstypes.RoundState) {
+	cs.Logger.Trace("received tock", "timeout", ti.Duration, "height", ti.Height, "round", ti.Round, "step", ti.Step)
+
 	// timeouts must be for current height, round, step
 	if ti.Height != rs.Height || ti.Round < rs.Round || (ti.Round == rs.Round && ti.Step < rs.Step) {
-		cs.Logger.Debug("ignoring tock because we are ahead", "height", rs.Height, "round", rs.Round, "step", rs.Step)
+		cs.Logger.Trace("ignoring tock because we are ahead", "height", rs.Height, "round", rs.Round, "step", rs.Step)
 		return
 	}
 
@@ -1358,7 +1361,7 @@ func (cs *State) enterPropose(height int64, round int32) {
 		return
 	}
 
-	// Configurable propose delay (via RPC)
+	// Configurable propose delay (via unsafe PC)
 	proposeDelay := cs.consensusDelays.GetProposeDelay()
 	if proposeDelay > 0 {
 		logger.Debug("delaying propose", "delay", proposeDelay)
@@ -1581,7 +1584,7 @@ func (cs *State) enterPrevote(height int64, round int32) {
 		return
 	}
 
-	// Configurable prevote delay (via RPC)
+	// Configurable prevote delay (via unsafe RPC)
 	prevoteDelay := cs.consensusDelays.GetPrevoteDelay()
 	if prevoteDelay > 0 {
 		logger.Debug("delaying prevote", "delay", prevoteDelay)
@@ -1742,12 +1745,11 @@ func (cs *State) enterPrecommit(height int64, round int32) {
 		return
 	}
 
-	// Apply existing app-provided precommit delay (if any)
-	existingWaitTime := cs.precommitDelay()
-	if existingWaitTime > 0 {
-		logger.Debug("delaying precommit", "delay", existingWaitTime)
+	if cs.StartedPrecommitSleep.CompareAndSwap(false, true) {
+		waitTime := cs.precommitDelay()
+		logger.Debug("delaying precommit", "delay", waitTime)
 		cs.unlockAll()
-		t := time.NewTimer(existingWaitTime)
+		t := time.NewTimer(waitTime)
 		select {
 		case <-cs.Quit():
 			cs.lockAll()
@@ -1755,6 +1757,11 @@ func (cs *State) enterPrecommit(height int64, round int32) {
 		case <-t.C:
 		}
 		cs.lockAll()
+		cs.StartedPrecommitSleep.Store(false)
+	} else {
+		logger.Debug("already entered precommit delay")
+		// if any other routine tries to enter precommit, we just return
+		return
 	}
 
 	logger.Debug("entering precommit step", "current", log.NewLazySprintf("%v/%v/%v", cs.rs.Height, cs.rs.Round, cs.rs.Step))
@@ -1922,13 +1929,10 @@ func (cs *State) enterCommit(height int64, commitRound int32) {
 		cs.updateRoundStep(cs.rs.Round, cstypes.RoundStepCommit)
 		cs.rs.CommitRound = commitRound
 		cs.rs.CommitTime = cmttime.Now()
-		logger.Info("enterCommit: about to call newStep()")
 		cs.newStep()
-		logger.Info("enterCommit: newStep() returned, calling tryFinalizeCommit")
 
 		// Maybe finalize immediately.
 		cs.tryFinalizeCommit(height)
-		logger.Info("enterCommit: tryFinalizeCommit returned, defer complete")
 	}()
 
 	blockID, ok := cs.rs.Votes.Precommits(commitRound).TwoThirdsMajority()
