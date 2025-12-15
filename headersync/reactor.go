@@ -116,9 +116,6 @@ func NewReactor(
 	if startHeight == 1 && initialHeight > 1 {
 		startHeight = initialHeight
 	}
-	fmt.Printf("headersync NEW REACTOR: headerHeight=%d blockHeight=%d baseHeight=%d initialHeight=%d startHeight=%d validators=%X\n",
-		headerHeight, blockHeight, baseHeight, initialHeight, startHeight, validators.Hash())
-
 	r := &Reactor{
 		pool:              NewHeaderPool(startHeight, batchSize),
 		stateStore:        stateStore,
@@ -192,7 +189,6 @@ func (r *Reactor) AddPeer(peer p2p.Peer) {
 	if height > 0 {
 		height--
 	}
-	r.Logger.Info("headersync add peer", "peer", peer.ID(), "advertised_height", height) // TODO(evan): remove
 	peer.Send(p2p.Envelope{
 		ChannelID: HeaderSyncChannel,
 		Message: &hsproto.StatusResponse{
@@ -204,7 +200,6 @@ func (r *Reactor) AddPeer(peer p2p.Peer) {
 
 // RemovePeer implements Reactor by removing the peer from the pool.
 func (r *Reactor) RemovePeer(peer p2p.Peer, _ interface{}) {
-	r.Logger.Info("headersync remove peer", "peer", peer.ID()) // TODO(evan): remove
 	r.pool.RemovePeer(peer.ID())
 
 	// Clean up rate limiting state for this peer.
@@ -287,28 +282,15 @@ func (r *Reactor) Receive(e p2p.Envelope) {
 
 // respondGetHeaders responds to a GetHeaders request.
 func (r *Reactor) respondGetHeaders(msg *hsproto.GetHeaders, src p2p.Peer) {
-	storeBase := r.blockStore.Base()
-	storeHeight := r.blockStore.Height()
-	fmt.Printf("respondGetHeaders: start=%d count=%d from=%s (our base=%d height=%d)\n",
-		msg.StartHeight, msg.Count, src.ID(), storeBase, storeHeight)
-
 	count := msg.Count
 	if count > MaxHeaderBatchSize {
 		count = MaxHeaderBatchSize
-	}
-
-	// Check if requested range is below our base
-	if msg.StartHeight < storeBase {
-		fmt.Printf("respondGetHeaders: requested height %d is below our base %d, sending empty\n",
-			msg.StartHeight, storeBase)
 	}
 
 	headers := make([]*hsproto.SignedHeader, 0, count)
 	for h := msg.StartHeight; h < msg.StartHeight+count; h++ {
 		meta := r.blockStore.LoadBlockMeta(h)
 		if meta == nil {
-			fmt.Printf("respondGetHeaders: no block meta at height %d (base=%d), returning %d headers\n",
-				h, storeBase, len(headers))
 			break // Return what we have
 		}
 
@@ -317,8 +299,6 @@ func (r *Reactor) respondGetHeaders(msg *hsproto.GetHeaders, src p2p.Peer) {
 			commit = r.blockStore.LoadBlockCommit(h)
 		}
 		if commit == nil {
-			fmt.Printf("respondGetHeaders: no commit at height %d, returning %d headers\n",
-				h, len(headers))
 			break
 		}
 
@@ -354,8 +334,6 @@ func (r *Reactor) respondGetHeaders(msg *hsproto.GetHeaders, src p2p.Peer) {
 
 		headers = append(headers, sh)
 	}
-	fmt.Printf("respondGetHeaders: sending %d headers starting at %d to %s\n",
-		len(headers), msg.StartHeight, src.ID())
 
 	sent := src.TrySend(p2p.Envelope{
 		ChannelID: HeaderSyncChannel,
@@ -366,7 +344,7 @@ func (r *Reactor) respondGetHeaders(msg *hsproto.GetHeaders, src p2p.Peer) {
 	})
 
 	if !sent {
-		fmt.Printf("respondGetHeaders: TrySend FAILED to %s\n", src.ID())
+		r.Logger.Debug("Failed to send headers response", "peer", src.ID())
 	}
 }
 
@@ -762,7 +740,6 @@ func (r *Reactor) sendGetHeaders(req HeaderBatchRequest) {
 // Peers use push-based status updates (broadcasting when height changes)
 // rather than pull-based requests, saving a round trip.
 func (r *Reactor) BroadcastStatus() {
-	fmt.Println("broadcasting status", r.blockStore.Base(), r.blockStore.HeaderHeight())
 	r.Switch.Broadcast(p2p.Envelope{
 		ChannelID: HeaderSyncChannel,
 		Message: &hsproto.StatusResponse{

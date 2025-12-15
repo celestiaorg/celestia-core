@@ -273,7 +273,6 @@ func (blockProp *Reactor) InitPeer(peer p2p.Peer) (p2p.Peer, error) {
 // or request data.
 func (blockProp *Reactor) AddPeer(peer p2p.Peer) {
 	peerState := newPeerState(blockProp.ctx, peer, blockProp.Logger)
-	blockProp.Logger.Info("propagation add peer", "peer", peer.ID())
 
 	consensusState := peer.Get(types.PeerStateKey)
 
@@ -313,7 +312,6 @@ func (blockProp *Reactor) AddPeer(peer p2p.Peer) {
 func (blockProp *Reactor) RemovePeer(peer p2p.Peer, reason interface{}) {
 	blockProp.mtx.Lock()
 	defer blockProp.mtx.Unlock()
-	blockProp.Logger.Info("propagation remove peer", "peer", peer.ID(), "reason", reason)
 	p := blockProp.peerstate[peer.ID()]
 	if p != nil {
 		p.cancel()
@@ -376,7 +374,6 @@ func (blockProp *Reactor) Receive(e p2p.Envelope) {
 // Prune removes all peer and proposal state from the block propagation reactor.
 // This should be called only after a block has been committed.
 func (blockProp *Reactor) Prune(committedHeight int64) {
-	fmt.Println("pruning", committedHeight)
 	prunePast := committedHeight
 	peers := blockProp.getPeers()
 	for _, peer := range peers {
