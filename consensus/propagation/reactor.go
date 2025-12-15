@@ -313,7 +313,6 @@ func (blockProp *Reactor) AddPeer(peer p2p.Peer) {
 func (blockProp *Reactor) RemovePeer(peer p2p.Peer, reason interface{}) {
 	blockProp.mtx.Lock()
 	defer blockProp.mtx.Unlock()
-	fmt.Println("removing peer")
 	blockProp.Logger.Info("propagation remove peer", "peer", peer.ID(), "reason", reason)
 	p := blockProp.peerstate[peer.ID()]
 	if p != nil {

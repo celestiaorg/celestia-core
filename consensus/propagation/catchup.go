@@ -158,7 +158,6 @@ func fmtMissingHeights(missing []*MissingPartsInfo) string {
 // It iterates through pending blocks (ordered by height - lowest first) and
 // requests missing parts from peers that are at or above each block's height.
 func (blockProp *Reactor) requestMissingParts() {
-	fmt.Println("requesting missing parts call")
 	if !blockProp.started.Load() {
 		return
 	}
@@ -254,8 +253,6 @@ func (blockProp *Reactor) requestMissingParts() {
 					"height", info.Height, "round", info.Round)
 				continue
 			}
-
-			fmt.Println("want parts sent", info.Height, mc)
 
 			blockProp.Logger.Debug("sent want parts", "peer", peer.peer.ID(), "height", info.Height, "round", info.Round,
 				"requested_parts", len(mc.GetTrueIndices()), "missing_parts_count", missingPartsCount)

@@ -460,7 +460,7 @@ func (blockProp *Reactor) handleRecoveryPart(peer p2p.ID, part *proptypes.Recove
 	// Feed blocksync/catchup path first so pendingBlocks can track progress even
 	// when the legacy proposal cache doesn't have this height yet.
 	if blockProp.pendingBlocks != nil && proof != nil {
-		added, complete, err := blockProp.pendingBlocks.HandlePart(part.Height, part.Round, part, proof)
+		_, _, err := blockProp.pendingBlocks.HandlePart(part.Height, part.Round, part, proof)
 		if err != nil {
 			blockProp.Logger.Debug("pendingBlocks handle part failed", "peer", peer, "height", part.Height, "round", part.Round, "part", part.Index, "err", err)
 		}

@@ -252,7 +252,6 @@ func (r *Reactor) checkPeerRateLimit(peerID p2p.ID) bool {
 
 // Receive implements Reactor by handling incoming messages.
 func (r *Reactor) Receive(e p2p.Envelope) {
-	fmt.Println("receiving headersync")
 	if err := ValidateMsg(e.Message); err != nil {
 		r.Logger.Error("Peer sent invalid message", "peer", e.Src, "msg", e.Message, "err", err)
 		r.Switch.StopPeerForError(e.Src, err, r.String())
@@ -263,7 +262,6 @@ func (r *Reactor) Receive(e p2p.Envelope) {
 
 	switch msg := e.Message.(type) {
 	case *hsproto.StatusResponse:
-		fmt.Println("received status response", msg.Height, msg.Base)
 		// SetPeerRange returns false if the peer regresses (lower height/base).
 		if !r.pool.SetPeerRange(e.Src.ID(), msg.Base, msg.Height) {
 			r.Switch.StopPeerForError(e.Src, errors.New("status update with non-increasing height"), r.String())
@@ -273,7 +271,6 @@ func (r *Reactor) Receive(e p2p.Envelope) {
 		r.tryMakeRequests()
 
 	case *hsproto.GetHeaders:
-		fmt.Println("got request for headers", msg.StartHeight, e.Src.ID())
 		if !r.checkPeerRateLimit(e.Src.ID()) {
 			r.Logger.Debug("Rate limiting GetHeaders request", "peer", e.Src.ID())
 			return
@@ -281,7 +278,6 @@ func (r *Reactor) Receive(e p2p.Envelope) {
 		r.respondGetHeaders(msg, e.Src)
 
 	case *hsproto.HeadersResponse:
-		fmt.Println("received header response", len(msg.Headers))
 		r.handleHeaders(msg, e.Src)
 
 	default:
@@ -377,7 +373,6 @@ func (r *Reactor) respondGetHeaders(msg *hsproto.GetHeaders, src p2p.Peer) {
 // handleHeaders processes a HeadersResponse.
 func (r *Reactor) handleHeaders(msg *hsproto.HeadersResponse, src p2p.Peer) {
 	if len(msg.Headers) == 0 {
-		fmt.Println("handleHeaders: empty response from", src.ID(), "for startHeight", msg.StartHeight)
 		r.Logger.Debug("Received empty headers response", "peer", src.ID(), "startHeight", msg.StartHeight)
 		// Empty response means peer doesn't have the headers (e.g., pruned).
 		// Clear the batch so we can try a different peer.
@@ -476,7 +471,6 @@ func (r *Reactor) tryProcessHeaders() {
 
 // tryMakeRequests sends batch requests if slots are available.
 func (r *Reactor) tryMakeRequests() {
-	fmt.Println("tryMakeRequests")
 	for {
 		req := r.pool.GetNextRequest()
 		if req == nil {
@@ -742,10 +736,8 @@ func (r *Reactor) verifyBatchRecursive(batch []*SignedHeader, validators *types.
 
 // sendGetHeaders sends a GetHeaders request to a peer.
 func (r *Reactor) sendGetHeaders(req HeaderBatchRequest) {
-	fmt.Println("send get headers!", req.PeerID, "start:", req.StartHeight, "count:", req.Count)
 	peer := r.Switch.Peers().Get(req.PeerID)
 	if peer == nil {
-		fmt.Println("sendGetHeaders: peer not found", req.PeerID)
 		return
 	}
 
@@ -761,9 +753,8 @@ func (r *Reactor) sendGetHeaders(req HeaderBatchRequest) {
 			Count:       req.Count,
 		},
 	})
-	fmt.Println("sendGetHeaders: TrySend result:", sent, "peer:", req.PeerID)
-	if sent {
-		fmt.Println("sent headers request", req.StartHeight, req.Count)
+	if !sent {
+		r.Logger.Error("failed to send GetHeaders request, peer queue full.", "peer", req.PeerID)
 	}
 }
 
