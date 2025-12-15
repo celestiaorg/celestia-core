@@ -82,6 +82,9 @@ type Reactor struct {
 
 	switchToConsensusMs int
 
+	// switchMtx protects pool switching operations
+	switchMtx sync.Mutex
+
 	metrics *Metrics
 }
 
@@ -156,79 +159,59 @@ func (bcR *Reactor) SetLogger(l log.Logger) {
 // OnStart implements service.Service.
 func (bcR *Reactor) OnStart() error {
 	if bcR.blockSync {
-		err := bcR.pool.Start()
-		if err != nil {
-			return err
-		}
-		bcR.poolRoutineWg.Add(1)
-		go func() {
-			defer bcR.poolRoutineWg.Done()
-			bcR.poolRoutine(false)
-		}()
+		return bcR.startPoolRoutine(false)
 	}
 	return nil
+}
+
+// startPoolRoutine starts the pool and the pool routine goroutine.
+func (bcR *Reactor) startPoolRoutine(stateSynced bool) error {
+	if err := bcR.pool.Start(); err != nil {
+		return err
+	}
+	bcR.poolRoutineWg.Add(1)
+	go func() {
+		defer bcR.poolRoutineWg.Done()
+		bcR.poolRoutine(stateSynced)
+	}()
+	return nil
+}
+
+// stopPoolRoutine stops the pool and waits for the pool routine to exit.
+func (bcR *Reactor) stopPoolRoutine() {
+	if err := bcR.pool.Stop(); err != nil {
+		bcR.Logger.Error("Error stopping pool", "err", err)
+	}
+	bcR.poolRoutineWg.Wait()
 }
 
 // SwitchToBlockSync is called by the state sync reactor or consensus reactor
 // when switching to block sync mode.
 func (bcR *Reactor) SwitchToBlockSync(state sm.State) error {
+	bcR.switchMtx.Lock()
+	defer bcR.switchMtx.Unlock()
+
 	bcR.Logger.Info("SwitchToBlockSync", "height", state.LastBlockHeight)
+
+	// Stop pool if running
+	if bcR.pool.IsRunning() {
+		bcR.stopPoolRoutine()
+	}
+
+	// Reset pool state and set new height
+	if err := bcR.pool.Reset(); err != nil {
+		return fmt.Errorf("failed to reset pool: %w", err)
+	}
+	bcR.pool.SetHeight(state.LastBlockHeight + 1)
 
 	bcR.blockSync = true
 	bcR.initialState = state
 
-	// Reset pool state for re-entry
-	bcR.pool.mtx.Lock()
-	bcR.pool.height = state.LastBlockHeight + 1
-	// Stop peer timeout timers and clear stale peer data
-	for _, peer := range bcR.pool.peers {
-		if peer.timeout != nil {
-			peer.timeout.Stop()
-		}
-	}
-	bcR.pool.peers = make(map[p2p.ID]*bpPeer)
-	bcR.pool.sortedPeers = nil
-	bcR.pool.maxPeerHeight = 0
-	// Stop and clear any old requesters to prevent leaked goroutines
-	for _, requester := range bcR.pool.requesters {
-		if requester.IsRunning() {
-			if err := requester.Stop(); err != nil {
-				bcR.Logger.Error("Error stopping requester", "height", requester.height, "err", err)
-			}
-		}
-	}
-	bcR.pool.requesters = make(map[int64]*bpRequester)
-	bcR.pool.numPending = 0
-	bcR.pool.mtx.Unlock()
-
-	// Wait for any existing poolRoutine to finish before starting a new one
-	bcR.poolRoutineWg.Wait()
-
-	// Start the pool if not already running
-	// If the pool was previously stopped, we need to Reset() it first
-	if !bcR.pool.IsRunning() {
-		// Try to reset the pool first (in case it was stopped)
-		if err := bcR.pool.Reset(); err != nil {
-			bcR.Logger.Debug("Pool reset returned error (may be expected if not stopped)", "err", err)
-		}
-		if err := bcR.pool.Start(); err != nil {
-			bcR.Logger.Error("Error starting pool", "err", err)
-			return fmt.Errorf("failed to start pool: %w", err)
-		}
-	}
-
 	// Request fresh status from all connected peers
 	bcR.requestStatusFromPeers()
 
-	// Start pool routine
-	// Pass true to skip WAL replay when switching back to consensus,
-	// since we came from a cleanly stopped consensus (not a crash)
-	bcR.poolRoutineWg.Add(1)
-	go func() {
-		defer bcR.poolRoutineWg.Done()
-		bcR.poolRoutine(true)
-	}()
-	return nil
+	// Start pool routine (stateSynced=true to skip WAL replay)
+	return bcR.startPoolRoutine(true)
 }
 
 // requestStatusFromPeers sends status requests to all connected peers
@@ -247,10 +230,7 @@ func (bcR *Reactor) requestStatusFromPeers() {
 // OnStop implements service.Service.
 func (bcR *Reactor) OnStop() {
 	if bcR.blockSync {
-		if err := bcR.pool.Stop(); err != nil {
-			bcR.Logger.Error("Error stopping pool", "err", err)
-		}
-		bcR.poolRoutineWg.Wait()
+		bcR.stopPoolRoutine()
 	}
 }
 

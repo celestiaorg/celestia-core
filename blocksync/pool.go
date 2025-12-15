@@ -151,10 +151,50 @@ func (pool *BlockPool) OnStart() error {
 	return nil
 }
 
-// OnReset implements service.Service to allow the pool to be restarted after Stop.
+// OnStop implements service.Service by stopping all requesters and peer timers.
+func (pool *BlockPool) OnStop() {
+	pool.mtx.Lock()
+	defer pool.mtx.Unlock()
+
+	// Stop all peer timeout timers
+	for _, peer := range pool.peers {
+		if peer.timeout != nil {
+			peer.timeout.Stop()
+		}
+	}
+
+	// Stop all requesters
+	for _, requester := range pool.requesters {
+		if requester.IsRunning() {
+			if err := requester.Stop(); err != nil {
+				pool.Logger.Error("error stopping requester", "err", err)
+			}
+		}
+	}
+}
+
+// OnReset implements service.Service by resetting pool state for restart.
 func (pool *BlockPool) OnReset() error {
-	// Pool state is reset externally by SwitchToBlockSync before calling Reset
+	pool.mtx.Lock()
+	defer pool.mtx.Unlock()
+
+	pool.peers = make(map[p2p.ID]*bpPeer)
+	pool.sortedPeers = nil
+	pool.maxPeerHeight = 0
+	pool.requesters = make(map[int64]*bpRequester)
+	pool.numPending = 0
+	pool.lastReceivedBlocks = newBlockStats(blockSizeBufferCapacity)
+	pool.recalculateParams()
+
 	return nil
+}
+
+// SetHeight sets the pool's starting height. Must be called before Start.
+func (pool *BlockPool) SetHeight(height int64) {
+	pool.mtx.Lock()
+	defer pool.mtx.Unlock()
+	pool.height = height
+	pool.startHeight = height
 }
 
 // recalculateParams updates request limit and retry timeout based on block size
