@@ -846,7 +846,7 @@ func TestHandleRecoveryPart_LiveConsensus(t *testing.T) {
 	case part := <-reactor1.GetPartChan():
 		require.Equal(t, height, part.Height)
 		require.Equal(t, round, part.Round)
-		require.Equal(t, uint32(0), part.Part.Index)
+		require.Equal(t, uint32(0), part.Index)
 	case <-time.After(time.Second):
 		t.Fatal("timeout waiting for part on partChan - part should be delivered for live consensus height")
 	}

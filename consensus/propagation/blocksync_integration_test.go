@@ -1738,10 +1738,9 @@ func TestBlocksyncErrorRecovery_InvalidParts(t *testing.T) {
 		Data:   cmtrand.Bytes(len(bd1.ps.GetPart(0).Bytes.Bytes())), // Random data
 	}
 	proof := bd1.cb.GetProof(0)
-	added, _, err := pendingBlocks.HandlePart(1, 0, corruptedPart, proof)
+	added, _, _ := pendingBlocks.HandlePart(1, 0, corruptedPart, proof)
 	// The part should be rejected because the hash won't match the proof
 	require.False(t, added, "corrupted part should not be added")
-	// Note: err may or may not be set depending on implementation - the key is that added=false
 
 	// Verify the block is still active (not corrupted)
 	pb := pendingBlocks.GetBlock(1)
@@ -1755,6 +1754,7 @@ func TestBlocksyncErrorRecovery_InvalidParts(t *testing.T) {
 		Index:  0,
 		Data:   bd1.ps.GetPart(0).Bytes.Bytes(),
 	}
+	var err error
 	added, _, err = pendingBlocks.HandlePart(999, 0, wrongHeightPart, proof)
 	require.False(t, added, "part for unknown height should not be added")
 	_ = err // Error is expected but not required
@@ -2089,7 +2089,7 @@ func TestBlocksyncErrorRecovery_MultipleSimultaneousFailures(t *testing.T) {
 					Index:  i,
 					Data:   part.Bytes.Bytes(),
 				}
-				pendingBlocks.HandlePart(height, 0, validPart, proof)
+				_, _, _ = pendingBlocks.HandlePart(height, 0, validPart, proof)
 			}
 
 			// peer2: send duplicates of what peer1 sent
@@ -2100,7 +2100,7 @@ func TestBlocksyncErrorRecovery_MultipleSimultaneousFailures(t *testing.T) {
 					Index:  i,
 					Data:   part.Bytes.Bytes(),
 				}
-				pendingBlocks.HandlePart(height, 0, duplicatePart, proof)
+				_, _, _ = pendingBlocks.HandlePart(height, 0, duplicatePart, proof)
 			}
 
 			// peer2: also try to send some corrupted parts
@@ -2111,7 +2111,7 @@ func TestBlocksyncErrorRecovery_MultipleSimultaneousFailures(t *testing.T) {
 					Index:  i,
 					Data:   cmtrand.Bytes(len(part.Bytes.Bytes())), // Corrupted
 				}
-				pendingBlocks.HandlePart(height, 0, corruptedPart, proof) // Should be rejected
+				_, _, _ = pendingBlocks.HandlePart(height, 0, corruptedPart, proof) // Should be rejected
 			}
 
 			// peer3: complete the remaining parts
@@ -2122,7 +2122,7 @@ func TestBlocksyncErrorRecovery_MultipleSimultaneousFailures(t *testing.T) {
 					Index:  i,
 					Data:   part.Bytes.Bytes(),
 				}
-				pendingBlocks.HandlePart(height, 0, validPart, proof)
+				_, _, _ = pendingBlocks.HandlePart(height, 0, validPart, proof)
 			}
 		}
 	}

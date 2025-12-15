@@ -53,16 +53,6 @@ type headerBatch struct {
 	received    bool
 }
 
-// peerError represents an error associated with a peer.
-type peerError struct {
-	err    error
-	peerID p2p.ID
-}
-
-func (e peerError) Error() string {
-	return fmt.Sprintf("error with peer %v: %s", e.peerID, e.err.Error())
-}
-
 // hsPeer represents a peer in the header sync pool.
 type hsPeer struct {
 	id         p2p.ID

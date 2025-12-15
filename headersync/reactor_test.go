@@ -91,7 +91,6 @@ func makeTestHeader(height int64, valHash, nextValHash []byte, lastBlockID types
 	}
 }
 
-
 // TestReactor_VerifyChainLinkageBackward tests backward chain linkage verification.
 func TestReactor_VerifyChainLinkageBackward(t *testing.T) {
 	vals := makeTestValidatorSet(4)

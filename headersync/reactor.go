@@ -106,7 +106,6 @@ func NewReactor(
 	// with existing blockstores that may not have HeaderHeight set.
 	headerHeight := blockStore.HeaderHeight()
 	blockHeight := blockStore.Height()
-	baseHeight := blockStore.Base()
 	startHeight := headerHeight + 1
 	if blockHeight > headerHeight {
 		// Blocks exist but HeaderHeight wasn't tracked - use block height
