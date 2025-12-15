@@ -84,6 +84,29 @@ type evidencePool interface {
 	ReportConflictingVotes(voteA, voteB *types.Vote)
 }
 
+// ConsensusDelays holds configurable delays for consensus phases.
+// All durations stored as nanoseconds in atomic.Int64 for thread-safety.
+type ConsensusDelays struct {
+	ProposeDelay atomic.Int64
+	PrevoteDelay atomic.Int64
+}
+
+func (d *ConsensusDelays) GetProposeDelay() time.Duration {
+	return time.Duration(d.ProposeDelay.Load())
+}
+
+func (d *ConsensusDelays) SetProposeDelay(dur time.Duration) {
+	d.ProposeDelay.Store(int64(dur))
+}
+
+func (d *ConsensusDelays) GetPrevoteDelay() time.Duration {
+	return time.Duration(d.PrevoteDelay.Load())
+}
+
+func (d *ConsensusDelays) SetPrevoteDelay(dur time.Duration) {
+	d.PrevoteDelay.Store(int64(dur))
+}
+
 // State handles execution of the consensus algorithm.
 // It processes votes and proposals, and upon reaching agreement,
 // commits blocks to the chain and executes them against the application.
@@ -150,6 +173,11 @@ type State struct {
 	doPrevote             func(height int64, round int32)
 	setProposal           func(proposal *types.Proposal) error
 	StartedPrecommitSleep atomic.Bool
+	StartedProposeSleep   atomic.Bool
+	StartedPrevoteSleep   atomic.Bool
+
+	// configurable consensus phase delays (set via RPC)
+	consensusDelays ConsensusDelays
 
 	// closed when we finish shutting down
 	done chan struct{}
@@ -273,6 +301,18 @@ func SetGossipDataEnabled(enabled bool) StateOption {
 	return func(cs *State) {
 		cs.gossipDataEnabled.Store(enabled)
 	}
+}
+
+// SetConsensusDelays sets delays for consensus phases (0 = no delay).
+func (cs *State) SetConsensusDelays(propose, prevote time.Duration) {
+	cs.consensusDelays.SetProposeDelay(propose)
+	cs.consensusDelays.SetPrevoteDelay(prevote)
+}
+
+// GetConsensusDelays returns current delays for consensus phases.
+func (cs *State) GetConsensusDelays() (propose, prevote time.Duration) {
+	return cs.consensusDelays.GetProposeDelay(),
+		cs.consensusDelays.GetPrevoteDelay()
 }
 
 // OfflineStateSyncHeight indicates the height at which the node
@@ -1298,6 +1338,28 @@ func (cs *State) enterPropose(height int64, round int32) {
 		return
 	}
 
+	// Configurable propose delay (via unsafe RPC)
+	proposeDelay := cs.consensusDelays.GetProposeDelay()
+	if proposeDelay > 0 {
+		if cs.StartedProposeSleep.CompareAndSwap(false, true) {
+			logger.Debug("delaying propose", "delay", proposeDelay)
+			cs.unlockAll()
+			t := time.NewTimer(proposeDelay)
+			select {
+			case <-cs.Quit():
+				cs.lockAll()
+				cs.StartedProposeSleep.Store(false)
+				return
+			case <-t.C:
+			}
+			cs.lockAll()
+			cs.StartedProposeSleep.Store(false)
+		} else {
+			logger.Debug("already entered propose delay")
+			return
+		}
+	}
+
 	logger.Debug("entering propose step", "current", log.NewLazySprintf("%v/%v/%v", cs.rs.Height, cs.rs.Round, cs.rs.Step))
 
 	defer func() {
@@ -1504,6 +1566,28 @@ func (cs *State) enterPrevote(height int64, round int32) {
 			"current", log.NewLazySprintf("%v/%v/%v", cs.rs.Height, cs.rs.Round, cs.rs.Step),
 		)
 		return
+	}
+
+	// Configurable prevote delay (via unsafe RPC)
+	prevoteDelay := cs.consensusDelays.GetPrevoteDelay()
+	if prevoteDelay > 0 {
+		if cs.StartedPrevoteSleep.CompareAndSwap(false, true) {
+			logger.Debug("delaying prevote", "delay", prevoteDelay)
+			cs.unlockAll()
+			t := time.NewTimer(prevoteDelay)
+			select {
+			case <-cs.Quit():
+				cs.lockAll()
+				cs.StartedPrevoteSleep.Store(false)
+				return
+			case <-t.C:
+			}
+			cs.lockAll()
+			cs.StartedPrevoteSleep.Store(false)
+		} else {
+			logger.Debug("already entered prevote delay")
+			return
+		}
 	}
 
 	defer func() {
