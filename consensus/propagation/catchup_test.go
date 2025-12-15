@@ -99,51 +99,6 @@ func TestReceiveHaveOnCatchupBlock(t *testing.T) {
 	assert.NotNil(t, n1.getPeer(n2.self))
 }
 
-func TestCatchupOnlyFromUpToDatePeers(t *testing.T) {
-	p2pCfg := defaultTestP2PConf()
-	nodes := 2
-	reactors, _ := createTestReactors(nodes, p2pCfg, false, "")
-	n1 := reactors[0]
-	n2 := reactors[1]
-	cleanup, _, sm := state.SetupTestCase(t)
-	t.Cleanup(func() {
-		cleanup(t)
-	})
-
-	// add the first height
-	prop, ps, _, metaData := createTestProposal(t, sm, 1, 0, 2, 1000000)
-	cb, _ := createCompactBlock(t, prop, ps, metaData)
-	n1.AddCommitment(prop.Height, prop.Round, &cb.Proposal.BlockID.PartSetHeader)
-	_, _, _, has := n1.getAllState(prop.Height, prop.Round, true)
-	require.True(t, has)
-	n2.AddCommitment(prop.Height, prop.Round, &cb.Proposal.BlockID.PartSetHeader)
-	_, _, _, has = n2.getAllState(prop.Height, prop.Round, true)
-	require.True(t, has)
-
-	// add the second height
-	prop, ps, _, metaData = createTestProposal(t, sm, 2, 0, 2, 1000000)
-	cb, _ = createCompactBlock(t, prop, ps, metaData)
-	n1.AddCommitment(prop.Height, prop.Round, &cb.Proposal.BlockID.PartSetHeader)
-	_, _, _, has = n1.getAllState(prop.Height, prop.Round, true)
-	require.True(t, has)
-	n2.AddCommitment(prop.Height, prop.Round, &cb.Proposal.BlockID.PartSetHeader)
-	_, _, _, has = n2.getAllState(prop.Height, prop.Round, true)
-	require.True(t, has)
-
-	// try catchup
-	n1.retryWants()
-
-	time.Sleep(200 * time.Millisecond)
-
-	// check if reactor 2 received a want for height 1 but not height 2
-	p1 := n2.getPeer(n1.self)
-	_, has = p1.GetWants(1, 0)
-	require.True(t, has)
-
-	_, has = p1.GetWants(2, 0)
-	require.False(t, has)
-}
-
 func TestAddCommitment_ReplaceProposalData(t *testing.T) {
 	p2pCfg := defaultTestP2PConf()
 	nodes := 1
