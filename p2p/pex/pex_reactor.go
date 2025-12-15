@@ -275,6 +275,7 @@ func (r *Reactor) Receive(e p2p.Envelope) {
 		} else {
 			// Check we're not receiving requests too frequently.
 			if err := r.receiveRequest(e.Src); err != nil {
+				r.Logger.Info("Banning peer for PEX request rate limit", "peer", e.Src.ID(), "addr", e.Src.SocketAddr(), "err", err)
 				r.Switch.StopPeerForError(e.Src, err, r.String())
 				r.book.MarkBad(e.Src.SocketAddr(), defaultBanTime)
 				return
@@ -286,6 +287,7 @@ func (r *Reactor) Receive(e p2p.Envelope) {
 		// If we asked for addresses, add them to the book
 		addrs, err := p2p.NetAddressesFromProto(msg.Addrs)
 		if err != nil {
+			r.Logger.Info("Banning peer for invalid PEX addrs", "peer", e.Src.ID(), "addr", e.Src.SocketAddr(), "err", err)
 			r.Switch.StopPeerForError(e.Src, err, r.String())
 			r.book.MarkBad(e.Src.SocketAddr(), defaultBanTime)
 			return
@@ -294,6 +296,7 @@ func (r *Reactor) Receive(e p2p.Envelope) {
 		if err != nil {
 			r.Switch.StopPeerForError(e.Src, err, r.String())
 			if err == ErrUnsolicitedList {
+				r.Logger.Info("Banning peer for unsolicited PEX addrs", "peer", e.Src.ID(), "addr", e.Src.SocketAddr(), "err", err)
 				r.book.MarkBad(e.Src.SocketAddr(), defaultBanTime)
 			}
 			return
@@ -545,7 +548,12 @@ func (r *Reactor) dialAttemptsInfo(addr *p2p.NetAddress) (attempts int, lastDial
 
 func (r *Reactor) dialPeer(addr *p2p.NetAddress) error {
 	attempts, lastDialed := r.dialAttemptsInfo(addr)
+	// Only blacklist peers that have never been marked good. Peers we already
+	// connected to may simply be temporarily offline and should not be treated
+	// as misbehaving (which would trigger the DoS blacklist path and prevent
+	// them from reconnecting after a short outage).
 	if attempts > maxAttemptsToDial && !r.Switch.IsPeerPersistent(addr) {
+		r.Logger.Info("Banning peer for exceeding dial attempts", "addr", addr, "attempts", attempts)
 		r.book.MarkBad(addr, defaultBanTime)
 		return errMaxAttemptsToDial{}
 	}
@@ -561,6 +569,9 @@ func (r *Reactor) dialPeer(addr *p2p.NetAddress) error {
 			return err
 		}
 
+		if _, ok := err.(p2p.ErrSwitchAuthenticationFailure); ok {
+			r.Logger.Info("Banning peer for authentication failure", "addr", addr, "err", err)
+		}
 		markAddrInBookBasedOnErr(addr, r.book, err)
 		switch err.(type) {
 		case p2p.ErrSwitchAuthenticationFailure:

@@ -117,6 +117,8 @@ func createNode(t *testing.T, logger log.Logger, cfg nodeConfig) *testNode {
 		blockStore,
 		cfg.genDoc.ChainID,
 		MaxHeaderBatchSize,
+		state.InitialHeight,
+		state.Validators,
 		NopMetrics(),
 	)
 	reactor.SetLogger(logger.With("module", "headersync"))
@@ -429,7 +431,7 @@ done:
 	assert.GreaterOrEqual(t, len(receivedHeaders), int(maxHeight)-5)
 }
 
-// TestHeaderSync_DoSProtection tests that peers sending duplicate status updates are disconnected.
+// TestHeaderSync_DoSProtection tests that peers regressing their height are disconnected.
 func TestHeaderSync_DoSProtection(t *testing.T) {
 	config := test.ResetTestRoot("headersync_dos_test")
 	defer os.RemoveAll(config.RootDir)
@@ -460,11 +462,13 @@ func TestHeaderSync_DoSProtection(t *testing.T) {
 	require.Len(t, peers, 1)
 	peer := peers[0]
 
+	// Send a height lower than the initially advertised height (which was HeaderHeight()-1).
+	// This should trigger DoS protection since height is regressing.
 	peer.Send(p2p.Envelope{
 		ChannelID: HeaderSyncChannel,
 		Message: &hsproto.StatusResponse{
 			Base:   node1.blockStore.Base(),
-			Height: node1.blockStore.HeaderHeight() - 1,
+			Height: node1.blockStore.HeaderHeight() - 2,
 		},
 	})
 
@@ -644,4 +648,295 @@ func TestHeaderSync_PeerProvidesPartialResponse(t *testing.T) {
 	waitForCaughtUp(t, node2, 30*time.Second)
 
 	assert.GreaterOrEqual(t, node2.blockStore.HeaderHeight(), int64(55))
+}
+
+// TestHeaderSync_StatusExchange tests that peers exchange status messages
+// and that the pool properly tracks peer heights.
+func TestHeaderSync_StatusExchange(t *testing.T) {
+	config := test.ResetTestRoot("headersync_status_exchange_test")
+	defer os.RemoveAll(config.RootDir)
+
+	genDoc, privVals := randGenesisDoc(1, false, 30)
+
+	// Node0 has 100 headers
+	node0 := createNode(t, log.TestingLogger().With("node", "node0"), nodeConfig{
+		genDoc:      genDoc,
+		privVals:    privVals,
+		headersUpTo: 100,
+	})
+
+	// Node1 has 0 headers but needs to sync
+	node1 := createNode(t, log.TestingLogger().With("node", "node1"), nodeConfig{
+		genDoc:      genDoc,
+		privVals:    privVals,
+		headersUpTo: 0,
+		stateUpTo:   100,
+	})
+
+	defer stopTestNodes(t, node0, node1)
+
+	// Create network
+	switches := makeNetwork(t, config, node0, node1)
+
+	// Wait for switch to start and peers to connect
+	time.Sleep(500 * time.Millisecond)
+
+	// Verify peers connected
+	require.Equal(t, 1, switches[0].Peers().Size(), "node0 should have 1 peer")
+	require.Equal(t, 1, switches[1].Peers().Size(), "node1 should have 1 peer")
+
+	// Get pool status from node1 - this is the syncing node
+	height, numPending, numPeers := node1.reactor.pool.GetStatus()
+	t.Logf("node1 pool status: height=%d, numPending=%d, numPeers=%d", height, numPending, numPeers)
+
+	// Wait a bit for status messages to be exchanged
+	time.Sleep(2 * time.Second)
+
+	// Check again
+	height, numPending, numPeers = node1.reactor.pool.GetStatus()
+	t.Logf("node1 pool status after wait: height=%d, numPending=%d, numPeers=%d", height, numPending, numPeers)
+
+	// The syncing node should know about the peer's height.
+	// Note: AddPeer sends height-1 to be conservative, so initial max may be 99.
+	// After syncing starts, the peer will broadcast its actual height.
+	require.Equal(t, 1, numPeers, "node1 should know about 1 peer in pool")
+	require.GreaterOrEqual(t, node1.reactor.MaxPeerHeight(), int64(99), "node1 should know peer is at height 99+")
+
+	// Now verify that syncing actually happens
+	waitForCaughtUp(t, node1, 30*time.Second)
+
+	assert.GreaterOrEqual(t, node1.blockStore.HeaderHeight(), int64(95))
+}
+
+// TestHeaderSync_ChannelRegistration tests that the HeaderSyncChannel is properly
+// registered in the node info and that peers can communicate on it.
+func TestHeaderSync_ChannelRegistration(t *testing.T) {
+	config := test.ResetTestRoot("headersync_channel_test")
+	defer os.RemoveAll(config.RootDir)
+
+	genDoc, privVals := randGenesisDoc(1, false, 30)
+
+	node0 := createNode(t, log.TestingLogger().With("node", "node0"), nodeConfig{
+		genDoc:      genDoc,
+		privVals:    privVals,
+		headersUpTo: 50,
+	})
+
+	node1 := createNode(t, log.TestingLogger().With("node", "node1"), nodeConfig{
+		genDoc:      genDoc,
+		privVals:    privVals,
+		headersUpTo: 0,
+		stateUpTo:   50,
+	})
+
+	defer stopTestNodes(t, node0, node1)
+
+	switches := makeNetwork(t, config, node0, node1)
+
+	// Wait for peers to connect
+	time.Sleep(500 * time.Millisecond)
+
+	require.Equal(t, 1, switches[0].Peers().Size())
+	require.Equal(t, 1, switches[1].Peers().Size())
+
+	// Check that the channel is registered
+	peers := switches[0].Peers().List()
+	require.Len(t, peers, 1)
+	peer := peers[0]
+
+	// Try to send a status message - should succeed if channel is registered
+	sent := peer.TrySend(p2p.Envelope{
+		ChannelID: HeaderSyncChannel,
+		Message: &hsproto.StatusResponse{
+			Base:   1,
+			Height: 50,
+		},
+	})
+	require.True(t, sent, "should be able to send on HeaderSyncChannel")
+
+	t.Logf("Successfully sent message on HeaderSyncChannel (0x%x)", HeaderSyncChannel)
+}
+
+// TestHeaderSync_DebugPoolState provides detailed debugging of pool state changes.
+func TestHeaderSync_DebugPoolState(t *testing.T) {
+	config := test.ResetTestRoot("headersync_debug_pool_test")
+	defer os.RemoveAll(config.RootDir)
+
+	genDoc, privVals := randGenesisDoc(1, false, 30)
+
+	node0 := createNode(t, log.TestingLogger().With("node", "ahead"), nodeConfig{
+		genDoc:      genDoc,
+		privVals:    privVals,
+		headersUpTo: 50,
+	})
+
+	node1 := createNode(t, log.TestingLogger().With("node", "syncing"), nodeConfig{
+		genDoc:      genDoc,
+		privVals:    privVals,
+		headersUpTo: 0,
+		stateUpTo:   50,
+	})
+
+	defer stopTestNodes(t, node0, node1)
+
+	t.Log("Creating network...")
+	switches := makeNetwork(t, config, node0, node1)
+
+	t.Log("Waiting for peer connection...")
+	time.Sleep(500 * time.Millisecond)
+
+	t.Logf("node0 peers: %d", switches[0].Peers().Size())
+	t.Logf("node1 peers: %d", switches[1].Peers().Size())
+
+	// Log initial pool state
+	height, pending, peers := node1.reactor.pool.GetStatus()
+	t.Logf("Initial pool state - height: %d, pending: %d, peers: %d", height, pending, peers)
+
+	// Manually trigger a status broadcast from node0
+	t.Log("Triggering status broadcast from node0...")
+	node0.reactor.BroadcastStatus()
+
+	// Wait and check
+	for i := 0; i < 10; i++ {
+		time.Sleep(500 * time.Millisecond)
+		height, pending, peers = node1.reactor.pool.GetStatus()
+		maxPeerHeight := node1.reactor.MaxPeerHeight()
+		t.Logf("Pool state iteration %d - height: %d, pending: %d, peers: %d, maxPeerHeight: %d",
+			i, height, pending, peers, maxPeerHeight)
+
+		if peers > 0 && maxPeerHeight > 0 {
+			t.Log("Peer registered in pool, proceeding with sync...")
+			break
+		}
+	}
+
+	// Final check
+	require.Equal(t, 1, switches[0].Peers().Size(), "node0 should still have peer")
+	require.Equal(t, 1, switches[1].Peers().Size(), "node1 should still have peer")
+
+	_, _, finalPeers := node1.reactor.pool.GetStatus()
+	require.Equal(t, 1, finalPeers, "node1 pool should have 1 peer registered")
+	require.Equal(t, int64(50), node1.reactor.MaxPeerHeight(), "node1 should know peer height is 50")
+}
+
+// TestHeaderSync_BatchVerification tests that batch verification works correctly
+// with the skip verification protocol (1/3+ trust threshold on last header).
+func TestHeaderSync_BatchVerification(t *testing.T) {
+	config := test.ResetTestRoot("headersync_batch_verify_test")
+	defer os.RemoveAll(config.RootDir)
+
+	// Use 1 validator since generateBlocks only signs with one validator.
+	// With 1 validator, that validator has 100% of voting power, satisfying 1/3+ threshold.
+	genDoc, privVals := randGenesisDoc(1, false, 30)
+	maxHeight := int64(100)
+
+	node0 := createNode(t, log.TestingLogger().With("node", "source"), nodeConfig{
+		genDoc:      genDoc,
+		privVals:    privVals,
+		headersUpTo: maxHeight,
+	})
+
+	// Node1 has no headers but has the validator state - tests batch verification
+	node1 := createNode(t, log.TestingLogger().With("node", "syncing"), nodeConfig{
+		genDoc:      genDoc,
+		privVals:    privVals,
+		headersUpTo: 0,
+		stateUpTo:   maxHeight,
+	})
+
+	defer stopTestNodes(t, node0, node1)
+
+	switches := makeNetwork(t, config, node0, node1)
+
+	// Wait for peers to connect
+	time.Sleep(500 * time.Millisecond)
+	require.Equal(t, 1, switches[0].Peers().Size())
+	require.Equal(t, 1, switches[1].Peers().Size())
+
+	// Wait for sync to complete
+	waitForCaughtUp(t, node1, 30*time.Second)
+
+	// Verify batch verification worked - should have synced all headers
+	// using skip verification (only last header's commit is fully verified)
+	assert.GreaterOrEqual(t, node1.blockStore.HeaderHeight(), maxHeight-5,
+		"node1 should have synced headers using batch verification")
+}
+
+// TestHeaderSync_LargeBatch tests syncing with maximum batch size to verify
+// chain linkage verification works correctly for large batches.
+func TestHeaderSync_LargeBatch(t *testing.T) {
+	config := test.ResetTestRoot("headersync_large_batch_test")
+	defer os.RemoveAll(config.RootDir)
+
+	// Use 1 validator since generateBlocks only signs with one validator.
+	genDoc, privVals := randGenesisDoc(1, false, 30)
+	// Use exactly MaxHeaderBatchSize headers to test full batch processing
+	maxHeight := int64(MaxHeaderBatchSize + 10)
+
+	node0 := createNode(t, log.TestingLogger().With("node", "source"), nodeConfig{
+		genDoc:      genDoc,
+		privVals:    privVals,
+		headersUpTo: maxHeight,
+	})
+
+	node1 := createNode(t, log.TestingLogger().With("node", "syncing"), nodeConfig{
+		genDoc:      genDoc,
+		privVals:    privVals,
+		headersUpTo: 0,
+		stateUpTo:   maxHeight,
+	})
+
+	defer stopTestNodes(t, node0, node1)
+
+	switches := makeNetwork(t, config, node0, node1)
+
+	time.Sleep(500 * time.Millisecond)
+	require.Equal(t, 1, switches[0].Peers().Size())
+
+	waitForCaughtUp(t, node1, 30*time.Second)
+
+	// Verify full batch was processed
+	assert.GreaterOrEqual(t, node1.blockStore.HeaderHeight(), maxHeight-5,
+		"node1 should have synced through full batch")
+}
+
+// TestHeaderSync_SignedHeaderWithValidatorSetField tests that the ValidatorSet
+// field is correctly included in SignedHeader when validator sets change.
+// Note: This test verifies the proto field is properly serialized/deserialized.
+// Full validator set change tests require more complex test infrastructure.
+func TestHeaderSync_SignedHeaderWithValidatorSetField(t *testing.T) {
+	// This is a basic sanity check that the ValidatorSet field works in the proto
+	genDoc, _ := randGenesisDoc(4, false, 30)
+
+	// Get validators from genesis doc
+	validators := make([]*types.Validator, len(genDoc.Validators))
+	for i, gv := range genDoc.Validators {
+		validators[i] = types.NewValidator(gv.PubKey, gv.Power)
+	}
+	vals := types.NewValidatorSet(validators)
+
+	// Create a SignedHeader with a validator set
+	header := &types.Header{
+		ChainID:            genDoc.ChainID,
+		Height:             10,
+		Time:               cmttime.Now(),
+		ValidatorsHash:     vals.Hash(),
+		NextValidatorsHash: vals.Hash(),
+	}
+
+	// Convert to proto and back
+	protoHeader := header.ToProto()
+	valsProto, err := vals.ToProto()
+	require.NoError(t, err)
+
+	protoSH := &hsproto.SignedHeader{
+		Header:       protoHeader,
+		Commit:       &cmtproto.Commit{},
+		ValidatorSet: valsProto,
+	}
+
+	// Verify the validator set can be decoded
+	decodedVals, err := types.ValidatorSetFromProto(protoSH.ValidatorSet)
+	require.NoError(t, err)
+	assert.Equal(t, vals.Hash(), decodedVals.Hash(), "validator set should round-trip correctly")
 }

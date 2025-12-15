@@ -142,7 +142,14 @@ func (conR *Reactor) SwitchToConsensus(state sm.State, skipWAL bool) {
 		defer conR.conS.unlockAll()
 		// We have no votes, so reconstruct LastCommit from SeenCommit
 		if state.LastBlockHeight > 0 {
-			conR.conS.reconstructLastCommit(state)
+			extensionsEnabled := state.ConsensusParams.ABCI.VoteExtensionsEnabled(state.LastBlockHeight)
+			extCommitMissing := extensionsEnabled && conR.conS.blockStore.LoadBlockExtendedCommit(state.LastBlockHeight) == nil
+			if extCommitMissing {
+				conR.Logger.Info("extended commit missing after state sync; falling back to seen commit", "height", state.LastBlockHeight)
+				conR.conS.reconstructSeenCommit(state)
+			} else {
+				conR.conS.reconstructLastCommit(state)
+			}
 		}
 
 		// NOTE: The line below causes broadcastNewRoundStepRoutine() to broadcast a

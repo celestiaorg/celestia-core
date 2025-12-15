@@ -71,6 +71,19 @@ type Reactor struct {
 
 	ctx    context.Context
 	cancel context.CancelFunc
+
+	// pendingBlocks manages pending blocks for both catchup and blocksync.
+	// When set, the reactor uses this for unified part tracking and requests.
+	// When nil, falls back to legacy ProposalCache-based catchup.
+	pendingBlocks *PendingBlocksManager
+
+	// blockDelivery ensures blocksync blocks are delivered to consensus in order.
+	// Only used when pendingBlocks is configured.
+	blockDelivery *BlockDeliveryManager
+
+	// hsReader provides access to headersync state for IsCaughtUp checks.
+	// Only used when pendingBlocks is configured for propagation-based blocksync.
+	hsReader HeaderSyncReader
 }
 
 type Config struct {
@@ -104,6 +117,23 @@ func NewReactor(
 		proposalChan:  make(chan ProposalAndSrc, 1000),
 		ticker:        time.NewTicker(RetryTime),
 	}
+
+	// Always create the pending blocks manager for unified catchup/blocksync.
+	// This can be overridden via WithPendingBlocksManager option if needed.
+	pendingBlocks := NewPendingBlocksManager(
+		nil, // logger set later via SetLogger
+		config.Store,
+		PendingBlocksConfig{}, // Uses defaults: MaxConcurrent=500, MemoryBudget=12GiB
+	)
+	reactor.pendingBlocks = pendingBlocks
+
+	// Always create the block delivery manager for ordered block delivery.
+	// startHeight=1 is a placeholder - it will be updated when we know the actual
+	// last committed height during OnStart or via SetNextHeight.
+	blockDelivery := NewBlockDeliveryManager(pendingBlocks, 1, nil)
+	reactor.blockDelivery = blockDelivery
+
+	// Apply options (can override defaults)
 	for _, option := range options {
 		option(reactor)
 	}
@@ -112,15 +142,17 @@ func NewReactor(
 		p2p.WithTraceClient(reactor.traceClient),
 	)
 
-	// start the catchup routine
+	// start the catchup/blocksync retry routine
 	go func() {
 		for {
 			select {
 			case <-reactor.ctx.Done():
 				return
 			case <-reactor.ticker.C:
-				// run the catchup routine to recover any missing parts for past heights.
-				reactor.retryWants()
+				// Run the unified request routine to recover missing parts.
+				// If pendingBlocks is configured, uses the new unified manager.
+				// Otherwise falls back to legacy retryWants.
+				reactor.requestMissingParts()
 			}
 		}
 	}()
@@ -137,16 +169,57 @@ func WithTracer(tracer trace.Tracer) func(r *Reactor) {
 	}
 }
 
+// WithPendingBlocksManager configures the reactor to use the unified
+// PendingBlocksManager for both catchup and blocksync. When set, the reactor
+// uses part-level parallelism for downloading blocks from multiple peers.
+// If not set, the reactor falls back to legacy ProposalCache-based catchup.
+func WithPendingBlocksManager(mgr *PendingBlocksManager) func(r *Reactor) {
+	return func(r *Reactor) {
+		r.pendingBlocks = mgr
+	}
+}
+
+// WithBlockDeliveryManager configures the BlockDeliveryManager for ordered
+// block delivery to consensus during blocksync.
+func WithBlockDeliveryManager(mgr *BlockDeliveryManager) func(r *Reactor) {
+	return func(r *Reactor) {
+		r.blockDelivery = mgr
+	}
+}
+
+// WithHeaderSyncReader configures the HeaderSyncReader for IsCaughtUp checks.
+// This is required for propagation-based blocksync to know when to switch to consensus.
+func WithHeaderSyncReader(reader HeaderSyncReader) func(r *Reactor) {
+	return func(r *Reactor) {
+		r.hsReader = reader
+	}
+}
+
 func (blockProp *Reactor) SetLogger(logger log.Logger) {
 	blockProp.Logger = logger
+	// Also set logger on the managers
+	if blockProp.pendingBlocks != nil {
+		blockProp.pendingBlocks.SetLogger(logger)
+	}
+	if blockProp.blockDelivery != nil {
+		blockProp.blockDelivery.SetLogger(logger)
+	}
 }
 
 func (blockProp *Reactor) OnStart() error {
+	// Start the block delivery manager if configured
+	if blockProp.blockDelivery != nil {
+		blockProp.blockDelivery.Start()
+	}
 	return nil
 }
 
 func (blockProp *Reactor) OnStop() {
 	blockProp.cancel()
+	// Stop the block delivery manager if configured
+	if blockProp.blockDelivery != nil {
+		blockProp.blockDelivery.Stop()
+	}
 }
 
 func (blockProp *Reactor) GetChannels() []*conn.ChannelDescriptor {
@@ -172,21 +245,26 @@ func (blockProp *Reactor) GetChannels() []*conn.ChannelDescriptor {
 func (blockProp *Reactor) InitPeer(peer p2p.Peer) (p2p.Peer, error) {
 	// Ignore the peer if it is ourselves.
 	if peer.ID() == blockProp.self {
+		blockProp.Logger.Debug("rejecting self connection", "peer", peer.ID())
 		return nil, errors.New("cannot connect to self")
 	}
 
 	if legacy, err := IsLegacyPropagation(peer); legacy || err != nil {
 		if err != nil {
+			blockProp.Logger.Debug("rejecting peer: legacy propagation with error", "peer", peer.ID(), "err", err)
 			return nil, fmt.Errorf("peer is only using legacy propagation: %w", err)
 		}
+		blockProp.Logger.Debug("rejecting peer: legacy propagation", "peer", peer.ID())
 		return nil, errors.New("peer is only using legacy propagation")
 	}
 
 	// ignore the peer if it already exists.
 	if p := blockProp.getPeer(peer.ID()); p != nil {
+		blockProp.Logger.Debug("rejecting peer: already connected", "peer", peer.ID())
 		return nil, errors.New("peer already exists")
 	}
 
+	blockProp.Logger.Debug("InitPeer accepted", "peer", peer.ID())
 	return peer, nil
 }
 
@@ -264,6 +342,7 @@ func (blockProp *Reactor) ReceiveEnvelope(e p2p.Envelope) {
 		blockProp.Switch.StopPeerForError(e.Src, err, blockProp.String())
 		return
 	}
+	blockProp.Logger.Debug("propagation received", "peer", e.Src.ID(), "chId", e.ChannelID, "type", fmt.Sprintf("%T", msg))
 	switch e.ChannelID {
 	case DataChannel:
 		switch msg := msg.(type) {
@@ -320,6 +399,9 @@ func (blockProp *Reactor) SetHeightAndRound(height int64, round int32) {
 	blockProp.round = round
 	blockProp.height = height
 	blockProp.ResetRequestCounts()
+	// Align pending blocks/block delivery with new consensus height.
+	blockProp.pendingBlocks.SetLastCommittedHeight(height - 1)
+	blockProp.blockDelivery.SetNextHeight(height)
 	// todo: delete the old round data as its no longer relevant don't delete
 	// past round data if it has a POL
 }
@@ -397,4 +479,65 @@ func (r *Reactor) GetPartChan() <-chan types.PartInfo {
 // GetProposalChan returns the channel used for receiving proposals.
 func (r *Reactor) GetProposalChan() <-chan ProposalAndSrc {
 	return r.proposalChan
+}
+
+// GetBlockChan returns the channel used for receiving complete blocksync blocks.
+// Blocks on this channel are guaranteed to arrive in strictly increasing height order.
+// Returns nil if BlockDeliveryManager is not configured (legacy mode or NoOpPropagator).
+func (r *Reactor) GetBlockChan() <-chan *CompletedBlock {
+	if r.blockDelivery == nil {
+		return nil
+	}
+	return r.blockDelivery.BlockChan()
+}
+
+// IsCaughtUp returns true if the propagation reactor has caught up with the network.
+// This is used to determine when to switch from blocksync mode to live consensus.
+//
+// The reactor is considered caught up when ALL of these conditions are met:
+// 1. No pending blocks with height < consensus height (all historical blocks processed)
+// 2. Headersync is caught up to peers (we have all necessary headers)
+// 3. At least one peer is connected (we can participate in consensus)
+//
+// If pendingBlocks or hsReader is not configured, this returns false (legacy mode
+// should use the blocksync reactor's IsCaughtUp instead).
+func (r *Reactor) IsCaughtUp() bool {
+	// Legacy mode - not applicable
+	if r.pendingBlocks == nil || r.hsReader == nil {
+		return false
+	}
+
+	// Check if headersync is caught up
+	if !r.hsReader.IsCaughtUp() {
+		return false
+	}
+
+	// Check if we have peers
+	if len(r.getPeers()) == 0 {
+		return false
+	}
+
+	// Check if all pending blocks are at or above consensus height
+	// Get the current consensus height from the reactor's internal state
+	r.pmtx.Lock()
+	consensusHeight := r.height
+	r.pmtx.Unlock()
+
+	lowestPending := r.pendingBlocks.LowestHeight()
+	// If there are no pending blocks, or the lowest pending block is at/above
+	// the consensus height, we're caught up
+	return lowestPending == 0 || lowestPending >= consensusHeight
+}
+
+// SetHeaderSyncReader sets the HeaderSyncReader for IsCaughtUp checks and
+// on-demand header fetching. This should be called during node setup after
+// both the propagation reactor and headersync reactor are created.
+func (r *Reactor) SetHeaderSyncReader(reader HeaderSyncReader) {
+	r.mtx.Lock()
+	defer r.mtx.Unlock()
+	r.hsReader = reader
+	// Also set on the pending blocks manager for header fetching
+	if r.pendingBlocks != nil {
+		r.pendingBlocks.SetHeaderSyncReader(reader)
+	}
 }

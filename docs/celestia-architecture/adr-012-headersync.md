@@ -2,6 +2,7 @@
 
 ## Changelog
 
+- 2024-12-14: Added validator set inclusion for syncing across validator changes
 - 2024-12-09: Initial draft
 
 ## Context
@@ -45,14 +46,14 @@ We could modify blocksync to download multiple blocks in parallel.
 - Cannot leverage the propagation reactor's erasure coding advantages
 - Duplicates effort rather than composing existing components
 
-### Alternative 2: Light Client-Style Header Sync
+### Alternative 2: Per-Header Full Verification
 
-We could implement full light client verification with skipping (trusting intermediate headers based on 1/3 trust threshold).
+We could verify each header individually with full +2/3 signature verification using validator sets from the state store.
 
 **Rejected because:**
-- More complex than necessary for full nodes
-- Full nodes have the state store with validator sets; no need for skipping verification
-- Adds latency due to bisection when validators change frequently
+- Requires validator sets in state store, which may not exist when syncing across validator changes
+- CPU-intensive: verifying every commit signature is expensive
+- Cannot sync beyond the state store's validator set knowledge
 
 ### Alternative 3: Modify Propagation Reactor Only
 
@@ -68,10 +69,11 @@ We could add header-fetching logic directly to the propagation reactor.
 Implement a new **Header Sync Reactor** that:
 
 1. Syncs headers ahead of blocks using the same peer-discovery and request patterns as blocksync
-2. Verifies headers using commits and validator sets from the state store
+2. Verifies headers using skip verification (1/3 trust threshold) with validator sets included in messages
 3. Stores verified headers/BlockMeta without requiring block parts
 4. Publishes verified headers to subscribers (e.g., propagation reactor)
 5. Maintains a clear separation between "header height" and "block height"
+6. Handles validator set changes by including validator sets in header responses when they change
 
 The propagation reactor will subscribe to header sync and use the known commitments to download blocks in parallel.
 
@@ -93,6 +95,8 @@ headersync/
 ```protobuf
 // proto/tendermint/headersync/types.proto
 
+import "tendermint/types/validator.proto";
+
 // StatusResponse contains a peer's header sync status.
 // Sent proactively when a peer connects or when header height advances.
 // Peers MUST NOT send status updates with the same or lower height as previously
@@ -102,10 +106,14 @@ message StatusResponse {
   int64 height = 2;
 }
 
-// SignedHeader pairs a header with its commit
+// SignedHeader pairs a header with its commit and optional validator set.
 message SignedHeader {
   tendermint.types.Header header = 1;
   tendermint.types.Commit commit = 2;
+  // ValidatorSet is included only when the validator set changed at this height
+  // (i.e., header.NextValidatorsHash != header.ValidatorsHash at the previous height).
+  // This is the validator set that will be used to verify subsequent headers.
+  tendermint.types.ValidatorSet validator_set = 3;
 }
 
 // GetHeaders requests a batch of headers starting from start_height
@@ -206,10 +214,11 @@ type headerBatch struct {
     received    bool
 }
 
-// SignedHeader pairs a header with its commit (mirrors proto)
+// SignedHeader pairs a header with its commit and optional validator set (mirrors proto)
 type SignedHeader struct {
-    Header *types.Header
-    Commit *types.Commit
+    Header       *types.Header
+    Commit       *types.Commit
+    ValidatorSet *types.ValidatorSet // non-nil when validator set changed at this height
 }
 
 // VerifiedHeader contains a header that has been fully verified
@@ -226,9 +235,13 @@ type Reactor struct {
     p2p.BaseReactor
 
     pool        *HeaderPool
-    stateStore  sm.Store      // For loading validator sets
+    stateStore  sm.Store      // For loading validator sets when responding to requests
     blockStore  sm.BlockStore // For storing headers and checking existing data
     chainID     string
+
+    // Current trusted validator set for skip verification
+    validatorsMtx     sync.RWMutex
+    currentValidators *types.ValidatorSet
 
     // Last verified header for chain linkage verification
     lastHeader *types.Header
@@ -247,63 +260,209 @@ type Reactor struct {
 
 ### Verification Logic
 
+Header sync uses **skip verification** with a 1/3 trust threshold, which allows syncing across validator set changes without requiring validator sets in the state store.
+
+#### Skip Verification Overview
+
+Under an honest majority assumption, we don't need to verify every commit. Instead:
+- Use `VerifyCommitLightTrusting` to verify that 1/3+ of a trusted validator set signed a future header
+- Chain linkage (`LastBlockID`) cryptographically binds all intermediate headers
+- Since validator sets change incrementally (not wholesale), 1/3+ of validators typically persist across many changes
+- This means we can skip verify once per batch (e.g., verify header 50, trust headers 1-49 via chain linkage)
+- Only need the new validator set when our trusted set has <1/3 overlap with signers (rare)
+
+#### Batch Verification
+
 ```go
-func (r *Reactor) verifyHeader(
-    header *types.Header,
-    commit *types.Commit,
-    prevHeader *types.Header,
-) error {
-    // 1. Load validator set for this height
-    vals, err := r.stateStore.LoadValidators(header.Height)
-    if err != nil {
-        return fmt.Errorf("failed to load validators at height %d: %w", header.Height, err)
+// verifyBatch verifies a batch of headers using skip verification.
+// Returns nil if the batch is valid, or an error describing the failure.
+func (r *Reactor) verifyBatch(batch []*SignedHeader) error {
+    if len(batch) == 0 {
+        return errors.New("empty batch")
     }
 
-    // 2. Compute expected BlockID from header
-    blockID := types.BlockID{
-        Hash: header.Hash(),
-        // Note: PartSetHeader comes from the commit, not computed here
-        // This is a key difference - we trust the PartSetHeader from
-        // the commit that was signed by +2/3 validators
-        PartSetHeader: commit.BlockID.PartSetHeader,
+    r.validatorsMtx.RLock()
+    validators := r.currentValidators
+    r.validatorsMtx.RUnlock()
+
+    // Step 1: Skip verify last header (1/3 trust threshold)
+    lastHeader := batch[len(batch)-1]
+    if err := r.skipVerifyHeader(lastHeader, validators); err != nil {
+        // <1/3 overlap - need to find intermediate trust anchor
+        return r.verifyBatchWithIntermediateTrust(batch, validators)
     }
 
-    // 3. Verify commit has +2/3 voting power
-    err = vals.VerifyCommitLight(
-        r.chainID,
-        blockID,
-        header.Height,
-        commit,
-    )
-    if err != nil {
-        return fmt.Errorf("commit verification failed: %w", err)
+    // Step 2: Verify chain linkage backwards from last to first
+    if err := r.verifyChainLinkageBackward(batch); err != nil {
+        return err
     }
 
-    // 4. Verify chain linkage (if not first header)
-    if prevHeader != nil {
-        // Check LastBlockID matches previous header
-        prevBlockID := types.BlockID{
-            Hash:          prevHeader.Hash(),
-            PartSetHeader: /* loaded from stored commit */,
-        }
-        if !header.LastBlockID.Equals(prevBlockID) {
-            return fmt.Errorf("header LastBlockID mismatch")
-        }
-
-        // Check ValidatorsHash continuity
-        if !bytes.Equal(header.ValidatorsHash, prevHeader.NextValidatorsHash) {
-            return fmt.Errorf("validators hash mismatch")
-        }
-    }
-
-    // 5. Verify header.ValidatorsHash matches loaded validators
-    if !bytes.Equal(header.ValidatorsHash, vals.Hash()) {
-        return fmt.Errorf("header validators hash does not match state store")
-    }
+    // Step 3: Update validator set for next batch
+    r.updateValidatorSetFromBatch(batch)
 
     return nil
 }
+
+// skipVerifyHeader verifies that 1/3+ of our trusted validators signed the header.
+func (r *Reactor) skipVerifyHeader(sh *SignedHeader, validators *types.ValidatorSet) error {
+    blockID := types.BlockID{
+        Hash:          sh.Header.Hash(),
+        PartSetHeader: sh.Commit.BlockID.PartSetHeader,
+    }
+
+    // Use 1/3 trust threshold
+    trustLevel := cmtmath.Fraction{Numerator: 1, Denominator: 3}
+    return validators.VerifyCommitLightTrusting(
+        r.chainID,
+        blockID,
+        sh.Header.Height,
+        sh.Commit,
+        trustLevel,
+    )
+}
+
+// verifyChainLinkageBackward verifies hash chain from last header back to first.
+// Also verifies validator hash continuity (header.ValidatorsHash == prev.NextValidatorsHash).
+func (r *Reactor) verifyChainLinkageBackward(batch []*SignedHeader) error {
+    // First, verify linkage to our last known header
+    if r.lastHeader != nil {
+        firstInBatch := batch[0]
+        expectedHash := r.lastHeader.Hash()
+        if !bytes.Equal(firstInBatch.Header.LastBlockID.Hash, expectedHash) {
+            return fmt.Errorf("first header LastBlockID.Hash doesn't match previous header hash")
+        }
+        // Verify validator continuity with previous header
+        if !bytes.Equal(firstInBatch.Header.ValidatorsHash, r.lastHeader.NextValidatorsHash) {
+            return fmt.Errorf("first header ValidatorsHash doesn't match previous NextValidatorsHash")
+        }
+    }
+
+    // Then verify internal chain linkage and validator continuity
+    for i := len(batch) - 1; i > 0; i-- {
+        current := batch[i]
+        prev := batch[i-1]
+
+        // Verify LastBlockID.Hash linkage
+        expectedHash := prev.Header.Hash()
+        if !bytes.Equal(current.Header.LastBlockID.Hash, expectedHash) {
+            return fmt.Errorf("header %d LastBlockID.Hash doesn't match header %d hash",
+                current.Header.Height, prev.Header.Height)
+        }
+
+        // Verify validator hash continuity
+        if !bytes.Equal(current.Header.ValidatorsHash, prev.Header.NextValidatorsHash) {
+            return fmt.Errorf("header %d ValidatorsHash doesn't match header %d NextValidatorsHash",
+                current.Header.Height, prev.Header.Height)
+        }
+    }
+    return nil
+}
+
+// updateValidatorSetFromBatch updates currentValidators if the batch contains
+// a validator set change. Takes the last validator set in the batch.
+func (r *Reactor) updateValidatorSetFromBatch(batch []*SignedHeader) {
+    // Scan backwards to find the last header with an attached validator set
+    for i := len(batch) - 1; i >= 0; i-- {
+        if batch[i].ValidatorSet != nil {
+            // Validate that the attached validator set matches the header's hash
+            expectedHash := batch[i].Header.ValidatorsHash
+            actualHash := batch[i].ValidatorSet.Hash()
+            if !bytes.Equal(expectedHash, actualHash) {
+                r.Logger.Error("Validator set hash mismatch, ignoring",
+                    "height", batch[i].Header.Height)
+                continue
+            }
+
+            r.validatorsMtx.Lock()
+            r.currentValidators = batch[i].ValidatorSet
+            r.validatorsMtx.Unlock()
+
+            r.Logger.Info("Updated validator set from batch",
+                "height", batch[i].Header.Height,
+                "validatorsHash", actualHash)
+            return
+        }
+    }
+}
+
+// verifyBatchWithIntermediateTrust handles the rare case where <1/3 of trusted
+// validators signed the last header. Searches for an intermediate header where
+// we still have 1/3+ overlap, then recursively verifies the rest.
+func (r *Reactor) verifyBatchWithIntermediateTrust(batch []*SignedHeader, validators *types.ValidatorSet) error {
+    // Linear scan to find a header we can trust
+    for i := len(batch) - 2; i >= 0; i-- {
+        if err := r.skipVerifyHeader(batch[i], validators); err == nil {
+            // Found a trustable header - verify linkage from start to this point
+            if err := r.verifyChainLinkageBackward(batch[:i+1]); err != nil {
+                return err
+            }
+            // Update validator set from this point if available
+            if batch[i].ValidatorSet != nil {
+                r.validatorsMtx.Lock()
+                r.currentValidators = batch[i].ValidatorSet
+                r.validatorsMtx.Unlock()
+            }
+            // Recursively verify the rest with updated validators
+            return r.verifyBatchRecursive(batch[i+1:], r.currentValidators)
+        }
+    }
+    return fmt.Errorf("no header in batch has 1/3+ overlap with trusted validators")
+}
 ```
+
+#### Responding with Validator Sets
+
+When responding to `GetHeaders` requests, validator sets are attached when they change:
+
+```go
+func (r *Reactor) respondGetHeaders(msg *hsproto.GetHeaders, src p2p.Peer) {
+    // ... load headers ...
+
+    for h := msg.StartHeight; h < msg.StartHeight+count; h++ {
+        // ... load header and commit ...
+
+        sh := &hsproto.SignedHeader{
+            Header: headerProto,
+            Commit: commitProto,
+        }
+
+        // Attach validator set if it changed at this height
+        if h > 1 {
+            prevMeta := r.blockStore.LoadBlockMeta(h - 1)
+            if prevMeta != nil && !bytes.Equal(prevMeta.Header.NextValidatorsHash, meta.Header.ValidatorsHash) {
+                // Validator set changed - attach the new validator set
+                vals, err := r.stateStore.LoadValidators(h)
+                if err == nil {
+                    valsProto, err := vals.ToProto()
+                    if err == nil {
+                        sh.ValidatorSet = valsProto
+                    }
+                }
+            }
+        }
+
+        headers = append(headers, sh)
+    }
+    // ... send response ...
+}
+```
+
+#### Consensus Handoff
+
+The reactor provides a method for consensus to update the validator set:
+
+```go
+// UpdateValidatorSet updates the reactor's current validator set.
+// Called by consensus when a new block is committed that changes the validator set.
+func (r *Reactor) UpdateValidatorSet(validators *types.ValidatorSet) {
+    r.validatorsMtx.Lock()
+    defer r.validatorsMtx.Unlock()
+    r.currentValidators = validators
+    r.Logger.Info("Validator set updated by consensus", "hash", validators.Hash())
+}
+```
+
+This is optional since headersync handles validator set changes internally via `updateValidatorSetFromBatch()`, but provides a way for consensus to keep headersync in sync when both are running.
 
 ### Storage Changes
 
@@ -519,20 +678,20 @@ func (r *Reactor) handleHeaders(msg *hsproto.HeadersResponse, src p2p.Peer) {
     r.tryMakeRequests()
 }
 
-// tryProcessHeaders processes all available headers in order.
+// tryProcessHeaders processes all available batches in order.
 func (r *Reactor) tryProcessHeaders() {
     for {
-        sh, peerID, batchStartHeight := r.pool.PeekNextHeader()
-        if sh == nil {
+        batch, peerID := r.pool.PeekCompletedBatch()
+        if batch == nil {
             return
         }
 
-        if !r.processNextHeader(sh, peerID, batchStartHeight) {
+        if !r.processBatch(batch.headers, peerID, batch.startHeight) {
             return
         }
 
-        r.pool.MarkHeaderProcessed()
-        r.headersSynced++
+        r.pool.PopBatch(batch.startHeight)
+        r.headersSynced += int64(len(batch.headers))
     }
 }
 
@@ -603,18 +762,22 @@ func (pool *HeaderPool) GetNextRequest() *HeaderBatchRequest
 // AddBatchResponse adds headers from a peer response.
 func (pool *HeaderPool) AddBatchResponse(peerID p2p.ID, startHeight int64, headers []*SignedHeader) error
 
-// PeekNextHeader returns the next header to verify, if available.
-func (pool *HeaderPool) PeekNextHeader() (*SignedHeader, p2p.ID, int64)
+// PeekCompletedBatch returns the next completed batch to verify, if available.
+// Returns the batch and peer ID, or nil if no batch is ready.
+func (pool *HeaderPool) PeekCompletedBatch() (*headerBatch, p2p.ID)
 
-// MarkHeaderProcessed advances the pool height after a header is verified.
-func (pool *HeaderPool) MarkHeaderProcessed() bool
+// PopBatch removes a completed batch after successful verification.
+func (pool *HeaderPool) PopBatch(startHeight int64)
 ```
 
 ### Testing Strategy
 
 1. **Unit Tests**:
-   - Header verification with valid/invalid commits
-   - Chain linkage verification
+   - Batch verification with skip verification (1/3 threshold)
+   - Chain linkage verification (backward hash chain)
+   - Validator hash continuity verification
+   - Validator set update from batch
+   - Handling of <1/3 overlap (intermediate trust anchor)
    - BlockStore SaveHeader and HeaderHeight
    - Subscriber notification
 
@@ -622,15 +785,19 @@ func (pool *HeaderPool) MarkHeaderProcessed() bool
    - Multi-peer header sync
    - Handling of slow/malicious peers
    - Recovery from network partitions
-   - Interaction with existing reactors
+   - Validator set changes across batch boundaries
+   - Large batch verification
+   - Invalid header disconnects peer
 
 3. **E2E Tests**:
    - Full node catch-up using header sync + propagation
    - Network with mixed header-sync and non-header-sync nodes
+   - Syncing across validator set changes
 
 4. **Fuzz Tests**:
    - Random header/commit combinations
    - Malformed messages
+   - Invalid validator sets
 
 ### Configuration
 
@@ -665,6 +832,9 @@ Implemented
 - Clean separation of concerns (header sync vs block sync vs propagation)
 - Reuses proven patterns from blocksync
 - Headers are small; sync is network-efficient
+- Skip verification (1/3 threshold) enables syncing across validator set changes without state store
+- Batch verification reduces CPU overhead (one signature check per batch vs per header)
+- Self-contained validator set handling - no external coordination required
 
 ### Negative
 
@@ -672,12 +842,14 @@ Implemented
 - Requires auditing and modifying code that assumes BlockMeta implies block existence
 - Additional storage overhead for header height tracking
 - Subscribers must handle out-of-order block completion
+- Validator sets in messages add bandwidth when validator sets change (typically ~10KB per change)
 
 ### Neutral
 
 - Does not change consensus protocol
 - Does not require network upgrade (new channel, backwards compatible)
 - Propagation reactor changes are separate (future work)
+- Trust period enforcement deferred to Phase 2
 
 ## References
 

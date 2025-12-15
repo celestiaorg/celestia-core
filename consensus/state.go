@@ -116,6 +116,10 @@ type State struct {
 	stateMtx cmtsync.RWMutex
 	state    sm.State // State until height-1.
 
+	// blockSaveMtx serializes all writes to the blockStore so blocksync
+	// deliveries cannot race with live consensus commits.
+	blockSaveMtx cmtsync.Mutex
+
 	// mtx protects access to internal fields of State (excluding rs and state!)
 	mtx cmtsync.Mutex
 	// privValidator pubkey, memoized for the duration of one block
@@ -222,7 +226,14 @@ func NewState(
 		// If the height at which the vote extensions are enabled is lower
 		// than the height at which we statesync, consensus will panic because
 		// it will try to reconstruct the extended commit here.
-		if cs.offlineStateSyncHeight != 0 {
+		extensionsEnabled := state.ConsensusParams.ABCI.VoteExtensionsEnabled(state.LastBlockHeight)
+		extCommitMissing := extensionsEnabled && cs.blockStore.LoadBlockExtendedCommit(state.LastBlockHeight) == nil
+		// When a node state-syncs using propagation-based catchup it may not
+		// have downloaded vote extensions for the last height yet. In that
+		// case we fall back to the seen commit to avoid panicking during
+		// startup; once the node commits a new block it will have full
+		// extended commit data again.
+		if cs.offlineStateSyncHeight != 0 || extCommitMissing {
 			cs.reconstructSeenCommit(state)
 		} else {
 			cs.reconstructLastCommit(state)
@@ -1958,11 +1969,13 @@ func (cs *State) finalizeCommit(height int64) {
 		seenExtendedCommit := cs.rs.Votes.Precommits(cs.rs.CommitRound).MakeExtendedCommit(cs.state.ConsensusParams.ABCI)
 		seenCommit = seenExtendedCommit.ToCommit()
 		cs.unlockAll()
+		cs.blockSaveMtx.Lock()
 		if cs.state.ConsensusParams.ABCI.VoteExtensionsEnabled(block.Height) {
 			cs.blockStore.SaveBlockWithExtendedCommit(block, blockParts, seenExtendedCommit)
 		} else {
 			cs.blockStore.SaveBlock(block, blockParts, seenExtendedCommit.ToCommit())
 		}
+		cs.blockSaveMtx.Unlock()
 		cs.lockAll()
 	} else {
 		// Happens during replay if we already saved the block but didn't commit
@@ -2868,6 +2881,7 @@ func repairWalFile(src, dst string) error {
 func (cs *State) syncData() {
 	partChan := cs.propagator.GetPartChan()
 	proposalChan := cs.propagator.GetProposalChan()
+	blockChan := cs.propagator.GetBlockChan() // For complete blocksync blocks
 
 	for {
 		select {
@@ -2925,8 +2939,98 @@ func (cs *State) syncData() {
 			}
 
 			cs.peerMsgQueue <- msgInfo{&BlockPartMessage{h, r, part.Part}, ""}
+
+		// Complete blocksync blocks - delivered in strictly increasing height order
+		case block, ok := <-blockChan:
+			if !ok || block == nil {
+				// blockChan is nil when blocksync is disabled (NoOpPropagator)
+				// or closed when shutting down
+				continue
+			}
+			if err := cs.applyBlocksyncBlock(block); err != nil {
+				cs.Logger.Error("failed to apply blocksync block", "height", block.Height, "err", err)
+			}
 		}
 	}
+}
+
+// applyBlocksyncBlock applies a complete block received from blocksync.
+// This is similar to what blocksync.Reactor.poolRoutine does, but operates
+// on blocks delivered through the propagation reactor's blockChan.
+//
+// The block has already been verified to have a valid commit from headersync.
+// Blocks are guaranteed to arrive in strictly increasing height order.
+func (cs *State) applyBlocksyncBlock(completed *propagation.CompletedBlock) error {
+	// Ensure blockStore writes are serialized with live consensus commits to
+	// avoid races that would violate blockStore contiguity checks.
+	cs.blockSaveMtx.Lock()
+	defer cs.blockSaveMtx.Unlock()
+
+	// 1. Validate this is the next expected height
+	cs.stateMtx.RLock()
+	expectedHeight := cs.state.LastBlockHeight + 1
+	state := cs.state
+	cs.stateMtx.RUnlock()
+
+	// If the block has already been persisted (e.g. via live consensus), skip it
+	// and advance pending delivery. This protects against duplicate delivery
+	// during races between blocksync and live commits.
+	if completed.Height <= cs.blockStore.Height() {
+		// Let the propagator/pruner continue; nothing to apply here.
+		return nil
+	}
+
+	if completed.Height != expectedHeight {
+		return fmt.Errorf("unexpected blocksync height: got %d, want %d",
+			completed.Height, expectedHeight)
+	}
+
+	// 2. Reconstruct block from parts
+	bz := completed.Parts.GetBytes()
+	pbb := new(cmtproto.Block)
+	if err := proto.Unmarshal(bz, pbb); err != nil {
+		return fmt.Errorf("failed to unmarshal block: %w", err)
+	}
+	block, err := types.BlockFromProto(pbb)
+	if err != nil {
+		return fmt.Errorf("failed to convert block from proto: %w", err)
+	}
+
+	// 3. Verify commit (commit is from headersync's verified header)
+	if completed.Commit == nil {
+		return fmt.Errorf("blocksync block missing commit")
+	}
+
+	if err := state.Validators.VerifyCommitLight(
+		cs.state.ChainID, completed.BlockID, completed.Height, completed.Commit,
+	); err != nil {
+		return fmt.Errorf("commit verification failed: %w", err)
+	}
+
+	// 4. Validate block structure
+	if err := cs.blockExec.ValidateBlock(state, block); err != nil {
+		return fmt.Errorf("block validation failed: %w", err)
+	}
+
+	// 5. Save block to store
+	cs.blockStore.SaveBlock(block, completed.Parts, completed.Commit)
+
+	// 6. Apply to state using ApplyVerifiedBlock (same as blocksync reactor)
+	newState, err := cs.blockExec.ApplyVerifiedBlock(state, completed.BlockID, block, completed.Commit)
+	if err != nil {
+		return fmt.Errorf("failed to apply block: %w", err)
+	}
+
+	// 7. Update consensus state
+	cs.stateMtx.Lock()
+	cs.state = newState
+	cs.stateMtx.Unlock()
+
+	// 8. Prune propagator state
+	cs.propagator.Prune(completed.Height)
+
+	cs.Logger.Info("Applied blocksync block", "height", completed.Height)
+	return nil
 }
 
 func (cs *State) lockAll() {

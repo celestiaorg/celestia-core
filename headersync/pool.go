@@ -16,16 +16,17 @@ const (
 	requestTimeout = 15 * time.Second
 
 	// defaultMaxPendingBatches is the default maximum number of concurrent batch requests.
-	defaultMaxPendingBatches = 10
+	defaultMaxPendingBatches = 1000
 
 	// banDuration is how long a misbehaving peer is banned.
 	banDuration = 60 * time.Second
 )
 
-// SignedHeader pairs a header with its commit.
+// SignedHeader pairs a header with its commit and optional validator set.
 type SignedHeader struct {
-	Header *types.Header
-	Commit *types.Commit
+	Header       *types.Header
+	Commit       *types.Commit
+	ValidatorSet *types.ValidatorSet // non-nil when validator set changed at this height
 }
 
 // VerifiedHeader contains a header that has been fully verified.
@@ -50,16 +51,6 @@ type headerBatch struct {
 	requestTime time.Time
 	headers     []*SignedHeader // filled in as response arrives
 	received    bool
-}
-
-// peerError represents an error associated with a peer.
-type peerError struct {
-	err    error
-	peerID p2p.ID
-}
-
-func (e peerError) Error() string {
-	return fmt.Sprintf("error with peer %v: %s", e.peerID, e.err.Error())
 }
 
 // hsPeer represents a peer in the header sync pool.
@@ -141,7 +132,8 @@ func (pool *HeaderPool) cleanupTimedOut() []p2p.ID {
 
 	// Check for timed out batch requests.
 	for startHeight, batch := range pool.pendingBatches {
-		if !batch.received && now.Sub(batch.requestTime) > pool.requestTimeout {
+		age := now.Sub(batch.requestTime)
+		if !batch.received && age > pool.requestTimeout {
 			pool.Logger.Debug("Header batch request timed out",
 				"startHeight", startHeight,
 				"peer", batch.peerID)
@@ -228,8 +220,9 @@ func (pool *HeaderPool) pickPeer(height int64) *hsPeer {
 
 // SetPeerRange sets the peer's reported blockchain base and height.
 // Returns true if the update was accepted, false if the peer should be disconnected.
-// Peers should only send updates when their height increases. Sending an update
-// for the same or lower height is considered a DoS attempt and results in disconnection.
+// Peers must not regress (lower height or base). Duplicate (unchanged) updates are
+// tolerated and simply ignored to avoid false-positive DoS disconnects when nodes
+// send periodic status messages while stalled at the same height.
 func (pool *HeaderPool) SetPeerRange(peerID p2p.ID, base, height int64) bool {
 	pool.mtx.Lock()
 	defer pool.mtx.Unlock()
@@ -255,16 +248,16 @@ func (pool *HeaderPool) SetPeerRange(peerID p2p.ID, base, height int64) bool {
 	}
 
 	// Existing peer - DoS protection checks.
-	if height <= peer.height {
-		pool.Logger.Error("Peer sent status update with non-increasing height, disconnecting",
+	switch {
+	case height < peer.height:
+		pool.Logger.Error("Peer sent status update with lower height, disconnecting",
 			"peer", peerID,
 			"height", height,
 			"prevHeight", peer.height)
 		pool.removePeer(peerID)
 		pool.banPeer(peerID)
 		return false
-	}
-	if base < peer.base {
+	case base < peer.base:
 		pool.Logger.Error("Peer sent status update with decreased base, disconnecting",
 			"peer", peerID,
 			"base", base,
@@ -272,10 +265,17 @@ func (pool *HeaderPool) SetPeerRange(peerID p2p.ID, base, height int64) bool {
 		pool.removePeer(peerID)
 		pool.banPeer(peerID)
 		return false
+	case height == peer.height && base == peer.base:
+		// Duplicate update; ignore but keep peer connected.
+		pool.Logger.Debug("Ignoring duplicate status update",
+			"peer", peerID, "height", height, "base", base)
+		return true
 	}
 
 	peer.base = base
 	peer.height = height
+	// Clear timeout flag when peer updates their status - they're clearly responsive.
+	peer.didTimeout = false
 	pool.updateMaxPeerHeightIfNeeded(height)
 	pool.sortPeers()
 	return true

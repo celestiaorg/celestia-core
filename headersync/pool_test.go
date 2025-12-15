@@ -54,18 +54,18 @@ func TestHeaderPool_SetPeerRange_DoSProtection(t *testing.T) {
 	ok := pool.SetPeerRange(peerID, 1, 100)
 	assert.True(t, ok)
 
-	// Sending same height should fail (DoS protection)
+	// Sending same height/base should be tolerated (duplicate update)
 	ok = pool.SetPeerRange(peerID, 1, 100)
-	assert.False(t, ok, "should reject status update with same height")
+	assert.True(t, ok, "should accept duplicate status update without banning")
 
-	// Peer should be banned
-	assert.True(t, pool.IsPeerBanned(peerID))
+	// Peer should NOT be banned
+	assert.False(t, pool.IsPeerBanned(peerID))
 
-	// Peer should be removed
+	// Peer should still be present
 	pool.mtx.Lock()
 	_, exists := pool.peers[peerID]
 	pool.mtx.Unlock()
-	assert.False(t, exists)
+	assert.True(t, exists)
 }
 
 func TestHeaderPool_SetPeerRange_LowerHeight(t *testing.T) {
@@ -83,6 +83,25 @@ func TestHeaderPool_SetPeerRange_LowerHeight(t *testing.T) {
 
 	// Peer should be banned
 	assert.True(t, pool.IsPeerBanned(peerID))
+}
+
+func TestHeaderPool_SetPeerRange_DuplicateHeightHigherBase(t *testing.T) {
+	pool := newTestPool(1, 50)
+
+	peerID := p2p.ID("peer1")
+
+	// Set initial range
+	ok := pool.SetPeerRange(peerID, 1, 100)
+	assert.True(t, ok)
+
+	// Same height but pruned base increased should be accepted and update base.
+	ok = pool.SetPeerRange(peerID, 10, 100)
+	assert.True(t, ok)
+
+	pool.mtx.Lock()
+	assert.Equal(t, int64(10), pool.peers[peerID].base)
+	assert.Equal(t, int64(100), pool.peers[peerID].height)
+	pool.mtx.Unlock()
 }
 
 func TestHeaderPool_RemovePeer(t *testing.T) {

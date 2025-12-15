@@ -19,6 +19,10 @@ type Propagator interface {
 	SetProposer(proposer crypto.PubKey)
 	GetPartChan() <-chan types.PartInfo
 	GetProposalChan() <-chan ProposalAndSrc
+	// GetBlockChan returns the channel for receiving complete blocksync blocks.
+	// Blocks on this channel are guaranteed to arrive in strictly increasing height order.
+	// Returns nil for NoOpPropagator or when blocksync is not enabled.
+	GetBlockChan() <-chan *CompletedBlock
 }
 
 type ProposalAndSrc struct {
@@ -86,5 +90,9 @@ func (nop *NoOpPropagator) GetPartChan() <-chan types.PartInfo {
 }
 
 func (nop *NoOpPropagator) GetProposalChan() <-chan ProposalAndSrc {
+	return nil
+}
+
+func (nop *NoOpPropagator) GetBlockChan() <-chan *CompletedBlock {
 	return nil
 }

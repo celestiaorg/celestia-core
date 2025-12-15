@@ -4,6 +4,7 @@ package tendermint.headersync;
 option go_package = "github.com/cometbft/cometbft/proto/tendermint/headersync";
 
 import "tendermint/types/types.proto";
+import "tendermint/types/validator.proto";
 
 // StatusResponse contains a peer's header sync status.
 // Sent proactively when a peer connects or when header height advances.
@@ -14,10 +15,14 @@ message StatusResponse {
   int64 height = 2;
 }
 
-// SignedHeader pairs a header with its commit.
+// SignedHeader pairs a header with its commit and optional validator set.
 message SignedHeader {
   tendermint.types.Header header = 1;
   tendermint.types.Commit commit = 2;
+  // ValidatorSet is included only when the validator set changed at this height
+  // (i.e., header.NextValidatorsHash != header.ValidatorsHash at the previous height).
+  // This is the validator set that will be used to verify subsequent headers.
+  tendermint.types.ValidatorSet validator_set = 3;
 }
 
 // GetHeaders requests a batch of headers starting from start_height.

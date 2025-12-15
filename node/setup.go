@@ -370,6 +370,8 @@ func createHeaderSyncReactor(
 	stateStore sm.Store,
 	blockStore *store.BlockStore,
 	chainID string,
+	initialHeight int64,
+	validators *types.ValidatorSet,
 	logger log.Logger,
 	metrics *headersync.Metrics,
 ) *headersync.Reactor {
@@ -378,6 +380,8 @@ func createHeaderSyncReactor(
 		blockStore,
 		chainID,
 		config.HeaderSync.BatchSize,
+		initialHeight,
+		validators,
 		metrics,
 	)
 	hsReactor.SetLogger(logger.With("module", "headersync"))
@@ -560,7 +564,9 @@ func createSwitch(config *cfg.Config,
 	if config.Mempool.Type != cfg.MempoolTypeNop {
 		sw.AddReactor("MEMPOOL", mempoolReactor)
 	}
-	sw.AddReactor("BLOCKSYNC", bcReactor)
+	if bcReactor != nil {
+		sw.AddReactor("BLOCKSYNC", bcReactor)
+	}
 	if hsReactor != nil {
 		sw.AddReactor("HEADERSYNC", hsReactor)
 	}
@@ -630,11 +636,14 @@ func createPEXReactorAndAddToSwitch(addrBook pex.AddrBook, config *cfg.Config,
 func startStateSync(
 	ssR *statesync.Reactor,
 	bcR blockSyncReactor,
+	hsR *headersync.Reactor,
 	stateProvider statesync.StateProvider,
 	config *cfg.StateSyncConfig,
 	stateStore sm.Store,
 	blockStore *store.BlockStore,
 	state sm.State,
+	allowBlockSync bool,
+	onComplete func(sm.State),
 ) error {
 	ssR.Logger.Info("Starting state sync")
 
@@ -672,10 +681,23 @@ func startStateSync(
 			return
 		}
 
-		err = bcR.SwitchToBlockSync(state)
-		if err != nil {
-			ssR.Logger.Error("Failed to switch to block sync", "err", err)
-			return
+		// Align headersync to the state-sync height so header requests
+		// start just after the trusted snapshot height instead of from genesis.
+		if hsR != nil {
+			hsR.ResetHeight(state.LastBlockHeight)
+		}
+
+		if allowBlockSync && bcR != nil {
+			err = bcR.SwitchToBlockSync(state)
+			if err != nil {
+				ssR.Logger.Error("Failed to switch to block sync", "err", err)
+				return
+			}
+		} else {
+			ssR.Logger.Info("Skipping switch to block sync (disabled), relying on propagation to catch up", "height", state.LastBlockHeight)
+			if onComplete != nil {
+				onComplete(state)
+			}
 		}
 	}()
 	return nil

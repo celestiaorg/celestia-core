@@ -446,12 +446,29 @@ func (blockProp *Reactor) handleRecoveryPart(peer p2p.ID, part *proptypes.Recove
 	if p == nil && peer != blockProp.self {
 		return
 	}
-	// the peer must always send the proposal before sending parts, if they did
-	// not this node must disconnect from them.
 	cb, parts, _, has := blockProp.getAllState(part.Height, part.Round, false)
+
+	// Prefer the inline proof from the message; fall back to the compact block cache.
+	proof := part.Proof
+	if proof == nil && cb != nil {
+		proof = cb.GetProof(part.Index)
+	}
+	if proof != nil && len(proof.LeafHash) != tmhash.Size {
+		proof = nil
+	}
+
+	// Feed blocksync/catchup path first so pendingBlocks can track progress even
+	// when the legacy proposal cache doesn't have this height yet.
+	if blockProp.pendingBlocks != nil && proof != nil {
+		_, _, err := blockProp.pendingBlocks.HandlePart(part.Height, part.Round, part, proof)
+		if err != nil {
+			blockProp.Logger.Debug("pendingBlocks handle part failed", "peer", peer, "height", part.Height, "round", part.Round, "part", part.Index, "err", err)
+		}
+	}
+
+	// If we still don't have state for this part in the legacy cache, stop here.
 	if !has {
 		blockProp.Logger.Debug("received part for unknown proposal", "peer", peer, "height", part.Height, "round", part.Round)
-		// blockProp.Switch.StopPeerForError(p.peer, errors.New("received recovery part for unknown proposal"))
 		return
 	}
 
@@ -459,26 +476,14 @@ func (blockProp *Reactor) handleRecoveryPart(peer p2p.ID, part *proptypes.Recove
 		return
 	}
 
-	// todo: add these defensive checks in a better way
-	if cb == nil {
-		return
-	}
-	if parts == nil {
+	// defensive checks
+	if cb == nil || parts == nil {
 		return
 	}
 
-	// todo: we need to figure out a way to get the proof for a part that was
-	// sent during catchup.
-	proof := cb.GetProof(part.Index)
 	if proof == nil {
-		if part.Proof == nil {
-			blockProp.Logger.Error("proof not found", "peer", peer, "height", part.Height, "round", part.Round, "part", part.Index)
-			return
-		}
-		if len(part.Proof.LeafHash) != tmhash.Size {
-			return
-		}
-		proof = part.Proof
+		blockProp.Logger.Error("proof not found", "peer", peer, "height", part.Height, "round", part.Round, "part", part.Index)
+		return
 	}
 
 	added, err := parts.AddPart(part, *proof)
@@ -504,8 +509,14 @@ func (blockProp *Reactor) handleRecoveryPart(peer p2p.ID, part *proptypes.Recove
 		return
 	}
 
-	// only send original parts to the consensus reactor
-	if part.Index < parts.Original().Total() {
+	// Determine if this is a live consensus height or a blocksync height.
+	// Only send original parts to partChan for LIVE consensus height.
+	// Blocksync blocks are delivered via blockChan when complete (through BlockDeliveryManager).
+	blockProp.pmtx.Lock()
+	isLiveConsensus := part.Height == blockProp.height
+	blockProp.pmtx.Unlock()
+
+	if isLiveConsensus && part.Index < parts.Original().Total() {
 		select {
 		case <-blockProp.ctx.Done():
 			return
@@ -556,8 +567,9 @@ func (blockProp *Reactor) handleRecoveryPart(peer p2p.ID, part *proptypes.Recove
 				blockProp.Logger.Error("failed to get decoded part", "peer", peer, "height", part.Height, "round", part.Round, "part", i)
 				continue
 			}
-			// only send original parts to the consensus reactor
-			if i < parts.Original().Total() && missingOriginalParts.GetIndex(int(i)) {
+			// Only send original parts to partChan for LIVE consensus height.
+			// Blocksync blocks are delivered via blockChan when complete.
+			if isLiveConsensus && i < parts.Original().Total() && missingOriginalParts.GetIndex(int(i)) {
 				select {
 				case <-blockProp.ctx.Done():
 					return

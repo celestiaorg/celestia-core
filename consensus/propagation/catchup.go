@@ -2,6 +2,7 @@ package propagation
 
 import (
 	"bytes"
+	"fmt"
 	"math/rand"
 
 	proptypes "github.com/cometbft/cometbft/consensus/propagation/types"
@@ -39,9 +40,6 @@ func (blockProp *Reactor) retryWants() {
 		peers = shuffle(peers)
 
 		for _, peer := range peers {
-			if peer.consensusPeerState.GetHeight() < height {
-				continue
-			}
 			mc := missing.Copy()
 
 			reqs, has := peer.GetRequests(height, round)
@@ -138,4 +136,131 @@ func shuffle[T any](slice []T) []T {
 		slice[i], slice[j] = slice[j], slice[i]
 	}
 	return slice
+}
+
+// fmtMissingHeights renders a compact list of heights (e.g. "[1029 1030 1031]")
+// from a slice of MissingPartsInfo for logging.
+func fmtMissingHeights(missing []*MissingPartsInfo) string {
+	heights := make([]int64, 0, len(missing))
+	for _, m := range missing {
+		heights = append(heights, m.Height)
+	}
+	return fmt.Sprint(heights)
+}
+
+// requestMissingParts uses the PendingBlocksManager to request missing parts
+// for all tracked pending blocks. This is the unified request routine that
+// replaces the old retryWants for both catchup and blocksync scenarios.
+//
+// It iterates through pending blocks (ordered by height - lowest first) and
+// requests missing parts from peers that are at or above each block's height.
+func (blockProp *Reactor) requestMissingParts() {
+	if !blockProp.started.Load() {
+		return
+	}
+
+	if blockProp.pendingBlocks == nil {
+		// Fall back to legacy retryWants if PendingBlocksManager not configured
+		blockProp.retryWants()
+		return
+	}
+
+	// Ensure the pending blocks manager is populated with headers we already
+	// have before issuing any part requests. Without this, requestMissingParts
+	// would find nothing to request and nodes would stall even though headers
+	// are verified.
+	blockProp.pendingBlocks.TryFillCapacity()
+
+	// Get missing parts info for up to 100 blocks, ordered by height (lowest first)
+	missing := blockProp.pendingBlocks.GetMissingParts(100)
+	if len(missing) == 0 {
+		return
+	}
+
+	peers := blockProp.getPeers()
+	if len(peers) == 0 {
+		// We know we're missing parts but have nobody to request from – this is
+		// exactly the situation that can stall a node after it reconnects. Keep it
+		// at debug to avoid spam when the peer set is intentionally empty (tests).
+		blockProp.Logger.Debug("cannot request missing parts: no connected peers", "missing_heights", fmtMissingHeights(missing))
+		return
+	}
+
+	for _, info := range missing {
+		// Shuffle peers to distribute load
+		peers = shuffle(peers)
+
+		pendingBlock := blockProp.pendingBlocks.GetBlock(info.Height)
+		haveParts := 0
+		if pendingBlock != nil {
+			haveParts = len(pendingBlock.Parts.BitArray().GetTrueIndices())
+		}
+		blockProp.Logger.Debug("requesting missing parts", "height", info.Height, "round", info.Round,
+			"have_parts", haveParts, "missing_parts", len(info.Missing.GetTrueIndices()), "needs_proofs", info.NeedsProofs,
+			"peer_candidates", len(peers))
+
+		for _, peer := range peers {
+			// Get what parts we still need to request (subtract already requested)
+			mc := info.Missing.Copy()
+
+			reqs, has := peer.GetRequests(info.Height, info.Round)
+			if has {
+				mc = mc.Sub(reqs)
+			}
+
+			if mc.IsEmpty() {
+				blockProp.Logger.Debug("skip want: nothing left to request from peer", "peer", peer.peer.ID(), "height", info.Height, "round", info.Round)
+				continue
+			}
+
+			// Calculate how many parts we still need to decode
+			// (need half the total parts with erasure coding)
+			pendingBlock := blockProp.pendingBlocks.GetBlock(info.Height)
+			if pendingBlock == nil {
+				continue
+			}
+			haveParts := len(pendingBlock.Parts.BitArray().GetTrueIndices())
+			missingPartsCount := countRemainingParts(int(info.Total), haveParts)
+			if missingPartsCount == 0 {
+				blockProp.Logger.Debug("skip want: already have enough parts to decode", "height", info.Height, "round", info.Round, "have_parts", haveParts)
+				continue
+			}
+
+			// Build and send WantParts message
+			e := p2p.Envelope{
+				ChannelID: WantChannel,
+				Message: &protoprop.WantParts{
+					Parts:             *mc.ToProto(),
+					Height:            info.Height,
+					Round:             info.Round,
+					Prove:             info.NeedsProofs, // Use proof requirement from manager
+					MissingPartsCount: missingPartsCount,
+				},
+			}
+
+			if !peer.peer.TrySend(e) {
+				blockProp.Logger.Error("failed to send want part", "peer", peer.peer.ID(),
+					"height", info.Height, "round", info.Round)
+				continue
+			}
+
+			blockProp.Logger.Debug("sent want parts", "peer", peer.peer.ID(), "height", info.Height, "round", info.Round,
+				"requested_parts", len(mc.GetTrueIndices()), "missing_parts_count", missingPartsCount)
+
+			schema.WriteCatchupRequest(blockProp.traceClient, info.Height, info.Round,
+				mc.String(), string(peer.peer.ID()))
+
+			// Limit requests per part to avoid over-requesting
+			for _, partIndex := range mc.GetTrueIndices() {
+				reqLimit := ReqLimit(int(info.Total))
+				reqsCount := blockProp.countRequests(info.Height, info.Round, partIndex)
+				if len(reqsCount) >= reqLimit {
+					info.Missing.SetIndex(partIndex, false)
+				}
+			}
+
+			// Track which requests we've made
+			peer.AddRequests(info.Height, info.Round, mc)
+		}
+	}
 }
