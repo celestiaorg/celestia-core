@@ -24,6 +24,7 @@ func ConsensusTables() []string {
 		MissedProposalsTable,
 		SigningLatencyTable,
 		FullBlockReceivingTimeTable,
+		DebugCatchupTable,
 	}
 }
 
@@ -516,5 +517,99 @@ func WriteFullBlockReceivingTime(
 		Round:    round,
 		Time:     t,
 		Complete: complete,
+	})
+}
+
+const (
+	// DebugCatchupTable stores events related to debug-induced catchup testing.
+	DebugCatchupTable = "debug_catchup"
+)
+
+// DebugHaltEvent records when consensus is halted for debugging.
+type DebugHaltEvent struct {
+	// Height is the height at which the halt was initiated
+	Height int64 `json:"height"`
+	// Round is the round at which the halt was initiated
+	Round int32 `json:"round"`
+}
+
+func (DebugHaltEvent) Table() string {
+	return DebugCatchupTable
+}
+
+// WriteDebugHalt writes a trace event when consensus is halted for debugging.
+func WriteDebugHalt(client trace.Tracer, height int64, round int32) {
+	if !client.IsCollecting(DebugCatchupTable) {
+		return
+	}
+	client.Write(DebugHaltEvent{
+		Height: height,
+		Round:  round,
+	})
+}
+
+// DebugUnlockEvent records when consensus is unlocked after a debug halt.
+type DebugUnlockEvent struct {
+	// HaltHeight is the height at which the node was halted
+	HaltHeight int64 `json:"halt_height"`
+	// CurrentHeight is the chain height when unlock occurs
+	CurrentHeight int64 `json:"current_height"`
+	// HaltDurationNs is how long the node was halted in nanoseconds
+	HaltDurationNs int64 `json:"halt_duration_ns"`
+}
+
+func (DebugUnlockEvent) Table() string {
+	return DebugCatchupTable
+}
+
+// WriteDebugUnlock writes a trace event when consensus is unlocked.
+func WriteDebugUnlock(
+	client trace.Tracer,
+	haltHeight int64,
+	currentHeight int64,
+	haltDurationNs int64,
+) {
+	if !client.IsCollecting(DebugCatchupTable) {
+		return
+	}
+	client.Write(DebugUnlockEvent{
+		HaltHeight:     haltHeight,
+		CurrentHeight:  currentHeight,
+		HaltDurationNs: haltDurationNs,
+	})
+}
+
+// DebugCatchupComplete records when a node catches up to the tip after a debug halt.
+type DebugCatchupComplete struct {
+	// HaltHeight is the height at which the node was originally halted
+	HaltHeight int64 `json:"halt_height"`
+	// CurrentHeight is the height at which catchup completed (the tip)
+	CurrentHeight int64 `json:"current_height"`
+	// CatchupDurationNs is how long it took to catch up in nanoseconds
+	CatchupDurationNs int64 `json:"catchup_duration_ns"`
+	// BlocksCaughtUp is the number of blocks that were caught up
+	BlocksCaughtUp int64 `json:"blocks_caught_up"`
+}
+
+func (DebugCatchupComplete) Table() string {
+	return DebugCatchupTable
+}
+
+// WriteDebugCatchupComplete writes a trace event when catchup completes.
+func WriteDebugCatchupComplete(
+	client trace.Tracer,
+	haltHeight int64,
+	currentHeight int64,
+	catchupDurationNs int64,
+	blocksCaughtUp int64,
+) {
+	if !client.IsCollecting(DebugCatchupTable) {
+		return
+	}
+	client.Write(DebugCatchupComplete{
+		HaltHeight:        haltHeight,
+		CurrentHeight:     currentHeight,
+		CatchupDurationNs: catchupDurationNs,
+		BlocksCaughtUp:    blocksCaughtUp,
 	})
 }

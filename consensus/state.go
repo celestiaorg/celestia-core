@@ -172,6 +172,15 @@ type State struct {
 
 	// gossipDataEnabled controls whether the gossipDataRoutine should run
 	gossipDataEnabled atomic.Bool
+
+	// debugHalt is used to pause block commits for debugging catchup behavior.
+	// When unlockCh is non-nil, the consensus state will wait on it before
+	// committing blocks, allowing peers to get ahead.
+	debugHaltMtx    sync.Mutex
+	debugHaltCh     chan struct{} // signals when to halt (close to halt)
+	debugUnlockCh   chan struct{} // signals when to unlock (close to unlock)
+	debugHaltStart  time.Time     // when the halt started
+	debugHaltHeight int64         // the height at which the halt was initiated
 }
 
 // StateOption sets an optional parameter on the State.
@@ -1958,6 +1967,12 @@ func (cs *State) finalizeCommit(height int64) {
 		seenExtendedCommit := cs.rs.Votes.Precommits(cs.rs.CommitRound).MakeExtendedCommit(cs.state.ConsensusParams.ABCI)
 		seenCommit = seenExtendedCommit.ToCommit()
 		cs.unlockAll()
+
+		// Debug halt: wait for unlock signal before saving block.
+		// This allows forcing the node into catchup mode for debugging.
+		// Message processing continues while waiting because locks are released.
+		cs.waitForDebugUnlock()
+
 		if cs.state.ConsensusParams.ABCI.VoteExtensionsEnabled(block.Height) {
 			cs.blockStore.SaveBlockWithExtendedCommit(block, blockParts, seenExtendedCommit)
 		} else {
@@ -2939,4 +2954,95 @@ func (cs *State) unlockAll() {
 	cs.rsMtx.Unlock()
 	cs.stateMtx.Unlock()
 	cs.mtx.Unlock()
+}
+
+// DebugHalt pauses the consensus state before committing blocks.
+// This is an unsafe debugging operation that allows forcing a node into catchup mode.
+// Message processing continues while halted, but block commits are delayed.
+// Returns the height at which the halt was initiated.
+func (cs *State) DebugHalt() int64 {
+	cs.debugHaltMtx.Lock()
+	defer cs.debugHaltMtx.Unlock()
+
+	cs.rsMtx.RLock()
+	height := cs.rs.Height
+	round := cs.rs.Round
+	cs.rsMtx.RUnlock()
+
+	// Already halted
+	if cs.debugHaltCh != nil {
+		cs.Logger.Info("DebugHalt called but already halted", "height", height)
+		return cs.debugHaltHeight
+	}
+
+	cs.debugHaltCh = make(chan struct{})
+	cs.debugUnlockCh = make(chan struct{})
+	cs.debugHaltStart = time.Now()
+	cs.debugHaltHeight = height
+
+	cs.Logger.Info("DebugHalt: consensus halted, waiting for unlock", "height", height, "round", round)
+	schema.WriteDebugHalt(cs.traceClient, height, round)
+
+	return height
+}
+
+// DebugUnlock resumes the consensus state after a DebugHalt.
+// Returns the duration the node was halted and the height at which it will resume catchup.
+func (cs *State) DebugUnlock() (haltDuration time.Duration, haltHeight int64, currentHeight int64) {
+	cs.debugHaltMtx.Lock()
+	defer cs.debugHaltMtx.Unlock()
+
+	cs.rsMtx.RLock()
+	currentHeight = cs.rs.Height
+	cs.rsMtx.RUnlock()
+
+	// Not halted
+	if cs.debugUnlockCh == nil {
+		cs.Logger.Info("DebugUnlock called but not halted")
+		return 0, 0, currentHeight
+	}
+
+	haltDuration = time.Since(cs.debugHaltStart)
+	haltHeight = cs.debugHaltHeight
+
+	// Signal unlock to any waiting goroutine
+	close(cs.debugUnlockCh)
+	cs.debugHaltCh = nil
+	cs.debugUnlockCh = nil
+
+	cs.Logger.Info("DebugUnlock: consensus resumed",
+		"halt_duration", haltDuration,
+		"halt_height", haltHeight,
+		"current_height", currentHeight)
+
+	schema.WriteDebugUnlock(cs.traceClient, haltHeight, currentHeight, haltDuration.Nanoseconds())
+
+	return haltDuration, haltHeight, currentHeight
+}
+
+// IsDebugHalted returns true if the consensus state is currently halted for debugging.
+func (cs *State) IsDebugHalted() bool {
+	cs.debugHaltMtx.Lock()
+	defer cs.debugHaltMtx.Unlock()
+	return cs.debugHaltCh != nil
+}
+
+// waitForDebugUnlock blocks until debug unlock is signaled, if a halt is active.
+// This should be called in finalizeCommit before actually committing the block.
+// It releases all locks while waiting to allow message processing to continue.
+func (cs *State) waitForDebugUnlock() {
+	cs.debugHaltMtx.Lock()
+	unlockCh := cs.debugUnlockCh
+	cs.debugHaltMtx.Unlock()
+
+	if unlockCh == nil {
+		return
+	}
+
+	cs.Logger.Info("waitForDebugUnlock: waiting for unlock signal before committing block")
+
+	// Wait for unlock signal
+	<-unlockCh
+
+	cs.Logger.Info("waitForDebugUnlock: unlock signal received, proceeding with commit")
 }
