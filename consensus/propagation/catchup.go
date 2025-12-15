@@ -187,7 +187,6 @@ func (blockProp *Reactor) requestMissingParts() {
 	}
 
 	for _, info := range missing {
-		fmt.Println("found missing info", info)
 		// Shuffle peers to distribute load
 		peers = shuffle(peers)
 
@@ -201,12 +200,6 @@ func (blockProp *Reactor) requestMissingParts() {
 			"peer_candidates", len(peers))
 
 		for _, peer := range peers {
-			// Skip peers that don't have this height yet
-			if peer.consensusPeerState.GetHeight() < info.Height {
-				blockProp.Logger.Debug("skip want: peer below height", "peer", peer.peer.ID(), "peer_height", peer.consensusPeerState.GetHeight(), "want_height", info.Height)
-				continue
-			}
-
 			// Get what parts we still need to request (subtract already requested)
 			mc := info.Missing.Copy()
 
