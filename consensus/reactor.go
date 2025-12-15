@@ -75,12 +75,11 @@ type Reactor struct {
 	// blocksyncR is the blocksync reactor, used to switch to blocksync mode when falling behind
 	blocksyncR blockSyncReactor
 
-	// lastSwitchTime tracks when we last switched modes (anti-thrashing)
-	lastSwitchTime time.Time
-	lastSwitchMtx  sync.Mutex
-
 	// lastCheckedHeight tracks the last height at which we checked for falling behind
 	lastCheckedHeight int64
+
+	// heightCheckCh receives heights to check for falling behind
+	heightCheckCh chan int64
 }
 
 type ReactorOption func(*Reactor)
@@ -89,12 +88,13 @@ type ReactorOption func(*Reactor)
 // consensusState.
 func NewReactor(consensusState *State, propagator propagation.Propagator, waitSync bool, options ...ReactorOption) *Reactor {
 	conR := &Reactor{
-		conS:        consensusState,
-		waitSync:    waitSync,
-		rs:          consensusState.GetRoundState(),
-		Metrics:     NopMetrics(),
-		traceClient: trace.NoOpTracer(),
-		propagator:  propagator,
+		conS:          consensusState,
+		waitSync:      waitSync,
+		rs:            consensusState.GetRoundState(),
+		Metrics:       NopMetrics(),
+		traceClient:   trace.NoOpTracer(),
+		propagator:    propagator,
+		heightCheckCh: make(chan int64, 1),
 	}
 
 	for _, option := range options {
@@ -124,6 +124,9 @@ func (conR *Reactor) OnStart() error {
 
 	// start routine that computes peer statistics for evaluating peer quality
 	go conR.peerStatsRoutine()
+
+	// start routine that checks if we're falling behind peers
+	go conR.fallingBehindCheckRoutine()
 
 	conR.subscribeToBroadcastEvents()
 	go conR.updateRoundStateRoutine()
@@ -562,8 +565,19 @@ func (conR *Reactor) SetBlockSyncReactor(bcR blockSyncReactor) {
 	conR.blocksyncR = bcR
 }
 
-// checkFallingBehindOnHeight checks if we're falling behind peers when entering a new height.
-// This is called once per height from the event subscription.
+// fallingBehindCheckRoutine continuously monitors for falling behind peers.
+func (conR *Reactor) fallingBehindCheckRoutine() {
+	for {
+		select {
+		case <-conR.Quit():
+			return
+		case height := <-conR.heightCheckCh:
+			conR.checkFallingBehindOnHeight(height)
+		}
+	}
+}
+
+// checkFallingBehindOnHeight checks if we're falling behind peers at the given height.
 func (conR *Reactor) checkFallingBehindOnHeight(height int64) {
 	// Safety checks
 	if conR.conS == nil || conR.conS.config == nil {
@@ -605,9 +619,7 @@ func (conR *Reactor) checkFallingBehindOnHeight(height int64) {
 	// Check if we should switch to blocksync
 	if conR.shouldSwitchToBlockSync(height, threshold) {
 		conR.Logger.Info("checkFallingBehind: SHOULD SWITCH, initiating blocksync switch")
-		// Run in goroutine to avoid blocking event handler and potential deadlock
-		// since initiateBlockSyncSwitch stops the consensus state machine
-		go conR.initiateBlockSyncSwitch()
+		conR.initiateBlockSyncSwitch()
 	} else {
 		conR.Logger.Info("checkFallingBehind: no need to switch", "height", height)
 	}
@@ -671,20 +683,6 @@ func (conR *Reactor) initiateBlockSyncSwitch() {
 		return
 	}
 
-	// Anti-thrashing: check cooldown
-	conR.lastSwitchMtx.Lock()
-	cooldown := conR.conS.config.MinSwitchCooldown
-	if time.Since(conR.lastSwitchTime) < cooldown {
-		conR.lastSwitchMtx.Unlock()
-		conR.mtx.Unlock()
-		conR.Logger.Debug("Skipping blocksync switch due to cooldown",
-			"time_since_last_switch", time.Since(conR.lastSwitchTime),
-			"cooldown", cooldown)
-		return
-	}
-	conR.lastSwitchTime = time.Now()
-	conR.lastSwitchMtx.Unlock()
-
 	if conR.blocksyncR == nil {
 		conR.mtx.Unlock()
 		conR.Logger.Error("Cannot switch to blocksync: blocksyncReactor not set")
@@ -745,10 +743,11 @@ func (conR *Reactor) subscribeToBroadcastEvents() {
 			rs := data.(*cstypes.RoundState)
 			conR.Logger.Info("EventNewRoundStep received", "height", rs.Height, "round", rs.Round, "step", rs.Step)
 			conR.broadcastNewRoundStepMessage(rs)
-			// Check if we're falling behind peers - run async to avoid blocking
-			// the event callback (which runs with consensus locks held)
-			height := rs.Height
-			go conR.checkFallingBehindOnHeight(height)
+			// Notify falling behind check routine (non-blocking)
+			select {
+			case conR.heightCheckCh <- rs.Height:
+			default:
+			}
 		}); err != nil {
 		conR.Logger.Error("Error adding listener for events", "err", err)
 	}
