@@ -169,6 +169,12 @@ func (blockProp *Reactor) requestMissingParts() {
 		return
 	}
 
+	// Ensure the pending blocks manager is populated with headers we already
+	// have before issuing any part requests. Without this, requestMissingParts
+	// would find nothing to request and nodes would stall even though headers
+	// are verified.
+	blockProp.pendingBlocks.TryFillCapacity()
+
 	// Get missing parts info for up to 100 blocks, ordered by height (lowest first)
 	missing := blockProp.pendingBlocks.GetMissingParts(100)
 	if len(missing) == 0 {

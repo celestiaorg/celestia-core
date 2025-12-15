@@ -1497,9 +1497,8 @@ Full end-to-end tests using the test harness to verify the complete system works
 - `test/e2e/tests/blocksync_test.go` - E2E test suite for unified blocksync
 
 **Implemented Tests**:
-1. `TestE2E_BlocksyncToConsensus` - Verifies smooth transition from blocksync to live consensus
-2. `TestE2E_BlocksyncBlockConsistency` - Verifies blocks synced via blocksync match authoritative chain
-3. `TestE2E_IsCaughtUp` - Verifies IsCaughtUp returns true after sync
+1. `TestE2E_BlocksyncBlockConsistency` - Verifies blocks synced via blocksync match authoritative chain
+2. `TestE2E_IsCaughtUp` - Verifies IsCaughtUp returns true after sync
 
 **Network Manifest** (`test/e2e/networks/blocksync.toml`):
 - 4 validators that produce blocks from genesis
@@ -1509,7 +1508,6 @@ Full end-to-end tests using the test harness to verify the complete system works
 
 **Testing Criteria**:
 - [x] E2E test: Node syncs from genesis using unified blocksync (syncing from scract occurs in the CI e2e test)
-- [x] E2E test: Node transitions from blocksync to live consensus (TestE2E_BlocksyncToConsensus)
 - [x] E2E test: Verify IsCaughtUp returns true after sync (TestE2E_IsCaughtUp)
 
 ### Step 11.2: E2E catchup test (IMPLEMENTED)

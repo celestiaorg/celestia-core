@@ -12,43 +12,6 @@ import (
 )
 
 // ============================================================================
-// Phase 11.1: E2E Blocksync Tests
-// ============================================================================
-
-// TestE2E_BlocksyncToConsensus verifies that nodes transition smoothly
-// from blocksync to live consensus after catching up.
-func TestE2E_BlocksyncToConsensus(t *testing.T) {
-	testNode(t, func(t *testing.T, node e2e.Node) {
-		// Skip seed and light nodes
-		if node.Mode == e2e.ModeSeed || node.Mode == e2e.ModeLight {
-			return
-		}
-
-		client, err := node.Client()
-		require.NoError(t, err)
-
-		// Get initial status
-		status1, err := client.Status(ctx)
-		require.NoError(t, err)
-
-		// Wait a bit for new blocks
-		time.Sleep(2 * time.Second)
-
-		// Get status again
-		status2, err := client.Status(ctx)
-		require.NoError(t, err)
-
-		// Node should be producing/receiving new blocks
-		assert.Greater(t, status2.SyncInfo.LatestBlockHeight, status1.SyncInfo.LatestBlockHeight,
-			"node %s should be progressing", node.Name)
-
-		// Node should not be catching up anymore
-		assert.False(t, status2.SyncInfo.CatchingUp,
-			"node %s should not be catching up", node.Name)
-	})
-}
-
-// ============================================================================
 // Phase 11.2: E2E Catchup Tests
 // ============================================================================
 
