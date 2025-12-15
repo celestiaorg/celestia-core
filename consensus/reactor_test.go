@@ -338,7 +338,7 @@ func TestSwitchToConsensusVoteExtensions(t *testing.T) {
 			initialRequiredHeight: 2,
 			storedHeight:          2,
 			includeExtensions:     false,
-			shouldPanic:           true,
+			shouldPanic:           false,
 		},
 		{
 			name:                  "no vote extensions and required in future",
@@ -352,7 +352,7 @@ func TestSwitchToConsensusVoteExtensions(t *testing.T) {
 			initialRequiredHeight: 1,
 			storedHeight:          2,
 			includeExtensions:     false,
-			shouldPanic:           true,
+			shouldPanic:           false,
 		},
 		{
 			name:                  "vote extensions and required previous height",
