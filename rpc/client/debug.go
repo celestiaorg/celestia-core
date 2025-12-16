@@ -1,12 +1,12 @@
 package client
 
 import (
-	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
 	"time"
 
+	cmtjson "github.com/cometbft/cometbft/libs/json"
 	ctypes "github.com/cometbft/cometbft/rpc/core/types"
 )
 
@@ -44,7 +44,7 @@ func DebugHalt(endpoint string) (*ctypes.ResultUnsafeDebugHalt, error) {
 		} `json:"error"`
 	}
 
-	if err := json.Unmarshal(body, &rpcResp); err != nil {
+	if err := cmtjson.Unmarshal(body, &rpcResp); err != nil {
 		return nil, fmt.Errorf("failed to parse response: %w", err)
 	}
 
@@ -88,7 +88,7 @@ func DebugUnlock(endpoint string) (*ctypes.ResultUnsafeDebugUnlock, error) {
 		} `json:"error"`
 	}
 
-	if err := json.Unmarshal(body, &rpcResp); err != nil {
+	if err := cmtjson.Unmarshal(body, &rpcResp); err != nil {
 		return nil, fmt.Errorf("failed to parse response: %w", err)
 	}
 
