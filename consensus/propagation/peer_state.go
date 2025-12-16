@@ -5,10 +5,17 @@ import (
 	"errors"
 	"sync/atomic"
 
+	proptypes "github.com/cometbft/cometbft/consensus/propagation/types"
 	"github.com/cometbft/cometbft/libs/bits"
 	"github.com/cometbft/cometbft/libs/log"
 	"github.com/cometbft/cometbft/libs/sync"
 	"github.com/cometbft/cometbft/p2p"
+)
+
+const (
+	// MaxUnverifiedProposals is the maximum number of compact blocks
+	// that can be cached per peer. Keeps the lowest heights when full.
+	MaxUnverifiedProposals = 24
 )
 
 type request struct {
@@ -41,6 +48,12 @@ type PeerState struct {
 	// in the consensus reactor. This enables both reactors to gossip data
 	// while minimizing redundant bandwidth.
 	consensusPeerState PeerStateEditor
+
+	// unverifiedProposals stores compact blocks received from this peer
+	// for heights we weren't ready to process. Indexed by height.
+	// These have NOT been verified via the consensus reactor's verification
+	// function. Limited to MaxUnverifiedProposals entries, keeping lowest heights.
+	unverifiedProposals map[int64]*proptypes.CompactBlock
 }
 
 type partData struct {
@@ -53,17 +66,18 @@ type partData struct {
 func newPeerState(ctx context.Context, peer p2p.Peer, logger log.Logger) *PeerState {
 	ctx, cancel := context.WithCancel(ctx)
 	return &PeerState{
-		ctx:                ctx,
-		cancel:             cancel,
-		mtx:                &sync.RWMutex{},
-		state:              make(map[int64]map[int32]*partState),
-		peer:               peer,
-		logger:             logger,
-		receivedHaves:      make(chan request, 20_000),
-		receivedParts:      make(chan partData, 20_000),
-		canRequest:         make(chan struct{}, 1),
-		remainingRequests:  make(map[int64]map[int32]int),
-		consensusPeerState: noOpPSE{},
+		ctx:                 ctx,
+		cancel:              cancel,
+		mtx:                 &sync.RWMutex{},
+		state:               make(map[int64]map[int32]*partState),
+		peer:                peer,
+		logger:              logger,
+		receivedHaves:       make(chan request, 20_000),
+		receivedParts:       make(chan partData, 20_000),
+		canRequest:          make(chan struct{}, 1),
+		remainingRequests:   make(map[int64]map[int32]int),
+		consensusPeerState:  noOpPSE{},
+		unverifiedProposals: make(map[int64]*proptypes.CompactBlock),
 	}
 }
 
@@ -306,7 +320,67 @@ func (d *PeerState) prune(prunePastHeight int64) {
 			delete(d.remainingRequests, height)
 		}
 	}
+	// Prune unverified proposals for heights <= prunePastHeight
+	for height := range d.unverifiedProposals {
+		if height <= prunePastHeight {
+			delete(d.unverifiedProposals, height)
+		}
+	}
 	// todo: prune rounds separately from heights
+}
+
+// StoreUnverifiedProposal caches a compact block for a future height.
+// Returns true if stored, false if rejected (cache full with lower heights).
+func (d *PeerState) StoreUnverifiedProposal(cb *proptypes.CompactBlock) bool {
+	d.mtx.Lock()
+	defer d.mtx.Unlock()
+
+	height := cb.Proposal.Height
+
+	// If we already have a proposal for this height, replace it (last write wins)
+	if _, exists := d.unverifiedProposals[height]; exists {
+		d.unverifiedProposals[height] = cb
+		return true
+	}
+
+	// If cache has room, store directly
+	if len(d.unverifiedProposals) < MaxUnverifiedProposals {
+		d.unverifiedProposals[height] = cb
+		return true
+	}
+
+	// Cache is full - find the highest height
+	var maxHeight int64 = -1
+	for h := range d.unverifiedProposals {
+		if h > maxHeight {
+			maxHeight = h
+		}
+	}
+
+	// Only store if this height is lower than the highest cached
+	// (we prioritize catching up on nearest heights first)
+	if height < maxHeight {
+		delete(d.unverifiedProposals, maxHeight)
+		d.unverifiedProposals[height] = cb
+		return true
+	}
+
+	// Reject - cache is full with lower heights
+	return false
+}
+
+// GetUnverifiedProposal returns cached compact block for height, or nil.
+func (d *PeerState) GetUnverifiedProposal(height int64) *proptypes.CompactBlock {
+	d.mtx.RLock()
+	defer d.mtx.RUnlock()
+	return d.unverifiedProposals[height]
+}
+
+// DeleteUnverifiedProposal removes a cached compact block for a specific height.
+func (d *PeerState) DeleteUnverifiedProposal(height int64) {
+	d.mtx.Lock()
+	defer d.mtx.Unlock()
+	delete(d.unverifiedProposals, height)
 }
 
 type partState struct {

@@ -5,13 +5,13 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
-
-	"github.com/cometbft/cometbft/libs/log"
-	"github.com/cometbft/cometbft/p2p/mock"
-
 	"github.com/stretchr/testify/require"
 
+	proptypes "github.com/cometbft/cometbft/consensus/propagation/types"
 	"github.com/cometbft/cometbft/libs/bits"
+	"github.com/cometbft/cometbft/libs/log"
+	"github.com/cometbft/cometbft/p2p/mock"
+	"github.com/cometbft/cometbft/types"
 )
 
 // newTestPeerState is a helper to create a PeerState with a mock peer.
@@ -258,4 +258,156 @@ func TestPeerState_DecreaseConcurrentReqs(t *testing.T) {
 			assert.Equal(t, tt.expectedCount, got)
 		})
 	}
+}
+
+// Helper to create a test compact block
+func newTestCompactBlock(height int64, round int32) *proptypes.CompactBlock {
+	return &proptypes.CompactBlock{
+		Proposal: types.Proposal{
+			Height: height,
+			Round:  round,
+		},
+	}
+}
+
+func TestPeerState_StoreUnverifiedProposal(t *testing.T) {
+	t.Run("store single proposal", func(t *testing.T) {
+		ps := newTestPeerState()
+		cb := newTestCompactBlock(10, 0)
+
+		stored := ps.StoreUnverifiedProposal(cb)
+		require.True(t, stored)
+
+		got := ps.GetUnverifiedProposal(10)
+		require.NotNil(t, got)
+		assert.Equal(t, int64(10), got.Proposal.Height)
+	})
+
+	t.Run("replace proposal for same height", func(t *testing.T) {
+		ps := newTestPeerState()
+		cb1 := newTestCompactBlock(10, 0)
+		cb2 := newTestCompactBlock(10, 1) // Same height, different round
+
+		ps.StoreUnverifiedProposal(cb1)
+		ps.StoreUnverifiedProposal(cb2)
+
+		got := ps.GetUnverifiedProposal(10)
+		require.NotNil(t, got)
+		assert.Equal(t, int32(1), got.Proposal.Round, "should be replaced with newer proposal")
+	})
+
+	t.Run("store up to capacity", func(t *testing.T) {
+		ps := newTestPeerState()
+
+		// Fill cache to capacity
+		for h := int64(1); h <= MaxUnverifiedProposals; h++ {
+			stored := ps.StoreUnverifiedProposal(newTestCompactBlock(h, 0))
+			require.True(t, stored, "should store height %d", h)
+		}
+
+		// All should be retrievable
+		for h := int64(1); h <= MaxUnverifiedProposals; h++ {
+			got := ps.GetUnverifiedProposal(h)
+			require.NotNil(t, got, "should have height %d", h)
+		}
+	})
+
+	t.Run("evict highest when full and lower height arrives", func(t *testing.T) {
+		ps := newTestPeerState()
+
+		// Fill cache with heights 100 to 100+MaxUnverifiedProposals-1
+		startHeight := int64(100)
+		for h := startHeight; h < startHeight+int64(MaxUnverifiedProposals); h++ {
+			ps.StoreUnverifiedProposal(newTestCompactBlock(h, 0))
+		}
+
+		maxHeight := startHeight + int64(MaxUnverifiedProposals) - 1
+
+		// Now store height 5 - should evict highest
+		stored := ps.StoreUnverifiedProposal(newTestCompactBlock(5, 0))
+		require.True(t, stored, "lower height should be stored")
+
+		// Height 5 should exist
+		got := ps.GetUnverifiedProposal(5)
+		require.NotNil(t, got, "height 5 should exist")
+
+		// Highest height should be evicted
+		got = ps.GetUnverifiedProposal(maxHeight)
+		require.Nil(t, got, "highest height should be evicted")
+
+		// Other heights should still exist
+		for h := startHeight; h < maxHeight; h++ {
+			got = ps.GetUnverifiedProposal(h)
+			require.NotNil(t, got, "height %d should still exist", h)
+		}
+	})
+
+	t.Run("reject higher height when full with lower heights", func(t *testing.T) {
+		ps := newTestPeerState()
+
+		// Fill cache with heights 1 to MaxUnverifiedProposals
+		for h := int64(1); h <= int64(MaxUnverifiedProposals); h++ {
+			ps.StoreUnverifiedProposal(newTestCompactBlock(h, 0))
+		}
+
+		// Try to store a height higher than max cached - should be rejected
+		highHeight := int64(MaxUnverifiedProposals + 100)
+		stored := ps.StoreUnverifiedProposal(newTestCompactBlock(highHeight, 0))
+		require.False(t, stored, "higher height should be rejected when cache is full")
+
+		// High height should not exist
+		got := ps.GetUnverifiedProposal(highHeight)
+		require.Nil(t, got)
+	})
+}
+
+func TestPeerState_pruneUnverifiedProposals(t *testing.T) {
+	t.Run("prune removes old heights", func(t *testing.T) {
+		ps := newTestPeerState()
+
+		// Add proposals for heights 5, 6, 7, 8
+		for h := int64(5); h <= 8; h++ {
+			ps.StoreUnverifiedProposal(newTestCompactBlock(h, 0))
+		}
+
+		// Prune with committedHeight=6 (should remove 5, 6, keep 7, 8)
+		ps.prune(6)
+
+		require.Nil(t, ps.GetUnverifiedProposal(5), "height 5 should be pruned")
+		require.Nil(t, ps.GetUnverifiedProposal(6), "height 6 should be pruned")
+		require.NotNil(t, ps.GetUnverifiedProposal(7), "height 7 should remain")
+		require.NotNil(t, ps.GetUnverifiedProposal(8), "height 8 should remain")
+	})
+
+	t.Run("prune empty cache doesn't panic", func(t *testing.T) {
+		ps := newTestPeerState()
+		ps.prune(100) // Should not panic
+	})
+
+	t.Run("prune all entries", func(t *testing.T) {
+		ps := newTestPeerState()
+
+		for h := int64(1); h <= 5; h++ {
+			ps.StoreUnverifiedProposal(newTestCompactBlock(h, 0))
+		}
+
+		ps.prune(10) // Prune everything
+
+		for h := int64(1); h <= 5; h++ {
+			require.Nil(t, ps.GetUnverifiedProposal(h), "height %d should be pruned", h)
+		}
+	})
+}
+
+func TestPeerState_DeleteUnverifiedProposal(t *testing.T) {
+	ps := newTestPeerState()
+
+	ps.StoreUnverifiedProposal(newTestCompactBlock(10, 0))
+	require.NotNil(t, ps.GetUnverifiedProposal(10))
+
+	ps.DeleteUnverifiedProposal(10)
+	require.Nil(t, ps.GetUnverifiedProposal(10))
+
+	// Deleting non-existent proposal doesn't panic
+	ps.DeleteUnverifiedProposal(999)
 }
