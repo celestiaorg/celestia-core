@@ -264,6 +264,78 @@ func TestCacheCapacityEviction(t *testing.T) {
 	require.NotNil(t, cached, "lowest heights should still be cached")
 }
 
+// TestHandleCompactBlock_CachesCurrentHeightWrongRound tests that proposals for the
+// current height but a different round are cached (not discarded).
+func TestHandleCompactBlock_CachesCurrentHeightWrongRound(t *testing.T) {
+	p2pCfg := defaultTestP2PConf()
+	nodes := 2
+	reactors, _ := createTestReactors(nodes, p2pCfg, false, "")
+	n1 := reactors[0]
+	n2 := reactors[1]
+
+	cleanup, _, sm := state.SetupTestCase(t)
+	t.Cleanup(func() {
+		cleanup(t)
+	})
+
+	// n2 at height 2, round 0
+	n2.SetHeightAndRound(2, 0)
+
+	// Create proposal for height 2, round 1 (different round)
+	prop, ps, _, metaData := createTestProposal(t, sm, 2, 1, 2, 1000000)
+	cb, _ := createCompactBlock(t, prop, ps, metaData)
+
+	// n1 sends the proposal for round 1 to n2 (which is at round 0)
+	n2.handleCompactBlock(cb, n1.self, false)
+
+	// Proposal should be cached (not in proposal cache, since it failed validation)
+	_, _, has := n2.GetProposal(2, 1)
+	require.False(t, has, "proposal should not be in proposal cache (failed validation)")
+
+	// But it should be in the unverified cache
+	cached := n2.GetUnverifiedProposal(2)
+	require.NotNil(t, cached, "proposal should be cached for later retry")
+	require.Equal(t, int32(1), cached.Proposal.Round, "cached proposal should be for round 1")
+}
+
+// TestApplyCachedProposalIfAvailable_WrongRound tests that cached proposals for
+// a different round are kept cached until we advance to that round.
+func TestApplyCachedProposalIfAvailable_WrongRound(t *testing.T) {
+	p2pCfg := defaultTestP2PConf()
+	nodes := 2
+	reactors, _ := createTestReactors(nodes, p2pCfg, false, "")
+	n1 := reactors[0]
+	n2 := reactors[1]
+
+	cleanup, _, sm := state.SetupTestCase(t)
+	t.Cleanup(func() {
+		cleanup(t)
+	})
+
+	// n2 at height 1, round 0
+	n2.SetHeightAndRound(1, 0)
+
+	// Create proposal for height 2, round 1
+	prop, ps, _, metaData := createTestProposal(t, sm, 2, 1, 2, 1000000)
+	cb, _ := createCompactBlock(t, prop, ps, metaData)
+
+	// n1 sends proposal for height 2 round 1 - n2 caches it (future height)
+	n2.handleCompactBlock(cb, n1.self, false)
+	require.NotNil(t, n2.GetUnverifiedProposal(2), "proposal should be cached")
+
+	// n2 advances to height 2, round 0 - proposal should stay cached (wrong round)
+	n2.Prune(1)
+	n2.SetHeightAndRound(2, 0)
+
+	// Proposal should still be cached (we're at round 0, proposal is for round 1)
+	cached := n2.GetUnverifiedProposal(2)
+	require.NotNil(t, cached, "proposal should stay cached when at different round")
+
+	// Proposal should NOT be in proposal cache (applyCachedProposalIfAvailable skipped it)
+	_, _, has := n2.GetProposal(2, 1)
+	require.False(t, has, "proposal should not be applied when at different round")
+}
+
 func TestAddCommitment_ReplaceProposalData(t *testing.T) {
 	p2pCfg := defaultTestP2PConf()
 	nodes := 1
