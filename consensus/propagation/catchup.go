@@ -145,41 +145,59 @@ func shuffle[T any](slice []T) []T {
 	return slice
 }
 
-// applyCachedProposalIfAvailable checks for a cached proposal at the current height
-// and applies it if valid. Called automatically after SetProposer to enable fast
-// catchup when a node falls behind.
+// applyCachedProposalIfAvailable checks for cached proposals at the current height/round
+// and applies the first valid one. Called automatically after SetProposer or SetHeightAndRound
+// to enable fast catchup when a node falls behind.
+//
+// This function iterates through ALL peers' cached proposals for the current height/round,
+// trying each one until it finds a valid proposal. This ensures a single invalid proposal
+// from one peer doesn't block valid proposals from other peers.
 func (blockProp *Reactor) applyCachedProposalIfAvailable() {
 	blockProp.pmtx.Lock()
 	currentHeight := blockProp.height
+	currentRound := blockProp.round
 	blockProp.pmtx.Unlock()
 
-	// Check if we already have a proposal for this height (normal case)
-	_, _, has := blockProp.GetProposal(currentHeight, 0)
+	// Check if we already have a proposal for this height/round (normal case)
+	_, _, has := blockProp.GetProposal(currentHeight, currentRound)
 	if has {
 		return // Already have proposal, no need to check cache
 	}
 
-	// Look for a cached proposal
-	cb := blockProp.GetUnverifiedProposal(currentHeight)
-	if cb == nil {
-		return // No cached proposal
-	}
+	// Iterate through all peers looking for a valid cached proposal
+	peers := blockProp.getPeers()
+	for _, peer := range peers {
+		if peer == nil {
+			continue
+		}
 
-	// Validate the cached proposal using the now-set proposer
-	if err := blockProp.validateCompactBlock(cb); err != nil {
-		blockProp.Logger.Debug("cached proposal failed validation", "height", currentHeight, "err", err)
-		// Delete invalid cached proposal
-		blockProp.DeleteCachedProposal(currentHeight)
+		cb := peer.GetUnverifiedProposal(currentHeight)
+		if cb == nil {
+			continue // This peer has no cached proposal for this height
+		}
+
+		// Skip proposals for different rounds - they'll be tried when we advance
+		if cb.Proposal.Round != currentRound {
+			continue
+		}
+
+		// Try to validate this proposal
+		if err := blockProp.validateCompactBlock(cb); err != nil {
+			blockProp.Logger.Debug("cached proposal failed validation",
+				"height", currentHeight, "round", currentRound, "peer", peer.peer.ID(), "err", err)
+			continue // Try next peer's cached proposal
+		}
+
+		// Found a valid proposal - apply it
+		blockProp.Logger.Info("applying cached proposal from catchup",
+			"height", currentHeight, "round", cb.Proposal.Round, "peer", peer.peer.ID())
+
+		blockProp.handleCachedCompactBlock(cb)
+
+		// Clean up the cache entry for this peer
+		peer.DeleteUnverifiedProposal(currentHeight)
 		return
 	}
-
-	blockProp.Logger.Info("applying cached proposal from catchup", "height", currentHeight, "round", cb.Proposal.Round)
-
-	// Process the cached compact block
-	blockProp.handleCachedCompactBlock(cb)
-
-	// Clean up the cache entry
-	blockProp.DeleteCachedProposal(currentHeight)
 }
 
 // ApplyCachedProposal checks for and applies a cached compact block for the given height.
@@ -187,22 +205,37 @@ func (blockProp *Reactor) applyCachedProposalIfAvailable() {
 // proposal was found and successfully applied.
 // The verifyFn should verify the proposal signature and compact block signature
 // using the proposer key for that height.
+//
+// This function iterates through ALL peers' cached proposals for the given height,
+// trying each one until it finds a valid proposal. This ensures a single invalid proposal
+// from one peer doesn't block valid proposals from other peers.
 func (blockProp *Reactor) ApplyCachedProposal(height int64, verifyFn func(*proptypes.CompactBlock) error) bool {
-	cb := blockProp.GetUnverifiedProposal(height)
-	if cb == nil {
-		return false
-	}
+	peers := blockProp.getPeers()
+	for _, peer := range peers {
+		if peer == nil {
+			continue
+		}
 
-	// Verify using consensus reactor's verification function
-	if err := verifyFn(cb); err != nil {
-		blockProp.Logger.Debug("cached proposal failed verification", "height", height, "err", err)
-		// Could iterate other peers here, but simpler to let normal gossip handle it
-		return false
-	}
+		cb := peer.GetUnverifiedProposal(height)
+		if cb == nil {
+			continue // This peer has no cached proposal for this height
+		}
 
-	// Process the cached compact block
-	blockProp.handleCachedCompactBlock(cb)
-	return true
+		// Verify using consensus reactor's verification function
+		if err := verifyFn(cb); err != nil {
+			blockProp.Logger.Debug("cached proposal failed verification",
+				"height", height, "peer", peer.peer.ID(), "err", err)
+			continue // Try next peer's cached proposal
+		}
+
+		// Found a valid proposal - apply it
+		blockProp.handleCachedCompactBlock(cb)
+
+		// Clean up the cache entry for this peer
+		peer.DeleteUnverifiedProposal(height)
+		return true
+	}
+	return false
 }
 
 // handleCachedCompactBlock processes a verified cached compact block.

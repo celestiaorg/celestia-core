@@ -39,7 +39,7 @@ const (
 	ReactorIncomingMessageQueueSize = 20000
 
 	// RetryTime automatic catchup retry timeout.
-	RetryTime = 6 * time.Second
+	RetryTime = 5 * time.Second
 )
 
 type Reactor struct {
@@ -320,12 +320,18 @@ func (blockProp *Reactor) SetProposer(proposer crypto.PubKey) {
 
 func (blockProp *Reactor) SetHeightAndRound(height int64, round int32) {
 	blockProp.pmtx.Lock()
-	defer blockProp.pmtx.Unlock()
 	blockProp.round = round
 	blockProp.height = height
+	blockProp.pmtx.Unlock()
+
 	blockProp.ResetRequestCounts()
 	// todo: delete the old round data as its no longer relevant don't delete
 	// past round data if it has a POL
+
+	// Check for cached proposals that might now be applicable.
+	// This handles the case where we advance to a new round and have a cached
+	// proposal for that round waiting to be applied.
+	blockProp.applyCachedProposalIfAvailable()
 }
 
 func (blockProp *Reactor) ResetRequestCounts() {
