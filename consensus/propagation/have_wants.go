@@ -67,6 +67,7 @@ func (blockProp *Reactor) handleHaves(peer p2p.ID, haves *proptypes.HaveParts) {
 	for _, pmd := range haves.Parts {
 		bm.SetIndex(int(pmd.Index), true)
 		p.consensusPeerState.SetHasProposalBlockPart(height, round, int(pmd.Index))
+		schema.WriteHave(blockProp.traceClient, height, round, pmd.Index, string(peer), schema.Download)
 	}
 
 	if parts.Original().IsComplete() {
@@ -293,16 +294,6 @@ func (blockProp *Reactor) sendWant(ps *PeerState, want *proptypes.WantParts) {
 		return
 	}
 
-	schema.WriteBlockPartState(
-		blockProp.traceClient,
-		want.Height,
-		want.Round,
-		want.Parts.GetTrueIndices(),
-		false,
-		string(ps.peer.ID()),
-		schema.Haves,
-	)
-
 	// keep track of the parts that this node has requested.
 	ps.AddRequests(want.Height, want.Round, want.Parts)
 	ps.IncreaseConcurrentReqs(int64(len(want.Parts.GetTrueIndices())))
@@ -349,6 +340,7 @@ func (blockProp *Reactor) broadcastHaves(haves *proptypes.HaveParts, from p2p.ID
 		peer.AddHaves(haves.Height, haves.Round, hb)
 		for _, h := range hb.GetTrueIndices() {
 			peer.consensusPeerState.SetHasProposalBlockPart(haves.Height, haves.Round, h)
+			schema.WriteHave(blockProp.traceClient, haves.Height, haves.Round, uint32(h), string(peer.peer.ID()), schema.Upload)
 		}
 	}
 }
@@ -383,6 +375,11 @@ func (blockProp *Reactor) handleWants(peer p2p.ID, wants *proptypes.WantParts) {
 	if wants.Parts.Size() != int(parts.Total()) {
 		blockProp.Logger.Error("received want part with invalid parts size", "peer", peer, "height", height, "round", round, "expected_parts_size", parts.Total(), "received_parts_size", wants.Parts.Size())
 		return
+	}
+
+	// trace the received wants
+	for _, index := range wants.Parts.GetTrueIndices() {
+		schema.WriteWant(blockProp.traceClient, height, round, uint32(index), string(peer), schema.Download)
 	}
 
 	// if we have the parts, send them to the peer.

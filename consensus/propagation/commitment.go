@@ -127,7 +127,9 @@ func (blockProp *Reactor) ProposeBlock(proposal *types.Proposal, block *types.Pa
 			peer.consensusPeerState.SetHasProposalBlockPart(proposal.Height, proposal.Round, int(part.GetIndex()))
 		}
 
-		schema.WriteBlockPartState(blockProp.traceClient, proposal.Height, proposal.Round, chunks[index].GetTrueIndices(), true, string(peer.peer.ID()), schema.Upload)
+		for _, partIndex := range chunks[index].GetTrueIndices() {
+			schema.WriteHave(blockProp.traceClient, proposal.Height, proposal.Round, uint32(partIndex), string(peer.peer.ID()), schema.Upload)
+		}
 	}
 	return nil
 }
@@ -181,6 +183,29 @@ func chunkToPartMetaData(chunk *bits.BitArray, partSet *types.PartSet) []*propag
 // time a proposal is received from a peer or when a proposal is created. If the
 // proposal is new, it will be stored and broadcast to the relevant peers.
 func (blockProp *Reactor) handleCompactBlock(cb *proptypes.CompactBlock, peer p2p.ID, proposer bool) {
+	// Check if this is a future-height block before validation.
+	// Future blocks will fail validation (wrong height/round), but we want to cache them
+	// so we can use them when we catch up, avoiding the need to wait for re-gossip.
+	if !proposer {
+		blockProp.pmtx.Lock()
+		currentHeight := blockProp.height
+		blockProp.pmtx.Unlock()
+
+		if cb.Proposal.Height > currentHeight {
+			// Cache for later—don't validate yet (we don't have the proposer key for future height)
+			if p := blockProp.getPeer(peer); p != nil {
+				if p.StoreUnverifiedProposal(cb) {
+					blockProp.Logger.Debug("cached future-height compact block",
+						"height", cb.Proposal.Height,
+						"round", cb.Proposal.Round,
+						"currentHeight", currentHeight,
+						"peer", peer)
+				}
+			}
+			return // Don't process further
+		}
+	}
+
 	err := blockProp.validateCompactBlock(cb)
 	if !proposer && err != nil {
 		blockProp.Logger.Debug("failed to validate proposal. ignoring", "err", err, "height", cb.Proposal.Height, "round", cb.Proposal.Round)

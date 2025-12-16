@@ -18,6 +18,10 @@ func (blockProp *Reactor) retryWants() {
 		return
 	}
 	data := blockProp.unfinishedHeights()
+	if len(data) == 0 {
+		return
+	}
+	blockProp.Logger.Debug("retryWants: issuing catchup requests", "heights", len(data))
 	peers := blockProp.getPeers()
 	for _, prop := range data {
 		height, round := prop.compactBlock.Proposal.Height, prop.compactBlock.Proposal.Round
@@ -39,7 +43,8 @@ func (blockProp *Reactor) retryWants() {
 		peers = shuffle(peers)
 
 		for _, peer := range peers {
-			if peer.consensusPeerState.GetHeight() < height {
+			if peer.consensusPeerState.GetHeight() < height-1 {
+				blockProp.Logger.Debug("retryWants: skipping peer")
 				continue
 			}
 			mc := missing.Copy()
@@ -73,6 +78,7 @@ func (blockProp *Reactor) retryWants() {
 				continue
 			}
 
+			blockProp.Logger.Info("retryWants: WriteCatchupRequest", "height", height, "round", round)
 			schema.WriteCatchupRequest(blockProp.traceClient, height, round, mc.String(), string(peer.peer.ID()))
 
 			// subtract the parts we just requested
@@ -91,7 +97,6 @@ func (blockProp *Reactor) retryWants() {
 }
 
 func (blockProp *Reactor) AddCommitment(height int64, round int32, psh *types.PartSetHeader) {
-	blockProp.Logger.Info("adding commitment", "height", height, "round", round, "psh", psh)
 	blockProp.pmtx.Lock()
 	defer blockProp.pmtx.Unlock()
 
@@ -108,7 +113,7 @@ func (blockProp *Reactor) AddCommitment(height int64, round int32, psh *types.Pa
 		if existingPSH.Total == psh.Total && bytes.Equal(existingPSH.Hash, psh.Hash) {
 			return
 		}
-		blockProp.Logger.Info("replacing existing proposal with new one", "height", height, "round", round, "psh", psh, "existingPSH", existingPSH)
+		blockProp.Logger.Error("replacing existing proposal with new one", "height", height, "round", round, "psh", psh, "existingPSH", existingPSH)
 	}
 
 	blockProp.proposals[height][round] = &proposalData{
@@ -138,4 +143,117 @@ func shuffle[T any](slice []T) []T {
 		slice[i], slice[j] = slice[j], slice[i]
 	}
 	return slice
+}
+
+// applyCachedProposalIfAvailable checks for a cached proposal at the current height
+// and applies it if valid. Called automatically after SetProposer to enable fast
+// catchup when a node falls behind.
+func (blockProp *Reactor) applyCachedProposalIfAvailable() {
+	blockProp.pmtx.Lock()
+	currentHeight := blockProp.height
+	blockProp.pmtx.Unlock()
+
+	// Check if we already have a proposal for this height (normal case)
+	_, _, has := blockProp.GetProposal(currentHeight, 0)
+	if has {
+		return // Already have proposal, no need to check cache
+	}
+
+	// Look for a cached proposal
+	cb := blockProp.GetUnverifiedProposal(currentHeight)
+	if cb == nil {
+		return // No cached proposal
+	}
+
+	// Validate the cached proposal using the now-set proposer
+	if err := blockProp.validateCompactBlock(cb); err != nil {
+		blockProp.Logger.Debug("cached proposal failed validation", "height", currentHeight, "err", err)
+		// Delete invalid cached proposal
+		blockProp.DeleteCachedProposal(currentHeight)
+		return
+	}
+
+	blockProp.Logger.Info("applying cached proposal from catchup", "height", currentHeight, "round", cb.Proposal.Round)
+
+	// Process the cached compact block
+	blockProp.handleCachedCompactBlock(cb)
+
+	// Clean up the cache entry
+	blockProp.DeleteCachedProposal(currentHeight)
+}
+
+// ApplyCachedProposal checks for and applies a cached compact block for the given height.
+// Called by consensus reactor after committing a block. Returns true if a cached
+// proposal was found and successfully applied.
+// The verifyFn should verify the proposal signature and compact block signature
+// using the proposer key for that height.
+func (blockProp *Reactor) ApplyCachedProposal(height int64, verifyFn func(*proptypes.CompactBlock) error) bool {
+	cb := blockProp.GetUnverifiedProposal(height)
+	if cb == nil {
+		return false
+	}
+
+	// Verify using consensus reactor's verification function
+	if err := verifyFn(cb); err != nil {
+		blockProp.Logger.Debug("cached proposal failed verification", "height", height, "err", err)
+		// Could iterate other peers here, but simpler to let normal gossip handle it
+		return false
+	}
+
+	// Process the cached compact block
+	blockProp.handleCachedCompactBlock(cb)
+	return true
+}
+
+// handleCachedCompactBlock processes a verified cached compact block.
+// Similar to handleCompactBlock but skips validation (already verified) and triggers immediate catchup.
+func (blockProp *Reactor) handleCachedCompactBlock(cb *proptypes.CompactBlock) {
+	blockProp.Logger.Info("applying cached compact block", "height", cb.Proposal.Height, "round", cb.Proposal.Round)
+
+	// generate (and cache) the proofs from the partset hashes in the compact block
+	_, err := cb.Proofs()
+	if err != nil {
+		blockProp.Logger.Error("cached compact block has invalid proofs", "err", err.Error())
+		return
+	}
+
+	// Send proposal to consensus reactor
+	select {
+	case <-blockProp.ctx.Done():
+		return
+	case blockProp.proposalChan <- ProposalAndSrc{
+		Proposal: cb.Proposal,
+		From:     blockProp.self, // From self since it's from cache
+	}:
+	}
+
+	// Add to proposal cache
+	added := blockProp.AddProposal(cb)
+	if !added {
+		blockProp.Logger.Debug("cached proposal already exists", "height", cb.Proposal.Height, "round", cb.Proposal.Round)
+		return
+	}
+
+	// Mark as catchup to skip parity requests in retryWants
+	blockProp.pmtx.Lock()
+	if prop := blockProp.proposals[cb.Proposal.Height][cb.Proposal.Round]; prop != nil {
+		prop.catchup = true
+	}
+	blockProp.pmtx.Unlock()
+
+	// Recover any parts from mempool
+	blockProp.recoverPartsFromMempool(cb)
+
+	// Immediately trigger part requests (like AddCommitment)
+	blockProp.ticker.Reset(RetryTime)
+	go blockProp.retryWants()
+}
+
+// DeleteCachedProposal removes a cached compact block for a specific height from all peers.
+// This should be called after successfully applying a cached proposal.
+func (blockProp *Reactor) DeleteCachedProposal(height int64) {
+	peers := blockProp.getPeers()
+	for _, peer := range peers {
+		peer.DeleteUnverifiedProposal(height)
+	}
 }

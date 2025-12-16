@@ -273,7 +273,7 @@ func (blockProp *Reactor) ReceiveEnvelope(e p2p.Envelope) {
 		case *proptypes.HaveParts:
 			blockProp.handleHaves(e.Src.ID(), msg)
 		case *proptypes.RecoveryPart:
-			schema.WriteReceivedPart(blockProp.traceClient, msg.Height, msg.Round, int(msg.Index))
+			schema.WriteBlockPart(blockProp.traceClient, msg.Height, msg.Round, msg.Index, false, string(e.Src.ID()), schema.Download)
 			blockProp.handleRecoveryPart(e.Src.ID(), msg)
 		default:
 			blockProp.Logger.Error(fmt.Sprintf("Unknown message type %v", reflect.TypeOf(msg)))
@@ -310,8 +310,12 @@ func (blockProp *Reactor) Prune(committedHeight int64) {
 
 func (blockProp *Reactor) SetProposer(proposer crypto.PubKey) {
 	blockProp.mtx.Lock()
-	defer blockProp.mtx.Unlock()
 	blockProp.currentProposer = proposer
+	blockProp.mtx.Unlock()
+
+	// Check for cached proposals for the current height.
+	// This enables fast catchup when a node falls behind and misses proposals.
+	blockProp.applyCachedProposalIfAvailable()
 }
 
 func (blockProp *Reactor) SetHeightAndRound(height int64, round int32) {
@@ -397,4 +401,18 @@ func (r *Reactor) GetPartChan() <-chan types.PartInfo {
 // GetProposalChan returns the channel used for receiving proposals.
 func (r *Reactor) GetProposalChan() <-chan ProposalAndSrc {
 	return r.proposalChan
+}
+
+// GetUnverifiedProposal returns a cached compact block for the given height
+// from any peer. Returns nil if none found. The returned compact block has NOT
+// been verified via the consensus reactor's verification function - the caller
+// must verify before use.
+func (r *Reactor) GetUnverifiedProposal(height int64) *proptypes.CompactBlock {
+	peers := r.getPeers()
+	for _, peer := range peers {
+		if cb := peer.GetUnverifiedProposal(height); cb != nil {
+			return cb
+		}
+	}
+	return nil
 }
