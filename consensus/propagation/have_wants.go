@@ -375,11 +375,6 @@ func (blockProp *Reactor) handleWants(peer p2p.ID, wants *proptypes.WantParts) {
 		return
 	}
 
-	// trace the received wants
-	for _, index := range wants.Parts.GetTrueIndices() {
-		schema.WriteWant(blockProp.traceClient, height, round, uint32(index), string(peer), schema.Download)
-	}
-
 	// if we have the parts, send them to the peer.
 	wc := wants.Parts.Copy()
 	canSend := parts.BitArray().And(wc)

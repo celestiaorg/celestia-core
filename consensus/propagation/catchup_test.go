@@ -180,7 +180,8 @@ func TestApplyCachedProposal(t *testing.T) {
 	require.True(t, pd.catchup, "proposal should be marked as catchup")
 }
 
-// TestApplyCachedProposal_VerificationFails tests that invalid cached proposals are rejected.
+// TestApplyCachedProposal_VerificationFails tests that invalid cached proposals are rejected
+// but remain in the cache for potential retry.
 func TestApplyCachedProposal_VerificationFails(t *testing.T) {
 	p2pCfg := defaultTestP2PConf()
 	nodes := 2
@@ -217,6 +218,84 @@ func TestApplyCachedProposal_VerificationFails(t *testing.T) {
 	// Proposal should NOT be in proposal cache
 	_, _, has := n2.GetProposal(2, 0)
 	require.False(t, has, "proposal should not be in cache when verification fails")
+
+	// But the unverified proposal should still be cached for potential retry
+	// (e.g., after getting the correct proposer key)
+	cachedCb := n2.GetUnverifiedProposal(2)
+	require.NotNil(t, cachedCb, "proposal should remain in unverified cache after failed verification")
+
+	// Verify it can be applied after a successful verification
+	applied = n2.ApplyCachedProposal(2, func(cb *proptypes.CompactBlock) error {
+		return nil // Accept this time
+	})
+	require.True(t, applied, "should apply on successful retry")
+
+	// Now proposal should be in proposal cache
+	_, _, has = n2.GetProposal(2, 0)
+	require.True(t, has, "proposal should be in cache after successful retry")
+}
+
+// TestApplyCachedProposal_MultiPeer tests that ApplyCachedProposal iterates through
+// all peers and finds a valid proposal even if earlier peers have invalid ones.
+func TestApplyCachedProposal_MultiPeer(t *testing.T) {
+	p2pCfg := defaultTestP2PConf()
+	nodes := 4
+	reactors, _ := createTestReactors(nodes, p2pCfg, false, "")
+	n1 := reactors[0] // Will have invalid proposal
+	n2 := reactors[1] // Will have valid proposal
+	n3 := reactors[2] // Will have no proposal
+	n4 := reactors[3] // The node applying cached proposals
+
+	cleanup, _, sm := state.SetupTestCase(t)
+	t.Cleanup(func() {
+		cleanup(t)
+	})
+
+	// All nodes start at height 1
+	for _, r := range reactors {
+		r.SetHeightAndRound(1, 0)
+	}
+
+	// n1 and n2 advance to height 2
+	n1.SetHeightAndRound(2, 0)
+	n2.SetHeightAndRound(2, 0)
+	n3.SetHeightAndRound(2, 0)
+
+	// Create proposal for height 2
+	prop2, ps2, _, metaData2 := createTestProposal(t, sm, 2, 0, 2, 1000000)
+	cb2, _ := createCompactBlock(t, prop2, ps2, metaData2)
+
+	// n4 receives proposals from n1 and n2 while at height 1
+	// (simulating receiving future-height proposals)
+	n4.handleCompactBlock(cb2, n1.self, false)
+	n4.handleCompactBlock(cb2, n2.self, false)
+
+	// Verify both peers cached the proposal
+	peer1 := n4.getPeer(n1.self)
+	peer2 := n4.getPeer(n2.self)
+	require.NotNil(t, peer1.GetUnverifiedProposal(2), "peer1 should have cached proposal")
+	require.NotNil(t, peer2.GetUnverifiedProposal(2), "peer2 should have cached proposal")
+
+	// n4 catches up to height 2
+	n4.Prune(1)
+	n4.SetHeightAndRound(2, 0)
+
+	// Apply with a verifier that rejects the first proposal (by tracking calls)
+	callCount := 0
+	applied := n4.ApplyCachedProposal(2, func(cb *proptypes.CompactBlock) error {
+		callCount++
+		if callCount == 1 {
+			return errors.New("first proposal invalid")
+		}
+		return nil // Accept second proposal
+	})
+	require.True(t, applied, "should apply valid proposal from second peer")
+	require.GreaterOrEqual(t, callCount, 2, "verifier should have been called at least twice")
+
+	// Proposal should now be in the proposal cache
+	_, propData, has := n4.GetProposal(2, 0)
+	require.True(t, has, "proposal should be in proposal cache")
+	require.NotNil(t, propData)
 }
 
 // TestCacheCapacityEviction tests that the cache evicts highest heights when full.
