@@ -478,10 +478,14 @@ func testReactorInvalidMessagesInState(t *testing.T, targetState cstypes.RoundSt
 
 	for i := 0; i < N; i++ {
 		css[i].mtx.Lock()
-		css[i].state.Timeouts.TimeoutPropose = 100 * time.Millisecond
-		css[i].state.Timeouts.TimeoutPrevote = 100 * time.Millisecond
-		css[i].state.Timeouts.TimeoutPrecommit = 100 * time.Millisecond
-		css[i].state.Timeouts.TimeoutCommit = 100 * time.Millisecond
+		// These tests are run under -race in CI, so ultra-aggressive timeouts can
+		// cause the network to repeatedly time out and never make it to later
+		// steps. Keep them short, but not so short that scheduling jitter breaks
+		// liveness.
+		css[i].state.Timeouts.TimeoutPropose = 500 * time.Millisecond
+		css[i].state.Timeouts.TimeoutPrevote = 500 * time.Millisecond
+		css[i].state.Timeouts.TimeoutPrecommit = 500 * time.Millisecond
+		css[i].state.Timeouts.TimeoutCommit = 500 * time.Millisecond
 		css[i].mtx.Unlock()
 	}
 
@@ -501,6 +505,7 @@ func testReactorInvalidMessagesInState(t *testing.T, targetState cstypes.RoundSt
 	require.NoError(t, err)
 	defer eventBuses[0].Unsubscribe(context.Background(), testSubscriber, types.EventQueryNewRoundStep) //nolint:errcheck
 	stepCh := sub.Out()
+	canceledCh := sub.Canceled()
 
 	// Wait for target state and test all messages
 	timeout := time.After(60 * time.Second)
@@ -520,15 +525,26 @@ func testReactorInvalidMessagesInState(t *testing.T, targetState cstypes.RoundSt
 			cs := reactors[0].conS
 			cs.mtx.Lock()
 
-			// Verify still in target state
+			// Verify still in target state (except for Commit, which can be
+			// extremely short-lived and is easy to "miss" between receiving the
+			// event and acquiring the lock).
 			currentState := cs.GetRoundState()
-			if currentState.Step != targetState {
-				cs.mtx.Unlock()
-				continue
+			var height int64
+			var round int32
+			if targetState != cstypes.RoundStepCommit {
+				if currentState.Step != targetState {
+					cs.mtx.Unlock()
+					continue
+				}
+				height = currentState.Height
+				round = currentState.Round
+			} else {
+				height = rsEvent.Height
+				round = rsEvent.Round
 			}
 
-			// Generate messages with current height/round
-			invalidMessages := genReactorTestCases(currentState.Height, currentState.Round)
+			// Generate messages using a stable height/round snapshot.
+			invalidMessages := genReactorTestCases(height, round)
 
 			peers := reactor.Switch.Peers().List()
 			require.NotEmpty(t, peers, "No peers available")
@@ -547,6 +563,8 @@ func testReactorInvalidMessagesInState(t *testing.T, targetState cstypes.RoundSt
 			t.Logf("Successfully tested all %d messages for state %s", len(invalidMessages), targetState)
 			return
 
+		case <-canceledCh:
+			t.Fatalf("NewRoundStep subscription canceled: %v", sub.Err())
 		case <-timeout:
 			t.Fatalf("Timed out waiting for state %s", targetState)
 		}
