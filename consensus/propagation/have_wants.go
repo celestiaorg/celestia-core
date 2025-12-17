@@ -332,7 +332,7 @@ func (blockProp *Reactor) broadcastHaves(haves *proptypes.HaveParts, from p2p.ID
 		// for data, they must already have the proposal.
 		// TODO: use retry and logs
 		if !peer.peer.TrySend(e) {
-			blockProp.Logger.Error("failed to send haves to peer", "peer", peer.peer.ID())
+			blockProp.Logger.Debug("failed to send haves to peer", "peer", peer.peer.ID())
 			continue
 		}
 		hb := haves.BitArray(partSetSize)
