@@ -1,6 +1,7 @@
 package cat
 
 import (
+	"bytes"
 	"fmt"
 	"sort"
 	"sync"
@@ -329,4 +330,30 @@ func (s *store) aggregatedPriorityAfterAdd(wtx *wrappedTx) int64 {
 		return newWeightedSum / newTotalGas
 	}
 	return wtx.priority
+}
+
+func (s *store) getTxBySignerSequence(signer []byte, sequence uint64) (*wrappedTx, bool) {
+	s.mtx.RLock()
+	defer s.mtx.RUnlock()
+	for _, set := range s.orderedTxSets {
+		for _, tx := range set.txs {
+			if bytes.Equal(tx.sender, signer) && tx.sequence == sequence {
+				return tx, true
+			}
+		}
+	}
+	return nil, false
+}
+
+func (s *store) getMinMaxSequenceForSigner(signer []byte) (uint64, uint64) {
+	s.mtx.RLock()
+	defer s.mtx.RUnlock()
+	for _, set := range s.orderedTxSets {
+		if bytes.Equal(set.signer, signer) {
+			minSequence := set.txs[0].sequence
+			maxSequence := set.txs[len(set.txs)-1].sequence
+			return minSequence, maxSequence
+		}
+	}
+	return 0, 0
 }

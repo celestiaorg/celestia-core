@@ -5,6 +5,7 @@ import (
 	"sync"
 	"time"
 
+	protomem "github.com/cometbft/cometbft/proto/tendermint/mempool"
 	"github.com/cometbft/cometbft/types"
 )
 
@@ -27,11 +28,17 @@ func (p *pendingSeenTx) peerIDs() []uint16 {
 	return []uint16{p.peer}
 }
 
+type sequenceRange struct {
+	minSeq uint64 // minimum sequence seen
+	maxSeq uint64 // maximum sequence seen
+}
+
 type pendingSeenTracker struct {
-	mu        sync.Mutex
-	perSigner map[string][]*pendingSeenTx
-	byTx      map[types.TxKey]*pendingSeenTx
-	limit     int
+	mu          sync.Mutex
+	perSigner   map[string][]*pendingSeenTx
+	seenTxRange map[string]map[uint16]*sequenceRange // signer -> peer -> sequence range
+	byTx        map[types.TxKey]*pendingSeenTx
+	limit       int
 }
 
 func newPendingSeenTracker(limit int) *pendingSeenTracker {
@@ -39,18 +46,19 @@ func newPendingSeenTracker(limit int) *pendingSeenTracker {
 		limit = defaultPendingSeenPerSigner
 	}
 	return &pendingSeenTracker{
-		perSigner: make(map[string][]*pendingSeenTx),
-		byTx:      make(map[types.TxKey]*pendingSeenTx),
-		limit:     limit,
+		perSigner:   make(map[string][]*pendingSeenTx),
+		seenTxRange: make(map[string]map[uint16]*sequenceRange),
+		byTx:        make(map[types.TxKey]*pendingSeenTx),
+		limit:       limit,
 	}
 }
 
-func (ps *pendingSeenTracker) add(signer []byte, txKey types.TxKey, sequence uint64, peerID uint16) {
-	if len(signer) == 0 || sequence == 0 || peerID == 0 {
+func (ps *pendingSeenTracker) add(msg *protomem.SeenTx, txKey types.TxKey, peerID uint16) {
+	if len(msg.Signer) == 0 || msg.Sequence == 0 || peerID == 0 {
 		return
 	}
 
-	signerKey := string(signer)
+	signerKey := string(msg.Signer)
 
 	ps.mu.Lock()
 	defer ps.mu.Unlock()
@@ -66,20 +74,36 @@ func (ps *pendingSeenTracker) add(signer []byte, txKey types.TxKey, sequence uin
 	// No existing entry for this (signer, sequence), so create a new one
 	entry := &pendingSeenTx{
 		signerKey: signerKey,
-		signer:    append([]byte(nil), signer...),
+		signer:    append([]byte(nil), msg.Signer...),
 		txKey:     txKey,
-		sequence:  sequence,
+		sequence:  msg.Sequence,
 		peer:      peerID,
 	}
 
 	insertIdx := sort.Search(len(queue), func(i int) bool {
-		return queue[i].sequence >= sequence
+		return queue[i].sequence >= msg.Sequence
 	})
 	queue = append(queue, nil)
 	copy(queue[insertIdx+1:], queue[insertIdx:])
 	queue[insertIdx] = entry
 	ps.perSigner[signerKey] = queue
 	ps.byTx[txKey] = entry
+
+	// Track sequence range per signer per peer
+	if ps.seenTxRange[signerKey] == nil {
+		ps.seenTxRange[signerKey] = make(map[uint16]*sequenceRange)
+	}
+	if ps.seenTxRange[signerKey][peerID] == nil {
+		ps.seenTxRange[signerKey][peerID] = &sequenceRange{
+			minSeq: msg.MinSequence,
+			maxSeq: msg.MaxSequence,
+		}
+	}
+
+	// Update min/max and add sequence
+	seqRange := ps.seenTxRange[signerKey][peerID]
+	seqRange.minSeq = msg.MinSequence
+	seqRange.maxSeq = msg.MaxSequence
 
 	for len(queue) > ps.limit {
 		lastIdx := len(queue) - 1
@@ -170,7 +194,7 @@ func (ps *pendingSeenTracker) removePeer(peerID uint16) {
 	ps.mu.Lock()
 	defer ps.mu.Unlock()
 
-	for _, queue := range ps.perSigner {
+	for signerKey, queue := range ps.perSigner {
 		for _, entry := range queue {
 			if entry.peer == peerID {
 				entry.peer = 0
@@ -178,6 +202,13 @@ func (ps *pendingSeenTracker) removePeer(peerID uint16) {
 			if entry.lastPeer == peerID {
 				entry.requested = false
 				entry.lastPeer = 0
+			}
+		}
+		// Remove peer from seenTxRange
+		if ps.seenTxRange[signerKey] != nil {
+			delete(ps.seenTxRange[signerKey], peerID)
+			if len(ps.seenTxRange[signerKey]) == 0 {
+				delete(ps.seenTxRange, signerKey)
 			}
 		}
 	}
@@ -233,4 +264,57 @@ func (ps *pendingSeenTracker) markRequestFailed(txKey types.TxKey, peerID uint16
 	if entry.peer == peerID {
 		entry.peer = 0
 	}
+}
+
+// getSequenceRangeForSigner returns the nodes that have the transactions starting from x to their latest sequence
+// possible return peers that have these ranges
+func (ps *pendingSeenTracker) getSequenceRangeForSigner(signer []byte, nextSequence uint64) (maxSeq uint64, peersWithRanges []uint16) {
+	if len(signer) == 0 || nextSequence == 0 {
+		return 0, nil
+	}
+
+	ps.mu.Lock()
+	defer ps.mu.Unlock()
+
+	signerKey := string(signer)
+	peerRanges := ps.seenTxRange[signerKey]
+	if len(peerRanges) == 0 {
+		return 0, nil
+	}
+
+	maxSeq = uint64(0)
+	// find if there is a node that has sequence that is equal or less than min
+	// and find the highest sequence in the map
+	for peerID, peerRange := range peerRanges {
+		// choose peers that have lower OR equal to next sequence
+		// and have higher OR equal to next sequence
+		if peerRange.minSeq <= nextSequence && peerRange.maxSeq >= nextSequence {
+			peersWithRanges = append(peersWithRanges, peerID)
+			if peerRange.maxSeq > maxSeq {
+				maxSeq = peerRange.maxSeq
+			}
+		}
+	}
+	return maxSeq, peersWithRanges
+}
+
+func (ps *pendingSeenTracker) doesPeerHaveSequence(signer []byte, sequence uint64, peerID uint16) bool {
+	if len(signer) == 0 || sequence == 0 || peerID == 0 {
+		return false
+	}
+
+	ps.mu.Lock()
+	defer ps.mu.Unlock()
+
+	signerKey := string(signer)
+	peerRanges := ps.seenTxRange[signerKey]
+	if peerRanges == nil {
+		return false
+	}
+
+	peerRange, ok := peerRanges[peerID]
+	if !ok {
+		return false
+	}
+	return sequence >= peerRange.minSeq && sequence <= peerRange.maxSeq
 }
