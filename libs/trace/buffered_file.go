@@ -45,7 +45,13 @@ func (f *bufferedFile) Write(b []byte) (int, error) {
 	}
 	f.mut.Lock()
 	defer f.mut.Unlock()
-	return f.wr.Write(b)
+	n, err := f.wr.Write(b)
+	if err != nil {
+		return n, err
+	}
+	// Flush immediately to ensure data is written to disk
+	err = f.wr.Flush()
+	return n, err
 }
 
 func (f *bufferedFile) startReading() error {
