@@ -67,7 +67,6 @@ func (blockProp *Reactor) handleHaves(peer p2p.ID, haves *proptypes.HaveParts) {
 	for _, pmd := range haves.Parts {
 		bm.SetIndex(int(pmd.Index), true)
 		p.consensusPeerState.SetHasProposalBlockPart(height, round, int(pmd.Index))
-		schema.WriteHave(blockProp.traceClient, height, round, pmd.Index, string(peer), schema.Download)
 	}
 
 	if parts.Original().IsComplete() {
@@ -340,7 +339,6 @@ func (blockProp *Reactor) broadcastHaves(haves *proptypes.HaveParts, from p2p.ID
 		peer.AddHaves(haves.Height, haves.Round, hb)
 		for _, h := range hb.GetTrueIndices() {
 			peer.consensusPeerState.SetHasProposalBlockPart(haves.Height, haves.Round, h)
-			schema.WriteHave(blockProp.traceClient, haves.Height, haves.Round, uint32(h), string(peer.peer.ID()), schema.Upload)
 		}
 	}
 }

@@ -127,9 +127,6 @@ func (blockProp *Reactor) ProposeBlock(proposal *types.Proposal, block *types.Pa
 			peer.consensusPeerState.SetHasProposalBlockPart(proposal.Height, proposal.Round, int(part.GetIndex()))
 		}
 
-		for _, partIndex := range chunks[index].GetTrueIndices() {
-			schema.WriteHave(blockProp.traceClient, proposal.Height, proposal.Round, uint32(partIndex), string(peer.peer.ID()), schema.Upload)
-		}
 	}
 	return nil
 }
