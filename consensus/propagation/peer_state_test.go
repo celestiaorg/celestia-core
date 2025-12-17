@@ -20,6 +20,20 @@ func newTestPeerState() *PeerState {
 	return newPeerState(context.Background(), &peer, log.NewNopLogger())
 }
 
+func TestPeerState_MaxUnverifiedProposalHeight(t *testing.T) {
+	ps := newTestPeerState()
+
+	// no entries -> 0
+	require.Equal(t, int64(0), ps.MaxUnverifiedProposalHeight())
+
+	// add some heights out of order
+	ps.unverifiedProposals[15] = &proptypes.CompactBlock{}
+	ps.unverifiedProposals[10] = &proptypes.CompactBlock{}
+	ps.unverifiedProposals[25] = &proptypes.CompactBlock{}
+
+	require.Equal(t, int64(25), ps.MaxUnverifiedProposalHeight())
+}
+
 func TestPeerState_SetRequests(t *testing.T) {
 	tests := []struct {
 		name        string

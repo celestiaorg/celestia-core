@@ -2164,11 +2164,16 @@ func (cs *State) recordMetrics(height int64, block *types.Block) {
 const KMSSigningDelay = 200 * time.Millisecond
 
 // precommitDelay calculates if the process has waited at least a certain number of seconds
-// from their start time before they can vote
+// from their start time before they can vote.
 // If the application's DelayedPrecommitTimeout is set to 0, no precommit wait is done.
+// When catching up on block data, returns 0 to speed up block processing.
 func (cs *State) precommitDelay() time.Duration {
 	if cs.state.Timeouts.DelayedPrecommitTimeout == 0 {
 		// setting 0 as a special case not to reschedule the pre-commit
+		return 0
+	}
+	// When catching up, skip the delayed precommit timeout to speed up block processing.
+	if cs.propagator.IsCatchingUp() {
 		return 0
 	}
 	precommitVoteTime := cs.rs.StartTime.Add(cs.state.Timeouts.DelayedPrecommitTimeout)

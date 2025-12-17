@@ -95,6 +95,20 @@ func (ps *PeerState) GetConsensusPeerState() PeerStateEditor {
 	return ps.consensusPeerState
 }
 
+// MaxUnverifiedProposalHeight returns the highest cached unverified proposal height.
+// Returns 0 if none exist.
+func (ps *PeerState) MaxUnverifiedProposalHeight() int64 {
+	ps.mtx.RLock()
+	defer ps.mtx.RUnlock()
+	var max int64
+	for h := range ps.unverifiedProposals {
+		if h > max {
+			max = h
+		}
+	}
+	return max
+}
+
 // Initialize initializes the state for a given height and round in a
 // thread-safe way.
 func (d *PeerState) Initialize(height int64, round int32, size int) {
