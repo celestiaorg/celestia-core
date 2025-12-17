@@ -127,7 +127,6 @@ func (blockProp *Reactor) ProposeBlock(proposal *types.Proposal, block *types.Pa
 			peer.consensusPeerState.SetHasProposalBlockPart(proposal.Height, proposal.Round, int(part.GetIndex()))
 		}
 
-		schema.WriteBlockPartState(blockProp.traceClient, proposal.Height, proposal.Round, chunks[index].GetTrueIndices(), true, string(peer.peer.ID()), schema.Upload)
 	}
 	return nil
 }
@@ -181,14 +180,49 @@ func chunkToPartMetaData(chunk *bits.BitArray, partSet *types.PartSet) []*propag
 // time a proposal is received from a peer or when a proposal is created. If the
 // proposal is new, it will be stored and broadcast to the relevant peers.
 func (blockProp *Reactor) handleCompactBlock(cb *proptypes.CompactBlock, peer p2p.ID, proposer bool) {
-	err := blockProp.validateCompactBlock(cb)
-	if !proposer && err != nil {
-		blockProp.Logger.Debug("failed to validate proposal. ignoring", "err", err, "height", cb.Proposal.Height, "round", cb.Proposal.Round)
+	// Proposers skip validation since they created the block
+	if proposer {
+		blockProp.processValidatedCompactBlock(cb, peer, proposer)
 		return
 	}
 
+	// Try to validate the compact block
+	err := blockProp.validateCompactBlock(cb)
+	if err != nil {
+		// Validation failed - cache for later if it's for current or future height.
+		// We cache because:
+		// 1. Future height: we don't know the proposer key yet
+		// 2. Current height, wrong round: we may advance to that round later
+		// 3. Wrong proposer: proposer key may not be set yet (catchup scenario)
+		blockProp.pmtx.Lock()
+		currentHeight := blockProp.height
+		blockProp.pmtx.Unlock()
+
+		if cb.Proposal.Height >= currentHeight {
+			if p := blockProp.getPeer(peer); p != nil {
+				if p.StoreUnverifiedProposal(cb) {
+					blockProp.Logger.Debug("cached compact block that failed validation",
+						"height", cb.Proposal.Height,
+						"round", cb.Proposal.Round,
+						"currentHeight", currentHeight,
+						"err", err,
+						"peer", peer)
+				}
+			}
+		} else {
+			blockProp.Logger.Error("failed to validate proposal for past height, ignoring",
+				"err", err, "height", cb.Proposal.Height, "round", cb.Proposal.Round)
+		}
+		return
+	}
+
+	blockProp.processValidatedCompactBlock(cb, peer, proposer)
+}
+
+// processValidatedCompactBlock handles a compact block that has passed validation.
+func (blockProp *Reactor) processValidatedCompactBlock(cb *proptypes.CompactBlock, peer p2p.ID, proposer bool) {
 	// generate (and cache) the proofs from the partset hashes in the compact block
-	_, err = cb.Proofs()
+	_, err := cb.Proofs()
 	if err != nil {
 		blockProp.Logger.Error("received invalid compact block", "err", err.Error())
 		blockProp.Switch.StopPeerForError(blockProp.getPeer(peer).peer, err, blockProp.String())
