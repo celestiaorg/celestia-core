@@ -422,3 +422,47 @@ func (r *Reactor) GetUnverifiedProposal(height int64) *proptypes.CompactBlock {
 	}
 	return nil
 }
+
+// IsCatchingUp returns true if the node is catching up on block data
+// (has unfinished heights that need to be downloaded).
+func (r *Reactor) IsCatchingUp() bool {
+	// 1) Any unfinished heights (missing parts or marked catchup) => catching up.
+	if len(r.unfinishedHeights()) > 0 {
+		return true
+	}
+
+	// 2) If we have seen heights beyond what we've committed, we are still behind.
+	committedHeight := int64(0)
+	if r.store != nil {
+		committedHeight = r.store.Height()
+	}
+
+	r.pmtx.Lock()
+	maxPropHeight := int64(0)
+	for h := range r.proposals {
+		if h > maxPropHeight {
+			maxPropHeight = h
+		}
+	}
+	r.pmtx.Unlock()
+
+	if maxPropHeight > committedHeight+1 {
+		return true
+	}
+
+	// 3) Cached-but-unverified proposals or peer-reported heights ahead of us.
+	peers := r.getPeers()
+	for _, p := range peers {
+		if p == nil {
+			continue
+		}
+		if p.MaxUnverifiedProposalHeight() > committedHeight+1 {
+			return true
+		}
+		if p.consensusPeerState.GetHeight() > committedHeight+1 {
+			return true
+		}
+	}
+
+	return false
+}
