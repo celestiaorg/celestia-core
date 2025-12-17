@@ -343,7 +343,8 @@ func TestStateOversizedBlock(t *testing.T) {
 			require.NoError(t, err)
 
 			signAddVotes(cs1, cmtproto.PrevoteType, propBlock.Hash(), bps.Header(), false, vs2)
-			ensurePrevote(voteCh, height, round)
+			// With 2 validators, after processing vs2's prevote, cs1 should immediately
+			// have enough votes (2/2) to send a precommit, not another prevote.
 			ensurePrecommit(voteCh, height, round)
 			validatePrecommit(t, cs1, round, lockedRound, vss[0], validateHash, validateHash)
 
