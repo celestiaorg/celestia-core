@@ -210,7 +210,7 @@ func (blockProp *Reactor) handleCompactBlock(cb *proptypes.CompactBlock, peer p2
 				}
 			}
 		} else {
-			blockProp.Logger.Error("failed to validate proposal for past height, ignoring",
+			blockProp.Logger.Debug("failed to validate proposal for past height, ignoring",
 				"err", err, "height", cb.Proposal.Height, "round", cb.Proposal.Round)
 		}
 		return
