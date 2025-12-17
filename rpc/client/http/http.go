@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
@@ -128,6 +129,21 @@ func NewWithTimeout(remote, wsEndpoint string, timeout uint) (*HTTP, error) {
 	return NewWithClient(remote, wsEndpoint, httpClient)
 }
 
+// redactCredentialsFromURL removes any userinfo (username/password) from a URL
+// to prevent sensitive information from being logged.
+func redactCredentialsFromURL(remoteURL string) string {
+	u, err := url.Parse(remoteURL)
+	if err != nil {
+		// If we can't parse the URL, return a generic placeholder
+		// to avoid leaking any sensitive information
+		return "[invalid URL]"
+	}
+	if u.User != nil {
+		u.User = nil
+	}
+	return u.String()
+}
+
 // NewWithClient allows for setting a custom http client (See New).
 // An error is returned on invalid remote. The function panics when remote is nil.
 func NewWithClient(remote, wsEndpoint string, client *http.Client) (*HTTP, error) {
@@ -147,7 +163,7 @@ func NewWithClient(remote, wsEndpoint string, client *http.Client) (*HTTP, error
 
 	httpClient := &HTTP{
 		rpc:           rc,
-		remote:        remote,
+		remote:        redactCredentialsFromURL(remote),
 		baseRPCClient: &baseRPCClient{caller: rc},
 		WSEvents:      wsEvents,
 	}

@@ -25,6 +25,21 @@ const (
 	protoUNIX  = "unix"
 )
 
+// redactCredentialsFromURL removes any userinfo (username/password) from a URL
+// to prevent sensitive information from being logged.
+func redactCredentialsFromURL(remoteURL string) string {
+	u, err := url.Parse(remoteURL)
+	if err != nil {
+		// If we can't parse the URL, return a generic placeholder
+		// to avoid leaking any sensitive information
+		return "[invalid URL]"
+	}
+	if u.User != nil {
+		u.User = url.UserPassword("[redacted]", "[redacted]")
+	}
+	return u.String()
+}
+
 var endsWithPortPattern = regexp.MustCompile(`:[0-9]+$`)
 
 //-------------------------------------------------------------
@@ -175,7 +190,7 @@ func NewWithHTTPClient(remote string, client *http.Client) (*Client, error) {
 
 	parsedURL, err := newParsedURL(remote)
 	if err != nil {
-		return nil, fmt.Errorf("invalid remote %s: %s", remote, err)
+		return nil, fmt.Errorf("invalid remote %s: %s", redactCredentialsFromURL(remote), err)
 	}
 
 	parsedURL.SetDefaultSchemeHTTP()
