@@ -18,10 +18,6 @@ func (blockProp *Reactor) retryWants() {
 		return
 	}
 	data := blockProp.unfinishedHeights()
-	if len(data) == 0 {
-		return
-	}
-	blockProp.Logger.Debug("retryWants: issuing catchup requests", "heights", len(data))
 	peers := blockProp.getPeers()
 	for _, prop := range data {
 		height, round := prop.compactBlock.Proposal.Height, prop.compactBlock.Proposal.Round
@@ -78,7 +74,6 @@ func (blockProp *Reactor) retryWants() {
 				continue
 			}
 
-			blockProp.Logger.Info("retryWants: WriteCatchupRequest", "height", height, "round", round)
 			schema.WriteCatchupRequest(blockProp.traceClient, height, round, mc.String(), string(peer.peer.ID()))
 
 			// subtract the parts we just requested
@@ -97,6 +92,7 @@ func (blockProp *Reactor) retryWants() {
 }
 
 func (blockProp *Reactor) AddCommitment(height int64, round int32, psh *types.PartSetHeader) {
+	blockProp.Logger.Info("adding commitment", "height", height, "round", round, "psh", psh)
 	blockProp.pmtx.Lock()
 	defer blockProp.pmtx.Unlock()
 
@@ -127,7 +123,6 @@ func (blockProp *Reactor) AddCommitment(height int64, round int32, psh *types.Pa
 		block:       combinedSet,
 		maxRequests: bits.NewBitArray(int(psh.Total * 2)), // this assumes that the parity parts are the same size
 	}
-	blockProp.Logger.Info("added commitment", "height", height, "round", round)
 
 	// increment the local copies of the height and round
 	blockProp.height = height
