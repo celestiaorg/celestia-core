@@ -200,44 +200,6 @@ func (blockProp *Reactor) applyCachedProposalIfAvailable() {
 	}
 }
 
-// ApplyCachedProposal checks for and applies a cached compact block for the given height.
-// Called by consensus reactor after committing a block. Returns true if a cached
-// proposal was found and successfully applied.
-// The verifyFn should verify the proposal signature and compact block signature
-// using the proposer key for that height.
-//
-// This function iterates through ALL peers' cached proposals for the given height,
-// trying each one until it finds a valid proposal. This ensures a single invalid proposal
-// from one peer doesn't block valid proposals from other peers.
-func (blockProp *Reactor) ApplyCachedProposal(height int64, verifyFn func(*proptypes.CompactBlock) error) bool {
-	peers := blockProp.getPeers()
-	for _, peer := range peers {
-		if peer == nil {
-			continue
-		}
-
-		cb := peer.GetUnverifiedProposal(height)
-		if cb == nil {
-			continue // This peer has no cached proposal for this height
-		}
-
-		// Verify using consensus reactor's verification function
-		if err := verifyFn(cb); err != nil {
-			blockProp.Logger.Debug("cached proposal failed verification",
-				"height", height, "peer", peer.peer.ID(), "err", err)
-			continue // Try next peer's cached proposal
-		}
-
-		// Found a valid proposal - apply it
-		blockProp.handleCachedCompactBlock(cb)
-
-		// Clean up the cache entry for this peer
-		peer.DeleteUnverifiedProposal(height)
-		return true
-	}
-	return false
-}
-
 // handleCachedCompactBlock processes a verified cached compact block.
 // Similar to handleCompactBlock but skips validation (already verified) and triggers immediate catchup.
 func (blockProp *Reactor) handleCachedCompactBlock(cb *proptypes.CompactBlock) {
@@ -280,13 +242,4 @@ func (blockProp *Reactor) handleCachedCompactBlock(cb *proptypes.CompactBlock) {
 	// Immediately trigger part requests (like AddCommitment)
 	blockProp.ticker.Reset(RetryTime)
 	go blockProp.retryWants()
-}
-
-// DeleteCachedProposal removes a cached compact block for a specific height from all peers.
-// This should be called after successfully applying a cached proposal.
-func (blockProp *Reactor) DeleteCachedProposal(height int64) {
-	peers := blockProp.getPeers()
-	for _, peer := range peers {
-		peer.DeleteUnverifiedProposal(height)
-	}
 }
