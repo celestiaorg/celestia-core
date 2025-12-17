@@ -2358,8 +2358,7 @@ func (cs *State) tryAddVote(vote *types.Vote, peerID p2p.ID) (bool, error) {
 			cs.evpool.ReportConflictingVotes(voteErr.VoteA, voteErr.VoteB)
 			cs.Logger.Debug(
 				"found and sent conflicting votes to the evidence pool",
-				"vote_a", voteErr.VoteA,
-				"vote_b", voteErr.VoteB,
+				append(voteLogFields("vote_a_", voteErr.VoteA), voteLogFields("vote_b_", voteErr.VoteB)...)...,
 			)
 
 			return added, err
@@ -2401,7 +2400,10 @@ func (cs *State) addVote(vote *types.Vote, peerID p2p.ID) (added bool, err error
 	if vote.Height+1 == cs.rs.Height && vote.Type == cmtproto.PrecommitType {
 		if cs.rs.Step != cstypes.RoundStepNewHeight {
 			// Late precommit at prior height is ignored
-			cs.Logger.Trace("precommit vote came in after commit timeout and has been ignored", "vote", vote)
+			cs.Logger.Trace(
+				"precommit vote came in after commit timeout and has been ignored",
+				voteLogFields("", vote)...,
+			)
 			return added, err
 		}
 
@@ -2514,7 +2516,10 @@ func (cs *State) addVote(vote *types.Vote, peerID p2p.ID) (added bool, err error
 	switch vote.Type {
 	case cmtproto.PrevoteType:
 		prevotes := cs.rs.Votes.Prevotes(vote.Round)
-		cs.Logger.Trace("added vote to prevote", "vote", vote, "prevotes", prevotes.StringShort())
+		cs.Logger.Trace(
+			"added vote to prevote",
+			append(voteLogFields("", vote), "prevotes", prevotes.StringShort())...,
+		)
 
 		// If +2/3 prevotes for a block or nil for *any* round:
 		if blockID, ok := prevotes.TwoThirdsMajority(); ok {
@@ -2673,7 +2678,10 @@ func (cs *State) signVote(
 
 	recoverable, err := types.SignAndCheckVote(vote, cs.privValidator, cs.state.ChainID, extEnabled && (msgType == cmtproto.PrecommitType))
 	if err != nil && !recoverable {
-		panic(fmt.Sprintf("non-recoverable error when signing vote %v: %v", vote, err))
+		panic(fmt.Sprintf(
+			"non-recoverable error when signing vote (height=%d round=%d type=%v): %v",
+			vote.Height, vote.Round, vote.Type, err,
+		))
 	}
 
 	return vote, err
@@ -2726,7 +2734,10 @@ func (cs *State) signAddVote(
 	// TODO: pass pubKey to signVote
 	vote, err := cs.signVote(msgType, hash, header, block)
 	if err != nil {
-		cs.Logger.Error("failed signing vote", "height", cs.rs.Height, "round", cs.rs.Round, "vote", vote, "err", err)
+		cs.Logger.Error(
+			"failed signing vote",
+			append(voteLogFields("", vote), "err", err)...,
+		)
 		return
 	}
 	hasExt := len(vote.ExtensionSignature) > 0
@@ -2736,7 +2747,7 @@ func (cs *State) signAddVote(
 			hasExt, extEnabled, vote.Height, vote.Type))
 	}
 	cs.sendInternalMessage(msgInfo{&VoteMessage{vote}, ""})
-	cs.Logger.Debug("signed and pushed vote", "height", cs.rs.Height, "round", cs.rs.Round, "vote", vote)
+	cs.Logger.Debug("signed and pushed vote", voteLogFields("", vote)...)
 }
 
 // updatePrivValidatorPubKey get's the private validator public key and
@@ -2769,7 +2780,10 @@ func (cs *State) checkDoubleSigningRisk(height int64) error {
 			if lastCommit != nil {
 				for sigIdx, s := range lastCommit.Signatures {
 					if s.BlockIDFlag == types.BlockIDFlagCommit && bytes.Equal(s.ValidatorAddress, valAddr) {
-						cs.Logger.Info("found signature from the same key", "sig", s, "idx", sigIdx, "height", height-i)
+						cs.Logger.Info(
+							"found signature from the same key",
+							append(commitSigLogFields("", s), "idx", sigIdx, "height", height-i)...,
+						)
 						return ErrSignatureFoundInPastBlocks
 					}
 				}

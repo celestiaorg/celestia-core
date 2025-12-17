@@ -1375,7 +1375,7 @@ func (ps *PeerState) SetHasProposalBlockPart(height int64, round int32, index in
 // Returns true if vote was sent.
 func (ps *PeerState) PickSendVote(votes types.VoteSetReader) *types.Vote {
 	if vote, ok := ps.PickVoteToSend(votes); ok {
-		ps.logger.Trace("Sending vote message", "ps", ps, "vote", vote)
+		ps.logger.Trace("Sending vote message", append([]any{"ps", ps}, voteLogFields("", vote)...)...)
 		if ps.peer.Send(p2p.Envelope{
 			ChannelID: VoteChannel,
 			Message: &cmtcons.Vote{
