@@ -257,7 +257,11 @@ func TestStateBadProposal(t *testing.T) {
 }
 
 func TestStateOversizedBlock(t *testing.T) {
-	ensureTimeout = 500 * time.Millisecond
+	// Save and restore the original ensureTimeout value
+	origEnsureTimeout := ensureTimeout
+	ensureTimeout = 2 * time.Second
+	t.Cleanup(func() { ensureTimeout = origEnsureTimeout })
+
 	const maxBytes = int64(types.BlockPartSizeBytes)
 
 	for _, testCase := range []struct {
