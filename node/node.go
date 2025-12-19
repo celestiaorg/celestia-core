@@ -21,6 +21,7 @@ import (
 	cfg "github.com/cometbft/cometbft/config"
 	cs "github.com/cometbft/cometbft/consensus"
 	"github.com/cometbft/cometbft/evidence"
+	"github.com/cometbft/cometbft/headersync"
 	"github.com/cometbft/cometbft/light"
 	"github.com/cometbft/cometbft/mempool/cat"
 
@@ -68,21 +69,22 @@ type Node struct {
 
 	// services
 	eventBus          *types.EventBus // pub/sub for services
-	stateStore        sm.Store
-	blockStore        *store.BlockStore // store the blockchain to disk
-	bcReactor         p2p.Reactor       // for block-syncing
-	mempoolReactor    p2p.Reactor       // for gossipping transactions
-	mempool           mempl.Mempool
-	stateSync         bool                    // whether the node should state sync on startup
-	stateSyncReactor  *statesync.Reactor      // for hosting and restoring state sync snapshots
-	stateSyncProvider statesync.StateProvider // provides state data for bootstrapping a node
-	stateSyncGenesis  sm.State                // provides the genesis state for state sync
-	consensusState    *cs.State               // latest consensus state
-	consensusReactor  *cs.Reactor             // for participating in the consensus
-	pexReactor        *pex.Reactor            // for exchanging peer addresses
-	blockPropReactor  *propagation.Reactor    // the block propagation reactor. potentially nil is disabled.
-	evidencePool      *evidence.Pool          // tracking evidence
-	proxyApp          proxy.AppConns          // connection to the application
+	stateStore         sm.Store
+	blockStore         *store.BlockStore // store the blockchain to disk
+	bcReactor          p2p.Reactor       // for block-syncing
+	headerSyncReactor  *headersync.Reactor    // for syncing headers ahead of blocks
+	mempoolReactor     p2p.Reactor            // for gossipping transactions
+	mempool            mempl.Mempool
+	stateSync          bool                    // whether the node should state sync on startup
+	stateSyncReactor   *statesync.Reactor      // for hosting and restoring state sync snapshots
+	stateSyncProvider  statesync.StateProvider // provides state data for bootstrapping a node
+	stateSyncGenesis   sm.State                // provides the genesis state for state sync
+	consensusState     *cs.State               // latest consensus state
+	consensusReactor   *cs.Reactor             // for participating in the consensus
+	pexReactor         *pex.Reactor            // for exchanging peer addresses
+	blockPropReactor   *propagation.Reactor    // the block propagation reactor. potentially nil is disabled.
+	evidencePool       *evidence.Pool          // tracking evidence
+	proxyApp           proxy.AppConns          // connection to the application
 	rpcListeners      []net.Listener          // rpc servers
 	txIndexer         txindex.TxIndexer
 	blockIndexer      indexer.BlockIndexer
@@ -319,7 +321,7 @@ func NewNodeWithContext(ctx context.Context,
 		return nil, err
 	}
 
-	csMetrics, p2pMetrics, memplMetrics, smMetrics, abciMetrics, bsMetrics, ssMetrics := metricsProvider(genDoc.ChainID)
+	csMetrics, p2pMetrics, memplMetrics, smMetrics, abciMetrics, bsMetrics, ssMetrics, hsMetrics := metricsProvider(genDoc.ChainID)
 
 	// Create the proxyApp and establish connections to the ABCI app (consensus, mempool, query).
 	proxyApp, err := createAndStartProxyAppConns(clientCreator, logger, abciMetrics)
@@ -441,6 +443,12 @@ func NewNodeWithContext(ctx context.Context,
 		return nil, fmt.Errorf("could not create blocksync reactor: %w", err)
 	}
 
+	// Create header sync reactor if enabled.
+	var hsReactor *headersync.Reactor
+	if config.HeaderSync.Enable {
+		hsReactor = createHeaderSyncReactor(config, stateStore, blockStore, genDoc.ChainID, logger, hsMetrics)
+	}
+
 	propagationReactor := propagation.NewReactor(
 		nodeKey.ID(),
 		propagation.Config{
@@ -505,7 +513,7 @@ func NewNodeWithContext(ctx context.Context,
 
 	p2pLogger := logger.With("module", "p2p")
 	sw := createSwitch(
-		config, transport, p2pMetrics, peerFilters, mempoolReactor, bcReactor,
+		config, transport, p2pMetrics, peerFilters, mempoolReactor, bcReactor, hsReactor,
 		stateSyncReactor, consensusReactor, evidenceReactor, propagationReactor, nodeInfo, nodeKey, p2pLogger, tracer,
 	)
 
@@ -555,24 +563,25 @@ func NewNodeWithContext(ctx context.Context,
 		nodeInfo:  nodeInfo,
 		nodeKey:   nodeKey,
 
-		stateStore:       stateStore,
-		blockStore:       blockStore,
-		bcReactor:        bcReactor,
-		mempoolReactor:   mempoolReactor,
-		mempool:          mempool,
-		consensusState:   consensusState,
-		consensusReactor: consensusReactor,
-		stateSyncReactor: stateSyncReactor,
-		stateSync:        stateSync,
-		stateSyncGenesis: state, // Shouldn't be necessary, but need a way to pass the genesis state
-		pexReactor:       pexReactor,
-		blockPropReactor: propagationReactor,
-		evidencePool:     evidencePool,
-		proxyApp:         proxyApp,
-		txIndexer:        txIndexer,
-		indexerService:   indexerService,
-		blockIndexer:     blockIndexer,
-		eventBus:         eventBus,
+		stateStore:        stateStore,
+		blockStore:        blockStore,
+		bcReactor:         bcReactor,
+		headerSyncReactor: hsReactor,
+		mempoolReactor:    mempoolReactor,
+		mempool:           mempool,
+		consensusState:    consensusState,
+		consensusReactor:  consensusReactor,
+		stateSyncReactor:  stateSyncReactor,
+		stateSync:         stateSync,
+		stateSyncGenesis:  state, // Shouldn't be necessary, but need a way to pass the genesis state
+		pexReactor:        pexReactor,
+		blockPropReactor:  propagationReactor,
+		evidencePool:      evidencePool,
+		proxyApp:          proxyApp,
+		txIndexer:         txIndexer,
+		indexerService:    indexerService,
+		blockIndexer:      blockIndexer,
+		eventBus:          eventBus,
 	}
 	node.BaseService = *service.NewBaseService(logger, "Node", node)
 
