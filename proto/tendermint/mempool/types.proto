@@ -8,13 +8,17 @@ message Txs {
 }
 
 message SeenTx {
-  bytes  tx_key   = 1;
-  uint64 sequence = 2;
-  bytes  signer   = 3;
+  bytes  tx_key       = 1;
+  uint64 sequence     = 2;
+  bytes  signer       = 3;
+  uint64 min_sequence = 4;
+  uint64 max_sequence = 5;
 }
 
 message WantTx {
   bytes tx_key = 1;
+  bytes signer = 2;
+  uint64 sequence = 3;
 }
 
 message Message {
