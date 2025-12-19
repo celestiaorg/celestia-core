@@ -69,4 +69,8 @@ func (env *Environment) AddUnsafeRoutes(routes RoutesMap) {
 	routes["dial_seeds"] = rpc.NewRPCFunc(env.UnsafeDialSeeds, "seeds")
 	routes["dial_peers"] = rpc.NewRPCFunc(env.UnsafeDialPeers, "peers,persistent,unconditional,private")
 	routes["unsafe_flush_mempool"] = rpc.NewRPCFunc(env.UnsafeFlushMempool, "")
+
+	// debug consensus API - for testing catchup behavior
+	routes["unsafe_debug_halt"] = rpc.NewRPCFunc(env.UnsafeDebugHalt, "")
+	routes["unsafe_debug_unlock"] = rpc.NewRPCFunc(env.UnsafeDebugUnlock, "")
 }
