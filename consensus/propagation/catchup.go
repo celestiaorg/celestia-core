@@ -187,30 +187,31 @@ func (blockProp *Reactor) applyCachedProposalIfAvailable() {
 		blockProp.Logger.Info("applying cached proposal from catchup",
 			"height", currentHeight, "round", cb.Proposal.Round, "peer", peer.peer.ID())
 
-		blockProp.handleCachedCompactBlock(cb)
-
-		// Clean up the cache entry for this peer
-		peer.DeleteUnverifiedProposal(currentHeight)
-		return
+		if blockProp.handleCachedCompactBlock(cb) {
+			// Clean up the cache entry for this peer only if we successfully applied it.
+			peer.DeleteUnverifiedProposal(currentHeight)
+			return
+		}
 	}
 }
 
 // handleCachedCompactBlock processes a verified cached compact block.
 // Similar to handleCompactBlock but skips validation (already verified) and triggers immediate catchup.
-func (blockProp *Reactor) handleCachedCompactBlock(cb *proptypes.CompactBlock) {
+// Returns true if the cached block was applied.
+func (blockProp *Reactor) handleCachedCompactBlock(cb *proptypes.CompactBlock) bool {
 	blockProp.Logger.Info("applying cached compact block", "height", cb.Proposal.Height, "round", cb.Proposal.Round)
 
 	// generate (and cache) the proofs from the partset hashes in the compact block
 	_, err := cb.Proofs()
 	if err != nil {
 		blockProp.Logger.Error("cached compact block has invalid proofs", "err", err.Error())
-		return
+		return false
 	}
 
 	// Send proposal to consensus reactor
 	select {
 	case <-blockProp.ctx.Done():
-		return
+		return false
 	case blockProp.proposalChan <- ProposalAndSrc{
 		Proposal: cb.Proposal,
 		From:     blockProp.self, // From self since it's from cache
@@ -221,15 +222,21 @@ func (blockProp *Reactor) handleCachedCompactBlock(cb *proptypes.CompactBlock) {
 	added := blockProp.AddProposal(cb)
 	if !added {
 		blockProp.Logger.Debug("cached proposal already exists", "height", cb.Proposal.Height, "round", cb.Proposal.Round)
-		return
 	}
 
-	// Mark as catchup to skip parity requests in retryWants
+	propFound := false
 	blockProp.pmtx.Lock()
-	if prop := blockProp.proposals[cb.Proposal.Height][cb.Proposal.Round]; prop != nil {
-		prop.catchup = true
+	if props, ok := blockProp.proposals[cb.Proposal.Height]; ok {
+		if prop := props[cb.Proposal.Round]; prop != nil {
+			// Mark as catchup to skip parity requests in retryWants
+			prop.catchup = true
+			propFound = true
+		}
 	}
 	blockProp.pmtx.Unlock()
+	if !propFound {
+		return false
+	}
 
 	// Recover any parts from mempool
 	blockProp.recoverPartsFromMempool(cb)
@@ -237,4 +244,5 @@ func (blockProp *Reactor) handleCachedCompactBlock(cb *proptypes.CompactBlock) {
 	// Immediately trigger part requests (like AddCommitment)
 	blockProp.ticker.Reset(RetryTime)
 	go blockProp.retryWants()
+	return true
 }

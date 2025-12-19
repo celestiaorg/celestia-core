@@ -321,6 +321,54 @@ func TestApplyCachedProposalIfAvailable_MultiPeer(t *testing.T) {
 	require.Nil(t, peer2Cache, "valid peer's cache entry should be deleted after successful apply")
 }
 
+// TestApplyCachedProposalIfAvailable_KeepOnFailure ensures we don't delete a cached proposal
+// if handleCachedCompactBlock fails to apply it.
+func TestApplyCachedProposalIfAvailable_KeepOnFailure(t *testing.T) {
+	p2pCfg := defaultTestP2PConf()
+	nodes := 2
+	reactors, _ := createTestReactors(nodes, p2pCfg, false, "")
+	n1 := reactors[0] // Will have a proposal that fails in handleCachedCompactBlock
+	n2 := reactors[1] // The node applying cached proposals
+
+	cleanup, _, sm := state.SetupTestCase(t)
+	t.Cleanup(func() {
+		cleanup(t)
+	})
+
+	// n2 at height 1, round 0, with proposer set
+	n2.SetHeightAndRound(1, 0)
+	n2.SetProposer(mockPubKey)
+
+	// Create a compact block with valid signatures but invalid parts hashes.
+	cbBad, _, _, _ := testCompactBlock(t, sm, 2, 0)
+	badHash := make([]byte, len(cbBad.PartsHashes[0]))
+	copy(badHash, cbBad.PartsHashes[0])
+	badHash[0] ^= 0xFF
+	cbBad.PartsHashes[0] = badHash
+	cbBad.SetProofCache(nil)
+	signBytes, err := cbBad.SignBytes()
+	require.NoError(t, err)
+	sig, err := mockPrivVal.SignRawBytes(TestChainID, CompactBlockUID, signBytes)
+	require.NoError(t, err)
+	cbBad.Signature = sig
+
+	// n2 receives proposal for height 2 while still at height 1 - should cache it.
+	n2.handleCompactBlock(cbBad, n1.self, false)
+
+	peer1 := n2.getPeer(n1.self)
+	require.NotNil(t, peer1.GetUnverifiedProposal(2), "peer1 should have cached proposal")
+
+	// Now n2 catches up to height 2 - applyCachedProposalIfAvailable runs and should fail to apply cbBad.
+	n2.Prune(1)
+	n2.SetHeightAndRound(2, 0)
+
+	_, _, has := n2.GetProposal(2, 0)
+	require.False(t, has, "proposal should not be applied when proofs are invalid")
+
+	// Cached proposal should remain since handleCachedCompactBlock failed.
+	require.NotNil(t, peer1.GetUnverifiedProposal(2), "cached proposal should remain after failed apply")
+}
+
 // TestApplyCachedProposalIfAvailable_WrongRound tests that cached proposals for
 // a different round are kept cached until we advance to that round.
 func TestApplyCachedProposalIfAvailable_WrongRound(t *testing.T) {
