@@ -1,9 +1,9 @@
 package cat
 
 import (
+	"math/rand/v2"
 	"sort"
 	"sync"
-	"time"
 
 	protomem "github.com/cometbft/cometbft/proto/tendermint/mempool"
 	"github.com/cometbft/cometbft/types"
@@ -90,21 +90,9 @@ func (ps *pendingSeenTracker) add(msg *protomem.SeenTx, txKey types.TxKey, peerI
 	ps.byTx[txKey] = entry
 
 	// Track sequence range per signer per peer
-	if ps.seenTxRange[signerKey] == nil {
-		ps.seenTxRange[signerKey] = make(map[uint16]*sequenceRange)
-	}
-	if ps.seenTxRange[signerKey][peerID] == nil {
-		ps.seenTxRange[signerKey][peerID] = &sequenceRange{
-			minSeq: msg.MinSequence,
-			maxSeq: msg.MaxSequence,
-		}
-	}
+	ps.updateSeenTxRange(signerKey, peerID, msg.MinSequence, msg.MaxSequence)
 
-	// Update min/max and add sequence
-	seqRange := ps.seenTxRange[signerKey][peerID]
-	seqRange.minSeq = msg.MinSequence
-	seqRange.maxSeq = msg.MaxSequence
-
+	// Enforce limit by removing highest sequence entries
 	for len(queue) > ps.limit {
 		lastIdx := len(queue) - 1
 		removed := queue[lastIdx]
@@ -115,6 +103,17 @@ func (ps *pendingSeenTracker) add(msg *protomem.SeenTx, txKey types.TxKey, peerI
 		delete(ps.perSigner, signerKey)
 	} else {
 		ps.perSigner[signerKey] = queue
+	}
+}
+
+// updateSeenTxRange updates the sequence range for a peer. Must be called with lock held.
+func (ps *pendingSeenTracker) updateSeenTxRange(signerKey string, peerID uint16, minSeq, maxSeq uint64) {
+	if ps.seenTxRange[signerKey] == nil {
+		ps.seenTxRange[signerKey] = make(map[uint16]*sequenceRange)
+	}
+	ps.seenTxRange[signerKey][peerID] = &sequenceRange{
+		minSeq: minSeq,
+		maxSeq: maxSeq,
 	}
 }
 
@@ -141,6 +140,12 @@ func (ps *pendingSeenTracker) remove(txKey types.TxKey) *pendingSeenTx {
 		ps.perSigner[signerKey] = queue
 	}
 	delete(ps.byTx, txKey)
+
+	// Note: We intentionally do NOT clean up seenTxRange here.
+	// The peer still claims to have the sequence range even after
+	// we process this specific tx. seenTxRange is only cleaned up
+	// when the peer disconnects (removePeer).
+
 	return entry
 }
 
@@ -229,7 +234,7 @@ func (ps *pendingSeenTracker) signerKeys() [][]byte {
 	return out
 }
 
-func (ps *pendingSeenTracker) markRequested(txKey types.TxKey, peerID uint16, at time.Time) {
+func (ps *pendingSeenTracker) markRequested(txKey types.TxKey, peerID uint16) {
 	if peerID == 0 {
 		return
 	}
@@ -266,8 +271,8 @@ func (ps *pendingSeenTracker) markRequestFailed(txKey types.TxKey, peerID uint16
 	}
 }
 
-// getSequenceRangeForSigner returns the nodes that have the transactions starting from x to their latest sequence
-// possible return peers that have these ranges
+// getSequenceRangeForSigner returns peers that have sequences we need.
+// Returns peers whose range has maxSeq >= nextSequence (they have useful data).
 func (ps *pendingSeenTracker) getSequenceRangeForSigner(signer []byte, nextSequence uint64) (maxSeq uint64, peersWithRanges []uint16) {
 	if len(signer) == 0 || nextSequence == 0 {
 		return 0, nil
@@ -283,21 +288,25 @@ func (ps *pendingSeenTracker) getSequenceRangeForSigner(signer []byte, nextSeque
 	}
 
 	maxSeq = uint64(0)
-	// find if there is a node that has sequence that is equal or less than min
-	// and find the highest sequence in the map
+	// Include peers that have sequences >= nextSequence
+	// A peer is useful if their maxSeq >= nextSequence (they have something we might need)
 	for peerID, peerRange := range peerRanges {
-		// choose peers that have lower OR equal to next sequence
-		// and have higher OR equal to next sequence
-		if peerRange.minSeq <= nextSequence && peerRange.maxSeq >= nextSequence {
+		if peerRange.maxSeq >= nextSequence {
 			peersWithRanges = append(peersWithRanges, peerID)
 			if peerRange.maxSeq > maxSeq {
 				maxSeq = peerRange.maxSeq
 			}
 		}
 	}
+	// Shuffle the peers so we don't always request from the same peers
+	rand.Shuffle(len(peersWithRanges), func(i, j int) {
+		peersWithRanges[i], peersWithRanges[j] = peersWithRanges[j], peersWithRanges[i]
+	})
 	return maxSeq, peersWithRanges
 }
 
+// doesPeerHaveSequence checks if a peer claims to have a specific sequence.
+// Note: This assumes contiguous ranges - the peer may have gaps in reality.
 func (ps *pendingSeenTracker) doesPeerHaveSequence(signer []byte, sequence uint64, peerID uint16) bool {
 	if len(signer) == 0 || sequence == 0 || peerID == 0 {
 		return false
