@@ -262,7 +262,7 @@ lint:
 
 #? vulncheck: Run latest govulncheck
 vulncheck:
-	@go run golang.org/x/vuln/cmd/govulncheck@latest -scan package ./...
+	@go run golang.org/x/vuln/cmd/govulncheck@latest
 .PHONY: vulncheck
 
 #? lint-typo: Run codespell to check typos
