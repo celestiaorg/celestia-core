@@ -2371,6 +2371,8 @@ func TestResetTimeoutPrecommitUponNewHeight(t *testing.T) {
 
 	ensureNewBlockHeader(newBlockHeader, height, theBlockHash)
 
+	ensureNewRound(newRoundCh, height+1, 0)
+
 	prop, propBlock := decideProposal(ctx, t, cs1, vs2, height+1, 0)
 	propBlockParts, err := propBlock.MakePartSet(partSize)
 	require.NoError(t, err)

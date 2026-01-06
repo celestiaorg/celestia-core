@@ -39,7 +39,7 @@ const (
 	ReactorIncomingMessageQueueSize = 20000
 
 	// RetryTime automatic catchup retry timeout.
-	RetryTime = 6 * time.Second
+	RetryTime = 5 * time.Second
 )
 
 type Reactor struct {
@@ -273,7 +273,7 @@ func (blockProp *Reactor) ReceiveEnvelope(e p2p.Envelope) {
 		case *proptypes.HaveParts:
 			blockProp.handleHaves(e.Src.ID(), msg)
 		case *proptypes.RecoveryPart:
-			schema.WriteReceivedPart(blockProp.traceClient, msg.Height, msg.Round, int(msg.Index))
+			schema.WriteBlockPart(blockProp.traceClient, msg.Height, msg.Round, msg.Index, false, string(e.Src.ID()), schema.Download)
 			blockProp.handleRecoveryPart(e.Src.ID(), msg)
 		default:
 			blockProp.Logger.Error(fmt.Sprintf("Unknown message type %v", reflect.TypeOf(msg)))
@@ -310,18 +310,44 @@ func (blockProp *Reactor) Prune(committedHeight int64) {
 
 func (blockProp *Reactor) SetProposer(proposer crypto.PubKey) {
 	blockProp.mtx.Lock()
-	defer blockProp.mtx.Unlock()
 	blockProp.currentProposer = proposer
+	blockProp.mtx.Unlock()
+
+	// Check for cached proposals for the current height.
+	// This enables fast catchup when a node falls behind and misses proposals.
+	blockProp.applyCachedProposalIfAvailable()
 }
 
 func (blockProp *Reactor) SetHeightAndRound(height int64, round int32) {
+	committedHeight := int64(0)
+	if blockProp.store != nil {
+		committedHeight = blockProp.store.Height()
+	}
+
 	blockProp.pmtx.Lock()
-	defer blockProp.pmtx.Unlock()
+	prevHeight := blockProp.height
 	blockProp.round = round
 	blockProp.height = height
+
+	// If we already have a verified proposal cached for the current height
+	// (committed height + 1), treat it as catchup so delayed precommit is skipped.
+	if height > prevHeight && height == committedHeight+1 {
+		if props, ok := blockProp.proposals[height]; ok {
+			for _, prop := range props {
+				prop.catchup = true
+			}
+		}
+	}
+	blockProp.pmtx.Unlock()
+
 	blockProp.ResetRequestCounts()
 	// todo: delete the old round data as its no longer relevant don't delete
 	// past round data if it has a POL
+
+	// Check for cached proposals that might now be applicable.
+	// This handles the case where we advance to a new round and have a cached
+	// proposal for that round waiting to be applied.
+	blockProp.applyCachedProposalIfAvailable()
 }
 
 func (blockProp *Reactor) ResetRequestCounts() {
@@ -397,4 +423,29 @@ func (r *Reactor) GetPartChan() <-chan types.PartInfo {
 // GetProposalChan returns the channel used for receiving proposals.
 func (r *Reactor) GetProposalChan() <-chan ProposalAndSrc {
 	return r.proposalChan
+}
+
+// GetUnverifiedProposal returns a cached compact block for the given height
+// from any peer. Returns nil if none found. The returned compact block has NOT
+// been verified via the consensus reactor's verification function - the caller
+// must verify before use.
+func (r *Reactor) GetUnverifiedProposal(height int64) *proptypes.CompactBlock {
+	peers := r.getPeers()
+	for _, peer := range peers {
+		if cb := peer.GetUnverifiedProposal(height); cb != nil {
+			return cb
+		}
+	}
+	return nil
+}
+
+// IsCatchingUp returns true if the node is catching up on block data
+// (has unfinished heights that need to be downloaded).
+func (r *Reactor) IsCatchingUp() bool {
+	// 1) Any unfinished heights (missing parts or marked catchup) => catching up.
+	if len(r.unfinishedHeights()) > 0 {
+		return true
+	}
+
+	return false
 }

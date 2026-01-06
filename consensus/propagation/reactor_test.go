@@ -708,6 +708,7 @@ func NewTestPrivval(t *testing.T) types.PrivValidator {
 type MockPeerStateEditor struct {
 	proposals  []*types.Proposal
 	blockParts []BlockPartCall
+	height     int64 // explicitly set height for testing
 }
 
 type BlockPartCall struct {
@@ -725,7 +726,17 @@ func (m *MockPeerStateEditor) SetHasProposalBlockPart(height int64, round int32,
 }
 
 func (m *MockPeerStateEditor) GetHeight() int64 {
-	return m.proposals[len(m.proposals)-1].Height
+	if m.height != 0 {
+		return m.height
+	}
+	if len(m.proposals) > 0 {
+		return m.proposals[len(m.proposals)-1].Height
+	}
+	return 0
+}
+
+func (m *MockPeerStateEditor) SetHeight(h int64) {
+	m.height = h
 }
 
 // TestPeerStateEditor ensures that the propagation reactor is updating the

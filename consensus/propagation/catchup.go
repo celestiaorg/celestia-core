@@ -39,7 +39,8 @@ func (blockProp *Reactor) retryWants() {
 		peers = shuffle(peers)
 
 		for _, peer := range peers {
-			if peer.consensusPeerState.GetHeight() < height {
+			if peer.consensusPeerState.GetHeight() < height-1 {
+				blockProp.Logger.Debug("retryWants: skipping peer")
 				continue
 			}
 			mc := missing.Copy()
@@ -108,7 +109,7 @@ func (blockProp *Reactor) AddCommitment(height int64, round int32, psh *types.Pa
 		if existingPSH.Total == psh.Total && bytes.Equal(existingPSH.Hash, psh.Hash) {
 			return
 		}
-		blockProp.Logger.Info("replacing existing proposal with new one", "height", height, "round", round, "psh", psh, "existingPSH", existingPSH)
+		blockProp.Logger.Error("replacing existing proposal with new one", "height", height, "round", round, "psh", psh, "existingPSH", existingPSH)
 	}
 
 	blockProp.proposals[height][round] = &proposalData{
@@ -122,7 +123,6 @@ func (blockProp *Reactor) AddCommitment(height int64, round int32, psh *types.Pa
 		block:       combinedSet,
 		maxRequests: bits.NewBitArray(int(psh.Total * 2)), // this assumes that the parity parts are the same size
 	}
-	blockProp.Logger.Info("added commitment", "height", height, "round", round)
 
 	// increment the local copies of the height and round
 	blockProp.height = height
@@ -138,4 +138,111 @@ func shuffle[T any](slice []T) []T {
 		slice[i], slice[j] = slice[j], slice[i]
 	}
 	return slice
+}
+
+// applyCachedProposalIfAvailable checks for cached proposals at the current height/round
+// and applies the first valid one. Called automatically after SetProposer or SetHeightAndRound
+// to enable fast catchup when a node falls behind.
+//
+// This function iterates through ALL peers' cached proposals for the current height/round,
+// trying each one until it finds a valid proposal. This ensures a single invalid proposal
+// from one peer doesn't block valid proposals from other peers.
+func (blockProp *Reactor) applyCachedProposalIfAvailable() {
+	blockProp.pmtx.Lock()
+	currentHeight := blockProp.height
+	currentRound := blockProp.round
+	blockProp.pmtx.Unlock()
+
+	// Check if we already have a proposal for this height/round (normal case)
+	_, _, has := blockProp.GetProposal(currentHeight, currentRound)
+	if has {
+		return // Already have proposal, no need to check cache
+	}
+
+	// Iterate through all peers looking for a valid cached proposal
+	peers := blockProp.getPeers()
+	for _, peer := range peers {
+		if peer == nil {
+			continue
+		}
+
+		cb := peer.GetUnverifiedProposal(currentHeight)
+		if cb == nil {
+			continue // This peer has no cached proposal for this height
+		}
+
+		// Skip proposals for different rounds - they'll be tried when we advance
+		if cb.Proposal.Round != currentRound {
+			continue
+		}
+
+		// Try to validate this proposal
+		if err := blockProp.validateCompactBlock(cb); err != nil {
+			blockProp.Logger.Debug("cached proposal failed validation",
+				"height", currentHeight, "round", currentRound, "peer", peer.peer.ID(), "err", err)
+			continue // Try next peer's cached proposal
+		}
+
+		// Found a valid proposal - apply it
+		blockProp.Logger.Info("applying cached proposal from catchup",
+			"height", currentHeight, "round", cb.Proposal.Round, "peer", peer.peer.ID())
+
+		if blockProp.handleCachedCompactBlock(cb) {
+			// Clean up the cache entry for this peer only if we successfully applied it.
+			peer.DeleteUnverifiedProposal(currentHeight)
+			return
+		}
+	}
+}
+
+// handleCachedCompactBlock processes a verified cached compact block.
+// Similar to handleCompactBlock but skips validation (already verified) and triggers immediate catchup.
+// Returns true if the cached block was applied.
+func (blockProp *Reactor) handleCachedCompactBlock(cb *proptypes.CompactBlock) bool {
+	blockProp.Logger.Info("applying cached compact block", "height", cb.Proposal.Height, "round", cb.Proposal.Round)
+
+	// generate (and cache) the proofs from the partset hashes in the compact block
+	_, err := cb.Proofs()
+	if err != nil {
+		blockProp.Logger.Error("cached compact block has invalid proofs", "err", err.Error())
+		return false
+	}
+
+	// Send proposal to consensus reactor
+	select {
+	case <-blockProp.ctx.Done():
+		return false
+	case blockProp.proposalChan <- ProposalAndSrc{
+		Proposal: cb.Proposal,
+		From:     blockProp.self, // From self since it's from cache
+	}:
+	}
+
+	// Add to proposal cache
+	added := blockProp.AddProposal(cb)
+	if !added {
+		blockProp.Logger.Debug("cached proposal already exists", "height", cb.Proposal.Height, "round", cb.Proposal.Round)
+	}
+
+	propFound := false
+	blockProp.pmtx.Lock()
+	if props, ok := blockProp.proposals[cb.Proposal.Height]; ok {
+		if prop := props[cb.Proposal.Round]; prop != nil {
+			// Mark as catchup to skip parity requests in retryWants
+			prop.catchup = true
+			propFound = true
+		}
+	}
+	blockProp.pmtx.Unlock()
+	if !propFound {
+		return false
+	}
+
+	// Recover any parts from mempool
+	blockProp.recoverPartsFromMempool(cb)
+
+	// Immediately trigger part requests (like AddCommitment)
+	blockProp.ticker.Reset(RetryTime)
+	go blockProp.retryWants()
+	return true
 }

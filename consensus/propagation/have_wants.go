@@ -293,16 +293,6 @@ func (blockProp *Reactor) sendWant(ps *PeerState, want *proptypes.WantParts) {
 		return
 	}
 
-	schema.WriteBlockPartState(
-		blockProp.traceClient,
-		want.Height,
-		want.Round,
-		want.Parts.GetTrueIndices(),
-		false,
-		string(ps.peer.ID()),
-		schema.Haves,
-	)
-
 	// keep track of the parts that this node has requested.
 	ps.AddRequests(want.Height, want.Round, want.Parts)
 	ps.IncreaseConcurrentReqs(int64(len(want.Parts.GetTrueIndices())))
@@ -342,7 +332,7 @@ func (blockProp *Reactor) broadcastHaves(haves *proptypes.HaveParts, from p2p.ID
 		// for data, they must already have the proposal.
 		// TODO: use retry and logs
 		if !peer.peer.TrySend(e) {
-			blockProp.Logger.Error("failed to send haves to peer", "peer", peer.peer.ID())
+			blockProp.Logger.Debug("failed to send haves to peer", "peer", peer.peer.ID())
 			continue
 		}
 		hb := haves.BitArray(partSetSize)
