@@ -416,16 +416,11 @@ Run: `cd test/fuzz && make fuzz-{PACKAGE-COMPONENT}`
 **If you contribute to the RPC endpoints it's important to document your
 changes in the [Openapi file](./rpc/openapi/openapi.yaml)**.
 
-To test your changes you must install `nodejs` and run:
+**WARNING: contract tests are currently not available. They previously depended 
+on a local network setup that has been removed due to maintenance issues. The 
+tests were also broken due to <https://github.com/apiaryio/dredd> not supporting 
+complete OpenAPI 3**.
 
-```bash
-npm i -g dredd
-make build-linux build-contract-tests-hooks
-make contract-tests
-```
-
-**WARNING: these are currently broken due to <https://github.com/apiaryio/dredd>
-not supporting complete OpenAPI 3**.
-
-This command will popup a network and check every endpoint against what has
-been documented.
+The contract tests would check every endpoint against what has been documented 
+in the OpenAPI specification. Alternative testing approaches should be used to 
+validate API changes.
