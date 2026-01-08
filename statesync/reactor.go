@@ -150,7 +150,7 @@ func (r *Reactor) Receive(e p2p.Envelope) {
 				r.Logger.Debug("Received unexpected snapshot, no state sync in progress")
 				return
 			}
-			r.Logger.Trace("Received snapshot", "height", msg.Height, "format", msg.Format, "peer", e.Src.ID())
+			r.Logger.Info("Received snapshot", "height", msg.Height, "format", msg.Format, "peer", e.Src.ID(), "chunks", msg.Chunks)
 			_, err := r.syncer.AddSnapshot(e.Src, &snapshot{
 				Height:   msg.Height,
 				Format:   msg.Format,
@@ -204,8 +204,8 @@ func (r *Reactor) Receive(e p2p.Envelope) {
 				r.Logger.Debug("Received unexpected chunk, no state sync in progress", "peer", e.Src.ID())
 				return
 			}
-			r.Logger.Trace("Received chunk, adding to sync", "height", msg.Height, "format", msg.Format,
-				"chunk", msg.Index, "peer", e.Src.ID())
+			r.Logger.Info("Received chunk, adding to sync", "height", msg.Height, "format", msg.Format,
+				"chunk", msg.Index, "peer", e.Src.ID(), "size", len(msg.Chunk), "index", msg.Index)
 			_, err := r.syncer.AddChunk(&chunk{
 				Height: msg.Height,
 				Format: msg.Format,
