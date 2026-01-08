@@ -51,10 +51,10 @@ func newChunkQueue(snapshot *snapshot, tempDir string) (*chunkQueue, error) {
 	return &chunkQueue{
 		snapshot:       snapshot,
 		dir:            dir,
-		chunkFiles:     make(map[uint32]string, maxChunksPerSnapshot),
-		chunkSenders:   make(map[uint32]p2p.ID, maxChunksPerSnapshot),
-		chunkAllocated: make(map[uint32]bool, maxChunksPerSnapshot),
-		chunkReturned:  make(map[uint32]bool, maxChunksPerSnapshot),
+		chunkFiles:     make(map[uint32]string, snapshot.Chunks),
+		chunkSenders:   make(map[uint32]p2p.ID, snapshot.Chunks),
+		chunkAllocated: make(map[uint32]bool, snapshot.Chunks),
+		chunkReturned:  make(map[uint32]bool, snapshot.Chunks),
 		waiters:        make(map[uint32][]chan<- uint32),
 	}, nil
 }
