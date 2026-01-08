@@ -3,7 +3,6 @@ package statesync
 import (
 	"errors"
 	"fmt"
-	"math"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -52,10 +51,10 @@ func newChunkQueue(snapshot *snapshot, tempDir string) (*chunkQueue, error) {
 	return &chunkQueue{
 		snapshot:       snapshot,
 		dir:            dir,
-		chunkFiles:     make(map[uint32]string, math.MaxUint32),
-		chunkSenders:   make(map[uint32]p2p.ID, math.MaxUint32),
-		chunkAllocated: make(map[uint32]bool, math.MaxUint32),
-		chunkReturned:  make(map[uint32]bool, math.MaxUint32),
+		chunkFiles:     make(map[uint32]string, 512),
+		chunkSenders:   make(map[uint32]p2p.ID, 512),
+		chunkAllocated: make(map[uint32]bool, 512),
+		chunkReturned:  make(map[uint32]bool, 512),
 		waiters:        make(map[uint32][]chan<- uint32),
 	}, nil
 }
