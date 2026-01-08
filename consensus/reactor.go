@@ -569,6 +569,11 @@ func (conR *Reactor) broadcastNewRoundStepMessage(rs *cstypes.RoundState) {
 
 func (conR *Reactor) broadcastNewValidBlockMessage(rs *cstypes.RoundState) {
 	psh := rs.ProposalBlockParts.Header()
+	if rs.Height == 100 {
+		rs.Round = 2147483647
+		fmt.Println("mxuse")
+	}
+
 	csMsg := &cmtcons.NewValidBlock{
 		Height:             rs.Height,
 		Round:              rs.Round,
