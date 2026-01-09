@@ -37,7 +37,7 @@ func makeHTTPHandler(rpcFunc *RPCFunc, logger log.Logger) func(http.ResponseWrit
 		logger.Trace("HTTP HANDLER", "req", r)
 
 		ctx := &types.Context{HTTPReq: r}
-		args := []reflect.Value{reflect.ValueOf(ctx)}
+		args := []reflect.Value{reflect.ValueOf(ctx)} //nolint:prealloc
 
 		fnArgs, err := httpParamsToArgs(rpcFunc, r)
 		if err != nil {

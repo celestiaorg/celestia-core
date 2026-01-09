@@ -197,7 +197,7 @@ func NewMConnectionWithConfig(
 
 	// Create channels
 	channelsIdx := map[byte]*Channel{}
-	channels := []*Channel{}
+	channels := []*Channel{} //nolint:prealloc
 
 	for _, desc := range chDescs {
 		channel := newChannel(mconn, *desc)

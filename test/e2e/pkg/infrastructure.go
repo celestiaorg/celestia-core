@@ -57,7 +57,7 @@ type InstanceData struct {
 
 func sortNodeNames(m Manifest) []string {
 	// Set up nodes, in alphabetical order (IPs and ports get same order).
-	nodeNames := []string{}
+	nodeNames := []string{} //nolint:prealloc
 	for name := range m.Nodes {
 		nodeNames = append(nodeNames, name)
 	}

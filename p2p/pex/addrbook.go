@@ -762,7 +762,7 @@ func (a *addrBook) addBadPeer(addr *p2p.NetAddress, banTime time.Duration) bool 
 
 // hash(key + sourcegroup + int64(hash(key + group + sourcegroup)) % bucket_per_group) % num_new_buckets
 func (a *addrBook) calcNewBucket(addr, src *p2p.NetAddress) (int, error) {
-	data1 := []byte{}
+	data1 := []byte{} //nolint:prealloc
 	data1 = append(data1, []byte(a.key)...)
 	data1 = append(data1, []byte(a.groupKey(addr))...)
 	data1 = append(data1, []byte(a.groupKey(src))...)
@@ -774,7 +774,7 @@ func (a *addrBook) calcNewBucket(addr, src *p2p.NetAddress) (int, error) {
 	hash64 %= newBucketsPerGroup
 	var hashbuf [8]byte
 	binary.BigEndian.PutUint64(hashbuf[:], hash64)
-	data2 := []byte{}
+	data2 := []byte{} //nolint:prealloc
 	data2 = append(data2, []byte(a.key)...)
 	data2 = append(data2, a.groupKey(src)...)
 	data2 = append(data2, hashbuf[:]...)
@@ -789,7 +789,7 @@ func (a *addrBook) calcNewBucket(addr, src *p2p.NetAddress) (int, error) {
 
 // hash(key + group + int64(hash(key + addr)) % buckets_per_group) % num_old_buckets
 func (a *addrBook) calcOldBucket(addr *p2p.NetAddress) (int, error) {
-	data1 := []byte{}
+	data1 := []byte{} //nolint:prealloc
 	data1 = append(data1, []byte(a.key)...)
 	data1 = append(data1, []byte(addr.String())...)
 	hash1, err := a.hash(data1)
@@ -800,7 +800,7 @@ func (a *addrBook) calcOldBucket(addr *p2p.NetAddress) (int, error) {
 	hash64 %= oldBucketsPerGroup
 	var hashbuf [8]byte
 	binary.BigEndian.PutUint64(hashbuf[:], hash64)
-	data2 := []byte{}
+	data2 := []byte{} //nolint:prealloc
 	data2 = append(data2, []byte(a.key)...)
 	data2 = append(data2, a.groupKey(addr)...)
 	data2 = append(data2, hashbuf[:]...)

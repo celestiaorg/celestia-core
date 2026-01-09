@@ -18,7 +18,7 @@ func TestNodeInfoValidate(t *testing.T) {
 	for i := 0; i < maxNumChannels; i++ {
 		channels[i] = byte(i)
 	}
-	dupChannels := make([]byte, 5)
+	dupChannels := make([]byte, 5) //nolint:prealloc
 	copy(dupChannels, channels[:5])
 	dupChannels = append(dupChannels, testCh)
 
