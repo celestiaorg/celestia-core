@@ -1020,10 +1020,12 @@ func (cs *State) handleMsg(mi msgInfo) {
 		// will not cause transition.
 		// once proposal is set, we can receive block parts
 		err = cs.setProposal(msg.Proposal)
+		cs.Logger.Error("setting proposal", "err", err)
 
 	case *BlockPartMessage:
 		// if the proposal is complete, we'll enterPrevote or tryFinalizeCommit
 		added, err = cs.addProposalBlockPart(msg, peerID)
+		cs.Logger.Error("adding proposal block part", "err", err, "added", added)
 
 		// We unlock here to yield to any routines that need to read the the RoundState.
 		// Previously, this code held the lock from the point at which the final block
@@ -1405,7 +1407,7 @@ func (cs *State) defaultDecideProposal(height int64, round int32) {
 			types.ProposalSignBytes(cs.state.ChainID, p), proposal.Signature,
 		) {
 			cs.Logger.Debug("propose step; failed to verify proposal signature (this is expected when running a sentry setup)", "err", err)
-			return
+			//return
 		}
 
 		proposal.Signature = p.Signature
