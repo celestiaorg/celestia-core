@@ -180,10 +180,10 @@ func chunkToPartMetaData(chunk *bits.BitArray, partSet *types.PartSet) []*propag
 // time a proposal is received from a peer or when a proposal is created. If the
 // proposal is new, it will be stored and broadcast to the relevant peers.
 func (blockProp *Reactor) handleCompactBlock(cb *proptypes.CompactBlock, peer p2p.ID, proposer bool) {
-	fmt.Println("handle compact block ", cb.Proposal)
+	blockProp.Logger.Error("handle compact block", "proposal", cb.Proposal)
 	// Proposers skip validation since they created the block
 	if proposer {
-		fmt.Println("is proposer")
+		blockProp.Logger.Error("is proposer")
 		blockProp.processValidatedCompactBlock(cb, peer, proposer)
 		return
 	}
@@ -191,7 +191,7 @@ func (blockProp *Reactor) handleCompactBlock(cb *proptypes.CompactBlock, peer p2
 	// Try to validate the compact block
 	err := blockProp.validateCompactBlock(cb)
 	if err != nil {
-		fmt.Println("validation failed: ", err)
+		blockProp.Logger.Error("validation failed:", "err", err)
 		// Validation failed - cache for later if it's for current or future height.
 		// We cache because:
 		// 1. Future height: we don't know the proposer key yet
@@ -216,7 +216,7 @@ func (blockProp *Reactor) handleCompactBlock(cb *proptypes.CompactBlock, peer p2
 
 		return
 	}
-	fmt.Println("is not proposer")
+	blockProp.Logger.Error("is not proposer")
 	blockProp.processValidatedCompactBlock(cb, peer, proposer)
 }
 
@@ -230,7 +230,7 @@ func (blockProp *Reactor) processValidatedCompactBlock(cb *proptypes.CompactBloc
 		return
 	}
 
-	fmt.Println("hehehehehe ", proposer, ", ", cb.Proposal)
+	blockProp.Logger.Error("hehehehehe", "proposer", proposer, "proposal", cb.Proposal)
 
 	if !proposer {
 		select {
