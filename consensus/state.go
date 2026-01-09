@@ -1404,7 +1404,8 @@ func (cs *State) defaultDecideProposal(height int64, round int32) {
 		if !pubKey.VerifySignature(
 			types.ProposalSignBytes(cs.state.ChainID, p), proposal.Signature,
 		) {
-			cs.Logger.Debug("propose step; failed to verify proposal signature", "err", err)
+			cs.Logger.Debug("propose step; failed to verify proposal signature (this is expected when running a sentry setup)", "err", err)
+			return
 		}
 
 		proposal.Signature = p.Signature
