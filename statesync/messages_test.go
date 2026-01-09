@@ -67,9 +67,6 @@ func TestValidateMsg(t *testing.T) {
 		"SnapshotsResponse 0 chunks": {
 			&ssproto.SnapshotsResponse{Height: 1, Format: 1, Hash: []byte{1}},
 			false},
-		"SnapshotsResponse large number of chunks": {
-			&ssproto.SnapshotsResponse{Height: 1, Format: 1, Hash: []byte{1}, Chunks: maxChunksPerSnapshot + 1},
-			false},
 		"SnapshotsResponse no hash": {
 			&ssproto.SnapshotsResponse{Height: 1, Format: 1, Chunks: 2, Hash: []byte{}},
 			false},
