@@ -8,14 +8,9 @@
 
 ### IMPROVEMENTS
 
-- `[mempool]` perf(mempool/cache): Optimize LRUTxCache.Remove to reduce lock contention and map access
-   ([\#5244](https://github.com/cometbft/cometbft/pull/5244))
-- `[e2e]` add support for testing different keytypes, including BLS
-  ([\#3513](https://github.com/cometbft/cometbft/pull/3513))
-- `[crypto]` Reduce BLS signature size to 48 bytes by increasing pubkey size to
-  192 bytes ([\#3624](https://github.com/cometbft/cometbft/issues/3624)
 - `[statesync]` Add configurable `max-snapshot-chunks` parameter to validate max amount of chunks in a `SnapshotResponse`.
-  ([\#5549](https://github.com/cometbft/cometbft/pull/5549))
+  ([\#5549](https://github.com/celestiaorg/celestia-core/pull/2750))
+
 ### FEATURES
 
 ### BUG-FIXES
