@@ -416,6 +416,7 @@ func (conR *Reactor) receive(e p2p.Envelope) error {
 		switch msg := msg.(type) {
 		// TODO handle the proposal message case in the propagation reactor
 		case *ProposalMessage:
+			conR.Logger.Debug("Received proposal message 1", "proposal", msg.Proposal)
 			ps.SetHasProposal(msg.Proposal)
 			conR.conS.peerMsgQueue <- msgInfo{msg, e.Src.ID()}
 			schema.WriteProposal(

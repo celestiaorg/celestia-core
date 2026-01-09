@@ -543,8 +543,10 @@ func (cs *State) AddVote(vote *types.Vote, peerID p2p.ID) (added bool, err error
 // SetProposal inputs a proposal.
 func (cs *State) SetProposal(proposal *types.Proposal, peerID p2p.ID) error {
 	if peerID == "" {
+		cs.Logger.Debug("sending proposal message 2", "proposal", proposal)
 		cs.internalMsgQueue <- msgInfo{&ProposalMessage{proposal}, ""}
 	} else {
+		cs.Logger.Debug("sending proposal message 3", "proposal", proposal)
 		cs.peerMsgQueue <- msgInfo{&ProposalMessage{proposal}, peerID}
 	}
 
@@ -1020,7 +1022,7 @@ func (cs *State) handleMsg(mi msgInfo) {
 		// will not cause transition.
 		// once proposal is set, we can receive block parts
 		err = cs.setProposal(msg.Proposal)
-		cs.Logger.Error("setting proposal", "err", err)
+		cs.Logger.Error("setting proposal", "err", err, "proposal", msg.Proposal)
 
 	case *BlockPartMessage:
 		// if the proposal is complete, we'll enterPrevote or tryFinalizeCommit
@@ -2898,6 +2900,7 @@ func (cs *State) syncData() {
 			if !ok {
 				return
 			}
+			cs.Logger.Debug("sending proposal message 4", "proposal", proposalAndFrom.Proposal)
 			cs.peerMsgQueue <- msgInfo{&ProposalMessage{&proposalAndFrom.Proposal}, proposalAndFrom.From}
 		case _, ok := <-cs.newHeightOrRoundChan:
 			if !ok {
