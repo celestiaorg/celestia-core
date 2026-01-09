@@ -29,6 +29,18 @@ const (
 	tagKeySeparator     = "/"
 	tagKeySeparatorRune = '/'
 	eventSeqSeparator   = "$es$"
+	// DefaultMaxSearchResults is the default maximum number of transaction results
+	// that can be returned from a single search query. This limit prevents OOM
+	// (Out Of Memory) issues when queries match a very large number of transactions.
+	//
+	// The limit is enforced before unmarshaling transaction data to minimize
+	// memory usage. If a query matches more than this limit, Search will return
+	// an error asking the user to refine their query.
+	//
+	// This addresses a critical issue where broad queries (e.g., "tx.height >= X")
+	// could match millions of transactions, causing the node to consume excessive
+	// memory (90+ GB) and eventually crash with OOM errors.
+	DefaultMaxSearchResults = 10000
 )
 
 var _ txindex.TxIndexer = (*TxIndex)(nil)
@@ -40,12 +52,22 @@ type TxIndex struct {
 	eventSeq int64
 
 	log log.Logger
+
+	// maxSearchResults is the maximum number of transaction results that can be
+	// returned from a single search query. If not set, defaults to DefaultMaxSearchResults.
+	maxSearchResults int
 }
 
-// NewTxIndex creates new KV indexer.
+// NewTxIndex creates new KV indexer with default max search results limit.
 func NewTxIndex(store dbm.DB) *TxIndex {
+	return NewTxIndexWithMaxResults(store, DefaultMaxSearchResults)
+}
+
+// NewTxIndexWithMaxResults creates new KV indexer with a configurable max search results limit.
+func NewTxIndexWithMaxResults(store dbm.DB, maxResults int) *TxIndex {
 	return &TxIndex{
-		store: store,
+		store:            store,
+		maxSearchResults: maxResults,
 	}
 }
 
@@ -284,6 +306,16 @@ func (txi *TxIndex) Search(ctx context.Context, q *query.Query) ([]*abci.TxResul
 		} else {
 			filteredHashes = txi.match(ctx, c, startKeyForCondition(c, heightInfo.height), filteredHashes, false, heightInfo)
 		}
+	}
+
+	// Check if the number of matching hashes exceeds the maximum allowed.
+	// This prevents OOM issues when queries match a very large number of transactions.
+	maxResults := txi.maxSearchResults
+	if maxResults == 0 {
+		maxResults = DefaultMaxSearchResults
+	}
+	if len(filteredHashes) > maxResults {
+		return nil, fmt.Errorf("query matched %d transactions, which exceeds the maximum of %d. Please refine your query to match fewer transactions", len(filteredHashes), maxResults)
 	}
 
 	results := make([]*abci.TxResult, 0, len(filteredHashes))
