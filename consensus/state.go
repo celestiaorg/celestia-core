@@ -1397,6 +1397,16 @@ func (cs *State) defaultDecideProposal(height int64, round int32) {
 	proposal := types.NewProposal(height, round, cs.rs.ValidRound, propBlockID)
 	p := proposal.ToProto()
 	if err := cs.privValidator.SignProposal(cs.state.ChainID, p); err == nil {
+		cs.Logger.Debug("propose step; signed proposal block", "height", height, "round", round, "block_id", propBlockID)
+
+		pubKey := cs.rs.Validators.GetProposer().PubKey
+		// Verify signature
+		if !pubKey.VerifySignature(
+			types.ProposalSignBytes(cs.state.ChainID, p), proposal.Signature,
+		) {
+			cs.Logger.Debug("propose step; failed to verify proposal signature", "err", err)
+		}
+
 		proposal.Signature = p.Signature
 
 		metaData := make([]proptypes.TxMetaData, len(block.Txs))
@@ -2406,7 +2416,7 @@ func (cs *State) addVote(vote *types.Vote, peerID p2p.ID) (added bool, err error
 	if vote.Height+1 == cs.rs.Height && vote.Type == cmtproto.PrecommitType {
 		if cs.rs.Step != cstypes.RoundStepNewHeight {
 			// Late precommit at prior height is ignored
-			cs.Logger.Trace("precommit vote came in after commit timeout and has been ignored", "vote", vote)
+			cs.Logger.Debug("precommit vote came in after commit timeout and has been ignored", "vote", vote)
 			return added, err
 		}
 
@@ -2419,7 +2429,7 @@ func (cs *State) addVote(vote *types.Vote, peerID p2p.ID) (added bool, err error
 			return added, err
 		}
 
-		cs.Logger.Trace("added vote to last precommits", "last_commit", cs.rs.LastCommit.StringShort())
+		cs.Logger.Debug("added vote to last precommits", "last_commit", cs.rs.LastCommit.StringShort())
 		if err := cs.eventBus.PublishEventVote(types.EventDataVote{Vote: vote}); err != nil {
 			return added, err
 		}
@@ -2439,7 +2449,7 @@ func (cs *State) addVote(vote *types.Vote, peerID p2p.ID) (added bool, err error
 	// Height mismatch is ignored.
 	// Not necessarily a bad peer, but not favorable behavior.
 	if vote.Height != cs.rs.Height {
-		cs.Logger.Trace("vote ignored and not added", "vote_height", vote.Height, "cs_height", cs.rs.Height, "peer", peerID)
+		cs.Logger.Debug("vote ignored and not added", "vote_height", vote.Height, "cs_height", cs.rs.Height, "peer", peerID)
 		return added, err
 	}
 
@@ -2503,6 +2513,7 @@ func (cs *State) addVote(vote *types.Vote, peerID p2p.ID) (added bool, err error
 		if err == nil {
 			cs.metrics.DuplicateVote.Add(1)
 		}
+		cs.Logger.Debug("vote ignored and not added", "vote", vote, "err", err)
 		return added, err
 	}
 	if vote.Round == cs.rs.Round {
@@ -2519,7 +2530,7 @@ func (cs *State) addVote(vote *types.Vote, peerID p2p.ID) (added bool, err error
 	switch vote.Type {
 	case cmtproto.PrevoteType:
 		prevotes := cs.rs.Votes.Prevotes(vote.Round)
-		cs.Logger.Trace("added vote to prevote", "vote", vote, "prevotes", prevotes.StringShort())
+		cs.Logger.Debug("added vote to prevote", "vote", vote, "prevotes", prevotes.StringShort())
 
 		// If +2/3 prevotes for a block or nil for *any* round:
 		if blockID, ok := prevotes.TwoThirdsMajority(); ok {
