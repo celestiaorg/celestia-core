@@ -8,6 +8,9 @@
 
 ### IMPROVEMENTS
 
+- `[statesync]` Add configurable `max-snapshot-chunks` parameter to validate max amount of chunks in a `SnapshotResponse`.
+  ([\#5549](https://github.com/celestiaorg/celestia-core/pull/2750))
+
 ### FEATURES
 
 ### BUG-FIXES
