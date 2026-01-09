@@ -842,3 +842,58 @@ func TestWrappedTxIndex(t *testing.T) {
 	require.NoError(t, err)
 	assert.True(t, proto.Equal(txResult, loadedTxResult))
 }
+
+// TestTxSearchMaxLimit verifies that the search method enforces the maximum
+// result limit to prevent OOM issues when queries match too many transactions.
+func TestTxSearchMaxLimit(t *testing.T) {
+	indexer := NewTxIndex(db.NewMemDB())
+
+	// Create and index transactions up to the max limit + 1
+	// Index them individually to avoid batch index issues
+	for i := 0; i < maxSearchResults+1; i++ {
+		tx := types.Tx(fmt.Sprintf("TX%d", i))
+		txResult := &abci.TxResult{
+			Height: int64(i / 100), // Multiple txs per height
+			Index:  uint32(i % 100),
+			Tx:     tx,
+			Result: abci.ExecTxResult{
+				Data: []byte{byte(i % 256)},
+				Code: abci.CodeTypeOK,
+				Log:  "",
+				Events: []abci.Event{
+					{Type: "test", Attributes: []abci.EventAttribute{
+						{Key: "index", Value: fmt.Sprintf("%d", i), Index: true},
+					}},
+				},
+			},
+		}
+		err := indexer.Index(txResult)
+		require.NoError(t, err)
+	}
+
+	ctx := context.Background()
+
+	// Search that matches more than max limit should fail
+	// Use a height-based query that will match all transactions
+	q, err := query.New("tx.height >= 0")
+	require.NoError(t, err)
+	results, err := indexer.Search(ctx, q)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), fmt.Sprintf("exceeds the maximum of %d", maxSearchResults))
+	assert.Nil(t, results)
+
+	// Search that matches fewer than max limit should still work
+	// Search for a specific transaction by its event attribute
+	q2, err := query.New("test.index = '0'")
+	require.NoError(t, err)
+	results, err = indexer.Search(ctx, q2)
+	require.NoError(t, err)
+	assert.Len(t, results, 1)
+
+	// Search that matches a small subset should work
+	q3, err := query.New("test.index = '1'")
+	require.NoError(t, err)
+	results, err = indexer.Search(ctx, q3)
+	require.NoError(t, err)
+	assert.Len(t, results, 1)
+}
