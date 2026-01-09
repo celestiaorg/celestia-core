@@ -1399,21 +1399,27 @@ func (cs *State) defaultDecideProposal(height int64, round int32) {
 	if err := cs.privValidator.SignProposal(cs.state.ChainID, p); err == nil {
 		proposal.Signature = p.Signature
 
-		metaData := make([]proptypes.TxMetaData, len(block.Txs))
-		hashes := block.CachedHashes()
-		for i, pos := range blockParts.TxPos {
-			metaData[i] = proptypes.TxMetaData{
-				Start: pos.Start,
-				End:   pos.End,
-				Hash:  hashes[i],
+		// Verify whether this proposal corresponds to the returned signature.
+		// This fixes the edge case where a KMS, in a sentry setup, returns the signature of a different proposal
+		if cs.rs.Validators.GetProposer().PubKey.VerifySignature(
+			types.ProposalSignBytes(cs.state.ChainID, p), proposal.Signature,
+		) {
+			metaData := make([]proptypes.TxMetaData, len(block.Txs))
+			hashes := block.CachedHashes()
+			for i, pos := range blockParts.TxPos {
+				metaData[i] = proptypes.TxMetaData{
+					Start: pos.Start,
+					End:   pos.End,
+					Hash:  hashes[i],
+				}
 			}
-		}
 
-		err = cs.propagator.ProposeBlock(proposal, blockParts, metaData)
-		if err != nil {
-			cs.Logger.Error("propagation reactor failed to propose the block", "err", err)
-			if !cs.gossipDataEnabled.Load() {
-				return
+			err = cs.propagator.ProposeBlock(proposal, blockParts, metaData)
+			if err != nil {
+				cs.Logger.Error("propagation reactor failed to propose the block", "err", err)
+				if !cs.gossipDataEnabled.Load() {
+					return
+				}
 			}
 		}
 
