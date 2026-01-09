@@ -593,6 +593,12 @@ indexer = "{{ .TxIndex.Indexer }}"
 #   postgresql://<user>:<password>@<host>:<port>/<db>?<opts>
 psql-conn = "{{ .TxIndex.PsqlConn }}"
 
+# Maximum number of transaction results that can be returned from a single
+# search query. This limit prevents OOM issues when queries match a very large
+# number of transactions. If set to 0, uses the default value (10000).
+# Only applies to the "kv" indexer.
+max-search-results = {{ .TxIndex.MaxSearchResults }}
+
 #######################################################
 ###       Instrumentation Configuration Options     ###
 #######################################################

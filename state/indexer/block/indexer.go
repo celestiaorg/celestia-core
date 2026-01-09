@@ -38,7 +38,12 @@ func IndexerFromConfigWithDisabledIndexers(cfg *config.Config, dbProvider config
 			return nil, nil, false, err
 		}
 
-		return kv.NewTxIndex(store), blockidxkv.New(dbm.NewPrefixDB(store, []byte("block_events"))), false, nil
+		// Use configured max search results, or default if not set (0)
+		maxResults := cfg.TxIndex.MaxSearchResults
+		if maxResults == 0 {
+			maxResults = 10000 // DefaultMaxSearchResults from kv package
+		}
+		return kv.NewTxIndexWithMaxResults(store, maxResults), blockidxkv.New(dbm.NewPrefixDB(store, []byte("block_events"))), false, nil
 
 	case "psql":
 		conn := cfg.TxIndex.PsqlConn

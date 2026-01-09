@@ -1329,12 +1329,19 @@ type TxIndexConfig struct {
 	// The PostgreSQL connection configuration, the connection format:
 	// postgresql://<user>:<password>@<host>:<port>/<db>?<opts>
 	PsqlConn string `mapstructure:"psql-conn"`
+
+	// MaxSearchResults is the maximum number of transaction results that can be
+	// returned from a single search query. This limit prevents OOM issues when
+	// queries match a very large number of transactions. If set to 0, uses the
+	// default value (10000). Only applies to the "kv" indexer.
+	MaxSearchResults int `mapstructure:"max-search-results"`
 }
 
 // DefaultTxIndexConfig returns a default configuration for the transaction indexer.
 func DefaultTxIndexConfig() *TxIndexConfig {
 	return &TxIndexConfig{
-		Indexer: "kv",
+		Indexer:          "kv",
+		MaxSearchResults: 10000, // Default to 10000, matching DefaultMaxSearchResults in kv package
 	}
 }
 

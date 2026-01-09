@@ -850,7 +850,7 @@ func TestTxSearchMaxLimit(t *testing.T) {
 
 	// Create and index transactions up to the max limit + 1
 	// Index them individually to avoid batch index issues
-	for i := 0; i < maxSearchResults+1; i++ {
+	for i := 0; i < DefaultMaxSearchResults+1; i++ {
 		tx := types.Tx(fmt.Sprintf("TX%d", i))
 		txResult := &abci.TxResult{
 			Height: int64(i / 100), // Multiple txs per height
@@ -879,7 +879,7 @@ func TestTxSearchMaxLimit(t *testing.T) {
 	require.NoError(t, err)
 	results, err := indexer.Search(ctx, q)
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), fmt.Sprintf("exceeds the maximum of %d", maxSearchResults))
+	assert.Contains(t, err.Error(), fmt.Sprintf("exceeds the maximum of %d", DefaultMaxSearchResults))
 	assert.Nil(t, results)
 
 	// Search that matches fewer than max limit should still work
@@ -896,4 +896,73 @@ func TestTxSearchMaxLimit(t *testing.T) {
 	results, err = indexer.Search(ctx, q3)
 	require.NoError(t, err)
 	assert.Len(t, results, 1)
+}
+
+// TestTxSearchConfigurableMaxLimit verifies that the max search results limit
+// can be configured when creating a TxIndex.
+func TestTxSearchConfigurableMaxLimit(t *testing.T) {
+	// Test with a custom limit
+	customLimit := 100
+	indexer := NewTxIndexWithMaxResults(db.NewMemDB(), customLimit)
+
+	// Create transactions up to the custom limit + 1
+	for i := 0; i < customLimit+1; i++ {
+		tx := types.Tx(fmt.Sprintf("TX%d", i))
+		txResult := &abci.TxResult{
+			Height: int64(i / 10),
+			Index:  uint32(i % 10),
+			Tx:     tx,
+			Result: abci.ExecTxResult{
+				Data: []byte{byte(i % 256)},
+				Code: abci.CodeTypeOK,
+				Log:  "",
+				Events: []abci.Event{
+					{Type: "test", Attributes: []abci.EventAttribute{
+						{Key: "index", Value: fmt.Sprintf("%d", i), Index: true},
+					}},
+				},
+			},
+		}
+		err := indexer.Index(txResult)
+		require.NoError(t, err)
+	}
+
+	ctx := context.Background()
+
+	// Search that matches more than custom limit should fail
+	q, err := query.New("tx.height >= 0")
+	require.NoError(t, err)
+	results, err := indexer.Search(ctx, q)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), fmt.Sprintf("exceeds the maximum of %d", customLimit))
+	assert.Nil(t, results)
+
+	// Test with zero/negative value should use default
+	indexerWithZero := NewTxIndexWithMaxResults(db.NewMemDB(), 0)
+	// Should use DefaultMaxSearchResults, so creating DefaultMaxSearchResults+1 should fail
+	for i := 0; i < DefaultMaxSearchResults+1; i++ {
+		tx := types.Tx(fmt.Sprintf("TXZ%d", i))
+		txResult := &abci.TxResult{
+			Height: int64(i / 10),
+			Index:  uint32(i % 10),
+			Tx:     tx,
+			Result: abci.ExecTxResult{
+				Data: []byte{byte(i % 256)},
+				Code: abci.CodeTypeOK,
+				Log:  "",
+				Events: []abci.Event{
+					{Type: "test", Attributes: []abci.EventAttribute{
+						{Key: "index", Value: fmt.Sprintf("z%d", i), Index: true},
+					}},
+				},
+			},
+		}
+		err := indexerWithZero.Index(txResult)
+		require.NoError(t, err)
+	}
+
+	results, err = indexerWithZero.Search(ctx, q)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), fmt.Sprintf("exceeds the maximum of %d", DefaultMaxSearchResults))
+	assert.Nil(t, results)
 }
