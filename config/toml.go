@@ -487,6 +487,7 @@ chunk_request_timeout = "{{ .StateSync.ChunkRequestTimeout }}"
 chunk_fetchers = "{{ .StateSync.ChunkFetchers }}"
 
 # Maximum number of chunks allowed in a snapshot (default: 100000).
+# If set to 0, the default will be used.
 max_snapshot_chunks = {{ .StateSync.MaxSnapshotChunks }}
 
 #######################################################

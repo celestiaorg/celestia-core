@@ -1029,7 +1029,7 @@ func (cfg *StateSyncConfig) ValidateBasic() error {
 		}
 
 		if cfg.MaxSnapshotChunks == 0 {
-			return cmterrors.ErrRequiredField{Field: "max_snapshot_chunks"}
+			cfg.MaxSnapshotChunks = 100000
 		}
 	}
 
