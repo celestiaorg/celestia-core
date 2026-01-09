@@ -14,8 +14,6 @@ const (
 	snapshotMsgSize = int(4e6)
 	// chunkMsgSize is the maximum size of a chunkResponseMessage
 	chunkMsgSize = int(16e6)
-	// maxChunksPerSnapshot is the maximum number of chunks a snapshot can contain
-	maxChunksPerSnapshot = 40_000 // ~40GB snapshot size
 )
 
 // validateMsg validates a message.
@@ -48,9 +46,6 @@ func validateMsg(pb proto.Message) error {
 		}
 		if msg.Chunks == 0 {
 			return errors.New("snapshot has no chunks")
-		}
-		if msg.Chunks > maxChunksPerSnapshot {
-			return fmt.Errorf("number of chunks exceeds maximum %d vs actual %d", maxChunksPerSnapshot, msg.Chunks)
 		}
 	default:
 		return fmt.Errorf("unknown message type %T", msg)
