@@ -443,7 +443,7 @@ func TestAllMatchesAll(t *testing.T) {
 		`Route|66=`,
 		`Rilly|Blue=`,
 	)
-	keys := make([]string, 0)
+	keys := make([]string, 0) //nolint:prealloc
 	for k := range events {
 		keys = append(keys, k)
 	}

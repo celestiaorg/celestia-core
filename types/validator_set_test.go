@@ -1281,7 +1281,7 @@ func randTestVSetCfg(nBase, nAddMax int) testVSetCfg {
 }
 
 func applyChangesToValSet(t *testing.T, expErr error, valSet *ValidatorSet, valsLists ...[]testVal) {
-	changes := make([]testVal, 0)
+	changes := make([]testVal, 0) //nolint:prealloc
 	for _, valsList := range valsLists {
 		changes = append(changes, valsList...)
 	}

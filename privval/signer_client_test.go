@@ -25,7 +25,7 @@ type signerTestCase struct {
 }
 
 func getSignerTestCases(t *testing.T) []signerTestCase {
-	testCases := make([]signerTestCase, 0)
+	testCases := make([]signerTestCase, 0) //nolint:prealloc
 
 	// Get test cases for each possible dialer (DialTCP / DialUnix / etc)
 	for _, dtc := range getDialerTestCases(t) {

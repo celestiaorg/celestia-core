@@ -64,7 +64,7 @@ func Compile(ast syntax.Query) (*Query, error) {
 }
 
 func ExpandEvents(flattenedEvents map[string][]string) []types.Event {
-	events := make([]types.Event, 0)
+	events := make([]types.Event, 0) //nolint:prealloc
 
 	for composite, values := range flattenedEvents {
 		tokens := strings.Split(composite, ".")
