@@ -1782,7 +1782,9 @@ func (cs *State) enterPrecommit(height int64, round int32) {
 	cs.rs.LockedBlock = nil
 	cs.rs.LockedBlockParts = nil
 
-	if !cs.rs.ProposalBlockParts.HasHeader(blockID.PartSetHeader) {
+	res := cs.rs.ProposalBlockParts.HasHeader(blockID.PartSetHeader)
+	logger.Error("hihihih res", "res", res, "ps.header", cs.rs.ProposalBlockParts.Header(), "blockID.PartSetHeader", blockID.PartSetHeader)
+	if !res {
 		cs.rs.ProposalBlock = nil
 		cs.rs.ProposalBlockParts = types.NewPartSetFromHeader(blockID.PartSetHeader, types.BlockPartSizeBytes)
 		psh := cs.rs.ProposalBlockParts.Header()
