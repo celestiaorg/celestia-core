@@ -137,7 +137,7 @@ func TestSignBytes(t *testing.T) {
 	}
 
 	// Compute expected sign bytes manually
-	txMetaData := make([]*protoprop.TxMetaData, 0)
+	txMetaData := make([]*protoprop.TxMetaData, 0) //nolint:prealloc
 	for _, md := range block.Blobs {
 		txMetaData = append(txMetaData, md.ToProto())
 	}

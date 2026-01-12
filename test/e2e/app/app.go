@@ -368,7 +368,7 @@ func (app *Application) ApplySnapshotChunk(_ context.Context, req *abci.RequestA
 	}
 	app.restoreChunks = append(app.restoreChunks, req.Chunk)
 	if len(app.restoreChunks) == int(app.restoreSnapshot.Chunks) {
-		bz := []byte{}
+		bz := []byte{} //nolint:prealloc
 		for _, chunk := range app.restoreChunks {
 			bz = append(bz, chunk...)
 		}

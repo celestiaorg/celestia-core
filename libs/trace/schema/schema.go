@@ -11,7 +11,7 @@ func init() {
 }
 
 func AllTables() []string {
-	tables := []string{}
+	tables := []string{} //nolint:prealloc
 	tables = append(tables, MempoolTables()...)
 	tables = append(tables, ConsensusTables()...)
 	tables = append(tables, BlocksyncTables()...)

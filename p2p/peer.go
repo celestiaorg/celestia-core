@@ -351,7 +351,7 @@ func (p *peer) send(chID byte, msg proto.Message, sendFunc func(byte, []byte) bo
 	}
 	res := sendFunc(chID, msgBytes)
 	if res {
-		labels := []string{
+		labels := []string{ //nolint:prealloc
 			"peer_id", string(p.ID()),
 			"chID", fmt.Sprintf("%#x", chID),
 		}
