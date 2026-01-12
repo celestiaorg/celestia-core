@@ -37,6 +37,7 @@ type pendingSeenTracker struct {
 	mu          sync.Mutex
 	perSigner   map[string][]*pendingSeenTx
 	seenTxRange map[string]map[uint16]*sequenceRange // signer -> peer -> sequence range
+	maxSeenSeq  map[string]uint64                    // signer -> max sequence seen in SeenTx messages
 	byTx        map[types.TxKey]*pendingSeenTx
 	limit       int
 }
@@ -48,6 +49,7 @@ func newPendingSeenTracker(limit int) *pendingSeenTracker {
 	return &pendingSeenTracker{
 		perSigner:   make(map[string][]*pendingSeenTx),
 		seenTxRange: make(map[string]map[uint16]*sequenceRange),
+		maxSeenSeq:  make(map[string]uint64),
 		byTx:        make(map[types.TxKey]*pendingSeenTx),
 		limit:       limit,
 	}
@@ -62,6 +64,11 @@ func (ps *pendingSeenTracker) add(msg *protomem.SeenTx, txKey types.TxKey, peerI
 
 	ps.mu.Lock()
 	defer ps.mu.Unlock()
+
+	// Track max sequence seen for this signer
+	if msg.Sequence > ps.maxSeenSeq[signerKey] {
+		ps.maxSeenSeq[signerKey] = msg.Sequence
+	}
 
 	// First check if we already have this exact txKey
 	if _, ok := ps.byTx[txKey]; ok {
@@ -234,6 +241,22 @@ func (ps *pendingSeenTracker) signerKeys() [][]byte {
 	return out
 }
 
+// maxSeenSeqSignerKeys returns all signers for which we've tracked max seen sequence.
+func (ps *pendingSeenTracker) maxSeenSeqSignerKeys() [][]byte {
+	ps.mu.Lock()
+	defer ps.mu.Unlock()
+
+	if len(ps.maxSeenSeq) == 0 {
+		return nil
+	}
+
+	out := make([][]byte, 0, len(ps.maxSeenSeq))
+	for signerKey := range ps.maxSeenSeq {
+		out = append(out, []byte(signerKey))
+	}
+	return out
+}
+
 func (ps *pendingSeenTracker) markRequested(txKey types.TxKey, peerID uint16) {
 	if peerID == 0 {
 		return
@@ -303,6 +326,43 @@ func (ps *pendingSeenTracker) getSequenceRangeForSigner(signer []byte, nextSeque
 		peersWithRanges[i], peersWithRanges[j] = peersWithRanges[j], peersWithRanges[i]
 	})
 	return maxSeq, peersWithRanges
+}
+
+// getMaxSeenSeqForSigner returns the maximum sequence this node has seen
+// in SeenTx messages for the given signer.
+func (ps *pendingSeenTracker) getMaxSeenSeqForSigner(signer []byte) uint64 {
+	if len(signer) == 0 {
+		return 0
+	}
+
+	ps.mu.Lock()
+	defer ps.mu.Unlock()
+
+	return ps.maxSeenSeq[string(signer)]
+}
+
+// getMaxSeenRangeSeqForSigner returns the maximum sequence any peer claims to have
+// for the given signer based on SeenTx ranges.
+func (ps *pendingSeenTracker) getMaxSeenRangeSeqForSigner(signer []byte) uint64 {
+	if len(signer) == 0 {
+		return 0
+	}
+
+	ps.mu.Lock()
+	defer ps.mu.Unlock()
+
+	peerRanges := ps.seenTxRange[string(signer)]
+	if len(peerRanges) == 0 {
+		return 0
+	}
+
+	var maxSeq uint64
+	for _, rng := range peerRanges {
+		if rng.maxSeq > maxSeq {
+			maxSeq = rng.maxSeq
+		}
+	}
+	return maxSeq
 }
 
 // doesPeerHaveSequence checks if a peer claims to have a specific sequence.

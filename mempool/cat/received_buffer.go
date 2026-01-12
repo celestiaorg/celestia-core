@@ -155,3 +155,56 @@ func (b *receivedTxBuffer) countForPeer(peerID string) int {
 
 	return b.countByPeer[peerID]
 }
+
+// SignerBufferStats holds statistics about a signer's buffer
+type SignerBufferStats struct {
+	Size   int
+	MinSeq uint64
+	MaxSeq uint64
+}
+
+// statsForSigner returns buffer statistics for a specific signer
+func (b *receivedTxBuffer) statsForSigner(signer []byte) SignerBufferStats {
+	if len(signer) == 0 {
+		return SignerBufferStats{}
+	}
+
+	b.mu.Lock()
+	defer b.mu.Unlock()
+
+	signerBuf, exists := b.buffers[string(signer)]
+	if !exists || len(signerBuf) == 0 {
+		return SignerBufferStats{}
+	}
+
+	var minSeq, maxSeq uint64
+	first := true
+	for seq := range signerBuf {
+		if first {
+			minSeq = seq
+			maxSeq = seq
+			first = false
+		} else {
+			if seq < minSeq {
+				minSeq = seq
+			}
+			if seq > maxSeq {
+				maxSeq = seq
+			}
+		}
+	}
+
+	return SignerBufferStats{
+		Size:   len(signerBuf),
+		MinSeq: minSeq,
+		MaxSeq: maxSeq,
+	}
+}
+
+// totalSigners returns the number of signers with buffered transactions
+func (b *receivedTxBuffer) totalSigners() int {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+
+	return len(b.buffers)
+}

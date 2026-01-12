@@ -69,4 +69,36 @@ type Metrics struct {
 	// RerequestedTxs defines the number of times that a requested tx
 	// never received a response in time and a new request was made.
 	RerequestedTxs metrics.Counter
+
+	// ReceivedBufferSize is the total number of txs in the received buffer (per signer)
+	ReceivedBufferSize metrics.Gauge `metrics_labels:"signer"`
+
+	// PendingSeenSize is the total number of entries in pendingSeen (per signer)
+	PendingSeenSize metrics.Gauge `metrics_labels:"signer"`
+
+	// PendingSeenTotal is the total number of entries in pendingSeen
+	PendingSeenTotal metrics.Gauge
+
+	// BufferRejectedTooFar is the number of txs rejected because sequence was too far ahead
+	BufferRejectedTooFar metrics.Counter
+
+	// BufferRejectedFull is the number of txs rejected because buffer was full
+	BufferRejectedFull metrics.Counter
+
+	// --- Per-signer metrics (for testing/debugging with small number of signers) ---
+
+	// BufferSizePerSigner is the number of buffered txs per signer
+	BufferSizePerSigner metrics.Gauge `metrics_labels:"signer"`
+
+	// MaxSeenTxSeqPerSigner is the max sequence this node has seen for a signer(receiving SeenTx messages)
+	MaxSeenTxSeqPerSigner metrics.Gauge `metrics_labels:"signer"`
+
+	// SeenRangeMaxSeqPerSigner is the max sequence peers claim to have for a signer
+	SeenRangeMaxSeqPerSigner metrics.Gauge `metrics_labels:"signer"`
+
+	// MaxRequestedSeqPerSigner is the max sequence this node has requested for a signer
+	MaxRequestedSeqPerSigner metrics.Gauge `metrics_labels:"signer"`
+
+	// ExpectedSeqPerSigner is the expected sequence from app for a signer(next accepted tx sequence by the app(mempool state))
+	ExpectedSeqPerSigner metrics.Gauge `metrics_labels:"signer"`
 }
