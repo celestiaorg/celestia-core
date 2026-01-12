@@ -2556,6 +2556,77 @@ components:
               description: "List of signer addresses (only for COMMITTED status)"
           type: object
 
+    TxStatusBatchResponse:
+      type: object
+      required:
+        - "jsonrpc"
+        - "id"
+        - "result"
+      properties:
+        jsonrpc:
+          type: string
+          example: "2.0"
+        id:
+          type: integer
+          example: 0
+        result:
+          type: array
+          items:
+            required:
+              - "status"
+            properties:
+              height:
+                type: string
+                example: "12345"
+                description: "Block height where the transaction was included (only for COMMITTED status)"
+              index:
+                type: integer
+                example: 0
+                description: "Index of the transaction within the block (only for COMMITTED status)"
+              execution_code:
+                type: integer
+                example: 0
+                description: "Execution code from the application (0 means success, non-zero means failure)"
+              error:
+                type: string
+                example: ""
+                description: "Error message if the transaction failed (for REJECTED or failed COMMITTED transactions)"
+              status:
+                type: string
+                enum:
+                  - "UNKNOWN"
+                  - "PENDING"
+                  - "EVICTED"
+                  - "REJECTED"
+                  - "COMMITTED"
+                example: "COMMITTED"
+                description: |
+                  Current status of the transaction:
+                  - UNKNOWN: Not found in mempool, cache, or blockchain
+                  - PENDING: Currently in the mempool awaiting inclusion in a block
+                  - EVICTED: Removed from mempool due to space constraints/priority
+                  - REJECTED: Rejected by the application (during recheck)
+                  - COMMITTED: Included in a block
+              codespace:
+                type: string
+                example: "sdk"
+                description: "ABCI codespace for the error (only present if execution failed)"
+              gas_wanted:
+                type: string
+                example: "200000"
+                description: "Gas requested by the transaction (only for COMMITTED status)"
+              gas_used:
+                type: string
+                example: "85000"
+                description: "Gas actually used by the transaction (only for COMMITTED status)"
+              signers:
+                type: array
+                items:
+                  type: string
+                example: ["celestia1abc...", "celestia1def..."]
+                description: "List of signer addresses (only for COMMITTED status)"
+            type: object
+
     ABCIInfoResponse:
       type: object
       required:
