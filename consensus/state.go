@@ -1401,9 +1401,11 @@ func (cs *State) defaultDecideProposal(height int64, round int32) {
 
 		// Verify whether this proposal corresponds to the returned signature.
 		// This fixes the edge case where a KMS, in a sentry setup, returns the signature of a different proposal
-		if cs.rs.Validators.GetProposer().PubKey.VerifySignature(
+		cs.Logger.Debug("verifying proposal signature", "proposal", proposal)
+		if cs.privValidatorPubKey.VerifySignature(
 			types.ProposalSignBytes(cs.state.ChainID, p), proposal.Signature,
 		) {
+			cs.Logger.Debug("verified proposal signature", "proposal", proposal)
 			metaData := make([]proptypes.TxMetaData, len(block.Txs))
 			hashes := block.CachedHashes()
 			for i, pos := range blockParts.TxPos {
@@ -1421,23 +1423,23 @@ func (cs *State) defaultDecideProposal(height int64, round int32) {
 					return
 				}
 			}
+			// send proposal and block parts on internal msg queue
+			cs.sendInternalMessage(msgInfo{&ProposalMessage{proposal}, ""})
+
+			wg := sync.WaitGroup{}
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				for i := 0; i < int(blockParts.Total()); i++ {
+					part := blockParts.GetPart(i)
+					cs.sendInternalMessage(msgInfo{&BlockPartMessage{cs.rs.Height, cs.rs.Round, part}, ""})
+				}
+			}()
+			wg.Wait()
+
+			cs.Logger.Debug("signed proposal", "height", height, "round", round, "proposal", proposal)
 		}
-
-		// send proposal and block parts on internal msg queue
-		cs.sendInternalMessage(msgInfo{&ProposalMessage{proposal}, ""})
-
-		wg := sync.WaitGroup{}
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			for i := 0; i < int(blockParts.Total()); i++ {
-				part := blockParts.GetPart(i)
-				cs.sendInternalMessage(msgInfo{&BlockPartMessage{cs.rs.Height, cs.rs.Round, part}, ""})
-			}
-		}()
-		wg.Wait()
-
-		cs.Logger.Debug("signed proposal", "height", height, "round", round, "proposal", proposal)
+		cs.Logger.Debug("invalid proposal signature (expected in a sentry node)")
 	} else if !cs.replayMode {
 		cs.Logger.Error("propose step; failed signing proposal", "height", height, "round", round, "err", err)
 	}
