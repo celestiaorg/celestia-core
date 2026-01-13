@@ -1404,7 +1404,7 @@ func (cs *State) defaultDecideProposal(height int64, round int32) {
 		if !cs.privValidatorPubKey.VerifySignature(
 			types.ProposalSignBytes(cs.state.ChainID, proposal.ToProto()), proposal.Signature,
 		) {
-			cs.Logger.Error("propose step; couldn't verify signature. ignore if this is sentry setup as one of the sentries should have the correct proposal", "height", height, "round", round)
+			cs.Logger.Debug("propose step; couldn't verify signature. ignore if this is sentry setup as one of the sentries should have the correct proposal", "height", height, "round", round)
 			return
 		}
 
