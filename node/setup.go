@@ -21,6 +21,7 @@ import (
 	cs "github.com/cometbft/cometbft/consensus"
 	"github.com/cometbft/cometbft/crypto"
 	"github.com/cometbft/cometbft/evidence"
+	"github.com/cometbft/cometbft/headersync"
 	"github.com/cometbft/cometbft/statesync"
 
 	cmtjson "github.com/cometbft/cometbft/libs/json"
@@ -84,12 +85,12 @@ func DefaultNewNode(config *cfg.Config, logger log.Logger) (*Node, error) {
 }
 
 // MetricsProvider returns a consensus, p2p and mempool Metrics.
-type MetricsProvider func(chainID string) (*cs.Metrics, *p2p.Metrics, *mempl.Metrics, *sm.Metrics, *proxy.Metrics, *blocksync.Metrics, *statesync.Metrics)
+type MetricsProvider func(chainID string) (*cs.Metrics, *p2p.Metrics, *mempl.Metrics, *sm.Metrics, *proxy.Metrics, *blocksync.Metrics, *statesync.Metrics, *headersync.Metrics)
 
 // DefaultMetricsProvider returns Metrics build using Prometheus client library
 // if Prometheus is enabled. Otherwise, it returns no-op Metrics.
 func DefaultMetricsProvider(config *cfg.InstrumentationConfig) MetricsProvider {
-	return func(chainID string) (*cs.Metrics, *p2p.Metrics, *mempl.Metrics, *sm.Metrics, *proxy.Metrics, *blocksync.Metrics, *statesync.Metrics) {
+	return func(chainID string) (*cs.Metrics, *p2p.Metrics, *mempl.Metrics, *sm.Metrics, *proxy.Metrics, *blocksync.Metrics, *statesync.Metrics, *headersync.Metrics) {
 		if config.Prometheus {
 			return cs.PrometheusMetrics(config.Namespace, "chain_id", chainID),
 				p2p.PrometheusMetrics(config.Namespace, "chain_id", chainID),
@@ -97,9 +98,10 @@ func DefaultMetricsProvider(config *cfg.InstrumentationConfig) MetricsProvider {
 				sm.PrometheusMetrics(config.Namespace, "chain_id", chainID),
 				proxy.PrometheusMetrics(config.Namespace, "chain_id", chainID),
 				blocksync.PrometheusMetrics(config.Namespace, "chain_id", chainID),
-				statesync.PrometheusMetrics(config.Namespace, "chain_id", chainID)
+				statesync.PrometheusMetrics(config.Namespace, "chain_id", chainID),
+				headersync.PrometheusMetrics(config.Namespace, "chain_id", chainID)
 		}
-		return cs.NopMetrics(), p2p.NopMetrics(), mempl.NopMetrics(), sm.NopMetrics(), proxy.NopMetrics(), blocksync.NopMetrics(), statesync.NopMetrics()
+		return cs.NopMetrics(), p2p.NopMetrics(), mempl.NopMetrics(), sm.NopMetrics(), proxy.NopMetrics(), blocksync.NopMetrics(), statesync.NopMetrics(), headersync.NopMetrics()
 	}
 }
 
@@ -363,6 +365,25 @@ func createBlocksyncReactor(config *cfg.Config,
 	return bcReactor, nil
 }
 
+func createHeaderSyncReactor(
+	config *cfg.Config,
+	stateStore sm.Store,
+	blockStore *store.BlockStore,
+	chainID string,
+	logger log.Logger,
+	metrics *headersync.Metrics,
+) *headersync.Reactor {
+	hsReactor := headersync.NewReactor(
+		stateStore,
+		blockStore,
+		chainID,
+		config.HeaderSync.BatchSize,
+		metrics,
+	)
+	hsReactor.SetLogger(logger.With("module", "headersync"))
+	return hsReactor
+}
+
 func createConsensusReactor(config *cfg.Config,
 	state sm.State,
 	blockExec *sm.BlockExecutor,
@@ -518,6 +539,7 @@ func createSwitch(config *cfg.Config,
 	peerFilters []p2p.PeerFilterFunc,
 	mempoolReactor p2p.Reactor,
 	bcReactor p2p.Reactor,
+	hsReactor *headersync.Reactor,
 	stateSyncReactor *statesync.Reactor,
 	consensusReactor *cs.Reactor,
 	evidenceReactor *evidence.Reactor,
@@ -539,6 +561,9 @@ func createSwitch(config *cfg.Config,
 		sw.AddReactor("MEMPOOL", mempoolReactor)
 	}
 	sw.AddReactor("BLOCKSYNC", bcReactor)
+	if hsReactor != nil {
+		sw.AddReactor("HEADERSYNC", hsReactor)
+	}
 	sw.AddReactor("CONSENSUS", consensusReactor)
 	sw.AddReactor("EVIDENCE", evidenceReactor)
 	sw.AddReactor("STATESYNC", stateSyncReactor)
