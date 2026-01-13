@@ -1,6 +1,8 @@
 package cat
 
 import (
+	"crypto/sha256"
+	"encoding/binary"
 	"sync"
 	"time"
 
@@ -30,34 +32,80 @@ type requestScheduler struct {
 	// requestsByTx is a lookup table for requested txs.
 	// There can only be one request per tx.
 	requestsByTx map[types.TxKey]uint16
+
+	// requestsBySequence is a lookup table for requested sequences by signer.
+	requestsBySequence map[string]map[uint64]uint16
 }
 
-type requestSet map[types.TxKey]*time.Timer
+type requestSet map[types.TxKey]*requestInfo
+
+type requestInfo struct {
+	timer    *time.Timer
+	signer   []byte
+	sequence uint64
+}
 
 func newRequestScheduler(responseTime, globalTimeout time.Duration) *requestScheduler {
 	return &requestScheduler{
-		responseTime:   responseTime,
-		globalTimeout:  globalTimeout,
-		requestsByPeer: make(map[uint16]requestSet),
-		requestsByTx:   make(map[types.TxKey]uint16),
+		responseTime:       responseTime,
+		globalTimeout:      globalTimeout,
+		requestsByPeer:     make(map[uint16]requestSet),
+		requestsByTx:       make(map[types.TxKey]uint16),
+		requestsBySequence: make(map[string]map[uint64]uint16),
 	}
 }
 
-func (r *requestScheduler) Add(key types.TxKey, peer uint16, onTimeout func(key types.TxKey, peer uint16)) bool {
+func sequenceRequestKey(signer []byte, sequence uint64) types.TxKey {
+	h := sha256.New()
+	h.Write([]byte("seqreq:"))
+	h.Write(signer)
+	var buf [8]byte
+	binary.BigEndian.PutUint64(buf[:], sequence)
+	h.Write(buf[:])
+	sum := h.Sum(nil)
+	var key types.TxKey
+	copy(key[:], sum)
+	return key
+}
+
+func (r *requestScheduler) Add(key types.TxKey, signer []byte, sequence uint64, peer uint16, onTimeout func(key types.TxKey, peer uint16)) bool {
 	if peer == 0 {
 		return false
 	}
 	r.mtx.Lock()
 	defer r.mtx.Unlock()
 
+	isSequenceRequest := len(signer) > 0 && sequence > 0
+	isZeroKey := key == (types.TxKey{})
+
 	// not allowed to have more than one outgoing transaction at once
-	if _, ok := r.requestsByTx[key]; ok {
-		return false
+	if !isZeroKey {
+		if _, ok := r.requestsByTx[key]; ok {
+			return false
+		}
+	}
+	if isSequenceRequest {
+		if _, ok := r.requestsBySequence[string(signer)][sequence]; ok {
+			return false
+		}
+	}
+
+	requestKey := key
+	if isZeroKey {
+		if !isSequenceRequest {
+			return false
+		}
+		requestKey = sequenceRequestKey(signer, sequence)
 	}
 
 	timer := time.AfterFunc(r.responseTime, func() {
 		r.mtx.Lock()
-		delete(r.requestsByTx, key)
+		if !isZeroKey {
+			delete(r.requestsByTx, key)
+		}
+		if isSequenceRequest {
+			delete(r.requestsBySequence[string(signer)], sequence)
+		}
 		r.mtx.Unlock()
 
 		// trigger callback. Callback can `Add` the tx back to the scheduler
@@ -74,15 +122,30 @@ func (r *requestScheduler) Add(key types.TxKey, peer uint16, onTimeout func(key 
 		time.AfterFunc(r.globalTimeout, func() {
 			r.mtx.Lock()
 			defer r.mtx.Unlock()
-			delete(r.requestsByPeer[peer], key)
+			delete(r.requestsByPeer[peer], requestKey)
 		})
 	})
-	if _, ok := r.requestsByPeer[peer]; !ok {
-		r.requestsByPeer[peer] = requestSet{key: timer}
-	} else {
-		r.requestsByPeer[peer][key] = timer
+
+	info := &requestInfo{
+		timer:    timer,
+		signer:   append([]byte(nil), signer...),
+		sequence: sequence,
 	}
-	r.requestsByTx[key] = peer
+
+	if _, ok := r.requestsByPeer[peer]; !ok {
+		r.requestsByPeer[peer] = requestSet{requestKey: info}
+	} else {
+		r.requestsByPeer[peer][requestKey] = info
+	}
+	if !isZeroKey {
+		r.requestsByTx[key] = peer
+	}
+	if isSequenceRequest {
+		if _, ok := r.requestsBySequence[string(signer)]; !ok {
+			r.requestsBySequence[string(signer)] = make(map[uint64]uint16)
+		}
+		r.requestsBySequence[string(signer)][sequence] = peer
+	}
 	return true
 }
 
@@ -91,6 +154,13 @@ func (r *requestScheduler) ForTx(key types.TxKey) uint16 {
 	defer r.mtx.Unlock()
 
 	return r.requestsByTx[key]
+}
+
+func (r *requestScheduler) ForSignerSequence(signer []byte, sequence uint64) uint16 {
+	r.mtx.Lock()
+	defer r.mtx.Unlock()
+
+	return r.requestsBySequence[string(signer)][sequence]
 }
 
 func (r *requestScheduler) Has(peer uint16, key types.TxKey) bool {
@@ -103,6 +173,20 @@ func (r *requestScheduler) Has(peer uint16, key types.TxKey) bool {
 	}
 	_, ok = requestSet[key]
 	return ok
+}
+
+// HasBySequence checks if a request for a specific (peer, signer, sequence) exists.
+func (r *requestScheduler) HasBySequence(peer uint16, signer []byte, sequence uint64) bool {
+	r.mtx.Lock()
+	defer r.mtx.Unlock()
+
+	signerKey := string(signer)
+	seqMap, ok := r.requestsBySequence[signerKey]
+	if !ok {
+		return false
+	}
+	requestedPeer, ok := seqMap[sequence]
+	return ok && requestedPeer == peer
 }
 
 // CountForPeer returns the number of active requests to a specific peer.
@@ -121,15 +205,20 @@ func (r *requestScheduler) ClearAllRequestsFrom(peer uint16) requestSet {
 	if !ok {
 		return requestSet{}
 	}
-	for tx, timer := range requests {
-		timer.Stop()
-		delete(r.requestsByTx, tx)
+	for tx, info := range requests {
+		info.timer.Stop()
+		// Clean up sequence tracking
+		if len(info.signer) > 0 && info.sequence > 0 {
+			delete(r.requestsBySequence[string(info.signer)], info.sequence)
+		} else {
+			delete(r.requestsByTx, tx)
+		}
 	}
 	delete(r.requestsByPeer, peer)
 	return requests
 }
 
-func (r *requestScheduler) MarkReceived(peer uint16, key types.TxKey) bool {
+func (r *requestScheduler) MarkReceived(peer uint16, key types.TxKey, signer []byte, sequence uint64) bool {
 	r.mtx.Lock()
 	defer r.mtx.Unlock()
 
@@ -137,14 +226,28 @@ func (r *requestScheduler) MarkReceived(peer uint16, key types.TxKey) bool {
 		return false
 	}
 
-	if timer, ok := r.requestsByPeer[peer][key]; ok {
-		timer.Stop()
+	if info, ok := r.requestsByPeer[peer][key]; ok {
+		info.timer.Stop()
 	} else {
+		if len(signer) == 0 || sequence == 0 {
+			return false
+		}
+		for reqKey, info := range r.requestsByPeer[peer] {
+			if info.sequence == sequence && string(info.signer) == string(signer) {
+				info.timer.Stop()
+				delete(r.requestsByPeer[peer], reqKey)
+				delete(r.requestsBySequence[string(signer)], sequence)
+				return true
+			}
+		}
 		return false
 	}
 
 	delete(r.requestsByPeer[peer], key)
 	delete(r.requestsByTx, key)
+	if len(signer) > 0 && sequence > 0 {
+		delete(r.requestsBySequence[string(signer)], sequence)
+	}
 	return true
 }
 
@@ -155,8 +258,66 @@ func (r *requestScheduler) Close() {
 	defer r.mtx.Unlock()
 
 	for _, requestSet := range r.requestsByPeer {
-		for _, timer := range requestSet {
-			timer.Stop()
+		for _, info := range requestSet {
+			info.timer.Stop()
 		}
 	}
+}
+
+// RequestStats holds statistics about active requests
+type RequestStats struct {
+	TotalByTx       int // requests tracked by txKey
+	TotalBySequence int // requests tracked by (signer, sequence)
+	ForPeer         int // requests to a specific peer
+	ForSigner       int // requests for a specific signer
+}
+
+// Stats returns current request statistics
+func (r *requestScheduler) Stats(peer uint16, signer []byte) RequestStats {
+	r.mtx.Lock()
+	defer r.mtx.Unlock()
+
+	stats := RequestStats{
+		TotalByTx: len(r.requestsByTx),
+	}
+
+	// Count total sequence-based requests
+	for _, seqMap := range r.requestsBySequence {
+		stats.TotalBySequence += len(seqMap)
+	}
+
+	// Count for specific peer
+	if peer != 0 {
+		stats.ForPeer = len(r.requestsByPeer[peer])
+	}
+
+	// Count for specific signer
+	if len(signer) > 0 {
+		stats.ForSigner = len(r.requestsBySequence[string(signer)])
+	}
+
+	return stats
+}
+
+// MaxSequenceForSigner returns the maximum requested sequence for a signer.
+func (r *requestScheduler) MaxSequenceForSigner(signer []byte) uint64 {
+	if len(signer) == 0 {
+		return 0
+	}
+
+	r.mtx.Lock()
+	defer r.mtx.Unlock()
+
+	seqMap := r.requestsBySequence[string(signer)]
+	if len(seqMap) == 0 {
+		return 0
+	}
+
+	var maxSeq uint64
+	for seq := range seqMap {
+		if seq > maxSeq {
+			maxSeq = seq
+		}
+	}
+	return maxSeq
 }

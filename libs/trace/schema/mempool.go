@@ -14,6 +14,8 @@ func MempoolTables() []string {
 		MempoolAddResultTable,
 		MempoolTxStatusTable,
 		MempoolRecheckTable,
+		MempoolBufferTable,
+		MempoolRequestTable,
 	}
 }
 
@@ -335,5 +337,184 @@ func WriteMempoolRecheck(
 		Sequence: sequence,
 		Kept:     kept,
 		Error:    errStr,
+	})
+}
+
+const (
+	// MempoolBufferTable is the tracing "measurement" (aka table) for the
+	// mempool that stores tracing data related to the received transaction buffer.
+	MempoolBufferTable = "mempool_buffer"
+)
+
+// MempoolBufferEventType represents the type of buffer event
+type MempoolBufferEventType string
+
+const (
+	BufferEventBuffered        MempoolBufferEventType = "buffered"
+	BufferEventProcessed       MempoolBufferEventType = "processed"
+	BufferEventRejectedTooFar  MempoolBufferEventType = "rejected_too_far"
+	BufferEventRejectedAddFail MempoolBufferEventType = "rejected_add_failed"
+)
+
+// MempoolBufferSource indicates where in the code the buffer event occurred
+type MempoolBufferSource string
+
+const (
+	// BufferSourceReceiveTx - event from Receive() when processing incoming Txs message
+	BufferSourceReceiveTx MempoolBufferSource = "receive_tx"
+	// BufferSourceProcessBuffer - event from processReceivedBuffer() when draining buffered txs
+	BufferSourceProcessBuffer MempoolBufferSource = "process_buffer"
+)
+
+// MempoolBuffer describes the schema for the "mempool_buffer" table.
+type MempoolBuffer struct {
+	// Signer identification
+	Signer string `json:"signer"`
+
+	// Sequence state for this signer
+	Sequence         uint64 `json:"sequence"`          // tx being buffered/processed
+	ExpectedSequence uint64 `json:"expected_sequence"` // what app expects next
+	GapSize          uint64 `json:"gap_size"`          // sequence - expected
+
+	// This signer's buffer state
+	SignerBufferSize int    `json:"signer_buffer_size"` // txs buffered for this signer
+	MinBufferedSeq   uint64 `json:"min_buffered_seq"`   // lowest seq in this signer's buffer
+	MaxBufferedSeq   uint64 `json:"max_buffered_seq"`   // highest seq in this signer's buffer
+
+	// Event info
+	Event  MempoolBufferEventType `json:"event"`  // buffered, processed, rejected_too_far, rejected_add_failed
+	Source MempoolBufferSource    `json:"source"` // where in code this happened
+	TxHash string                 `json:"tx_hash,omitempty"`
+
+	// Global context
+	TotalSignersWithBufferedTxs int `json:"total_signers,omitempty"`
+}
+
+// Table returns the table name for the MempoolBuffer struct.
+func (MempoolBuffer) Table() string {
+	return MempoolBufferTable
+}
+
+// WriteMempoolBuffer writes a tracing point for buffer events using
+// the predetermined schema for mempool tracing.
+func WriteMempoolBuffer(
+	client trace.Tracer,
+	signer []byte,
+	sequence uint64,
+	expectedSequence uint64,
+	event MempoolBufferEventType,
+	source MempoolBufferSource,
+	txHash []byte,
+	signerBufferSize int,
+	minBufferedSeq uint64,
+	maxBufferedSeq uint64,
+	totalSigners int,
+) {
+	if !client.IsCollecting(MempoolBufferTable) {
+		return
+	}
+
+	signerStr := ""
+	if len(signer) > 0 {
+		signerStr = string(signer)
+	}
+
+	var gapSize uint64
+	if sequence > expectedSequence {
+		gapSize = sequence - expectedSequence
+	}
+
+	client.Write(MempoolBuffer{
+		Signer:                      signerStr,
+		Sequence:                    sequence,
+		ExpectedSequence:            expectedSequence,
+		GapSize:                     gapSize,
+		SignerBufferSize:            signerBufferSize,
+		MinBufferedSeq:              minBufferedSeq,
+		MaxBufferedSeq:              maxBufferedSeq,
+		Event:                       event,
+		Source:                      source,
+		TxHash:                      bytes.HexBytes(txHash).String(),
+		TotalSignersWithBufferedTxs: totalSigners,
+	})
+}
+
+const (
+	// MempoolRequestTable is the tracing "measurement" (aka table) for the
+	// mempool that stores tracing data related to outbound transaction requests.
+	MempoolRequestTable = "mempool_request"
+)
+
+// MempoolRequestEventType represents the type of request event
+type MempoolRequestEventType string
+
+const (
+	RequestEventAdded    MempoolRequestEventType = "added"
+	RequestEventReceived MempoolRequestEventType = "received"
+	RequestEventTimeout  MempoolRequestEventType = "timeout"
+	RequestEventCleared  MempoolRequestEventType = "cleared"
+)
+
+// MempoolRequest describes the schema for the "mempool_request" table.
+type MempoolRequest struct {
+	// Request identification
+	TxHash   string `json:"tx_hash,omitempty"` // empty for sequence-only requests
+	Signer   string `json:"signer,omitempty"`
+	Sequence uint64 `json:"sequence,omitempty"`
+	Peer     uint16 `json:"peer"`
+
+	// Event
+	Event MempoolRequestEventType `json:"event"` // added, received, timeout, cleared
+
+	// Counts (state after event)
+	TotalByTx       int `json:"total_by_tx"`       // requests tracked by txKey
+	TotalBySequence int `json:"total_by_sequence"` // requests tracked by (signer, sequence)
+	ForPeer         int `json:"for_peer"`          // requests to this specific peer
+	ForSigner       int `json:"for_signer"`        // requests for this signer
+}
+
+// Table returns the table name for the MempoolRequest struct.
+func (MempoolRequest) Table() string {
+	return MempoolRequestTable
+}
+
+// WriteMempoolRequest writes a tracing point for request events using
+// the predetermined schema for mempool tracing.
+func WriteMempoolRequest(
+	client trace.Tracer,
+	txHash []byte,
+	signer []byte,
+	sequence uint64,
+	peer uint16,
+	event MempoolRequestEventType,
+	totalByTx int,
+	totalBySequence int,
+	forPeer int,
+	forSigner int,
+) {
+	if !client.IsCollecting(MempoolRequestTable) {
+		return
+	}
+
+	txHashStr := ""
+	if len(txHash) > 0 {
+		txHashStr = bytes.HexBytes(txHash).String()
+	}
+
+	signerStr := ""
+	if len(signer) > 0 {
+		signerStr = string(signer)
+	}
+
+	client.Write(MempoolRequest{
+		TxHash:          txHashStr,
+		Signer:          signerStr,
+		Sequence:        sequence,
+		Peer:            peer,
+		Event:           event,
+		TotalByTx:       totalByTx,
+		TotalBySequence: totalBySequence,
+		ForPeer:         forPeer,
+		ForSigner:       forSigner,
 	})
 }
