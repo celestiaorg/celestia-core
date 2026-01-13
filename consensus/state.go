@@ -1401,28 +1401,31 @@ func (cs *State) defaultDecideProposal(height int64, round int32) {
 
 		// Verify whether this proposal corresponds to the returned signature.
 		// This fixes the edge case where a KMS, in a sentry setup, returns the signature of a different proposal
-		if cs.rs.Validators.GetProposer().PubKey.VerifySignature(
-			types.ProposalSignBytes(cs.state.ChainID, p), proposal.Signature,
+		if !cs.privValidatorPubKey.VerifySignature(
+			types.ProposalSignBytes(cs.state.ChainID, proposal.ToProto()), proposal.Signature,
 		) {
-			metaData := make([]proptypes.TxMetaData, len(block.Txs))
-			hashes := block.CachedHashes()
-			for i, pos := range blockParts.TxPos {
-				metaData[i] = proptypes.TxMetaData{
-					Start: pos.Start,
-					End:   pos.End,
-					Hash:  hashes[i],
-				}
-			}
+			cs.Logger.Debug("propose step; couldn't verify signature. ignore if this is sentry setup as one of the sentries should have the correct proposal", "height", height, "round", round)
+			return
+		}
 
-			err = cs.propagator.ProposeBlock(proposal, blockParts, metaData)
-			if err != nil {
-				cs.Logger.Error("propagation reactor failed to propose the block", "err", err)
-				if !cs.gossipDataEnabled.Load() {
-					return
-				}
+		cs.Logger.Debug("verified proposal signature", "proposal", proposal)
+		metaData := make([]proptypes.TxMetaData, len(block.Txs))
+		hashes := block.CachedHashes()
+		for i, pos := range blockParts.TxPos {
+			metaData[i] = proptypes.TxMetaData{
+				Start: pos.Start,
+				End:   pos.End,
+				Hash:  hashes[i],
 			}
 		}
 
+		err = cs.propagator.ProposeBlock(proposal, blockParts, metaData)
+		if err != nil {
+			cs.Logger.Error("propagation reactor failed to propose the block", "err", err)
+			if !cs.gossipDataEnabled.Load() {
+				return
+			}
+		}
 		// send proposal and block parts on internal msg queue
 		cs.sendInternalMessage(msgInfo{&ProposalMessage{proposal}, ""})
 
@@ -1437,7 +1440,7 @@ func (cs *State) defaultDecideProposal(height int64, round int32) {
 		}()
 		wg.Wait()
 
-		cs.Logger.Debug("signed proposal", "height", height, "round", round, "proposal", proposal)
+		cs.Logger.Debug("propagated proposal", "height", height, "round", round, "proposal", proposal)
 	} else if !cs.replayMode {
 		cs.Logger.Error("propose step; failed signing proposal", "height", height, "round", round, "err", err)
 	}
