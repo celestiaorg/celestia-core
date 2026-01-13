@@ -1414,6 +1414,8 @@ func (cs *State) defaultDecideProposal(height int64, round int32) {
 		} else {
 			cs.Logger.Error("SIGNATURE FUCKING VALID@!!!!! WOWOWOOWOW")
 		}
+		cs.Logger.Error("p", "p", p)
+		cs.Logger.Error("p2", "p2", p2)
 
 		// Verify whether this proposal corresponds to the returned signature.
 		// This fixes the edge case where a KMS, in a sentry setup, returns the signature of a different proposal
