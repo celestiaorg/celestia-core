@@ -62,13 +62,14 @@ var (
 // spec under /.spec.md
 type Reactor struct {
 	p2p.BaseReactor
-	opts           *ReactorOptions
-	mempool        *TxPool
-	ids            *mempoolIDs
-	requests       *requestScheduler
-	pendingSeen    *pendingSeenTracker
-	receivedBuffer *receivedTxBuffer // buffer for out-of-order tx arrivals
-	traceClient    trace.Tracer
+	opts                   *ReactorOptions
+	mempool                *TxPool
+	ids                    *mempoolIDs
+	requests               *requestScheduler
+	pendingSeen            *pendingSeenTracker // get rid of pending seen
+	txSignerSequenceToHash map[string]string   // key = fmt.Sprintf("%s-%d", signer, sequence) -> hash
+	receivedBuffer         *receivedTxBuffer
+	traceClient            trace.Tracer
 	// stickySalt stores []byte rendezvous salt for sticky peer selection; nil/empty keeps default ordering.
 	stickySalt atomic.Value
 }
@@ -490,6 +491,7 @@ func (memR *Reactor) Receive(e p2p.Envelope) {
 			// fall through and request immediately for the expected sequence
 		case msg.Sequence > expectedSeq:
 			// TODO: add per-peer limits or something similar to pendingSeen to prevent overflowing
+			// sequenceTracker.add, get...
 			memR.pendingSeen.add(msg, txKey, peerID)
 			return
 		default:
@@ -843,7 +845,7 @@ func (memR *Reactor) processSequenceGapsForSigner(signer []byte) {
 	if len(signer) == 0 {
 		return
 	}
-
+	// use refactored version of loop (see ideas in slack)
 	expectedSeq, haveExpected := memR.querySequenceFromApplication(signer)
 	if !haveExpected {
 		memR.Logger.Error("no signer found in application")
