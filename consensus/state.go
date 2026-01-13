@@ -1404,6 +1404,17 @@ func (cs *State) defaultDecideProposal(height int64, round int32) {
 			return
 		}
 
+		pubKey := cs.rs.Validators.GetProposer().PubKey
+		p2 := proposal.ToProto()
+		// Verify signature
+		if !pubKey.VerifySignature(
+			types.ProposalSignBytes(cs.state.ChainID, p2), proposal.Signature,
+		) {
+			cs.Logger.Error("SIGNATURE FUCKING INVALID")
+		} else {
+			cs.Logger.Error("SIGNATURE FUCKING VALID@!!!!! WOWOWOOWOW")
+		}
+
 		// Verify whether this proposal corresponds to the returned signature.
 		// This fixes the edge case where a KMS, in a sentry setup, returns the signature of a different proposal
 		cs.Logger.Debug("verifying proposal signature", "proposal", proposal, "proposer", cs.privValidatorPubKey.Address(), "proposer2", key.Address())
