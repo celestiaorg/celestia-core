@@ -149,14 +149,16 @@ func TestReactorSequentialTxsAcrossMultipleReactors(t *testing.T) {
 			require.Equal(t, numTxs, reactor.mempool.Size(), "reactor %d should have all %d txs", i, numTxs)
 
 			// Pending queue should be empty (all txs received)
-			entries := reactor.pendingSeen.entriesForSigner(signer)
+			entries := reactor.sequenceTracker.entriesForSigner(signer)
 			require.Empty(t, entries, "reactor %d should have no pending entries", i)
 
 			// No outstanding requests
-			for _, tx := range txs {
+			for j, tx := range txs {
+				seq := uint64(j + 1)
 				key := tx.Key()
-				requestedFrom := reactor.requests.ForTx(key)
-				require.Zero(t, requestedFrom, "reactor %d should have no outstanding request for tx %s", i, key)
+				if reactor.requests.ForTx(key) != 0 || reactor.requests.ForSignerSequence(signer, seq) != 0 {
+					require.Fail(t, fmt.Sprintf("reactor %d should have no outstanding request for seq %d", i, seq))
+				}
 			}
 
 			// Verify all transactions are in the mempool
@@ -277,9 +279,10 @@ func TestReactorSequentialTxsAcrossMultipleReactors(t *testing.T) {
 			for rIdx, reactor := range reactors2 {
 				// Count how many txs this signer has outstanding requests for
 				activeRequests := 0
-				for _, checkTx := range smallTxs[:txIdx+1] {
+				for seqIdx, checkTx := range smallTxs[:txIdx+1] {
+					seq := uint64(seqIdx + 1)
 					key := checkTx.Key()
-					if reactor.requests.ForTx(key) != 0 {
+					if reactor.requests.ForTx(key) != 0 || reactor.requests.ForSignerSequence(signer, seq) != 0 {
 						activeRequests++
 					}
 				}
@@ -290,7 +293,7 @@ func TestReactorSequentialTxsAcrossMultipleReactors(t *testing.T) {
 				}
 
 				// Get pending queue entries
-				entries := reactor.pendingSeen.entriesForSigner(signer)
+				entries := reactor.sequenceTracker.entriesForSigner(signer)
 
 				// Verify pending queue is sorted
 				if len(entries) > 1 {
@@ -443,7 +446,7 @@ func TestReactorPendingQueueSorting(t *testing.T) {
 	}
 
 	// Verify pending queue is sorted
-	entries := reactor.pendingSeen.entriesForSigner(signer)
+	entries := reactor.sequenceTracker.entriesForSigner(signer)
 	require.Len(t, entries, len(outOfOrderSeqs))
 
 	expectedSorted := []uint64{2, 5, 8, 10, 15}
@@ -503,13 +506,15 @@ func TestReactorSingleOutstandingRequestPerSigner(t *testing.T) {
 	require.NotZero(t, reactor.requests.ForTx(firstKey), "first tx should be requested")
 
 	// Check that subsequent txs are in pending queue, not requested
-	entries := reactor.pendingSeen.entriesForSigner(signer)
+	entries := reactor.sequenceTracker.entriesForSigner(signer)
 	require.NotEmpty(t, entries, "should have pending entries")
 
 	// Verify that only one is actively requested
 	activeRequests := 0
-	for _, tx := range txs {
-		if reactor.requests.ForTx(tx.Key()) != 0 {
+	for i, tx := range txs {
+		seq := uint64(i + 1)
+		key := tx.Key()
+		if reactor.requests.ForTx(key) != 0 || reactor.requests.ForSignerSequence(signer, seq) != 0 {
 			activeRequests++
 		}
 	}
