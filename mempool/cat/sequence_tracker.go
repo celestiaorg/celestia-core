@@ -1,26 +1,21 @@
 package cat
 
 import (
+	"bytes"
 	"math/rand/v2"
 	"slices"
 	"sync"
-	"time"
 
 	protomem "github.com/cometbft/cometbft/proto/tendermint/mempool"
 	"github.com/cometbft/cometbft/types"
 )
 
-// seenTxMetadata is a single entry in the sequence tracker.
+// seenTxMetadata for backwards compatibility for nodes that don't support the new version.
 type seenTxMetadata struct {
-	signerKey string
-	signer    []byte
-	txKey     types.TxKey
-	sequence  uint64
-	peer      uint16
-	addedAt   time.Time
+	signer   []byte
+	sequence uint64
+	peer     uint16
 }
-
-type peerSet map[uint16]struct{}
 
 func (e *seenTxMetadata) peerIDs() []uint16 {
 	if e.peer == 0 {
@@ -36,20 +31,16 @@ type sequenceTracker struct {
 	// seenByTxKey maps transaction keys to their sequence metadata (signer, sequence, peer).
 	// Used to look up signer/sequence when a tx arrives so we can buffer or mark requests complete.
 	seenByTxKey map[types.TxKey]*seenTxMetadata
-	// maxSeenBySigner caches the maximum seen sequence per signer.
-	maxSeenBySigner map[string]uint64
-	// peersBySignerSeq tracks which peers have seen a specific (signer, sequence).
-	// Format: signer -> sequence -> peerID set.
-	// For O(1) lookup for peers during sequence gossip.
-	peersBySignerSeq map[string]map[uint64]peerSet
+	// peerMaxSeqBySigner tracks the maximum sequence seen per peer per signer.
+	// Format: signer -> peerID -> max sequence.
+	peerMaxSeqBySigner map[string]map[uint16]uint64
 }
 
 // newSequenceTracker constructs an empty sequence tracker.
 func newSequenceTracker() *sequenceTracker {
 	return &sequenceTracker{
-		seenByTxKey:      make(map[types.TxKey]*seenTxMetadata),
-		maxSeenBySigner:  make(map[string]uint64),
-		peersBySignerSeq: make(map[string]map[uint64]peerSet),
+		seenByTxKey:         make(map[types.TxKey]*seenTxMetadata),
+		peerMaxSeqBySigner:  make(map[string]map[uint16]uint64),
 	}
 }
 
@@ -59,14 +50,26 @@ func (st *sequenceTracker) recordSeenTx(msg *protomem.SeenTx, txKey types.TxKey,
 	if len(msg.Signer) == 0 || msg.Sequence == 0 || peerID == 0 {
 		return
 	}
+	// todo: see if we even need this at all.
+	if msg.MinSequence > 0 && msg.Sequence < msg.MinSequence {
+		return
+	}
+	if msg.MaxSequence > 0 && msg.Sequence > msg.MaxSequence {
+		return
+	}
 
 	st.mu.Lock()
 	defer st.mu.Unlock()
 
-	signerKey := string(msg.Signer)
-	st.dropPeerSequencesBelowMinLocked(signerKey, msg.MinSequence, peerID)
-	st.updateMaxSeenBySigner(signerKey, msg.Sequence)
-	st.addPeerForSequence(signerKey, msg.Sequence, peerID)
+	if msg.MaxSequence > 0 {
+		signerKey := string(msg.Signer)
+		if st.peerMaxSeqBySigner[signerKey] == nil {
+			st.peerMaxSeqBySigner[signerKey] = make(map[uint16]uint64)
+		}
+		if msg.MaxSequence > st.peerMaxSeqBySigner[signerKey][peerID] {
+			st.peerMaxSeqBySigner[signerKey][peerID] = msg.MaxSequence
+		}
+	}
 
 	// If we already have the transaction, we don't need to record it.
 	if _, ok := st.seenByTxKey[txKey]; ok {
@@ -75,47 +78,11 @@ func (st *sequenceTracker) recordSeenTx(msg *protomem.SeenTx, txKey types.TxKey,
 
 	// Record the transaction metadata inside the txkey tracker.
 	entry := &seenTxMetadata{
-		signerKey: signerKey,
-		signer:    append([]byte(nil), msg.Signer...),
-		txKey:     txKey,
-		sequence:  msg.Sequence,
-		peer:      peerID,
-		addedAt:   time.Now(),
+		signer:   append([]byte(nil), msg.Signer...),
+		sequence: msg.Sequence,
+		peer:     peerID,
 	}
 	st.seenByTxKey[txKey] = entry
-}
-
-// addPeerForSequence records that a peer has seen a specific sequence.
-// Assumes that the caller has already acquired the lock.
-func (st *sequenceTracker) addPeerForSequence(signerKey string, sequence uint64, peerID uint16) {
-	// Initialize the map if it doesn't exist.
-	if st.peersBySignerSeq[signerKey] == nil {
-		st.peersBySignerSeq[signerKey] = make(map[uint64]peerSet)
-	}
-	// Initialize the peer set if it doesn't exist.
-	peers := st.peersBySignerSeq[signerKey][sequence]
-	if peers == nil {
-		peers = make(peerSet)
-		st.peersBySignerSeq[signerKey][sequence] = peers
-	}
-	// Add the peer to the set.
-	peers[peerID] = struct{}{}
-}
-
-// deleteSequenceLocked clears peer tracking for a specific (signer, sequence).
-// Assumes that the caller has already acquired the lock.
-func (st *sequenceTracker) deleteSequenceLocked(signerKey string, sequence uint64) {
-	sequences := st.peersBySignerSeq[signerKey]
-	if sequences == nil {
-		return
-	}
-	delete(sequences, sequence)
-	if len(sequences) == 0 {
-		delete(st.peersBySignerSeq, signerKey)
-		delete(st.maxSeenBySigner, signerKey)
-		return
-	}
-	st.recomputeMaxSeenBySignerLocked(signerKey, sequences)
 }
 
 // removeByTxKey removes tx metadata and returns the removed entry when present.
@@ -128,7 +95,6 @@ func (st *sequenceTracker) removeByTxKey(txKey types.TxKey) *seenTxMetadata {
 		return nil
 	}
 	delete(st.seenByTxKey, txKey)
-	st.deleteSequenceLocked(entry.signerKey, entry.sequence)
 	return entry
 }
 
@@ -147,6 +113,50 @@ func (st *sequenceTracker) getByTxKey(txKey types.TxKey) *seenTxMetadata {
 	return &clone
 }
 
+// entriesForSigner returns all entries for a signer.
+func (st *sequenceTracker) entriesForSigner(signer []byte) []*seenTxMetadata {
+	if len(signer) == 0 {
+		return nil
+	}
+
+	st.mu.Lock()
+	defer st.mu.Unlock()
+
+	var out []*seenTxMetadata
+	for _, entry := range st.seenByTxKey {
+		if !bytes.Equal(entry.signer, signer) {
+			continue
+		}
+		clone := *entry
+		clone.signer = slices.Clone(entry.signer)
+		out = append(out, &clone)
+	}
+	return out
+}
+
+// removeBySignerSequence removes entries from seenByTxKey map for a signer and sequence.
+func (st *sequenceTracker) removeBySignerSequence(signer []byte, sequence uint64) int {
+	if len(signer) == 0 || sequence == 0 {
+		return 0
+	}
+
+	st.mu.Lock()
+	defer st.mu.Unlock()
+
+	removed := 0
+	// iterate over all entries in the seenByTxKey map
+	for key, entry := range st.seenByTxKey {
+		// if the entry is not for the signer or sequence, skip it
+		if !bytes.Equal(entry.signer, signer) || entry.sequence != sequence {
+			continue
+		}
+		// if the entry is for the signer and sequence, delete it
+		delete(st.seenByTxKey, key)
+		removed++
+	}
+	return removed
+}
+
 // removeBelowSequence drops entries for a signer that are below the expected sequence.
 func (st *sequenceTracker) removeBelowSequence(signer []byte, expectedSeq uint64) int {
 	// todo: see if we need to sanity check the expectedSeq
@@ -157,7 +167,8 @@ func (st *sequenceTracker) removeBelowSequence(signer []byte, expectedSeq uint64
 
 	removed := 0
 	for key, entry := range st.seenByTxKey {
-		if entry.signerKey != signerKey {
+		entrySignerKey := string(entry.signer)
+		if entrySignerKey != signerKey {
 			continue
 		}
 		// If the sequence is greater than or equal to the expected sequence
@@ -166,7 +177,6 @@ func (st *sequenceTracker) removeBelowSequence(signer []byte, expectedSeq uint64
 			continue
 		}
 		delete(st.seenByTxKey, key)
-		st.deleteSequenceLocked(entry.signerKey, entry.sequence)
 		removed++
 	}
 	return removed
@@ -188,34 +198,12 @@ func (st *sequenceTracker) removePeer(peerID uint16) {
 		}
 	}
 
-	// Clear the peer ID from all sequences.
-	for signerKey, sequences := range st.peersBySignerSeq {
-		for sequence, peers := range sequences {
-			// Clear the peer ID from the sequence.
-			delete(peers, peerID)
-			// If the sequence is now empty, delete it.
-			if len(peers) == 0 {
-				delete(sequences, sequence)
-			}
+	// Clear the peer ID from max sequence tracking.
+	for signerKey, peers := range st.peerMaxSeqBySigner {
+		delete(peers, peerID)
+		if len(peers) == 0 {
+			delete(st.peerMaxSeqBySigner, signerKey)
 		}
-		// If the sequence is now empty, delete it.
-		if len(sequences) == 0 {
-			delete(st.peersBySignerSeq, signerKey)
-			delete(st.maxSeenBySigner, signerKey)
-			continue
-		}
-		// Recalculate maxSeenBySigner for this signer after peer removal.
-		var maxSeq uint64
-		for seq := range sequences {
-			if seq > maxSeq {
-				maxSeq = seq
-			}
-		}
-		if maxSeq == 0 {
-			delete(st.maxSeenBySigner, signerKey)
-			continue
-		}
-		st.maxSeenBySigner[signerKey] = maxSeq
 	}
 }
 
@@ -230,11 +218,27 @@ func (st *sequenceTracker) signerKeys() [][]byte {
 
 	seen := make(map[string]struct{})
 	for _, entry := range st.seenByTxKey {
-		seen[entry.signerKey] = struct{}{}
+		seen[string(entry.signer)] = struct{}{}
 	}
 
 	out := make([][]byte, 0, len(seen))
 	for signerKey := range seen {
+		out = append(out, []byte(signerKey))
+	}
+	return out
+}
+
+// signerKeysFromPeerMax returns signer keys that peers are tracking the max sequence for.
+func (st *sequenceTracker) signerKeysFromPeerMax() [][]byte {
+	st.mu.Lock()
+	defer st.mu.Unlock()
+
+	if len(st.peerMaxSeqBySigner) == 0 {
+		return nil
+	}
+
+	out := make([][]byte, 0, len(st.peerMaxSeqBySigner))
+	for signerKey := range st.peerMaxSeqBySigner {
 		out = append(out, []byte(signerKey))
 	}
 	return out
@@ -258,7 +262,7 @@ func (st *sequenceTracker) markRequestFailed(txKey types.TxKey, peerID uint16) {
 	}
 }
 
-// getPeersForSignerSequence returns peers that have reported seeing the sequence.
+// getPeersForSignerSequence returns peers whose max seen sequence is >= sequence.
 func (st *sequenceTracker) getPeersForSignerSequence(signer []byte, sequence uint64) []uint16 {
 	// todo: see if we need this sanity check.
 	if len(signer) == 0 || sequence == 0 {
@@ -270,18 +274,16 @@ func (st *sequenceTracker) getPeersForSignerSequence(signer []byte, sequence uin
 	st.mu.Lock()
 	defer st.mu.Unlock()
 
-	sequences := st.peersBySignerSeq[signerKey]
-	if len(sequences) == 0 {
-		return nil
-	}
-	peers := sequences[sequence]
+	peers := st.peerMaxSeqBySigner[signerKey]
 	if len(peers) == 0 {
 		return nil
 	}
 
 	out := make([]uint16, 0, len(peers))
-	for peerID := range peers {
-		out = append(out, peerID)
+	for peerID, maxSeq := range peers {
+		if maxSeq >= sequence {
+			out = append(out, peerID)
+		}
 	}
 	rand.Shuffle(len(out), func(i, j int) {
 		out[i], out[j] = out[j], out[i]
@@ -297,95 +299,11 @@ func (st *sequenceTracker) getMaxSeenSeqForSigner(signer []byte) uint64 {
 	st.mu.Lock()
 	defer st.mu.Unlock()
 
-	return st.maxSeenBySigner[signerKey]
-}
-
-// pruneEntriesOlderThan removes tx metadata older than maxAge and returns how many were removed.
-func (st *sequenceTracker) pruneEntriesOlderThan(maxAge time.Duration) int {
-	if maxAge <= 0 {
-		return 0
-	}
-
-	cutoff := time.Now().Add(-maxAge)
-
-	st.mu.Lock()
-	defer st.mu.Unlock()
-
-	removed := 0
-	for key, entry := range st.seenByTxKey {
-		if entry.addedAt.After(cutoff) {
-			continue
-		}
-		delete(st.seenByTxKey, key)
-		st.deleteSequenceLocked(entry.signerKey, entry.sequence)
-		removed++
-	}
-	return removed
-}
-
-// recomputeMaxSeenBySignerLocked recalculates the max seen sequence for a signer.
-// Assumes that the caller has already acquired the lock.
-func (st *sequenceTracker) recomputeMaxSeenBySignerLocked(signerKey string, sequences map[uint64]peerSet) {
 	var maxSeq uint64
-	for seq := range sequences {
+	for _, seq := range st.peerMaxSeqBySigner[signerKey] {
 		if seq > maxSeq {
 			maxSeq = seq
 		}
 	}
-	if maxSeq == 0 {
-		delete(st.maxSeenBySigner, signerKey)
-		return
-	}
-	st.maxSeenBySigner[signerKey] = maxSeq
-}
-
-// dropPeerSequencesBelowMinLocked removes a peer from sequences below minSequence.
-// Assumes that the caller has already acquired the lock.
-func (st *sequenceTracker) dropPeerSequencesBelowMinLocked(signerKey string, minSequence uint64, peerID uint16) {
-	if minSequence == 0 || peerID == 0 {
-		return
-	}
-
-	// Fast path: nothing to prune for this signer.
-	sequences := st.peersBySignerSeq[signerKey]
-	if sequences == nil {
-		return
-	}
-
-	// Remove the peer from sequences it can no longer serve.
-	for seq, peers := range sequences {
-		if seq >= minSequence {
-			continue
-		}
-		delete(peers, peerID)
-		if len(peers) == 0 {
-			delete(sequences, seq)
-		}
-	}
-
-	// Drop empty signer entry or recompute max seen sequence after pruning.
-	if len(sequences) == 0 {
-		delete(st.peersBySignerSeq, signerKey)
-		delete(st.maxSeenBySigner, signerKey)
-	} else {
-		st.recomputeMaxSeenBySignerLocked(signerKey, sequences)
-	}
-
-	// Clear per-tx peer hints that point to sequences the peer no longer has.
-	for _, entry := range st.seenByTxKey {
-		if entry.signerKey != signerKey {
-			continue
-		}
-		if entry.peer == peerID && entry.sequence < minSequence {
-			entry.peer = 0
-		}
-	}
-}
-
-// updateMaxSeenBySigner updates the max sequence for a signer if the new sequence is higher.
-// Assumes that the caller has already acquired the lock.
-func (st *sequenceTracker) updateMaxSeenBySigner(signerKey string, sequence uint64) {
-	if sequence > st.maxSeenBySigner[signerKey] {
-		st.maxSeenBySigner[signerKey] = sequence
-	}
+	return maxSeq
 }

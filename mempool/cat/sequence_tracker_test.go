@@ -11,8 +11,9 @@ import (
 	"github.com/cometbft/cometbft/types"
 )
 
-func recordSeen(t *testing.T, tracker *sequenceTracker, signer []byte, txKey types.TxKey, sequence uint64, peerID uint16) {
+func recordSeen(t *testing.T, tracker *sequenceTracker, signer []byte, sequence uint64, peerID uint16) {
 	t.Helper()
+	txKey := types.Tx(fmt.Sprintf("tx-%d-%d", sequence, peerID)).Key()
 	msg := &protomem.SeenTx{
 		TxKey:       txKey[:],
 		Signer:      signer,
@@ -26,76 +27,50 @@ func recordSeen(t *testing.T, tracker *sequenceTracker, signer []byte, txKey typ
 func TestSequenceTrackerRecordAndGet(t *testing.T) {
 	tracker := newSequenceTracker()
 	signer := []byte("signer")
-	key := types.Tx("tx1").Key()
 
-	recordSeen(t, tracker, signer, key, 1, 5)
-
-	entry := tracker.getByTxKey(key)
-	require.NotNil(t, entry)
-	require.Equal(t, uint64(1), entry.sequence)
-	require.Equal(t, []uint16{5}, entry.peerIDs())
+	recordSeen(t, tracker, signer, 1, 5)
 
 	entries := tracker.entriesForSigner(signer)
 	require.Len(t, entries, 1)
-	require.Equal(t, key, entries[0].txKey)
+	require.Equal(t, uint64(1), entries[0].sequence)
+	require.Equal(t, []uint16{5}, entries[0].peerIDs())
 }
 
 func TestSequenceTrackerRejectsOutOfRangeSequence(t *testing.T) {
 	tracker := newSequenceTracker()
 	signer := []byte("signer")
-	key := types.Tx("invalid").Key()
+	txKey := types.Tx("tx-out-of-range").Key()
 
 	msg := &protomem.SeenTx{
-		TxKey:       key[:],
+		TxKey:       txKey[:],
 		Signer:      signer,
 		Sequence:    10,
 		MinSequence: 1,
 		MaxSequence: 5,
 	}
-	tracker.recordSeenTx(msg, key, 1)
+	tracker.recordSeenTx(msg, txKey, 1)
 	require.Empty(t, tracker.entriesForSigner(signer))
 }
 
-func TestSequenceTrackerRemoveByTxKey(t *testing.T) {
+func TestSequenceTrackerRemoveBySignerSequence(t *testing.T) {
 	tracker := newSequenceTracker()
 	signer := []byte("signer")
-	key := types.Tx("tx-remove").Key()
 
-	recordSeen(t, tracker, signer, key, 3, 6)
-	tracker.removeByTxKey(key)
+	recordSeen(t, tracker, signer, 3, 6)
+	tracker.removeBySignerSequence(signer, 3)
 	require.Empty(t, tracker.entriesForSigner(signer))
-}
-
-func TestSequenceTrackerMarkRequestedAndFailed(t *testing.T) {
-	tracker := newSequenceTracker()
-	signer := []byte("signer")
-	key := types.Tx("tx-request").Key()
-
-	recordSeen(t, tracker, signer, key, 7, 12)
-	tracker.markRequested(key, 12)
-
-	entry := tracker.getByTxKey(key)
-	require.NotNil(t, entry)
-	require.Equal(t, []uint16{12}, entry.peerIDs())
-
-	tracker.markRequestFailed(key, 12)
-	entry = tracker.getByTxKey(key)
-	require.NotNil(t, entry)
-	require.Nil(t, entry.peerIDs())
 }
 
 func TestSequenceTrackerRemovePeerClearsRanges(t *testing.T) {
 	tracker := newSequenceTracker()
 	signer := []byte("signer")
-	key := types.Tx("tx-peer").Key()
 
-	recordSeen(t, tracker, signer, key, 4, 9)
-	tracker.markRequested(key, 9)
+	recordSeen(t, tracker, signer, 4, 9)
 	tracker.removePeer(9)
 
-	entry := tracker.getByTxKey(key)
-	require.NotNil(t, entry)
-	require.Nil(t, entry.peerIDs())
+	entries := tracker.entriesForSigner(signer)
+	require.Len(t, entries, 1)
+	require.Nil(t, entries[0].peerIDs())
 }
 
 func TestSequenceTrackerConcurrentAccess(t *testing.T) {
@@ -109,8 +84,7 @@ func TestSequenceTrackerConcurrentAccess(t *testing.T) {
 	go func() {
 		defer wg.Done()
 		for i := 0; i < total; i++ {
-			key := types.Tx(fmt.Sprintf("tx-%d", i)).Key()
-			recordSeen(t, tracker, signer, key, uint64(i+1), uint16(i%5+1))
+			recordSeen(t, tracker, signer, uint64(i+1), uint16(i%5+1))
 		}
 	}()
 

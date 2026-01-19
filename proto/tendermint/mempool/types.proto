@@ -5,6 +5,8 @@ option go_package = "github.com/cometbft/cometbft/proto/tendermint/mempool";
 
 message Txs {
   repeated bytes txs = 1;
+  repeated bytes signers = 2;
+  repeated uint64 sequences = 3;
 }
 
 message SeenTx {
