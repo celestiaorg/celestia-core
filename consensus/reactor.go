@@ -44,6 +44,15 @@ const (
 
 //-----------------------------------------------------------------------------
 
+// blockSyncReactor defines the interface for switching to blocksync mode.
+// This allows the consensus reactor to trigger a switch to blocksync when falling behind.
+type blockSyncReactor interface {
+	SwitchToBlockSync(sm.State) error
+	// UpdatePeerHeight updates a peer's height in the blocksync pool.
+	// This allows consensus reactor to feed fresh heights from NewRoundStepMessage.
+	UpdatePeerHeight(peerID p2p.ID, height int64)
+}
+
 // Reactor defines a reactor for the consensus service.
 type Reactor struct {
 	p2p.BaseReactor // BaseService + p2p.Switch
@@ -62,6 +71,15 @@ type Reactor struct {
 
 	// gossipDataEnabled controls whether the gossipDataRoutine should run
 	gossipDataEnabled atomic.Bool
+
+	// blocksyncR is the blocksync reactor, used to switch to blocksync mode when falling behind
+	blocksyncR blockSyncReactor
+
+	// lastCheckedHeight tracks the last height at which we checked for falling behind
+	lastCheckedHeight int64
+
+	// heightCheckCh receives heights to check for falling behind
+	heightCheckCh chan int64
 }
 
 type ReactorOption func(*Reactor)
@@ -70,12 +88,13 @@ type ReactorOption func(*Reactor)
 // consensusState.
 func NewReactor(consensusState *State, propagator propagation.Propagator, waitSync bool, options ...ReactorOption) *Reactor {
 	conR := &Reactor{
-		conS:        consensusState,
-		waitSync:    waitSync,
-		rs:          consensusState.GetRoundState(),
-		Metrics:     NopMetrics(),
-		traceClient: trace.NoOpTracer(),
-		propagator:  propagator,
+		conS:          consensusState,
+		waitSync:      waitSync,
+		rs:            consensusState.GetRoundState(),
+		Metrics:       NopMetrics(),
+		traceClient:   trace.NoOpTracer(),
+		propagator:    propagator,
+		heightCheckCh: make(chan int64, 1),
 	}
 
 	for _, option := range options {
@@ -106,6 +125,9 @@ func (conR *Reactor) OnStart() error {
 	// start routine that computes peer statistics for evaluating peer quality
 	go conR.peerStatsRoutine()
 
+	// start routine that checks if we're falling behind peers
+	go conR.fallingBehindCheckRoutine()
+
 	conR.subscribeToBroadcastEvents()
 	go conR.updateRoundStateRoutine()
 
@@ -134,7 +156,7 @@ func (conR *Reactor) OnStop() {
 // SwitchToConsensus switches from block_sync mode to consensus mode.
 // It resets the state, turns off block_sync, and starts the consensus state-machine
 func (conR *Reactor) SwitchToConsensus(state sm.State, skipWAL bool) {
-	conR.Logger.Info("SwitchToConsensus")
+	conR.Logger.Info("SwitchToConsensus", "skipWAL", skipWAL, "stateHeight", state.LastBlockHeight)
 
 	func() {
 		// We need to lock, as we are not entering consensus state from State's `handleMsg` or `handleTimeout`
@@ -154,8 +176,26 @@ func (conR *Reactor) SwitchToConsensus(state sm.State, skipWAL bool) {
 	conR.waitSync = false
 	conR.mtx.Unlock()
 
+	// Reset lastCheckedHeight so falling-behind detection can trigger again
+	conR.lastCheckedHeight = 0
+	conR.Logger.Info("Reset lastCheckedHeight to 0")
+
 	if skipWAL {
 		conR.conS.doWALCatchup = false
+	}
+	// Reset consensus if it was previously stopped (e.g., when switching to blocksync)
+	// This is safe to call even if consensus wasn't stopped - Reset() will just return an error
+	conR.Logger.Info("About to call conS.Reset()")
+	if err := conR.conS.Reset(); err != nil {
+		conR.Logger.Info("Consensus reset returned error (may be expected)", "err", err)
+	} else {
+		conR.Logger.Info("Consensus reset succeeded, re-subscribing to events")
+		// Only re-subscribe if reset succeeded (which clears the listeners)
+		// If reset failed, the original subscription from OnStart() is still valid
+		conR.subscribeToBroadcastEvents()
+		// Restart peerStatsRoutine since it exited when consensus was stopped
+		// (it watches conR.conS.Quit() which was closed during Stop())
+		go conR.peerStatsRoutine()
 	}
 	err := conR.conS.Start()
 	if err != nil {
@@ -328,6 +368,10 @@ func (conR *Reactor) receive(e p2p.Envelope) error {
 				return err
 			}
 			ps.ApplyNewRoundStepMessage(msg)
+			// Update blocksync pool with fresh peer height (if in blocksync mode)
+			if conR.WaitSync() && conR.blocksyncR != nil && msg.Height > 1 {
+				conR.blocksyncR.UpdatePeerHeight(e.Src.ID(), msg.Height-1)
+			}
 		case *NewValidBlockMessage:
 			schema.WriteConsensusState(
 				conR.traceClient,
@@ -516,6 +560,170 @@ func (conR *Reactor) WaitSync() bool {
 	return conR.waitSync
 }
 
+// SetBlockSyncReactor sets the blocksync reactor for mode switching.
+func (conR *Reactor) SetBlockSyncReactor(bcR blockSyncReactor) {
+	conR.blocksyncR = bcR
+}
+
+// fallingBehindCheckRoutine continuously monitors for falling behind peers.
+func (conR *Reactor) fallingBehindCheckRoutine() {
+	for {
+		select {
+		case <-conR.Quit():
+			return
+		case height := <-conR.heightCheckCh:
+			conR.checkFallingBehindOnHeight(height)
+		}
+	}
+}
+
+// checkFallingBehindOnHeight checks if we're falling behind peers at the given height.
+func (conR *Reactor) checkFallingBehindOnHeight(height int64) {
+	// Safety checks
+	if conR.conS == nil || conR.conS.config == nil {
+		return
+	}
+
+	// Skip if consensus is not actually running (prevents race during SwitchToConsensus)
+	if !conR.conS.IsRunning() {
+		return
+	}
+
+	threshold := conR.conS.config.BlocksBehindThreshold
+	if threshold <= 0 {
+		// Feature disabled
+		return
+	}
+
+	// Only check once per height
+	if height <= conR.lastCheckedHeight {
+		return
+	}
+	conR.lastCheckedHeight = height
+	conR.Logger.Info("checkFallingBehind: checking", "height", height, "lastChecked", conR.lastCheckedHeight)
+
+	// Skip if we're already in sync mode
+	if conR.WaitSync() {
+		conR.Logger.Info("checkFallingBehind: skipping (in sync mode)")
+		return
+	}
+
+	// Skip if any consensus delay is > 100ms (likely testing/debugging)
+	const maxDelayForSwitch = 100 * time.Millisecond
+	proposeDelay, prevoteDelay, precommitDelay := conR.conS.GetConsensusDelays()
+	if proposeDelay > maxDelayForSwitch || prevoteDelay > maxDelayForSwitch || precommitDelay > maxDelayForSwitch {
+		conR.Logger.Info("checkFallingBehind: skipping (delays too high)", "propose", proposeDelay, "prevote", prevoteDelay, "precommit", precommitDelay)
+		return
+	}
+
+	// Check if we should switch to blocksync
+	if conR.shouldSwitchToBlockSync(height, threshold) {
+		conR.Logger.Info("checkFallingBehind: SHOULD SWITCH, initiating blocksync switch")
+		conR.initiateBlockSyncSwitch()
+	} else {
+		conR.Logger.Info("checkFallingBehind: no need to switch", "height", height)
+	}
+}
+
+// shouldSwitchToBlockSync determines if majority of peers are threshold+ blocks ahead.
+func (conR *Reactor) shouldSwitchToBlockSync(ourHeight int64, threshold int64) bool {
+	if conR.Switch == nil {
+		return false
+	}
+	peers := conR.Switch.Peers().List()
+	if len(peers) == 0 {
+		return false
+	}
+
+	// Count peers that are significantly ahead
+	aheadCount := 0
+	totalPeers := 0
+
+	for _, peer := range peers {
+		ps, ok := peer.Get(types.PeerStateKey).(*PeerState)
+		if !ok {
+			continue
+		}
+
+		peerHeight := ps.GetHeight()
+		totalPeers++
+
+		if peerHeight >= ourHeight+threshold {
+			aheadCount++
+		}
+	}
+
+	// Switch if majority of peers are ahead
+	if totalPeers == 0 {
+		return false
+	}
+
+	majority := (totalPeers / 2) + 1
+	shouldSwitch := aheadCount >= majority
+
+	if shouldSwitch {
+		conR.Logger.Info("Majority of peers are ahead",
+			"our_height", ourHeight,
+			"ahead_count", aheadCount,
+			"total_peers", totalPeers,
+			"threshold", threshold)
+	}
+
+	return shouldSwitch
+}
+
+// initiateBlockSyncSwitch handles the switch from consensus to blocksync.
+func (conR *Reactor) initiateBlockSyncSwitch() {
+	// Use mutex to atomically check waitSync and cooldown, and set waitSync
+	conR.mtx.Lock()
+
+	// Skip if already syncing (could happen due to race with goroutine)
+	if conR.waitSync {
+		conR.mtx.Unlock()
+		return
+	}
+
+	if conR.blocksyncR == nil {
+		conR.mtx.Unlock()
+		conR.Logger.Error("Cannot switch to blocksync: blocksyncReactor not set")
+		return
+	}
+
+	// Set waitSync flag while still holding mutex
+	conR.waitSync = true
+	conR.mtx.Unlock()
+
+	conR.Logger.Info("Switching from consensus to blocksync mode")
+
+	// Stop consensus state machine
+	if err := conR.conS.Stop(); err != nil {
+		conR.Logger.Error("Error stopping consensus state", "err", err)
+	}
+	conR.conS.Wait()
+
+	// Get current state for blocksync
+	state := conR.conS.GetState()
+
+	// Switch to blocksync
+	if err := conR.blocksyncR.SwitchToBlockSync(state); err != nil {
+		conR.Logger.Error("Failed to switch to blocksync", "err", err)
+		// Attempt to recover by restarting consensus
+		conR.mtx.Lock()
+		conR.waitSync = false
+		conR.mtx.Unlock()
+		// Need to Reset() before Start() since consensus was stopped
+		if err := conR.conS.Reset(); err != nil {
+			conR.Logger.Error("Failed to reset consensus", "err", err)
+		} else {
+			// Re-subscribe since reset cleared listeners
+			conR.subscribeToBroadcastEvents()
+		}
+		if err := conR.conS.Start(); err != nil {
+			conR.Logger.Error("Failed to restart consensus after blocksync failure", "err", err)
+		}
+	}
+}
+
 //--------------------------------------
 
 // subscribeToBroadcastEvents subscribes for new round steps and votes
@@ -523,9 +731,23 @@ func (conR *Reactor) WaitSync() bool {
 // them to peers upon receiving.
 func (conR *Reactor) subscribeToBroadcastEvents() {
 	const subscriber = "consensus-reactor"
+	conR.Logger.Info("subscribeToBroadcastEvents called")
 	if err := conR.conS.evsw.AddListenerForEvent(subscriber, types.EventNewRoundStep,
 		func(data cmtevents.EventData) {
-			conR.broadcastNewRoundStepMessage(data.(*cstypes.RoundState))
+			// Recover from panics to prevent crashing receiveRoutine
+			defer func() {
+				if r := recover(); r != nil {
+					conR.Logger.Error("PANIC in EventNewRoundStep handler", "panic", r)
+				}
+			}()
+			rs := data.(*cstypes.RoundState)
+			conR.Logger.Info("EventNewRoundStep received", "height", rs.Height, "round", rs.Round, "step", rs.Step)
+			conR.broadcastNewRoundStepMessage(rs)
+			// Notify falling behind check routine (non-blocking)
+			select {
+			case conR.heightCheckCh <- rs.Height:
+			default:
+			}
 		}); err != nil {
 		conR.Logger.Error("Error adding listener for events", "err", err)
 	}
