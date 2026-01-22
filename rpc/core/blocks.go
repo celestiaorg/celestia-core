@@ -140,6 +140,11 @@ func (env *Environment) Block(_ *rpctypes.Context, heightPtr *int64) (*ctypes.Re
 	if blockMeta == nil {
 		return &ctypes.ResultBlock{BlockID: types.BlockID{}, Block: block}, nil
 	}
+	// If we have blockMeta but no block, the block data hasn't been synced yet
+	// (this can happen during header-first sync).
+	if block == nil {
+		return nil, fmt.Errorf("block %d: header available but block data not yet synced", height)
+	}
 	return &ctypes.ResultBlock{BlockID: blockMeta.BlockID, Block: block}, nil
 }
 

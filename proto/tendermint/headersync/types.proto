@@ -1,0 +1,44 @@
+syntax = "proto3";
+package tendermint.headersync;
+
+option go_package = "github.com/cometbft/cometbft/proto/tendermint/headersync";
+
+import "tendermint/types/types.proto";
+
+// StatusResponse contains a peer's header sync status.
+// Sent proactively when a peer connects or when header height advances.
+// Peers MUST NOT send status updates with the same or lower height as previously
+// reported - doing so results in disconnection (DoS protection).
+message StatusResponse {
+  int64 base   = 1;
+  int64 height = 2;
+}
+
+// SignedHeader pairs a header with its commit.
+message SignedHeader {
+  tendermint.types.Header header = 1;
+  tendermint.types.Commit commit = 2;
+}
+
+// GetHeaders requests a batch of headers starting from start_height.
+message GetHeaders {
+  int64 start_height = 1;
+  int64 count        = 2; // max 50
+}
+
+// HeadersResponse is the response containing sequential signed headers.
+// start_height identifies which request this response is for, enabling O(1)
+// lookup and allowing multiple concurrent requests to the same peer.
+// An empty headers array indicates the peer has no headers from start_height.
+message HeadersResponse {
+  int64               start_height = 1;
+  repeated SignedHeader headers    = 2;
+}
+
+message Message {
+  oneof sum {
+    StatusResponse  status_response  = 1;
+    GetHeaders      get_headers      = 2;
+    HeadersResponse headers_response = 3;
+  }
+}
