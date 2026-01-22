@@ -2,9 +2,6 @@ package blocksync
 
 import "slices"
 
-
-
-
 // blockStats is a circular blockSizes that holds at most n elements
 // and provides O(1) average calculation and O(1) max retrieval
 type blockStats struct {
