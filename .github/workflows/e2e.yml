@@ -12,7 +12,7 @@ on:
 
 jobs:
   e2e-test:
-    runs-on: core-01
+    runs-on: self-hosted
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v6
