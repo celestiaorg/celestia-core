@@ -1177,3 +1177,86 @@ func TestMakeGenesisStateSetsAppVersion(t *testing.T) {
 		require.Equal(t, uint64(1), state.Version.Consensus.App)
 	})
 }
+
+func TestMedianTime(t *testing.T) {
+	val1 := types.NewValidator(ed25519.GenPrivKey().PubKey(), 30)
+	val2 := types.NewValidator(ed25519.GenPrivKey().PubKey(), 30)
+	val3 := types.NewValidator(ed25519.GenPrivKey().PubKey(), 30)
+
+	vals := types.NewValidatorSet([]*types.Validator{val1, val2, val3})
+
+	t.Run("all validators present", func(t *testing.T) {
+		now := time.Now()
+		commit := &types.Commit{
+			Height: 1,
+			Signatures: []types.CommitSig{
+				{
+					BlockIDFlag:      types.BlockIDFlagCommit,
+					ValidatorAddress: val1.Address,
+					Timestamp:        now,
+				},
+				{
+					BlockIDFlag:      types.BlockIDFlagCommit,
+					ValidatorAddress: val2.Address,
+					Timestamp:        now.Add(1 * time.Minute),
+				},
+				{
+					BlockIDFlag:      types.BlockIDFlagCommit,
+					ValidatorAddress: val3.Address,
+					Timestamp:        now.Add(2 * time.Minute),
+				},
+			},
+		}
+
+		medianTime, err := sm.MedianTime(commit, vals)
+		require.NoError(t, err)
+		require.Equal(t, medianTime, now.Add(1*time.Minute))
+	})
+
+	t.Run("validator not in validator set", func(t *testing.T) {
+		unknownVal := ed25519.GenPrivKey().PubKey().Address()
+		now := time.Now()
+		commit := &types.Commit{
+			Height: 1,
+			Signatures: []types.CommitSig{
+				{
+					BlockIDFlag:      types.BlockIDFlagCommit,
+					ValidatorAddress: val1.Address,
+					Timestamp:        now,
+				},
+				{
+					BlockIDFlag:      types.BlockIDFlagCommit,
+					ValidatorAddress: unknownVal,
+					Timestamp:        now.Add(1 * time.Minute),
+				},
+			},
+		}
+
+		_, err := sm.MedianTime(commit, vals)
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "commit validator not found in validator set")
+	})
+
+	t.Run("not all validators present", func(t *testing.T) {
+		now := time.Now()
+		commit := &types.Commit{
+			Height: 1,
+			Signatures: []types.CommitSig{
+				{
+					BlockIDFlag:      types.BlockIDFlagCommit,
+					ValidatorAddress: val1.Address,
+					Timestamp:        now,
+				},
+				{
+					BlockIDFlag:      types.BlockIDFlagCommit,
+					ValidatorAddress: val2.Address,
+					Timestamp:        now.Add(1 * time.Minute),
+				},
+			},
+		}
+
+		medianTime, err := sm.MedianTime(commit, vals)
+		require.NoError(t, err)
+		require.Equal(t, medianTime, now)
+	})
+}

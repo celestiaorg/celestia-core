@@ -28,12 +28,12 @@ func TestPropose(t *testing.T) {
 	reactor2 := reactors[1]
 	reactor3 := reactors[2]
 
-	cleanup, _, sm := state.SetupTestCase(t)
+	cleanup, _, sm, pv := state.SetupTestCaseWithPrivVal(t)
 	t.Cleanup(func() {
 		cleanup(t)
 	})
 
-	prop, partSet, _, metaData := createTestProposal(t, sm, 1, 0, 100, 1000)
+	prop, partSet, _, metaData := createTestProposal(t, sm, pv, 1, 0, 100, 1000)
 
 	err := reactor1.ProposeBlock(prop, partSet, metaData)
 	require.NoError(t, err)
@@ -95,13 +95,13 @@ func TestPropose_OnlySendParityChunks(t *testing.T) {
 	reactor1 := reactors[0]
 	reactor2 := reactors[1]
 
-	cleanup, _, sm := state.SetupTestCase(t)
+	cleanup, _, sm, pv := state.SetupTestCaseWithPrivVal(t)
 	t.Cleanup(func() {
 		cleanup(t)
 	})
 
 	// 128 mb block
-	prop, partSet, _, metaData := createTestProposal(t, sm, 1, 0, 30, 4_000_000)
+	prop, partSet, _, metaData := createTestProposal(t, sm, pv, 1, 0, 30, 4_000_000)
 
 	err := reactor1.ProposeBlock(prop, partSet, metaData)
 	require.NoError(t, err)
@@ -135,6 +135,7 @@ func TestPropose_OnlySendParityChunks(t *testing.T) {
 func createTestProposal(
 	t testing.TB,
 	sm state.State,
+	pv types.PrivValidator,
 	height int64,
 	round int32,
 	txCount, txSize int,
@@ -146,7 +147,8 @@ func createTestProposal(
 	data := types.Data{
 		Txs: txs,
 	}
-	block, partSet, err := sm.MakeBlock(height, data, types.RandCommit(time.Now()), []types.Evidence{}, cmtrand.Bytes(20))
+	commit := state.MakeTestCommit(t, sm, pv, time.Now())
+	block, partSet, err := sm.MakeBlock(height, data, commit, []types.Evidence{}, cmtrand.Bytes(20))
 	require.NoError(t, err)
 	metaData := make([]proptypes.TxMetaData, len(partSet.TxPos))
 	for i, pos := range partSet.TxPos {
@@ -168,7 +170,7 @@ func createTestProposal(
 // TestRecoverPartsLocally provides a set of transactions to the mempool
 // and attempts to build the block parts from them.
 func TestRecoverPartsLocally(t *testing.T) {
-	cleanup, _, sm := state.SetupTestCase(t)
+	cleanup, _, sm, pv := state.SetupTestCaseWithPrivVal(t)
 	t.Cleanup(func() {
 		cleanup(t)
 	})
@@ -201,7 +203,8 @@ func TestRecoverPartsLocally(t *testing.T) {
 
 	data := types.Data{Txs: types.TxsFromCachedTxs(txs)}
 
-	block, partSet, err := sm.MakeBlock(1, data, types.RandCommit(time.Now()), []types.Evidence{}, cmtrand.Bytes(20))
+	commit := state.MakeTestCommit(t, sm, pv, time.Now())
+	block, partSet, err := sm.MakeBlock(1, data, commit, []types.Evidence{}, cmtrand.Bytes(20))
 	require.NoError(t, err)
 	id := types.BlockID{Hash: block.Hash(), PartSetHeader: partSet.Header()}
 	prop := types.NewProposal(block.Height, 0, -1, id)
@@ -259,11 +262,11 @@ func BenchmarkMempoolRecovery(b *testing.B) {
 		b.Run(fmt.Sprintf("Txs=%d", nTxs), func(b *testing.B) {
 			for _, missingPercent := range missingPercent {
 				b.Run(fmt.Sprintf("MissingParts%%=%d", missingPercent), func(b *testing.B) {
-					cleanup, _, sm := state.SetupTestCase(b)
+					cleanup, _, sm, pv := state.SetupTestCaseWithPrivVal(b)
 					defer cleanup(b)
 
 					mempool := &mockMempool{txs: make(map[types.TxKey]*types.CachedTx)}
-					prop, ps, block, metaData := createTestProposal(b, sm, 0, 0, nTxs, types.MaxBlockSizeBytes/nTxs)
+					prop, ps, block, metaData := createTestProposal(b, sm, pv, 0, 0, nTxs, types.MaxBlockSizeBytes/nTxs)
 					cb, _ := createCompactBlock(b, prop, ps, metaData)
 					cps := proptypes.NewCombinedPartSetFromOriginal(ps, false)
 
