@@ -440,13 +440,13 @@ func TestPropagationSmokeTest(t *testing.T) {
 
 	reactors, _ := createTestReactors(nodes, p2pCfg, false, "")
 
-	cleanup, _, sm := state.SetupTestCase(t)
+	cleanup, _, sm, pv := state.SetupTestCaseWithPrivVal(t)
 	t.Cleanup(func() {
 		cleanup(t)
 	})
 
 	for i := int64(1); i < 5; i++ {
-		prop, ps, block, metaData := createTestProposal(t, sm, i, 0, 2, 1000000)
+		prop, ps, block, metaData := createTestProposal(t, sm, pv, i, 0, 2, 1000000)
 
 		// predistribute portions of the block
 		for _, tx := range block.Txs {
@@ -492,14 +492,14 @@ func TestPropagationSmokeTest(t *testing.T) {
 
 func TestValidateCompactBlock_InvalidLastLen(t *testing.T) {
 	reactors, _ := testBlockPropReactors(1, cfg.DefaultP2PConfig())
-	cleanup, _, sm := state.SetupTestCase(t)
+	cleanup, _, sm, pv := state.SetupTestCaseWithPrivVal(t)
 	t.Cleanup(func() {
 		cleanup(t)
 	})
 	reactor1 := reactors[0]
 	reactor1.height = 10
 	reactor1.round = 3
-	cb, _, _, _ := testCompactBlock(t, sm, 10, 3)
+	cb, _, _, _ := testCompactBlock(t, sm, pv, 10, 3)
 
 	// put an invalid last len
 	cb.LastLen = types.BlockPartSizeBytes + 1
@@ -512,11 +512,11 @@ func TestStopPeerForError(t *testing.T) {
 		reactors, _ := testBlockPropReactors(2, cfg.DefaultP2PConfig())
 		reactor1 := reactors[0]
 		reactor2 := reactors[1]
-		cleanup, _, sm := state.SetupTestCase(t)
+		cleanup, _, sm, pv := state.SetupTestCaseWithPrivVal(t)
 		t.Cleanup(func() {
 			cleanup(t)
 		})
-		cb, _, _, _ := testCompactBlock(t, sm, 10, 3)
+		cb, _, _, _ := testCompactBlock(t, sm, pv, 10, 3)
 		// put an invalid part set hash
 		cb.Proposal.BlockID.PartSetHeader.Hash = cmtrand.Bytes(32)
 		cb.SetProofCache(nil)
@@ -657,8 +657,8 @@ func TestConcurrentRequestLimit(t *testing.T) {
 
 // testCompactBlock returns a test compact block with the corresponding orignal part set,
 // parity partset, and proofs.
-func testCompactBlock(t *testing.T, sm state.State, height int64, round int32) (*proptypes.CompactBlock, *types.PartSet, *types.PartSet, []*merkle.Proof) {
-	prop, ps, _, metaData := createTestProposal(t, sm, height, round, 2, 1000000)
+func testCompactBlock(t testing.TB, sm state.State, pv types.PrivValidator, height int64, round int32) (*proptypes.CompactBlock, *types.PartSet, *types.PartSet, []*merkle.Proof) {
+	prop, ps, _, metaData := createTestProposal(t, sm, pv, height, round, 2, 1000000)
 
 	pse, lastLen, err := types.Encode(ps, types.BlockPartSizeBytes)
 	require.NoError(t, err)
@@ -742,7 +742,7 @@ func (m *MockPeerStateEditor) SetHeight(h int64) {
 // TestPeerStateEditor ensures that the propagation reactor is updating the
 // consensus peer state when the methods are called.
 func TestPeerStateEditor(t *testing.T) {
-	cleanup, _, sm := state.SetupTestCase(t)
+	cleanup, _, sm, pv := state.SetupTestCaseWithPrivVal(t)
 	t.Cleanup(func() {
 		cleanup(t)
 	})
@@ -759,7 +759,7 @@ func TestPeerStateEditor(t *testing.T) {
 	require.NotNil(t, peerState.consensusPeerState)
 	require.IsType(t, &MockPeerStateEditor{}, peerState.consensusPeerState)
 
-	cb, ps, _, _ := testCompactBlock(t, sm, 1, 1)
+	cb, ps, _, _ := testCompactBlock(t, sm, pv, 1, 1)
 
 	added := r0.AddProposal(cb)
 	require.True(t, added)

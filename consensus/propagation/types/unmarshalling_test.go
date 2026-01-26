@@ -45,7 +45,7 @@ func StreamTxsCombinations(n int) <-chan []int {
 // TestTxsToParts_Correctness is a targeted table-driven test that verifies
 // that for each given tx size the TxsToParts function returns the expected parts.
 func TestTxsToParts_Correctness(t *testing.T) {
-	cleanup, _, sm := state.SetupTestCase(t)
+	cleanup, _, sm, pv := state.SetupTestCaseWithPrivVal(t)
 	t.Cleanup(func() {
 		cleanup(t)
 	})
@@ -81,7 +81,8 @@ func TestTxsToParts_Correctness(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			data := types.Data{Txs: tc.txs}
-			block, partSet, err := sm.MakeBlock(1, data, types.RandCommit(time.Now()), []types.Evidence{}, cmtrand.Bytes(20))
+			commit := state.MakeTestCommit(t, sm, pv, time.Now())
+			block, partSet, err := sm.MakeBlock(1, data, commit, []types.Evidence{}, cmtrand.Bytes(20))
 			require.NoError(t, err)
 
 			// Precompute the expected UnmarshalledTx values.
@@ -131,7 +132,7 @@ func TestTxsToParts_Correctness(t *testing.T) {
 
 // TestTxsToParts_EdgeCases adds additional tests for edge conditions.
 func TestTxsToParts_EdgeCases(t *testing.T) {
-	cleanup, _, sm := state.SetupTestCase(t)
+	cleanup, _, sm, pv := state.SetupTestCaseWithPrivVal(t)
 	t.Cleanup(func() { cleanup(t) })
 
 	t.Run("empty input", func(t *testing.T) {
@@ -146,7 +147,8 @@ func TestTxsToParts_EdgeCases(t *testing.T) {
 		// then provide only one transaction so that the part is incomplete.
 		txs := generateTxs(2, int(types.BlockPartSizeBytes/2))
 		data := types.Data{Txs: txs}
-		block, partSet, err := sm.MakeBlock(1, data, types.RandCommit(time.Now()), []types.Evidence{}, cmtrand.Bytes(20))
+		commit := state.MakeTestCommit(t, sm, pv, time.Now())
+		block, partSet, err := sm.MakeBlock(1, data, commit, []types.Evidence{}, cmtrand.Bytes(20))
 		require.NoError(t, err)
 
 		txsFound := make([]UnmarshalledTx, len(partSet.TxPos))
@@ -182,7 +184,8 @@ func TestTxsToParts_EdgeCases(t *testing.T) {
 		// Create a block that normally would be divided into three parts.
 		txs := generateTxs(3, int(types.BlockPartSizeBytes))
 		data := types.Data{Txs: txs}
-		block, partSet, err := sm.MakeBlock(1, data, types.RandCommit(time.Now()), []types.Evidence{}, cmtrand.Bytes(20))
+		commit := state.MakeTestCommit(t, sm, pv, time.Now())
+		block, partSet, err := sm.MakeBlock(1, data, commit, []types.Evidence{}, cmtrand.Bytes(20))
 		require.NoError(t, err)
 
 		txsFound := make([]UnmarshalledTx, len(partSet.TxPos))
@@ -229,7 +232,7 @@ func FuzzTxsToParts(f *testing.F) {
 	f.Add(uint16(0))
 
 	f.Fuzz(func(t *testing.T, mask uint16) {
-		cleanup, _, sm := state.SetupTestCase(t)
+		cleanup, _, sm, pv := state.SetupTestCaseWithPrivVal(t)
 		t.Cleanup(func() {
 			cleanup(t)
 		})
@@ -238,7 +241,8 @@ func FuzzTxsToParts(f *testing.F) {
 		// Using one tx size for fuzzing.
 		txs := generateTxs(numberOfTxs, int(types.BlockPartSizeBytes/3))
 		data := types.Data{Txs: txs}
-		block, partSet, err := sm.MakeBlock(1, data, types.RandCommit(time.Now()), []types.Evidence{}, cmtrand.Bytes(20))
+		commit := state.MakeTestCommit(t, sm, pv, time.Now())
+		block, partSet, err := sm.MakeBlock(1, data, commit, []types.Evidence{}, cmtrand.Bytes(20))
 		require.NoError(t, err)
 
 		txsFound := make([]UnmarshalledTx, len(partSet.TxPos))
@@ -316,7 +320,7 @@ func TestTxsToParts_Panic(t *testing.T) {
 		},
 	}
 	for _, tt := range tests {
-		cleanup, _, sm := state.SetupTestCase(t)
+		cleanup, _, sm, pv := state.SetupTestCaseWithPrivVal(t)
 		t.Cleanup(func() {
 			cleanup(t)
 		})
@@ -324,7 +328,8 @@ func TestTxsToParts_Panic(t *testing.T) {
 		txs := genHeterogeneousTxs(tt.originalTxs)
 
 		data := types.Data{Txs: txs}
-		block, partSet, err := sm.MakeBlock(1, data, types.RandCommit(time.Now()), []types.Evidence{}, cmtrand.Bytes(20))
+		commit := state.MakeTestCommit(t, sm, pv, time.Now())
+		block, partSet, err := sm.MakeBlock(1, data, commit, []types.Evidence{}, cmtrand.Bytes(20))
 		require.NoError(t, err)
 
 		txsFound := make([]UnmarshalledTx, len(partSet.TxPos))
@@ -404,7 +409,7 @@ func FuzzTxsToParts_Panic(f *testing.F) {
 		}
 
 		// Setup the test environment.
-		cleanup, _, sm := state.SetupTestCase(t)
+		cleanup, _, sm, pv := state.SetupTestCaseWithPrivVal(t)
 		t.Cleanup(func() {
 			cleanup(t)
 		})
@@ -412,7 +417,8 @@ func FuzzTxsToParts_Panic(f *testing.F) {
 		txs := genHeterogeneousTxs(sizes)
 
 		dataObj := types.Data{Txs: txs}
-		block, partSet, err := sm.MakeBlock(1, dataObj, types.RandCommit(time.Now()), []types.Evidence{}, cmtrand.Bytes(20))
+		commit := state.MakeTestCommit(t, sm, pv, time.Now())
+		block, partSet, err := sm.MakeBlock(1, dataObj, commit, []types.Evidence{}, cmtrand.Bytes(20))
 		require.NoError(t, err)
 
 		txsFound := make([]UnmarshalledTx, len(partSet.TxPos))

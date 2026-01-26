@@ -1083,26 +1083,26 @@ func TestCreateProposalAbsentVoteExtensions(t *testing.T) {
 	}{
 		{
 			name:                  "missing extension data on first required height",
-			height:                2,
-			extensionEnableHeight: 1,
+			height:                3,
+			extensionEnableHeight: 2,
 			expectPanic:           true,
 		},
 		{
 			name:                  "missing extension during before required height",
-			height:                2,
-			extensionEnableHeight: 2,
+			height:                3,
+			extensionEnableHeight: 3,
 			expectPanic:           false,
 		},
 		{
 			name:                  "missing extension data and not required",
-			height:                2,
+			height:                3,
 			extensionEnableHeight: 0,
 			expectPanic:           false,
 		},
 		{
 			name:                  "missing extension data and required in two heights",
-			height:                2,
-			extensionEnableHeight: 3,
+			height:                3,
+			extensionEnableHeight: 4,
 			expectPanic:           false,
 		},
 	} {
@@ -1149,14 +1149,14 @@ func TestCreateProposalAbsentVoteExtensions(t *testing.T) {
 			block, bps, err := makeBlock(state, testCase.height, new(types.Commit))
 			require.NoError(t, err)
 
-			require.NoError(t, err)
 			blockID := types.BlockID{Hash: block.Hash(), PartSetHeader: bps.Header()}
 			pa, _ := state.Validators.GetByIndex(0)
 			lastCommit, _, _ := makeValidCommit(testCase.height-1, blockID, state.Validators, privVals)
 			stripSignatures(lastCommit)
 			if testCase.expectPanic {
 				require.Panics(t, func() {
-					blockExec.CreateProposalBlock(ctx, testCase.height, state, lastCommit, pa) //nolint:errcheck
+					_, _, err := blockExec.CreateProposalBlock(ctx, testCase.height, state, lastCommit, pa)
+					require.NoError(t, err)
 				})
 			} else {
 				_, _, err = blockExec.CreateProposalBlock(ctx, testCase.height, state, lastCommit, pa)

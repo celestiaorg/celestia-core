@@ -21,11 +21,11 @@ func TestInvalidHavePartHash(t *testing.T) {
 	reactors, _ := createTestReactors(nodes, p2pCfg, false, "")
 	r1, r2 := reactors[0], reactors[1]
 
-	cleanup, _, sm := state.SetupTestCase(t)
+	cleanup, _, sm, pv := state.SetupTestCaseWithPrivVal(t)
 	t.Cleanup(func() {
 		cleanup(t)
 	})
-	prop, ps, _, metaData := createTestProposal(t, sm, 1, 0, 2, 1000000)
+	prop, ps, _, metaData := createTestProposal(t, sm, pv, 1, 0, 2, 1000000)
 	parityBlock, lastLen, err := types.Encode(ps, types.BlockPartSizeBytes)
 	require.NoError(t, err)
 	partHashes := extractHashes(ps, parityBlock)

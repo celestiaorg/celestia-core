@@ -19,12 +19,12 @@ func TestGapCatchup(t *testing.T) {
 	nodes := 3
 	reactors, _ := createTestReactors(nodes, p2pCfg, false, "/tmp/test/gap_catchup")
 	n1 := reactors[0]
-	cleanup, _, sm := state.SetupTestCase(t)
+	cleanup, _, sm, pv := state.SetupTestCaseWithPrivVal(t)
 	t.Cleanup(func() {
 		cleanup(t)
 	})
 
-	prop, ps, _, metaData := createTestProposal(t, sm, 1, 0, 2, 1000000)
+	prop, ps, _, metaData := createTestProposal(t, sm, pv, 1, 0, 2, 1000000)
 	cb, parityBlock := createCompactBlock(t, prop, ps, metaData)
 
 	added := n1.AddProposal(cb)
@@ -69,12 +69,12 @@ func TestReceiveHaveOnCatchupBlock(t *testing.T) {
 	reactors, _ := createTestReactors(nodes, p2pCfg, false, "")
 	n1 := reactors[0]
 	n2 := reactors[1]
-	cleanup, _, sm := state.SetupTestCase(t)
+	cleanup, _, sm, pv := state.SetupTestCaseWithPrivVal(t)
 	t.Cleanup(func() {
 		cleanup(t)
 	})
 
-	prop, ps, _, metaData := createTestProposal(t, sm, 1, 0, 2, 1000000)
+	prop, ps, _, metaData := createTestProposal(t, sm, pv, 1, 0, 2, 1000000)
 	cb, _ := createCompactBlock(t, prop, ps, metaData)
 
 	n1.AddCommitment(prop.Height, prop.Round, &cb.Proposal.BlockID.PartSetHeader)
@@ -106,7 +106,7 @@ func TestCacheCapacityEviction(t *testing.T) {
 	n1 := reactors[0]
 	n2 := reactors[1]
 
-	cleanup, _, sm := state.SetupTestCase(t)
+	cleanup, _, sm, pv := state.SetupTestCaseWithPrivVal(t)
 	t.Cleanup(func() {
 		cleanup(t)
 	})
@@ -117,7 +117,7 @@ func TestCacheCapacityEviction(t *testing.T) {
 	// Fill cache with proposals for heights 2 through MaxUnverifiedProposals+1
 	for h := int64(2); h <= int64(MaxUnverifiedProposals+1); h++ {
 		n1.SetHeightAndRound(h, 0)
-		prop, ps, _, metaData := createTestProposal(t, sm, h, 0, 2, 100000)
+		prop, ps, _, metaData := createTestProposal(t, sm, pv, h, 0, 2, 100000)
 		cb, _ := createCompactBlock(t, prop, ps, metaData)
 		n2.handleCompactBlock(cb, n1.self, false)
 	}
@@ -130,7 +130,7 @@ func TestCacheCapacityEviction(t *testing.T) {
 
 	// Now add a proposal for height MaxUnverifiedProposals+2 (should be rejected - cache full with lower heights)
 	n1.SetHeightAndRound(int64(MaxUnverifiedProposals+2), 0)
-	propHigh, psHigh, _, metaDataHigh := createTestProposal(t, sm, int64(MaxUnverifiedProposals+2), 0, 2, 100000)
+	propHigh, psHigh, _, metaDataHigh := createTestProposal(t, sm, pv, int64(MaxUnverifiedProposals+2), 0, 2, 100000)
 	cbHigh, _ := createCompactBlock(t, propHigh, psHigh, metaDataHigh)
 	n2.handleCompactBlock(cbHigh, n1.self, false)
 
@@ -152,7 +152,7 @@ func TestHandleCompactBlock_CachesCurrentHeightWrongRound(t *testing.T) {
 	n1 := reactors[0]
 	n2 := reactors[1]
 
-	cleanup, _, sm := state.SetupTestCase(t)
+	cleanup, _, sm, pv := state.SetupTestCaseWithPrivVal(t)
 	t.Cleanup(func() {
 		cleanup(t)
 	})
@@ -161,7 +161,7 @@ func TestHandleCompactBlock_CachesCurrentHeightWrongRound(t *testing.T) {
 	n2.SetHeightAndRound(2, 0)
 
 	// Create proposal for height 2, round 1 (different round)
-	prop, ps, _, metaData := createTestProposal(t, sm, 2, 1, 2, 1000000)
+	prop, ps, _, metaData := createTestProposal(t, sm, pv, 2, 1, 2, 1000000)
 	cb, _ := createCompactBlock(t, prop, ps, metaData)
 
 	// n1 sends the proposal for round 1 to n2 (which is at round 0)
@@ -187,7 +187,7 @@ func TestApplyCachedProposalIfAvailable(t *testing.T) {
 	n2 := reactors[1]
 	n3 := reactors[2] // This node will "halt" and catch up
 
-	cleanup, _, sm := state.SetupTestCase(t)
+	cleanup, _, sm, pv := state.SetupTestCaseWithPrivVal(t)
 	t.Cleanup(func() {
 		cleanup(t)
 	})
@@ -199,7 +199,7 @@ func TestApplyCachedProposalIfAvailable(t *testing.T) {
 	}
 
 	// Setup height 1 for all nodes - use testCompactBlock for proper signing
-	cb1, ps1, parityBlock1, _ := testCompactBlock(t, sm, 1, 0)
+	cb1, ps1, parityBlock1, _ := testCompactBlock(t, sm, pv, 1, 0)
 	for _, r := range reactors {
 		added := r.AddProposal(cb1)
 		require.True(t, added)
@@ -214,7 +214,7 @@ func TestApplyCachedProposalIfAvailable(t *testing.T) {
 	n2.SetHeightAndRound(2, 0)
 
 	// Create proposal for height 2, round 0 - use testCompactBlock for proper signing
-	cb2, ps2, parityBlock2, _ := testCompactBlock(t, sm, 2, 0)
+	cb2, ps2, parityBlock2, _ := testCompactBlock(t, sm, pv, 2, 0)
 
 	// n1 and n2 process height 2
 	added := n1.AddProposal(cb2)
@@ -269,7 +269,7 @@ func TestApplyCachedProposalIfAvailable_MultiPeer(t *testing.T) {
 	n2 := reactors[1] // Will have valid proposal
 	n3 := reactors[2] // The node applying cached proposals
 
-	cleanup, _, sm := state.SetupTestCase(t)
+	cleanup, _, sm, pv := state.SetupTestCaseWithPrivVal(t)
 	t.Cleanup(func() {
 		cleanup(t)
 	})
@@ -285,11 +285,11 @@ func TestApplyCachedProposalIfAvailable_MultiPeer(t *testing.T) {
 	n2.SetHeightAndRound(2, 0)
 
 	// Create an INVALID proposal (random signature) for peer n1
-	prop2Invalid, ps2Invalid, _, metaData2Invalid := createTestProposal(t, sm, 2, 0, 2, 1000000)
+	prop2Invalid, ps2Invalid, _, metaData2Invalid := createTestProposal(t, sm, pv, 2, 0, 2, 1000000)
 	cbInvalid, _ := createCompactBlock(t, prop2Invalid, ps2Invalid, metaData2Invalid)
 
 	// Create a VALID proposal (properly signed) for peer n2
-	cbValid, _, _, _ := testCompactBlock(t, sm, 2, 0)
+	cbValid, _, _, _ := testCompactBlock(t, sm, pv, 2, 0)
 
 	// n3 receives invalid proposal from n1 first, then valid from n2
 	// Note: peer iteration order in getPeers() is not guaranteed, but we cache
@@ -330,7 +330,7 @@ func TestApplyCachedProposalIfAvailable_KeepOnFailure(t *testing.T) {
 	n1 := reactors[0] // Will have a proposal that fails in handleCachedCompactBlock
 	n2 := reactors[1] // The node applying cached proposals
 
-	cleanup, _, sm := state.SetupTestCase(t)
+	cleanup, _, sm, pv := state.SetupTestCaseWithPrivVal(t)
 	t.Cleanup(func() {
 		cleanup(t)
 	})
@@ -340,7 +340,7 @@ func TestApplyCachedProposalIfAvailable_KeepOnFailure(t *testing.T) {
 	n2.SetProposer(mockPubKey)
 
 	// Create a compact block with valid signatures but invalid parts hashes.
-	cbBad, _, _, _ := testCompactBlock(t, sm, 2, 0)
+	cbBad, _, _, _ := testCompactBlock(t, sm, pv, 2, 0)
 	badHash := make([]byte, len(cbBad.PartsHashes[0]))
 	copy(badHash, cbBad.PartsHashes[0])
 	badHash[0] ^= 0xFF
@@ -378,7 +378,7 @@ func TestApplyCachedProposalIfAvailable_WrongRound(t *testing.T) {
 	n1 := reactors[0]
 	n2 := reactors[1]
 
-	cleanup, _, sm := state.SetupTestCase(t)
+	cleanup, _, sm, pv := state.SetupTestCaseWithPrivVal(t)
 	t.Cleanup(func() {
 		cleanup(t)
 	})
@@ -387,7 +387,7 @@ func TestApplyCachedProposalIfAvailable_WrongRound(t *testing.T) {
 	n2.SetHeightAndRound(1, 0)
 
 	// Create proposal for height 2, round 1
-	prop, ps, _, metaData := createTestProposal(t, sm, 2, 1, 2, 1000000)
+	prop, ps, _, metaData := createTestProposal(t, sm, pv, 2, 1, 2, 1000000)
 	cb, _ := createCompactBlock(t, prop, ps, metaData)
 
 	// n1 sends proposal for height 2 round 1 - n2 caches it (future height)
@@ -412,12 +412,12 @@ func TestAddCommitment_ReplaceProposalData(t *testing.T) {
 	nodes := 1
 	reactors, _ := createTestReactors(nodes, p2pCfg, false, "/tmp/test/add_commitment_replace_proposal_data")
 	r1 := reactors[0]
-	cleanup, _, sm := state.SetupTestCase(t)
+	cleanup, _, sm, pv := state.SetupTestCaseWithPrivVal(t)
 	t.Cleanup(func() {
 		cleanup(t)
 	})
 
-	firstProposal, firstPartset, _, _ := createTestProposal(t, sm, 1, 0, 2, 1000000)
+	firstProposal, firstPartset, _, _ := createTestProposal(t, sm, pv, 1, 0, 2, 1000000)
 	firstPsh := firstPartset.Header()
 
 	// set the first partset header
@@ -427,7 +427,7 @@ func TestAddCommitment_ReplaceProposalData(t *testing.T) {
 	require.Equal(t, firstPsh.Hash, actualFirstPsh.Hash)
 
 	// replace the existing partset header with a new one
-	secondProposal, secondPartset, _, _ := createTestProposal(t, sm, 1, 0, 10, 1000000)
+	secondProposal, secondPartset, _, _ := createTestProposal(t, sm, pv, 1, 0, 10, 1000000)
 	secondPsh := secondPartset.Header()
 	r1.AddCommitment(secondProposal.Height, secondProposal.Round, &secondPsh)
 
