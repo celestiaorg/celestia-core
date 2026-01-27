@@ -1,106 +1,77 @@
 package cat
 
 import (
-	"fmt"
-	"sync"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 
 	protomem "github.com/cometbft/cometbft/proto/tendermint/mempool"
-	"github.com/cometbft/cometbft/types"
 )
 
-func recordSeen(t *testing.T, tracker *sequenceTracker, signer []byte, sequence uint64, peerID uint16) {
-	t.Helper()
-	txKey := types.Tx(fmt.Sprintf("tx-%d-%d", sequence, peerID)).Key()
-	msg := &protomem.SeenTx{
-		TxKey:       txKey[:],
-		Signer:      signer,
-		Sequence:    sequence,
-		MinSequence: 1,
-		MaxSequence: sequence,
-	}
-	tracker.recordSeenTx(msg, txKey, peerID)
-}
-
-func TestSequenceTrackerRecordAndGet(t *testing.T) {
+func TestSequenceTrackerRecordRanges(t *testing.T) {
 	tracker := newSequenceTracker()
 	signer := []byte("signer")
-
-	recordSeen(t, tracker, signer, 1, 5)
-
-	entries := tracker.entriesForSigner(signer)
-	require.Len(t, entries, 1)
-	require.Equal(t, uint64(1), entries[0].sequence)
-	require.Equal(t, []uint16{5}, entries[0].peerIDs())
-}
-
-func TestSequenceTrackerRejectsOutOfRangeSequence(t *testing.T) {
-	tracker := newSequenceTracker()
-	signer := []byte("signer")
-	txKey := types.Tx("tx-out-of-range").Key()
 
 	msg := &protomem.SeenTx{
-		TxKey:       txKey[:],
 		Signer:      signer,
-		Sequence:    10,
-		MinSequence: 1,
-		MaxSequence: 5,
+		MinSequence: 5,
+		MaxSequence: 10,
 	}
-	tracker.recordSeenTx(msg, txKey, 1)
-	require.Empty(t, tracker.entriesForSigner(signer))
+	tracker.recordSeenTx(msg, 7)
+
+	ranges := tracker.rangesForSigner(signer)
+	require.Len(t, ranges, 1)
+	require.Equal(t, uint64(5), ranges[7].min)
+	require.Equal(t, uint64(10), ranges[7].max)
 }
 
-func TestSequenceTrackerRemoveBySignerSequence(t *testing.T) {
+func TestSequenceTrackerMonotonicUpdates(t *testing.T) {
 	tracker := newSequenceTracker()
 	signer := []byte("signer")
 
-	recordSeen(t, tracker, signer, 3, 6)
-	tracker.removeBySignerSequence(signer, 3)
-	require.Empty(t, tracker.entriesForSigner(signer))
+	tracker.recordSeenTx(&protomem.SeenTx{Signer: signer, MinSequence: 3, MaxSequence: 8}, 2)
+	tracker.recordSeenTx(&protomem.SeenTx{Signer: signer, MinSequence: 2, MaxSequence: 7}, 2)
+	tracker.recordSeenTx(&protomem.SeenTx{Signer: signer, MinSequence: 4, MaxSequence: 9}, 2)
+
+	ranges := tracker.rangesForSigner(signer)
+	require.Len(t, ranges, 1)
+	require.Equal(t, uint64(4), ranges[2].min)
+	require.Equal(t, uint64(9), ranges[2].max)
 }
 
-func TestSequenceTrackerRemovePeerClearsRanges(t *testing.T) {
+func TestSequenceTrackerRemoveBelowSequence(t *testing.T) {
 	tracker := newSequenceTracker()
 	signer := []byte("signer")
 
-	recordSeen(t, tracker, signer, 4, 9)
-	tracker.removePeer(9)
+	tracker.recordSeenTx(&protomem.SeenTx{Signer: signer, MinSequence: 1, MaxSequence: 5}, 1)
+	tracker.recordSeenTx(&protomem.SeenTx{Signer: signer, MinSequence: 2, MaxSequence: 10}, 2)
 
-	entries := tracker.entriesForSigner(signer)
-	require.Len(t, entries, 1)
-	require.Nil(t, entries[0].peerIDs())
+	tracker.removeBelowSequence(signer, 6)
+
+	ranges := tracker.rangesForSigner(signer)
+	require.Len(t, ranges, 1)
+	require.Equal(t, uint64(6), ranges[2].min)
+	require.Equal(t, uint64(10), ranges[2].max)
 }
 
-func TestSequenceTrackerConcurrentAccess(t *testing.T) {
+func TestSequenceTrackerRemovePeer(t *testing.T) {
 	tracker := newSequenceTracker()
 	signer := []byte("signer")
 
-	const total = 2000
-	var wg sync.WaitGroup
-	wg.Add(3)
+	tracker.recordSeenTx(&protomem.SeenTx{Signer: signer, MinSequence: 1, MaxSequence: 5}, 3)
+	tracker.removePeer(3)
 
-	go func() {
-		defer wg.Done()
-		for i := 0; i < total; i++ {
-			recordSeen(t, tracker, signer, uint64(i+1), uint16(i%5+1))
-		}
-	}()
+	require.Nil(t, tracker.rangesForSigner(signer))
+}
 
-	go func() {
-		defer wg.Done()
-		for i := 0; i < total; i++ {
-			tracker.entriesForSigner(signer)
-		}
-	}()
+func TestSequenceTrackerPeersForSequence(t *testing.T) {
+	tracker := newSequenceTracker()
+	signer := []byte("signer")
 
-	go func() {
-		defer wg.Done()
-		for i := 0; i < total; i++ {
-			tracker.removePeer(uint16(i%5 + 1))
-		}
-	}()
+	tracker.recordSeenTx(&protomem.SeenTx{Signer: signer, MinSequence: 1, MaxSequence: 5}, 1)
+	tracker.recordSeenTx(&protomem.SeenTx{Signer: signer, MinSequence: 6, MaxSequence: 10}, 2)
 
-	wg.Wait()
+	peers := tracker.getPeersForSignerSequence(signer, 4)
+	require.Len(t, peers, 1)
+	require.Equal(t, uint16(1), peers[0])
 }

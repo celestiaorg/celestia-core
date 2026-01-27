@@ -1,4 +1,4 @@
-syntax = "proto3";
+wsyntax = "proto3";
 package tendermint.types;
 
 option go_package = "github.com/cometbft/cometbft/proto/tendermint/types";

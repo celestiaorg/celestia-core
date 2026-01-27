@@ -79,6 +79,8 @@ type MempoolPeerState struct {
 	TransferType TransferType           `json:"transfer_type"`
 	Signer       string                 `json:"signer,omitempty"`
 	Sequence     uint64                 `json:"sequence,omitempty"`
+	MinSequence  uint64                 `json:"min_sequence,omitempty"`
+	MaxSequence  uint64                 `json:"max_sequence,omitempty"`
 }
 
 // Table returns the table name for the MempoolPeerState struct.
@@ -95,7 +97,7 @@ func WriteMempoolPeerState(
 	txHash []byte,
 	transferType TransferType,
 ) {
-	WriteMempoolPeerStateWithSeq(client, peer, stateUpdate, txHash, transferType, nil, 0)
+	WriteMempoolPeerStateWithSeq(client, peer, stateUpdate, txHash, transferType, nil, 0, 0, 0)
 }
 
 // WriteMempoolPeerStateWithSeq writes a tracing point for the mempool state
@@ -108,6 +110,8 @@ func WriteMempoolPeerStateWithSeq(
 	transferType TransferType,
 	signer []byte,
 	sequence uint64,
+	minSequence uint64,
+	maxSequence uint64,
 ) {
 	// this check is redundant to what is checked during client.Write, although it
 	// is an optimization to avoid allocations from creating the map of fields.
@@ -127,6 +131,8 @@ func WriteMempoolPeerStateWithSeq(
 		TxHash:       bytes.HexBytes(txHash).String(),
 		Signer:       signerStr,
 		Sequence:     sequence,
+		MinSequence:  minSequence,
+		MaxSequence:  maxSequence,
 	})
 }
 

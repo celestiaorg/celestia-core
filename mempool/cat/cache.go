@@ -10,8 +10,9 @@ import (
 // SeenTxSet records transactions that have been
 // seen by other peers but not yet by us
 type SeenTxSet struct {
-	mtx tmsync.Mutex
-	set map[types.TxKey]timestampedPeerSet
+	mtx               tmsync.Mutex
+	set               map[types.TxKey]timestampedPeerSet
+	signerSequenceSet map[string]timestampedPeerSet
 }
 
 type timestampedPeerSet struct {
@@ -21,7 +22,8 @@ type timestampedPeerSet struct {
 
 func NewSeenTxSet() *SeenTxSet {
 	return &SeenTxSet{
-		set: make(map[types.TxKey]timestampedPeerSet),
+		set:               make(map[types.TxKey]timestampedPeerSet),
+		signerSequenceSet: make(map[string]timestampedPeerSet),
 	}
 }
 
@@ -42,10 +44,38 @@ func (s *SeenTxSet) Add(txKey types.TxKey, peer uint16) {
 	}
 }
 
+func (s *SeenTxSet) AddWithSignerSequence(signer []byte, sequence uint64, peer uint16) {
+	if peer == 0 {
+		return
+	}
+	s.mtx.Lock()
+	defer s.mtx.Unlock()
+	signerSequenceKey := signerSequenceKey(signer, sequence)
+	seenSet, exists := s.signerSequenceSet[signerSequenceKey]
+	// if the signer sequence is not in the set, add it
+	if !exists {
+		s.signerSequenceSet[signerSequenceKey] = timestampedPeerSet{
+			peers: map[uint16]struct{}{peer: {}},
+			time:  time.Now().UTC(),
+		}
+		// if the signer sequence is in the set, just add the peer
+	} else {
+		seenSet.peers[peer] = struct{}{}
+	}
+}
 func (s *SeenTxSet) RemoveKey(txKey types.TxKey) {
 	s.mtx.Lock()
 	defer s.mtx.Unlock()
 	delete(s.set, txKey)
+}
+
+func (s *SeenTxSet) RemoveSignerSequence(signer []byte, sequence uint64) {
+	if len(signer) == 0 || sequence == 0 {
+		return
+	}
+	s.mtx.Lock()
+	defer s.mtx.Unlock()
+	delete(s.signerSequenceSet, signerSequenceKey(signer, sequence))
 }
 
 func (s *SeenTxSet) Remove(txKey types.TxKey, peer uint16) {
@@ -70,6 +100,12 @@ func (s *SeenTxSet) RemovePeer(peer uint16) {
 			delete(s.set, key)
 		}
 	}
+	for key, seenSet := range s.signerSequenceSet {
+		delete(seenSet.peers, peer)
+		if len(seenSet.peers) == 0 {
+			delete(s.signerSequenceSet, key)
+		}
+	}
 }
 
 func (s *SeenTxSet) Prune(limit time.Time) {
@@ -78,6 +114,11 @@ func (s *SeenTxSet) Prune(limit time.Time) {
 	for key, seenSet := range s.set {
 		if seenSet.time.Before(limit) {
 			delete(s.set, key)
+		}
+	}
+	for key, seenSet := range s.signerSequenceSet {
+		if seenSet.time.Before(limit) {
+			delete(s.signerSequenceSet, key)
 		}
 	}
 }
@@ -112,11 +153,12 @@ func (s *SeenTxSet) Get(txKey types.TxKey) map[uint16]struct{} {
 func (s *SeenTxSet) Len() int {
 	s.mtx.Lock()
 	defer s.mtx.Unlock()
-	return len(s.set)
+	return len(s.set) + len(s.signerSequenceSet) // TODO: separate these out 
 }
 
 func (s *SeenTxSet) Reset() {
 	s.mtx.Lock()
 	defer s.mtx.Unlock()
 	s.set = make(map[types.TxKey]timestampedPeerSet)
+	s.signerSequenceSet = make(map[string]timestampedPeerSet)
 }

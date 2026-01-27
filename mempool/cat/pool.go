@@ -193,6 +193,20 @@ func (txmp *TxPool) Has(txKey types.TxKey) bool {
 	return txmp.store.has(txKey)
 }
 
+// HasSignerSequence returns true if the transaction is currently in the mempool with the given signer and sequence
+func (txmp *TxPool) HasSignerSequence(signer []byte, sequence uint64) bool {
+	return txmp.store.hasSignerSequence(signer, sequence)
+}
+
+// HasTx returns true if the transaction is currently in the mempool, routing by txKey or signer+sequence.
+// OR do it based on isUpgraded
+func (txmp *TxPool) HasTx(isUpgraded bool, txKey types.TxKey, signer []byte, sequence uint64) bool {
+	if !isUpgraded {
+		return txmp.store.has(txKey)
+	}
+	return txmp.store.hasSignerSequence(signer, sequence)
+}
+
 // Get retrieves a transaction based on the key.
 // Deprecated: use GetTxByKey instead.
 func (txmp *TxPool) Get(txKey types.TxKey) (*types.CachedTx, bool) {
@@ -400,7 +414,9 @@ func (txmp *TxPool) RemoveTxByKey(txKey types.TxKey) error {
 
 func (txmp *TxPool) removeTxByKey(txKey types.TxKey) {
 	txmp.rejectedTxCache.Push(txKey, 0, "")
-	_ = txmp.store.remove(txKey)
+	if tx := txmp.store.remove(txKey); tx != nil {
+		txmp.seenByPeersSet.RemoveSignerSequence(tx.sender, tx.sequence)
+	}
 	txmp.seenByPeersSet.RemoveKey(txKey)
 }
 
@@ -420,10 +436,28 @@ func (txmp *TxPool) Flush() {
 	txmp.txsToBeBroadcast = make([]types.TxKey, 0)
 }
 
+func (txmp *TxPool) PeerHasTxRoute(isUpgraded bool, peer uint16, txKey types.TxKey, signer []byte, sequence uint64) {
+	// if upgraded, add the signer and sequence to the set
+	if isUpgraded {
+		txmp.PeerHasTxWithSequence(peer, signer, sequence)
+	} else {
+		txmp.PeerHasTx(peer, txKey)
+	}
+}
+
 // PeerHasTx marks that the transaction has been seen by a peer.
 func (txmp *TxPool) PeerHasTx(peer uint16, txKey types.TxKey) {
 	txmp.logger.Trace("peer has tx", "peer", peer, "txKey", fmt.Sprintf("%X", txKey))
 	txmp.seenByPeersSet.Add(txKey, peer)
+}
+
+// PeerHasTxWithSequence marks that the transaction has been seen by a peer with a signer and sequence.
+func (txmp *TxPool) PeerHasTxWithSequence(peer uint16, signer []byte, sequence uint64) {
+	if peer == 0 || len(signer) == 0 || sequence == 0 {
+		return
+	}
+	txmp.logger.Trace("peer has tx with sequence", "peer", peer, "signer", fmt.Sprintf("%X", signer), "sequence", sequence)
+	txmp.seenByPeersSet.AddWithSignerSequence(signer, sequence, peer)
 }
 
 // ReapMaxBytesMaxGas returns a slice of valid transactions that fit within the
@@ -701,6 +735,7 @@ func (txmp *TxPool) addNewTransaction(wtx *wrappedTx) error {
 func (txmp *TxPool) evictTx(wtx *wrappedTx) {
 	txKey := wtx.key()
 	txmp.store.remove(txKey)
+	txmp.seenByPeersSet.RemoveSignerSequence(wtx.sender, wtx.sequence)
 	txmp.evictedTxCache.Push(txKey)
 	txmp.metrics.EvictedTxs.Add(1)
 	txmp.logger.Debug(
@@ -759,6 +794,7 @@ func (txmp *TxPool) handleRecheckResult(wtx *wrappedTx, checkTxRes *abci.Respons
 	)
 	txKey := wtx.key()
 	txmp.store.remove(txKey)
+	txmp.seenByPeersSet.RemoveSignerSequence(wtx.sender, wtx.sequence)
 	txmp.metrics.FailedTxs.Add(1)
 	txmp.rejectedTxCache.Push(wtx.tx.Key(), checkTxRes.Code, checkTxRes.Log)
 	txmp.metrics.Size.Set(float64(txmp.Size()))

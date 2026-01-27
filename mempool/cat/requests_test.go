@@ -32,11 +32,11 @@ func TestRequestSchedulerRerequest(t *testing.T) {
 
 	// create a request
 	closeCh := make(chan struct{})
-	require.True(t, requests.Add(key, signer, sequence, peerA, func(cbKey types.TxKey, timedOutPeer uint16) {
+	require.True(t, requests.Add(key, signer, sequence, peerA, func(cbKey types.TxKey, cbSigner []byte, cbSequence uint64, timedOutPeer uint16) {
 		require.Equal(t, key, cbKey)
 		require.Equal(t, peerA, timedOutPeer)
 		// the first peer times out to respond so we ask the second peer
-		require.True(t, requests.Add(cbKey, signer, sequence, peerB, func(retryKey types.TxKey, retryPeer uint16) {
+		require.True(t, requests.Add(cbKey, signer, sequence, peerB, func(retryKey types.TxKey, retrySigner []byte, retrySequence uint64, retryPeer uint16) {
 			require.Equal(t, cbKey, retryKey)
 			require.Equal(t, peerB, retryPeer)
 			t.Fatal("did not expect to timeout")

@@ -68,7 +68,7 @@ func sequenceRequestKey(signer []byte, sequence uint64) types.TxKey {
 	return key
 }
 
-func (r *requestScheduler) Add(key types.TxKey, signer []byte, sequence uint64, peer uint16, onTimeout func(key types.TxKey, peer uint16)) bool {
+func (r *requestScheduler) Add(key types.TxKey, signer []byte, sequence uint64, peer uint16, onTimeout func(key types.TxKey, signer []byte, sequence uint64, peer uint16)) bool {
 	if peer == 0 {
 		return false
 	}
@@ -110,7 +110,7 @@ func (r *requestScheduler) Add(key types.TxKey, signer []byte, sequence uint64, 
 
 		// trigger callback. Callback can `Add` the tx back to the scheduler
 		if onTimeout != nil {
-			onTimeout(key, peer)
+			onTimeout(key, signer, sequence, peer)
 		}
 
 		// We set another timeout because the peer could still send
@@ -163,6 +163,14 @@ func (r *requestScheduler) ForSignerSequence(signer []byte, sequence uint64) uin
 	return r.requestsBySequence[string(signer)][sequence]
 }
 
+// ForTxRoute returns the peer ID for a txKey request or a signer+sequence request.
+func (r *requestScheduler) ForTxRoute(isUpgraded bool, key types.TxKey, signer []byte, sequence uint64) uint16 {
+	if !isUpgraded {
+		return r.ForTx(key)
+	}
+	return r.ForSignerSequence(signer, sequence)
+}
+
 func (r *requestScheduler) Has(peer uint16, key types.TxKey) bool {
 	r.mtx.Lock()
 	defer r.mtx.Unlock()
@@ -187,6 +195,13 @@ func (r *requestScheduler) HasBySequence(peer uint16, signer []byte, sequence ui
 	}
 	requestedPeer, ok := seqMap[sequence]
 	return ok && requestedPeer == peer
+}
+
+func (r *requestScheduler) HasRoute(isUpgraded bool, peer uint16, key types.TxKey, signer []byte, sequence uint64) bool {
+	if isUpgraded {
+		return r.HasBySequence(peer, signer, sequence)
+	}
+	return r.Has(peer, key)
 }
 
 // CountForPeer returns the number of active requests to a specific peer.
@@ -218,7 +233,7 @@ func (r *requestScheduler) ClearAllRequestsFrom(peer uint16) requestSet {
 	return requests
 }
 
-func (r *requestScheduler) MarkReceived(peer uint16, key types.TxKey, signer []byte, sequence uint64) bool {
+func (r *requestScheduler) MarkReceived(peer uint16, key types.TxKey) bool {
 	r.mtx.Lock()
 	defer r.mtx.Unlock()
 
@@ -226,29 +241,41 @@ func (r *requestScheduler) MarkReceived(peer uint16, key types.TxKey, signer []b
 		return false
 	}
 
-	if info, ok := r.requestsByPeer[peer][key]; ok {
-		info.timer.Stop()
+	if timer, ok := r.requestsByPeer[peer][key]; ok {
+		timer.timer.Stop()
 	} else {
-		if len(signer) == 0 || sequence == 0 {
-			return false
-		}
-		for reqKey, info := range r.requestsByPeer[peer] {
-			if info.sequence == sequence && string(info.signer) == string(signer) {
-				info.timer.Stop()
-				delete(r.requestsByPeer[peer], reqKey)
-				delete(r.requestsBySequence[string(signer)], sequence)
-				return true
-			}
-		}
 		return false
 	}
 
 	delete(r.requestsByPeer[peer], key)
 	delete(r.requestsByTx, key)
-	if len(signer) > 0 && sequence > 0 {
-		delete(r.requestsBySequence[string(signer)], sequence)
-	}
 	return true
+}
+
+func (r *requestScheduler) MarkReceivedRoute(isUpgraded bool, peer uint16, key types.TxKey, signer []byte, sequence uint64) bool {
+	if isUpgraded {
+		return r.MarkReceivedBySequence(peer, signer, sequence)
+	}
+	return r.MarkReceived(peer, key)
+}
+
+func (r *requestScheduler) MarkReceivedBySequence(peer uint16, signer []byte, sequence uint64) bool {
+	r.mtx.Lock()
+	defer r.mtx.Unlock()
+
+	requestSet, ok := r.requestsByPeer[peer]
+	if !ok {
+		return false
+	}
+	for reqKey, info := range requestSet {
+		if info.sequence == sequence && string(info.signer) == string(signer) {
+			info.timer.Stop()
+			delete(requestSet, reqKey)
+			delete(r.requestsBySequence[string(signer)], sequence)
+			return true
+		}
+	}
+	return false
 }
 
 // Close stops all timers and clears all requests.

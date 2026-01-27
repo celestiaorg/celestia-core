@@ -44,17 +44,15 @@ func (ps peerState) GetHeight() int64 {
 	return ps.height
 }
 
-// testAddPending is a helper that records a SeenTx in the sequence tracker.
+// testAddPending is a helper that records a range SeenTx in the sequence tracker.
 // It creates a SeenTx message with MinSequence=1 and MaxSequence=sequence.
-func testAddPending(st *sequenceTracker, signer []byte, txKey types.TxKey, sequence uint64, peerID uint16) {
+func testAddPending(st *sequenceTracker, signer []byte, sequence uint64, peerID uint16) {
 	msg := &protomem.SeenTx{
-		TxKey:       txKey[:],
 		Signer:      signer,
-		Sequence:    sequence,
 		MinSequence: 1,
 		MaxSequence: sequence,
 	}
-	st.recordSeenTx(msg, txKey, peerID)
+	st.recordSeenTx(msg, peerID)
 }
 
 // Send a bunch of txs to the first reactor's mempool and wait for them all to
@@ -710,7 +708,7 @@ func TestReactorSequenceValidation(t *testing.T) {
 	})
 }
 
-func TestReactorRequestsQueuedTxAfterSequenceBecomesAvailable(t *testing.T) {
+func TestReactorRequestsSequenceFromRange(t *testing.T) {
 	app := newSequenceTrackingApp()
 	cc := proxy.NewLocalClientCreator(app)
 	pool, cleanup := newMempoolWithApp(cc)
@@ -720,15 +718,11 @@ func TestReactorRequestsQueuedTxAfterSequenceBecomesAvailable(t *testing.T) {
 	require.NoError(t, err)
 
 	signer := []byte("sender-000-0")
-	app.SetSequence(string(signer), 1)
+	app.SetSequence(string(signer), 2)
 
 	sourcePeer := genPeer()
 	_, err = reactor.InitPeer(sourcePeer)
 	require.NoError(t, err)
-	sourcePeer.On("Send", mock.Anything).Return(true).Maybe()
-
-	targetTx := newDefaultTx("future-tx")
-	targetKey := targetTx.Key()
 
 	wantEnvelope := p2p.Envelope{
 		ChannelID: MempoolWantsChannel,
@@ -743,27 +737,11 @@ func TestReactorRequestsQueuedTxAfterSequenceBecomesAvailable(t *testing.T) {
 	reactor.Receive(p2p.Envelope{
 		ChannelID: MempoolDataChannel,
 		Message: &protomem.SeenTx{
-			TxKey:    targetKey[:],
-			Signer:   signer,
-			Sequence: 2,
+			Signer:      signer,
+			MinSequence: 1,
+			MaxSequence: 2,
 		},
 		Src: sourcePeer,
-	})
-
-	require.Len(t, reactor.sequenceTracker.entriesForSigner(signer), 1)
-
-	providerPeer := genPeer()
-	_, err = reactor.InitPeer(providerPeer)
-	require.NoError(t, err)
-	providerPeer.On("Send", mock.Anything).Return(true).Maybe()
-
-	app.SetSequence(string(signer), 2)
-
-	priorTx := newDefaultTx("prior-tx")
-	reactor.Receive(p2p.Envelope{
-		ChannelID: MempoolDataChannel,
-		Message:   &protomem.Txs{Txs: [][]byte{priorTx}},
-		Src:       providerPeer,
 	})
 
 	require.Eventually(t, func() bool {
@@ -771,8 +749,6 @@ func TestReactorRequestsQueuedTxAfterSequenceBecomesAvailable(t *testing.T) {
 	}, time.Second, 10*time.Millisecond)
 
 	sourcePeer.AssertExpectations(t)
-	entries := reactor.sequenceTracker.entriesForSigner(signer)
-	require.Len(t, entries, 1)
 	require.EqualValues(t, reactor.ids.GetIDForPeer(sourcePeer.ID()), reactor.requests.ForSignerSequence(signer, 2))
 }
 
@@ -806,7 +782,7 @@ func TestPendingSeenClearedWhenTxArrives(t *testing.T) {
 		Src: sourcePeer,
 	})
 
-	require.Len(t, reactor.sequenceTracker.entriesForSigner(signer), 1)
+	require.Len(t, reactor.legacyTxKeyTracker.entriesForSigner(signer), 1)
 
 	providerPeer := genPeer()
 	_, err = reactor.InitPeer(providerPeer)
@@ -819,7 +795,7 @@ func TestPendingSeenClearedWhenTxArrives(t *testing.T) {
 		Src:       providerPeer,
 	})
 
-	require.Empty(t, reactor.sequenceTracker.entriesForSigner(signer))
+	require.Empty(t, reactor.legacyTxKeyTracker.entriesForSigner(signer))
 	sourcePeer.AssertNotCalled(t, "TrySend", mock.Anything)
 }
 
@@ -867,7 +843,7 @@ func TestTxsWithoutMetadataUsesSeenByTxKey(t *testing.T) {
 	stats := reactor.receivedBuffer.statsForSigner(signer)
 	require.Equal(t, 1, stats.Size)
 	require.Equal(t, uint64(2), stats.MinSeq)
-	require.Empty(t, reactor.sequenceTracker.entriesForSigner(signer))
+	require.Empty(t, reactor.legacyTxKeyTracker.entriesForSigner(signer))
 }
 
 func TestTxsWithMetadataBuffersWithoutSeenTx(t *testing.T) {
@@ -933,11 +909,11 @@ func TestPendingSeenClearedOnPeerRemoval(t *testing.T) {
 		Src: sourcePeer,
 	})
 
-	require.Len(t, reactor.sequenceTracker.entriesForSigner(signer), 1)
+	require.Len(t, reactor.legacyTxKeyTracker.entriesForSigner(signer), 1)
 
 	reactor.RemovePeer(sourcePeer, "disconnect")
 
-	entries := reactor.sequenceTracker.entriesForSigner(signer)
+	entries := reactor.legacyTxKeyTracker.entriesForSigner(signer)
 	require.Len(t, entries, 1)
 	require.Nil(t, entries[0].peerIDs())
 }
@@ -973,12 +949,12 @@ func TestPendingSeenDroppedWhenSequenceAdvances(t *testing.T) {
 		Src: sourcePeer,
 	})
 
-	require.Len(t, reactor.sequenceTracker.entriesForSigner(signer), 1)
+	require.Len(t, reactor.legacyTxKeyTracker.entriesForSigner(signer), 1)
 
 	app.SetSequence(string(signer), 4)
 	reactor.processSequenceGapsForSigner(signer)
 
-	require.Empty(t, reactor.sequenceTracker.entriesForSigner(signer))
+	require.Empty(t, reactor.legacyTxKeyTracker.entriesForSigner(signer))
 	sourcePeer.AssertNotCalled(t, "TrySend", mock.Anything)
 
 }
@@ -999,18 +975,12 @@ func TestProcessPendingSeenForSignerRequestsConsecutiveSequences(t *testing.T) {
 	_, err = reactor.InitPeer(peer)
 	require.NoError(t, err)
 
-	// Add consecutive sequences 5, 6, 7 to pending
-	txs := make([]types.Tx, 3)
-	keys := make([]types.TxKey, 3)
-	for i := 0; i < 3; i++ {
-		txs[i] = newDefaultTx("tx-" + strconv.Itoa(i))
-		keys[i] = txs[i].Key()
-		peerID := reactor.ids.GetIDForPeer(peer.ID())
-		testAddPending(reactor.sequenceTracker, signer, keys[i], uint64(5+i), peerID)
-	}
+	peerID := reactor.ids.GetIDForPeer(peer.ID())
+	reactor.upgradedPeers.mark(peerID)
+	testAddPending(reactor.sequenceTracker, signer, 7, peerID)
 
 	// Set up expectations for WantTx messages (by sequence)
-	for i := 0; i < len(keys); i++ {
+	for i := 0; i < 3; i++ {
 		sequence := uint64(5 + i)
 		peer.On("Send", p2p.Envelope{
 			ChannelID: MempoolWantsChannel,
@@ -1027,13 +997,13 @@ func TestProcessPendingSeenForSignerRequestsConsecutiveSequences(t *testing.T) {
 	peer.AssertExpectations(t)
 
 	// All sequences should be requested
-	for i := 0; i < len(keys); i++ {
+	for i := 0; i < 3; i++ {
 		sequence := uint64(5 + i)
 		require.NotZero(t, reactor.requests.ForSignerSequence(signer, sequence))
 	}
 }
 
-func TestProcessPendingSeenForSignerStopsAtGap(t *testing.T) {
+func TestProcessPendingSeenForSignerRequestsUpToMaxRange(t *testing.T) {
 	app := newSequenceTrackingApp()
 	cc := proxy.NewLocalClientCreator(app)
 	pool, cleanup := newMempoolWithApp(cc)
@@ -1049,44 +1019,28 @@ func TestProcessPendingSeenForSignerStopsAtGap(t *testing.T) {
 	_, err = reactor.InitPeer(peer)
 	require.NoError(t, err)
 
-	// Add sequences 5, 6, 8 (gap at 7)
-	tx5 := newDefaultTx("tx-5")
-	tx6 := newDefaultTx("tx-6")
-	tx8 := newDefaultTx("tx-8")
-	key5 := tx5.Key()
-	key6 := tx6.Key()
-	key8 := tx8.Key()
-
 	peerID := reactor.ids.GetIDForPeer(peer.ID())
-	testAddPending(reactor.sequenceTracker, signer, key5, 5, peerID)
-	testAddPending(reactor.sequenceTracker, signer, key6, 6, peerID)
-	testAddPending(reactor.sequenceTracker, signer, key8, 8, peerID) // gap - sequence 7 is missing
+	reactor.upgradedPeers.mark(peerID)
+	testAddPending(reactor.sequenceTracker, signer, 8, peerID)
 
-	// Only sequences 5 and 6 should be requested (stops at gap)
-	peer.On("Send", p2p.Envelope{
-		ChannelID: MempoolWantsChannel,
-		Message: &protomem.Message{
-			Sum: &protomem.Message_WantTx{
-				WantTx: &protomem.WantTx{Signer: signer, Sequence: 5},
+	for seq := uint64(5); seq <= 8; seq++ {
+		peer.On("Send", p2p.Envelope{
+			ChannelID: MempoolWantsChannel,
+			Message: &protomem.Message{
+				Sum: &protomem.Message_WantTx{
+					WantTx: &protomem.WantTx{Signer: signer, Sequence: seq},
+				},
 			},
-		},
-	}).Return(true).Once()
-
-	peer.On("Send", p2p.Envelope{
-		ChannelID: MempoolWantsChannel,
-		Message: &protomem.Message{
-			Sum: &protomem.Message_WantTx{
-				WantTx: &protomem.WantTx{Signer: signer, Sequence: 6},
-			},
-		},
-	}).Return(true).Once()
+		}).Return(true).Once()
+	}
 
 	reactor.processSequenceGapsForSigner(signer)
 
 	peer.AssertExpectations(t)
 
-	// Sequence 8 should NOT be requested
-	require.Zero(t, reactor.requests.ForSignerSequence(signer, 8))
+	for seq := uint64(5); seq <= 8; seq++ {
+		require.NotZero(t, reactor.requests.ForSignerSequence(signer, seq))
+	}
 }
 
 func TestProcessPendingSeenForSignerSkipsAlreadyInMempool(t *testing.T) {
@@ -1112,13 +1066,12 @@ func TestProcessPendingSeenForSignerSkipsAlreadyInMempool(t *testing.T) {
 	require.NoError(t, err)
 	require.True(t, pool.Has(key5))
 
-	// Add sequences 5, 6 to pending (5 is already in mempool)
-	tx6 := newDefaultTx("tx-6")
-	key6 := tx6.Key()
+	// Add range covering sequences 5, 6 (5 is already in mempool)
 
 	peerID := reactor.ids.GetIDForPeer(peer.ID())
-	testAddPending(reactor.sequenceTracker, signer, key5, 5, peerID)
-	testAddPending(reactor.sequenceTracker, signer, key6, 6, peerID)
+	reactor.upgradedPeers.mark(peerID)
+	testAddPending(reactor.sequenceTracker, signer, 5, peerID)
+	testAddPending(reactor.sequenceTracker, signer, 6, peerID)
 
 	// Only sequence 6 should be requested (5 is already in mempool)
 	peer.On("Send", p2p.Envelope{
@@ -1156,11 +1109,9 @@ func TestProcessPendingSeenForSignerRespectsMaxBuffer(t *testing.T) {
 
 	// Add more than maxReceivedBufferSize consecutive sequences
 	peerID := reactor.ids.GetIDForPeer(peer.ID())
+	reactor.upgradedPeers.mark(peerID)
 	numTxs := maxReceivedBufferSize + 10
-	for i := 0; i < numTxs; i++ {
-		tx := newDefaultTx("tx-" + strconv.Itoa(i))
-		testAddPending(reactor.sequenceTracker, signer, tx.Key(), uint64(1+i), peerID)
-	}
+	testAddPending(reactor.sequenceTracker, signer, uint64(numTxs), peerID)
 
 	// Expect only maxReceivedBufferSize requests
 	peer.On("Send", mock.Anything).Return(true).Maybe()
@@ -1188,14 +1139,10 @@ func TestProcessPendingSeenForSignerSkipsAlreadyRequested(t *testing.T) {
 	_, err = reactor.InitPeer(peer)
 	require.NoError(t, err)
 
-	tx5 := newDefaultTx("tx-5")
-	tx6 := newDefaultTx("tx-6")
-	key5 := tx5.Key()
-	key6 := tx6.Key()
-
 	peerID := reactor.ids.GetIDForPeer(peer.ID())
-	testAddPending(reactor.sequenceTracker, signer, key5, 5, peerID)
-	testAddPending(reactor.sequenceTracker, signer, key6, 6, peerID)
+	reactor.upgradedPeers.mark(peerID)
+	testAddPending(reactor.sequenceTracker, signer, 5, peerID)
+	testAddPending(reactor.sequenceTracker, signer, 6, peerID)
 
 	// Mark sequence 5 as already requested
 	reactor.requests.Add(types.TxKey{}, signer, 5, peerID, nil)

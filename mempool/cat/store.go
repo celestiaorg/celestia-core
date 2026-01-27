@@ -85,6 +85,24 @@ func (s *store) has(txKey types.TxKey) bool {
 	return has
 }
 
+func (s *store) hasSignerSequence(signer []byte, sequence uint64) bool {
+	s.mtx.RLock()
+	defer s.mtx.RUnlock()
+	seqMap, ok := s.setsBySigner[string(signer)]
+	if !ok {
+		return false
+	}
+	for _, tx := range seqMap.txs {
+		if tx.sequence == sequence {
+			return true
+		}
+		if tx.sequence > sequence {
+			break
+		}
+	}
+	return false
+}
+
 // remove removes a transaction from the store.
 func (s *store) remove(txKey types.TxKey) bool {
 	s.mtx.Lock()
