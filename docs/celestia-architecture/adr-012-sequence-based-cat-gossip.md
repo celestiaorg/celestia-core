@@ -64,29 +64,6 @@ This is used to:
 - New channel ID dedicated to upgraded peers only.
 - Legacy peers continue to use the existing mempool channels.
 
-### Data Structures
-
-```go
-// Peer-scoped ranges by signer. Simplified to only track ranges, not individual txs.
-type sequenceTracker struct {
-  // peerID -> signerKey -> range
-  // Compact representation: only min/max per peer-signer pair
-  ranges map[uint16]map[string]seqRange
-}
-
-type seqRange struct {
-  min uint64  // Lower bound of sequences this peer can serve
-  max uint64  // Highest sequence this peer has seen
-}
-
-// Request scheduler request tracking
-type requestScheduler struct {
-  mu sync.Mutex
-  // Primary: sequence-based requests (upgraded peers)
-  bySignerSequence map[string]uint16  // string(signer+sequence) -> peerID
-}
-
-```
 
 ## Messages
 
