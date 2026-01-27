@@ -23,7 +23,9 @@ var _ = math.Inf
 const _ = proto.GoGoProtoPackageIsVersion3 // please upgrade the proto package
 
 type Txs struct {
-	Txs [][]byte `protobuf:"bytes,1,rep,name=txs,proto3" json:"txs,omitempty"`
+	Txs       [][]byte `protobuf:"bytes,1,rep,name=txs,proto3" json:"txs,omitempty"`
+	Signers   [][]byte `protobuf:"bytes,2,rep,name=signers,proto3" json:"signers,omitempty"`
+	Sequences []uint64 `protobuf:"varint,3,rep,packed,name=sequences,proto3" json:"sequences,omitempty"`
 }
 
 func (m *Txs) Reset()         { *m = Txs{} }
@@ -66,10 +68,26 @@ func (m *Txs) GetTxs() [][]byte {
 	return nil
 }
 
+func (m *Txs) GetSigners() [][]byte {
+	if m != nil {
+		return m.Signers
+	}
+	return nil
+}
+
+func (m *Txs) GetSequences() []uint64 {
+	if m != nil {
+		return m.Sequences
+	}
+	return nil
+}
+
 type SeenTx struct {
-	TxKey    []byte `protobuf:"bytes,1,opt,name=tx_key,json=txKey,proto3" json:"tx_key,omitempty"`
-	Sequence uint64 `protobuf:"varint,2,opt,name=sequence,proto3" json:"sequence,omitempty"`
-	Signer   []byte `protobuf:"bytes,3,opt,name=signer,proto3" json:"signer,omitempty"`
+	TxKey       []byte `protobuf:"bytes,1,opt,name=tx_key,json=txKey,proto3" json:"tx_key,omitempty"`
+	Sequence    uint64 `protobuf:"varint,2,opt,name=sequence,proto3" json:"sequence,omitempty"`
+	Signer      []byte `protobuf:"bytes,3,opt,name=signer,proto3" json:"signer,omitempty"`
+	MinSequence uint64 `protobuf:"varint,4,opt,name=min_sequence,json=minSequence,proto3" json:"min_sequence,omitempty"`
+	MaxSequence uint64 `protobuf:"varint,5,opt,name=max_sequence,json=maxSequence,proto3" json:"max_sequence,omitempty"`
 }
 
 func (m *SeenTx) Reset()         { *m = SeenTx{} }
@@ -126,8 +144,24 @@ func (m *SeenTx) GetSigner() []byte {
 	return nil
 }
 
+func (m *SeenTx) GetMinSequence() uint64 {
+	if m != nil {
+		return m.MinSequence
+	}
+	return 0
+}
+
+func (m *SeenTx) GetMaxSequence() uint64 {
+	if m != nil {
+		return m.MaxSequence
+	}
+	return 0
+}
+
 type WantTx struct {
-	TxKey []byte `protobuf:"bytes,1,opt,name=tx_key,json=txKey,proto3" json:"tx_key,omitempty"`
+	TxKey    []byte `protobuf:"bytes,1,opt,name=tx_key,json=txKey,proto3" json:"tx_key,omitempty"`
+	Signer   []byte `protobuf:"bytes,2,opt,name=signer,proto3" json:"signer,omitempty"`
+	Sequence uint64 `protobuf:"varint,3,opt,name=sequence,proto3" json:"sequence,omitempty"`
 }
 
 func (m *WantTx) Reset()         { *m = WantTx{} }
@@ -168,6 +202,20 @@ func (m *WantTx) GetTxKey() []byte {
 		return m.TxKey
 	}
 	return nil
+}
+
+func (m *WantTx) GetSigner() []byte {
+	if m != nil {
+		return m.Signer
+	}
+	return nil
+}
+
+func (m *WantTx) GetSequence() uint64 {
+	if m != nil {
+		return m.Sequence
+	}
+	return 0
 }
 
 type Message struct {
@@ -279,27 +327,31 @@ func init() {
 func init() { proto.RegisterFile("tendermint/mempool/types.proto", fileDescriptor_2af51926fdbcbc05) }
 
 var fileDescriptor_2af51926fdbcbc05 = []byte{
-	// 307 bytes of a gzipped FileDescriptorProto
-	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0x74, 0x91, 0xc1, 0x4a, 0x72, 0x41,
-	0x14, 0xc7, 0xef, 0x7c, 0xf7, 0x73, 0x8c, 0xa3, 0x8b, 0x18, 0x28, 0x2f, 0x2e, 0x26, 0xb9, 0xab,
-	0x0b, 0xc1, 0xbd, 0x60, 0xf8, 0x02, 0xae, 0x84, 0x88, 0xe0, 0x2a, 0x04, 0x6d, 0x44, 0xed, 0x64,
-	0x52, 0x33, 0x63, 0xce, 0x11, 0xc7, 0xb7, 0xe8, 0x3d, 0x7a, 0x91, 0x96, 0x2e, 0x5b, 0x86, 0xbe,
-	0x48, 0x38, 0xd7, 0x72, 0x61, 0xee, 0xfe, 0x87, 0x3f, 0xbf, 0xc3, 0xef, 0x70, 0x40, 0x12, 0xea,
-	0x07, 0x9c, 0xa9, 0x89, 0xa6, 0x4c, 0xa1, 0x9a, 0x1a, 0xf3, 0x92, 0xd1, 0x72, 0x8a, 0x36, 0x9d,
-	0xce, 0x0c, 0x19, 0x21, 0xf6, 0x7d, 0xba, 0xeb, 0xe3, 0x1a, 0x84, 0x3d, 0x67, 0xc5, 0x29, 0x84,
-	0xe4, 0x6c, 0xc4, 0x1a, 0x61, 0x52, 0xcd, 0xb7, 0x31, 0xee, 0x02, 0xef, 0x22, 0xea, 0x9e, 0x13,
-	0x67, 0xc0, 0xc9, 0xf5, 0x9f, 0x71, 0x19, 0xb1, 0x06, 0x4b, 0xaa, 0x79, 0x89, 0xdc, 0x35, 0x2e,
-	0x45, 0x1d, 0x4e, 0x2c, 0xbe, 0xce, 0x51, 0x8f, 0x30, 0xfa, 0xd7, 0x60, 0xc9, 0xff, 0xfc, 0x77,
-	0x16, 0xe7, 0xc0, 0xed, 0x64, 0xac, 0x71, 0x16, 0x85, 0x1e, 0xd9, 0x4d, 0xf1, 0x05, 0xf0, 0xbb,
-	0x81, 0xa6, 0xa3, 0x4b, 0xe3, 0x77, 0x06, 0xe5, 0x1b, 0xb4, 0x76, 0x30, 0x46, 0x71, 0xf9, 0xe3,
-	0xc4, 0x92, 0x4a, 0xb3, 0x96, 0x1e, 0xca, 0xa7, 0x3d, 0x67, 0x3b, 0x81, 0xd7, 0x15, 0x2d, 0x28,
-	0x5b, 0x44, 0xdd, 0x27, 0xe7, 0x65, 0x2a, 0xcd, 0xfa, 0x5f, 0x40, 0x71, 0x51, 0x27, 0xc8, 0xb9,
-	0x2d, 0x6e, 0x6b, 0x41, 0x79, 0x31, 0xd0, 0xb4, 0xc5, 0xc2, 0xe3, 0x58, 0xe1, 0xbc, 0xc5, 0x16,
-	0x3e, 0xb5, 0x4b, 0x10, 0xda, 0xb9, 0x6a, 0xdf, 0x7e, 0xac, 0x25, 0x5b, 0xad, 0x25, 0xfb, 0x5a,
-	0x4b, 0xf6, 0xb6, 0x91, 0xc1, 0x6a, 0x23, 0x83, 0xcf, 0x8d, 0x0c, 0xee, 0x5b, 0xe3, 0x09, 0x3d,
-	0xcd, 0x87, 0xe9, 0xc8, 0xa8, 0x6c, 0x64, 0x14, 0xd2, 0xf0, 0x91, 0xf6, 0xc1, 0xbf, 0x23, 0x3b,
-	0xfc, 0xd6, 0x90, 0xfb, 0xe6, 0xea, 0x3b, 0x00, 0x00, 0xff, 0xff, 0x9c, 0xe5, 0xe6, 0xbe, 0xca,
-	0x01, 0x00, 0x00,
+	// 374 bytes of a gzipped FileDescriptorProto
+	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0x74, 0x92, 0x41, 0x6b, 0xe2, 0x40,
+	0x14, 0xc7, 0x33, 0x8e, 0x26, 0xbb, 0x4f, 0x0f, 0xcb, 0xc0, 0xee, 0x06, 0x59, 0x42, 0x36, 0xa7,
+	0xc0, 0x42, 0x02, 0x2e, 0x7e, 0x01, 0x4f, 0x42, 0x29, 0x42, 0x14, 0x0a, 0xbd, 0x48, 0xb4, 0xaf,
+	0x36, 0xb4, 0x33, 0xb1, 0xce, 0x88, 0xe3, 0xb7, 0xe8, 0xb5, 0x9f, 0xa1, 0x5f, 0xa4, 0x47, 0x8f,
+	0x3d, 0x16, 0xfd, 0x22, 0x25, 0x89, 0x31, 0x15, 0xeb, 0xed, 0xbd, 0x79, 0xff, 0x1f, 0xff, 0x37,
+	0x7f, 0x1e, 0x38, 0x0a, 0xc5, 0x0d, 0x2e, 0x78, 0x22, 0x54, 0xc8, 0x91, 0xcf, 0xd3, 0xf4, 0x21,
+	0x54, 0xeb, 0x39, 0xca, 0x60, 0xbe, 0x48, 0x55, 0xca, 0x58, 0x35, 0x0f, 0xf6, 0x73, 0x6f, 0x00,
+	0x74, 0xa4, 0x25, 0xfb, 0x01, 0x54, 0x69, 0x69, 0x13, 0x97, 0xfa, 0xad, 0x28, 0x2b, 0x99, 0x0d,
+	0x96, 0x4c, 0x66, 0x02, 0x17, 0xd2, 0xae, 0xe5, 0xaf, 0x65, 0xcb, 0xfe, 0xc0, 0x77, 0x89, 0x8f,
+	0x4b, 0x14, 0x53, 0x94, 0x36, 0x75, 0xa9, 0x5f, 0x8f, 0xaa, 0x07, 0xef, 0x99, 0x80, 0x39, 0x44,
+	0x14, 0x23, 0xcd, 0x7e, 0x82, 0xa9, 0xf4, 0xf8, 0x1e, 0xd7, 0x36, 0x71, 0x89, 0xdf, 0x8a, 0x1a,
+	0x4a, 0x5f, 0xe0, 0x9a, 0xb5, 0xe1, 0x5b, 0x29, 0xb7, 0x6b, 0x2e, 0xf1, 0xeb, 0xd1, 0xa1, 0x67,
+	0xbf, 0xc0, 0x2c, 0x6c, 0x6c, 0x9a, 0x23, 0xfb, 0x8e, 0xfd, 0x85, 0x16, 0x4f, 0xc4, 0xf8, 0xc0,
+	0xd5, 0x73, 0xae, 0xc9, 0x13, 0x31, 0x2c, 0xd1, 0x4c, 0x12, 0xeb, 0x4a, 0xd2, 0xd8, 0x4b, 0x62,
+	0x5d, 0x4a, 0xbc, 0x21, 0x98, 0x57, 0xb1, 0x50, 0xe7, 0x57, 0xab, 0xec, 0x6b, 0x47, 0xf6, 0x9f,
+	0x57, 0xa6, 0xc7, 0x2b, 0x7b, 0x2f, 0x04, 0xac, 0x4b, 0x94, 0x32, 0x9e, 0x21, 0xfb, 0x57, 0xc6,
+	0x48, 0xfc, 0x66, 0xe7, 0x77, 0x70, 0x9a, 0x77, 0x30, 0xd2, 0xb2, 0x6f, 0x14, 0x09, 0x77, 0xc1,
+	0x92, 0x88, 0x62, 0xac, 0x74, 0xee, 0xd6, 0xec, 0xb4, 0xbf, 0x02, 0x8a, 0x2c, 0xfb, 0x46, 0x64,
+	0xca, 0x22, 0xd5, 0x2e, 0x58, 0xab, 0x58, 0xa8, 0x0c, 0xa3, 0xe7, 0xb1, 0xe2, 0x9f, 0x19, 0xb6,
+	0xca, 0xab, 0x5e, 0x03, 0xa8, 0x5c, 0xf2, 0xde, 0xe0, 0x75, 0xeb, 0x90, 0xcd, 0xd6, 0x21, 0xef,
+	0x5b, 0x87, 0x3c, 0xed, 0x1c, 0x63, 0xb3, 0x73, 0x8c, 0xb7, 0x9d, 0x63, 0x5c, 0x77, 0x67, 0x89,
+	0xba, 0x5b, 0x4e, 0x82, 0x69, 0xca, 0xc3, 0x69, 0xca, 0x51, 0x4d, 0x6e, 0x55, 0x55, 0xe4, 0x17,
+	0x14, 0x9e, 0x1e, 0xd8, 0xc4, 0xcc, 0x27, 0xff, 0x3f, 0x02, 0x00, 0x00, 0xff, 0xff, 0x6b, 0xe5,
+	0xbc, 0xb7, 0x7d, 0x02, 0x00, 0x00,
 }
 
 func (m *Txs) Marshal() (dAtA []byte, err error) {
@@ -322,6 +374,33 @@ func (m *Txs) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	_ = i
 	var l int
 	_ = l
+	if len(m.Sequences) > 0 {
+		dAtA2 := make([]byte, len(m.Sequences)*10)
+		var j1 int
+		for _, num := range m.Sequences {
+			for num >= 1<<7 {
+				dAtA2[j1] = uint8(uint64(num)&0x7f | 0x80)
+				num >>= 7
+				j1++
+			}
+			dAtA2[j1] = uint8(num)
+			j1++
+		}
+		i -= j1
+		copy(dAtA[i:], dAtA2[:j1])
+		i = encodeVarintTypes(dAtA, i, uint64(j1))
+		i--
+		dAtA[i] = 0x1a
+	}
+	if len(m.Signers) > 0 {
+		for iNdEx := len(m.Signers) - 1; iNdEx >= 0; iNdEx-- {
+			i -= len(m.Signers[iNdEx])
+			copy(dAtA[i:], m.Signers[iNdEx])
+			i = encodeVarintTypes(dAtA, i, uint64(len(m.Signers[iNdEx])))
+			i--
+			dAtA[i] = 0x12
+		}
+	}
 	if len(m.Txs) > 0 {
 		for iNdEx := len(m.Txs) - 1; iNdEx >= 0; iNdEx-- {
 			i -= len(m.Txs[iNdEx])
@@ -354,6 +433,16 @@ func (m *SeenTx) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	_ = i
 	var l int
 	_ = l
+	if m.MaxSequence != 0 {
+		i = encodeVarintTypes(dAtA, i, uint64(m.MaxSequence))
+		i--
+		dAtA[i] = 0x28
+	}
+	if m.MinSequence != 0 {
+		i = encodeVarintTypes(dAtA, i, uint64(m.MinSequence))
+		i--
+		dAtA[i] = 0x20
+	}
 	if len(m.Signer) > 0 {
 		i -= len(m.Signer)
 		copy(dAtA[i:], m.Signer)
@@ -396,6 +485,18 @@ func (m *WantTx) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	_ = i
 	var l int
 	_ = l
+	if m.Sequence != 0 {
+		i = encodeVarintTypes(dAtA, i, uint64(m.Sequence))
+		i--
+		dAtA[i] = 0x18
+	}
+	if len(m.Signer) > 0 {
+		i -= len(m.Signer)
+		copy(dAtA[i:], m.Signer)
+		i = encodeVarintTypes(dAtA, i, uint64(len(m.Signer)))
+		i--
+		dAtA[i] = 0x12
+	}
 	if len(m.TxKey) > 0 {
 		i -= len(m.TxKey)
 		copy(dAtA[i:], m.TxKey)
@@ -524,6 +625,19 @@ func (m *Txs) Size() (n int) {
 			n += 1 + l + sovTypes(uint64(l))
 		}
 	}
+	if len(m.Signers) > 0 {
+		for _, b := range m.Signers {
+			l = len(b)
+			n += 1 + l + sovTypes(uint64(l))
+		}
+	}
+	if len(m.Sequences) > 0 {
+		l = 0
+		for _, e := range m.Sequences {
+			l += sovTypes(uint64(e))
+		}
+		n += 1 + sovTypes(uint64(l)) + l
+	}
 	return n
 }
 
@@ -544,6 +658,12 @@ func (m *SeenTx) Size() (n int) {
 	if l > 0 {
 		n += 1 + l + sovTypes(uint64(l))
 	}
+	if m.MinSequence != 0 {
+		n += 1 + sovTypes(uint64(m.MinSequence))
+	}
+	if m.MaxSequence != 0 {
+		n += 1 + sovTypes(uint64(m.MaxSequence))
+	}
 	return n
 }
 
@@ -556,6 +676,13 @@ func (m *WantTx) Size() (n int) {
 	l = len(m.TxKey)
 	if l > 0 {
 		n += 1 + l + sovTypes(uint64(l))
+	}
+	l = len(m.Signer)
+	if l > 0 {
+		n += 1 + l + sovTypes(uint64(l))
+	}
+	if m.Sequence != 0 {
+		n += 1 + sovTypes(uint64(m.Sequence))
 	}
 	return n
 }
@@ -676,6 +803,114 @@ func (m *Txs) Unmarshal(dAtA []byte) error {
 			m.Txs = append(m.Txs, make([]byte, postIndex-iNdEx))
 			copy(m.Txs[len(m.Txs)-1], dAtA[iNdEx:postIndex])
 			iNdEx = postIndex
+		case 2:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Signers", wireType)
+			}
+			var byteLen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowTypes
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				byteLen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if byteLen < 0 {
+				return ErrInvalidLengthTypes
+			}
+			postIndex := iNdEx + byteLen
+			if postIndex < 0 {
+				return ErrInvalidLengthTypes
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.Signers = append(m.Signers, make([]byte, postIndex-iNdEx))
+			copy(m.Signers[len(m.Signers)-1], dAtA[iNdEx:postIndex])
+			iNdEx = postIndex
+		case 3:
+			if wireType == 0 {
+				var v uint64
+				for shift := uint(0); ; shift += 7 {
+					if shift >= 64 {
+						return ErrIntOverflowTypes
+					}
+					if iNdEx >= l {
+						return io.ErrUnexpectedEOF
+					}
+					b := dAtA[iNdEx]
+					iNdEx++
+					v |= uint64(b&0x7F) << shift
+					if b < 0x80 {
+						break
+					}
+				}
+				m.Sequences = append(m.Sequences, v)
+			} else if wireType == 2 {
+				var packedLen int
+				for shift := uint(0); ; shift += 7 {
+					if shift >= 64 {
+						return ErrIntOverflowTypes
+					}
+					if iNdEx >= l {
+						return io.ErrUnexpectedEOF
+					}
+					b := dAtA[iNdEx]
+					iNdEx++
+					packedLen |= int(b&0x7F) << shift
+					if b < 0x80 {
+						break
+					}
+				}
+				if packedLen < 0 {
+					return ErrInvalidLengthTypes
+				}
+				postIndex := iNdEx + packedLen
+				if postIndex < 0 {
+					return ErrInvalidLengthTypes
+				}
+				if postIndex > l {
+					return io.ErrUnexpectedEOF
+				}
+				var elementCount int
+				var count int
+				for _, integer := range dAtA[iNdEx:postIndex] {
+					if integer < 128 {
+						count++
+					}
+				}
+				elementCount = count
+				if elementCount != 0 && len(m.Sequences) == 0 {
+					m.Sequences = make([]uint64, 0, elementCount)
+				}
+				for iNdEx < postIndex {
+					var v uint64
+					for shift := uint(0); ; shift += 7 {
+						if shift >= 64 {
+							return ErrIntOverflowTypes
+						}
+						if iNdEx >= l {
+							return io.ErrUnexpectedEOF
+						}
+						b := dAtA[iNdEx]
+						iNdEx++
+						v |= uint64(b&0x7F) << shift
+						if b < 0x80 {
+							break
+						}
+					}
+					m.Sequences = append(m.Sequences, v)
+				}
+			} else {
+				return fmt.Errorf("proto: wrong wireType = %d for field Sequences", wireType)
+			}
 		default:
 			iNdEx = preIndex
 			skippy, err := skipTypes(dAtA[iNdEx:])
@@ -813,6 +1048,44 @@ func (m *SeenTx) Unmarshal(dAtA []byte) error {
 				m.Signer = []byte{}
 			}
 			iNdEx = postIndex
+		case 4:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field MinSequence", wireType)
+			}
+			m.MinSequence = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowTypes
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.MinSequence |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 5:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field MaxSequence", wireType)
+			}
+			m.MaxSequence = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowTypes
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.MaxSequence |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
 		default:
 			iNdEx = preIndex
 			skippy, err := skipTypes(dAtA[iNdEx:])
@@ -897,6 +1170,59 @@ func (m *WantTx) Unmarshal(dAtA []byte) error {
 				m.TxKey = []byte{}
 			}
 			iNdEx = postIndex
+		case 2:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Signer", wireType)
+			}
+			var byteLen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowTypes
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				byteLen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if byteLen < 0 {
+				return ErrInvalidLengthTypes
+			}
+			postIndex := iNdEx + byteLen
+			if postIndex < 0 {
+				return ErrInvalidLengthTypes
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.Signer = append(m.Signer[:0], dAtA[iNdEx:postIndex]...)
+			if m.Signer == nil {
+				m.Signer = []byte{}
+			}
+			iNdEx = postIndex
+		case 3:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Sequence", wireType)
+			}
+			m.Sequence = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowTypes
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.Sequence |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
 		default:
 			iNdEx = preIndex
 			skippy, err := skipTypes(dAtA[iNdEx:])

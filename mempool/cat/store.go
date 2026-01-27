@@ -1,6 +1,7 @@
 package cat
 
 import (
+	"bytes"
 	"fmt"
 	"sort"
 	"sync"
@@ -82,6 +83,24 @@ func (s *store) has(txKey types.TxKey) bool {
 	defer s.mtx.RUnlock()
 	_, has := s.txs[txKey]
 	return has
+}
+
+func (s *store) hasSignerSequence(signer []byte, sequence uint64) bool {
+	s.mtx.RLock()
+	defer s.mtx.RUnlock()
+	seqMap, ok := s.setsBySigner[string(signer)]
+	if !ok {
+		return false
+	}
+	for _, tx := range seqMap.txs {
+		if tx.sequence == sequence {
+			return true
+		}
+		if tx.sequence > sequence {
+			break
+		}
+	}
+	return false
 }
 
 // remove removes a transaction from the store.
@@ -329,4 +348,30 @@ func (s *store) aggregatedPriorityAfterAdd(wtx *wrappedTx) int64 {
 		return newWeightedSum / newTotalGas
 	}
 	return wtx.priority
+}
+
+func (s *store) getTxBySignerSequence(signer []byte, sequence uint64) (*wrappedTx, bool) {
+	s.mtx.RLock()
+	defer s.mtx.RUnlock()
+	for _, set := range s.orderedTxSets {
+		for _, tx := range set.txs {
+			if bytes.Equal(tx.sender, signer) && tx.sequence == sequence {
+				return tx, true
+			}
+		}
+	}
+	return nil, false
+}
+
+func (s *store) getMinMaxSequenceForSigner(signer []byte) (uint64, uint64) {
+	s.mtx.RLock()
+	defer s.mtx.RUnlock()
+	for _, set := range s.orderedTxSets {
+		if bytes.Equal(set.signer, signer) {
+			minSequence := set.txs[0].sequence
+			maxSequence := set.txs[len(set.txs)-1].sequence
+			return minSequence, maxSequence
+		}
+	}
+	return 0, 0
 }
