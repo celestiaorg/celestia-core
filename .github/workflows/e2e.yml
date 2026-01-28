@@ -16,6 +16,9 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          clean: true
       - uses: actions/setup-go@v6
         with:
           go-version-file: 'go.mod'
