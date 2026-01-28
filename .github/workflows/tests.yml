@@ -11,13 +11,16 @@ on:
 
 jobs:
   tests:
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     strategy:
       fail-fast: false
       matrix:
         part: ["00", "01", "02", "03", "04", "05"]
     steps:
       - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          clean: true
       - uses: actions/setup-go@v6
         with:
           go-version-file: "go.mod"
