@@ -94,6 +94,12 @@ func PrometheusMetrics(namespace string, labelsAndValues ...string) *Metrics {
 			Name:      "rerequested_txs",
 			Help:      "RerequestedTxs defines the number of times that a requested tx never received a response in time and a new request was made.",
 		}, labels).With(labelsAndValues...),
+		PendingSeenSize: prometheus.NewGaugeFrom(stdprometheus.GaugeOpts{
+			Namespace: namespace,
+			Subsystem: MetricsSubsystem,
+			Name:      "pending_seen_size",
+			Help:      "PendingSeenSize defines the total number of pending seen transactions tracked across all signers in the CAT mempool reactor.",
+		}, labels).With(labelsAndValues...),
 	}
 }
 
@@ -112,5 +118,6 @@ func NopMetrics() *Metrics {
 		AlreadySeenTxs:            discard.NewCounter(),
 		RequestedTxs:              discard.NewCounter(),
 		RerequestedTxs:            discard.NewCounter(),
+		PendingSeenSize:           discard.NewGauge(),
 	}
 }

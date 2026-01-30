@@ -198,6 +198,13 @@ func (ps *pendingSeenTracker) signerKeys() [][]byte {
 	return out
 }
 
+func (ps *pendingSeenTracker) size() int {
+	ps.mu.Lock()
+	defer ps.mu.Unlock()
+
+	return len(ps.byTx)
+}
+
 func (ps *pendingSeenTracker) markRequested(txKey types.TxKey, peerID uint16, at time.Time) {
 	if peerID == 0 {
 		return

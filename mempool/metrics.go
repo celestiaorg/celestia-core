@@ -69,4 +69,8 @@ type Metrics struct {
 	// RerequestedTxs defines the number of times that a requested tx
 	// never received a response in time and a new request was made.
 	RerequestedTxs metrics.Counter
+
+	// PendingSeenSize defines the total number of pending seen transactions
+	// tracked across all signers in the CAT mempool reactor.
+	PendingSeenSize metrics.Gauge
 }

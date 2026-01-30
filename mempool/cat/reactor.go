@@ -173,6 +173,9 @@ func (memR *Reactor) currentStickyPeerSalt() []byte {
 
 // OnStart implements Service.
 func (memR *Reactor) OnStart() error {
+	// Initialize the pending seen size metric
+	memR.updatePendingSeenMetric()
+
 	if !memR.opts.ListenOnly {
 		go func() {
 			for {
@@ -258,6 +261,7 @@ func (memR *Reactor) RemovePeer(peer p2p.Peer, reason interface{}) {
 	// clear all memory of seen txs by that peer
 	memR.mempool.seenByPeersSet.RemovePeer(peerID)
 	memR.pendingSeen.removePeer(peerID)
+	memR.updatePendingSeenMetric()
 
 	// remove and rerequest all pending outbound requests to that peer since we know
 	// we won't receive any responses from them.
@@ -324,6 +328,9 @@ func (memR *Reactor) Receive(e p2p.Envelope) {
 			// Process this tx through CheckTx without putting into buffer
 			memR.processReceivedTx(cachedTx, key, txInfo, e.Src)
 		}
+
+		// Update metric after processing all transactions in the batch
+		memR.updatePendingSeenMetric()
 
 	// A peer has indicated to us that it has a transaction. We first verify the txkey and
 	// mark that peer as having the transaction. Then we proceed with the following logic:
@@ -770,6 +777,9 @@ func (memR *Reactor) refreshPendingSeenQueues() {
 		// Then request more pending txs
 		memR.processPendingSeenForSigner(signer)
 	}
+
+	// Update metric after processing all signers
+	memR.updatePendingSeenMetric()
 }
 
 func (memR *Reactor) querySequenceFromApplication(signer []byte) (uint64, bool) {
@@ -785,6 +795,12 @@ func (memR *Reactor) querySequenceFromApplication(signer []byte) (uint64, bool) 
 		return 0, false
 	}
 	return resp.Sequence, true
+}
+
+// updatePendingSeenMetric updates the PendingSeenSize metric with the current
+// size of the pending seen tracker.
+func (memR *Reactor) updatePendingSeenMetric() {
+	memR.mempool.metrics.PendingSeenSize.Set(float64(memR.pendingSeen.size()))
 }
 
 // findNewPeerToSendTx finds a new peer that has already seen the transaction to
