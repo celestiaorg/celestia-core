@@ -402,7 +402,7 @@ func (bs *BlockStore) PruneBlocks(height int64, state sm.State) (uint64, int64, 
 
 		meta := bs.LoadBlockMeta(h)
 		block := bs.LoadBlock(h)
-		if meta == nil { // assume already deleted
+		if meta == nil || block == nil { // assume already deleted
 			continue
 		}
 
