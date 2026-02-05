@@ -406,9 +406,14 @@ func (bs *BlockStore) PruneBlocks(height int64, state sm.State) (uint64, int64, 
 			continue
 		}
 
-		for _, tx := range block.Txs {
-			if err := batch.Delete(calcTxHashKey(tx.Hash())); err != nil {
-				return 0, -1, err
+		// block may be nil if parts were deleted by a previous pruning pass
+		// that preserved meta for evidence. Skip tx hash cleanup since those
+		// tx hashes would have been deleted in that previous pass.
+		if block != nil {
+			for _, tx := range block.Txs {
+				if err := batch.Delete(calcTxHashKey(tx.Hash())); err != nil {
+					return 0, -1, err
+				}
 			}
 		}
 
