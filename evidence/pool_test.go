@@ -1,7 +1,6 @@
 package evidence_test
 
 import (
-	"fmt"
 	"os"
 	"testing"
 	"time"
@@ -12,6 +11,7 @@ import (
 
 	dbm "github.com/cometbft/cometbft-db"
 
+	"github.com/cometbft/cometbft/crypto"
 	"github.com/cometbft/cometbft/evidence"
 	"github.com/cometbft/cometbft/evidence/mocks"
 	"github.com/cometbft/cometbft/internal/test"
@@ -412,14 +412,20 @@ func initializeValidatorState(privVal types.PrivValidator, height int64) sm.Stor
 func initializeBlockStore(db dbm.DB, state sm.State, valAddr []byte) (*store.BlockStore, error) {
 	blockStore := store.NewBlockStore(db)
 
+	state.Version.Consensus = cmtversion.Consensus{Block: version.BlockProtocol, App: 1}
+
 	for i := int64(1); i <= state.LastBlockHeight; i++ {
 		lastCommit := makeExtCommit(i-1, valAddr)
-		block, partSet, err := state.MakeBlock(i, types.MakeData(test.MakeNTxs(i, 1)), lastCommit.ToCommit(), nil, state.Validators.Proposer.Address)
+		block, err := state.MakeBlockWithoutPartset(i, types.MakeData(test.MakeNTxs(i, 1)), lastCommit.ToCommit(), nil, state.Validators.Proposer.Address)
 		if err != nil {
 			return nil, err
 		}
-		block.Header.Time = defaultEvidenceTime.Add(time.Duration(i) * time.Minute)       //nolint:staticcheck
-		block.Header.Version = cmtversion.Consensus{Block: version.BlockProtocol, App: 1} //nolint:staticcheck
+		block.Header.Time = defaultEvidenceTime.Add(time.Duration(i) * time.Minute) //nolint:staticcheck
+
+		partSet, err := block.MakePartSet(types.BlockPartSizeBytes)
+		if err != nil {
+			return nil, err
+		}
 
 		seenCommit := makeExtCommit(i, valAddr)
 		blockStore.SaveBlockWithExtendedCommit(block, partSet, seenCommit)
@@ -429,18 +435,26 @@ func initializeBlockStore(db dbm.DB, state sm.State, valAddr []byte) (*store.Blo
 }
 
 func makeExtCommit(height int64, valAddr []byte) *types.ExtendedCommit {
-	return &types.ExtendedCommit{
-		Height: height,
-		ExtendedSignatures: []types.ExtendedCommitSig{{
-			CommitSig: types.CommitSig{
-				BlockIDFlag:      types.BlockIDFlagCommit,
-				ValidatorAddress: valAddr,
-				Timestamp:        defaultEvidenceTime,
-				Signature:        []byte("Signature"),
-			},
-			ExtensionSignature: []byte("Extended Signature"),
-		}},
+	commitSig := types.ExtendedCommitSig{
+		CommitSig: types.CommitSig{
+			BlockIDFlag:      types.BlockIDFlagCommit,
+			ValidatorAddress: valAddr,
+			Timestamp:        defaultEvidenceTime,
+			Signature:        []byte("Signature"),
+		},
+		ExtensionSignature: []byte("Extended Signature"),
 	}
+	ec := &types.ExtendedCommit{
+		Height:             height,
+		ExtendedSignatures: []types.ExtendedCommitSig{commitSig},
+	}
+	if height >= 1 {
+		ec.BlockID = types.BlockID{
+			Hash:          crypto.CRandBytes(32),
+			PartSetHeader: types.PartSetHeader{Hash: crypto.CRandBytes(32), Total: 1},
+		}
+	}
+	return ec
 }
 
 func defaultTestPool(t *testing.T, height int64) (*evidence.Pool, types.MockPV) {
@@ -469,22 +483,33 @@ func TestEvidencePoolWithPrunedBlocks(t *testing.T) {
 	state, err := stateStore.Load()
 	require.NoError(t, err)
 
-	blockStoreDB := dbm.NewMemDB()
-	blockStore, err := initializeBlockStore(blockStoreDB, state, valAddress)
+	blockStore, err := initializeBlockStore(dbm.NewMemDB(), state, valAddress)
 	require.NoError(t, err)
 
-	// Simulate pruning by deleting keys from the underlying DB.
-	// Fully pruned (heights 1-29): delete block meta and commit keys.
-	// Heights 30-50: remain intact (meta + commit preserved).
-	for h := int64(1); h < 30; h++ {
-		require.NoError(t, blockStoreDB.Delete([]byte(fmt.Sprintf("H:%v", h))))
-		require.NoError(t, blockStoreDB.Delete([]byte(fmt.Sprintf("C:%v", h))))
-	}
+	// Prune blocks below height 40. The prune state uses a LastBlockTime far
+	// enough in the future that evidence for the earliest blocks is expired.
+	// With MaxAgeNumBlocks=20, MaxAgeDuration=20m, and LastBlockHeight=50,
+	// evidence is expired when BOTH age > 20 blocks AND duration > 20min.
+	// Block times are defaultEvidenceTime + h*min, so the evidence retain
+	// height will be around 30 (the first non-expired height).
+	pruneState := state
+	pruneState.LastBlockHeight = numBlocks
+	pruneState.LastBlockTime = defaultEvidenceTime.Add(numBlocks * time.Minute)
+	_, evidenceRetainHeight, err := blockStore.PruneBlocks(40, pruneState)
+	require.NoError(t, err)
+	t.Logf("evidenceRetainHeight=%d", evidenceRetainHeight)
 
-	// Sanity-check the simulated pruning.
-	require.Nil(t, blockStore.LoadBlockMeta(15), "expected fully pruned")
-	require.NotNil(t, blockStore.LoadBlockMeta(35), "expected meta retained")
+	// After pruning:
+	//   heights 1..(evidenceRetainHeight-1): fully pruned (no meta, no commit, no block)
+	//   heights evidenceRetainHeight..39:    partially pruned (meta+commit kept, block parts deleted)
+	//   heights 40..50:                      unpruned
+
+	// Sanity-check the pruning tiers.
+	require.Nil(t, blockStore.LoadBlockMeta(evidenceRetainHeight-1), "expected fully pruned")
+	require.NotNil(t, blockStore.LoadBlockMeta(evidenceRetainHeight), "expected meta retained for evidence")
+	require.Nil(t, blockStore.LoadBlock(evidenceRetainHeight), "expected block parts deleted")
 	require.NotNil(t, blockStore.LoadBlockMeta(45), "expected unpruned")
+	require.NotNil(t, blockStore.LoadBlock(45), "expected full block available")
 
 	pool, err := evidence.NewPool(dbm.NewMemDB(), stateStore, blockStore)
 	require.NoError(t, err)
@@ -513,7 +538,7 @@ func TestEvidencePoolWithPrunedBlocks(t *testing.T) {
 	})
 
 	t.Run("partially pruned block - evidence is verifiable", func(t *testing.T) {
-		h := int64(35)
+		h := evidenceRetainHeight + 2 // well inside the partially-pruned tier
 		require.NotNil(t, blockStore.LoadBlockMeta(h), "precondition: block meta must exist")
 		ev, err := types.NewMockDuplicateVoteEvidenceWithValidator(
 			h, defaultEvidenceTime.Add(time.Duration(h)*time.Minute), val, evidenceChainID)
