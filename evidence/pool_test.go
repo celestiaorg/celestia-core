@@ -1,6 +1,7 @@
 package evidence_test
 
 import (
+	"fmt"
 	"os"
 	"testing"
 	"time"
@@ -457,6 +458,78 @@ func defaultTestPool(t *testing.T, height int64) (*evidence.Pool, types.MockPV) 
 	}
 	pool.SetLogger(log.TestingLogger())
 	return pool, val
+}
+
+func TestEvidencePoolWithPrunedBlocks(t *testing.T) {
+	// Setup: create 50 blocks with a real block store and state store.
+	const numBlocks = 50
+	val := types.NewMockPV()
+	valAddress := val.PrivKey.PubKey().Address()
+	stateStore := initializeValidatorState(val, numBlocks)
+	state, err := stateStore.Load()
+	require.NoError(t, err)
+
+	blockStoreDB := dbm.NewMemDB()
+	blockStore, err := initializeBlockStore(blockStoreDB, state, valAddress)
+	require.NoError(t, err)
+
+	// Simulate pruning by deleting keys from the underlying DB.
+	// Fully pruned (heights 1-29): delete block meta and commit keys.
+	// Heights 30-50: remain intact (meta + commit preserved).
+	for h := int64(1); h < 30; h++ {
+		require.NoError(t, blockStoreDB.Delete([]byte(fmt.Sprintf("H:%v", h))))
+		require.NoError(t, blockStoreDB.Delete([]byte(fmt.Sprintf("C:%v", h))))
+	}
+
+	// Sanity-check the simulated pruning.
+	require.Nil(t, blockStore.LoadBlockMeta(15), "expected fully pruned")
+	require.NotNil(t, blockStore.LoadBlockMeta(35), "expected meta retained")
+	require.NotNil(t, blockStore.LoadBlockMeta(45), "expected unpruned")
+
+	pool, err := evidence.NewPool(dbm.NewMemDB(), stateStore, blockStore)
+	require.NoError(t, err)
+	pool.SetLogger(log.TestingLogger())
+
+	t.Run("fully pruned block - AddEvidence returns error", func(t *testing.T) {
+		h := int64(15)
+		require.Nil(t, blockStore.LoadBlockMeta(h), "precondition: block meta must be nil")
+		ev, err := types.NewMockDuplicateVoteEvidenceWithValidator(
+			h, defaultEvidenceTime.Add(time.Duration(h)*time.Minute), val, evidenceChainID)
+		require.NoError(t, err)
+		err = pool.AddEvidence(ev)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "don't have header")
+	})
+
+	t.Run("fully pruned block - CheckEvidence returns error", func(t *testing.T) {
+		h := int64(10)
+		require.Nil(t, blockStore.LoadBlockMeta(h), "precondition: block meta must be nil")
+		ev, err := types.NewMockDuplicateVoteEvidenceWithValidator(
+			h, defaultEvidenceTime.Add(time.Duration(h)*time.Minute), val, evidenceChainID)
+		require.NoError(t, err)
+		err = pool.CheckEvidence(types.EvidenceList{ev})
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "don't have header")
+	})
+
+	t.Run("partially pruned block - evidence is verifiable", func(t *testing.T) {
+		h := int64(35)
+		require.NotNil(t, blockStore.LoadBlockMeta(h), "precondition: block meta must exist")
+		ev, err := types.NewMockDuplicateVoteEvidenceWithValidator(
+			h, defaultEvidenceTime.Add(time.Duration(h)*time.Minute), val, evidenceChainID)
+		require.NoError(t, err)
+		require.NoError(t, pool.AddEvidence(ev))
+		require.NoError(t, pool.CheckEvidence(types.EvidenceList{ev}))
+	})
+
+	t.Run("unpruned block - evidence is verifiable", func(t *testing.T) {
+		h := int64(45)
+		require.NotNil(t, blockStore.LoadBlockMeta(h), "precondition: block meta must exist")
+		ev, err := types.NewMockDuplicateVoteEvidenceWithValidator(
+			h, defaultEvidenceTime.Add(time.Duration(h)*time.Minute), val, evidenceChainID)
+		require.NoError(t, err)
+		require.NoError(t, pool.AddEvidence(ev))
+	})
 }
 
 func createState(height int64, valSet *types.ValidatorSet) sm.State {
