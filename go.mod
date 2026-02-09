@@ -61,7 +61,7 @@ require (
 require (
 	github.com/gogo/protobuf v1.3.2
 	github.com/golang/snappy v0.0.4 // indirect
-	github.com/klauspost/reedsolomon v1.13.0
+	github.com/klauspost/reedsolomon v1.13.2
 )
 
 require (
