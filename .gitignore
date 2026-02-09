@@ -60,3 +60,5 @@ proto/spec/**/*.pb.go
 go.work.sum
 .gocache
 .gopath
+# Claude Code local settings
+.claude/*.local.json
