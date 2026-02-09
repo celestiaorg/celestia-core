@@ -641,6 +641,119 @@ func TestPruneBlocks(t *testing.T) {
 	assert.Nil(t, bs.LoadBlock(1501))
 }
 
+// TestPruneBlocksEvidenceRetention verifies that PruneBlocks deletes block
+// parts (so LoadBlock returns nil) for heights within the evidence period while
+// retaining block meta and block commit needed for evidence verification.
+func TestPruneBlocksEvidenceRetention(t *testing.T) {
+	config := test.ResetTestRoot("blockchain_reactor_test")
+	defer os.RemoveAll(config.RootDir)
+	stateStore := sm.NewStore(dbm.NewMemDB(), sm.StoreOptions{
+		DiscardABCIResponses: false,
+	})
+	state, err := stateStore.LoadFromDBOrGenesisFile(config.GenesisFile())
+	require.NoError(t, err)
+	db := dbm.NewMemDB()
+	bs := NewBlockStore(db)
+
+	for h := int64(1); h <= 1500; h++ {
+		block, partSet, err := state.MakeBlock(h, types.MakeData(test.MakeNTxs(h, 10)), new(types.Commit), nil, state.Validators.GetProposer().Address)
+		require.NoError(t, err)
+		seenCommit := makeTestExtCommit(h, cmttime.Now())
+		bs.SaveBlockWithExtendedCommit(block, partSet, seenCommit)
+	}
+
+	state.LastBlockTime = time.Date(2020, 1, 1, 1, 0, 0, 0, time.UTC)
+	state.LastBlockHeight = 1500
+	state.ConsensusParams.Evidence.MaxAgeNumBlocks = 400
+	state.ConsensusParams.Evidence.MaxAgeDuration = 1 * time.Second
+
+	// Prune to height 1200. Evidence window of 400 means evidence is retained
+	// from height 1100 onwards.
+	_, evidenceRetainHeight, err := bs.PruneBlocks(1200, state)
+	require.NoError(t, err)
+	assert.EqualValues(t, 1100, evidenceRetainHeight)
+
+	// For heights within the evidence window (1100-1199):
+	// - Block parts should be deleted (LoadBlock returns nil)
+	// - Block meta should be preserved for evidence verification
+	// - Block commit should be preserved for evidence verification
+	for h := int64(1100); h < 1200; h++ {
+		assert.Nil(t, bs.LoadBlock(h), "block parts should be deleted for height %d", h)
+		assert.NotNil(t, bs.LoadBlockMeta(h), "block meta should be preserved for height %d", h)
+		assert.NotNil(t, bs.LoadBlockCommit(h), "block commit should be preserved for height %d", h)
+	}
+
+	// Heights below the evidence window should have everything deleted.
+	for h := int64(1); h < 1100; h++ {
+		assert.Nil(t, bs.LoadBlock(h), "block should be deleted for height %d", h)
+		assert.Nil(t, bs.LoadBlockMeta(h), "block meta should be deleted for height %d", h)
+		assert.Nil(t, bs.LoadBlockCommit(h), "block commit should be deleted for height %d", h)
+	}
+
+	// Heights at or above the prune height should be fully intact.
+	for h := int64(1200); h <= 1500; h++ {
+		assert.NotNil(t, bs.LoadBlock(h), "block should exist for height %d", h)
+		assert.NotNil(t, bs.LoadBlockMeta(h), "block meta should exist for height %d", h)
+	}
+}
+
+// TestPruneBlocksAfterCrashRecovery reproduces the crash scenario from
+// https://github.com/celestiaorg/celestia-app/issues/6476. After a partial
+// prune (parts deleted, meta preserved for evidence), if the node crashes and
+// restarts, the base is set to a height where block parts are already deleted.
+// Re-pruning from that base must not panic on nil block.
+func TestPruneBlocksAfterCrashRecovery(t *testing.T) {
+	config := test.ResetTestRoot("blockchain_reactor_test")
+	defer os.RemoveAll(config.RootDir)
+	stateStore := sm.NewStore(dbm.NewMemDB(), sm.StoreOptions{
+		DiscardABCIResponses: false,
+	})
+	state, err := stateStore.LoadFromDBOrGenesisFile(config.GenesisFile())
+	require.NoError(t, err)
+	db := dbm.NewMemDB()
+	bs := NewBlockStore(db)
+
+	for h := int64(1); h <= 1500; h++ {
+		block, partSet, err := state.MakeBlock(h, types.MakeData(test.MakeNTxs(h, 10)), new(types.Commit), nil, state.Validators.GetProposer().Address)
+		require.NoError(t, err)
+		seenCommit := makeTestExtCommit(h, cmttime.Now())
+		bs.SaveBlockWithExtendedCommit(block, partSet, seenCommit)
+	}
+
+	state.LastBlockTime = time.Date(2020, 1, 1, 1, 0, 0, 0, time.UTC)
+	state.LastBlockHeight = 1500
+	state.ConsensusParams.Evidence.MaxAgeNumBlocks = 400
+	state.ConsensusParams.Evidence.MaxAgeDuration = 1 * time.Second
+
+	// First prune: prune to 1200. Evidence retained from 1100.
+	// Heights 1100-1199 have meta/commit preserved but parts deleted.
+	_, _, err = bs.PruneBlocks(1200, state)
+	require.NoError(t, err)
+
+	// Simulate crash recovery: set base back to 1100 so the next prune
+	// re-processes heights where block parts are already gone.
+	bs.mtx.Lock()
+	bs.base = 1100
+	bs.mtx.Unlock()
+
+	// Without the nil check fix, this would panic with:
+	// "runtime error: invalid memory address or nil pointer dereference"
+	// when iterating block.Txs for a height where LoadBlock returns nil.
+	assert.NotPanics(t, func() {
+		pruned, evidenceRetainHeight, err := bs.PruneBlocks(1200, state)
+		require.NoError(t, err)
+		assert.EqualValues(t, 1100, evidenceRetainHeight)
+		// 100 heights re-processed (1100-1199), counted as pruned
+		assert.EqualValues(t, 100, pruned)
+	})
+
+	// Verify evidence-retained heights still have meta and commit.
+	for h := int64(1100); h < 1200; h++ {
+		assert.NotNil(t, bs.LoadBlockMeta(h), "block meta should be preserved for height %d", h)
+		assert.NotNil(t, bs.LoadBlockCommit(h), "block commit should be preserved for height %d", h)
+	}
+}
+
 func TestLoadBlockMeta(t *testing.T) {
 	bs, db := newInMemoryBlockStore()
 	height := int64(10)
