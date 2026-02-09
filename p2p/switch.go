@@ -405,7 +405,7 @@ func (sw *Switch) getPeerAddress(peer Peer) (*NetAddress, error) {
 // StopPeerGracefully disconnects from a peer gracefully.
 // TODO: handle graceful disconnects.
 func (sw *Switch) StopPeerGracefully(peer Peer, reactorName string) {
-	sw.Logger.Info("Stopping peer gracefully")
+	sw.Logger.Debug("Stopping peer gracefully")
 
 	sw.removePeerFromReactor(peer, reactorName)
 
@@ -455,7 +455,7 @@ func (sw *Switch) reconnectToPeer(addr *NetAddress) {
 	defer sw.reconnecting.Delete(string(addr.ID))
 
 	start := time.Now()
-	sw.Logger.Info("Reconnecting to peer", "addr", addr)
+	sw.Logger.Debug("Reconnecting to peer", "addr", addr)
 
 	for i := 0; i < reconnectAttempts; i++ {
 		if !sw.IsRunning() {
@@ -469,13 +469,13 @@ func (sw *Switch) reconnectToPeer(addr *NetAddress) {
 			return
 		}
 
-		sw.Logger.Info("Error reconnecting to peer. Trying again", "tries", i, "err", err, "addr", addr)
+		sw.Logger.Debug("Error reconnecting to peer. Trying again", "tries", i, "err", err, "addr", addr)
 		// sleep a set amount
 		sw.randomSleep(reconnectInterval)
 		continue
 	}
 
-	sw.Logger.Error("Failed to reconnect to peer. Beginning exponential backoff",
+	sw.Logger.Debug("Failed to reconnect to peer. Beginning exponential backoff",
 		"addr", addr, "elapsed", time.Since(start))
 	for i := 1; i <= reconnectBackOffAttempts; i++ {
 		if !sw.IsRunning() {
@@ -492,9 +492,9 @@ func (sw *Switch) reconnectToPeer(addr *NetAddress) {
 		} else if _, ok := err.(ErrCurrentlyDialingOrExistingAddress); ok {
 			return
 		}
-		sw.Logger.Info("Error reconnecting to peer. Trying again", "tries", i, "err", err, "addr", addr)
+		sw.Logger.Debug("Error reconnecting to peer. Trying again", "tries", i, "err", err, "addr", addr)
 	}
-	sw.Logger.Error("Failed to reconnect to peer. Giving up", "addr", addr, "elapsed", time.Since(start))
+	sw.Logger.Debug("Failed to reconnect to peer. Giving up", "addr", addr, "elapsed", time.Since(start))
 }
 
 // SetAddrBook allows to set address book on Switch.
@@ -705,7 +705,7 @@ func (sw *Switch) acceptRoutine() {
 					sw.addrBook.AddOurAddress(&addr)
 				}
 
-				sw.Logger.Info(
+				sw.Logger.Debug(
 					"Inbound Peer rejected",
 					"err", err,
 					"numPeers", sw.peers.Size(),
@@ -764,7 +764,7 @@ func (sw *Switch) acceptRoutine() {
 			if p.IsRunning() {
 				_ = p.Stop()
 			}
-			sw.Logger.Info(
+			sw.Logger.Debug(
 				"Ignoring inbound connection: error while adding peer",
 				"err", err,
 				"id", p.ID(),
@@ -883,11 +883,11 @@ func (sw *Switch) addPeer(p Peer) error {
 			peerReactors = append(peerReactors, reactor)
 			p = updatedPeer // only update peer if the reactor accepted it
 		} else {
-			sw.Logger.Info("Reactor rejected peer in InitPeer", "peer", p, "err", err, "reactor", reactor.String())
+			sw.Logger.Debug("Reactor rejected peer in InitPeer", "peer", p, "err", err, "reactor", reactor.String())
 		}
 	}
 	if len(peerReactors) == 0 {
-		sw.Logger.Error("Peer not wanted by any reactor", "peer", p)
+		sw.Logger.Debug("Peer not wanted by any reactor", "peer", p)
 		sw.StopPeerGracefully(p, "")
 		return errors.New("peer not wanted by any reactor")
 	}

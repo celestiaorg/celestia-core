@@ -472,7 +472,7 @@ func (r *Reactor) ensurePeers(ensurePeersPeriodElapsed bool) {
 		out, in, dial = r.Switch.NumPeers()
 		numToDial     = r.Switch.MaxNumOutboundPeers() - (out + dial)
 	)
-	r.Logger.Info(
+	r.Logger.Debug(
 		"Ensure peers",
 		"numOutPeers", out,
 		"numInPeers", in,
@@ -521,14 +521,14 @@ func (r *Reactor) ensurePeers(ensurePeersPeriodElapsed bool) {
 		peersCount := len(peers)
 		if peersCount > 0 && ensurePeersPeriodElapsed {
 			peer := peers[cmtrand.Int()%peersCount]
-			r.Logger.Info("We need more addresses. Sending pexRequest to random peer", "peer", peer)
+			r.Logger.Debug("We need more addresses. Sending pexRequest to random peer", "peer", peer)
 			r.RequestAddrs(peer)
 		}
 
 		// Get updated address book and if empty, dial seeds
 		updatedAddrBook := r.book.GetSelection()
 		if len(updatedAddrBook) == 0 {
-			r.Logger.Info("No addresses to dial. Falling back to seeds")
+			r.Logger.Debug("No addresses to dial. Falling back to seeds")
 			r.dialSeeds()
 		}
 	}
