@@ -823,13 +823,13 @@ func TestSwitchInitPeerIsNotCalledBeforeRemovePeer(t *testing.T) {
 	require.NoError(t, err)
 
 	// wait till the switch adds rp to the peer set, then stop the peer asynchronously
-	for {
-		time.Sleep(20 * time.Millisecond)
+	require.Eventually(t, func() bool {
 		if peer := sw.Peers().Get(rp.ID()); peer != nil {
 			go sw.StopPeerForError(peer, "test", "mockReactor")
-			break
+			return true
 		}
-	}
+		return false
+	}, 5*time.Second, 20*time.Millisecond, "peer was never added to switch")
 
 	// simulate peer reconnecting to us
 	_, err = rp.Dial(sw.NetAddress())
@@ -872,12 +872,10 @@ func TestPeerRemovedFromReactorOnStopWithNilReason(t *testing.T) {
 
 	// wait till the switch adds rp to the peer set
 	var peer Peer
-	for {
-		time.Sleep(20 * time.Millisecond)
-		if peer = sw.Peers().Get(rp.ID()); peer != nil {
-			break
-		}
-	}
+	require.Eventually(t, func() bool {
+		peer = sw.Peers().Get(rp.ID())
+		return peer != nil
+	}, 5*time.Second, 20*time.Millisecond, "peer was never added to switch")
 
 	// verify peer is in reactor's peer set
 	reactorPeerSet := sw.peerSetForReactor(reactor)
