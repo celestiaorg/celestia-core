@@ -183,6 +183,15 @@ func TestValidatorSet_ProposerPriorityHash(t *testing.T) {
 	vset.IncrementProposerPriority(1)
 	assert.Equal(t, vset.Hash(), vsetCopy.Hash())
 	assert.NotEqual(t, vset.ProposerPriorityHash(), vsetCopy.ProposerPriorityHash())
+
+	// Regression test: modifying a single validator's priority must change
+	// ProposerPriorityHash. Before the buffer offset fix, all priorities were
+	// written to buf[0:] so only the last value was reflected in the hash.
+	vsetA := randValidatorSet(3)
+	vsetB := vsetA.Copy()
+	vsetB.Validators[0].ProposerPriority = vsetA.Validators[0].ProposerPriority + 1
+	assert.NotEqual(t, vsetA.ProposerPriorityHash(), vsetB.ProposerPriorityHash(),
+		"ProposerPriorityHash should differ when a non-last validator's priority changes")
 }
 
 // Test that IncrementProposerPriority requires positive times.
