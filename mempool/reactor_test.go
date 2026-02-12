@@ -410,6 +410,85 @@ func ensureNoTxs(t *testing.T, reactor *Reactor, timeout time.Duration) {
 	assert.Zero(t, reactor.mempool.Size())
 }
 
+func TestTxsWithTooManyTxsBansPeer(t *testing.T) {
+	config := cfg.TestConfig()
+	const N = 2
+	reactors, _ := makeAndConnectReactors(config, N)
+	defer func() {
+		for _, r := range reactors {
+			if err := r.Stop(); err != nil {
+				assert.NoError(t, err)
+			}
+		}
+	}()
+	for _, r := range reactors {
+		for _, peer := range r.Switch.Peers().List() {
+			peer.Set(types.PeerStateKey, peerState{1})
+		}
+	}
+
+	peers := reactors[0].Switch.Peers().List()
+	require.Len(t, peers, 1)
+	peer := peers[0]
+
+	// Build a Txs message with more than MaxTxsPerMessage transactions
+	txs := make([][]byte, MaxTxsPerMessage+1)
+	for i := range txs {
+		txs[i] = []byte{byte(i)}
+	}
+
+	reactors[0].Receive(p2p.Envelope{
+		ChannelID: MempoolChannel,
+		Message:   &memproto.Txs{Txs: txs},
+		Src:       peer,
+	})
+
+	require.Eventually(t, func() bool {
+		return len(reactors[0].Switch.Peers().List()) == 0
+	}, time.Second, 10*time.Millisecond, "peer should be disconnected after sending too many txs")
+
+	require.Eventually(t, func() bool {
+		return len(reactors[1].Switch.Peers().List()) == 0
+	}, time.Second, 10*time.Millisecond, "reactor1 should see peer disconnected")
+}
+
+func TestTxsWithEmptyTxBansPeer(t *testing.T) {
+	config := cfg.TestConfig()
+	const N = 2
+	reactors, _ := makeAndConnectReactors(config, N)
+	defer func() {
+		for _, r := range reactors {
+			if err := r.Stop(); err != nil {
+				assert.NoError(t, err)
+			}
+		}
+	}()
+	for _, r := range reactors {
+		for _, peer := range r.Switch.Peers().List() {
+			peer.Set(types.PeerStateKey, peerState{1})
+		}
+	}
+
+	peers := reactors[0].Switch.Peers().List()
+	require.Len(t, peers, 1)
+	peer := peers[0]
+
+	// Send a Txs message containing one zero-length transaction
+	reactors[0].Receive(p2p.Envelope{
+		ChannelID: MempoolChannel,
+		Message:   &memproto.Txs{Txs: [][]byte{{}}},
+		Src:       peer,
+	})
+
+	require.Eventually(t, func() bool {
+		return len(reactors[0].Switch.Peers().List()) == 0
+	}, time.Second, 10*time.Millisecond, "peer should be disconnected after sending empty tx")
+
+	require.Eventually(t, func() bool {
+		return len(reactors[1].Switch.Peers().List()) == 0
+	}, time.Second, 10*time.Millisecond, "reactor1 should see peer disconnected")
+}
+
 func TestMempoolVectors(t *testing.T) {
 	testCases := []struct {
 		testName string

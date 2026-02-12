@@ -20,6 +20,11 @@ const (
 	UnknownPeerID uint16 = 0
 
 	MaxActiveIDs = math.MaxUint16
+
+	// MaxTxsPerMessage is the maximum number of transactions allowed in a
+	// single Txs protobuf message. Messages exceeding this limit cause the
+	// sending peer to be disconnected.
+	MaxTxsPerMessage = 64
 )
 
 //go:generate ../scripts/mockery_generate.sh Mempool

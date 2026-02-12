@@ -1314,6 +1314,65 @@ func TestTryRequestQueuedTxFallsBackToAlternativePeer(t *testing.T) {
 	peer3.AssertExpectations(t)
 }
 
+func TestTxsWithTooManyTxsBansPeer(t *testing.T) {
+	config := cfg.TestConfig()
+	reactors := makeAndConnectReactors(t, config, 2)
+
+	reactor0 := reactors[0]
+	reactor1 := reactors[1]
+
+	peers := reactor0.Switch.Peers().List()
+	require.Len(t, peers, 1)
+	peer := peers[0]
+
+	// Build a Txs message with more than MaxTxsPerMessage transactions
+	txs := make([][]byte, mempool.MaxTxsPerMessage+1)
+	for i := range txs {
+		txs[i] = []byte(fmt.Sprintf("tx-%d", i))
+	}
+
+	reactor0.Receive(p2p.Envelope{
+		ChannelID: mempool.MempoolChannel,
+		Message:   &protomem.Txs{Txs: txs},
+		Src:       peer,
+	})
+
+	require.Eventually(t, func() bool {
+		return len(reactor0.Switch.Peers().List()) == 0
+	}, time.Second, 10*time.Millisecond, "peer should be disconnected after sending too many txs")
+
+	require.Eventually(t, func() bool {
+		return len(reactor1.Switch.Peers().List()) == 0
+	}, time.Second, 10*time.Millisecond, "reactor1 should see peer disconnected")
+}
+
+func TestTxsWithEmptyTxBansPeer(t *testing.T) {
+	config := cfg.TestConfig()
+	reactors := makeAndConnectReactors(t, config, 2)
+
+	reactor0 := reactors[0]
+	reactor1 := reactors[1]
+
+	peers := reactor0.Switch.Peers().List()
+	require.Len(t, peers, 1)
+	peer := peers[0]
+
+	// Send a Txs message containing one zero-length transaction
+	reactor0.Receive(p2p.Envelope{
+		ChannelID: mempool.MempoolChannel,
+		Message:   &protomem.Txs{Txs: [][]byte{{}}},
+		Src:       peer,
+	})
+
+	require.Eventually(t, func() bool {
+		return len(reactor0.Switch.Peers().List()) == 0
+	}, time.Second, 10*time.Millisecond, "peer should be disconnected after sending empty tx")
+
+	require.Eventually(t, func() bool {
+		return len(reactor1.Switch.Peers().List()) == 0
+	}, time.Second, 10*time.Millisecond, "reactor1 should see peer disconnected")
+}
+
 func TestSeenTxWithOversizedSignerBansPeer(t *testing.T) {
 	config := cfg.TestConfig()
 	reactors := makeAndConnectReactors(t, config, 2)
