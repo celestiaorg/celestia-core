@@ -1,5 +1,7 @@
 include common.mk
 
+.DEFAULT_GOAL := help
+
 PACKAGES=$(shell go list ./...)
 BUILDDIR?=$(CURDIR)/build
 OUTPUT?=$(BUILDDIR)/cometbft
@@ -163,6 +165,7 @@ proto-check-breaking: check-proto-deps
 	@go run github.com/bufbuild/buf/cmd/buf@latest breaking --against ".git"
 .PHONY: proto-check-breaking
 
+#? proto-check-breaking-ci: Check for breaking changes in Protobuf files against CI
 proto-check-breaking-ci:
 	@go run github.com/bufbuild/buf/cmd/buf@latest breaking --against $(HTTPS_GIT)#branch=v0.34.x
 .PHONY: proto-check-breaking-ci
@@ -211,6 +214,7 @@ draw_deps:
 	@goviz -i github.com/cometbft/cometbft/cmd/cometbft -d 3 | dot -Tpng -o dependency-graph.png
 .PHONY: draw_deps
 
+#? get_deps_bin_size: Analyze binary size of dependencies
 get_deps_bin_size:
 	@# Copy of build recipe with additional flags to perform binary size analysis
 	$(eval $(shell go build -work -a $(BUILD_FLAGS) -tags $(BUILD_TAGS) -o $(OUTPUT) ./cmd/cometbft/ 2>&1))
@@ -242,6 +246,7 @@ clean_certs:
 ###                  Formatting, linting, and vetting                       ###
 ###############################################################################
 
+#? format: Format Go source files
 format:
 	find . -name '*.go' -type f -not -path "*.git*" -not -name '*.pb.go' -not -name '*pb_test.go' | xargs gofmt -w -s
 	find . -name '*.go' -type f -not -path "*.git*"  -not -name '*.pb.go' -not -name '*pb_test.go' | xargs goimports -w -local github.com/cometbft/cometbft
@@ -271,7 +276,7 @@ lint-typo:
 	@codespell
 .PHONY: lint-typo
 
-#? lint-typo: Run codespell to auto fix typos
+#? lint-fix-typo: Run codespell to auto fix typos
 lint-fix-typo:
 	@codespell -w
 .PHONY: lint-fix-typo
@@ -319,6 +324,7 @@ build-docker-localnode:
 # Runs `make build COMETBFT_BUILD_OPTIONS=cleveldb` from within an Amazon
 # Linux (v2)-based Docker build container in order to build an Amazon
 # Linux-compatible binary. Produces a compatible binary at ./build/cometbft
+#? build_c-amazonlinux: Build Amazon Linux-compatible binary in Docker
 build_c-amazonlinux:
 	$(MAKE) -C ./DOCKER build_amazonlinux_buildimage
 	docker run --rm -it -v `pwd`:/cometbft cometbft/cometbft:build_c-amazonlinux
@@ -370,13 +376,15 @@ $(BUILDDIR):
 $(BUILDDIR)/packages.txt:$(GO_TEST_FILES) $(BUILDDIR)
 	go list -f "{{ if (or .TestGoFiles .XTestGoFiles) }}{{ .ImportPath }}{{ end }}" ./... | sort > $@
 
+#? split-test-packages: Split test packages for CI
 split-test-packages:$(BUILDDIR)/packages.txt
 	split -d -n l/$(NUM_SPLIT) $< $<.
+#? test-group-%: Run a specific test group split
 test-group-%:split-test-packages
 	cat $(BUILDDIR)/packages.txt.$* | xargs go test -mod=readonly -timeout=15m -race -coverprofile=$(BUILDDIR)/$*.profile.out
 
 #? help: Get more info on make commands.
 help: Makefile
-	@echo " Choose a command run in comebft:"
-	@sed -n 's/^#?//p' $< | column -t -s ':' |  sort | sed -e 's/^/ /'
+	@echo " Choose a command run in cometbft:"
+	@sed -n 's/^#?//p' Makefile tests.mk | column -t -s ':' |  sort | sed -e 's/^/ /'
 .PHONY: help
