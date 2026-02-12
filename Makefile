@@ -252,10 +252,10 @@ format:
 	find . -name '*.go' -type f -not -path "*.git*"  -not -name '*.pb.go' -not -name '*pb_test.go' | xargs goimports -w -local github.com/cometbft/cometbft
 .PHONY: format
 
-#? lint: Run latest golangci-lint linter
+#? lint: Run golangci-lint linter (version pinned in go.mod)
 lint:
 	@echo "--> Running golangci-lint"
-	@golangci-lint run
+	@go tool golangci-lint run
 .PHONY: lint
 
 # https://github.com/cometbft/cometbft/pull/1925#issuecomment-1875127862
