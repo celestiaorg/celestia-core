@@ -6,6 +6,10 @@
 
 ### BUG FIXES
 
+- `[types]` Fix buffer offset bug in `ProposerPriorityHash` where only the
+  last validator's priority was included in the hash
+  ([#2790](https://github.com/celestiaorg/celestia-core/issues/2790))
+
 ### IMPROVEMENTS
 
 - `[statesync]` Add configurable `max-snapshot-chunks` parameter to validate max amount of chunks in a `SnapshotResponse`.
