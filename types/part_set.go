@@ -410,7 +410,7 @@ func Decode(ops, eps *PartSet, lastPartLen int) (*PartSet, *PartSet, error) {
 	}
 
 	// prune the last part if we need to
-	if len(data[:(ops.Total()-1)]) != lastPartLen {
+	if len(data[ops.Total()-1]) != lastPartLen {
 		data[(ops.Total() - 1)] = data[(ops.Total() - 1)][:lastPartLen]
 	}
 

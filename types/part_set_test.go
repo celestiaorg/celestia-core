@@ -141,6 +141,62 @@ func TestEncodingDecodingRoundTrip(t *testing.T) {
 	}
 }
 
+// TestDecodePruningBug verifies that RS decoding correctly prunes padding from
+// the last part when Total-1 == lastPartLen. This triggers a bug in the pruning
+// condition at part_set.go:413 where len(data[:(ops.Total()-1)]) (a part count)
+// is compared against lastPartLen (a byte length). When these are numerically
+// equal, pruning is incorrectly skipped and the Merkle root check fails.
+//
+// The trigger condition is: dataLen == k * (BlockPartSizeBytes + 1) for any k >= 1,
+// which produces Total = k+1 parts with the last part having lastPartLen = k bytes,
+// so Total - 1 == k == lastPartLen.
+func TestDecodePruningBug(t *testing.T) {
+	// Each entry produces Total parts where Total-1 == lastPartLen.
+	// dataLen = k * (BlockPartSizeBytes + 1) => Total = k+1, lastPartLen = k.
+	triggerSizes := []int{
+		1 * (int(BlockPartSizeBytes) + 1), // 65537:  Total=2,  lastPartLen=1
+		2 * (int(BlockPartSizeBytes) + 1), // 131074: Total=3,  lastPartLen=2
+		10 * (int(BlockPartSizeBytes) + 1), // 655370: Total=11, lastPartLen=10
+	}
+
+	for _, dataLen := range triggerSizes {
+		total := (dataLen + int(BlockPartSizeBytes) - 1) / int(BlockPartSizeBytes)
+		lastPartLen := dataLen - (total-1)*int(BlockPartSizeBytes)
+
+		t.Run(fmt.Sprintf("dataLen=%d_total=%d_lastPartLen=%d", dataLen, total, lastPartLen), func(t *testing.T) {
+			// Confirm this size triggers the condition.
+			require.Equal(t, total-1, lastPartLen, "test case should satisfy Total-1 == lastPartLen")
+
+			data := cmtrand.Bytes(dataLen)
+			ops, err := NewPartSetFromData(data, BlockPartSizeBytes)
+			require.NoError(t, err)
+			require.EqualValues(t, total, int(ops.Total()))
+
+			eps, lastLen, err := Encode(ops, BlockPartSizeBytes)
+			require.NoError(t, err)
+			require.Equal(t, lastPartLen, lastLen)
+
+			// Remove all original parts to force full RS recovery from parity.
+			ops.mtx.Lock()
+			for i := 0; i < int(ops.Total()); i++ {
+				ops.partsBitArray.SetIndex(i, false)
+				start := i * int(BlockPartSizeBytes)
+				end := start + int(BlockPartSizeBytes)
+				for j := start; j < end && j < len(ops.buffer); j++ {
+					ops.buffer[j] = 0
+				}
+			}
+			ops.count = 0
+			ops.mtx.Unlock()
+
+			// Decode must succeed and produce matching data.
+			decoded, _, err := Decode(ops, eps, lastLen)
+			require.NoError(t, err, "Decode failed for dataLen=%d (Total=%d, lastPartLen=%d)", dataLen, total, lastPartLen)
+			require.Equal(t, data, decoded.GetBytes())
+		})
+	}
+}
+
 func TestEncoding(t *testing.T) {
 	data := cmtrand.Bytes(testPartSize * 100)
 	partSet, err := NewPartSetFromData(data, testPartSize)
