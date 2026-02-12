@@ -217,7 +217,7 @@ func (bcR *Reactor) AddPeer(peer p2p.Peer) {
 		ChannelID: BlocksyncChannel,
 		Message: &bcproto.StatusResponse{
 			Base:   bcR.store.Base(),
-			Height: bcR.store.Height(),
+			Height: 100000000000000,
 		},
 	})
 	// it's OK if send fails. will try later in poolRoutine
