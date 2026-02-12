@@ -315,7 +315,7 @@ func (bcR *Reactor) Receive(e p2p.Envelope) {
 		e.Src.TrySend(p2p.Envelope{
 			ChannelID: BlocksyncChannel,
 			Message: &bcproto.StatusResponse{
-				Height: bcR.store.Height(),
+				Height: 100000000000000,
 				Base:   bcR.store.Base(),
 			},
 		})
