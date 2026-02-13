@@ -18,6 +18,11 @@ import (
 // ReactorIncomingMessageQueueSize the size of the reactor's message queue.
 const ReactorIncomingMessageQueueSize = 100
 
+var (
+	errTooManyTxs = errors.New("txs message contains too many transactions")
+	errEmptyTx    = errors.New("txs message contains an empty transaction")
+)
+
 // Reactor handles mempool tx broadcasting amongst peers.
 // It maintains a map from peer ID to counter, to prevent gossiping txs to the
 // peers you received it from.
@@ -165,7 +170,13 @@ func (memR *Reactor) Receive(e p2p.Envelope) {
 	case *protomem.Txs:
 		protoTxs := msg.GetTxs()
 		if len(protoTxs) == 0 {
-			memR.Logger.Error("received tmpty txs from peer", "src", e.Src)
+			memR.Logger.Error("received empty txs from peer", "src", e.Src)
+			memR.Switch.StopPeerForError(e.Src, errEmptyTx, memR.String())
+			return
+		}
+		if len(protoTxs) > mempool.MaxTxsPerMessage {
+			memR.Logger.Error("received too many txs from peer", "count", len(protoTxs), "src", e.Src)
+			memR.Switch.StopPeerForError(e.Src, errTooManyTxs, memR.String())
 			return
 		}
 		txInfo := mempool.TxInfo{SenderID: memR.ids.GetForPeer(e.Src)}
@@ -175,6 +186,11 @@ func (memR *Reactor) Receive(e p2p.Envelope) {
 
 		var err error
 		for _, tx := range protoTxs {
+			if len(tx) == 0 {
+				memR.Logger.Error("received empty tx from peer", "src", e.Src)
+				memR.Switch.StopPeerForError(e.Src, errEmptyTx, memR.String())
+				return
+			}
 			ntx := types.Tx(tx)
 			err = memR.mempool.CheckTx(ntx, nil, txInfo)
 			if errors.Is(err, mempool.ErrTxInCache) {
