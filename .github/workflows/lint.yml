@@ -31,9 +31,5 @@ jobs:
             **/**.go
             go.mod
             go.sum
-      - uses: golangci/golangci-lint-action@v9
-        with:
-          version: latest
-          args: --timeout 10m
-          github-token: ${{ secrets.github_token }}
+      - run: go tool golangci-lint run --timeout 10m
         if: env.GIT_DIFF
