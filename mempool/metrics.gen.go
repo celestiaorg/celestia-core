@@ -94,6 +94,66 @@ func PrometheusMetrics(namespace string, labelsAndValues ...string) *Metrics {
 			Name:      "rerequested_txs",
 			Help:      "RerequestedTxs defines the number of times that a requested tx never received a response in time and a new request was made.",
 		}, labels).With(labelsAndValues...),
+		ReceivedBufferSize: prometheus.NewGaugeFrom(stdprometheus.GaugeOpts{
+			Namespace: namespace,
+			Subsystem: MetricsSubsystem,
+			Name:      "received_buffer_size",
+			Help:      "ReceivedBufferSize is the total number of txs in the received buffer (per signer)",
+		}, append(labels, "signer")).With(labelsAndValues...),
+		PendingSeenSize: prometheus.NewGaugeFrom(stdprometheus.GaugeOpts{
+			Namespace: namespace,
+			Subsystem: MetricsSubsystem,
+			Name:      "pending_seen_size",
+			Help:      "PendingSeenSize is the total number of entries in pendingSeen (per signer)",
+		}, append(labels, "signer")).With(labelsAndValues...),
+		PendingSeenTotal: prometheus.NewGaugeFrom(stdprometheus.GaugeOpts{
+			Namespace: namespace,
+			Subsystem: MetricsSubsystem,
+			Name:      "pending_seen_total",
+			Help:      "PendingSeenTotal is the total number of entries in pendingSeen",
+		}, labels).With(labelsAndValues...),
+		BufferRejectedTooFar: prometheus.NewCounterFrom(stdprometheus.CounterOpts{
+			Namespace: namespace,
+			Subsystem: MetricsSubsystem,
+			Name:      "buffer_rejected_too_far",
+			Help:      "BufferRejectedTooFar is the number of txs rejected because sequence was too far ahead",
+		}, labels).With(labelsAndValues...),
+		BufferRejectedFull: prometheus.NewCounterFrom(stdprometheus.CounterOpts{
+			Namespace: namespace,
+			Subsystem: MetricsSubsystem,
+			Name:      "buffer_rejected_full",
+			Help:      "BufferRejectedFull is the number of txs rejected because buffer was full",
+		}, labels).With(labelsAndValues...),
+		BufferSizePerSigner: prometheus.NewGaugeFrom(stdprometheus.GaugeOpts{
+			Namespace: namespace,
+			Subsystem: MetricsSubsystem,
+			Name:      "buffer_size_per_signer",
+			Help:      "BufferSizePerSigner is the number of buffered txs per signer",
+		}, append(labels, "signer")).With(labelsAndValues...),
+		MaxSeenTxSeqPerSigner: prometheus.NewGaugeFrom(stdprometheus.GaugeOpts{
+			Namespace: namespace,
+			Subsystem: MetricsSubsystem,
+			Name:      "max_seen_tx_seq_per_signer",
+			Help:      "MaxSeenTxSeqPerSigner is the max sequence this node has seen for a signer(receiving SeenTx messages)",
+		}, append(labels, "signer")).With(labelsAndValues...),
+		SeenRangeMaxSeqPerSigner: prometheus.NewGaugeFrom(stdprometheus.GaugeOpts{
+			Namespace: namespace,
+			Subsystem: MetricsSubsystem,
+			Name:      "seen_range_max_seq_per_signer",
+			Help:      "SeenRangeMaxSeqPerSigner is the max sequence peers claim to have for a signer",
+		}, append(labels, "signer")).With(labelsAndValues...),
+		MaxRequestedSeqPerSigner: prometheus.NewGaugeFrom(stdprometheus.GaugeOpts{
+			Namespace: namespace,
+			Subsystem: MetricsSubsystem,
+			Name:      "max_requested_seq_per_signer",
+			Help:      "MaxRequestedSeqPerSigner is the max sequence this node has requested for a signer",
+		}, append(labels, "signer")).With(labelsAndValues...),
+		ExpectedSeqPerSigner: prometheus.NewGaugeFrom(stdprometheus.GaugeOpts{
+			Namespace: namespace,
+			Subsystem: MetricsSubsystem,
+			Name:      "expected_seq_per_signer",
+			Help:      "ExpectedSeqPerSigner is the expected sequence from app for a signer(next accepted tx sequence by the app(mempool state))",
+		}, append(labels, "signer")).With(labelsAndValues...),
 	}
 }
 
@@ -112,5 +172,15 @@ func NopMetrics() *Metrics {
 		AlreadySeenTxs:            discard.NewCounter(),
 		RequestedTxs:              discard.NewCounter(),
 		RerequestedTxs:            discard.NewCounter(),
+		ReceivedBufferSize:        discard.NewGauge(),
+		PendingSeenSize:           discard.NewGauge(),
+		PendingSeenTotal:          discard.NewGauge(),
+		BufferRejectedTooFar:      discard.NewCounter(),
+		BufferRejectedFull:        discard.NewCounter(),
+		BufferSizePerSigner:       discard.NewGauge(),
+		MaxSeenTxSeqPerSigner:     discard.NewGauge(),
+		SeenRangeMaxSeqPerSigner:  discard.NewGauge(),
+		MaxRequestedSeqPerSigner:  discard.NewGauge(),
+		ExpectedSeqPerSigner:      discard.NewGauge(),
 	}
 }

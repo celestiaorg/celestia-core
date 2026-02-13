@@ -3,6 +3,7 @@ package cat
 import (
 	"cmp"
 	"context"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"slices"
@@ -63,13 +64,15 @@ var (
 // spec under /.spec.md
 type Reactor struct {
 	p2p.BaseReactor
-	opts           *ReactorOptions
-	mempool        *TxPool
-	ids            *mempoolIDs
-	requests       *requestScheduler
-	pendingSeen    *pendingSeenTracker
-	receivedBuffer *receivedTxBuffer // buffer for out-of-order tx arrivals
-	traceClient    trace.Tracer
+	opts               *ReactorOptions
+	mempool            *TxPool
+	ids                *mempoolIDs
+	requests           *requestScheduler
+	sequenceTracker    *sequenceTracker
+	legacyTxKeyTracker *legacyTxKeyTracker
+	upgradedPeers      *upgradedPeers
+	receivedBuffer     *receivedTxBuffer
+	traceClient        trace.Tracer
 	// stickySalt stores []byte rendezvous salt for sticky peer selection; nil/empty keeps default ordering.
 	stickySalt atomic.Value
 }
@@ -125,13 +128,15 @@ func NewReactor(mempool *TxPool, opts *ReactorOptions) (*Reactor, error) {
 		traceClient = trace.NoOpTracer()
 	}
 	memR := &Reactor{
-		opts:           opts,
-		mempool:        mempool,
-		ids:            newMempoolIDs(),
-		requests:       newRequestScheduler(opts.MaxGossipDelay, defaultGlobalRequestTimeout),
-		pendingSeen:    newPendingSeenTracker(0),
-		receivedBuffer: newReceivedTxBuffer(),
-		traceClient:    traceClient,
+		opts:               opts,
+		mempool:            mempool,
+		ids:                newMempoolIDs(),
+		requests:           newRequestScheduler(opts.MaxGossipDelay, defaultGlobalRequestTimeout),
+		sequenceTracker:    newSequenceTracker(),
+		legacyTxKeyTracker: newLegacyTxKeyTracker(),
+		upgradedPeers:      newUpgradedPeers(),
+		receivedBuffer:     newReceivedTxBuffer(),
+		traceClient:        traceClient,
 	}
 	memR.BaseReactor = *p2p.NewBaseReactor("CAT", memR,
 		p2p.WithIncomingQueueSize(ReactorIncomingMessageQueueSize),
@@ -257,15 +262,33 @@ func (memR *Reactor) RemovePeer(peer p2p.Peer, reason interface{}) {
 	peerID := memR.ids.Reclaim(peer.ID())
 	// clear all memory of seen txs by that peer
 	memR.mempool.seenByPeersSet.RemovePeer(peerID)
-	memR.pendingSeen.removePeer(peerID)
+	memR.sequenceTracker.removePeer(peerID)
+	memR.legacyTxKeyTracker.removePeer(peerID)
+	memR.upgradedPeers.remove(peerID)
 
 	// remove and rerequest all pending outbound requests to that peer since we know
 	// we won't receive any responses from them.
 	outboundRequests := memR.requests.ClearAllRequestsFrom(peerID)
-	for key := range outboundRequests {
-		memR.pendingSeen.markRequestFailed(key, peerID)
+	// Trace requests cleared (peer disconnected)
+	if len(outboundRequests) > 0 {
+		stats := memR.requests.Stats(peerID, nil)
+		schema.WriteMempoolRequest(
+			memR.traceClient,
+			nil,
+			nil,
+			0,
+			peerID,
+			schema.RequestEventCleared,
+			stats.TotalByTx,
+			stats.TotalBySequence,
+			stats.ForPeer,
+			stats.ForSigner,
+		)
+	}
+	for key, info := range outboundRequests {
+		memR.legacyTxKeyTracker.markRequestFailed(key, peerID)
 		memR.mempool.metrics.RequestedTxs.Add(1)
-		memR.findNewPeerToRequestTx(key)
+		memR.findNewPeerToRequestTx(key, info.signer, info.sequence)
 	}
 }
 
@@ -284,38 +307,49 @@ func (memR *Reactor) Receive(e p2p.Envelope) {
 			memR.Logger.Error("received empty txs from peer", "src", e.Src)
 			return
 		}
+
+		// validate the provided tx metadata if peer is upgraded
+		isUpgraded, peerSigners, peerSequences, ok := memR.prepareTxsMetadata(msg, protoTxs, e.Src)
+		if !ok {
+			memR.Logger.Error("received txs from upgraded peer with incorrect metadata", "src", e.Src, "msg", msg)
+			return
+		}
+
 		peerID := memR.ids.GetIDForPeer(e.Src.ID())
 		txInfo := mempool.TxInfo{SenderID: peerID}
 		txInfo.SenderP2PID = e.Src.ID()
 
-		for _, tx := range protoTxs {
+		for idx, tx := range protoTxs {
 			ntx := types.Tx(tx)
 			key := ntx.Key()
 			cachedTx := ntx.ToCachedTx()
 			schema.WriteMempoolTx(memR.traceClient, string(e.Src.ID()), key[:], len(tx), schema.Download)
-			// If we requested the transaction we mark it as received.
-			if memR.requests.Has(peerID, key) {
-				memR.requests.MarkReceived(peerID, key)
+			// resolve the signer and sequence for the tx based on if the peer is upgraded or not
+			signer, sequence, haveSignerSequence := memR.resolveTxSignerSequence(isUpgraded, idx, key, peerSigners, peerSequences, e.Src)
+			rt := txRoute{peerID: peerID, txKey: key, signer: signer, sequence: sequence}
+			if memR.requests.HasRoute(memR.peerIsUpgraded(peerID), peerID, key, signer, sequence) {
+				memR.requests.MarkReceivedRoute(memR.peerIsUpgraded(peerID), peerID, key, signer, sequence)
 				memR.Logger.Trace("received a response for a requested transaction", "peerID", peerID, "txKey", key)
 			} else {
 				// If we didn't request the transaction we simply mark the peer as having the
 				// tx (we'd have already done it if we were requesting the tx).
-				memR.mempool.PeerHasTx(peerID, key)
+				memR.mempool.PeerHasTxRoute(memR.peerIsUpgraded(peerID), peerID, key, signer, sequence)
 				memR.Logger.Trace("received new transaction", "peerID", peerID, "txKey", key)
 			}
 
 			// Look up signer/sequence from pending tracker
-			pendingEntry := memR.pendingSeen.get(key)
-			if pendingEntry != nil && len(pendingEntry.signer) > 0 && pendingEntry.sequence > 0 {
+			if haveSignerSequence {
 				// We have sequence info - check if we should buffer or process
-				expectedSeq, haveExpected := memR.querySequenceFromApplication(pendingEntry.signer)
-				if haveExpected && pendingEntry.sequence > expectedSeq {
-					if pendingEntry.sequence > expectedSeq+maxReceivedBufferSize {
+				expectedSeq, haveExpected := memR.querySequenceFromApplication(signer)
+				if haveExpected && sequence > expectedSeq {
+					// If sequence is too far ahead, move on
+					if sequence > expectedSeq+maxReceivedBufferSize {
 						continue
 					}
 					// Future sequence within lookahead - buffer it for later
-					if memR.receivedBuffer.add(pendingEntry.signer, pendingEntry.sequence, cachedTx, key, txInfo, string(e.Src.ID())) {
-						memR.pendingSeen.remove(key)
+					if memR.receivedBuffer.add(signer, sequence, cachedTx, key, txInfo, string(e.Src.ID())) {
+						// todo: decide if we should be doing this here at all.
+						memR.legacyTxKeyTracker.removeBySignerSequence(signer, sequence)
 					}
 					continue
 				}
@@ -333,69 +367,46 @@ func (memR *Reactor) Receive(e p2p.Envelope) {
 	// 3. If we recently evicted the tx and still don't have space for it, we do nothing.
 	// 4. Else, we request the transaction from that peer.
 	case *protomem.SeenTx:
-		txKey, err := types.TxKeyFromBytes(msg.TxKey)
-		if err != nil {
-			memR.Logger.Error("peer sent SeenTx with incorrect tx key", "err", err)
-			memR.Switch.StopPeerForError(e.Src, err, memR.String())
-			return
-		}
 		if len(msg.Signer) > maxSignerLength {
 			memR.Logger.Error("peer sent SeenTx with signer too long", "len", len(msg.Signer))
 			memR.Switch.StopPeerForError(e.Src, errSignerTooLong, memR.String())
 			return
 		}
-		schema.WriteMempoolPeerState(
-			memR.traceClient,
-			string(e.Src.ID()),
-			schema.SeenTx,
-			txKey[:],
-			schema.Download,
-		)
 		peerID := memR.ids.GetIDForPeer(e.Src.ID())
-		memR.mempool.PeerHasTx(peerID, txKey)
+		isUpgraded := memR.upgradedPeers.peerUpgradeStatus(peerID, msg)
+
+		// This will return an empty tx key if the peer is upgraded
+		txKey := memR.resolveTxKey(isUpgraded, msg.TxKey, e.Src)
+
+		// Internally we check if tx key is empty and route for legacy or upgraded peers that way
+		rt := txRoute{peerID: peerID, txKey: txKey, signer: msg.Signer, sequence: msg.Sequence}
+		memR.mempool.PeerHasTxRoute(memR.peerIsUpgraded(peerID), rt.peerID, rt.txKey, rt.signer, rt.sequence)
+		schema.WriteMempoolPeerStateWithSeq(memR.traceClient, string(e.Src.ID()), schema.SeenTx, txKey[:], schema.Download, msg.Signer, msg.Sequence, msg.MinSequence, msg.MaxSequence)
 
 		// Check if we don't already have the transaction
-		if memR.mempool.Has(txKey) {
+		// peer version routing is handled internally
+		if memR.mempool.HasTx(memR.peerIsUpgraded(peerID), txKey, msg.Signer, msg.Sequence) {
 			memR.Logger.Trace("received a seen tx for a tx we already have", "txKey", txKey)
 			return
 		}
 
 		// If we are already requesting that tx, then we don't need to go any further.
-		if memR.requests.ForTx(txKey) != 0 {
+		// peer version routing is handled internally
+		if memR.requests.ForTxRoute(memR.peerIsUpgraded(peerID), txKey, msg.Signer, msg.Sequence) != 0 {
 			memR.Logger.Trace("received a SeenTx message for a transaction we are already requesting", "txKey", txKey)
 			return
 		}
 
 		expectedSeq, haveExpected := memR.querySequenceFromApplication(msg.Signer)
 
-		switch {
-		case len(msg.Signer) == 0 || msg.Sequence == 0:
-			// fall through and request immediately when sequence info is missing
-			schema.WriteMempoolPeerStateWithSeq(
-				memR.traceClient,
-				string(e.Src.ID()),
-				schema.MissingSequence,
-				txKey[:],
-				schema.Download,
-				msg.Signer,
-				msg.Sequence,
-			)
+		switch { //NOTE: we added sequence info in last release, this will probably be released  in v8 therefore all nodes should have sequence info
 		case !haveExpected:
 			// fall through and request immediately if we cannot query the application
-			schema.WriteMempoolPeerStateWithSeq(
-				memR.traceClient,
-				string(e.Src.ID()),
-				schema.MissingSequence,
-				txKey[:],
-				schema.Download,
-				msg.Signer,
-				msg.Sequence,
-			)
+			schema.WriteMempoolPeerStateWithSeq(memR.traceClient, string(e.Src.ID()), schema.MissingSequence, txKey[:], schema.Download, msg.Signer, msg.Sequence, msg.MinSequence, msg.MaxSequence)
 		case msg.Sequence == expectedSeq:
 			// fall through and request immediately for the expected sequence
 		case msg.Sequence > expectedSeq:
-			// TODO: add per-peer limits or something similar to pendingSeen to prevent overflowing
-			memR.pendingSeen.add(msg.Signer, txKey, msg.Sequence, peerID)
+			memR.recordSeenTx(msg, txKey, peerID)
 			return
 		default:
 			memR.Logger.Debug(
@@ -410,33 +421,30 @@ func (memR *Reactor) Receive(e p2p.Envelope) {
 
 		// We don't have the transaction, nor are we requesting it so we send the node
 		// a want msg
-		memR.requestTx(txKey, e.Src)
+		memR.requestByRoute(rt)
 
 	// A peer is requesting a transaction that we have claimed to have. Find the specified
 	// transaction and broadcast it to the peer. We may no longer have the transaction
 	case *protomem.WantTx:
-		txKey, err := types.TxKeyFromBytes(msg.TxKey)
-		if err != nil {
-			memR.Logger.Error("peer sent WantTx with incorrect tx key", "err", err)
-			memR.Switch.StopPeerForError(e.Src, err, memR.String())
-			return
-		}
-		schema.WriteMempoolPeerState(
-			memR.traceClient,
-			string(e.Src.ID()),
-			schema.WantTx,
-			txKey[:],
-			schema.Download,
-		)
-		tx, has := memR.mempool.GetTxByKey(txKey)
+		peerID := memR.ids.GetIDForPeer(e.Src.ID())
+		isUpgraded := memR.upgradedPeers.peerUpgradeStatus(peerID, msg)
+		txKey := memR.resolveTxKey(isUpgraded, msg.TxKey, e.Src)
+
+		tx, has := memR.resolveWantTx(isUpgraded, msg, txKey)
+		schema.WriteMempoolPeerState(memR.traceClient, string(e.Src.ID()), schema.WantTx, msg.TxKey, schema.Download)
+
 		if has && !memR.opts.ListenOnly {
-			peerID := memR.ids.GetIDForPeer(e.Src.ID())
 			memR.Logger.Trace("sending a tx in response to a want msg", "peer", peerID)
+			txsMsg := &protomem.Txs{Txs: [][]byte{tx.Tx}}
+			if memR.peerIsUpgraded(peerID) {
+				txsMsg.Signers = [][]byte{msg.Signer}
+				txsMsg.Sequences = []uint64{msg.Sequence}
+			}
 			if e.Src.Send(p2p.Envelope{
 				ChannelID: MempoolDataChannel,
-				Message:   &protomem.Txs{Txs: [][]byte{tx.Tx}},
+				Message:   txsMsg,
 			}) {
-				memR.mempool.PeerHasTx(peerID, txKey)
+				memR.mempool.PeerHasTxRoute(memR.peerIsUpgraded(peerID), peerID, txKey, msg.Signer, msg.Sequence)
 				schema.WriteMempoolTx(
 					memR.traceClient,
 					string(e.Src.ID()),
@@ -473,15 +481,8 @@ func (memR *Reactor) broadcastNewTx(wtx *wrappedTx) {
 // broadcastSeenTxWithHeight is a helper that broadcasts a SeenTx message with height checking.
 func (memR *Reactor) broadcastSeenTxWithHeight(txKey types.TxKey, height int64, signer []byte, sequence uint64) {
 	memR.Logger.Debug("broadcasting seen tx to limited peers", "tx_key", txKey.String())
-	msg := &protomem.Message{
-		Sum: &protomem.Message_SeenTx{
-			SeenTx: &protomem.SeenTx{
-				TxKey:    txKey[:],
-				Signer:   signer,
-				Sequence: sequence,
-			},
-		},
-	}
+	// get the lowest and highest sequence for this signer from the mempool
+	minSequence, maxSequence := memR.mempool.store.getMinMaxSequenceForSigner(signer)
 
 	peers := memR.ids.GetAll()
 	if len(peers) == 0 {
@@ -511,21 +512,44 @@ func (memR *Reactor) broadcastSeenTxWithHeight(txKey types.TxKey, height int64, 
 			continue
 		}
 
+		seen := &protomem.SeenTx{
+			Signer:      signer,
+			Sequence:    sequence,
+			MinSequence: minSequence,
+			MaxSequence: maxSequence,
+		}
+		if !memR.upgradedPeers.has(id) {
+			seen.TxKey = txKey[:]
+		}
+		msg := &protomem.Message{
+			Sum: &protomem.Message_SeenTx{SeenTx: seen},
+		}
+
 		if peer.Send(
 			p2p.Envelope{
 				ChannelID: MempoolDataChannel,
 				Message:   msg,
 			},
 		) {
-			memR.mempool.PeerHasTx(id, txKey)
-			schema.WriteMempoolPeerState(memR.traceClient, string(peer.ID()), schema.SeenTx, txKey[:], schema.Upload)
+			memR.mempool.PeerHasTxRoute(false, id, txKey, signer, sequence)
+			schema.WriteMempoolPeerStateWithSeq(memR.traceClient, string(peer.ID()), schema.SeenTx, txKey[:], schema.Upload, signer, sequence, minSequence, maxSequence)
 			sent++
 		}
 	}
 }
 
+// routeRequestTx routes a request to a peer based on peer version
+func (memR *Reactor) routeRequestTx(txKey types.TxKey, signer []byte, sequence uint64, peer p2p.Peer) {
+	peerID := memR.ids.GetIDForPeer(peer.ID())
+	if memR.upgradedPeers.has(peerID) {
+		memR.requestTxBySequence(signer, sequence, peer)
+	} else {
+		memR.requestTxWithTxKey(txKey, peer)
+	}
+}
+
 // requesting it from another peer if the first peer does not respond.
-func (memR *Reactor) requestTx(txKey types.TxKey, peer p2p.Peer) bool {
+func (memR *Reactor) requestTxWithTxKey(txKey types.TxKey, peer p2p.Peer) bool {
 	if peer == nil {
 		// we have disconnected from the peer
 		return false
@@ -547,14 +571,73 @@ func (memR *Reactor) requestTx(txKey types.TxKey, peer p2p.Peer) bool {
 	)
 	if success {
 		memR.mempool.metrics.RequestedTxs.Add(1)
-		requested := memR.requests.Add(txKey, peerID, memR.onRequestTimeout)
+		requested := memR.requests.Add(txKey, []byte{}, 0, peerID, memR.onRequestTimeout)
 		if !requested {
 			memR.Logger.Error("have already marked a tx as requested", "txKey", txKey, "peerID", peer.ID())
 		} else {
-			memR.pendingSeen.markRequested(txKey, peerID, time.Now().UTC())
+			// Trace request added (by txKey)
+			stats := memR.requests.Stats(peerID, nil)
+			schema.WriteMempoolRequest(
+				memR.traceClient,
+				txKey[:],
+				nil,
+				0,
+				peerID,
+				schema.RequestEventAdded,
+				stats.TotalByTx,
+				stats.TotalBySequence,
+				stats.ForPeer,
+				stats.ForSigner,
+			)
 		}
 
+		// TODO: figure out what to do with signer and sequence here
 		schema.WriteMempoolPeerState(memR.traceClient, string(peer.ID()), schema.WantTx, txKey[:], schema.Upload)
+	}
+	return success
+}
+
+func (memR *Reactor) requestTxBySequence(signer []byte, sequence uint64, peer p2p.Peer) bool {
+	if peer == nil {
+		// we have disconnected from the peer
+		return false
+	}
+
+	peerID := memR.ids.GetIDForPeer(peer.ID())
+	if !memR.upgradedPeers.has(peerID) {
+		return false
+	}
+	memR.Logger.Trace("requesting tx by sequence", "signer", string(signer), "sequence", sequence, "peerID", peer.ID())
+	msg := &protomem.Message{
+		Sum: &protomem.Message_WantTx{
+			WantTx: &protomem.WantTx{Signer: signer, Sequence: sequence},
+		},
+	}
+	success := peer.Send(p2p.Envelope{ChannelID: MempoolWantsChannel, Message: msg})
+	if success {
+		requested := memR.requests.Add(types.TxKey{}, signer, sequence, peerID, memR.onRequestTimeout)
+		if !requested {
+			memR.Logger.Error("have already marked a tx as requested", "signer", string(signer), "sequence", sequence, "peerID", peer.ID())
+		} else {
+			// Trace request added (by sequence)
+			stats := memR.requests.Stats(peerID, signer)
+			schema.WriteMempoolRequest(
+				memR.traceClient,
+				nil,
+				signer,
+				sequence,
+				peerID,
+				schema.RequestEventAdded,
+				stats.TotalByTx,
+				stats.TotalBySequence,
+				stats.ForPeer,
+				stats.ForSigner,
+			)
+		}
+		// Note: We don't call markRequested here because there's no sequenceTracker entry
+		// for optimistic sequence based requests. The request is tracked in the
+		// requests scheduler via requestsBySequence instead.
+		schema.WriteMempoolPeerStateWithSeq(memR.traceClient, string(peer.ID()), schema.WantTx, []byte{}, schema.Upload, signer, sequence, 0, 0)
 	}
 	return success
 }
@@ -591,7 +674,7 @@ func (memR *Reactor) tryAddNewTx(cachedTx *types.CachedTx, key types.TxKey, txIn
 func (memR *Reactor) processReceivedTx(cachedTx *types.CachedTx, key types.TxKey, txInfo mempool.TxInfo, src p2p.Peer) {
 	rsp, err := memR.tryAddNewTx(cachedTx, key, txInfo, string(src.ID()))
 	if err == nil || errors.Is(err, ErrTxInMempool) {
-		memR.pendingSeen.remove(key)
+		memR.legacyTxKeyTracker.removeByTxKey(key)
 	}
 	if err != nil {
 		return
@@ -599,7 +682,7 @@ func (memR *Reactor) processReceivedTx(cachedTx *types.CachedTx, key types.TxKey
 
 	if len(rsp.Address) > 0 {
 		memR.processReceivedBuffer(rsp.Address)
-		memR.processPendingSeenForSigner(rsp.Address)
+		memR.processSequenceGapsForSigner(rsp.Address)
 	}
 
 	if !memR.opts.ListenOnly && rsp.Code == 0 {
@@ -628,11 +711,13 @@ func (memR *Reactor) processReceivedBuffer(signer []byte) {
 
 		rsp, err := memR.tryAddNewTx(buffered.tx, buffered.txKey, buffered.txInfo, buffered.peerID)
 		if err == nil || errors.Is(err, ErrTxInMempool) {
-			memR.pendingSeen.remove(buffered.txKey)
+			memR.legacyTxKeyTracker.removeBySignerSequence(signer, expectedSeq)
 		}
 		if err != nil {
 			break
 		}
+
+		// todo: should we be marking tx request received here?
 
 		if !memR.opts.ListenOnly && rsp.Code == 0 {
 			memR.broadcastSeenTx(buffered.txKey, signer, expectedSeq)
@@ -640,19 +725,74 @@ func (memR *Reactor) processReceivedBuffer(signer []byte) {
 	}
 }
 
-// processPendingSeenForSigner tries to advance the pipeline of queued transactions for a signer.
+// processSequenceGapsForSigner tries to advance the pipeline of transactions for a signer by requesting the ranges that peers definitely have.
 // It requests consecutive sequences in parallel from different peers whenever we have seen a consecutive sequence numbers,
 // buffering out-of-order arrivals for later processing. This allows fast catch-up even when tx sources are distributed.
-func (memR *Reactor) processPendingSeenForSigner(signer []byte) {
+func (memR *Reactor) processSequenceGapsForSigner(signer []byte) {
 	if len(signer) == 0 {
 		return
 	}
 
-	entries := memR.pendingSeen.entriesForSigner(signer)
+	expectedSeq, haveExpected := memR.querySequenceFromApplication(signer)
+	if !haveExpected {
+		memR.Logger.Error("no signer found in application")
+		return
+	}
+
+	// Clean up stale entries from sequence tracker below expected sequence
+	memR.sequenceTracker.removeBelowSequence(signer, expectedSeq)
+
+	// Get the maximum sequence peers claim to have and which peers can serve requests
+	maxSeq := memR.sequenceTracker.getMaxSeenSeqForSigner(signer)
+	if maxSeq < expectedSeq {
+		return
+	}
+
+	// Request sequences from expectedSeq up to maxSeq, but cap the number of requests
+	// to maxReceivedBufferSize to avoid unbounded buffering.
+	requested := 0
+	for curSeq := expectedSeq; curSeq <= maxSeq; curSeq++ {
+		if requested >= maxReceivedBufferSize {
+			break
+		}
+		// Skip if already buffered
+		if memR.receivedBuffer.get(signer, curSeq) != nil {
+			continue
+		}
+		// Skip if already in mempool
+		_, exists := memR.mempool.store.getTxBySignerSequence(signer, curSeq)
+		if exists {
+			continue
+		}
+		// Skip if already requested
+		if memR.requests.ForSignerSequence(signer, curSeq) != 0 {
+			continue
+		}
+		// Request this sequence from any peer that claims to have it
+		if memR.tryRequestTxBySequence(signer, curSeq) {
+			requested++
+		}
+	}
+
+	if requested > 0 {
+		memR.Logger.Info("parallel requests sent", "count", requested)
+	}
+
+}
+
+// processLegacyTxKeysForSigner tries to advance the pipeline of queued transactions for a signer.
+// It requests consecutive sequences in parallel from different peers whenever we have seen a consecutive sequence numbers,
+// buffering out-of-order arrivals for later processing. This allows fast catch-up even when tx sources are distributed.
+func (memR *Reactor) processLegacyTxKeysForSigner(signer []byte) {
+	if len(signer) == 0 {
+		return
+	}
+
+	entries := memR.legacyTxKeyTracker.entriesForSigner(signer)
 	if len(entries) == 0 {
 		return
 	}
-	slices.SortFunc(entries, func(a, b *pendingSeenTx) int {
+	slices.SortFunc(entries, func(a, b *txKeyEntry) int {
 		return cmp.Compare(a.sequence, b.sequence)
 	})
 	expectedSeq, haveExpected := memR.querySequenceFromApplication(signer)
@@ -668,7 +808,7 @@ func (memR *Reactor) processPendingSeenForSigner(signer []byte) {
 	for _, entry := range entries {
 		// Clean up entries that are already processed
 		if entry.sequence < expectedSeq {
-			memR.pendingSeen.remove(entry.txKey)
+			memR.legacyTxKeyTracker.removeByTxKey(entry.txKey)
 			continue
 		}
 
@@ -683,21 +823,27 @@ func (memR *Reactor) processPendingSeenForSigner(signer []byte) {
 
 		// Skip if already in mempool
 		if memR.mempool.Has(entry.txKey) {
-			memR.pendingSeen.remove(entry.txKey)
+			memR.legacyTxKeyTracker.removeByTxKey(entry.txKey)
 			nextSeq++
 			continue
 		}
 
 		// Skip if already being requested, but count it
-		if memR.requests.ForTx(entry.txKey) != 0 || entry.requested {
+		if memR.requests.ForTx(entry.txKey) != 0 || memR.requests.Has(entry.peer, entry.txKey) {
 			nextSeq++
 			requested++
 			continue
 		}
 
 		// Request from first available peer
-		if memR.tryRequestQueuedTx(entry) {
+		// TODO: potentially need to make this logic the way it previously was if we still want to support this logic
+		if memR.requests.CountForPeer(entry.peer) >= maxRequestsPerPeer {
+			continue
+		}
+		peer := memR.ids.GetPeer(entry.peer)
+		if peer != nil && memR.requestTxWithTxKey(entry.txKey, peer) {
 			requested++
+			continue
 		}
 		nextSeq++
 	}
@@ -707,26 +853,13 @@ func (memR *Reactor) processPendingSeenForSigner(signer []byte) {
 	}
 }
 
-func (memR *Reactor) tryRequestQueuedTx(entry *pendingSeenTx) bool {
-	// Try each peer that has seen this tx, skipping those at capacity
-	for _, peerID := range entry.peerIDs() {
-		if memR.requests.CountForPeer(peerID) >= maxRequestsPerPeer {
-			continue
-		}
-		peer := memR.ids.GetPeer(peerID)
-		if peer != nil && memR.requestTx(entry.txKey, peer) {
-			return true
-		}
+func (memR *Reactor) onRequestTimeout(txKey types.TxKey, signer []byte, sequence uint64, peerID uint16) {
+	if len(signer) > 0 && sequence > 0 {
+		memR.tryRequestTxBySequence(signer, sequence)
+		return
 	}
-
-	// No known peer available, try to find a new one
-	memR.findNewPeerToRequestTx(entry.txKey)
-	return memR.requests.ForTx(entry.txKey) != 0
-}
-
-func (memR *Reactor) onRequestTimeout(txKey types.TxKey, peerID uint16) {
-	memR.pendingSeen.markRequestFailed(txKey, peerID)
-	memR.findNewPeerToRequestTx(txKey)
+	memR.legacyTxKeyTracker.markRequestFailed(txKey, peerID)
+	memR.findNewPeerToRequestTx(txKey, signer, sequence)
 }
 
 func (memR *Reactor) heightSignalLoop() {
@@ -743,16 +876,21 @@ func (memR *Reactor) heightSignalLoop() {
 			if !ok {
 				return
 			}
-			memR.refreshPendingSeenQueues()
+			memR.refreshSequenceQueues()
+			memR.refreshLegacyTxKeys()
 		}
 	}
 }
 
-func (memR *Reactor) refreshPendingSeenQueues() {
+// refreshSequenceQueues refreshes the sequence tracker and processes the received buffer and sequence gaps for each signer
+func (memR *Reactor) refreshSequenceQueues() {
+	// Update metrics gauges
+	memR.updateMetricsGauges()
+
+	memR.logMempoolSignerState()
 	// Collect signers from both pending seen and buffer
 	seenSigners := make(map[string][]byte)
-
-	for _, signer := range memR.pendingSeen.signerKeys() {
+	for _, signer := range memR.sequenceTracker.signerKeysFromPeerMax() {
 		seenSigners[string(signer)] = signer
 	}
 	for _, signer := range memR.receivedBuffer.signerKeys() {
@@ -768,8 +906,85 @@ func (memR *Reactor) refreshPendingSeenQueues() {
 		// (their expected sequence may have advanced due to block commit)
 		memR.processReceivedBuffer(signer)
 		// Then request more pending txs
-		memR.processPendingSeenForSigner(signer)
+		memR.processSequenceGapsForSigner(signer)
 	}
+}
+
+func (memR *Reactor) refreshLegacyTxKeys() {
+	legacySigners := make(map[string][]byte)
+	for _, entry := range memR.legacyTxKeyTracker.entries() {
+		legacySigners[string(entry.signer)] = entry.signer
+	}
+	for _, signer := range legacySigners {
+		memR.processLegacyTxKeysForSigner(signer)
+	}
+}
+
+// updateMetricsGauges updates all gauge metrics with current state (per signer)
+func (memR *Reactor) updateMetricsGauges() {
+	// Collect all signers from pending seen, max seen seq, and buffer
+	// Use hex-encoded keys for Prometheus label compatibility
+	allSigners := make(map[string][]byte)
+	for _, signer := range memR.sequenceTracker.signerKeysFromPeerMax() {
+		allSigners[hex.EncodeToString(signer)] = signer
+	}
+	for _, signer := range memR.receivedBuffer.signerKeys() {
+		allSigners[hex.EncodeToString(signer)] = signer
+	}
+
+	totalPendingSeen := 0
+	// TODO: needs to be heavily reworked
+	// Update per-signer metrics
+	// for signerHex, signer := range allSigners {
+
+		// // Buffer metrics per signer
+		// bufferStats := memR.receivedBuffer.statsForSigner(signer)
+		// memR.mempool.metrics.ReceivedBufferSize.With("signer", signerHex).Set(float64(bufferStats.Size))
+		// memR.mempool.metrics.BufferSizePerSigner.With("signer", signerHex).Set(float64(bufferStats.Size))
+
+		// // Expected sequence from app
+		// expectedSeq, haveExpected := memR.querySequenceFromApplication(signer)
+		// if haveExpected {
+		// 	memR.mempool.metrics.ExpectedSeqPerSigner.With("signer", signerHex).Set(float64(expectedSeq))
+		// }
+
+		// // Max seen sequence from SeenTx messages
+		// maxSeenSeq := memR.sequenceTracker.getMaxSeenSeqForSigner(signer)
+		// memR.mempool.metrics.MaxSeenTxSeqPerSigner.With("signer", signerHex).Set(float64(maxSeenSeq))
+
+		// // Max requested sequence for this signer
+		// maxRequestedSeq := memR.requests.MaxSequenceForSigner(signer)
+		// memR.mempool.metrics.MaxRequestedSeqPerSigner.With("signer", signerHex).Set(float64(maxRequestedSeq))
+
+	// }
+
+	memR.mempool.metrics.PendingSeenTotal.Set(float64(totalPendingSeen))
+}
+
+// logMempoolSignerState logs the state of all signers in the mempool
+func (memR *Reactor) logMempoolSignerState() {
+	memR.mempool.store.processOrderedTxSets(func(txSets []*txSet) {
+		for _, set := range txSets {
+			if len(set.signer) == 0 {
+				continue
+			}
+			// Get sequence range from the set
+			var minSeq, maxSeq uint64
+			if len(set.txs) > 0 {
+				minSeq = set.txs[0].sequence
+				maxSeq = set.txs[len(set.txs)-1].sequence
+			}
+			// Get expected sequence from application
+			expectedSeq, _ := memR.querySequenceFromApplication(set.signer)
+
+			memR.Logger.Info("mempool signer state",
+				"signer", string(set.signer),
+				"txCount", len(set.txs),
+				"seqRange", fmt.Sprintf("[%d-%d]", minSeq, maxSeq),
+				"expectedSeq", expectedSeq,
+			)
+		}
+	})
 }
 
 func (memR *Reactor) querySequenceFromApplication(signer []byte) (uint64, bool) {
@@ -780,7 +995,7 @@ func (memR *Reactor) querySequenceFromApplication(signer []byte) (uint64, bool) 
 	}
 	// If the response is 0, treat it as "sequence tracking not available"
 	// to maintain backward compatibility with apps that don't implement QuerySequence.
-	// This prevents transactions from being stuck in pendingSeen when the app returns 0.
+	// This prevents transactions from being stuck in the sequence tracker when the app returns 0.
 	if resp.Sequence == 0 {
 		return 0, false
 	}
@@ -789,30 +1004,69 @@ func (memR *Reactor) querySequenceFromApplication(signer []byte) (uint64, bool) 
 
 // findNewPeerToSendTx finds a new peer that has already seen the transaction to
 // request a transaction from.
-func (memR *Reactor) findNewPeerToRequestTx(txKey types.TxKey) {
+func (memR *Reactor) findNewPeerToRequestTx(txKey types.TxKey, signer []byte, sequence uint64) {
 	// ensure that we are connected to peers
 	if memR.ids.Len() == 0 {
 		return
 	}
 
-	seenMap := memR.mempool.seenByPeersSet.Get(txKey)
-	for peerID := range seenMap {
-		if memR.requests.Has(peerID, txKey) {
-			continue
-		}
-		if memR.requests.CountForPeer(peerID) >= maxRequestsPerPeer {
-			continue
-		}
-		peer := memR.ids.GetPeer(peerID)
-		if peer != nil {
+	if len(signer) > 0 && sequence > 0 {
+		if memR.tryRequestTxBySequence(signer, sequence) {
 			memR.mempool.metrics.RerequestedTxs.Add(1)
-			memR.requestTx(txKey, peer)
 			return
 		}
+	}
+
+	if txKey == (types.TxKey{}) {
+		memR.Logger.Trace("no txKey available to reroute request", "signer", string(signer), "sequence", sequence)
+		return
+	}
+
+	if memR.tryRequestTxByKey(txKey) {
+		memR.mempool.metrics.RerequestedTxs.Add(1)
+		return
 	}
 
 	// No other free peer has the transaction we are looking for.
 	// We give up 🤷‍♂️ and hope either a peer responds late or the tx
 	// is gossiped again
 	memR.Logger.Trace("no other peer has the tx we are looking for", "txKey", txKey)
+}
+
+// tryRequestTxBySequence tries to request a transaction by (signer, sequence)
+// we just extended wanttx to be able to look up by (signer, sequence)
+func (memR *Reactor) tryRequestTxBySequence(signer []byte, sequence uint64) bool {
+	peersWithSignerRanges := memR.sequenceTracker.getPeersForSignerSequence(signer, sequence)
+	for _, peerID := range peersWithSignerRanges {
+		rt := txRoute{peerID: peerID, signer: signer, sequence: sequence}
+		if !memR.peerEligibleForRoute(rt) {
+			continue
+		}
+		if memR.requestByRoute(rt) {
+			return true
+		}
+	}
+
+	// All peers at capacity or unavailable for this sequence
+	memR.Logger.Debug(
+		"no available peer for sequence request",
+		"signer", string(signer),
+		"sequence", sequence,
+		"peersChecked", len(peersWithSignerRanges),
+	)
+	return false
+}
+
+func (memR *Reactor) tryRequestTxByKey(txKey types.TxKey) bool {
+	seenMap := memR.mempool.seenByPeersSet.Get(txKey)
+	for peerID := range seenMap {
+		rt := txRoute{peerID: peerID, txKey: txKey}
+		if !memR.peerEligibleForRoute(rt) {
+			continue
+		}
+		if memR.requestByRoute(rt) {
+			return true
+		}
+	}
+	return false
 }
