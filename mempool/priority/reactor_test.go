@@ -112,6 +112,47 @@ func TestTxsWithTooManyTxsBansPeer(t *testing.T) {
 	}, time.Second, 10*time.Millisecond, "reactor1 should see peer disconnected")
 }
 
+// TestTxsBatchBansPeer verifies that sending a batch of >1 transactions in a
+// single Txs message causes the peer to be disconnected. Transaction batching
+// was disabled in https://github.com/tendermint/tendermint/issues/5796 so only
+// a single transaction per message is expected.
+func TestTxsBatchBansPeer(t *testing.T) {
+	config := cfg.TestConfig()
+	const N = 2
+	reactors := makeAndConnectReactors(config, N)
+	defer func() {
+		for _, r := range reactors {
+			if err := r.Stop(); err != nil {
+				assert.NoError(t, err)
+			}
+		}
+	}()
+	for _, r := range reactors {
+		for _, peer := range r.Switch.Peers().List() {
+			peer.Set(types.PeerStateKey, peerState{1})
+		}
+	}
+
+	peers := reactors[0].Switch.Peers().List()
+	require.Len(t, peers, 1)
+	peer := peers[0]
+
+	// Send a Txs message containing 2 valid transactions (a batch).
+	reactors[0].Receive(p2p.Envelope{
+		ChannelID: mempool.MempoolChannel,
+		Message:   &memproto.Txs{Txs: [][]byte{{0x01}, {0x02}}},
+		Src:       peer,
+	})
+
+	require.Eventually(t, func() bool {
+		return len(reactors[0].Switch.Peers().List()) == 0
+	}, time.Second, 10*time.Millisecond, "peer should be disconnected after sending a batch of txs")
+
+	require.Eventually(t, func() bool {
+		return len(reactors[1].Switch.Peers().List()) == 0
+	}, time.Second, 10*time.Millisecond, "reactor1 should see peer disconnected")
+}
+
 func TestTxsWithEmptyTxBansPeer(t *testing.T) {
 	config := cfg.TestConfig()
 	const N = 2
