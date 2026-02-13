@@ -454,7 +454,7 @@ func TestTxsWithTooManyTxsBansPeer(t *testing.T) {
 
 // TestTxsBatchBansPeer verifies that sending a batch of >1 transactions in a
 // single Txs message causes the peer to be disconnected. Transaction batching
-// was disabled in https://github.com/tendermint/tendermint/issues/5796 so only
+// was disabled in https://github.com/tendermint/tendermint/pull/5800 so only
 // a single transaction per message is expected.
 func TestTxsBatchBansPeer(t *testing.T) {
 	config := cfg.TestConfig()

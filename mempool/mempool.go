@@ -23,7 +23,7 @@ const (
 
 	// MaxTxsPerMessage is the maximum number of transactions allowed in a
 	// single Txs protobuf message. Transaction batching was disabled in
-	// https://github.com/tendermint/tendermint/issues/5796 so only a single
+	// https://github.com/tendermint/tendermint/pull/5800 so only a single
 	// transaction per message is expected. Messages exceeding this limit
 	// cause the sending peer to be disconnected.
 	MaxTxsPerMessage = 1
