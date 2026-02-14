@@ -363,6 +363,14 @@ func (ps *PartSet) IsReadyForDecoding() bool {
 	return ps.IsComplete()
 }
 
+// pruneLastPart trims the last original part to its true length, removing any
+// Reed-Solomon padding bytes that were added during encoding.
+func pruneLastPart(data [][]byte, lastIndex uint32, lastPartLen int) {
+	if len(data[lastIndex]) != lastPartLen {
+		data[lastIndex] = data[lastIndex][:lastPartLen]
+	}
+}
+
 // Decode uses the block parts that are provided to reconstruct the original
 // data. It throws an error if the PartSet is incomplete or the resulting root
 // is different from that in the PartSetHeader. Parts are fully complete with
@@ -410,9 +418,7 @@ func Decode(ops, eps *PartSet, lastPartLen int) (*PartSet, *PartSet, error) {
 	}
 
 	// prune the last part if we need to
-	if len(data[:(ops.Total()-1)]) != lastPartLen {
-		data[(ops.Total() - 1)] = data[(ops.Total() - 1)][:lastPartLen]
-	}
+	pruneLastPart(data, ops.Total()-1, lastPartLen)
 
 	// recalculate all of the proofs since we apparently don't have a function
 	// to generate a single proof... TODO: don't generate proofs for block parts

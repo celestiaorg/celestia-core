@@ -141,6 +141,26 @@ func TestEncodingDecodingRoundTrip(t *testing.T) {
 	}
 }
 
+func TestPruneLastPart(t *testing.T) {
+	tests := []struct {
+		name        string
+		partLen     int
+		lastPartLen int
+		wantLen     int
+	}{
+		{"prunes when padded", 100, 50, 50},
+		{"no-op when already correct", 50, 50, 50},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			lastIndex := uint32(1)
+			data := [][]byte{make([]byte, 100), make([]byte, tt.partLen)}
+			pruneLastPart(data, lastIndex, tt.lastPartLen)
+			require.Len(t, data[lastIndex], tt.wantLen)
+		})
+	}
+}
+
 func TestEncoding(t *testing.T) {
 	data := cmtrand.Bytes(testPartSize * 100)
 	partSet, err := NewPartSetFromData(data, testPartSize)
