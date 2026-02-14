@@ -196,7 +196,7 @@ type ManifestNode struct {
 	// receive load.
 	SendNoLoad bool `toml:"send_no_load"`
 
-	// MempoolVersion specifies the mempool version to use: "flood" or "priority".
+	// MempoolVersion specifies the mempool version to use: "cat".
 	MempoolVersion string `toml:"mempool_version"`
 
 	// DisablePropagationReactor disables the propagation reactor for block and proposal recovery.
