@@ -40,13 +40,8 @@ const (
 	DefaultNodeKeyName  = "node_key.json"
 	DefaultAddrBookName = "addrbook.json"
 
-	MempoolTypeFlood          = "flood"
-	MempoolTypeNop            = "nop"
-	MempoolTypePriority       = "priority"
-	MempoolTypeCAT            = "cat"
-	LegacyMempoolTypeFlood    = "v0"
-	LegacyMempoolTypePriority = "v1"
-	LegacyMempoolTypeCAT      = "v2"
+	MempoolTypeNop = "nop"
+	MempoolTypeCAT = "cat"
 )
 
 // NOTE: Most of the structs & relevant comments + the
@@ -763,18 +758,12 @@ func DefaultFuzzConnConfig() *FuzzConnConfig {
 //-----------------------------------------------------------------------------
 // MempoolConfig
 
-// MempoolConfig defines the configuration options for the CometBFT mempool
-//
-// Note: Until v0.37 there was a `Version` field to select which implementation
-// of the mempool to use. Two versions used to exist: the current, default
-// implementation (previously called v0), and a prioritized mempool (v1), which
-// was removed (see https://github.com/cometbft/cometbft/issues/260).
+// MempoolConfig defines the configuration options for the CometBFT mempool.
 type MempoolConfig struct {
 	// The type of mempool for this node to use.
 	//
 	//  Possible types:
-	//  - "flood" : concurrent linked list mempool with flooding gossip protocol
-	//  (default)
+	//  - "cat"   : content addressable mempool (default)
 	//  - "nop"   : nop-mempool (short for no operation; the ABCI app is
 	//  responsible for storing, disseminating and proposing txs).
 	//  "create_empty_blocks=false" is not supported.
@@ -914,8 +903,7 @@ func (cfg *MempoolConfig) WalEnabled() bool {
 // returns an error if any check fails.
 func (cfg *MempoolConfig) ValidateBasic() error {
 	switch cfg.Type {
-	case MempoolTypeFlood, MempoolTypeNop, MempoolTypePriority, LegacyMempoolTypePriority, LegacyMempoolTypeFlood, MempoolTypeCAT, LegacyMempoolTypeCAT:
-	case "": // allow empty string to be backwards compatible
+	case MempoolTypeCAT, MempoolTypeNop:
 	default:
 		return fmt.Errorf("unknown mempool type: %q", cfg.Type)
 	}

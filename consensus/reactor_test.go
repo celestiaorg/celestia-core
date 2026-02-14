@@ -31,6 +31,7 @@ import (
 	cmtrand "github.com/cometbft/cometbft/libs/rand"
 	cmtsync "github.com/cometbft/cometbft/libs/sync"
 	mempl "github.com/cometbft/cometbft/mempool"
+	"github.com/cometbft/cometbft/mempool/cat"
 	"github.com/cometbft/cometbft/p2p"
 	p2pmock "github.com/cometbft/cometbft/p2p/mock"
 	cmtcons "github.com/cometbft/cometbft/proto/tendermint/consensus"
@@ -165,12 +166,15 @@ func TestReactorWithEvidence(t *testing.T) {
 		proxyAppConnMem := proxy.NewAppConnMempool(abcicli.NewLocalClient(mtx, app), proxy.NopMetrics())
 
 		// Make Mempool
-		mempool := mempl.NewCListMempool(config.Mempool,
+		mempool := cat.NewTxPool(
+			log.TestingLogger(),
+			config.Mempool,
 			proxyAppConnMem,
 			state.LastBlockHeight,
-			mempl.WithMetrics(memplMetrics),
-			mempl.WithPreCheck(sm.TxPreCheck(state)),
-			mempl.WithPostCheck(sm.TxPostCheck(state)))
+			cat.WithMetrics(memplMetrics),
+			cat.WithPreCheck(sm.TxPreCheck(state)),
+			cat.WithPostCheck(sm.TxPostCheck(state)),
+		)
 
 		if thisConfig.Consensus.WaitForTxs() {
 			mempool.EnableTxsAvailable()

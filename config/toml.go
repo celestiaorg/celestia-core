@@ -344,12 +344,10 @@ dial_timeout = "{{ .P2P.DialTimeout }}"
 # The type of mempool for this node to use.
 #
 #  Possible types:
-#  - "flood" : concurrent linked list mempool with flooding gossip protocol
+#  - "cat"   : content addressable mempool (default)
 #  - "nop"   : nop-mempool (short for no operation; the ABCI app is responsible
 #  for storing, disseminating and proposing txs). "create_empty_blocks=false" is
 #  not supported.
-#  - "priority" : concurrent linked list mempool with priority queue (default)
-#  - "cat"   : content addressable mempool
 type = "{{ .Mempool.Type }}"
 
 # Recheck (default: true) defines whether CometBFT should recheck the

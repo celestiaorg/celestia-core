@@ -22,7 +22,7 @@ import (
 	"github.com/cometbft/cometbft/libs/log"
 	"github.com/cometbft/cometbft/libs/service"
 	cmtsync "github.com/cometbft/cometbft/libs/sync"
-	mempl "github.com/cometbft/cometbft/mempool"
+	"github.com/cometbft/cometbft/mempool/cat"
 	"github.com/cometbft/cometbft/proxy"
 
 	"github.com/cometbft/cometbft/p2p"
@@ -96,11 +96,14 @@ func TestByzantinePrevoteEquivocation(t *testing.T) {
 		proxyAppConnMem := proxy.NewAppConnMempool(abcicli.NewLocalClient(mtx, app), proxy.NopMetrics())
 
 		// Make Mempool
-		mempool := mempl.NewCListMempool(config.Mempool,
+		mempool := cat.NewTxPool(
+			log.TestingLogger(),
+			config.Mempool,
 			proxyAppConnMem,
 			state.LastBlockHeight,
-			mempl.WithPreCheck(sm.TxPreCheck(state)),
-			mempl.WithPostCheck(sm.TxPostCheck(state)))
+			cat.WithPreCheck(sm.TxPreCheck(state)),
+			cat.WithPostCheck(sm.TxPostCheck(state)),
+		)
 
 		if thisConfig.Consensus.WaitForTxs() {
 			mempool.EnableTxsAvailable()

@@ -89,10 +89,8 @@ func TestMempoolTypeTemplate(t *testing.T) {
 		name        string
 		mempoolType string
 	}{
-		{"default priority", config.MempoolTypePriority},
-		{"flood", config.MempoolTypeFlood},
-		{"nop", config.MempoolTypeNop},
 		{"cat", config.MempoolTypeCAT},
+		{"nop", config.MempoolTypeNop},
 	}
 
 	for _, tc := range testCases {
@@ -117,13 +115,6 @@ func TestMempoolTypeTemplate(t *testing.T) {
 			expectedLine := fmt.Sprintf("type = \"%s\"", tc.mempoolType)
 			assert.Contains(t, configContent, expectedLine,
 				"Config should contain the correct mempool type")
-
-			// Ensure the hardcoded "priority" is not present when using other types
-			if tc.mempoolType != config.MempoolTypePriority {
-				hardcodedLine := "type = \"priority\""
-				assert.NotContains(t, configContent, hardcodedLine,
-					"Config should not contain hardcoded 'priority' when using different mempool type")
-			}
 		})
 	}
 }

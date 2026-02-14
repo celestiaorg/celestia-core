@@ -29,7 +29,6 @@ import (
 	"github.com/cometbft/cometbft/light"
 	mempl "github.com/cometbft/cometbft/mempool"
 	"github.com/cometbft/cometbft/mempool/cat"
-	"github.com/cometbft/cometbft/mempool/priority"
 	"github.com/cometbft/cometbft/p2p"
 	"github.com/cometbft/cometbft/p2p/pex"
 	"github.com/cometbft/cometbft/privval"
@@ -244,49 +243,11 @@ func createMempoolAndMempoolReactor(
 	traceClient trace.Tracer,
 ) (mempl.Mempool, p2p.Reactor) {
 	switch config.Mempool.Type {
-	// allow empty string for backward compatibility
-	case cfg.MempoolTypeFlood, cfg.LegacyMempoolTypeFlood, "":
-		logger = logger.With("module", "mempool")
-		mp := mempl.NewCListMempool(
-			config.Mempool,
-			proxyApp.Mempool(),
-			state.LastBlockHeight,
-			mempl.WithMetrics(memplMetrics),
-			mempl.WithPreCheck(sm.TxPreCheck(state)),
-			mempl.WithPostCheck(sm.TxPostCheck(state)),
-			mempl.WithTraceClient(traceClient),
-		)
-		mp.SetLogger(logger)
-		reactor := mempl.NewReactor(
-			config.Mempool,
-			mp,
-		)
-		if config.Consensus.WaitForTxs() {
-			mp.EnableTxsAvailable()
-		}
-		reactor.SetLogger(logger)
-
-		return mp, reactor
 	case cfg.MempoolTypeNop:
 		// Strictly speaking, there's no need to have a `mempl.NopMempoolReactor`, but
 		// adding it leads to a cleaner code.
 		return &mempl.NopMempool{}, mempl.NewNopMempoolReactor()
-	case cfg.MempoolTypePriority, cfg.LegacyMempoolTypePriority:
-		mp := priority.NewTxMempool(
-			logger,
-			config.Mempool,
-			proxyApp.Mempool(),
-			state.LastBlockHeight,
-			priority.WithMetrics(memplMetrics),
-			priority.WithPreCheck(sm.TxPreCheck(state)),
-		)
-		reactor := priority.NewReactor(
-			config.Mempool,
-			mp,
-		)
-		reactor.SetLogger(logger)
-		return mp, reactor
-	case cfg.MempoolTypeCAT, cfg.LegacyMempoolTypeCAT:
+	case cfg.MempoolTypeCAT:
 		mp := cat.NewTxPool(
 			logger,
 			config.Mempool,
