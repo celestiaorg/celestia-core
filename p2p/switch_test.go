@@ -819,8 +819,9 @@ func TestSwitchInitPeerIsNotCalledBeforeRemovePeer(t *testing.T) {
 	rp := &remotePeer{PrivKey: ed25519.GenPrivKey(), Config: cfg}
 	rp.Start()
 	defer rp.Stop()
-	_, err = rp.Dial(sw.NetAddress())
+	rpConn, err := rp.Dial(sw.NetAddress())
 	require.NoError(t, err)
+	defer rpConn.Close()
 
 	// wait till the switch adds rp to the peer set, then stop the peer asynchronously
 	require.Eventually(t, func() bool {
@@ -832,8 +833,9 @@ func TestSwitchInitPeerIsNotCalledBeforeRemovePeer(t *testing.T) {
 	}, 5*time.Second, 20*time.Millisecond, "peer was never added to switch")
 
 	// simulate peer reconnecting to us
-	_, err = rp.Dial(sw.NetAddress())
+	rpConn2, err := rp.Dial(sw.NetAddress())
 	require.NoError(t, err)
+	defer rpConn2.Close()
 	// wait till the switch adds rp to the peer set
 	time.Sleep(50 * time.Millisecond)
 
@@ -867,8 +869,9 @@ func TestPeerRemovedFromReactorOnStopWithNilReason(t *testing.T) {
 	rp := &remotePeer{PrivKey: ed25519.GenPrivKey(), Config: cfg}
 	rp.Start()
 	defer rp.Stop()
-	_, err = rp.Dial(sw.NetAddress())
+	rpConn, err := rp.Dial(sw.NetAddress())
 	require.NoError(t, err)
+	defer rpConn.Close()
 
 	// wait till the switch adds rp to the peer set
 	var peer Peer
