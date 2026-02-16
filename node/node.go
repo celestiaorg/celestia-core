@@ -1044,7 +1044,9 @@ func makeNodeInfo(
 	if config.Consensus.EnableLegacyBlockProp {
 		channels = append(channels, cs.DataChannel)
 	}
-	channels = append(channels, cat.MempoolWantsChannel, cat.MempoolDataChannel)
+	if config.Mempool.Type == cfg.MempoolTypeCAT {
+		channels = append(channels, cat.MempoolWantsChannel, cat.MempoolDataChannel)
+	}
 	if !config.Consensus.DisablePropagationReactor {
 		channels = append(channels, propagation.DataChannel, propagation.WantChannel)
 	}
