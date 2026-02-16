@@ -18,7 +18,7 @@ require (
 	github.com/cosmos/gogoproto v1.7.2
 	github.com/decred/dcrd/dcrec/secp256k1/v4 v4.3.0
 	github.com/fortytw2/leaktest v1.3.0
-	github.com/go-git/go-git/v5 v5.16.4
+	github.com/go-git/go-git/v5 v5.16.5
 	github.com/go-kit/kit v0.13.0
 	github.com/go-kit/log v0.2.1
 	github.com/go-logfmt/logfmt v0.6.1
@@ -31,7 +31,7 @@ require (
 	github.com/grafana/pyroscope-go v1.2.7
 	github.com/hashicorp/golang-lru/v2 v2.0.7
 	github.com/informalsystems/tm-load-test v1.3.0
-	github.com/lib/pq v1.11.1
+	github.com/lib/pq v1.11.2
 	github.com/minio/highwayhash v1.0.3
 	github.com/oasisprotocol/curve25519-voi v0.0.0-20220708102147-0a8a51822cae
 	github.com/ory/dockertest v3.3.5+incompatible

@@ -56,6 +56,8 @@ const (
 
 var (
 	errSignerTooLong = errors.New("signer field exceeds maximum length")
+	errTooManyTxs    = errors.New("txs message contains too many transactions")
+	errEmptyTx       = errors.New("txs message contains an empty transaction")
 )
 
 // Reactor handles mempool tx broadcasting logic amongst peers. For the main
@@ -282,6 +284,12 @@ func (memR *Reactor) Receive(e p2p.Envelope) {
 		protoTxs := msg.GetTxs()
 		if len(protoTxs) == 0 {
 			memR.Logger.Error("received empty txs from peer", "src", e.Src)
+			memR.Switch.StopPeerForError(e.Src, errEmptyTx, memR.String())
+			return
+		}
+		if len(protoTxs) > mempool.MaxTxsPerMessage {
+			memR.Logger.Error("received too many txs from peer", "count", len(protoTxs), "src", e.Src)
+			memR.Switch.StopPeerForError(e.Src, errTooManyTxs, memR.String())
 			return
 		}
 		peerID := memR.ids.GetIDForPeer(e.Src.ID())
@@ -289,6 +297,11 @@ func (memR *Reactor) Receive(e p2p.Envelope) {
 		txInfo.SenderP2PID = e.Src.ID()
 
 		for _, tx := range protoTxs {
+			if len(tx) == 0 {
+				memR.Logger.Error("received empty tx from peer", "src", e.Src)
+				memR.Switch.StopPeerForError(e.Src, errEmptyTx, memR.String())
+				return
+			}
 			ntx := types.Tx(tx)
 			key := ntx.Key()
 			cachedTx := ntx.ToCachedTx()
