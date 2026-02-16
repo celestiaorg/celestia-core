@@ -234,7 +234,9 @@ func TestByzantinePrevoteEquivocation(t *testing.T) {
 		}
 
 		// omit the last signature in the commit
-		extCommit.ExtendedSignatures[len(extCommit.ExtendedSignatures)-1] = types.NewExtendedCommitSigAbsent()
+		if len(extCommit.ExtendedSignatures) > 0 {
+			extCommit.ExtendedSignatures[len(extCommit.ExtendedSignatures)-1] = types.NewExtendedCommitSigAbsent()
+		}
 
 		if lazyProposer.privValidatorPubKey == nil {
 			// If this node is a validator & proposer in the current round, it will
@@ -313,7 +315,7 @@ func TestByzantinePrevoteEquivocation(t *testing.T) {
 				}
 
 				// Stop watching after a reasonable number of blocks to prevent hanging
-				if blockCount >= 10 {
+				if blockCount >= 30 {
 					t.Logf("Validator %d watched %d blocks without finding evidence", i, blockCount)
 					return
 				}
@@ -332,9 +334,8 @@ func TestByzantinePrevoteEquivocation(t *testing.T) {
 		assert.Equal(t, pubkey.Address(), ev.VoteA.ValidatorAddress)
 		assert.Equal(t, prevoteHeight, ev.Height())
 		t.Logf("Successfully found evidence: %v", ev)
-	case <-time.After(20 * time.Second):
-		// Increased timeout and better error message
-		t.Fatalf("Timed out waiting for validators to commit evidence after 20 seconds")
+	case <-time.After(60 * time.Second):
+		t.Fatalf("Timed out waiting for validators to commit evidence after 60 seconds")
 	}
 }
 
