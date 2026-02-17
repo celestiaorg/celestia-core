@@ -234,9 +234,8 @@ func TestByzantinePrevoteEquivocation(t *testing.T) {
 		}
 
 		// omit the last signature in the commit
-		if len(extCommit.ExtendedSignatures) > 0 {
-			extCommit.ExtendedSignatures[len(extCommit.ExtendedSignatures)-1] = types.NewExtendedCommitSigAbsent()
-		}
+		require.NotEmpty(t, extCommit.ExtendedSignatures)
+		extCommit.ExtendedSignatures[len(extCommit.ExtendedSignatures)-1] = types.NewExtendedCommitSigAbsent()
 
 		if lazyProposer.privValidatorPubKey == nil {
 			// If this node is a validator & proposer in the current round, it will
