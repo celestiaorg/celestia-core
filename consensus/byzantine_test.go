@@ -174,35 +174,41 @@ func TestByzantinePrevoteEquivocation(t *testing.T) {
 	// create byzantine validator
 	bcs := css[byzantineNode]
 
-	// alter prevote so that the byzantine node double votes when height is 2
+	// alter prevote so that the byzantine node double votes once the proposal
+	// block is available. We skip height 1 (where the byzantine node is the
+	// proposer) and wait for a subsequent height where ProposalBlock is set.
+	// Under the race detector, the proposal may not arrive before the 40ms
+	// propose timeout expires, so we opportunistically send conflicting votes
+	// at the first height where the proposal is available.
+	var sentConflictingVotes bool
 	bcs.doPrevote = func(height int64, round int32) {
-		// allow first height to happen normally so that byzantine validator is no longer proposer
-		if height == prevoteHeight {
-			bcs.Logger.Info("Sending two votes")
-			prevote1, err := bcs.signVote(cmtproto.PrevoteType, bcs.rs.ProposalBlock.Hash(), bcs.rs.ProposalBlockParts.Header(), nil)
-			require.NoError(t, err)
-			prevote2, err := bcs.signVote(cmtproto.PrevoteType, nil, types.PartSetHeader{}, nil)
+		if !sentConflictingVotes && height > 1 && bcs.rs.ProposalBlock != nil {
+			sentConflictingVotes = true
+			bcs.Logger.Info("Sending conflicting votes", "height", height)
+			// Sign and send a conflicting nil prevote directly to some
+			// peers. This creates the equivocation evidence.
+			prevoteNil, err := bcs.signVote(cmtproto.PrevoteType, nil, types.PartSetHeader{}, nil)
 			require.NoError(t, err)
 			peerList := reactors[byzantineNode].Switch.Peers().List()
 			bcs.Logger.Info("Getting peer list", "peers", peerList)
-			// send two votes to all peers (1st to one half, 2nd to another half)
 			for i, peer := range peerList {
-				if i < len(peerList)/2 {
-					bcs.Logger.Info("Signed and pushed vote", "vote", prevote1, "peer", peer)
+				if i >= len(peerList)/2 {
+					bcs.Logger.Info("Signed and pushed nil vote", "vote", prevoteNil, "peer", peer)
 					peer.Send(p2p.Envelope{
-						Message:   &cmtcons.Vote{Vote: prevote1.ToProto()},
-						ChannelID: VoteChannel,
-					})
-				} else {
-					bcs.Logger.Info("Signed and pushed vote", "vote", prevote2, "peer", peer)
-					peer.Send(p2p.Envelope{
-						Message:   &cmtcons.Vote{Vote: prevote2.ToProto()},
+						Message:   &cmtcons.Vote{Vote: prevoteNil.ToProto()},
 						ChannelID: VoteChannel,
 					})
 				}
 			}
+			// Then prevote normally for the block. This adds the vote to
+			// the local vote set so the byzantine node can progress
+			// through consensus (preventing it from getting stuck under
+			// the race detector). The normal vote is gossiped to all
+			// peers; peers that also received the nil vote above will
+			// detect the equivocation and create evidence.
+			bcs.defaultDoPrevote(height, round)
 		} else {
-			bcs.Logger.Info("Behaving normally")
+			bcs.Logger.Info("Behaving normally", "height", height)
 			bcs.defaultDoPrevote(height, round)
 		}
 	}
@@ -233,9 +239,22 @@ func TestByzantinePrevoteEquivocation(t *testing.T) {
 			return
 		}
 
-		// omit the last signature in the commit
+		// omit the last signature in the commit, but only if the resulting
+		// commit still has enough signatures for a 2/3+ majority. The
+		// byzantine validator may not have precommitted (due to timing), so
+		// the commit might only have exactly the quorum of signatures.
 		require.NotEmpty(t, extCommit.ExtendedSignatures)
-		extCommit.ExtendedSignatures[len(extCommit.ExtendedSignatures)-1] = types.NewExtendedCommitSigAbsent()
+		totalVals := len(extCommit.ExtendedSignatures)
+		quorum := totalVals*2/3 + 1
+		commitSigs := 0
+		for _, sig := range extCommit.ExtendedSignatures {
+			if sig.BlockIDFlag == types.BlockIDFlagCommit {
+				commitSigs++
+			}
+		}
+		if commitSigs > quorum {
+			extCommit.ExtendedSignatures[len(extCommit.ExtendedSignatures)-1] = types.NewExtendedCommitSigAbsent()
+		}
 
 		if lazyProposer.privValidatorPubKey == nil {
 			// If this node is a validator & proposer in the current round, it will
@@ -331,7 +350,7 @@ func TestByzantinePrevoteEquivocation(t *testing.T) {
 		ev, ok := evidenceFound.(*types.DuplicateVoteEvidence)
 		require.True(t, ok, "Evidence should be DuplicateVoteEvidence")
 		assert.Equal(t, pubkey.Address(), ev.VoteA.ValidatorAddress)
-		assert.Equal(t, prevoteHeight, ev.Height())
+		assert.GreaterOrEqual(t, ev.Height(), prevoteHeight)
 		t.Logf("Successfully found evidence: %v", ev)
 	case <-time.After(60 * time.Second):
 		t.Fatalf("Timed out waiting for validators to commit evidence after 60 seconds")
