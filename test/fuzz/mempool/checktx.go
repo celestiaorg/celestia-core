@@ -22,7 +22,7 @@ func init() {
 
 	cfg := config.DefaultMempoolConfig()
 	cfg.Broadcast = false
-	mempool = cat.NewTxPool(log.TestingLogger(), cfg, appConnMem, 0)
+	mempool = cat.NewTxPool(log.NewNopLogger(), cfg, appConnMem, 0)
 }
 
 func Fuzz(data []byte) int {
