@@ -63,7 +63,7 @@ var (
 	voteExtensionUpdateHeight = uniformChoice{int64(-1), int64(0), int64(1)} // -1: genesis, 0: InitChain, 1: (use offset)
 	voteExtensionEnabled      = weightedChoice{true: 3, false: 1}
 	voteExtensionHeightOffset = uniformChoice{int64(0), int64(10), int64(100)}
-	mempoolVersion            = uniformChoice{"flood", "priority", "v1", "v2", "cat"}
+	mempoolVersion            = "cat"
 )
 
 type generateConfig struct {
@@ -295,7 +295,7 @@ func generateNode(
 		Database:         nodeDatabases.Choose(r).(string),
 		PrivvalProtocol:  nodePrivvalProtocols.Choose(r).(string),
 		BlockSyncVersion: nodeBlockSyncs.Choose(r).(string),
-		MempoolVersion:   mempoolVersion.Choose(r).(string),
+		MempoolVersion:   mempoolVersion,
 		StateSync:        nodeStateSyncs.Choose(r).(bool) && startAt > 0,
 		PersistInterval:  ptrUint64(uint64(nodePersistIntervals.Choose(r).(int))),
 		SnapshotInterval: uint64(nodeSnapshotIntervals.Choose(r).(int)),

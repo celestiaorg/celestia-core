@@ -96,7 +96,7 @@ func TestMempoolTypeNotInTemplate(t *testing.T) {
 
 	// The mempool type field should not appear in the generated config.
 	// Use a specific pattern to avoid matching unrelated fields like trace_type.
-	for _, mempoolType := range []string{"cat", "flood", "nop", "priority"} {
+	for _, mempoolType := range []string{"cat", "nop"} {
 		pattern := fmt.Sprintf("type = \"%s\"", mempoolType)
 		assert.NotContains(t, configContent, pattern,
 			"Config should not contain mempool type field")
