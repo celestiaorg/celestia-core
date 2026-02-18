@@ -508,12 +508,10 @@ func TestReactorVotingPowerChange(t *testing.T) {
 	waitForAndValidateBlock(t, nVals, activeVals, blocksSubs, css)
 	waitForAndValidateBlock(t, nVals, activeVals, blocksSubs, css)
 
-	if css[0].GetRoundState().LastValidators.TotalVotingPower() == previousTotalVotingPower {
-		t.Fatalf(
-			"expected voting power to change (before: %d, after: %d)",
-			previousTotalVotingPower,
-			css[0].GetRoundState().LastValidators.TotalVotingPower())
-	}
+	require.Eventually(t, func() bool {
+		return css[0].GetRoundState().LastValidators.TotalVotingPower() != previousTotalVotingPower
+	}, 10*time.Second, 100*time.Millisecond,
+		"expected voting power to change from %d", previousTotalVotingPower)
 
 	updateValidatorTx = kvstore.MakeValSetChangeTx(val1PubKeyABCI, 2)
 	previousTotalVotingPower = css[0].GetRoundState().LastValidators.TotalVotingPower()
@@ -523,12 +521,10 @@ func TestReactorVotingPowerChange(t *testing.T) {
 	waitForAndValidateBlock(t, nVals, activeVals, blocksSubs, css)
 	waitForAndValidateBlock(t, nVals, activeVals, blocksSubs, css)
 
-	if css[0].GetRoundState().LastValidators.TotalVotingPower() == previousTotalVotingPower {
-		t.Fatalf(
-			"expected voting power to change (before: %d, after: %d)",
-			previousTotalVotingPower,
-			css[0].GetRoundState().LastValidators.TotalVotingPower())
-	}
+	require.Eventually(t, func() bool {
+		return css[0].GetRoundState().LastValidators.TotalVotingPower() != previousTotalVotingPower
+	}, 10*time.Second, 100*time.Millisecond,
+		"expected voting power to change from %d", previousTotalVotingPower)
 
 	updateValidatorTx = kvstore.MakeValSetChangeTx(val1PubKeyABCI, 26)
 	previousTotalVotingPower = css[0].GetRoundState().LastValidators.TotalVotingPower()
@@ -538,12 +534,10 @@ func TestReactorVotingPowerChange(t *testing.T) {
 	waitForAndValidateBlock(t, nVals, activeVals, blocksSubs, css)
 	waitForAndValidateBlock(t, nVals, activeVals, blocksSubs, css)
 
-	if css[0].GetRoundState().LastValidators.TotalVotingPower() == previousTotalVotingPower {
-		t.Fatalf(
-			"expected voting power to change (before: %d, after: %d)",
-			previousTotalVotingPower,
-			css[0].GetRoundState().LastValidators.TotalVotingPower())
-	}
+	require.Eventually(t, func() bool {
+		return css[0].GetRoundState().LastValidators.TotalVotingPower() != previousTotalVotingPower
+	}, 10*time.Second, 100*time.Millisecond,
+		"expected voting power to change from %d", previousTotalVotingPower)
 }
 
 func TestReactorValidatorSetChanges(t *testing.T) {

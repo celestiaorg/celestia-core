@@ -83,38 +83,22 @@ func assertValidConfig(t *testing.T, configFile string) {
 	}
 }
 
-func TestMempoolTypeTemplate(t *testing.T) {
-	// Test that mempool type is correctly templated and not hardcoded
-	testCases := []struct {
-		name        string
-		mempoolType string
-	}{
-		{"cat", config.MempoolTypeCAT},
-		{"nop", config.MempoolTypeNop},
-	}
+func TestMempoolTypeNotInTemplate(t *testing.T) {
+	cfg := test.ResetTestRoot("mempool-type-not-in-template")
+	defer os.RemoveAll(cfg.RootDir)
 
-	for _, tc := range testCases {
-		t.Run(tc.name, func(t *testing.T) {
-			// Create test root with config
-			cfg := test.ResetTestRoot(fmt.Sprintf("mempool-type-%s", tc.mempoolType))
-			defer os.RemoveAll(cfg.RootDir)
+	configFile := filepath.Join(cfg.RootDir, config.DefaultConfigDir, config.DefaultConfigFileName)
+	config.WriteConfigFile(configFile, cfg)
 
-			// Set mempool type
-			cfg.Mempool.Type = tc.mempoolType
+	data, err := os.ReadFile(configFile)
+	require.NoError(t, err)
+	configContent := string(data)
 
-			// Write config using template
-			configFile := filepath.Join(cfg.RootDir, config.DefaultConfigDir, config.DefaultConfigFileName)
-			config.WriteConfigFile(configFile, cfg)
-
-			// Read generated config file
-			data, err := os.ReadFile(configFile)
-			require.NoError(t, err)
-			configContent := string(data)
-
-			// Verify mempool type is correctly rendered
-			expectedLine := fmt.Sprintf("type = \"%s\"", tc.mempoolType)
-			assert.Contains(t, configContent, expectedLine,
-				"Config should contain the correct mempool type")
-		})
+	// The mempool type field should not appear in the generated config.
+	// Use a specific pattern to avoid matching unrelated fields like trace_type.
+	for _, mempoolType := range []string{"cat", "nop"} {
+		pattern := fmt.Sprintf("type = \"%s\"", mempoolType)
+		assert.NotContains(t, configContent, pattern,
+			"Config should not contain mempool type field")
 	}
 }
