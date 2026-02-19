@@ -60,8 +60,9 @@ type syncer struct {
 	chunkFetchers int32
 	retryTimeout  time.Duration
 
-	mtx    cmtsync.RWMutex
-	chunks *chunkQueue
+	mtx            cmtsync.RWMutex
+	chunks         *chunkQueue
+	onPeerRejected func(p2p.ID)
 }
 
 // newSyncer creates a new syncer.
@@ -84,6 +85,13 @@ func newSyncer(
 		chunkFetchers: cfg.ChunkFetchers,
 		retryTimeout:  cfg.ChunkRequestTimeout,
 	}
+}
+
+// setOnPeerRejected sets a callback that is invoked when a peer is rejected by the ABCI
+// application during chunk application. This allows the caller to disconnect the peer at the
+// P2P layer, preventing them from continuing to send invalid chunks.
+func (s *syncer) setOnPeerRejected(fn func(p2p.ID)) {
+	s.onPeerRejected = fn
 }
 
 // AddChunk adds a chunk to the chunk queue, if any. It returns false if the chunk has already
@@ -403,8 +411,12 @@ func (s *syncer) applyChunks(chunks *chunkQueue) error {
 		// Reject any senders as requested by the app
 		for _, sender := range resp.RejectSenders {
 			if sender != "" {
-				s.snapshots.RejectPeer(p2p.ID(sender))
-				err := chunks.DiscardSender(p2p.ID(sender))
+				peerID := p2p.ID(sender)
+				s.snapshots.RejectPeer(peerID)
+				if s.onPeerRejected != nil {
+					s.onPeerRejected(peerID)
+				}
+				err := chunks.DiscardSender(peerID)
 				if err != nil {
 					return fmt.Errorf("failed to reject sender: %w", err)
 				}
