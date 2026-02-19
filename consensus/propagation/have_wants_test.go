@@ -77,6 +77,69 @@ func TestInvalidHavePartHash(t *testing.T) {
 	assert.Nil(t, p1)
 }
 
+// TestHandleHavesDoesNotBlock verifies that handleHaves does not block the
+// calling goroutine when the peer's receivedHaves channel is full. This is a
+// regression test for a vulnerability where a missing default case in the
+// select statement could allow a malicious peer to halt the propagation
+// reactor's message-processing goroutine.
+func TestHandleHavesDoesNotBlock(t *testing.T) {
+	p2pCfg := cfg.DefaultP2PConfig()
+	nodes := 2
+	reactors, _ := createTestReactors(nodes, p2pCfg, false, "")
+	r1, r2 := reactors[0], reactors[1]
+
+	cleanup, _, sm, pv := state.SetupTestCaseWithPrivVal(t)
+	t.Cleanup(func() {
+		cleanup(t)
+	})
+	prop, ps, _, metaData := createTestProposal(t, sm, pv, 1, 0, 2, 1000000)
+	parityBlock, lastLen, err := types.Encode(ps, types.BlockPartSizeBytes)
+	require.NoError(t, err)
+	partHashes := extractHashes(ps, parityBlock)
+	proofs := extractProofs(ps, parityBlock)
+	cb := &proptypes.CompactBlock{
+		Proposal:    *prop,
+		LastLen:     uint32(lastLen),
+		Signature:   cmtrand.Bytes(64),
+		BpHash:      parityBlock.Hash(),
+		Blobs:       metaData,
+		PartsHashes: partHashes,
+	}
+	cb.SetProofCache(proofs)
+
+	added := r1.AddProposal(cb)
+	require.True(t, added)
+
+	p1 := r1.getPeer(r2.self)
+	require.NotNil(t, p1)
+
+	// Fill the peer's receivedHaves channel to capacity.
+	for i := 0; i < cap(p1.receivedHaves); i++ {
+		p1.receivedHaves <- request{height: 1, round: 0, index: uint32(i % len(partHashes))}
+	}
+	require.Equal(t, cap(p1.receivedHaves), len(p1.receivedHaves))
+
+	// Call handleHaves from a goroutine. With the default case, this should
+	// return almost immediately. Without it, this would block indefinitely.
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		haves := &proptypes.HaveParts{
+			Height: prop.Height,
+			Round:  prop.Round,
+			Parts:  []proptypes.PartMetaData{{Index: 0, Hash: partHashes[0]}},
+		}
+		r1.handleHaves(r2.self, haves)
+	}()
+
+	select {
+	case <-done:
+		// handleHaves returned without blocking.
+	case <-time.After(time.Second):
+		t.Fatal("handleHaves blocked when receivedHaves channel was full")
+	}
+}
+
 func TestCountRemainingParts(t *testing.T) {
 	tests := []struct {
 		name           string
