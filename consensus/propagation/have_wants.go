@@ -89,6 +89,8 @@ func (blockProp *Reactor) handleHaves(peer p2p.ID, haves *proptypes.HaveParts) {
 
 	if p := blockProp.getPeer(peer); p != nil {
 		for _, index := range hc.GetTrueIndices() {
+			// avoid blocking if a single peer is backed up. This means that they
+			// are sending us too many haves
 			select {
 			case <-p.ctx.Done():
 				return
@@ -98,6 +100,7 @@ func (blockProp *Reactor) handleHaves(peer p2p.ID, haves *proptypes.HaveParts) {
 				index:  uint32(index),
 			}:
 				p.RequestsReady()
+			default:
 			}
 		}
 	}
