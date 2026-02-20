@@ -411,9 +411,15 @@ func (mt *MultiplexTransport) filterConn(c net.Conn) (err error) {
 				return ErrRejected{conn: c, err: err, isFiltered: true}
 			}
 		case <-time.After(mt.filterTimeout):
+			// drain remaining results to avoid goroutine leak if filters finish later
+			for j := i; j < cap(errc); j++ {
+				select {
+				case <-errc:
+				default:
+				}
+			}
 			return ErrFilterTimeout{}
 		}
-
 	}
 
 	mt.conns.Set(c, ips)
