@@ -508,6 +508,43 @@ func TestBlockPoolMaliciousNodeMaxInt64(t *testing.T) {
 	}
 }
 
+// TestBlockPoolMaliciousNodeUnreachableBase tests that the max-height poisoning
+// attack described in CELESTIA-188 is not a persistent issue.
+//
+// A malicious peer sends a StatusResponse with an unreachable base/height
+// (base=2^60, height=2^60+100), poisoning maxPeerHeight so IsCaughtUp returns
+// false. Once the P2P layer disconnects the peer (SendTimeout, ping/pong
+// timeout, or TCP failure), RemovePeer recalculates maxPeerHeight from the
+// remaining honest peers and IsCaughtUp returns true.
+func TestBlockPoolMaliciousNodeUnreachableBase(t *testing.T) {
+	const honestHeight = int64(20)
+	var (
+		poisonBase   = int64(1) << 60
+		poisonHeight = poisonBase + 100
+	)
+
+	requestsCh := make(chan BlockRequest, 10)
+	errorsCh := make(chan peerError, 10)
+	pool := NewBlockPool(honestHeight, requestsCh, errorsCh)
+	pool.SetLogger(log.TestingLogger())
+
+	// Add honest peers and one malicious peer with unreachable base.
+	pool.SetPeerRange("honest1", 1, honestHeight)
+	pool.SetPeerRange("honest2", 1, honestHeight)
+	pool.SetPeerRange("poison", poisonBase, poisonHeight)
+
+	// maxPeerHeight is poisoned, IsCaughtUp returns false.
+	require.Equal(t, poisonHeight, pool.MaxPeerHeight())
+	require.False(t, pool.IsCaughtUp())
+
+	// Simulate the P2P layer disconnecting the malicious peer.
+	pool.RemovePeer("poison")
+
+	// maxPeerHeight recalculates from honest peers, IsCaughtUp returns true.
+	require.Equal(t, honestHeight, pool.MaxPeerHeight())
+	require.True(t, pool.IsCaughtUp())
+}
+
 func TestRecalculateParams(t *testing.T) {
 	type testCase struct {
 		blockSize    int
