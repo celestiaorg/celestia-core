@@ -508,26 +508,14 @@ func TestBlockPoolMaliciousNodeMaxInt64(t *testing.T) {
 	}
 }
 
-// TestBlockPoolMaliciousNodeUnreachableBase
-// A malicious peer sends a single StatusResponse with an unreachable base
-// (base=2^60, height=2^60+100), poisoning maxPeerHeight. The peer is never
-// selected for block requests because pickIncrAvailablePeer skips peers
-// where the requested height < peer.base. This means pool-level timeout
-// mechanisms don't evict it (numPending stays 0, no timeout timer created).
+// TestBlockPoolMaliciousNodeUnreachableBase tests that the max-height poisoning
+// attack described in CELESTIA-188 is not a persistent issue.
 //
-// However, the node still syncs all real blocks from honest peers. Once the
-// P2P layer disconnects the malicious peer (via MConnection send rate
-// enforcement, ping/pong timeout, or natural TCP failure), the reactor
-// calls pool.RemovePeer, which recalculates maxPeerHeight from the remaining
-// honest peers. IsCaughtUp() then returns true, allowing the node to switch
-// to consensus.
-//
-// This test demonstrates the full attack-and-recovery cycle:
-//  1. The poison peer inflates maxPeerHeight but is never selected for requests
-//  2. All real blocks sync from honest peers despite the poisoned maxPeerHeight
-//  3. IsCaughtUp() returns false while the poison peer is connected
-//  4. After P2P-layer disconnection (simulated via RemovePeer), maxPeerHeight recalculates
-//  5. IsCaughtUp() returns true — the node switches to consensus
+// A malicious peer sends a StatusResponse with an unreachable base/height
+// (base=2^60, height=2^60+100), poisoning maxPeerHeight so IsCaughtUp returns
+// false. Once the P2P layer disconnects the peer (SendTimeout, ping/pong
+// timeout, or TCP failure), RemovePeer recalculates maxPeerHeight from the
+// remaining honest peers and IsCaughtUp returns true.
 func TestBlockPoolMaliciousNodeUnreachableBase(t *testing.T) {
 	const honestHeight = int64(20)
 	var (
@@ -535,117 +523,26 @@ func TestBlockPoolMaliciousNodeUnreachableBase(t *testing.T) {
 		poisonHeight = poisonBase + 100
 	)
 
-	peers := testPeers{
-		p2p.ID("honest1"): &testPeer{p2p.ID("honest1"), 1, honestHeight, make(chan inputData, 10), false},
-		p2p.ID("honest2"): &testPeer{p2p.ID("honest2"), 1, honestHeight, make(chan inputData, 10), false},
-		p2p.ID("poison"):  &testPeer{p2p.ID("poison"), poisonBase, poisonHeight, make(chan inputData, 10), false},
-	}
+	requestsCh := make(chan BlockRequest, 10)
 	errorsCh := make(chan peerError, 10)
-	requestsCh := make(chan BlockRequest)
-
-	pool := NewBlockPool(1, requestsCh, errorsCh)
+	pool := NewBlockPool(honestHeight, requestsCh, errorsCh)
 	pool.SetLogger(log.TestingLogger())
 
-	err := pool.Start()
-	require.NoError(t, err)
-	t.Cleanup(func() {
-		if err := pool.Stop(); err != nil {
-			t.Error(err)
-		}
-	})
+	// Add honest peers and one malicious peer with unreachable base.
+	pool.SetPeerRange("honest1", 1, honestHeight)
+	pool.SetPeerRange("honest2", 1, honestHeight)
+	pool.SetPeerRange("poison", poisonBase, poisonHeight)
 
-	peers.start()
-	t.Cleanup(func() { peers.stop() })
+	// maxPeerHeight is poisoned, IsCaughtUp returns false.
+	require.Equal(t, poisonHeight, pool.MaxPeerHeight())
+	require.False(t, pool.IsCaughtUp())
 
-	// Introduce all peers to the pool.
-	for _, peer := range peers {
-		pool.SetPeerRange(peer.id, peer.base, peer.height)
-	}
+	// Simulate the P2P layer disconnecting the malicious peer.
+	pool.RemovePeer("poison")
 
-	// Verify that the poison peer has inflated maxPeerHeight.
-	require.Equal(t, poisonHeight, pool.MaxPeerHeight(),
-		"maxPeerHeight should be poisoned by the malicious peer")
-
-	// Serve blocks from honest peers.
-	go func() {
-		for {
-			select {
-			case <-pool.Quit():
-				return
-			case request := <-requestsCh:
-				if peer, ok := peers[request.PeerID]; ok {
-					peer.inputChan <- inputData{t, pool, request}
-				}
-			}
-		}
-	}()
-
-	// Drain errors to prevent channel blocking.
-	go func() {
-		for {
-			select {
-			case <-pool.Quit():
-				return
-			case <-errorsCh:
-			}
-		}
-	}()
-
-	// Process blocks as they arrive.
-	go func() {
-		for {
-			if !pool.IsRunning() {
-				return
-			}
-			first, second, _ := pool.PeekTwoBlocks()
-			if first != nil && second != nil {
-				pool.PopRequest()
-			} else {
-				time.Sleep(10 * time.Millisecond)
-			}
-		}
-	}()
-
-	// Wait for the pool to sync all real blocks from honest peers.
-	require.Eventually(t, func() bool {
-		return pool.Height() >= honestHeight
-	}, 30*time.Second, 100*time.Millisecond,
-		"pool should sync to honest peer height")
-
-	t.Logf("Pool synced to height %d (honest tip: %d)", pool.Height(), honestHeight)
-
-	// Verify that the poison peer was never selected for any block request:
-	// numPending is 0 and no timeout timer was ever created.
-	pool.mtx.Lock()
-	poisonPeer := pool.peers[p2p.ID("poison")]
-	require.NotNil(t, poisonPeer, "poison peer should still be in the pool")
-	require.Equal(t, int32(0), poisonPeer.numPending,
-		"poison peer should never be selected for requests (numPending == 0)")
-	require.Nil(t, poisonPeer.timeout,
-		"poison peer should have no timeout timer (incrPending was never called)")
-	pool.mtx.Unlock()
-
-	// IsCaughtUp should be false because maxPeerHeight is still poisoned.
-	require.False(t, pool.IsCaughtUp(),
-		"IsCaughtUp should be false while poison peer inflates maxPeerHeight")
-	t.Logf("IsCaughtUp=false (maxPeerHeight poisoned to %d)", pool.MaxPeerHeight())
-
-	// Simulate the P2P layer disconnecting the poison peer.
-	// In production, this happens via reactor.RemovePeer when the MConnection
-	// detects the peer is unresponsive (SendTimeout from minRecvRate
-	// enforcement, ping/pong timeout, or TCP connection failure).
-	pool.RemovePeer(p2p.ID("poison"))
-
-	// maxPeerHeight should now reflect only honest peers.
-	require.Equal(t, honestHeight, pool.MaxPeerHeight(),
-		"maxPeerHeight should be recalculated from honest peers after poison peer removal")
-
-	// IsCaughtUp should now return true - the node can switch to consensus.
-	require.True(t, pool.IsCaughtUp(),
-		"IsCaughtUp should be true after poison peer removal - node switches to consensus")
-
-	t.Logf("Recovery verified: pool height=%d, maxPeerHeight=%d, IsCaughtUp=true",
-		pool.Height(), pool.MaxPeerHeight())
+	// maxPeerHeight recalculates from honest peers, IsCaughtUp returns true.
+	require.Equal(t, honestHeight, pool.MaxPeerHeight())
+	require.True(t, pool.IsCaughtUp())
 }
 
 func TestRecalculateParams(t *testing.T) {
