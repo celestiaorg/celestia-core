@@ -27,7 +27,7 @@ const (
 	// within this much of the system time.
 	// stopSyncingDurationMinutes = 10
 
-	// ask for best height every 10s
+	// ask for best height every 3s
 	statusUpdateIntervalSeconds = 10
 	// check if we should switch to consensus reactor
 	switchToConsensusIntervalSeconds = 1
@@ -81,6 +81,9 @@ type Reactor struct {
 	errorsCh   <-chan peerError
 
 	switchToConsensusMs int
+
+	// switchMtx protects pool switching operations
+	switchMtx sync.Mutex
 
 	metrics *Metrics
 }
@@ -156,44 +159,78 @@ func (bcR *Reactor) SetLogger(l log.Logger) {
 // OnStart implements service.Service.
 func (bcR *Reactor) OnStart() error {
 	if bcR.blockSync {
-		err := bcR.pool.Start()
-		if err != nil {
-			return err
-		}
-		bcR.poolRoutineWg.Add(1)
-		go func() {
-			defer bcR.poolRoutineWg.Done()
-			bcR.poolRoutine(false)
-		}()
+		return bcR.startPoolRoutine(false)
 	}
 	return nil
 }
 
-// SwitchToBlockSync is called by the state sync reactor when switching to block sync.
-func (bcR *Reactor) SwitchToBlockSync(state sm.State) error {
-	bcR.blockSync = true
-	bcR.initialState = state
-
-	bcR.pool.height = state.LastBlockHeight + 1
-	err := bcR.pool.Start()
-	if err != nil {
+// startPoolRoutine starts the pool and the pool routine goroutine.
+func (bcR *Reactor) startPoolRoutine(stateSynced bool) error {
+	if err := bcR.pool.Start(); err != nil {
 		return err
 	}
 	bcR.poolRoutineWg.Add(1)
 	go func() {
 		defer bcR.poolRoutineWg.Done()
-		bcR.poolRoutine(true)
+		bcR.poolRoutine(stateSynced)
 	}()
 	return nil
+}
+
+// stopPoolRoutine stops the pool and waits for the pool routine to exit.
+func (bcR *Reactor) stopPoolRoutine() {
+	if err := bcR.pool.Stop(); err != nil {
+		bcR.Logger.Error("Error stopping pool", "err", err)
+	}
+	bcR.poolRoutineWg.Wait()
+}
+
+// SwitchToBlockSync is called by the state sync reactor or consensus reactor
+// when switching to block sync mode.
+func (bcR *Reactor) SwitchToBlockSync(state sm.State) error {
+	bcR.switchMtx.Lock()
+	defer bcR.switchMtx.Unlock()
+
+	bcR.Logger.Info("SwitchToBlockSync", "height", state.LastBlockHeight)
+
+	// Stop pool if running
+	if bcR.pool.IsRunning() {
+		bcR.stopPoolRoutine()
+	}
+
+	// Reset pool state and set new height
+	if err := bcR.pool.Reset(); err != nil {
+		return fmt.Errorf("failed to reset pool: %w", err)
+	}
+	bcR.pool.SetHeight(state.LastBlockHeight + 1)
+
+	bcR.blockSync = true
+	bcR.initialState = state
+
+	// Request fresh status from all connected peers
+	bcR.requestStatusFromPeers()
+
+	// Start pool routine (stateSynced=true to skip WAL replay)
+	return bcR.startPoolRoutine(true)
+}
+
+// requestStatusFromPeers sends status requests to all connected peers
+// to get their current heights for blocksync.
+func (bcR *Reactor) requestStatusFromPeers() {
+	peers := bcR.Switch.Peers().List()
+	bcR.Logger.Info("Requesting status from peers for blocksync", "num_peers", len(peers))
+	for _, peer := range peers {
+		peer.TrySend(p2p.Envelope{
+			ChannelID: BlocksyncChannel,
+			Message:   &bcproto.StatusRequest{},
+		})
+	}
 }
 
 // OnStop implements service.Service.
 func (bcR *Reactor) OnStop() {
 	if bcR.blockSync {
-		if err := bcR.pool.Stop(); err != nil {
-			bcR.Logger.Error("Error stopping pool", "err", err)
-		}
-		bcR.poolRoutineWg.Wait()
+		bcR.stopPoolRoutine()
 	}
 }
 
@@ -618,6 +655,13 @@ FOR_LOOP:
 			bcR.metrics.recordBlockMetrics(first)
 			blocksSynced++
 
+			bcR.Logger.Info("Blocksync block processed",
+				"height", first.Height,
+				"max_peer_height", bcR.pool.MaxPeerHeight(),
+				"next_blocks", bcR.pool.countNextBlocks(),
+				"blocks_synced", blocksSynced,
+			)
+
 			if blocksSynced%100 == 0 {
 				lastRate = 0.9*lastRate + 0.1*(100/time.Since(lastHundred).Seconds())
 				bcR.Logger.Info("Block Sync Rate", "height", bcR.pool.height,
@@ -641,4 +685,14 @@ func (bcR *Reactor) BroadcastStatusRequest() {
 		ChannelID: BlocksyncChannel,
 		Message:   &bcproto.StatusRequest{},
 	})
+}
+
+// UpdatePeerHeight updates a peer's height in the blocksync pool.
+// This is called by the consensus reactor when it receives NewRoundStepMessage
+// to keep maxPeerHeight fresh without waiting for StatusResponse.
+func (bcR *Reactor) UpdatePeerHeight(peerID p2p.ID, height int64) {
+	if bcR.pool == nil {
+		return
+	}
+	bcR.pool.UpdatePeerHeight(peerID, height)
 }
