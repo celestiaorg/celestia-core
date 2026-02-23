@@ -466,6 +466,7 @@ FOR_LOOP:
 		case <-trySyncTicker.C: // chan time
 			select {
 			case didProcessCh <- struct{}{}:
+				schema.WriteChannelSize(bcR.traceClient, "blocksync.didProcessCh", len(didProcessCh), cap(didProcessCh))
 			default:
 			}
 
@@ -504,6 +505,7 @@ FOR_LOOP:
 			}
 			// Try again quickly next loop.
 			didProcessCh <- struct{}{}
+			schema.WriteChannelSize(bcR.traceClient, "blocksync.didProcessCh", len(didProcessCh), cap(didProcessCh))
 
 			firstParts, err := first.MakePartSet(types.BlockPartSizeBytes)
 			if err != nil {

@@ -288,6 +288,7 @@ func (txmp *TxPool) markToBeBroadcast(key types.TxKey) {
 
 	select {
 	case txmp.broadcastCh <- wtx:
+		schema.WriteChannelSize(txmp.traceClient, "mempool.broadcastCh", len(txmp.broadcastCh), cap(txmp.broadcastCh))
 	default:
 		txmp.broadcastMtx.Lock()
 		defer txmp.broadcastMtx.Unlock()
@@ -603,6 +604,7 @@ func (txmp *TxPool) Update(
 
 	select {
 	case txmp.heightSignal <- struct{}{}:
+		schema.WriteChannelSize(txmp.traceClient, "mempool.heightSignal", len(txmp.heightSignal), cap(txmp.heightSignal))
 	default:
 	}
 
@@ -884,6 +886,7 @@ func (txmp *TxPool) notifyTxsAvailable() {
 
 		select {
 		case txmp.txsAvailable <- struct{}{}:
+			schema.WriteChannelSize(txmp.traceClient, "mempool.txsAvailable", len(txmp.txsAvailable), cap(txmp.txsAvailable))
 		default:
 		}
 	}

@@ -194,7 +194,7 @@ func (blockProp *Reactor) InitPeer(peer p2p.Peer) (p2p.Peer, error) {
 // is connected. The proposal is sent to the peer so that it can start catchup
 // or request data.
 func (blockProp *Reactor) AddPeer(peer p2p.Peer) {
-	peerState := newPeerState(blockProp.ctx, peer, blockProp.Logger)
+	peerState := newPeerState(blockProp.ctx, peer, blockProp.Logger, blockProp.traceClient)
 
 	consensusState := peer.Get(types.PeerStateKey)
 

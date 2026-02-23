@@ -99,6 +99,7 @@ func (blockProp *Reactor) handleHaves(peer p2p.ID, haves *proptypes.HaveParts) {
 				round:  round,
 				index:  uint32(index),
 			}:
+				schema.WriteChannelSize(p.traceClient, "propagation.receivedHaves", len(p.receivedHaves), cap(p.receivedHaves))
 				p.RequestsReady()
 			default:
 			}
@@ -487,6 +488,7 @@ func (blockProp *Reactor) handleRecoveryPart(peer p2p.ID, part *proptypes.Recove
 		case <-p.ctx.Done():
 			return
 		case p.receivedParts <- partData{height: part.Height, round: part.Round}:
+			schema.WriteChannelSize(p.traceClient, "propagation.receivedParts", len(p.receivedParts), cap(p.receivedParts))
 		default:
 		}
 	}
@@ -511,6 +513,7 @@ func (blockProp *Reactor) handleRecoveryPart(peer p2p.ID, part *proptypes.Recove
 			Height: part.Height,
 			Round:  part.Round,
 		}:
+			schema.WriteChannelSize(blockProp.traceClient, "propagation.partChan", len(blockProp.partChan), cap(blockProp.partChan))
 		}
 	}
 
@@ -563,6 +566,7 @@ func (blockProp *Reactor) handleRecoveryPart(peer p2p.ID, part *proptypes.Recove
 					Height: part.Height,
 					Round:  part.Round,
 				}:
+					schema.WriteChannelSize(blockProp.traceClient, "propagation.partChan", len(blockProp.partChan), cap(blockProp.partChan))
 				}
 			}
 			haves.Parts = append(haves.Parts, proptypes.PartMetaData{Index: i, Hash: p.Proof.LeafHash})

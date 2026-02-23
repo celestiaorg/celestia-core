@@ -189,6 +189,7 @@ func (br *BaseReactor) QueueUnprocessedEnvelope(e UnprocessedEnvelope) {
 	case <-br.ctx.Done():
 	// if not, add the item to the channel.
 	case br.incoming <- br.unmarshalEnvelope(e):
+		schema.WriteChannelSize(br.traceClient, "p2p."+br.name+".incoming", len(br.incoming), cap(br.incoming))
 	}
 }
 
@@ -201,6 +202,7 @@ func (br *BaseReactor) TryQueueUnprocessedEnvelope(e UnprocessedEnvelope) {
 	select {
 	case <-br.ctx.Done():
 	case br.incoming <- br.unmarshalEnvelope(e):
+		schema.WriteChannelSize(br.traceClient, "p2p."+br.name+".incoming", len(br.incoming), cap(br.incoming))
 	default:
 	}
 }

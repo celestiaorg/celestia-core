@@ -235,6 +235,7 @@ func (blockProp *Reactor) processValidatedCompactBlock(cb *proptypes.CompactBloc
 			Proposal: cb.Proposal,
 			From:     peer,
 		}:
+			schema.WriteChannelSize(blockProp.traceClient, "propagation.proposalChan", len(blockProp.proposalChan), cap(blockProp.proposalChan))
 		}
 	}
 
@@ -347,6 +348,7 @@ func (blockProp *Reactor) recoverPartsFromMempool(cb *proptypes.CompactBlock) {
 			Height: cb.Proposal.Height,
 			Round:  cb.Proposal.Round,
 		}:
+			schema.WriteChannelSize(blockProp.traceClient, "propagation.partChan", len(blockProp.partChan), cap(blockProp.partChan))
 		}
 
 		recoveredCount++

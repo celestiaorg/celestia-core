@@ -180,6 +180,8 @@ func newPeer(
 		option(p)
 	}
 
+	p.mconn.SetTraceClient(p.traceClient)
+
 	return p
 }
 

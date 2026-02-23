@@ -10,6 +10,7 @@ import (
 	proptypes "github.com/cometbft/cometbft/consensus/propagation/types"
 	"github.com/cometbft/cometbft/libs/bits"
 	"github.com/cometbft/cometbft/libs/log"
+	"github.com/cometbft/cometbft/libs/trace"
 	"github.com/cometbft/cometbft/p2p/mock"
 	"github.com/cometbft/cometbft/types"
 )
@@ -17,7 +18,7 @@ import (
 // newTestPeerState is a helper to create a PeerState with a mock peer.
 func newTestPeerState() *PeerState {
 	peer := mock.Peer{}
-	return newPeerState(context.Background(), &peer, log.NewNopLogger())
+	return newPeerState(context.Background(), &peer, log.NewNopLogger(), trace.NoOpTracer())
 }
 
 func TestPeerState_MaxUnverifiedProposalHeight(t *testing.T) {
@@ -219,7 +220,7 @@ func TestPeerState_SetConcurrentReqs(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			ps := newPeerState(context.Background(), nil, nil)
+			ps := newPeerState(context.Background(), nil, nil, trace.NoOpTracer())
 			ps.SetConcurrentReqs(tt.count)
 
 			got := ps.concurrentReqs.Load()
@@ -263,7 +264,7 @@ func TestPeerState_DecreaseConcurrentReqs(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			ps := newPeerState(context.Background(), nil, nil)
+			ps := newPeerState(context.Background(), nil, nil, trace.NoOpTracer())
 			ps.SetConcurrentReqs(tt.initialCount)
 
 			ps.DecreaseConcurrentReqs(tt.decrease)

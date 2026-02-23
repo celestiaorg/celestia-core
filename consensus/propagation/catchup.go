@@ -216,6 +216,7 @@ func (blockProp *Reactor) handleCachedCompactBlock(cb *proptypes.CompactBlock) b
 		Proposal: cb.Proposal,
 		From:     blockProp.self, // From self since it's from cache
 	}:
+		schema.WriteChannelSize(blockProp.traceClient, "propagation.proposalChan", len(blockProp.proposalChan), cap(blockProp.proposalChan))
 	}
 
 	// Add to proposal cache

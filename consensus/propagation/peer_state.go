@@ -9,6 +9,8 @@ import (
 	"github.com/cometbft/cometbft/libs/bits"
 	"github.com/cometbft/cometbft/libs/log"
 	"github.com/cometbft/cometbft/libs/sync"
+	"github.com/cometbft/cometbft/libs/trace"
+	"github.com/cometbft/cometbft/libs/trace/schema"
 	"github.com/cometbft/cometbft/p2p"
 )
 
@@ -42,7 +44,8 @@ type PeerState struct {
 	canRequest        chan struct{}
 	remainingRequests map[int64]map[int32]int
 
-	logger log.Logger
+	logger      log.Logger
+	traceClient trace.Tracer
 
 	// consensusPeerState allows the propagation reactor to update peer state
 	// in the consensus reactor. This enables both reactors to gossip data
@@ -63,7 +66,7 @@ type partData struct {
 
 // newPeerState initializes and returns a new PeerState. This should be
 // called for each peer.
-func newPeerState(ctx context.Context, peer p2p.Peer, logger log.Logger) *PeerState {
+func newPeerState(ctx context.Context, peer p2p.Peer, logger log.Logger, traceClient trace.Tracer) *PeerState {
 	ctx, cancel := context.WithCancel(ctx)
 	return &PeerState{
 		ctx:                 ctx,
@@ -72,6 +75,7 @@ func newPeerState(ctx context.Context, peer p2p.Peer, logger log.Logger) *PeerSt
 		state:               make(map[int64]map[int32]*partState),
 		peer:                peer,
 		logger:              logger,
+		traceClient:         traceClient,
 		receivedHaves:       make(chan request, 20_000),
 		receivedParts:       make(chan partData, 20_000),
 		canRequest:          make(chan struct{}, 1),
@@ -315,6 +319,7 @@ func (d *PeerState) DeleteHeight(height int64) {
 func (d *PeerState) RequestsReady() {
 	select {
 	case d.canRequest <- struct{}{}:
+		schema.WriteChannelSize(d.traceClient, "propagation.canRequest", len(d.canRequest), cap(d.canRequest))
 	default:
 	}
 }

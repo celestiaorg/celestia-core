@@ -21,6 +21,8 @@ import (
 	"github.com/cometbft/cometbft/libs/service"
 	cmtsync "github.com/cometbft/cometbft/libs/sync"
 	"github.com/cometbft/cometbft/libs/timer"
+	"github.com/cometbft/cometbft/libs/trace"
+	"github.com/cometbft/cometbft/libs/trace/schema"
 	tmp2p "github.com/cometbft/cometbft/proto/tendermint/p2p"
 )
 
@@ -118,6 +120,8 @@ type MConnection struct {
 	created time.Time // time of creation
 
 	_maxPacketMsgSize int
+
+	traceClient trace.Tracer
 }
 
 // MConnConfig is a MConnection configuration.
@@ -212,7 +216,14 @@ func NewMConnectionWithConfig(
 	// maxPacketMsgSize() is a bit heavy, so call just once
 	mconn._maxPacketMsgSize = mconn.maxPacketMsgSize()
 
+	mconn.traceClient = trace.NoOpTracer()
+
 	return mconn
+}
+
+// SetTraceClient sets the tracing client for the connection.
+func (c *MConnection) SetTraceClient(traceClient trace.Tracer) {
+	c.traceClient = traceClient
 }
 
 func (c *MConnection) SetLogger(l log.Logger) {
@@ -374,6 +385,7 @@ func (c *MConnection) Send(chID byte, msgBytes []byte) bool {
 		// Wake up sendRoutine if necessary
 		select {
 		case c.send <- struct{}{}:
+			schema.WriteChannelSize(c.traceClient, "p2p.conn.send", len(c.send), cap(c.send))
 		default:
 		}
 	} else {
@@ -403,6 +415,7 @@ func (c *MConnection) TrySend(chID byte, msgBytes []byte) bool {
 		// Wake up sendRoutine if necessary
 		select {
 		case c.send <- struct{}{}:
+			schema.WriteChannelSize(c.traceClient, "p2p.conn.send", len(c.send), cap(c.send))
 		default:
 		}
 	}
@@ -457,6 +470,7 @@ FOR_LOOP:
 			c.pongTimer = time.AfterFunc(c.config.PongTimeout, func() {
 				select {
 				case c.pongTimeoutCh <- true:
+					schema.WriteChannelSize(c.traceClient, "p2p.conn.pongTimeoutCh", len(c.pongTimeoutCh), cap(c.pongTimeoutCh))
 				default:
 				}
 			})
@@ -486,6 +500,7 @@ FOR_LOOP:
 				// Keep sendRoutine awake.
 				select {
 				case c.send <- struct{}{}:
+					schema.WriteChannelSize(c.traceClient, "p2p.conn.send", len(c.send), cap(c.send))
 				default:
 				}
 			}
@@ -644,6 +659,7 @@ FOR_LOOP:
 			c.Logger.Debug("Receive Ping")
 			select {
 			case c.pong <- struct{}{}:
+				schema.WriteChannelSize(c.traceClient, "p2p.conn.pong", len(c.pong), cap(c.pong))
 			default:
 				// never block
 			}
@@ -651,6 +667,7 @@ FOR_LOOP:
 			c.Logger.Debug("Receive Pong")
 			select {
 			case c.pongTimeoutCh <- false:
+				schema.WriteChannelSize(c.traceClient, "p2p.conn.pongTimeoutCh", len(c.pongTimeoutCh), cap(c.pongTimeoutCh))
 			default:
 				// never block
 			}
@@ -814,6 +831,7 @@ func (ch *Channel) sendBytes(bytes []byte) bool {
 	select {
 	case ch.sendQueue <- bytes:
 		atomic.AddInt32(&ch.sendQueueSize, 1)
+		schema.WriteChannelSize(ch.conn.traceClient, "p2p.conn.channel.sendQueue", len(ch.sendQueue), cap(ch.sendQueue))
 		return true
 	case <-time.After(defaultSendTimeout):
 		return false
@@ -827,6 +845,7 @@ func (ch *Channel) trySendBytes(bytes []byte) bool {
 	select {
 	case ch.sendQueue <- bytes:
 		atomic.AddInt32(&ch.sendQueueSize, 1)
+		schema.WriteChannelSize(ch.conn.traceClient, "p2p.conn.channel.sendQueue", len(ch.sendQueue), cap(ch.sendQueue))
 		return true
 	default:
 		return false

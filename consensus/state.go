@@ -532,8 +532,10 @@ func (cs *State) OpenWAL(walFile string) (WAL, error) {
 func (cs *State) AddVote(vote *types.Vote, peerID p2p.ID) (added bool, err error) {
 	if peerID == "" {
 		cs.internalMsgQueue <- msgInfo{&VoteMessage{vote}, ""}
+		schema.WriteChannelSize(cs.traceClient, "consensus.internalMsgQueue", len(cs.internalMsgQueue), cap(cs.internalMsgQueue))
 	} else {
 		cs.peerMsgQueue <- msgInfo{&VoteMessage{vote}, peerID}
+		schema.WriteChannelSize(cs.traceClient, "consensus.peerMsgQueue", len(cs.peerMsgQueue), cap(cs.peerMsgQueue))
 	}
 
 	// TODO: wait for event?!
@@ -544,8 +546,10 @@ func (cs *State) AddVote(vote *types.Vote, peerID p2p.ID) (added bool, err error
 func (cs *State) SetProposal(proposal *types.Proposal, peerID p2p.ID) error {
 	if peerID == "" {
 		cs.internalMsgQueue <- msgInfo{&ProposalMessage{proposal}, ""}
+		schema.WriteChannelSize(cs.traceClient, "consensus.internalMsgQueue", len(cs.internalMsgQueue), cap(cs.internalMsgQueue))
 	} else {
 		cs.peerMsgQueue <- msgInfo{&ProposalMessage{proposal}, peerID}
+		schema.WriteChannelSize(cs.traceClient, "consensus.peerMsgQueue", len(cs.peerMsgQueue), cap(cs.peerMsgQueue))
 	}
 
 	// TODO: wait for event?!
@@ -556,8 +560,10 @@ func (cs *State) SetProposal(proposal *types.Proposal, peerID p2p.ID) error {
 func (cs *State) AddProposalBlockPart(height int64, round int32, part *types.Part, peerID p2p.ID) error {
 	if peerID == "" {
 		cs.internalMsgQueue <- msgInfo{&BlockPartMessage{height, round, part}, ""}
+		schema.WriteChannelSize(cs.traceClient, "consensus.internalMsgQueue", len(cs.internalMsgQueue), cap(cs.internalMsgQueue))
 	} else {
 		cs.peerMsgQueue <- msgInfo{&BlockPartMessage{height, round, part}, peerID}
+		schema.WriteChannelSize(cs.traceClient, "consensus.peerMsgQueue", len(cs.peerMsgQueue), cap(cs.peerMsgQueue))
 	}
 
 	// TODO: wait for event?!
@@ -594,6 +600,7 @@ func (cs *State) updateHeight(height int64) {
 	cs.rs.Height = height
 	select {
 	case cs.newHeightOrRoundChan <- struct{}{}:
+		schema.WriteChannelSize(cs.traceClient, "consensus.newHeightOrRoundChan", len(cs.newHeightOrRoundChan), cap(cs.newHeightOrRoundChan))
 	default:
 	}
 }
@@ -612,6 +619,7 @@ func (cs *State) updateRoundStep(round int32, step cstypes.RoundStepType) {
 	cs.rs.Step = step
 	select {
 	case cs.newHeightOrRoundChan <- struct{}{}:
+		schema.WriteChannelSize(cs.traceClient, "consensus.newHeightOrRoundChan", len(cs.newHeightOrRoundChan), cap(cs.newHeightOrRoundChan))
 	default:
 	}
 }
@@ -689,13 +697,17 @@ func (cs *State) Precommit(round int32) time.Duration {
 func (cs *State) sendInternalMessage(mi msgInfo) {
 	select {
 	case cs.internalMsgQueue <- mi:
+		schema.WriteChannelSize(cs.traceClient, "consensus.internalMsgQueue", len(cs.internalMsgQueue), cap(cs.internalMsgQueue))
 	default:
 		// NOTE: using the go-routine means our votes can
 		// be processed out of order.
 		// TODO: use CList here for strict determinism and
 		// attempt push to internalMsgQueue in receiveRoutine
 		cs.Logger.Debug("internal msg queue is full; using a go-routine")
-		go func() { cs.internalMsgQueue <- mi }()
+		go func() {
+			cs.internalMsgQueue <- mi
+			schema.WriteChannelSize(cs.traceClient, "consensus.internalMsgQueue", len(cs.internalMsgQueue), cap(cs.internalMsgQueue))
+		}()
 	}
 }
 
@@ -1044,6 +1056,7 @@ func (cs *State) handleMsg(mi msgInfo) {
 		}
 		if added {
 			cs.statsMsgQueue <- mi
+			schema.WriteChannelSize(cs.traceClient, "consensus.statsMsgQueue", len(cs.statsMsgQueue), cap(cs.statsMsgQueue))
 		}
 
 		if err != nil && msg.Round != cs.rs.Round {
@@ -1062,6 +1075,7 @@ func (cs *State) handleMsg(mi msgInfo) {
 		added, err = cs.tryAddVote(msg.Vote, peerID)
 		if added {
 			cs.statsMsgQueue <- mi
+			schema.WriteChannelSize(cs.traceClient, "consensus.statsMsgQueue", len(cs.statsMsgQueue), cap(cs.statsMsgQueue))
 		}
 
 		// if err == ErrAddingVote {
@@ -2892,6 +2906,7 @@ func (cs *State) syncData() {
 				return
 			}
 			cs.peerMsgQueue <- msgInfo{&ProposalMessage{&proposalAndFrom.Proposal}, proposalAndFrom.From}
+			schema.WriteChannelSize(cs.traceClient, "consensus.peerMsgQueue", len(cs.peerMsgQueue), cap(cs.peerMsgQueue))
 		case _, ok := <-cs.newHeightOrRoundChan:
 			if !ok {
 				return
@@ -2916,6 +2931,7 @@ func (cs *State) syncData() {
 				}
 				part := partset.GetPart(indice)
 				cs.internalMsgQueue <- msgInfo{&BlockPartMessage{height, round, part}, ""}
+				schema.WriteChannelSize(cs.traceClient, "consensus.internalMsgQueue", len(cs.internalMsgQueue), cap(cs.internalMsgQueue))
 			}
 		case part, ok := <-partChan:
 			if !ok {
@@ -2939,6 +2955,7 @@ func (cs *State) syncData() {
 			}
 
 			cs.peerMsgQueue <- msgInfo{&BlockPartMessage{h, r, part.Part}, ""}
+			schema.WriteChannelSize(cs.traceClient, "consensus.peerMsgQueue", len(cs.peerMsgQueue), cap(cs.peerMsgQueue))
 		}
 	}
 }
