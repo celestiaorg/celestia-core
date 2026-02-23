@@ -40,8 +40,9 @@ const (
 	DefaultNodeKeyName  = "node_key.json"
 	DefaultAddrBookName = "addrbook.json"
 
-	MempoolTypeNop = "nop"
-	MempoolTypeCAT = "cat"
+	MempoolTypeNop      = "nop"
+	MempoolTypeCAT      = "cat"
+	MempoolTypePriority = "priority"
 )
 
 // NOTE: Most of the structs & relevant comments + the
