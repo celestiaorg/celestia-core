@@ -903,7 +903,7 @@ func (ch *Channel) recvPacketMsg(packet tmp2p.PacketMsg) ([]byte, error) {
 		// http://stackoverflow.com/questions/16971741/how-do-you-clear-a-slice-in-go
 		//   suggests this could be a memory leak, but we might as well keep the memory for the channel until it closes,
 		//	at which point the recving slice stops being used and should be garbage collected
-		ch.recving = ch.recving[:0] // make([]byte, 0, ch.desc.RecvBufferCapacity)
+		ch.recving = make([]byte, 0, ch.desc.RecvBufferCapacity) // make([]byte, 0, ch.desc.RecvBufferCapacity)
 		return msgBytes, nil
 	}
 	return nil, nil
