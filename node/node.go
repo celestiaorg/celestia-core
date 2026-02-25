@@ -569,6 +569,14 @@ func NewNodeWithContext(ctx context.Context,
 	}
 	node.BaseService = *service.NewBaseService(logger, "Node", node)
 
+	consensusState.SetAfterPanicFn(func() {
+		node.Logger.Error("Initiating full node shutdown due to consensus panic")
+		if err := node.Stop(); err != nil {
+			node.Logger.Error("Failed to stop node after consensus panic", "err", err)
+		}
+		os.Exit(1)
+	})
+
 	for _, option := range options {
 		option(node)
 	}
