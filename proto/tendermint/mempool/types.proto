@@ -15,10 +15,20 @@ message WantTx {
   bytes tx_key = 1;
 }
 
+// PushTx sends a transaction along with the set of peer IDs that have already
+// been sent this transaction. Receivers forward to peers not in this set,
+// appending the new recipients before forwarding. Propagation stops when all
+// connected peers are in the covered set.
+message PushTx {
+  bytes          tx             = 1;
+  repeated bytes sent_to_peers  = 2;
+}
+
 message Message {
   oneof sum {
     Txs    txs     = 1;
     SeenTx seen_tx = 2;
     WantTx want_tx = 3;
+    PushTx push_tx = 4;
   }
 }
