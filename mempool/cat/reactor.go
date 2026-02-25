@@ -52,6 +52,11 @@ const (
 
 	// maxSignerLength is the maximum allowed length for a signer field in SeenTx messages.
 	maxSignerLength = 64
+
+	// defaultPushGossipFanout is the number of peers each node forwards a
+	// transaction to per hop. With fanout 6 in a 100-validator network,
+	// full propagation completes in ceil(log6(100)) = 3 hops.
+	defaultPushGossipFanout = 5
 )
 
 var (
@@ -460,6 +465,44 @@ func (memR *Reactor) Receive(e p2p.Envelope) {
 			}
 		}
 
+	// A peer is pushing a transaction with an embedded set of peers that already
+	// have it. Validate, add to mempool, then forward to peers not in the set.
+	case *protomem.PushTx:
+		if len(msg.Tx) == 0 {
+			memR.Logger.Error("received empty push tx from peer", "src", e.Src)
+			memR.Switch.StopPeerForError(e.Src, errEmptyTx, memR.String())
+			return
+		}
+
+		ntx := types.Tx(msg.Tx)
+		key := ntx.Key()
+
+		// Fast path: already have it.
+		if memR.mempool.Has(key) {
+			return
+		}
+
+		cachedTx := ntx.ToCachedTx()
+		peerID := memR.ids.GetIDForPeer(e.Src.ID())
+		txInfo := mempool.TxInfo{SenderID: peerID, SenderP2PID: e.Src.ID()}
+
+		schema.WriteMempoolTx(memR.traceClient, string(e.Src.ID()), key[:], len(msg.Tx), schema.Download)
+
+		rsp, err := memR.tryAddNewTx(cachedTx, key, txInfo, string(e.Src.ID()))
+		if err != nil {
+			return
+		}
+		_ = rsp
+
+		// Forward to peers not in the covered set.
+		if !memR.opts.ListenOnly {
+			coveredPeers := make(map[p2p.ID]struct{}, len(msg.SentToPeers))
+			for _, pid := range msg.SentToPeers {
+				coveredPeers[p2p.ID(pid)] = struct{}{}
+			}
+			memR.pushTxToPeers(key, ntx, coveredPeers)
+		}
+
 	default:
 		memR.Logger.Error("unknown message type", "src", e.Src, "chId", e.ChannelID, "msg", fmt.Sprintf("%T", msg))
 		memR.Switch.StopPeerForError(e.Src, fmt.Errorf("mempool cannot handle message of type: %T", msg), memR.String())
@@ -478,9 +521,9 @@ func (memR *Reactor) broadcastSeenTx(txKey types.TxKey, signer []byte, sequence 
 	memR.broadcastSeenTxWithHeight(txKey, memR.mempool.Height(), signer, sequence)
 }
 
-// broadcastNewTx broadcast new transaction to limited peers unless we are already sure they have seen the tx.
+// broadcastNewTx broadcasts a new transaction to peers using push gossip.
 func (memR *Reactor) broadcastNewTx(wtx *wrappedTx) {
-	memR.broadcastSeenTxWithHeight(wtx.key(), wtx.height, wtx.sender, wtx.sequence)
+	memR.pushTxToPeers(wtx.key(), wtx.tx.Tx, nil)
 }
 
 // broadcastSeenTxWithHeight is a helper that broadcasts a SeenTx message with height checking.
@@ -533,6 +576,68 @@ func (memR *Reactor) broadcastSeenTxWithHeight(txKey types.TxKey, height int64, 
 			memR.mempool.PeerHasTx(id, txKey)
 			schema.WriteMempoolPeerState(memR.traceClient, string(peer.ID()), schema.SeenTx, txKey[:], schema.Upload)
 			sent++
+		}
+	}
+}
+
+// pushTxToPeers selects up to PushGossipFanout peers that are NOT in the
+// coveredPeers set, appends the selected peer IDs to the covered set, and
+// sends a PushTx message carrying both the transaction and the updated set.
+// Propagation stops naturally when all connected peers are already covered.
+func (memR *Reactor) pushTxToPeers(txKey types.TxKey, txBytes types.Tx, coveredPeers map[p2p.ID]struct{}) {
+	peers := memR.ids.GetAll()
+	if len(peers) == 0 {
+		return
+	}
+
+	// Build list of peers to send to: connected peers not in the covered set.
+	type target struct {
+		id   uint16
+		peer p2p.Peer
+	}
+	var targets []target
+	for id, peer := range peers {
+		if _, covered := coveredPeers[peer.ID()]; covered {
+			continue
+		}
+		targets = append(targets, target{id: id, peer: peer})
+		if len(targets) >= defaultPushGossipFanout {
+			break
+		}
+	}
+	if len(targets) == 0 {
+		return
+	}
+
+	// Build the updated covered set: previous peers + self + new targets.
+	newCovered := make([][]byte, 0, len(coveredPeers)+1+len(targets))
+	for pid := range coveredPeers {
+		newCovered = append(newCovered, []byte(pid))
+	}
+	selfID := memR.Switch.NodeInfo().ID()
+	if _, ok := coveredPeers[selfID]; !ok {
+		newCovered = append(newCovered, []byte(selfID))
+	}
+	for _, t := range targets {
+		newCovered = append(newCovered, []byte(t.peer.ID()))
+	}
+
+	msg := &protomem.Message{
+		Sum: &protomem.Message_PushTx{
+			PushTx: &protomem.PushTx{
+				Tx:          txBytes,
+				SentToPeers: newCovered,
+			},
+		},
+	}
+
+	for _, t := range targets {
+		if t.peer.Send(p2p.Envelope{
+			ChannelID: MempoolDataChannel,
+			Message:   msg,
+		}) {
+			memR.mempool.PeerHasTx(t.id, txKey)
+			schema.WriteMempoolTx(memR.traceClient, string(t.peer.ID()), txKey[:], len(txBytes), schema.Upload)
 		}
 	}
 }

@@ -170,12 +170,69 @@ func (m *WantTx) GetTxKey() []byte {
 	return nil
 }
 
+// PushTx sends a transaction along with the set of peer IDs that have already
+// been sent this transaction. Receivers forward to peers not in this set,
+// appending the new recipients before forwarding. Propagation stops when all
+// connected peers are in the covered set.
+type PushTx struct {
+	Tx          []byte   `protobuf:"bytes,1,opt,name=tx,proto3" json:"tx,omitempty"`
+	SentToPeers [][]byte `protobuf:"bytes,2,rep,name=sent_to_peers,json=sentToPeers,proto3" json:"sent_to_peers,omitempty"`
+}
+
+func (m *PushTx) Reset()         { *m = PushTx{} }
+func (m *PushTx) String() string { return proto.CompactTextString(m) }
+func (*PushTx) ProtoMessage()    {}
+func (*PushTx) Descriptor() ([]byte, []int) {
+	return fileDescriptor_2af51926fdbcbc05, []int{3}
+}
+func (m *PushTx) XXX_Unmarshal(b []byte) error {
+	return m.Unmarshal(b)
+}
+func (m *PushTx) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+	if deterministic {
+		return xxx_messageInfo_PushTx.Marshal(b, m, deterministic)
+	} else {
+		b = b[:cap(b)]
+		n, err := m.MarshalToSizedBuffer(b)
+		if err != nil {
+			return nil, err
+		}
+		return b[:n], nil
+	}
+}
+func (m *PushTx) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_PushTx.Merge(m, src)
+}
+func (m *PushTx) XXX_Size() int {
+	return m.Size()
+}
+func (m *PushTx) XXX_DiscardUnknown() {
+	xxx_messageInfo_PushTx.DiscardUnknown(m)
+}
+
+var xxx_messageInfo_PushTx proto.InternalMessageInfo
+
+func (m *PushTx) GetTx() []byte {
+	if m != nil {
+		return m.Tx
+	}
+	return nil
+}
+
+func (m *PushTx) GetSentToPeers() [][]byte {
+	if m != nil {
+		return m.SentToPeers
+	}
+	return nil
+}
+
 type Message struct {
 	// Types that are valid to be assigned to Sum:
 	//
 	//	*Message_Txs
 	//	*Message_SeenTx
 	//	*Message_WantTx
+	//	*Message_PushTx
 	Sum isMessage_Sum `protobuf_oneof:"sum"`
 }
 
@@ -183,7 +240,7 @@ func (m *Message) Reset()         { *m = Message{} }
 func (m *Message) String() string { return proto.CompactTextString(m) }
 func (*Message) ProtoMessage()    {}
 func (*Message) Descriptor() ([]byte, []int) {
-	return fileDescriptor_2af51926fdbcbc05, []int{3}
+	return fileDescriptor_2af51926fdbcbc05, []int{4}
 }
 func (m *Message) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
@@ -227,10 +284,14 @@ type Message_SeenTx struct {
 type Message_WantTx struct {
 	WantTx *WantTx `protobuf:"bytes,3,opt,name=want_tx,json=wantTx,proto3,oneof" json:"want_tx,omitempty"`
 }
+type Message_PushTx struct {
+	PushTx *PushTx `protobuf:"bytes,4,opt,name=push_tx,json=pushTx,proto3,oneof" json:"push_tx,omitempty"`
+}
 
 func (*Message_Txs) isMessage_Sum()    {}
 func (*Message_SeenTx) isMessage_Sum() {}
 func (*Message_WantTx) isMessage_Sum() {}
+func (*Message_PushTx) isMessage_Sum() {}
 
 func (m *Message) GetSum() isMessage_Sum {
 	if m != nil {
@@ -260,12 +321,20 @@ func (m *Message) GetWantTx() *WantTx {
 	return nil
 }
 
+func (m *Message) GetPushTx() *PushTx {
+	if x, ok := m.GetSum().(*Message_PushTx); ok {
+		return x.PushTx
+	}
+	return nil
+}
+
 // XXX_OneofWrappers is for the internal use of the proto package.
 func (*Message) XXX_OneofWrappers() []interface{} {
 	return []interface{}{
 		(*Message_Txs)(nil),
 		(*Message_SeenTx)(nil),
 		(*Message_WantTx)(nil),
+		(*Message_PushTx)(nil),
 	}
 }
 
@@ -273,33 +342,37 @@ func init() {
 	proto.RegisterType((*Txs)(nil), "tendermint.mempool.Txs")
 	proto.RegisterType((*SeenTx)(nil), "tendermint.mempool.SeenTx")
 	proto.RegisterType((*WantTx)(nil), "tendermint.mempool.WantTx")
+	proto.RegisterType((*PushTx)(nil), "tendermint.mempool.PushTx")
 	proto.RegisterType((*Message)(nil), "tendermint.mempool.Message")
 }
 
 func init() { proto.RegisterFile("tendermint/mempool/types.proto", fileDescriptor_2af51926fdbcbc05) }
 
 var fileDescriptor_2af51926fdbcbc05 = []byte{
-	// 307 bytes of a gzipped FileDescriptorProto
-	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0x74, 0x91, 0xc1, 0x4a, 0x72, 0x41,
-	0x14, 0xc7, 0xef, 0x7c, 0xf7, 0x73, 0x8c, 0xa3, 0x8b, 0x18, 0x28, 0x2f, 0x2e, 0x26, 0xb9, 0xab,
-	0x0b, 0xc1, 0xbd, 0x60, 0xf8, 0x02, 0xae, 0x84, 0x88, 0xe0, 0x2a, 0x04, 0x6d, 0x44, 0xed, 0x64,
-	0x52, 0x33, 0x63, 0xce, 0x11, 0xc7, 0xb7, 0xe8, 0x3d, 0x7a, 0x91, 0x96, 0x2e, 0x5b, 0x86, 0xbe,
-	0x48, 0x38, 0xd7, 0x72, 0x61, 0xee, 0xfe, 0x87, 0x3f, 0xbf, 0xc3, 0xef, 0x70, 0x40, 0x12, 0xea,
-	0x07, 0x9c, 0xa9, 0x89, 0xa6, 0x4c, 0xa1, 0x9a, 0x1a, 0xf3, 0x92, 0xd1, 0x72, 0x8a, 0x36, 0x9d,
-	0xce, 0x0c, 0x19, 0x21, 0xf6, 0x7d, 0xba, 0xeb, 0xe3, 0x1a, 0x84, 0x3d, 0x67, 0xc5, 0x29, 0x84,
-	0xe4, 0x6c, 0xc4, 0x1a, 0x61, 0x52, 0xcd, 0xb7, 0x31, 0xee, 0x02, 0xef, 0x22, 0xea, 0x9e, 0x13,
-	0x67, 0xc0, 0xc9, 0xf5, 0x9f, 0x71, 0x19, 0xb1, 0x06, 0x4b, 0xaa, 0x79, 0x89, 0xdc, 0x35, 0x2e,
-	0x45, 0x1d, 0x4e, 0x2c, 0xbe, 0xce, 0x51, 0x8f, 0x30, 0xfa, 0xd7, 0x60, 0xc9, 0xff, 0xfc, 0x77,
-	0x16, 0xe7, 0xc0, 0xed, 0x64, 0xac, 0x71, 0x16, 0x85, 0x1e, 0xd9, 0x4d, 0xf1, 0x05, 0xf0, 0xbb,
-	0x81, 0xa6, 0xa3, 0x4b, 0xe3, 0x77, 0x06, 0xe5, 0x1b, 0xb4, 0x76, 0x30, 0x46, 0x71, 0xf9, 0xe3,
-	0xc4, 0x92, 0x4a, 0xb3, 0x96, 0x1e, 0xca, 0xa7, 0x3d, 0x67, 0x3b, 0x81, 0xd7, 0x15, 0x2d, 0x28,
-	0x5b, 0x44, 0xdd, 0x27, 0xe7, 0x65, 0x2a, 0xcd, 0xfa, 0x5f, 0x40, 0x71, 0x51, 0x27, 0xc8, 0xb9,
-	0x2d, 0x6e, 0x6b, 0x41, 0x79, 0x31, 0xd0, 0xb4, 0xc5, 0xc2, 0xe3, 0x58, 0xe1, 0xbc, 0xc5, 0x16,
-	0x3e, 0xb5, 0x4b, 0x10, 0xda, 0xb9, 0x6a, 0xdf, 0x7e, 0xac, 0x25, 0x5b, 0xad, 0x25, 0xfb, 0x5a,
-	0x4b, 0xf6, 0xb6, 0x91, 0xc1, 0x6a, 0x23, 0x83, 0xcf, 0x8d, 0x0c, 0xee, 0x5b, 0xe3, 0x09, 0x3d,
-	0xcd, 0x87, 0xe9, 0xc8, 0xa8, 0x6c, 0x64, 0x14, 0xd2, 0xf0, 0x91, 0xf6, 0xc1, 0xbf, 0x23, 0x3b,
-	0xfc, 0xd6, 0x90, 0xfb, 0xe6, 0xea, 0x3b, 0x00, 0x00, 0xff, 0xff, 0x9c, 0xe5, 0xe6, 0xbe, 0xca,
-	0x01, 0x00, 0x00,
+	// 362 bytes of a gzipped FileDescriptorProto
+	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0x74, 0x92, 0xc1, 0xca, 0xd3, 0x40,
+	0x10, 0xc7, 0xb3, 0xc9, 0xf7, 0x25, 0x32, 0xad, 0x22, 0x0b, 0xda, 0xd0, 0x43, 0x2c, 0x39, 0x05,
+	0x84, 0x04, 0x2a, 0xb9, 0x79, 0xea, 0xa9, 0x20, 0x62, 0x49, 0x03, 0x82, 0x97, 0xd0, 0xd6, 0xb1,
+	0x2d, 0x9a, 0xdd, 0x98, 0x9d, 0xd0, 0xed, 0x5b, 0xf8, 0x58, 0x1e, 0x7b, 0xf4, 0x28, 0xe9, 0x8b,
+	0x48, 0x36, 0xd5, 0x1e, 0x6a, 0x6f, 0xb3, 0xf3, 0xe7, 0xb7, 0xcc, 0x6f, 0x18, 0x08, 0x08, 0xc5,
+	0x67, 0xac, 0xcb, 0xbd, 0xa0, 0xa4, 0xc4, 0xb2, 0x92, 0xf2, 0x5b, 0x42, 0xc7, 0x0a, 0x55, 0x5c,
+	0xd5, 0x92, 0x24, 0xe7, 0xd7, 0x3c, 0xbe, 0xe4, 0xe1, 0x08, 0x9c, 0x5c, 0x2b, 0xfe, 0x1c, 0x1c,
+	0xd2, 0xca, 0x67, 0x13, 0x27, 0x1a, 0x66, 0x5d, 0x19, 0x2e, 0xc1, 0x5d, 0x22, 0x8a, 0x5c, 0xf3,
+	0x17, 0xe0, 0x92, 0x2e, 0xbe, 0xe2, 0xd1, 0x67, 0x13, 0x16, 0x0d, 0xb3, 0x47, 0xd2, 0xef, 0xf0,
+	0xc8, 0xc7, 0xf0, 0x44, 0xe1, 0xf7, 0x06, 0xc5, 0x06, 0x7d, 0x7b, 0xc2, 0xa2, 0x87, 0xec, 0xdf,
+	0x9b, 0xbf, 0x04, 0x57, 0xed, 0xb7, 0x02, 0x6b, 0xdf, 0x31, 0xc8, 0xe5, 0x15, 0xbe, 0x02, 0xf7,
+	0xe3, 0x4a, 0xd0, 0xdd, 0x4f, 0xc3, 0xb7, 0xe0, 0x2e, 0x1a, 0xb5, 0xcb, 0x35, 0x7f, 0x06, 0x36,
+	0xe9, 0x4b, 0x68, 0x93, 0xe6, 0x21, 0x3c, 0x55, 0x28, 0xa8, 0x20, 0x59, 0x54, 0x88, 0xb5, 0xf2,
+	0x6d, 0x33, 0xeb, 0xa0, 0x6b, 0xe6, 0x72, 0xd1, 0xb5, 0xc2, 0x96, 0x81, 0xf7, 0x1e, 0x95, 0x5a,
+	0x6d, 0x91, 0xbf, 0xfe, 0x6b, 0xc4, 0xa2, 0xc1, 0x74, 0x14, 0xdf, 0xaa, 0xc7, 0xb9, 0x56, 0x73,
+	0xcb, 0xc8, 0xf2, 0x14, 0x3c, 0x85, 0x28, 0x0a, 0xd2, 0x46, 0x65, 0x30, 0x1d, 0xff, 0x0f, 0xe8,
+	0xf7, 0x31, 0xb7, 0x32, 0x57, 0xf5, 0x9b, 0x49, 0xc1, 0x3b, 0xac, 0xba, 0x99, 0xb4, 0xf1, 0xbc,
+	0x83, 0xf5, 0xc6, 0x1d, 0x76, 0xe8, 0xdd, 0x53, 0xf0, 0xaa, 0x46, 0xed, 0x3a, 0xec, 0xe1, 0x3e,
+	0xd6, 0xef, 0xa1, 0xc3, 0x2a, 0x53, 0xcd, 0x1e, 0xc1, 0x51, 0x4d, 0x39, 0xfb, 0xf0, 0xb3, 0x0d,
+	0xd8, 0xa9, 0x0d, 0xd8, 0xef, 0x36, 0x60, 0x3f, 0xce, 0x81, 0x75, 0x3a, 0x07, 0xd6, 0xaf, 0x73,
+	0x60, 0x7d, 0x4a, 0xb7, 0x7b, 0xda, 0x35, 0xeb, 0x78, 0x23, 0xcb, 0x64, 0x23, 0x4b, 0xa4, 0xf5,
+	0x17, 0xba, 0x16, 0xe6, 0x06, 0x92, 0xdb, 0x13, 0x59, 0xbb, 0x26, 0x79, 0xf3, 0x27, 0x00, 0x00,
+	0xff, 0xff, 0x6b, 0x11, 0x6c, 0xa1, 0x3f, 0x02, 0x00, 0x00,
 }
 
 func (m *Txs) Marshal() (dAtA []byte, err error) {
@@ -406,6 +479,45 @@ func (m *WantTx) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	return len(dAtA) - i, nil
 }
 
+func (m *PushTx) Marshal() (dAtA []byte, err error) {
+	size := m.Size()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBuffer(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *PushTx) MarshalTo(dAtA []byte) (int, error) {
+	size := m.Size()
+	return m.MarshalToSizedBuffer(dAtA[:size])
+}
+
+func (m *PushTx) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	if len(m.SentToPeers) > 0 {
+		for iNdEx := len(m.SentToPeers) - 1; iNdEx >= 0; iNdEx-- {
+			i -= len(m.SentToPeers[iNdEx])
+			copy(dAtA[i:], m.SentToPeers[iNdEx])
+			i = encodeVarintTypes(dAtA, i, uint64(len(m.SentToPeers[iNdEx])))
+			i--
+			dAtA[i] = 0x12
+		}
+	}
+	if len(m.Tx) > 0 {
+		i -= len(m.Tx)
+		copy(dAtA[i:], m.Tx)
+		i = encodeVarintTypes(dAtA, i, uint64(len(m.Tx)))
+		i--
+		dAtA[i] = 0xa
+	}
+	return len(dAtA) - i, nil
+}
+
 func (m *Message) Marshal() (dAtA []byte, err error) {
 	size := m.Size()
 	dAtA = make([]byte, size)
@@ -501,6 +613,27 @@ func (m *Message_WantTx) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	}
 	return len(dAtA) - i, nil
 }
+func (m *Message_PushTx) MarshalTo(dAtA []byte) (int, error) {
+	size := m.Size()
+	return m.MarshalToSizedBuffer(dAtA[:size])
+}
+
+func (m *Message_PushTx) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	if m.PushTx != nil {
+		{
+			size, err := m.PushTx.MarshalToSizedBuffer(dAtA[:i])
+			if err != nil {
+				return 0, err
+			}
+			i -= size
+			i = encodeVarintTypes(dAtA, i, uint64(size))
+		}
+		i--
+		dAtA[i] = 0x22
+	}
+	return len(dAtA) - i, nil
+}
 func encodeVarintTypes(dAtA []byte, offset int, v uint64) int {
 	offset -= sovTypes(v)
 	base := offset
@@ -560,6 +693,25 @@ func (m *WantTx) Size() (n int) {
 	return n
 }
 
+func (m *PushTx) Size() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	l = len(m.Tx)
+	if l > 0 {
+		n += 1 + l + sovTypes(uint64(l))
+	}
+	if len(m.SentToPeers) > 0 {
+		for _, b := range m.SentToPeers {
+			l = len(b)
+			n += 1 + l + sovTypes(uint64(l))
+		}
+	}
+	return n
+}
+
 func (m *Message) Size() (n int) {
 	if m == nil {
 		return 0
@@ -604,6 +756,18 @@ func (m *Message_WantTx) Size() (n int) {
 	_ = l
 	if m.WantTx != nil {
 		l = m.WantTx.Size()
+		n += 1 + l + sovTypes(uint64(l))
+	}
+	return n
+}
+func (m *Message_PushTx) Size() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if m.PushTx != nil {
+		l = m.PushTx.Size()
 		n += 1 + l + sovTypes(uint64(l))
 	}
 	return n
@@ -918,6 +1082,122 @@ func (m *WantTx) Unmarshal(dAtA []byte) error {
 	}
 	return nil
 }
+func (m *PushTx) Unmarshal(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return ErrIntOverflowTypes
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := dAtA[iNdEx]
+			iNdEx++
+			wire |= uint64(b&0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: PushTx: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: PushTx: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Tx", wireType)
+			}
+			var byteLen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowTypes
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				byteLen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if byteLen < 0 {
+				return ErrInvalidLengthTypes
+			}
+			postIndex := iNdEx + byteLen
+			if postIndex < 0 {
+				return ErrInvalidLengthTypes
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.Tx = append(m.Tx[:0], dAtA[iNdEx:postIndex]...)
+			if m.Tx == nil {
+				m.Tx = []byte{}
+			}
+			iNdEx = postIndex
+		case 2:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field SentToPeers", wireType)
+			}
+			var byteLen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowTypes
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				byteLen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if byteLen < 0 {
+				return ErrInvalidLengthTypes
+			}
+			postIndex := iNdEx + byteLen
+			if postIndex < 0 {
+				return ErrInvalidLengthTypes
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.SentToPeers = append(m.SentToPeers, make([]byte, postIndex-iNdEx))
+			copy(m.SentToPeers[len(m.SentToPeers)-1], dAtA[iNdEx:postIndex])
+			iNdEx = postIndex
+		default:
+			iNdEx = preIndex
+			skippy, err := skipTypes(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if (skippy < 0) || (iNdEx+skippy) < 0 {
+				return ErrInvalidLengthTypes
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
 func (m *Message) Unmarshal(dAtA []byte) error {
 	l := len(dAtA)
 	iNdEx := 0
@@ -1051,6 +1331,41 @@ func (m *Message) Unmarshal(dAtA []byte) error {
 				return err
 			}
 			m.Sum = &Message_WantTx{v}
+			iNdEx = postIndex
+		case 4:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field PushTx", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowTypes
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return ErrInvalidLengthTypes
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return ErrInvalidLengthTypes
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			v := &PushTx{}
+			if err := v.Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			m.Sum = &Message_PushTx{v}
 			iNdEx = postIndex
 		default:
 			iNdEx = preIndex
