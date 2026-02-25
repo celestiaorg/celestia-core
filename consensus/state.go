@@ -941,7 +941,6 @@ func (cs *State) receiveRoutine(maxSteps int) {
 			if cs.afterPanicFn != nil {
 				cs.afterPanicFn()
 			}
-			panic(r)
 		}
 	}()
 
