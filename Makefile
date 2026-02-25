@@ -316,11 +316,6 @@ build-linux:
 	GOOS=$(GOOS) GOARCH=$(GOARCH) GOARM=$(GOARM) $(MAKE) build
 .PHONY: build-linux
 
-#? build-docker-localnode: Build the "localnode" docker image
-build-docker-localnode:
-	@cd networks/local && make
-.PHONY: build-docker-localnode
-
 # Runs `make build COMETBFT_BUILD_OPTIONS=cleveldb` from within an Amazon
 # Linux (v2)-based Docker build container in order to build an Amazon
 # Linux-compatible binary. Produces a compatible binary at ./build/cometbft
@@ -329,17 +324,6 @@ build_c-amazonlinux:
 	$(MAKE) -C ./DOCKER build_amazonlinux_buildimage
 	docker run --rm -it -v `pwd`:/cometbft cometbft/cometbft:build_c-amazonlinux
 .PHONY: build_c-amazonlinux
-
-#? localnet-start: Run a 4-node testnet locally
-localnet-start: localnet-stop build-docker-localnode
-	@if ! [ -f build/node0/config/genesis.json ]; then docker run --rm -v $(CURDIR)/build:/cometbft:Z cometbft/localnode testnet --config /etc/cometbft/config-template.toml --o . --starting-ip-address 192.167.10.2; fi
-	docker compose up -d
-.PHONY: localnet-start
-
-#? localnet-stop: Stop testnet
-localnet-stop:
-	docker compose down
-.PHONY: localnet-stop
 
 #? build-contract-tests-hooks: Build hooks for dredd, to skip or add information on some steps
 build-contract-tests-hooks:
@@ -350,10 +334,10 @@ else
 endif
 .PHONY: build-contract-tests-hooks
 
-#? contract-tests: Run a nodejs tool to test endpoints against a localnet
-# The command takes care of starting and stopping the network
-# prerequisits: build-contract-tests-hooks build-linux
-# the two build commands were not added to let this command run from generic containers or machines.
+#? contract-tests: Run a nodejs tool to test endpoints against a testnet
+# NOTE: Currently not functional due to removal of localnet infrastructure
+# prerequisits: build-contract-tests-hooks
+# The binary build commands were not added to let this command run from generic containers or machines.
 # The binaries should be built beforehand
 contract-tests:
 	dredd
