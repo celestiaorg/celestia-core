@@ -154,6 +154,10 @@ type State struct {
 	// closed when we finish shutting down
 	done chan struct{}
 
+	// afterPanicFn, if non-nil, is called after onExit when receiveRoutine
+	// recovers from a panic, to trigger a full node shutdown.
+	afterPanicFn func()
+
 	// synchronous pubsub between consensus state and reactor.
 	// state only emits EventNewRoundStep and EventVote
 	evsw cmtevents.EventSwitch
@@ -250,6 +254,13 @@ func NewState(
 func (cs *State) SetLogger(l log.Logger) {
 	cs.BaseService.Logger = l //nolint:staticcheck
 	cs.timeoutTicker.SetLogger(l)
+}
+
+// SetAfterPanicFn sets a callback that is invoked after onExit when
+// receiveRoutine recovers from a panic. This is used to trigger a full
+// node shutdown so the process doesn't linger as a zombie.
+func (cs *State) SetAfterPanicFn(fn func()) {
+	cs.afterPanicFn = fn
 }
 
 // SetEventBus sets event bus.
@@ -939,6 +950,9 @@ func (cs *State) receiveRoutine(maxSteps int) {
 			// some console or secure RPC system, but for now, halting the chain upon
 			// unexpected consensus bugs sounds like the better option.
 			onExit(cs)
+			if cs.afterPanicFn != nil {
+				cs.afterPanicFn()
+			}
 		}
 	}()
 
