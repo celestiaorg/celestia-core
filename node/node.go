@@ -456,14 +456,15 @@ func NewNodeWithContext(ctx context.Context,
 	var propagator propagation.Propagator
 	propagator = propagationReactor
 
+	if config.Consensus.EnableLegacyBlockProp {
+		types.MaxBlockSizeBytes = types.ReducedMaxBlockSizeBytes // reduce the max block size to avoid overloading the legacy block prop mechanism
+	}
 	if config.Consensus.DisablePropagationReactor {
-		if config.Consensus.EnableLegacyBlockProp {
-			types.MaxBlockSizeBytes = types.ReducedMaxBlockSizeBytes // reduce the max block size to avoid overloading the legacy block prop mechanism
-			propagator = propagation.NewNoOpPropagator()
-			propagationReactor = nil
-		} else {
+		if !config.Consensus.EnableLegacyBlockProp {
 			return nil, fmt.Errorf("cannot have both propagation reactor and legacy block propagation disabled")
 		}
+		propagator = propagation.NewNoOpPropagator()
+		propagationReactor = nil
 	} else {
 		if !stateSync && !blockSync {
 			propagationReactor.StartProcessing()
