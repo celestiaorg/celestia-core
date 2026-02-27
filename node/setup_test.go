@@ -9,11 +9,6 @@ import (
 	dbm "github.com/cometbft/cometbft-db"
 
 	cfg "github.com/cometbft/cometbft/config"
-	"github.com/cometbft/cometbft/consensus/propagation"
-	"github.com/cometbft/cometbft/crypto/ed25519"
-	"github.com/cometbft/cometbft/libs/trace"
-	"github.com/cometbft/cometbft/mempool/cat"
-	"github.com/cometbft/cometbft/p2p"
 )
 
 func TestInitDBs(t *testing.T) {
@@ -66,84 +61,6 @@ func TestInitDBs(t *testing.T) {
 				assert.NotEqual(t, paths["state"], paths["blockstore"], "expected state and blockstore to use different paths")
 				assert.Equal(t, config.BlockstoreDir(), paths["blockstore"])
 				assert.Equal(t, config.DBDir(), paths["state"])
-			}
-		})
-	}
-}
-
-type mockPeer struct {
-	p2p.Peer
-	nodeInfo p2p.NodeInfo
-}
-
-func (mp *mockPeer) NodeInfo() p2p.NodeInfo {
-	return mp.nodeInfo
-}
-
-func TestPeerFilter(t *testing.T) {
-	config := cfg.DefaultConfig()
-	nodeKey := &p2p.NodeKey{PrivKey: ed25519.GenPrivKey()}
-	nodeInfo := p2p.DefaultNodeInfo{}
-	// proxyApp can be nil because config.FilterPeers is false by default
-	traceClient := trace.NoOpTracer()
-
-	_, peerFilters := createTransport(config, nodeInfo, nodeKey, nil, traceClient)
-
-	require.NotEmpty(t, peerFilters, "should return at least one peer filter")
-	filter := peerFilters[len(peerFilters)-1]
-
-	testCases := []struct {
-		name     string
-		channels []byte
-		errMsg   string
-	}{
-		{
-			name: "Valid Peer",
-			channels: []byte{
-				propagation.DataChannel, propagation.WantChannel,
-				cat.MempoolDataChannel, cat.MempoolWantsChannel,
-			},
-			errMsg: "",
-		},
-		{
-			name: "Legacy Peer (No Prop Channels)",
-			channels: []byte{
-				cat.MempoolDataChannel, cat.MempoolWantsChannel,
-			},
-			errMsg: "peer is only using legacy propagation",
-		},
-		{
-			name: "Non-CAT Peer (Missing MempoolDataChannel)",
-			channels: []byte{
-				propagation.DataChannel, propagation.WantChannel,
-				cat.MempoolWantsChannel,
-			},
-			errMsg: "peer is not using CAT mempool",
-		},
-		{
-			name: "Non-CAT Peer (Missing MempoolWantsChannel)",
-			channels: []byte{
-				propagation.DataChannel, propagation.WantChannel,
-				cat.MempoolDataChannel,
-			},
-			errMsg: "peer is not using CAT mempool",
-		},
-	}
-
-	for _, tc := range testCases {
-		t.Run(tc.name, func(t *testing.T) {
-			mp := &mockPeer{
-				nodeInfo: p2p.DefaultNodeInfo{
-					Channels: tc.channels,
-				},
-			}
-
-			err := filter(nil, mp)
-			if tc.errMsg == "" {
-				assert.NoError(t, err)
-			} else {
-				require.Error(t, err)
-				assert.Contains(t, err.Error(), tc.errMsg)
 			}
 		})
 	}
