@@ -39,7 +39,7 @@ const (
 	ReactorIncomingMessageQueueSize = 20000
 
 	// RetryTime automatic catchup retry timeout.
-	RetryTime = 5 * time.Second
+	RetryTime = 2500 * time.Millisecond
 )
 
 type Reactor struct {
