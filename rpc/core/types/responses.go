@@ -249,6 +249,26 @@ type (
 	ResultHealth             struct{}
 )
 
+// ResultUnsafeDebugHalt is returned when the consensus is halted for debugging.
+type ResultUnsafeDebugHalt struct {
+	// Height is the height at which the halt was initiated
+	Height int64 `json:"height"`
+	// Halted indicates if the node is now halted
+	Halted bool `json:"halted"`
+}
+
+// ResultUnsafeDebugUnlock is returned when the consensus is unlocked after a debug halt.
+type ResultUnsafeDebugUnlock struct {
+	// HaltDurationNs is how long the node was halted in nanoseconds
+	HaltDurationNs int64 `json:"halt_duration_ns"`
+	// HaltHeight is the height at which the node was halted
+	HaltHeight int64 `json:"halt_height"`
+	// CurrentHeight is the current height when unlocked
+	CurrentHeight int64 `json:"current_height"`
+	// WasHalted indicates if the node was actually halted before unlocking
+	WasHalted bool `json:"was_halted"`
+}
+
 // Event data from a subscription
 type ResultEvent struct {
 	Query  string              `json:"query"`

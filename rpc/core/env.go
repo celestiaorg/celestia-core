@@ -61,6 +61,14 @@ type consensusReactor interface {
 	WaitSync() bool
 }
 
+// debugConsensusState is an optional interface for debug operations on consensus state.
+// It's separate from the main interface to avoid requiring it in production code.
+type debugConsensusState interface {
+	DebugHalt() int64
+	DebugUnlock() (haltDuration time.Duration, haltHeight int64, currentHeight int64)
+	IsDebugHalted() bool
+}
+
 // ----------------------------------------------
 // Environment contains objects and interfaces used by the RPC. It is expected
 // to be setup once during startup.
