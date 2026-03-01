@@ -54,9 +54,10 @@ type BlockStore struct {
 	// The only reason for keeping these fields in the struct is that the data
 	// can't efficiently be queried from the database since the key encoding we use is not
 	// lexicographically ordered (see https://github.com/tendermint/tendermint/issues/4567).
-	mtx    cmtsync.RWMutex
-	base   int64
-	height int64
+	mtx          cmtsync.RWMutex
+	base         int64
+	height       int64
+	headerHeight int64 // Height of last synced header (may be > height)
 
 	seenCommitCache          *lru.Cache[int64, *types.Commit]
 	blockCommitCache         *lru.Cache[int64, *types.Commit]
@@ -67,10 +68,16 @@ type BlockStore struct {
 // initialized to the last height that was committed to the DB.
 func NewBlockStore(db dbm.DB) *BlockStore {
 	bs := LoadBlockStoreState(db)
+	headerHeight := bs.HeaderHeight
+	// Backwards compatibility: if HeaderHeight is not set, use Height.
+	if headerHeight == 0 && bs.Height > 0 {
+		headerHeight = bs.Height
+	}
 	bStore := &BlockStore{
-		base:   bs.Base,
-		height: bs.Height,
-		db:     db,
+		base:         bs.Base,
+		height:       bs.Height,
+		headerHeight: headerHeight,
+		db:           db,
 	}
 	bStore.addCaches()
 	return bStore
@@ -111,6 +118,29 @@ func (bs *BlockStore) Height() int64 {
 	bs.mtx.RLock()
 	defer bs.mtx.RUnlock()
 	return bs.height
+}
+
+// HeaderHeight returns the highest height for which we have a verified header.
+// This may be greater than Height() if headers are synced ahead of blocks.
+func (bs *BlockStore) HeaderHeight() int64 {
+	bs.mtx.RLock()
+	defer bs.mtx.RUnlock()
+	return bs.headerHeight
+}
+
+// HasHeader returns true if we have a verified header at the given height.
+func (bs *BlockStore) HasHeader(height int64) bool {
+	return bs.LoadBlockMeta(height) != nil
+}
+
+// LoadHeader returns the header at the given height, or nil if not found.
+// This may return a header even when LoadBlock returns nil.
+func (bs *BlockStore) LoadHeader(height int64) *types.Header {
+	meta := bs.LoadBlockMeta(height)
+	if meta == nil {
+		return nil
+	}
+	return &meta.Header
 }
 
 // Size returns the number of blocks in the block store.
@@ -492,6 +522,10 @@ func (bs *BlockStore) SaveBlock(block *types.Block, blockParts *types.PartSet, s
 	if bs.base == 0 {
 		bs.base = block.Height
 	}
+	// Keep headerHeight in sync with block height.
+	if block.Height > bs.headerHeight {
+		bs.headerHeight = block.Height
+	}
 
 	// Save new BlockStoreState descriptor. This also flushes the database.
 	err := bs.saveStateAndWriteDB(batch, "failed to save block")
@@ -533,12 +567,83 @@ func (bs *BlockStore) SaveBlockWithExtendedCommit(block *types.Block, blockParts
 	if bs.base == 0 {
 		bs.base = height
 	}
+	// Keep headerHeight in sync with block height.
+	if height > bs.headerHeight {
+		bs.headerHeight = height
+	}
 
 	// Save new BlockStoreState descriptor. This also flushes the database.
 	err := bs.saveStateAndWriteDB(batch, "failed to save block with extended commit")
 	if err != nil {
 		panic(err)
 	}
+}
+
+// SaveHeader saves a verified header and commit without block parts.
+// This creates a BlockMeta entry but does NOT update the contiguous block height.
+// Only updates headerHeight if this height is greater than the current headerHeight.
+func (bs *BlockStore) SaveHeader(header *types.Header, commit *types.Commit) error {
+	if header == nil {
+		return errors.New("cannot save nil header")
+	}
+	if commit == nil {
+		return errors.New("cannot save nil commit")
+	}
+	if header.Height != commit.Height {
+		return fmt.Errorf("header height %d != commit height %d", header.Height, commit.Height)
+	}
+
+	height := header.Height
+
+	batch := bs.db.NewBatch()
+	defer batch.Close()
+
+	// Create BlockMeta with zero-size (no block parts yet).
+	// The PartSetHeader comes from the commit's BlockID.
+	blockMeta := &types.BlockMeta{
+		BlockID: types.BlockID{
+			Hash:          header.Hash(),
+			PartSetHeader: commit.BlockID.PartSetHeader,
+		},
+		BlockSize: 0, // Unknown until block is downloaded
+		Header:    *header,
+		NumTxs:    0, // Unknown until block is downloaded
+	}
+
+	// Save BlockMeta.
+	pbm := blockMeta.ToProto()
+	metaBytes := mustEncode(pbm)
+	if err := batch.Set(calcBlockMetaKey(height), metaBytes); err != nil {
+		return err
+	}
+
+	// Save hash -> height mapping.
+	if err := batch.Set(calcBlockHashKey(header.Hash()), []byte(fmt.Sprintf("%d", height))); err != nil {
+		return err
+	}
+
+	// Save commit as seen commit.
+	pbc := commit.ToProto()
+	commitBytes := mustEncode(pbc)
+	if err := batch.Set(calcSeenCommitKey(height), commitBytes); err != nil {
+		return err
+	}
+
+	bs.mtx.Lock()
+	defer bs.mtx.Unlock()
+
+	// Only update headerHeight if this is higher.
+	if height > bs.headerHeight {
+		bs.headerHeight = height
+	}
+
+	// Save new BlockStoreState descriptor. This also flushes the database.
+	err := bs.saveStateAndWriteDB(batch, "failed to save header")
+	if err != nil {
+		return err
+	}
+
+	return nil
 }
 
 func (bs *BlockStore) saveBlockToBatch(
@@ -628,15 +733,16 @@ func (bs *BlockStore) saveBlockPart(height int64, index int, part *types.Part, b
 // Contract: the caller MUST have, at least, a read lock on `bs`.
 func (bs *BlockStore) saveStateAndWriteDB(batch dbm.Batch, errMsg string) error {
 	bss := cmtstore.BlockStoreState{
-		Base:   bs.base,
-		Height: bs.height,
+		Base:         bs.base,
+		Height:       bs.height,
+		HeaderHeight: bs.headerHeight,
 	}
 	SaveBlockStoreStateBatch(&bss, batch)
 
 	err := batch.WriteSync()
 	if err != nil {
-		return fmt.Errorf("error writing batch to DB %q: (base %d, height %d): %w",
-			errMsg, bs.base, bs.height, err)
+		return fmt.Errorf("error writing batch to DB %q: (base %d, height %d, headerHeight %d): %w",
+			errMsg, bs.base, bs.height, bs.headerHeight, err)
 	}
 	return nil
 }
