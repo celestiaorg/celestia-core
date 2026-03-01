@@ -249,6 +249,20 @@ type (
 	ResultHealth             struct{}
 )
 
+// ResultUnsafeSetConsensusDelay is returned when setting consensus delays
+// Note: precommit delay is not configurable via RPC (handled by app)
+type ResultUnsafeSetConsensusDelay struct {
+	ProposeDelay string `json:"propose_delay"`
+	PrevoteDelay string `json:"prevote_delay"`
+}
+
+// ResultUnsafeGetConsensusDelay is returned when getting consensus delays
+// Note: precommit delay is not configurable via RPC (handled by app)
+type ResultUnsafeGetConsensusDelay struct {
+	ProposeDelay string `json:"propose_delay"`
+	PrevoteDelay string `json:"prevote_delay"`
+}
+
 // Event data from a subscription
 type ResultEvent struct {
 	Query  string              `json:"query"`
