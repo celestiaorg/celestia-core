@@ -31,6 +31,7 @@ import (
 	mempl "github.com/cometbft/cometbft/mempool"
 	"github.com/cometbft/cometbft/p2p"
 	"github.com/cometbft/cometbft/p2p/pex"
+	"github.com/cometbft/cometbft/privval"
 	"github.com/cometbft/cometbft/proxy"
 	rpccore "github.com/cometbft/cometbft/rpc/core"
 	grpccore "github.com/cometbft/cometbft/rpc/grpc"
@@ -361,6 +362,11 @@ func NewNodeWithContext(ctx context.Context,
 		if err != nil {
 			return nil, fmt.Errorf("error with private validator socket client: %w", err)
 		}
+	}
+
+	// Set the tracer on the FilePV if it is a local file-based validator.
+	if filePV, ok := privValidator.(*privval.FilePV); ok {
+		filePV.SetTracer(tracer)
 	}
 
 	pubKey, err := privValidator.GetPubKey()

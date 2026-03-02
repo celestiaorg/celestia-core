@@ -102,7 +102,8 @@ func (sc *SignerClient) GetPubKey() (crypto.PubKey, error) {
 // SignVote requests a remote signer to sign a vote
 func (sc *SignerClient) SignVote(chainID string, vote *cmtproto.Vote) error {
 	reqStartTime := time.Now()
-	response, err := sc.endpoint.SendRequest(mustWrapMsg(&privvalproto.SignVoteRequest{Vote: vote, ChainId: chainID}))
+	req := &privvalproto.SignVoteRequest{Vote: vote, ChainId: chainID}
+	response, err := sc.endpoint.SendRequest(mustWrapMsg(req))
 	reqTime := time.Since(reqStartTime)
 	if err != nil {
 		return err
@@ -117,9 +118,9 @@ func (sc *SignerClient) SignVote(chainID string, vote *cmtproto.Vote) error {
 	}
 	switch vote.Type {
 	case cmtproto.PrevoteType:
-		schema.WriteSignatureLatency(sc.tracer, vote.Height, vote.Round, reqTime.Nanoseconds(), schema.PrevoteType)
+		schema.WriteSignatureLatency(sc.tracer, vote.Height, vote.Round, reqTime.Nanoseconds(), schema.PrevoteType, req.Size())
 	case cmtproto.PrecommitType:
-		schema.WriteSignatureLatency(sc.tracer, vote.Height, vote.Round, reqTime.Nanoseconds(), schema.PrecommitType)
+		schema.WriteSignatureLatency(sc.tracer, vote.Height, vote.Round, reqTime.Nanoseconds(), schema.PrecommitType, req.Size())
 	}
 
 	*vote = resp.Vote
@@ -130,9 +131,8 @@ func (sc *SignerClient) SignVote(chainID string, vote *cmtproto.Vote) error {
 // SignProposal requests a remote signer to sign a proposal
 func (sc *SignerClient) SignProposal(chainID string, proposal *cmtproto.Proposal) error {
 	reqStartTime := time.Now()
-	response, err := sc.endpoint.SendRequest(mustWrapMsg(
-		&privvalproto.SignProposalRequest{Proposal: proposal, ChainId: chainID},
-	))
+	req := &privvalproto.SignProposalRequest{Proposal: proposal, ChainId: chainID}
+	response, err := sc.endpoint.SendRequest(mustWrapMsg(req))
 	reqTime := time.Since(reqStartTime)
 	if err != nil {
 		return err
@@ -145,7 +145,7 @@ func (sc *SignerClient) SignProposal(chainID string, proposal *cmtproto.Proposal
 	if resp.Error != nil {
 		return &RemoteSignerError{Code: int(resp.Error.Code), Description: resp.Error.Description}
 	}
-	schema.WriteSignatureLatency(sc.tracer, proposal.Height, proposal.Round, reqTime.Nanoseconds(), schema.ProposalType)
+	schema.WriteSignatureLatency(sc.tracer, proposal.Height, proposal.Round, reqTime.Nanoseconds(), schema.ProposalType, req.Size())
 
 	*proposal = resp.Proposal
 
@@ -154,11 +154,12 @@ func (sc *SignerClient) SignProposal(chainID string, proposal *cmtproto.Proposal
 
 func (sc *SignerClient) SignRawBytes(chainID, uniqueID string, rawBytes []byte) ([]byte, error) {
 	reqStartTime := time.Now()
-	response, err := sc.endpoint.SendRequest(mustWrapMsg(&privvalproto.SignRawBytesRequest{
+	req := &privvalproto.SignRawBytesRequest{
 		ChainId:  chainID,
 		RawBytes: rawBytes,
 		UniqueId: uniqueID,
-	}))
+	}
+	response, err := sc.endpoint.SendRequest(mustWrapMsg(req))
 	reqTime := time.Since(reqStartTime)
 	if err != nil {
 		return nil, err
@@ -171,7 +172,7 @@ func (sc *SignerClient) SignRawBytes(chainID, uniqueID string, rawBytes []byte) 
 	if resp.Error != nil {
 		return nil, &RemoteSignerError{Code: int(resp.Error.Code), Description: resp.Error.Description}
 	}
-	schema.WriteSignatureLatency(sc.tracer, -1, -1, reqTime.Nanoseconds(), uniqueID)
+	schema.WriteSignatureLatency(sc.tracer, -1, -1, reqTime.Nanoseconds(), schema.RawBytesType, req.Size())
 
 	return resp.Signature, nil
 }

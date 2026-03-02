@@ -16,6 +16,8 @@ import (
 	cmtos "github.com/cometbft/cometbft/libs/os"
 	"github.com/cometbft/cometbft/libs/protoio"
 	"github.com/cometbft/cometbft/libs/tempfile"
+	"github.com/cometbft/cometbft/libs/trace"
+	"github.com/cometbft/cometbft/libs/trace/schema"
 	cmtproto "github.com/cometbft/cometbft/proto/tendermint/types"
 	"github.com/cometbft/cometbft/types"
 	cmttime "github.com/cometbft/cometbft/types/time"
@@ -157,6 +159,12 @@ func (lss *FilePVLastSignState) Save() {
 type FilePV struct {
 	Key           FilePVKey
 	LastSignState FilePVLastSignState
+	tracer        trace.Tracer
+}
+
+// SetTracer sets the tracer for the FilePV.
+func (pv *FilePV) SetTracer(tracer trace.Tracer) {
+	pv.tracer = tracer
 }
 
 // NewFilePV generates a new validator from the given key and paths.
@@ -172,6 +180,7 @@ func NewFilePV(privKey crypto.PrivKey, keyFilePath, stateFilePath string) *FileP
 			Step:     stepNone,
 			filePath: stateFilePath,
 		},
+		tracer: trace.NoOpTracer(),
 	}
 }
 
@@ -229,6 +238,7 @@ func loadFilePV(keyFilePath, stateFilePath string, loadState bool) *FilePV {
 	return &FilePV{
 		Key:           pvKey,
 		LastSignState: pvState,
+		tracer:        trace.NoOpTracer(),
 	}
 }
 
@@ -260,8 +270,17 @@ func (pv *FilePV) GetPubKey() (crypto.PubKey, error) {
 // SignVote signs a canonical representation of the vote, along with the
 // chainID. Implements PrivValidator.
 func (pv *FilePV) SignVote(chainID string, vote *cmtproto.Vote) error {
+	start := time.Now()
 	if err := pv.signVote(chainID, vote); err != nil {
 		return fmt.Errorf("error signing vote: %v", err)
+	}
+	latency := time.Since(start)
+	signBytes := types.VoteSignBytes(chainID, vote)
+	switch vote.Type {
+	case cmtproto.PrevoteType:
+		schema.WriteSignatureLatency(pv.tracer, vote.Height, vote.Round, latency.Nanoseconds(), schema.PrevoteType, len(signBytes))
+	case cmtproto.PrecommitType:
+		schema.WriteSignatureLatency(pv.tracer, vote.Height, vote.Round, latency.Nanoseconds(), schema.PrecommitType, len(signBytes))
 	}
 	return nil
 }
@@ -269,18 +288,29 @@ func (pv *FilePV) SignVote(chainID string, vote *cmtproto.Vote) error {
 // SignProposal signs a canonical representation of the proposal, along with
 // the chainID. Implements PrivValidator.
 func (pv *FilePV) SignProposal(chainID string, proposal *cmtproto.Proposal) error {
+	start := time.Now()
 	if err := pv.signProposal(chainID, proposal); err != nil {
 		return fmt.Errorf("error signing proposal: %v", err)
 	}
+	latency := time.Since(start)
+	signBytes := types.ProposalSignBytes(chainID, proposal)
+	schema.WriteSignatureLatency(pv.tracer, proposal.Height, proposal.Round, latency.Nanoseconds(), schema.ProposalType, len(signBytes))
 	return nil
 }
 
 func (pv *FilePV) SignRawBytes(chainID, uniqueID string, rawBytes []byte) ([]byte, error) {
+	start := time.Now()
 	signBytes, err := types.RawBytesMessageSignBytes(chainID, uniqueID, rawBytes)
 	if err != nil {
 		return nil, fmt.Errorf("error signing raw bytes: %v", err)
 	}
-	return pv.Key.PrivKey.Sign(signBytes)
+	sig, err := pv.Key.PrivKey.Sign(signBytes)
+	if err != nil {
+		return nil, err
+	}
+	latency := time.Since(start)
+	schema.WriteSignatureLatency(pv.tracer, -1, -1, latency.Nanoseconds(), schema.RawBytesType, len(signBytes))
+	return sig, nil
 }
 
 // Save persists the FilePV to disk.

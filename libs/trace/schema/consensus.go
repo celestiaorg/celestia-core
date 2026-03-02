@@ -460,6 +460,7 @@ const (
 	PrecommitType       = "precommit"
 	PrevoteType         = "prevote"
 	ProposalType        = "proposal"
+	RawBytesType        = "rawbytes"
 )
 
 type SignatureLatency struct {
@@ -467,6 +468,7 @@ type SignatureLatency struct {
 	Round       int32  `json:"round"`
 	Latency     int64  `json:"latency"`
 	MessageType string `json:"message_type"`
+	PayloadSize int    `json:"payload_size"`
 }
 
 func (b SignatureLatency) Table() string {
@@ -479,12 +481,14 @@ func WriteSignatureLatency(
 	round int32,
 	latency int64,
 	msgType string,
+	payloadSize int,
 ) {
 	client.Write(SignatureLatency{
 		Height:      height,
 		Round:       round,
 		Latency:     latency,
 		MessageType: msgType,
+		PayloadSize: payloadSize,
 	})
 }
 
