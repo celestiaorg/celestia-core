@@ -18,7 +18,7 @@ require (
 	github.com/cosmos/gogoproto v1.7.2
 	github.com/decred/dcrd/dcrec/secp256k1/v4 v4.3.0
 	github.com/fortytw2/leaktest v1.3.0
-	github.com/go-git/go-git/v5 v5.16.5
+	github.com/go-git/go-git/v5 v5.17.0
 	github.com/go-kit/kit v0.13.0
 	github.com/go-kit/log v0.2.1
 	github.com/go-logfmt/logfmt v0.6.1
@@ -162,7 +162,7 @@ require (
 	github.com/ghostiam/protogetter v0.3.20 // indirect
 	github.com/go-critic/go-critic v0.14.3 // indirect
 	github.com/go-git/gcfg v1.5.1-0.20230307220236-3a3c6141e376 // indirect
-	github.com/go-git/go-billy/v5 v5.6.2 // indirect
+	github.com/go-git/go-billy/v5 v5.8.0 // indirect
 	github.com/go-logr/logr v1.4.3 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
 	github.com/go-toolsmith/astcast v1.1.0 // indirect
