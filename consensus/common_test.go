@@ -58,7 +58,7 @@ var (
 	consensusReplayConfig *cfg.Config
 	ensureTimeout         = time.Millisecond * 200
 	ensureVoteTimeout     = time.Second * 2   // votes need longer timeout on slow CI with race detector
-	ensureProposalTimeout = ensureTimeout * 5  // proposals can be delayed by TimeoutCommit and scheduling jitter
+	ensureProposalTimeout = ensureTimeout * 5 // proposals can be delayed by TimeoutCommit and scheduling jitter
 )
 
 func ensureDir(dir string, mode os.FileMode) {
