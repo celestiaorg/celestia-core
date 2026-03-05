@@ -458,8 +458,12 @@ func TestReactorRecordsVotesAndBlockParts(t *testing.T) {
 	// Get peer state
 	ps := peer.Get(types.PeerStateKey).(*PeerState)
 
-	assert.Equal(t, true, ps.VotesSent() > 0, "number of votes sent should have increased")
-	assert.Equal(t, true, ps.BlockPartsSent() > 0, "number of votes sent should have increased")
+	assert.Eventually(t, func() bool {
+		return ps.VotesSent() > 0
+	}, 10*time.Second, 100*time.Millisecond, "number of votes sent should have increased")
+	assert.Eventually(t, func() bool {
+		return ps.BlockPartsSent() > 0
+	}, 10*time.Second, 100*time.Millisecond, "number of block parts sent should have increased")
 }
 
 //-------------------------------------------------------------
