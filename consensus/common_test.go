@@ -57,6 +57,7 @@ var (
 	config                *cfg.Config // NOTE: must be reset for each _test.go file
 	consensusReplayConfig *cfg.Config
 	ensureTimeout         = time.Millisecond * 200
+	ensureVoteTimeout     = time.Second * 2   // votes need longer timeout on slow CI with race detector
 	ensureProposalTimeout = ensureTimeout * 5 // proposals can be delayed by TimeoutCommit and scheduling jitter
 )
 
@@ -728,7 +729,7 @@ func ensureVote(
 	round int32,
 	voteType cmtproto.SignedMsgType,
 ) {
-	timer := time.NewTimer(ensureTimeout)
+	timer := time.NewTimer(ensureVoteTimeout)
 	defer timer.Stop()
 
 	var lastUnexpected *types.Vote
