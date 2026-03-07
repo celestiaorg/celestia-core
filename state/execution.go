@@ -155,7 +155,10 @@ func (blockExec *BlockExecutor) CreateProposalBlock(
 
 	txs := blockExec.mempool.ReapMaxBytesMaxGas(maxReapBytes, maxGas)
 	commit := lastExtCommit.ToCommit()
-	block := state.MakeBlockWithoutPartset(height, types.MakeData(types.TxsFromCachedTxs(txs)), commit, evidence, proposerAddr)
+	block, err := state.MakeBlockWithoutPartset(height, types.MakeData(types.TxsFromCachedTxs(txs)), commit, evidence, proposerAddr)
+	if err != nil {
+		return nil, nil, err
+	}
 	req := &abci.RequestPrepareProposal{
 		MaxTxBytes:         maxDataBytes,
 		Txs:                block.Txs.ToSliceOfBytes(),
@@ -168,7 +171,6 @@ func (blockExec *BlockExecutor) CreateProposalBlock(
 	}
 
 	var rpp *abci.ResponsePrepareProposal
-	var err error
 	func() {
 		defer func() {
 			if r := recover(); r != nil {

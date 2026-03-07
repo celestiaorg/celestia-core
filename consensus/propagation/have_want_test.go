@@ -272,12 +272,12 @@ func createTestCreatorsWithProposal(t *testing.T, reactorsCount int, height int6
 ) {
 	reactors, _ := createTestReactors(reactorsCount, cfg.DefaultP2PConfig(), false, "/tmp/test")
 
-	cleanup, _, sm := state.SetupTestCase(t)
+	cleanup, _, sm, pv := state.SetupTestCaseWithPrivVal(t)
 	t.Cleanup(func() {
 		cleanup(t)
 	})
 
-	prop, ps, _, metaData := createTestProposal(t, sm, height, 0, txCount, txSize)
+	prop, ps, _, metaData := createTestProposal(t, sm, pv, height, 0, txCount, txSize)
 	cb, _ := createCompactBlock(t, prop, ps, metaData)
 
 	for _, reactor := range reactors {

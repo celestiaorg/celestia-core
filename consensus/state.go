@@ -154,6 +154,10 @@ type State struct {
 	// closed when we finish shutting down
 	done chan struct{}
 
+	// afterPanicFn, if non-nil, is called after onExit when receiveRoutine
+	// recovers from a panic, to trigger a full node shutdown.
+	afterPanicFn func()
+
 	// synchronous pubsub between consensus state and reactor.
 	// state only emits EventNewRoundStep and EventVote
 	evsw cmtevents.EventSwitch
@@ -254,6 +258,13 @@ func NewState(
 func (cs *State) SetLogger(l log.Logger) {
 	cs.BaseService.Logger = l //nolint:staticcheck
 	cs.timeoutTicker.SetLogger(l)
+}
+
+// SetAfterPanicFn sets a callback that is invoked after onExit when
+// receiveRoutine recovers from a panic. This is used to trigger a full
+// node shutdown so the process doesn't linger as a zombie.
+func (cs *State) SetAfterPanicFn(fn func()) {
+	cs.afterPanicFn = fn
 }
 
 // SetEventBus sets event bus.
@@ -944,6 +955,9 @@ func (cs *State) receiveRoutine(maxSteps int) {
 			// some console or secure RPC system, but for now, halting the chain upon
 			// unexpected consensus bugs sounds like the better option.
 			onExit(cs)
+			if cs.afterPanicFn != nil {
+				cs.afterPanicFn()
+			}
 		}
 	}()
 
@@ -1405,6 +1419,16 @@ func (cs *State) defaultDecideProposal(height int64, round int32) {
 	if err := cs.privValidator.SignProposal(cs.state.ChainID, p); err == nil {
 		proposal.Signature = p.Signature
 
+		// Verify whether this proposal corresponds to the returned signature.
+		// This fixes the edge case where a KMS, in a sentry setup, returns the signature of a different proposal
+		if !cs.privValidatorPubKey.VerifySignature(
+			types.ProposalSignBytes(cs.state.ChainID, proposal.ToProto()), proposal.Signature,
+		) {
+			cs.Logger.Debug("propose step; couldn't verify signature. ignore if this is sentry setup as one of the sentries should have the correct proposal", "height", height, "round", round)
+			return
+		}
+
+		cs.Logger.Debug("verified proposal signature", "proposal", proposal)
 		metaData := make([]proptypes.TxMetaData, len(block.Txs))
 		hashes := block.CachedHashes()
 		for i, pos := range blockParts.TxPos {
@@ -1422,7 +1446,6 @@ func (cs *State) defaultDecideProposal(height int64, round int32) {
 				return
 			}
 		}
-
 		// send proposal and block parts on internal msg queue
 		cs.sendInternalMessage(msgInfo{&ProposalMessage{proposal}, ""})
 
@@ -1437,7 +1460,7 @@ func (cs *State) defaultDecideProposal(height int64, round int32) {
 		}()
 		wg.Wait()
 
-		cs.Logger.Debug("signed proposal", "height", height, "round", round, "proposal", proposal)
+		cs.Logger.Debug("propagated proposal", "height", height, "round", round, "proposal", proposal)
 	} else if !cs.replayMode {
 		cs.Logger.Error("propose step; failed signing proposal", "height", height, "round", round, "err", err)
 	}
@@ -2155,11 +2178,16 @@ func (cs *State) recordMetrics(height int64, block *types.Block) {
 const KMSSigningDelay = 200 * time.Millisecond
 
 // precommitDelay calculates if the process has waited at least a certain number of seconds
-// from their start time before they can vote
+// from their start time before they can vote.
 // If the application's DelayedPrecommitTimeout is set to 0, no precommit wait is done.
+// When catching up on block data, returns 0 to speed up block processing.
 func (cs *State) precommitDelay() time.Duration {
 	if cs.state.Timeouts.DelayedPrecommitTimeout == 0 {
 		// setting 0 as a special case not to reschedule the pre-commit
+		return 0
+	}
+	// When catching up, skip the delayed precommit timeout to speed up block processing.
+	if cs.propagator.IsCatchingUp() {
 		return 0
 	}
 	precommitVoteTime := cs.rs.StartTime.Add(cs.state.Timeouts.DelayedPrecommitTimeout)

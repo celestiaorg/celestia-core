@@ -82,7 +82,7 @@ type CompactBlock struct {
 // needs to be signed.
 // The sign bytes are the field-delimited protobuf encoding of the compact block.
 func (c *CompactBlock) SignBytes() ([]byte, error) {
-	txMetaData := make([]*protoprop.TxMetaData, 0)
+	txMetaData := make([]*protoprop.TxMetaData, 0) //nolint:prealloc
 	for _, md := range c.Blobs {
 		txMetaData = append(txMetaData, md.ToProto())
 	}

@@ -89,6 +89,8 @@ func (blockProp *Reactor) handleHaves(peer p2p.ID, haves *proptypes.HaveParts) {
 
 	if p := blockProp.getPeer(peer); p != nil {
 		for _, index := range hc.GetTrueIndices() {
+			// avoid blocking if a single peer is backed up. This means that they
+			// are sending us too many haves
 			select {
 			case <-p.ctx.Done():
 				return
@@ -98,6 +100,7 @@ func (blockProp *Reactor) handleHaves(peer p2p.ID, haves *proptypes.HaveParts) {
 				index:  uint32(index),
 			}:
 				p.RequestsReady()
+			default:
 			}
 		}
 	}
@@ -293,17 +296,6 @@ func (blockProp *Reactor) sendWant(ps *PeerState, want *proptypes.WantParts) {
 		return
 	}
 
-	schema.WriteBlockPartState(
-		blockProp.traceClient,
-		want.Height,
-		want.Round,
-		want.Parts.GetTrueIndices(),
-		false,
-		string(ps.peer.ID()),
-		schema.Upload,
-		"want",
-	)
-
 	// keep track of the parts that this node has requested.
 	ps.AddRequests(want.Height, want.Round, want.Parts)
 	ps.IncreaseConcurrentReqs(int64(len(want.Parts.GetTrueIndices())))
@@ -343,7 +335,7 @@ func (blockProp *Reactor) broadcastHaves(haves *proptypes.HaveParts, from p2p.ID
 		// for data, they must already have the proposal.
 		// TODO: use retry and logs
 		if !peer.peer.TrySend(e) {
-			blockProp.Logger.Error("failed to send haves to peer", "peer", peer.peer.ID())
+			blockProp.Logger.Debug("failed to send haves to peer", "peer", peer.peer.ID())
 			continue
 		}
 		hb := haves.BitArray(partSetSize)
