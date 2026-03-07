@@ -19,6 +19,9 @@ type Propagator interface {
 	SetProposer(proposer crypto.PubKey)
 	GetPartChan() <-chan types.PartInfo
 	GetProposalChan() <-chan ProposalAndSrc
+	// IsCatchingUp returns true if the node is catching up on block data
+	// (has unfinished heights that need to be downloaded).
+	IsCatchingUp() bool
 }
 
 type ProposalAndSrc struct {
@@ -87,4 +90,8 @@ func (nop *NoOpPropagator) GetPartChan() <-chan types.PartInfo {
 
 func (nop *NoOpPropagator) GetProposalChan() <-chan ProposalAndSrc {
 	return nil
+}
+
+func (nop *NoOpPropagator) IsCatchingUp() bool {
+	return false
 }

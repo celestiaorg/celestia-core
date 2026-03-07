@@ -294,3 +294,28 @@ func TestProposalCache_prune(t *testing.T) {
 	require.NotNil(t, pc.proposals[12][1], "round=1 of current height=12 should remain")
 	require.NotNil(t, pc.proposals[12][2], "round=2 of current height=12 should remain")
 }
+
+func TestProposalCache_unfinishedHeightsTreatsCatchupAsPending(t *testing.T) {
+	bs := makeTestBlockStore(t)
+	pc := NewProposalCache(bs)
+
+	// Build a complete part set so IsComplete() returns true.
+	ps, err := types.NewPartSetFromData([]byte("abc"), types.BlockPartSizeBytes)
+	require.NoError(t, err)
+
+	cps := proptypes.NewCombinedPartSetFromOriginal(ps, true /*catchup*/)
+	cb := makeCompactBlock(2, 0, ps.Total())
+
+	pc.proposals[2] = map[int32]*proposalData{
+		0: {
+			compactBlock: cb,
+			block:        cps,
+			catchup:      true,
+		},
+	}
+
+	unfinished := pc.unfinishedHeights()
+	require.Len(t, unfinished, 1, "catchup proposal should be treated as unfinished even if complete")
+	require.True(t, unfinished[0].block.IsComplete(), "block should still be complete")
+	require.True(t, unfinished[0].catchup)
+}

@@ -98,22 +98,33 @@ func (p *ProposalCache) GetProposal(height int64, round int32) (*types.Proposal,
 func (p *ProposalCache) unfinishedHeights() []*proposalData {
 	p.pmtx.Lock()
 	defer p.pmtx.Unlock()
+
+	// We only consider heights strictly higher than the committed height as
+	// "in flight". Heights that are already committed are ignored even if they
+	// remain cached.
+	committedHeight := p.store.Height()
 	data := make([]*proposalData, 0)
-	for _, heightData := range p.proposals {
-		var prop *proposalData
-		for _, pd := range heightData {
-			if prop == nil {
-				prop = pd
-				continue
-			}
-			if pd.compactBlock.Proposal.Round > prop.compactBlock.Proposal.Round {
-				prop = pd
-			}
-		}
-		if prop == nil || prop.block.IsComplete() {
+	for height, heightData := range p.proposals {
+		if height <= committedHeight {
 			continue
 		}
-		data = append(data, prop)
+
+		var prop *proposalData
+		for _, pd := range heightData {
+			if prop == nil || pd.compactBlock.Proposal.Round > prop.compactBlock.Proposal.Round {
+				prop = pd
+			}
+		}
+		if prop == nil {
+			continue
+		}
+
+		// Treat catchup proposals as "unfinished" even if all parts are present.
+		// This lets the consensus layer know it should skip delayed precommit when
+		// replaying cached proposals to catch up.
+		if prop.catchup || !prop.block.IsComplete() {
+			data = append(data, prop)
+		}
 	}
 	return data
 }
