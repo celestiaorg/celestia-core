@@ -61,6 +61,16 @@ var (
 	ensureProposalTimeout = ensureTimeout * 5 // proposals can be delayed by TimeoutCommit and scheduling jitter
 )
 
+func init() {
+	// CI runners are slower, especially with the race detector enabled.
+	// Scale timeouts to reduce flaky test failures.
+	if os.Getenv("CI") != "" {
+		ensureTimeout *= 3
+		ensureVoteTimeout *= 3
+		ensureProposalTimeout *= 3
+	}
+}
+
 func ensureDir(dir string, mode os.FileMode) {
 	if err := cmtos.EnsureDir(dir, mode); err != nil {
 		panic(err)
