@@ -1,9 +1,9 @@
 package state_test
 
 import (
+	"bytes"
 	"context"
 	"errors"
-	"bytes"
 	"testing"
 	"time"
 
