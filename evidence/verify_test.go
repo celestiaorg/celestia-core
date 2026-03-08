@@ -524,13 +524,118 @@ func makeLunaticEvidence(
 	return ev, trusted, common
 }
 
-// func makeEquivocationEvidence() *types.LightClientAttackEvidence {
+// TestValidateABCIEvidenceRejectsMismatchedPubKey verifies that
+// validateABCIEvidence (called via VerifyLightClientAttack) rejects
+// LightClientAttackEvidence where ByzantineValidators have a PubKey that
+// does not correspond to the Address field. Without this check, the ABCI()
+// method derives validator addresses from PubKey.Address(), which would
+// allow an attacker to redirect slashing to innocent validators.
+func TestValidateABCIEvidenceRejectsMismatchedPubKey(t *testing.T) {
+	const (
+		height       int64 = 10
+		commonHeight int64 = 4
+		totalVals          = 10
+		byzVals            = 4
+	)
+	attackTime := defaultEvidenceTime.Add(1 * time.Hour)
 
-// }
+	ev, trusted, common := makeLunaticEvidence(
+		t, height, commonHeight, totalVals, byzVals, totalVals-byzVals, defaultEvidenceTime, attackTime)
+	require.NoError(t, ev.ValidateBasic())
 
-// func makeAmnesiaEvidence() *types.LightClientAttackEvidence {
+	// Sanity check: unmodified evidence passes verification.
+	err := evidence.VerifyLightClientAttack(ev, common.SignedHeader, trusted.SignedHeader, common.ValidatorSet,
+		defaultEvidenceTime.Add(2*time.Hour), 3*time.Hour)
+	require.NoError(t, err)
 
-// }
+	// makeLunaticEvidence shares the underlying slice array between
+	// ev.ByzantineValidators and commonValSet.Validators[:byzVals]. We must
+	// create an independent copy of ByzantineValidators so that swapping
+	// PubKeys does not corrupt the common validator set used for signature
+	// verification.
+	require.GreaterOrEqual(t, common.ValidatorSet.Size(), byzVals*2)
+	otherVals := common.ValidatorSet.Validators[byzVals : byzVals+byzVals]
+
+	modifiedByz := make([]*types.Validator, len(ev.ByzantineValidators))
+	for i := range ev.ByzantineValidators {
+		orig := ev.ByzantineValidators[i]
+		modifiedByz[i] = &types.Validator{
+			Address:          append([]byte(nil), orig.Address...),
+			PubKey:           otherVals[i].PubKey,
+			VotingPower:      orig.VotingPower,
+			ProposerPriority: orig.ProposerPriority,
+		}
+		// Confirm the invariant is actually broken.
+		require.False(t, bytes.Equal(modifiedByz[i].Address, modifiedByz[i].PubKey.Address()),
+			"test setup: PubKey should not correspond to Address after swap")
+	}
+	ev.ByzantineValidators = modifiedByz
+
+	// Verification must reject the tampered evidence.
+	err = evidence.VerifyLightClientAttack(ev, common.SignedHeader, trusted.SignedHeader, common.ValidatorSet,
+		defaultEvidenceTime.Add(2*time.Hour), 3*time.Hour)
+	assert.Error(t, err, "evidence with mismatched PubKey/Address should be rejected")
+
+	// Also test nil PubKey: create a copy with nil PubKey and verify rejection.
+	nilPubKeyByz := make([]*types.Validator, len(ev.ByzantineValidators))
+	for i, v := range ev.ByzantineValidators {
+		nilPubKeyByz[i] = &types.Validator{
+			Address:     append([]byte(nil), v.Address...),
+			PubKey:      nil,
+			VotingPower: v.VotingPower,
+		}
+	}
+	ev.ByzantineValidators = nilPubKeyByz
+	err = evidence.VerifyLightClientAttack(ev, common.SignedHeader, trusted.SignedHeader, common.ValidatorSet,
+		defaultEvidenceTime.Add(2*time.Hour), 3*time.Hour)
+	assert.Error(t, err, "evidence with nil PubKey should be rejected")
+}
+
+// TestABCIEvidenceAddressDerivedFromPubKey confirms that ABCI() derives
+// validator addresses from PubKey.Address(), not from the Address field. This
+// is the behavior that makes the PubKey binding check in validateABCIEvidence
+// necessary.
+func TestABCIEvidenceAddressDerivedFromPubKey(t *testing.T) {
+	const (
+		height       int64 = 10
+		commonHeight int64 = 4
+		totalVals          = 10
+		byzVals            = 4
+	)
+	attackTime := defaultEvidenceTime.Add(1 * time.Hour)
+
+	ev, _, common := makeLunaticEvidence(
+		t, height, commonHeight, totalVals, byzVals, totalVals-byzVals, defaultEvidenceTime, attackTime)
+
+	// Record original addresses.
+	origAddrs := make([][]byte, len(ev.ByzantineValidators))
+	for i, v := range ev.ByzantineValidators {
+		origAddrs[i] = append([]byte(nil), v.Address...)
+	}
+
+	// Swap PubKeys with non-byzantine validators' keys.  Build an independent
+	// slice so we don't corrupt the shared commonValSet array.
+	otherVals := common.ValidatorSet.Validators[byzVals : byzVals+byzVals]
+	modifiedByz := make([]*types.Validator, len(ev.ByzantineValidators))
+	for i := range ev.ByzantineValidators {
+		modifiedByz[i] = &types.Validator{
+			Address:     append([]byte(nil), ev.ByzantineValidators[i].Address...),
+			PubKey:      otherVals[i].PubKey,
+			VotingPower: ev.ByzantineValidators[i].VotingPower,
+		}
+	}
+	ev.ByzantineValidators = modifiedByz
+
+	// Verify that ABCI() uses PubKey.Address(), not the Address field.
+	abciEvs := ev.ABCI()
+	for i, mis := range abciEvs {
+		expectedFromPubKey := otherVals[i].PubKey.Address()
+		assert.True(t, bytes.Equal(expectedFromPubKey, mis.Validator.Address),
+			"ABCI address should come from PubKey.Address()")
+		assert.False(t, bytes.Equal(origAddrs[i], mis.Validator.Address),
+			"ABCI address should NOT match the original Address field after PubKey swap")
+	}
+}
 
 func makeHeaderRandom(height int64) *types.Header {
 	return &types.Header{
