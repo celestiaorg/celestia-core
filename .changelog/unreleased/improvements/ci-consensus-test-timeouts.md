@@ -1,1 +1,1 @@
-Scale consensus test timeouts by 3x when running in CI to reduce flaky test failures.
+Increase consensus test base ensureTimeout from 200ms to 400ms to reduce flaky test failures.
