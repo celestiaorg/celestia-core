@@ -272,6 +272,12 @@ func validateABCIEvidence(
 			)
 		}
 
+		if ev.ByzantineValidators[idx].PubKey == nil {
+			return fmt.Errorf(
+				"evidence byzantine validator %d has nil PubKey", idx,
+			)
+		}
+
 		if !bytes.Equal(ev.ByzantineValidators[idx].PubKey.Address(), val.Address) {
 			return fmt.Errorf(
 				"evidence byzantine validator pubkey does not match address; pubkey address: %X, expected: %X",

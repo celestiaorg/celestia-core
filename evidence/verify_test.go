@@ -575,6 +575,20 @@ func TestValidateABCIEvidenceRejectsMismatchedPubKey(t *testing.T) {
 	err = evidence.VerifyLightClientAttack(ev, common.SignedHeader, trusted.SignedHeader, common.ValidatorSet,
 		defaultEvidenceTime.Add(2*time.Hour), 3*time.Hour)
 	assert.Error(t, err, "evidence with mismatched PubKey/Address should be rejected")
+
+	// Also test nil PubKey: create a copy with nil PubKey and verify rejection.
+	nilPubKeyByz := make([]*types.Validator, len(ev.ByzantineValidators))
+	for i, v := range ev.ByzantineValidators {
+		nilPubKeyByz[i] = &types.Validator{
+			Address:     append([]byte(nil), v.Address...),
+			PubKey:      nil,
+			VotingPower: v.VotingPower,
+		}
+	}
+	ev.ByzantineValidators = nilPubKeyByz
+	err = evidence.VerifyLightClientAttack(ev, common.SignedHeader, trusted.SignedHeader, common.ValidatorSet,
+		defaultEvidenceTime.Add(2*time.Hour), 3*time.Hour)
+	assert.Error(t, err, "evidence with nil PubKey should be rejected")
 }
 
 // TestABCIEvidenceAddressDerivedFromPubKey confirms that ABCI() derives
