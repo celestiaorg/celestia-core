@@ -876,6 +876,113 @@ func TestRecoveryPart_ValidateBasic(t *testing.T) {
 	}
 }
 
+// TestProofsCachePoisoning verifies that Proofs() does not cache invalid proofs.
+// If the root hash verification fails on the first call, subsequent calls must
+// also return an error rather than serving the invalid proofs from cache.
+func TestProofsCachePoisoning(t *testing.T) {
+	const numParts = 4
+
+	// Generate valid leaf hashes and compute the correct Merkle roots.
+	originalHashes := make([][]byte, numParts)
+	parityHashes := make([][]byte, numParts)
+	for i := 0; i < numParts; i++ {
+		originalHashes[i] = rand.Bytes(tmhash.Size)
+		parityHashes[i] = rand.Bytes(tmhash.Size)
+	}
+
+	originalRoot, _ := merkle.ParallelProofsFromLeafHashes(originalHashes)
+	parityRoot, _ := merkle.ParallelProofsFromLeafHashes(parityHashes)
+
+	t.Run("original root mismatch poisons cache", func(t *testing.T) {
+		// Build PartsHashes with manipulated original hashes so the computed root won't match.
+		partsHashes := make([][]byte, numParts*ParityRatio)
+		for i := 0; i < numParts; i++ {
+			partsHashes[i] = rand.Bytes(tmhash.Size) // manipulated
+		}
+		copy(partsHashes[numParts:], parityHashes)
+
+		cb := &CompactBlock{
+			Proposal: types.Proposal{
+				BlockID: types.BlockID{
+					PartSetHeader: types.PartSetHeader{
+						Total: uint32(numParts),
+						Hash:  originalRoot, // correct root
+					},
+				},
+			},
+			BpHash:      parityRoot,
+			PartsHashes: partsHashes,
+		}
+
+		// First call: should fail because manipulated hashes don't match originalRoot.
+		_, err := cb.Proofs()
+		require.Error(t, err, "first call should return an error for root hash mismatch")
+
+		// Second call: must also fail. This is the bug — without the fix,
+		// proofsCache is non-nil so Proofs() returns (cache, nil).
+		_, err = cb.Proofs()
+		require.Error(t, err, "second call must also return an error; cache should not hide the failure")
+	})
+
+	t.Run("parity root mismatch poisons cache", func(t *testing.T) {
+		// Build PartsHashes with correct original hashes but manipulated parity hashes.
+		partsHashes := make([][]byte, numParts*ParityRatio)
+		copy(partsHashes, originalHashes)
+		for i := 0; i < numParts; i++ {
+			partsHashes[numParts+i] = rand.Bytes(tmhash.Size) // manipulated
+		}
+
+		cb := &CompactBlock{
+			Proposal: types.Proposal{
+				BlockID: types.BlockID{
+					PartSetHeader: types.PartSetHeader{
+						Total: uint32(numParts),
+						Hash:  originalRoot,
+					},
+				},
+			},
+			BpHash:      parityRoot,
+			PartsHashes: partsHashes,
+		}
+
+		// First call: original root matches, but parity root will not.
+		_, err := cb.Proofs()
+		require.Error(t, err, "first call should return an error for parity root mismatch")
+
+		// Second call: must also fail.
+		_, err = cb.Proofs()
+		require.Error(t, err, "second call must also return an error; cache should not hide the failure")
+	})
+
+	t.Run("valid compact block still works", func(t *testing.T) {
+		partsHashes := make([][]byte, numParts*ParityRatio)
+		copy(partsHashes, originalHashes)
+		copy(partsHashes[numParts:], parityHashes)
+
+		cb := &CompactBlock{
+			Proposal: types.Proposal{
+				BlockID: types.BlockID{
+					PartSetHeader: types.PartSetHeader{
+						Total: uint32(numParts),
+						Hash:  originalRoot,
+					},
+				},
+			},
+			BpHash:      parityRoot,
+			PartsHashes: partsHashes,
+		}
+
+		proofs, err := cb.Proofs()
+		require.NoError(t, err)
+		require.Len(t, proofs, numParts*ParityRatio)
+
+		// Second call should also succeed from cache.
+		proofs2, err := cb.Proofs()
+		require.NoError(t, err)
+		require.Equal(t, proofs, proofs2)
+	})
+}
+
 func makeBlockID(hash []byte, partSetSize uint32, partSetHash []byte) types.BlockID {
 	var (
 		h   = make([]byte, tmhash.Size)

@@ -206,22 +206,23 @@ func (c *CompactBlock) Proofs() ([]*merkle.Proof, error) {
 		return nil, errors.New("invalid number of partset hashes")
 	}
 
-	c.proofsCache = make([]*merkle.Proof, 0, len(c.PartsHashes))
+	tempProofs := make([]*merkle.Proof, 0, len(c.PartsHashes))
 
 	root, proofs := merkle.ParallelProofsFromLeafHashes(c.PartsHashes[:total])
-	c.proofsCache = append(c.proofsCache, proofs...)
+	tempProofs = append(tempProofs, proofs...)
 
 	if !bytes.Equal(root, c.Proposal.BlockID.PartSetHeader.Hash) {
-		return c.proofsCache, fmt.Errorf("incorrect PartsHash: original root")
+		return nil, fmt.Errorf("incorrect PartsHash: original root")
 	}
 
 	parityRoot, eproofs := merkle.ParallelProofsFromLeafHashes(c.PartsHashes[total:])
-	c.proofsCache = append(c.proofsCache, eproofs...)
+	tempProofs = append(tempProofs, eproofs...)
 
 	if !bytes.Equal(c.BpHash, parityRoot) {
-		return c.proofsCache, fmt.Errorf("incorrect PartsHash: parity root")
+		return nil, fmt.Errorf("incorrect PartsHash: parity root")
 	}
 
+	c.proofsCache = tempProofs
 	return c.proofsCache, nil
 }
 
