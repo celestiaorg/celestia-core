@@ -271,6 +271,13 @@ func validateABCIEvidence(
 				val.VotingPower, ev.ByzantineValidators[idx].VotingPower,
 			)
 		}
+
+		if !bytes.Equal(ev.ByzantineValidators[idx].PubKey.Address(), val.Address) {
+			return fmt.Errorf(
+				"evidence byzantine validator pubkey does not match address; pubkey address: %X, expected: %X",
+				ev.ByzantineValidators[idx].PubKey.Address(), val.Address,
+			)
+		}
 	}
 
 	return nil
