@@ -894,11 +894,12 @@ func TestProofsCachePoisoning(t *testing.T) {
 	parityRoot, _ := merkle.ParallelProofsFromLeafHashes(parityHashes)
 
 	t.Run("original root mismatch poisons cache", func(t *testing.T) {
-		// Use manipulated original hashes so the computed root won't match.
-		manipulatedOriginal := make([][]byte, numParts)
+		// Build PartsHashes with manipulated original hashes so the computed root won't match.
+		partsHashes := make([][]byte, numParts*ParityRatio)
 		for i := 0; i < numParts; i++ {
-			manipulatedOriginal[i] = rand.Bytes(tmhash.Size)
+			partsHashes[i] = rand.Bytes(tmhash.Size) // manipulated
 		}
+		copy(partsHashes[numParts:], parityHashes)
 
 		cb := &CompactBlock{
 			Proposal: types.Proposal{
@@ -910,7 +911,7 @@ func TestProofsCachePoisoning(t *testing.T) {
 				},
 			},
 			BpHash:      parityRoot,
-			PartsHashes: append(manipulatedOriginal, parityHashes...), // wrong original hashes
+			PartsHashes: partsHashes,
 		}
 
 		// First call: should fail because manipulated hashes don't match originalRoot.
@@ -924,10 +925,11 @@ func TestProofsCachePoisoning(t *testing.T) {
 	})
 
 	t.Run("parity root mismatch poisons cache", func(t *testing.T) {
-		// Use manipulated parity hashes so the computed parity root won't match.
-		manipulatedParity := make([][]byte, numParts)
+		// Build PartsHashes with correct original hashes but manipulated parity hashes.
+		partsHashes := make([][]byte, numParts*ParityRatio)
+		copy(partsHashes, originalHashes)
 		for i := 0; i < numParts; i++ {
-			manipulatedParity[i] = rand.Bytes(tmhash.Size)
+			partsHashes[numParts+i] = rand.Bytes(tmhash.Size) // manipulated
 		}
 
 		cb := &CompactBlock{
@@ -935,12 +937,12 @@ func TestProofsCachePoisoning(t *testing.T) {
 				BlockID: types.BlockID{
 					PartSetHeader: types.PartSetHeader{
 						Total: uint32(numParts),
-						Hash:  originalRoot, // correct root
+						Hash:  originalRoot,
 					},
 				},
 			},
-			BpHash:      parityRoot,                                    // correct parity root
-			PartsHashes: append(originalHashes, manipulatedParity...), // wrong parity hashes
+			BpHash:      parityRoot,
+			PartsHashes: partsHashes,
 		}
 
 		// First call: original root matches, but parity root will not.
@@ -953,6 +955,10 @@ func TestProofsCachePoisoning(t *testing.T) {
 	})
 
 	t.Run("valid compact block still works", func(t *testing.T) {
+		partsHashes := make([][]byte, numParts*ParityRatio)
+		copy(partsHashes, originalHashes)
+		copy(partsHashes[numParts:], parityHashes)
+
 		cb := &CompactBlock{
 			Proposal: types.Proposal{
 				BlockID: types.BlockID{
@@ -963,7 +969,7 @@ func TestProofsCachePoisoning(t *testing.T) {
 				},
 			},
 			BpHash:      parityRoot,
-			PartsHashes: append(originalHashes, parityHashes...),
+			PartsHashes: partsHashes,
 		}
 
 		proofs, err := cb.Proofs()
