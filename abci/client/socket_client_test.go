@@ -195,6 +195,34 @@ func TestCallbackInvokedWhenSetLate(t *testing.T) {
 	require.True(t, called)
 }
 
+// TestQuerySequenceCrashesSocketClient reproduces a vulnerability where calling
+// QuerySequence over the socket ABCI transport causes the client to stop with
+// an error because resMatchesReq is missing the QuerySequence case. When this
+// happens in production, killTMOnClientError terminates the entire node.
+// A remote peer can trigger this by sending a SeenTx message with a non-empty
+// Signer field, which causes the CAT mempool reactor to call QuerySequence
+// before validating the message fields.
+func TestQuerySequenceCrashesSocketClient(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	app := types.BaseApplication{}
+	_, c := setupClientServer(t, app)
+
+	// Call QuerySequence over the socket transport. If the bug is present,
+	// the socket client will stop itself because resMatchesReq returns false
+	// for Request_QuerySequence <-> Response_QuerySequence.
+	resp, err := c.QuerySequence(ctx, &types.RequestQuerySequence{
+		Signer: []byte("test-signer"),
+	})
+
+	// With the bug: err != nil and c.Error() != nil (client stopped itself).
+	// With the fix: err == nil, resp is valid, client remains running.
+	require.NoError(t, err, "QuerySequence should not cause socket client error")
+	require.NotNil(t, resp, "QuerySequence should return a response")
+	require.NoError(t, c.Error(), "socket client should still be running without error")
+}
+
 type blockedABCIApplication struct {
 	wg *sync.WaitGroup
 	types.BaseApplication
