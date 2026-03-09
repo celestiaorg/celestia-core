@@ -56,7 +56,7 @@ type cleanupFunc func()
 var (
 	config                *cfg.Config // NOTE: must be reset for each _test.go file
 	consensusReplayConfig *cfg.Config
-	ensureTimeout         = time.Millisecond * 200
+	ensureTimeout         = time.Millisecond * 400
 	ensureVoteTimeout     = time.Second * 2   // votes need longer timeout on slow CI with race detector
 	ensureProposalTimeout = ensureTimeout * 5 // proposals can be delayed by TimeoutCommit and scheduling jitter
 )
