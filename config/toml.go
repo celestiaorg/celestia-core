@@ -555,6 +555,15 @@ peer_query_maj23_sleep_duration = "{{ .Consensus.PeerQueryMaj23SleepDuration }}"
 disable_propagation_reactor = {{ .Consensus.DisablePropagationReactor }}
 enable_legacy_block_prop = {{ .Consensus.EnableLegacyBlockProp }}
 
+# Dynamic blocksync switching configuration
+# Number of blocks behind majority of peers before switching to blocksync.
+# Also used to stop gossiping consensus messages to peers that are too far behind.
+# Set to 0 to disable automatic switching.
+blocks_behind_threshold = {{ .Consensus.BlocksBehindThreshold }}
+
+# Minimum time between mode switches (anti-thrashing).
+min_switch_cooldown = "{{ .Consensus.MinSwitchCooldown }}"
+
 #######################################################
 ###         Storage Configuration Options           ###
 #######################################################
