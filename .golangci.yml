@@ -51,7 +51,7 @@ linters:
             - github.com/snikch/goodman
             - github.com/spf13
             - github.com/stretchr/testify/require
-            - github.com/syndtr/goleveldb
+            - github.com/cockroachdb/pebble
             - github.com/decred/dcrd/dcrec/secp256k1/v4
             - github.com/aws/aws-sdk-go-v2/aws
             - github.com/aws/aws-sdk-go-v2/config
