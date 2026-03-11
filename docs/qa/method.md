@@ -124,7 +124,7 @@ The CometBFT team should improve it at every iteration to increase the amount of
        * It is advisable to adjust the hash in the `go run` command to the latest possible.
        * ```bash
          mkdir results
-         go run github.com/cometbft/cometbft/test/loadtime/cmd/report@3003ef7 --database-type goleveldb --data-dir ./ > results/report.txt
+         go run github.com/cometbft/cometbft/test/loadtime/cmd/report@3003ef7 --database-type pebbledb --data-dir ./ > results/report.txt
          ```
    2. File `report.txt` contains an unordered list of experiments with varying concurrent connections and transaction rate.
       You will need to separate data per experiment.
@@ -148,7 +148,7 @@ The CometBFT team should improve it at every iteration to increase the amount of
 
 3. To generate a latency vs throughput plot, extract the data as a CSV
     * ```bash
-       go run github.com/cometbft/cometbft/test/loadtime/cmd/report@3003ef7 --database-type goleveldb --data-dir ./ --csv results/raw.csv
+       go run github.com/cometbft/cometbft/test/loadtime/cmd/report@3003ef7 --database-type pebbledb --data-dir ./ --csv results/raw.csv
        ```
     * Follow the instructions for the [`latency_throughput.py`] script.
     This plot is useful to visualize the saturation point.

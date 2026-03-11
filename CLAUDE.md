@@ -46,7 +46,7 @@ go test -v ./consensus/...
 NUM_SPLIT=4 make test-group-0  # Run test group 0 of 4
 ```
 
-**Build configuration:** CGO_ENABLED=0 by default. Build tags: `cometbft` (default), `deadlock` (tests), `badgerdb`, `pebbledb`, `race`.
+**Build configuration:** CGO_ENABLED=0 by default. Build tags: `cometbft` (default), `deadlock` (tests), `race`. PebbleDB is the only supported DB backend (since cometbft-db v1.0.4, no build tag needed).
 
 ## Architecture
 

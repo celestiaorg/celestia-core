@@ -1,5 +1,3 @@
-COMETBFT_BUILD_OPTIONS += badgerdb,pebbledb
-
 include ../../common.mk
 
 all: docker generator runner

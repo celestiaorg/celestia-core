@@ -44,14 +44,14 @@ seeds = ["seed01"]
 snapshot_interval = 5
 
 [node.validator02]
-database = "goleveldb"
+database = "pebbledb"
 persist_interval = 0
 perturb = ["restart"]
 privval_protocol = "tcp"
 seeds = ["seed01"]
 
 [node.validator03]
-database = "badgerdb"
+database = "pebbledb"
 key_type = "secp256k1"
 persist_interval = 3
 perturb = ["kill"]
@@ -60,13 +60,13 @@ retain_blocks = 20
 seeds = ["seed01"]
 
 [node.validator04]
-database = "goleveldb"
+database = "pebbledb"
 key_type = "sr25519"
 persistent_peers = ["validator01"]
 perturb = ["pause"]
 
 [node.validator05]
-database = "goleveldb"
+database = "pebbledb"
 persistent_peers = ["validator01", "full01"]
 perturb = ["kill", "pause", "disconnect", "restart"]
 privval_protocol = "tcp"

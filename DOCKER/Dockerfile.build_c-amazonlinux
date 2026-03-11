@@ -7,7 +7,7 @@ RUN wget http://dl.fedoraproject.org/pub/epel/epel-release-latest-7.noarch.rpm &
     rpm -ivh epel-release-latest-7.noarch.rpm
 
 RUN yum -y groupinstall "Development Tools"
-RUN yum -y install leveldb-devel which
+RUN yum -y install which
 
 ENV GOVERSION=1.12.9
 
@@ -24,5 +24,5 @@ ENV GOPATH=/go/src
 RUN mkdir -p /cometbft
 WORKDIR /cometbft
 
-CMD ["/usr/bin/make", "build", "COMETBFT_BUILD_OPTIONS=cleveldb"]
+CMD ["/usr/bin/make", "build"]
 

@@ -61,10 +61,10 @@ func NewApplication(db dbm.DB) *Application {
 	}
 }
 
-// NewPersistentApplication creates a new application using the goleveldb database engine
+// NewPersistentApplication creates a new application using the pebbledb database engine
 func NewPersistentApplication(dbDir string) *Application {
 	name := "kvstore"
-	db, err := dbm.NewGoLevelDB(name, dbDir)
+	db, err := dbm.NewDB(name, dbm.PebbleDBBackend, dbDir)
 	if err != nil {
 		panic(fmt.Errorf("failed to create persistent app at %s: %w", dbDir, err))
 	}
