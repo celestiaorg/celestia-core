@@ -12,6 +12,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
 
 	dbm "github.com/cometbft/cometbft-db"
 
@@ -27,6 +29,7 @@ import (
 	"github.com/cometbft/cometbft/p2p/conn"
 	p2pmock "github.com/cometbft/cometbft/p2p/mock"
 	"github.com/cometbft/cometbft/privval"
+	privvalproto "github.com/cometbft/cometbft/proto/tendermint/privval"
 	"github.com/cometbft/cometbft/proxy"
 	sm "github.com/cometbft/cometbft/state"
 	"github.com/cometbft/cometbft/store"
@@ -500,4 +503,48 @@ func state(nVals int, height int64) (sm.State, dbm.DB, []types.PrivValidator) {
 		}
 	}
 	return s, stateDB, privVals
+}
+
+func TestNodePrivValidatorGRPCServer(t *testing.T) {
+	config := test.ResetTestRoot("node_privval_grpc_test")
+	defer os.RemoveAll(config.RootDir)
+
+	addr := testFreeAddr(t)
+	config.PrivValidatorGRPCListenAddr = addr
+
+	n, err := DefaultNewNode(config, log.TestingLogger())
+	require.NoError(t, err)
+	err = n.Start()
+	require.NoError(t, err)
+	defer func() { _ = n.Stop() }()
+
+	// Connect a gRPC client to the node's privval gRPC server.
+	conn, err := grpc.NewClient(
+		addr,
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
+	)
+	require.NoError(t, err)
+	defer func() { _ = conn.Close() }()
+
+	client := privvalproto.NewPrivValidatorAPIClient(conn)
+
+	rawBytes := []byte("fibre commitment payload")
+	uniqueID := "fibre-commitment"
+
+	resp, err := client.SignRawBytes(context.Background(), &privvalproto.SignRawBytesRequest{
+		ChainId:  n.genesisDoc.ChainID,
+		RawBytes: rawBytes,
+		UniqueId: uniqueID,
+	})
+	require.NoError(t, err)
+	assert.Nil(t, resp.Error)
+	assert.NotEmpty(t, resp.Signature)
+
+	// Verify the signature using the node's privval public key.
+	pubKey, err := n.privValidator.GetPubKey()
+	require.NoError(t, err)
+
+	signBytes, err := types.RawBytesMessageSignBytes(n.genesisDoc.ChainID, uniqueID, rawBytes)
+	require.NoError(t, err)
+	assert.True(t, pubKey.VerifySignature(signBytes, resp.Signature))
 }
