@@ -73,8 +73,8 @@ message PingRequest {}
 // PingResponse is a response to confirm that the connection is alive.
 message PingResponse {}
 
-// PrivValidatorAPI exposes a subset of the PrivValidator signing interface
-// over gRPC, allowing external services (e.g. fiber) to request signatures
+// PrivValidatorAPI exposes a signing interface over gRPC,
+// allowing external services (e.g. fiber) to request signatures
 // from the node's privval without direct access to the key.
 service PrivValidatorAPI {
   rpc SignRawBytes(SignRawBytesRequest) returns (SignedRawBytesResponse);
