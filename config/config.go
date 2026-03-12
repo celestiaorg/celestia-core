@@ -284,7 +284,7 @@ type BaseConfig struct {
 
 	// gRPC address for the PrivValidator server.
 	// If set, the node exposes its PrivValidator over gRPC on this address,
-	// allowing external services (fibre server) to request signatures.
+	// allowing external services (fiber server) to request signatures.
 	PrivValidatorGRPCListenAddr string `mapstructure:"priv_validator_grpc_laddr"`
 
 	// A JSON file containing the private key to use for p2p authenticated encryption

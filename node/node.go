@@ -94,10 +94,10 @@ type Node struct {
 	pprofSrv          *http.Server
 
 	// Celestia specific fields
-	tracer              trace.Tracer
-	pyroscopeProfiler   *pyroscope.Profiler
-	pyroscopeTracer     *sdktrace.TracerProvider
-	privvalGRPCServer   *grpc.Server
+	tracer            trace.Tracer
+	pyroscopeProfiler *pyroscope.Profiler
+	pyroscopeTracer   *sdktrace.TracerProvider
+	privvalGRPCServer *grpc.Server
 }
 
 // Option sets a parameter for the node.

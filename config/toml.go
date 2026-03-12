@@ -139,7 +139,7 @@ priv_validator_laddr = "{{ .BaseConfig.PrivValidatorListenAddr }}"
 
 # gRPC address for the PrivValidator server.
 # If set, the node exposes its PrivValidator over gRPC on this address,
-# allowing external services (fibre server) to request signatures.
+# allowing external services (fiber server) to request signatures.
 priv_validator_grpc_laddr = "{{ .BaseConfig.PrivValidatorGRPCListenAddr }}"
 
 # Path to the JSON file containing the private key to use for node authentication in the p2p protocol

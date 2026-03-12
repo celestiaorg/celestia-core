@@ -48,7 +48,7 @@ func TestGRPCServerSignRawBytes(t *testing.T) {
 	client, pv := setupGRPCServer(t)
 
 	rawBytes := []byte("test commitment data")
-	uniqueID := "fibre-commitment"
+	uniqueID := "fiber-commitment"
 
 	resp, err := client.SignRawBytes(context.Background(), &privvalproto.SignRawBytesRequest{
 		ChainId:  testChainID,
@@ -89,7 +89,7 @@ func TestGRPCServerSignRawBytesError(t *testing.T) {
 	client := privvalproto.NewPrivValidatorAPIClient(conn)
 	resp, err := client.SignRawBytes(context.Background(), &privvalproto.SignRawBytesRequest{
 		RawBytes: []byte("test data"),
-		UniqueId: "fibre-commitment",
+		UniqueId: "fiber-commitment",
 	})
 	require.NoError(t, err)
 	require.NotNil(t, resp.Error)

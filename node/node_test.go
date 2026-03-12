@@ -528,8 +528,8 @@ func TestNodePrivValidatorGRPCServer(t *testing.T) {
 
 	client := privvalproto.NewPrivValidatorAPIClient(conn)
 
-	rawBytes := []byte("fibre commitment payload")
-	uniqueID := "fibre-commitment"
+	rawBytes := []byte("fiber commitment payload")
+	uniqueID := "fiber-commitment"
 
 	resp, err := client.SignRawBytes(context.Background(), &privvalproto.SignRawBytesRequest{
 		ChainId:  n.genesisDoc.ChainID,
