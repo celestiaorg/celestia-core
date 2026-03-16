@@ -16,6 +16,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/rs/cors"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
+	"google.golang.org/grpc"
 
 	bc "github.com/cometbft/cometbft/blocksync"
 	cfg "github.com/cometbft/cometbft/config"
@@ -31,6 +32,8 @@ import (
 	mempl "github.com/cometbft/cometbft/mempool"
 	"github.com/cometbft/cometbft/p2p"
 	"github.com/cometbft/cometbft/p2p/pex"
+	"github.com/cometbft/cometbft/privval"
+	privvalproto "github.com/cometbft/cometbft/proto/tendermint/privval"
 	"github.com/cometbft/cometbft/proxy"
 	rpccore "github.com/cometbft/cometbft/rpc/core"
 	grpccore "github.com/cometbft/cometbft/rpc/grpc"
@@ -94,6 +97,7 @@ type Node struct {
 	tracer            trace.Tracer
 	pyroscopeProfiler *pyroscope.Profiler
 	pyroscopeTracer   *sdktrace.TracerProvider
+	privvalGRPCServer *grpc.Server
 }
 
 // Option sets a parameter for the node.
@@ -621,6 +625,26 @@ func (n *Node) OnStart() error {
 		n.rpcListeners = listeners
 	}
 
+	// Start the gRPC PrivValidator server if configured.
+	if n.config.PrivValidatorGRPCListenAddr != "" {
+		lis, err := net.Listen("tcp", n.config.PrivValidatorGRPCListenAddr)
+		if err != nil {
+			return fmt.Errorf("failed to listen for privval gRPC: %w", err)
+		}
+		grpcServer := grpc.NewServer()
+		privvalproto.RegisterPrivValidatorAPIServer(grpcServer, privval.NewPrivValidatorGRPCServer(
+			n.privValidator,
+			n.Logger.With("module", "privval-grpc"),
+		))
+		n.privvalGRPCServer = grpcServer
+		go func() {
+			if err := grpcServer.Serve(lis); err != nil {
+				n.Logger.Error("privval gRPC server error", "err", err)
+			}
+		}()
+		n.Logger.Info("Started privval gRPC server", "addr", n.config.PrivValidatorGRPCListenAddr)
+	}
+
 	if n.config.Instrumentation.PyroscopeURL != "" {
 		profiler, tracer, err := setupPyroscope(
 			n.config.Instrumentation,
@@ -704,6 +728,10 @@ func (n *Node) OnStop() {
 		if err := l.Close(); err != nil {
 			n.Logger.Error("Error closing listener", "listener", l, "err", err)
 		}
+	}
+
+	if n.privvalGRPCServer != nil {
+		n.privvalGRPCServer.GracefulStop()
 	}
 
 	if pvsc, ok := n.privValidator.(service.Service); ok {
