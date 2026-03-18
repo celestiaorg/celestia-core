@@ -52,7 +52,7 @@ const (
 
 	// maxReqLimit is the maximum concurrent requests per peer for large blocks.
 	// Small blocks can have more concurrent requests.
-	maxReqLimit = 50
+	maxReqLimit = 100
 
 	// blockSizeBufferCapacity is the number of block sizes to track for calculating max or average.
 	blockSizeBufferCapacity = 70
@@ -72,7 +72,7 @@ const (
 	peerConnWait = 3 * time.Second
 
 	// defaultMaxRequesters is the default maximum number of concurrent block requesters.
-	defaultMaxRequesters = 100
+	defaultMaxRequesters = 200
 )
 
 var peerTimeout = 120 * time.Second // not const so we can override with tests
