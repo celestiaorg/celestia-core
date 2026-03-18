@@ -48,11 +48,11 @@ const (
 
 	// minReqLimit is the maximum concurrent requests per peer for large blocks.
 	// Large blocks should have fewer to avoid bandwidth saturation.
-	minReqLimit = 2
+	minReqLimit = 10
 
 	// maxReqLimit is the maximum concurrent requests per peer for large blocks.
 	// Small blocks can have more concurrent requests.
-	maxReqLimit = 10
+	maxReqLimit = 50
 
 	// blockSizeBufferCapacity is the number of block sizes to track for calculating max or average.
 	blockSizeBufferCapacity = 70
@@ -72,7 +72,7 @@ const (
 	peerConnWait = 3 * time.Second
 
 	// defaultMaxRequesters is the default maximum number of concurrent block requesters.
-	defaultMaxRequesters = 40
+	defaultMaxRequesters = 100
 )
 
 var peerTimeout = 120 * time.Second // not const so we can override with tests
