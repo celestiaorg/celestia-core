@@ -5,7 +5,7 @@ import (
 
 	cryptoenc "github.com/cometbft/cometbft/crypto/encoding"
 	"github.com/cometbft/cometbft/libs/log"
-	crypto "github.com/cometbft/cometbft/proto/tendermint/crypto"
+	"github.com/cometbft/cometbft/proto/tendermint/crypto"
 	privvalproto "github.com/cometbft/cometbft/proto/tendermint/privval"
 	"github.com/cometbft/cometbft/types"
 )
