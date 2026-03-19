@@ -18,10 +18,8 @@ import (
 
 const testChainID = "test-chain"
 
-func setupGRPCServer(t *testing.T) (privvalproto.PrivValidatorAPIClient, types.PrivValidator) {
+func setupGRPCServerWithPV(t *testing.T, pv types.PrivValidator) privvalproto.PrivValidatorAPIClient {
 	t.Helper()
-
-	pv := types.NewMockPV()
 
 	lis, err := net.Listen("tcp", "127.0.0.1:0")
 	require.NoError(t, err)
@@ -41,11 +39,12 @@ func setupGRPCServer(t *testing.T) (privvalproto.PrivValidatorAPIClient, types.P
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = conn.Close() })
 
-	return privvalproto.NewPrivValidatorAPIClient(conn), pv
+	return privvalproto.NewPrivValidatorAPIClient(conn)
 }
 
 func TestGRPCServerSignRawBytes(t *testing.T) {
-	client, pv := setupGRPCServer(t)
+	pv := types.NewMockPV()
+	client := setupGRPCServerWithPV(t, pv)
 
 	rawBytes := []byte("test commitment data")
 	uniqueID := "fiber-commitment"
@@ -66,31 +65,27 @@ func TestGRPCServerSignRawBytes(t *testing.T) {
 }
 
 func TestGRPCServerSignRawBytesError(t *testing.T) {
-	pv := types.NewErroringMockPV()
+	client := setupGRPCServerWithPV(t, types.NewErroringMockPV())
 
-	lis, err := net.Listen("tcp", "127.0.0.1:0")
-	require.NoError(t, err)
-
-	srv := grpc.NewServer()
-	privvalproto.RegisterPrivValidatorAPIServer(srv, privval.NewPrivValidatorGRPCServer(
-		pv,
-		log.NewNopLogger(),
-	))
-	go func() { _ = srv.Serve(lis) }()
-	t.Cleanup(srv.Stop)
-
-	conn, err := grpc.NewClient(
-		lis.Addr().String(),
-		grpc.WithTransportCredentials(insecure.NewCredentials()),
-	)
-	require.NoError(t, err)
-	t.Cleanup(func() { _ = conn.Close() })
-
-	client := privvalproto.NewPrivValidatorAPIClient(conn)
 	resp, err := client.SignRawBytes(context.Background(), &privvalproto.SignRawBytesRequest{
 		RawBytes: []byte("test data"),
 		UniqueId: "fiber-commitment",
 	})
 	require.NoError(t, err)
 	require.NotNil(t, resp.Error)
+}
+
+func TestGRPCServerGetPubKey(t *testing.T) {
+	pv := types.NewMockPV()
+	client := setupGRPCServerWithPV(t, pv)
+
+	resp, err := client.GetPubKey(context.Background(), &privvalproto.PubKeyRequest{
+		ChainId: testChainID,
+	})
+	require.NoError(t, err)
+	assert.Nil(t, resp.Error)
+
+	expectedPubKey, err := pv.GetPubKey()
+	require.NoError(t, err)
+	assert.Equal(t, expectedPubKey.Bytes(), resp.PubKey.GetEd25519())
 }

@@ -3,7 +3,9 @@ package privval
 import (
 	"context"
 
+	cryptoenc "github.com/cometbft/cometbft/crypto/encoding"
 	"github.com/cometbft/cometbft/libs/log"
+	"github.com/cometbft/cometbft/proto/tendermint/crypto"
 	privvalproto "github.com/cometbft/cometbft/proto/tendermint/privval"
 	"github.com/cometbft/cometbft/types"
 )
@@ -45,5 +47,38 @@ func (s *PrivValidatorGRPCServer) SignRawBytes(
 
 	return &privvalproto.SignedRawBytesResponse{
 		Signature: sig,
+	}, nil
+}
+
+func (s *PrivValidatorGRPCServer) GetPubKey(
+	_ context.Context,
+	req *privvalproto.PubKeyRequest,
+) (*privvalproto.PubKeyResponse, error) {
+	pubKey, err := s.privVal.GetPubKey()
+	if err != nil {
+		s.logger.Error("GetPubKey failed", "err", err)
+		return &privvalproto.PubKeyResponse{
+			PubKey: crypto.PublicKey{},
+			Error: &privvalproto.RemoteSignerError{
+				Code:        0,
+				Description: err.Error(),
+			},
+		}, nil
+	}
+
+	pk, err := cryptoenc.PubKeyToProto(pubKey)
+	if err != nil {
+		s.logger.Error("GetPubKey failed", "err", err)
+		return &privvalproto.PubKeyResponse{
+			PubKey: crypto.PublicKey{},
+			Error: &privvalproto.RemoteSignerError{
+				Code:        0,
+				Description: err.Error(),
+			},
+		}, nil
+	}
+
+	return &privvalproto.PubKeyResponse{
+		PubKey: pk,
 	}, nil
 }

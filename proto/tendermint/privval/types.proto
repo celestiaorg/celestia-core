@@ -78,6 +78,7 @@ message PingResponse {}
 // from the node's privval without direct access to the key.
 service PrivValidatorAPI {
   rpc SignRawBytes(SignRawBytesRequest) returns (SignedRawBytesResponse);
+  rpc GetPubKey(PubKeyRequest) returns (PubKeyResponse);
 }
 
 message Message {
