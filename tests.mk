@@ -78,7 +78,7 @@ test:
 test_race:
 	@echo "--> Running go test --race"
 	@go test -p 1 -v -race $(PACKAGES)
-.PHONY: test_deadlock
+.PHONY: test_race
 
 #? test_deadlock: Run go tests with deadlock detector
 test_deadlock:
