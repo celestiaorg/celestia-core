@@ -78,10 +78,10 @@ test:
 test_race:
 	@echo "--> Running go test --race"
 	@go test -p 1 -v -race $(PACKAGES)
-.PHONY: test_race
+.PHONY: test_deadlock
 
 #? test_deadlock: Run go tests with deadlock detector
 test_deadlock:
 	@echo "--> Running go test --deadlock"
 	@go test -p 1 -v  $(PACKAGES) -tags deadlock
-.PHONY: test_race
+.PHONY: test_deadlock
