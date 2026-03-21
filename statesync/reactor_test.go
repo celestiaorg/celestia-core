@@ -1,6 +1,7 @@
 package statesync
 
 import (
+	"net"
 	"testing"
 	"time"
 
@@ -94,6 +95,61 @@ func TestReactor_Receive_ChunkRequest(t *testing.T) {
 			peer.AssertExpectations(t)
 		})
 	}
+}
+
+// TestReactor_Receive_OversizedSnapshotResponse_NilSyncer verifies that
+// receiving a SnapshotsResponse with Chunks > MaxSnapshotChunks does not
+// nil-dereference r.syncer when no state sync is in progress.
+func TestReactor_Receive_OversizedSnapshotResponse_NilSyncer(t *testing.T) {
+	cfg := config.DefaultStateSyncConfig()
+	conn := &proxymocks.AppConnSnapshot{}
+
+	peer := &p2pmocks.Peer{}
+	peer.On("ID").Return(p2p.ID("attacker"))
+	peer.On("IsRunning").Return(true)
+	peer.On("Stop").Return(nil)
+	peer.On("FlushStop").Return()
+	peer.On("String").Return("peer-attacker")
+	peer.On("RemoteAddr").Return(&net.TCPAddr{IP: net.IP{127, 0, 0, 1}, Port: 26656})
+	peer.On("CloseConn").Return(nil)
+	peer.On("NodeInfo").Return(p2p.DefaultNodeInfo{})
+	peer.On("SetRemovalFailed").Return()
+	peer.On("GetRemovalFailed").Return(false)
+	peer.On("IsPersistent").Return(false)
+	peer.On("IsOutbound").Return(false)
+	peer.On("SocketAddr").Return(nil)
+	peer.On("HasIPChanged").Return(false)
+
+	r := NewReactor(*cfg, conn, nil, NopMetrics())
+
+	sw := p2p.MakeSwitch(
+		config.DefaultP2PConfig(),
+		0,
+		func(i int, sw *p2p.Switch) *p2p.Switch { return sw },
+	)
+	r.SetSwitch(sw)
+
+	err := r.Start()
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		if err := r.Stop(); err != nil {
+			t.Error(err)
+		}
+	})
+
+	// This should NOT panic even though r.syncer is nil.
+	require.NotPanics(t, func() {
+		r.Receive(p2p.Envelope{
+			ChannelID: SnapshotChannel,
+			Src:       peer,
+			Message: &ssproto.SnapshotsResponse{
+				Height: 1,
+				Format: 1,
+				Chunks: cfg.MaxSnapshotChunks + 1,
+				Hash:   []byte{1},
+			},
+		})
+	})
 }
 
 func TestReactor_Receive_SnapshotsRequest(t *testing.T) {
