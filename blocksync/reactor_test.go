@@ -1,6 +1,8 @@
 package blocksync
 
 import (
+	"bytes"
+	"crypto/rand"
 	"fmt"
 	"os"
 	"reflect"
@@ -18,6 +20,8 @@ import (
 
 	abci "github.com/cometbft/cometbft/abci/types"
 	cfg "github.com/cometbft/cometbft/config"
+	"github.com/cometbft/cometbft/crypto"
+	"github.com/cometbft/cometbft/crypto/tmhash"
 	"github.com/cometbft/cometbft/internal/test"
 	"github.com/cometbft/cometbft/libs/log"
 	mpmocks "github.com/cometbft/cometbft/mempool/mocks"
@@ -616,4 +620,148 @@ func (bcR *ByzantineReactor) Receive(e p2p.Envelope) {
 	default:
 		bcR.Logger.Error(fmt.Sprintf("Unknown message type %v", reflect.TypeOf(msg)))
 	}
+}
+
+// makeRandomBlockID creates a random BlockID for testing.
+func makeRandomBlockID() types.BlockID {
+	blockHash := make([]byte, tmhash.Size)
+	partSetHash := make([]byte, tmhash.Size)
+	rand.Read(blockHash)   //nolint: errcheck
+	rand.Read(partSetHash) //nolint: errcheck
+	return types.BlockID{Hash: blockHash, PartSetHeader: types.PartSetHeader{Total: 123, Hash: partSetHash}}
+}
+
+// makeExtCommitWithValidators creates a valid ExtendedCommit signed by the
+// given validators at the specified height/round.
+func makeExtCommitWithValidators(
+	t *testing.T,
+	blockID types.BlockID,
+	height int64,
+	round int32,
+	valSet *types.ValidatorSet,
+	privVals []types.PrivValidator,
+) *types.ExtendedCommit {
+	t.Helper()
+	voteSet := types.NewExtendedVoteSet("test_chain_id", height, round, cmtproto.PrecommitType, valSet)
+	extCommit, err := types.MakeExtCommit(blockID, height, round, voteSet, privVals, time.Now(), true)
+	require.NoError(t, err)
+	return extCommit
+}
+
+// TestReportedAttack_PrependByteToValidatorAddress tests the specific attack
+// vector described in a security report: prepending 0xFF to a
+// ValidatorAddress in an ExtendedCommit. This attack is caught during proto
+// deserialization because CommitSig.ValidateBasic checks the address length.
+func TestReportedAttack_PrependByteToValidatorAddress(t *testing.T) {
+	height := int64(3)
+	round := int32(1)
+
+	blockID := makeRandomBlockID()
+	valSet, privVals := types.RandValidatorSet(4, 1)
+	extCommit := makeExtCommitWithValidators(t, blockID, height, round, valSet, privVals)
+	require.NotEmpty(t, extCommit.ExtendedSignatures)
+
+	// Apply the report's specific attack: prepend 0xFF to the first
+	// validator's address. This makes the address 21 bytes instead of 20.
+	poisonedProto := extCommit.ToProto()
+	origAddr := poisonedProto.ExtendedSignatures[0].ValidatorAddress
+	poisonedProto.ExtendedSignatures[0].ValidatorAddress = append([]byte{0xFF}, origAddr...)
+	require.Len(t, poisonedProto.ExtendedSignatures[0].ValidatorAddress, crypto.AddressSize+1)
+
+	// The attack is caught during deserialization because
+	// CommitSig.ValidateBasic checks len(ValidatorAddress) == crypto.AddressSize.
+	_, err := types.ExtendedCommitFromProto(poisonedProto)
+	require.Error(t, err, "prepended-byte corruption must be rejected at deserialization")
+}
+
+// TestSameLengthAddressCorruption_PanicsOnRestart demonstrates the
+// validation gap that the cross-validation fix addresses: a corrupted
+// ExtendedCommit with a same-length (20 byte) but wrong ValidatorAddress
+// passes ValidateBasic and EnsureExtensions but causes a panic during vote
+// set reconstruction. This is the code path that runs in
+// consensus/state.go:reconstructLastCommit on node restart.
+func TestSameLengthAddressCorruption_PanicsOnRestart(t *testing.T) {
+	const chainID = "test_chain_id"
+	height := int64(3)
+	round := int32(1)
+
+	blockID := makeRandomBlockID()
+	valSet, privVals := types.RandValidatorSet(4, 1)
+	extCommit := makeExtCommitWithValidators(t, blockID, height, round, valSet, privVals)
+
+	// Replace the first signature's ValidatorAddress with a different 20-byte
+	// address. This keeps the length valid.
+	poisoned := *extCommit
+	sigs := make([]types.ExtendedCommitSig, len(extCommit.ExtendedSignatures))
+	copy(sigs, extCommit.ExtendedSignatures)
+	poisoned.ExtendedSignatures = sigs
+
+	fakeAddr := make(crypto.Address, crypto.AddressSize)
+	for i := range fakeAddr {
+		fakeAddr[i] = 0xFF
+	}
+	poisoned.ExtendedSignatures[0].ValidatorAddress = fakeAddr
+
+	// The poisoned ExtendedCommit passes ValidateBasic because the address
+	// is the correct length.
+	require.NoError(t, poisoned.ValidateBasic(),
+		"same-length corrupted address should pass ValidateBasic")
+
+	// EnsureExtensions also passes because it only checks extension presence.
+	require.NoError(t, poisoned.EnsureExtensions(true),
+		"same-length corrupted address should pass EnsureExtensions")
+
+	// Proto round-trip succeeds (this is the deserialization path).
+	proto := poisoned.ToProto()
+	recovered, err := types.ExtendedCommitFromProto(proto)
+	require.NoError(t, err,
+		"same-length corrupted address should survive proto round-trip")
+
+	// But ToExtendedVoteSet panics because AddVote checks that the address
+	// matches the validator at that index. This is the same code path that
+	// runs in consensus/state.go:reconstructLastCommit on node restart.
+	assert.Panics(t, func() {
+		recovered.ToExtendedVoteSet(chainID, valSet)
+	}, "ToExtendedVoteSet must panic on address mismatch — "+
+		"a poisoned ExtendedCommit in the blockstore causes a permanent node crash on restart")
+}
+
+// TestExtendedCommitHashDetectsAddressCorruption verifies that comparing
+// extCommit.ToCommit().Hash() against the verified LastCommit.Hash() detects
+// ValidatorAddress corruption. This is the validation added in
+// blocksync/reactor.go to cross-validate the ExtendedCommit before persisting.
+func TestExtendedCommitHashDetectsAddressCorruption(t *testing.T) {
+	height := int64(3)
+	round := int32(1)
+
+	blockID := makeRandomBlockID()
+	valSet, privVals := types.RandValidatorSet(4, 1)
+	extCommit := makeExtCommitWithValidators(t, blockID, height, round, valSet, privVals)
+
+	// The honest commit derived from the ExtendedCommit.
+	honestCommit := extCommit.ToCommit()
+
+	// Corrupt the ExtendedCommit's first ValidatorAddress with a same-length
+	// but different address.
+	poisoned := *extCommit
+	sigs := make([]types.ExtendedCommitSig, len(extCommit.ExtendedSignatures))
+	copy(sigs, extCommit.ExtendedSignatures)
+	poisoned.ExtendedSignatures = sigs
+
+	fakeAddr := make(crypto.Address, crypto.AddressSize)
+	for i := range fakeAddr {
+		fakeAddr[i] = 0xFF
+	}
+	poisoned.ExtendedSignatures[0].ValidatorAddress = fakeAddr
+
+	// The hash comparison catches the corruption because CommitSig includes
+	// ValidatorAddress in its serialization.
+	corruptedCommit := poisoned.ToCommit()
+	require.False(t, bytes.Equal(honestCommit.Hash(), corruptedCommit.Hash()),
+		"corrupted ExtendedCommit must produce a different commit hash")
+
+	// Sanity: an uncorrupted ExtendedCommit produces a matching hash.
+	uncorruptedCommit := extCommit.ToCommit()
+	require.True(t, bytes.Equal(honestCommit.Hash(), uncorruptedCommit.Hash()),
+		"uncorrupted ExtendedCommit must produce the same commit hash")
 }

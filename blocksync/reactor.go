@@ -1,6 +1,7 @@
 package blocksync
 
 import (
+	"bytes"
 	"fmt"
 	"reflect"
 	"sync"
@@ -522,7 +523,6 @@ FOR_LOOP:
 			// NOTE: we can probably make this more efficient, but note that calling
 			// first.Hash() doesn't verify the tx contents, so MakePartSet() is
 			// currently necessary.
-			// TODO(sergio): Should we also validate against the extended commit?
 			err = state.Validators.VerifyCommitLight(
 				chainID, firstID, first.Height, second.LastCommit)
 
@@ -560,6 +560,21 @@ FOR_LOOP:
 			if err == nil && extensionsEnabled {
 				// if vote extensions were required at this height, ensure they exist.
 				err = extCommit.EnsureExtensions(true)
+			}
+			if err == nil && extensionsEnabled {
+				// Validate that the extended commit is consistent with the
+				// commit in the next block. Without this check, a malicious
+				// peer could provide a valid block and LastCommit but a
+				// corrupted ExtendedCommit (e.g. with wrong ValidatorAddress
+				// fields). The corrupted ExtendedCommit would be persisted to
+				// the blockstore and cause a panic on consensus restart when
+				// reconstructLastCommit calls ToExtendedVoteSet.
+				derivedCommit := extCommit.ToCommit()
+				if !bytes.Equal(derivedCommit.Hash(), second.LastCommit.Hash()) {
+					err = fmt.Errorf("extended commit does not match last commit in next block "+
+						"(extCommit hash %X, LastCommit hash %X)",
+						derivedCommit.Hash(), second.LastCommit.Hash())
+				}
 			}
 			if err != nil {
 				bcR.Logger.Error("Error in validation", "err", err)
