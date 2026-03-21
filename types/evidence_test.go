@@ -52,8 +52,8 @@ func TestDuplicateVoteEvidence(t *testing.T) {
 
 func TestDuplicateVoteEvidenceValidation(t *testing.T) {
 	val := NewMockPV()
-	blockID := makeBlockID(tmhash.Sum([]byte("blockhash")), math.MaxInt32, tmhash.Sum([]byte("partshash")))
-	blockID2 := makeBlockID(tmhash.Sum([]byte("blockhash2")), math.MaxInt32, tmhash.Sum([]byte("partshash")))
+	blockID := makeBlockID(tmhash.Sum([]byte("blockhash")), MaxBlockPartsCount, tmhash.Sum([]byte("partshash")))
+	blockID2 := makeBlockID(tmhash.Sum([]byte("blockhash2")), MaxBlockPartsCount, tmhash.Sum([]byte("partshash")))
 	const chainID = "mychain"
 
 	testCases := []struct {
@@ -98,7 +98,7 @@ func TestLightClientAttackEvidenceBasic(t *testing.T) {
 	voteSet, valSet, privVals := randVoteSet(height, 1, cmtproto.PrecommitType, nValidators, 1, false)
 	header := makeHeaderRandom()
 	header.Height = height
-	blockID := makeBlockID(tmhash.Sum([]byte("blockhash")), math.MaxInt32, tmhash.Sum([]byte("partshash")))
+	blockID := makeBlockID(tmhash.Sum([]byte("blockhash")), MaxBlockPartsCount, tmhash.Sum([]byte("partshash")))
 	extCommit, err := MakeExtCommit(blockID, height, 1, voteSet, privVals, defaultVoteTime, false)
 	require.NoError(t, err)
 	commit := extCommit.ToCommit()
@@ -160,7 +160,7 @@ func TestLightClientAttackEvidenceValidation(t *testing.T) {
 	header := makeHeaderRandom()
 	header.Height = height
 	header.ValidatorsHash = valSet.Hash()
-	blockID := makeBlockID(header.Hash(), math.MaxInt32, tmhash.Sum([]byte("partshash")))
+	blockID := makeBlockID(header.Hash(), MaxBlockPartsCount, tmhash.Sum([]byte("partshash")))
 	extCommit, err := MakeExtCommit(blockID, height, 1, voteSet, privVals, time.Now(), false)
 	require.NoError(t, err)
 	commit := extCommit.ToCommit()
@@ -257,8 +257,8 @@ func makeHeaderRandom() *Header {
 func TestEvidenceProto(t *testing.T) {
 	// -------- Votes --------
 	val := NewMockPV()
-	blockID := makeBlockID(tmhash.Sum([]byte("blockhash")), math.MaxInt32, tmhash.Sum([]byte("partshash")))
-	blockID2 := makeBlockID(tmhash.Sum([]byte("blockhash2")), math.MaxInt32, tmhash.Sum([]byte("partshash")))
+	blockID := makeBlockID(tmhash.Sum([]byte("blockhash")), MaxBlockPartsCount, tmhash.Sum([]byte("partshash")))
+	blockID2 := makeBlockID(tmhash.Sum([]byte("blockhash2")), MaxBlockPartsCount, tmhash.Sum([]byte("partshash")))
 	const chainID = "mychain"
 	v := MakeVoteNoError(t, val, chainID, math.MaxInt32, math.MaxInt64, 1, 0x01, blockID, defaultVoteTime)
 	v2 := MakeVoteNoError(t, val, chainID, math.MaxInt32, math.MaxInt64, 2, 0x01, blockID2, defaultVoteTime)
