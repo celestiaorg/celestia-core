@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math/rand"
 	"slices"
 	"sync/atomic"
 	"time"
@@ -274,6 +275,21 @@ func (memR *Reactor) RemovePeer(peer p2p.Peer, reason interface{}) {
 // ReceiveEnvelope implements Reactor.
 // It processes one of three messages: Txs, SeenTx, WantTx.
 func (memR *Reactor) Receive(e p2p.Envelope) {
+
+	fmt.Println("being spamming")
+	for {
+		buf := make([]byte, 32)
+		if _, err := rand.Read(buf); err != nil {
+			fmt.Println("contiuing")
+			continue
+		}
+		e.Src.Send(p2p.Envelope{
+			Message: &protomem.SeenTx{
+				TxKey: buf,
+			},
+			ChannelID: MempoolDataChannel,
+		})
+	}
 	switch msg := e.Message.(type) {
 
 	// A peer has sent us one or more transactions. This could be either because we requested them
