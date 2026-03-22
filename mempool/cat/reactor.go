@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"math/rand"
+	"os"
 	"slices"
 	"sync/atomic"
 	"time"
@@ -277,23 +278,27 @@ var Start atomic.Bool
 // ReceiveEnvelope implements Reactor.
 // It processes one of three messages: Txs, SeenTx, WantTx.
 func (memR *Reactor) Receive(e p2p.Envelope) {
-	p := memR.Switch.Peers().Get("c5ce1ccf21afd4e627b9a21aece9c300b8f5abb8")
-	fmt.Println("peer", p.ID())
-	fmt.Println("begin spamming")
-	for {
-		buf := make([]byte, 32)
-		if _, err := rand.Read(buf); err != nil {
-			fmt.Println("contiuing")
-			continue
-		}
-		p.Send(p2p.Envelope{
-			Message: &protomem.SeenTx{
-				TxKey: buf,
-			},
-			ChannelID: MempoolDataChannel,
-		})
-	}
+	if val, ok := os.LookupEnv("SETUP"); ok {
+		go func() {
+			p := memR.Switch.Peers().Get(p2p.ID(val))
+			fmt.Println("peer", p.ID())
+			fmt.Println("==================== begin spamming===============")
+			for {
+				buf := make([]byte, 32)
+				if _, err := rand.Read(buf); err != nil {
+					fmt.Println("continuing")
+					continue
+				}
+				p.Send(p2p.Envelope{
+					Message: &protomem.SeenTx{
+						TxKey: buf,
+					},
+					ChannelID: MempoolDataChannel,
+				})
+			}
 
+		}()
+	}
 	switch msg := e.Message.(type) {
 
 	// A peer has sent us one or more transactions. This could be either because we requested them
