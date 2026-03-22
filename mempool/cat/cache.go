@@ -25,6 +25,12 @@ func NewSeenTxSet() *SeenTxSet {
 	}
 }
 
+// maxSeenTxSetSize limits the number of unique tx keys tracked in the SeenTxSet
+// to prevent unbounded memory growth from malicious peers flooding SeenTx messages.
+// Each entry costs ~500 bytes (including Go map overhead and GC pressure),
+// so 10M entries ≈ 5 GB worst-case.
+const maxSeenTxSetSize = 10_000_000
+
 func (s *SeenTxSet) Add(txKey types.TxKey, peer uint16) {
 	if peer == 0 {
 		return
@@ -32,6 +38,13 @@ func (s *SeenTxSet) Add(txKey types.TxKey, peer uint16) {
 	s.mtx.Lock()
 	defer s.mtx.Unlock()
 	seenSet, exists := s.set[txKey]
+	if !exists && len(s.set) >= maxSeenTxSetSize {
+		// Evict one random entry to make room.
+		for k := range s.set {
+			delete(s.set, k)
+			break
+		}
+	}
 	if !exists {
 		s.set[txKey] = timestampedPeerSet{
 			peers: map[uint16]struct{}{peer: {}},
