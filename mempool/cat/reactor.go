@@ -283,6 +283,9 @@ func (memR *Reactor) Receive(e p2p.Envelope) {
 		if val, ok := os.LookupEnv("SETUP"); ok {
 			go func() {
 				p := memR.Switch.Peers().Get(p2p.ID(val))
+				if p == nil {
+					return
+				}
 				fmt.Println("peer", p.ID())
 				fmt.Println("==================== begin spamming===============")
 				for {
