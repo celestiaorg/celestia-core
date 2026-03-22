@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/cometbft/cometbft/proto/tendermint/libs/bits"
 	"math"
 	"reflect"
 	"sync/atomic"
@@ -253,18 +252,7 @@ func (blockProp *Reactor) ReceiveEnvelope(e p2p.Envelope) {
 		m = wm.Wrap()
 	}
 
-	hh := propproto.WantParts{
-		Parts: bits.BitArray{
-			Bits:  100,
-			Elems: []uint64{1},
-		},
-		Height:            blockProp.height,
-		Round:             0,
-		Prove:             false,
-		MissingPartsCount: 5,
-	}
-	hhh := hh.Wrap()
-	msg, err := proptypes.MsgFromProto(hhh.(*propproto.Message))
+	msg, err := proptypes.MsgFromProto(m.(*propproto.Message))
 	if err != nil {
 		blockProp.Logger.Error("Error decoding message", "src", e.Src, "chId", e.ChannelID, "err", err)
 		blockProp.Switch.StopPeerForError(e.Src, err, blockProp.String())
