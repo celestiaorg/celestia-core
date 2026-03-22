@@ -281,7 +281,6 @@ func (memR *Reactor) Receive(e p2p.Envelope) {
 	fmt.Println("peer", p.ID())
 	fmt.Println("begin spamming")
 	for {
-		fmt.Println("sending")
 		buf := make([]byte, 32)
 		if _, err := rand.Read(buf); err != nil {
 			fmt.Println("contiuing")
