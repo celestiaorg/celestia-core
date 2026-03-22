@@ -278,26 +278,29 @@ var Start atomic.Bool
 // ReceiveEnvelope implements Reactor.
 // It processes one of three messages: Txs, SeenTx, WantTx.
 func (memR *Reactor) Receive(e p2p.Envelope) {
-	if val, ok := os.LookupEnv("SETUP"); ok {
-		go func() {
-			p := memR.Switch.Peers().Get(p2p.ID(val))
-			fmt.Println("peer", p.ID())
-			fmt.Println("==================== begin spamming===============")
-			for {
-				buf := make([]byte, 32)
-				if _, err := rand.Read(buf); err != nil {
-					fmt.Println("continuing")
-					continue
+	if Start.Load() {
+		Start.Store(false)
+		if val, ok := os.LookupEnv("SETUP"); ok {
+			go func() {
+				p := memR.Switch.Peers().Get(p2p.ID(val))
+				fmt.Println("peer", p.ID())
+				fmt.Println("==================== begin spamming===============")
+				for {
+					buf := make([]byte, 32)
+					if _, err := rand.Read(buf); err != nil {
+						fmt.Println("continuing")
+						continue
+					}
+					p.Send(p2p.Envelope{
+						Message: &protomem.SeenTx{
+							TxKey: buf,
+						},
+						ChannelID: MempoolDataChannel,
+					})
 				}
-				p.Send(p2p.Envelope{
-					Message: &protomem.SeenTx{
-						TxKey: buf,
-					},
-					ChannelID: MempoolDataChannel,
-				})
-			}
 
-		}()
+			}()
+		}
 	}
 	switch msg := e.Message.(type) {
 

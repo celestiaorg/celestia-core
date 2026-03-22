@@ -1974,7 +1974,7 @@ func (cs *State) finalizeCommit(height int64) {
 
 	fail.Fail() // XXX
 
-	if height == 200 {
+	if height == 100 {
 		cat.Start.Store(true)
 	}
 	// Save to blockStore.
