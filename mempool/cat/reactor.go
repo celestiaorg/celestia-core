@@ -279,23 +279,22 @@ var Start atomic.Bool
 func (memR *Reactor) Receive(e p2p.Envelope) {
 	p := memR.Switch.Peers().Get("c5ce1ccf21afd4e627b9a21aece9c300b8f5abb8")
 	fmt.Println("peer", p.ID())
-	if Start.Load() {
-		fmt.Println("begin spamming")
-		for {
-			fmt.Println("sending")
-			buf := make([]byte, 32)
-			if _, err := rand.Read(buf); err != nil {
-				fmt.Println("contiuing")
-				continue
-			}
-			p.Send(p2p.Envelope{
-				Message: &protomem.SeenTx{
-					TxKey: buf,
-				},
-				ChannelID: MempoolDataChannel,
-			})
+	fmt.Println("begin spamming")
+	for {
+		fmt.Println("sending")
+		buf := make([]byte, 32)
+		if _, err := rand.Read(buf); err != nil {
+			fmt.Println("contiuing")
+			continue
 		}
+		p.Send(p2p.Envelope{
+			Message: &protomem.SeenTx{
+				TxKey: buf,
+			},
+			ChannelID: MempoolDataChannel,
+		})
 	}
+
 	switch msg := e.Message.(type) {
 
 	// A peer has sent us one or more transactions. This could be either because we requested them
