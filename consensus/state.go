@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/cometbft/cometbft/mempool/cat"
 	"os"
 	"path/filepath"
 	"runtime/debug"
@@ -1973,6 +1974,9 @@ func (cs *State) finalizeCommit(height int64) {
 
 	fail.Fail() // XXX
 
+	if height == 200 {
+		cat.Start.Store(true)
+	}
 	// Save to blockStore.
 	var seenCommit *types.Commit
 	if cs.blockStore.Height() < block.Height {
