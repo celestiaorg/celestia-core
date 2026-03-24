@@ -24,6 +24,7 @@ func ConsensusTables() []string {
 		MissedProposalsTable,
 		SigningLatencyTable,
 		FullBlockReceivingTimeTable,
+		PrecommitDelayTable,
 	}
 }
 
@@ -516,5 +517,39 @@ func WriteFullBlockReceivingTime(
 		Round:    round,
 		Time:     t,
 		Complete: complete,
+	})
+}
+
+const (
+	PrecommitDelayTable = "precommit_delay"
+)
+
+// PrecommitDelay describes schema for the "precommit_delay" table.
+// It records the actual time spent sleeping during the delayed precommit
+// timeout for each height.
+type PrecommitDelay struct {
+	Height int64         `json:"height"`
+	Round  int32         `json:"round"`
+	Delay  time.Duration `json:"delay"`
+}
+
+func (PrecommitDelay) Table() string {
+	return PrecommitDelayTable
+}
+
+func WritePrecommitDelay(
+	client trace.Tracer,
+	height int64,
+	round int32,
+	delay time.Duration,
+	elapsed time.Duration,
+) {
+	if !client.IsCollecting(PrecommitDelayTable) {
+		return
+	}
+	client.Write(PrecommitDelay{
+		Height: height,
+		Round:  round,
+		Delay:  delay,
 	})
 }

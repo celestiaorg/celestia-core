@@ -1679,6 +1679,7 @@ func (cs *State) enterPrecommit(height int64, round int32) {
 		waitTime := cs.precommitDelay()
 		logger.Debug("delaying precommit", "delay", waitTime)
 		cs.unlockAll()
+		sleepStart := time.Now()
 		t := time.NewTimer(waitTime)
 		select {
 		case <-cs.Quit():
@@ -1687,6 +1688,7 @@ func (cs *State) enterPrecommit(height int64, round int32) {
 		case <-t.C:
 		}
 		cs.lockAll()
+		schema.WritePrecommitDelay(cs.traceClient, height, round, waitTime, time.Since(sleepStart))
 		cs.StartedPrecommitSleep.Store(false)
 	} else {
 		logger.Debug("already entered precommit delay")
