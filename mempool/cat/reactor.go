@@ -422,7 +422,17 @@ func (memR *Reactor) Receive(e p2p.Envelope) {
 		}
 
 		// We don't have the transaction, nor are we requesting it so we send the node
-		// a want msg
+		// a want msg. Enforce the per-peer request limit so a single peer cannot
+		// drive unbounded outstanding requests via the direct SeenTx path.
+		if memR.requests.CountForPeer(peerID) >= maxRequestsPerPeer {
+			memR.Logger.Debug(
+				"not requesting tx from peer: at capacity",
+				"peer", peerID,
+				"txKey", txKey,
+				"maxRequestsPerPeer", maxRequestsPerPeer,
+			)
+			return
+		}
 		memR.requestTx(txKey, e.Src)
 
 	// A peer is requesting a transaction that we have claimed to have. Find the specified

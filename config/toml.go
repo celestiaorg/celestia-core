@@ -89,25 +89,10 @@ proxy_app = "{{ .BaseConfig.ProxyApp }}"
 # A custom human readable name for this node
 moniker = "{{ .BaseConfig.Moniker }}"
 
-# Database backend: goleveldb | cleveldb | boltdb | rocksdb | badgerdb
-# * goleveldb (github.com/syndtr/goleveldb - most popular implementation)
+# Database backend: pebbledb
+# * pebbledb (github.com/cockroachdb/pebble)
 #   - pure go
-#   - stable
-# * cleveldb (uses levigo wrapper)
-#   - fast
-#   - requires gcc
-#   - use cleveldb build tag (go build -tags cleveldb)
-# * boltdb (uses etcd's fork of bolt - github.com/etcd-io/bbolt)
-#   - EXPERIMENTAL
-#   - may be faster is some use-cases (random reads - indexer)
-#   - use boltdb build tag (go build -tags boltdb)
-# * rocksdb (uses github.com/tecbot/gorocksdb)
-#   - EXPERIMENTAL
-#   - requires gcc
-#   - use rocksdb build tag (go build -tags rocksdb)
-# * badgerdb (uses github.com/dgraph-io/badger)
-#   - EXPERIMENTAL
-#   - use badgerdb build tag (go build -tags badgerdb)
+#   - fast and stable
 db_backend = "{{ .BaseConfig.DBBackend }}"
 
 # Database directory
@@ -136,6 +121,11 @@ priv_validator_state_file = "{{ js .BaseConfig.PrivValidatorState }}"
 # TCP or UNIX socket address for CometBFT to listen on for
 # connections from an external PrivValidator process
 priv_validator_laddr = "{{ .BaseConfig.PrivValidatorListenAddr }}"
+
+# gRPC address for the PrivValidator server.
+# If set, the node exposes its PrivValidator over gRPC on this address,
+# allowing external services (fiber server) to request signatures.
+priv_validator_grpc_laddr = "{{ .BaseConfig.PrivValidatorGRPCListenAddr }}"
 
 # Path to the JSON file containing the private key to use for node authentication in the p2p protocol
 node_key_file = "{{ js .BaseConfig.NodeKey }}"

@@ -247,7 +247,7 @@ func NewTestnetFromManifest(manifest Manifest, file string, ifd InfrastructureDa
 			ExternalIP:       extIP,
 			ProxyPort:        ind.Port,
 			Mode:             ModeValidator,
-			Database:         "goleveldb",
+			Database:         "pebbledb",
 			ABCIProtocol:     Protocol(testnet.ABCIProtocol),
 			PrivvalProtocol:  ProtocolFile,
 			StartAt:          nodeManifest.StartAt,
@@ -359,7 +359,7 @@ func NewTestnetFromManifest(manifest Manifest, file string, ifd InfrastructureDa
 	for heightStr, validators := range manifest.ValidatorUpdates {
 		height, err := strconv.Atoi(heightStr)
 		if err != nil {
-			return nil, fmt.Errorf("invalid validator update height %q: %w", height, err)
+			return nil, fmt.Errorf("invalid validator update height %q: %w", heightStr, err)
 		}
 		valUpdate := map[*Node]int64{}
 		for name, power := range validators {
@@ -464,7 +464,7 @@ func (n Node) Validate(testnet Testnet) error {
 		return fmt.Errorf("invalid block sync setting %q", n.BlockSyncVersion)
 	}
 	switch n.Database {
-	case "goleveldb", "pebbledb", "badgerdb":
+	case "pebbledb":
 	default:
 		return fmt.Errorf("invalid database setting %q", n.Database)
 	}

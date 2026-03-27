@@ -119,7 +119,7 @@ func runProxy(_ *cobra.Command, args []string) error {
 		witnessesAddrs = strings.Split(witnessAddrsJoined, ",")
 	}
 
-	db, err := dbm.NewGoLevelDB("light-client-db", home)
+	db, err := dbm.NewDB("light-client-db", dbm.PebbleDBBackend, home)
 	if err != nil {
 		return fmt.Errorf("can't create a db: %w", err)
 	}

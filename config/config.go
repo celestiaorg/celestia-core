@@ -231,25 +231,10 @@ type BaseConfig struct {
 	// A custom human readable name for this node
 	Moniker string `mapstructure:"moniker"`
 
-	// Database backend: goleveldb | cleveldb | boltdb | rocksdb
-	// * goleveldb (github.com/syndtr/goleveldb - most popular implementation)
+	// Database backend: pebbledb
+	// * pebbledb (github.com/cockroachdb/pebble)
 	//   - pure go
-	//   - stable
-	// * cleveldb (uses levigo wrapper)
-	//   - fast
-	//   - requires gcc
-	//   - use cleveldb build tag (go build -tags cleveldb)
-	// * boltdb (uses etcd's fork of bolt - github.com/etcd-io/bbolt)
-	//   - EXPERIMENTAL
-	//   - may be faster is some use-cases (random reads - indexer)
-	//   - use boltdb build tag (go build -tags boltdb)
-	// * rocksdb (uses github.com/tecbot/gorocksdb)
-	//   - EXPERIMENTAL
-	//   - requires gcc
-	//   - use rocksdb build tag (go build -tags rocksdb)
-	// * badgerdb (uses github.com/dgraph-io/badger)
-	//   - EXPERIMENTAL
-	//   - use badgerdb build tag (go build -tags badgerdb)
+	//   - fast and stable
 	DBBackend string `mapstructure:"db_backend"`
 
 	// Database directory
@@ -277,6 +262,11 @@ type BaseConfig struct {
 	// connections from an external PrivValidator process
 	PrivValidatorListenAddr string `mapstructure:"priv_validator_laddr"`
 
+	// gRPC address for the PrivValidator server.
+	// If set, the node exposes its PrivValidator over gRPC on this address,
+	// allowing external services (fiber server) to request signatures.
+	PrivValidatorGRPCListenAddr string `mapstructure:"priv_validator_grpc_laddr"`
+
 	// A JSON file containing the private key to use for p2p authenticated encryption
 	NodeKey string `mapstructure:"node_key_file"`
 
@@ -302,7 +292,7 @@ func DefaultBaseConfig() BaseConfig {
 		LogLevel:           DefaultLogLevel,
 		LogFormat:          LogFormatPlain,
 		FilterPeers:        false,
-		DBBackend:          "goleveldb",
+		DBBackend:          "pebbledb",
 		DBPath:             DefaultDataDir,
 		BlockstorePath:     DefaultDataDir,
 	}

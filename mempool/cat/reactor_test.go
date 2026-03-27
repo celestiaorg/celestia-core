@@ -1516,3 +1516,48 @@ func TestSeenTxWithEmptySignerNotBanned(t *testing.T) {
 	// The peer should NOT be disconnected for empty signer
 	require.Len(t, reactor0.Switch.Peers().List(), 1, "peer should not be disconnected for empty signer")
 }
+
+// TestSeenTxDirectPathEnforcesPerPeerRequestLimit verifies that the direct
+// SeenTx→requestTx code path enforces the maxRequestsPerPeer limit. A single
+// peer sending more than maxRequestsPerPeer unique SeenTx messages (with nil
+// signer / zero sequence) should NOT result in more than maxRequestsPerPeer
+// outstanding requests to that peer.
+func TestSeenTxDirectPathEnforcesPerPeerRequestLimit(t *testing.T) {
+	reactor, _ := setupReactor(t)
+
+	peer := genPeer()
+	// Allow unlimited WantTx sends (we're counting how many get through)
+	peer.On("TrySend", mock.MatchedBy(func(env p2p.Envelope) bool {
+		return env.ChannelID == MempoolWantsChannel
+	})).Return(true)
+
+	_, err := reactor.InitPeer(peer)
+	require.NoError(t, err)
+	peerID := reactor.ids.GetIDForPeer(peer.ID())
+
+	totalMessages := maxRequestsPerPeer * 4 // 120 messages from one peer
+
+	for i := 0; i < totalMessages; i++ {
+		tx := types.Tx(fmt.Sprintf("fake-seen-tx-%d", i))
+		key := tx.Key()
+		reactor.Receive(p2p.Envelope{
+			ChannelID: MempoolDataChannel,
+			Message: &protomem.SeenTx{
+				TxKey:    key[:],
+				Signer:   nil,
+				Sequence: 0,
+			},
+			Src: peer,
+		})
+	}
+
+	requestCount := reactor.requests.CountForPeer(peerID)
+	t.Logf("peer=%d requests=%d maxRequestsPerPeer=%d", peerID, requestCount, maxRequestsPerPeer)
+
+	// The per-peer request limit should be enforced on the direct SeenTx path.
+	// If this assertion fails, it means the SeenTx handler is calling requestTx
+	// without checking maxRequestsPerPeer first.
+	assert.LessOrEqual(t, requestCount, maxRequestsPerPeer,
+		"SeenTx direct path should not exceed maxRequestsPerPeer (%d) but got %d requests",
+		maxRequestsPerPeer, requestCount)
+}

@@ -20,7 +20,7 @@ func BenchmarkTxSearch(b *testing.B) {
 		b.Errorf("failed to create temporary directory: %s", err)
 	}
 
-	db, err := dbm.NewGoLevelDB("benchmark_tx_search_test", dbDir)
+	db, err := dbm.NewDB("benchmark_tx_search_test", dbm.PebbleDBBackend, dbDir)
 	if err != nil {
 		b.Errorf("failed to create database: %s", err)
 	}

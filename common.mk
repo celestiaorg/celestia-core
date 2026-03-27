@@ -20,13 +20,3 @@ ifeq (race,$(findstring race,$(COMETBFT_BUILD_OPTIONS)))
   BUILD_FLAGS += -race
 endif
 
-# handle badgerdb
-ifeq (badgerdb,$(findstring badgerdb,$(COMETBFT_BUILD_OPTIONS)))
-  BUILD_TAGS += badgerdb
-endif
-
-# handle pebbledb
-ifeq (pebbledb,$(findstring pebbledb,$(COMETBFT_BUILD_OPTIONS)))
-  CGO_ENABLED=1
-  BUILD_TAGS += pebbledb
-endif

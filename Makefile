@@ -321,9 +321,6 @@ build-docker-localnode:
 	@cd networks/local && make
 .PHONY: build-docker-localnode
 
-# Runs `make build COMETBFT_BUILD_OPTIONS=cleveldb` from within an Amazon
-# Linux (v2)-based Docker build container in order to build an Amazon
-# Linux-compatible binary. Produces a compatible binary at ./build/cometbft
 #? build_c-amazonlinux: Build Amazon Linux-compatible binary in Docker
 build_c-amazonlinux:
 	$(MAKE) -C ./DOCKER build_amazonlinux_buildimage
