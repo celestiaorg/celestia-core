@@ -14,4 +14,8 @@ type TxInfo struct {
 
 	// SenderP2PID is the actual p2p.ID of the sender, used e.g. for logging.
 	SenderP2PID p2p.ID
+
+	// FromUser indicates whether this transaction was submitted by the local
+	// user via an RPC broadcast endpoint (true) or received from a peer (false).
+	FromUser bool
 }

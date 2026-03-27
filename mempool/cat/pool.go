@@ -363,7 +363,7 @@ func (txmp *TxPool) TryAddNewTx(tx *types.CachedTx, key types.TxKey, txInfo memp
 
 	// Create wrapped tx
 	wtx := newWrappedTx(
-		tx, txmp.height, rsp.GasWanted, rsp.Priority, rsp.Address, rsp.Sequence,
+		tx, txmp.height, rsp.GasWanted, rsp.Priority, rsp.Address, rsp.Sequence, txInfo.FromUser,
 	)
 
 	// Perform the post check
@@ -570,6 +570,10 @@ func (txmp *TxPool) Update(
 		txKey := tx.Key()
 		wtx := txmp.store.get(txKey)
 		txmp.removeTxByKey(txKey)
+		// Record user-submitted tx latency before removal
+		if wtx != nil && wtx.fromUser {
+			txmp.metrics.UserTxLatency.Observe(time.Since(wtx.timestamp).Seconds())
+		}
 		// Write trace for confirmed transaction if we have the wrapped tx info
 		if wtx != nil {
 			schema.WriteMempoolTxStatus(

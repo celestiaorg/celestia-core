@@ -19,9 +19,10 @@ type wrappedTx struct {
 	priority  int64           // app: priority value for this transaction
 	sender    []byte          // app: assigned sender label
 	sequence  uint64          // app: sequence number for this transaction
+	fromUser  bool            // true if submitted via local RPC broadcast
 }
 
-func newWrappedTx(tx *types.CachedTx, height, gasWanted, priority int64, sender []byte, sequence uint64) *wrappedTx {
+func newWrappedTx(tx *types.CachedTx, height, gasWanted, priority int64, sender []byte, sequence uint64, fromUser bool) *wrappedTx {
 	return &wrappedTx{
 		tx:        tx,
 		height:    height,
@@ -30,6 +31,7 @@ func newWrappedTx(tx *types.CachedTx, height, gasWanted, priority int64, sender 
 		priority:  priority,
 		sender:    sender,
 		sequence:  sequence,
+		fromUser:  fromUser,
 	}
 }
 

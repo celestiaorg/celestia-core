@@ -94,6 +94,14 @@ func PrometheusMetrics(namespace string, labelsAndValues ...string) *Metrics {
 			Name:      "rerequested_txs",
 			Help:      "RerequestedTxs defines the number of times that a requested tx never received a response in time and a new request was made.",
 		}, labels).With(labelsAndValues...),
+		UserTxLatency: prometheus.NewHistogramFrom(stdprometheus.HistogramOpts{
+			Namespace: namespace,
+			Subsystem: MetricsSubsystem,
+			Name:      "user_tx_latency",
+			Help:      "UserTxLatency records the latency (in seconds) from when a user-submitted transaction enters the mempool to when it is included in a committed block.",
+
+			Buckets: stdprometheus.ExponentialBuckets(0.1, 3, 7),
+		}, labels).With(labelsAndValues...),
 	}
 }
 
@@ -112,5 +120,6 @@ func NopMetrics() *Metrics {
 		AlreadySeenTxs:            discard.NewCounter(),
 		RequestedTxs:              discard.NewCounter(),
 		RerequestedTxs:            discard.NewCounter(),
+		UserTxLatency:             discard.NewHistogram(),
 	}
 }

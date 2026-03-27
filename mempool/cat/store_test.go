@@ -18,7 +18,7 @@ func TestStoreSimple(t *testing.T) {
 
 	tx := types.Tx("tx1")
 	key := tx.Key()
-	wtx := newWrappedTx(tx.ToCachedTx(), 1, 1, 1, nil, 0)
+	wtx := newWrappedTx(tx.ToCachedTx(), 1, 1, 1, nil, 0, false)
 
 	// asset zero state
 	require.Nil(t, store.get(key))
@@ -54,9 +54,9 @@ func TestStoreOrdering(t *testing.T) {
 	tx3 := types.Tx("tx3")
 
 	// Create wrapped txs with different priorities
-	wtx1 := newWrappedTx(tx1.ToCachedTx(), 1, 1, 1, nil, 0)
-	wtx2 := newWrappedTx(tx2.ToCachedTx(), 2, 2, 2, nil, 0)
-	wtx3 := newWrappedTx(tx3.ToCachedTx(), 3, 3, 3, nil, 0)
+	wtx1 := newWrappedTx(tx1.ToCachedTx(), 1, 1, 1, nil, 0, false)
+	wtx2 := newWrappedTx(tx2.ToCachedTx(), 2, 2, 2, nil, 0, false)
+	wtx3 := newWrappedTx(tx3.ToCachedTx(), 3, 3, 3, nil, 0, false)
 
 	// Add txs in reverse priority order
 	store.set(wtx1)
@@ -80,7 +80,7 @@ func makeTxs(n int, sender []byte, withSequence bool) []*wrappedTx {
 		if withSequence {
 			sequence = uint64(i)
 		}
-		wtx := newWrappedTx(tx.ToCachedTx(), int64(i), int64(i), int64(i), sender, sequence)
+		wtx := newWrappedTx(tx.ToCachedTx(), int64(i), int64(i), int64(i), sender, sequence, false)
 		txs = append(txs, wtx)
 	}
 	return txs
@@ -273,7 +273,7 @@ func TestStoreReservingTxs(t *testing.T) {
 
 	tx := types.Tx("tx1")
 	key := tx.Key()
-	wtx := newWrappedTx(tx.ToCachedTx(), 1, 1, 1, nil, 0)
+	wtx := newWrappedTx(tx.ToCachedTx(), 1, 1, 1, nil, 0, false)
 
 	// asset zero state
 	store.release(key)
@@ -331,7 +331,7 @@ func TestStoreConcurrentAccess(t *testing.T) {
 			for range ticker.C {
 				tx := types.Tx(fmt.Sprintf("tx%d", i%(numTxs/10)))
 				key := tx.Key()
-				wtx := newWrappedTx(tx.ToCachedTx(), 1, 1, 1, nil, 0)
+				wtx := newWrappedTx(tx.ToCachedTx(), 1, 1, 1, nil, 0, false)
 				existingTx := store.get(key)
 				if existingTx != nil && bytes.Equal(existingTx.tx.Tx, tx) {
 					// tx has already been added
@@ -363,7 +363,7 @@ func TestStoreGetTxs(t *testing.T) {
 	numTxs := 100
 	for i := 0; i < numTxs; i++ {
 		tx := types.Tx(fmt.Sprintf("tx%d", i))
-		wtx := newWrappedTx(tx.ToCachedTx(), 1, 1, int64(i), nil, 0)
+		wtx := newWrappedTx(tx.ToCachedTx(), 1, 1, int64(i), nil, 0, false)
 		store.set(wtx)
 	}
 
@@ -395,7 +395,7 @@ func TestStoreExpiredTxs(t *testing.T) {
 	numTxs := 100
 	for i := 0; i < numTxs; i++ {
 		tx := types.Tx(fmt.Sprintf("tx%d", i))
-		wtx := newWrappedTx(tx.ToCachedTx(), int64(i), 1, 1, nil, 0)
+		wtx := newWrappedTx(tx.ToCachedTx(), int64(i), 1, 1, nil, 0, false)
 		require.True(t, store.set(wtx))
 	}
 
@@ -420,8 +420,8 @@ func TestPurgeExpiredTxs(t *testing.T) {
 	signer := []byte("signer1")
 
 	// Add two txs with the same signer, different heights
-	wtx1 := newWrappedTx(types.Tx("tx1").ToCachedTx(), 4, 1, 10, signer, 1) // height 5
-	wtx2 := newWrappedTx(types.Tx("tx2").ToCachedTx(), 5, 1, 10, signer, 2) // height 6
+	wtx1 := newWrappedTx(types.Tx("tx1").ToCachedTx(), 4, 1, 10, signer, 1, false) // height 5
+	wtx2 := newWrappedTx(types.Tx("tx2").ToCachedTx(), 5, 1, 10, signer, 2, false) // height 6
 
 	require.True(t, store.set(wtx1))
 	require.True(t, store.set(wtx2))
@@ -451,7 +451,7 @@ func TestStoreGetOrderedTxsWithoutSigner(t *testing.T) {
 	for i, priority := range priorities {
 		tx := types.Tx(fmt.Sprintf("tx%d", i))
 		cachedTx := &types.CachedTx{Tx: tx}
-		wtx := newWrappedTx(cachedTx, 1, 1, priority, nil, 0)
+		wtx := newWrappedTx(cachedTx, 1, 1, priority, nil, 0, false)
 		store.set(wtx)
 	}
 
@@ -493,7 +493,7 @@ func TestStoreGetOrderedTxs_MultiSignerPriorityAndSequence(t *testing.T) {
 			gasWanted := rand.Int63n(1000) + 1 // pick a random gas wanted (not used here, but could be)
 			tx := types.Tx(fmt.Sprintf("tx_signer%d_seq%d", s, seq))
 			cachedTx := &types.CachedTx{Tx: tx}
-			wtx := newWrappedTx(cachedTx, 1, gasWanted, priority, signers[s], uint64(seq))
+			wtx := newWrappedTx(cachedTx, 1, gasWanted, priority, signers[s], uint64(seq), false)
 			store.set(wtx)
 		}
 	}
@@ -544,11 +544,11 @@ func TestAggregatedPriorityWeightedByGas(t *testing.T) {
 
 	signer := []byte("addr1")
 	// First tx: high priority, low gas
-	w1 := newWrappedTx(types.Tx("a1").ToCachedTx(), 1, 1, 10, signer, 1)
+	w1 := newWrappedTx(types.Tx("a1").ToCachedTx(), 1, 1, 10, signer, 1, false)
 	store.set(w1)
 
 	// Second tx: lower priority, higher gas
-	w2 := newWrappedTx(types.Tx("a2").ToCachedTx(), 1, 3, 4, signer, 2)
+	w2 := newWrappedTx(types.Tx("a2").ToCachedTx(), 1, 3, 4, signer, 2, false)
 	store.set(w2)
 
 	set := store.setsBySigner[string(signer)]
@@ -560,13 +560,13 @@ func TestAggregatedPriorityWeightedByGas(t *testing.T) {
 func TestAggregatedPriorityAfterAdd(t *testing.T) {
 	store := newStore()
 	signer := []byte("addr1")
-	w1 := newWrappedTx(types.Tx("a1").ToCachedTx(), 1, 1, 10, signer, 1)
+	w1 := newWrappedTx(types.Tx("a1").ToCachedTx(), 1, 1, 10, signer, 1, false)
 	store.set(w1)
-	w2 := newWrappedTx(types.Tx("a2").ToCachedTx(), 1, 3, 4, signer, 2)
+	w2 := newWrappedTx(types.Tx("a2").ToCachedTx(), 1, 3, 4, signer, 2, false)
 	store.set(w2)
 
 	// New candidate tx
-	cand := newWrappedTx(types.Tx("a3").ToCachedTx(), 1, 1, 9, signer, 3)
+	cand := newWrappedTx(types.Tx("a3").ToCachedTx(), 1, 1, 9, signer, 3, false)
 	newAgg := store.aggregatedPriorityAfterAdd(cand)
 	// Current weighted sum = 22, totalGas=4; after add: (22 + 9*1)/(4+1) = 31/5 = 6
 	require.Equal(t, int64(6), newAgg)
@@ -577,16 +577,16 @@ func TestIntraSetOrderingBySequenceThenTimestamp(t *testing.T) {
 	signer := []byte("addr1")
 
 	// Add sequence 2 first
-	w2a := newWrappedTx(types.Tx("s2a").ToCachedTx(), 1, 1, 1, signer, 2)
+	w2a := newWrappedTx(types.Tx("s2a").ToCachedTx(), 1, 1, 1, signer, 2, false)
 	store.set(w2a)
 	// Ensure a different timestamp for tie-breaker
 	time.Sleep(5 * time.Millisecond)
 	// Add sequence 1
-	w1 := newWrappedTx(types.Tx("s1").ToCachedTx(), 1, 1, 1, signer, 1)
+	w1 := newWrappedTx(types.Tx("s1").ToCachedTx(), 1, 1, 1, signer, 1, false)
 	store.set(w1)
 	// Add another sequence 2 later
 	time.Sleep(5 * time.Millisecond)
-	w2b := newWrappedTx(types.Tx("s2b").ToCachedTx(), 1, 1, 1, signer, 2)
+	w2b := newWrappedTx(types.Tx("s2b").ToCachedTx(), 1, 1, 1, signer, 2, false)
 	store.set(w2b)
 
 	ordered := store.getOrderedTxs()
@@ -601,16 +601,16 @@ func TestInterSetOrderingByAggregatedPriorityAndTimestamp(t *testing.T) {
 	store := newStore()
 	// Signer A: aggregated priority becomes 6 (from previous example)
 	A := []byte("A")
-	store.set(newWrappedTx(types.Tx("a1").ToCachedTx(), 1, 1, 10, A, 1))
-	store.set(newWrappedTx(types.Tx("a2").ToCachedTx(), 1, 3, 4, A, 2))
+	store.set(newWrappedTx(types.Tx("a1").ToCachedTx(), 1, 1, 10, A, 1, false))
+	store.set(newWrappedTx(types.Tx("a2").ToCachedTx(), 1, 3, 4, A, 2, false))
 
 	// Small pause so A's firstTimestamp is earlier
 	time.Sleep(5 * time.Millisecond)
 
 	// Signer B: choose values to get aggregated priority 5
 	B := []byte("B")
-	store.set(newWrappedTx(types.Tx("b1").ToCachedTx(), 1, 2, 4, B, 1)) // sum=8, gas=2
-	store.set(newWrappedTx(types.Tx("b2").ToCachedTx(), 1, 2, 6, B, 2)) // sum=20, gas=4 => 20/4 = 5
+	store.set(newWrappedTx(types.Tx("b1").ToCachedTx(), 1, 2, 4, B, 1, false)) // sum=8, gas=2
+	store.set(newWrappedTx(types.Tx("b2").ToCachedTx(), 1, 2, 6, B, 2, false)) // sum=20, gas=4 => 20/4 = 5
 
 	ordered := store.getOrderedTxs()
 	// Expect all A txs (seq 1 then 2) before all B txs
@@ -622,13 +622,13 @@ func TestInterSetOrderingByAggregatedPriorityAndTimestamp(t *testing.T) {
 	// Now make B match A's aggregated priority (set to 6) and add a new set C with same agg but later timestamp
 	store = newStore()
 	A = []byte("A")
-	store.set(newWrappedTx(types.Tx("a1").ToCachedTx(), 1, 1, 10, A, 1))
-	store.set(newWrappedTx(types.Tx("a2").ToCachedTx(), 1, 3, 4, A, 2)) // A agg = 6
+	store.set(newWrappedTx(types.Tx("a1").ToCachedTx(), 1, 1, 10, A, 1, false))
+	store.set(newWrappedTx(types.Tx("a2").ToCachedTx(), 1, 3, 4, A, 2, false)) // A agg = 6
 	// A is earlier
 	time.Sleep(5 * time.Millisecond)
 	C := []byte("C")
-	store.set(newWrappedTx(types.Tx("c1").ToCachedTx(), 1, 1, 10, C, 1))
-	store.set(newWrappedTx(types.Tx("c2").ToCachedTx(), 1, 3, 4, C, 2)) // C agg = 6, later firstTimestamp
+	store.set(newWrappedTx(types.Tx("c1").ToCachedTx(), 1, 1, 10, C, 1, false))
+	store.set(newWrappedTx(types.Tx("c2").ToCachedTx(), 1, 3, 4, C, 2, false)) // C agg = 6, later firstTimestamp
 
 	ordered = store.getOrderedTxs()
 	// A's set should come before C's due to earlier firstTimestamp
@@ -641,7 +641,7 @@ func TestInterSetOrderingByAggregatedPriorityAndTimestamp(t *testing.T) {
 func TestTxSetAddRemoveProperties(t *testing.T) {
 	// Helper to create a wrappedTx with given params and a fixed timestamp
 	makeTx := func(tx string, height int64, gasWanted int64, priority int64, signer []byte, seq uint64, ts time.Time) *wrappedTx {
-		w := newWrappedTx(types.Tx(tx).ToCachedTx(), height, gasWanted, priority, signer, seq)
+		w := newWrappedTx(types.Tx(tx).ToCachedTx(), height, gasWanted, priority, signer, seq, false)
 		w.timestamp = ts
 		return w
 	}
@@ -698,9 +698,9 @@ func TestTxSetFirstHeightRecalculationOnRemove(t *testing.T) {
 	signer := []byte("alice")
 
 	// Create txs at different heights
-	tx1 := newWrappedTx(types.Tx("tx1").ToCachedTx(), 100, 1, 10, signer, 1) // height=100
-	tx2 := newWrappedTx(types.Tx("tx2").ToCachedTx(), 150, 1, 10, signer, 2) // height=150
-	tx3 := newWrappedTx(types.Tx("tx3").ToCachedTx(), 120, 1, 10, signer, 3) // height=120
+	tx1 := newWrappedTx(types.Tx("tx1").ToCachedTx(), 100, 1, 10, signer, 1, false) // height=100
+	tx2 := newWrappedTx(types.Tx("tx2").ToCachedTx(), 150, 1, 10, signer, 2, false) // height=150
+	tx3 := newWrappedTx(types.Tx("tx3").ToCachedTx(), 120, 1, 10, signer, 3, false) // height=120
 
 	set := newTxSet(tx1)
 	require.Equal(t, int64(100), set.firstHeight)

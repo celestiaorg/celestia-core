@@ -69,4 +69,9 @@ type Metrics struct {
 	// RerequestedTxs defines the number of times that a requested tx
 	// never received a response in time and a new request was made.
 	RerequestedTxs metrics.Counter
+
+	// UserTxLatency records the latency (in seconds) from when a
+	// user-submitted transaction enters the mempool to when it is
+	// included in a committed block.
+	UserTxLatency metrics.Histogram `metrics_buckettype:"exp" metrics_bucketsizes:"0.1,3,7"`
 }
