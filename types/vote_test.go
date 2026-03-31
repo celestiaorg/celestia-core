@@ -42,7 +42,7 @@ func exampleVote(t byte) *Vote {
 		BlockID: BlockID{
 			Hash: tmhash.Sum([]byte("blockID_hash")),
 			PartSetHeader: PartSetHeader{
-				Total: 1000000,
+				Total: 1000,
 				Hash:  tmhash.Sum([]byte("blockID_part_set_header_hash")),
 			},
 		},

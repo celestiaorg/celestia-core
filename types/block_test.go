@@ -286,7 +286,7 @@ func TestMaxCommitBytes(t *testing.T) {
 		BlockID: BlockID{
 			Hash: tmhash.Sum([]byte("blockID_hash")),
 			PartSetHeader: PartSetHeader{
-				Total: math.MaxInt32,
+				Total: MaxBlockPartsCount,
 				Hash:  tmhash.Sum([]byte("blockID_part_set_header_hash")),
 			},
 		},
@@ -411,7 +411,7 @@ func TestMaxHeaderBytes(t *testing.T) {
 		ChainID:            maxChainID,
 		Height:             math.MaxInt64,
 		Time:               timestamp,
-		LastBlockID:        makeBlockID(make([]byte, tmhash.Size), math.MaxInt32, make([]byte, tmhash.Size)),
+		LastBlockID:        makeBlockID(make([]byte, tmhash.Size), MaxBlockPartsCount, make([]byte, tmhash.Size)),
 		LastCommitHash:     tmhash.Sum([]byte("last_commit_hash")),
 		DataHash:           tmhash.Sum([]byte("data_hash")),
 		ValidatorsHash:     tmhash.Sum([]byte("validators_hash")),
@@ -458,11 +458,11 @@ func TestBlockMaxDataBytes(t *testing.T) {
 	}{
 		0: {-10, 1, 0, true, 0},
 		1: {10, 1, 0, true, 0},
-		2: {841, 1, 0, true, 0},
-		3: {842, 1, 0, false, 0},
-		4: {843, 1, 0, false, 1},
-		5: {954, 2, 0, false, 1},
-		6: {1053, 2, 100, false, 0},
+		2: {835, 1, 0, true, 0},
+		3: {836, 1, 0, false, 0},
+		4: {837, 1, 0, false, 1},
+		5: {948, 2, 0, false, 1},
+		6: {1047, 2, 100, false, 0},
 	}
 
 	for i, tc := range testCases {
@@ -489,9 +489,9 @@ func TestBlockMaxDataBytesNoEvidence(t *testing.T) {
 	}{
 		0: {-10, 1, true, 0},
 		1: {10, 1, true, 0},
-		2: {841, 1, true, 0},
-		3: {842, 1, false, 0},
-		4: {843, 1, false, 1},
+		2: {835, 1, true, 0},
+		3: {836, 1, false, 0},
+		4: {837, 1, false, 1},
 	}
 
 	for i, tc := range testCases {
