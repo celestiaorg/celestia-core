@@ -364,8 +364,8 @@ func TestVerifyDuplicateVoteEvidence(t *testing.T) {
 
 	blockID := makeBlockID([]byte("blockhash"), 1000, []byte("partshash"))
 	blockID2 := makeBlockID([]byte("blockhash2"), 1000, []byte("partshash"))
-	blockID3 := makeBlockID([]byte("blockhash"), 10000, []byte("partshash"))
-	blockID4 := makeBlockID([]byte("blockhash"), 10000, []byte("partshash2"))
+	blockID3 := makeBlockID([]byte("blockhash"), 2000, []byte("partshash"))
+	blockID4 := makeBlockID([]byte("blockhash"), 2000, []byte("partshash2"))
 
 	const chainID = "mychain"
 

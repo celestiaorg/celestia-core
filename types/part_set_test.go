@@ -219,6 +219,8 @@ func TestPartSetHeaderValidateBasic(t *testing.T) {
 	}{
 		{"Good PartSet", func(psHeader *PartSetHeader) {}, false},
 		{"Invalid Hash", func(psHeader *PartSetHeader) { psHeader.Hash = make([]byte, 1) }, true},
+		{"Total exceeds MaxBlockPartsCount", func(psHeader *PartSetHeader) { psHeader.Total = MaxBlockPartsCount + 1 }, true},
+		{"Total is max uint32", func(psHeader *PartSetHeader) { psHeader.Total = 1<<32 - 1 }, true},
 	}
 	for _, tc := range testCases {
 		tc := tc
