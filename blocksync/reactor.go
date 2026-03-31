@@ -1,7 +1,6 @@
 package blocksync
 
 import (
-	"bytes"
 	"fmt"
 	"reflect"
 	"sync"
@@ -562,19 +561,14 @@ FOR_LOOP:
 				err = extCommit.EnsureExtensions(true)
 			}
 			if err == nil && extensionsEnabled {
-				// Validate that the extended commit is consistent with the
-				// commit in the next block. Without this check, a malicious
-				// peer could provide a valid block and LastCommit but a
-				// corrupted ExtendedCommit (e.g. with wrong ValidatorAddress
-				// fields). The corrupted ExtendedCommit would be persisted to
-				// the blockstore and cause a panic on consensus restart when
-				// reconstructLastCommit calls ToExtendedVoteSet.
-				derivedCommit := extCommit.ToCommit()
-				if !bytes.Equal(derivedCommit.Hash(), second.LastCommit.Hash()) {
-					err = fmt.Errorf("extended commit does not match last commit in next block "+
-						"(extCommit hash %X, LastCommit hash %X)",
-						derivedCommit.Hash(), second.LastCommit.Hash())
-				}
+				// Verify all signatures in the extended commit since it will
+				// be persisted to the blockstore. Without this check, a
+				// malicious peer could provide a corrupted ExtendedCommit
+				// (e.g. with wrong ValidatorAddress fields) that would cause
+				// a panic on consensus restart when reconstructLastCommit
+				// calls ToExtendedVoteSet.
+				err = state.Validators.VerifyCommit(
+					chainID, firstID, first.Height, extCommit.ToCommit())
 			}
 			if err != nil {
 				bcR.Logger.Error("Error in validation", "err", err)

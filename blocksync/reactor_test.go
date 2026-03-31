@@ -1,7 +1,6 @@
 package blocksync
 
 import (
-	"bytes"
 	"crypto/rand"
 	"fmt"
 	"os"
@@ -726,11 +725,12 @@ func TestSameLengthAddressCorruption_PanicsOnRestart(t *testing.T) {
 		"a poisoned ExtendedCommit in the blockstore causes a permanent node crash on restart")
 }
 
-// TestExtendedCommitHashDetectsAddressCorruption verifies that comparing
-// extCommit.ToCommit().Hash() against the verified LastCommit.Hash() detects
-// ValidatorAddress corruption. This is the validation added in
-// blocksync/reactor.go to cross-validate the ExtendedCommit before persisting.
-func TestExtendedCommitHashDetectsAddressCorruption(t *testing.T) {
+// TestVerifyCommitDetectsAddressCorruption verifies that VerifyCommit on an
+// ExtendedCommit converted via ToCommit() catches same-length ValidatorAddress
+// corruption. This is the validation added in blocksync/reactor.go to
+// cross-validate the ExtendedCommit before persisting.
+func TestVerifyCommitDetectsAddressCorruption(t *testing.T) {
+	const chainID = "test_chain_id"
 	height := int64(3)
 	round := int32(1)
 
@@ -738,8 +738,9 @@ func TestExtendedCommitHashDetectsAddressCorruption(t *testing.T) {
 	valSet, privVals := types.RandValidatorSet(4, 1)
 	extCommit := makeExtCommitWithValidators(t, blockID, height, round, valSet, privVals)
 
-	// The honest commit derived from the ExtendedCommit.
-	honestCommit := extCommit.ToCommit()
+	// Sanity: VerifyCommit passes on the uncorrupted ExtendedCommit.
+	err := valSet.VerifyCommit(chainID, blockID, height, extCommit.ToCommit())
+	require.NoError(t, err, "uncorrupted ExtendedCommit must pass VerifyCommit")
 
 	// Corrupt the ExtendedCommit's first ValidatorAddress with a same-length
 	// but different address.
@@ -754,14 +755,8 @@ func TestExtendedCommitHashDetectsAddressCorruption(t *testing.T) {
 	}
 	poisoned.ExtendedSignatures[0].ValidatorAddress = fakeAddr
 
-	// The hash comparison catches the corruption because CommitSig includes
-	// ValidatorAddress in its serialization.
-	corruptedCommit := poisoned.ToCommit()
-	require.False(t, bytes.Equal(honestCommit.Hash(), corruptedCommit.Hash()),
-		"corrupted ExtendedCommit must produce a different commit hash")
-
-	// Sanity: an uncorrupted ExtendedCommit produces a matching hash.
-	uncorruptedCommit := extCommit.ToCommit()
-	require.True(t, bytes.Equal(honestCommit.Hash(), uncorruptedCommit.Hash()),
-		"uncorrupted ExtendedCommit must produce the same commit hash")
+	// VerifyCommit catches the corruption because it checks that each
+	// signature's ValidatorAddress matches the validator at that index.
+	err = valSet.VerifyCommit(chainID, blockID, height, poisoned.ToCommit())
+	require.Error(t, err, "corrupted ValidatorAddress must be rejected by VerifyCommit")
 }
