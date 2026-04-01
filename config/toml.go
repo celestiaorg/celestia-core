@@ -89,7 +89,10 @@ proxy_app = "{{ .BaseConfig.ProxyApp }}"
 # A custom human readable name for this node
 moniker = "{{ .BaseConfig.Moniker }}"
 
-# Database backend: pebbledb
+# Database backend: goleveldb | pebbledb
+# * goleveldb (github.com/syndtr/goleveldb)
+#   - pure go
+#   - stable
 # * pebbledb (github.com/cockroachdb/pebble)
 #   - pure go
 #   - fast and stable

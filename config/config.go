@@ -231,7 +231,10 @@ type BaseConfig struct {
 	// A custom human readable name for this node
 	Moniker string `mapstructure:"moniker"`
 
-	// Database backend: pebbledb
+	// Database backend: goleveldb | pebbledb
+	// * goleveldb (github.com/syndtr/goleveldb)
+	//   - pure go
+	//   - stable
 	// * pebbledb (github.com/cockroachdb/pebble)
 	//   - pure go
 	//   - fast and stable
@@ -292,7 +295,7 @@ func DefaultBaseConfig() BaseConfig {
 		LogLevel:           DefaultLogLevel,
 		LogFormat:          LogFormatPlain,
 		FilterPeers:        false,
-		DBBackend:          "pebbledb",
+		DBBackend:          "goleveldb",
 		DBPath:             DefaultDataDir,
 		BlockstorePath:     DefaultDataDir,
 	}
