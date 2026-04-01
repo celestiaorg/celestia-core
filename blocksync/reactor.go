@@ -522,7 +522,6 @@ FOR_LOOP:
 			// NOTE: we can probably make this more efficient, but note that calling
 			// first.Hash() doesn't verify the tx contents, so MakePartSet() is
 			// currently necessary.
-			// TODO(sergio): Should we also validate against the extended commit?
 			err = state.Validators.VerifyCommitLight(
 				chainID, firstID, first.Height, second.LastCommit)
 
@@ -560,6 +559,16 @@ FOR_LOOP:
 			if err == nil && extensionsEnabled {
 				// if vote extensions were required at this height, ensure they exist.
 				err = extCommit.EnsureExtensions(true)
+			}
+			if err == nil && extensionsEnabled {
+				// Verify all signatures in the extended commit since it will
+				// be persisted to the blockstore. Without this check, a
+				// malicious peer could provide a corrupted ExtendedCommit
+				// (e.g. with wrong ValidatorAddress fields) that would cause
+				// a panic on consensus restart when reconstructLastCommit
+				// calls ToExtendedVoteSet.
+				err = state.Validators.VerifyCommit(
+					chainID, firstID, first.Height, extCommit.ToCommit())
 			}
 			if err != nil {
 				bcR.Logger.Error("Error in validation", "err", err)
