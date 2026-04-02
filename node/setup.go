@@ -104,6 +104,9 @@ func DefaultMetricsProvider(config *cfg.InstrumentationConfig) MetricsProvider {
 
 type blockSyncReactor interface {
 	SwitchToBlockSync(sm.State) error
+	// UpdatePeerHeight updates a peer's height in the blocksync pool.
+	// This allows consensus reactor to feed fresh heights from NewRoundStepMessage.
+	UpdatePeerHeight(peerID p2p.ID, height int64)
 }
 
 //------------------------------------------------------------------------------
@@ -501,6 +504,12 @@ func createSwitch(config *cfg.Config,
 	}
 	sw.AddReactor("BLOCKSYNC", bcReactor)
 	sw.AddReactor("CONSENSUS", consensusReactor)
+
+	// Wire consensus reactor to blocksync reactor for dynamic switching
+	if bcr, ok := bcReactor.(blockSyncReactor); ok {
+		consensusReactor.SetBlockSyncReactor(bcr)
+	}
+
 	sw.AddReactor("EVIDENCE", evidenceReactor)
 	sw.AddReactor("STATESYNC", stateSyncReactor)
 	if propagationReactor != nil {
