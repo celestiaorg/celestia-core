@@ -470,6 +470,7 @@ FOR_LOOP:
 			}
 
 		case <-didProcessCh:
+			processingTime := time.Now()
 			// NOTE: It is a subtle mistake to process more than a single block
 			// at a time (e.g. 10) here, because we only TrySend 1 request per
 			// loop.  The ratio mismatch can result in starving of blocks, a
@@ -539,7 +540,9 @@ FOR_LOOP:
 				// performed, a malicious node could fabricate an alternative
 				// set of transactions that would cause a different app hash and
 				// thus cause this node to panic.
+				start := time.Now()
 				stateMachineValid, err = bcR.blockExec.ProcessProposal(first, state.InitialHeight)
+				fmt.Println("process proposal: ", time.Since(start))
 				if !stateMachineValid {
 					err = fmt.Errorf("application has rejected syncing block (%X) at height %d, %w", first.Hash(), first.Height, err)
 				}
@@ -602,7 +605,9 @@ FOR_LOOP:
 				// guaranteed to be populated by the peer if extensions are not enabled.
 				// Currently, the peer should provide an extCommit even if the vote extension data are absent
 				// but this may change so using second.LastCommit is safer.
+				start := time.Now()
 				bcR.store.SaveBlock(first, firstParts, second.LastCommit)
+				fmt.Println("save block: ", time.Since(start))
 			}
 
 			// Calculate save duration
@@ -619,7 +624,9 @@ FOR_LOOP:
 
 			// TODO: same thing for app - but we would need a way to
 			// get the hash without persisting the state
+			start := time.Now()
 			state, err = bcR.blockExec.ApplyVerifiedBlock(state, firstID, first, second.LastCommit)
+			fmt.Println("apply verified block: ", time.Since(start))
 			if err != nil {
 				// TODO This is bad, are we zombie?
 				panic(fmt.Sprintf("Failed to process committed block (%d:%X): %v", first.Height, first.Hash(), err))
@@ -633,6 +640,7 @@ FOR_LOOP:
 					"max_peer_height", bcR.pool.MaxPeerHeight(), "blocks/s", lastRate)
 				lastHundred = time.Now()
 			}
+			fmt.Println("processing Time: ", time.Since(processingTime))
 
 			continue FOR_LOOP
 
