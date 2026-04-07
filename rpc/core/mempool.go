@@ -20,7 +20,7 @@ import (
 // CheckTx nor transaction results.
 // More: https://docs.cometbft.com/v0.38.x/rpc/#/Tx/broadcast_tx_async
 func (env *Environment) BroadcastTxAsync(_ *rpctypes.Context, tx types.Tx) (*ctypes.ResultBroadcastTx, error) {
-	err := env.Mempool.CheckTx(tx, nil, mempl.TxInfo{FromUser: true})
+	err := env.Mempool.CheckTx(tx, nil, mempl.TxInfo{FromBroadcast: true})
 	if err != nil {
 		return nil, err
 	}
@@ -37,7 +37,7 @@ func (env *Environment) BroadcastTxSync(ctx *rpctypes.Context, tx types.Tx) (*ct
 		case <-ctx.Context().Done():
 		case resCh <- res:
 		}
-	}, mempl.TxInfo{FromUser: true})
+	}, mempl.TxInfo{FromBroadcast: true})
 	if err != nil {
 		return nil, err
 	}
@@ -90,7 +90,7 @@ func (env *Environment) BroadcastTxCommit(ctx *rpctypes.Context, tx types.Tx) (*
 		case <-ctx.Context().Done():
 		case checkTxResCh <- res:
 		}
-	}, mempl.TxInfo{FromUser: true})
+	}, mempl.TxInfo{FromBroadcast: true})
 	if err != nil {
 		env.Logger.Error("Error on broadcastTxCommit", "err", err)
 		return nil, fmt.Errorf("error on broadcastTxCommit: %v", err)
