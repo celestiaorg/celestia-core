@@ -570,7 +570,7 @@ func (txmp *TxPool) Update(
 		txKey := tx.Key()
 		wtx := txmp.store.get(txKey)
 		txmp.removeTxByKey(txKey)
-		// Record user-submitted tx latency before removal
+		// Record user-submitted tx latency = block receive time - tx receive time
 		if wtx != nil && wtx.fromBroadcast {
 			txmp.metrics.UserTxLatency.Observe(time.Since(wtx.timestamp).Seconds())
 		}
