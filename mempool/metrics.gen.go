@@ -100,7 +100,7 @@ func PrometheusMetrics(namespace string, labelsAndValues ...string) *Metrics {
 			Name:      "user_tx_latency",
 			Help:      "UserTxLatency records the latency (in seconds) from when a user-submitted transaction enters the mempool to when it is included in a committed block.",
 
-			Buckets: stdprometheus.ExponentialBuckets(0.1, 3, 7),
+			Buckets: []float64{0.25, 0.5, 1, 2, 4, 6, 8, 10, 11, 12, 13, 14, 15, 18, 25, 60},
 		}, labels).With(labelsAndValues...),
 	}
 }
