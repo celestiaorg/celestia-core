@@ -12,24 +12,26 @@ import (
 // seen this transaction, this struct should never be modified
 type wrappedTx struct {
 	// these fields are immutable
-	tx        *types.CachedTx // the original transaction data
-	height    int64           // height when this transaction was initially checked (for expiry)
-	timestamp time.Time       // time when transaction was entered (for TTL)
-	gasWanted int64           // app: gas required to execute this transaction
-	priority  int64           // app: priority value for this transaction
-	sender    []byte          // app: assigned sender label
-	sequence  uint64          // app: sequence number for this transaction
+	tx            *types.CachedTx // the original transaction data
+	height        int64           // height when this transaction was initially checked (for expiry)
+	timestamp     time.Time       // time when transaction was entered (for TTL)
+	gasWanted     int64           // app: gas required to execute this transaction
+	priority      int64           // app: priority value for this transaction
+	sender        []byte          // app: assigned sender label
+	sequence      uint64          // app: sequence number for this transaction
+	fromBroadcast bool            // true if submitted via local RPC broadcast
 }
 
-func newWrappedTx(tx *types.CachedTx, height, gasWanted, priority int64, sender []byte, sequence uint64) *wrappedTx {
+func newWrappedTx(tx *types.CachedTx, height, gasWanted, priority int64, sender []byte, sequence uint64, fromBroadcast bool) *wrappedTx {
 	return &wrappedTx{
-		tx:        tx,
-		height:    height,
-		timestamp: time.Now().UTC(),
-		gasWanted: gasWanted,
-		priority:  priority,
-		sender:    sender,
-		sequence:  sequence,
+		tx:            tx,
+		height:        height,
+		timestamp:     time.Now().UTC(),
+		gasWanted:     gasWanted,
+		priority:      priority,
+		sender:        sender,
+		sequence:      sequence,
+		fromBroadcast: fromBroadcast,
 	}
 }
 
