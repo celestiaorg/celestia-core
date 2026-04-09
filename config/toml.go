@@ -519,7 +519,6 @@ timeout_precommit = "{{ .Consensus.TimeoutPrecommit }}"
 timeout_precommit_delta = "{{ .Consensus.TimeoutPrecommitDelta }}"
 # How long we wait after committing a block, before starting on the new
 # height (this gives us a chance to receive some more precommits, even
-# DEPRECATED: timeout_commit is deprecated and will be removed in a future version.
 # though we already have +2/3).
 timeout_commit = "{{ .Consensus.TimeoutCommit }}"
 
