@@ -201,9 +201,6 @@ func (cfg *Config) CheckDeprecated() []string {
 	if cfg.Consensus.TimeoutPrecommitDelta != 0 {
 		warnings = append(warnings, "consensus.timeout_precommit_delta is deprecated and will be removed in a future version")
 	}
-	if cfg.Consensus.TimeoutCommit != 0 {
-		warnings = append(warnings, "consensus.timeout_commit is deprecated and will be removed in a future version")
-	}
 	// CreateEmptyBlocks defaults to true, so we check if it's explicitly set to any value
 	warnings = append(warnings, "consensus.create_empty_blocks is deprecated and will be removed in a future version")
 
@@ -1089,7 +1086,6 @@ type ConsensusConfig struct {
 	// height (this gives us a chance to receive some more precommits, even
 	// though we already have +2/3).
 	// NOTE: when modifying, make sure to update time_iota_ms genesis parameter
-	// Deprecated: TimeoutCommit is deprecated and will be removed in a future version.
 	TimeoutCommit time.Duration `mapstructure:"timeout_commit"`
 
 	// Make progress as soon as we have all the precommits (as if TimeoutCommit = 0)

@@ -1,0 +1,1 @@
+- Undeprecate `timeout_commit` consensus configuration parameter for use in v9.
