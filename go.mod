@@ -1,6 +1,10 @@
 module github.com/cometbft/cometbft
 
+<<<<<<< HEAD
 go 1.25.7
+=======
+go 1.26.2
+>>>>>>> b540d8ff (fix: bump Go version from 1.26.1 to 1.26.2 (#2917))
 
 require (
 	github.com/BurntSushi/toml v1.6.0

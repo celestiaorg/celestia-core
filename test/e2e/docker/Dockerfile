@@ -1,7 +1,12 @@
+<<<<<<< HEAD
 # We need to build in a Linux environment to support C libraries, e.g. RocksDB.
 # We use Debian instead of Alpine, so that we can use binary database packages
 # instead of spending time compiling them.
 FROM golang:1.25.7
+=======
+# We use Debian instead of Alpine for compatibility.
+FROM golang:1.26.2
+>>>>>>> b540d8ff (fix: bump Go version from 1.26.1 to 1.26.2 (#2917))
 
 RUN apt-get -qq update -y && apt-get -qq upgrade -y >/dev/null
 
