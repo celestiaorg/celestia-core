@@ -1,5 +1,5 @@
 # We use Debian instead of Alpine for compatibility.
-FROM golang:1.26.1
+FROM golang:1.26.2
 
 RUN apt-get -qq update -y && apt-get -qq upgrade -y >/dev/null
 
