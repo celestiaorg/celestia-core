@@ -30,9 +30,9 @@ func (env *Environment) GetRoutes() RoutesMap {
 		"header":               rpc.NewRPCFunc(env.Header, "height", rpc.Cacheable("height")),
 		"header_by_hash":       rpc.NewRPCFunc(env.HeaderByHash, "hash", rpc.Cacheable()),
 		"check_tx":             rpc.NewRPCFunc(env.CheckTx, "tx"),
-		"tx":                   rpc.NewRPCFunc(env.Tx, "hash,prove", rpc.Cacheable()),                //nolint:staticcheck
-		"tx_search":            rpc.NewRPCFunc(env.TxSearch, "query,prove,page,per_page,order_by"), //nolint:staticcheck
-		"block_search":         rpc.NewRPCFunc(env.BlockSearch, "query,page,per_page,order_by"),    //nolint:staticcheck
+		"tx":                   rpc.NewRPCFunc(env.Tx, "hash,prove", rpc.Cacheable()),
+		"tx_search":            rpc.NewRPCFunc(env.TxSearch, "query,prove,page,per_page,order_by"),
+		"block_search":         rpc.NewRPCFunc(env.BlockSearch, "query,page,per_page,order_by"),
 		"validators":           rpc.NewRPCFunc(env.Validators, "height,page,per_page", rpc.Cacheable("height")),
 		"dump_consensus_state": rpc.NewRPCFunc(env.DumpConsensusState, ""),
 		"consensus_state":      rpc.NewRPCFunc(env.GetConsensusState, ""),

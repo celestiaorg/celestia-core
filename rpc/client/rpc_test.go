@@ -272,7 +272,7 @@ func TestAppCalls(t *testing.T) {
 		}
 
 		// make sure we can lookup the tx with proof
-		ptx, err := c.Tx(context.Background(), bres.Hash, true) //nolint:staticcheck
+		ptx, err := c.Tx(context.Background(), bres.Hash, true)
 		require.NoError(err)
 		assert.EqualValues(txh, ptx.Height)
 		assert.EqualValues(tx, ptx.Tx)
@@ -553,7 +553,7 @@ func TestTx(t *testing.T) {
 
 			// now we query for the tx.
 			// since there's only one tx, we know index=0.
-			ptx, err := c.Tx(context.Background(), tc.hash, tc.prove) //nolint:staticcheck
+			ptx, err := c.Tx(context.Background(), tc.hash, tc.prove)
 
 			if !tc.valid {
 				require.NotNil(t, err)
@@ -633,7 +633,7 @@ func TestTxSearch(t *testing.T) {
 	for _, c := range GetClients() {
 
 		// now we query for the tx.
-		result, err := c.TxSearch(context.Background(), fmt.Sprintf("tx.hash='%v'", find.Hash), true, nil, nil, "asc") //nolint:staticcheck
+		result, err := c.TxSearch(context.Background(), fmt.Sprintf("tx.hash='%v'", find.Hash), true, nil, nil, "asc")
 		require.Nil(t, err)
 		require.Len(t, result.Txs, 1)
 		require.Equal(t, find.Hash, result.Txs[0].Hash)
@@ -651,32 +651,31 @@ func TestTxSearch(t *testing.T) {
 		// }
 
 		// query by height
-		result, err = c.TxSearch(context.Background(), fmt.Sprintf("tx.height=%d", find.Height), true, nil, nil, "asc") //nolint:staticcheck
+		result, err = c.TxSearch(context.Background(), fmt.Sprintf("tx.height=%d", find.Height), true, nil, nil, "asc")
 		require.Nil(t, err)
 		require.Len(t, result.Txs, 1)
 
 		// query for non existing tx
-		result, err = c.TxSearch(context.Background(), fmt.Sprintf("tx.hash='%X'", anotherTxHash), false, nil, nil, "asc") //nolint:staticcheck
+		result, err = c.TxSearch(context.Background(), fmt.Sprintf("tx.hash='%X'", anotherTxHash), false, nil, nil, "asc")
 		require.Nil(t, err)
 		require.Len(t, result.Txs, 0)
 
 		// query using a compositeKey (see kvstore application)
-		result, err = c.TxSearch(context.Background(), "app.creator='Cosmoshi Netowoko'", false, nil, nil, "asc") //nolint:staticcheck
+		result, err = c.TxSearch(context.Background(), "app.creator='Cosmoshi Netowoko'", false, nil, nil, "asc")
 		require.Nil(t, err)
 		require.Greater(t, len(result.Txs), 0, "expected a lot of transactions")
 
 		// query using an index key
-		result, err = c.TxSearch(context.Background(), "app.index_key='index is working'", false, nil, nil, "asc") //nolint:staticcheck
+		result, err = c.TxSearch(context.Background(), "app.index_key='index is working'", false, nil, nil, "asc")
 		require.Nil(t, err)
 		require.Greater(t, len(result.Txs), 0, "expected a lot of transactions")
 
 		// query using an noindex key
-		result, err = c.TxSearch(context.Background(), "app.noindex_key='index is working'", false, nil, nil, "asc") //nolint:staticcheck
+		result, err = c.TxSearch(context.Background(), "app.noindex_key='index is working'", false, nil, nil, "asc")
 		require.Nil(t, err)
 		require.Equal(t, len(result.Txs), 0, "expected a lot of transactions")
 
 		// query using a compositeKey (see kvstore application) and height
-		//nolint:staticcheck
 		result, err = c.TxSearch(context.Background(),
 			"app.creator='Cosmoshi Netowoko' AND tx.height<10000", true, nil, nil, "asc")
 		require.Nil(t, err)
@@ -684,19 +683,19 @@ func TestTxSearch(t *testing.T) {
 
 		// query a non existing tx with page 1 and txsPerPage 1
 		perPage := 1
-		result, err = c.TxSearch(context.Background(), "app.creator='Cosmoshi Neetowoko'", true, nil, &perPage, "asc") //nolint:staticcheck
+		result, err = c.TxSearch(context.Background(), "app.creator='Cosmoshi Neetowoko'", true, nil, &perPage, "asc")
 		require.Nil(t, err)
 		require.Len(t, result.Txs, 0)
 
 		// check sorting
-		result, err = c.TxSearch(context.Background(), fmt.Sprintf("tx.height >= %d", status.SyncInfo.LatestBlockHeight), false, nil, nil, "asc") //nolint:staticcheck
+		result, err = c.TxSearch(context.Background(), fmt.Sprintf("tx.height >= %d", status.SyncInfo.LatestBlockHeight), false, nil, nil, "asc")
 		require.Nil(t, err)
 		for k := 0; k < len(result.Txs)-1; k++ {
 			require.LessOrEqual(t, result.Txs[k].Height, result.Txs[k+1].Height)
 			require.LessOrEqual(t, result.Txs[k].Index, result.Txs[k+1].Index)
 		}
 
-		result, err = c.TxSearch(context.Background(), fmt.Sprintf("tx.height >= %d", status.SyncInfo.LatestBlockHeight), false, nil, nil, "desc") //nolint:staticcheck
+		result, err = c.TxSearch(context.Background(), fmt.Sprintf("tx.height >= %d", status.SyncInfo.LatestBlockHeight), false, nil, nil, "desc")
 		require.Nil(t, err)
 		for k := 0; k < len(result.Txs)-1; k++ {
 			require.GreaterOrEqual(t, result.Txs[k].Height, result.Txs[k+1].Height)
@@ -713,7 +712,7 @@ func TestTxSearch(t *testing.T) {
 		totalTx := 0
 		for page := 1; page <= pages; page++ {
 			page := page
-			result, err := c.TxSearch(context.Background(), fmt.Sprintf("tx.height >= %d", status.SyncInfo.LatestBlockHeight), true, &page, &perPage, "asc") //nolint:staticcheck
+			result, err := c.TxSearch(context.Background(), fmt.Sprintf("tx.height >= %d", status.SyncInfo.LatestBlockHeight), true, &page, &perPage, "asc")
 			require.NoError(t, err)
 			if page < pages {
 				require.Len(t, result.Txs, perPage)
