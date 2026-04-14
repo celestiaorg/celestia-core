@@ -1318,9 +1318,12 @@ func DefaultTxIndexConfig() *TxIndexConfig {
 	}
 }
 
-// TestTxIndexConfig returns a default configuration for the transaction indexer.
+// TestTxIndexConfig returns a test configuration for the transaction indexer
+// with "kv" enabled so that RPC tests can still use indexer-dependent endpoints.
 func TestTxIndexConfig() *TxIndexConfig {
-	return DefaultTxIndexConfig()
+	return &TxIndexConfig{
+		Indexer: "kv",
+	}
 }
 
 //-----------------------------------------------------------------------------

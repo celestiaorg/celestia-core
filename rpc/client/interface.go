@@ -72,7 +72,7 @@ type SignClient interface {
 	Commit(ctx context.Context, height *int64) (*ctypes.ResultCommit, error)
 	Validators(ctx context.Context, height *int64, page, perPage *int) (*ctypes.ResultValidators, error)
 	// Deprecated: The tx endpoint is deprecated and will be removed in a future release.
-	Tx(ctx context.Context, hash []byte, prove bool) (*ctypes.ResultTx, error)
+	Tx(ctx context.Context, hash []byte, prove bool) (*ctypes.ResultTx, error) //nolint:staticcheck
 
 	// TxSearch defines a method to search for a paginated set of transactions by
 	// transaction event search criteria.
@@ -84,7 +84,7 @@ type SignClient interface {
 		prove bool,
 		page, perPage *int,
 		orderBy string,
-	) (*ctypes.ResultTxSearch, error)
+	) (*ctypes.ResultTxSearch, error) //nolint:staticcheck
 
 	// BlockSearch defines a method to search for a paginated set of blocks based
 	// from FinalizeBlock event search criteria.
@@ -95,7 +95,7 @@ type SignClient interface {
 		query string,
 		page, perPage *int,
 		orderBy string,
-	) (*ctypes.ResultBlockSearch, error)
+	) (*ctypes.ResultBlockSearch, error) //nolint:staticcheck
 
 	SignedBlock(ctx context.Context, height *int64) (*ctypes.ResultSignedBlock, error)
 

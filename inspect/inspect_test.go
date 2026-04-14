@@ -147,7 +147,7 @@ func TestTxSearch(t *testing.T) {
 	require.NoError(t, err)
 
 	page := 1
-	resultTxSearch, err := cli.TxSearch(context.Background(), testQuery, false, &page, &page, "")
+	resultTxSearch, err := cli.TxSearch(context.Background(), testQuery, false, &page, &page, "") //nolint:staticcheck
 	require.NoError(t, err)
 	require.Len(t, resultTxSearch.Txs, 1)
 	require.Equal(t, types.Tx(testTx), resultTxSearch.Txs[0].Tx)
@@ -194,7 +194,7 @@ func TestTx(t *testing.T) {
 	cli, err := httpclient.New(rpcConfig.ListenAddress, "/websocket")
 	require.NoError(t, err)
 
-	res, err := cli.Tx(context.Background(), testHash, false)
+	res, err := cli.Tx(context.Background(), testHash, false) //nolint:staticcheck
 	require.NoError(t, err)
 	require.Equal(t, types.Tx(testTx), res.Tx)
 
@@ -560,7 +560,7 @@ func TestBlockSearch(t *testing.T) {
 	testPage := 1
 	testPerPage := 100
 	testOrderBy := "desc"
-	res, err := cli.BlockSearch(context.Background(), testQuery, &testPage, &testPerPage, testOrderBy)
+	res, err := cli.BlockSearch(context.Background(), testQuery, &testPage, &testPerPage, testOrderBy) //nolint:staticcheck
 	require.NoError(t, err)
 	require.NotNil(t, res)
 	require.Equal(t, testBlockHash, []byte(res.Blocks[0].BlockID.Hash))
