@@ -162,6 +162,9 @@ func createAndStartIndexerService(
 	if err != nil {
 		return nil, nil, nil, err
 	}
+	if config.TxIndex.Indexer == "kv" {
+		logger.Info("WARNING: the 'kv' indexer is deprecated and will be removed in a future release")
+	}
 	if allIndexersDisabled {
 		return nil, txIndexer, blockIndexer, nil
 	}

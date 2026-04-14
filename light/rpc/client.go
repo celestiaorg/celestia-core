@@ -471,6 +471,8 @@ func (c *Client) Commit(ctx context.Context, height *int64) (*ctypes.ResultCommi
 
 // Tx calls rpcclient#Tx method and then verifies the proof if such was
 // requested.
+//
+// Deprecated: The tx endpoint is deprecated and will be removed in a future release.
 func (c *Client) Tx(ctx context.Context, hash []byte, prove bool) (*ctypes.ResultTx, error) {
 	res, err := c.next.Tx(ctx, hash, prove)
 	if err != nil || !prove {
@@ -492,6 +494,7 @@ func (c *Client) Tx(ctx context.Context, hash []byte, prove bool) (*ctypes.Resul
 	return res, res.Proof.Validate(l.DataHash)
 }
 
+// Deprecated: The tx_search endpoint is deprecated and will be removed in a future release.
 func (c *Client) TxSearch(
 	ctx context.Context,
 	query string,
@@ -502,6 +505,7 @@ func (c *Client) TxSearch(
 	return c.next.TxSearch(ctx, query, prove, page, perPage, orderBy)
 }
 
+// Deprecated: The block_search endpoint is deprecated and will be removed in a future release.
 func (c *Client) BlockSearch(
 	ctx context.Context,
 	query string,

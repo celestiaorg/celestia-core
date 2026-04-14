@@ -184,10 +184,12 @@ func (c *Local) Validators(_ context.Context, height *int64, page, perPage *int)
 	return c.env.Validators(c.ctx, height, page, perPage)
 }
 
+// Deprecated: The tx endpoint is deprecated and will be removed in a future release.
 func (c *Local) Tx(_ context.Context, hash []byte, prove bool) (*ctypes.ResultTx, error) {
 	return c.env.Tx(c.ctx, hash, prove)
 }
 
+// Deprecated: The tx_search endpoint is deprecated and will be removed in a future release.
 func (c *Local) TxSearch(
 	_ context.Context,
 	query string,
@@ -199,6 +201,7 @@ func (c *Local) TxSearch(
 	return c.env.TxSearch(c.ctx, query, prove, page, perPage, orderBy)
 }
 
+// Deprecated: The block_search endpoint is deprecated and will be removed in a future release.
 func (c *Local) BlockSearch(
 	_ context.Context,
 	query string,

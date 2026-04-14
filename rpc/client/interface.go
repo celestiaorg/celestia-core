@@ -71,10 +71,13 @@ type SignClient interface {
 	HeaderByHash(ctx context.Context, hash bytes.HexBytes) (*ctypes.ResultHeader, error)
 	Commit(ctx context.Context, height *int64) (*ctypes.ResultCommit, error)
 	Validators(ctx context.Context, height *int64, page, perPage *int) (*ctypes.ResultValidators, error)
+	// Deprecated: The tx endpoint is deprecated and will be removed in a future release.
 	Tx(ctx context.Context, hash []byte, prove bool) (*ctypes.ResultTx, error)
 
 	// TxSearch defines a method to search for a paginated set of transactions by
 	// transaction event search criteria.
+	//
+	// Deprecated: The tx_search endpoint is deprecated and will be removed in a future release.
 	TxSearch(
 		ctx context.Context,
 		query string,
@@ -85,6 +88,8 @@ type SignClient interface {
 
 	// BlockSearch defines a method to search for a paginated set of blocks based
 	// from FinalizeBlock event search criteria.
+	//
+	// Deprecated: The block_search endpoint is deprecated and will be removed in a future release.
 	BlockSearch(
 		ctx context.Context,
 		query string,

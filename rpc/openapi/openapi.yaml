@@ -870,10 +870,13 @@ paths:
   /tx_search:
     get:
       summary: Search for transactions
+      deprecated: true
       description: |
         Search for transactions w/ their results.
 
         See /subscribe for the query syntax.
+
+        Deprecated: This endpoint is deprecated and will be removed in a future release.
       operationId: tx_search
       parameters:
         - in: query
@@ -933,10 +936,13 @@ paths:
   /block_search:
     get:
       summary: Search for blocks by FinalizeBlock events
+      deprecated: true
       description: |
         Search for blocks by FinalizeBlock events.
 
         See /subscribe for the query syntax.
+
+        Deprecated: This endpoint is deprecated and will be removed in a future release.
       operationId: block_search
       parameters:
         - in: query
@@ -989,6 +995,7 @@ paths:
   /tx:
     get:
       summary: Get transactions by hash
+      deprecated: true
       operationId: tx
       parameters:
         - in: query

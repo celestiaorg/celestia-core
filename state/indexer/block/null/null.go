@@ -16,7 +16,7 @@ var _ indexer.BlockIndexer = (*BlockerIndexer)(nil)
 type BlockerIndexer struct{}
 
 func (idx *BlockerIndexer) Has(int64) (bool, error) {
-	return false, errors.New(`indexing is disabled (set 'tx_index = "kv"' in config)`)
+	return false, errors.New(`indexing is disabled and kv indexer is deprecated`)
 }
 
 func (idx *BlockerIndexer) Index(types.EventDataNewBlockEvents) error {

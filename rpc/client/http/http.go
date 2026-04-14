@@ -485,6 +485,7 @@ func (c *baseRPCClient) Commit(ctx context.Context, height *int64) (*ctypes.Resu
 	return result, nil
 }
 
+// Deprecated: The tx endpoint is deprecated and will be removed in a future release.
 func (c *baseRPCClient) Tx(ctx context.Context, hash []byte, prove bool) (*ctypes.ResultTx, error) {
 	result := new(ctypes.ResultTx)
 	params := map[string]interface{}{
@@ -498,6 +499,7 @@ func (c *baseRPCClient) Tx(ctx context.Context, hash []byte, prove bool) (*ctype
 	return result, nil
 }
 
+// Deprecated: The tx_search endpoint is deprecated and will be removed in a future release.
 func (c *baseRPCClient) TxSearch(
 	ctx context.Context,
 	query string,
@@ -528,6 +530,7 @@ func (c *baseRPCClient) TxSearch(
 	return result, nil
 }
 
+// Deprecated: The block_search endpoint is deprecated and will be removed in a future release.
 func (c *baseRPCClient) BlockSearch(
 	ctx context.Context,
 	query string,
