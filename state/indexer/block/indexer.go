@@ -32,7 +32,7 @@ func IndexerFromConfigWithDisabledIndexers(cfg *config.Config, dbProvider config
 	txIdx txindex.TxIndexer, blockIdx indexer.BlockIndexer, allIndexersDisabled bool, err error,
 ) {
 	switch cfg.TxIndex.Indexer {
-	case "kv":
+	case "kv": // Deprecated: the "kv" indexer is deprecated and will be removed in a future release.
 		store, err := dbProvider(&config.DBContext{ID: "tx_index", Config: cfg})
 		if err != nil {
 			return nil, nil, false, err

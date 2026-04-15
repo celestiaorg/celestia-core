@@ -86,7 +86,7 @@ func TestApp_Tx(t *testing.T) {
 		hash := tx.Hash()
 		waitTime := 30 * time.Second
 		require.Eventuallyf(t, func() bool {
-			txResp, err := client.Tx(ctx, hash, false)
+			txResp, err := client.Tx(ctx, hash, false) //nolint:staticcheck
 			return err == nil && bytes.Equal(txResp.Tx, tx)
 		}, waitTime, time.Second,
 			"submitted tx wasn't committed after %v", waitTime,

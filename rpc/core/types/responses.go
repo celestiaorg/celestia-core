@@ -195,7 +195,9 @@ type ResultCheckTx struct {
 	abci.ResponseCheckTx
 }
 
-// Result of querying for a tx
+// ResultTx is the result of querying for a tx.
+//
+// Deprecated: The tx endpoint is deprecated and will be removed in a future release.
 type ResultTx struct {
 	Hash     bytes.HexBytes    `json:"hash"`
 	Height   int64             `json:"height"`
@@ -205,13 +207,17 @@ type ResultTx struct {
 	Proof    types.ShareProof  `json:"proof,omitempty"`
 }
 
-// Result of searching for txs
+// ResultTxSearch is the result of searching for txs.
+//
+// Deprecated: The tx_search endpoint is deprecated and will be removed in a future release.
 type ResultTxSearch struct {
 	Txs        []*ResultTx `json:"txs"`
 	TotalCount int         `json:"total_count"`
 }
 
 // ResultBlockSearch defines the RPC response type for a block search by events.
+//
+// Deprecated: The block_search endpoint is deprecated and will be removed in a future release.
 type ResultBlockSearch struct {
 	Blocks     []*ResultBlock `json:"blocks"`
 	TotalCount int            `json:"total_count"`

@@ -171,6 +171,9 @@ func MakeConfig(node *e2e.Node) (*config.Config, error) {
 	cfg := config.DefaultConfig()
 	cfg.Moniker = node.Name
 	cfg.ProxyApp = AppAddressTCP
+	// The default tx indexer is "null"; override to "kv" so e2e tests that
+	// query the deprecated tx/tx_search endpoints continue to work.
+	cfg.TxIndex.Indexer = "kv"
 	cfg.RPC.ListenAddress = "tcp://0.0.0.0:26657"
 	cfg.RPC.PprofListenAddress = ":6060"
 	cfg.P2P.ExternalAddress = fmt.Sprintf("tcp://%v", node.AddressP2P(false))

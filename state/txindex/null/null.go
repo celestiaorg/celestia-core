@@ -18,7 +18,7 @@ type TxIndex struct{}
 
 // Get on a TxIndex is disabled and panics when invoked.
 func (txi *TxIndex) Get(_ []byte) (*abci.TxResult, error) {
-	return nil, errors.New(`indexing is disabled (set 'tx_index = "kv"' in config)`)
+	return nil, errors.New(`indexing is disabled and kv indexer was deprecated`)
 }
 
 // AddBatch is a noop and always returns nil.

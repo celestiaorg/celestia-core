@@ -117,6 +117,7 @@ func loadEventSinks(cfg *cmtcfg.Config, chainID string) (indexer.BlockIndexer, t
 		}
 		return es.BlockIndexer(), es.TxIndexer(), nil
 	case "kv":
+		fmt.Println("WARNING: reindex-event with the 'kv' indexer is deprecated and will be removed in a future release")
 		store, err := dbm.NewDB("tx_index", dbm.BackendType(cfg.DBBackend), cfg.DBDir())
 		if err != nil {
 			return nil, nil, err

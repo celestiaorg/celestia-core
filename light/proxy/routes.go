@@ -154,14 +154,17 @@ func makeCommitFunc(c *lrpc.Client) rpcCommitFunc {
 	}
 }
 
+//nolint:staticcheck // Deprecated: will be removed in a future release.
 type rpcTxFunc func(ctx *rpctypes.Context, hash []byte, prove bool) (*ctypes.ResultTx, error)
 
+//nolint:staticcheck // Deprecated: will be removed in a future release.
 func makeTxFunc(c *lrpc.Client) rpcTxFunc {
 	return func(ctx *rpctypes.Context, hash []byte, prove bool) (*ctypes.ResultTx, error) {
 		return c.Tx(ctx.Context(), hash, prove)
 	}
 }
 
+//nolint:staticcheck // Deprecated: will be removed in a future release.
 type rpcTxSearchFunc func(
 	ctx *rpctypes.Context,
 	query string,
@@ -170,6 +173,7 @@ type rpcTxSearchFunc func(
 	orderBy string,
 ) (*ctypes.ResultTxSearch, error)
 
+//nolint:staticcheck // Deprecated: will be removed in a future release.
 func makeTxSearchFunc(c *lrpc.Client) rpcTxSearchFunc {
 	return func(
 		ctx *rpctypes.Context,
@@ -182,6 +186,7 @@ func makeTxSearchFunc(c *lrpc.Client) rpcTxSearchFunc {
 	}
 }
 
+//nolint:staticcheck // Deprecated: will be removed in a future release.
 type rpcBlockSearchFunc func(
 	ctx *rpctypes.Context,
 	query string,
@@ -190,6 +195,7 @@ type rpcBlockSearchFunc func(
 	orderBy string,
 ) (*ctypes.ResultBlockSearch, error)
 
+//nolint:staticcheck // Deprecated: will be removed in a future release.
 func makeBlockSearchFunc(c *lrpc.Client) rpcBlockSearchFunc {
 	return func(
 		ctx *rpctypes.Context,

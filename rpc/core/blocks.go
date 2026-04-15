@@ -213,12 +213,15 @@ func (env *Environment) BlockResults(_ *rpctypes.Context, heightPtr *int64) (*ct
 
 // BlockSearch searches for a paginated set of blocks matching
 // FinalizeBlock event search criteria.
+//
+// Deprecated: The block_search endpoint is deprecated and will be removed in a future release.
 func (env *Environment) BlockSearch(
 	ctx *rpctypes.Context,
 	query string,
 	pagePtr, perPagePtr *int,
 	orderBy string,
 ) (*ctypes.ResultBlockSearch, error) {
+	env.Logger.Info("WARNING: /block_search endpoint is deprecated and will be removed in a future release")
 	// skip if block indexing is disabled
 	if _, ok := env.BlockIndexer.(*blockidxnull.BlockerIndexer); ok {
 		return nil, errors.New("block indexing is disabled")

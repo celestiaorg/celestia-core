@@ -579,7 +579,7 @@ func TestTxSearchWithTimeout(t *testing.T) {
 	require.NoError(t, err)
 
 	// query using a compositeKey (see kvstore application)
-	result, err := timeoutClient.TxSearch(context.Background(), "app.creator='Cosmoshi Netowoko'", false, nil, nil, "asc")
+	result, err := timeoutClient.TxSearch(context.Background(), "app.creator='Cosmoshi Netowoko'", false, nil, nil, "asc") //nolint:staticcheck
 	require.Nil(t, err)
 	require.Greater(t, len(result.Txs), 0, "expected a lot of transactions")
 }
@@ -597,7 +597,7 @@ func TestBlockSearch(t *testing.T) {
 		require.NoError(t, err)
 	}
 	require.NoError(t, client.WaitForHeight(c, 5, nil))
-	result, err := c.BlockSearch(context.Background(), "begin_event.foo = 100", nil, nil, "asc")
+	result, err := c.BlockSearch(context.Background(), "begin_event.foo = 100", nil, nil, "asc") //nolint:staticcheck
 	require.NoError(t, err)
 	blockCount := len(result.Blocks)
 	// if we generate block events within the test (by uncommenting
@@ -622,7 +622,7 @@ func TestTxSearch(t *testing.T) {
 
 	// since we're not using an isolated test server, we'll have lingering transactions
 	// from other tests as well
-	result, err := c.TxSearch(context.Background(), fmt.Sprintf("tx.height >= %d", status.SyncInfo.LatestBlockHeight), true, nil, nil, "asc")
+	result, err := c.TxSearch(context.Background(), fmt.Sprintf("tx.height >= %d", status.SyncInfo.LatestBlockHeight), true, nil, nil, "asc") //nolint:staticcheck
 	require.NoError(t, err)
 	txCount := len(result.Txs)
 
