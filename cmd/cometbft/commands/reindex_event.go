@@ -7,13 +7,17 @@ import (
 
 	"github.com/spf13/cobra"
 
+	dbm "github.com/cometbft/cometbft-db"
+
 	abcitypes "github.com/cometbft/cometbft/abci/types"
 	cmtcfg "github.com/cometbft/cometbft/config"
 	"github.com/cometbft/cometbft/libs/progressbar"
 	"github.com/cometbft/cometbft/state"
 	"github.com/cometbft/cometbft/state/indexer"
+	blockidxkv "github.com/cometbft/cometbft/state/indexer/block/kv"
 	"github.com/cometbft/cometbft/state/indexer/sink/psql"
 	"github.com/cometbft/cometbft/state/txindex"
+	"github.com/cometbft/cometbft/state/txindex/kv"
 	"github.com/cometbft/cometbft/types"
 )
 
@@ -113,7 +117,15 @@ func loadEventSinks(cfg *cmtcfg.Config, chainID string) (indexer.BlockIndexer, t
 		}
 		return es.BlockIndexer(), es.TxIndexer(), nil
 	case "kv":
-		return nil, nil, errors.New("the 'kv' indexer is deprecated and no longer supported for reindex-event, please use 'psql' instead")
+		fmt.Println("WARNING: reindex-event with the 'kv' indexer is deprecated and will be removed in a future release")
+		store, err := dbm.NewDB("tx_index", dbm.BackendType(cfg.DBBackend), cfg.DBDir())
+		if err != nil {
+			return nil, nil, err
+		}
+
+		txIndexer := kv.NewTxIndex(store)
+		blockIndexer := blockidxkv.New(dbm.NewPrefixDB(store, []byte("block_events")))
+		return blockIndexer, txIndexer, nil
 	default:
 		return nil, nil, fmt.Errorf("unsupported event sink type: %s", cfg.TxIndex.Indexer)
 	}

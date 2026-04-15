@@ -4,4 +4,5 @@
 - Deprecate the `tx`, `tx_search`, and `block_search` RPC endpoints. These
   endpoints still work but log deprecation warnings and will be removed in a
   future release.
-- Remove KV indexer support from the `reindex-event` CLI command.
+- Deprecate KV indexer support in the `reindex-event` CLI command. The command
+  still works with the KV indexer but logs a deprecation warning.
