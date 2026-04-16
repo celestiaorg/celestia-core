@@ -195,6 +195,7 @@ func TestLightClientAttackEvidenceValidation(t *testing.T) {
 		}, false},
 		{"Nil conflicting header", func(ev *LightClientAttackEvidence) { ev.ConflictingBlock.Header = nil }, true},
 		{"Nil conflicting blocl", func(ev *LightClientAttackEvidence) { ev.ConflictingBlock = nil }, true},
+		{"Nil signed header", func(ev *LightClientAttackEvidence) { ev.ConflictingBlock.SignedHeader = nil }, true},
 		{"Nil validator set", func(ev *LightClientAttackEvidence) {
 			ev.ConflictingBlock.ValidatorSet = &ValidatorSet{}
 		}, true},
