@@ -53,8 +53,6 @@ func TestByzantinePrevoteEquivocation(t *testing.T) {
 	evpools := make([]*evidence.Pool, nValidators)
 	blockStores := make([]*store.BlockStore, nValidators)
 	maxEvidenceBytes := int64(0)
-	_ = blockStores
-	_ = maxEvidenceBytes
 
 	for i := 0; i < nValidators; i++ {
 		logger := consensusLogger().With("test", "byzantine", "validator", i)
@@ -158,7 +156,6 @@ func TestByzantinePrevoteEquivocation(t *testing.T) {
 
 	// initialize the reactors for each of the validators
 	reactors := make([]*Reactor, nValidators)
-	blocksSubs := make([]types.Subscription, 0)
 	eventBuses := make([]*types.EventBus, nValidators)
 	for i := 0; i < nValidators; i++ {
 		reactors[i] = NewReactor(css[i], css[i].propagator, true, WithGossipDataEnabled(true)) // so we dont start the consensus states
@@ -168,12 +165,8 @@ func TestByzantinePrevoteEquivocation(t *testing.T) {
 		eventBuses[i] = css[i].eventBus
 		reactors[i].SetEventBus(eventBuses[i])
 
-		blocksSub, err := eventBuses[i].Subscribe(context.Background(), testSubscriber, types.EventQueryNewBlock, 100)
-		require.NoError(t, err)
-		blocksSubs = append(blocksSubs, blocksSub)
-
 		if css[i].state.LastBlockHeight == 0 { // simulate handle initChain in handshake
-			err = css[i].blockExec.Store().Save(css[i].state)
+			err := css[i].blockExec.Store().Save(css[i].state)
 			require.NoError(t, err)
 		}
 	}
@@ -307,56 +300,46 @@ func TestByzantinePrevoteEquivocation(t *testing.T) {
 	}
 	defer stopConsensusNet(log.TestingLogger(), reactors, eventBuses)
 
-	// Evidence should be submitted and committed at the third height but
-	// we will check the first six just in case
-	var evidenceFound types.Evidence
-
-	// We only need to find evidence from at least one validator, not all
-	// since evidence gossiping and inclusion in blocks can have timing variations
-	done := make(chan types.Evidence, 1)
-
-	// Start goroutines to watch for evidence from any validator
-	for i := 0; i < nValidators; i++ {
-		go func(i int) {
-			blockCount := 0
-			for msg := range blocksSubs[i].Out() {
-				block := msg.Data().(types.EventDataNewBlock).Block
-				blockCount++
-
-				evCount := len(block.Evidence.Evidence)
-				poolSize := evpools[i].Size()
-				t.Logf("[val %d] block h=%d evidence_in_block=%d pending_pool_size=%d",
-					i, block.Height, evCount, poolSize)
-
-				if evCount != 0 {
-					select {
-					case done <- block.Evidence.Evidence[0]:
-					default:
-					}
-					return
-				}
-				if blockCount >= 50 {
-					t.Logf("[val %d] watched %d blocks without finding evidence", i, blockCount)
-					return
-				}
-			}
-		}(i)
-	}
-
 	pubkey, err := bcs.privValidator.GetPubKey()
 	require.NoError(t, err)
 
-	select {
-	case evidenceFound = <-done:
-		// Verify the evidence is correct
-		ev, ok := evidenceFound.(*types.DuplicateVoteEvidence)
-		require.True(t, ok, "Evidence should be DuplicateVoteEvidence")
-		assert.Equal(t, pubkey.Address(), ev.VoteA.ValidatorAddress)
-		assert.Equal(t, prevoteHeight, ev.Height())
-		t.Logf("Successfully found evidence: %v", ev)
-	case <-time.After(120 * time.Second):
-		t.Fatalf("Timed out waiting for validators to commit evidence after 120 seconds")
-	}
+	// Stage 1: wait for the duplicate-vote evidence to land in any validator's
+	// evidence pool. This isolates "evidence detected" from "evidence committed"
+	// so that future failures point at the correct failing stage.
+	var foundEvidence types.Evidence
+	require.Eventually(t, func() bool {
+		for i := 0; i < nValidators; i++ {
+			pending, _ := evpools[i].PendingEvidence(maxEvidenceBytes)
+			for _, ev := range pending {
+				if dve, ok := ev.(*types.DuplicateVoteEvidence); ok {
+					if prevoteHeight == dve.Height() {
+						foundEvidence = dve
+						return true
+					}
+				}
+			}
+		}
+		return false
+	}, 30*time.Second, 100*time.Millisecond, "evidence pool never received DuplicateVoteEvidence at height %d", prevoteHeight)
+
+	// Stage 2: wait for evidence to be committed in some block on any validator.
+	require.Eventually(t, func() bool {
+		for i := 0; i < nValidators; i++ {
+			for h := int64(1); h <= blockStores[i].Height(); h++ {
+				b := blockStores[i].LoadBlock(h)
+				if b != nil && len(b.Evidence.Evidence) > 0 {
+					return true
+				}
+			}
+		}
+		return false
+	}, 60*time.Second, 200*time.Millisecond, "evidence was detected in pool but never committed in a block")
+
+	ev, ok := foundEvidence.(*types.DuplicateVoteEvidence)
+	require.True(t, ok, "Evidence should be DuplicateVoteEvidence")
+	assert.Equal(t, pubkey.Address(), ev.VoteA.ValidatorAddress)
+	assert.Equal(t, prevoteHeight, ev.Height())
+	t.Logf("Successfully found evidence: %v", ev)
 }
 
 // 4 validators. 1 is byzantine. The other three are partitioned into A (1 val) and B (2 vals).
