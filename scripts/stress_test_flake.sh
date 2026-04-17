@@ -8,7 +8,7 @@ set -u
 COUNT="${1:-50}"
 TEST="${2:-TestByzantinePrevoteEquivocation}"
 PKG="./consensus/..."
-LOG_DIR="$(mktemp -d)"
+LOG_DIR="$(mktemp -d)" || { echo "Failed to create temp dir" >&2; exit 1; }
 
 echo "Running $TEST x$COUNT, logs in $LOG_DIR"
 
@@ -28,6 +28,17 @@ echo
 echo "Passed: $pass / $COUNT"
 echo "Failed: $fail / $COUNT"
 if [ "$fail" -gt 0 ]; then
-  echo "First failing log: $(ls "$LOG_DIR"/run-*.log | while read f; do grep -l -E 'FAIL|panic' "$f" && break; done | head -1)"
+  first_fail=""
+  for f in "$LOG_DIR"/run-*.log; do
+    if grep -q -E 'FAIL|panic' "$f"; then
+      first_fail="$f"
+      break
+    fi
+  done
+  if [ -n "$first_fail" ]; then
+    echo "First failing log: $first_fail"
+  else
+    echo "Failing logs in: $LOG_DIR (no FAIL/panic pattern matched — check manually)"
+  fi
   exit 1
 fi
