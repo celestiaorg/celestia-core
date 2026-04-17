@@ -50,6 +50,9 @@ func TestByzantinePrevoteEquivocation(t *testing.T) {
 
 	genDoc, privVals := randGenesisDoc(nValidators, false, 30, nil)
 	css := make([]*State, nValidators)
+	evpools := make([]*evidence.Pool, nValidators)
+	blockStores := make([]*store.BlockStore, nValidators)
+	maxEvidenceBytes := int64(0)
 
 	for i := 0; i < nValidators; i++ {
 		logger := consensusLogger().With("test", "byzantine", "validator", i)
@@ -114,6 +117,11 @@ func TestByzantinePrevoteEquivocation(t *testing.T) {
 		evpool, err := evidence.NewPool(evidenceDB, stateStore, blockStore)
 		require.NoError(t, err)
 		evpool.SetLogger(logger.With("module", "evidence"))
+		evpools[i] = evpool
+		blockStores[i] = blockStore
+		if i == 0 {
+			maxEvidenceBytes = state.ConsensusParams.Evidence.MaxBytes
+		}
 
 		// Make State
 		blockExec := sm.NewBlockExecutor(stateStore, log.TestingLogger(), proxyAppConnCon, mempool, evpool, blockStore)
@@ -148,7 +156,6 @@ func TestByzantinePrevoteEquivocation(t *testing.T) {
 
 	// initialize the reactors for each of the validators
 	reactors := make([]*Reactor, nValidators)
-	blocksSubs := make([]types.Subscription, 0)
 	eventBuses := make([]*types.EventBus, nValidators)
 	for i := 0; i < nValidators; i++ {
 		reactors[i] = NewReactor(css[i], css[i].propagator, true, WithGossipDataEnabled(true)) // so we dont start the consensus states
@@ -158,12 +165,8 @@ func TestByzantinePrevoteEquivocation(t *testing.T) {
 		eventBuses[i] = css[i].eventBus
 		reactors[i].SetEventBus(eventBuses[i])
 
-		blocksSub, err := eventBuses[i].Subscribe(context.Background(), testSubscriber, types.EventQueryNewBlock, 100)
-		require.NoError(t, err)
-		blocksSubs = append(blocksSubs, blocksSub)
-
 		if css[i].state.LastBlockHeight == 0 { // simulate handle initChain in handshake
-			err = css[i].blockExec.Store().Save(css[i].state)
+			err := css[i].blockExec.Store().Save(css[i].state)
 			require.NoError(t, err)
 		}
 	}
@@ -174,6 +177,21 @@ func TestByzantinePrevoteEquivocation(t *testing.T) {
 		return s
 	}, p2p.Connect2Switches)
 
+	// Wait for all validators to see (nValidators-1) peers. MakeConnectedSwitches
+	// dials synchronously but the p2p handshake and peer-registration happen
+	// asynchronously; without this wait, the byzantine node can reach its
+	// doPrevote override with a partial peer set and fire conflicting votes at
+	// fewer than nValidators-1 peers, which the evidence pool cannot reconstruct
+	// into DuplicateVoteEvidence.
+	require.Eventually(t, func() bool {
+		for i := 0; i < nValidators; i++ {
+			if reactors[i].Switch.Peers().Size() < nValidators-1 {
+				return false
+			}
+		}
+		return true
+	}, 10*time.Second, 50*time.Millisecond, "all validators should have (nValidators-1) peers before consensus starts")
+
 	// create byzantine validator
 	bcs := css[byzantineNode]
 
@@ -181,31 +199,26 @@ func TestByzantinePrevoteEquivocation(t *testing.T) {
 	bcs.doPrevote = func(height int64, round int32) {
 		// allow first height to happen normally so that byzantine validator is no longer proposer
 		if height == prevoteHeight {
-			bcs.Logger.Info("Sending two votes")
+			t.Logf("[byz] sending two conflicting prevotes at height=%d round=%d", height, round)
 			prevote1, err := bcs.signVote(cmtproto.PrevoteType, bcs.rs.ProposalBlock.Hash(), bcs.rs.ProposalBlockParts.Header(), nil)
 			require.NoError(t, err)
 			prevote2, err := bcs.signVote(cmtproto.PrevoteType, nil, types.PartSetHeader{}, nil)
 			require.NoError(t, err)
 			peerList := reactors[byzantineNode].Switch.Peers().List()
-			bcs.Logger.Info("Getting peer list", "peers", peerList)
+			t.Logf("[byz] peer count at prevote time: %d", len(peerList))
 			// send two votes to all peers (1st to one half, 2nd to another half)
 			for i, peer := range peerList {
-				if i < len(peerList)/2 {
-					bcs.Logger.Info("Signed and pushed vote", "vote", prevote1, "peer", peer)
-					peer.Send(p2p.Envelope{
-						Message:   &cmtcons.Vote{Vote: prevote1.ToProto()},
-						ChannelID: VoteChannel,
-					})
-				} else {
-					bcs.Logger.Info("Signed and pushed vote", "vote", prevote2, "peer", peer)
-					peer.Send(p2p.Envelope{
-						Message:   &cmtcons.Vote{Vote: prevote2.ToProto()},
-						ChannelID: VoteChannel,
-					})
+				v := prevote1
+				if i >= len(peerList)/2 {
+					v = prevote2
 				}
+				sent := peer.Send(p2p.Envelope{
+					Message:   &cmtcons.Vote{Vote: v.ToProto()},
+					ChannelID: VoteChannel,
+				})
+				t.Logf("[byz] send prevote to peer=%s hash=%X sent=%v", peer.ID(), v.BlockID.Hash, sent)
 			}
 		} else {
-			bcs.Logger.Info("Behaving normally")
 			bcs.defaultDoPrevote(height, round)
 		}
 	}
@@ -287,58 +300,46 @@ func TestByzantinePrevoteEquivocation(t *testing.T) {
 	}
 	defer stopConsensusNet(log.TestingLogger(), reactors, eventBuses)
 
-	// Evidence should be submitted and committed at the third height but
-	// we will check the first six just in case
-	var evidenceFound types.Evidence
-
-	// We only need to find evidence from at least one validator, not all
-	// since evidence gossiping and inclusion in blocks can have timing variations
-	done := make(chan types.Evidence, 1)
-
-	// Start goroutines to watch for evidence from any validator
-	for i := 0; i < nValidators; i++ {
-		go func(i int) {
-			blockCount := 0
-			for msg := range blocksSubs[i].Out() {
-				block := msg.Data().(types.EventDataNewBlock).Block
-				blockCount++
-
-				// Log block information for debugging
-				t.Logf("Validator %d received block at height %d with %d evidence",
-					i, block.Height, len(block.Evidence.Evidence))
-
-				if len(block.Evidence.Evidence) != 0 {
-					select {
-					case done <- block.Evidence.Evidence[0]:
-					default:
-						// Evidence already found by another validator
-					}
-					return
-				}
-
-				// Stop watching after a reasonable number of blocks to prevent hanging
-				if blockCount >= 50 {
-					t.Logf("Validator %d watched %d blocks without finding evidence", i, blockCount)
-					return
-				}
-			}
-		}(i)
-	}
-
 	pubkey, err := bcs.privValidator.GetPubKey()
 	require.NoError(t, err)
 
-	select {
-	case evidenceFound = <-done:
-		// Verify the evidence is correct
-		ev, ok := evidenceFound.(*types.DuplicateVoteEvidence)
-		require.True(t, ok, "Evidence should be DuplicateVoteEvidence")
-		assert.Equal(t, pubkey.Address(), ev.VoteA.ValidatorAddress)
-		assert.Equal(t, prevoteHeight, ev.Height())
-		t.Logf("Successfully found evidence: %v", ev)
-	case <-time.After(120 * time.Second):
-		t.Fatalf("Timed out waiting for validators to commit evidence after 120 seconds")
-	}
+	// Stage 1: wait for the duplicate-vote evidence to land in any validator's
+	// evidence pool. This isolates "evidence detected" from "evidence committed"
+	// so that future failures point at the correct failing stage.
+	var foundEvidence types.Evidence
+	require.Eventually(t, func() bool {
+		for i := 0; i < nValidators; i++ {
+			pending, _ := evpools[i].PendingEvidence(maxEvidenceBytes)
+			for _, ev := range pending {
+				if dve, ok := ev.(*types.DuplicateVoteEvidence); ok {
+					if prevoteHeight == dve.Height() {
+						foundEvidence = dve
+						return true
+					}
+				}
+			}
+		}
+		return false
+	}, 30*time.Second, 100*time.Millisecond, "evidence pool never received DuplicateVoteEvidence at height %d", prevoteHeight)
+
+	// Stage 2: wait for evidence to be committed in some block on any validator.
+	require.Eventually(t, func() bool {
+		for i := 0; i < nValidators; i++ {
+			for h := int64(1); h <= blockStores[i].Height(); h++ {
+				b := blockStores[i].LoadBlock(h)
+				if b != nil && len(b.Evidence.Evidence) > 0 {
+					return true
+				}
+			}
+		}
+		return false
+	}, 60*time.Second, 200*time.Millisecond, "evidence was detected in pool but never committed in a block")
+
+	ev, ok := foundEvidence.(*types.DuplicateVoteEvidence)
+	require.True(t, ok, "Evidence should be DuplicateVoteEvidence")
+	assert.Equal(t, pubkey.Address(), ev.VoteA.ValidatorAddress)
+	assert.Equal(t, prevoteHeight, ev.Height())
+	t.Logf("Successfully found evidence: %v", ev)
 }
 
 // 4 validators. 1 is byzantine. The other three are partitioned into A (1 val) and B (2 vals).
