@@ -33,11 +33,17 @@ type RowProof struct {
 // the proof fails validation. If the proof passes validation, this function
 // attempts to verify the proof. It returns nil if the proof is valid.
 func (rp RowProof) Validate(root []byte) error {
+	if len(rp.RowRoots) == 0 {
+		return errors.New("row proof must contain at least one row root")
+	}
 	if rp.EndRow < rp.StartRow {
 		return fmt.Errorf("end row %d cannot be less than start row %d", rp.EndRow, rp.StartRow)
 	}
-	if int(rp.EndRow-rp.StartRow+1) != len(rp.RowRoots) {
-		return fmt.Errorf("the number of rows %d must equal the number of row roots %d", int(rp.EndRow-rp.StartRow+1), len(rp.RowRoots))
+	// Use uint64 arithmetic to prevent uint32 overflow when computing the
+	// expected number of rows (e.g. StartRow=0, EndRow=MaxUint32).
+	expectedRows := uint64(rp.EndRow) - uint64(rp.StartRow) + 1
+	if expectedRows != uint64(len(rp.RowRoots)) {
+		return fmt.Errorf("the number of rows %d must equal the number of row roots %d", expectedRows, len(rp.RowRoots))
 	}
 	if len(rp.Proofs) != len(rp.RowRoots) {
 		return fmt.Errorf("the number of proofs %d must equal the number of row roots %d", len(rp.Proofs), len(rp.RowRoots))
