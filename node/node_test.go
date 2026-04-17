@@ -37,6 +37,7 @@ import (
 func TestNodeStartStop(t *testing.T) {
 	config := test.ResetTestRoot("node_node_test")
 	defer os.RemoveAll(config.RootDir)
+	testFreeConfig(t, config)
 
 	// create & start node
 	n, err := DefaultNewNode(config, log.TestingLogger())
@@ -99,6 +100,7 @@ func TestSplitAndTrimEmpty(t *testing.T) {
 func TestNodeDelayedStart(t *testing.T) {
 	config := test.ResetTestRoot("node_delayed_start_test")
 	defer os.RemoveAll(config.RootDir)
+	testFreeConfig(t, config)
 	now := cmttime.Now()
 
 	// create & start node
@@ -117,6 +119,7 @@ func TestNodeDelayedStart(t *testing.T) {
 func TestNodeSetAppVersion(t *testing.T) {
 	config := test.ResetTestRoot("node_app_version_test")
 	defer os.RemoveAll(config.RootDir)
+	testFreeConfig(t, config)
 
 	// create & start node
 	n, err := DefaultNewNode(config, log.TestingLogger())
@@ -137,6 +140,7 @@ func TestNodeSetAppVersion(t *testing.T) {
 func TestPprofServer(t *testing.T) {
 	config := test.ResetTestRoot("node_pprof_test")
 	defer os.RemoveAll(config.RootDir)
+	testFreeConfig(t, config)
 	config.RPC.PprofListenAddress = testFreeAddr(t)
 
 	// should not work yet
@@ -162,6 +166,7 @@ func TestNodeSetPrivValTCP(t *testing.T) {
 
 	config := test.ResetTestRoot("node_priv_val_tcp_test")
 	defer os.RemoveAll(config.RootDir)
+	testFreeConfig(t, config)
 	config.BaseConfig.PrivValidatorListenAddr = addr //nolint:staticcheck
 
 	dialer := privval.DialTCPFn(addr, 100*time.Millisecond, ed25519.GenPrivKey())
@@ -196,6 +201,7 @@ func TestPrivValidatorListenAddrNoProtocol(t *testing.T) {
 
 	config := test.ResetTestRoot("node_priv_val_tcp_test")
 	defer os.RemoveAll(config.RootDir)
+	testFreeConfig(t, config)
 	config.BaseConfig.PrivValidatorListenAddr = addrNoPrefix //nolint:staticcheck
 
 	_, err := DefaultNewNode(config, log.TestingLogger())
@@ -208,6 +214,7 @@ func TestNodeSetPrivValIPC(t *testing.T) {
 
 	config := test.ResetTestRoot("node_priv_val_tcp_test")
 	defer os.RemoveAll(config.RootDir)
+	testFreeConfig(t, config)
 	config.BaseConfig.PrivValidatorListenAddr = "unix://" + tmpfile //nolint:staticcheck
 
 	dialer := privval.DialUnixFn(tmpfile)
@@ -241,6 +248,16 @@ func testFreeAddr(t *testing.T) string {
 	defer ln.Close()
 
 	return fmt.Sprintf("127.0.0.1:%d", ln.Addr().(*net.TCPAddr).Port)
+}
+
+// testFreeConfig overrides the default test config to use free ports
+// instead of hardcoded ports that cause "address already in use" errors
+// when tests run in parallel.
+func testFreeConfig(t *testing.T, config *cfg.Config) {
+	t.Helper()
+	config.P2P.ListenAddress = "tcp://" + testFreeAddr(t)
+	config.RPC.ListenAddress = "tcp://" + testFreeAddr(t)
+	config.RPC.GRPCListenAddress = "tcp://" + testFreeAddr(t)
 }
 
 // create a proposal block using real and full
@@ -422,6 +439,7 @@ func TestMaxProposalBlockSize(t *testing.T) {
 func TestNodeNewNodeCustomReactors(t *testing.T) {
 	config := test.ResetTestRoot("node_new_node_custom_reactors_test")
 	defer os.RemoveAll(config.RootDir)
+	testFreeConfig(t, config)
 
 	cr := p2pmock.NewReactor()
 	cr.Channels = []*conn.ChannelDescriptor{
