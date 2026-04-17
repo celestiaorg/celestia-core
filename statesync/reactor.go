@@ -115,7 +115,11 @@ func (r *Reactor) Receive(e p2p.Envelope) {
 	err := validateMsg(e.Message, r.cfg.MaxSnapshotChunks)
 	if err != nil {
 		if errors.Is(err, ErrExceedsMaxSnapshotChunks) {
-			r.syncer.RejectPeer(e.Src)
+			r.mtx.RLock()
+			if r.syncer != nil {
+				r.syncer.RejectPeer(e.Src)
+			}
+			r.mtx.RUnlock()
 		}
 		r.Logger.Error("Invalid message", "peer", e.Src, "msg", e.Message, "err", err)
 		r.Switch.StopPeerForError(e.Src, err, r.String())
@@ -275,6 +279,12 @@ func (r *Reactor) Sync(stateProvider StateProvider, discoveryTime time.Duration)
 	}
 	r.metrics.Syncing.Set(1)
 	r.syncer = newSyncer(r.cfg, r.Logger, r.conn, r.connQuery, stateProvider, r.tempDir)
+	r.syncer.setOnPeerRejected(func(peerID p2p.ID) {
+		peer := r.Switch.Peers().Get(peerID)
+		if peer != nil {
+			r.Switch.StopPeerForError(peer, "chunk sender rejected by ABCI application", r.String())
+		}
+	})
 	r.mtx.Unlock()
 
 	hook := func() {

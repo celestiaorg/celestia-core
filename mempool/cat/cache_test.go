@@ -1,6 +1,7 @@
 package cat
 
 import (
+	"encoding/binary"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -34,4 +35,28 @@ func TestSeenTxSet(t *testing.T) {
 	require.Equal(t, 2, seenSet.Len())
 	require.Nil(t, seenSet.Get(tx2Key))
 	require.True(t, seenSet.Has(tx3Key, peer1))
+}
+
+func TestSeenTxSetMaxSize(t *testing.T) {
+	seenSet := NewSeenTxSet()
+
+	// Pre-fill the map to exactly maxSeenTxSetSize by inserting dummy entries directly.
+	for i := 0; i < maxSeenTxSetSize; i++ {
+		var key types.TxKey
+		binary.BigEndian.PutUint64(key[:8], uint64(i))
+		seenSet.set[key] = timestampedPeerSet{peers: map[uint16]struct{}{1: {}}}
+	}
+	require.Equal(t, maxSeenTxSetSize, seenSet.Len())
+
+	// New key should evict one entry and be added (size stays at cap).
+	var extraKey types.TxKey
+	binary.BigEndian.PutUint64(extraKey[:8], uint64(maxSeenTxSetSize+1))
+	seenSet.Add(extraKey, 1)
+	require.Equal(t, maxSeenTxSetSize, seenSet.Len())
+	require.True(t, seenSet.Has(extraKey, 1))
+
+	// Adding a new peer to an existing key should still work at capacity.
+	seenSet.Add(extraKey, 2)
+	require.True(t, seenSet.Has(extraKey, 2))
+	require.Equal(t, maxSeenTxSetSize, seenSet.Len())
 }
