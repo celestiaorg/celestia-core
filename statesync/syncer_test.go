@@ -636,6 +636,67 @@ func TestSyncer_applyChunks_RejectSenders(t *testing.T) {
 	}
 }
 
+func TestSyncer_applyChunks_onPeerRejected(t *testing.T) {
+	connQuery := &proxymocks.AppConnQuery{}
+	connSnapshot := &proxymocks.AppConnSnapshot{}
+	stateProvider := &mocks.StateProvider{}
+	stateProvider.On("AppHash", mock.Anything, mock.Anything).Return([]byte("app_hash"), nil)
+
+	cfg := config.DefaultStateSyncConfig()
+	syncer := newSyncer(*cfg, log.NewNopLogger(), connSnapshot, connQuery, stateProvider, "")
+
+	// Track which peer IDs were reported via the callback.
+	var rejectedPeers []p2p.ID
+	syncer.setOnPeerRejected(func(peerID p2p.ID) {
+		rejectedPeers = append(rejectedPeers, peerID)
+	})
+
+	peerA := simplePeer("a")
+	peerB := simplePeer("b")
+	peerC := simplePeer("c")
+
+	s1 := &snapshot{Height: 1, Format: 1, Chunks: 3}
+	_, err := syncer.AddSnapshot(peerA, s1)
+	require.NoError(t, err)
+	_, err = syncer.AddSnapshot(peerB, s1)
+	require.NoError(t, err)
+	_, err = syncer.AddSnapshot(peerC, s1)
+	require.NoError(t, err)
+
+	chunks, err := newChunkQueue(s1, "")
+	require.NoError(t, err)
+	added, err := chunks.Add(&chunk{Height: 1, Format: 1, Index: 0, Chunk: []byte{0}, Sender: peerA.ID()})
+	require.True(t, added)
+	require.NoError(t, err)
+	added, err = chunks.Add(&chunk{Height: 1, Format: 1, Index: 1, Chunk: []byte{1}, Sender: peerB.ID()})
+	require.True(t, added)
+	require.NoError(t, err)
+	added, err = chunks.Add(&chunk{Height: 1, Format: 1, Index: 2, Chunk: []byte{2}, Sender: peerC.ID()})
+	require.True(t, added)
+	require.NoError(t, err)
+
+	// First two chunks are accepted, the third triggers rejection of sender "b".
+	connSnapshot.On("ApplySnapshotChunk", mock.Anything, &abci.RequestApplySnapshotChunk{
+		Index: 0, Chunk: []byte{0}, Sender: "a",
+	}).Once().Return(&abci.ResponseApplySnapshotChunk{Result: abci.ResponseApplySnapshotChunk_ACCEPT}, nil)
+	connSnapshot.On("ApplySnapshotChunk", mock.Anything, &abci.RequestApplySnapshotChunk{
+		Index: 1, Chunk: []byte{1}, Sender: "b",
+	}).Once().Return(&abci.ResponseApplySnapshotChunk{Result: abci.ResponseApplySnapshotChunk_ACCEPT}, nil)
+	connSnapshot.On("ApplySnapshotChunk", mock.Anything, &abci.RequestApplySnapshotChunk{
+		Index: 2, Chunk: []byte{2}, Sender: "c",
+	}).Once().Return(&abci.ResponseApplySnapshotChunk{
+		Result:        abci.ResponseApplySnapshotChunk_ACCEPT,
+		RejectSenders: []string{string(peerB.ID())},
+	}, nil)
+
+	err = syncer.applyChunks(chunks)
+	require.NoError(t, err)
+
+	require.Len(t, rejectedPeers, 1)
+	assert.Equal(t, p2p.ID("b"), rejectedPeers[0])
+	connSnapshot.AssertExpectations(t)
+}
+
 func TestSyncer_verifyApp(t *testing.T) {
 	boom := errors.New("boom")
 	const appVersion = 9

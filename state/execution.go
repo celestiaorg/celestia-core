@@ -876,6 +876,17 @@ func ExecCommitBlock(
 	commitInfo := buildLastCommitInfoFromStore(block, store, initialHeight)
 	pbHeader := block.Header.ToProto()
 
+	// Unmarshal blob txs to match the behavior of applyBlock, which strips
+	// BlobTx wrappers before sending transactions to FinalizeBlock.
+	txs := make([][]byte, len(block.Txs))
+	for i, tx := range block.Txs {
+		blobTx, isBlobTx := types.UnmarshalBlobTx(tx)
+		if isBlobTx {
+			tx = blobTx.Tx
+		}
+		txs[i] = tx
+	}
+
 	resp, err := appConnConsensus.FinalizeBlock(context.TODO(), &abci.RequestFinalizeBlock{
 		Hash:               block.Hash(),
 		NextValidatorsHash: block.NextValidatorsHash,
@@ -884,7 +895,7 @@ func ExecCommitBlock(
 		Time:               block.Time,
 		DecidedLastCommit:  commitInfo,
 		Misbehavior:        block.Evidence.Evidence.ToABCI(),
-		Txs:                block.Txs.ToSliceOfBytes(),
+		Txs:                txs,
 
 		// needed for v3 to sync with multiplexer as the header is stored in state
 		Header: pbHeader,
