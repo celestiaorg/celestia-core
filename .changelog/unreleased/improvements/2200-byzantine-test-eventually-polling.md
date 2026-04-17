@@ -1,0 +1,1 @@
+Replace the 120s `time.After` deadline in `TestByzantinePrevoteEquivocation` with two-stage `require.Eventually` polling: Stage 1 polls each validator's evidence pool (30s budget) and Stage 2 polls each validator's block store for committed evidence (60s budget).
