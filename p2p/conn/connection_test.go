@@ -618,6 +618,80 @@ func TestMConnectionChannelOverflow(t *testing.T) {
 
 }
 
+func TestRecvPacketMsgReleasesBufferAfterLargeMessage(t *testing.T) {
+	const (
+		recvBufCap = 4 * 1024        // 4 KiB baseline
+		msgSize    = 8 * 1024 * 1024 // 8 MiB message
+	)
+
+	ch := &Channel{
+		desc: ChannelDescriptor{
+			ID:                  0x01,
+			Priority:            1,
+			RecvBufferCapacity:  recvBufCap,
+			RecvMessageCapacity: msgSize + 1024,
+		},
+		recving: make([]byte, 0, recvBufCap),
+	}
+
+	require.Equal(t, recvBufCap, cap(ch.recving))
+
+	data := make([]byte, msgSize)
+	msgBytes, err := ch.recvPacketMsg(tmp2p.PacketMsg{Data: data, EOF: true})
+	require.NoError(t, err)
+	require.Len(t, msgBytes, msgSize)
+
+	// After EOF, the receive buffer must be reset to the baseline capacity
+	// rather than retaining the large backing array.
+	require.Equal(t, 0, len(ch.recving))
+	require.Equal(t, recvBufCap, cap(ch.recving),
+		"receive buffer capacity should shrink back to RecvBufferCapacity after EOF")
+}
+
+func TestRecvPacketMsgMultiPacketMessage(t *testing.T) {
+	const (
+		recvBufCap = 4 * 1024 // 4 KiB baseline
+		chunkSize  = 1024     // 1 KiB per packet
+		numChunks  = 100      // 100 KiB total message
+	)
+
+	ch := &Channel{
+		desc: ChannelDescriptor{
+			ID:                  0x01,
+			Priority:            1,
+			RecvBufferCapacity:  recvBufCap,
+			RecvMessageCapacity: chunkSize*numChunks + 1024,
+		},
+		recving: make([]byte, 0, recvBufCap),
+	}
+
+	// Send non-EOF chunks that accumulate in the buffer.
+	for i := 0; i < numChunks-1; i++ {
+		msgBytes, err := ch.recvPacketMsg(tmp2p.PacketMsg{
+			Data: make([]byte, chunkSize),
+			EOF:  false,
+		})
+		require.NoError(t, err)
+		require.Nil(t, msgBytes, "non-EOF packet should not return message bytes")
+	}
+
+	// Buffer should have grown to hold the accumulated data.
+	require.Equal(t, chunkSize*(numChunks-1), len(ch.recving))
+
+	// Final EOF chunk completes the message.
+	msgBytes, err := ch.recvPacketMsg(tmp2p.PacketMsg{
+		Data: make([]byte, chunkSize),
+		EOF:  true,
+	})
+	require.NoError(t, err)
+	require.Len(t, msgBytes, chunkSize*numChunks)
+
+	// Buffer must be reset to baseline after EOF.
+	require.Equal(t, 0, len(ch.recving))
+	require.Equal(t, recvBufCap, cap(ch.recving),
+		"receive buffer capacity should shrink back to RecvBufferCapacity after EOF")
+}
+
 type stopper interface {
 	Stop() error
 }
