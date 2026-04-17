@@ -184,6 +184,21 @@ func TestByzantinePrevoteEquivocation(t *testing.T) {
 		return s
 	}, p2p.Connect2Switches)
 
+	// Wait for all validators to see (nValidators-1) peers. MakeConnectedSwitches
+	// dials synchronously but the p2p handshake and peer-registration happen
+	// asynchronously; without this wait, the byzantine node can reach its
+	// doPrevote override with a partial peer set and fire conflicting votes at
+	// fewer than nValidators-1 peers, which the evidence pool cannot reconstruct
+	// into DuplicateVoteEvidence.
+	require.Eventually(t, func() bool {
+		for i := 0; i < nValidators; i++ {
+			if reactors[i].Switch.Peers().Size() < nValidators-1 {
+				return false
+			}
+		}
+		return true
+	}, 10*time.Second, 50*time.Millisecond, "all validators should have (nValidators-1) peers before consensus starts")
+
 	// create byzantine validator
 	bcs := css[byzantineNode]
 
