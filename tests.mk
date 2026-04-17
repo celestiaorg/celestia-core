@@ -83,10 +83,5 @@ test_race:
 #? test_deadlock: Run go tests with deadlock detector
 test_deadlock:
 	@echo "--> Running go test --deadlock"
-<<<<<<< HEAD
-	@go test -p 1 -v  $(PACKAGES) -tags deadlock 
-.PHONY: test_race
-=======
 	@go test -p 1 -v  $(PACKAGES) -tags deadlock
 .PHONY: test_deadlock
->>>>>>> 39b806b5 (fix: correct .PHONY target for test_deadlock (#2882))
