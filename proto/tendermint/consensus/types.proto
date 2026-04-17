@@ -15,6 +15,7 @@ message NewRoundStep {
   uint32 step                     = 3;
   int64  seconds_since_start_time = 4;
   int32  last_commit_round        = 5;
+  bool   syncing                  = 6; // true if node is in blocksync mode
 }
 
 // NewValidBlock is sent when a validator observes a valid block B in some round r,
