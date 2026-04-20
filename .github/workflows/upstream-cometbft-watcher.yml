@@ -51,18 +51,23 @@ jobs:
         run: |
           set -euo pipefail
 
-          # Fetch all published advisories, one compact JSON object per line.
-          mapfile -t advisories < <(
+          # Fetch all published advisories (compact JSON, one per line). Capturing
+          # to a variable first so a failed API call fails the job via set -e
+          # instead of being swallowed by the process substitution below.
+          advisories_raw=$(
             gh api "/repos/${UPSTREAM_REPO}/security-advisories" --paginate \
               --jq '.[] | select(.state=="published") | {ghsa_id, summary, severity, published_at, html_url} | @json'
           )
 
-          if [ "${#advisories[@]}" -eq 0 ]; then
+          if [ -z "$advisories_raw" ]; then
             echo "No published advisories found on ${UPSTREAM_REPO}."
             exit 0
           fi
 
+          mapfile -t advisories <<< "$advisories_raw"
+
           for advisory_json in "${advisories[@]}"; do
+            [ -n "$advisory_json" ] || continue
             ghsa_id=$(echo "$advisory_json" | jq -r .ghsa_id)
             summary=$(echo "$advisory_json" | jq -r .summary)
             severity=$(echo "$advisory_json" | jq -r .severity)
@@ -71,13 +76,14 @@ jobs:
 
             title="Upstream CometBFT advisory: ${ghsa_id}"
 
-            # Idempotency: skip if an issue with this exact title already exists.
+            # Idempotency: narrow the search by the unique GHSA ID and post-filter
+            # with an exact title match via jq --arg (safe against special chars).
             existing=$(
               gh issue list --repo "$TARGET_REPO" \
-                --search "in:title \"${title}\"" \
-                --state all --limit 50 \
+                --search "in:title ${ghsa_id}" \
+                --state all --limit 100 \
                 --json title \
-                --jq "[.[] | select(.title == \"${title}\")] | length"
+              | jq --arg t "$title" '[.[] | select(.title == $t)] | length'
             )
             if [ "$existing" -gt 0 ]; then
               echo "Skipping (already exists): ${title}"
@@ -129,32 +135,39 @@ jobs:
         run: |
           set -euo pipefail
 
-          # Fetch last 30 upstream releases (non-draft, non-prerelease, tag starts with TRACKED_PREFIX).
-          mapfile -t releases < <(
-            gh release list --repo "$UPSTREAM_REPO" --limit 30 \
+          # Fetch last 100 upstream releases (non-draft, non-prerelease, tag starts
+          # with TRACKED_PREFIX). Capturing to a variable first so a failed API
+          # call fails the job via set -e instead of being swallowed.
+          releases_raw=$(
+            gh release list --repo "$UPSTREAM_REPO" --limit 100 \
               --json tagName,publishedAt,isDraft,isPrerelease \
             | jq -c --arg prefix "$TRACKED_PREFIX" \
                 '.[] | select(.isDraft==false and .isPrerelease==false) | select(.tagName | startswith($prefix))'
           )
 
-          if [ "${#releases[@]}" -eq 0 ]; then
+          if [ -z "$releases_raw" ]; then
             echo "No releases on ${UPSTREAM_REPO} matching prefix ${TRACKED_PREFIX}."
             exit 0
           fi
 
+          mapfile -t releases <<< "$releases_raw"
+
           for release_json in "${releases[@]}"; do
+            [ -n "$release_json" ] || continue
             tag=$(echo "$release_json" | jq -r .tagName)
             published=$(echo "$release_json" | jq -r .publishedAt)
             url="https://github.com/${UPSTREAM_REPO}/releases/tag/${tag}"
 
             title="Upstream CometBFT release: ${tag}"
 
+            # Idempotency: narrow the search by the unique tag and post-filter
+            # with an exact title match via jq --arg (safe against special chars).
             existing=$(
               gh issue list --repo "$TARGET_REPO" \
-                --search "in:title \"${title}\"" \
-                --state all --limit 50 \
+                --search "in:title ${tag}" \
+                --state all --limit 100 \
                 --json title \
-                --jq "[.[] | select(.title == \"${title}\")] | length"
+              | jq --arg t "$title" '[.[] | select(.title == $t)] | length'
             )
             if [ "$existing" -gt 0 ]; then
               echo "Skipping (already exists): ${title}"
