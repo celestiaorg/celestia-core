@@ -40,3 +40,81 @@ jobs:
             --color 'D93F0B' \
             --description 'Security-related issue' \
             --force
+
+  advisories:
+    needs: ensure-labels
+    runs-on: ubuntu-latest
+    steps:
+      - name: File issues for new upstream advisories
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          # Fetch all published advisories, one compact JSON object per line.
+          mapfile -t advisories < <(
+            gh api "/repos/${UPSTREAM_REPO}/security-advisories" --paginate \
+              --jq '.[] | select(.state=="published") | {ghsa_id, summary, severity, published_at, html_url} | @json'
+          )
+
+          if [ "${#advisories[@]}" -eq 0 ]; then
+            echo "No published advisories found on ${UPSTREAM_REPO}."
+            exit 0
+          fi
+
+          for advisory_json in "${advisories[@]}"; do
+            ghsa_id=$(echo "$advisory_json" | jq -r .ghsa_id)
+            summary=$(echo "$advisory_json" | jq -r .summary)
+            severity=$(echo "$advisory_json" | jq -r .severity)
+            published=$(echo "$advisory_json" | jq -r .published_at)
+            url=$(echo "$advisory_json" | jq -r .html_url)
+
+            title="Upstream CometBFT advisory: ${ghsa_id}"
+
+            # Idempotency: skip if an issue with this exact title already exists.
+            existing=$(
+              gh issue list --repo "$TARGET_REPO" \
+                --search "in:title \"${title}\"" \
+                --state all --limit 50 \
+                --json title \
+                --jq "[.[] | select(.title == \"${title}\")] | length"
+            )
+            if [ "$existing" -gt 0 ]; then
+              echo "Skipping (already exists): ${title}"
+              continue
+            fi
+
+            body=$(cat <<EOF
+          Upstream CometBFT published a new security advisory.
+
+          - **GHSA ID:** ${ghsa_id}
+          - **Severity:** ${severity}
+          - **Published:** ${published}
+          - **Link:** ${url}
+
+          ## Summary
+
+          ${summary}
+
+          ## Checklist
+
+          - [ ] Assess applicability to celestia-core (\`main\`, \`v0.39.x-celestia\`, \`v0.38.x-celestia\`)
+          - [ ] Backport any applicable fixes
+          - [ ] Close this issue when triage is complete
+
+          _Filed automatically by \`.github/workflows/upstream-cometbft-watcher.yml\`._
+          EOF
+          )
+
+            if [ "$DRY_RUN" = "true" ]; then
+              echo "[dry-run] Would create issue: ${title}"
+              continue
+            fi
+
+            gh issue create \
+              --repo "$TARGET_REPO" \
+              --title "$title" \
+              --label upstream-cometbft \
+              --label security \
+              --body "$body"
+          done
