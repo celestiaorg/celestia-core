@@ -1,0 +1,42 @@
+name: upstream-cometbft-watcher
+
+on:
+  schedule:
+    # 13:00 UTC daily
+    - cron: '0 13 * * *'
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Log actions without creating issues'
+        type: boolean
+        default: false
+
+permissions:
+  issues: write
+  contents: read
+
+env:
+  UPSTREAM_REPO: cometbft/cometbft
+  TARGET_REPO: ${{ github.repository }}
+  TRACKED_PREFIX: 'v0.38.'
+  DRY_RUN: ${{ inputs.dry_run == true && 'true' || 'false' }}
+
+jobs:
+  ensure-labels:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ensure labels exist
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          gh label create upstream-cometbft \
+            --repo "$TARGET_REPO" \
+            --color '0E8A16' \
+            --description 'Upstream CometBFT release or advisory that needs triage' \
+            --force
+          gh label create security \
+            --repo "$TARGET_REPO" \
+            --color 'D93F0B' \
+            --description 'Security-related issue' \
+            --force
