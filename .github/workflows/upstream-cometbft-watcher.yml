@@ -132,7 +132,7 @@ jobs:
           # Fetch last 30 upstream releases (non-draft, non-prerelease, tag starts with TRACKED_PREFIX).
           mapfile -t releases < <(
             gh release list --repo "$UPSTREAM_REPO" --limit 30 \
-              --json tagName,publishedAt,url,isDraft,isPrerelease \
+              --json tagName,publishedAt,isDraft,isPrerelease \
             | jq -c --arg prefix "$TRACKED_PREFIX" \
                 '.[] | select(.isDraft==false and .isPrerelease==false) | select(.tagName | startswith($prefix))'
           )
@@ -145,7 +145,7 @@ jobs:
           for release_json in "${releases[@]}"; do
             tag=$(echo "$release_json" | jq -r .tagName)
             published=$(echo "$release_json" | jq -r .publishedAt)
-            url=$(echo "$release_json" | jq -r .url)
+            url="https://github.com/${UPSTREAM_REPO}/releases/tag/${tag}"
 
             title="Upstream CometBFT release: ${tag}"
 
