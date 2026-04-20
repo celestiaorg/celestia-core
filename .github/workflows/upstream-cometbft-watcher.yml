@@ -118,3 +118,77 @@ jobs:
               --label security \
               --body "$body"
           done
+
+  releases:
+    needs: advisories
+    runs-on: ubuntu-latest
+    steps:
+      - name: File issues for new upstream releases
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          # Fetch last 30 upstream releases (non-draft, non-prerelease, tag starts with TRACKED_PREFIX).
+          mapfile -t releases < <(
+            gh release list --repo "$UPSTREAM_REPO" --limit 30 \
+              --json tagName,publishedAt,url,isDraft,isPrerelease \
+            | jq -c --arg prefix "$TRACKED_PREFIX" \
+                '.[] | select(.isDraft==false and .isPrerelease==false) | select(.tagName | startswith($prefix))'
+          )
+
+          if [ "${#releases[@]}" -eq 0 ]; then
+            echo "No releases on ${UPSTREAM_REPO} matching prefix ${TRACKED_PREFIX}."
+            exit 0
+          fi
+
+          for release_json in "${releases[@]}"; do
+            tag=$(echo "$release_json" | jq -r .tagName)
+            published=$(echo "$release_json" | jq -r .publishedAt)
+            url=$(echo "$release_json" | jq -r .url)
+
+            title="Upstream CometBFT release: ${tag}"
+
+            existing=$(
+              gh issue list --repo "$TARGET_REPO" \
+                --search "in:title \"${title}\"" \
+                --state all --limit 50 \
+                --json title \
+                --jq "[.[] | select(.title == \"${title}\")] | length"
+            )
+            if [ "$existing" -gt 0 ]; then
+              echo "Skipping (already exists): ${title}"
+              continue
+            fi
+
+            body=$(cat <<EOF
+          Upstream CometBFT published a new release on the \`${TRACKED_PREFIX}x\` line.
+
+          - **Tag:** ${tag}
+          - **Published:** ${published}
+          - **Link:** ${url}
+
+          ## Checklist
+
+          - [ ] Read the release notes
+          - [ ] Assess applicability to celestia-core (\`main\`, \`v0.39.x-celestia\`, \`v0.38.x-celestia\`)
+          - [ ] Backport any security-relevant or bug-fix commits
+          - [ ] Close this issue when triage is complete
+
+          See also: [open \`upstream-cometbft\` issues](https://github.com/${TARGET_REPO}/issues?q=is%3Aissue+is%3Aopen+label%3Aupstream-cometbft) for advisories to cross-reference.
+
+          _Filed automatically by \`.github/workflows/upstream-cometbft-watcher.yml\`._
+          EOF
+          )
+
+            if [ "$DRY_RUN" = "true" ]; then
+              echo "[dry-run] Would create issue: ${title}"
+              continue
+            fi
+
+            gh issue create \
+              --repo "$TARGET_REPO" \
+              --title "$title" \
+              --label upstream-cometbft \
+              --body "$body"
+          done
