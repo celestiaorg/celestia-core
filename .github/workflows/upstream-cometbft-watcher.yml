@@ -126,7 +126,7 @@ jobs:
           done
 
   releases:
-    needs: advisories
+    needs: ensure-labels
     runs-on: ubuntu-latest
     steps:
       - name: File issues for new upstream releases
