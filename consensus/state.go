@@ -1026,13 +1026,7 @@ func (cs *State) receiveRoutine(maxSteps int) {
 			cs.handleMsg(mi)
 
 		case mi = <-cs.internalMsgQueue:
-			err := cs.walWriteSync("internal", mi) // NOTE: fsync
-			if err != nil {
-				panic(fmt.Sprintf(
-					"failed to write %v msg to consensus WAL due to %v; check your file system and restart the node",
-					mi, err,
-				))
-			}
+			cs.writeInternalMsgToWAL(mi)
 
 			if _, ok := mi.Msg.(*VoteMessage); ok {
 				// we actually want to simulate failing during
@@ -1058,6 +1052,31 @@ func (cs *State) receiveRoutine(maxSteps int) {
 			onExit(cs)
 			return
 		}
+	}
+}
+
+// writeInternalMsgToWAL persists local messages with per-type durability.
+func (cs *State) writeInternalMsgToWAL(mi msgInfo) {
+	switch mi.Msg.(type) {
+	case *VoteMessage, *ProposalMessage:
+		// Signed messages must hit disk before processing.
+		if err := cs.walWriteSync("internal", mi); err != nil {
+			panic(fmt.Errorf(
+				"failed to write %v msg to consensus WAL; check your file system and restart the node: %w",
+				mi, err,
+			))
+		}
+	case *BlockPartMessage:
+		// Unsigned block parts use buffered WAL writes.
+		if err := cs.walWrite("block_part", mi); err != nil {
+			panic(fmt.Errorf(
+				"failed to write %v msg to consensus WAL; check your file system and restart the node: %w",
+				mi, err,
+			))
+		}
+	default:
+		// New internal message types must be handled explicitly.
+		panic(fmt.Errorf("unexpected internal message type: %T", mi.Msg))
 	}
 }
 
