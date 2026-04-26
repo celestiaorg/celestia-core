@@ -33,6 +33,12 @@ type TxIndexer interface {
 	SetLogger(l log.Logger)
 }
 
+// PagedTxIndexer can return a single ordered page of transaction results
+// without loading every matched transaction into memory.
+type PagedTxIndexer interface {
+	SearchPaged(ctx context.Context, q *query.Query, orderBy string, skipCount, pageSize int) ([]*abci.TxResult, int, error)
+}
+
 // Batch groups together multiple Index operations to be performed at the same time.
 // NOTE: Batch is NOT thread-safe and must not be modified after starting its execution.
 type Batch struct {

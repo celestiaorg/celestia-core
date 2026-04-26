@@ -14,6 +14,7 @@ import (
 	ctypes "github.com/cometbft/cometbft/rpc/core/types"
 	rpctypes "github.com/cometbft/cometbft/rpc/jsonrpc/types"
 	"github.com/cometbft/cometbft/state"
+	"github.com/cometbft/cometbft/state/txindex"
 	"github.com/cometbft/cometbft/state/txindex/null"
 	"github.com/cometbft/cometbft/types"
 )
@@ -97,9 +98,53 @@ func (env *Environment) TxSearch(
 		return nil, err
 	}
 
-	results, err := env.TxIndexer.Search(ctx.Context(), q)
+	switch orderBy {
+	case "desc", "asc", "":
+	default:
+		return nil, errors.New("expected order_by to be either `asc` or `desc` or empty")
+	}
+
+	perPage := env.validatePerPage(perPagePtr)
+
+	results, totalCount, err := env.txSearchPage(ctx.Context(), q, pagePtr, perPage, orderBy)
 	if err != nil {
 		return nil, err
+	}
+
+	apiResults, err := env.txResultsToRPC(results, prove)
+	if err != nil {
+		return nil, err
+	}
+
+	return &ctypes.ResultTxSearch{Txs: apiResults, TotalCount: totalCount}, nil
+}
+
+func (env *Environment) txSearchPage(
+	ctx context.Context,
+	q *cmtquery.Query,
+	pagePtr *int,
+	perPage int,
+	orderBy string,
+) ([]*abcitypes.TxResult, int, error) {
+	if pagedIndexer, ok := env.TxIndexer.(txindex.PagedTxIndexer); ok {
+		requestedPage := 1
+		if pagePtr != nil {
+			requestedPage = *pagePtr
+		}
+
+		results, totalCount, err := pagedIndexer.SearchPaged(ctx, q, orderBy, validateSkipCount(requestedPage, perPage), perPage)
+		if err != nil {
+			return nil, 0, err
+		}
+		if _, err := validatePage(pagePtr, perPage, totalCount); err != nil {
+			return nil, 0, err
+		}
+		return results, totalCount, nil
+	}
+
+	results, err := env.TxIndexer.Search(ctx, q)
+	if err != nil {
+		return nil, 0, err
 	}
 
 	// sort results (must be done before pagination)
@@ -118,30 +163,30 @@ func (env *Environment) TxSearch(
 			}
 			return results[i].Height < results[j].Height
 		})
-	default:
-		return nil, errors.New("expected order_by to be either `asc` or `desc` or empty")
 	}
 
 	// paginate results
 	totalCount := len(results)
-	perPage := env.validatePerPage(perPagePtr)
 
 	page, err := validatePage(pagePtr, perPage, totalCount)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 
 	skipCount := validateSkipCount(page, perPage)
 	pageSize := cmtmath.MinInt(perPage, totalCount-skipCount)
 
-	apiResults := make([]*ctypes.ResultTx, 0, pageSize)
-	for i := skipCount; i < skipCount+pageSize; i++ {
-		r := results[i]
+	return results[skipCount : skipCount+pageSize], totalCount, nil
+}
 
+func (env *Environment) txResultsToRPC(results []*abcitypes.TxResult, prove bool) ([]*ctypes.ResultTx, error) {
+	apiResults := make([]*ctypes.ResultTx, 0, len(results))
+	for _, r := range results {
 		var shareProof types.ShareProof
 		if prove {
 			block := env.BlockStore.LoadBlock(r.Height)
 			if block != nil {
+				var err error
 				shareProof, err = env.proveTx(r.Height, r.Index)
 				if err != nil {
 					return nil, err
@@ -159,7 +204,7 @@ func (env *Environment) TxSearch(
 		})
 	}
 
-	return &ctypes.ResultTxSearch{Txs: apiResults, TotalCount: totalCount}, nil
+	return apiResults, nil
 }
 
 func (env *Environment) proveTx(height int64, index uint32) (types.ShareProof, error) {
