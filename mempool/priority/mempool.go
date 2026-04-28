@@ -191,6 +191,7 @@ func (txmp *TxMempool) CheckTx(
 	cachedTx := tx.ToCachedTx()
 	// If a precheck hook is defined, call it before invoking the application.
 	if err := txmp.preCheck(cachedTx); err != nil {
+		txmp.logger.Error("failed tx: pre-check", "tx", tx.Hash(), "peerID", txInfo.SenderP2PID, "err", err)
 		txmp.metrics.FailedTxs.Add(1)
 		// Add the transaction to the rejected cache
 		txmp.rejectedTxs.Push(cachedTx.Key(), 0, err.Error())
@@ -490,8 +491,8 @@ func (txmp *TxMempool) addNewTransaction(wtx *WrappedTx, checkTxRes *abci.Respon
 	}
 
 	if err != nil || checkTxRes.Code != abci.CodeTypeOK {
-		txmp.logger.Debug(
-			"rejected bad transaction",
+		txmp.logger.Error(
+			"failed tx: rejected bad transaction",
 			"priority", wtx.Priority(),
 			"tx", fmt.Sprintf("%X", wtx.tx.Hash()),
 			"peer_id", wtx.peers,
@@ -661,8 +662,8 @@ func (txmp *TxMempool) handleRecheckResult(tx *types.CachedTx, checkTxRes *abci.
 		return // N.B. Size of mempool did not change
 	}
 
-	txmp.logger.Debug(
-		"existing transaction no longer valid; failed re-CheckTx callback",
+	txmp.logger.Error(
+		"failed tx: existing transaction no longer valid; failed re-CheckTx callback",
 		"priority", wtx.Priority(),
 		"tx", fmt.Sprintf("%X", wtx.tx.Hash()),
 		"err", err,

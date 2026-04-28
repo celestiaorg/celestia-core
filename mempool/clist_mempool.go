@@ -486,8 +486,8 @@ func (mem *CListMempool) resCbFirstTime(
 			mem.notifyTxsAvailable()
 		} else {
 			// ignore bad transaction
-			mem.logger.Debug(
-				"rejected bad transaction",
+			mem.logger.Error(
+				"failed tx: rejected bad transaction",
 				"tx", tx.Hash(),
 				"peerID", txInfo.SenderP2PID,
 				"res", r,
