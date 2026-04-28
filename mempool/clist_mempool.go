@@ -486,14 +486,14 @@ func (mem *CListMempool) resCbFirstTime(
 			mem.notifyTxsAvailable()
 		} else {
 			// ignore bad transaction
-			mem.logger.Error(
+			mem.logger.Debug(
 				"failed tx: rejected bad transaction",
 				"tx", tx.Hash(),
 				"peerID", txInfo.SenderP2PID,
 				"res", r,
 				"err", postCheckErr,
 			)
-			mem.metrics.FailedTxs.Add(1)
+			mem.metrics.FailedTxs.With(FailedTxCodeLabel, TxCodeToStrOrLabel(r.CheckTx.Code, postCheckErr != nil, FailedTxCodePostCheck)).Add(1)
 
 			if !mem.config.KeepInvalidTxsInCache {
 				// remove from cache (it might be good later)

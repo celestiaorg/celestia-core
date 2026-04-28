@@ -321,9 +321,9 @@ func (txmp *TxPool) TryAddNewTx(tx *types.CachedTx, key types.TxKey, txInfo memp
 
 	// If a precheck hook is defined, call it before invoking the application.
 	if err := txmp.preCheck(tx); err != nil {
-		txmp.logger.Error("failed tx: pre-check", "txKey", fmt.Sprintf("%X", key), "peerID", txInfo.SenderP2PID, "err", err)
+		txmp.logger.Debug("failed tx: pre-check", "txKey", fmt.Sprintf("%X", key), "peerID", txInfo.SenderP2PID, "err", err)
 		txmp.rejectedTxCache.Push(key, 0, err.Error())
-		txmp.metrics.FailedTxs.Add(1)
+		txmp.metrics.FailedTxs.With(mempool.FailedTxCodeLabel, mempool.FailedTxCodePreCheck).Add(1)
 		schema.WriteMempoolTxStatus(
 			txmp.traceClient,
 			key[:],
@@ -349,9 +349,9 @@ func (txmp *TxPool) TryAddNewTx(tx *types.CachedTx, key types.TxKey, txInfo memp
 		return rsp, err
 	}
 	if rsp.Code != abci.CodeTypeOK {
-		txmp.logger.Error("failed tx: CheckTx non-OK code", "txKey", fmt.Sprintf("%X", key), "peerID", txInfo.SenderP2PID, "code", rsp.Code, "log", rsp.Log)
+		txmp.logger.Debug("failed tx: CheckTx non-OK code", "txKey", fmt.Sprintf("%X", key), "peerID", txInfo.SenderP2PID, "code", rsp.Code, "log", rsp.Log)
 		txmp.rejectedTxCache.Push(key, rsp.Code, rsp.Log)
-		txmp.metrics.FailedTxs.Add(1)
+		txmp.metrics.FailedTxs.With(mempool.FailedTxCodeLabel, mempool.TxCodeToStr(rsp.Code)).Add(1)
 		schema.WriteMempoolTxStatus(
 			txmp.traceClient,
 			key[:],
@@ -371,9 +371,9 @@ func (txmp *TxPool) TryAddNewTx(tx *types.CachedTx, key types.TxKey, txInfo memp
 	// Perform the post check
 	err = txmp.postCheck(wtx.tx, rsp)
 	if err != nil {
-		txmp.logger.Error("failed tx: post-check", "txKey", fmt.Sprintf("%X", key), "peerID", txInfo.SenderP2PID, "err", err)
+		txmp.logger.Debug("failed tx: post-check", "txKey", fmt.Sprintf("%X", key), "peerID", txInfo.SenderP2PID, "err", err)
 		txmp.rejectedTxCache.Push(key, 0, err.Error())
-		txmp.metrics.FailedTxs.Add(1)
+		txmp.metrics.FailedTxs.With(mempool.FailedTxCodeLabel, mempool.FailedTxCodePostCheck).Add(1)
 		schema.WriteMempoolTxStatus(
 			txmp.traceClient,
 			key[:],
@@ -757,7 +757,7 @@ func (txmp *TxPool) handleRecheckResult(wtx *wrappedTx, checkTxRes *abci.Respons
 		recheckErr = fmt.Errorf("code %d: %s", checkTxRes.Code, checkTxRes.Log)
 	}
 
-	txmp.logger.Error(
+	txmp.logger.Debug(
 		"failed tx: existing transaction no longer valid; failed re-CheckTx callback",
 		"priority", wtx.priority,
 		"tx", fmt.Sprintf("%X", wtx.key()),
@@ -766,7 +766,7 @@ func (txmp *TxPool) handleRecheckResult(wtx *wrappedTx, checkTxRes *abci.Respons
 	)
 	txKey := wtx.key()
 	txmp.store.remove(txKey)
-	txmp.metrics.FailedTxs.Add(1)
+	txmp.metrics.FailedTxs.With(mempool.FailedTxCodeLabel, mempool.TxCodeToStrOrLabel(checkTxRes.Code, err != nil, mempool.FailedTxCodePostCheck)).Add(1)
 	txmp.rejectedTxCache.Push(wtx.tx.Key(), checkTxRes.Code, checkTxRes.Log)
 	txmp.metrics.Size.Set(float64(txmp.Size()))
 	txmp.metrics.SizeBytes.Set(float64(txmp.SizeBytes()))

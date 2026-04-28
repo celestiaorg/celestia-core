@@ -38,8 +38,8 @@ func PrometheusMetrics(namespace string, labelsAndValues ...string) *Metrics {
 			Namespace: namespace,
 			Subsystem: MetricsSubsystem,
 			Name:      "failed_txs",
-			Help:      "FailedTxs defines the number of failed transactions. These are transactions that failed to make it into the mempool because they were deemed invalid. metrics:Number of failed transactions.",
-		}, labels).With(labelsAndValues...),
+			Help:      "FailedTxs defines the number of failed transactions. These are transactions that failed to make it into the mempool because they were deemed invalid. Labeled by the ABCI response code as a string, or by the sentinels precheck and postcheck for failures from the node-level filters (which have no ABCI code). metrics:Number of failed transactions.",
+		}, append(labels, "code")).With(labelsAndValues...),
 		RejectedTxs: prometheus.NewCounterFrom(stdprometheus.CounterOpts{
 			Namespace: namespace,
 			Subsystem: MetricsSubsystem,
