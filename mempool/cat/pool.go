@@ -321,6 +321,7 @@ func (txmp *TxPool) TryAddNewTx(tx *types.CachedTx, key types.TxKey, txInfo memp
 
 	// If a precheck hook is defined, call it before invoking the application.
 	if err := txmp.preCheck(tx); err != nil {
+		txmp.logger.Error("failed tx: pre-check", "txKey", fmt.Sprintf("%X", key), "peerID", txInfo.SenderP2PID, "err", err)
 		txmp.rejectedTxCache.Push(key, 0, err.Error())
 		txmp.metrics.FailedTxs.Add(1)
 		schema.WriteMempoolTxStatus(
@@ -348,6 +349,7 @@ func (txmp *TxPool) TryAddNewTx(tx *types.CachedTx, key types.TxKey, txInfo memp
 		return rsp, err
 	}
 	if rsp.Code != abci.CodeTypeOK {
+		txmp.logger.Error("failed tx: CheckTx non-OK code", "txKey", fmt.Sprintf("%X", key), "peerID", txInfo.SenderP2PID, "code", rsp.Code, "log", rsp.Log)
 		txmp.rejectedTxCache.Push(key, rsp.Code, rsp.Log)
 		txmp.metrics.FailedTxs.Add(1)
 		schema.WriteMempoolTxStatus(
@@ -369,6 +371,7 @@ func (txmp *TxPool) TryAddNewTx(tx *types.CachedTx, key types.TxKey, txInfo memp
 	// Perform the post check
 	err = txmp.postCheck(wtx.tx, rsp)
 	if err != nil {
+		txmp.logger.Error("failed tx: post-check", "txKey", fmt.Sprintf("%X", key), "peerID", txInfo.SenderP2PID, "err", err)
 		txmp.rejectedTxCache.Push(key, 0, err.Error())
 		txmp.metrics.FailedTxs.Add(1)
 		schema.WriteMempoolTxStatus(
@@ -754,8 +757,8 @@ func (txmp *TxPool) handleRecheckResult(wtx *wrappedTx, checkTxRes *abci.Respons
 		recheckErr = fmt.Errorf("code %d: %s", checkTxRes.Code, checkTxRes.Log)
 	}
 
-	txmp.logger.Debug(
-		"existing transaction no longer valid; failed re-CheckTx callback",
+	txmp.logger.Error(
+		"failed tx: existing transaction no longer valid; failed re-CheckTx callback",
 		"priority", wtx.priority,
 		"tx", fmt.Sprintf("%X", wtx.key()),
 		"err", err,
