@@ -20,4 +20,3 @@ This document lists all the P2P channel identifiers used by the various reactors
 | WantChannel | 0x51 | 81 | Propagation | `consensus/propagation/reactor.go:36` | Propagation want messages |
 | SnapshotChannel | 0x60 | 96 | State Sync | `statesync/reactor.go:21` | State sync snapshot messages |
 | ChunkChannel | 0x61 | 97 | State Sync | `statesync/reactor.go:23` | State sync chunk messages |
-

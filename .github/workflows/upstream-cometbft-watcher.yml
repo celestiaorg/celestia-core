@@ -1,0 +1,207 @@
+name: upstream-cometbft-watcher
+
+on:
+  schedule:
+    # 13:00 UTC daily
+    - cron: '0 13 * * *'
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Log actions without creating issues'
+        type: boolean
+        default: false
+
+permissions:
+  issues: write
+  contents: read
+
+env:
+  UPSTREAM_REPO: cometbft/cometbft
+  TARGET_REPO: ${{ github.repository }}
+  TRACKED_PREFIX: 'v0.38.'
+  DRY_RUN: ${{ inputs.dry_run == true && 'true' || 'false' }}
+
+jobs:
+  ensure-labels:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ensure labels exist
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          gh label create upstream-cometbft \
+            --repo "$TARGET_REPO" \
+            --color '0E8A16' \
+            --description 'Upstream CometBFT release or advisory that needs triage' \
+            --force
+          gh label create security \
+            --repo "$TARGET_REPO" \
+            --color 'D93F0B' \
+            --description 'Security-related issue' \
+            --force
+
+  advisories:
+    needs: ensure-labels
+    runs-on: ubuntu-latest
+    steps:
+      - name: File issues for new upstream advisories
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          # Fetch all published advisories (compact JSON, one per line). Capturing
+          # to a variable first so a failed API call fails the job via set -e
+          # instead of being swallowed by the process substitution below.
+          advisories_raw=$(
+            gh api "/repos/${UPSTREAM_REPO}/security-advisories" --paginate \
+              --jq '.[] | select(.state=="published") | {ghsa_id, summary, severity, published_at, html_url} | @json'
+          )
+
+          if [ -z "$advisories_raw" ]; then
+            echo "No published advisories found on ${UPSTREAM_REPO}."
+            exit 0
+          fi
+
+          mapfile -t advisories <<< "$advisories_raw"
+
+          for advisory_json in "${advisories[@]}"; do
+            [ -n "$advisory_json" ] || continue
+            ghsa_id=$(echo "$advisory_json" | jq -r .ghsa_id)
+            summary=$(echo "$advisory_json" | jq -r .summary)
+            severity=$(echo "$advisory_json" | jq -r .severity)
+            published=$(echo "$advisory_json" | jq -r .published_at)
+            url=$(echo "$advisory_json" | jq -r .html_url)
+
+            title="Upstream CometBFT advisory: ${ghsa_id}"
+
+            # Idempotency: narrow the search by the unique GHSA ID and post-filter
+            # with an exact title match via jq --arg (safe against special chars).
+            existing=$(
+              gh issue list --repo "$TARGET_REPO" \
+                --search "in:title ${ghsa_id}" \
+                --state all --limit 100 \
+                --json title \
+              | jq --arg t "$title" '[.[] | select(.title == $t)] | length'
+            )
+            if [ "$existing" -gt 0 ]; then
+              echo "Skipping (already exists): ${title}"
+              continue
+            fi
+
+            body=$(cat <<EOF
+          Upstream CometBFT published a new security advisory.
+
+          - **GHSA ID:** ${ghsa_id}
+          - **Severity:** ${severity}
+          - **Published:** ${published}
+          - **Link:** ${url}
+
+          ## Summary
+
+          ${summary}
+
+          ## Checklist
+
+          - [ ] Assess applicability to celestia-core (\`main\`, \`v0.39.x-celestia\`, \`v0.38.x-celestia\`)
+          - [ ] Backport any applicable fixes
+          - [ ] Close this issue when triage is complete
+
+          _Filed automatically by \`.github/workflows/upstream-cometbft-watcher.yml\`._
+          EOF
+          )
+
+            if [ "$DRY_RUN" = "true" ]; then
+              echo "[dry-run] Would create issue: ${title}"
+              continue
+            fi
+
+            gh issue create \
+              --repo "$TARGET_REPO" \
+              --title "$title" \
+              --label upstream-cometbft \
+              --label security \
+              --body "$body"
+          done
+
+  releases:
+    needs: ensure-labels
+    runs-on: ubuntu-latest
+    steps:
+      - name: File issues for new upstream releases
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          # Fetch last 100 upstream releases (non-draft, non-prerelease, tag starts
+          # with TRACKED_PREFIX). Capturing to a variable first so a failed API
+          # call fails the job via set -e instead of being swallowed.
+          releases_raw=$(
+            gh release list --repo "$UPSTREAM_REPO" --limit 100 \
+              --json tagName,publishedAt,isDraft,isPrerelease \
+            | jq -c --arg prefix "$TRACKED_PREFIX" \
+                '.[] | select(.isDraft==false and .isPrerelease==false) | select(.tagName | startswith($prefix))'
+          )
+
+          if [ -z "$releases_raw" ]; then
+            echo "No releases on ${UPSTREAM_REPO} matching prefix ${TRACKED_PREFIX}."
+            exit 0
+          fi
+
+          mapfile -t releases <<< "$releases_raw"
+
+          for release_json in "${releases[@]}"; do
+            [ -n "$release_json" ] || continue
+            tag=$(echo "$release_json" | jq -r .tagName)
+            published=$(echo "$release_json" | jq -r .publishedAt)
+            url="https://github.com/${UPSTREAM_REPO}/releases/tag/${tag}"
+
+            title="Upstream CometBFT release: ${tag}"
+
+            # Idempotency: narrow the search by the unique tag and post-filter
+            # with an exact title match via jq --arg (safe against special chars).
+            existing=$(
+              gh issue list --repo "$TARGET_REPO" \
+                --search "in:title ${tag}" \
+                --state all --limit 100 \
+                --json title \
+              | jq --arg t "$title" '[.[] | select(.title == $t)] | length'
+            )
+            if [ "$existing" -gt 0 ]; then
+              echo "Skipping (already exists): ${title}"
+              continue
+            fi
+
+            body=$(cat <<EOF
+          Upstream CometBFT published a new release on the \`${TRACKED_PREFIX}x\` line.
+
+          - **Tag:** ${tag}
+          - **Published:** ${published}
+          - **Link:** ${url}
+
+          ## Checklist
+
+          - [ ] Read the release notes
+          - [ ] Assess applicability to celestia-core (\`main\`, \`v0.39.x-celestia\`, \`v0.38.x-celestia\`)
+          - [ ] Backport any security-relevant or bug-fix commits
+          - [ ] Close this issue when triage is complete
+
+          See also: [open \`upstream-cometbft\` issues](https://github.com/${TARGET_REPO}/issues?q=is%3Aissue+is%3Aopen+label%3Aupstream-cometbft) for advisories to cross-reference.
+
+          _Filed automatically by \`.github/workflows/upstream-cometbft-watcher.yml\`._
+          EOF
+          )
+
+            if [ "$DRY_RUN" = "true" ]; then
+              echo "[dry-run] Would create issue: ${title}"
+              continue
+            fi
+
+            gh issue create \
+              --repo "$TARGET_REPO" \
+              --title "$title" \
+              --label upstream-cometbft \
+              --body "$body"
+          done
