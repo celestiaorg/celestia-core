@@ -296,6 +296,17 @@ func (blockProp *Reactor) sendWant(ps *PeerState, want *proptypes.WantParts) {
 		return
 	}
 
+	schema.WriteBlockPartState(
+		blockProp.traceClient,
+		want.Height,
+		want.Round,
+		want.Parts.GetTrueIndices(),
+		false,
+		string(ps.peer.ID()),
+		schema.Upload,
+		"want",
+	)
+
 	// keep track of the parts that this node has requested.
 	ps.AddRequests(want.Height, want.Round, want.Parts)
 	ps.IncreaseConcurrentReqs(int64(len(want.Parts.GetTrueIndices())))

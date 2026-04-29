@@ -176,6 +176,10 @@ type State struct {
 
 	// gossipDataEnabled controls whether the gossipDataRoutine should run
 	gossipDataEnabled atomic.Bool
+
+	// proposalReceivedTime tracks when the proposal was received for the current height/round
+	// Used to calculate the duration until full block is received
+	proposalReceivedTime time.Time
 }
 
 // StateOption sets an optional parameter on the State.
@@ -876,6 +880,7 @@ func (cs *State) updateToState(state sm.State) {
 	cs.rs.Proposal = nil
 	cs.rs.ProposalBlock = nil
 	cs.rs.ProposalBlockParts = nil
+	cs.proposalReceivedTime = time.Time{}
 	cs.rs.LockedRound = -1
 	cs.rs.LockedBlock = nil
 	cs.rs.LockedBlockParts = nil
@@ -1244,6 +1249,7 @@ func (cs *State) enterNewRound(height int64, round int32) {
 		cs.rs.Proposal = nil
 		cs.rs.ProposalBlock = nil
 		cs.rs.ProposalBlockParts = nil
+		cs.proposalReceivedTime = time.Time{}
 	}
 
 	logger.Debug("entering new round",
@@ -2239,7 +2245,7 @@ func (cs *State) defaultSetProposal(proposal *types.Proposal) error {
 	}
 
 	cs.Logger.Info("received proposal", "proposal", proposal, "proposer", pubKey.Address())
-	schema.WriteFullBlockReceivingTime(cs.traceClient, proposal.Height, proposal.Round, time.Now(), false)
+	cs.proposalReceivedTime = time.Now()
 	return nil
 }
 
@@ -2296,7 +2302,10 @@ func (cs *State) addProposalBlockPart(msg *BlockPartMessage, peerID p2p.ID) (add
 		)
 	}
 	if added && cs.rs.ProposalBlockParts.IsComplete() {
-		schema.WriteFullBlockReceivingTime(cs.traceClient, msg.Height, msg.Round, time.Now(), true)
+		if !cs.proposalReceivedTime.IsZero() {
+			duration := time.Since(cs.proposalReceivedTime)
+			schema.WriteFullBlockReceivingTime(cs.traceClient, msg.Height, msg.Round, duration)
+		}
 		bz := cs.rs.ProposalBlockParts.GetBytes()
 
 		pbb := new(cmtproto.Block)
