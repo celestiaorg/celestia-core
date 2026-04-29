@@ -1,6 +1,8 @@
 package mempool
 
 import (
+	"strconv"
+
 	"github.com/go-kit/kit/metrics"
 )
 
@@ -8,7 +10,36 @@ const (
 	// MetricsSubsystem is a subsystem shared by all metrics exposed by this
 	// package.
 	MetricsSubsystem = "mempool"
+
+	// FailedTxCodeLabel is the FailedTxs metric label key used to bucket
+	// failures by ABCI response code (or the sentinels below).
+	FailedTxCodeLabel = "code"
+	// FailedTxCodePreCheck is the FailedTxCodeLabel value used for
+	// transactions rejected by the node-level pre-check filter.
+	FailedTxCodePreCheck = "precheck"
+	// FailedTxCodePostCheck is the FailedTxCodeLabel value used for
+	// transactions rejected by the node-level post-check filter, including
+	// recheck failures where the ABCI code is OK but post-check returned an
+	// error.
+	FailedTxCodePostCheck = "postcheck"
 )
+
+// TxCodeToStr formats an ABCI response code as a string suitable for use as a
+// Prometheus label value.
+func TxCodeToStr(code uint32) string {
+	return TxCodeToStrOrLabel(code, false, "")
+}
+
+// TxCodeToStrOrLabel formats an ABCI response code, but substitutes label
+// when code is 0 (CodeTypeOK) and hasErr is true. Used in failure branches
+// where code 0 cannot represent a real failure (e.g. node-level post-check
+// rejected a tx the application accepted), so the label carries the signal.
+func TxCodeToStrOrLabel(code uint32, hasErr bool, label string) string {
+	if code == 0 && hasErr {
+		return label
+	}
+	return strconv.FormatUint(uint64(code), 10)
+}
 
 //go:generate go run ../scripts/metricsgen -struct=Metrics
 
@@ -26,9 +57,11 @@ type Metrics struct {
 
 	// FailedTxs defines the number of failed transactions. These are
 	// transactions that failed to make it into the mempool because they were
-	// deemed invalid.
+	// deemed invalid. Labeled by the ABCI response code as a string, or by
+	// the sentinels precheck and postcheck for failures from the node-level
+	// filters (which have no ABCI code).
 	// metrics:Number of failed transactions.
-	FailedTxs metrics.Counter
+	FailedTxs metrics.Counter `metrics_labels:"code"`
 
 	// RejectedTxs defines the number of rejected transactions. These are
 	// transactions that failed to make it into the mempool due to resource

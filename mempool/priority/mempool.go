@@ -191,8 +191,8 @@ func (txmp *TxMempool) CheckTx(
 	cachedTx := tx.ToCachedTx()
 	// If a precheck hook is defined, call it before invoking the application.
 	if err := txmp.preCheck(cachedTx); err != nil {
-		txmp.logger.Error("failed tx: pre-check", "tx", tx.Hash(), "peerID", txInfo.SenderP2PID, "err", err)
-		txmp.metrics.FailedTxs.Add(1)
+		txmp.logger.Debug("failed tx: pre-check", "tx", tx.Hash(), "peerID", txInfo.SenderP2PID, "err", err)
+		txmp.metrics.FailedTxs.With(mempool.FailedTxCodeLabel, mempool.FailedTxCodePreCheck).Add(1)
 		// Add the transaction to the rejected cache
 		txmp.rejectedTxs.Push(cachedTx.Key(), 0, err.Error())
 		return mempool.ErrPreCheck{Err: err}
@@ -491,7 +491,7 @@ func (txmp *TxMempool) addNewTransaction(wtx *WrappedTx, checkTxRes *abci.Respon
 	}
 
 	if err != nil || checkTxRes.Code != abci.CodeTypeOK {
-		txmp.logger.Error(
+		txmp.logger.Debug(
 			"failed tx: rejected bad transaction",
 			"priority", wtx.Priority(),
 			"tx", fmt.Sprintf("%X", wtx.tx.Hash()),
@@ -500,7 +500,7 @@ func (txmp *TxMempool) addNewTransaction(wtx *WrappedTx, checkTxRes *abci.Respon
 			"post_check_err", err,
 		)
 
-		txmp.metrics.FailedTxs.Add(1)
+		txmp.metrics.FailedTxs.With(mempool.FailedTxCodeLabel, mempool.TxCodeToStrOrLabel(checkTxRes.Code, err != nil, mempool.FailedTxCodePostCheck)).Add(1)
 		// Add the transaction to the rejected cache
 		txmp.rejectedTxs.Push(wtx.tx.Key(), checkTxRes.Code, checkTxRes.Log)
 		// Remove the invalid transaction from the cache, unless the operator has
@@ -662,7 +662,7 @@ func (txmp *TxMempool) handleRecheckResult(tx *types.CachedTx, checkTxRes *abci.
 		return // N.B. Size of mempool did not change
 	}
 
-	txmp.logger.Error(
+	txmp.logger.Debug(
 		"failed tx: existing transaction no longer valid; failed re-CheckTx callback",
 		"priority", wtx.Priority(),
 		"tx", fmt.Sprintf("%X", wtx.tx.Hash()),
@@ -671,7 +671,7 @@ func (txmp *TxMempool) handleRecheckResult(tx *types.CachedTx, checkTxRes *abci.
 	)
 	txmp.rejectedTxs.Push(wtx.tx.Key(), checkTxRes.Code, checkTxRes.Log)
 	txmp.removeTxByElement(elt)
-	txmp.metrics.FailedTxs.Add(1)
+	txmp.metrics.FailedTxs.With(mempool.FailedTxCodeLabel, mempool.TxCodeToStrOrLabel(checkTxRes.Code, err != nil, mempool.FailedTxCodePostCheck)).Add(1)
 	if !txmp.config.KeepInvalidTxsInCache {
 		txmp.cache.Remove(txKey)
 	}
