@@ -190,3 +190,37 @@ func TestStop_DoesNotDeadlock(t *testing.T) {
 		t.Fatal("Stop() deadlocked: did not return within 2s")
 	}
 }
+
+// TestBroadcastToListeners_DoesNotDeadlockOnPanic guards against the same
+// reentrant-mutex pattern as TestStop_DoesNotDeadlock, but in
+// broadcastToListeners. broadcastToListeners holds blockAPI.Lock() while
+// sending to each listener; if a send panics (e.g. channel closed by
+// SubscribeNewHeights returning) the recover handler calls
+// removeHeightListener, which tries to acquire the same non-reentrant
+// mutex and deadlocks the goroutine forever.
+func TestBroadcastToListeners_DoesNotDeadlockOnPanic(t *testing.T) {
+	env := &core.Environment{Logger: log.NewNopLogger()}
+	api := NewBlockAPI(env)
+
+	// Close the listener's channel so the next send panics with
+	// "send on closed channel", triggering the recover path.
+	ch := api.addHeightListener()
+	close(ch)
+
+	done := make(chan struct{})
+	go func() {
+		api.broadcastToListeners(context.Background(), 1, []byte("hash"))
+		close(done)
+	}()
+
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("broadcastToListeners() deadlocked: did not return within 2s")
+	}
+
+	api.Lock()
+	_, exists := api.heightListeners[ch]
+	api.Unlock()
+	require.False(t, exists, "listener should be removed after the recover path runs")
+}

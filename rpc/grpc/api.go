@@ -208,6 +208,12 @@ func (blockAPI *BlockAPI) addHeightListener() chan SubscribeNewHeightsResponse {
 func (blockAPI *BlockAPI) removeHeightListener(ch chan SubscribeNewHeightsResponse) {
 	blockAPI.Lock()
 	defer blockAPI.Unlock()
+	blockAPI.removeHeightListenerLocked(ch)
+}
+
+// removeHeightListenerLocked removes ch from heightListeners. The caller
+// must hold blockAPI.Lock().
+func (blockAPI *BlockAPI) removeHeightListenerLocked(ch chan SubscribeNewHeightsResponse) {
 	delete(blockAPI.heightListeners, ch)
 }
 
