@@ -211,11 +211,12 @@ func (blockAPI *BlockAPI) removeHeightListener(ch chan SubscribeNewHeightsRespon
 	delete(blockAPI.heightListeners, ch)
 }
 
-func (blockAPI *BlockAPI) closeAllListeners() {
-	blockAPI.Lock()
-	defer blockAPI.Unlock()
+// closeAllListenersLocked clears every registered height listener.
+// The caller must hold blockAPI.Lock(); the function does not acquire
+// the lock itself because doing so would deadlock against Stop, which
+// already holds it (sync.Mutex is not reentrant).
+func (blockAPI *BlockAPI) closeAllListenersLocked() {
 	if blockAPI.heightListeners == nil {
-		// if this is nil, then there is no need to close anything
 		return
 	}
 	for channel := range blockAPI.heightListeners {
@@ -230,13 +231,16 @@ func (blockAPI *BlockAPI) Stop(ctx context.Context) error {
 	defer blockAPI.Unlock()
 
 	// close all height listeners
-	blockAPI.closeAllListeners()
+	blockAPI.closeAllListenersLocked()
 
 	var err error
-	// stop the events subscription
+	// stop the events subscription. We deliberately do not clear
+	// blockAPI.newBlockSubscription here: StartNewBlockEventListener reads
+	// the field without holding the lock, so a write would race with that
+	// goroutine. Unsubscribe is sufficient to drain the subscription; the
+	// goroutine exits via ctx.Done after the caller cancels the context.
 	if blockAPI.newBlockSubscription != nil {
 		err = blockAPI.env.EventBus.Unsubscribe(ctx, blockAPI.subscriptionID, blockAPI.subscriptionQuery)
-		blockAPI.newBlockSubscription = nil
 	}
 
 	blockAPI.env.Logger.Info("gRPC streaming API has been stopped")
