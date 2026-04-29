@@ -5,9 +5,11 @@ import (
 	"net"
 	"regexp"
 	"strings"
+	"time"
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/keepalive"
 	"google.golang.org/grpc/reflection"
 
 	cmtnet "github.com/cometbft/cometbft/libs/net"
@@ -31,7 +33,21 @@ type Config struct {
 //
 // Deprecated: A new gRPC API will be introduced after v0.38.
 func StartGRPCServer(env *core.Environment, ln net.Listener) error {
-	grpcServer := grpc.NewServer()
+	grpcServer := grpc.NewServer(
+		grpc.KeepaliveParams(keepalive.ServerParameters{
+			// Send a keepalive ping every 30s of inactivity.
+			Time: 30 * time.Second,
+			// Close the connection if the ping is not ACKed within 10s.
+			Timeout: 10 * time.Second,
+		}),
+		grpc.KeepaliveEnforcementPolicy(keepalive.EnforcementPolicy{
+			// Do not require the client to have an active stream to ping.
+			PermitWithoutStream: true,
+			// Allow client pings as frequent as every 10s. Clients that
+			// ping faster will be disconnected.
+			MinTime: 10 * time.Second,
+		}),
+	)
 	RegisterBroadcastAPIServer(grpcServer, &broadcastAPI{env: env})
 
 	api := NewBlockAPI(env)
