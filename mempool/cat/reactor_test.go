@@ -594,15 +594,6 @@ func genPeer() *mocks.Peer {
 	return peer
 }
 
-func genPersistentPeer() *mocks.Peer {
-	peer := &mocks.Peer{}
-	nodeKey := p2p.NodeKey{PrivKey: ed25519.GenPrivKey()}
-	peer.On("ID").Return(nodeKey.ID())
-	peer.On("Get", types.PeerStateKey).Return(nil).Maybe()
-	peer.On("IsPersistent").Return(true).Maybe()
-	return peer
-}
-
 // sequenceTrackingApp is a test application that implements SequenceQuerier
 type sequenceTrackingApp struct {
 	*kvstore.Application
