@@ -179,6 +179,7 @@ func (env *Environment) txSearchPage(
 	return results[skipCount : skipCount+pageSize], totalCount, nil
 }
 
+// Deprecated: helper for the deprecated tx and tx_search endpoints.
 func (env *Environment) txResultsToRPC(results []*abcitypes.TxResult, prove bool) ([]*ctypes.ResultTx, error) {
 	apiResults := make([]*ctypes.ResultTx, 0, len(results))
 	for _, r := range results {
