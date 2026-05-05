@@ -195,39 +195,50 @@ func TestByzantinePrevoteEquivocation(t *testing.T) {
 	// create byzantine validator
 	bcs := css[byzantineNode]
 
-	// alter prevote so that the byzantine node double votes when height is 2
+	// Alter prevote so the byzantine validator equivocates at every height in
+	// [prevoteHeight, prevoteHeight+attackHeights). Repeating the attack across
+	// several heights mitigates a CI-only race: each honest peer must process
+	// both conflicting prevotes from the byzantine while still at the height
+	// they were signed for, but with three honest validators the consensus
+	// already has +2/3 prevotes for the proposed block without the byzantine's
+	// vote, so the receiver may commit and advance to the next height before
+	// processing the byzantine's second vote — at which point addVote in
+	// consensus/state.go silently drops the late vote (height mismatch), no
+	// peer ever sees both votes in its vote set, and DuplicateVoteEvidence
+	// cannot form. Attacking multiple consecutive heights gives each round an
+	// independent shot, so we only need *one* of them to land cleanly.
+	const attackHeights = 5
 	bcs.doPrevote = func(height int64, round int32) {
-		// allow first height to happen normally so that byzantine validator is no longer proposer
-		if height == prevoteHeight {
-			t.Logf("[byz] sending two conflicting prevotes at height=%d round=%d", height, round)
-			prevote1, err := bcs.signVote(cmtproto.PrevoteType, bcs.rs.ProposalBlock.Hash(), bcs.rs.ProposalBlockParts.Header(), nil)
-			require.NoError(t, err)
-			prevote2, err := bcs.signVote(cmtproto.PrevoteType, nil, types.PartSetHeader{}, nil)
-			require.NoError(t, err)
-			peerList := reactors[byzantineNode].Switch.Peers().List()
-			t.Logf("[byz] peer count at prevote time: %d", len(peerList))
-			// Send both conflicting prevotes to every peer. Splitting the votes
-			// across peers (one variant to each half) is unreliable: the consensus
-			// reactor's HasVote gossip optimization (consensus/reactor.go:
-			// PickVoteToSend) excludes a validator's index from gossip selection
-			// once any peer reports holding *any* vote from that validator,
-			// regardless of which BlockID the vote is for. Once each peer's
-			// HasVote bitarray marks "byz has voted at h/r/type", no peer ever
-			// forwards its own variant to peers that hold the other variant, so
-			// no peer sees both conflicting votes and DuplicateVoteEvidence
-			// cannot form. Sending both votes directly to every peer makes the
-			// conflict detectable on first receipt without relying on gossip.
-			for _, peer := range peerList {
-				for _, v := range []*types.Vote{prevote1, prevote2} {
-					sent := peer.Send(p2p.Envelope{
-						Message:   &cmtcons.Vote{Vote: v.ToProto()},
-						ChannelID: VoteChannel,
-					})
-					t.Logf("[byz] send prevote to peer=%s hash=%X sent=%v", peer.ID(), v.BlockID.Hash, sent)
-				}
-			}
-		} else {
+		if height < prevoteHeight || height >= prevoteHeight+attackHeights {
 			bcs.defaultDoPrevote(height, round)
+			return
+		}
+		t.Logf("[byz] sending two conflicting prevotes at height=%d round=%d", height, round)
+		prevote1, err := bcs.signVote(cmtproto.PrevoteType, bcs.rs.ProposalBlock.Hash(), bcs.rs.ProposalBlockParts.Header(), nil)
+		require.NoError(t, err)
+		prevote2, err := bcs.signVote(cmtproto.PrevoteType, nil, types.PartSetHeader{}, nil)
+		require.NoError(t, err)
+		peerList := reactors[byzantineNode].Switch.Peers().List()
+		t.Logf("[byz] peer count at prevote time: %d", len(peerList))
+		// Send both conflicting prevotes to every peer. Splitting the votes
+		// across peers (one variant to each half) is unreliable: the consensus
+		// reactor's HasVote gossip optimization (consensus/reactor.go:
+		// PickVoteToSend) excludes a validator's index from gossip selection
+		// once any peer reports holding *any* vote from that validator,
+		// regardless of which BlockID the vote is for. Once each peer's
+		// HasVote bitarray marks "byz has voted at h/r/type", no peer ever
+		// forwards its own variant to peers that hold the other variant, so
+		// no peer sees both conflicting votes and DuplicateVoteEvidence
+		// cannot form. Sending both votes directly to every peer makes the
+		// conflict detectable on first receipt without relying on gossip.
+		for _, peer := range peerList {
+			for _, v := range []*types.Vote{prevote1, prevote2} {
+				sent := peer.Send(p2p.Envelope{
+					Message:   &cmtcons.Vote{Vote: v.ToProto()},
+					ChannelID: VoteChannel,
+				})
+				t.Logf("[byz] send prevote to peer=%s hash=%X sent=%v", peer.ID(), v.BlockID.Hash, sent)
+			}
 		}
 	}
 
@@ -313,14 +324,18 @@ func TestByzantinePrevoteEquivocation(t *testing.T) {
 
 	// Stage 1: wait for the duplicate-vote evidence to land in any validator's
 	// evidence pool. This isolates "evidence detected" from "evidence committed"
-	// so that future failures point at the correct failing stage.
+	// so that future failures point at the correct failing stage. Accept
+	// evidence at any of the attack heights — the byzantine equivocates at
+	// every height in [prevoteHeight, prevoteHeight+attackHeights), and we only
+	// need one round to produce evidence.
 	var foundEvidence types.Evidence
 	require.Eventually(t, func() bool {
 		for i := 0; i < nValidators; i++ {
 			pending, _ := evpools[i].PendingEvidence(maxEvidenceBytes)
 			for _, ev := range pending {
 				if dve, ok := ev.(*types.DuplicateVoteEvidence); ok {
-					if prevoteHeight == dve.Height() {
+					h := dve.Height()
+					if h >= prevoteHeight && h < prevoteHeight+attackHeights {
 						foundEvidence = dve
 						return true
 					}
@@ -328,7 +343,7 @@ func TestByzantinePrevoteEquivocation(t *testing.T) {
 			}
 		}
 		return false
-	}, 30*time.Second, 100*time.Millisecond, "evidence pool never received DuplicateVoteEvidence at height %d", prevoteHeight)
+	}, 30*time.Second, 100*time.Millisecond, "evidence pool never received DuplicateVoteEvidence at heights [%d,%d)", prevoteHeight, prevoteHeight+attackHeights)
 
 	// Stage 2: wait for evidence to be committed in some block on any validator.
 	require.Eventually(t, func() bool {
