@@ -536,9 +536,8 @@ func (memR *Reactor) broadcastSeenTxWithHeight(txKey types.TxKey, height int64, 
 		// rank outside the top maxSeenTxBroadcast. Persistent peers are appended,
 		// never displacing the natural set.
 		isPersistent := peerInfo.peer.IsPersistent()
-		underMainCap := sent < maxSeenTxBroadcast
-		needPersistent := isPersistent && sentPersistent < maxPersistent
-		if !underMainCap && !needPersistent {
+		canSend := sent < maxSeenTxBroadcast || (isPersistent && sentPersistent < maxPersistent)
+		if !canSend {
 			continue
 		}
 
