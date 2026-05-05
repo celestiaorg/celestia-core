@@ -206,17 +206,25 @@ func TestByzantinePrevoteEquivocation(t *testing.T) {
 			require.NoError(t, err)
 			peerList := reactors[byzantineNode].Switch.Peers().List()
 			t.Logf("[byz] peer count at prevote time: %d", len(peerList))
-			// send two votes to all peers (1st to one half, 2nd to another half)
-			for i, peer := range peerList {
-				v := prevote1
-				if i >= len(peerList)/2 {
-					v = prevote2
+			// Send both conflicting prevotes to every peer. Splitting the votes
+			// across peers (one variant to each half) is unreliable: the consensus
+			// reactor's HasVote gossip optimization (consensus/reactor.go:
+			// PickVoteToSend) excludes a validator's index from gossip selection
+			// once any peer reports holding *any* vote from that validator,
+			// regardless of which BlockID the vote is for. Once each peer's
+			// HasVote bitarray marks "byz has voted at h/r/type", no peer ever
+			// forwards its own variant to peers that hold the other variant, so
+			// no peer sees both conflicting votes and DuplicateVoteEvidence
+			// cannot form. Sending both votes directly to every peer makes the
+			// conflict detectable on first receipt without relying on gossip.
+			for _, peer := range peerList {
+				for _, v := range []*types.Vote{prevote1, prevote2} {
+					sent := peer.Send(p2p.Envelope{
+						Message:   &cmtcons.Vote{Vote: v.ToProto()},
+						ChannelID: VoteChannel,
+					})
+					t.Logf("[byz] send prevote to peer=%s hash=%X sent=%v", peer.ID(), v.BlockID.Hash, sent)
 				}
-				sent := peer.Send(p2p.Envelope{
-					Message:   &cmtcons.Vote{Vote: v.ToProto()},
-					ChannelID: VoteChannel,
-				})
-				t.Logf("[byz] send prevote to peer=%s hash=%X sent=%v", peer.ID(), v.BlockID.Hash, sent)
 			}
 		} else {
 			bcs.defaultDoPrevote(height, round)
