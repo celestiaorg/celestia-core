@@ -1,1 +1,0 @@
-- [deps] Consolidate `require` blocks in `go.mod` into one block for direct dependencies and one block for indirect dependencies.
