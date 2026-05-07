@@ -145,10 +145,15 @@ func TestByzantinePrevoteEquivocation(t *testing.T) {
 		require.NoError(t, err)
 		cs.SetEventBus(eventBus)
 
-		// Set proper timeout ticker for consistent timing
-		ticker := NewTimeoutTicker()
-		ticker.SetLogger(logger)
-		cs.SetTimeoutTicker(ticker)
+		// Use the same mock ticker upstream's TestByzantinePrevoteEquivocation uses
+		// (onlyOnce=true: fires the new-height timer once at startup, then never).
+		// Real timers race with proposal gossip — if TimeoutPropose fires on the
+		// byzantine before the proposal arrives, doPrevote runs without a proposal
+		// block and prevote1 collapses to a vote for nil identical to prevote2.
+		// Mock ticker eliminates that race; consensus advances purely on +2/3
+		// thresholds, which is more deterministic for testing the equivocation
+		// detection path.
+		cs.SetTimeoutTicker(newMockTickerFunc(true)())
 		cs.SetLogger(logger)
 
 		css[i] = cs
