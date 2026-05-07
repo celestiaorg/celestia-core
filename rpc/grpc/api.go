@@ -68,18 +68,8 @@ func NewBlockAPI(env *core.Environment) *BlockAPI {
 }
 
 func (blockAPI *BlockAPI) StartNewBlockEventListener(ctx context.Context) error {
-	if blockAPI.newBlockSubscription == nil {
-		var err error
-		blockAPI.newBlockSubscription, err = blockAPI.env.EventBus.Subscribe(
-			ctx,
-			blockAPI.subscriptionID,
-			blockAPI.subscriptionQuery,
-			500,
-		)
-		if err != nil {
-			blockAPI.env.Logger.Error("Failed to subscribe to new blocks", "err", err)
-			return err
-		}
+	if err := blockAPI.subscribe(ctx); err != nil {
+		return err
 	}
 	for {
 		select {
@@ -127,6 +117,30 @@ const RetryAttempts = 6
 
 // SubscriptionCapacity the maximum number of pending blocks in the subscription.
 const SubscriptionCapacity = 500
+
+// subscribe creates the initial EventBus subscription if one does not
+// already exist. Holding blockAPI.Lock keeps this write synchronized
+// with retryNewBlocksSubscription (which also writes the field under
+// the lock) and Stop (which reads it under the lock).
+func (blockAPI *BlockAPI) subscribe(ctx context.Context) error {
+	blockAPI.Lock()
+	defer blockAPI.Unlock()
+	if blockAPI.newBlockSubscription != nil {
+		return nil
+	}
+	sub, err := blockAPI.env.EventBus.Subscribe(
+		ctx,
+		blockAPI.subscriptionID,
+		blockAPI.subscriptionQuery,
+		SubscriptionCapacity,
+	)
+	if err != nil {
+		blockAPI.env.Logger.Error("Failed to subscribe to new blocks", "err", err)
+		return err
+	}
+	blockAPI.newBlockSubscription = sub
+	return nil
+}
 
 func (blockAPI *BlockAPI) retryNewBlocksSubscription(ctx context.Context) (bool, error) {
 	ticker := time.NewTicker(time.Second)
