@@ -146,89 +146,6 @@ If you are a VS Code user, you may want to add the following to your `.vscode/se
 }
 ```
 
-## Changelog
-
-To manage and generate our changelog, we currently use [unclog](https://github.com/informalsystems/unclog).
-
-Every fix, improvement, feature, or breaking change should be made in a
-pull-request that includes a file
-`.changelog/unreleased/${category}/${issue-or-pr-number}-${description}.md`,
-where:
-- `category` is one of `improvements`, `breaking-changes`, `bug-fixes`,
-  `features` and if multiple apply, create multiple files;
-- `description` is a short (4 to 6 word), hyphen separated description of the
-  fix, starting the component changed; and,
-- `issue or PR number` is the CometBFT issue number, if one exists, or the PR
-  number, otherwise.
-
-For examples, see the [.changelog](.changelog) folder.
-
-A feature can also be worked on a feature branch, if its size and/or risk
-justifies it (see [below](#branching-model-and-release)).
-
-### What does a good changelog entry look like?
-
-Changelog entries should answer the question: "what is important about this
-change for users to know?" or "what problem does this solve for users?". It
-should not simply be a reiteration of the title of the associated PR, unless the
-title of the PR _very_ clearly explains the benefit of a change to a user.
-
-Some good examples of changelog entry descriptions:
-
-```md
-- [consensus] \#1111 Small transaction throughput improvement (approximately
-  3-5\% from preliminary tests) through refactoring the way we use channels
-- [mempool] \#1112 Refactor Go API to be able to easily swap out the current
-  mempool implementation in CometBFT forks
-- [p2p] \#1113 Automatically ban peers when their messages are unsolicited or
-  are received too frequently
-```
-
-Some bad examples of changelog entry descriptions:
-
-```md
-- [consensus] \#1111 Refactor channel usage
-- [mempool] \#1112 Make API generic
-- [p2p] \#1113 Ban for PEX message abuse
-```
-
-For more on how to write good changelog entries, see:
-
-- <https://keepachangelog.com>
-- <https://docs.gitlab.com/ee/development/changelog.html#writing-good-changelog-entries>
-- <https://depfu.com/blog/what-makes-a-good-changelog>
-
-### Changelog entry format
-
-Changelog entries should be formatted as follows:
-
-```md
-- [module] \#xxx Some description of the change (@contributor)
-```
-
-Here, `module` is the part of the code that changed (typically a top-level Go
-package), `xxx` is the pull-request number, and `contributor` is the author/s of
-the change.
-
-It's also acceptable for `xxx` to refer to the relevant issue number, but
-pull-request numbers are preferred. Note this means pull-requests should be
-opened first so the changelog can then be updated with the pull-request's
-number. There is no need to include the full link, as this will be added
-automatically during release. But please include the backslash and pound, eg.
-`\#2313`.
-
-Changelog entries should be ordered alphabetically according to the `module`,
-and numerically according to the pull-request number.
-
-Changes with multiple classifications should be doubly included (eg. a bug fix
-that is also a breaking change should be recorded under both).
-
-Breaking changes are further subdivided according to the APIs/users they impact.
-Any change that affects multiple APIs/users should be recorded multiply - for
-instance, a change to the `Blockchain Protocol` that removes a field from the
-header should also be recorded under `CLI/RPC/Config` since the field will be
-removed from the header in RPC responses as well.
-
 ## Branching Model and Release
 
 ### Celestia-specific Contribution Flow  
@@ -301,9 +218,9 @@ anyways).
 To begin contributing, create a development branch either on
 `github.com/cometbft/cometbft`, or your fork (using `git remote add origin`).
 
-Make changes, and before submitting a pull request, update the changelog to
-record your change. Also, run either `git rebase` or `git merge` on top of the
-latest `main`. (Since pull requests are squash-merged, either is fine!)
+Make changes, then run either `git rebase` or `git merge` on top of the latest
+`main` before submitting a pull request. (Since pull requests are squash-merged,
+either is fine!)
 
 Update the `UPGRADING.md` if the change you've made is breaking and the
 instructions should be in place for a user on how he/she can upgrade its

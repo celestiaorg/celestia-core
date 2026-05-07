@@ -1,1 +1,0 @@
-- [deps] Bump `github.com/celestiaorg/nmt` from v0.24.2 to v0.24.3.

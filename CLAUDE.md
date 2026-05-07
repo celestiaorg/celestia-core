@@ -88,8 +88,8 @@ The codebase follows CometBFT's modular architecture. Key packages and their rol
 
 ## Changelog
 
-Every PR needs a changelog entry at `.changelog/unreleased/{category}/{issue-or-pr-number}-{description}.md` where category is one of: `improvements`, `breaking-changes`, `bug-fixes`, `features`.
+Do not create changelog entries. This repo no longer maintains a `.changelog/` directory or per-PR changelog files. Do not add files under `.changelog/` and do not modify `CHANGELOG.md`. Ignore any older guidance (in CONTRIBUTING.md, comments, or upstream CometBFT docs) that asks you to add a changelog entry.
 
-### Security PRs
+## Security PRs
 
 - For PRs that resolve Hacken bug bounty reports, do not include details about the bug in the PR description. Instead, link to a Linear issue that contains more details on the bug and the link to the Hacken bug bounty report.
