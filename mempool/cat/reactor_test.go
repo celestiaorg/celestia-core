@@ -77,10 +77,8 @@ func TestWaitForTxsOnReactor_AcceptsArbitraryOrderForTiedPriorities(t *testing.T
 	require.NoError(t, pool.CheckTx(txA, nil, mempool.TxInfo{}))
 	require.NoError(t, pool.CheckTx(txB, nil, mempool.TxInfo{}))
 
-	// Pass the expected txs in the opposite order from how they were inserted.
-	// The mempool returns them in insertion order (txA before txB), but the
-	// helper must accept any order because gossip-induced reordering means
-	// remote reactors may see them in either sequence.
+	// Pass expected in opposite order from insertion to exercise the
+	// order-agnostic comparison.
 	expected := types.CachedTxFromTxs(types.Txs{txB, txA})
 	waitForTxsOnReactor(t, expected, reactor, 0)
 }
