@@ -560,6 +560,18 @@ func (r *Reactor) dialPeer(addr *p2p.NetAddress) error {
 		if _, ok := err.(p2p.ErrCurrentlyDialingOrExistingAddress); ok {
 			return err
 		}
+		// Treat duplicate-peer rejections as a successful dial: the peer is
+		// already connected (typically via an inbound connection raced against
+		// our outbound dial), so we shouldn't penalize this address with the
+		// 30s dial backoff or increment its attempt counter.
+		if e, ok := err.(p2p.ErrRejected); ok && e.IsDuplicate() {
+			r.attemptsToDial.Delete(addr.DialString())
+			return err
+		}
+		if _, ok := err.(p2p.ErrSwitchDuplicatePeerID); ok {
+			r.attemptsToDial.Delete(addr.DialString())
+			return err
+		}
 
 		markAddrInBookBasedOnErr(addr, r.book, err)
 		switch err.(type) {
