@@ -63,6 +63,26 @@ func TestReactorBroadcastTxsMessage(t *testing.T) {
 	waitForTxsOnReactors(t, transactions, reactors)
 }
 
+// When two txs share a priority, gossip order across reactors is
+// non-deterministic, so waitForTxsOnReactor must verify set membership rather
+// than per-index equality. See issue #2945.
+func TestWaitForTxsOnReactor_AcceptsArbitraryOrderForTiedPriorities(t *testing.T) {
+	reactor, pool := setupReactor(t)
+	t.Cleanup(func() { _ = reactor.Stop() })
+
+	const sharedPriority = int64(5)
+	txA := types.Tx(newTx(0, mempool.UnknownPeerID, []byte("A"), sharedPriority))
+	txB := types.Tx(newTx(1, mempool.UnknownPeerID, []byte("B"), sharedPriority))
+
+	require.NoError(t, pool.CheckTx(txA, nil, mempool.TxInfo{}))
+	require.NoError(t, pool.CheckTx(txB, nil, mempool.TxInfo{}))
+
+	// Pass expected in opposite order from insertion to exercise the
+	// order-agnostic comparison.
+	expected := types.CachedTxFromTxs(types.Txs{txB, txA})
+	waitForTxsOnReactor(t, expected, reactor, 0)
+}
+
 func TestReactorSendWantTxAfterReceivingSeenTx(t *testing.T) {
 	reactor, _ := setupReactor(t)
 
@@ -568,11 +588,15 @@ func waitForTxsOnReactor(t *testing.T, txs []*types.CachedTx, reactor *Reactor, 
 	}
 
 	reapedTxs := mempool.ReapMaxTxs(len(txs))
-	for i, tx := range txs {
+	require.Equal(t, len(txs), len(reapedTxs),
+		"reactor %d: expected %d txs, got %d", reactorIndex, len(txs), len(reapedTxs))
+	// Compare as a set: across reactors, txs with equal priority can be reaped
+	// in different orders depending on gossip arrival, so per-index equality is
+	// non-deterministic. See issue #2945.
+	for _, tx := range txs {
 		_ = tx.Hash() // to set the hash field in the cached tx
-		require.Contains(t, reapedTxs, tx)
-		require.Equal(t, tx, reapedTxs[i],
-			"txs at index %d on reactor %d don't match: %x vs %x", i, reactorIndex, tx, reapedTxs[i])
+		require.Contains(t, reapedTxs, tx,
+			"reactor %d: missing expected tx %x", reactorIndex, tx)
 	}
 }
 
