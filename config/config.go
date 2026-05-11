@@ -42,6 +42,10 @@ const (
 
 	MempoolTypeNop = "nop"
 	MempoolTypeCAT = "cat"
+
+	// DefaultMaxPersistentStickyPeers caps how many persistent peers are guaranteed
+	// in the SeenTx broadcast set per signer when the config field is unset.
+	DefaultMaxPersistentStickyPeers = 4
 )
 
 // NOTE: Most of the structs & relevant comments + the
@@ -846,6 +850,12 @@ type MempoolConfig struct {
 	// it's insertion time into the mempool is beyond TTLDuration.
 	// Deprecated: TTLNumBlocks is deprecated and will be removed in a future version.
 	TTLNumBlocks int64 `mapstructure:"ttl-num-blocks"`
+
+	// MaxPersistentStickyPeers is the upper bound on persistent peers guaranteed
+	// to receive SeenTx broadcasts per signer (added on top of the natural sticky
+	// set, never displacing it). 0 falls back to the default. This key is omitted
+	// from the generated config.toml; set it explicitly to override.
+	MaxPersistentStickyPeers int `mapstructure:"max_persistent_sticky_peers"`
 }
 
 // DefaultMempoolConfig returns a default configuration for the CometBFT mempool
@@ -864,8 +874,9 @@ func DefaultMempoolConfig() *MempoolConfig {
 		MaxTxBytes:  1024 * 1024, // 1MB
 		ExperimentalMaxGossipConnectionsToNonPersistentPeers: 0,
 		ExperimentalMaxGossipConnectionsToPersistentPeers:    0,
-		TTLDuration:  0 * time.Second,
-		TTLNumBlocks: 0,
+		TTLDuration:              0 * time.Second,
+		TTLNumBlocks:             0,
+		MaxPersistentStickyPeers: DefaultMaxPersistentStickyPeers,
 	}
 }
 
@@ -911,6 +922,9 @@ func (cfg *MempoolConfig) ValidateBasic() error {
 	}
 	if cfg.ExperimentalMaxGossipConnectionsToNonPersistentPeers < 0 {
 		return errors.New("experimental_max_gossip_connections_to_non_persistent_peers can't be negative")
+	}
+	if cfg.MaxPersistentStickyPeers < 0 {
+		return errors.New("max_persistent_sticky_peers can't be negative")
 	}
 	return nil
 }
