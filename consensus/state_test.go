@@ -1416,17 +1416,16 @@ func TestSetValidBlockOnDelayedProposal(t *testing.T) {
 
 	ensureNewProposal(proposalCh, height, round)
 
-	// EventCompleteProposal is published before handleCompleteProposal sets
-	// ValidBlock/ValidBlockParts/ValidRound, so poll briefly to avoid a race.
+	// EventCompleteProposal fires before handleCompleteProposal updates ValidBlock,
+	// so poll until the round state has settled.
 	require.Eventually(t, func() bool {
 		rs := cs1.GetRoundState()
-		if rs.ValidBlock == nil || rs.ValidBlockParts == nil {
-			return false
-		}
-		return bytes.Equal(rs.ValidBlock.Hash(), propBlockHash) &&
+		return rs.ValidBlock != nil &&
+			bytes.Equal(rs.ValidBlock.Hash(), propBlockHash) &&
+			rs.ValidBlockParts != nil &&
 			rs.ValidBlockParts.Header().Equals(propBlockParts.Header()) &&
 			rs.ValidRound == round
-	}, 2*time.Second, 10*time.Millisecond, "ValidBlock was not updated after delayed proposal")
+	}, ensureTimeout, 10*time.Millisecond)
 }
 
 func TestProcessProposalAccept(t *testing.T) {
