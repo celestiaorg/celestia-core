@@ -560,15 +560,20 @@ func (r *Reactor) dialPeer(addr *p2p.NetAddress) error {
 		if _, ok := err.(p2p.ErrCurrentlyDialingOrExistingAddress); ok {
 			return err
 		}
-		// Treat duplicate-peer rejections as a successful dial: the peer is
+		// If the rejection came from a duplicate *peer ID* matching the peer
+		// we tried to dial, treat the dial as success-equivalent: the peer is
 		// already connected (typically via an inbound connection raced against
 		// our outbound dial), so we shouldn't penalize this address with the
-		// 30s dial backoff or increment its attempt counter.
-		if e, ok := err.(p2p.ErrRejected); ok && e.IsDuplicate() {
-			r.attemptsToDial.Delete(addr.DialString())
-			return err
+		// 30s dial backoff or increment its attempt counter. Duplicate-IP
+		// rejections take the normal failure path, since the colliding peer
+		// may not be the one we wanted (e.g. an unrelated peer sharing an IP).
+		if e, ok := err.(p2p.ErrRejected); ok {
+			if id, ok := e.DuplicatePeerID(); ok && id == addr.ID {
+				r.attemptsToDial.Delete(addr.DialString())
+				return err
+			}
 		}
-		if _, ok := err.(p2p.ErrSwitchDuplicatePeerID); ok {
+		if e, ok := err.(p2p.ErrSwitchDuplicatePeerID); ok && e.ID == addr.ID {
 			r.attemptsToDial.Delete(addr.DialString())
 			return err
 		}

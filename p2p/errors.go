@@ -106,6 +106,18 @@ func (e ErrRejected) IsAuthFailure() bool { return e.isAuthFailure }
 // IsDuplicate when Peer ID or IP are present already.
 func (e ErrRejected) IsDuplicate() bool { return e.isDuplicate }
 
+// DuplicatePeerID returns the peer ID and true when the rejection was caused
+// by a duplicate peer ID. Returns "", false for duplicate-IP rejections or
+// non-duplicate errors. Callers that need to know *why* a peer was deemed a
+// duplicate (e.g. to decide whether to penalize the dialed address) should
+// use this in preference to IsDuplicate.
+func (e ErrRejected) DuplicatePeerID() (ID, bool) {
+	if e.isDuplicate && e.id != "" {
+		return e.id, true
+	}
+	return "", false
+}
+
 // IsFiltered when Peer ID or IP was filtered.
 func (e ErrRejected) IsFiltered() bool { return e.isFiltered }
 
