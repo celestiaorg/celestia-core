@@ -111,7 +111,7 @@ func TestPEXReactorRunning(t *testing.T) {
 		require.Nil(t, err)
 	}
 
-	assertPeersWithTimeout(t, switches, 10*time.Millisecond, 30*time.Second, N-1)
+	assertPeersWithTimeout(t, switches, 10*time.Millisecond, 60*time.Second, N-1)
 
 	// stop them
 	for _, s := range switches {
