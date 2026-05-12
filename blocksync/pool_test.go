@@ -510,13 +510,13 @@ func TestBlockPoolMaliciousNodeMaxInt64(t *testing.T) {
 }
 
 // TestBlockPoolMaliciousNodeUnreachableBase tests that the max-height poisoning
-// attack described in CELESTIA-188 is not a persistent issue.
+// attack described in CELESTIA-188 is structurally prevented.
 //
 // A malicious peer sends a StatusResponse with an unreachable base/height
-// (base=2^60, height=2^60+100), poisoning maxPeerHeight so IsCaughtUp returns
-// false. Once the P2P layer disconnects the peer (SendTimeout, ping/pong
-// timeout, or TCP failure), RemovePeer recalculates maxPeerHeight from the
-// remaining honest peers and IsCaughtUp returns true.
+// (base=2^60, height=2^60+100). The pool excludes peers whose base is ahead
+// of pool.height from maxPeerHeight, so the poison never takes effect.
+// RemovePeer is exercised as a follow-up to confirm state remains consistent
+// once the P2P layer disconnects the peer.
 func TestBlockPoolMaliciousNodeUnreachableBase(t *testing.T) {
 	const honestHeight = int64(20)
 	var (
@@ -534,14 +534,15 @@ func TestBlockPoolMaliciousNodeUnreachableBase(t *testing.T) {
 	pool.SetPeerRange("honest2", 1, honestHeight)
 	pool.SetPeerRange("poison", poisonBase, poisonHeight)
 
-	// maxPeerHeight is poisoned, IsCaughtUp returns false.
-	require.Equal(t, poisonHeight, pool.MaxPeerHeight())
-	require.False(t, pool.IsCaughtUp())
+	// The poison peer's base is ahead of pool.height, so it's excluded from
+	// maxPeerHeight. The honest peers determine the sync target and the pool
+	// is already caught up.
+	require.Equal(t, honestHeight, pool.MaxPeerHeight())
+	require.True(t, pool.IsCaughtUp())
 
-	// Simulate the P2P layer disconnecting the malicious peer.
+	// Simulate the P2P layer disconnecting the malicious peer. State remains
+	// consistent: maxPeerHeight still tracks the honest peers.
 	pool.RemovePeer("poison")
-
-	// maxPeerHeight recalculates from honest peers, IsCaughtUp returns true.
 	require.Equal(t, honestHeight, pool.MaxPeerHeight())
 	require.True(t, pool.IsCaughtUp())
 }
