@@ -118,6 +118,22 @@ func (e ErrRejected) DuplicatePeerID() (ID, bool) {
 	return "", false
 }
 
+// NewErrRejectedDuplicateID builds a duplicate-by-peer-ID rejection. The
+// returned error reports DuplicatePeerID() == (id, true). Exposed primarily
+// so tests outside the p2p package can construct rejections without
+// reaching into unexported fields.
+func NewErrRejectedDuplicateID(id ID) ErrRejected {
+	return ErrRejected{id: id, isDuplicate: true}
+}
+
+// NewErrRejectedDuplicateIP builds a duplicate-by-IP rejection (no peer ID
+// recorded). The returned error reports IsDuplicate() == true but
+// DuplicatePeerID() == ("", false). Mirrors the rejection produced by the
+// duplicate-IP filter in the transport layer.
+func NewErrRejectedDuplicateIP() ErrRejected {
+	return ErrRejected{isDuplicate: true}
+}
+
 // IsFiltered when Peer ID or IP was filtered.
 func (e ErrRejected) IsFiltered() bool { return e.isFiltered }
 

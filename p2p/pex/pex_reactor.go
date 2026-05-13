@@ -543,6 +543,26 @@ func (r *Reactor) dialAttemptsInfo(addr *p2p.NetAddress) (attempts int, lastDial
 	return atd.number, atd.lastDialed
 }
 
+// isDuplicatePeerIDRejection reports whether err is a rejection caused by a
+// peer with id wantedID already being connected. Used by dialPeer to skip
+// backoff when an outbound dial loses a race to an inbound connection from
+// the same peer. Duplicate-IP rejections (no peer ID recorded) and
+// duplicate-ID rejections naming a *different* peer return false so they
+// follow the normal failure path — preventing an unrelated peer sharing an
+// IP, or a peer presenting an unexpected ID, from suppressing backoff for
+// the address we actually wanted to reach.
+func isDuplicatePeerIDRejection(err error, wantedID p2p.ID) bool {
+	if e, ok := err.(p2p.ErrRejected); ok {
+		if id, ok := e.DuplicatePeerID(); ok && id == wantedID {
+			return true
+		}
+	}
+	if e, ok := err.(p2p.ErrSwitchDuplicatePeerID); ok && e.ID == wantedID {
+		return true
+	}
+	return false
+}
+
 func (r *Reactor) dialPeer(addr *p2p.NetAddress) error {
 	attempts, lastDialed := r.dialAttemptsInfo(addr)
 	if attempts > maxAttemptsToDial && !r.Switch.IsPeerPersistent(addr) {
@@ -567,13 +587,7 @@ func (r *Reactor) dialPeer(addr *p2p.NetAddress) error {
 		// 30s dial backoff or increment its attempt counter. Duplicate-IP
 		// rejections take the normal failure path, since the colliding peer
 		// may not be the one we wanted (e.g. an unrelated peer sharing an IP).
-		if e, ok := err.(p2p.ErrRejected); ok {
-			if id, ok := e.DuplicatePeerID(); ok && id == addr.ID {
-				r.attemptsToDial.Delete(addr.DialString())
-				return err
-			}
-		}
-		if e, ok := err.(p2p.ErrSwitchDuplicatePeerID); ok && e.ID == addr.ID {
+		if isDuplicatePeerIDRejection(err, addr.ID) {
 			r.attemptsToDial.Delete(addr.DialString())
 			return err
 		}

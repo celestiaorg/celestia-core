@@ -978,3 +978,67 @@ func TestCapAddresses(t *testing.T) {
 		assert.True(t, result.Size() <= maxMsgSize)
 	})
 }
+
+// TestIsDuplicatePeerIDRejection pins the classification used in dialPeer to
+// decide whether a rejected dial should be treated as success-equivalent (a
+// peer with the same ID is already connected, e.g. via an inbound race) or
+// as a normal failure that should bump the attempt counter and trigger the
+// 30s backoff.
+//
+// The narrow case (id match) is what makes the de-flake fix safe: an attacker
+// who shares an IP with an honest address — but presents a different peer ID
+// (or no ID at all, as in duplicate-IP rejections) — cannot suppress backoff
+// for the honest address.
+func TestIsDuplicatePeerIDRejection(t *testing.T) {
+	const wantedID p2p.ID = "deadbeefdeadbeefdeadbeefdeadbeefdeadbeef"
+	const otherID p2p.ID = "cafebabecafebabecafebabecafebabecafebabe"
+
+	tests := []struct {
+		name string
+		err  error
+		want bool
+	}{
+		{
+			name: "ErrRejected duplicate-by-ID, matching ID -> success-equivalent",
+			err:  p2p.NewErrRejectedDuplicateID(wantedID),
+			want: true,
+		},
+		{
+			name: "ErrRejected duplicate-by-ID, mismatched ID -> normal failure",
+			err:  p2p.NewErrRejectedDuplicateID(otherID),
+			want: false,
+		},
+		{
+			name: "ErrRejected duplicate-by-IP (no peer ID) -> normal failure",
+			err:  p2p.NewErrRejectedDuplicateIP(),
+			want: false,
+		},
+		{
+			name: "ErrSwitchDuplicatePeerID, matching ID -> success-equivalent",
+			err:  p2p.ErrSwitchDuplicatePeerID{ID: wantedID},
+			want: true,
+		},
+		{
+			name: "ErrSwitchDuplicatePeerID, mismatched ID -> normal failure",
+			err:  p2p.ErrSwitchDuplicatePeerID{ID: otherID},
+			want: false,
+		},
+		{
+			name: "unrelated error -> normal failure",
+			err:  fmt.Errorf("dial tcp: i/o timeout"),
+			want: false,
+		},
+		{
+			name: "nil error -> normal failure",
+			err:  nil,
+			want: false,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := isDuplicatePeerIDRejection(tc.err, wantedID)
+			assert.Equal(t, tc.want, got)
+		})
+	}
+}
