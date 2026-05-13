@@ -204,13 +204,40 @@ func TestByzantinePrevoteEquivocation(t *testing.T) {
 	bcs.doPrevote = func(height int64, round int32) {
 		// allow first height to happen normally so that byzantine validator is no longer proposer
 		if height == prevoteHeight {
-			t.Logf("[byz] sending two conflicting prevotes at height=%d round=%d", height, round)
 			prevote1, err := bcs.signVote(cmtproto.PrevoteType, bcs.rs.ProposalBlock.Hash(), bcs.rs.ProposalBlockParts.Header(), nil)
 			require.NoError(t, err)
 			prevote2, err := bcs.signVote(cmtproto.PrevoteType, nil, types.PartSetHeader{}, nil)
 			require.NoError(t, err)
 			peerList := reactors[byzantineNode].Switch.Peers().List()
-			t.Logf("[byz] peer count at prevote time: %d", len(peerList))
+			// Wait for every peer to report reaching prevoteHeight before firing.
+			// State.addVote silently drops any vote whose height does not match the
+			// receiver's current cs.rs.Height (state.go: "Height mismatch is
+			// ignored"). The byzantine reaches enterPrevote(2,0) as soon as it
+			// receives the proposal from the height-2 proposer, but other
+			// validators may still be finalizing height=1; if the conflicting
+			// prevotes arrive before they transition to height=2, both variants
+			// are dropped and DuplicateVoteEvidence never forms. PeerState.PRS
+			// is updated when a peer broadcasts NewRoundStepMessage on entering
+			// a new height, so polling GetHeight() bounds this race.
+			require.Eventually(t, func() bool {
+				for _, peer := range peerList {
+					ps, ok := peer.Get(types.PeerStateKey).(*PeerState)
+					if !ok {
+						return false
+					}
+					if ps.GetHeight() < height {
+						return false
+					}
+				}
+				return true
+			}, 10*time.Second, 20*time.Millisecond, "all peers should reach height %d before byzantine fires conflicting prevotes", height)
+			t.Logf("[byz] sending two conflicting prevotes at height=%d round=%d peerCount=%d", height, round, len(peerList))
+			for _, peer := range peerList {
+				ps, ok := peer.Get(types.PeerStateKey).(*PeerState)
+				if ok {
+					t.Logf("[byz] peer=%s reported height=%d", peer.ID(), ps.GetHeight())
+				}
+			}
 			// Send both conflicting prevotes to every peer. Splitting the votes
 			// across peers (one variant to each half) is unreliable: the consensus
 			// reactor's HasVote gossip optimization (consensus/reactor.go:
