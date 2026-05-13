@@ -50,9 +50,7 @@ func TestByzantinePrevoteEquivocation(t *testing.T) {
 
 	genDoc, privVals := randGenesisDoc(nValidators, false, 30, nil)
 	css := make([]*State, nValidators)
-	evpools := make([]*evidence.Pool, nValidators)
 	blockStores := make([]*store.BlockStore, nValidators)
-	maxEvidenceBytes := int64(0)
 
 	for i := 0; i < nValidators; i++ {
 		logger := consensusLogger().With("test", "byzantine", "validator", i)
@@ -117,11 +115,7 @@ func TestByzantinePrevoteEquivocation(t *testing.T) {
 		evpool, err := evidence.NewPool(evidenceDB, stateStore, blockStore)
 		require.NoError(t, err)
 		evpool.SetLogger(logger.With("module", "evidence"))
-		evpools[i] = evpool
 		blockStores[i] = blockStore
-		if i == 0 {
-			maxEvidenceBytes = state.ConsensusParams.Evidence.MaxBytes
-		}
 
 		// Make State
 		blockExec := sm.NewBlockExecutor(stateStore, log.TestingLogger(), proxyAppConnCon, mempool, evpool, blockStore)
@@ -316,22 +310,14 @@ func TestByzantinePrevoteEquivocation(t *testing.T) {
 	pubkey, err := bcs.privValidator.GetPubKey()
 	require.NoError(t, err)
 
-	// Wait for the duplicate-vote evidence to land EITHER in a validator's
-	// pending evidence pool OR in a committed block. Evidence transitions from
-	// pending → committed in a single block-commit, which on a fast loop can be
-	// shorter than a polling interval; checking both makes the test
-	// deterministic regardless of which side of that boundary we observe.
+	// Wait for the duplicate-vote evidence to be committed in a block on any
+	// validator. Block inclusion is a strictly stronger assertion than
+	// pending-pool inclusion (evidence must be detected and flushed to pending
+	// before it can be proposed and committed), and the pending → committed
+	// transition can complete inside a single poll interval under -race, so
+	// observing the committed block is the only reliable signal.
 	var foundEvidence types.Evidence
 	require.Eventually(t, func() bool {
-		for i := 0; i < nValidators; i++ {
-			pending, _ := evpools[i].PendingEvidence(maxEvidenceBytes)
-			for _, ev := range pending {
-				if dve, ok := ev.(*types.DuplicateVoteEvidence); ok && prevoteHeight == dve.Height() {
-					foundEvidence = dve
-					return true
-				}
-			}
-		}
 		for i := 0; i < nValidators; i++ {
 			for h := int64(1); h <= blockStores[i].Height(); h++ {
 				b := blockStores[i].LoadBlock(h)
@@ -347,7 +333,7 @@ func TestByzantinePrevoteEquivocation(t *testing.T) {
 			}
 		}
 		return false
-	}, 30*time.Second, 50*time.Millisecond, "DuplicateVoteEvidence at height %d never appeared (in any evpool or any block)", prevoteHeight)
+	}, 60*time.Second, 200*time.Millisecond, "DuplicateVoteEvidence at height %d was never committed in a block", prevoteHeight)
 
 	ev, ok := foundEvidence.(*types.DuplicateVoteEvidence)
 	require.True(t, ok, "Evidence should be DuplicateVoteEvidence")
