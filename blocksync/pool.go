@@ -297,6 +297,15 @@ func (pool *BlockPool) PeekTwoBlocks() (first, second *types.Block, firstExtComm
 	return
 }
 
+// SetHeight sets the current pool height under the mutex. Used by the
+// blocksync reactor when switching from state sync, where pool.height must be
+// advanced past the snapshot height before requesters start firing.
+func (pool *BlockPool) SetHeight(height int64) {
+	pool.mtx.Lock()
+	defer pool.mtx.Unlock()
+	pool.height = height
+}
+
 // PopRequest removes the requester at pool.height and increments pool.height.
 func (pool *BlockPool) PopRequest() {
 	pool.mtx.Lock()
