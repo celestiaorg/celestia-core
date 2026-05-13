@@ -170,6 +170,15 @@ func (blockExec *BlockExecutor) CreateProposalBlock(
 		ProposerAddress:    block.ProposerAddress,
 	}
 
+	// Record the byte size of the tx payload we are sending to PrepareProposal.
+	// Combined with the bytes/tx-count on the End trace, an operator can spot
+	// when the application is filtering or rewriting the proposed tx set.
+	var inBytes int64
+	for _, t := range req.Txs {
+		inBytes += int64(len(t))
+	}
+	prepareStart := time.Now()
+
 	var rpp *abci.ResponsePrepareProposal
 	func() {
 		defer func() {
@@ -179,9 +188,17 @@ func (blockExec *BlockExecutor) CreateProposalBlock(
 			}
 		}()
 
-		schema.WriteABCI(blockExec.tracer, schema.PrepareProposalStart, block.Height, -1)
+		schema.WriteABCIWithSize(blockExec.tracer, schema.PrepareProposalStart, block.Height, -1, inBytes, int32(len(req.Txs)))
 		rpp, err = blockExec.proxyApp.PrepareProposal(ctx, req)
-		schema.WriteABCI(blockExec.tracer, schema.PrepareProposalEnd, block.Height, -1)
+		var outBytes int64
+		var outCount int32
+		if rpp != nil {
+			outCount = int32(len(rpp.Txs))
+			for _, t := range rpp.Txs {
+				outBytes += int64(len(t))
+			}
+		}
+		schema.WriteABCIWithSize(blockExec.tracer, schema.PrepareProposalEnd, block.Height, -1, outBytes, outCount)
 	}()
 	if err != nil {
 		// For non-panic errors, also save the failed proposal block
@@ -204,6 +221,45 @@ func (blockExec *BlockExecutor) CreateProposalBlock(
 	if rejectedTxs > 0 {
 		blockExec.metrics.RejectedTransactions.Add(float64(rejectedTxs))
 		blockExec.logger.Trace("rejected txs while creating a block", "tx count", rejectedTxs)
+	}
+
+	// Per-tx trace for txs that were reaped from the mempool but did not
+	// survive PrepareProposal. This is the single most diagnostic signal for
+	// "I sent a tx and it was in the mempool but the next block is empty"
+	// because it isolates the application as the dropper.
+	if blockExec.tracer != nil {
+		keptKeys := make(map[types.TxKey]struct{}, len(rawNewData))
+		for _, raw := range rawNewData {
+			keptKeys[types.Tx(raw).Key()] = struct{}{}
+		}
+		for _, ctx := range txs {
+			k := ctx.Key()
+			if _, ok := keptKeys[k]; !ok {
+				schema.WriteMempoolTxStatus(
+					blockExec.tracer,
+					k[:],
+					schema.TxDroppedByPrepareProposal,
+					nil,
+					nil,
+					0,
+				)
+			}
+		}
+		var outBytes int64
+		for _, raw := range rawNewData {
+			outBytes += int64(len(raw))
+		}
+		schema.WriteMempoolReap(
+			blockExec.tracer,
+			block.Height,
+			schema.ReapPhasePostPrepareProposal,
+			int32(len(txs)),
+			int32(len(rawNewData)),
+			outBytes,
+			maxDataBytes,
+			maxGas,
+			time.Since(prepareStart).Nanoseconds(),
+		)
 	}
 
 	txl := types.ToTxs(rpp.Txs)

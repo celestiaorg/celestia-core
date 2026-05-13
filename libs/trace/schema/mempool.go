@@ -14,6 +14,9 @@ func MempoolTables() []string {
 		MempoolAddResultTable,
 		MempoolTxStatusTable,
 		MempoolRecheckTable,
+		MempoolRequestSchedulingTable,
+		MempoolReapTable,
+		MempoolRecheckBatchTable,
 	}
 }
 
@@ -232,10 +235,15 @@ const (
 type MempoolTxStatusType string
 
 const (
-	TxEvicted   MempoolTxStatusType = "evicted"
-	TxRejected  MempoolTxStatusType = "rejected"
-	TxConfirmed MempoolTxStatusType = "confirmed"
-	TxExpired   MempoolTxStatusType = "expired"
+	TxEvicted                  MempoolTxStatusType = "evicted"
+	TxRejected                 MempoolTxStatusType = "rejected"
+	TxConfirmed                MempoolTxStatusType = "confirmed"
+	TxExpired                  MempoolTxStatusType = "expired"
+	TxDroppedOutOfSequence     MempoolTxStatusType = "dropped_out_of_sequence"
+	TxDroppedPendingOverflow   MempoolTxStatusType = "dropped_pending_overflow"
+	TxDroppedLowerSequence     MempoolTxStatusType = "dropped_lower_sequence"
+	TxReaped                   MempoolTxStatusType = "reaped"
+	TxDroppedByPrepareProposal MempoolTxStatusType = "dropped_by_prepare_proposal"
 )
 
 // MempoolTxStatus describes the schema for the "mempool_tx_status" table.
@@ -335,5 +343,190 @@ func WriteMempoolRecheck(
 		Sequence: sequence,
 		Kept:     kept,
 		Error:    errStr,
+	})
+}
+
+const (
+	// MempoolRequestSchedulingTable is the tracing "measurement" (aka table) for
+	// the mempool that stores tracing data related to WantTx request scheduling
+	// latency (time between observing a SeenTx and actually sending the WantTx).
+	MempoolRequestSchedulingTable = "mempool_request_scheduling"
+)
+
+// MempoolWantTxKind describes the code path that scheduled the WantTx.
+type MempoolWantTxKind string
+
+const (
+	// WantTxDirect is a WantTx sent immediately in response to a SeenTx.
+	WantTxDirect MempoolWantTxKind = "direct"
+	// WantTxFromPending is a WantTx sent for an entry that was first held in
+	// the pendingSeen tracker waiting for sequence ordering.
+	WantTxFromPending MempoolWantTxKind = "from_pending"
+	// WantTxRerequest is a WantTx sent after a prior peer failed to deliver.
+	WantTxRerequest MempoolWantTxKind = "rerequest"
+)
+
+// MempoolWantTxScheduled describes the schema for the
+// "mempool_request_scheduling" table.
+type MempoolWantTxScheduled struct {
+	TxHash      string            `json:"tx_hash"`
+	Peer        string            `json:"peer"`
+	Signer      string            `json:"signer,omitempty"`
+	Sequence    uint64            `json:"sequence,omitempty"`
+	QueuedForNs int64             `json:"queued_for_ns"`
+	Kind        MempoolWantTxKind `json:"kind"`
+}
+
+// Table returns the table name for the MempoolWantTxScheduled struct.
+func (MempoolWantTxScheduled) Table() string {
+	return MempoolRequestSchedulingTable
+}
+
+// WriteMempoolWantTxScheduled writes a tracing point capturing the latency
+// between observing a SeenTx for a transaction and sending the corresponding
+// WantTx to a peer.
+func WriteMempoolWantTxScheduled(
+	client trace.Tracer,
+	txHash []byte,
+	peer string,
+	signer []byte,
+	sequence uint64,
+	queuedForNs int64,
+	kind MempoolWantTxKind,
+) {
+	if !client.IsCollecting(MempoolRequestSchedulingTable) {
+		return
+	}
+
+	signerStr := ""
+	if len(signer) > 0 {
+		signerStr = string(signer)
+	}
+
+	client.Write(MempoolWantTxScheduled{
+		TxHash:      bytes.HexBytes(txHash).String(),
+		Peer:        peer,
+		Signer:      signerStr,
+		Sequence:    sequence,
+		QueuedForNs: queuedForNs,
+		Kind:        kind,
+	})
+}
+
+const (
+	// MempoolReapTable is the tracing "measurement" (aka table) for the mempool
+	// that stores tracing data related to ReapMaxBytesMaxGas calls and the
+	// PrepareProposal filtering that follows.
+	MempoolReapTable = "mempool_reap"
+)
+
+// MempoolReapPhase distinguishes the reap call from the post-PrepareProposal
+// filtering pass.
+type MempoolReapPhase string
+
+const (
+	// ReapPhaseReap is the bare mempool reap, before the application has had
+	// a chance to filter or re-order via PrepareProposal.
+	ReapPhaseReap MempoolReapPhase = "reap"
+	// ReapPhasePostPrepareProposal is recorded after PrepareProposal returns,
+	// capturing how many of the reaped txs survived the application filter.
+	ReapPhasePostPrepareProposal MempoolReapPhase = "post_prepare_proposal"
+)
+
+// MempoolReap describes the schema for the "mempool_reap" table.
+type MempoolReap struct {
+	Height                      int64            `json:"height"`
+	Phase                       MempoolReapPhase `json:"phase"`
+	TxCountReaped               int32            `json:"tx_count_reaped"`
+	TxCountAfterPrepareProposal int32            `json:"tx_count_after_prepare_proposal,omitempty"`
+	BytesReaped                 int64            `json:"bytes_reaped"`
+	MaxReapBytes                int64            `json:"max_reap_bytes,omitempty"`
+	MaxGas                      int64            `json:"max_gas,omitempty"`
+	DurationNs                  int64            `json:"duration_ns"`
+}
+
+// Table returns the table name for the MempoolReap struct.
+func (MempoolReap) Table() string {
+	return MempoolReapTable
+}
+
+// WriteMempoolReap writes a tracing point summarising a reap call (or the
+// PrepareProposal pass that follows it).
+func WriteMempoolReap(
+	client trace.Tracer,
+	height int64,
+	phase MempoolReapPhase,
+	txCountReaped int32,
+	txCountAfterPrepareProposal int32,
+	bytesReaped int64,
+	maxReapBytes int64,
+	maxGas int64,
+	durationNs int64,
+) {
+	if !client.IsCollecting(MempoolReapTable) {
+		return
+	}
+	client.Write(MempoolReap{
+		Height:                      height,
+		Phase:                       phase,
+		TxCountReaped:               txCountReaped,
+		TxCountAfterPrepareProposal: txCountAfterPrepareProposal,
+		BytesReaped:                 bytesReaped,
+		MaxReapBytes:                maxReapBytes,
+		MaxGas:                      maxGas,
+		DurationNs:                  durationNs,
+	})
+}
+
+const (
+	// MempoolRecheckBatchTable is the tracing "measurement" (aka table) for
+	// the mempool that brackets each full recheck pass with start/finish rows
+	// so an operator can see how long recheck is taking and whether it is
+	// gating consensus.
+	MempoolRecheckBatchTable = "mempool_recheck_batch"
+)
+
+// MempoolRecheckBatchPhase distinguishes the start of a recheck pass from
+// the corresponding finish row.
+type MempoolRecheckBatchPhase string
+
+const (
+	RecheckBatchStarted  MempoolRecheckBatchPhase = "started"
+	RecheckBatchFinished MempoolRecheckBatchPhase = "finished"
+)
+
+// MempoolRecheckBatch describes the schema for the "mempool_recheck_batch"
+// table.
+type MempoolRecheckBatch struct {
+	Height     int64                    `json:"height"`
+	Phase      MempoolRecheckBatchPhase `json:"phase"`
+	TxCount    int32                    `json:"tx_count"`
+	DurationNs int64                    `json:"duration_ns,omitempty"`
+}
+
+// Table returns the table name for the MempoolRecheckBatch struct.
+func (MempoolRecheckBatch) Table() string {
+	return MempoolRecheckBatchTable
+}
+
+// WriteMempoolRecheckBatch writes a tracing point bracketing a recheck pass.
+// Emit with phase="started" at the top of recheckTransactions and with
+// phase="finished" once the pass completes. duration_ns is meaningful only
+// on the finished row.
+func WriteMempoolRecheckBatch(
+	client trace.Tracer,
+	height int64,
+	phase MempoolRecheckBatchPhase,
+	txCount int32,
+	durationNs int64,
+) {
+	if !client.IsCollecting(MempoolRecheckBatchTable) {
+		return
+	}
+	client.Write(MempoolRecheckBatch{
+		Height:     height,
+		Phase:      phase,
+		TxCount:    txCount,
+		DurationNs: durationNs,
 	})
 }

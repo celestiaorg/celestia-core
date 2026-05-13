@@ -18,6 +18,10 @@ type pendingSeenTx struct {
 	peer      uint16
 	requested bool
 	lastPeer  uint16
+	// seenAt records when we first observed a SeenTx for this entry. It is
+	// used to measure the latency between observing a SeenTx and sending the
+	// corresponding WantTx (see schema.MempoolWantTxScheduled).
+	seenAt time.Time
 }
 
 func (p *pendingSeenTx) peerIDs() []uint16 {
@@ -45,9 +49,14 @@ func newPendingSeenTracker(limit int) *pendingSeenTracker {
 	}
 }
 
-func (ps *pendingSeenTracker) add(signer []byte, txKey types.TxKey, sequence uint64, peerID uint16) {
+// add registers a SeenTx in the per-signer queue. If the queue exceeds the
+// configured limit, the highest-sequence entries are evicted to make room
+// (lowest-sequence entries are most likely to make consensus progress).
+// The dropped entries are returned to the caller so it can emit traces or
+// metrics without holding the tracker's mutex.
+func (ps *pendingSeenTracker) add(signer []byte, txKey types.TxKey, sequence uint64, peerID uint16, seenAt time.Time) []pendingSeenTx {
 	if len(signer) == 0 || sequence == 0 || peerID == 0 {
-		return
+		return nil
 	}
 
 	signerKey := string(signer)
@@ -58,7 +67,7 @@ func (ps *pendingSeenTracker) add(signer []byte, txKey types.TxKey, sequence uin
 	// First check if we already have this exact txKey
 	if _, ok := ps.byTx[txKey]; ok {
 		// Already tracking this tx, keep the first peer
-		return
+		return nil
 	}
 
 	queue := ps.perSigner[signerKey]
@@ -70,6 +79,7 @@ func (ps *pendingSeenTracker) add(signer []byte, txKey types.TxKey, sequence uin
 		txKey:     txKey,
 		sequence:  sequence,
 		peer:      peerID,
+		seenAt:    seenAt,
 	}
 
 	insertIdx := sort.Search(len(queue), func(i int) bool {
@@ -81,17 +91,27 @@ func (ps *pendingSeenTracker) add(signer []byte, txKey types.TxKey, sequence uin
 	ps.perSigner[signerKey] = queue
 	ps.byTx[txKey] = entry
 
+	var dropped []pendingSeenTx
 	for len(queue) > ps.limit {
 		lastIdx := len(queue) - 1
 		removed := queue[lastIdx]
 		queue = queue[:lastIdx]
 		delete(ps.byTx, removed.txKey)
+		// Snapshot the dropped entry so callers can emit observability data
+		// after the mutex is released. We copy the signer to keep the snapshot
+		// safe from later in-place mutation.
+		droppedSnapshot := *removed
+		if len(removed.signer) > 0 {
+			droppedSnapshot.signer = append([]byte(nil), removed.signer...)
+		}
+		dropped = append(dropped, droppedSnapshot)
 	}
 	if len(queue) == 0 {
 		delete(ps.perSigner, signerKey)
 	} else {
 		ps.perSigner[signerKey] = queue
 	}
+	return dropped
 }
 
 func (ps *pendingSeenTracker) remove(txKey types.TxKey) *pendingSeenTx {

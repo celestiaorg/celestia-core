@@ -28,7 +28,7 @@ func TestPendingSeenTracker(t *testing.T) {
 			name: "add and retrieve entry",
 			run: func(t *testing.T, tracker *pendingSeenTracker) {
 				key := txKey("tx1")
-				tracker.add(signer, key, 1, 5)
+				tracker.add(signer, key, 1, 5, time.Now())
 
 				entries := tracker.entriesForSigner(signer)
 				require.Len(t, entries, 1)
@@ -41,9 +41,9 @@ func TestPendingSeenTracker(t *testing.T) {
 			name: "re-adding same tx keeps first peer",
 			run: func(t *testing.T, tracker *pendingSeenTracker) {
 				key := txKey("tx2")
-				tracker.add(signer, key, 2, 5)
-				tracker.add(signer, key, 2, 5) // duplicate peer
-				tracker.add(signer, key, 2, 7) // different peer, should be ignored
+				tracker.add(signer, key, 2, 5, time.Now())
+				tracker.add(signer, key, 2, 5, time.Now()) // duplicate peer
+				tracker.add(signer, key, 2, 7, time.Now()) // different peer, should be ignored
 
 				entry := tracker.entriesForSigner(signer)[0]
 				require.Equal(t, []uint16{5}, entry.peerIDs())
@@ -56,9 +56,9 @@ func TestPendingSeenTracker(t *testing.T) {
 				key2 := txKey("b")
 				key3 := txKey("c")
 
-				tracker.add(signer, key1, 1, 1)
-				tracker.add(signer, key2, 2, 2)
-				tracker.add(signer, key3, 3, 3)
+				tracker.add(signer, key1, 1, 1, time.Now())
+				tracker.add(signer, key2, 2, 2, time.Now())
+				tracker.add(signer, key3, 3, 3, time.Now())
 
 				entries := tracker.entriesForSigner(signer)
 				require.Len(t, entries, 3)
@@ -75,9 +75,9 @@ func TestPendingSeenTracker(t *testing.T) {
 				key2 := txKey("b")
 				key3 := txKey("c")
 
-				tracker.add(signer, key1, 1, 1)
-				tracker.add(signer, key2, 2, 2)
-				tracker.add(signer, key3, 3, 3)
+				tracker.add(signer, key1, 1, 1, time.Now())
+				tracker.add(signer, key2, 2, 2, time.Now())
+				tracker.add(signer, key3, 3, 3, time.Now())
 
 				entries := tracker.entriesForSigner(signer)
 				require.Len(t, entries, 2)
@@ -88,7 +88,7 @@ func TestPendingSeenTracker(t *testing.T) {
 			name: "remove tx clears entry",
 			run: func(t *testing.T, tracker *pendingSeenTracker) {
 				key := txKey("tx3")
-				tracker.add(signer, key, 3, 6)
+				tracker.add(signer, key, 3, 6, time.Now())
 
 				tracker.remove(key)
 				require.Empty(t, tracker.entriesForSigner(signer))
@@ -98,7 +98,7 @@ func TestPendingSeenTracker(t *testing.T) {
 			name: "remove peer clears peer and pending state",
 			run: func(t *testing.T, tracker *pendingSeenTracker) {
 				key := txKey("tx4")
-				tracker.add(signer, key, 4, 9)
+				tracker.add(signer, key, 4, 9, time.Now())
 				tracker.markRequested(key, 9, time.Now())
 
 				tracker.removePeer(9)
@@ -112,7 +112,7 @@ func TestPendingSeenTracker(t *testing.T) {
 			name: "peerIDs returns copy",
 			run: func(t *testing.T, tracker *pendingSeenTracker) {
 				key := txKey("tx5")
-				tracker.add(signer, key, 5, 21)
+				tracker.add(signer, key, 5, 21, time.Now())
 				peers := tracker.entriesForSigner(signer)[0].peerIDs()
 
 				peers[0] = 99
@@ -126,9 +126,9 @@ func TestPendingSeenTracker(t *testing.T) {
 				key2 := txKey("seq5")
 				key3 := txKey("seq7")
 
-				tracker.add(signer, key1, 10, 1)
-				tracker.add(signer, key2, 5, 1)
-				tracker.add(signer, key3, 7, 1)
+				tracker.add(signer, key1, 10, 1, time.Now())
+				tracker.add(signer, key2, 5, 1, time.Now())
+				tracker.add(signer, key3, 7, 1, time.Now())
 
 				entries := tracker.entriesForSigner(signer)
 				require.Len(t, entries, 3)
@@ -139,7 +139,7 @@ func TestPendingSeenTracker(t *testing.T) {
 			name: "mark requested and failed updates state",
 			run: func(t *testing.T, tracker *pendingSeenTracker) {
 				key := txKey("tx6")
-				tracker.add(signer, key, 7, 12)
+				tracker.add(signer, key, 7, 12, time.Now())
 				now := time.Now()
 				tracker.markRequested(key, 12, now)
 
@@ -162,8 +162,8 @@ func TestPendingSeenTracker(t *testing.T) {
 				key2 := txKey("tx-version-2")
 
 				// Add same (signer, sequence) with different txKeys
-				tracker.add(signer, key1, 10, 5)
-				tracker.add(signer, key2, 10, 7)
+				tracker.add(signer, key1, 10, 5, time.Now())
+				tracker.add(signer, key2, 10, 7, time.Now())
 
 				// Should have both in the queue
 				entries := tracker.entriesForSigner(signer)
@@ -197,7 +197,7 @@ func TestPendingSeenTrackerConcurrentAccess(t *testing.T) {
 		defer wg.Done()
 		for i := 0; i < total; i++ {
 			key := types.Tx(fmt.Sprintf("tx-%d", i)).Key()
-			tracker.add(signer, key, uint64(i+1), uint16(i%5+1))
+			tracker.add(signer, key, uint64(i+1), uint16(i%5+1), time.Now())
 		}
 	}()
 

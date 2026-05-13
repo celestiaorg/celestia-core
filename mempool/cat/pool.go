@@ -439,7 +439,19 @@ func (txmp *TxPool) PeerHasTx(peer uint16, txKey types.TxKey) {
 // If the mempool is empty or has no transactions fitting within the given
 // constraints, the result will also be empty.
 func (txmp *TxPool) ReapMaxBytesMaxGas(maxBytes, maxGas int64) []*types.CachedTx {
+	start := time.Now()
 	var totalGas, totalBytes int64
+
+	// reapedMeta captures per-tx identity (key, signer, sequence) for every tx
+	// returned by this call, so we can emit one TxReaped trace per tx after
+	// the store's read lock is released. We deliberately do not call into
+	// trace.Write while holding the store mutex.
+	type reapedMeta struct {
+		key      types.TxKey
+		signer   []byte
+		sequence uint64
+	}
+	var reaped []reapedMeta
 
 	var keep []*types.CachedTx
 	txmp.store.processOrderedTxSets(func(txSets []*txSet) {
@@ -448,14 +460,53 @@ func (txmp *TxPool) ReapMaxBytesMaxGas(maxBytes, maxGas int64) []*types.CachedTx
 				maxGas >= 0 && totalGas+txSet.totalGasWanted > maxGas {
 				// if the next transaction set can not fit, then we need to break down the indidual transactions
 				// and work out the residual set that has the highest accumulative priority and append that
-				keep = append(keep, txmp.determineLeftoverTxs(txSets[idx:], maxBytes-totalBytes, maxGas-totalGas)...)
+				leftover := txmp.determineLeftoverTxs(txSets[idx:], maxBytes-totalBytes, maxGas-totalGas)
+				keep = append(keep, leftover...)
+				// determineLeftoverTxs returns raw CachedTxs; look the signer/sequence
+				// back up via the store while we still hold the read lock.
+				for _, tx := range leftover {
+					k := tx.Key()
+					if wtx := txmp.store.txs[k]; wtx != nil {
+						reaped = append(reaped, reapedMeta{key: k, signer: wtx.sender, sequence: wtx.sequence})
+					} else {
+						reaped = append(reaped, reapedMeta{key: k})
+					}
+				}
 				break
 			}
 			totalBytes += txSet.bytes
 			totalGas += txSet.totalGasWanted
-			keep = append(keep, txSet.rawTxs()...)
+			for _, wtx := range txSet.txs {
+				keep = append(keep, wtx.tx)
+				reaped = append(reaped, reapedMeta{key: wtx.key(), signer: wtx.sender, sequence: wtx.sequence})
+			}
 		}
 	})
+
+	// Emit per-tx TxReaped traces and a single aggregate MempoolReap row.
+	// Both happen after processOrderedTxSets returns so we never call into
+	// the tracer while holding the store's RLock.
+	for _, r := range reaped {
+		schema.WriteMempoolTxStatus(
+			txmp.traceClient,
+			r.key[:],
+			schema.TxReaped,
+			nil,
+			r.signer,
+			r.sequence,
+		)
+	}
+	schema.WriteMempoolReap(
+		txmp.traceClient,
+		txmp.height,
+		schema.ReapPhaseReap,
+		int32(len(keep)),
+		0,
+		totalBytes,
+		maxBytes,
+		maxGas,
+		time.Since(start).Nanoseconds(),
+	)
 	return keep
 }
 
@@ -799,6 +850,24 @@ func (txmp *TxPool) recheckTransactions() {
 	// cause a deadlock when handleRecheckResult tries to modify the store.
 	wtxs := txmp.store.getOrderedTxs()
 
+	recheckStart := time.Now()
+	schema.WriteMempoolRecheckBatch(
+		txmp.traceClient,
+		txmp.height,
+		schema.RecheckBatchStarted,
+		int32(len(wtxs)),
+		0,
+	)
+
+	// Notify consensus early that transactions are available. The full
+	// recheck pass below can take a noticeable amount of time when the
+	// application's RecheckTx is slow; gating proposer visibility on its
+	// completion was the historical bottleneck behind "tx is in the pool
+	// but the next block is empty". Any tx that recheck later invalidates
+	// is removed from the store; reaping is a snapshot so the proposer
+	// just sees the current pool whenever it polls.
+	txmp.notifyTxsAvailable()
+
 	// Issue CheckTx calls for each remaining transaction, and when all the
 	// rechecks are complete signal watchers that transactions may be available.
 	for _, wtx := range wtxs {
@@ -816,7 +885,17 @@ func (txmp *TxPool) recheckTransactions() {
 	}
 	_ = txmp.proxyAppConn.Flush(context.Background())
 
-	// When recheck is complete, trigger a notification for more transactions.
+	schema.WriteMempoolRecheckBatch(
+		txmp.traceClient,
+		txmp.height,
+		schema.RecheckBatchFinished,
+		int32(len(wtxs)),
+		time.Since(recheckStart).Nanoseconds(),
+	)
+
+	// When recheck is complete, trigger a notification for more transactions
+	// in case the early signal above was consumed before any surviving recheck
+	// results landed (or before this height's Update completed).
 	txmp.notifyTxsAvailable()
 }
 

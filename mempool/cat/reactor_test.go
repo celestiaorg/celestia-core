@@ -386,9 +386,12 @@ func TestTryRequestQueuedTxRequestsFirstPeerOnly(t *testing.T) {
 }
 
 func TestDefaultGossipDelay(t *testing.T) {
-	// Test that DefaultGossipDelay is set to the expected value
-	expectedDelay := 60 * time.Second
-	assert.Equal(t, expectedDelay, DefaultGossipDelay, "DefaultGossipDelay should be 60 seconds")
+	// Test that DefaultGossipDelay is set to the expected value. The old
+	// 60s default placed an unresponsive first peer on the critical path of
+	// a single tx's propagation; we now use a much shorter delay so that
+	// lost requests do not dominate end-to-end inclusion latency.
+	expectedDelay := 5 * time.Second
+	assert.Equal(t, expectedDelay, DefaultGossipDelay, "DefaultGossipDelay should be 5 seconds")
 }
 
 func TestReactorOptionsVerifyAndComplete(t *testing.T) {
@@ -1013,7 +1016,7 @@ func TestProcessPendingSeenForSignerRequestsConsecutiveSequences(t *testing.T) {
 		txs[i] = newDefaultTx("tx-" + strconv.Itoa(i))
 		keys[i] = txs[i].Key()
 		peerID := reactor.ids.GetIDForPeer(peer.ID())
-		reactor.pendingSeen.add(signer, keys[i], uint64(5+i), peerID)
+		reactor.pendingSeen.add(signer, keys[i], uint64(5+i), peerID, time.Now())
 	}
 
 	// Set up expectations for WantTx messages
@@ -1065,9 +1068,9 @@ func TestProcessPendingSeenForSignerStopsAtGap(t *testing.T) {
 	key8 := tx8.Key()
 
 	peerID := reactor.ids.GetIDForPeer(peer.ID())
-	reactor.pendingSeen.add(signer, key5, 5, peerID)
-	reactor.pendingSeen.add(signer, key6, 6, peerID)
-	reactor.pendingSeen.add(signer, key8, 8, peerID) // gap - sequence 7 is missing
+	reactor.pendingSeen.add(signer, key5, 5, peerID, time.Now())
+	reactor.pendingSeen.add(signer, key6, 6, peerID, time.Now())
+	reactor.pendingSeen.add(signer, key8, 8, peerID, time.Now()) // gap - sequence 7 is missing
 
 	// Only sequences 5 and 6 should be requested (stops at gap)
 	peer.On("TrySend", p2p.Envelope{
@@ -1130,8 +1133,8 @@ func TestProcessPendingSeenForSignerSkipsAlreadyInMempool(t *testing.T) {
 	key6 := tx6.Key()
 
 	peerID := reactor.ids.GetIDForPeer(peer.ID())
-	reactor.pendingSeen.add(signer, key5, 5, peerID)
-	reactor.pendingSeen.add(signer, key6, 6, peerID)
+	reactor.pendingSeen.add(signer, key5, 5, peerID, time.Now())
+	reactor.pendingSeen.add(signer, key6, 6, peerID, time.Now())
 
 	// Only sequence 6 should be requested (5 is already in mempool)
 	peer.On("TrySend", p2p.Envelope{
@@ -1175,7 +1178,7 @@ func TestProcessPendingSeenForSignerRespectsMaxBuffer(t *testing.T) {
 	numTxs := maxReceivedBufferSize + 10
 	for i := 0; i < numTxs; i++ {
 		tx := newDefaultTx("tx-" + strconv.Itoa(i))
-		reactor.pendingSeen.add(signer, tx.Key(), uint64(1+i), peerID)
+		reactor.pendingSeen.add(signer, tx.Key(), uint64(1+i), peerID, time.Now())
 	}
 
 	// Expect only maxReceivedBufferSize requests
@@ -1218,8 +1221,8 @@ func TestProcessPendingSeenForSignerSkipsAlreadyRequested(t *testing.T) {
 	key6 := tx6.Key()
 
 	peerID := reactor.ids.GetIDForPeer(peer.ID())
-	reactor.pendingSeen.add(signer, key5, 5, peerID)
-	reactor.pendingSeen.add(signer, key6, 6, peerID)
+	reactor.pendingSeen.add(signer, key5, 5, peerID, time.Now())
+	reactor.pendingSeen.add(signer, key6, 6, peerID, time.Now())
 
 	// Mark sequence 5 as already requested
 	reactor.pendingSeen.markRequested(key5, peerID, time.Now())
@@ -1274,7 +1277,7 @@ func TestTryRequestQueuedTxRespectsPerPeerLimit(t *testing.T) {
 	targetKey := targetTx.Key()
 
 	// Add both peers to the entry (peer1 first, then peer2)
-	reactor.pendingSeen.add(signer, targetKey, 1, peer1ID)
+	reactor.pendingSeen.add(signer, targetKey, 1, peer1ID, time.Now())
 	// Simulate peer2 also seeing the tx by adding it to seenByPeersSet
 	reactor.mempool.PeerHasTx(peer2ID, targetKey)
 
@@ -1342,7 +1345,7 @@ func TestTryRequestQueuedTxFallsBackToAlternativePeer(t *testing.T) {
 	targetKey := targetTx.Key()
 
 	// Add all three peers to the pending entry
-	reactor.pendingSeen.add(signer, targetKey, 1, peer1ID)
+	reactor.pendingSeen.add(signer, targetKey, 1, peer1ID, time.Now())
 	// We need to manually add peer2 and peer3 to the entry's peer list
 	// Since add() only records the first peer, we simulate this by adding to seenByPeersSet
 	reactor.mempool.PeerHasTx(peer2ID, targetKey)

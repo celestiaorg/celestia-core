@@ -338,13 +338,27 @@ func (memR *Reactor) Receive(e p2p.Envelope) {
 				// We have sequence info - check if we should buffer or process
 				expectedSeq, haveExpected := memR.querySequenceFromApplication(pendingEntry.signer)
 				if haveExpected && pendingEntry.sequence > expectedSeq {
-					if pendingEntry.sequence > expectedSeq+maxReceivedBufferSize {
-						continue
-					}
-					// Future sequence within lookahead - buffer it for later
+					// Try to buffer the future tx for processing once the
+					// preceding sequence arrives. Previously, a tx whose
+					// sequence was further than maxReceivedBufferSize ahead of
+					// expected was dropped silently here; that path is now
+					// folded into the buffer's own capacity check so the drop
+					// is at least observable.
 					if memR.receivedBuffer.add(pendingEntry.signer, pendingEntry.sequence, cachedTx, key, txInfo, string(e.Src.ID())) {
 						memR.pendingSeen.remove(key)
+						continue
 					}
+					// Buffer is at capacity or this peer is at its per-peer
+					// cap; we cannot retain the tx and must drop it. Surface
+					// the drop so an operator can see when this happens.
+					schema.WriteMempoolTxStatus(
+						memR.traceClient,
+						key[:],
+						schema.TxDroppedOutOfSequence,
+						fmt.Errorf("expected %d, got %d", expectedSeq, pendingEntry.sequence),
+						pendingEntry.signer,
+						pendingEntry.sequence,
+					)
 					continue
 				}
 			}
@@ -361,6 +375,10 @@ func (memR *Reactor) Receive(e p2p.Envelope) {
 	// 3. If we recently evicted the tx and still don't have space for it, we do nothing.
 	// 4. Else, we request the transaction from that peer.
 	case *protomem.SeenTx:
+		// Capture the receive time so we can later report how long the tx
+		// sat in our queues before we sent a WantTx (see
+		// schema.MempoolWantTxScheduled).
+		seenAt := time.Now()
 		txKey, err := types.TxKeyFromBytes(msg.TxKey)
 		if err != nil {
 			memR.Logger.Error("peer sent SeenTx with incorrect tx key", "err", err)
@@ -422,8 +440,21 @@ func (memR *Reactor) Receive(e p2p.Envelope) {
 		case msg.Sequence == expectedSeq:
 			// fall through and request immediately for the expected sequence
 		case msg.Sequence > expectedSeq:
-			// TODO: add per-peer limits or something similar to pendingSeen to prevent overflowing
-			memR.pendingSeen.add(msg.Signer, txKey, msg.Sequence, peerID)
+			// Queue the SeenTx for later draining once the preceding sequences
+			// have been processed. Any entries evicted as a result of the
+			// per-signer queue limit are surfaced as TxDroppedPendingOverflow
+			// rather than disappearing silently.
+			dropped := memR.pendingSeen.add(msg.Signer, txKey, msg.Sequence, peerID, seenAt)
+			for _, d := range dropped {
+				schema.WriteMempoolTxStatus(
+					memR.traceClient,
+					d.txKey[:],
+					schema.TxDroppedPendingOverflow,
+					nil,
+					d.signer,
+					d.sequence,
+				)
+			}
 			return
 		default:
 			memR.Logger.Debug(
@@ -431,6 +462,14 @@ func (memR *Reactor) Receive(e p2p.Envelope) {
 				"txKey", txKey,
 				"sequence", msg.Sequence,
 				"expectedSequence", expectedSeq,
+			)
+			schema.WriteMempoolTxStatus(
+				memR.traceClient,
+				txKey[:],
+				schema.TxDroppedLowerSequence,
+				fmt.Errorf("expected>=%d, got %d", expectedSeq, msg.Sequence),
+				msg.Signer,
+				msg.Sequence,
 			)
 
 			return
@@ -448,7 +487,7 @@ func (memR *Reactor) Receive(e p2p.Envelope) {
 			)
 			return
 		}
-		memR.requestTx(txKey, e.Src)
+		memR.requestTx(txKey, e.Src, schema.WantTxDirect, seenAt)
 
 	// A peer is requesting a transaction that we have claimed to have. Find the specified
 	// transaction and broadcast it to the peer. We may no longer have the transaction
@@ -574,7 +613,12 @@ func (memR *Reactor) broadcastSeenTxWithHeight(txKey types.TxKey, height int64, 
 }
 
 // requesting it from another peer if the first peer does not respond.
-func (memR *Reactor) requestTx(txKey types.TxKey, peer p2p.Peer) bool {
+// kind classifies why the request is being sent (direct response to a SeenTx,
+// drained from the pendingSeen queue, or a rerequest after a previous peer
+// failed). seenAt is the time we first observed a SeenTx for this transaction
+// — if it is zero the latency field on the resulting trace will be reported
+// as 0.
+func (memR *Reactor) requestTx(txKey types.TxKey, peer p2p.Peer, kind schema.MempoolWantTxKind, seenAt time.Time) bool {
 	if peer == nil {
 		// we have disconnected from the peer
 		return false
@@ -604,6 +648,29 @@ func (memR *Reactor) requestTx(txKey types.TxKey, peer p2p.Peer) bool {
 		}
 
 		schema.WriteMempoolPeerState(memR.traceClient, string(peer.ID()), schema.WantTx, txKey[:], schema.Upload)
+
+		var queuedFor int64
+		if !seenAt.IsZero() {
+			queuedFor = time.Since(seenAt).Nanoseconds()
+			if queuedFor < 0 {
+				queuedFor = 0
+			}
+		}
+		var signer []byte
+		var sequence uint64
+		if entry := memR.pendingSeen.get(txKey); entry != nil {
+			signer = entry.signer
+			sequence = entry.sequence
+		}
+		schema.WriteMempoolWantTxScheduled(
+			memR.traceClient,
+			txKey[:],
+			string(peer.ID()),
+			signer,
+			sequence,
+			queuedFor,
+			kind,
+		)
 	}
 	return success
 }
@@ -763,7 +830,7 @@ func (memR *Reactor) tryRequestQueuedTx(entry *pendingSeenTx) bool {
 			continue
 		}
 		peer := memR.ids.GetPeer(peerID)
-		if peer != nil && memR.requestTx(entry.txKey, peer) {
+		if peer != nil && memR.requestTx(entry.txKey, peer, schema.WantTxFromPending, entry.seenAt) {
 			return true
 		}
 	}
@@ -844,6 +911,14 @@ func (memR *Reactor) findNewPeerToRequestTx(txKey types.TxKey) {
 		return
 	}
 
+	// If we still have a pendingSeen entry for this tx, propagate its
+	// seenAt timestamp so the resulting WantTx trace measures latency from
+	// the original observation. Otherwise the trace falls back to 0.
+	var seenAt time.Time
+	if entry := memR.pendingSeen.get(txKey); entry != nil {
+		seenAt = entry.seenAt
+	}
+
 	seenMap := memR.mempool.seenByPeersSet.Get(txKey)
 	for peerID := range seenMap {
 		if memR.requests.Has(peerID, txKey) {
@@ -855,7 +930,7 @@ func (memR *Reactor) findNewPeerToRequestTx(txKey types.TxKey) {
 		peer := memR.ids.GetPeer(peerID)
 		if peer != nil {
 			memR.mempool.metrics.RerequestedTxs.Add(1)
-			memR.requestTx(txKey, peer)
+			memR.requestTx(txKey, peer, schema.WantTxRerequest, seenAt)
 			return
 		}
 	}
