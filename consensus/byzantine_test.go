@@ -50,9 +50,7 @@ func TestByzantinePrevoteEquivocation(t *testing.T) {
 
 	genDoc, privVals := randGenesisDoc(nValidators, false, 30, nil)
 	css := make([]*State, nValidators)
-	evpools := make([]*evidence.Pool, nValidators)
 	blockStores := make([]*store.BlockStore, nValidators)
-	maxEvidenceBytes := int64(0)
 
 	for i := 0; i < nValidators; i++ {
 		logger := consensusLogger().With("test", "byzantine", "validator", i)
@@ -117,11 +115,7 @@ func TestByzantinePrevoteEquivocation(t *testing.T) {
 		evpool, err := evidence.NewPool(evidenceDB, stateStore, blockStore)
 		require.NoError(t, err)
 		evpool.SetLogger(logger.With("module", "evidence"))
-		evpools[i] = evpool
 		blockStores[i] = blockStore
-		if i == 0 {
-			maxEvidenceBytes = state.ConsensusParams.Evidence.MaxBytes
-		}
 
 		// Make State
 		blockExec := sm.NewBlockExecutor(stateStore, log.TestingLogger(), proxyAppConnCon, mempool, evpool, blockStore)
@@ -204,13 +198,40 @@ func TestByzantinePrevoteEquivocation(t *testing.T) {
 	bcs.doPrevote = func(height int64, round int32) {
 		// allow first height to happen normally so that byzantine validator is no longer proposer
 		if height == prevoteHeight {
-			t.Logf("[byz] sending two conflicting prevotes at height=%d round=%d", height, round)
 			prevote1, err := bcs.signVote(cmtproto.PrevoteType, bcs.rs.ProposalBlock.Hash(), bcs.rs.ProposalBlockParts.Header(), nil)
 			require.NoError(t, err)
 			prevote2, err := bcs.signVote(cmtproto.PrevoteType, nil, types.PartSetHeader{}, nil)
 			require.NoError(t, err)
 			peerList := reactors[byzantineNode].Switch.Peers().List()
-			t.Logf("[byz] peer count at prevote time: %d", len(peerList))
+			// Wait for every peer to report reaching prevoteHeight before firing.
+			// State.addVote silently drops any vote whose height does not match the
+			// receiver's current cs.rs.Height (state.go: "Height mismatch is
+			// ignored"). The byzantine reaches enterPrevote(2,0) as soon as it
+			// receives the proposal from the height-2 proposer, but other
+			// validators may still be finalizing height=1; if the conflicting
+			// prevotes arrive before they transition to height=2, both variants
+			// are dropped and DuplicateVoteEvidence never forms. PeerState.PRS
+			// is updated when a peer broadcasts NewRoundStepMessage on entering
+			// a new height, so polling GetHeight() bounds this race.
+			require.Eventually(t, func() bool {
+				for _, peer := range peerList {
+					ps, ok := peer.Get(types.PeerStateKey).(*PeerState)
+					if !ok {
+						return false
+					}
+					if ps.GetHeight() < height {
+						return false
+					}
+				}
+				return true
+			}, 10*time.Second, 20*time.Millisecond, "all peers should reach height %d before byzantine fires conflicting prevotes", height)
+			t.Logf("[byz] sending two conflicting prevotes at height=%d round=%d peerCount=%d", height, round, len(peerList))
+			for _, peer := range peerList {
+				ps, ok := peer.Get(types.PeerStateKey).(*PeerState)
+				if ok {
+					t.Logf("[byz] peer=%s reported height=%d", peer.ID(), ps.GetHeight())
+				}
+			}
 			// Send both conflicting prevotes to every peer. Splitting the votes
 			// across peers (one variant to each half) is unreliable: the consensus
 			// reactor's HasVote gossip optimization (consensus/reactor.go:
@@ -316,16 +337,22 @@ func TestByzantinePrevoteEquivocation(t *testing.T) {
 	pubkey, err := bcs.privValidator.GetPubKey()
 	require.NoError(t, err)
 
-	// Stage 1: wait for the duplicate-vote evidence to land in any validator's
-	// evidence pool. This isolates "evidence detected" from "evidence committed"
-	// so that future failures point at the correct failing stage.
+	// Wait for the duplicate-vote evidence to be committed in a block on any
+	// validator. Block inclusion is a strictly stronger assertion than
+	// pending-pool inclusion (evidence must be detected and flushed to pending
+	// before it can be proposed and committed), and the pending → committed
+	// transition can complete inside a single poll interval under -race, so
+	// observing the committed block is the only reliable signal.
 	var foundEvidence types.Evidence
 	require.Eventually(t, func() bool {
 		for i := 0; i < nValidators; i++ {
-			pending, _ := evpools[i].PendingEvidence(maxEvidenceBytes)
-			for _, ev := range pending {
-				if dve, ok := ev.(*types.DuplicateVoteEvidence); ok {
-					if prevoteHeight == dve.Height() {
+			for h := int64(1); h <= blockStores[i].Height(); h++ {
+				b := blockStores[i].LoadBlock(h)
+				if b == nil {
+					continue
+				}
+				for _, ev := range b.Evidence.Evidence {
+					if dve, ok := ev.(*types.DuplicateVoteEvidence); ok && prevoteHeight == dve.Height() {
 						foundEvidence = dve
 						return true
 					}
@@ -333,20 +360,7 @@ func TestByzantinePrevoteEquivocation(t *testing.T) {
 			}
 		}
 		return false
-	}, 30*time.Second, 100*time.Millisecond, "evidence pool never received DuplicateVoteEvidence at height %d", prevoteHeight)
-
-	// Stage 2: wait for evidence to be committed in some block on any validator.
-	require.Eventually(t, func() bool {
-		for i := 0; i < nValidators; i++ {
-			for h := int64(1); h <= blockStores[i].Height(); h++ {
-				b := blockStores[i].LoadBlock(h)
-				if b != nil && len(b.Evidence.Evidence) > 0 {
-					return true
-				}
-			}
-		}
-		return false
-	}, 60*time.Second, 200*time.Millisecond, "evidence was detected in pool but never committed in a block")
+	}, 60*time.Second, 200*time.Millisecond, "DuplicateVoteEvidence at height %d was never committed in a block", prevoteHeight)
 
 	ev, ok := foundEvidence.(*types.DuplicateVoteEvidence)
 	require.True(t, ok, "Evidence should be DuplicateVoteEvidence")
