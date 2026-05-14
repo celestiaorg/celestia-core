@@ -211,6 +211,41 @@ func TestWrongProof(t *testing.T) {
 	}
 }
 
+// TestPartSetAddPartRejectsIndexProofMismatch verifies that PartSet.AddPart
+// enforces an index-binding precondition: a part whose Index does not match
+// its Proof.Index must be rejected before any proof verification, and must
+// not be stored. Existing callers (consensus reactor via Part.ValidateBasic,
+// propagation reactor via cb.GetProof(part.Index)) already enforce this
+// upstream, so this is a defense-in-depth check at the sink.
+func TestPartSetAddPartRejectsIndexProofMismatch(t *testing.T) {
+	data := cmtrand.Bytes(testPartSize * 4)
+	partSet, err := NewPartSetFromData(data, testPartSize)
+	require.NoError(t, err)
+
+	// Build an empty sink PartSet to add parts into.
+	sink := NewPartSetFromHeader(partSet.Header(), testPartSize)
+
+	// Take the (valid) proof for slot 1, and try to use it for a part placed
+	// in slot 0. The proof is structurally valid, but its Proof.Index (1)
+	// does not match part.Index (0).
+	src := partSet.GetPart(1)
+	mismatched := &Part{
+		Index: 0,
+		Bytes: src.Bytes,
+		Proof: src.Proof, // Proof.Index == 1
+	}
+
+	added, err := sink.AddPart(mismatched)
+	assert.False(t, added, "AddPart should not accept a part with Index != Proof.Index")
+	require.Error(t, err, "AddPart should return an error for index/proof mismatch")
+	assert.ErrorAs(t, err, &ErrInvalidPart{}, "expected ErrInvalidPart for index/proof mismatch")
+
+	// The part must not be recorded in the bit array.
+	assert.False(t, sink.BitArray().GetIndex(0), "mismatched part must not be stored")
+	assert.False(t, sink.BitArray().GetIndex(1), "mismatched part must not be stored at the proof's index either")
+	assert.EqualValues(t, 0, sink.Count(), "sink must remain empty after rejecting mismatched part")
+}
+
 func TestPartSetHeaderValidateBasic(t *testing.T) {
 	testCases := []struct {
 		testName              string

@@ -577,6 +577,14 @@ func (ps *PartSet) AddPart(part *Part) (bool, error) {
 		return false, fmt.Errorf("nil part")
 	}
 
+	// Defense-in-depth: ensure the part's index is bound to its proof's index
+	// before any further processing. Callers are expected to enforce this via
+	// Part.ValidateBasic, but enforcing it at the sink prevents a structurally
+	// valid proof for index j from being installed in slot i (i != j).
+	if int64(part.Index) != part.Proof.Index {
+		return false, ErrInvalidPart{Reason: fmt.Errorf("part index %d != proof index %d", part.Index, part.Proof.Index)}
+	}
+
 	// If part already exists, return false.
 	if ps.partsBitArray.GetIndex(int(part.Index)) {
 		return false, nil
