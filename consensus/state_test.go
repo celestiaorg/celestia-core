@@ -260,6 +260,12 @@ func TestStateOversizedBlock(t *testing.T) {
 	origTimeout := ensureTimeout
 	ensureTimeout = 2 * time.Second
 	defer func() { ensureTimeout = origTimeout }()
+	// Validating a max-size block under -race on slow CI can push the
+	// prevote→precommit transition past the default 2s vote timeout
+	// (observed at 2.2–2.3s).
+	origVoteTimeout := ensureVoteTimeout
+	ensureVoteTimeout = 5 * time.Second
+	defer func() { ensureVoteTimeout = origVoteTimeout }()
 	const maxBytes = int64(types.BlockPartSizeBytes)
 
 	for _, testCase := range []struct {
