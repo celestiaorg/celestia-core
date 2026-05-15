@@ -516,6 +516,7 @@ func (bs *BlockStore) PruneBlocks(height int64, state sm.State) (uint64, int64, 
 	if err != nil {
 		return 0, -1, err
 	}
+	fmt.Println("=========>>>>> pruned: ", pruned)
 	if pruned > 0 {
 		bs.compactor.recordAndMaybeSignal(prunedRanges{
 			H:  [2][]byte{hMin, hMax},

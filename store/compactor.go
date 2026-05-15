@@ -85,6 +85,7 @@ func newCompactor(db dbm.DB, interval int, logger log.Logger, metrics *Metrics) 
 // accumulator and, if the call-count threshold has been hit, signals the
 // worker. It is called on the consensus thread and must never block.
 func (c *compactor) recordAndMaybeSignal(r prunedRanges) {
+	fmt.Println("=================>>>>>>>> recordAndMaybeSignal")
 	if c.interval == 0 || !r.hasAny() {
 		return
 	}
@@ -104,6 +105,7 @@ func (c *compactor) recordAndMaybeSignal(r prunedRanges) {
 }
 
 func (c *compactor) run() {
+	fmt.Println("=================>>>>>>>> compactor run")
 	defer close(c.done)
 	for {
 		select {
