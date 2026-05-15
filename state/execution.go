@@ -926,6 +926,7 @@ func ExecCommitBlock(
 
 func (blockExec *BlockExecutor) pruneBlocks(retainHeight int64, state State) (uint64, error) {
 	base := blockExec.blockStore.Base()
+	fmt.Println("======> prune blocks base: ", base)
 	if retainHeight <= base {
 		return 0, nil
 	}
