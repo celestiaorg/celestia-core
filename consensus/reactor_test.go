@@ -94,14 +94,38 @@ func startConsensusNet(t *testing.T, css []*State, n int) (
 	return reactors, blocksSubs, eventBuses
 }
 
+// stopConsensusNetSwitchTimeout bounds how long we wait for a single Switch
+// to stop during test cleanup. Without this bound, a stuck Reactor.OnStop
+// (e.g. a State whose receiveRoutine never exits) will block sequential
+// cleanup and consume the entire per-test timeout — burning ~14 minutes of
+// CI time before producing a useful failure message.
+const stopConsensusNetSwitchTimeout = 30 * time.Second
+
 func stopConsensusNet(logger log.Logger, reactors []*Reactor, eventBuses []*types.EventBus) {
 	logger.Info("stopConsensusNet", "n", len(reactors))
+	// Stop switches in parallel with a per-switch timeout. Each switch is
+	// independent, so a hang in one must not delay or hide failures in the
+	// others, and an absolute bound on total cleanup time ensures the real
+	// assertion failure is what surfaces in CI logs (not a 15-minute hang).
+	var wg sync.WaitGroup
 	for i, r := range reactors {
-		logger.Info("stopConsensusNet: Stopping Reactor", "i", i)
-		if err := r.Switch.Stop(); err != nil {
-			logger.Error("error trying to stop switch", "error", err)
-		}
+		wg.Add(1)
+		go func(i int, r *Reactor) {
+			defer wg.Done()
+			logger.Info("stopConsensusNet: Stopping Reactor", "i", i)
+			done := make(chan error, 1)
+			go func() { done <- r.Switch.Stop() }()
+			select {
+			case err := <-done:
+				if err != nil {
+					logger.Error("error trying to stop switch", "i", i, "error", err)
+				}
+			case <-time.After(stopConsensusNetSwitchTimeout):
+				logger.Error("stopConsensusNet: timed out stopping switch; leaking goroutines", "i", i, "timeout", stopConsensusNetSwitchTimeout)
+			}
+		}(i, r)
 	}
+	wg.Wait()
 	for i, b := range eventBuses {
 		logger.Info("stopConsensusNet: Stopping eventBus", "i", i)
 		if err := b.Stop(); err != nil {
