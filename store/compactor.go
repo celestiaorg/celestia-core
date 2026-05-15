@@ -2,6 +2,7 @@ package store
 
 import (
 	"bytes"
+	"fmt"
 	"sync"
 	"time"
 
@@ -145,6 +146,7 @@ func (c *compactor) compactPrefix(name string, r [2][]byte) {
 		c.metrics.CompactErrors.With("prefix", name).Add(1)
 		return
 	}
+	fmt.Println("=================>>>>>>>> compacting shiiit")
 	c.logger.Info("blockstore compact ok",
 		"prefix", name, "elapsed", elapsed,
 		"min_len", len(r[0]), "max_len", len(r[1]))

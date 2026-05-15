@@ -102,6 +102,7 @@ func NewBlockStoreWithOptions(db dbm.DB, opts BlockStoreOptions) *BlockStore {
 	}
 	bs.addCaches()
 	bs.compactor = newCompactor(db, opts.CompactionInterval, opts.Logger, opts.Metrics)
+	fmt.Println("========> creating compactor!!!!")
 	return bs
 }
 
