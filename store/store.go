@@ -12,6 +12,7 @@ import (
 
 	abci "github.com/cometbft/cometbft/abci/types"
 	"github.com/cometbft/cometbft/evidence"
+	"github.com/cometbft/cometbft/libs/log"
 	cmtsync "github.com/cometbft/cometbft/libs/sync"
 	cmtstore "github.com/cometbft/cometbft/proto/tendermint/store"
 	cmtproto "github.com/cometbft/cometbft/proto/tendermint/types"
@@ -59,19 +60,49 @@ type BlockStore struct {
 	seenCommitCache          *lru.Cache[int64, *types.Commit]
 	blockCommitCache         *lru.Cache[int64, *types.Commit]
 	blockExtendedCommitCache *lru.Cache[int64, *types.ExtendedCommit]
+
+	// compactor runs background range-compaction of the height-keyed prefixes
+	// the PruneBlocks loop deletes. Always non-nil after construction; behaves
+	// as a no-op when BlockStoreOptions.CompactionInterval is 0.
+	compactor *compactor
 }
 
-// NewBlockStore returns a new BlockStore with the given DB,
-// initialized to the last height that was committed to the DB.
+// BlockStoreOptions configures optional BlockStore behaviour. The zero value
+// disables runtime compaction and is equivalent to using NewBlockStore.
+type BlockStoreOptions struct {
+	// CompactionInterval is the number of PruneBlocks calls (that actually
+	// pruned at least one height) between background range-compactions of the
+	// blockstore. 0 disables the compactor.
+	CompactionInterval int
+	// Logger is used by the background compactor. nil falls back to a no-op
+	// logger; ignored when CompactionInterval is 0.
+	Logger log.Logger
+	// Metrics is used by the background compactor. nil falls back to NopMetrics.
+	Metrics *Metrics
+}
+
+// NewBlockStore returns a new BlockStore with the given DB, initialized to the
+// last height that was committed to the DB. Runtime compaction is disabled;
+// use NewBlockStoreWithOptions to enable it.
 func NewBlockStore(db dbm.DB) *BlockStore {
-	bs := LoadBlockStoreState(db)
-	bStore := &BlockStore{
-		base:   bs.Base,
-		height: bs.Height,
+	return NewBlockStoreWithOptions(db, BlockStoreOptions{})
+}
+
+// NewBlockStoreWithOptions returns a new BlockStore with the given DB and
+// options, initialized to the last height that was committed to the DB. When
+// opts.CompactionInterval > 0 a background goroutine is started that issues
+// range-compactions of the blockstore after every opts.CompactionInterval
+// successful PruneBlocks calls.
+func NewBlockStoreWithOptions(db dbm.DB, opts BlockStoreOptions) *BlockStore {
+	bsState := LoadBlockStoreState(db)
+	bs := &BlockStore{
+		base:   bsState.Base,
+		height: bsState.Height,
 		db:     db,
 	}
-	bStore.addCaches()
-	return bStore
+	bs.addCaches()
+	bs.compactor = newCompactor(db, opts.CompactionInterval, opts.Logger, opts.Metrics)
+	return bs
 }
 
 func (bs *BlockStore) addCaches() {
@@ -395,6 +426,18 @@ func (bs *BlockStore) PruneBlocks(height int64, state sm.State) (uint64, int64, 
 		return bs.saveStateAndWriteDB(batch, "failed to prune")
 	}
 
+	// Track the lex-min and lex-max raw key bytes we delete, per height-keyed
+	// prefix, so the background compactor can issue a tight range-compaction
+	// covering just the tombstones we've produced. BH: and TH: are deliberately
+	// not tracked: their hash-indexed layout scatters tombstones across the
+	// keyspace and range-compaction would be ineffective.
+	var (
+		hMin, hMax   []byte
+		cMin, cMax   []byte
+		scMin, scMax []byte
+		pMin, pMax   []byte
+	)
+
 	evidencePoint := height
 	for h := base; h < height; h++ {
 
@@ -424,26 +467,36 @@ func (bs *BlockStore) PruneBlocks(height int64, state sm.State) (uint64, int64, 
 
 		// if height is beyond the evidence point we dont delete the header
 		if h < evidencePoint {
-			if err := batch.Delete(calcBlockMetaKey(h)); err != nil {
+			k := calcBlockMetaKey(h)
+			if err := batch.Delete(k); err != nil {
 				return 0, -1, err
 			}
+			extendRange(&hMin, &hMax, k)
 		}
 		if err := batch.Delete(calcBlockHashKey(meta.BlockID.Hash)); err != nil {
 			return 0, -1, err
 		}
 		// if height is beyond the evidence point we dont delete the commit data
 		if h < evidencePoint {
-			if err := batch.Delete(calcBlockCommitKey(h)); err != nil {
+			k := calcBlockCommitKey(h)
+			if err := batch.Delete(k); err != nil {
 				return 0, -1, err
 			}
+			extendRange(&cMin, &cMax, k)
 		}
-		if err := batch.Delete(calcSeenCommitKey(h)); err != nil {
-			return 0, -1, err
+		{
+			k := calcSeenCommitKey(h)
+			if err := batch.Delete(k); err != nil {
+				return 0, -1, err
+			}
+			extendRange(&scMin, &scMax, k)
 		}
 		for p := 0; p < int(meta.BlockID.PartSetHeader.Total); p++ {
-			if err := batch.Delete(calcBlockPartKey(h, p)); err != nil {
+			k := calcBlockPartKey(h, p)
+			if err := batch.Delete(k); err != nil {
 				return 0, -1, err
 			}
+			extendRange(&pMin, &pMax, k)
 		}
 		pruned++
 
@@ -461,6 +514,14 @@ func (bs *BlockStore) PruneBlocks(height int64, state sm.State) (uint64, int64, 
 	err := flush(batch, height)
 	if err != nil {
 		return 0, -1, err
+	}
+	if pruned > 0 {
+		bs.compactor.recordAndMaybeSignal(prunedRanges{
+			H:  [2][]byte{hMin, hMax},
+			C:  [2][]byte{cMin, cMax},
+			SC: [2][]byte{scMin, scMax},
+			P:  [2][]byte{pMin, pMax},
+		})
 	}
 	return pruned, evidencePoint, nil
 }
@@ -650,6 +711,9 @@ func (bs *BlockStore) SaveSeenCommit(height int64, seenCommit *types.Commit) err
 }
 
 func (bs *BlockStore) Close() error {
+	// Stop the background compactor before closing the DB so the DB handle is
+	// not pulled out from under an in-flight Compact call.
+	bs.compactor.stopAndWait()
 	return bs.db.Close()
 }
 

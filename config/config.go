@@ -1285,6 +1285,10 @@ type StorageConfig struct {
 	// required for `/block_results` RPC queries, and to reindex events in the
 	// command-line tool.
 	DiscardABCIResponses bool `mapstructure:"discard_abci_responses"`
+	// CompactionInterval is the number of PruneBlocks calls (that actually
+	// pruned at least one height) between background range-compactions of the
+	// blockstore. 0 disables the background compactor.
+	CompactionInterval int `mapstructure:"compaction_interval"`
 }
 
 // DefaultStorageConfig returns the default configuration options relating to
@@ -1292,6 +1296,7 @@ type StorageConfig struct {
 func DefaultStorageConfig() *StorageConfig {
 	return &StorageConfig{
 		DiscardABCIResponses: false,
+		CompactionInterval:   200,
 	}
 }
 
@@ -1300,6 +1305,7 @@ func DefaultStorageConfig() *StorageConfig {
 func TestStorageConfig() *StorageConfig {
 	return &StorageConfig{
 		DiscardABCIResponses: false,
+		CompactionInterval:   0,
 	}
 }
 

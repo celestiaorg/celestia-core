@@ -555,6 +555,13 @@ enable_legacy_block_prop = {{ .Consensus.EnableLegacyBlockProp }}
 # reindex events in the command-line tool.
 discard_abci_responses = {{ .Storage.DiscardABCIResponses}}
 
+# Number of PruneBlocks calls (that actually pruned at least one height)
+# between background range-compactions of the blockstore. Compaction reclaims
+# disk space occupied by tombstones for keys deleted by pruning, which would
+# otherwise accumulate unbounded under the append-then-bulk-delete access
+# pattern. 0 disables the background compactor.
+compaction_interval = {{ .Storage.CompactionInterval }}
+
 #######################################################
 ###   Transaction Indexer Configuration Options     ###
 #######################################################

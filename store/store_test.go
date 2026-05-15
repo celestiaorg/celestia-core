@@ -1,6 +1,7 @@
 package store
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -18,6 +19,7 @@ import (
 	abci "github.com/cometbft/cometbft/abci/types"
 	"github.com/cometbft/cometbft/crypto"
 	"github.com/cometbft/cometbft/internal/test"
+	"github.com/cometbft/cometbft/libs/log"
 	cmtrand "github.com/cometbft/cometbft/libs/rand"
 	cmtstore "github.com/cometbft/cometbft/proto/tendermint/store"
 	cmtversion "github.com/cometbft/cometbft/proto/tendermint/version"
@@ -970,4 +972,92 @@ func TestSaveTxInfo(t *testing.T) {
 	require.Equal(t, "app", txInfo.Codespace)
 	require.Equal(t, int64(50000), txInfo.GasWanted)
 	require.Equal(t, int64(25000), txInfo.GasUsed)
+}
+
+// TestPruneBlocksTriggersCompaction wires a recording DB underneath a
+// BlockStore with CompactionInterval=1 and verifies that PruneBlocks
+// produces per-prefix Compact calls covering the heights it deleted.
+func TestPruneBlocksTriggersCompaction(t *testing.T) {
+	config := test.ResetTestRoot("blockchain_reactor_test")
+	defer os.RemoveAll(config.RootDir)
+	stateStore := sm.NewStore(dbm.NewMemDB(), sm.StoreOptions{
+		DiscardABCIResponses: false,
+	})
+	state, err := stateStore.LoadFromDBOrGenesisFile(config.GenesisFile())
+	require.NoError(t, err)
+
+	rdb := &recordingDB{DB: dbm.NewMemDB()}
+	bs := NewBlockStoreWithOptions(rdb, BlockStoreOptions{
+		CompactionInterval: 1,
+		Logger:             log.TestingLogger(),
+		Metrics:            NopMetrics(),
+	})
+	defer func() {
+		require.NoError(t, bs.Close())
+	}()
+
+	for h := int64(1); h <= 20; h++ {
+		block, partSet, err := state.MakeBlock(h, types.MakeData(test.MakeNTxs(h, 5)), new(types.Commit), nil, state.Validators.GetProposer().Address)
+		require.NoError(t, err)
+		seenCommit := makeTestExtCommit(h, cmttime.Now())
+		bs.SaveBlockWithExtendedCommit(block, partSet, seenCommit)
+	}
+
+	state.LastBlockTime = time.Date(2020, 1, 1, 1, 0, 0, 0, time.UTC)
+	state.LastBlockHeight = 20
+	// Make evidence expiration trivial so all prefixes get deleted.
+	state.ConsensusParams.Evidence.MaxAgeNumBlocks = 1
+	state.ConsensusParams.Evidence.MaxAgeDuration = time.Nanosecond
+
+	pruned, _, err := bs.PruneBlocks(15, state)
+	require.NoError(t, err)
+	require.EqualValues(t, 14, pruned)
+
+	// Wait for the background worker to drain.
+	require.Eventually(t, func() bool {
+		return len(rdb.calls()) >= 4
+	}, 2*time.Second, 10*time.Millisecond, "compactor did not issue per-prefix Compacts")
+
+	// Confirm each tracked prefix received a Compact call. Lower bound is the
+	// raw key; upper bound is the largest key plus a 0x00 sentinel byte.
+	gotPrefix := map[string]bool{}
+	for _, c := range rdb.calls() {
+		// Prefix is everything up to the first ':' in the lower bound.
+		s := string(c[0])
+		idx := bytes.IndexByte([]byte(s), ':')
+		require.GreaterOrEqual(t, idx, 1, "lower bound %q has no ':' separator", s)
+		gotPrefix[s[:idx]] = true
+	}
+	for _, want := range []string{"H", "C", "SC", "P"} {
+		require.True(t, gotPrefix[want], "no Compact recorded for prefix %q (got %v)", want, gotPrefix)
+	}
+}
+
+// TestNewBlockStoreShimDisablesCompactor verifies that the legacy NewBlockStore
+// constructor leaves the compactor disabled and PruneBlocks never triggers a
+// Compact call.
+func TestNewBlockStoreShimDisablesCompactor(t *testing.T) {
+	config := test.ResetTestRoot("blockchain_reactor_test")
+	defer os.RemoveAll(config.RootDir)
+	stateStore := sm.NewStore(dbm.NewMemDB(), sm.StoreOptions{DiscardABCIResponses: false})
+	state, err := stateStore.LoadFromDBOrGenesisFile(config.GenesisFile())
+	require.NoError(t, err)
+
+	rdb := &recordingDB{DB: dbm.NewMemDB()}
+	bs := NewBlockStore(rdb)
+
+	for h := int64(1); h <= 5; h++ {
+		block, partSet, err := state.MakeBlock(h, types.MakeData(test.MakeNTxs(h, 1)), new(types.Commit), nil, state.Validators.GetProposer().Address)
+		require.NoError(t, err)
+		seenCommit := makeTestExtCommit(h, cmttime.Now())
+		bs.SaveBlockWithExtendedCommit(block, partSet, seenCommit)
+	}
+	state.LastBlockTime = time.Date(2020, 1, 1, 1, 0, 0, 0, time.UTC)
+	state.LastBlockHeight = 5
+	_, _, err = bs.PruneBlocks(4, state)
+	require.NoError(t, err)
+
+	time.Sleep(50 * time.Millisecond)
+	require.Empty(t, rdb.calls(), "compactor should not run when interval is 0")
+	require.NoError(t, bs.Close())
 }

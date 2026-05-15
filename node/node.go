@@ -180,8 +180,14 @@ func BootstrapStateWithGenProvider(ctx context.Context, config *cfg.Config, dbPr
 	if dbProvider == nil {
 		dbProvider = cfg.DefaultDBProvider
 	}
-	blockStore, stateDB, err := initDBs(config, dbProvider)
+	blockStoreDB, stateDB, err := initDBs(config, dbProvider)
+	if err != nil {
+		return err
+	}
 
+	// Bootstrap is a short-lived one-shot operation; runtime compaction is not
+	// useful here, so construct a plain BlockStore.
+	blockStore := store.NewBlockStore(blockStoreDB)
 	defer func() {
 		if derr := blockStore.Close(); derr != nil {
 			logger.Error("Failed to close blockstore", "err", derr)
@@ -189,10 +195,6 @@ func BootstrapStateWithGenProvider(ctx context.Context, config *cfg.Config, dbPr
 			err = derr
 		}
 	}()
-
-	if err != nil {
-		return err
-	}
 
 	if !blockStore.IsEmpty() {
 		return fmt.Errorf("blockstore not empty, trying to initialize non empty state")
@@ -309,7 +311,7 @@ func NewNodeWithContext(ctx context.Context,
 	logger log.Logger,
 	options ...Option,
 ) (*Node, error) {
-	blockStore, stateDB, err := initDBs(config, dbProvider)
+	blockStoreDB, stateDB, err := initDBs(config, dbProvider)
 	if err != nil {
 		return nil, err
 	}
@@ -324,6 +326,21 @@ func NewNodeWithContext(ctx context.Context,
 	}
 
 	csMetrics, p2pMetrics, memplMetrics, smMetrics, abciMetrics, bsMetrics, ssMetrics := metricsProvider(genDoc.ChainID)
+
+	// Construct the BlockStore now that we have the chain id (for metric
+	// labels). Runtime compaction is enabled when [storage].compaction_interval
+	// is non-zero.
+	var blockStoreMetrics *store.Metrics
+	if config.Instrumentation != nil && config.Instrumentation.Prometheus {
+		blockStoreMetrics = store.PrometheusMetrics(config.Instrumentation.Namespace, "chain_id", genDoc.ChainID)
+	} else {
+		blockStoreMetrics = store.NopMetrics()
+	}
+	blockStore := store.NewBlockStoreWithOptions(blockStoreDB, store.BlockStoreOptions{
+		CompactionInterval: config.Storage.CompactionInterval,
+		Logger:             logger.With("module", "blockstore"),
+		Metrics:            blockStoreMetrics,
+	})
 
 	// Create the proxyApp and establish connections to the ABCI app (consensus, mempool, query).
 	proxyApp, err := createAndStartProxyAppConns(clientCreator, logger, abciMetrics)
