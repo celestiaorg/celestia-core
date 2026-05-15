@@ -509,8 +509,6 @@ func TestBlockPoolMaliciousNodeMaxInt64(t *testing.T) {
 	}
 }
 
-<<<<<<< HEAD
-=======
 // TestBlockPoolMaliciousNodeUnreachableBase tests that the max-height poisoning
 // attack described in CELESTIA-188 is structurally prevented.
 //
@@ -549,7 +547,6 @@ func TestBlockPoolMaliciousNodeUnreachableBase(t *testing.T) {
 	require.True(t, pool.IsCaughtUp())
 }
 
->>>>>>> e4a8711e (fix(blocksync): prevent maxPeerHeight poisoning (#3038))
 func TestRecalculateParams(t *testing.T) {
 	type testCase struct {
 		blockSize    int
