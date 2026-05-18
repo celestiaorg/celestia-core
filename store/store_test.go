@@ -1001,9 +1001,7 @@ func (s *slowCompactDB) Compact(_, _ []byte) error {
 func TestAsyncCompaction(t *testing.T) {
 	config := test.ResetTestRoot("blockchain_reactor_test")
 	defer os.RemoveAll(config.RootDir)
-	stateStore := sm.NewStore(dbm.NewMemDB(), sm.StoreOptions{
-		DiscardABCIResponses: false,
-	})
+	stateStore := sm.NewStore(dbm.NewMemDB(), sm.StoreOptions{})
 	state, err := stateStore.LoadFromDBOrGenesisFile(config.GenesisFile())
 	require.NoError(t, err)
 
