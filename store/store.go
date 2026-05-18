@@ -512,7 +512,7 @@ func (bs *BlockStore) PruneBlocks(height int64, state sm.State) (uint64, int64, 
 		}
 		bs.logger.Info("blockstore compaction complete",
 			"err", err,
-			"elapsed", time.Since(start),
+			"elapsed(s)", time.Since(start).Seconds(),
 		)
 	}
 	return pruned, evidencePoint, err

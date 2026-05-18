@@ -424,7 +424,7 @@ func (store dbStore) PruneStates(from int64, to int64, evidenceThresholdHeight i
 			err = store.db.Compact(nil, nil)
 			store.StoreOptions.Logger.Info("state store compaction complete",
 				"err", err,
-				"elapsed", time.Since(start),
+				"elapsed(s)", time.Since(start).Seconds(),
 			)
 		}
 	}
