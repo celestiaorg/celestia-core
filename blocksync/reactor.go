@@ -174,7 +174,7 @@ func (bcR *Reactor) SwitchToBlockSync(state sm.State) error {
 	bcR.blockSync = true
 	bcR.initialState = state
 
-	bcR.pool.height = state.LastBlockHeight + 1
+	bcR.pool.SetHeight(state.LastBlockHeight + 1)
 	err := bcR.pool.Start()
 	if err != nil {
 		return err
