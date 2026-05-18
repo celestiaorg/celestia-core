@@ -410,19 +410,19 @@ func (store dbStore) PruneStates(from int64, to int64, evidenceThresholdHeight i
 		return pruned, err
 	}
 
-	if store.StoreOptions.Compact && store.StoreOptions.CompactionInterval > 0 {
-		interval := uint64(store.StoreOptions.CompactionInterval)
+	if store.Compact && store.CompactionInterval > 0 {
+		interval := uint64(store.CompactionInterval)
 		total := previouslyPrunedStates + pruned
 		if total/interval > previouslyPrunedStates/interval {
-			store.StoreOptions.Logger.Info("compacting state store",
+			store.Logger.Info("compacting state store",
 				"states_pruned_total", total,
-				"compaction_interval", store.StoreOptions.CompactionInterval,
+				"compaction_interval", store.CompactionInterval,
 				"retain_height", to,
 			)
 			start := time.Now()
 			// When the range is nil,nil, the database will try to compact ALL levels.
 			err = store.db.Compact(nil, nil)
-			store.StoreOptions.Logger.Info("state store compaction complete",
+			store.Logger.Info("state store compaction complete",
 				"err", err,
 				"elapsed(s)", time.Since(start).Seconds(),
 			)
