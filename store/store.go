@@ -4,6 +4,8 @@ import (
 	"errors"
 	"fmt"
 	"strconv"
+	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/cosmos/gogoproto/proto"
@@ -65,6 +67,8 @@ type BlockStore struct {
 	blocksDeleted      int64
 	compact            bool
 	compactionInterval int64
+	compacting         atomic.Bool
+	compactionWg       sync.WaitGroup
 
 	logger log.Logger
 }
@@ -494,28 +498,38 @@ func (bs *BlockStore) PruneBlocks(height int64, state sm.State) (uint64, int64, 
 	bs.blocksDeleted += int64(pruned)
 
 	if bs.compact && bs.blocksDeleted >= bs.compactionInterval {
-		bs.logger.Info("compacting blockstore",
-			"blocks_deleted", bs.blocksDeleted,
-			"compaction_interval", bs.compactionInterval,
-			"retain_height", height,
+		bs.blocksDeleted = 0
+		bs.triggerCompactionAsync(height)
+	}
+	return pruned, evidencePoint, err
+}
+
+// triggerCompactionAsync launches a background compaction of the underlying
+// database. If a compaction is already in flight, it logs and returns; the
+// caller is responsible for resetting the deletion counter regardless. The
+// goroutine is tracked by compactionWg so Close can wait for it.
+func (bs *BlockStore) triggerCompactionAsync(retainHeight int64) {
+	if !bs.compacting.CompareAndSwap(false, true) {
+		bs.logger.Info("blockstore compaction already in progress, resetting interval counter",
+			"retain_height", retainHeight,
 		)
+		return
+	}
+	bs.compactionWg.Add(1)
+	go func() {
+		defer bs.compactionWg.Done()
+		defer bs.compacting.Store(false)
+		bs.logger.Info("compacting blockstore", "retain_height", retainHeight)
 		start := time.Now()
 		// When the range is nil,nil, the database will try to compact
 		// ALL levels. Another option is to set a predefined range of
 		// specific keys.
-		err = bs.db.Compact(nil, nil)
-		if err == nil {
-			// If there was no error in compaction we reset the counter.
-			// Otherwise we preserve the number of blocks deleted so
-			// we can trigger compaction in the next pruning iteration
-			bs.blocksDeleted = 0
-		}
+		err := bs.db.Compact(nil, nil)
 		bs.logger.Info("blockstore compaction complete",
 			"err", err,
 			"elapsed(s)", time.Since(start).Seconds(),
 		)
-	}
-	return pruned, evidencePoint, err
+	}()
 }
 
 // SaveBlock persists the given block, blockParts, and seenCommit to the underlying db.
@@ -703,6 +717,7 @@ func (bs *BlockStore) SaveSeenCommit(height int64, seenCommit *types.Commit) err
 }
 
 func (bs *BlockStore) Close() error {
+	bs.compactionWg.Wait()
 	return bs.db.Close()
 }
 

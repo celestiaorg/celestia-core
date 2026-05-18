@@ -6,6 +6,7 @@ import (
 	"os"
 	"runtime/debug"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -18,6 +19,7 @@ import (
 	abci "github.com/cometbft/cometbft/abci/types"
 	"github.com/cometbft/cometbft/crypto"
 	"github.com/cometbft/cometbft/internal/test"
+	"github.com/cometbft/cometbft/libs/log"
 	cmtrand "github.com/cometbft/cometbft/libs/rand"
 	cmtstore "github.com/cometbft/cometbft/proto/tendermint/store"
 	cmtversion "github.com/cometbft/cometbft/proto/tendermint/version"
@@ -970,4 +972,106 @@ func TestSaveTxInfo(t *testing.T) {
 	require.Equal(t, "app", txInfo.Codespace)
 	require.Equal(t, int64(50000), txInfo.GasWanted)
 	require.Equal(t, int64(25000), txInfo.GasUsed)
+}
+
+// slowCompactDB wraps a dbm.DB so that Compact blocks until release is
+// closed. It also counts how many times Compact was called.
+type slowCompactDB struct {
+	dbm.DB
+	compactCount atomic.Int64
+	release      chan struct{}
+}
+
+func newSlowCompactDB(db dbm.DB) *slowCompactDB {
+	return &slowCompactDB{
+		DB:      db,
+		release: make(chan struct{}),
+	}
+}
+
+func (s *slowCompactDB) Compact(_, _ []byte) error {
+	s.compactCount.Add(1)
+	<-s.release
+	return nil
+}
+
+// TestAsyncCompaction verifies that blockstore compaction runs in the
+// background, is single-flight, resets the deletion counter on the skip path,
+// and that Close waits for an in-flight compaction.
+func TestAsyncCompaction(t *testing.T) {
+	config := test.ResetTestRoot("blockchain_reactor_test")
+	defer os.RemoveAll(config.RootDir)
+	stateStore := sm.NewStore(dbm.NewMemDB(), sm.StoreOptions{
+		DiscardABCIResponses: false,
+	})
+	state, err := stateStore.LoadFromDBOrGenesisFile(config.GenesisFile())
+	require.NoError(t, err)
+
+	db := newSlowCompactDB(dbm.NewMemDB())
+	bs := NewBlockStore(db,
+		WithCompaction(true, 50),
+		WithLogger(log.TestingLogger()),
+	)
+
+	for h := int64(1); h <= 1500; h++ {
+		block, partSet, err := state.MakeBlock(h, types.MakeData(test.MakeNTxs(h, 10)), new(types.Commit), nil, state.Validators.GetProposer().Address)
+		require.NoError(t, err)
+		seenCommit := makeTestExtCommit(h, cmttime.Now())
+		bs.SaveBlockWithExtendedCommit(block, partSet, seenCommit)
+	}
+	state.LastBlockTime = time.Date(2020, 1, 1, 1, 0, 0, 0, time.UTC)
+	state.LastBlockHeight = 1500
+	state.ConsensusParams.Evidence.MaxAgeNumBlocks = 400
+	state.ConsensusParams.Evidence.MaxAgeDuration = 1 * time.Second
+
+	// First prune triggers compaction. PruneBlocks must return promptly even
+	// though Compact is blocked.
+	pruneDone := make(chan struct{})
+	go func() {
+		_, _, perr := bs.PruneBlocks(100, state)
+		require.NoError(t, perr)
+		close(pruneDone)
+	}()
+	select {
+	case <-pruneDone:
+	case <-time.After(5 * time.Second):
+		t.Fatal("PruneBlocks did not return promptly while compaction was blocked")
+	}
+
+	// Wait for the background goroutine to enter db.Compact.
+	require.Eventually(t, func() bool {
+		return db.compactCount.Load() == 1
+	}, 2*time.Second, 10*time.Millisecond, "compaction goroutine did not start")
+	require.True(t, bs.compacting.Load(), "compacting flag should be set while in flight")
+	require.EqualValues(t, 0, bs.blocksDeleted, "blocksDeleted should be reset on the launch path")
+
+	// Second prune past the threshold while compaction is still in flight.
+	// The deletion counter must reset and no second goroutine must start.
+	_, _, err = bs.PruneBlocks(200, state)
+	require.NoError(t, err)
+	require.EqualValues(t, 0, bs.blocksDeleted, "blocksDeleted should be reset on the skip path")
+	require.Equal(t, int64(1), db.compactCount.Load(),
+		"a second compaction must not start while one is in flight")
+
+	// Close must block until compaction completes.
+	closeDone := make(chan error, 1)
+	go func() {
+		closeDone <- bs.Close()
+	}()
+	select {
+	case <-closeDone:
+		t.Fatal("Close returned before in-flight compaction completed")
+	case <-time.After(100 * time.Millisecond):
+	}
+
+	// Release compaction; Close should now return cleanly.
+	close(db.release)
+	select {
+	case cerr := <-closeDone:
+		require.NoError(t, cerr)
+	case <-time.After(5 * time.Second):
+		t.Fatal("Close did not return after compaction was released")
+	}
+	require.Equal(t, int64(1), db.compactCount.Load())
+	require.False(t, bs.compacting.Load(), "compacting flag should be cleared on goroutine exit")
 }
