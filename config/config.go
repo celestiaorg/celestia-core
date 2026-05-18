@@ -1298,7 +1298,7 @@ type StorageConfig struct {
 	// If your retain height is 1 block, it is too much of an overhead
 	// to try compaction every block. But it should also not be a very
 	// large multiple of your retain height as it might occur bigger overheads.
-	// 1000 by default.
+	// 10000 by default.
 	CompactionInterval int64 `mapstructure:"compaction_interval"`
 }
 
@@ -1308,7 +1308,7 @@ func DefaultStorageConfig() *StorageConfig {
 	return &StorageConfig{
 		DiscardABCIResponses: false,
 		Compact:              false,
-		CompactionInterval:   1000,
+		CompactionInterval:   10000,
 	}
 }
 
