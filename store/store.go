@@ -64,6 +64,11 @@ type BlockStore struct {
 	blockCommitCache         *lru.Cache[int64, *types.Commit]
 	blockExtendedCommitCache *lru.Cache[int64, *types.ExtendedCommit]
 
+	// blocksDeleted, compact, and compactionInterval are only read/written
+	// from PruneBlocks, which has a single production caller (the consensus
+	// goroutine via BlockExecutor.ApplyBlock), so no synchronization is
+	// needed for these fields. compacting and compactionWg coordinate with
+	// the background compaction goroutine and are intentionally lock-free.
 	blocksDeleted      int64
 	compact            bool
 	compactionInterval int64
@@ -501,7 +506,7 @@ func (bs *BlockStore) PruneBlocks(height int64, state sm.State) (uint64, int64, 
 		bs.blocksDeleted = 0
 		bs.triggerCompactionAsync(height)
 	}
-	return pruned, evidencePoint, err
+	return pruned, evidencePoint, nil
 }
 
 // triggerCompactionAsync launches a background compaction of the underlying
