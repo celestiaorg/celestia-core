@@ -497,7 +497,7 @@ func (bs *BlockStore) PruneBlocks(height int64, state sm.State) (uint64, int64, 
 	}
 	bs.blocksDeleted += int64(pruned)
 
-	if bs.compact && bs.blocksDeleted >= bs.compactionInterval {
+	if bs.compact && bs.compactionInterval > 0 && bs.blocksDeleted >= bs.compactionInterval {
 		bs.blocksDeleted = 0
 		bs.triggerCompactionAsync(height)
 	}
