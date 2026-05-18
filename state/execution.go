@@ -939,10 +939,13 @@ func (blockExec *BlockExecutor) pruneBlocks(retainHeight int64, state State) (ui
 	}
 
 	prunedStates, err := blockExec.Store().PruneStates(base, retainHeight, prunedHeaderHeight, blockExec.prunedStates)
+	// PruneStates flushes in 1000-entry batches, so partial deletions persist
+	// to disk even on error. Account for them so the compaction-trigger
+	// bucket math stays aligned with what's actually on disk.
+	blockExec.prunedStates += prunedStates
 	if err != nil {
 		return 0, fmt.Errorf("failed to prune state store: %w", err)
 	}
-	blockExec.prunedStates += prunedStates
 	return amountPruned, nil
 }
 
