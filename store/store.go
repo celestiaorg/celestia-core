@@ -4,6 +4,9 @@ import (
 	"errors"
 	"fmt"
 	"strconv"
+	"sync"
+	"sync/atomic"
+	"time"
 
 	"github.com/cosmos/gogoproto/proto"
 	lru "github.com/hashicorp/golang-lru/v2"
@@ -12,6 +15,7 @@ import (
 
 	abci "github.com/cometbft/cometbft/abci/types"
 	"github.com/cometbft/cometbft/evidence"
+	"github.com/cometbft/cometbft/libs/log"
 	cmtsync "github.com/cometbft/cometbft/libs/sync"
 	cmtstore "github.com/cometbft/cometbft/proto/tendermint/store"
 	cmtproto "github.com/cometbft/cometbft/proto/tendermint/types"
@@ -59,18 +63,52 @@ type BlockStore struct {
 	seenCommitCache          *lru.Cache[int64, *types.Commit]
 	blockCommitCache         *lru.Cache[int64, *types.Commit]
 	blockExtendedCommitCache *lru.Cache[int64, *types.ExtendedCommit]
+
+	// blocksDeleted, compact, and compactionInterval are only read/written
+	// from PruneBlocks, which has a single production caller (the consensus
+	// goroutine via BlockExecutor.ApplyBlock), so no synchronization is
+	// needed for these fields. compacting and compactionWg coordinate with
+	// the background compaction goroutine and are intentionally lock-free.
+	blocksDeleted      int64
+	compact            bool
+	compactionInterval int64
+	compacting         atomic.Bool
+	compactionWg       sync.WaitGroup
+
+	logger log.Logger
+}
+
+type BlockStoreOption func(*BlockStore)
+
+// WithCompaction sets the compaction parameters.
+func WithCompaction(compact bool, compactionInterval int64) BlockStoreOption {
+	return func(bs *BlockStore) {
+		bs.compact = compact
+		bs.compactionInterval = compactionInterval
+	}
+}
+
+// WithLogger sets the logger used by the BlockStore.
+func WithLogger(logger log.Logger) BlockStoreOption {
+	return func(bs *BlockStore) {
+		bs.logger = logger
+	}
 }
 
 // NewBlockStore returns a new BlockStore with the given DB,
 // initialized to the last height that was committed to the DB.
-func NewBlockStore(db dbm.DB) *BlockStore {
+func NewBlockStore(db dbm.DB, options ...BlockStoreOption) *BlockStore {
 	bs := LoadBlockStoreState(db)
 	bStore := &BlockStore{
 		base:   bs.Base,
 		height: bs.Height,
 		db:     db,
+		logger: log.NewNopLogger(),
 	}
 	bStore.addCaches()
+	for _, option := range options {
+		option(bStore)
+	}
 	return bStore
 }
 
@@ -462,7 +500,41 @@ func (bs *BlockStore) PruneBlocks(height int64, state sm.State) (uint64, int64, 
 	if err != nil {
 		return 0, -1, err
 	}
+	bs.blocksDeleted += int64(pruned)
+
+	if bs.compact && bs.compactionInterval > 0 && bs.blocksDeleted >= bs.compactionInterval {
+		bs.blocksDeleted = 0
+		bs.triggerCompactionAsync(height)
+	}
 	return pruned, evidencePoint, nil
+}
+
+// triggerCompactionAsync launches a background compaction of the underlying
+// database. If a compaction is already in flight, it logs and returns; the
+// caller is responsible for resetting the deletion counter regardless. The
+// goroutine is tracked by compactionWg so Close can wait for it.
+func (bs *BlockStore) triggerCompactionAsync(retainHeight int64) {
+	if !bs.compacting.CompareAndSwap(false, true) {
+		bs.logger.Info("blockstore compaction already in progress, resetting interval counter",
+			"retain_height", retainHeight,
+		)
+		return
+	}
+	bs.compactionWg.Add(1)
+	go func() {
+		defer bs.compactionWg.Done()
+		defer bs.compacting.Store(false)
+		bs.logger.Info("compacting blockstore", "retain_height", retainHeight)
+		start := time.Now()
+		// When the range is nil,nil, the database will try to compact
+		// ALL levels. Another option is to set a predefined range of
+		// specific keys.
+		err := bs.db.Compact(nil, nil)
+		bs.logger.Info("blockstore compaction complete",
+			"err", err,
+			"elapsed(s)", time.Since(start).Seconds(),
+		)
+	}()
 }
 
 // SaveBlock persists the given block, blockParts, and seenCommit to the underlying db.
@@ -650,6 +722,7 @@ func (bs *BlockStore) SaveSeenCommit(height int64, seenCommit *types.Commit) err
 }
 
 func (bs *BlockStore) Close() error {
+	bs.compactionWg.Wait()
 	return bs.db.Close()
 }
 

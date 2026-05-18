@@ -282,22 +282,32 @@ func (_m *Store) LoadValidators(_a0 int64) (*types.ValidatorSet, error) {
 	return r0, r1
 }
 
-// PruneStates provides a mock function with given fields: _a0, _a1, _a2
-func (_m *Store) PruneStates(_a0 int64, _a1 int64, _a2 int64) error {
-	ret := _m.Called(_a0, _a1, _a2)
+// PruneStates provides a mock function with given fields: fromHeight, toHeight, evidenceThresholdHeight, previouslyPrunedStates
+func (_m *Store) PruneStates(fromHeight int64, toHeight int64, evidenceThresholdHeight int64, previouslyPrunedStates uint64) (uint64, error) {
+	ret := _m.Called(fromHeight, toHeight, evidenceThresholdHeight, previouslyPrunedStates)
 
 	if len(ret) == 0 {
 		panic("no return value specified for PruneStates")
 	}
 
-	var r0 error
-	if rf, ok := ret.Get(0).(func(int64, int64, int64) error); ok {
-		r0 = rf(_a0, _a1, _a2)
+	var r0 uint64
+	var r1 error
+	if rf, ok := ret.Get(0).(func(int64, int64, int64, uint64) (uint64, error)); ok {
+		return rf(fromHeight, toHeight, evidenceThresholdHeight, previouslyPrunedStates)
+	}
+	if rf, ok := ret.Get(0).(func(int64, int64, int64, uint64) uint64); ok {
+		r0 = rf(fromHeight, toHeight, evidenceThresholdHeight, previouslyPrunedStates)
 	} else {
-		r0 = ret.Error(0)
+		r0 = ret.Get(0).(uint64)
 	}
 
-	return r0
+	if rf, ok := ret.Get(1).(func(int64, int64, int64, uint64) error); ok {
+		r1 = rf(fromHeight, toHeight, evidenceThresholdHeight, previouslyPrunedStates)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
 }
 
 // Save provides a mock function with given fields: _a0

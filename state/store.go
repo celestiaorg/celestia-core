@@ -4,12 +4,14 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/cosmos/gogoproto/proto"
 
 	dbm "github.com/cometbft/cometbft-db"
 
 	abci "github.com/cometbft/cometbft/abci/types"
+	"github.com/cometbft/cometbft/libs/log"
 	cmtmath "github.com/cometbft/cometbft/libs/math"
 	cmtos "github.com/cometbft/cometbft/libs/os"
 	cmtstate "github.com/cometbft/cometbft/proto/tendermint/state"
@@ -74,7 +76,7 @@ type Store interface {
 	// Bootstrap is used for bootstrapping state when not starting from a initial height.
 	Bootstrap(State) error
 	// PruneStates takes the height from which to start pruning and which height stop at
-	PruneStates(int64, int64, int64) error
+	PruneStates(fromHeight, toHeight, evidenceThresholdHeight int64, previouslyPrunedStates uint64) (uint64, error)
 	// Saves the height at which the store is bootstrapped after out of band statesync
 	SetOfflineStateSyncHeight(height int64) error
 	// Gets the height at which the store is bootstrapped after out of band statesync
@@ -96,6 +98,12 @@ type StoreOptions struct {
 	// the store will maintain only the response object from the latest
 	// height.
 	DiscardABCIResponses bool
+
+	Compact bool
+
+	CompactionInterval int64
+
+	Logger log.Logger
 }
 
 var _ Store = (*dbStore)(nil)
@@ -110,6 +118,9 @@ func IsEmpty(store dbStore) (bool, error) {
 
 // NewStore creates the dbStore of the state pkg.
 func NewStore(db dbm.DB, options StoreOptions) Store {
+	if options.Logger == nil {
+		options.Logger = log.NewNopLogger()
+	}
 	return dbStore{db, options}
 }
 
@@ -274,21 +285,21 @@ func (store dbStore) Bootstrap(state State) error {
 // encoding not preserving ordering: https://github.com/tendermint/tendermint/issues/4567
 // This will cause some old states to be left behind when doing incremental partial prunes,
 // specifically older checkpoints and LastHeightChanged targets.
-func (store dbStore) PruneStates(from int64, to int64, evidenceThresholdHeight int64) error {
+func (store dbStore) PruneStates(from int64, to int64, evidenceThresholdHeight int64, previouslyPrunedStates uint64) (uint64, error) {
 	if from <= 0 || to <= 0 {
-		return fmt.Errorf("from height %v and to height %v must be greater than 0", from, to)
+		return 0, fmt.Errorf("from height %v and to height %v must be greater than 0", from, to)
 	}
 	if from >= to {
-		return fmt.Errorf("from height %v must be lower than to height %v", from, to)
+		return 0, fmt.Errorf("from height %v must be lower than to height %v", from, to)
 	}
 
 	valInfo, err := loadValidatorsInfo(store.db, min(to, evidenceThresholdHeight))
 	if err != nil {
-		return fmt.Errorf("validators at height %v not found: %w", to, err)
+		return 0, fmt.Errorf("validators at height %v not found: %w", to, err)
 	}
 	paramsInfo, err := store.loadConsensusParamsInfo(to)
 	if err != nil {
-		return fmt.Errorf("consensus params at height %v not found: %w", to, err)
+		return 0, fmt.Errorf("consensus params at height %v not found: %w", to, err)
 	}
 
 	keepVals := make(map[int64]bool)
@@ -316,12 +327,12 @@ func (store dbStore) PruneStates(from int64, to int64, evidenceThresholdHeight i
 			if err != nil || v.ValidatorSet == nil {
 				vip, err := store.LoadValidators(h)
 				if err != nil {
-					return err
+					return pruned, err
 				}
 
 				pvi, err := vip.ToProto()
 				if err != nil {
-					return err
+					return pruned, err
 				}
 
 				v.ValidatorSet = pvi
@@ -329,17 +340,17 @@ func (store dbStore) PruneStates(from int64, to int64, evidenceThresholdHeight i
 
 				bz, err := v.Marshal()
 				if err != nil {
-					return err
+					return pruned, err
 				}
 				err = batch.Set(calcValidatorsKey(h), bz)
 				if err != nil {
-					return err
+					return pruned, err
 				}
 			}
 		} else if h < evidenceThresholdHeight {
 			err = batch.Delete(calcValidatorsKey(h))
 			if err != nil {
-				return err
+				return pruned, err
 			}
 		}
 		// else we keep the validator set because we might need
@@ -348,37 +359,37 @@ func (store dbStore) PruneStates(from int64, to int64, evidenceThresholdHeight i
 		if keepParams[h] {
 			p, err := store.loadConsensusParamsInfo(h)
 			if err != nil {
-				return err
+				return pruned, err
 			}
 
 			if p.ConsensusParams.Equal(&cmtproto.ConsensusParams{}) {
 				params, err := store.LoadConsensusParams(h)
 				if err != nil {
-					return err
+					return pruned, err
 				}
 				p.ConsensusParams = params.ToProto()
 
 				p.LastHeightChanged = h
 				bz, err := p.Marshal()
 				if err != nil {
-					return err
+					return pruned, err
 				}
 
 				err = batch.Set(calcConsensusParamsKey(h), bz)
 				if err != nil {
-					return err
+					return pruned, err
 				}
 			}
 		} else {
 			err = batch.Delete(calcConsensusParamsKey(h))
 			if err != nil {
-				return err
+				return pruned, err
 			}
 		}
 
 		err = batch.Delete(calcABCIResponsesKey(h))
 		if err != nil {
-			return err
+			return pruned, err
 		}
 		pruned++
 
@@ -386,7 +397,7 @@ func (store dbStore) PruneStates(from int64, to int64, evidenceThresholdHeight i
 		if pruned%1000 == 0 && pruned > 0 {
 			err := batch.Write()
 			if err != nil {
-				return err
+				return pruned, err
 			}
 			batch.Close()
 			batch = store.db.NewBatch()
@@ -396,10 +407,29 @@ func (store dbStore) PruneStates(from int64, to int64, evidenceThresholdHeight i
 
 	err = batch.WriteSync()
 	if err != nil {
-		return err
+		return pruned, err
 	}
 
-	return nil
+	if store.Compact && store.CompactionInterval > 0 {
+		interval := uint64(store.CompactionInterval)
+		total := previouslyPrunedStates + pruned
+		if total/interval > previouslyPrunedStates/interval {
+			store.Logger.Info("compacting state store",
+				"states_pruned_total", total,
+				"compaction_interval", store.CompactionInterval,
+				"retain_height", to,
+			)
+			start := time.Now()
+			// When the range is nil,nil, the database will try to compact ALL levels.
+			err = store.db.Compact(nil, nil)
+			store.Logger.Info("state store compaction complete",
+				"err", err,
+				"elapsed(s)", time.Since(start).Seconds(),
+			)
+		}
+	}
+
+	return pruned, err
 }
 
 //------------------------------------------------------------------------

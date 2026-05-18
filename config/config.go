@@ -162,6 +162,9 @@ func (cfg *Config) ValidateBasic() error {
 	if err := cfg.Instrumentation.ValidateBasic(); err != nil {
 		return fmt.Errorf("error in [instrumentation] section: %w", err)
 	}
+	if err := cfg.Storage.ValidateBasic(); err != nil {
+		return fmt.Errorf("error in [storage] section: %w", err)
+	}
 	if !cfg.Consensus.CreateEmptyBlocks && cfg.Mempool.Type == MempoolTypeNop {
 		return fmt.Errorf("`nop` mempool does not support create_empty_blocks = false")
 	}
@@ -1285,6 +1288,21 @@ type StorageConfig struct {
 	// required for `/block_results` RPC queries, and to reindex events in the
 	// command-line tool.
 	DiscardABCIResponses bool `mapstructure:"discard_abci_responses"`
+	// Compaction on pruning - enable or disable in-process compaction.
+	// If the DB backend supports it, this will force the DB to compact
+	// the database levels and save on storage space. Setting this to true
+	// is most beneficial when used in combination with pruning as it will
+	// physically delete the entries marked for deletion.
+	// false by default (forcing compaction is disabled).
+	Compact bool `mapstructure:"compact"`
+	// Compaction interval - number of blocks to try explicit compaction on.
+	// This parameter should be tuned depending on the number of items
+	// you expect to delete between two calls to forced compaction.
+	// If your retain height is 1 block, it is too much of an overhead
+	// to try compaction every block. But it should also not be a very
+	// large multiple of your retain height as it might occur bigger overheads.
+	// 10000 by default.
+	CompactionInterval int64 `mapstructure:"compaction_interval"`
 }
 
 // DefaultStorageConfig returns the default configuration options relating to
@@ -1292,6 +1310,8 @@ type StorageConfig struct {
 func DefaultStorageConfig() *StorageConfig {
 	return &StorageConfig{
 		DiscardABCIResponses: false,
+		Compact:              false,
+		CompactionInterval:   10000,
 	}
 }
 
@@ -1301,6 +1321,15 @@ func TestStorageConfig() *StorageConfig {
 	return &StorageConfig{
 		DiscardABCIResponses: false,
 	}
+}
+
+// ValidateBasic performs basic validation, returning an error if any check
+// fails.
+func (cfg *StorageConfig) ValidateBasic() error {
+	if cfg.Compact && cfg.CompactionInterval <= 0 {
+		return fmt.Errorf("compaction_interval must be positive when compact is true, got %d", cfg.CompactionInterval)
+	}
+	return nil
 }
 
 // -----------------------------------------------------------------------------
