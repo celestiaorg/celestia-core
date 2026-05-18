@@ -405,6 +405,7 @@ func (store dbStore) PruneStates(from int64, to int64, evidenceThresholdHeight i
 
 	// We do not want to panic or interrupt consensus on compaction failure
 	if store.StoreOptions.Compact && previouslyPrunedStates+pruned >= uint64(store.StoreOptions.CompactionInterval) {
+		fmt.Println("-------->>>>>> compacting state: ", pruned, " states pruned", pruned, " previouslyPrunedStates", previouslyPrunedStates, " compactionInterval", store.StoreOptions.CompactionInterval)
 		// When the range is nil,nil, the database will try to compact
 		// ALL levels. Another option is to set a predefined range of
 		// specific keys.

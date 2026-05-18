@@ -482,6 +482,7 @@ func (bs *BlockStore) PruneBlocks(height int64, state sm.State) (uint64, int64, 
 	bs.blocksDeleted += int64(pruned)
 
 	if bs.compact && bs.blocksDeleted >= bs.compactionInterval {
+		fmt.Println("----->>> compacting blocks ", bs.blocksDeleted, " blocks deleted", " compaction interval ", bs.compactionInterval)
 		// When the range is nil,nil, the database will try to compact
 		// ALL levels. Another option is to set a predefined range of
 		// specific keys.
