@@ -422,7 +422,7 @@ func (store dbStore) PruneStates(from int64, to int64, evidenceThresholdHeight i
 			start := time.Now()
 			// When the range is nil,nil, the database will try to compact ALL levels.
 			err = store.db.Compact(nil, nil)
-			store.StoreOptions.Logger.Error("state store compaction complete",
+			store.StoreOptions.Logger.Info("state store compaction complete",
 				"err", err,
 				"elapsed", time.Since(start),
 			)

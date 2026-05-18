@@ -510,7 +510,7 @@ func (bs *BlockStore) PruneBlocks(height int64, state sm.State) (uint64, int64, 
 			// we can trigger compaction in the next pruning iteration
 			bs.blocksDeleted = 0
 		}
-		bs.logger.Error("blockstore compaction complete",
+		bs.logger.Info("blockstore compaction complete",
 			"err", err,
 			"elapsed", time.Since(start),
 		)
