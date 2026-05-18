@@ -4,12 +4,14 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/cosmos/gogoproto/proto"
 
 	dbm "github.com/cometbft/cometbft-db"
 
 	abci "github.com/cometbft/cometbft/abci/types"
+	"github.com/cometbft/cometbft/libs/log"
 	cmtmath "github.com/cometbft/cometbft/libs/math"
 	cmtos "github.com/cometbft/cometbft/libs/os"
 	cmtstate "github.com/cometbft/cometbft/proto/tendermint/state"
@@ -100,6 +102,8 @@ type StoreOptions struct {
 	Compact bool
 
 	CompactionInterval int64
+
+	Logger log.Logger
 }
 
 var _ Store = (*dbStore)(nil)
@@ -114,6 +118,9 @@ func IsEmpty(store dbStore) (bool, error) {
 
 // NewStore creates the dbStore of the state pkg.
 func NewStore(db dbm.DB, options StoreOptions) Store {
+	if options.Logger == nil {
+		options.Logger = log.NewNopLogger()
+	}
 	return dbStore{db, options}
 }
 
@@ -407,8 +414,18 @@ func (store dbStore) PruneStates(from int64, to int64, evidenceThresholdHeight i
 		interval := uint64(store.StoreOptions.CompactionInterval)
 		total := previouslyPrunedStates + pruned
 		if total/interval > previouslyPrunedStates/interval {
+			store.StoreOptions.Logger.Info("compacting state store",
+				"states_pruned_total", total,
+				"compaction_interval", store.StoreOptions.CompactionInterval,
+				"retain_height", to,
+			)
+			start := time.Now()
 			// When the range is nil,nil, the database will try to compact ALL levels.
 			err = store.db.Compact(nil, nil)
+			store.StoreOptions.Logger.Error("state store compaction complete",
+				"err", err,
+				"elapsed", time.Since(start),
+			)
 		}
 	}
 

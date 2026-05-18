@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"strconv"
+	"time"
 
 	"github.com/cosmos/gogoproto/proto"
 	lru "github.com/hashicorp/golang-lru/v2"
@@ -12,6 +13,7 @@ import (
 
 	abci "github.com/cometbft/cometbft/abci/types"
 	"github.com/cometbft/cometbft/evidence"
+	"github.com/cometbft/cometbft/libs/log"
 	cmtsync "github.com/cometbft/cometbft/libs/sync"
 	cmtstore "github.com/cometbft/cometbft/proto/tendermint/store"
 	cmtproto "github.com/cometbft/cometbft/proto/tendermint/types"
@@ -63,6 +65,8 @@ type BlockStore struct {
 	blocksDeleted      int64
 	compact            bool
 	compactionInterval int64
+
+	logger log.Logger
 }
 
 type BlockStoreOption func(*BlockStore)
@@ -75,6 +79,13 @@ func WithCompaction(compact bool, compactionInterval int64) BlockStoreOption {
 	}
 }
 
+// WithLogger sets the logger used by the BlockStore.
+func WithLogger(logger log.Logger) BlockStoreOption {
+	return func(bs *BlockStore) {
+		bs.logger = logger
+	}
+}
+
 // NewBlockStore returns a new BlockStore with the given DB,
 // initialized to the last height that was committed to the DB.
 func NewBlockStore(db dbm.DB, options ...BlockStoreOption) *BlockStore {
@@ -83,6 +94,7 @@ func NewBlockStore(db dbm.DB, options ...BlockStoreOption) *BlockStore {
 		base:   bs.Base,
 		height: bs.Height,
 		db:     db,
+		logger: log.NewNopLogger(),
 	}
 	bStore.addCaches()
 	for _, option := range options {
@@ -482,7 +494,12 @@ func (bs *BlockStore) PruneBlocks(height int64, state sm.State) (uint64, int64, 
 	bs.blocksDeleted += int64(pruned)
 
 	if bs.compact && bs.blocksDeleted >= bs.compactionInterval {
-		fmt.Println("----->>> compacting blocks ", bs.blocksDeleted, " blocks deleted", " compaction interval ", bs.compactionInterval)
+		bs.logger.Info("compacting blockstore",
+			"blocks_deleted", bs.blocksDeleted,
+			"compaction_interval", bs.compactionInterval,
+			"retain_height", height,
+		)
+		start := time.Now()
 		// When the range is nil,nil, the database will try to compact
 		// ALL levels. Another option is to set a predefined range of
 		// specific keys.
@@ -493,6 +510,10 @@ func (bs *BlockStore) PruneBlocks(height int64, state sm.State) (uint64, int64, 
 			// we can trigger compaction in the next pruning iteration
 			bs.blocksDeleted = 0
 		}
+		bs.logger.Error("blockstore compaction complete",
+			"err", err,
+			"elapsed", time.Since(start),
+		)
 	}
 	return pruned, evidencePoint, err
 }
