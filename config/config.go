@@ -162,6 +162,9 @@ func (cfg *Config) ValidateBasic() error {
 	if err := cfg.Instrumentation.ValidateBasic(); err != nil {
 		return fmt.Errorf("error in [instrumentation] section: %w", err)
 	}
+	if err := cfg.Storage.ValidateBasic(); err != nil {
+		return fmt.Errorf("error in [storage] section: %w", err)
+	}
 	if !cfg.Consensus.CreateEmptyBlocks && cfg.Mempool.Type == MempoolTypeNop {
 		return fmt.Errorf("`nop` mempool does not support create_empty_blocks = false")
 	}
@@ -1318,6 +1321,15 @@ func TestStorageConfig() *StorageConfig {
 	return &StorageConfig{
 		DiscardABCIResponses: false,
 	}
+}
+
+// ValidateBasic performs basic validation, returning an error if any check
+// fails.
+func (cfg *StorageConfig) ValidateBasic() error {
+	if cfg.Compact && cfg.CompactionInterval <= 0 {
+		return fmt.Errorf("compaction_interval must be positive when compact is true, got %d", cfg.CompactionInterval)
+	}
+	return nil
 }
 
 // -----------------------------------------------------------------------------
