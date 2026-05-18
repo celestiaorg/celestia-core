@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -32,6 +33,13 @@ const (
 )
 
 var _ txindex.TxIndexer = (*TxIndex)(nil)
+var _ txindex.PagedTxIndexer = (*TxIndex)(nil)
+
+type txRef struct {
+	hash   []byte
+	height int64
+	index  uint32
+}
 
 // TxIndex is the simplest possible indexer, backed by key-value storage (levelDB).
 type TxIndex struct {
@@ -191,15 +199,89 @@ func (txi *TxIndex) indexEvents(result *abci.TxResult, hash []byte, store dbm.Ba
 // Search will exit early and return any result fetched so far,
 // when a message is received on the context chan.
 func (txi *TxIndex) Search(ctx context.Context, q *query.Query) ([]*abci.TxResult, error) {
+	filteredHashes, err := txi.searchRefs(ctx, q)
+	if err != nil {
+		return nil, err
+	}
+
+	return txi.loadResults(ctx, uniqueRefs(filteredHashes))
+}
+
+// SearchPaged performs the same match as Search, but applies ordering and
+// pagination before loading full TxResult protobufs.
+func (txi *TxIndex) SearchPaged(
+	ctx context.Context,
+	q *query.Query,
+	orderBy string,
+	skipCount, pageSize int,
+) ([]*abci.TxResult, int, error) {
+	if pageSize < 0 {
+		pageSize = 0
+	}
+	if skipCount < 0 {
+		skipCount = 0
+	}
+
+	filteredHashes, err := txi.searchRefs(ctx, q)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	refs := uniqueRefs(filteredHashes)
+	if err := sortRefs(refs, orderBy); err != nil {
+		return nil, 0, err
+	}
+
+	totalCount := len(refs)
+	if skipCount >= totalCount || pageSize == 0 {
+		return []*abci.TxResult{}, totalCount, nil
+	}
+
+	end := skipCount + pageSize
+	if end < skipCount || end > totalCount {
+		end = totalCount
+	}
+
+	results, err := txi.loadResults(ctx, refs[skipCount:end])
+	if err != nil {
+		return nil, 0, err
+	}
+
+	return results, totalCount, nil
+}
+
+func (txi *TxIndex) loadResults(ctx context.Context, refs []txRef) ([]*abci.TxResult, error) {
+	results := make([]*abci.TxResult, 0, len(refs))
+	for _, ref := range refs {
+		res, err := txi.Get(ref.hash)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get Tx{%X}: %w", ref.hash, err)
+		}
+		if res == nil {
+			continue
+		}
+		results = append(results, res)
+
+		select {
+		case <-ctx.Done():
+			return results, nil
+		default:
+		}
+	}
+
+	return results, nil
+}
+
+func (txi *TxIndex) searchRefs(ctx context.Context, q *query.Query) (map[string]txRef, error) {
 	select {
 	case <-ctx.Done():
-		return make([]*abci.TxResult, 0), nil
+		return make(map[string]txRef), nil
 
 	default:
 	}
 
 	var hashesInitialized bool
-	filteredHashes := make(map[string][]byte)
+	filteredHashes := make(map[string]txRef)
 
 	// get a list of conditions (like "tx.height > 5")
 	conditions := q.Syntax()
@@ -212,11 +294,17 @@ func (txi *TxIndex) Search(ctx context.Context, q *query.Query) ([]*abci.TxResul
 		res, err := txi.Get(hash)
 		switch {
 		case err != nil:
-			return []*abci.TxResult{}, fmt.Errorf("error while retrieving the result: %w", err)
+			return map[string]txRef{}, fmt.Errorf("error while retrieving the result: %w", err)
 		case res == nil:
-			return []*abci.TxResult{}, nil
+			return map[string]txRef{}, nil
 		default:
-			return []*abci.TxResult{res}, nil
+			return map[string]txRef{
+				string(hash): {
+					hash:   hash,
+					height: res.Height,
+					index:  res.Index,
+				},
+			}, nil
 		}
 	}
 
@@ -286,29 +374,7 @@ func (txi *TxIndex) Search(ctx context.Context, q *query.Query) ([]*abci.TxResul
 		}
 	}
 
-	results := make([]*abci.TxResult, 0, len(filteredHashes))
-	resultMap := make(map[string]struct{})
-RESULTS_LOOP:
-	for _, h := range filteredHashes {
-
-		res, err := txi.Get(h)
-		if err != nil {
-			return nil, fmt.Errorf("failed to get Tx{%X}: %w", h, err)
-		}
-		hashString := string(h)
-		if _, ok := resultMap[hashString]; !ok {
-			resultMap[hashString] = struct{}{}
-			results = append(results, res)
-		}
-		// Potentially exit early.
-		select {
-		case <-ctx.Done():
-			break RESULTS_LOOP
-		default:
-		}
-	}
-
-	return results, nil
+	return filteredHashes, nil
 }
 
 func lookForHash(conditions []syntax.Condition) (hash []byte, ok bool, err error) {
@@ -321,14 +387,32 @@ func lookForHash(conditions []syntax.Condition) (hash []byte, ok bool, err error
 	return
 }
 
-func (*TxIndex) setTmpHashes(tmpHeights map[string][]byte, key, value []byte) {
+func (txi *TxIndex) setTmpHashes(tmpHeights map[string]txRef, key, value []byte) {
 	eventSeq := extractEventSeqFromKey(key)
 
 	// Copy the value because the iterator will be reused.
 	valueCopy := make([]byte, len(value))
 	copy(valueCopy, value)
 
-	tmpHeights[string(valueCopy)+eventSeq] = valueCopy
+	ref, err := txRefFromKeyValue(key, valueCopy)
+	if err != nil {
+		res, getErr := txi.Get(valueCopy)
+		if getErr != nil {
+			txi.log.Error("failure to parse tx ref from key and load tx result:", "parse_err", err, "get_err", getErr)
+			return
+		}
+		if res == nil {
+			txi.log.Error("failure to parse tx ref from key and tx result is missing:", "parse_err", err)
+			return
+		}
+		ref = txRef{
+			hash:   valueCopy,
+			height: res.Height,
+			index:  res.Index,
+		}
+	}
+
+	tmpHeights[string(valueCopy)+eventSeq] = ref
 }
 
 // match returns all matching txs by hash that meet a given condition and start
@@ -340,17 +424,17 @@ func (txi *TxIndex) match(
 	ctx context.Context,
 	c syntax.Condition,
 	startKeyBz []byte,
-	filteredHashes map[string][]byte,
+	filteredHashes map[string]txRef,
 	firstRun bool,
 	heightInfo HeightInfo,
-) map[string][]byte {
+) map[string]txRef {
 	// A previous match was attempted but resulted in no matches, so we return
 	// no matches (assuming AND operand).
 	if !firstRun && len(filteredHashes) == 0 {
 		return filteredHashes
 	}
 
-	tmpHashes := make(map[string][]byte)
+	tmpHashes := make(map[string]txRef)
 
 	switch { //nolint:staticcheck
 	case c.Op == syntax.TEq:
@@ -493,7 +577,7 @@ func (txi *TxIndex) match(
 REMOVE_LOOP:
 	for k, v := range filteredHashes {
 		tmpHash := tmpHashes[k]
-		if tmpHash == nil || !bytes.Equal(tmpHash, v) {
+		if tmpHash.hash == nil || !bytes.Equal(tmpHash.hash, v.hash) {
 			delete(filteredHashes, k)
 
 			// Potentially exit early.
@@ -517,17 +601,17 @@ func (txi *TxIndex) matchRange(
 	ctx context.Context,
 	qr indexer.QueryRange,
 	startKey []byte,
-	filteredHashes map[string][]byte,
+	filteredHashes map[string]txRef,
 	firstRun bool,
 	heightInfo HeightInfo,
-) map[string][]byte {
+) map[string]txRef {
 	// A previous match was attempted but resulted in no matches, so we return
 	// no matches (assuming AND operand).
 	if !firstRun && len(filteredHashes) == 0 {
 		return filteredHashes
 	}
 
-	tmpHashes := make(map[string][]byte)
+	tmpHashes := make(map[string]txRef)
 
 	it, err := dbm.IteratePrefix(txi.store, startKey)
 	if err != nil {
@@ -620,7 +704,7 @@ LOOP:
 REMOVE_LOOP:
 	for k, v := range filteredHashes {
 		tmpHash := tmpHashes[k]
-		if tmpHash == nil || !bytes.Equal(tmpHashes[k], v) {
+		if tmpHash.hash == nil || !bytes.Equal(tmpHash.hash, v.hash) {
 			delete(filteredHashes, k)
 
 			// Potentially exit early.
@@ -633,6 +717,48 @@ REMOVE_LOOP:
 	}
 
 	return filteredHashes
+}
+
+func uniqueRefs(filteredHashes map[string]txRef) []txRef {
+	refsByHash := make(map[string]txRef, len(filteredHashes))
+	for _, ref := range filteredHashes {
+		hashKey := string(ref.hash)
+		existing, ok := refsByHash[hashKey]
+		if !ok || txRefLess(existing, ref) {
+			refsByHash[hashKey] = ref
+		}
+	}
+
+	refs := make([]txRef, 0, len(refsByHash))
+	for _, ref := range refsByHash {
+		refs = append(refs, ref)
+	}
+
+	return refs
+}
+
+func sortRefs(refs []txRef, orderBy string) error {
+	switch orderBy {
+	case "desc":
+		sort.Slice(refs, func(i, j int) bool {
+			return txRefLess(refs[j], refs[i])
+		})
+	case "asc", "":
+		sort.Slice(refs, func(i, j int) bool {
+			return txRefLess(refs[i], refs[j])
+		})
+	default:
+		return errors.New("expected order_by to be either `asc` or `desc` or empty")
+	}
+
+	return nil
+}
+
+func txRefLess(a, b txRef) bool {
+	if a.height == b.height {
+		return a.index < b.index
+	}
+	return a.height < b.height
 }
 
 // Keys
@@ -674,6 +800,42 @@ func extractHeightFromKey(key []byte) (int64, error) {
 		return 0, err
 	}
 	return height, nil
+}
+
+func extractIndexFromKey(key []byte) (uint32, error) {
+	startPos := bytes.LastIndexByte(key, tagKeySeparatorRune)
+	if startPos == -1 {
+		return 0, errors.New("separator not found")
+	}
+
+	indexBz := key[startPos+1:]
+	if eventSeqPos := bytes.Index(indexBz, []byte(eventSeqSeparator)); eventSeqPos != -1 {
+		indexBz = indexBz[:eventSeqPos]
+	}
+
+	index, err := strconv.ParseUint(string(indexBz), 10, 32)
+	if err != nil {
+		return 0, err
+	}
+	return uint32(index), nil
+}
+
+func txRefFromKeyValue(key, value []byte) (txRef, error) {
+	height, err := extractHeightFromKey(key)
+	if err != nil {
+		return txRef{}, err
+	}
+
+	index, err := extractIndexFromKey(key)
+	if err != nil {
+		return txRef{}, err
+	}
+
+	return txRef{
+		hash:   value,
+		height: height,
+		index:  index,
+	}, nil
 }
 
 func extractValueFromKey(key []byte) string {
