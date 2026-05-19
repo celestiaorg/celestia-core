@@ -11,15 +11,12 @@ import (
 
 	"github.com/cometbft/cometbft/consensus/propagation"
 
-	"github.com/cockroachdb/pebble"
 	"github.com/grafana/pyroscope-go"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/rs/cors"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	"google.golang.org/grpc"
-
-	dbm "github.com/cometbft/cometbft-db"
 
 	bc "github.com/cometbft/cometbft/blocksync"
 	cfg "github.com/cometbft/cometbft/config"
@@ -312,24 +309,7 @@ func NewNodeWithContext(ctx context.Context,
 	logger log.Logger,
 	options ...Option,
 ) (*Node, error) {
-	// When forced compaction is enabled, swap in a DBProvider that opens each
-	// DB with larger memtables and a shared block cache so block-save latency
-	// stays bounded while a compaction is in flight. See celestia-core#3053.
-	//
-	// Each DB pebble opens via Options.Cache takes its own ref on the cache,
-	// so dropping the creator's initial ref here is safe — the cache lives
-	// as long as any DB that uses it.
-	effectiveDBProvider := dbProvider
-	if config.Storage.Compact {
-		var dbCache *pebble.Cache
-		if dbm.BackendType(config.DBBackend) == dbm.PebbleDBBackend {
-			dbCache = pebble.NewCache(cfg.PebbleSharedCacheBytes)
-			defer dbCache.Unref()
-		}
-		effectiveDBProvider = cfg.NewCompactionDBProvider(dbCache)
-	}
-
-	blockStore, stateDB, err := initDBs(config, effectiveDBProvider, logger)
+	blockStore, stateDB, err := initDBs(config, dbProvider, logger)
 	if err != nil {
 		return nil, err
 	}
@@ -364,7 +344,7 @@ func NewNodeWithContext(ctx context.Context,
 	}
 
 	indexerService, txIndexer, blockIndexer, err := createAndStartIndexerService(config,
-		genDoc.ChainID, effectiveDBProvider, eventBus, logger)
+		genDoc.ChainID, dbProvider, eventBus, logger)
 	if err != nil {
 		return nil, err
 	}
@@ -437,7 +417,7 @@ func NewNodeWithContext(ctx context.Context,
 		}
 	}
 
-	evidenceReactor, evidencePool, err := createEvidenceReactor(config, effectiveDBProvider, stateStore, blockStore, logger)
+	evidenceReactor, evidencePool, err := createEvidenceReactor(config, dbProvider, stateStore, blockStore, logger)
 	if err != nil {
 		return nil, err
 	}
