@@ -948,6 +948,7 @@ func (blockExec *BlockExecutor) pruneBlocks(retainHeight int64, state State) (ui
 	if err != nil {
 		return 0, fmt.Errorf("failed to prune state store: %w", err)
 	}
+	fmt.Println("pruned blocks: ", amountPruned)
 	return amountPruned, nil
 }
 

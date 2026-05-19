@@ -484,6 +484,7 @@ func (bs *BlockStore) PruneBlocks(height int64, state sm.State) (uint64, int64, 
 			}
 		}
 		pruned++
+		fmt.Println("pruned: ", h)
 
 		// flush every 1000 blocks to avoid batches becoming too large
 		if pruned%1000 == 0 && pruned > 0 {
