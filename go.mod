@@ -13,7 +13,6 @@ require (
 	github.com/btcsuite/btcd/btcutil v1.1.6
 	github.com/celestiaorg/go-square/v3 v3.0.2
 	github.com/celestiaorg/nmt v0.24.3
-	github.com/cockroachdb/pebble v1.1.4
 	github.com/cometbft/cometbft-db v1.0.4
 	github.com/cosmos/gogoproto v1.7.2
 	github.com/decred/dcrd/dcrec/secp256k1/v4 v4.3.0
@@ -48,7 +47,6 @@ require (
 	github.com/spf13/cobra v1.10.2
 	github.com/spf13/viper v1.21.0
 	github.com/stretchr/testify v1.11.1
-	github.com/syndtr/goleveldb v1.0.1-0.20210819022825-2ae1ddf74ef7
 	go.opentelemetry.io/otel v1.43.0
 	go.opentelemetry.io/otel/exporters/stdout/stdouttrace v1.43.0
 	go.opentelemetry.io/otel/sdk v1.43.0
@@ -131,6 +129,7 @@ require (
 	github.com/cockroachdb/errors v1.11.3 // indirect
 	github.com/cockroachdb/fifo v0.0.0-20240816210425-c5d0cb0b6fc0 // indirect
 	github.com/cockroachdb/logtags v0.0.0-20241215232642-bb51bb14a506 // indirect
+	github.com/cockroachdb/pebble v1.1.4 // indirect
 	github.com/cockroachdb/redact v1.1.5 // indirect
 	github.com/cockroachdb/tokenbucket v0.0.0-20230807174530-cc333fc44b06 // indirect
 	github.com/containerd/continuity v0.4.5 // indirect
@@ -283,6 +282,7 @@ require (
 	github.com/stbenjam/no-sprintf-host-port v0.3.1 // indirect
 	github.com/stretchr/objx v0.5.2 // indirect
 	github.com/subosito/gotenv v1.6.0 // indirect
+	github.com/syndtr/goleveldb v1.0.1-0.20210819022825-2ae1ddf74ef7 // indirect
 	github.com/tetafro/godot v1.5.4 // indirect
 	github.com/timakin/bodyclose v0.0.0-20241222091800-1db5c5ca4d67 // indirect
 	github.com/timonwong/loggercheck v0.11.0 // indirect

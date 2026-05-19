@@ -66,7 +66,6 @@ linters:
             - github.com/celestiaorg/go-square/v3
             - github.com/stretchr/testify/assert
             - github.com/klauspost/reedsolomon
-            - github.com/syndtr/goleveldb/leveldb/opt
         test:
           files:
             - $test
@@ -95,7 +94,6 @@ linters:
             - github.com/stretchr/testify/require
             - github.com/stretchr/testify/suite
             - github.com/gogo/protobuf/proto
-            - github.com/cockroachdb/pebble
     dogsled:
       max-blank-identifiers: 3
     gosec:
