@@ -65,9 +65,10 @@ func TestStateStore_CompactRange_BoundsPerFamily(t *testing.T) {
 			CompactionInterval: 1,
 			Logger:             log.TestingLogger(),
 		},
+		compactionFrom: 100, // simulate a previously-seeded marker
 	}
 
-	store.triggerCompactionAsync(100, 500)
+	store.triggerCompactionAsync(500)
 	store.compactionWg.Wait()
 
 	require.EqualValues(t, 3, db.compactCount.Load(),
@@ -80,6 +81,53 @@ func TestStateStore_CompactRange_BoundsPerFamily(t *testing.T) {
 		{[]byte("abciResponsesKey:100"), []byte("abciResponsesKey:500")},
 	}
 	require.Equal(t, expected, db.capturedRanges())
+}
+
+// TestStateStore_FirstTriggerCoversWholeInterval is the regression test for
+// the bug: in steady state, each PruneStates call deletes one height (from =
+// to-1). The first compaction trigger after restart must cover the whole
+// accumulated interval, not just the last call's 1-height slice. This is
+// achieved by seeding compactionFrom on the *first* PruneStates call and
+// holding it until a successful compaction advances it.
+func TestStateStore_FirstTriggerCoversWholeInterval(t *testing.T) {
+	db := newSlowCompactDB(dbm.NewMemDB())
+	close(db.release) // never block
+	store := &dbStore{
+		db: db,
+		StoreOptions: StoreOptions{
+			Compact:            true,
+			CompactionInterval: 10000,
+			Logger:             log.TestingLogger(),
+		},
+	}
+	// Bootstrap: simulate PruneStates having been called many times, each
+	// seeding compactionFrom on the first call and leaving it alone after.
+	// We mimic only the seeding step here because PruneStates itself requires
+	// a populated state DB to run. The relevant invariant is the seeding rule.
+	first := int64(1_000_000)
+	if store.compactionFrom == 0 {
+		store.compactionFrom = first
+	}
+	// Many subsequent prune calls leave compactionFrom alone.
+	for i := int64(0); i < 9999; i++ {
+		if store.compactionFrom == 0 {
+			store.compactionFrom = first + i
+		}
+	}
+
+	// Trigger now, with retain height advanced ~CompactionInterval past the seed.
+	retain := first + 10000
+	store.triggerCompactionAsync(retain)
+	store.compactionWg.Wait()
+
+	require.EqualValues(t, 3, db.compactCount.Load())
+	require.EqualValues(t, retain, store.compactionFrom)
+
+	ranges := db.capturedRanges()
+	require.Len(t, ranges, 3)
+	require.Equal(t, []byte("validatorsKey:1000000"), ranges[0][0])
+	require.Equal(t, []byte("validatorsKey:1010000"), ranges[0][1],
+		"first compaction must cover the whole accumulated 10000-height interval, not just 1 height")
 }
 
 // TestStateStore_CompactRange_AdvancesMarker verifies that compactionFrom
@@ -95,9 +143,10 @@ func TestStateStore_CompactRange_AdvancesMarker(t *testing.T) {
 			CompactionInterval: 1,
 			Logger:             log.TestingLogger(),
 		},
+		compactionFrom: 50,
 	}
 
-	store.triggerCompactionAsync(50, 300)
+	store.triggerCompactionAsync(300)
 	store.compactionWg.Wait()
 	require.EqualValues(t, 300, store.compactionFrom)
 
@@ -105,9 +154,7 @@ func TestStateStore_CompactRange_AdvancesMarker(t *testing.T) {
 	db.ranges = nil
 	db.mu.Unlock()
 
-	// Subsequent trigger: fromAtCallSite of 280 is ignored because the marker
-	// is already 300 — the new range is [300, 800).
-	store.triggerCompactionAsync(280, 800)
+	store.triggerCompactionAsync(800)
 	store.compactionWg.Wait()
 	require.EqualValues(t, 800, store.compactionFrom)
 
@@ -128,10 +175,10 @@ func TestStateStore_CompactRange_NoopWhenEmpty(t *testing.T) {
 			CompactionInterval: 1,
 			Logger:             log.TestingLogger(),
 		},
+		compactionFrom: 1000,
 	}
-	store.compactionFrom = 1000
 
-	store.triggerCompactionAsync(500, 900)
+	store.triggerCompactionAsync(900)
 
 	require.False(t, store.compacting.Load())
 	require.EqualValues(t, 0, db.compactCount.Load())
@@ -148,16 +195,17 @@ func TestStateStore_CompactRange_SingleFlight(t *testing.T) {
 			CompactionInterval: 1,
 			Logger:             log.TestingLogger(),
 		},
+		compactionFrom: 1,
 	}
 
-	store.triggerCompactionAsync(0, 100)
+	store.triggerCompactionAsync(100)
 	require.Eventually(t, func() bool {
 		return db.compactCount.Load() == 1
 	}, 2*time.Second, 10*time.Millisecond)
 	require.True(t, store.compacting.Load())
 
 	// Second trigger while the first is blocked — must be skipped.
-	store.triggerCompactionAsync(100, 200)
+	store.triggerCompactionAsync(200)
 	require.Equal(t, int64(1), db.compactCount.Load())
 
 	close(db.release)
@@ -176,9 +224,10 @@ func TestStateStore_Close_WaitsForCompaction(t *testing.T) {
 			CompactionInterval: 1,
 			Logger:             log.TestingLogger(),
 		},
+		compactionFrom: 1,
 	}
 
-	store.triggerCompactionAsync(0, 100)
+	store.triggerCompactionAsync(100)
 	require.Eventually(t, func() bool {
 		return db.compactCount.Load() == 1
 	}, 2*time.Second, 10*time.Millisecond)
