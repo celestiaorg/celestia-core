@@ -656,3 +656,30 @@ func TestBlockPoolIsCaughtUpAllPeersPrunedAhead(t *testing.T) {
 	require.False(t, pool.IsCaughtUp(),
 		"node must not consider itself caught up when no peer can serve blocks at pool.height")
 }
+
+// TestBlockPoolIsCaughtUpFreshNetwork verifies that a node DOES consider
+// itself caught up when every peer advertises height 0 — i.e. the network
+// has not produced any blocks yet. Without this, validators at network
+// genesis would stay in blocksync forever, waiting for blocks no one has
+// produced yet, and the chain would never start.
+//
+// pool.height here is state.InitialHeight (the next block to fetch) while
+// every peer reports a fresh store: base=0, height=0. maxPeerHeight ends up
+// at 0, but the correct answer is "caught up" so consensus can take over.
+func TestBlockPoolIsCaughtUpFreshNetwork(t *testing.T) {
+	const initialHeight = int64(1000)
+
+	requestsCh := make(chan BlockRequest, 10)
+	errorsCh := make(chan peerError, 10)
+	pool := NewBlockPool(initialHeight, requestsCh, errorsCh)
+	pool.SetLogger(log.TestingLogger())
+
+	// Every peer is at network genesis: no blocks produced yet.
+	pool.SetPeerRange(p2p.ID("peer1"), 0, 0)
+	pool.SetPeerRange(p2p.ID("peer2"), 0, 0)
+
+	require.EqualValues(t, 0, pool.MaxPeerHeight(),
+		"peers without blocks contribute 0 to maxPeerHeight")
+	require.True(t, pool.IsCaughtUp(),
+		"node must be considered caught up when no peer has any blocks (fresh network)")
+}
