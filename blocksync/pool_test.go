@@ -628,3 +628,31 @@ func TestBlockPoolMaxPeerHeightRefreshesOnPopRequest(t *testing.T) {
 	require.EqualValues(t, 100, pool.MaxPeerHeight(),
 		"peer B must contribute to maxPeerHeight once pool.height reaches its base")
 }
+
+// TestBlockPoolIsCaughtUpAllPeersPrunedAhead verifies that a node does NOT
+// consider itself caught up when every connected peer advertises a base
+// higher than pool.height. In that case updateMaxPeerHeight() filters all
+// peers out, leaving maxPeerHeight == 0; IsCaughtUp must still return false
+// because peers exist and are in fact ahead of us, just unable to serve.
+//
+// Regression test for premature blocksync -> consensus switch  when the only available
+// peer reports base > pool.height.
+func TestBlockPoolIsCaughtUpAllPeersPrunedAhead(t *testing.T) {
+	const ourHeight = int64(100)
+
+	requestsCh := make(chan BlockRequest, 10)
+	errorsCh := make(chan peerError, 10)
+	pool := NewBlockPool(ourHeight, requestsCh, errorsCh)
+	pool.SetLogger(log.TestingLogger())
+
+	// Every connected peer is pruned ahead of pool.height — none can serve
+	// us blocks at our current height even though their advertised height is
+	// higher than ours.
+	pool.SetPeerRange(p2p.ID("pruned1"), ourHeight+50, ourHeight+200)
+	pool.SetPeerRange(p2p.ID("pruned2"), ourHeight+10, ourHeight+150)
+
+	require.EqualValues(t, 0, pool.MaxPeerHeight(),
+		"all peers pruned ahead of pool.height must be excluded from maxPeerHeight")
+	require.False(t, pool.IsCaughtUp(),
+		"node must not consider itself caught up when no peer can serve blocks at pool.height")
+}
