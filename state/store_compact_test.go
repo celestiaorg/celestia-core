@@ -1,7 +1,6 @@
 package state
 
 import (
-	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -13,16 +12,12 @@ import (
 	"github.com/cometbft/cometbft/libs/log"
 )
 
-// slowCompactDB wraps a dbm.DB so that Compact blocks until release is closed
-// and records the byte ranges it was called with. Mirrors the helper in
-// store/store_test.go.
+// slowCompactDB wraps a dbm.DB so Compact blocks until release is closed and
+// counts how many times it was called.
 type slowCompactDB struct {
 	dbm.DB
 	compactCount atomic.Int64
 	release      chan struct{}
-
-	mu     sync.Mutex
-	ranges [][2][]byte
 }
 
 func newSlowCompactDB(db dbm.DB) *slowCompactDB {
@@ -34,139 +29,13 @@ func newSlowCompactDB(db dbm.DB) *slowCompactDB {
 
 func (s *slowCompactDB) Compact(start, end []byte) error {
 	s.compactCount.Add(1)
-	s.mu.Lock()
-	s.ranges = append(s.ranges, [2][]byte{
-		append([]byte(nil), start...),
-		append([]byte(nil), end...),
-	})
-	s.mu.Unlock()
 	<-s.release
 	return nil
 }
 
-func (s *slowCompactDB) capturedRanges() [][2][]byte {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	out := make([][2][]byte, len(s.ranges))
-	copy(out, s.ranges)
-	return out
-}
-
-// TestStateStore_CompactRange_BoundsPerFamily verifies that a single
-// compaction trigger issues one Compact call per height-keyed family with
-// the expected byte ranges.
-func TestStateStore_CompactRange_BoundsPerFamily(t *testing.T) {
-	db := newSlowCompactDB(dbm.NewMemDB())
-	close(db.release) // never block
-	store := &dbStore{
-		db: db,
-		StoreOptions: StoreOptions{
-			Compact:            true,
-			CompactionInterval: 1,
-			Logger:             log.TestingLogger(),
-		},
-		compactionFrom: 100, // simulate a previously-seeded marker
-	}
-
-	store.triggerCompactionAsync(500)
-	store.compactionWg.Wait()
-
-	require.EqualValues(t, 3, db.compactCount.Load(),
-		"one Compact per height-keyed family (validators, params, abci responses)")
-	require.EqualValues(t, 500, store.compactionFrom, "marker must advance on success")
-
-	expected := [][2][]byte{
-		{[]byte("validatorsKey:100"), []byte("validatorsKey:500")},
-		{[]byte("consensusParamsKey:100"), []byte("consensusParamsKey:500")},
-		{[]byte("abciResponsesKey:100"), []byte("abciResponsesKey:500")},
-	}
-	require.Equal(t, expected, db.capturedRanges())
-}
-
-// TestStateStore_FirstTriggerCoversWholeInterval is the regression test for
-// the bug: in steady state, each PruneStates call deletes one height (from =
-// to-1). The first compaction trigger after restart must cover the whole
-// accumulated interval, not just the last call's 1-height slice. This is
-// achieved by seeding compactionFrom on the *first* PruneStates call and
-// holding it until a successful compaction advances it.
-func TestStateStore_FirstTriggerCoversWholeInterval(t *testing.T) {
-	db := newSlowCompactDB(dbm.NewMemDB())
-	close(db.release) // never block
-	store := &dbStore{
-		db: db,
-		StoreOptions: StoreOptions{
-			Compact:            true,
-			CompactionInterval: 10000,
-			Logger:             log.TestingLogger(),
-		},
-	}
-	// Bootstrap: simulate PruneStates having been called many times, each
-	// seeding compactionFrom on the first call and leaving it alone after.
-	// We mimic only the seeding step here because PruneStates itself requires
-	// a populated state DB to run. The relevant invariant is the seeding rule.
-	first := int64(1_000_000)
-	if store.compactionFrom == 0 {
-		store.compactionFrom = first
-	}
-	// Many subsequent prune calls leave compactionFrom alone.
-	for i := int64(0); i < 9999; i++ {
-		if store.compactionFrom == 0 {
-			store.compactionFrom = first + i
-		}
-	}
-
-	// Trigger now, with retain height advanced ~CompactionInterval past the seed.
-	retain := first + 10000
-	store.triggerCompactionAsync(retain)
-	store.compactionWg.Wait()
-
-	require.EqualValues(t, 3, db.compactCount.Load())
-	require.EqualValues(t, retain, store.compactionFrom)
-
-	ranges := db.capturedRanges()
-	require.Len(t, ranges, 3)
-	require.Equal(t, []byte("validatorsKey:1000000"), ranges[0][0])
-	require.Equal(t, []byte("validatorsKey:1010000"), ranges[0][1],
-		"first compaction must cover the whole accumulated 10000-height interval, not just 1 height")
-}
-
-// TestStateStore_CompactRange_AdvancesMarker verifies that compactionFrom
-// advances to `to` after a successful compaction and that the next trigger
-// starts from the new marker.
-func TestStateStore_CompactRange_AdvancesMarker(t *testing.T) {
-	db := newSlowCompactDB(dbm.NewMemDB())
-	close(db.release) // never block
-	store := &dbStore{
-		db: db,
-		StoreOptions: StoreOptions{
-			Compact:            true,
-			CompactionInterval: 1,
-			Logger:             log.TestingLogger(),
-		},
-		compactionFrom: 50,
-	}
-
-	store.triggerCompactionAsync(300)
-	store.compactionWg.Wait()
-	require.EqualValues(t, 300, store.compactionFrom)
-
-	db.mu.Lock()
-	db.ranges = nil
-	db.mu.Unlock()
-
-	store.triggerCompactionAsync(800)
-	store.compactionWg.Wait()
-	require.EqualValues(t, 800, store.compactionFrom)
-
-	ranges := db.capturedRanges()
-	require.Len(t, ranges, 3)
-	require.Equal(t, []byte("validatorsKey:300"), ranges[0][0])
-	require.Equal(t, []byte("validatorsKey:800"), ranges[0][1])
-}
-
-// TestStateStore_CompactRange_NoopWhenEmpty verifies that no goroutine is
-// spawned when the marker is already at or past the retain height.
-func TestStateStore_CompactRange_NoopWhenEmpty(t *testing.T) {
+// TestStateStore_Compact_SingleFlight verifies that a second compaction
+// trigger while one is in flight does not spawn a second goroutine.
+func TestStateStore_Compact_SingleFlight(t *testing.T) {
 	db := newSlowCompactDB(dbm.NewMemDB())
 	store := &dbStore{
 		db: db,
@@ -175,27 +44,6 @@ func TestStateStore_CompactRange_NoopWhenEmpty(t *testing.T) {
 			CompactionInterval: 1,
 			Logger:             log.TestingLogger(),
 		},
-		compactionFrom: 1000,
-	}
-
-	store.triggerCompactionAsync(900)
-
-	require.False(t, store.compacting.Load())
-	require.EqualValues(t, 0, db.compactCount.Load())
-}
-
-// TestStateStore_CompactRange_SingleFlight verifies that a second trigger
-// while one is in flight does not spawn a second goroutine.
-func TestStateStore_CompactRange_SingleFlight(t *testing.T) {
-	db := newSlowCompactDB(dbm.NewMemDB())
-	store := &dbStore{
-		db: db,
-		StoreOptions: StoreOptions{
-			Compact:            true,
-			CompactionInterval: 1,
-			Logger:             log.TestingLogger(),
-		},
-		compactionFrom: 1,
 	}
 
 	store.triggerCompactionAsync(100)
@@ -204,17 +52,17 @@ func TestStateStore_CompactRange_SingleFlight(t *testing.T) {
 	}, 2*time.Second, 10*time.Millisecond)
 	require.True(t, store.compacting.Load())
 
-	// Second trigger while the first is blocked — must be skipped.
+	// Second trigger while the first is blocked must be skipped.
 	store.triggerCompactionAsync(200)
 	require.Equal(t, int64(1), db.compactCount.Load())
 
 	close(db.release)
 	store.compactionWg.Wait()
-	require.EqualValues(t, 3, db.compactCount.Load())
 }
 
 // TestStateStore_Close_WaitsForCompaction verifies that Close blocks until an
-// in-flight compaction has finished.
+// in-flight compaction has finished, so the goroutine never operates on a
+// closed DB.
 func TestStateStore_Close_WaitsForCompaction(t *testing.T) {
 	db := newSlowCompactDB(dbm.NewMemDB())
 	store := &dbStore{
@@ -224,7 +72,6 @@ func TestStateStore_Close_WaitsForCompaction(t *testing.T) {
 			CompactionInterval: 1,
 			Logger:             log.TestingLogger(),
 		},
-		compactionFrom: 1,
 	}
 
 	store.triggerCompactionAsync(100)

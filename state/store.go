@@ -4,7 +4,6 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
-	"strconv"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -90,20 +89,15 @@ type Store interface {
 
 // dbStore wraps a db (github.com/cometbft/cometbft-db).
 //
-// compacting, compactionWg, and compactionFrom coordinate range-scoped
-// forced compaction with the background compaction goroutine and mirror
-// the same pattern used by store.BlockStore. compactionFrom is the lowest
-// height not yet included in a successful Compact call; it advances only on
-// success and is written by the compaction goroutine before clearing
-// `compacting`, so the next trigger sees the updated value.
+// compacting single-flights forced-compaction triggers and compactionWg lets
+// Close wait for an in-flight compaction to finish before closing the DB.
 type dbStore struct {
 	db dbm.DB
 
 	StoreOptions
 
-	compactionFrom int64
-	compacting     atomic.Bool
-	compactionWg   sync.WaitGroup
+	compacting   atomic.Bool
+	compactionWg sync.WaitGroup
 }
 
 type StoreOptions struct {
@@ -307,21 +301,6 @@ func (store *dbStore) PruneStates(from int64, to int64, evidenceThresholdHeight 
 		return 0, fmt.Errorf("from height %v must be lower than to height %v", from, to)
 	}
 
-	// Seed the compaction marker on the first prune call after restart (or
-	// after the first successful compaction). Without this, the marker would
-	// only get a value at the first compaction trigger, by which point the
-	// caller's `from` is already advanced ~CompactionInterval blocks past
-	// where pruning actually started in this session — leaving the trigger
-	// to compact just the last call's 1-height slice.
-	//
-	// Safe to write here without synchronization: the only other writer is
-	// the compaction goroutine, which is gated by `compacting` and runs after
-	// PruneStates returns. On the SECOND and subsequent calls compactionFrom
-	// is non-zero so this branch is skipped.
-	if store.compactionFrom == 0 {
-		store.compactionFrom = from
-	}
-
 	valInfo, err := loadValidatorsInfo(store.db, min(to, evidenceThresholdHeight))
 	if err != nil {
 		return 0, fmt.Errorf("validators at height %v not found: %w", to, err)
@@ -450,13 +429,10 @@ func (store *dbStore) PruneStates(from int64, to int64, evidenceThresholdHeight 
 	return pruned, err
 }
 
-// triggerCompactionAsync launches a background range-scoped compaction over
-// the heights pruned since the last successful compaction
-// ([compactionFrom, to)). If a compaction is already in flight, it logs and
-// returns. compactionFrom is seeded on the first PruneStates call so the
-// initial trigger covers the whole accumulated interval, not just the last
-// call's single-height delete. The goroutine is tracked by compactionWg so
-// Close can wait for it.
+// triggerCompactionAsync launches a background compaction of the state DB.
+// The state store is small enough that compacting the whole DB is cheap, so
+// no range scoping is needed. `compacting` single-flights triggers and
+// `compactionWg` lets Close wait for the goroutine to finish.
 func (store *dbStore) triggerCompactionAsync(to int64) {
 	if !store.compacting.CompareAndSwap(false, true) {
 		store.Logger.Info("state store compaction already in progress",
@@ -464,43 +440,18 @@ func (store *dbStore) triggerCompactionAsync(to int64) {
 		)
 		return
 	}
-	fromHeight := store.compactionFrom
-	if fromHeight >= to {
-		store.compacting.Store(false)
-		return
-	}
 	store.compactionWg.Add(1)
 	go func() {
 		defer store.compactionWg.Done()
 		defer store.compacting.Store(false)
-		store.Logger.Info("compacting state store range",
-			"from_height", fromHeight,
-			"to_height", to,
-		)
+		store.Logger.Info("compacting state store", "retain_height", to)
 		start := time.Now()
-		err := compactStateStoreRange(store.db, fromHeight, to)
+		err := store.db.Compact(nil, nil)
 		store.Logger.Info("state store compaction complete",
 			"err", err,
 			"elapsed(s)", time.Since(start).Seconds(),
 		)
-		if err == nil {
-			store.compactionFrom = to
-		}
 	}()
-}
-
-// compactStateStoreRange issues one Compact call per height-keyed key family
-// for the range [from, to). See compactBlockStoreRange in store/store.go for
-// the rationale on the decimal-ASCII over-coverage being safe.
-func compactStateStoreRange(db dbm.DB, from, to int64) error {
-	for _, prefix := range []string{"validatorsKey:", "consensusParamsKey:", "abciResponsesKey:"} {
-		start := []byte(prefix + strconv.FormatInt(from, 10))
-		end := []byte(prefix + strconv.FormatInt(to, 10))
-		if err := db.Compact(start, end); err != nil {
-			return fmt.Errorf("compact %q [%d,%d): %w", prefix, from, to, err)
-		}
-	}
-	return nil
 }
 
 //------------------------------------------------------------------------
