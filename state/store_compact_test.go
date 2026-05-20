@@ -37,27 +37,28 @@ func (s *slowCompactDB) Compact(start, end []byte) error {
 // trigger while one is in flight does not spawn a second goroutine.
 func TestStateStore_Compact_SingleFlight(t *testing.T) {
 	db := newSlowCompactDB(dbm.NewMemDB())
-	store := &dbStore{
+	store := dbStore{
 		db: db,
 		StoreOptions: StoreOptions{
 			Compact:            true,
 			CompactionInterval: 1,
 			Logger:             log.TestingLogger(),
 		},
+		compaction: &compactionState{},
 	}
 
 	store.triggerCompactionAsync(100)
 	require.Eventually(t, func() bool {
 		return db.compactCount.Load() == 1
 	}, 2*time.Second, 10*time.Millisecond)
-	require.True(t, store.compacting.Load())
+	require.True(t, store.compaction.inFlight.Load())
 
 	// Second trigger while the first is blocked must be skipped.
 	store.triggerCompactionAsync(200)
 	require.Equal(t, int64(1), db.compactCount.Load())
 
 	close(db.release)
-	store.compactionWg.Wait()
+	store.compaction.wg.Wait()
 }
 
 // TestStateStore_Close_WaitsForCompaction verifies that Close blocks until an
@@ -65,13 +66,14 @@ func TestStateStore_Compact_SingleFlight(t *testing.T) {
 // closed DB.
 func TestStateStore_Close_WaitsForCompaction(t *testing.T) {
 	db := newSlowCompactDB(dbm.NewMemDB())
-	store := &dbStore{
+	store := dbStore{
 		db: db,
 		StoreOptions: StoreOptions{
 			Compact:            true,
 			CompactionInterval: 1,
 			Logger:             log.TestingLogger(),
 		},
+		compaction: &compactionState{},
 	}
 
 	store.triggerCompactionAsync(100)
