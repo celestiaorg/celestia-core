@@ -336,6 +336,8 @@ func (bcR *Reactor) localNodeBlocksTheChain(state sm.State) bool {
 		return false
 	}
 	total := state.Validators.TotalVotingPower()
+	fmt.Println("total ", total)
+	fmt.Println("val ", val.VotingPower)
 	return val.VotingPower >= total/3
 }
 

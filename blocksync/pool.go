@@ -271,8 +271,11 @@ func (pool *BlockPool) IsCaughtUp() bool {
 	// Note we use maxPeerHeight - 1 because to sync block H requires block H+1
 	// to verify the LastCommit.
 	receivedBlockOrTimedOut := pool.height > 0 || time.Since(pool.startTime) > 5*time.Second
+	fmt.Println("pool.height ", pool.height, "pool.maxPeerHeight ", pool.maxPeerHeight)
 	ourChainIsLongestAmongPeers := pool.maxPeerHeight == 0 || pool.height >= (pool.maxPeerHeight-1)
+	fmt.Println("ourChainIsLongestAmongPeers ", ourChainIsLongestAmongPeers)
 	isCaughtUp := receivedBlockOrTimedOut && ourChainIsLongestAmongPeers
+	fmt.Println("isCaughtUp ", isCaughtUp)
 	return isCaughtUp
 }
 
