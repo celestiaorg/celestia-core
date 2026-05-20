@@ -421,7 +421,6 @@ func (blockExec *BlockExecutor) applyBlock(state State, blockID types.BlockID, b
 
 	// Prune old heights, if requested by ABCI app
 
-	retainHeight = block.Height - 3000
 	if retainHeight > 0 {
 		pruned, err := blockExec.pruneBlocks(retainHeight, state)
 		if err != nil {
@@ -948,7 +947,6 @@ func (blockExec *BlockExecutor) pruneBlocks(retainHeight int64, state State) (ui
 	if err != nil {
 		return 0, fmt.Errorf("failed to prune state store: %w", err)
 	}
-	fmt.Println("pruned blocks: ", amountPruned)
 	return amountPruned, nil
 }
 
