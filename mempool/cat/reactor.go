@@ -3,6 +3,7 @@ package cat
 import (
 	"cmp"
 	"context"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"slices"
@@ -296,6 +297,9 @@ func (memR *Reactor) Receive(e p2p.Envelope) {
 	// NOTE: This setup also means that we can support older mempool implementations that simply
 	// flooded the network with transactions.
 	case *protomem.Txs:
+		for _, tx := range msg.GetTxs() {
+			fmt.Println("received in .Txs: ", hex.EncodeToString(tx))
+		}
 		protoTxs := msg.GetTxs()
 		if len(protoTxs) == 0 {
 			memR.Logger.Error("received empty txs from peer", "src", e.Src)
@@ -375,6 +379,7 @@ func (memR *Reactor) Receive(e p2p.Envelope) {
 	// 3. If we recently evicted the tx and still don't have space for it, we do nothing.
 	// 4. Else, we request the transaction from that peer.
 	case *protomem.SeenTx:
+		fmt.Println("received seen for: ", msg.TxKey)
 		// Capture the receive time so we can later report how long the tx
 		// sat in our queues before we sent a WantTx (see
 		// schema.MempoolWantTxScheduled).
@@ -492,6 +497,7 @@ func (memR *Reactor) Receive(e p2p.Envelope) {
 	// A peer is requesting a transaction that we have claimed to have. Find the specified
 	// transaction and broadcast it to the peer. We may no longer have the transaction
 	case *protomem.WantTx:
+		fmt.Println("received want for: ", msg.TxKey)
 		txKey, err := types.TxKeyFromBytes(msg.TxKey)
 		if err != nil {
 			memR.Logger.Error("peer sent WantTx with incorrect tx key", "err", err)
