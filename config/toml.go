@@ -559,6 +559,9 @@ discard_abci_responses = {{ .Storage.DiscardABCIResponses}}
 # and save on storage space. Setting this to true is most beneficial when used in combination
 # with pruning as it will physically delete the entries marked for deletion.
 # false by default (forcing compaction is disabled).
+# WARNING: When enabling compaction for the first time, run 'celestia-appd compact-blockstore' on
+# the blockstore beforehand to compact the existing databases. Automatic compaction only applies to
+# newly pruned blocks and will not reclaim space from blocks pruned prior to enabling it.
 compact = {{ .Storage.Compact }}
 
 # To avoid forcing compaction every time, this parameter instructs CometBFT to wait
