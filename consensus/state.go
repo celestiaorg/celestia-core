@@ -869,11 +869,22 @@ func (cs *State) updateToState(state sm.State) {
 		}
 
 	} else {
+		var nextStartTime time.Time
 		if state.LastBlockHeight == 0 {
-			cs.rs.StartTime = cs.config.CommitWithCustomTimeout(cs.rs.CommitTime, state.Timeouts.TimeoutCommit)
+			nextStartTime = cs.config.CommitWithCustomTimeout(cs.rs.CommitTime, state.Timeouts.TimeoutCommit)
 		} else {
-			cs.rs.StartTime = cs.config.CommitWithCustomTimeout(cs.rs.CommitTime, cs.state.Timeouts.TimeoutCommit)
+			nextStartTime = cs.config.CommitWithCustomTimeout(cs.rs.CommitTime, cs.state.Timeouts.TimeoutCommit)
 		}
+
+		// Enforce minimum block time equal to the delayed precommit time
+		if !cs.rs.StartTime.IsZero() && cs.state.Timeouts.DelayedPrecommitTimeout != 0 {
+			minStartTime := cs.rs.StartTime.Add(cs.state.Timeouts.DelayedPrecommitTimeout)
+			if nextStartTime.Before(minStartTime) {
+				nextStartTime = minStartTime
+			}
+		}
+
+		cs.rs.StartTime = nextStartTime
 	}
 
 	cs.rs.Validators = validators
@@ -1372,7 +1383,6 @@ func (cs *State) isProposer(address []byte) bool {
 }
 
 func (cs *State) defaultDecideProposal(height int64, round int32) {
-	time.Sleep(2800 * time.Millisecond)
 	var block *types.Block
 	var blockParts *types.PartSet
 
