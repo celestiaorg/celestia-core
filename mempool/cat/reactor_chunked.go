@@ -66,12 +66,43 @@ func (memR *Reactor) handleSeenLargeTx(src p2p.Peer, msg *protomem.SeenLargeTx) 
 		return
 	}
 
-	// If we already track this tx in the chunked store, just merge peer haves.
+	// If we already track this tx in the chunked store, just merge peer haves
+	// and re-trigger a fetch from this peer (it might be earlier in sequence
+	// order than the originating peer).
 	if existing := memR.chunkedStore.Get(txKey); existing != nil {
 		full := cmtbits.NewBitArray(int(existing.NumParts))
 		full.Fill()
 		existing.RecordHaves(peerID, full)
+		memR.requestChunksFrom(existing, peerID, src)
 		return
+	}
+
+	// Sequence-aware buffering: mirrors the legacy SeenTx handler so the
+	// per-signer ordering enforced by the CAT mempool is preserved across
+	// the chunked path. If the announce is too far ahead (or stale) we
+	// either defer or drop without ever sending WantTxChunks.
+	deferRequest := false
+	if msg.Sequence > 0 && len(msg.Signer) > 0 {
+		expectedSeq, haveExpected := memR.querySequenceFromApplication(msg.Signer)
+		if haveExpected {
+			if msg.Sequence > expectedSeq+maxReceivedBufferSize {
+				memR.Logger.Debug(
+					"dropping SeenLargeTx far ahead of expected sequence",
+					"tx_key", txKey, "sequence", msg.Sequence, "expected", expectedSeq,
+				)
+				return
+			}
+			if msg.Sequence < expectedSeq {
+				memR.Logger.Debug(
+					"dropping SeenLargeTx below expected sequence",
+					"tx_key", txKey, "sequence", msg.Sequence, "expected", expectedSeq,
+				)
+				return
+			}
+			if msg.Sequence > expectedSeq {
+				deferRequest = true
+			}
+		}
 	}
 
 	params := chunked.InsertParams{
@@ -81,6 +112,8 @@ func (memR *Reactor) handleSeenLargeTx(src p2p.Peer, msg *protomem.SeenLargeTx) 
 		LastLength: msg.LastLength,
 		LeafHashes: msg.LeafHashes,
 		OriginPeer: peerID,
+		Signer:     msg.Signer,
+		Sequence:   msg.Sequence,
 	}
 	state, err := memR.chunkedStore.Insert(params)
 	if err != nil {
@@ -93,8 +126,15 @@ func (memR *Reactor) handleSeenLargeTx(src p2p.Peer, msg *protomem.SeenLargeTx) 
 	full.Fill()
 	state.RecordHaves(peerID, full)
 
-	// Schedule a WantTxChunks for everything we're missing. Per-peer cap is
-	// enforced inside requestChunksFrom.
+	// Always register with pendingSeen so the drain machinery can find us
+	// when prior sequences land. For deferred sequences this is the only
+	// thing we do; for in-order sequences we also fire the first request.
+	if msg.Sequence > 0 && len(msg.Signer) > 0 {
+		memR.pendingSeen.add(msg.Signer, txKey, msg.Sequence, peerID, time.Now())
+	}
+	if deferRequest {
+		return
+	}
 	memR.requestChunksFrom(state, peerID, src)
 }
 
@@ -202,9 +242,10 @@ func (memR *Reactor) handleTxChunk(src p2p.Peer, msg *protomem.TxChunk) {
 	memR.reconstructAndAdmit(state, src)
 }
 
-// reconstructAndAdmit runs RS decode, verifies the body hash, and submits
-// the result through CheckTx. On success the chunked state advances to
-// StateReconstructed and the legacy CAT pool admits the tx.
+// reconstructAndAdmit runs RS decode, verifies the body hash, and either
+// submits the result through CheckTx (in-order) or buffers it for later
+// processing (out-of-order). Mirrors the buffering logic in the legacy Txs
+// handler so chunked txs respect per-signer sequence ordering.
 func (memR *Reactor) reconstructAndAdmit(state *chunked.PartsState, src p2p.Peer) {
 	body, err := memR.chunkedStore.ReconstructAndVerify(state)
 	if err != nil {
@@ -219,12 +260,24 @@ func (memR *Reactor) reconstructAndAdmit(state *chunked.PartsState, src p2p.Peer
 	peerID := memR.ids.GetIDForPeer(src.ID())
 	cachedTx := types.Tx(body).ToCachedTx()
 	txInfo := mempool.TxInfo{SenderID: peerID, SenderP2PID: src.ID()}
-	if _, err := memR.tryAddNewTx(cachedTx, state.TxKey, txInfo, string(src.ID())); err != nil {
-		// CheckTx rejected the body. Drop the chunked state; the tx is
-		// already in the rejected cache via the existing CAT pool.
-		memR.chunkedStore.Remove(state.TxKey)
-		return
+
+	// Sequence-aware buffering: if the reconstructed body's sequence is ahead
+	// of what the application expects next, stash it in receivedBuffer so the
+	// existing drain code admits it in order once prior sequences land.
+	if len(state.Signer) > 0 && state.Sequence > 0 {
+		expectedSeq, haveExpected := memR.querySequenceFromApplication(state.Signer)
+		if haveExpected && state.Sequence > expectedSeq {
+			if memR.receivedBuffer.add(state.Signer, state.Sequence, cachedTx, state.TxKey, txInfo, string(src.ID())) {
+				memR.pendingSeen.remove(state.TxKey)
+				return
+			}
+			// Buffer full: drop and let the network re-deliver later.
+			memR.chunkedStore.Remove(state.TxKey)
+			return
+		}
 	}
+
+	memR.processReceivedTx(cachedTx, state.TxKey, txInfo, src)
 }
 
 // requestChunksFrom issues a WantTxChunks to peer for chunks we still need

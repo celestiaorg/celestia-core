@@ -49,6 +49,12 @@ type PartsState struct {
 	LastLength uint32
 	LeafHashes [][]byte
 
+	// Signer and Sequence mirror the equivalent SeenTx fields so the
+	// reactor's per-signer sequence-ordering machinery (pendingSeen,
+	// receivedBuffer) can be applied uniformly to chunked txs.
+	Signer   []byte
+	Sequence uint64
+
 	// chunks[i] is non-nil once chunk i has been received and verified.
 	chunks   [][]byte
 	received *bits.BitArray
@@ -340,6 +346,8 @@ type InsertParams struct {
 	LastLength uint32
 	LeafHashes [][]byte
 	OriginPeer uint16
+	Signer     []byte
+	Sequence   uint64
 }
 
 // Insert creates a new PartsState in StateCollecting. Returns ErrAlreadyExists
@@ -369,6 +377,8 @@ func (s *Store) Insert(p InsertParams) (*PartsState, error) {
 		K:          k,
 		LastLength: p.LastLength,
 		LeafHashes: p.LeafHashes,
+		Signer:     append([]byte(nil), p.Signer...),
+		Sequence:   p.Sequence,
 		chunks:     make([][]byte, p.NumParts),
 		received:   bits.NewBitArray(int(p.NumParts)),
 		haves:      make(map[uint16]*bits.BitArray),

@@ -891,6 +891,20 @@ func (memR *Reactor) processPendingSeenForSigner(signer []byte) {
 }
 
 func (memR *Reactor) tryRequestQueuedTx(entry *pendingSeenTx) bool {
+	// Chunked path: if we already track a partsState for this tx, fetch via
+	// WantTxChunks instead of legacy WantTx. requestChunksFrom is idempotent
+	// (it skips chunks already in flight) so a repeated drain is safe.
+	if state := memR.chunkedStore.Get(entry.txKey); state != nil {
+		for _, peerID := range entry.peerIDs() {
+			peer := memR.ids.GetPeer(peerID)
+			if peer == nil {
+				continue
+			}
+			memR.requestChunksFrom(state, peerID, peer)
+		}
+		return true
+	}
+
 	// Try each peer that has seen this tx, skipping those at capacity
 	for _, peerID := range entry.peerIDs() {
 		if memR.requests.CountForPeer(peerID) >= maxRequestsPerPeer {
