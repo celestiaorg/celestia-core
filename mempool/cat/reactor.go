@@ -605,9 +605,13 @@ func (memR *Reactor) broadcastSeenTx(txKey types.TxKey, signer []byte, sequence 
 	memR.broadcastSeenTxWithHeight(txKey, memR.mempool.Height(), signer, sequence)
 }
 
-// broadcastNewTx broadcast new transaction to limited peers unless we are already sure they have seen the tx.
+// broadcastNewTx is the entry point for gossiping a newly-admitted tx. The
+// chunked + erasure-coded path (ADR-012) is the default: we encode the body,
+// announce SeenLargeTx to chunked-capable peers, and push K chunks across a
+// handful of bootstrap peers. Peers without channel MempoolChunkChannel get
+// the legacy SeenTx path so they can still pull the body via WantTx/Txs.
 func (memR *Reactor) broadcastNewTx(wtx *wrappedTx) {
-	memR.broadcastSeenTxWithHeight(wtx.key(), wtx.height, wtx.sender, wtx.sequence)
+	memR.broadcastNewLargeTx(wtx)
 }
 
 // broadcastSeenTxWithHeight is a helper that broadcasts a SeenTx message with height checking.

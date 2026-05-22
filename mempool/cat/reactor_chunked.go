@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"math/rand"
 	"time"
 
 	"github.com/cometbft/cometbft/crypto/merkle"
@@ -298,6 +299,215 @@ func (memR *Reactor) broadcastHaveChunk(state *chunked.PartsState, index uint32)
 			Message:   msg,
 		})
 	}
+}
+
+// broadcastNewLargeTx encodes a newly-admitted tx and gossips it via the
+// chunked path. The chunked store retains the encoded chunks so we can serve
+// peer WantTxChunks requests. Peers without channel MempoolChunkChannel
+// still get a legacy SeenTx so they can pull the body the old way.
+func (memR *Reactor) broadcastNewLargeTx(wtx *wrappedTx) {
+	if memR.opts.ListenOnly {
+		return
+	}
+	body := wtx.tx.Tx
+	if len(body) == 0 {
+		return
+	}
+	txKey := wtx.key()
+
+	enc, err := chunked.Encode(body)
+	if err != nil {
+		memR.Logger.Error("chunked encode failed; falling back to legacy SeenTx",
+			"err", err, "tx_key", txKey)
+		memR.broadcastSeenTxWithHeight(txKey, wtx.height, wtx.sender, wtx.sequence)
+		return
+	}
+
+	// Retain chunks in the chunked store as already-reconstructed so we can
+	// answer WantTxChunks from peers. If the state already exists (re-broadcast,
+	// recheck, etc.) just continue with the existing state.
+	params := chunked.InsertParams{
+		TxKey:      txKey,
+		PartsRoot:  enc.PartsRoot,
+		NumParts:   enc.NumParts(),
+		LastLength: enc.LastLength,
+		LeafHashes: enc.LeafHashes,
+		OriginPeer: 0, // self-originated
+	}
+	if _, err := memR.chunkedStore.InsertReconstructed(params, enc); err != nil &&
+		!errors.Is(err, chunked.ErrAlreadyExists) {
+		memR.Logger.Error("chunked InsertReconstructed failed",
+			"err", err, "tx_key", txKey)
+	}
+
+	memR.announceLargeTxAndPush(enc, wtx)
+}
+
+// announceLargeTxAndPush sends SeenLargeTx to chunked-capable peers using the
+// graduated-fanout formula, optionally pushes K chunks across a handful of
+// bootstrap peers, and sends legacy SeenTx to peers that do not support
+// MempoolChunkChannel.
+func (memR *Reactor) announceLargeTxAndPush(enc *chunked.EncodedTx, wtx *wrappedTx) {
+	peers := memR.ids.GetAll()
+	if len(peers) == 0 {
+		return
+	}
+	txKey := wtx.key()
+
+	seenLargeMsg := &protomem.Message{
+		Sum: &protomem.Message_SeenLargeTx{
+			SeenLargeTx: &protomem.SeenLargeTx{
+				TxKey:      txKey[:],
+				PartsRoot:  enc.PartsRoot,
+				NumParts:   enc.NumParts(),
+				LastLength: enc.LastLength,
+				Signer:     wtx.sender,
+				Sequence:   wtx.sequence,
+				LeafHashes: enc.LeafHashes,
+			},
+		},
+	}
+	legacySeenMsg := &protomem.Message{
+		Sum: &protomem.Message_SeenTx{
+			SeenTx: &protomem.SeenTx{
+				TxKey:    txKey[:],
+				Signer:   wtx.sender,
+				Sequence: wtx.sequence,
+			},
+		},
+	}
+
+	// Graduated fanout for SeenLargeTx; legacy SeenTx still respects the
+	// existing maxSeenTxBroadcast (15) bound for non-chunked peers.
+	chunkedFanout := chunked.AnnounceFanout(enc.NumParts(), chunked.DefaultAnnounceTarget)
+	chunkedSent := 0
+	legacySent := 0
+
+	orderedPeers := selectStickyPeers(wtx.sender, peers, len(peers), memR.currentStickyPeerSalt())
+	maxPersistent := memR.opts.MaxPersistentStickyPeers
+	chunkedPersistentSent := 0
+	legacyPersistentSent := 0
+
+	// Track chunked-capable peers for the bootstrap push.
+	var chunkedPeers []capablePeer
+
+	for _, peerInfo := range orderedPeers {
+		id := peerInfo.id
+		peer := peerInfo.peer
+		if p, ok := peer.Get(types.PeerStateKey).(PeerState); ok {
+			if p.GetHeight() < wtx.height-peerHeightDiff {
+				continue
+			}
+		}
+		if memR.mempool.seenByPeersSet.Has(txKey, id) {
+			continue
+		}
+		isPersistent := peer.IsPersistent()
+		supports := peerSupportsChunked(peer)
+
+		if supports {
+			chunkedPeers = append(chunkedPeers, capablePeer{id: id, peer: peer})
+			canSend := chunkedSent < chunkedFanout ||
+				(isPersistent && chunkedPersistentSent < maxPersistent)
+			if canSend && peer.Send(p2p.Envelope{
+				ChannelID: MempoolChunkChannel,
+				Message:   seenLargeMsg,
+			}) {
+				memR.mempool.PeerHasTx(id, txKey)
+				chunkedSent++
+				if isPersistent {
+					chunkedPersistentSent++
+				}
+			}
+			continue
+		}
+
+		canSendLegacy := legacySent < maxSeenTxBroadcast ||
+			(isPersistent && legacyPersistentSent < maxPersistent)
+		if canSendLegacy && peer.Send(p2p.Envelope{
+			ChannelID: MempoolDataChannel,
+			Message:   legacySeenMsg,
+		}) {
+			memR.mempool.PeerHasTx(id, txKey)
+			legacySent++
+			if isPersistent {
+				legacyPersistentSent++
+			}
+		}
+	}
+
+	memR.bootstrapPushChunks(enc, txKey, chunkedPeers)
+}
+
+// bootstrapPushChunks distributes K chunks across up to DefaultBootstrapPushPeers
+// chunked-capable peers. This guarantees K-of-2K is reachable within one RTT
+// of admission without depending on the pull loop.
+func (memR *Reactor) bootstrapPushChunks(enc *chunked.EncodedTx, txKey types.TxKey, peers []capablePeer) {
+	if len(peers) == 0 {
+		return
+	}
+	numPushPeers := chunked.DefaultBootstrapPushPeers
+	if numPushPeers > len(peers) {
+		numPushPeers = len(peers)
+	}
+	k := int(enc.NumOriginals())
+	if numPushPeers > k {
+		// More peers than chunks needed; cap so each gets at least one chunk.
+		numPushPeers = k
+	}
+	if numPushPeers <= 0 {
+		return
+	}
+
+	// Pick K random distinct indices out of 0..2K-1, partition across peers.
+	total := int(enc.NumParts())
+	indices := rand.Perm(total)[:k]
+	chunksPerPeer := (k + numPushPeers - 1) / numPushPeers
+
+	pos := 0
+	for i := 0; i < numPushPeers && pos < k; i++ {
+		end := pos + chunksPerPeer
+		if end > k {
+			end = k
+		}
+		for j := pos; j < end; j++ {
+			idx := uint32(indices[j])
+			var proof cmtcrypto.Proof
+			if enc.NumParts() > 1 {
+				proof = *enc.Proofs[idx].ToProto()
+			}
+			peers[i].peer.TrySend(p2p.Envelope{
+				ChannelID: MempoolChunkChannel,
+				Message: &protomem.TxChunk{
+					TxKey: txKey[:],
+					Index: idx,
+					Data:  enc.Chunk(idx),
+					Proof: proof,
+				},
+			})
+		}
+		pos = end
+	}
+}
+
+type capablePeer struct {
+	id   uint16
+	peer p2p.Peer
+}
+
+// peerSupportsChunked reports whether the peer advertises MempoolChunkChannel.
+// Falls back to the legacy SeenTx path when false. Uses the same
+// type-assert-to-DefaultNodeInfo pattern as the consensus and propagation
+// reactors.
+func peerSupportsChunked(peer p2p.Peer) bool {
+	if peer == nil {
+		return false
+	}
+	ni, ok := peer.NodeInfo().(p2p.DefaultNodeInfo)
+	if !ok {
+		return false
+	}
+	return ni.HasChannel(MempoolChunkChannel)
 }
 
 // startChunkedSweeper runs the TTL/eviction sweep until the reactor stops.
