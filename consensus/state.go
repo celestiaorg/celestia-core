@@ -1372,7 +1372,6 @@ func (cs *State) isProposer(address []byte) bool {
 }
 
 func (cs *State) defaultDecideProposal(height int64, round int32) {
-	time.Sleep(2800 * time.Millisecond)
 	var block *types.Block
 	var blockParts *types.PartSet
 
@@ -1679,6 +1678,25 @@ func (cs *State) enterPrecommit(height int64, round int32) {
 			"entering precommit step with invalid args",
 			"current", log.NewLazySprintf("%v/%v/%v", cs.rs.Height, cs.rs.Round, cs.rs.Step),
 		)
+		return
+	}
+
+	if cs.StartedPrecommitSleep.CompareAndSwap(false, true) {
+		waitTime := cs.precommitDelay()
+		logger.Debug("delaying precommit", "delay", waitTime)
+		cs.unlockAll()
+		t := time.NewTimer(waitTime)
+		select {
+		case <-cs.Quit():
+			cs.lockAll()
+			return
+		case <-t.C:
+		}
+		cs.lockAll()
+		cs.StartedPrecommitSleep.Store(false)
+	} else {
+		logger.Debug("already entered precommit delay")
+		// if any other routine tries to enter precommit, we just return
 		return
 	}
 
