@@ -277,7 +277,26 @@ func (memR *Reactor) reconstructAndAdmit(state *chunked.PartsState, src p2p.Peer
 		}
 	}
 
-	memR.processReceivedTx(cachedTx, state.TxKey, txInfo, src)
+	// Admit through the same admission path as the legacy Txs handler, but
+	// trigger re-broadcast via markToBeBroadcast (chunked-aware path through
+	// the broadcast goroutine → broadcastNewLargeTx) instead of the
+	// synchronous legacy broadcastSeenTx call that processReceivedTx makes.
+	// memR.mempool.TryAddNewTx is the lower-level entry; tryAddNewTx wraps
+	// it with telemetry. After admission, drain the buffered/pending queues
+	// for the signer so subsequent sequences continue propagating.
+	rsp, err := memR.tryAddNewTx(cachedTx, state.TxKey, txInfo, string(src.ID()))
+	if err == nil || errors.Is(err, ErrTxInMempool) {
+		memR.pendingSeen.remove(state.TxKey)
+	}
+	if err != nil {
+		memR.chunkedStore.Remove(state.TxKey)
+		return
+	}
+	memR.mempool.markToBeBroadcast(state.TxKey)
+	if rsp != nil && len(rsp.Address) > 0 {
+		memR.processReceivedBuffer(rsp.Address)
+		memR.processPendingSeenForSigner(rsp.Address)
+	}
 }
 
 // requestChunksFrom issues a WantTxChunks to peer for chunks we still need
@@ -370,9 +389,10 @@ func (memR *Reactor) broadcastNewLargeTx(wtx *wrappedTx) {
 
 	enc, err := chunked.Encode(body)
 	if err != nil {
-		memR.Logger.Error("chunked encode failed; falling back to legacy SeenTx",
+		// Chunked is the only propagation path; encode should not fail for
+		// any non-empty body. Drop the broadcast on the floor and log loud.
+		memR.Logger.Error("chunked encode failed; tx will not be re-broadcast",
 			"err", err, "tx_key", txKey)
-		memR.broadcastSeenTxWithHeight(txKey, wtx.height, wtx.sender, wtx.sequence)
 		return
 	}
 
@@ -420,26 +440,13 @@ func (memR *Reactor) announceLargeTxAndPush(enc *chunked.EncodedTx, wtx *wrapped
 			},
 		},
 	}
-	legacySeenMsg := &protomem.Message{
-		Sum: &protomem.Message_SeenTx{
-			SeenTx: &protomem.SeenTx{
-				TxKey:    txKey[:],
-				Signer:   wtx.sender,
-				Sequence: wtx.sequence,
-			},
-		},
-	}
 
-	// Graduated fanout for SeenLargeTx; legacy SeenTx still respects the
-	// existing maxSeenTxBroadcast (15) bound for non-chunked peers.
 	chunkedFanout := chunked.AnnounceFanout(enc.NumParts(), chunked.DefaultAnnounceTarget)
 	chunkedSent := 0
-	legacySent := 0
+	chunkedPersistentSent := 0
 
 	orderedPeers := selectStickyPeers(wtx.sender, peers, len(peers), memR.currentStickyPeerSalt())
 	maxPersistent := memR.opts.MaxPersistentStickyPeers
-	chunkedPersistentSent := 0
-	legacyPersistentSent := 0
 
 	// announcedChunkedPeers is the bootstrap-push target set: peers we
 	// have successfully delivered SeenLargeTx to on channel 0x33. Pushing
@@ -458,37 +465,24 @@ func (memR *Reactor) announceLargeTxAndPush(enc *chunked.EncodedTx, wtx *wrapped
 		if memR.mempool.seenByPeersSet.Has(txKey, id) {
 			continue
 		}
-		isPersistent := peer.IsPersistent()
-		supports := peerSupportsChunked(peer)
-
-		if supports {
-			canSend := chunkedSent < chunkedFanout ||
-				(isPersistent && chunkedPersistentSent < maxPersistent)
-			if canSend && peer.Send(p2p.Envelope{
-				ChannelID: MempoolChunkChannel,
-				Message:   seenLargeMsg,
-			}) {
-				memR.mempool.PeerHasTx(id, txKey)
-				chunkedSent++
-				if isPersistent {
-					chunkedPersistentSent++
-				}
-				announcedChunkedPeers = append(announcedChunkedPeers, capablePeer{id: id, peer: peer})
-			}
+		if !peerSupportsChunked(peer) {
+			// Chunked is the only propagation path; peers without channel
+			// 0x33 simply don't receive announces.
 			continue
 		}
-
-		canSendLegacy := legacySent < maxSeenTxBroadcast ||
-			(isPersistent && legacyPersistentSent < maxPersistent)
-		if canSendLegacy && peer.Send(p2p.Envelope{
-			ChannelID: MempoolDataChannel,
-			Message:   legacySeenMsg,
+		isPersistent := peer.IsPersistent()
+		canSend := chunkedSent < chunkedFanout ||
+			(isPersistent && chunkedPersistentSent < maxPersistent)
+		if canSend && peer.Send(p2p.Envelope{
+			ChannelID: MempoolChunkChannel,
+			Message:   seenLargeMsg,
 		}) {
 			memR.mempool.PeerHasTx(id, txKey)
-			legacySent++
+			chunkedSent++
 			if isPersistent {
-				legacyPersistentSent++
+				chunkedPersistentSent++
 			}
+			announcedChunkedPeers = append(announcedChunkedPeers, capablePeer{id: id, peer: peer})
 		}
 	}
 

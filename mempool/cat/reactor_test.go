@@ -84,6 +84,7 @@ func TestWaitForTxsOnReactor_AcceptsArbitraryOrderForTiedPriorities(t *testing.T
 }
 
 func TestReactorSendWantTxAfterReceivingSeenTx(t *testing.T) {
+	t.Skip("ADR-012: legacy SeenTx/WantTx/Txs path removed; chunked is the only propagation channel")
 	reactor, _ := setupReactor(t)
 
 	tx := newDefaultTx("hello")
@@ -116,6 +117,7 @@ func TestReactorSendWantTxAfterReceivingSeenTx(t *testing.T) {
 }
 
 func TestReactorSendsTxAfterReceivingWantTx(t *testing.T) {
+	t.Skip("ADR-012: legacy SeenTx/WantTx/Txs path removed; chunked is the only propagation channel")
 	reactor, pool := setupReactor(t)
 
 	tx := newDefaultTx("hello")
@@ -155,6 +157,7 @@ func TestReactorSendsTxAfterReceivingWantTx(t *testing.T) {
 }
 
 func TestReactorBroadcastsSeenTxAfterReceivingTx(t *testing.T) {
+	t.Skip("ADR-012: legacy SeenTx/WantTx/Txs path removed; chunked is the only propagation channel")
 	reactor, _ := setupReactor(t)
 
 	tx := newDefaultTx("hello")
@@ -195,6 +198,7 @@ func TestReactorBroadcastsSeenTxAfterReceivingTx(t *testing.T) {
 }
 
 func TestRemovePeerRequestFromOtherPeer(t *testing.T) {
+	t.Skip("ADR-012: legacy SeenTx/WantTx/Txs path removed; chunked is the only propagation channel")
 	reactor, _ := setupReactor(t)
 
 	tx := newDefaultTx("hello")
@@ -306,6 +310,7 @@ func TestLegacyReactorReceiveBasic(t *testing.T) {
 }
 
 func TestReactorReceiveRejectedTx(t *testing.T) {
+	t.Skip("ADR-012: legacy SeenTx/WantTx/Txs path removed; chunked is the only propagation channel")
 	reactor, _ := setupReactor(t)
 
 	tx := newDefaultTx("rejected tx")
@@ -346,6 +351,7 @@ func TestReactorReceiveRejectedTx(t *testing.T) {
 }
 
 func TestTryRequestQueuedTxRequestsFirstPeerOnly(t *testing.T) {
+	t.Skip("ADR-012: legacy SeenTx/WantTx/Txs path removed; chunked is the only propagation channel")
 	reactor, _ := setupReactor(t)
 
 	tx := newDefaultTx("request-first-peer")
@@ -386,6 +392,7 @@ func TestTryRequestQueuedTxRequestsFirstPeerOnly(t *testing.T) {
 }
 
 func TestDefaultGossipDelay(t *testing.T) {
+	t.Skip("ADR-012: legacy SeenTx/WantTx/Txs path removed; chunked is the only propagation channel")
 	// Test that DefaultGossipDelay is set to the expected value. The old
 	// 60s default placed an unresponsive first peer on the critical path of
 	// a single tx's propagation; we now use a much shorter delay so that
@@ -685,6 +692,7 @@ func (app *sequenceTrackingApp) SetSequence(signer string, sequence uint64) {
 }
 
 func TestReactorSequenceValidation(t *testing.T) {
+	t.Skip("ADR-012: legacy SeenTx/WantTx/Txs path removed; chunked is the only propagation channel")
 	app := newSequenceTrackingApp()
 	cc := proxy.NewLocalClientCreator(app)
 	pool, cleanup := newMempoolWithApp(cc)
@@ -799,6 +807,7 @@ func TestReactorSequenceValidation(t *testing.T) {
 }
 
 func TestReactorRequestsQueuedTxAfterSequenceBecomesAvailable(t *testing.T) {
+	t.Skip("ADR-012: legacy SeenTx/WantTx/Txs path removed; chunked is the only propagation channel")
 	app := newSequenceTrackingApp()
 	cc := proxy.NewLocalClientCreator(app)
 	pool, cleanup := newMempoolWithApp(cc)
@@ -867,6 +876,7 @@ func TestReactorRequestsQueuedTxAfterSequenceBecomesAvailable(t *testing.T) {
 }
 
 func TestPendingSeenClearedWhenTxArrives(t *testing.T) {
+	t.Skip("ADR-012: legacy SeenTx/WantTx/Txs path removed; chunked is the only propagation channel")
 	app := newSequenceTrackingApp()
 	cc := proxy.NewLocalClientCreator(app)
 	pool, cleanup := newMempoolWithApp(cc)
@@ -914,6 +924,7 @@ func TestPendingSeenClearedWhenTxArrives(t *testing.T) {
 }
 
 func TestPendingSeenClearedOnPeerRemoval(t *testing.T) {
+	t.Skip("ADR-012: legacy SeenTx/WantTx/Txs path removed; chunked is the only propagation channel")
 	app := newSequenceTrackingApp()
 	cc := proxy.NewLocalClientCreator(app)
 	pool, cleanup := newMempoolWithApp(cc)
@@ -953,6 +964,7 @@ func TestPendingSeenClearedOnPeerRemoval(t *testing.T) {
 }
 
 func TestPendingSeenDroppedWhenSequenceAdvances(t *testing.T) {
+	t.Skip("ADR-012: legacy SeenTx/WantTx/Txs path removed; chunked is the only propagation channel")
 	app := newSequenceTrackingApp()
 	cc := proxy.NewLocalClientCreator(app)
 	pool, cleanup := newMempoolWithApp(cc)
@@ -994,6 +1006,7 @@ func TestPendingSeenDroppedWhenSequenceAdvances(t *testing.T) {
 }
 
 func TestProcessPendingSeenForSignerRequestsConsecutiveSequences(t *testing.T) {
+	t.Skip("ADR-012: legacy SeenTx/WantTx/Txs path removed; chunked is the only propagation channel")
 	app := newSequenceTrackingApp()
 	cc := proxy.NewLocalClientCreator(app)
 	pool, cleanup := newMempoolWithApp(cc)
@@ -1044,6 +1057,7 @@ func TestProcessPendingSeenForSignerRequestsConsecutiveSequences(t *testing.T) {
 }
 
 func TestProcessPendingSeenForSignerStopsAtGap(t *testing.T) {
+	t.Skip("ADR-012: legacy SeenTx/WantTx/Txs path removed; chunked is the only propagation channel")
 	app := newSequenceTrackingApp()
 	cc := proxy.NewLocalClientCreator(app)
 	pool, cleanup := newMempoolWithApp(cc)
@@ -1105,6 +1119,7 @@ func TestProcessPendingSeenForSignerStopsAtGap(t *testing.T) {
 }
 
 func TestProcessPendingSeenForSignerSkipsAlreadyInMempool(t *testing.T) {
+	t.Skip("ADR-012: legacy SeenTx/WantTx/Txs path removed; chunked is the only propagation channel")
 	app := newSequenceTrackingApp()
 	cc := proxy.NewLocalClientCreator(app)
 	pool, cleanup := newMempoolWithApp(cc)
@@ -1200,6 +1215,7 @@ func TestProcessPendingSeenForSignerRespectsMaxBuffer(t *testing.T) {
 }
 
 func TestProcessPendingSeenForSignerSkipsAlreadyRequested(t *testing.T) {
+	t.Skip("ADR-012: legacy SeenTx/WantTx/Txs path removed; chunked is the only propagation channel")
 	app := newSequenceTrackingApp()
 	cc := proxy.NewLocalClientCreator(app)
 	pool, cleanup := newMempoolWithApp(cc)
@@ -1243,6 +1259,7 @@ func TestProcessPendingSeenForSignerSkipsAlreadyRequested(t *testing.T) {
 }
 
 func TestTryRequestQueuedTxRespectsPerPeerLimit(t *testing.T) {
+	t.Skip("ADR-012: legacy SeenTx/WantTx/Txs path removed; chunked is the only propagation channel")
 	app := newSequenceTrackingApp()
 	cc := proxy.NewLocalClientCreator(app)
 	pool, cleanup := newMempoolWithApp(cc)
@@ -1306,6 +1323,7 @@ func TestTryRequestQueuedTxRespectsPerPeerLimit(t *testing.T) {
 }
 
 func TestTryRequestQueuedTxFallsBackToAlternativePeer(t *testing.T) {
+	t.Skip("ADR-012: legacy SeenTx/WantTx/Txs path removed; chunked is the only propagation channel")
 	app := newSequenceTrackingApp()
 	cc := proxy.NewLocalClientCreator(app)
 	pool, cleanup := newMempoolWithApp(cc)
@@ -1376,6 +1394,7 @@ func TestTryRequestQueuedTxFallsBackToAlternativePeer(t *testing.T) {
 }
 
 func TestTxsWithTooManyTxsBansPeer(t *testing.T) {
+	t.Skip("ADR-012: legacy SeenTx/WantTx/Txs path removed; chunked is the only propagation channel")
 	config := cfg.TestConfig()
 	reactors := makeAndConnectReactors(t, config, 2)
 
@@ -1412,6 +1431,7 @@ func TestTxsWithTooManyTxsBansPeer(t *testing.T) {
 // was disabled in https://github.com/tendermint/tendermint/pull/5800 so only
 // a single transaction per message is expected.
 func TestTxsBatchBansPeer(t *testing.T) {
+	t.Skip("ADR-012: legacy SeenTx/WantTx/Txs path removed; chunked is the only propagation channel")
 	config := cfg.TestConfig()
 	reactors := makeAndConnectReactors(t, config, 2)
 
@@ -1439,6 +1459,7 @@ func TestTxsBatchBansPeer(t *testing.T) {
 }
 
 func TestTxsWithEmptyTxBansPeer(t *testing.T) {
+	t.Skip("ADR-012: legacy SeenTx/WantTx/Txs path removed; chunked is the only propagation channel")
 	config := cfg.TestConfig()
 	reactors := makeAndConnectReactors(t, config, 2)
 
@@ -1466,6 +1487,7 @@ func TestTxsWithEmptyTxBansPeer(t *testing.T) {
 }
 
 func TestSeenTxWithOversizedSignerBansPeer(t *testing.T) {
+	t.Skip("ADR-012: legacy SeenTx/WantTx/Txs path removed; chunked is the only propagation channel")
 	config := cfg.TestConfig()
 	reactors := makeAndConnectReactors(t, config, 2)
 
@@ -1621,227 +1643,4 @@ func TestSeenTxDirectPathEnforcesPerPeerRequestLimit(t *testing.T) {
 	assert.LessOrEqual(t, requestCount, maxRequestsPerPeer,
 		"SeenTx direct path should not exceed maxRequestsPerPeer (%d) but got %d requests",
 		maxRequestsPerPeer, requestCount)
-}
-
-// plannedPeer is a deterministic peer descriptor used to build mocks.Peer
-// instances with known IDs and pre-computed rendezvous rankings.
-type plannedPeer struct {
-	id         p2p.ID
-	persistent bool
-}
-
-// planPeers generates `total` peers with deterministic IDs, computes their
-// rendezvous ranking against (signer, salt), and marks the bottom
-// `persistentBottom` ranked peers as persistent (or top `persistentTop` if set
-// instead). Use this to control which peers fall outside the natural sticky cap.
-func planPeers(signer, salt []byte, total, persistentBottom, persistentTop int) []plannedPeer {
-	plans := make([]plannedPeer, total)
-	for i := range plans {
-		plans[i].id = p2p.ID(fmt.Sprintf("test-peer-%04d-deterministic-id-padding-fillerz", i))
-	}
-	type scored struct {
-		idx   int
-		score uint64
-	}
-	s := make([]scored, total)
-	for i := range plans {
-		s[i] = scored{i, stickyScore64(signer, string(plans[i].id), salt)}
-	}
-	sort.Slice(s, func(i, j int) bool {
-		if s[i].score == s[j].score {
-			return plans[s[i].idx].id < plans[s[j].idx].id
-		}
-		return s[i].score > s[j].score
-	})
-	for i := 0; i < persistentTop; i++ {
-		plans[s[i].idx].persistent = true
-	}
-	for i := total - persistentBottom; i < total; i++ {
-		plans[s[i].idx].persistent = true
-	}
-	return plans
-}
-
-// newPlannedPeer creates a *mocks.Peer with the given ID, IsPersistent flag,
-// and a permissive Send stub.
-func newPlannedPeer(p plannedPeer) *mocks.Peer {
-	peer := &mocks.Peer{}
-	peer.On("ID").Return(p.id)
-	peer.On("Get", types.PeerStateKey).Return(nil).Maybe()
-	peer.On("IsPersistent").Return(p.persistent).Maybe()
-	peer.On("Send", mock.Anything).Return(true).Maybe()
-	return peer
-}
-
-// stickyTestReactor builds a reactor wired with the planned peers.
-func stickyTestReactor(t *testing.T, opts *ReactorOptions, plans []plannedPeer) (*Reactor, []*mocks.Peer) {
-	t.Helper()
-	app := &application{kvstore.NewApplication(db.NewMemDB())}
-	cc := proxy.NewLocalClientCreator(app)
-	pool, cleanup := newMempoolWithApp(cc)
-	t.Cleanup(cleanup)
-	if opts == nil {
-		opts = &ReactorOptions{}
-	}
-	reactor, err := NewReactor(pool, opts)
-	require.NoError(t, err)
-
-	mockPeers := make([]*mocks.Peer, len(plans))
-	for i, p := range plans {
-		mockPeers[i] = newPlannedPeer(p)
-		_, err := reactor.InitPeer(mockPeers[i])
-		require.NoError(t, err)
-	}
-	return reactor, mockPeers
-}
-
-// sendRecipientIDs returns the set of peer IDs whose Send mock was invoked.
-func sendRecipientIDs(peers []*mocks.Peer) map[p2p.ID]bool {
-	recipients := make(map[p2p.ID]bool)
-	for _, p := range peers {
-		for _, c := range p.Calls {
-			if c.Method == "Send" {
-				recipients[p.ID()] = true
-				break
-			}
-		}
-	}
-	return recipients
-}
-
-// TestBroadcastSeenTxIncludesPersistentBeyondCap verifies persistent peers ranked
-// outside the natural top-maxSeenTxBroadcast still receive the SeenTx, additively.
-func TestBroadcastSeenTxIncludesPersistentBeyondCap(t *testing.T) {
-	const totalPeers = 30
-	const persistentCount = 4
-
-	signer := []byte("signer-A")
-	salt := []byte("salt-A")
-	plans := planPeers(signer, salt, totalPeers, persistentCount, 0)
-
-	reactor, peers := stickyTestReactor(t, &ReactorOptions{
-		StickyPeerSalt:           salt,
-		MaxPersistentStickyPeers: persistentCount,
-	}, plans)
-
-	persistentIDs := make(map[p2p.ID]bool)
-	for _, p := range plans {
-		if p.persistent {
-			persistentIDs[p.id] = true
-		}
-	}
-	require.Len(t, persistentIDs, persistentCount)
-
-	ordered := selectStickyPeers(signer, reactor.ids.GetAll(), totalPeers, salt)
-
-	txKey := types.TxKey{}
-	copy(txKey[:], bytes.Repeat([]byte{0xab}, 32))
-	reactor.broadcastSeenTxWithHeight(txKey, 1, signer, 1)
-
-	recipients := sendRecipientIDs(peers)
-	for i := 0; i < maxSeenTxBroadcast; i++ {
-		require.True(t, recipients[ordered[i].peer.ID()], "natural top-%d peer missing at index %d", maxSeenTxBroadcast, i)
-	}
-	for id := range persistentIDs {
-		require.True(t, recipients[id], "persistent peer %s missing from broadcast", id)
-	}
-	require.Len(t, recipients, maxSeenTxBroadcast+persistentCount)
-}
-
-// TestBroadcastSeenTxNoPersistentNoChange verifies behavior is unchanged when no
-// persistent peers are connected: only the natural top-maxSeenTxBroadcast receive.
-func TestBroadcastSeenTxNoPersistentNoChange(t *testing.T) {
-	const totalPeers = 30
-
-	signer := []byte("signer-B")
-	salt := []byte("salt-B")
-	plans := planPeers(signer, salt, totalPeers, 0, 0)
-
-	reactor, peers := stickyTestReactor(t, &ReactorOptions{StickyPeerSalt: salt}, plans)
-	ordered := selectStickyPeers(signer, reactor.ids.GetAll(), totalPeers, salt)
-
-	txKey := types.TxKey{}
-	copy(txKey[:], bytes.Repeat([]byte{0xcd}, 32))
-	reactor.broadcastSeenTxWithHeight(txKey, 1, signer, 1)
-
-	recipients := sendRecipientIDs(peers)
-	require.Len(t, recipients, maxSeenTxBroadcast)
-	for i := 0; i < maxSeenTxBroadcast; i++ {
-		require.True(t, recipients[ordered[i].peer.ID()])
-	}
-}
-
-// TestBroadcastSeenTxPersistentInTopCapNoExtras verifies the broadcast set does
-// not grow when persistent peers are already inside the natural top set.
-func TestBroadcastSeenTxPersistentInTopCapNoExtras(t *testing.T) {
-	const totalPeers = 30
-
-	signer := []byte("signer-C")
-	salt := []byte("salt-C")
-	// Mark only top-2 ranked peers as persistent so they're already in top-15.
-	plans := planPeers(signer, salt, totalPeers, 0, 2)
-
-	reactor, peers := stickyTestReactor(t, &ReactorOptions{StickyPeerSalt: salt}, plans)
-
-	txKey := types.TxKey{}
-	copy(txKey[:], bytes.Repeat([]byte{0xef}, 32))
-	reactor.broadcastSeenTxWithHeight(txKey, 1, signer, 1)
-
-	recipients := sendRecipientIDs(peers)
-	require.Len(t, recipients, maxSeenTxBroadcast)
-}
-
-// TestBroadcastSeenTxRespectsMaxPersistent verifies extra persistent peers beyond
-// MaxPersistentStickyPeers are not added.
-func TestBroadcastSeenTxRespectsMaxPersistent(t *testing.T) {
-	const totalPeers = 30
-	const persistentBottom = 10
-	const maxPersistent = 4
-
-	signer := []byte("signer-D")
-	salt := []byte("salt-D")
-	plans := planPeers(signer, salt, totalPeers, persistentBottom, 0)
-
-	reactor, peers := stickyTestReactor(t, &ReactorOptions{
-		StickyPeerSalt:           salt,
-		MaxPersistentStickyPeers: maxPersistent,
-	}, plans)
-
-	txKey := types.TxKey{}
-	copy(txKey[:], bytes.Repeat([]byte{0x12}, 32))
-	reactor.broadcastSeenTxWithHeight(txKey, 1, signer, 1)
-
-	recipients := sendRecipientIDs(peers)
-	require.Len(t, recipients, maxSeenTxBroadcast+maxPersistent)
-}
-
-// TestBroadcastSeenTxDeterministicPersistentSelection verifies that the same
-// persistent peers are picked across reactors with identical (signer, salt, peers).
-func TestBroadcastSeenTxDeterministicPersistentSelection(t *testing.T) {
-	const totalPeers = 30
-	const persistentBottom = 10
-	const maxPersistent = 3
-
-	signer := []byte("signer-E")
-	salt := []byte("salt-E")
-	plans := planPeers(signer, salt, totalPeers, persistentBottom, 0)
-
-	r1, peers1 := stickyTestReactor(t, &ReactorOptions{
-		StickyPeerSalt:           salt,
-		MaxPersistentStickyPeers: maxPersistent,
-	}, plans)
-	r2, peers2 := stickyTestReactor(t, &ReactorOptions{
-		StickyPeerSalt:           salt,
-		MaxPersistentStickyPeers: maxPersistent,
-	}, plans)
-
-	txKey := types.TxKey{}
-	copy(txKey[:], bytes.Repeat([]byte{0x77}, 32))
-	r1.broadcastSeenTxWithHeight(txKey, 1, signer, 1)
-	r2.broadcastSeenTxWithHeight(txKey, 1, signer, 1)
-
-	rec1 := sendRecipientIDs(peers1)
-	rec2 := sendRecipientIDs(peers2)
-	require.Equal(t, rec1, rec2, "persistent peer selection must be deterministic across reactors")
-	require.Len(t, rec1, maxSeenTxBroadcast+maxPersistent)
 }

@@ -402,6 +402,7 @@ func (app *sequenceTrackingTestApp) SetSequence(signer string, sequence uint64) 
 // TestReactorPendingQueueSorting validates that the pending queue remains sorted
 // as transactions arrive out of order
 func TestReactorPendingQueueSorting(t *testing.T) {
+	t.Skip("ADR-012: legacy SeenTx/WantTx/Txs path removed; chunked is the only propagation channel")
 	app := newSequenceTrackingTestApp()
 	cc := proxy.NewLocalClientCreator(app)
 	pool, cleanup := newMempoolWithApp(cc)
@@ -458,6 +459,7 @@ func TestReactorPendingQueueSorting(t *testing.T) {
 // TestReactorSingleOutstandingRequestPerSigner validates that the pending queue
 // mechanism limits concurrent requests for the same signer
 func TestReactorSingleOutstandingRequestPerSigner(t *testing.T) {
+	t.Skip("ADR-012: legacy SeenTx/WantTx/Txs path removed; chunked is the only propagation channel")
 	app := newSequenceTrackingTestApp()
 	cc := proxy.NewLocalClientCreator(app)
 	pool, cleanup := newMempoolWithApp(cc)

@@ -331,247 +331,17 @@ func (memR *Reactor) RemovePeer(peer p2p.Peer, reason interface{}) {
 	}
 }
 
-// ReceiveEnvelope implements Reactor.
-// It processes one of three messages: Txs, SeenTx, WantTx.
+// Receive dispatches chunked-mempool messages (ADR-012). The legacy
+// Txs/SeenTx/WantTx path has been removed; those messages are silently
+// dropped (no-op cases below) so any peer still running the old protocol
+// during a rolling upgrade does not get disconnected on every gossip.
 func (memR *Reactor) Receive(e p2p.Envelope) {
 	switch msg := e.Message.(type) {
 
-	// A peer has sent us one or more transactions. This could be either because we requested them
-	// or because the peer received a new transaction and is broadcasting it to us.
-	// NOTE: This setup also means that we can support older mempool implementations that simply
-	// flooded the network with transactions.
-	case *protomem.Txs:
-		protoTxs := msg.GetTxs()
-		if len(protoTxs) == 0 {
-			memR.Logger.Error("received empty txs from peer", "src", e.Src)
-			memR.Switch.StopPeerForError(e.Src, errEmptyTx, memR.String())
-			return
-		}
-		if len(protoTxs) > mempool.MaxTxsPerMessage {
-			memR.Logger.Error("received too many txs from peer", "count", len(protoTxs), "src", e.Src)
-			memR.Switch.StopPeerForError(e.Src, errTooManyTxs, memR.String())
-			return
-		}
-		peerID := memR.ids.GetIDForPeer(e.Src.ID())
-		txInfo := mempool.TxInfo{SenderID: peerID}
-		txInfo.SenderP2PID = e.Src.ID()
+	case *protomem.Txs, *protomem.SeenTx, *protomem.WantTx:
+		// Legacy propagation path is removed; silently ignore.
+		_ = msg
 
-		for _, tx := range protoTxs {
-			if len(tx) == 0 {
-				memR.Logger.Error("received empty tx from peer", "src", e.Src)
-				memR.Switch.StopPeerForError(e.Src, errEmptyTx, memR.String())
-				return
-			}
-			ntx := types.Tx(tx)
-			key := ntx.Key()
-			cachedTx := ntx.ToCachedTx()
-			schema.WriteMempoolTx(memR.traceClient, string(e.Src.ID()), key[:], len(tx), schema.Download)
-			// If we requested the transaction we mark it as received.
-			if memR.requests.Has(peerID, key) {
-				memR.requests.MarkReceived(peerID, key)
-				memR.Logger.Trace("received a response for a requested transaction", "peerID", peerID, "txKey", key)
-			} else {
-				// If we didn't request the transaction we simply mark the peer as having the
-				// tx (we'd have already done it if we were requesting the tx).
-				memR.mempool.PeerHasTx(peerID, key)
-				memR.Logger.Trace("received new transaction", "peerID", peerID, "txKey", key)
-			}
-
-			// Look up signer/sequence from pending tracker
-			pendingEntry := memR.pendingSeen.get(key)
-			if pendingEntry != nil && len(pendingEntry.signer) > 0 && pendingEntry.sequence > 0 {
-				// We have sequence info - check if we should buffer or process
-				expectedSeq, haveExpected := memR.querySequenceFromApplication(pendingEntry.signer)
-				if haveExpected && pendingEntry.sequence > expectedSeq {
-					// Try to buffer the future tx for processing once the
-					// preceding sequence arrives. Previously, a tx whose
-					// sequence was further than maxReceivedBufferSize ahead of
-					// expected was dropped silently here; that path is now
-					// folded into the buffer's own capacity check so the drop
-					// is at least observable.
-					if memR.receivedBuffer.add(pendingEntry.signer, pendingEntry.sequence, cachedTx, key, txInfo, string(e.Src.ID())) {
-						memR.pendingSeen.remove(key)
-						continue
-					}
-					// Buffer is at capacity or this peer is at its per-peer
-					// cap; we cannot retain the tx and must drop it. Surface
-					// the drop so an operator can see when this happens.
-					schema.WriteMempoolTxStatus(
-						memR.traceClient,
-						key[:],
-						schema.TxDroppedOutOfSequence,
-						fmt.Errorf("expected %d, got %d", expectedSeq, pendingEntry.sequence),
-						pendingEntry.signer,
-						pendingEntry.sequence,
-					)
-					continue
-				}
-			}
-
-			// Process this tx through CheckTx without putting into buffer
-			memR.processReceivedTx(cachedTx, key, txInfo, e.Src)
-		}
-
-	// A peer has indicated to us that it has a transaction. We first verify the txkey and
-	// mark that peer as having the transaction. Then we proceed with the following logic:
-	//
-	// 1. If we have the transaction, we do nothing.
-	// 2. If we don't yet have the tx but have an outgoing request for it, we do nothing.
-	// 3. If we recently evicted the tx and still don't have space for it, we do nothing.
-	// 4. Else, we request the transaction from that peer.
-	case *protomem.SeenTx:
-		// Capture the receive time so we can later report how long the tx
-		// sat in our queues before we sent a WantTx (see
-		// schema.MempoolWantTxScheduled).
-		seenAt := time.Now()
-		txKey, err := types.TxKeyFromBytes(msg.TxKey)
-		if err != nil {
-			memR.Logger.Error("peer sent SeenTx with incorrect tx key", "err", err)
-			memR.Switch.StopPeerForError(e.Src, err, memR.String())
-			return
-		}
-		if len(msg.Signer) > maxSignerLength {
-			memR.Logger.Error("peer sent SeenTx with signer too long", "len", len(msg.Signer))
-			memR.Switch.StopPeerForError(e.Src, errSignerTooLong, memR.String())
-			return
-		}
-		schema.WriteMempoolPeerState(
-			memR.traceClient,
-			string(e.Src.ID()),
-			schema.SeenTx,
-			txKey[:],
-			schema.Download,
-		)
-		peerID := memR.ids.GetIDForPeer(e.Src.ID())
-		memR.mempool.PeerHasTx(peerID, txKey)
-
-		// Check if we don't already have the transaction
-		if memR.mempool.Has(txKey) {
-			memR.Logger.Trace("received a seen tx for a tx we already have", "txKey", txKey)
-			return
-		}
-
-		// If we are already requesting that tx, then we don't need to go any further.
-		if memR.requests.ForTx(txKey) != 0 {
-			memR.Logger.Trace("received a SeenTx message for a transaction we are already requesting", "txKey", txKey)
-			return
-		}
-
-		expectedSeq, haveExpected := memR.querySequenceFromApplication(msg.Signer)
-
-		switch {
-		case len(msg.Signer) == 0 || msg.Sequence == 0:
-			// fall through and request immediately when sequence info is missing
-			schema.WriteMempoolPeerStateWithSeq(
-				memR.traceClient,
-				string(e.Src.ID()),
-				schema.MissingSequence,
-				txKey[:],
-				schema.Download,
-				msg.Signer,
-				msg.Sequence,
-			)
-		case !haveExpected:
-			// fall through and request immediately if we cannot query the application
-			schema.WriteMempoolPeerStateWithSeq(
-				memR.traceClient,
-				string(e.Src.ID()),
-				schema.MissingSequence,
-				txKey[:],
-				schema.Download,
-				msg.Signer,
-				msg.Sequence,
-			)
-		case msg.Sequence == expectedSeq:
-			// fall through and request immediately for the expected sequence
-		case msg.Sequence > expectedSeq:
-			// Queue the SeenTx for later draining once the preceding sequences
-			// have been processed. Any entries evicted as a result of the
-			// per-signer queue limit are surfaced as TxDroppedPendingOverflow
-			// rather than disappearing silently.
-			dropped := memR.pendingSeen.add(msg.Signer, txKey, msg.Sequence, peerID, seenAt)
-			for _, d := range dropped {
-				schema.WriteMempoolTxStatus(
-					memR.traceClient,
-					d.txKey[:],
-					schema.TxDroppedPendingOverflow,
-					nil,
-					d.signer,
-					d.sequence,
-				)
-			}
-			return
-		default:
-			memR.Logger.Debug(
-				"dropping SeenTx due to lower than expected sequence",
-				"txKey", txKey,
-				"sequence", msg.Sequence,
-				"expectedSequence", expectedSeq,
-			)
-			schema.WriteMempoolTxStatus(
-				memR.traceClient,
-				txKey[:],
-				schema.TxDroppedLowerSequence,
-				fmt.Errorf("expected>=%d, got %d", expectedSeq, msg.Sequence),
-				msg.Signer,
-				msg.Sequence,
-			)
-
-			return
-		}
-
-		// We don't have the transaction, nor are we requesting it so we send the node
-		// a want msg. Enforce the per-peer request limit so a single peer cannot
-		// drive unbounded outstanding requests via the direct SeenTx path.
-		if memR.requests.CountForPeer(peerID) >= maxRequestsPerPeer {
-			memR.Logger.Debug(
-				"not requesting tx from peer: at capacity",
-				"peer", peerID,
-				"txKey", txKey,
-				"maxRequestsPerPeer", maxRequestsPerPeer,
-			)
-			return
-		}
-		memR.requestTx(txKey, e.Src, schema.WantTxDirect, seenAt)
-
-	// A peer is requesting a transaction that we have claimed to have. Find the specified
-	// transaction and broadcast it to the peer. We may no longer have the transaction
-	case *protomem.WantTx:
-		txKey, err := types.TxKeyFromBytes(msg.TxKey)
-		if err != nil {
-			memR.Logger.Error("peer sent WantTx with incorrect tx key", "err", err)
-			memR.Switch.StopPeerForError(e.Src, err, memR.String())
-			return
-		}
-		schema.WriteMempoolPeerState(
-			memR.traceClient,
-			string(e.Src.ID()),
-			schema.WantTx,
-			txKey[:],
-			schema.Download,
-		)
-		tx, has := memR.mempool.GetTxByKey(txKey)
-		if has && !memR.opts.ListenOnly {
-			peerID := memR.ids.GetIDForPeer(e.Src.ID())
-			memR.Logger.Trace("sending a tx in response to a want msg", "peer", peerID)
-			if e.Src.Send(p2p.Envelope{
-				ChannelID: MempoolDataChannel,
-				Message:   &protomem.Txs{Txs: [][]byte{tx.Tx}},
-			}) {
-				memR.mempool.PeerHasTx(peerID, txKey)
-				schema.WriteMempoolTx(
-					memR.traceClient,
-					string(e.Src.ID()),
-					txKey[:],
-					len(tx.Tx),
-					schema.Upload,
-				)
-			}
-		}
-
-	// Chunked + erasure-coded propagation path (ADR-012). Handlers live in
-	// reactor_chunked.go to keep this file focused on the legacy single-shot
-	// path during the deprecation window.
 	case *protomem.SeenLargeTx:
 		memR.handleSeenLargeTx(e.Src, msg)
 	case *protomem.HaveTxChunks:
@@ -593,147 +363,12 @@ type PeerState interface {
 	GetHeight() int64
 }
 
-// broadcastSeenTx broadcasts a SeenTx message to limited peers unless we
-// know they have already seen the transaction
-func (memR *Reactor) broadcastSeenTx(txKey types.TxKey, signer []byte, sequence uint64) {
-	memR.broadcastSeenTxWithHeight(txKey, memR.mempool.Height(), signer, sequence)
-}
-
-// broadcastNewTx is the entry point for gossiping a newly-admitted tx. The
-// chunked + erasure-coded path (ADR-012) is the default: we encode the body,
-// announce SeenLargeTx to chunked-capable peers, and push K chunks across a
-// handful of bootstrap peers. Peers without channel MempoolChunkChannel get
-// the legacy SeenTx path so they can still pull the body via WantTx/Txs.
+// broadcastNewTx is the entry point for gossiping a newly-admitted tx via the
+// chunked + erasure-coded path (ADR-012). Encodes the body, announces
+// SeenLargeTx to chunked-capable peers, and pushes K chunks across a handful
+// of bootstrap peers. The legacy SeenTx/WantTx/Txs path has been removed.
 func (memR *Reactor) broadcastNewTx(wtx *wrappedTx) {
 	memR.broadcastNewLargeTx(wtx)
-}
-
-// broadcastSeenTxWithHeight is a helper that broadcasts a SeenTx message with height checking.
-func (memR *Reactor) broadcastSeenTxWithHeight(txKey types.TxKey, height int64, signer []byte, sequence uint64) {
-	memR.Logger.Debug("broadcasting seen tx to limited peers", "tx_key", txKey.String())
-	msg := &protomem.Message{
-		Sum: &protomem.Message_SeenTx{
-			SeenTx: &protomem.SeenTx{
-				TxKey:    txKey[:],
-				Signer:   signer,
-				Sequence: sequence,
-			},
-		},
-	}
-
-	peers := memR.ids.GetAll()
-	if len(peers) == 0 {
-		return
-	}
-
-	orderedPeers := selectStickyPeers(signer, peers, len(peers), memR.currentStickyPeerSalt())
-	maxPersistent := memR.opts.MaxPersistentStickyPeers
-	sent := 0
-	sentPersistent := 0
-	for _, peerInfo := range orderedPeers {
-		// Send to the natural top maxSeenTxBroadcast peers; additionally guarantee
-		// up to maxPersistent persistent peers receive the SeenTx, even if they
-		// rank outside the top maxSeenTxBroadcast. Persistent peers are appended,
-		// never displacing the natural set.
-		isPersistent := peerInfo.peer.IsPersistent()
-		canSend := sent < maxSeenTxBroadcast || (isPersistent && sentPersistent < maxPersistent)
-		if !canSend {
-			continue
-		}
-
-		id := peerInfo.id
-		peer := peerInfo.peer
-		if p, ok := peer.Get(types.PeerStateKey).(PeerState); ok {
-			// make sure peer isn't too far behind. This can happen
-			// if the peer is blocksyncing still and catching up
-			// in which case we just skip sending the transaction
-			if p.GetHeight() < height-peerHeightDiff {
-				memR.Logger.Trace("peer is too far behind us. Skipping broadcast of seen tx")
-				continue
-			}
-		}
-
-		if memR.mempool.seenByPeersSet.Has(txKey, id) {
-			continue
-		}
-
-		if peer.Send(
-			p2p.Envelope{
-				ChannelID: MempoolDataChannel,
-				Message:   msg,
-			},
-		) {
-			memR.mempool.PeerHasTx(id, txKey)
-			schema.WriteMempoolPeerState(memR.traceClient, string(peer.ID()), schema.SeenTx, txKey[:], schema.Upload)
-			sent++
-			if isPersistent {
-				sentPersistent++
-			}
-		}
-	}
-}
-
-// requesting it from another peer if the first peer does not respond.
-// kind classifies why the request is being sent (direct response to a SeenTx,
-// drained from the pendingSeen queue, or a rerequest after a previous peer
-// failed). seenAt is the time we first observed a SeenTx for this transaction
-// — if it is zero the latency field on the resulting trace will be reported
-// as 0.
-func (memR *Reactor) requestTx(txKey types.TxKey, peer p2p.Peer, kind schema.MempoolWantTxKind, seenAt time.Time) bool {
-	if peer == nil {
-		// we have disconnected from the peer
-		return false
-	}
-
-	peerID := memR.ids.GetIDForPeer(peer.ID())
-	memR.Logger.Trace("requesting tx", "txKey", txKey, "peerID", peer.ID())
-	msg := &protomem.Message{
-		Sum: &protomem.Message_WantTx{
-			WantTx: &protomem.WantTx{TxKey: txKey[:]},
-		},
-	}
-
-	success := peer.TrySend(
-		p2p.Envelope{
-			ChannelID: MempoolWantsChannel,
-			Message:   msg,
-		},
-	)
-	if success {
-		memR.mempool.metrics.RequestedTxs.Add(1)
-		requested := memR.requests.Add(txKey, peerID, memR.onRequestTimeout)
-		if !requested {
-			memR.Logger.Error("have already marked a tx as requested", "txKey", txKey, "peerID", peer.ID())
-		} else {
-			memR.pendingSeen.markRequested(txKey, peerID, time.Now().UTC())
-		}
-
-		schema.WriteMempoolPeerState(memR.traceClient, string(peer.ID()), schema.WantTx, txKey[:], schema.Upload)
-
-		var queuedFor int64
-		if !seenAt.IsZero() {
-			queuedFor = time.Since(seenAt).Nanoseconds()
-			if queuedFor < 0 {
-				queuedFor = 0
-			}
-		}
-		var signer []byte
-		var sequence uint64
-		if entry := memR.pendingSeen.get(txKey); entry != nil {
-			signer = entry.signer
-			sequence = entry.sequence
-		}
-		schema.WriteMempoolWantTxScheduled(
-			memR.traceClient,
-			txKey[:],
-			string(peer.ID()),
-			signer,
-			sequence,
-			queuedFor,
-			kind,
-		)
-	}
-	return success
 }
 
 // tryAddNewTx attempts to add a tx to the mempool and traces the result.
@@ -763,29 +398,10 @@ func (memR *Reactor) tryAddNewTx(cachedTx *types.CachedTx, key types.TxKey, txIn
 	return rsp, nil
 }
 
-// processReceivedTx handles a received transaction by running CheckTx and then
-// draining any buffered transactions for the same signer.
-func (memR *Reactor) processReceivedTx(cachedTx *types.CachedTx, key types.TxKey, txInfo mempool.TxInfo, src p2p.Peer) {
-	rsp, err := memR.tryAddNewTx(cachedTx, key, txInfo, string(src.ID()))
-	if err == nil || errors.Is(err, ErrTxInMempool) {
-		memR.pendingSeen.remove(key)
-	}
-	if err != nil {
-		return
-	}
-
-	if len(rsp.Address) > 0 {
-		memR.processReceivedBuffer(rsp.Address)
-		memR.processPendingSeenForSigner(rsp.Address)
-	}
-
-	if !memR.opts.ListenOnly && rsp.Code == 0 {
-		memR.broadcastSeenTx(key, rsp.Address, rsp.Sequence)
-	}
-}
-
-// processReceivedBuffer drains buffered transactions for a signer in sequence order.
-// It processes buffered txs as long as they match the next expected sequence.
+// processReceivedBuffer drains buffered transactions for a signer in sequence
+// order. The chunked admit path calls this after each in-order admission to
+// pull dependent sequences out of receivedBuffer. Re-broadcast of admitted
+// txs happens via markToBeBroadcast → broadcastNewLargeTx, not here.
 func (memR *Reactor) processReceivedBuffer(signer []byte) {
 	if len(signer) == 0 {
 		return
@@ -810,9 +426,8 @@ func (memR *Reactor) processReceivedBuffer(signer []byte) {
 		if err != nil {
 			break
 		}
-
-		if !memR.opts.ListenOnly && rsp.Code == 0 {
-			memR.broadcastSeenTx(buffered.txKey, signer, expectedSeq)
+		if rsp != nil && rsp.Code == 0 {
+			memR.mempool.markToBeBroadcast(buffered.txKey)
 		}
 	}
 }
@@ -884,35 +499,24 @@ func (memR *Reactor) processPendingSeenForSigner(signer []byte) {
 	}
 }
 
+// tryRequestQueuedTx triggers a chunked WantTxChunks for an entry drained
+// from pendingSeen. Returns true if at least one peer was asked.
 func (memR *Reactor) tryRequestQueuedTx(entry *pendingSeenTx) bool {
-	// Chunked path: if we already track a partsState for this tx, fetch via
-	// WantTxChunks instead of legacy WantTx. requestChunksFrom is idempotent
-	// (it skips chunks already in flight) so a repeated drain is safe.
-	if state := memR.chunkedStore.Get(entry.txKey); state != nil {
-		for _, peerID := range entry.peerIDs() {
-			peer := memR.ids.GetPeer(peerID)
-			if peer == nil {
-				continue
-			}
-			memR.requestChunksFrom(state, peerID, peer)
-		}
-		return true
+	state := memR.chunkedStore.Get(entry.txKey)
+	if state == nil {
+		// No chunked state — nothing we can fetch (legacy fetch removed).
+		return false
 	}
-
-	// Try each peer that has seen this tx, skipping those at capacity
+	asked := false
 	for _, peerID := range entry.peerIDs() {
-		if memR.requests.CountForPeer(peerID) >= maxRequestsPerPeer {
+		peer := memR.ids.GetPeer(peerID)
+		if peer == nil {
 			continue
 		}
-		peer := memR.ids.GetPeer(peerID)
-		if peer != nil && memR.requestTx(entry.txKey, peer, schema.WantTxFromPending, entry.seenAt) {
-			return true
-		}
+		memR.requestChunksFrom(state, peerID, peer)
+		asked = true
 	}
-
-	// No known peer available, try to find a new one
-	memR.findNewPeerToRequestTx(entry.txKey)
-	return memR.requests.ForTx(entry.txKey) != 0
+	return asked
 }
 
 func (memR *Reactor) onRequestTimeout(txKey types.TxKey, peerID uint16) {
@@ -978,40 +582,22 @@ func (memR *Reactor) querySequenceFromApplication(signer []byte) (uint64, bool) 
 	return resp.Sequence, true
 }
 
-// findNewPeerToSendTx finds a new peer that has already seen the transaction to
-// request a transaction from.
+// findNewPeerToRequestTx kicks a chunked re-fetch when an in-flight request
+// fails or times out. With the chunked store driving propagation, fetching a
+// missing tx means asking any peer that advertises chunks for it.
 func (memR *Reactor) findNewPeerToRequestTx(txKey types.TxKey) {
-	// ensure that we are connected to peers
 	if memR.ids.Len() == 0 {
 		return
 	}
-
-	// If we still have a pendingSeen entry for this tx, propagate its
-	// seenAt timestamp so the resulting WantTx trace measures latency from
-	// the original observation. Otherwise the trace falls back to 0.
-	var seenAt time.Time
-	if entry := memR.pendingSeen.get(txKey); entry != nil {
-		seenAt = entry.seenAt
+	state := memR.chunkedStore.Get(txKey)
+	if state == nil {
+		return
 	}
-
-	seenMap := memR.mempool.seenByPeersSet.Get(txKey)
-	for peerID := range seenMap {
-		if memR.requests.Has(peerID, txKey) {
+	for _, peer := range memR.ids.GetAll() {
+		if peer == nil {
 			continue
 		}
-		if memR.requests.CountForPeer(peerID) >= maxRequestsPerPeer {
-			continue
-		}
-		peer := memR.ids.GetPeer(peerID)
-		if peer != nil {
-			memR.mempool.metrics.RerequestedTxs.Add(1)
-			memR.requestTx(txKey, peer, schema.WantTxRerequest, seenAt)
-			return
-		}
+		peerID := memR.ids.GetIDForPeer(peer.ID())
+		memR.requestChunksFrom(state, peerID, peer)
 	}
-
-	// No other free peer has the transaction we are looking for.
-	// We give up 🤷‍♂️ and hope either a peer responds late or the tx
-	// is gossiped again
-	memR.Logger.Trace("no other peer has the tx we are looking for", "txKey", txKey)
 }
