@@ -422,7 +422,8 @@ func (memR *Reactor) Receive(e p2p.Envelope) {
 		case msg.Sequence == expectedSeq:
 			// fall through and request immediately for the expected sequence
 		case msg.Sequence > expectedSeq:
-			// TODO: add per-peer limits or something similar to pendingSeen to prevent overflowing
+			// add enforces global, per-peer, and TTL bounds on pendingSeen so a
+			// peer cannot grow it without limit by sending future-sequence SeenTx.
 			memR.pendingSeen.add(msg.Signer, txKey, msg.Sequence, peerID)
 			return
 		default:
@@ -798,6 +799,11 @@ func (memR *Reactor) heightSignalLoop() {
 }
 
 func (memR *Reactor) refreshPendingSeenQueues() {
+	// Age out stale pending entries (e.g. the source peer disconnected or the
+	// sequence gap is never filled) before processing, mirroring the periodic
+	// prune of seenByPeersSet.
+	memR.pendingSeen.prune(time.Now().UTC().Add(-pendingSeenTTL))
+
 	// Collect signers from both pending seen and buffer
 	seenSigners := make(map[string][]byte)
 

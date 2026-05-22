@@ -218,3 +218,92 @@ func TestPendingSeenTrackerConcurrentAccess(t *testing.T) {
 	wg.Wait()
 	require.LessOrEqual(t, len(tracker.entriesForSigner(signer)), defaultPendingSeenPerSigner)
 }
+
+// distinctSigner returns a signer byte slice for the i-th signer so per-signer
+// limits do not interfere with global/per-peer cap tests.
+func distinctSigner(i int) []byte {
+	return []byte(fmt.Sprintf("signer-%d", i))
+}
+
+func TestPendingSeenTrackerGlobalCap(t *testing.T) {
+	tracker := newPendingSeenTracker(0)
+	// Small global cap; large per-signer and per-peer caps so the global cap is
+	// the only thing that can reject admissions.
+	tracker.total = 5
+	tracker.perPeerLimit = 0 // disabled
+	tracker.limit = 1000
+
+	// Spread entries across many signers so the per-signer cap never triggers.
+	for i := 0; i < 20; i++ {
+		key := types.Tx(fmt.Sprintf("tx-%d", i)).Key()
+		tracker.add(distinctSigner(i), key, uint64(i+1), uint16(i%3+1))
+	}
+
+	require.Equal(t, 5, tracker.len(), "global cap must bound total pending entries")
+}
+
+func TestPendingSeenTrackerPerPeerCap(t *testing.T) {
+	tracker := newPendingSeenTracker(0)
+	tracker.total = 0 // global cap disabled
+	tracker.perPeerLimit = 3
+	tracker.limit = 1000
+
+	const greedyPeer = uint16(7)
+	const otherPeer = uint16(9)
+
+	// The greedy peer tries to add 10 entries across distinct signers but is
+	// capped at 3.
+	for i := 0; i < 10; i++ {
+		key := types.Tx(fmt.Sprintf("greedy-%d", i)).Key()
+		tracker.add(distinctSigner(i), key, uint64(i+1), greedyPeer)
+	}
+	require.Equal(t, 3, tracker.countByPeer[greedyPeer], "per-peer cap must bound a single peer")
+
+	// A different peer is unaffected by the greedy peer's count.
+	for i := 0; i < 3; i++ {
+		key := types.Tx(fmt.Sprintf("other-%d", i)).Key()
+		tracker.add(distinctSigner(100+i), key, uint64(i+1), otherPeer)
+	}
+	require.Equal(t, 3, tracker.countByPeer[otherPeer])
+
+	// Removing one of the greedy peer's entries frees a slot for it.
+	greedy0 := types.Tx("greedy-0").Key()
+	tracker.remove(greedy0)
+	require.Equal(t, 2, tracker.countByPeer[greedyPeer])
+
+	newKey := types.Tx("greedy-new").Key()
+	tracker.add(distinctSigner(200), newKey, 1, greedyPeer)
+	require.Equal(t, 3, tracker.countByPeer[greedyPeer])
+	require.NotNil(t, tracker.get(newKey))
+}
+
+func TestPendingSeenTrackerTimeBasedEviction(t *testing.T) {
+	tracker := newPendingSeenTracker(0)
+	tracker.limit = 1000
+
+	now := time.Now()
+	tracker.now = func() time.Time { return now }
+
+	signer := []byte("signer")
+
+	// Add an old entry.
+	oldKey := types.Tx("old").Key()
+	tracker.add(signer, oldKey, 1, 5)
+
+	// Advance the clock past the TTL, then add a fresh entry.
+	now = now.Add(2 * pendingSeenTTL)
+	freshKey := types.Tx("fresh").Key()
+	tracker.add(signer, freshKey, 2, 6)
+
+	require.Equal(t, 2, tracker.len())
+
+	// Prune everything older than (now - TTL): the old entry goes, the fresh one
+	// stays, and the per-peer count for the evicted entry is released.
+	tracker.prune(now.Add(-pendingSeenTTL))
+
+	require.Equal(t, 1, tracker.len())
+	require.Nil(t, tracker.get(oldKey))
+	require.NotNil(t, tracker.get(freshKey))
+	require.Zero(t, tracker.countByPeer[5], "evicted entry's peer count must be released")
+	require.Equal(t, 1, tracker.countByPeer[6])
+}
