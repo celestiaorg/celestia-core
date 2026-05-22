@@ -17,6 +17,7 @@ import (
 	"github.com/cometbft/cometbft/libs/trace"
 	"github.com/cometbft/cometbft/libs/trace/schema"
 	"github.com/cometbft/cometbft/mempool"
+	"github.com/cometbft/cometbft/mempool/cat/chunked"
 	"github.com/cometbft/cometbft/p2p"
 	protomem "github.com/cometbft/cometbft/proto/tendermint/mempool"
 	"github.com/cometbft/cometbft/types"
@@ -32,6 +33,22 @@ const (
 
 	// MempoolWantsChannel channel for wantTx messages.
 	MempoolWantsChannel = byte(0x32)
+
+	// MempoolChunkChannel carries the chunked + erasure-coded propagation
+	// path described in ADR-012: SeenLargeTx, HaveTxChunks, WantTxChunks,
+	// TxChunk. Kept separate from MempoolDataChannel to avoid head-of-line
+	// blocking small txs behind multi-megabyte chunk traffic.
+	MempoolChunkChannel = byte(0x33)
+
+	// defaultChunkChannelPriority sits above MempoolDataChannel (3) so chunk
+	// traffic gets fair scheduling, but well below the propagation reactor
+	// (140+) so block-part traffic still wins at consensus time.
+	defaultChunkChannelPriority = 6
+
+	// defaultChunkChannelSendCapacity is the per-peer send queue depth for
+	// MempoolChunkChannel. Larger than MempoolDataChannel because each
+	// chunked-tx admission can enqueue 2K chunks.
+	defaultChunkChannelSendCapacity = 2000
 
 	// peerHeightDiff signifies the tolerance in difference in height between the peer and the height
 	// the node received the tx
@@ -81,6 +98,11 @@ type Reactor struct {
 	traceClient    trace.Tracer
 	// stickySalt stores []byte rendezvous salt for sticky peer selection; nil/empty keeps default ordering.
 	stickySalt atomic.Value
+
+	// chunkedStore holds per-tx state for the chunked + erasure-coded
+	// propagation path (ADR-012). Used by the SeenLargeTx/HaveTxChunks/
+	// WantTxChunks/TxChunk handlers in reactor_chunked.go.
+	chunkedStore *chunked.Store
 }
 
 type ReactorOptions struct {
@@ -150,6 +172,7 @@ func NewReactor(mempool *TxPool, opts *ReactorOptions) (*Reactor, error) {
 		pendingSeen:    newPendingSeenTracker(0),
 		receivedBuffer: newReceivedTxBuffer(),
 		traceClient:    traceClient,
+		chunkedStore:   chunked.NewStore(),
 	}
 	memR.BaseReactor = *p2p.NewBaseReactor("CAT", memR,
 		p2p.WithIncomingQueueSize(ReactorIncomingMessageQueueSize),
@@ -210,6 +233,7 @@ func (memR *Reactor) OnStart() error {
 	}
 
 	go memR.heightSignalLoop()
+	go memR.startChunkedSweeper()
 
 	return nil
 }
@@ -238,6 +262,20 @@ func (memR *Reactor) GetChannels() []*p2p.ChannelDescriptor {
 		},
 	}
 
+	// Worst-case TxChunk size: full 64 KiB chunk plus a Merkle proof. The
+	// Merkle proof for a tree of 2*MaxBlockPartsCount leaves is ~21 levels
+	// at 32 B per aunt, well under 1 KiB. Round up generously.
+	chunkMsg := protomem.Message{
+		Sum: &protomem.Message_TxChunk{
+			TxChunk: &protomem.TxChunk{
+				TxKey: make([]byte, tmhash.Size),
+				Data:  make([]byte, chunked.ChunkSize),
+			},
+		},
+	}
+	const chunkProofOverhead = 4 * 1024
+	chunkRecvCap := chunkMsg.Size() + chunkProofOverhead
+
 	return []*p2p.ChannelDescriptor{
 		{
 			ID:                  mempool.MempoolChannel,
@@ -258,6 +296,13 @@ func (memR *Reactor) GetChannels() []*p2p.ChannelDescriptor {
 			Priority:            3,
 			SendQueueCapacity:   1000,
 			RecvMessageCapacity: stateMsg.Size(),
+			MessageType:         &protomem.Message{},
+		},
+		{
+			ID:                  MempoolChunkChannel,
+			Priority:            defaultChunkChannelPriority,
+			SendQueueCapacity:   defaultChunkChannelSendCapacity,
+			RecvMessageCapacity: chunkRecvCap,
 			MessageType:         &protomem.Message{},
 		},
 	}
@@ -529,6 +574,18 @@ func (memR *Reactor) Receive(e p2p.Envelope) {
 				)
 			}
 		}
+
+	// Chunked + erasure-coded propagation path (ADR-012). Handlers live in
+	// reactor_chunked.go to keep this file focused on the legacy single-shot
+	// path during the deprecation window.
+	case *protomem.SeenLargeTx:
+		memR.handleSeenLargeTx(e.Src, msg)
+	case *protomem.HaveTxChunks:
+		memR.handleHaveTxChunks(e.Src, msg)
+	case *protomem.WantTxChunks:
+		memR.handleWantTxChunks(e.Src, msg)
+	case *protomem.TxChunk:
+		memR.handleTxChunk(e.Src, msg)
 
 	default:
 		memR.Logger.Error("unknown message type", "src", e.Src, "chId", e.ChannelID, "msg", fmt.Sprintf("%T", msg))

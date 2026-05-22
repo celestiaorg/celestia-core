@@ -3,6 +3,10 @@ package tendermint.mempool;
 
 option go_package = "github.com/cometbft/cometbft/proto/tendermint/mempool";
 
+import "gogoproto/gogo.proto";
+import "tendermint/libs/bits/types.proto";
+import "tendermint/crypto/proof.proto";
+
 message Txs {
   repeated bytes txs = 1;
 }
@@ -17,10 +21,45 @@ message WantTx {
   bytes tx_key = 1;
 }
 
+// SeenLargeTx announces a chunked, erasure-coded transaction. See ADR-012.
+// num_parts == 1 indicates the no-parity single-chunk degenerate case.
+message SeenLargeTx {
+  bytes          tx_key      = 1;
+  bytes          parts_root  = 2;
+  uint32         num_parts   = 3;
+  uint32         last_length = 4;
+  bytes          signer      = 5;
+  uint64         sequence    = 6;
+  repeated bytes leaf_hashes = 7;
+}
+
+message HaveTxChunks {
+  bytes                         tx_key = 1;
+  tendermint.libs.bits.BitArray parts  = 2 [(gogoproto.nullable) = false];
+}
+
+message WantTxChunks {
+  bytes                         tx_key = 1;
+  tendermint.libs.bits.BitArray parts  = 2 [(gogoproto.nullable) = false];
+}
+
+// TxChunk carries a single chunk plus a Merkle inclusion proof against
+// SeenLargeTx.parts_root. The proof field is empty for num_parts == 1.
+message TxChunk {
+  bytes                   tx_key = 1;
+  uint32                  index  = 2;
+  bytes                   data   = 3;
+  tendermint.crypto.Proof proof  = 4 [(gogoproto.nullable) = false];
+}
+
 message Message {
   oneof sum {
-    Txs    txs     = 1;
-    SeenTx seen_tx = 2;
-    WantTx want_tx = 3;
+    Txs          txs            = 1;
+    SeenTx       seen_tx        = 2;
+    WantTx       want_tx        = 3;
+    SeenLargeTx  seen_large_tx  = 4;
+    HaveTxChunks have_tx_chunks = 5;
+    WantTxChunks want_tx_chunks = 6;
+    TxChunk      tx_chunk       = 7;
   }
 }
