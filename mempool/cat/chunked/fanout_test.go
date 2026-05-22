@@ -12,16 +12,20 @@ func TestAnnounceFanout(t *testing.T) {
 		target   int
 		want     int
 	}{
+		// Small txs: graduated formula raises fanout above the floor.
 		{1, 60, 60},
 		{2, 60, 30},
 		{4, 60, 15},
-		{8, 60, 8},
-		{15, 60, 4},
-		{30, 60, 2},
-		{60, 60, 1},
-		{120, 60, 1},
-		{1024, 60, 1},
-		{4, 0, AnnounceFanout(4, DefaultAnnounceTarget)}, // default fallback
+		// At and past the floor crossover, fanout = MinAnnounceFanout.
+		// ceil(60/8) = 8 < 15, so the floor wins.
+		{8, 60, MinAnnounceFanout},
+		{15, 60, MinAnnounceFanout},
+		{30, 60, MinAnnounceFanout},
+		{60, 60, MinAnnounceFanout},
+		{120, 60, MinAnnounceFanout},
+		{1024, 60, MinAnnounceFanout},
+		// Default-target path stays consistent.
+		{4, 0, AnnounceFanout(4, DefaultAnnounceTarget)},
 	}
 	for _, c := range cases {
 		require.Equalf(t, c.want, AnnounceFanout(c.numParts, c.target),

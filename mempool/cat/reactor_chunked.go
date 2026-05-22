@@ -441,8 +441,11 @@ func (memR *Reactor) announceLargeTxAndPush(enc *chunked.EncodedTx, wtx *wrapped
 	chunkedPersistentSent := 0
 	legacyPersistentSent := 0
 
-	// Track chunked-capable peers for the bootstrap push.
-	var chunkedPeers []capablePeer
+	// announcedChunkedPeers is the bootstrap-push target set: peers we
+	// have successfully delivered SeenLargeTx to on channel 0x33. Pushing
+	// TxChunks to anyone *outside* this set is wasted bandwidth — those
+	// peers have no PartsState yet and would silently drop the chunks.
+	var announcedChunkedPeers []capablePeer
 
 	for _, peerInfo := range orderedPeers {
 		id := peerInfo.id
@@ -459,7 +462,6 @@ func (memR *Reactor) announceLargeTxAndPush(enc *chunked.EncodedTx, wtx *wrapped
 		supports := peerSupportsChunked(peer)
 
 		if supports {
-			chunkedPeers = append(chunkedPeers, capablePeer{id: id, peer: peer})
 			canSend := chunkedSent < chunkedFanout ||
 				(isPersistent && chunkedPersistentSent < maxPersistent)
 			if canSend && peer.Send(p2p.Envelope{
@@ -471,6 +473,7 @@ func (memR *Reactor) announceLargeTxAndPush(enc *chunked.EncodedTx, wtx *wrapped
 				if isPersistent {
 					chunkedPersistentSent++
 				}
+				announcedChunkedPeers = append(announcedChunkedPeers, capablePeer{id: id, peer: peer})
 			}
 			continue
 		}
@@ -489,7 +492,7 @@ func (memR *Reactor) announceLargeTxAndPush(enc *chunked.EncodedTx, wtx *wrapped
 		}
 	}
 
-	memR.bootstrapPushChunks(enc, txKey, chunkedPeers)
+	memR.bootstrapPushChunks(enc, txKey, announcedChunkedPeers)
 }
 
 // bootstrapPushChunks distributes K chunks across up to DefaultBootstrapPushPeers
@@ -641,40 +644,24 @@ func protoBitArrayToInternal(p *protobits.BitArray, numParts int) *cmtbits.BitAr
 }
 
 // chunkPayloadFor returns the data and proof for a chunk index, ready to put
-// on the wire. ok is false if we don't hold the chunk.
+// on the wire. ok is false when we don't hold the chunk or its proof.
 //
-// For the initial wiring we only serve chunks for txs that have already been
-// reconstructed: we re-encode the body to recover the proofs. A follow-up
-// patch will retain the Merkle proofs alongside the chunks in PartsState so
-// we can also serve from collecting state.
+// Reads directly from cached chunks + proofs in PartsState — no re-encoding.
+// Only StateReconstructed serves; collecting partials are skipped because
+// we don't yet hold a full proof set.
 func chunkPayloadFor(state *chunked.PartsState, index uint32) (data []byte, proof cmtcrypto.Proof, ok bool) {
-	body := stateBody(state)
-	if body == nil {
-		return nil, cmtcrypto.Proof{}, false
-	}
-	enc, err := chunked.Encode(body)
-	if err != nil {
-		return nil, cmtcrypto.Proof{}, false
-	}
-	if index >= enc.NumParts() {
-		return nil, cmtcrypto.Proof{}, false
-	}
-	chunk := enc.Chunk(index)
-	if state.NumParts == 1 {
-		return chunk, cmtcrypto.Proof{}, true
-	}
-	return chunk, *enc.Proofs[index].ToProto(), true
-}
-
-// stateBody returns the reconstructed body if the state has progressed to
-// StateReconstructed, otherwise nil. Collecting partials are not served:
-// at the network level there's no point sending a chunk that we cannot
-// re-Merkle-prove against the same parts_root the requester knows.
-func stateBody(state *chunked.PartsState) []byte {
 	if state.State() != chunked.StateReconstructed {
-		return nil
+		return nil, cmtcrypto.Proof{}, false
 	}
-	return state.Body
+	data, p, hasProof, ok := state.ChunkPayload(index)
+	if !ok {
+		return nil, cmtcrypto.Proof{}, false
+	}
+	if !hasProof {
+		// NumParts == 1: no proof needed.
+		return data, cmtcrypto.Proof{}, true
+	}
+	return data, *p.ToProto(), true
 }
 
 // boundByCap returns a BitArray whose true bits are at most n.

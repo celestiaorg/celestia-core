@@ -1,16 +1,27 @@
 package chunked
 
+// MinAnnounceFanout is the floor for the SeenLargeTx fanout.
+//
+// Why a floor: peers only learn about a chunked tx through SeenLargeTx
+// (HaveTxChunks is dropped by peers that have no PartsState for the key). If
+// we announce to too few peers initially, the only way the tx reaches the
+// rest of the network is by chain-of-admissions: peer A admits, then
+// re-broadcasts to one peer, who admits, then re-broadcasts, etc. In an
+// N-peer network this is O(N) admit-times in serial. Mirror the legacy
+// maxSeenTxBroadcast value (15) so chunked announces match the existing
+// SeenTx fan-out width.
+const MinAnnounceFanout = 15
+
 // AnnounceFanout returns the number of peers a SeenLargeTx should be sent to,
 // given the chunk count of the announced tx and the configured target number
 // of total advertisements per tx.
 //
-// Formula: fanout = max(1, ceil(target / num_parts)).
+//	fanout = max(MinAnnounceFanout, ceil(target / num_parts))
 //
-//   - 1-chunk tx, target=60   -> fanout 60 (no parity, so chunk-level
-//     diversity is the only redundancy)
-//   - 8-chunk tx, target=60   -> fanout 8
-//   - 60-chunk tx, target=60  -> fanout 1
-//   - 1024-chunk tx, target=60 -> fanout 1 (chunks self-distribute)
+// The "graduated" component (target / num_parts) only raises fanout above the
+// floor for small txs where chunks themselves do not yet provide multi-source
+// diversity; for large txs the floor governs and the chunk distribution does
+// the rest of the work.
 //
 // target <= 0 falls back to DefaultAnnounceTarget. num_parts == 0 is treated
 // as 1 to avoid divide-by-zero in callers that haven't yet validated.
@@ -23,8 +34,8 @@ func AnnounceFanout(numParts uint32, target int) int {
 		n = 1
 	}
 	f := (target + n - 1) / n
-	if f < 1 {
-		return 1
+	if f < MinAnnounceFanout {
+		return MinAnnounceFanout
 	}
 	return f
 }

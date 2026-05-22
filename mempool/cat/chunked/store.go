@@ -5,6 +5,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/cometbft/cometbft/crypto/merkle"
 	"github.com/cometbft/cometbft/libs/bits"
 	"github.com/cometbft/cometbft/p2p"
 	"github.com/cometbft/cometbft/types"
@@ -58,6 +59,13 @@ type PartsState struct {
 	// chunks[i] is non-nil once chunk i has been received and verified.
 	chunks   [][]byte
 	received *bits.BitArray
+
+	// proofs[i] is the Merkle inclusion proof against PartsRoot for chunk i.
+	// Set by InsertReconstructed (sender side) and by ReconstructAndVerify
+	// (receiver side, by re-computing from the reconstructed parts) so that
+	// serving WantTxChunks does not require re-encoding the body per chunk
+	// request. nil for NumParts == 1 (no proof needed; partsRoot == hash).
+	proofs []*merkle.Proof
 
 	// Per-peer maps. Keys are p2p IDs assigned by the reactor's mempoolIDs.
 	haves    map[uint16]*bits.BitArray // chunks the peer advertises
@@ -275,10 +283,40 @@ func (p *PartsState) FirstChunkAt() time.Time {
 // markReconstructed transitions to StateReconstructed and stores the body.
 // Caller must already have verified SHA256(body) == tx_key.
 func (p *PartsState) markReconstructed(body []byte) {
+	p.markReconstructedWithProofs(body, nil)
+}
+
+// markReconstructedWithProofs is the proof-aware variant. If proofs is
+// non-nil and has length NumParts it is retained for serving WantTxChunks
+// without re-encoding the body.
+func (p *PartsState) markReconstructedWithProofs(body []byte, proofs []*merkle.Proof) {
 	p.mtx.Lock()
 	defer p.mtx.Unlock()
 	p.state = StateReconstructed
 	p.Body = body
+	if len(proofs) == int(p.NumParts) {
+		p.proofs = proofs
+	}
+}
+
+// ChunkPayload returns the on-wire payload for a single chunk: the chunk
+// bytes and the Merkle proof (if NumParts > 1). hasProof is false when the
+// state is single-chunk (NumParts == 1) — in that case the caller should
+// transmit an empty proof and the receiver verifies sha256(data) == PartsRoot.
+// ok is false when the state does not currently hold the chunk or the proof.
+func (p *PartsState) ChunkPayload(index uint32) (data []byte, proof *merkle.Proof, hasProof bool, ok bool) {
+	p.mtx.Lock()
+	defer p.mtx.Unlock()
+	if index >= p.NumParts || p.chunks[index] == nil {
+		return nil, nil, false, false
+	}
+	if p.NumParts == 1 {
+		return p.chunks[index], nil, false, true
+	}
+	if int(index) >= len(p.proofs) || p.proofs[index] == nil {
+		return nil, nil, true, false
+	}
+	return p.chunks[index], p.proofs[index], true, true
 }
 
 // Store keeps PartsStates for in-flight and reconstructed chunked txs.
@@ -391,7 +429,9 @@ func (s *Store) Insert(p InsertParams) (*PartsState, error) {
 }
 
 // InsertReconstructed seeds the store with an already-reconstructed state
-// (used on the originating node after sender-side encoding).
+// (used on the originating node after sender-side encoding). Retains the
+// per-chunk Merkle proofs from the encoder so subsequent WantTxChunks can be
+// served without re-encoding the body.
 func (s *Store) InsertReconstructed(p InsertParams, enc *EncodedTx) (*PartsState, error) {
 	state, err := s.Insert(p)
 	if err != nil {
@@ -401,6 +441,9 @@ func (s *Store) InsertReconstructed(p InsertParams, enc *EncodedTx) (*PartsState
 	for i := uint32(0); i < enc.NumParts(); i++ {
 		state.chunks[i] = enc.Chunk(i)
 		state.received.SetIndex(int(i), true)
+	}
+	if enc.NumParts() > 1 && len(enc.Proofs) == int(enc.NumParts()) {
+		state.proofs = enc.Proofs
 	}
 	state.Body = enc.Body
 	state.state = StateReconstructed
@@ -527,8 +570,10 @@ func (s *Store) Stats() Stats {
 // ReconstructAndVerify attempts to reconstruct the body from the chunks
 // currently held in the state, then checks SHA256(body) == tx_key. On
 // success the body is stored in the state and the lifecycle advances to
-// StateReconstructed. The caller is responsible for the subsequent
-// CheckTx admission step.
+// StateReconstructed. Re-encodes from the body to populate per-chunk
+// Merkle proofs so subsequent WantTxChunks can be served without redoing
+// the Reed-Solomon encode per request. The caller is responsible for the
+// subsequent CheckTx admission step.
 func (s *Store) ReconstructAndVerify(state *PartsState) ([]byte, error) {
 	chunks := state.chunksForDecode()
 	body, err := Decode(chunks, state.LastLength)
@@ -539,7 +584,16 @@ func (s *Store) ReconstructAndVerify(state *PartsState) ([]byte, error) {
 	if !verifyBodyHash(body, state.TxKey) {
 		return nil, errors.New("chunked: reconstructed body hash != tx_key")
 	}
-	state.markReconstructed(body)
+	// One-shot encode to recover proofs for serving. For NumParts == 1
+	// proofs are not needed.
+	var proofs []*merkle.Proof
+	if state.NumParts > 1 {
+		enc, encErr := Encode(body)
+		if encErr == nil && len(enc.Proofs) == int(state.NumParts) {
+			proofs = enc.Proofs
+		}
+	}
+	state.markReconstructedWithProofs(body, proofs)
 	s.mtx.Lock()
 	if state.bytesHeld > 0 {
 		s.globalBytes -= state.bytesHeld
