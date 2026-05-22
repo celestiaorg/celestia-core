@@ -12,25 +12,50 @@ const defaultPendingSeenPerSigner = 128
 
 // pendingSeen admission limits. These bound the memory a peer (or set of peers)
 // can pin in the tracker by sending future-sequence SeenTx for known signers.
-// They are sized to the same magnitude as the other CAT limits (see
-// received_buffer.go and cache.go): a few thousand future entries is far more
-// than legitimate out-of-order gossip ever needs, while keeping the worst-case
-// memory bounded.
-const (
-	// maxPendingSeenTotal caps the number of pending entries across all signers.
-	// Each entry is small (tens of bytes plus map overhead), so this stays well
-	// under a few hundred MB worst-case.
-	maxPendingSeenTotal = 50_000
+// Rather than carrying standalone magic numbers, the global and per-peer caps
+// are derived from the configured maximum mempool size (config.Size), so they
+// scale with the operator's configuration. See pendingSeenTotalCap and
+// pendingSeenPerPeerCap.
 
-	// maxPendingSeenPerPeer caps how many pending entries a single peer can be
-	// responsible for, so one peer cannot consume the entire global budget.
-	maxPendingSeenPerPeer = 5_000
+// defaultPendingSeenTotal is the fallback global cap used when the configured
+// mempool size is non-positive (unlimited / misconfigured). It matches the
+// default mempool Size so a misconfigured node still gets a sane, bounded
+// budget rather than 0 (which would reject everything) or unbounded growth.
+const defaultPendingSeenTotal = 5_000
 
-	// pendingSeenTTL is the maximum age of a pending entry before it is pruned.
-	// Future-sequence SeenTx that never become requestable (e.g. the source peer
-	// disconnected, or the sequence gap is never filled) are aged out.
-	pendingSeenTTL = time.Hour
-)
+// pendingSeenPerPeerDivisor derives the per-peer cap as a fraction of the
+// global cap (global/divisor), so a single peer cannot pin more than a small
+// share of the total budget. Kept strictly greater than 1 so per-peer < total.
+const pendingSeenPerPeerDivisor = 10
+
+// pendingSeenTTL is the maximum age of a pending entry before it is pruned.
+// Future-sequence SeenTx that never become requestable (e.g. the source peer
+// disconnected, or the sequence gap is never filled) are aged out. Kept short
+// because legitimate out-of-order gossip resolves quickly; anything still
+// pending after a couple of minutes is almost certainly never going to become
+// requestable.
+const pendingSeenTTL = 2 * time.Minute
+
+// pendingSeenTotalCap returns the global pending-seen cap derived from the
+// configured maximum mempool size. A non-positive size (unlimited or
+// misconfigured) falls back to defaultPendingSeenTotal so the cap never
+// degrades to 0.
+func pendingSeenTotalCap(mempoolSize int) int {
+	if mempoolSize <= 0 {
+		return defaultPendingSeenTotal
+	}
+	return mempoolSize
+}
+
+// pendingSeenPerPeerCap returns the per-peer pending-seen cap as a fraction of
+// the global cap, guaranteeing per-peer < total and at least 1.
+func pendingSeenPerPeerCap(total int) int {
+	perPeer := total / pendingSeenPerPeerDivisor
+	if perPeer < 1 {
+		perPeer = 1
+	}
+	return perPeer
+}
 
 type pendingSeenTx struct {
 	signerKey string
@@ -70,17 +95,23 @@ type pendingSeenTracker struct {
 	now func() time.Time
 }
 
-func newPendingSeenTracker(limit int) *pendingSeenTracker {
-	if limit <= 0 {
-		limit = defaultPendingSeenPerSigner
+// newPendingSeenTracker constructs a tracker. perSignerLimit bounds the entries
+// retained per signer (0 falls back to defaultPendingSeenPerSigner). mempoolSize
+// is the configured maximum mempool size (config.Size); the global and per-peer
+// caps are derived from it so they scale with configuration instead of being
+// standalone magic numbers.
+func newPendingSeenTracker(perSignerLimit, mempoolSize int) *pendingSeenTracker {
+	if perSignerLimit <= 0 {
+		perSignerLimit = defaultPendingSeenPerSigner
 	}
+	total := pendingSeenTotalCap(mempoolSize)
 	return &pendingSeenTracker{
 		perSigner:    make(map[string][]*pendingSeenTx),
 		byTx:         make(map[types.TxKey]*pendingSeenTx),
-		limit:        limit,
+		limit:        perSignerLimit,
 		countByPeer:  make(map[uint16]int),
-		total:        maxPendingSeenTotal,
-		perPeerLimit: maxPendingSeenPerPeer,
+		total:        total,
+		perPeerLimit: pendingSeenPerPeerCap(total),
 		now:          time.Now,
 	}
 }

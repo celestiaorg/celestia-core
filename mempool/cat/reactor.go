@@ -146,7 +146,7 @@ func NewReactor(mempool *TxPool, opts *ReactorOptions) (*Reactor, error) {
 		mempool:        mempool,
 		ids:            newMempoolIDs(),
 		requests:       newRequestScheduler(opts.MaxGossipDelay, defaultGlobalRequestTimeout),
-		pendingSeen:    newPendingSeenTracker(0),
+		pendingSeen:    newPendingSeenTracker(0, mempool.config.Size),
 		receivedBuffer: newReceivedTxBuffer(),
 		traceClient:    traceClient,
 	}

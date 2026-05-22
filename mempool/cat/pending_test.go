@@ -179,14 +179,14 @@ func TestPendingSeenTracker(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			tracker := newPendingSeenTracker(tc.limit)
+			tracker := newPendingSeenTracker(tc.limit, 0)
 			tc.run(t, tracker)
 		})
 	}
 }
 
 func TestPendingSeenTrackerConcurrentAccess(t *testing.T) {
-	tracker := newPendingSeenTracker(0)
+	tracker := newPendingSeenTracker(0, 0)
 	signer := []byte("signer")
 
 	const total = 5000
@@ -225,8 +225,36 @@ func distinctSigner(i int) []byte {
 	return []byte(fmt.Sprintf("signer-%d", i))
 }
 
+// TestPendingSeenTrackerCapsDerivedFromMempoolSize verifies the global and
+// per-peer caps are derived from the configured mempool size, and that a
+// non-positive size falls back to a sane default rather than a 0 cap.
+func TestPendingSeenTrackerCapsDerivedFromMempoolSize(t *testing.T) {
+	cases := []struct {
+		name        string
+		mempoolSize int
+		wantTotal   int
+		wantPerPeer int
+	}{
+		{name: "default mempool size", mempoolSize: 5000, wantTotal: 5000, wantPerPeer: 500},
+		{name: "small mempool size", mempoolSize: 100, wantTotal: 100, wantPerPeer: 10},
+		{name: "zero falls back to default", mempoolSize: 0, wantTotal: defaultPendingSeenTotal, wantPerPeer: defaultPendingSeenTotal / pendingSeenPerPeerDivisor},
+		{name: "negative falls back to default", mempoolSize: -1, wantTotal: defaultPendingSeenTotal, wantPerPeer: defaultPendingSeenTotal / pendingSeenPerPeerDivisor},
+		{name: "tiny size keeps per-peer at least 1", mempoolSize: 3, wantTotal: 3, wantPerPeer: 1},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			tracker := newPendingSeenTracker(0, tc.mempoolSize)
+			require.Equal(t, tc.wantTotal, tracker.total, "global cap")
+			require.Equal(t, tc.wantPerPeer, tracker.perPeerLimit, "per-peer cap")
+			require.Less(t, tracker.perPeerLimit, tracker.total+1, "per-peer must not exceed total")
+			require.GreaterOrEqual(t, tracker.perPeerLimit, 1, "per-peer must be at least 1")
+		})
+	}
+}
+
 func TestPendingSeenTrackerGlobalCap(t *testing.T) {
-	tracker := newPendingSeenTracker(0)
+	tracker := newPendingSeenTracker(0, 0)
 	// Small global cap; large per-signer and per-peer caps so the global cap is
 	// the only thing that can reject admissions.
 	tracker.total = 5
@@ -243,7 +271,7 @@ func TestPendingSeenTrackerGlobalCap(t *testing.T) {
 }
 
 func TestPendingSeenTrackerPerPeerCap(t *testing.T) {
-	tracker := newPendingSeenTracker(0)
+	tracker := newPendingSeenTracker(0, 0)
 	tracker.total = 0 // global cap disabled
 	tracker.perPeerLimit = 3
 	tracker.limit = 1000
@@ -278,7 +306,7 @@ func TestPendingSeenTrackerPerPeerCap(t *testing.T) {
 }
 
 func TestPendingSeenTrackerTimeBasedEviction(t *testing.T) {
-	tracker := newPendingSeenTracker(0)
+	tracker := newPendingSeenTracker(0, 0)
 	tracker.limit = 1000
 
 	now := time.Now()
