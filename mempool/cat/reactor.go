@@ -146,7 +146,7 @@ func NewReactor(mempool *TxPool, opts *ReactorOptions) (*Reactor, error) {
 		mempool:        mempool,
 		ids:            newMempoolIDs(),
 		requests:       newRequestScheduler(opts.MaxGossipDelay, defaultGlobalRequestTimeout),
-		pendingSeen:    newPendingSeenTracker(0, mempool.config.Size),
+		pendingSeen:    newPendingSeenTracker(0),
 		receivedBuffer: newReceivedTxBuffer(),
 		traceClient:    traceClient,
 	}
@@ -422,8 +422,8 @@ func (memR *Reactor) Receive(e p2p.Envelope) {
 		case msg.Sequence == expectedSeq:
 			// fall through and request immediately for the expected sequence
 		case msg.Sequence > expectedSeq:
-			// add enforces global, per-peer, and TTL bounds on pendingSeen so a
-			// peer cannot grow it without limit by sending future-sequence SeenTx.
+			// add enforces per-peer admission and per-signer retention so a peer
+			// cannot grow pendingSeen without limit by sending future-sequence SeenTx.
 			memR.pendingSeen.add(msg.Signer, txKey, msg.Sequence, peerID)
 			return
 		default:

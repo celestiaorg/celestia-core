@@ -10,8 +10,9 @@ import (
 // SeenTxSet records transactions that have been
 // seen by other peers but not yet by us
 type SeenTxSet struct {
-	mtx tmsync.Mutex
-	set map[types.TxKey]timestampedPeerSet
+	mtx         tmsync.Mutex
+	set         map[types.TxKey]timestampedPeerSet
+	countByPeer map[uint16]int
 }
 
 type timestampedPeerSet struct {
@@ -21,15 +22,13 @@ type timestampedPeerSet struct {
 
 func NewSeenTxSet() *SeenTxSet {
 	return &SeenTxSet{
-		set: make(map[types.TxKey]timestampedPeerSet),
+		set:         make(map[types.TxKey]timestampedPeerSet),
+		countByPeer: make(map[uint16]int),
 	}
 }
 
-// maxSeenTxSetSize limits the number of unique tx keys tracked in the SeenTxSet
-// to prevent unbounded memory growth from malicious peers flooding SeenTx messages.
-// Each entry costs ~500 bytes (including Go map overhead and GC pressure),
-// so 10M entries ≈ 5 GB worst-case.
-const maxSeenTxSetSize = 10_000_000
+// seenTxPerPeerLimit caps how many SeenTx-derived entries a single peer can pin.
+const seenTxPerPeerLimit = 10_000
 
 func (s *SeenTxSet) Add(txKey types.TxKey, peer uint16) {
 	if peer == 0 {
@@ -37,27 +36,40 @@ func (s *SeenTxSet) Add(txKey types.TxKey, peer uint16) {
 	}
 	s.mtx.Lock()
 	defer s.mtx.Unlock()
+
 	seenSet, exists := s.set[txKey]
-	if !exists && len(s.set) >= maxSeenTxSetSize {
-		// Evict one random entry to make room.
-		for k := range s.set {
-			delete(s.set, k)
-			break
+	if exists {
+		if _, ok := seenSet.peers[peer]; ok {
+			return
 		}
-	}
-	if !exists {
-		s.set[txKey] = timestampedPeerSet{
-			peers: map[uint16]struct{}{peer: {}},
-			time:  time.Now().UTC(),
+		if s.countByPeer[peer] >= seenTxPerPeerLimit {
+			return
 		}
-	} else {
 		seenSet.peers[peer] = struct{}{}
+		s.countByPeer[peer]++
+		return
 	}
+
+	if s.countByPeer[peer] >= seenTxPerPeerLimit {
+		return
+	}
+	s.set[txKey] = timestampedPeerSet{
+		peers: map[uint16]struct{}{peer: {}},
+		time:  time.Now().UTC(),
+	}
+	s.countByPeer[peer]++
 }
 
 func (s *SeenTxSet) RemoveKey(txKey types.TxKey) {
 	s.mtx.Lock()
 	defer s.mtx.Unlock()
+	seenSet, exists := s.set[txKey]
+	if !exists {
+		return
+	}
+	for peer := range seenSet.peers {
+		s.decPeer(peer)
+	}
 	delete(s.set, txKey)
 }
 
@@ -65,24 +77,33 @@ func (s *SeenTxSet) Remove(txKey types.TxKey, peer uint16) {
 	s.mtx.Lock()
 	defer s.mtx.Unlock()
 	set, exists := s.set[txKey]
-	if exists {
-		if len(set.peers) == 1 {
-			delete(s.set, txKey)
-		} else {
-			delete(set.peers, peer)
-		}
+	if !exists {
+		return
 	}
+	if _, ok := set.peers[peer]; !ok {
+		return
+	}
+	s.decPeer(peer)
+	if len(set.peers) == 1 {
+		delete(s.set, txKey)
+		return
+	}
+	delete(set.peers, peer)
 }
 
 func (s *SeenTxSet) RemovePeer(peer uint16) {
 	s.mtx.Lock()
 	defer s.mtx.Unlock()
 	for key, seenSet := range s.set {
+		if _, ok := seenSet.peers[peer]; !ok {
+			continue
+		}
 		delete(seenSet.peers, peer)
 		if len(seenSet.peers) == 0 {
 			delete(s.set, key)
 		}
 	}
+	delete(s.countByPeer, peer)
 }
 
 func (s *SeenTxSet) Prune(limit time.Time) {
@@ -90,6 +111,9 @@ func (s *SeenTxSet) Prune(limit time.Time) {
 	defer s.mtx.Unlock()
 	for key, seenSet := range s.set {
 		if seenSet.time.Before(limit) {
+			for peer := range seenSet.peers {
+				s.decPeer(peer)
+			}
 			delete(s.set, key)
 		}
 	}
@@ -132,4 +156,17 @@ func (s *SeenTxSet) Reset() {
 	s.mtx.Lock()
 	defer s.mtx.Unlock()
 	s.set = make(map[types.TxKey]timestampedPeerSet)
+	s.countByPeer = make(map[uint16]int)
+}
+
+// decPeer decrements the per-peer SeenTx count, cleaning up the map entry once
+// it reaches zero. Must be called with s.mtx held.
+func (s *SeenTxSet) decPeer(peer uint16) {
+	if peer == 0 {
+		return
+	}
+	s.countByPeer[peer]--
+	if s.countByPeer[peer] <= 0 {
+		delete(s.countByPeer, peer)
+	}
 }

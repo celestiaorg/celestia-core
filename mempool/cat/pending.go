@@ -10,24 +10,6 @@ import (
 
 const defaultPendingSeenPerSigner = 128
 
-// pendingSeen admission limits. These bound the memory a peer (or set of peers)
-// can pin in the tracker by sending future-sequence SeenTx for known signers.
-// Rather than carrying standalone magic numbers, the global and per-peer caps
-// are derived from the configured maximum mempool size (config.Size), so they
-// scale with the operator's configuration. See pendingSeenTotalCap and
-// pendingSeenPerPeerCap.
-
-// defaultPendingSeenTotal is the fallback global cap used when the configured
-// mempool size is non-positive (unlimited / misconfigured). It matches the
-// default mempool Size so a misconfigured node still gets a sane, bounded
-// budget rather than 0 (which would reject everything) or unbounded growth.
-const defaultPendingSeenTotal = 5_000
-
-// pendingSeenPerPeerDivisor derives the per-peer cap as a fraction of the
-// global cap (global/divisor), so a single peer cannot pin more than a small
-// share of the total budget. Kept strictly greater than 1 so per-peer < total.
-const pendingSeenPerPeerDivisor = 10
-
 // pendingSeenTTL is the maximum age of a pending entry before it is pruned.
 // Future-sequence SeenTx that never become requestable (e.g. the source peer
 // disconnected, or the sequence gap is never filled) are aged out. Kept short
@@ -35,27 +17,6 @@ const pendingSeenPerPeerDivisor = 10
 // pending after a couple of minutes is almost certainly never going to become
 // requestable.
 const pendingSeenTTL = 2 * time.Minute
-
-// pendingSeenTotalCap returns the global pending-seen cap derived from the
-// configured maximum mempool size. A non-positive size (unlimited or
-// misconfigured) falls back to defaultPendingSeenTotal so the cap never
-// degrades to 0.
-func pendingSeenTotalCap(mempoolSize int) int {
-	if mempoolSize <= 0 {
-		return defaultPendingSeenTotal
-	}
-	return mempoolSize
-}
-
-// pendingSeenPerPeerCap returns the per-peer pending-seen cap as a fraction of
-// the global cap, guaranteeing per-peer < total and at least 1.
-func pendingSeenPerPeerCap(total int) int {
-	perPeer := total / pendingSeenPerPeerDivisor
-	if perPeer < 1 {
-		perPeer = 1
-	}
-	return perPeer
-}
 
 type pendingSeenTx struct {
 	signerKey string
@@ -80,39 +41,29 @@ func (p *pendingSeenTx) peerIDs() []uint16 {
 }
 
 type pendingSeenTracker struct {
-	mu        sync.Mutex
-	perSigner map[string][]*pendingSeenTx
-	byTx      map[types.TxKey]*pendingSeenTx
-	limit     int
+	mu             sync.Mutex
+	perSigner      map[string][]*pendingSeenTx
+	byTx           map[types.TxKey]*pendingSeenTx
+	perSignerLimit int
 	// countByPeer tracks how many pending entries each peer is responsible for,
 	// used to enforce the per-peer admission cap.
 	countByPeer map[uint16]int
-	// total caps the number of pending entries across all signers.
-	total int
-	// perPeerLimit caps how many pending entries a single peer can hold.
-	perPeerLimit int
 	// now returns the current time; overridable in tests for TTL eviction.
 	now func() time.Time
 }
 
 // newPendingSeenTracker constructs a tracker. perSignerLimit bounds the entries
-// retained per signer (0 falls back to defaultPendingSeenPerSigner). mempoolSize
-// is the configured maximum mempool size (config.Size); the global and per-peer
-// caps are derived from it so they scale with configuration instead of being
-// standalone magic numbers.
-func newPendingSeenTracker(perSignerLimit, mempoolSize int) *pendingSeenTracker {
+// retained per signer (0 falls back to defaultPendingSeenPerSigner).
+func newPendingSeenTracker(perSignerLimit int) *pendingSeenTracker {
 	if perSignerLimit <= 0 {
 		perSignerLimit = defaultPendingSeenPerSigner
 	}
-	total := pendingSeenTotalCap(mempoolSize)
 	return &pendingSeenTracker{
-		perSigner:    make(map[string][]*pendingSeenTx),
-		byTx:         make(map[types.TxKey]*pendingSeenTx),
-		limit:        perSignerLimit,
-		countByPeer:  make(map[uint16]int),
-		total:        total,
-		perPeerLimit: pendingSeenPerPeerCap(total),
-		now:          time.Now,
+		perSigner:      make(map[string][]*pendingSeenTx),
+		byTx:           make(map[types.TxKey]*pendingSeenTx),
+		perSignerLimit: perSignerLimit,
+		countByPeer:    make(map[uint16]int),
+		now:            time.Now,
 	}
 }
 
@@ -132,18 +83,23 @@ func (ps *pendingSeenTracker) add(signer []byte, txKey types.TxKey, sequence uin
 		return
 	}
 
-	// Enforce the per-peer admission cap: one peer cannot pin more than
-	// perPeerLimit entries.
-	if ps.perPeerLimit > 0 && ps.countByPeer[peerID] >= ps.perPeerLimit {
-		return
-	}
-
-	// Enforce the global cap on total pending entries across all signers.
-	if ps.total > 0 && len(ps.byTx) >= ps.total {
-		return
-	}
-
 	queue := ps.perSigner[signerKey]
+	insertIdx := sort.Search(len(queue), func(i int) bool {
+		return queue[i].sequence >= sequence
+	})
+	if len(queue) >= ps.perSignerLimit && insertIdx == len(queue) {
+		return
+	}
+
+	var replaced *pendingSeenTx
+	if len(queue) >= ps.perSignerLimit {
+		replaced = queue[len(queue)-1]
+	}
+
+	peerCountWouldGrow := replaced == nil || replaced.addedBy != peerID
+	if peerCountWouldGrow && ps.countByPeer[peerID] >= seenTxPerPeerLimit {
+		return
+	}
 
 	// No existing entry for this (signer, sequence), so create a new one
 	entry := &pendingSeenTx{
@@ -156,9 +112,6 @@ func (ps *pendingSeenTracker) add(signer []byte, txKey types.TxKey, sequence uin
 		addedBy:   peerID,
 	}
 
-	insertIdx := sort.Search(len(queue), func(i int) bool {
-		return queue[i].sequence >= sequence
-	})
 	queue = append(queue, nil)
 	copy(queue[insertIdx+1:], queue[insertIdx:])
 	queue[insertIdx] = entry
@@ -166,7 +119,7 @@ func (ps *pendingSeenTracker) add(signer []byte, txKey types.TxKey, sequence uin
 	ps.byTx[txKey] = entry
 	ps.countByPeer[peerID]++
 
-	for len(queue) > ps.limit {
+	for len(queue) > ps.perSignerLimit {
 		lastIdx := len(queue) - 1
 		removed := queue[lastIdx]
 		queue = queue[:lastIdx]
@@ -239,9 +192,9 @@ func (ps *pendingSeenTracker) prune(cutoff time.Time) {
 		}
 		if len(kept) == 0 {
 			delete(ps.perSigner, signerKey)
-		} else {
-			ps.perSigner[signerKey] = kept
+			continue
 		}
+		ps.perSigner[signerKey] = kept
 	}
 }
 
