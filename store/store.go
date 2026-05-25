@@ -558,9 +558,12 @@ func (bs *BlockStore) triggerCompactionAsync(retainHeight int64) {
 }
 
 // compactBlockStoreRange issues one Compact call per height-keyed key family
-// for the range [from, to). The decimal-ASCII height encoding produces a
-// lexicographic range that is a superset of the integer range, which is
-// safe — pebble compaction never drops live data.
+// for the byte range [prefix+from, prefix+to). Heights are encoded as
+// decimal ASCII, so the byte range matches the integer range only when from
+// and to share a digit count; at digit-count boundaries some pruned heights
+// fall outside the range and are left to pebble's background compaction.
+// This is safe — pebble.Compact never drops live data; the range is only
+// a hint for which sstables to rewrite.
 func compactBlockStoreRange(db dbm.DB, from, to int64) error {
 	for _, prefix := range []string{"H:", "P:", "C:", "SC:"} {
 		start := []byte(prefix + strconv.FormatInt(from, 10))
