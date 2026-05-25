@@ -64,14 +64,18 @@ type BlockStore struct {
 	blockCommitCache         *lru.Cache[int64, *types.Commit]
 	blockExtendedCommitCache *lru.Cache[int64, *types.ExtendedCommit]
 
-	// blocksDeleted, compact, and compactionInterval are only read/written
-	// from PruneBlocks, which has a single production caller (the consensus
-	// goroutine via BlockExecutor.ApplyBlock), so no synchronization is
-	// needed for these fields. compacting and compactionWg coordinate with
+	// blocksDeleted, compact, compactionInterval, and compactionFrom are only
+	// read/written from PruneBlocks, which has a single production caller (the
+	// consensus goroutine via BlockExecutor.ApplyBlock), so no synchronization
+	// is needed for these fields. compacting and compactionWg coordinate with
 	// the background compaction goroutine and are intentionally lock-free.
+	// compactionFrom holds the lowest height not yet covered by a range-scoped
+	// forced compaction. It is initialized to base on construction and
+	// advanced only on successful Compact.
 	blocksDeleted      int64
 	compact            bool
 	compactionInterval int64
+	compactionFrom     int64
 	compacting         atomic.Bool
 	compactionWg       sync.WaitGroup
 
@@ -100,10 +104,11 @@ func WithLogger(logger log.Logger) BlockStoreOption {
 func NewBlockStore(db dbm.DB, options ...BlockStoreOption) *BlockStore {
 	bs := LoadBlockStoreState(db)
 	bStore := &BlockStore{
-		base:   bs.Base,
-		height: bs.Height,
-		db:     db,
-		logger: log.NewNopLogger(),
+		base:           bs.Base,
+		height:         bs.Height,
+		compactionFrom: bs.Base,
+		db:             db,
+		logger:         log.NewNopLogger(),
 	}
 	bStore.addCaches()
 	for _, option := range options {
@@ -509,10 +514,15 @@ func (bs *BlockStore) PruneBlocks(height int64, state sm.State) (uint64, int64, 
 	return pruned, evidencePoint, nil
 }
 
-// triggerCompactionAsync launches a background compaction of the underlying
-// database. If a compaction is already in flight, it logs and returns; the
-// caller is responsible for resetting the deletion counter regardless. The
-// goroutine is tracked by compactionWg so Close can wait for it.
+// triggerCompactionAsync launches a background compaction over the height
+// range that has been pruned since the last successful compaction
+// ([compactionFrom, retainHeight)). If a compaction is already in flight, it
+// logs and returns; the caller is responsible for resetting the deletion
+// counter regardless. The goroutine is tracked by compactionWg so Close can
+// wait for it.
+//
+// Range scoping is applied per height-keyed key family. Hash-keyed families
+// (BH:, TH:) are left to pebble's natural background compaction.
 func (bs *BlockStore) triggerCompactionAsync(retainHeight int64) {
 	if !bs.compacting.CompareAndSwap(false, true) {
 		bs.logger.Info("blockstore compaction already in progress, resetting interval counter",
@@ -520,21 +530,49 @@ func (bs *BlockStore) triggerCompactionAsync(retainHeight int64) {
 		)
 		return
 	}
+	fromHeight := bs.compactionFrom
+	if fromHeight >= retainHeight {
+		bs.compacting.Store(false)
+		return
+	}
 	bs.compactionWg.Add(1)
 	go func() {
 		defer bs.compactionWg.Done()
 		defer bs.compacting.Store(false)
-		bs.logger.Info("compacting blockstore", "retain_height", retainHeight)
+		bs.logger.Info("compacting blockstore range",
+			"from_height", fromHeight,
+			"to_height", retainHeight,
+		)
 		start := time.Now()
-		// When the range is nil,nil, the database will try to compact
-		// ALL levels. Another option is to set a predefined range of
-		// specific keys.
-		err := bs.db.Compact(nil, nil)
+		err := compactBlockStoreRange(bs.db, fromHeight, retainHeight)
 		bs.logger.Info("blockstore compaction complete",
 			"err", err,
 			"elapsed(s)", time.Since(start).Seconds(),
 		)
+		if err == nil {
+			// Single-writer: the next trigger has to wait for `compacting` to
+			// clear, and we set this before releasing it.
+			bs.compactionFrom = retainHeight
+		}
 	}()
+}
+
+// compactBlockStoreRange issues one Compact call per height-keyed key family
+// for the byte range [prefix+from, prefix+to). Heights are encoded as
+// decimal ASCII, so the byte range matches the integer range only when from
+// and to share a digit count; at digit-count boundaries some pruned heights
+// fall outside the range and are left to pebble's background compaction.
+// This is safe — pebble.Compact never drops live data; the range is only
+// a hint for which sstables to rewrite.
+func compactBlockStoreRange(db dbm.DB, from, to int64) error {
+	for _, prefix := range []string{"H:", "P:", "C:", "SC:"} {
+		start := []byte(prefix + strconv.FormatInt(from, 10))
+		end := []byte(prefix + strconv.FormatInt(to, 10))
+		if err := db.Compact(start, end); err != nil {
+			return fmt.Errorf("compact %q [%d,%d): %w", prefix, from, to, err)
+		}
+	}
+	return nil
 }
 
 // SaveBlock persists the given block, blockParts, and seenCommit to the underlying db.

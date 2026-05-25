@@ -4,6 +4,8 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/cosmos/gogoproto/proto"
@@ -85,11 +87,24 @@ type Store interface {
 	Close() error
 }
 
-// dbStore wraps a db (github.com/cometbft/cometbft-db)
+// dbStore wraps a db (github.com/cometbft/cometbft-db).
 type dbStore struct {
 	db dbm.DB
 
 	StoreOptions
+
+	// compaction is kept behind a pointer so dbStore stays copyable (its
+	// fields contain atomic.Bool and sync.WaitGroup which must not be
+	// copied). Must always be non-nil; every dbStore literal in this
+	// package initializes it.
+	compaction *compactionState
+}
+
+// compactionState single-flights forced compaction (`inFlight`) and lets
+// Close wait for the background goroutine (`wg`).
+type compactionState struct {
+	inFlight atomic.Bool
+	wg       sync.WaitGroup
 }
 
 type StoreOptions struct {
@@ -121,7 +136,7 @@ func NewStore(db dbm.DB, options StoreOptions) Store {
 	if options.Logger == nil {
 		options.Logger = log.NewNopLogger()
 	}
-	return dbStore{db, options}
+	return dbStore{db: db, StoreOptions: options, compaction: &compactionState{}}
 }
 
 // LoadStateFromDBOrGenesisFile loads the most recent state from the database,
@@ -414,22 +429,39 @@ func (store dbStore) PruneStates(from int64, to int64, evidenceThresholdHeight i
 		interval := uint64(store.CompactionInterval)
 		total := previouslyPrunedStates + pruned
 		if total/interval > previouslyPrunedStates/interval {
-			store.Logger.Info("compacting state store",
-				"states_pruned_total", total,
-				"compaction_interval", store.CompactionInterval,
-				"retain_height", to,
-			)
-			start := time.Now()
-			// When the range is nil,nil, the database will try to compact ALL levels.
-			err = store.db.Compact(nil, nil)
-			store.Logger.Info("state store compaction complete",
-				"err", err,
-				"elapsed(s)", time.Since(start).Seconds(),
-			)
+			store.triggerCompactionAsync(to)
 		}
 	}
 
 	return pruned, err
+}
+
+// triggerCompactionAsync launches a background compaction of the state DB.
+// The state store is small enough that compacting the whole DB is cheap, so
+// no range scoping is needed. `inFlight` single-flights triggers and `wg`
+// lets Close wait for the goroutine to finish.
+func (store dbStore) triggerCompactionAsync(to int64) {
+	if store.compaction == nil {
+		return
+	}
+	if !store.compaction.inFlight.CompareAndSwap(false, true) {
+		store.Logger.Info("state store compaction already in progress",
+			"retain_height", to,
+		)
+		return
+	}
+	store.compaction.wg.Add(1)
+	go func() {
+		defer store.compaction.wg.Done()
+		defer store.compaction.inFlight.Store(false)
+		store.Logger.Info("compacting state store", "retain_height", to)
+		start := time.Now()
+		err := store.db.Compact(nil, nil)
+		store.Logger.Info("state store compaction complete",
+			"err", err,
+			"elapsed(s)", time.Since(start).Seconds(),
+		)
+	}()
 }
 
 //------------------------------------------------------------------------
@@ -784,6 +816,9 @@ func (store dbStore) GetOfflineStateSyncHeight() (int64, error) {
 }
 
 func (store dbStore) Close() error {
+	if store.compaction != nil {
+		store.compaction.wg.Wait()
+	}
 	return store.db.Close()
 }
 
