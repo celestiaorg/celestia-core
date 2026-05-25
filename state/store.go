@@ -95,8 +95,8 @@ type dbStore struct {
 
 	// compaction is kept behind a pointer so dbStore stays copyable (its
 	// fields contain atomic.Bool and sync.WaitGroup which must not be
-	// copied). nil is allowed for internal constructions that never
-	// trigger compaction (see export_test.go).
+	// copied). Must always be non-nil; every dbStore literal in this
+	// package initializes it.
 	compaction *compactionState
 }
 
@@ -441,6 +441,9 @@ func (store dbStore) PruneStates(from int64, to int64, evidenceThresholdHeight i
 // no range scoping is needed. `inFlight` single-flights triggers and `wg`
 // lets Close wait for the goroutine to finish.
 func (store dbStore) triggerCompactionAsync(to int64) {
+	if store.compaction == nil {
+		return
+	}
 	if !store.compaction.inFlight.CompareAndSwap(false, true) {
 		store.Logger.Info("state store compaction already in progress",
 			"retain_height", to,
