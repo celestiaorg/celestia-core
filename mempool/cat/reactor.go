@@ -529,7 +529,7 @@ func (memR *Reactor) broadcastNewTx(wtx *wrappedTx) {
 // are skipped.
 func (memR *Reactor) pushTxToAllPeers(wtx *wrappedTx) {
 	txKey := wtx.key()
-	memR.Logger.Info("pushing tx to all peers", "tx_key", txKey.String())
+	memR.Logger.Info("pushing tx to all peers", "tx_key", txKey.String(), "now", time.Now().UTC())
 
 	msg := &protomem.Message{
 		Sum: &protomem.Message_Txs{
@@ -570,6 +570,7 @@ func (memR *Reactor) pushTxToAllPeers(wtx *wrappedTx) {
 			)
 		}
 	}
+	memR.Logger.Info("done pushing", "tx_key", txKey.String(), "now", time.Now().UTC())
 }
 
 // broadcastSeenTxWithHeight is a helper that broadcasts a SeenTx message with height checking.
