@@ -545,7 +545,7 @@ func (memR *Reactor) pushTxToAllPeers(wtx *wrappedTx) {
 	for id, peer := range peers {
 		if p, ok := peer.Get(types.PeerStateKey).(PeerState); ok {
 			if p.GetHeight() < wtx.height-peerHeightDiff {
-				memR.Logger.Trace("peer is too far behind us. Skipping RPC push of tx")
+				memR.Logger.Info("peer is too far behind us. Skipping RPC push of tx")
 				continue
 			}
 		}
