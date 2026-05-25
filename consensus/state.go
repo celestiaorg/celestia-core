@@ -874,7 +874,7 @@ func (cs *State) updateToState(state sm.State) {
 		}
 
 		// Enforce minimum block time equal to the delayed precommit time
-		if !cs.rs.StartTime.IsZero() && cs.state.Timeouts.DelayedPrecommitTimeout != 0 {
+		if !cs.rs.StartTime.IsZero() && cs.state.Timeouts.DelayedPrecommitTimeout != 0 && !cs.propagator.IsCatchingUp() {
 			minStartTime := cs.rs.StartTime.Add(cs.state.Timeouts.DelayedPrecommitTimeout)
 			if nextStartTime.Before(minStartTime) {
 				nextStartTime = minStartTime
