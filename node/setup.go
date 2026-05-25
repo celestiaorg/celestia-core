@@ -255,6 +255,7 @@ func createMempoolAndMempoolReactor(
 		// adding it leads to a cleaner code.
 		return &mempl.NopMempool{}, mempl.NewNopMempoolReactor()
 	case cfg.MempoolTypeCAT:
+		rpcPushMode := cat.RPCPushModeEnabled()
 		mp := cat.NewTxPool(
 			logger,
 			config.Mempool,
@@ -264,6 +265,7 @@ func createMempoolAndMempoolReactor(
 			cat.WithPreCheck(sm.TxPreCheck(state)),
 			cat.WithPostCheck(sm.TxPostCheck(state)),
 			cat.WithTracer(traceClient),
+			cat.WithRPCPushMode(rpcPushMode),
 		)
 
 		reactor, err := cat.NewReactor(
@@ -274,6 +276,7 @@ func createMempoolAndMempoolReactor(
 				TraceClient:              traceClient,
 				MaxGossipDelay:           config.Mempool.MaxGossipDelay,
 				MaxPersistentStickyPeers: config.Mempool.MaxPersistentStickyPeers,
+				RPCPushMode:              rpcPushMode,
 			},
 		)
 		if err != nil {

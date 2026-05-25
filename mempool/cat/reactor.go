@@ -105,6 +105,13 @@ type ReactorOptions struct {
 	// to receive SeenTx broadcasts per signer, added on top of the natural sticky
 	// set without displacing it. <= 0 falls back to defaultMaxPersistentStickyPeers.
 	MaxPersistentStickyPeers int
+
+	// RPCPushMode, when true, changes how RPC-submitted transactions are
+	// disseminated: instead of announcing them with SeenTx and waiting for
+	// peers to pull via WantTx, the reactor pushes the full Txs message to
+	// every connected peer. Inbound message handling is unchanged. When set,
+	// the reactor also broadcasts even if ListenOnly is true.
+	RPCPushMode bool
 }
 
 func (opts *ReactorOptions) VerifyAndComplete() error {
@@ -190,7 +197,10 @@ func (memR *Reactor) currentStickyPeerSalt() []byte {
 
 // OnStart implements Service.
 func (memR *Reactor) OnStart() error {
-	if !memR.opts.ListenOnly {
+	if memR.opts.RPCPushMode {
+		memR.Logger.Info("Mempool RPC push mode enabled: RPC-submitted txs will be pushed as Txs messages to all peers")
+	}
+	if !memR.opts.ListenOnly || memR.opts.RPCPushMode {
 		go func() {
 			for {
 				select {
@@ -505,7 +515,61 @@ func (memR *Reactor) broadcastSeenTx(txKey types.TxKey, signer []byte, sequence 
 
 // broadcastNewTx broadcast new transaction to limited peers unless we are already sure they have seen the tx.
 func (memR *Reactor) broadcastNewTx(wtx *wrappedTx) {
+	if memR.opts.RPCPushMode {
+		memR.pushTxToAllPeers(wtx)
+		return
+	}
 	memR.broadcastSeenTxWithHeight(wtx.key(), wtx.height, wtx.sender, wtx.sequence)
+}
+
+// pushTxToAllPeers sends the full tx (Txs message) to every connected peer.
+// Used in RPC push mode: instead of announcing via SeenTx and serving Txs on
+// WantTx (pull), we proactively push the tx to peers. Peers that are too far
+// behind (height < ours - peerHeightDiff) or that we already know have the tx
+// are skipped.
+func (memR *Reactor) pushTxToAllPeers(wtx *wrappedTx) {
+	txKey := wtx.key()
+	memR.Logger.Debug("pushing tx to all peers", "tx_key", txKey.String())
+
+	msg := &protomem.Message{
+		Sum: &protomem.Message_Txs{
+			Txs: &protomem.Txs{Txs: [][]byte{wtx.tx.Tx}},
+		},
+	}
+
+	peers := memR.ids.GetAll()
+	if len(peers) == 0 {
+		return
+	}
+
+	for id, peer := range peers {
+		if p, ok := peer.Get(types.PeerStateKey).(PeerState); ok {
+			if p.GetHeight() < wtx.height-peerHeightDiff {
+				memR.Logger.Trace("peer is too far behind us. Skipping RPC push of tx")
+				continue
+			}
+		}
+
+		if memR.mempool.seenByPeersSet.Has(txKey, id) {
+			continue
+		}
+
+		if peer.Send(
+			p2p.Envelope{
+				ChannelID: MempoolDataChannel,
+				Message:   msg,
+			},
+		) {
+			memR.mempool.PeerHasTx(id, txKey)
+			schema.WriteMempoolTx(
+				memR.traceClient,
+				string(peer.ID()),
+				txKey[:],
+				len(wtx.tx.Tx),
+				schema.Upload,
+			)
+		}
+	}
 }
 
 // broadcastSeenTxWithHeight is a helper that broadcasts a SeenTx message with height checking.
