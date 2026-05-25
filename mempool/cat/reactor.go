@@ -529,7 +529,7 @@ func (memR *Reactor) broadcastNewTx(wtx *wrappedTx) {
 // are skipped.
 func (memR *Reactor) pushTxToAllPeers(wtx *wrappedTx) {
 	txKey := wtx.key()
-	memR.Logger.Debug("pushing tx to all peers", "tx_key", txKey.String())
+	memR.Logger.Info("pushing tx to all peers", "tx_key", txKey.String())
 
 	msg := &protomem.Message{
 		Sum: &protomem.Message_Txs{
@@ -554,7 +554,7 @@ func (memR *Reactor) pushTxToAllPeers(wtx *wrappedTx) {
 			continue
 		}
 
-		if peer.Send(
+		if peer.TrySend(
 			p2p.Envelope{
 				ChannelID: MempoolDataChannel,
 				Message:   msg,
