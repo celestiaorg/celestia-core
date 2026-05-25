@@ -321,10 +321,16 @@ func (memR *Reactor) Receive(e p2p.Envelope) {
 		txInfo := mempool.TxInfo{SenderID: peerID}
 		txInfo.SenderP2PID = e.Src.ID()
 
-		for _, tx := range protoTxs {
-			if len(tx) == 0 {
+		for _, compressed := range protoTxs {
+			if len(compressed) == 0 {
 				memR.Logger.Error("received empty tx from peer", "src", e.Src)
 				memR.Switch.StopPeerForError(e.Src, errEmptyTx, memR.String())
+				return
+			}
+			tx, err := decompressTx(compressed, msg.GetDecompressedSize(), memR.opts.MaxTxSize)
+			if err != nil {
+				memR.Logger.Error("failed to decompress tx from peer", "src", e.Src, "err", err)
+				memR.Switch.StopPeerForError(e.Src, err, memR.String())
 				return
 			}
 			ntx := types.Tx(tx)
@@ -476,20 +482,23 @@ func (memR *Reactor) Receive(e p2p.Envelope) {
 			txKey[:],
 			schema.Download,
 		)
-		tx, has := memR.mempool.GetTxByKey(txKey)
-		if has && !memR.opts.ListenOnly {
+		wtx := memR.mempool.getWrappedTxByKey(txKey)
+		if wtx != nil && !memR.opts.ListenOnly {
 			peerID := memR.ids.GetIDForPeer(e.Src.ID())
 			memR.Logger.Trace("sending a tx in response to a want msg", "peer", peerID)
 			if e.Src.Send(p2p.Envelope{
 				ChannelID: MempoolDataChannel,
-				Message:   &protomem.Txs{Txs: [][]byte{tx.Tx}},
+				Message: &protomem.Txs{
+					Txs:              [][]byte{wtx.compressed()},
+					DecompressedSize: uint32(len(wtx.tx.Tx)),
+				},
 			}) {
 				memR.mempool.PeerHasTx(peerID, txKey)
 				schema.WriteMempoolTx(
 					memR.traceClient,
 					string(e.Src.ID()),
 					txKey[:],
-					len(tx.Tx),
+					len(wtx.tx.Tx),
 					schema.Upload,
 				)
 			}
@@ -533,7 +542,10 @@ func (memR *Reactor) pushTxToAllPeers(wtx *wrappedTx) {
 
 	msg := &protomem.Message{
 		Sum: &protomem.Message_Txs{
-			Txs: &protomem.Txs{Txs: [][]byte{wtx.tx.Tx}},
+			Txs: &protomem.Txs{
+				Txs:              [][]byte{wtx.compressed()},
+				DecompressedSize: uint32(len(wtx.tx.Tx)),
+			},
 		},
 	}
 

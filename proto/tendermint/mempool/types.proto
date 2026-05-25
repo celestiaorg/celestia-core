@@ -4,7 +4,12 @@ package tendermint.mempool;
 option go_package = "github.com/cometbft/cometbft/proto/tendermint/mempool";
 
 message Txs {
+  // txs carries the zstd-compressed transaction payload(s). With
+  // MaxTxsPerMessage=1 the field always contains a single element.
   repeated bytes txs = 1;
+  // decompressed_size is the original (uncompressed) size of the tx in bytes.
+  // Receivers use this to bomb-cap decompression before allocating.
+  uint32 decompressed_size = 2;
 }
 
 message SeenTx {

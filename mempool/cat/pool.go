@@ -221,6 +221,13 @@ func (txmp *TxPool) GetTxByKey(txKey types.TxKey) (*types.CachedTx, bool) {
 	return &types.CachedTx{}, false
 }
 
+// getWrappedTxByKey returns the wrapped tx for the given key, or nil if not
+// present. Used by the reactor to access the lazy compressed-bytes cache on
+// the wrapped tx.
+func (txmp *TxPool) getWrappedTxByKey(txKey types.TxKey) *wrappedTx {
+	return txmp.store.get(txKey)
+}
+
 // WasRecentlyEvicted returns a bool indicating whether the transaction with
 // the specified key was recently evicted and is currently within the cache.
 func (txmp *TxPool) WasRecentlyEvicted(txKey types.TxKey) bool {

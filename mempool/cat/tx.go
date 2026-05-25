@@ -2,6 +2,7 @@ package cat
 
 import (
 	"sort"
+	"sync"
 	"time"
 
 	"github.com/cometbft/cometbft/types"
@@ -20,6 +21,11 @@ type wrappedTx struct {
 	sender        []byte          // app: assigned sender label
 	sequence      uint64          // app: sequence number for this transaction
 	fromBroadcast bool            // true if submitted via local RPC broadcast
+
+	// zstd-compressed copy of tx.Tx, computed lazily on first wire send and
+	// reused for subsequent sends to other peers.
+	compressedOnce  sync.Once
+	compressedBytes []byte
 }
 
 func newWrappedTx(tx *types.CachedTx, height, gasWanted, priority int64, sender []byte, sequence uint64, fromBroadcast bool) *wrappedTx {
@@ -40,6 +46,15 @@ func (w *wrappedTx) size() int64 { return int64(len(w.tx.Tx)) }
 
 // key returns the underlying tx key.
 func (w *wrappedTx) key() types.TxKey { return w.tx.Key() }
+
+// compressed returns the zstd-compressed tx payload, computing it once and
+// caching it for reuse across sends.
+func (w *wrappedTx) compressed() []byte {
+	w.compressedOnce.Do(func() {
+		w.compressedBytes = compressTx(w.tx.Tx)
+	})
+	return w.compressedBytes
+}
 
 // txSet groups transactions from the same signer and carries an aggregated priority.
 // Transactions within a set are ordered by sequence (ascending). If sequences are

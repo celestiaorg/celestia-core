@@ -31,6 +31,7 @@ require (
 	github.com/grafana/pyroscope-go v1.2.8
 	github.com/hashicorp/golang-lru/v2 v2.0.7
 	github.com/informalsystems/tm-load-test v1.3.0
+	github.com/klauspost/compress v1.18.0
 	github.com/klauspost/reedsolomon v1.14.0
 	github.com/lib/pq v1.12.3
 	github.com/minio/highwayhash v1.0.4
@@ -208,7 +209,6 @@ require (
 	github.com/kevinburke/ssh_config v1.2.0 // indirect
 	github.com/kisielk/errcheck v1.9.0 // indirect
 	github.com/kkHAIKE/contextcheck v1.1.6 // indirect
-	github.com/klauspost/compress v1.18.0 // indirect
 	github.com/klauspost/cpuid/v2 v2.3.0 // indirect
 	github.com/kr/pretty v0.3.1 // indirect
 	github.com/kr/text v0.2.0 // indirect
