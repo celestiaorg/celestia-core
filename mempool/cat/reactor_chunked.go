@@ -45,8 +45,6 @@ var (
 )
 
 func (memR *Reactor) handleSeenLargeTx(src p2p.Peer, msg *protomem.SeenLargeTx) {
-	memR.Logger.Info("chunked: received SeenLargeTx",
-		"tx_key", msg.TxKey, "num_parts", msg.NumParts, "src", src.ID())
 	if err := validateSeenLargeTx(msg); err != nil {
 		memR.Logger.Error("malformed SeenLargeTx", "err", err, "src", src)
 		memR.Switch.StopPeerForError(src, err, memR.String())
