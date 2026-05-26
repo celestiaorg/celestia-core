@@ -379,13 +379,16 @@ func (memR *Reactor) broadcastHaveChunk(state *chunked.PartsState, index uint32)
 // still get a legacy SeenTx so they can pull the body the old way.
 func (memR *Reactor) broadcastNewLargeTx(wtx *wrappedTx) {
 	if memR.opts.ListenOnly {
+		memR.Logger.Info("chunked broadcast skipped: ListenOnly", "tx_key", wtx.key())
 		return
 	}
 	body := wtx.tx.Tx
 	if len(body) == 0 {
+		memR.Logger.Info("chunked broadcast skipped: empty body", "tx_key", wtx.key())
 		return
 	}
 	txKey := wtx.key()
+	memR.Logger.Info("chunked broadcast: encoding tx", "tx_key", txKey, "body_len", len(body))
 
 	enc, err := chunked.Encode(body)
 	if err != nil {
@@ -423,9 +426,15 @@ func (memR *Reactor) broadcastNewLargeTx(wtx *wrappedTx) {
 func (memR *Reactor) announceLargeTxAndPush(enc *chunked.EncodedTx, wtx *wrappedTx) {
 	peers := memR.ids.GetAll()
 	if len(peers) == 0 {
+		memR.Logger.Info("chunked announce skipped: no peers", "tx_key", wtx.key())
 		return
 	}
 	txKey := wtx.key()
+	memR.Logger.Info("chunked announce: starting",
+		"tx_key", txKey,
+		"num_parts", enc.NumParts(),
+		"connected_peers", len(peers),
+	)
 
 	seenLargeMsg := &protomem.Message{
 		Sum: &protomem.Message_SeenLargeTx{
@@ -453,39 +462,62 @@ func (memR *Reactor) announceLargeTxAndPush(enc *chunked.EncodedTx, wtx *wrapped
 	// TxChunks to anyone *outside* this set is wasted bandwidth — those
 	// peers have no PartsState yet and would silently drop the chunks.
 	var announcedChunkedPeers []capablePeer
+	skippedHeight := 0
+	skippedSeenAlready := 0
+	skippedUnsupported := 0
+	skippedCapHit := 0
+	sendFailed := 0
 
 	for _, peerInfo := range orderedPeers {
 		id := peerInfo.id
 		peer := peerInfo.peer
 		if p, ok := peer.Get(types.PeerStateKey).(PeerState); ok {
 			if p.GetHeight() < wtx.height-peerHeightDiff {
+				skippedHeight++
 				continue
 			}
 		}
 		if memR.mempool.seenByPeersSet.Has(txKey, id) {
+			skippedSeenAlready++
 			continue
 		}
 		if !peerSupportsChunked(peer) {
-			// Chunked is the only propagation path; peers without channel
-			// 0x33 simply don't receive announces.
+			skippedUnsupported++
 			continue
 		}
 		isPersistent := peer.IsPersistent()
 		canSend := chunkedSent < chunkedFanout ||
 			(isPersistent && chunkedPersistentSent < maxPersistent)
-		if canSend && peer.Send(p2p.Envelope{
+		if !canSend {
+			skippedCapHit++
+			continue
+		}
+		ok := peer.Send(p2p.Envelope{
 			ChannelID: MempoolChunkChannel,
 			Message:   seenLargeMsg,
-		}) {
-			memR.mempool.PeerHasTx(id, txKey)
-			chunkedSent++
-			if isPersistent {
-				chunkedPersistentSent++
-			}
-			announcedChunkedPeers = append(announcedChunkedPeers, capablePeer{id: id, peer: peer})
+		})
+		if !ok {
+			sendFailed++
+			continue
 		}
+		memR.mempool.PeerHasTx(id, txKey)
+		chunkedSent++
+		if isPersistent {
+			chunkedPersistentSent++
+		}
+		announcedChunkedPeers = append(announcedChunkedPeers, capablePeer{id: id, peer: peer})
 	}
 
+	memR.Logger.Info("chunked announce: done",
+		"tx_key", txKey,
+		"sent_seenlargetx", chunkedSent,
+		"bootstrap_targets", len(announcedChunkedPeers),
+		"skipped_height", skippedHeight,
+		"skipped_already_seen", skippedSeenAlready,
+		"skipped_unsupported", skippedUnsupported,
+		"skipped_cap_hit", skippedCapHit,
+		"send_failed", sendFailed,
+	)
 	memR.bootstrapPushChunks(enc, txKey, announcedChunkedPeers)
 }
 
