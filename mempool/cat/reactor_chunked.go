@@ -45,6 +45,11 @@ var (
 )
 
 func (memR *Reactor) handleSeenLargeTx(src p2p.Peer, msg *protomem.SeenLargeTx) {
+	if memR.opts.RPCPushMode {
+		// RPC push nodes are pure sources: they push RPC-submitted txs out
+		// via pushTxToAllPeers and do not participate in chunked propagation.
+		return
+	}
 	if err := validateSeenLargeTx(msg); err != nil {
 		memR.Logger.Error("malformed SeenLargeTx", "err", err, "src", src)
 		memR.Switch.StopPeerForError(src, err, memR.String())
@@ -139,6 +144,9 @@ func (memR *Reactor) handleSeenLargeTx(src p2p.Peer, msg *protomem.SeenLargeTx) 
 }
 
 func (memR *Reactor) handleHaveTxChunks(src p2p.Peer, msg *protomem.HaveTxChunks) {
+	if memR.opts.RPCPushMode {
+		return
+	}
 	txKey, err := types.TxKeyFromBytes(msg.TxKey)
 	if err != nil {
 		memR.Logger.Error("HaveTxChunks with bad tx_key", "err", err, "src", src)
@@ -165,7 +173,7 @@ func (memR *Reactor) handleHaveTxChunks(src p2p.Peer, msg *protomem.HaveTxChunks
 }
 
 func (memR *Reactor) handleWantTxChunks(src p2p.Peer, msg *protomem.WantTxChunks) {
-	if memR.opts.ListenOnly {
+	if memR.opts.ListenOnly || memR.opts.RPCPushMode {
 		return
 	}
 	txKey, err := types.TxKeyFromBytes(msg.TxKey)
@@ -187,6 +195,9 @@ func (memR *Reactor) handleWantTxChunks(src p2p.Peer, msg *protomem.WantTxChunks
 }
 
 func (memR *Reactor) handleTxChunk(src p2p.Peer, msg *protomem.TxChunk) {
+	if memR.opts.RPCPushMode {
+		return
+	}
 	memR.Logger.Debug("chunked: received TxChunk",
 		"tx_key", msg.TxKey, "index", msg.Index, "data_len", len(msg.Data), "src", src.ID())
 	txKey, err := types.TxKeyFromBytes(msg.TxKey)
@@ -705,27 +716,4 @@ func chunkPayloadFor(state *chunked.PartsState, index uint32) (data []byte, proo
 		return data, cmtcrypto.Proof{}, true
 	}
 	return data, *p.ToProto(), true
-}
-
-// boundByCap returns a BitArray whose true bits are at most n.
-// Returns nil if the input has no true bits.
-func boundByCap(in *cmtbits.BitArray, n int) *cmtbits.BitArray {
-	if in == nil {
-		return nil
-	}
-	indices := in.GetTrueIndices()
-	if len(indices) == 0 {
-		return nil
-	}
-	if n <= 0 {
-		n = 1
-	}
-	if len(indices) > n {
-		indices = indices[:n]
-	}
-	out := cmtbits.NewBitArray(in.Size())
-	for _, i := range indices {
-		out.SetIndex(i, true)
-	}
-	return out
 }

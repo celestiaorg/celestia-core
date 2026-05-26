@@ -414,10 +414,12 @@ func (memR *Reactor) handlePushedTxs(src p2p.Peer, msg *protomem.Txs) {
 			memR.Logger.Debug("RPC push admit failed", "err", err, "tx_key", key)
 			continue
 		}
-		// Queue for chunked re-broadcast. markToBeBroadcast is a no-op when
-		// neither config.Broadcast nor rpcPushMode is set, which is the
-		// correct behavior for ListenOnly peers.
-		memR.mempool.markToBeBroadcast(key)
+		// On non-RPC-push nodes: queue for chunked re-broadcast so peer-to-peer
+		// fan-out runs via the chunked path. RPC push nodes skip the re-broadcast
+		// — they are pure sources that only push txs from their own local RPC.
+		if !memR.opts.RPCPushMode {
+			memR.mempool.markToBeBroadcast(key)
+		}
 	}
 }
 
