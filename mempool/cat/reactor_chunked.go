@@ -45,6 +45,8 @@ var (
 )
 
 func (memR *Reactor) handleSeenLargeTx(src p2p.Peer, msg *protomem.SeenLargeTx) {
+	memR.Logger.Info("chunked: received SeenLargeTx",
+		"tx_key", msg.TxKey, "num_parts", msg.NumParts, "src", src.ID())
 	if err := validateSeenLargeTx(msg); err != nil {
 		memR.Logger.Error("malformed SeenLargeTx", "err", err, "src", src)
 		memR.Switch.StopPeerForError(src, err, memR.String())
@@ -187,6 +189,8 @@ func (memR *Reactor) handleWantTxChunks(src p2p.Peer, msg *protomem.WantTxChunks
 }
 
 func (memR *Reactor) handleTxChunk(src p2p.Peer, msg *protomem.TxChunk) {
+	memR.Logger.Debug("chunked: received TxChunk",
+		"tx_key", msg.TxKey, "index", msg.Index, "data_len", len(msg.Data), "src", src.ID())
 	txKey, err := types.TxKeyFromBytes(msg.TxKey)
 	if err != nil {
 		memR.Logger.Error("TxChunk with bad tx_key", "err", err, "src", src)
@@ -247,6 +251,8 @@ func (memR *Reactor) handleTxChunk(src p2p.Peer, msg *protomem.TxChunk) {
 // processing (out-of-order). Mirrors the buffering logic in the legacy Txs
 // handler so chunked txs respect per-signer sequence ordering.
 func (memR *Reactor) reconstructAndAdmit(state *chunked.PartsState, src p2p.Peer) {
+	memR.Logger.Info("chunked: reconstructing tx",
+		"tx_key", state.TxKey, "num_parts", state.NumParts)
 	body, err := memR.chunkedStore.ReconstructAndVerify(state)
 	if err != nil {
 		memR.Logger.Error("chunked reconstruct failed", "err", err, "tx_key", state.TxKey)
@@ -289,9 +295,12 @@ func (memR *Reactor) reconstructAndAdmit(state *chunked.PartsState, src p2p.Peer
 		memR.pendingSeen.remove(state.TxKey)
 	}
 	if err != nil {
+		memR.Logger.Error("chunked: tryAddNewTx failed", "err", err, "tx_key", state.TxKey)
 		memR.chunkedStore.Remove(state.TxKey)
 		return
 	}
+	memR.Logger.Info("chunked: tx admitted to mempool",
+		"tx_key", state.TxKey, "body_len", len(body))
 	memR.mempool.markToBeBroadcast(state.TxKey)
 	if rsp != nil && len(rsp.Address) > 0 {
 		memR.processReceivedBuffer(rsp.Address)
@@ -307,18 +316,28 @@ func (memR *Reactor) requestChunksFrom(state *chunked.PartsState, peerID uint16,
 	}
 	missing := state.MissingFromPeer(peerID)
 	if missing == nil {
+		memR.Logger.Debug("chunked want: nothing to request",
+			"tx_key", state.TxKey, "peer", peer.ID())
 		return
 	}
-	want := boundByCap(missing, chunked.PerPeerInflightCap(state.NumParts, memR.ids.Len()))
-	if want == nil {
-		return
-	}
-	state.MarkInflight(peerID, want)
+	// No per-peer cap during initial fetch: the originator is typically the
+	// only source for some time, and the previous cap formula
+	// (PerPeerInflightCap based on byzantine-tolerance heuristics) was
+	// dropping us at 2 chunks regardless of network size, leaving every
+	// receiver permanently short of K. Request everything the peer claims;
+	// Merkle proofs on each chunk gate validity at install time.
+	state.MarkInflight(peerID, missing)
+	wantCount := len(missing.GetTrueIndices())
+	memR.Logger.Info("chunked want: requesting chunks",
+		"tx_key", state.TxKey,
+		"peer", peer.ID(),
+		"num_chunks", wantCount,
+	)
 	peer.TrySend(p2p.Envelope{
 		ChannelID: MempoolChunkChannel,
 		Message: &protomem.WantTxChunks{
 			TxKey: state.TxKey[:],
-			Parts: *want.ToProto(),
+			Parts: *missing.ToProto(),
 		},
 	})
 }
