@@ -570,13 +570,48 @@ func (sw *Switch) dialPeersAsync(netAddrs []*NetAddress) {
 		sw.addrBook.Save()
 	}
 
-	// permute the list, dial them in random order.
-	perm := sw.rng.Perm(len(netAddrs))
-	for i := 0; i < len(perm); i++ {
-		go func(i int) {
-			j := perm[i]
-			addr := netAddrs[j]
+	// Split addresses into unconditional and regular. Unconditional peers
+	// bypass MaxNumOutboundPeers (they are also excluded from the outbound
+	// count in NumPeers); regular peers — including persistent peers — are
+	// capped at the remaining outbound budget so that providing more
+	// persistent peers than MaxNumOutboundPeers does not exceed the limit.
+	unconditional := make([]*NetAddress, 0)
+	regular := make([]*NetAddress, 0, len(netAddrs))
+	for _, addr := range netAddrs {
+		if sw.IsPeerUnconditional(addr.ID) {
+			unconditional = append(unconditional, addr)
+		} else {
+			regular = append(regular, addr)
+		}
+	}
 
+	// Permute the regular list so that, when capped, the selection is random.
+	perm := sw.rng.Perm(len(regular))
+	permuted := make([]*NetAddress, len(regular))
+	for i, j := range perm {
+		permuted[i] = regular[j]
+	}
+
+	out, _, dialing := sw.NumPeers()
+	budget := sw.MaxNumOutboundPeers() - (out + dialing)
+	if budget < 0 {
+		budget = 0
+	}
+	if budget < len(permuted) {
+		sw.Logger.Info(
+			"Skipping some peers to respect max_num_outbound_peers",
+			"max_num_outbound_peers", sw.MaxNumOutboundPeers(),
+			"current_outbound", out,
+			"current_dialing", dialing,
+			"requested", len(permuted),
+			"will_dial", budget,
+		)
+		permuted = permuted[:budget]
+	}
+
+	toDial := append(unconditional, permuted...)
+	for _, addr := range toDial {
+		go func(addr *NetAddress) {
 			if addr.Same(ourAddr) {
 				sw.Logger.Trace("Ignore attempt to connect to ourselves", "addr", addr, "ourAddr", ourAddr)
 				return
@@ -593,7 +628,7 @@ func (sw *Switch) dialPeersAsync(netAddrs []*NetAddress) {
 					sw.Logger.Error("Error dialing peer", "err", err)
 				}
 			}
-		}(i)
+		}(addr)
 	}
 }
 

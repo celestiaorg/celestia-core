@@ -594,6 +594,74 @@ func TestSwitchDialPeersAsync(t *testing.T) {
 	require.NotNil(t, sw.Peers().Get(rp.ID()))
 }
 
+// TestSwitchDialPeersAsyncRespectsMaxOutbound verifies that persistent peers
+// passed to DialPeersAsync do not bypass MaxNumOutboundPeers. Unconditional
+// peers are still dialed, since they're excluded from the outbound count.
+func TestSwitchDialPeersAsyncRespectsMaxOutbound(t *testing.T) {
+	if testing.Short() {
+		return
+	}
+
+	const (
+		maxOutbound = 2
+		regularNum  = 4
+		uncondNum   = 2
+	)
+
+	prevMax := cfg.MaxNumOutboundPeers
+	cfg.MaxNumOutboundPeers = maxOutbound
+	t.Cleanup(func() { cfg.MaxNumOutboundPeers = prevMax })
+
+	regular := make([]*remotePeer, regularNum)
+	for i := 0; i < regularNum; i++ {
+		rp := &remotePeer{PrivKey: ed25519.GenPrivKey(), Config: cfg}
+		rp.Start()
+		regular[i] = rp
+	}
+	uncond := make([]*remotePeer, uncondNum)
+	uncondIDs := make([]string, uncondNum)
+	for i := 0; i < uncondNum; i++ {
+		rp := &remotePeer{PrivKey: ed25519.GenPrivKey(), Config: cfg}
+		rp.Start()
+		uncond[i] = rp
+		uncondIDs[i] = string(rp.ID())
+	}
+	t.Cleanup(func() {
+		for _, rp := range regular {
+			rp.Stop()
+		}
+		for _, rp := range uncond {
+			rp.Stop()
+		}
+	})
+
+	sw := MakeSwitch(cfg, 1, initSwitchFunc)
+	require.NoError(t, sw.AddUnconditionalPeerIDs(uncondIDs))
+	require.NoError(t, sw.Start())
+	t.Cleanup(func() {
+		if err := sw.Stop(); err != nil {
+			t.Error(err)
+		}
+	})
+
+	addrs := make([]string, 0, regularNum+uncondNum)
+	for _, rp := range regular {
+		addrs = append(addrs, rp.Addr().String())
+	}
+	for _, rp := range uncond {
+		addrs = append(addrs, rp.Addr().String())
+	}
+
+	require.NoError(t, sw.DialPeersAsync(addrs))
+	time.Sleep(dialRandomizerIntervalMilliseconds * time.Millisecond)
+
+	out, _, _ := sw.NumPeers()
+	require.Equal(t, maxOutbound, out,
+		"expected exactly MaxNumOutboundPeers regular outbound peers")
+	require.Equal(t, maxOutbound+uncondNum, sw.Peers().Size(),
+		"unconditional peers should be dialed in addition to the regular cap")
+}
+
 func waitUntilSwitchHasAtLeastNPeers(sw *Switch, n int) {
 	for i := 0; i < 20; i++ {
 		time.Sleep(250 * time.Millisecond)

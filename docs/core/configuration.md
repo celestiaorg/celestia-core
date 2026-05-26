@@ -252,7 +252,8 @@ addr_book_strict = true
 # Maximum number of inbound peers
 max_num_inbound_peers = 40
 
-# Maximum number of outbound peers to connect to, excluding persistent peers
+# Maximum number of outbound peers to connect to, including persistent peers.
+# Unconditional peers are not counted against this limit.
 max_num_outbound_peers = 10
 
 # List of node IDs, to which a connection will be (re)established ignoring any existing limits

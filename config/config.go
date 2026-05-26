@@ -611,7 +611,8 @@ type P2PConfig struct {
 	// Maximum number of inbound peers
 	MaxNumInboundPeers int `mapstructure:"max_num_inbound_peers"`
 
-	// Maximum number of outbound peers to connect to, excluding persistent peers
+	// Maximum number of outbound peers to connect to, including persistent peers.
+	// Unconditional peers (see UnconditionalPeerIDs) are not counted against this limit.
 	MaxNumOutboundPeers int `mapstructure:"max_num_outbound_peers"`
 
 	// List of node IDs, to which a connection will be (re)established ignoring any existing limits

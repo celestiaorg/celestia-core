@@ -11,7 +11,7 @@ This document contains configurable parameters a node operator can use to tune t
 |	[AddrBook](./addressbook.md)                    | defaultAddrBookPath | Path do address book |
 |	AddrBookStrict              | true                | Set true for strict address routability rules and false for private or local networks |
 |	[MaxNumInboundPeers](./switch.md#accepting-peers)          |  40 | Maximum number of inbound peers |
-|	[MaxNumOutboundPeers](./peer_manager.md#ensure-peers)         |  10 |  Maximum number of outbound peers to connect to, excluding persistent peers |
+|	[MaxNumOutboundPeers](./peer_manager.md#ensure-peers)         |  10 |  Maximum number of outbound peers to connect to, including persistent peers (unconditional peers are not counted) |
 |   [UnconditionalPeers](./switch.md#accepting-peers)          | empty                | These are IDs of the peers which are allowed to be (re)connected as both inbound or outbound regardless of whether the node reached `max_num_inbound_peers` or `max_num_outbound_peers` or not. |
 |   PersistentPeersMaxDialPeriod| 0 * time.Second      | Maximum pause when redialing a persistent peer (if zero, exponential backoff is used)    |
 |	FlushThrottleTimeout        |100 * time.Millisecond| Time to wait before flushing messages out on the connection |
