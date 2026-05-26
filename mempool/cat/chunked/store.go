@@ -27,6 +27,11 @@ const (
 	DefaultPerPeerMaxBytes    = 64 << 20  // 64 MiB
 	DefaultBootstrapPushPeers = 4
 	DefaultAnnounceTarget     = 60
+	// DefaultChunksPerPushPeer is the number of random chunks the originator
+	// pushes to each peer that received SeenLargeTx. Higher values reduce the
+	// likelihood that any receiver needs to pull chunks from the origin and
+	// spread the chunk inventory across the network faster.
+	DefaultChunksPerPushPeer = 10
 )
 
 var (

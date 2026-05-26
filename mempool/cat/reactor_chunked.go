@@ -447,10 +447,11 @@ func (memR *Reactor) broadcastNewLargeTx(wtx *wrappedTx) {
 	memR.announceLargeTxAndPush(enc, wtx)
 }
 
-// announceLargeTxAndPush sends SeenLargeTx to chunked-capable peers using the
-// graduated-fanout formula, optionally pushes K chunks across a handful of
-// bootstrap peers, and sends legacy SeenTx to peers that do not support
-// MempoolChunkChannel.
+// announceLargeTxAndPush sends SeenLargeTx + a random subset of TxChunk
+// pushes to each peer in the announce set. Peer selection is a simple shuffle
+// — sticky-peer rendezvous (legacy CAT per-signer dedup) is not used here
+// because chunked propagation wants chunks spread *broadly*, not
+// concentrated on one signer's sticky set.
 func (memR *Reactor) announceLargeTxAndPush(enc *chunked.EncodedTx, wtx *wrappedTx) {
 	peers := memR.ids.GetAll()
 	if len(peers) == 0 {
@@ -480,23 +481,17 @@ func (memR *Reactor) announceLargeTxAndPush(enc *chunked.EncodedTx, wtx *wrapped
 
 	chunkedFanout := chunked.AnnounceFanout(enc.NumParts(), chunked.DefaultAnnounceTarget)
 	chunkedSent := 0
-	chunkedPersistentSent := 0
 
-	orderedPeers := selectStickyPeers(wtx.sender, peers, len(peers), memR.currentStickyPeerSalt())
-	maxPersistent := memR.opts.MaxPersistentStickyPeers
+	// Shuffled peer list: no sticky ordering, no per-signer concentration.
+	shuffledPeers := shufflePeers(peers)
 
-	// announcedChunkedPeers is the bootstrap-push target set: peers we
-	// have successfully delivered SeenLargeTx to on channel 0x33. Pushing
-	// TxChunks to anyone *outside* this set is wasted bandwidth — those
-	// peers have no PartsState yet and would silently drop the chunks.
 	var announcedChunkedPeers []capablePeer
 	skippedHeight := 0
 	skippedSeenAlready := 0
-	skippedUnsupported := 0
 	skippedCapHit := 0
 	sendFailed := 0
 
-	for _, peerInfo := range orderedPeers {
+	for _, peerInfo := range shuffledPeers {
 		id := peerInfo.id
 		peer := peerInfo.peer
 		if p, ok := peer.Get(types.PeerStateKey).(PeerState); ok {
@@ -509,14 +504,7 @@ func (memR *Reactor) announceLargeTxAndPush(enc *chunked.EncodedTx, wtx *wrapped
 			skippedSeenAlready++
 			continue
 		}
-		if !peerSupportsChunked(peer) {
-			skippedUnsupported++
-			continue
-		}
-		isPersistent := peer.IsPersistent()
-		canSend := chunkedSent < chunkedFanout ||
-			(isPersistent && chunkedPersistentSent < maxPersistent)
-		if !canSend {
+		if chunkedSent >= chunkedFanout {
 			skippedCapHit++
 			continue
 		}
@@ -530,63 +518,68 @@ func (memR *Reactor) announceLargeTxAndPush(enc *chunked.EncodedTx, wtx *wrapped
 		}
 		memR.mempool.PeerHasTx(id, txKey)
 		chunkedSent++
-		if isPersistent {
-			chunkedPersistentSent++
-		}
 		announcedChunkedPeers = append(announcedChunkedPeers, capablePeer{id: id, peer: peer})
 	}
+
+	totalPushed := memR.pushChunksToAnnouncedPeers(enc, txKey, announcedChunkedPeers)
 
 	memR.Logger.Info("chunked announce: done",
 		"tx_key", txKey,
 		"sent_seenlargetx", chunkedSent,
-		"bootstrap_targets", len(announcedChunkedPeers),
+		"announce_targets", len(announcedChunkedPeers),
+		"chunks_pushed_total", totalPushed,
 		"skipped_height", skippedHeight,
 		"skipped_already_seen", skippedSeenAlready,
-		"skipped_unsupported", skippedUnsupported,
 		"skipped_cap_hit", skippedCapHit,
 		"send_failed", sendFailed,
 	)
-	memR.bootstrapPushChunks(enc, txKey, announcedChunkedPeers)
 }
 
-// bootstrapPushChunks distributes K chunks across up to DefaultBootstrapPushPeers
-// chunked-capable peers. This guarantees K-of-2K is reachable within one RTT
-// of admission without depending on the pull loop.
-func (memR *Reactor) bootstrapPushChunks(enc *chunked.EncodedTx, txKey types.TxKey, peers []capablePeer) {
-	if len(peers) == 0 {
-		return
-	}
-	numPushPeers := chunked.DefaultBootstrapPushPeers
-	if numPushPeers > len(peers) {
-		numPushPeers = len(peers)
-	}
-	k := int(enc.NumOriginals())
-	if numPushPeers > k {
-		// More peers than chunks needed; cap so each gets at least one chunk.
-		numPushPeers = k
-	}
-	if numPushPeers <= 0 {
-		return
-	}
-
-	// Pick K random distinct indices out of 0..2K-1, partition across peers.
-	total := int(enc.NumParts())
-	indices := rand.Perm(total)[:k]
-	chunksPerPeer := (k + numPushPeers - 1) / numPushPeers
-
-	pos := 0
-	for i := 0; i < numPushPeers && pos < k; i++ {
-		end := pos + chunksPerPeer
-		if end > k {
-			end = k
+// shufflePeers returns a stable []capablePeer in random order.
+func shufflePeers(peers map[uint16]p2p.Peer) []capablePeer {
+	out := make([]capablePeer, 0, len(peers))
+	for id, peer := range peers {
+		if peer == nil {
+			continue
 		}
-		for j := pos; j < end; j++ {
-			idx := uint32(indices[j])
+		out = append(out, capablePeer{id: id, peer: peer})
+	}
+	rand.Shuffle(len(out), func(i, j int) { out[i], out[j] = out[j], out[i] })
+	return out
+}
+
+// pushChunksToAnnouncedPeers sends a random subset of chunks to every peer
+// that received SeenLargeTx. Each peer gets up to chunked.DefaultChunksPerPushPeer
+// random chunks drawn independently from the 0..NumParts-1 space. With many
+// peers and overlap of ~ChunksPerPushPeer/NumParts per chunk, every chunk gets
+// pushed to multiple peers in expectation, so receivers can pull missing
+// chunks from any of several sources instead of all hammering the originator.
+//
+// Returns the total number of TxChunk messages successfully queued, for logging.
+func (memR *Reactor) pushChunksToAnnouncedPeers(enc *chunked.EncodedTx, txKey types.TxKey, peers []capablePeer) int {
+	if len(peers) == 0 {
+		return 0
+	}
+	total := int(enc.NumParts())
+	if total == 0 {
+		return 0
+	}
+	perPeer := chunked.DefaultChunksPerPushPeer
+	if perPeer > total {
+		perPeer = total
+	}
+
+	totalSent := 0
+	for i := range peers {
+		// Independent random sample without replacement for each peer.
+		perm := rand.Perm(total)
+		for j := 0; j < perPeer; j++ {
+			idx := uint32(perm[j])
 			var proof cmtcrypto.Proof
 			if enc.NumParts() > 1 {
 				proof = *enc.Proofs[idx].ToProto()
 			}
-			peers[i].peer.TrySend(p2p.Envelope{
+			if peers[i].peer.TrySend(p2p.Envelope{
 				ChannelID: MempoolChunkChannel,
 				Message: &protomem.TxChunk{
 					TxKey: txKey[:],
@@ -594,30 +587,17 @@ func (memR *Reactor) bootstrapPushChunks(enc *chunked.EncodedTx, txKey types.TxK
 					Data:  enc.Chunk(idx),
 					Proof: proof,
 				},
-			})
+			}) {
+				totalSent++
+			}
 		}
-		pos = end
 	}
+	return totalSent
 }
 
 type capablePeer struct {
 	id   uint16
 	peer p2p.Peer
-}
-
-// peerSupportsChunked reports whether the peer advertises MempoolChunkChannel.
-// Falls back to the legacy SeenTx path when false. Uses the same
-// type-assert-to-DefaultNodeInfo pattern as the consensus and propagation
-// reactors.
-func peerSupportsChunked(peer p2p.Peer) bool {
-	if peer == nil {
-		return false
-	}
-	ni, ok := peer.NodeInfo().(p2p.DefaultNodeInfo)
-	if !ok {
-		return false
-	}
-	return ni.HasChannel(MempoolChunkChannel)
 }
 
 // startChunkedSweeper runs the TTL/eviction sweep until the reactor stops.
