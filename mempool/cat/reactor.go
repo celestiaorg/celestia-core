@@ -470,7 +470,7 @@ func (memR *Reactor) pushTxToAllPeers(wtx *wrappedTx) {
 	c := 0
 	for id, peer := range peers {
 		c++
-		if c == 15 {
+		if c == 5 {
 			break
 		}
 		if p, ok := peer.Get(types.PeerStateKey).(PeerState); ok {
