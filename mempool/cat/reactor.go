@@ -127,6 +127,15 @@ type ReactorOptions struct {
 	// to receive SeenTx broadcasts per signer, added on top of the natural sticky
 	// set without displacing it. <= 0 falls back to defaultMaxPersistentStickyPeers.
 	MaxPersistentStickyPeers int
+
+	// RPCPushMode, when true, changes how RPC-submitted transactions are
+	// disseminated: instead of announcing them via the chunked path and
+	// waiting for peers to pull, the reactor pushes the full Txs message to
+	// every connected peer. Receiving peers admit each tx and then re-broadcast
+	// via the chunked path, so peer-to-peer propagation still uses chunked.
+	// Inbound message handling is unchanged. When set, the broadcast goroutine
+	// runs even if ListenOnly is true.
+	RPCPushMode bool
 }
 
 func (opts *ReactorOptions) VerifyAndComplete() error {
@@ -213,7 +222,10 @@ func (memR *Reactor) currentStickyPeerSalt() []byte {
 
 // OnStart implements Service.
 func (memR *Reactor) OnStart() error {
-	if !memR.opts.ListenOnly {
+	if memR.opts.RPCPushMode {
+		memR.Logger.Info("Mempool RPC push mode enabled: RPC-submitted txs will be pushed as Txs messages to all peers")
+	}
+	if !memR.opts.ListenOnly || memR.opts.RPCPushMode {
 		go func() {
 			for {
 				select {
@@ -331,15 +343,23 @@ func (memR *Reactor) RemovePeer(peer p2p.Peer, reason interface{}) {
 	}
 }
 
-// Receive dispatches chunked-mempool messages (ADR-012). The legacy
-// Txs/SeenTx/WantTx path has been removed; those messages are silently
-// dropped (no-op cases below) so any peer still running the old protocol
-// during a rolling upgrade does not get disconnected on every gossip.
+// Receive dispatches chunked-mempool messages (ADR-012) plus the legacy
+// Txs message used by the RPC-push admission path. SeenTx/WantTx are no-ops:
+// they only existed for the legacy pull protocol, which is gone.
 func (memR *Reactor) Receive(e p2p.Envelope) {
 	switch msg := e.Message.(type) {
 
-	case *protomem.Txs, *protomem.SeenTx, *protomem.WantTx:
-		// Legacy propagation path is removed; silently ignore.
+	case *protomem.Txs:
+		// RPC-push admission: a peer (typically an RPC-facing node running
+		// with RPC=1) is pushing us full transactions. Admit each through
+		// CheckTx; on success markToBeBroadcast queues the tx for chunked
+		// re-broadcast so peer-to-peer fan-out runs via the chunked path.
+		memR.handlePushedTxs(e.Src, msg)
+
+	case *protomem.SeenTx, *protomem.WantTx:
+		// Legacy pull protocol is removed; silently ignore. Kept as a case
+		// so peers still running older binaries during a rolling upgrade
+		// are not disconnected on every gossip.
 		_ = msg
 
 	case *protomem.SeenLargeTx:
@@ -358,17 +378,117 @@ func (memR *Reactor) Receive(e p2p.Envelope) {
 	}
 }
 
+// handlePushedTxs admits each tx pushed by an RPC-mode peer and queues it
+// for chunked re-broadcast. ListenOnly nodes still skip the rebroadcast at
+// markToBeBroadcast/broadcast-goroutine level.
+func (memR *Reactor) handlePushedTxs(src p2p.Peer, msg *protomem.Txs) {
+	protoTxs := msg.GetTxs()
+	if len(protoTxs) == 0 {
+		memR.Switch.StopPeerForError(src, errEmptyTx, memR.String())
+		return
+	}
+	if len(protoTxs) > mempool.MaxTxsPerMessage {
+		memR.Switch.StopPeerForError(src, errTooManyTxs, memR.String())
+		return
+	}
+	peerID := memR.ids.GetIDForPeer(src.ID())
+	txInfo := mempool.TxInfo{SenderID: peerID, SenderP2PID: src.ID()}
+	for _, tx := range protoTxs {
+		if len(tx) == 0 {
+			memR.Switch.StopPeerForError(src, errEmptyTx, memR.String())
+			return
+		}
+		ntx := types.Tx(tx)
+		key := ntx.Key()
+		schema.WriteMempoolTx(memR.traceClient, string(src.ID()), key[:], len(tx), schema.Download)
+		// Mark the sender as having the tx so we don't re-push it back to them.
+		memR.mempool.PeerHasTx(peerID, key)
+		if memR.mempool.Has(key) {
+			continue
+		}
+		cachedTx := ntx.ToCachedTx()
+		if _, err := memR.tryAddNewTx(cachedTx, key, txInfo, string(src.ID())); err != nil {
+			if errors.Is(err, ErrTxInMempool) {
+				continue
+			}
+			memR.Logger.Debug("RPC push admit failed", "err", err, "tx_key", key)
+			continue
+		}
+		// Queue for chunked re-broadcast. markToBeBroadcast is a no-op when
+		// neither config.Broadcast nor rpcPushMode is set, which is the
+		// correct behavior for ListenOnly peers.
+		memR.mempool.markToBeBroadcast(key)
+	}
+}
+
 // PeerState describes the state of a peer.
 type PeerState interface {
 	GetHeight() int64
 }
 
-// broadcastNewTx is the entry point for gossiping a newly-admitted tx via the
-// chunked + erasure-coded path (ADR-012). Encodes the body, announces
-// SeenLargeTx to chunked-capable peers, and pushes K chunks across a handful
-// of bootstrap peers. The legacy SeenTx/WantTx/Txs path has been removed.
+// broadcastNewTx is the entry point for gossiping a newly-admitted tx.
+//
+// In normal mode it takes the chunked + erasure-coded path (ADR-012):
+// encode the body, announce SeenLargeTx to chunked-capable peers, push K
+// chunks across a handful of bootstrap peers.
+//
+// In RPC push mode (RPC env var set) it pushes the full Txs message to every
+// connected peer directly. Receiving peers admit the tx and re-broadcast via
+// the chunked path. This is for a small number of RPC-facing nodes that
+// shoulder the fan-out cost so the rest of the network does multi-source
+// chunked propagation among themselves.
 func (memR *Reactor) broadcastNewTx(wtx *wrappedTx) {
+	if memR.opts.RPCPushMode {
+		memR.pushTxToAllPeers(wtx)
+		return
+	}
 	memR.broadcastNewLargeTx(wtx)
+}
+
+// pushTxToAllPeers sends the full tx (Txs message on MempoolDataChannel) to
+// every connected peer. Used in RPC push mode: instead of announcing via
+// SeenLargeTx and serving chunks on demand, we proactively push the full body.
+// Peers that are too far behind or that we already know have the tx are
+// skipped.
+func (memR *Reactor) pushTxToAllPeers(wtx *wrappedTx) {
+	txKey := wtx.key()
+	memR.Logger.Debug("pushing tx to all peers", "tx_key", txKey.String())
+
+	msg := &protomem.Message{
+		Sum: &protomem.Message_Txs{
+			Txs: &protomem.Txs{Txs: [][]byte{wtx.tx.Tx}},
+		},
+	}
+
+	peers := memR.ids.GetAll()
+	if len(peers) == 0 {
+		return
+	}
+
+	for id, peer := range peers {
+		if p, ok := peer.Get(types.PeerStateKey).(PeerState); ok {
+			if p.GetHeight() < wtx.height-peerHeightDiff {
+				memR.Logger.Trace("peer is too far behind us. Skipping RPC push of tx")
+				continue
+			}
+		}
+		if memR.mempool.seenByPeersSet.Has(txKey, id) {
+			continue
+		}
+		if peer.Send(p2p.Envelope{
+			ChannelID: MempoolDataChannel,
+			Message:   msg,
+		}) {
+			memR.mempool.PeerHasTx(id, txKey)
+			schema.WriteMempoolTx(
+				memR.traceClient,
+				string(peer.ID()),
+				txKey[:],
+				len(wtx.tx.Tx),
+				schema.Upload,
+			)
+		}
+	}
 }
 
 // tryAddNewTx attempts to add a tx to the mempool and traces the result.

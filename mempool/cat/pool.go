@@ -73,10 +73,17 @@ type TxPool struct {
 	store *store
 
 	// broadcastCh is an unbuffered channel of new transactions that need to
-	// be broadcasted to peers. Only populated if `broadcast` in the config is enabled
+	// be broadcasted to peers. Only populated if `broadcast` in the config is
+	// enabled or if rpcPushMode is true.
 	broadcastCh      chan *wrappedTx
 	broadcastMtx     sync.Mutex
 	txsToBeBroadcast []types.TxKey
+
+	// rpcPushMode, when true, forces RPC-submitted transactions to be queued
+	// for broadcast even if config.Broadcast is false. The reactor pushes them
+	// as full Txs messages to every connected peer; the recipients admit and
+	// then re-broadcast via the chunked path.
+	rpcPushMode bool
 
 	// heightSignal notifies listeners whenever the mempool height advances.
 	heightSignal chan struct{}
@@ -138,6 +145,12 @@ func WithMetrics(metrics *mempool.Metrics) TxPoolOption {
 // WithTracer sets the mempool's trace client.
 func WithTracer(tracer trace.Tracer) TxPoolOption {
 	return func(txmp *TxPool) { txmp.traceClient = tracer }
+}
+
+// WithRPCPushMode enables RPC push mode on the pool, ensuring RPC-submitted
+// transactions are queued for broadcast even when config.Broadcast is false.
+func WithRPCPushMode(enabled bool) TxPoolOption {
+	return func(txmp *TxPool) { txmp.rpcPushMode = enabled }
 }
 
 // Lock locks the mempool, no new transactions can be processed
@@ -277,7 +290,7 @@ func (txmp *TxPool) next() <-chan *wrappedTx {
 // This should never block so we use a map to create an unbounded queue
 // of transactions that need to be gossiped.
 func (txmp *TxPool) markToBeBroadcast(key types.TxKey) {
-	if !txmp.config.Broadcast {
+	if !txmp.config.Broadcast && !txmp.rpcPushMode {
 		return
 	}
 
