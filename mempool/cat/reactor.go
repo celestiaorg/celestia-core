@@ -428,74 +428,14 @@ type PeerState interface {
 	GetHeight() int64
 }
 
-// broadcastNewTx is the entry point for gossiping a newly-admitted tx.
-//
-// In normal mode it takes the chunked + erasure-coded path (ADR-012):
-// encode the body, announce SeenLargeTx to chunked-capable peers, push K
-// chunks across a handful of bootstrap peers.
-//
-// In RPC push mode (RPC env var set) it pushes the full Txs message to every
-// connected peer directly. Receiving peers admit the tx and re-broadcast via
-// the chunked path. This is for a small number of RPC-facing nodes that
-// shoulder the fan-out cost so the rest of the network does multi-source
-// chunked propagation among themselves.
+// broadcastNewTx is the entry point for gossiping a newly-admitted tx via
+// the chunked + erasure-coded path (ADR-012): encode the body, announce
+// SeenLargeTx to a fanout of peers, push chunks to those peers round-robin.
+// RPC push mode uses the same path; the RPC-vs-validator distinction is on
+// the receive side (RPC nodes skip chunked-receive handlers and don't
+// re-propagate received Txs).
 func (memR *Reactor) broadcastNewTx(wtx *wrappedTx) {
-	if memR.opts.RPCPushMode {
-		memR.pushTxToAllPeers(wtx)
-		return
-	}
 	memR.broadcastNewLargeTx(wtx)
-}
-
-// pushTxToAllPeers sends the full tx (Txs message on MempoolDataChannel) to
-// every connected peer. Used in RPC push mode: instead of announcing via
-// SeenLargeTx and serving chunks on demand, we proactively push the full body.
-// Peers that are too far behind or that we already know have the tx are
-// skipped.
-func (memR *Reactor) pushTxToAllPeers(wtx *wrappedTx) {
-	txKey := wtx.key()
-	memR.Logger.Debug("pushing tx to all peers", "tx_key", txKey.String())
-
-	msg := &protomem.Message{
-		Sum: &protomem.Message_Txs{
-			Txs: &protomem.Txs{Txs: [][]byte{wtx.tx.Tx}},
-		},
-	}
-
-	peers := memR.ids.GetAll()
-	if len(peers) == 0 {
-		return
-	}
-
-	c := 0
-	for id, peer := range peers {
-		c++
-		if c == 5 {
-			break
-		}
-		if p, ok := peer.Get(types.PeerStateKey).(PeerState); ok {
-			if p.GetHeight() < wtx.height-peerHeightDiff {
-				memR.Logger.Trace("peer is too far behind us. Skipping RPC push of tx")
-				continue
-			}
-		}
-		if memR.mempool.seenByPeersSet.Has(txKey, id) {
-			continue
-		}
-		if peer.Send(p2p.Envelope{
-			ChannelID: MempoolDataChannel,
-			Message:   msg,
-		}) {
-			memR.mempool.PeerHasTx(id, txKey)
-			schema.WriteMempoolTx(
-				memR.traceClient,
-				string(peer.ID()),
-				txKey[:],
-				len(wtx.tx.Tx),
-				schema.Upload,
-			)
-		}
-	}
 }
 
 // tryAddNewTx attempts to add a tx to the mempool and traces the result.

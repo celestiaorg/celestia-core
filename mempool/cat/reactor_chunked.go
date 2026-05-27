@@ -548,16 +548,24 @@ func shufflePeers(peers map[uint16]p2p.Peer) []capablePeer {
 	return out
 }
 
-// pushChunksToAnnouncedPeers sends a random subset of chunks to every peer
-// that received SeenLargeTx. Each peer gets up to chunked.DefaultChunksPerPushPeer
-// random chunks drawn independently from the 0..NumParts-1 space. With many
-// peers and overlap of ~ChunksPerPushPeer/NumParts per chunk, every chunk gets
-// pushed to multiple peers in expectation, so receivers can pull missing
-// chunks from any of several sources instead of all hammering the originator.
+// pushChunksToAnnouncedPeers distributes chunks round-robin across the
+// announce-target peers. With P peers and N total chunks, send order is:
 //
-// Returns the total number of TxChunk messages successfully queued, for logging.
+//	chunk 0 → peer 0, chunk 1 → peer 1, ..., chunk P-1 → peer P-1,
+//	chunk P → peer 0, chunk P+1 → peer 1, ...
+//
+// Continue until each peer has received chunked.DefaultChunksPerPushPeer
+// chunks. If P * ChunksPerPushPeer > N the schedule wraps modulo N, sending
+// some chunks to multiple peers; that redundancy is intentional and helps
+// receivers tolerate slow or dropped sends.
+//
+// Round-robin gives guaranteed coverage (every chunk pushed at least once
+// when P*ChunksPerPushPeer >= N), and when gcd(P, N) == 1 every peer ends
+// up with K distinct chunks. With this distribution receivers can pull any
+// gaps from each other rather than all hammering the originator.
 func (memR *Reactor) pushChunksToAnnouncedPeers(enc *chunked.EncodedTx, txKey types.TxKey, peers []capablePeer) int {
-	if len(peers) == 0 {
+	P := len(peers)
+	if P == 0 {
 		return 0
 	}
 	total := int(enc.NumParts())
@@ -565,31 +573,29 @@ func (memR *Reactor) pushChunksToAnnouncedPeers(enc *chunked.EncodedTx, txKey ty
 		return 0
 	}
 	perPeer := chunked.DefaultChunksPerPushPeer
-	if perPeer > total {
-		perPeer = total
+	if perPeer > total && P*perPeer > total*P {
+		// no-op: cap is per-peer, not global
 	}
+	totalSends := perPeer * P
 
 	totalSent := 0
-	for i := range peers {
-		// Independent random sample without replacement for each peer.
-		perm := rand.Perm(total)
-		for j := 0; j < perPeer; j++ {
-			idx := uint32(perm[j])
-			var proof cmtcrypto.Proof
-			if enc.NumParts() > 1 {
-				proof = *enc.Proofs[idx].ToProto()
-			}
-			if peers[i].peer.TrySend(p2p.Envelope{
-				ChannelID: MempoolChunkChannel,
-				Message: &protomem.TxChunk{
-					TxKey: txKey[:],
-					Index: idx,
-					Data:  enc.Chunk(idx),
-					Proof: proof,
-				},
-			}) {
-				totalSent++
-			}
+	for i := 0; i < totalSends; i++ {
+		chunkIdx := uint32(i % total)
+		peerIdx := i % P
+		var proof cmtcrypto.Proof
+		if enc.NumParts() > 1 {
+			proof = *enc.Proofs[chunkIdx].ToProto()
+		}
+		if peers[peerIdx].peer.TrySend(p2p.Envelope{
+			ChannelID: MempoolChunkChannel,
+			Message: &protomem.TxChunk{
+				TxKey: txKey[:],
+				Index: chunkIdx,
+				Data:  enc.Chunk(chunkIdx),
+				Proof: proof,
+			},
+		}) {
+			totalSent++
 		}
 	}
 	return totalSent
