@@ -413,6 +413,20 @@ func (s *Store) Insert(p InsertParams) (*PartsState, error) {
 		return nil, ErrAlreadyExists
 	}
 
+	// Compute proofs from leaf hashes up-front. This both:
+	//   1. Validates that leaf_hashes commits to parts_root (mismatch
+	//      indicates a malformed SeenLargeTx — reject).
+	//   2. Lets the receiver serve chunks from collecting state (before
+	//      reconstruction) since proofs are ready.
+	var proofs []*merkle.Proof
+	if p.NumParts > 1 {
+		computedRoot, p2 := proofsFromLeafHashes(p.LeafHashes)
+		if !bytesEqual(computedRoot, p.PartsRoot) {
+			return nil, errors.New("chunked: leaf_hashes do not commit to parts_root")
+		}
+		proofs = p2
+	}
+
 	state := &PartsState{
 		TxKey:      p.TxKey,
 		PartsRoot:  append([]byte(nil), p.PartsRoot...),
@@ -428,9 +442,22 @@ func (s *Store) Insert(p InsertParams) (*PartsState, error) {
 		inflight:   make(map[uint16]*bits.BitArray),
 		originPeer: p.OriginPeer,
 		state:      StateCollecting,
+		proofs:     proofs,
 	}
 	s.states[p.TxKey] = state
 	return state, nil
+}
+
+func bytesEqual(a, b []byte) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
 }
 
 // InsertReconstructed seeds the store with an already-reconstructed state

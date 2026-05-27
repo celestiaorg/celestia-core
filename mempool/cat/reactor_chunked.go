@@ -803,15 +803,13 @@ func protoBitArrayToInternal(p *protobits.BitArray, numParts int) *cmtbits.BitAr
 }
 
 // chunkPayloadFor returns the data and proof for a chunk index, ready to put
-// on the wire. ok is false when we don't hold the chunk or its proof.
+// on the wire. ok is false when we don't currently hold the chunk.
 //
-// Reads directly from cached chunks + proofs in PartsState — no re-encoding.
-// Only StateReconstructed serves; collecting partials are skipped because
-// we don't yet hold a full proof set.
+// Serves from BOTH StateCollecting and StateReconstructed: proofs are
+// pre-computed from leaf_hashes at Insert time, so a peer that has only
+// downloaded some chunks can still serve those chunks to others (this is the
+// whole point of gossip — partial peers help the network reconstruct).
 func chunkPayloadFor(state *chunked.PartsState, index uint32) (data []byte, proof cmtcrypto.Proof, ok bool) {
-	if state.State() != chunked.StateReconstructed {
-		return nil, cmtcrypto.Proof{}, false
-	}
 	data, p, hasProof, ok := state.ChunkPayload(index)
 	if !ok {
 		return nil, cmtcrypto.Proof{}, false
