@@ -428,14 +428,61 @@ type PeerState interface {
 	GetHeight() int64
 }
 
-// broadcastNewTx is the entry point for gossiping a newly-admitted tx via
-// the chunked + erasure-coded path (ADR-012): encode the body, announce
-// SeenLargeTx to a fanout of peers, push chunks to those peers round-robin.
-// RPC push mode uses the same path; the RPC-vs-validator distinction is on
-// the receive side (RPC nodes skip chunked-receive handlers and don't
-// re-propagate received Txs).
+// broadcastNewTx is the entry point for gossiping a newly-admitted tx.
+//
+// Normal nodes take the chunked path (ADR-012): encode, announce
+// SeenLargeTx to a fanout of peers, push a random subset of chunks to each.
+//
+// RPC push nodes encode the tx and push the chunks directly to peers using
+// a round-robin schedule (chunk i → peer i%P). They also send SeenLargeTx
+// to those peers so receivers can verify chunks. RPC nodes do not
+// participate in chunked propagation beyond this initial push.
 func (memR *Reactor) broadcastNewTx(wtx *wrappedTx) {
+	if memR.opts.RPCPushMode {
+		memR.broadcastNewLargeTxRPC(wtx)
+		return
+	}
 	memR.broadcastNewLargeTx(wtx)
+}
+
+// broadcastNewLargeTxRPC is the RPC-push variant of chunked broadcast: it
+// encodes the tx, sends SeenLargeTx to a fanout of peers, then pushes the
+// chunks round-robin to those peers (see pushChunksRoundRobin). Receivers
+// admit when they have K-of-2K chunks; gaps are filled by the chunked
+// propagation among receivers.
+func (memR *Reactor) broadcastNewLargeTxRPC(wtx *wrappedTx) {
+	if memR.opts.ListenOnly && !memR.opts.RPCPushMode {
+		return
+	}
+	body := wtx.tx.Tx
+	if len(body) == 0 {
+		return
+	}
+	txKey := wtx.key()
+
+	enc, err := chunked.Encode(body)
+	if err != nil {
+		memR.Logger.Error("RPC push: chunked encode failed", "err", err, "tx_key", txKey)
+		return
+	}
+
+	// Retain chunks so we can serve WantTxChunks if asked (handleWantTxChunks
+	// short-circuits in RPC mode, but keeping the state is cheap and keeps
+	// the chunked store consistent with the legacy/validator path).
+	params := chunked.InsertParams{
+		TxKey:      txKey,
+		PartsRoot:  enc.PartsRoot,
+		NumParts:   enc.NumParts(),
+		LastLength: enc.LastLength,
+		LeafHashes: enc.LeafHashes,
+		OriginPeer: 0, // self
+	}
+	if _, err := memR.chunkedStore.InsertReconstructed(params, enc); err != nil &&
+		!errors.Is(err, chunked.ErrAlreadyExists) {
+		memR.Logger.Error("RPC push: InsertReconstructed failed", "err", err, "tx_key", txKey)
+	}
+
+	memR.announceLargeTxAndPushRoundRobin(enc, wtx)
 }
 
 // tryAddNewTx attempts to add a tx to the mempool and traces the result.

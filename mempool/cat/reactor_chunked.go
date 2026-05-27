@@ -131,6 +131,17 @@ func (memR *Reactor) handleSeenLargeTx(src p2p.Peer, msg *protomem.SeenLargeTx) 
 	full.Fill()
 	state.RecordHaves(peerID, full)
 
+	// Mark the sender as having the tx so our forward broadcast below
+	// doesn't echo it back to them.
+	memR.mempool.PeerHasTx(peerID, txKey)
+
+	// Forward the SeenLargeTx to our other peers. The gossip is idempotent
+	// (peers already in seenByPeersSet are skipped) and lets every peer in
+	// the network learn about the tx, not just the origin's 15-peer fanout.
+	// Peers that learn this way can request chunks from us or from anyone
+	// else that has admitted the tx.
+	memR.rebroadcastSeenLargeTx(state)
+
 	// Always register with pendingSeen so the drain machinery can find us
 	// when prior sequences land. For deferred sequences this is the only
 	// thing we do; for in-order sequences we also fire the first request.
@@ -141,6 +152,50 @@ func (memR *Reactor) handleSeenLargeTx(src p2p.Peer, msg *protomem.SeenLargeTx) 
 		return
 	}
 	memR.requestChunksFrom(state, peerID, src)
+}
+
+// rebroadcastSeenLargeTx forwards a SeenLargeTx to every peer that does not
+// yet know about the tx (per seenByPeersSet). Cheap and idempotent:
+// SeenLargeTx is just metadata; the actual chunks transit via
+// WantTxChunks/TxChunk. Forwarding the announce ensures every peer in the
+// network can discover the tx and pull from any source that has its chunks.
+func (memR *Reactor) rebroadcastSeenLargeTx(state *chunked.PartsState) {
+	if memR.opts.ListenOnly {
+		return
+	}
+	msg := &protomem.Message{
+		Sum: &protomem.Message_SeenLargeTx{
+			SeenLargeTx: &protomem.SeenLargeTx{
+				TxKey:      state.TxKey[:],
+				PartsRoot:  state.PartsRoot,
+				NumParts:   state.NumParts,
+				LastLength: state.LastLength,
+				Signer:     state.Signer,
+				Sequence:   state.Sequence,
+				LeafHashes: state.LeafHashes,
+			},
+		},
+	}
+	forwarded := 0
+	for id, peer := range memR.ids.GetAll() {
+		if peer == nil {
+			continue
+		}
+		if memR.mempool.seenByPeersSet.Has(state.TxKey, id) {
+			continue
+		}
+		if peer.Send(p2p.Envelope{
+			ChannelID: MempoolChunkChannel,
+			Message:   msg,
+		}) {
+			memR.mempool.PeerHasTx(id, state.TxKey)
+			forwarded++
+		}
+	}
+	if forwarded > 0 {
+		memR.Logger.Debug("chunked: forwarded SeenLargeTx",
+			"tx_key", state.TxKey, "to_peers", forwarded)
+	}
 }
 
 func (memR *Reactor) handleHaveTxChunks(src p2p.Peer, msg *protomem.HaveTxChunks) {
@@ -173,9 +228,12 @@ func (memR *Reactor) handleHaveTxChunks(src p2p.Peer, msg *protomem.HaveTxChunks
 }
 
 func (memR *Reactor) handleWantTxChunks(src p2p.Peer, msg *protomem.WantTxChunks) {
-	if memR.opts.ListenOnly || memR.opts.RPCPushMode {
+	if memR.opts.ListenOnly {
 		return
 	}
+	// RPC nodes intentionally still serve WantTxChunks: they pushed some
+	// round-robin chunks proactively, but peers may need more — those
+	// requests should be answered so the network can reconstruct.
 	txKey, err := types.TxKeyFromBytes(msg.TxKey)
 	if err != nil {
 		memR.Logger.Error("WantTxChunks with bad tx_key", "err", err, "src", src)
@@ -447,15 +505,38 @@ func (memR *Reactor) broadcastNewLargeTx(wtx *wrappedTx) {
 	memR.announceLargeTxAndPush(enc, wtx)
 }
 
-// announceLargeTxAndPush sends SeenLargeTx + a random subset of TxChunk
-// pushes to each peer in the announce set. Peer selection is a simple shuffle
-// — sticky-peer rendezvous (legacy CAT per-signer dedup) is not used here
-// because chunked propagation wants chunks spread *broadly*, not
-// concentrated on one signer's sticky set.
+// announceLargeTxAndPush sends SeenLargeTx to the announce set and lets
+// receivers pull missing chunks via WantTxChunks. Used by validators (non-RPC):
+// no proactive chunk push — chunks are only served on demand via
+// handleWantTxChunks. This keeps validator-to-validator traffic minimal.
 func (memR *Reactor) announceLargeTxAndPush(enc *chunked.EncodedTx, wtx *wrappedTx) {
+	memR.announceLargeTxWithPushFn(enc, wtx, noChunkPush, "pull-only")
+}
+
+// noChunkPush is the push function used by the pull-only validator path.
+// It sends nothing; receivers obtain chunks via WantTxChunks.
+func noChunkPush(_ *chunked.EncodedTx, _ types.TxKey, _ []capablePeer) int {
+	return 0
+}
+
+// announceLargeTxAndPushRoundRobin sends SeenLargeTx then pushes chunks
+// round-robin to the announce set. Used by RPC push nodes.
+func (memR *Reactor) announceLargeTxAndPushRoundRobin(enc *chunked.EncodedTx, wtx *wrappedTx) {
+	memR.announceLargeTxWithPushFn(enc, wtx, memR.pushChunksRoundRobin, "round-robin")
+}
+
+// pushFn is the signature shared by pushChunksToAnnouncedPeers (random) and
+// pushChunksRoundRobin. Returns the number of chunks successfully queued.
+type pushFn func(enc *chunked.EncodedTx, txKey types.TxKey, peers []capablePeer) int
+
+// announceLargeTxWithPushFn is the shared engine for both broadcast variants.
+// Peer selection is a simple shuffle — sticky-peer rendezvous (legacy CAT
+// per-signer dedup) is not used because chunked propagation wants chunks
+// spread broadly, not concentrated on one signer's sticky set.
+func (memR *Reactor) announceLargeTxWithPushFn(enc *chunked.EncodedTx, wtx *wrappedTx, push pushFn, mode string) {
 	peers := memR.ids.GetAll()
 	if len(peers) == 0 {
-		memR.Logger.Info("chunked announce skipped: no peers", "tx_key", wtx.key())
+		memR.Logger.Info("chunked announce skipped: no peers", "tx_key", wtx.key(), "mode", mode)
 		return
 	}
 	txKey := wtx.key()
@@ -463,6 +544,7 @@ func (memR *Reactor) announceLargeTxAndPush(enc *chunked.EncodedTx, wtx *wrapped
 		"tx_key", txKey,
 		"num_parts", enc.NumParts(),
 		"connected_peers", len(peers),
+		"mode", mode,
 	)
 
 	seenLargeMsg := &protomem.Message{
@@ -482,7 +564,6 @@ func (memR *Reactor) announceLargeTxAndPush(enc *chunked.EncodedTx, wtx *wrapped
 	chunkedFanout := chunked.AnnounceFanout(enc.NumParts(), chunked.DefaultAnnounceTarget)
 	chunkedSent := 0
 
-	// Shuffled peer list: no sticky ordering, no per-signer concentration.
 	shuffledPeers := shufflePeers(peers)
 
 	var announcedChunkedPeers []capablePeer
@@ -521,10 +602,11 @@ func (memR *Reactor) announceLargeTxAndPush(enc *chunked.EncodedTx, wtx *wrapped
 		announcedChunkedPeers = append(announcedChunkedPeers, capablePeer{id: id, peer: peer})
 	}
 
-	totalPushed := memR.pushChunksToAnnouncedPeers(enc, txKey, announcedChunkedPeers)
+	totalPushed := push(enc, txKey, announcedChunkedPeers)
 
 	memR.Logger.Info("chunked announce: done",
 		"tx_key", txKey,
+		"mode", mode,
 		"sent_seenlargetx", chunkedSent,
 		"announce_targets", len(announcedChunkedPeers),
 		"chunks_pushed_total", totalPushed,
@@ -548,22 +630,63 @@ func shufflePeers(peers map[uint16]p2p.Peer) []capablePeer {
 	return out
 }
 
-// pushChunksToAnnouncedPeers distributes chunks round-robin across the
-// announce-target peers. With P peers and N total chunks, send order is:
+// pushChunksToAnnouncedPeers sends a random subset of chunks to every peer
+// that received SeenLargeTx. Each peer gets up to chunked.DefaultChunksPerPushPeer
+// random chunks drawn independently from the 0..NumParts-1 space. With many
+// peers and overlap of ~ChunksPerPushPeer/NumParts per chunk, every chunk gets
+// pushed to multiple peers in expectation, so receivers can pull missing
+// chunks from any of several sources instead of all hammering the originator.
+//
+// Returns the total number of TxChunk messages successfully queued, for logging.
+func (memR *Reactor) pushChunksToAnnouncedPeers(enc *chunked.EncodedTx, txKey types.TxKey, peers []capablePeer) int {
+	if len(peers) == 0 {
+		return 0
+	}
+	total := int(enc.NumParts())
+	if total == 0 {
+		return 0
+	}
+	perPeer := chunked.DefaultChunksPerPushPeer
+	if perPeer > total {
+		perPeer = total
+	}
+
+	totalSent := 0
+	for i := range peers {
+		// Independent random sample without replacement for each peer.
+		perm := rand.Perm(total)
+		for j := 0; j < perPeer; j++ {
+			idx := uint32(perm[j])
+			var proof cmtcrypto.Proof
+			if enc.NumParts() > 1 {
+				proof = *enc.Proofs[idx].ToProto()
+			}
+			if peers[i].peer.TrySend(p2p.Envelope{
+				ChannelID: MempoolChunkChannel,
+				Message: &protomem.TxChunk{
+					TxKey: txKey[:],
+					Index: idx,
+					Data:  enc.Chunk(idx),
+					Proof: proof,
+				},
+			}) {
+				totalSent++
+			}
+		}
+	}
+	return totalSent
+}
+
+// pushChunksRoundRobin distributes chunks round-robin across peers, used by
+// the RPC push path. With P peers and N total chunks, send order is:
 //
 //	chunk 0 → peer 0, chunk 1 → peer 1, ..., chunk P-1 → peer P-1,
 //	chunk P → peer 0, chunk P+1 → peer 1, ...
 //
-// Continue until each peer has received chunked.DefaultChunksPerPushPeer
-// chunks. If P * ChunksPerPushPeer > N the schedule wraps modulo N, sending
-// some chunks to multiple peers; that redundancy is intentional and helps
-// receivers tolerate slow or dropped sends.
-//
-// Round-robin gives guaranteed coverage (every chunk pushed at least once
-// when P*ChunksPerPushPeer >= N), and when gcd(P, N) == 1 every peer ends
-// up with K distinct chunks. With this distribution receivers can pull any
-// gaps from each other rather than all hammering the originator.
-func (memR *Reactor) pushChunksToAnnouncedPeers(enc *chunked.EncodedTx, txKey types.TxKey, peers []capablePeer) int {
+// The schedule runs for chunked.DefaultChunksPerPushPeer * P sends; when the
+// chunk index exceeds N it wraps via i%N, so some chunks repeat (intentional
+// — bandwidth for resilience).
+func (memR *Reactor) pushChunksRoundRobin(enc *chunked.EncodedTx, txKey types.TxKey, peers []capablePeer) int {
 	P := len(peers)
 	if P == 0 {
 		return 0
@@ -572,11 +695,7 @@ func (memR *Reactor) pushChunksToAnnouncedPeers(enc *chunked.EncodedTx, txKey ty
 	if total == 0 {
 		return 0
 	}
-	perPeer := chunked.DefaultChunksPerPushPeer
-	if perPeer > total && P*perPeer > total*P {
-		// no-op: cap is per-peer, not global
-	}
-	totalSends := perPeer * P
+	totalSends := chunked.DefaultChunksPerPushPeer * P
 
 	totalSent := 0
 	for i := 0; i < totalSends; i++ {
