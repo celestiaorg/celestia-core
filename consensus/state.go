@@ -13,8 +13,6 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/cometbft/cometbft/privval"
-
 	proptypes "github.com/cometbft/cometbft/consensus/propagation/types"
 
 	"github.com/cometbft/cometbft/consensus/propagation"
@@ -146,10 +144,9 @@ type State struct {
 	nSteps int
 
 	// some functions can be overwritten for testing
-	decideProposal        func(height int64, round int32)
-	doPrevote             func(height int64, round int32)
-	setProposal           func(proposal *types.Proposal) error
-	StartedPrecommitSleep atomic.Bool
+	decideProposal func(height int64, round int32)
+	doPrevote      func(height int64, round int32)
+	setProposal    func(proposal *types.Proposal) error
 
 	// closed when we finish shutting down
 	done chan struct{}
@@ -869,11 +866,22 @@ func (cs *State) updateToState(state sm.State) {
 		}
 
 	} else {
+		var nextStartTime time.Time
 		if state.LastBlockHeight == 0 {
-			cs.rs.StartTime = cs.config.CommitWithCustomTimeout(cs.rs.CommitTime, state.Timeouts.TimeoutCommit)
+			nextStartTime = cs.config.CommitWithCustomTimeout(cs.rs.CommitTime, state.Timeouts.TimeoutCommit)
 		} else {
-			cs.rs.StartTime = cs.config.CommitWithCustomTimeout(cs.rs.CommitTime, cs.state.Timeouts.TimeoutCommit)
+			nextStartTime = cs.config.CommitWithCustomTimeout(cs.rs.CommitTime, cs.state.Timeouts.TimeoutCommit)
 		}
+
+		// Enforce minimum block time equal to the delayed precommit time
+		if !cs.rs.StartTime.IsZero() && cs.state.Timeouts.DelayedPrecommitTimeout != 0 && !cs.propagator.IsCatchingUp() {
+			minStartTime := cs.rs.StartTime.Add(cs.state.Timeouts.DelayedPrecommitTimeout)
+			if nextStartTime.Before(minStartTime) {
+				nextStartTime = minStartTime
+			}
+		}
+
+		cs.rs.StartTime = nextStartTime
 	}
 
 	cs.rs.Validators = validators
@@ -1681,25 +1689,6 @@ func (cs *State) enterPrecommit(height int64, round int32) {
 		return
 	}
 
-	if cs.StartedPrecommitSleep.CompareAndSwap(false, true) {
-		waitTime := cs.precommitDelay()
-		logger.Debug("delaying precommit", "delay", waitTime)
-		cs.unlockAll()
-		t := time.NewTimer(waitTime)
-		select {
-		case <-cs.Quit():
-			cs.lockAll()
-			return
-		case <-t.C:
-		}
-		cs.lockAll()
-		cs.StartedPrecommitSleep.Store(false)
-	} else {
-		logger.Debug("already entered precommit delay")
-		// if any other routine tries to enter precommit, we just return
-		return
-	}
-
 	logger.Debug("entering precommit step", "current", log.NewLazySprintf("%v/%v/%v", cs.rs.Height, cs.rs.Round, cs.rs.Step))
 
 	defer func() {
@@ -2172,30 +2161,6 @@ func (cs *State) recordMetrics(height int64, block *types.Block) {
 	cs.metrics.BlockSizeBytes.Set(float64(block.Size()))
 	cs.metrics.ChainSizeBytes.Add(float64(block.Size()))
 	cs.metrics.CommittedHeight.Set(float64(block.Height))
-}
-
-// KMSSigningDelay is a constant representing a delay used primarily to adjust for KMS signing latencies.
-const KMSSigningDelay = 200 * time.Millisecond
-
-// precommitDelay calculates if the process has waited at least a certain number of seconds
-// from their start time before they can vote.
-// If the application's DelayedPrecommitTimeout is set to 0, no precommit wait is done.
-// When catching up on block data, returns 0 to speed up block processing.
-func (cs *State) precommitDelay() time.Duration {
-	if cs.state.Timeouts.DelayedPrecommitTimeout == 0 {
-		// setting 0 as a special case not to reschedule the pre-commit
-		return 0
-	}
-	// When catching up, skip the delayed precommit timeout to speed up block processing.
-	if cs.propagator.IsCatchingUp() {
-		return 0
-	}
-	precommitVoteTime := cs.rs.StartTime.Add(cs.state.Timeouts.DelayedPrecommitTimeout)
-	waitTime := time.Until(precommitVoteTime)
-	if _, ok := cs.privValidator.(*privval.SignerClient); ok {
-		waitTime = waitTime - KMSSigningDelay
-	}
-	return waitTime
 }
 
 //-----------------------------------------------------------------------------
