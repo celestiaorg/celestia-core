@@ -87,6 +87,13 @@ type TxPool struct {
 
 	// heightSignal notifies listeners whenever the mempool height advances.
 	heightSignal chan struct{}
+
+	// onTxRemoved is an optional callback fired each time a transaction is
+	// removed from the mempool (commit, eviction, recheck). The reactor uses
+	// it to drop chunked-store state in lock-step with mempool removal so
+	// PartsState memory is freed promptly (ADR-013 lifecycle decision: drop
+	// PartsState on block inclusion).
+	onTxRemoved func(types.TxKey)
 }
 
 // NewTxPool constructs a new, empty content addressable txpool at the specified
@@ -415,6 +422,16 @@ func (txmp *TxPool) removeTxByKey(txKey types.TxKey) {
 	txmp.rejectedTxCache.Push(txKey, 0, "")
 	_ = txmp.store.remove(txKey)
 	txmp.seenByPeersSet.RemoveKey(txKey)
+	if txmp.onTxRemoved != nil {
+		txmp.onTxRemoved(txKey)
+	}
+}
+
+// SetOnTxRemoved installs a callback fired each time a tx is removed from the
+// mempool (commit, eviction, recheck). Used by the reactor to drop chunked-
+// store state in lock-step (ADR-013: drop PartsState on block inclusion).
+func (txmp *TxPool) SetOnTxRemoved(fn func(types.TxKey)) {
+	txmp.onTxRemoved = fn
 }
 
 // Flush purges the contents of the mempool and the cache, leaving both empty.

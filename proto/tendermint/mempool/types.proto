@@ -7,21 +7,14 @@ import "gogoproto/gogo.proto";
 import "tendermint/libs/bits/types.proto";
 import "tendermint/crypto/proof.proto";
 
+// Txs is retained as a standalone marshalling helper used by
+// consensus/propagation for serialising transaction bytes into block parts.
+// It is no longer part of the mempool channel's oneof.
 message Txs {
   repeated bytes txs = 1;
 }
 
-message SeenTx {
-  bytes  tx_key   = 1;
-  uint64 sequence = 2;
-  bytes  signer   = 3;
-}
-
-message WantTx {
-  bytes tx_key = 1;
-}
-
-// SeenLargeTx announces a chunked, erasure-coded transaction. See ADR-012.
+// SeenLargeTx announces a chunked, erasure-coded transaction. See ADR-013.
 // num_parts == 1 indicates the no-parity single-chunk degenerate case.
 message SeenLargeTx {
   bytes          tx_key      = 1;
@@ -33,33 +26,38 @@ message SeenLargeTx {
   repeated bytes leaf_hashes = 7;
 }
 
+// HaveTxChunks advertises which chunks the sender holds for a given tx.
 message HaveTxChunks {
   bytes                         tx_key = 1;
   tendermint.libs.bits.BitArray parts  = 2 [(gogoproto.nullable) = false];
 }
 
+// WantTxChunks requests one or more chunks for a given tx. The recipient
+// answers with a TxChunks message containing the chunks it holds.
 message WantTxChunks {
   bytes                         tx_key = 1;
   tendermint.libs.bits.BitArray parts  = 2 [(gogoproto.nullable) = false];
 }
 
-// TxChunk carries a single chunk plus a Merkle inclusion proof against
-// SeenLargeTx.parts_root. The proof field is empty for num_parts == 1.
+// TxChunk is a single chunk plus its Merkle proof against SeenLargeTx.parts_root.
+// The proof field is empty for num_parts == 1.
 message TxChunk {
-  bytes                   tx_key = 1;
-  uint32                  index  = 2;
-  bytes                   data   = 3;
-  tendermint.crypto.Proof proof  = 4 [(gogoproto.nullable) = false];
+  uint32                  index = 1;
+  bytes                   data  = 2;
+  tendermint.crypto.Proof proof = 3 [(gogoproto.nullable) = false];
+}
+
+// TxChunks batches up to ~16 chunks for a single tx in one envelope.
+message TxChunks {
+  bytes             tx_key = 1;
+  repeated TxChunk  chunks = 2 [(gogoproto.nullable) = false];
 }
 
 message Message {
   oneof sum {
-    Txs          txs            = 1;
-    SeenTx       seen_tx        = 2;
-    WantTx       want_tx        = 3;
     SeenLargeTx  seen_large_tx  = 4;
     HaveTxChunks have_tx_chunks = 5;
     WantTxChunks want_tx_chunks = 6;
-    TxChunk      tx_chunk       = 7;
+    TxChunks     tx_chunks      = 7;
   }
 }

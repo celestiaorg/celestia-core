@@ -1,17 +1,13 @@
 package cat
 
 import (
-	"cmp"
-	"context"
 	"errors"
 	"fmt"
-	"slices"
 	"sync/atomic"
 	"time"
 
 	abci "github.com/cometbft/cometbft/abci/types"
 	cfg "github.com/cometbft/cometbft/config"
-	"github.com/cometbft/cometbft/crypto/tmhash"
 	"github.com/cometbft/cometbft/libs/log"
 	"github.com/cometbft/cometbft/libs/trace"
 	"github.com/cometbft/cometbft/libs/trace/schema"
@@ -189,6 +185,11 @@ func NewReactor(mempool *TxPool, opts *ReactorOptions) (*Reactor, error) {
 	)
 	memR.stickySalt.Store([]byte(nil)) // establish concrete []byte type for atomic.Value
 	memR.SetStickySalt(opts.StickyPeerSalt)
+	// Lock-step PartsState lifecycle with mempool: when a tx leaves the mempool
+	// (commit, eviction, recheck), drop its chunks from the chunked store.
+	mempool.SetOnTxRemoved(func(txKey types.TxKey) {
+		memR.chunkedStore.Remove(txKey)
+	})
 	return memR, nil
 }
 
@@ -244,7 +245,6 @@ func (memR *Reactor) OnStart() error {
 	}
 
 	go memR.heightSignalLoop()
-	go memR.startChunkedSweeper()
 
 	return nil
 }
@@ -255,58 +255,39 @@ func (memR *Reactor) OnStop() {
 	memR.requests.Close()
 }
 
-// GetChannels implements Reactor by returning the list of channels for this
-// reactor.
+// GetChannels implements Reactor. Only MempoolChunkChannel is used —
+// ADR-013 removed the legacy SeenTx/WantTx/Txs path. The three legacy channels
+// are still registered so peers running older binaries during a rolling
+// upgrade can still complete the p2p handshake; they will simply receive no
+// traffic on those channels from this reactor.
 func (memR *Reactor) GetChannels() []*p2p.ChannelDescriptor {
-	largestTx := make([]byte, memR.opts.MaxTxSize)
-	txMsg := protomem.Message{
-		Sum: &protomem.Message_Txs{
-			Txs: &protomem.Txs{Txs: [][]byte{largestTx}},
-		},
-	}
-
-	stateMsg := protomem.Message{
-		Sum: &protomem.Message_SeenTx{
-			SeenTx: &protomem.SeenTx{
-				TxKey: make([]byte, tmhash.Size),
-			},
-		},
-	}
-
-	// Worst-case TxChunk size: full 64 KiB chunk plus a Merkle proof. The
-	// Merkle proof for a tree of 2*MaxBlockPartsCount leaves is ~21 levels
-	// at 32 B per aunt, well under 1 KiB. Round up generously.
-	chunkMsg := protomem.Message{
-		Sum: &protomem.Message_TxChunk{
-			TxChunk: &protomem.TxChunk{
-				TxKey: make([]byte, tmhash.Size),
-				Data:  make([]byte, chunked.ChunkSize),
-			},
-		},
-	}
+	// Worst-case per-chunk wire footprint: 64 KiB data + a Merkle proof
+	// (~21 levels × 32 B aunts ≈ 1 KiB). Batched TxChunks carries up to
+	// DefaultChunksBatchSize chunks. Round generously.
 	const chunkProofOverhead = 4 * 1024
-	chunkRecvCap := chunkMsg.Size() + chunkProofOverhead
+	const perChunkBudget = chunked.ChunkSize + chunkProofOverhead
+	chunkRecvCap := DefaultChunksBatchSize*perChunkBudget + 1024 // +envelope/key
 
 	return []*p2p.ChannelDescriptor{
 		{
 			ID:                  mempool.MempoolChannel,
 			Priority:            1,
 			SendQueueCapacity:   10,
-			RecvMessageCapacity: txMsg.Size(),
+			RecvMessageCapacity: chunkRecvCap,
 			MessageType:         &protomem.Message{},
 		},
 		{
 			ID:                  MempoolDataChannel,
 			Priority:            3,
 			SendQueueCapacity:   1000,
-			RecvMessageCapacity: txMsg.Size(),
+			RecvMessageCapacity: chunkRecvCap,
 			MessageType:         &protomem.Message{},
 		},
 		{
 			ID:                  MempoolWantsChannel,
 			Priority:            3,
 			SendQueueCapacity:   1000,
-			RecvMessageCapacity: stateMsg.Size(),
+			RecvMessageCapacity: chunkRecvCap,
 			MessageType:         &protomem.Message{},
 		},
 		{
@@ -343,83 +324,23 @@ func (memR *Reactor) RemovePeer(peer p2p.Peer, reason interface{}) {
 	}
 }
 
-// Receive dispatches chunked-mempool messages (ADR-012) plus the legacy
-// Txs message used by the RPC-push admission path. SeenTx/WantTx are no-ops:
-// they only existed for the legacy pull protocol, which is gone.
+// Receive dispatches ADR-013 chunked-mempool messages. The legacy
+// SeenTx/WantTx/Txs path has been removed entirely; only the four chunked
+// messages are accepted.
 func (memR *Reactor) Receive(e p2p.Envelope) {
 	switch msg := e.Message.(type) {
-
-	case *protomem.Txs:
-		// RPC-push admission: a peer (typically an RPC-facing node running
-		// with RPC=1) is pushing us full transactions. Admit each through
-		// CheckTx; on success markToBeBroadcast queues the tx for chunked
-		// re-broadcast so peer-to-peer fan-out runs via the chunked path.
-		memR.handlePushedTxs(e.Src, msg)
-
-	case *protomem.SeenTx, *protomem.WantTx:
-		// Legacy pull protocol is removed; silently ignore. Kept as a case
-		// so peers still running older binaries during a rolling upgrade
-		// are not disconnected on every gossip.
-		_ = msg
-
 	case *protomem.SeenLargeTx:
 		memR.handleSeenLargeTx(e.Src, msg)
 	case *protomem.HaveTxChunks:
 		memR.handleHaveTxChunks(e.Src, msg)
 	case *protomem.WantTxChunks:
 		memR.handleWantTxChunks(e.Src, msg)
-	case *protomem.TxChunk:
-		memR.handleTxChunk(e.Src, msg)
-
+	case *protomem.TxChunks:
+		memR.handleTxChunks(e.Src, msg)
 	default:
 		memR.Logger.Error("unknown message type", "src", e.Src, "chId", e.ChannelID, "msg", fmt.Sprintf("%T", msg))
 		memR.Switch.StopPeerForError(e.Src, fmt.Errorf("mempool cannot handle message of type: %T", msg), memR.String())
 		return
-	}
-}
-
-// handlePushedTxs admits each tx pushed by an RPC-mode peer and queues it
-// for chunked re-broadcast. ListenOnly nodes still skip the rebroadcast at
-// markToBeBroadcast/broadcast-goroutine level.
-func (memR *Reactor) handlePushedTxs(src p2p.Peer, msg *protomem.Txs) {
-	protoTxs := msg.GetTxs()
-	if len(protoTxs) == 0 {
-		memR.Switch.StopPeerForError(src, errEmptyTx, memR.String())
-		return
-	}
-	if len(protoTxs) > mempool.MaxTxsPerMessage {
-		memR.Switch.StopPeerForError(src, errTooManyTxs, memR.String())
-		return
-	}
-	peerID := memR.ids.GetIDForPeer(src.ID())
-	txInfo := mempool.TxInfo{SenderID: peerID, SenderP2PID: src.ID()}
-	for _, tx := range protoTxs {
-		if len(tx) == 0 {
-			memR.Switch.StopPeerForError(src, errEmptyTx, memR.String())
-			return
-		}
-		ntx := types.Tx(tx)
-		key := ntx.Key()
-		schema.WriteMempoolTx(memR.traceClient, string(src.ID()), key[:], len(tx), schema.Download)
-		// Mark the sender as having the tx so we don't re-push it back to them.
-		memR.mempool.PeerHasTx(peerID, key)
-		if memR.mempool.Has(key) {
-			continue
-		}
-		cachedTx := ntx.ToCachedTx()
-		if _, err := memR.tryAddNewTx(cachedTx, key, txInfo, string(src.ID())); err != nil {
-			if errors.Is(err, ErrTxInMempool) {
-				continue
-			}
-			memR.Logger.Debug("RPC push admit failed", "err", err, "tx_key", key)
-			continue
-		}
-		// On non-RPC-push nodes: queue for chunked re-broadcast so peer-to-peer
-		// fan-out runs via the chunked path. RPC push nodes skip the re-broadcast
-		// — they are pure sources that only push txs from their own local RPC.
-		if !memR.opts.RPCPushMode {
-			memR.mempool.markToBeBroadcast(key)
-		}
 	}
 }
 
@@ -429,60 +350,19 @@ type PeerState interface {
 }
 
 // broadcastNewTx is the entry point for gossiping a newly-admitted tx.
+// Per ADR-013, the role is per-tx and per-node:
+//   - RPC-admit, env RPC=1   → Push RPC (broadcastNewLargeTxPush)
+//   - RPC-admit, env RPC unset → Default RPC (broadcastNewLargeTxDefault)
 //
-// Normal nodes take the chunked path (ADR-012): encode, announce
-// SeenLargeTx to a fanout of peers, push a random subset of chunks to each.
-//
-// RPC push nodes encode the tx and push the chunks directly to peers using
-// a round-robin schedule (chunk i → peer i%P). They also send SeenLargeTx
-// to those peers so receivers can verify chunks. RPC nodes do not
-// participate in chunked propagation beyond this initial push.
+// Gossip-admitted txs reach the broadcast goroutine via markToBeBroadcast in
+// reconstructAndAdmit and are re-announced via broadcastFullHaveAfterAdmit
+// (called inline from the reconstruction path), not via this function.
 func (memR *Reactor) broadcastNewTx(wtx *wrappedTx) {
 	if memR.opts.RPCPushMode {
-		memR.broadcastNewLargeTxRPC(wtx)
+		memR.broadcastNewLargeTxPush(wtx)
 		return
 	}
-	memR.broadcastNewLargeTx(wtx)
-}
-
-// broadcastNewLargeTxRPC is the RPC-push variant of chunked broadcast: it
-// encodes the tx, sends SeenLargeTx to a fanout of peers, then pushes the
-// chunks round-robin to those peers (see pushChunksRoundRobin). Receivers
-// admit when they have K-of-2K chunks; gaps are filled by the chunked
-// propagation among receivers.
-func (memR *Reactor) broadcastNewLargeTxRPC(wtx *wrappedTx) {
-	if memR.opts.ListenOnly && !memR.opts.RPCPushMode {
-		return
-	}
-	body := wtx.tx.Tx
-	if len(body) == 0 {
-		return
-	}
-	txKey := wtx.key()
-
-	enc, err := chunked.Encode(body)
-	if err != nil {
-		memR.Logger.Error("RPC push: chunked encode failed", "err", err, "tx_key", txKey)
-		return
-	}
-
-	// Retain chunks so we can serve WantTxChunks if asked (handleWantTxChunks
-	// short-circuits in RPC mode, but keeping the state is cheap and keeps
-	// the chunked store consistent with the legacy/validator path).
-	params := chunked.InsertParams{
-		TxKey:      txKey,
-		PartsRoot:  enc.PartsRoot,
-		NumParts:   enc.NumParts(),
-		LastLength: enc.LastLength,
-		LeafHashes: enc.LeafHashes,
-		OriginPeer: 0, // self
-	}
-	if _, err := memR.chunkedStore.InsertReconstructed(params, enc); err != nil &&
-		!errors.Is(err, chunked.ErrAlreadyExists) {
-		memR.Logger.Error("RPC push: InsertReconstructed failed", "err", err, "tx_key", txKey)
-	}
-
-	memR.announceLargeTxAndPushRoundRobin(enc, wtx)
+	memR.broadcastNewLargeTxDefault(wtx)
 }
 
 // tryAddNewTx attempts to add a tx to the mempool and traces the result.
@@ -512,138 +392,14 @@ func (memR *Reactor) tryAddNewTx(cachedTx *types.CachedTx, key types.TxKey, txIn
 	return rsp, nil
 }
 
-// processReceivedBuffer drains buffered transactions for a signer in sequence
-// order. The chunked admit path calls this after each in-order admission to
-// pull dependent sequences out of receivedBuffer. Re-broadcast of admitted
-// txs happens via markToBeBroadcast → broadcastNewLargeTx, not here.
-func (memR *Reactor) processReceivedBuffer(signer []byte) {
-	if len(signer) == 0 {
-		return
-	}
-
-	for {
-		expectedSeq, haveExpected := memR.querySequenceFromApplication(signer)
-		if !haveExpected {
-			break
-		}
-
-		buffered := memR.receivedBuffer.get(signer, expectedSeq)
-		if buffered == nil {
-			break
-		}
-		memR.receivedBuffer.removeLowerSeqs(signer, expectedSeq)
-
-		rsp, err := memR.tryAddNewTx(buffered.tx, buffered.txKey, buffered.txInfo, buffered.peerID)
-		if err == nil || errors.Is(err, ErrTxInMempool) {
-			memR.pendingSeen.remove(buffered.txKey)
-		}
-		if err != nil {
-			break
-		}
-		if rsp != nil && rsp.Code == 0 {
-			memR.mempool.markToBeBroadcast(buffered.txKey)
-		}
-	}
-}
-
-// processPendingSeenForSigner tries to advance the pipeline of queued transactions for a signer.
-// It requests consecutive sequences in parallel from different peers whenever we have seen a consecutive sequence numbers,
-// buffering out-of-order arrivals for later processing. This allows fast catch-up even when tx sources are distributed.
-func (memR *Reactor) processPendingSeenForSigner(signer []byte) {
-	if len(signer) == 0 {
-		return
-	}
-
-	entries := memR.pendingSeen.entriesForSigner(signer)
-	if len(entries) == 0 {
-		return
-	}
-	slices.SortFunc(entries, func(a, b *pendingSeenTx) int {
-		return cmp.Compare(a.sequence, b.sequence)
-	})
-	expectedSeq, haveExpected := memR.querySequenceFromApplication(signer)
-	if !haveExpected {
-		memR.Logger.Error("no signer found in application")
-		return
-	}
-
-	// Clean up old entries and request consecutive sequences in parallel
-	nextSeq := expectedSeq
-	requested := 0
-
-	for _, entry := range entries {
-		// Clean up entries that are already processed
-		if entry.sequence < expectedSeq {
-			memR.pendingSeen.remove(entry.txKey)
-			continue
-		}
-
-		if entry.sequence != nextSeq {
-			break
-		}
-
-		// Check limits
-		if requested >= maxReceivedBufferSize {
-			break
-		}
-
-		// Skip if already in mempool
-		if memR.mempool.Has(entry.txKey) {
-			memR.pendingSeen.remove(entry.txKey)
-			nextSeq++
-			continue
-		}
-
-		// Skip if already being requested, but count it
-		if memR.requests.ForTx(entry.txKey) != 0 || entry.requested {
-			nextSeq++
-			requested++
-			continue
-		}
-
-		// Request from first available peer
-		if memR.tryRequestQueuedTx(entry) {
-			requested++
-		}
-		nextSeq++
-	}
-
-	if requested > 0 {
-		memR.Logger.Trace("parallel requests sent", "count", requested)
-	}
-}
-
-// tryRequestQueuedTx triggers a chunked WantTxChunks for an entry drained
-// from pendingSeen. Returns true if at least one peer was asked.
-func (memR *Reactor) tryRequestQueuedTx(entry *pendingSeenTx) bool {
-	state := memR.chunkedStore.Get(entry.txKey)
-	if state == nil {
-		// No chunked state — nothing we can fetch (legacy fetch removed).
-		return false
-	}
-	asked := false
-	for _, peerID := range entry.peerIDs() {
-		peer := memR.ids.GetPeer(peerID)
-		if peer == nil {
-			continue
-		}
-		memR.requestChunksFrom(state, peerID, peer)
-		asked = true
-	}
-	return asked
-}
-
-func (memR *Reactor) onRequestTimeout(txKey types.TxKey, peerID uint16) {
-	memR.pendingSeen.markRequestFailed(txKey, peerID)
-	memR.findNewPeerToRequestTx(txKey)
-}
-
+// heightSignalLoop drains the mempool's height-signal channel. ADR-013 has no
+// sequence-aware buffering, so there is no per-signer state to refresh on
+// height changes; we simply consume the signal so producers don't block.
 func (memR *Reactor) heightSignalLoop() {
 	heightSignal := memR.mempool.HeightSignal()
 	if heightSignal == nil {
 		return
 	}
-
 	for {
 		select {
 		case <-memR.Quit():
@@ -652,66 +408,11 @@ func (memR *Reactor) heightSignalLoop() {
 			if !ok {
 				return
 			}
-			memR.refreshPendingSeenQueues()
 		}
 	}
 }
 
-func (memR *Reactor) refreshPendingSeenQueues() {
-	// Collect signers from both pending seen and buffer
-	seenSigners := make(map[string][]byte)
-
-	for _, signer := range memR.pendingSeen.signerKeys() {
-		seenSigners[string(signer)] = signer
-	}
-	for _, signer := range memR.receivedBuffer.signerKeys() {
-		seenSigners[string(signer)] = signer
-	}
-
-	if len(seenSigners) == 0 {
-		return
-	}
-
-	for _, signer := range seenSigners {
-		// First drain any buffered txs that can now be processed
-		// (their expected sequence may have advanced due to block commit)
-		memR.processReceivedBuffer(signer)
-		// Then request more pending txs
-		memR.processPendingSeenForSigner(signer)
-	}
-}
-
-func (memR *Reactor) querySequenceFromApplication(signer []byte) (uint64, bool) {
-	ctx := context.Background()
-	resp, err := memR.mempool.proxyAppConn.QuerySequence(ctx, &abci.RequestQuerySequence{Signer: signer})
-	if err != nil || resp == nil {
-		return 0, false
-	}
-	// If the response is 0, treat it as "sequence tracking not available"
-	// to maintain backward compatibility with apps that don't implement QuerySequence.
-	// This prevents transactions from being stuck in pendingSeen when the app returns 0.
-	if resp.Sequence == 0 {
-		return 0, false
-	}
-	return resp.Sequence, true
-}
-
-// findNewPeerToRequestTx kicks a chunked re-fetch when an in-flight request
-// fails or times out. With the chunked store driving propagation, fetching a
-// missing tx means asking any peer that advertises chunks for it.
-func (memR *Reactor) findNewPeerToRequestTx(txKey types.TxKey) {
-	if memR.ids.Len() == 0 {
-		return
-	}
-	state := memR.chunkedStore.Get(txKey)
-	if state == nil {
-		return
-	}
-	for _, peer := range memR.ids.GetAll() {
-		if peer == nil {
-			continue
-		}
-		peerID := memR.ids.GetIDForPeer(peer.ID())
-		memR.requestChunksFrom(state, peerID, peer)
-	}
-}
+// findNewPeerToRequestTx is a no-op under ADR-013: there is no timer-based
+// retry. K-of-2K redundancy plus broad HaveTxChunks gossip drive recovery
+// from peer disconnect.
+func (memR *Reactor) findNewPeerToRequestTx(_ types.TxKey) {}

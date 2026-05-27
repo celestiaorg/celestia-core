@@ -42,6 +42,7 @@ var (
 	ErrUnknownTx           = errors.New("chunked: unknown tx_key")
 	ErrChunkOutOfRange     = errors.New("chunked: chunk index out of range")
 	ErrChunkAlreadyPresent = errors.New("chunked: chunk already present")
+	ErrLeafHashesMismatch  = errors.New("chunked: leaf_hashes do not commit to parts_root")
 )
 
 // PartsState holds all per-tx state for chunked propagation.
@@ -75,6 +76,7 @@ type PartsState struct {
 	// Per-peer maps. Keys are p2p IDs assigned by the reactor's mempoolIDs.
 	haves    map[uint16]*bits.BitArray // chunks the peer advertises
 	inflight map[uint16]*bits.BitArray // chunks we've requested from the peer
+	notified map[uint16]*bits.BitArray // chunks we've told the peer we hold
 
 	originPeer   uint16
 	firstChunkAt time.Time
@@ -210,6 +212,122 @@ func (p *PartsState) ClearInflightIndex(peerID uint16, index uint32) {
 	if ba, ok := p.inflight[peerID]; ok && ba != nil {
 		ba.SetIndex(int(index), false)
 	}
+}
+
+// ClearPeer drops all per-peer state for the given peer. Used on peer
+// disconnect so backup announcers can be promoted (any in-flight chunks that
+// were Want-ed from this peer become re-requestable).
+func (p *PartsState) ClearPeer(peerID uint16) {
+	p.mtx.Lock()
+	defer p.mtx.Unlock()
+	delete(p.haves, peerID)
+	delete(p.inflight, peerID)
+	delete(p.notified, peerID)
+}
+
+// PeerHasChunk reports whether peer P has told us it holds chunk index.
+func (p *PartsState) PeerHasChunk(peerID uint16, index uint32) bool {
+	p.mtx.Lock()
+	defer p.mtx.Unlock()
+	have, ok := p.haves[peerID]
+	if !ok || have == nil {
+		return false
+	}
+	return have.GetIndex(int(index))
+}
+
+// PeerKnowsChunk reports whether peer P either holds chunk index (haves) or
+// has been told by us that we hold it (notified). Used to skip redundant
+// HaveTxChunks gossip.
+func (p *PartsState) PeerKnowsChunk(peerID uint16, index uint32) bool {
+	p.mtx.Lock()
+	defer p.mtx.Unlock()
+	if have, ok := p.haves[peerID]; ok && have != nil && have.GetIndex(int(index)) {
+		return true
+	}
+	if n, ok := p.notified[peerID]; ok && n != nil && n.GetIndex(int(index)) {
+		return true
+	}
+	return false
+}
+
+// PeerHasAll reports whether peer P holds every chunk.
+func (p *PartsState) PeerHasAll(peerID uint16) bool {
+	p.mtx.Lock()
+	defer p.mtx.Unlock()
+	have, ok := p.haves[peerID]
+	if !ok || have == nil {
+		return false
+	}
+	for i := uint32(0); i < p.NumParts; i++ {
+		if !have.GetIndex(int(i)) {
+			return false
+		}
+	}
+	return true
+}
+
+// RecordNotified marks that we have told peer P about the given chunks
+// (i.e. we sent them HaveTxChunks containing these bits).
+func (p *PartsState) RecordNotified(peerID uint16, parts *bits.BitArray) {
+	if parts == nil {
+		return
+	}
+	p.mtx.Lock()
+	defer p.mtx.Unlock()
+	cur, ok := p.notified[peerID]
+	if !ok || cur == nil {
+		cur = bits.NewBitArray(int(p.NumParts))
+		p.notified[peerID] = cur
+	}
+	cur.AddBitArray(parts)
+}
+
+// RequestableFromPeer returns up to batchSize chunks the peer advertises that
+// we still need AND that are not currently in-flight to any peer. Honors a
+// per-peer in-flight cap (no more outstanding chunks than perPeerCap from
+// any one peer). Returns nil when nothing is requestable.
+func (p *PartsState) RequestableFromPeer(peerID uint16, perPeerCap, batchSize int) *bits.BitArray {
+	p.mtx.Lock()
+	defer p.mtx.Unlock()
+	have, ok := p.haves[peerID]
+	if !ok || have == nil {
+		return nil
+	}
+	curInflight := 0
+	if ba, ok := p.inflight[peerID]; ok && ba != nil {
+		for i := uint32(0); i < p.NumParts; i++ {
+			if ba.GetIndex(int(i)) {
+				curInflight++
+			}
+		}
+	}
+	remaining := perPeerCap - curInflight
+	if remaining <= 0 {
+		return nil
+	}
+	if remaining > batchSize {
+		remaining = batchSize
+	}
+	out := bits.NewBitArray(int(p.NumParts))
+	taken := 0
+	for i := uint32(0); i < p.NumParts && taken < remaining; i++ {
+		if !have.GetIndex(int(i)) {
+			continue
+		}
+		if p.received.GetIndex(int(i)) {
+			continue
+		}
+		if p.anyInflightLocked(int(i)) {
+			continue
+		}
+		out.SetIndex(int(i), true)
+		taken++
+	}
+	if taken == 0 {
+		return nil
+	}
+	return out
 }
 
 // Install installs a verified chunk. The caller must have already validated
@@ -422,7 +540,7 @@ func (s *Store) Insert(p InsertParams) (*PartsState, error) {
 	if p.NumParts > 1 {
 		computedRoot, p2 := proofsFromLeafHashes(p.LeafHashes)
 		if !bytesEqual(computedRoot, p.PartsRoot) {
-			return nil, errors.New("chunked: leaf_hashes do not commit to parts_root")
+			return nil, ErrLeafHashesMismatch
 		}
 		proofs = p2
 	}
@@ -440,6 +558,7 @@ func (s *Store) Insert(p InsertParams) (*PartsState, error) {
 		received:   bits.NewBitArray(int(p.NumParts)),
 		haves:      make(map[uint16]*bits.BitArray),
 		inflight:   make(map[uint16]*bits.BitArray),
+		notified:   make(map[uint16]*bits.BitArray),
 		originPeer: p.OriginPeer,
 		state:      StateCollecting,
 		proofs:     proofs,
