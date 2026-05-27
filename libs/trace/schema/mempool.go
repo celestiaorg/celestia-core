@@ -17,6 +17,7 @@ func MempoolTables() []string {
 		MempoolRequestSchedulingTable,
 		MempoolReapTable,
 		MempoolRecheckBatchTable,
+		MempoolChunkedMessageTable,
 	}
 }
 
@@ -528,5 +529,86 @@ func WriteMempoolRecheckBatch(
 		Phase:      phase,
 		TxCount:    txCount,
 		DurationNs: durationNs,
+	})
+}
+
+const (
+	// MempoolChunkedMessageTable is the tracing "measurement" (aka table) for
+	// every chunked-mempool wire message (ADR-013). Rows are emitted on both
+	// send and receive sides so an operator can reconstruct per-tx timelines
+	// and pinpoint which propagation phase is slow (announce, want, serve,
+	// reconstruct).
+	MempoolChunkedMessageTable = "mempool_chunked_message"
+)
+
+// MempoolChunkedMessageType identifies which ADR-013 wire message this row
+// describes.
+type MempoolChunkedMessageType string
+
+const (
+	ChunkedSeenLargeTx  MempoolChunkedMessageType = "seen_large_tx"
+	ChunkedHaveTxChunks MempoolChunkedMessageType = "have_tx_chunks"
+	ChunkedWantTxChunks MempoolChunkedMessageType = "want_tx_chunks"
+	ChunkedTxChunks     MempoolChunkedMessageType = "tx_chunks"
+	// ChunkedReconstructed is recorded when this node finishes reconstructing
+	// the body from K-of-2K chunks and admits it. Not a wire message; sits in
+	// the same table so the per-tx timeline is consolidated.
+	ChunkedReconstructed MempoolChunkedMessageType = "reconstructed"
+	// ChunkedOriginate is recorded when this node admits a tx via local RPC
+	// and starts disseminating (Default or Push RPC path). Marks t=0 for the
+	// per-tx timeline.
+	ChunkedOriginate MempoolChunkedMessageType = "originate"
+)
+
+// MempoolChunkedMessage describes the schema for the
+// "mempool_chunked_message" table. Each row is one wire-level event keyed
+// by tx_key so a downstream analysis can group by tx and order by timestamp.
+//
+// Field meanings by message type:
+//
+//	seen_large_tx:    num_chunks = NumParts; payload_bytes = serialized SeenLargeTx size
+//	have_tx_chunks:   num_chunks = bits set in the bitmap;     payload_bytes ≈ bitmap bytes
+//	want_tx_chunks:   num_chunks = bits set in the bitmap;     payload_bytes ≈ bitmap bytes
+//	tx_chunks:        num_chunks = number of chunks in batch;  payload_bytes = sum(chunk.Data)
+//	reconstructed:    num_chunks = NumParts;                   payload_bytes = body size
+//	originate:        num_chunks = NumParts;                   payload_bytes = body size
+type MempoolChunkedMessage struct {
+	TxHash       string                    `json:"tx_hash"`
+	Peer         string                    `json:"peer"`
+	MsgType      MempoolChunkedMessageType `json:"msg_type"`
+	TransferType TransferType              `json:"transfer_type"`
+	NumChunks    int                       `json:"num_chunks"`
+	PayloadBytes int                       `json:"payload_bytes,omitempty"`
+	Role         string                    `json:"role,omitempty"`
+}
+
+// Table returns the table name for MempoolChunkedMessage.
+func (MempoolChunkedMessage) Table() string {
+	return MempoolChunkedMessageTable
+}
+
+// WriteMempoolChunkedMessage writes a single chunked-mempool wire-event
+// trace row. Cheap when tracing is off (returns early via IsCollecting).
+func WriteMempoolChunkedMessage(
+	client trace.Tracer,
+	peer string,
+	msgType MempoolChunkedMessageType,
+	transferType TransferType,
+	txHash []byte,
+	numChunks int,
+	payloadBytes int,
+	role string,
+) {
+	if !client.IsCollecting(MempoolChunkedMessageTable) {
+		return
+	}
+	client.Write(MempoolChunkedMessage{
+		TxHash:       bytes.HexBytes(txHash).String(),
+		Peer:         peer,
+		MsgType:      msgType,
+		TransferType: transferType,
+		NumChunks:    numChunks,
+		PayloadBytes: payloadBytes,
+		Role:         role,
 	})
 }

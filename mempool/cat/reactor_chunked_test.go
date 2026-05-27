@@ -267,9 +267,35 @@ func TestPushRPCOrigination_FullBitmapAndChunkPush(t *testing.T) {
 		"Push RPC: SeenLargeTx should go to every peer")
 	require.Equal(t, numPeers, fullHaveCount,
 		"Push RPC: full-bitmap HaveTxChunks should go to every peer")
+	// Adaptive push: for a small body (~256 KiB) and 12 peers, redundancy
+	// hits the numPeers cap (saturation) — every chunk goes to every peer.
+	expectedRedundancy := adaptivePushRedundancy(len(body), numPeers)
 	for i := 0; i < numParts; i++ {
-		require.Equal(t, DefaultPushRPCChunkRedundancy, chunkPushPerIdx[uint32(i)],
-			"chunk %d pushed %d times, want %d", i, chunkPushPerIdx[uint32(i)], DefaultPushRPCChunkRedundancy)
+		require.Equal(t, expectedRedundancy, chunkPushPerIdx[uint32(i)],
+			"chunk %d pushed %d times, want %d", i, chunkPushPerIdx[uint32(i)], expectedRedundancy)
+	}
+}
+
+// adaptivePushRedundancy must clamp to numPeers (saturation) for small txs
+// and floor at DefaultPushRPCChunkRedundancy for large txs.
+func TestAdaptivePushRedundancy(t *testing.T) {
+	cases := []struct {
+		name     string
+		txSize   int
+		numPeers int
+		want     int
+	}{
+		{"saturate tiny tx on small mesh", 1 << 18, 12, 12}, // 256 KiB on 12 peers → cap at 12
+		{"saturate 1 MiB on big mesh", 1 << 20, 89, 89},     // 1 MiB on 89 peers → cap at 89
+		{"4 MiB drops below saturation", 4 << 20, 89, 25},   // 100/4 = 25
+		{"8 MiB drops further", 8 << 20, 89, 12},            // 100/8 = 12
+		{"32 MiB hits floor", 32 << 20, 89, DefaultPushRPCChunkRedundancy},
+		{"zero peers", 1 << 20, 0, 0},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			require.Equal(t, tc.want, adaptivePushRedundancy(tc.txSize, tc.numPeers))
+		})
 	}
 }
 

@@ -8,6 +8,7 @@ import (
 
 	"github.com/cometbft/cometbft/crypto/merkle"
 	cmtbits "github.com/cometbft/cometbft/libs/bits"
+	"github.com/cometbft/cometbft/libs/trace/schema"
 	"github.com/cometbft/cometbft/mempool"
 	"github.com/cometbft/cometbft/mempool/cat/chunked"
 	"github.com/cometbft/cometbft/p2p"
@@ -36,9 +37,20 @@ const (
 	// to this many peers from the fanout set on Default RPC origination.
 	DefaultHaveTxChunksRedundancy = 2
 
-	// DefaultPushRPCChunkRedundancy: number of peers each chunk is pushed to
-	// (round-robin) from a Push RPC origin.
+	// DefaultPushRPCChunkRedundancy: minimum number of peers each chunk is
+	// pushed to from a Push RPC origin. Actual redundancy is adaptive (see
+	// adaptivePushRedundancy): for small blobs the redundancy climbs toward
+	// the full peer set so every peer receives every chunk directly; for
+	// large blobs it stays near this floor to keep origin upload bounded.
 	DefaultPushRPCChunkRedundancy = 6
+
+	// DefaultMaxPushBytes caps the total bytes a Push RPC origin uploads per
+	// tx via proactive push: total_push_bytes ≈ redundancy × tx_size, so the
+	// adaptive redundancy is floor(MaxPushBytes / tx_size), clamped above by
+	// the connected-peer count and below by DefaultPushRPCChunkRedundancy.
+	// 100 MiB lets a 1 MB blob be pushed to every peer in a ~100-peer mesh
+	// while keeping a 32 MB blob at the 6× floor.
+	DefaultMaxPushBytes = 100 << 20
 
 	// DefaultPerPeerInflightCap: max chunks in-flight to a single peer.
 	DefaultPerPeerInflightCap = 16
@@ -81,6 +93,9 @@ func (memR *Reactor) handleSeenLargeTx(src p2p.Peer, msg *protomem.SeenLargeTx) 
 		return
 	}
 	peerID := memR.ids.GetIDForPeer(src.ID())
+	schema.WriteMempoolChunkedMessage(memR.traceClient, string(src.ID()),
+		schema.ChunkedSeenLargeTx, schema.Download, msg.TxKey,
+		int(msg.NumParts), msg.Size(), "")
 
 	if memR.mempool.Has(txKey) {
 		memR.mempool.PeerHasTx(peerID, txKey)
@@ -135,6 +150,9 @@ func (memR *Reactor) handleHaveTxChunks(src p2p.Peer, msg *protomem.HaveTxChunks
 	}
 	peerID := memR.ids.GetIDForPeer(src.ID())
 	parts := protoBitArrayToInternal(&msg.Parts, int(state.NumParts))
+	schema.WriteMempoolChunkedMessage(memR.traceClient, string(src.ID()),
+		schema.ChunkedHaveTxChunks, schema.Download, msg.TxKey,
+		len(parts.GetTrueIndices()), msg.Size(), "")
 	state.RecordHaves(peerID, parts)
 	memR.requestMissingFromPeer(state, peerID, src)
 }
@@ -159,6 +177,9 @@ func (memR *Reactor) handleWantTxChunks(src p2p.Peer, msg *protomem.WantTxChunks
 		return
 	}
 	wanted := protoBitArrayToInternal(&msg.Parts, int(state.NumParts))
+	schema.WriteMempoolChunkedMessage(memR.traceClient, string(src.ID()),
+		schema.ChunkedWantTxChunks, schema.Download, msg.TxKey,
+		len(wanted.GetTrueIndices()), msg.Size(), "")
 	memR.serveChunks(state, src, wanted)
 }
 
@@ -182,6 +203,13 @@ func (memR *Reactor) handleTxChunks(src p2p.Peer, msg *protomem.TxChunks) {
 		return
 	}
 	peerID := memR.ids.GetIDForPeer(src.ID())
+	payloadBytes := 0
+	for i := range msg.Chunks {
+		payloadBytes += len(msg.Chunks[i].Data)
+	}
+	schema.WriteMempoolChunkedMessage(memR.traceClient, string(src.ID()),
+		schema.ChunkedTxChunks, schema.Download, msg.TxKey,
+		len(msg.Chunks), payloadBytes, "")
 	installedThisBatch := cmtbits.NewBitArray(int(state.NumParts))
 	triggerReconstruct := false
 	for i := range msg.Chunks {
@@ -445,6 +473,9 @@ func (memR *Reactor) reconstructAndAdmit(state *chunked.PartsState, src p2p.Peer
 		memR.chunkedStore.Remove(state.TxKey)
 		return
 	}
+	schema.WriteMempoolChunkedMessage(memR.traceClient, string(src.ID()),
+		schema.ChunkedReconstructed, schema.Download, state.TxKey[:],
+		int(state.NumParts), len(body), "")
 	peerID := memR.ids.GetIDForPeer(src.ID())
 	cachedTx := types.Tx(body).ToCachedTx()
 	txInfo := mempool.TxInfo{SenderID: peerID, SenderP2PID: src.ID()}
@@ -483,6 +514,9 @@ func (memR *Reactor) broadcastNewLargeTxDefault(wtx *wrappedTx) {
 	if P == 0 {
 		return
 	}
+	schema.WriteMempoolChunkedMessage(memR.traceClient, "",
+		schema.ChunkedOriginate, schema.Upload, state.TxKey[:],
+		int(enc.NumParts()), len(wtx.tx.Tx), "default_rpc")
 
 	// Build per-peer HaveTxChunks bitmaps: chunk i is announced to
 	// DefaultHaveTxChunksRedundancy distinct peers, spread across all peers.
@@ -524,8 +558,13 @@ func (memR *Reactor) broadcastNewLargeTxDefault(wtx *wrappedTx) {
 }
 
 // broadcastNewLargeTxPush is Push RPC origination: SeenLargeTx +
-// HaveTxChunks(full bitmap) to ALL peers, then push each chunk to 6 distinct
-// round-robin peers via batched TxChunks.
+// HaveTxChunks(full bitmap) to ALL peers, then push each chunk to a
+// size-adaptive number of round-robin peers via batched TxChunks.
+//
+// Push redundancy is bounded by DefaultMaxPushBytes: small blobs saturate
+// the network (every chunk delivered to every peer directly, no pull needed
+// for reconstruction); large blobs use the DefaultPushRPCChunkRedundancy
+// floor so origin upload stays bounded.
 func (memR *Reactor) broadcastNewLargeTxPush(wtx *wrappedTx) {
 	state, enc, ok := memR.encodeAndStore(wtx)
 	if !ok {
@@ -535,6 +574,9 @@ func (memR *Reactor) broadcastNewLargeTxPush(wtx *wrappedTx) {
 	if len(peers) == 0 {
 		return
 	}
+	schema.WriteMempoolChunkedMessage(memR.traceClient, "",
+		schema.ChunkedOriginate, schema.Upload, state.TxKey[:],
+		int(enc.NumParts()), len(wtx.tx.Tx), "push_rpc")
 
 	full := cmtbits.NewBitArray(int(enc.NumParts()))
 	full.Fill()
@@ -558,14 +600,14 @@ func (memR *Reactor) broadcastNewLargeTxPush(wtx *wrappedTx) {
 		state.RecordNotified(cp.id, full)
 	}
 
-	// Round-robin chunk push: chunk i → peers (i*r + 0..r-1) mod P,
-	// where r = DefaultPushRPCChunkRedundancy and P = number of peers.
+	// Adaptive round-robin chunk push: chunk i → peers (i*r + 0..r-1) mod P.
 	P := len(peers)
 	N := int(enc.NumParts())
+	redundancy := adaptivePushRedundancy(len(wtx.tx.Tx), P)
 	perPeer := make(map[uint16][]protomem.TxChunk, P)
 	for i := 0; i < N; i++ {
-		for r := 0; r < DefaultPushRPCChunkRedundancy; r++ {
-			pIdx := (i*DefaultPushRPCChunkRedundancy + r) % P
+		for r := 0; r < redundancy; r++ {
+			pIdx := (i*redundancy + r) % P
 			cp := peers[pIdx]
 			var proof cmtcrypto.Proof
 			if enc.NumParts() > 1 {
@@ -578,6 +620,14 @@ func (memR *Reactor) broadcastNewLargeTxPush(wtx *wrappedTx) {
 			})
 		}
 	}
+	memR.Logger.Info("chunked push: dispatching",
+		"tx_key", state.TxKey,
+		"tx_size", len(wtx.tx.Tx),
+		"num_parts", N,
+		"peers", P,
+		"redundancy", redundancy,
+		"total_chunks_pushed", N*redundancy,
+	)
 	for _, cp := range peers {
 		chunks := perPeer[cp.id]
 		for off := 0; off < len(chunks); off += DefaultChunksBatchSize {
@@ -588,6 +638,37 @@ func (memR *Reactor) broadcastNewLargeTxPush(wtx *wrappedTx) {
 			memR.sendChunksBatch(cp.peer, state.TxKey, chunks[off:end])
 		}
 	}
+}
+
+// adaptivePushRedundancy returns the per-chunk push count for a tx of
+// txSize bytes when there are numPeers connected peers. The redundancy is
+// chosen so total origin upload ≈ redundancy × txSize ≤ DefaultMaxPushBytes,
+// floored at DefaultPushRPCChunkRedundancy and capped at numPeers (can't
+// push a chunk to more than every peer).
+//
+// Examples (numPeers=89, MaxPushBytes=100 MiB):
+//
+//	256 KiB tx → 89× (saturate, every peer holds every chunk)
+//	  1 MiB tx → 89× (saturate)
+//	  4 MiB tx → 25× (each peer gets ~25/256 of chunks directly)
+//	  8 MiB tx → 12× (origin uploads ~96 MiB)
+//	 16 MiB tx →  6× (floor)
+//	 32 MiB tx →  6× (floor)
+func adaptivePushRedundancy(txSize, numPeers int) int {
+	if numPeers <= 0 {
+		return 0
+	}
+	if txSize <= 0 {
+		return DefaultPushRPCChunkRedundancy
+	}
+	r := DefaultMaxPushBytes / txSize
+	if r < DefaultPushRPCChunkRedundancy {
+		r = DefaultPushRPCChunkRedundancy
+	}
+	if r > numPeers {
+		r = numPeers
+	}
+	return r
 }
 
 // encodeAndStore encodes the tx and inserts an already-reconstructed PartsState
