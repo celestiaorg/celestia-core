@@ -163,8 +163,10 @@ func (memR *Reactor) handleWantTxChunks(src p2p.Peer, msg *protomem.WantTxChunks
 }
 
 // handleTxChunks verifies and installs each chunk in the batch. Any proof
-// failure → disconnect peer immediately. After installation triggers
-// HaveTxChunks gossip per-chunk and reconstruction once K-of-2K is hit.
+// failure → disconnect peer immediately. After all chunks in the batch are
+// installed, gossip ONE HaveTxChunks per peer announcing the newly-installed
+// bits (Fix A — batched gossip to avoid the per-chunk message storm). When
+// K-of-2K is hit during the batch, trigger reconstruction.
 func (memR *Reactor) handleTxChunks(src p2p.Peer, msg *protomem.TxChunks) {
 	txKey, err := types.TxKeyFromBytes(msg.TxKey)
 	if err != nil {
@@ -180,30 +182,39 @@ func (memR *Reactor) handleTxChunks(src p2p.Peer, msg *protomem.TxChunks) {
 		return
 	}
 	peerID := memR.ids.GetIDForPeer(src.ID())
+	installedThisBatch := cmtbits.NewBitArray(int(state.NumParts))
 	triggerReconstruct := false
 	for i := range msg.Chunks {
-		justCompleted, err := memR.installAndGossipChunk(state, peerID, &msg.Chunks[i])
+		c := &msg.Chunks[i]
+		installed, justCompleted, err := memR.installChunk(state, peerID, c)
 		if err != nil {
 			memR.Switch.StopPeerForError(src, err, memR.String())
 			return
 		}
+		if installed {
+			installedThisBatch.SetIndex(int(c.Index), true)
+		}
 		if justCompleted {
 			triggerReconstruct = true
 		}
+	}
+	// One batched HaveTxChunks per peer for everything we just installed.
+	if state != nil && memR.chunkedStore.Get(txKey) != nil {
+		memR.gossipBatchOnReceipt(state, installedThisBatch)
 	}
 	if triggerReconstruct {
 		memR.reconstructAndAdmit(state, src)
 	}
 }
 
-// installAndGossipChunk verifies a single chunk's Merkle proof, installs it
-// into the PartsState, and gossips HaveTxChunks for it to peers not already
-// known to hold it. Returns (justCompleted, err): justCompleted is true iff
-// this chunk crossed the K-of-2K reconstruction threshold; err is non-nil
-// only on protocol violations (bad proof, out-of-range index, malformed proof).
-func (memR *Reactor) installAndGossipChunk(state *chunked.PartsState, peerID uint16, c *protomem.TxChunk) (bool, error) {
+// installChunk verifies a single chunk's Merkle proof and installs it into
+// the PartsState. Returns (installed, justCompleted, err): installed is true
+// iff the chunk was newly stored; justCompleted is true iff this chunk
+// crossed the K-of-2K reconstruction threshold; err is non-nil only on
+// protocol violations (bad proof, out-of-range index).
+func (memR *Reactor) installChunk(state *chunked.PartsState, peerID uint16, c *protomem.TxChunk) (bool, bool, error) {
 	if c.Index >= state.NumParts {
-		return false, chunked.ErrChunkOutOfRange
+		return false, false, chunked.ErrChunkOutOfRange
 	}
 	var proof *merkle.Proof
 	if state.NumParts > 1 {
@@ -215,15 +226,14 @@ func (memR *Reactor) installAndGossipChunk(state *chunked.PartsState, peerID uin
 		proof = &p
 	}
 	if err := chunked.VerifyChunk(state.PartsRoot, state.NumParts, c.Index, c.Data, proof); err != nil {
-		return false, err
+		return false, false, err
 	}
 	if err := memR.chunkedStore.ChargeChunk(state, len(c.Data)); err != nil {
-		// Memory cap breach is our problem, not the peer's. Drop without
-		// disconnecting, evict the partial.
+		// Memory cap breach is our problem, not the peer's.
 		memR.Logger.Info("chunked: cap breached, evicting partial",
 			"err", err, "tx_key", state.TxKey)
 		memR.chunkedStore.Remove(state.TxKey)
-		return false, nil
+		return false, false, nil
 	}
 	justCompleted, err := state.Install(c.Index, c.Data)
 	if err != nil {
@@ -231,52 +241,66 @@ func (memR *Reactor) installAndGossipChunk(state *chunked.PartsState, peerID uin
 		if !errors.Is(err, chunked.ErrChunkAlreadyPresent) {
 			memR.Logger.Debug("chunked Install error", "err", err)
 		}
-		return false, nil
+		return false, false, nil
 	}
-	// Record the sender as having this chunk so subsequent dedup is accurate.
+	// Record sender as having this chunk for accurate dedup.
 	bit := cmtbits.NewBitArray(int(state.NumParts))
 	bit.SetIndex(int(c.Index), true)
 	state.RecordHaves(peerID, bit)
-
-	memR.gossipChunkOnReceipt(state, c.Index)
-	return justCompleted, nil
+	return true, justCompleted, nil
 }
 
 // ---------------------------------------------------------------------------
 // Gossip helpers (HaveTxChunks broadcast)
 // ---------------------------------------------------------------------------
 
-// gossipChunkOnReceipt announces a newly-installed chunk to every peer that
-// (a) doesn't already hold it according to their HaveTxChunks announcements
-// and (b) we haven't already told.
-func (memR *Reactor) gossipChunkOnReceipt(state *chunked.PartsState, index uint32) {
-	if memR.opts.ListenOnly {
+// gossipBatchOnReceipt announces every chunk in `installed` to every peer
+// that does not already know we hold it. For each peer the gossip is sent
+// as ONE HaveTxChunks with a bitmap of the new chunks (Fix A — batched
+// gossip, one message per peer per TxChunks receipt instead of one message
+// per chunk per peer). Uses blocking Send so the announce never silently
+// drops to a backlogged peer (Fix C — control-plane reliability).
+func (memR *Reactor) gossipBatchOnReceipt(state *chunked.PartsState, installed *cmtbits.BitArray) {
+	if memR.opts.ListenOnly || installed == nil {
 		return
 	}
-	ba := cmtbits.NewBitArray(int(state.NumParts))
-	ba.SetIndex(int(index), true)
-	msg := &protomem.HaveTxChunks{
-		TxKey: state.TxKey[:],
-		Parts: *ba.ToProto(),
+	installedIdx := installed.GetTrueIndices()
+	if len(installedIdx) == 0 {
+		return
 	}
 	for id, peer := range memR.ids.GetAll() {
 		if peer == nil {
 			continue
 		}
-		if state.PeerKnowsChunk(id, index) {
+		toTell := cmtbits.NewBitArray(int(state.NumParts))
+		any := false
+		for _, idx := range installedIdx {
+			if state.PeerKnowsChunk(id, uint32(idx)) {
+				continue
+			}
+			toTell.SetIndex(idx, true)
+			any = true
+		}
+		if !any {
 			continue
 		}
-		if peer.TrySend(p2p.Envelope{
+		if peer.Send(p2p.Envelope{
 			ChannelID: MempoolChunkChannel,
-			Message:   msg,
+			Message: &protomem.HaveTxChunks{
+				TxKey: state.TxKey[:],
+				Parts: *toTell.ToProto(),
+			},
 		}) {
-			state.RecordNotified(id, ba)
+			state.RecordNotified(id, toTell)
 		}
 	}
 }
 
 // broadcastFullHaveAfterAdmit announces a full-bitmap HaveTxChunks to every
 // peer that we don't yet believe holds all chunks. Used after reconstruction.
+// Uses blocking Send (Fix C) — this is the canonical "I have everything"
+// announce; under no circumstances should it silently drop because of a
+// briefly-full send queue.
 func (memR *Reactor) broadcastFullHaveAfterAdmit(state *chunked.PartsState) {
 	if memR.opts.ListenOnly {
 		return
@@ -294,7 +318,7 @@ func (memR *Reactor) broadcastFullHaveAfterAdmit(state *chunked.PartsState) {
 		if state.PeerHasAll(id) {
 			continue
 		}
-		if peer.TrySend(p2p.Envelope{
+		if peer.Send(p2p.Envelope{
 			ChannelID: MempoolChunkChannel,
 			Message:   msg,
 		}) {
@@ -341,6 +365,8 @@ func (memR *Reactor) forwardSeenLargeTx(state *chunked.PartsState, sender uint16
 
 // requestMissingFromPeer sends a WantTxChunks for chunks the peer advertises
 // that we still need AND aren't in-flight to any peer. First-announcer-only.
+// Uses blocking Send (Fix C): with no Want retry, a silently-dropped Want
+// would strand the chunk in our in-flight bitmap until peer disconnect.
 func (memR *Reactor) requestMissingFromPeer(state *chunked.PartsState, peerID uint16, peer p2p.Peer) {
 	if peer == nil {
 		return
@@ -350,7 +376,7 @@ func (memR *Reactor) requestMissingFromPeer(state *chunked.PartsState, peerID ui
 		return
 	}
 	state.MarkInflight(peerID, wanted)
-	_ = peer.TrySend(p2p.Envelope{
+	_ = peer.Send(p2p.Envelope{
 		ChannelID: MempoolChunkChannel,
 		Message: &protomem.WantTxChunks{
 			TxKey: state.TxKey[:],
@@ -437,40 +463,43 @@ func (memR *Reactor) reconstructAndAdmit(state *chunked.PartsState, src p2p.Peer
 // Origination (Default RPC / Push RPC)
 // ---------------------------------------------------------------------------
 
-// broadcastNewLargeTxDefault is Default RPC origination: SeenLargeTx +
-// HaveTxChunks(partial bitmap, ~2 chunks per peer redundancy) bundled to
-// a random fanout of 15 peers. Receivers pull chunks via Want.
+// broadcastNewLargeTxDefault is Default RPC origination (Fix B — broadened):
+// SeenLargeTx + HaveTxChunks(partial bitmap) bundled to ALL peers. Each chunk
+// is announced to DefaultHaveTxChunksRedundancy distinct peers, with the
+// 2× redundancy spread across the full peer set (chunk i → peers
+// (i*r + 0..r-1) mod numPeers). Every peer immediately learns the tx's
+// shape and where it can pull at least one chunk from origin; no peer waits
+// on second-hop gossip to discover the tx. Origin's upload load stays
+// bounded: each chunk is uploaded ~DefaultHaveTxChunksRedundancy times in
+// the steady state. Uses blocking Send (Fix C) so the initial announce
+// never drops silently when a peer's send queue is briefly full.
 func (memR *Reactor) broadcastNewLargeTxDefault(wtx *wrappedTx) {
 	state, enc, ok := memR.encodeAndStore(wtx)
 	if !ok {
 		return
 	}
 	peers := memR.shuffleCapablePeers()
-	if len(peers) == 0 {
+	P := len(peers)
+	if P == 0 {
 		return
 	}
-	fanout := DefaultRPCAnnounceFanout
-	if fanout > len(peers) {
-		fanout = len(peers)
-	}
-	target := peers[:fanout]
 
-	// Build per-peer HaveTxChunks bitmaps with 2× redundancy across the fanout.
-	// chunk i → peers (i*r + 0..r-1) mod fanout, where r = redundancy.
+	// Build per-peer HaveTxChunks bitmaps: chunk i is announced to
+	// DefaultHaveTxChunksRedundancy distinct peers, spread across all peers.
 	numParts := int(enc.NumParts())
-	bitmaps := make([]*cmtbits.BitArray, fanout)
+	bitmaps := make([]*cmtbits.BitArray, P)
 	for i := range bitmaps {
 		bitmaps[i] = cmtbits.NewBitArray(numParts)
 	}
 	for i := 0; i < numParts; i++ {
 		for r := 0; r < DefaultHaveTxChunksRedundancy; r++ {
-			pIdx := (i*DefaultHaveTxChunksRedundancy + r) % fanout
+			pIdx := (i*DefaultHaveTxChunksRedundancy + r) % P
 			bitmaps[pIdx].SetIndex(i, true)
 		}
 	}
 
 	seenMsg := buildSeenLargeTxMsg(state)
-	for i, cp := range target {
+	for i, cp := range peers {
 		if !cp.peer.Send(p2p.Envelope{
 			ChannelID: MempoolChunkChannel,
 			Message:   seenMsg,
@@ -478,6 +507,11 @@ func (memR *Reactor) broadcastNewLargeTxDefault(wtx *wrappedTx) {
 			continue
 		}
 		memR.mempool.PeerHasTx(cp.id, wtx.key())
+		// HaveTxChunks may be empty for some peers if numParts is small and
+		// the round-robin doesn't reach them — skip those.
+		if len(bitmaps[i].GetTrueIndices()) == 0 {
+			continue
+		}
 		_ = cp.peer.Send(p2p.Envelope{
 			ChannelID: MempoolChunkChannel,
 			Message: &protomem.HaveTxChunks{

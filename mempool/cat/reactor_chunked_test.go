@@ -186,10 +186,11 @@ func validBody(t *testing.T, size int) []byte {
 // Tests — Origination paths
 // ---------------------------------------------------------------------------
 
-// Default RPC origination: SeenLargeTx + HaveTxChunks(partial) bundled to 15
-// random peers; every chunk announced to at least DefaultHaveTxChunksRedundancy
-// peers across the fanout.
-func TestDefaultRPCOrigination_FanoutAndRedundancy(t *testing.T) {
+// Default RPC origination (Fix B): SeenLargeTx + HaveTxChunks(partial) bundled
+// to ALL peers; each chunk announced to exactly DefaultHaveTxChunksRedundancy
+// peers across the full peer set so origin's upload load stays bounded while
+// every peer learns the tx's shape in one round.
+func TestDefaultRPCOrigination_AllPeersAndRedundancy(t *testing.T) {
 	const numPeers = 20
 	f := newChunkedFixture(t, numPeers)
 	defer f.cleanup()
@@ -217,11 +218,11 @@ func TestDefaultRPCOrigination_FanoutAndRedundancy(t *testing.T) {
 		}
 	}
 
-	require.Equal(t, DefaultRPCAnnounceFanout, seenLargeCount,
-		"Default RPC should send SeenLargeTx to exactly %d peers", DefaultRPCAnnounceFanout)
+	require.Equal(t, numPeers, seenLargeCount,
+		"Default RPC should send SeenLargeTx to every connected peer")
 	for i, c := range hitCount {
-		require.GreaterOrEqualf(t, c, DefaultHaveTxChunksRedundancy,
-			"chunk %d announced only %d times (need >= %d)", i, c, DefaultHaveTxChunksRedundancy)
+		require.Equalf(t, DefaultHaveTxChunksRedundancy, c,
+			"chunk %d announced %d times, want exactly %d", i, c, DefaultHaveTxChunksRedundancy)
 	}
 }
 

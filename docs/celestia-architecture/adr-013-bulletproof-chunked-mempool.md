@@ -3,6 +3,7 @@
 ## Changelog
 
 - 2026-05-27: Initial draft (supersedes [ADR-012](./adr-012-chunked-mempool-propagation.md))
+- 2026-05-27: Post-bench revisions — see "Revisions" section. Default RPC announce broadened to all peers; HaveTxChunks gossip batched per TxChunks receipt; control-plane messages (SeenLargeTx, HaveTxChunks, WantTxChunks) use blocking `Send` to prevent silent drops under load.
 
 ## Status
 
@@ -71,13 +72,13 @@ Legacy `SeenTx`, `WantTx`, `Txs` messages are removed from the wire entirely. Ch
 
 ## Data plane flows
 
-### Default RPC origination
+### Default RPC origination (revised — see "Revisions" below)
 
 1. Tx arrives via RPC. `CheckTx` admits it.
 2. Encode body into K data chunks + K Reed-Solomon parity chunks (2K total).
 3. Compute Merkle proofs for all 2K chunks → `parts_root`, cache `leaf_hashes` + per-chunk `Proof`.
-4. Select 15 random peers from connected set. For each chunk `i ∈ [0, 2K)`, mark 2 of those 15 peers as announce-targets via round-robin (each chunk → 2 distinct peers; each peer gets ~⌈2·2K / 15⌉ chunks in its assigned bitmap).
-5. To each of the 15 peers, send (in order): `SeenLargeTx` (full, with leaf_hashes), then `HaveTxChunks{parts = that peer's assigned subset}`.
+4. For each chunk `i ∈ [0, 2K)`, assign 2 announce-targets via round-robin across **all** connected peers: peer indices `(i·2) mod P` and `(i·2 + 1) mod P`. Each peer receives a HaveTxChunks bitmap covering ~`⌈2·2K / P⌉` chunks (often only 1–2 for typical P).
+5. To **every** connected peer, send (in order): `SeenLargeTx` (full, with leaf_hashes), then `HaveTxChunks{parts = that peer's assigned subset}` (omitted for peers whose bitmap is empty).
 6. Origin serves `TxChunks` in response to `WantTxChunks` until tx is committed or evicted.
 
 ### Push RPC origination
@@ -107,7 +108,7 @@ On `TxChunks{txKey, chunks}` received from peer P:
   - Verify `proof` against `PartsState.parts_root`. **On failure: disconnect P immediately.**
   - If chunk already held: drop.
   - Install chunk. Clear `inFlight[index]`. Decrement P's in-flight count.
-  - Broadcast `HaveTxChunks{txKey, parts = {index}}` to all peers `Q` where `haves[Q][index] == false` (i.e., we don't yet know Q has this chunk). This is the chunk-gossip step.
+- After all chunks in the batch are installed, broadcast **one** `HaveTxChunks{txKey, parts = newly-installed-bits}` per peer `Q` where `Q` doesn't already know we hold those chunks. One message per peer per batch, not per chunk — keeps gossip traffic O(peers) rather than O(peers × chunks).
 - After installation, if we now hold ≥ K of the 2K chunks: reconstruct body via RS decode, re-hash to verify `tx_key`, call `CheckTx`, admit on success.
 
 On `WantTxChunks{txKey, parts}` received from peer P:
@@ -163,8 +164,8 @@ The absence of timer-based retry is intentional: with K-of-2K, losing up to K ch
 | 4 | Legacy path | `SeenTx`/`WantTx`/`Txs` removed entirely |
 | 5 | Threshold | All txs through chunked (K=1 degenerate) |
 | 6 | HaveTxChunks role | Pure bitmap announcement (no data) |
-| 7 | Origin SeenLargeTx fanout (Default) | 15 random peers |
-| 8 | Origin chunk announce (Default) | 2× per chunk, drawn from the same 15 peers |
+| 7 | Origin SeenLargeTx fanout (Default) | **All connected peers** (revised) |
+| 8 | Origin chunk announce (Default) | 2× per chunk, spread across all peers (round-robin) (revised) |
 | 9 | Origin chunk announce (Push) | All peers receive SeenLargeTx + HaveTxChunks(full) |
 | 10 | Origin chunk push (Push only) | 6× per chunk via round-robin TxChunks |
 | 11 | SeenLargeTx payload | Includes `leaf_hashes` (enables partial-state serving) |
@@ -201,6 +202,30 @@ The absence of timer-based retry is intentional: with K-of-2K, losing up to K ch
 - **No retry** means a Want lost to a peer-side bug stays lost until that peer disconnects. K-of-2K margin is the only recovery mechanism.
 - **No TTL** means a stuck PartsState (chunks announced but never delivered) lingers until LRU pressure removes it — could mask deeper bugs.
 - **Wire change**: `TxChunk` → `TxChunks` (plural). One-shot break of network compatibility with ADR-012-era nodes; coordinated upgrade required.
+
+## Revisions (post first deploy)
+
+The initial draft ran on a custom 89-validator network and showed tx-inclusion latencies of 13–27 seconds for ~2 MB blobs — roughly 5–10 block intervals. The diagnosis was a combination of three issues that the original design didn't account for:
+
+1. **HaveTxChunks gossip storm.** Each chunk receipt fired one HaveTxChunks per peer (~99 messages), so a 32-chunk batch produced ~3,000 messages per receiver and ~45 k network-wide. With send queues fixed at 2,000, `TrySend` returned false silently for the tail of every burst; some peers never learned who held some chunks.
+2. **Narrow Default RPC announce.** With SeenLargeTx + HaveTxChunks bundled to only 15 peers, the other ~75 % of the network waited on second-hop gossip to discover the tx's shape — and that second hop was exactly what the gossip storm was choking. If the next block proposer was outside the lucky 15, the tx skipped multiple blocks before inclusion.
+3. **No retry + silent drops.** "First-announcer-only Want" + "no Want timeout" relies on Want and HaveTxChunks reliably arriving. With `TrySend` dropping messages under burst, the K-of-2K margin was the only liveness mechanism, and clustered drops occasionally exceeded the margin.
+
+The three corresponding fixes, applied together:
+
+### Fix A — batched HaveTxChunks gossip
+
+`handleTxChunks` accumulates the bitmap of chunks installed during one TxChunks batch and emits **one** HaveTxChunks per peer covering those bits, instead of one HaveTxChunks per chunk. Gossip traffic on chunk receipt drops by ~`batchSize` × (typically 16×). Same `PeerKnowsChunk` dedup as before, just collapsed across the batch.
+
+### Fix B — broaden Default RPC announce
+
+Default RPC origination sends SeenLargeTx + HaveTxChunks (partial bitmap) to **all** connected peers, not 15. The 2× chunk-announce redundancy now spreads across the full peer set: chunk `i` → peers `(i·2) mod P` and `(i·2 + 1) mod P`. Each peer immediately learns the tx's shape and at least the chunks origin has assigned to them; nobody waits on second-hop gossip. Origin's upload load stays bounded because each chunk is uploaded only ~2 times in steady state.
+
+### Fix C — blocking `Send` for control plane
+
+SeenLargeTx, HaveTxChunks, and WantTxChunks are sent with blocking `Send` (the p2p layer blocks until the per-peer send queue accepts) instead of `TrySend`. TxChunks data still uses `TrySend` — chunk data is bulk (~64 KiB per chunk), and the K-of-2K erasure margin absorbs a small fraction of data drops. Control-plane reliability is restored without changing the no-retry decision: under load, broadcasts back-pressure rather than vanish.
+
+Net effect: the design now has the property "no retry" originally assumed — that control messages reliably arrive — because the underlying transport stops silently dropping them.
 
 ## References
 
