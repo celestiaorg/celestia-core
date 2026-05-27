@@ -98,11 +98,6 @@ type Reactor struct {
 	// propagation path (ADR-012). Used by the SeenLargeTx/HaveTxChunks/
 	// WantTxChunks/TxChunk handlers in reactor_chunked.go.
 	chunkedStore *chunked.Store
-
-	// haveCoalesce accumulates installed-chunk bitmaps and emits one
-	// HaveTxChunks per (txKey, peer) per coalescing window, instead of one
-	// per TxChunks receipt. See haveCoalescer in reactor_chunked.go.
-	haveCoalesce *haveCoalescer
 }
 
 type ReactorOptions struct {
@@ -182,7 +177,6 @@ func NewReactor(mempool *TxPool, opts *ReactorOptions) (*Reactor, error) {
 		receivedBuffer: newReceivedTxBuffer(),
 		traceClient:    traceClient,
 		chunkedStore:   chunked.NewStore(),
-		haveCoalesce:   newHaveCoalescer(),
 	}
 	memR.BaseReactor = *p2p.NewBaseReactor("CAT", memR,
 		p2p.WithIncomingQueueSize(ReactorIncomingMessageQueueSize),
@@ -251,7 +245,6 @@ func (memR *Reactor) OnStart() error {
 	}
 
 	go memR.heightSignalLoop()
-	go memR.runHaveCoalescer()
 
 	return nil
 }

@@ -5,8 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"math/rand"
-	"sync"
-	"time"
 
 	"github.com/cometbft/cometbft/crypto/merkle"
 	cmtbits "github.com/cometbft/cometbft/libs/bits"
@@ -52,7 +50,7 @@ const (
 	// the connected-peer count and below by DefaultPushRPCChunkRedundancy.
 	// 100 MiB lets a 1 MB blob be pushed to every peer in a ~100-peer mesh
 	// while keeping a 32 MB blob at the 6× floor.
-	DefaultMaxPushBytes = 200 << 20
+	DefaultMaxPushBytes = 100 << 20
 
 	// DefaultPerPeerInflightCap: max chunks in-flight to a single peer.
 	DefaultPerPeerInflightCap = 16
@@ -60,13 +58,6 @@ const (
 	// DefaultChunksBatchSize: max chunks per WantTxChunks bitmap-set and per
 	// TxChunks response message.
 	DefaultChunksBatchSize = 16
-
-	// DefaultHaveCoalesceWindow is how long we delay HaveTxChunks gossip after
-	// installing chunks, so multiple TxChunks batches arriving in quick
-	// succession produce a single merged HaveTxChunks per peer instead of
-	// one per batch. Cuts control-plane volume by ~5–10× under sustained
-	// throughput at the cost of one window of discovery latency.
-	DefaultHaveCoalesceWindow = 25 * time.Millisecond
 
 	// maxChunkedLeafHashes caps the leaf_hashes carried in a SeenLargeTx.
 	// 2K parts for the largest expected blob fit well under this.
@@ -235,13 +226,9 @@ func (memR *Reactor) handleTxChunks(src p2p.Peer, msg *protomem.TxChunks) {
 			triggerReconstruct = true
 		}
 	}
-	// Enqueue HaveTxChunks gossip for coalescing: the haveCoalescer goroutine
-	// emits one HaveTxChunks per (txKey, peer) per ~25ms window covering all
-	// chunks installed during that window, instead of one HaveTxChunks per
-	// TxChunks receipt. Reconstruction is NOT coalesced; we want to admit and
-	// announce-full ASAP after crossing K-of-2K.
-	if installedThisBatch != nil && len(installedThisBatch.GetTrueIndices()) > 0 {
-		memR.haveCoalesce.add(txKey, state.NumParts, installedThisBatch)
+	// One batched HaveTxChunks per peer for everything we just installed.
+	if state != nil && memR.chunkedStore.Get(txKey) != nil {
+		memR.gossipBatchOnReceipt(state, installedThisBatch)
 	}
 	if triggerReconstruct {
 		memR.reconstructAndAdmit(state, src)
@@ -289,87 +276,6 @@ func (memR *Reactor) installChunk(state *chunked.PartsState, peerID uint16, c *p
 	bit.SetIndex(int(c.Index), true)
 	state.RecordHaves(peerID, bit)
 	return true, justCompleted, nil
-}
-
-// ---------------------------------------------------------------------------
-// HaveTxChunks coalescer
-// ---------------------------------------------------------------------------
-
-// haveCoalescer accumulates per-tx "chunks installed since last flush" bitmaps
-// and emits one HaveTxChunks per peer per flush window. Without coalescing,
-// every TxChunks receipt fires one HaveTxChunks per peer; under sustained
-// throughput that dominates control-plane traffic. The window length is
-// DefaultHaveCoalesceWindow (default 25 ms).
-type haveCoalescer struct {
-	mu       sync.Mutex
-	pending  map[types.TxKey]*cmtbits.BitArray
-	numParts map[types.TxKey]uint32
-}
-
-func newHaveCoalescer() *haveCoalescer {
-	return &haveCoalescer{
-		pending:  make(map[types.TxKey]*cmtbits.BitArray),
-		numParts: make(map[types.TxKey]uint32),
-	}
-}
-
-// add merges the given bits into the pending accumulator for txKey.
-func (c *haveCoalescer) add(txKey types.TxKey, numParts uint32, installed *cmtbits.BitArray) {
-	if installed == nil {
-		return
-	}
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	cur, ok := c.pending[txKey]
-	if !ok || cur == nil {
-		cur = cmtbits.NewBitArray(int(numParts))
-		c.pending[txKey] = cur
-		c.numParts[txKey] = numParts
-	}
-	cur.AddBitArray(installed)
-}
-
-// drain returns the accumulated state and resets the coalescer.
-func (c *haveCoalescer) drain() (map[types.TxKey]*cmtbits.BitArray, map[types.TxKey]uint32) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	p, n := c.pending, c.numParts
-	c.pending = make(map[types.TxKey]*cmtbits.BitArray)
-	c.numParts = make(map[types.TxKey]uint32)
-	return p, n
-}
-
-// runHaveCoalescer ticks every DefaultHaveCoalesceWindow and emits one
-// HaveTxChunks per (txKey, peer) covering all chunks installed during the
-// window. Started from Reactor.OnStart.
-func (memR *Reactor) runHaveCoalescer() {
-	tick := time.NewTicker(DefaultHaveCoalesceWindow)
-	defer tick.Stop()
-	for {
-		select {
-		case <-memR.Quit():
-			return
-		case <-tick.C:
-			memR.flushHaveCoalescer()
-		}
-	}
-}
-
-func (memR *Reactor) flushHaveCoalescer() {
-	if memR.haveCoalesce == nil {
-		return
-	}
-	pending, _ := memR.haveCoalesce.drain()
-	if len(pending) == 0 {
-		return
-	}
-	for txKey, bits := range pending {
-		state := memR.chunkedStore.Get(txKey)
-		if state == nil {
-			continue
-		}
-		memR.gossipBatchOnReceipt(state, bits)
-	}
 }
 
 // ---------------------------------------------------------------------------
@@ -651,21 +557,9 @@ func (memR *Reactor) broadcastNewLargeTxDefault(wtx *wrappedTx) {
 	}
 }
 
-// broadcastNewLargeTxPush is Push RPC origination. Revised dissemination
-// order (post-diagnosis):
-//
-//  1. SeenLargeTx to all peers — tx exists, here is its shape.
-//  2. Push chunks to a size-adaptive set of round-robin peers, sending one
-//     TxChunks batch per peer per pass (round-robin batches, not all-of-A
-//     then all-of-B). Every peer gets its first reconstruction-critical
-//     batch by pass 1, regardless of position in the peer order.
-//
-// We deliberately do NOT pre-announce HaveTxChunks(full bitmap) before the
-// seed: doing so caused every peer to immediately Want from origin and
-// created an origin pull-storm on top of the push. With the full-Have
-// removed, peers learn chunk availability via the pushed-to peers' Fix-A
-// gossip (HaveTxChunks for what they actually installed), so pull pressure
-// distributes across the network.
+// broadcastNewLargeTxPush is Push RPC origination: SeenLargeTx +
+// HaveTxChunks(full bitmap) to ALL peers, then push each chunk to a
+// size-adaptive number of round-robin peers via batched TxChunks.
 //
 // Push redundancy is bounded by DefaultMaxPushBytes: small blobs saturate
 // the network (every chunk delivered to every peer directly, no pull needed
@@ -684,20 +578,29 @@ func (memR *Reactor) broadcastNewLargeTxPush(wtx *wrappedTx) {
 		schema.ChunkedOriginate, schema.Upload, state.TxKey[:],
 		int(enc.NumParts()), len(wtx.tx.Tx), "push_rpc")
 
-	// Step 1: announce existence to all peers via SeenLargeTx only.
+	full := cmtbits.NewBitArray(int(enc.NumParts()))
+	full.Fill()
 	seenMsg := buildSeenLargeTxMsg(state)
+	haveMsg := &protomem.HaveTxChunks{
+		TxKey: state.TxKey[:],
+		Parts: *full.ToProto(),
+	}
 	for _, cp := range peers {
-		if cp.peer.Send(p2p.Envelope{
+		if !cp.peer.Send(p2p.Envelope{
 			ChannelID: MempoolChunkChannel,
 			Message:   seenMsg,
 		}) {
-			memR.mempool.PeerHasTx(cp.id, wtx.key())
+			continue
 		}
+		memR.mempool.PeerHasTx(cp.id, wtx.key())
+		_ = cp.peer.Send(p2p.Envelope{
+			ChannelID: MempoolChunkChannel,
+			Message:   haveMsg,
+		})
+		state.RecordNotified(cp.id, full)
 	}
 
-	// Step 2: build per-peer chunk lists (adaptive redundancy round-robin
-	// across peers and chunks), then send them in round-robin BATCHES so no
-	// peer waits for the full payload of any other peer.
+	// Adaptive round-robin chunk push: chunk i → peers (i*r + 0..r-1) mod P.
 	P := len(peers)
 	N := int(enc.NumParts())
 	redundancy := adaptivePushRedundancy(len(wtx.tx.Tx), P)
@@ -717,16 +620,6 @@ func (memR *Reactor) broadcastNewLargeTxPush(wtx *wrappedTx) {
 			})
 		}
 	}
-
-	// Compute the maximum number of batches any single peer will receive.
-	maxBatches := 0
-	for _, cp := range peers {
-		nb := (len(perPeer[cp.id]) + DefaultChunksBatchSize - 1) / DefaultChunksBatchSize
-		if nb > maxBatches {
-			maxBatches = nb
-		}
-	}
-
 	memR.Logger.Info("chunked push: dispatching",
 		"tx_key", state.TxKey,
 		"tx_size", len(wtx.tx.Tx),
@@ -734,19 +627,10 @@ func (memR *Reactor) broadcastNewLargeTxPush(wtx *wrappedTx) {
 		"peers", P,
 		"redundancy", redundancy,
 		"total_chunks_pushed", N*redundancy,
-		"max_batches_per_peer", maxBatches,
 	)
-
-	// Round-robin batch dispatch: pass 0 sends batch 0 to every peer that
-	// has one; pass 1 sends batch 1; etc. Each peer's first batch lands
-	// after at most P sends, not after all earlier peers' full payloads.
-	for batchIdx := 0; batchIdx < maxBatches; batchIdx++ {
-		off := batchIdx * DefaultChunksBatchSize
-		for _, cp := range peers {
-			chunks := perPeer[cp.id]
-			if off >= len(chunks) {
-				continue
-			}
+	for _, cp := range peers {
+		chunks := perPeer[cp.id]
+		for off := 0; off < len(chunks); off += DefaultChunksBatchSize {
 			end := off + DefaultChunksBatchSize
 			if end > len(chunks) {
 				end = len(chunks)
