@@ -52,7 +52,7 @@ const (
 	// the connected-peer count and below by DefaultPushRPCChunkRedundancy.
 	// 100 MiB lets a 1 MB blob be pushed to every peer in a ~100-peer mesh
 	// while keeping a 32 MB blob at the 6× floor.
-	DefaultMaxPushBytes = 200 << 20
+	DefaultMaxPushBytes = 50 << 20
 
 	// DefaultPerPeerInflightCap: max chunks in-flight to a single peer.
 	DefaultPerPeerInflightCap = 16
