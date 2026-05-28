@@ -66,8 +66,10 @@ type TxPool struct {
 	rejectedTxCache *mempool.RejectedTxCache
 	// Thread-safe cache of evicted transactions for quick look-up
 	evictedTxCache *mempool.LRUTxCache
-	// Thread-safe list of transactions peers have seen that we have not yet seen
-	seenByPeersSet *SeenTxSet
+	// Thread-safe tracker of transactions peers have seen that we have not yet
+	// seen. Also indexes future-sequence SeenTx so the reactor can drive
+	// gap-fill ordering for accepted txs that need to flow in sequence.
+	seenTracker *SeenTracker
 
 	// Store of wrapped transactions
 	store *store
@@ -99,7 +101,7 @@ func NewTxPool(
 		traceClient:      trace.NoOpTracer(),
 		rejectedTxCache:  mempool.NewRejectedTxCache(cfg.CacheSize),
 		evictedTxCache:   mempool.NewLRUTxCache(cfg.CacheSize / 5),
-		seenByPeersSet:   NewSeenTxSet(),
+		seenTracker:      NewSeenTracker(),
 		height:           height,
 		preCheckFn:       func(_ *types.CachedTx) error { return nil },
 		postCheckFn:      func(_ *types.CachedTx, _ *abci.ResponseCheckTx) error { return nil },
@@ -401,7 +403,7 @@ func (txmp *TxPool) RemoveTxByKey(txKey types.TxKey) error {
 func (txmp *TxPool) removeTxByKey(txKey types.TxKey) {
 	txmp.rejectedTxCache.Push(txKey, 0, "")
 	_ = txmp.store.remove(txKey)
-	txmp.seenByPeersSet.RemoveKey(txKey)
+	txmp.seenTracker.RemoveKey(txKey)
 }
 
 // Flush purges the contents of the mempool and the cache, leaving both empty.
@@ -411,7 +413,7 @@ func (txmp *TxPool) Flush() {
 	// and indexes get updated properly.
 	size := txmp.Size()
 	txmp.store.reset()
-	txmp.seenByPeersSet.Reset()
+	txmp.seenTracker.Reset()
 	txmp.rejectedTxCache.Reset()
 	txmp.evictedTxCache.Reset()
 	txmp.metrics.EvictedTxs.Add(float64(size))
@@ -420,10 +422,21 @@ func (txmp *TxPool) Flush() {
 	txmp.txsToBeBroadcast = make([]types.TxKey, 0)
 }
 
-// PeerHasTx marks that the transaction has been seen by a peer.
+// PeerHasTx marks that the transaction has been seen by a peer. When the
+// caller has signer/sequence info available (i.e. from a SeenTx message),
+// PeerHasTxWithSeq should be used instead so the tracker can index the entry
+// for gap-fill scheduling.
 func (txmp *TxPool) PeerHasTx(peer uint16, txKey types.TxKey) {
 	txmp.logger.Trace("peer has tx", "peer", peer, "txKey", fmt.Sprintf("%X", txKey))
-	txmp.seenByPeersSet.Add(txKey, peer)
+	txmp.seenTracker.Add(txKey, peer, nil, 0)
+}
+
+// PeerHasTxWithSeq is PeerHasTx for SeenTx-derived calls that carry signer
+// and sequence. Future-sequence entries land in the per-signer queue used by
+// the reactor's gap-fill flow.
+func (txmp *TxPool) PeerHasTxWithSeq(peer uint16, txKey types.TxKey, signer []byte, sequence uint64) {
+	txmp.logger.Trace("peer has tx", "peer", peer, "txKey", fmt.Sprintf("%X", txKey))
+	txmp.seenTracker.Add(txKey, peer, signer, sequence)
 }
 
 // ReapMaxBytesMaxGas returns a slice of valid transactions that fit within the
@@ -874,7 +887,7 @@ func (txmp *TxPool) purgeExpiredTxs(blockHeight int64) {
 	}
 	txmp.metrics.ExpiredTxs.Add(float64(numExpired))
 
-	txmp.seenByPeersSet.Prune(now.Add(-time.Hour))
+	txmp.seenTracker.Prune(now.Add(-seenEntryTTL))
 }
 
 func (txmp *TxPool) notifyTxsAvailable() {
