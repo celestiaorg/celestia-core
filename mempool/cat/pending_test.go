@@ -222,12 +222,6 @@ func TestPendingSeenTrackerConcurrentAccess(t *testing.T) {
 	requirePendingSeenInvariants(t, tracker)
 }
 
-// distinctSigner returns a signer byte slice for the i-th signer so per-signer
-// limits do not interfere with per-peer limit tests.
-func distinctSigner(i int) []byte {
-	return []byte(fmt.Sprintf("signer-%d", i))
-}
-
 func distinctSignerWithPrefix(prefix string, i int) []byte {
 	return []byte(fmt.Sprintf("%s-signer-%d", prefix, i))
 }
