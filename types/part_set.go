@@ -56,11 +56,15 @@ type Part struct {
 
 // ValidateBasic performs basic validation.
 func (part *Part) ValidateBasic() error {
-	if len(part.Bytes) > int(BlockPartSizeBytes) {
+	return part.validateBasicWithPartSize(int(BlockPartSizeBytes))
+}
+
+func (part *Part) validateBasicWithPartSize(partSize int) error {
+	if len(part.Bytes) > partSize {
 		return ErrPartTooBig
 	}
 	// All parts except the last one should have the same constant size.
-	if int64(part.Index) < part.Proof.Total-1 && len(part.Bytes) != int(BlockPartSizeBytes) {
+	if int64(part.Index) < part.Proof.Total-1 && len(part.Bytes) != partSize {
 		return ErrPartInvalidSize
 	}
 	if int64(part.Index) != part.Proof.Index {
@@ -565,7 +569,7 @@ func (ps *PartSet) Total() uint32 {
 	return ps.total
 }
 
-// CONTRACT: part is validated using ValidateBasic.
+// AddPart validates and stores a block part if its proof matches this part set.
 func (ps *PartSet) AddPart(part *Part) (bool, error) {
 	// TODO: remove this? would be preferable if this only returned (false, nil)
 	// when its a duplicate block part
@@ -577,12 +581,13 @@ func (ps *PartSet) AddPart(part *Part) (bool, error) {
 		return false, fmt.Errorf("nil part")
 	}
 
-	// Defense-in-depth: ensure the part's index is bound to its proof's index
-	// before any further processing. Callers are expected to enforce this via
-	// Part.ValidateBasic, but enforcing it at the sink prevents a structurally
-	// valid proof for index j from being installed in slot i (i != j).
-	if int64(part.Index) != part.Proof.Index {
-		return false, ErrInvalidPart{Reason: fmt.Errorf("part index %d != proof index %d", part.Index, part.Proof.Index)}
+	// This is the shared sink for legacy block-part gossip and compact-block
+	// recovery. A valid Merkle proof only proves membership in the proposed
+	// PartSetHeader; it does not prove that the part uses this PartSet's
+	// expected boundaries. Keep full Part validation here so every caller
+	// preserves the same block identity invariant.
+	if err := part.validateBasicWithPartSize(ps.partSize); err != nil {
+		return false, err
 	}
 
 	// If part already exists, return false.
