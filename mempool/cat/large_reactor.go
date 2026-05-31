@@ -509,6 +509,7 @@ func (memR *Reactor) receiveTxChunk(msg *protomem.TxChunk, peer p2p.Peer) {
 	}
 	schema.WriteMempoolPeerState(memR.traceClient, string(peer.ID()), schema.TxChunk, txKey[:], schema.Download)
 	if tx == nil {
+		memR.hedgeChunkRequestsFromIdleSources(txKey)
 		memR.scheduleChunkRequests(txKey)
 		return
 	}
@@ -687,6 +688,34 @@ func (memR *Reactor) hedgeChunkRequests(txKey types.TxKey, peerID uint16) {
 	}
 	memR.mempool.metrics.RerequestedTxs.Add(float64(len(indexes)))
 	schema.WriteMempoolPeerState(memR.traceClient, string(peer.ID()), schema.WantChunk, txKey[:], schema.Upload)
+}
+
+func (memR *Reactor) hedgeChunkRequestsFromIdleSources(txKey types.TxKey) {
+	if memR.opts.LargeTxRequestParallelism <= 1 {
+		return
+	}
+
+	memR.largeMu.Lock()
+	session := memR.reconstructions[txKey]
+	if session == nil || session.waitingForSequence || session.complete() ||
+		session.activeInflightPeerCount() >= memR.opts.LargeTxRequestParallelism {
+		memR.largeMu.Unlock()
+		return
+	}
+	peerIDs := session.sourceIDs()
+	memR.largeMu.Unlock()
+
+	sort.SliceStable(peerIDs, func(i, j int) bool {
+		left := memR.peerScores.Score(peerIDs[i])
+		right := memR.peerScores.Score(peerIDs[j])
+		if left == right {
+			return peerIDs[i] < peerIDs[j]
+		}
+		return left > right
+	})
+	for _, peerID := range peerIDs {
+		memR.hedgeChunkRequests(txKey, peerID)
+	}
 }
 
 func (memR *Reactor) scheduleChunkRequestsLocked(txKey types.TxKey) {

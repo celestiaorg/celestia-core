@@ -239,7 +239,7 @@ func TestLargeTxHedgesInflightChunksToNewSource(t *testing.T) {
 		},
 	}).Return(true).Once()
 
-	reactor.hedgeChunkRequests(txKey, peerB)
+	reactor.hedgeChunkRequestsFromIdleSources(txKey)
 
 	peers[1].AssertExpectations(t)
 }
