@@ -233,6 +233,9 @@ func (txmp *TxPool) CheckTx(tx types.Tx, cb func(*abci.ResponseCheckTx), txInfo 
 	if len(tx) > txmp.config.MaxTxBytes {
 		return mempool.ErrTxTooLarge{Max: txmp.config.MaxTxBytes, Actual: len(tx)}
 	}
+	if txInfo.SenderID == mempool.UnknownPeerID {
+		txInfo.FromBroadcast = true
+	}
 
 	// This is a new transaction that we haven't seen before. Verify it against the app and attempt
 	// to add it to the transaction pool.

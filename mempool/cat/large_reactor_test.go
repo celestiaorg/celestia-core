@@ -197,53 +197,6 @@ func TestLargeTxSchedulerDoesNotRequestOptimisticChunksAgain(t *testing.T) {
 	peer.AssertExpectations(t)
 }
 
-func TestLargeTxHedgesInflightChunksToNewSource(t *testing.T) {
-	reactor, _ := setupLargeTxReactor(t, 1, 16)
-	reactor.opts.LargeTxRequestParallelism = 2
-	reactor.opts.LargeTxMaxInflightChunksPerPeer = 4
-	reactor.opts.LargeTxChunkTimeout = time.Hour
-
-	tx := largeCATTestTx(96)
-	local, err := buildLocalLargeTx(tx, 16, []byte("sender-000-0"), 1, 10)
-	require.NoError(t, err)
-	txKey := tx.Key()
-
-	peers := genPeers(2)
-	for _, peer := range peers {
-		_, err := reactor.InitPeer(peer)
-		require.NoError(t, err)
-	}
-	peerA := reactor.ids.GetIDForPeer(peers[0].ID())
-	peerB := reactor.ids.GetIDForPeer(peers[1].ID())
-
-	_, err = reactor.upsertReconstructionSession(txKey, local.manifest, peerA, false)
-	require.NoError(t, err)
-
-	reactor.largeMu.Lock()
-	session := reactor.reconstructions[txKey]
-	oldSentAt := time.Now().Add(-time.Hour)
-	for i := uint32(0); i < 4; i++ {
-		timer := time.AfterFunc(time.Hour, func() {})
-		session.markInflight(i, peerA, oldSentAt, timer)
-	}
-	session.addSource(peerB)
-	reactor.largeMu.Unlock()
-
-	peers[1].On("TrySend", p2p.Envelope{
-		ChannelID: MempoolWantsChannel,
-		Message: &protomem.Message{
-			Sum: &protomem.Message_WantChunk{WantChunk: &protomem.WantChunk{
-				TxKey:   txKey[:],
-				Indexes: []uint32{3, 2},
-			}},
-		},
-	}).Return(true).Once()
-
-	reactor.hedgeChunkRequestsFromIdleSources(txKey)
-
-	peers[1].AssertExpectations(t)
-}
-
 func TestLargeTxServesVerifiedReconstructionChunks(t *testing.T) {
 	reactor, _ := setupLargeTxReactor(t, 1, 16)
 
@@ -323,6 +276,7 @@ func TestLargeTxBroadcastUsesManifestByDefault(t *testing.T) {
 	require.NoError(t, pool.CheckTx(tx, nil, mempool.TxInfo{}))
 	wtx := pool.store.get(txKey)
 	require.NotNil(t, wtx)
+	require.True(t, wtx.fromBroadcast)
 
 	peer.On("Send", mock.MatchedBy(func(env p2p.Envelope) bool {
 		msg, ok := env.Message.(*protomem.Message)
@@ -349,6 +303,29 @@ func TestLargeTxBroadcastUsesManifestByDefault(t *testing.T) {
 	_, exists := reactor.largeTxs[txKey]
 	reactor.largeMu.Unlock()
 	require.True(t, exists)
+}
+
+func TestLargeTxNetworkRebroadcastDoesNotPushOptimisticChunks(t *testing.T) {
+	reactor, _ := setupLargeTxReactor(t, 32, 16)
+
+	peer := genPeer()
+	_, err := reactor.InitPeer(peer)
+	require.NoError(t, err)
+
+	tx := largeCATTestTx(96)
+	txKey := tx.Key()
+
+	peer.On("Send", mock.MatchedBy(func(env p2p.Envelope) bool {
+		msg, ok := env.Message.(*protomem.Message)
+		return ok &&
+			env.ChannelID == MempoolDataChannel &&
+			msg.GetTxManifest() != nil &&
+			bytes.Equal(msg.GetTxManifest().TxKey, txKey[:])
+	})).Return(true).Once()
+
+	reactor.broadcastAcceptedTx(tx.ToCachedTx(), txKey, reactor.mempool.Height(), []byte("sender-000-0"), 1, 10, false)
+
+	peer.AssertExpectations(t)
 }
 
 func TestLargeTxFastPathDefaultsEnabled(t *testing.T) {

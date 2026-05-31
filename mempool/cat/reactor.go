@@ -629,7 +629,7 @@ func (memR *Reactor) broadcastSeenTx(txKey types.TxKey, signer []byte, sequence 
 
 // broadcastNewTx broadcast new transaction to limited peers unless we are already sure they have seen the tx.
 func (memR *Reactor) broadcastNewTx(wtx *wrappedTx) {
-	memR.broadcastAcceptedTx(wtx.tx, wtx.key(), wtx.height, wtx.sender, wtx.sequence, wtx.priority)
+	memR.broadcastAcceptedTx(wtx.tx, wtx.key(), wtx.height, wtx.sender, wtx.sequence, wtx.priority, wtx.fromBroadcast)
 }
 
 // broadcastSeenTxWithHeight is a helper that broadcasts a SeenTx message with height checking.
@@ -777,7 +777,7 @@ func (memR *Reactor) processReceivedTx(cachedTx *types.CachedTx, key types.TxKey
 	}
 
 	if !memR.opts.ListenOnly && rsp.Code == 0 {
-		memR.broadcastAcceptedTx(cachedTx, key, memR.mempool.Height(), rsp.Address, rsp.Sequence, rsp.Priority)
+		memR.broadcastAcceptedTx(cachedTx, key, memR.mempool.Height(), rsp.Address, rsp.Sequence, rsp.Priority, false)
 	}
 }
 
@@ -809,7 +809,7 @@ func (memR *Reactor) processReceivedBuffer(signer []byte) {
 		}
 
 		if !memR.opts.ListenOnly && rsp.Code == 0 {
-			memR.broadcastAcceptedTx(buffered.tx, buffered.txKey, memR.mempool.Height(), signer, expectedSeq, rsp.Priority)
+			memR.broadcastAcceptedTx(buffered.tx, buffered.txKey, memR.mempool.Height(), signer, expectedSeq, rsp.Priority, false)
 		}
 	}
 }
