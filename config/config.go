@@ -895,7 +895,7 @@ func DefaultMempoolConfig() *MempoolConfig {
 		TTLNumBlocks:                    0,
 		MaxPersistentStickyPeers:        DefaultMaxPersistentStickyPeers,
 		LargeTxThreshold:                1024 * 1024,
-		LargeTxChunkSize:                1024 * 1024,
+		LargeTxChunkSize:                2 * 1024 * 1024,
 		LargeTxRequestParallelism:       4,
 		LargeTxMaxInflightChunksPerPeer: 8,
 		LargeTxChunkTimeout:             250 * time.Millisecond,

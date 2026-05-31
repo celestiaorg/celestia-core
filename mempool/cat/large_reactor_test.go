@@ -111,8 +111,11 @@ func TestLargeTxReconstructionSuccessDuplicateAndCorruptChunk(t *testing.T) {
 
 	reactor.largeMu.Lock()
 	_, exists := reactor.reconstructions[txKey]
+	storedLocal := reactor.largeTxs[txKey]
 	reactor.largeMu.Unlock()
 	require.False(t, exists)
+	require.NotNil(t, storedLocal)
+	require.Equal(t, local.chunks, storedLocal.chunks)
 }
 
 func TestLargeTxSchedulerRequestsDisjointChunksFromPeers(t *testing.T) {
@@ -192,6 +195,96 @@ func TestLargeTxSchedulerDoesNotRequestOptimisticChunksAgain(t *testing.T) {
 	reactor.scheduleChunkRequests(txKey)
 
 	peer.AssertExpectations(t)
+}
+
+func TestLargeTxHedgesInflightChunksToNewSource(t *testing.T) {
+	reactor, _ := setupLargeTxReactor(t, 1, 16)
+	reactor.opts.LargeTxRequestParallelism = 2
+	reactor.opts.LargeTxMaxInflightChunksPerPeer = 4
+	reactor.opts.LargeTxChunkTimeout = time.Hour
+
+	tx := largeCATTestTx(96)
+	local, err := buildLocalLargeTx(tx, 16, []byte("sender-000-0"), 1, 10)
+	require.NoError(t, err)
+	txKey := tx.Key()
+
+	peers := genPeers(2)
+	for _, peer := range peers {
+		_, err := reactor.InitPeer(peer)
+		require.NoError(t, err)
+	}
+	peerA := reactor.ids.GetIDForPeer(peers[0].ID())
+	peerB := reactor.ids.GetIDForPeer(peers[1].ID())
+
+	_, err = reactor.upsertReconstructionSession(txKey, local.manifest, peerA, false)
+	require.NoError(t, err)
+
+	reactor.largeMu.Lock()
+	session := reactor.reconstructions[txKey]
+	oldSentAt := time.Now().Add(-time.Hour)
+	for i := uint32(0); i < 4; i++ {
+		timer := time.AfterFunc(time.Hour, func() {})
+		session.markInflight(i, peerA, oldSentAt, timer)
+	}
+	session.addSource(peerB)
+	reactor.largeMu.Unlock()
+
+	peers[1].On("TrySend", p2p.Envelope{
+		ChannelID: MempoolWantsChannel,
+		Message: &protomem.Message{
+			Sum: &protomem.Message_WantChunk{WantChunk: &protomem.WantChunk{
+				TxKey:   txKey[:],
+				Indexes: []uint32{3, 2},
+			}},
+		},
+	}).Return(true).Once()
+
+	reactor.hedgeChunkRequests(txKey, peerB)
+
+	peers[1].AssertExpectations(t)
+}
+
+func TestLargeTxServesVerifiedReconstructionChunks(t *testing.T) {
+	reactor, _ := setupLargeTxReactor(t, 1, 16)
+
+	tx := largeCATTestTx(96)
+	local, err := buildLocalLargeTx(tx, 16, []byte("sender-000-0"), 1, 10)
+	require.NoError(t, err)
+	txKey := tx.Key()
+
+	source := genPeer()
+	requester := genPeer()
+	_, err = reactor.InitPeer(source)
+	require.NoError(t, err)
+	_, err = reactor.InitPeer(requester)
+	require.NoError(t, err)
+	sourceID := reactor.ids.GetIDForPeer(source.ID())
+
+	_, err = reactor.upsertReconstructionSession(txKey, local.manifest, sourceID, false)
+	require.NoError(t, err)
+	reconstructed, err := reactor.acceptTxChunk(txKey, &protomem.TxChunk{
+		TxKey: txKey[:],
+		Index: 0,
+		Data:  local.chunks[0],
+	}, sourceID)
+	require.NoError(t, err)
+	require.Nil(t, reconstructed)
+
+	requester.On("TrySend", mock.MatchedBy(func(env p2p.Envelope) bool {
+		msg, ok := env.Message.(*protomem.Message)
+		return ok &&
+			env.ChannelID == MempoolChunkChannel &&
+			msg.GetTxChunk() != nil &&
+			msg.GetTxChunk().Index == 0 &&
+			bytes.Equal(msg.GetTxChunk().Data, local.chunks[0])
+	})).Return(true).Once()
+
+	reactor.receiveWantChunk(&protomem.WantChunk{
+		TxKey:   txKey[:],
+		Indexes: []uint32{0, 1},
+	}, requester)
+
+	requester.AssertExpectations(t)
 }
 
 func TestLargeTxPrunesLocalChunksAfterMempoolRemoval(t *testing.T) {

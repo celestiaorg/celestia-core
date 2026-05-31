@@ -40,6 +40,7 @@ type chunkRequest struct {
 	peerID uint16
 	sentAt time.Time
 	timer  *time.Timer
+	hedged bool
 }
 
 func buildLocalLargeTx(tx types.Tx, chunkSize int, signer []byte, sequence uint64, priority int64) (*localLargeTx, error) {
@@ -198,6 +199,25 @@ func (s *reconstructionSession) markInflight(index uint32, peerID uint16, sentAt
 	s.perPeerInflight[peerID][index] = struct{}{}
 }
 
+func (s *reconstructionSession) reassignInflight(index uint32, peerID uint16, sentAt time.Time, timer *time.Timer) {
+	if req := s.inflight[index]; req != nil {
+		if req.timer != nil {
+			req.timer.Stop()
+		}
+		if indexes := s.perPeerInflight[req.peerID]; indexes != nil {
+			delete(indexes, index)
+			if len(indexes) == 0 {
+				delete(s.perPeerInflight, req.peerID)
+			}
+		}
+	}
+	s.inflight[index] = &chunkRequest{peerID: peerID, sentAt: sentAt, timer: timer, hedged: true}
+	if _, ok := s.perPeerInflight[peerID]; !ok {
+		s.perPeerInflight[peerID] = make(map[uint32]struct{})
+	}
+	s.perPeerInflight[peerID][index] = struct{}{}
+}
+
 func (s *reconstructionSession) clearInflight(index uint32) (uint16, time.Time, bool) {
 	req, ok := s.inflight[index]
 	if !ok {
@@ -252,6 +272,40 @@ func (s *reconstructionSession) missingIndexes(limit int) []uint32 {
 	return missing
 }
 
+func (s *reconstructionSession) hedgeableInflightIndexes(peerID uint16, limit int, minAge time.Duration, now time.Time) []uint32 {
+	if limit <= 0 {
+		return nil
+	}
+	type candidate struct {
+		index  uint32
+		sentAt time.Time
+	}
+	candidates := make([]candidate, 0, len(s.inflight))
+	for index, req := range s.inflight {
+		if req == nil || req.peerID == peerID || req.hedged || s.received[index] {
+			continue
+		}
+		if minAge > 0 && now.Sub(req.sentAt) < minAge {
+			continue
+		}
+		candidates = append(candidates, candidate{index: index, sentAt: req.sentAt})
+	}
+	sort.Slice(candidates, func(i, j int) bool {
+		if candidates[i].sentAt.Equal(candidates[j].sentAt) {
+			return candidates[i].index > candidates[j].index
+		}
+		return candidates[i].sentAt.Before(candidates[j].sentAt)
+	})
+	if len(candidates) > limit {
+		candidates = candidates[:limit]
+	}
+	indexes := make([]uint32, 0, len(candidates))
+	for _, candidate := range candidates {
+		indexes = append(indexes, candidate.index)
+	}
+	return indexes
+}
+
 func (s *reconstructionSession) markReceived(index uint32, data []byte, peerID uint16) bool {
 	if int(index) >= len(s.received) {
 		return false
@@ -291,6 +345,15 @@ func (s *reconstructionSession) reconstruct() types.Tx {
 		tx = append(tx, chunk...)
 	}
 	return types.Tx(tx)
+}
+
+func (s *reconstructionSession) toLocalLargeTx() *localLargeTx {
+	localChunks := make([][]byte, len(s.chunks))
+	copy(localChunks, s.chunks)
+	return &localLargeTx{
+		manifest: cloneTxManifest(s.manifest),
+		chunks:   localChunks,
+	}
 }
 
 func (s *reconstructionSession) firstSourcePeer() uint16 {
