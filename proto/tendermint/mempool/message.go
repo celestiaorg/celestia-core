@@ -32,6 +32,27 @@ func (m *WantTx) Wrap() proto.Message {
 	return mm
 }
 
+// Wrap implements the p2p Wrapper interface and wraps a tx manifest message.
+func (m *TxManifest) Wrap() proto.Message {
+	mm := &Message{}
+	mm.Sum = &Message_TxManifest{TxManifest: m}
+	return mm
+}
+
+// Wrap implements the p2p Wrapper interface and wraps a want chunk message.
+func (m *WantChunk) Wrap() proto.Message {
+	mm := &Message{}
+	mm.Sum = &Message_WantChunk{WantChunk: m}
+	return mm
+}
+
+// Wrap implements the p2p Wrapper interface and wraps a tx chunk message.
+func (m *TxChunk) Wrap() proto.Message {
+	mm := &Message{}
+	mm.Sum = &Message_TxChunk{TxChunk: m}
+	return mm
+}
+
 // Unwrap implements the p2p Wrapper interface and unwraps a wrapped mempool
 // message.
 func (m *Message) Unwrap() (proto.Message, error) {
@@ -43,6 +64,12 @@ func (m *Message) Unwrap() (proto.Message, error) {
 
 	case *Message_WantTx:
 		return m.GetWantTx(), nil
+	case *Message_TxManifest:
+		return m.GetTxManifest(), nil
+	case *Message_WantChunk:
+		return m.GetWantChunk(), nil
+	case *Message_TxChunk:
+		return m.GetTxChunk(), nil
 	default:
 		return nil, fmt.Errorf("unknown message: %T", msg)
 	}

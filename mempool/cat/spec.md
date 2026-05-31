@@ -103,3 +103,64 @@ Upon receiving a `WantTx` message:
 ### Compatibility
 
 CAT has Go API compatibility with the existing two mempool implementations. It implements both the `Reactor` interface required by Tendermint's P2P layer and the `Mempool` interface used by `consensus` and `rpc`. CAT is currently network compatible with existing implementations (by using another channel), but the protocol is unaware that it is communicating with a different mempool and that `SeenTx` and `WantTx` messages aren't reaching those peers thus it is recommended that the entire network use CAT.
+
+## Large-transaction fast path
+
+For transactions at or above `LargeTxThreshold` (default 1 MiB), CAT replaces the
+single-peer whole-object `SeenTx → WantTx → Txs` round trip with multi-peer
+chunk transfer. This is **on by default**; set `DisableLargeTxFastPath` only to
+fall back to the legacy path (e.g. while a network still has un-upgraded peers).
+All large-tx tuning lives in `ReactorOptions` (not TOML), like `MaxTxSize`.
+
+### Messages
+
+Three messages are added to the mempool `Message` oneof (small CAT messages are
+unchanged):
+
+- `TxManifest{tx_key, tx_size, chunk_size, chunk_count, chunk_hashes, sequence, signer, priority}`
+  — advertises a large tx as an ordered list of fixed-size chunks, each with a
+  SHA-256 hash.
+- `WantChunk{tx_key, indexes}` — requests one or more chunks by index.
+- `TxChunk{tx_key, index, data}` — carries one chunk's bytes.
+
+### Channels
+
+`TxManifest` is sent on the metadata data channel (`0x31`) and `WantChunk` on
+the wants channel (`0x32`). `TxChunk` payloads use a dedicated, lower-priority
+**chunk channel** (`0x33`) with a bounded send queue, so a backlog of bulk chunk
+data cannot starve metadata or consensus traffic.
+
+### Sender
+
+On accepting a large tx, a node splits it into `chunk_size` chunks, hashes each,
+stores the manifest, advertises the `TxManifest` to sticky peers (rendezvous
+hashing, capped at `LargeTxMaxAdvertisePeers`), and optimistically pushes the
+first `LargeTxOptimisticPushChunks` chunks to the top-scored peer. It serves
+`WantChunk` requests from the full tx held in the pool.
+
+### Receiver
+
+On a valid `TxManifest` (and unless the tx is already held, recently rejected,
+or already being pulled whole), the node opens a reconstruction session and
+requests disjoint chunk ranges from up to `LargeTxRequestParallelism` peers, each
+capped at `LargeTxMaxInflightChunksPerPeer` outstanding chunks. Each `TxChunk` is
+verified against its manifest hash; a chunk that fails verification disconnects
+the peer. Chunks unanswered within `LargeTxChunkTimeout` are re-requested from an
+alternate peer. Once all chunks arrive, the node concatenates them, verifies the
+full `tx_key`, runs `CheckTx`, and on success re-advertises the manifest onward.
+Sessions are abandoned after `LargeTxReconstructionTimeout`.
+
+### Peer scoring
+
+A per-peer score table (with `LargeTxPeerScoreHalflife` decay) tracks chunk
+latency/throughput, timeouts, queue-full failures, invalid chunks, and
+successful reconstructions. Scores rank peers for chunk-source selection and
+retry order; invalid chunks are penalized far more heavily than timeouts.
+
+### Compatibility & fallback
+
+Legacy peers that advertise a large tx via `SeenTx` are still served the whole
+tx via `WantTx`/`Txs`. When a fast-path reconstruction is already in progress for
+a tx, an incoming `SeenTx` for it does not trigger a redundant whole-tx pull.
+Manifests, chunk counts, and chunk data are all bounds-checked so malformed
+input cannot cause unbounded memory, CPU, or bandwidth use.

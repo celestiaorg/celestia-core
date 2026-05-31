@@ -80,6 +80,12 @@ type Reactor struct {
 	traceClient    trace.Tracer
 	// stickySalt stores []byte rendezvous salt for sticky peer selection; nil/empty keeps default ordering.
 	stickySalt atomic.Value
+
+	// Large-tx fast-path state.
+	manifests       *manifestStore         // manifests of large txs we can serve/re-advertise
+	reconstructions *reconstructionManager // in-progress large-tx reconstructions
+	chunkRequests   *chunkRequestScheduler // outstanding chunk requests with per-chunk timeouts
+	peerScores      *peerScoreTable        // per-peer chunk-transfer performance scores
 }
 
 type ReactorOptions struct {
@@ -105,6 +111,36 @@ type ReactorOptions struct {
 	// to receive SeenTx broadcasts per signer, added on top of the natural sticky
 	// set without displacing it. <= 0 falls back to defaultMaxPersistentStickyPeers.
 	MaxPersistentStickyPeers int
+
+	// DisableLargeTxFastPath turns OFF the chunked large-tx dissemination path.
+	// The fast path is ON by default (the zero value enables it): transactions at
+	// or above LargeTxThreshold are advertised as a TxManifest and fetched as
+	// chunks from multiple peers in parallel, rather than pulled whole from a
+	// single peer via SeenTx/WantTx/Txs. Set this only to fall back to the legacy
+	// whole-object path (e.g. while a network still has un-upgraded peers).
+	DisableLargeTxFastPath bool
+
+	// Large-tx fast-path tuning. Zero values fall back to the package defaults
+	// (see chunking.go). These are not TOML knobs; Celestia overrides them here
+	// at startup, like MaxTxSize and MaxGossipDelay.
+	LargeTxThreshold                int
+	LargeTxChunkSize                int
+	LargeTxRequestParallelism       int
+	LargeTxMaxInflightChunksPerPeer int
+	LargeTxChunkTimeout             time.Duration
+	LargeTxReconstructionTimeout    time.Duration
+	LargeTxMaxAdvertisePeers        int
+	LargeTxOptimisticPushChunks     int
+	LargeTxPeerScoreHalflife        time.Duration
+
+	// LargeTxEnableFEC reserves a forward-error-correction (parity chunk) mode.
+	// It is a no-op in phase 1 and defaults to false.
+	LargeTxEnableFEC bool
+}
+
+// largeTxFastPathEnabled reports whether the chunked large-tx path is active.
+func (opts *ReactorOptions) largeTxFastPathEnabled() bool {
+	return !opts.DisableLargeTxFastPath
 }
 
 func (opts *ReactorOptions) VerifyAndComplete() error {
@@ -118,6 +154,39 @@ func (opts *ReactorOptions) VerifyAndComplete() error {
 
 	if opts.MaxPersistentStickyPeers <= 0 {
 		opts.MaxPersistentStickyPeers = defaultMaxPersistentStickyPeers
+	}
+
+	if opts.LargeTxThreshold <= 0 {
+		opts.LargeTxThreshold = DefaultLargeTxThreshold
+	}
+	if opts.LargeTxChunkSize <= 0 {
+		opts.LargeTxChunkSize = DefaultLargeTxChunkSize
+	}
+	if opts.LargeTxChunkSize < minLargeTxChunkSize || opts.LargeTxChunkSize > maxLargeTxChunkSize {
+		return fmt.Errorf("large tx chunk size (%d) must be within [%d, %d]", opts.LargeTxChunkSize, minLargeTxChunkSize, maxLargeTxChunkSize)
+	}
+	if opts.LargeTxRequestParallelism <= 0 {
+		opts.LargeTxRequestParallelism = DefaultLargeTxRequestParallelism
+	}
+	if opts.LargeTxMaxInflightChunksPerPeer <= 0 {
+		opts.LargeTxMaxInflightChunksPerPeer = DefaultLargeTxMaxInflightChunksPerPeer
+	}
+	if opts.LargeTxChunkTimeout <= 0 {
+		opts.LargeTxChunkTimeout = DefaultLargeTxChunkTimeout
+	}
+	if opts.LargeTxReconstructionTimeout <= 0 {
+		opts.LargeTxReconstructionTimeout = DefaultLargeTxReconstructionTimeout
+	}
+	if opts.LargeTxMaxAdvertisePeers <= 0 {
+		opts.LargeTxMaxAdvertisePeers = DefaultLargeTxMaxAdvertisePeers
+	}
+	if opts.LargeTxOptimisticPushChunks < 0 {
+		opts.LargeTxOptimisticPushChunks = 0
+	} else if opts.LargeTxOptimisticPushChunks == 0 {
+		opts.LargeTxOptimisticPushChunks = DefaultLargeTxOptimisticPushChunks
+	}
+	if opts.LargeTxPeerScoreHalflife <= 0 {
+		opts.LargeTxPeerScoreHalflife = DefaultLargeTxPeerScoreHalflife
 	}
 
 	if opts.MaxTxSize < 0 {
@@ -142,13 +211,17 @@ func NewReactor(mempool *TxPool, opts *ReactorOptions) (*Reactor, error) {
 		traceClient = trace.NoOpTracer()
 	}
 	memR := &Reactor{
-		opts:           opts,
-		mempool:        mempool,
-		ids:            newMempoolIDs(),
-		requests:       newRequestScheduler(opts.MaxGossipDelay, defaultGlobalRequestTimeout),
-		pendingSeen:    newPendingSeenTracker(0),
-		receivedBuffer: newReceivedTxBuffer(),
-		traceClient:    traceClient,
+		opts:            opts,
+		mempool:         mempool,
+		ids:             newMempoolIDs(),
+		requests:        newRequestScheduler(opts.MaxGossipDelay, defaultGlobalRequestTimeout),
+		pendingSeen:     newPendingSeenTracker(0),
+		receivedBuffer:  newReceivedTxBuffer(),
+		traceClient:     traceClient,
+		manifests:       newManifestStore(defaultMaxStoredManifests),
+		reconstructions: newReconstructionManager(opts.LargeTxReconstructionTimeout),
+		chunkRequests:   newChunkRequestScheduler(opts.LargeTxChunkTimeout),
+		peerScores:      newPeerScoreTable(opts.LargeTxPeerScoreHalflife),
 	}
 	memR.BaseReactor = *p2p.NewBaseReactor("CAT", memR,
 		p2p.WithIncomingQueueSize(ReactorIncomingMessageQueueSize),
@@ -210,6 +283,10 @@ func (memR *Reactor) OnStart() error {
 
 	go memR.heightSignalLoop()
 
+	if memR.opts.largeTxFastPathEnabled() {
+		go memR.reconstructionSweepLoop()
+	}
+
 	return nil
 }
 
@@ -217,6 +294,7 @@ func (memR *Reactor) OnStart() error {
 func (memR *Reactor) OnStop() {
 	// stop all the timers tracking outbound requests
 	memR.requests.Close()
+	memR.chunkRequests.Close()
 }
 
 // GetChannels implements Reactor by returning the list of channels for this
@@ -229,10 +307,26 @@ func (memR *Reactor) GetChannels() []*p2p.ChannelDescriptor {
 		},
 	}
 
+	// The wants channel carries both legacy WantTx (one tx key) and the
+	// fast-path WantChunk (a tx key plus a bounded list of chunk indexes). Size
+	// its capacity for the larger of the two.
+	wantIndexes := make([]uint32, maxWantChunkIndexes)
 	stateMsg := protomem.Message{
-		Sum: &protomem.Message_SeenTx{
-			SeenTx: &protomem.SeenTx{
+		Sum: &protomem.Message_WantChunk{
+			WantChunk: &protomem.WantChunk{
+				TxKey:   make([]byte, tmhash.Size),
+				Indexes: wantIndexes,
+			},
+		},
+	}
+
+	// The chunk channel carries TxChunk payloads. A single chunk is bounded by
+	// maxLargeTxChunkSize regardless of the negotiated chunk size.
+	chunkMsg := protomem.Message{
+		Sum: &protomem.Message_TxChunk{
+			TxChunk: &protomem.TxChunk{
 				TxKey: make([]byte, tmhash.Size),
+				Data:  make([]byte, maxLargeTxChunkSize),
 			},
 		},
 	}
@@ -246,6 +340,8 @@ func (memR *Reactor) GetChannels() []*p2p.ChannelDescriptor {
 			MessageType:         &protomem.Message{},
 		},
 		{
+			// Metadata channel: SeenTx, Txs responses, and TxManifest
+			// advertisements. High priority, sized for a full tx.
 			ID:                  MempoolDataChannel,
 			Priority:            3,
 			SendQueueCapacity:   1000,
@@ -253,10 +349,23 @@ func (memR *Reactor) GetChannels() []*p2p.ChannelDescriptor {
 			MessageType:         &protomem.Message{},
 		},
 		{
+			// Metadata channel: WantTx and WantChunk requests. High priority,
+			// small messages.
 			ID:                  MempoolWantsChannel,
 			Priority:            3,
 			SendQueueCapacity:   1000,
 			RecvMessageCapacity: stateMsg.Size(),
+			MessageType:         &protomem.Message{},
+		},
+		{
+			// Bulk chunk-data channel, isolated from metadata so a backlog of
+			// large chunk payloads cannot starve SeenTx/manifest/want traffic.
+			// Lower priority than the metadata channels (and than consensus),
+			// with a bounded send queue providing backpressure.
+			ID:                  MempoolChunkChannel,
+			Priority:            2,
+			SendQueueCapacity:   32,
+			RecvMessageCapacity: chunkMsg.Size(),
 			MessageType:         &protomem.Message{},
 		},
 	}
@@ -283,6 +392,17 @@ func (memR *Reactor) RemovePeer(peer p2p.Peer, reason interface{}) {
 		memR.pendingSeen.markRequestFailed(key, peerID)
 		memR.mempool.metrics.RequestedTxs.Add(1)
 		memR.findNewPeerToRequestTx(key)
+	}
+
+	// Drop the peer from large-tx fast-path state and re-request any chunks that
+	// were inflight to it from alternate peers.
+	memR.peerScores.RemovePeer(peerID)
+	memR.chunkRequests.ClearPeer(peerID)
+	orphaned := memR.reconstructions.removePeer(peerID)
+	for txKey := range orphaned {
+		if session, ok := memR.reconstructions.get(txKey); ok {
+			memR.scheduleChunkRequests(txKey, session)
+		}
 	}
 }
 
@@ -388,6 +508,17 @@ func (memR *Reactor) Receive(e p2p.Envelope) {
 			return
 		}
 
+		// If a large-tx reconstruction is already in progress (or we already hold
+		// the manifest) for this tx, prefer the chunked fast path: record the peer
+		// as a potential chunk source and do not pull the whole tx via WantTx.
+		if memR.opts.largeTxFastPathEnabled() && (memR.reconstructions.has(txKey) || memR.manifests.has(txKey)) {
+			if session, ok := memR.reconstructions.get(txKey); ok {
+				session.addPeer(peerID)
+				memR.scheduleChunkRequests(txKey, session)
+			}
+			return
+		}
+
 		// If we are already requesting that tx, then we don't need to go any further.
 		if memR.requests.ForTx(txKey) != 0 {
 			memR.Logger.Trace("received a SeenTx message for a transaction we are already requesting", "txKey", txKey)
@@ -485,6 +616,23 @@ func (memR *Reactor) Receive(e p2p.Envelope) {
 			}
 		}
 
+	// A peer advertises a large transaction by describing its chunk layout. We
+	// start (or join) a reconstruction session and begin fetching chunks from
+	// multiple peers in parallel instead of pulling the whole tx from one peer.
+	case *protomem.TxManifest:
+		memR.receiveTxManifest(msg, e.Src)
+
+	// A peer requests one or more chunks of a large tx we have advertised. We
+	// slice them from the full tx we hold and send them on the chunk channel.
+	case *protomem.WantChunk:
+		memR.receiveWantChunk(msg, e.Src)
+
+	// A peer sends us the bytes of a chunk we requested (or that was pushed
+	// optimistically). We verify it against the manifest and, once all chunks
+	// arrive, reconstruct and add the tx.
+	case *protomem.TxChunk:
+		memR.receiveTxChunk(msg, e.Src)
+
 	default:
 		memR.Logger.Error("unknown message type", "src", e.Src, "chId", e.ChannelID, "msg", fmt.Sprintf("%T", msg))
 		memR.Switch.StopPeerForError(e.Src, fmt.Errorf("mempool cannot handle message of type: %T", msg), memR.String())
@@ -505,6 +653,12 @@ func (memR *Reactor) broadcastSeenTx(txKey types.TxKey, signer []byte, sequence 
 
 // broadcastNewTx broadcast new transaction to limited peers unless we are already sure they have seen the tx.
 func (memR *Reactor) broadcastNewTx(wtx *wrappedTx) {
+	// Large txs take the chunked fast path: advertise a manifest and serve
+	// chunks, rather than letting peers pull the whole object from one source.
+	if memR.opts.largeTxFastPathEnabled() && int(wtx.size()) >= memR.opts.LargeTxThreshold {
+		memR.advertiseLargeTx(wtx)
+		return
+	}
 	memR.broadcastSeenTxWithHeight(wtx.key(), wtx.height, wtx.sender, wtx.sequence)
 }
 
