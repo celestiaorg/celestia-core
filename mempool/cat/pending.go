@@ -16,15 +16,33 @@ type pendingSeenTx struct {
 	txKey     types.TxKey
 	sequence  uint64
 	peer      uint16
+	peers     map[uint16]struct{}
 	requested bool
 	lastPeer  uint16
 }
 
 func (p *pendingSeenTx) peerIDs() []uint16 {
-	if p.peer == 0 {
+	if p.peer == 0 && len(p.peers) == 0 {
 		return nil
 	}
-	return []uint16{p.peer}
+	ids := make([]uint16, 0, len(p.peers)+1)
+	seen := make(map[uint16]struct{}, len(p.peers)+1)
+	if p.peer != 0 {
+		ids = append(ids, p.peer)
+		seen[p.peer] = struct{}{}
+	}
+	for peerID := range p.peers {
+		if peerID == 0 {
+			continue
+		}
+		if _, ok := seen[peerID]; ok {
+			continue
+		}
+		ids = append(ids, peerID)
+		seen[peerID] = struct{}{}
+	}
+	sort.Slice(ids, func(i, j int) bool { return ids[i] < ids[j] })
+	return ids
 }
 
 type pendingSeenTracker struct {
@@ -56,8 +74,11 @@ func (ps *pendingSeenTracker) add(signer []byte, txKey types.TxKey, sequence uin
 	defer ps.mu.Unlock()
 
 	// First check if we already have this exact txKey
-	if _, ok := ps.byTx[txKey]; ok {
-		// Already tracking this tx, keep the first peer
+	if entry, ok := ps.byTx[txKey]; ok {
+		if entry.peers == nil {
+			entry.peers = make(map[uint16]struct{})
+		}
+		entry.peers[peerID] = struct{}{}
 		return
 	}
 
@@ -70,6 +91,7 @@ func (ps *pendingSeenTracker) add(signer []byte, txKey types.TxKey, sequence uin
 		txKey:     txKey,
 		sequence:  sequence,
 		peer:      peerID,
+		peers:     map[uint16]struct{}{peerID: {}},
 	}
 
 	insertIdx := sort.Search(len(queue), func(i int) bool {
@@ -135,6 +157,12 @@ func (ps *pendingSeenTracker) get(txKey types.TxKey) *pendingSeenTx {
 	if len(entry.signer) > 0 {
 		clone.signer = append([]byte(nil), entry.signer...)
 	}
+	if len(entry.peers) > 0 {
+		clone.peers = make(map[uint16]struct{}, len(entry.peers))
+		for peerID := range entry.peers {
+			clone.peers[peerID] = struct{}{}
+		}
+	}
 	return &clone
 }
 
@@ -157,6 +185,12 @@ func (ps *pendingSeenTracker) entriesForSigner(signer []byte) []*pendingSeenTx {
 		if len(entry.signer) > 0 {
 			clone.signer = append([]byte(nil), entry.signer...)
 		}
+		if len(entry.peers) > 0 {
+			clone.peers = make(map[uint16]struct{}, len(entry.peers))
+			for peerID := range entry.peers {
+				clone.peers[peerID] = struct{}{}
+			}
+		}
 		out[i] = &clone
 	}
 	return out
@@ -175,6 +209,7 @@ func (ps *pendingSeenTracker) removePeer(peerID uint16) {
 			if entry.peer == peerID {
 				entry.peer = 0
 			}
+			delete(entry.peers, peerID)
 			if entry.lastPeer == peerID {
 				entry.requested = false
 				entry.lastPeer = 0
@@ -233,4 +268,5 @@ func (ps *pendingSeenTracker) markRequestFailed(txKey types.TxKey, peerID uint16
 	if entry.peer == peerID {
 		entry.peer = 0
 	}
+	delete(entry.peers, peerID)
 }

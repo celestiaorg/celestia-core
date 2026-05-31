@@ -859,6 +859,20 @@ type MempoolConfig struct {
 	// set, never displacing it). 0 falls back to the default. This key is omitted
 	// from the generated config.toml; set it explicitly to override.
 	MaxPersistentStickyPeers int `mapstructure:"max_persistent_sticky_peers"`
+
+	// CAT large transaction fast-path settings. Txs at or above
+	// LargeTxThreshold are advertised with a manifest and transferred in chunks
+	// from one or more peers.
+	LargeTxThreshold                int           `mapstructure:"large_tx_threshold"`
+	LargeTxChunkSize                int           `mapstructure:"large_tx_chunk_size"`
+	LargeTxRequestParallelism       int           `mapstructure:"large_tx_request_parallelism"`
+	LargeTxMaxInflightChunksPerPeer int           `mapstructure:"large_tx_max_inflight_chunks_per_peer"`
+	LargeTxChunkTimeout             time.Duration `mapstructure:"large_tx_chunk_timeout"`
+	LargeTxReconstructionTimeout    time.Duration `mapstructure:"large_tx_reconstruction_timeout"`
+	LargeTxMaxAdvertisePeers        int           `mapstructure:"large_tx_max_advertise_peers"`
+	LargeTxOptimisticPushChunks     int           `mapstructure:"large_tx_optimistic_push_chunks"`
+	LargeTxPeerScoreHalflife        time.Duration `mapstructure:"large_tx_peer_score_halflife"`
+	LargeTxEnableFEC                bool          `mapstructure:"large_tx_enable_fec"`
 }
 
 // DefaultMempoolConfig returns a default configuration for the CometBFT mempool
@@ -877,9 +891,19 @@ func DefaultMempoolConfig() *MempoolConfig {
 		MaxTxBytes:  1024 * 1024, // 1MB
 		ExperimentalMaxGossipConnectionsToNonPersistentPeers: 0,
 		ExperimentalMaxGossipConnectionsToPersistentPeers:    0,
-		TTLDuration:              0 * time.Second,
-		TTLNumBlocks:             0,
-		MaxPersistentStickyPeers: DefaultMaxPersistentStickyPeers,
+		TTLDuration:                     0 * time.Second,
+		TTLNumBlocks:                    0,
+		MaxPersistentStickyPeers:        DefaultMaxPersistentStickyPeers,
+		LargeTxThreshold:                1024 * 1024,
+		LargeTxChunkSize:                256 * 1024,
+		LargeTxRequestParallelism:       4,
+		LargeTxMaxInflightChunksPerPeer: 8,
+		LargeTxChunkTimeout:             75 * time.Millisecond,
+		LargeTxReconstructionTimeout:    500 * time.Millisecond,
+		LargeTxMaxAdvertisePeers:        15,
+		LargeTxOptimisticPushChunks:     2,
+		LargeTxPeerScoreHalflife:        30 * time.Second,
+		LargeTxEnableFEC:                false,
 	}
 }
 
@@ -928,6 +952,33 @@ func (cfg *MempoolConfig) ValidateBasic() error {
 	}
 	if cfg.MaxPersistentStickyPeers < 0 {
 		return errors.New("max_persistent_sticky_peers can't be negative")
+	}
+	if cfg.LargeTxThreshold < 0 {
+		return errors.New("large_tx_threshold can't be negative")
+	}
+	if cfg.LargeTxChunkSize < 0 {
+		return errors.New("large_tx_chunk_size can't be negative")
+	}
+	if cfg.LargeTxRequestParallelism < 0 {
+		return errors.New("large_tx_request_parallelism can't be negative")
+	}
+	if cfg.LargeTxMaxInflightChunksPerPeer < 0 {
+		return errors.New("large_tx_max_inflight_chunks_per_peer can't be negative")
+	}
+	if cfg.LargeTxChunkTimeout < 0 {
+		return errors.New("large_tx_chunk_timeout can't be negative")
+	}
+	if cfg.LargeTxReconstructionTimeout < 0 {
+		return errors.New("large_tx_reconstruction_timeout can't be negative")
+	}
+	if cfg.LargeTxMaxAdvertisePeers < 0 {
+		return errors.New("large_tx_max_advertise_peers can't be negative")
+	}
+	if cfg.LargeTxOptimisticPushChunks < 0 {
+		return errors.New("large_tx_optimistic_push_chunks can't be negative")
+	}
+	if cfg.LargeTxPeerScoreHalflife < 0 {
+		return errors.New("large_tx_peer_score_halflife can't be negative")
 	}
 	return nil
 }

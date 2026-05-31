@@ -123,6 +123,12 @@ func TestMempoolConfigValidateBasic(t *testing.T) {
 		"MaxTxsBytes",
 		"CacheSize",
 		"MaxTxBytes",
+		"LargeTxThreshold",
+		"LargeTxChunkSize",
+		"LargeTxRequestParallelism",
+		"LargeTxMaxInflightChunksPerPeer",
+		"LargeTxMaxAdvertisePeers",
+		"LargeTxOptimisticPushChunks",
 	}
 
 	for _, fieldName := range fieldsToTest {
@@ -133,6 +139,19 @@ func TestMempoolConfigValidateBasic(t *testing.T) {
 
 	reflect.ValueOf(cfg).Elem().FieldByName("Type").SetString("invalid")
 	assert.Error(t, cfg.ValidateBasic())
+
+	durationFieldsToTest := []string{
+		"LargeTxChunkTimeout",
+		"LargeTxReconstructionTimeout",
+		"LargeTxPeerScoreHalflife",
+	}
+
+	cfg.Type = config.MempoolTypeCAT
+	for _, fieldName := range durationFieldsToTest {
+		reflect.ValueOf(cfg).Elem().FieldByName(fieldName).SetInt(int64(-time.Second))
+		assert.Error(t, cfg.ValidateBasic())
+		reflect.ValueOf(cfg).Elem().FieldByName(fieldName).SetInt(0)
+	}
 }
 
 func TestStateSyncConfigValidateBasic(t *testing.T) {

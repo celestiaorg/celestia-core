@@ -615,6 +615,9 @@ func genPeer() *mocks.Peer {
 	peer.On("ID").Return(nodeKey.ID())
 	peer.On("Get", types.PeerStateKey).Return(nil).Maybe()
 	peer.On("IsPersistent").Return(false).Maybe()
+	peer.On("NodeInfo").Return(p2p.DefaultNodeInfo{
+		Channels: []byte{MempoolDataChannel, MempoolWantsChannel, MempoolChunkChannel},
+	}).Maybe()
 	return peer
 }
 

@@ -102,7 +102,7 @@ func TestPeerFilter(t *testing.T) {
 			name: "Valid Peer",
 			channels: []byte{
 				propagation.DataChannel, propagation.WantChannel,
-				cat.MempoolDataChannel, cat.MempoolWantsChannel,
+				cat.MempoolDataChannel, cat.MempoolWantsChannel, cat.MempoolChunkChannel,
 			},
 			errMsg: "",
 		},

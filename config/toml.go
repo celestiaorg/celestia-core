@@ -429,6 +429,20 @@ experimental_max_gossip_connections_to_non_persistent_peers = {{ .Mempool.Experi
 # DEPRECATED: max-gossip-delay is deprecated and will be removed in a future version.
 max-gossip-delay = "{{ .Mempool.MaxGossipDelay }}"
 
+# CAT large transaction fast path. Transactions at or above large_tx_threshold
+# are advertised by manifest and transferred as bounded chunks on a dedicated
+# chunk channel. Defaults are conservative and are only used by the CAT mempool.
+large_tx_threshold = {{ .Mempool.LargeTxThreshold }}
+large_tx_chunk_size = {{ .Mempool.LargeTxChunkSize }}
+large_tx_request_parallelism = {{ .Mempool.LargeTxRequestParallelism }}
+large_tx_max_inflight_chunks_per_peer = {{ .Mempool.LargeTxMaxInflightChunksPerPeer }}
+large_tx_chunk_timeout = "{{ .Mempool.LargeTxChunkTimeout }}"
+large_tx_reconstruction_timeout = "{{ .Mempool.LargeTxReconstructionTimeout }}"
+large_tx_max_advertise_peers = {{ .Mempool.LargeTxMaxAdvertisePeers }}
+large_tx_optimistic_push_chunks = {{ .Mempool.LargeTxOptimisticPushChunks }}
+large_tx_peer_score_halflife = "{{ .Mempool.LargeTxPeerScoreHalflife }}"
+large_tx_enable_fec = {{ .Mempool.LargeTxEnableFEC }}
+
 #######################################################
 ###         State Sync Configuration Options        ###
 #######################################################

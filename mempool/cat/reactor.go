@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -31,6 +32,9 @@ const (
 
 	// MempoolWantsChannel channel for wantTx messages.
 	MempoolWantsChannel = byte(0x32)
+
+	// MempoolChunkChannel carries large transaction chunk payloads.
+	MempoolChunkChannel = byte(0x33)
 
 	// peerHeightDiff signifies the tolerance in difference in height between the peer and the height
 	// the node received the tx
@@ -71,13 +75,17 @@ var (
 // spec under /.spec.md
 type Reactor struct {
 	p2p.BaseReactor
-	opts           *ReactorOptions
-	mempool        *TxPool
-	ids            *mempoolIDs
-	requests       *requestScheduler
-	pendingSeen    *pendingSeenTracker
-	receivedBuffer *receivedTxBuffer // buffer for out-of-order tx arrivals
-	traceClient    trace.Tracer
+	opts            *ReactorOptions
+	mempool         *TxPool
+	ids             *mempoolIDs
+	requests        *requestScheduler
+	pendingSeen     *pendingSeenTracker
+	receivedBuffer  *receivedTxBuffer // buffer for out-of-order tx arrivals
+	traceClient     trace.Tracer
+	largeMu         sync.Mutex
+	largeTxs        map[types.TxKey]*localLargeTx
+	reconstructions map[types.TxKey]*reconstructionSession
+	peerScores      *peerScoreTable
 	// stickySalt stores []byte rendezvous salt for sticky peer selection; nil/empty keeps default ordering.
 	stickySalt atomic.Value
 }
@@ -105,11 +113,23 @@ type ReactorOptions struct {
 	// to receive SeenTx broadcasts per signer, added on top of the natural sticky
 	// set without displacing it. <= 0 falls back to defaultMaxPersistentStickyPeers.
 	MaxPersistentStickyPeers int
+
+	LargeTxThreshold                int
+	LargeTxChunkSize                int
+	LargeTxRequestParallelism       int
+	LargeTxMaxInflightChunksPerPeer int
+	LargeTxChunkTimeout             time.Duration
+	LargeTxReconstructionTimeout    time.Duration
+	LargeTxMaxAdvertisePeers        int
+	LargeTxOptimisticPushChunks     int
+	LargeTxPeerScoreHalflife        time.Duration
+	LargeTxEnableFEC                bool
 }
 
 func (opts *ReactorOptions) VerifyAndComplete() error {
+	defaults := cfg.DefaultMempoolConfig()
 	if opts.MaxTxSize == 0 {
-		opts.MaxTxSize = cfg.DefaultMempoolConfig().MaxTxBytes
+		opts.MaxTxSize = defaults.MaxTxBytes
 	}
 
 	if opts.MaxGossipDelay == 0 {
@@ -120,12 +140,68 @@ func (opts *ReactorOptions) VerifyAndComplete() error {
 		opts.MaxPersistentStickyPeers = defaultMaxPersistentStickyPeers
 	}
 
+	if opts.LargeTxThreshold == 0 {
+		opts.LargeTxThreshold = defaults.LargeTxThreshold
+	}
+	if opts.LargeTxChunkSize == 0 {
+		opts.LargeTxChunkSize = defaults.LargeTxChunkSize
+	}
+	if opts.LargeTxRequestParallelism == 0 {
+		opts.LargeTxRequestParallelism = defaults.LargeTxRequestParallelism
+	}
+	if opts.LargeTxMaxInflightChunksPerPeer == 0 {
+		opts.LargeTxMaxInflightChunksPerPeer = defaults.LargeTxMaxInflightChunksPerPeer
+	}
+	if opts.LargeTxChunkTimeout == 0 {
+		opts.LargeTxChunkTimeout = defaults.LargeTxChunkTimeout
+	}
+	if opts.LargeTxReconstructionTimeout == 0 {
+		opts.LargeTxReconstructionTimeout = defaults.LargeTxReconstructionTimeout
+	}
+	if opts.LargeTxMaxAdvertisePeers == 0 {
+		opts.LargeTxMaxAdvertisePeers = defaults.LargeTxMaxAdvertisePeers
+	}
+	if opts.LargeTxOptimisticPushChunks < 0 {
+		return fmt.Errorf("large tx optimistic push chunks (%d) cannot be negative", opts.LargeTxOptimisticPushChunks)
+	}
+	if opts.LargeTxOptimisticPushChunks == 0 {
+		opts.LargeTxOptimisticPushChunks = defaults.LargeTxOptimisticPushChunks
+	}
+	if opts.LargeTxPeerScoreHalflife == 0 {
+		opts.LargeTxPeerScoreHalflife = defaults.LargeTxPeerScoreHalflife
+	}
+
 	if opts.MaxTxSize < 0 {
 		return fmt.Errorf("max tx size (%d) cannot be negative", opts.MaxTxSize)
 	}
 
 	if opts.MaxGossipDelay < 0 {
 		return fmt.Errorf("max gossip delay (%d) cannot be negative", opts.MaxGossipDelay)
+	}
+
+	if opts.LargeTxThreshold < 0 {
+		return fmt.Errorf("large tx threshold (%d) cannot be negative", opts.LargeTxThreshold)
+	}
+	if opts.LargeTxChunkSize < 0 {
+		return fmt.Errorf("large tx chunk size (%d) cannot be negative", opts.LargeTxChunkSize)
+	}
+	if opts.LargeTxRequestParallelism < 0 {
+		return fmt.Errorf("large tx request parallelism (%d) cannot be negative", opts.LargeTxRequestParallelism)
+	}
+	if opts.LargeTxMaxInflightChunksPerPeer < 0 {
+		return fmt.Errorf("large tx max inflight chunks per peer (%d) cannot be negative", opts.LargeTxMaxInflightChunksPerPeer)
+	}
+	if opts.LargeTxChunkTimeout < 0 {
+		return fmt.Errorf("large tx chunk timeout (%d) cannot be negative", opts.LargeTxChunkTimeout)
+	}
+	if opts.LargeTxReconstructionTimeout < 0 {
+		return fmt.Errorf("large tx reconstruction timeout (%d) cannot be negative", opts.LargeTxReconstructionTimeout)
+	}
+	if opts.LargeTxMaxAdvertisePeers < 0 {
+		return fmt.Errorf("large tx max advertise peers (%d) cannot be negative", opts.LargeTxMaxAdvertisePeers)
+	}
+	if opts.LargeTxPeerScoreHalflife < 0 {
+		return fmt.Errorf("large tx peer score halflife (%d) cannot be negative", opts.LargeTxPeerScoreHalflife)
 	}
 
 	return nil
@@ -142,13 +218,16 @@ func NewReactor(mempool *TxPool, opts *ReactorOptions) (*Reactor, error) {
 		traceClient = trace.NoOpTracer()
 	}
 	memR := &Reactor{
-		opts:           opts,
-		mempool:        mempool,
-		ids:            newMempoolIDs(),
-		requests:       newRequestScheduler(opts.MaxGossipDelay, defaultGlobalRequestTimeout),
-		pendingSeen:    newPendingSeenTracker(0),
-		receivedBuffer: newReceivedTxBuffer(),
-		traceClient:    traceClient,
+		opts:            opts,
+		mempool:         mempool,
+		ids:             newMempoolIDs(),
+		requests:        newRequestScheduler(opts.MaxGossipDelay, defaultGlobalRequestTimeout),
+		pendingSeen:     newPendingSeenTracker(0),
+		receivedBuffer:  newReceivedTxBuffer(),
+		traceClient:     traceClient,
+		largeTxs:        make(map[types.TxKey]*localLargeTx),
+		reconstructions: make(map[types.TxKey]*reconstructionSession),
+		peerScores:      newPeerScoreTable(opts.LargeTxPeerScoreHalflife),
 	}
 	memR.BaseReactor = *p2p.NewBaseReactor("CAT", memR,
 		p2p.WithIncomingQueueSize(ReactorIncomingMessageQueueSize),
@@ -217,6 +296,7 @@ func (memR *Reactor) OnStart() error {
 func (memR *Reactor) OnStop() {
 	// stop all the timers tracking outbound requests
 	memR.requests.Close()
+	memR.stopLargeTxReconstructionSessions()
 }
 
 // GetChannels implements Reactor by returning the list of channels for this
@@ -233,6 +313,28 @@ func (memR *Reactor) GetChannels() []*p2p.ChannelDescriptor {
 		Sum: &protomem.Message_SeenTx{
 			SeenTx: &protomem.SeenTx{
 				TxKey: make([]byte, tmhash.Size),
+			},
+		},
+	}
+	wantIndexes := make([]uint32, memR.opts.LargeTxMaxInflightChunksPerPeer)
+	wantChunkMsg := protomem.Message{
+		Sum: &protomem.Message_WantChunk{
+			WantChunk: &protomem.WantChunk{
+				TxKey:   make([]byte, tmhash.Size),
+				Indexes: wantIndexes,
+			},
+		},
+	}
+	wantsMsgSize := stateMsg.Size()
+	if wantChunkMsg.Size() > wantsMsgSize {
+		wantsMsgSize = wantChunkMsg.Size()
+	}
+
+	chunkMsg := protomem.Message{
+		Sum: &protomem.Message_TxChunk{
+			TxChunk: &protomem.TxChunk{
+				TxKey: make([]byte, tmhash.Size),
+				Data:  make([]byte, memR.opts.LargeTxChunkSize),
 			},
 		},
 	}
@@ -256,7 +358,14 @@ func (memR *Reactor) GetChannels() []*p2p.ChannelDescriptor {
 			ID:                  MempoolWantsChannel,
 			Priority:            3,
 			SendQueueCapacity:   1000,
-			RecvMessageCapacity: stateMsg.Size(),
+			RecvMessageCapacity: wantsMsgSize,
+			MessageType:         &protomem.Message{},
+		},
+		{
+			ID:                  MempoolChunkChannel,
+			Priority:            1,
+			SendQueueCapacity:   128,
+			RecvMessageCapacity: chunkMsg.Size(),
 			MessageType:         &protomem.Message{},
 		},
 	}
@@ -275,6 +384,7 @@ func (memR *Reactor) RemovePeer(peer p2p.Peer, reason interface{}) {
 	// clear all memory of seen txs by that peer
 	memR.mempool.seenByPeersSet.RemovePeer(peerID)
 	memR.pendingSeen.removePeer(peerID)
+	memR.removeLargeTxPeer(peerID)
 
 	// remove and rerequest all pending outbound requests to that peer since we know
 	// we won't receive any responses from them.
@@ -287,7 +397,8 @@ func (memR *Reactor) RemovePeer(peer p2p.Peer, reason interface{}) {
 }
 
 // ReceiveEnvelope implements Reactor.
-// It processes one of three messages: Txs, SeenTx, WantTx.
+// It processes CAT mempool messages, including the large-transaction manifest
+// and chunk fast path.
 func (memR *Reactor) Receive(e p2p.Envelope) {
 	switch msg := e.Message.(type) {
 
@@ -450,6 +561,15 @@ func (memR *Reactor) Receive(e p2p.Envelope) {
 		}
 		memR.requestTx(txKey, e.Src)
 
+	case *protomem.TxManifest:
+		memR.receiveTxManifest(msg, e.Src)
+
+	case *protomem.WantChunk:
+		memR.receiveWantChunk(msg, e.Src)
+
+	case *protomem.TxChunk:
+		memR.receiveTxChunk(msg, e.Src)
+
 	// A peer is requesting a transaction that we have claimed to have. Find the specified
 	// transaction and broadcast it to the peer. We may no longer have the transaction
 	case *protomem.WantTx:
@@ -505,7 +625,7 @@ func (memR *Reactor) broadcastSeenTx(txKey types.TxKey, signer []byte, sequence 
 
 // broadcastNewTx broadcast new transaction to limited peers unless we are already sure they have seen the tx.
 func (memR *Reactor) broadcastNewTx(wtx *wrappedTx) {
-	memR.broadcastSeenTxWithHeight(wtx.key(), wtx.height, wtx.sender, wtx.sequence)
+	memR.broadcastAcceptedTx(wtx.tx, wtx.key(), wtx.height, wtx.sender, wtx.sequence, wtx.priority)
 }
 
 // broadcastSeenTxWithHeight is a helper that broadcasts a SeenTx message with height checking.
@@ -649,10 +769,11 @@ func (memR *Reactor) processReceivedTx(cachedTx *types.CachedTx, key types.TxKey
 	if len(rsp.Address) > 0 {
 		memR.processReceivedBuffer(rsp.Address)
 		memR.processPendingSeenForSigner(rsp.Address)
+		memR.processPendingLargeManifestsForSigner(rsp.Address)
 	}
 
 	if !memR.opts.ListenOnly && rsp.Code == 0 {
-		memR.broadcastSeenTx(key, rsp.Address, rsp.Sequence)
+		memR.broadcastAcceptedTx(cachedTx, key, memR.mempool.Height(), rsp.Address, rsp.Sequence, rsp.Priority)
 	}
 }
 
@@ -684,7 +805,7 @@ func (memR *Reactor) processReceivedBuffer(signer []byte) {
 		}
 
 		if !memR.opts.ListenOnly && rsp.Code == 0 {
-			memR.broadcastSeenTx(buffered.txKey, signer, expectedSeq)
+			memR.broadcastAcceptedTx(buffered.tx, buffered.txKey, memR.mempool.Height(), signer, expectedSeq, rsp.Priority)
 		}
 	}
 }
@@ -807,6 +928,9 @@ func (memR *Reactor) refreshPendingSeenQueues() {
 	for _, signer := range memR.receivedBuffer.signerKeys() {
 		seenSigners[string(signer)] = signer
 	}
+	for _, signer := range memR.pendingLargeManifestSigners() {
+		seenSigners[string(signer)] = signer
+	}
 
 	if len(seenSigners) == 0 {
 		return
@@ -818,6 +942,7 @@ func (memR *Reactor) refreshPendingSeenQueues() {
 		memR.processReceivedBuffer(signer)
 		// Then request more pending txs
 		memR.processPendingSeenForSigner(signer)
+		memR.processPendingLargeManifestsForSigner(signer)
 	}
 }
 

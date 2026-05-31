@@ -65,6 +65,9 @@ type MempoolStateUpdateType string
 const (
 	SeenTx          MempoolStateUpdateType = "SeenTx"
 	WantTx          MempoolStateUpdateType = "WantTx"
+	TxManifest      MempoolStateUpdateType = "TxManifest"
+	WantChunk       MempoolStateUpdateType = "WantChunk"
+	TxChunk         MempoolStateUpdateType = "TxChunk"
 	MissingSequence MempoolStateUpdateType = "MissingSequence"
 	Unknown         MempoolStateUpdateType = "Unknown"
 )

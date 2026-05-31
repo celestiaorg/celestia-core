@@ -269,11 +269,21 @@ func createMempoolAndMempoolReactor(
 		reactor, err := cat.NewReactor(
 			mp,
 			&cat.ReactorOptions{
-				ListenOnly:               !config.Mempool.Broadcast,
-				MaxTxSize:                config.Mempool.MaxTxBytes,
-				TraceClient:              traceClient,
-				MaxGossipDelay:           config.Mempool.MaxGossipDelay,
-				MaxPersistentStickyPeers: config.Mempool.MaxPersistentStickyPeers,
+				ListenOnly:                      !config.Mempool.Broadcast,
+				MaxTxSize:                       config.Mempool.MaxTxBytes,
+				TraceClient:                     traceClient,
+				MaxGossipDelay:                  config.Mempool.MaxGossipDelay,
+				MaxPersistentStickyPeers:        config.Mempool.MaxPersistentStickyPeers,
+				LargeTxThreshold:                config.Mempool.LargeTxThreshold,
+				LargeTxChunkSize:                config.Mempool.LargeTxChunkSize,
+				LargeTxRequestParallelism:       config.Mempool.LargeTxRequestParallelism,
+				LargeTxMaxInflightChunksPerPeer: config.Mempool.LargeTxMaxInflightChunksPerPeer,
+				LargeTxChunkTimeout:             config.Mempool.LargeTxChunkTimeout,
+				LargeTxReconstructionTimeout:    config.Mempool.LargeTxReconstructionTimeout,
+				LargeTxMaxAdvertisePeers:        config.Mempool.LargeTxMaxAdvertisePeers,
+				LargeTxOptimisticPushChunks:     config.Mempool.LargeTxOptimisticPushChunks,
+				LargeTxPeerScoreHalflife:        config.Mempool.LargeTxPeerScoreHalflife,
+				LargeTxEnableFEC:                config.Mempool.LargeTxEnableFEC,
 			},
 		)
 		if err != nil {

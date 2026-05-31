@@ -17,10 +17,35 @@ message WantTx {
   bytes tx_key = 1;
 }
 
+message TxManifest {
+  bytes          tx_key       = 1;
+  uint32         tx_size      = 2;
+  uint32         chunk_size   = 3;
+  uint32         chunk_count  = 4;
+  repeated bytes chunk_hashes = 5;
+  uint64         sequence     = 6;
+  bytes          signer       = 7;
+  uint64         priority     = 8;
+}
+
+message WantChunk {
+  bytes           tx_key  = 1;
+  repeated uint32 indexes = 2;
+}
+
+message TxChunk {
+  bytes  tx_key = 1;
+  uint32 index  = 2;
+  bytes  data   = 3;
+}
+
 message Message {
   oneof sum {
-    Txs    txs     = 1;
-    SeenTx seen_tx = 2;
-    WantTx want_tx = 3;
+    Txs        txs         = 1;
+    SeenTx     seen_tx     = 2;
+    WantTx     want_tx     = 3;
+    TxManifest tx_manifest = 4;
+    WantChunk  want_chunk  = 5;
+    TxChunk    tx_chunk    = 6;
   }
 }

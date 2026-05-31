@@ -38,15 +38,15 @@ func TestPendingSeenTracker(t *testing.T) {
 			},
 		},
 		{
-			name: "re-adding same tx keeps first peer",
+			name: "re-adding same tx retains all peers",
 			run: func(t *testing.T, tracker *pendingSeenTracker) {
 				key := txKey("tx2")
 				tracker.add(signer, key, 2, 5)
 				tracker.add(signer, key, 2, 5) // duplicate peer
-				tracker.add(signer, key, 2, 7) // different peer, should be ignored
+				tracker.add(signer, key, 2, 7) // different peer, should be retained
 
 				entry := tracker.entriesForSigner(signer)[0]
-				require.Equal(t, []uint16{5}, entry.peerIDs())
+				require.Equal(t, []uint16{5, 7}, entry.peerIDs())
 			},
 		},
 		{
