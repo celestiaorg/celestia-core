@@ -161,6 +161,63 @@ func TestLargeTxSchedulerRequestsDisjointChunksFromPeers(t *testing.T) {
 	peers[1].AssertExpectations(t)
 }
 
+func TestLargeTxSchedulerDoesNotRequestOptimisticChunksAgain(t *testing.T) {
+	reactor, _ := setupLargeTxReactor(t, 1, 16)
+	reactor.opts.LargeTxMaxInflightChunksPerPeer = 4
+
+	tx := largeCATTestTx(96)
+	local, err := buildLocalLargeTx(tx, 16, []byte("sender-000-0"), 1, 10)
+	require.NoError(t, err)
+	txKey := tx.Key()
+
+	peer := genPeer()
+	_, err = reactor.InitPeer(peer)
+	require.NoError(t, err)
+	peerID := reactor.ids.GetIDForPeer(peer.ID())
+
+	_, err = reactor.upsertReconstructionSession(txKey, local.manifest, peerID, false)
+	require.NoError(t, err)
+	reactor.markOptimisticChunksInflight(txKey, peerID)
+
+	peer.On("TrySend", p2p.Envelope{
+		ChannelID: MempoolWantsChannel,
+		Message: &protomem.Message{
+			Sum: &protomem.Message_WantChunk{WantChunk: &protomem.WantChunk{
+				TxKey:   txKey[:],
+				Indexes: []uint32{2, 3},
+			}},
+		},
+	}).Return(true).Once()
+
+	reactor.scheduleChunkRequests(txKey)
+
+	peer.AssertExpectations(t)
+}
+
+func TestLargeTxPrunesLocalChunksAfterMempoolRemoval(t *testing.T) {
+	reactor, pool := setupLargeTxReactor(t, 1, 16)
+
+	tx := largeCATTestTx(96)
+	txKey := tx.Key()
+	require.NoError(t, pool.CheckTx(tx, nil, mempool.TxInfo{}))
+
+	_, err := reactor.ensureLocalLargeTx(tx, []byte("sender-000-0"), 1, 10)
+	require.NoError(t, err)
+
+	reactor.largeMu.Lock()
+	_, exists := reactor.largeTxs[txKey]
+	reactor.largeMu.Unlock()
+	require.True(t, exists)
+
+	require.NoError(t, pool.RemoveTxByKey(txKey))
+	reactor.pruneLocalLargeTxs()
+
+	reactor.largeMu.Lock()
+	_, exists = reactor.largeTxs[txKey]
+	reactor.largeMu.Unlock()
+	require.False(t, exists)
+}
+
 func TestLargeTxBroadcastUsesManifestByDefault(t *testing.T) {
 	reactor, pool := setupLargeTxReactor(t, 32, 16)
 

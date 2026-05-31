@@ -431,7 +431,7 @@ max-gossip-delay = "{{ .Mempool.MaxGossipDelay }}"
 
 # CAT large transaction fast path. Transactions at or above large_tx_threshold
 # are advertised by manifest and transferred as bounded chunks on a dedicated
-# chunk channel. Defaults are conservative and are only used by the CAT mempool.
+# chunk channel. Defaults are enabled and are only used by the CAT mempool.
 large_tx_threshold = {{ .Mempool.LargeTxThreshold }}
 large_tx_chunk_size = {{ .Mempool.LargeTxChunkSize }}
 large_tx_request_parallelism = {{ .Mempool.LargeTxRequestParallelism }}

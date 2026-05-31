@@ -367,7 +367,7 @@ func (memR *Reactor) GetChannels() []*p2p.ChannelDescriptor {
 		},
 		{
 			ID:                  MempoolChunkChannel,
-			Priority:            1,
+			Priority:            3,
 			SendQueueCapacity:   128,
 			RecvMessageCapacity: chunkMsg.Size(),
 			MessageType:         &protomem.Message{},
@@ -923,6 +923,8 @@ func (memR *Reactor) heightSignalLoop() {
 }
 
 func (memR *Reactor) refreshPendingSeenQueues() {
+	memR.pruneLocalLargeTxs()
+
 	// Collect signers from both pending seen and buffer
 	seenSigners := make(map[string][]byte)
 

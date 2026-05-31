@@ -2,6 +2,7 @@ package cat
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"sort"
 	"time"
@@ -95,6 +96,17 @@ func (memR *Reactor) getOrBuildLocalLargeTx(txKey types.TxKey) (*localLargeTx, b
 		return nil, false
 	}
 	return local, true
+}
+
+func (memR *Reactor) pruneLocalLargeTxs() {
+	memR.largeMu.Lock()
+	defer memR.largeMu.Unlock()
+
+	for txKey := range memR.largeTxs {
+		if !memR.mempool.Has(txKey) {
+			delete(memR.largeTxs, txKey)
+		}
+	}
 }
 
 func (memR *Reactor) broadcastTxManifestWithHeight(local *localLargeTx, height int64) {
@@ -259,6 +271,9 @@ func (memR *Reactor) receiveTxManifest(msg *protomem.TxManifest, peer p2p.Peer) 
 		memR.Logger.Trace("created large tx reconstruction session", "txKey", txKey, "chunks", msg.ChunkCount)
 	}
 	if !waitForSequence {
+		if created {
+			memR.markOptimisticChunksInflight(txKey, peerID)
+		}
 		memR.scheduleChunkRequests(txKey)
 	}
 }
@@ -454,7 +469,7 @@ func (memR *Reactor) receiveTxChunk(msg *protomem.TxChunk, peer p2p.Peer) {
 
 	txInfo := mempool.TxInfo{SenderID: peerID, SenderP2PID: peer.ID()}
 	memR.peerScores.RecordReconstruction(peerID)
-	memR.processReceivedTx(tx.ToCachedTx(), txKey, txInfo, peer)
+	memR.processReconstructedLargeTx(tx, txKey, txInfo, string(peer.ID()))
 }
 
 func (memR *Reactor) acceptTxChunk(txKey types.TxKey, msg *protomem.TxChunk, peerID uint16) (types.Tx, error) {
@@ -497,6 +512,13 @@ func (memR *Reactor) acceptTxChunk(txKey types.TxKey, msg *protomem.TxChunk, pee
 	}
 
 	if session.complete() {
+		if session.waitingForSequence {
+			memR.largeMu.Unlock()
+			if recordPeer != 0 {
+				memR.peerScores.RecordChunk(recordPeer, recordBytes, recordLatency)
+			}
+			return nil, nil
+		}
 		tx := session.reconstruct()
 		if len(tx) != int(session.manifest.TxSize) {
 			memR.largeMu.Unlock()
@@ -522,6 +544,43 @@ func (memR *Reactor) scheduleChunkRequests(txKey types.TxKey) {
 	memR.largeMu.Lock()
 	defer memR.largeMu.Unlock()
 	memR.scheduleChunkRequestsLocked(txKey)
+}
+
+func (memR *Reactor) markOptimisticChunksInflight(txKey types.TxKey, peerID uint16) {
+	if memR.opts.LargeTxOptimisticPushChunks <= 0 || peerID == 0 {
+		return
+	}
+
+	memR.largeMu.Lock()
+	defer memR.largeMu.Unlock()
+
+	session := memR.reconstructions[txKey]
+	if session == nil || session.waitingForSequence {
+		return
+	}
+	limit := memR.opts.LargeTxOptimisticPushChunks
+	if limit > memR.opts.LargeTxMaxInflightChunksPerPeer {
+		limit = memR.opts.LargeTxMaxInflightChunksPerPeer
+	}
+	if limit > int(session.manifest.ChunkCount) {
+		limit = int(session.manifest.ChunkCount)
+	}
+
+	now := time.Now().UTC()
+	for i := 0; i < limit; i++ {
+		index := uint32(i)
+		if session.received[index] {
+			continue
+		}
+		if _, ok := session.inflight[index]; ok {
+			continue
+		}
+		chunkIndex := index
+		timer := time.AfterFunc(memR.opts.LargeTxChunkTimeout, func() {
+			memR.onChunkRequestTimeout(txKey, chunkIndex, peerID)
+		})
+		session.markInflight(chunkIndex, peerID, now, timer)
+	}
 }
 
 func (memR *Reactor) scheduleChunkRequestsLocked(txKey types.TxKey) {
@@ -670,7 +729,16 @@ func (memR *Reactor) processPendingLargeManifestsForSigner(signer []byte) {
 		return
 	}
 
-	var ready []types.TxKey
+	type completedLargeTx struct {
+		tx     types.Tx
+		txKey  types.TxKey
+		peerID uint16
+	}
+
+	var (
+		ready     []types.TxKey
+		completed []completedLargeTx
+	)
 	memR.largeMu.Lock()
 	for txKey, session := range memR.reconstructions {
 		if !session.waitingForSequence || !bytes.Equal(session.manifest.Signer, signer) {
@@ -682,13 +750,57 @@ func (memR *Reactor) processPendingLargeManifestsForSigner(signer []byte) {
 			delete(memR.reconstructions, txKey)
 		case session.manifest.Sequence == expectedSeq:
 			session.waitingForSequence = false
-			ready = append(ready, txKey)
+			if session.complete() {
+				tx := session.reconstruct()
+				if len(tx) != int(session.manifest.TxSize) || tx.Key() != txKey {
+					session.stop()
+					delete(memR.reconstructions, txKey)
+					continue
+				}
+				peerID := session.firstSourcePeer()
+				session.stop()
+				delete(memR.reconstructions, txKey)
+				completed = append(completed, completedLargeTx{tx: tx, txKey: txKey, peerID: peerID})
+			} else {
+				ready = append(ready, txKey)
+			}
 		}
 	}
 	memR.largeMu.Unlock()
 
+	for _, item := range completed {
+		peer := memR.ids.GetPeer(item.peerID)
+		txInfo := mempool.TxInfo{SenderID: item.peerID}
+		peerIDStr := ""
+		if peer != nil {
+			txInfo.SenderP2PID = peer.ID()
+			peerIDStr = string(peer.ID())
+		}
+		memR.processReconstructedLargeTx(item.tx, item.txKey, txInfo, peerIDStr)
+	}
 	for _, txKey := range ready {
 		memR.scheduleChunkRequests(txKey)
+	}
+}
+
+func (memR *Reactor) processReconstructedLargeTx(tx types.Tx, txKey types.TxKey, txInfo mempool.TxInfo, peerID string) {
+	cachedTx := tx.ToCachedTx()
+	rsp, err := memR.tryAddNewTx(cachedTx, txKey, txInfo, peerID)
+	if err == nil || errors.Is(err, ErrTxInMempool) {
+		memR.pendingSeen.remove(txKey)
+	}
+	if err != nil {
+		return
+	}
+
+	if len(rsp.Address) > 0 {
+		memR.processReceivedBuffer(rsp.Address)
+		memR.processPendingSeenForSigner(rsp.Address)
+		memR.processPendingLargeManifestsForSigner(rsp.Address)
+	}
+
+	if !memR.opts.ListenOnly && rsp.Code == 0 {
+		memR.broadcastAcceptedTx(cachedTx, txKey, memR.mempool.Height(), rsp.Address, rsp.Sequence, rsp.Priority)
 	}
 }
 

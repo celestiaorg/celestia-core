@@ -293,6 +293,20 @@ func (s *reconstructionSession) reconstruct() types.Tx {
 	return types.Tx(tx)
 }
 
+func (s *reconstructionSession) firstSourcePeer() uint16 {
+	for _, peerID := range s.sourcePeer {
+		if peerID != 0 {
+			return peerID
+		}
+	}
+	for peerID := range s.sources {
+		if peerID != 0 {
+			return peerID
+		}
+	}
+	return 0
+}
+
 func expectedChunkLength(manifest *protomem.TxManifest, index uint32) int {
 	if manifest == nil || index >= manifest.ChunkCount {
 		return -1
