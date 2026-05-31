@@ -317,6 +317,9 @@ func (memR *Reactor) GetChannels() []*p2p.ChannelDescriptor {
 		},
 	}
 	wantIndexes := make([]uint32, memR.opts.LargeTxMaxInflightChunksPerPeer)
+	for i := range wantIndexes {
+		wantIndexes[i] = ^uint32(0)
+	}
 	wantChunkMsg := protomem.Message{
 		Sum: &protomem.Message_WantChunk{
 			WantChunk: &protomem.WantChunk{
@@ -334,6 +337,7 @@ func (memR *Reactor) GetChannels() []*p2p.ChannelDescriptor {
 		Sum: &protomem.Message_TxChunk{
 			TxChunk: &protomem.TxChunk{
 				TxKey: make([]byte, tmhash.Size),
+				Index: ^uint32(0),
 				Data:  make([]byte, memR.opts.LargeTxChunkSize),
 			},
 		},

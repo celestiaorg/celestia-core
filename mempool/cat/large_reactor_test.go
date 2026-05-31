@@ -215,6 +215,42 @@ func TestLargeTxFastPathDefaultsEnabled(t *testing.T) {
 	require.Positive(t, opts.LargeTxPeerScoreHalflife)
 }
 
+func TestLargeTxChannelCapacitiesIncludeNonZeroIndexes(t *testing.T) {
+	reactor, _ := setupLargeTxReactor(t, 32, 16)
+	channels := reactor.GetChannels()
+
+	capacityByChannel := make(map[byte]int, len(channels))
+	for _, channel := range channels {
+		capacityByChannel[channel.ID] = channel.RecvMessageCapacity
+	}
+
+	txKey := make([]byte, types.TxKeySize)
+	txChunkMsg := (&protomem.Message{
+		Sum: &protomem.Message_TxChunk{
+			TxChunk: &protomem.TxChunk{
+				TxKey: txKey,
+				Index: ^uint32(0),
+				Data:  make([]byte, reactor.opts.LargeTxChunkSize),
+			},
+		},
+	}).Size()
+	require.GreaterOrEqual(t, capacityByChannel[MempoolChunkChannel], txChunkMsg)
+
+	indexes := make([]uint32, reactor.opts.LargeTxMaxInflightChunksPerPeer)
+	for i := range indexes {
+		indexes[i] = ^uint32(0)
+	}
+	wantChunkMsg := (&protomem.Message{
+		Sum: &protomem.Message_WantChunk{
+			WantChunk: &protomem.WantChunk{
+				TxKey:   txKey,
+				Indexes: indexes,
+			},
+		},
+	}).Size()
+	require.GreaterOrEqual(t, capacityByChannel[MempoolWantsChannel], wantChunkMsg)
+}
+
 func TestPeerScoreUpdates(t *testing.T) {
 	scores := newPeerScoreTable(time.Minute)
 	scores.RecordChunk(1, 1024, time.Millisecond)
