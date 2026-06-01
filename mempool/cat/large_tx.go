@@ -100,6 +100,7 @@ func cloneTxManifest(manifest *protomem.TxManifest) *protomem.TxManifest {
 	clone := *manifest
 	clone.TxKey = append([]byte(nil), manifest.TxKey...)
 	clone.Signer = append([]byte(nil), manifest.Signer...)
+	clone.OptimisticIndexes = append([]uint32(nil), manifest.OptimisticIndexes...)
 	if len(manifest.ChunkHashes) > 0 {
 		clone.ChunkHashes = make([][]byte, len(manifest.ChunkHashes))
 		for i, hash := range manifest.ChunkHashes {

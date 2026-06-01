@@ -53,8 +53,31 @@ func TestLargeTxManifestValidation(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, tx.Key(), key)
 
+	withOptimistic := cloneTxManifest(local.manifest)
+	withOptimistic.OptimisticIndexes = []uint32{0, 1}
+	_, err = reactor.validateTxManifest(withOptimistic)
+	require.NoError(t, err)
+
 	invalid := cloneTxManifest(local.manifest)
 	invalid.ChunkHashes[0] = invalid.ChunkHashes[0][:8]
+	_, err = reactor.validateTxManifest(invalid)
+	require.Error(t, err)
+	require.ErrorIs(t, err, errInvalidTxManifest)
+
+	invalid = cloneTxManifest(local.manifest)
+	invalid.OptimisticIndexes = []uint32{0, 1, 2}
+	_, err = reactor.validateTxManifest(invalid)
+	require.Error(t, err)
+	require.ErrorIs(t, err, errInvalidTxManifest)
+
+	invalid = cloneTxManifest(local.manifest)
+	invalid.OptimisticIndexes = []uint32{uint32(len(local.chunks))}
+	_, err = reactor.validateTxManifest(invalid)
+	require.Error(t, err)
+	require.ErrorIs(t, err, errInvalidTxManifest)
+
+	invalid = cloneTxManifest(local.manifest)
+	invalid.OptimisticIndexes = []uint32{1, 1}
 	_, err = reactor.validateTxManifest(invalid)
 	require.Error(t, err)
 	require.ErrorIs(t, err, errInvalidTxManifest)
@@ -162,6 +185,39 @@ func TestLargeTxSchedulerRequestsDisjointChunksFromPeers(t *testing.T) {
 
 	peers[0].AssertExpectations(t)
 	peers[1].AssertExpectations(t)
+}
+
+func TestLargeTxOptimisticHintDefersOnlyHintedChunks(t *testing.T) {
+	reactor, _ := setupLargeTxReactor(t, 1, 16)
+	reactor.opts.LargeTxMaxInflightChunksPerPeer = 4
+
+	tx := largeCATTestTx(64)
+	local, err := buildLocalLargeTx(tx, 16, []byte("sender-000-0"), 1, 10)
+	require.NoError(t, err)
+	txKey := tx.Key()
+
+	peer := genPeer()
+	_, err = reactor.InitPeer(peer)
+	require.NoError(t, err)
+	peerID := reactor.ids.GetIDForPeer(peer.ID())
+
+	_, err = reactor.upsertReconstructionSession(txKey, local.manifest, peerID, false)
+	require.NoError(t, err)
+	reactor.markOptimisticChunksInflight(txKey, peerID, []uint32{0, 1})
+
+	peer.On("TrySend", p2p.Envelope{
+		ChannelID: MempoolWantsChannel,
+		Message: &protomem.Message{
+			Sum: &protomem.Message_WantChunk{WantChunk: &protomem.WantChunk{
+				TxKey:   txKey[:],
+				Indexes: []uint32{2, 3},
+			}},
+		},
+	}).Return(true).Once()
+
+	reactor.scheduleChunkRequests(txKey)
+
+	peer.AssertExpectations(t)
 }
 
 func TestLargeTxHedgesInflightChunksToNewSource(t *testing.T) {
@@ -352,6 +408,8 @@ func TestLargeTxOptimisticPushLimitedToRequestParallelism(t *testing.T) {
 	reactor.broadcastNewTx(wtx)
 
 	manifestSends := 0
+	hintedManifestPeers := make(map[p2p.ID]struct{})
+	unhintedManifestSends := 0
 	chunkSends := 0
 	chunkPeers := make(map[p2p.ID]struct{})
 	for _, peer := range peers {
@@ -372,6 +430,12 @@ func TestLargeTxOptimisticPushLimitedToRequestParallelism(t *testing.T) {
 			case "Send":
 				if env.ChannelID == MempoolDataChannel && msg.GetTxManifest() != nil {
 					manifestSends++
+					if len(msg.GetTxManifest().OptimisticIndexes) > 0 {
+						hintedManifestPeers[peerID] = struct{}{}
+						require.Equal(t, []uint32{0, 1}, msg.GetTxManifest().OptimisticIndexes)
+					} else {
+						unhintedManifestSends++
+					}
 				}
 			case "TrySend":
 				if env.ChannelID == MempoolChunkChannel && msg.GetTxChunk() != nil {
@@ -383,8 +447,11 @@ func TestLargeTxOptimisticPushLimitedToRequestParallelism(t *testing.T) {
 	}
 
 	require.Equal(t, reactor.opts.LargeTxMaxAdvertisePeers, manifestSends)
+	require.Equal(t, reactor.opts.LargeTxRequestParallelism, len(hintedManifestPeers))
+	require.Equal(t, reactor.opts.LargeTxMaxAdvertisePeers-reactor.opts.LargeTxRequestParallelism, unhintedManifestSends)
 	require.Equal(t, reactor.opts.LargeTxRequestParallelism*reactor.opts.LargeTxOptimisticPushChunks, chunkSends)
 	require.Len(t, chunkPeers, reactor.opts.LargeTxRequestParallelism)
+	require.Equal(t, chunkPeers, hintedManifestPeers)
 }
 
 func TestLargeTxNetworkRebroadcastPushesOptimisticChunks(t *testing.T) {

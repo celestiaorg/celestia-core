@@ -14,6 +14,9 @@ func MempoolTables() []string {
 		MempoolAddResultTable,
 		MempoolTxStatusTable,
 		MempoolRecheckTable,
+		MempoolCheckTxTable,
+		MempoolLargeTxReconstructionTable,
+		MempoolProposalTxTable,
 	}
 }
 
@@ -338,5 +341,135 @@ func WriteMempoolRecheck(
 		Sequence: sequence,
 		Kept:     kept,
 		Error:    errStr,
+	})
+}
+
+const (
+	// MempoolCheckTxTable stores application CheckTx latency for mempool adds.
+	MempoolCheckTxTable = "mempool_check_tx"
+)
+
+// MempoolCheckTx describes the schema for the "mempool_check_tx" table.
+type MempoolCheckTx struct {
+	Peer     string `json:"peer,omitempty"`
+	TxHash   string `json:"tx_hash"`
+	Size     int    `json:"size"`
+	Duration int64  `json:"duration"`
+	Code     uint32 `json:"code,omitempty"`
+	Error    string `json:"error,omitempty"`
+	Signer   string `json:"signer,omitempty"`
+	Sequence uint64 `json:"sequence,omitempty"`
+}
+
+// Table returns the table name for the MempoolCheckTx struct.
+func (MempoolCheckTx) Table() string {
+	return MempoolCheckTxTable
+}
+
+// WriteMempoolCheckTx writes a tracing point for an application CheckTx call.
+func WriteMempoolCheckTx(
+	client trace.Tracer,
+	peer string,
+	txHash []byte,
+	size int,
+	duration int64,
+	code uint32,
+	err error,
+	signer []byte,
+	sequence uint64,
+) {
+	if !client.IsCollecting(MempoolCheckTxTable) {
+		return
+	}
+
+	errStr := ""
+	if err != nil {
+		errStr = err.Error()
+	}
+
+	signerStr := ""
+	if len(signer) > 0 {
+		signerStr = string(signer)
+	}
+
+	client.Write(MempoolCheckTx{
+		Peer:     peer,
+		TxHash:   bytes.HexBytes(txHash).String(),
+		Size:     size,
+		Duration: duration,
+		Code:     code,
+		Error:    errStr,
+		Signer:   signerStr,
+		Sequence: sequence,
+	})
+}
+
+const (
+	// MempoolLargeTxReconstructionTable stores CAT chunk reconstruction latency.
+	MempoolLargeTxReconstructionTable = "mempool_large_tx_reconstruction"
+)
+
+// MempoolLargeTxReconstruction describes the schema for large CAT reconstruction.
+type MempoolLargeTxReconstruction struct {
+	TxHash     string `json:"tx_hash"`
+	Size       int    `json:"size"`
+	ChunkCount int    `json:"chunk_count"`
+	Duration   int64  `json:"duration"`
+}
+
+// Table returns the table name for the MempoolLargeTxReconstruction struct.
+func (MempoolLargeTxReconstruction) Table() string {
+	return MempoolLargeTxReconstructionTable
+}
+
+// WriteMempoolLargeTxReconstruction writes a tracing point when all CAT chunks are reconstructed.
+func WriteMempoolLargeTxReconstruction(client trace.Tracer, txHash []byte, size, chunkCount int, duration int64) {
+	if !client.IsCollecting(MempoolLargeTxReconstructionTable) {
+		return
+	}
+	client.Write(MempoolLargeTxReconstruction{
+		TxHash:     bytes.HexBytes(txHash).String(),
+		Size:       size,
+		ChunkCount: chunkCount,
+		Duration:   duration,
+	})
+}
+
+const (
+	// MempoolProposalTxTable stores the proposal height/round that first includes a tx.
+	MempoolProposalTxTable = "mempool_proposal_tx"
+)
+
+// MempoolProposalTx describes the schema for tx inclusion in proposed blocks.
+type MempoolProposalTx struct {
+	Height int64  `json:"height"`
+	Round  int32  `json:"round"`
+	TxHash string `json:"tx_hash"`
+	Start  uint32 `json:"start"`
+	End    uint32 `json:"end"`
+	Size   uint32 `json:"size"`
+}
+
+// Table returns the table name for the MempoolProposalTx struct.
+func (MempoolProposalTx) Table() string {
+	return MempoolProposalTxTable
+}
+
+// WriteMempoolProposalTx writes a tracing point for a tx included in a proposal.
+func WriteMempoolProposalTx(client trace.Tracer, height int64, round int32, txHash []byte, start, end uint32) {
+	if !client.IsCollecting(MempoolProposalTxTable) {
+		return
+	}
+	size := uint32(0)
+	if end > start {
+		size = end - start
+	}
+	client.Write(MempoolProposalTx{
+		Height: height,
+		Round:  round,
+		TxHash: bytes.HexBytes(txHash).String(),
+		Start:  start,
+		End:    end,
+		Size:   size,
 	})
 }

@@ -18,14 +18,15 @@ message WantTx {
 }
 
 message TxManifest {
-  bytes          tx_key       = 1;
-  uint32         tx_size      = 2;
-  uint32         chunk_size   = 3;
-  uint32         chunk_count  = 4;
-  repeated bytes chunk_hashes = 5;
-  uint64         sequence     = 6;
-  bytes          signer       = 7;
-  uint64         priority     = 8;
+  bytes           tx_key             = 1;
+  uint32          tx_size            = 2;
+  uint32          chunk_size         = 3;
+  uint32          chunk_count        = 4;
+  repeated bytes  chunk_hashes       = 5;
+  uint64          sequence           = 6;
+  bytes           signer             = 7;
+  uint64          priority           = 8;
+  repeated uint32 optimistic_indexes = 9;
 }
 
 message WantChunk {

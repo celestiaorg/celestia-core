@@ -346,7 +346,30 @@ func (txmp *TxPool) TryAddNewTx(tx *types.CachedTx, key types.TxKey, txInfo memp
 	defer txmp.mtx.Unlock()
 
 	// Invoke an ABCI CheckTx for this transaction.
+	checkTxStart := time.Now()
 	rsp, err := txmp.proxyAppConn.CheckTx(context.Background(), &abci.RequestCheckTx{Tx: tx.Tx})
+	checkTxDuration := time.Since(checkTxStart)
+	var (
+		checkTxCode     uint32
+		checkTxSigner   []byte
+		checkTxSequence uint64
+	)
+	if rsp != nil {
+		checkTxCode = rsp.Code
+		checkTxSigner = rsp.Address
+		checkTxSequence = rsp.Sequence
+	}
+	schema.WriteMempoolCheckTx(
+		txmp.traceClient,
+		string(txInfo.SenderP2PID),
+		key[:],
+		len(tx.Tx),
+		checkTxDuration.Nanoseconds(),
+		checkTxCode,
+		err,
+		checkTxSigner,
+		checkTxSequence,
+	)
 	if err != nil {
 		return rsp, err
 	}

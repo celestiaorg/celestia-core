@@ -898,7 +898,7 @@ func DefaultMempoolConfig() *MempoolConfig {
 		LargeTxChunkSize:                1024 * 1024,
 		LargeTxRequestParallelism:       4,
 		LargeTxMaxInflightChunksPerPeer: 8,
-		LargeTxChunkTimeout:             250 * time.Millisecond,
+		LargeTxChunkTimeout:             75 * time.Millisecond,
 		LargeTxReconstructionTimeout:    10 * time.Second,
 		LargeTxMaxAdvertisePeers:        15,
 		LargeTxOptimisticPushChunks:     2,
