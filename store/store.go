@@ -27,18 +27,12 @@ import (
 // setting this to 600 is more performant.
 const maxBlockPartsToBatch = 600
 
-// pruneProgressLogThreshold is the number of blocks a single PruneBlocks call
-// must exceed before it emits a warning and periodic progress logs. Pruning
-// runs synchronously on the caller's goroutine (block sync / consensus) and
-// loads every block it deletes, so a large backlog pauses block syncing until
-// it completes. Below this threshold pruning is fast enough not to matter.
-const pruneProgressLogThreshold = 100
-
-// pruneProgressLogStart is the first progress milestone (in blocks pruned).
-// Subsequent progress logs fire at exponentially increasing milestones
-// (pruneProgressLogStart, x2, x4, ...) to keep the log count low for very
-// large prunes.
-const pruneProgressLogStart = 1000
+// pruneWarnThreshold is the number of blocks a single PruneBlocks call must
+// exceed before it logs a warning. Pruning runs synchronously on the caller's
+// goroutine (block sync / consensus) and loads every block it deletes, so a
+// large backlog pauses block syncing until it completes. Below this threshold
+// pruning is fast enough not to matter.
+const pruneWarnThreshold = 100
 
 /*
 BlockStore is a simple low level store for blocks.
@@ -440,18 +434,12 @@ func (bs *BlockStore) PruneBlocks(height int64, state sm.State) (uint64, int64, 
 
 	// A large prune (e.g. after lowering the retention config) blocks block
 	// application until it finishes, since pruning runs synchronously here and
-	// loads every block it deletes. Warn and emit periodic progress so the pause
-	// is visible rather than looking like a hang.
-	numToPrune := height - base
-	logProgress := numToPrune > pruneProgressLogThreshold
-	if logProgress {
-		bs.logger.Info("pruning blocks; block syncing is paused until pruning completes",
+	// loads every block it deletes. Warn up front so the pause is expected
+	// rather than looking like a hang.
+	if numToPrune := height - base; numToPrune > pruneWarnThreshold {
+		bs.logger.Info("pruning a large number of blocks; this may take a while and pauses block syncing until it completes",
 			"blocks", numToPrune, "from_height", base, "to_height", height)
 	}
-	// Progress is logged at exponentially increasing milestones (1000, 2000,
-	// 4000, ...) so a huge backlog produces a handful of lines rather than one
-	// every flush.
-	nextProgressLog := uint64(pruneProgressLogStart)
 
 	pruned := uint64(0)
 	batch := bs.db.NewBatch()
@@ -518,12 +506,6 @@ func (bs *BlockStore) PruneBlocks(height int64, state sm.State) (uint64, int64, 
 		}
 		pruned++
 
-		if logProgress && pruned >= nextProgressLog {
-			bs.logger.Info("pruning blocks progress",
-				"pruned", pruned, "total", numToPrune, "remaining", numToPrune-int64(pruned))
-			nextProgressLog *= 2
-		}
-
 		// flush every 1000 blocks to avoid batches becoming too large
 		if pruned%1000 == 0 && pruned > 0 {
 			err := flush(batch, h)
@@ -538,10 +520,6 @@ func (bs *BlockStore) PruneBlocks(height int64, state sm.State) (uint64, int64, 
 	err := flush(batch, height)
 	if err != nil {
 		return 0, -1, err
-	}
-	if logProgress {
-		bs.logger.Info("finished pruning blocks; resuming block syncing",
-			"pruned", pruned, "to_height", height)
 	}
 	bs.blocksDeleted += int64(pruned)
 
