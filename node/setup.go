@@ -112,13 +112,16 @@ type blockSyncReactor interface {
 // If config.BlockstoreDir() differs from config.DBDir(), users must manually
 // migrate their existing blockstore data before changing this configuration.
 // No automatic migration is performed to prevent accidental data inconsistency.
-func initDBs(config *cfg.Config, dbProvider cfg.DBProvider) (blockStore *store.BlockStore, stateDB dbm.DB, err error) {
+func initDBs(config *cfg.Config, dbProvider cfg.DBProvider, logger log.Logger) (blockStore *store.BlockStore, stateDB dbm.DB, err error) {
 	var blockStoreDB dbm.DB
 	blockStoreDB, err = dbProvider(&cfg.DBContext{ID: "blockstore", Config: config, Path: config.BlockstoreDir()})
 	if err != nil {
 		return
 	}
-	blockStore = store.NewBlockStore(blockStoreDB)
+	blockStore = store.NewBlockStore(
+		blockStoreDB,
+		store.WithLogger(logger.With("module", "blockstore")),
+	)
 
 	stateDB, err = dbProvider(&cfg.DBContext{ID: "state", Config: config, Path: config.DBDir()})
 	if err != nil {

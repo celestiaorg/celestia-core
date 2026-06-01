@@ -12,6 +12,7 @@ import (
 
 	abci "github.com/cometbft/cometbft/abci/types"
 	"github.com/cometbft/cometbft/evidence"
+	"github.com/cometbft/cometbft/libs/log"
 	cmtsync "github.com/cometbft/cometbft/libs/sync"
 	cmtstore "github.com/cometbft/cometbft/proto/tendermint/store"
 	cmtproto "github.com/cometbft/cometbft/proto/tendermint/types"
@@ -59,18 +60,33 @@ type BlockStore struct {
 	seenCommitCache          *lru.Cache[int64, *types.Commit]
 	blockCommitCache         *lru.Cache[int64, *types.Commit]
 	blockExtendedCommitCache *lru.Cache[int64, *types.ExtendedCommit]
+
+	logger log.Logger
+}
+
+type BlockStoreOption func(*BlockStore)
+
+// WithLogger sets the logger used by the BlockStore.
+func WithLogger(logger log.Logger) BlockStoreOption {
+	return func(bs *BlockStore) {
+		bs.logger = logger
+	}
 }
 
 // NewBlockStore returns a new BlockStore with the given DB,
 // initialized to the last height that was committed to the DB.
-func NewBlockStore(db dbm.DB) *BlockStore {
+func NewBlockStore(db dbm.DB, options ...BlockStoreOption) *BlockStore {
 	bs := LoadBlockStoreState(db)
 	bStore := &BlockStore{
 		base:   bs.Base,
 		height: bs.Height,
 		db:     db,
+		logger: log.NewNopLogger(),
 	}
 	bStore.addCaches()
+	for _, option := range options {
+		option(bStore)
+	}
 	return bStore
 }
 
