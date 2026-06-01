@@ -145,8 +145,10 @@ func (memR *Reactor) broadcastTxManifestWithHeight(local *localLargeTx, height i
 
 	sent := 0
 	sentPersistent := 0
+	pushedOptimistic := 0
 	maxAdvertisePeers := memR.opts.LargeTxMaxAdvertisePeers
 	maxPersistent := memR.opts.MaxPersistentStickyPeers
+	maxOptimisticPeers := memR.optimisticPushPeerLimit()
 	for _, peerInfo := range orderedPeers {
 		isPersistent := peerInfo.peer.IsPersistent()
 		canSend := sent < maxAdvertisePeers || (isPersistent && sentPersistent < maxPersistent)
@@ -166,7 +168,10 @@ func (memR *Reactor) broadcastTxManifestWithHeight(local *localLargeTx, height i
 				if isPersistent {
 					sentPersistent++
 				}
-				memR.pushOptimisticChunks(peerInfo.peer, peerInfo.id, local)
+				if pushedOptimistic < maxOptimisticPeers {
+					memR.pushOptimisticChunks(peerInfo.peer, peerInfo.id, local)
+					pushedOptimistic++
+				}
 			}
 			continue
 		}
@@ -178,6 +183,20 @@ func (memR *Reactor) broadcastTxManifestWithHeight(local *localLargeTx, height i
 			}
 		}
 	}
+}
+
+func (memR *Reactor) optimisticPushPeerLimit() int {
+	if memR.opts.LargeTxOptimisticPushChunks <= 0 {
+		return 0
+	}
+	limit := memR.opts.LargeTxRequestParallelism
+	if limit <= 0 {
+		limit = 1
+	}
+	if memR.opts.LargeTxMaxAdvertisePeers > 0 && limit > memR.opts.LargeTxMaxAdvertisePeers {
+		limit = memR.opts.LargeTxMaxAdvertisePeers
+	}
+	return limit
 }
 
 func (memR *Reactor) peerAtHeight(peer p2p.Peer, height int64) bool {
@@ -282,6 +301,9 @@ func (memR *Reactor) receiveTxManifest(msg *protomem.TxManifest, peer p2p.Peer) 
 	if !waitForSequence {
 		if created {
 			memR.markOptimisticChunksInflight(txKey, peerID)
+		} else {
+			memR.hedgeChunkRequests(txKey, peerID)
+			memR.scheduleDelayedChunkHedge(txKey)
 		}
 		memR.scheduleChunkRequests(txKey)
 	}
@@ -507,6 +529,7 @@ func (memR *Reactor) receiveTxChunk(msg *protomem.TxChunk, peer p2p.Peer) {
 	}
 	schema.WriteMempoolPeerState(memR.traceClient, string(peer.ID()), schema.TxChunk, txKey[:], schema.Download)
 	if tx == nil {
+		memR.hedgeChunkRequestsFromIdleSources(txKey)
 		memR.scheduleChunkRequests(txKey)
 		return
 	}
@@ -624,6 +647,112 @@ func (memR *Reactor) markOptimisticChunksInflight(txKey types.TxKey, peerID uint
 			memR.onChunkRequestTimeout(txKey, chunkIndex, peerID)
 		})
 		session.markInflight(chunkIndex, peerID, now, timer)
+	}
+}
+
+func (memR *Reactor) scheduleDelayedChunkHedge(txKey types.TxKey) {
+	delay := memR.opts.LargeTxChunkTimeout / 2
+	if delay <= 0 {
+		return
+	}
+	time.AfterFunc(delay, func() {
+		memR.hedgeChunkRequestsFromIdleSources(txKey)
+		memR.scheduleChunkRequests(txKey)
+	})
+}
+
+func (memR *Reactor) hedgeChunkRequests(txKey types.TxKey, peerID uint16) {
+	if peerID == 0 || memR.opts.LargeTxRequestParallelism <= 1 {
+		return
+	}
+
+	memR.largeMu.Lock()
+	defer memR.largeMu.Unlock()
+
+	session := memR.reconstructions[txKey]
+	if session == nil || session.waitingForSequence || session.complete() {
+		return
+	}
+	if session.inflightForPeer(peerID) > 0 {
+		return
+	}
+	if session.activeInflightPeerCount() >= memR.opts.LargeTxRequestParallelism {
+		return
+	}
+
+	peer := memR.ids.GetPeer(peerID)
+	if peer == nil {
+		session.removeSource(peerID)
+		return
+	}
+
+	limit := memR.opts.LargeTxOptimisticPushChunks
+	if limit <= 0 {
+		limit = 1
+	}
+	maxHedge := memR.opts.LargeTxMaxInflightChunksPerPeer / 2
+	if maxHedge <= 0 {
+		maxHedge = 1
+	}
+	if limit > maxHedge {
+		limit = maxHedge
+	}
+	now := time.Now().UTC()
+	minAge := memR.opts.LargeTxChunkTimeout / 2
+	indexes := session.hedgeableInflightIndexes(peerID, limit, minAge, now)
+	if len(indexes) == 0 {
+		return
+	}
+
+	msg := &protomem.Message{
+		Sum: &protomem.Message_WantChunk{
+			WantChunk: &protomem.WantChunk{
+				TxKey:   session.manifest.TxKey,
+				Indexes: indexes,
+			},
+		},
+	}
+	if !peer.TrySend(p2p.Envelope{ChannelID: MempoolWantsChannel, Message: msg}) {
+		memR.peerScores.RecordSendFailure(peerID)
+		return
+	}
+
+	for _, index := range indexes {
+		index := index
+		timer := time.AfterFunc(memR.opts.LargeTxChunkTimeout, func() {
+			memR.onChunkRequestTimeout(txKey, index, peerID)
+		})
+		session.reassignInflight(index, peerID, now, timer)
+	}
+	memR.mempool.metrics.RerequestedTxs.Add(float64(len(indexes)))
+	schema.WriteMempoolPeerState(memR.traceClient, string(peer.ID()), schema.WantChunk, txKey[:], schema.Upload)
+}
+
+func (memR *Reactor) hedgeChunkRequestsFromIdleSources(txKey types.TxKey) {
+	if memR.opts.LargeTxRequestParallelism <= 1 {
+		return
+	}
+
+	memR.largeMu.Lock()
+	session := memR.reconstructions[txKey]
+	if session == nil || session.waitingForSequence || session.complete() ||
+		session.activeInflightPeerCount() >= memR.opts.LargeTxRequestParallelism {
+		memR.largeMu.Unlock()
+		return
+	}
+	peerIDs := session.sourceIDs()
+	memR.largeMu.Unlock()
+
+	sort.SliceStable(peerIDs, func(i, j int) bool {
+		left := memR.peerScores.Score(peerIDs[i])
+		right := memR.peerScores.Score(peerIDs[j])
+		if left == right {
+			return peerIDs[i] < peerIDs[j]
+		}
+		return left > right
+	})
+	for _, peerID := range peerIDs {
+		memR.hedgeChunkRequests(txKey, peerID)
 	}
 }
 
