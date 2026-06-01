@@ -34,6 +34,12 @@ const maxBlockPartsToBatch = 600
 // it completes. Below this threshold pruning is fast enough not to matter.
 const pruneProgressLogThreshold = 100
 
+// pruneProgressLogStart is the first progress milestone (in blocks pruned).
+// Subsequent progress logs fire at exponentially increasing milestones
+// (pruneProgressLogStart, x2, x4, ...) to keep the log count low for very
+// large prunes.
+const pruneProgressLogStart = 1000
+
 /*
 BlockStore is a simple low level store for blocks.
 
@@ -442,6 +448,10 @@ func (bs *BlockStore) PruneBlocks(height int64, state sm.State) (uint64, int64, 
 		bs.logger.Info("pruning blocks; block syncing is paused until pruning completes",
 			"blocks", numToPrune, "from_height", base, "to_height", height)
 	}
+	// Progress is logged at exponentially increasing milestones (1000, 2000,
+	// 4000, ...) so a huge backlog produces a handful of lines rather than one
+	// every flush.
+	nextProgressLog := uint64(pruneProgressLogStart)
 
 	pruned := uint64(0)
 	batch := bs.db.NewBatch()
@@ -508,6 +518,12 @@ func (bs *BlockStore) PruneBlocks(height int64, state sm.State) (uint64, int64, 
 		}
 		pruned++
 
+		if logProgress && pruned >= nextProgressLog {
+			bs.logger.Info("pruning blocks progress",
+				"pruned", pruned, "total", numToPrune, "remaining", numToPrune-int64(pruned))
+			nextProgressLog *= 2
+		}
+
 		// flush every 1000 blocks to avoid batches becoming too large
 		if pruned%1000 == 0 && pruned > 0 {
 			err := flush(batch, h)
@@ -516,11 +532,6 @@ func (bs *BlockStore) PruneBlocks(height int64, state sm.State) (uint64, int64, 
 			}
 			batch = bs.db.NewBatch()
 			defer batch.Close()
-
-			if logProgress {
-				bs.logger.Info("pruning blocks progress",
-					"pruned", pruned, "total", numToPrune, "remaining", numToPrune-int64(pruned))
-			}
 		}
 	}
 
