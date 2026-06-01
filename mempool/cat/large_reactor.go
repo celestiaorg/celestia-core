@@ -21,7 +21,7 @@ func (memR *Reactor) useLargeTxFastPath(tx types.Tx) bool {
 		len(tx) >= memR.opts.LargeTxThreshold
 }
 
-func (memR *Reactor) broadcastAcceptedTx(tx *types.CachedTx, key types.TxKey, height int64, signer []byte, sequence uint64, priority int64, optimisticPush bool) {
+func (memR *Reactor) broadcastAcceptedTx(tx *types.CachedTx, key types.TxKey, height int64, signer []byte, sequence uint64, priority int64) {
 	if !memR.useLargeTxFastPath(tx.Tx) {
 		memR.broadcastSeenTxWithHeight(key, height, signer, sequence)
 		return
@@ -32,7 +32,7 @@ func (memR *Reactor) broadcastAcceptedTx(tx *types.CachedTx, key types.TxKey, he
 		memR.broadcastSeenTxWithHeight(key, height, signer, sequence)
 		return
 	}
-	memR.broadcastTxManifestWithHeight(local, height, optimisticPush)
+	memR.broadcastTxManifestWithHeight(local, height)
 }
 
 func (memR *Reactor) ensureLocalLargeTx(tx types.Tx, signer []byte, sequence uint64, priority int64) (*localLargeTx, error) {
@@ -118,7 +118,7 @@ func (memR *Reactor) discardLocalLargeTx(txKey types.TxKey) {
 	}
 }
 
-func (memR *Reactor) broadcastTxManifestWithHeight(local *localLargeTx, height int64, optimisticPush bool) {
+func (memR *Reactor) broadcastTxManifestWithHeight(local *localLargeTx, height int64) {
 	if local == nil || local.manifest == nil {
 		return
 	}
@@ -166,9 +166,7 @@ func (memR *Reactor) broadcastTxManifestWithHeight(local *localLargeTx, height i
 				if isPersistent {
 					sentPersistent++
 				}
-				if optimisticPush {
-					memR.pushOptimisticChunks(peerInfo.peer, peerInfo.id, local)
-				}
+				memR.pushOptimisticChunks(peerInfo.peer, peerInfo.id, local)
 			}
 			continue
 		}
@@ -851,7 +849,7 @@ func (memR *Reactor) processReconstructedLargeTx(tx types.Tx, txKey types.TxKey,
 	}
 
 	if !memR.opts.ListenOnly && rsp.Code == 0 {
-		memR.broadcastAcceptedTx(cachedTx, txKey, memR.mempool.Height(), rsp.Address, rsp.Sequence, rsp.Priority, false)
+		memR.broadcastAcceptedTx(cachedTx, txKey, memR.mempool.Height(), rsp.Address, rsp.Sequence, rsp.Priority)
 	}
 }
 

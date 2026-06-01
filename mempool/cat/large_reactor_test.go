@@ -305,7 +305,7 @@ func TestLargeTxBroadcastUsesManifestByDefault(t *testing.T) {
 	require.True(t, exists)
 }
 
-func TestLargeTxNetworkRebroadcastDoesNotPushOptimisticChunks(t *testing.T) {
+func TestLargeTxNetworkRebroadcastPushesOptimisticChunks(t *testing.T) {
 	reactor, _ := setupLargeTxReactor(t, 32, 16)
 
 	peer := genPeer()
@@ -322,8 +322,16 @@ func TestLargeTxNetworkRebroadcastDoesNotPushOptimisticChunks(t *testing.T) {
 			msg.GetTxManifest() != nil &&
 			bytes.Equal(msg.GetTxManifest().TxKey, txKey[:])
 	})).Return(true).Once()
+	peer.On("TrySend", mock.MatchedBy(func(env p2p.Envelope) bool {
+		msg, ok := env.Message.(*protomem.Message)
+		if !ok || env.ChannelID != MempoolChunkChannel || msg.GetTxChunk() == nil {
+			return false
+		}
+		index := msg.GetTxChunk().Index
+		return index == 0 || index == 1
+	})).Return(true).Twice()
 
-	reactor.broadcastAcceptedTx(tx.ToCachedTx(), txKey, reactor.mempool.Height(), []byte("sender-000-0"), 1, 10, false)
+	reactor.broadcastAcceptedTx(tx.ToCachedTx(), txKey, reactor.mempool.Height(), []byte("sender-000-0"), 1, 10)
 
 	peer.AssertExpectations(t)
 }
