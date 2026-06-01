@@ -1,6 +1,7 @@
 package propagation
 
 import (
+	"context"
 	"fmt"
 	"math/rand/v2"
 	"os"
@@ -17,7 +18,12 @@ import (
 
 	cfg "github.com/cometbft/cometbft/config"
 	proptypes "github.com/cometbft/cometbft/consensus/propagation/types"
+	"github.com/cometbft/cometbft/libs/bits"
+	"github.com/cometbft/cometbft/libs/log"
 	cmtrand "github.com/cometbft/cometbft/libs/rand"
+	"github.com/cometbft/cometbft/p2p"
+	p2pmock "github.com/cometbft/cometbft/p2p/mock"
+	protoprop "github.com/cometbft/cometbft/proto/tendermint/propagation"
 	"github.com/cometbft/cometbft/state"
 	"github.com/cometbft/cometbft/types"
 )
@@ -132,6 +138,51 @@ func TestPropose_OnlySendParityChunks(t *testing.T) {
 	}
 }
 
+func TestPropose_OptimisticallyPushesParityParts(t *testing.T) {
+	cleanup, _, sm, pv := state.SetupTestCaseWithPrivVal(t)
+	t.Cleanup(func() {
+		cleanup(t)
+	})
+
+	prop, partSet, _, _ := createTestProposal(t, sm, pv, 1, 0, 10, 100000)
+	parityBlock, _, err := types.Encode(partSet, types.BlockPartSizeBytes)
+	require.NoError(t, err)
+
+	combinedParts := proptypes.NewCombinedPartSetFromOriginal(partSet, false)
+	combinedParts.SetProposalData(partSet, parityBlock)
+
+	reactor := NewReactor(
+		"",
+		Config{
+			Store:         store.NewBlockStore(dbm.NewMemDB()),
+			Mempool:       &mockMempool{txs: make(map[types.TxKey]*types.CachedTx)},
+			Privval:       mockPrivVal,
+			ChainID:       sm.ChainID,
+			BlockMaxBytes: sm.ConsensusParams.Block.MaxBytes,
+		},
+		WithOptimisticParityPartsPerPeer(2),
+	)
+	peer := &recordingPropagationPeer{Peer: p2pmock.NewPeer(nil)}
+	peerState := newPeerState(context.Background(), peer, log.NewNopLogger())
+
+	assignedParity := bits.NewBitArray(int(parityBlock.Total()))
+	assignedParity.SetIndex(0, true)
+	assignedParity.SetIndex(1, true)
+	assignedParity.SetIndex(2, true)
+
+	reactor.pushOptimisticParityParts(peerState, prop.Height, prop.Round, combinedParts, assignedParity)
+
+	require.Len(t, peer.envelopes, 2)
+	for i, env := range peer.envelopes {
+		require.Equal(t, DataChannel, env.ChannelID)
+		msg, ok := env.Message.(*protoprop.RecoveryPart)
+		require.True(t, ok)
+		require.GreaterOrEqual(t, msg.Index, partSet.Total())
+		require.Equal(t, partSet.Total()+uint32(i), msg.Index)
+		require.NotEmpty(t, msg.Data)
+	}
+}
+
 func createTestProposal(
 	t testing.TB,
 	sm state.State,
@@ -165,6 +216,16 @@ func createTestProposal(
 	require.NoError(t, err)
 	prop.Signature = protoProp.Signature
 	return prop, partSet, block, metaData
+}
+
+type recordingPropagationPeer struct {
+	*p2pmock.Peer
+	envelopes []p2p.Envelope
+}
+
+func (p *recordingPropagationPeer) TrySend(e p2p.Envelope) bool {
+	p.envelopes = append(p.envelopes, e)
+	return true
 }
 
 // TestRecoverPartsLocally provides a set of transactions to the mempool

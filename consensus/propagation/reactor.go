@@ -40,6 +40,10 @@ const (
 
 	// RetryTime automatic catchup retry timeout.
 	RetryTime = 2500 * time.Millisecond
+
+	// defaultOptimisticParityPartsPerPeer bounds how many erasure-coded parity
+	// parts a proposer pushes to each peer immediately after the compact block.
+	defaultOptimisticParityPartsPerPeer = 4
 )
 
 type Reactor struct {
@@ -55,6 +59,8 @@ type Reactor struct {
 	privval       types.PrivValidator
 	chainID       string
 	BlockMaxBytes int64
+
+	optimisticParityPartsPerPeer int
 
 	// mempool access to read the transactions by hash from the mempool
 	// and eventually remove it.
@@ -79,6 +85,11 @@ type Config struct {
 	Privval       types.PrivValidator
 	ChainID       string
 	BlockMaxBytes int64
+
+	// OptimisticParityPartsPerPeer controls how many parity parts the proposer
+	// pushes to each peer without waiting for WantParts. Zero uses the default;
+	// negative values disable optimistic parity pushes.
+	OptimisticParityPartsPerPeer int
 }
 
 func NewReactor(
@@ -87,22 +98,30 @@ func NewReactor(
 	options ...ReactorOption,
 ) *Reactor {
 	ctx, cancel := context.WithCancel(context.Background())
+	optimisticParityPartsPerPeer := config.OptimisticParityPartsPerPeer
+	if optimisticParityPartsPerPeer == 0 {
+		optimisticParityPartsPerPeer = defaultOptimisticParityPartsPerPeer
+	}
+	if optimisticParityPartsPerPeer < 0 {
+		optimisticParityPartsPerPeer = 0
+	}
 	reactor := &Reactor{
-		self:          self,
-		traceClient:   trace.NoOpTracer(),
-		peerstate:     make(map[p2p.ID]*PeerState),
-		mtx:           &sync.Mutex{},
-		ProposalCache: NewProposalCache(config.Store),
-		mempool:       config.Mempool,
-		started:       atomic.Bool{},
-		ctx:           ctx,
-		cancel:        cancel,
-		privval:       config.Privval,
-		chainID:       config.ChainID,
-		BlockMaxBytes: config.BlockMaxBytes,
-		partChan:      make(chan types.PartInfo, 30_000),
-		proposalChan:  make(chan ProposalAndSrc, 1000),
-		ticker:        time.NewTicker(RetryTime),
+		self:                         self,
+		traceClient:                  trace.NoOpTracer(),
+		peerstate:                    make(map[p2p.ID]*PeerState),
+		mtx:                          &sync.Mutex{},
+		ProposalCache:                NewProposalCache(config.Store),
+		mempool:                      config.Mempool,
+		started:                      atomic.Bool{},
+		ctx:                          ctx,
+		cancel:                       cancel,
+		privval:                      config.Privval,
+		chainID:                      config.ChainID,
+		BlockMaxBytes:                config.BlockMaxBytes,
+		optimisticParityPartsPerPeer: optimisticParityPartsPerPeer,
+		partChan:                     make(chan types.PartInfo, 30_000),
+		proposalChan:                 make(chan ProposalAndSrc, 1000),
+		ticker:                       time.NewTicker(RetryTime),
 	}
 	for _, option := range options {
 		option(reactor)
@@ -134,6 +153,15 @@ func WithTracer(tracer trace.Tracer) func(r *Reactor) {
 	return func(r *Reactor) {
 		r.traceClient = tracer
 		r.SetTraceClient(tracer)
+	}
+}
+
+func WithOptimisticParityPartsPerPeer(parts int) func(r *Reactor) {
+	return func(r *Reactor) {
+		if parts < 0 {
+			parts = 0
+		}
+		r.optimisticParityPartsPerPeer = parts
 	}
 }
 

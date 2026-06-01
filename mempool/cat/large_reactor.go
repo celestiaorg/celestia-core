@@ -299,9 +299,7 @@ func (memR *Reactor) receiveTxManifest(msg *protomem.TxManifest, peer p2p.Peer) 
 		memR.Logger.Trace("created large tx reconstruction session", "txKey", txKey, "chunks", msg.ChunkCount)
 	}
 	if !waitForSequence {
-		if created {
-			memR.markOptimisticChunksInflight(txKey, peerID)
-		} else {
+		if !created {
 			memR.hedgeChunkRequests(txKey, peerID)
 			memR.scheduleDelayedChunkHedge(txKey)
 		}
@@ -611,43 +609,6 @@ func (memR *Reactor) scheduleChunkRequests(txKey types.TxKey) {
 	memR.largeMu.Lock()
 	defer memR.largeMu.Unlock()
 	memR.scheduleChunkRequestsLocked(txKey)
-}
-
-func (memR *Reactor) markOptimisticChunksInflight(txKey types.TxKey, peerID uint16) {
-	if memR.opts.LargeTxOptimisticPushChunks <= 0 || peerID == 0 {
-		return
-	}
-
-	memR.largeMu.Lock()
-	defer memR.largeMu.Unlock()
-
-	session := memR.reconstructions[txKey]
-	if session == nil || session.waitingForSequence {
-		return
-	}
-	limit := memR.opts.LargeTxOptimisticPushChunks
-	if limit > memR.opts.LargeTxMaxInflightChunksPerPeer {
-		limit = memR.opts.LargeTxMaxInflightChunksPerPeer
-	}
-	if limit > int(session.manifest.ChunkCount) {
-		limit = int(session.manifest.ChunkCount)
-	}
-
-	now := time.Now().UTC()
-	for i := 0; i < limit; i++ {
-		index := uint32(i)
-		if session.received[index] {
-			continue
-		}
-		if _, ok := session.inflight[index]; ok {
-			continue
-		}
-		chunkIndex := index
-		timer := time.AfterFunc(memR.opts.LargeTxChunkTimeout, func() {
-			memR.onChunkRequestTimeout(txKey, chunkIndex, peerID)
-		})
-		session.markInflight(chunkIndex, peerID, now, timer)
-	}
 }
 
 func (memR *Reactor) scheduleDelayedChunkHedge(txKey types.TxKey) {

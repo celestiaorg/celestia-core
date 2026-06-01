@@ -128,6 +128,9 @@ func (blockProp *Reactor) ProposeBlock(proposal *types.Proposal, block *types.Pa
 		}
 
 		schema.WriteBlockPartState(blockProp.traceClient, proposal.Height, proposal.Round, chunks[index].GetTrueIndices(), true, string(peer.peer.ID()), schema.Upload, "have")
+		// Optimistic pushes must stay parity-only. Original parts are either
+		// locally reconstructed from CAT-distributed txs or pulled on demand.
+		blockProp.pushOptimisticParityParts(peer, proposal.Height, proposal.Round, parts, chunks[index])
 	}
 	return nil
 }
@@ -386,6 +389,51 @@ func (blockProp *Reactor) broadcastCompactBlock(cb *proptypes.CompactBlock, from
 
 		schema.WriteProposal(blockProp.traceClient, cb.Proposal.Height, cb.Proposal.Round, string(peer.peer.ID()), schema.Upload)
 	}
+}
+
+func (blockProp *Reactor) pushOptimisticParityParts(peer *PeerState, height int64, round int32, parts *proptypes.CombinedPartSet, assignedParity *bits.BitArray) {
+	if blockProp.optimisticParityPartsPerPeer <= 0 || peer == nil || parts == nil || assignedParity == nil {
+		return
+	}
+	originalTotal := parts.Original().Total()
+	sent := 0
+	for _, parityIndex := range assignedParity.GetTrueIndices() {
+		if sent >= blockProp.optimisticParityPartsPerPeer {
+			return
+		}
+		absoluteIndex := originalTotal + uint32(parityIndex)
+		if blockProp.sendRecoveryPart(peer, height, round, absoluteIndex, parts, false) {
+			sent++
+		}
+	}
+}
+
+func (blockProp *Reactor) sendRecoveryPart(peer *PeerState, height int64, round int32, partIndex uint32, parts *proptypes.CombinedPartSet, prove bool) bool {
+	part, has := parts.GetPart(partIndex)
+	if !has || part == nil {
+		return false
+	}
+	partBz := make([]byte, len(part.Bytes))
+	copy(partBz, part.Bytes)
+	rpart := &propagation.RecoveryPart{
+		Height: height,
+		Round:  round,
+		Index:  partIndex,
+		Data:   partBz,
+	}
+	if prove {
+		rpart.Proof = *part.Proof.ToProto()
+	}
+	e := p2p.Envelope{
+		ChannelID: DataChannel,
+		Message:   rpart,
+	}
+	if !peer.peer.TrySend(e) {
+		blockProp.Logger.Error("failed to send part", "peer", peer.peer.ID(), "height", height, "round", round, "part", partIndex)
+		return false
+	}
+	schema.WriteBlockPart(blockProp.traceClient, height, round, partIndex, prove, string(peer.peer.ID()), schema.Upload)
+	return true
 }
 
 // chunkParts takes a bit array then returns an array of chunked bit arrays.
