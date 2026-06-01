@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"math"
 	"sort"
+	"strings"
 	"sync/atomic"
 	"time"
 
@@ -114,6 +115,11 @@ type BlockPool struct {
 	errorsCh   chan<- peerError
 
 	traceClient trace.Tracer
+
+	// DEBUG-ONLY: throttle timestamps for high-frequency diagnostic logs so the
+	// hot loops (makeRequestersRoutine / pickIncrAvailablePeer) don't flood the
+	// log at ~500 lines/sec. Guarded by mtx. Remove before merging to prod.
+	dbgLastPickLog time.Time
 }
 
 // NewBlockPool returns a new BlockPool with the height equal to start. Block
@@ -147,6 +153,12 @@ func newBlockPoolWithTracer(start int64, requestsCh chan<- BlockRequest, errorsC
 // pool's start time.
 func (pool *BlockPool) OnStart() error {
 	pool.startTime = time.Now()
+	pool.Logger.Debug("BLOCKSYNC-DBG pool starting",
+		"startHeight", pool.startHeight,
+		"height", pool.height,
+		"maxPeerHeight", pool.maxPeerHeight,
+		"peerConnWait", peerConnWait,
+		"defaultMaxRequesters", defaultMaxRequesters)
 	go pool.makeRequestersRoutine()
 	return nil
 }
@@ -171,6 +183,11 @@ func (pool *BlockPool) recalculateParams() {
 
 // spawns requesters as needed
 func (pool *BlockPool) makeRequestersRoutine() {
+	// DEBUG-ONLY: throttle the idle-branch logs to ~once/sec and only re-log
+	// when the decision actually changes, so a steady-state stall produces a
+	// readable heartbeat instead of 500 identical lines/sec.
+	var dbgLastBranch string
+	var dbgLastBranchLog time.Time
 	for {
 		if !pool.IsRunning() {
 			return
@@ -192,7 +209,39 @@ func (pool *BlockPool) makeRequestersRoutine() {
 			nextHeight           = pool.height + int64(len(pool.requesters))
 			maxPeerHeightReached = nextHeight > pool.maxPeerHeight
 		)
+		// DEBUG-ONLY: snapshot under lock for the diagnostic below.
+		dbgHeight := pool.height
+		dbgNumRequesters := len(pool.requesters)
+		dbgMaxPeerHeight := pool.maxPeerHeight
+		dbgNumPeers := len(pool.peers)
+		dbgNumBanned := len(pool.bannedPeers)
 		pool.mtx.Unlock()
+
+		// DEBUG-ONLY: report which branch we take. This is the single most
+		// useful line to find the halt: if we are stuck, it shows whether it's
+		// because maxPeerHeight is too low (maxPeerHeightReached) vs. requester
+		// cap reached vs. actively requesting.
+		var dbgBranch string
+		switch {
+		case maxRequestersCreated:
+			dbgBranch = "maxRequestersCreated"
+		case maxPeerHeightReached:
+			dbgBranch = "maxPeerHeightReached(STALLED?)"
+		default:
+			dbgBranch = "makeNextRequester"
+		}
+		if dbgBranch != dbgLastBranch || time.Since(dbgLastBranchLog) > time.Second {
+			pool.Logger.Debug("BLOCKSYNC-DBG requester loop",
+				"branch", dbgBranch,
+				"poolHeight", dbgHeight,
+				"nextHeight", nextHeight,
+				"numRequesters", dbgNumRequesters,
+				"maxPeerHeight", dbgMaxPeerHeight,
+				"numPeers", dbgNumPeers,
+				"numBannedPeers", dbgNumBanned)
+			dbgLastBranch = dbgBranch
+			dbgLastBranchLog = time.Now()
+		}
 
 		switch {
 		case maxRequestersCreated: // If we have enough requesters, wait for them to finish.
@@ -273,6 +322,13 @@ func (pool *BlockPool) IsCaughtUp() bool {
 	receivedBlockOrTimedOut := pool.height > 0 || time.Since(pool.startTime) > 5*time.Second
 	ourChainIsLongestAmongPeers := pool.maxPeerHeight == 0 || pool.height >= (pool.maxPeerHeight-1)
 	isCaughtUp := receivedBlockOrTimedOut && ourChainIsLongestAmongPeers
+	pool.Logger.Debug("BLOCKSYNC-DBG IsCaughtUp",
+		"result", isCaughtUp,
+		"poolHeight", pool.height,
+		"maxPeerHeight", pool.maxPeerHeight,
+		"numPeers", len(pool.peers),
+		"receivedBlockOrTimedOut", receivedBlockOrTimedOut,
+		"ourChainIsLongestAmongPeers", ourChainIsLongestAmongPeers)
 	return isCaughtUp
 }
 
@@ -367,12 +423,20 @@ func (pool *BlockPool) AddBlock(peerID p2p.ID, block *types.Block, extCommit *ty
 		return err
 	}
 
+	pool.Logger.Debug("BLOCKSYNC-DBG AddBlock received",
+		"height", block.Height,
+		"peer", peerID,
+		"poolHeight", pool.height,
+		"hasRequester", pool.requesters[block.Height] != nil,
+		"blockSizeKB", fmt.Sprintf("%.1f", float64(blockSize)/1024))
+
 	requester := pool.requesters[block.Height]
 	if requester == nil {
 		// If the peer sent us a block we clearly didn't request, we disconnect.
 		if block.Height > pool.height || block.Height < pool.startHeight {
 			err := fmt.Errorf("peer sent us block #%d we didn't expect (current height: %d, start height: %d)",
 				block.Height, pool.height, pool.startHeight)
+			pool.Logger.Debug("BLOCKSYNC-DBG AddBlock rejected: unexpected height", "height", block.Height, "peer", peerID, "err", err)
 			pool.sendError(err, peerID)
 			return err
 		}
@@ -380,6 +444,7 @@ func (pool *BlockPool) AddBlock(peerID p2p.ID, block *types.Block, extCommit *ty
 		if peer != nil {
 			peer.decrPending(blockSize)
 		}
+		pool.Logger.Debug("BLOCKSYNC-DBG AddBlock dropped: already-committed/no requester", "height", block.Height, "peer", peerID)
 		return fmt.Errorf("got an already committed block #%d (possibly from the slow peer %s)", block.Height, peerID)
 	}
 
@@ -439,12 +504,16 @@ func (pool *BlockPool) SetPeerRange(peerID p2p.ID, base int64, height int64) {
 	pool.mtx.Lock()
 	defer pool.mtx.Unlock()
 
+	prevMax := pool.maxPeerHeight
 	peer := pool.peers[peerID]
 	if peer != nil {
 		if base < peer.base || height < peer.height {
 			pool.Logger.Info("Peer is reporting height/base that is lower than what it previously reported",
 				"peer", peerID,
 				"height", height, "base", base,
+				"prevHeight", peer.height, "prevBase", peer.base)
+			pool.Logger.Debug("BLOCKSYNC-DBG banning peer for reporting lower height/base",
+				"peer", peerID, "newHeight", height, "newBase", base,
 				"prevHeight", peer.height, "prevBase", peer.base)
 			// RemovePeer will redo all requesters associated with this peer.
 			pool.removePeer(peerID)
@@ -469,6 +538,15 @@ func (pool *BlockPool) SetPeerRange(peerID p2p.ID, base int64, height int64) {
 	if height > pool.maxPeerHeight {
 		pool.maxPeerHeight = height
 	}
+
+	pool.Logger.Debug("BLOCKSYNC-DBG SetPeerRange (status from peer)",
+		"peer", peerID,
+		"reportedBase", base,
+		"reportedHeight", height,
+		"poolHeight", pool.height,
+		"maxPeerHeightBefore", prevMax,
+		"maxPeerHeightAfter", pool.maxPeerHeight,
+		"numPeers", len(pool.peers))
 }
 
 // RemovePeer removes the peer with peerID from the pool. If there's no peer
@@ -558,18 +636,27 @@ func (pool *BlockPool) pickIncrAvailablePeer(height int64, ignorePeerID, prevPee
 	maxPending := pool.reqLimit
 	var fallbackPeer *bpPeer // Peer that matches all criteria except prevPeerID
 
+	// DEBUG-ONLY: tally why peers are skipped so a stall makes the reason
+	// obvious (e.g. "10 peers, all skipped by outOfRange" => maxPeerHeight is
+	// high but no peer actually serves this height).
+	var dbgIgnored, dbgTimedOut, dbgTooManyPending, dbgOutOfRange, dbgPrevPeer int
+
 	for _, peer := range pool.sortedPeers {
 		if peer.id == ignorePeerID {
+			dbgIgnored++
 			continue
 		}
 		if peer.didTimeout {
+			dbgTimedOut++
 			pool.removePeer(peer.id)
 			continue
 		}
 		if peer.numPending >= int32(maxPending) {
+			dbgTooManyPending++
 			continue
 		}
 		if height < peer.base || height > peer.height {
+			dbgOutOfRange++
 			continue
 		}
 
@@ -577,6 +664,7 @@ func (pool *BlockPool) pickIncrAvailablePeer(height int64, ignorePeerID, prevPee
 		// the idea is that we want to add diversity to peers, so we will try to alternate peers when loading
 		// this works a bit better with less amount of peers and large blocks
 		if peer.id == prevPeerID {
+			dbgPrevPeer++
 			if fallbackPeer == nil {
 				fallbackPeer = peer
 			}
@@ -589,6 +677,28 @@ func (pool *BlockPool) pickIncrAvailablePeer(height int64, ignorePeerID, prevPee
 	if fallbackPeer != nil {
 		fallbackPeer.incrPending()
 		return fallbackPeer
+	}
+
+	// DEBUG-ONLY: no peer found for this height. Throttle to ~once/sec since the
+	// requester retries every few ms. Dumps each peer's advertised [base,height]
+	// so we can see exactly why none qualify.
+	if time.Since(pool.dbgLastPickLog) > time.Second {
+		pool.dbgLastPickLog = time.Now()
+		dbgRanges := make([]string, 0, len(pool.sortedPeers))
+		for _, p := range pool.sortedPeers {
+			dbgRanges = append(dbgRanges, fmt.Sprintf("%s[%d-%d,pend=%d]", p.id, p.base, p.height, p.numPending))
+		}
+		pool.Logger.Debug("BLOCKSYNC-DBG no peer for height",
+			"height", height,
+			"maxPeerHeight", pool.maxPeerHeight,
+			"reqLimit", maxPending,
+			"totalPeers", len(pool.sortedPeers),
+			"skip_ignored", dbgIgnored,
+			"skip_timedOut", dbgTimedOut,
+			"skip_tooManyPending", dbgTooManyPending,
+			"skip_outOfRange", dbgOutOfRange,
+			"skip_prevPeerOnly", dbgPrevPeer,
+			"peerRanges", strings.Join(dbgRanges, " "))
 	}
 
 	return nil
@@ -611,6 +721,11 @@ func (pool *BlockPool) makeNextRequester(nextHeight int64) {
 
 	pool.requesters[nextHeight] = request
 	atomic.AddInt32(&pool.numPending, 1)
+
+	pool.Logger.Debug("BLOCKSYNC-DBG created requester",
+		"height", nextHeight,
+		"totalRequesters", len(pool.requesters),
+		"numPending", atomic.LoadInt32(&pool.numPending))
 
 	if err := request.Start(); err != nil {
 		request.Logger.Error("Error starting request", "err", err)

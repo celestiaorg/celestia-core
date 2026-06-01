@@ -213,7 +213,7 @@ func (bcR *Reactor) GetChannels() []*p2p.ChannelDescriptor {
 
 // AddPeer implements Reactor by sending our state to peer.
 func (bcR *Reactor) AddPeer(peer p2p.Peer) {
-	peer.Send(p2p.Envelope{
+	queued := peer.Send(p2p.Envelope{
 		ChannelID: BlocksyncChannel,
 		Message: &bcproto.StatusResponse{
 			Base:   bcR.store.Base(),
@@ -221,6 +221,11 @@ func (bcR *Reactor) AddPeer(peer p2p.Peer) {
 		},
 	})
 	// it's OK if send fails. will try later in poolRoutine
+	bcR.Logger.Debug("BLOCKSYNC-DBG AddPeer: sent our status, awaiting theirs",
+		"peer", peer.ID(),
+		"ourBase", bcR.store.Base(),
+		"ourHeight", bcR.store.Height(),
+		"statusSendQueued", queued)
 
 	// peer is added to the pool once we receive the first
 	// bcStatusResponseMessage from the peer and call pool.SetPeerRange
@@ -228,6 +233,7 @@ func (bcR *Reactor) AddPeer(peer p2p.Peer) {
 
 // RemovePeer implements Reactor by removing peer from the pool.
 func (bcR *Reactor) RemovePeer(peer p2p.Peer, _ interface{}) {
+	bcR.Logger.Debug("BLOCKSYNC-DBG RemovePeer", "peer", peer.ID())
 	bcR.pool.RemovePeer(peer.ID())
 }
 
@@ -284,8 +290,10 @@ func (bcR *Reactor) Receive(e p2p.Envelope) {
 
 	switch msg := e.Message.(type) {
 	case *bcproto.BlockRequest:
+		bcR.Logger.Debug("BLOCKSYNC-DBG recv BlockRequest (peer wants a block from us)", "peer", e.Src.ID(), "height", msg.Height)
 		bcR.respondToPeer(msg, e.Src)
 	case *bcproto.BlockResponse:
+		bcR.Logger.Debug("BLOCKSYNC-DBG recv BlockResponse", "peer", e.Src.ID(), "height", msg.Block.Header.Height, "hasExtCommit", msg.ExtCommit != nil)
 		bi, err := types.BlockFromProto(msg.Block)
 		if err != nil {
 			bcR.Logger.Error("Peer sent us invalid block", "peer", e.Src, "msg", e.Message, "err", err)
@@ -321,9 +329,11 @@ func (bcR *Reactor) Receive(e p2p.Envelope) {
 		})
 	case *bcproto.StatusResponse:
 		// Got a peer status. Unverified.
+		bcR.Logger.Debug("BLOCKSYNC-DBG recv StatusResponse (drives maxPeerHeight)", "peer", e.Src.ID(), "reportedHeight", msg.Height, "reportedBase", msg.Base)
 		bcR.pool.SetPeerRange(e.Src.ID(), msg.Base, msg.Height)
 	case *bcproto.NoBlockResponse:
 		bcR.Logger.Trace("Peer does not have requested block", "peer", e.Src, "height", msg.Height)
+		bcR.Logger.Debug("BLOCKSYNC-DBG recv NoBlockResponse (peer lacks block)", "peer", e.Src.ID(), "height", msg.Height)
 		bcR.pool.RedoRequestFrom(msg.Height, e.Src.ID())
 	default:
 		bcR.Logger.Error(fmt.Sprintf("Unknown message type %v", reflect.TypeOf(msg)))
@@ -367,6 +377,10 @@ func (bcR *Reactor) poolRoutine(stateSynced bool) {
 
 	didProcessCh := make(chan struct{}, 1)
 
+	// DEBUG-ONLY: throttle the "waiting for blocks" peek log so it doesn't spam
+	// every trySyncTicker tick (~10ms) while stalled.
+	var dbgLastPeekLog time.Time
+
 	initialCommitHasExtensions := (bcR.initialState.LastBlockHeight > 0 && bcR.store.LoadBlockExtendedCommit(bcR.initialState.LastBlockHeight) != nil)
 
 	go func() {
@@ -379,12 +393,14 @@ func (bcR *Reactor) poolRoutine(stateSynced bool) {
 			case request := <-bcR.requestsCh:
 				peer := bcR.Switch.Peers().Get(request.PeerID)
 				if peer == nil {
+					bcR.Logger.Debug("BLOCKSYNC-DBG cannot send BlockRequest, peer gone", "peer", request.PeerID, "height", request.Height)
 					continue
 				}
 				queued := peer.TrySend(p2p.Envelope{
 					ChannelID: BlocksyncChannel,
 					Message:   &bcproto.BlockRequest{Height: request.Height},
 				})
+				bcR.Logger.Debug("BLOCKSYNC-DBG sent BlockRequest", "peer", peer.ID(), "height", request.Height, "queued", queued)
 				if !queued {
 					bcR.Logger.Debug("Send queue is full, drop block request", "peer", peer.ID(), "height", request.Height)
 				}
@@ -410,6 +426,15 @@ FOR_LOOP:
 			outbound, inbound, _ := bcR.Switch.NumPeers()
 			bcR.Logger.Trace("Consensus ticker", "numPending", numPending, "total", lenRequesters,
 				"outbound", outbound, "inbound", inbound, "lastHeight", state.LastBlockHeight)
+			bcR.Logger.Debug("BLOCKSYNC-DBG switch-to-consensus tick",
+				"poolHeight", height,
+				"maxPeerHeight", bcR.pool.MaxPeerHeight(),
+				"numPending", numPending,
+				"numRequesters", lenRequesters,
+				"outboundPeers", outbound,
+				"inboundPeers", inbound,
+				"blocksSynced", blocksSynced,
+				"lastBlockHeight", state.LastBlockHeight)
 
 			// The "if" statement below is a bit confusing, so here is a breakdown
 			// of its logic and purpose:
@@ -483,8 +508,22 @@ FOR_LOOP:
 			if first == nil || second == nil {
 				// we need to have fetched two consecutive blocks in order to
 				// perform blocksync verification
+				if time.Since(dbgLastPeekLog) > time.Second {
+					dbgLastPeekLog = time.Now()
+					h, np, lr := bcR.pool.GetStatus()
+					bcR.Logger.Debug("BLOCKSYNC-DBG waiting for two consecutive blocks (PeekTwoBlocks)",
+						"poolHeight", h,
+						"haveFirst", first != nil,
+						"haveSecond", second != nil,
+						"numPending", np,
+						"numRequesters", lr,
+						"maxPeerHeight", bcR.pool.MaxPeerHeight(),
+						"blocksSynced", blocksSynced)
+				}
 				continue FOR_LOOP
 			}
+			bcR.Logger.Debug("BLOCKSYNC-DBG peeked two blocks, starting verify",
+				"firstHeight", first.Height, "secondHeight", second.Height)
 			// Some sanity checks on heights
 			if state.LastBlockHeight > 0 && state.LastBlockHeight+1 != first.Height {
 				// Panicking because the block pool's height  MUST keep consistent with the state; the block pool is totally under our control
@@ -627,6 +666,12 @@ FOR_LOOP:
 			bcR.metrics.recordBlockMetrics(first)
 			blocksSynced++
 
+			bcR.Logger.Debug("BLOCKSYNC-DBG applied block",
+				"height", first.Height,
+				"newStateHeight", state.LastBlockHeight,
+				"blocksSyncedThisRun", blocksSynced,
+				"maxPeerHeight", bcR.pool.MaxPeerHeight())
+
 			if blocksSynced%100 == 0 {
 				lastRate = 0.9*lastRate + 0.1*(100/time.Since(lastHundred).Seconds())
 				bcR.Logger.Info("Block Sync Rate", "height", bcR.pool.height,
@@ -646,6 +691,7 @@ FOR_LOOP:
 
 // BroadcastStatusRequest broadcasts `BlockStore` base and height.
 func (bcR *Reactor) BroadcastStatusRequest() {
+	bcR.Logger.Debug("BLOCKSYNC-DBG broadcasting StatusRequest to all peers")
 	bcR.Switch.Broadcast(p2p.Envelope{
 		ChannelID: BlocksyncChannel,
 		Message:   &bcproto.StatusRequest{},
