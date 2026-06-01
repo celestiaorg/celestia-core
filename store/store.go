@@ -27,6 +27,13 @@ import (
 // setting this to 600 is more performant.
 const maxBlockPartsToBatch = 600
 
+// pruneWarnThreshold is the number of blocks a single PruneBlocks call must
+// exceed before it logs a warning. Pruning runs synchronously on the caller's
+// goroutine (block sync / consensus) and loads every block it deletes, so a
+// large backlog pauses block syncing until it completes. Below this threshold
+// pruning is fast enough not to matter.
+const pruneWarnThreshold = 100
+
 /*
 BlockStore is a simple low level store for blocks.
 
@@ -423,6 +430,15 @@ func (bs *BlockStore) PruneBlocks(height int64, state sm.State) (uint64, int64, 
 	if height < base {
 		return 0, -1, fmt.Errorf("cannot prune to height %v, it is lower than base height %v",
 			height, base)
+	}
+
+	// A large prune (e.g. after lowering the retention config) blocks block
+	// application until it finishes, since pruning runs synchronously here and
+	// loads every block it deletes. Warn up front so the pause is expected
+	// rather than looking like a hang.
+	if numToPrune := height - base; numToPrune > pruneWarnThreshold {
+		bs.logger.Info("pruning a large number of blocks; this may take a while and pauses block syncing until it completes",
+			"blocks", numToPrune, "from_height", base, "to_height", height)
 	}
 
 	pruned := uint64(0)
