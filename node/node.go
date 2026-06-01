@@ -180,7 +180,7 @@ func BootstrapStateWithGenProvider(ctx context.Context, config *cfg.Config, dbPr
 	if dbProvider == nil {
 		dbProvider = cfg.DefaultDBProvider
 	}
-	blockStore, stateDB, err := initDBs(config, dbProvider)
+	blockStore, stateDB, err := initDBs(config, dbProvider, logger)
 
 	defer func() {
 		if derr := blockStore.Close(); derr != nil {
@@ -309,7 +309,7 @@ func NewNodeWithContext(ctx context.Context,
 	logger log.Logger,
 	options ...Option,
 ) (*Node, error) {
-	blockStore, stateDB, err := initDBs(config, dbProvider)
+	blockStore, stateDB, err := initDBs(config, dbProvider, logger)
 	if err != nil {
 		return nil, err
 	}

@@ -1,6 +1,7 @@
 package store
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -18,6 +19,7 @@ import (
 	abci "github.com/cometbft/cometbft/abci/types"
 	"github.com/cometbft/cometbft/crypto"
 	"github.com/cometbft/cometbft/internal/test"
+	"github.com/cometbft/cometbft/libs/log"
 	cmtrand "github.com/cometbft/cometbft/libs/rand"
 	cmtstore "github.com/cometbft/cometbft/proto/tendermint/store"
 	cmtversion "github.com/cometbft/cometbft/proto/tendermint/version"
@@ -970,4 +972,36 @@ func TestSaveTxInfo(t *testing.T) {
 	require.Equal(t, "app", txInfo.Codespace)
 	require.Equal(t, int64(50000), txInfo.GasWanted)
 	require.Equal(t, int64(25000), txInfo.GasUsed)
+}
+
+func TestWithLoggerEmitsPruneWarning(t *testing.T) {
+	config := test.ResetTestRoot("blockchain_reactor_test")
+	defer os.RemoveAll(config.RootDir)
+	stateStore := sm.NewStore(dbm.NewMemDB(), sm.StoreOptions{DiscardABCIResponses: false})
+	state, err := stateStore.LoadFromDBOrGenesisFile(config.GenesisFile())
+	require.NoError(t, err)
+
+	var buf bytes.Buffer
+	logger := log.NewTMLogger(log.NewSyncWriter(&buf))
+	bs := NewBlockStore(dbm.NewMemDB(), WithLogger(logger))
+
+	const total = pruneWarnThreshold + 10
+	for h := int64(1); h <= total; h++ {
+		block, partSet, err := state.MakeBlock(h, types.MakeData(test.MakeNTxs(h, 1)), new(types.Commit), nil, state.Validators.GetProposer().Address)
+		require.NoError(t, err)
+		bs.SaveBlockWithExtendedCommit(block, partSet, makeTestExtCommit(h, cmttime.Now()))
+	}
+	state.LastBlockHeight = total
+	state.LastBlockTime = time.Date(2020, 1, 1, 1, 0, 0, 0, time.UTC)
+	state.ConsensusParams.Evidence.MaxAgeNumBlocks = 1
+	state.ConsensusParams.Evidence.MaxAgeDuration = time.Second
+
+	_, _, err = bs.PruneBlocks(total, state)
+	require.NoError(t, err)
+
+	out := buf.String()
+	require.Contains(t, out, "pruning a large number of blocks")
+	require.Contains(t, out, "blocks=")
+	require.Contains(t, out, "from_height=")
+	require.Contains(t, out, "to_height=")
 }
