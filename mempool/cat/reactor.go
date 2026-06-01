@@ -234,6 +234,7 @@ func NewReactor(mempool *TxPool, opts *ReactorOptions) (*Reactor, error) {
 		p2p.WithQueueingFunc(memR.TryQueueUnprocessedEnvelope),
 		p2p.WithTraceClient(traceClient),
 	)
+	mempool.setSpeculativeTxHandlers(memR.broadcastSpeculativeTx, memR.discardLocalLargeTx)
 	memR.stickySalt.Store([]byte(nil)) // establish concrete []byte type for atomic.Value
 	memR.SetStickySalt(opts.StickyPeerSalt)
 	return memR, nil

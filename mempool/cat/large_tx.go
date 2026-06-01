@@ -24,16 +24,17 @@ type localLargeTx struct {
 }
 
 type reconstructionSession struct {
-	manifest           *protomem.TxManifest
-	chunks             [][]byte
-	received           []bool
-	sourcePeer         []uint16
-	sources            map[uint16]struct{}
-	inflight           map[uint32]*chunkRequest
-	perPeerInflight    map[uint16]map[uint32]struct{}
-	waitingForSequence bool
-	deadline           *time.Timer
-	createdAt          time.Time
+	manifest             *protomem.TxManifest
+	chunks               [][]byte
+	received             []bool
+	sourcePeer           []uint16
+	sources              map[uint16]struct{}
+	inflight             map[uint32]*chunkRequest
+	perPeerInflight      map[uint16]map[uint32]struct{}
+	waitingForSequence   bool
+	waitingForAcceptance bool
+	deadline             *time.Timer
+	createdAt            time.Time
 }
 
 type chunkRequest struct {
@@ -132,16 +133,17 @@ func manifestsEqual(a, b *protomem.TxManifest) bool {
 func newReconstructionSession(manifest *protomem.TxManifest, peerID uint16, deadline *time.Timer) *reconstructionSession {
 	chunkCount := int(manifest.ChunkCount)
 	session := &reconstructionSession{
-		manifest:           cloneTxManifest(manifest),
-		chunks:             make([][]byte, chunkCount),
-		received:           make([]bool, chunkCount),
-		sourcePeer:         make([]uint16, chunkCount),
-		sources:            make(map[uint16]struct{}),
-		inflight:           make(map[uint32]*chunkRequest),
-		perPeerInflight:    make(map[uint16]map[uint32]struct{}),
-		deadline:           deadline,
-		createdAt:          time.Now().UTC(),
-		waitingForSequence: false,
+		manifest:             cloneTxManifest(manifest),
+		chunks:               make([][]byte, chunkCount),
+		received:             make([]bool, chunkCount),
+		sourcePeer:           make([]uint16, chunkCount),
+		sources:              make(map[uint16]struct{}),
+		inflight:             make(map[uint32]*chunkRequest),
+		perPeerInflight:      make(map[uint16]map[uint32]struct{}),
+		deadline:             deadline,
+		createdAt:            time.Now().UTC(),
+		waitingForSequence:   false,
+		waitingForAcceptance: manifest.Speculative,
 	}
 	session.addSource(peerID)
 	return session

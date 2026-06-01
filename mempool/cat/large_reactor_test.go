@@ -91,7 +91,7 @@ func TestLargeTxReconstructionSuccessDuplicateAndCorruptChunk(t *testing.T) {
 	require.NoError(t, err)
 	txKey := tx.Key()
 
-	created, err := reactor.upsertReconstructionSession(txKey, local.manifest, 1, false)
+	created, _, err := reactor.upsertReconstructionSession(txKey, local.manifest, 1, false)
 	require.NoError(t, err)
 	require.True(t, created)
 
@@ -157,9 +157,9 @@ func TestLargeTxSchedulerRequestsDisjointChunksFromPeers(t *testing.T) {
 	peerA := reactor.ids.GetIDForPeer(peers[0].ID())
 	peerB := reactor.ids.GetIDForPeer(peers[1].ID())
 
-	_, err = reactor.upsertReconstructionSession(txKey, local.manifest, peerA, false)
+	_, _, err = reactor.upsertReconstructionSession(txKey, local.manifest, peerA, false)
 	require.NoError(t, err)
-	_, err = reactor.upsertReconstructionSession(txKey, local.manifest, peerB, false)
+	_, _, err = reactor.upsertReconstructionSession(txKey, local.manifest, peerB, false)
 	require.NoError(t, err)
 
 	peers[0].On("TrySend", p2p.Envelope{
@@ -201,7 +201,7 @@ func TestLargeTxOptimisticHintDefersOnlyHintedChunks(t *testing.T) {
 	require.NoError(t, err)
 	peerID := reactor.ids.GetIDForPeer(peer.ID())
 
-	_, err = reactor.upsertReconstructionSession(txKey, local.manifest, peerID, false)
+	_, _, err = reactor.upsertReconstructionSession(txKey, local.manifest, peerID, false)
 	require.NoError(t, err)
 	reactor.markOptimisticChunksInflight(txKey, peerID, []uint32{0, 1})
 
@@ -218,6 +218,115 @@ func TestLargeTxOptimisticHintDefersOnlyHintedChunks(t *testing.T) {
 	reactor.scheduleChunkRequests(txKey)
 
 	peer.AssertExpectations(t)
+}
+
+func TestLargeTxSpeculativeManifestDoesNotMarkPeerSeen(t *testing.T) {
+	reactor, pool := setupLargeTxReactor(t, 1, 16)
+
+	tx := largeCATTestTx(64)
+	local, err := buildLocalLargeTx(tx, 16, nil, 0, 0)
+	require.NoError(t, err)
+	local.manifest.Speculative = true
+	txKey := tx.Key()
+
+	peer := genPeer()
+	_, err = reactor.InitPeer(peer)
+	require.NoError(t, err)
+	peerID := reactor.ids.GetIDForPeer(peer.ID())
+
+	peer.On("Send", mock.MatchedBy(func(env p2p.Envelope) bool {
+		msg, ok := env.Message.(*protomem.Message)
+		return ok &&
+			env.ChannelID == MempoolDataChannel &&
+			msg.GetTxManifest() != nil &&
+			msg.GetTxManifest().Speculative
+	})).Return(true).Once()
+
+	require.True(t, reactor.sendTxManifest(peer, peerID, local.manifest, nil, false))
+	require.False(t, pool.seenByPeersSet.Has(txKey, peerID))
+	peer.AssertExpectations(t)
+}
+
+func TestLargeTxSpeculativeReconstructionWaitsForAcceptedManifest(t *testing.T) {
+	reactor, pool := setupLargeTxReactor(t, 1, 16)
+
+	tx := largeCATTestTx(64)
+	local, err := buildLocalLargeTx(tx, 16, []byte("sender-000-0"), 1, 10)
+	require.NoError(t, err)
+	txKey := tx.Key()
+
+	speculative := cloneTxManifest(local.manifest)
+	speculative.Signer = nil
+	speculative.Sequence = 0
+	speculative.Priority = 0
+	speculative.Speculative = true
+
+	created, accepted, err := reactor.upsertReconstructionSession(txKey, speculative, 1, false)
+	require.NoError(t, err)
+	require.True(t, created)
+	require.False(t, accepted)
+
+	var reconstructed types.Tx
+	for i := range local.chunks {
+		reconstructed, err = reactor.acceptTxChunk(txKey, &protomem.TxChunk{
+			TxKey: txKey[:],
+			Index: uint32(i),
+			Data:  local.chunks[i],
+		}, 1)
+		require.NoError(t, err)
+	}
+	require.Nil(t, reconstructed)
+	require.False(t, pool.Has(txKey))
+
+	reactor.largeMu.Lock()
+	session := reactor.reconstructions[txKey]
+	require.NotNil(t, session)
+	require.True(t, session.complete())
+	require.True(t, session.waitingForAcceptance)
+	reactor.largeMu.Unlock()
+
+	acceptedManifest := cloneTxManifest(local.manifest)
+	created, accepted, err = reactor.upsertReconstructionSession(txKey, acceptedManifest, 1, false)
+	require.NoError(t, err)
+	require.False(t, created)
+	require.True(t, accepted)
+
+	reactor.processCompletedLargeTxIfReady(txKey)
+
+	require.True(t, pool.Has(txKey))
+	reactor.largeMu.Lock()
+	_, exists := reactor.reconstructions[txKey]
+	reactor.largeMu.Unlock()
+	require.False(t, exists)
+}
+
+func TestLargeTxCutThroughServesChunksBeforeAcceptance(t *testing.T) {
+	reactor, _ := setupLargeTxReactor(t, 1, 16)
+
+	tx := largeCATTestTx(64)
+	local, err := buildLocalLargeTx(tx, 16, []byte("sender-000-0"), 1, 10)
+	require.NoError(t, err)
+	txKey := tx.Key()
+
+	speculative := cloneTxManifest(local.manifest)
+	speculative.Speculative = true
+	created, accepted, err := reactor.upsertReconstructionSession(txKey, speculative, 1, false)
+	require.NoError(t, err)
+	require.True(t, created)
+	require.False(t, accepted)
+
+	reconstructed, err := reactor.acceptTxChunk(txKey, &protomem.TxChunk{
+		TxKey: txKey[:],
+		Index: 0,
+		Data:  local.chunks[0],
+	}, 1)
+	require.NoError(t, err)
+	require.Nil(t, reconstructed)
+
+	chunks := reactor.reconstructionChunksForWant(txKey, []uint32{0, 1})
+	require.Len(t, chunks, 1)
+	require.Equal(t, uint32(0), chunks[0].index)
+	require.Equal(t, local.chunks[0], chunks[0].data)
 }
 
 func TestLargeTxHedgesInflightChunksToNewSource(t *testing.T) {
@@ -239,7 +348,7 @@ func TestLargeTxHedgesInflightChunksToNewSource(t *testing.T) {
 	peerA := reactor.ids.GetIDForPeer(peers[0].ID())
 	peerB := reactor.ids.GetIDForPeer(peers[1].ID())
 
-	_, err = reactor.upsertReconstructionSession(txKey, local.manifest, peerA, false)
+	_, _, err = reactor.upsertReconstructionSession(txKey, local.manifest, peerA, false)
 	require.NoError(t, err)
 
 	reactor.largeMu.Lock()
@@ -283,7 +392,7 @@ func TestLargeTxServesVerifiedReconstructionChunks(t *testing.T) {
 	require.NoError(t, err)
 	sourceID := reactor.ids.GetIDForPeer(source.ID())
 
-	_, err = reactor.upsertReconstructionSession(txKey, local.manifest, sourceID, false)
+	_, _, err = reactor.upsertReconstructionSession(txKey, local.manifest, sourceID, false)
 	require.NoError(t, err)
 	reconstructed, err := reactor.acceptTxChunk(txKey, &protomem.TxChunk{
 		TxKey: txKey[:],

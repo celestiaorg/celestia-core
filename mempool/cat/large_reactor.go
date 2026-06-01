@@ -35,6 +35,23 @@ func (memR *Reactor) broadcastAcceptedTx(tx *types.CachedTx, key types.TxKey, he
 	memR.broadcastTxManifestWithHeight(local, height)
 }
 
+func (memR *Reactor) broadcastSpeculativeTx(tx *types.CachedTx, key types.TxKey, _ mempool.TxInfo) {
+	if memR.opts.ListenOnly || !memR.IsRunning() || tx == nil || !memR.useLargeTxFastPath(tx.Tx) {
+		return
+	}
+	local, err := memR.ensureLocalLargeTx(tx.Tx, nil, 0, 0)
+	if err != nil {
+		memR.Logger.Debug("failed to build speculative large tx manifest", "txKey", key, "err", err)
+		return
+	}
+	memR.largeMu.Lock()
+	if !memR.mempool.Has(key) {
+		local.manifest.Speculative = true
+	}
+	memR.largeMu.Unlock()
+	memR.broadcastTxManifestWithHeight(local, memR.mempool.Height())
+}
+
 func (memR *Reactor) ensureLocalLargeTx(tx types.Tx, signer []byte, sequence uint64, priority int64) (*localLargeTx, error) {
 	key := tx.Key()
 
@@ -67,6 +84,7 @@ func updateManifestMetadata(manifest *protomem.TxManifest, signer []byte, sequen
 	}
 	manifest.Signer = append(manifest.Signer[:0], signer...)
 	manifest.Sequence = sequence
+	manifest.Speculative = false
 	if priority > 0 {
 		manifest.Priority = uint64(priority)
 	} else {
@@ -77,7 +95,7 @@ func updateManifestMetadata(manifest *protomem.TxManifest, signer []byte, sequen
 func (memR *Reactor) getOrBuildLocalLargeTx(txKey types.TxKey) (*localLargeTx, bool) {
 	memR.largeMu.Lock()
 	local := memR.largeTxs[txKey]
-	if local != nil && !memR.mempool.Has(txKey) {
+	if local != nil && !local.manifest.Speculative && !memR.mempool.Has(txKey) {
 		delete(memR.largeTxs, txKey)
 		local = nil
 	}
@@ -103,6 +121,9 @@ func (memR *Reactor) pruneLocalLargeTxs() {
 	defer memR.largeMu.Unlock()
 
 	for txKey := range memR.largeTxs {
+		if memR.largeTxs[txKey].manifest.Speculative {
+			continue
+		}
 		if !memR.mempool.Has(txKey) {
 			delete(memR.largeTxs, txKey)
 		}
@@ -133,7 +154,7 @@ func (memR *Reactor) broadcastTxManifestWithHeight(local *localLargeTx, height i
 		return
 	}
 
-	orderedPeers := selectStickyPeers(local.manifest.Signer, peers, len(peers), memR.currentStickyPeerSalt())
+	orderedPeers := selectStickyPeers(manifestRoutingKey(txKey), peers, len(peers), memR.currentStickyPeerSalt())
 	sort.SliceStable(orderedPeers, func(i, j int) bool {
 		left := memR.peerScores.Score(orderedPeers[i].id)
 		right := memR.peerScores.Score(orderedPeers[j].id)
@@ -167,7 +188,7 @@ func (memR *Reactor) broadcastTxManifestWithHeight(local *localLargeTx, height i
 			if pushedOptimistic < maxOptimisticPeers {
 				optimisticIndexes = memR.optimisticChunkIndexes(local)
 			}
-			if memR.sendTxManifest(peerInfo.peer, peerInfo.id, local.manifest, optimisticIndexes) {
+			if memR.sendTxManifest(peerInfo.peer, peerInfo.id, local.manifest, optimisticIndexes, !local.manifest.Speculative) {
 				sent++
 				if isPersistent {
 					sentPersistent++
@@ -187,6 +208,61 @@ func (memR *Reactor) broadcastTxManifestWithHeight(local *localLargeTx, height i
 			}
 		}
 	}
+}
+
+func (memR *Reactor) relayTxManifestWithHeight(manifest *protomem.TxManifest, height int64, excludePeerID uint16) {
+	if memR.opts.ListenOnly || manifest == nil {
+		return
+	}
+	txKey, err := types.TxKeyFromBytes(manifest.TxKey)
+	if err != nil {
+		return
+	}
+	peers := memR.ids.GetAll()
+	if len(peers) == 0 {
+		return
+	}
+
+	orderedPeers := selectStickyPeers(manifestRoutingKey(txKey), peers, len(peers), memR.currentStickyPeerSalt())
+	sort.SliceStable(orderedPeers, func(i, j int) bool {
+		left := memR.peerScores.Score(orderedPeers[i].id)
+		right := memR.peerScores.Score(orderedPeers[j].id)
+		if left == right {
+			return false
+		}
+		return left > right
+	})
+
+	sent := 0
+	sentPersistent := 0
+	maxAdvertisePeers := memR.opts.LargeTxMaxAdvertisePeers
+	maxPersistent := memR.opts.MaxPersistentStickyPeers
+	for _, peerInfo := range orderedPeers {
+		if peerInfo.id == excludePeerID {
+			continue
+		}
+		isPersistent := peerInfo.peer.IsPersistent()
+		canSend := sent < maxAdvertisePeers || (isPersistent && sentPersistent < maxPersistent)
+		if !canSend {
+			continue
+		}
+		if !memR.peerAtHeight(peerInfo.peer, height) || !peerSupportsChannel(peerInfo.peer, MempoolChunkChannel) {
+			continue
+		}
+		if !manifest.Speculative && memR.mempool.seenByPeersSet.Has(txKey, peerInfo.id) {
+			continue
+		}
+		if memR.sendTxManifest(peerInfo.peer, peerInfo.id, manifest, nil, !manifest.Speculative) {
+			sent++
+			if isPersistent {
+				sentPersistent++
+			}
+		}
+	}
+}
+
+func manifestRoutingKey(txKey types.TxKey) []byte {
+	return txKey[:]
 }
 
 func (memR *Reactor) optimisticPushPeerLimit() int {
@@ -210,7 +286,7 @@ func (memR *Reactor) peerAtHeight(peer p2p.Peer, height int64) bool {
 	return true
 }
 
-func (memR *Reactor) sendTxManifest(peer p2p.Peer, peerID uint16, manifest *protomem.TxManifest, optimisticIndexes []uint32) bool {
+func (memR *Reactor) sendTxManifest(peer p2p.Peer, peerID uint16, manifest *protomem.TxManifest, optimisticIndexes []uint32, markPeerHas bool) bool {
 	manifestMsg := cloneTxManifest(manifest)
 	manifestMsg.OptimisticIndexes = append([]uint32(nil), optimisticIndexes...)
 	msg := &protomem.Message{
@@ -223,7 +299,9 @@ func (memR *Reactor) sendTxManifest(peer p2p.Peer, peerID uint16, manifest *prot
 		return false
 	}
 	if peer.Send(p2p.Envelope{ChannelID: MempoolDataChannel, Message: msg}) {
-		memR.mempool.PeerHasTx(peerID, txKey)
+		if markPeerHas {
+			memR.mempool.PeerHasTx(peerID, txKey)
+		}
 		schema.WriteMempoolPeerState(memR.traceClient, string(peer.ID()), schema.TxManifest, txKey[:], schema.Upload)
 		return true
 	}
@@ -306,7 +384,7 @@ func (memR *Reactor) receiveTxManifest(msg *protomem.TxManifest, peer p2p.Peer) 
 		return
 	}
 
-	created, err := memR.upsertReconstructionSession(txKey, msg, peerID, waitForSequence)
+	created, accepted, err := memR.upsertReconstructionSession(txKey, msg, peerID, waitForSequence)
 	if err != nil {
 		memR.Logger.Error("could not track TxManifest", "txKey", txKey, "err", err)
 		memR.Switch.StopPeerForError(peer, err, memR.String())
@@ -315,6 +393,9 @@ func (memR *Reactor) receiveTxManifest(msg *protomem.TxManifest, peer p2p.Peer) 
 	if created {
 		memR.Logger.Trace("created large tx reconstruction session", "txKey", txKey, "chunks", msg.ChunkCount)
 		memR.markOptimisticChunksInflight(txKey, peerID, msg.OptimisticIndexes)
+		memR.relayTxManifestWithHeight(msg, memR.mempool.Height(), peerID)
+	} else if accepted {
+		memR.relayTxManifestWithHeight(msg, memR.mempool.Height(), peerID)
 	}
 	if !waitForSequence {
 		if !created {
@@ -322,6 +403,9 @@ func (memR *Reactor) receiveTxManifest(msg *protomem.TxManifest, peer p2p.Peer) 
 			memR.scheduleDelayedChunkHedge(txKey)
 		}
 		memR.scheduleChunkRequests(txKey)
+	}
+	if accepted {
+		memR.processCompletedLargeTxIfReady(txKey)
 	}
 }
 
@@ -417,23 +501,29 @@ func (memR *Reactor) largeManifestSequenceState(msg *protomem.TxManifest, txKey 
 	}
 }
 
-func (memR *Reactor) upsertReconstructionSession(txKey types.TxKey, manifest *protomem.TxManifest, peerID uint16, waitForSequence bool) (bool, error) {
+func (memR *Reactor) upsertReconstructionSession(txKey types.TxKey, manifest *protomem.TxManifest, peerID uint16, waitForSequence bool) (bool, bool, error) {
 	memR.largeMu.Lock()
 	defer memR.largeMu.Unlock()
 
 	if session := memR.reconstructions[txKey]; session != nil {
 		if !manifestsEqual(session.manifest, manifest) {
-			return false, fmt.Errorf("%w: conflicting manifest for %X", errInvalidTxManifest, txKey)
+			return false, false, fmt.Errorf("%w: conflicting manifest for %X", errInvalidTxManifest, txKey)
 		}
 		session.addSource(peerID)
 		if !waitForSequence {
 			session.waitingForSequence = false
 		}
-		return false, nil
+		accepted := false
+		if session.waitingForAcceptance && !manifest.Speculative {
+			updateManifestMetadata(session.manifest, manifest.Signer, manifest.Sequence, int64(manifest.Priority))
+			session.waitingForAcceptance = false
+			accepted = true
+		}
+		return false, accepted, nil
 	}
 
 	if memR.reconstructionBytesLocked()+int64(manifest.TxSize) > memR.mempool.config.MaxTxsBytes {
-		return false, fmt.Errorf("%w: reconstruction memory limit reached", errInvalidTxManifest)
+		return false, false, fmt.Errorf("%w: reconstruction memory limit reached", errInvalidTxManifest)
 	}
 	deadline := time.AfterFunc(memR.opts.LargeTxReconstructionTimeout, func() {
 		memR.onReconstructionTimeout(txKey)
@@ -441,7 +531,7 @@ func (memR *Reactor) upsertReconstructionSession(txKey types.TxKey, manifest *pr
 	session := newReconstructionSession(manifest, peerID, deadline)
 	session.waitingForSequence = waitForSequence
 	memR.reconstructions[txKey] = session
-	return true, nil
+	return true, !manifest.Speculative, nil
 }
 
 func (memR *Reactor) markOptimisticChunksInflight(txKey types.TxKey, peerID uint16, indexes []uint32) {
@@ -491,7 +581,7 @@ func (memR *Reactor) reconstructionChunksForWant(txKey types.TxKey, indexes []ui
 	defer memR.largeMu.Unlock()
 
 	session := memR.reconstructions[txKey]
-	if session == nil || session.waitingForSequence {
+	if session == nil {
 		return nil
 	}
 
@@ -643,7 +733,7 @@ func (memR *Reactor) acceptTxChunk(txKey types.TxKey, msg *protomem.TxChunk, pee
 	}
 
 	if session.complete() {
-		if session.waitingForSequence {
+		if session.waitingForSequence || session.waitingForAcceptance {
 			memR.largeMu.Unlock()
 			if recordPeer != 0 {
 				memR.peerScores.RecordChunk(recordPeer, recordBytes, recordLatency)
@@ -676,6 +766,48 @@ func (memR *Reactor) acceptTxChunk(txKey types.TxKey, msg *protomem.TxChunk, pee
 		schema.WriteMempoolLargeTxReconstruction(memR.traceClient, txKey[:], completedSize, completedChunks, reconstructionDuration.Nanoseconds())
 	}
 	return completed, nil
+}
+
+func (memR *Reactor) processCompletedLargeTxIfReady(txKey types.TxKey) {
+	var (
+		tx                     types.Tx
+		peerID                 uint16
+		completedSize          int
+		completedChunks        int
+		reconstructionDuration time.Duration
+	)
+
+	memR.largeMu.Lock()
+	session := memR.reconstructions[txKey]
+	if session == nil || session.waitingForSequence || session.waitingForAcceptance || !session.complete() {
+		memR.largeMu.Unlock()
+		return
+	}
+	tx = session.reconstruct()
+	if len(tx) != int(session.manifest.TxSize) || tx.Key() != txKey {
+		session.stop()
+		delete(memR.reconstructions, txKey)
+		memR.largeMu.Unlock()
+		return
+	}
+	peerID = session.firstSourcePeer()
+	memR.largeTxs[txKey] = session.toLocalLargeTx()
+	completedSize = int(session.manifest.TxSize)
+	completedChunks = int(session.manifest.ChunkCount)
+	reconstructionDuration = time.Since(session.createdAt)
+	session.stop()
+	delete(memR.reconstructions, txKey)
+	memR.largeMu.Unlock()
+
+	schema.WriteMempoolLargeTxReconstruction(memR.traceClient, txKey[:], completedSize, completedChunks, reconstructionDuration.Nanoseconds())
+	peer := memR.ids.GetPeer(peerID)
+	txInfo := mempool.TxInfo{SenderID: peerID}
+	peerIDStr := ""
+	if peer != nil {
+		txInfo.SenderP2PID = peer.ID()
+		peerIDStr = string(peer.ID())
+	}
+	memR.processReconstructedLargeTx(tx, txKey, txInfo, peerIDStr)
 }
 
 func (memR *Reactor) scheduleChunkRequests(txKey types.TxKey) {
@@ -957,7 +1089,7 @@ func (memR *Reactor) processPendingLargeManifestsForSigner(signer []byte) {
 			delete(memR.reconstructions, txKey)
 		case session.manifest.Sequence == expectedSeq:
 			session.waitingForSequence = false
-			if session.complete() {
+			if session.complete() && !session.waitingForAcceptance {
 				tx := session.reconstruct()
 				if len(tx) != int(session.manifest.TxSize) || tx.Key() != txKey {
 					session.stop()

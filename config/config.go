@@ -900,7 +900,7 @@ func DefaultMempoolConfig() *MempoolConfig {
 		LargeTxMaxInflightChunksPerPeer: 8,
 		LargeTxChunkTimeout:             75 * time.Millisecond,
 		LargeTxReconstructionTimeout:    10 * time.Second,
-		LargeTxMaxAdvertisePeers:        15,
+		LargeTxMaxAdvertisePeers:        50,
 		LargeTxOptimisticPushChunks:     2,
 		LargeTxPeerScoreHalflife:        30 * time.Second,
 		LargeTxEnableFEC:                false,

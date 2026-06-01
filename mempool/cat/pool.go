@@ -80,6 +80,11 @@ type TxPool struct {
 
 	// heightSignal notifies listeners whenever the mempool height advances.
 	heightSignal chan struct{}
+
+	// speculativeTxHandler is invoked after local precheck and reservation, but
+	// before application CheckTx, so the reactor can start moving large tx bytes.
+	speculativeTxHandler       func(*types.CachedTx, types.TxKey, mempool.TxInfo)
+	speculativeTxRejectHandler func(types.TxKey)
 }
 
 // NewTxPool constructs a new, empty content addressable txpool at the specified
@@ -256,6 +261,11 @@ func (txmp *TxPool) CheckTx(tx types.Tx, cb func(*abci.ResponseCheckTx), txInfo 
 	return nil
 }
 
+func (txmp *TxPool) setSpeculativeTxHandlers(handler func(*types.CachedTx, types.TxKey, mempool.TxInfo), rejectHandler func(types.TxKey)) {
+	txmp.speculativeTxHandler = handler
+	txmp.speculativeTxRejectHandler = rejectHandler
+}
+
 // next is used by the reactor to get the next transaction to broadcast
 // to all other peers.
 func (txmp *TxPool) next() <-chan *wrappedTx {
@@ -342,6 +352,12 @@ func (txmp *TxPool) TryAddNewTx(tx *types.CachedTx, key types.TxKey, txInfo memp
 		return nil, err
 	}
 
+	speculated := false
+	if txInfo.FromBroadcast && txmp.speculativeTxHandler != nil {
+		txmp.speculativeTxHandler(tx, key, txInfo)
+		speculated = true
+	}
+
 	txmp.mtx.Lock()
 	defer txmp.mtx.Unlock()
 
@@ -371,9 +387,15 @@ func (txmp *TxPool) TryAddNewTx(tx *types.CachedTx, key types.TxKey, txInfo memp
 		checkTxSequence,
 	)
 	if err != nil {
+		if speculated && txmp.speculativeTxRejectHandler != nil {
+			txmp.speculativeTxRejectHandler(key)
+		}
 		return rsp, err
 	}
 	if rsp.Code != abci.CodeTypeOK {
+		if speculated && txmp.speculativeTxRejectHandler != nil {
+			txmp.speculativeTxRejectHandler(key)
+		}
 		txmp.rejectedTxCache.Push(key, rsp.Code, rsp.Log)
 		txmp.metrics.FailedTxs.Add(1)
 		schema.WriteMempoolTxStatus(
@@ -395,6 +417,9 @@ func (txmp *TxPool) TryAddNewTx(tx *types.CachedTx, key types.TxKey, txInfo memp
 	// Perform the post check
 	err = txmp.postCheck(wtx.tx, rsp)
 	if err != nil {
+		if speculated && txmp.speculativeTxRejectHandler != nil {
+			txmp.speculativeTxRejectHandler(key)
+		}
 		txmp.rejectedTxCache.Push(key, 0, err.Error())
 		txmp.metrics.FailedTxs.Add(1)
 		schema.WriteMempoolTxStatus(
@@ -411,6 +436,9 @@ func (txmp *TxPool) TryAddNewTx(tx *types.CachedTx, key types.TxKey, txInfo memp
 	// Now we consider the transaction to be valid. Once a transaction is valid, it
 	// can only become invalid if recheckTx is enabled and RecheckTx returns a non zero code
 	if err := txmp.addNewTransaction(wtx); err != nil {
+		if speculated && txmp.speculativeTxRejectHandler != nil {
+			txmp.speculativeTxRejectHandler(key)
+		}
 		return nil, err
 	}
 	return rsp, nil

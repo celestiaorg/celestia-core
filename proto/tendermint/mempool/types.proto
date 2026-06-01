@@ -27,6 +27,7 @@ message TxManifest {
   bytes           signer             = 7;
   uint64          priority           = 8;
   repeated uint32 optimistic_indexes = 9;
+  bool            speculative        = 10;
 }
 
 message WantChunk {
