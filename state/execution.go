@@ -944,10 +944,24 @@ func ExecCommitBlock(
 	return resp.AppHash, nil
 }
 
+// maxBlocksPrunedPerRequest bounds how many heights a single pruneBlocks call
+// will remove. Pruning runs synchronously on the block-sync / consensus
+// goroutine and loads every block it deletes, so an unbounded prune of a large
+// backlog (e.g. after lowering the retention config) blocks block application
+// for a very long time. Capping the work per call lets `base` advance
+// incrementally while the node keeps syncing; the remaining backlog is pruned
+// over subsequent blocks.
+const maxBlocksPrunedPerRequest = 500
+
 func (blockExec *BlockExecutor) pruneBlocks(retainHeight int64, state State) (uint64, error) {
 	base := blockExec.blockStore.Base()
 	if retainHeight <= base {
 		return 0, nil
+	}
+
+	// Bound the amount pruned per call so a large backlog doesn't block syncing.
+	if retainHeight > base+maxBlocksPrunedPerRequest {
+		retainHeight = base + maxBlocksPrunedPerRequest
 	}
 
 	blockExec.logger.Debug("DBTIMING-DBG pruneBlocks: range", "base", base, "retainHeight", retainHeight, "numHeights", retainHeight-base)
