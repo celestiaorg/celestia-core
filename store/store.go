@@ -12,6 +12,7 @@ import (
 
 	abci "github.com/cometbft/cometbft/abci/types"
 	"github.com/cometbft/cometbft/evidence"
+	"github.com/cometbft/cometbft/libs/log"
 	cmtsync "github.com/cometbft/cometbft/libs/sync"
 	cmtstore "github.com/cometbft/cometbft/proto/tendermint/store"
 	cmtproto "github.com/cometbft/cometbft/proto/tendermint/types"
@@ -22,6 +23,11 @@ import (
 // maxBlockPartsToBatch is set to 600 to batch a whole block. Now that we're switching to pebbleDB,
 // setting this to 600 is more performant.
 const maxBlockPartsToBatch = 600
+
+// pruneProgressLogThreshold is the number of blocks a single prune must exceed
+// before PruneBlocks emits a warning and periodic progress logs. Below this,
+// pruning is fast enough that it doesn't noticeably pause block syncing.
+const pruneProgressLogThreshold = 100
 
 /*
 BlockStore is a simple low level store for blocks.
@@ -59,6 +65,8 @@ type BlockStore struct {
 	seenCommitCache          *lru.Cache[int64, *types.Commit]
 	blockCommitCache         *lru.Cache[int64, *types.Commit]
 	blockExtendedCommitCache *lru.Cache[int64, *types.ExtendedCommit]
+
+	logger log.Logger
 }
 
 // NewBlockStore returns a new BlockStore with the given DB,
@@ -69,9 +77,16 @@ func NewBlockStore(db dbm.DB) *BlockStore {
 		base:   bs.Base,
 		height: bs.Height,
 		db:     db,
+		logger: log.NewNopLogger(),
 	}
 	bStore.addCaches()
 	return bStore
+}
+
+// SetLogger sets the logger used by the block store. If not called, a no-op
+// logger is used.
+func (bs *BlockStore) SetLogger(l log.Logger) {
+	bs.logger = l
 }
 
 func (bs *BlockStore) addCaches() {
@@ -382,6 +397,18 @@ func (bs *BlockStore) PruneBlocks(height int64, state sm.State) (uint64, int64, 
 			height, base)
 	}
 
+	// Pruning runs synchronously on the caller's goroutine (block sync /
+	// consensus) and loads every block it deletes. A large backlog (e.g. after
+	// lowering the retention config) therefore blocks block application until it
+	// finishes. Warn the operator and emit periodic progress so the pause is
+	// visible rather than looking like a hang.
+	numToPrune := height - base
+	logProgress := numToPrune > pruneProgressLogThreshold
+	if logProgress {
+		bs.logger.Info("pruning blocks; block syncing is paused until pruning completes",
+			"blocks", numToPrune, "from_height", base, "to_height", height)
+	}
+
 	pruned := uint64(0)
 	batch := bs.db.NewBatch()
 	defer batch.Close()
@@ -455,12 +482,22 @@ func (bs *BlockStore) PruneBlocks(height int64, state sm.State) (uint64, int64, 
 			}
 			batch = bs.db.NewBatch()
 			defer batch.Close()
+
+			if logProgress {
+				bs.logger.Info("pruning blocks progress",
+					"pruned", pruned, "total", numToPrune,
+					"remaining", numToPrune-int64(pruned))
+			}
 		}
 	}
 
 	err := flush(batch, height)
 	if err != nil {
 		return 0, -1, err
+	}
+	if logProgress {
+		bs.logger.Info("finished pruning blocks; resuming block syncing",
+			"pruned", pruned, "to_height", height)
 	}
 	return pruned, evidencePoint, nil
 }

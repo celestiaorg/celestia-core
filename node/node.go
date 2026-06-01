@@ -313,6 +313,7 @@ func NewNodeWithContext(ctx context.Context,
 	if err != nil {
 		return nil, err
 	}
+	blockStore.SetLogger(logger.With("module", "store"))
 
 	stateStore := sm.NewStore(stateDB, sm.StoreOptions{
 		DiscardABCIResponses: config.Storage.DiscardABCIResponses,
