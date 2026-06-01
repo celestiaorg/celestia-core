@@ -1,9 +1,11 @@
 package mempool
 
 import (
+	"context"
 	"crypto/sha256"
 	"fmt"
 	"math"
+	"time"
 
 	abci "github.com/cometbft/cometbft/abci/types"
 	"github.com/cometbft/cometbft/types"
@@ -122,6 +124,13 @@ type Mempool interface {
 	// rejected cache alongside the rejection code and log.
 	// Used in the RPC endpoint: TxStatus.
 	WasRecentlyRejected(key types.TxKey) (bool, uint32, string)
+}
+
+// ProposalWaiter is an optional mempool extension used by block proposal
+// creation to briefly wait for txs that are in local validation or
+// reconstruction and likely to be eligible before the proposal cut.
+type ProposalWaiter interface {
+	WaitForProposalTxs(ctx context.Context, maxWait time.Duration) time.Duration
 }
 
 // PreCheckFunc is an optional filter executed before CheckTx and rejects

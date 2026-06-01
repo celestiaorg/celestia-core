@@ -1,6 +1,8 @@
 package schema
 
 import (
+	"time"
+
 	"github.com/cometbft/cometbft/libs/bytes"
 	"github.com/cometbft/cometbft/libs/trace"
 )
@@ -17,6 +19,7 @@ func MempoolTables() []string {
 		MempoolCheckTxTable,
 		MempoolLargeTxReconstructionTable,
 		MempoolProposalTxTable,
+		MempoolProposalCutTable,
 	}
 }
 
@@ -471,5 +474,51 @@ func WriteMempoolProposalTx(client trace.Tracer, height int64, round int32, txHa
 		Start:  start,
 		End:    end,
 		Size:   size,
+	})
+}
+
+const (
+	// MempoolProposalCutTable stores proposal block construction timing around the mempool cut.
+	MempoolProposalCutTable = "mempool_proposal_cut"
+)
+
+// MempoolProposalCut describes the mempool state when a proposal cuts txs.
+type MempoolProposalCut struct {
+	Height       int64 `json:"height"`
+	WaitDuration int64 `json:"wait_duration"`
+	MaxWait      int64 `json:"max_wait"`
+	MempoolSize  int   `json:"mempool_size"`
+	MempoolBytes int64 `json:"mempool_bytes"`
+	ReapedTxs    int   `json:"reaped_txs"`
+	ReapedBytes  int64 `json:"reaped_bytes"`
+}
+
+// Table returns the table name for the MempoolProposalCut struct.
+func (MempoolProposalCut) Table() string {
+	return MempoolProposalCutTable
+}
+
+// WriteMempoolProposalCut writes a tracing point for proposal mempool cut timing.
+func WriteMempoolProposalCut(
+	client trace.Tracer,
+	height int64,
+	waitDuration time.Duration,
+	maxWait time.Duration,
+	mempoolSize int,
+	mempoolBytes int64,
+	reapedTxs int,
+	reapedBytes int64,
+) {
+	if !client.IsCollecting(MempoolProposalCutTable) {
+		return
+	}
+	client.Write(MempoolProposalCut{
+		Height:       height,
+		WaitDuration: waitDuration.Nanoseconds(),
+		MaxWait:      maxWait.Nanoseconds(),
+		MempoolSize:  mempoolSize,
+		MempoolBytes: mempoolBytes,
+		ReapedTxs:    reapedTxs,
+		ReapedBytes:  reapedBytes,
 	})
 }

@@ -23,6 +23,8 @@ import (
 	"github.com/cometbft/cometbft/types"
 )
 
+const defaultProposalMempoolWait = 250 * time.Millisecond
+
 //-----------------------------------------------------------------------------
 // BlockExecutor handles block execution and state updates.
 // It exposes ApplyBlock(), which validates & executes the block, updates state w/ ABCI responses,
@@ -157,7 +159,36 @@ func (blockExec *BlockExecutor) CreateProposalBlock(
 		maxReapBytes = maxDataBytes + (maxDataBytes / 4)
 	}
 
+	proposalWait := time.Duration(0)
+	if waiter, ok := blockExec.mempool.(mempool.ProposalWaiter); ok {
+		proposalWait = waiter.WaitForProposalTxs(ctx, defaultProposalMempoolWait)
+	}
+	collectProposalCutTrace := blockExec.tracer.IsCollecting(schema.MempoolProposalCutTable)
+	mempoolSize := 0
+	mempoolBytes := int64(0)
+	if collectProposalCutTrace {
+		mempoolSize = blockExec.mempool.Size()
+		mempoolBytes = blockExec.mempool.SizeBytes()
+	}
 	txs := blockExec.mempool.ReapMaxBytesMaxGas(maxReapBytes, maxGas)
+	if collectProposalCutTrace {
+		reapedBytes := int64(0)
+		for _, tx := range txs {
+			if tx != nil {
+				reapedBytes += int64(len(tx.Tx))
+			}
+		}
+		schema.WriteMempoolProposalCut(
+			blockExec.tracer,
+			height,
+			proposalWait,
+			defaultProposalMempoolWait,
+			mempoolSize,
+			mempoolBytes,
+			len(txs),
+			reapedBytes,
+		)
+	}
 	commit := lastExtCommit.ToCommit()
 	block, err := state.MakeBlockWithoutPartset(height, types.MakeData(types.TxsFromCachedTxs(txs)), commit, evidence, proposerAddr)
 	if err != nil {

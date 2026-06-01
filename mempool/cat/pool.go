@@ -25,6 +25,8 @@ var (
 	ErrTxInMempool = errors.New("tx already exists in mempool")
 )
 
+const proposalCandidateFreshness = 750 * time.Millisecond
+
 // TxPoolOption sets an optional parameter on the TxPool.
 type TxPoolOption func(*TxPool)
 
@@ -85,6 +87,10 @@ type TxPool struct {
 	// before application CheckTx, so the reactor can start moving large tx bytes.
 	speculativeTxHandler       func(*types.CachedTx, types.TxKey, mempool.TxInfo)
 	speculativeTxRejectHandler func(types.TxKey)
+
+	proposalWaitMtx        sync.Mutex
+	proposalWaitCh         chan struct{}
+	proposalCandidateTimes map[types.TxKey]time.Time
 }
 
 // NewTxPool constructs a new, empty content addressable txpool at the specified
@@ -112,6 +118,9 @@ func NewTxPool(
 		broadcastCh:      make(chan *wrappedTx),
 		txsToBeBroadcast: make([]types.TxKey, 0),
 		heightSignal:     make(chan struct{}, 1),
+
+		proposalWaitCh:         make(chan struct{}),
+		proposalCandidateTimes: make(map[types.TxKey]time.Time),
 	}
 
 	for _, opt := range options {
@@ -264,6 +273,68 @@ func (txmp *TxPool) CheckTx(tx types.Tx, cb func(*abci.ResponseCheckTx), txInfo 
 func (txmp *TxPool) setSpeculativeTxHandlers(handler func(*types.CachedTx, types.TxKey, mempool.TxInfo), rejectHandler func(types.TxKey)) {
 	txmp.speculativeTxHandler = handler
 	txmp.speculativeTxRejectHandler = rejectHandler
+}
+
+func (txmp *TxPool) TrackProposalCandidate(key types.TxKey) {
+	txmp.proposalWaitMtx.Lock()
+	defer txmp.proposalWaitMtx.Unlock()
+
+	txmp.proposalCandidateTimes[key] = time.Now()
+	txmp.signalProposalWaitersLocked()
+}
+
+func (txmp *TxPool) UntrackProposalCandidate(key types.TxKey) {
+	txmp.proposalWaitMtx.Lock()
+	defer txmp.proposalWaitMtx.Unlock()
+
+	if _, ok := txmp.proposalCandidateTimes[key]; !ok {
+		return
+	}
+	delete(txmp.proposalCandidateTimes, key)
+	txmp.signalProposalWaitersLocked()
+}
+
+func (txmp *TxPool) WaitForProposalTxs(ctx context.Context, maxWait time.Duration) time.Duration {
+	if maxWait <= 0 {
+		return 0
+	}
+
+	start := time.Now()
+	timer := time.NewTimer(maxWait)
+	defer timer.Stop()
+
+	for {
+		txmp.proposalWaitMtx.Lock()
+		waitCh := txmp.proposalWaitCh
+		shouldWait := txmp.hasFreshProposalCandidateLocked(time.Now())
+		txmp.proposalWaitMtx.Unlock()
+		if !shouldWait {
+			return time.Since(start)
+		}
+
+		select {
+		case <-ctx.Done():
+			return time.Since(start)
+		case <-timer.C:
+			return time.Since(start)
+		case <-waitCh:
+		}
+	}
+}
+
+func (txmp *TxPool) hasFreshProposalCandidateLocked(now time.Time) bool {
+	for key, updatedAt := range txmp.proposalCandidateTimes {
+		if now.Sub(updatedAt) <= proposalCandidateFreshness {
+			return true
+		}
+		delete(txmp.proposalCandidateTimes, key)
+	}
+	return false
+}
+
+func (txmp *TxPool) signalProposalWaitersLocked() {
+	close(txmp.proposalWaitCh)
+	txmp.proposalWaitCh = make(chan struct{})
 }
 
 // next is used by the reactor to get the next transaction to broadcast
@@ -441,6 +512,7 @@ func (txmp *TxPool) TryAddNewTx(tx *types.CachedTx, key types.TxKey, txInfo memp
 		}
 		return nil, err
 	}
+	txmp.UntrackProposalCandidate(key)
 	return rsp, nil
 }
 

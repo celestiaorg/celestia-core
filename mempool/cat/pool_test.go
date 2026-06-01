@@ -194,6 +194,31 @@ func TestTxPool_TxsAvailable(t *testing.T) {
 	ensureNoTxFire()
 }
 
+func TestTxPoolWaitForProposalTxs(t *testing.T) {
+	txmp := setup(t, 100)
+	txKey := types.Tx("sender-000-0=payload=1").Key()
+
+	waitedCh := make(chan time.Duration, 1)
+	txmp.TrackProposalCandidate(txKey)
+	go func() {
+		waitedCh <- txmp.WaitForProposalTxs(context.Background(), time.Second)
+	}()
+
+	time.Sleep(20 * time.Millisecond)
+	txmp.UntrackProposalCandidate(txKey)
+
+	select {
+	case waited := <-waitedCh:
+		require.GreaterOrEqual(t, waited, 20*time.Millisecond)
+		require.Less(t, waited, time.Second)
+	case <-time.After(time.Second):
+		t.Fatal("proposal wait did not unblock after candidate was removed")
+	}
+
+	waited := txmp.WaitForProposalTxs(context.Background(), time.Second)
+	require.Less(t, waited, 20*time.Millisecond)
+}
+
 func TestTxPool_Size(t *testing.T) {
 	txmp := setup(t, 0)
 	txs := checkTxs(t, txmp, 100, 0)

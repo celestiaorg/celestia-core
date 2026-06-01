@@ -49,6 +49,7 @@ func (memR *Reactor) broadcastSpeculativeTx(tx *types.CachedTx, key types.TxKey,
 		local.manifest.Speculative = true
 	}
 	memR.largeMu.Unlock()
+	memR.mempool.TrackProposalCandidate(key)
 	memR.broadcastTxManifestWithHeight(local, memR.mempool.Height())
 }
 
@@ -132,11 +133,11 @@ func (memR *Reactor) pruneLocalLargeTxs() {
 
 func (memR *Reactor) discardLocalLargeTx(txKey types.TxKey) {
 	memR.largeMu.Lock()
-	defer memR.largeMu.Unlock()
-
 	if !memR.mempool.Has(txKey) {
 		delete(memR.largeTxs, txKey)
 	}
+	memR.largeMu.Unlock()
+	memR.mempool.UntrackProposalCandidate(txKey)
 }
 
 func (memR *Reactor) broadcastTxManifestWithHeight(local *localLargeTx, height int64) {
@@ -391,6 +392,7 @@ func (memR *Reactor) receiveTxManifest(msg *protomem.TxManifest, peer p2p.Peer) 
 		return
 	}
 	if created {
+		memR.mempool.TrackProposalCandidate(txKey)
 		memR.Logger.Trace("created large tx reconstruction session", "txKey", txKey, "chunks", msg.ChunkCount)
 		memR.markOptimisticChunksInflight(txKey, peerID, msg.OptimisticIndexes)
 		memR.relayTxManifestWithHeight(msg, memR.mempool.Height(), peerID)
@@ -515,7 +517,10 @@ func (memR *Reactor) upsertReconstructionSession(txKey types.TxKey, manifest *pr
 		}
 		accepted := false
 		if session.waitingForAcceptance && !manifest.Speculative {
-			updateManifestMetadata(session.manifest, manifest.Signer, manifest.Sequence, int64(manifest.Priority))
+			session.manifest.Signer = append(session.manifest.Signer[:0], manifest.Signer...)
+			session.manifest.Sequence = manifest.Sequence
+			session.manifest.Priority = manifest.Priority
+			session.manifest.Speculative = false
 			session.waitingForAcceptance = false
 			accepted = true
 		}
@@ -761,6 +766,7 @@ func (memR *Reactor) acceptTxChunk(txKey types.TxKey, msg *protomem.TxChunk, pee
 
 	if recordPeer != 0 {
 		memR.peerScores.RecordChunk(recordPeer, recordBytes, recordLatency)
+		memR.mempool.TrackProposalCandidate(txKey)
 	}
 	if completed != nil {
 		schema.WriteMempoolLargeTxReconstruction(memR.traceClient, txKey[:], completedSize, completedChunks, reconstructionDuration.Nanoseconds())
@@ -788,6 +794,7 @@ func (memR *Reactor) processCompletedLargeTxIfReady(txKey types.TxKey) {
 		session.stop()
 		delete(memR.reconstructions, txKey)
 		memR.largeMu.Unlock()
+		memR.mempool.UntrackProposalCandidate(txKey)
 		return
 	}
 	peerID = session.firstSourcePeer()
@@ -1010,6 +1017,7 @@ func (memR *Reactor) onReconstructionTimeout(txKey types.TxKey) {
 	}
 	memR.largeMu.Unlock()
 	if session != nil {
+		memR.mempool.UntrackProposalCandidate(txKey)
 		memR.Logger.Debug("large tx reconstruction timed out", "txKey", txKey, "chunks", session.manifest.ChunkCount)
 	}
 }
@@ -1077,6 +1085,7 @@ func (memR *Reactor) processPendingLargeManifestsForSigner(signer []byte) {
 	var (
 		ready     []types.TxKey
 		completed []completedLargeTx
+		dropped   []types.TxKey
 	)
 	memR.largeMu.Lock()
 	for txKey, session := range memR.reconstructions {
@@ -1087,6 +1096,7 @@ func (memR *Reactor) processPendingLargeManifestsForSigner(signer []byte) {
 		case session.manifest.Sequence < expectedSeq:
 			session.stop()
 			delete(memR.reconstructions, txKey)
+			dropped = append(dropped, txKey)
 		case session.manifest.Sequence == expectedSeq:
 			session.waitingForSequence = false
 			if session.complete() && !session.waitingForAcceptance {
@@ -1094,6 +1104,7 @@ func (memR *Reactor) processPendingLargeManifestsForSigner(signer []byte) {
 				if len(tx) != int(session.manifest.TxSize) || tx.Key() != txKey {
 					session.stop()
 					delete(memR.reconstructions, txKey)
+					dropped = append(dropped, txKey)
 					continue
 				}
 				peerID := session.firstSourcePeer()
@@ -1108,6 +1119,9 @@ func (memR *Reactor) processPendingLargeManifestsForSigner(signer []byte) {
 	}
 	memR.largeMu.Unlock()
 
+	for _, txKey := range dropped {
+		memR.mempool.UntrackProposalCandidate(txKey)
+	}
 	for _, item := range completed {
 		peer := memR.ids.GetPeer(item.peerID)
 		txInfo := mempool.TxInfo{SenderID: item.peerID}
@@ -1124,6 +1138,8 @@ func (memR *Reactor) processPendingLargeManifestsForSigner(signer []byte) {
 }
 
 func (memR *Reactor) processReconstructedLargeTx(tx types.Tx, txKey types.TxKey, txInfo mempool.TxInfo, peerID string) {
+	defer memR.mempool.UntrackProposalCandidate(txKey)
+
 	cachedTx := tx.ToCachedTx()
 	rsp, err := memR.tryAddNewTx(cachedTx, txKey, txInfo, peerID)
 	if err == nil || errors.Is(err, ErrTxInMempool) {
