@@ -114,20 +114,27 @@ func (evpool *Pool) Update(state sm.State, ev types.EvidenceList) {
 	evpool.logger.Debug("Updating evidence pool", "last_block_height", state.LastBlockHeight,
 		"last_block_time", state.LastBlockTime)
 
+	// APPLY-DBG: sub-step markers. Each of these takes evpool.mtx, so if the
+	// hang is a held/contended mutex we'll see exactly which call doesn't return.
+	evpool.logger.Debug("APPLY-DBG evpool: before processConsensusBuffer", "height", state.LastBlockHeight)
 	// flush conflicting vote pairs from the buffer, producing DuplicateVoteEvidence and
 	// adding it to the pool
 	evpool.processConsensusBuffer(state)
+	evpool.logger.Debug("APPLY-DBG evpool: before updateState", "height", state.LastBlockHeight)
 	// update state
 	evpool.updateState(state)
+	evpool.logger.Debug("APPLY-DBG evpool: before markEvidenceAsCommitted", "height", state.LastBlockHeight)
 
 	// move committed evidence out from the pending pool and into the committed pool
 	evpool.markEvidenceAsCommitted(ev)
+	evpool.logger.Debug("APPLY-DBG evpool: before removeExpiredPendingEvidence check", "height", state.LastBlockHeight, "size", evpool.Size())
 
 	// prune pending evidence when it has expired. This also updates when the next evidence will expire
 	if evpool.Size() > 0 && state.LastBlockHeight > evpool.pruningHeight &&
 		state.LastBlockTime.After(evpool.pruningTime) {
 		evpool.pruningHeight, evpool.pruningTime = evpool.removeExpiredPendingEvidence()
 	}
+	evpool.logger.Debug("APPLY-DBG evpool: Update complete", "height", state.LastBlockHeight)
 }
 
 // AddEvidence checks the evidence is valid and adds it to the pool.

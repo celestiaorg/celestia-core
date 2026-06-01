@@ -634,6 +634,7 @@ FOR_LOOP:
 			saveStart := time.Now()
 
 			// TODO: batch saves so we dont persist to disk every block
+			bcR.Logger.Debug("DBTIMING-DBG starting blockStore.SaveBlock", "height", first.Height, "extensionsEnabled", extensionsEnabled)
 			if extensionsEnabled {
 				bcR.store.SaveBlockWithExtendedCommit(first, firstParts, extCommit)
 			} else {
@@ -643,6 +644,7 @@ FOR_LOOP:
 				// but this may change so using second.LastCommit is safer.
 				bcR.store.SaveBlock(first, firstParts, second.LastCommit)
 			}
+			bcR.Logger.Debug("DBTIMING-DBG done blockStore.SaveBlock", "height", first.Height, "ms", time.Since(saveStart).Milliseconds())
 
 			// Calculate save duration
 			saveDuration := time.Since(saveStart)

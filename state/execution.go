@@ -358,17 +358,23 @@ func (blockExec *BlockExecutor) applyBlock(state State, blockID types.BlockID, b
 	// This needs to be done prior to saving state
 	// for correct crash recovery
 	if blockExec.blockStore != nil {
+		dbStart := time.Now()
+		blockExec.logger.Debug("DBTIMING-DBG starting blockStore.SaveTxInfo", "height", block.Height)
 		if err := blockExec.blockStore.SaveTxInfo(block, abciResponse.TxResults); err != nil {
 			return state, err
 		}
+		blockExec.logger.Debug("DBTIMING-DBG done blockStore.SaveTxInfo", "height", block.Height, "ms", time.Since(dbStart).Milliseconds())
 	}
 
 	fail.Fail() // XXX
 
 	// Save the results before we commit.
+	dbStart := time.Now()
+	blockExec.logger.Debug("DBTIMING-DBG starting store.SaveFinalizeBlockResponse", "height", block.Height)
 	if err := blockExec.store.SaveFinalizeBlockResponse(block.Height, abciResponse); err != nil {
 		return state, err
 	}
+	blockExec.logger.Debug("DBTIMING-DBG done store.SaveFinalizeBlockResponse", "height", block.Height, "ms", time.Since(dbStart).Milliseconds())
 
 	fail.Fail() // XXX
 
@@ -396,38 +402,53 @@ func (blockExec *BlockExecutor) applyBlock(state State, blockID types.BlockID, b
 		return state, fmt.Errorf("commit failed for application: %v", err)
 	}
 
+	// APPLY-DBG: step markers to pinpoint where the apply path hangs after
+	// Commit. These run once per block (not hot) so no throttling needed.
+	blockExec.logger.Debug("APPLY-DBG step: before Commit", "height", block.Height)
+
 	// Lock mempool, commit app state, update mempoool.
 	retainHeight, err := blockExec.Commit(state, block, abciResponse)
 	if err != nil {
 		return state, fmt.Errorf("commit failed for application: %v", err)
 	}
+	blockExec.logger.Debug("APPLY-DBG step: after Commit, before evpool.Update", "height", block.Height, "retainHeight", retainHeight)
 
 	// Update evpool with the latest state.
 	blockExec.evpool.Update(state, block.Evidence.Evidence)
+	blockExec.logger.Debug("APPLY-DBG step: after evpool.Update, before store.Save", "height", block.Height)
 
 	fail.Fail() // XXX
 
 	// Update the app hash and save the state.
 	state.AppHash = abciResponse.AppHash
+	dbStart = time.Now()
+	blockExec.logger.Debug("DBTIMING-DBG starting store.Save (state)", "height", block.Height)
 	if err := blockExec.store.Save(state); err != nil {
 		return state, err
 	}
+	blockExec.logger.Debug("DBTIMING-DBG done store.Save (state)", "height", block.Height, "ms", time.Since(dbStart).Milliseconds())
 
 	fail.Fail() // XXX
 
 	// Prune old heights, if requested by ABCI app.
+	blockExec.logger.Debug("DBTIMING-DBG prune decision", "height", block.Height, "retainHeight", retainHeight, "willPrune", retainHeight > 0)
 	if retainHeight > 0 {
+		dbStart = time.Now()
+		blockExec.logger.Debug("DBTIMING-DBG starting pruneBlocks (deletes range -> may force compaction)", "height", block.Height, "retainHeight", retainHeight)
 		pruned, err := blockExec.pruneBlocks(retainHeight, state)
 		if err != nil {
 			blockExec.logger.Error("failed to prune blocks", "retain_height", retainHeight, "err", err)
 		} else {
 			blockExec.logger.Trace("pruned blocks", "pruned", pruned, "retain_height", retainHeight)
 		}
+		blockExec.logger.Debug("DBTIMING-DBG done pruneBlocks", "height", block.Height, "pruned", pruned, "ms", time.Since(dbStart).Milliseconds())
 	}
+	blockExec.logger.Debug("APPLY-DBG step: after prune, before fireEvents", "height", block.Height)
 
 	// Events are fired after everything else.
 	// NOTE: if we crash between Commit and Save, events wont be fired during replay
 	fireEvents(blockExec.logger, blockExec.eventBus, block, blockID, abciResponse, validatorUpdates, state.Validators, lastCommit)
+	blockExec.logger.Debug("APPLY-DBG step: after fireEvents (applyBlock returning)", "height", block.Height)
 
 	return state, nil
 }
@@ -929,15 +950,23 @@ func (blockExec *BlockExecutor) pruneBlocks(retainHeight int64, state State) (ui
 		return 0, nil
 	}
 
+	blockExec.logger.Debug("DBTIMING-DBG pruneBlocks: range", "base", base, "retainHeight", retainHeight, "numHeights", retainHeight-base)
+
+	pbStart := time.Now()
+	blockExec.logger.Debug("DBTIMING-DBG starting blockStore.PruneBlocks", "base", base, "retainHeight", retainHeight)
 	amountPruned, prunedHeaderHeight, err := blockExec.blockStore.PruneBlocks(retainHeight, state)
 	if err != nil {
 		return 0, fmt.Errorf("failed to prune block store: %w", err)
 	}
+	blockExec.logger.Debug("DBTIMING-DBG done blockStore.PruneBlocks", "amountPruned", amountPruned, "ms", time.Since(pbStart).Milliseconds())
 
+	pbStart = time.Now()
+	blockExec.logger.Debug("DBTIMING-DBG starting store.PruneStates", "base", base, "retainHeight", retainHeight)
 	err = blockExec.Store().PruneStates(base, retainHeight, prunedHeaderHeight)
 	if err != nil {
 		return 0, fmt.Errorf("failed to prune state store: %w", err)
 	}
+	blockExec.logger.Debug("DBTIMING-DBG done store.PruneStates", "ms", time.Since(pbStart).Milliseconds())
 	return amountPruned, nil
 }
 
