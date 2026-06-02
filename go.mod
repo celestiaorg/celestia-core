@@ -27,7 +27,7 @@ require (
 	github.com/google/orderedcode v0.0.1
 	github.com/google/uuid v1.6.0
 	github.com/gorilla/websocket v1.5.3
-	github.com/grafana/otel-profiling-go v0.5.1
+	github.com/grafana/otel-profiling-go v0.5.3
 	github.com/grafana/pyroscope-go v1.3.1
 	github.com/hashicorp/golang-lru/v2 v2.0.7
 	github.com/informalsystems/tm-load-test v1.3.0
