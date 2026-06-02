@@ -600,7 +600,9 @@ func TestPruneBlocks(t *testing.T) {
 	require.NotNil(t, bs.LoadBlockMeta(1100))
 	require.Nil(t, bs.LoadBlockMeta(1099))
 	require.NotNil(t, bs.LoadBlockCommit(1100))
+	require.NotNil(t, bs.LoadBlockExtendedCommit(1100))
 	require.Nil(t, bs.LoadBlockCommit(1099))
+	require.Nil(t, bs.LoadBlockExtendedCommit(1099))
 
 	for i := int64(1); i < 1200; i++ {
 		require.Nil(t, bs.LoadBlock(i))
@@ -629,7 +631,9 @@ func TestPruneBlocks(t *testing.T) {
 	require.NotNil(t, bs.LoadBlockMeta(1100))
 	require.Nil(t, bs.LoadBlockMeta(1099))
 	require.NotNil(t, bs.LoadBlockCommit(1100))
+	require.NotNil(t, bs.LoadBlockExtendedCommit(1100))
 	require.Nil(t, bs.LoadBlockCommit(1099))
+	require.Nil(t, bs.LoadBlockExtendedCommit(1099))
 
 	// Pruning beyond the current height should error
 	_, _, err = bs.PruneBlocks(1501, state)
