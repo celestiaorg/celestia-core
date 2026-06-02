@@ -28,7 +28,7 @@ require (
 	github.com/google/uuid v1.6.0
 	github.com/gorilla/websocket v1.5.3
 	github.com/grafana/otel-profiling-go v0.5.1
-	github.com/grafana/pyroscope-go v1.2.8
+	github.com/grafana/pyroscope-go v1.3.1
 	github.com/hashicorp/golang-lru/v2 v2.0.7
 	github.com/informalsystems/tm-load-test v1.3.0
 	github.com/klauspost/reedsolomon v1.14.0
@@ -193,7 +193,7 @@ require (
 	github.com/gostaticanalysis/forcetypeassert v0.2.0 // indirect
 	github.com/gostaticanalysis/nilerr v0.1.2 // indirect
 	github.com/gotestyourself/gotestyourself v2.2.0+incompatible // indirect
-	github.com/grafana/pyroscope-go/godeltaprof v0.1.9 // indirect
+	github.com/grafana/pyroscope-go/godeltaprof v0.1.11 // indirect
 	github.com/hashicorp/go-immutable-radix/v2 v2.1.0 // indirect
 	github.com/hashicorp/go-version v1.8.0 // indirect
 	github.com/hexops/gotextdiff v1.0.3 // indirect
@@ -208,7 +208,7 @@ require (
 	github.com/kevinburke/ssh_config v1.2.0 // indirect
 	github.com/kisielk/errcheck v1.9.0 // indirect
 	github.com/kkHAIKE/contextcheck v1.1.6 // indirect
-	github.com/klauspost/compress v1.18.0 // indirect
+	github.com/klauspost/compress v1.18.6 // indirect
 	github.com/klauspost/cpuid/v2 v2.3.0 // indirect
 	github.com/kr/pretty v0.3.1 // indirect
 	github.com/kr/text v0.2.0 // indirect
@@ -280,7 +280,7 @@ require (
 	github.com/spf13/pflag v1.0.10 // indirect
 	github.com/ssgreg/nlreturn/v2 v2.2.1 // indirect
 	github.com/stbenjam/no-sprintf-host-port v0.3.1 // indirect
-	github.com/stretchr/objx v0.5.2 // indirect
+	github.com/stretchr/objx v0.5.3 // indirect
 	github.com/subosito/gotenv v1.6.0 // indirect
 	github.com/syndtr/goleveldb v1.0.1-0.20210819022825-2ae1ddf74ef7 // indirect
 	github.com/tetafro/godot v1.5.4 // indirect
