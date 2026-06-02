@@ -1156,6 +1156,7 @@ func (cs *State) handleTimeout(ti timeoutInfo, rs cstypes.RoundState) {
 			cs.Logger.Error("failed publishing timeout wait", "err", err)
 		}
 
+		cs.emitPrecommitTimeoutMetrics(ti.Round)
 		cs.enterPrecommit(ti.Height, ti.Round)
 		cs.enterNewRound(ti.Height, ti.Round+1)
 
@@ -1951,6 +1952,7 @@ func (cs *State) finalizeCommit(height int64) {
 	}
 
 	cs.calculatePrevoteMessageDelayMetrics()
+	cs.calculatePrecommitMessageDelayMetrics()
 
 	blockID, ok := cs.rs.Votes.Precommits(cs.rs.CommitRound).TwoThirdsMajority()
 	block, blockParts := cs.rs.ProposalBlock, cs.rs.ProposalBlockParts
@@ -2815,6 +2817,61 @@ func (cs *State) checkDoubleSigningRisk(height int64) error {
 	}
 
 	return nil
+}
+
+// emitPrecommitTimeoutMetrics calculates and emits metrics for votes collected
+// during the TimeoutCommit period.
+func (cs *State) emitPrecommitTimeoutMetrics(round int32) {
+	// Count votes and accumulate voting power from the precommits collected
+	// during TimeoutCommit.
+	totalVotesCollected := 0
+	totalVotingPowerCollected := int64(0)
+
+	for _, vote := range cs.rs.Votes.Precommits(round).List() {
+		totalVotesCollected++
+		_, val := cs.rs.Validators.GetByAddress(vote.ValidatorAddress)
+		if val != nil {
+			totalVotingPowerCollected += val.VotingPower
+		}
+	}
+
+	// Calculate stake percentage of votes collected during TimeoutCommit
+	totalPossibleVotingPower := cs.rs.Validators.TotalVotingPower()
+	var stakePercentage float64
+	if totalPossibleVotingPower > 0 {
+		stakePercentage = float64(totalVotingPowerCollected) / float64(totalPossibleVotingPower)
+	}
+
+	// Emit metrics showing what was collected during TimeoutCommit
+	cs.metrics.PrecommitsCounted.Set(float64(totalVotesCollected))
+	cs.metrics.PrecommitsStakingPercentage.Set(stakePercentage)
+
+	cs.Logger.Debug("emitted post-quorum precommit metrics",
+		"votes_collected", totalVotesCollected,
+		"stake_percentage", stakePercentage)
+}
+
+func (cs *State) calculatePrecommitMessageDelayMetrics() {
+	if cs.rs.Proposal == nil {
+		return
+	}
+
+	ps := cs.rs.Votes.Precommits(cs.rs.Round)
+	pl := ps.List()
+
+	sort.Slice(pl, func(i, j int) bool {
+		return pl[i].Timestamp.Before(pl[j].Timestamp)
+	})
+
+	var votingPowerSeen int64
+	for _, v := range pl {
+		_, val := cs.rs.Validators.GetByAddress(v.ValidatorAddress)
+		votingPowerSeen += val.VotingPower
+		if votingPowerSeen >= cs.rs.Validators.TotalVotingPower()*2/3+1 {
+			cs.metrics.QuorumPrecommitDelay.With("proposer_address", cs.rs.Validators.GetProposer().Address.String()).Set(v.Timestamp.Sub(cs.rs.Proposal.Timestamp).Seconds())
+			break
+		}
+	}
 }
 
 func (cs *State) calculatePrevoteMessageDelayMetrics() {
