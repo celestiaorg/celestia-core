@@ -129,6 +129,8 @@ func TestMempoolConfigValidateBasic(t *testing.T) {
 		"LargeTxMaxInflightChunksPerPeer",
 		"LargeTxMaxAdvertisePeers",
 		"LargeTxOptimisticPushChunks",
+		"LargeTxFountainParityChunks",
+		"LargeTxStripeRelayFanout",
 	}
 
 	for _, fieldName := range fieldsToTest {

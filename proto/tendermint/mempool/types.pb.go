@@ -171,16 +171,20 @@ func (m *WantTx) GetTxKey() []byte {
 }
 
 type TxManifest struct {
-	TxKey             []byte   `protobuf:"bytes,1,opt,name=tx_key,json=txKey,proto3" json:"tx_key,omitempty"`
-	TxSize            uint32   `protobuf:"varint,2,opt,name=tx_size,json=txSize,proto3" json:"tx_size,omitempty"`
-	ChunkSize         uint32   `protobuf:"varint,3,opt,name=chunk_size,json=chunkSize,proto3" json:"chunk_size,omitempty"`
-	ChunkCount        uint32   `protobuf:"varint,4,opt,name=chunk_count,json=chunkCount,proto3" json:"chunk_count,omitempty"`
-	ChunkHashes       [][]byte `protobuf:"bytes,5,rep,name=chunk_hashes,json=chunkHashes,proto3" json:"chunk_hashes,omitempty"`
-	Sequence          uint64   `protobuf:"varint,6,opt,name=sequence,proto3" json:"sequence,omitempty"`
-	Signer            []byte   `protobuf:"bytes,7,opt,name=signer,proto3" json:"signer,omitempty"`
-	Priority          uint64   `protobuf:"varint,8,opt,name=priority,proto3" json:"priority,omitempty"`
-	OptimisticIndexes []uint32 `protobuf:"varint,9,rep,packed,name=optimistic_indexes,json=optimisticIndexes,proto3" json:"optimistic_indexes,omitempty"`
-	Speculative       bool     `protobuf:"varint,10,opt,name=speculative,proto3" json:"speculative,omitempty"`
+	TxKey                   []byte   `protobuf:"bytes,1,opt,name=tx_key,json=txKey,proto3" json:"tx_key,omitempty"`
+	TxSize                  uint32   `protobuf:"varint,2,opt,name=tx_size,json=txSize,proto3" json:"tx_size,omitempty"`
+	ChunkSize               uint32   `protobuf:"varint,3,opt,name=chunk_size,json=chunkSize,proto3" json:"chunk_size,omitempty"`
+	ChunkCount              uint32   `protobuf:"varint,4,opt,name=chunk_count,json=chunkCount,proto3" json:"chunk_count,omitempty"`
+	ChunkHashes             [][]byte `protobuf:"bytes,5,rep,name=chunk_hashes,json=chunkHashes,proto3" json:"chunk_hashes,omitempty"`
+	Sequence                uint64   `protobuf:"varint,6,opt,name=sequence,proto3" json:"sequence,omitempty"`
+	Signer                  []byte   `protobuf:"bytes,7,opt,name=signer,proto3" json:"signer,omitempty"`
+	Priority                uint64   `protobuf:"varint,8,opt,name=priority,proto3" json:"priority,omitempty"`
+	OptimisticIndexes       []uint32 `protobuf:"varint,9,rep,packed,name=optimistic_indexes,json=optimisticIndexes,proto3" json:"optimistic_indexes,omitempty"`
+	Speculative             bool     `protobuf:"varint,10,opt,name=speculative,proto3" json:"speculative,omitempty"`
+	FountainDataCount       uint32   `protobuf:"varint,11,opt,name=fountain_data_count,json=fountainDataCount,proto3" json:"fountain_data_count,omitempty"`
+	FountainSymbolCount     uint32   `protobuf:"varint,12,opt,name=fountain_symbol_count,json=fountainSymbolCount,proto3" json:"fountain_symbol_count,omitempty"`
+	FountainSymbolHashes    [][]byte `protobuf:"bytes,13,rep,name=fountain_symbol_hashes,json=fountainSymbolHashes,proto3" json:"fountain_symbol_hashes,omitempty"`
+	OptimisticSymbolIndexes []uint32 `protobuf:"varint,14,rep,packed,name=optimistic_symbol_indexes,json=optimisticSymbolIndexes,proto3" json:"optimistic_symbol_indexes,omitempty"`
 }
 
 func (m *TxManifest) Reset()         { *m = TxManifest{} }
@@ -284,6 +288,34 @@ func (m *TxManifest) GetSpeculative() bool {
 		return m.Speculative
 	}
 	return false
+}
+
+func (m *TxManifest) GetFountainDataCount() uint32 {
+	if m != nil {
+		return m.FountainDataCount
+	}
+	return 0
+}
+
+func (m *TxManifest) GetFountainSymbolCount() uint32 {
+	if m != nil {
+		return m.FountainSymbolCount
+	}
+	return 0
+}
+
+func (m *TxManifest) GetFountainSymbolHashes() [][]byte {
+	if m != nil {
+		return m.FountainSymbolHashes
+	}
+	return nil
+}
+
+func (m *TxManifest) GetOptimisticSymbolIndexes() []uint32 {
+	if m != nil {
+		return m.OptimisticSymbolIndexes
+	}
+	return nil
 }
 
 type WantChunk struct {
@@ -398,6 +430,170 @@ func (m *TxChunk) GetData() []byte {
 	return nil
 }
 
+type HaveTxSymbols struct {
+	TxKey   []byte   `protobuf:"bytes,1,opt,name=tx_key,json=txKey,proto3" json:"tx_key,omitempty"`
+	Indexes []uint32 `protobuf:"varint,2,rep,packed,name=indexes,proto3" json:"indexes,omitempty"`
+}
+
+func (m *HaveTxSymbols) Reset()         { *m = HaveTxSymbols{} }
+func (m *HaveTxSymbols) String() string { return proto.CompactTextString(m) }
+func (*HaveTxSymbols) ProtoMessage()    {}
+func (*HaveTxSymbols) Descriptor() ([]byte, []int) {
+	return fileDescriptor_2af51926fdbcbc05, []int{6}
+}
+func (m *HaveTxSymbols) XXX_Unmarshal(b []byte) error {
+	return m.Unmarshal(b)
+}
+func (m *HaveTxSymbols) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+	if deterministic {
+		return xxx_messageInfo_HaveTxSymbols.Marshal(b, m, deterministic)
+	} else {
+		b = b[:cap(b)]
+		n, err := m.MarshalToSizedBuffer(b)
+		if err != nil {
+			return nil, err
+		}
+		return b[:n], nil
+	}
+}
+func (m *HaveTxSymbols) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_HaveTxSymbols.Merge(m, src)
+}
+func (m *HaveTxSymbols) XXX_Size() int {
+	return m.Size()
+}
+func (m *HaveTxSymbols) XXX_DiscardUnknown() {
+	xxx_messageInfo_HaveTxSymbols.DiscardUnknown(m)
+}
+
+var xxx_messageInfo_HaveTxSymbols proto.InternalMessageInfo
+
+func (m *HaveTxSymbols) GetTxKey() []byte {
+	if m != nil {
+		return m.TxKey
+	}
+	return nil
+}
+
+func (m *HaveTxSymbols) GetIndexes() []uint32 {
+	if m != nil {
+		return m.Indexes
+	}
+	return nil
+}
+
+type WantTxSymbols struct {
+	TxKey   []byte   `protobuf:"bytes,1,opt,name=tx_key,json=txKey,proto3" json:"tx_key,omitempty"`
+	Indexes []uint32 `protobuf:"varint,2,rep,packed,name=indexes,proto3" json:"indexes,omitempty"`
+}
+
+func (m *WantTxSymbols) Reset()         { *m = WantTxSymbols{} }
+func (m *WantTxSymbols) String() string { return proto.CompactTextString(m) }
+func (*WantTxSymbols) ProtoMessage()    {}
+func (*WantTxSymbols) Descriptor() ([]byte, []int) {
+	return fileDescriptor_2af51926fdbcbc05, []int{7}
+}
+func (m *WantTxSymbols) XXX_Unmarshal(b []byte) error {
+	return m.Unmarshal(b)
+}
+func (m *WantTxSymbols) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+	if deterministic {
+		return xxx_messageInfo_WantTxSymbols.Marshal(b, m, deterministic)
+	} else {
+		b = b[:cap(b)]
+		n, err := m.MarshalToSizedBuffer(b)
+		if err != nil {
+			return nil, err
+		}
+		return b[:n], nil
+	}
+}
+func (m *WantTxSymbols) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_WantTxSymbols.Merge(m, src)
+}
+func (m *WantTxSymbols) XXX_Size() int {
+	return m.Size()
+}
+func (m *WantTxSymbols) XXX_DiscardUnknown() {
+	xxx_messageInfo_WantTxSymbols.DiscardUnknown(m)
+}
+
+var xxx_messageInfo_WantTxSymbols proto.InternalMessageInfo
+
+func (m *WantTxSymbols) GetTxKey() []byte {
+	if m != nil {
+		return m.TxKey
+	}
+	return nil
+}
+
+func (m *WantTxSymbols) GetIndexes() []uint32 {
+	if m != nil {
+		return m.Indexes
+	}
+	return nil
+}
+
+type TxSymbol struct {
+	TxKey []byte `protobuf:"bytes,1,opt,name=tx_key,json=txKey,proto3" json:"tx_key,omitempty"`
+	Index uint32 `protobuf:"varint,2,opt,name=index,proto3" json:"index,omitempty"`
+	Data  []byte `protobuf:"bytes,3,opt,name=data,proto3" json:"data,omitempty"`
+}
+
+func (m *TxSymbol) Reset()         { *m = TxSymbol{} }
+func (m *TxSymbol) String() string { return proto.CompactTextString(m) }
+func (*TxSymbol) ProtoMessage()    {}
+func (*TxSymbol) Descriptor() ([]byte, []int) {
+	return fileDescriptor_2af51926fdbcbc05, []int{8}
+}
+func (m *TxSymbol) XXX_Unmarshal(b []byte) error {
+	return m.Unmarshal(b)
+}
+func (m *TxSymbol) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+	if deterministic {
+		return xxx_messageInfo_TxSymbol.Marshal(b, m, deterministic)
+	} else {
+		b = b[:cap(b)]
+		n, err := m.MarshalToSizedBuffer(b)
+		if err != nil {
+			return nil, err
+		}
+		return b[:n], nil
+	}
+}
+func (m *TxSymbol) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_TxSymbol.Merge(m, src)
+}
+func (m *TxSymbol) XXX_Size() int {
+	return m.Size()
+}
+func (m *TxSymbol) XXX_DiscardUnknown() {
+	xxx_messageInfo_TxSymbol.DiscardUnknown(m)
+}
+
+var xxx_messageInfo_TxSymbol proto.InternalMessageInfo
+
+func (m *TxSymbol) GetTxKey() []byte {
+	if m != nil {
+		return m.TxKey
+	}
+	return nil
+}
+
+func (m *TxSymbol) GetIndex() uint32 {
+	if m != nil {
+		return m.Index
+	}
+	return 0
+}
+
+func (m *TxSymbol) GetData() []byte {
+	if m != nil {
+		return m.Data
+	}
+	return nil
+}
+
 type Message struct {
 	// Types that are valid to be assigned to Sum:
 	//
@@ -407,6 +603,9 @@ type Message struct {
 	//	*Message_TxManifest
 	//	*Message_WantChunk
 	//	*Message_TxChunk
+	//	*Message_HaveTxSymbols
+	//	*Message_WantTxSymbols
+	//	*Message_TxSymbol
 	Sum isMessage_Sum `protobuf_oneof:"sum"`
 }
 
@@ -414,7 +613,7 @@ func (m *Message) Reset()         { *m = Message{} }
 func (m *Message) String() string { return proto.CompactTextString(m) }
 func (*Message) ProtoMessage()    {}
 func (*Message) Descriptor() ([]byte, []int) {
-	return fileDescriptor_2af51926fdbcbc05, []int{6}
+	return fileDescriptor_2af51926fdbcbc05, []int{9}
 }
 func (m *Message) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
@@ -467,13 +666,25 @@ type Message_WantChunk struct {
 type Message_TxChunk struct {
 	TxChunk *TxChunk `protobuf:"bytes,6,opt,name=tx_chunk,json=txChunk,proto3,oneof" json:"tx_chunk,omitempty"`
 }
+type Message_HaveTxSymbols struct {
+	HaveTxSymbols *HaveTxSymbols `protobuf:"bytes,7,opt,name=have_tx_symbols,json=haveTxSymbols,proto3,oneof" json:"have_tx_symbols,omitempty"`
+}
+type Message_WantTxSymbols struct {
+	WantTxSymbols *WantTxSymbols `protobuf:"bytes,8,opt,name=want_tx_symbols,json=wantTxSymbols,proto3,oneof" json:"want_tx_symbols,omitempty"`
+}
+type Message_TxSymbol struct {
+	TxSymbol *TxSymbol `protobuf:"bytes,9,opt,name=tx_symbol,json=txSymbol,proto3,oneof" json:"tx_symbol,omitempty"`
+}
 
-func (*Message_Txs) isMessage_Sum()        {}
-func (*Message_SeenTx) isMessage_Sum()     {}
-func (*Message_WantTx) isMessage_Sum()     {}
-func (*Message_TxManifest) isMessage_Sum() {}
-func (*Message_WantChunk) isMessage_Sum()  {}
-func (*Message_TxChunk) isMessage_Sum()    {}
+func (*Message_Txs) isMessage_Sum()           {}
+func (*Message_SeenTx) isMessage_Sum()        {}
+func (*Message_WantTx) isMessage_Sum()        {}
+func (*Message_TxManifest) isMessage_Sum()    {}
+func (*Message_WantChunk) isMessage_Sum()     {}
+func (*Message_TxChunk) isMessage_Sum()       {}
+func (*Message_HaveTxSymbols) isMessage_Sum() {}
+func (*Message_WantTxSymbols) isMessage_Sum() {}
+func (*Message_TxSymbol) isMessage_Sum()      {}
 
 func (m *Message) GetSum() isMessage_Sum {
 	if m != nil {
@@ -524,6 +735,27 @@ func (m *Message) GetTxChunk() *TxChunk {
 	return nil
 }
 
+func (m *Message) GetHaveTxSymbols() *HaveTxSymbols {
+	if x, ok := m.GetSum().(*Message_HaveTxSymbols); ok {
+		return x.HaveTxSymbols
+	}
+	return nil
+}
+
+func (m *Message) GetWantTxSymbols() *WantTxSymbols {
+	if x, ok := m.GetSum().(*Message_WantTxSymbols); ok {
+		return x.WantTxSymbols
+	}
+	return nil
+}
+
+func (m *Message) GetTxSymbol() *TxSymbol {
+	if x, ok := m.GetSum().(*Message_TxSymbol); ok {
+		return x.TxSymbol
+	}
+	return nil
+}
+
 // XXX_OneofWrappers is for the internal use of the proto package.
 func (*Message) XXX_OneofWrappers() []interface{} {
 	return []interface{}{
@@ -533,6 +765,9 @@ func (*Message) XXX_OneofWrappers() []interface{} {
 		(*Message_TxManifest)(nil),
 		(*Message_WantChunk)(nil),
 		(*Message_TxChunk)(nil),
+		(*Message_HaveTxSymbols)(nil),
+		(*Message_WantTxSymbols)(nil),
+		(*Message_TxSymbol)(nil),
 	}
 }
 
@@ -543,49 +778,63 @@ func init() {
 	proto.RegisterType((*TxManifest)(nil), "tendermint.mempool.TxManifest")
 	proto.RegisterType((*WantChunk)(nil), "tendermint.mempool.WantChunk")
 	proto.RegisterType((*TxChunk)(nil), "tendermint.mempool.TxChunk")
+	proto.RegisterType((*HaveTxSymbols)(nil), "tendermint.mempool.HaveTxSymbols")
+	proto.RegisterType((*WantTxSymbols)(nil), "tendermint.mempool.WantTxSymbols")
+	proto.RegisterType((*TxSymbol)(nil), "tendermint.mempool.TxSymbol")
 	proto.RegisterType((*Message)(nil), "tendermint.mempool.Message")
 }
 
 func init() { proto.RegisterFile("tendermint/mempool/types.proto", fileDescriptor_2af51926fdbcbc05) }
 
 var fileDescriptor_2af51926fdbcbc05 = []byte{
-	// 567 bytes of a gzipped FileDescriptorProto
-	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0x7c, 0x94, 0xc1, 0x6a, 0xdb, 0x4e,
-	0x10, 0xc6, 0x25, 0x2b, 0x96, 0xec, 0x71, 0x02, 0xff, 0xff, 0xd2, 0x36, 0x22, 0x25, 0x8a, 0xab,
-	0x93, 0xa1, 0xd4, 0x86, 0x94, 0x40, 0x0f, 0xa5, 0xd0, 0xe4, 0xe2, 0xb6, 0x84, 0x82, 0x62, 0x28,
-	0xf4, 0x62, 0x14, 0x65, 0x12, 0x2f, 0x89, 0x56, 0xaa, 0x77, 0xd4, 0xac, 0xf3, 0x14, 0x7d, 0xa4,
-	0x1e, 0x7b, 0xcc, 0xb1, 0xc7, 0x92, 0x5c, 0xfa, 0x18, 0x45, 0xbb, 0x52, 0x9c, 0x12, 0xab, 0xb7,
-	0x99, 0xf9, 0xf4, 0xd3, 0xa7, 0x1d, 0x7d, 0x2c, 0x04, 0x84, 0xe2, 0x04, 0xe7, 0x29, 0x17, 0x34,
-	0x4a, 0x31, 0xcd, 0xb3, 0xec, 0x62, 0x44, 0x8b, 0x1c, 0xe5, 0x30, 0x9f, 0x67, 0x94, 0x31, 0xb6,
-	0xd4, 0x87, 0x95, 0x1e, 0x6e, 0x82, 0x33, 0x51, 0x92, 0xfd, 0x07, 0x0e, 0x29, 0xe9, 0xdb, 0x7d,
-	0x67, 0xb0, 0x1e, 0x95, 0x65, 0x78, 0x04, 0xee, 0x11, 0xa2, 0x98, 0x28, 0xf6, 0x18, 0x5c, 0x52,
-	0xd3, 0x73, 0x5c, 0xf8, 0x76, 0xdf, 0x1e, 0xac, 0x47, 0x6d, 0x52, 0x1f, 0x70, 0xc1, 0xb6, 0xa0,
-	0x23, 0xf1, 0x4b, 0x81, 0x22, 0x41, 0xbf, 0xd5, 0xb7, 0x07, 0x6b, 0xd1, 0x5d, 0xcf, 0x9e, 0x80,
-	0x2b, 0xf9, 0x99, 0xc0, 0xb9, 0xef, 0x68, 0xa4, 0xea, 0xc2, 0x1d, 0x70, 0x3f, 0xc5, 0x82, 0x1a,
-	0x5f, 0x1a, 0x7e, 0x6f, 0x01, 0x4c, 0xd4, 0x61, 0x2c, 0xf8, 0x29, 0x4a, 0x6a, 0xb2, 0xde, 0x04,
-	0x8f, 0xd4, 0x54, 0xf2, 0x2b, 0xe3, 0xbc, 0x11, 0xb9, 0xa4, 0x8e, 0xf8, 0x15, 0xb2, 0x6d, 0x80,
-	0x64, 0x56, 0x88, 0x73, 0xa3, 0x39, 0x5a, 0xeb, 0xea, 0x89, 0x96, 0x77, 0xa0, 0x67, 0xe4, 0x24,
-	0x2b, 0x04, 0xf9, 0x6b, 0x5a, 0x37, 0xc4, 0x41, 0x39, 0x61, 0xcf, 0x60, 0xdd, 0x3c, 0x30, 0x8b,
-	0xe5, 0x0c, 0xa5, 0xdf, 0xd6, 0xfb, 0x30, 0xd0, 0x58, 0x8f, 0xfe, 0x3a, 0xb6, 0xdb, 0x78, 0x6c,
-	0xef, 0xfe, 0xb1, 0x4b, 0x26, 0x9f, 0xf3, 0x6c, 0xce, 0x69, 0xe1, 0x77, 0x0c, 0x53, 0xf7, 0xec,
-	0x05, 0xb0, 0x2c, 0x27, 0x9e, 0x72, 0x49, 0x3c, 0x99, 0x72, 0x71, 0x82, 0x0a, 0xa5, 0xdf, 0xed,
-	0x3b, 0x83, 0x8d, 0xe8, 0xff, 0xa5, 0xf2, 0xce, 0x08, 0xac, 0x0f, 0x3d, 0x99, 0x63, 0x52, 0x5c,
-	0xc4, 0xc4, 0xbf, 0xa2, 0x0f, 0x7d, 0x7b, 0xd0, 0x89, 0xee, 0x8f, 0xc2, 0xd7, 0xd0, 0x2d, 0x77,
-	0x7c, 0x50, 0x7e, 0x73, 0xd3, 0x02, 0x7d, 0xf0, 0x6a, 0xa7, 0x96, 0x76, 0xaa, 0xdb, 0xf0, 0x3d,
-	0x78, 0x13, 0xf5, 0x4f, 0xf6, 0x11, 0xb4, 0xf5, 0xc3, 0xd5, 0xea, 0x4d, 0xc3, 0x18, 0xac, 0x9d,
-	0xc4, 0x14, 0x57, 0xff, 0x5b, 0xd7, 0xe1, 0xef, 0x16, 0x78, 0x87, 0x28, 0x65, 0x7c, 0x86, 0xec,
-	0x79, 0x1d, 0x30, 0x7b, 0xd0, 0xdb, 0xdd, 0x1c, 0x3e, 0x4c, 0xe2, 0x70, 0xa2, 0xe4, 0xd8, 0xd2,
-	0xd9, 0x63, 0x7b, 0xe0, 0x49, 0x44, 0x31, 0x25, 0x63, 0xd2, 0xdb, 0xdd, 0x5a, 0x05, 0x98, 0x78,
-	0x8e, 0xad, 0xc8, 0x95, 0x26, 0xa8, 0x7b, 0xe0, 0x5d, 0xc6, 0x82, 0x4a, 0xcc, 0x69, 0xc6, 0x4c,
-	0x00, 0x4b, 0xec, 0xd2, 0x44, 0xf1, 0x2d, 0xf4, 0x48, 0x4d, 0xd3, 0x2a, 0x73, 0x3a, 0x15, 0xbd,
-	0xdd, 0x60, 0xf5, 0x27, 0xd6, 0xc9, 0x1c, 0x5b, 0x11, 0xd0, 0x32, 0xa7, 0x6f, 0x00, 0xb4, 0xb3,
-	0x0e, 0x8a, 0xdf, 0xd6, 0x6f, 0xd8, 0x6e, 0x32, 0xd7, 0xdb, 0x1d, 0x5b, 0x51, 0xf7, 0xf2, 0xee,
-	0x37, 0xbd, 0x82, 0x0e, 0xa9, 0x8a, 0x76, 0x35, 0xfd, 0x74, 0xb5, 0x7f, 0xcd, 0x7a, 0x64, 0xca,
-	0xfd, 0x36, 0x38, 0xb2, 0x48, 0xf7, 0x3f, 0xfe, 0xb8, 0x09, 0xec, 0xeb, 0x9b, 0xc0, 0xfe, 0x75,
-	0x13, 0xd8, 0xdf, 0x6e, 0x03, 0xeb, 0xfa, 0x36, 0xb0, 0x7e, 0xde, 0x06, 0xd6, 0xe7, 0xbd, 0x33,
-	0x4e, 0xb3, 0xe2, 0x78, 0x98, 0x64, 0xe9, 0x28, 0xc9, 0x52, 0xa4, 0xe3, 0x53, 0x5a, 0x16, 0xfa,
-	0x62, 0x18, 0x3d, 0xbc, 0x37, 0x8e, 0x5d, 0xad, 0xbc, 0xfc, 0x13, 0x00, 0x00, 0xff, 0xff, 0x78,
-	0xb5, 0x75, 0x19, 0x54, 0x04, 0x00, 0x00,
+	// 741 bytes of a gzipped FileDescriptorProto
+	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0xa4, 0x55, 0x41, 0x6f, 0xd3, 0x4c,
+	0x14, 0xb4, 0xeb, 0xc4, 0x4e, 0x9e, 0x93, 0xaf, 0x5f, 0x97, 0xb6, 0x31, 0x85, 0xba, 0x69, 0x4e,
+	0x91, 0x10, 0x89, 0x14, 0xa8, 0x84, 0x00, 0xa1, 0xd2, 0x72, 0x08, 0x44, 0x15, 0x92, 0x13, 0x09,
+	0x89, 0x4b, 0xe4, 0xa4, 0xdb, 0xc6, 0x6a, 0x6d, 0x87, 0xec, 0x4b, 0xe3, 0xf4, 0x57, 0x70, 0xe2,
+	0xef, 0x70, 0xe5, 0xd8, 0x23, 0x47, 0xd4, 0xfe, 0x11, 0xe4, 0xdd, 0x75, 0xd2, 0xd0, 0x18, 0x09,
+	0xb8, 0xed, 0xee, 0xec, 0xcc, 0xee, 0x3c, 0xbf, 0x1d, 0x83, 0x8d, 0x34, 0x38, 0xa6, 0x23, 0xdf,
+	0x0b, 0xb0, 0xee, 0x53, 0x7f, 0x18, 0x86, 0xe7, 0x75, 0x9c, 0x0e, 0x29, 0xab, 0x0d, 0x47, 0x21,
+	0x86, 0x84, 0xcc, 0xf1, 0x9a, 0xc4, 0x2b, 0x25, 0xd0, 0x3a, 0x11, 0x23, 0xff, 0x83, 0x86, 0x11,
+	0xb3, 0xd4, 0xb2, 0x56, 0x2d, 0x38, 0xf1, 0xb0, 0xd2, 0x06, 0xbd, 0x4d, 0x69, 0xd0, 0x89, 0xc8,
+	0x06, 0xe8, 0x18, 0x75, 0xcf, 0xe8, 0xd4, 0x52, 0xcb, 0x6a, 0xb5, 0xe0, 0x64, 0x31, 0x6a, 0xd1,
+	0x29, 0xd9, 0x82, 0x1c, 0xa3, 0x9f, 0xc6, 0x34, 0xe8, 0x53, 0x6b, 0xa5, 0xac, 0x56, 0x33, 0xce,
+	0x6c, 0x4e, 0x36, 0x41, 0x67, 0xde, 0x69, 0x40, 0x47, 0x96, 0xc6, 0x29, 0x72, 0x56, 0xd9, 0x01,
+	0xfd, 0x83, 0x1b, 0x60, 0xaa, 0x68, 0xe5, 0x4b, 0x06, 0xa0, 0x13, 0x1d, 0xb9, 0x81, 0x77, 0x42,
+	0x19, 0xa6, 0x1d, 0x5d, 0x02, 0x03, 0xa3, 0x2e, 0xf3, 0x2e, 0xc5, 0xc9, 0x45, 0x47, 0xc7, 0xa8,
+	0xed, 0x5d, 0x52, 0xb2, 0x0d, 0xd0, 0x1f, 0x8c, 0x83, 0x33, 0x81, 0x69, 0x1c, 0xcb, 0xf3, 0x15,
+	0x0e, 0xef, 0x80, 0x29, 0xe0, 0x7e, 0x38, 0x0e, 0xd0, 0xca, 0x70, 0x5c, 0x30, 0x0e, 0xe3, 0x15,
+	0xb2, 0x0b, 0x05, 0xb1, 0x61, 0xe0, 0xb2, 0x01, 0x65, 0x56, 0x96, 0xd7, 0x43, 0x90, 0x9a, 0x7c,
+	0x69, 0xc1, 0xb6, 0x9e, 0x6a, 0xdb, 0xb8, 0x6d, 0x3b, 0xe6, 0x0c, 0x47, 0x5e, 0x38, 0xf2, 0x70,
+	0x6a, 0xe5, 0x04, 0x27, 0x99, 0x93, 0xc7, 0x40, 0xc2, 0x21, 0x7a, 0xbe, 0xc7, 0xd0, 0xeb, 0x77,
+	0xbd, 0xe0, 0x98, 0x46, 0x94, 0x59, 0xf9, 0xb2, 0x56, 0x2d, 0x3a, 0x6b, 0x73, 0xe4, 0xad, 0x00,
+	0x48, 0x19, 0x4c, 0x36, 0xa4, 0xfd, 0xf1, 0xb9, 0x8b, 0xde, 0x05, 0xb5, 0xa0, 0xac, 0x56, 0x73,
+	0xce, 0xed, 0x25, 0x52, 0x83, 0x7b, 0x27, 0xb1, 0x19, 0xd7, 0x0b, 0xba, 0xc7, 0x2e, 0xba, 0xd2,
+	0xac, 0xc9, 0xcd, 0xae, 0x25, 0xd0, 0x1b, 0x17, 0x5d, 0xe1, 0xb9, 0x01, 0x1b, 0xb3, 0xfd, 0x6c,
+	0xea, 0xf7, 0xc2, 0x73, 0xc9, 0x28, 0x70, 0xc6, 0x4c, 0xac, 0xcd, 0x31, 0xc1, 0x79, 0x0a, 0x9b,
+	0xbf, 0x72, 0x64, 0xc5, 0x8a, 0xbc, 0x62, 0xeb, 0x8b, 0x24, 0x59, 0xba, 0xe7, 0x70, 0xff, 0x96,
+	0x55, 0xc9, 0x4b, 0x1c, 0xff, 0xc7, 0x1d, 0x97, 0xe6, 0x1b, 0x04, 0x55, 0xfa, 0xae, 0xbc, 0x84,
+	0x7c, 0xdc, 0x39, 0x87, 0xf1, 0x97, 0x48, 0x6b, 0x0b, 0x0b, 0x8c, 0x44, 0x6d, 0x85, 0xab, 0x25,
+	0xd3, 0xca, 0x3b, 0x30, 0x3a, 0xd1, 0x6f, 0xb9, 0xeb, 0x90, 0xe5, 0x9b, 0x65, 0x43, 0x89, 0x09,
+	0x21, 0x90, 0x89, 0x4b, 0x28, 0xbb, 0x98, 0x8f, 0x2b, 0xfb, 0x50, 0x6c, 0xba, 0x17, 0xb4, 0x13,
+	0x89, 0x0b, 0xb2, 0x3f, 0xbf, 0xcd, 0x3e, 0x14, 0xc5, 0x2b, 0xf8, 0x6b, 0x85, 0x16, 0xe4, 0x12,
+	0xf6, 0xbf, 0x1b, 0xfa, 0x9a, 0x01, 0xe3, 0x88, 0x32, 0xe6, 0x9e, 0x52, 0xf2, 0x28, 0xc9, 0x01,
+	0xb5, 0x6a, 0x36, 0x4a, 0xb5, 0xbb, 0x81, 0x51, 0xeb, 0x44, 0xac, 0xa9, 0xf0, 0x88, 0x20, 0x7b,
+	0x60, 0x30, 0x4a, 0x83, 0x2e, 0x8a, 0x43, 0xcc, 0xc6, 0xd6, 0x32, 0x82, 0x48, 0x91, 0xa6, 0xe2,
+	0xe8, 0x4c, 0xe4, 0xc9, 0x1e, 0x18, 0x13, 0x37, 0xc0, 0x98, 0xa6, 0xa5, 0xd3, 0x44, 0x85, 0x62,
+	0xda, 0x44, 0x24, 0xc6, 0x6b, 0x30, 0x31, 0xea, 0xfa, 0x32, 0x1a, 0xf8, 0xe3, 0x35, 0x1b, 0xf6,
+	0xf2, 0x2b, 0x26, 0x01, 0xd2, 0x54, 0x1c, 0xc0, 0x79, 0x9c, 0xbc, 0x02, 0xe0, 0x27, 0xf3, 0xf7,
+	0x6c, 0x65, 0xb9, 0xc2, 0x76, 0xda, 0xe1, 0xbc, 0x5d, 0x9a, 0x8a, 0x93, 0x9f, 0xcc, 0xfa, 0xee,
+	0x19, 0xe4, 0x30, 0x92, 0x6c, 0x9d, 0xb3, 0x1f, 0x2c, 0x3f, 0x3f, 0xe1, 0x1a, 0x28, 0xbb, 0xae,
+	0x05, 0xab, 0x03, 0xf7, 0x82, 0x76, 0xe3, 0xd8, 0x12, 0x1f, 0x9d, 0x47, 0x84, 0xd9, 0xd8, 0x5d,
+	0x26, 0xb0, 0xd0, 0x5f, 0x4d, 0xc5, 0x29, 0x0e, 0x16, 0x1a, 0xae, 0x05, 0xab, 0xb2, 0x80, 0x33,
+	0xb1, 0x5c, 0xba, 0xd8, 0x42, 0xab, 0xc5, 0x62, 0x93, 0x85, 0xde, 0x7b, 0x01, 0xf9, 0x99, 0x8e,
+	0x95, 0xe7, 0x32, 0x0f, 0x97, 0x9b, 0x92, 0x6f, 0x59, 0x71, 0x72, 0x28, 0xc7, 0x07, 0x59, 0xd0,
+	0xd8, 0xd8, 0x3f, 0x78, 0xff, 0xed, 0xda, 0x56, 0xaf, 0xae, 0x6d, 0xf5, 0xc7, 0xb5, 0xad, 0x7e,
+	0xbe, 0xb1, 0x95, 0xab, 0x1b, 0x5b, 0xf9, 0x7e, 0x63, 0x2b, 0x1f, 0xf7, 0x4e, 0x3d, 0x1c, 0x8c,
+	0x7b, 0xb5, 0x7e, 0xe8, 0xd7, 0xfb, 0xa1, 0x4f, 0xb1, 0x77, 0x82, 0xf3, 0x01, 0xff, 0x2d, 0xd5,
+	0xef, 0xfe, 0xb5, 0x7a, 0x3a, 0x47, 0x9e, 0xfc, 0x0c, 0x00, 0x00, 0xff, 0xff, 0x05, 0xf5, 0x6a,
+	0xa0, 0xd2, 0x06, 0x00, 0x00,
 }
 
 func (m *Txs) Marshal() (dAtA []byte, err error) {
@@ -712,20 +961,10 @@ func (m *TxManifest) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	_ = i
 	var l int
 	_ = l
-	if m.Speculative {
-		i--
-		if m.Speculative {
-			dAtA[i] = 1
-		} else {
-			dAtA[i] = 0
-		}
-		i--
-		dAtA[i] = 0x50
-	}
-	if len(m.OptimisticIndexes) > 0 {
-		dAtA2 := make([]byte, len(m.OptimisticIndexes)*10)
+	if len(m.OptimisticSymbolIndexes) > 0 {
+		dAtA2 := make([]byte, len(m.OptimisticSymbolIndexes)*10)
 		var j1 int
-		for _, num := range m.OptimisticIndexes {
+		for _, num := range m.OptimisticSymbolIndexes {
 			for num >= 1<<7 {
 				dAtA2[j1] = uint8(uint64(num)&0x7f | 0x80)
 				num >>= 7
@@ -737,6 +976,53 @@ func (m *TxManifest) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 		i -= j1
 		copy(dAtA[i:], dAtA2[:j1])
 		i = encodeVarintTypes(dAtA, i, uint64(j1))
+		i--
+		dAtA[i] = 0x72
+	}
+	if len(m.FountainSymbolHashes) > 0 {
+		for iNdEx := len(m.FountainSymbolHashes) - 1; iNdEx >= 0; iNdEx-- {
+			i -= len(m.FountainSymbolHashes[iNdEx])
+			copy(dAtA[i:], m.FountainSymbolHashes[iNdEx])
+			i = encodeVarintTypes(dAtA, i, uint64(len(m.FountainSymbolHashes[iNdEx])))
+			i--
+			dAtA[i] = 0x6a
+		}
+	}
+	if m.FountainSymbolCount != 0 {
+		i = encodeVarintTypes(dAtA, i, uint64(m.FountainSymbolCount))
+		i--
+		dAtA[i] = 0x60
+	}
+	if m.FountainDataCount != 0 {
+		i = encodeVarintTypes(dAtA, i, uint64(m.FountainDataCount))
+		i--
+		dAtA[i] = 0x58
+	}
+	if m.Speculative {
+		i--
+		if m.Speculative {
+			dAtA[i] = 1
+		} else {
+			dAtA[i] = 0
+		}
+		i--
+		dAtA[i] = 0x50
+	}
+	if len(m.OptimisticIndexes) > 0 {
+		dAtA4 := make([]byte, len(m.OptimisticIndexes)*10)
+		var j3 int
+		for _, num := range m.OptimisticIndexes {
+			for num >= 1<<7 {
+				dAtA4[j3] = uint8(uint64(num)&0x7f | 0x80)
+				num >>= 7
+				j3++
+			}
+			dAtA4[j3] = uint8(num)
+			j3++
+		}
+		i -= j3
+		copy(dAtA[i:], dAtA4[:j3])
+		i = encodeVarintTypes(dAtA, i, uint64(j3))
 		i--
 		dAtA[i] = 0x4a
 	}
@@ -812,20 +1098,20 @@ func (m *WantChunk) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	var l int
 	_ = l
 	if len(m.Indexes) > 0 {
-		dAtA4 := make([]byte, len(m.Indexes)*10)
-		var j3 int
+		dAtA6 := make([]byte, len(m.Indexes)*10)
+		var j5 int
 		for _, num := range m.Indexes {
 			for num >= 1<<7 {
-				dAtA4[j3] = uint8(uint64(num)&0x7f | 0x80)
+				dAtA6[j5] = uint8(uint64(num)&0x7f | 0x80)
 				num >>= 7
-				j3++
+				j5++
 			}
-			dAtA4[j3] = uint8(num)
-			j3++
+			dAtA6[j5] = uint8(num)
+			j5++
 		}
-		i -= j3
-		copy(dAtA[i:], dAtA4[:j3])
-		i = encodeVarintTypes(dAtA, i, uint64(j3))
+		i -= j5
+		copy(dAtA[i:], dAtA6[:j5])
+		i = encodeVarintTypes(dAtA, i, uint64(j5))
 		i--
 		dAtA[i] = 0x12
 	}
@@ -855,6 +1141,144 @@ func (m *TxChunk) MarshalTo(dAtA []byte) (int, error) {
 }
 
 func (m *TxChunk) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	if len(m.Data) > 0 {
+		i -= len(m.Data)
+		copy(dAtA[i:], m.Data)
+		i = encodeVarintTypes(dAtA, i, uint64(len(m.Data)))
+		i--
+		dAtA[i] = 0x1a
+	}
+	if m.Index != 0 {
+		i = encodeVarintTypes(dAtA, i, uint64(m.Index))
+		i--
+		dAtA[i] = 0x10
+	}
+	if len(m.TxKey) > 0 {
+		i -= len(m.TxKey)
+		copy(dAtA[i:], m.TxKey)
+		i = encodeVarintTypes(dAtA, i, uint64(len(m.TxKey)))
+		i--
+		dAtA[i] = 0xa
+	}
+	return len(dAtA) - i, nil
+}
+
+func (m *HaveTxSymbols) Marshal() (dAtA []byte, err error) {
+	size := m.Size()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBuffer(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *HaveTxSymbols) MarshalTo(dAtA []byte) (int, error) {
+	size := m.Size()
+	return m.MarshalToSizedBuffer(dAtA[:size])
+}
+
+func (m *HaveTxSymbols) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	if len(m.Indexes) > 0 {
+		dAtA8 := make([]byte, len(m.Indexes)*10)
+		var j7 int
+		for _, num := range m.Indexes {
+			for num >= 1<<7 {
+				dAtA8[j7] = uint8(uint64(num)&0x7f | 0x80)
+				num >>= 7
+				j7++
+			}
+			dAtA8[j7] = uint8(num)
+			j7++
+		}
+		i -= j7
+		copy(dAtA[i:], dAtA8[:j7])
+		i = encodeVarintTypes(dAtA, i, uint64(j7))
+		i--
+		dAtA[i] = 0x12
+	}
+	if len(m.TxKey) > 0 {
+		i -= len(m.TxKey)
+		copy(dAtA[i:], m.TxKey)
+		i = encodeVarintTypes(dAtA, i, uint64(len(m.TxKey)))
+		i--
+		dAtA[i] = 0xa
+	}
+	return len(dAtA) - i, nil
+}
+
+func (m *WantTxSymbols) Marshal() (dAtA []byte, err error) {
+	size := m.Size()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBuffer(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *WantTxSymbols) MarshalTo(dAtA []byte) (int, error) {
+	size := m.Size()
+	return m.MarshalToSizedBuffer(dAtA[:size])
+}
+
+func (m *WantTxSymbols) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	if len(m.Indexes) > 0 {
+		dAtA10 := make([]byte, len(m.Indexes)*10)
+		var j9 int
+		for _, num := range m.Indexes {
+			for num >= 1<<7 {
+				dAtA10[j9] = uint8(uint64(num)&0x7f | 0x80)
+				num >>= 7
+				j9++
+			}
+			dAtA10[j9] = uint8(num)
+			j9++
+		}
+		i -= j9
+		copy(dAtA[i:], dAtA10[:j9])
+		i = encodeVarintTypes(dAtA, i, uint64(j9))
+		i--
+		dAtA[i] = 0x12
+	}
+	if len(m.TxKey) > 0 {
+		i -= len(m.TxKey)
+		copy(dAtA[i:], m.TxKey)
+		i = encodeVarintTypes(dAtA, i, uint64(len(m.TxKey)))
+		i--
+		dAtA[i] = 0xa
+	}
+	return len(dAtA) - i, nil
+}
+
+func (m *TxSymbol) Marshal() (dAtA []byte, err error) {
+	size := m.Size()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBuffer(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *TxSymbol) MarshalTo(dAtA []byte) (int, error) {
+	size := m.Size()
+	return m.MarshalToSizedBuffer(dAtA[:size])
+}
+
+func (m *TxSymbol) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	i := len(dAtA)
 	_ = i
 	var l int
@@ -1039,6 +1463,69 @@ func (m *Message_TxChunk) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	}
 	return len(dAtA) - i, nil
 }
+func (m *Message_HaveTxSymbols) MarshalTo(dAtA []byte) (int, error) {
+	size := m.Size()
+	return m.MarshalToSizedBuffer(dAtA[:size])
+}
+
+func (m *Message_HaveTxSymbols) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	if m.HaveTxSymbols != nil {
+		{
+			size, err := m.HaveTxSymbols.MarshalToSizedBuffer(dAtA[:i])
+			if err != nil {
+				return 0, err
+			}
+			i -= size
+			i = encodeVarintTypes(dAtA, i, uint64(size))
+		}
+		i--
+		dAtA[i] = 0x3a
+	}
+	return len(dAtA) - i, nil
+}
+func (m *Message_WantTxSymbols) MarshalTo(dAtA []byte) (int, error) {
+	size := m.Size()
+	return m.MarshalToSizedBuffer(dAtA[:size])
+}
+
+func (m *Message_WantTxSymbols) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	if m.WantTxSymbols != nil {
+		{
+			size, err := m.WantTxSymbols.MarshalToSizedBuffer(dAtA[:i])
+			if err != nil {
+				return 0, err
+			}
+			i -= size
+			i = encodeVarintTypes(dAtA, i, uint64(size))
+		}
+		i--
+		dAtA[i] = 0x42
+	}
+	return len(dAtA) - i, nil
+}
+func (m *Message_TxSymbol) MarshalTo(dAtA []byte) (int, error) {
+	size := m.Size()
+	return m.MarshalToSizedBuffer(dAtA[:size])
+}
+
+func (m *Message_TxSymbol) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	if m.TxSymbol != nil {
+		{
+			size, err := m.TxSymbol.MarshalToSizedBuffer(dAtA[:i])
+			if err != nil {
+				return 0, err
+			}
+			i -= size
+			i = encodeVarintTypes(dAtA, i, uint64(size))
+		}
+		i--
+		dAtA[i] = 0x4a
+	}
+	return len(dAtA) - i, nil
+}
 func encodeVarintTypes(dAtA []byte, offset int, v uint64) int {
 	offset -= sovTypes(v)
 	base := offset
@@ -1143,6 +1630,25 @@ func (m *TxManifest) Size() (n int) {
 	if m.Speculative {
 		n += 2
 	}
+	if m.FountainDataCount != 0 {
+		n += 1 + sovTypes(uint64(m.FountainDataCount))
+	}
+	if m.FountainSymbolCount != 0 {
+		n += 1 + sovTypes(uint64(m.FountainSymbolCount))
+	}
+	if len(m.FountainSymbolHashes) > 0 {
+		for _, b := range m.FountainSymbolHashes {
+			l = len(b)
+			n += 1 + l + sovTypes(uint64(l))
+		}
+	}
+	if len(m.OptimisticSymbolIndexes) > 0 {
+		l = 0
+		for _, e := range m.OptimisticSymbolIndexes {
+			l += sovTypes(uint64(e))
+		}
+		n += 1 + sovTypes(uint64(l)) + l
+	}
 	return n
 }
 
@@ -1167,6 +1673,66 @@ func (m *WantChunk) Size() (n int) {
 }
 
 func (m *TxChunk) Size() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	l = len(m.TxKey)
+	if l > 0 {
+		n += 1 + l + sovTypes(uint64(l))
+	}
+	if m.Index != 0 {
+		n += 1 + sovTypes(uint64(m.Index))
+	}
+	l = len(m.Data)
+	if l > 0 {
+		n += 1 + l + sovTypes(uint64(l))
+	}
+	return n
+}
+
+func (m *HaveTxSymbols) Size() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	l = len(m.TxKey)
+	if l > 0 {
+		n += 1 + l + sovTypes(uint64(l))
+	}
+	if len(m.Indexes) > 0 {
+		l = 0
+		for _, e := range m.Indexes {
+			l += sovTypes(uint64(e))
+		}
+		n += 1 + sovTypes(uint64(l)) + l
+	}
+	return n
+}
+
+func (m *WantTxSymbols) Size() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	l = len(m.TxKey)
+	if l > 0 {
+		n += 1 + l + sovTypes(uint64(l))
+	}
+	if len(m.Indexes) > 0 {
+		l = 0
+		for _, e := range m.Indexes {
+			l += sovTypes(uint64(e))
+		}
+		n += 1 + sovTypes(uint64(l)) + l
+	}
+	return n
+}
+
+func (m *TxSymbol) Size() (n int) {
 	if m == nil {
 		return 0
 	}
@@ -1266,6 +1832,42 @@ func (m *Message_TxChunk) Size() (n int) {
 	_ = l
 	if m.TxChunk != nil {
 		l = m.TxChunk.Size()
+		n += 1 + l + sovTypes(uint64(l))
+	}
+	return n
+}
+func (m *Message_HaveTxSymbols) Size() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if m.HaveTxSymbols != nil {
+		l = m.HaveTxSymbols.Size()
+		n += 1 + l + sovTypes(uint64(l))
+	}
+	return n
+}
+func (m *Message_WantTxSymbols) Size() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if m.WantTxSymbols != nil {
+		l = m.WantTxSymbols.Size()
+		n += 1 + l + sovTypes(uint64(l))
+	}
+	return n
+}
+func (m *Message_TxSymbol) Size() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if m.TxSymbol != nil {
+		l = m.TxSymbol.Size()
 		n += 1 + l + sovTypes(uint64(l))
 	}
 	return n
@@ -1900,6 +2502,152 @@ func (m *TxManifest) Unmarshal(dAtA []byte) error {
 				}
 			}
 			m.Speculative = bool(v != 0)
+		case 11:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field FountainDataCount", wireType)
+			}
+			m.FountainDataCount = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowTypes
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.FountainDataCount |= uint32(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 12:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field FountainSymbolCount", wireType)
+			}
+			m.FountainSymbolCount = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowTypes
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.FountainSymbolCount |= uint32(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 13:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field FountainSymbolHashes", wireType)
+			}
+			var byteLen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowTypes
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				byteLen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if byteLen < 0 {
+				return ErrInvalidLengthTypes
+			}
+			postIndex := iNdEx + byteLen
+			if postIndex < 0 {
+				return ErrInvalidLengthTypes
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.FountainSymbolHashes = append(m.FountainSymbolHashes, make([]byte, postIndex-iNdEx))
+			copy(m.FountainSymbolHashes[len(m.FountainSymbolHashes)-1], dAtA[iNdEx:postIndex])
+			iNdEx = postIndex
+		case 14:
+			if wireType == 0 {
+				var v uint32
+				for shift := uint(0); ; shift += 7 {
+					if shift >= 64 {
+						return ErrIntOverflowTypes
+					}
+					if iNdEx >= l {
+						return io.ErrUnexpectedEOF
+					}
+					b := dAtA[iNdEx]
+					iNdEx++
+					v |= uint32(b&0x7F) << shift
+					if b < 0x80 {
+						break
+					}
+				}
+				m.OptimisticSymbolIndexes = append(m.OptimisticSymbolIndexes, v)
+			} else if wireType == 2 {
+				var packedLen int
+				for shift := uint(0); ; shift += 7 {
+					if shift >= 64 {
+						return ErrIntOverflowTypes
+					}
+					if iNdEx >= l {
+						return io.ErrUnexpectedEOF
+					}
+					b := dAtA[iNdEx]
+					iNdEx++
+					packedLen |= int(b&0x7F) << shift
+					if b < 0x80 {
+						break
+					}
+				}
+				if packedLen < 0 {
+					return ErrInvalidLengthTypes
+				}
+				postIndex := iNdEx + packedLen
+				if postIndex < 0 {
+					return ErrInvalidLengthTypes
+				}
+				if postIndex > l {
+					return io.ErrUnexpectedEOF
+				}
+				var elementCount int
+				var count int
+				for _, integer := range dAtA[iNdEx:postIndex] {
+					if integer < 128 {
+						count++
+					}
+				}
+				elementCount = count
+				if elementCount != 0 && len(m.OptimisticSymbolIndexes) == 0 {
+					m.OptimisticSymbolIndexes = make([]uint32, 0, elementCount)
+				}
+				for iNdEx < postIndex {
+					var v uint32
+					for shift := uint(0); ; shift += 7 {
+						if shift >= 64 {
+							return ErrIntOverflowTypes
+						}
+						if iNdEx >= l {
+							return io.ErrUnexpectedEOF
+						}
+						b := dAtA[iNdEx]
+						iNdEx++
+						v |= uint32(b&0x7F) << shift
+						if b < 0x80 {
+							break
+						}
+					}
+					m.OptimisticSymbolIndexes = append(m.OptimisticSymbolIndexes, v)
+				}
+			} else {
+				return fmt.Errorf("proto: wrong wireType = %d for field OptimisticSymbolIndexes", wireType)
+			}
 		default:
 			iNdEx = preIndex
 			skippy, err := skipTypes(dAtA[iNdEx:])
@@ -2108,6 +2856,463 @@ func (m *TxChunk) Unmarshal(dAtA []byte) error {
 		}
 		if fieldNum <= 0 {
 			return fmt.Errorf("proto: TxChunk: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field TxKey", wireType)
+			}
+			var byteLen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowTypes
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				byteLen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if byteLen < 0 {
+				return ErrInvalidLengthTypes
+			}
+			postIndex := iNdEx + byteLen
+			if postIndex < 0 {
+				return ErrInvalidLengthTypes
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.TxKey = append(m.TxKey[:0], dAtA[iNdEx:postIndex]...)
+			if m.TxKey == nil {
+				m.TxKey = []byte{}
+			}
+			iNdEx = postIndex
+		case 2:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Index", wireType)
+			}
+			m.Index = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowTypes
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.Index |= uint32(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 3:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Data", wireType)
+			}
+			var byteLen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowTypes
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				byteLen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if byteLen < 0 {
+				return ErrInvalidLengthTypes
+			}
+			postIndex := iNdEx + byteLen
+			if postIndex < 0 {
+				return ErrInvalidLengthTypes
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.Data = append(m.Data[:0], dAtA[iNdEx:postIndex]...)
+			if m.Data == nil {
+				m.Data = []byte{}
+			}
+			iNdEx = postIndex
+		default:
+			iNdEx = preIndex
+			skippy, err := skipTypes(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if (skippy < 0) || (iNdEx+skippy) < 0 {
+				return ErrInvalidLengthTypes
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *HaveTxSymbols) Unmarshal(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return ErrIntOverflowTypes
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := dAtA[iNdEx]
+			iNdEx++
+			wire |= uint64(b&0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: HaveTxSymbols: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: HaveTxSymbols: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field TxKey", wireType)
+			}
+			var byteLen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowTypes
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				byteLen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if byteLen < 0 {
+				return ErrInvalidLengthTypes
+			}
+			postIndex := iNdEx + byteLen
+			if postIndex < 0 {
+				return ErrInvalidLengthTypes
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.TxKey = append(m.TxKey[:0], dAtA[iNdEx:postIndex]...)
+			if m.TxKey == nil {
+				m.TxKey = []byte{}
+			}
+			iNdEx = postIndex
+		case 2:
+			if wireType == 0 {
+				var v uint32
+				for shift := uint(0); ; shift += 7 {
+					if shift >= 64 {
+						return ErrIntOverflowTypes
+					}
+					if iNdEx >= l {
+						return io.ErrUnexpectedEOF
+					}
+					b := dAtA[iNdEx]
+					iNdEx++
+					v |= uint32(b&0x7F) << shift
+					if b < 0x80 {
+						break
+					}
+				}
+				m.Indexes = append(m.Indexes, v)
+			} else if wireType == 2 {
+				var packedLen int
+				for shift := uint(0); ; shift += 7 {
+					if shift >= 64 {
+						return ErrIntOverflowTypes
+					}
+					if iNdEx >= l {
+						return io.ErrUnexpectedEOF
+					}
+					b := dAtA[iNdEx]
+					iNdEx++
+					packedLen |= int(b&0x7F) << shift
+					if b < 0x80 {
+						break
+					}
+				}
+				if packedLen < 0 {
+					return ErrInvalidLengthTypes
+				}
+				postIndex := iNdEx + packedLen
+				if postIndex < 0 {
+					return ErrInvalidLengthTypes
+				}
+				if postIndex > l {
+					return io.ErrUnexpectedEOF
+				}
+				var elementCount int
+				var count int
+				for _, integer := range dAtA[iNdEx:postIndex] {
+					if integer < 128 {
+						count++
+					}
+				}
+				elementCount = count
+				if elementCount != 0 && len(m.Indexes) == 0 {
+					m.Indexes = make([]uint32, 0, elementCount)
+				}
+				for iNdEx < postIndex {
+					var v uint32
+					for shift := uint(0); ; shift += 7 {
+						if shift >= 64 {
+							return ErrIntOverflowTypes
+						}
+						if iNdEx >= l {
+							return io.ErrUnexpectedEOF
+						}
+						b := dAtA[iNdEx]
+						iNdEx++
+						v |= uint32(b&0x7F) << shift
+						if b < 0x80 {
+							break
+						}
+					}
+					m.Indexes = append(m.Indexes, v)
+				}
+			} else {
+				return fmt.Errorf("proto: wrong wireType = %d for field Indexes", wireType)
+			}
+		default:
+			iNdEx = preIndex
+			skippy, err := skipTypes(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if (skippy < 0) || (iNdEx+skippy) < 0 {
+				return ErrInvalidLengthTypes
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *WantTxSymbols) Unmarshal(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return ErrIntOverflowTypes
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := dAtA[iNdEx]
+			iNdEx++
+			wire |= uint64(b&0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: WantTxSymbols: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: WantTxSymbols: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field TxKey", wireType)
+			}
+			var byteLen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowTypes
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				byteLen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if byteLen < 0 {
+				return ErrInvalidLengthTypes
+			}
+			postIndex := iNdEx + byteLen
+			if postIndex < 0 {
+				return ErrInvalidLengthTypes
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.TxKey = append(m.TxKey[:0], dAtA[iNdEx:postIndex]...)
+			if m.TxKey == nil {
+				m.TxKey = []byte{}
+			}
+			iNdEx = postIndex
+		case 2:
+			if wireType == 0 {
+				var v uint32
+				for shift := uint(0); ; shift += 7 {
+					if shift >= 64 {
+						return ErrIntOverflowTypes
+					}
+					if iNdEx >= l {
+						return io.ErrUnexpectedEOF
+					}
+					b := dAtA[iNdEx]
+					iNdEx++
+					v |= uint32(b&0x7F) << shift
+					if b < 0x80 {
+						break
+					}
+				}
+				m.Indexes = append(m.Indexes, v)
+			} else if wireType == 2 {
+				var packedLen int
+				for shift := uint(0); ; shift += 7 {
+					if shift >= 64 {
+						return ErrIntOverflowTypes
+					}
+					if iNdEx >= l {
+						return io.ErrUnexpectedEOF
+					}
+					b := dAtA[iNdEx]
+					iNdEx++
+					packedLen |= int(b&0x7F) << shift
+					if b < 0x80 {
+						break
+					}
+				}
+				if packedLen < 0 {
+					return ErrInvalidLengthTypes
+				}
+				postIndex := iNdEx + packedLen
+				if postIndex < 0 {
+					return ErrInvalidLengthTypes
+				}
+				if postIndex > l {
+					return io.ErrUnexpectedEOF
+				}
+				var elementCount int
+				var count int
+				for _, integer := range dAtA[iNdEx:postIndex] {
+					if integer < 128 {
+						count++
+					}
+				}
+				elementCount = count
+				if elementCount != 0 && len(m.Indexes) == 0 {
+					m.Indexes = make([]uint32, 0, elementCount)
+				}
+				for iNdEx < postIndex {
+					var v uint32
+					for shift := uint(0); ; shift += 7 {
+						if shift >= 64 {
+							return ErrIntOverflowTypes
+						}
+						if iNdEx >= l {
+							return io.ErrUnexpectedEOF
+						}
+						b := dAtA[iNdEx]
+						iNdEx++
+						v |= uint32(b&0x7F) << shift
+						if b < 0x80 {
+							break
+						}
+					}
+					m.Indexes = append(m.Indexes, v)
+				}
+			} else {
+				return fmt.Errorf("proto: wrong wireType = %d for field Indexes", wireType)
+			}
+		default:
+			iNdEx = preIndex
+			skippy, err := skipTypes(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if (skippy < 0) || (iNdEx+skippy) < 0 {
+				return ErrInvalidLengthTypes
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *TxSymbol) Unmarshal(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return ErrIntOverflowTypes
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := dAtA[iNdEx]
+			iNdEx++
+			wire |= uint64(b&0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: TxSymbol: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: TxSymbol: illegal tag %d (wire type %d)", fieldNum, wire)
 		}
 		switch fieldNum {
 		case 1:
@@ -2456,6 +3661,111 @@ func (m *Message) Unmarshal(dAtA []byte) error {
 				return err
 			}
 			m.Sum = &Message_TxChunk{v}
+			iNdEx = postIndex
+		case 7:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field HaveTxSymbols", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowTypes
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return ErrInvalidLengthTypes
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return ErrInvalidLengthTypes
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			v := &HaveTxSymbols{}
+			if err := v.Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			m.Sum = &Message_HaveTxSymbols{v}
+			iNdEx = postIndex
+		case 8:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field WantTxSymbols", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowTypes
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return ErrInvalidLengthTypes
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return ErrInvalidLengthTypes
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			v := &WantTxSymbols{}
+			if err := v.Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			m.Sum = &Message_WantTxSymbols{v}
+			iNdEx = postIndex
+		case 9:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field TxSymbol", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowTypes
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return ErrInvalidLengthTypes
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return ErrInvalidLengthTypes
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			v := &TxSymbol{}
+			if err := v.Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			m.Sum = &Message_TxSymbol{v}
 			iNdEx = postIndex
 		default:
 			iNdEx = preIndex

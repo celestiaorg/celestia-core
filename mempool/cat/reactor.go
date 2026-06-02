@@ -36,6 +36,9 @@ const (
 	// MempoolChunkChannel carries large transaction chunk payloads.
 	MempoolChunkChannel = byte(0x33)
 
+	// MempoolFountainChannel carries CAT fountain/stripe symbol payloads.
+	MempoolFountainChannel = byte(0x34)
+
 	// peerHeightDiff signifies the tolerance in difference in height between the peer and the height
 	// the node received the tx
 	peerHeightDiff = 10
@@ -62,6 +65,10 @@ const (
 
 	// maxSignerLength is the maximum allowed length for a signer field in SeenTx messages.
 	maxSignerLength = 64
+
+	// maxPendingSymbolSourceTxs bounds out-of-order HaveTxSymbols entries that
+	// arrive before their manifest.
+	maxPendingSymbolSourceTxs = 1024
 )
 
 var (
@@ -85,6 +92,7 @@ type Reactor struct {
 	largeMu         sync.Mutex
 	largeTxs        map[types.TxKey]*localLargeTx
 	reconstructions map[types.TxKey]*reconstructionSession
+	pendingSymbols  map[types.TxKey]map[uint16][]uint32
 	peerScores      *peerScoreTable
 	// stickySalt stores []byte rendezvous salt for sticky peer selection; nil/empty keeps default ordering.
 	stickySalt atomic.Value
@@ -124,6 +132,8 @@ type ReactorOptions struct {
 	LargeTxOptimisticPushChunks     int
 	LargeTxPeerScoreHalflife        time.Duration
 	LargeTxEnableFEC                bool
+	LargeTxFountainParityChunks     int
+	LargeTxStripeRelayFanout        int
 }
 
 func (opts *ReactorOptions) VerifyAndComplete() error {
@@ -170,6 +180,15 @@ func (opts *ReactorOptions) VerifyAndComplete() error {
 	if opts.LargeTxPeerScoreHalflife == 0 {
 		opts.LargeTxPeerScoreHalflife = defaults.LargeTxPeerScoreHalflife
 	}
+	if !opts.LargeTxEnableFEC && opts.LargeTxFountainParityChunks == 0 {
+		opts.LargeTxEnableFEC = defaults.LargeTxEnableFEC
+	}
+	if opts.LargeTxFountainParityChunks == 0 {
+		opts.LargeTxFountainParityChunks = defaults.LargeTxFountainParityChunks
+	}
+	if opts.LargeTxStripeRelayFanout == 0 {
+		opts.LargeTxStripeRelayFanout = defaults.LargeTxStripeRelayFanout
+	}
 
 	if opts.MaxTxSize < 0 {
 		return fmt.Errorf("max tx size (%d) cannot be negative", opts.MaxTxSize)
@@ -203,6 +222,12 @@ func (opts *ReactorOptions) VerifyAndComplete() error {
 	if opts.LargeTxPeerScoreHalflife < 0 {
 		return fmt.Errorf("large tx peer score halflife (%d) cannot be negative", opts.LargeTxPeerScoreHalflife)
 	}
+	if opts.LargeTxFountainParityChunks < 0 {
+		return fmt.Errorf("large tx fountain parity chunks (%d) cannot be negative", opts.LargeTxFountainParityChunks)
+	}
+	if opts.LargeTxStripeRelayFanout < 0 {
+		return fmt.Errorf("large tx stripe relay fanout (%d) cannot be negative", opts.LargeTxStripeRelayFanout)
+	}
 
 	return nil
 }
@@ -227,6 +252,7 @@ func NewReactor(mempool *TxPool, opts *ReactorOptions) (*Reactor, error) {
 		traceClient:     traceClient,
 		largeTxs:        make(map[types.TxKey]*localLargeTx),
 		reconstructions: make(map[types.TxKey]*reconstructionSession),
+		pendingSymbols:  make(map[types.TxKey]map[uint16][]uint32),
 		peerScores:      newPeerScoreTable(opts.LargeTxPeerScoreHalflife),
 	}
 	memR.BaseReactor = *p2p.NewBaseReactor("CAT", memR,
@@ -333,10 +359,41 @@ func (memR *Reactor) GetChannels() []*p2p.ChannelDescriptor {
 	if wantChunkMsg.Size() > wantsMsgSize {
 		wantsMsgSize = wantChunkMsg.Size()
 	}
+	wantSymbolsMsg := protomem.Message{
+		Sum: &protomem.Message_WantTxSymbols{
+			WantTxSymbols: &protomem.WantTxSymbols{
+				TxKey:   make([]byte, tmhash.Size),
+				Indexes: wantIndexes,
+			},
+		},
+	}
+	if wantSymbolsMsg.Size() > wantsMsgSize {
+		wantsMsgSize = wantSymbolsMsg.Size()
+	}
+	haveSymbolsMsg := protomem.Message{
+		Sum: &protomem.Message_HaveTxSymbols{
+			HaveTxSymbols: &protomem.HaveTxSymbols{
+				TxKey:   make([]byte, tmhash.Size),
+				Indexes: wantIndexes,
+			},
+		},
+	}
+	if haveSymbolsMsg.Size() > wantsMsgSize {
+		wantsMsgSize = haveSymbolsMsg.Size()
+	}
 
 	chunkMsg := protomem.Message{
 		Sum: &protomem.Message_TxChunk{
 			TxChunk: &protomem.TxChunk{
+				TxKey: make([]byte, tmhash.Size),
+				Index: ^uint32(0),
+				Data:  make([]byte, memR.opts.LargeTxChunkSize),
+			},
+		},
+	}
+	symbolMsg := protomem.Message{
+		Sum: &protomem.Message_TxSymbol{
+			TxSymbol: &protomem.TxSymbol{
 				TxKey: make([]byte, tmhash.Size),
 				Index: ^uint32(0),
 				Data:  make([]byte, memR.opts.LargeTxChunkSize),
@@ -371,6 +428,13 @@ func (memR *Reactor) GetChannels() []*p2p.ChannelDescriptor {
 			Priority:            3,
 			SendQueueCapacity:   128,
 			RecvMessageCapacity: chunkMsg.Size(),
+			MessageType:         &protomem.Message{},
+		},
+		{
+			ID:                  MempoolFountainChannel,
+			Priority:            3,
+			SendQueueCapacity:   128,
+			RecvMessageCapacity: symbolMsg.Size(),
 			MessageType:         &protomem.Message{},
 		},
 	}
@@ -574,6 +638,15 @@ func (memR *Reactor) Receive(e p2p.Envelope) {
 
 	case *protomem.TxChunk:
 		memR.receiveTxChunk(msg, e.Src)
+
+	case *protomem.HaveTxSymbols:
+		memR.receiveHaveTxSymbols(msg, e.Src)
+
+	case *protomem.WantTxSymbols:
+		memR.receiveWantTxSymbols(msg, e.Src)
+
+	case *protomem.TxSymbol:
+		memR.receiveTxSymbol(msg, e.Src)
 
 	// A peer is requesting a transaction that we have claimed to have. Find the specified
 	// transaction and broadcast it to the peer. We may no longer have the transaction

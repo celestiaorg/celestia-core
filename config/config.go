@@ -873,6 +873,8 @@ type MempoolConfig struct {
 	LargeTxOptimisticPushChunks     int           `mapstructure:"large_tx_optimistic_push_chunks"`
 	LargeTxPeerScoreHalflife        time.Duration `mapstructure:"large_tx_peer_score_halflife"`
 	LargeTxEnableFEC                bool          `mapstructure:"large_tx_enable_fec"`
+	LargeTxFountainParityChunks     int           `mapstructure:"large_tx_fountain_parity_chunks"`
+	LargeTxStripeRelayFanout        int           `mapstructure:"large_tx_stripe_relay_fanout"`
 }
 
 // DefaultMempoolConfig returns a default configuration for the CometBFT mempool
@@ -903,7 +905,9 @@ func DefaultMempoolConfig() *MempoolConfig {
 		LargeTxMaxAdvertisePeers:        50,
 		LargeTxOptimisticPushChunks:     2,
 		LargeTxPeerScoreHalflife:        30 * time.Second,
-		LargeTxEnableFEC:                false,
+		LargeTxEnableFEC:                true,
+		LargeTxFountainParityChunks:     8,
+		LargeTxStripeRelayFanout:        1,
 	}
 }
 
@@ -979,6 +983,12 @@ func (cfg *MempoolConfig) ValidateBasic() error {
 	}
 	if cfg.LargeTxPeerScoreHalflife < 0 {
 		return errors.New("large_tx_peer_score_halflife can't be negative")
+	}
+	if cfg.LargeTxFountainParityChunks < 0 {
+		return errors.New("large_tx_fountain_parity_chunks can't be negative")
+	}
+	if cfg.LargeTxStripeRelayFanout < 0 {
+		return errors.New("large_tx_stripe_relay_fanout can't be negative")
 	}
 	return nil
 }

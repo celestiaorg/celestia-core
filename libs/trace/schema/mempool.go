@@ -74,6 +74,9 @@ const (
 	TxManifest      MempoolStateUpdateType = "TxManifest"
 	WantChunk       MempoolStateUpdateType = "WantChunk"
 	TxChunk         MempoolStateUpdateType = "TxChunk"
+	HaveTxSymbols   MempoolStateUpdateType = "HaveTxSymbols"
+	WantTxSymbols   MempoolStateUpdateType = "WantTxSymbols"
+	TxSymbol        MempoolStateUpdateType = "TxSymbol"
 	MissingSequence MempoolStateUpdateType = "MissingSequence"
 	Unknown         MempoolStateUpdateType = "Unknown"
 )

@@ -442,6 +442,8 @@ large_tx_max_advertise_peers = {{ .Mempool.LargeTxMaxAdvertisePeers }}
 large_tx_optimistic_push_chunks = {{ .Mempool.LargeTxOptimisticPushChunks }}
 large_tx_peer_score_halflife = "{{ .Mempool.LargeTxPeerScoreHalflife }}"
 large_tx_enable_fec = {{ .Mempool.LargeTxEnableFEC }}
+large_tx_fountain_parity_chunks = {{ .Mempool.LargeTxFountainParityChunks }}
+large_tx_stripe_relay_fanout = {{ .Mempool.LargeTxStripeRelayFanout }}
 
 #######################################################
 ###         State Sync Configuration Options        ###

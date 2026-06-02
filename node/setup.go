@@ -284,6 +284,8 @@ func createMempoolAndMempoolReactor(
 				LargeTxOptimisticPushChunks:     config.Mempool.LargeTxOptimisticPushChunks,
 				LargeTxPeerScoreHalflife:        config.Mempool.LargeTxPeerScoreHalflife,
 				LargeTxEnableFEC:                config.Mempool.LargeTxEnableFEC,
+				LargeTxFountainParityChunks:     config.Mempool.LargeTxFountainParityChunks,
+				LargeTxStripeRelayFanout:        config.Mempool.LargeTxStripeRelayFanout,
 			},
 		)
 		if err != nil {

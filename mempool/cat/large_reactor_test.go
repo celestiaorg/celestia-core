@@ -8,8 +8,10 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 
+	"github.com/cometbft/cometbft/crypto/ed25519"
 	"github.com/cometbft/cometbft/mempool"
 	"github.com/cometbft/cometbft/p2p"
+	"github.com/cometbft/cometbft/p2p/mocks"
 	protomem "github.com/cometbft/cometbft/proto/tendermint/mempool"
 	"github.com/cometbft/cometbft/types"
 )
@@ -42,11 +44,23 @@ func setupLargeTxReactor(t *testing.T, threshold, chunkSize int) (*Reactor, *TxP
 	return reactor, pool
 }
 
+func genFountainPeer() *mocks.Peer {
+	peer := &mocks.Peer{}
+	nodeKey := p2p.NodeKey{PrivKey: ed25519.GenPrivKey()}
+	peer.On("ID").Return(nodeKey.ID())
+	peer.On("Get", types.PeerStateKey).Return(nil).Maybe()
+	peer.On("IsPersistent").Return(false).Maybe()
+	peer.On("NodeInfo").Return(p2p.DefaultNodeInfo{
+		Channels: []byte{MempoolDataChannel, MempoolWantsChannel, MempoolChunkChannel, MempoolFountainChannel},
+	}).Maybe()
+	return peer
+}
+
 func TestLargeTxManifestValidation(t *testing.T) {
 	reactor, _ := setupLargeTxReactor(t, 1, 16)
 
 	tx := largeCATTestTx(96)
-	local, err := buildLocalLargeTx(tx, 16, []byte("sender-000-0"), 1, 10)
+	local, err := buildLocalLargeTx(tx, 16, 0, false, []byte("sender-000-0"), 1, 10)
 	require.NoError(t, err)
 
 	key, err := reactor.validateTxManifest(local.manifest)
@@ -87,11 +101,11 @@ func TestLargeTxReconstructionSuccessDuplicateAndCorruptChunk(t *testing.T) {
 	reactor, _ := setupLargeTxReactor(t, 1, 16)
 
 	tx := largeCATTestTx(96)
-	local, err := buildLocalLargeTx(tx, 16, []byte("sender-000-0"), 1, 10)
+	local, err := buildLocalLargeTx(tx, 16, 0, false, []byte("sender-000-0"), 1, 10)
 	require.NoError(t, err)
 	txKey := tx.Key()
 
-	created, _, err := reactor.upsertReconstructionSession(txKey, local.manifest, 1, false)
+	created, _, err := reactor.upsertReconstructionSession(txKey, local.manifest, 1, false, true)
 	require.NoError(t, err)
 	require.True(t, created)
 
@@ -141,11 +155,44 @@ func TestLargeTxReconstructionSuccessDuplicateAndCorruptChunk(t *testing.T) {
 	require.Equal(t, local.chunks, storedLocal.chunks)
 }
 
+func TestLargeTxFountainReconstructsWithMissingOriginalChunk(t *testing.T) {
+	reactor, _ := setupLargeTxReactor(t, 1, 8)
+	reactor.opts.LargeTxEnableFEC = true
+	reactor.opts.LargeTxFountainParityChunks = 4
+
+	tx := largeCATTestTx(29)
+	local, err := buildLocalLargeTx(tx, 8, 4, true, []byte("sender-000-0"), 1, 10)
+	require.NoError(t, err)
+	require.Greater(t, local.manifest.FountainSymbolCount, local.manifest.ChunkCount)
+
+	txKey := tx.Key()
+	created, accepted, err := reactor.upsertReconstructionSession(txKey, local.manifest, 1, false, false)
+	require.NoError(t, err)
+	require.True(t, created)
+	require.True(t, accepted)
+
+	var reconstructed types.Tx
+	// Skip systematic symbol 0. The receiver must recover it from repair symbols.
+	for index := uint32(1); index < local.manifest.FountainSymbolCount; index++ {
+		reconstructed, _, err = reactor.acceptTxSymbol(txKey, &protomem.TxSymbol{
+			TxKey: local.manifest.TxKey,
+			Index: index,
+			Data:  local.symbols[index],
+		}, 1)
+		require.NoError(t, err)
+		if reconstructed != nil {
+			break
+		}
+	}
+
+	require.Equal(t, tx, reconstructed)
+}
+
 func TestLargeTxSchedulerRequestsDisjointChunksFromPeers(t *testing.T) {
 	reactor, _ := setupLargeTxReactor(t, 1, 16)
 
 	tx := largeCATTestTx(96)
-	local, err := buildLocalLargeTx(tx, 16, []byte("sender-000-0"), 1, 10)
+	local, err := buildLocalLargeTx(tx, 16, 0, false, []byte("sender-000-0"), 1, 10)
 	require.NoError(t, err)
 	txKey := tx.Key()
 
@@ -157,9 +204,9 @@ func TestLargeTxSchedulerRequestsDisjointChunksFromPeers(t *testing.T) {
 	peerA := reactor.ids.GetIDForPeer(peers[0].ID())
 	peerB := reactor.ids.GetIDForPeer(peers[1].ID())
 
-	_, _, err = reactor.upsertReconstructionSession(txKey, local.manifest, peerA, false)
+	_, _, err = reactor.upsertReconstructionSession(txKey, local.manifest, peerA, false, true)
 	require.NoError(t, err)
-	_, _, err = reactor.upsertReconstructionSession(txKey, local.manifest, peerB, false)
+	_, _, err = reactor.upsertReconstructionSession(txKey, local.manifest, peerB, false, true)
 	require.NoError(t, err)
 
 	peers[0].On("TrySend", p2p.Envelope{
@@ -192,7 +239,7 @@ func TestLargeTxOptimisticHintDefersOnlyHintedChunks(t *testing.T) {
 	reactor.opts.LargeTxMaxInflightChunksPerPeer = 4
 
 	tx := largeCATTestTx(64)
-	local, err := buildLocalLargeTx(tx, 16, []byte("sender-000-0"), 1, 10)
+	local, err := buildLocalLargeTx(tx, 16, 0, false, []byte("sender-000-0"), 1, 10)
 	require.NoError(t, err)
 	txKey := tx.Key()
 
@@ -201,7 +248,7 @@ func TestLargeTxOptimisticHintDefersOnlyHintedChunks(t *testing.T) {
 	require.NoError(t, err)
 	peerID := reactor.ids.GetIDForPeer(peer.ID())
 
-	_, _, err = reactor.upsertReconstructionSession(txKey, local.manifest, peerID, false)
+	_, _, err = reactor.upsertReconstructionSession(txKey, local.manifest, peerID, false, true)
 	require.NoError(t, err)
 	reactor.markOptimisticChunksInflight(txKey, peerID, []uint32{0, 1})
 
@@ -224,7 +271,7 @@ func TestLargeTxSpeculativeManifestDoesNotMarkPeerSeen(t *testing.T) {
 	reactor, pool := setupLargeTxReactor(t, 1, 16)
 
 	tx := largeCATTestTx(64)
-	local, err := buildLocalLargeTx(tx, 16, nil, 0, 0)
+	local, err := buildLocalLargeTx(tx, 16, 0, false, nil, 0, 0)
 	require.NoError(t, err)
 	local.manifest.Speculative = true
 	txKey := tx.Key()
@@ -242,7 +289,7 @@ func TestLargeTxSpeculativeManifestDoesNotMarkPeerSeen(t *testing.T) {
 			msg.GetTxManifest().Speculative
 	})).Return(true).Once()
 
-	require.True(t, reactor.sendTxManifest(peer, peerID, local.manifest, nil, false))
+	require.True(t, reactor.sendTxManifest(peer, peerID, local.manifest, nil, nil, false))
 	require.False(t, pool.seenByPeersSet.Has(txKey, peerID))
 	peer.AssertExpectations(t)
 }
@@ -251,7 +298,7 @@ func TestLargeTxSpeculativeReconstructionWaitsForAcceptedManifest(t *testing.T) 
 	reactor, pool := setupLargeTxReactor(t, 1, 16)
 
 	tx := largeCATTestTx(64)
-	local, err := buildLocalLargeTx(tx, 16, []byte("sender-000-0"), 1, 10)
+	local, err := buildLocalLargeTx(tx, 16, 0, false, []byte("sender-000-0"), 1, 10)
 	require.NoError(t, err)
 	txKey := tx.Key()
 
@@ -261,7 +308,7 @@ func TestLargeTxSpeculativeReconstructionWaitsForAcceptedManifest(t *testing.T) 
 	speculative.Priority = 0
 	speculative.Speculative = true
 
-	created, accepted, err := reactor.upsertReconstructionSession(txKey, speculative, 1, false)
+	created, accepted, err := reactor.upsertReconstructionSession(txKey, speculative, 1, false, true)
 	require.NoError(t, err)
 	require.True(t, created)
 	require.False(t, accepted)
@@ -286,7 +333,7 @@ func TestLargeTxSpeculativeReconstructionWaitsForAcceptedManifest(t *testing.T) 
 	reactor.largeMu.Unlock()
 
 	acceptedManifest := cloneTxManifest(local.manifest)
-	created, accepted, err = reactor.upsertReconstructionSession(txKey, acceptedManifest, 1, false)
+	created, accepted, err = reactor.upsertReconstructionSession(txKey, acceptedManifest, 1, false, true)
 	require.NoError(t, err)
 	require.False(t, created)
 	require.True(t, accepted)
@@ -304,13 +351,13 @@ func TestLargeTxCutThroughServesChunksBeforeAcceptance(t *testing.T) {
 	reactor, _ := setupLargeTxReactor(t, 1, 16)
 
 	tx := largeCATTestTx(64)
-	local, err := buildLocalLargeTx(tx, 16, []byte("sender-000-0"), 1, 10)
+	local, err := buildLocalLargeTx(tx, 16, 0, false, []byte("sender-000-0"), 1, 10)
 	require.NoError(t, err)
 	txKey := tx.Key()
 
 	speculative := cloneTxManifest(local.manifest)
 	speculative.Speculative = true
-	created, accepted, err := reactor.upsertReconstructionSession(txKey, speculative, 1, false)
+	created, accepted, err := reactor.upsertReconstructionSession(txKey, speculative, 1, false, true)
 	require.NoError(t, err)
 	require.True(t, created)
 	require.False(t, accepted)
@@ -336,7 +383,7 @@ func TestLargeTxHedgesInflightChunksToNewSource(t *testing.T) {
 	reactor.opts.LargeTxChunkTimeout = time.Hour
 
 	tx := largeCATTestTx(96)
-	local, err := buildLocalLargeTx(tx, 16, []byte("sender-000-0"), 1, 10)
+	local, err := buildLocalLargeTx(tx, 16, 0, false, []byte("sender-000-0"), 1, 10)
 	require.NoError(t, err)
 	txKey := tx.Key()
 
@@ -348,7 +395,7 @@ func TestLargeTxHedgesInflightChunksToNewSource(t *testing.T) {
 	peerA := reactor.ids.GetIDForPeer(peers[0].ID())
 	peerB := reactor.ids.GetIDForPeer(peers[1].ID())
 
-	_, _, err = reactor.upsertReconstructionSession(txKey, local.manifest, peerA, false)
+	_, _, err = reactor.upsertReconstructionSession(txKey, local.manifest, peerA, false, true)
 	require.NoError(t, err)
 
 	reactor.largeMu.Lock()
@@ -380,7 +427,7 @@ func TestLargeTxServesVerifiedReconstructionChunks(t *testing.T) {
 	reactor, _ := setupLargeTxReactor(t, 1, 16)
 
 	tx := largeCATTestTx(96)
-	local, err := buildLocalLargeTx(tx, 16, []byte("sender-000-0"), 1, 10)
+	local, err := buildLocalLargeTx(tx, 16, 0, false, []byte("sender-000-0"), 1, 10)
 	require.NoError(t, err)
 	txKey := tx.Key()
 
@@ -392,7 +439,7 @@ func TestLargeTxServesVerifiedReconstructionChunks(t *testing.T) {
 	require.NoError(t, err)
 	sourceID := reactor.ids.GetIDForPeer(source.ID())
 
-	_, _, err = reactor.upsertReconstructionSession(txKey, local.manifest, sourceID, false)
+	_, _, err = reactor.upsertReconstructionSession(txKey, local.manifest, sourceID, false, true)
 	require.NoError(t, err)
 	reconstructed, err := reactor.acceptTxChunk(txKey, &protomem.TxChunk{
 		TxKey: txKey[:],
@@ -563,6 +610,73 @@ func TestLargeTxOptimisticPushLimitedToRequestParallelism(t *testing.T) {
 	require.Equal(t, chunkPeers, hintedManifestPeers)
 }
 
+func TestLargeTxFountainBroadcastUsesDisjointOptimisticStripes(t *testing.T) {
+	reactor, pool := setupLargeTxReactor(t, 32, 16)
+	reactor.opts.LargeTxEnableFEC = true
+	reactor.opts.LargeTxFountainParityChunks = 4
+	reactor.opts.LargeTxMaxAdvertisePeers = 4
+	reactor.opts.LargeTxOptimisticPushChunks = 2
+
+	tx := largeCATTestTx(64)
+	txKey := tx.Key()
+	peers := make([]*mocks.Peer, reactor.opts.LargeTxMaxAdvertisePeers)
+	for i := range peers {
+		peers[i] = genFountainPeer()
+		_, err := reactor.InitPeer(peers[i])
+		require.NoError(t, err)
+		peers[i].On("Send", mock.Anything).Return(true).Maybe()
+		peers[i].On("TrySend", mock.Anything).Return(true).Maybe()
+	}
+
+	require.NoError(t, pool.CheckTx(tx, nil, mempool.TxInfo{}))
+	wtx := pool.store.get(txKey)
+	require.NotNil(t, wtx)
+
+	reactor.broadcastNewTx(wtx)
+
+	manifestSends := 0
+	hintedSymbols := make(map[uint32]struct{})
+	symbolSends := 0
+	for _, peer := range peers {
+		for _, call := range peer.Calls {
+			if len(call.Arguments) == 0 {
+				continue
+			}
+			env, ok := call.Arguments.Get(0).(p2p.Envelope)
+			if !ok {
+				continue
+			}
+			msg, ok := env.Message.(*protomem.Message)
+			if !ok {
+				continue
+			}
+			switch call.Method {
+			case "Send":
+				manifest := msg.GetTxManifest()
+				if env.ChannelID == MempoolDataChannel && manifest != nil && bytes.Equal(manifest.TxKey, txKey[:]) {
+					manifestSends++
+					require.Empty(t, manifest.OptimisticIndexes)
+					for _, index := range manifest.OptimisticSymbolIndexes {
+						hintedSymbols[index] = struct{}{}
+					}
+				}
+			case "TrySend":
+				if env.ChannelID == MempoolFountainChannel && msg.GetTxSymbol() != nil {
+					symbolSends++
+					hintedSymbols[msg.GetTxSymbol().Index] = struct{}{}
+				}
+			}
+		}
+	}
+
+	require.Equal(t, reactor.opts.LargeTxMaxAdvertisePeers, manifestSends)
+	require.Equal(t, 8, symbolSends)
+	require.Len(t, hintedSymbols, 8)
+	for index := uint32(0); index < 8; index++ {
+		require.Contains(t, hintedSymbols, index)
+	}
+}
+
 func TestLargeTxNetworkRebroadcastPushesOptimisticChunks(t *testing.T) {
 	reactor, _ := setupLargeTxReactor(t, 32, 16)
 
@@ -606,6 +720,9 @@ func TestLargeTxFastPathDefaultsEnabled(t *testing.T) {
 	require.Positive(t, opts.LargeTxMaxAdvertisePeers)
 	require.Positive(t, opts.LargeTxOptimisticPushChunks)
 	require.Positive(t, opts.LargeTxPeerScoreHalflife)
+	require.True(t, opts.LargeTxEnableFEC)
+	require.Positive(t, opts.LargeTxFountainParityChunks)
+	require.Positive(t, opts.LargeTxStripeRelayFanout)
 }
 
 func TestLargeTxChannelCapacitiesIncludeNonZeroIndexes(t *testing.T) {
@@ -628,6 +745,16 @@ func TestLargeTxChannelCapacitiesIncludeNonZeroIndexes(t *testing.T) {
 		},
 	}).Size()
 	require.GreaterOrEqual(t, capacityByChannel[MempoolChunkChannel], txChunkMsg)
+	txSymbolMsg := (&protomem.Message{
+		Sum: &protomem.Message_TxSymbol{
+			TxSymbol: &protomem.TxSymbol{
+				TxKey: txKey,
+				Index: ^uint32(0),
+				Data:  make([]byte, reactor.opts.LargeTxChunkSize),
+			},
+		},
+	}).Size()
+	require.GreaterOrEqual(t, capacityByChannel[MempoolFountainChannel], txSymbolMsg)
 
 	indexes := make([]uint32, reactor.opts.LargeTxMaxInflightChunksPerPeer)
 	for i := range indexes {
@@ -642,6 +769,24 @@ func TestLargeTxChannelCapacitiesIncludeNonZeroIndexes(t *testing.T) {
 		},
 	}).Size()
 	require.GreaterOrEqual(t, capacityByChannel[MempoolWantsChannel], wantChunkMsg)
+	wantSymbolsMsg := (&protomem.Message{
+		Sum: &protomem.Message_WantTxSymbols{
+			WantTxSymbols: &protomem.WantTxSymbols{
+				TxKey:   txKey,
+				Indexes: indexes,
+			},
+		},
+	}).Size()
+	require.GreaterOrEqual(t, capacityByChannel[MempoolWantsChannel], wantSymbolsMsg)
+	haveSymbolsMsg := (&protomem.Message{
+		Sum: &protomem.Message_HaveTxSymbols{
+			HaveTxSymbols: &protomem.HaveTxSymbols{
+				TxKey:   txKey,
+				Indexes: indexes,
+			},
+		},
+	}).Size()
+	require.GreaterOrEqual(t, capacityByChannel[MempoolWantsChannel], haveSymbolsMsg)
 }
 
 func TestPeerScoreUpdates(t *testing.T) {

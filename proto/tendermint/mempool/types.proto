@@ -28,6 +28,10 @@ message TxManifest {
   uint64          priority           = 8;
   repeated uint32 optimistic_indexes = 9;
   bool            speculative        = 10;
+  uint32          fountain_data_count = 11;
+  uint32          fountain_symbol_count = 12;
+  repeated bytes  fountain_symbol_hashes = 13;
+  repeated uint32 optimistic_symbol_indexes = 14;
 }
 
 message WantChunk {
@@ -41,13 +45,32 @@ message TxChunk {
   bytes  data   = 3;
 }
 
+message HaveTxSymbols {
+  bytes           tx_key  = 1;
+  repeated uint32 indexes = 2;
+}
+
+message WantTxSymbols {
+  bytes           tx_key  = 1;
+  repeated uint32 indexes = 2;
+}
+
+message TxSymbol {
+  bytes  tx_key = 1;
+  uint32 index  = 2;
+  bytes  data   = 3;
+}
+
 message Message {
   oneof sum {
-    Txs        txs         = 1;
-    SeenTx     seen_tx     = 2;
-    WantTx     want_tx     = 3;
-    TxManifest tx_manifest = 4;
-    WantChunk  want_chunk  = 5;
-    TxChunk    tx_chunk    = 6;
+    Txs           txs             = 1;
+    SeenTx        seen_tx         = 2;
+    WantTx        want_tx         = 3;
+    TxManifest    tx_manifest     = 4;
+    WantChunk     want_chunk      = 5;
+    TxChunk       tx_chunk        = 6;
+    HaveTxSymbols have_tx_symbols = 7;
+    WantTxSymbols want_tx_symbols = 8;
+    TxSymbol      tx_symbol       = 9;
   }
 }
