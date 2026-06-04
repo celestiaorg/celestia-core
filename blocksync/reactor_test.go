@@ -508,6 +508,11 @@ func TestCheckExtendedCommitMissing(t *testing.T) {
 type ByzantineReactor struct {
 	*Reactor
 	corruptedBlock int64
+	// invalidBlock, when set, is served in place of the stored block at its
+	// height. Its LastCommitHash is consistent (so it passes receipt
+	// validation) but its LastCommit has one invalid signature past the +2/3
+	// threshold, which is caught only by commit verification in poolRoutine.
+	invalidBlock *types.Block
 }
 
 func NewByzantineReactor(invalidBlock int64, conR *Reactor) *ByzantineReactor {
@@ -524,6 +529,11 @@ func NewByzantineReactor(invalidBlock int64, conR *Reactor) *ByzantineReactor {
 // Byzantine modification: if corruptedBlock is set, send the wrong Block.
 func (bcR *ByzantineReactor) respondToPeer(msg *bcproto.BlockRequest, src p2p.Peer) (queued bool) {
 	block := bcR.store.LoadBlock(msg.Height)
+	// Byzantine modification: serve a pre-built invalid block in place of the
+	// honest one at this height (see ByzantineReactor.invalidBlock).
+	if bcR.invalidBlock != nil && msg.Height == bcR.invalidBlock.Height {
+		block = bcR.invalidBlock
+	}
 	if block == nil {
 		bcR.Logger.Info("Peer asking for a block we don't have", "src", src, "height", msg.Height)
 		return src.TrySend(p2p.Envelope{
@@ -759,4 +769,176 @@ func TestVerifyCommitDetectsAddressCorruption(t *testing.T) {
 	// signature's ValidatorAddress matches the validator at that index.
 	err = valSet.VerifyCommit(chainID, blockID, height, poisoned.ToCommit())
 	require.Error(t, err, "corrupted ValidatorAddress must be rejected by VerifyCommit")
+}
+
+// makeMultiValCommit builds a commit for blockID at the given height signed by
+// every validator in vals.
+func makeMultiValCommit(
+	t *testing.T,
+	height int64,
+	blockID types.BlockID,
+	vals *types.ValidatorSet,
+	privValsByAddr map[string]types.PrivValidator,
+	chainID string,
+) *types.Commit {
+	t.Helper()
+	sigs := make([]types.CommitSig, len(vals.Validators))
+	for i, val := range vals.Validators {
+		pv := privValsByAddr[val.Address.String()]
+		require.NotNil(t, pv, "missing privval for validator %X", val.Address)
+		vote, err := types.MakeVote(pv, chainID, int32(i), height, 0, cmtproto.PrecommitType, blockID, time.Now())
+		require.NoError(t, err)
+		sigs[i] = vote.CommitSig()
+	}
+	return &types.Commit{Height: height, Round: 0, BlockID: blockID, Signatures: sigs}
+}
+
+// corruptLastSig returns a copy of commit with its last signature (past the
+// +2/3 threshold) flipped to be invalid. A fresh Commit (not Clone) avoids the
+// memoized hash, and the signature bytes are deep-copied so commit stays valid.
+func corruptLastSig(t *testing.T, commit *types.Commit) *types.Commit {
+	t.Helper()
+	require.GreaterOrEqual(t, len(commit.Signatures), 4)
+	sigs := append([]types.CommitSig(nil), commit.Signatures...)
+	last := len(sigs) - 1
+	badSig := append([]byte(nil), sigs[last].Signature...)
+	badSig[0] ^= 0xFF
+	sigs[last].Signature = badSig
+	return &types.Commit{
+		Height:     commit.Height,
+		Round:      commit.Round,
+		BlockID:    commit.BlockID,
+		Signatures: sigs,
+	}
+}
+
+// newMultiValReactor builds a block-sync reactor backed by an honest chain of
+// maxBlockHeight blocks signed by all validators in genDoc. When
+// invalidCommitHeight is non-zero, the reactor serves (from memory, not the
+// store) a block at that height whose LastCommit has one invalid signature past
+// the +2/3 threshold — used to check that block sync fully verifies the commits
+// it persists.
+func newMultiValReactor(
+	t *testing.T,
+	logger log.Logger,
+	genDoc *types.GenesisDoc,
+	privVals []types.PrivValidator,
+	maxBlockHeight int64,
+	invalidCommitHeight int64,
+) ReactorPair {
+	t.Helper()
+
+	privValsByAddr := make(map[string]types.PrivValidator, len(privVals))
+	for _, pv := range privVals {
+		pk, err := pv.GetPubKey()
+		require.NoError(t, err)
+		privValsByAddr[pk.Address().String()] = pv
+	}
+
+	app := abci.NewBaseApplication()
+	cc := proxy.NewLocalClientCreator(app)
+	proxyApp := proxy.NewAppConns(cc, proxy.NopMetrics())
+	require.NoError(t, proxyApp.Start())
+
+	stateStore := sm.NewStore(dbm.NewMemDB(), sm.StoreOptions{DiscardABCIResponses: false})
+	blockStore := store.NewBlockStore(dbm.NewMemDB())
+	state, err := stateStore.LoadFromDBOrGenesisDoc(genDoc)
+	require.NoError(t, err)
+
+	mp := &mpmocks.Mempool{}
+	mp.On("Lock").Return()
+	mp.On("Unlock").Return()
+	mp.On("FlushAppConn", mock.Anything).Return(nil)
+	mp.On("Update", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil)
+
+	blockExec := sm.NewBlockExecutor(stateStore, log.TestingLogger(), proxyApp.Consensus(), mp, sm.EmptyEvidencePool{}, blockStore)
+	require.NoError(t, stateStore.Save(state))
+
+	chainID := state.ChainID
+	lastCommit := &types.Commit{} // empty for the initial height
+	var invalidBlock *types.Block
+	for h := int64(1); h <= maxBlockHeight; h++ {
+		block, parts, err := state.MakeBlock(h, types.MakeData([]types.Tx{}), lastCommit, nil, state.Validators.GetProposer().Address)
+		require.NoError(t, err)
+		blockID := types.BlockID{Hash: block.Hash(), PartSetHeader: parts.Header()}
+		commit := makeMultiValCommit(t, h, blockID, state.Validators, privValsByAddr, chainID)
+
+		if h == invalidCommitHeight {
+			// Rebuild this block with a modified LastCommit. Rebuilding via
+			// MakeBlock keeps LastCommitHash consistent, so the block passes
+			// receipt validation and is rejected only by commit verification.
+			invalidBlock, _, err = state.MakeBlock(h, types.MakeData([]types.Tx{}), corruptLastSig(t, lastCommit), nil, state.Validators.GetProposer().Address)
+			require.NoError(t, err)
+		}
+
+		state, err = blockExec.ApplyBlock(state, blockID, block, lastCommit)
+		require.NoError(t, err)
+		blockStore.SaveBlock(block, parts, commit)
+		lastCommit = commit
+	}
+
+	bcReactor := NewReactor(state.Copy(), blockExec, blockStore, true, NopMetrics(), 0)
+	bcReactor.SetLogger(logger.With("module", "blocksync"))
+	byz := NewByzantineReactor(0, bcReactor)
+	byz.invalidBlock = invalidBlock
+	return ReactorPair{byz, proxyApp}
+}
+
+// TestBlockSyncVerifiesTipCommitSignatures checks that block sync fully
+// verifies the commit it persists for its last synced height (backport of
+// cometbft/cometbft#5753). A peer serves a tip block whose LastCommit has a
+// valid +2/3 majority but one invalid signature past the threshold. With the
+// fix (full VerifyCommit) the receiver rejects it and drops the peer; under
+// VerifyCommitLight the extra signature is never checked and it would be
+// accepted.
+func TestBlockSyncVerifiesTipCommitSignatures(t *testing.T) {
+	config = test.ResetTestRoot("blocksync_tip_commit_sigs_test")
+	defer os.RemoveAll(config.RootDir)
+
+	// Four equal-power validators: +2/3 is reached after three signatures, so
+	// the fourth (invalid) one is never inspected by VerifyCommitLight.
+	genDoc, privVals := randGenesisDoc(4, false, 1)
+	// Disable vote extensions so second.LastCommit is what gets persisted.
+	genDoc.ConsensusParams.ABCI.VoteExtensionsEnableHeight = 0
+
+	const maxBlockHeight = int64(10)
+
+	// The receiver's last syncable height is maxBlockHeight-1, whose commit is
+	// carried in block maxBlockHeight's LastCommit; serve that block corrupted.
+	source := newMultiValReactor(t, log.TestingLogger(), genDoc, privVals, maxBlockHeight, maxBlockHeight)
+	receiver := newMultiValReactor(t, log.TestingLogger(), genDoc, privVals, 0, 0)
+	reactorPairs := []ReactorPair{source, receiver}
+
+	p2p.MakeConnectedSwitches(config.P2P, 2, func(i int, s *p2p.Switch) *p2p.Switch {
+		s.AddReactor("BLOCKSYNC", reactorPairs[i].reactor)
+		return s
+	}, p2p.Connect2Switches)
+
+	defer func() {
+		for _, r := range reactorPairs {
+			_ = r.reactor.Stop()
+			_ = r.app.Stop()
+		}
+	}()
+
+	// Wait until the receiver either drops its only peer (fix: commit rejected)
+	// or reaches maxBlockHeight-1 (accepted under partial verification).
+	startTime := time.Now()
+	for {
+		if receiver.reactor.Switch.Peers().Size() == 0 ||
+			receiver.reactor.store.Height() >= maxBlockHeight-1 {
+			break
+		}
+		if time.Since(startTime) > 60*time.Second {
+			t.Fatalf("timeout: receiver height %d, peers %d",
+				receiver.reactor.store.Height(), receiver.reactor.Switch.Peers().Size())
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+
+	// With the fix the corrupted commit fails verification, so maxBlockHeight-1
+	// is never persisted. Under VerifyCommitLight it would be, failing here.
+	fmt.Println("max block height", receiver.reactor.store.Height())
+	require.Less(t, receiver.reactor.store.Height(), maxBlockHeight-1,
+		"block sync must not persist a height whose commit has an invalid signature past the +2/3 threshold")
 }

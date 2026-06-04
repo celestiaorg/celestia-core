@@ -12,7 +12,19 @@ import (
 //-----------------------------------------------------
 // Validate block
 
-func validateBlock(state State, block *types.Block) error {
+type blockValidationOptions struct {
+	skipLastCommitVerification bool
+}
+
+func withSkipLastCommit(opts *blockValidationOptions) {
+	opts.skipLastCommitVerification = true
+}
+
+func validateBlock(state State, block *types.Block, opts ...func(*blockValidationOptions)) error {
+	var vopts blockValidationOptions
+	for _, o := range opts {
+		o(&vopts)
+	}
 	// Validate internal consistency.
 	if err := block.ValidateBasic(); err != nil {
 		return err
@@ -87,7 +99,7 @@ func validateBlock(state State, block *types.Block) error {
 		if len(block.LastCommit.Signatures) != 0 {
 			return errors.New("initial block can't have LastCommit signatures")
 		}
-	} else {
+	} else if !vopts.skipLastCommitVerification {
 		// LastCommit.Signatures length is checked in VerifyCommit.
 		if err := state.LastValidators.VerifyCommit(
 			state.ChainID, state.LastBlockID, block.Height-1, block.LastCommit); err != nil {
