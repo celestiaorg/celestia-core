@@ -924,11 +924,8 @@ func TestBlockSyncVerifiesTipCommitSignatures(t *testing.T) {
 	// Wait until the receiver either drops its only peer (fix: commit rejected)
 	// or reaches maxBlockHeight-1 (accepted under partial verification).
 	startTime := time.Now()
-	for {
-		if receiver.reactor.Switch.Peers().Size() == 0 ||
-			receiver.reactor.store.Height() >= maxBlockHeight-1 {
-			break
-		}
+	for receiver.reactor.Switch.Peers().Size() != 0 &&
+		receiver.reactor.store.Height() < maxBlockHeight-1 {
 		if time.Since(startTime) > 60*time.Second {
 			t.Fatalf("timeout: receiver height %d, peers %d",
 				receiver.reactor.store.Height(), receiver.reactor.Switch.Peers().Size())
@@ -938,7 +935,6 @@ func TestBlockSyncVerifiesTipCommitSignatures(t *testing.T) {
 
 	// With the fix the corrupted commit fails verification, so maxBlockHeight-1
 	// is never persisted. Under VerifyCommitLight it would be, failing here.
-	fmt.Println("max block height", receiver.reactor.store.Height())
 	require.Less(t, receiver.reactor.store.Height(), maxBlockHeight-1,
 		"block sync must not persist a height whose commit has an invalid signature past the +2/3 threshold")
 }
