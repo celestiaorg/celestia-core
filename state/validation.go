@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/cometbft/cometbft/crypto"
 	"github.com/cometbft/cometbft/types"
@@ -11,6 +12,14 @@ import (
 
 //-----------------------------------------------------
 // Validate block
+
+// maxBlockTimeTolerance is the maximum allowed difference between a block's time
+// and wall-clock time. Blocks whose time is further than this into the future
+// are rejected, guarding against malformed or malicious timestamps (e.g. a vote
+// timestamp so far in the future that nanosecond arithmetic overflows) from
+// being committed. It is intentionally hardcoded for now; expose it via config
+// only if an application needs to tune it.
+const maxBlockTimeTolerance = 60 * time.Second
 
 type blockValidationOptions struct {
 	skipLastCommitVerification bool
@@ -122,7 +131,14 @@ func validateBlock(state State, block *types.Block, opts ...func(*blockValidatio
 		)
 	}
 
-	// Validate block Time
+	// Validate block Time.
+	// Reject blocks whose time is too far ahead of our wall clock.
+	if now := time.Now(); !block.Time.Before(now.Add(maxBlockTimeTolerance)) {
+		return fmt.Errorf(
+			"block time %v is too far in the future (wall clock %v + tolerance %v)",
+			block.Time, now, maxBlockTimeTolerance,
+		)
+	}
 	switch {
 	case block.Height > state.InitialHeight:
 		if !block.Time.After(state.LastBlockTime) {

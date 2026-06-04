@@ -182,10 +182,11 @@ func TestReactorsGossipNoCommittedEvidence(t *testing.T) {
 	peer.Set(types.PeerStateKey, ps)
 
 	// wait to see that only two evidence is sent
-	time.Sleep(300 * time.Millisecond)
-
-	peerEv, _ = pools[1].PendingEvidence(1000)
-	assert.EqualValues(t, []types.Evidence{evList[0], evList[1]}, peerEv)
+	expectedEvidence := []types.Evidence{evList[0], evList[1]}
+	require.Eventually(t, func() bool {
+		peerEv, _ = pools[1].PendingEvidence(1000)
+		return assert.ObjectsAreEqualValues(expectedEvidence, peerEv)
+	}, 3*time.Second, 10*time.Millisecond)
 }
 
 func TestReactorBroadcastEvidenceMemoryLeak(t *testing.T) {

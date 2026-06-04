@@ -63,6 +63,26 @@ func TestReactorBroadcastTxsMessage(t *testing.T) {
 	waitForTxsOnReactors(t, transactions, reactors)
 }
 
+// When two txs share a priority, gossip order across reactors is
+// non-deterministic, so waitForTxsOnReactor must verify set membership rather
+// than per-index equality. See issue #2945.
+func TestWaitForTxsOnReactor_AcceptsArbitraryOrderForTiedPriorities(t *testing.T) {
+	reactor, pool := setupReactor(t)
+	t.Cleanup(func() { _ = reactor.Stop() })
+
+	const sharedPriority = int64(5)
+	txA := types.Tx(newTx(0, mempool.UnknownPeerID, []byte("A"), sharedPriority))
+	txB := types.Tx(newTx(1, mempool.UnknownPeerID, []byte("B"), sharedPriority))
+
+	require.NoError(t, pool.CheckTx(txA, nil, mempool.TxInfo{}))
+	require.NoError(t, pool.CheckTx(txB, nil, mempool.TxInfo{}))
+
+	// Pass expected in opposite order from insertion to exercise the
+	// order-agnostic comparison.
+	expected := types.CachedTxFromTxs(types.Txs{txB, txA})
+	waitForTxsOnReactor(t, expected, reactor, 0)
+}
+
 func TestReactorSendWantTxAfterReceivingSeenTx(t *testing.T) {
 	reactor, _ := setupReactor(t)
 
@@ -382,8 +402,9 @@ func TestReactorOptionsVerifyAndComplete(t *testing.T) {
 			name: "default options should use DefaultGossipDelay",
 			opts: ReactorOptions{},
 			expected: ReactorOptions{
-				MaxTxSize:      cfg.DefaultMempoolConfig().MaxTxBytes,
-				MaxGossipDelay: DefaultGossipDelay,
+				MaxTxSize:                cfg.DefaultMempoolConfig().MaxTxBytes,
+				MaxGossipDelay:           DefaultGossipDelay,
+				MaxPersistentStickyPeers: defaultMaxPersistentStickyPeers,
 			},
 			wantErr: false,
 		},
@@ -393,8 +414,9 @@ func TestReactorOptionsVerifyAndComplete(t *testing.T) {
 				MaxGossipDelay: 30 * time.Second,
 			},
 			expected: ReactorOptions{
-				MaxTxSize:      cfg.DefaultMempoolConfig().MaxTxBytes,
-				MaxGossipDelay: 30 * time.Second,
+				MaxTxSize:                cfg.DefaultMempoolConfig().MaxTxBytes,
+				MaxGossipDelay:           30 * time.Second,
+				MaxPersistentStickyPeers: defaultMaxPersistentStickyPeers,
 			},
 			wantErr: false,
 		},
@@ -412,6 +434,36 @@ func TestReactorOptionsVerifyAndComplete(t *testing.T) {
 			},
 			wantErr: true,
 		},
+		{
+			name: "unset MaxPersistentStickyPeers falls back to default",
+			opts: ReactorOptions{},
+			expected: ReactorOptions{
+				MaxTxSize:                cfg.DefaultMempoolConfig().MaxTxBytes,
+				MaxGossipDelay:           DefaultGossipDelay,
+				MaxPersistentStickyPeers: defaultMaxPersistentStickyPeers,
+			},
+			wantErr: false,
+		},
+		{
+			name: "negative MaxPersistentStickyPeers falls back to default",
+			opts: ReactorOptions{MaxPersistentStickyPeers: -3},
+			expected: ReactorOptions{
+				MaxTxSize:                cfg.DefaultMempoolConfig().MaxTxBytes,
+				MaxGossipDelay:           DefaultGossipDelay,
+				MaxPersistentStickyPeers: defaultMaxPersistentStickyPeers,
+			},
+			wantErr: false,
+		},
+		{
+			name: "custom MaxPersistentStickyPeers is preserved",
+			opts: ReactorOptions{MaxPersistentStickyPeers: 7},
+			expected: ReactorOptions{
+				MaxTxSize:                cfg.DefaultMempoolConfig().MaxTxBytes,
+				MaxGossipDelay:           DefaultGossipDelay,
+				MaxPersistentStickyPeers: 7,
+			},
+			wantErr: false,
+		},
 	}
 
 	for _, tt := range tests {
@@ -424,6 +476,7 @@ func TestReactorOptionsVerifyAndComplete(t *testing.T) {
 			assert.NoError(t, err)
 			assert.Equal(t, tt.expected.MaxTxSize, tt.opts.MaxTxSize)
 			assert.Equal(t, tt.expected.MaxGossipDelay, tt.opts.MaxGossipDelay)
+			assert.Equal(t, tt.expected.MaxPersistentStickyPeers, tt.opts.MaxPersistentStickyPeers)
 		})
 	}
 }
@@ -535,11 +588,15 @@ func waitForTxsOnReactor(t *testing.T, txs []*types.CachedTx, reactor *Reactor, 
 	}
 
 	reapedTxs := mempool.ReapMaxTxs(len(txs))
-	for i, tx := range txs {
+	require.Equal(t, len(txs), len(reapedTxs),
+		"reactor %d: expected %d txs, got %d", reactorIndex, len(txs), len(reapedTxs))
+	// Compare as a set: across reactors, txs with equal priority can be reaped
+	// in different orders depending on gossip arrival, so per-index equality is
+	// non-deterministic. See issue #2945.
+	for _, tx := range txs {
 		_ = tx.Hash() // to set the hash field in the cached tx
-		require.Contains(t, reapedTxs, tx)
-		require.Equal(t, tx, reapedTxs[i],
-			"txs at index %d on reactor %d don't match: %x vs %x", i, reactorIndex, tx, reapedTxs[i])
+		require.Contains(t, reapedTxs, tx,
+			"reactor %d: missing expected tx %x", reactorIndex, tx)
 	}
 }
 
@@ -557,6 +614,7 @@ func genPeer() *mocks.Peer {
 	nodeKey := p2p.NodeKey{PrivKey: ed25519.GenPrivKey()}
 	peer.On("ID").Return(nodeKey.ID())
 	peer.On("Get", types.PeerStateKey).Return(nil).Maybe()
+	peer.On("IsPersistent").Return(false).Maybe()
 	return peer
 }
 
@@ -1560,4 +1618,227 @@ func TestSeenTxDirectPathEnforcesPerPeerRequestLimit(t *testing.T) {
 	assert.LessOrEqual(t, requestCount, maxRequestsPerPeer,
 		"SeenTx direct path should not exceed maxRequestsPerPeer (%d) but got %d requests",
 		maxRequestsPerPeer, requestCount)
+}
+
+// plannedPeer is a deterministic peer descriptor used to build mocks.Peer
+// instances with known IDs and pre-computed rendezvous rankings.
+type plannedPeer struct {
+	id         p2p.ID
+	persistent bool
+}
+
+// planPeers generates `total` peers with deterministic IDs, computes their
+// rendezvous ranking against (signer, salt), and marks the bottom
+// `persistentBottom` ranked peers as persistent (or top `persistentTop` if set
+// instead). Use this to control which peers fall outside the natural sticky cap.
+func planPeers(signer, salt []byte, total, persistentBottom, persistentTop int) []plannedPeer {
+	plans := make([]plannedPeer, total)
+	for i := range plans {
+		plans[i].id = p2p.ID(fmt.Sprintf("test-peer-%04d-deterministic-id-padding-fillerz", i))
+	}
+	type scored struct {
+		idx   int
+		score uint64
+	}
+	s := make([]scored, total)
+	for i := range plans {
+		s[i] = scored{i, stickyScore64(signer, string(plans[i].id), salt)}
+	}
+	sort.Slice(s, func(i, j int) bool {
+		if s[i].score == s[j].score {
+			return plans[s[i].idx].id < plans[s[j].idx].id
+		}
+		return s[i].score > s[j].score
+	})
+	for i := 0; i < persistentTop; i++ {
+		plans[s[i].idx].persistent = true
+	}
+	for i := total - persistentBottom; i < total; i++ {
+		plans[s[i].idx].persistent = true
+	}
+	return plans
+}
+
+// newPlannedPeer creates a *mocks.Peer with the given ID, IsPersistent flag,
+// and a permissive Send stub.
+func newPlannedPeer(p plannedPeer) *mocks.Peer {
+	peer := &mocks.Peer{}
+	peer.On("ID").Return(p.id)
+	peer.On("Get", types.PeerStateKey).Return(nil).Maybe()
+	peer.On("IsPersistent").Return(p.persistent).Maybe()
+	peer.On("Send", mock.Anything).Return(true).Maybe()
+	return peer
+}
+
+// stickyTestReactor builds a reactor wired with the planned peers.
+func stickyTestReactor(t *testing.T, opts *ReactorOptions, plans []plannedPeer) (*Reactor, []*mocks.Peer) {
+	t.Helper()
+	app := &application{kvstore.NewApplication(db.NewMemDB())}
+	cc := proxy.NewLocalClientCreator(app)
+	pool, cleanup := newMempoolWithApp(cc)
+	t.Cleanup(cleanup)
+	if opts == nil {
+		opts = &ReactorOptions{}
+	}
+	reactor, err := NewReactor(pool, opts)
+	require.NoError(t, err)
+
+	mockPeers := make([]*mocks.Peer, len(plans))
+	for i, p := range plans {
+		mockPeers[i] = newPlannedPeer(p)
+		_, err := reactor.InitPeer(mockPeers[i])
+		require.NoError(t, err)
+	}
+	return reactor, mockPeers
+}
+
+// sendRecipientIDs returns the set of peer IDs whose Send mock was invoked.
+func sendRecipientIDs(peers []*mocks.Peer) map[p2p.ID]bool {
+	recipients := make(map[p2p.ID]bool)
+	for _, p := range peers {
+		for _, c := range p.Calls {
+			if c.Method == "Send" {
+				recipients[p.ID()] = true
+				break
+			}
+		}
+	}
+	return recipients
+}
+
+// TestBroadcastSeenTxIncludesPersistentBeyondCap verifies persistent peers ranked
+// outside the natural top-maxSeenTxBroadcast still receive the SeenTx, additively.
+func TestBroadcastSeenTxIncludesPersistentBeyondCap(t *testing.T) {
+	const totalPeers = 30
+	const persistentCount = 4
+
+	signer := []byte("signer-A")
+	salt := []byte("salt-A")
+	plans := planPeers(signer, salt, totalPeers, persistentCount, 0)
+
+	reactor, peers := stickyTestReactor(t, &ReactorOptions{
+		StickyPeerSalt:           salt,
+		MaxPersistentStickyPeers: persistentCount,
+	}, plans)
+
+	persistentIDs := make(map[p2p.ID]bool)
+	for _, p := range plans {
+		if p.persistent {
+			persistentIDs[p.id] = true
+		}
+	}
+	require.Len(t, persistentIDs, persistentCount)
+
+	ordered := selectStickyPeers(signer, reactor.ids.GetAll(), totalPeers, salt)
+
+	txKey := types.TxKey{}
+	copy(txKey[:], bytes.Repeat([]byte{0xab}, 32))
+	reactor.broadcastSeenTxWithHeight(txKey, 1, signer, 1)
+
+	recipients := sendRecipientIDs(peers)
+	for i := 0; i < maxSeenTxBroadcast; i++ {
+		require.True(t, recipients[ordered[i].peer.ID()], "natural top-%d peer missing at index %d", maxSeenTxBroadcast, i)
+	}
+	for id := range persistentIDs {
+		require.True(t, recipients[id], "persistent peer %s missing from broadcast", id)
+	}
+	require.Len(t, recipients, maxSeenTxBroadcast+persistentCount)
+}
+
+// TestBroadcastSeenTxNoPersistentNoChange verifies behavior is unchanged when no
+// persistent peers are connected: only the natural top-maxSeenTxBroadcast receive.
+func TestBroadcastSeenTxNoPersistentNoChange(t *testing.T) {
+	const totalPeers = 30
+
+	signer := []byte("signer-B")
+	salt := []byte("salt-B")
+	plans := planPeers(signer, salt, totalPeers, 0, 0)
+
+	reactor, peers := stickyTestReactor(t, &ReactorOptions{StickyPeerSalt: salt}, plans)
+	ordered := selectStickyPeers(signer, reactor.ids.GetAll(), totalPeers, salt)
+
+	txKey := types.TxKey{}
+	copy(txKey[:], bytes.Repeat([]byte{0xcd}, 32))
+	reactor.broadcastSeenTxWithHeight(txKey, 1, signer, 1)
+
+	recipients := sendRecipientIDs(peers)
+	require.Len(t, recipients, maxSeenTxBroadcast)
+	for i := 0; i < maxSeenTxBroadcast; i++ {
+		require.True(t, recipients[ordered[i].peer.ID()])
+	}
+}
+
+// TestBroadcastSeenTxPersistentInTopCapNoExtras verifies the broadcast set does
+// not grow when persistent peers are already inside the natural top set.
+func TestBroadcastSeenTxPersistentInTopCapNoExtras(t *testing.T) {
+	const totalPeers = 30
+
+	signer := []byte("signer-C")
+	salt := []byte("salt-C")
+	// Mark only top-2 ranked peers as persistent so they're already in top-15.
+	plans := planPeers(signer, salt, totalPeers, 0, 2)
+
+	reactor, peers := stickyTestReactor(t, &ReactorOptions{StickyPeerSalt: salt}, plans)
+
+	txKey := types.TxKey{}
+	copy(txKey[:], bytes.Repeat([]byte{0xef}, 32))
+	reactor.broadcastSeenTxWithHeight(txKey, 1, signer, 1)
+
+	recipients := sendRecipientIDs(peers)
+	require.Len(t, recipients, maxSeenTxBroadcast)
+}
+
+// TestBroadcastSeenTxRespectsMaxPersistent verifies extra persistent peers beyond
+// MaxPersistentStickyPeers are not added.
+func TestBroadcastSeenTxRespectsMaxPersistent(t *testing.T) {
+	const totalPeers = 30
+	const persistentBottom = 10
+	const maxPersistent = 4
+
+	signer := []byte("signer-D")
+	salt := []byte("salt-D")
+	plans := planPeers(signer, salt, totalPeers, persistentBottom, 0)
+
+	reactor, peers := stickyTestReactor(t, &ReactorOptions{
+		StickyPeerSalt:           salt,
+		MaxPersistentStickyPeers: maxPersistent,
+	}, plans)
+
+	txKey := types.TxKey{}
+	copy(txKey[:], bytes.Repeat([]byte{0x12}, 32))
+	reactor.broadcastSeenTxWithHeight(txKey, 1, signer, 1)
+
+	recipients := sendRecipientIDs(peers)
+	require.Len(t, recipients, maxSeenTxBroadcast+maxPersistent)
+}
+
+// TestBroadcastSeenTxDeterministicPersistentSelection verifies that the same
+// persistent peers are picked across reactors with identical (signer, salt, peers).
+func TestBroadcastSeenTxDeterministicPersistentSelection(t *testing.T) {
+	const totalPeers = 30
+	const persistentBottom = 10
+	const maxPersistent = 3
+
+	signer := []byte("signer-E")
+	salt := []byte("salt-E")
+	plans := planPeers(signer, salt, totalPeers, persistentBottom, 0)
+
+	r1, peers1 := stickyTestReactor(t, &ReactorOptions{
+		StickyPeerSalt:           salt,
+		MaxPersistentStickyPeers: maxPersistent,
+	}, plans)
+	r2, peers2 := stickyTestReactor(t, &ReactorOptions{
+		StickyPeerSalt:           salt,
+		MaxPersistentStickyPeers: maxPersistent,
+	}, plans)
+
+	txKey := types.TxKey{}
+	copy(txKey[:], bytes.Repeat([]byte{0x77}, 32))
+	r1.broadcastSeenTxWithHeight(txKey, 1, signer, 1)
+	r2.broadcastSeenTxWithHeight(txKey, 1, signer, 1)
+
+	rec1 := sendRecipientIDs(peers1)
+	rec2 := sendRecipientIDs(peers2)
+	require.Equal(t, rec1, rec2, "persistent peer selection must be deterministic across reactors")
+	require.Len(t, rec1, maxSeenTxBroadcast+maxPersistent)
 }

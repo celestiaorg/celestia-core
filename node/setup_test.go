@@ -11,6 +11,7 @@ import (
 	cfg "github.com/cometbft/cometbft/config"
 	"github.com/cometbft/cometbft/consensus/propagation"
 	"github.com/cometbft/cometbft/crypto/ed25519"
+	"github.com/cometbft/cometbft/libs/log"
 	"github.com/cometbft/cometbft/libs/trace"
 	"github.com/cometbft/cometbft/mempool/cat"
 	"github.com/cometbft/cometbft/p2p"
@@ -48,7 +49,7 @@ func TestInitDBs(t *testing.T) {
 				return cfg.DefaultDBProvider(ctx)
 			}
 
-			blockStore, stateDB, err := initDBs(config, dbProvider)
+			blockStore, stateDB, err := initDBs(config, dbProvider, log.NewNopLogger())
 			require.NoError(t, err)
 			defer func() {
 				if blockStore != nil {

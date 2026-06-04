@@ -4,6 +4,9 @@ import (
 	"errors"
 	"fmt"
 	"strconv"
+	"sync"
+	"sync/atomic"
+	"time"
 
 	"github.com/cosmos/gogoproto/proto"
 	lru "github.com/hashicorp/golang-lru/v2"
@@ -12,6 +15,7 @@ import (
 
 	abci "github.com/cometbft/cometbft/abci/types"
 	"github.com/cometbft/cometbft/evidence"
+	"github.com/cometbft/cometbft/libs/log"
 	cmtsync "github.com/cometbft/cometbft/libs/sync"
 	cmtstore "github.com/cometbft/cometbft/proto/tendermint/store"
 	cmtproto "github.com/cometbft/cometbft/proto/tendermint/types"
@@ -22,6 +26,13 @@ import (
 // maxBlockPartsToBatch is set to 600 to batch a whole block. Now that we're switching to pebbleDB,
 // setting this to 600 is more performant.
 const maxBlockPartsToBatch = 600
+
+// pruneWarnThreshold is the number of blocks a single PruneBlocks call must
+// exceed before it logs a warning. Pruning runs synchronously on the caller's
+// goroutine (block sync / consensus) and loads every block it deletes, so a
+// large backlog pauses block syncing until it completes. Below this threshold
+// pruning is fast enough not to matter.
+const pruneWarnThreshold = 100
 
 /*
 BlockStore is a simple low level store for blocks.
@@ -59,18 +70,57 @@ type BlockStore struct {
 	seenCommitCache          *lru.Cache[int64, *types.Commit]
 	blockCommitCache         *lru.Cache[int64, *types.Commit]
 	blockExtendedCommitCache *lru.Cache[int64, *types.ExtendedCommit]
+
+	// blocksDeleted, compact, compactionInterval, and compactionFrom are only
+	// read/written from PruneBlocks, which has a single production caller (the
+	// consensus goroutine via BlockExecutor.ApplyBlock), so no synchronization
+	// is needed for these fields. compacting and compactionWg coordinate with
+	// the background compaction goroutine and are intentionally lock-free.
+	// compactionFrom holds the lowest height not yet covered by a range-scoped
+	// forced compaction. It is initialized to base on construction and
+	// advanced only on successful Compact.
+	blocksDeleted      int64
+	compact            bool
+	compactionInterval int64
+	compactionFrom     int64
+	compacting         atomic.Bool
+	compactionWg       sync.WaitGroup
+
+	logger log.Logger
+}
+
+type BlockStoreOption func(*BlockStore)
+
+// WithCompaction sets the compaction parameters.
+func WithCompaction(compact bool, compactionInterval int64) BlockStoreOption {
+	return func(bs *BlockStore) {
+		bs.compact = compact
+		bs.compactionInterval = compactionInterval
+	}
+}
+
+// WithLogger sets the logger used by the BlockStore.
+func WithLogger(logger log.Logger) BlockStoreOption {
+	return func(bs *BlockStore) {
+		bs.logger = logger
+	}
 }
 
 // NewBlockStore returns a new BlockStore with the given DB,
 // initialized to the last height that was committed to the DB.
-func NewBlockStore(db dbm.DB) *BlockStore {
+func NewBlockStore(db dbm.DB, options ...BlockStoreOption) *BlockStore {
 	bs := LoadBlockStoreState(db)
 	bStore := &BlockStore{
-		base:   bs.Base,
-		height: bs.Height,
-		db:     db,
+		base:           bs.Base,
+		height:         bs.Height,
+		compactionFrom: bs.Base,
+		db:             db,
+		logger:         log.NewNopLogger(),
 	}
 	bStore.addCaches()
+	for _, option := range options {
+		option(bStore)
+	}
 	return bStore
 }
 
@@ -382,6 +432,15 @@ func (bs *BlockStore) PruneBlocks(height int64, state sm.State) (uint64, int64, 
 			height, base)
 	}
 
+	// A large prune (e.g. after lowering the retention config) blocks block
+	// application until it finishes, since pruning runs synchronously here and
+	// loads every block it deletes. Warn up front so the pause is expected
+	// rather than looking like a hang.
+	if numToPrune := height - base; numToPrune > pruneWarnThreshold {
+		bs.logger.Info("pruning a large number of blocks; this may take a while and pauses block syncing until it completes",
+			"blocks", numToPrune, "from_height", base, "to_height", height)
+	}
+
 	pruned := uint64(0)
 	batch := bs.db.NewBatch()
 	defer batch.Close()
@@ -436,6 +495,10 @@ func (bs *BlockStore) PruneBlocks(height int64, state sm.State) (uint64, int64, 
 			if err := batch.Delete(calcBlockCommitKey(h)); err != nil {
 				return 0, -1, err
 			}
+			if err := batch.Delete(calcExtCommitKey(h)); err != nil {
+				return 0, -1, err
+			}
+			bs.blockExtendedCommitCache.Remove(h)
 		}
 		if err := batch.Delete(calcSeenCommitKey(h)); err != nil {
 			return 0, -1, err
@@ -462,7 +525,74 @@ func (bs *BlockStore) PruneBlocks(height int64, state sm.State) (uint64, int64, 
 	if err != nil {
 		return 0, -1, err
 	}
+	bs.blocksDeleted += int64(pruned)
+
+	if bs.compact && bs.compactionInterval > 0 && bs.blocksDeleted >= bs.compactionInterval {
+		bs.blocksDeleted = 0
+		bs.triggerCompactionAsync(height)
+	}
 	return pruned, evidencePoint, nil
+}
+
+// triggerCompactionAsync launches a background compaction over the height
+// range that has been pruned since the last successful compaction
+// ([compactionFrom, retainHeight)). If a compaction is already in flight, it
+// logs and returns; the caller is responsible for resetting the deletion
+// counter regardless. The goroutine is tracked by compactionWg so Close can
+// wait for it.
+//
+// Range scoping is applied per height-keyed key family. Hash-keyed families
+// (BH:, TH:) are left to pebble's natural background compaction.
+func (bs *BlockStore) triggerCompactionAsync(retainHeight int64) {
+	if !bs.compacting.CompareAndSwap(false, true) {
+		bs.logger.Info("blockstore compaction already in progress, resetting interval counter",
+			"retain_height", retainHeight,
+		)
+		return
+	}
+	fromHeight := bs.compactionFrom
+	if fromHeight >= retainHeight {
+		bs.compacting.Store(false)
+		return
+	}
+	bs.compactionWg.Add(1)
+	go func() {
+		defer bs.compactionWg.Done()
+		defer bs.compacting.Store(false)
+		bs.logger.Info("compacting blockstore range",
+			"from_height", fromHeight,
+			"to_height", retainHeight,
+		)
+		start := time.Now()
+		err := compactBlockStoreRange(bs.db, fromHeight, retainHeight)
+		bs.logger.Info("blockstore compaction complete",
+			"err", err,
+			"elapsed(s)", time.Since(start).Seconds(),
+		)
+		if err == nil {
+			// Single-writer: the next trigger has to wait for `compacting` to
+			// clear, and we set this before releasing it.
+			bs.compactionFrom = retainHeight
+		}
+	}()
+}
+
+// compactBlockStoreRange issues one Compact call per height-keyed key family
+// for the byte range [prefix+from, prefix+to). Heights are encoded as
+// decimal ASCII, so the byte range matches the integer range only when from
+// and to share a digit count; at digit-count boundaries some pruned heights
+// fall outside the range and are left to pebble's background compaction.
+// This is safe — pebble.Compact never drops live data; the range is only
+// a hint for which sstables to rewrite.
+func compactBlockStoreRange(db dbm.DB, from, to int64) error {
+	for _, prefix := range []string{"H:", "P:", "C:", "SC:"} {
+		start := []byte(prefix + strconv.FormatInt(from, 10))
+		end := []byte(prefix + strconv.FormatInt(to, 10))
+		if err := db.Compact(start, end); err != nil {
+			return fmt.Errorf("compact %q [%d,%d): %w", prefix, from, to, err)
+		}
+	}
+	return nil
 }
 
 // SaveBlock persists the given block, blockParts, and seenCommit to the underlying db.
@@ -650,6 +780,7 @@ func (bs *BlockStore) SaveSeenCommit(height int64, seenCommit *types.Commit) err
 }
 
 func (bs *BlockStore) Close() error {
+	bs.compactionWg.Wait()
 	return bs.db.Close()
 }
 

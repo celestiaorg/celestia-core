@@ -42,6 +42,10 @@ const (
 
 	MempoolTypeNop = "nop"
 	MempoolTypeCAT = "cat"
+
+	// DefaultMaxPersistentStickyPeers caps how many persistent peers are guaranteed
+	// in the SeenTx broadcast set per signer when the config field is unset.
+	DefaultMaxPersistentStickyPeers = 4
 )
 
 // NOTE: Most of the structs & relevant comments + the
@@ -157,6 +161,9 @@ func (cfg *Config) ValidateBasic() error {
 	}
 	if err := cfg.Instrumentation.ValidateBasic(); err != nil {
 		return fmt.Errorf("error in [instrumentation] section: %w", err)
+	}
+	if err := cfg.Storage.ValidateBasic(); err != nil {
+		return fmt.Errorf("error in [storage] section: %w", err)
 	}
 	if !cfg.Consensus.CreateEmptyBlocks && cfg.Mempool.Type == MempoolTypeNop {
 		return fmt.Errorf("`nop` mempool does not support create_empty_blocks = false")
@@ -846,6 +853,12 @@ type MempoolConfig struct {
 	// it's insertion time into the mempool is beyond TTLDuration.
 	// Deprecated: TTLNumBlocks is deprecated and will be removed in a future version.
 	TTLNumBlocks int64 `mapstructure:"ttl-num-blocks"`
+
+	// MaxPersistentStickyPeers is the upper bound on persistent peers guaranteed
+	// to receive SeenTx broadcasts per signer (added on top of the natural sticky
+	// set, never displacing it). 0 falls back to the default. This key is omitted
+	// from the generated config.toml; set it explicitly to override.
+	MaxPersistentStickyPeers int `mapstructure:"max_persistent_sticky_peers"`
 }
 
 // DefaultMempoolConfig returns a default configuration for the CometBFT mempool
@@ -864,8 +877,9 @@ func DefaultMempoolConfig() *MempoolConfig {
 		MaxTxBytes:  1024 * 1024, // 1MB
 		ExperimentalMaxGossipConnectionsToNonPersistentPeers: 0,
 		ExperimentalMaxGossipConnectionsToPersistentPeers:    0,
-		TTLDuration:  0 * time.Second,
-		TTLNumBlocks: 0,
+		TTLDuration:              0 * time.Second,
+		TTLNumBlocks:             0,
+		MaxPersistentStickyPeers: DefaultMaxPersistentStickyPeers,
 	}
 }
 
@@ -911,6 +925,9 @@ func (cfg *MempoolConfig) ValidateBasic() error {
 	}
 	if cfg.ExperimentalMaxGossipConnectionsToNonPersistentPeers < 0 {
 		return errors.New("experimental_max_gossip_connections_to_non_persistent_peers can't be negative")
+	}
+	if cfg.MaxPersistentStickyPeers < 0 {
+		return errors.New("max_persistent_sticky_peers can't be negative")
 	}
 	return nil
 }
@@ -1271,6 +1288,21 @@ type StorageConfig struct {
 	// required for `/block_results` RPC queries, and to reindex events in the
 	// command-line tool.
 	DiscardABCIResponses bool `mapstructure:"discard_abci_responses"`
+	// Compaction on pruning - enable or disable in-process compaction.
+	// If the DB backend supports it, this will force the DB to compact
+	// the database levels and save on storage space. Setting this to true
+	// is most beneficial when used in combination with pruning as it will
+	// physically delete the entries marked for deletion.
+	// false by default (forcing compaction is disabled).
+	Compact bool `mapstructure:"compact"`
+	// Compaction interval - number of blocks to try explicit compaction on.
+	// This parameter should be tuned depending on the number of items
+	// you expect to delete between two calls to forced compaction.
+	// If your retain height is 1 block, it is too much of an overhead
+	// to try compaction every block. But it should also not be a very
+	// large multiple of your retain height as it might occur bigger overheads.
+	// 10000 by default.
+	CompactionInterval int64 `mapstructure:"compaction_interval"`
 }
 
 // DefaultStorageConfig returns the default configuration options relating to
@@ -1278,6 +1310,8 @@ type StorageConfig struct {
 func DefaultStorageConfig() *StorageConfig {
 	return &StorageConfig{
 		DiscardABCIResponses: false,
+		Compact:              false,
+		CompactionInterval:   10000,
 	}
 }
 
@@ -1287,6 +1321,15 @@ func TestStorageConfig() *StorageConfig {
 	return &StorageConfig{
 		DiscardABCIResponses: false,
 	}
+}
+
+// ValidateBasic performs basic validation, returning an error if any check
+// fails.
+func (cfg *StorageConfig) ValidateBasic() error {
+	if cfg.Compact && cfg.CompactionInterval <= 0 {
+		return fmt.Errorf("compaction_interval must be positive when compact is true, got %d", cfg.CompactionInterval)
+	}
+	return nil
 }
 
 // -----------------------------------------------------------------------------

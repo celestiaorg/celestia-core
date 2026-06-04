@@ -270,10 +270,35 @@ func (pool *BlockPool) IsCaughtUp() bool {
 	// and that we're synced to the highest known height.
 	// Note we use maxPeerHeight - 1 because to sync block H requires block H+1
 	// to verify the LastCommit.
+	//
+	// maxPeerHeight == 0 happens in two distinct cases:
+	//   1. Fresh network: no peer has produced any blocks yet (all peer
+	//      heights are 0). We are caught up to the network and should switch
+	//      to consensus to participate in producing the first block.
+	//   2. Stalled: peers exist with blocks but updateMaxPeerHeight filtered
+	//      them all out (every peer's base is ahead of pool.height). The
+	//      network is ahead of us but no peer can serve our height, so we
+	//      are not caught up and must stay in blocksync.
 	receivedBlockOrTimedOut := pool.height > 0 || time.Since(pool.startTime) > 5*time.Second
-	ourChainIsLongestAmongPeers := pool.maxPeerHeight == 0 || pool.height >= (pool.maxPeerHeight-1)
+	var ourChainIsLongestAmongPeers bool
+	if pool.maxPeerHeight == 0 {
+		ourChainIsLongestAmongPeers = !pool.anyPeerHasBlocks()
+	} else {
+		ourChainIsLongestAmongPeers = pool.height >= (pool.maxPeerHeight - 1)
+	}
 	isCaughtUp := receivedBlockOrTimedOut && ourChainIsLongestAmongPeers
 	return isCaughtUp
+}
+
+// anyPeerHasBlocks reports whether any peer in the pool advertises a non-zero
+// height. CONTRACT: pool.mtx must be locked.
+func (pool *BlockPool) anyPeerHasBlocks() bool {
+	for _, peer := range pool.peers {
+		if peer.height > 0 {
+			return true
+		}
+	}
+	return false
 }
 
 // PeekTwoBlocks returns blocks at pool.height and pool.height+1. We need to
@@ -297,6 +322,15 @@ func (pool *BlockPool) PeekTwoBlocks() (first, second *types.Block, firstExtComm
 	return
 }
 
+// SetHeight sets the current pool height under the mutex. Used by the
+// blocksync reactor when switching from state sync, where pool.height must be
+// advanced past the snapshot height before requesters start firing.
+func (pool *BlockPool) SetHeight(height int64) {
+	pool.mtx.Lock()
+	defer pool.mtx.Unlock()
+	pool.height = height
+}
+
 // PopRequest removes the requester at pool.height and increments pool.height.
 func (pool *BlockPool) PopRequest() {
 	pool.mtx.Lock()
@@ -312,6 +346,10 @@ func (pool *BlockPool) PopRequest() {
 	}
 	delete(pool.requesters, pool.height)
 	pool.height++
+
+	// Re-evaluate maxPeerHeight: peers whose pruned base was just beyond the
+	// previous pool.height may now be able to contribute.
+	pool.updateMaxPeerHeight()
 }
 
 // RemovePeerAndRedoAllPeerRequests retries the request at the given height and
@@ -439,6 +477,17 @@ func (pool *BlockPool) SetPeerRange(peerID p2p.ID, base int64, height int64) {
 	pool.mtx.Lock()
 	defer pool.mtx.Unlock()
 
+	// A peer whose own reported base exceeds its own height is structurally
+	// impossible and treated as malicious.
+	if base > height {
+		pool.Logger.Info("Peer reporting base greater than height", "peer", peerID, "base", base, "height", height)
+		if _, exists := pool.peers[peerID]; exists {
+			pool.removePeer(peerID)
+		}
+		pool.banPeer(peerID)
+		return
+	}
+
 	peer := pool.peers[peerID]
 	if peer != nil {
 		if base < peer.base || height < peer.height {
@@ -466,9 +515,7 @@ func (pool *BlockPool) SetPeerRange(peerID p2p.ID, base int64, height int64) {
 		pool.sortedPeers = append([]*bpPeer{peer}, pool.sortedPeers...)
 	}
 
-	if height > pool.maxPeerHeight {
-		pool.maxPeerHeight = height
-	}
+	pool.updateMaxPeerHeight()
 }
 
 // RemovePeer removes the peer with peerID from the pool. If there's no peer
@@ -510,10 +557,18 @@ func (pool *BlockPool) removePeer(peerID p2p.ID) {
 	}
 }
 
-// If no peers are left, maxPeerHeight is set to 0.
+// updateMaxPeerHeight sets maxPeerHeight to the highest height among peers
+// whose advertised range still covers pool.height. If no peers are left,
+// maxPeerHeight is set to 0.
 func (pool *BlockPool) updateMaxPeerHeight() {
 	var max int64
 	for _, peer := range pool.peers {
+		if pool.height > 0 && peer.base > pool.height {
+			// Block a malicious peer from poisoning maxPeerHeight with an
+			// inflated base/height pair no peer can actually serve, which
+			// would stall IsCaughtUp forever.
+			continue
+		}
 		if peer.height > max {
 			max = peer.height
 		}

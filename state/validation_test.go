@@ -507,6 +507,18 @@ func TestValidateBlockTime(t *testing.T) {
 		err = blockExec.ValidateBlock(state, block)
 		require.NoError(t, err)
 	})
+
+	t.Run("block time too far in the future", func(t *testing.T) {
+		height := int64(3)
+		block, _, err := makeBlock(state, height, lastCommit)
+		require.NoError(t, err)
+		// A block time well beyond maxBlockTimeTolerance must be rejected,
+		// regardless of the median, to guard against malicious timestamps.
+		block.Time = time.Now().Add(1000 * time.Hour)
+		err = blockExec.ValidateBlock(state, block)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "too far in the future")
+	})
 }
 
 func TestValidateBlockInvalidCommit(t *testing.T) {

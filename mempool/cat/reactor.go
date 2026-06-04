@@ -42,6 +42,12 @@ const (
 	// maxSeenTxBroadcast defines the maximum number of peers to which a SeenTx message should be broadcasted.
 	maxSeenTxBroadcast = 15
 
+	// defaultMaxPersistentStickyPeers caps how many persistent peers are guaranteed
+	// to receive SeenTx broadcasts per signer (added on top of the natural sticky
+	// set, never displacing it). Used when ReactorOptions.MaxPersistentStickyPeers
+	// is unset.
+	defaultMaxPersistentStickyPeers = 4
+
 	// maxReceivedBufferSize limits how far ahead of the expected sequence we will
 	// request/buffer transactions. Txs with sequence > expected + maxReceivedBufferSize are rejected.
 	maxReceivedBufferSize = 30
@@ -94,6 +100,11 @@ type ReactorOptions struct {
 	// StickyPeerSalt is used to derive the rendezvous hash for sticky peer selection.
 	// If unset, all nodes will derive the same peer ordering.
 	StickyPeerSalt []byte
+
+	// MaxPersistentStickyPeers caps how many persistent peers are guaranteed
+	// to receive SeenTx broadcasts per signer, added on top of the natural sticky
+	// set without displacing it. <= 0 falls back to defaultMaxPersistentStickyPeers.
+	MaxPersistentStickyPeers int
 }
 
 func (opts *ReactorOptions) VerifyAndComplete() error {
@@ -103,6 +114,10 @@ func (opts *ReactorOptions) VerifyAndComplete() error {
 
 	if opts.MaxGossipDelay == 0 {
 		opts.MaxGossipDelay = DefaultGossipDelay
+	}
+
+	if opts.MaxPersistentStickyPeers <= 0 {
+		opts.MaxPersistentStickyPeers = defaultMaxPersistentStickyPeers
 	}
 
 	if opts.MaxTxSize < 0 {
@@ -512,10 +527,18 @@ func (memR *Reactor) broadcastSeenTxWithHeight(txKey types.TxKey, height int64, 
 	}
 
 	orderedPeers := selectStickyPeers(signer, peers, len(peers), memR.currentStickyPeerSalt())
+	maxPersistent := memR.opts.MaxPersistentStickyPeers
 	sent := 0
+	sentPersistent := 0
 	for _, peerInfo := range orderedPeers {
-		if sent >= maxSeenTxBroadcast {
-			break
+		// Send to the natural top maxSeenTxBroadcast peers; additionally guarantee
+		// up to maxPersistent persistent peers receive the SeenTx, even if they
+		// rank outside the top maxSeenTxBroadcast. Persistent peers are appended,
+		// never displacing the natural set.
+		isPersistent := peerInfo.peer.IsPersistent()
+		canSend := sent < maxSeenTxBroadcast || (isPersistent && sentPersistent < maxPersistent)
+		if !canSend {
+			continue
 		}
 
 		id := peerInfo.id
@@ -543,6 +566,9 @@ func (memR *Reactor) broadcastSeenTxWithHeight(txKey types.TxKey, height int64, 
 			memR.mempool.PeerHasTx(id, txKey)
 			schema.WriteMempoolPeerState(memR.traceClient, string(peer.ID()), schema.SeenTx, txKey[:], schema.Upload)
 			sent++
+			if isPersistent {
+				sentPersistent++
+			}
 		}
 	}
 }

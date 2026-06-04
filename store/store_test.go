@@ -6,6 +6,8 @@ import (
 	"os"
 	"runtime/debug"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -18,6 +20,7 @@ import (
 	abci "github.com/cometbft/cometbft/abci/types"
 	"github.com/cometbft/cometbft/crypto"
 	"github.com/cometbft/cometbft/internal/test"
+	"github.com/cometbft/cometbft/libs/log"
 	cmtrand "github.com/cometbft/cometbft/libs/rand"
 	cmtstore "github.com/cometbft/cometbft/proto/tendermint/store"
 	cmtversion "github.com/cometbft/cometbft/proto/tendermint/version"
@@ -597,7 +600,9 @@ func TestPruneBlocks(t *testing.T) {
 	require.NotNil(t, bs.LoadBlockMeta(1100))
 	require.Nil(t, bs.LoadBlockMeta(1099))
 	require.NotNil(t, bs.LoadBlockCommit(1100))
+	require.NotNil(t, bs.LoadBlockExtendedCommit(1100))
 	require.Nil(t, bs.LoadBlockCommit(1099))
+	require.Nil(t, bs.LoadBlockExtendedCommit(1099))
 
 	for i := int64(1); i < 1200; i++ {
 		require.Nil(t, bs.LoadBlock(i))
@@ -626,7 +631,9 @@ func TestPruneBlocks(t *testing.T) {
 	require.NotNil(t, bs.LoadBlockMeta(1100))
 	require.Nil(t, bs.LoadBlockMeta(1099))
 	require.NotNil(t, bs.LoadBlockCommit(1100))
+	require.NotNil(t, bs.LoadBlockExtendedCommit(1100))
 	require.Nil(t, bs.LoadBlockCommit(1099))
+	require.Nil(t, bs.LoadBlockExtendedCommit(1099))
 
 	// Pruning beyond the current height should error
 	_, _, err = bs.PruneBlocks(1501, state)
@@ -970,4 +977,185 @@ func TestSaveTxInfo(t *testing.T) {
 	require.Equal(t, "app", txInfo.Codespace)
 	require.Equal(t, int64(50000), txInfo.GasWanted)
 	require.Equal(t, int64(25000), txInfo.GasUsed)
+}
+
+// slowCompactDB wraps a dbm.DB so that Compact blocks until release is
+// closed. It also counts how many times Compact was called and records the
+// byte ranges it was called with.
+type slowCompactDB struct {
+	dbm.DB
+	compactCount atomic.Int64
+	release      chan struct{}
+
+	mu     sync.Mutex
+	ranges [][2][]byte
+}
+
+func newSlowCompactDB(db dbm.DB) *slowCompactDB {
+	return &slowCompactDB{
+		DB:      db,
+		release: make(chan struct{}),
+	}
+}
+
+func (s *slowCompactDB) Compact(start, end []byte) error {
+	s.compactCount.Add(1)
+	s.mu.Lock()
+	startCopy := append([]byte(nil), start...)
+	endCopy := append([]byte(nil), end...)
+	s.ranges = append(s.ranges, [2][]byte{startCopy, endCopy})
+	s.mu.Unlock()
+	<-s.release
+	return nil
+}
+
+func (s *slowCompactDB) capturedRanges() [][2][]byte {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	out := make([][2][]byte, len(s.ranges))
+	copy(out, s.ranges)
+	return out
+}
+
+// TestAsyncCompaction verifies that blockstore compaction runs in the
+// background, is single-flight, resets the deletion counter on the skip path,
+// and that Close waits for an in-flight compaction.
+func TestAsyncCompaction(t *testing.T) {
+	config := test.ResetTestRoot("blockchain_reactor_test")
+	defer os.RemoveAll(config.RootDir)
+	stateStore := sm.NewStore(dbm.NewMemDB(), sm.StoreOptions{})
+	state, err := stateStore.LoadFromDBOrGenesisFile(config.GenesisFile())
+	require.NoError(t, err)
+
+	db := newSlowCompactDB(dbm.NewMemDB())
+	bs := NewBlockStore(db,
+		WithCompaction(true, 50),
+		WithLogger(log.TestingLogger()),
+	)
+
+	for h := int64(1); h <= 1500; h++ {
+		block, partSet, err := state.MakeBlock(h, types.MakeData(test.MakeNTxs(h, 10)), new(types.Commit), nil, state.Validators.GetProposer().Address)
+		require.NoError(t, err)
+		seenCommit := makeTestExtCommit(h, cmttime.Now())
+		bs.SaveBlockWithExtendedCommit(block, partSet, seenCommit)
+	}
+	state.LastBlockTime = time.Date(2020, 1, 1, 1, 0, 0, 0, time.UTC)
+	state.LastBlockHeight = 1500
+	state.ConsensusParams.Evidence.MaxAgeNumBlocks = 400
+	state.ConsensusParams.Evidence.MaxAgeDuration = 1 * time.Second
+
+	// First prune triggers compaction. PruneBlocks must return promptly even
+	// though Compact is blocked.
+	pruneDone := make(chan struct{})
+	go func() {
+		_, _, perr := bs.PruneBlocks(100, state)
+		require.NoError(t, perr)
+		close(pruneDone)
+	}()
+	select {
+	case <-pruneDone:
+	case <-time.After(5 * time.Second):
+		t.Fatal("PruneBlocks did not return promptly while compaction was blocked")
+	}
+
+	// Wait for the background goroutine to enter the first db.Compact call
+	// (one per height-keyed prefix family — the first one blocks on `release`).
+	require.Eventually(t, func() bool {
+		return db.compactCount.Load() == 1
+	}, 2*time.Second, 10*time.Millisecond, "compaction goroutine did not start")
+	require.True(t, bs.compacting.Load(), "compacting flag should be set while in flight")
+	require.EqualValues(t, 0, bs.blocksDeleted, "blocksDeleted should be reset on the launch path")
+
+	// Second prune past the threshold while compaction is still in flight.
+	// The deletion counter must reset and no second goroutine must start.
+	_, _, err = bs.PruneBlocks(200, state)
+	require.NoError(t, err)
+	require.EqualValues(t, 0, bs.blocksDeleted, "blocksDeleted should be reset on the skip path")
+	require.Equal(t, int64(1), db.compactCount.Load(),
+		"a second compaction must not start while one is in flight")
+
+	// Close must block until compaction completes.
+	closeDone := make(chan error, 1)
+	go func() {
+		closeDone <- bs.Close()
+	}()
+	select {
+	case <-closeDone:
+		t.Fatal("Close returned before in-flight compaction completed")
+	case <-time.After(100 * time.Millisecond):
+	}
+
+	// Release compaction; Close should now return cleanly. After release,
+	// the remaining three per-family Compact calls each return immediately.
+	close(db.release)
+	select {
+	case cerr := <-closeDone:
+		require.NoError(t, cerr)
+	case <-time.After(5 * time.Second):
+		t.Fatal("Close did not return after compaction was released")
+	}
+	require.Equal(t, int64(4), db.compactCount.Load(),
+		"one Compact per height-keyed family (H:, P:, C:, SC:)")
+	require.False(t, bs.compacting.Load(), "compacting flag should be cleared on goroutine exit")
+
+	// Verify the captured byte ranges match the per-family format.
+	ranges := db.capturedRanges()
+	require.Len(t, ranges, 4)
+	expected := [][2][]byte{
+		{[]byte("H:0"), []byte("H:100")},
+		{[]byte("P:0"), []byte("P:100")},
+		{[]byte("C:0"), []byte("C:100")},
+		{[]byte("SC:0"), []byte("SC:100")},
+	}
+	require.Equal(t, expected, ranges)
+}
+
+// TestBlockStore_CompactRange_NoopWhenEmpty verifies that no goroutine is
+// spawned and the compacting flag returns to false when there is nothing new
+// to compact (compactionFrom >= retainHeight).
+func TestBlockStore_CompactRange_NoopWhenEmpty(t *testing.T) {
+	db := newSlowCompactDB(dbm.NewMemDB())
+	bs := NewBlockStore(db,
+		WithCompaction(true, 1),
+		WithLogger(log.TestingLogger()),
+	)
+	// Force the marker past the retain height so the trigger should bail.
+	bs.compactionFrom = 1000
+
+	bs.triggerCompactionAsync(100)
+
+	require.False(t, bs.compacting.Load(), "compacting flag must be cleared on the no-op path")
+	require.EqualValues(t, 0, db.compactCount.Load(), "no Compact calls expected")
+}
+
+// TestBlockStore_CompactRange_AdvancesMarker verifies that compactionFrom
+// advances to retainHeight on a successful compaction so subsequent triggers
+// cover the new range only.
+func TestBlockStore_CompactRange_AdvancesMarker(t *testing.T) {
+	db := newSlowCompactDB(dbm.NewMemDB())
+	close(db.release) // never block
+	bs := NewBlockStore(db,
+		WithCompaction(true, 1),
+		WithLogger(log.TestingLogger()),
+	)
+	require.EqualValues(t, 0, bs.compactionFrom)
+
+	bs.triggerCompactionAsync(500)
+	bs.compactionWg.Wait()
+	require.EqualValues(t, 500, bs.compactionFrom)
+
+	// Reset captured ranges for clarity, then trigger again to confirm the
+	// next compaction starts from the new marker.
+	db.mu.Lock()
+	db.ranges = nil
+	db.mu.Unlock()
+
+	bs.triggerCompactionAsync(900)
+	bs.compactionWg.Wait()
+	require.EqualValues(t, 900, bs.compactionFrom)
+
+	ranges := db.capturedRanges()
+	require.Len(t, ranges, 4)
+	require.Equal(t, []byte("H:500"), ranges[0][0])
+	require.Equal(t, []byte("H:900"), ranges[0][1])
 }

@@ -260,6 +260,12 @@ func TestStateOversizedBlock(t *testing.T) {
 	origTimeout := ensureTimeout
 	ensureTimeout = 2 * time.Second
 	defer func() { ensureTimeout = origTimeout }()
+	// Validating a max-size block under -race on slow CI can push the
+	// prevote→precommit transition past the default 2s vote timeout
+	// (observed at 2.2–2.3s).
+	origVoteTimeout := ensureVoteTimeout
+	ensureVoteTimeout = 5 * time.Second
+	defer func() { ensureVoteTimeout = origVoteTimeout }()
 	const maxBytes = int64(types.BlockPartSizeBytes)
 
 	for _, testCase := range []struct {
@@ -1415,11 +1421,17 @@ func TestSetValidBlockOnDelayedProposal(t *testing.T) {
 	}
 
 	ensureNewProposal(proposalCh, height, round)
-	rs := cs1.GetRoundState()
 
-	assert.True(t, bytes.Equal(rs.ValidBlock.Hash(), propBlockHash))
-	assert.True(t, rs.ValidBlockParts.Header().Equals(propBlockParts.Header()))
-	assert.True(t, rs.ValidRound == round)
+	// EventCompleteProposal fires before handleCompleteProposal updates ValidBlock,
+	// so poll until the round state has settled.
+	require.Eventually(t, func() bool {
+		rs := cs1.GetRoundState()
+		return rs.ValidBlock != nil &&
+			bytes.Equal(rs.ValidBlock.Hash(), propBlockHash) &&
+			rs.ValidBlockParts != nil &&
+			rs.ValidBlockParts.Header().Equals(propBlockParts.Header()) &&
+			rs.ValidRound == round
+	}, ensureTimeout, 10*time.Millisecond)
 }
 
 func TestProcessProposalAccept(t *testing.T) {
@@ -2558,7 +2570,7 @@ func TestStateOutputsBlockPartsStats(t *testing.T) {
 		Part:   parts.GetPart(0),
 	}
 
-	cs.rs.ProposalBlockParts = types.NewPartSetFromHeader(parts.Header(), types.BlockPartSizeBytes)
+	cs.rs.ProposalBlockParts = types.NewPartSetFromHeader(parts.Header(), 10)
 	cs.handleMsg(msgInfo{msg, peer.ID()})
 
 	statsMessage := <-cs.statsMsgQueue

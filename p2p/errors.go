@@ -106,6 +106,34 @@ func (e ErrRejected) IsAuthFailure() bool { return e.isAuthFailure }
 // IsDuplicate when Peer ID or IP are present already.
 func (e ErrRejected) IsDuplicate() bool { return e.isDuplicate }
 
+// DuplicatePeerID returns the peer ID and true when the rejection was caused
+// by a duplicate peer ID. Returns "", false for duplicate-IP rejections or
+// non-duplicate errors. Callers that need to know *why* a peer was deemed a
+// duplicate (e.g. to decide whether to penalize the dialed address) should
+// use this in preference to IsDuplicate.
+func (e ErrRejected) DuplicatePeerID() (ID, bool) {
+	if e.isDuplicate && e.id != "" {
+		return e.id, true
+	}
+	return "", false
+}
+
+// NewErrRejectedDuplicateID builds a duplicate-by-peer-ID rejection. The
+// returned error reports DuplicatePeerID() == (id, true). Exposed primarily
+// so tests outside the p2p package can construct rejections without
+// reaching into unexported fields.
+func NewErrRejectedDuplicateID(id ID) ErrRejected {
+	return ErrRejected{id: id, isDuplicate: true}
+}
+
+// NewErrRejectedDuplicateIP builds a duplicate-by-IP rejection (no peer ID
+// recorded). The returned error reports IsDuplicate() == true but
+// DuplicatePeerID() == ("", false). Mirrors the rejection produced by the
+// duplicate-IP filter in the transport layer.
+func NewErrRejectedDuplicateIP() ErrRejected {
+	return ErrRejected{isDuplicate: true}
+}
+
 // IsFiltered when Peer ID or IP was filtered.
 func (e ErrRejected) IsFiltered() bool { return e.isFiltered }
 

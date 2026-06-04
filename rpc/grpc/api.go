@@ -68,18 +68,8 @@ func NewBlockAPI(env *core.Environment) *BlockAPI {
 }
 
 func (blockAPI *BlockAPI) StartNewBlockEventListener(ctx context.Context) error {
-	if blockAPI.newBlockSubscription == nil {
-		var err error
-		blockAPI.newBlockSubscription, err = blockAPI.env.EventBus.Subscribe(
-			ctx,
-			blockAPI.subscriptionID,
-			blockAPI.subscriptionQuery,
-			500,
-		)
-		if err != nil {
-			blockAPI.env.Logger.Error("Failed to subscribe to new blocks", "err", err)
-			return err
-		}
+	if err := blockAPI.subscribe(ctx); err != nil {
+		return err
 	}
 	for {
 		select {
@@ -127,6 +117,30 @@ const RetryAttempts = 6
 
 // SubscriptionCapacity the maximum number of pending blocks in the subscription.
 const SubscriptionCapacity = 500
+
+// subscribe creates the initial EventBus subscription if one does not
+// already exist. Holding blockAPI.Lock keeps this write synchronized
+// with retryNewBlocksSubscription (which also writes the field under
+// the lock) and Stop (which reads it under the lock).
+func (blockAPI *BlockAPI) subscribe(ctx context.Context) error {
+	blockAPI.Lock()
+	defer blockAPI.Unlock()
+	if blockAPI.newBlockSubscription != nil {
+		return nil
+	}
+	sub, err := blockAPI.env.EventBus.Subscribe(
+		ctx,
+		blockAPI.subscriptionID,
+		blockAPI.subscriptionQuery,
+		SubscriptionCapacity,
+	)
+	if err != nil {
+		blockAPI.env.Logger.Error("Failed to subscribe to new blocks", "err", err)
+		return err
+	}
+	blockAPI.newBlockSubscription = sub
+	return nil
+}
 
 func (blockAPI *BlockAPI) retryNewBlocksSubscription(ctx context.Context) (bool, error) {
 	ticker := time.NewTicker(time.Second)
@@ -208,14 +222,21 @@ func (blockAPI *BlockAPI) addHeightListener() chan SubscribeNewHeightsResponse {
 func (blockAPI *BlockAPI) removeHeightListener(ch chan SubscribeNewHeightsResponse) {
 	blockAPI.Lock()
 	defer blockAPI.Unlock()
+	blockAPI.removeHeightListenerLocked(ch)
+}
+
+// removeHeightListenerLocked removes ch from heightListeners. The caller
+// must hold blockAPI.Lock().
+func (blockAPI *BlockAPI) removeHeightListenerLocked(ch chan SubscribeNewHeightsResponse) {
 	delete(blockAPI.heightListeners, ch)
 }
 
-func (blockAPI *BlockAPI) closeAllListeners() {
-	blockAPI.Lock()
-	defer blockAPI.Unlock()
+// closeAllListenersLocked clears every registered height listener.
+// The caller must hold blockAPI.Lock(); the function does not acquire
+// the lock itself because doing so would deadlock against Stop, which
+// already holds it (sync.Mutex is not reentrant).
+func (blockAPI *BlockAPI) closeAllListenersLocked() {
 	if blockAPI.heightListeners == nil {
-		// if this is nil, then there is no need to close anything
 		return
 	}
 	for channel := range blockAPI.heightListeners {
@@ -230,13 +251,16 @@ func (blockAPI *BlockAPI) Stop(ctx context.Context) error {
 	defer blockAPI.Unlock()
 
 	// close all height listeners
-	blockAPI.closeAllListeners()
+	blockAPI.closeAllListenersLocked()
 
 	var err error
-	// stop the events subscription
+	// stop the events subscription. We deliberately do not clear
+	// blockAPI.newBlockSubscription here: StartNewBlockEventListener reads
+	// the field without holding the lock, so a write would race with that
+	// goroutine. Unsubscribe is sufficient to drain the subscription; the
+	// goroutine exits via ctx.Done after the caller cancels the context.
 	if blockAPI.newBlockSubscription != nil {
 		err = blockAPI.env.EventBus.Unsubscribe(ctx, blockAPI.subscriptionID, blockAPI.subscriptionQuery)
-		blockAPI.newBlockSubscription = nil
 	}
 
 	blockAPI.env.Logger.Info("gRPC streaming API has been stopped")

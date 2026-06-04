@@ -319,3 +319,26 @@ func TestProposalCache_unfinishedHeightsTreatsCatchupAsPending(t *testing.T) {
 	require.True(t, unfinished[0].block.IsComplete(), "block should still be complete")
 	require.True(t, unfinished[0].catchup)
 }
+
+// TestProposalCache_GetProposal_NilCompactBlock guards against the nil pointer
+// panic reported in #3039, where GetProposal dereferenced cb.Proposal when
+// getAllState returned has=true with a nil *CompactBlock. The stored-block
+// branch of getAllState produces exactly that shape (nil cb, non-nil parts,
+// true). GetProposal must report not found instead of panicking.
+func TestProposalCache_GetProposal_NilCompactBlock(t *testing.T) {
+	bs := makeTestBlockStore(t)
+	pc := NewProposalCache(bs)
+
+	// Same shape the stored-block branch of getAllState returns: a cached entry
+	// with a nil compactBlock pointer.
+	pc.proposals[5] = map[int32]*proposalData{
+		0: {compactBlock: nil},
+	}
+
+	require.NotPanics(t, func() {
+		prop, parts, has := pc.GetProposal(5, 0)
+		require.False(t, has)
+		require.Nil(t, prop)
+		require.Nil(t, parts)
+	})
+}
