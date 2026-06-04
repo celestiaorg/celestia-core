@@ -281,6 +281,57 @@ func TestPart_ValidateBasic(t *testing.T) {
 	}
 }
 
+func TestPartSetAddPartRejectsNonCanonicalParts(t *testing.T) {
+	data := cmtrand.Bytes(int(2*BlockPartSizeBytes) + 123)
+	partSize := int(BlockPartSizeBytes)
+
+	testCases := []struct {
+		name    string
+		chunks  [][]byte
+		wantErr error
+	}{
+		{
+			name: "oversized non-final part",
+			chunks: [][]byte{
+				data[:partSize+1],
+				data[partSize : 2*partSize],
+				data[2*partSize:],
+			},
+			wantErr: ErrPartTooBig,
+		},
+		{
+			name: "undersized non-final part",
+			chunks: [][]byte{
+				data[:partSize-1],
+				data[partSize-1 : 2*partSize-1],
+				data[2*partSize-1:],
+			},
+			wantErr: ErrPartInvalidSize,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			root, proofs := merkle.ParallelProofsFromByteSlices(tc.chunks)
+			part := &Part{
+				Index: 0,
+				Bytes: tc.chunks[0],
+				Proof: *proofs[0],
+			}
+			require.ErrorIs(t, part.ValidateBasic(), tc.wantErr)
+
+			ps := NewPartSetFromHeader(PartSetHeader{
+				Total: uint32(len(tc.chunks)),
+				Hash:  root,
+			}, BlockPartSizeBytes)
+			added, err := ps.AddPart(part)
+			require.False(t, added)
+			require.ErrorIs(t, err, tc.wantErr)
+			require.False(t, ps.HasPart(0))
+		})
+	}
+}
+
 func TestParSetHeaderProtoBuf(t *testing.T) {
 	testCases := []struct {
 		msg     string
