@@ -265,6 +265,73 @@ func TestValidateBlockCommit(t *testing.T) {
 	}
 }
 
+// TestValidateBlockSkipLastCommit checks that ValidateBlock rejects a block
+// whose LastCommit has an invalid signature, while ValidateBlockSkipLastCommit
+// accepts the same block because it skips LastCommit verification (added when
+// porting cometbft/cometbft#5753).
+func TestValidateBlockSkipLastCommit(t *testing.T) {
+	proxyApp := newTestApp()
+	require.NoError(t, proxyApp.Start())
+	defer proxyApp.Stop() //nolint:errcheck // ignore for tests
+
+	state, stateDB, privVals := makeState(4, 1)
+	stateStore := sm.NewStore(stateDB, sm.StoreOptions{
+		DiscardABCIResponses: false,
+	})
+	mp := &mpmocks.Mempool{}
+	mp.On("Lock").Return()
+	mp.On("Unlock").Return()
+	mp.On("FlushAppConn", mock.Anything).Return(nil)
+	mp.On("Update",
+		mock.Anything,
+		mock.Anything,
+		mock.Anything,
+		mock.Anything,
+		mock.Anything,
+		mock.Anything).Return(nil)
+
+	blockStore := store.NewBlockStore(dbm.NewMemDB())
+	blockExec := sm.NewBlockExecutor(
+		stateStore,
+		log.TestingLogger(),
+		proxyApp.Consensus(),
+		mp,
+		sm.EmptyEvidencePool{},
+		blockStore,
+	)
+
+	// Commit height 1 to obtain a valid commit for it.
+	proposerAddr := state.Validators.GetProposer().Address
+	state, _, lastExtCommit, err := makeAndCommitGoodBlock(
+		state, 1, &types.Commit{}, proposerAddr, blockExec, privVals, nil,
+	)
+	require.NoError(t, err)
+
+	// Corrupt 4th signature (index 3), past the +2/3 threshold of 4 equal-power validators:
+	// the commit keeps its valid majority (passes VerifyCommitLight) but must
+	// fail the full VerifyCommit.
+	badCommit := lastExtCommit.ToCommit()
+	require.Len(t, badCommit.Signatures, 4)
+	bad := make([]byte, len(badCommit.Signatures[3].Signature))
+	copy(bad, badCommit.Signatures[3].Signature)
+	bad[0] ^= 0xFF
+	badCommit.Signatures[3].Signature = bad
+
+	// Build height 2 referencing that commit as its LastCommit.
+	block, _, err := makeBlock(state, 2, badCommit)
+	require.NoError(t, err)
+
+	// Assert on the specific error so the test can't pass for an unrelated
+	// reason: the rejection must come from the corrupted signature #3.
+	err = blockExec.ValidateBlock(state, block)
+	require.ErrorContains(t, err, "wrong signature (#3)",
+		"ValidateBlock must reject the block because LastCommit signature #3 is invalid")
+
+	// Skipping LastCommit verification must accept the same block.
+	require.NoError(t, blockExec.ValidateBlockSkipLastCommit(state, block),
+		"ValidateBlockSkipLastCommit must not verify LastCommit")
+}
+
 func TestValidateBlockEvidence(t *testing.T) {
 	proxyApp := newTestApp()
 	require.NoError(t, proxyApp.Start())

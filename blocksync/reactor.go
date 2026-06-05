@@ -518,16 +518,24 @@ FOR_LOOP:
 			// Start timing validation
 			validationStart := time.Now()
 
-			// Finally, verify the first block using the second's commit
-			// NOTE: we can probably make this more efficient, but note that calling
-			// first.Hash() doesn't verify the tx contents, so MakePartSet() is
-			// currently necessary.
-			err = state.Validators.VerifyCommitLight(
+			// Fully verify second.LastCommit to ensure all signatures are valid.
+			err = state.Validators.VerifyCommit(
 				chainID, firstID, first.Height, second.LastCommit)
 
 			if err == nil {
-				// validate the block before we persist it
-				err = bcR.blockExec.ValidateBlock(state, first)
+				// Validate the block before we persist it.
+				//
+				// For the first block synced this session we must fully verify
+				// first.LastCommit, since it was not verified as a prior
+				// iteration's second.LastCommit. For subsequent blocks,
+				// first.LastCommit was already fully verified in the previous
+				// iteration (as second.LastCommit), so we skip the redundant
+				// VerifyCommit inside ValidateBlock.
+				if blocksSynced == 0 {
+					err = bcR.blockExec.ValidateBlock(state, first)
+				} else {
+					err = bcR.blockExec.ValidateBlockSkipLastCommit(state, first)
+				}
 			}
 
 			if err == nil && bcR.verifyData {
