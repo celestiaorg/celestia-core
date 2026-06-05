@@ -90,3 +90,17 @@ jobs:
                 text:
                   type: "mrkdwn"
                   text: ":skull: Nightly fuzz tests for `${{ env.BRANCH }}` failed with ${{ env.CRASHERS }} crasher(s). See the <${{ env.RUN_URL }}|run details>."
+
+      - name: Notify protocol-ci on failure
+        uses: slackapi/slack-github-action@v3.0.3
+        env:
+          BRANCH: ${{ github.ref_name }}
+          CRASHERS: ${{ needs.fuzz-nightly-test.outputs.crashers-count }}
+          RUN_URL: "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+        with:
+          webhook: ${{ secrets.PROTOCOL_CI_SLACK_WEBHOOK_URL }}
+          webhook-type: incoming-webhook
+          payload: |
+            {
+              "text": "${{ github.repository }} | Fuzz Tests failed on ${{ env.BRANCH }} with ${{ env.CRASHERS }} crasher(s): ${{ env.RUN_URL }}"
+            }
