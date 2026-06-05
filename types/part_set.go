@@ -581,8 +581,6 @@ func (ps *PartSet) AddPart(part *Part) (bool, error) {
 		return false, fmt.Errorf("nil part")
 	}
 
-<<<<<<< HEAD
-=======
 	// This is the shared sink for legacy block-part gossip and compact-block
 	// recovery. A valid Merkle proof only proves membership in the proposed
 	// PartSetHeader; it does not prove that the part uses this PartSet's
@@ -591,8 +589,6 @@ func (ps *PartSet) AddPart(part *Part) (bool, error) {
 	if err := part.validateBasicWithPartSize(ps.partSize); err != nil {
 		return false, err
 	}
-
->>>>>>> 389db885 (fix: check block part size (#3071))
 	// If part already exists, return false.
 	if ps.partsBitArray.GetIndex(int(part.Index)) {
 		return false, nil
