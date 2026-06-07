@@ -1,0 +1,12 @@
+--- a/config/config.toml
++++ b/config/config.toml
+@@ -5,9 +5,0 @@
+-[localnet]
+-port = 26656
+-rpc_port = 26657
+-p2p_port = 26658
+-profiling_port = 6060
+-grpc_port = 9090
+-prometheus_port = 26660
+-mempool_port = 26661
+-
