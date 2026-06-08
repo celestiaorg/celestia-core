@@ -1104,15 +1104,78 @@ func (cs *State) handleMsg(mi msgInfo) {
 	}
 
 	if err != nil {
-		cs.Logger.Error(
-			"failed to process message",
+		keyvals := []interface{}{
 			"height", cs.rs.Height,
 			"round", cs.rs.Round,
 			"peer", peerID,
 			"msg_type", fmt.Sprintf("%T", msg),
 			"err", err,
-		)
+		}
+		const failedToProcessMsg = "failed to process message"
+		switch logLevelForProcessMsgErr(err) {
+		case logLevelDebug:
+			cs.Logger.Debug(failedToProcessMsg, keyvals...)
+		case logLevelInfo:
+			cs.Logger.Info(failedToProcessMsg, keyvals...)
+		default:
+			cs.Logger.Error(failedToProcessMsg, keyvals...)
+		}
 	}
+}
+
+// processMsgLogLevel categorizes the severity of an error returned by one of
+// the consensus message handlers (setProposal, addProposalBlockPart,
+// tryAddVote) so the "failed to process message" log can be dispatched at an
+// appropriate level. The libs/log Logger interface has no Warn level, so peer
+// misbehavior maps to Info.
+type processMsgLogLevel int
+
+const (
+	// logLevelDebug is for stale / routine conditions that are expected on a
+	// public network (e.g. stale height/round, the catch-all ErrAddingVote
+	// which covers late or duplicate votes).
+	logLevelDebug processMsgLogLevel = iota
+	// logLevelInfo is for peer misbehavior: malformed messages, invalid
+	// signatures, and conflicting/equivocating votes. (Maps to the "Warn"
+	// bucket; the Logger interface has no Warn level.)
+	logLevelInfo
+	// logLevelError is for unexpected internal failures / state
+	// inconsistencies.
+	logLevelError
+)
+
+// logLevelForProcessMsgErr maps an error returned by a consensus message
+// handler to the level its "failed to process message" log should use. It does
+// not change the consensus state machine; it only affects log verbosity.
+func logLevelForProcessMsgErr(err error) processMsgLogLevel {
+	switch {
+	// Stale / routine: a proposal for a height/round we are no longer in, or
+	// the catch-all ErrAddingVote (late/duplicate votes, unexpected step).
+	case errors.Is(err, errInvalidProposalHeightRound),
+		errors.Is(err, ErrAddingVote):
+		return logLevelDebug
+
+	// Peer misbehavior: malformed messages, invalid signatures, equivocation.
+	case errors.Is(err, ErrInvalidProposalSignature),
+		errors.Is(err, ErrInvalidProposalPOLRound),
+		errors.Is(err, ErrProposalTooManyParts),
+		errors.Is(err, types.ErrPartSetInvalidProof),
+		errors.Is(err, types.ErrPartSetUnexpectedIndex),
+		isConflictingVotesErr(err):
+		return logLevelInfo
+
+	// Everything else (e.g. errPubKeyIsNotSet, unexpected decode failures) is
+	// treated as an unexpected internal error.
+	default:
+		return logLevelError
+	}
+}
+
+// isConflictingVotesErr reports whether err is (or wraps) a conflicting-votes
+// (equivocation) error.
+func isConflictingVotesErr(err error) bool {
+	var conflicting *types.ErrVoteConflictingVotes
+	return errors.As(err, &conflicting)
 }
 
 func (cs *State) handleTimeout(ti timeoutInfo, rs cstypes.RoundState) {
@@ -2216,7 +2279,7 @@ func (cs *State) defaultSetProposal(proposal *types.Proposal) error {
 	// Verify POLRound, which must be -1 or in range [0, proposal.Round).
 	if proposal.POLRound < -1 ||
 		(proposal.POLRound >= 0 && proposal.POLRound >= proposal.Round) {
-		return fmt.Errorf(ErrInvalidProposalPOLRound.Error()+"%v %v", proposal.POLRound, proposal.Round)
+		return fmt.Errorf("%w: POLRound %v Round %v", ErrInvalidProposalPOLRound, proposal.POLRound, proposal.Round)
 	}
 
 	pubKey := cs.rs.Validators.GetProposer().PubKey
