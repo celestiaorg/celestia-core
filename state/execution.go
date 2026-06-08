@@ -302,13 +302,13 @@ func (blockExec *BlockExecutor) logAppHashMismatchRunbook(err error) {
 	if !errors.As(err, &mismatch) {
 		return
 	}
+	// Keep this a single physical line: in the console/logfmt format the msg is
+	// written raw, so embedded newlines would split it across log records and
+	// orphan the keyvals below. The full step-by-step lives in the runbook doc.
 	blockExec.logger.Error(
-		"APP HASH MISMATCH DETECTED\n\n"+
-			"Do NOT rollback, resync, prune, or delete any data yet — doing so destroys the\n"+
-			"local evidence needed to diagnose the divergence.\n\n"+
-			"Stop the node, then follow the data-collection runbook and share the resulting\n"+
-			"archive with the Celestia team BEFORE attempting any recovery: \n"+
-			appHashMismatchRunbookURL,
+		fmt.Sprintf("APP HASH MISMATCH DETECTED at height %d — DO NOT rollback/resync/prune; "+
+			"stop the node, collect evidence per the runbook, and share it with the Celestia team "+
+			"BEFORE any recovery: %s", mismatch.Height, appHashMismatchRunbookURL),
 		"height", mismatch.Height,
 		"expected", fmt.Sprintf("%X", mismatch.Expected),
 		"got", fmt.Sprintf("%X", mismatch.Got),
