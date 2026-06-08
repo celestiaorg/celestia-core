@@ -73,10 +73,11 @@ func validateBlock(state State, block *types.Block, opts ...func(*blockValidatio
 
 	// Validate app info
 	if !bytes.Equal(block.AppHash, state.AppHash) {
-		return fmt.Errorf("wrong Block.Header.AppHash.  Expected %X, got %v",
-			state.AppHash,
-			block.AppHash,
-		)
+		return ErrAppHashMismatch{
+			Expected: state.AppHash,
+			Got:      block.AppHash,
+			Height:   block.Height,
+		}
 	}
 	if !bytes.Equal(block.ConsensusHash, state.ConsensusParams.Hash()) {
 		return fmt.Errorf("wrong Block.Header.ConsensusHash.  Expected %X, got %v",
