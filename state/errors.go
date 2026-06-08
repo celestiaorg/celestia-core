@@ -19,6 +19,17 @@ type (
 		Height   int64
 	}
 
+	// ErrAppHashMismatch is returned by validateBlock when a block's
+	// Header.AppHash does not match the local state's AppHash. It is detected
+	// while validating block Height, but the divergence was produced while
+	// applying block Height-1. The BlockExecutor recognizes this error to emit
+	// an operator runbook before the mismatch propagates (panic or sync error).
+	ErrAppHashMismatch struct {
+		Expected []byte
+		Got      []byte
+		Height   int64
+	}
+
 	ErrAppBlockHeightTooHigh struct {
 		CoreHeight int64
 		AppHeight  int64
@@ -72,6 +83,14 @@ func (e ErrBlockHashMismatch) Error() string {
 		e.AppHash,
 		e.CoreHash,
 		e.Height,
+	)
+}
+
+func (e ErrAppHashMismatch) Error() string {
+	return fmt.Sprintf(
+		"wrong Block.Header.AppHash.  Expected %X, got %X",
+		e.Expected,
+		e.Got,
 	)
 }
 
