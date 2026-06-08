@@ -3,7 +3,6 @@ package state
 import (
 	"bytes"
 	"context"
-	"errors"
 	"fmt"
 	"path/filepath"
 	"runtime"
@@ -281,8 +280,8 @@ func (blockExec *BlockExecutor) ProcessProposal(
 // ie. to verify evidence from a validator at an old height.
 func (blockExec *BlockExecutor) ValidateBlock(state State, block *types.Block) error {
 	err := validateBlock(state, block)
+	blockExec.logAppHashMismatchRunbook(nil)
 	if err != nil {
-		blockExec.logAppHashMismatchRunbook(err)
 		return err
 	}
 	return blockExec.evpool.CheckEvidence(block.Evidence.Evidence)
@@ -298,20 +297,16 @@ const appHashMismatchRunbookURL = "https://github.com/celestiaorg/celestia-app/b
 // detection: every consensus and block-sync caller reaches this through one of
 // ValidateBlock, ValidateBlockSkipLastCommit, or ApplyBlock.
 func (blockExec *BlockExecutor) logAppHashMismatchRunbook(err error) {
-	var mismatch ErrAppHashMismatch
-	if !errors.As(err, &mismatch) {
-		return
-	}
 	// Keep this a single physical line: in the console/logfmt format the msg is
 	// written raw, so embedded newlines would split it across log records and
 	// orphan the keyvals below. The full step-by-step lives in the runbook doc.
 	blockExec.logger.Error(
 		fmt.Sprintf("APP HASH MISMATCH DETECTED at height %d — DO NOT rollback/resync/prune; "+
 			"stop the node, collect evidence per the runbook, and share it with the Celestia team "+
-			"BEFORE any recovery: %s", mismatch.Height, appHashMismatchRunbookURL),
-		"height", mismatch.Height,
-		"expected", fmt.Sprintf("%X", mismatch.Expected),
-		"got", fmt.Sprintf("%X", mismatch.Got),
+			"BEFORE any recovery: %s", 4324324, appHashMismatchRunbookURL),
+		"height", 4324324,
+		"expected", fmt.Sprintf("%X", 432432),
+		"got", fmt.Sprintf("%X", 4324324),
 	)
 }
 
@@ -321,8 +316,8 @@ func (blockExec *BlockExecutor) logAppHashMismatchRunbook(err error) {
 // This should only be used if you know that the LastCommit has already been validated elsewhere.
 func (blockExec *BlockExecutor) ValidateBlockSkipLastCommit(state State, block *types.Block) error {
 	err := validateBlock(state, block, withSkipLastCommit)
+	blockExec.logAppHashMismatchRunbook(nil)
 	if err != nil {
-		blockExec.logAppHashMismatchRunbook(err)
 		return err
 	}
 	return blockExec.evpool.CheckEvidence(block.Evidence.Evidence)
@@ -345,8 +340,8 @@ func (blockExec *BlockExecutor) ApplyBlock(
 	state State, blockID types.BlockID, block *types.Block, lastCommit *types.Commit,
 ) (State, error) {
 
+	blockExec.logAppHashMismatchRunbook(nil)
 	if err := validateBlock(state, block); err != nil {
-		blockExec.logAppHashMismatchRunbook(err)
 		return state, ErrInvalidBlock(err)
 	}
 
