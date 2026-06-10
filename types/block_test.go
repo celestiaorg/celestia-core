@@ -1003,3 +1003,21 @@ func TestBlob(t *testing.T) {
 		assert.Equal(t, want, got)
 	})
 }
+
+func TestCommitFromProtoRejectsTooManySignatures(t *testing.T) {
+	cp := &cmtproto.Commit{
+		Height:     1,
+		Signatures: make([]cmtproto.CommitSig, MaxVotesCount+1),
+	}
+	_, err := CommitFromProto(cp)
+	require.ErrorContains(t, err, "too many signatures")
+}
+
+func TestExtendedCommitFromProtoRejectsTooManySignatures(t *testing.T) {
+	ecp := &cmtproto.ExtendedCommit{
+		Height:             1,
+		ExtendedSignatures: make([]cmtproto.ExtendedCommitSig, MaxVotesCount+1),
+	}
+	_, err := ExtendedCommitFromProto(ecp)
+	require.ErrorContains(t, err, "too many signatures")
+}
