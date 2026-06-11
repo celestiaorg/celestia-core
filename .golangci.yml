@@ -95,6 +95,7 @@ linters:
             - github.com/stretchr/testify/require
             - github.com/stretchr/testify/suite
             - github.com/gogo/protobuf/proto
+            - google.golang.org/protobuf/encoding/protowire
     dogsled:
       max-blank-identifiers: 3
     gosec:
