@@ -82,6 +82,9 @@ type BaseReactor struct {
 	ctx    context.Context
 	cancel context.CancelFunc
 	chIDs  map[byte]proto.Message
+	// chPrechecks maps a channel ID to its optional precheck function that validates the wire
+	// proto before unmarshalling
+	chPrechecks map[byte]func([]byte) error
 	// processor is called with the incoming channel and is responsible for
 	// unmarshalling the messages and calling Receive on the reactor.
 	processor   ProcessorFunc
@@ -97,8 +100,12 @@ func NewBaseReactor(name string, impl Reactor, opts ...ReactorOptions) *BaseReac
 	implChannels := impl.GetChannels()
 
 	chIDs := make(map[byte]proto.Message, len(implChannels))
+	chPrechecks := make(map[byte]func([]byte) error, len(implChannels))
 	for _, chDesc := range implChannels {
 		chIDs[chDesc.ID] = chDesc.MessageType
+		if chDesc.RecvMessagePrecheck != nil {
+			chPrechecks[chDesc.ID] = chDesc.RecvMessagePrecheck
+		}
 	}
 	base := &BaseReactor{
 		ctx:         ctx,
@@ -107,6 +114,7 @@ func NewBaseReactor(name string, impl Reactor, opts ...ReactorOptions) *BaseReac
 		Switch:      nil, // set by the switch later
 		incoming:    make(chan UnmarshalResult, 100),
 		chIDs:       chIDs,
+		chPrechecks: chPrechecks,
 		processor:   nil, // Will be set after base is created
 		name:        name,
 		traceClient: trace.NoOpTracer(),
@@ -217,6 +225,15 @@ func (br *BaseReactor) unmarshalEnvelope(e UnprocessedEnvelope) UnmarshalResult 
 	if mt == nil {
 		res.Err = fmt.Errorf("no message type registered for channel %d", e.ChannelID)
 		return res
+	}
+
+	// Run the channel's raw-bytes precheck (if configured) before unmarshalling, so a
+	// bad message can be rejected before unmarshalling
+	if precheck := br.chPrechecks[e.ChannelID]; precheck != nil {
+		if err := precheck(e.Message); err != nil {
+			res.Err = err
+			return res
+		}
 	}
 
 	res.Msg = proto.Clone(mt)
