@@ -2729,7 +2729,7 @@ func findBlockSizeLimit(t *testing.T, height, maxBytes int64, cs *State, _ uint3
 }
 
 // Asserts that a proposal whose bytes carry proto-ignored
-// junk is rejected before commit, so its PartSetHeader 
+// junk is rejected before commit, so its PartSetHeader
 // stays reproducible to blocksync nodes.
 func TestAddProposalBlockPartRejectsNonCanonicalEncoding(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
