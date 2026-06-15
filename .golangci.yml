@@ -60,6 +60,7 @@ linters:
             - github.com/aws/aws-sdk-go-v2/service/s3
             - github.com/grafana/otel-profiling-go
             - github.com/celestiaorg/nmt
+            - google.golang.org/protobuf/encoding/protowire
             - google.golang.org/protobuf/proto
             - google.golang.org/protobuf/types/known/timestamppb
             - gonum.org/v1/gonum/stat
@@ -94,6 +95,7 @@ linters:
             - github.com/stretchr/testify/require
             - github.com/stretchr/testify/suite
             - github.com/gogo/protobuf/proto
+            - google.golang.org/protobuf/encoding/protowire
     dogsled:
       max-blank-identifiers: 3
     gosec:
