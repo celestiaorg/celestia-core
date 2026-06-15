@@ -2321,6 +2321,24 @@ func (cs *State) addProposalBlockPart(msg *BlockPartMessage, peerID p2p.ID) (add
 			return added, err
 		}
 
+		// Reject extra bytes appended to the proposal encoding (e.g. proto-ignored
+		// unknown fields): re-encoding the decoded block drops them, so comparing
+		// against the received bytes detects any non-canonical padding.
+		pb, err := block.ToProto()
+		if err != nil {
+			return added, err
+		}
+		reEncodedBz, err := pb.Marshal()
+		if err != nil {
+			return added, err
+		}
+		if !bytes.Equal(bz, reEncodedBz) {
+			return added, fmt.Errorf(
+				"proposal block uses a non-canonical encoding: received %d bytes, reencoded to %d",
+				len(bz), len(reEncodedBz),
+			)
+		}
+
 		cs.rs.ProposalBlock = block
 
 		// NOTE: it's possible to receive complete proposal blocks for future rounds without having the proposal

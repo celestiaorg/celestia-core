@@ -3,6 +3,7 @@ package consensus
 import (
 	"bytes"
 	"context"
+	"encoding/binary"
 	"fmt"
 	"strings"
 	"testing"
@@ -2725,4 +2726,61 @@ func findBlockSizeLimit(t *testing.T, height, maxBytes int64, cs *State, _ uint3
 	}
 	require.Fail(t, "We shouldn't hit the end of the loop")
 	return nil, nil
+}
+
+// Asserts that a proposal whose bytes carry proto-ignored
+// junk is rejected before commit, so its PartSetHeader 
+// stays reproducible to blocksync nodes.
+func TestAddProposalBlockPartRejectsNonCanonicalEncoding(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	cs, _ := randState(1)
+
+	cs.mtx.Lock()
+	block, _, err := cs.createProposalBlock(ctx)
+	cs.mtx.Unlock()
+	require.NoError(t, err)
+
+	pb, err := block.ToProto()
+	require.NoError(t, err)
+	canonical, err := pb.Marshal()
+	require.NoError(t, err)
+
+	// Canonical bytes plus an unknown, length-0 field (number 99) the decoder
+	// skips: same block, different bytes.
+	unknownField := append(binary.AppendUvarint(nil, uint64(99<<3|2)), 0x00)
+	poisoned := append(append([]byte{}, canonical...), unknownField...)
+
+	// gossipProposal delivers data to consensus as a sequence of block parts,
+	// just as the gossip layer would. addProposalBlockPart decodes and validates
+	// the block once the final part completes the set.
+	gossipProposal := func(data []byte) error {
+		parts, err := types.NewPartSetFromData(data, types.BlockPartSizeBytes)
+		require.NoError(t, err)
+
+		cs.mtx.Lock()
+		defer cs.mtx.Unlock()
+
+		// Start fresh and expect parts matching this proposal's header.
+		cs.rs.ProposalBlock = nil
+		cs.rs.ProposalBlockParts = types.NewPartSetFromHeader(parts.Header(), types.BlockPartSizeBytes)
+
+		for i := 0; i < int(parts.Total()); i++ {
+			msg := &BlockPartMessage{Height: cs.rs.Height, Round: cs.rs.Round, Part: parts.GetPart(i)}
+			if _, err := cs.addProposalBlockPart(msg, ""); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+
+	// The poisoned proposal is rejected.
+	require.ErrorContains(t, gossipProposal(poisoned), "non-canonical")
+
+	// The canonical proposal is accepted and adopted as the proposal block.
+	require.NoError(t, gossipProposal(canonical))
+	cs.mtx.Lock()
+	require.NotNil(t, cs.rs.ProposalBlock)
+	cs.mtx.Unlock()
 }
