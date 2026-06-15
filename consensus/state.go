@@ -2321,9 +2321,9 @@ func (cs *State) addProposalBlockPart(msg *BlockPartMessage, peerID p2p.ID) (add
 			return added, err
 		}
 
-		// Reject extra bytes appended to the proposal encoding (e.g. proto-ignored
-		// unknown fields): re-encoding the decoded block drops them, so comparing
-		// against the received bytes detects any non-canonical padding.
+		// Make sure the proposal bytes are the canonical encoding of the block:
+		// re encode what we decoded and check it is identical to the bytes we
+		// received, so every node derives the same PartSetHeader for this block.
 		pb, err := block.ToProto()
 		if err != nil {
 			return added, err
