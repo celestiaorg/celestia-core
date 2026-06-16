@@ -1047,6 +1047,11 @@ func CommitFromProto(cp *cmtproto.Commit) (*Commit, error) {
 		return nil, errors.New("nil Commit")
 	}
 
+	// signatures must be capped.
+	if len(cp.Signatures) > MaxVotesCount {
+		return nil, fmt.Errorf("commit has too many signatures: %d, max: %d", len(cp.Signatures), MaxVotesCount)
+	}
+
 	commit := new(Commit)
 
 	bi, err := BlockIDFromProto(&cp.BlockID)
@@ -1286,6 +1291,12 @@ func (ec *ExtendedCommit) ToProto() *cmtproto.ExtendedCommit {
 func ExtendedCommitFromProto(ecp *cmtproto.ExtendedCommit) (*ExtendedCommit, error) {
 	if ecp == nil {
 		return nil, errors.New("nil ExtendedCommit")
+	}
+
+	// Bound the signature count before the make below, so a peer can't make us
+	// allocate a huge slice from an untrusted count (remote OOM).
+	if len(ecp.ExtendedSignatures) > MaxVotesCount {
+		return nil, fmt.Errorf("extended commit has too many signatures: %d, max: %d", len(ecp.ExtendedSignatures), MaxVotesCount)
 	}
 
 	extCommit := new(ExtendedCommit)

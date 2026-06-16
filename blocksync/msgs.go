@@ -15,6 +15,52 @@ const (
 	BlockResponseMessageFieldKeySize = 1
 )
 
+// errTooManySignatures is returned when an incoming block response encodes more
+// commit (or extended commit) signatures than types.MaxVotesCount.
+var errTooManySigs = fmt.Errorf("too many signatures (max: %d)", types.MaxVotesCount)
+var errTooManyExtendedsigs = fmt.Errorf("too many extended signatures (max: %d)", types.MaxVotesCount)
+
+// validateBlockSyncBytes rejects block responses that encode too many commit
+// signatures before protobuf unmarshalling can allocate one object per signature.
+func validateBlockSyncBytes(msgBytes []byte) error {
+	// unmarshal into custom stub struct that will do no allocations so we can
+	// quickly and cheaply check the validity of BlockResponse message
+	var stub bcproto.SigCountMessage
+	if err := stub.Unmarshal(msgBytes); err != nil {
+		return fmt.Errorf("malformed blocksync message %w", err)
+	}
+	if stub.BlockResponse == nil {
+		// Not a BlockResponse oneof case, no extra validation to do in this
+		// case
+		return nil
+	}
+	return validateMaxVotes(stub.BlockResponse)
+}
+
+// validateMaxVotes validates that the number of commit signatures and extended
+// commit signatures are both less than the MaxVotesCount, returns an error if
+// not.
+func validateMaxVotes(br *bcproto.SigCountBlockResponse) error {
+	commitSigs, extSigs := 0, 0
+	if br != nil {
+		if br.Block != nil && br.Block.LastCommit != nil {
+			commitSigs = len(br.Block.LastCommit.Signatures)
+		}
+		if br.ExtCommit != nil {
+			extSigs = len(br.ExtCommit.ExtendedSignatures)
+		}
+	}
+
+	if commitSigs > types.MaxVotesCount {
+		return fmt.Errorf("%w (got %d)", errTooManySigs, commitSigs)
+	}
+	if extSigs > types.MaxVotesCount {
+		return fmt.Errorf("%w (got %d)", errTooManyExtendedsigs, extSigs)
+	}
+
+	return nil
+}
+
 var (
 	MaxMsgSize = types.MaxBlockSizeBytes +
 		BlockResponseMessagePrefixSize +
