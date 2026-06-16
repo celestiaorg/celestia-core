@@ -1,7 +1,9 @@
 package p2p_test
 
 import (
+	"bytes"
 	"context"
+	"errors"
 	"net"
 	"sync"
 	"testing"
@@ -362,4 +364,73 @@ func TestBaseReactorPanicIntegration(t *testing.T) {
 	require.True(t, switches[1].IsRunning(), "Switch 1 should still be running")
 	require.True(t, r1.IsRunning())
 	require.True(t, r2.IsRunning())
+}
+
+var _ p2p.Reactor = &precheckReactor{}
+
+// precheckReactor registers a RecvMessagePrecheck that rejects any raw
+// message containing the bytes "reject".
+type precheckReactor struct {
+	p2p.BaseReactor
+
+	sync.Mutex
+	received []string
+}
+
+func newPrecheckReactor() *precheckReactor {
+	r := &precheckReactor{Mutex: sync.Mutex{}}
+	r.BaseReactor = *p2p.NewBaseReactor("PrecheckReactor", r, p2p.WithIncomingQueueSize(10))
+	return r
+}
+
+func (r *precheckReactor) GetChannels() []*conn.ChannelDescriptor {
+	return []*conn.ChannelDescriptor{
+		{
+			ID:                  0x77,
+			Priority:            1,
+			RecvMessageCapacity: 1024,
+			MessageType:         &mempool.Txs{},
+			RecvMessagePrecheck: func(bz []byte) error {
+				if bytes.Contains(bz, []byte("reject")) {
+					return errors.New("rejected by precheck")
+				}
+				return nil
+			},
+		},
+	}
+}
+
+func (r *precheckReactor) Receive(e p2p.Envelope) {
+	r.Lock()
+	defer r.Unlock()
+	m := e.Message.(*mempool.Txs)
+	r.received = append(r.received, string(m.Txs[0]))
+}
+
+// TestBaseReactorRecvMessagePrecheck verifies that a channel's
+// RecvMessagePrecheck is run on the raw bytes before unmarshalling: a message
+// the precheck rejects never reaches Receive, while one it accepts does.
+func TestBaseReactorRecvMessagePrecheck(t *testing.T) {
+	r := newPrecheckReactor()
+	peer := &imaginaryPeer{}
+
+	rejected, err := proto.Marshal(&mempool.Txs{Txs: [][]byte{[]byte("reject me")}})
+	require.NoError(t, err)
+	allowed, err := proto.Marshal(&mempool.Txs{Txs: [][]byte{[]byte("allow me")}})
+	require.NoError(t, err)
+
+	r.QueueUnprocessedEnvelope(p2p.UnprocessedEnvelope{Src: peer, Message: rejected, ChannelID: 0x77})
+	r.QueueUnprocessedEnvelope(p2p.UnprocessedEnvelope{Src: peer, Message: allowed, ChannelID: 0x77})
+
+	require.Eventually(t, func() bool {
+		r.Lock()
+		defer r.Unlock()
+		return len(r.received) == 1
+	}, time.Second, 10*time.Millisecond)
+
+	r.Lock()
+	defer r.Unlock()
+	// Only the allowed message reached Receive; the rejected one was dropped
+	// before unmarshalling.
+	require.Equal(t, []string{"allow me"}, r.received)
 }

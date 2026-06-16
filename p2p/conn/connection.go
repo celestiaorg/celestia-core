@@ -757,6 +757,11 @@ type ChannelDescriptor struct {
 	RecvBufferCapacity  int
 	RecvMessageCapacity int
 	MessageType         proto.Message
+
+	// RecvMessagePrecheck, if set, runs on an incoming message's raw bytes
+	// before it's unmarshalled. A non-nil error drops the message (and the peer)
+	// without decoding it.
+	RecvMessagePrecheck func([]byte) error
 }
 
 func (chDesc ChannelDescriptor) FillDefaults() (filled ChannelDescriptor) {
