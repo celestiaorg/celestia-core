@@ -3,6 +3,7 @@ package p2p
 import (
 	"errors"
 	"fmt"
+	"io"
 	"math"
 	"sync"
 	"time"
@@ -365,7 +366,11 @@ func (sw *Switch) StopPeerForError(peer Peer, reason interface{}, reactorName st
 		return
 	}
 
-	sw.Logger.Error("Stopping peer for error", "peer", peer, "err", reason, "reactor", reactorName)
+	if errors.Is(asError(reason), io.EOF) {
+		sw.Logger.Info("Stopping peer for error", "peer", peer, "err", reason, "reactor", reactorName)
+	} else {
+		sw.Logger.Error("Stopping peer for error", "peer", peer, "err", reason, "reactor", reactorName)
+	}
 	sw.stopAndRemovePeer(peer, reason)
 
 	if peer.IsPersistent() {
@@ -383,6 +388,32 @@ func (sw *Switch) StopPeerForError(peer Peer, reason interface{}, reactorName st
 			sw.Logger.Error("Failed to get address for peer with changed IP", "peer", peer, "err", err)
 		}
 		go sw.reconnectToPeer(addr)
+	}
+}
+
+// eofString is the stringified form of io.EOF, used to detect EOF reasons that
+// reach StopPeerForError as a bare string rather than an error value.
+const eofString = "EOF"
+
+// asError coerces a StopPeerForError reason into an error so callers can
+// inspect it with errors.Is. A reason is usually already an error; fall back
+// to matching the stringified form so a bare "EOF" string is still detected.
+func asError(reason interface{}) error {
+	switch r := reason.(type) {
+	case nil:
+		return nil
+	case error:
+		return r
+	case string:
+		if r == eofString {
+			return io.EOF
+		}
+		return errors.New(r)
+	default:
+		if fmt.Sprint(r) == eofString {
+			return io.EOF
+		}
+		return fmt.Errorf("%v", r)
 	}
 }
 
@@ -414,9 +445,16 @@ func (sw *Switch) StopPeerGracefully(peer Peer, reactorName string) {
 	}
 }
 
+// shouldLogStopError reports whether an error returned from peer.Stop is worth
+// logging at Error level. The idempotent-stop sentinel (and a nil error) are
+// expected during routine peer churn and are intentionally not logged.
+func shouldLogStopError(err error) bool {
+	return err != nil && !errors.Is(err, service.ErrAlreadyStopped)
+}
+
 func (sw *Switch) stopAndRemovePeer(peer Peer, reason interface{}) {
 	sw.transport.Cleanup(peer)
-	if err := peer.Stop(); err != nil {
+	if err := peer.Stop(); shouldLogStopError(err) {
 		sw.Logger.Error("error while stopping peer", "error", err) // TODO: should return error to be handled accordingly
 	}
 	if reason == nil {
@@ -898,7 +936,7 @@ func (sw *Switch) addPeer(p Peer) error {
 	err := p.Start()
 	if err != nil {
 		// Should never happen
-		sw.Logger.Error("Error starting peer", "err", err, "peer", p)
+		sw.Logger.Info("Error starting peer", "err", err, "peer", p)
 		return err
 	}
 
@@ -908,7 +946,7 @@ func (sw *Switch) addPeer(p Peer) error {
 	if err := sw.peers.Add(p); err != nil {
 		switch err.(type) {
 		case ErrPeerRemoval:
-			sw.Logger.Error("Error starting peer ",
+			sw.Logger.Info("Error starting peer ",
 				" err ", "Peer has already errored and removal was attempted.",
 				"peer", p.ID())
 		}
@@ -924,7 +962,7 @@ func (sw *Switch) addPeer(p Peer) error {
 		if peerSet != nil {
 			if err := peerSet.Add(p); err != nil {
 				if errors.Is(err, ErrPeerRemoval{}) {
-					sw.Logger.Error("Error starting peer",
+					sw.Logger.Info("Error starting peer",
 						"err", "Peer has already errored and removal was attempted",
 						"peer", p.ID())
 				}

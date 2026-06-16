@@ -495,7 +495,7 @@ FOR_LOOP:
 			break FOR_LOOP
 		}
 		if err != nil {
-			c.Logger.Error("Connection failed @ sendRoutine", "conn", c, "err", err)
+			c.Logger.Info("Connection failed @ sendRoutine", "conn", c, "err", err)
 			c.stopForError(err)
 			break FOR_LOOP
 		}
@@ -574,7 +574,7 @@ func (c *MConnection) sendPacketMsgOnChannel(w protoio.Writer, sendChannel *Chan
 	// Make & send a PacketMsg from this channel
 	n, err := sendChannel.writePacketMsgTo(w)
 	if err != nil {
-		c.Logger.Error("Failed to write PacketMsg", "err", err)
+		c.Logger.Info("Failed to write PacketMsg", "err", err)
 		c.stopForError(err)
 		return n, true
 	}

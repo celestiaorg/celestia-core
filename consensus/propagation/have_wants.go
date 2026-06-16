@@ -379,7 +379,7 @@ func (blockProp *Reactor) handleWants(peer p2p.ID, wants *proptypes.WantParts) {
 	// the peer must always send the proposal before sending parts, if they did
 	//  not, this node must disconnect from them.
 	if !has {
-		blockProp.Logger.Error("received part state request for unknown proposal", "peer", peer, "height", height, "round", round)
+		blockProp.Logger.Debug("received part state request for unknown proposal", "peer", peer, "height", height, "round", round)
 		// blockProp.Switch.StopPeerForError(p.peer, errors.New("received want part for unknown proposal"))
 		return
 	}
