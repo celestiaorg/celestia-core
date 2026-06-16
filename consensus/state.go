@@ -1027,22 +1027,21 @@ func (cs *State) receiveRoutine(maxSteps int) {
 func (cs *State) handleMsg(mi msgInfo) {
 	cs.lockAll()
 	defer cs.unlockAll()
-	var (
-		added bool
-		err   error
-	)
+	var added bool
 
 	msg, peerID := mi.Msg, mi.PeerID
 
+	// NOTE: the message handlers below log their own failures in place, at a
+	// level appropriate to the error, so errors are not handled here.
 	switch msg := msg.(type) {
 	case *ProposalMessage:
 		// will not cause transition.
 		// once proposal is set, we can receive block parts
-		err = cs.setProposal(msg.Proposal)
+		_ = cs.setProposal(msg.Proposal)
 
 	case *BlockPartMessage:
 		// if the proposal is complete, we'll enterPrevote or tryFinalizeCommit
-		added, err = cs.addProposalBlockPart(msg, peerID)
+		added, _ = cs.addProposalBlockPart(msg, peerID)
 
 		// We unlock here to yield to any routines that need to read the the RoundState.
 		// Previously, this code held the lock from the point at which the final block
@@ -1065,20 +1064,10 @@ func (cs *State) handleMsg(mi msgInfo) {
 			cs.statsMsgQueue <- mi
 		}
 
-		if err != nil && msg.Round != cs.rs.Round {
-			cs.Logger.Trace(
-				"received block part from wrong round",
-				"height", cs.rs.Height,
-				"cs_round", cs.rs.Round,
-				"block_round", msg.Round,
-			)
-			err = nil
-		}
-
 	case *VoteMessage:
 		// attempt to add the vote and dupeout the validator if its a duplicate signature
 		// if the vote gives us a 2/3-any or 2/3-one, we transition
-		added, err = cs.tryAddVote(msg.Vote, peerID)
+		added, _ = cs.tryAddVote(msg.Vote, peerID)
 		if added {
 			cs.statsMsgQueue <- mi
 		}
@@ -1101,17 +1090,6 @@ func (cs *State) handleMsg(mi msgInfo) {
 	default:
 		cs.Logger.Error("unknown msg type", "type", fmt.Sprintf("%T", msg))
 		return
-	}
-
-	if err != nil {
-		cs.Logger.Error(
-			"failed to process message",
-			"height", cs.rs.Height,
-			"round", cs.rs.Round,
-			"peer", peerID,
-			"msg_type", fmt.Sprintf("%T", msg),
-			"err", err,
-		)
 	}
 }
 
@@ -2209,14 +2187,28 @@ func (cs *State) defaultSetProposal(proposal *types.Proposal) error {
 		return nil
 	}
 
-	// Does not apply
+	// Does not apply. This is routine on a public network: it happens whenever
+	// a proposal arrives for a height/round we have already moved past.
 	if proposal.Height != cs.rs.Height || proposal.Round != cs.rs.Round {
+		cs.Logger.Debug(
+			"ignoring proposal from different height or round",
+			"proposal_height", proposal.Height,
+			"proposal_round", proposal.Round,
+			"height", cs.rs.Height,
+			"round", cs.rs.Round,
+		)
 		return fmt.Errorf("%w: proposal height %v round %v does not match state height %v round %v (if consensus is still reached, please ignore this error as it's a consequence of running two gossip routines at the same time)", errInvalidProposalHeightRound, proposal.Height, proposal.Round, cs.rs.Height, cs.rs.Round)
 	}
 	// Verify POLRound, which must be -1 or in range [0, proposal.Round).
 	if proposal.POLRound < -1 ||
 		(proposal.POLRound >= 0 && proposal.POLRound >= proposal.Round) {
-		return fmt.Errorf(ErrInvalidProposalPOLRound.Error()+"%v %v", proposal.POLRound, proposal.Round)
+		cs.Logger.Info(
+			"rejecting proposal with invalid POL round",
+			"height", proposal.Height,
+			"round", proposal.Round,
+			"pol_round", proposal.POLRound,
+		)
+		return fmt.Errorf("%w: POLRound %v Round %v", ErrInvalidProposalPOLRound, proposal.POLRound, proposal.Round)
 	}
 
 	pubKey := cs.rs.Validators.GetProposer().PubKey
@@ -2225,6 +2217,12 @@ func (cs *State) defaultSetProposal(proposal *types.Proposal) error {
 	if !pubKey.VerifySignature(
 		types.ProposalSignBytes(cs.state.ChainID, p), proposal.Signature,
 	) {
+		cs.Logger.Info(
+			"rejecting proposal with invalid signature",
+			"height", proposal.Height,
+			"round", proposal.Round,
+			"proposer", pubKey.Address(),
+		)
 		return ErrInvalidProposalSignature
 	}
 
@@ -2234,6 +2232,12 @@ func (cs *State) defaultSetProposal(proposal *types.Proposal) error {
 		maxBytes = int64(types.MaxBlockSizeBytes)
 	}
 	if int64(proposal.BlockID.PartSetHeader.Total) > (maxBytes-1)/int64(types.BlockPartSizeBytes)+1 {
+		cs.Logger.Info(
+			"rejecting proposal with too many block parts",
+			"height", proposal.Height,
+			"round", proposal.Round,
+			"total_parts", proposal.BlockID.PartSetHeader.Total,
+		)
 		return ErrProposalTooManyParts
 	}
 
@@ -2284,6 +2288,25 @@ func (cs *State) addProposalBlockPart(msg *BlockPartMessage, peerID p2p.ID) (add
 		if errors.Is(err, types.ErrPartSetInvalidProof) || errors.Is(err, types.ErrPartSetUnexpectedIndex) {
 			cs.metrics.BlockGossipPartsReceived.With("matches_current", "false").Add(1)
 		}
+		if round != cs.rs.Round {
+			// Blocks might be reused across rounds, so a part that fails to
+			// add for a different round is routine.
+			cs.Logger.Trace(
+				"received block part from wrong round",
+				"height", height,
+				"cs_round", cs.rs.Round,
+				"block_round", round,
+			)
+		} else {
+			cs.Logger.Info(
+				"failed to add proposal block part",
+				"height", height,
+				"round", round,
+				"index", part.Index,
+				"peer", peerID,
+				"err", err,
+			)
+		}
 		return added, err
 	}
 
@@ -2299,6 +2322,14 @@ func (cs *State) addProposalBlockPart(msg *BlockPartMessage, peerID p2p.ID) (add
 		maxBytes = int64(types.MaxBlockSizeBytes)
 	}
 	if cs.rs.ProposalBlockParts.ByteSize() > maxBytes {
+		cs.Logger.Info(
+			"rejecting block: total size of proposal block parts exceeds maximum block bytes",
+			"height", height,
+			"round", round,
+			"peer", peerID,
+			"block_parts_size", cs.rs.ProposalBlockParts.ByteSize(),
+			"max_bytes", maxBytes,
+		)
 		return added, fmt.Errorf("total size of proposal block parts exceeds maximum block bytes (%d > %d)",
 			cs.rs.ProposalBlockParts.ByteSize(), maxBytes,
 		)
@@ -2313,11 +2344,25 @@ func (cs *State) addProposalBlockPart(msg *BlockPartMessage, peerID p2p.ID) (add
 		pbb := new(cmtproto.Block)
 		err = proto.Unmarshal(bz, pbb)
 		if err != nil {
+			cs.Logger.Error(
+				"failed to unmarshal completed proposal block",
+				"height", height,
+				"round", round,
+				"peer", peerID,
+				"err", err,
+			)
 			return added, err
 		}
 
 		block, err := types.BlockFromProto(pbb)
 		if err != nil {
+			cs.Logger.Error(
+				"failed to build completed proposal block from proto",
+				"height", height,
+				"round", round,
+				"peer", peerID,
+				"err", err,
+			)
 			return added, err
 		}
 
@@ -2379,6 +2424,12 @@ func (cs *State) tryAddVote(vote *types.Vote, peerID p2p.ID) (bool, error) {
 		//nolint: gocritic
 		if voteErr, ok := err.(*types.ErrVoteConflictingVotes); ok {
 			if cs.privValidatorPubKey == nil {
+				cs.Logger.Error(
+					"failed to process conflicting vote; private validator public key is not set",
+					"height", vote.Height,
+					"round", vote.Round,
+					"type", vote.Type,
+				)
 				return false, errPubKeyIsNotSet
 			}
 
@@ -2395,7 +2446,9 @@ func (cs *State) tryAddVote(vote *types.Vote, peerID p2p.ID) (bool, error) {
 
 			// report conflicting votes to the evidence pool
 			cs.evpool.ReportConflictingVotes(voteErr.VoteA, voteErr.VoteB)
-			cs.Logger.Debug(
+			// Equivocation is peer/validator misbehavior worth surfacing.
+			// (Info because the Logger interface has no Warn level.)
+			cs.Logger.Info(
 				"found and sent conflicting votes to the evidence pool",
 				"vote_a", voteErr.VoteA,
 				"vote_b", voteErr.VoteB,
@@ -2412,7 +2465,9 @@ func (cs *State) tryAddVote(vote *types.Vote, peerID p2p.ID) (bool, error) {
 			// 2) not a bad peer? this can also err sometimes with "Unexpected step" OR
 			// 3) tmkms use with multiple validators connecting to a single tmkms instance
 			// 		(https://github.com/tendermint/tendermint/issues/3839).
-			cs.Logger.Info("failed attempting to add vote", "err", err)
+			// Mostly late/duplicate votes, which are routine on a public
+			// network, hence Debug.
+			cs.Logger.Debug("failed attempting to add vote", "peer", peerID, "err", err)
 			return added, ErrAddingVote
 		}
 	}
