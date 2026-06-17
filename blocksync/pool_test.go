@@ -236,7 +236,7 @@ func TestBlockPoolTimeout(t *testing.T) {
 // block forever.
 func TestBlockPoolTimeoutDoesNotHoldLock(t *testing.T) {
 	start := int64(42)
-	errorsCh := make(chan peerError)   // unbuffered, intentionally undrained
+	errorsCh := make(chan peerError) // unbuffered, intentionally undrained
 	requestsCh := make(chan BlockRequest)
 
 	pool := NewBlockPool(start, requestsCh, errorsCh)
