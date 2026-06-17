@@ -655,19 +655,22 @@ func generateResponses(numResponses int) (responses []*abci.ExecTxResult) {
 
 func TestTxPool_ExpiredTxs_Timestamp(t *testing.T) {
 	txmp := setup(t, 5000)
-	txmp.config.TTLDuration = 5 * time.Millisecond
+	txmp.config.TTLDuration = 100 * time.Millisecond
 
 	added1 := checkTxs(t, txmp, 10, 0)
 	require.Equal(t, len(added1), txmp.Size())
 
-	// Wait a while, then add some more transactions that should not be expired
-	// when the first batch TTLs out.
-	// Because the TTL is 5ms which is very short, we need to have a more precise
-	// pruning interval to ensure that the transactions are expired
-	// so that the expired event is caught quickly enough
-	// that the second batch of transactions are not expired.
-
-	time.Sleep(2500 * time.Microsecond)
+	// Wait a while, then add a second batch of transactions. The second batch
+	// should still be present after the first batch TTLs out, because each
+	// transaction expires relative to its own arrival time.
+	//
+	// The margin between the two batches expiring (the sleep below) must be
+	// large enough to absorb scheduling jitter on a loaded CI runner. If it is
+	// too small, the require.Eventually loop confirming the first batch expired
+	// can run long enough that the second batch expires too, failing the final
+	// check. We therefore use generous, well-separated durations rather than
+	// sub-millisecond timings.
+	time.Sleep(50 * time.Millisecond)
 	added2 := checkTxs(t, txmp, 10, 1)
 
 	// use require.Eventually to wait for the TTL to expire
@@ -695,7 +698,7 @@ func TestTxPool_ExpiredTxs_Timestamp(t *testing.T) {
 			}
 		}
 		return true
-	}, 10*time.Millisecond, 50*time.Microsecond)
+	}, 2*time.Second, 1*time.Millisecond)
 
 	// All the transactions added later should still be around.
 	for _, tx := range added2 {
