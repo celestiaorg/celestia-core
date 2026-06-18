@@ -231,6 +231,57 @@ func TestBlockPoolTimeout(t *testing.T) {
 	}
 }
 
+// TestBlockPoolTimeoutDoesNotHoldLock is a regression test for #5839: onTimeout
+// must not hold pool.mtx while sending on errorsCh, otherwise other pool methods
+// block forever.
+func TestBlockPoolTimeoutDoesNotHoldLock(t *testing.T) {
+	start := int64(42)
+	errorsCh := make(chan peerError) // unbuffered, intentionally undrained
+	requestsCh := make(chan BlockRequest)
+
+	pool := NewBlockPool(start, requestsCh, errorsCh)
+	pool.SetLogger(log.TestingLogger())
+	require.NoError(t, pool.Start())
+	t.Cleanup(func() { _ = pool.Stop() })
+
+	peerID := p2p.ID("timeout-peer")
+	pool.SetPeerRange(peerID, 1, 100)
+
+	pool.mtx.Lock()
+	peer := pool.peers[peerID]
+	pool.mtx.Unlock()
+	require.NotNil(t, peer)
+
+	// Fire the timeout. It will block on the unbuffered, undrained errorsCh.
+	// With the fix, pool.mtx is already released by then; without it, the lock
+	// is held across the blocked send.
+	go peer.onTimeout()
+
+	// Give onTimeout time to acquire the (uncontended) lock and reach the
+	// blocking send on errorsCh.
+	time.Sleep(300 * time.Millisecond)
+
+	// A method that needs pool.mtx must remain serviceable.
+	done := make(chan struct{})
+	go func() {
+		pool.MaxPeerHeight()
+		close(done)
+	}()
+
+	select {
+	case <-done:
+		// good: lock was released before the blocking send.
+	case <-time.After(5 * time.Second):
+		t.Fatal("pool.mtx held across blocked sendError: deadlock regression (#5839)")
+	}
+
+	// Drain the pending error so onTimeout can return and the pool can stop.
+	select {
+	case <-errorsCh:
+	case <-time.After(time.Second):
+	}
+}
+
 func TestBlockPoolRemovePeer(t *testing.T) {
 	peers := make(testPeers, 10)
 	for i := 0; i < 10; i++ {
