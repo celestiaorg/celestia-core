@@ -7,6 +7,7 @@ celestia-core is a fork of [cometbft/cometbft](https://github.com/cometbft/comet
 1. The GRPC server exposed by CometBFT was modified to expose Celestia-specific APIs:
     - `BlockAPI`
     - `BlobstreamAPI`
+1. A [propagation reactor](./consensus/propagation/) was added to support Celestia's block propagation needs. It gossips compact blocks, tracks which proposal parts peers have or want, and helps recover missing proposal parts during consensus.
 
 
 See [./docs/celestia-architecture](./docs/celestia-architecture/) for architecture decision records (ADRs) on Celestia modifications.
