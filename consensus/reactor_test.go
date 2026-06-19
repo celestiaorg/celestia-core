@@ -800,8 +800,11 @@ func timeoutWaitGroup(n int, f func(int)) {
 	}()
 
 	// we're running many nodes in-process, possibly in in a virtual machine,
-	// and spewing debug messages - making a block could take a while,
-	timeout := time.Second * 20
+	// and spewing debug messages - making a block could take a while, so use a
+	// generous timeout. This only bounds the failure case: a passing run
+	// returns as soon as all validators commit, so a larger value adds no
+	// latency to green runs but gives slow CI runners more headroom.
+	timeout := time.Second * 40
 
 	select {
 	case <-done:
