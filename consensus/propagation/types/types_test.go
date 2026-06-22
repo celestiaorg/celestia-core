@@ -249,8 +249,32 @@ func TestWantParts_ValidateBasic(t *testing.T) {
 			false,
 		},
 		{
+			"valid non-empty bit array",
+			WantParts{Height: 1, Round: 1, Parts: bits.NewBitArray(100), MissingPartsCount: 10},
+			false,
+		},
+		{
 			"nil bit array",
-			WantParts{Height: 1, Round: 1, Parts: nil},
+			WantParts{Height: 1, Round: 1, Parts: nil, MissingPartsCount: 10},
+			true,
+		},
+		{
+			"zero missing parts count",
+			WantParts{Height: 1, Round: 1, Parts: &bits.BitArray{}, MissingPartsCount: 0},
+			true,
+		},
+		{
+			"negative missing parts count",
+			WantParts{Height: 1, Round: 1, Parts: &bits.BitArray{}, MissingPartsCount: -1},
+			true,
+		},
+		{
+			// Bits claims 2^31 entries but only a single element is supplied,
+			// so numElements(Bits) != len(Elems). Without Parts.ValidateBasic
+			// this inconsistent array would pass and feed an attacker-controlled
+			// Bits value into GetTrueIndices (unbounded allocation / loop).
+			"inconsistent bit array (Bits >> len(Elems))",
+			WantParts{Height: 1, Round: 1, Parts: &bits.BitArray{Bits: 1 << 31, Elems: []uint64{1}}, MissingPartsCount: 1},
 			true,
 		},
 	}
