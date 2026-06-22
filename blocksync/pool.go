@@ -395,30 +395,40 @@ func (pool *BlockPool) RedoRequestFrom(height int64, peerID p2p.ID) {
 // do not add the block and return an error.
 // TODO: ensure that blocks come in order for each peer.
 func (pool *BlockPool) AddBlock(peerID p2p.ID, block *types.Block, extCommit *types.ExtendedCommit, blockSize int) error {
+	err, removePeer := pool.addBlock(peerID, block, extCommit, blockSize)
+
+	// Send the error outside pool.mtx: sendError can block on errorsCh, and
+	// blocking under the lock would deadlock everyone waiting for pool.mtx.
+	if removePeer {
+		pool.sendError(err, peerID)
+	}
+	return err
+}
+
+// addBlock applies the block under pool.mtx, returning the error to report and
+// whether the peer should be disconnected for it (dispatched by AddBlock() after
+// the lock is released).
+func (pool *BlockPool) addBlock(peerID p2p.ID, block *types.Block, extCommit *types.ExtendedCommit, blockSize int) (err error, removePeer bool) {
 	pool.mtx.Lock()
 	defer pool.mtx.Unlock()
 
 	if extCommit != nil && block.Height != extCommit.Height {
-		err := fmt.Errorf("block height %d != extCommit height %d", block.Height, extCommit.Height)
 		// Peer sent us an invalid block => remove it.
-		pool.sendError(err, peerID)
-		return err
+		return fmt.Errorf("block height %d != extCommit height %d", block.Height, extCommit.Height), true
 	}
 
 	requester := pool.requesters[block.Height]
 	if requester == nil {
 		// If the peer sent us a block we clearly didn't request, we disconnect.
 		if block.Height > pool.height || block.Height < pool.startHeight {
-			err := fmt.Errorf("peer sent us block #%d we didn't expect (current height: %d, start height: %d)",
-				block.Height, pool.height, pool.startHeight)
-			pool.sendError(err, peerID)
-			return err
+			return fmt.Errorf("peer sent us block #%d we didn't expect (current height: %d, start height: %d)",
+				block.Height, pool.height, pool.startHeight), true
 		}
 		peer := pool.peers[peerID]
 		if peer != nil {
 			peer.decrPending(blockSize)
 		}
-		return fmt.Errorf("got an already committed block #%d (possibly from the slow peer %s)", block.Height, peerID)
+		return fmt.Errorf("got an already committed block #%d (possibly from the slow peer %s)", block.Height, peerID), false
 	}
 
 	blockSet, err := requester.setBlock(block, extCommit, peerID)
@@ -428,11 +438,9 @@ func (pool *BlockPool) AddBlock(peerID p2p.ID, block *types.Block, extCommit *ty
 		// This is not an error, just a timing issue.
 		if pool.isPeerBanned(peerID) {
 			pool.Logger.Trace("Ignoring block from recently banned peer", "peer", peerID, "height", block.Height)
-			return nil
+			return nil, false
 		}
-		err := fmt.Errorf("requested block #%d from %v, not %s, %w", block.Height, requester.peerID, peerID, err)
-		pool.sendError(err, peerID)
-		return err
+		return fmt.Errorf("requested block #%d from %v, not %s, %w", block.Height, requester.peerID, peerID, err), true
 	}
 
 	atomic.AddInt32(&pool.numPending, -1)
@@ -455,7 +463,7 @@ func (pool *BlockPool) AddBlock(peerID p2p.ID, block *types.Block, extCommit *ty
 			"numPeers", len(pool.peers))
 	}
 
-	return nil
+	return nil, false
 }
 
 // Height returns the pool's height.
