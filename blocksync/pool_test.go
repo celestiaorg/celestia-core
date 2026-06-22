@@ -576,3 +576,151 @@ func TestRecalculateParams(t *testing.T) {
 	assert.Equal(t, 30*time.Second, pool.retryTimeout, "expected retry seconds to be equal for empty buffer")
 	assert.Equal(t, 5, pool.reqLimit, "expected retry limit to be equal for empty buffer")
 }
+<<<<<<< HEAD
+=======
+
+// TestBlockPoolBansPeerWithBaseGreaterThanHeight verifies that a peer whose self-reported base
+// exceeds its own height (a structurally impossible state) is banned.
+func TestBlockPoolBansPeerWithBaseGreaterThanHeight(t *testing.T) {
+	requestsCh := make(chan BlockRequest, 10)
+	errorsCh := make(chan peerError, 10)
+
+	pool := NewBlockPool(1, requestsCh, errorsCh)
+	pool.SetLogger(log.TestingLogger())
+
+	badID := p2p.ID("bad")
+	pool.SetPeerRange(badID, 500, 100)
+
+	require.True(t, pool.IsPeerBanned(badID), "peer reporting base > height must be banned")
+	require.EqualValues(t, 0, pool.MaxPeerHeight(), "banned peer must not raise maxPeerHeight")
+}
+
+// TestBlockPoolMaxPeerHeightRefreshesOnPopRequest covers:
+//  1. A peer whose base is ahead of pool.height must not contribute to maxPeerHeight
+//  2. When pool.height advances past a pruned peer's base, maxPeerHeight is re-evaluated.
+func TestBlockPoolMaxPeerHeightRefreshesOnPopRequest(t *testing.T) {
+	requestsCh := make(chan BlockRequest, 10)
+	errorsCh := make(chan peerError, 10)
+
+	pool := NewBlockPool(10, requestsCh, errorsCh)
+	pool.SetLogger(log.TestingLogger())
+
+	// Peer A's range covers pool.height, so it contributes to maxPeerHeight.
+	pool.SetPeerRange(p2p.ID("A"), 1, 20)
+	// Peer B is pruned ahead of pool.height and must be excluded until the
+	// pool advances past its base.
+	pool.SetPeerRange(p2p.ID("B"), 15, 100)
+	require.EqualValues(t, 20, pool.MaxPeerHeight(),
+		"peer B is pruned ahead of pool.height and must not contribute yet")
+
+	// Advance pool.height from 10 to 15 via PopRequest. Install a dummy
+	// requester at each height so PopRequest has something to pop; the
+	// requester is never started, so Stop() is a logged no-op.
+	for h := int64(10); h < 15; h++ {
+		pool.mtx.Lock()
+		pool.requesters[h] = newBPRequester(pool, h)
+		pool.mtx.Unlock()
+		pool.PopRequest()
+	}
+
+	// pool.height is now 15, so B (base=15) becomes eligible and must lift
+	// maxPeerHeight to its advertised height without B re-sending status.
+	require.EqualValues(t, 100, pool.MaxPeerHeight(),
+		"peer B must contribute to maxPeerHeight once pool.height reaches its base")
+}
+
+// TestBlockPoolIsCaughtUpAllPeersPrunedAhead verifies that a node does NOT
+// consider itself caught up when every connected peer advertises a base
+// higher than pool.height. In that case updateMaxPeerHeight() filters all
+// peers out, leaving maxPeerHeight == 0; IsCaughtUp must still return false
+// because peers exist and are in fact ahead of us, just unable to serve.
+//
+// Regression test for premature blocksync -> consensus switch  when the only available
+// peer reports base > pool.height.
+func TestBlockPoolIsCaughtUpAllPeersPrunedAhead(t *testing.T) {
+	const ourHeight = int64(100)
+
+	requestsCh := make(chan BlockRequest, 10)
+	errorsCh := make(chan peerError, 10)
+	pool := NewBlockPool(ourHeight, requestsCh, errorsCh)
+	pool.SetLogger(log.TestingLogger())
+
+	// Every connected peer is pruned ahead of pool.height — none can serve
+	// us blocks at our current height even though their advertised height is
+	// higher than ours.
+	pool.SetPeerRange(p2p.ID("pruned1"), ourHeight+50, ourHeight+200)
+	pool.SetPeerRange(p2p.ID("pruned2"), ourHeight+10, ourHeight+150)
+
+	require.EqualValues(t, 0, pool.MaxPeerHeight(),
+		"all peers pruned ahead of pool.height must be excluded from maxPeerHeight")
+	require.False(t, pool.IsCaughtUp(),
+		"node must not consider itself caught up when no peer can serve blocks at pool.height")
+}
+
+// TestBlockPoolIsCaughtUpFreshNetwork verifies that a node DOES consider
+// itself caught up when every peer advertises height 0 — i.e. the network
+// has not produced any blocks yet. Without this, validators at network
+// genesis would stay in blocksync forever, waiting for blocks no one has
+// produced yet, and the chain would never start.
+//
+// pool.height here is state.InitialHeight (the next block to fetch) while
+// every peer reports a fresh store: base=0, height=0. maxPeerHeight ends up
+// at 0, but the correct answer is "caught up" so consensus can take over.
+func TestBlockPoolIsCaughtUpFreshNetwork(t *testing.T) {
+	const initialHeight = int64(1000)
+
+	requestsCh := make(chan BlockRequest, 10)
+	errorsCh := make(chan peerError, 10)
+	pool := NewBlockPool(initialHeight, requestsCh, errorsCh)
+	pool.SetLogger(log.TestingLogger())
+
+	// Every peer is at network genesis: no blocks produced yet.
+	pool.SetPeerRange(p2p.ID("peer1"), 0, 0)
+	pool.SetPeerRange(p2p.ID("peer2"), 0, 0)
+
+	require.EqualValues(t, 0, pool.MaxPeerHeight(),
+		"peers without blocks contribute 0 to maxPeerHeight")
+	require.True(t, pool.IsCaughtUp(),
+		"node must be considered caught up when no peer has any blocks (fresh network)")
+}
+
+// TestAddBlockDoesNotDeadlockOnSendError is a regression test for AddBlock
+// holding pool.mtx while calling sendError on an unbuffered channel.
+func TestAddBlockDoesNotDeadlockOnSendError(t *testing.T) {
+	requestsCh := make(chan BlockRequest, 10)
+	errorsCh := make(chan peerError) // unbuffered: keeps AddBlock blocked in sendError
+
+	pool := NewBlockPool(1, requestsCh, errorsCh)
+	pool.SetLogger(log.TestingLogger())
+	require.NoError(t, pool.Start())
+	t.Cleanup(func() { _ = pool.Stop() })
+
+	pool.mtx.Lock()
+	req := newBPRequester(pool, 1)
+	req.peerID = "A"
+	pool.requesters[1] = req
+	pool.mtx.Unlock()
+
+	block := &types.Block{Header: types.Header{Height: 1}, LastCommit: &types.Commit{}}
+	extCommit := &types.ExtendedCommit{Height: 1}
+
+	// "B" did not request the block; setBlock fails → sendError while holding pool.mtx.
+	go func() { _ = pool.AddBlock("B", block, extCommit, 123) }()
+	time.Sleep(50 * time.Millisecond)
+
+	heightDone := make(chan struct{})
+	go func() {
+		pool.Height()
+		close(heightDone)
+	}()
+
+	select {
+	case <-heightDone:
+		<-errorsCh
+	case <-time.After(500 * time.Millisecond):
+		<-errorsCh
+		<-heightDone
+		t.Fatal("deadlock: AddBlock held pool.mtx while blocked in sendError")
+	}
+}
+>>>>>>> f0ced4ca (fix(blocksync): concurrency bug in AddBlock caused by sendErr holding pool mtx (#3137))
