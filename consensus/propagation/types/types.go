@@ -406,7 +406,7 @@ func (w *WantParts) ValidateBasic() error {
 	if w.MissingPartsCount <= 0 {
 		return errors.New("WantParts: MissingPartsCount cannot be negative or zero")
 	}
-	return nil
+	return w.Parts.ValidateBasic()
 }
 
 // ToProto converts WantParts to its protobuf representation.
