@@ -260,6 +260,12 @@ func TestStateOversizedBlock(t *testing.T) {
 	origTimeout := ensureTimeout
 	ensureTimeout = 2 * time.Second
 	defer func() { ensureTimeout = origTimeout }()
+	// Validating a max-size block under -race on slow CI can push the
+	// prevote→precommit transition past the default 2s vote timeout
+	// (observed at 2.2–2.3s).
+	origVoteTimeout := ensureVoteTimeout
+	ensureVoteTimeout = 5 * time.Second
+	defer func() { ensureVoteTimeout = origVoteTimeout }()
 	const maxBytes = int64(types.BlockPartSizeBytes)
 
 	for _, testCase := range []struct {
@@ -286,7 +292,9 @@ func TestStateOversizedBlock(t *testing.T) {
 			propBlock, propBlockParts := findBlockSizeLimit(t, height, maxBytes, cs1, partSize, testCase.oversized)
 
 			timeoutProposeCh := subscribe(cs1.eventBus, types.EventQueryTimeoutPropose)
-			voteCh := subscribe(cs1.eventBus, types.EventQueryVote)
+			// Only wait for this validator's votes. The peer prevote below is
+			// just input that drives the state machine toward our precommit.
+			voteCh := subscribeToVoter(cs1, cs1.privValidatorPubKey.Address())
 
 			// make the second validator the proposer by incrementing round
 			round++
@@ -345,7 +353,6 @@ func TestStateOversizedBlock(t *testing.T) {
 			require.NoError(t, err)
 
 			signAddVotes(cs1, cmtproto.PrevoteType, propBlock.Hash(), bps.Header(), false, vs2)
-			ensurePrevote(voteCh, height, round)
 			ensurePrecommit(voteCh, height, round)
 			validatePrecommit(t, cs1, round, lockedRound, vss[0], validateHash, validateHash)
 
