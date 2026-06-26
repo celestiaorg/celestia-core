@@ -183,10 +183,18 @@ func (e *seenEntry) clearFutureMetadata() {
 	e.lastPeer = 0
 }
 
-// clone copies mutable fields so callers cannot mutate tracker state.
+// clone copies every field explicitly so callers cannot mutate tracker state.
+// Fields are listed by hand (rather than `cp := *e`) so that adding a new
+// map/slice/pointer field forces a deliberate decision here instead of silently
+// sharing it between the clone and the tracker.
 func (e *seenEntry) clone() *seenEntry {
-	cp := *e
-	cp.peers = make(map[uint16]struct{}, len(e.peers))
+	cp := &seenEntry{
+		txKey:     e.txKey,
+		peers:     make(map[uint16]struct{}, len(e.peers)),
+		addedAt:   e.addedAt,
+		requested: e.requested,
+		lastPeer:  e.lastPeer,
+	}
 	for peer := range e.peers {
 		cp.peers[peer] = struct{}{}
 	}
@@ -197,7 +205,7 @@ func (e *seenEntry) clone() *seenEntry {
 			sequence:  e.futureTxInfo.sequence,
 		}
 	}
-	return &cp
+	return cp
 }
 
 // peerIDs returns candidate peers for the request path.
