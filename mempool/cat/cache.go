@@ -183,10 +183,8 @@ func (e *seenEntry) clearFutureMetadata() {
 	e.lastPeer = 0
 }
 
-// clone copies every field explicitly so callers cannot mutate tracker state.
-// Fields are listed by hand (rather than `cp := *e`) so that adding a new
-// map/slice/pointer field forces a deliberate decision here instead of silently
-// sharing it between the clone and the tracker.
+// clone deep-copies the entry so callers cannot mutate tracker state. Fields are
+// listed explicitly so a newly added map/slice/pointer can't be silently shared.
 func (e *seenEntry) clone() *seenEntry {
 	cp := &seenEntry{
 		txKey:     e.txKey,
@@ -195,9 +193,11 @@ func (e *seenEntry) clone() *seenEntry {
 		requested: e.requested,
 		lastPeer:  e.lastPeer,
 	}
+
 	for peer := range e.peers {
 		cp.peers[peer] = struct{}{}
 	}
+
 	if e.futureTxInfo != nil {
 		cp.futureTxInfo = &futureTxInfo{
 			signerKey: e.futureTxInfo.signerKey,
@@ -205,6 +205,7 @@ func (e *seenEntry) clone() *seenEntry {
 			sequence:  e.futureTxInfo.sequence,
 		}
 	}
+
 	return cp
 }
 
@@ -215,10 +216,12 @@ func (e *seenEntry) peerIDs() []uint16 {
 	if len(e.peers) == 0 {
 		return nil
 	}
+
 	out := make([]uint16, 0, len(e.peers))
 	for peer := range e.peers {
 		out = append(out, peer)
 	}
+
 	return out
 }
 
@@ -285,17 +288,21 @@ func (s *SeenTracker) Add(txKey types.TxKey, peer uint16, signer []byte, sequenc
 	return true
 }
 
-// addPeerToEntryLocked adds another peer to an existing tx without letting that
-// peer exceed its own admission limit.
+// addPeerToEntryLocked attaches peer to an already-tracked tx. It returns false
+// if peer is at perPeerLimit. Re-adding a peer already on the entry always
+// succeeds and does not count against the limit.
 func (s *SeenTracker) addPeerToEntryLocked(entry *seenEntry, peer uint16) bool {
 	if _, has := entry.peers[peer]; has {
 		return true
 	}
+
 	if s.txCountByPeer[peer] >= s.perPeerLimit {
 		return false
 	}
+
 	entry.peers[peer] = struct{}{}
 	s.txCountByPeer[peer]++
+
 	return true
 }
 
@@ -339,10 +346,12 @@ func (s *SeenTracker) indexFutureTxLocked(entry *seenEntry, signer []byte, seque
 func (s *SeenTracker) ClearSequence(txKey types.TxKey) {
 	s.mtx.Lock()
 	defer s.mtx.Unlock()
+
 	entry, ok := s.txByKey[txKey]
 	if !ok || entry.futureTxInfo == nil {
 		return
 	}
+
 	s.removeFromFutureQueueLocked(entry)
 	entry.clearFutureMetadata()
 }
@@ -351,10 +360,12 @@ func (s *SeenTracker) ClearSequence(txKey types.TxKey) {
 func (s *SeenTracker) RemoveKey(txKey types.TxKey) {
 	s.mtx.Lock()
 	defer s.mtx.Unlock()
+
 	entry, ok := s.txByKey[txKey]
 	if !ok {
 		return
 	}
+
 	s.removeEntryLocked(entry)
 }
 
@@ -363,9 +374,11 @@ func (s *SeenTracker) removeEntryLocked(entry *seenEntry) {
 	if entry.futureTxInfo != nil {
 		s.removeFromFutureQueueLocked(entry)
 	}
+
 	for peer := range entry.peers {
 		s.decrementPeerTxCountLocked(peer)
 	}
+
 	delete(s.txByKey, entry.txKey)
 }
 
@@ -374,12 +387,14 @@ func (s *SeenTracker) removeEntryLocked(entry *seenEntry) {
 func (s *SeenTracker) removeFromFutureQueueLocked(entry *seenEntry) {
 	signerKey := entry.futureTxInfo.signerKey
 	queue := s.futureTxsBySigner[signerKey]
+
 	for i, candidate := range queue {
 		if candidate == entry {
 			queue = append(queue[:i], queue[i+1:]...)
 			break
 		}
 	}
+
 	if len(queue) == 0 {
 		delete(s.futureTxsBySigner, signerKey)
 		return
@@ -396,6 +411,7 @@ func (s *SeenTracker) RemovePeer(peer uint16) {
 
 	s.mtx.Lock()
 	defer s.mtx.Unlock()
+
 	for _, entry := range s.txByKey {
 		if _, has := entry.peers[peer]; has {
 			delete(entry.peers, peer)
@@ -416,6 +432,7 @@ func (s *SeenTracker) RemovePeer(peer uint16) {
 func (s *SeenTracker) Prune(cutoff time.Time) {
 	s.mtx.Lock()
 	defer s.mtx.Unlock()
+
 	for _, entry := range s.txByKey {
 		if entry.addedAt.Before(cutoff) {
 			s.removeEntryLocked(entry)
@@ -427,11 +444,14 @@ func (s *SeenTracker) Prune(cutoff time.Time) {
 func (s *SeenTracker) Has(txKey types.TxKey, peer uint16) bool {
 	s.mtx.Lock()
 	defer s.mtx.Unlock()
+
 	entry, ok := s.txByKey[txKey]
 	if !ok {
 		return false
 	}
+
 	_, has := entry.peers[peer]
+
 	return has
 }
 
@@ -439,27 +459,28 @@ func (s *SeenTracker) Has(txKey types.TxKey, peer uint16) bool {
 func (s *SeenTracker) Get(txKey types.TxKey) *seenEntry {
 	s.mtx.Lock()
 	defer s.mtx.Unlock()
+
 	entry, ok := s.txByKey[txKey]
 	if !ok {
 		return nil
 	}
+
 	return entry.clone()
 }
 
-// Pending returns a copy of the future-sequence metadata for txKey, or nil if
-// the tx is not currently queued for future gap-fill.
-func (s *SeenTracker) Pending(txKey types.TxKey) *futureTxInfo {
+// PendingSequence reports the signer/sequence under which txKey is queued for
+// future gap-fill; ok is false if it is unknown or tracked only by peer. The
+// returned signer is a copy.
+func (s *SeenTracker) PendingSequence(txKey types.TxKey) (signer []byte, sequence uint64, ok bool) {
 	s.mtx.Lock()
 	defer s.mtx.Unlock()
-	entry, ok := s.txByKey[txKey]
-	if !ok || entry.futureTxInfo == nil {
-		return nil
+
+	entry, found := s.txByKey[txKey]
+	if !found || entry.futureTxInfo == nil {
+		return nil, 0, false
 	}
-	return &futureTxInfo{
-		signerKey: entry.futureTxInfo.signerKey,
-		signer:    append([]byte(nil), entry.futureTxInfo.signer...),
-		sequence:  entry.futureTxInfo.sequence,
-	}
+
+	return append([]byte(nil), entry.futureTxInfo.signer...), entry.futureTxInfo.sequence, true
 }
 
 // PrunePending drops future-sequence metadata for entries added before cutoff
@@ -467,6 +488,7 @@ func (s *SeenTracker) Pending(txKey types.TxKey) *futureTxInfo {
 func (s *SeenTracker) PrunePending(cutoff time.Time) {
 	s.mtx.Lock()
 	defer s.mtx.Unlock()
+
 	for _, entry := range s.txByKey {
 		if entry.futureTxInfo == nil || !entry.addedAt.Before(cutoff) {
 			continue
@@ -480,14 +502,17 @@ func (s *SeenTracker) PrunePending(cutoff time.Time) {
 func (s *SeenTracker) Peers(txKey types.TxKey) map[uint16]struct{} {
 	s.mtx.Lock()
 	defer s.mtx.Unlock()
+
 	entry, ok := s.txByKey[txKey]
 	if !ok {
 		return nil
 	}
+
 	out := make(map[uint16]struct{}, len(entry.peers))
 	for peer := range entry.peers {
 		out[peer] = struct{}{}
 	}
+
 	return out
 }
 
@@ -495,6 +520,7 @@ func (s *SeenTracker) Peers(txKey types.TxKey) map[uint16]struct{} {
 func (s *SeenTracker) Len() int {
 	s.mtx.Lock()
 	defer s.mtx.Unlock()
+
 	return len(s.txByKey)
 }
 
@@ -502,6 +528,7 @@ func (s *SeenTracker) Len() int {
 func (s *SeenTracker) Reset() {
 	s.mtx.Lock()
 	defer s.mtx.Unlock()
+
 	s.txByKey = make(map[types.TxKey]*seenEntry)
 	s.futureTxsBySigner = make(map[string][]*seenEntry)
 	s.txCountByPeer = make(map[uint16]int)
@@ -512,16 +539,20 @@ func (s *SeenTracker) PendingForSigner(signer []byte) []*seenEntry {
 	if len(signer) == 0 {
 		return nil
 	}
+
 	s.mtx.Lock()
 	defer s.mtx.Unlock()
+
 	queue := s.futureTxsBySigner[string(signer)]
 	if len(queue) == 0 {
 		return nil
 	}
+
 	out := make([]*seenEntry, len(queue))
 	for i, entry := range queue {
 		out[i] = entry.clone()
 	}
+
 	return out
 }
 
@@ -529,13 +560,16 @@ func (s *SeenTracker) PendingForSigner(signer []byte) []*seenEntry {
 func (s *SeenTracker) SignersWithPending() [][]byte {
 	s.mtx.Lock()
 	defer s.mtx.Unlock()
+
 	if len(s.futureTxsBySigner) == 0 {
 		return nil
 	}
+
 	out := make([][]byte, 0, len(s.futureTxsBySigner))
 	for signerKey := range s.futureTxsBySigner {
 		out = append(out, []byte(signerKey))
 	}
+
 	return out
 }
 
@@ -544,12 +578,15 @@ func (s *SeenTracker) MarkRequested(txKey types.TxKey, peer uint16) {
 	if peer == 0 {
 		return
 	}
+
 	s.mtx.Lock()
 	defer s.mtx.Unlock()
+
 	entry, ok := s.txByKey[txKey]
 	if !ok {
 		return
 	}
+
 	entry.requested = true
 	entry.lastPeer = peer
 }
@@ -560,16 +597,20 @@ func (s *SeenTracker) MarkRequestFailed(txKey types.TxKey, peer uint16) {
 	if peer == 0 {
 		return
 	}
+
 	s.mtx.Lock()
 	defer s.mtx.Unlock()
+
 	entry, ok := s.txByKey[txKey]
 	if !ok {
 		return
 	}
+
 	if entry.lastPeer == peer {
 		entry.requested = false
 		entry.lastPeer = 0
 	}
+
 	if _, has := entry.peers[peer]; has {
 		delete(entry.peers, peer)
 		s.decrementPeerTxCountLocked(peer)
