@@ -4,6 +4,8 @@ import (
 	"sort"
 	"time"
 
+	"github.com/filecoin-project/go-clock"
+
 	tmsync "github.com/cometbft/cometbft/libs/sync"
 	"github.com/cometbft/cometbft/types"
 )
@@ -158,7 +160,7 @@ type SeenTracker struct {
 
 	perPeerLimit   int
 	perSignerLimit int
-	now            func() time.Time
+	clock          clock.Clock
 }
 
 // seenEntry is one gossip tx entry shared by tx-key lookup and the future queue.
@@ -227,7 +229,7 @@ func NewSeenTracker() *SeenTracker {
 		txCountByPeer:     make(map[uint16]int),
 		perPeerLimit:      seenPerPeerLimit,
 		perSignerLimit:    seenPerSignerLimit,
-		now:               func() time.Time { return time.Now().UTC() },
+		clock:             clock.New(),
 	}
 }
 
@@ -264,7 +266,7 @@ func (s *SeenTracker) Add(txKey types.TxKey, peer uint16, signer []byte, sequenc
 		peers: map[uint16]struct{}{
 			peer: {},
 		},
-		addedAt: s.now(),
+		addedAt: s.clock.Now(),
 	}
 	s.txByKey[txKey] = entry
 	s.txCountByPeer[peer]++

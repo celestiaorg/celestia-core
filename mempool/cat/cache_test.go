@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/filecoin-project/go-clock"
 	"github.com/stretchr/testify/require"
 
 	"github.com/cometbft/cometbft/types"
@@ -222,7 +223,6 @@ func TestSeenTrackerLimits(t *testing.T) {
 func TestSeenTrackerRemovePeerAndPrune(t *testing.T) {
 	var (
 		baseTime        = time.Date(2026, time.January, 2, 3, 4, 5, 0, time.UTC)
-		now             = baseTime
 		signer          = []byte("signer")
 		oldKey          = types.Tx("old").Key()
 		freshKey        = types.Tx("fresh").Key()
@@ -230,8 +230,10 @@ func TestSeenTrackerRemovePeerAndPrune(t *testing.T) {
 		peer2    uint16 = 2
 	)
 
+	mockClock := clock.NewMock()
+	mockClock.Set(baseTime)
 	tracker := NewSeenTracker()
-	tracker.now = func() time.Time { return now }
+	tracker.clock = mockClock
 
 	tracker.Add(oldKey, peer1, signer, 1)
 	tracker.Add(oldKey, peer2, nil, 0)
@@ -248,7 +250,7 @@ func TestSeenTrackerRemovePeerAndPrune(t *testing.T) {
 	require.Equal(t, 1, tracker.txCountByPeer[peer2])
 	require.NotNil(t, tracker.PendingForSigner(signer))
 
-	now = baseTime.Add(3 * time.Minute)
+	mockClock.Set(baseTime.Add(3 * time.Minute))
 	tracker.Add(freshKey, peer2, nil, 0)
 	tracker.Prune(baseTime.Add(time.Minute))
 
@@ -266,19 +268,20 @@ func TestSeenTrackerRemovePeerAndPrune(t *testing.T) {
 func TestSeenTrackerPrunesPendingWithoutDroppingPeerCache(t *testing.T) {
 	var (
 		baseTime        = time.Date(2026, time.January, 2, 3, 4, 5, 0, time.UTC)
-		now             = baseTime
 		txKey           = types.Tx("pending-prune").Key()
 		signer          = []byte("signer")
 		peer     uint16 = 1
 	)
 
+	mockClock := clock.NewMock()
+	mockClock.Set(baseTime)
 	tracker := NewSeenTracker()
-	tracker.now = func() time.Time { return now }
+	tracker.clock = mockClock
 
 	require.True(t, tracker.Add(txKey, peer, signer, 1))
 	require.NotNil(t, tracker.Pending(txKey))
 
-	now = baseTime.Add(3 * time.Minute)
+	mockClock.Set(baseTime.Add(3 * time.Minute))
 	tracker.PrunePending(baseTime.Add(time.Minute))
 
 	require.Nil(t, tracker.Pending(txKey))
