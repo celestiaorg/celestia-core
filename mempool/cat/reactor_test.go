@@ -842,7 +842,8 @@ func TestReactorSequenceValidation(t *testing.T) {
 }
 
 // Checks that an unsolicited tx is first tracked as a peer-only entry,
-//  then upgraded to pending when a later SeenTx has a future signer/sequence.
+//
+//	then upgraded to pending when a later SeenTx has a future signer/sequence.
 func TestSeenTxUpgradesPeerEntryToPending(t *testing.T) {
 	app := newSequenceTrackingApp()
 	cc := proxy.NewLocalClientCreator(app)
