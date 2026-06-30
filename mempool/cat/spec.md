@@ -37,9 +37,9 @@ message WantTx {
 }
 ```
 
-Both `SeenTx` and `WantTx` contain the sha256 hash of the raw transaction bytes. `SeenTx` additionally carries the expected account `sequence` and the `signer` bytes derived from the application response so receiving peers can maintain per-signer ordering when deciding whether to request the transaction. The byte slice of the `tx_key` MUST have a length of 32. A `sequence` of `0` or an empty `signer` indicates that the information was unavailable and MUST NOT be treated as authoritative.
+Both `SeenTx` and `WantTx` contain the sha256 hash of the raw transaction bytes. `SeenTx` additionally carries the expected account `sequence` and the `signer` bytes derived from the application response so receiving peers can maintain per-signer ordering when deciding whether to request the transaction. The byte slice of the `tx_key` MUST have a length of 32. `SeenTx` MUST include a non-empty `signer`; `sequence` is required metadata and `0` is a valid value for a signer's first transaction.
 
-Both messages are sent across a new channel with the ID: `byte(0x31)`. This enables cross-compatibility as discussed in greater detail below.
+Both messages are sent across a new channel with the ID: `byte(0x31)`.
 
 > **Note:**
 > The term `SeenTx` is used over the more common `HasTx` because the transaction pool contains sophisticated eviction logic. TTL's, higher priority transactions and reCheckTx may mean that a transaction pool *had* a transaction but does not have it anymore. Semantically it's more appropriate to use `SeenTx` to imply not the presence of a transaction but that the node has seen it and dealt with it accordingly.
@@ -87,7 +87,7 @@ Upon receiving a `SeenTx` message:
 - If the node has recently rejected that transaction, it SHOULD ignore the message.
 - If the node already has the transaction, it SHOULD ignore the message.
 - If the node does not have the transaction but recently evicted it, it MAY choose to rerequest the transaction if it has adequate resources now to process it.
-- If the node has not seen the transaction or does not have any pending requests for that transaction, it MUST evaluate the provided `(signer, sequence)` pair before requesting it:
+- If the node has not seen the transaction or does not have any pending requests for that transaction, it MUST first require a non-empty `signer`, then evaluate the provided `(signer, sequence)` pair before requesting it:
     - If there is already a transaction from that signer in the local mempool, the node uses the locally tracked sequences to check whether the new transaction is the next expected sequence. When the sequence is greater than expected, the node defers the request and queues the `SeenTx` until the expected sequence is available.
     - If there is no transaction from that signer in the local mempool, the node queries the application mempool state for the next sequence before issuing a `WantTx`. This avoids requesting a transaction before the prerequisite sequence is present.
     - If the expected sequence is greater than the advertised sequence, the node SHOULD mark the transaction as stale and drop the queued `SeenTx`.
@@ -102,4 +102,4 @@ Upon receiving a `WantTx` message:
 
 ### Compatibility
 
-CAT has Go API compatibility with the existing two mempool implementations. It implements both the `Reactor` interface required by Tendermint's P2P layer and the `Mempool` interface used by `consensus` and `rpc`. CAT is currently network compatible with existing implementations (by using another channel), but the protocol is unaware that it is communicating with a different mempool and that `SeenTx` and `WantTx` messages aren't reaching those peers thus it is recommended that the entire network use CAT.
+CAT has Go API compatibility with the existing two mempool implementations. It implements both the `Reactor` interface required by Tendermint's P2P layer and the `Mempool` interface used by `consensus` and `rpc`. CAT sequence-aware gossip requires peers and applications to provide signer/sequence metadata; `SeenTx` messages without a signer are ignored.
