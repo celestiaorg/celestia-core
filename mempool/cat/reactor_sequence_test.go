@@ -149,7 +149,7 @@ func TestReactorSequentialTxsAcrossMultipleReactors(t *testing.T) {
 			require.Equal(t, numTxs, reactor.mempool.Size(), "reactor %d should have all %d txs", i, numTxs)
 
 			// Pending queue should be empty (all txs received)
-			entries := reactor.pendingSeen.entriesForSigner(signer)
+			entries := reactor.mempool.seenTracker.PendingTxsForSigner(signer)
 			require.Empty(t, entries, "reactor %d should have no pending entries", i)
 
 			// No outstanding requests
@@ -290,12 +290,12 @@ func TestReactorSequentialTxsAcrossMultipleReactors(t *testing.T) {
 				}
 
 				// Get pending queue entries
-				entries := reactor.pendingSeen.entriesForSigner(signer)
+				entries := reactor.mempool.seenTracker.PendingTxsForSigner(signer)
 
 				// Verify pending queue is sorted
 				if len(entries) > 1 {
 					for i := 1; i < len(entries); i++ {
-						require.LessOrEqual(t, entries[i-1].sequence, entries[i].sequence,
+						require.LessOrEqual(t, entries[i-1].pendingTxInfo.sequence, entries[i].pendingTxInfo.sequence,
 							"reactor %d: pending queue not sorted at tx %d", rIdx, txIdx+1)
 					}
 				}
@@ -443,13 +443,13 @@ func TestReactorPendingQueueSorting(t *testing.T) {
 	}
 
 	// Verify pending queue is sorted
-	entries := reactor.pendingSeen.entriesForSigner(signer)
+	entries := reactor.mempool.seenTracker.PendingTxsForSigner(signer)
 	require.Len(t, entries, len(outOfOrderSeqs))
 
 	expectedSorted := []uint64{2, 5, 8, 10, 15}
 	actualSequences := make([]uint64, len(entries))
 	for i, entry := range entries {
-		actualSequences[i] = entry.sequence
+		actualSequences[i] = entry.pendingTxInfo.sequence
 	}
 
 	require.Equal(t, expectedSorted, actualSequences, "pending queue should be sorted by sequence")
@@ -503,7 +503,7 @@ func TestReactorSingleOutstandingRequestPerSigner(t *testing.T) {
 	require.NotZero(t, reactor.requests.ForTx(firstKey), "first tx should be requested")
 
 	// Check that subsequent txs are in pending queue, not requested
-	entries := reactor.pendingSeen.entriesForSigner(signer)
+	entries := reactor.mempool.seenTracker.PendingTxsForSigner(signer)
 	require.NotEmpty(t, entries, "should have pending entries")
 
 	// Verify that only one is actively requested
@@ -520,7 +520,7 @@ func TestReactorSingleOutstandingRequestPerSigner(t *testing.T) {
 	// Verify pending queue is sorted
 	if len(entries) > 1 {
 		for i := 1; i < len(entries); i++ {
-			require.LessOrEqual(t, entries[i-1].sequence, entries[i].sequence,
+			require.LessOrEqual(t, entries[i-1].pendingTxInfo.sequence, entries[i].pendingTxInfo.sequence,
 				"pending queue should be sorted by sequence")
 		}
 	}
