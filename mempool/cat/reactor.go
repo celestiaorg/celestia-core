@@ -222,7 +222,7 @@ func (memR *Reactor) GetChannels() []*p2p.ChannelDescriptor {
 	largestTx := make([]byte, memR.opts.MaxTxSize)
 	txMsg := protomem.Message{
 		Sum: &protomem.Message_Txs{
-			Txs: &protomem.Txs{Txs: [][]byte{largestTx}},
+			Txs: &protomem.Txs{Tx: largestTx},
 		},
 	}
 
@@ -288,30 +288,34 @@ func (memR *Reactor) Receive(e p2p.Envelope) {
 
 	// A peer has sent us a transaction. In CAT this is normally a response to a
 	// WantTx, although the wire type also permits unsolicited transaction
-	// messages. Batching is disabled (MaxTxsPerMessage == 1), so a Txs message
-	// is exactly one transaction.
+	// messages. Transactions should be received in the single tx field; the
+	// deprecated repeated txs field is still read for backward compatibility
+	// with peers that have not yet upgraded.
 	case *protomem.Txs:
-		protoTxs := msg.GetTxs()
-		if len(protoTxs) == 0 {
-			memR.Logger.Error("received empty txs from peer", "src", e.Src)
-			memR.Switch.StopPeerForError(e.Src, errEmptyTx, memR.String())
-			return
+		tx := msg.GetTx()
+
+		// Fall back to the deprecated repeated field for peers that still
+		// send transactions in it.
+		if len(tx) == 0 {
+			protoTxs := msg.GetTxs() //nolint:staticcheck // SA1019: intentionally reads the deprecated field for backward compatibility
+			if len(protoTxs) > mempool.MaxTxsPerMessage {
+				memR.Logger.Error("received too many txs from peer", "count", len(protoTxs), "src", e.Src)
+				memR.Switch.StopPeerForError(e.Src, errTooManyTxs, memR.String())
+				return
+			}
+			if len(protoTxs) > 0 {
+				tx = protoTxs[0]
+			}
 		}
-		if len(protoTxs) > mempool.MaxTxsPerMessage {
-			memR.Logger.Error("received too many txs from peer", "count", len(protoTxs), "src", e.Src)
-			memR.Switch.StopPeerForError(e.Src, errTooManyTxs, memR.String())
+		if len(tx) == 0 {
+			memR.Logger.Error("received empty tx from peer", "src", e.Src)
+			memR.Switch.StopPeerForError(e.Src, errEmptyTx, memR.String())
 			return
 		}
 		peerID := memR.ids.GetIDForPeer(e.Src.ID())
 		txInfo := mempool.TxInfo{SenderID: peerID}
 		txInfo.SenderP2PID = e.Src.ID()
 
-		tx := protoTxs[0]
-		if len(tx) == 0 {
-			memR.Logger.Error("received empty tx from peer", "src", e.Src)
-			memR.Switch.StopPeerForError(e.Src, errEmptyTx, memR.String())
-			return
-		}
 		ntx := types.Tx(tx)
 		key := ntx.Key()
 		cachedTx := ntx.ToCachedTx()
@@ -460,7 +464,7 @@ func (memR *Reactor) Receive(e p2p.Envelope) {
 			memR.Logger.Trace("sending a tx in response to a want msg", "peer", peerID)
 			if e.Src.Send(p2p.Envelope{
 				ChannelID: MempoolDataChannel,
-				Message:   &protomem.Txs{Txs: [][]byte{tx.Tx}},
+				Message:   &protomem.Txs{Tx: tx.Tx},
 			}) {
 				memR.mempool.PeerHasTx(peerID, txKey)
 				schema.WriteMempoolTx(

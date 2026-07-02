@@ -127,7 +127,7 @@ func TestReactorSendsTxAfterReceivingWantTx(t *testing.T) {
 	tx := newDefaultTx("hello")
 	key := tx.Key()
 	txEnvelope := p2p.Envelope{
-		Message:   &protomem.Txs{Txs: [][]byte{tx}},
+		Message:   &protomem.Txs{Tx: tx},
 		ChannelID: MempoolDataChannel,
 	}
 
@@ -158,6 +158,30 @@ func TestReactorSendsTxAfterReceivingWantTx(t *testing.T) {
 	// pool should have marked the peer as having seen the tx
 	peerID := reactor.ids.GetIDForPeer(peer.ID())
 	require.True(t, pool.seenTracker.Has(key, peerID))
+}
+
+// TestReactorReceivesTxViaDeprecatedField verifies that a transaction sent by an
+// older peer in the deprecated repeated txs field is still parsed and added to
+// the mempool via the backward-compatibility fallback.
+func TestReactorReceivesTxViaDeprecatedField(t *testing.T) {
+	reactor, pool := setupReactor(t)
+
+	peer := genPeer()
+	_, err := reactor.InitPeer(peer)
+	require.NoError(t, err)
+
+	tx := newDefaultTx("hello")
+	key := tx.Key()
+
+	reactor.Receive(p2p.Envelope{
+		ChannelID: MempoolDataChannel,
+		Message:   &protomem.Txs{Txs: [][]byte{tx}}, // deprecated field: exercises the backward-compatibility fallback
+		Src:       peer,
+	})
+
+	require.Eventually(t, func() bool {
+		return pool.Has(key)
+	}, time.Second, 10*time.Millisecond, "tx sent via the deprecated txs field should be added to the mempool")
 }
 
 func TestReactorBroadcastsSeenTxAfterReceivingTx(t *testing.T) {
