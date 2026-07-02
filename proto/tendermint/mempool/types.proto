@@ -4,7 +4,13 @@ package tendermint.mempool;
 option go_package = "github.com/cometbft/cometbft/proto/tendermint/mempool";
 
 message Txs {
-  repeated bytes txs = 1;
+  // Deprecated: batching is disabled; use the singular tx field instead. This
+  // field is retained only for backward compatibility with peers that still
+  // send transactions in the repeated field.
+  repeated bytes txs = 1 [deprecated = true];
+  // tx carries a single transaction. This is the field CAT populates when
+  // sending transactions.
+  bytes tx = 2;
 }
 
 message SeenTx {
