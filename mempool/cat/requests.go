@@ -43,6 +43,7 @@ func newRequestScheduler(responseTime, globalTimeout time.Duration) *requestSche
 	}
 }
 
+// Add adds a request to the scheduler. It returns true if the request was added, false if it was not (e.g. because there is already a request for that tx).
 func (r *requestScheduler) Add(key types.TxKey, peer uint16, onTimeout func(key types.TxKey, peer uint16)) bool {
 	if peer == 0 {
 		return false

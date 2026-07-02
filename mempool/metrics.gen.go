@@ -102,24 +102,59 @@ func PrometheusMetrics(namespace string, labelsAndValues ...string) *Metrics {
 
 			Buckets: []float64{0.25, 0.5, 1, 2, 4, 6, 8, 10, 11, 12, 13, 14, 15, 18, 25, 60},
 		}, labels).With(labelsAndValues...),
+		PendingTxsPerSigner: prometheus.NewGaugeFrom(stdprometheus.GaugeOpts{
+			Namespace: namespace,
+			Subsystem: MetricsSubsystem,
+			Name:      "pending_txs_per_signer",
+			Help:      "PendingTxsPerSigner is the largest per-signer pending (future-sequence) queue depth seen, sampled each height. Compare against the per-signer cap (seenPerSignerLimit, 128) to judge how much headroom it has.",
+		}, labels).With(labelsAndValues...),
+		PendingTxsPerSignerDropped: prometheus.NewCounterFrom(stdprometheus.CounterOpts{
+			Namespace: namespace,
+			Subsystem: MetricsSubsystem,
+			Name:      "pending_txs_per_signer_dropped",
+			Help:      "PendingTxsPerSignerDropped counts pending entries dropped because a signer's queue was already at the per-signer cap. A rising value means the cap is too low.",
+		}, labels).With(labelsAndValues...),
+		SeenTxsPerPeer: prometheus.NewGaugeFrom(stdprometheus.GaugeOpts{
+			Namespace: namespace,
+			Subsystem: MetricsSubsystem,
+			Name:      "seen_txs_per_peer",
+			Help:      "SeenTxsPerPeer is the largest number of txs tracked for a single peer, sampled each height. Compare against the per-peer cap (seenPerPeerLimit, 10000) to judge how much headroom it has.",
+		}, labels).With(labelsAndValues...),
+		SeenTxsPerPeerRejected: prometheus.NewCounterFrom(stdprometheus.CounterOpts{
+			Namespace: namespace,
+			Subsystem: MetricsSubsystem,
+			Name:      "seen_txs_per_peer_rejected",
+			Help:      "SeenTxsPerPeerRejected counts peer-has-tx records rejected because a peer was already at the per-peer cap. A rising value means the cap is too low.",
+		}, labels).With(labelsAndValues...),
+		SeenTxsExpired: prometheus.NewCounterFrom(stdprometheus.CounterOpts{
+			Namespace: namespace,
+			Subsystem: MetricsSubsystem,
+			Name:      "seen_txs_expired",
+			Help:      "SeenTxsExpired counts seen-tx entries pruned after the 2-minute TTL (seenEntryTTL) elapsed without being resolved. High churn here means many advertised txs were never fetched.",
+		}, labels).With(labelsAndValues...),
 	}
 }
 
 func NopMetrics() *Metrics {
 	return &Metrics{
-		Size:                      discard.NewGauge(),
-		SizeBytes:                 discard.NewGauge(),
-		TxSizeBytes:               discard.NewHistogram(),
-		FailedTxs:                 discard.NewCounter(),
-		RejectedTxs:               discard.NewCounter(),
-		EvictedTxs:                discard.NewCounter(),
-		RecheckTimes:              discard.NewCounter(),
-		ActiveOutboundConnections: discard.NewGauge(),
-		ExpiredTxs:                discard.NewCounter(),
-		SuccessfulTxs:             discard.NewCounter(),
-		AlreadySeenTxs:            discard.NewCounter(),
-		RequestedTxs:              discard.NewCounter(),
-		RerequestedTxs:            discard.NewCounter(),
-		UserTxLatency:             discard.NewHistogram(),
+		Size:                       discard.NewGauge(),
+		SizeBytes:                  discard.NewGauge(),
+		TxSizeBytes:                discard.NewHistogram(),
+		FailedTxs:                  discard.NewCounter(),
+		RejectedTxs:                discard.NewCounter(),
+		EvictedTxs:                 discard.NewCounter(),
+		RecheckTimes:               discard.NewCounter(),
+		ActiveOutboundConnections:  discard.NewGauge(),
+		ExpiredTxs:                 discard.NewCounter(),
+		SuccessfulTxs:              discard.NewCounter(),
+		AlreadySeenTxs:             discard.NewCounter(),
+		RequestedTxs:               discard.NewCounter(),
+		RerequestedTxs:             discard.NewCounter(),
+		UserTxLatency:              discard.NewHistogram(),
+		PendingTxsPerSigner:        discard.NewGauge(),
+		PendingTxsPerSignerDropped: discard.NewCounter(),
+		SeenTxsPerPeer:             discard.NewGauge(),
+		SeenTxsPerPeerRejected:     discard.NewCounter(),
+		SeenTxsExpired:             discard.NewCounter(),
 	}
 }

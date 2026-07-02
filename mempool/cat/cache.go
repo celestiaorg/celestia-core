@@ -7,14 +7,15 @@ import (
 	"github.com/filecoin-project/go-clock"
 
 	tmsync "github.com/cometbft/cometbft/libs/sync"
+	"github.com/cometbft/cometbft/mempool"
 	"github.com/cometbft/cometbft/types"
 )
 
 // seenPerPeerLimit bounds how many txs one peer can keep tracked.
-const seenPerPeerLimit = 10_000
+const seenPerPeerLimit = 1000
 
 // seenPerSignerLimit bounds future-sequence entries kept for one signer.
-const seenPerSignerLimit = 128
+const seenPerSignerLimit = 1000
 
 // seenEntryTTL is short because useful out-of-order gossip should resolve quickly.
 const seenEntryTTL = 2 * time.Minute
@@ -32,6 +33,7 @@ type SeenTracker struct {
 	perPeerLimit   int
 	perSignerLimit int
 	clock          clock.Clock
+	metrics        *mempool.Metrics
 }
 
 // SeenEntry is one gossip tx entry shared by tx-key lookup and the future queue.
@@ -118,6 +120,7 @@ func NewSeenTracker() *SeenTracker {
 		perPeerLimit:       seenPerPeerLimit,
 		perSignerLimit:     seenPerSignerLimit,
 		clock:              clock.New(),
+		metrics:            mempool.NopMetrics(),
 	}
 }
 
@@ -164,6 +167,7 @@ func (s *SeenTracker) addPeerLocked(txKey types.TxKey, peer uint16) (*SeenEntry,
 	}
 
 	if s.txCountByPeer[peer] >= s.perPeerLimit {
+		s.metrics.SeenTxsPerPeerRejected.Add(1)
 		return nil, false
 	}
 
@@ -188,6 +192,7 @@ func (s *SeenTracker) addPeerToEntryLocked(entry *SeenEntry, peer uint16) bool {
 	}
 
 	if s.txCountByPeer[peer] >= s.perPeerLimit {
+		s.metrics.SeenTxsPerPeerRejected.Add(1)
 		return false
 	}
 
@@ -210,6 +215,7 @@ func (s *SeenTracker) indexPendingTxLocked(entry *SeenEntry, signer []byte, sequ
 	// very last entry of the queue
 	wouldAppendToQueue := insertIdx == len(queue)
 	if len(queue) >= s.perSignerLimit && wouldAppendToQueue {
+		s.metrics.PendingTxsPerSignerDropped.Add(1)
 		return
 	}
 
@@ -228,6 +234,7 @@ func (s *SeenTracker) indexPendingTxLocked(entry *SeenEntry, signer []byte, sequ
 	for len(queue) > s.perSignerLimit {
 		queue[len(queue)-1].clearPendingTxMetadata()
 		queue = queue[:len(queue)-1]
+		s.metrics.PendingTxsPerSignerDropped.Add(1)
 	}
 	s.pendingTxsBySigner[signerKey] = queue
 }
@@ -319,17 +326,45 @@ func (s *SeenTracker) RemovePeer(peer uint16) {
 	delete(s.txCountByPeer, peer)
 }
 
-// PruneExpired removes entries added more than seenEntryTTL ago.
+// PruneExpired removes entries added more than seenEntryTTL ago. It also
+// samples the size gauges, since it already runs each height and walks the
+// tracker.
 func (s *SeenTracker) PruneExpired() {
 	s.mtx.Lock()
 	defer s.mtx.Unlock()
 
 	cutoff := s.clock.Now().Add(-seenEntryTTL)
+	expired := 0
 	for _, entry := range s.txByKey {
 		if entry.addedAt.Before(cutoff) {
 			s.removeEntryLocked(entry)
+			expired++
 		}
 	}
+	if expired > 0 {
+		s.metrics.SeenTxsExpired.Add(float64(expired))
+	}
+
+	s.recordSizeGaugesLocked()
+}
+
+// recordSizeGaugesLocked publishes the largest per-signer pending queue depth
+// and the largest per-peer entry count, for tuning the two caps.
+func (s *SeenTracker) recordSizeGaugesLocked() {
+	maxPending := 0
+	for _, queue := range s.pendingTxsBySigner {
+		if len(queue) > maxPending {
+			maxPending = len(queue)
+		}
+	}
+	maxPerPeer := 0
+	for _, count := range s.txCountByPeer {
+		if count > maxPerPeer {
+			maxPerPeer = count
+		}
+	}
+	s.metrics.PendingTxsPerSigner.Set(float64(maxPending))
+	s.metrics.SeenTxsPerPeer.Set(float64(maxPerPeer))
 }
 
 // Has reports whether peer is known to have txKey.

@@ -114,6 +114,10 @@ func NewTxPool(
 		opt(txmp)
 	}
 
+	// Options may have replaced the metrics (WithMetrics), so hand the final
+	// instance to the tracker for its cap/TTL metrics.
+	txmp.seenTracker.metrics = txmp.metrics
+
 	return txmp
 }
 

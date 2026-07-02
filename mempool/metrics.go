@@ -74,4 +74,28 @@ type Metrics struct {
 	// user-submitted transaction enters the mempool to when it is
 	// included in a committed block.
 	UserTxLatency metrics.Histogram `metrics_bucketsizes:"0.25, 0.5, 1, 2, 4, 6, 8, 10, 11, 12, 13, 14, 15, 18, 25, 60"`
+
+	// PendingTxsPerSigner is the largest per-signer pending (future-sequence)
+	// queue depth seen, sampled each height. Compare against the per-signer cap
+	// (seenPerSignerLimit, 128) to judge how much headroom it has.
+	PendingTxsPerSigner metrics.Gauge
+
+	// PendingTxsPerSignerDropped counts pending entries dropped because a
+	// signer's queue was already at the per-signer cap. A rising value means
+	// the cap is too low.
+	PendingTxsPerSignerDropped metrics.Counter
+
+	// SeenTxsPerPeer is the largest number of txs tracked for a single peer,
+	// sampled each height. Compare against the per-peer cap (seenPerPeerLimit,
+	// 10000) to judge how much headroom it has.
+	SeenTxsPerPeer metrics.Gauge
+
+	// SeenTxsPerPeerRejected counts peer-has-tx records rejected because a peer
+	// was already at the per-peer cap. A rising value means the cap is too low.
+	SeenTxsPerPeerRejected metrics.Counter
+
+	// SeenTxsExpired counts seen-tx entries pruned after the 2-minute TTL
+	// (seenEntryTTL) elapsed without being resolved. High churn here means many
+	// advertised txs were never fetched.
+	SeenTxsExpired metrics.Counter
 }
