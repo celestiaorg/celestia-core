@@ -60,6 +60,7 @@ const (
 
 var (
 	errSignerTooLong = errors.New("signer field exceeds maximum length")
+	errMissingSigner = errors.New("SeenTx missing required signer field")
 	errTooManyTxs    = errors.New("txs message contains too many transactions")
 	errEmptyTx       = errors.New("txs message contains an empty transaction")
 )
@@ -361,11 +362,10 @@ func (memR *Reactor) Receive(e p2p.Envelope) {
 			return
 		}
 		if len(msg.Signer) == 0 {
-			memR.Logger.Debug(
-				"dropping SeenTx without required signer",
-				"txKey", txKey,
-				"sequence", msg.Sequence,
-			)
+			// SeenTx without signer means peer is running a very old version,
+			//  so disconnect from it.
+			memR.Logger.Error("peer sent SeenTx without required signer", "txKey", txKey)
+			memR.Switch.StopPeerForError(e.Src, errMissingSigner, memR.String())
 			return
 		}
 		if len(msg.Signer) > maxSignerLength {
