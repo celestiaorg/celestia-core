@@ -286,9 +286,10 @@ func (memR *Reactor) RemovePeer(peer p2p.Peer, reason interface{}) {
 func (memR *Reactor) Receive(e p2p.Envelope) {
 	switch msg := e.Message.(type) {
 
-	// A peer has sent us one or more transactions. In CAT this is normally a
-	// response to a WantTx, although the wire type also permits unsolicited
-	// transaction messages.
+	// A peer has sent us a transaction. In CAT this is normally a response to a
+	// WantTx, although the wire type also permits unsolicited transaction
+	// messages. Batching is disabled (MaxTxsPerMessage == 1), so a Txs message
+	// is exactly one transaction.
 	case *protomem.Txs:
 		protoTxs := msg.GetTxs()
 		if len(protoTxs) == 0 {
@@ -305,47 +306,46 @@ func (memR *Reactor) Receive(e p2p.Envelope) {
 		txInfo := mempool.TxInfo{SenderID: peerID}
 		txInfo.SenderP2PID = e.Src.ID()
 
-		for _, tx := range protoTxs {
-			if len(tx) == 0 {
-				memR.Logger.Error("received empty tx from peer", "src", e.Src)
-				memR.Switch.StopPeerForError(e.Src, errEmptyTx, memR.String())
+		tx := protoTxs[0]
+		if len(tx) == 0 {
+			memR.Logger.Error("received empty tx from peer", "src", e.Src)
+			memR.Switch.StopPeerForError(e.Src, errEmptyTx, memR.String())
+			return
+		}
+		ntx := types.Tx(tx)
+		key := ntx.Key()
+		cachedTx := ntx.ToCachedTx()
+		schema.WriteMempoolTx(memR.traceClient, string(e.Src.ID()), key[:], len(tx), schema.Download)
+		// If we requested the transaction we mark it as received.
+		if memR.requests.Has(peerID, key) {
+			memR.requests.MarkReceived(peerID, key)
+			memR.Logger.Trace("received a response for a requested transaction", "peerID", peerID, "txKey", key)
+		} else {
+			// If we didn't request the transaction we simply mark the peer as having the
+			// tx (we'd have already done it if we were requesting the tx).
+			memR.mempool.PeerHasTx(peerID, key)
+			memR.Logger.Trace("received new transaction", "peerID", peerID, "txKey", key)
+		}
+
+		// Look up signer/sequence from the tracker. The entry is only
+		// sequence-indexed when a prior SeenTx carried signer/sequence
+		// and it hasn't been demoted from the per-signer queue.
+		if signer, sequence, ok := memR.mempool.seenTracker.PendingTxInfo(key); ok {
+			expectedSeq, haveExpected := memR.querySequenceFromApplication(signer)
+			if haveExpected && sequence > expectedSeq {
+				if sequence > expectedSeq+maxReceivedBufferSize {
+					return
+				}
+				// Future sequence within lookahead - buffer it for later
+				if memR.receivedBuffer.add(signer, sequence, cachedTx, key, txInfo, string(e.Src.ID())) {
+					memR.mempool.seenTracker.ClearPendingTx(key)
+				}
 				return
 			}
-			ntx := types.Tx(tx)
-			key := ntx.Key()
-			cachedTx := ntx.ToCachedTx()
-			schema.WriteMempoolTx(memR.traceClient, string(e.Src.ID()), key[:], len(tx), schema.Download)
-			// If we requested the transaction we mark it as received.
-			if memR.requests.Has(peerID, key) {
-				memR.requests.MarkReceived(peerID, key)
-				memR.Logger.Trace("received a response for a requested transaction", "peerID", peerID, "txKey", key)
-			} else {
-				// If we didn't request the transaction we simply mark the peer as having the
-				// tx (we'd have already done it if we were requesting the tx).
-				memR.mempool.PeerHasTx(peerID, key)
-				memR.Logger.Trace("received new transaction", "peerID", peerID, "txKey", key)
-			}
-
-			// Look up signer/sequence from the tracker. The entry is only
-			// sequence-indexed when a prior SeenTx carried signer/sequence
-			// and it hasn't been demoted from the per-signer queue.
-			if signer, sequence, ok := memR.mempool.seenTracker.PendingTxInfo(key); ok {
-				expectedSeq, haveExpected := memR.querySequenceFromApplication(signer)
-				if haveExpected && sequence > expectedSeq {
-					if sequence > expectedSeq+maxReceivedBufferSize {
-						continue
-					}
-					// Future sequence within lookahead - buffer it for later
-					if memR.receivedBuffer.add(signer, sequence, cachedTx, key, txInfo, string(e.Src.ID())) {
-						memR.mempool.seenTracker.ClearPendingTx(key)
-					}
-					continue
-				}
-			}
-
-			// Process this tx through CheckTx without putting into buffer
-			memR.processReceivedTx(cachedTx, key, txInfo, e.Src)
 		}
+
+		// Process this tx through CheckTx without putting into buffer
+		memR.processReceivedTx(cachedTx, key, txInfo, e.Src)
 
 	// A peer has indicated to us that it has a transaction. We first verify the txkey and
 	// mark that peer as having the transaction. Then we proceed with the following logic:
