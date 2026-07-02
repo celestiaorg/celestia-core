@@ -232,7 +232,10 @@ func (app *Application) CheckTx(_ context.Context, req *abci.RequestCheckTx) (*a
 		time.Sleep(app.cfg.CheckTxDelay)
 	}
 
-	return &abci.ResponseCheckTx{Code: kvstore.CodeTypeOK, GasWanted: 1}, nil
+	// Populate a non-empty signer so CAT's SeenTx gossip (which now drops
+	// unsigned announcements) can propagate the tx. The tx hash is a unique,
+	// deterministic per-tx signer, so each tx stays its own single-tx set.
+	return &abci.ResponseCheckTx{Code: kvstore.CodeTypeOK, GasWanted: 1, Address: cmttypes.Tx(req.Tx).Hash()}, nil
 }
 
 // FinalizeBlock implements ABCI.
