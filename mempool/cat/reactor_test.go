@@ -812,33 +812,6 @@ func TestReactorSequenceValidation(t *testing.T) {
 		require.Equal(t, uint64(11), entries[0].pendingTxInfo.sequence)
 		require.Equal(t, []uint16{reactor.ids.GetIDForPeer(peer.ID())}, entries[0].peerIDs())
 	})
-
-	t.Run("missing signer skips tx request", func(t *testing.T) {
-		pool.Flush()
-		t.Cleanup(pool.Flush)
-		tx3 := newDefaultTx("test-tx-3")
-		txKey3 := tx3.Key()
-
-		peer := genPeer()
-		_, err := reactor.InitPeer(peer)
-		require.NoError(t, err)
-
-		// Send SeenTx without the required signer; it must be dropped without
-		// requesting the tx or recording peer-has-tx state.
-		reactor.Receive(p2p.Envelope{
-			ChannelID: MempoolDataChannel,
-			Message: &protomem.SeenTx{
-				TxKey:    txKey3[:],
-				Signer:   nil,
-				Sequence: 0,
-			},
-			Src: peer,
-		})
-
-		peer.AssertNotCalled(t, "TrySend", mock.Anything)
-		require.Zero(t, reactor.requests.ForTx(txKey3))
-		require.Nil(t, reactor.mempool.seenTracker.Get(txKey3))
-	})
 }
 
 // Checks that an unsolicited tx is first tracked as a peer-only entry,
@@ -1646,7 +1619,7 @@ func TestSeenTxWithValidSignerNotBanned(t *testing.T) {
 	require.Len(t, reactor0.Switch.Peers().List(), 1, "peer should not be disconnected for valid signer length")
 }
 
-func TestSeenTxWithEmptySignerNotBanned(t *testing.T) {
+func TestSeenTxWithEmptySignerDisconnects(t *testing.T) {
 	config := cfg.TestConfig()
 	reactors := makeAndConnectReactors(t, config, 2)
 
@@ -1660,7 +1633,8 @@ func TestSeenTxWithEmptySignerNotBanned(t *testing.T) {
 	tx := newDefaultTx("test-tx")
 	key := tx.Key()
 
-	// Send SeenTx with empty signer (allowed for backward compatibility)
+	// Send SeenTx with an empty signer. A missing signer means the peer is
+	// running a very old protocol version, so it should be disconnected.
 	reactor0.Receive(p2p.Envelope{
 		ChannelID: MempoolDataChannel,
 		Message: &protomem.SeenTx{
@@ -1671,18 +1645,17 @@ func TestSeenTxWithEmptySignerNotBanned(t *testing.T) {
 		Src: peer,
 	})
 
-	// Give some time for any potential disconnect
-	time.Sleep(100 * time.Millisecond)
-
-	// The peer should NOT be disconnected for empty signer
-	require.Len(t, reactor0.Switch.Peers().List(), 1, "peer should not be disconnected for empty signer")
+	// Give the disconnect time to propagate.
+	require.Eventually(t, func() bool {
+		return len(reactor0.Switch.Peers().List()) == 0
+	}, time.Second, 10*time.Millisecond, "peer should be disconnected for empty signer")
 }
 
 // TestSeenTxDirectPathEnforcesPerPeerRequestLimit verifies that the direct
 // SeenTx→requestTx code path enforces the maxRequestsPerPeer limit. A single
-// peer sending more than maxRequestsPerPeer unique SeenTx messages (with nil
-// signer / zero sequence) should NOT result in more than maxRequestsPerPeer
-// outstanding requests to that peer.
+// peer sending more than maxRequestsPerPeer unique SeenTx messages (with a
+// valid signer and the expected sequence) should NOT result in more than
+// maxRequestsPerPeer outstanding requests to that peer.
 func TestSeenTxDirectPathEnforcesPerPeerRequestLimit(t *testing.T) {
 	reactor, _ := setupReactor(t)
 
@@ -1696,6 +1669,9 @@ func TestSeenTxDirectPathEnforcesPerPeerRequestLimit(t *testing.T) {
 	require.NoError(t, err)
 	peerID := reactor.ids.GetIDForPeer(peer.ID())
 
+	// The test app's QuerySequence returns 0, so a SeenTx with Sequence 0 and a
+	// valid signer matches the expected sequence and flows to the request path.
+	signer := []byte("test-signer")
 	totalMessages := maxRequestsPerPeer * 4 // 120 messages from one peer
 
 	for i := 0; i < totalMessages; i++ {
@@ -1705,7 +1681,7 @@ func TestSeenTxDirectPathEnforcesPerPeerRequestLimit(t *testing.T) {
 			ChannelID: MempoolDataChannel,
 			Message: &protomem.SeenTx{
 				TxKey:    key[:],
-				Signer:   nil,
+				Signer:   signer,
 				Sequence: 0,
 			},
 			Src: peer,
