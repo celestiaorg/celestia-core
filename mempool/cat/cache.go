@@ -11,10 +11,10 @@ import (
 )
 
 // seenPerPeerLimit bounds how many txs one peer can keep tracked.
-const seenPerPeerLimit = 10_000
+const seenPerPeerLimit = 1000
 
 // seenPerSignerLimit bounds future-sequence entries kept for one signer.
-const seenPerSignerLimit = 128
+const seenPerSignerLimit = 1000
 
 // seenEntryTTL is short because useful out-of-order gossip should resolve quickly.
 const seenEntryTTL = 2 * time.Minute
