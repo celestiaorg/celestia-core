@@ -30,6 +30,11 @@ const (
 	// MempoolWantsChannel channel for wantTx messages.
 	MempoolWantsChannel = byte(0x32)
 
+	// MempoolDataChannelV2 carries the single Tx message. Only peers that
+	// advertise it are sent transactions; legacy peers are skipped. Added in v10;
+	// the old MempoolDataChannel and Txs message are removed in v11.
+	MempoolDataChannelV2 = byte(0x33)
+
 	// peerHeightDiff signifies the tolerance in difference in height between the peer and the height
 	// the node received the tx
 	peerHeightDiff = 10
@@ -222,7 +227,7 @@ func (memR *Reactor) GetChannels() []*p2p.ChannelDescriptor {
 	largestTx := make([]byte, memR.opts.MaxTxSize)
 	txMsg := protomem.Message{
 		Sum: &protomem.Message_Txs{
-			Txs: &protomem.Txs{Tx: largestTx},
+			Txs: &protomem.Txs{Txs: [][]byte{largestTx}},
 		},
 	}
 
@@ -244,6 +249,13 @@ func (memR *Reactor) GetChannels() []*p2p.ChannelDescriptor {
 		},
 		{
 			ID:                  MempoolDataChannel,
+			Priority:            3,
+			SendQueueCapacity:   1000,
+			RecvMessageCapacity: txMsg.Size(),
+			MessageType:         &protomem.Message{},
+		},
+		{
+			ID:                  MempoolDataChannelV2,
 			Priority:            3,
 			SendQueueCapacity:   1000,
 			RecvMessageCapacity: txMsg.Size(),
@@ -281,75 +293,92 @@ func (memR *Reactor) RemovePeer(peer p2p.Peer, reason interface{}) {
 	}
 }
 
-// ReceiveEnvelope implements Reactor.
-// It processes one of three messages: Txs, SeenTx, WantTx.
+// handleReceivedTx processes a received transaction, buffering it if it
+// arrived ahead of sequence. An empty transaction disconnects the peer.
+func (memR *Reactor) handleReceivedTx(tx []byte, e p2p.Envelope) {
+	if len(tx) == 0 {
+		memR.Logger.Error("received empty tx from peer", "src", e.Src)
+		memR.Switch.StopPeerForError(e.Src, errEmptyTx, memR.String())
+		return
+	}
+	peerID := memR.ids.GetIDForPeer(e.Src.ID())
+	txInfo := mempool.TxInfo{SenderID: peerID}
+	txInfo.SenderP2PID = e.Src.ID()
+
+	ntx := types.Tx(tx)
+	key := ntx.Key()
+	cachedTx := ntx.ToCachedTx()
+	schema.WriteMempoolTx(memR.traceClient, string(e.Src.ID()), key[:], len(tx), schema.Download)
+
+	if !memR.requests.Has(peerID, key) {
+		memR.Logger.Debug("dropping unrequested tx from peer", "peerID", peerID, "txKey", key)
+		return
+	}
+
+	// If we requested the transaction we mark it as received.
+	memR.requests.MarkReceived(peerID, key)
+	memR.Logger.Trace("received a response for a requested transaction", "peerID", peerID, "txKey", key)
+
+	// Buffer the tx if it arrived ahead of the signer's expected sequence;
+	// otherwise process it through CheckTx now.
+	if memR.processNowOrBuffer(cachedTx, key, txInfo, e.Src) {
+		memR.processReceivedTx(cachedTx, key, txInfo, e.Src)
+	}
+}
+
+// processNowOrBuffer returns true if the tx can be applied now. Otherwise it
+// buffers the tx for later (or drops it if too far ahead) and returns false.
+func (memR *Reactor) processNowOrBuffer(cachedTx *types.CachedTx, key types.TxKey, txInfo mempool.TxInfo, src p2p.Peer) bool {
+	// No pending signer/sequence (no prior SeenTx carried it, or the entry was
+	// demoted from the per-signer queue): we can't tell it is ahead, so process
+	// it now.
+	signer, sequence, ok := memR.mempool.seenTracker.PendingTxInfo(key)
+	if !ok {
+		return true
+	}
+
+	// Not ahead of the expected sequence: process it now.
+	expectedSeq, haveExpected := memR.querySequenceFromApplication(signer)
+	if !haveExpected || sequence <= expectedSeq {
+		return true
+	}
+
+	// Sequence gap: can't apply yet. Buffer it if it's close enough to apply
+	// later, otherwise drop it (we re-request when the gap closes).
+	if sequence <= expectedSeq+maxReceivedBufferSize {
+		if memR.receivedBuffer.add(signer, sequence, cachedTx, key, txInfo, string(src.ID())) {
+			memR.mempool.seenTracker.ClearPendingTx(key)
+		}
+	}
+	return false
+}
+
+// Receive implements Reactor.
+// It processes one of four messages: Txs, Tx, SeenTx, WantTx.
 func (memR *Reactor) Receive(e p2p.Envelope) {
 	switch msg := e.Message.(type) {
 
-	// A peer has sent us a transaction. In CAT this is normally a response to a
-	// WantTx, although the wire type also permits unsolicited transaction
-	// messages. Transactions should be received in the single tx field; the
-	// deprecated repeated txs field is still read for backward compatibility
-	// with peers that have not yet upgraded.
+	// A peer has sent us one or more transactions in the legacy repeated field.
+	// Retained for backward compatibility with peers that have not yet upgraded.
+	// Batching is disabled, so at most MaxTxsPerMessage transactions are expected.
 	case *protomem.Txs:
-		tx := msg.GetTx()
-
-		// Fall back to the deprecated repeated field for peers that still
-		// send transactions in it.
-		if len(tx) == 0 {
-			protoTxs := msg.GetTxs() //nolint:staticcheck // SA1019: intentionally reads the deprecated field for backward compatibility
-			if len(protoTxs) > mempool.MaxTxsPerMessage {
-				memR.Logger.Error("received too many txs from peer", "count", len(protoTxs), "src", e.Src)
-				memR.Switch.StopPeerForError(e.Src, errTooManyTxs, memR.String())
-				return
-			}
-			if len(protoTxs) > 0 {
-				tx = protoTxs[0]
-			}
-		}
-		if len(tx) == 0 {
-			memR.Logger.Error("received empty tx from peer", "src", e.Src)
+		protoTxs := msg.GetTxs() //nolint:staticcheck // SA1019: legacy path, intentionally reads the deprecated field
+		if len(protoTxs) == 0 {
+			memR.Logger.Error("received empty txs from peer", "src", e.Src)
 			memR.Switch.StopPeerForError(e.Src, errEmptyTx, memR.String())
 			return
 		}
-		peerID := memR.ids.GetIDForPeer(e.Src.ID())
-		txInfo := mempool.TxInfo{SenderID: peerID}
-		txInfo.SenderP2PID = e.Src.ID()
-
-		ntx := types.Tx(tx)
-		key := ntx.Key()
-		cachedTx := ntx.ToCachedTx()
-		schema.WriteMempoolTx(memR.traceClient, string(e.Src.ID()), key[:], len(tx), schema.Download)
-		// If we requested the transaction we mark it as received.
-		if memR.requests.Has(peerID, key) {
-			memR.requests.MarkReceived(peerID, key)
-			memR.Logger.Trace("received a response for a requested transaction", "peerID", peerID, "txKey", key)
-		} else {
-			// If we didn't request the transaction we simply mark the peer as having the
-			// tx (we'd have already done it if we were requesting the tx).
-			memR.mempool.PeerHasTx(peerID, key)
-			memR.Logger.Trace("received new transaction", "peerID", peerID, "txKey", key)
+		if len(protoTxs) > mempool.MaxTxsPerMessage {
+			memR.Logger.Error("received too many txs from peer", "count", len(protoTxs), "src", e.Src)
+			memR.Switch.StopPeerForError(e.Src, errTooManyTxs, memR.String())
+			return
 		}
+		memR.handleReceivedTx(protoTxs[0], e)
 
-		// Look up signer/sequence from the tracker. The entry is only
-		// sequence-indexed when a prior SeenTx carried signer/sequence
-		// and it hasn't been demoted from the per-signer queue.
-		if signer, sequence, ok := memR.mempool.seenTracker.PendingTxInfo(key); ok {
-			expectedSeq, haveExpected := memR.querySequenceFromApplication(signer)
-			if haveExpected && sequence > expectedSeq {
-				if sequence > expectedSeq+maxReceivedBufferSize {
-					return
-				}
-				// Future sequence within lookahead - buffer it for later
-				if memR.receivedBuffer.add(signer, sequence, cachedTx, key, txInfo, string(e.Src.ID())) {
-					memR.mempool.seenTracker.ClearPendingTx(key)
-				}
-				return
-			}
-		}
-
-		// Process this tx through CheckTx without putting into buffer
-		memR.processReceivedTx(cachedTx, key, txInfo, e.Src)
+	// A peer has sent us a single transaction. In CAT this is normally a
+	// response to a WantTx. This is the message CAT sends.
+	case *protomem.Tx:
+		memR.handleReceivedTx(msg.GetTx(), e)
 
 	// A peer has indicated to us that it has a transaction. We first verify the txkey and
 	// mark that peer as having the transaction. Then we proceed with the following logic:
@@ -462,10 +491,14 @@ func (memR *Reactor) Receive(e p2p.Envelope) {
 		if has && !memR.opts.ListenOnly {
 			peerID := memR.ids.GetIDForPeer(e.Src.ID())
 			memR.Logger.Trace("sending a tx in response to a want msg", "peer", peerID)
-			if e.Src.Send(p2p.Envelope{
-				ChannelID: MempoolDataChannel,
-				Message:   &protomem.Txs{Tx: tx.Tx},
-			}) {
+			// Send on the v2 channel only. Peers that did not advertise it
+			// (legacy nodes) are skipped by the p2p channel guard, so
+			// transactions are gossiped one-way to upgraded peers only.
+			sent := e.Src.Send(p2p.Envelope{
+				ChannelID: MempoolDataChannelV2,
+				Message:   &protomem.Tx{Tx: tx.Tx},
+			})
+			if sent {
 				memR.mempool.PeerHasTx(peerID, txKey)
 				schema.WriteMempoolTx(
 					memR.traceClient,

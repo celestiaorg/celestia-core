@@ -127,8 +127,8 @@ func TestReactorSendsTxAfterReceivingWantTx(t *testing.T) {
 	tx := newDefaultTx("hello")
 	key := tx.Key()
 	txEnvelope := p2p.Envelope{
-		Message:   &protomem.Txs{Tx: tx},
-		ChannelID: MempoolDataChannel,
+		Message:   &protomem.Tx{Tx: tx},
+		ChannelID: MempoolDataChannelV2,
 	}
 
 	msgWant := &protomem.WantTx{TxKey: key[:]}
@@ -160,10 +160,7 @@ func TestReactorSendsTxAfterReceivingWantTx(t *testing.T) {
 	require.True(t, pool.seenTracker.Has(key, peerID))
 }
 
-// TestReactorReceivesTxViaDeprecatedField verifies that a transaction sent by an
-// older peer in the deprecated repeated txs field is still parsed and added to
-// the mempool via the backward-compatibility fallback.
-func TestReactorReceivesTxViaDeprecatedField(t *testing.T) {
+func TestReactorReceivesTxViaNewField(t *testing.T) {
 	reactor, pool := setupReactor(t)
 
 	peer := genPeer()
@@ -172,16 +169,80 @@ func TestReactorReceivesTxViaDeprecatedField(t *testing.T) {
 
 	tx := newDefaultTx("hello")
 	key := tx.Key()
+	requestTxFromPeer(t, reactor, peer, key)
 
 	reactor.Receive(p2p.Envelope{
 		ChannelID: MempoolDataChannel,
-		Message:   &protomem.Txs{Txs: [][]byte{tx}}, // deprecated field: exercises the backward-compatibility fallback
+		Message:   &protomem.Tx{Tx: tx},
 		Src:       peer,
 	})
 
 	require.Eventually(t, func() bool {
 		return pool.Has(key)
-	}, time.Second, 10*time.Millisecond, "tx sent via the deprecated txs field should be added to the mempool")
+	}, time.Second, 10*time.Millisecond, "tx sent via the new Tx message should be added to the mempool")
+}
+
+func TestReactorParsesDeprecatedTxsMsg(t *testing.T) {
+	reactor, pool := setupReactor(t)
+
+	peer := genPeer()
+	_, err := reactor.InitPeer(peer)
+	require.NoError(t, err)
+
+	tx := newDefaultTx("hello")
+	key := tx.Key()
+	requestTxFromPeer(t, reactor, peer, key)
+
+	reactor.Receive(p2p.Envelope{
+		ChannelID: MempoolDataChannel,
+		Message:   &protomem.Txs{Txs: [][]byte{tx}},
+		Src:       peer,
+	})
+
+	require.Eventually(t, func() bool {
+		return pool.Has(key)
+	}, time.Second, 10*time.Millisecond, "tx sent via the legacy txs message should be added to the mempool")
+}
+
+func TestReactorAdvertisesDataChannelV2(t *testing.T) {
+	reactor, _ := setupReactor(t)
+
+	ids := make([]byte, 0, len(reactor.GetChannels()))
+	for _, ch := range reactor.GetChannels() {
+		ids = append(ids, ch.ID)
+	}
+
+	require.Contains(t, ids, MempoolDataChannelV2, "must advertise the v2 data channel")
+	require.Contains(t, ids, MempoolDataChannel, "must still advertise the legacy data channel in v10")
+}
+
+func TestReactorDoesNotSendTxToLegacyPeer(t *testing.T) {
+	reactor, pool := setupReactor(t)
+
+	tx := newDefaultTx("hello")
+	key := tx.Key()
+	require.NoError(t, pool.CheckTx(tx, nil, mempool.TxInfo{}))
+
+	peer := genPeer()
+	// Only a v2 send is expected; it is dropped (returns false) as it would be
+	// for a legacy peer. A send on any other channel has no matching expectation
+	// and fails the mock.
+	peer.On("Send", mock.MatchedBy(func(e p2p.Envelope) bool {
+		return e.ChannelID == MempoolDataChannelV2
+	})).Return(false).Once()
+	_, err := reactor.InitPeer(peer)
+	require.NoError(t, err)
+
+	reactor.Receive(p2p.Envelope{
+		ChannelID: MempoolWantsChannel,
+		Message:   &protomem.WantTx{TxKey: key[:]},
+		Src:       peer,
+	})
+
+	// Exactly one send, on v2 only; the dropped peer is not marked.
+	peer.AssertExpectations(t)
+	peerID := reactor.ids.GetIDForPeer(peer.ID())
+	require.False(t, pool.seenTracker.Has(key, peerID), "legacy peer must not be marked as having the tx")
 }
 
 func TestReactorBroadcastsSeenTxAfterReceivingTx(t *testing.T) {
@@ -212,6 +273,7 @@ func TestReactorBroadcastsSeenTxAfterReceivingTx(t *testing.T) {
 	require.NoError(t, err)
 	_, err = reactor.InitPeer(peers[1])
 	require.NoError(t, err)
+	requestTxFromPeer(t, reactor, peers[0], key)
 	reactor.Receive(
 		p2p.Envelope{
 			ChannelID: mempool.MempoolChannel,
@@ -662,6 +724,19 @@ func genPeer() *mocks.Peer {
 	return peer
 }
 
+// requestTxFromPeer marks key as requested from peer so a subsequent receive is
+// treated as solicited (CAT only accepts txs it requested).
+func requestTxFromPeer(t *testing.T, reactor *Reactor, peer p2p.Peer, key types.TxKey) {
+	t.Helper()
+	peerID := reactor.ids.GetIDForPeer(peer.ID())
+	require.NotZero(t, peerID, "peer must be initialized before requesting a tx from it")
+	// A tx is only ever requested from a peer that announced it via SeenTx, which
+	// marks the peer as having the tx. Mirror that so downstream broadcasts skip
+	// the sender, matching real behavior.
+	reactor.mempool.PeerHasTx(peerID, key)
+	require.True(t, reactor.requests.Add(key, peerID, nil), "failed to record tx request")
+}
+
 // sequenceTrackingApp is a test application that implements SequenceQuerier
 type sequenceTrackingApp struct {
 	*kvstore.Application
@@ -858,11 +933,9 @@ func TestSeenTxUpgradesPeerEntryToPending(t *testing.T) {
 	txKey := tx.Key()
 	peerID := reactor.ids.GetIDForPeer(peer.ID())
 
-	reactor.Receive(p2p.Envelope{
-		ChannelID: MempoolDataChannel,
-		Message:   &protomem.Txs{Txs: [][]byte{tx}},
-		Src:       peer,
-	})
+	// Pull-only: an unrequested tx would be dropped, so set the precondition
+	// (peer has the tx) directly instead of via an unsolicited receive.
+	reactor.mempool.PeerHasTx(peerID, txKey)
 
 	require.False(t, pool.Has(txKey))
 
@@ -946,6 +1019,7 @@ func TestReactorRequestsQueuedTxAfterSequenceBecomesAvailable(t *testing.T) {
 	app.SetSequence(string(signer), 2)
 
 	priorTx := newDefaultTx("prior-tx")
+	requestTxFromPeer(t, reactor, providerPeer, priorTx.Key())
 	reactor.Receive(p2p.Envelope{
 		ChannelID: MempoolDataChannel,
 		Message:   &protomem.Txs{Txs: [][]byte{priorTx}},
@@ -1001,6 +1075,7 @@ func TestPendingSeenClearedWhenTxArrives(t *testing.T) {
 	require.NoError(t, err)
 	providerPeer.On("Send", mock.Anything).Return(true).Maybe()
 
+	requestTxFromPeer(t, reactor, providerPeer, targetKey)
 	reactor.Receive(p2p.Envelope{
 		ChannelID: MempoolDataChannel,
 		Message:   &protomem.Txs{Txs: [][]byte{targetTx}},
