@@ -935,8 +935,6 @@ func TestReactorRequestsQueuedTxAfterSequenceBecomesAvailable(t *testing.T) {
 	sourcePeer.AssertExpectations(t)
 	entries := reactor.mempool.seenTracker.PendingTxsForSigner(signer)
 	require.Len(t, entries, 1)
-	require.True(t, entries[0].requested)
-	require.Equal(t, reactor.ids.GetIDForPeer(sourcePeer.ID()), entries[0].lastPeer)
 	require.EqualValues(t, reactor.ids.GetIDForPeer(sourcePeer.ID()), reactor.requests.ForTx(targetKey))
 }
 
@@ -1108,11 +1106,11 @@ func TestProcessPendingSeenForSignerRequestsConsecutiveSequences(t *testing.T) {
 
 	peer.AssertExpectations(t)
 
-	// All entries should be marked as requested
+	// All entries should have an in-flight request
 	entries := reactor.mempool.seenTracker.PendingTxsForSigner(signer)
 	require.Len(t, entries, 3)
 	for _, entry := range entries {
-		require.True(t, entry.requested, "entry for seq %d should be marked requested", entry.pendingTxInfo.sequence)
+		require.NotZero(t, reactor.requests.ForTx(entry.txKey), "entry for seq %d should be requested", entry.pendingTxInfo.sequence)
 	}
 }
 
@@ -1169,12 +1167,7 @@ func TestProcessPendingSeenForSignerStopsAtGap(t *testing.T) {
 	peer.AssertExpectations(t)
 
 	// Entry for sequence 8 should NOT be requested
-	entries := reactor.mempool.seenTracker.PendingTxsForSigner(signer)
-	for _, entry := range entries {
-		if entry.pendingTxInfo.sequence == 8 {
-			require.False(t, entry.requested, "entry for seq 8 should NOT be requested due to gap")
-		}
-	}
+	require.Zero(t, reactor.requests.ForTx(key8), "entry for seq 8 should NOT be requested due to gap")
 }
 
 func TestProcessPendingSeenForSignerSkipsAlreadyInMempool(t *testing.T) {
@@ -1263,7 +1256,7 @@ func TestProcessPendingSeenForSignerRespectsMaxBuffer(t *testing.T) {
 	entries := reactor.mempool.seenTracker.PendingTxsForSigner(signer)
 	requestedCount := 0
 	for _, entry := range entries {
-		if entry.requested {
+		if reactor.requests.ForTx(entry.txKey) != 0 {
 			requestedCount++
 		}
 	}
@@ -1298,7 +1291,7 @@ func TestProcessPendingSeenForSignerSkipsAlreadyRequested(t *testing.T) {
 	reactor.mempool.seenTracker.AddPendingTx(key6, peerID, signer, 6)
 
 	// Mark sequence 5 as already requested
-	reactor.mempool.seenTracker.MarkRequested(key5, peerID)
+	require.True(t, reactor.requests.Add(key5, peerID, nil))
 
 	// Only sequence 6 should be newly requested
 	peer.On("TrySend", p2p.Envelope{
@@ -1313,6 +1306,139 @@ func TestProcessPendingSeenForSignerSkipsAlreadyRequested(t *testing.T) {
 	reactor.processPendingSeenForSigner(signer)
 
 	peer.AssertExpectations(t)
+}
+
+func TestRequestTxReservesBeforeSending(t *testing.T) {
+	app := newSequenceTrackingApp()
+	cc := proxy.NewLocalClientCreator(app)
+	pool, cleanup := newMempoolWithApp(cc)
+	defer cleanup()
+
+	reactor, err := NewReactor(pool, &ReactorOptions{})
+	require.NoError(t, err)
+
+	peerA := genPeer()
+	peerB := genPeer()
+	_, err = reactor.InitPeer(peerA)
+	require.NoError(t, err)
+	_, err = reactor.InitPeer(peerB)
+	require.NoError(t, err)
+
+	tx := newDefaultTx("tx")
+	key := tx.Key()
+
+	peerA.On("TrySend", p2p.Envelope{
+		ChannelID: MempoolWantsChannel,
+		Message: &protomem.Message{
+			Sum: &protomem.Message_WantTx{
+				WantTx: &protomem.WantTx{TxKey: key[:]},
+			},
+		},
+	}).Return(true).Once()
+
+	require.True(t, reactor.requestTx(key, peerA))
+
+	// While the WantTx to peerA is outstanding, requesting the same key
+	// again must not send another WantTx, whatever peer it targets.
+	require.False(t, reactor.requestTx(key, peerB))
+	require.False(t, reactor.requestTx(key, peerA))
+
+	require.EqualValues(t, reactor.ids.GetIDForPeer(peerA.ID()), reactor.requests.ForTx(key))
+	peerA.AssertExpectations(t)
+	peerB.AssertNotCalled(t, "TrySend", mock.Anything)
+}
+
+func TestRequestTimeoutDropsUnresponsivePeerAndAsksAnother(t *testing.T) {
+	app := newSequenceTrackingApp()
+	cc := proxy.NewLocalClientCreator(app)
+	pool, cleanup := newMempoolWithApp(cc)
+	defer cleanup()
+
+	reactor, err := NewReactor(pool, &ReactorOptions{MaxGossipDelay: 100 * time.Millisecond})
+	require.NoError(t, err)
+
+	peerA := genPeer()
+	peerB := genPeer()
+	_, err = reactor.InitPeer(peerA)
+	require.NoError(t, err)
+	_, err = reactor.InitPeer(peerB)
+	require.NoError(t, err)
+	peerAID := reactor.ids.GetIDForPeer(peerA.ID())
+	peerBID := reactor.ids.GetIDForPeer(peerB.ID())
+
+	tx := newDefaultTx("tx")
+	key := tx.Key()
+
+	// both peers have announced the tx
+	reactor.mempool.PeerHasTx(peerAID, key)
+	reactor.mempool.PeerHasTx(peerBID, key)
+
+	wantEnvelope := p2p.Envelope{
+		ChannelID: MempoolWantsChannel,
+		Message: &protomem.Message{
+			Sum: &protomem.Message_WantTx{
+				WantTx: &protomem.WantTx{TxKey: key[:]},
+			},
+		},
+	}
+
+	peerA.On("TrySend", wantEnvelope).Return(true).Once()
+	peerB.On("TrySend", wantEnvelope).Return(true).Once()
+
+	require.True(t, reactor.requestTx(key, peerA))
+
+	// peerA never responds: after MaxGossipDelay the request must move to peerB
+	require.Eventually(t, func() bool {
+		return reactor.requests.ForTx(key) == peerBID
+	}, 2*time.Second, 10*time.Millisecond)
+
+	// the unresponsive peer is no longer considered a source for this tx
+	require.False(t, reactor.mempool.seenTracker.Has(key, peerAID))
+	require.True(t, reactor.mempool.seenTracker.Has(key, peerBID))
+
+	peerA.AssertExpectations(t)
+	peerB.AssertExpectations(t)
+}
+
+func TestRequestTxRollsBackReservationOnFailedSend(t *testing.T) {
+	app := newSequenceTrackingApp()
+	cc := proxy.NewLocalClientCreator(app)
+	pool, cleanup := newMempoolWithApp(cc)
+	defer cleanup()
+
+	reactor, err := NewReactor(pool, &ReactorOptions{})
+	require.NoError(t, err)
+
+	peerA := genPeer()
+	peerB := genPeer()
+	_, err = reactor.InitPeer(peerA)
+	require.NoError(t, err)
+	_, err = reactor.InitPeer(peerB)
+	require.NoError(t, err)
+
+	tx := newDefaultTx("tx")
+	key := tx.Key()
+
+	wantEnvelope := p2p.Envelope{
+		ChannelID: MempoolWantsChannel,
+		Message: &protomem.Message{
+			Sum: &protomem.Message_WantTx{
+				WantTx: &protomem.WantTx{TxKey: key[:]},
+			},
+		},
+	}
+
+	peerA.On("TrySend", wantEnvelope).Return(false).Once()
+	require.False(t, reactor.requestTx(key, peerA))
+	require.Zero(t, reactor.requests.ForTx(key))
+
+	// With the reservation rolled back, the tx can be requested from
+	// another peer.
+	peerB.On("TrySend", wantEnvelope).Return(true).Once()
+	require.True(t, reactor.requestTx(key, peerB))
+	require.EqualValues(t, reactor.ids.GetIDForPeer(peerB.ID()), reactor.requests.ForTx(key))
+	peerA.AssertExpectations(t)
+	peerB.AssertExpectations(t)
 }
 
 func TestTryRequestQueuedTxRespectsPerPeerLimit(t *testing.T) {

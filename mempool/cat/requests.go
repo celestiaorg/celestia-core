@@ -55,6 +55,12 @@ func (r *requestScheduler) Add(key types.TxKey, peer uint16, onTimeout func(key 
 		return false
 	}
 
+	// the per-peer limit is enforced here, under the lock, so concurrent
+	// requesters can't race a peer past it
+	if len(r.requestsByPeer[peer]) >= maxRequestsPerPeer {
+		return false
+	}
+
 	timer := time.AfterFunc(r.responseTime, func() {
 		r.mtx.Lock()
 		delete(r.requestsByTx, key)
@@ -127,6 +133,23 @@ func (r *requestScheduler) ClearAllRequestsFrom(peer uint16) requestSet {
 	}
 	delete(r.requestsByPeer, peer)
 	return requests
+}
+
+// Remove drops an in-flight request and stops its timer, e.g. to roll back
+// a reservation whose WantTx failed to send.
+func (r *requestScheduler) Remove(key types.TxKey) {
+	r.mtx.Lock()
+	defer r.mtx.Unlock()
+
+	peer, ok := r.requestsByTx[key]
+	if !ok {
+		return
+	}
+	if timer, ok := r.requestsByPeer[peer][key]; ok {
+		timer.Stop()
+		delete(r.requestsByPeer[peer], key)
+	}
+	delete(r.requestsByTx, key)
 }
 
 func (r *requestScheduler) MarkReceived(peer uint16, key types.TxKey) bool {

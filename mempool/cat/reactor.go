@@ -561,7 +561,10 @@ func (memR *Reactor) broadcastSeenTxWithHeight(txKey types.TxKey, height int64, 
 	}
 }
 
-// requesting it from another peer if the first peer does not respond.
+// requestTx reserves the tx in the request scheduler, then sends a WantTx to
+// the peer. Reserving first means concurrent requesters can't double-send:
+// whoever reserves first sends, everyone else no-ops. Returns true only if
+// the WantTx was actually sent.
 func (memR *Reactor) requestTx(txKey types.TxKey, peer p2p.Peer) bool {
 	if peer == nil {
 		// we have disconnected from the peer
@@ -569,6 +572,11 @@ func (memR *Reactor) requestTx(txKey types.TxKey, peer p2p.Peer) bool {
 	}
 
 	peerID := memR.ids.GetIDForPeer(peer.ID())
+	if !memR.requests.Add(txKey, peerID, memR.onRequestTimeout) {
+		memR.Logger.Trace("tx already requested or peer at capacity", "txKey", txKey, "peerID", peer.ID())
+		return false
+	}
+
 	memR.Logger.Trace("requesting tx", "txKey", txKey, "peerID", peer.ID())
 	msg := &protomem.Message{
 		Sum: &protomem.Message_WantTx{
@@ -582,18 +590,13 @@ func (memR *Reactor) requestTx(txKey types.TxKey, peer p2p.Peer) bool {
 			Message:   msg,
 		},
 	)
-	if success {
-		memR.mempool.metrics.RequestedTxs.Add(1)
-		requested := memR.requests.Add(txKey, peerID, memR.onRequestTimeout)
-		if !requested {
-			memR.Logger.Error("have already marked a tx as requested", "txKey", txKey, "peerID", peer.ID())
-		} else {
-			memR.mempool.seenTracker.MarkRequested(txKey, peerID)
-		}
-
-		schema.WriteMempoolPeerState(memR.traceClient, string(peer.ID()), schema.WantTx, txKey[:], schema.Upload)
+	if !success {
+		memR.requests.Remove(txKey)
+		return false
 	}
-	return success
+	memR.mempool.metrics.RequestedTxs.Add(1)
+	schema.WriteMempoolPeerState(memR.traceClient, string(peer.ID()), schema.WantTx, txKey[:], schema.Upload)
+	return true
 }
 
 // tryAddNewTx attempts to add a tx to the mempool and traces the result.
@@ -726,7 +729,7 @@ func (memR *Reactor) processPendingSeenForSigner(signer []byte) {
 		}
 
 		// Skip if already being requested, but count it
-		if memR.requests.ForTx(entry.txKey) != 0 || entry.requested {
+		if memR.requests.ForTx(entry.txKey) != 0 {
 			nextSeq++
 			requested++
 			continue
@@ -751,7 +754,15 @@ func (memR *Reactor) tryRequestQueuedTx(entry *SeenEntry) bool {
 			continue
 		}
 		peer := memR.ids.GetPeer(peerID)
-		if peer != nil && memR.requestTx(entry.txKey, peer) {
+		if peer == nil {
+			continue
+		}
+		if memR.requestTx(entry.txKey, peer) {
+			return true
+		}
+		// requestTx also fails when another goroutine reserved this tx
+		// first; if so, trying more peers would fail the same way.
+		if memR.requests.ForTx(entry.txKey) != 0 {
 			return true
 		}
 	}
@@ -762,7 +773,9 @@ func (memR *Reactor) tryRequestQueuedTx(entry *SeenEntry) bool {
 }
 
 func (memR *Reactor) onRequestTimeout(txKey types.TxKey, peerID uint16) {
-	memR.mempool.seenTracker.MarkRequestFailed(txKey, peerID)
+	// The peer failed to respond in time, so stop treating it as a source
+	// for this tx unless it announces it again.
+	memR.mempool.seenTracker.RemovePeerFromTx(txKey, peerID)
 	memR.findNewPeerToRequestTx(txKey)
 }
 

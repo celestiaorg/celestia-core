@@ -139,6 +139,52 @@ func TestRequestSchedulerConcurrencyAddsAndReads(t *testing.T) {
 	}
 }
 
+func TestRequestSchedulerRemove(t *testing.T) {
+	requests := newRequestScheduler(time.Minute, time.Minute)
+	t.Cleanup(requests.Close)
+
+	var peerA uint16 = 1
+	key := types.Tx("tx").Key()
+
+	// removing an unknown key is a no-op
+	requests.Remove(key)
+
+	require.True(t, requests.Add(key, peerA, nil))
+	requests.Remove(key)
+
+	require.Zero(t, requests.ForTx(key))
+	require.False(t, requests.Has(peerA, key))
+	require.Equal(t, 0, requests.CountForPeer(peerA))
+
+	// the key can be reserved again after removal
+	require.True(t, requests.Add(key, peerA, nil))
+}
+
+func TestRequestSchedulerPerPeerLimit(t *testing.T) {
+	requests := newRequestScheduler(time.Minute, time.Minute)
+	t.Cleanup(requests.Close)
+
+	var peerA uint16 = 1
+	var peerB uint16 = 2
+
+	keys := make([]types.TxKey, maxRequestsPerPeer)
+	for i := 0; i < maxRequestsPerPeer; i++ {
+		keys[i] = types.Tx(fmt.Sprintf("tx-%d", i)).Key()
+		require.True(t, requests.Add(keys[i], peerA, nil))
+	}
+
+	// peerA is at capacity so you can no longer reserve the request spot
+	overflow := types.Tx("overflow").Key()
+	require.False(t, requests.Add(overflow, peerA, nil))
+	// but the same tx can still be requested from another peer
+	require.True(t, requests.Add(overflow, peerB, nil))
+
+	// receiving a response frees a slot
+	require.True(t, requests.MarkReceived(peerA, keys[0]))
+	extra := types.Tx("extra").Key()
+	require.True(t, requests.Add(extra, peerA, nil))
+}
+
 func TestRequestSchedulerCountForPeer(t *testing.T) {
 	requests := newRequestScheduler(time.Minute, time.Minute)
 	t.Cleanup(requests.Close)

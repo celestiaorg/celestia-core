@@ -233,18 +233,6 @@ func TestSeenTrackerRemovePeer(t *testing.T) {
 		require.Empty(t, tracker.txCountByPeer)
 	})
 
-	t.Run("clears in-flight request from that peer", func(t *testing.T) {
-		tracker := NewSeenTracker()
-		require.True(t, tracker.AddPeer(txKey, peer1))
-		require.True(t, tracker.AddPeer(txKey, peer2))
-		tracker.MarkRequested(txKey, peer1)
-
-		tracker.RemovePeer(peer1)
-		entry := tracker.Get(txKey)
-		require.NotNil(t, entry)
-		require.False(t, entry.requested)
-		require.Equal(t, uint16(0), entry.lastPeer)
-	})
 }
 
 func TestSeenTrackerPrune(t *testing.T) {
@@ -268,37 +256,7 @@ func TestSeenTrackerPrune(t *testing.T) {
 	require.Equal(t, 1, tracker.txCountByPeer[peer1])
 }
 
-func TestSeenTrackerMarkRequested(t *testing.T) {
-	var (
-		txKey        = types.Tx("tx").Key()
-		peer1 uint16 = 1
-	)
-
-	t.Run("peer 0 is a no-op", func(t *testing.T) {
-		tracker := NewSeenTracker()
-		require.True(t, tracker.AddPeer(txKey, peer1))
-		tracker.MarkRequested(txKey, 0)
-		require.False(t, tracker.Get(txKey).requested)
-	})
-
-	t.Run("unknown tx is a no-op", func(t *testing.T) {
-		tracker := NewSeenTracker()
-		tracker.MarkRequested(txKey, peer1) // must not panic
-		require.Nil(t, tracker.Get(txKey))
-	})
-
-	t.Run("records the peer", func(t *testing.T) {
-		tracker := NewSeenTracker()
-		require.True(t, tracker.AddPeer(txKey, peer1))
-		tracker.MarkRequested(txKey, peer1)
-
-		entry := tracker.Get(txKey)
-		require.True(t, entry.requested)
-		require.Equal(t, peer1, entry.lastPeer)
-	})
-}
-
-func TestSeenTrackerMarkRequestFailed(t *testing.T) {
+func TestSeenTrackerRemovePeerFromTx(t *testing.T) {
 	var (
 		txKey        = types.Tx("tx").Key()
 		peer1 uint16 = 1
@@ -308,36 +266,33 @@ func TestSeenTrackerMarkRequestFailed(t *testing.T) {
 	t.Run("peer 0 is a no-op", func(t *testing.T) {
 		tracker := NewSeenTracker()
 		require.True(t, tracker.AddPeer(txKey, peer1))
-		tracker.MarkRequestFailed(txKey, 0)
+		tracker.RemovePeerFromTx(txKey, 0)
 		require.True(t, tracker.Has(txKey, peer1))
 	})
 
 	t.Run("unknown tx is a no-op", func(t *testing.T) {
 		tracker := NewSeenTracker()
-		tracker.MarkRequestFailed(txKey, peer1) // must not panic
+		tracker.RemovePeerFromTx(txKey, peer1) // must not panic
 		require.Equal(t, 0, tracker.Len())
 	})
 
-	t.Run("drops the peer and clears its request", func(t *testing.T) {
+	t.Run("drops the peer but keeps the others", func(t *testing.T) {
 		tracker := NewSeenTracker()
 		require.True(t, tracker.AddPeer(txKey, peer1))
 		require.True(t, tracker.AddPeer(txKey, peer2))
-		tracker.MarkRequested(txKey, peer1)
 
-		tracker.MarkRequestFailed(txKey, peer1)
+		tracker.RemovePeerFromTx(txKey, peer1)
 		entry := tracker.Get(txKey)
 		require.NotNil(t, entry)
-		require.False(t, entry.requested)
-		require.Equal(t, uint16(0), entry.lastPeer)
 		require.False(t, tracker.Has(txKey, peer1))
 		require.True(t, tracker.Has(txKey, peer2))
 	})
 
-	t.Run("removes entry when last peer fails", func(t *testing.T) {
+	t.Run("removes entry when last peer is dropped", func(t *testing.T) {
 		tracker := NewSeenTracker()
 		require.True(t, tracker.AddPeer(txKey, peer1))
 
-		tracker.MarkRequestFailed(txKey, peer1)
+		tracker.RemovePeerFromTx(txKey, peer1)
 		require.Equal(t, 0, tracker.Len())
 		require.Empty(t, tracker.txCountByPeer)
 	})
