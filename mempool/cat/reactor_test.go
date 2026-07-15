@@ -172,7 +172,7 @@ func TestReactorReceivesTxViaNewField(t *testing.T) {
 	requestTxFromPeer(t, reactor, peer, key)
 
 	reactor.Receive(p2p.Envelope{
-		ChannelID: MempoolDataChannel,
+		ChannelID: MempoolDataChannelV2,
 		Message:   &protomem.Tx{Tx: tx},
 		Src:       peer,
 	})

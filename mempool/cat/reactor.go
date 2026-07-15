@@ -339,7 +339,7 @@ func (memR *Reactor) processNowOrBuffer(cachedTx *types.CachedTx, key types.TxKe
 
 	// Not ahead of the expected sequence: process it now.
 	expectedSeq, haveExpected := memR.querySequenceFromApplication(signer)
-	if !haveExpected || sequence <= expectedSeq {
+	if !haveExpected || sequence == expectedSeq {
 		return true
 	}
 
