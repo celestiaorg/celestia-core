@@ -216,20 +216,24 @@ func TestReactorAdvertisesDataChannelV2(t *testing.T) {
 	require.Contains(t, ids, MempoolDataChannel, "must still advertise the legacy data channel in v10")
 }
 
-func TestReactorDoesNotSendTxToLegacyPeer(t *testing.T) {
+// TestReactorSendsLegacyTxsToLegacyPeer checks the migration-window fallback:
+// a peer that did not advertise the v2 data channel gets its WantTx answered
+// with the deprecated Txs message on the legacy data channel.
+func TestReactorSendsLegacyTxsToLegacyPeer(t *testing.T) {
 	reactor, pool := setupReactor(t)
 
 	tx := newDefaultTx("hello")
 	key := tx.Key()
 	require.NoError(t, pool.CheckTx(tx, nil, mempool.TxInfo{}))
 
-	peer := genPeer()
-	// Only a v2 send is expected; it is dropped (returns false) as it would be
-	// for a legacy peer. A send on any other channel has no matching expectation
-	// and fails the mock.
-	peer.On("Send", mock.MatchedBy(func(e p2p.Envelope) bool {
-		return e.ChannelID == MempoolDataChannelV2
-	})).Return(false).Once()
+	peer := genLegacyPeer()
+	// Exactly one send is expected: the legacy Txs message on the legacy
+	// channel. A send on any other channel has no matching expectation and
+	// fails the mock.
+	peer.On("Send", p2p.Envelope{
+		ChannelID: MempoolDataChannel,
+		Message:   &protomem.Txs{Txs: [][]byte{tx}},
+	}).Return(true).Once()
 	_, err := reactor.InitPeer(peer)
 	require.NoError(t, err)
 
@@ -239,10 +243,9 @@ func TestReactorDoesNotSendTxToLegacyPeer(t *testing.T) {
 		Src:       peer,
 	})
 
-	// Exactly one send, on v2 only; the dropped peer is not marked.
 	peer.AssertExpectations(t)
 	peerID := reactor.ids.GetIDForPeer(peer.ID())
-	require.False(t, pool.seenTracker.Has(key, peerID), "legacy peer must not be marked as having the tx")
+	require.True(t, pool.seenTracker.Has(key, peerID), "served legacy peer must be marked as having the tx")
 }
 
 func TestReactorBroadcastsSeenTxAfterReceivingTx(t *testing.T) {
@@ -721,6 +724,23 @@ func genPeer() *mocks.Peer {
 	peer.On("ID").Return(nodeKey.ID())
 	peer.On("Get", types.PeerStateKey).Return(nil).Maybe()
 	peer.On("IsPersistent").Return(false).Maybe()
+	peer.On("NodeInfo").Return(p2p.DefaultNodeInfo{
+		Channels: []byte{MempoolDataChannel, MempoolWantsChannel, MempoolDataChannelV2},
+	}).Maybe()
+	return peer
+}
+
+// genLegacyPeer returns a mock peer that does not advertise the v2 data
+// channel, i.e. a pre-v10 node.
+func genLegacyPeer() *mocks.Peer {
+	peer := &mocks.Peer{}
+	nodeKey := p2p.NodeKey{PrivKey: ed25519.GenPrivKey()}
+	peer.On("ID").Return(nodeKey.ID())
+	peer.On("Get", types.PeerStateKey).Return(nil).Maybe()
+	peer.On("IsPersistent").Return(false).Maybe()
+	peer.On("NodeInfo").Return(p2p.DefaultNodeInfo{
+		Channels: []byte{MempoolDataChannel, MempoolWantsChannel},
+	}).Maybe()
 	return peer
 }
 

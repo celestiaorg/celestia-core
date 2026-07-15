@@ -30,8 +30,9 @@ const (
 	// MempoolWantsChannel channel for wantTx messages.
 	MempoolWantsChannel = byte(0x32)
 
-	// MempoolDataChannelV2 carries the single Tx message. Only peers that
-	// advertise it are sent transactions; legacy peers are skipped. Added in v10;
+	// MempoolDataChannelV2 carries the single Tx message. Peers that advertise
+	// it are sent transactions as Tx on this channel; legacy peers are served
+	// the deprecated Txs message on MempoolDataChannel instead. Added in v10;
 	// the old MempoolDataChannel and Txs message are removed in v11.
 	MempoolDataChannelV2 = byte(0x33)
 
@@ -505,13 +506,19 @@ func (memR *Reactor) Receive(e p2p.Envelope) {
 		if has && !memR.opts.ListenOnly {
 			peerID := memR.ids.GetIDForPeer(e.Src.ID())
 			memR.Logger.Trace("sending a tx in response to a want msg", "peer", peerID)
-			// Send on the v2 channel only. Peers that did not advertise it
-			// (legacy nodes) are skipped by the p2p channel guard, so
-			// transactions are gossiped one-way to upgraded peers only.
-			sent := e.Src.Send(p2p.Envelope{
+			// Reply in the format the peer understands. The legacy
+			// fallback is removed in v11 with the channel.
+			envelope := p2p.Envelope{
 				ChannelID: MempoolDataChannelV2,
 				Message:   &protomem.Tx{Tx: tx.Tx},
-			})
+			}
+			if !peerHasDataChannelV2(e.Src) {
+				envelope = p2p.Envelope{
+					ChannelID: MempoolDataChannel,
+					Message:   &protomem.Txs{Txs: [][]byte{tx.Tx}}, //nolint:staticcheck // SA1019: legacy peers only understand the deprecated Txs message
+				}
+			}
+			sent := e.Src.Send(envelope)
 			if sent {
 				memR.mempool.PeerHasTx(peerID, txKey)
 				schema.WriteMempoolTx(
@@ -534,6 +541,17 @@ func (memR *Reactor) Receive(e p2p.Envelope) {
 // PeerState describes the state of a peer.
 type PeerState interface {
 	GetHeight() int64
+}
+
+// peerHasDataChannelV2 reports whether the peer advertised MempoolDataChannelV2
+// in its handshake. Defaults to false on an unexpected NodeInfo type, which is
+// safe: every v10 peer still understands the legacy Txs message.
+func peerHasDataChannelV2(peer p2p.Peer) bool {
+	ni, ok := peer.NodeInfo().(p2p.DefaultNodeInfo)
+	if !ok {
+		return false
+	}
+	return ni.HasChannel(MempoolDataChannelV2)
 }
 
 // broadcastSeenTx broadcasts a SeenTx message to limited peers unless we
