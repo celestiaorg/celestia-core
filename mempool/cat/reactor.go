@@ -337,14 +337,28 @@ func (memR *Reactor) processNowOrBuffer(cachedTx *types.CachedTx, key types.TxKe
 		return true
 	}
 
-	// Not ahead of the expected sequence: process it now.
+	// At the expected sequence or no sequence returned: process it now.
 	expectedSeq, haveExpected := memR.querySequenceFromApplication(signer)
 	if !haveExpected || sequence == expectedSeq {
 		return true
 	}
 
-	// Sequence gap: can't apply yet. Buffer it if it's close enough to apply
-	// later, otherwise drop it (we re-request when the gap closes).
+	// The signer's sequence advanced past this tx while our request was in
+	// flight. A consumed sequence can never be applied, so drop the tx
+	// without running CheckTx and forget it entirely.
+	if sequence < expectedSeq {
+		memR.Logger.Debug(
+			"dropping tx with stale sequence",
+			"txKey", key,
+			"sequence", sequence,
+			"expectedSequence", expectedSeq,
+		)
+		memR.mempool.seenTracker.RemoveKey(key)
+		return false
+	}
+
+	// Ahead of the expected sequence: can't apply yet. Buffer it if it's close
+	// enough to apply later, otherwise drop it (we re-request when the gap closes).
 	if sequence <= expectedSeq+maxReceivedBufferSize {
 		if memR.receivedBuffer.add(signer, sequence, cachedTx, key, txInfo, string(src.ID())) {
 			memR.mempool.seenTracker.ClearPendingTx(key)

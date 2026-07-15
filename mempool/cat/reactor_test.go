@@ -724,6 +724,44 @@ func genPeer() *mocks.Peer {
 	return peer
 }
 
+func TestReactorDropsStaleSequenceTx(t *testing.T) {
+	app := newSequenceTrackingApp()
+	cc := proxy.NewLocalClientCreator(app)
+	pool, cleanup := newMempoolWithApp(cc)
+	defer cleanup()
+
+	reactor, err := NewReactor(pool, &ReactorOptions{})
+	require.NoError(t, err)
+
+	signer := []byte("sender-000-0")
+	app.SetSequence(string(signer), 1)
+
+	peer := genPeer()
+	_, err = reactor.InitPeer(peer)
+	require.NoError(t, err)
+	peerID := reactor.ids.GetIDForPeer(peer.ID())
+
+	tx := newDefaultTx("stale-tx")
+	key := tx.Key()
+
+	// Announced as future (seq 3 > expected 1), requested, and then the
+	// signer's sequence advances past it before the tx arrives.
+	require.True(t, reactor.mempool.seenTracker.AddPendingTx(key, peerID, signer, 3))
+	requestTxFromPeer(t, reactor, peer, key)
+	app.SetSequence(string(signer), 5)
+
+	reactor.Receive(p2p.Envelope{
+		ChannelID: MempoolDataChannelV2,
+		Message:   &protomem.Tx{Tx: tx},
+		Src:       peer,
+	})
+
+	require.False(t, pool.Has(key), "stale-sequence tx must not enter the mempool")
+	require.Empty(t, reactor.receivedBuffer.signerKeys(), "stale-sequence tx must not be buffered")
+	require.Zero(t, app.CheckTxCalls(), "stale-sequence tx must not be processed through CheckTx")
+	require.Nil(t, pool.seenTracker.Get(key), "tracker must forget the tx")
+}
+
 // requestTxFromPeer marks key as requested from peer so a subsequent receive is
 // treated as solicited (CAT only accepts txs it requested).
 func requestTxFromPeer(t *testing.T, reactor *Reactor, peer p2p.Peer, key types.TxKey) {
@@ -740,8 +778,9 @@ func requestTxFromPeer(t *testing.T, reactor *Reactor, peer p2p.Peer, key types.
 // sequenceTrackingApp is a test application that implements SequenceQuerier
 type sequenceTrackingApp struct {
 	*kvstore.Application
-	mtx       sync.Mutex
-	sequences map[string]uint64
+	mtx          sync.Mutex
+	sequences    map[string]uint64
+	checkTxCalls int
 }
 
 func newSequenceTrackingApp() *sequenceTrackingApp {
@@ -752,6 +791,10 @@ func newSequenceTrackingApp() *sequenceTrackingApp {
 }
 
 func (app *sequenceTrackingApp) CheckTx(ctx context.Context, req *abcitypes.RequestCheckTx) (*abcitypes.ResponseCheckTx, error) {
+	app.mtx.Lock()
+	app.checkTxCalls++
+	app.mtx.Unlock()
+
 	var (
 		priority int64
 		sender   string
@@ -792,6 +835,13 @@ func (app *sequenceTrackingApp) QuerySequence(ctx context.Context, req *abcitype
 
 	sequence := app.sequences[string(req.Signer)]
 	return &abcitypes.ResponseQuerySequence{Sequence: sequence}, nil
+}
+
+// CheckTxCalls returns how many times CheckTx has been invoked.
+func (app *sequenceTrackingApp) CheckTxCalls() int {
+	app.mtx.Lock()
+	defer app.mtx.Unlock()
+	return app.checkTxCalls
 }
 
 func (app *sequenceTrackingApp) SetSequence(signer string, sequence uint64) {
