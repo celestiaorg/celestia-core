@@ -329,11 +329,11 @@ func (memR *Reactor) handleReceivedTx(tx []byte, e p2p.Envelope) {
 // processNowOrBuffer returns true if the tx can be applied now. Otherwise it
 // buffers the tx for later (or drops it if too far ahead) and returns false.
 func (memR *Reactor) processNowOrBuffer(cachedTx *types.CachedTx, key types.TxKey, txInfo mempool.TxInfo, src p2p.Peer) bool {
-	// No pending signer/sequence (no prior SeenTx carried it, or the entry was
-	// demoted from the per-signer queue): we can't tell it is ahead, so process
-	// it now.
 	signer, sequence, ok := memR.mempool.seenTracker.PendingTxInfo(key)
 	if !ok {
+		// No pending signer/sequence (no prior SeenTx carried it, or the entry was
+		// demoted from the per-signer queue): we can't tell it is ahead, so process
+		// it now.
 		return true
 	}
 
