@@ -554,6 +554,7 @@ func state(nVals int, height int64) (sm.State, dbm.DB, []types.PrivValidator) {
 func TestNodePrivValidatorGRPCServer(t *testing.T) {
 	config := test.ResetTestRoot("node_privval_grpc_test")
 	defer os.RemoveAll(config.RootDir)
+	testFreeConfig(t, config)
 
 	addr := testFreeAddr(t)
 	config.PrivValidatorGRPCListenAddr = addr
