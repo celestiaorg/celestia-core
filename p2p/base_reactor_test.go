@@ -82,7 +82,7 @@ func (r *orderedReactor) Receive(e p2p.Envelope) {
 	defer r.Unlock()
 
 	envMsg := e.Message.(*mempool.Txs)
-	r.received = append(r.received, string(envMsg.Txs[0])) //nolint:staticcheck // SA1019: test payload deliberately uses the deprecated field
+	r.received = append(r.received, string(envMsg.Txs[0]))
 }
 
 func (r *orderedReactor) fillQueue(t *testing.T, msgs ...string) {
@@ -269,7 +269,7 @@ func (r *panicReactor) Receive(e p2p.Envelope) {
 	defer r.Unlock()
 
 	envMsg := e.Message.(*mempool.Txs)
-	msgStr := string(envMsg.Txs[0]) //nolint:staticcheck // SA1019: test payload deliberately uses the deprecated field
+	msgStr := string(envMsg.Txs[0])
 
 	if msgStr == "panic_trigger" {
 		panic("intentional panic for testing")
@@ -404,7 +404,7 @@ func (r *precheckReactor) Receive(e p2p.Envelope) {
 	r.Lock()
 	defer r.Unlock()
 	m := e.Message.(*mempool.Txs)
-	r.received = append(r.received, string(m.Txs[0])) //nolint:staticcheck // SA1019: test payload deliberately uses the deprecated field
+	r.received = append(r.received, string(m.Txs[0]))
 }
 
 // TestBaseReactorRecvMessagePrecheck verifies that a channel's
