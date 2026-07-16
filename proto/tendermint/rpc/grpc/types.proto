@@ -145,6 +145,12 @@ message ValidatorSetResponse {
 message SubscribeNewHeightsResponse {
   int64 height = 1;
   bytes hash   = 2;
+  // Time is the block header time of the announced height.
+  google.protobuf.Timestamp time = 3
+      [(gogoproto.nullable) = false, (gogoproto.stdtime) = true];
+  // CatchingUp is true when the node was still syncing (block/state sync)
+  // when this height was emitted. Matches Status SyncInfo.catching_up.
+  bool catching_up = 4;
 }
 
 // StatusResponse is a response to a StatusRequest.

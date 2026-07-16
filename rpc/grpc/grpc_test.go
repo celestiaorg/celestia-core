@@ -180,6 +180,9 @@ func (s *GRPCSuite) TestSubscribeNewHeights() {
 	stream, err := client.SubscribeNewHeights(ctx, &coregrpc.SubscribeNewHeightsRequest{})
 	require.NoError(t, err)
 
+	status, err := s.env.Status(nil)
+	require.NoError(t, err)
+
 	go func() {
 		listenedHeightsCount := 0
 		defer func() {
@@ -192,7 +195,11 @@ func (s *GRPCSuite) TestSubscribeNewHeights() {
 			}
 			require.NoError(t, err)
 			require.Greater(t, res.Height, int64(0))
-			assert.Equal(t, s.env.BlockStore.LoadBlockMeta(res.Height).BlockID.Hash.Bytes(), res.Hash)
+			meta := s.env.BlockStore.LoadBlockMeta(res.Height)
+			require.NotNil(t, meta)
+			assert.Equal(t, meta.BlockID.Hash.Bytes(), res.Hash)
+			assert.True(t, res.Time.Equal(meta.Header.Time), "got %v want %v", res.Time, meta.Header.Time)
+			assert.Equal(t, status.SyncInfo.CatchingUp, res.CatchingUp)
 			listenedHeightsCount++
 		}
 	}()

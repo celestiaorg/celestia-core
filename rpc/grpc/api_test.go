@@ -49,7 +49,7 @@ func TestBroadcastToListeners_DoesNotBlockOnSlowSubscriber(t *testing.T) {
 
 	done := make(chan struct{})
 	go func() {
-		api.broadcastToListeners(context.Background(), 100, []byte("hash"))
+		api.broadcastToListeners(context.Background(), 100, []byte("hash"), time.Time{}, false)
 		close(done)
 	}()
 
@@ -87,7 +87,7 @@ func TestBroadcastToListeners_DoesNotHoldLockDuringSend(t *testing.T) {
 	started := make(chan struct{})
 	go func() {
 		close(started)
-		api.broadcastToListeners(context.Background(), 100, []byte("hash"))
+		api.broadcastToListeners(context.Background(), 100, []byte("hash"), time.Time{}, false)
 	}()
 	<-started
 	time.Sleep(5 * time.Millisecond)
@@ -152,7 +152,7 @@ func TestBroadcastToListeners_DeliversToAllSubscribersWhenAllDrain(t *testing.T)
 	}
 
 	for h := int64(1); h <= numEvents; h++ {
-		api.broadcastToListeners(context.Background(), h, []byte("hash"))
+		api.broadcastToListeners(context.Background(), h, []byte("hash"), time.Time{}, false)
 	}
 
 	wg.Wait()
@@ -209,7 +209,7 @@ func TestBroadcastToListeners_DoesNotDeadlockOnPanic(t *testing.T) {
 
 	done := make(chan struct{})
 	go func() {
-		api.broadcastToListeners(context.Background(), 1, []byte("hash"))
+		api.broadcastToListeners(context.Background(), 1, []byte("hash"), time.Time{}, false)
 		close(done)
 	}()
 
@@ -223,4 +223,24 @@ func TestBroadcastToListeners_DoesNotDeadlockOnPanic(t *testing.T) {
 	_, exists := api.heightListeners[ch]
 	api.Unlock()
 	require.False(t, exists, "listener should be removed after the recover path runs")
+}
+
+// TestBroadcastToListeners_IncludesTimeAndCatchingUp verifies that Time and
+// CatchingUp are forwarded to subscribers (issue #3112).
+func TestBroadcastToListeners_IncludesTimeAndCatchingUp(t *testing.T) {
+	api := newTestBlockAPI(t)
+	ch := api.addHeightListener()
+
+	blockTime := time.Date(2026, 6, 9, 15, 6, 13, 0, time.UTC)
+	api.broadcastToListeners(context.Background(), 42, []byte("abc"), blockTime, true)
+
+	select {
+	case ev := <-ch:
+		assert.Equal(t, int64(42), ev.Height)
+		assert.Equal(t, []byte("abc"), ev.Hash)
+		assert.True(t, ev.Time.Equal(blockTime), "got %v want %v", ev.Time, blockTime)
+		assert.True(t, ev.CatchingUp)
+	case <-time.After(1 * time.Second):
+		t.Fatal("subscriber did not receive the broadcast")
+	}
 }

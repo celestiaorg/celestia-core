@@ -107,7 +107,12 @@ func (blockAPI *BlockAPI) StartNewBlockEventListener(ctx context.Context) error 
 				blockAPI.env.Logger.Error("couldn't cast event data to new block")
 				return fmt.Errorf("couldn't cast event data to new block. Events: %s", event.Events())
 			}
-			blockAPI.broadcastToListeners(ctx, data.Block.Height, data.Block.Hash())
+			// CatchingUp matches Status SyncInfo.catching_up.
+			catchingUp := false
+			if blockAPI.env.ConsensusReactor != nil {
+				catchingUp = blockAPI.env.ConsensusReactor.WaitSync()
+			}
+			blockAPI.broadcastToListeners(ctx, data.Block.Height, data.Block.Hash(), data.Block.Time, catchingUp)
 		}
 	}
 }
@@ -169,7 +174,7 @@ func (blockAPI *BlockAPI) retryNewBlocksSubscription(ctx context.Context) (bool,
 	return false, errors.New("couldn't recover from failed blocks subscription. stopping listeners")
 }
 
-func (blockAPI *BlockAPI) broadcastToListeners(ctx context.Context, height int64, hash []byte) {
+func (blockAPI *BlockAPI) broadcastToListeners(ctx context.Context, height int64, hash []byte, blockTime time.Time, catchingUp bool) {
 	// Snapshot the current set of listeners under the lock so we do not
 	// hold the lock during sends. A slow listener must not block the
 	// broadcaster (see https://github.com/celestiaorg/celestia-core/issues/2967).
@@ -184,7 +189,12 @@ func (blockAPI *BlockAPI) broadcastToListeners(ctx context.Context, height int64
 		return
 	}
 
-	event := SubscribeNewHeightsResponse{Height: height, Hash: hash}
+	event := SubscribeNewHeightsResponse{
+		Height:     height,
+		Hash:       hash,
+		Time:       blockTime,
+		CatchingUp: catchingUp,
+	}
 	for _, ch := range listeners {
 		blockAPI.sendNonBlocking(ch, event)
 	}
