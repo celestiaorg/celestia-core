@@ -732,9 +732,11 @@ func TestReactorDropsStaleSequenceTx(t *testing.T) {
 	require.Nil(t, pool.seenTracker.Get(key), "tracker must forget the tx")
 }
 
-// requestTxFromPeer marks key as requested from peer so a subsequent receive is
-// treated as solicited (CAT only accepts txs it requested).
-func requestTxFromPeer(t *testing.T, reactor *Reactor, peer p2p.Peer, key types.TxKey) {
+// requestTxFromPeer drives the production request path so a subsequent receive
+// is treated as solicited (CAT only accepts txs it requested). Going through
+// reactor.requestTx keeps the scheduler entry and seenTracker.MarkRequested
+// state identical to real operation, rather than reconstructing it by hand.
+func requestTxFromPeer(t *testing.T, reactor *Reactor, peer *mocks.Peer, key types.TxKey) {
 	t.Helper()
 	peerID := reactor.ids.GetIDForPeer(peer.ID())
 	require.NotZero(t, peerID, "peer must be initialized before requesting a tx from it")
@@ -742,7 +744,10 @@ func requestTxFromPeer(t *testing.T, reactor *Reactor, peer p2p.Peer, key types.
 	// marks the peer as having the tx. Mirror that so downstream broadcasts skip
 	// the sender, matching real behavior.
 	reactor.mempool.PeerHasTx(peerID, key)
-	require.True(t, reactor.requests.Add(key, peerID, nil), "failed to record tx request")
+	peer.On("TrySend", mock.MatchedBy(func(e p2p.Envelope) bool {
+		return e.ChannelID == MempoolWantsChannel
+	})).Return(true).Maybe()
+	require.True(t, reactor.requestTx(key, peer), "failed to request tx from peer")
 }
 
 // sequenceTrackingApp is a test application that implements SequenceQuerier

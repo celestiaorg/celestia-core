@@ -295,8 +295,6 @@ func (memR *Reactor) handleReceivedTx(tx []byte, e p2p.Envelope) {
 
 	ntx := types.Tx(tx)
 	key := ntx.Key()
-	cachedTx := ntx.ToCachedTx()
-	schema.WriteMempoolTx(memR.traceClient, string(e.Src.ID()), key[:], len(tx), schema.Download)
 
 	if !memR.requests.Has(peerID, key) {
 		memR.Logger.Debug("dropping unrequested tx from peer", "peerID", peerID, "txKey", key)
@@ -305,6 +303,9 @@ func (memR *Reactor) handleReceivedTx(tx []byte, e p2p.Envelope) {
 		memR.mempool.PeerHasTx(peerID, key)
 		return
 	}
+
+	cachedTx := ntx.ToCachedTx()
+	schema.WriteMempoolTx(memR.traceClient, string(e.Src.ID()), key[:], len(tx), schema.Download)
 
 	// If we requested the transaction we mark it as received.
 	memR.requests.MarkReceived(peerID, key)
@@ -491,11 +492,10 @@ func (memR *Reactor) Receive(e p2p.Envelope) {
 		if has && !memR.opts.ListenOnly {
 			peerID := memR.ids.GetIDForPeer(e.Src.ID())
 			memR.Logger.Trace("sending a tx in response to a want msg", "peer", peerID)
-			sent := e.Src.Send(p2p.Envelope{
+			if e.Src.Send(p2p.Envelope{
 				ChannelID: MempoolDataChannel,
 				Message:   &protomem.Txs{Txs: [][]byte{tx.Tx}},
-			})
-			if sent {
+			}) {
 				memR.mempool.PeerHasTx(peerID, txKey)
 				schema.WriteMempoolTx(
 					memR.traceClient,
