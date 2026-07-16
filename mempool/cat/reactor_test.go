@@ -744,6 +744,39 @@ func genLegacyPeer() *mocks.Peer {
 	return peer
 }
 
+// TestReactorDropsUnrequestedTx covers the pull-only guard: a tx that was
+// never requested must not be processed or buffered, but the sender is still
+// recorded as having it (it proved possession by delivering the bytes).
+func TestReactorDropsUnrequestedTx(t *testing.T) {
+	app := newSequenceTrackingApp()
+	cc := proxy.NewLocalClientCreator(app)
+	pool, cleanup := newMempoolWithApp(cc)
+	defer cleanup()
+
+	reactor, err := NewReactor(pool, &ReactorOptions{})
+	require.NoError(t, err)
+
+	peer := genPeer()
+	_, err = reactor.InitPeer(peer)
+	require.NoError(t, err)
+	peerID := reactor.ids.GetIDForPeer(peer.ID())
+
+	tx := newDefaultTx("unsolicited")
+	key := tx.Key()
+
+	// Deliberately no requestTxFromPeer: the tx arrives unsolicited.
+	reactor.Receive(p2p.Envelope{
+		ChannelID: MempoolDataChannelV2,
+		Message:   &protomem.Tx{Tx: tx},
+		Src:       peer,
+	})
+
+	require.False(t, pool.Has(key), "unrequested tx must not enter the mempool")
+	require.Zero(t, app.CheckTxCalls(), "unrequested tx must not be processed through CheckTx")
+	require.Empty(t, reactor.receivedBuffer.signerKeys(), "unrequested tx must not be buffered")
+	require.True(t, pool.seenTracker.Has(key, peerID), "sender must be recorded as having the tx")
+}
+
 func TestReactorDropsStaleSequenceTx(t *testing.T) {
 	app := newSequenceTrackingApp()
 	cc := proxy.NewLocalClientCreator(app)
