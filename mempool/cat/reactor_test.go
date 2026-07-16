@@ -127,8 +127,8 @@ func TestReactorSendsTxAfterReceivingWantTx(t *testing.T) {
 	tx := newDefaultTx("hello")
 	key := tx.Key()
 	txEnvelope := p2p.Envelope{
-		Message:   &protomem.Tx{Tx: tx},
-		ChannelID: MempoolDataChannelV2,
+		Message:   &protomem.Txs{Txs: [][]byte{tx}},
+		ChannelID: MempoolDataChannel,
 	}
 
 	msgWant := &protomem.WantTx{TxKey: key[:]}
@@ -160,29 +160,7 @@ func TestReactorSendsTxAfterReceivingWantTx(t *testing.T) {
 	require.True(t, pool.seenTracker.Has(key, peerID))
 }
 
-func TestReactorReceivesTxViaNewField(t *testing.T) {
-	reactor, pool := setupReactor(t)
-
-	peer := genPeer()
-	_, err := reactor.InitPeer(peer)
-	require.NoError(t, err)
-
-	tx := newDefaultTx("hello")
-	key := tx.Key()
-	requestTxFromPeer(t, reactor, peer, key)
-
-	reactor.Receive(p2p.Envelope{
-		ChannelID: MempoolDataChannelV2,
-		Message:   &protomem.Tx{Tx: tx},
-		Src:       peer,
-	})
-
-	require.Eventually(t, func() bool {
-		return pool.Has(key)
-	}, time.Second, 10*time.Millisecond, "tx sent via the new Tx message should be added to the mempool")
-}
-
-func TestReactorParsesDeprecatedTxsMsg(t *testing.T) {
+func TestReactorReceivesRequestedTx(t *testing.T) {
 	reactor, pool := setupReactor(t)
 
 	peer := genPeer()
@@ -201,51 +179,7 @@ func TestReactorParsesDeprecatedTxsMsg(t *testing.T) {
 
 	require.Eventually(t, func() bool {
 		return pool.Has(key)
-	}, time.Second, 10*time.Millisecond, "tx sent via the legacy txs message should be added to the mempool")
-}
-
-func TestReactorAdvertisesDataChannelV2(t *testing.T) {
-	reactor, _ := setupReactor(t)
-
-	ids := make([]byte, 0, len(reactor.GetChannels()))
-	for _, ch := range reactor.GetChannels() {
-		ids = append(ids, ch.ID)
-	}
-
-	require.Contains(t, ids, MempoolDataChannelV2, "must advertise the v2 data channel")
-	require.Contains(t, ids, MempoolDataChannel, "must still advertise the legacy data channel in v10")
-}
-
-// TestReactorSendsLegacyTxsToLegacyPeer checks the migration-window fallback:
-// a peer that did not advertise the v2 data channel gets its WantTx answered
-// with the deprecated Txs message on the legacy data channel.
-func TestReactorSendsLegacyTxsToLegacyPeer(t *testing.T) {
-	reactor, pool := setupReactor(t)
-
-	tx := newDefaultTx("hello")
-	key := tx.Key()
-	require.NoError(t, pool.CheckTx(tx, nil, mempool.TxInfo{}))
-
-	peer := genLegacyPeer()
-	// Exactly one send is expected: the legacy Txs message on the legacy
-	// channel. A send on any other channel has no matching expectation and
-	// fails the mock.
-	peer.On("Send", p2p.Envelope{
-		ChannelID: MempoolDataChannel,
-		Message:   &protomem.Txs{Txs: [][]byte{tx}},
-	}).Return(true).Once()
-	_, err := reactor.InitPeer(peer)
-	require.NoError(t, err)
-
-	reactor.Receive(p2p.Envelope{
-		ChannelID: MempoolWantsChannel,
-		Message:   &protomem.WantTx{TxKey: key[:]},
-		Src:       peer,
-	})
-
-	peer.AssertExpectations(t)
-	peerID := reactor.ids.GetIDForPeer(peer.ID())
-	require.True(t, pool.seenTracker.Has(key, peerID), "served legacy peer must be marked as having the tx")
+	}, time.Second, 10*time.Millisecond, "requested tx should be added to the mempool")
 }
 
 func TestReactorBroadcastsSeenTxAfterReceivingTx(t *testing.T) {
@@ -724,23 +658,6 @@ func genPeer() *mocks.Peer {
 	peer.On("ID").Return(nodeKey.ID())
 	peer.On("Get", types.PeerStateKey).Return(nil).Maybe()
 	peer.On("IsPersistent").Return(false).Maybe()
-	peer.On("NodeInfo").Return(p2p.DefaultNodeInfo{
-		Channels: []byte{MempoolDataChannel, MempoolWantsChannel, MempoolDataChannelV2},
-	}).Maybe()
-	return peer
-}
-
-// genLegacyPeer returns a mock peer that does not advertise the v2 data
-// channel, i.e. a pre-v10 node.
-func genLegacyPeer() *mocks.Peer {
-	peer := &mocks.Peer{}
-	nodeKey := p2p.NodeKey{PrivKey: ed25519.GenPrivKey()}
-	peer.On("ID").Return(nodeKey.ID())
-	peer.On("Get", types.PeerStateKey).Return(nil).Maybe()
-	peer.On("IsPersistent").Return(false).Maybe()
-	peer.On("NodeInfo").Return(p2p.DefaultNodeInfo{
-		Channels: []byte{MempoolDataChannel, MempoolWantsChannel},
-	}).Maybe()
 	return peer
 }
 
@@ -766,8 +683,8 @@ func TestReactorDropsUnrequestedTx(t *testing.T) {
 
 	// Deliberately no requestTxFromPeer: the tx arrives unsolicited.
 	reactor.Receive(p2p.Envelope{
-		ChannelID: MempoolDataChannelV2,
-		Message:   &protomem.Tx{Tx: tx},
+		ChannelID: MempoolDataChannel,
+		Message:   &protomem.Txs{Txs: [][]byte{tx}},
 		Src:       peer,
 	})
 
@@ -804,8 +721,8 @@ func TestReactorDropsStaleSequenceTx(t *testing.T) {
 	app.SetSequence(string(signer), 5)
 
 	reactor.Receive(p2p.Envelope{
-		ChannelID: MempoolDataChannelV2,
-		Message:   &protomem.Tx{Tx: tx},
+		ChannelID: MempoolDataChannel,
+		Message:   &protomem.Txs{Txs: [][]byte{tx}},
 		Src:       peer,
 	})
 

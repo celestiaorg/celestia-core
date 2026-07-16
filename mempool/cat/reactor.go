@@ -30,12 +30,6 @@ const (
 	// MempoolWantsChannel channel for wantTx messages.
 	MempoolWantsChannel = byte(0x32)
 
-	// MempoolDataChannelV2 carries the single Tx message. Peers that advertise
-	// it are sent transactions as Tx on this channel; legacy peers are served
-	// the deprecated Txs message on MempoolDataChannel instead. Added in v10;
-	// the old MempoolDataChannel and Txs message are removed in v11.
-	MempoolDataChannelV2 = byte(0x33)
-
 	// peerHeightDiff signifies the tolerance in difference in height between the peer and the height
 	// the node received the tx
 	peerHeightDiff = 10
@@ -256,13 +250,6 @@ func (memR *Reactor) GetChannels() []*p2p.ChannelDescriptor {
 			MessageType:         &protomem.Message{},
 		},
 		{
-			ID:                  MempoolDataChannelV2,
-			Priority:            3,
-			SendQueueCapacity:   1000,
-			RecvMessageCapacity: txMsg.Size(),
-			MessageType:         &protomem.Message{},
-		},
-		{
 			ID:                  MempoolWantsChannel,
 			Priority:            3,
 			SendQueueCapacity:   1000,
@@ -313,6 +300,9 @@ func (memR *Reactor) handleReceivedTx(tx []byte, e p2p.Envelope) {
 
 	if !memR.requests.Has(peerID, key) {
 		memR.Logger.Debug("dropping unrequested tx from peer", "peerID", peerID, "txKey", key)
+		// The peer proved it has the tx, so remember that: it stays a valid
+		// re-request target and later SeenTx broadcasts will skip it.
+		memR.mempool.PeerHasTx(peerID, key)
 		return
 	}
 
@@ -369,15 +359,15 @@ func (memR *Reactor) processNowOrBuffer(cachedTx *types.CachedTx, key types.TxKe
 }
 
 // Receive implements Reactor.
-// It processes one of four messages: Txs, Tx, SeenTx, WantTx.
+// It processes one of three messages: Txs, SeenTx, WantTx.
 func (memR *Reactor) Receive(e p2p.Envelope) {
 	switch msg := e.Message.(type) {
 
-	// A peer has sent us one or more transactions in the legacy repeated field.
-	// Retained for backward compatibility with peers that have not yet upgraded.
-	// Batching is disabled, so at most MaxTxsPerMessage transactions are expected.
+	// A peer has sent us a transaction. In CAT this is normally a response to
+	// a WantTx. Batching is disabled, so at most MaxTxsPerMessage transactions
+	// are expected.
 	case *protomem.Txs:
-		protoTxs := msg.GetTxs() //nolint:staticcheck // SA1019: legacy path, intentionally reads the deprecated field
+		protoTxs := msg.GetTxs()
 		if len(protoTxs) == 0 {
 			memR.Logger.Error("received empty txs from peer", "src", e.Src)
 			memR.Switch.StopPeerForError(e.Src, errEmptyTx, memR.String())
@@ -389,11 +379,6 @@ func (memR *Reactor) Receive(e p2p.Envelope) {
 			return
 		}
 		memR.handleReceivedTx(protoTxs[0], e)
-
-	// A peer has sent us a single transaction. In CAT this is normally a
-	// response to a WantTx. This is the message CAT sends.
-	case *protomem.Tx:
-		memR.handleReceivedTx(msg.GetTx(), e)
 
 	// A peer has indicated to us that it has a transaction. We first verify the txkey and
 	// mark that peer as having the transaction. Then we proceed with the following logic:
@@ -506,19 +491,10 @@ func (memR *Reactor) Receive(e p2p.Envelope) {
 		if has && !memR.opts.ListenOnly {
 			peerID := memR.ids.GetIDForPeer(e.Src.ID())
 			memR.Logger.Trace("sending a tx in response to a want msg", "peer", peerID)
-			// Reply in the format the peer understands. The legacy
-			// fallback is removed in v11 with the channel.
-			envelope := p2p.Envelope{
-				ChannelID: MempoolDataChannelV2,
-				Message:   &protomem.Tx{Tx: tx.Tx},
-			}
-			if !peerHasDataChannelV2(e.Src) {
-				envelope = p2p.Envelope{
-					ChannelID: MempoolDataChannel,
-					Message:   &protomem.Txs{Txs: [][]byte{tx.Tx}}, //nolint:staticcheck // SA1019: legacy peers only understand the deprecated Txs message
-				}
-			}
-			sent := e.Src.Send(envelope)
+			sent := e.Src.Send(p2p.Envelope{
+				ChannelID: MempoolDataChannel,
+				Message:   &protomem.Txs{Txs: [][]byte{tx.Tx}},
+			})
 			if sent {
 				memR.mempool.PeerHasTx(peerID, txKey)
 				schema.WriteMempoolTx(
@@ -541,17 +517,6 @@ func (memR *Reactor) Receive(e p2p.Envelope) {
 // PeerState describes the state of a peer.
 type PeerState interface {
 	GetHeight() int64
-}
-
-// peerHasDataChannelV2 reports whether the peer advertised MempoolDataChannelV2
-// in its handshake. Defaults to false on an unexpected NodeInfo type, which is
-// safe: every v10 peer still understands the legacy Txs message.
-func peerHasDataChannelV2(peer p2p.Peer) bool {
-	ni, ok := peer.NodeInfo().(p2p.DefaultNodeInfo)
-	if !ok {
-		return false
-	}
-	return ni.HasChannel(MempoolDataChannelV2)
 }
 
 // broadcastSeenTx broadcasts a SeenTx message to limited peers unless we

@@ -1085,7 +1085,7 @@ func makeNodeInfo(
 		channels = append(channels, cs.DataChannel)
 	}
 	if config.Mempool.Type == cfg.MempoolTypeCAT {
-		channels = append(channels, cat.MempoolWantsChannel, cat.MempoolDataChannel, cat.MempoolDataChannelV2)
+		channels = append(channels, cat.MempoolWantsChannel, cat.MempoolDataChannel)
 	}
 	if !config.Consensus.DisablePropagationReactor {
 		channels = append(channels, propagation.DataChannel, propagation.WantChannel)

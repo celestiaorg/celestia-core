@@ -26,7 +26,6 @@ const (
 	// https://github.com/tendermint/tendermint/pull/5800 so only a single
 	// transaction per message is expected. Messages exceeding this limit
 	// cause the sending peer to be disconnected.
-	// Deprecated: should be removed in the next release.
 	MaxTxsPerMessage = 1
 )
 
