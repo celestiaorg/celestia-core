@@ -1232,3 +1232,41 @@ func TestReactorGossipDataEnabled(t *testing.T) {
 	reactor = NewReactor(css[0], css[0].propagator, true, WithGossipDataEnabled(true))
 	assert.True(t, reactor.IsGossipDataEnabled())
 }
+
+type catchingUpPropagator struct {
+	*propagation.NoOpPropagator
+	catchingUp bool
+}
+
+func (p *catchingUpPropagator) IsCatchingUp() bool {
+	return p.catchingUp
+}
+
+func TestReactorIsCatchingUp(t *testing.T) {
+	N := 1
+	css, cleanup := randConsensusNet(t, N, "consensus_reactor_test", newMockTickerFunc(true), newKVStore)
+	defer cleanup()
+
+	tests := []struct {
+		name           string
+		waitSync       bool
+		propCatchingUp bool
+		want           bool
+	}{
+		{"neither", false, false, false},
+		{"waitSync only", true, false, true},
+		{"propagation only", false, true, true},
+		{"both", true, true, true},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			prop := &catchingUpPropagator{
+				NoOpPropagator: propagation.NewNoOpPropagator(),
+				catchingUp:     tc.propCatchingUp,
+			}
+			reactor := NewReactor(css[0], prop, tc.waitSync)
+			assert.Equal(t, tc.want, reactor.IsCatchingUp())
+		})
+	}
+}

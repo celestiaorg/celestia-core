@@ -59,6 +59,7 @@ type peers interface {
 
 type consensusReactor interface {
 	WaitSync() bool
+	IsCatchingUp() bool
 }
 
 // ----------------------------------------------

@@ -516,6 +516,12 @@ func (conR *Reactor) WaitSync() bool {
 	return conR.waitSync
 }
 
+// IsCatchingUp reports whether the node is catching up through state/block sync
+// or the block propagation reactor.
+func (conR *Reactor) IsCatchingUp() bool {
+	return conR.WaitSync() || conR.propagator.IsCatchingUp()
+}
+
 //--------------------------------------
 
 // subscribeToBroadcastEvents subscribes for new round steps and votes
