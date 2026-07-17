@@ -86,6 +86,10 @@ func (waitSyncCheckerImpl) WaitSync() bool {
 	return false
 }
 
+func (waitSyncCheckerImpl) IsCatchingUp() bool {
+	return false
+}
+
 // ListenAndServe listens on the address specified in srv.Addr and handles any
 // incoming requests over HTTP using the Inspector rpc handler specified on the server.
 func (srv *Server) ListenAndServe(ctx context.Context) error {

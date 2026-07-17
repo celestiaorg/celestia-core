@@ -107,10 +107,9 @@ func (blockAPI *BlockAPI) StartNewBlockEventListener(ctx context.Context) error 
 				blockAPI.env.Logger.Error("couldn't cast event data to new block")
 				return fmt.Errorf("couldn't cast event data to new block. Events: %s", event.Events())
 			}
-			// CatchingUp matches Status SyncInfo.catching_up.
 			catchingUp := false
 			if blockAPI.env.ConsensusReactor != nil {
-				catchingUp = blockAPI.env.ConsensusReactor.WaitSync()
+				catchingUp = blockAPI.env.ConsensusReactor.IsCatchingUp()
 			}
 			blockAPI.broadcastToListeners(ctx, data.Block.Height, data.Block.Hash(), data.Block.Time, catchingUp)
 		}

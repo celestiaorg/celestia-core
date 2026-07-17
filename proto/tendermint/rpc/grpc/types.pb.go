@@ -737,8 +737,8 @@ type SubscribeNewHeightsResponse struct {
 	Hash   []byte `protobuf:"bytes,2,opt,name=hash,proto3" json:"hash,omitempty"`
 	// Time is the block header time of the announced height.
 	Time time.Time `protobuf:"bytes,3,opt,name=time,proto3,stdtime" json:"time"`
-	// CatchingUp is true when the node was still syncing (block/state sync)
-	// when this height was emitted. Matches Status SyncInfo.catching_up.
+	// CatchingUp is true when the node was catching up through state/block sync
+	// or block propagation when this height was emitted.
 	CatchingUp bool `protobuf:"varint,4,opt,name=catching_up,json=catchingUp,proto3" json:"catching_up,omitempty"`
 }
 
