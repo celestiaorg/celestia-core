@@ -20,6 +20,8 @@ type SignerClient struct {
 	endpoint *SignerListenerEndpoint
 	chainID  string
 	tracer   trace.Tracer
+	metrics  *Metrics
+	latency  *signingLatencyTracker
 }
 
 var _ types.PrivValidator = (*SignerClient)(nil)
@@ -33,12 +35,28 @@ func NewSignerClient(endpoint *SignerListenerEndpoint, chainID string) (*SignerC
 		}
 	}
 
-	return &SignerClient{endpoint: endpoint, chainID: chainID, tracer: trace.NoOpTracer()}, nil
+	metrics := NopMetrics()
+	return &SignerClient{
+		endpoint: endpoint,
+		chainID:  chainID,
+		tracer:   trace.NoOpTracer(),
+		metrics:  metrics,
+		latency:  newSigningLatencyTracker(metrics, endpoint.Logger),
+	}, nil
 }
 
 // SetTracer sets the tracer for the SignerClient
 func (sc *SignerClient) SetTracer(tracer trace.Tracer) {
 	sc.tracer = tracer
+}
+
+// SetMetrics sets the metrics sink used to report remote signing latency.
+func (sc *SignerClient) SetMetrics(metrics *Metrics) {
+	if metrics == nil {
+		metrics = NopMetrics()
+	}
+	sc.metrics = metrics
+	sc.latency.setMetrics(metrics)
 }
 
 // Close closes the underlying connection
@@ -118,8 +136,10 @@ func (sc *SignerClient) SignVote(chainID string, vote *cmtproto.Vote) error {
 	switch vote.Type {
 	case cmtproto.PrevoteType:
 		schema.WriteSignatureLatency(sc.tracer, vote.Height, vote.Round, reqTime.Nanoseconds(), schema.PrevoteType)
+		sc.recordSigningLatency(messageTypePrevote, reqTime)
 	case cmtproto.PrecommitType:
 		schema.WriteSignatureLatency(sc.tracer, vote.Height, vote.Round, reqTime.Nanoseconds(), schema.PrecommitType)
+		sc.recordSigningLatency(messageTypePrecommit, reqTime)
 	}
 
 	*vote = resp.Vote
@@ -146,6 +166,7 @@ func (sc *SignerClient) SignProposal(chainID string, proposal *cmtproto.Proposal
 		return &RemoteSignerError{Code: int(resp.Error.Code), Description: resp.Error.Description}
 	}
 	schema.WriteSignatureLatency(sc.tracer, proposal.Height, proposal.Round, reqTime.Nanoseconds(), schema.ProposalType)
+	sc.recordSigningLatency(messageTypeProposal, reqTime)
 
 	*proposal = resp.Proposal
 
@@ -172,6 +193,12 @@ func (sc *SignerClient) SignRawBytes(chainID, uniqueID string, rawBytes []byte) 
 		return nil, &RemoteSignerError{Code: int(resp.Error.Code), Description: resp.Error.Description}
 	}
 	schema.WriteSignatureLatency(sc.tracer, -1, -1, reqTime.Nanoseconds(), uniqueID)
+	sc.recordSigningLatency(messageTypeRawBytes, reqTime)
 
 	return resp.Signature, nil
+}
+
+func (sc *SignerClient) recordSigningLatency(messageType string, latency time.Duration) {
+	sc.metrics.SigningLatencySeconds.With("message_type", messageType).Observe(latency.Seconds())
+	sc.latency.Record(latency)
 }
