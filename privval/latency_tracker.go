@@ -95,11 +95,7 @@ func (t *signingLatencyTracker) Record(latency time.Duration) {
 
 func (t *signingLatencyTracker) medianLocked() time.Duration {
 	sorted := make([]time.Duration, t.size)
-	if t.size < t.capacity {
-		copy(sorted, t.samples[:t.size])
-	} else {
-		copy(sorted, t.samples)
-	}
+	copy(sorted, t.samples)
 	sort.Slice(sorted, func(i, j int) bool { return sorted[i] < sorted[j] })
 	mid := len(sorted) / 2
 	if len(sorted)%2 == 0 {
