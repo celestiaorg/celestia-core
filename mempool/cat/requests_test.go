@@ -68,6 +68,37 @@ func TestRequestSchedulerRerequest(t *testing.T) {
 	require.True(t, requests.MarkReceived(peerA, key))
 }
 
+func TestRequestSchedulerLateResponseDoesNotClobberRerequest(t *testing.T) {
+	var (
+		requests        = newRequestScheduler(10*time.Millisecond, 1*time.Minute)
+		tx              = types.Tx("tx")
+		key             = tx.Key()
+		peerA    uint16 = 1
+		peerB    uint16 = 2
+	)
+	t.Cleanup(requests.Close)
+
+	rerequested := make(chan struct{})
+	require.True(t, requests.Add(key, peerA, func(cbKey types.TxKey, _ uint16) {
+		require.True(t, requests.Add(cbKey, peerB, nil))
+		close(rerequested)
+	}))
+
+	// peerA times out and the tx is re-requested from peerB
+	<-rerequested
+	require.Equal(t, peerB, requests.ForTx(key))
+
+	// peerA responds late, while peerB's request is still in flight. It is
+	// recognized as a response to the earlier request, but must not clear
+	// peerB's reservation.
+	require.True(t, requests.MarkReceived(peerA, key))
+	require.Equal(t, peerB, requests.ForTx(key))
+
+	// peerB's request concludes normally
+	require.True(t, requests.MarkReceived(peerB, key))
+	require.Zero(t, requests.ForTx(key))
+}
+
 func TestRequestSchedulerNonResponsivePeer(t *testing.T) {
 	var (
 		requests        = newRequestScheduler(10*time.Millisecond, time.Millisecond)

@@ -63,6 +63,12 @@ func (r *requestScheduler) Add(key types.TxKey, peer uint16, onTimeout func(key 
 
 	timer := time.AfterFunc(r.responseTime, func() {
 		r.mtx.Lock()
+		// The request may have been fulfilled by another peer while this callback 
+		// was waiting on the lock;
+		if r.requestsByTx[key] != peer {
+			r.mtx.Unlock()
+			return
+		}
 		delete(r.requestsByTx, key)
 		r.mtx.Unlock()
 
@@ -167,7 +173,12 @@ func (r *requestScheduler) MarkReceived(peer uint16, key types.TxKey) bool {
 	}
 
 	delete(r.requestsByPeer[peer], key)
-	delete(r.requestsByTx, key)
+	// A late response only clears the request if it still belongs to
+	// this peer; after a timeout the tx may have been re-requested from
+	// someone else, and that request is still in flight.
+	if r.requestsByTx[key] == peer {
+		delete(r.requestsByTx, key)
+	}
 	return true
 }
 
