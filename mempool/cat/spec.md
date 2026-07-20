@@ -76,9 +76,12 @@ Transaction pools are solely run in-memory; thus when a node stops, all transact
 
 Upon receiving a `Txs` message:
 
-- Check whether it is in response to a request or simply an unsolicited broadcast
-- Validate the tx against current resources and the applications `CheckTx`
-- If rejected or evicted, mark accordingly
+- If the transaction was not requested (no outstanding `WantTx` for it), the node records the sender as having the transaction and drops it without validation. CAT is pull-based: transactions are only accepted in response to a `WantTx`.
+- Otherwise the request is marked received and the transaction is evaluated against the signer's expected sequence:
+    - If the advertised sequence is below the expected sequence, the transaction is stale and is dropped without `CheckTx`.
+    - If the advertised sequence is above the expected sequence, the transaction is buffered until the gap closes (or dropped if it is beyond the lookahead window).
+    - Otherwise the transaction is validated against current resources and the application's `CheckTx`.
+- If rejected or evicted, mark accordingly.
 - If successful, send a `SeenTx` message to the selected sticky peers excluding the original sender so that only a bounded subset relays the new transaction.
 
 Upon receiving a `SeenTx` message:

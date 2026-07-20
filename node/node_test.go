@@ -141,6 +141,27 @@ func TestNodeSetAppVersion(t *testing.T) {
 	assert.Equal(t, n.nodeInfo.(p2p.DefaultNodeInfo).ProtocolVersion.App, appVersion)
 }
 
+func TestNodeInfoAdvertisesAllReactorChannels(t *testing.T) {
+	config := test.ResetTestRoot("node_nodeinfo_channels_test")
+	defer os.RemoveAll(config.RootDir)
+	testFreeConfig(t, config)
+
+	n, err := DefaultNewNode(config, log.TestingLogger())
+	require.NoError(t, err)
+
+	advertised := make(map[byte]bool)
+	for _, ch := range n.nodeInfo.(p2p.DefaultNodeInfo).Channels {
+		advertised[ch] = true
+	}
+
+	for name, reactor := range n.sw.Reactors() {
+		for _, ch := range reactor.GetChannels() {
+			assert.True(t, advertised[ch.ID],
+				"reactor %s channel %#x is not advertised in NodeInfo; peers will refuse sends on it", name, ch.ID)
+		}
+	}
+}
+
 func TestPprofServer(t *testing.T) {
 	config := test.ResetTestRoot("node_pprof_test")
 	defer os.RemoveAll(config.RootDir)

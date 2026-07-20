@@ -160,6 +160,28 @@ func TestReactorSendsTxAfterReceivingWantTx(t *testing.T) {
 	require.True(t, pool.seenTracker.Has(key, peerID))
 }
 
+func TestReactorReceivesRequestedTx(t *testing.T) {
+	reactor, pool := setupReactor(t)
+
+	peer := genPeer()
+	_, err := reactor.InitPeer(peer)
+	require.NoError(t, err)
+
+	tx := newDefaultTx("hello")
+	key := tx.Key()
+	requestTxFromPeer(t, reactor, peer, key)
+
+	reactor.Receive(p2p.Envelope{
+		ChannelID: MempoolDataChannel,
+		Message:   &protomem.Txs{Txs: [][]byte{tx}},
+		Src:       peer,
+	})
+
+	require.Eventually(t, func() bool {
+		return pool.Has(key)
+	}, time.Second, 10*time.Millisecond, "requested tx should be added to the mempool")
+}
+
 func TestReactorBroadcastsSeenTxAfterReceivingTx(t *testing.T) {
 	reactor, _ := setupReactor(t)
 
@@ -188,6 +210,7 @@ func TestReactorBroadcastsSeenTxAfterReceivingTx(t *testing.T) {
 	require.NoError(t, err)
 	_, err = reactor.InitPeer(peers[1])
 	require.NoError(t, err)
+	requestTxFromPeer(t, reactor, peers[0], key)
 	reactor.Receive(
 		p2p.Envelope{
 			ChannelID: mempool.MempoolChannel,
@@ -638,11 +661,101 @@ func genPeer() *mocks.Peer {
 	return peer
 }
 
+// TestReactorDropsUnrequestedTx covers the pull-only guard: a tx that was
+// never requested must not be processed or buffered, but the sender is still
+// recorded as having it (it proved possession by delivering the bytes).
+func TestReactorDropsUnrequestedTx(t *testing.T) {
+	app := newSequenceTrackingApp()
+	cc := proxy.NewLocalClientCreator(app)
+	pool, cleanup := newMempoolWithApp(cc)
+	defer cleanup()
+
+	reactor, err := NewReactor(pool, &ReactorOptions{})
+	require.NoError(t, err)
+
+	peer := genPeer()
+	_, err = reactor.InitPeer(peer)
+	require.NoError(t, err)
+	peerID := reactor.ids.GetIDForPeer(peer.ID())
+
+	tx := newDefaultTx("unsolicited")
+	key := tx.Key()
+
+	// Deliberately no requestTxFromPeer: the tx arrives unsolicited.
+	reactor.Receive(p2p.Envelope{
+		ChannelID: MempoolDataChannel,
+		Message:   &protomem.Txs{Txs: [][]byte{tx}},
+		Src:       peer,
+	})
+
+	require.False(t, pool.Has(key), "unrequested tx must not enter the mempool")
+	require.Zero(t, app.CheckTxCalls(), "unrequested tx must not be processed through CheckTx")
+	require.Empty(t, reactor.receivedBuffer.signerKeys(), "unrequested tx must not be buffered")
+	require.True(t, pool.seenTracker.Has(key, peerID), "sender must be recorded as having the tx")
+}
+
+func TestReactorDropsStaleSequenceTx(t *testing.T) {
+	app := newSequenceTrackingApp()
+	cc := proxy.NewLocalClientCreator(app)
+	pool, cleanup := newMempoolWithApp(cc)
+	defer cleanup()
+
+	reactor, err := NewReactor(pool, &ReactorOptions{})
+	require.NoError(t, err)
+
+	signer := []byte("sender-000-0")
+	app.SetSequence(string(signer), 1)
+
+	peer := genPeer()
+	_, err = reactor.InitPeer(peer)
+	require.NoError(t, err)
+	peerID := reactor.ids.GetIDForPeer(peer.ID())
+
+	tx := newDefaultTx("stale-tx")
+	key := tx.Key()
+
+	// Announced as future (seq 3 > expected 1), requested, and then the
+	// signer's sequence advances past it before the tx arrives.
+	require.True(t, reactor.mempool.seenTracker.AddPendingTx(key, peerID, signer, 3))
+	requestTxFromPeer(t, reactor, peer, key)
+	app.SetSequence(string(signer), 5)
+
+	reactor.Receive(p2p.Envelope{
+		ChannelID: MempoolDataChannel,
+		Message:   &protomem.Txs{Txs: [][]byte{tx}},
+		Src:       peer,
+	})
+
+	require.False(t, pool.Has(key), "stale-sequence tx must not enter the mempool")
+	require.Empty(t, reactor.receivedBuffer.signerKeys(), "stale-sequence tx must not be buffered")
+	require.Zero(t, app.CheckTxCalls(), "stale-sequence tx must not be processed through CheckTx")
+	require.Nil(t, pool.seenTracker.Get(key), "tracker must forget the tx")
+}
+
+// requestTxFromPeer drives the production request path so a subsequent receive
+// is treated as solicited (CAT only accepts txs it requested). Going through
+// reactor.requestTx keeps the scheduler entry and seenTracker.MarkRequested
+// state identical to real operation, rather than reconstructing it by hand.
+func requestTxFromPeer(t *testing.T, reactor *Reactor, peer *mocks.Peer, key types.TxKey) {
+	t.Helper()
+	peerID := reactor.ids.GetIDForPeer(peer.ID())
+	require.NotZero(t, peerID, "peer must be initialized before requesting a tx from it")
+	// A tx is only ever requested from a peer that announced it via SeenTx, which
+	// marks the peer as having the tx. Mirror that so downstream broadcasts skip
+	// the sender, matching real behavior.
+	reactor.mempool.PeerHasTx(peerID, key)
+	peer.On("TrySend", mock.MatchedBy(func(e p2p.Envelope) bool {
+		return e.ChannelID == MempoolWantsChannel
+	})).Return(true).Maybe()
+	require.True(t, reactor.requestTx(key, peer), "failed to request tx from peer")
+}
+
 // sequenceTrackingApp is a test application that implements SequenceQuerier
 type sequenceTrackingApp struct {
 	*kvstore.Application
-	mtx       sync.Mutex
-	sequences map[string]uint64
+	mtx          sync.Mutex
+	sequences    map[string]uint64
+	checkTxCalls int
 }
 
 func newSequenceTrackingApp() *sequenceTrackingApp {
@@ -653,6 +766,10 @@ func newSequenceTrackingApp() *sequenceTrackingApp {
 }
 
 func (app *sequenceTrackingApp) CheckTx(ctx context.Context, req *abcitypes.RequestCheckTx) (*abcitypes.ResponseCheckTx, error) {
+	app.mtx.Lock()
+	app.checkTxCalls++
+	app.mtx.Unlock()
+
 	var (
 		priority int64
 		sender   string
@@ -693,6 +810,13 @@ func (app *sequenceTrackingApp) QuerySequence(ctx context.Context, req *abcitype
 
 	sequence := app.sequences[string(req.Signer)]
 	return &abcitypes.ResponseQuerySequence{Sequence: sequence}, nil
+}
+
+// CheckTxCalls returns how many times CheckTx has been invoked.
+func (app *sequenceTrackingApp) CheckTxCalls() int {
+	app.mtx.Lock()
+	defer app.mtx.Unlock()
+	return app.checkTxCalls
 }
 
 func (app *sequenceTrackingApp) SetSequence(signer string, sequence uint64) {
@@ -834,11 +958,9 @@ func TestSeenTxUpgradesPeerEntryToPending(t *testing.T) {
 	txKey := tx.Key()
 	peerID := reactor.ids.GetIDForPeer(peer.ID())
 
-	reactor.Receive(p2p.Envelope{
-		ChannelID: MempoolDataChannel,
-		Message:   &protomem.Txs{Txs: [][]byte{tx}},
-		Src:       peer,
-	})
+	// Pull-only: an unrequested tx would be dropped, so set the precondition
+	// (peer has the tx) directly instead of via an unsolicited receive.
+	reactor.mempool.PeerHasTx(peerID, txKey)
 
 	require.False(t, pool.Has(txKey))
 
@@ -922,6 +1044,7 @@ func TestReactorRequestsQueuedTxAfterSequenceBecomesAvailable(t *testing.T) {
 	app.SetSequence(string(signer), 2)
 
 	priorTx := newDefaultTx("prior-tx")
+	requestTxFromPeer(t, reactor, providerPeer, priorTx.Key())
 	reactor.Receive(p2p.Envelope{
 		ChannelID: MempoolDataChannel,
 		Message:   &protomem.Txs{Txs: [][]byte{priorTx}},
@@ -977,6 +1100,7 @@ func TestPendingSeenClearedWhenTxArrives(t *testing.T) {
 	require.NoError(t, err)
 	providerPeer.On("Send", mock.Anything).Return(true).Maybe()
 
+	requestTxFromPeer(t, reactor, providerPeer, targetKey)
 	reactor.Receive(p2p.Envelope{
 		ChannelID: MempoolDataChannel,
 		Message:   &protomem.Txs{Txs: [][]byte{targetTx}},
