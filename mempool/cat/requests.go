@@ -63,8 +63,8 @@ func (r *requestScheduler) Add(key types.TxKey, peer uint16, onTimeout func(key 
 
 	timer := time.AfterFunc(r.responseTime, func() {
 		r.mtx.Lock()
-		// The request may have been fulfilled by another peer while this callback 
-		// was waiting on the lock;
+		// The request may have been fulfilled by another peer while this callback
+		// was waiting on the lock; if so, skip the timeout logic.
 		if r.requestsByTx[key] != peer {
 			r.mtx.Unlock()
 			return
