@@ -43,6 +43,16 @@ func newRequestScheduler(responseTime, globalTimeout time.Duration) *requestSche
 	}
 }
 
+// deletePeerRequest removes key from the peer's request set, dropping the
+// set itself once empty so requestsByPeer doesn't accumulate idle peer
+// entries. Caller must hold r.mtx.
+func (r *requestScheduler) deletePeerRequest(peer uint16, key types.TxKey) {
+	delete(r.requestsByPeer[peer], key)
+	if len(r.requestsByPeer[peer]) == 0 {
+		delete(r.requestsByPeer, peer)
+	}
+}
+
 func (r *requestScheduler) Add(key types.TxKey, peer uint16, onTimeout func(key types.TxKey, peer uint16)) bool {
 	if peer == 0 {
 		return false
@@ -86,7 +96,7 @@ func (r *requestScheduler) Add(key types.TxKey, peer uint16, onTimeout func(key 
 		time.AfterFunc(r.globalTimeout, func() {
 			r.mtx.Lock()
 			defer r.mtx.Unlock()
-			delete(r.requestsByPeer[peer], key)
+			r.deletePeerRequest(peer, key)
 		})
 	})
 	if _, ok := r.requestsByPeer[peer]; !ok {
@@ -153,7 +163,7 @@ func (r *requestScheduler) Remove(key types.TxKey) {
 	}
 	if timer, ok := r.requestsByPeer[peer][key]; ok {
 		timer.Stop()
-		delete(r.requestsByPeer[peer], key)
+		r.deletePeerRequest(peer, key)
 	}
 	delete(r.requestsByTx, key)
 }
