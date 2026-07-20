@@ -42,33 +42,20 @@ type SeenEntry struct {
 
 	// pendingTxInfo is set only while the tx is queued for future-sequence gap-fill.
 	pendingTxInfo *PendingTxInfo
-
-	// requested is true while a WantTx for this tx is in flight, mirroring the
-	// requestScheduler. The gap-fill scan checks it alongside requests.ForTx to
-	// skip txs already being fetched.
-	requested bool
-	// lastPeer is the peer that in-flight WantTx went to. It exists so a timeout
-	// or disconnect only clears requested when it concerns that exact peer — not
-	// some other peer that also advertised the tx.
-	lastPeer uint16
 }
 
 // clearPendingTxMetadata drops signer/sequence state while keeping the tx keyed by peer.
 func (e *SeenEntry) clearPendingTxMetadata() {
 	e.pendingTxInfo = nil
-	e.requested = false
-	e.lastPeer = 0
 }
 
 // clone deep-copies the entry so callers cannot mutate tracker state. Fields are
 // listed explicitly so a newly added map/slice/pointer can't be silently shared.
 func (e *SeenEntry) clone() *SeenEntry {
 	cp := &SeenEntry{
-		txKey:     e.txKey,
-		peers:     make(map[uint16]struct{}, len(e.peers)),
-		addedAt:   e.addedAt,
-		requested: e.requested,
-		lastPeer:  e.lastPeer,
+		txKey:   e.txKey,
+		peers:   make(map[uint16]struct{}, len(e.peers)),
+		addedAt: e.addedAt,
 	}
 
 	for peer := range e.peers {
@@ -308,10 +295,6 @@ func (s *SeenTracker) RemovePeer(peer uint16) {
 			delete(entry.peers, peer)
 			s.decrementPeerTxCountLocked(peer)
 		}
-		if entry.lastPeer == peer {
-			entry.requested = false
-			entry.lastPeer = 0
-		}
 		if len(entry.peers) == 0 {
 			s.removeEntryLocked(entry)
 		}
@@ -465,8 +448,9 @@ func (s *SeenTracker) SignersWithPendingTxs() [][]byte {
 	return out
 }
 
-// MarkRequested remembers which peer we last asked for this tx.
-func (s *SeenTracker) MarkRequested(txKey types.TxKey, peer uint16) {
+// RemovePeerFromTx forgets that peer has txKey, e.g. after it was asked for
+// the tx and never delivered. Drops the entry if no other peer has the tx.
+func (s *SeenTracker) RemovePeerFromTx(txKey types.TxKey, peer uint16) {
 	if peer == 0 {
 		return
 	}
@@ -477,30 +461,6 @@ func (s *SeenTracker) MarkRequested(txKey types.TxKey, peer uint16) {
 	entry, ok := s.txByKey[txKey]
 	if !ok {
 		return
-	}
-
-	entry.requested = true
-	entry.lastPeer = peer
-}
-
-// MarkRequestFailed clears the in-flight request and stops using that peer for
-// this tx unless another peer also announced it.
-func (s *SeenTracker) MarkRequestFailed(txKey types.TxKey, peer uint16) {
-	if peer == 0 {
-		return
-	}
-
-	s.mtx.Lock()
-	defer s.mtx.Unlock()
-
-	entry, ok := s.txByKey[txKey]
-	if !ok {
-		return
-	}
-
-	if entry.lastPeer == peer {
-		entry.requested = false
-		entry.lastPeer = 0
 	}
 
 	if _, has := entry.peers[peer]; has {

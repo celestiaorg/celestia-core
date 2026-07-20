@@ -43,6 +43,16 @@ func newRequestScheduler(responseTime, globalTimeout time.Duration) *requestSche
 	}
 }
 
+// deletePeerRequest removes key from the peer's request set, dropping the
+// set itself once empty so requestsByPeer doesn't accumulate idle peer
+// entries. Caller must hold r.mtx.
+func (r *requestScheduler) deletePeerRequest(peer uint16, key types.TxKey) {
+	delete(r.requestsByPeer[peer], key)
+	if len(r.requestsByPeer[peer]) == 0 {
+		delete(r.requestsByPeer, peer)
+	}
+}
+
 func (r *requestScheduler) Add(key types.TxKey, peer uint16, onTimeout func(key types.TxKey, peer uint16)) bool {
 	if peer == 0 {
 		return false
@@ -55,8 +65,20 @@ func (r *requestScheduler) Add(key types.TxKey, peer uint16, onTimeout func(key 
 		return false
 	}
 
+	// the per-peer limit is enforced here, under the lock, so concurrent
+	// requesters can't race a peer past it
+	if len(r.requestsByPeer[peer]) >= maxRequestsPerPeer {
+		return false
+	}
+
 	timer := time.AfterFunc(r.responseTime, func() {
 		r.mtx.Lock()
+		// The request may have been fulfilled by another peer while this callback
+		// was waiting on the lock; if so, skip the timeout logic.
+		if r.requestsByTx[key] != peer {
+			r.mtx.Unlock()
+			return
+		}
 		delete(r.requestsByTx, key)
 		r.mtx.Unlock()
 
@@ -74,7 +96,7 @@ func (r *requestScheduler) Add(key types.TxKey, peer uint16, onTimeout func(key 
 		time.AfterFunc(r.globalTimeout, func() {
 			r.mtx.Lock()
 			defer r.mtx.Unlock()
-			delete(r.requestsByPeer[peer], key)
+			r.deletePeerRequest(peer, key)
 		})
 	})
 	if _, ok := r.requestsByPeer[peer]; !ok {
@@ -129,6 +151,23 @@ func (r *requestScheduler) ClearAllRequestsFrom(peer uint16) requestSet {
 	return requests
 }
 
+// Remove drops an in-flight request and stops its timer, e.g. to roll back
+// a reservation whose WantTx failed to send.
+func (r *requestScheduler) Remove(key types.TxKey) {
+	r.mtx.Lock()
+	defer r.mtx.Unlock()
+
+	peer, ok := r.requestsByTx[key]
+	if !ok {
+		return
+	}
+	if timer, ok := r.requestsByPeer[peer][key]; ok {
+		timer.Stop()
+		r.deletePeerRequest(peer, key)
+	}
+	delete(r.requestsByTx, key)
+}
+
 func (r *requestScheduler) MarkReceived(peer uint16, key types.TxKey) bool {
 	r.mtx.Lock()
 	defer r.mtx.Unlock()
@@ -144,7 +183,12 @@ func (r *requestScheduler) MarkReceived(peer uint16, key types.TxKey) bool {
 	}
 
 	delete(r.requestsByPeer[peer], key)
-	delete(r.requestsByTx, key)
+	// A late response only clears the request if it still belongs to
+	// this peer; after a timeout the tx may have been re-requested from
+	// someone else, and that request is still in flight.
+	if r.requestsByTx[key] == peer {
+		delete(r.requestsByTx, key)
+	}
 	return true
 }
 
