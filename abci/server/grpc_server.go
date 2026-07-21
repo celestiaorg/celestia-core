@@ -46,7 +46,8 @@ func (s *GRPCServer) OnStart() error {
 
 	s.listener = ln
 	s.server = grpc.NewServer(
-		grpc.MaxRecvMsgSize(75 * mebibyte),
+		grpc.MaxRecvMsgSize(1075*mebibyte),
+		grpc.MaxSendMsgSize(1075*mebibyte),
 	)
 	types.RegisterABCIServer(s.server, &gRPCApplication{s.app})
 
