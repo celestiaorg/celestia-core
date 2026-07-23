@@ -1,6 +1,7 @@
 package privval
 
 import (
+	"errors"
 	"fmt"
 	"time"
 
@@ -12,6 +13,14 @@ import (
 	privvalproto "github.com/cometbft/cometbft/proto/tendermint/privval"
 	cmtproto "github.com/cometbft/cometbft/proto/tendermint/types"
 	"github.com/cometbft/cometbft/types"
+)
+
+const (
+	failureReasonRemoteError        = "remote_error"
+	failureReasonTimeout            = "timeout"
+	failureReasonNoConnection       = "no_connection"
+	failureReasonUnexpectedResponse = "unexpected_response"
+	failureReasonOther              = "other"
 )
 
 // SignerClient implements PrivValidator.
@@ -119,19 +128,24 @@ func (sc *SignerClient) GetPubKey() (crypto.PubKey, error) {
 
 // SignVote requests a remote signer to sign a vote
 func (sc *SignerClient) SignVote(chainID string, vote *cmtproto.Vote) error {
+	msgType := voteMessageType(vote.Type)
 	reqStartTime := time.Now()
 	response, err := sc.endpoint.SendRequest(mustWrapMsg(&privvalproto.SignVoteRequest{Vote: vote, ChainId: chainID}))
 	reqTime := time.Since(reqStartTime)
 	if err != nil {
+		sc.recordSigningFailure(msgType, err)
 		return err
 	}
 
 	resp := response.GetSignedVoteResponse()
 	if resp == nil {
+		sc.recordSigningFailure(msgType, ErrUnexpectedResponse)
 		return ErrUnexpectedResponse
 	}
 	if resp.Error != nil {
-		return &RemoteSignerError{Code: int(resp.Error.Code), Description: resp.Error.Description}
+		err := &RemoteSignerError{Code: int(resp.Error.Code), Description: resp.Error.Description}
+		sc.recordSigningFailure(msgType, err)
+		return err
 	}
 	switch vote.Type {
 	case cmtproto.PrevoteType:
@@ -155,15 +169,19 @@ func (sc *SignerClient) SignProposal(chainID string, proposal *cmtproto.Proposal
 	))
 	reqTime := time.Since(reqStartTime)
 	if err != nil {
+		sc.recordSigningFailure(messageTypeProposal, err)
 		return err
 	}
 
 	resp := response.GetSignedProposalResponse()
 	if resp == nil {
+		sc.recordSigningFailure(messageTypeProposal, ErrUnexpectedResponse)
 		return ErrUnexpectedResponse
 	}
 	if resp.Error != nil {
-		return &RemoteSignerError{Code: int(resp.Error.Code), Description: resp.Error.Description}
+		err := &RemoteSignerError{Code: int(resp.Error.Code), Description: resp.Error.Description}
+		sc.recordSigningFailure(messageTypeProposal, err)
+		return err
 	}
 	schema.WriteSignatureLatency(sc.tracer, proposal.Height, proposal.Round, reqTime.Nanoseconds(), schema.ProposalType)
 	sc.recordSigningLatency(messageTypeProposal, reqTime)
@@ -182,15 +200,19 @@ func (sc *SignerClient) SignRawBytes(chainID, uniqueID string, rawBytes []byte) 
 	}))
 	reqTime := time.Since(reqStartTime)
 	if err != nil {
+		sc.recordSigningFailure(messageTypeRawBytes, err)
 		return nil, err
 	}
 
 	resp := response.GetSignedRawBytesResponse()
 	if resp == nil {
+		sc.recordSigningFailure(messageTypeRawBytes, ErrUnexpectedResponse)
 		return nil, ErrUnexpectedResponse
 	}
 	if resp.Error != nil {
-		return nil, &RemoteSignerError{Code: int(resp.Error.Code), Description: resp.Error.Description}
+		err := &RemoteSignerError{Code: int(resp.Error.Code), Description: resp.Error.Description}
+		sc.recordSigningFailure(messageTypeRawBytes, err)
+		return nil, err
 	}
 	schema.WriteSignatureLatency(sc.tracer, -1, -1, reqTime.Nanoseconds(), uniqueID)
 	sc.recordSigningLatency(messageTypeRawBytes, reqTime)
@@ -201,4 +223,40 @@ func (sc *SignerClient) SignRawBytes(chainID, uniqueID string, rawBytes []byte) 
 func (sc *SignerClient) recordSigningLatency(messageType string, latency time.Duration) {
 	sc.metrics.SigningLatencySeconds.With("message_type", messageType).Observe(latency.Seconds())
 	sc.latency.Record(latency)
+}
+
+func (sc *SignerClient) recordSigningFailure(messageType string, err error) {
+	sc.metrics.SigningFailuresTotal.With(
+		"message_type", messageType,
+		"reason", failureReason(err),
+	).Add(1)
+}
+
+func failureReason(err error) string {
+	var rse *RemoteSignerError
+	switch {
+	case errors.As(err, &rse):
+		return failureReasonRemoteError
+	case errors.Is(err, ErrReadTimeout),
+		errors.Is(err, ErrWriteTimeout),
+		errors.Is(err, ErrConnectionTimeout):
+		return failureReasonTimeout
+	case errors.Is(err, ErrNoConnection):
+		return failureReasonNoConnection
+	case errors.Is(err, ErrUnexpectedResponse):
+		return failureReasonUnexpectedResponse
+	default:
+		return failureReasonOther
+	}
+}
+
+func voteMessageType(t cmtproto.SignedMsgType) string {
+	switch t {
+	case cmtproto.PrevoteType:
+		return messageTypePrevote
+	case cmtproto.PrecommitType:
+		return messageTypePrecommit
+	default:
+		return "vote"
+	}
 }

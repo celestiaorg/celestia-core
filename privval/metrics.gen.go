@@ -28,6 +28,12 @@ func PrometheusMetrics(namespace string, labelsAndValues ...string) *Metrics {
 			Name:      "signing_latency_median_seconds",
 			Help:      "Median signing latency in seconds over the recent signing window.",
 		}, labels).With(labelsAndValues...),
+		SigningFailuresTotal: prometheus.NewCounterFrom(stdprometheus.CounterOpts{
+			Namespace: namespace,
+			Subsystem: MetricsSubsystem,
+			Name:      "signing_failures_total",
+			Help:      "Number of failed remote signing requests, by message type and reason.",
+		}, append(labels, "message_type", "reason")).With(labelsAndValues...),
 	}
 }
 
@@ -35,5 +41,6 @@ func NopMetrics() *Metrics {
 	return &Metrics{
 		SigningLatencySeconds:       discard.NewHistogram(),
 		SigningLatencyMedianSeconds: discard.NewGauge(),
+		SigningFailuresTotal:        discard.NewCounter(),
 	}
 }

@@ -23,4 +23,8 @@ type Metrics struct {
 	// N successful remote signing events.
 	//metrics:Median signing latency in seconds over the recent signing window.
 	SigningLatencyMedianSeconds metrics.Gauge
+
+	// SigningFailuresTotal is the number of remote signing requests that failed.
+	//metrics:Number of failed remote signing requests, by message type and reason.
+	SigningFailuresTotal metrics.Counter `metrics_labels:"message_type,reason"`
 }
