@@ -89,17 +89,25 @@ func TestSigningLatencyTrackerNoWarnUntilWindowFull(t *testing.T) {
 func TestSigningLatencyTrackerCooldownAllowsLaterWarn(t *testing.T) {
 	logger := &capturingLogger{}
 	tracker := newSigningLatencyTracker(NopMetrics(), logger)
-	tracker.cooldown = time.Millisecond
 
 	for i := 0; i < signingLatencyWarnWindow; i++ {
 		tracker.Record(20 * time.Millisecond)
 	}
 	require.Equal(t, 1, logger.infoCount())
 
-	time.Sleep(2 * time.Millisecond)
+	// Window is already full; further samples still evaluate the median, but
+	// the cooldown gate must suppress another warn.
+	tracker.Record(20 * time.Millisecond)
+	require.Equal(t, 1, logger.infoCount())
 
-	for i := 0; i < signingLatencyWarnWindow; i++ {
-		tracker.Record(20 * time.Millisecond)
-	}
+	// Simulate wall-clock advancing past cooldown. Sleeping with a tiny
+	// cooldown is flaky under -race: a second Record loop can outlast the
+	// cooldown and emit more than one warn. Backdating lastWarn exercises the
+	// same condition the production gate uses (now.Sub(lastWarn) < cooldown).
+	tracker.mtx.Lock()
+	tracker.lastWarn = time.Now().Add(-tracker.cooldown - time.Nanosecond)
+	tracker.mtx.Unlock()
+
+	tracker.Record(20 * time.Millisecond)
 	require.Equal(t, 2, logger.infoCount())
 }
