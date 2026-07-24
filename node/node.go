@@ -364,7 +364,20 @@ func NewNodeWithContext(ctx context.Context,
 	// external signing process.
 	if config.PrivValidatorListenAddr != "" {
 		// FIXME: we should start services inside OnStart
-		privValidator, err = createAndStartPrivValidatorSocketClient(config.PrivValidatorListenAddr, genDoc.ChainID, logger, tracer)
+		privvalMetrics := privval.NopMetrics()
+		if config.Instrumentation != nil && config.Instrumentation.Prometheus {
+			privvalMetrics = privval.PrometheusMetrics(
+				config.Instrumentation.Namespace,
+				"chain_id", genDoc.ChainID,
+			)
+		}
+		privValidator, err = createAndStartPrivValidatorSocketClient(
+			config.PrivValidatorListenAddr,
+			genDoc.ChainID,
+			logger,
+			tracer,
+			privvalMetrics,
+		)
 		if err != nil {
 			return nil, fmt.Errorf("error with private validator socket client: %w", err)
 		}

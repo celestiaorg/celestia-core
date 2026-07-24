@@ -464,3 +464,40 @@ func TestSignerRawBytes(t *testing.T) {
 		assert.Equal(t, want, have)
 	}
 }
+
+func TestSignerClientRecordsSigningLatency(t *testing.T) {
+	for _, tc := range getSignerTestCases(t) {
+		tc := tc
+		t.Cleanup(func() {
+			if err := tc.signerServer.Stop(); err != nil {
+				t.Error(err)
+			}
+		})
+		t.Cleanup(func() {
+			if err := tc.signerClient.Close(); err != nil {
+				t.Error(err)
+			}
+		})
+
+		require.Equal(t, 0, tc.signerClient.latency.size)
+
+		ts := time.Now()
+		hash := cmtrand.Bytes(tmhash.Size)
+		proposal := &types.Proposal{
+			Type:      cmtproto.ProposalType,
+			Height:    1,
+			Round:     0,
+			Timestamp: ts,
+			BlockID:   types.BlockID{Hash: hash, PartSetHeader: types.PartSetHeader{Hash: hash, Total: 1}},
+		}
+		p := proposal.ToProto()
+		require.NoError(t, tc.signerClient.SignProposal(tc.chainID, p))
+
+		require.Equal(t, 1, tc.signerClient.latency.size)
+
+		rawBytes := cmtrand.Bytes(32)
+		_, err := tc.signerClient.SignRawBytes(tc.chainID, "compactBlock", rawBytes)
+		require.NoError(t, err)
+		require.Equal(t, 2, tc.signerClient.latency.size)
+	}
+}
