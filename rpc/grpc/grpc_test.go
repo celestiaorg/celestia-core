@@ -1,4 +1,3 @@
-//nolint:dupl
 package coregrpc_test
 
 import (
@@ -14,6 +13,7 @@ import (
 	"github.com/cometbft/cometbft/abci/example/kvstore"
 	"github.com/cometbft/cometbft/node"
 	"github.com/cometbft/cometbft/proto/tendermint/crypto"
+	tmproto "github.com/cometbft/cometbft/proto/tendermint/types"
 	rpcclient "github.com/cometbft/cometbft/rpc/client"
 	rpchttp "github.com/cometbft/cometbft/rpc/client/http"
 	"github.com/cometbft/cometbft/rpc/core"
@@ -205,9 +205,32 @@ func (s *GRPCSuite) TestSubscribeNewHeights() {
 	time.Sleep(5 * time.Second)
 }
 
+type blockResponse interface {
+	GetBlockPart() *tmproto.Part
+	GetCommit() *tmproto.Commit
+	GetValidatorSet() *tmproto.ValidatorSet
+}
+
+type blockQuery func(types.BlockMeta, bool) (func() (blockResponse, error), error)
+
 func (s *GRPCSuite) TestBlockByHash_Streaming() {
 	t := s.T()
 	client := setupClient(t)
+
+	s.testBlockStreaming(func(blockMeta types.BlockMeta, prove bool) (func() (blockResponse, error), error) {
+		stream, err := client.BlockByHash(context.Background(), &coregrpc.BlockByHashRequest{
+			Hash:  blockMeta.BlockID.Hash,
+			Prove: prove,
+		})
+		return func() (blockResponse, error) {
+			return stream.Recv()
+		}, err
+	})
+}
+
+func (s *GRPCSuite) testBlockStreaming(query blockQuery) {
+	t := s.T()
+	t.Helper()
 
 	status, err := s.env.Status(nil)
 	require.NoError(t, err)
@@ -227,7 +250,7 @@ func (s *GRPCSuite) TestBlockByHash_Streaming() {
 	for i := latestBlockHeight; i < latestBlockHeight+500; i++ {
 		waitForHeight(t, i+1)
 		blockMeta := s.env.BlockStore.LoadBlockMeta(i)
-		if blockMeta.BlockID.PartSetHeader.Total > 1 {
+		if blockMeta != nil && blockMeta.BlockID.PartSetHeader.Total > 1 {
 			expectedBlockMeta = *blockMeta
 			break
 		}
@@ -236,59 +259,31 @@ func (s *GRPCSuite) TestBlockByHash_Streaming() {
 	// Ensure we have a valid block to test with
 	require.NotEmpty(t, expectedBlockMeta.BlockID.Hash, "Expected to find a valid block for testing")
 
-	// query the block without the part proofs
-	res, err := client.BlockByHash(context.Background(), &coregrpc.BlockByHashRequest{
-		Hash:  expectedBlockMeta.BlockID.Hash,
-		Prove: false,
-	})
-	require.NoError(t, err)
+	for _, prove := range []bool{false, true} {
+		recv, err := query(expectedBlockMeta, prove)
+		require.NoError(t, err)
 
-	part1, err := res.Recv()
-	require.NoError(t, err)
+		part1, err := recv()
+		require.NoError(t, err)
+		require.NotNil(t, part1.GetBlockPart())
+		require.NotNil(t, part1.GetValidatorSet())
+		require.NotNil(t, part1.GetCommit())
+		assert.Equal(t, expectedBlockMeta.Header.Height, part1.GetCommit().Height)
 
-	var part2 *coregrpc.BlockByHashResponse
+		part2, err := recv()
+		require.NoError(t, err)
+		require.NotNil(t, part2.GetBlockPart())
+		require.Nil(t, part2.GetValidatorSet())
+		require.Nil(t, part2.GetCommit())
 
-	require.NotNil(t, part1.BlockPart)
-	require.NotNil(t, part1.ValidatorSet)
-	require.NotNil(t, part1.Commit)
-
-	assert.Equal(t, part1.BlockPart.Proof, crypto.Proof{})
-	assert.Equal(t, part1.Commit.Height, expectedBlockMeta.Header.Height)
-
-	part2, err = res.Recv()
-	require.NoError(t, err)
-
-	require.NotNil(t, part2.BlockPart)
-	require.Nil(t, part2.ValidatorSet)
-	require.Nil(t, part2.Commit)
-
-	assert.Equal(t, part2.BlockPart.Proof, crypto.Proof{})
-
-	// query the block along with the part proofs
-	res, err = client.BlockByHash(context.Background(), &coregrpc.BlockByHashRequest{
-		Hash:  expectedBlockMeta.BlockID.Hash,
-		Prove: true,
-	})
-	require.NoError(t, err)
-
-	part1, err = res.Recv()
-	require.NoError(t, err)
-
-	require.NotNil(t, part1.BlockPart)
-	require.NotNil(t, part1.ValidatorSet)
-	require.NotNil(t, part1.Commit)
-
-	assert.NotEqual(t, part1.BlockPart.Proof, crypto.Proof{})
-	assert.Equal(t, part1.Commit.Height, expectedBlockMeta.Header.Height)
-
-	part2, err = res.Recv()
-	require.NoError(t, err)
-
-	require.NotNil(t, part2.BlockPart)
-	require.Nil(t, part2.ValidatorSet)
-	require.Nil(t, part2.Commit)
-
-	assert.NotEqual(t, part2.BlockPart.Proof, crypto.Proof{})
+		if prove {
+			assert.NotEqual(t, crypto.Proof{}, part1.GetBlockPart().Proof)
+			assert.NotEqual(t, crypto.Proof{}, part2.GetBlockPart().Proof)
+		} else {
+			assert.Equal(t, crypto.Proof{}, part1.GetBlockPart().Proof)
+			assert.Equal(t, crypto.Proof{}, part2.GetBlockPart().Proof)
+		}
+	}
 }
 
 func (s *GRPCSuite) TestBlockByHeight() {
@@ -357,86 +352,15 @@ func (s *GRPCSuite) TestBlockQuery_Streaming() {
 	t := s.T()
 	client := setupClient(t)
 
-	status, err := s.env.Status(nil)
-	require.NoError(t, err)
-	latestBlockHeight := status.SyncInfo.LatestBlockHeight
-
-	// send a big transaction that would result in a block
-	// containing multiple block parts
-	txRes, err := rpctest.GetGRPCClient().BroadcastTx(
-		context.Background(),
-		&coregrpc.RequestBroadcastTx{Tx: kvstore.NewRandomTx(100000)},
-	)
-	require.NoError(t, err)
-	require.EqualValues(t, 0, txRes.CheckTx.Code)
-	require.EqualValues(t, 0, txRes.TxResult.Code)
-
-	var expectedBlockMeta types.BlockMeta
-	for i := latestBlockHeight; i < latestBlockHeight+500; i++ {
-		waitForHeight(t, i+1)
-		blockMeta := s.env.BlockStore.LoadBlockMeta(i)
-		if blockMeta.BlockID.PartSetHeader.Total > 1 {
-			expectedBlockMeta = *blockMeta
-			break
-		}
-	}
-
-	// Ensure we have a valid block to test with
-	require.NotEmpty(t, expectedBlockMeta.BlockID.Hash, "Expected to find a valid block for testing")
-
-	// query the block without the part proofs
-	res, err := client.BlockByHeight(context.Background(), &coregrpc.BlockByHeightRequest{
-		Height: expectedBlockMeta.Header.Height,
-		Prove:  false,
+	s.testBlockStreaming(func(blockMeta types.BlockMeta, prove bool) (func() (blockResponse, error), error) {
+		stream, err := client.BlockByHeight(context.Background(), &coregrpc.BlockByHeightRequest{
+			Height: blockMeta.Header.Height,
+			Prove:  prove,
+		})
+		return func() (blockResponse, error) {
+			return stream.Recv()
+		}, err
 	})
-	require.NoError(t, err)
-
-	part1, err := res.Recv()
-	require.NoError(t, err)
-
-	var part2 *coregrpc.BlockByHeightResponse
-
-	require.NotNil(t, part1.BlockPart)
-	require.NotNil(t, part1.ValidatorSet)
-	require.NotNil(t, part1.Commit)
-
-	assert.Equal(t, part1.BlockPart.Proof, crypto.Proof{})
-	assert.Equal(t, part1.Commit.Height, expectedBlockMeta.Header.Height)
-
-	part2, err = res.Recv()
-	require.NoError(t, err)
-
-	require.NotNil(t, part2.BlockPart)
-	require.Nil(t, part2.ValidatorSet)
-	require.Nil(t, part2.Commit)
-
-	assert.Equal(t, part2.BlockPart.Proof, crypto.Proof{})
-
-	// query the block along with the part proofs
-	res, err = client.BlockByHeight(context.Background(), &coregrpc.BlockByHeightRequest{
-		Height: expectedBlockMeta.Header.Height,
-		Prove:  true,
-	})
-	require.NoError(t, err)
-
-	part1, err = res.Recv()
-	require.NoError(t, err)
-
-	require.NotNil(t, part1.BlockPart)
-	require.NotNil(t, part1.ValidatorSet)
-	require.NotNil(t, part1.Commit)
-
-	assert.NotEqual(t, part1.BlockPart.Proof, crypto.Proof{})
-	assert.Equal(t, part1.Commit.Height, expectedBlockMeta.Header.Height)
-
-	part2, err = res.Recv()
-	require.NoError(t, err)
-
-	require.NotNil(t, part2.BlockPart)
-	require.Nil(t, part2.ValidatorSet)
-	require.Nil(t, part2.Commit)
-
-	assert.NotEqual(t, part2.BlockPart.Proof, crypto.Proof{})
 }
 
 func (s *GRPCSuite) TestBlobstreamAPI() {
