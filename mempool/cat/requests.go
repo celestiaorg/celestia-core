@@ -151,14 +151,13 @@ func (r *requestScheduler) ClearAllRequestsFrom(peer uint16) requestSet {
 	return requests
 }
 
-// Remove drops an in-flight request and stops its timer, e.g. to roll back
-// a reservation whose WantTx failed to send.
-func (r *requestScheduler) Remove(key types.TxKey) {
+// Remove drops the request for key if it still belongs to peer. This prevents
+// a late rollback from removing a newer request for the same transaction.
+func (r *requestScheduler) Remove(key types.TxKey, peer uint16) {
 	r.mtx.Lock()
 	defer r.mtx.Unlock()
 
-	peer, ok := r.requestsByTx[key]
-	if !ok {
+	if owner, ok := r.requestsByTx[key]; !ok || owner != peer {
 		return
 	}
 	if timer, ok := r.requestsByPeer[peer][key]; ok {
