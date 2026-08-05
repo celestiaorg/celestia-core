@@ -8,8 +8,12 @@ Celestia-core is a fork of CometBFT (formerly Tendermint) — a BFT consensus en
 
 **Active branches:**
 - `main`: Development for celestia-app
+- `v0.40.x`: Current release line, used by celestia-app `v9.x` (no `-celestia` suffix)
+- `v0.39.x-celestia`: Used by celestia-app `v6.x`
 
-PRs should generally target `main` first, then backport to `v0.39.x-celestia` using the `backport-to-v0.39.x` label.
+PRs should generally target `main` first, then be backported to the release branches the fix applies to. Mergify handles this via labels: `backport-to-v0.40.x`, `backport-to-v0.39.x`, `backport-to-v0.38.x`, `backport-to-v0.34.x`. See `.github/mergify.yml` for the full list.
+
+Note that `main` and `v0.40.x` have diverged from the older release branches in ways that decide whether a backport is even possible — for example the CAT-only mempool (no `clist`) and the `RecvMessagePrecheck` p2p hook exist on `main` and `v0.40.x` but not on `v0.39.x-celestia`. Check that the code path exists on the target branch before labeling.
 
 ## Build Commands
 
