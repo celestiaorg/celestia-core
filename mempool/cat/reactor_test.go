@@ -121,6 +121,102 @@ func TestReactorSendWantTxAfterReceivingSeenTx(t *testing.T) {
 	peer.AssertExpectations(t)
 }
 
+// TestReactorSeenTxDuringFailedSendIsNotLost verifies that when a WantTx send
+// fails, the tx is requested from a peer that sent SeenTx while it was pending.
+func TestReactorSeenTxDuringFailedSendIsNotLost(t *testing.T) {
+	app := newSequenceTrackingApp()
+	cc := proxy.NewLocalClientCreator(app)
+	pool, cleanup := newMempoolWithApp(cc)
+	t.Cleanup(cleanup)
+
+	reactor, err := NewReactor(pool, &ReactorOptions{})
+	require.NoError(t, err)
+
+	tx := newDefaultTx("hello")
+	key := tx.Key()
+	signer := []byte("test-signer")
+	app.SetSequence(string(signer), 1)
+
+	wantEnv := p2p.Envelope{
+		ChannelID: MempoolWantsChannel,
+		Message: &protomem.Message{
+			Sum: &protomem.Message_WantTx{WantTx: &protomem.WantTx{TxKey: key[:]}},
+		},
+	}
+
+	peers := genPeers(2)
+	peerB, peerA := peers[0], peers[1]
+	for _, peer := range peers {
+		_, err := reactor.InitPeer(peer)
+		require.NoError(t, err)
+	}
+	peerAID := reactor.ids.GetIDForPeer(peerA.ID())
+	require.NotZero(t, peerAID)
+
+	// While peerB's send is in flight, peerA sends SeenTx: the receive
+	// path records peerA as a source but skips requesting, since the tx
+	// appears to already be requested. peerB's send then fails.
+	peerB.On("TrySend", wantEnv).Run(func(mock.Arguments) {
+		reactor.Receive(p2p.Envelope{
+			ChannelID: MempoolDataChannel,
+			Message:   &protomem.SeenTx{TxKey: key[:], Signer: signer, Sequence: 1},
+			Src:       peerA,
+		})
+		peerA.AssertNotCalled(t, "TrySend", mock.Anything)
+		require.True(t, pool.seenTracker.Has(key, peerAID))
+	}).Return(false).Once()
+	peerA.On("TrySend", wantEnv).Return(true).Once()
+
+	// the failed send must fall back to peerA rather than leaving the tx
+	// with no active request
+	require.False(t, reactor.requestTx(key, peerB))
+	require.Equal(t, peerAID, reactor.requests.ForTx(key))
+	require.True(t, reactor.requests.Has(peerAID, key))
+	peerA.AssertExpectations(t)
+	peerB.AssertExpectations(t)
+}
+
+// TestReactorFailedSendFallsBackToOtherSeenPeer verifies that after a WantTx
+// send fails, its peer is dropped and the tx is requested from another peer.
+func TestReactorFailedSendFallsBackToOtherSeenPeer(t *testing.T) {
+	reactor, pool := setupReactor(t)
+
+	tx := newDefaultTx("hello")
+	key := tx.Key()
+
+	wantEnv := p2p.Envelope{
+		ChannelID: MempoolWantsChannel,
+		Message: &protomem.Message{
+			Sum: &protomem.Message_WantTx{WantTx: &protomem.WantTx{TxKey: key[:]}},
+		},
+	}
+
+	peers := genPeers(2)
+	peerB, peerA := peers[0], peers[1]
+	for _, peer := range peers {
+		_, err := reactor.InitPeer(peer)
+		require.NoError(t, err)
+	}
+	peerBID := reactor.ids.GetIDForPeer(peerB.ID())
+	peerAID := reactor.ids.GetIDForPeer(peerA.ID())
+
+	// both peers are known sources for the tx
+	pool.PeerHasTx(peerBID, key)
+	pool.PeerHasTx(peerAID, key)
+
+	peerB.On("TrySend", wantEnv).Return(false).Once()
+	peerA.On("TrySend", wantEnv).Return(true).Once()
+
+	require.False(t, reactor.requestTx(key, peerB))
+
+	// the request moved to peerA and peerB is no longer a source
+	require.Equal(t, peerAID, reactor.requests.ForTx(key))
+	require.True(t, reactor.requests.Has(peerAID, key))
+	require.False(t, pool.seenTracker.Has(key, peerBID))
+	peerA.AssertExpectations(t)
+	peerB.AssertExpectations(t)
+}
+
 func TestReactorSendsTxAfterReceivingWantTx(t *testing.T) {
 	reactor, pool := setupReactor(t)
 
