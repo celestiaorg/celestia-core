@@ -25,6 +25,7 @@ import (
 	cmtrand "github.com/cometbft/cometbft/libs/rand"
 	p2pmock "github.com/cometbft/cometbft/p2p/mock"
 	cmtproto "github.com/cometbft/cometbft/proto/tendermint/types"
+	smmocks "github.com/cometbft/cometbft/state/mocks"
 	"github.com/cometbft/cometbft/types"
 )
 
@@ -2726,4 +2727,161 @@ func findBlockSizeLimit(t *testing.T, height, maxBytes int64, cs *State, _ uint3
 	}
 	require.Fail(t, "We shouldn't hit the end of the loop")
 	return nil, nil
+}
+
+// newStateForDoubleSignTest builds the minimal State needed by checkDoubleSigningRisk.
+func newStateForDoubleSignTest(t *testing.T, doubleSignCheckHeight int64) (*State, *smmocks.BlockStore) {
+	t.Helper()
+
+	consConfig := *config.Consensus
+	consConfig.DoubleSignCheckHeight = doubleSignCheckHeight
+
+	mockBS := &smmocks.BlockStore{}
+
+	cs := &State{
+		config:     &consConfig,
+		blockStore: mockBS,
+	}
+	// Set the logger directly on the embedded BaseService: timeoutTicker and the
+	// rest of the wiring are not needed by checkDoubleSigningRisk.
+	cs.Logger = log.TestingLogger()
+
+	pv := types.NewMockPV()
+	pubKey, err := pv.GetPubKey()
+	require.NoError(t, err)
+
+	cs.privValidator = pv
+	cs.privValidatorPubKey = pubKey
+
+	return cs, mockBS
+}
+
+// makeCommitWithValidator builds a commit with a single commit signature.
+func makeCommitWithValidator(height int64, validatorAddr types.Address) *types.Commit {
+	return &types.Commit{
+		Height: height,
+		Signatures: []types.CommitSig{
+			{
+				BlockIDFlag:      types.BlockIDFlagCommit,
+				ValidatorAddress: validatorAddr,
+				Timestamp:        time.Now(),
+			},
+		},
+	}
+}
+
+// TestCheckDoubleSigningRisk checks that double_sign_check_height = N inspects
+// exactly the N blocks preceding height.
+func TestCheckDoubleSigningRisk(t *testing.T) {
+	type seenCommit struct {
+		height     int64
+		signedByUs bool
+	}
+
+	testCases := []struct {
+		name                  string
+		doubleSignCheckHeight int64
+		height                int64
+		seenCommits           []seenCommit
+		wantErr               error
+		wantNoLoadSeenCommit  bool
+	}{
+		{
+			// Regression: a value of 1 used to perform zero checks, silently
+			// behaving like 0 (disabled).
+			name:                  "one checks the single preceding block",
+			doubleSignCheckHeight: 1,
+			height:                10,
+			seenCommits:           []seenCommit{{height: 9, signedByUs: true}},
+			wantErr:               ErrSignatureFoundInPastBlocks,
+		},
+		{
+			name:                  "two checks both preceding blocks",
+			doubleSignCheckHeight: 2,
+			height:                10,
+			seenCommits:           []seenCommit{{height: 9}, {height: 8, signedByUs: true}},
+			wantErr:               ErrSignatureFoundInPastBlocks,
+		},
+		{
+			name:                  "no signature from us is not a risk",
+			doubleSignCheckHeight: 2,
+			height:                10,
+			seenCommits:           []seenCommit{{height: 9}, {height: 8}},
+		},
+		{
+			name:                  "zero disables the check",
+			doubleSignCheckHeight: 0,
+			height:                10,
+			wantNoLoadSeenCommit:  true,
+		},
+		{
+			name:                  "check height beyond chain height does not look below the genesis block",
+			doubleSignCheckHeight: 10,
+			height:                1,
+			wantNoLoadSeenCommit:  true,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			cs, mockBS := newStateForDoubleSignTest(t, tc.doubleSignCheckHeight)
+			ourAddr := cs.privValidatorPubKey.Address()
+			otherAddr := append(types.Address(nil), ourAddr...)
+			require.NotEmpty(t, otherAddr)
+			otherAddr[len(otherAddr)-1] ^= 0x01
+
+			for _, sc := range tc.seenCommits {
+				addr := otherAddr
+				if sc.signedByUs {
+					addr = ourAddr
+				}
+				mockBS.On("LoadSeenCommit", sc.height).Return(makeCommitWithValidator(sc.height, addr))
+			}
+
+			var err error
+			require.NotPanics(t, func() {
+				err = cs.checkDoubleSigningRisk(tc.height)
+			})
+
+			if tc.wantErr != nil {
+				require.ErrorIs(t, err, tc.wantErr)
+			} else {
+				require.NoError(t, err)
+			}
+
+			if tc.wantNoLoadSeenCommit {
+				mockBS.AssertNotCalled(t, "LoadSeenCommit", mock.Anything)
+				return
+			}
+			mockBS.AssertExpectations(t)
+		})
+	}
+}
+
+// TestHandleMsgReleasesLockBeforeStatsMsgQueueSend ensures a saturated
+// statsMsgQueue cannot stall the consensus state machine: handleMsg must not
+// hold the round state lock while sending.
+func TestHandleMsgReleasesLockBeforeStatsMsgQueueSend(t *testing.T) {
+	cs, vss := randState(2)
+	peer := p2pmock.NewPeer(nil)
+
+	randBytes := cmtrand.Bytes(tmhash.Size)
+	vote := signVote(vss[1], cmtproto.PrecommitType, randBytes, types.PartSetHeader{}, true)
+
+	// An unbuffered channel with no consumer simulates a saturated queue.
+	cs.statsMsgQueue = make(chan msgInfo)
+
+	go cs.handleMsg(msgInfo{&VoteMessage{vote}, peer.ID()})
+	time.Sleep(20 * time.Millisecond)
+
+	rsResult := make(chan *cstypes.RoundState, 1)
+	go func() { rsResult <- cs.GetRoundState() }()
+
+	select {
+	case <-rsResult:
+	case <-time.After(2 * time.Second):
+		t.Fatal("GetRoundState timed out: round state lock held during statsMsgQueue send")
+	}
+
+	<-cs.statsMsgQueue
 }
