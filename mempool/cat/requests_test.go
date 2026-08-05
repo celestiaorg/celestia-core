@@ -99,6 +99,35 @@ func TestRequestSchedulerLateResponseDoesNotClobberRerequest(t *testing.T) {
 	require.Zero(t, requests.ForTx(key))
 }
 
+// TestRequestSchedulerTimedOutPeerCannotBeReAdded checks that a timed-out peer
+// cannot be added again while its timeout callback is still running.
+func TestRequestSchedulerTimedOutPeerCannotBeReAdded(t *testing.T) {
+	var (
+		requests        = newRequestScheduler(10*time.Millisecond, time.Minute)
+		key             = types.Tx("tx").Key()
+		peerA    uint16 = 1
+		peerB    uint16 = 2
+	)
+	t.Cleanup(requests.Close)
+
+	entered := make(chan struct{})
+	release := make(chan struct{})
+	require.True(t, requests.Add(key, peerA, func(types.TxKey, uint16) {
+		close(entered)
+		<-release
+	}))
+
+	// the timeout fired: the current peer is cleared, but the callback is
+	// still in flight and peerA's request slot is kept for a late response
+	<-entered
+	defer close(release)
+	require.Zero(t, requests.ForTx(key))
+	require.True(t, requests.Has(peerA, key))
+
+	require.False(t, requests.Add(key, peerA, nil))
+	require.True(t, requests.Add(key, peerB, nil))
+}
+
 func TestRequestSchedulerNonResponsivePeer(t *testing.T) {
 	var (
 		requests        = newRequestScheduler(10*time.Millisecond, time.Millisecond)
