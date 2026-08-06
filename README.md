@@ -76,9 +76,12 @@ make proto-gen
 ## Branches
 
 - `main` is the canonical branch for development. Most PRs should target this branch and optionally be backported to a release branch.
-- `v0.39.x-celestia` was based on CometBFT `v0.38.x`. Releases from this branch look like `v0.39.0` and are used by celestia-app `v6.x`.
-- `v0.38.x-celestia` was based on CometBFT `v0.38.x`. Releases from this branch look like `v1.54.1-tm-v0.38.17` and are used by celestia-app `v4.x`.
-- `v0.34.x-celestia` was based on CometBFT `v0.34.x`. Releases from this branch look like `v1.52.1-tm-v0.34.35` and are used by celestia-app `v3.x`.
+- `v0.40.x` was cut from `main` and is based on CometBFT `v0.38.x`. Releases from this branch look like `v0.40.0` and are used by celestia-app `v9.x`. Note this branch has no `-celestia` suffix.
+- `v0.39.x-celestia` was based on CometBFT `v0.38.x`. Releases from this branch look like `v0.39.0` and are used by celestia-app `v6.x` through `v8.x`.
+- `v0.38.x-celestia` was based on CometBFT `v0.38.x`. Releases from this branch look like `v1.54.1-tm-v0.38.17` and are used by celestia-app `v4.x` and `v5.x`.
+- `v0.34.x-celestia` was based on CometBFT `v0.34.x`. Releases from this branch look like `v1.52.1-tm-v0.34.35` and are used by celestia-app `v1.x` through `v3.x`. Newer celestia-app versions still depend on this branch to multiplex ABCI v1 requests, via a `github.com/tendermint/tendermint` replace directive.
+
+The `replace` directives in [celestia-app's `go.mod`](https://github.com/celestiaorg/celestia-app/blob/main/go.mod) are the source of truth for which celestia-core version a given celestia-app branch consumes.
 
 ## Releases
 
