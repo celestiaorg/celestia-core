@@ -175,13 +175,20 @@ func TestRequestSchedulerRemove(t *testing.T) {
 	t.Cleanup(requests.Close)
 
 	var peerA uint16 = 1
+	var peerB uint16 = 2
 	key := types.Tx("tx").Key()
 
 	// removing an unknown key is a no-op
-	requests.Remove(key)
+	requests.Remove(key, peerA)
 
 	require.True(t, requests.Add(key, peerA, nil))
-	requests.Remove(key)
+
+	// removing with the wrong peer is a no-op: the request still belongs to peerA
+	requests.Remove(key, peerB)
+	require.Equal(t, peerA, requests.ForTx(key))
+	require.True(t, requests.Has(peerA, key))
+
+	requests.Remove(key, peerA)
 
 	require.Zero(t, requests.ForTx(key))
 	require.False(t, requests.Has(peerA, key))
@@ -189,6 +196,29 @@ func TestRequestSchedulerRemove(t *testing.T) {
 
 	// the key can be reserved again after removal
 	require.True(t, requests.Add(key, peerA, nil))
+}
+
+func TestRequestSchedulerRemoveDoesNotRemoveAnotherPeersRequest(t *testing.T) {
+	requests := newRequestScheduler(time.Minute, time.Minute)
+	t.Cleanup(requests.Close)
+
+	var peerA uint16 = 1
+	var peerB uint16 = 2
+	key := types.Tx("tx").Key()
+
+	// peerA reserves the request, then disconnects before its send completes
+	require.True(t, requests.Add(key, peerA, nil))
+	requests.ClearAllRequestsFrom(peerA)
+
+	// the tx is re-requested from peerB
+	require.True(t, requests.Add(key, peerB, nil))
+
+	// peerA's failed send now rolls back its reservation. It must not touch
+	// peerB's request.
+	requests.Remove(key, peerA)
+
+	require.Equal(t, peerB, requests.ForTx(key))
+	require.True(t, requests.Has(peerB, key))
 }
 
 func TestRequestSchedulerPerPeerLimit(t *testing.T) {

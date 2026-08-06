@@ -625,7 +625,8 @@ func (memR *Reactor) requestTx(txKey types.TxKey, peer p2p.Peer) bool {
 		},
 	)
 	if !success {
-		memR.requests.Remove(txKey)
+		// The request may have been reassigned while TrySend was in flight.
+		memR.requests.Remove(txKey, peerID)
 		return false
 	}
 	memR.mempool.metrics.RequestedTxs.Add(1)
