@@ -1056,9 +1056,6 @@ func (cs *State) handleMsg(mi msgInfo) {
 		if added && cs.rs.ProposalBlockParts.IsComplete() {
 			cs.handleCompleteProposal(msg.Height)
 		}
-		if added {
-			cs.statsMsgQueue <- mi
-		}
 
 		if err != nil && msg.Round != cs.rs.Round {
 			cs.Logger.Trace(
@@ -1073,10 +1070,14 @@ func (cs *State) handleMsg(mi msgInfo) {
 	case *VoteMessage:
 		// attempt to add the vote and dupeout the validator if its a duplicate signature
 		// if the vote gives us a 2/3-any or 2/3-one, we transition
+<<<<<<< HEAD
 		added, err = cs.tryAddVote(msg.Vote, peerID)
 		if added {
 			cs.statsMsgQueue <- mi
 		}
+=======
+		added, _ = cs.tryAddVote(msg.Vote, peerID)
+>>>>>>> 75dc46c2 (fix(consensus): backport double-sign check off-by-one and statsMsgQueue stall (#3207))
 
 		// if err == ErrAddingVote {
 		// TODO: punish peer
@@ -1098,6 +1099,7 @@ func (cs *State) handleMsg(mi msgInfo) {
 		return
 	}
 
+<<<<<<< HEAD
 	if err != nil {
 		cs.Logger.Error(
 			"failed to process message",
@@ -1107,6 +1109,14 @@ func (cs *State) handleMsg(mi msgInfo) {
 			"msg_type", fmt.Sprintf("%T", msg),
 			"err", err,
 		)
+=======
+	// Release the locks while sending: statsMsgQueue is drained by the reactor,
+	// and blocking on a full queue here would stall the state machine.
+	if added {
+		cs.unlockAll()
+		cs.statsMsgQueue <- mi
+		cs.lockAll()
+>>>>>>> 75dc46c2 (fix(consensus): backport double-sign check off-by-one and statsMsgQueue stall (#3207))
 	}
 }
 
@@ -2790,11 +2800,11 @@ func (cs *State) checkDoubleSigningRisk(height int64) error {
 	if cs.privValidator != nil && cs.privValidatorPubKey != nil && cs.config.DoubleSignCheckHeight > 0 && height > 0 {
 		valAddr := cs.privValidatorPubKey.Address()
 		doubleSignCheckHeight := cs.config.DoubleSignCheckHeight
-		if doubleSignCheckHeight > height {
-			doubleSignCheckHeight = height
+		if doubleSignCheckHeight >= height {
+			doubleSignCheckHeight = height - 1
 		}
 
-		for i := int64(1); i < doubleSignCheckHeight; i++ {
+		for i := int64(1); i <= doubleSignCheckHeight; i++ {
 			lastCommit := cs.blockStore.LoadSeenCommit(height - i)
 			if lastCommit != nil {
 				for sigIdx, s := range lastCommit.Signatures {
