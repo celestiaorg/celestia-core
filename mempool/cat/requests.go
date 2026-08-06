@@ -71,6 +71,12 @@ func (r *requestScheduler) Add(key types.TxKey, peer uint16, onTimeout func(key 
 		return false
 	}
 
+	// A timed-out request keeps its peer slot for late responses. Don't ask the
+	// same peer for the tx again until that slot is cleared.
+	if _, ok := r.requestsByPeer[peer][key]; ok {
+		return false
+	}
+
 	timer := time.AfterFunc(r.responseTime, func() {
 		r.mtx.Lock()
 		// The request may have been fulfilled by another peer while this callback
