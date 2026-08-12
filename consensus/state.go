@@ -1867,7 +1867,11 @@ func (cs *State) enterCommit(height int64, commitRound int32) {
 	}
 
 	// If we don't have the block being committed, set up to get it.
-	if !cs.rs.ProposalBlock.HashesTo(blockID.Hash) {
+	//
+	// Both halves of the BlockID have to match. A block hash does not uniquely
+	// determine the serialized body, so a block that hashes to blockID.Hash is
+	// not necessarily the body the network committed to.
+	if !cs.rs.ProposalBlock.HashesTo(blockID.Hash) || !cs.rs.ProposalBlockParts.HasHeader(blockID.PartSetHeader) {
 		if !cs.rs.ProposalBlockParts.HasHeader(blockID.PartSetHeader) {
 			logger.Info(
 				"commit is for a block we do not know about; set ProposalBlock=nil",
@@ -1877,7 +1881,6 @@ func (cs *State) enterCommit(height int64, commitRound int32) {
 
 			// We're getting the wrong block.
 			// Set up ProposalBlockParts and keep waiting.
-			cs.rs.ProposalBlock = nil
 			cs.rs.ProposalBlockParts = types.NewPartSetFromHeader(blockID.PartSetHeader, types.BlockPartSizeBytes)
 			psh := blockID.PartSetHeader
 			cs.propagator.AddCommitment(height, commitRound, &psh)
@@ -1888,6 +1891,11 @@ func (cs *State) enterCommit(height int64, commitRound int32) {
 
 			cs.evsw.FireEvent(types.EventValidBlock, &cs.rs)
 		}
+
+		// Whatever block we were holding was not built from the part set being
+		// committed, so it cannot be the block to finalize even if it happens
+		// to hash to blockID.Hash. Drop it and wait for the committed parts.
+		cs.rs.ProposalBlock = nil
 	}
 }
 
@@ -1910,6 +1918,20 @@ func (cs *State) tryFinalizeCommit(height int64) {
 		// TODO: ^^ wait, why does it matter that we're a validator?
 		logger.Debug(
 			"failed attempt to finalize commit; we do not have the commit block",
+			"proposal_block", log.NewLazyBlockHash(cs.rs.ProposalBlock),
+			"commit_block", blockID.Hash,
+		)
+		return
+	}
+
+	// Hashing to blockID.Hash is not on its own enough to finalize: the part
+	// set we hold must also be the committed one, and it must be complete.
+	// finalizeCommit asserts both and panics otherwise, and the block store
+	// panics when handed an incomplete part set. Wait instead. Once the
+	// committed parts arrive, handleCompleteProposal calls back in here.
+	if !cs.rs.ProposalBlockParts.HasHeader(blockID.PartSetHeader) || !cs.rs.ProposalBlockParts.IsComplete() {
+		logger.Debug(
+			"failed attempt to finalize commit; we do not have the complete commit block parts",
 			"proposal_block", log.NewLazyBlockHash(cs.rs.ProposalBlock),
 			"commit_block", blockID.Hash,
 		)
@@ -2656,6 +2678,12 @@ func (cs *State) addVote(vote *types.Vote, peerID p2p.ID) (added bool, err error
 				}
 
 				if !cs.rs.ProposalBlockParts.HasHeader(blockID.PartSetHeader) {
+					// We are throwing away the parts collected so far, so any
+					// block decoded from them is stale. ProposalBlock may still
+					// hash to blockID.Hash while having been built from a
+					// different part set, so clear it explicitly rather than
+					// relying on the hash comparison above.
+					cs.rs.ProposalBlock = nil
 					cs.rs.ProposalBlockParts = types.NewPartSetFromHeader(blockID.PartSetHeader, types.BlockPartSizeBytes)
 					psh := blockID.PartSetHeader
 					cs.propagator.AddCommitment(height, vote.Round, &psh)
