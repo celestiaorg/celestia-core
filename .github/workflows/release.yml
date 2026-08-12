@@ -38,9 +38,8 @@ jobs:
       - name: Generate release notes
         run: |
           VERSION="${GITHUB_REF#refs/tags/}"
-          VERSION_REF="${VERSION//[\.]/}"
-          CHANGELOG_URL="https://github.com/cometbft/cometbft/blob/${VERSION}/CHANGELOG.md#${VERSION_REF}"
-          echo "See the [CHANGELOG](${CHANGELOG_URL}) for this release." > ../release_notes.md
+          COMMITS_URL="https://github.com/celestiaorg/celestia-core/commits/${VERSION}"
+          echo "See the [commit log](${COMMITS_URL}) for this release." > ../release_notes.md
 
       - name: Release
         uses: goreleaser/goreleaser-action@v7
