@@ -92,7 +92,9 @@ The codebase follows CometBFT's modular architecture. Key packages and their rol
 
 ## Changelog
 
-Do not create changelog entries. This repo no longer maintains a `.changelog/` directory or per-PR changelog files. Do not add files under `.changelog/` and do not modify `CHANGELOG.md`. Ignore any older guidance (in CONTRIBUTING.md, comments, or upstream CometBFT docs) that asks you to add a changelog entry.
+This repo does not use changelogs. There is no `CHANGELOG.md` and no `.changelog/` directory, and neither should be reintroduced — the commit log and GitHub release notes are the record of what changed.
+
+Do not create changelog entries, do not add files under `.changelog/`, and do not recreate `CHANGELOG.md`. Ignore any older guidance (in CONTRIBUTING.md, comments, or upstream CometBFT docs) that asks you to add a changelog entry. If you find a changelog file in a branch or PR, delete it rather than updating it.
 
 ## Security PRs
 
