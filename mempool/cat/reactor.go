@@ -234,6 +234,12 @@ func (memR *Reactor) GetChannels() []*p2p.ChannelDescriptor {
 		},
 	}
 
+	// Reject abusive Txs messages before they are unmarshalled. Both channels
+	// below can carry transactions, so both are sized to hold a maximum-size
+	// tx; without this precheck a peer could pack that budget with empty
+	// entries and amplify it into a much larger heap allocation.
+	filterTxsBytes := filterTxsMsgBytesFn(memR.opts.MaxTxSize)
+
 	return []*p2p.ChannelDescriptor{
 		{
 			ID:                  mempool.MempoolChannel,
@@ -241,6 +247,7 @@ func (memR *Reactor) GetChannels() []*p2p.ChannelDescriptor {
 			SendQueueCapacity:   10,
 			RecvMessageCapacity: txMsg.Size(),
 			MessageType:         &protomem.Message{},
+			RecvMessagePrecheck: filterTxsBytes,
 		},
 		{
 			ID:                  MempoolDataChannel,
@@ -248,6 +255,7 @@ func (memR *Reactor) GetChannels() []*p2p.ChannelDescriptor {
 			SendQueueCapacity:   1000,
 			RecvMessageCapacity: txMsg.Size(),
 			MessageType:         &protomem.Message{},
+			RecvMessagePrecheck: filterTxsBytes,
 		},
 		{
 			ID:                  MempoolWantsChannel,
