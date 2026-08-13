@@ -71,6 +71,12 @@ func (r *requestScheduler) Add(key types.TxKey, peer uint16, onTimeout func(key 
 		return false
 	}
 
+	// A timed-out request keeps its peer slot for late responses. Don't ask the
+	// same peer for the tx again until that slot is cleared.
+	if _, ok := r.requestsByPeer[peer][key]; ok {
+		return false
+	}
+
 	timer := time.AfterFunc(r.responseTime, func() {
 		r.mtx.Lock()
 		// The request may have been fulfilled by another peer while this callback
@@ -151,21 +157,22 @@ func (r *requestScheduler) ClearAllRequestsFrom(peer uint16) requestSet {
 	return requests
 }
 
-// Remove drops an in-flight request and stops its timer, e.g. to roll back
-// a reservation whose WantTx failed to send.
-func (r *requestScheduler) Remove(key types.TxKey) {
+// Remove drops the request for key if it still belongs to peer. This prevents
+// a late rollback from removing a newer request for the same transaction.
+// Returns true when a request owned by peer was removed.
+func (r *requestScheduler) Remove(key types.TxKey, peer uint16) bool {
 	r.mtx.Lock()
 	defer r.mtx.Unlock()
 
-	peer, ok := r.requestsByTx[key]
-	if !ok {
-		return
+	if owner, ok := r.requestsByTx[key]; !ok || owner != peer {
+		return false
 	}
 	if timer, ok := r.requestsByPeer[peer][key]; ok {
 		timer.Stop()
 		r.deletePeerRequest(peer, key)
 	}
 	delete(r.requestsByTx, key)
+	return true
 }
 
 func (r *requestScheduler) MarkReceived(peer uint16, key types.TxKey) bool {

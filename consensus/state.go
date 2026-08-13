@@ -1060,17 +1060,11 @@ func (cs *State) handleMsg(mi msgInfo) {
 		if added && cs.rs.ProposalBlockParts.IsComplete() {
 			cs.handleCompleteProposal(msg.Height)
 		}
-		if added {
-			cs.statsMsgQueue <- mi
-		}
 
 	case *VoteMessage:
 		// attempt to add the vote and dupeout the validator if its a duplicate signature
 		// if the vote gives us a 2/3-any or 2/3-one, we transition
 		added, _ = cs.tryAddVote(msg.Vote, peerID)
-		if added {
-			cs.statsMsgQueue <- mi
-		}
 
 		// if err == ErrAddingVote {
 		// TODO: punish peer
@@ -1090,6 +1084,14 @@ func (cs *State) handleMsg(mi msgInfo) {
 	default:
 		cs.Logger.Error("unknown msg type", "type", fmt.Sprintf("%T", msg))
 		return
+	}
+
+	// Release the locks while sending: statsMsgQueue is drained by the reactor,
+	// and blocking on a full queue here would stall the state machine.
+	if added {
+		cs.unlockAll()
+		cs.statsMsgQueue <- mi
+		cs.lockAll()
 	}
 }
 
@@ -2854,11 +2856,11 @@ func (cs *State) checkDoubleSigningRisk(height int64) error {
 	if cs.privValidator != nil && cs.privValidatorPubKey != nil && cs.config.DoubleSignCheckHeight > 0 && height > 0 {
 		valAddr := cs.privValidatorPubKey.Address()
 		doubleSignCheckHeight := cs.config.DoubleSignCheckHeight
-		if doubleSignCheckHeight > height {
-			doubleSignCheckHeight = height
+		if doubleSignCheckHeight >= height {
+			doubleSignCheckHeight = height - 1
 		}
 
-		for i := int64(1); i < doubleSignCheckHeight; i++ {
+		for i := int64(1); i <= doubleSignCheckHeight; i++ {
 			lastCommit := cs.blockStore.LoadSeenCommit(height - i)
 			if lastCommit != nil {
 				for sigIdx, s := range lastCommit.Signatures {

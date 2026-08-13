@@ -458,19 +458,16 @@ func (memR *Reactor) Receive(e p2p.Envelope) {
 			return
 		}
 
-		// We don't have the transaction, nor are we requesting it so we send the node
-		// a want msg. Enforce the per-peer request limit so a single peer cannot
-		// drive unbounded outstanding requests via the direct SeenTx path.
-		if memR.requests.CountForPeer(peerID) >= maxRequestsPerPeer {
+		// requestTx enforces peer limits atomically. If no request is active,
+		// queue the announcement for retry.
+		if !memR.requestTx(txKey, e.Src) && memR.requests.ForTx(txKey) == 0 {
 			memR.Logger.Debug(
-				"not requesting tx from peer: at capacity",
+				"tx not requested, queueing SeenTx for retry",
 				"peer", peerID,
 				"txKey", txKey,
-				"maxRequestsPerPeer", maxRequestsPerPeer,
 			)
-			return
+			memR.mempool.seenTracker.AddPendingTx(txKey, peerID, msg.Signer, msg.Sequence)
 		}
-		memR.requestTx(txKey, e.Src)
 
 	// A peer is requesting a transaction that we have claimed to have. Find the specified
 	// transaction and broadcast it to the peer. We may no longer have the transaction
@@ -625,7 +622,10 @@ func (memR *Reactor) requestTx(txKey types.TxKey, peer p2p.Peer) bool {
 		},
 	)
 	if !success {
-		memR.requests.Remove(txKey)
+		// The request may have been reassigned while TrySend was in flight.
+		if !memR.requests.Remove(txKey, peerID) {
+			return false
+		}
 		// Nothing was sent, so retry with another announcer. Drop this peer
 		// first so each failed attempt shrinks the source set.
 		memR.mempool.seenTracker.RemovePeerFromTx(txKey, peerID)
@@ -883,18 +883,20 @@ func (memR *Reactor) findNewPeerToRequestTx(txKey types.TxKey) {
 
 	peerIDs := memR.mempool.seenTracker.PeersForTx(txKey)
 	for peerID := range peerIDs {
-		if memR.requests.Has(peerID, txKey) {
-			continue
-		}
-		if memR.requests.CountForPeer(peerID) >= maxRequestsPerPeer {
-			continue
-		}
 		peer := memR.ids.GetPeer(peerID)
-		if peer != nil {
+		if peer == nil {
+			continue
+		}
+		if memR.requestTx(txKey, peer) {
 			memR.mempool.metrics.RerequestedTxs.Add(1)
-			memR.requestTx(txKey, peer)
 			return
 		}
+		if memR.requests.ForTx(txKey) != 0 {
+			// another goroutine reserved this tx first; nothing left to do
+			return
+		}
+		// this candidate couldn't take the request (e.g. no free request
+		// slot); try the remaining candidates
 	}
 
 	// No other free peer has the transaction we are looking for.

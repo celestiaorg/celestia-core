@@ -1794,6 +1794,107 @@ func TestTryRequestQueuedTxFallsBackToAlternativePeer(t *testing.T) {
 	peer3.AssertExpectations(t)
 }
 
+// TestReactorSeenTxAtPeerCapacityIsQueued verifies that SeenTx is queued when
+// the peer has no free request slots.
+func TestReactorSeenTxAtPeerCapacityIsQueued(t *testing.T) {
+	app := newSequenceTrackingApp()
+	cc := proxy.NewLocalClientCreator(app)
+	pool, cleanup := newMempoolWithApp(cc)
+	t.Cleanup(cleanup)
+
+	reactor, err := NewReactor(pool, &ReactorOptions{})
+	require.NoError(t, err)
+
+	signer := []byte("test-signer")
+	app.SetSequence(string(signer), 1)
+
+	peer := genPeer()
+	_, err = reactor.InitPeer(peer)
+	require.NoError(t, err)
+	peerID := reactor.ids.GetIDForPeer(peer.ID())
+
+	// fill the peer to capacity with fake requests
+	fillKeys := make([]types.TxKey, maxRequestsPerPeer)
+	for i := 0; i < maxRequestsPerPeer; i++ {
+		fillKeys[i] = types.Tx(fmt.Sprintf("fill-tx-%d", i)).Key()
+		require.True(t, reactor.requests.Add(fillKeys[i], peerID, nil))
+	}
+
+	// the peer announces a requestable tx (sequence matches the expected one)
+	tx := newDefaultTx("hello")
+	key := tx.Key()
+	reactor.Receive(p2p.Envelope{
+		ChannelID: MempoolDataChannel,
+		Message:   &protomem.SeenTx{TxKey: key[:], Signer: signer, Sequence: 1},
+		Src:       peer,
+	})
+
+	// no slot was free so nothing was sent, but the announcement must be
+	// queued for retry rather than dropped
+	peer.AssertNotCalled(t, "TrySend", mock.Anything)
+	require.Zero(t, reactor.requests.ForTx(key))
+	pending := pool.seenTracker.PendingTxsForSigner(signer)
+	require.Len(t, pending, 1)
+	require.Equal(t, key, pending[0].txKey)
+
+	// a slot frees up and the next pending scan sends the request
+	require.True(t, reactor.requests.MarkReceived(peerID, fillKeys[0]))
+	peer.On("TrySend", p2p.Envelope{
+		ChannelID: MempoolWantsChannel,
+		Message: &protomem.Message{
+			Sum: &protomem.Message_WantTx{
+				WantTx: &protomem.WantTx{TxKey: key[:]},
+			},
+		},
+	}).Return(true).Once()
+
+	reactor.processPendingSeenForSigner(signer)
+
+	require.Equal(t, peerID, reactor.requests.ForTx(key))
+	peer.AssertExpectations(t)
+}
+
+// TestReactorFindNewPeerSkipsFullPeer verifies that another peer is tried when
+// the first has no free request slots.
+func TestReactorFindNewPeerSkipsFullPeer(t *testing.T) {
+	reactor, pool := setupReactor(t)
+
+	peers := genPeers(2)
+	fullPeer, freePeer := peers[0], peers[1]
+	for _, peer := range peers {
+		_, err := reactor.InitPeer(peer)
+		require.NoError(t, err)
+	}
+	fullPeerID := reactor.ids.GetIDForPeer(fullPeer.ID())
+	freePeerID := reactor.ids.GetIDForPeer(freePeer.ID())
+
+	// fill one peer to capacity with fake requests
+	for i := 0; i < maxRequestsPerPeer; i++ {
+		require.True(t, reactor.requests.Add(types.Tx(fmt.Sprintf("fill-tx-%d", i)).Key(), fullPeerID, nil))
+	}
+
+	// both peers are known sources for the tx
+	tx := newDefaultTx("hello")
+	key := tx.Key()
+	pool.PeerHasTx(fullPeerID, key)
+	pool.PeerHasTx(freePeerID, key)
+
+	freePeer.On("TrySend", p2p.Envelope{
+		ChannelID: MempoolWantsChannel,
+		Message: &protomem.Message{
+			Sum: &protomem.Message_WantTx{
+				WantTx: &protomem.WantTx{TxKey: key[:]},
+			},
+		},
+	}).Return(true).Once()
+
+	reactor.findNewPeerToRequestTx(key)
+
+	require.Equal(t, freePeerID, reactor.requests.ForTx(key))
+	fullPeer.AssertNotCalled(t, "TrySend", mock.Anything)
+	freePeer.AssertExpectations(t)
+}
+
 func TestTxsWithTooManyTxsBansPeer(t *testing.T) {
 	config := cfg.TestConfig()
 	reactors := makeAndConnectReactors(t, config, 2)
