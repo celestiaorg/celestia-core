@@ -159,18 +159,20 @@ func (r *requestScheduler) ClearAllRequestsFrom(peer uint16) requestSet {
 
 // Remove drops the request for key if it still belongs to peer. This prevents
 // a late rollback from removing a newer request for the same transaction.
-func (r *requestScheduler) Remove(key types.TxKey, peer uint16) {
+// Returns true when a request owned by peer was removed.
+func (r *requestScheduler) Remove(key types.TxKey, peer uint16) bool {
 	r.mtx.Lock()
 	defer r.mtx.Unlock()
 
 	if owner, ok := r.requestsByTx[key]; !ok || owner != peer {
-		return
+		return false
 	}
 	if timer, ok := r.requestsByPeer[peer][key]; ok {
 		timer.Stop()
 		r.deletePeerRequest(peer, key)
 	}
 	delete(r.requestsByTx, key)
+	return true
 }
 
 func (r *requestScheduler) MarkReceived(peer uint16, key types.TxKey) bool {

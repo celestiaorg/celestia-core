@@ -623,7 +623,13 @@ func (memR *Reactor) requestTx(txKey types.TxKey, peer p2p.Peer) bool {
 	)
 	if !success {
 		// The request may have been reassigned while TrySend was in flight.
-		memR.requests.Remove(txKey, peerID)
+		if !memR.requests.Remove(txKey, peerID) {
+			return false
+		}
+		// Nothing was sent, so retry with another announcer. Drop this peer
+		// first so each failed attempt shrinks the source set.
+		memR.mempool.seenTracker.RemovePeerFromTx(txKey, peerID)
+		memR.findNewPeerToRequestTx(txKey)
 		return false
 	}
 	memR.mempool.metrics.RequestedTxs.Add(1)
