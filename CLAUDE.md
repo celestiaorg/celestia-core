@@ -90,6 +90,10 @@ The codebase follows CometBFT's modular architecture. Key packages and their rol
 - Functions returning functions get `Fn` suffix
 - Follow [conventional commits](https://www.conventionalcommits.org/) for PR titles
 
+## Pull Requests
+
+Keep PR descriptions short — aim for under ~10 lines. A short paragraph on what changed and why is usually enough. Don't add section headers (`## Problem`, `## Fix`, `## Tests`) for small PRs, don't narrate the code path or the reasoning that led to the change, and don't list which tests were added or that they pass — reviewers read the diff and CI for that. Add a "Note for reviewers" line only when there's a real risk (consensus-affecting, breaking, migration-required).
+
 ## Changelog
 
 Do not create changelog entries. This repo no longer maintains a `.changelog/` directory or per-PR changelog files. Do not add files under `.changelog/` and do not modify `CHANGELOG.md`. Ignore any older guidance (in CONTRIBUTING.md, comments, or upstream CometBFT docs) that asks you to add a changelog entry.
