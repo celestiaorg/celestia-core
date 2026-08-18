@@ -378,7 +378,20 @@ func (wsc *wsConnection) readRoutine() {
 				args = append(args, fnArgs...)
 			}
 
-			returns := rpcFunc.f.Call(args)
+			// Bound concurrent heavy responses; reject fast when saturated so WS
+			// clients can't bypass the limit the HTTP handlers enforce.
+			admitted, release := rpcFunc.tryAcquire()
+			if !admitted {
+				if err := wsc.WriteRPCResponse(writeCtx, types.RPCInternalError(request.ID, errHeavyRequestLimit)); err != nil {
+					wsc.Logger.Error("Error writing RPC response", "err", err)
+				}
+				continue
+			}
+			// release() is deferred so a panic can't leak the slot.
+			returns := func() []reflect.Value {
+				defer release()
+				return rpcFunc.f.Call(args)
+			}()
 
 			// TODO: Need to encode args/returns to string if we want to log them
 			wsc.Logger.Info("WSJSONRPC", "method", request.Method)

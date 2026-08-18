@@ -185,6 +185,15 @@ unsafe = {{ .RPC.Unsafe }}
 # 1024 - 40 - 10 - 50 = 924 = ~900
 max_open_connections = {{ .RPC.MaxOpenConnections }}
 
+# Maximum number of "heavy" RPC responses (full blocks, block results, large
+# search sets) built concurrently across all connections and transports (HTTP
+# and gRPC share one budget). Excess heavy requests are rejected with HTTP 503
+# (gRPC: ResourceExhausted) while light endpoints stay unaffected. This counts
+# requests, not bytes: worst-case memory is roughly this value times one heavy
+# response. Raise it on nodes with more RAM that serve heavy RPC traffic.
+# 0 - use the built-in default; negative - unlimited (not recommended).
+max_concurrent_heavy_requests = {{ .RPC.MaxConcurrentHeavyRequests }}
+
 # Maximum number of unique clientIDs that can /subscribe
 # If you're using /broadcast_tx_commit, set to the estimated maximum number
 # of broadcast_tx_commit calls per block.

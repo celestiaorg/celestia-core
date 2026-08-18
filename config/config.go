@@ -46,6 +46,10 @@ const (
 	// DefaultMaxPersistentStickyPeers caps how many persistent peers are guaranteed
 	// in the SeenTx broadcast set per signer when the config field is unset.
 	DefaultMaxPersistentStickyPeers = 4
+
+	// DefaultMaxConcurrentHeavyRequests is the default cap on concurrently built
+	// heavy RPC responses (see RPCConfig.MaxConcurrentHeavyRequests).
+	DefaultMaxConcurrentHeavyRequests = 20
 )
 
 // NOTE: Most of the structs & relevant comments + the
@@ -404,6 +408,17 @@ type RPCConfig struct {
 	// 1024 - 40 - 10 - 50 = 924 = ~900
 	MaxOpenConnections int `mapstructure:"max_open_connections"`
 
+	// Maximum number of "heavy" RPC responses built concurrently across all
+	// connections and transports (HTTP JSON-RPC, URI, WebSocket and gRPC share a
+	// single budget). Heavy endpoints (block, block_results, tx_search, share
+	// proofs, etc.) can each materialize a full block or a large result set in
+	// memory, so without a cap a burst of concurrent requests can OOM the node.
+	// Excess heavy requests are rejected with HTTP 503 (gRPC: ResourceExhausted);
+	// light endpoints are unaffected. This counts requests, not bytes: worst-case
+	// memory is roughly this value times the heaviest single response.
+	// 0 - use the built-in default; negative - unlimited (not recommended).
+	MaxConcurrentHeavyRequests int `mapstructure:"max_concurrent_heavy_requests"`
+
 	// Maximum number of unique clientIDs that can /subscribe
 	// If you're using /broadcast_tx_commit, set to the estimated maximum number
 	// of broadcast_tx_commit calls per block.
@@ -488,6 +503,8 @@ func DefaultRPCConfig() *RPCConfig {
 
 		Unsafe:             false,
 		MaxOpenConnections: 900,
+
+		MaxConcurrentHeavyRequests: DefaultMaxConcurrentHeavyRequests,
 
 		MaxSubscriptionClients:    100,
 		MaxSubscriptionsPerClient: 5,
