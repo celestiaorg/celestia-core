@@ -620,9 +620,20 @@ func TestTxSearch(t *testing.T) {
 		require.NoError(t, err)
 	}
 
-	// since we're not using an isolated test server, we'll have lingering transactions
-	// from other tests as well
-	result, err := c.TxSearch(context.Background(), fmt.Sprintf("tx.height >= %d", status.SyncInfo.LatestBlockHeight), true, nil, nil, "asc") //nolint:staticcheck
+	// Since we're not using an isolated test server, other tests' transactions
+	// can land in this height range too -- pin an upper bound right after our
+	// own broadcasts finish so every query below (across multiple clients and
+	// well after this point) sees the exact same, fixed set of transactions.
+	// An open-ended "tx.height >= X" here let a transaction committed by some
+	// other test *after* txCount was computed but *before* the pagination
+	// re-query far below get swept into the later count but not the earlier
+	// one, which is what caused issue #1735.
+	endStatus, err := c.Status(context.Background())
+	require.NoError(t, err)
+	heightQuery := fmt.Sprintf("tx.height >= %d AND tx.height <= %d",
+		status.SyncInfo.LatestBlockHeight, endStatus.SyncInfo.LatestBlockHeight) //nolint:staticcheck
+
+	result, err := c.TxSearch(context.Background(), heightQuery, true, nil, nil, "asc")
 	require.NoError(t, err)
 	txCount := len(result.Txs)
 
@@ -688,14 +699,14 @@ func TestTxSearch(t *testing.T) {
 		require.Len(t, result.Txs, 0)
 
 		// check sorting
-		result, err = c.TxSearch(context.Background(), fmt.Sprintf("tx.height >= %d", status.SyncInfo.LatestBlockHeight), false, nil, nil, "asc")
+		result, err = c.TxSearch(context.Background(), heightQuery, false, nil, nil, "asc")
 		require.Nil(t, err)
 		for k := 0; k < len(result.Txs)-1; k++ {
 			require.LessOrEqual(t, result.Txs[k].Height, result.Txs[k+1].Height)
 			require.LessOrEqual(t, result.Txs[k].Index, result.Txs[k+1].Index)
 		}
 
-		result, err = c.TxSearch(context.Background(), fmt.Sprintf("tx.height >= %d", status.SyncInfo.LatestBlockHeight), false, nil, nil, "desc")
+		result, err = c.TxSearch(context.Background(), heightQuery, false, nil, nil, "desc")
 		require.Nil(t, err)
 		for k := 0; k < len(result.Txs)-1; k++ {
 			require.GreaterOrEqual(t, result.Txs[k].Height, result.Txs[k+1].Height)
@@ -712,7 +723,7 @@ func TestTxSearch(t *testing.T) {
 		totalTx := 0
 		for page := 1; page <= pages; page++ {
 			page := page
-			result, err := c.TxSearch(context.Background(), fmt.Sprintf("tx.height >= %d", status.SyncInfo.LatestBlockHeight), true, &page, &perPage, "asc")
+			result, err := c.TxSearch(context.Background(), heightQuery, true, &page, &perPage, "asc")
 			require.NoError(t, err)
 			if page < pages {
 				require.Len(t, result.Txs, perPage)
