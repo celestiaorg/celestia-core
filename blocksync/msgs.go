@@ -15,6 +15,15 @@ const (
 	BlockResponseMessageFieldKeySize = 1
 )
 
+// maxEvidenceSigs bounds the number of signatures and validators reachable
+// through Block.evidence (commit signatures, validator sets and byzantine
+// validators, summed across every evidence item). A single valid commit or
+// validator set holds at most types.MaxVotesCount entries and the number of
+// evidence items in a block is separately bounded by the evidence params at
+// validation time, so this limit is generous relative to any well-formed block
+// while still far below what a decoded message would need to matter.
+const maxEvidenceSigs = types.MaxVotesCount * 100
+
 // errTooManySignatures is returned when an incoming block response encodes more
 // commit (or extended commit) signatures than types.MaxVotesCount.
 var errTooManySigs = fmt.Errorf("too many signatures (max: %d)", types.MaxVotesCount)
@@ -43,8 +52,13 @@ func validateBlockSyncBytes(msgBytes []byte) error {
 func validateMaxVotes(br *bcproto.SigCountBlockResponse) error {
 	commitSigs, extSigs := 0, 0
 	if br != nil {
-		if br.Block != nil && br.Block.LastCommit != nil {
-			commitSigs = len(br.Block.LastCommit.Signatures)
+		if br.Block != nil {
+			if br.Block.LastCommit != nil {
+				commitSigs = len(br.Block.LastCommit.Signatures)
+			}
+			if err := validateEvidenceSigs(br.Block.Evidence); err != nil {
+				return err
+			}
 		}
 		if br.ExtCommit != nil {
 			extSigs = len(br.ExtCommit.ExtendedSignatures)
@@ -58,6 +72,37 @@ func validateMaxVotes(br *bcproto.SigCountBlockResponse) error {
 		return fmt.Errorf("%w (got %d)", errTooManyExtendedsigs, extSigs)
 	}
 
+	return nil
+}
+
+// validateEvidenceSigs bounds the signatures and validators nested inside
+// Block.evidence. A Commit can be reached through evidence
+// (LightClientAttackEvidence -> conflicting_block -> signed_header -> commit),
+// alongside the conflicting block's validator set and the byzantine validators,
+// none of which are covered by the last_commit / ext_commit checks above.
+func validateEvidenceSigs(el *bcproto.SigCountEvidenceList) error {
+	if el == nil {
+		return nil
+	}
+	total := len(el.Evidence)
+	for i := range el.Evidence {
+		lcae := el.Evidence[i].LightClientAttackEvidence
+		if lcae == nil {
+			continue
+		}
+		total += len(lcae.ByzantineValidators)
+		if cb := lcae.ConflictingBlock; cb != nil {
+			if cb.SignedHeader != nil && cb.SignedHeader.Commit != nil {
+				total += len(cb.SignedHeader.Commit.Signatures)
+			}
+			if cb.ValidatorSet != nil {
+				total += len(cb.ValidatorSet.Validators)
+			}
+		}
+		if total > maxEvidenceSigs {
+			return fmt.Errorf("%w (evidence got %d)", errTooManySigs, total)
+		}
+	}
 	return nil
 }
 

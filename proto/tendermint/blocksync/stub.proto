@@ -20,9 +20,46 @@ message SigCountBlockResponse {
 }
 
 message SigCountBlock {
-  SigCountCommit last_commit = 4;
+  SigCountEvidenceList evidence    = 3;
+  SigCountCommit       last_commit = 4;
 }
 
+// SigCountEvidenceList models Block.evidence down to every repeated signature
+// and validator list a Commit can be reached through, so that signatures nested
+// inside evidence are subject to the same count cap as last_commit.
+message SigCountEvidenceList {
+  repeated SigCountEvidence evidence = 1 [(gogoproto.nullable) = false];
+}
+
+message SigCountEvidence {
+  // Only light_client_attack_evidence (field 2) nests repeated signature and
+  // validator lists; duplicate_vote_evidence (field 1) does not and is skipped.
+  SigCountLightClientAttackEvidence light_client_attack_evidence = 2;
+}
+
+message SigCountLightClientAttackEvidence {
+  SigCountLightBlock conflicting_block    = 1;
+  repeated bytes     byzantine_validators = 3 [
+    (gogoproto.customtype) = "NoSig",
+    (gogoproto.nullable) = false
+  ];
+}
+
+message SigCountLightBlock {
+  SigCountSignedHeader signed_header = 1;
+  SigCountValidatorSet validator_set = 2;
+}
+
+message SigCountSignedHeader {
+  SigCountCommit commit = 2;
+}
+
+message SigCountValidatorSet {
+  repeated bytes validators = 1 [
+    (gogoproto.customtype) = "NoSig",
+    (gogoproto.nullable) = false
+  ];
+}
 
 message SigCountCommit {
   repeated bytes signatures = 4 [
