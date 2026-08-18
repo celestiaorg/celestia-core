@@ -54,50 +54,55 @@ func blockWithEvidenceBytes(t *testing.T, ev ...cmtproto.Evidence) []byte {
 // The signature-count cap must also apply to commits, validator sets and
 // byzantine validators reached through Block.evidence, not only Block.last_commit.
 func TestValidateBlockSyncBytes_EvidenceSigCount(t *testing.T) {
+	// aggItems is the number of MaxVotesCount-sized commits whose summed
+	// signatures exceed the aggregate evidence bound.
+	aggItems := maxEvidenceSigs/types.MaxVotesCount + 1
+	aggEvidence := make([]cmtproto.Evidence, aggItems)
+	for i := range aggEvidence {
+		aggEvidence[i] = lightClientAttackEvidence(types.MaxVotesCount, 0, 0)
+	}
+
 	tests := []struct {
 		name    string
 		msg     []byte
-		wantErr bool
+		wantErr error
 	}{
 		{
 			"evidence commit under limit",
 			blockWithEvidenceBytes(t, lightClientAttackEvidence(100, 0, 0)),
-			false,
+			nil,
 		},
 		{
-			"evidence commit over limit",
-			blockWithEvidenceBytes(t, lightClientAttackEvidence(maxEvidenceSigs+1, 0, 0)),
-			true,
+			"evidence commit over per-list limit",
+			blockWithEvidenceBytes(t, lightClientAttackEvidence(types.MaxVotesCount+1, 0, 0)),
+			errTooManySigs,
 		},
 		{
-			"evidence validator set over limit",
-			blockWithEvidenceBytes(t, lightClientAttackEvidence(0, maxEvidenceSigs+1, 0)),
-			true,
+			"evidence validator set over per-list limit",
+			blockWithEvidenceBytes(t, lightClientAttackEvidence(0, types.MaxVotesCount+1, 0)),
+			errTooManySigs,
 		},
 		{
-			"evidence byzantine validators over limit",
-			blockWithEvidenceBytes(t, lightClientAttackEvidence(0, 0, maxEvidenceSigs+1)),
-			true,
+			"evidence byzantine validators over per-list limit",
+			blockWithEvidenceBytes(t, lightClientAttackEvidence(0, 0, types.MaxVotesCount+1)),
+			errTooManySigs,
 		},
 		{
-			"count summed across evidence items",
-			blockWithEvidenceBytes(t,
-				lightClientAttackEvidence(maxEvidenceSigs/2+1, 0, 0),
-				lightClientAttackEvidence(maxEvidenceSigs/2+1, 0, 0),
-			),
-			true,
+			"aggregate summed across evidence items",
+			blockWithEvidenceBytes(t, aggEvidence...),
+			errTooManyEvidenceSigs,
 		},
 		{
 			"too many items without nested lists",
 			blockWithEvidenceBytes(t, emptyEvidence(maxEvidenceSigs+1)...),
-			true,
+			errTooManyEvidenceSigs,
 		},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			err := validateBlockSyncBytes(tc.msg)
-			if tc.wantErr {
-				require.ErrorIs(t, err, errTooManySigs)
+			if tc.wantErr != nil {
+				require.ErrorIs(t, err, tc.wantErr)
 			} else {
 				require.NoError(t, err)
 			}
