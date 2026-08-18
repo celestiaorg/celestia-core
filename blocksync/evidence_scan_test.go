@@ -35,6 +35,13 @@ func lightClientAttackEvidence(nCommitSigs, nValidators, nByzantine int) cmtprot
 	}
 }
 
+// emptyEvidence returns n evidence items that carry no nested signature or
+// validator lists (nil oneof), i.e. neither duplicate-vote nor light-client
+// attack evidence.
+func emptyEvidence(n int) []cmtproto.Evidence {
+	return make([]cmtproto.Evidence, n)
+}
+
 // blockWithEvidenceBytes encodes a blocksync Message carrying a BlockResponse
 // whose block holds the given evidence.
 func blockWithEvidenceBytes(t *testing.T, ev ...cmtproto.Evidence) []byte {
@@ -78,6 +85,11 @@ func TestValidateBlockSyncBytes_EvidenceSigCount(t *testing.T) {
 				lightClientAttackEvidence(maxEvidenceSigs/2+1, 0, 0),
 				lightClientAttackEvidence(maxEvidenceSigs/2+1, 0, 0),
 			),
+			true,
+		},
+		{
+			"too many items without nested lists",
+			blockWithEvidenceBytes(t, emptyEvidence(maxEvidenceSigs+1)...),
 			true,
 		},
 	}

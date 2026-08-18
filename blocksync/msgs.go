@@ -84,7 +84,13 @@ func validateEvidenceSigs(el *bcproto.SigCountEvidenceList) error {
 	if el == nil {
 		return nil
 	}
+	// The evidence items themselves count toward the bound, so an oversized list
+	// of items that carry no nested lists (e.g. duplicate-vote or empty evidence)
+	// is rejected here before the per-item accounting below.
 	total := len(el.Evidence)
+	if total > maxEvidenceSigs {
+		return fmt.Errorf("%w (evidence got %d)", errTooManySigs, total)
+	}
 	for i := range el.Evidence {
 		lcae := el.Evidence[i].LightClientAttackEvidence
 		if lcae == nil {
