@@ -2,6 +2,21 @@
 
 This guide provides instructions for upgrading to specific versions of CometBFT.
 
+## Unreleased
+
+### RPC Changes
+
+* Added a new RPC config option `max_concurrent_heavy_requests` (default: `20`)
+  that bounds how many "heavy" responses (full blocks, block results, unbounded
+  search sets, share and data-root proofs) are built concurrently. All
+  transports (HTTP JSON-RPC, URI, WebSocket and gRPC) share a single budget.
+  When the budget is saturated, heavy requests are rejected with HTTP `503`
+  (gRPC: `ResourceExhausted`) instead of being served; light endpoints are
+  unaffected. Clients calling heavy endpoints should retry on
+  `503`/`ResourceExhausted` with backoff. Set the option to `0` to use the
+  built-in default, or to a negative value to disable the limit (not
+  recommended).
+
 ## v0.38.13
 
 It is recommended that CometBFT be built with Go v1.22+ since v1.21 is no longer
