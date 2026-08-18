@@ -12,7 +12,7 @@ type RoutesMap map[string]*rpc.RPCFunc
 func (env *Environment) GetRoutes() RoutesMap {
 	// heavy gates all large-response routes with a process-wide concurrency
 	// bound, shared with the equivalent gRPC endpoints (see the gRPC interceptors).
-	heavy := rpc.Heavy(env.HeavySem())
+	heavy := rpc.HeavyFn(env.HeavySem())
 	return RoutesMap{
 		// subscribe/unsubscribe are reserved for websocket events.
 		"subscribe":       rpc.NewWSRPCFunc(env.Subscribe, "query"),

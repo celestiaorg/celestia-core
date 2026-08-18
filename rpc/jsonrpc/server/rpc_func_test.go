@@ -8,7 +8,7 @@ import (
 
 func dummyRPC() interface{} { return func() {} }
 
-// TestRPCFuncTryAcquireNonHeavy verifies that a function without the Heavy
+// TestRPCFuncTryAcquireNonHeavy checks that a function without the HeavyFn
 // option is never gated: it always admits with a no-op release.
 func TestRPCFuncTryAcquireNonHeavy(t *testing.T) {
 	f := NewRPCFunc(dummyRPC(), "")
@@ -20,13 +20,13 @@ func TestRPCFuncTryAcquireNonHeavy(t *testing.T) {
 	}
 }
 
-// TestRPCFuncTryAcquireHeavyShared verifies that heavy functions sharing a
+// TestRPCFuncTryAcquireHeavyShared checks that heavy functions sharing a
 // semaphore draw from a single budget: they admit only up to its capacity,
 // reject the rest, and admit again once a slot is released.
 func TestRPCFuncTryAcquireHeavyShared(t *testing.T) {
 	sem := make(chan struct{}, 1)
-	a := NewRPCFunc(dummyRPC(), "", Heavy(sem))
-	b := NewRPCFunc(dummyRPC(), "", Heavy(sem))
+	a := NewRPCFunc(dummyRPC(), "", HeavyFn(sem))
+	b := NewRPCFunc(dummyRPC(), "", HeavyFn(sem))
 
 	okA, relA := a.tryAcquire()
 	require.True(t, okA)

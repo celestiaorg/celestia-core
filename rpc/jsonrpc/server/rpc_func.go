@@ -54,12 +54,12 @@ func Ws() Option {
 	}
 }
 
-// Heavy marks an RPC function as "heavy": one whose response can be large or
+// HeavyFn marks an RPC function as "heavy": one whose response can be large or
 // whose cost scales with chain data (a full block, all results for a height, an
 // unbounded search set). Heavy functions share the supplied semaphore so the
 // number of such responses built concurrently is bounded. A nil semaphore
 // disables the limit.
-func Heavy(sem chan struct{}) Option {
+func HeavyFn(sem chan struct{}) Option {
 	return func(r *RPCFunc) {
 		r.heavySem = sem
 	}

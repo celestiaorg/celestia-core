@@ -44,7 +44,7 @@ func heavyUnaryInterceptor(sem chan struct{}) grpc.UnaryServerInterceptor {
 		info *grpc.UnaryServerInfo,
 		handler grpc.UnaryHandler,
 	) (interface{}, error) {
-		release, ok := acquireHeavy(sem, info.FullMethod)
+		release, ok := acquireHeavyFn(sem, info.FullMethod)
 		if !ok {
 			return nil, errHeavyGRPCLimit
 		}
@@ -64,7 +64,7 @@ func heavyStreamInterceptor(sem chan struct{}) grpc.StreamServerInterceptor {
 		info *grpc.StreamServerInfo,
 		handler grpc.StreamHandler,
 	) error {
-		release, ok := acquireHeavy(sem, info.FullMethod)
+		release, ok := acquireHeavyFn(sem, info.FullMethod)
 		if !ok {
 			return errHeavyGRPCLimit
 		}
@@ -73,11 +73,11 @@ func heavyStreamInterceptor(sem chan struct{}) grpc.StreamServerInterceptor {
 	}
 }
 
-// acquireHeavy performs a non-blocking acquire of the shared slot for heavy
+// acquireHeavyFn performs a non-blocking acquire of the shared slot for heavy
 // methods. Non-heavy methods (and a nil semaphore) always admit with a no-op
 // release. When the semaphore is full it returns ok == false so the caller can
 // reject the request instead of queueing.
-func acquireHeavy(sem chan struct{}, fullMethod string) (release func(), ok bool) {
+func acquireHeavyFn(sem chan struct{}, fullMethod string) (release func(), ok bool) {
 	if sem == nil {
 		return func() {}, true
 	}
