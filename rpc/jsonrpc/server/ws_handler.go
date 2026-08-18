@@ -387,26 +387,29 @@ func (wsc *wsConnection) readRoutine() {
 				}
 				continue
 			}
-			// release() is deferred so a panic can't leak the slot.
-			returns := func() []reflect.Value {
+			// Hold the slot across the call and the response marshal+write so the
+			// large response is accounted for until it is queued to the writer.
+			// release() runs via defer so a panic can't leak the slot.
+			func() {
 				defer release()
-				return rpcFunc.f.Call(args)
-			}()
 
-			// TODO: Need to encode args/returns to string if we want to log them
-			wsc.Logger.Info("WSJSONRPC", "method", request.Method)
+				returns := rpcFunc.f.Call(args)
 
-			result, err := unreflectResult(returns)
-			if err != nil {
-				if err := wsc.WriteRPCResponse(writeCtx, types.RPCInternalError(request.ID, err)); err != nil {
+				// TODO: Need to encode args/returns to string if we want to log them
+				wsc.Logger.Info("WSJSONRPC", "method", request.Method)
+
+				result, err := unreflectResult(returns)
+				if err != nil {
+					if err := wsc.WriteRPCResponse(writeCtx, types.RPCInternalError(request.ID, err)); err != nil {
+						wsc.Logger.Error("Error writing RPC response", "err", err)
+					}
+					return
+				}
+
+				if err := wsc.WriteRPCResponse(writeCtx, types.NewRPCSuccessResponse(request.ID, result)); err != nil {
 					wsc.Logger.Error("Error writing RPC response", "err", err)
 				}
-				continue
-			}
-
-			if err := wsc.WriteRPCResponse(writeCtx, types.NewRPCSuccessResponse(request.ID, result)); err != nil {
-				wsc.Logger.Error("Error writing RPC response", "err", err)
-			}
+			}()
 		}
 	}
 }

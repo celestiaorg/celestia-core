@@ -10,12 +10,12 @@ This guide provides instructions for upgrading to specific versions of CometBFT.
   that bounds how many "heavy" responses (full blocks, block results, unbounded
   search sets, share and data-root proofs) are built concurrently. All
   transports (HTTP JSON-RPC, URI, WebSocket and gRPC) share a single budget.
-  When the budget is saturated, heavy requests are rejected with HTTP `503`
-  (gRPC: `ResourceExhausted`) instead of being served; light endpoints are
-  unaffected. Clients calling heavy endpoints should retry on
-  `503`/`ResourceExhausted` with backoff. Set the option to `0` to use the
-  built-in default, or to a negative value to disable the limit (not
-  recommended).
+  When the budget is saturated, excess heavy requests are rejected fast: the URI
+  (GET) handler returns HTTP `503`, the JSON-RPC and WebSocket paths return a
+  JSON-RPC error, and gRPC returns `ResourceExhausted`; light endpoints are
+  unaffected. Clients calling heavy endpoints should retry with backoff. Set the
+  option to `0` to use the built-in default, or to a negative value to disable
+  the limit (not recommended).
 
 ## v0.38.13
 

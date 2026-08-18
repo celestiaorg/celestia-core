@@ -187,10 +187,11 @@ max_open_connections = {{ .RPC.MaxOpenConnections }}
 
 # Maximum number of "heavy" RPC responses (full blocks, block results, large
 # search sets) built concurrently across all connections and transports (HTTP
-# and gRPC share one budget). Excess heavy requests are rejected with HTTP 503
-# (gRPC: ResourceExhausted) while light endpoints stay unaffected. This counts
-# requests, not bytes: worst-case memory is roughly this value times one heavy
-# response. Raise it on nodes with more RAM that serve heavy RPC traffic.
+# and gRPC share one budget). When saturated, excess heavy requests are rejected
+# fast: the URI (GET) handler returns HTTP 503, the JSON-RPC and WebSocket paths
+# return a JSON-RPC error, and gRPC returns ResourceExhausted; light endpoints
+# stay unaffected. This bounds how many heavy responses are built at once; it is
+# not a hard byte cap (response serialization is not counted).
 # 0 - use the built-in default; negative - unlimited (not recommended).
 max_concurrent_heavy_requests = {{ .RPC.MaxConcurrentHeavyRequests }}
 

@@ -413,9 +413,11 @@ type RPCConfig struct {
 	// single budget). Heavy endpoints (block, block_results, tx_search, share
 	// proofs, etc.) can each materialize a full block or a large result set in
 	// memory, so without a cap a burst of concurrent requests can OOM the node.
-	// Excess heavy requests are rejected with HTTP 503 (gRPC: ResourceExhausted);
-	// light endpoints are unaffected. This counts requests, not bytes: worst-case
-	// memory is roughly this value times the heaviest single response.
+	// When saturated, excess heavy requests are rejected fast: the URI (GET)
+	// handler returns HTTP 503, the JSON-RPC and WebSocket paths return a
+	// JSON-RPC error, and gRPC returns ResourceExhausted; light endpoints are
+	// unaffected. This bounds how many heavy responses are built at once; it is
+	// not a hard byte cap (response serialization is not counted).
 	// 0 - use the built-in default; negative - unlimited (not recommended).
 	MaxConcurrentHeavyRequests int `mapstructure:"max_concurrent_heavy_requests"`
 
