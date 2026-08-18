@@ -74,7 +74,7 @@ func TestBlock(t *testing.T) {
 	txIndexerMock := &txindexmocks.TxIndexer{}
 	blkIdxMock := &indexermocks.BlockIndexer{}
 
-	rpcConfig := config.TestRPCConfig()
+	rpcConfig := testInspectRPCConfig(t)
 	d := inspect.New(rpcConfig, blockStoreMock, stateStoreMock, txIndexerMock, blkIdxMock)
 	ctx, cancel := context.WithCancel(context.Background())
 	wg := &sync.WaitGroup{}
@@ -126,7 +126,7 @@ func TestTxSearch(t *testing.T) {
 		})).
 		Return([]*abcitypes.TxResult{testTxResult}, nil)
 
-	rpcConfig := config.TestRPCConfig()
+	rpcConfig := testInspectRPCConfig(t)
 	d := inspect.New(rpcConfig, blockStoreMock, stateStoreMock, txIndexerMock, blkIdxMock)
 	ctx, cancel := context.WithCancel(context.Background())
 	wg := &sync.WaitGroup{}
@@ -174,7 +174,7 @@ func TestTx(t *testing.T) {
 		Tx: testTx,
 	}, nil)
 
-	rpcConfig := config.TestRPCConfig()
+	rpcConfig := testInspectRPCConfig(t)
 	d := inspect.New(rpcConfig, blockStoreMock, stateStoreMock, txIndexerMock, blkIdxMock)
 	ctx, cancel := context.WithCancel(context.Background())
 	wg := &sync.WaitGroup{}
@@ -222,7 +222,7 @@ func TestConsensusParams(t *testing.T) {
 	}, nil)
 	txIndexerMock := &txindexmocks.TxIndexer{}
 	blkIdxMock := &indexermocks.BlockIndexer{}
-	rpcConfig := config.TestRPCConfig()
+	rpcConfig := testInspectRPCConfig(t)
 	d := inspect.New(rpcConfig, blockStoreMock, stateStoreMock, txIndexerMock, blkIdxMock)
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -272,7 +272,7 @@ func TestBlockResults(t *testing.T) {
 	blockStoreMock.On("Height").Return(testHeight)
 	txIndexerMock := &txindexmocks.TxIndexer{}
 	blkIdxMock := &indexermocks.BlockIndexer{}
-	rpcConfig := config.TestRPCConfig()
+	rpcConfig := testInspectRPCConfig(t)
 	d := inspect.New(rpcConfig, blockStoreMock, stateStoreMock, txIndexerMock, blkIdxMock)
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -319,7 +319,7 @@ func TestCommit(t *testing.T) {
 	}, nil)
 	txIndexerMock := &txindexmocks.TxIndexer{}
 	blkIdxMock := &indexermocks.BlockIndexer{}
-	rpcConfig := config.TestRPCConfig()
+	rpcConfig := testInspectRPCConfig(t)
 	d := inspect.New(rpcConfig, blockStoreMock, stateStoreMock, txIndexerMock, blkIdxMock)
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -372,7 +372,7 @@ func TestBlockByHash(t *testing.T) {
 	blockStoreMock.On("LoadBlockByHash", testHash).Return(testBlock, nil)
 	txIndexerMock := &txindexmocks.TxIndexer{}
 	blkIdxMock := &indexermocks.BlockIndexer{}
-	rpcConfig := config.TestRPCConfig()
+	rpcConfig := testInspectRPCConfig(t)
 	d := inspect.New(rpcConfig, blockStoreMock, stateStoreMock, txIndexerMock, blkIdxMock)
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -424,7 +424,7 @@ func TestBlockchain(t *testing.T) {
 	})
 	txIndexerMock := &txindexmocks.TxIndexer{}
 	blkIdxMock := &indexermocks.BlockIndexer{}
-	rpcConfig := config.TestRPCConfig()
+	rpcConfig := testInspectRPCConfig(t)
 	d := inspect.New(rpcConfig, blockStoreMock, stateStoreMock, txIndexerMock, blkIdxMock)
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -476,7 +476,7 @@ func TestValidators(t *testing.T) {
 	blockStoreMock.On("Base").Return(int64(0))
 	txIndexerMock := &txindexmocks.TxIndexer{}
 	blkIdxMock := &indexermocks.BlockIndexer{}
-	rpcConfig := config.TestRPCConfig()
+	rpcConfig := testInspectRPCConfig(t)
 	d := inspect.New(rpcConfig, blockStoreMock, stateStoreMock, txIndexerMock, blkIdxMock)
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -536,7 +536,7 @@ func TestBlockSearch(t *testing.T) {
 	blkIdxMock.On("Search", mock.Anything,
 		mock.MatchedBy(func(q *query.Query) bool { return testQuery == q.String() })).
 		Return([]int64{testHeight}, nil)
-	rpcConfig := config.TestRPCConfig()
+	rpcConfig := testInspectRPCConfig(t)
 	d := inspect.New(rpcConfig, blockStoreMock, stateStoreMock, txIndexerMock, blkIdxMock)
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -585,8 +585,28 @@ func requireConnect(t testing.TB, addr string, retries int) {
 			conn.Close()
 			return
 		}
-		// FIXME attempt to yield and let the other goroutine continue execution.
-		time.Sleep(time.Microsecond * 100)
+		// 10ms retries give slow -race runners headroom to bind; the old
+		// 100us (2ms total) wasn't enough.
+		time.Sleep(10 * time.Millisecond)
 	}
 	t.Fatalf("unable to connect to server %s after %d tries: %s", addr, retries, err)
+}
+
+// testInspectRPCConfig uses fresh ports instead of config.TestRPCConfig's
+// hardcoded ones: under -race, one test's teardown isn't guaranteed to
+// free the port before the next test binds it.
+func testInspectRPCConfig(t *testing.T) *config.RPCConfig {
+	t.Helper()
+	cfg := config.TestRPCConfig()
+	cfg.ListenAddress = "tcp://" + freeAddr(t)
+	cfg.GRPCListenAddress = "tcp://" + freeAddr(t)
+	return cfg
+}
+
+func freeAddr(t *testing.T) string {
+	t.Helper()
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	defer ln.Close()
+	return ln.Addr().String()
 }
