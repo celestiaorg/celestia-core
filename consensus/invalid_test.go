@@ -496,8 +496,10 @@ func testReactorInvalidMessagesInState(t *testing.T, targetState cstypes.RoundSt
 
 	reactor := reactors[0]
 
-	// Subscribe to NewRoundStep events
-	sub, err := eventBuses[0].Subscribe(context.Background(), testSubscriber, types.EventQueryNewRoundStep)
+	// Buffered generously: pubsub drops the whole subscription (not just one
+	// message) when a full channel can't accept a send, and NewRoundStep
+	// fires often enough to hit that under -race.
+	sub, err := eventBuses[0].Subscribe(context.Background(), testSubscriber, types.EventQueryNewRoundStep, 100)
 	require.NoError(t, err)
 	defer eventBuses[0].Unsubscribe(context.Background(), testSubscriber, types.EventQueryNewRoundStep) //nolint:errcheck
 	stepCh := sub.Out()
