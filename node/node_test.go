@@ -2,6 +2,7 @@ package node
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net"
 	"net/http"
@@ -285,6 +286,32 @@ func testFreeConfig(t *testing.T, config *cfg.Config) {
 	config.RPC.GRPCListenAddress = "tcp://" + testFreeAddr(t)
 }
 
+// isAddrInUseErr reports whether err is a TCP bind-in-use failure.
+func isAddrInUseErr(err error) bool {
+	return errors.Is(err, syscall.EADDRINUSE)
+}
+
+// startNodeRetryingPortConflicts retries newAndStart on EADDRINUSE: another
+// process can grab a testFreeAddr port between its close and Node.Start()'s
+// real bind.
+func startNodeRetryingPortConflicts(t *testing.T, newAndStart func() (*Node, error)) *Node {
+	t.Helper()
+	const maxAttempts = 3
+	var n *Node
+	var err error
+	for attempt := 1; attempt <= maxAttempts; attempt++ {
+		n, err = newAndStart()
+		if err == nil {
+			return n
+		}
+		if !isAddrInUseErr(err) || attempt == maxAttempts {
+			require.NoError(t, err)
+		}
+		t.Logf("attempt %d/%d: retrying after port conflict: %v", attempt, maxAttempts, err)
+	}
+	return n
+}
+
 // create a proposal block using real and full
 // mempool and evidence pool and validate it.
 func TestCreateProposalBlock(t *testing.T) {
@@ -470,7 +497,6 @@ func TestMaxProposalBlockSize(t *testing.T) {
 func TestNodeNewNodeCustomReactors(t *testing.T) {
 	config := test.ResetTestRoot("node_new_node_custom_reactors_test")
 	defer os.RemoveAll(config.RootDir)
-	testFreeConfig(t, config)
 
 	cr := p2pmock.NewReactor()
 	cr.Channels = []*conn.ChannelDescriptor{
@@ -486,20 +512,23 @@ func TestNodeNewNodeCustomReactors(t *testing.T) {
 	nodeKey, err := p2p.LoadOrGenNodeKey(config.NodeKeyFile())
 	require.NoError(t, err)
 
-	n, err := NewNode(config,
-		privval.LoadOrGenFilePV(config.PrivValidatorKeyFile(), config.PrivValidatorStateFile()),
-		nodeKey,
-		proxy.DefaultClientCreator(config.ProxyApp, config.ABCI, config.DBDir()),
-		DefaultGenesisDocProviderFunc(config),
-		cfg.DefaultDBProvider,
-		DefaultMetricsProvider(config.Instrumentation),
-		log.TestingLogger(),
-		CustomReactors(map[string]p2p.Reactor{"FOO": cr, "BLOCKSYNC": customBlocksyncReactor}),
-	)
-	require.NoError(t, err)
-
-	err = n.Start()
-	require.NoError(t, err)
+	n := startNodeRetryingPortConflicts(t, func() (*Node, error) {
+		testFreeConfig(t, config)
+		n, err := NewNode(config,
+			privval.LoadOrGenFilePV(config.PrivValidatorKeyFile(), config.PrivValidatorStateFile()),
+			nodeKey,
+			proxy.DefaultClientCreator(config.ProxyApp, config.ABCI, config.DBDir()),
+			DefaultGenesisDocProviderFunc(config),
+			cfg.DefaultDBProvider,
+			DefaultMetricsProvider(config.Instrumentation),
+			log.TestingLogger(),
+			CustomReactors(map[string]p2p.Reactor{"FOO": cr, "BLOCKSYNC": customBlocksyncReactor}),
+		)
+		if err != nil {
+			return nil, err
+		}
+		return n, n.Start()
+	})
 	defer n.Stop() //nolint:errcheck // ignore for tests
 
 	assert.True(t, cr.IsRunning())
