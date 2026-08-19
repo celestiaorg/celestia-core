@@ -1746,6 +1746,11 @@ func TestPrepareProposalReceivesVoteExtensions(t *testing.T) {
 	}, nil)
 
 	cs1, vss := randStateWithApp(4, m)
+	// The other 3 "validators" are test doubles that never vote on their
+	// own, so cs1 -- the one real running State -- must not free-run
+	// proposing/timing-out empty blocks while waiting for test-injected
+	// votes; that floods voteCh with unrelated events.
+	cs1.config.CreateEmptyBlocks = false
 	height, round := cs1.rs.Height, cs1.rs.Round
 
 	newRoundCh := subscribe(cs1.eventBus, types.EventQueryNewRound)
