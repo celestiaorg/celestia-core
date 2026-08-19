@@ -531,6 +531,16 @@ func TestTx(t *testing.T) {
 	txHeight := bres.Height
 	txHash := bres.Hash
 
+	// BroadcastTxCommit only waits for the tx to be committed in a block;
+	// the tx indexer consumes committed-block events on its own goroutine
+	// (state/txindex/indexer_service.go) and can still be catching up when
+	// this returns, especially under -race on a loaded runner. Wait for it
+	// before querying by hash below.
+	require.Eventually(t, func() bool {
+		_, err := c.Tx(context.Background(), txHash, false) //nolint:staticcheck
+		return err == nil
+	}, 5*time.Second, 20*time.Millisecond, "tx was never indexed")
+
 	anotherTxHash := types.Tx("a different tx").Hash()
 
 	cases := []struct {
