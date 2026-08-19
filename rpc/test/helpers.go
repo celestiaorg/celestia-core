@@ -2,10 +2,12 @@ package rpctest
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"time"
 
 	abci "github.com/cometbft/cometbft/abci/types"
@@ -128,10 +130,23 @@ func StartTendermint(app abci.Application, opts ...func(*Options)) *nm.Node {
 	for _, opt := range opts {
 		opt(&nodeOpts)
 	}
-	node := NewTendermint(app, &nodeOpts)
-	err := node.Start()
-	if err != nil {
-		panic(err)
+
+	// randPort claims a port by opening then closing a listener; another
+	// process on a shared CI runner can grab it before node.Start() actually
+	// rebinds it. Retry with a freshly-generated config (new ports) instead
+	// of panicking the whole test binary.
+	const maxAttempts = 3
+	var node *nm.Node
+	for attempt := 1; ; attempt++ {
+		node = NewTendermint(app, &nodeOpts)
+		err := node.Start()
+		if err == nil {
+			break
+		}
+		if !errors.Is(err, syscall.EADDRINUSE) || attempt == maxAttempts {
+			panic(err)
+		}
+		nodeOpts.recreateConfig = true
 	}
 
 	// wait for rpc
