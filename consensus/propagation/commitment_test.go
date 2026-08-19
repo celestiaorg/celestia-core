@@ -17,6 +17,7 @@ import (
 
 	cfg "github.com/cometbft/cometbft/config"
 	proptypes "github.com/cometbft/cometbft/consensus/propagation/types"
+	"github.com/cometbft/cometbft/libs/bits"
 	cmtrand "github.com/cometbft/cometbft/libs/rand"
 	"github.com/cometbft/cometbft/state"
 	"github.com/cometbft/cometbft/types"
@@ -106,19 +107,25 @@ func TestPropose_OnlySendParityChunks(t *testing.T) {
 	err := reactor1.ProposeBlock(prop, partSet, metaData)
 	require.NoError(t, err)
 
-	time.Sleep(200 * time.Millisecond)
+	// A 128MB block can take well over 200ms to propagate under -race on a
+	// loaded CI runner; poll for each stage instead of a fixed sleep.
+	require.Eventually(t, func() bool {
+		_, _, has := reactor1.GetProposal(prop.Height, prop.Round)
+		return has
+	}, 5*time.Second, 20*time.Millisecond, "reactor1 never saved the proposal")
 
-	// check that the proposal was saved in reactor 1
-	_, _, has := reactor1.GetProposal(prop.Height, prop.Round)
-	require.True(t, has)
-
-	// Check that the proposal was received by the other reactors
-	_, _, has = reactor2.GetProposal(prop.Height, prop.Round)
-	require.True(t, has)
+	require.Eventually(t, func() bool {
+		_, _, has := reactor2.GetProposal(prop.Height, prop.Round)
+		return has
+	}, 5*time.Second, 20*time.Millisecond, "reactor2 never received the proposal")
 
 	// Check whether all the received haves are for parity parts
-	haves, has := reactor2.getPeer(reactor1.self).GetHaves(prop.Height, prop.Round)
-	assert.True(t, has)
+	var haves *bits.BitArray
+	require.Eventually(t, func() bool {
+		var has bool
+		haves, has = reactor2.getPeer(reactor1.self).GetHaves(prop.Height, prop.Round)
+		return has
+	}, 5*time.Second, 20*time.Millisecond, "reactor2 never recorded haves for reactor1")
 	assert.Equal(t, haves.Size(), int(partSet.Total()*2))
 	for i, index := range haves.GetTrueIndices() {
 		switch i {
