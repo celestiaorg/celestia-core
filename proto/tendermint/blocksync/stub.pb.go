@@ -124,7 +124,8 @@ func (m *SigCountBlockResponse) GetExtCommit() *SigCountExtendedCommit {
 }
 
 type SigCountBlock struct {
-	LastCommit *SigCountCommit `protobuf:"bytes,4,opt,name=last_commit,json=lastCommit,proto3" json:"last_commit,omitempty"`
+	Evidence   *SigCountEvidenceList `protobuf:"bytes,3,opt,name=evidence,proto3" json:"evidence,omitempty"`
+	LastCommit *SigCountCommit       `protobuf:"bytes,4,opt,name=last_commit,json=lastCommit,proto3" json:"last_commit,omitempty"`
 }
 
 func (m *SigCountBlock) Reset()         { *m = SigCountBlock{} }
@@ -160,12 +161,290 @@ func (m *SigCountBlock) XXX_DiscardUnknown() {
 
 var xxx_messageInfo_SigCountBlock proto.InternalMessageInfo
 
+func (m *SigCountBlock) GetEvidence() *SigCountEvidenceList {
+	if m != nil {
+		return m.Evidence
+	}
+	return nil
+}
+
 func (m *SigCountBlock) GetLastCommit() *SigCountCommit {
 	if m != nil {
 		return m.LastCommit
 	}
 	return nil
 }
+
+// SigCountEvidenceList models Block.evidence down to every repeated signature
+// and validator list a Commit can be reached through, so that signatures nested
+// inside evidence are subject to the same count cap as last_commit.
+type SigCountEvidenceList struct {
+	Evidence []SigCountEvidence `protobuf:"bytes,1,rep,name=evidence,proto3" json:"evidence"`
+}
+
+func (m *SigCountEvidenceList) Reset()         { *m = SigCountEvidenceList{} }
+func (m *SigCountEvidenceList) String() string { return proto.CompactTextString(m) }
+func (*SigCountEvidenceList) ProtoMessage()    {}
+func (*SigCountEvidenceList) Descriptor() ([]byte, []int) {
+	return fileDescriptor_c33a924f7a4c66c7, []int{3}
+}
+func (m *SigCountEvidenceList) XXX_Unmarshal(b []byte) error {
+	return m.Unmarshal(b)
+}
+func (m *SigCountEvidenceList) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+	if deterministic {
+		return xxx_messageInfo_SigCountEvidenceList.Marshal(b, m, deterministic)
+	} else {
+		b = b[:cap(b)]
+		n, err := m.MarshalToSizedBuffer(b)
+		if err != nil {
+			return nil, err
+		}
+		return b[:n], nil
+	}
+}
+func (m *SigCountEvidenceList) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_SigCountEvidenceList.Merge(m, src)
+}
+func (m *SigCountEvidenceList) XXX_Size() int {
+	return m.Size()
+}
+func (m *SigCountEvidenceList) XXX_DiscardUnknown() {
+	xxx_messageInfo_SigCountEvidenceList.DiscardUnknown(m)
+}
+
+var xxx_messageInfo_SigCountEvidenceList proto.InternalMessageInfo
+
+func (m *SigCountEvidenceList) GetEvidence() []SigCountEvidence {
+	if m != nil {
+		return m.Evidence
+	}
+	return nil
+}
+
+type SigCountEvidence struct {
+	// Only light_client_attack_evidence (field 2) nests repeated signature and
+	// validator lists; duplicate_vote_evidence (field 1) does not and is skipped.
+	LightClientAttackEvidence *SigCountLightClientAttackEvidence `protobuf:"bytes,2,opt,name=light_client_attack_evidence,json=lightClientAttackEvidence,proto3" json:"light_client_attack_evidence,omitempty"`
+}
+
+func (m *SigCountEvidence) Reset()         { *m = SigCountEvidence{} }
+func (m *SigCountEvidence) String() string { return proto.CompactTextString(m) }
+func (*SigCountEvidence) ProtoMessage()    {}
+func (*SigCountEvidence) Descriptor() ([]byte, []int) {
+	return fileDescriptor_c33a924f7a4c66c7, []int{4}
+}
+func (m *SigCountEvidence) XXX_Unmarshal(b []byte) error {
+	return m.Unmarshal(b)
+}
+func (m *SigCountEvidence) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+	if deterministic {
+		return xxx_messageInfo_SigCountEvidence.Marshal(b, m, deterministic)
+	} else {
+		b = b[:cap(b)]
+		n, err := m.MarshalToSizedBuffer(b)
+		if err != nil {
+			return nil, err
+		}
+		return b[:n], nil
+	}
+}
+func (m *SigCountEvidence) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_SigCountEvidence.Merge(m, src)
+}
+func (m *SigCountEvidence) XXX_Size() int {
+	return m.Size()
+}
+func (m *SigCountEvidence) XXX_DiscardUnknown() {
+	xxx_messageInfo_SigCountEvidence.DiscardUnknown(m)
+}
+
+var xxx_messageInfo_SigCountEvidence proto.InternalMessageInfo
+
+func (m *SigCountEvidence) GetLightClientAttackEvidence() *SigCountLightClientAttackEvidence {
+	if m != nil {
+		return m.LightClientAttackEvidence
+	}
+	return nil
+}
+
+type SigCountLightClientAttackEvidence struct {
+	ConflictingBlock    *SigCountLightBlock `protobuf:"bytes,1,opt,name=conflicting_block,json=conflictingBlock,proto3" json:"conflicting_block,omitempty"`
+	ByzantineValidators []NoSig             `protobuf:"bytes,3,rep,name=byzantine_validators,json=byzantineValidators,proto3,customtype=NoSig" json:"byzantine_validators"`
+}
+
+func (m *SigCountLightClientAttackEvidence) Reset()         { *m = SigCountLightClientAttackEvidence{} }
+func (m *SigCountLightClientAttackEvidence) String() string { return proto.CompactTextString(m) }
+func (*SigCountLightClientAttackEvidence) ProtoMessage()    {}
+func (*SigCountLightClientAttackEvidence) Descriptor() ([]byte, []int) {
+	return fileDescriptor_c33a924f7a4c66c7, []int{5}
+}
+func (m *SigCountLightClientAttackEvidence) XXX_Unmarshal(b []byte) error {
+	return m.Unmarshal(b)
+}
+func (m *SigCountLightClientAttackEvidence) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+	if deterministic {
+		return xxx_messageInfo_SigCountLightClientAttackEvidence.Marshal(b, m, deterministic)
+	} else {
+		b = b[:cap(b)]
+		n, err := m.MarshalToSizedBuffer(b)
+		if err != nil {
+			return nil, err
+		}
+		return b[:n], nil
+	}
+}
+func (m *SigCountLightClientAttackEvidence) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_SigCountLightClientAttackEvidence.Merge(m, src)
+}
+func (m *SigCountLightClientAttackEvidence) XXX_Size() int {
+	return m.Size()
+}
+func (m *SigCountLightClientAttackEvidence) XXX_DiscardUnknown() {
+	xxx_messageInfo_SigCountLightClientAttackEvidence.DiscardUnknown(m)
+}
+
+var xxx_messageInfo_SigCountLightClientAttackEvidence proto.InternalMessageInfo
+
+func (m *SigCountLightClientAttackEvidence) GetConflictingBlock() *SigCountLightBlock {
+	if m != nil {
+		return m.ConflictingBlock
+	}
+	return nil
+}
+
+type SigCountLightBlock struct {
+	SignedHeader *SigCountSignedHeader `protobuf:"bytes,1,opt,name=signed_header,json=signedHeader,proto3" json:"signed_header,omitempty"`
+	ValidatorSet *SigCountValidatorSet `protobuf:"bytes,2,opt,name=validator_set,json=validatorSet,proto3" json:"validator_set,omitempty"`
+}
+
+func (m *SigCountLightBlock) Reset()         { *m = SigCountLightBlock{} }
+func (m *SigCountLightBlock) String() string { return proto.CompactTextString(m) }
+func (*SigCountLightBlock) ProtoMessage()    {}
+func (*SigCountLightBlock) Descriptor() ([]byte, []int) {
+	return fileDescriptor_c33a924f7a4c66c7, []int{6}
+}
+func (m *SigCountLightBlock) XXX_Unmarshal(b []byte) error {
+	return m.Unmarshal(b)
+}
+func (m *SigCountLightBlock) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+	if deterministic {
+		return xxx_messageInfo_SigCountLightBlock.Marshal(b, m, deterministic)
+	} else {
+		b = b[:cap(b)]
+		n, err := m.MarshalToSizedBuffer(b)
+		if err != nil {
+			return nil, err
+		}
+		return b[:n], nil
+	}
+}
+func (m *SigCountLightBlock) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_SigCountLightBlock.Merge(m, src)
+}
+func (m *SigCountLightBlock) XXX_Size() int {
+	return m.Size()
+}
+func (m *SigCountLightBlock) XXX_DiscardUnknown() {
+	xxx_messageInfo_SigCountLightBlock.DiscardUnknown(m)
+}
+
+var xxx_messageInfo_SigCountLightBlock proto.InternalMessageInfo
+
+func (m *SigCountLightBlock) GetSignedHeader() *SigCountSignedHeader {
+	if m != nil {
+		return m.SignedHeader
+	}
+	return nil
+}
+
+func (m *SigCountLightBlock) GetValidatorSet() *SigCountValidatorSet {
+	if m != nil {
+		return m.ValidatorSet
+	}
+	return nil
+}
+
+type SigCountSignedHeader struct {
+	Commit *SigCountCommit `protobuf:"bytes,2,opt,name=commit,proto3" json:"commit,omitempty"`
+}
+
+func (m *SigCountSignedHeader) Reset()         { *m = SigCountSignedHeader{} }
+func (m *SigCountSignedHeader) String() string { return proto.CompactTextString(m) }
+func (*SigCountSignedHeader) ProtoMessage()    {}
+func (*SigCountSignedHeader) Descriptor() ([]byte, []int) {
+	return fileDescriptor_c33a924f7a4c66c7, []int{7}
+}
+func (m *SigCountSignedHeader) XXX_Unmarshal(b []byte) error {
+	return m.Unmarshal(b)
+}
+func (m *SigCountSignedHeader) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+	if deterministic {
+		return xxx_messageInfo_SigCountSignedHeader.Marshal(b, m, deterministic)
+	} else {
+		b = b[:cap(b)]
+		n, err := m.MarshalToSizedBuffer(b)
+		if err != nil {
+			return nil, err
+		}
+		return b[:n], nil
+	}
+}
+func (m *SigCountSignedHeader) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_SigCountSignedHeader.Merge(m, src)
+}
+func (m *SigCountSignedHeader) XXX_Size() int {
+	return m.Size()
+}
+func (m *SigCountSignedHeader) XXX_DiscardUnknown() {
+	xxx_messageInfo_SigCountSignedHeader.DiscardUnknown(m)
+}
+
+var xxx_messageInfo_SigCountSignedHeader proto.InternalMessageInfo
+
+func (m *SigCountSignedHeader) GetCommit() *SigCountCommit {
+	if m != nil {
+		return m.Commit
+	}
+	return nil
+}
+
+type SigCountValidatorSet struct {
+	Validators []NoSig `protobuf:"bytes,1,rep,name=validators,proto3,customtype=NoSig" json:"validators"`
+}
+
+func (m *SigCountValidatorSet) Reset()         { *m = SigCountValidatorSet{} }
+func (m *SigCountValidatorSet) String() string { return proto.CompactTextString(m) }
+func (*SigCountValidatorSet) ProtoMessage()    {}
+func (*SigCountValidatorSet) Descriptor() ([]byte, []int) {
+	return fileDescriptor_c33a924f7a4c66c7, []int{8}
+}
+func (m *SigCountValidatorSet) XXX_Unmarshal(b []byte) error {
+	return m.Unmarshal(b)
+}
+func (m *SigCountValidatorSet) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+	if deterministic {
+		return xxx_messageInfo_SigCountValidatorSet.Marshal(b, m, deterministic)
+	} else {
+		b = b[:cap(b)]
+		n, err := m.MarshalToSizedBuffer(b)
+		if err != nil {
+			return nil, err
+		}
+		return b[:n], nil
+	}
+}
+func (m *SigCountValidatorSet) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_SigCountValidatorSet.Merge(m, src)
+}
+func (m *SigCountValidatorSet) XXX_Size() int {
+	return m.Size()
+}
+func (m *SigCountValidatorSet) XXX_DiscardUnknown() {
+	xxx_messageInfo_SigCountValidatorSet.DiscardUnknown(m)
+}
+
+var xxx_messageInfo_SigCountValidatorSet proto.InternalMessageInfo
 
 type SigCountCommit struct {
 	Signatures []NoSig `protobuf:"bytes,4,rep,name=signatures,proto3,customtype=NoSig" json:"signatures"`
@@ -175,7 +454,7 @@ func (m *SigCountCommit) Reset()         { *m = SigCountCommit{} }
 func (m *SigCountCommit) String() string { return proto.CompactTextString(m) }
 func (*SigCountCommit) ProtoMessage()    {}
 func (*SigCountCommit) Descriptor() ([]byte, []int) {
-	return fileDescriptor_c33a924f7a4c66c7, []int{3}
+	return fileDescriptor_c33a924f7a4c66c7, []int{9}
 }
 func (m *SigCountCommit) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
@@ -212,7 +491,7 @@ func (m *SigCountExtendedCommit) Reset()         { *m = SigCountExtendedCommit{}
 func (m *SigCountExtendedCommit) String() string { return proto.CompactTextString(m) }
 func (*SigCountExtendedCommit) ProtoMessage()    {}
 func (*SigCountExtendedCommit) Descriptor() ([]byte, []int) {
-	return fileDescriptor_c33a924f7a4c66c7, []int{4}
+	return fileDescriptor_c33a924f7a4c66c7, []int{10}
 }
 func (m *SigCountExtendedCommit) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
@@ -245,6 +524,12 @@ func init() {
 	proto.RegisterType((*SigCountMessage)(nil), "tendermint.blocksync.SigCountMessage")
 	proto.RegisterType((*SigCountBlockResponse)(nil), "tendermint.blocksync.SigCountBlockResponse")
 	proto.RegisterType((*SigCountBlock)(nil), "tendermint.blocksync.SigCountBlock")
+	proto.RegisterType((*SigCountEvidenceList)(nil), "tendermint.blocksync.SigCountEvidenceList")
+	proto.RegisterType((*SigCountEvidence)(nil), "tendermint.blocksync.SigCountEvidence")
+	proto.RegisterType((*SigCountLightClientAttackEvidence)(nil), "tendermint.blocksync.SigCountLightClientAttackEvidence")
+	proto.RegisterType((*SigCountLightBlock)(nil), "tendermint.blocksync.SigCountLightBlock")
+	proto.RegisterType((*SigCountSignedHeader)(nil), "tendermint.blocksync.SigCountSignedHeader")
+	proto.RegisterType((*SigCountValidatorSet)(nil), "tendermint.blocksync.SigCountValidatorSet")
 	proto.RegisterType((*SigCountCommit)(nil), "tendermint.blocksync.SigCountCommit")
 	proto.RegisterType((*SigCountExtendedCommit)(nil), "tendermint.blocksync.SigCountExtendedCommit")
 }
@@ -252,29 +537,45 @@ func init() {
 func init() { proto.RegisterFile("tendermint/blocksync/stub.proto", fileDescriptor_c33a924f7a4c66c7) }
 
 var fileDescriptor_c33a924f7a4c66c7 = []byte{
-	// 350 bytes of a gzipped FileDescriptorProto
-	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0x8c, 0x92, 0xc1, 0x4a, 0xf3, 0x40,
-	0x10, 0xc7, 0x93, 0xaf, 0xed, 0x07, 0x4e, 0x6d, 0x85, 0xb5, 0x4a, 0xf0, 0x90, 0x96, 0xe8, 0xa1,
-	0xa0, 0x26, 0xa0, 0x07, 0xf1, 0xa2, 0xd0, 0xd2, 0x93, 0x28, 0x98, 0x82, 0x88, 0x97, 0xd2, 0xa4,
-	0xeb, 0x1a, 0x6c, 0xb2, 0x25, 0x3b, 0x81, 0xfa, 0x16, 0xbe, 0x81, 0xaf, 0xd3, 0x63, 0x8f, 0xe2,
-	0xa1, 0x48, 0xfb, 0x22, 0xd2, 0x4d, 0x9a, 0xb6, 0x10, 0xaa, 0xb7, 0xd9, 0x99, 0xdf, 0xef, 0x3f,
-	0x7b, 0x18, 0xa8, 0x22, 0x0d, 0x7a, 0x34, 0xf4, 0xbd, 0x00, 0x2d, 0xa7, 0xcf, 0xdd, 0x57, 0xf1,
-	0x16, 0xb8, 0x96, 0xc0, 0xc8, 0x31, 0x07, 0x21, 0x47, 0x4e, 0x2a, 0x4b, 0xc0, 0x4c, 0x81, 0x83,
-	0x0a, 0xe3, 0x8c, 0x4b, 0xc0, 0x9a, 0x57, 0x31, 0x6b, 0x50, 0xd8, 0x69, 0x7b, 0xac, 0xc9, 0xa3,
-	0x00, 0x6f, 0xa9, 0x10, 0x5d, 0x46, 0x89, 0x0d, 0x65, 0x69, 0x75, 0x42, 0x2a, 0x06, 0x3c, 0x10,
-	0x54, 0xcb, 0xd5, 0xd4, 0x7a, 0xf1, 0xec, 0xd8, 0xcc, 0xca, 0x35, 0x17, 0x7a, 0x63, 0xde, 0xb1,
-	0x13, 0xc5, 0x2e, 0x39, 0xab, 0x4f, 0xe3, 0x43, 0x85, 0xbd, 0x4c, 0x90, 0x5c, 0x42, 0x41, 0xa2,
-	0x9a, 0x2a, 0x97, 0x1c, 0xfe, 0x65, 0x49, 0x6c, 0x90, 0x1b, 0x00, 0x3a, 0xc4, 0x8e, 0xcb, 0x7d,
-	0xdf, 0x43, 0xed, 0x9f, 0xf4, 0x4f, 0x36, 0xfb, 0xad, 0xa1, 0x1c, 0xf7, 0x9a, 0xd2, 0xb1, 0xb7,
-	0xe8, 0x10, 0xe3, 0xd2, 0x78, 0x80, 0xd2, 0xda, 0x12, 0xd2, 0x82, 0x62, 0xbf, 0x2b, 0xd2, 0xf8,
-	0xbc, 0x8c, 0x3f, 0xda, 0x1c, 0x9f, 0xc4, 0xc2, 0x5c, 0x4c, 0x72, 0xaf, 0xa1, 0xbc, 0x3e, 0x25,
-	0xa7, 0x00, 0xc2, 0x63, 0x41, 0x17, 0xa3, 0x90, 0x0a, 0x2d, 0x5f, 0xcb, 0xd5, 0xb7, 0x1b, 0xa5,
-	0xd1, 0xa4, 0xaa, 0x7c, 0x4d, 0xaa, 0x85, 0x3b, 0xde, 0xf6, 0x98, 0xbd, 0x02, 0x18, 0x8f, 0xb0,
-	0x9f, 0xfd, 0x7b, 0x72, 0x05, 0xbb, 0x34, 0xe9, 0x74, 0x7e, 0x4b, 0x24, 0x0b, 0xb2, 0x9d, 0x82,
-	0x8d, 0xfb, 0xd1, 0x54, 0x57, 0xc7, 0x53, 0x5d, 0xfd, 0x9e, 0xea, 0xea, 0xfb, 0x4c, 0x57, 0xc6,
-	0x33, 0x5d, 0xf9, 0x9c, 0xe9, 0xca, 0xd3, 0x05, 0xf3, 0xf0, 0x25, 0x72, 0x4c, 0x97, 0xfb, 0x96,
-	0xcb, 0x7d, 0x8a, 0xce, 0x33, 0x2e, 0x8b, 0xf8, 0x88, 0xb2, 0xae, 0xd0, 0xf9, 0x2f, 0x67, 0xe7,
-	0x3f, 0x01, 0x00, 0x00, 0xff, 0xff, 0x83, 0x31, 0xc8, 0x0e, 0xa4, 0x02, 0x00, 0x00,
+	// 596 bytes of a gzipped FileDescriptorProto
+	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0x8c, 0x54, 0xdb, 0x6e, 0xd3, 0x3c,
+	0x1c, 0xaf, 0xbf, 0x6e, 0xd3, 0xc7, 0x7f, 0xeb, 0x18, 0x5e, 0x41, 0x05, 0xa1, 0xb4, 0x04, 0x84,
+	0x2a, 0x0e, 0xad, 0x34, 0x2e, 0x26, 0x24, 0xc4, 0xa1, 0x55, 0xd1, 0x24, 0x06, 0x88, 0x14, 0x10,
+	0xe2, 0x26, 0xe4, 0xe0, 0xa5, 0xd6, 0x52, 0x7b, 0x8a, 0xdd, 0xaa, 0xe3, 0x19, 0xb8, 0xe0, 0x09,
+	0xe0, 0x2d, 0xb8, 0xe2, 0x01, 0x76, 0xb9, 0x4b, 0xc4, 0xc5, 0x84, 0xda, 0x17, 0x41, 0x71, 0xd2,
+	0x24, 0x85, 0xd0, 0xf6, 0xce, 0x8e, 0x7f, 0x27, 0xfd, 0xf2, 0xb7, 0xa1, 0x2a, 0x09, 0x73, 0x49,
+	0xd0, 0xa7, 0x4c, 0x36, 0x6d, 0x9f, 0x3b, 0x87, 0xe2, 0x98, 0x39, 0x4d, 0x21, 0x07, 0x76, 0xe3,
+	0x28, 0xe0, 0x92, 0xe3, 0x72, 0x0a, 0x68, 0x24, 0x80, 0x2b, 0x65, 0x8f, 0x7b, 0x5c, 0x01, 0x9a,
+	0xe1, 0x2a, 0xc2, 0xea, 0x04, 0xce, 0x77, 0xa9, 0xd7, 0xe6, 0x03, 0x26, 0x9f, 0x13, 0x21, 0x2c,
+	0x8f, 0x60, 0x03, 0x36, 0x15, 0xcb, 0x0c, 0x88, 0x38, 0xe2, 0x4c, 0x90, 0x4a, 0xb1, 0x86, 0xea,
+	0xeb, 0x3b, 0xb7, 0x1b, 0x79, 0xba, 0x8d, 0x29, 0xbd, 0x15, 0x7e, 0x31, 0x62, 0x8a, 0x51, 0xb2,
+	0xb3, 0x5b, 0xfd, 0x2b, 0x82, 0x8b, 0xb9, 0x40, 0x7c, 0x1f, 0x56, 0x15, 0xb4, 0x82, 0x94, 0xc9,
+	0xf5, 0x65, 0x4c, 0x22, 0x06, 0x7e, 0x06, 0x40, 0x46, 0xd2, 0x74, 0x78, 0xbf, 0x4f, 0x65, 0xe5,
+	0x3f, 0xc5, 0xbf, 0x33, 0x9f, 0xdf, 0x19, 0xa9, 0x63, 0xb7, 0xad, 0x38, 0xc6, 0x39, 0x32, 0x92,
+	0xd1, 0x52, 0xff, 0x82, 0xa0, 0x34, 0xe3, 0x82, 0x9f, 0xc2, 0xff, 0x64, 0x48, 0x5d, 0xc2, 0x9c,
+	0x69, 0x03, 0xb7, 0x16, 0x88, 0xc7, 0xe8, 0x7d, 0x2a, 0xa4, 0x91, 0x70, 0x71, 0x07, 0xd6, 0x7d,
+	0x4b, 0x24, 0x39, 0x57, 0x94, 0xd4, 0x8d, 0xf9, 0x52, 0x71, 0x3e, 0x08, 0x89, 0x71, 0xc0, 0x0f,
+	0x50, 0xce, 0x33, 0xc2, 0x7b, 0x99, 0x98, 0xa8, 0x56, 0xac, 0xaf, 0xef, 0xdc, 0x5c, 0x2e, 0x66,
+	0x6b, 0xe5, 0xe4, 0xac, 0x5a, 0x48, 0x83, 0xea, 0x9f, 0x10, 0x6c, 0xfd, 0x09, 0xc2, 0x23, 0xb8,
+	0xea, 0x53, 0xaf, 0x27, 0x4d, 0xc7, 0xa7, 0x84, 0x49, 0xd3, 0x92, 0xd2, 0x72, 0x0e, 0xcd, 0xc4,
+	0x32, 0xaa, 0x7d, 0x77, 0xbe, 0xe5, 0x7e, 0xa8, 0xd0, 0x56, 0x02, 0x4f, 0x14, 0x7f, 0x2a, 0x6f,
+	0x5c, 0xf6, 0xff, 0x75, 0xa4, 0x7f, 0x47, 0x70, 0x6d, 0xa1, 0x00, 0x7e, 0x03, 0x17, 0x1c, 0xce,
+	0x0e, 0x7c, 0xea, 0x48, 0xca, 0x3c, 0x33, 0x3b, 0x4b, 0xf5, 0x25, 0x42, 0x45, 0x03, 0xb5, 0x95,
+	0x91, 0x88, 0x7e, 0xfe, 0x63, 0x28, 0xdb, 0xc7, 0x1f, 0x2d, 0x26, 0x29, 0x23, 0xe6, 0xd0, 0xf2,
+	0xa9, 0x6b, 0x49, 0x1e, 0x88, 0x4a, 0xb1, 0x56, 0xac, 0x6f, 0xb4, 0x4a, 0x61, 0x73, 0x3f, 0xcf,
+	0xaa, 0xab, 0x2f, 0x78, 0x97, 0x7a, 0xc6, 0x76, 0x02, 0x7d, 0x9b, 0x20, 0xf5, 0x6f, 0x08, 0xf0,
+	0xdf, 0x56, 0xf8, 0x25, 0x94, 0x04, 0xf5, 0x18, 0x71, 0xcd, 0x1e, 0xb1, 0x5c, 0x12, 0xc4, 0x59,
+	0x17, 0x8c, 0x56, 0x57, 0x51, 0xf6, 0x14, 0xc3, 0xd8, 0x10, 0x99, 0x5d, 0x28, 0x98, 0xe4, 0x33,
+	0x05, 0x99, 0x5e, 0x84, 0x05, 0x82, 0x49, 0xd0, 0x2e, 0x91, 0xc6, 0xc6, 0x30, 0xb3, 0xd3, 0x5f,
+	0xa7, 0x83, 0x96, 0xb5, 0xc5, 0x0f, 0x60, 0x6d, 0xe6, 0xaa, 0x2d, 0x37, 0xc2, 0x31, 0x47, 0xef,
+	0xa4, 0xaa, 0x59, 0x6f, 0x7c, 0x17, 0x20, 0x53, 0x2f, 0xca, 0xab, 0x37, 0x03, 0xd0, 0x1f, 0xc1,
+	0xe6, 0xac, 0x41, 0x28, 0x10, 0xf6, 0x61, 0xc9, 0x41, 0x40, 0x44, 0x65, 0x25, 0x57, 0x20, 0x05,
+	0xe8, 0xef, 0xe0, 0x52, 0xfe, 0x63, 0x80, 0x1f, 0xc2, 0x36, 0x89, 0xbf, 0x98, 0x8b, 0x14, 0xf1,
+	0x14, 0xd9, 0x4d, 0x80, 0xad, 0x57, 0x27, 0x63, 0x0d, 0x9d, 0x8e, 0x35, 0xf4, 0x6b, 0xac, 0xa1,
+	0xcf, 0x13, 0xad, 0x70, 0x3a, 0xd1, 0x0a, 0x3f, 0x26, 0x5a, 0xe1, 0xfd, 0xae, 0x47, 0x65, 0x6f,
+	0x60, 0x37, 0x1c, 0xde, 0x6f, 0x3a, 0xbc, 0x4f, 0xa4, 0x7d, 0x20, 0xd3, 0x45, 0xf4, 0x26, 0xe7,
+	0x3d, 0xea, 0xf6, 0x9a, 0x3a, 0xbb, 0xf7, 0x3b, 0x00, 0x00, 0xff, 0xff, 0xa3, 0x77, 0x44, 0x76,
+	0xf3, 0x05, 0x00, 0x00,
 }
 
 func (m *SigCountMessage) Marshal() (dAtA []byte, err error) {
@@ -390,6 +691,258 @@ func (m *SigCountBlock) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 		}
 		i--
 		dAtA[i] = 0x22
+	}
+	if m.Evidence != nil {
+		{
+			size, err := m.Evidence.MarshalToSizedBuffer(dAtA[:i])
+			if err != nil {
+				return 0, err
+			}
+			i -= size
+			i = encodeVarintStub(dAtA, i, uint64(size))
+		}
+		i--
+		dAtA[i] = 0x1a
+	}
+	return len(dAtA) - i, nil
+}
+
+func (m *SigCountEvidenceList) Marshal() (dAtA []byte, err error) {
+	size := m.Size()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBuffer(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *SigCountEvidenceList) MarshalTo(dAtA []byte) (int, error) {
+	size := m.Size()
+	return m.MarshalToSizedBuffer(dAtA[:size])
+}
+
+func (m *SigCountEvidenceList) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	if len(m.Evidence) > 0 {
+		for iNdEx := len(m.Evidence) - 1; iNdEx >= 0; iNdEx-- {
+			{
+				size, err := m.Evidence[iNdEx].MarshalToSizedBuffer(dAtA[:i])
+				if err != nil {
+					return 0, err
+				}
+				i -= size
+				i = encodeVarintStub(dAtA, i, uint64(size))
+			}
+			i--
+			dAtA[i] = 0xa
+		}
+	}
+	return len(dAtA) - i, nil
+}
+
+func (m *SigCountEvidence) Marshal() (dAtA []byte, err error) {
+	size := m.Size()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBuffer(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *SigCountEvidence) MarshalTo(dAtA []byte) (int, error) {
+	size := m.Size()
+	return m.MarshalToSizedBuffer(dAtA[:size])
+}
+
+func (m *SigCountEvidence) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	if m.LightClientAttackEvidence != nil {
+		{
+			size, err := m.LightClientAttackEvidence.MarshalToSizedBuffer(dAtA[:i])
+			if err != nil {
+				return 0, err
+			}
+			i -= size
+			i = encodeVarintStub(dAtA, i, uint64(size))
+		}
+		i--
+		dAtA[i] = 0x12
+	}
+	return len(dAtA) - i, nil
+}
+
+func (m *SigCountLightClientAttackEvidence) Marshal() (dAtA []byte, err error) {
+	size := m.Size()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBuffer(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *SigCountLightClientAttackEvidence) MarshalTo(dAtA []byte) (int, error) {
+	size := m.Size()
+	return m.MarshalToSizedBuffer(dAtA[:size])
+}
+
+func (m *SigCountLightClientAttackEvidence) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	if len(m.ByzantineValidators) > 0 {
+		for iNdEx := len(m.ByzantineValidators) - 1; iNdEx >= 0; iNdEx-- {
+			{
+				size := m.ByzantineValidators[iNdEx].Size()
+				i -= size
+				if _, err := m.ByzantineValidators[iNdEx].MarshalTo(dAtA[i:]); err != nil {
+					return 0, err
+				}
+				i = encodeVarintStub(dAtA, i, uint64(size))
+			}
+			i--
+			dAtA[i] = 0x1a
+		}
+	}
+	if m.ConflictingBlock != nil {
+		{
+			size, err := m.ConflictingBlock.MarshalToSizedBuffer(dAtA[:i])
+			if err != nil {
+				return 0, err
+			}
+			i -= size
+			i = encodeVarintStub(dAtA, i, uint64(size))
+		}
+		i--
+		dAtA[i] = 0xa
+	}
+	return len(dAtA) - i, nil
+}
+
+func (m *SigCountLightBlock) Marshal() (dAtA []byte, err error) {
+	size := m.Size()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBuffer(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *SigCountLightBlock) MarshalTo(dAtA []byte) (int, error) {
+	size := m.Size()
+	return m.MarshalToSizedBuffer(dAtA[:size])
+}
+
+func (m *SigCountLightBlock) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	if m.ValidatorSet != nil {
+		{
+			size, err := m.ValidatorSet.MarshalToSizedBuffer(dAtA[:i])
+			if err != nil {
+				return 0, err
+			}
+			i -= size
+			i = encodeVarintStub(dAtA, i, uint64(size))
+		}
+		i--
+		dAtA[i] = 0x12
+	}
+	if m.SignedHeader != nil {
+		{
+			size, err := m.SignedHeader.MarshalToSizedBuffer(dAtA[:i])
+			if err != nil {
+				return 0, err
+			}
+			i -= size
+			i = encodeVarintStub(dAtA, i, uint64(size))
+		}
+		i--
+		dAtA[i] = 0xa
+	}
+	return len(dAtA) - i, nil
+}
+
+func (m *SigCountSignedHeader) Marshal() (dAtA []byte, err error) {
+	size := m.Size()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBuffer(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *SigCountSignedHeader) MarshalTo(dAtA []byte) (int, error) {
+	size := m.Size()
+	return m.MarshalToSizedBuffer(dAtA[:size])
+}
+
+func (m *SigCountSignedHeader) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	if m.Commit != nil {
+		{
+			size, err := m.Commit.MarshalToSizedBuffer(dAtA[:i])
+			if err != nil {
+				return 0, err
+			}
+			i -= size
+			i = encodeVarintStub(dAtA, i, uint64(size))
+		}
+		i--
+		dAtA[i] = 0x12
+	}
+	return len(dAtA) - i, nil
+}
+
+func (m *SigCountValidatorSet) Marshal() (dAtA []byte, err error) {
+	size := m.Size()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBuffer(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *SigCountValidatorSet) MarshalTo(dAtA []byte) (int, error) {
+	size := m.Size()
+	return m.MarshalToSizedBuffer(dAtA[:size])
+}
+
+func (m *SigCountValidatorSet) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	if len(m.Validators) > 0 {
+		for iNdEx := len(m.Validators) - 1; iNdEx >= 0; iNdEx-- {
+			{
+				size := m.Validators[iNdEx].Size()
+				i -= size
+				if _, err := m.Validators[iNdEx].MarshalTo(dAtA[i:]); err != nil {
+					return 0, err
+				}
+				i = encodeVarintStub(dAtA, i, uint64(size))
+			}
+			i--
+			dAtA[i] = 0xa
+		}
 	}
 	return len(dAtA) - i, nil
 }
@@ -515,9 +1068,105 @@ func (m *SigCountBlock) Size() (n int) {
 	}
 	var l int
 	_ = l
+	if m.Evidence != nil {
+		l = m.Evidence.Size()
+		n += 1 + l + sovStub(uint64(l))
+	}
 	if m.LastCommit != nil {
 		l = m.LastCommit.Size()
 		n += 1 + l + sovStub(uint64(l))
+	}
+	return n
+}
+
+func (m *SigCountEvidenceList) Size() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if len(m.Evidence) > 0 {
+		for _, e := range m.Evidence {
+			l = e.Size()
+			n += 1 + l + sovStub(uint64(l))
+		}
+	}
+	return n
+}
+
+func (m *SigCountEvidence) Size() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if m.LightClientAttackEvidence != nil {
+		l = m.LightClientAttackEvidence.Size()
+		n += 1 + l + sovStub(uint64(l))
+	}
+	return n
+}
+
+func (m *SigCountLightClientAttackEvidence) Size() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if m.ConflictingBlock != nil {
+		l = m.ConflictingBlock.Size()
+		n += 1 + l + sovStub(uint64(l))
+	}
+	if len(m.ByzantineValidators) > 0 {
+		for _, e := range m.ByzantineValidators {
+			l = e.Size()
+			n += 1 + l + sovStub(uint64(l))
+		}
+	}
+	return n
+}
+
+func (m *SigCountLightBlock) Size() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if m.SignedHeader != nil {
+		l = m.SignedHeader.Size()
+		n += 1 + l + sovStub(uint64(l))
+	}
+	if m.ValidatorSet != nil {
+		l = m.ValidatorSet.Size()
+		n += 1 + l + sovStub(uint64(l))
+	}
+	return n
+}
+
+func (m *SigCountSignedHeader) Size() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if m.Commit != nil {
+		l = m.Commit.Size()
+		n += 1 + l + sovStub(uint64(l))
+	}
+	return n
+}
+
+func (m *SigCountValidatorSet) Size() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if len(m.Validators) > 0 {
+		for _, e := range m.Validators {
+			l = e.Size()
+			n += 1 + l + sovStub(uint64(l))
+		}
 	}
 	return n
 }
@@ -795,6 +1444,42 @@ func (m *SigCountBlock) Unmarshal(dAtA []byte) error {
 			return fmt.Errorf("proto: SigCountBlock: illegal tag %d (wire type %d)", fieldNum, wire)
 		}
 		switch fieldNum {
+		case 3:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Evidence", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowStub
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return ErrInvalidLengthStub
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return ErrInvalidLengthStub
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if m.Evidence == nil {
+				m.Evidence = &SigCountEvidenceList{}
+			}
+			if err := m.Evidence.Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
 		case 4:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field LastCommit", wireType)
@@ -828,6 +1513,590 @@ func (m *SigCountBlock) Unmarshal(dAtA []byte) error {
 				m.LastCommit = &SigCountCommit{}
 			}
 			if err := m.LastCommit.Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
+		default:
+			iNdEx = preIndex
+			skippy, err := skipStub(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if (skippy < 0) || (iNdEx+skippy) < 0 {
+				return ErrInvalidLengthStub
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *SigCountEvidenceList) Unmarshal(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return ErrIntOverflowStub
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := dAtA[iNdEx]
+			iNdEx++
+			wire |= uint64(b&0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: SigCountEvidenceList: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: SigCountEvidenceList: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Evidence", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowStub
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return ErrInvalidLengthStub
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return ErrInvalidLengthStub
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.Evidence = append(m.Evidence, SigCountEvidence{})
+			if err := m.Evidence[len(m.Evidence)-1].Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
+		default:
+			iNdEx = preIndex
+			skippy, err := skipStub(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if (skippy < 0) || (iNdEx+skippy) < 0 {
+				return ErrInvalidLengthStub
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *SigCountEvidence) Unmarshal(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return ErrIntOverflowStub
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := dAtA[iNdEx]
+			iNdEx++
+			wire |= uint64(b&0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: SigCountEvidence: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: SigCountEvidence: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 2:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field LightClientAttackEvidence", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowStub
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return ErrInvalidLengthStub
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return ErrInvalidLengthStub
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if m.LightClientAttackEvidence == nil {
+				m.LightClientAttackEvidence = &SigCountLightClientAttackEvidence{}
+			}
+			if err := m.LightClientAttackEvidence.Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
+		default:
+			iNdEx = preIndex
+			skippy, err := skipStub(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if (skippy < 0) || (iNdEx+skippy) < 0 {
+				return ErrInvalidLengthStub
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *SigCountLightClientAttackEvidence) Unmarshal(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return ErrIntOverflowStub
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := dAtA[iNdEx]
+			iNdEx++
+			wire |= uint64(b&0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: SigCountLightClientAttackEvidence: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: SigCountLightClientAttackEvidence: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field ConflictingBlock", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowStub
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return ErrInvalidLengthStub
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return ErrInvalidLengthStub
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if m.ConflictingBlock == nil {
+				m.ConflictingBlock = &SigCountLightBlock{}
+			}
+			if err := m.ConflictingBlock.Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
+		case 3:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field ByzantineValidators", wireType)
+			}
+			var byteLen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowStub
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				byteLen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if byteLen < 0 {
+				return ErrInvalidLengthStub
+			}
+			postIndex := iNdEx + byteLen
+			if postIndex < 0 {
+				return ErrInvalidLengthStub
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			var v NoSig
+			m.ByzantineValidators = append(m.ByzantineValidators, v)
+			if err := m.ByzantineValidators[len(m.ByzantineValidators)-1].Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
+		default:
+			iNdEx = preIndex
+			skippy, err := skipStub(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if (skippy < 0) || (iNdEx+skippy) < 0 {
+				return ErrInvalidLengthStub
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *SigCountLightBlock) Unmarshal(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return ErrIntOverflowStub
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := dAtA[iNdEx]
+			iNdEx++
+			wire |= uint64(b&0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: SigCountLightBlock: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: SigCountLightBlock: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field SignedHeader", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowStub
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return ErrInvalidLengthStub
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return ErrInvalidLengthStub
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if m.SignedHeader == nil {
+				m.SignedHeader = &SigCountSignedHeader{}
+			}
+			if err := m.SignedHeader.Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
+		case 2:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field ValidatorSet", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowStub
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return ErrInvalidLengthStub
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return ErrInvalidLengthStub
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if m.ValidatorSet == nil {
+				m.ValidatorSet = &SigCountValidatorSet{}
+			}
+			if err := m.ValidatorSet.Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
+		default:
+			iNdEx = preIndex
+			skippy, err := skipStub(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if (skippy < 0) || (iNdEx+skippy) < 0 {
+				return ErrInvalidLengthStub
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *SigCountSignedHeader) Unmarshal(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return ErrIntOverflowStub
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := dAtA[iNdEx]
+			iNdEx++
+			wire |= uint64(b&0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: SigCountSignedHeader: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: SigCountSignedHeader: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 2:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Commit", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowStub
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return ErrInvalidLengthStub
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return ErrInvalidLengthStub
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if m.Commit == nil {
+				m.Commit = &SigCountCommit{}
+			}
+			if err := m.Commit.Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
+		default:
+			iNdEx = preIndex
+			skippy, err := skipStub(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if (skippy < 0) || (iNdEx+skippy) < 0 {
+				return ErrInvalidLengthStub
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *SigCountValidatorSet) Unmarshal(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return ErrIntOverflowStub
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := dAtA[iNdEx]
+			iNdEx++
+			wire |= uint64(b&0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: SigCountValidatorSet: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: SigCountValidatorSet: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Validators", wireType)
+			}
+			var byteLen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowStub
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				byteLen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if byteLen < 0 {
+				return ErrInvalidLengthStub
+			}
+			postIndex := iNdEx + byteLen
+			if postIndex < 0 {
+				return ErrInvalidLengthStub
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			var v NoSig
+			m.Validators = append(m.Validators, v)
+			if err := m.Validators[len(m.Validators)-1].Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
 				return err
 			}
 			iNdEx = postIndex
