@@ -81,6 +81,7 @@ The codebase follows CometBFT's modular architecture. Key packages and their rol
 ## Code Conventions
 
 - Follow [Uber Go Style Guide](https://github.com/uber-go/guide/blob/master/style.md) as baseline
+- Keep godoc comments short and easy to understand: one or two plain-language sentences saying what the thing does. Avoid big blocks of text — they are hard to read and reason about.
 - Use `errors.New()` over `fmt.Errorf()` unless formatting with arguments; wrap errors with `%w`
 - Use `testify/assert` and `testify/require` for test assertions; prefer table-driven tests
 - Import alias conventions: `cmtcfg`, `cmttypes`, `cmtbits` etc. for internal packages; `dbm` for cometbft-db
