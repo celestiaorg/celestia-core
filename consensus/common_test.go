@@ -372,11 +372,17 @@ func validatePrecommit(
 }
 
 func subscribeToVoter(cs *State, addr []byte) <-chan cmtpubsub.Message {
-	votesSub, err := cs.eventBus.SubscribeUnbuffered(context.Background(), testSubscriber, types.EventQueryVote)
+	// Buffered, not SubscribeUnbuffered/an unbuffered relay channel: an
+	// unbuffered publish blocks receiveRoutine (likely holding cs.mtx) until
+	// this relay drains it, and the relay's own unbuffered forward can block
+	// on the consumer in turn. If the test does anything else that needs
+	// cs.mtx before it gets back to reading voteCh, that's a deadlock until
+	// ensureVote's timeout fires.
+	votesSub, err := cs.eventBus.Subscribe(context.Background(), testSubscriber, types.EventQueryVote, 100)
 	if err != nil {
 		panic(fmt.Sprintf("failed to subscribe %s to %v", testSubscriber, types.EventQueryVote))
 	}
-	ch := make(chan cmtpubsub.Message)
+	ch := make(chan cmtpubsub.Message, 100)
 	go func() {
 		for msg := range votesSub.Out() {
 			vote := msg.Data().(types.EventDataVote)

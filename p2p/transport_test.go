@@ -345,12 +345,24 @@ func TestTransportMultiplexAcceptNonBlocking(t *testing.T) {
 		t.Logf("connection failed: %v", err)
 	}
 
-	p, err := mt.Accept(peerConfig{})
-	if err != nil {
-		t.Fatal(err)
+	// Both connections race independently onto Accept()'s result channel;
+	// the slow peer is deliberately malformed so it's always rejected, but
+	// isn't guaranteed to lose that race under CI jitter. Accept both and
+	// check the fast peer is among them.
+	var fastPeer Peer
+	for i := 0; i < 2; i++ {
+		p, err := mt.Accept(peerConfig{})
+		if err != nil {
+			t.Logf("connection %d rejected (expected for the deliberately malformed slow peer): %v", i, err)
+			continue
+		}
+		fastPeer = p
+	}
+	if fastPeer == nil {
+		t.Fatal("fast peer was never accepted")
 	}
 
-	if have, want := p.NodeInfo(), fastNodeInfo; !reflect.DeepEqual(have, want) {
+	if have, want := fastPeer.NodeInfo(), fastNodeInfo; !reflect.DeepEqual(have, want) {
 		t.Errorf("have %v, want %v", have, want)
 	}
 }

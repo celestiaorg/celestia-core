@@ -113,7 +113,12 @@ func TestMempoolProgressInHigherRound(t *testing.T) {
 	assertMempool(cs.txNotifier).EnableTxsAvailable()
 	height, round := cs.rs.Height, cs.rs.Round
 	newBlockCh := subscribe(cs.eventBus, types.EventQueryNewBlock)
-	newRoundCh := subscribe(cs.eventBus, types.EventQueryNewRound)
+	// Buffered generously: pubsub drops the whole subscription (not just one
+	// message) when a full channel can't accept a send, and this test can
+	// have a NewRound event fire before an earlier one is drained.
+	newRoundSub, err := cs.eventBus.Subscribe(context.Background(), testSubscriber, types.EventQueryNewRound, 100)
+	require.NoError(t, err)
+	newRoundCh := newRoundSub.Out()
 	timeoutCh := subscribe(cs.eventBus, types.EventQueryTimeoutPropose)
 	cs.setProposal = func(proposal *types.Proposal) error {
 		if cs.rs.Height == 2 && cs.rs.Round == 0 {

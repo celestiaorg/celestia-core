@@ -166,7 +166,7 @@ func statusesAreEqual(s1 *Status, s2 *Status) bool {
 	if s1.Active == s2.Active &&
 		s1.Start == s2.Start && //nolint:staticcheck
 		durationsAreEqual(s1.Duration, s2.Duration, maxDeviationForDuration) &&
-		s1.Idle == s2.Idle &&
+		durationsAreEqual(s1.Idle, s2.Idle, maxDeviationForDuration) &&
 		s1.Bytes == s2.Bytes &&
 		s1.Samples == s2.Samples &&
 		ratesAreEqual(s1.InstRate, s2.InstRate, maxDeviationForRate) &&

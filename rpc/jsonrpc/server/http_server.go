@@ -272,7 +272,7 @@ func Listen(addr string, maxOpenConnections int) (listener net.Listener, err err
 	proto, addr := parts[0], parts[1]
 	listener, err = net.Listen(proto, addr)
 	if err != nil {
-		return nil, fmt.Errorf("failed to listen on %v: %v", addr, err)
+		return nil, fmt.Errorf("failed to listen on %v: %w", addr, err)
 	}
 	if maxOpenConnections > 0 {
 		listener = netutil.LimitListener(listener, maxOpenConnections)

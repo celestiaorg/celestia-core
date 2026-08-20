@@ -217,12 +217,14 @@ LOOP:
 		case err := <-walPanicked:
 			t.Logf("WAL panicked: %v", err)
 
-			// make sure we can make blocks after a crash
-			startNewStateAndWaitForBlock(t, consensusReplayConfig, blockDB, stateStore)
-
-			// stop consensus state and transactions sender (initFn)
+			// Stop the crashed state before starting a replacement below --
+			// the crash only recovers cs's receiveRoutine, not its other
+			// services, so a second State on the same DB/WAL can race it.
 			cs.Stop() //nolint:errcheck // Logging this error causes failure
 			cancel()
+
+			// make sure we can make blocks after a crash
+			startNewStateAndWaitForBlock(t, consensusReplayConfig, blockDB, stateStore)
 
 			// if we reached the required height, exit
 			if _, ok := err.(ReachedHeightToStopError); ok {

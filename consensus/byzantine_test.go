@@ -197,12 +197,25 @@ func TestByzantinePrevoteEquivocation(t *testing.T) {
 	// alter prevote so that the byzantine node double votes when height is 2
 	bcs.doPrevote = func(height int64, round int32) {
 		// allow first height to happen normally so that byzantine validator is no longer proposer
-		if height == prevoteHeight {
-			prevote1, err := bcs.signVote(cmtproto.PrevoteType, bcs.rs.ProposalBlock.Hash(), bcs.rs.ProposalBlockParts.Header(), nil)
-			require.NoError(t, err)
-			prevote2, err := bcs.signVote(cmtproto.PrevoteType, nil, types.PartSetHeader{}, nil)
-			require.NoError(t, err)
-			peerList := reactors[byzantineNode].Switch.Peers().List()
+		if height != prevoteHeight {
+			bcs.defaultDoPrevote(height, round)
+			return
+		}
+
+		prevote1, err := bcs.signVote(cmtproto.PrevoteType, bcs.rs.ProposalBlock.Hash(), bcs.rs.ProposalBlockParts.Header(), nil)
+		if !assert.NoError(t, err, "byzantine: failed to sign prevote1") {
+			return
+		}
+		prevote2, err := bcs.signVote(cmtproto.PrevoteType, nil, types.PartSetHeader{}, nil)
+		if !assert.NoError(t, err, "byzantine: failed to sign prevote2") {
+			return
+		}
+		peerList := reactors[byzantineNode].Switch.Peers().List()
+
+		// Off receiveRoutine, via assert not require: a require failure here
+		// would Goexit receiveRoutine without closing cs.done, hanging
+		// teardown later.
+		go func() {
 			// Wait for every peer to report reaching prevoteHeight before firing.
 			// State.addVote silently drops any vote whose height does not match the
 			// receiver's current cs.rs.Height (state.go: "Height mismatch is
@@ -213,10 +226,10 @@ func TestByzantinePrevoteEquivocation(t *testing.T) {
 			// are dropped and DuplicateVoteEvidence never forms. PeerState.PRS
 			// is updated when a peer broadcasts NewRoundStepMessage on entering
 			// a new height, so polling GetHeight() bounds this race.
-			require.Eventually(t, func() bool {
+			ok := assert.Eventually(t, func() bool {
 				for _, peer := range peerList {
-					ps, ok := peer.Get(types.PeerStateKey).(*PeerState)
-					if !ok {
+					ps, pok := peer.Get(types.PeerStateKey).(*PeerState)
+					if !pok {
 						return false
 					}
 					if ps.GetHeight() < height {
@@ -225,10 +238,13 @@ func TestByzantinePrevoteEquivocation(t *testing.T) {
 				}
 				return true
 			}, 10*time.Second, 20*time.Millisecond, "all peers should reach height %d before byzantine fires conflicting prevotes", height)
+			if !ok {
+				return
+			}
 			t.Logf("[byz] sending two conflicting prevotes at height=%d round=%d peerCount=%d", height, round, len(peerList))
 			for _, peer := range peerList {
-				ps, ok := peer.Get(types.PeerStateKey).(*PeerState)
-				if ok {
+				ps, pok := peer.Get(types.PeerStateKey).(*PeerState)
+				if pok {
 					t.Logf("[byz] peer=%s reported height=%d", peer.ID(), ps.GetHeight())
 				}
 			}
@@ -252,9 +268,7 @@ func TestByzantinePrevoteEquivocation(t *testing.T) {
 					t.Logf("[byz] send prevote to peer=%s hash=%X sent=%v", peer.ID(), v.BlockID.Hash, sent)
 				}
 			}
-		} else {
-			bcs.defaultDoPrevote(height, round)
-		}
+		}()
 	}
 
 	// introducing a lazy proposer means that the time of the block committed is different to the
@@ -284,7 +298,9 @@ func TestByzantinePrevoteEquivocation(t *testing.T) {
 		}
 
 		// omit the last signature in the commit
-		require.NotEmpty(t, extCommit.ExtendedSignatures)
+		if !assert.NotEmpty(t, extCommit.ExtendedSignatures, "lazyProposer: expected non-empty ExtendedSignatures") {
+			return
+		}
 		extCommit.ExtendedSignatures[len(extCommit.ExtendedSignatures)-1] = types.NewExtendedCommitSigAbsent()
 
 		if lazyProposer.privValidatorPubKey == nil {
@@ -297,9 +313,13 @@ func TestByzantinePrevoteEquivocation(t *testing.T) {
 
 		block, _, err := lazyProposer.blockExec.CreateProposalBlock(
 			ctx, lazyProposer.rs.Height, lazyProposer.state, extCommit, proposerAddr)
-		require.NoError(t, err)
+		if !assert.NoError(t, err, "lazyProposer: failed to create proposal block") {
+			return
+		}
 		blockParts, err := block.MakePartSet(types.BlockPartSizeBytes)
-		require.NoError(t, err)
+		if !assert.NoError(t, err, "lazyProposer: failed to make block part set") {
+			return
+		}
 
 		// Flush the WAL. Otherwise, we may not recompute the same proposal to sign,
 		// and the privValidator will refuse to sign anything.
