@@ -203,13 +203,11 @@ func TestByzantinePrevoteEquivocation(t *testing.T) {
 		}
 
 		prevote1, err := bcs.signVote(cmtproto.PrevoteType, bcs.rs.ProposalBlock.Hash(), bcs.rs.ProposalBlockParts.Header(), nil)
-		if err != nil {
-			t.Errorf("byzantine: failed to sign prevote1: %v", err)
+		if !assert.NoError(t, err, "byzantine: failed to sign prevote1") {
 			return
 		}
 		prevote2, err := bcs.signVote(cmtproto.PrevoteType, nil, types.PartSetHeader{}, nil)
-		if err != nil {
-			t.Errorf("byzantine: failed to sign prevote2: %v", err)
+		if !assert.NoError(t, err, "byzantine: failed to sign prevote2") {
 			return
 		}
 		peerList := reactors[byzantineNode].Switch.Peers().List()
@@ -300,8 +298,7 @@ func TestByzantinePrevoteEquivocation(t *testing.T) {
 		}
 
 		// omit the last signature in the commit
-		if len(extCommit.ExtendedSignatures) == 0 {
-			t.Errorf("lazyProposer: expected non-empty ExtendedSignatures")
+		if !assert.NotEmpty(t, extCommit.ExtendedSignatures, "lazyProposer: expected non-empty ExtendedSignatures") {
 			return
 		}
 		extCommit.ExtendedSignatures[len(extCommit.ExtendedSignatures)-1] = types.NewExtendedCommitSigAbsent()
@@ -316,13 +313,11 @@ func TestByzantinePrevoteEquivocation(t *testing.T) {
 
 		block, _, err := lazyProposer.blockExec.CreateProposalBlock(
 			ctx, lazyProposer.rs.Height, lazyProposer.state, extCommit, proposerAddr)
-		if err != nil {
-			t.Errorf("lazyProposer: failed to create proposal block: %v", err)
+		if !assert.NoError(t, err, "lazyProposer: failed to create proposal block") {
 			return
 		}
 		blockParts, err := block.MakePartSet(types.BlockPartSizeBytes)
-		if err != nil {
-			t.Errorf("lazyProposer: failed to make block part set: %v", err)
+		if !assert.NoError(t, err, "lazyProposer: failed to make block part set") {
 			return
 		}
 
