@@ -416,8 +416,15 @@ type RPCConfig struct {
 	// When saturated, excess heavy requests are rejected fast: the URI (GET)
 	// handler returns HTTP 503, the JSON-RPC and WebSocket paths return a
 	// JSON-RPC error, and gRPC returns ResourceExhausted; light endpoints are
-	// unaffected. This bounds how many heavy responses are built at once; it is
-	// not a hard byte cap (response serialization is not counted).
+	// unaffected.
+	//
+	// This is a request count, not a byte budget, so size it against RAM:
+	//   max_concurrent_heavy_requests * peak_response_bytes < spare_RAM
+	// peak_response_bytes is the largest single response the node serves; count
+	// serialization too, so roughly 2x the payload. Payload per heavy request:
+	// block/block_results/tx/proofs ~ one block; block_search ~ per_page blocks;
+	// unconfirmed_txs (limit=-1) ~ the mempool's max_txs_bytes. spare_RAM is
+	// total RAM minus the mempool, app state and OS; leave headroom.
 	// 0 - use the built-in default; negative - unlimited (not recommended).
 	MaxConcurrentHeavyRequests int `mapstructure:"max_concurrent_heavy_requests"`
 
