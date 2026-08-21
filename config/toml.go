@@ -185,6 +185,24 @@ unsafe = {{ .RPC.Unsafe }}
 # 1024 - 40 - 10 - 50 = 924 = ~900
 max_open_connections = {{ .RPC.MaxOpenConnections }}
 
+# Maximum number of "heavy" RPC responses (full blocks, block results, large
+# search sets) built concurrently across all connections and transports (HTTP
+# and gRPC share one budget). When saturated, excess heavy requests are rejected
+# fast: the URI (GET) handler returns HTTP 503, the JSON-RPC and WebSocket paths
+# return a JSON-RPC error, and gRPC returns ResourceExhausted; light endpoints
+# stay unaffected.
+#
+# This is a request count, not a byte budget, so size it against available RAM:
+#   max_concurrent_heavy_requests * peak_response_bytes < spare_RAM
+# peak_response_bytes is the largest single response the node serves; count
+# serialization too, so roughly 2x the payload. Payload per heavy request:
+#   - block / block_results / tx / proofs:  ~ one block (block max_bytes)
+#   - block_search:                          ~ per_page blocks
+#   - unconfirmed_txs (limit=-1):            ~ mempool max_txs_bytes
+# spare_RAM is total RAM minus the mempool, app state and OS; leave headroom.
+# 0 - use the built-in default; negative - unlimited (not recommended).
+max_concurrent_heavy_requests = {{ .RPC.MaxConcurrentHeavyRequests }}
+
 # Maximum number of unique clientIDs that can /subscribe
 # If you're using /broadcast_tx_commit, set to the estimated maximum number
 # of broadcast_tx_commit calls per block.

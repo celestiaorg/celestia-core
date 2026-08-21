@@ -3,6 +3,7 @@ package core
 import (
 	"encoding/base64"
 	"fmt"
+	"sync"
 	"time"
 
 	cfg "github.com/cometbft/cometbft/config"
@@ -93,6 +94,29 @@ type Environment struct {
 
 	// cache of chunked genesis data.
 	genChunks []string
+
+	// heavySem bounds concurrent "heavy" RPC responses, shared across all
+	// transports. Built once, lazily, via HeavySem.
+	heavySem     chan struct{}
+	heavySemOnce sync.Once
+}
+
+// HeavySem returns the process-wide semaphore bounding concurrent "heavy" RPC
+// responses, shared across all transports and memoized so every caller draws
+// from the same budget. A zero config value uses the built-in default; a
+// negative value disables the limit (nil semaphore == unlimited).
+func (env *Environment) HeavySem() chan struct{} {
+	env.heavySemOnce.Do(func() {
+		n := env.Config.MaxConcurrentHeavyRequests
+		if n == 0 {
+			n = cfg.DefaultMaxConcurrentHeavyRequests
+		}
+		if n < 0 {
+			return // leave heavySem nil == unlimited
+		}
+		env.heavySem = make(chan struct{}, n)
+	})
+	return env.heavySem
 }
 
 //----------------------------------------------
