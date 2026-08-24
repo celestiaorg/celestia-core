@@ -185,6 +185,20 @@ unsafe = {{ .RPC.Unsafe }}
 # 1024 - 40 - 10 - 50 = 924 = ~900
 max_open_connections = {{ .RPC.MaxOpenConnections }}
 
+# Maximum number of memory-intensive RPC requests processed concurrently.
+# Higher values increase RPC capacity but also increase peak memory usage.
+# For blocks up to 32 MiB, use this conservative starting point:
+#
+#   max_concurrent_heavy_requests = floor(available_RAM_GiB * 1.25)
+#
+# Use the RAM assigned to this node, not the host's total RAM when other
+# services share the machine. Example: 32 GiB  ->  40 requests.
+#
+# Monitor peak memory usage under RPC load and adjust if necessary.
+# 0 uses the built-in default of 20. A negative value disables the limit and is
+# not recommended.
+max_concurrent_heavy_requests = {{ .RPC.MaxConcurrentHeavyRequests }}
+
 # Maximum number of unique clientIDs that can /subscribe
 # If you're using /broadcast_tx_commit, set to the estimated maximum number
 # of broadcast_tx_commit calls per block.

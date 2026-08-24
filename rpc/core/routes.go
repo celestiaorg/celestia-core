@@ -10,6 +10,9 @@ type RoutesMap map[string]*rpc.RPCFunc
 
 // Routes is a map of available routes.
 func (env *Environment) GetRoutes() RoutesMap {
+	// heavy gates all large-response routes with a process-wide concurrency
+	// bound, shared with the equivalent gRPC endpoints (see the gRPC interceptors).
+	heavy := rpc.HeavyFn(env.HeavySem())
 	return RoutesMap{
 		// subscribe/unsubscribe are reserved for websocket events.
 		"subscribe":       rpc.NewWSRPCFunc(env.Subscribe, "query"),
@@ -23,21 +26,21 @@ func (env *Environment) GetRoutes() RoutesMap {
 		"blockchain":           rpc.NewRPCFunc(env.BlockchainInfo, "minHeight,maxHeight", rpc.Cacheable()),
 		"genesis":              rpc.NewRPCFunc(env.Genesis, "", rpc.Cacheable()),
 		"genesis_chunked":      rpc.NewRPCFunc(env.GenesisChunked, "chunk", rpc.Cacheable()),
-		"block":                rpc.NewRPCFunc(env.Block, "height", rpc.Cacheable("height")),
-		"block_by_hash":        rpc.NewRPCFunc(env.BlockByHash, "hash", rpc.Cacheable()),
-		"block_results":        rpc.NewRPCFunc(env.BlockResults, "height", rpc.Cacheable("height")),
+		"block":                rpc.NewRPCFunc(env.Block, "height", rpc.Cacheable("height"), heavy),
+		"block_by_hash":        rpc.NewRPCFunc(env.BlockByHash, "hash", rpc.Cacheable(), heavy),
+		"block_results":        rpc.NewRPCFunc(env.BlockResults, "height", rpc.Cacheable("height"), heavy),
 		"commit":               rpc.NewRPCFunc(env.Commit, "height", rpc.Cacheable("height")),
 		"header":               rpc.NewRPCFunc(env.Header, "height", rpc.Cacheable("height")),
 		"header_by_hash":       rpc.NewRPCFunc(env.HeaderByHash, "hash", rpc.Cacheable()),
 		"check_tx":             rpc.NewRPCFunc(env.CheckTx, "tx"),
-		"tx":                   rpc.NewRPCFunc(env.Tx, "hash,prove", rpc.Cacheable()),
-		"tx_search":            rpc.NewRPCFunc(env.TxSearch, "query,prove,page,per_page,order_by"),
-		"block_search":         rpc.NewRPCFunc(env.BlockSearch, "query,page,per_page,order_by"),
+		"tx":                   rpc.NewRPCFunc(env.Tx, "hash,prove", rpc.Cacheable(), heavy),
+		"tx_search":            rpc.NewRPCFunc(env.TxSearch, "query,prove,page,per_page,order_by", heavy),
+		"block_search":         rpc.NewRPCFunc(env.BlockSearch, "query,page,per_page,order_by", heavy),
 		"validators":           rpc.NewRPCFunc(env.Validators, "height,page,per_page", rpc.Cacheable("height")),
 		"dump_consensus_state": rpc.NewRPCFunc(env.DumpConsensusState, ""),
 		"consensus_state":      rpc.NewRPCFunc(env.GetConsensusState, ""),
 		"consensus_params":     rpc.NewRPCFunc(env.ConsensusParams, "height", rpc.Cacheable("height")),
-		"unconfirmed_txs":      rpc.NewRPCFunc(env.UnconfirmedTxs, "limit"),
+		"unconfirmed_txs":      rpc.NewRPCFunc(env.UnconfirmedTxs, "limit", heavy),
 		"num_unconfirmed_txs":  rpc.NewRPCFunc(env.NumUnconfirmedTxs, ""),
 
 		// tx broadcast API
@@ -53,11 +56,11 @@ func (env *Environment) GetRoutes() RoutesMap {
 		"broadcast_evidence": rpc.NewRPCFunc(env.BroadcastEvidence, "evidence"),
 
 		// celestia-specific API
-		"prove_shares":              rpc.NewRPCFunc(env.ProveShares, "height,startShare,endShare"),
-		"prove_shares_v2":           rpc.NewRPCFunc(env.ProveSharesV2, "height,startShare,endShare"),
-		"data_root_inclusion_proof": rpc.NewRPCFunc(env.DataRootInclusionProof, "height,start,end"),
-		"signed_block":              rpc.NewRPCFunc(env.SignedBlock, "height", rpc.Cacheable("height")),
-		"data_commitment":           rpc.NewRPCFunc(env.DataCommitment, "start,end"),
+		"prove_shares":              rpc.NewRPCFunc(env.ProveShares, "height,startShare,endShare", heavy),
+		"prove_shares_v2":           rpc.NewRPCFunc(env.ProveSharesV2, "height,startShare,endShare", heavy),
+		"data_root_inclusion_proof": rpc.NewRPCFunc(env.DataRootInclusionProof, "height,start,end", heavy),
+		"signed_block":              rpc.NewRPCFunc(env.SignedBlock, "height", rpc.Cacheable("height"), heavy),
+		"data_commitment":           rpc.NewRPCFunc(env.DataCommitment, "start,end", heavy),
 		"tx_status":                 rpc.NewRPCFunc(env.TxStatus, "hash"),
 		"tx_status_batch":           rpc.NewRPCFunc(env.TxStatusBatch, "hashes"),
 	}

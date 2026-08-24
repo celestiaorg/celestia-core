@@ -528,6 +528,14 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+        "503":
+          description: |
+            Service unavailable. The server's concurrent heavy-request limit
+            (max_concurrent_heavy_requests) is saturated. Retry with backoff.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
   /block_by_hash:
     get:
       summary: Get block by hash
@@ -560,6 +568,14 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+        "503":
+          description: |
+            Service unavailable. The server's concurrent heavy-request limit
+            (max_concurrent_heavy_requests) is saturated. Retry with backoff.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
   /block_results:
     get:
       summary: Get block results at a specified height
@@ -588,6 +604,14 @@ paths:
                 $ref: "#/components/schemas/BlockResultsResponse"
         "500":
           description: Error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "503":
+          description: |
+            Service unavailable. The server's concurrent heavy-request limit
+            (max_concurrent_heavy_requests) is saturated. Retry with backoff.
           content:
             application/json:
               schema:
@@ -846,6 +870,14 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+        "503":
+          description: |
+            Service unavailable. The server's concurrent heavy-request limit
+            (max_concurrent_heavy_requests) is saturated. Retry with backoff.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
   /num_unconfirmed_txs:
     get:
       summary: Get data about unconfirmed transactions
@@ -933,6 +965,14 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+        "503":
+          description: |
+            Service unavailable. The server's concurrent heavy-request limit
+            (max_concurrent_heavy_requests) is saturated. Retry with backoff.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
   /block_search:
     get:
       summary: Search for blocks by FinalizeBlock events
@@ -991,6 +1031,14 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+        "503":
+          description: |
+            Service unavailable. The server's concurrent heavy-request limit
+            (max_concurrent_heavy_requests) is saturated. Retry with backoff.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
 
   /tx:
     get:
@@ -1029,6 +1077,14 @@ paths:
                 $ref: "#/components/schemas/TxResponse"
         "500":
           description: Error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "503":
+          description: |
+            Service unavailable. The server's concurrent heavy-request limit
+            (max_concurrent_heavy_requests) is saturated. Retry with backoff.
           content:
             application/json:
               schema:

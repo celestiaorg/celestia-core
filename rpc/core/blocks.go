@@ -502,15 +502,19 @@ func (env *Environment) fetchDataRootTuples(start, end uint64) ([]DataRootTuple,
 
 	tuples := make([]DataRootTuple, 0, end-start)
 	for height := start; height < end; height++ {
+		// only the header's data root and height are needed
 		//nolint:gosec
-		block := env.BlockStore.LoadBlock(int64(height))
-		if block == nil {
-			return nil, fmt.Errorf("couldn't load block %d", height)
+		meta := env.BlockStore.LoadBlockMeta(int64(height))
+		if meta == nil {
+			return nil, fmt.Errorf("couldn't load block meta %d", height)
+		}
+		if len(meta.Header.DataHash) != 32 {
+			return nil, fmt.Errorf("unexpected data hash length %d at height %d", len(meta.Header.DataHash), height)
 		}
 		tuples = append(tuples, DataRootTuple{
 			//nolint:gosec
-			height:   uint64(block.Height),
-			dataRoot: *(*[32]byte)(block.DataHash),
+			height:   uint64(meta.Header.Height),
+			dataRoot: *(*[32]byte)(meta.Header.DataHash),
 		})
 	}
 	return tuples, nil
