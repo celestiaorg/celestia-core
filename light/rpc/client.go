@@ -241,6 +241,8 @@ func (c *Client) ConsensusParams(ctx context.Context, height *int64) (*ctypes.Re
 	// Bind the response to the requested height. Otherwise a malicious server
 	// could answer with authentic parameters from a different height, which
 	// would still pass the hash check below against that height's light block.
+	// A nil height means "latest", which has no specific height to bind to, so
+	// the response is only authenticated against its own reported height.
 	if height != nil && res.BlockHeight != *height {
 		return nil, fmt.Errorf("params height %d does not match requested height %d",
 			res.BlockHeight, *height)

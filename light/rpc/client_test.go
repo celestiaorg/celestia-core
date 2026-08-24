@@ -27,15 +27,15 @@ func (n nextClient) ConsensusParams(_ context.Context, _ *int64) (*ctypes.Result
 
 // A malicious primary can answer a ConsensusParams request for height H with
 // authentic parameters from a different height X. The response must be rejected
-// because it is not bound to the requested height.
+// on the height mismatch, before the params are authenticated against X's light
+// block (so VerifyLightBlockAtHeight is never reached).
 func TestConsensusParamsRejectsWrongHeightResponse(t *testing.T) {
 	const (
 		requestedHeight int64 = 100 // what the caller asks for
 		responseHeight  int64 = 1   // what the malicious primary answers with
 	)
 
-	// Authentic historical params from height X=1, with a hash distinct from the
-	// params the caller wants at height H=100.
+	// Authentic historical params from height X=1.
 	paramsX := types.DefaultConsensusParams()
 	paramsX.Block.MaxBytes = 1 * 1024 * 1024
 
@@ -44,16 +44,10 @@ func TestConsensusParamsRejectsWrongHeightResponse(t *testing.T) {
 		ConsensusParams: *paramsX,
 	}
 
-	// The light client honestly verifies the block at the server-chosen height X;
-	// its ConsensusHash legitimately commits to paramsX, so the hash check passes.
-	lightBlockX := &types.LightBlock{
-		SignedHeader: &types.SignedHeader{
-			Header: &types.Header{ConsensusHash: paramsX.Hash()},
-		},
-	}
+	// No light-client interaction is expected: the request is rejected before
+	// hash verification. A bare mock with no expectations would fail the test if
+	// any method were called.
 	lc := &mocks.LightClient{}
-	lc.On("VerifyLightBlockAtHeight", mock.Anything, responseHeight, mock.Anything).
-		Return(lightBlockX, nil)
 
 	c := NewClient(nextClient{res: res}, lc)
 
@@ -61,6 +55,7 @@ func TestConsensusParamsRejectsWrongHeightResponse(t *testing.T) {
 	_, err := c.ConsensusParams(context.Background(), &h)
 	require.Error(t, err, "wrapper accepted params from height %d for a request at height %d",
 		responseHeight, requestedHeight)
+	lc.AssertNotCalled(t, "VerifyLightBlockAtHeight")
 }
 
 // When the response height matches the requested height, verification succeeds.
