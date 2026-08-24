@@ -238,6 +238,13 @@ func (c *Client) ConsensusParams(ctx context.Context, height *int64) (*ctypes.Re
 	if res.BlockHeight <= 0 {
 		return nil, errNegOrZeroHeight
 	}
+	// Bind the response to the requested height. Otherwise a malicious server
+	// could answer with authentic parameters from a different height, which
+	// would still pass the hash check below against that height's light block.
+	if height != nil && res.BlockHeight != *height {
+		return nil, fmt.Errorf("params height %d does not match requested height %d",
+			res.BlockHeight, *height)
+	}
 
 	// Update the light client if we're behind.
 	l, err := c.updateLightClientIfNeededTo(ctx, &res.BlockHeight)

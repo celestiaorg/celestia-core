@@ -185,6 +185,10 @@ func (s *lightClientStateProvider) State(ctx context.Context, height uint64) (sm
 		return sm.State{}, fmt.Errorf("unable to fetch consensus parameters for height %v: %w",
 			nextLightBlock.Height, err)
 	}
+	if result.BlockHeight != currentLightBlock.Height {
+		return sm.State{}, fmt.Errorf("consensus parameters height %d does not match requested height %d",
+			result.BlockHeight, currentLightBlock.Height)
+	}
 	state.ConsensusParams = result.ConsensusParams
 	state.LastHeightConsensusParamsChanged = currentLightBlock.Height
 
