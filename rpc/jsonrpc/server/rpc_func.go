@@ -1,6 +1,7 @@
 package server
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
 	"reflect"
@@ -8,6 +9,11 @@ import (
 
 	"github.com/cometbft/cometbft/libs/log"
 )
+
+// errHeavyRequestLimit is returned when the concurrent heavy-request limit is
+// saturated so clients back off and retry. The URI handler surfaces it as HTTP
+// 503; the JSON-RPC and WebSocket paths return it as a JSON-RPC error.
+var errHeavyRequestLimit = errors.New("server busy: too many concurrent heavy RPC requests, retry later")
 
 // RegisterRPCFuncs adds a route for each function in the funcMap, as well as
 // general jsonrpc and websocket handlers for all functions. "result" is the
@@ -48,6 +54,17 @@ func Ws() Option {
 	}
 }
 
+// HeavyFn marks an RPC function as "heavy": one whose response can be large or
+// whose cost scales with chain data (a full block, all results for a height, an
+// unbounded search set). Heavy functions share the supplied semaphore so the
+// number of such responses built concurrently is bounded. A nil semaphore
+// disables the limit.
+func HeavyFn(sem chan struct{}) Option {
+	return func(r *RPCFunc) {
+		r.heavySem = sem
+	}
+}
+
 // RPCFunc contains the introspected type information for a function
 type RPCFunc struct {
 	f              reflect.Value          // underlying rpc function
@@ -57,6 +74,22 @@ type RPCFunc struct {
 	cacheable      bool                   // enable cache control
 	ws             bool                   // enable websocket communication
 	noCacheDefArgs map[string]interface{} // a lookup table of args that, if not supplied or are set to default values, cause us to not cache
+	heavySem       chan struct{}          // if non-nil, a shared semaphore bounding concurrent heavy responses
+}
+
+// tryAcquire does a non-blocking acquire of the heavy-request slot. Non-heavy
+// functions (nil semaphore) always admit with a no-op release; when the
+// semaphore is full it returns (false, nil) so the caller can reject.
+func (f *RPCFunc) tryAcquire() (admitted bool, release func()) {
+	if f.heavySem == nil {
+		return true, func() {}
+	}
+	select {
+	case f.heavySem <- struct{}{}:
+		return true, func() { <-f.heavySem }
+	default:
+		return false, nil
+	}
 }
 
 // NewRPCFunc wraps a function for introspection.

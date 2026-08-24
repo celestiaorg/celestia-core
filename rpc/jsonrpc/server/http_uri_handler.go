@@ -51,6 +51,19 @@ func makeHTTPHandler(rpcFunc *RPCFunc, logger log.Logger) func(http.ResponseWrit
 		}
 		args = append(args, fnArgs...)
 
+		// Bound concurrent heavy responses; reject fast when saturated. The slot
+		// is held until the response is fully written, since the large buffers
+		// live that long.
+		admitted, release := rpcFunc.tryAcquire()
+		if !admitted {
+			res := types.RPCInternalError(dummyID, errHeavyRequestLimit)
+			if wErr := WriteRPCResponseHTTPError(w, http.StatusServiceUnavailable, res); wErr != nil {
+				logger.Error("failed to write response", "err", wErr)
+			}
+			return
+		}
+		defer release()
+
 		returns := rpcFunc.f.Call(args)
 
 		logger.Trace("HTTPRestRPC", "method", r.URL.Path, "args", args, "returns", returns)

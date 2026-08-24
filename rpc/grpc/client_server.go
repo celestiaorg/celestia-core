@@ -33,7 +33,10 @@ type Config struct {
 //
 // Deprecated: A new gRPC API will be introduced after v0.38.
 func StartGRPCServer(env *core.Environment, ln net.Listener) error {
+	sem := env.HeavySem()
 	grpcServer := grpc.NewServer(
+		grpc.UnaryInterceptor(heavyUnaryInterceptor(sem)),
+		grpc.StreamInterceptor(heavyStreamInterceptor(sem)),
 		grpc.KeepaliveParams(keepalive.ServerParameters{
 			// Send a keepalive ping every 30s of inactivity.
 			Time: 30 * time.Second,
