@@ -222,6 +222,9 @@ func (memR *Reactor) GetChannels() []*p2p.ChannelDescriptor {
 		},
 	}
 
+	// Both channels below are sized to hold a maximum-size transaction, so
+	// both need the precheck: without it a peer could pack that budget with
+	// empty entries and amplify it into a much larger heap allocation.
 	return []*p2p.ChannelDescriptor{
 		{
 			ID:                  mempool.MempoolChannel,
@@ -229,6 +232,7 @@ func (memR *Reactor) GetChannels() []*p2p.ChannelDescriptor {
 			SendQueueCapacity:   10,
 			RecvMessageCapacity: txMsg.Size(),
 			MessageType:         &protomem.Message{},
+			RecvMessagePrecheck: validateMempoolBytes,
 		},
 		{
 			ID:                  MempoolDataChannel,
@@ -236,6 +240,7 @@ func (memR *Reactor) GetChannels() []*p2p.ChannelDescriptor {
 			SendQueueCapacity:   1000,
 			RecvMessageCapacity: txMsg.Size(),
 			MessageType:         &protomem.Message{},
+			RecvMessagePrecheck: validateMempoolBytes,
 		},
 		{
 			ID:                  MempoolWantsChannel,
