@@ -1737,7 +1737,7 @@ func (cs *State) enterPrecommit(height int64, round int32) {
 	// At this point, +2/3 prevoted for a particular block.
 
 	// If we're already locked on that block, precommit it, and update the LockedRound
-	if cs.rs.LockedBlock.HashesTo(blockID.Hash) {
+	if blockMatchesBlockID(cs.rs.LockedBlock, cs.rs.LockedBlockParts, blockID) {
 		logger.Debug("precommit step; +2/3 prevoted locked block; relocking")
 		cs.rs.LockedRound = round
 
@@ -1750,7 +1750,7 @@ func (cs *State) enterPrecommit(height int64, round int32) {
 	}
 
 	// If +2/3 prevoted for proposal block, stage and precommit it
-	if cs.rs.ProposalBlock.HashesTo(blockID.Hash) {
+	if blockMatchesBlockID(cs.rs.ProposalBlock, cs.rs.ProposalBlockParts, blockID) {
 		logger.Debug("precommit step; +2/3 prevoted proposal block; locking", "hash", blockID.Hash)
 
 		// Validate the block.
@@ -1770,7 +1770,7 @@ func (cs *State) enterPrecommit(height int64, round int32) {
 		return
 	}
 
-	// There was a polka in this round for a block we don't have.
+	// There was a polka in this round for a block (or a part set) we don't have.
 	// Fetch that block, unlock, and precommit nil.
 	// The +2/3 prevotes for this round is the POL for our unlock.
 	logger.Debug("precommit step; +2/3 prevotes for a block we do not have; voting nil", "block_id", blockID)
@@ -1867,11 +1867,7 @@ func (cs *State) enterCommit(height int64, commitRound int32) {
 	}
 
 	// If we don't have the block being committed, set up to get it.
-	//
-	// Both halves of the BlockID have to match. A block hash does not uniquely
-	// determine the serialized body, so a block that hashes to blockID.Hash is
-	// not necessarily the body the network committed to.
-	if !cs.rs.ProposalBlock.HashesTo(blockID.Hash) || !cs.rs.ProposalBlockParts.HasHeader(blockID.PartSetHeader) {
+	if !blockMatchesBlockID(cs.rs.ProposalBlock, cs.rs.ProposalBlockParts, blockID) {
 		if !cs.rs.ProposalBlockParts.HasHeader(blockID.PartSetHeader) {
 			logger.Info(
 				"commit is for a block we do not know about; set ProposalBlock=nil",
@@ -2407,7 +2403,7 @@ func (cs *State) handleCompleteProposal(blockHeight int64) {
 	prevotes := cs.rs.Votes.Prevotes(cs.rs.Round)
 	blockID, hasTwoThirds := prevotes.TwoThirdsMajority()
 	if hasTwoThirds && !blockID.IsZero() && (cs.rs.ValidRound < cs.rs.Round) {
-		if cs.rs.ProposalBlock.HashesTo(blockID.Hash) {
+		if blockMatchesBlockID(cs.rs.ProposalBlock, cs.rs.ProposalBlockParts, blockID) {
 			cs.Logger.Debug(
 				"updating valid block to new proposal block",
 				"valid_round", cs.rs.Round,
@@ -2645,7 +2641,7 @@ func (cs *State) addVote(vote *types.Vote, peerID p2p.ID) (added bool, err error
 			if (cs.rs.LockedBlock != nil) &&
 				(cs.rs.LockedRound < vote.Round) &&
 				(vote.Round <= cs.rs.Round) &&
-				!cs.rs.LockedBlock.HashesTo(blockID.Hash) {
+				!blockMatchesBlockID(cs.rs.LockedBlock, cs.rs.LockedBlockParts, blockID) {
 
 				cs.Logger.Debug("unlocking because of POL", "locked_round", cs.rs.LockedRound, "pol_round", vote.Round)
 
@@ -2661,8 +2657,8 @@ func (cs *State) addVote(vote *types.Vote, peerID p2p.ID) (added bool, err error
 			// Update Valid* if we can.
 			// NOTE: our proposal block may be nil or not what received a polka..
 			if len(blockID.Hash) != 0 && (cs.rs.ValidRound < vote.Round) && (vote.Round == cs.rs.Round) {
-				if cs.rs.ProposalBlock.HashesTo(blockID.Hash) &&
-					cs.rs.ProposalBlockParts.HasHeader(blockID.PartSetHeader) {
+				partsMatch := cs.rs.ProposalBlockParts.HasHeader(blockID.PartSetHeader)
+				if cs.rs.ProposalBlock.HashesTo(blockID.Hash) && partsMatch {
 					cs.Logger.Debug("updating valid block because of POL", "valid_round", cs.rs.ValidRound, "pol_round", vote.Round)
 					cs.rs.ValidRound = vote.Round
 					cs.rs.ValidBlock = cs.rs.ProposalBlock
@@ -2671,20 +2667,18 @@ func (cs *State) addVote(vote *types.Vote, peerID p2p.ID) (added bool, err error
 					cs.Logger.Debug(
 						"valid block we do not know about; set ProposalBlock=nil",
 						"proposal", log.NewLazyBlockHash(cs.rs.ProposalBlock),
+						"proposal_parts", cs.rs.ProposalBlockParts.Header(),
 						"block_id", blockID.Hash,
+						"block_id_parts", blockID.PartSetHeader,
 					)
 
 					// we're getting the wrong block
 					cs.rs.ProposalBlock = nil
 				}
 
-				if !cs.rs.ProposalBlockParts.HasHeader(blockID.PartSetHeader) {
-					// We are throwing away the parts collected so far, so any
-					// block decoded from them is stale. ProposalBlock may still
-					// hash to blockID.Hash while having been built from a
-					// different part set, so clear it explicitly rather than
-					// relying on the hash comparison above.
-					cs.rs.ProposalBlock = nil
+				if !partsMatch {
+					// The parts collected so far are not the polka's part set;
+					// throw them away and start collecting the polka's parts.
 					cs.rs.ProposalBlockParts = types.NewPartSetFromHeader(blockID.PartSetHeader, types.BlockPartSizeBytes)
 					psh := blockID.PartSetHeader
 					cs.propagator.AddCommitment(height, vote.Round, &psh)
@@ -3107,6 +3101,15 @@ func (cs *State) syncData() {
 			cs.peerMsgQueue <- msgInfo{&BlockPartMessage{h, r, part.Part}, ""}
 		}
 	}
+}
+
+// blockMatchesBlockID reports whether both halves of blockID match: block
+// hashes to blockID.Hash and parts carries blockID.PartSetHeader. A block hash
+// does not uniquely determine the serialized body, so hashing to blockID.Hash
+// alone is not proof that a (block, parts) pair is the body blockID refers to.
+// A nil block or part set never matches.
+func blockMatchesBlockID(block *types.Block, parts *types.PartSet, blockID types.BlockID) bool {
+	return block.HashesTo(blockID.Hash) && parts.HasHeader(blockID.PartSetHeader)
 }
 
 func (cs *State) lockAll() {

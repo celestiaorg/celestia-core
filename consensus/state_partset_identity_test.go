@@ -113,6 +113,161 @@ func TestPOLDoesNotPromoteBlockFromDifferentPartSet(t *testing.T) {
 	require.Equal(t, pol.PartSetHeader, cs.rs.ProposalBlockParts.Header())
 }
 
+// TestHandleCompleteProposalDoesNotPromoteBlockFromDifferentPartSet checks the
+// parts-arrive-after-polka path: when a completed proposal hashes to a
+// pre-existing POL but was built from a different part set, it must not be
+// recorded as the valid block.
+func TestHandleCompleteProposalDoesNotPromoteBlockFromDifferentPartSet(t *testing.T) {
+	cs, vss := randState(4)
+	height := cs.rs.Height
+
+	block, parts, err := cs.createProposalBlock(context.Background())
+	require.NoError(t, err)
+
+	alias := aliasBlock(t, block)
+	aliasParts, err := alias.MakePartSet(types.BlockPartSizeBytes)
+	require.NoError(t, err)
+	require.NotEqual(t, parts.Header(), aliasParts.Header())
+
+	// We hold a complete proposal built from our own part set, past the
+	// propose step so handleCompleteProposal only runs the Valid* update.
+	cs.rs.ProposalBlock = block
+	cs.rs.ProposalBlockParts = parts
+	cs.rs.Step = cstypes.RoundStepPrevote
+
+	// A polka for the aliased body already exists at this round; add the votes
+	// to the vote set directly so addVote's own defenses are not in play.
+	pol := types.BlockID{Hash: alias.Hash(), PartSetHeader: aliasParts.Header()}
+	for _, vote := range signVotes(cmtproto.PrevoteType, pol.Hash, pol.PartSetHeader, false, vss[1:]...) {
+		added, err := cs.rs.Votes.AddVote(vote, "peer", true)
+		require.NoError(t, err)
+		require.True(t, added)
+	}
+
+	cs.handleCompleteProposal(height)
+
+	require.EqualValues(t, -1, cs.rs.ValidRound)
+	require.Nil(t, cs.rs.ValidBlock)
+	require.Nil(t, cs.rs.ValidBlockParts)
+}
+
+// TestEnterPrecommitDoesNotLockBlockFromDifferentPartSet checks that a polka
+// for a block that hashes to our proposal but was built from a different part
+// set does not lock the proposal: the node must precommit nil, drop the
+// mismatched body, and start collecting the polka's part set.
+func TestEnterPrecommitDoesNotLockBlockFromDifferentPartSet(t *testing.T) {
+	cs, vss := randState(4)
+	height, round := cs.rs.Height, cs.rs.Round
+
+	block, parts, err := cs.createProposalBlock(context.Background())
+	require.NoError(t, err)
+
+	alias := aliasBlock(t, block)
+	aliasParts, err := alias.MakePartSet(types.BlockPartSizeBytes)
+	require.NoError(t, err)
+	require.NotEqual(t, parts.Header(), aliasParts.Header())
+
+	cs.rs.ProposalBlock = block
+	cs.rs.ProposalBlockParts = parts
+	cs.rs.Step = cstypes.RoundStepPrevote
+
+	pol := types.BlockID{Hash: alias.Hash(), PartSetHeader: aliasParts.Header()}
+	for _, vote := range signVotes(cmtproto.PrevoteType, pol.Hash, pol.PartSetHeader, false, vss[1:]...) {
+		added, err := cs.rs.Votes.AddVote(vote, "peer", true)
+		require.NoError(t, err)
+		require.True(t, added)
+	}
+
+	cs.lockAll()
+	cs.enterPrecommit(height, round)
+	cs.unlockAll()
+
+	require.Nil(t, cs.rs.LockedBlock,
+		"must not lock a block built from a different part set than the polka")
+	require.EqualValues(t, -1, cs.rs.LockedRound)
+	require.Nil(t, cs.rs.ProposalBlock)
+	require.Equal(t, pol.PartSetHeader, cs.rs.ProposalBlockParts.Header(),
+		"we must be collecting the polka's part set")
+}
+
+// TestEnterPrecommitDoesNotRelockBlockFromDifferentPartSet checks that a polka
+// for a block that hashes to our locked block but was built from a different
+// part set does not relock: relocking would keep a part set the precommit's
+// BlockID does not refer to.
+func TestEnterPrecommitDoesNotRelockBlockFromDifferentPartSet(t *testing.T) {
+	cs, vss := randState(4)
+	height, round := cs.rs.Height, cs.rs.Round
+
+	block, parts, err := cs.createProposalBlock(context.Background())
+	require.NoError(t, err)
+
+	alias := aliasBlock(t, block)
+	aliasParts, err := alias.MakePartSet(types.BlockPartSizeBytes)
+	require.NoError(t, err)
+	require.NotEqual(t, parts.Header(), aliasParts.Header())
+
+	// We are locked on the body built from our own part set.
+	cs.rs.LockedRound = round
+	cs.rs.LockedBlock = block
+	cs.rs.LockedBlockParts = parts
+	cs.rs.Step = cstypes.RoundStepPrevote
+
+	pol := types.BlockID{Hash: alias.Hash(), PartSetHeader: aliasParts.Header()}
+	for _, vote := range signVotes(cmtproto.PrevoteType, pol.Hash, pol.PartSetHeader, false, vss[1:]...) {
+		added, err := cs.rs.Votes.AddVote(vote, "peer", true)
+		require.NoError(t, err)
+		require.True(t, added)
+	}
+
+	cs.lockAll()
+	cs.enterPrecommit(height, round)
+	cs.unlockAll()
+
+	require.Nil(t, cs.rs.LockedBlock,
+		"must not stay locked on a block built from a different part set than the polka")
+	require.EqualValues(t, -1, cs.rs.LockedRound)
+	require.Equal(t, pol.PartSetHeader, cs.rs.ProposalBlockParts.Header(),
+		"we must be collecting the polka's part set")
+}
+
+// TestPOLUnlocksBlockFromDifferentPartSet checks that a later-round polka for
+// the same block hash but a different part set unlocks: the locked identity is
+// not the one the polka endorses, so staying locked would keep the node
+// prevoting a BlockID no polka backs.
+func TestPOLUnlocksBlockFromDifferentPartSet(t *testing.T) {
+	cs, vss := randState(4)
+
+	block, parts, err := cs.createProposalBlock(context.Background())
+	require.NoError(t, err)
+
+	alias := aliasBlock(t, block)
+	aliasParts, err := alias.MakePartSet(types.BlockPartSizeBytes)
+	require.NoError(t, err)
+	require.NotEqual(t, parts.Header(), aliasParts.Header())
+
+	// Locked in round 0 on the body built from our own part set; the node has
+	// since moved to round 1.
+	cs.rs.LockedRound = 0
+	cs.rs.LockedBlock = block
+	cs.rs.LockedBlockParts = parts
+	cs.rs.Round = 1
+
+	pol := types.BlockID{Hash: alias.Hash(), PartSetHeader: aliasParts.Header()}
+	for _, vs := range vss[1:] {
+		vs.Round = 1
+	}
+	for _, vote := range signVotes(cmtproto.PrevoteType, pol.Hash, pol.PartSetHeader, false, vss[1:]...) {
+		added, err := cs.addVote(vote, "peer")
+		require.NoError(t, err)
+		require.True(t, added)
+	}
+
+	require.Nil(t, cs.rs.LockedBlock,
+		"a POL for the same hash but a different part set must unlock")
+	require.EqualValues(t, -1, cs.rs.LockedRound)
+	require.Nil(t, cs.rs.LockedBlockParts)
+}
+
 // TestTryFinalizeCommitWaitsForCompletePartSet checks that tryFinalizeCommit
 // declines to finalize when the part set matches the commit but is not yet
 // complete. finalizeCommit would otherwise hand an incomplete part set to the
