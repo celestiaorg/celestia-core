@@ -1926,8 +1926,9 @@ func (cs *State) tryFinalizeCommit(height int64) {
 	// Hashing to blockID.Hash is not on its own enough to finalize: the part
 	// set we hold must also be the committed one, and it must be complete.
 	// finalizeCommit asserts both and panics otherwise, and the block store
-	// panics when handed an incomplete part set. Wait instead. Once the
-	// committed parts arrive, handleCompleteProposal calls back in here.
+	// panics when handed an incomplete part set. Wait instead: as the missing
+	// parts arrive, addProposalBlockPart decodes the block and calls back in
+	// here via handleCompleteProposal.
 	if !cs.rs.ProposalBlockParts.HasHeader(blockID.PartSetHeader) || !cs.rs.ProposalBlockParts.IsComplete() {
 		logger.Debug(
 			"failed attempt to finalize commit; we do not have the complete commit block parts",
