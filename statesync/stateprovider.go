@@ -183,7 +183,14 @@ func (s *lightClientStateProvider) State(ctx context.Context, height uint64) (sm
 	result, err := rpcclient.ConsensusParams(ctx, &currentLightBlock.Height)
 	if err != nil {
 		return sm.State{}, fmt.Errorf("unable to fetch consensus parameters for height %v: %w",
-			nextLightBlock.Height, err)
+			currentLightBlock.Height, err)
+	}
+	// Defense in depth: lightrpc.Client.ConsensusParams already binds the
+	// response to the requested height, but re-check here so a future client
+	// that skips that binding cannot poison the bootstrapped state.
+	if result.BlockHeight != currentLightBlock.Height {
+		return sm.State{}, fmt.Errorf("consensus parameters height %d does not match requested height %d",
+			result.BlockHeight, currentLightBlock.Height)
 	}
 	state.ConsensusParams = result.ConsensusParams
 	state.LastHeightConsensusParamsChanged = currentLightBlock.Height
