@@ -1893,6 +1893,12 @@ func (cs *State) enterCommit(height int64, commitRound int32) {
 	// determine the serialized body, so a block that hashes to blockID.Hash is
 	// not necessarily the body the network committed to.
 	if !cs.rs.ProposalBlock.HashesTo(blockID.Hash) || !cs.rs.ProposalBlockParts.HasHeader(blockID.PartSetHeader) {
+		// Whatever block we were holding was not built from the part set being
+		// committed, so it cannot be the block to finalize even if it happens
+		// to hash to blockID.Hash. Drop it before announcing the new round
+		// state and wait for the committed parts.
+		cs.rs.ProposalBlock = nil
+
 		if !cs.rs.ProposalBlockParts.HasHeader(blockID.PartSetHeader) {
 			logger.Info(
 				"commit is for a block we do not know about; set ProposalBlock=nil",
@@ -1912,11 +1918,6 @@ func (cs *State) enterCommit(height int64, commitRound int32) {
 
 			cs.evsw.FireEvent(types.EventValidBlock, &cs.rs)
 		}
-
-		// Whatever block we were holding was not built from the part set being
-		// committed, so it cannot be the block to finalize even if it happens
-		// to hash to blockID.Hash. Drop it and wait for the committed parts.
-		cs.rs.ProposalBlock = nil
 	}
 }
 
@@ -1948,8 +1949,9 @@ func (cs *State) tryFinalizeCommit(height int64) {
 	// Hashing to blockID.Hash is not on its own enough to finalize: the part
 	// set we hold must also be the committed one, and it must be complete.
 	// finalizeCommit asserts both and panics otherwise, and the block store
-	// panics when handed an incomplete part set. Wait instead. Once the
-	// committed parts arrive, handleCompleteProposal calls back in here.
+	// panics when handed an incomplete part set. Wait instead: as the missing
+	// parts arrive, addProposalBlockPart decodes the block and calls back in
+	// here via handleCompleteProposal.
 	if !cs.rs.ProposalBlockParts.HasHeader(blockID.PartSetHeader) || !cs.rs.ProposalBlockParts.IsComplete() {
 		logger.Debug(
 			"failed attempt to finalize commit; we do not have the complete commit block parts",
@@ -2603,13 +2605,15 @@ func (cs *State) addVote(vote *types.Vote, peerID p2p.ID) (added bool, err error
 			// Update Valid* if we can.
 			// NOTE: our proposal block may be nil or not what received a polka..
 			if len(blockID.Hash) != 0 && (cs.rs.ValidRound < vote.Round) && (vote.Round == cs.rs.Round) {
+				stateChanged := false
 				if cs.rs.ProposalBlock.HashesTo(blockID.Hash) &&
 					cs.rs.ProposalBlockParts.HasHeader(blockID.PartSetHeader) {
 					cs.Logger.Debug("updating valid block because of POL", "valid_round", cs.rs.ValidRound, "pol_round", vote.Round)
 					cs.rs.ValidRound = vote.Round
 					cs.rs.ValidBlock = cs.rs.ProposalBlock
 					cs.rs.ValidBlockParts = cs.rs.ProposalBlockParts
-				} else {
+					stateChanged = true
+				} else if cs.rs.ProposalBlock != nil {
 					cs.Logger.Debug(
 						"valid block we do not know about; set ProposalBlock=nil",
 						"proposal", log.NewLazyBlockHash(cs.rs.ProposalBlock),
@@ -2618,23 +2622,25 @@ func (cs *State) addVote(vote *types.Vote, peerID p2p.ID) (added bool, err error
 
 					// we're getting the wrong block
 					cs.rs.ProposalBlock = nil
+					stateChanged = true
 				}
 
 				if !cs.rs.ProposalBlockParts.HasHeader(blockID.PartSetHeader) {
-					// We are throwing away the parts collected so far, so any
-					// block decoded from them is stale. ProposalBlock may still
-					// hash to blockID.Hash while having been built from a
-					// different part set, so clear it explicitly rather than
-					// relying on the hash comparison above.
-					cs.rs.ProposalBlock = nil
 					cs.rs.ProposalBlockParts = types.NewPartSetFromHeader(blockID.PartSetHeader, types.BlockPartSizeBytes)
 					psh := blockID.PartSetHeader
 					cs.propagator.AddCommitment(height, vote.Round, &psh)
+					stateChanged = true
 				}
 
-				cs.evsw.FireEvent(types.EventValidBlock, &cs.rs)
-				if err := cs.eventBus.PublishEventValidBlock(cs.rs.RoundStateEvent()); err != nil {
-					return added, err
+				// When the polka names a part set we do not hold, ValidRound
+				// does not advance, so every later prevote of the round
+				// re-enters this block. Announce only for the vote that
+				// changed what we hold.
+				if stateChanged {
+					cs.evsw.FireEvent(types.EventValidBlock, &cs.rs)
+					if err := cs.eventBus.PublishEventValidBlock(cs.rs.RoundStateEvent()); err != nil {
+						return added, err
+					}
 				}
 			}
 		}

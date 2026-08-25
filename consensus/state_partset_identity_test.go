@@ -7,6 +7,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	cstypes "github.com/cometbft/cometbft/consensus/types"
+	cmtevents "github.com/cometbft/cometbft/libs/events"
 	cmtproto "github.com/cometbft/cometbft/proto/tendermint/types"
 	"github.com/cometbft/cometbft/types"
 )
@@ -262,6 +263,84 @@ func TestEnterCommitKeepsCommittedProposalOverAliasedLock(t *testing.T) {
 		"the proposal matches the commit, so the aliased lock must not replace it")
 	require.Same(t, proposalParts, cs.rs.ProposalBlockParts,
 		"the committed parts we were collecting must be kept")
+}
+
+// TestAliasedPolkaAnnouncesValidBlockOnce checks that a polka for a different
+// part set fires EventValidBlock only for the vote that changed our state.
+// Because the aliased case never advances ValidRound, every later prevote of
+// the round re-enters the update and would otherwise re-broadcast
+// NewValidBlock to every peer.
+func TestAliasedPolkaAnnouncesValidBlockOnce(t *testing.T) {
+	cs, vss := randState(4)
+	// randState leaves the stub for our own validator at height 0; sign with
+	// it too so a fourth prevote can arrive after the polka.
+	vss[0].Height = cs.rs.Height
+
+	block, parts, err := cs.createProposalBlock(context.Background())
+	require.NoError(t, err)
+
+	alias := aliasBlock(t, block)
+	aliasParts, err := alias.MakePartSet(types.BlockPartSizeBytes)
+	require.NoError(t, err)
+	require.NotEqual(t, parts.Header(), aliasParts.Header())
+
+	cs.rs.ProposalBlock = block
+	cs.rs.ProposalBlockParts = parts
+
+	fired := 0
+	require.NoError(t, cs.evsw.AddListenerForEvent("test", types.EventValidBlock,
+		func(cmtevents.EventData) { fired++ }))
+
+	pol := types.BlockID{Hash: alias.Hash(), PartSetHeader: aliasParts.Header()}
+	for i, vote := range signVotes(cmtproto.PrevoteType, pol.Hash, pol.PartSetHeader, false, vss...) {
+		added, err := cs.addVote(vote, "peer")
+		require.NoError(t, err)
+		require.True(t, added, "vote %d from validator %X", i, vote.ValidatorAddress)
+	}
+
+	require.Equal(t, 1, fired,
+		"only the prevote that crossed two thirds changed our state, so only it may announce")
+}
+
+// TestEnterCommitClearsStaleBlockBeforeAnnouncing checks that when enterCommit
+// drops a block that was not built from the committed part set, listeners of
+// EventValidBlock never observe the stale block paired with the freshly reset
+// part set.
+func TestEnterCommitClearsStaleBlockBeforeAnnouncing(t *testing.T) {
+	cs, vss := randState(4)
+	height, round := cs.rs.Height, cs.rs.Round
+
+	block, parts, err := cs.createProposalBlock(context.Background())
+	require.NoError(t, err)
+
+	alias := aliasBlock(t, block)
+	aliasParts, err := alias.MakePartSet(types.BlockPartSizeBytes)
+	require.NoError(t, err)
+	require.NotEqual(t, parts.Header(), aliasParts.Header())
+
+	cs.rs.ProposalBlock = block
+	cs.rs.ProposalBlockParts = parts
+
+	var observed *types.Block
+	fired := 0
+	require.NoError(t, cs.evsw.AddListenerForEvent("test", types.EventValidBlock,
+		func(data cmtevents.EventData) {
+			fired++
+			observed = data.(*cstypes.RoundState).ProposalBlock
+		}))
+
+	committed := types.BlockID{Hash: alias.Hash(), PartSetHeader: aliasParts.Header()}
+	for _, vote := range signVotes(cmtproto.PrecommitType, committed.Hash, committed.PartSetHeader, true, vss[1:]...) {
+		added, err := cs.rs.Votes.AddVote(vote, "peer", true)
+		require.NoError(t, err)
+		require.True(t, added)
+	}
+
+	require.NotPanics(t, func() { cs.enterCommit(height, round) })
+
+	require.Equal(t, 1, fired)
+	require.Nil(t, observed,
+		"the block we held was not built from the committed part set, so listeners must not see it")
 }
 
 // TestTryFinalizeCommitWaitsForCompletePartSet checks that tryFinalizeCommit
