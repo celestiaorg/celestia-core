@@ -4,10 +4,11 @@ import (
 	"context"
 	"testing"
 
+	"github.com/stretchr/testify/require"
+
 	cstypes "github.com/cometbft/cometbft/consensus/types"
 	cmtproto "github.com/cometbft/cometbft/proto/tendermint/types"
 	"github.com/cometbft/cometbft/types"
-	"github.com/stretchr/testify/require"
 )
 
 // aliasBlock returns a copy of block whose Data.SquareSize differs but whose
@@ -111,6 +112,156 @@ func TestPOLDoesNotPromoteBlockFromDifferentPartSet(t *testing.T) {
 	require.Nil(t, cs.rs.ValidBlockParts)
 	require.Nil(t, cs.rs.ProposalBlock)
 	require.Equal(t, pol.PartSetHeader, cs.rs.ProposalBlockParts.Header())
+}
+
+// TestHandleCompleteProposalDoesNotPromoteBlockFromDifferentPartSet checks
+// that a completed proposal is not recorded as the valid block when the polka
+// names the same hash but a different part set. This covers the case where the
+// polka accumulated before our parts completed, so the addVote path never saw
+// the two-thirds threshold cross.
+func TestHandleCompleteProposalDoesNotPromoteBlockFromDifferentPartSet(t *testing.T) {
+	cs, vss := randState(4)
+	height := cs.rs.Height
+
+	block, parts, err := cs.createProposalBlock(context.Background())
+	require.NoError(t, err)
+
+	alias := aliasBlock(t, block)
+	aliasParts, err := alias.MakePartSet(types.BlockPartSizeBytes)
+	require.NoError(t, err)
+	require.NotEqual(t, parts.Header(), aliasParts.Header())
+
+	cs.rs.ProposalBlock = block
+	cs.rs.ProposalBlockParts = parts
+	// Keep handleCompleteProposal from stepping into prevote or commit; only
+	// the Valid* update is under test.
+	cs.rs.Step = cstypes.RoundStepPrevote
+
+	pol := types.BlockID{Hash: alias.Hash(), PartSetHeader: aliasParts.Header()}
+	for _, vote := range signVotes(cmtproto.PrevoteType, pol.Hash, pol.PartSetHeader, false, vss[1:]...) {
+		added, err := cs.rs.Votes.AddVote(vote, "peer", true)
+		require.NoError(t, err)
+		require.True(t, added)
+	}
+
+	cs.handleCompleteProposal(height)
+
+	require.EqualValues(t, -1, cs.rs.ValidRound,
+		"the POL names a different part set, so our block must not become the valid block")
+	require.Nil(t, cs.rs.ValidBlock)
+	require.Nil(t, cs.rs.ValidBlockParts)
+}
+
+// TestEnterPrecommitDoesNotLockBlockFromDifferentPartSet checks that a polka
+// for the same hash but a different part set does not lock the proposal block:
+// precommitting the polka's BlockID while holding a different part set splits
+// later prevotes between two BlockIDs for one hash.
+func TestEnterPrecommitDoesNotLockBlockFromDifferentPartSet(t *testing.T) {
+	cs, vss := randState(4)
+	height, round := cs.rs.Height, cs.rs.Round
+
+	block, parts, err := cs.createProposalBlock(context.Background())
+	require.NoError(t, err)
+
+	alias := aliasBlock(t, block)
+	aliasParts, err := alias.MakePartSet(types.BlockPartSizeBytes)
+	require.NoError(t, err)
+	require.NotEqual(t, parts.Header(), aliasParts.Header())
+
+	cs.rs.ProposalBlock = block
+	cs.rs.ProposalBlockParts = parts
+
+	pol := types.BlockID{Hash: alias.Hash(), PartSetHeader: aliasParts.Header()}
+	for _, vote := range signVotes(cmtproto.PrevoteType, pol.Hash, pol.PartSetHeader, false, vss[1:]...) {
+		added, err := cs.rs.Votes.AddVote(vote, "peer", true)
+		require.NoError(t, err)
+		require.True(t, added)
+	}
+
+	cs.lockAll()
+	cs.enterPrecommit(height, round)
+	cs.unlockAll()
+
+	require.Nil(t, cs.rs.LockedBlock,
+		"the polka names a different part set, so our block must not be locked")
+	require.EqualValues(t, -1, cs.rs.LockedRound)
+	require.Equal(t, pol.PartSetHeader, cs.rs.ProposalBlockParts.Header(),
+		"we must be collecting the polka'd part set")
+}
+
+// TestEnterPrecommitDoesNotRelockBlockFromDifferentPartSet checks the relock
+// path the same way: a lock whose parts differ from the polka's part set must
+// be released, not renewed.
+func TestEnterPrecommitDoesNotRelockBlockFromDifferentPartSet(t *testing.T) {
+	cs, vss := randState(4)
+	height, round := cs.rs.Height, cs.rs.Round
+
+	block, parts, err := cs.createProposalBlock(context.Background())
+	require.NoError(t, err)
+
+	alias := aliasBlock(t, block)
+	aliasParts, err := alias.MakePartSet(types.BlockPartSizeBytes)
+	require.NoError(t, err)
+	require.NotEqual(t, parts.Header(), aliasParts.Header())
+
+	cs.rs.LockedRound = round
+	cs.rs.LockedBlock = block
+	cs.rs.LockedBlockParts = parts
+
+	pol := types.BlockID{Hash: alias.Hash(), PartSetHeader: aliasParts.Header()}
+	for _, vote := range signVotes(cmtproto.PrevoteType, pol.Hash, pol.PartSetHeader, false, vss[1:]...) {
+		added, err := cs.rs.Votes.AddVote(vote, "peer", true)
+		require.NoError(t, err)
+		require.True(t, added)
+	}
+
+	cs.lockAll()
+	cs.enterPrecommit(height, round)
+	cs.unlockAll()
+
+	require.Nil(t, cs.rs.LockedBlock,
+		"the polka names a different part set, so the lock must be released")
+	require.EqualValues(t, -1, cs.rs.LockedRound)
+}
+
+// TestEnterCommitKeepsCommittedProposalOverAliasedLock checks that a lock on an
+// aliased body does not clobber a proposal pair that matches the commit. Before
+// this was handled, the locked pair was promoted on the hash alone and the
+// guard below then discarded the committed parts we were collecting.
+func TestEnterCommitKeepsCommittedProposalOverAliasedLock(t *testing.T) {
+	cs, vss := randState(4)
+	height, round := cs.rs.Height, cs.rs.Round
+
+	block, parts, err := cs.createProposalBlock(context.Background())
+	require.NoError(t, err)
+
+	alias := aliasBlock(t, block)
+	aliasParts, err := alias.MakePartSet(types.BlockPartSizeBytes)
+	require.NoError(t, err)
+	require.NotEqual(t, parts.Header(), aliasParts.Header())
+
+	// We locked on the aliased body, but hold the committed block and are
+	// collecting the committed part set.
+	cs.rs.LockedRound = round
+	cs.rs.LockedBlock = alias
+	cs.rs.LockedBlockParts = aliasParts
+	cs.rs.ProposalBlock = block
+	proposalParts := types.NewPartSetFromHeader(parts.Header(), types.BlockPartSizeBytes)
+	cs.rs.ProposalBlockParts = proposalParts
+
+	committed := types.BlockID{Hash: block.Hash(), PartSetHeader: parts.Header()}
+	for _, vote := range signVotes(cmtproto.PrecommitType, committed.Hash, committed.PartSetHeader, true, vss[1:]...) {
+		added, err := cs.rs.Votes.AddVote(vote, "peer", true)
+		require.NoError(t, err)
+		require.True(t, added)
+	}
+
+	require.NotPanics(t, func() { cs.enterCommit(height, round) })
+
+	require.Same(t, block, cs.rs.ProposalBlock,
+		"the proposal matches the commit, so the aliased lock must not replace it")
+	require.Same(t, proposalParts, cs.rs.ProposalBlockParts,
+		"the committed parts we were collecting must be kept")
 }
 
 // TestTryFinalizeCommitWaitsForCompletePartSet checks that tryFinalizeCommit

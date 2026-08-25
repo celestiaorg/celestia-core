@@ -1750,8 +1750,12 @@ func (cs *State) enterPrecommit(height int64, round int32) {
 
 	// At this point, +2/3 prevoted for a particular block.
 
-	// If we're already locked on that block, precommit it, and update the LockedRound
-	if cs.rs.LockedBlock.HashesTo(blockID.Hash) {
+	// If we're already locked on that block, precommit it, and update the LockedRound.
+	// Both halves of the BlockID have to match: precommitting the polka's BlockID
+	// while holding a different part set would split later prevotes between two
+	// BlockIDs for the same hash.
+	if cs.rs.LockedBlock.HashesTo(blockID.Hash) &&
+		cs.rs.LockedBlockParts.HasHeader(blockID.PartSetHeader) {
 		logger.Debug("precommit step; +2/3 prevoted locked block; relocking")
 		cs.rs.LockedRound = round
 
@@ -1764,7 +1768,8 @@ func (cs *State) enterPrecommit(height int64, round int32) {
 	}
 
 	// If +2/3 prevoted for proposal block, stage and precommit it
-	if cs.rs.ProposalBlock.HashesTo(blockID.Hash) {
+	if cs.rs.ProposalBlock.HashesTo(blockID.Hash) &&
+		cs.rs.ProposalBlockParts.HasHeader(blockID.PartSetHeader) {
 		logger.Debug("precommit step; +2/3 prevoted proposal block; locking", "hash", blockID.Hash)
 
 		// Validate the block.
@@ -1872,9 +1877,11 @@ func (cs *State) enterCommit(height int64, commitRound int32) {
 	}
 
 	// The Locked* fields no longer matter.
-	// Move them over to ProposalBlock if they match the commit hash,
-	// otherwise they'll be cleared in updateToState.
-	if cs.rs.LockedBlock.HashesTo(blockID.Hash) {
+	// Move them over to ProposalBlock if they match the full commit BlockID,
+	// otherwise they'll be cleared in updateToState. Promoting on the hash
+	// alone could replace a proposal pair that matches the commit with a
+	// locked body built from a different part set.
+	if cs.rs.LockedBlock.HashesTo(blockID.Hash) && cs.rs.LockedBlockParts.HasHeader(blockID.PartSetHeader) {
 		logger.Debug("commit is for a locked block; set ProposalBlock=LockedBlock", "block_hash", blockID.Hash)
 		cs.rs.ProposalBlock = cs.rs.LockedBlock
 		cs.rs.ProposalBlockParts = cs.rs.LockedBlockParts
@@ -2351,7 +2358,8 @@ func (cs *State) handleCompleteProposal(blockHeight int64) {
 	prevotes := cs.rs.Votes.Prevotes(cs.rs.Round)
 	blockID, hasTwoThirds := prevotes.TwoThirdsMajority()
 	if hasTwoThirds && !blockID.IsZero() && (cs.rs.ValidRound < cs.rs.Round) {
-		if cs.rs.ProposalBlock.HashesTo(blockID.Hash) {
+		if cs.rs.ProposalBlock.HashesTo(blockID.Hash) &&
+			cs.rs.ProposalBlockParts.HasHeader(blockID.PartSetHeader) {
 			cs.Logger.Debug(
 				"updating valid block to new proposal block",
 				"valid_round", cs.rs.Round,
