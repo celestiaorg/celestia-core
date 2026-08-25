@@ -1858,9 +1858,11 @@ func (cs *State) enterCommit(height int64, commitRound int32) {
 	}
 
 	// The Locked* fields no longer matter.
-	// Move them over to ProposalBlock if they match the commit hash,
-	// otherwise they'll be cleared in updateToState.
-	if cs.rs.LockedBlock.HashesTo(blockID.Hash) {
+	// Move them over to ProposalBlock if they match the full commit BlockID,
+	// otherwise they'll be cleared in updateToState. Promoting on the hash
+	// alone could replace a proposal pair that matches the commit with a
+	// locked body built from a different part set.
+	if blockMatchesBlockID(cs.rs.LockedBlock, cs.rs.LockedBlockParts, blockID) {
 		logger.Debug("commit is for a locked block; set ProposalBlock=LockedBlock", "block_hash", blockID.Hash)
 		cs.rs.ProposalBlock = cs.rs.LockedBlock
 		cs.rs.ProposalBlockParts = cs.rs.LockedBlockParts
@@ -1868,6 +1870,12 @@ func (cs *State) enterCommit(height int64, commitRound int32) {
 
 	// If we don't have the block being committed, set up to get it.
 	if !blockMatchesBlockID(cs.rs.ProposalBlock, cs.rs.ProposalBlockParts, blockID) {
+		// Whatever block we were holding was not built from the part set being
+		// committed, so it cannot be the block to finalize even if it happens
+		// to hash to blockID.Hash. Drop it before announcing the new round
+		// state and wait for the committed parts.
+		cs.rs.ProposalBlock = nil
+
 		if !cs.rs.ProposalBlockParts.HasHeader(blockID.PartSetHeader) {
 			logger.Info(
 				"commit is for a block we do not know about; set ProposalBlock=nil",
@@ -1887,11 +1895,6 @@ func (cs *State) enterCommit(height int64, commitRound int32) {
 
 			cs.evsw.FireEvent(types.EventValidBlock, &cs.rs)
 		}
-
-		// Whatever block we were holding was not built from the part set being
-		// committed, so it cannot be the block to finalize even if it happens
-		// to hash to blockID.Hash. Drop it and wait for the committed parts.
-		cs.rs.ProposalBlock = nil
 	}
 }
 
@@ -2658,12 +2661,14 @@ func (cs *State) addVote(vote *types.Vote, peerID p2p.ID) (added bool, err error
 			// NOTE: our proposal block may be nil or not what received a polka..
 			if len(blockID.Hash) != 0 && (cs.rs.ValidRound < vote.Round) && (vote.Round == cs.rs.Round) {
 				partsMatch := cs.rs.ProposalBlockParts.HasHeader(blockID.PartSetHeader)
+				stateChanged := false
 				if cs.rs.ProposalBlock.HashesTo(blockID.Hash) && partsMatch {
 					cs.Logger.Debug("updating valid block because of POL", "valid_round", cs.rs.ValidRound, "pol_round", vote.Round)
 					cs.rs.ValidRound = vote.Round
 					cs.rs.ValidBlock = cs.rs.ProposalBlock
 					cs.rs.ValidBlockParts = cs.rs.ProposalBlockParts
-				} else {
+					stateChanged = true
+				} else if cs.rs.ProposalBlock != nil {
 					cs.Logger.Debug(
 						"valid block we do not know about; set ProposalBlock=nil",
 						"proposal", log.NewLazyBlockHash(cs.rs.ProposalBlock),
@@ -2674,6 +2679,7 @@ func (cs *State) addVote(vote *types.Vote, peerID p2p.ID) (added bool, err error
 
 					// we're getting the wrong block
 					cs.rs.ProposalBlock = nil
+					stateChanged = true
 				}
 
 				if !partsMatch {
@@ -2682,11 +2688,18 @@ func (cs *State) addVote(vote *types.Vote, peerID p2p.ID) (added bool, err error
 					cs.rs.ProposalBlockParts = types.NewPartSetFromHeader(blockID.PartSetHeader, types.BlockPartSizeBytes)
 					psh := blockID.PartSetHeader
 					cs.propagator.AddCommitment(height, vote.Round, &psh)
+					stateChanged = true
 				}
 
-				cs.evsw.FireEvent(types.EventValidBlock, &cs.rs)
-				if err := cs.eventBus.PublishEventValidBlock(cs.rs.RoundStateEvent()); err != nil {
-					return added, err
+				// When the polka names a part set we do not hold, ValidRound
+				// does not advance, so every later prevote of the round
+				// re-enters this block. Announce only for the vote that
+				// changed what we hold.
+				if stateChanged {
+					cs.evsw.FireEvent(types.EventValidBlock, &cs.rs)
+					if err := cs.eventBus.PublishEventValidBlock(cs.rs.RoundStateEvent()); err != nil {
+						return added, err
+					}
 				}
 			}
 		}
