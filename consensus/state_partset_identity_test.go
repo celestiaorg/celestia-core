@@ -83,6 +83,36 @@ func TestEnterCommitDropsBlockFromDifferentPartSet(t *testing.T) {
 	require.False(t, cs.rs.ProposalBlockParts.IsComplete())
 }
 
+// TestPOLDoesNotPromoteBlockFromDifferentPartSet checks that a proposal is not
+// recorded as the valid block unless both halves of its BlockID match the POL.
+func TestPOLDoesNotPromoteBlockFromDifferentPartSet(t *testing.T) {
+	cs, vss := randState(4)
+
+	block, parts, err := cs.createProposalBlock(context.Background())
+	require.NoError(t, err)
+
+	alias := aliasBlock(t, block)
+	aliasParts, err := alias.MakePartSet(types.BlockPartSizeBytes)
+	require.NoError(t, err)
+	require.NotEqual(t, parts.Header(), aliasParts.Header())
+
+	cs.rs.ProposalBlock = block
+	cs.rs.ProposalBlockParts = parts
+
+	pol := types.BlockID{Hash: alias.Hash(), PartSetHeader: aliasParts.Header()}
+	for _, vote := range signVotes(cmtproto.PrevoteType, pol.Hash, pol.PartSetHeader, false, vss[1:]...) {
+		added, err := cs.addVote(vote, "peer")
+		require.NoError(t, err)
+		require.True(t, added)
+	}
+
+	require.EqualValues(t, -1, cs.rs.ValidRound)
+	require.Nil(t, cs.rs.ValidBlock)
+	require.Nil(t, cs.rs.ValidBlockParts)
+	require.Nil(t, cs.rs.ProposalBlock)
+	require.Equal(t, pol.PartSetHeader, cs.rs.ProposalBlockParts.Header())
+}
+
 // TestTryFinalizeCommitWaitsForCompletePartSet checks that tryFinalizeCommit
 // declines to finalize when the part set matches the commit but is not yet
 // complete. finalizeCommit would otherwise hand an incomplete part set to the

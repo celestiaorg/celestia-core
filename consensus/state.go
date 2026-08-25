@@ -2595,7 +2595,8 @@ func (cs *State) addVote(vote *types.Vote, peerID p2p.ID) (added bool, err error
 			// Update Valid* if we can.
 			// NOTE: our proposal block may be nil or not what received a polka..
 			if len(blockID.Hash) != 0 && (cs.rs.ValidRound < vote.Round) && (vote.Round == cs.rs.Round) {
-				if cs.rs.ProposalBlock.HashesTo(blockID.Hash) {
+				if cs.rs.ProposalBlock.HashesTo(blockID.Hash) &&
+					cs.rs.ProposalBlockParts.HasHeader(blockID.PartSetHeader) {
 					cs.Logger.Debug("updating valid block because of POL", "valid_round", cs.rs.ValidRound, "pol_round", vote.Round)
 					cs.rs.ValidRound = vote.Round
 					cs.rs.ValidBlock = cs.rs.ProposalBlock
