@@ -1,6 +1,7 @@
 package p2p
 
 import (
+	"encoding/json"
 	"fmt"
 	golog "log"
 	"net"
@@ -47,6 +48,32 @@ func TestPeerBasic(t *testing.T) {
 	assert.True(p.IsPersistent())
 	assert.Equal(rp.Addr().DialString(), p.RemoteAddr().String())
 	assert.Equal(rp.ID(), p.ID())
+}
+
+// JSON-field loggers (e.g. the zerolog-backed logger celestia-app injects)
+// marshal log values with encoding/json, which ignores fmt.Stringer. Without a
+// MarshalJSON override, a peer renders as a dump of its exported fields
+// (`{"Data":{},"Logger":{"Logger":{}}}`) instead of anything identifying it.
+func TestPeerMarshalJSON(t *testing.T) {
+	rp := &remotePeer{PrivKey: ed25519.GenPrivKey(), Config: cfg}
+	rp.Start()
+	t.Cleanup(rp.Stop)
+
+	p, err := createOutboundPeerAndPerformHandshake(rp.Addr(), cfg, cmtconn.DefaultMConnConfig())
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		if err := p.CloseConn(); err != nil {
+			t.Error(err)
+		}
+	})
+
+	bz, err := json.Marshal(p)
+	require.NoError(t, err)
+
+	expected, err := json.Marshal(p.String())
+	require.NoError(t, err)
+	assert.Equal(t, string(expected), string(bz))
+	assert.Contains(t, string(bz), string(p.ID()))
 }
 
 func TestPeerSend(t *testing.T) {
