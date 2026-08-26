@@ -1,0 +1,24 @@
+syntax = "proto3";
+package tendermint.mempool;
+
+import "gogoproto/gogo.proto";
+
+option go_package = "github.com/cometbft/cometbft/proto/tendermint/mempool";
+
+// TxCountMessage is a stripped down view of Message used to count the
+// transaction entries a mempool message encodes before the full Message is
+// unmarshalled. Only the Txs oneof case is modelled; SeenTx and WantTx fall
+// through to the generated skip path and cost nothing.
+message TxCountMessage {
+  TxCountTxs txs = 1;
+}
+
+// TxCountTxs mirrors Txs, but each entry decodes into a zero-size NoTx rather
+// than a freshly allocated byte slice, so the entry count can be read off the
+// wire without the allocation that counting them via Txs would require.
+message TxCountTxs {
+  repeated bytes txs = 1 [
+    (gogoproto.customtype) = "NoTx",
+    (gogoproto.nullable) = false
+  ];
+}
