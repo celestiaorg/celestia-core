@@ -1,6 +1,7 @@
 package p2p
 
 import (
+	"encoding/json"
 	"fmt"
 	"net"
 	"sync/atomic"
@@ -190,6 +191,14 @@ func (p *peer) String() string {
 	}
 
 	return fmt.Sprintf("Peer{%v %v in}", p.mconn, p.ID())
+}
+
+// MarshalJSON renders the peer as its string form. JSON-field loggers marshal
+// log values with encoding/json, which ignores fmt.Stringer and would
+// otherwise dump the peer's exported fields ({"Data":{},"Logger":{...}}),
+// which identify nothing.
+func (p *peer) MarshalJSON() ([]byte, error) {
+	return json.Marshal(p.String())
 }
 
 //---------------------------------------------------
