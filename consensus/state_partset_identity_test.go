@@ -309,43 +309,6 @@ func TestEnterCommitKeepsCommittedProposalOverAliasedLock(t *testing.T) {
 		"the committed parts we were collecting must be kept")
 }
 
-// TestAliasedPolkaAnnouncesValidBlockOnce checks that a polka for a different
-// part set fires EventValidBlock only for the vote that changed our state.
-// Because the aliased case never advances ValidRound, every later prevote of
-// the round re-enters the update and would otherwise re-broadcast
-// NewValidBlock to every peer.
-func TestAliasedPolkaAnnouncesValidBlockOnce(t *testing.T) {
-	cs, vss := randState(4)
-	// randState leaves the stub for our own validator at height 0; sign with
-	// it too so a fourth prevote can arrive after the polka.
-	vss[0].Height = cs.rs.Height
-
-	block, parts, err := cs.createProposalBlock(context.Background())
-	require.NoError(t, err)
-
-	alias := aliasBlock(t, block)
-	aliasParts, err := alias.MakePartSet(types.BlockPartSizeBytes)
-	require.NoError(t, err)
-	require.NotEqual(t, parts.Header(), aliasParts.Header())
-
-	cs.rs.ProposalBlock = block
-	cs.rs.ProposalBlockParts = parts
-
-	fired := 0
-	require.NoError(t, cs.evsw.AddListenerForEvent("test", types.EventValidBlock,
-		func(cmtevents.EventData) { fired++ }))
-
-	pol := types.BlockID{Hash: alias.Hash(), PartSetHeader: aliasParts.Header()}
-	for i, vote := range signVotes(cmtproto.PrevoteType, pol.Hash, pol.PartSetHeader, false, vss...) {
-		added, err := cs.addVote(vote, "peer")
-		require.NoError(t, err)
-		require.True(t, added, "vote %d from validator %X", i, vote.ValidatorAddress)
-	}
-
-	require.Equal(t, 1, fired,
-		"only the prevote that crossed two thirds changed our state, so only it may announce")
-}
-
 // TestEnterCommitClearsStaleBlockBeforeAnnouncing checks that when enterCommit
 // drops a block that was not built from the committed part set, listeners of
 // EventValidBlock never observe the stale block paired with the freshly reset
@@ -414,4 +377,35 @@ func TestTryFinalizeCommitWaitsForCompletePartSet(t *testing.T) {
 	require.NotPanics(t, func() { cs.tryFinalizeCommit(height) })
 
 	require.Equal(t, height, cs.rs.Height, "must not have advanced past the height")
+}
+
+// TestPOLAnnouncesValidBlockWhenPartsAlreadyKnown covers the delayed-body path:
+// the proposal metadata has arrived so ProposalBlockParts already carries the
+// polka's part set header, but the body is still incomplete so ProposalBlock is
+// nil. Nothing about what we hold changes, yet subscribers still have to learn
+// about the polka: the reactor broadcasts NewValidBlock off this event, which is
+// how peers learn which parts to send us.
+func TestPOLAnnouncesValidBlockWhenPartsAlreadyKnown(t *testing.T) {
+	cs, vss := randState(4)
+
+	block, parts, err := cs.createProposalBlock(context.Background())
+	require.NoError(t, err)
+
+	// Proposal metadata arrived, body did not.
+	cs.rs.ProposalBlock = nil
+	cs.rs.ProposalBlockParts = types.NewPartSetFromHeader(parts.Header(), types.BlockPartSizeBytes)
+
+	fired := 0
+	require.NoError(t, cs.evsw.AddListenerForEvent("test", types.EventValidBlock,
+		func(cmtevents.EventData) { fired++ }))
+
+	pol := types.BlockID{Hash: block.Hash(), PartSetHeader: parts.Header()}
+	for _, vote := range signVotes(cmtproto.PrevoteType, pol.Hash, pol.PartSetHeader, false, vss[1:]...) {
+		added, err := cs.addVote(vote, "peer")
+		require.NoError(t, err)
+		require.True(t, added)
+	}
+
+	require.NotZero(t, fired,
+		"the polka has to be announced so peers learn which parts to send us")
 }

@@ -2662,13 +2662,11 @@ func (cs *State) addVote(vote *types.Vote, peerID p2p.ID) (added bool, err error
 			// NOTE: our proposal block may be nil or not what received a polka..
 			if len(blockID.Hash) != 0 && (cs.rs.ValidRound < vote.Round) && (vote.Round == cs.rs.Round) {
 				partsMatch := cs.rs.ProposalBlockParts.HasHeader(blockID.PartSetHeader)
-				stateChanged := false
 				if cs.rs.ProposalBlock.HashesTo(blockID.Hash) && partsMatch {
 					cs.Logger.Debug("updating valid block because of POL", "valid_round", cs.rs.ValidRound, "pol_round", vote.Round)
 					cs.rs.ValidRound = vote.Round
 					cs.rs.ValidBlock = cs.rs.ProposalBlock
 					cs.rs.ValidBlockParts = cs.rs.ProposalBlockParts
-					stateChanged = true
 				} else if cs.rs.ProposalBlock != nil {
 					cs.Logger.Debug(
 						"valid block we do not know about; set ProposalBlock=nil",
@@ -2680,7 +2678,6 @@ func (cs *State) addVote(vote *types.Vote, peerID p2p.ID) (added bool, err error
 
 					// we're getting the wrong block
 					cs.rs.ProposalBlock = nil
-					stateChanged = true
 				}
 
 				if !partsMatch {
@@ -2689,18 +2686,14 @@ func (cs *State) addVote(vote *types.Vote, peerID p2p.ID) (added bool, err error
 					cs.rs.ProposalBlockParts = types.NewPartSetFromHeader(blockID.PartSetHeader, types.BlockPartSizeBytes)
 					psh := blockID.PartSetHeader
 					cs.propagator.AddCommitment(height, vote.Round, &psh)
-					stateChanged = true
 				}
 
-				// When the polka names a part set we do not hold, ValidRound
-				// does not advance, so every later prevote of the round
-				// re-enters this block. Announce only for the vote that
-				// changed what we hold.
-				if stateChanged {
-					cs.evsw.FireEvent(types.EventValidBlock, &cs.rs)
-					if err := cs.eventBus.PublishEventValidBlock(cs.rs.RoundStateEvent()); err != nil {
-						return added, err
-					}
+				// Announce unconditionally, as before this change: the reactor
+				// broadcasts NewValidBlock off this event, and comet relies on
+				// the repetition to make progress.
+				cs.evsw.FireEvent(types.EventValidBlock, &cs.rs)
+				if err := cs.eventBus.PublishEventValidBlock(cs.rs.RoundStateEvent()); err != nil {
+					return added, err
 				}
 			}
 		}
