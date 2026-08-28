@@ -3117,11 +3117,10 @@ func (cs *State) syncData() {
 	}
 }
 
-// blockMatchesBlockID reports whether both halves of blockID match: block
-// hashes to blockID.Hash and parts carries blockID.PartSetHeader. A block hash
-// does not uniquely determine the serialized body, so hashing to blockID.Hash
-// alone is not proof that a (block, parts) pair is the body blockID refers to.
-// A nil block or part set never matches.
+// blockMatchesBlockID reports whether block hashes to blockID.Hash and parts
+// carries blockID.PartSetHeader; a nil block or part set never matches. Both
+// halves are checked because a hash alone does not uniquely determine the
+// serialized body.
 func blockMatchesBlockID(block *types.Block, parts *types.PartSet, blockID types.BlockID) bool {
 	return block.HashesTo(blockID.Hash) && parts.HasHeader(blockID.PartSetHeader)
 }
