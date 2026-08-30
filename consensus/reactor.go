@@ -168,10 +168,19 @@ conR:
 %+v`, err, conR.conS, conR))
 	}
 	conR.propagator.StartProcessing()
-	conR.propagator.SetProposer(state.Validators.GetProposer().PubKey)
+	conR.initPropagation()
+}
+
+// initPropagation installs the round state into the propagator. After WAL
+// replay the round-state validator set has been advanced to the replayed
+// round, so GetProposer returns the proposer for that round rather than the
+// round-0 proposer from the committed state.
+func (conR *Reactor) initPropagation() {
 	conR.conS.rsMtx.RLock()
-	conR.propagator.SetHeightAndRound(conR.conS.rs.Height, conR.conS.rs.Round)
+	height, round := conR.conS.rs.Height, conR.conS.rs.Round
+	proposer := conR.conS.rs.Validators.GetProposer()
 	conR.conS.rsMtx.RUnlock()
+	conR.propagator.SetConsensusState(height, round, proposer.PubKey)
 }
 
 // GetChannels implements Reactor

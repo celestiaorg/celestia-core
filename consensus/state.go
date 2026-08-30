@@ -1032,7 +1032,12 @@ func (cs *State) handleMsg(mi msgInfo) {
 	case *ProposalMessage:
 		// will not cause transition.
 		// once proposal is set, we can receive block parts
-		_ = cs.setProposal(msg.Proposal)
+		if err := cs.setProposal(msg.Proposal); isProposalRejection(err) {
+			// the proposal can never be accepted at this height and round:
+			// evict it from propagation so it stops being gossiped and a
+			// replacement proposal can be accepted.
+			cs.propagator.EvictProposal(msg.Proposal.Height, msg.Proposal.Round)
+		}
 
 	case *BlockPartMessage:
 		// if the proposal is complete, we'll enterPrevote or tryFinalizeCommit
@@ -1239,10 +1244,10 @@ func (cs *State) enterNewRound(height int64, round int32) {
 		cs.Logger.Error("failed publishing new round", "err", err)
 	}
 
-	cs.propagator.SetHeightAndRound(height, round)
-	proposer := cs.rs.Validators.GetProposer()
-	if proposer != nil {
-		cs.propagator.SetProposer(proposer.PubKey)
+	if proposer := cs.rs.Validators.GetProposer(); proposer != nil {
+		cs.propagator.SetConsensusState(height, round, proposer.PubKey)
+	} else {
+		cs.propagator.SetHeightAndRound(height, round)
 	}
 
 	// Wait for txs to be available in the mempool
@@ -2271,6 +2276,15 @@ func (cs *State) defaultSetProposal(proposal *types.Proposal) error {
 	cs.Logger.Info("received proposal", "proposal", proposal, "proposer", pubKey.Address())
 	schema.WriteFullBlockReceivingTime(cs.traceClient, proposal.Height, proposal.Round, time.Now(), false)
 	return nil
+}
+
+// isProposalRejection reports whether setProposal failed because the proposal
+// can never be accepted at its height and round, as opposed to routine
+// mismatches such as a proposal for a height or round we already moved past.
+func isProposalRejection(err error) bool {
+	return errors.Is(err, ErrInvalidProposalSignature) ||
+		errors.Is(err, ErrInvalidProposalPOLRound) ||
+		errors.Is(err, ErrProposalTooManyParts)
 }
 
 // NOTE: block is not necessarily valid.
