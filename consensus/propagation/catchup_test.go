@@ -27,7 +27,7 @@ func TestGapCatchup(t *testing.T) {
 	prop, ps, _, metaData := createTestProposal(t, sm, pv, 1, 0, 2, 1000000)
 	cb, parityBlock := createCompactBlock(t, prop, ps, metaData)
 
-	added := n1.AddProposal(cb)
+	added, _ := n1.AddProposal(cb)
 	require.True(t, added)
 
 	_, parts, _, has := n1.getAllState(prop.Height, prop.Round, true)
@@ -201,7 +201,7 @@ func TestApplyCachedProposalIfAvailable(t *testing.T) {
 	// Setup height 1 for all nodes - use testCompactBlock for proper signing
 	cb1, ps1, parityBlock1, _ := testCompactBlock(t, sm, pv, 1, 0)
 	for _, r := range reactors {
-		added := r.AddProposal(cb1)
+		added, _ := r.AddProposal(cb1)
 		require.True(t, added)
 	}
 	_, parts1, _, _ := n1.getAllState(1, 0, true)
@@ -217,11 +217,11 @@ func TestApplyCachedProposalIfAvailable(t *testing.T) {
 	cb2, ps2, parityBlock2, _ := testCompactBlock(t, sm, pv, 2, 0)
 
 	// n1 and n2 process height 2
-	added := n1.AddProposal(cb2)
+	added, _ := n1.AddProposal(cb2)
 	require.True(t, added)
 	_, parts2, _, _ := n1.getAllState(2, 0, true)
 	parts2.SetProposalData(ps2, parityBlock2)
-	added = n2.AddProposal(cb2)
+	added, _ = n2.AddProposal(cb2)
 	require.True(t, added)
 
 	// n3 receives height 2 proposal while still at height 1 - should cache it

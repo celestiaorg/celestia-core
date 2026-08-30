@@ -6,6 +6,7 @@ import (
 	proptypes "github.com/cometbft/cometbft/consensus/propagation/types"
 	"github.com/cometbft/cometbft/libs/bits"
 	"github.com/cometbft/cometbft/libs/sync"
+	"github.com/cometbft/cometbft/p2p"
 	"github.com/cometbft/cometbft/store"
 	"github.com/cometbft/cometbft/types"
 )
@@ -15,12 +16,33 @@ type proposalData struct {
 	block        *proptypes.CombinedPartSet
 	maxRequests  *bits.BitArray
 	catchup      bool
+	// commitmentBacked marks entries created from a +2/3 commitment
+	// (AddCommitment). Their part-set header is canonical, so they are never
+	// evicted on identity conflicts.
+	commitmentBacked bool
+	// conflictPeers tracks peers whose haves or parts failed hash validation
+	// against this entry, used to recover from a pinned wrong identity.
+	conflictPeers map[p2p.ID]struct{}
+}
+
+// matchesIdentity reports whether the compact block refers to the same block
+// as this entry. Commitment placeholders only know the part-set header, so
+// they match on it alone.
+func (pd *proposalData) matchesIdentity(cb *proptypes.CompactBlock) bool {
+	if pd.commitmentBacked {
+		return pd.block.Original().Header().Equals(cb.Proposal.BlockID.PartSetHeader)
+	}
+	return pd.compactBlock.Proposal.BlockID.Equals(cb.Proposal.BlockID)
 }
 
 type ProposalCache struct {
 	store     *store.BlockStore
 	pmtx      *sync.Mutex
 	proposals map[int64]map[int32]*proposalData
+
+	// rejected quarantines proposal identities that were evicted at a given
+	// height and round so they are not re-added, keyed by types.BlockID.Key().
+	rejected map[int64]map[int32]map[string]bool
 
 	// height the height we're trying to get consensus on.
 	// the last committed height is height-1.
@@ -36,6 +58,7 @@ func NewProposalCache(bs *store.BlockStore) *ProposalCache {
 	pc := &ProposalCache{
 		pmtx:      &mtx,
 		proposals: make(map[int64]map[int32]*proposalData),
+		rejected:  make(map[int64]map[int32]map[string]bool),
 		store:     bs,
 	}
 
@@ -56,19 +79,26 @@ func (p *ProposalCache) setCurrentProposalPartsCount(limit int64) {
 	p.currentProposalPartsCount.Store(limit)
 }
 
-func (p *ProposalCache) AddProposal(cb *proptypes.CompactBlock) (added bool) {
+// AddProposal caches the compact block. added reports whether it was stored.
+// conflict reports that an entry with a different identity already exists at
+// that height and round, or that this identity was evicted there.
+func (p *ProposalCache) AddProposal(cb *proptypes.CompactBlock) (added, conflict bool) {
 	p.pmtx.Lock()
 	defer p.pmtx.Unlock()
 
 	if !p.relevant(cb.Proposal.Height, cb.Proposal.Round) {
-		return false
+		return false, false
+	}
+
+	if p.rejected[cb.Proposal.Height][cb.Proposal.Round][cb.Proposal.BlockID.Key()] {
+		return false, true
 	}
 
 	if p.proposals[cb.Proposal.Height] == nil {
 		p.proposals[cb.Proposal.Height] = make(map[int32]*proposalData)
 	}
-	if p.proposals[cb.Proposal.Height][cb.Proposal.Round] != nil {
-		return false
+	if existing := p.proposals[cb.Proposal.Height][cb.Proposal.Round]; existing != nil {
+		return false, !existing.matchesIdentity(cb)
 	}
 
 	p.height = cb.Proposal.Height
@@ -82,6 +112,33 @@ func (p *ProposalCache) AddProposal(cb *proptypes.CompactBlock) (added bool) {
 	}
 
 	p.setCurrentProposalPartsCount(int64(block.Total()))
+	return true, false
+}
+
+// markRejected quarantines a proposal identity at a height and round. The
+// caller must hold pmtx.
+func (p *ProposalCache) markRejected(height int64, round int32, blockID types.BlockID) {
+	if p.rejected[height] == nil {
+		p.rejected[height] = make(map[int32]map[string]bool)
+	}
+	if p.rejected[height][round] == nil {
+		p.rejected[height][round] = make(map[string]bool)
+	}
+	p.rejected[height][round][blockID.Key()] = true
+}
+
+// evict removes the proposal at the given height and round and quarantines
+// its identity so it cannot be re-added. Commitment-backed entries are never
+// evicted. Returns true if an entry was removed.
+func (p *ProposalCache) evict(height int64, round int32) bool {
+	p.pmtx.Lock()
+	defer p.pmtx.Unlock()
+	entry := p.proposals[height][round]
+	if entry == nil || entry.commitmentBacked {
+		return false
+	}
+	p.markRejected(height, round, entry.compactBlock.Proposal.BlockID)
+	delete(p.proposals[height], round)
 	return true
 }
 
@@ -254,6 +311,11 @@ func (p *ProposalCache) prune(pruneHeight int64) {
 	for height := range p.proposals {
 		if height < pruneHeight {
 			delete(p.proposals, height)
+		}
+	}
+	for height := range p.rejected {
+		if height < pruneHeight {
+			delete(p.rejected, height)
 		}
 	}
 }

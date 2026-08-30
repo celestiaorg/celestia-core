@@ -50,6 +50,8 @@ type Reactor struct {
 	// ProposalCache temporarily stores recently active proposals and their
 	// block data for gossiping.
 	*ProposalCache
+	// currentProposer is guarded by the ProposalCache's pmtx so that the
+	// proposer, height, and round are always observed together.
 	currentProposer crypto.PubKey
 
 	privval       types.PrivValidator
@@ -309,22 +311,23 @@ func (blockProp *Reactor) Prune(committedHeight int64) {
 }
 
 func (blockProp *Reactor) SetProposer(proposer crypto.PubKey) {
-	blockProp.mtx.Lock()
+	blockProp.pmtx.Lock()
 	blockProp.currentProposer = proposer
-	blockProp.mtx.Unlock()
+	blockProp.pmtx.Unlock()
 
 	// Check for cached proposals for the current height.
 	// This enables fast catchup when a node falls behind and misses proposals.
 	blockProp.applyCachedProposalIfAvailable()
 }
 
-func (blockProp *Reactor) SetHeightAndRound(height int64, round int32) {
+// setHeightAndRoundLocked installs the height and round. The caller must hold
+// pmtx.
+func (blockProp *Reactor) setHeightAndRoundLocked(height int64, round int32) {
 	committedHeight := int64(0)
 	if blockProp.store != nil {
 		committedHeight = blockProp.store.Height()
 	}
 
-	blockProp.pmtx.Lock()
 	prevHeight := blockProp.height
 	blockProp.round = round
 	blockProp.height = height
@@ -338,6 +341,11 @@ func (blockProp *Reactor) SetHeightAndRound(height int64, round int32) {
 			}
 		}
 	}
+}
+
+func (blockProp *Reactor) SetHeightAndRound(height int64, round int32) {
+	blockProp.pmtx.Lock()
+	blockProp.setHeightAndRoundLocked(height, round)
 	blockProp.pmtx.Unlock()
 
 	blockProp.ResetRequestCounts()
@@ -348,6 +356,31 @@ func (blockProp *Reactor) SetHeightAndRound(height int64, round int32) {
 	// This handles the case where we advance to a new round and have a cached
 	// proposal for that round waiting to be applied.
 	blockProp.applyCachedProposalIfAvailable()
+}
+
+// SetConsensusState installs the height, round, and proposer atomically, then
+// replays any cached proposal once against the complete state.
+func (blockProp *Reactor) SetConsensusState(height int64, round int32, proposer crypto.PubKey) {
+	blockProp.pmtx.Lock()
+	blockProp.currentProposer = proposer
+	blockProp.setHeightAndRoundLocked(height, round)
+	blockProp.pmtx.Unlock()
+
+	blockProp.ResetRequestCounts()
+	blockProp.applyCachedProposalIfAvailable()
+}
+
+// EvictProposal removes a proposal that consensus rejected and clears the
+// per-peer part state bound to it so a replacement proposal at the same
+// height and round can be accepted and downloaded.
+func (blockProp *Reactor) EvictProposal(height int64, round int32) {
+	if !blockProp.evict(height, round) {
+		return
+	}
+	blockProp.Logger.Info("evicted rejected proposal", "height", height, "round", round)
+	for _, peer := range blockProp.getPeers() {
+		peer.DeleteRound(height, round)
+	}
 }
 
 func (blockProp *Reactor) ResetRequestCounts() {

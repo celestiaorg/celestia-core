@@ -56,6 +56,7 @@ func (blockProp *Reactor) handleHaves(peer p2p.ID, haves *proptypes.HaveParts) {
 	err := haves.ValidatePartHashes(cb.PartsHashes)
 	if err != nil {
 		blockProp.Logger.Error("received invalid have part", "height", haves.Height, "round", haves.Round, "err", err)
+		blockProp.recordIdentityConflict(peer, height, round)
 		//blockProp.Switch.StopPeerForError(p.peer, err, blockProp.String())
 		return
 	}
@@ -368,6 +369,13 @@ func (blockProp *Reactor) handleWants(peer p2p.ID, wants *proptypes.WantParts) {
 	// the peer must always send the proposal before sending parts, if they did
 	//  not, this node must disconnect from them.
 	if !has {
+		// Wants and compact blocks travel on different channels: a Want for
+		// the current height can arrive moments before the compact block.
+		// Retain it and service it once the proposal arrives.
+		if blockProp.retainEarlyWant(p, wants) {
+			blockProp.Logger.Debug("retained want for proposal not yet received", "peer", peer, "height", height, "round", round)
+			return
+		}
 		blockProp.Logger.Debug("received part state request for unknown proposal", "peer", peer, "height", height, "round", round)
 		// blockProp.Switch.StopPeerForError(p.peer, errors.New("received want part for unknown proposal"))
 		return
@@ -477,10 +485,16 @@ func (blockProp *Reactor) handleRecoveryPart(peer p2p.ID, part *proptypes.Recove
 	added, err := parts.AddPart(part, *proof)
 	if err != nil {
 		blockProp.Logger.Error("failed to add part to part set", "peer", peer, "height", part.Height, "round", part.Round, "part", part.Index, "error", err)
+		if peer != blockProp.self {
+			blockProp.recordIdentityConflict(peer, part.Height, part.Round)
+		}
 		return
 	}
 
 	if p := blockProp.getPeer(peer); p != nil {
+		// the peer answered a request for this height, so it is not an
+		// unavailable catch-up peer.
+		p.ResetCatchupAttempts(part.Height)
 		// avoid blocking if a single peer is backed up. This means that they
 		// are sending us too many parts
 		select {
@@ -587,6 +601,58 @@ func (blockProp *Reactor) handleRecoveryPart(peer p2p.ID, part *proptypes.Recove
 		}(part.Height, part.Round, parts)
 
 		return
+	}
+}
+
+// IdentityConflictThreshold is the number of distinct peers whose haves or
+// parts must conflict with a pinned proposal before it is evicted.
+const IdentityConflictThreshold = 3
+
+// recordIdentityConflict notes that a peer's haves or parts failed hash
+// validation against the stored proposal. When IdentityConflictThreshold
+// distinct peers conflict with an incomplete candidate that is not backed by
+// a commitment, the candidate is evicted so a replacement can be accepted.
+func (blockProp *Reactor) recordIdentityConflict(peer p2p.ID, height int64, round int32) {
+	blockProp.pmtx.Lock()
+	entry := blockProp.proposals[height][round]
+	if entry == nil || entry.commitmentBacked || entry.block.IsComplete() {
+		blockProp.pmtx.Unlock()
+		return
+	}
+	if entry.conflictPeers == nil {
+		entry.conflictPeers = make(map[p2p.ID]struct{})
+	}
+	entry.conflictPeers[peer] = struct{}{}
+	conflicts := len(entry.conflictPeers)
+	blockProp.pmtx.Unlock()
+
+	if conflicts < IdentityConflictThreshold {
+		return
+	}
+	blockProp.Logger.Info("evicting proposal after identity conflicts from multiple peers",
+		"height", height, "round", round, "conflicting_peers", conflicts)
+	blockProp.EvictProposal(height, round)
+}
+
+// retainEarlyWant buffers a Want that arrived before the matching proposal
+// when it targets the current or next height.
+func (blockProp *Reactor) retainEarlyWant(p *PeerState, wants *proptypes.WantParts) bool {
+	blockProp.pmtx.Lock()
+	currentHeight := blockProp.height
+	blockProp.pmtx.Unlock()
+	if wants.Height < currentHeight || wants.Height > currentHeight+1 {
+		return false
+	}
+	return p.StorePendingWant(wants)
+}
+
+// servePendingWants services Wants that arrived before the proposal for the
+// given height and round was installed. Each retained Want is serviced once.
+func (blockProp *Reactor) servePendingWants(height int64, round int32) {
+	for _, peer := range blockProp.getPeers() {
+		if want := peer.TakePendingWant(height, round); want != nil {
+			blockProp.handleWants(peer.peer.ID(), want)
+		}
 	}
 }
 

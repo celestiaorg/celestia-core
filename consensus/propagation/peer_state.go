@@ -16,6 +16,14 @@ const (
 	// MaxUnverifiedProposals is the maximum number of compact blocks
 	// that can be cached per peer. Keeps the lowest heights when full.
 	MaxUnverifiedProposals = 24
+
+	// MaxPendingWants is the maximum number of Wants retained per peer while
+	// the matching compact block is still in flight.
+	MaxPendingWants = 4
+
+	// MaxCatchupAttempts is the number of consecutive unanswered catch-up
+	// requests after which a peer is skipped for that height.
+	MaxCatchupAttempts = 3
 )
 
 type request struct {
@@ -54,6 +62,15 @@ type PeerState struct {
 	// These have NOT been verified via the consensus reactor's verification
 	// function. Limited to MaxUnverifiedProposals entries, keeping lowest heights.
 	unverifiedProposals map[int64]*proptypes.CompactBlock
+
+	// pendingWants retains Wants from this peer that arrived before the
+	// matching proposal, keyed by height then round. One Want per height and
+	// round, at most MaxPendingWants in total.
+	pendingWants map[int64]map[int32]*proptypes.WantParts
+
+	// catchupAttempts counts consecutive unanswered catch-up requests sent to
+	// this peer, per height.
+	catchupAttempts map[int64]int
 }
 
 type partData struct {
@@ -78,6 +95,8 @@ func newPeerState(ctx context.Context, peer p2p.Peer, logger log.Logger) *PeerSt
 		remainingRequests:   make(map[int64]map[int32]int),
 		consensusPeerState:  noOpPSE{},
 		unverifiedProposals: make(map[int64]*proptypes.CompactBlock),
+		pendingWants:        make(map[int64]map[int32]*proptypes.WantParts),
+		catchupAttempts:     make(map[int64]int),
 	}
 }
 
@@ -312,6 +331,92 @@ func (d *PeerState) DeleteHeight(height int64) {
 	delete(d.state, height)
 }
 
+// DeleteRound removes all part state for a given height and round.
+func (d *PeerState) DeleteRound(height int64, round int32) {
+	d.mtx.Lock()
+	defer d.mtx.Unlock()
+	if d.state[height] != nil {
+		delete(d.state[height], round)
+	}
+	if d.remainingRequests[height] != nil {
+		delete(d.remainingRequests[height], round)
+	}
+	if d.pendingWants[height] != nil {
+		delete(d.pendingWants[height], round)
+	}
+}
+
+// StorePendingWant retains a Want that arrived before the matching proposal.
+// One Want is kept per height and round, at most MaxPendingWants in total.
+// Returns false when the bound is reached.
+func (d *PeerState) StorePendingWant(want *proptypes.WantParts) bool {
+	d.mtx.Lock()
+	defer d.mtx.Unlock()
+	if _, exists := d.pendingWants[want.Height][want.Round]; !exists {
+		total := 0
+		for _, rounds := range d.pendingWants {
+			total += len(rounds)
+		}
+		if total >= MaxPendingWants {
+			return false
+		}
+	}
+	if d.pendingWants[want.Height] == nil {
+		d.pendingWants[want.Height] = make(map[int32]*proptypes.WantParts)
+	}
+	d.pendingWants[want.Height][want.Round] = want
+	return true
+}
+
+// TakePendingWant removes and returns the retained Want for a height and
+// round, or nil if there is none.
+func (d *PeerState) TakePendingWant(height int64, round int32) *proptypes.WantParts {
+	d.mtx.Lock()
+	defer d.mtx.Unlock()
+	want := d.pendingWants[height][round]
+	if want != nil {
+		delete(d.pendingWants[height], round)
+		if len(d.pendingWants[height]) == 0 {
+			delete(d.pendingWants, height)
+		}
+	}
+	return want
+}
+
+// ClearRequests resets the recorded requests for a given height and round.
+func (d *PeerState) ClearRequests(height int64, round int32) {
+	d.mtx.Lock()
+	defer d.mtx.Unlock()
+	if d.state[height] != nil && d.state[height][round] != nil {
+		d.state[height][round].requests = bits.NewBitArray(d.state[height][round].requests.Size())
+	}
+}
+
+// AddCatchupAttempt records a catch-up request for a height and returns the
+// number of consecutive unanswered attempts.
+func (d *PeerState) AddCatchupAttempt(height int64) int {
+	d.mtx.Lock()
+	defer d.mtx.Unlock()
+	d.catchupAttempts[height]++
+	return d.catchupAttempts[height]
+}
+
+// CatchupAttempts returns the consecutive unanswered catch-up attempts for a
+// height.
+func (d *PeerState) CatchupAttempts(height int64) int {
+	d.mtx.RLock()
+	defer d.mtx.RUnlock()
+	return d.catchupAttempts[height]
+}
+
+// ResetCatchupAttempts clears the attempt counter for a height after the peer
+// served data for it.
+func (d *PeerState) ResetCatchupAttempts(height int64) {
+	d.mtx.Lock()
+	defer d.mtx.Unlock()
+	delete(d.catchupAttempts, height)
+}
+
 func (d *PeerState) RequestsReady() {
 	select {
 	case d.canRequest <- struct{}{}:
@@ -332,6 +437,16 @@ func (d *PeerState) prune(prunePastHeight int64) {
 		if height < prunePastHeight {
 			delete(d.state, height)
 			delete(d.remainingRequests, height)
+		}
+	}
+	for height := range d.pendingWants {
+		if height < prunePastHeight {
+			delete(d.pendingWants, height)
+		}
+	}
+	for height := range d.catchupAttempts {
+		if height < prunePastHeight {
+			delete(d.catchupAttempts, height)
 		}
 	}
 	// Prune unverified proposals for heights <= prunePastHeight

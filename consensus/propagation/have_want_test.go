@@ -281,7 +281,7 @@ func createTestCreatorsWithProposal(t *testing.T, reactorsCount int, height int6
 	cb, _ := createCompactBlock(t, prop, ps, metaData)
 
 	for _, reactor := range reactors {
-		added := reactor.AddProposal(cb)
+		added, _ := reactor.AddProposal(cb)
 		require.True(t, added)
 	}
 	return reactors, prop, ps, cb

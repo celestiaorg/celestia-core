@@ -227,6 +227,16 @@ func (blockProp *Reactor) processValidatedCompactBlock(cb *proptypes.CompactBloc
 		return
 	}
 
+	// add the proposal before forwarding it to consensus so that a compact
+	// block conflicting with the identity already stored for this height and
+	// round is never forwarded or gossiped.
+	added, conflict := blockProp.AddProposal(cb)
+	if conflict {
+		blockProp.Logger.Info("rejecting compact block conflicting with existing proposal",
+			"height", cb.Proposal.Height, "round", cb.Proposal.Round, "peer", peer)
+		return
+	}
+
 	if !proposer {
 		select {
 		case <-blockProp.ctx.Done():
@@ -236,22 +246,13 @@ func (blockProp *Reactor) processValidatedCompactBlock(cb *proptypes.CompactBloc
 			From:     peer,
 		}:
 		}
+		if p := blockProp.getPeer(peer); p != nil {
+			p.consensusPeerState.SetHasProposal(&cb.Proposal)
+		}
 	}
 
-	added := blockProp.AddProposal(cb)
 	if !added {
-		p := blockProp.getPeer(peer)
-		if p == nil {
-			return
-		}
-		p.consensusPeerState.SetHasProposal(&cb.Proposal)
 		return
-	} else if !proposer {
-		p := blockProp.getPeer(peer)
-		if p == nil {
-			return
-		}
-		p.consensusPeerState.SetHasProposal(&cb.Proposal)
 	}
 
 	if !proposer {
@@ -260,6 +261,9 @@ func (blockProp *Reactor) processValidatedCompactBlock(cb *proptypes.CompactBloc
 	}
 
 	blockProp.broadcastCompactBlock(cb, peer)
+
+	// service any Wants that arrived before this compact block.
+	blockProp.servePendingWants(cb.Proposal.Height, cb.Proposal.Round)
 }
 
 // recoverPartsFromMempool queries the mempool to see if we can recover any block parts locally.
@@ -446,10 +450,10 @@ func chunkIndexes(totalSize, chunkSize int) [][2]int {
 
 // validateCompactBlock stateful validation of the compact block.
 func (blockProp *Reactor) validateCompactBlock(cb *proptypes.CompactBlock) error {
-	blockProp.mtx.Lock()
-	proposer := blockProp.currentProposer
-	blockProp.mtx.Unlock()
+	// read the proposer, height, and round under a single lock so validation
+	// never observes a partially updated consensus state.
 	blockProp.pmtx.Lock()
+	proposer := blockProp.currentProposer
 	currentHeight := blockProp.height
 	currentRound := blockProp.round
 	blockProp.pmtx.Unlock()

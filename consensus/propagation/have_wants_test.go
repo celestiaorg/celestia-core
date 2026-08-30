@@ -40,7 +40,7 @@ func TestInvalidHavePartHash(t *testing.T) {
 	}
 	cb.SetProofCache(proofs)
 
-	added := r1.AddProposal(cb)
+	added, _ := r1.AddProposal(cb)
 	require.True(t, added)
 
 	// make sure the peers are connected
@@ -107,7 +107,7 @@ func TestHandleHavesDoesNotBlock(t *testing.T) {
 	}
 	cb.SetProofCache(proofs)
 
-	added := r1.AddProposal(cb)
+	added, _ := r1.AddProposal(cb)
 	require.True(t, added)
 
 	p1 := r1.getPeer(r2.self)
