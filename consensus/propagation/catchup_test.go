@@ -1,6 +1,7 @@
 package propagation
 
 import (
+	"sync"
 	"testing"
 	"time"
 
@@ -9,6 +10,7 @@ import (
 
 	cfg "github.com/cometbft/cometbft/config"
 	proptypes "github.com/cometbft/cometbft/consensus/propagation/types"
+	"github.com/cometbft/cometbft/libs/log"
 	cmtrand "github.com/cometbft/cometbft/libs/rand"
 	"github.com/cometbft/cometbft/state"
 	"github.com/cometbft/cometbft/types"
@@ -435,6 +437,100 @@ func TestAddCommitment_ReplaceProposalData(t *testing.T) {
 	actualSecondPsh := r1.proposals[secondProposal.Height][secondProposal.Round].block.Original().Header()
 	assert.Equal(t, secondPartset.Total(), actualSecondPsh.Total)
 	assert.Equal(t, secondPsh.Hash, actualSecondPsh.Hash)
+}
+
+// signedCompactBlock returns a compact block for the given height and round
+// whose proposal and compact block signatures come from signer.
+func signedCompactBlock(t *testing.T, sm state.State, pv types.PrivValidator, signer types.MockPV, height int64, round int32) *proptypes.CompactBlock {
+	prop, ps, _, metaData := createTestProposal(t, sm, pv, height, round, 2, 1000000)
+
+	protoProp := prop.ToProto()
+	require.NoError(t, signer.SignProposal(TestChainID, protoProp))
+	prop.Signature = protoProp.Signature
+
+	cb, _ := createCompactBlock(t, prop, ps, metaData)
+	signBytes, err := cb.SignBytes()
+	require.NoError(t, err)
+	sig, err := signer.SignRawBytes(TestChainID, CompactBlockUID, signBytes)
+	require.NoError(t, err)
+	cb.Signature = sig
+	return cb
+}
+
+// captureLogger records log messages so tests can assert on them.
+type captureLogger struct {
+	mtx     sync.Mutex
+	entries []string
+}
+
+func (l *captureLogger) record(msg string) {
+	l.mtx.Lock()
+	l.entries = append(l.entries, msg)
+	l.mtx.Unlock()
+}
+
+func (l *captureLogger) Trace(msg string, _ ...interface{}) { l.record(msg) }
+func (l *captureLogger) Debug(msg string, _ ...interface{}) { l.record(msg) }
+func (l *captureLogger) Info(msg string, _ ...interface{})  { l.record(msg) }
+func (l *captureLogger) Error(msg string, _ ...interface{}) { l.record(msg) }
+func (l *captureLogger) With(_ ...interface{}) log.Logger   { return l }
+
+func (l *captureLogger) count(msg string) int {
+	l.mtx.Lock()
+	defer l.mtx.Unlock()
+	n := 0
+	for _, e := range l.entries {
+		if e == msg {
+			n++
+		}
+	}
+	return n
+}
+
+// TestSetConsensusStateReplaysCachedProposalOnce asserts that installing the
+// height, round, and proposer atomically replays a cached proposal exactly
+// once, against the complete state.
+func TestSetConsensusStateReplaysCachedProposalOnce(t *testing.T) {
+	reactors, _ := createTestReactors(2, defaultTestP2PConf(), false, "")
+	n1, n2 := reactors[0], reactors[1]
+
+	cleanup, _, sm, pv := state.SetupTestCaseWithPrivVal(t)
+	t.Cleanup(func() {
+		cleanup(t)
+	})
+
+	// both nodes at height 1, round 0 with the round-0 proposer.
+	for _, r := range reactors {
+		r.SetHeightAndRound(1, 0)
+		r.SetProposer(mockPubKey)
+	}
+
+	// a round-1 proposal from a proposer different from the round-0 proposer.
+	roundOneProposer := types.NewMockPV()
+	cb := signedCompactBlock(t, sm, pv, roundOneProposer, 1, 1)
+
+	// while n1 is at round 0, the proposal fails validation and is cached.
+	n1.handleCompactBlock(cb, n2.self, false)
+	require.NotNil(t, n1.GetUnverifiedProposal(1), "round-1 proposal should be cached")
+	_, _, has := n1.GetProposal(1, 1)
+	require.False(t, has)
+
+	logger := &captureLogger{}
+	n1.SetLogger(logger)
+
+	// transition to round 1 with the round-1 proposer.
+	pub, err := roundOneProposer.GetPubKey()
+	require.NoError(t, err)
+	n1.SetConsensusState(1, 1, pub)
+
+	// the cached proposal was validated once against the complete state and
+	// accepted.
+	_, _, has = n1.GetProposal(1, 1)
+	require.True(t, has, "cached proposal should be applied")
+	require.Zero(t, logger.count("cached proposal failed validation"),
+		"the cached proposal must not be validated against a partially updated state")
+	require.Equal(t, 1, logger.count("applying cached proposal from catchup"),
+		"cached proposal should be applied exactly once")
 }
 
 func defaultTestP2PConf() *cfg.P2PConfig {

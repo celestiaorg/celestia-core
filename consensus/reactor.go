@@ -168,10 +168,11 @@ conR:
 %+v`, err, conR.conS, conR))
 	}
 	conR.propagator.StartProcessing()
-	conR.propagator.SetProposer(state.Validators.GetProposer().PubKey)
+	proposer := state.Validators.GetProposer()
 	conR.conS.rsMtx.RLock()
-	conR.propagator.SetHeightAndRound(conR.conS.rs.Height, conR.conS.rs.Round)
+	height, round := conR.conS.rs.Height, conR.conS.rs.Round
 	conR.conS.rsMtx.RUnlock()
+	conR.propagator.SetConsensusState(height, round, proposer.PubKey)
 }
 
 // GetChannels implements Reactor
