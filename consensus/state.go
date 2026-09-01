@@ -247,7 +247,7 @@ func NewState(
 	if validators != nil {
 		proposer := validators.GetProposer()
 		if proposer != nil {
-			cs.propagator.SetProposer(proposer.PubKey)
+			cs.propagator.SetConsensusState(cs.rs.Height, cs.rs.Round, proposer.PubKey)
 		}
 	}
 
@@ -460,6 +460,23 @@ func (cs *State) OnStart() error {
 		return err
 	}
 
+	// Sync the propagator with the round state before starting the receive
+	// routine. The WAL replay above may have resumed at a later round, so the
+	// proposer must come from the round-adjusted validator set. Nothing else
+	// mutates cs.rs at this point, and once the receive routine starts, all
+	// further updates flow through the consensus state machine, so this value
+	// cannot be clobbered by a stale snapshot afterwards.
+	cs.rsMtx.RLock()
+	height, round := cs.rs.Height, cs.rs.Round
+	var proposer *types.Validator
+	if cs.rs.Validators != nil {
+		proposer = cs.rs.Validators.GetProposer()
+	}
+	cs.rsMtx.RUnlock()
+	if proposer != nil {
+		cs.propagator.SetConsensusState(height, round, proposer.PubKey)
+	}
+
 	// now start the receiveRoutine
 	go cs.receiveRoutine(0)
 	go cs.syncData()
@@ -467,9 +484,6 @@ func (cs *State) OnStart() error {
 	// schedule the first round!
 	// use GetRoundState so we don't race the receiveRoutine for access
 	cs.scheduleRound0(cs.GetRoundState())
-	cs.rsMtx.RLock()
-	cs.propagator.SetHeightAndRound(cs.rs.Height, cs.rs.Round)
-	cs.rsMtx.RUnlock()
 
 	return nil
 }
@@ -1247,8 +1261,6 @@ func (cs *State) enterNewRound(height int64, round int32) {
 
 	if proposer := cs.rs.Validators.GetProposer(); proposer != nil {
 		cs.propagator.SetConsensusState(height, round, proposer.PubKey)
-	} else {
-		cs.propagator.SetHeightAndRound(height, round)
 	}
 
 	// Wait for txs to be available in the mempool
@@ -2067,12 +2079,9 @@ func (cs *State) finalizeCommit(height int64) {
 		logger.Error("failed to get private validator pubkey", "err", err)
 	}
 
-	// prune the propagation reactor
+	// prune the propagation reactor. The next height's round state is
+	// installed atomically when enterNewRound(height+1, 0) runs.
 	cs.propagator.Prune(height)
-	proposer := cs.rs.Validators.GetProposer()
-	if proposer != nil {
-		cs.propagator.SetProposer(proposer.PubKey)
-	}
 
 	// cs.StartTime is already set.
 	// Schedule Round0 to start soon.

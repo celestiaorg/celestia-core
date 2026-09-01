@@ -361,3 +361,45 @@ func randomBytes(n int) []byte {
 
 	return bytes
 }
+
+// TestValidateCompactBlockUsesRoundProposer ensures compact blocks are only
+// accepted when signed by the proposer installed for the current round: one
+// signed by another validator (e.g. the round-0 proposer claiming a later
+// round) is rejected and never applied from the unverified cache.
+func TestValidateCompactBlockUsesRoundProposer(t *testing.T) {
+	reactors, _ := createTestReactors(2, defaultTestP2PConf(), false, "")
+	n1 := reactors[0]
+	n2 := reactors[1]
+
+	cleanup, _, sm, pv := state.SetupTestCaseWithPrivVal(t)
+	t.Cleanup(func() {
+		cleanup(t)
+	})
+
+	round0Val := types.NewMockPV()
+	round2Val := types.NewMockPV()
+
+	// n2 is at height 1 waiting on round 2, whose proposer is round2Val.
+	n2.SetConsensusState(1, 2, round2Val.PrivKey.PubKey())
+
+	forged := signedCompactBlock(t, sm, pv, round0Val, 1, 2)
+	genuine := signedCompactBlock(t, sm, pv, round2Val, 1, 2)
+
+	require.Error(t, n2.validateCompactBlock(forged))
+	require.NoError(t, n2.validateCompactBlock(genuine))
+
+	// The forged compact block is cached, not applied, when received from a peer.
+	n2.handleCompactBlock(forged, n1.self, false)
+	_, _, has := n2.GetProposal(1, 2)
+	require.False(t, has, "forged compact block must not be applied")
+
+	// Re-installing the same round context must not apply it from the cache either.
+	n2.SetConsensusState(1, 2, round2Val.PrivKey.PubKey())
+	_, _, has = n2.GetProposal(1, 2)
+	require.False(t, has, "forged compact block must not be applied from the unverified cache")
+
+	// The genuine compact block is accepted.
+	n2.handleCompactBlock(genuine, n1.self, false)
+	_, _, has = n2.GetProposal(1, 2)
+	require.True(t, has, "genuine compact block from the round-2 proposer must be applied")
+}
