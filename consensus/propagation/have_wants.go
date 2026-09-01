@@ -55,7 +55,12 @@ func (blockProp *Reactor) handleHaves(peer p2p.ID, haves *proptypes.HaveParts) {
 	}
 	err := haves.ValidatePartHashes(cb.PartsHashes)
 	if err != nil {
-		blockProp.Logger.Error("received invalid have part", "height", haves.Height, "round", haves.Round, "err", err)
+		// Routine on a public network: a peer advertises a part for a
+		// different proposal identity at this height and round (e.g. a
+		// straggling have from another round or an equivocating proposer).
+		// Logged at Debug; recovery is handled by recordIdentityConflict when
+		// a stuck candidate is consistently contradicted.
+		blockProp.Logger.Debug("received have part for a different proposal identity", "height", haves.Height, "round", haves.Round, "err", err)
 		blockProp.recordIdentityConflict(peer, height, round)
 		//blockProp.Switch.StopPeerForError(p.peer, err, blockProp.String())
 		return
@@ -610,12 +615,19 @@ const IdentityConflictThreshold = 3
 
 // recordIdentityConflict notes that a peer's haves or parts failed hash
 // validation against the stored proposal. When IdentityConflictThreshold
-// distinct peers conflict with an incomplete candidate that is not backed by
-// a commitment, the candidate is evicted so a replacement can be accepted.
+// distinct peers conflict with a stuck candidate that is not backed by a
+// commitment, the candidate is evicted so a replacement can be accepted.
+//
+// Conflicting haves are common and benign on a public network (stragglers
+// from other rounds, equivocating proposers). Eviction is therefore limited
+// to a candidate that has downloaded no parts at all: a proposal that is
+// making progress is real for this node and is never evicted because of a
+// stray conflicting have.
 func (blockProp *Reactor) recordIdentityConflict(peer p2p.ID, height int64, round int32) {
 	blockProp.pmtx.Lock()
 	entry := blockProp.proposals[height][round]
-	if entry == nil || entry.commitmentBacked || entry.block.IsComplete() {
+	if entry == nil || entry.commitmentBacked || entry.block.IsComplete() ||
+		len(entry.block.BitArray().GetTrueIndices()) > 0 {
 		blockProp.pmtx.Unlock()
 		return
 	}
