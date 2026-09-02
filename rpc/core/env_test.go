@@ -5,7 +5,48 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
+	cfg "github.com/cometbft/cometbft/config"
 )
+
+// TestHeavySem covers the process-wide heavy-request budget: it honors the
+// configured capacity, disables on a negative value, and is memoized so every
+// transport draws from one shared budget.
+func TestHeavySem(t *testing.T) {
+	t.Run("default capacity when unset", func(t *testing.T) {
+		env := &Environment{Config: cfg.RPCConfig{}}
+		sem := env.HeavySem()
+		require.NotNil(t, sem)
+		assert.Equal(t, cfg.DefaultMaxConcurrentHeavyRequests, cap(sem))
+	})
+
+	t.Run("honors configured capacity", func(t *testing.T) {
+		env := &Environment{Config: cfg.RPCConfig{MaxConcurrentHeavyRequests: 5}}
+		assert.Equal(t, 5, cap(env.HeavySem()))
+	})
+
+	t.Run("negative disables the limit", func(t *testing.T) {
+		env := &Environment{Config: cfg.RPCConfig{MaxConcurrentHeavyRequests: -1}}
+		assert.Nil(t, env.HeavySem())
+	})
+
+	t.Run("shared: memoized instance and a single budget", func(t *testing.T) {
+		env := &Environment{Config: cfg.RPCConfig{MaxConcurrentHeavyRequests: 1}}
+		sem := env.HeavySem()
+		require.NotNil(t, sem)
+		require.True(t, sem == env.HeavySem(), "HeavySem must return the same memoized channel")
+
+		// Fill the one slot through this reference; a fresh call must see the
+		// same, now-full budget, proving it is shared and not reset per call.
+		sem <- struct{}{}
+		select {
+		case env.HeavySem() <- struct{}{}:
+			t.Fatal("budget must be shared across calls, not reset per call")
+		default:
+		}
+	})
+}
 
 func TestPaginationPage(t *testing.T) {
 	cases := []struct {
