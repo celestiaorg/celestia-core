@@ -22,14 +22,19 @@ func TestBuildPebbleOptions_NoCache(t *testing.T) {
 	assert.Equal(t, pebbleMaxConcurrentCompactions, o.MaxConcurrentCompactions())
 	assert.Nil(t, o.Cache, "no cache should be installed when sharedCache is nil")
 
-	// TargetFileSize starts at the larger base and doubles each level; the base
-	// must survive EnsureDefaults rather than reverting to Pebble's 2 MiB.
+	// TargetFileSize starts at the larger base, doubles each level and is capped
+	// at pebbleMaxTargetFileSize; the base must survive EnsureDefaults rather
+	// than reverting to Pebble's 2 MiB.
 	require.Len(t, o.Levels, pebbleNumLevels)
 	want := pebbleL0TargetFileSize
 	for i := range o.Levels {
 		assert.Equal(t, want, o.Levels[i].TargetFileSize, "L%d target file size", i)
-		want *= 2
+		if want < pebbleMaxTargetFileSize {
+			want *= 2
+		}
 	}
+	assert.Equal(t, pebbleMaxTargetFileSize, o.Levels[pebbleNumLevels-1].TargetFileSize,
+		"deepest level should be capped at the max target file size")
 }
 
 func TestBuildPebbleOptions_SharedCacheInstalledAndSurvivesEnsureDefaults(t *testing.T) {

@@ -48,20 +48,23 @@ const (
 	// PebbleSharedCacheBytes is the size of the shared pebble block cache
 	// installed across blockstore, state, evidence, and tx_index when
 	// DB tuning is enabled and the backend is pebbledb.
-	PebbleSharedCacheBytes int64 = 1 << 30 // 1 GiB
+	PebbleSharedCacheBytes int64 = 512 << 20 // 512 MiB
 
-	pebbleMemTableSize                uint64 = 128 << 20 // 128 MiB
+	pebbleMemTableSize                uint64 = 64 << 20 // 64 MiB
 	pebbleMemTableStopWritesThreshold int    = 4
 	pebbleL0StopWritesThreshold       int    = 24
 
 	// pebbleL0TargetFileSize is the sstable target size for L0. Pebble's
 	// default is 2 MiB, which on a multi-TB archival blockstore that compaction
 	// can't keep up with degenerates into millions of tiny sstables. A larger
-	// base — doubled per level up to L6 — makes each compaction emit fewer,
-	// larger files and keeps the LSM's file count (and the memory Pebble spends
-	// tracking it) bounded. See celestiaorg/celestia-core#3053.
-	pebbleL0TargetFileSize int64 = 8 << 20 // 8 MiB (L6 ends at 512 MiB)
-	pebbleNumLevels              = 7
+	// base — doubled per level and capped at pebbleMaxTargetFileSize — makes
+	// each compaction emit fewer, larger files and keeps the LSM's file count
+	// (and the memory Pebble spends tracking it) bounded, without the large
+	// per-compaction IO spikes that a very large target would cause. See
+	// celestiaorg/celestia-core#3053.
+	pebbleL0TargetFileSize  int64 = 8 << 20   // 8 MiB
+	pebbleMaxTargetFileSize int64 = 128 << 20 // 128 MiB (matches pebble's default L6)
+	pebbleNumLevels               = 7
 
 	goLevelDBWriteBuffer            = 128 << 20 // 128 MiB
 	goLevelDBBlockCacheCapacity     = 512 << 20 // 512 MiB per-DB (goleveldb cannot share)
@@ -71,7 +74,7 @@ const (
 
 // pebbleMaxConcurrentCompactions depends on GOMAXPROCS, so it is computed at
 // init rather than declared as a const.
-var pebbleMaxConcurrentCompactions = max(2, runtime.GOMAXPROCS(0)/2)
+var pebbleMaxConcurrentCompactions = max(2, runtime.GOMAXPROCS(0)/4)
 
 // NewCompactionDBProvider returns a DBProvider that applies the
 // compaction-friendly tuning above. If sharedPebbleCache is non-nil, it is
@@ -114,15 +117,18 @@ func buildPebbleOptions(sharedCache *pebble.Cache) *pebble.Options {
 }
 
 // buildPebbleLevels returns per-level options whose TargetFileSize starts at
-// pebbleL0TargetFileSize and doubles each level up to L6. Setting the levels
-// explicitly (rather than leaving Levels nil) is what makes EnsureDefaults keep
-// our larger base instead of falling back to the 2 MiB default.
+// pebbleL0TargetFileSize, doubles each level and is capped at
+// pebbleMaxTargetFileSize. Setting the levels explicitly (rather than leaving
+// Levels nil) is what makes EnsureDefaults keep our larger base instead of
+// falling back to the 2 MiB default.
 func buildPebbleLevels() []pebble.LevelOptions {
 	levels := make([]pebble.LevelOptions, pebbleNumLevels)
 	target := pebbleL0TargetFileSize
 	for i := range levels {
 		levels[i].TargetFileSize = target
-		target *= 2
+		if target < pebbleMaxTargetFileSize {
+			target *= 2
+		}
 	}
 	return levels
 }
