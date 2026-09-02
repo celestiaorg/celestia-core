@@ -407,6 +407,97 @@ func TestApplyCachedProposalIfAvailable_WrongRound(t *testing.T) {
 	require.False(t, has, "proposal should not be applied when at different round")
 }
 
+// TestHandleCachedCompactBlockRejectsConflictBeforeForwarding ensures a cached
+// proposal that conflicts with an existing proposal for the same height and
+// round is rejected before being forwarded to consensus, and that the existing
+// entry is left untouched.
+func TestHandleCachedCompactBlockRejectsConflictBeforeForwarding(t *testing.T) {
+	p2pCfg := defaultTestP2PConf()
+	reactors, _ := createTestReactors(1, p2pCfg, false, "")
+	n1 := reactors[0]
+
+	cleanup, _, sm, pv := state.SetupTestCaseWithPrivVal(t)
+	t.Cleanup(func() {
+		cleanup(t)
+	})
+
+	n1.SetHeightAndRound(2, 0)
+	n1.SetProposer(mockPubKey)
+
+	// Preload proposal A for height 2, round 0.
+	cbA, _, _, _ := testCompactBlock(t, sm, pv, 2, 0)
+	require.True(t, n1.AddProposal(cbA))
+	// Drain anything already in the proposal channel.
+	for len(n1.GetProposalChan()) > 0 {
+		<-n1.GetProposalChan()
+	}
+
+	// Create a conflicting proposal B for the same height and round with a
+	// different block hash and part set header.
+	propB, psB, _, metaDataB := createTestProposal(t, sm, pv, 2, 0, 10, 1000000)
+	cbB, _ := createCompactBlock(t, propB, psB, metaDataB)
+	require.False(t, cbA.Proposal.BlockID.Equals(cbB.Proposal.BlockID))
+
+	applied := n1.handleCachedCompactBlock(cbB)
+	require.False(t, applied, "conflicting cached proposal should be rejected")
+
+	// B must not have been forwarded to the consensus proposal channel.
+	select {
+	case prop := <-n1.GetProposalChan():
+		t.Fatalf("conflicting proposal was forwarded to consensus: %v", prop.Proposal)
+	default:
+	}
+
+	// The stored entry must still be A's, with no parts from B mixed in and
+	// without being marked as catchup.
+	n1.pmtx.Lock()
+	pd := n1.proposals[2][0]
+	n1.pmtx.Unlock()
+	require.NotNil(t, pd)
+	require.True(t, cbA.Proposal.BlockID.Equals(pd.compactBlock.Proposal.BlockID))
+	require.True(t, cbA.Proposal.BlockID.PartSetHeader.Equals(pd.block.Original().Header()))
+	require.Empty(t, pd.block.BitArray().GetTrueIndices(), "no parts should have been added to A's part set")
+	require.False(t, pd.catchup, "existing proposal should not be marked as catchup by a conflicting one")
+}
+
+// TestHandleCachedCompactBlockAllowsIdenticalDuplicate ensures an identical
+// duplicate of an already stored proposal is still applied and forwarded.
+func TestHandleCachedCompactBlockAllowsIdenticalDuplicate(t *testing.T) {
+	p2pCfg := defaultTestP2PConf()
+	reactors, _ := createTestReactors(1, p2pCfg, false, "")
+	n1 := reactors[0]
+
+	cleanup, _, sm, pv := state.SetupTestCaseWithPrivVal(t)
+	t.Cleanup(func() {
+		cleanup(t)
+	})
+
+	n1.SetHeightAndRound(2, 0)
+	n1.SetProposer(mockPubKey)
+
+	cbA, _, _, _ := testCompactBlock(t, sm, pv, 2, 0)
+	require.True(t, n1.AddProposal(cbA))
+	for len(n1.GetProposalChan()) > 0 {
+		<-n1.GetProposalChan()
+	}
+
+	applied := n1.handleCachedCompactBlock(cbA)
+	require.True(t, applied, "identical duplicate should still be applied")
+
+	select {
+	case prop := <-n1.GetProposalChan():
+		require.True(t, cbA.Proposal.BlockID.Equals(prop.Proposal.BlockID))
+	default:
+		t.Fatal("identical duplicate should have been forwarded to consensus")
+	}
+
+	n1.pmtx.Lock()
+	pd := n1.proposals[2][0]
+	n1.pmtx.Unlock()
+	require.NotNil(t, pd)
+	require.True(t, pd.catchup, "duplicate apply should mark the proposal as catchup")
+}
+
 func TestAddCommitment_ReplaceProposalData(t *testing.T) {
 	p2pCfg := defaultTestP2PConf()
 	nodes := 1
