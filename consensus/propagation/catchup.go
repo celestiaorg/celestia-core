@@ -208,6 +208,39 @@ func (blockProp *Reactor) handleCachedCompactBlock(cb *proptypes.CompactBlock) b
 		return false
 	}
 
+	// Add to the proposal cache before forwarding to consensus so a proposal
+	// that conflicts with an existing entry for the same height and round is
+	// rejected instead of being forwarded or mixed with the existing block.
+	added := blockProp.AddProposal(cb)
+	if !added {
+		blockProp.Logger.Debug("cached proposal already exists", "height", cb.Proposal.Height, "round", cb.Proposal.Round)
+	}
+
+	propFound := false
+	conflict := false
+	blockProp.pmtx.Lock()
+	if props, ok := blockProp.proposals[cb.Proposal.Height]; ok {
+		if prop := props[cb.Proposal.Round]; prop != nil {
+			if sameProposalIdentity(prop, cb) {
+				// Mark as catchup to skip parity requests in retryWants
+				prop.catchup = true
+				propFound = true
+			} else {
+				conflict = true
+			}
+		}
+	}
+	blockProp.pmtx.Unlock()
+	if conflict {
+		blockProp.Logger.Error("cached compact block conflicts with existing proposal, rejecting",
+			"height", cb.Proposal.Height, "round", cb.Proposal.Round,
+			"block_id", cb.Proposal.BlockID.String())
+		return false
+	}
+	if !propFound {
+		return false
+	}
+
 	// Send proposal to consensus reactor
 	select {
 	case <-blockProp.ctx.Done():
@@ -218,31 +251,27 @@ func (blockProp *Reactor) handleCachedCompactBlock(cb *proptypes.CompactBlock) b
 	}:
 	}
 
-	// Add to proposal cache
-	added := blockProp.AddProposal(cb)
-	if !added {
-		blockProp.Logger.Debug("cached proposal already exists", "height", cb.Proposal.Height, "round", cb.Proposal.Round)
-	}
-
-	propFound := false
-	blockProp.pmtx.Lock()
-	if props, ok := blockProp.proposals[cb.Proposal.Height]; ok {
-		if prop := props[cb.Proposal.Round]; prop != nil {
-			// Mark as catchup to skip parity requests in retryWants
-			prop.catchup = true
-			propFound = true
-		}
-	}
-	blockProp.pmtx.Unlock()
-	if !propFound {
-		return false
-	}
-
 	// Recover any parts from mempool
 	blockProp.recoverPartsFromMempool(cb)
 
 	// Immediately trigger part requests (like AddCommitment)
 	blockProp.ticker.Reset(RetryTime)
 	go blockProp.retryWants()
+	return true
+}
+
+// sameProposalIdentity reports whether an existing proposal entry refers to the
+// same block as the incoming compact block. It compares part set headers, and
+// block hashes when the entry holds a full proposal.
+func sameProposalIdentity(existing *proposalData, cb *proptypes.CompactBlock) bool {
+	existingPSH := existing.block.Original().Header()
+	if !existingPSH.Equals(cb.Proposal.BlockID.PartSetHeader) {
+		return false
+	}
+	// entries created by AddCommitment only carry a part set header; entries
+	// holding a full proposal must also match on block hash.
+	if !existing.compactBlock.Proposal.BlockID.IsZero() {
+		return existing.compactBlock.Proposal.BlockID.Equals(cb.Proposal.BlockID)
+	}
 	return true
 }
