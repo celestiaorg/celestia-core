@@ -312,15 +312,16 @@ func NewNodeWithContext(ctx context.Context,
 	logger log.Logger,
 	options ...Option,
 ) (*Node, error) {
-	// When forced compaction is enabled, swap in a DBProvider that opens each
-	// DB with larger memtables and a shared block cache so block-save latency
-	// stays bounded while a compaction is in flight. See celestia-core#3053.
+	// When DB tuning is enabled, swap in a DBProvider that opens each DB with
+	// larger memtables, growing sstable target sizes and a shared block cache
+	// so the LSM stays healthy on large stores instead of fragmenting into
+	// millions of tiny sstables. See celestia-core#3053.
 	//
 	// Each DB pebble opens via Options.Cache takes its own ref on the cache,
 	// so dropping the creator's initial ref here is safe — the cache lives
 	// as long as any DB that uses it.
 	effectiveDBProvider := dbProvider
-	if config.Storage.Compact {
+	if config.Storage.DBTuning {
 		var dbCache *pebble.Cache
 		if dbm.BackendType(config.DBBackend) == dbm.PebbleDBBackend {
 			dbCache = pebble.NewCache(cfg.PebbleSharedCacheBytes)

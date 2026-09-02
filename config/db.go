@@ -28,8 +28,8 @@ type DBProvider func(*DBContext) (dbm.DB, error)
 
 // DefaultDBProvider returns a database using the DBBackend and DBDir
 // specified in the Config, with library-default options. Used by nodes when
-// compaction is disabled, and by short-lived tools (inspect, light client)
-// regardless of compaction settings.
+// DB tuning is disabled, and by short-lived tools (inspect, light client)
+// regardless of the tuning setting.
 func DefaultDBProvider(ctx *DBContext) (dbm.DB, error) {
 	dbType := dbm.BackendType(ctx.Config.DBBackend)
 	path := ctx.Path
@@ -39,15 +39,15 @@ func DefaultDBProvider(ctx *DBContext) (dbm.DB, error) {
 	return dbm.NewDB(ctx.ID, dbType, path)
 }
 
-// Hardcoded DB-tuning values applied only when Storage.Compact is enabled.
-// See celestiaorg/celestia-core#3053: with compaction off, the library
-// defaults are fine; with compaction on, the default memtable/L0/cache sizes
-// let writes stall while a compaction is in flight. These knobs absorb write
-// bursts and keep block-save latency bounded under load.
+// Hardcoded DB-tuning values applied only when Storage.DBTuning is enabled.
+// See celestiaorg/celestia-core#3053: with tuning off, the library defaults
+// are fine; with tuning on, larger memtables, growing sstable target sizes and
+// a shared cache keep the LSM from fragmenting into millions of tiny sstables
+// on large stores and keep block-save latency bounded under load.
 const (
 	// PebbleSharedCacheBytes is the size of the shared pebble block cache
 	// installed across blockstore, state, evidence, and tx_index when
-	// compaction is enabled and the backend is pebbledb.
+	// DB tuning is enabled and the backend is pebbledb.
 	PebbleSharedCacheBytes int64 = 1 << 30 // 1 GiB
 
 	pebbleMemTableSize                uint64 = 128 << 20 // 128 MiB
@@ -78,8 +78,8 @@ var pebbleMaxConcurrentCompactions = max(2, runtime.GOMAXPROCS(0)/2)
 // installed into every PebbleDB this provider opens. Pass nil to skip cache
 // sharing (each DB gets its own cache).
 //
-// Callers should only use this provider when Storage.Compact is enabled.
-// When compaction is off, the tuning's larger memory footprint is wasteful.
+// Callers should only use this provider when Storage.DBTuning is enabled.
+// When tuning is off, the larger memory footprint is wasteful.
 func NewCompactionDBProvider(sharedPebbleCache *pebble.Cache) DBProvider {
 	return func(ctx *DBContext) (dbm.DB, error) {
 		dbType := dbm.BackendType(ctx.Config.DBBackend)
