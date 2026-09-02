@@ -141,8 +141,9 @@ func shuffle[T any](slice []T) []T {
 }
 
 // applyCachedProposalIfAvailable checks for cached proposals at the current height/round
-// and applies the first valid one. Called automatically after SetProposer or SetHeightAndRound
-// to enable fast catchup when a node falls behind.
+// and applies the first valid one. Called automatically after SetProposer,
+// SetHeightAndRound, or SetConsensusState to enable fast catchup when a node
+// falls behind.
 //
 // This function iterates through ALL peers' cached proposals for the current height/round,
 // trying each one until it finds a valid proposal. This ensures a single invalid proposal

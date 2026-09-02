@@ -447,10 +447,10 @@ func chunkIndexes(totalSize, chunkSize int) [][2]int {
 
 // validateCompactBlock stateful validation of the compact block.
 func (blockProp *Reactor) validateCompactBlock(cb *proptypes.CompactBlock) error {
-	blockProp.mtx.Lock()
-	proposer := blockProp.currentProposer
-	blockProp.mtx.Unlock()
+	// read the proposer, height, and round under a single lock so validation
+	// never observes a partially updated consensus state.
 	blockProp.pmtx.Lock()
+	proposer := blockProp.currentProposer
 	currentHeight := blockProp.height
 	currentRound := blockProp.round
 	blockProp.pmtx.Unlock()
