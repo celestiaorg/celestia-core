@@ -54,6 +54,15 @@ const (
 	pebbleMemTableStopWritesThreshold int    = 4
 	pebbleL0StopWritesThreshold       int    = 24
 
+	// pebbleL0TargetFileSize is the sstable target size for L0. Pebble's
+	// default is 2 MiB, which on a multi-TB archival blockstore that compaction
+	// can't keep up with degenerates into millions of tiny sstables. A larger
+	// base — doubled per level up to L6 — makes each compaction emit fewer,
+	// larger files and keeps the LSM's file count (and the memory Pebble spends
+	// tracking it) bounded. See celestiaorg/celestia-core#3053.
+	pebbleL0TargetFileSize int64 = 8 << 20 // 8 MiB (L6 ends at 512 MiB)
+	pebbleNumLevels              = 7
+
 	goLevelDBWriteBuffer            = 128 << 20 // 128 MiB
 	goLevelDBBlockCacheCapacity     = 512 << 20 // 512 MiB per-DB (goleveldb cannot share)
 	goLevelDBWriteL0SlowdownTrigger = 16
@@ -95,12 +104,27 @@ func buildPebbleOptions(sharedCache *pebble.Cache) *pebble.Options {
 		MemTableStopWritesThreshold: pebbleMemTableStopWritesThreshold,
 		L0StopWritesThreshold:       pebbleL0StopWritesThreshold,
 		MaxConcurrentCompactions:    func() int { return pebbleMaxConcurrentCompactions },
+		Levels:                      buildPebbleLevels(),
 	}
 	if sharedCache != nil {
 		o.Cache = sharedCache
 	}
 	o.EnsureDefaults()
 	return o
+}
+
+// buildPebbleLevels returns per-level options whose TargetFileSize starts at
+// pebbleL0TargetFileSize and doubles each level up to L6. Setting the levels
+// explicitly (rather than leaving Levels nil) is what makes EnsureDefaults keep
+// our larger base instead of falling back to the 2 MiB default.
+func buildPebbleLevels() []pebble.LevelOptions {
+	levels := make([]pebble.LevelOptions, pebbleNumLevels)
+	target := pebbleL0TargetFileSize
+	for i := range levels {
+		levels[i].TargetFileSize = target
+		target *= 2
+	}
+	return levels
 }
 
 func buildGoLevelDBOptions() *opt.Options {
