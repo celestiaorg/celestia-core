@@ -8,6 +8,35 @@ import (
 
 func dummyRPC() interface{} { return func() {} }
 
+// TestRPCFuncHeavyCapacityAndRelease checks that several heavy functions sharing
+// a budget of capacity > 1 admit up to that capacity, reject the rest, and that
+// a single release frees exactly one slot.
+func TestRPCFuncHeavyCapacityAndRelease(t *testing.T) {
+	sem := make(chan struct{}, 2)
+	a := NewRPCFunc(dummyRPC(), "", HeavyFn(sem))
+	b := NewRPCFunc(dummyRPC(), "", HeavyFn(sem))
+	c := NewRPCFunc(dummyRPC(), "", HeavyFn(sem))
+
+	okA, relA := a.tryAcquire()
+	require.True(t, okA)
+	okB, relB := b.tryAcquire()
+	require.True(t, okB)
+
+	// Budget of 2 is full: the third heavy function is rejected.
+	okC, relC := c.tryAcquire()
+	require.False(t, okC)
+	require.Nil(t, relC)
+
+	// One release frees exactly one slot, admitting c.
+	relA()
+	okC2, relC2 := c.tryAcquire()
+	require.True(t, okC2)
+
+	relB()
+	relC2()
+	require.Len(t, sem, 0, "every slot must be released")
+}
+
 // TestRPCFuncTryAcquireNonHeavy checks that a function without the HeavyFn
 // option is never gated: it always admits with a no-op release.
 func TestRPCFuncTryAcquireNonHeavy(t *testing.T) {
