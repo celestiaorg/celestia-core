@@ -312,6 +312,18 @@ func (d *PeerState) DeleteHeight(height int64) {
 	delete(d.state, height)
 }
 
+// DeleteRound removes all part state for a given height and round.
+func (d *PeerState) DeleteRound(height int64, round int32) {
+	d.mtx.Lock()
+	defer d.mtx.Unlock()
+	if d.state[height] != nil {
+		delete(d.state[height], round)
+	}
+	if d.remainingRequests[height] != nil {
+		delete(d.remainingRequests[height], round)
+	}
+}
+
 func (d *PeerState) RequestsReady() {
 	select {
 	case d.canRequest <- struct{}{}:
