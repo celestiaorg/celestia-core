@@ -3071,12 +3071,6 @@ func (cs *State) syncData() {
 			if !has {
 				continue
 			}
-			// only backfill parts that belong to the part set consensus is
-			// collecting; the propagator may be bound to a different proposal
-			// identity at this height and round.
-			if !partset.HasHeader(currentProposalParts.Header()) {
-				continue
-			}
 			for _, indice := range partset.BitArray().GetTrueIndices() {
 				if currentProposalParts.IsComplete() {
 					break

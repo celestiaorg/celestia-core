@@ -1,7 +1,6 @@
 package propagation
 
 import (
-	"bytes"
 	"fmt"
 	"math"
 
@@ -96,10 +95,9 @@ func (blockProp *Reactor) handleHaves(peer p2p.ID, haves *proptypes.HaveParts) {
 			case <-p.ctx.Done():
 				return
 			case p.receivedHaves <- request{
-				height:  height,
-				round:   round,
-				index:   uint32(index),
-				pshHash: cb.Proposal.BlockID.PartSetHeader.Hash,
+				height: height,
+				round:  round,
+				index:  uint32(index),
 			}:
 				p.RequestsReady()
 			default:
@@ -180,13 +178,6 @@ func (blockProp *Reactor) requestFromPeer(ps *PeerState) {
 						blockProp.Logger.Error("couldn't find proposal when filtering requests", "height", have.height, "round", have.round)
 						break
 					}
-				}
-
-				// drop requests recorded against a different proposal
-				// identity than the one stored for this height and round
-				// (e.g. after a commitment replaced the entry).
-				if !bytes.Equal(have.pshHash, parts.Original().Header().Hash) {
-					continue
 				}
 
 				missingPartsCount := countRemainingParts(int(parts.Total()), len(parts.BitArray().GetTrueIndices()))
