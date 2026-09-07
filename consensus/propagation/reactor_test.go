@@ -196,11 +196,11 @@ func TestHandleHavesAndWantsAndRecoveryParts(t *testing.T) {
 	}
 	baseCompactBlock.Proposal = p
 
-	added := reactor1.AddProposal(baseCompactBlock)
+	added, _ := reactor1.AddProposal(baseCompactBlock)
 	require.True(t, added)
-	added = reactor2.AddProposal(baseCompactBlock)
+	added, _ = reactor2.AddProposal(baseCompactBlock)
 	require.True(t, added)
-	added = reactor3.AddProposal(baseCompactBlock)
+	added, _ = reactor3.AddProposal(baseCompactBlock)
 	require.True(t, added)
 
 	// reactor 1 will receive haves from reactor 2
@@ -298,9 +298,9 @@ func TestInvalidPart(t *testing.T) {
 	}
 	baseCompactBlock.Proposal = p
 
-	added := reactor1.AddProposal(baseCompactBlock)
+	added, _ := reactor1.AddProposal(baseCompactBlock)
 	require.True(t, added)
-	added = reactor2.AddProposal(baseCompactBlock)
+	added, _ = reactor2.AddProposal(baseCompactBlock)
 	require.True(t, added)
 
 	// reactor 1 will receive haves from reactor 2
@@ -761,7 +761,7 @@ func TestPeerStateEditor(t *testing.T) {
 
 	cb, ps, _, _ := testCompactBlock(t, sm, pv, 1, 1)
 
-	added := r0.AddProposal(cb)
+	added, _ := r0.AddProposal(cb)
 	require.True(t, added)
 
 	assert.Len(t, editor.proposals, 0, "Should start with 0 proposals")

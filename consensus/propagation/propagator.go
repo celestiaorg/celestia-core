@@ -12,7 +12,10 @@ import (
 type Propagator interface {
 	GetProposal(height int64, round int32) (*types.Proposal, *types.PartSet, bool)
 	ProposeBlock(proposal *types.Proposal, parts *types.PartSet, txs []proptypes.TxMetaData) error
-	AddCommitment(height int64, round int32, psh *types.PartSetHeader)
+	// AddCommitment pins the given +2/3-backed block identity (block hash and
+	// part-set header) for the height and round. A conflicting identity
+	// already stored there is replaced, along with its per-peer part state.
+	AddCommitment(height int64, round int32, blockID types.BlockID)
 	Prune(committedHeight int64)
 	SetHeightAndRound(height int64, round int32)
 	StartProcessing()
@@ -71,7 +74,7 @@ func (nop *NoOpPropagator) ProposeBlock(_ *types.Proposal, _ *types.PartSet, _ [
 	return nil
 }
 
-func (nop *NoOpPropagator) AddCommitment(_ int64, _ int32, _ *types.PartSetHeader) {
+func (nop *NoOpPropagator) AddCommitment(_ int64, _ int32, _ types.BlockID) {
 }
 
 func (nop *NoOpPropagator) Prune(_ int64) {

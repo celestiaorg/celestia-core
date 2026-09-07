@@ -22,6 +22,10 @@ type request struct {
 	height int64
 	round  int32
 	index  uint32
+	// pshHash is the part-set header hash of the proposal the have was
+	// validated against. Requests are dropped if the identity stored at
+	// (height, round) has changed by the time they are serviced.
+	pshHash []byte
 }
 
 // PeerState keeps track of haves and wants for each peer. This is used for
@@ -310,6 +314,18 @@ func (d *PeerState) DeleteHeight(height int64) {
 	d.mtx.Lock()
 	defer d.mtx.Unlock()
 	delete(d.state, height)
+}
+
+// DeleteRound removes all part state for a given height and round.
+func (d *PeerState) DeleteRound(height int64, round int32) {
+	d.mtx.Lock()
+	defer d.mtx.Unlock()
+	if d.state[height] != nil {
+		delete(d.state[height], round)
+	}
+	if d.remainingRequests[height] != nil {
+		delete(d.remainingRequests[height], round)
+	}
 }
 
 func (d *PeerState) RequestsReady() {

@@ -228,6 +228,17 @@ func (blockProp *Reactor) processValidatedCompactBlock(cb *proptypes.CompactBloc
 		return
 	}
 
+	// bind the compact block to this height and round before anything is
+	// forwarded to consensus or peers: a compact block whose identity
+	// conflicts with the entry already stored here must not be forwarded,
+	// gossiped, or used for recovery.
+	added, conflict := blockProp.AddProposal(cb)
+	if conflict {
+		blockProp.Logger.Info("rejecting compact block conflicting with existing proposal identity",
+			"height", cb.Proposal.Height, "round", cb.Proposal.Round, "block_id", cb.Proposal.BlockID, "peer", peer)
+		return
+	}
+
 	if !proposer {
 		select {
 		case <-blockProp.ctx.Done():
@@ -237,22 +248,13 @@ func (blockProp *Reactor) processValidatedCompactBlock(cb *proptypes.CompactBloc
 			From:     peer,
 		}:
 		}
+		if p := blockProp.getPeer(peer); p != nil {
+			p.consensusPeerState.SetHasProposal(&cb.Proposal)
+		}
 	}
 
-	added := blockProp.AddProposal(cb)
 	if !added {
-		p := blockProp.getPeer(peer)
-		if p == nil {
-			return
-		}
-		p.consensusPeerState.SetHasProposal(&cb.Proposal)
 		return
-	} else if !proposer {
-		p := blockProp.getPeer(peer)
-		if p == nil {
-			return
-		}
-		p.consensusPeerState.SetHasProposal(&cb.Proposal)
 	}
 
 	if !proposer {
@@ -314,6 +316,15 @@ func (blockProp *Reactor) recoverPartsFromMempool(cb *proptypes.CompactBlock) {
 	// todo: investigate why this could get hit, it shouldn't ever get hit
 	if partSet == nil {
 		blockProp.Logger.Error("unexpected nil partset while attempting to reuse transactions from the mempool")
+		return
+	}
+
+	// the entry can be concurrently replaced by a commitment for a different
+	// identity; never add this compact block's parts to a part set bound to
+	// another identity.
+	if !partSet.Original().Header().Equals(cb.Proposal.BlockID.PartSetHeader) {
+		blockProp.Logger.Info("skipping mempool recovery: stored part state is bound to a different proposal identity",
+			"height", cb.Proposal.Height, "round", cb.Proposal.Round)
 		return
 	}
 

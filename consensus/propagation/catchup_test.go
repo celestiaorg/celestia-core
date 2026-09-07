@@ -29,7 +29,7 @@ func TestGapCatchup(t *testing.T) {
 	prop, ps, _, metaData := createTestProposal(t, sm, pv, 1, 0, 2, 1000000)
 	cb, parityBlock := createCompactBlock(t, prop, ps, metaData)
 
-	added := n1.AddProposal(cb)
+	added, _ := n1.AddProposal(cb)
 	require.True(t, added)
 
 	_, parts, _, has := n1.getAllState(prop.Height, prop.Round, true)
@@ -47,12 +47,10 @@ func TestGapCatchup(t *testing.T) {
 	_, _, has = n3.GetProposal(prop.Height, prop.Round)
 	require.False(t, has)
 
-	psh := ps.Header()
-
 	// test two reactors catching up at the same time as that can increase
 	// flakiness if something is broken
-	n2.AddCommitment(prop.Height, prop.Round, &psh)
-	n3.AddCommitment(prop.Height, prop.Round, &psh)
+	n2.AddCommitment(prop.Height, prop.Round, prop.BlockID)
+	n3.AddCommitment(prop.Height, prop.Round, prop.BlockID)
 
 	time.Sleep(800 * time.Millisecond)
 
@@ -79,7 +77,7 @@ func TestReceiveHaveOnCatchupBlock(t *testing.T) {
 	prop, ps, _, metaData := createTestProposal(t, sm, pv, 1, 0, 2, 1000000)
 	cb, _ := createCompactBlock(t, prop, ps, metaData)
 
-	n1.AddCommitment(prop.Height, prop.Round, &cb.Proposal.BlockID.PartSetHeader)
+	n1.AddCommitment(prop.Height, prop.Round, cb.Proposal.BlockID)
 	_, _, _, has := n1.getAllState(prop.Height, prop.Round, true)
 	require.True(t, has)
 
@@ -203,7 +201,7 @@ func TestApplyCachedProposalIfAvailable(t *testing.T) {
 	// Setup height 1 for all nodes - use testCompactBlock for proper signing
 	cb1, ps1, parityBlock1, _ := testCompactBlock(t, sm, pv, 1, 0)
 	for _, r := range reactors {
-		added := r.AddProposal(cb1)
+		added, _ := r.AddProposal(cb1)
 		require.True(t, added)
 	}
 	_, parts1, _, _ := n1.getAllState(1, 0, true)
@@ -219,11 +217,11 @@ func TestApplyCachedProposalIfAvailable(t *testing.T) {
 	cb2, ps2, parityBlock2, _ := testCompactBlock(t, sm, pv, 2, 0)
 
 	// n1 and n2 process height 2
-	added := n1.AddProposal(cb2)
+	added, _ := n1.AddProposal(cb2)
 	require.True(t, added)
 	_, parts2, _, _ := n1.getAllState(2, 0, true)
 	parts2.SetProposalData(ps2, parityBlock2)
-	added = n2.AddProposal(cb2)
+	added, _ = n2.AddProposal(cb2)
 	require.True(t, added)
 
 	// n3 receives height 2 proposal while still at height 1 - should cache it
@@ -428,7 +426,9 @@ func TestHandleCachedCompactBlockRejectsConflictBeforeForwarding(t *testing.T) {
 
 	// Preload proposal A for height 2, round 0.
 	cbA, _, _, _ := testCompactBlock(t, sm, pv, 2, 0)
-	require.True(t, n1.AddProposal(cbA))
+	added, conflict := n1.AddProposal(cbA)
+	require.True(t, added)
+	require.False(t, conflict)
 	// Drain anything already in the proposal channel.
 	for len(n1.GetProposalChan()) > 0 {
 		<-n1.GetProposalChan()
@@ -440,8 +440,9 @@ func TestHandleCachedCompactBlockRejectsConflictBeforeForwarding(t *testing.T) {
 	cbB, _ := createCompactBlock(t, propB, psB, metaDataB)
 	require.False(t, cbA.Proposal.BlockID.Equals(cbB.Proposal.BlockID))
 
-	applied := n1.handleCachedCompactBlock(cbB)
+	applied, conflict := n1.handleCachedCompactBlock(cbB)
 	require.False(t, applied, "conflicting cached proposal should be rejected")
+	require.True(t, conflict, "the rejection should be reported as an identity conflict")
 
 	// B must not have been forwarded to the consensus proposal channel.
 	select {
@@ -478,13 +479,16 @@ func TestHandleCachedCompactBlockAllowsIdenticalDuplicate(t *testing.T) {
 	n1.SetProposer(mockPubKey)
 
 	cbA, _, _, _ := testCompactBlock(t, sm, pv, 2, 0)
-	require.True(t, n1.AddProposal(cbA))
+	added, conflict := n1.AddProposal(cbA)
+	require.True(t, added)
+	require.False(t, conflict)
 	for len(n1.GetProposalChan()) > 0 {
 		<-n1.GetProposalChan()
 	}
 
-	applied := n1.handleCachedCompactBlock(cbA)
+	applied, conflict := n1.handleCachedCompactBlock(cbA)
 	require.True(t, applied, "identical duplicate should still be applied")
+	require.False(t, conflict)
 
 	select {
 	case prop := <-n1.GetProposalChan():
@@ -514,7 +518,7 @@ func TestAddCommitment_ReplaceProposalData(t *testing.T) {
 	firstPsh := firstPartset.Header()
 
 	// set the first partset header
-	r1.AddCommitment(firstProposal.Height, firstProposal.Round, &firstPsh)
+	r1.AddCommitment(firstProposal.Height, firstProposal.Round, firstProposal.BlockID)
 	actualFirstPsh := r1.proposals[firstProposal.Height][firstProposal.Round].block.Original().Header()
 	require.Equal(t, firstPartset.Total(), actualFirstPsh.Total)
 	require.Equal(t, firstPsh.Hash, actualFirstPsh.Hash)
@@ -522,12 +526,21 @@ func TestAddCommitment_ReplaceProposalData(t *testing.T) {
 	// replace the existing partset header with a new one
 	secondProposal, secondPartset, _, _ := createTestProposal(t, sm, pv, 1, 0, 10, 1000000)
 	secondPsh := secondPartset.Header()
-	r1.AddCommitment(secondProposal.Height, secondProposal.Round, &secondPsh)
+	r1.AddCommitment(secondProposal.Height, secondProposal.Round, secondProposal.BlockID)
 
 	// verify if the partset header got updated
 	actualSecondPsh := r1.proposals[secondProposal.Height][secondProposal.Round].block.Original().Header()
 	assert.Equal(t, secondPartset.Total(), actualSecondPsh.Total)
 	assert.Equal(t, secondPsh.Hash, actualSecondPsh.Hash)
+
+	// the replaced entry is commitment-backed and carries the committed identity
+	entry := r1.proposals[secondProposal.Height][secondProposal.Round]
+	assert.True(t, entry.commitmentBacked)
+	assert.True(t, entry.blockID().Equals(secondProposal.BlockID))
+
+	// a commitment for the same identity is a no-op that keeps the entry
+	r1.AddCommitment(secondProposal.Height, secondProposal.Round, secondProposal.BlockID)
+	assert.Same(t, entry, r1.proposals[secondProposal.Height][secondProposal.Round])
 }
 
 // signedCompactBlock returns a compact block for the given height and round

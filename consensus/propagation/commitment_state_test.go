@@ -88,7 +88,7 @@ func TestProposalCache_AddProposal(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			added := pc.AddProposal(tc.inputProposal)
+			added, _ := pc.AddProposal(tc.inputProposal)
 			require.Equal(t, tc.wantAdded, added, "added mismatch")
 			require.Equal(t, tc.wantCurrentHeight, pc.height, "currentHeight mismatch")
 			require.Equal(t, tc.wantCurrentRound, pc.round, "currentRound mismatch")

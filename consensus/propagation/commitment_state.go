@@ -15,6 +15,23 @@ type proposalData struct {
 	block        *proptypes.CombinedPartSet
 	maxRequests  *bits.BitArray
 	catchup      bool
+	// commitmentBacked marks entries created from a +2/3 commitment
+	// (AddCommitment). Their identity is canonical for the height and round,
+	// so they are never replaced on identity conflicts.
+	commitmentBacked bool
+}
+
+// blockID returns the immutable proposal identity (block hash and part-set
+// header) this entry is bound to. Commitment placeholders carry it in their
+// unsigned placeholder proposal.
+func (pd *proposalData) blockID() types.BlockID {
+	return pd.compactBlock.Proposal.BlockID
+}
+
+// matchesIdentity reports whether the compact block refers to the same block
+// as this entry.
+func (pd *proposalData) matchesIdentity(cb *proptypes.CompactBlock) bool {
+	return pd.blockID().Equals(cb.Proposal.BlockID)
 }
 
 type ProposalCache struct {
@@ -56,19 +73,22 @@ func (p *ProposalCache) setCurrentProposalPartsCount(limit int64) {
 	p.currentProposalPartsCount.Store(limit)
 }
 
-func (p *ProposalCache) AddProposal(cb *proptypes.CompactBlock) (added bool) {
+// AddProposal caches the compact block. added reports whether it was stored.
+// conflict reports that an entry bound to a different proposal identity
+// already occupies this height and round.
+func (p *ProposalCache) AddProposal(cb *proptypes.CompactBlock) (added, conflict bool) {
 	p.pmtx.Lock()
 	defer p.pmtx.Unlock()
 
 	if !p.relevant(cb.Proposal.Height, cb.Proposal.Round) {
-		return false
+		return false, false
 	}
 
 	if p.proposals[cb.Proposal.Height] == nil {
 		p.proposals[cb.Proposal.Height] = make(map[int32]*proposalData)
 	}
-	if p.proposals[cb.Proposal.Height][cb.Proposal.Round] != nil {
-		return false
+	if existing := p.proposals[cb.Proposal.Height][cb.Proposal.Round]; existing != nil {
+		return false, !existing.matchesIdentity(cb)
 	}
 
 	p.height = cb.Proposal.Height
@@ -82,7 +102,7 @@ func (p *ProposalCache) AddProposal(cb *proptypes.CompactBlock) (added bool) {
 	}
 
 	p.setCurrentProposalPartsCount(int64(block.Total()))
-	return true
+	return true, false
 }
 
 // GetProposal returns the proposal and block for a given height and round if

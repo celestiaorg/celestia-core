@@ -1782,8 +1782,7 @@ func (cs *State) enterPrecommit(height int64, round int32) {
 	if !cs.rs.ProposalBlockParts.HasHeader(blockID.PartSetHeader) {
 		cs.rs.ProposalBlock = nil
 		cs.rs.ProposalBlockParts = types.NewPartSetFromHeader(blockID.PartSetHeader, types.BlockPartSizeBytes)
-		psh := cs.rs.ProposalBlockParts.Header()
-		cs.propagator.AddCommitment(height, round, &psh)
+		cs.propagator.AddCommitment(height, round, blockID)
 	}
 
 	if err := cs.eventBus.PublishEventUnlock(cs.rs.RoundStateEvent()); err != nil {
@@ -1886,8 +1885,7 @@ func (cs *State) enterCommit(height int64, commitRound int32) {
 			// We're getting the wrong block.
 			// Set up ProposalBlockParts and keep waiting.
 			cs.rs.ProposalBlockParts = types.NewPartSetFromHeader(blockID.PartSetHeader, types.BlockPartSizeBytes)
-			psh := blockID.PartSetHeader
-			cs.propagator.AddCommitment(height, commitRound, &psh)
+			cs.propagator.AddCommitment(height, commitRound, blockID)
 
 			if err := cs.eventBus.PublishEventValidBlock(cs.rs.RoundStateEvent()); err != nil {
 				logger.Error("failed publishing valid block", "err", err)
@@ -2684,8 +2682,7 @@ func (cs *State) addVote(vote *types.Vote, peerID p2p.ID) (added bool, err error
 					// The parts collected so far are not the polka's part set;
 					// throw them away and start collecting the polka's parts.
 					cs.rs.ProposalBlockParts = types.NewPartSetFromHeader(blockID.PartSetHeader, types.BlockPartSizeBytes)
-					psh := blockID.PartSetHeader
-					cs.propagator.AddCommitment(height, vote.Round, &psh)
+					cs.propagator.AddCommitment(height, vote.Round, blockID)
 				}
 
 				// Announce unconditionally, as before this change: the reactor
@@ -3072,6 +3069,12 @@ func (cs *State) syncData() {
 			}
 			_, partset, has := cs.propagator.GetProposal(height, round)
 			if !has {
+				continue
+			}
+			// only backfill parts that belong to the part set consensus is
+			// collecting; the propagator may be bound to a different proposal
+			// identity at this height and round.
+			if !partset.HasHeader(currentProposalParts.Header()) {
 				continue
 			}
 			for _, indice := range partset.BitArray().GetTrueIndices() {
