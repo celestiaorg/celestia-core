@@ -85,6 +85,16 @@ func (p *ProposalCache) AddProposal(cb *proptypes.CompactBlock) (added bool) {
 	return true
 }
 
+// conflictsWith reports whether an entry bound to a different proposal
+// identity (block hash and part-set header) already occupies the compact
+// block's height and round.
+func (p *ProposalCache) conflictsWith(cb *proptypes.CompactBlock) bool {
+	p.pmtx.Lock()
+	defer p.pmtx.Unlock()
+	existing := p.proposals[cb.Proposal.Height][cb.Proposal.Round]
+	return existing != nil && !sameProposalIdentity(existing, cb)
+}
+
 // GetProposal returns the proposal and block for a given height and round if
 // this node has it stored or cached.
 func (p *ProposalCache) GetProposal(height int64, round int32) (*types.Proposal, *types.PartSet, bool) {

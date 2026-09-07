@@ -110,6 +110,14 @@ func (blockProp *Reactor) AddCommitment(height int64, round int32, psh *types.Pa
 			return
 		}
 		blockProp.Logger.Error("replacing existing proposal with new one", "height", height, "round", round, "psh", psh, "existingPSH", existingPSH)
+		// the replaced entry's per-peer part state is bound to a different
+		// identity: wipe it so stale have, want, and request bits are never
+		// applied to the committed part set. Stale request bits in particular
+		// would stop retryWants from re-requesting the committed block's
+		// parts.
+		for _, peer := range blockProp.getPeers() {
+			peer.DeleteRound(height, round)
+		}
 	}
 
 	blockProp.proposals[height][round] = &proposalData{
