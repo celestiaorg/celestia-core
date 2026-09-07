@@ -12,7 +12,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/s3 v1.109.1
 	github.com/btcsuite/btcd/btcutil v1.2.0
 	github.com/celestiaorg/go-square/v3 v3.0.2
-	github.com/celestiaorg/nmt v0.24.3
+	github.com/celestiaorg/nmt v0.24.4
 	github.com/cometbft/cometbft-db v1.0.4
 	github.com/cosmos/gogoproto v1.7.2
 	github.com/decred/dcrd/dcrec/secp256k1/v4 v4.3.0
