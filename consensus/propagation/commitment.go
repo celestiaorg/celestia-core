@@ -228,6 +228,17 @@ func (blockProp *Reactor) processValidatedCompactBlock(cb *proptypes.CompactBloc
 		return
 	}
 
+	// bind the compact block to its height and round before forwarding: a
+	// compact block conflicting with the identity (block hash and part-set
+	// header) already stored there must not be forwarded to consensus or
+	// gossiped.
+	added := blockProp.AddProposal(cb)
+	if !added && blockProp.conflictsWith(cb) {
+		blockProp.Logger.Info("rejecting compact block conflicting with existing proposal identity",
+			"height", cb.Proposal.Height, "round", cb.Proposal.Round, "block_id", cb.Proposal.BlockID, "peer", peer)
+		return
+	}
+
 	if !proposer {
 		select {
 		case <-blockProp.ctx.Done():
@@ -237,22 +248,13 @@ func (blockProp *Reactor) processValidatedCompactBlock(cb *proptypes.CompactBloc
 			From:     peer,
 		}:
 		}
+		if p := blockProp.getPeer(peer); p != nil {
+			p.consensusPeerState.SetHasProposal(&cb.Proposal)
+		}
 	}
 
-	added := blockProp.AddProposal(cb)
 	if !added {
-		p := blockProp.getPeer(peer)
-		if p == nil {
-			return
-		}
-		p.consensusPeerState.SetHasProposal(&cb.Proposal)
 		return
-	} else if !proposer {
-		p := blockProp.getPeer(peer)
-		if p == nil {
-			return
-		}
-		p.consensusPeerState.SetHasProposal(&cb.Proposal)
 	}
 
 	if !proposer {
