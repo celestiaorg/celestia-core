@@ -319,6 +319,15 @@ func (blockProp *Reactor) recoverPartsFromMempool(cb *proptypes.CompactBlock) {
 		return
 	}
 
+	// the entry can be concurrently replaced by a commitment for a different
+	// identity; never add this compact block's parts to a part set bound to
+	// another identity.
+	if !partSet.Original().Header().Equals(cb.Proposal.BlockID.PartSetHeader) {
+		blockProp.Logger.Info("skipping mempool recovery: stored part state is bound to a different proposal identity",
+			"height", cb.Proposal.Height, "round", cb.Proposal.Round)
+		return
+	}
+
 	recoveredCount := 0
 	haves := proptypes.HaveParts{
 		Height: cb.Proposal.Height,

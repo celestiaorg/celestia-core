@@ -28,9 +28,10 @@ func TestRequestFromPeer(t *testing.T) {
 
 		// send a have
 		p2.receivedHaves <- request{
-			height: prop.Height,
-			round:  prop.Round,
-			index:  uint32(0),
+			height:  prop.Height,
+			round:   prop.Round,
+			index:   uint32(0),
+			pshHash: prop.BlockID.PartSetHeader.Hash,
 		}
 		time.Sleep(200 * time.Millisecond)
 
@@ -52,9 +53,10 @@ func TestRequestFromPeer(t *testing.T) {
 
 		p2.concurrentReqs.Store(ConcurrentRequestLimit(len(reactor1.getPeers()), int(prop.BlockID.PartSetHeader.Total)*2))
 		p2.receivedHaves <- request{
-			height: prop.Height,
-			round:  prop.Round,
-			index:  0,
+			height:  prop.Height,
+			round:   prop.Round,
+			index:   0,
+			pshHash: prop.BlockID.PartSetHeader.Hash,
 		}
 		p2.receivedParts <- partData{height: prop.Height, round: prop.Round}
 		time.Sleep(200 * time.Millisecond)
@@ -86,9 +88,10 @@ func TestRequestFromPeer(t *testing.T) {
 
 		p2.concurrentReqs.Store(0)
 		p2.receivedHaves <- request{
-			height: prop.Height,
-			round:  prop.Round,
-			index:  0,
+			height:  prop.Height,
+			round:   prop.Round,
+			index:   0,
+			pshHash: prop.BlockID.PartSetHeader.Hash,
 		}
 		time.Sleep(200 * time.Millisecond)
 
@@ -109,9 +112,10 @@ func TestRequestFromPeer(t *testing.T) {
 		require.NotNil(t, p2)
 		p2.concurrentReqs.Store(0)
 		p2.receivedHaves <- request{
-			height: prop.Height,
-			round:  prop.Round,
-			index:  0,
+			height:  prop.Height,
+			round:   prop.Round,
+			index:   0,
+			pshHash: prop.BlockID.PartSetHeader.Hash,
 		}
 		p2.RequestsReady()
 
@@ -144,9 +148,10 @@ func TestRequestFromPeer(t *testing.T) {
 
 		for i := 0; i < 10; i++ {
 			p2.receivedHaves <- request{
-				height: prop.Height,
-				round:  prop.Round,
-				index:  uint32(i),
+				height:  prop.Height,
+				round:   prop.Round,
+				index:   uint32(i),
+				pshHash: prop.BlockID.PartSetHeader.Hash,
 			}
 		}
 		p2.RequestsReady()

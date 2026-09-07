@@ -177,6 +177,54 @@ func TestAddCommitmentReplacementPurgesPeerState(t *testing.T) {
 	require.Zero(t, peer.GetRemainingRequests(3, 0))
 }
 
+// TestRequestFromPeerDropsStaleIdentityRequests asserts that queued have
+// requests recorded against a different identity than the one stored for
+// their height and round are dropped instead of being turned into wants.
+func TestRequestFromPeerDropsStaleIdentityRequests(t *testing.T) {
+	reactors, _ := testBlockPropReactors(2, defaultTestP2PConf())
+	n1, n2 := reactors[0], reactors[1]
+
+	cleanup, _, sm, pv := state.SetupTestCaseWithPrivVal(t)
+	t.Cleanup(func() { cleanup(t) })
+
+	// stop the catchup ticker so background retries cannot record requests
+	// and race the assertions below.
+	n1.ticker.Stop()
+
+	cb, _, _, _ := testCompactBlock(t, sm, pv, 1, 0)
+	added, conflict := n1.AddProposal(cb)
+	require.True(t, added)
+	require.False(t, conflict)
+
+	peer := n1.getPeer(n2.self)
+	require.NotNil(t, peer)
+
+	// a request recorded against a different identity is dropped.
+	peer.receivedHaves <- request{
+		height:  1,
+		round:   0,
+		index:   0,
+		pshHash: cmtrand.Bytes(32),
+	}
+	peer.RequestsReady()
+	time.Sleep(300 * time.Millisecond)
+	reqs, has := peer.GetRequests(1, 0)
+	require.True(t, !has || !reqs.GetIndex(0), "stale identity request must not be sent")
+
+	// a request matching the stored identity is serviced.
+	peer.receivedHaves <- request{
+		height:  1,
+		round:   0,
+		index:   0,
+		pshHash: cb.Proposal.BlockID.PartSetHeader.Hash,
+	}
+	peer.RequestsReady()
+	require.Eventually(t, func() bool {
+		reqs, has := peer.GetRequests(1, 0)
+		return has && reqs.GetIndex(0)
+	}, 2*time.Second, 50*time.Millisecond, "matching identity request must be sent")
+}
+
 // TestHandleCachedCompactBlockRejectsConflict asserts that a cached compact
 // block conflicting with the stored identity is rejected before it is
 // forwarded to consensus, while a matching one is forwarded.
@@ -210,5 +258,41 @@ func TestHandleCachedCompactBlockRejectsConflict(t *testing.T) {
 		require.True(t, prop.Proposal.BlockID.Equals(cbA.Proposal.BlockID))
 	case <-time.After(time.Second):
 		t.Fatal("matching cached proposal was not forwarded to consensus")
+	}
+}
+
+// TestRecoverPartsFromMempoolIdentityGuard asserts that mempool recovery never
+// adds a compact block's parts to a part set bound to a different identity.
+func TestRecoverPartsFromMempoolIdentityGuard(t *testing.T) {
+	reactors, _ := testBlockPropReactors(1, defaultTestP2PConf())
+	n1 := reactors[0]
+
+	cleanup, _, sm, pv := state.SetupTestCaseWithPrivVal(t)
+	t.Cleanup(func() { cleanup(t) })
+
+	cbA, _, _, _ := testCompactBlock(t, sm, pv, 1, 0)
+
+	// B's transactions are all in the mempool, so without the identity guard
+	// recovery would attempt to add B's parts to the stored part set.
+	propB, psB, blockB, metaDataB := createTestProposal(t, sm, pv, 1, 0, 2, 1000000)
+	cbB, _ := createCompactBlock(t, propB, psB, metaDataB)
+	require.False(t, cbA.Proposal.BlockID.Equals(cbB.Proposal.BlockID))
+	for _, tx := range blockB.Txs {
+		n1.mempool.(*mockMempool).AddTx(tx)
+	}
+
+	// the stored entry is bound to A while recovery runs with B's compact
+	// block, as can happen when a commitment replaces the entry concurrently.
+	n1.AddCommitment(1, 0, cbA.Proposal.BlockID)
+	n1.recoverPartsFromMempool(cbB)
+
+	_, parts, _, has := n1.getAllState(1, 0, true)
+	require.True(t, has)
+	require.True(t, parts.Original().Header().Equals(cbA.Proposal.BlockID.PartSetHeader))
+	require.True(t, parts.BitArray().IsEmpty())
+	select {
+	case part := <-n1.GetPartChan():
+		t.Fatalf("conflicting part forwarded to consensus: %+v", part)
+	default:
 	}
 }

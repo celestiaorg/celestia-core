@@ -22,6 +22,10 @@ type request struct {
 	height int64
 	round  int32
 	index  uint32
+	// pshHash is the part-set header hash of the proposal the have was
+	// validated against. Requests are dropped if the identity stored at
+	// (height, round) has changed by the time they are serviced.
+	pshHash []byte
 }
 
 // PeerState keeps track of haves and wants for each peer. This is used for
