@@ -15,10 +15,6 @@ type proposalData struct {
 	block        *proptypes.CombinedPartSet
 	maxRequests  *bits.BitArray
 	catchup      bool
-	// commitmentBacked marks entries created from a +2/3 commitment
-	// (AddCommitment). Their identity is canonical for the height and round,
-	// so they are never replaced on identity conflicts.
-	commitmentBacked bool
 }
 
 // blockID returns the immutable proposal identity (block hash and part-set

@@ -533,9 +533,8 @@ func TestAddCommitment_ReplaceProposalData(t *testing.T) {
 	assert.Equal(t, secondPartset.Total(), actualSecondPsh.Total)
 	assert.Equal(t, secondPsh.Hash, actualSecondPsh.Hash)
 
-	// the replaced entry is commitment-backed and carries the committed identity
+	// the replaced entry carries the committed identity
 	entry := r1.proposals[secondProposal.Height][secondProposal.Round]
-	assert.True(t, entry.commitmentBacked)
 	assert.True(t, entry.blockID().Equals(secondProposal.BlockID))
 
 	// a commitment for the same identity is a no-op that keeps the entry

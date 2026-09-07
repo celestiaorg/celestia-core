@@ -143,10 +143,9 @@ func (blockProp *Reactor) addCommitment(height int64, round int32, blockID types
 				BlockID: blockID,
 			},
 		},
-		catchup:          true,
-		commitmentBacked: true,
-		block:            combinedSet,
-		maxRequests:      bits.NewBitArray(int(psh.Total * 2)), // this assumes that the parity parts are the same size
+		catchup:     true,
+		block:       combinedSet,
+		maxRequests: bits.NewBitArray(int(psh.Total * 2)), // this assumes that the parity parts are the same size
 	}
 
 	// increment the local copies of the height and round

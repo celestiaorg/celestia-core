@@ -36,7 +36,7 @@ func TestPropagationStateDoesNotMixProposalIdentities(t *testing.T) {
 	entry := n1.proposals[1][0]
 	n1.pmtx.Unlock()
 	require.NotNil(t, entry)
-	require.True(t, entry.commitmentBacked)
+	require.True(t, entry.blockID().Equals(cbA.Proposal.BlockID))
 
 	n1.handleCompactBlock(cbB, n2.self, false)
 
@@ -167,7 +167,6 @@ func TestAddCommitmentReplacementPurgesPeerState(t *testing.T) {
 	entry := n1.proposals[3][0]
 	n1.pmtx.Unlock()
 	require.NotNil(t, entry)
-	require.True(t, entry.commitmentBacked)
 	require.True(t, entry.blockID().Equals(cbA.Proposal.BlockID))
 	require.True(t, entry.block.Original().Header().Equals(cbA.Proposal.BlockID.PartSetHeader))
 
