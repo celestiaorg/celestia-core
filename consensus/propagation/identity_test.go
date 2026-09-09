@@ -9,6 +9,7 @@ import (
 	proptypes "github.com/cometbft/cometbft/consensus/propagation/types"
 	cmtrand "github.com/cometbft/cometbft/libs/rand"
 	"github.com/cometbft/cometbft/state"
+	"github.com/cometbft/cometbft/types"
 )
 
 // TestPropagationStateDoesNotMixProposalIdentities delivers A's commitment
@@ -148,4 +149,89 @@ func TestAddCommitmentReplacementPurgesPeerState(t *testing.T) {
 	_, has = peer.GetRequests(3, 0)
 	require.False(t, has, "peer request state for the replaced identity must be purged")
 	require.Zero(t, peer.GetRemainingRequests(3, 0))
+}
+
+// TestForwardProposalToConsensus asserts a proposal is forwarded only while
+// the stored entry still matches its identity.
+func TestForwardProposalToConsensus(t *testing.T) {
+	reactors, _ := testBlockPropReactors(2, defaultTestP2PConf())
+	n1 := reactors[0]
+
+	cbA := makeCompactBlock(10, 0, 3)
+	cbA.Proposal.BlockID.Hash = cmtrand.Bytes(32)
+	cbA.Proposal.BlockID.PartSetHeader.Hash = cmtrand.Bytes(32)
+	require.True(t, n1.AddProposal(cbA))
+	for len(n1.GetProposalChan()) > 0 {
+		<-n1.GetProposalChan()
+	}
+
+	require.True(t, n1.forwardProposalToConsensus(cbA, n1.self))
+	select {
+	case prop := <-n1.GetProposalChan():
+		require.True(t, prop.Proposal.BlockID.Equals(cbA.Proposal.BlockID))
+	default:
+		t.Fatal("expected the proposal to be forwarded")
+	}
+
+	// no entry stored for the height: nothing is forwarded.
+	require.False(t, n1.forwardProposalToConsensus(makeCompactBlock(11, 0, 3), n1.self))
+
+	// a commitment replacing the entry with a different identity stops the
+	// forward.
+	pshB := types.PartSetHeader{Total: 3, Hash: cmtrand.Bytes(32)}
+	n1.AddCommitment(10, 0, &pshB)
+	require.False(t, n1.forwardProposalToConsensus(cbA, n1.self))
+	select {
+	case prop := <-n1.GetProposalChan():
+		t.Fatalf("proposal forwarded after its entry was replaced: %+v", prop)
+	default:
+	}
+}
+
+// TestForwardProposalToConsensusFullChannel asserts a full proposal channel is
+// waited on without holding pmtx, and that a replacement while waiting stops
+// the forward.
+func TestForwardProposalToConsensusFullChannel(t *testing.T) {
+	reactors, _ := testBlockPropReactors(2, defaultTestP2PConf())
+	n1 := reactors[0]
+
+	cbA := makeCompactBlock(10, 0, 3)
+	cbA.Proposal.BlockID.Hash = cmtrand.Bytes(32)
+	cbA.Proposal.BlockID.PartSetHeader.Hash = cmtrand.Bytes(32)
+	require.True(t, n1.AddProposal(cbA))
+
+	for len(n1.proposalChan) < cap(n1.proposalChan) {
+		n1.proposalChan <- ProposalAndSrc{}
+	}
+
+	forwarded := make(chan bool, 1)
+	go func() { forwarded <- n1.forwardProposalToConsensus(cbA, n1.self) }()
+
+	// pmtx stays available while the forward waits for channel space.
+	locked := make(chan struct{})
+	go func() {
+		n1.pmtx.Lock()
+		n1.pmtx.Unlock() //nolint:staticcheck
+		close(locked)
+	}()
+	select {
+	case <-locked:
+	case <-time.After(time.Second):
+		t.Fatal("pmtx held while waiting for channel space")
+	}
+
+	// replace the entry, then free a slot: the forward must give up.
+	pshB := types.PartSetHeader{Total: 3, Hash: cmtrand.Bytes(32)}
+	n1.AddCommitment(10, 0, &pshB)
+	<-n1.proposalChan
+	select {
+	case sent := <-forwarded:
+		require.False(t, sent)
+	case <-time.After(time.Second):
+		t.Fatal("forward did not return")
+	}
+	for len(n1.proposalChan) > 0 {
+		prop := <-n1.proposalChan
+		require.False(t, prop.Proposal.BlockID.Equals(cbA.Proposal.BlockID))
+	}
 }

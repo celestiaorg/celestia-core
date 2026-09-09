@@ -240,13 +240,8 @@ func (blockProp *Reactor) processValidatedCompactBlock(cb *proptypes.CompactBloc
 	}
 
 	if !proposer {
-		select {
-		case <-blockProp.ctx.Done():
+		if !blockProp.forwardProposalToConsensus(cb, peer) {
 			return
-		case blockProp.proposalChan <- ProposalAndSrc{
-			Proposal: cb.Proposal,
-			From:     peer,
-		}:
 		}
 		if p := blockProp.getPeer(peer); p != nil {
 			p.consensusPeerState.SetHasProposal(&cb.Proposal)

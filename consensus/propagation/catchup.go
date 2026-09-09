@@ -3,6 +3,7 @@ package propagation
 import (
 	"bytes"
 	"math/rand"
+	"time"
 
 	proptypes "github.com/cometbft/cometbft/consensus/propagation/types"
 	"github.com/cometbft/cometbft/libs/bits"
@@ -250,14 +251,9 @@ func (blockProp *Reactor) handleCachedCompactBlock(cb *proptypes.CompactBlock) b
 		return false
 	}
 
-	// Send proposal to consensus reactor
-	select {
-	case <-blockProp.ctx.Done():
+	// Send proposal to consensus reactor. From self since it's from cache.
+	if !blockProp.forwardProposalToConsensus(cb, blockProp.self) {
 		return false
-	case blockProp.proposalChan <- ProposalAndSrc{
-		Proposal: cb.Proposal,
-		From:     blockProp.self, // From self since it's from cache
-	}:
 	}
 
 	// Recover any parts from mempool
@@ -267,6 +263,38 @@ func (blockProp *Reactor) handleCachedCompactBlock(cb *proptypes.CompactBlock) b
 	blockProp.ticker.Reset(RetryTime)
 	go blockProp.retryWants()
 	return true
+}
+
+// forwardProposalToConsensus sends the proposal to consensus only while it
+// still matches the entry stored for its height and round. The check and the
+// send happen under pmtx, so a concurrent AddCommitment cannot replace the
+// entry in between.
+func (blockProp *Reactor) forwardProposalToConsensus(cb *proptypes.CompactBlock, from p2p.ID) bool {
+	msg := ProposalAndSrc{Proposal: cb.Proposal, From: from}
+	for {
+		blockProp.pmtx.Lock()
+		existing := blockProp.proposals[cb.Proposal.Height][cb.Proposal.Round]
+		if existing == nil || !sameProposalIdentity(existing, cb) {
+			blockProp.pmtx.Unlock()
+			return false
+		}
+		select {
+		case blockProp.proposalChan <- msg:
+			blockProp.pmtx.Unlock()
+			return true
+		default:
+		}
+		blockProp.pmtx.Unlock()
+
+		// the channel is full: wait off the lock, then re-check and retry.
+		// Blocking on the send while holding pmtx could deadlock with the
+		// consensus routines that consume the channel and take pmtx.
+		select {
+		case <-blockProp.ctx.Done():
+			return false
+		case <-time.After(10 * time.Millisecond):
+		}
+	}
 }
 
 // sameProposalIdentity reports whether an existing proposal entry refers to the
