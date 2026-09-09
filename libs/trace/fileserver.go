@@ -271,11 +271,11 @@ func S3Download(dst, prefix string, cfg S3Config, fileNames ...string) error {
 		return err
 	}
 
-	awscfg, err2 := config.LoadDefaultConfig(context.TODO(),
+	awscfg, err := config.LoadDefaultConfig(context.TODO(),
 		config.WithRegion(cfg.Region),
 		config.WithCredentialsProvider(credentials.NewStaticCredentialsProvider(cfg.AccessKey, cfg.SecretKey, "")),
 	)
-	if err2 != nil {
+	if err != nil {
 		return err
 	}
 
@@ -286,7 +286,6 @@ func S3Download(dst, prefix string, cfg S3Config, fileNames ...string) error {
 		Delimiter: aws.String(""),
 	}
 
-	totalObjects := 0
 	paginator := s3.NewListObjectsV2Paginator(s3Svc, input)
 	for paginator.HasMorePages() {
 		output, err := paginator.NextPage(context.TODO())
@@ -295,52 +294,63 @@ func S3Download(dst, prefix string, cfg S3Config, fileNames ...string) error {
 		}
 		for _, content := range output.Contents {
 			key := *content.Key
-
-			// If no fileNames are specified, download all files
-			if len(fileNames) == 0 {
-				fileNames = append(fileNames, strings.TrimPrefix(key, prefix))
+			if !matchesTraceFile(key, fileNames) {
+				continue
 			}
-
-			for _, filename := range fileNames {
-				// Add .jsonl suffix to the fileNames
-				fullFilename := filename + jsonL
-				if strings.HasSuffix(key, fullFilename) {
-					localFilePath := filepath.Join(dst, prefix, strings.TrimPrefix(key, prefix))
-					fmt.Printf("Downloading %s to %s\n", key, localFilePath)
-
-					// Create the directories in the path
-					if err := os.MkdirAll(filepath.Dir(localFilePath), os.ModePerm); err != nil {
-						return err
-					}
-
-					// Create a file to write the S3 Object contents to.
-					f, err := os.Create(localFilePath)
-					if err != nil {
-						return err
-					}
-
-					resp, err := s3Svc.GetObject(context.Background(), &s3.GetObjectInput{
-						Bucket: aws.String(cfg.BucketName),
-						Key:    aws.String(key),
-					})
-					if err != nil {
-						f.Close()
-						continue
-					}
-					defer resp.Body.Close()
-
-					// Copy the contents of the S3 object to the local file
-					if _, err := io.Copy(f, resp.Body); err != nil { //
-						f.Close()
-						return err
-					}
-
-					fmt.Printf("Successfully downloaded %s to %s\n", key, localFilePath)
-					f.Close()
-				}
+			localFilePath := filepath.Join(dst, prefix, strings.TrimPrefix(key, prefix))
+			if err := downloadS3Object(s3Svc, cfg.BucketName, key, localFilePath); err != nil {
+				return err
 			}
 		}
-		totalObjects += len(output.Contents)
 	}
-	return err
+	return nil
+}
+
+// matchesTraceFile reports whether key is one of the requested trace files.
+// An empty fileNames matches every key.
+func matchesTraceFile(key string, fileNames []string) bool {
+	if len(fileNames) == 0 {
+		return true
+	}
+	for _, filename := range fileNames {
+		if strings.HasSuffix(key, filename+jsonL) {
+			return true
+		}
+	}
+	return false
+}
+
+// downloadS3Object writes the object stored at key to localFilePath. Objects
+// that cannot be fetched are skipped, as before.
+func downloadS3Object(s3Svc *s3.Client, bucket, key, localFilePath string) error {
+	fmt.Printf("Downloading %s to %s\n", key, localFilePath)
+
+	// Create the directories in the path
+	if err := os.MkdirAll(filepath.Dir(localFilePath), os.ModePerm); err != nil {
+		return err
+	}
+
+	// Create a file to write the S3 Object contents to.
+	f, err := os.Create(localFilePath)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+
+	resp, err := s3Svc.GetObject(context.Background(), &s3.GetObjectInput{
+		Bucket: aws.String(bucket),
+		Key:    aws.String(key),
+	})
+	if err != nil {
+		return nil
+	}
+	defer resp.Body.Close()
+
+	// Copy the contents of the S3 object to the local file
+	if _, err := io.Copy(f, resp.Body); err != nil {
+		return err
+	}
+
+	fmt.Printf("Successfully downloaded %s to %s\n", key, localFilePath)
+	return nil
 }
