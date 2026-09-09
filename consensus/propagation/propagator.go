@@ -19,6 +19,9 @@ type Propagator interface {
 	SetProposer(proposer crypto.PubKey)
 	// SetConsensusState installs the height, round, and proposer atomically.
 	SetConsensusState(height int64, round int32, proposer crypto.PubKey)
+	// EvictProposal drops a proposal that consensus rejected so a replacement
+	// at the same height and round can be accepted.
+	EvictProposal(height int64, round int32, blockID types.BlockID)
 	GetPartChan() <-chan types.PartInfo
 	GetProposalChan() <-chan ProposalAndSrc
 	// IsCatchingUp returns true if the node is catching up on block data
@@ -87,6 +90,9 @@ func (nop *NoOpPropagator) SetProposer(_ crypto.PubKey) {
 }
 
 func (nop *NoOpPropagator) SetConsensusState(_ int64, _ int32, _ crypto.PubKey) {
+}
+
+func (nop *NoOpPropagator) EvictProposal(_ int64, _ int32, _ types.BlockID) {
 }
 
 func (nop *NoOpPropagator) GetPartChan() <-chan types.PartInfo {

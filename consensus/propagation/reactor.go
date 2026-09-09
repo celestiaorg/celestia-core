@@ -378,6 +378,20 @@ func (blockProp *Reactor) SetConsensusState(height int64, round int32, proposer 
 	blockProp.applyCachedProposalIfAvailable()
 }
 
+// EvictProposal drops a proposal that consensus rejected. The rejected
+// identity is quarantined so it is not stored or gossiped again, and the
+// per-peer part state bound to it is purged so stale request bits cannot stop
+// retryWants from fetching a replacement proposal's parts.
+func (blockProp *Reactor) EvictProposal(height int64, round int32, blockID types.BlockID) {
+	if !blockProp.evict(height, round, blockID) {
+		return
+	}
+	blockProp.Logger.Info("evicted proposal rejected by consensus", "height", height, "round", round, "block_id", blockID)
+	for _, peer := range blockProp.getPeers() {
+		peer.DeleteRound(height, round)
+	}
+}
+
 func (blockProp *Reactor) ResetRequestCounts() {
 	peers := blockProp.getPeers()
 	for _, p := range peers {

@@ -22,6 +22,11 @@ type ProposalCache struct {
 	pmtx      *sync.Mutex
 	proposals map[int64]map[int32]*proposalData
 
+	// rejected quarantines the identities of proposals that consensus
+	// rejected, keyed by types.BlockID.Key(), so they are never stored again.
+	// It is cleared on every commit by prune.
+	rejected map[string]struct{}
+
 	// height the height we're trying to get consensus on.
 	// the last committed height is height-1.
 	height int64
@@ -36,6 +41,7 @@ func NewProposalCache(bs *store.BlockStore) *ProposalCache {
 	pc := &ProposalCache{
 		pmtx:      &mtx,
 		proposals: make(map[int64]map[int32]*proposalData),
+		rejected:  make(map[string]struct{}),
 		store:     bs,
 	}
 
@@ -64,6 +70,10 @@ func (p *ProposalCache) AddProposal(cb *proptypes.CompactBlock) (added bool) {
 		return false
 	}
 
+	if _, rejected := p.rejected[cb.Proposal.BlockID.Key()]; rejected {
+		return false
+	}
+
 	if p.proposals[cb.Proposal.Height] == nil {
 		p.proposals[cb.Proposal.Height] = make(map[int32]*proposalData)
 	}
@@ -85,14 +95,35 @@ func (p *ProposalCache) AddProposal(cb *proptypes.CompactBlock) (added bool) {
 	return true
 }
 
-// conflictsWith reports whether an entry bound to a different proposal
-// identity (block hash and part-set header) already occupies the compact
-// block's height and round.
+// conflictsWith reports whether the compact block can never be stored at its
+// height and round: either an entry bound to a different proposal identity
+// (block hash and part-set header) already occupies the slot, or this
+// identity was rejected by consensus.
 func (p *ProposalCache) conflictsWith(cb *proptypes.CompactBlock) bool {
 	p.pmtx.Lock()
 	defer p.pmtx.Unlock()
+	if _, rejected := p.rejected[cb.Proposal.BlockID.Key()]; rejected {
+		return true
+	}
 	existing := p.proposals[cb.Proposal.Height][cb.Proposal.Round]
 	return existing != nil && !sameProposalIdentity(existing, cb)
+}
+
+// evict quarantines a proposal identity and removes the entry at the given
+// height and round when it is bound to that identity. Entries created by
+// AddCommitment carry a zero block ID and are therefore never evicted, since
+// their part set header is backed by a +2/3 commitment. Returns true if an
+// entry was removed.
+func (p *ProposalCache) evict(height int64, round int32, blockID types.BlockID) bool {
+	p.pmtx.Lock()
+	defer p.pmtx.Unlock()
+	p.rejected[blockID.Key()] = struct{}{}
+	existing := p.proposals[height][round]
+	if existing == nil || !existing.compactBlock.Proposal.BlockID.Equals(blockID) {
+		return false
+	}
+	delete(p.proposals[height], round)
+	return true
 }
 
 // GetProposal returns the proposal and block for a given height and round if
@@ -266,4 +297,7 @@ func (p *ProposalCache) prune(pruneHeight int64) {
 			delete(p.proposals, height)
 		}
 	}
+	// a committed height ends every dispute below it: rejected identities can
+	// no longer be proposed, so the quarantine starts empty each height.
+	p.rejected = make(map[string]struct{})
 }

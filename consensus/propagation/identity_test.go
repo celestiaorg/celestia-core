@@ -149,3 +149,97 @@ func TestAddCommitmentReplacementPurgesPeerState(t *testing.T) {
 	require.False(t, has, "peer request state for the replaced identity must be purged")
 	require.Zero(t, peer.GetRemainingRequests(3, 0))
 }
+
+// TestConsensusRejectionEvictsPropagationProposal asserts that a proposal
+// rejected by consensus is no longer advertised or requested, and that a
+// valid replacement for the same height and round is accepted and forwarded.
+func TestConsensusRejectionEvictsPropagationProposal(t *testing.T) {
+	reactors, _ := testBlockPropReactors(2, defaultTestP2PConf())
+	n1, n2 := reactors[0], reactors[1]
+
+	cleanup, _, sm, pv := state.SetupTestCaseWithPrivVal(t)
+	t.Cleanup(func() { cleanup(t) })
+
+	// proposal A is accepted into propagation, then rejected by consensus.
+	cbA, _, _, _ := testCompactBlock(t, sm, pv, 1, 0)
+	// proposal B is a valid replacement for the same height and round.
+	cbB, psB, _, proofsB := testCompactBlock(t, sm, pv, 1, 0)
+	require.False(t, cbA.Proposal.BlockID.Equals(cbB.Proposal.BlockID))
+
+	n1.handleCompactBlock(cbA, n2.self, false)
+	select {
+	case prop := <-n1.GetProposalChan():
+		require.True(t, prop.Proposal.BlockID.Equals(cbA.Proposal.BlockID))
+	case <-time.After(time.Second):
+		t.Fatal("proposal A was not forwarded to consensus")
+	}
+
+	// record A's have and request state on the peer.
+	n1.handleHaves(n2.self, &proptypes.HaveParts{
+		Height: 1,
+		Round:  0,
+		Parts: []proptypes.PartMetaData{
+			{Index: 0, Hash: cbA.PartsHashes[0]},
+			{Index: 1, Hash: cbA.PartsHashes[1]},
+		},
+	})
+	peer := n1.getPeer(n2.self)
+	require.NotNil(t, peer)
+	haves, has := peer.GetHaves(1, 0)
+	require.True(t, has)
+	require.False(t, haves.IsEmpty())
+	// let the queued haves drain into sent requests before the eviction.
+	time.Sleep(300 * time.Millisecond)
+
+	// consensus rejects A.
+	n1.EvictProposal(1, 0, cbA.Proposal.BlockID)
+
+	// A is no longer stored, advertised, or requested.
+	_, _, has = n1.GetProposal(1, 0)
+	require.False(t, has, "the rejected proposal must not be stored")
+	_, _, found := n1.GetCurrentCompactBlock()
+	require.False(t, found, "the rejected proposal must not be advertised to new peers")
+	require.Empty(t, n1.unfinishedHeights(), "the rejected proposal must not be requested")
+	_, has = peer.GetHaves(1, 0)
+	require.False(t, has, "peer have state for the rejected proposal must be purged")
+	_, has = peer.GetRequests(1, 0)
+	require.False(t, has, "peer request state for the rejected proposal must be purged")
+
+	// A cannot be re-added, and is not forwarded to consensus again.
+	n1.handleCompactBlock(cbA, n2.self, false)
+	_, _, has = n1.GetProposal(1, 0)
+	require.False(t, has, "the rejected identity must stay quarantined")
+	select {
+	case prop := <-n1.GetProposalChan():
+		t.Fatalf("rejected proposal forwarded to consensus again: %+v", prop)
+	default:
+	}
+
+	// B is accepted, forwarded to consensus, and its parts are usable.
+	n1.handleCompactBlock(cbB, n2.self, false)
+	select {
+	case prop := <-n1.GetProposalChan():
+		require.True(t, prop.Proposal.BlockID.Equals(cbB.Proposal.BlockID))
+	case <-time.After(time.Second):
+		t.Fatal("replacement proposal was not forwarded to consensus")
+	}
+
+	_, parts, _, has := n1.getAllState(1, 0, true)
+	require.True(t, has)
+	require.True(t, parts.Original().Header().Equals(cbB.Proposal.BlockID.PartSetHeader))
+
+	partB := psB.GetPart(0)
+	n1.handleRecoveryPart(n2.self, &proptypes.RecoveryPart{
+		Height: 1,
+		Round:  0,
+		Index:  0,
+		Data:   partB.Bytes,
+		Proof:  proofsB[0],
+	})
+	select {
+	case part := <-n1.GetPartChan():
+		require.EqualValues(t, 0, part.Index)
+	case <-time.After(time.Second):
+		t.Fatal("replacement proposal's part was not forwarded to consensus")
+	}
+}
