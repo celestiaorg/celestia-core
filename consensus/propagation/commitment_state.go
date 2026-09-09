@@ -15,6 +15,9 @@ type proposalData struct {
 	block        *proptypes.CombinedPartSet
 	maxRequests  *bits.BitArray
 	catchup      bool
+	// commitmentBacked marks an entry backed by a +2/3 commitment. Such an
+	// entry is never evicted.
+	commitmentBacked bool
 }
 
 type ProposalCache struct {
@@ -93,6 +96,23 @@ func (p *ProposalCache) conflictsWith(cb *proptypes.CompactBlock) bool {
 	defer p.pmtx.Unlock()
 	existing := p.proposals[cb.Proposal.Height][cb.Proposal.Round]
 	return existing != nil && !sameProposalIdentity(existing, cb)
+}
+
+// evict removes the proposal at the given height and round if it has the given
+// identity and no commitment backs it. The identity is not blacklisted, since a
+// rejected proposal message does not make the block invalid.
+func (p *ProposalCache) evict(height int64, round int32, blockID types.BlockID) bool {
+	p.pmtx.Lock()
+	defer p.pmtx.Unlock()
+	existing := p.proposals[height][round]
+	if existing == nil || existing.commitmentBacked {
+		return false
+	}
+	if !existing.compactBlock.Proposal.BlockID.Equals(blockID) {
+		return false
+	}
+	delete(p.proposals[height], round)
+	return true
 }
 
 // GetProposal returns the proposal and block for a given height and round if

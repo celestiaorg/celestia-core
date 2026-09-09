@@ -1037,7 +1037,10 @@ func (cs *State) handleMsg(mi msgInfo) {
 	case *ProposalMessage:
 		// will not cause transition.
 		// once proposal is set, we can receive block parts
-		_ = cs.setProposal(msg.Proposal)
+		if err := cs.setProposal(msg.Proposal); isProposalRejection(err) {
+			// evict it from propagation so a replacement can be accepted.
+			cs.propagator.EvictProposal(msg.Proposal.Height, msg.Proposal.Round, msg.Proposal.BlockID)
+		}
 
 	case *BlockPartMessage:
 		// if the proposal is complete, we'll enterPrevote or tryFinalizeCommit
@@ -2277,6 +2280,14 @@ func (cs *State) defaultSetProposal(proposal *types.Proposal) error {
 	cs.Logger.Info("received proposal", "proposal", proposal, "proposer", pubKey.Address())
 	cs.proposalReceivedTime = time.Now()
 	return nil
+}
+
+// isProposalRejection reports whether setProposal rejected the proposal
+// outright, rather than hitting a routine height or round mismatch.
+func isProposalRejection(err error) bool {
+	return errors.Is(err, ErrInvalidProposalSignature) ||
+		errors.Is(err, ErrInvalidProposalPOLRound) ||
+		errors.Is(err, ErrProposalTooManyParts)
 }
 
 // NOTE: block is not necessarily valid.
