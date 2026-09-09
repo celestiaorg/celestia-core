@@ -1038,9 +1038,7 @@ func (cs *State) handleMsg(mi msgInfo) {
 		// will not cause transition.
 		// once proposal is set, we can receive block parts
 		if err := cs.setProposal(msg.Proposal); isProposalRejection(err) {
-			// the proposal can never be accepted at this height and round:
-			// evict it from propagation so it stops being gossiped and a
-			// replacement proposal can be accepted.
+			// evict it from propagation so a replacement can be accepted.
 			cs.propagator.EvictProposal(msg.Proposal.Height, msg.Proposal.Round, msg.Proposal.BlockID)
 		}
 
@@ -2284,9 +2282,8 @@ func (cs *State) defaultSetProposal(proposal *types.Proposal) error {
 	return nil
 }
 
-// isProposalRejection reports whether setProposal failed because the proposal
-// can never be accepted at its height and round. Routine mismatches, such as
-// a proposal for a height or round we already moved past, are not rejections.
+// isProposalRejection reports whether setProposal rejected the proposal
+// outright, rather than hitting a routine height or round mismatch.
 func isProposalRejection(err error) bool {
 	return errors.Is(err, ErrInvalidProposalSignature) ||
 		errors.Is(err, ErrInvalidProposalPOLRound) ||

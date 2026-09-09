@@ -15,9 +15,8 @@ type proposalData struct {
 	block        *proptypes.CombinedPartSet
 	maxRequests  *bits.BitArray
 	catchup      bool
-	// commitmentBacked marks an entry whose part set header is backed by a
-	// +2/3 commitment, either created by AddCommitment or confirmed by it.
-	// Such an entry is never evicted.
+	// commitmentBacked marks an entry backed by a +2/3 commitment. Such an
+	// entry is never evicted.
 	commitmentBacked bool
 }
 
@@ -99,15 +98,9 @@ func (p *ProposalCache) conflictsWith(cb *proptypes.CompactBlock) bool {
 	return existing != nil && !sameProposalIdentity(existing, cb)
 }
 
-// evict removes the entry at the given height and round when it is bound to
-// the given proposal identity. An entry backed by a +2/3 commitment is kept,
-// since quorum support for the block outranks the rejection of a single
-// proposal message. Returns true if an entry was removed.
-//
-// The rejected identity is deliberately not blacklisted. A rejection means
-// consensus and propagation disagree about the proposer key or the block
-// params, not that the block is invalid, so refusing the identity later would
-// let one bad proposal message suppress an authentic block.
+// evict removes the proposal at the given height and round if it has the given
+// identity and no commitment backs it. The identity is not blacklisted, since a
+// rejected proposal message does not make the block invalid.
 func (p *ProposalCache) evict(height int64, round int32, blockID types.BlockID) bool {
 	p.pmtx.Lock()
 	defer p.pmtx.Unlock()

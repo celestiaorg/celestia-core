@@ -378,19 +378,16 @@ func (blockProp *Reactor) SetConsensusState(height int64, round int32, proposer 
 	blockProp.applyCachedProposalIfAvailable()
 }
 
-// EvictProposal drops a proposal that consensus rejected, freeing its height
-// and round so a replacement can be accepted. The per-peer part state bound
-// to the rejected identity is purged, so stale request bits cannot stop
-// retryWants from fetching the replacement's parts, and the request budget
-// spent on it is released.
+// EvictProposal drops a proposal that consensus rejected, along with the peer
+// state and request budget bound to it, so a replacement can be fetched.
 func (blockProp *Reactor) EvictProposal(height int64, round int32, blockID types.BlockID) {
 	if !blockProp.evict(height, round, blockID) {
 		return
 	}
 	blockProp.Logger.Info("evicted proposal rejected by consensus", "height", height, "round", round, "block_id", blockID)
 	for _, peer := range blockProp.getPeers() {
-		// parts for the evicted identity are dropped on arrival now that its
-		// state is gone, so nothing else will release this budget.
+		// the evicted identity's parts are now dropped on arrival, so
+		// nothing else will release this budget.
 		if reqs, has := peer.GetRequests(height, round); has {
 			peer.DecreaseConcurrentReqs(int64(len(reqs.GetTrueIndices())))
 		}
