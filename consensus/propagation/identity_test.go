@@ -112,7 +112,7 @@ func TestAddCommitmentReplacementPurgesPeerState(t *testing.T) {
 	cbB, _, _, _ := testCompactBlock(t, sm, pv, 3, 0)
 	require.False(t, cbA.Proposal.BlockID.Equals(cbB.Proposal.BlockID))
 
-	n1.SetHeightAndRound(3, 0)
+	n1.SetConsensusState(3, 0, mockPubKey)
 	n1.handleCompactBlock(cbB, n2.self, false)
 	_, parts, _, has := n1.getAllState(3, 0, true)
 	require.True(t, has)
