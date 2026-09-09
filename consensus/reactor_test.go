@@ -22,8 +22,10 @@ import (
 	abci "github.com/cometbft/cometbft/abci/types"
 	cfg "github.com/cometbft/cometbft/config"
 	cstypes "github.com/cometbft/cometbft/consensus/types"
+	"github.com/cometbft/cometbft/crypto"
 	cryptoenc "github.com/cometbft/cometbft/crypto/encoding"
 	"github.com/cometbft/cometbft/crypto/tmhash"
+	"github.com/cometbft/cometbft/internal/test"
 	"github.com/cometbft/cometbft/libs/bits"
 	"github.com/cometbft/cometbft/libs/bytes"
 	"github.com/cometbft/cometbft/libs/json"
@@ -437,6 +439,182 @@ func TestSwitchToConsensusVoteExtensions(t *testing.T) {
 				reactor.SwitchToConsensus(cs.state, false)
 			}
 		})
+	}
+}
+
+// proposerAndRoundCall is one recorded SetConsensusState invocation.
+type proposerAndRoundCall struct {
+	height   int64
+	round    int32
+	proposer crypto.PubKey
+}
+
+// recordingPropagator records the round context the consensus layer installs
+// into the propagation layer so tests can assert on it.
+type recordingPropagator struct {
+	*propagation.NoOpPropagator
+
+	mtx          cmtsync.Mutex
+	calls        []proposerAndRoundCall
+	started      bool
+	callsAtStart []proposerAndRoundCall
+}
+
+func (r *recordingPropagator) SetConsensusState(height int64, round int32, proposer crypto.PubKey) {
+	r.mtx.Lock()
+	defer r.mtx.Unlock()
+	r.calls = append(r.calls, proposerAndRoundCall{height: height, round: round, proposer: proposer})
+}
+
+func (r *recordingPropagator) StartProcessing() {
+	r.mtx.Lock()
+	defer r.mtx.Unlock()
+	r.started = true
+	r.callsAtStart = append([]proposerAndRoundCall(nil), r.calls...)
+}
+
+func (r *recordingPropagator) snapshotAtStart() (bool, []proposerAndRoundCall) {
+	r.mtx.Lock()
+	defer r.mtx.Unlock()
+	return r.started, append([]proposerAndRoundCall(nil), r.callsAtStart...)
+}
+
+func (r *recordingPropagator) snapshotCalls() []proposerAndRoundCall {
+	r.mtx.Lock()
+	defer r.mtx.Unlock()
+	return append([]proposerAndRoundCall(nil), r.calls...)
+}
+
+// TestSwitchToConsensusUsesReplayedRoundProposer ensures that when the WAL
+// replay resumes consensus at a round > 0, the propagation layer holds that
+// round's proposer by the time it starts processing peer messages, and never
+// observes a proposer paired with a round it doesn't own.
+func TestSwitchToConsensusUsesReplayedRoundProposer(t *testing.T) {
+	const nVals = 4
+
+	state, privVals := randGenesisState(nVals, false, 10, test.ConsensusParams())
+
+	// The proposers of rounds 0, 1, and 2 at height 1. They are distinct
+	// because all validators have equal power.
+	expectedProposers := make([]*types.Validator, 3)
+	vals := state.Validators.Copy()
+	for r := range expectedProposers {
+		expectedProposers[r] = vals.GetProposer().Copy()
+		vals.IncrementProposerPriority(1)
+	}
+	require.False(t, expectedProposers[0].PubKey.Equals(expectedProposers[2].PubKey),
+		"test requires distinct round-0 and round-2 proposers")
+
+	// Pick a privval that doesn't propose in rounds 0-2 so the replay doesn't
+	// create proposals of its own.
+	var pv types.PrivValidator
+	for _, candidate := range privVals {
+		pk, err := candidate.GetPubKey()
+		require.NoError(t, err)
+		isProposer := false
+		for _, p := range expectedProposers {
+			if p.PubKey.Equals(pk) {
+				isProposer = true
+				break
+			}
+		}
+		if !isProposer {
+			pv = candidate
+			break
+		}
+	}
+	require.NotNil(t, pv)
+
+	thisConfig := test.ResetTestRoot("consensus_replayed_round_proposer_test")
+	defer os.RemoveAll(thisConfig.RootDir)
+
+	app := kvstore.NewInMemoryApplication()
+	blockDB := dbm.NewMemDB()
+	blockStore := store.NewBlockStore(blockDB)
+	mtx := new(cmtsync.Mutex)
+	proxyAppConnCon := proxy.NewAppConnConsensus(abcicli.NewLocalClient(mtx, app), proxy.NopMetrics())
+	proxyAppConnMem := proxy.NewAppConnMempool(abcicli.NewLocalClient(mtx, app), proxy.NopMetrics())
+	mempool := cat.NewTxPool(log.TestingLogger(), thisConfig.Mempool, proxyAppConnMem, state.LastBlockHeight)
+	evpool := sm.EmptyEvidencePool{}
+	stateStore := sm.NewStore(blockDB, sm.StoreOptions{DiscardABCIResponses: false})
+	require.NoError(t, stateStore.Save(state))
+	blockExec := sm.NewBlockExecutor(stateStore, log.TestingLogger(), proxyAppConnCon, mempool, evpool, blockStore)
+
+	recorder := &recordingPropagator{NoOpPropagator: propagation.NewNoOpPropagator()}
+
+	cs := NewState(thisConfig.Consensus, state, blockExec, blockStore, recorder, mempool, evpool)
+	cs.SetLogger(log.TestingLogger().With("module", "consensus"))
+	cs.SetPrivValidator(pv)
+
+	eventBus := types.NewEventBus()
+	eventBus.SetLogger(log.TestingLogger().With("module", "events"))
+	require.NoError(t, eventBus.Start())
+	cs.SetEventBus(eventBus)
+
+	// Craft a WAL that resumes height 1 at round 2: starting the WAL writes
+	// the #ENDHEIGHT 0 marker, and each precommit-wait timeout is replayed as
+	// enterPrecommit(1, r) followed by enterNewRound(1, r+1).
+	wal, err := NewWAL(thisConfig.Consensus.WalFile())
+	require.NoError(t, err)
+	wal.SetLogger(log.TestingLogger().With("module", "wal"))
+	require.NoError(t, wal.Start())
+	for round := int32(0); round < 2; round++ {
+		require.NoError(t, wal.Write(timeoutInfo{
+			Duration: time.Millisecond,
+			Height:   1,
+			Round:    round,
+			Step:     cstypes.RoundStepPrecommitWait,
+		}))
+	}
+	require.NoError(t, wal.FlushAndSync())
+	require.NoError(t, wal.Stop())
+	wal.Wait()
+
+	reactor := NewReactor(cs, recorder, true)
+	t.Cleanup(func() {
+		if err := cs.Stop(); err != nil {
+			t.Log(err)
+		}
+		cs.Wait()
+		if err := eventBus.Stop(); err != nil {
+			t.Log(err)
+		}
+	})
+
+	reactor.SwitchToConsensus(state, false)
+
+	rs := cs.GetRoundState()
+	require.Equal(t, int64(1), rs.Height)
+	require.Equal(t, int32(2), rs.Round, "WAL replay should have resumed consensus at round 2")
+	require.True(t, rs.Validators.GetProposer().PubKey.Equals(expectedProposers[2].PubKey),
+		"round state proposer should match the independently derived round-2 proposer")
+
+	started, callsAtStart := recorder.snapshotAtStart()
+	require.True(t, started)
+	require.NotEmpty(t, callsAtStart)
+
+	// When the propagation layer starts processing peer messages, it must
+	// hold the round-2 proposer, not the round-0 proposer.
+	atStart := callsAtStart[len(callsAtStart)-1]
+	require.Equal(t, int64(1), atStart.height)
+	require.Equal(t, int32(2), atStart.round)
+	require.True(t, expectedProposers[2].PubKey.Equals(atStart.proposer),
+		"propagation must start with the round-2 proposer after WAL replay")
+
+	// Every update, including any made after processing started (the original
+	// bug installed state.Validators' round-0 proposer right after), must
+	// carry the proposer that owns its round, so the round-0 proposer is
+	// never exposed for round 2.
+	calls := recorder.snapshotCalls()
+	last := calls[len(calls)-1]
+	require.Equal(t, int32(2), last.round)
+	require.True(t, expectedProposers[2].PubKey.Equals(last.proposer),
+		"propagation must be left with the round-2 proposer")
+	for _, call := range calls {
+		require.Equal(t, int64(1), call.height)
+		require.LessOrEqual(t, call.round, int32(2))
+		require.True(t, expectedProposers[call.round].PubKey.Equals(call.proposer),
+			"propagator observed the proposer of a different round at round %d", call.round)
 	}
 }
 

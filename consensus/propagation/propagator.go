@@ -14,11 +14,11 @@ type Propagator interface {
 	ProposeBlock(proposal *types.Proposal, parts *types.PartSet, txs []proptypes.TxMetaData) error
 	AddCommitment(height int64, round int32, psh *types.PartSetHeader)
 	Prune(committedHeight int64)
-	SetHeightAndRound(height int64, round int32)
-	StartProcessing()
-	SetProposer(proposer crypto.PubKey)
-	// SetConsensusState installs the height, round, and proposer atomically.
+	// SetConsensusState installs the height, round, and proposer atomically so
+	// compact blocks are never verified against the proposer of a different
+	// round.
 	SetConsensusState(height int64, round int32, proposer crypto.PubKey)
+	StartProcessing()
 	GetPartChan() <-chan types.PartInfo
 	GetProposalChan() <-chan ProposalAndSrc
 	// IsCatchingUp returns true if the node is catching up on block data
@@ -77,16 +77,10 @@ func (nop *NoOpPropagator) AddCommitment(_ int64, _ int32, _ *types.PartSetHeade
 func (nop *NoOpPropagator) Prune(_ int64) {
 }
 
-func (nop *NoOpPropagator) SetHeightAndRound(_ int64, _ int32) {
+func (nop *NoOpPropagator) SetConsensusState(_ int64, _ int32, _ crypto.PubKey) {
 }
 
 func (nop *NoOpPropagator) StartProcessing() {
-}
-
-func (nop *NoOpPropagator) SetProposer(_ crypto.PubKey) {
-}
-
-func (nop *NoOpPropagator) SetConsensusState(_ int64, _ int32, _ crypto.PubKey) {
 }
 
 func (nop *NoOpPropagator) GetPartChan() <-chan types.PartInfo {

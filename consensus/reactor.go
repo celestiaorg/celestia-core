@@ -167,12 +167,12 @@ conS:
 conR:
 %+v`, err, conR.conS, conR))
 	}
+	// The propagator's height, round, and proposer were installed by
+	// cs.OnStart from the round state the WAL replay resumed at (possibly a
+	// round > 0 with a different proposer than round 0), so they must not be
+	// overwritten here from state.Validators, which always carries the
+	// round-0 proposer.
 	conR.propagator.StartProcessing()
-	proposer := state.Validators.GetProposer()
-	conR.conS.rsMtx.RLock()
-	height, round := conR.conS.rs.Height, conR.conS.rs.Round
-	conR.conS.rsMtx.RUnlock()
-	conR.propagator.SetConsensusState(height, round, proposer.PubKey)
 }
 
 // GetChannels implements Reactor

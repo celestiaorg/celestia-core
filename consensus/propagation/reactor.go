@@ -318,16 +318,6 @@ func (blockProp *Reactor) Prune(committedHeight int64) {
 	blockProp.ticker.Reset(RetryTime)
 }
 
-func (blockProp *Reactor) SetProposer(proposer crypto.PubKey) {
-	blockProp.pmtx.Lock()
-	blockProp.currentProposer = proposer
-	blockProp.pmtx.Unlock()
-
-	// Check for cached proposals for the current height.
-	// This enables fast catchup when a node falls behind and misses proposals.
-	blockProp.applyCachedProposalIfAvailable()
-}
-
 // setHeightAndRoundLocked installs the height and round. The caller must hold
 // pmtx.
 func (blockProp *Reactor) setHeightAndRoundLocked(height int64, round int32) {
@@ -351,21 +341,6 @@ func (blockProp *Reactor) setHeightAndRoundLocked(height int64, round int32) {
 	}
 }
 
-func (blockProp *Reactor) SetHeightAndRound(height int64, round int32) {
-	blockProp.pmtx.Lock()
-	blockProp.setHeightAndRoundLocked(height, round)
-	blockProp.pmtx.Unlock()
-
-	blockProp.ResetRequestCounts()
-	// todo: delete the old round data as its no longer relevant don't delete
-	// past round data if it has a POL
-
-	// Check for cached proposals that might now be applicable.
-	// This handles the case where we advance to a new round and have a cached
-	// proposal for that round waiting to be applied.
-	blockProp.applyCachedProposalIfAvailable()
-}
-
 // SetConsensusState installs the height, round, and proposer atomically, then
 // replays any cached proposal once against the complete state.
 func (blockProp *Reactor) SetConsensusState(height int64, round int32, proposer crypto.PubKey) {
@@ -375,6 +350,8 @@ func (blockProp *Reactor) SetConsensusState(height int64, round int32, proposer 
 	blockProp.pmtx.Unlock()
 
 	blockProp.ResetRequestCounts()
+	// todo: delete the old round data as its no longer relevant don't delete
+	// past round data if it has a POL
 	blockProp.applyCachedProposalIfAvailable()
 }
 
@@ -391,6 +368,10 @@ func (blockProp *Reactor) ResetRequestCounts() {
 
 func (blockProp *Reactor) StartProcessing() {
 	blockProp.started.Store(true)
+	// request any parts still missing for proposals applied before processing
+	// started (e.g. from the unverified cache during the sync-to-consensus
+	// switch) instead of waiting for the next retry tick.
+	go blockProp.retryWants()
 }
 
 func ConcurrentRequestLimit(peersCount, partsCount int) int64 {

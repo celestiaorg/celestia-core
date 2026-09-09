@@ -114,11 +114,11 @@ func TestCacheCapacityEviction(t *testing.T) {
 	})
 
 	// n2 at height 1
-	n2.SetHeightAndRound(1, 0)
+	n2.SetConsensusState(1, 0, mockPubKey)
 
 	// Fill cache with proposals for heights 2 through MaxUnverifiedProposals+1
 	for h := int64(2); h <= int64(MaxUnverifiedProposals+1); h++ {
-		n1.SetHeightAndRound(h, 0)
+		n1.SetConsensusState(h, 0, mockPubKey)
 		prop, ps, _, metaData := createTestProposal(t, sm, pv, h, 0, 2, 100000)
 		cb, _ := createCompactBlock(t, prop, ps, metaData)
 		n2.handleCompactBlock(cb, n1.self, false)
@@ -131,7 +131,7 @@ func TestCacheCapacityEviction(t *testing.T) {
 	}
 
 	// Now add a proposal for height MaxUnverifiedProposals+2 (should be rejected - cache full with lower heights)
-	n1.SetHeightAndRound(int64(MaxUnverifiedProposals+2), 0)
+	n1.SetConsensusState(int64(MaxUnverifiedProposals+2), 0, mockPubKey)
 	propHigh, psHigh, _, metaDataHigh := createTestProposal(t, sm, pv, int64(MaxUnverifiedProposals+2), 0, 2, 100000)
 	cbHigh, _ := createCompactBlock(t, propHigh, psHigh, metaDataHigh)
 	n2.handleCompactBlock(cbHigh, n1.self, false)
@@ -160,7 +160,7 @@ func TestHandleCompactBlock_CachesCurrentHeightWrongRound(t *testing.T) {
 	})
 
 	// n2 at height 2, round 0
-	n2.SetHeightAndRound(2, 0)
+	n2.SetConsensusState(2, 0, mockPubKey)
 
 	// Create proposal for height 2, round 1 (different round)
 	prop, ps, _, metaData := createTestProposal(t, sm, pv, 2, 1, 2, 1000000)
@@ -196,8 +196,7 @@ func TestApplyCachedProposalIfAvailable(t *testing.T) {
 
 	// All nodes start at height 1
 	for _, r := range reactors {
-		r.SetHeightAndRound(1, 0)
-		r.SetProposer(mockPubKey)
+		r.SetConsensusState(1, 0, mockPubKey)
 	}
 
 	// Setup height 1 for all nodes - use testCompactBlock for proper signing
@@ -211,9 +210,9 @@ func TestApplyCachedProposalIfAvailable(t *testing.T) {
 
 	// n1 and n2 advance to height 2, n3 stays at height 1 (halted)
 	n1.Prune(1)
-	n1.SetHeightAndRound(2, 0)
+	n1.SetConsensusState(2, 0, mockPubKey)
 	n2.Prune(1)
-	n2.SetHeightAndRound(2, 0)
+	n2.SetConsensusState(2, 0, mockPubKey)
 
 	// Create proposal for height 2, round 0 - use testCompactBlock for proper signing
 	cb2, ps2, parityBlock2, _ := testCompactBlock(t, sm, pv, 2, 0)
@@ -237,9 +236,9 @@ func TestApplyCachedProposalIfAvailable(t *testing.T) {
 	_, _, has := n3.GetProposal(2, 0)
 	require.False(t, has, "proposal should not be in proposal cache yet")
 
-	// Now n3 catches up to height 2 - SetHeightAndRound triggers applyCachedProposalIfAvailable
+	// Now n3 catches up to height 2 - SetConsensusState triggers applyCachedProposalIfAvailable
 	n3.Prune(1)
-	n3.SetHeightAndRound(2, 0)
+	n3.SetConsensusState(2, 0, mockPubKey)
 
 	// Verify proposal is now in the proposal cache (automatically applied)
 	_, propData, has := n3.GetProposal(2, 0)
@@ -278,13 +277,12 @@ func TestApplyCachedProposalIfAvailable_MultiPeer(t *testing.T) {
 
 	// All nodes start at height 1
 	for _, r := range reactors {
-		r.SetHeightAndRound(1, 0)
-		r.SetProposer(mockPubKey)
+		r.SetConsensusState(1, 0, mockPubKey)
 	}
 
 	// n1, n2 advance to height 2
-	n1.SetHeightAndRound(2, 0)
-	n2.SetHeightAndRound(2, 0)
+	n1.SetConsensusState(2, 0, mockPubKey)
+	n2.SetConsensusState(2, 0, mockPubKey)
 
 	// Create an INVALID proposal (random signature) for peer n1
 	prop2Invalid, ps2Invalid, _, metaData2Invalid := createTestProposal(t, sm, pv, 2, 0, 2, 1000000)
@@ -307,7 +305,7 @@ func TestApplyCachedProposalIfAvailable_MultiPeer(t *testing.T) {
 
 	// n3 catches up to height 2 - this triggers applyCachedProposalIfAvailable
 	n3.Prune(1)
-	n3.SetHeightAndRound(2, 0)
+	n3.SetConsensusState(2, 0, mockPubKey)
 
 	// Proposal should now be in the proposal cache (applied from valid peer)
 	_, propData, has := n3.GetProposal(2, 0)
@@ -338,8 +336,7 @@ func TestApplyCachedProposalIfAvailable_KeepOnFailure(t *testing.T) {
 	})
 
 	// n2 at height 1, round 0, with proposer set
-	n2.SetHeightAndRound(1, 0)
-	n2.SetProposer(mockPubKey)
+	n2.SetConsensusState(1, 0, mockPubKey)
 
 	// Create a compact block with valid signatures but invalid parts hashes.
 	cbBad, _, _, _ := testCompactBlock(t, sm, pv, 2, 0)
@@ -362,7 +359,7 @@ func TestApplyCachedProposalIfAvailable_KeepOnFailure(t *testing.T) {
 
 	// Now n2 catches up to height 2 - applyCachedProposalIfAvailable runs and should fail to apply cbBad.
 	n2.Prune(1)
-	n2.SetHeightAndRound(2, 0)
+	n2.SetConsensusState(2, 0, mockPubKey)
 
 	_, _, has := n2.GetProposal(2, 0)
 	require.False(t, has, "proposal should not be applied when proofs are invalid")
@@ -386,7 +383,7 @@ func TestApplyCachedProposalIfAvailable_WrongRound(t *testing.T) {
 	})
 
 	// n2 at height 1, round 0
-	n2.SetHeightAndRound(1, 0)
+	n2.SetConsensusState(1, 0, mockPubKey)
 
 	// Create proposal for height 2, round 1
 	prop, ps, _, metaData := createTestProposal(t, sm, pv, 2, 1, 2, 1000000)
@@ -398,7 +395,7 @@ func TestApplyCachedProposalIfAvailable_WrongRound(t *testing.T) {
 
 	// n2 advances to height 2, round 0 - proposal should stay cached (wrong round)
 	n2.Prune(1)
-	n2.SetHeightAndRound(2, 0)
+	n2.SetConsensusState(2, 0, mockPubKey)
 
 	// Proposal should still be cached (we're at round 0, proposal is for round 1)
 	cached := n2.GetUnverifiedProposal(2)
@@ -423,8 +420,7 @@ func TestHandleCachedCompactBlockRejectsConflictBeforeForwarding(t *testing.T) {
 		cleanup(t)
 	})
 
-	n1.SetHeightAndRound(2, 0)
-	n1.SetProposer(mockPubKey)
+	n1.SetConsensusState(2, 0, mockPubKey)
 
 	// Preload proposal A for height 2, round 0.
 	cbA, _, _, _ := testCompactBlock(t, sm, pv, 2, 0)
@@ -474,8 +470,7 @@ func TestHandleCachedCompactBlockAllowsIdenticalDuplicate(t *testing.T) {
 		cleanup(t)
 	})
 
-	n1.SetHeightAndRound(2, 0)
-	n1.SetProposer(mockPubKey)
+	n1.SetConsensusState(2, 0, mockPubKey)
 
 	cbA, _, _, _ := testCompactBlock(t, sm, pv, 2, 0)
 	require.True(t, n1.AddProposal(cbA))
@@ -592,8 +587,7 @@ func TestSetConsensusStateReplaysCachedProposalOnce(t *testing.T) {
 
 	// both nodes at height 1, round 0 with the round-0 proposer.
 	for _, r := range reactors {
-		r.SetHeightAndRound(1, 0)
-		r.SetProposer(mockPubKey)
+		r.SetConsensusState(1, 0, mockPubKey)
 	}
 
 	// a round-1 proposal from a proposer different from the round-0 proposer.
