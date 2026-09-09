@@ -107,6 +107,10 @@ func (blockProp *Reactor) AddCommitment(height int64, round int32, psh *types.Pa
 	if blockProp.proposals[height][round] != nil {
 		existingPSH := blockProp.proposals[height][round].block.Original().Header()
 		if existingPSH.Total == psh.Total && bytes.Equal(existingPSH.Hash, psh.Hash) {
+			// the cached proposal is the committed block. Mark it so that a
+			// later rejection of a proposal message carrying the same
+			// identity cannot evict quorum-backed data.
+			blockProp.proposals[height][round].commitmentBacked = true
 			return
 		}
 		blockProp.Logger.Error("replacing existing proposal with new one", "height", height, "round", round, "psh", psh, "existingPSH", existingPSH)
@@ -127,9 +131,10 @@ func (blockProp *Reactor) AddCommitment(height int64, round int32, psh *types.Pa
 				Round:  round,
 			},
 		},
-		catchup:     true,
-		block:       combinedSet,
-		maxRequests: bits.NewBitArray(int(psh.Total * 2)), // this assumes that the parity parts are the same size
+		catchup:          true,
+		commitmentBacked: true,
+		block:            combinedSet,
+		maxRequests:      bits.NewBitArray(int(psh.Total * 2)), // this assumes that the parity parts are the same size
 	}
 
 	// increment the local copies of the height and round

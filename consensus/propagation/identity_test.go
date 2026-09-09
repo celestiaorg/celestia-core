@@ -204,16 +204,8 @@ func TestConsensusRejectionEvictsPropagationProposal(t *testing.T) {
 	require.False(t, has, "peer have state for the rejected proposal must be purged")
 	_, has = peer.GetRequests(1, 0)
 	require.False(t, has, "peer request state for the rejected proposal must be purged")
-
-	// A cannot be re-added, and is not forwarded to consensus again.
-	n1.handleCompactBlock(cbA, n2.self, false)
-	_, _, has = n1.GetProposal(1, 0)
-	require.False(t, has, "the rejected identity must stay quarantined")
-	select {
-	case prop := <-n1.GetProposalChan():
-		t.Fatalf("rejected proposal forwarded to consensus again: %+v", prop)
-	default:
-	}
+	require.Zero(t, peer.concurrentReqs.Load(),
+		"the request budget spent on the rejected proposal must be released")
 
 	// B is accepted, forwarded to consensus, and its parts are usable.
 	n1.handleCompactBlock(cbB, n2.self, false)
@@ -241,5 +233,62 @@ func TestConsensusRejectionEvictsPropagationProposal(t *testing.T) {
 		require.EqualValues(t, 0, part.Index)
 	case <-time.After(time.Second):
 		t.Fatal("replacement proposal's part was not forwarded to consensus")
+	}
+}
+
+// TestEvictProposalKeepsQuorumBackedProposal asserts that a proposal confirmed
+// by a +2/3 commitment is not evicted. AddCommitment returns early when the
+// cached proposal already carries the committed part set header, so that entry
+// keeps its own block ID and would otherwise match a rejection.
+func TestEvictProposalKeepsQuorumBackedProposal(t *testing.T) {
+	reactors, _ := testBlockPropReactors(2, defaultTestP2PConf())
+	n1, n2 := reactors[0], reactors[1]
+
+	cleanup, _, sm, pv := state.SetupTestCaseWithPrivVal(t)
+	t.Cleanup(func() { cleanup(t) })
+
+	cb, _, _, _ := testCompactBlock(t, sm, pv, 1, 0)
+	n1.handleCompactBlock(cb, n2.self, false)
+	_, _, has := n1.GetProposal(1, 0)
+	require.True(t, has)
+
+	// the commitment confirms the cached proposal rather than replacing it.
+	psh := cb.Proposal.BlockID.PartSetHeader
+	n1.AddCommitment(1, 0, &psh)
+
+	n1.EvictProposal(1, 0, cb.Proposal.BlockID)
+
+	_, _, has = n1.GetProposal(1, 0)
+	require.True(t, has, "a proposal backed by a commitment must not be evicted")
+	require.Len(t, n1.unfinishedHeights(), 1, "quorum-backed data must stay on the retry path")
+}
+
+// TestEvictProposalDoesNotBlockAuthenticProposal asserts that rejecting a
+// proposal identity does not blacklist it. A peer can forge a proposal message
+// carrying an authentic block ID with a bad signature, which consensus rejects;
+// the authentic compact block for that same block must still be accepted and
+// forwarded.
+func TestEvictProposalDoesNotBlockAuthenticProposal(t *testing.T) {
+	reactors, _ := testBlockPropReactors(2, defaultTestP2PConf())
+	n1, n2 := reactors[0], reactors[1]
+
+	cleanup, _, sm, pv := state.SetupTestCaseWithPrivVal(t)
+	t.Cleanup(func() { cleanup(t) })
+
+	cb, _, _, _ := testCompactBlock(t, sm, pv, 1, 0)
+
+	// consensus rejects a forged proposal message before propagation has the
+	// authentic compact block, so nothing is cached to evict.
+	n1.EvictProposal(1, 0, cb.Proposal.BlockID)
+
+	// the authentic compact block is still accepted and forwarded.
+	n1.handleCompactBlock(cb, n2.self, false)
+	_, _, has := n1.GetProposal(1, 0)
+	require.True(t, has, "a rejected identity must not be blacklisted")
+	select {
+	case prop := <-n1.GetProposalChan():
+		require.True(t, prop.Proposal.BlockID.Equals(cb.Proposal.BlockID))
+	case <-time.After(time.Second):
+		t.Fatal("authentic proposal was not forwarded to consensus")
 	}
 }
