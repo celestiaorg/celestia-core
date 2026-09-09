@@ -76,13 +76,9 @@ const (
 // init rather than declared as a const.
 var pebbleMaxConcurrentCompactions = max(2, runtime.GOMAXPROCS(0)/4)
 
-// NewCompactionDBProvider returns a DBProvider that applies the
-// compaction-friendly tuning above. If sharedPebbleCache is non-nil, it is
-// installed into every PebbleDB this provider opens. Pass nil to skip cache
-// sharing (each DB gets its own cache).
-//
-// Callers should only use this provider when Storage.DBTuning is enabled.
-// When tuning is off, the larger memory footprint is wasteful.
+// NewCompactionDBProvider returns a DBProvider that opens databases with the
+// compaction-friendly tuning above, optionally sharing sharedPebbleCache
+// (nil = per-DB cache). Use it only when Storage.DBTuning is enabled.
 func NewCompactionDBProvider(sharedPebbleCache *pebble.Cache) DBProvider {
 	return func(ctx *DBContext) (dbm.DB, error) {
 		dbType := dbm.BackendType(ctx.Config.DBBackend)
