@@ -764,3 +764,44 @@ func analyseSelectionLayout(book *addrBook, addrs []*p2p.NetAddress) (seqLens, s
 
 	return
 }
+
+func TestAddrBookGetDialSelection(t *testing.T) {
+	testCases := []struct {
+		name     string
+		nOld     int
+		nNew     int
+		maxAddrs int
+		wantOld  int
+		wantNew  int
+	}{
+		{"empty book", 0, 0, 40, 0, 0},
+		{"non-positive max", 10, 10, 0, 0, 0},
+		{"only new addresses", 0, 100, 40, 0, 40},
+		{"only old addresses", 100, 0, 40, 40, 0},
+		{"old addresses fill at least half", 40, 1500, 40, 20, 20},
+		{"few old, rest from new", 5, 100, 40, 5, 35},
+		{"few new, rest from old", 100, 5, 40, 35, 5},
+		{"book smaller than max", 3, 4, 40, 3, 4},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			book, fname := createAddrBookWithMOldAndNNewAddrs(t, tc.nOld, tc.nNew)
+			defer deleteTempFile(fname)
+
+			selection := book.GetDialSelection(tc.maxAddrs)
+
+			gotOld, gotNew := countOldAndNewAddrsInSelection(selection, book)
+			assert.Equal(t, tc.wantOld, gotOld, "old addresses in selection")
+			assert.Equal(t, tc.wantNew, gotNew, "new addresses in selection")
+
+			seen := make(map[p2p.ID]struct{}, len(selection))
+			for _, addr := range selection {
+				require.NotNil(t, addr)
+				_, dup := seen[addr.ID]
+				assert.False(t, dup, "duplicate address %v in selection", addr)
+				seen[addr.ID] = struct{}{}
+			}
+		})
+	}
+}

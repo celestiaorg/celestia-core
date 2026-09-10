@@ -71,6 +71,8 @@ type AddrBook interface {
 	GetSelection() []*p2p.NetAddress
 	// Send a selection of addresses with bias
 	GetSelectionWithBias(biasTowardsNewAddrs int) []*p2p.NetAddress
+	// Pick addresses to dial, preferring vetted (old) ones
+	GetDialSelection(maxAddrs int) []*p2p.NetAddress
 
 	Size() int
 
@@ -401,6 +403,32 @@ func (a *addrBook) GetSelectionWithBias(biasTowardsNewAddrs int) []*p2p.NetAddre
 	numRequiredNewAdd := cmtmath.MaxInt(percentageOfNum(biasTowardsNewAddrs, numAddresses), numAddresses-a.nOld)
 	selection := a.randomPickAddresses(bucketTypeNew, numRequiredNewAdd)
 	selection = append(selection, a.randomPickAddresses(bucketTypeOld, numAddresses-len(selection))...)
+	return selection
+}
+
+// GetDialSelection implements AddrBook.
+// It returns up to maxAddrs addresses to dial. Vetted (old) addresses fill at
+// least half of the slots when available, so a node reconnects to peers it has
+// trusted before rather than dialing only addresses learned from gossip.
+func (a *addrBook) GetDialSelection(maxAddrs int) []*p2p.NetAddress {
+	a.mtx.Lock()
+	defer a.mtx.Unlock()
+
+	if maxAddrs <= 0 || a.size() <= 0 {
+		return nil
+	}
+
+	numOld := cmtmath.MinInt(a.nOld, (maxAddrs+1)/2)
+	// If the new buckets cannot fill the remaining slots, take more old ones.
+	numOld = cmtmath.MinInt(a.nOld, cmtmath.MaxInt(numOld, maxAddrs-a.nNew))
+
+	selection := make([]*p2p.NetAddress, 0, maxAddrs)
+	if numOld > 0 {
+		selection = append(selection, a.randomPickAddresses(bucketTypeOld, numOld)...)
+	}
+	if numNew := maxAddrs - len(selection); numNew > 0 && a.nNew > 0 {
+		selection = append(selection, a.randomPickAddresses(bucketTypeNew, numNew)...)
+	}
 	return selection
 }
 

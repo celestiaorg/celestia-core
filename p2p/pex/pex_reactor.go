@@ -484,16 +484,11 @@ func (r *Reactor) ensurePeers(ensurePeersPeriodElapsed bool) {
 		return
 	}
 
-	addrBook := r.book.GetSelection()
+	// Dial more candidates than we have free slots so that discovery stays
+	// fast. Vetted addresses take at least half of the candidates so a node
+	// with few peers reconnects to peers it has trusted before.
 	maxDials := r.Switch.MaxNumOutboundPeers() * 4
-	// check if the addressbook is smaller than maxDials
-	if len(addrBook) < maxDials {
-		maxDials = len(addrBook)
-	}
-	// We don't need to randomize the addresses since the addressbook is already shuffled
-	for i := 0; i < maxDials; i++ {
-		addr := addrBook[i]
-
+	for _, addr := range r.book.GetDialSelection(maxDials) {
 		if r.Switch.IsDialingOrExistingAddress(addr) {
 			continue
 		}

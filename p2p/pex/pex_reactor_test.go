@@ -1042,3 +1042,52 @@ func TestIsDuplicatePeerIDRejection(t *testing.T) {
 		})
 	}
 }
+
+func TestPEXReactorEnsurePeersPrefersVettedAddresses(t *testing.T) {
+	pexR, book := createReactor(&ReactorConfig{})
+	defer teardownReactor(book)
+
+	sw := createSwitchAndAddReactors(pexR)
+	sw.SetAddrBook(book)
+
+	maxDials := sw.MaxNumOutboundPeers() * 4
+
+	// Enough vetted addresses to fill every dial slot, and many more
+	// unvetted ones learned from gossip.
+	vetted := addMockPeerAddrs(t, book, maxDials, true)
+	unvetted := addMockPeerAddrs(t, book, maxDials*4, false)
+
+	countDialed := func(addrs []*p2p.NetAddress) int {
+		n := 0
+		for _, addr := range addrs {
+			if pexR.AttemptsToDial(addr) > 0 {
+				n++
+			}
+		}
+		return n
+	}
+
+	pexR.ensurePeers(true)
+
+	require.Eventually(t, func() bool {
+		return countDialed(vetted)+countDialed(unvetted) == maxDials
+	}, 10*time.Second, 50*time.Millisecond, "expected %d dial attempts", maxDials)
+
+	assert.Equal(t, maxDials/2, countDialed(vetted), "vetted addresses dialed")
+	assert.Equal(t, maxDials/2, countDialed(unvetted), "unvetted addresses dialed")
+}
+
+// addMockPeerAddrs adds n routable mock peer addresses to the book and
+// optionally marks them good so they land in the old buckets.
+func addMockPeerAddrs(t *testing.T, book AddrBook, n int, markGood bool) []*p2p.NetAddress {
+	addrs := make([]*p2p.NetAddress, n)
+	for i := range addrs {
+		addr := mock.NewPeer(nil).SocketAddr()
+		require.NoError(t, book.AddAddress(addr, addr))
+		if markGood {
+			book.MarkGood(addr.ID)
+		}
+		addrs[i] = addr
+	}
+	return addrs
+}
