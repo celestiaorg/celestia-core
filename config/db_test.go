@@ -50,16 +50,6 @@ func TestBuildPebbleOptions_SharedCacheInstalledAndSurvivesEnsureDefaults(t *tes
 	assert.Equal(t, pebbleL0StopWritesThreshold, o.L0StopWritesThreshold)
 }
 
-func TestBuildGoLevelDBOptions(t *testing.T) {
-	o := buildGoLevelDBOptions()
-	require.NotNil(t, o)
-
-	assert.Equal(t, goLevelDBWriteBuffer, o.WriteBuffer)
-	assert.Equal(t, goLevelDBBlockCacheCapacity, o.BlockCacheCapacity)
-	assert.Equal(t, goLevelDBWriteL0SlowdownTrigger, o.WriteL0SlowdownTrigger)
-	assert.Equal(t, goLevelDBWriteL0PauseTrigger, o.WriteL0PauseTrigger)
-}
-
 func TestNewCompactionDBProvider_PebbleRoundTrip(t *testing.T) {
 	dir := t.TempDir()
 	cfg := DefaultConfig()

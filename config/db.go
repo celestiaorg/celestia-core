@@ -5,7 +5,6 @@ import (
 	"runtime"
 
 	"github.com/cockroachdb/pebble"
-	"github.com/syndtr/goleveldb/leveldb/opt"
 
 	dbm "github.com/cometbft/cometbft-db"
 
@@ -65,20 +64,16 @@ const (
 	pebbleL0TargetFileSize  int64 = 8 << 20   // 8 MiB
 	pebbleMaxTargetFileSize int64 = 128 << 20 // 128 MiB (matches pebble's default L6)
 	pebbleNumLevels               = 7
-
-	goLevelDBWriteBuffer            = 128 << 20 // 128 MiB
-	goLevelDBBlockCacheCapacity     = 512 << 20 // 512 MiB per-DB (goleveldb cannot share)
-	goLevelDBWriteL0SlowdownTrigger = 16
-	goLevelDBWriteL0PauseTrigger    = 24
 )
 
 // pebbleMaxConcurrentCompactions depends on GOMAXPROCS, so it is computed at
 // init rather than declared as a const.
 var pebbleMaxConcurrentCompactions = max(2, runtime.GOMAXPROCS(0)/4)
 
-// NewCompactionDBProvider returns a DBProvider that opens databases with the
+// NewCompactionDBProvider returns a DBProvider that opens PebbleDB with the
 // compaction-friendly tuning above, optionally sharing sharedPebbleCache
-// (nil = per-DB cache). Use it only when Storage.DBTuning is enabled.
+// (nil = per-DB cache). Non-pebble backends fall back to library defaults.
+// Use it only when Storage.DBTuning is enabled and the backend is pebbledb.
 func NewCompactionDBProvider(sharedPebbleCache *pebble.Cache) DBProvider {
 	return func(ctx *DBContext) (dbm.DB, error) {
 		dbType := dbm.BackendType(ctx.Config.DBBackend)
@@ -89,8 +84,6 @@ func NewCompactionDBProvider(sharedPebbleCache *pebble.Cache) DBProvider {
 		switch dbType {
 		case dbm.PebbleDBBackend:
 			return dbm.NewPebbleDBWithOpts(ctx.ID, path, buildPebbleOptions(sharedPebbleCache))
-		case dbm.GoLevelDBBackend:
-			return dbm.NewGoLevelDBWithOpts(ctx.ID, path, buildGoLevelDBOptions())
 		default:
 			return dbm.NewDB(ctx.ID, dbType, path)
 		}
@@ -127,13 +120,4 @@ func buildPebbleLevels() []pebble.LevelOptions {
 		}
 	}
 	return levels
-}
-
-func buildGoLevelDBOptions() *opt.Options {
-	return &opt.Options{
-		WriteBuffer:            goLevelDBWriteBuffer,
-		BlockCacheCapacity:     goLevelDBBlockCacheCapacity,
-		WriteL0SlowdownTrigger: goLevelDBWriteL0SlowdownTrigger,
-		WriteL0PauseTrigger:    goLevelDBWriteL0PauseTrigger,
-	}
 }
