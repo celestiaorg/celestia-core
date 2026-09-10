@@ -1057,24 +1057,25 @@ func TestPEXReactorEnsurePeersPrefersVettedAddresses(t *testing.T) {
 	vetted := addMockPeerAddrs(t, book, maxDials, true)
 	unvetted := addMockPeerAddrs(t, book, maxDials*4, false)
 
-	countDialed := func(addrs []*p2p.NetAddress) int {
-		n := 0
-		for _, addr := range addrs {
-			if pexR.AttemptsToDial(addr) > 0 {
-				n++
-			}
-		}
-		return n
-	}
-
 	pexR.ensurePeers(true)
 
 	require.Eventually(t, func() bool {
-		return countDialed(vetted)+countDialed(unvetted) == maxDials
+		return countDialedAddrs(pexR, vetted)+countDialedAddrs(pexR, unvetted) == maxDials
 	}, 10*time.Second, 50*time.Millisecond, "expected %d dial attempts", maxDials)
 
-	assert.Equal(t, maxDials/2, countDialed(vetted), "vetted addresses dialed")
-	assert.Equal(t, maxDials/2, countDialed(unvetted), "unvetted addresses dialed")
+	assert.Equal(t, maxDials/2, countDialedAddrs(pexR, vetted), "vetted addresses dialed")
+	assert.Equal(t, maxDials/2, countDialedAddrs(pexR, unvetted), "unvetted addresses dialed")
+}
+
+// countDialedAddrs returns how many of addrs the reactor has attempted to dial.
+func countDialedAddrs(pexR *Reactor, addrs []*p2p.NetAddress) int {
+	n := 0
+	for _, addr := range addrs {
+		if pexR.AttemptsToDial(addr) > 0 {
+			n++
+		}
+	}
+	return n
 }
 
 // addMockPeerAddrs adds n routable mock peer addresses to the book and
@@ -1090,4 +1091,32 @@ func addMockPeerAddrs(t *testing.T, book AddrBook, n int, markGood bool) []*p2p.
 		addrs[i] = addr
 	}
 	return addrs
+}
+
+func TestPEXReactorEnsurePeersDialsFullBudget(t *testing.T) {
+	pexR, book := createReactor(&ReactorConfig{})
+	defer teardownReactor(book)
+
+	sw := createSwitchAndAddReactors(pexR)
+	sw.SetAddrBook(book)
+
+	maxDials := sw.MaxNumOutboundPeers() * 4
+
+	// Every vetted address belongs to a peer we are already connected to, so
+	// dialing it is a no-op that must not consume the dial budget.
+	for i := 0; i < maxDials; i++ {
+		peer := mock.NewPeer(nil)
+		addr := peer.SocketAddr()
+		require.NoError(t, book.AddAddress(addr, addr))
+		book.MarkGood(addr.ID)
+		p2p.AddPeerToSwitchPeerSet(sw, peer)
+	}
+
+	unvetted := addMockPeerAddrs(t, book, maxDials*4, false)
+
+	pexR.ensurePeers(true)
+
+	require.Eventually(t, func() bool {
+		return countDialedAddrs(pexR, unvetted) == maxDials
+	}, 10*time.Second, 50*time.Millisecond, "expected %d dial attempts", maxDials)
 }

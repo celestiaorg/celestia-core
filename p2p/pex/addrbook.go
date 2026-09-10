@@ -71,8 +71,8 @@ type AddrBook interface {
 	GetSelection() []*p2p.NetAddress
 	// Send a selection of addresses with bias
 	GetSelectionWithBias(biasTowardsNewAddrs int) []*p2p.NetAddress
-	// Pick addresses to dial, preferring vetted (old) ones
-	GetDialSelection(maxAddrs int) []*p2p.NetAddress
+	// Pick candidates to dial, preferring vetted (old) ones
+	GetDialSelection(maxDials int) []*p2p.NetAddress
 
 	Size() int
 
@@ -407,26 +407,32 @@ func (a *addrBook) GetSelectionWithBias(biasTowardsNewAddrs int) []*p2p.NetAddre
 }
 
 // GetDialSelection implements AddrBook.
-// It returns up to maxAddrs addresses to dial, preferring vetted (old) addresses
-// for at least half of the slots.
-func (a *addrBook) GetDialSelection(maxAddrs int) []*p2p.NetAddress {
+// It returns dial candidates for a caller that wants to start up to maxDials
+// dials, alternating between vetted (old) and unvetted (new) addresses so that
+// vetted addresses fill at least half of any prefix of the result.
+//
+// It deliberately returns more than maxDials candidates when the book has them:
+// callers skip candidates they are already connected to or dialing, and the
+// surplus keeps that skipping from eating into their dial budget.
+func (a *addrBook) GetDialSelection(maxDials int) []*p2p.NetAddress {
 	a.mtx.Lock()
 	defer a.mtx.Unlock()
 
-	if maxAddrs <= 0 || a.size() <= 0 {
+	if maxDials <= 0 || a.size() <= 0 {
 		return nil
 	}
 
-	numOld := cmtmath.MinInt(a.nOld, (maxAddrs+1)/2)
-	// If the new buckets cannot fill the remaining slots, take more old ones.
-	numOld = cmtmath.MinInt(a.nOld, cmtmath.MaxInt(numOld, maxAddrs-a.nNew))
+	oldAddrs := a.randomPickAddresses(bucketTypeOld, maxDials)
+	newAddrs := a.randomPickAddresses(bucketTypeNew, maxDials)
 
-	selection := make([]*p2p.NetAddress, 0, maxAddrs)
-	if numOld > 0 {
-		selection = append(selection, a.randomPickAddresses(bucketTypeOld, numOld)...)
-	}
-	if numNew := maxAddrs - len(selection); numNew > 0 && a.nNew > 0 {
-		selection = append(selection, a.randomPickAddresses(bucketTypeNew, numNew)...)
+	selection := make([]*p2p.NetAddress, 0, len(oldAddrs)+len(newAddrs))
+	for i := 0; i < cmtmath.MaxInt(len(oldAddrs), len(newAddrs)); i++ {
+		if i < len(oldAddrs) {
+			selection = append(selection, oldAddrs[i])
+		}
+		if i < len(newAddrs) {
+			selection = append(selection, newAddrs[i])
+		}
 	}
 	return selection
 }

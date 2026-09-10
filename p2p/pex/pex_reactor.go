@@ -486,12 +486,19 @@ func (r *Reactor) ensurePeers(ensurePeersPeriodElapsed bool) {
 
 	// Dial more candidates than we have free slots so that discovery stays
 	// fast. Vetted addresses take at least half of the candidates so a node
-	// with few peers reconnects to peers it has trusted before.
+	// with few peers reconnects to peers it has trusted before. The budget
+	// counts dials we actually start, so candidates we are already connected
+	// to or dialing do not consume a slot.
 	maxDials := r.Switch.MaxNumOutboundPeers() * 4
+	dials := 0
 	for _, addr := range r.book.GetDialSelection(maxDials) {
+		if dials >= maxDials {
+			break
+		}
 		if r.Switch.IsDialingOrExistingAddress(addr) {
 			continue
 		}
+		dials++
 		go func(addr *p2p.NetAddress) {
 			err := r.dialPeer(addr)
 			if err != nil {

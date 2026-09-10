@@ -770,7 +770,7 @@ func TestAddrBookGetDialSelection(t *testing.T) {
 		name     string
 		nOld     int
 		nNew     int
-		maxAddrs int
+		maxDials int
 		wantOld  int
 		wantNew  int
 	}{
@@ -778,9 +778,11 @@ func TestAddrBookGetDialSelection(t *testing.T) {
 		{"non-positive max", 10, 10, 0, 0, 0},
 		{"only new addresses", 0, 100, 40, 0, 40},
 		{"only old addresses", 100, 0, 40, 40, 0},
-		{"old addresses fill at least half", 40, 1500, 40, 20, 20},
-		{"few old, rest from new", 5, 100, 40, 5, 35},
-		{"few new, rest from old", 100, 5, 40, 35, 5},
+		// Both bucket types are sampled up to maxDials so that a caller which
+		// skips candidates still has enough left to fill its dial budget.
+		{"both types oversampled", 100, 1500, 40, 40, 40},
+		{"few old, oversample new", 5, 100, 40, 5, 40},
+		{"few new, oversample old", 100, 5, 40, 40, 5},
 		{"book smaller than max", 3, 4, 40, 3, 4},
 	}
 
@@ -789,7 +791,7 @@ func TestAddrBookGetDialSelection(t *testing.T) {
 			book, fname := createAddrBookWithMOldAndNNewAddrs(t, tc.nOld, tc.nNew)
 			defer deleteTempFile(fname)
 
-			selection := book.GetDialSelection(tc.maxAddrs)
+			selection := book.GetDialSelection(tc.maxDials)
 
 			gotOld, gotNew := countOldAndNewAddrsInSelection(selection, book)
 			assert.Equal(t, tc.wantOld, gotOld, "old addresses in selection")
@@ -801,6 +803,22 @@ func TestAddrBookGetDialSelection(t *testing.T) {
 				_, dup := seen[addr.ID]
 				assert.False(t, dup, "duplicate address %v in selection", addr)
 				seen[addr.ID] = struct{}{}
+			}
+
+			// Vetted addresses must fill at least half of every prefix, so a
+			// caller that stops early still favors them.
+			isOld := make(map[p2p.ID]bool, len(selection))
+			for _, addr := range selection[:gotOld+gotNew] {
+				isOld[addr.ID] = book.IsGood(addr)
+			}
+			oldSoFar := 0
+			for i, addr := range selection {
+				if isOld[addr.ID] {
+					oldSoFar++
+				}
+				wantAtLeast := cmtmath.MinInt((i+2)/2, tc.wantOld)
+				assert.GreaterOrEqual(t, oldSoFar, wantAtLeast,
+					"prefix of length %d has %d vetted addresses", i+1, oldSoFar)
 			}
 		})
 	}
