@@ -75,7 +75,7 @@ jobs:
       # and issue IDs in commit messages) to a release in the celestia-core
       # Linear pipeline, then mark that release as completed.
       - name: Sync release with Linear
-        uses: linear/linear-release-action@v0
+        uses: linear/linear-release-action@53ad0f863963e7f8e270fba18426bbb55ef55384 # v0.17.2
         with:
           access_key: ${{ secrets.LINEAR_ACCESS_KEY }}
           command: sync
@@ -84,7 +84,7 @@ jobs:
           links: ${{ github.server_url }}/${{ github.repository }}/releases/tag/${{ github.ref_name }}
 
       - name: Complete release in Linear
-        uses: linear/linear-release-action@v0
+        uses: linear/linear-release-action@53ad0f863963e7f8e270fba18426bbb55ef55384 # v0.17.2
         with:
           access_key: ${{ secrets.LINEAR_ACCESS_KEY }}
           command: complete
