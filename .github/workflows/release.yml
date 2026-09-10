@@ -49,6 +49,47 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+  linear-release:
+    needs: release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      # Only scan commits since the previous stable tag reachable from this
+      # tag. Without this the action falls back to the last release synced
+      # to Linear, which is wrong when releases are cut from several release
+      # branches (e.g. v0.40.x and main) in interleaved order.
+      - name: Find previous release tag
+        id: prev
+        run: |
+          PREV=$(git describe --tags --abbrev=0 --match 'v[0-9]*.[0-9]*.[0-9]*' --exclude '*-*' "${GITHUB_REF_NAME}^")
+          echo "Scanning commits in ${PREV}..${GITHUB_REF_NAME}"
+          echo "tag=${PREV}" >> "$GITHUB_OUTPUT"
+
+      # Attach the Linear issues fixed by this release (found via PR numbers
+      # and issue IDs in commit messages) to a release in the celestia-core
+      # Linear pipeline, then mark that release as completed.
+      - name: Sync release with Linear
+        uses: linear/linear-release-action@v0
+        with:
+          access_key: ${{ secrets.LINEAR_ACCESS_KEY }}
+          command: sync
+          version: ${{ github.ref_name }}
+          base_ref: ${{ steps.prev.outputs.tag }}
+          links: ${{ github.server_url }}/${{ github.repository }}/releases/tag/${{ github.ref_name }}
+
+      - name: Complete release in Linear
+        uses: linear/linear-release-action@v0
+        with:
+          access_key: ${{ secrets.LINEAR_ACCESS_KEY }}
+          command: complete
+          version: ${{ github.ref_name }}
+
   release-success:
     needs: release
     if: ${{ success() }}
