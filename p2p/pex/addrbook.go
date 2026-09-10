@@ -407,9 +407,8 @@ func (a *addrBook) GetSelectionWithBias(biasTowardsNewAddrs int) []*p2p.NetAddre
 }
 
 // GetDialSelection implements AddrBook.
-// It returns up to maxAddrs addresses to dial. Vetted (old) addresses fill at
-// least half of the slots when available, so a node reconnects to peers it has
-// trusted before rather than dialing only addresses learned from gossip.
+// It returns up to maxAddrs addresses to dial, preferring vetted (old) addresses
+// for at least half of the slots.
 func (a *addrBook) GetDialSelection(maxAddrs int) []*p2p.NetAddress {
 	a.mtx.Lock()
 	defer a.mtx.Unlock()
