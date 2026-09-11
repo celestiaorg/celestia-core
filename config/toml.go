@@ -580,6 +580,15 @@ compact = {{ .Storage.Compact }}
 # large multiple of your retain height as it might occur bigger overheads.
 compaction_interval = {{ .Storage.CompactionInterval }}
 
+# If set to true, databases are opened with compaction-friendly options (larger
+# memtables, more concurrent compactions, growing sstable target sizes and a
+# shared block cache) instead of the library defaults. This keeps the LSM
+# healthy on large stores that would otherwise fragment into millions of tiny
+# sstables, at the cost of a higher memory baseline and a one-time compaction
+# catch-up on the first restart. Recommended for archival nodes.
+# false by default.
+db_tuning = {{ .Storage.DBTuning }}
+
 #######################################################
 ###   Transaction Indexer Configuration Options     ###
 #######################################################

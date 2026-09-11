@@ -1325,6 +1325,13 @@ type StorageConfig struct {
 	// large multiple of your retain height as it might occur bigger overheads.
 	// 10000 by default.
 	CompactionInterval int64 `mapstructure:"compaction_interval"`
+	// DBTuning opens the databases with compaction-friendly options (larger
+	// memtables, more concurrent compactions, growing sstable target sizes and
+	// a shared block cache) instead of the library defaults. It trades a higher
+	// memory baseline and a one-time compaction catch-up for a healthier LSM on
+	// large stores — recommended for archival nodes whose blockstore would
+	// otherwise fragment into millions of tiny sstables. false by default.
+	DBTuning bool `mapstructure:"db_tuning"`
 }
 
 // DefaultStorageConfig returns the default configuration options relating to
@@ -1334,6 +1341,7 @@ func DefaultStorageConfig() *StorageConfig {
 		DiscardABCIResponses: false,
 		Compact:              false,
 		CompactionInterval:   10000,
+		DBTuning:             false,
 	}
 }
 
