@@ -307,10 +307,12 @@ func S3Download(dst, prefix string, cfg S3Config, fileNames ...string) error {
 }
 
 // matchesTraceFile reports whether key is one of the requested trace files.
-// An empty fileNames matches every key.
+// An empty fileNames matches every trace file under the prefix.
 func matchesTraceFile(key string, fileNames []string) bool {
 	if len(fileNames) == 0 {
-		return true
+		// A prefix can hold more than traces: directory markers, metadata,
+		// etc. Only trace files are wanted.
+		return strings.HasSuffix(key, jsonL)
 	}
 	for _, filename := range fileNames {
 		if strings.HasSuffix(key, filename+jsonL) {

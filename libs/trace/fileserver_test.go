@@ -17,6 +17,9 @@ func TestMatchesTraceFile(t *testing.T) {
 	}{
 		{"no names matches any key", prefix + "consensus.jsonl", nil, true},
 		{"no names matches a second key", prefix + "mempool.jsonl", nil, true},
+		{"no names matches a nested trace", prefix + "session/consensus.jsonl", nil, true},
+		{"no names skips a directory marker", prefix + "session/", nil, false},
+		{"no names skips a non-trace object", prefix + "metadata.json", nil, false},
 		{"named file matches", prefix + "consensus.jsonl", []string{"consensus"}, true},
 		{"other named file matches", prefix + "mempool.jsonl", []string{"consensus", "mempool"}, true},
 		{"unrequested file does not match", prefix + "mempool.jsonl", []string{"consensus"}, false},
