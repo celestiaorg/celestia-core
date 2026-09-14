@@ -72,6 +72,29 @@ func TestBaseConfigValidateBasic(t *testing.T) {
 	assert.Error(t, cfg.ValidateBasic())
 }
 
+func TestBaseConfigValidateBasicPrivValGRPCTLS(t *testing.T) {
+	cfg := config.TestBaseConfig()
+
+	// cert and key must be set together
+	cfg.PrivValidatorGRPCCert = "server.crt"
+	assert.Error(t, cfg.ValidateBasic())
+
+	cfg.PrivValidatorGRPCKey = "server.key"
+	assert.NoError(t, cfg.ValidateBasic())
+
+	cfg.PrivValidatorGRPCCert = ""
+	assert.Error(t, cfg.ValidateBasic())
+
+	// client CA requires cert and key
+	cfg = config.TestBaseConfig()
+	cfg.PrivValidatorGRPCClientCA = "ca.crt"
+	assert.Error(t, cfg.ValidateBasic())
+
+	cfg.PrivValidatorGRPCCert = "server.crt"
+	cfg.PrivValidatorGRPCKey = "server.key"
+	assert.NoError(t, cfg.ValidateBasic())
+}
+
 func TestRPCConfigValidateBasic(t *testing.T) {
 	cfg := config.TestRPCConfig()
 	assert.NoError(t, cfg.ValidateBasic())

@@ -647,7 +647,21 @@ func (n *Node) OnStart() error {
 		if err != nil {
 			return fmt.Errorf("failed to listen for privval gRPC: %w", err)
 		}
-		grpcServer := grpc.NewServer()
+		var serverOpts []grpc.ServerOption
+		if n.config.PrivValidatorGRPCCert != "" {
+			creds, err := privval.GRPCServerCredentials(
+				n.config.PrivValidatorGRPCCertFile(),
+				n.config.PrivValidatorGRPCKeyFile(),
+				n.config.PrivValidatorGRPCClientCAFile(),
+			)
+			if err != nil {
+				return fmt.Errorf("failed to load privval gRPC TLS credentials: %w", err)
+			}
+			serverOpts = append(serverOpts, grpc.Creds(creds))
+		} else {
+			n.Logger.Info("privval gRPC server running without TLS; keep it on localhost or a protected network")
+		}
+		grpcServer := grpc.NewServer(serverOpts...)
 		privvalproto.RegisterPrivValidatorAPIServer(grpcServer, privval.NewPrivValidatorGRPCServer(
 			n.privValidator,
 			n.Logger.With("module", "privval-grpc"),

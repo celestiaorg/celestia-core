@@ -275,6 +275,18 @@ type BaseConfig struct {
 	// allowing external services (fiber server) to request signatures.
 	PrivValidatorGRPCListenAddr string `mapstructure:"priv_validator_grpc_laddr"`
 
+	// Path to the PEM certificate the PrivValidator gRPC server presents to clients.
+	// If set together with priv_validator_grpc_key_file, the server uses TLS.
+	PrivValidatorGRPCCert string `mapstructure:"priv_validator_grpc_cert_file"`
+
+	// Path to the PEM private key for the PrivValidator gRPC server certificate.
+	PrivValidatorGRPCKey string `mapstructure:"priv_validator_grpc_key_file"`
+
+	// Path to the PEM CA certificate used to verify client certificates.
+	// If set, the PrivValidator gRPC server requires mutual TLS: only clients
+	// presenting a certificate signed by this CA may request signatures.
+	PrivValidatorGRPCClientCA string `mapstructure:"priv_validator_grpc_client_ca_file"`
+
 	// A JSON file containing the private key to use for p2p authenticated encryption
 	NodeKey string `mapstructure:"node_key_file"`
 
@@ -334,6 +346,25 @@ func (cfg BaseConfig) NodeKeyFile() string {
 	return rootify(cfg.NodeKey, cfg.RootDir)
 }
 
+// PrivValidatorGRPCCertFile returns the full path to the PrivValidator gRPC server certificate.
+func (cfg BaseConfig) PrivValidatorGRPCCertFile() string {
+	return rootify(cfg.PrivValidatorGRPCCert, cfg.RootDir)
+}
+
+// PrivValidatorGRPCKeyFile returns the full path to the PrivValidator gRPC server key.
+func (cfg BaseConfig) PrivValidatorGRPCKeyFile() string {
+	return rootify(cfg.PrivValidatorGRPCKey, cfg.RootDir)
+}
+
+// PrivValidatorGRPCClientCAFile returns the full path to the CA certificate for
+// verifying PrivValidator gRPC client certificates, or "" if not configured.
+func (cfg BaseConfig) PrivValidatorGRPCClientCAFile() string {
+	if cfg.PrivValidatorGRPCClientCA == "" {
+		return ""
+	}
+	return rootify(cfg.PrivValidatorGRPCClientCA, cfg.RootDir)
+}
+
 // DBDir returns the full path to the database directory
 func (cfg BaseConfig) DBDir() string {
 	return rootify(cfg.DBPath, cfg.RootDir)
@@ -360,6 +391,13 @@ func (cfg BaseConfig) ValidateBasic() error {
 	case LogFormatPlain, LogFormatJSON:
 	default:
 		return errors.New("unknown log_format (must be 'plain' or 'json')")
+	}
+
+	if (cfg.PrivValidatorGRPCCert == "") != (cfg.PrivValidatorGRPCKey == "") {
+		return errors.New("priv_validator_grpc_cert_file and priv_validator_grpc_key_file must be set together")
+	}
+	if cfg.PrivValidatorGRPCClientCA != "" && cfg.PrivValidatorGRPCCert == "" {
+		return errors.New("priv_validator_grpc_client_ca_file requires priv_validator_grpc_cert_file and priv_validator_grpc_key_file")
 	}
 	return nil
 }
