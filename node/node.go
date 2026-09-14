@@ -11,12 +11,15 @@ import (
 
 	"github.com/cometbft/cometbft/consensus/propagation"
 
+	"github.com/cockroachdb/pebble"
 	"github.com/grafana/pyroscope-go"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/rs/cors"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	"google.golang.org/grpc"
+
+	dbm "github.com/cometbft/cometbft-db"
 
 	bc "github.com/cometbft/cometbft/blocksync"
 	cfg "github.com/cometbft/cometbft/config"
@@ -309,7 +312,29 @@ func NewNodeWithContext(ctx context.Context,
 	logger log.Logger,
 	options ...Option,
 ) (*Node, error) {
-	blockStore, stateDB, err := initDBs(config, dbProvider, logger)
+	// When DB tuning is enabled and the backend is pebbledb, swap in a
+	// DBProvider that opens each DB with larger memtables, growing sstable
+	// target sizes and a shared block cache so the LSM stays healthy on large
+	// stores instead of fragmenting into millions of tiny sstables.
+	// See celestia-core#3053. The tuning only applies to pebbledb, so for any
+	// other backend the caller-supplied provider is kept as-is.
+	effectiveDBProvider := dbProvider
+	if config.Storage.DBTuning {
+		if dbm.BackendType(config.DBBackend) == dbm.PebbleDBBackend {
+			// Each DB pebble opens via Options.Cache takes its own ref on the
+			// cache, so dropping the creator's initial ref here is safe — the
+			// cache lives as long as any DB that uses it.
+			dbCache := pebble.NewCache(cfg.PebbleSharedCacheBytes)
+			defer dbCache.Unref()
+			logger.Info("db_tuning enabled: overriding DB provider with compaction-friendly pebbledb options")
+			effectiveDBProvider = cfg.NewCompactionDBProvider(dbCache)
+		} else {
+			logger.Info("db_tuning enabled but db_backend is not pebbledb; keeping default provider (tuning skipped)",
+				"db_backend", config.DBBackend)
+		}
+	}
+
+	blockStore, stateDB, err := initDBs(config, effectiveDBProvider, logger)
 	if err != nil {
 		return nil, err
 	}
@@ -344,7 +369,7 @@ func NewNodeWithContext(ctx context.Context,
 	}
 
 	indexerService, txIndexer, blockIndexer, err := createAndStartIndexerService(config,
-		genDoc.ChainID, dbProvider, eventBus, logger)
+		genDoc.ChainID, effectiveDBProvider, eventBus, logger)
 	if err != nil {
 		return nil, err
 	}
@@ -430,7 +455,7 @@ func NewNodeWithContext(ctx context.Context,
 		}
 	}
 
-	evidenceReactor, evidencePool, err := createEvidenceReactor(config, dbProvider, stateStore, blockStore, logger)
+	evidenceReactor, evidencePool, err := createEvidenceReactor(config, effectiveDBProvider, stateStore, blockStore, logger)
 	if err != nil {
 		return nil, err
 	}
