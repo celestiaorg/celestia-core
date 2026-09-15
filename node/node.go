@@ -645,7 +645,7 @@ func (n *Node) OnStart() error {
 	if n.config.PrivValidatorGRPCListenAddr != "" {
 		// Validate exposure and TLS material before opening the port so the
 		// endpoint is never reachable in a misconfigured state.
-		if err := n.config.BaseConfig.ValidatePrivValidatorGRPCExposure(); err != nil {
+		if err := n.config.ValidatePrivValidatorGRPCExposure(); err != nil {
 			return err
 		}
 		addr := n.config.PrivValidatorGRPCListenAddr
