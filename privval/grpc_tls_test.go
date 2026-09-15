@@ -186,29 +186,11 @@ func TestGRPCServerCredentialsMutualTLS(t *testing.T) {
 	require.ErrorContains(t, err, "tls: unknown certificate authority")
 }
 
-func TestGRPCServerCredentialsServerOnlyTLS(t *testing.T) {
-	ca, certFile, keyFile, _ := newServerCertFiles(t)
-
-	creds, err := privval.GRPCServerCredentials(certFile, keyFile, "")
-	require.NoError(t, err)
-	addr := startTLSServer(t, creds)
-
-	rootPool := x509.NewCertPool()
-	require.True(t, rootPool.AppendCertsFromPEM(ca.pem))
-
-	// Without a client CA configured, a certificate-less client succeeds.
-	err = getPubKey(addr, &tls.Config{
-		RootCAs:    rootPool,
-		MinVersion: tls.VersionTLS13,
-	})
-	require.NoError(t, err)
-}
-
 func TestGRPCServerCredentialsErrors(t *testing.T) {
-	_, certFile, keyFile, _ := newServerCertFiles(t)
+	_, certFile, keyFile, caFile := newServerCertFiles(t)
 	dir := t.TempDir()
 
-	_, err := privval.GRPCServerCredentials(filepath.Join(dir, "missing.crt"), keyFile, "")
+	_, err := privval.GRPCServerCredentials(filepath.Join(dir, "missing.crt"), keyFile, caFile)
 	require.ErrorIs(t, err, os.ErrNotExist)
 	require.ErrorContains(t, err, "loading privval gRPC server certificate")
 

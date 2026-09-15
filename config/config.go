@@ -4,6 +4,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"net"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -276,16 +277,21 @@ type BaseConfig struct {
 	PrivValidatorGRPCListenAddr string `mapstructure:"priv_validator_grpc_laddr"`
 
 	// Path to the PEM certificate the PrivValidator gRPC server presents to clients.
-	// If set together with priv_validator_grpc_key_file, the server uses TLS.
+	// Set together with priv_validator_grpc_key_file and priv_validator_grpc_client_ca_file
+	// to enable mutual TLS.
 	PrivValidatorGRPCCert string `mapstructure:"priv_validator_grpc_cert_file"`
 
 	// Path to the PEM private key for the PrivValidator gRPC server certificate.
 	PrivValidatorGRPCKey string `mapstructure:"priv_validator_grpc_key_file"`
 
 	// Path to the PEM CA certificate used to verify client certificates.
-	// If set, the PrivValidator gRPC server requires mutual TLS: only clients
-	// presenting a certificate signed by this CA may request signatures.
+	// Only clients presenting a certificate signed by this CA may request signatures.
 	PrivValidatorGRPCClientCA string `mapstructure:"priv_validator_grpc_client_ca_file"`
+
+	// DANGER: allow the PrivValidator gRPC server to listen on a non-localhost
+	// address without mutual TLS. Anyone who can reach the endpoint can request
+	// signatures from the validator key.
+	PrivValidatorGRPCAllowInsecure bool `mapstructure:"priv_validator_grpc_allow_insecure"`
 
 	// A JSON file containing the private key to use for p2p authenticated encryption
 	NodeKey string `mapstructure:"node_key_file"`
@@ -357,11 +363,8 @@ func (cfg BaseConfig) PrivValidatorGRPCKeyFile() string {
 }
 
 // PrivValidatorGRPCClientCAFile returns the full path to the CA certificate for
-// verifying PrivValidator gRPC client certificates, or "" if not configured.
+// verifying PrivValidator gRPC client certificates.
 func (cfg BaseConfig) PrivValidatorGRPCClientCAFile() string {
-	if cfg.PrivValidatorGRPCClientCA == "" {
-		return ""
-	}
 	return rootify(cfg.PrivValidatorGRPCClientCA, cfg.RootDir)
 }
 
@@ -393,13 +396,56 @@ func (cfg BaseConfig) ValidateBasic() error {
 		return errors.New("unknown log_format (must be 'plain' or 'json')")
 	}
 
-	if (cfg.PrivValidatorGRPCCert == "") != (cfg.PrivValidatorGRPCKey == "") {
-		return errors.New("priv_validator_grpc_cert_file and priv_validator_grpc_key_file must be set together")
+	if cfg.privValidatorGRPCTLSSet() && !cfg.privValidatorGRPCTLSComplete() {
+		return errors.New("priv_validator_grpc_cert_file, priv_validator_grpc_key_file and priv_validator_grpc_client_ca_file must be set together")
 	}
-	if cfg.PrivValidatorGRPCClientCA != "" && cfg.PrivValidatorGRPCCert == "" {
-		return errors.New("priv_validator_grpc_client_ca_file requires priv_validator_grpc_cert_file and priv_validator_grpc_key_file")
+	return cfg.ValidatePrivValidatorGRPCExposure()
+}
+
+// privValidatorGRPCTLSSet reports whether any PrivValidator gRPC TLS file is configured.
+func (cfg BaseConfig) privValidatorGRPCTLSSet() bool {
+	return cfg.PrivValidatorGRPCCert != "" || cfg.PrivValidatorGRPCKey != "" || cfg.PrivValidatorGRPCClientCA != ""
+}
+
+// privValidatorGRPCTLSComplete reports whether all PrivValidator gRPC TLS files are configured.
+func (cfg BaseConfig) privValidatorGRPCTLSComplete() bool {
+	return cfg.PrivValidatorGRPCCert != "" && cfg.PrivValidatorGRPCKey != "" && cfg.PrivValidatorGRPCClientCA != ""
+}
+
+// PrivValGRPCTLSDocs points to the guide for generating PrivValidator gRPC TLS certificates.
+const PrivValGRPCTLSDocs = "https://github.com/celestiaorg/celestia-core/blob/main/docs/guides/privval-grpc-tls.md"
+
+// ValidatePrivValidatorGRPCExposure refuses a PrivValidator gRPC listen address
+// that is reachable beyond localhost without full mutual TLS, unless
+// priv_validator_grpc_allow_insecure is set.
+func (cfg BaseConfig) ValidatePrivValidatorGRPCExposure() error {
+	if cfg.PrivValidatorGRPCListenAddr == "" || cfg.PrivValidatorGRPCAllowInsecure {
+		return nil
+	}
+	if bindsToLocalhostOnly(cfg.PrivValidatorGRPCListenAddr) {
+		return nil
+	}
+	if !cfg.privValidatorGRPCTLSComplete() {
+		return fmt.Errorf("priv_validator_grpc_laddr %q is reachable beyond localhost without mutual TLS: "+
+			"anyone who can reach this endpoint can request signatures from the validator key. "+
+			"Set priv_validator_grpc_cert_file, priv_validator_grpc_key_file and priv_validator_grpc_client_ca_file (see %s), "+
+			"or set priv_validator_grpc_allow_insecure to force startup without TLS",
+			cfg.PrivValidatorGRPCListenAddr, PrivValGRPCTLSDocs)
 	}
 	return nil
+}
+
+// bindsToLocalhostOnly reports whether the TCP listen address binds only to a loopback interface.
+func bindsToLocalhostOnly(addr string) bool {
+	host, _, err := net.SplitHostPort(addr)
+	if err != nil {
+		return false
+	}
+	if host == "localhost" {
+		return true
+	}
+	ip := net.ParseIP(host)
+	return ip != nil && ip.IsLoopback()
 }
 
 //-----------------------------------------------------------------------------

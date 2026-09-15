@@ -643,9 +643,10 @@ func (n *Node) OnStart() error {
 
 	// Start the gRPC PrivValidator server if configured.
 	if n.config.PrivValidatorGRPCListenAddr != "" {
-		lis, err := net.Listen("tcp", n.config.PrivValidatorGRPCListenAddr)
-		if err != nil {
-			return fmt.Errorf("failed to listen for privval gRPC: %w", err)
+		// Validate exposure and TLS material before opening the port so the
+		// endpoint is never reachable in a misconfigured state.
+		if err := n.config.BaseConfig.ValidatePrivValidatorGRPCExposure(); err != nil {
+			return err
 		}
 		var serverOpts []grpc.ServerOption
 		if n.config.PrivValidatorGRPCCert != "" {
@@ -655,11 +656,16 @@ func (n *Node) OnStart() error {
 				n.config.PrivValidatorGRPCClientCAFile(),
 			)
 			if err != nil {
-				return fmt.Errorf("failed to load privval gRPC TLS credentials: %w", err)
+				return fmt.Errorf("failed to load privval gRPC TLS credentials (see %s for the recommended way to generate certificates): %w",
+					cfg.PrivValGRPCTLSDocs, err)
 			}
 			serverOpts = append(serverOpts, grpc.Creds(creds))
 		} else {
 			n.Logger.Info("privval gRPC server running without TLS; keep it on localhost or a protected network")
+		}
+		lis, err := net.Listen("tcp", n.config.PrivValidatorGRPCListenAddr)
+		if err != nil {
+			return fmt.Errorf("failed to listen for privval gRPC: %w", err)
 		}
 		grpcServer := grpc.NewServer(serverOpts...)
 		privvalproto.RegisterPrivValidatorAPIServer(grpcServer, privval.NewPrivValidatorGRPCServer(

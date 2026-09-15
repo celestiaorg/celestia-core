@@ -75,24 +75,50 @@ func TestBaseConfigValidateBasic(t *testing.T) {
 func TestBaseConfigValidateBasicPrivValGRPCTLS(t *testing.T) {
 	cfg := config.TestBaseConfig()
 
-	// cert and key must be set together
+	// cert, key and client CA must be set together
 	cfg.PrivValidatorGRPCCert = "server.crt"
-	assert.Error(t, cfg.ValidateBasic())
+	assert.ErrorContains(t, cfg.ValidateBasic(), "must be set together")
 
 	cfg.PrivValidatorGRPCKey = "server.key"
+	assert.ErrorContains(t, cfg.ValidateBasic(), "must be set together")
+
+	cfg.PrivValidatorGRPCClientCA = "ca.crt"
 	assert.NoError(t, cfg.ValidateBasic())
 
 	cfg.PrivValidatorGRPCCert = ""
-	assert.Error(t, cfg.ValidateBasic())
+	assert.ErrorContains(t, cfg.ValidateBasic(), "must be set together")
+}
 
-	// client CA requires cert and key
-	cfg = config.TestBaseConfig()
-	cfg.PrivValidatorGRPCClientCA = "ca.crt"
-	assert.Error(t, cfg.ValidateBasic())
+func TestValidatePrivValidatorGRPCExposure(t *testing.T) {
+	loopback := []string{"127.0.0.1:26669", "localhost:26669", "[::1]:26669"}
+	exposed := []string{"0.0.0.0:26669", "10.0.0.5:26669", ":26669", "signer.example.com:26669"}
 
-	cfg.PrivValidatorGRPCCert = "server.crt"
-	cfg.PrivValidatorGRPCKey = "server.key"
-	assert.NoError(t, cfg.ValidateBasic())
+	// Loopback addresses need no TLS.
+	for _, addr := range loopback {
+		cfg := config.TestBaseConfig()
+		cfg.PrivValidatorGRPCListenAddr = addr
+		assert.NoError(t, cfg.ValidatePrivValidatorGRPCExposure(), addr)
+	}
+
+	for _, addr := range exposed {
+		cfg := config.TestBaseConfig()
+		cfg.PrivValidatorGRPCListenAddr = addr
+
+		// Non-localhost without TLS is refused.
+		assert.ErrorContains(t, cfg.ValidatePrivValidatorGRPCExposure(), "without mutual TLS", addr)
+
+		// Full mutual TLS is accepted.
+		cfg.PrivValidatorGRPCCert = "server.crt"
+		cfg.PrivValidatorGRPCKey = "server.key"
+		cfg.PrivValidatorGRPCClientCA = "ca.crt"
+		assert.NoError(t, cfg.ValidatePrivValidatorGRPCExposure(), addr)
+
+		// The insecure override bypasses the check.
+		cfg = config.TestBaseConfig()
+		cfg.PrivValidatorGRPCListenAddr = addr
+		cfg.PrivValidatorGRPCAllowInsecure = true
+		assert.NoError(t, cfg.ValidatePrivValidatorGRPCExposure(), addr)
+	}
 }
 
 func TestRPCConfigValidateBasic(t *testing.T) {
