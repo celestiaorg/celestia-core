@@ -15,6 +15,9 @@ on:
     branches:
       - v0.38.x-celestia
       - main
+permissions:
+  contents: read
+
 jobs:
   golangci:
     name: golangci-lint

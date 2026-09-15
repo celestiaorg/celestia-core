@@ -17,6 +17,9 @@ on:
       - "**.yml"
   merge_group:
 
+permissions:
+  contents: read
+
 jobs:
   build:
     name: Super linter
