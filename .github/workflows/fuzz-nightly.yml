@@ -10,6 +10,9 @@ on:
     paths:
       - "test/fuzz/**/*.go"
 
+permissions:
+  contents: read
+
 jobs:
   fuzz-nightly-test:
     runs-on: ubuntu-latest
@@ -72,6 +75,7 @@ jobs:
 
   fuzz-nightly-fail:
     needs: fuzz-nightly-test
+    permissions: {}
     if: ${{ needs.fuzz-nightly-test.outputs.crashers-count != 0 }}
     runs-on: ubuntu-latest
     steps:
