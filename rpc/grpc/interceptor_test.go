@@ -7,10 +7,34 @@ import (
 )
 
 const (
-	heavyMethod = "/tendermint.rpc.grpc.BlockAPI/BlockByHeight"
-	lightMethod = "/tendermint.rpc.grpc.BlockAPI/Status"
-	subMethod   = "/tendermint.rpc.grpc.BlockAPI/SubscribeNewHeights"
+	heavyMethod  = "/tendermint.rpc.grpc.BlockAPI/BlockByHeight"
+	heavyMethod2 = "/tendermint.rpc.grpc.BlockAPI/BlockByHash"
+	lightMethod  = "/tendermint.rpc.grpc.BlockAPI/Status"
+	subMethod    = "/tendermint.rpc.grpc.BlockAPI/SubscribeNewHeights"
 )
+
+// TestAcquireHeavyFnCapacityAndSharedBudget verifies that distinct heavy
+// methods draw from one shared budget of the configured capacity, and that a
+// single release frees exactly one slot.
+func TestAcquireHeavyFnCapacityAndSharedBudget(t *testing.T) {
+	sem := make(chan struct{}, 2)
+
+	rel1, ok1 := acquireHeavyFn(sem, heavyMethod)
+	require.True(t, ok1)
+	rel2, ok2 := acquireHeavyFn(sem, heavyMethod2) // different heavy method, same budget
+	require.True(t, ok2)
+
+	_, ok3 := acquireHeavyFn(sem, heavyMethod)
+	require.False(t, ok3, "third heavy request must be rejected when the shared budget is full")
+
+	rel1()
+	rel3, ok4 := acquireHeavyFn(sem, heavyMethod)
+	require.True(t, ok4, "one release must free exactly one slot")
+
+	rel2()
+	rel3()
+	require.Len(t, sem, 0, "every slot must be released")
+}
 
 // TestAcquireHeavyFnNilSemaphore verifies the limit-disabled case: a nil
 // semaphore always admits, even for heavy methods, with a no-op release.
