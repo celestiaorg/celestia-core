@@ -1,72 +1,55 @@
 name: "Release"
+# Syncs each stable release tag with the celestia-core release pipeline in
+# Linear: https://linear.app/celestia/pipeline/celestia-core/releases
+#
+# GitHub releases themselves are created by hand. Binaries are not published
+# from this repo; celestia-app consumes it as a Go module.
 
 on:
   push:
     tags:
       - "v[0-9]+.[0-9]+.[0-9]+"  # Push events to matching v*, i.e. v1.0, v20.15.10
 
+permissions:
+  contents: read
+
 jobs:
-  release:
+  linear-release:
     runs-on: ubuntu-latest
     steps:
+      # Pinned to a commit SHA: this job holds LINEAR_ACCESS_KEY, so a repointed
+      # mutable tag would run third-party code alongside the credential.
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           fetch-depth: 0
 
-      - uses: actions/setup-go@v6
-        with:
-          go-version-file: 'go.mod'
-
-      # Similar check to ./release-version.yml, but enforces this when pushing
-      # tags. The ./release-version.yml check can be bypassed and is mainly
-      # present for informational purposes.
-      - name: Check release version
+      # Only scan commits since the previous stable tag reachable from this
+      # tag. Without this the action falls back to the last release synced
+      # to Linear, which is wrong when releases are cut from several release
+      # branches (e.g. v0.40.x and main) in interleaved order.
+      - name: Find previous release tag
+        id: prev
         run: |
-          # We strip the refs/tags/v prefix of the tag name.
-          TAG_VERSION=${GITHUB_REF#refs/tags/v}
-          # Get the version of the code, which has no "v" prefix.
-          CODE_VERSION=`go run ./cmd/cometbft/ version`
-          if [ "$TAG_VERSION" != "$CODE_VERSION" ]; then
-            echo ""
-            echo "Tag version ${TAG_VERSION} does not match code version ${CODE_VERSION}"
-            echo ""
-            echo "Please either fix the release tag or the version of the software in version/version.go."
-            exit 1
-          fi
+          PREV=$(git describe --tags --abbrev=0 --match 'v[0-9]*.[0-9]*.[0-9]*' --exclude '*-*' "${GITHUB_REF_NAME}^")
+          echo "Scanning commits in ${PREV}..${GITHUB_REF_NAME}"
+          echo "tag=${PREV}" >> "$GITHUB_OUTPUT"
 
-      - name: Generate release notes
-        run: |
-          VERSION="${GITHUB_REF#refs/tags/}"
-          VERSION_REF="${VERSION//[\.]/}"
-          CHANGELOG_URL="https://github.com/cometbft/cometbft/blob/${VERSION}/CHANGELOG.md#${VERSION_REF}"
-          echo "See the [CHANGELOG](${CHANGELOG_URL}) for this release." > ../release_notes.md
-
-      - name: Release
-        uses: goreleaser/goreleaser-action@v7
+      # Attach the Linear issues fixed by this release (found via PR numbers
+      # and issue IDs in commit messages) to a release in the celestia-core
+      # Linear pipeline, then mark that release as completed.
+      - name: Sync release with Linear
+        uses: linear/linear-release-action@53ad0f863963e7f8e270fba18426bbb55ef55384 # v0.17.2
         with:
-          version: latest
-          args: release --clean --release-notes ../release_notes.md
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          access_key: ${{ secrets.LINEAR_ACCESS_KEY }}
+          command: sync
+          version: ${{ github.ref_name }}
+          base_ref: ${{ steps.prev.outputs.tag }}
+          links: ${{ github.server_url }}/${{ github.repository }}/releases/tag/${{ github.ref_name }}
 
-  release-success:
-    needs: release
-    if: ${{ success() }}
-    runs-on: ubuntu-latest
-    steps:
-      - name: Notify Slack upon release
-        uses: slackapi/slack-github-action@v3.0.1
-        env:
-          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
-          SLACK_WEBHOOK_TYPE: INCOMING_WEBHOOK
-          RELEASE_URL: "${{ github.server_url }}/${{ github.repository }}/releases/tag/${{ github.ref_name }}"
+      - name: Complete release in Linear
+        uses: linear/linear-release-action@53ad0f863963e7f8e270fba18426bbb55ef55384 # v0.17.2
         with:
-          webhook: ${{ secrets.SLACK_WEBHOOK_URL }}
-          webhook-type: incoming-webhook
-          payload: |
-            blocks:
-              - type: "section"
-                text:
-                  type: "mrkdwn"
-                  text: ":rocket: New CometBFT release: <${{ env.RELEASE_URL }}|${{ github.ref_name }}>"
+          access_key: ${{ secrets.LINEAR_ACCESS_KEY }}
+          command: complete
+          version: ${{ github.ref_name }}
