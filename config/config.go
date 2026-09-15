@@ -422,7 +422,7 @@ func (cfg BaseConfig) ValidatePrivValidatorGRPCExposure() error {
 	if cfg.PrivValidatorGRPCListenAddr == "" || cfg.PrivValidatorGRPCAllowInsecure {
 		return nil
 	}
-	if bindsToLocalhostOnly(cfg.PrivValidatorGRPCListenAddr) {
+	if BindsToLocalhostOnly(cfg.PrivValidatorGRPCListenAddr) {
 		return nil
 	}
 	if !cfg.privValidatorGRPCTLSComplete() {
@@ -435,8 +435,8 @@ func (cfg BaseConfig) ValidatePrivValidatorGRPCExposure() error {
 	return nil
 }
 
-// bindsToLocalhostOnly reports whether the TCP listen address binds only to a loopback interface.
-func bindsToLocalhostOnly(addr string) bool {
+// BindsToLocalhostOnly reports whether the TCP listen address binds only to a loopback interface.
+func BindsToLocalhostOnly(addr string) bool {
 	host, _, err := net.SplitHostPort(addr)
 	if err != nil {
 		return false
