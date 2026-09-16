@@ -144,6 +144,24 @@ func getPubKey(addr string, tlsCfg *tls.Config) error {
 	return err
 }
 
+// tlsRejection connects with a raw TLS client and returns the server's
+// handshake rejection. In TLS 1.3 the client finishes its handshake before
+// the server verifies the client certificate, so the alert only arrives on
+// the first read. Reading instead of writing avoids racing the server's close.
+func tlsRejection(t *testing.T, addr string, tlsCfg *tls.Config) error {
+	t.Helper()
+
+	conn, err := tls.Dial("tcp", addr, tlsCfg)
+	if err != nil {
+		return err
+	}
+	defer conn.Close()
+
+	require.NoError(t, conn.SetReadDeadline(time.Now().Add(5*time.Second)))
+	_, err = conn.Read(make([]byte, 1))
+	return err
+}
+
 func TestGRPCServerCredentialsMutualTLS(t *testing.T) {
 	ca, certFile, keyFile, caFile := newServerCertFiles(t)
 
@@ -167,7 +185,7 @@ func TestGRPCServerCredentialsMutualTLS(t *testing.T) {
 	require.NoError(t, err)
 
 	// A client without a certificate is rejected.
-	err = getPubKey(addr, &tls.Config{
+	err = tlsRejection(t, addr, &tls.Config{
 		RootCAs:    rootPool,
 		MinVersion: tls.VersionTLS13,
 	})
@@ -178,7 +196,7 @@ func TestGRPCServerCredentialsMutualTLS(t *testing.T) {
 	otherCert, otherKey := otherCA.issue(t, "impostor", false)
 	otherPair, err := tls.X509KeyPair(otherCert, otherKey)
 	require.NoError(t, err)
-	err = getPubKey(addr, &tls.Config{
+	err = tlsRejection(t, addr, &tls.Config{
 		RootCAs:      rootPool,
 		Certificates: []tls.Certificate{otherPair},
 		MinVersion:   tls.VersionTLS13,
