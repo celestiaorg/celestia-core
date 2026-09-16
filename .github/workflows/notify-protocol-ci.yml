@@ -12,6 +12,7 @@ on:
       - "e2e"
       - "Golang Linter"
       - "Protobuf Lint"
+      - "Fuzz Tests"
     types:
       - completed
     branches:
