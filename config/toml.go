@@ -2,6 +2,7 @@ package config
 
 import (
 	"bytes"
+	"io"
 	"path/filepath"
 	"strings"
 	"text/template"
@@ -57,11 +58,16 @@ func writeDefaultConfigFile(configFilePath string) {
 func WriteConfigFile(configFilePath string, config *Config) {
 	var buffer bytes.Buffer
 
-	if err := configTemplate.Execute(&buffer, config); err != nil {
+	if err := RenderConfig(&buffer, config); err != nil {
 		panic(err)
 	}
 
 	cmtos.MustWriteFile(configFilePath, buffer.Bytes(), 0644)
+}
+
+// RenderConfig writes config with the documented TOML template to w.
+func RenderConfig(w io.Writer, config *Config) error {
+	return configTemplate.Execute(w, config)
 }
 
 // Note: any changes to the comments/variables/mapstructure
