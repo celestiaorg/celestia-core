@@ -600,6 +600,11 @@ indexer = "{{ .TxIndex.Indexer }}"
 #   postgresql://<user>:<password>@<host>:<port>/<db>?<opts>
 psql-conn = "{{ .TxIndex.PsqlConn }}"
 
+# Maximum number of matches a single tx_search/block_search query may accumulate
+# before returning an error. Bounds the memory a broad query can materialize.
+# 0 or negative - unlimited.
+max_search_results = {{ .TxIndex.MaxSearchResults }}
+
 #######################################################
 ###       Instrumentation Configuration Options     ###
 #######################################################
