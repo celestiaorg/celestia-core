@@ -375,11 +375,7 @@ func (txi *TxIndex) match(
 	filteredHashes map[string][]byte,
 	firstRun bool,
 	heightInfo HeightInfo,
-<<<<<<< HEAD
-) map[string][]byte {
-=======
-) (map[string]txRef, error) {
->>>>>>> e10e438 (fix(indexer): cap tx_search/block_search match set via max_search_results (#3329))
+) (map[string][]byte, error) {
 	// A previous match was attempted but resulted in no matches, so we return
 	// no matches (assuming AND operand).
 	if !firstRun && len(filteredHashes) == 0 {
@@ -565,11 +561,7 @@ func (txi *TxIndex) matchRange(
 	filteredHashes map[string][]byte,
 	firstRun bool,
 	heightInfo HeightInfo,
-<<<<<<< HEAD
-) map[string][]byte {
-=======
-) (map[string]txRef, error) {
->>>>>>> e10e438 (fix(indexer): cap tx_search/block_search match set via max_search_results (#3329))
+) (map[string][]byte, error) {
 	// A previous match was attempted but resulted in no matches, so we return
 	// no matches (assuming AND operand).
 	if !firstRun && len(filteredHashes) == 0 {

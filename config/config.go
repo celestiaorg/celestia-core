@@ -1354,12 +1354,8 @@ type TxIndexConfig struct {
 // DefaultTxIndexConfig returns a default configuration for the transaction indexer.
 func DefaultTxIndexConfig() *TxIndexConfig {
 	return &TxIndexConfig{
-<<<<<<< HEAD
-		Indexer: "kv",
-=======
-		Indexer:          "null",
+		Indexer:          "kv",
 		MaxSearchResults: 100000,
->>>>>>> e10e438 (fix(indexer): cap tx_search/block_search match set via max_search_results (#3329))
 	}
 }
 
