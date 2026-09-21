@@ -15,6 +15,7 @@ import (
 	abci "github.com/cometbft/cometbft/abci/types"
 	"github.com/cometbft/cometbft/libs/pubsub/query"
 	cmtrand "github.com/cometbft/cometbft/libs/rand"
+	"github.com/cometbft/cometbft/state/indexer"
 	"github.com/cometbft/cometbft/state/txindex"
 	"github.com/cometbft/cometbft/types"
 )
@@ -676,6 +677,147 @@ func TestTxSearchMultipleTxs(t *testing.T) {
 	require.Len(t, results, 2)
 }
 
+<<<<<<< HEAD
+=======
+func TestTxSearchPagedOrdersAndCounts(t *testing.T) {
+	indexer := NewTxIndex(db.NewMemDB())
+
+	testTxs := []*abci.TxResult{
+		txResultWithEvents([]abci.Event{
+			{Type: "account", Attributes: []abci.EventAttribute{{Key: "number", Value: "1", Index: true}}},
+		}),
+		txResultWithEvents([]abci.Event{
+			{Type: "account", Attributes: []abci.EventAttribute{{Key: "number", Value: "1", Index: true}}},
+		}),
+		txResultWithEvents([]abci.Event{
+			{Type: "account", Attributes: []abci.EventAttribute{{Key: "number", Value: "1", Index: true}}},
+		}),
+	}
+	testTxs[0].Tx = types.Tx("height 2 index 1")
+	testTxs[0].Height = 2
+	testTxs[0].Index = 1
+	testTxs[1].Tx = types.Tx("height 1 index 2")
+	testTxs[1].Height = 1
+	testTxs[1].Index = 2
+	testTxs[2].Tx = types.Tx("height 1 index 1")
+	testTxs[2].Height = 1
+	testTxs[2].Index = 1
+
+	for _, txResult := range testTxs {
+		require.NoError(t, indexer.Index(txResult))
+	}
+
+	ctx := context.Background()
+	q := query.MustCompile("account.number = 1")
+
+	results, totalCount, err := indexer.SearchPaged(ctx, q, "asc", 0, 2)
+	require.NoError(t, err)
+	require.Equal(t, 3, totalCount)
+	require.Len(t, results, 2)
+	require.Equal(t, int64(1), results[0].Height)
+	require.Equal(t, uint32(1), results[0].Index)
+	require.Equal(t, int64(1), results[1].Height)
+	require.Equal(t, uint32(2), results[1].Index)
+
+	results, totalCount, err = indexer.SearchPaged(ctx, q, "desc", 1, 1)
+	require.NoError(t, err)
+	require.Equal(t, 3, totalCount)
+	require.Len(t, results, 1)
+	require.Equal(t, int64(1), results[0].Height)
+	require.Equal(t, uint32(2), results[0].Index)
+}
+
+func TestTxSearchPagedOnlyUnmarshalsRequestedPage(t *testing.T) {
+	indexer := NewTxIndex(db.NewMemDB())
+
+	for i := int64(1); i <= 3; i++ {
+		txResult := txResultWithEvents([]abci.Event{
+			{Type: "account", Attributes: []abci.EventAttribute{{Key: "number", Value: "1", Index: true}}},
+		})
+		txResult.Tx = types.Tx(fmt.Sprintf("tx %d", i))
+		txResult.Height = i
+		require.NoError(t, indexer.Index(txResult))
+
+		if i == 3 {
+			require.NoError(t, indexer.store.Set(types.Tx(txResult.Tx).Hash(), []byte("not a tx result")))
+		}
+	}
+
+	ctx := context.Background()
+	q := query.MustCompile("account.number = 1")
+
+	results, totalCount, err := indexer.SearchPaged(ctx, q, "asc", 0, 2)
+	require.NoError(t, err)
+	require.Equal(t, 3, totalCount)
+	require.Len(t, results, 2)
+	require.Equal(t, int64(1), results[0].Height)
+	require.Equal(t, int64(2), results[1].Height)
+
+	results, totalCount, err = indexer.SearchPaged(ctx, q, "asc", 2, 1)
+	require.Error(t, err)
+	require.Nil(t, results)
+	require.Zero(t, totalCount)
+}
+
+func TestTxSearchPagedFallsBackToStoredResultForMalformedIndexKey(t *testing.T) {
+	indexer := NewTxIndex(db.NewMemDB())
+
+	txResult := txResultWithEvents(nil)
+	txResult.Tx = types.Tx("malformed index key")
+	txResult.Height = 7
+	txResult.Index = 3
+	hash := types.Tx(txResult.Tx).Hash()
+
+	rawBytes, err := proto.Marshal(txResult)
+	require.NoError(t, err)
+
+	b := indexer.store.NewBatch()
+	require.NoError(t, b.Set([]byte("sender/addr1/7/not-an-index"), hash))
+	require.NoError(t, b.Set(hash, rawBytes))
+	require.NoError(t, b.Write())
+
+	results, totalCount, err := indexer.SearchPaged(context.Background(), query.MustCompile("sender = 'addr1'"), "asc", 0, 1)
+	require.NoError(t, err)
+	require.Equal(t, 1, totalCount)
+	require.Len(t, results, 1)
+	require.True(t, proto.Equal(txResult, results[0]))
+}
+
+func TestTxSearchMaxResults(t *testing.T) {
+	const numTxs = 10
+
+	events := []abci.Event{
+		{Type: "account", Attributes: []abci.EventAttribute{{Key: "number", Value: "1", Index: true}}},
+	}
+	indexTxs := func(indexer *TxIndex) {
+		for i := 0; i < numTxs; i++ {
+			txResult := &abci.TxResult{
+				Height: int64(i + 1),
+				Index:  0,
+				Tx:     types.Tx(fmt.Sprintf("tx%d", i)),
+				Result: abci.ExecTxResult{Code: abci.CodeTypeOK, Events: events},
+			}
+			require.NoError(t, indexer.Index(txResult))
+		}
+	}
+
+	q := query.MustCompile(`account.number = 1`)
+
+	// A cap smaller than the match count returns ErrTooManyResults.
+	capped := NewTxIndex(db.NewMemDB(), WithMaxSearchResults(numTxs-1))
+	indexTxs(capped)
+	_, err := capped.Search(context.Background(), q)
+	require.ErrorIs(t, err, indexer.ErrTooManyResults)
+
+	// The default (unlimited) returns every match.
+	unlimited := NewTxIndex(db.NewMemDB())
+	indexTxs(unlimited)
+	results, err := unlimited.Search(context.Background(), q)
+	require.NoError(t, err)
+	require.Len(t, results, numTxs)
+}
+
+>>>>>>> e10e438 (fix(indexer): cap tx_search/block_search match set via max_search_results (#3329))
 func txResultWithEvents(events []abci.Event) *abci.TxResult {
 	tx := types.Tx("HELLO WORLD")
 	return &abci.TxResult{

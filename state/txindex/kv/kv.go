@@ -39,14 +39,34 @@ type TxIndex struct {
 	// Number the events in the event list
 	eventSeq int64
 
+	// maxSearchResults caps how many matches a single query may accumulate
+	// before returning indexer.ErrTooManyResults. Zero or negative means unlimited.
+	maxSearchResults int
+
 	log log.Logger
 }
 
+// Option is a functional option for TxIndex.
+type Option func(*TxIndex)
+
+// WithMaxSearchResults sets the max amount of matches a single query may
+// accumulate before returning indexer.ErrTooManyResults. Zero or negative means
+// unlimited.
+func WithMaxSearchResults(limit int) Option {
+	return func(txi *TxIndex) {
+		txi.maxSearchResults = limit
+	}
+}
+
 // NewTxIndex creates new KV indexer.
-func NewTxIndex(store dbm.DB) *TxIndex {
-	return &TxIndex{
+func NewTxIndex(store dbm.DB, options ...Option) *TxIndex {
+	txi := &TxIndex{
 		store: store,
 	}
+	for _, opt := range options {
+		opt(txi)
+	}
+	return txi
 }
 
 func (txi *TxIndex) SetLogger(l log.Logger) {
@@ -250,7 +270,10 @@ func (txi *TxIndex) Search(ctx context.Context, q *query.Query) ([]*abci.TxResul
 				continue
 			}
 			if !hashesInitialized {
-				filteredHashes = txi.matchRange(ctx, qr, startKey(qr.Key), filteredHashes, true, heightInfo)
+				filteredHashes, err = txi.matchRange(ctx, qr, startKey(qr.Key), filteredHashes, true, heightInfo)
+				if err != nil {
+					return nil, err
+				}
 				hashesInitialized = true
 
 				// Ignore any remaining conditions if the first condition resulted
@@ -259,7 +282,10 @@ func (txi *TxIndex) Search(ctx context.Context, q *query.Query) ([]*abci.TxResul
 					break
 				}
 			} else {
-				filteredHashes = txi.matchRange(ctx, qr, startKey(qr.Key), filteredHashes, false, heightInfo)
+				filteredHashes, err = txi.matchRange(ctx, qr, startKey(qr.Key), filteredHashes, false, heightInfo)
+				if err != nil {
+					return nil, err
+				}
 			}
 		}
 	}
@@ -273,7 +299,10 @@ func (txi *TxIndex) Search(ctx context.Context, q *query.Query) ([]*abci.TxResul
 		}
 
 		if !hashesInitialized {
-			filteredHashes = txi.match(ctx, c, startKeyForCondition(c, heightInfo.height), filteredHashes, true, heightInfo)
+			filteredHashes, err = txi.match(ctx, c, startKeyForCondition(c, heightInfo.height), filteredHashes, true, heightInfo)
+			if err != nil {
+				return nil, err
+			}
 			hashesInitialized = true
 
 			// Ignore any remaining conditions if the first condition resulted
@@ -282,7 +311,10 @@ func (txi *TxIndex) Search(ctx context.Context, q *query.Query) ([]*abci.TxResul
 				break
 			}
 		} else {
-			filteredHashes = txi.match(ctx, c, startKeyForCondition(c, heightInfo.height), filteredHashes, false, heightInfo)
+			filteredHashes, err = txi.match(ctx, c, startKeyForCondition(c, heightInfo.height), filteredHashes, false, heightInfo)
+			if err != nil {
+				return nil, err
+			}
 		}
 	}
 
@@ -343,11 +375,15 @@ func (txi *TxIndex) match(
 	filteredHashes map[string][]byte,
 	firstRun bool,
 	heightInfo HeightInfo,
+<<<<<<< HEAD
 ) map[string][]byte {
+=======
+) (map[string]txRef, error) {
+>>>>>>> e10e438 (fix(indexer): cap tx_search/block_search match set via max_search_results (#3329))
 	// A previous match was attempted but resulted in no matches, so we return
 	// no matches (assuming AND operand).
 	if !firstRun && len(filteredHashes) == 0 {
-		return filteredHashes
+		return filteredHashes, nil
 	}
 
 	tmpHashes := make(map[string][]byte)
@@ -386,6 +422,9 @@ func (txi *TxIndex) match(
 				break EQ_LOOP
 			default:
 			}
+			if indexer.IsLimitReached(len(tmpHashes), txi.maxSearchResults) {
+				return nil, indexer.ErrTooManyResults
+			}
 		}
 		if err := it.Error(); err != nil {
 			panic(err)
@@ -423,6 +462,9 @@ func (txi *TxIndex) match(
 			case <-ctx.Done():
 				break EXISTS_LOOP
 			default:
+			}
+			if indexer.IsLimitReached(len(tmpHashes), txi.maxSearchResults) {
+				return nil, indexer.ErrTooManyResults
 			}
 		}
 		if err := it.Error(); err != nil {
@@ -469,6 +511,9 @@ func (txi *TxIndex) match(
 				break CONTAINS_LOOP
 			default:
 			}
+			if indexer.IsLimitReached(len(tmpHashes), txi.maxSearchResults) {
+				return nil, indexer.ErrTooManyResults
+			}
 		}
 		if err := it.Error(); err != nil {
 			panic(err)
@@ -485,7 +530,7 @@ func (txi *TxIndex) match(
 		// return no matches (assuming AND operand).
 		//
 		// 2. A previous match was not attempted, so we return all results.
-		return tmpHashes
+		return tmpHashes, nil
 	}
 
 	// Remove/reduce matches in filteredHashes that were not found in this
@@ -505,7 +550,7 @@ REMOVE_LOOP:
 		}
 	}
 
-	return filteredHashes
+	return filteredHashes, nil
 }
 
 // matchRange returns all matching txs by hash that meet a given queryRange and
@@ -520,11 +565,15 @@ func (txi *TxIndex) matchRange(
 	filteredHashes map[string][]byte,
 	firstRun bool,
 	heightInfo HeightInfo,
+<<<<<<< HEAD
 ) map[string][]byte {
+=======
+) (map[string]txRef, error) {
+>>>>>>> e10e438 (fix(indexer): cap tx_search/block_search match set via max_search_results (#3329))
 	// A previous match was attempted but resulted in no matches, so we return
 	// no matches (assuming AND operand).
 	if !firstRun && len(filteredHashes) == 0 {
-		return filteredHashes
+		return filteredHashes, nil
 	}
 
 	tmpHashes := make(map[string][]byte)
@@ -599,6 +648,9 @@ LOOP:
 			break LOOP
 		default:
 		}
+		if indexer.IsLimitReached(len(tmpHashes), txi.maxSearchResults) {
+			return nil, indexer.ErrTooManyResults
+		}
 	}
 	if err := it.Error(); err != nil {
 		panic(err)
@@ -612,7 +664,7 @@ LOOP:
 		// return no matches (assuming AND operand).
 		//
 		// 2. A previous match was not attempted, so we return all results.
-		return tmpHashes
+		return tmpHashes, nil
 	}
 
 	// Remove/reduce matches in filteredHashes that were not found in this
@@ -632,7 +684,7 @@ REMOVE_LOOP:
 		}
 	}
 
-	return filteredHashes
+	return filteredHashes, nil
 }
 
 // Keys

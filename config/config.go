@@ -1343,12 +1343,23 @@ type TxIndexConfig struct {
 	// The PostgreSQL connection configuration, the connection format:
 	// postgresql://<user>:<password>@<host>:<port>/<db>?<opts>
 	PsqlConn string `mapstructure:"psql-conn"`
+
+	// MaxSearchResults caps how many matches a single tx_search/block_search
+	// query may accumulate before returning an error, bounding the memory a
+	// broad query can materialize.
+	// 0 or negative - unlimited.
+	MaxSearchResults int `mapstructure:"max_search_results"`
 }
 
 // DefaultTxIndexConfig returns a default configuration for the transaction indexer.
 func DefaultTxIndexConfig() *TxIndexConfig {
 	return &TxIndexConfig{
+<<<<<<< HEAD
 		Indexer: "kv",
+=======
+		Indexer:          "null",
+		MaxSearchResults: 100000,
+>>>>>>> e10e438 (fix(indexer): cap tx_search/block_search match set via max_search_results (#3329))
 	}
 }
 

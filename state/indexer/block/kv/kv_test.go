@@ -11,6 +11,7 @@ import (
 
 	abci "github.com/cometbft/cometbft/abci/types"
 	"github.com/cometbft/cometbft/libs/pubsub/query"
+	"github.com/cometbft/cometbft/state/indexer"
 	blockidxkv "github.com/cometbft/cometbft/state/indexer/block/kv"
 	"github.com/cometbft/cometbft/types"
 )
@@ -140,6 +141,39 @@ func TestBlockIndexer(t *testing.T) {
 			require.Equal(t, tc.results, results)
 		})
 	}
+}
+
+func TestBlockIndexerMaxResults(t *testing.T) {
+	const numBlocks = 10
+
+	indexBlocks := func(indexer *blockidxkv.BlockerIndexer) {
+		for i := 1; i <= numBlocks; i++ {
+			require.NoError(t, indexer.Index(types.EventDataNewBlockEvents{
+				Height: int64(i),
+				Events: []abci.Event{
+					{
+						Type:       "begin_event",
+						Attributes: []abci.EventAttribute{{Key: "proposer", Value: "FCAA001", Index: true}},
+					},
+				},
+			}))
+		}
+	}
+
+	q := query.MustCompile(`begin_event.proposer = 'FCAA001'`)
+
+	// A cap smaller than the match count returns ErrTooManyResults.
+	capped := blockidxkv.New(db.NewPrefixDB(db.NewMemDB(), []byte("block_events")), blockidxkv.WithMaxSearchResults(numBlocks-1))
+	indexBlocks(capped)
+	_, err := capped.Search(context.Background(), q)
+	require.ErrorIs(t, err, indexer.ErrTooManyResults)
+
+	// The default (unlimited) returns every match.
+	unlimited := blockidxkv.New(db.NewPrefixDB(db.NewMemDB(), []byte("block_events")))
+	indexBlocks(unlimited)
+	results, err := unlimited.Search(context.Background(), q)
+	require.NoError(t, err)
+	require.Len(t, results, numBlocks)
 }
 
 func TestBlockIndexerMulti(t *testing.T) {
