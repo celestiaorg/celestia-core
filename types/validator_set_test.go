@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 	"testing/quick"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -15,6 +16,7 @@ import (
 	"github.com/cometbft/cometbft/crypto"
 	"github.com/cometbft/cometbft/crypto/ed25519"
 	cryptoenc "github.com/cometbft/cometbft/crypto/encoding"
+	"github.com/cometbft/cometbft/crypto/mldsa65"
 	"github.com/cometbft/cometbft/crypto/sr25519"
 	cmtmath "github.com/cometbft/cometbft/libs/math"
 	cmtrand "github.com/cometbft/cometbft/libs/rand"
@@ -1705,4 +1707,40 @@ func TestValidatorSet_AllKeysHaveSameType(t *testing.T) {
 			assert.False(t, tc.vals.AllKeysHaveSameType(), "test %d", i)
 		}
 	}
+}
+
+// TestValidatorSet_VerifyCommitLight_MlDsa65 exercises the path a light client
+// takes for a counterparty chain whose validators use ML-DSA-65 keys: decode
+// the validator set and commit from proto, run ValidateBasic, verify the commit.
+func TestValidatorSet_VerifyCommitLight_MlDsa65(t *testing.T) {
+	const chainID = "mldsa65-chain"
+	const height, round = int64(5), int32(0)
+	blockID := makeBlockIDRandom()
+
+	vals := make([]*Validator, 4)
+	privVals := make([]PrivValidator, 4)
+	for i := range vals {
+		priv, err := mldsa65.GenPrivKey()
+		require.NoError(t, err)
+		privVals[i] = NewMockPVWithParams(priv, false, false)
+		vals[i] = NewValidator(priv.PubKey(), 10)
+	}
+	valSet := NewValidatorSet(vals)
+	// MakeExtCommit signs in validator index order, so sort signers to match.
+	sort.Sort(PrivValidatorsByAddress(privVals))
+
+	voteSet := NewVoteSet(chainID, height, round, cmtproto.PrecommitType, valSet)
+	extCommit, err := MakeExtCommit(blockID, height, round, voteSet, privVals, time.Now(), false)
+	require.NoError(t, err)
+	commit := extCommit.ToCommit()
+
+	valSetProto, err := valSet.ToProto()
+	require.NoError(t, err)
+	gotValSet, err := ValidatorSetFromProto(valSetProto)
+	require.NoError(t, err)
+	gotCommit, err := CommitFromProto(commit.ToProto())
+	require.NoError(t, err)
+
+	require.NoError(t, gotCommit.ValidateBasic())
+	require.NoError(t, gotValSet.VerifyCommitLight(chainID, blockID, height, gotCommit))
 }

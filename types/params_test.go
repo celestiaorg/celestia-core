@@ -41,6 +41,8 @@ func TestConsensusParamsValidation(t *testing.T) {
 		12: {makeParams(1, 0, 2, 0, []string{"potatoes make good pubkeys"}, 0), false},
 		13: {makeParams(-1, 0, 2, 0, valEd25519, 0), true},
 		14: {makeParams(-2, 0, 2, 0, valEd25519, 0), false},
+		// test ML-DSA-65 is an accepted pubkey type
+		15: {makeParams(1, 0, 2, 0, []string{"ml_dsa_65"}, 0), true},
 	}
 	for i, tc := range testCases {
 		if tc.valid {

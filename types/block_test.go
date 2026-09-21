@@ -18,7 +18,9 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/cometbft/cometbft/crypto"
+	"github.com/cometbft/cometbft/crypto/ed25519"
 	"github.com/cometbft/cometbft/crypto/merkle"
+	"github.com/cometbft/cometbft/crypto/mldsa65"
 	"github.com/cometbft/cometbft/crypto/tmhash"
 	"github.com/cometbft/cometbft/libs/bits"
 	"github.com/cometbft/cometbft/libs/bytes"
@@ -252,6 +254,9 @@ func TestCommitValidateBasic(t *testing.T) {
 		{"Incorrect signature", func(com *Commit) { com.Signatures[0].Signature = []byte{0} }, false},
 		{"Incorrect height", func(com *Commit) { com.Height = int64(-100) }, true},
 		{"Incorrect round", func(com *Commit) { com.Round = -100 }, true},
+		{"Commit sig with ML-DSA-65 sized signature", func(com *Commit) {
+			com.Signatures[0].Signature = make([]byte, mldsa65.SignatureSize)
+		}, false},
 	}
 	for _, tc := range testCases {
 		tc := tc
@@ -272,7 +277,9 @@ func TestMaxCommitBytes(t *testing.T) {
 		BlockIDFlag:      BlockIDFlagNil,
 		ValidatorAddress: crypto.AddressHash([]byte("validator_address")),
 		Timestamp:        timestamp,
-		Signature:        crypto.CRandBytes(MaxSignatureSize),
+		// MaxCommitSigBytes is bounded by ed25519, the only validator key type
+		// on Celestia, not by MaxSignatureSize. See the comment on MaxCommitSigBytes.
+		Signature: crypto.CRandBytes(ed25519.SignatureSize),
 	}
 
 	pbSig := cs.ToProto()
