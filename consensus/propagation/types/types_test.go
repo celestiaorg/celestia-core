@@ -277,6 +277,16 @@ func TestWantParts_ValidateBasic(t *testing.T) {
 			WantParts{Height: 1, Round: 1, Parts: &bits.BitArray{Bits: 1 << 31, Elems: []uint64{1}}, MissingPartsCount: 1},
 			true,
 		},
+		{
+			"bit array at the maximum block part count",
+			WantParts{Height: 1, Round: 1, Parts: bits.NewBitArray(int(types.MaxBlockPartsCount) * ParityRatio), MissingPartsCount: 10},
+			false,
+		},
+		{
+			"bit array exceeding the maximum block part count",
+			WantParts{Height: 1, Round: 1, Parts: bits.NewBitArray(int(types.MaxBlockPartsCount)*ParityRatio + 1), MissingPartsCount: 10},
+			true,
+		},
 	}
 
 	for _, tt := range tests {

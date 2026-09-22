@@ -403,6 +403,11 @@ func (w *WantParts) ValidateBasic() error {
 	if w.Parts == nil {
 		return errors.New("WantParts: Parts cannot be nil")
 	}
+	// A block has at most MaxBlockPartsCount original parts plus as many
+	// parity parts, so no valid request can select more bits than that.
+	if maxBits := int(types.MaxBlockPartsCount) * ParityRatio; w.Parts.Size() > maxBits {
+		return fmt.Errorf("WantParts: parts bit array size %d exceeds maximum %d", w.Parts.Size(), maxBits)
+	}
 	if w.MissingPartsCount <= 0 {
 		return errors.New("WantParts: MissingPartsCount cannot be negative or zero")
 	}
