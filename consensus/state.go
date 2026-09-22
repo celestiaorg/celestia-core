@@ -880,28 +880,26 @@ func (cs *State) updateToState(state sm.State) {
 		}
 
 	} else {
-		var nextStartTime time.Time
-		if state.LastBlockHeight == 0 {
-			nextStartTime = cs.config.CommitWithCustomTimeout(cs.rs.CommitTime, state.Timeouts.TimeoutCommit)
-		} else {
-			nextStartTime = cs.config.CommitWithCustomTimeout(cs.rs.CommitTime, cs.state.Timeouts.TimeoutCommit)
-		}
-
-		// Pace the network from the commit timeout: the next height starts no
-		// earlier than TimeoutCommit after this one did. This is the whole
-		// pacing mechanism now that the precommit wait is gone, so the block
-		// time follows TimeoutCommit alone.
+		// Pace the network from the start of the previous height: the next one
+		// starts no earlier than TimeoutCommit after this one did. A height that
+		// already took longer than that starts the next one right away, so
+		// TimeoutCommit is a floor on the block time, not a wait after commit.
+		// This is the whole pacing mechanism now that the precommit wait is gone.
 		//
 		// A height that takes several rounds shortens the next one, because the
 		// floor is measured from the previous StartTime. That is accepted.
 		//
 		// Catching up is exempt, as it was in the precommit wait this replaces:
 		// a node replaying history must not be paced to the live block rate.
+		nextStartTime := cs.rs.CommitTime
 		timeoutCommit := cs.state.Timeouts.TimeoutCommit
 		if state.LastBlockHeight == 0 {
 			timeoutCommit = state.Timeouts.TimeoutCommit
 		}
-		if !cs.rs.StartTime.IsZero() && timeoutCommit != 0 && !cs.propagator.IsCatchingUp() {
+		if timeoutCommit == 0 {
+			timeoutCommit = cs.config.TimeoutCommit
+		}
+		if !cs.rs.StartTime.IsZero() && !cs.propagator.IsCatchingUp() {
 			minStartTime := cs.rs.StartTime.Add(timeoutCommit)
 			if nextStartTime.Before(minStartTime) {
 				nextStartTime = minStartTime
