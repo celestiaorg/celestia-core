@@ -894,7 +894,10 @@ func (cs *State) updateToState(state sm.State) {
 		//
 		// A height that takes several rounds shortens the next one, because the
 		// floor is measured from the previous StartTime. That is accepted.
-		if !cs.rs.StartTime.IsZero() && cs.state.Timeouts.DelayedPrecommitTimeout != 0 {
+		//
+		// Catching up is exempt, as it was in the precommit wait this replaces:
+		// a node replaying history must not be paced to the live block rate.
+		if !cs.rs.StartTime.IsZero() && cs.state.Timeouts.DelayedPrecommitTimeout != 0 && !cs.propagator.IsCatchingUp() {
 			minStartTime := cs.rs.StartTime.Add(cs.state.Timeouts.DelayedPrecommitTimeout)
 			if nextStartTime.Before(minStartTime) {
 				nextStartTime = minStartTime
