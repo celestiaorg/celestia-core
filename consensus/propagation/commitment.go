@@ -3,6 +3,9 @@ package propagation
 import (
 	"errors"
 	"fmt"
+	"runtime"
+	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/cosmos/gogoproto/proto"
@@ -81,12 +84,16 @@ func (blockProp *Reactor) ProposeBlock(proposal *types.Proposal, block *types.Pa
 	// distribute equal portions of haves to each of the proposer's peers
 	peers := blockProp.getPeers()
 	chunks := chunkParts(parts.Parity().BitArray(), len(peers), 1)
-	initialPartsMeta := []*propagation.PartMetaData{{Index: 0, Hash: parts.Original().GetPart(0).Proof.LeafHash}}
-	if parts.Original().Total() > 1 {
-		lastPart := parts.Original().GetPart(int(parts.Original().Total() - 1))
-		if lastPart != nil {
-			initialPartsMeta = append(initialPartsMeta, &propagation.PartMetaData{Index: lastPart.Index, Hash: lastPart.Proof.LeafHash})
+	// Push exactly the parts peers cannot rebuild from the transactions they
+	// already hold, rather than a fixed first-and-last guess.
+	original := parts.Original()
+	initialPartsMeta := make([]*propagation.PartMetaData, 0, maxPushedParts)
+	for _, index := range uncoveredParts(cb.Blobs, original.Total(), types.BlockPartSizeBytes, cb.LastLen) {
+		part := original.GetPart(int(index))
+		if part == nil {
+			continue
 		}
+		initialPartsMeta = append(initialPartsMeta, &propagation.PartMetaData{Index: part.Index, Hash: part.Proof.LeafHash})
 	}
 	for index, peer := range peers {
 		chunkedParts := chunkToPartMetaData(chunks[index], parts.Parity())
@@ -257,41 +264,80 @@ func (blockProp *Reactor) processValidatedCompactBlock(cb *proptypes.CompactBloc
 		return
 	}
 
+	// Forward before recovering locally. Recovery only fills in this node's own
+	// parts, so holding the compact block for its duration delays every peer
+	// behind us for no gain.
+	blockProp.broadcastCompactBlock(cb, peer)
+
 	if !proposer {
 		// check if we have any transactions that are in the compact block
 		blockProp.recoverPartsFromMempool(cb)
 	}
+}
 
-	blockProp.broadcastCompactBlock(cb, peer)
+// lookupTxsInMempool returns the transactions of blobs this node already holds,
+// in the same order, which is what TxsToParts expects.
+//
+// The lookups run in parallel: each one takes only a read lock on the mempool
+// and the marshalling that follows is pure, so the work divides cleanly. Each
+// result is written at its own index, so the outcome does not depend on
+// scheduling.
+func (blockProp *Reactor) lookupTxsInMempool(blobs []proptypes.TxMetaData) []proptypes.UnmarshalledTx {
+	unmarshalled := make([]proptypes.UnmarshalledTx, len(blobs))
+	held := make([]bool, len(blobs))
+
+	var (
+		next atomic.Int64
+		wg   sync.WaitGroup
+	)
+	for range min(runtime.NumCPU(), len(blobs)) {
+		wg.Go(func() {
+			for {
+				i := int(next.Add(1)) - 1
+				if i >= len(blobs) {
+					return
+				}
+
+				txMetaData := blobs[i]
+				txKey, err := types.TxKeyFromBytes(txMetaData.Hash)
+				if err != nil {
+					blockProp.Logger.Error("failed to decode tx key", "err", err, "tx", txMetaData)
+					continue
+				}
+
+				tx, has := blockProp.mempool.GetTxByKey(txKey)
+				if !has {
+					continue
+				}
+
+				protoTxs := mempool.Txs{Txs: [][]byte{tx.Tx}}
+				marshalledTx, err := proto.Marshal(&protoTxs)
+				if err != nil {
+					blockProp.Logger.Error("failed to encode tx", "err", err, "tx", txMetaData)
+					continue
+				}
+
+				unmarshalled[i] = proptypes.UnmarshalledTx{MetaData: txMetaData, Key: txKey, TxBytes: marshalledTx}
+				held[i] = true
+			}
+		})
+	}
+	wg.Wait()
+
+	txsFound := make([]proptypes.UnmarshalledTx, 0, len(blobs))
+	for i, ok := range held {
+		if ok {
+			txsFound = append(txsFound, unmarshalled[i])
+		}
+	}
+	return txsFound
 }
 
 // recoverPartsFromMempool queries the mempool to see if we can recover any block parts locally.
 func (blockProp *Reactor) recoverPartsFromMempool(cb *proptypes.CompactBlock) {
 	startTime := time.Now()
 	// find the compact block transactions that exist in our mempool
-	txsFound := make([]proptypes.UnmarshalledTx, 0, len(cb.Blobs))
-	for _, txMetaData := range cb.Blobs {
-		txKey, err := types.TxKeyFromBytes(txMetaData.Hash)
-		if err != nil {
-			blockProp.Logger.Error("failed to decode tx key", "err", err, "tx", txMetaData)
-			continue
-		}
-
-		tx, has := blockProp.mempool.GetTxByKey(txKey)
-		if !has {
-			continue
-		}
-
-		protoTxs := mempool.Txs{Txs: [][]byte{tx.Tx}}
-		marshalledTx, err := proto.Marshal(&protoTxs)
-		if err != nil {
-			blockProp.Logger.Error("failed to encode tx", "err", err, "tx", txMetaData)
-			continue
-		}
-
-		txsFound = append(txsFound, proptypes.UnmarshalledTx{MetaData: txMetaData, Key: txKey, TxBytes: marshalledTx})
-	}
-
+	txsFound := blockProp.lookupTxsInMempool(cb.Blobs)
 	if len(txsFound) == 0 {
 		return
 	}
