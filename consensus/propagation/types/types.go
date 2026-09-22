@@ -406,6 +406,11 @@ func (w *WantParts) ValidateBasic() error {
 	if w.MissingPartsCount <= 0 {
 		return errors.New("WantParts: MissingPartsCount cannot be negative or zero")
 	}
+	// A peer can never be missing more parts than the block has, so the
+	// count must fit inside the request's own bit array.
+	if int(w.MissingPartsCount) > w.Parts.Size() {
+		return fmt.Errorf("WantParts: MissingPartsCount %d exceeds parts bit array size %d", w.MissingPartsCount, w.Parts.Size())
+	}
 	return w.Parts.ValidateBasic()
 }
 

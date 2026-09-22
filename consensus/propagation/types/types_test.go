@@ -245,13 +245,28 @@ func TestWantParts_ValidateBasic(t *testing.T) {
 	}{
 		{
 			"valid want parts",
-			WantParts{Height: 1, Round: 1, Parts: &bits.BitArray{}, MissingPartsCount: 10},
+			WantParts{Height: 1, Round: 1, Parts: bits.NewBitArray(16), MissingPartsCount: 10},
 			false,
 		},
 		{
 			"valid non-empty bit array",
 			WantParts{Height: 1, Round: 1, Parts: bits.NewBitArray(100), MissingPartsCount: 10},
 			false,
+		},
+		{
+			"missing parts count equal to bit array size",
+			WantParts{Height: 1, Round: 1, Parts: bits.NewBitArray(100), MissingPartsCount: 100},
+			false,
+		},
+		{
+			"missing parts count exceeding bit array size",
+			WantParts{Height: 1, Round: 1, Parts: bits.NewBitArray(100), MissingPartsCount: 101},
+			true,
+		},
+		{
+			"empty bit array with positive missing parts count",
+			WantParts{Height: 1, Round: 1, Parts: &bits.BitArray{}, MissingPartsCount: 10},
+			true,
 		},
 		{
 			"nil bit array",
