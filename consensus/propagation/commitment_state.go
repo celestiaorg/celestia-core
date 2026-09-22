@@ -105,6 +105,20 @@ func (p *ProposalCache) GetProposal(height int64, round int32) (*types.Proposal,
 	return &cb.Proposal, parts.Original(), has
 }
 
+// hasProposalAbove returns true if any proposal is cached for a height
+// strictly greater than the given one.
+func (p *ProposalCache) hasProposalAbove(height int64) bool {
+	p.pmtx.Lock()
+	defer p.pmtx.Unlock()
+
+	for h := range p.proposals {
+		if h > height {
+			return true
+		}
+	}
+	return false
+}
+
 func (p *ProposalCache) unfinishedHeights() []*proposalData {
 	p.pmtx.Lock()
 	defer p.pmtx.Unlock()

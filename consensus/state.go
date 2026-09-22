@@ -889,8 +889,10 @@ func (cs *State) updateToState(state sm.State) {
 		// A height that takes several rounds shortens the next one, because the
 		// floor is measured from the previous StartTime. That is accepted.
 		//
-		// Catching up is exempt, as it was in the precommit wait this replaces:
-		// a node replaying history must not be paced to the live block rate.
+		// A node behind the network is exempt, as catch-up was in the precommit
+		// wait this replaces: replaying history must not be paced to the live
+		// block rate. Seeing the next height's proposal early does not count as
+		// behind, or the node would start early and its block time would drift.
 		nextStartTime := cs.rs.CommitTime
 		timeoutCommit := cs.state.Timeouts.TimeoutCommit
 		if state.LastBlockHeight == 0 {
@@ -899,7 +901,7 @@ func (cs *State) updateToState(state sm.State) {
 		if timeoutCommit == 0 {
 			timeoutCommit = cs.config.TimeoutCommit
 		}
-		if !cs.rs.StartTime.IsZero() && !cs.propagator.IsCatchingUp() {
+		if !cs.rs.StartTime.IsZero() && !cs.propagator.IsBehind() {
 			minStartTime := cs.rs.StartTime.Add(timeoutCommit)
 			if nextStartTime.Before(minStartTime) {
 				nextStartTime = minStartTime

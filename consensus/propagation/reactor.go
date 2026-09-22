@@ -458,3 +458,10 @@ func (r *Reactor) IsCatchingUp() bool {
 
 	return false
 }
+
+// IsBehind returns true if a proposal is cached at least two heights above
+// the committed height. A node behind by a single height is not behind: the
+// live network is never more than one height ahead of a node keeping up.
+func (r *Reactor) IsBehind() bool {
+	return r.hasProposalAbove(r.store.Height() + 1)
+}

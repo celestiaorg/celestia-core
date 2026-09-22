@@ -24,6 +24,10 @@ type Propagator interface {
 	// IsCatchingUp returns true if the node is catching up on block data
 	// (has unfinished heights that need to be downloaded).
 	IsCatchingUp() bool
+	// IsBehind returns true if a proposal is cached at least two heights above
+	// the committed height, meaning the network is ahead by more than the
+	// height in progress.
+	IsBehind() bool
 }
 
 type ProposalAndSrc struct {
@@ -92,5 +96,9 @@ func (nop *NoOpPropagator) GetProposalChan() <-chan ProposalAndSrc {
 }
 
 func (nop *NoOpPropagator) IsCatchingUp() bool {
+	return false
+}
+
+func (nop *NoOpPropagator) IsBehind() bool {
 	return false
 }

@@ -342,3 +342,15 @@ func TestProposalCache_GetProposal_NilCompactBlock(t *testing.T) {
 		require.Nil(t, parts)
 	})
 }
+
+func TestProposalCache_hasProposalAbove(t *testing.T) {
+	bs := makeTestBlockStore(t)
+	pc := NewProposalCache(bs)
+
+	pc.proposals[5] = map[int32]*proposalData{0: {}}
+	pc.proposals[6] = map[int32]*proposalData{0: {}}
+
+	require.True(t, pc.hasProposalAbove(5))
+	require.False(t, pc.hasProposalAbove(6))
+	require.False(t, pc.hasProposalAbove(7))
+}
