@@ -887,18 +887,22 @@ func (cs *State) updateToState(state sm.State) {
 			nextStartTime = cs.config.CommitWithCustomTimeout(cs.rs.CommitTime, cs.state.Timeouts.TimeoutCommit)
 		}
 
-		// Pace the network by starting the next height no earlier than
-		// DelayedPrecommitTimeout after this one. This replaces the wait that
-		// used to happen inside enterPrecommit: the delay is the same, but it
-		// no longer sits between having the prevotes and signing the precommit.
+		// Pace the network from the commit timeout: the next height starts no
+		// earlier than TimeoutCommit after this one did. This is the whole
+		// pacing mechanism now that the precommit wait is gone, so the block
+		// time follows TimeoutCommit alone.
 		//
 		// A height that takes several rounds shortens the next one, because the
 		// floor is measured from the previous StartTime. That is accepted.
 		//
 		// Catching up is exempt, as it was in the precommit wait this replaces:
 		// a node replaying history must not be paced to the live block rate.
-		if !cs.rs.StartTime.IsZero() && cs.state.Timeouts.DelayedPrecommitTimeout != 0 && !cs.propagator.IsCatchingUp() {
-			minStartTime := cs.rs.StartTime.Add(cs.state.Timeouts.DelayedPrecommitTimeout)
+		timeoutCommit := cs.state.Timeouts.TimeoutCommit
+		if state.LastBlockHeight == 0 {
+			timeoutCommit = state.Timeouts.TimeoutCommit
+		}
+		if !cs.rs.StartTime.IsZero() && timeoutCommit != 0 && !cs.propagator.IsCatchingUp() {
+			minStartTime := cs.rs.StartTime.Add(timeoutCommit)
 			if nextStartTime.Before(minStartTime) {
 				nextStartTime = minStartTime
 			}
