@@ -61,10 +61,10 @@ func (evR *Reactor) GetChannels() []*p2p.ChannelDescriptor {
 			SendQueueCapacity:   10,
 			RecvMessageCapacity: maxMsgSize,
 			MessageType:         &cmtproto.EvidenceList{},
-			// No RecvMessagePrecheck on purpose: decoding can transiently
-			// cost more memory than the wire size, but invalid evidence
-			// disconnects the peer and the inbound peer cap bounds the
-			// burst. Reviewed in PROTOCO-2767.
+			// No RecvMessagePrecheck on purpose. Decoding can briefly use
+			// more memory than the message size, but invalid evidence
+			// disconnects the peer and the inbound peer limit caps the
+			// total. See PROTOCO-2767.
 		},
 	}
 }
