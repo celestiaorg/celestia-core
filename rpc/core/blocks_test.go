@@ -6,6 +6,7 @@ import (
 	"encoding/binary"
 	"encoding/hex"
 	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -25,6 +26,14 @@ import (
 	"github.com/cometbft/cometbft/state/mocks"
 	"github.com/cometbft/cometbft/types"
 )
+
+func TestBlockSearchMaxQueryLength(t *testing.T) {
+	env := &Environment{Logger: log.NewNopLogger()}
+	longQuery := strings.Repeat("a", maxQueryLength+1)
+	_, err := env.BlockSearch(&rpctypes.Context{}, longQuery, nil, nil, "")
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "maximum query length exceeded")
+}
 
 func TestBlockchainInfo(t *testing.T) {
 	cases := []struct {
