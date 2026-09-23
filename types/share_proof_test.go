@@ -48,6 +48,24 @@ func TestShareProofValidate(t *testing.T) {
 			root:    incorrectRoot,
 			wantErr: true,
 		},
+		{
+			name:    "share proof with nil proof entry returns error",
+			sp:      nilShareProofEntry(),
+			root:    root,
+			wantErr: true,
+		},
+		{
+			name:    "share proof with negative start returns error",
+			sp:      negativeStartShareProof(),
+			root:    root,
+			wantErr: true,
+		},
+		{
+			name:    "share proof with empty range returns error",
+			sp:      emptyRangeShareProof(),
+			root:    root,
+			wantErr: true,
+		},
 	}
 
 	for _, tc := range testCases {
@@ -65,6 +83,24 @@ func TestShareProofValidate(t *testing.T) {
 func mismatchedShareProofs() ShareProof {
 	sp := validShareProof()
 	sp.ShareProofs = []*types.NMTProof{}
+	return sp
+}
+
+func nilShareProofEntry() ShareProof {
+	sp := validShareProof()
+	sp.ShareProofs[0] = nil
+	return sp
+}
+
+func negativeStartShareProof() ShareProof {
+	sp := validShareProof()
+	sp.ShareProofs[0].Start = -1
+	return sp
+}
+
+func emptyRangeShareProof() ShareProof {
+	sp := validShareProof()
+	sp.ShareProofs[0].End = sp.ShareProofs[0].Start
 	return sp
 }
 
