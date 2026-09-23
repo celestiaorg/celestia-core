@@ -69,27 +69,29 @@ func ShareProofFromProto(pb tmproto.ShareProof) (ShareProof, error) {
 // The `root` is the block data root that the shares to be proven belong to.
 // Note: these proofs are tested on the app side.
 func (sp ShareProof) Validate(root []byte) error {
-	numberOfSharesInProofs := int32(0)
+	// Accumulate in int64: the ranges are attacker-supplied int32 values, so
+	// summing them in int32 can overflow and bypass the length check below.
+	numberOfSharesInProofs := int64(0)
 	for _, proof := range sp.ShareProofs {
+		if proof == nil {
+			return errors.New("nil share proof")
+		}
+		if proof.Start < 0 {
+			return errors.New("proof index cannot be negative")
+		}
+		if proof.End <= proof.Start {
+			return errors.New("proof total must be positive")
+		}
 		// the range is not inclusive from the left.
-		numberOfSharesInProofs += proof.End - proof.Start
+		numberOfSharesInProofs += int64(proof.End) - int64(proof.Start)
 	}
 
 	if len(sp.ShareProofs) != len(sp.RowProof.RowRoots) {
 		return fmt.Errorf("the number of share proofs %d must equal the number of row roots %d", len(sp.ShareProofs), len(sp.RowProof.RowRoots))
 
 	}
-	if len(sp.Data) != int(numberOfSharesInProofs) {
+	if int64(len(sp.Data)) != numberOfSharesInProofs {
 		return fmt.Errorf("the number of shares %d must equal the number of shares in share proofs %d", len(sp.Data), numberOfSharesInProofs)
-	}
-
-	for _, proof := range sp.ShareProofs {
-		if proof.Start < 0 {
-			return errors.New("proof index cannot be negative")
-		}
-		if (proof.End - proof.Start) <= 0 {
-			return errors.New("proof total must be positive")
-		}
 	}
 
 	if err := sp.RowProof.Validate(root); err != nil {
