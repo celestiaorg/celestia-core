@@ -85,3 +85,21 @@ func TestWeightedMedianFarFutureTimes(t *testing.T) {
 	require.Equal(t, t2, median,
 		"WeightedMedian must order times correctly across the UnixNano overflow boundary")
 }
+
+// TestWeightedMedianRequiresStrictMajority guards against the floor(P/2)
+// rounding bug: a participant holding exactly half of the integer-divided
+// total (e.g. 3 of 7) must not single-handedly select the median.
+func TestWeightedMedianRequiresStrictMajority(t *testing.T) {
+	t1 := Now()
+	t2 := t1.Add(5 * time.Second)
+
+	m := []*WeightedTime{
+		NewWeightedTime(t1, 3), // faulty process at the earliest time with weight floor(7/2)
+		NewWeightedTime(t2, 1), // correct processes
+		NewWeightedTime(t2, 1),
+		NewWeightedTime(t2, 1),
+		NewWeightedTime(t2, 1),
+	}
+	median := WeightedMedian(m, 7)
+	assert.Equal(t, t2, median)
+}
