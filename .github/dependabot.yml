@@ -5,6 +5,8 @@ updates:
     directory: "/"
     schedule:
       interval: weekly
+    cooldown:
+      default-days: 7
     target-branch: "main"
     open-pull-requests-limit: 10
     labels:
@@ -16,6 +18,8 @@ updates:
     directory: "/"
     schedule:
       interval: weekly
+    cooldown:
+      default-days: 7
     target-branch: "main"
     open-pull-requests-limit: 10
     labels:
