@@ -965,11 +965,16 @@ func ValidatorSetFromExistingValidators(valz []*Validator) (*ValidatorSet, error
 	if len(valz) == 0 {
 		return nil, errors.New("validator set is empty")
 	}
+	seenAddresses := make(map[string]struct{}, len(valz))
 	for _, val := range valz {
 		err := val.ValidateBasic()
 		if err != nil {
 			return nil, fmt.Errorf("can't create validator set: %w", err)
 		}
+		if _, ok := seenAddresses[string(val.Address)]; ok {
+			return nil, fmt.Errorf("duplicate validator address %X", val.Address)
+		}
+		seenAddresses[string(val.Address)] = struct{}{}
 	}
 
 	vals := &ValidatorSet{
