@@ -1257,6 +1257,9 @@ func TestMedianTime(t *testing.T) {
 
 		medianTime, err := sm.MedianTime(commit, vals)
 		require.NoError(t, err)
-		require.Equal(t, medianTime, now)
+		// With two equal weights each timestamp has exactly half of the
+		// participating power. The median requires a strict majority, so it is
+		// the later time, where cumulative power first exceeds half.
+		require.Equal(t, medianTime, now.Add(1*time.Minute))
 	})
 }

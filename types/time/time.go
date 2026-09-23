@@ -47,7 +47,11 @@ func WeightedMedian(weightedTimes []*WeightedTime, totalVotingPower int64) (res 
 
 	for _, weightedTime := range weightedTimes {
 		if weightedTime != nil {
-			if median <= weightedTime.Weight {
+			// Pick the first time whose cumulative weight is strictly greater
+			// than half of the total. With `<=` a participant holding exactly
+			// half of the (integer-divided) total could select the result
+			// without a strict majority behind it.
+			if median < weightedTime.Weight {
 				res = weightedTime.Time
 				break
 			}
