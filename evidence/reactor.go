@@ -61,6 +61,14 @@ func (evR *Reactor) GetChannels() []*p2p.ChannelDescriptor {
 			SendQueueCapacity:   10,
 			RecvMessageCapacity: maxMsgSize,
 			MessageType:         &cmtproto.EvidenceList{},
+			// This channel deliberately has no RecvMessagePrecheck. Decoding
+			// an evidence message can transiently cost more memory than its
+			// wire size, which is a known and accepted tradeoff: invalid
+			// evidence disconnects the sending peer, and the inbound peer
+			// limit bounds the concurrent decode work to a level normal
+			// validator provisioning absorbs. Reviewed in PROTOCO-2767; a
+			// stub-based precheck like blocksync's was considered and not
+			// deemed worth the complexity here.
 		},
 	}
 }
