@@ -252,6 +252,9 @@ func TestCommitValidateBasic(t *testing.T) {
 		{"Incorrect signature", func(com *Commit) { com.Signatures[0].Signature = []byte{0} }, false},
 		{"Incorrect height", func(com *Commit) { com.Height = int64(-100) }, true},
 		{"Incorrect round", func(com *Commit) { com.Round = -100 }, true},
+		{"Invalid BlockID part set header", func(com *Commit) {
+			com.BlockID.PartSetHeader.Total = MaxBlockPartsCount + 1
+		}, true},
 	}
 	for _, tc := range testCases {
 		tc := tc
