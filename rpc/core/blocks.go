@@ -227,6 +227,10 @@ func (env *Environment) BlockSearch(
 		return nil, errors.New("block indexing is disabled")
 	}
 
+	if len(query) > maxQueryLength {
+		return nil, errors.New("maximum query length exceeded")
+	}
+
 	q, err := cmtquery.New(query)
 	if err != nil {
 		return nil, err
