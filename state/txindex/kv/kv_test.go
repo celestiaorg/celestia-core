@@ -15,6 +15,7 @@ import (
 	abci "github.com/cometbft/cometbft/abci/types"
 	"github.com/cometbft/cometbft/libs/pubsub/query"
 	cmtrand "github.com/cometbft/cometbft/libs/rand"
+	"github.com/cometbft/cometbft/state/indexer"
 	"github.com/cometbft/cometbft/state/txindex"
 	"github.com/cometbft/cometbft/types"
 )
@@ -674,6 +675,40 @@ func TestTxSearchMultipleTxs(t *testing.T) {
 	results, err = indexer.Search(ctx, q)
 	assert.NoError(t, err)
 	require.Len(t, results, 2)
+}
+
+func TestTxSearchMaxResults(t *testing.T) {
+	const numTxs = 10
+
+	events := []abci.Event{
+		{Type: "account", Attributes: []abci.EventAttribute{{Key: "number", Value: "1", Index: true}}},
+	}
+	indexTxs := func(indexer *TxIndex) {
+		for i := 0; i < numTxs; i++ {
+			txResult := &abci.TxResult{
+				Height: int64(i + 1),
+				Index:  0,
+				Tx:     types.Tx(fmt.Sprintf("tx%d", i)),
+				Result: abci.ExecTxResult{Code: abci.CodeTypeOK, Events: events},
+			}
+			require.NoError(t, indexer.Index(txResult))
+		}
+	}
+
+	q := query.MustCompile(`account.number = 1`)
+
+	// A cap smaller than the match count returns ErrTooManyResults.
+	capped := NewTxIndex(db.NewMemDB(), WithMaxSearchResults(numTxs-1))
+	indexTxs(capped)
+	_, err := capped.Search(context.Background(), q)
+	require.ErrorIs(t, err, indexer.ErrTooManyResults)
+
+	// The default (unlimited) returns every match.
+	unlimited := NewTxIndex(db.NewMemDB())
+	indexTxs(unlimited)
+	results, err := unlimited.Search(context.Background(), q)
+	require.NoError(t, err)
+	require.Len(t, results, numTxs)
 }
 
 func txResultWithEvents(events []abci.Event) *abci.TxResult {
