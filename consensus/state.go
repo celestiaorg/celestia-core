@@ -886,14 +886,25 @@ func (cs *State) updateToState(state sm.State) {
 		// TimeoutCommit is a floor on the block time, not a wait after commit.
 		// This is the whole pacing mechanism now that the precommit wait is gone.
 		//
+		// The floor is anchored on the committed proposal's timestamp, which
+		// every node sees, so all nodes start the next height at the same
+		// instant. Anchoring on the local StartTime instead leaves each node
+		// with its own offset and proposers alternate early and late blocks.
+		// The anchor is capped at the commit time so a proposer cannot delay
+		// the network by more than TimeoutCommit with a future timestamp.
+		//
 		// A height that takes several rounds shortens the next one, because the
-		// floor is measured from the previous StartTime. That is accepted.
+		// floor is measured from the last proposal. That is accepted.
 		//
 		// A node behind the network is exempt, as catch-up was in the precommit
 		// wait this replaces: replaying history must not be paced to the live
 		// block rate. Seeing the next height's proposal early does not count as
 		// behind, or the node would start early and its block time would drift.
 		nextStartTime := cs.rs.CommitTime
+		anchor := cs.rs.StartTime
+		if cs.rs.Proposal != nil && cs.rs.Proposal.Round == cs.rs.CommitRound && cs.rs.Proposal.Timestamp.Before(cs.rs.CommitTime) {
+			anchor = cs.rs.Proposal.Timestamp
+		}
 		timeoutCommit := cs.state.Timeouts.TimeoutCommit
 		if state.LastBlockHeight == 0 {
 			timeoutCommit = state.Timeouts.TimeoutCommit
@@ -901,8 +912,8 @@ func (cs *State) updateToState(state sm.State) {
 		if timeoutCommit == 0 {
 			timeoutCommit = cs.config.TimeoutCommit
 		}
-		if !cs.rs.StartTime.IsZero() && !cs.propagator.IsBehind() {
-			minStartTime := cs.rs.StartTime.Add(timeoutCommit)
+		if !anchor.IsZero() && !cs.propagator.IsBehind() {
+			minStartTime := anchor.Add(timeoutCommit)
 			if nextStartTime.Before(minStartTime) {
 				nextStartTime = minStartTime
 			}
