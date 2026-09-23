@@ -61,9 +61,9 @@ func newChunkQueue(snapshot *snapshot, tempDir string) (*chunkQueue, error) {
 
 // Add adds a chunk to the queue. It ignores chunks that already exist, returning false.
 //
-// Chunks are deliberately not bound to the peer they were requested from: a
-// bad chunk just fails the restore, and the operator restarts state sync.
-// Reviewed in PROTOCO-2759.
+// Chunks are not tied to the peer we asked for them. This is on purpose: a
+// bad chunk only makes the restore fail, and the operator can restart state
+// sync. See PROTOCO-2759.
 func (q *chunkQueue) Add(chunk *chunk) (bool, error) {
 	if chunk == nil || chunk.Chunk == nil {
 		return false, errors.New("cannot add nil chunk")
