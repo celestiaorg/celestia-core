@@ -48,6 +48,22 @@ func (rp RowProof) Validate(root []byte) error {
 	if len(rp.Proofs) != len(rp.RowRoots) {
 		return fmt.Errorf("the number of proofs %d must equal the number of row roots %d", len(rp.Proofs), len(rp.RowRoots))
 	}
+	for i, proof := range rp.Proofs {
+		if proof == nil {
+			return fmt.Errorf("nil proof for row %d", uint64(rp.StartRow)+uint64(i))
+		}
+		if expected := int64(rp.StartRow) + int64(i); proof.Index != expected {
+			return fmt.Errorf("proof index %d does not match claimed row %d", proof.Index, expected)
+		}
+		if proof.Total != rp.Proofs[0].Total {
+			return fmt.Errorf("proof total %d does not match the first proof's total %d", proof.Total, rp.Proofs[0].Total)
+		}
+		// The data root commits to the row roots followed by the column
+		// roots, so a row root must live in the first half of the leaves.
+		if proof.Index >= proof.Total/2 {
+			return fmt.Errorf("proof index %d is not a row root index (total leaves %d)", proof.Index, proof.Total)
+		}
+	}
 	if !rp.VerifyProof(root) {
 		return errors.New("row proof failed to verify")
 	}

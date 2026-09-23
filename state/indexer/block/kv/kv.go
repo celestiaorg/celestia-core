@@ -35,12 +35,32 @@ type BlockerIndexer struct {
 	// Matching will be done both on height AND eventSeq
 	eventSeq int64
 	log      log.Logger
+
+	// maxSearchResults caps how many matches a single query may accumulate
+	// before returning indexer.ErrTooManyResults. Zero or negative means unlimited.
+	maxSearchResults int
 }
 
-func New(store dbm.DB) *BlockerIndexer {
-	return &BlockerIndexer{
+// Option is a functional option for BlockerIndexer.
+type Option func(*BlockerIndexer)
+
+// WithMaxSearchResults sets the cap on how many matches a single query may
+// accumulate before returning indexer.ErrTooManyResults. Zero or negative means
+// unlimited.
+func WithMaxSearchResults(limit int) Option {
+	return func(idx *BlockerIndexer) {
+		idx.maxSearchResults = limit
+	}
+}
+
+func New(store dbm.DB, options ...Option) *BlockerIndexer {
+	idx := &BlockerIndexer{
 		store: store,
 	}
+	for _, opt := range options {
+		opt(idx)
+	}
+	return idx
 }
 
 func (idx *BlockerIndexer) SetLogger(l log.Logger) {
@@ -345,6 +365,9 @@ LOOP:
 			break LOOP
 		default:
 		}
+		if indexer.IsLimitReached(len(tmpHeights), idx.maxSearchResults) {
+			return nil, indexer.ErrTooManyResults
+		}
 	}
 
 	if err := it.Error(); err != nil {
@@ -444,6 +467,9 @@ func (idx *BlockerIndexer) match(
 			}
 
 			idx.setTmpHeights(tmpHeights, it)
+			if indexer.IsLimitReached(len(tmpHeights), idx.maxSearchResults) {
+				return nil, indexer.ErrTooManyResults
+			}
 
 			if err := ctx.Err(); err != nil {
 				break
@@ -484,6 +510,9 @@ func (idx *BlockerIndexer) match(
 			}
 
 			idx.setTmpHeights(tmpHeights, it)
+			if indexer.IsLimitReached(len(tmpHeights), idx.maxSearchResults) {
+				return nil, indexer.ErrTooManyResults
+			}
 
 			select {
 			case <-ctx.Done():
@@ -531,6 +560,9 @@ func (idx *BlockerIndexer) match(
 					continue
 				}
 				idx.setTmpHeights(tmpHeights, it)
+			}
+			if indexer.IsLimitReached(len(tmpHeights), idx.maxSearchResults) {
+				return nil, indexer.ErrTooManyResults
 			}
 
 			select {

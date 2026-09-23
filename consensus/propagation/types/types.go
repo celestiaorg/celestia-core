@@ -403,8 +403,23 @@ func (w *WantParts) ValidateBasic() error {
 	if w.Parts == nil {
 		return errors.New("WantParts: Parts cannot be nil")
 	}
+	// A block has at most MaxBlockPartsCount original parts plus as many
+	// parity parts, so no valid request can select more bits than that.
+	if maxBits := int(types.MaxBlockPartsCount) * ParityRatio; w.Parts.Size() > maxBits {
+		return fmt.Errorf("WantParts: parts bit array size %d exceeds maximum %d", w.Parts.Size(), maxBits)
+	}
 	if w.MissingPartsCount <= 0 {
 		return errors.New("WantParts: MissingPartsCount cannot be negative or zero")
+	}
+	// A peer can never be missing more parts than the block has, so the
+	// count must fit inside the request's own bit array.
+	if int(w.MissingPartsCount) > w.Parts.Size() {
+		return fmt.Errorf("WantParts: MissingPartsCount %d exceeds parts bit array size %d", w.MissingPartsCount, w.Parts.Size())
+	}
+	// Decoding a block needs at most half of its combined parts, so no peer
+	// can be missing more than types.MaxBlockPartsCount parts.
+	if int(w.MissingPartsCount) > int(types.MaxBlockPartsCount) {
+		return fmt.Errorf("WantParts: MissingPartsCount %d exceeds MaxBlockPartsCount %d", w.MissingPartsCount, types.MaxBlockPartsCount)
 	}
 	return w.Parts.ValidateBasic()
 }

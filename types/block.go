@@ -946,6 +946,9 @@ func (commit *Commit) ValidateBasic() error {
 		if commit.BlockID.IsZero() {
 			return errors.New("commit cannot be for nil block")
 		}
+		if err := commit.BlockID.ValidateBasic(); err != nil {
+			return fmt.Errorf("wrong BlockID: %w", err)
+		}
 
 		if len(commit.Signatures) == 0 {
 			return errors.New("no signatures in commit")
