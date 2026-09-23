@@ -235,9 +235,9 @@ func (bcR *Reactor) RemovePeer(peer p2p.Peer, _ interface{}) {
 // respondToPeer loads a block and sends it to the requesting peer,
 // if we have it. Otherwise, we'll respond saying we don't have it.
 //
-// No per-peer rate limit or byte budget here on purpose: the limits were
-// raised for high-throughput block sync, and the cost of serving repeated
-// requests is an accepted consequence. Reviewed in PROTOCO-2762.
+// There is no per-peer rate limit here on purpose. The limits were raised to
+// make block sync fast, and serving repeat requests is an accepted cost.
+// See PROTOCO-2762.
 func (bcR *Reactor) respondToPeer(msg *bcproto.BlockRequest, src p2p.Peer) (queued bool) {
 	block := bcR.store.LoadBlock(msg.Height)
 	if block == nil {
