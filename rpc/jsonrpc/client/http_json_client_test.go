@@ -2,10 +2,10 @@ package client
 
 import (
 	"io"
-	"strings"
 	"log"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
