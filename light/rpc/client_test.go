@@ -83,3 +83,31 @@ func TestConsensusParamsAcceptsMatchingHeightResponse(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, height, got.BlockHeight)
 }
+
+// nextTxClient stubs the underlying RPC client's Tx method.
+type nextTxClient struct {
+	rpcclient.Client
+	res *ctypes.ResultTx
+}
+
+func (n nextTxClient) Tx(_ context.Context, _ []byte, _ bool) (*ctypes.ResultTx, error) {
+	return n.res, nil
+}
+
+// A malicious upstream can answer a Tx request with a different, genuine
+// transaction. The response must be rejected on the hash mismatch before any
+// light-client verification runs.
+func TestTxRejectsMismatchedHash(t *testing.T) {
+	res := &ctypes.ResultTx{
+		Height: 5,
+		Tx:     types.Tx("returned tx"),
+	}
+	lc := &mocks.LightClient{}
+	c := NewClient(nextTxClient{res: res}, lc)
+
+	requestedHash := types.Tx("requested tx").Hash()
+	_, err := c.Tx(context.Background(), requestedHash, true)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "does not match requested hash")
+	lc.AssertNotCalled(t, "VerifyLightBlockAtHeight")
+}
