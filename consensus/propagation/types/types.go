@@ -411,6 +411,11 @@ func (w *WantParts) ValidateBasic() error {
 	if int(w.MissingPartsCount) > w.Parts.Size() {
 		return fmt.Errorf("WantParts: MissingPartsCount %d exceeds parts bit array size %d", w.MissingPartsCount, w.Parts.Size())
 	}
+	// Decoding a block needs at most half of its combined parts, so no peer
+	// can be missing more than types.MaxBlockPartsCount parts.
+	if int(w.MissingPartsCount) > int(types.MaxBlockPartsCount) {
+		return fmt.Errorf("WantParts: MissingPartsCount %d exceeds MaxBlockPartsCount %d", w.MissingPartsCount, types.MaxBlockPartsCount)
+	}
 	return w.Parts.ValidateBasic()
 }
 

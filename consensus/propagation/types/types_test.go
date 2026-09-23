@@ -269,6 +269,16 @@ func TestWantParts_ValidateBasic(t *testing.T) {
 			true,
 		},
 		{
+			"missing parts count at MaxBlockPartsCount",
+			WantParts{Height: 1, Round: 1, Parts: bits.NewBitArray(int(types.MaxBlockPartsCount) * ParityRatio), MissingPartsCount: int32(types.MaxBlockPartsCount)},
+			false,
+		},
+		{
+			"missing parts count exceeding MaxBlockPartsCount",
+			WantParts{Height: 1, Round: 1, Parts: bits.NewBitArray(int(types.MaxBlockPartsCount) * ParityRatio), MissingPartsCount: int32(types.MaxBlockPartsCount) + 1},
+			true,
+		},
+		{
 			"nil bit array",
 			WantParts{Height: 1, Round: 1, Parts: nil, MissingPartsCount: 10},
 			true,
