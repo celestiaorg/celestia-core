@@ -2,6 +2,7 @@ package client
 
 import (
 	"io"
+	"strings"
 	"log"
 	"net/http"
 	"net/http/httptest"
@@ -97,4 +98,14 @@ func Test_parsedURL(t *testing.T) {
 			require.Equal(t, tt.expectedHostWithPath, parsed.GetHostWithPath())
 		})
 	}
+}
+
+func TestReadResponseBodyCapsSize(t *testing.T) {
+	body, err := readResponseBody(strings.NewReader("12345"), 10)
+	require.NoError(t, err)
+	require.Equal(t, []byte("12345"), body)
+
+	_, err = readResponseBody(strings.NewReader("12345678901"), 10)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "exceeds maximum")
 }

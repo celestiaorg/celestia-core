@@ -232,7 +232,7 @@ func (c *Client) Call(
 	}
 	defer httpResponse.Body.Close()
 
-	responseBytes, err := io.ReadAll(httpResponse.Body)
+	responseBytes, err := readResponseBody(httpResponse.Body, maxResponseBodyBytes)
 	if err != nil {
 		return nil, fmt.Errorf("%s. Failed to read response body: %w", getHTTPRespErrPrefix(httpResponse), err)
 	}
@@ -242,6 +242,25 @@ func (c *Client) Call(
 		return nil, fmt.Errorf("%s. %w", getHTTPRespErrPrefix(httpResponse), err)
 	}
 	return res, nil
+}
+
+// maxResponseBodyBytes caps how much of a response the client will buffer.
+// The largest legitimate responses carry a full block (up to 128 MiB) plus
+// JSON encoding overhead; anything past this cap is a misbehaving or
+// malicious server trying to exhaust the client's memory.
+const maxResponseBodyBytes int64 = 512 * 1024 * 1024 // 512 MiB
+
+// readResponseBody reads at most limit bytes from r and errors if the body
+// is larger, instead of buffering an unbounded server-controlled response.
+func readResponseBody(r io.Reader, limit int64) ([]byte, error) {
+	body, err := io.ReadAll(io.LimitReader(r, limit+1))
+	if err != nil {
+		return nil, err
+	}
+	if int64(len(body)) > limit {
+		return nil, fmt.Errorf("response body exceeds maximum of %d bytes", limit)
+	}
+	return body, nil
 }
 
 func getHTTPRespErrPrefix(resp *http.Response) string {
@@ -292,7 +311,7 @@ func (c *Client) sendBatch(ctx context.Context, requests []*jsonRPCBufferedReque
 
 	defer httpResponse.Body.Close()
 
-	responseBytes, err := io.ReadAll(httpResponse.Body)
+	responseBytes, err := readResponseBody(httpResponse.Body, maxResponseBodyBytes)
 	if err != nil {
 		return nil, fmt.Errorf("read response body: %w", err)
 	}
