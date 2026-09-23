@@ -12,9 +12,9 @@ import (
 // BroadcastEvidence broadcasts evidence of the misbehavior.
 // More: https://docs.cometbft.com/v0.38.x/rpc/#/Evidence/broadcast_evidence
 //
-// The RPC layer fully decodes the evidence before this handler validates it,
-// which can transiently cost more memory than the wire size. Accepted for
-// this route, bounded by the request body limit. Reviewed in PROTOCO-2765.
+// The RPC layer decodes the evidence before this handler checks it, so it
+// can briefly use more memory than the request size. We accept this because
+// the request body limit caps it. See PROTOCO-2765.
 func (env *Environment) BroadcastEvidence(
 	_ *rpctypes.Context,
 	ev types.Evidence,
