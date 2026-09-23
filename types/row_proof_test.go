@@ -60,6 +60,24 @@ func TestRowProofValidate(t *testing.T) {
 			root:    root,
 			wantErr: true,
 		},
+		{
+			name:    "proof index not matching the claimed row",
+			rp:      mismatchedProofIndex(),
+			root:    root,
+			wantErr: true,
+		},
+		{
+			name:    "proof index in the column root half",
+			rp:      columnHalfProofIndex(),
+			root:    root,
+			wantErr: true,
+		},
+		{
+			name:    "nil proof",
+			rp:      nilProof(),
+			root:    root,
+			wantErr: true,
+		},
 	}
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -112,5 +130,30 @@ func mismatchedProofs() RowProof {
 func mismatchedRows() RowProof {
 	rp := validRowProof()
 	rp.EndRow = 10
+	return rp
+}
+
+// mismatchedProofIndex claims row 1 while its Merkle proof authenticates
+// leaf index 0.
+func mismatchedProofIndex() RowProof {
+	rp := validRowProof()
+	rp.StartRow = 1
+	rp.EndRow = 1
+	return rp
+}
+
+// columnHalfProofIndex claims a row whose Merkle proof index falls in the
+// column root half of the data root tree.
+func columnHalfProofIndex() RowProof {
+	rp := validRowProof()
+	rp.StartRow = 64
+	rp.EndRow = 64
+	rp.Proofs[0].Index = 64
+	return rp
+}
+
+func nilProof() RowProof {
+	rp := validRowProof()
+	rp.Proofs[0] = nil
 	return rp
 }
