@@ -87,9 +87,10 @@ func TestConsensusParamsAcceptsMatchingHeightResponse(t *testing.T) {
 // nextTxClient stubs the underlying RPC client's Tx method.
 type nextTxClient struct {
 	rpcclient.Client
-	res *ctypes.ResultTx
+	res *ctypes.ResultTx //nolint:staticcheck // testing the deprecated endpoint's verification
 }
 
+//nolint:staticcheck // testing the deprecated endpoint's verification
 func (n nextTxClient) Tx(_ context.Context, _ []byte, _ bool) (*ctypes.ResultTx, error) {
 	return n.res, nil
 }
@@ -98,7 +99,7 @@ func (n nextTxClient) Tx(_ context.Context, _ []byte, _ bool) (*ctypes.ResultTx,
 // transaction. The response must be rejected on the hash mismatch before any
 // light-client verification runs.
 func TestTxRejectsMismatchedHash(t *testing.T) {
-	res := &ctypes.ResultTx{
+	res := &ctypes.ResultTx{ //nolint:staticcheck // testing the deprecated endpoint's verification
 		Height: 5,
 		Tx:     types.Tx("returned tx"),
 	}
