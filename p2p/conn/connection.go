@@ -895,6 +895,10 @@ func (ch *Channel) writePacketMsgTo(w protoio.Writer) (n int, err error) {
 // Handles incoming PacketMsgs. It returns a message bytes if message is
 // complete. NOTE message bytes may change on next call to recvPacketMsg.
 // Not goroutine-safe
+//
+// Partial messages are retained until the final packet, with no assembly
+// deadline on purpose: retention is bounded by RecvMessageCapacity per peer
+// and the inbound peer cap overall. Reviewed in PROTOCO-2760.
 func (ch *Channel) recvPacketMsg(packet tmp2p.PacketMsg) ([]byte, error) {
 	//ch.Logger.Debug("Read PacketMsg", "conn", ch.conn, "packet", packet)
 	recvCap, recvReceived := ch.desc.RecvMessageCapacity, len(ch.recving)+len(packet.Data)
