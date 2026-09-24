@@ -94,6 +94,10 @@ message Data {
 // to be published to the Celestia blockchain. The data of a Blob is published
 // to a namespace and is encoded into shares based on the format specified by
 // share_version.
+//
+// Deprecated: Use github.com/celestiaorg/go-square/v3/share.Blob and its
+// protobuf representation, github.com/celestiaorg/go-square/v3/proto/blob/v2.BlobProto.
+// This legacy type cannot represent blob signer data.
 message Blob {
   bytes  namespace_id      = 1;
   bytes  data              = 2;
@@ -211,6 +215,9 @@ message IndexWrapper {
 // BlobTx wraps an encoded sdk.Tx with a second field to contain blobs of data.
 // The raw bytes of the blobs are not signed over, instead we verify each blob
 // using the relevant MsgPayForBlobs that is signed over in the encoded sdk.Tx.
+//
+// Deprecated: Use github.com/celestiaorg/go-square/v3/tx.BlobTx and its
+// MarshalBlobTx and UnmarshalBlobTx helpers, which support blob signer data.
 message BlobTx {
   bytes         tx      = 1;
   repeated Blob blobs   = 2;

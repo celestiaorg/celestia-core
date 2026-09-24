@@ -322,6 +322,12 @@ func MarshalIndexWrapper(tx Tx, shareIndexes ...uint32) (Tx, error) {
 
 // UnmarshalBlobTx attempts to unmarshal a transaction into blob transaction. If an
 // error is thrown, false is returned.
+//
+// Deprecated: Use github.com/celestiaorg/go-square/v3/tx.UnmarshalBlobTx for new
+// callers. This legacy decoder does not preserve blob signer data or perform
+// go-square's blob validation. The replacement returns (*tx.BlobTx, bool, error);
+// callers must check the error before accessing the result, even when the bool
+// is true. Existing consensus callers retain this decoder for compatibility.
 func UnmarshalBlobTx(tx Tx) (bTx cmtproto.BlobTx, isBlob bool) {
 	err := bTx.Unmarshal(tx)
 	if err != nil {
@@ -347,6 +353,10 @@ func UnmarshalBlobTx(tx Tx) (bTx cmtproto.BlobTx, isBlob bool) {
 //
 // NOTE: Any checks on the blobs or the transaction must be performed in the
 // application.
+//
+// Deprecated: Use github.com/celestiaorg/go-square/v3/tx.MarshalBlobTx with
+// github.com/celestiaorg/go-square/v3/share.Blob values. The legacy protobuf Blob
+// type cannot represent blob signer data.
 func MarshalBlobTx(tx []byte, blobs ...*cmtproto.Blob) (Tx, error) {
 	bTx := cmtproto.BlobTx{
 		Tx:     tx,
