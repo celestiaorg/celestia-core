@@ -244,9 +244,9 @@ func (c *Client) Call(
 	return res, nil
 }
 
-// maxResponseBodyBytes is the largest response body the client will read.
+// maxResponseBodyBytes is the largest response body the client will read per request.
 // It fits a max-size 128 MiB block after JSON encoding, with headroom.
-const maxResponseBodyBytes int64 = 512 * 1024 * 1024 // 512 MiB
+const maxResponseBodyBytes int64 = 256 * 1024 * 1024 // 256 MiB
 
 // readResponseBody reads r, erroring if it is larger than limit bytes.
 func readResponseBody(r io.Reader, limit int64) ([]byte, error) {
@@ -308,7 +308,7 @@ func (c *Client) sendBatch(ctx context.Context, requests []*jsonRPCBufferedReque
 
 	defer httpResponse.Body.Close()
 
-	responseBytes, err := readResponseBody(httpResponse.Body, maxResponseBodyBytes)
+	responseBytes, err := readResponseBody(httpResponse.Body, int64(len(requests))*maxResponseBodyBytes)
 	if err != nil {
 		return nil, fmt.Errorf("read response body: %w", err)
 	}
