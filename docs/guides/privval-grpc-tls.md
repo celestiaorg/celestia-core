@@ -2,8 +2,8 @@
 
 The node can expose its private validator over gRPC (`priv_validator_grpc_laddr`)
 so an external service, such as the fibre server, can request signatures. The
-endpoint signs with the validator consensus key, so anyone who can reach it can
-make the validator double sign and get it tombstoned.
+endpoint signs raw bytes with the validator consensus key, so anyone who can
+reach it can request unauthorized signatures.
 
 The node therefore refuses to start when `priv_validator_grpc_laddr` is set to a
 non-localhost address unless mutual TLS is fully configured (or the check is
