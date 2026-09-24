@@ -7,6 +7,8 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 
+	"github.com/cometbft/cometbft/crypto/tmhash"
+	cmtbytes "github.com/cometbft/cometbft/libs/bytes"
 	"github.com/cometbft/cometbft/light/rpc/mocks"
 	rpcclient "github.com/cometbft/cometbft/rpc/client"
 	ctypes "github.com/cometbft/cometbft/rpc/core/types"
@@ -108,6 +110,64 @@ func TestTxRejectsMismatchedHash(t *testing.T) {
 
 	requestedHash := types.Tx("requested tx").Hash()
 	_, err := c.Tx(context.Background(), requestedHash, true)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "does not match requested hash")
+	lc.AssertNotCalled(t, "VerifyLightBlockAtHeight")
+}
+
+// nextBlockClient stubs the underlying RPC client's hash-selected block and
+// header methods.
+type nextBlockClient struct {
+	rpcclient.Client
+	block *types.Block
+}
+
+func (n nextBlockClient) BlockByHash(_ context.Context, _ []byte) (*ctypes.ResultBlock, error) {
+	return &ctypes.ResultBlock{
+		BlockID: types.BlockID{Hash: n.block.Hash()},
+		Block:   n.block,
+	}, nil
+}
+
+func (n nextBlockClient) HeaderByHash(_ context.Context, _ cmtbytes.HexBytes) (*ctypes.ResultHeader, error) {
+	return &ctypes.ResultHeader{Header: &n.block.Header}, nil
+}
+
+// makeValidBlock returns a block that passes ValidateBasic and has a non-nil
+// hash, so only the requested-hash check can reject it.
+func makeValidBlock(t *testing.T, height int64) *types.Block {
+	t.Helper()
+	block := types.MakeBlock(height, types.Data{}, &types.Commit{}, nil)
+	block.ProposerAddress = tmhash.SumTruncated([]byte("proposer"))
+	block.ValidatorsHash = tmhash.Sum([]byte("validators"))
+	require.NoError(t, block.ValidateBasic())
+	require.NotNil(t, block.Hash())
+	return block
+}
+
+// A malicious upstream can answer a BlockByHash request with a different,
+// genuine block. The response must be rejected on the hash mismatch before any
+// light-client verification runs.
+func TestBlockByHashRejectsMismatchedHash(t *testing.T) {
+	lc := &mocks.LightClient{}
+	c := NewClient(nextBlockClient{block: makeValidBlock(t, 5)}, lc)
+
+	requestedHash := tmhash.Sum([]byte("requested block"))
+	_, err := c.BlockByHash(context.Background(), requestedHash)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "does not match requested hash")
+	lc.AssertNotCalled(t, "VerifyLightBlockAtHeight")
+}
+
+// A malicious upstream can answer a HeaderByHash request with a different,
+// genuine header. The response must be rejected on the hash mismatch before
+// any light-client verification runs.
+func TestHeaderByHashRejectsMismatchedHash(t *testing.T) {
+	lc := &mocks.LightClient{}
+	c := NewClient(nextBlockClient{block: makeValidBlock(t, 5)}, lc)
+
+	requestedHash := tmhash.Sum([]byte("requested header"))
+	_, err := c.HeaderByHash(context.Background(), requestedHash)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "does not match requested hash")
 	lc.AssertNotCalled(t, "VerifyLightBlockAtHeight")
