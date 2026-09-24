@@ -1,0 +1,24 @@
+name: Go mod tidy
+
+on:
+  pull_request:
+  merge_group:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  go-mod-tidy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: 'go.mod'
+      - name: Check go.mod and go.sum are tidy
+        # If this fails, run go mod tidy locally and commit the changes.
+        run: go mod tidy -diff
