@@ -160,12 +160,11 @@ func TestReactorsGossipNoCommittedEvidence(t *testing.T) {
 		evList[i] = ev
 	}
 
-	// wait to see that only one evidence is sent
-	time.Sleep(300 * time.Millisecond)
-
-	// the second pool should only have received the first evidence because it is behind
-	peerEv, _ := pools[1].PendingEvidence(10000)
-	assert.EqualValues(t, []types.Evidence{evList[0]}, peerEv)
+	// The second pool should only receive the first evidence because it is behind.
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		peerEv, _ := pools[1].PendingEvidence(-1)
+		assert.EqualValues(c, []types.Evidence{evList[0]}, peerEv)
+	}, timeout, 10*time.Millisecond)
 
 	// the last evidence is committed and the second reactor catches up in state to the first
 	// reactor. We therefore expect that the second reactor only receives one more evidence, the
@@ -181,12 +180,14 @@ func TestReactorsGossipNoCommittedEvidence(t *testing.T) {
 	ps = peerState{height}
 	peer.Set(types.PeerStateKey, ps)
 
-	// wait to see that only two evidence is sent
+	// Removing committed evidence can wake the sender before the peer height is
+	// updated. Allow for the 10-second rebroadcast interval if it skips the
+	// remaining evidence while the peer is still behind.
 	expectedEvidence := []types.Evidence{evList[0], evList[1]}
-	require.Eventually(t, func() bool {
-		peerEv, _ = pools[1].PendingEvidence(1000)
-		return assert.ObjectsAreEqualValues(expectedEvidence, peerEv)
-	}, 3*time.Second, 10*time.Millisecond)
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		peerEv, _ := pools[1].PendingEvidence(-1)
+		assert.EqualValues(c, expectedEvidence, peerEv)
+	}, timeout, 10*time.Millisecond)
 }
 
 func TestReactorBroadcastEvidenceMemoryLeak(t *testing.T) {
