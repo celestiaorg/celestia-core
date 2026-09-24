@@ -98,8 +98,8 @@ func (tx Tx) Hash() []byte {
 	if indexWrapper, isIndexWrapper := UnmarshalIndexWrapper(tx); isIndexWrapper {
 		return tmhash.Sum(indexWrapper.Tx)
 	}
-	if blobTx, isBlobTx := UnmarshalBlobTx(tx); isBlobTx {
-		return tmhash.Sum(blobTx.Tx)
+	if innerTx, isBlobTx := ExtractBlobTx(tx); isBlobTx {
+		return tmhash.Sum(innerTx)
 	}
 	return tmhash.Sum(tx)
 }
@@ -111,8 +111,8 @@ func (tx Tx) ToCachedTx() *CachedTx {
 // Key returns the sha256 hash of the wire encoded transaction. It attempts to
 // unwrap the transaction if it is a BlobTx or a IndexWrapper.
 func (tx Tx) Key() TxKey {
-	if blobTx, isBlobTx := UnmarshalBlobTx(tx); isBlobTx {
-		return sha256.Sum256(blobTx.Tx)
+	if innerTx, isBlobTx := ExtractBlobTx(tx); isBlobTx {
+		return sha256.Sum256(innerTx)
 	}
 	if indexWrapper, isIndexWrapper := UnmarshalIndexWrapper(tx); isIndexWrapper {
 		return sha256.Sum256(indexWrapper.Tx)
@@ -320,9 +320,32 @@ func MarshalIndexWrapper(tx Tx, shareIndexes ...uint32) (Tx, error) {
 	return proto.Marshal(&wTx)
 }
 
+// ExtractBlobTx returns the inner transaction of a historically recognized BlobTx.
+// If the envelope is not recognized, it returns the original transaction and false.
+// It does not validate blobs. Hashing, execution, events, and historical replay
+// must use the same recognition rules, including for invalid blob contents.
+//
+// The legacy wire decoder is deliberately retained here: go-square's validating
+// decoder and protobuf runtime have different acceptance rules. See
+// docs/celestia-architecture/blob-tx-migration.md before changing this path.
+func ExtractBlobTx(tx Tx) (Tx, bool) {
+	bTx, ok := unmarshalLegacyBlobTx(tx)
+	if !ok {
+		return tx, false
+	}
+	return bTx.Tx, true
+}
+
 // UnmarshalBlobTx attempts to unmarshal a transaction into blob transaction. If an
 // error is thrown, false is returned.
+//
+// Deprecated: use go-square/v3/tx.UnmarshalBlobTx to consume validated blobs,
+// or ExtractBlobTx for consensus-compatible envelope extraction.
 func UnmarshalBlobTx(tx Tx) (bTx cmtproto.BlobTx, isBlob bool) {
+	return unmarshalLegacyBlobTx(tx)
+}
+
+func unmarshalLegacyBlobTx(tx Tx) (bTx cmtproto.BlobTx, isBlob bool) {
 	err := bTx.Unmarshal(tx)
 	if err != nil {
 		return cmtproto.BlobTx{}, false
@@ -347,6 +370,8 @@ func UnmarshalBlobTx(tx Tx) (bTx cmtproto.BlobTx, isBlob bool) {
 //
 // NOTE: Any checks on the blobs or the transaction must be performed in the
 // application.
+//
+// Deprecated: use go-square/v3/tx.MarshalBlobTx with go-square share.Blob values.
 func MarshalBlobTx(tx []byte, blobs ...*cmtproto.Blob) (Tx, error) {
 	bTx := cmtproto.BlobTx{
 		Tx:     tx,

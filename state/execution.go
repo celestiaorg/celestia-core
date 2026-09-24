@@ -359,10 +359,7 @@ func (blockExec *BlockExecutor) applyBlock(state State, blockID types.BlockID, b
 	// Unmarshal blob txs
 	txs := make([][]byte, len(block.Txs))
 	for i, tx := range block.Txs {
-		blobTx, isBlobTx := types.UnmarshalBlobTx(tx)
-		if isBlobTx {
-			tx = blobTx.Tx
-		}
+		tx, _ = types.ExtractBlobTx(tx)
 		txs[i] = tx
 	}
 	pbHeader := block.Header.ToProto()
@@ -886,10 +883,7 @@ func fireEvents(
 	}
 
 	for i, tx := range block.Data.Txs { //nolint:staticcheck
-		blobTx, isBlobTx := types.UnmarshalBlobTx(tx)
-		if isBlobTx {
-			tx = blobTx.Tx
-		}
+		tx, _ = types.ExtractBlobTx(tx)
 		if err := eventBus.PublishEventTx(types.EventDataTx{TxResult: abci.TxResult{
 			Height: block.Height,
 			Index:  uint32(i),
@@ -927,10 +921,7 @@ func ExecCommitBlock(
 	// BlobTx wrappers before sending transactions to FinalizeBlock.
 	txs := make([][]byte, len(block.Txs))
 	for i, tx := range block.Txs {
-		blobTx, isBlobTx := types.UnmarshalBlobTx(tx)
-		if isBlobTx {
-			tx = blobTx.Tx
-		}
+		tx, _ = types.ExtractBlobTx(tx)
 		txs[i] = tx
 	}
 
