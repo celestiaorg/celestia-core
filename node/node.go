@@ -643,11 +643,37 @@ func (n *Node) OnStart() error {
 
 	// Start the gRPC PrivValidator server if configured.
 	if n.config.PrivValidatorGRPCListenAddr != "" {
-		lis, err := net.Listen("tcp", n.config.PrivValidatorGRPCListenAddr)
+		// Validate exposure and TLS material before opening the port so the
+		// endpoint is never reachable in a misconfigured state.
+		if err := n.config.ValidatePrivValidatorGRPCExposure(); err != nil {
+			return err
+		}
+		addr := n.config.PrivValidatorGRPCListenAddr
+		var serverOpts []grpc.ServerOption
+		switch {
+		case n.config.PrivValidatorGRPCCert != "":
+			creds, err := privval.GRPCServerCredentials(
+				n.config.PrivValidatorGRPCCertFile(),
+				n.config.PrivValidatorGRPCKeyFile(),
+				n.config.PrivValidatorGRPCClientCAFile(),
+			)
+			if err != nil {
+				return fmt.Errorf("failed to load privval gRPC TLS credentials (see %s for the recommended way to generate certificates): %w",
+					cfg.PrivValGRPCTLSDocs, err)
+			}
+			serverOpts = append(serverOpts, grpc.Creds(creds))
+		case cfg.BindsToLocalhostOnly(addr):
+			n.Logger.Info("privval gRPC server running without TLS on loopback only", "addr", addr)
+		default:
+			n.Logger.Error("privval gRPC server is reachable beyond localhost without TLS because priv_validator_grpc_allow_insecure is set; "+
+				"anyone who can reach this endpoint can request signatures from the validator key",
+				"addr", addr)
+		}
+		lis, err := net.Listen("tcp", addr)
 		if err != nil {
 			return fmt.Errorf("failed to listen for privval gRPC: %w", err)
 		}
-		grpcServer := grpc.NewServer()
+		grpcServer := grpc.NewServer(serverOpts...)
 		privvalproto.RegisterPrivValidatorAPIServer(grpcServer, privval.NewPrivValidatorGRPCServer(
 			n.privValidator,
 			n.Logger.With("module", "privval-grpc"),
@@ -658,7 +684,7 @@ func (n *Node) OnStart() error {
 				n.Logger.Error("privval gRPC server error", "err", err)
 			}
 		}()
-		n.Logger.Info("Started privval gRPC server", "addr", n.config.PrivValidatorGRPCListenAddr)
+		n.Logger.Info("Started privval gRPC server", "addr", addr)
 	}
 
 	if n.config.Instrumentation.PyroscopeURL != "" {

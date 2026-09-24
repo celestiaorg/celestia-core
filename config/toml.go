@@ -133,6 +133,24 @@ priv_validator_laddr = "{{ .BaseConfig.PrivValidatorListenAddr }}"
 # allowing external services (fiber server) to request signatures.
 priv_validator_grpc_laddr = "{{ .BaseConfig.PrivValidatorGRPCListenAddr }}"
 
+# Path to the PEM certificate the PrivValidator gRPC server presents to clients.
+# Set together with priv_validator_grpc_key_file and priv_validator_grpc_client_ca_file
+# to enable mutual TLS (1.3 minimum); leave all three empty for plaintext (localhost only).
+# The certificate's SAN must match the address clients use to dial this server.
+priv_validator_grpc_cert_file = "{{ js .BaseConfig.PrivValidatorGRPCCert }}"
+
+# Path to the PEM private key for the PrivValidator gRPC server certificate.
+priv_validator_grpc_key_file = "{{ js .BaseConfig.PrivValidatorGRPCKey }}"
+
+# Path to the PEM CA certificate used to verify client certificates.
+# Only clients presenting a certificate signed by this CA may request signatures.
+priv_validator_grpc_client_ca_file = "{{ js .BaseConfig.PrivValidatorGRPCClientCA }}"
+
+# DANGER: allow the PrivValidator gRPC server to listen on a non-localhost
+# address without mutual TLS. Anyone who can reach the endpoint can request
+# signatures from the validator key.
+priv_validator_grpc_allow_insecure = {{ .BaseConfig.PrivValidatorGRPCAllowInsecure }}
+
 # Path to the JSON file containing the private key to use for node authentication in the p2p protocol
 node_key_file = "{{ js .BaseConfig.NodeKey }}"
 
