@@ -142,6 +142,8 @@ type Client struct {
 
 	client *http.Client
 
+	maxResponseBodyBytes int64
+
 	mtx       cmtsync.Mutex
 	nextReqID int
 }
@@ -189,9 +191,17 @@ func NewWithHTTPClient(remote string, client *http.Client) (*Client, error) {
 		username: username,
 		password: password,
 		client:   client,
+
+		maxResponseBodyBytes: DefaultMaxResponseBodyBytes,
 	}
 
 	return rpcClient, nil
+}
+
+// SetMaxResponseBodyBytes sets the largest response body the client will read.
+// It is not safe to call concurrently with requests.
+func (c *Client) SetMaxResponseBodyBytes(n int64) {
+	c.maxResponseBodyBytes = n
 }
 
 // Call issues a POST HTTP request. Requests are JSON encoded. Content-Type:
@@ -232,7 +242,7 @@ func (c *Client) Call(
 	}
 	defer httpResponse.Body.Close()
 
-	responseBytes, err := readResponseBody(httpResponse.Body, maxResponseBodyBytes)
+	responseBytes, err := readResponseBody(httpResponse.Body, c.maxResponseBodyBytes)
 	if err != nil {
 		return nil, fmt.Errorf("%s. Failed to read response body: %w", getHTTPRespErrPrefix(httpResponse), err)
 	}
@@ -244,9 +254,9 @@ func (c *Client) Call(
 	return res, nil
 }
 
-// maxResponseBodyBytes is the largest response body the client will read per request.
+// DefaultMaxResponseBodyBytes is the default largest response body the client will read.
 // It fits a max-size 128 MiB block after JSON encoding, with headroom.
-const maxResponseBodyBytes int64 = 256 * 1024 * 1024 // 256 MiB
+const DefaultMaxResponseBodyBytes int64 = 512 * 1024 * 1024 // 512 MiB
 
 // readResponseBody reads r, erroring if it is larger than limit bytes.
 func readResponseBody(r io.Reader, limit int64) ([]byte, error) {
@@ -308,7 +318,7 @@ func (c *Client) sendBatch(ctx context.Context, requests []*jsonRPCBufferedReque
 
 	defer httpResponse.Body.Close()
 
-	responseBytes, err := readResponseBody(httpResponse.Body, int64(len(requests))*maxResponseBodyBytes)
+	responseBytes, err := readResponseBody(httpResponse.Body, c.maxResponseBodyBytes)
 	if err != nil {
 		return nil, fmt.Errorf("read response body: %w", err)
 	}

@@ -157,6 +157,12 @@ func NewWithClient(remote, wsEndpoint string, client *http.Client) (*HTTP, error
 
 var _ rpcclient.Client = (*HTTP)(nil)
 
+// SetMaxResponseBodyBytes sets the largest response body the client will read.
+// It is not safe to call concurrently with requests.
+func (c *HTTP) SetMaxResponseBodyBytes(n int64) {
+	c.rpc.SetMaxResponseBodyBytes(n)
+}
+
 // SetLogger sets a logger.
 func (c *HTTP) SetLogger(l log.Logger) {
 	c.WSEvents.SetLogger(l)
