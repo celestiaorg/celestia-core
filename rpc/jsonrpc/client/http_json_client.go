@@ -244,14 +244,11 @@ func (c *Client) Call(
 	return res, nil
 }
 
-// maxResponseBodyBytes caps how much of a response the client will buffer.
-// The largest legitimate responses carry a full block (up to 128 MiB) plus
-// JSON encoding overhead; anything past this cap is a misbehaving or
-// malicious server trying to exhaust the client's memory.
+// maxResponseBodyBytes is the largest response body the client will read.
+// It fits a max-size 128 MiB block after JSON encoding, with headroom.
 const maxResponseBodyBytes int64 = 512 * 1024 * 1024 // 512 MiB
 
-// readResponseBody reads at most limit bytes from r and errors if the body
-// is larger, instead of buffering an unbounded server-controlled response.
+// readResponseBody reads r, erroring if it is larger than limit bytes.
 func readResponseBody(r io.Reader, limit int64) ([]byte, error) {
 	body, err := io.ReadAll(io.LimitReader(r, limit+1))
 	if err != nil {
