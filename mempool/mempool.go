@@ -149,15 +149,16 @@ func PreCheckMaxBytes(maxBytes int64) PreCheckFunc {
 }
 
 // PostCheckMaxGas checks that the wanted gas is smaller or equal to the passed
-// maxGas. Returns nil if maxGas is -1.
+// maxGas. Negative gas is always rejected; the max check is skipped if maxGas
+// is -1.
 func PostCheckMaxGas(maxGas int64) PostCheckFunc {
 	return func(tx *types.CachedTx, res *abci.ResponseCheckTx) error {
-		if maxGas == -1 {
-			return nil
-		}
 		if res.GasWanted < 0 {
 			return fmt.Errorf("gas wanted %d is negative",
 				res.GasWanted)
+		}
+		if maxGas == -1 {
+			return nil
 		}
 		if res.GasWanted > maxGas {
 			return fmt.Errorf("gas wanted %d is greater than max gas %d",
