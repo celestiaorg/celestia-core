@@ -483,6 +483,8 @@ func (env *Environment) validateDataRootInclusionProofRequest(height uint64, sta
 }
 
 // proveDataRootTuples returns the merkle inclusion proof for a height.
+//
+// It builds proofs for the full range but returns one; the range limit bounds each request, while enabled heavy-request limits bound concurrent remote requests (PROTOCO-2768).
 func (env *Environment) proveDataRootTuples(tuples []DataRootTuple, height int64) (*merkle.Proof, error) {
 	dataRootEncodedTuples := make([][]byte, 0, len(tuples))
 	for _, tuple := range tuples {
