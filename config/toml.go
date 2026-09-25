@@ -135,7 +135,7 @@ priv_validator_grpc_laddr = "{{ .BaseConfig.PrivValidatorGRPCListenAddr }}"
 
 # Path to the PEM certificate the PrivValidator gRPC server presents to clients.
 # Set together with priv_validator_grpc_key_file and priv_validator_grpc_client_ca_file
-# to enable mutual TLS (1.3 minimum); leave all three empty for plaintext (localhost only).
+# to enable mutual TLS (1.3 minimum); leave all three empty for plaintext (loopback IP only, e.g. 127.0.0.1).
 # The certificate's SAN must match the address clients use to dial this server.
 priv_validator_grpc_cert_file = "{{ js .BaseConfig.PrivValidatorGRPCCert }}"
 
