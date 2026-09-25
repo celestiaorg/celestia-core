@@ -1,10 +1,12 @@
 package client
 
 import (
+	"context"
 	"io"
 	"log"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -97,4 +99,32 @@ func Test_parsedURL(t *testing.T) {
 			require.Equal(t, tt.expectedHostWithPath, parsed.GetHostWithPath())
 		})
 	}
+}
+
+func TestReadResponseBodyCapsSize(t *testing.T) {
+	body, err := readResponseBody(strings.NewReader("12345"), 10)
+	require.NoError(t, err)
+	require.Equal(t, []byte("12345"), body)
+
+	_, err = readResponseBody(strings.NewReader("12345678901"), 10)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "exceeds maximum")
+}
+
+func TestClientMaxResponseBodyBytes(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`{"jsonrpc":"2.0","id":0,"result":"ok"}`))
+	}))
+	defer ts.Close()
+
+	c, err := New(ts.URL)
+	require.NoError(t, err)
+
+	var result string
+	_, err = c.Call(context.Background(), "status", nil, &result)
+	require.NoError(t, err)
+
+	c.SetMaxResponseBodyBytes(10)
+	_, err = c.Call(context.Background(), "status", nil, &result)
+	require.ErrorContains(t, err, "exceeds maximum")
 }
