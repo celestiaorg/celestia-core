@@ -192,6 +192,14 @@ func (sc *SignerClient) SignProposal(chainID string, proposal *cmtproto.Proposal
 }
 
 func (sc *SignerClient) SignRawBytes(chainID, uniqueID string, rawBytes []byte) ([]byte, error) {
+	// The remote signer may hold keys for several chains and pick one by chain
+	// ID, so never forward a request for a chain other than our own.
+	if chainID != sc.chainID {
+		err := fmt.Errorf("chain ID mismatch: want %s, got %s", sc.chainID, chainID)
+		sc.recordSigningFailure(messageTypeRawBytes, err)
+		return nil, err
+	}
+
 	reqStartTime := time.Now()
 	response, err := sc.endpoint.SendRequest(mustWrapMsg(&privvalproto.SignRawBytesRequest{
 		ChainId:  chainID,
