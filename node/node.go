@@ -676,6 +676,7 @@ func (n *Node) OnStart() error {
 		grpcServer := grpc.NewServer(serverOpts...)
 		privvalproto.RegisterPrivValidatorAPIServer(grpcServer, privval.NewPrivValidatorGRPCServer(
 			n.privValidator,
+			n.genesisDoc.ChainID,
 			n.Logger.With("module", "privval-grpc"),
 		))
 		n.privvalGRPCServer = grpcServer

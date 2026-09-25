@@ -27,6 +27,7 @@ func setupGRPCServerWithPV(t *testing.T, pv types.PrivValidator) privvalproto.Pr
 	srv := grpc.NewServer()
 	privvalproto.RegisterPrivValidatorAPIServer(srv, privval.NewPrivValidatorGRPCServer(
 		pv,
+		testChainID,
 		log.NewNopLogger(),
 	))
 	go func() { _ = srv.Serve(lis) }()
@@ -68,11 +69,26 @@ func TestGRPCServerSignRawBytesError(t *testing.T) {
 	client := setupGRPCServerWithPV(t, types.NewErroringMockPV())
 
 	resp, err := client.SignRawBytes(context.Background(), &privvalproto.SignRawBytesRequest{
+		ChainId:  testChainID,
 		RawBytes: []byte("test data"),
 		UniqueId: "fiber-commitment",
 	})
 	require.NoError(t, err)
 	require.NotNil(t, resp.Error)
+}
+
+func TestGRPCServerSignRawBytesRejectsOtherChainID(t *testing.T) {
+	client := setupGRPCServerWithPV(t, types.NewMockPV())
+
+	resp, err := client.SignRawBytes(context.Background(), &privvalproto.SignRawBytesRequest{
+		ChainId:  "other-chain",
+		RawBytes: []byte("test data"),
+		UniqueId: "fiber-commitment",
+	})
+	require.NoError(t, err)
+	require.NotNil(t, resp.Error)
+	assert.Contains(t, resp.Error.Description, "chain ID mismatch")
+	assert.Empty(t, resp.Signature)
 }
 
 func TestGRPCServerGetPubKey(t *testing.T) {
