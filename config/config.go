@@ -436,13 +436,13 @@ func (cfg BaseConfig) ValidatePrivValidatorGRPCExposure() error {
 }
 
 // BindsToLocalhostOnly reports whether the TCP listen address binds only to a loopback interface.
+// Only loopback IP literals qualify. Hostnames, including "localhost", are
+// rejected because net.Listen resolves them independently and the resolver may
+// map them to a non-loopback or wildcard address.
 func BindsToLocalhostOnly(addr string) bool {
 	host, _, err := net.SplitHostPort(addr)
 	if err != nil {
 		return false
-	}
-	if host == "localhost" {
-		return true
 	}
 	ip := net.ParseIP(host)
 	return ip != nil && ip.IsLoopback()
