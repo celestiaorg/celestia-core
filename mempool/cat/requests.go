@@ -151,7 +151,12 @@ func (r *requestScheduler) ClearAllRequestsFrom(peer uint16) requestSet {
 	}
 	for tx, timer := range requests {
 		timer.Stop()
-		delete(r.requestsByTx, tx)
+		// A timed-out request keeps its peer slot for late responses, so a key
+		// still held here may already have been re-requested from another peer.
+		// Only drop the tx reservation if this peer still owns it.
+		if r.requestsByTx[tx] == peer {
+			delete(r.requestsByTx, tx)
+		}
 	}
 	delete(r.requestsByPeer, peer)
 	return requests
