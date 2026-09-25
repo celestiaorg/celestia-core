@@ -17,14 +17,15 @@ import (
 	"github.com/cometbft/cometbft/types"
 )
 
-// TestGRPCListenerRecoversFromStalledConnections fills every connection slot
-// with peers that never start a handshake and checks that the server drops
-// them at the handshake deadline, letting a real client through.
-func TestGRPCListenerRecoversFromStalledConnections(t *testing.T) {
+// startLimitedServer starts a PrivValidatorAPI gRPC server on a capped
+// listener with the given handshake timeout and returns its address.
+func startLimitedServer(t *testing.T, handshakeTimeout time.Duration) string {
+	t.Helper()
+
 	lis, err := net.Listen("tcp", "127.0.0.1:0")
 	require.NoError(t, err)
 
-	srv := grpc.NewServer(grpc.ConnectionTimeout(2 * time.Second))
+	srv := grpc.NewServer(grpc.ConnectionTimeout(handshakeTimeout))
 	privvalproto.RegisterPrivValidatorAPIServer(srv, privval.NewPrivValidatorGRPCServer(
 		types.NewMockPV(),
 		testChainID,
@@ -33,24 +34,53 @@ func TestGRPCListenerRecoversFromStalledConnections(t *testing.T) {
 	go func() { _ = srv.Serve(privval.LimitGRPCListener(lis)) }()
 	t.Cleanup(srv.Stop)
 
+	return lis.Addr().String()
+}
+
+// fillConnectionSlots occupies every connection slot with peers that never
+// start a handshake.
+func fillConnectionSlots(t *testing.T, addr string) []net.Conn {
+	t.Helper()
+
 	stalled := make([]net.Conn, 0, privval.GRPCMaxConnections)
 	for i := 0; i < privval.GRPCMaxConnections; i++ {
-		c, err := net.Dial("tcp", lis.Addr().String())
+		c, err := net.Dial("tcp", addr)
 		require.NoError(t, err)
 		t.Cleanup(func() { _ = c.Close() })
 		stalled = append(stalled, c)
 	}
+	return stalled
+}
 
-	conn, err := grpc.NewClient(lis.Addr().String(), grpc.WithTransportCredentials(insecure.NewCredentials()))
+func newGRPCClient(t *testing.T, addr string) privvalproto.PrivValidatorAPIClient {
+	t.Helper()
+
+	conn, err := grpc.NewClient(addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = conn.Close() })
-	client := privvalproto.NewPrivValidatorAPIClient(conn)
+	return privvalproto.NewPrivValidatorAPIClient(conn)
+}
 
-	// While every slot is occupied, the cap holds a 17th connection back.
-	cappedCtx, cappedCancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
-	defer cappedCancel()
-	_, err = client.GetPubKey(cappedCtx, &privvalproto.PubKeyRequest{ChainId: testChainID}, grpc.WaitForReady(true))
+// TestGRPCListenerCapsConnections checks that a client can't connect while
+// every slot is occupied. The handshake timeout is far longer than the test
+// so no stalled connection can free a slot and mask a missing cap.
+func TestGRPCListenerCapsConnections(t *testing.T) {
+	addr := startLimitedServer(t, time.Hour)
+	fillConnectionSlots(t, addr)
+	client := newGRPCClient(t, addr)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
+	defer cancel()
+	_, err := client.GetPubKey(ctx, &privvalproto.PubKeyRequest{ChainId: testChainID}, grpc.WaitForReady(true))
 	require.Error(t, err, "connection cap is not enforced")
+}
+
+// TestGRPCListenerRecoversFromStalledConnections checks that the server drops
+// stalled peers at the handshake deadline, letting a real client through.
+func TestGRPCListenerRecoversFromStalledConnections(t *testing.T) {
+	addr := startLimitedServer(t, 500*time.Millisecond)
+	stalled := fillConnectionSlots(t, addr)
+	client := newGRPCClient(t, addr)
 
 	// The client gets a slot once the stalled peers hit the handshake deadline.
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
