@@ -120,6 +120,11 @@ func TestValidatePrivValidatorGRPCExposure(t *testing.T) {
 		cfg.PrivValidatorGRPCAllowInsecure = true
 		assert.NoError(t, cfg.ValidatePrivValidatorGRPCExposure(), addr)
 	}
+
+	// A rejected "localhost" names the loopback IP literal that keeps plaintext working.
+	cfg := config.TestBaseConfig()
+	cfg.PrivValidatorGRPCListenAddr = "localhost:26669"
+	assert.ErrorContains(t, cfg.ValidatePrivValidatorGRPCExposure(), `use "127.0.0.1" instead of "localhost"`)
 }
 
 func TestRPCConfigValidateBasic(t *testing.T) {
