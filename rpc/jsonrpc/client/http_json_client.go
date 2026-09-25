@@ -142,6 +142,8 @@ type Client struct {
 
 	client *http.Client
 
+	maxResponseBodyBytes int64
+
 	mtx       cmtsync.Mutex
 	nextReqID int
 }
@@ -189,9 +191,17 @@ func NewWithHTTPClient(remote string, client *http.Client) (*Client, error) {
 		username: username,
 		password: password,
 		client:   client,
+
+		maxResponseBodyBytes: DefaultMaxResponseBodyBytes,
 	}
 
 	return rpcClient, nil
+}
+
+// SetMaxResponseBodyBytes sets the largest response body the client will read.
+// It is not safe to call concurrently with requests.
+func (c *Client) SetMaxResponseBodyBytes(n int64) {
+	c.maxResponseBodyBytes = n
 }
 
 // Call issues a POST HTTP request. Requests are JSON encoded. Content-Type:
@@ -232,7 +242,7 @@ func (c *Client) Call(
 	}
 	defer httpResponse.Body.Close()
 
-	responseBytes, err := io.ReadAll(httpResponse.Body)
+	responseBytes, err := readResponseBody(httpResponse.Body, c.maxResponseBodyBytes)
 	if err != nil {
 		return nil, fmt.Errorf("%s. Failed to read response body: %w", getHTTPRespErrPrefix(httpResponse), err)
 	}
@@ -242,6 +252,22 @@ func (c *Client) Call(
 		return nil, fmt.Errorf("%s. %w", getHTTPRespErrPrefix(httpResponse), err)
 	}
 	return res, nil
+}
+
+// DefaultMaxResponseBodyBytes is the default largest response body the client will read.
+// It fits a max-size 128 MiB block after JSON encoding, with headroom.
+const DefaultMaxResponseBodyBytes int64 = 512 * 1024 * 1024 // 512 MiB
+
+// readResponseBody reads r, erroring if it is larger than limit bytes.
+func readResponseBody(r io.Reader, limit int64) ([]byte, error) {
+	body, err := io.ReadAll(io.LimitReader(r, limit+1))
+	if err != nil {
+		return nil, err
+	}
+	if int64(len(body)) > limit {
+		return nil, fmt.Errorf("response body exceeds maximum of %d bytes", limit)
+	}
+	return body, nil
 }
 
 func getHTTPRespErrPrefix(resp *http.Response) string {
@@ -292,7 +318,7 @@ func (c *Client) sendBatch(ctx context.Context, requests []*jsonRPCBufferedReque
 
 	defer httpResponse.Body.Close()
 
-	responseBytes, err := io.ReadAll(httpResponse.Body)
+	responseBytes, err := readResponseBody(httpResponse.Body, c.maxResponseBodyBytes)
 	if err != nil {
 		return nil, fmt.Errorf("read response body: %w", err)
 	}
