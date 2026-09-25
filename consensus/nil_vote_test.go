@@ -13,7 +13,7 @@ import (
 // TestNilVoteExchange is an integration test that connects two consensus reactors and exchanges a nil vote.
 func TestNilVoteExchange(t *testing.T) {
 	nValidators := 2
-	css, cleanup := randConsensusNet(t, nValidators, "consensus_two_peer_vote_test", newMockTickerFunc(true), newKVStore)
+	css, cleanup := randConsensusNet(t, nValidators, "consensus_two_peer_vote_test", newHeightOnlyTicker, newKVStore)
 	defer cleanup()
 	logger := log.TestingLogger()
 

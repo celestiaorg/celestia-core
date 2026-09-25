@@ -116,7 +116,7 @@ func stopConsensusNet(logger log.Logger, reactors []*Reactor, eventBuses []*type
 // Ensure a testnet makes blocks
 func TestReactorBasic(t *testing.T) {
 	N := 4
-	css, cleanup := randConsensusNet(t, N, "consensus_reactor_test", newMockTickerFunc(true), newKVStore)
+	css, cleanup := randConsensusNet(t, N, "consensus_reactor_test", newHeightOnlyTicker, newKVStore)
 	defer cleanup()
 	reactors, blocksSubs, eventBuses := startConsensusNet(t, css, N)
 	defer stopConsensusNet(log.TestingLogger(), reactors, eventBuses)
@@ -130,12 +130,12 @@ func TestReactorBasic(t *testing.T) {
 func TestReactorWithEvidence(t *testing.T) {
 	nValidators := 4
 	testName := "consensus_reactor_test"
-	tickerFunc := newMockTickerFunc(true)
+	tickerFunc := newHeightOnlyTicker
 	appFunc := newKVStore
 
 	// heed the advice from https://www.sandimetz.com/blog/2016/1/20/the-wrong-abstraction
 	// to unroll unwieldy abstractions. Here we duplicate the code from:
-	// css := randConsensusNet(N, "consensus_reactor_test", newMockTickerFunc(true), newKVStore)
+	// css := randConsensusNet(N, "consensus_reactor_test", newHeightOnlyTicker, newKVStore)
 
 	genDoc, privVals := randGenesisDoc(nValidators, false, 30, nil)
 	css := make([]*State, nValidators)
@@ -241,7 +241,7 @@ func TestReactorWithEvidence(t *testing.T) {
 // Ensure a testnet makes blocks when there are txs
 func TestReactorCreatesBlockWhenEmptyBlocksFalse(t *testing.T) {
 	N := 4
-	css, cleanup := randConsensusNet(t, N, "consensus_reactor_test", newMockTickerFunc(true), newKVStore,
+	css, cleanup := randConsensusNet(t, N, "consensus_reactor_test", newHeightOnlyTicker, newKVStore,
 		func(c *cfg.Config) {
 			c.Consensus.CreateEmptyBlocks = false
 		})
@@ -264,7 +264,7 @@ func TestReactorCreatesBlockWhenEmptyBlocksFalse(t *testing.T) {
 
 func TestReactorReceiveDoesNotPanicIfAddPeerHasntBeenCalledYet(t *testing.T) {
 	N := 1
-	css, cleanup := randConsensusNet(t, N, "consensus_reactor_test", newMockTickerFunc(true), newKVStore)
+	css, cleanup := randConsensusNet(t, N, "consensus_reactor_test", newHeightOnlyTicker, newKVStore)
 	defer cleanup()
 	reactors, _, eventBuses := startConsensusNet(t, css, N)
 	defer stopConsensusNet(log.TestingLogger(), reactors, eventBuses)
@@ -295,7 +295,7 @@ func TestReactorReceiveDoesNotPanicIfAddPeerHasntBeenCalledYet(t *testing.T) {
 
 func TestReactorReceivePanicsIfInitPeerHasntBeenCalledYet(t *testing.T) {
 	N := 1
-	css, cleanup := randConsensusNet(t, N, "consensus_reactor_test", newMockTickerFunc(true), newKVStore)
+	css, cleanup := randConsensusNet(t, N, "consensus_reactor_test", newHeightOnlyTicker, newKVStore)
 	defer cleanup()
 	reactors, _, eventBuses := startConsensusNet(t, css, N)
 	defer stopConsensusNet(log.TestingLogger(), reactors, eventBuses)
@@ -621,7 +621,7 @@ func TestSwitchToConsensusUsesReplayedRoundProposer(t *testing.T) {
 // Test we record stats about votes and block parts from other peers.
 func TestReactorRecordsVotesAndBlockParts(t *testing.T) {
 	N := 4
-	css, cleanup := randConsensusNet(t, N, "consensus_reactor_test", newMockTickerFunc(true), newKVStore)
+	css, cleanup := randConsensusNet(t, N, "consensus_reactor_test", newHeightOnlyTicker, newKVStore)
 	defer cleanup()
 	reactors, blocksSubs, eventBuses := startConsensusNet(t, css, N)
 	defer stopConsensusNet(log.TestingLogger(), reactors, eventBuses)
@@ -654,7 +654,7 @@ func TestReactorVotingPowerChange(t *testing.T) {
 		t,
 		nVals,
 		"consensus_voting_power_changes_test",
-		newMockTickerFunc(true),
+		newHeightOnlyTicker,
 		newPersistentKVStore)
 	defer cleanup()
 	reactors, blocksSubs, eventBuses := startConsensusNet(t, css, nVals)
@@ -730,7 +730,7 @@ func TestReactorValidatorSetChanges(t *testing.T) {
 		nVals,
 		nPeers,
 		"consensus_val_set_changes_test",
-		newMockTickerFunc(true),
+		newHeightOnlyTicker,
 		newPersistentKVStoreWithPath)
 
 	defer cleanup()
@@ -838,7 +838,7 @@ func TestReactorValidatorSetChanges(t *testing.T) {
 // Check we can make blocks with skip_timeout_commit=false
 func TestReactorWithTimeoutCommit(t *testing.T) {
 	N := 4
-	css, cleanup := randConsensusNet(t, N, "consensus_reactor_with_timeout_commit_test", newMockTickerFunc(false), newKVStore)
+	css, cleanup := randConsensusNet(t, N, "consensus_reactor_with_timeout_commit_test", newHeightOnlyTicker, newKVStore)
 	defer cleanup()
 	// override default SkipTimeoutCommit == true for tests
 	for i := 0; i < N; i++ {
@@ -954,11 +954,43 @@ func validateBlock(block *types.Block, activeVals map[string]struct{}) error {
 	}
 
 	for _, commitSig := range block.LastCommit.Signatures {
+		if commitSig.BlockIDFlag == types.BlockIDFlagAbsent {
+			if err := commitSig.ValidateBasic(); err != nil {
+				return fmt.Errorf("invalid absent commit signature: %w", err)
+			}
+			continue
+		}
 		if _, ok := activeVals[string(commitSig.ValidatorAddress)]; !ok {
 			return fmt.Errorf("found vote for inactive validator %X", commitSig.ValidatorAddress)
 		}
 	}
 	return nil
+}
+
+func TestValidateBlockAllowsAbsentCommitSlots(t *testing.T) {
+	_, validators := randGenesisState(4, false, 10, test.ConsensusParams())
+	activeVals := make(map[string]struct{}, len(validators))
+	for _, validator := range validators {
+		pubKey, err := validator.GetPubKey()
+		require.NoError(t, err)
+		activeVals[string(pubKey.Address())] = struct{}{}
+	}
+	signatures := make([]types.CommitSig, len(validators))
+	for i, validator := range validators {
+		pubKey, err := validator.GetPubKey()
+		require.NoError(t, err)
+		signatures[i] = types.CommitSig{BlockIDFlag: types.BlockIDFlagCommit, ValidatorAddress: pubKey.Address()}
+	}
+	signatures[3] = types.NewCommitSigAbsent()
+	block := &types.Block{LastCommit: &types.Commit{Signatures: signatures}}
+	require.NoError(t, validateBlock(block, activeVals), "a quorum commit may include an absent validator slot")
+
+	signatures[3].Signature = []byte{1}
+	require.ErrorContains(t, validateBlock(block, activeVals), "invalid absent commit signature")
+	signatures[3] = types.NewCommitSigAbsent()
+	delete(activeVals, string(signatures[0].ValidatorAddress))
+	activeVals["a different validator"] = struct{}{}
+	require.ErrorContains(t, validateBlock(block, activeVals), "found vote for inactive validator")
 }
 
 func timeoutWaitGroup(n int, f func(int)) {
@@ -1395,7 +1427,7 @@ func TestVoteMessageValidateBasic(t *testing.T) {
 
 func TestReactorGossipDataEnabled(t *testing.T) {
 	N := 1
-	css, cleanup := randConsensusNet(t, N, "consensus_reactor_test", newMockTickerFunc(true), newKVStore)
+	css, cleanup := randConsensusNet(t, N, "consensus_reactor_test", newHeightOnlyTicker, newKVStore)
 	defer cleanup()
 
 	// Test default enabled state
@@ -1422,7 +1454,7 @@ func (p *catchingUpPropagator) IsCatchingUp() bool {
 
 func TestReactorIsCatchingUp(t *testing.T) {
 	N := 1
-	css, cleanup := randConsensusNet(t, N, "consensus_reactor_test", newMockTickerFunc(true), newKVStore)
+	css, cleanup := randConsensusNet(t, N, "consensus_reactor_test", newHeightOnlyTicker, newKVStore)
 	defer cleanup()
 
 	tests := []struct {

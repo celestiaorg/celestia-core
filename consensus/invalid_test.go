@@ -25,7 +25,7 @@ import (
 // Ensure a testnet makes blocks
 func TestReactorInvalidPrecommit(t *testing.T) {
 	N := 4
-	css, cleanup := randConsensusNet(t, N, "consensus_reactor_test", newMockTickerFunc(true), newKVStore)
+	css, cleanup := randConsensusNet(t, N, "consensus_reactor_test", newHeightOnlyTicker, newKVStore)
 	defer cleanup()
 
 	// Set timeouts in the state since consensus now uses state timeouts instead of config timeouts
@@ -473,7 +473,7 @@ func genReactorTestCases(height int64, round int32) []reactorTestCase {
 // and tests all invalid messages to verify they don't cause panics.
 func testReactorInvalidMessagesInState(t *testing.T, targetState cstypes.RoundStepType) {
 	N := 4
-	css, cleanup := randConsensusNet(t, N, "consensus_reactor_state_test", newMockTickerFunc(true), newKVStore)
+	css, cleanup := randConsensusNet(t, N, "consensus_reactor_state_test", newHeightOnlyTicker, newKVStore)
 	defer cleanup()
 
 	for i := 0; i < N; i++ {

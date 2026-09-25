@@ -279,7 +279,7 @@ func (blockProp *Reactor) processValidatedCompactBlock(cb *proptypes.CompactBloc
 // in the same order, which is what TxsToParts expects.
 //
 // The lookups run in parallel: each one takes only a read lock on the mempool
-// and the marshalling that follows is pure, so the work divides cleanly. Each
+// and the marshaling that follows is pure, so the work divides cleanly. Each
 // result is written at its own index, so the outcome does not depend on
 // scheduling.
 func (blockProp *Reactor) lookupTxsInMempool(blobs []proptypes.TxMetaData) []proptypes.UnmarshalledTx {

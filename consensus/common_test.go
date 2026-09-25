@@ -8,7 +8,6 @@ import (
 	"path"
 	"path/filepath"
 	"sort"
-	"sync"
 	"testing"
 	"time"
 
@@ -980,53 +979,23 @@ func randGenesisState(
 	return s0, privValidators
 }
 
-//------------------------------------
-// mock ticker
-
-func newMockTickerFunc(onlyOnce bool) func() TimeoutTicker {
-	return func() TimeoutTicker {
-		return &mockTicker{
-			c:        make(chan timeoutInfo, 10),
-			onlyOnce: onlyOnce,
-		}
-	}
+// ------------------------------------
+// newHeightOnlyTicker preserves real height deadlines while disabling round
+// timeouts, so network tests advance through voting quorums without proposal
+// timeout races. Every height needs a timer now that pacing cannot be skipped.
+func newHeightOnlyTicker() TimeoutTicker {
+	return &heightOnlyTicker{TimeoutTicker: NewTimeoutTicker()}
 }
 
-// mock ticker only fires on RoundStepNewHeight
-// and only once if onlyOnce=true
-type mockTicker struct {
-	c chan timeoutInfo
-
-	mtx      sync.Mutex
-	onlyOnce bool
-	fired    bool
+type heightOnlyTicker struct {
+	TimeoutTicker
 }
 
-func (m *mockTicker) Start() error {
-	return nil
-}
-
-func (m *mockTicker) Stop() error {
-	return nil
-}
-
-func (m *mockTicker) ScheduleTimeout(ti timeoutInfo) {
-	m.mtx.Lock()
-	defer m.mtx.Unlock()
-	if m.onlyOnce && m.fired {
-		return
-	}
+func (m *heightOnlyTicker) ScheduleTimeout(ti timeoutInfo) {
 	if ti.Step == cstypes.RoundStepNewHeight {
-		m.c <- ti
-		m.fired = true
+		m.TimeoutTicker.ScheduleTimeout(ti)
 	}
 }
-
-func (m *mockTicker) Chan() <-chan timeoutInfo {
-	return m.c
-}
-
-func (*mockTicker) SetLogger(log.Logger) {}
 
 func newPersistentKVStore() abci.Application {
 	dir, err := os.MkdirTemp("", "persistent-kvstore")

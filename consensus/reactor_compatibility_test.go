@@ -19,7 +19,7 @@ import (
 
 func TestLegacyAndNewReactorCompatibility(t *testing.T) {
 	N := 2
-	css, cleanup := randConsensusNet(t, N, "consensus_compat_test", newMockTickerFunc(true), newKVStore)
+	css, cleanup := randConsensusNet(t, N, "consensus_compat_test", newHeightOnlyTicker, newKVStore)
 	defer cleanup()
 
 	reactors := make([]*Reactor, N)

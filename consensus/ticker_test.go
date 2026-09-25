@@ -38,3 +38,55 @@ func TestTimeoutTicker(t *testing.T) {
 		}
 	}
 }
+
+func TestTimeoutTickerRearmsNewHeightAfterEarlyFire(t *testing.T) {
+	cs, _ := randState(4)
+	t.Cleanup(func() { require.NoError(t, cs.eventBus.Stop()) })
+	cs.SetPrivValidator(nil)
+	cs.decideProposal = func(int64, int32) {}
+	cs.timeoutTicker = NewTimeoutTicker()
+	require.NoError(t, cs.timeoutTicker.Start())
+	t.Cleanup(func() { require.NoError(t, cs.timeoutTicker.Stop()) })
+
+	// A timer measures elapsed time while StartTime uses the consensus wall
+	// clock. Model a backward clock adjustment by firing before StartTime.
+	cs.scheduleTimeout(0, cs.rs.Height, 0, types.RoundStepNewHeight)
+	select {
+	case timeout := <-cs.timeoutTicker.Chan():
+		cs.rs.StartTime = time.Now().Add(50 * time.Millisecond)
+		cs.handleTimeout(timeout, *cs.GetRoundState())
+	case <-time.After(time.Second):
+		t.Fatal("the initial NewHeight timeout did not fire")
+	}
+	require.Equal(t, types.RoundStepNewHeight, cs.rs.Step)
+
+	select {
+	case timeout := <-cs.timeoutTicker.Chan():
+		require.False(t, time.Now().Before(cs.rs.StartTime))
+		cs.handleTimeout(timeout, *cs.GetRoundState())
+	case <-time.After(time.Second):
+		t.Fatal("an early NewHeight timeout must be rearmed until StartTime")
+	}
+	require.Equal(t, types.RoundStepPropose, cs.rs.Step)
+}
+
+func TestTimeoutTickerHeightOnlyRespectsEachHeight(t *testing.T) {
+	ticker := newHeightOnlyTicker()
+	require.NoError(t, ticker.Start())
+	t.Cleanup(func() { require.NoError(t, ticker.Stop()) })
+	for height := int64(1); height <= 2; height++ {
+		const delay = 20 * time.Millisecond
+		start := time.Now()
+		ticker.ScheduleTimeout(timeoutInfo{Duration: delay, Height: height, Step: types.RoundStepNewHeight})
+		// Round deadlines must not interrupt the height pacing deadline.
+		ticker.ScheduleTimeout(timeoutInfo{Height: height, Step: types.RoundStepPropose})
+		select {
+		case timeout := <-ticker.Chan():
+			require.Equal(t, height, timeout.Height)
+			require.Equal(t, types.RoundStepNewHeight, timeout.Step)
+			require.GreaterOrEqual(t, time.Since(start), delay, "the test ticker must honor the height deadline")
+		case <-time.After(time.Second):
+			t.Fatal("the test ticker must fire at every height")
+		}
+	}
+}

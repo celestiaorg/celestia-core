@@ -3,6 +3,7 @@ package consensus
 import (
 	"time"
 
+	cstypes "github.com/cometbft/cometbft/consensus/types"
 	"github.com/cometbft/cometbft/libs/log"
 	"github.com/cometbft/cometbft/libs/service"
 )
@@ -25,7 +26,7 @@ type TimeoutTicker interface {
 
 // timeoutTicker wraps time.Timer,
 // scheduling timeouts only for greater height/round/step
-// than what it's already seen.
+// than what it's already seen, or rearming an expired NewHeight timeout.
 // Timeouts are scheduled along the tickChan,
 // and fired on the tockChan.
 type timeoutTicker struct {
@@ -111,7 +112,11 @@ func (t *timeoutTicker) timeoutRoutine() {
 				if newti.Round < ti.Round {
 					continue
 				} else if newti.Round == ti.Round {
-					if ti.Step > 0 && newti.Step <= ti.Step {
+					// A backward consensus-clock adjustment can require another
+					// NewHeight timeout after the first one fired. Active timers
+					// must not be extended by duplicate schedules.
+					if ti.Step > 0 && (newti.Step < ti.Step ||
+						(newti.Step == ti.Step && (t.timerActive || ti.Step != cstypes.RoundStepNewHeight))) {
 						continue
 					}
 				}

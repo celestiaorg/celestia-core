@@ -6,6 +6,7 @@ import (
 	"os"
 	"path"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -139,15 +140,13 @@ func TestByzantinePrevoteEquivocation(t *testing.T) {
 		require.NoError(t, err)
 		cs.SetEventBus(eventBus)
 
-		// Use the same mock ticker upstream's TestByzantinePrevoteEquivocation uses
-		// (onlyOnce=true: fires the new-height timer once at startup, then never).
-		// Real timers race with proposal gossip — if TimeoutPropose fires on the
+		// Keep real height deadlines but disable round timers, which race with
+		// proposal gossip: if TimeoutPropose fires on the
 		// byzantine before the proposal arrives, doPrevote runs without a proposal
 		// block and prevote1 collapses to a vote for nil identical to prevote2.
-		// Mock ticker eliminates that race; consensus advances purely on +2/3
-		// thresholds, which is more deterministic for testing the equivocation
-		// detection path.
-		cs.SetTimeoutTicker(newMockTickerFunc(true)())
+		// Height-only timers eliminate that race; each height advances through
+		// voting quorums, keeping the equivocation detection path deterministic.
+		cs.SetTimeoutTicker(newHeightOnlyTicker())
 		cs.SetLogger(logger)
 
 		css[i] = cs
@@ -275,6 +274,7 @@ func TestByzantinePrevoteEquivocation(t *testing.T) {
 	// timestamp that the other nodes have. This tests to ensure that the evidence that finally gets
 	// proposed will have a valid timestamp
 	lazyProposer := css[1]
+	var proposedDifferentMedian atomic.Bool
 
 	lazyProposer.decideProposal = func(height int64, round int32) {
 		lazyProposer.Logger.Info("Lazy Proposer proposing condensed commit")
@@ -297,11 +297,37 @@ func TestByzantinePrevoteEquivocation(t *testing.T) {
 			return
 		}
 
-		// omit the last signature in the commit
+		// Omit a surplus signature that changes the commit timestamp. A paced
+		// height can begin with only a quorum, so keep that commit unchanged
+		// and require a later proposal to exercise the timestamp divergence.
 		if !assert.NotEmpty(t, extCommit.ExtendedSignatures, "lazyProposer: expected non-empty ExtendedSignatures") {
 			return
 		}
-		extCommit.ExtendedSignatures[len(extCommit.ExtendedSignatures)-1] = types.NewExtendedCommitSigAbsent()
+		originalMedian, err := sm.MedianTime(extCommit.ToCommit(), lazyProposer.state.LastValidators)
+		if !assert.NoError(t, err, "lazyProposer: original commit median") {
+			return
+		}
+		changedMedian := false
+		for i, saved := range extCommit.ExtendedSignatures {
+			if saved.BlockIDFlag == types.BlockIDFlagAbsent {
+				continue
+			}
+			extCommit.ExtendedSignatures[i] = types.NewExtendedCommitSigAbsent()
+			commit := extCommit.ToCommit()
+			if lazyProposer.state.LastValidators.VerifyCommit(lazyProposer.state.ChainID,
+				extCommit.BlockID, extCommit.Height, commit) == nil {
+				median, err := sm.MedianTime(commit, lazyProposer.state.LastValidators)
+				if err == nil && !median.Equal(originalMedian) {
+					changedMedian = true
+					break
+				}
+			}
+			extCommit.ExtendedSignatures[i] = saved
+		}
+		if !assert.NoError(t, lazyProposer.state.LastValidators.VerifyCommit(lazyProposer.state.ChainID,
+			extCommit.BlockID, extCommit.Height, extCommit.ToCommit()), "lazyProposer: condensed commit must retain a quorum") {
+			return
+		}
 
 		if lazyProposer.privValidatorPubKey == nil {
 			// If this node is a validator & proposer in the current round, it will
@@ -339,6 +365,9 @@ func TestByzantinePrevoteEquivocation(t *testing.T) {
 			for i := 0; i < int(blockParts.Total()); i++ {
 				part := blockParts.GetPart(i)
 				lazyProposer.sendInternalMessage(msgInfo{&BlockPartMessage{lazyProposer.rs.Height, lazyProposer.rs.Round, part}, ""})
+			}
+			if changedMedian {
+				proposedDifferentMedian.Store(true)
 			}
 			lazyProposer.Logger.Info("Signed proposal", "height", height, "round", round, "proposal", proposal)
 			lazyProposer.Logger.Debug(fmt.Sprintf("Signed proposal block: %v", block))
@@ -386,6 +415,8 @@ func TestByzantinePrevoteEquivocation(t *testing.T) {
 	require.True(t, ok, "Evidence should be DuplicateVoteEvidence")
 	assert.Equal(t, pubkey.Address(), ev.VoteA.ValidatorAddress)
 	assert.Equal(t, prevoteHeight, ev.Height())
+	require.Eventually(t, proposedDifferentMedian.Load, 10*time.Second, 20*time.Millisecond,
+		"lazy proposer never proposed a quorum-preserving condensed commit with a different median timestamp")
 	t.Logf("Successfully found evidence: %v", ev)
 }
 
@@ -402,7 +433,7 @@ func TestByzantineConflictingProposalsWithPartition(t *testing.T) {
 	defer cancel()
 
 	app := newKVStore
-	css, cleanup := randConsensusNet(t, N, "consensus_byzantine_test", newMockTickerFunc(false), app)
+	css, cleanup := randConsensusNet(t, N, "consensus_byzantine_test", newHeightOnlyTicker, app)
 	defer cleanup()
 
 	// give the byzantine validator a normal ticker

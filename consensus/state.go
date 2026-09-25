@@ -177,6 +177,9 @@ type State struct {
 	// proposalReceivedTime tracks when the proposal was received for the current height/round
 	// Used to calculate the duration until full block is received
 	proposalReceivedTime time.Time
+
+	// pacingStarted is set after a local commit establishes the height cadence.
+	pacingStarted bool
 }
 
 // StateOption sets an optional parameter on the State.
@@ -867,6 +870,7 @@ func (cs *State) updateToState(state sm.State) {
 	cs.updateRoundStep(0, cstypes.RoundStepNewHeight)
 
 	if cs.rs.CommitTime.IsZero() {
+		cs.pacingStarted = false
 		// "Now" makes it easier to sync up dev nodes.
 		// We add timeoutCommit to allow transactions
 		// to be gathered for the first block.
@@ -880,30 +884,16 @@ func (cs *State) updateToState(state sm.State) {
 		}
 
 	} else {
-		// Pace the network from the start of the previous height: the next one
-		// starts no earlier than TimeoutCommit after this one did. A height that
-		// already took longer than that starts the next one right away, so
-		// TimeoutCommit is a floor on the block time, not a wait after commit.
-		// This is the whole pacing mechanism now that the precommit wait is gone.
-		//
-		// The floor is anchored on the committed proposal's timestamp, which
-		// every node sees, so all nodes start the next height at the same
-		// instant. Anchoring on the local StartTime instead leaves each node
-		// with its own offset and proposers alternate early and late blocks.
-		// The anchor is capped at the commit time so a proposer cannot delay
-		// the network by more than TimeoutCommit with a future timestamp.
-		//
-		// A height that takes several rounds shortens the next one, because the
-		// floor is measured from the last proposal. That is accepted.
-		//
-		// A node behind the network is exempt, as catch-up was in the precommit
-		// wait this replaces: replaying history must not be paced to the live
-		// block rate. Seeing the next height's proposal early does not count as
-		// behind, or the node would start early and its block time would drift.
-		nextStartTime := cs.rs.CommitTime
+		// Include proposal construction and block execution in the height's
+		// interval. A remote proposal timestamp is neither our start time nor
+		// necessarily on our clock. After slow execution, start from now rather
+		// than carrying an expired deadline into the following height.
+		nextStartTime := cmttime.Now()
 		anchor := cs.rs.StartTime
-		if cs.rs.Proposal != nil && cs.rs.Proposal.Round == cs.rs.CommitRound && cs.rs.Proposal.Timestamp.Before(cs.rs.CommitTime) {
-			anchor = cs.rs.Proposal.Timestamp
+		if !cs.pacingStarted || anchor.After(cs.rs.CommitTime) {
+			// Bootstrap from a common event observed on our own clock. An
+			// already committed height must not advance an unused deadline.
+			anchor = cs.rs.CommitTime
 		}
 		timeoutCommit := cs.state.Timeouts.TimeoutCommit
 		if state.LastBlockHeight == 0 {
@@ -912,7 +902,8 @@ func (cs *State) updateToState(state sm.State) {
 		if timeoutCommit == 0 {
 			timeoutCommit = cs.config.TimeoutCommit
 		}
-		if !anchor.IsZero() && !cs.propagator.IsBehind() {
+		cs.pacingStarted = !cs.propagator.IsBehind()
+		if !anchor.IsZero() && cs.pacingStarted {
 			minStartTime := anchor.Add(timeoutCommit)
 			if nextStartTime.Before(minStartTime) {
 				nextStartTime = minStartTime
@@ -1246,8 +1237,12 @@ func (cs *State) enterNewRound(height int64, round int32) {
 		return
 	}
 
-	if now := cmttime.Now(); cs.rs.StartTime.After(now) {
-		logger.Trace("need to set a buffer and log message here for sanity", "start_time", cs.rs.StartTime, "now", now)
+	if !cs.replayMode && round == 0 && cs.rs.Step == cstypes.RoundStepNewHeight && cmttime.Now().Before(cs.rs.StartTime) &&
+		!cs.propagator.IsBehind() && !cs.rs.Votes.Precommits(round).HasTwoThirdsMajority() {
+		// Receiving all of the previous height's votes must not bypass the
+		// pacing floor. A quorum committing this height can still advance us.
+		cs.scheduleRound0(&cs.rs)
+		return
 	}
 
 	prevHeight, prevRound, prevStep := cs.rs.Height, cs.rs.Round, cs.rs.Step
@@ -2430,7 +2425,9 @@ func (cs *State) handleCompleteProposal(blockHeight int64) {
 		// procedure at this point.
 	}
 
-	if cs.rs.Step <= cstypes.RoundStepPropose && cs.isProposalComplete() {
+	// Cache early proposals during NewHeight until the pacing deadline. WAL
+	// replay must still restore votes and locks created by earlier versions.
+	if (cs.replayMode || cs.rs.Step >= cstypes.RoundStepNewRound) && cs.rs.Step <= cstypes.RoundStepPropose && cs.isProposalComplete() {
 		// Move onto the next step
 		cs.enterPrevote(blockHeight, cs.rs.Round)
 		if hasTwoThirds { // this is optimisation as this will be triggered when prevote is added
