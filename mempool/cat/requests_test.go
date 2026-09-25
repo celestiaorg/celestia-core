@@ -316,3 +316,36 @@ func TestRequestSchedulerCountForPeer(t *testing.T) {
 	require.Equal(t, 4, requests.CountForPeer(peerA))
 	require.Equal(t, 0, requests.CountForPeer(peerB))
 }
+
+// TestRequestSchedulerClearAllRequestsFromDoesNotClobberAnotherPeer checks that
+// clearing a timed-out peer's requests does not clear a reservation that another
+// peer has since taken over.
+func TestRequestSchedulerClearAllRequestsFromDoesNotClobberAnotherPeer(t *testing.T) {
+	var (
+		requests        = newRequestScheduler(10*time.Millisecond, 1*time.Minute)
+		tx              = types.Tx("tx")
+		key             = tx.Key()
+		peerA    uint16 = 1
+		peerB    uint16 = 2
+	)
+	t.Cleanup(requests.Close)
+
+	// peerA reserves the request and times out. The timeout keeps peerA's slot so
+	// late responses are still recognized, which means peerA still holds key
+	// while the tx is re-requested from peerB.
+	rerequested := make(chan struct{})
+	require.True(t, requests.Add(key, peerA, func(cbKey types.TxKey, _ uint16) {
+		require.True(t, requests.Add(cbKey, peerB, nil))
+		close(rerequested)
+	}))
+
+	<-rerequested
+	require.Equal(t, peerB, requests.ForTx(key))
+
+	// peerA disconnects while its late-response window is still open. peerB's
+	// request is in flight and must survive.
+	requests.ClearAllRequestsFrom(peerA)
+
+	require.Equal(t, peerB, requests.ForTx(key))
+	require.True(t, requests.Has(peerB, key))
+}
