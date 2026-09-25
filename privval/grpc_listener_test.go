@@ -24,7 +24,7 @@ func TestGRPCListenerRecoversFromStalledConnections(t *testing.T) {
 	lis, err := net.Listen("tcp", "127.0.0.1:0")
 	require.NoError(t, err)
 
-	srv := grpc.NewServer(grpc.ConnectionTimeout(500 * time.Millisecond))
+	srv := grpc.NewServer(grpc.ConnectionTimeout(2 * time.Second))
 	privvalproto.RegisterPrivValidatorAPIServer(srv, privval.NewPrivValidatorGRPCServer(
 		types.NewMockPV(),
 		testChainID,
@@ -41,16 +41,21 @@ func TestGRPCListenerRecoversFromStalledConnections(t *testing.T) {
 		stalled = append(stalled, c)
 	}
 
-	// A real client still gets a slot once the stalled peers hit the deadline.
 	conn, err := grpc.NewClient(lis.Addr().String(), grpc.WithTransportCredentials(insecure.NewCredentials()))
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = conn.Close() })
+	client := privvalproto.NewPrivValidatorAPIClient(conn)
 
+	// While every slot is occupied, the cap holds a 17th connection back.
+	cappedCtx, cappedCancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
+	defer cappedCancel()
+	_, err = client.GetPubKey(cappedCtx, &privvalproto.PubKeyRequest{ChainId: testChainID}, grpc.WaitForReady(true))
+	require.Error(t, err, "connection cap is not enforced")
+
+	// The client gets a slot once the stalled peers hit the handshake deadline.
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	resp, err := privvalproto.NewPrivValidatorAPIClient(conn).GetPubKey(
-		ctx, &privvalproto.PubKeyRequest{ChainId: testChainID}, grpc.WaitForReady(true),
-	)
+	resp, err := client.GetPubKey(ctx, &privvalproto.PubKeyRequest{ChainId: testChainID}, grpc.WaitForReady(true))
 	require.NoError(t, err)
 	require.Nil(t, resp.Error)
 
