@@ -191,11 +191,15 @@ func (sc *SignerClient) SignProposal(chainID string, proposal *cmtproto.Proposal
 	return nil
 }
 
+// ErrChainIDMismatch is returned when a signing request names a chain other
+// than the one the client was created with. It is permanent and never retried.
+var ErrChainIDMismatch = errors.New("chain ID mismatch")
+
 func (sc *SignerClient) SignRawBytes(chainID, uniqueID string, rawBytes []byte) ([]byte, error) {
 	// The remote signer may hold keys for several chains and pick one by chain
 	// ID, so never forward a request for a chain other than our own.
 	if chainID != sc.chainID {
-		err := fmt.Errorf("chain ID mismatch: want %s, got %s", sc.chainID, chainID)
+		err := fmt.Errorf("%w: want %s, got %s", ErrChainIDMismatch, sc.chainID, chainID)
 		sc.recordSigningFailure(messageTypeRawBytes, err)
 		return nil, err
 	}

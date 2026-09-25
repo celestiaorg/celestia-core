@@ -502,6 +502,38 @@ func TestSignerRawBytesRejectsOtherChainID(t *testing.T) {
 	}
 }
 
+func TestRetrySignerClientRawBytesChainIDMismatchNotRetried(t *testing.T) {
+	for _, tc := range getSignerTestCases(t) {
+		tc := tc
+		t.Cleanup(func() {
+			if err := tc.signerServer.Stop(); err != nil {
+				t.Error(err)
+			}
+		})
+		t.Cleanup(func() {
+			if err := tc.signerClient.Close(); err != nil {
+				t.Error(err)
+			}
+		})
+
+		// retries == 0 retries forever, so a retried mismatch would never return.
+		retryClient := NewRetrySignerClient(tc.signerClient, 0, 10*time.Millisecond)
+
+		done := make(chan error, 1)
+		go func() {
+			_, err := retryClient.SignRawBytes("other-chain", cmtrand.Str(12), cmtrand.Bytes(32))
+			done <- err
+		}()
+
+		select {
+		case err := <-done:
+			require.ErrorIs(t, err, ErrChainIDMismatch)
+		case <-time.After(2 * time.Second):
+			t.Fatal("chain ID mismatch was retried instead of failing immediately")
+		}
+	}
+}
+
 func TestSignerClientRecordsSigningLatency(t *testing.T) {
 	for _, tc := range getSignerTestCases(t) {
 		tc := tc
