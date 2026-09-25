@@ -2,6 +2,7 @@ package privval
 
 import (
 	"context"
+	"fmt"
 
 	cryptoenc "github.com/cometbft/cometbft/crypto/encoding"
 	"github.com/cometbft/cometbft/libs/log"
@@ -12,18 +13,25 @@ import (
 
 // PrivValidatorGRPCServer implements the PrivValidatorAPIServer gRPC interface
 // by forwarding signing requests to an underlying types.PrivValidator.
+// Requests are only served for the node's own chain ID so callers can't use
+// the node's signer connection to sign for other chains (e.g. keys for other
+// chains co-hosted in the same remote signer).
 type PrivValidatorGRPCServer struct {
 	privVal types.PrivValidator
+	chainID string
 	logger  log.Logger
 }
 
-// NewPrivValidatorGRPCServer returns a new gRPC server that wraps the given PrivValidator.
+// NewPrivValidatorGRPCServer returns a new gRPC server that wraps the given
+// PrivValidator and only signs for chainID.
 func NewPrivValidatorGRPCServer(
 	privVal types.PrivValidator,
+	chainID string,
 	logger log.Logger,
 ) *PrivValidatorGRPCServer {
 	return &PrivValidatorGRPCServer{
 		privVal: privVal,
+		chainID: chainID,
 		logger:  logger,
 	}
 }
@@ -33,6 +41,18 @@ func (s *PrivValidatorGRPCServer) SignRawBytes(
 	_ context.Context,
 	req *privvalproto.SignRawBytesRequest,
 ) (*privvalproto.SignedRawBytesResponse, error) {
+	if req.ChainId != s.chainID {
+		err := fmt.Errorf("chain ID mismatch: want %s, got %s", s.chainID, req.ChainId)
+		s.logger.Error("SignRawBytes rejected", "err", err)
+		return &privvalproto.SignedRawBytesResponse{
+			Signature: []byte{},
+			Error: &privvalproto.RemoteSignerError{
+				Code:        0,
+				Description: err.Error(),
+			},
+		}, nil
+	}
+
 	sig, err := s.privVal.SignRawBytes(req.ChainId, req.UniqueId, req.RawBytes)
 	if err != nil {
 		s.logger.Error("SignRawBytes failed", "err", err)

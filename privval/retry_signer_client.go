@@ -1,6 +1,7 @@
 package privval
 
 import (
+	"errors"
 	"fmt"
 	"time"
 
@@ -105,6 +106,10 @@ func (sc *RetrySignerClient) SignRawBytes(chainID, uniqueID string, rawBytes []b
 		}
 		// If remote signer errors, we don't retry.
 		if _, ok := err.(*RemoteSignerError); ok {
+			return nil, err
+		}
+		// A chain ID mismatch is permanent; retrying can't succeed.
+		if errors.Is(err, ErrChainIDMismatch) {
 			return nil, err
 		}
 		time.Sleep(sc.timeout)
