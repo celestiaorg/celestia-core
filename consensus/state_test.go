@@ -1771,12 +1771,18 @@ func TestPrepareProposalReceivesVoteExtensions(t *testing.T) {
 	}
 	signAddVotes(cs1, cmtproto.PrevoteType, blockID.Hash, blockID.PartSetHeader, false, vss[1:]...)
 
+	// Drain our own prevote before injecting any precommit. Once the precommits
+	// below are queued the node can finish the height and publish its own
+	// precommit for it, which then reaches voteCh ahead of the prevote we are
+	// waiting for. ensureVote discards every vote whose height/round/type does
+	// not match, so that precommit would be consumed and the wait would go on to
+	// time out on a prevote that had already been sent.
+	ensurePrevote(voteCh, height, round)
+
 	// create a precommit for each validator with the associated vote extension.
 	for i, vs := range vss[1:] {
 		signAddPrecommitWithExtension(t, cs1, blockID.Hash, blockID.PartSetHeader, voteExtensions[i+1], vs)
 	}
-
-	ensurePrevote(voteCh, height, round)
 
 	// ensure that the height is committed.
 	ensurePrecommitMatch(t, voteCh, height, round, blockID.Hash)
