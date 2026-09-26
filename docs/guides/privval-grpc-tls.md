@@ -69,6 +69,15 @@ signer_grpc_cert_file = "client.crt"
 signer_grpc_key_file = "client.key"
 ```
 
+## Network exposure
+
+Mutual TLS authenticates peers only after a TCP connection is accepted, so the
+listener itself is still reachable by anyone who can route to it. The server
+caps concurrent connections at 16 and closes connections that don't finish the
+handshake within 10 seconds, but you should still restrict the port to the
+signer client's host with a firewall or private network. Do not expose it to
+the public internet.
+
 ## Certificate rotation
 
 Certificates are loaded at startup. To rotate, issue new certificates from the

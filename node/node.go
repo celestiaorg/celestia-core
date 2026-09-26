@@ -669,6 +669,9 @@ func (n *Node) OnStart() error {
 				"anyone who can reach this endpoint can request signatures from the validator key",
 				"addr", addr)
 		}
+		// Cap concurrent connections and bound the handshake so stalled
+		// unauthenticated peers can't exhaust the process's file descriptors.
+		serverOpts = append(serverOpts, grpc.ConnectionTimeout(privval.GRPCConnectionTimeout))
 		lis, err := net.Listen("tcp", addr)
 		if err != nil {
 			return fmt.Errorf("failed to listen for privval gRPC: %w", err)
@@ -681,7 +684,7 @@ func (n *Node) OnStart() error {
 		))
 		n.privvalGRPCServer = grpcServer
 		go func() {
-			if err := grpcServer.Serve(lis); err != nil {
+			if err := grpcServer.Serve(privval.LimitGRPCListener(lis)); err != nil {
 				n.Logger.Error("privval gRPC server error", "err", err)
 			}
 		}()
