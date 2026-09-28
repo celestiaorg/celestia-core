@@ -3,8 +3,10 @@ package propagation
 import (
 	"fmt"
 
-	"github.com/cometbft/cometbft/types"
 	"google.golang.org/protobuf/encoding/protowire"
+
+	"github.com/cometbft/cometbft/crypto/merkle"
+	"github.com/cometbft/cometbft/types"
 )
 
 // A legitimate compact block fits at most this many transaction metadata
@@ -15,14 +17,14 @@ const maxCompactBlockBlobs = maxMsgSize / 36
 // objects. The protobuf decoder otherwise allocates an object for every entry
 // before the reactor can validate the resulting message.
 func validatePropagationBytes(b []byte) error {
-	var blobs, hashes, parts int
+	var blobs, hashes, parts, aunts int
 	for len(b) > 0 {
 		field, wireType, n := protowire.ConsumeTag(b)
 		if n < 0 {
 			return protowire.ParseError(n)
 		}
 		b = b[n:]
-		if wireType != protowire.BytesType || (field != 1 && field != 2) {
+		if wireType != protowire.BytesType || (field != 1 && field != 2 && field != 4) {
 			n = protowire.ConsumeFieldValue(field, wireType, b)
 			if n < 0 {
 				return protowire.ParseError(n)
@@ -36,15 +38,18 @@ func validatePropagationBytes(b []byte) error {
 		}
 		b = b[n:]
 		var err error
-		if field == 1 {
+		switch field {
+		case 1:
 			err = countPropagationFields(payload, 2, 6, &blobs, &hashes)
-		} else {
+		case 2:
 			err = countPropagationFields(payload, 3, 0, &parts, nil)
+		case 4:
+			err = countRecoveryPartAunts(payload, &aunts)
 		}
 		if err != nil {
 			return err
 		}
-		if blobs > maxCompactBlockBlobs || hashes > 2*int(types.MaxBlockPartsCount) || parts > 2*int(types.MaxBlockPartsCount) {
+		if blobs > maxCompactBlockBlobs || hashes > 2*int(types.MaxBlockPartsCount) || parts > 2*int(types.MaxBlockPartsCount) || aunts > merkle.MaxAunts {
 			return fmt.Errorf("propagation message has too many repeated entries")
 		}
 	}
@@ -68,6 +73,34 @@ func countPropagationFields(b []byte, first, second protowire.Number, firstCount
 			return protowire.ParseError(n)
 		}
 		b = b[n:]
+	}
+	return nil
+}
+
+// countRecoveryPartAunts counts the aunts in every proof of a RecoveryPart.
+func countRecoveryPartAunts(b []byte, aunts *int) error {
+	for len(b) > 0 {
+		field, wireType, n := protowire.ConsumeTag(b)
+		if n < 0 {
+			return protowire.ParseError(n)
+		}
+		b = b[n:]
+		if field != 5 || wireType != protowire.BytesType {
+			n = protowire.ConsumeFieldValue(field, wireType, b)
+			if n < 0 {
+				return protowire.ParseError(n)
+			}
+			b = b[n:]
+			continue
+		}
+		proof, n := protowire.ConsumeBytes(b)
+		if n < 0 {
+			return protowire.ParseError(n)
+		}
+		b = b[n:]
+		if err := countPropagationFields(proof, 4, 0, aunts, nil); err != nil {
+			return err
+		}
 	}
 	return nil
 }
