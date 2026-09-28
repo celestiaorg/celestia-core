@@ -1,6 +1,7 @@
 package propagation
 
 import (
+	"bytes"
 	"testing"
 
 	"github.com/cosmos/gogoproto/proto"
@@ -52,6 +53,13 @@ func TestPropagationPrecheck(t *testing.T) {
 		{"excess recovery part aunts", wrap(4, appendEntries(5, 4, merkle.MaxAunts+1)), true},
 		{"repeated recovery part proofs", wrap(4, append(appendEntries(5, 4, merkle.MaxAunts), appendEntries(5, 4, 1)...)), true},
 		{"malformed recovery part proof", wrap(4, []byte{0x2a, 0x01, 0xff}), true},
+		{"repeated compact blocks", append(wrap(1, nil), wrap(1, nil)...), true},
+		{"mixed message types", append(wrap(1, nil), wrap(2, nil)...), true},
+		{"want parts elems at limit", wrap(3, wrap(1, wrap(2, make([]byte, maxWantPartsElems)))), false},
+		{"excess packed want parts elems", wrap(3, wrap(1, wrap(2, make([]byte, maxWantPartsElems+1)))), true},
+		{"excess unpacked want parts elems", wrap(3, wrap(1, bytes.Repeat([]byte{0x10, 0x00}, maxWantPartsElems+1))), true},
+		{"repeated want parts bit arrays", wrap(3, append(wrap(1, wrap(2, make([]byte, maxWantPartsElems))), wrap(1, wrap(2, []byte{0}))...)), true},
+		{"malformed want parts elems", wrap(3, wrap(1, wrap(2, []byte{0xff}))), true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			err := check(tc.message)
