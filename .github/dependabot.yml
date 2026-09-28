@@ -25,3 +25,7 @@ updates:
     labels:
       - dependencies
       - automerge
+    ignore:
+      # v1.84.0 is affected by GO-2026-6443. Remove once v1.84.1+ or v1.85.0 is out.
+      - dependency-name: google.golang.org/grpc
+        versions: ["1.84.0"]
