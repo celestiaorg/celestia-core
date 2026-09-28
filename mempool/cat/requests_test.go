@@ -340,6 +340,16 @@ func TestRequestSchedulerClearAllRequestsFromDoesNotClobberAnotherPeer(t *testin
 		// The tx is re-requested from peerB. peerA's slot is still held so its
 		// late response stays recognizable.
 		require.True(t, requests.Add(cbKey, peerB, nil))
+
+		// peerB got the same 10ms response timer as peerA. If this callback
+		// goroutine is descheduled for longer than that, peerB's reservation
+		// expires and the assertions below fail even though the cleanup worked.
+		// Stop it: what is under test is ClearAllRequestsFrom's ownership
+		// check, not peerB's response timeout.
+		requests.mtx.Lock()
+		requests.requestsByPeer[peerB][cbKey].Stop()
+		requests.mtx.Unlock()
+
 		require.Equal(t, peerB, requests.ForTx(cbKey))
 
 		// peerA disconnects while its late-response window is still open.
