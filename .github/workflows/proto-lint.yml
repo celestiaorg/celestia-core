@@ -1,6 +1,10 @@
 name: Protobuf Lint
+# Lints the protobuf definitions and, on pull requests, checks them for
+# breaking changes against the base branch. Add the `buf skip breaking` label
+# to a PR that intentionally breaks the proto API.
 on:
   pull_request:
+    types: [opened, synchronize, reopened, labeled, unlabeled]
     paths:
       - 'proto/**'
   merge_group:
@@ -20,7 +24,15 @@ jobs:
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v7
-      - uses: bufbuild/buf-setup-action@v1.50.0
-      - uses: bufbuild/buf-lint-action@v1
+      - uses: bufbuild/buf-action@85aebf73123b5c15fd5528aaecbf9129cddf7fa7 # v1.6.0
         with:
-          input: 'proto'
+          version: 1.73.0
+          input: proto
+          # buf-action only lints pull requests by default; keep linting pushes.
+          lint: true
+          breaking_against: ${{ github.event.repository.clone_url }}#format=git,commit=${{ github.event.pull_request.base.sha }},subdir=proto
+          # Protos are formatted with clang-format (make proto-format), not buf.
+          format: false
+          push: false
+          archive: false
+          pr_comment: false
