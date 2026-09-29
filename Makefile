@@ -123,7 +123,7 @@ mockery:
 #? check-proto-deps: Check protobuf deps
 check-proto-deps:
 ifeq (,$(shell which protoc-gen-gogofaster))
-	@go install github.com/cosmos/gogoproto/protoc-gen-gogofaster@latest
+	@go install github.com/cosmos/gogoproto/protoc-gen-gogofaster
 endif
 .PHONY: check-proto-deps
 
@@ -265,9 +265,9 @@ lint:
 #	@go run mvdan.cc/gofumpt -l -w ./..
 #.PHONY: lint-format
 
-#? vulncheck: Run latest govulncheck
+#? vulncheck: Run govulncheck
 vulncheck:
-	@go run golang.org/x/vuln/cmd/govulncheck@latest ./...
+	@go run golang.org/x/vuln/cmd/govulncheck@v1.8.0 ./...
 .PHONY: vulncheck
 
 #? lint-typo: Run codespell to check typos
