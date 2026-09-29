@@ -13,6 +13,7 @@ on:
       - "Golang Linter"
       - "Protobuf Lint"
       - "Fuzz Tests"
+      - "Check for Go vulnerabilities"
     types:
       - completed
     branches:
