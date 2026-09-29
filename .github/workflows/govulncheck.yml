@@ -1,15 +1,24 @@
 name: Check for Go vulnerabilities
-# Runs https://pkg.go.dev/golang.org/x/vuln/cmd/govulncheck to proactively
-# check for vulnerabilities in code packages if there were any changes made to
-# any Go code or dependencies.
+# Runs https://pkg.go.dev/golang.org/x/vuln/cmd/govulncheck daily and on every
+# push to main, since new advisories land without any change in this repo.
+# Failures on main are reported to #protocol-ci by notify-protocol-ci.yml.
+#
+# Pull requests only run it when dependencies change, so an advisory with no
+# stable fix yet doesn't turn every unrelated PR red.
 #
 # Run `make vulncheck` from the root of the repo to run this workflow locally.
 on:
+  workflow_dispatch:  # allow running workflow manually
+  schedule:
+    - cron: '0 4 * * *'
   pull_request:
-  merge_group:
+    paths:
+      - go.mod
+      - go.sum
+      - .github/workflows/govulncheck.yml
   push:
     branches:
-      - v0.38.x-celestia
+      - main
 
 permissions:
   contents: read
@@ -17,19 +26,12 @@ permissions:
 jobs:
   govulncheck:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-go@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: "go.mod"
           check-latest: true
-      - uses: technote-space/get-diff-action@v6
-        with:
-          PATTERNS: |
-            **/*.go
-            go.mod
-            go.sum
-            Makefile
       - name: govulncheck
         run: make vulncheck
-        if: "env.GIT_DIFF != ''"
