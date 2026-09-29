@@ -26,6 +26,7 @@ updates:
       - dependencies
       - automerge
     ignore:
-      # v1.84.0 is affected by GO-2026-6443. Remove once v1.84.1+ or v1.85.0 is out.
+      # govulncheck flags v1.84.0 for GO-2026-6443 because the advisory's range covers it,
+      # even though the release contains the fix. Remove once the range is corrected or v1.85.0 ships.
       - dependency-name: google.golang.org/grpc
         versions: ["1.84.0"]
