@@ -4,6 +4,9 @@ name: e2e-manual-multiversion
 on:
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
   e2e-manual-multiversion-test:
     # Run parallel jobs for the listed testnet groups (must match the

@@ -16,6 +16,7 @@ permissions:
 jobs:
   check-mocks-metrics:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-go@v7
@@ -42,6 +43,7 @@ jobs:
 
   check-proto:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
         with:

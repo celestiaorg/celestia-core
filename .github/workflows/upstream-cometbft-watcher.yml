@@ -24,6 +24,7 @@ env:
 jobs:
   ensure-labels:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - name: Ensure labels exist
         env:
@@ -44,6 +45,7 @@ jobs:
   advisories:
     needs: ensure-labels
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - name: File issues for new upstream advisories
         env:
@@ -128,6 +130,7 @@ jobs:
   releases:
     needs: ensure-labels
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - name: File issues for new upstream releases
         env:

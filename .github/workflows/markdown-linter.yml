@@ -24,6 +24,7 @@ jobs:
   build:
     name: Super linter
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - name: Checkout Code
         uses: actions/checkout@v7
