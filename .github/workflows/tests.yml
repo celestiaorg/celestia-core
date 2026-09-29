@@ -5,6 +5,13 @@ on:
   push:
     branches:
       - main
+    # Keep in sync with the get-diff-action PATTERNS below.
+    paths:
+      - "**.go"
+      - go.mod
+      - go.sum
+      - Makefile
+      - .github/workflows/tests.yml
 
 jobs:
   tests:
