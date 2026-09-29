@@ -53,6 +53,38 @@ func (r *requestScheduler) deletePeerRequest(peer uint16, key types.TxKey) {
 	}
 }
 
+// expireRequest drops the tx reservation once the response time has elapsed
+// and runs onTimeout. Split out of the timer callback so a test can drive a
+// timeout synchronously instead of waiting on a real timer.
+func (r *requestScheduler) expireRequest(key types.TxKey, peer uint16, onTimeout func(key types.TxKey, peer uint16)) {
+	r.mtx.Lock()
+	// The request may have been fulfilled by another peer while this callback
+	// was waiting on the lock; if so, skip the timeout logic.
+	if r.requestsByTx[key] != peer {
+		r.mtx.Unlock()
+		return
+	}
+	delete(r.requestsByTx, key)
+	r.mtx.Unlock()
+
+	// trigger callback. Callback can `Add` the tx back to the scheduler
+	if onTimeout != nil {
+		onTimeout(key, peer)
+	}
+
+	// We set another timeout because the peer could still send
+	// a late response after the first timeout and it's important
+	// to recognize that it is a transaction in response to a
+	// request and not a new transaction being broadcasted to the entire
+	// network. This timer cannot be stopped and is used to ensure
+	// garbage collection.
+	time.AfterFunc(r.globalTimeout, func() {
+		r.mtx.Lock()
+		defer r.mtx.Unlock()
+		r.deletePeerRequest(peer, key)
+	})
+}
+
 func (r *requestScheduler) Add(key types.TxKey, peer uint16, onTimeout func(key types.TxKey, peer uint16)) bool {
 	if peer == 0 {
 		return false
@@ -78,32 +110,7 @@ func (r *requestScheduler) Add(key types.TxKey, peer uint16, onTimeout func(key 
 	}
 
 	timer := time.AfterFunc(r.responseTime, func() {
-		r.mtx.Lock()
-		// The request may have been fulfilled by another peer while this callback
-		// was waiting on the lock; if so, skip the timeout logic.
-		if r.requestsByTx[key] != peer {
-			r.mtx.Unlock()
-			return
-		}
-		delete(r.requestsByTx, key)
-		r.mtx.Unlock()
-
-		// trigger callback. Callback can `Add` the tx back to the scheduler
-		if onTimeout != nil {
-			onTimeout(key, peer)
-		}
-
-		// We set another timeout because the peer could still send
-		// a late response after the first timeout and it's important
-		// to recognize that it is a transaction in response to a
-		// request and not a new transaction being broadcasted to the entire
-		// network. This timer cannot be stopped and is used to ensure
-		// garbage collection.
-		time.AfterFunc(r.globalTimeout, func() {
-			r.mtx.Lock()
-			defer r.mtx.Unlock()
-			r.deletePeerRequest(peer, key)
-		})
+		r.expireRequest(key, peer, onTimeout)
 	})
 	if _, ok := r.requestsByPeer[peer]; !ok {
 		r.requestsByPeer[peer] = requestSet{key: timer}

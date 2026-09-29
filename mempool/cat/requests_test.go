@@ -321,44 +321,32 @@ func TestRequestSchedulerCountForPeer(t *testing.T) {
 // clearing a timed-out peer's requests does not clear a reservation that another
 // peer has since taken over.
 func TestRequestSchedulerClearAllRequestsFromDoesNotClobberAnotherPeer(t *testing.T) {
-	var (
-		requests        = newRequestScheduler(10*time.Millisecond, 1*time.Minute)
-		tx              = types.Tx("tx")
-		key             = tx.Key()
-		peerA    uint16 = 1
-		peerB    uint16 = 2
-	)
+	// Long response time: the timeout is driven by calling expireRequest
+	// directly, so no wall-clock timer is involved and nothing can expire
+	// while the assertions run.
+	requests := newRequestScheduler(time.Minute, time.Minute)
 	t.Cleanup(requests.Close)
 
-	// The assertions run inside peerA's timeout callback. It fires on its own
-	// timer while holding no lock, so doing the work here keeps the test from
-	// depending on how quickly the test goroutine gets scheduled afterwards.
-	done := make(chan struct{})
-	require.True(t, requests.Add(key, peerA, func(cbKey types.TxKey, _ uint16) {
-		defer close(done)
+	var (
+		tx           = types.Tx("tx")
+		key          = tx.Key()
+		peerA uint16 = 1
+		peerB uint16 = 2
+	)
 
-		// The tx is re-requested from peerB. peerA's slot is still held so its
-		// late response stays recognizable.
-		require.True(t, requests.Add(cbKey, peerB, nil))
+	require.True(t, requests.Add(key, peerA, nil))
 
-		// peerB got the same 10ms response timer as peerA. If this callback
-		// goroutine is descheduled for longer than that, peerB's reservation
-		// expires and the assertions below fail even though the cleanup worked.
-		// Stop it: what is under test is ClearAllRequestsFrom's ownership
-		// check, not peerB's response timeout.
-		requests.mtx.Lock()
-		requests.requestsByPeer[peerB][cbKey].Stop()
-		requests.mtx.Unlock()
+	// peerA's response window elapses and it disconnects.
+	requests.expireRequest(key, peerA, nil)
 
-		require.Equal(t, peerB, requests.ForTx(cbKey))
+	// The tx is re-requested from peerB. peerA's slot is still held so its
+	// late response stays recognizable.
+	require.True(t, requests.Add(key, peerB, nil))
+	require.Equal(t, peerB, requests.ForTx(key))
 
-		// peerA disconnects while its late-response window is still open.
-		// peerB's in-flight request must survive.
-		requests.ClearAllRequestsFrom(peerA)
+	// peerA's late rollback must not touch peerB's request.
+	requests.ClearAllRequestsFrom(peerA)
 
-		require.Equal(t, peerB, requests.ForTx(cbKey))
-		require.True(t, requests.Has(peerB, cbKey))
-	}))
-
-	<-done
+	require.Equal(t, peerB, requests.ForTx(key))
+	require.True(t, requests.Has(peerB, key))
 }
