@@ -7,6 +7,7 @@ on:
     types: [opened, synchronize, reopened, labeled, unlabeled]
     paths:
       - 'proto/**'
+      - '.github/workflows/proto-lint.yml'
   merge_group:
   push:
     branches:
