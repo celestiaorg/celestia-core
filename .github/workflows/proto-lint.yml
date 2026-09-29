@@ -27,7 +27,7 @@ jobs:
       - uses: actions/checkout@v7
       - uses: bufbuild/buf-action@85aebf73123b5c15fd5528aaecbf9129cddf7fa7 # v1.6.0
         with:
-          # Keep in sync with BUF in the Makefile.
+          # Matches the buf pin #3386 adds to the Makefile; keep the two in sync.
           version: 1.72.0
           input: proto
           # buf-action only lints pull requests by default; keep linting pushes.
