@@ -7,3 +7,6 @@ rules:
   document-start: disable
   line-length: disable
   truthy: disable
+  # Allow the single-space "@<sha> # vX.Y.Z" comments Dependabot writes on pinned actions.
+  comments:
+    min-spaces-from-content: 1
