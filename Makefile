@@ -121,9 +121,10 @@ mockery:
 ###############################################################################
 
 #? check-proto-deps: Check protobuf deps
+# Keep protoc-gen-gogofaster in sync with the gogoproto version in go.mod.
 check-proto-deps:
 ifeq (,$(shell which protoc-gen-gogofaster))
-	@go install github.com/cosmos/gogoproto/protoc-gen-gogofaster
+	@go install github.com/cosmos/gogoproto/protoc-gen-gogofaster@v1.7.2
 endif
 .PHONY: check-proto-deps
 
