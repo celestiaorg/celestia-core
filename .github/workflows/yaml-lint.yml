@@ -1,0 +1,43 @@
+name: YAML Lint
+# Lints YAML files with yamllint and the RPC OpenAPI spec with Spectral.
+# Run locally with:
+#   yamllint -c .github/linters/yaml-lint.yml .
+#   npx @stoplight/spectral-cli lint rpc/openapi/openapi.yaml --ruleset .github/linters/spectral.yml
+on:
+  pull_request:
+    paths:
+      - "**.yml"
+      - "**.yaml"
+  merge_group:
+  push:
+    branches:
+      - main
+    paths:
+      - "**.yml"
+      - "**.yaml"
+
+permissions:
+  contents: read
+
+# Cancel superseded runs when a pull request gets a new push. Other events get
+# a unique group so GitHub never queues or drops their pending runs.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  yamllint:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: yamllint
+        run: pipx run yamllint==1.38.0 -c .github/linters/yaml-lint.yml --format github .
+
+  openapi:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Spectral
+        run: npx --yes @stoplight/spectral-cli@6.16.3 lint rpc/openapi/openapi.yaml --ruleset .github/linters/spectral.yml --fail-severity error

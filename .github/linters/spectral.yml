@@ -1,0 +1,2 @@
+# Spectral ruleset for rpc/openapi/openapi.yaml (the ruleset super-linter used).
+extends: ["spectral:oas"]
