@@ -16,6 +16,7 @@ permissions:
 jobs:
   linear-release:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       # Pinned to a commit SHA: this job holds LINEAR_ACCESS_KEY, so a repointed
       # mutable tag would run third-party code alongside the credential.

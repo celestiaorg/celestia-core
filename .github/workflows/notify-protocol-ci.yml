@@ -29,6 +29,7 @@ jobs:
   notify:
     name: Notify Slack
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     if: ${{ github.event.workflow_run.conclusion == 'failure' }}
     steps:
       - name: Slack Notification
