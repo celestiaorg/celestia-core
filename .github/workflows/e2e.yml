@@ -13,6 +13,11 @@ on:
 permissions:
   contents: read
 
+# Cancel superseded runs when a pull request gets a new push.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   e2e-test:
     runs-on: ubuntu-latest
