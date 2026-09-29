@@ -1,0 +1,31 @@
+name: actionlint
+# Lints GitHub Actions workflows (syntax, expressions, and shellcheck on run:
+# steps). Run locally with:
+#   go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.12
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/**"
+  merge_group:
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/**"
+
+permissions:
+  contents: read
+
+jobs:
+  actionlint:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: "go.mod"
+          cache: false
+      # shellcheck is preinstalled on ubuntu-latest, so run: steps are checked too.
+      - name: actionlint
+        run: go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.12 -color
