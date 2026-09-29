@@ -9,6 +9,8 @@ on:
   workflow_run:
     workflows:
       - "Test"
+      - "Build"
+      - "Go mod tidy"
       - "e2e"
       - "Golang Linter"
       - "Protobuf Lint"
