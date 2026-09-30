@@ -1,0 +1,30 @@
+name: "Copilot Setup Steps"
+
+# Prepares the environment for the Copilot coding agent. GitHub only reads
+# this file from .github/workflows/. Allow testing of the setup steps from the
+# repository's "Actions" tab.
+on: workflow_dispatch
+
+permissions:
+  contents: read
+
+jobs:
+  # The job MUST be called `copilot-setup-steps` or it will not be picked up by Copilot.
+  copilot-setup-steps:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # setup-go caches the module and build caches keyed on go.sum.
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: "go.mod"
+
+      - name: Download Go dependencies
+        run: go mod download
+
+      - name: Verify Go setup
+        run: go version
