@@ -10,6 +10,12 @@ on:
 permissions:
   contents: read
 
+# Cancel superseded runs when a pull request gets a new push. Other events get
+# a unique group so GitHub never queues or drops their pending runs.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   go-mod-tidy:
     runs-on: ubuntu-latest

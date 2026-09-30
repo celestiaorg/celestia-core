@@ -9,6 +9,12 @@ on:
       - v0.38.x-celestia
       - main
 
+# Cancel superseded runs when a pull request gets a new push. Other events get
+# a unique group so GitHub never queues or drops their pending runs.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   tests:
     runs-on: ubuntu-latest
