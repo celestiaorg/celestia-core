@@ -120,6 +120,10 @@ mockery:
 ###                                Protobuf                                 ###
 ###############################################################################
 
+# Pinned so proto-gen is reproducible; buf@latest can require a newer Go
+# than go.mod and break CI, which runs with GOTOOLCHAIN=local.
+BUF := go run github.com/bufbuild/buf/cmd/buf@v1.72.0
+
 #? check-proto-deps: Check protobuf deps
 # Keep protoc-gen-gogofaster in sync with the gogoproto version in go.mod.
 check-proto-deps:
@@ -138,7 +142,7 @@ endif
 #? proto-gen: Generate protobuf files
 proto-gen: check-proto-deps
 	@echo "Generating Protobuf files"
-	@go run github.com/bufbuild/buf/cmd/buf@latest generate
+	@$(BUF) generate
 	@mv ./proto/tendermint/abci/types.pb.go ./abci/types/
 	@cp ./proto/tendermint/rpc/grpc/types.pb.go ./rpc/grpc
 .PHONY: proto-gen
@@ -148,7 +152,7 @@ proto-gen: check-proto-deps
 #? proto-lint: Lint protobuf files
 proto-lint: check-proto-deps
 	@echo "Linting Protobuf files"
-	@go run github.com/bufbuild/buf/cmd/buf@latest lint
+	@$(BUF) lint
 .PHONY: proto-lint
 
 #? proto-format: Format protobuf files
@@ -163,12 +167,12 @@ proto-check-breaking: check-proto-deps
 	@echo "Note: This is only useful if your changes have not yet been committed."
 	@echo "      Otherwise read up on buf's \"breaking\" command usage:"
 	@echo "      https://docs.buf.build/breaking/usage"
-	@go run github.com/bufbuild/buf/cmd/buf@latest breaking --against ".git"
+	@$(BUF) breaking --against ".git"
 .PHONY: proto-check-breaking
 
 #? proto-check-breaking-ci: Check for breaking changes in Protobuf files against CI
 proto-check-breaking-ci:
-	@go run github.com/bufbuild/buf/cmd/buf@latest breaking --against $(HTTPS_GIT)#branch=v0.34.x
+	@$(BUF) breaking --against $(HTTPS_GIT)#branch=v0.34.x
 .PHONY: proto-check-breaking-ci
 
 ###############################################################################
