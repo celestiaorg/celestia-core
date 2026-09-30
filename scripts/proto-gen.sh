@@ -10,10 +10,10 @@ cd "$(git rev-parse --show-toplevel)"
 
 # Run inside Docker to install the correct versions of the required tools
 # without polluting the local system.
-docker run --rm -i -v "$PWD":/w --workdir=/w golang:1.25-alpine sh <<"EOF"
+docker run --rm -i -v "$PWD":/w --workdir=/w golang:1.26-alpine sh <<"EOF"
 apk add git make
 
-go install github.com/bufbuild/buf/cmd/buf
-go install github.com/cosmos/gogoproto/protoc-gen-gogofaster@latest
+# No buf install: make proto-gen runs buf via `go run` at the version pinned in the Makefile.
+go install github.com/cosmos/gogoproto/protoc-gen-gogofaster@v1.7.2
 make proto-gen
 EOF
