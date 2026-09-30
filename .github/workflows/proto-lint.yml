@@ -11,7 +11,6 @@ on:
   merge_group:
   push:
     branches:
-      - v0.38.x-celestia
       - main
     paths:
       - 'proto/**'

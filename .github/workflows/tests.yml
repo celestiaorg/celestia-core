@@ -3,11 +3,15 @@ on:
   pull_request:
   merge_group:
   push:
+    branches:
+      - main
+    # Keep in sync with the get-diff-action PATTERNS below.
     paths:
       - "**.go"
-    branches:
-      - v0.38.x-celestia
-      - main
+      - go.mod
+      - go.sum
+      - Makefile
+      - .github/workflows/tests.yml
 
 # Cancel superseded runs when a pull request gets a new push. Other events get
 # a unique group so GitHub never queues or drops their pending runs.
@@ -35,7 +39,6 @@ jobs:
         with:
           PATTERNS: |
             **/**.go
-            "!test/"
             go.mod
             go.sum
             Makefile
