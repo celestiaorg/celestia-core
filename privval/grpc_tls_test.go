@@ -123,6 +123,7 @@ func startTLSServer(t *testing.T, creds credentials.TransportCredentials) string
 	srv := grpc.NewServer(grpc.Creds(creds))
 	privvalproto.RegisterPrivValidatorAPIServer(srv, privval.NewPrivValidatorGRPCServer(
 		types.NewMockPV(),
+		testChainID,
 		log.NewNopLogger(),
 	))
 	go func() { _ = srv.Serve(lis) }()
