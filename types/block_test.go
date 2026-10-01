@@ -18,7 +18,9 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/cometbft/cometbft/crypto"
+	"github.com/cometbft/cometbft/crypto/ed25519"
 	"github.com/cometbft/cometbft/crypto/merkle"
+	"github.com/cometbft/cometbft/crypto/mldsa65"
 	"github.com/cometbft/cometbft/crypto/tmhash"
 	"github.com/cometbft/cometbft/libs/bits"
 	"github.com/cometbft/cometbft/libs/bytes"
@@ -255,6 +257,9 @@ func TestCommitValidateBasic(t *testing.T) {
 		{"Invalid BlockID part set header", func(com *Commit) {
 			com.BlockID.PartSetHeader.Total = MaxBlockPartsCount + 1
 		}, true},
+		{"Commit sig with ML-DSA-65 sized signature", func(com *Commit) {
+			com.Signatures[0].Signature = make([]byte, mldsa65.SignatureSize)
+		}, false},
 	}
 	for _, tc := range testCases {
 		tc := tc
@@ -275,7 +280,9 @@ func TestMaxCommitBytes(t *testing.T) {
 		BlockIDFlag:      BlockIDFlagNil,
 		ValidatorAddress: crypto.AddressHash([]byte("validator_address")),
 		Timestamp:        timestamp,
-		Signature:        crypto.CRandBytes(MaxSignatureSize),
+		// MaxCommitSigBytes is bounded by ed25519, the only validator key type
+		// on Celestia, not by MaxSignatureSize. See the comment on MaxCommitSigBytes.
+		Signature: crypto.CRandBytes(ed25519.SignatureSize),
 	}
 
 	pbSig := cs.ToProto()
