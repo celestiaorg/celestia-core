@@ -1159,3 +1159,34 @@ func TestBlockStore_CompactRange_AdvancesMarker(t *testing.T) {
 	require.Equal(t, []byte("H:500"), ranges[0][0])
 	require.Equal(t, []byte("H:900"), ranges[0][1])
 }
+
+// TestSaveTxInfoUsesCachedHashes checks that SaveTxInfo indexes by the hashes
+// the block already carries instead of recomputing them, and computes them
+// itself when the block carries none.
+func TestSaveTxInfoUsesCachedHashes(t *testing.T) {
+	state, blockStore, cleanup := makeStateAndBlockStore()
+	defer cleanup()
+
+	block := makeUniqueBlock(1, state, new(types.Commit))
+	result := &abci.ExecTxResult{Code: 0, GasWanted: 1, GasUsed: 1}
+
+	// A block that arrived without hashes: SaveTxInfo computes them.
+	require.Empty(t, block.CachedHashes())
+	require.NoError(t, blockStore.SaveTxInfo(block, []*abci.ExecTxResult{result}))
+	require.Len(t, block.CachedHashes(), len(block.Txs))
+	require.NotNil(t, blockStore.LoadTxInfo(block.Txs[0].Hash()))
+
+	// A block carrying hashes: SaveTxInfo reuses them as given.
+	other := makeUniqueBlock(2, state, new(types.Commit))
+	marker := []byte("cached-hash-marker-cached-hash--")
+	other.SetCachedHashes([][]byte{marker})
+	require.NoError(t, blockStore.SaveTxInfo(other, []*abci.ExecTxResult{result}))
+	require.NotNil(t, blockStore.LoadTxInfo(marker))
+	require.Nil(t, blockStore.LoadTxInfo(other.Txs[0].Hash()))
+
+	// A stale cache of the wrong length is replaced, not trusted.
+	third := makeUniqueBlock(3, state, new(types.Commit))
+	third.SetCachedHashes([][]byte{marker, marker})
+	require.NoError(t, blockStore.SaveTxInfo(third, []*abci.ExecTxResult{result}))
+	require.NotNil(t, blockStore.LoadTxInfo(third.Txs[0].Hash()))
+}

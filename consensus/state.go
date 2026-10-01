@@ -1413,11 +1413,7 @@ func (cs *State) defaultDecideProposal(height int64, round int32) {
 		block = cs.rs.ValidBlock
 
 		// set the recovery related fields if using an existing block
-		hashes := make([][]byte, len(block.Txs))
-		for i := 0; i < len(block.Txs); i++ {
-			hashes[i] = block.Txs[i].Hash()
-		}
-		block.SetCachedHashes(hashes)
+		block.FillCachedHashes()
 
 		parts, err := block.MakePartSet(types.BlockPartSizeBytes)
 		if err != nil {
@@ -2394,6 +2390,11 @@ func (cs *State) addProposalBlockPart(msg *BlockPartMessage, peerID p2p.ID) (add
 			)
 			return added, err
 		}
+
+		// Hash the transactions now, while the block is being assembled and
+		// long before the commit needs them to index the results, so that
+		// pass is not between FinalizeBlock and the commit.
+		block.FillCachedHashes()
 
 		cs.rs.ProposalBlock = block
 

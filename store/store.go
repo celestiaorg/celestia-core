@@ -932,11 +932,22 @@ func (bs *BlockStore) SaveTxInfo(block *types.Block, execTxRes []*abci.ExecTxRes
 		return errors.New("tx execution results length mismatch with block txs length")
 	}
 
+	// The block usually arrives with its transaction hashes already computed:
+	// the proposer hashes them when it builds the block and everyone else when
+	// the block is assembled from its parts. Recomputing them here would hash
+	// the whole block between FinalizeBlock and the commit. Only a block that
+	// reached the store another way, such as blocksync, pays for them.
+	hashes := block.CachedHashes()
+	if len(hashes) != len(block.Txs) {
+		block.FillCachedHashes()
+		hashes = block.CachedHashes()
+	}
+
 	// Create a new batch
 	batch := bs.db.NewBatch()
 
 	// Batch and save txs from the block
-	for i, tx := range block.Txs {
+	for i := range block.Txs {
 		result := execTxRes[i]
 		txInfo := cmtstore.TxInfo{
 			Height: block.Height,
@@ -956,7 +967,7 @@ func (bs *BlockStore) SaveTxInfo(block *types.Block, execTxRes []*abci.ExecTxRes
 		if err != nil {
 			return fmt.Errorf("unable to marshal tx: %w", err)
 		}
-		if err := batch.Set(calcTxHashKey(tx.Hash()), txInfoBytes); err != nil {
+		if err := batch.Set(calcTxHashKey(hashes[i]), txInfoBytes); err != nil {
 			return err
 		}
 	}

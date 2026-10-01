@@ -6,8 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"path/filepath"
-	"runtime"
-	"sync"
 	"time"
 
 	"github.com/cometbft/cometbft/libs/trace"
@@ -221,26 +219,9 @@ func (blockExec *BlockExecutor) CreateProposalBlock(
 		return nil, nil, err
 	}
 
-	// get the cached hashes
-	// TODO: make sure that the hashes are correct here
-	// via also removing hashes that the application removed!
-	hashes := make([][]byte, len(newData.Txs))
-	numWorkers := min(runtime.NumCPU()-1, len(newData.Txs))
-	workers := make(chan struct{}, numWorkers)
-	var wg sync.WaitGroup
-	for i, tx := range newData.Txs {
-		workers <- struct{}{}
-		wg.Add(1)
-		go func() {
-			defer func() {
-				<-workers
-				wg.Done()
-			}()
-			hashes[i] = tx.Hash()
-		}()
-	}
-	wg.Wait()
-	block.SetCachedHashes(hashes)
+	// Hash the transactions once, here, so that neither the compact block nor
+	// the tx index has to do it again later.
+	block.FillCachedHashes()
 
 	return block, partset, nil
 }

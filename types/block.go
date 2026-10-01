@@ -15,6 +15,7 @@ import (
 	"github.com/cometbft/cometbft/libs/bits"
 	cmtbytes "github.com/cometbft/cometbft/libs/bytes"
 	cmtmath "github.com/cometbft/cometbft/libs/math"
+	"github.com/cometbft/cometbft/libs/parallel"
 	cmtsync "github.com/cometbft/cometbft/libs/sync"
 	cmtproto "github.com/cometbft/cometbft/proto/tendermint/types"
 	cmtversion "github.com/cometbft/cometbft/proto/tendermint/version"
@@ -264,6 +265,22 @@ func (b *Block) CachedHashes() [][]byte {
 // validity rule or encoding of the block.
 func (b *Block) SetCachedHashes(hashes [][]byte) {
 	b.cachedHashes = hashes
+}
+
+// txHashGrain is the smallest number of transactions worth handing to a
+// goroutine when hashing a block. One hash covers a whole transaction, which
+// can be megabytes, so one each is right.
+const txHashGrain = 1
+
+// FillCachedHashes hashes every transaction in the block across the available
+// cores and caches the result, so neither the compact block nor the tx index
+// has to hash them again.
+func (b *Block) FillCachedHashes() {
+	hashes := make([][]byte, len(b.Txs))
+	parallel.For(len(b.Txs), txHashGrain, func(i int) {
+		hashes[i] = b.Txs[i].Hash()
+	})
+	b.SetCachedHashes(hashes)
 }
 
 // FromProto sets a protobuf Block to the given pointer.

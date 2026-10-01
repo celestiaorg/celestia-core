@@ -1021,3 +1021,21 @@ func TestExtendedCommitFromProtoRejectsTooManySignatures(t *testing.T) {
 	_, err := ExtendedCommitFromProto(ecp)
 	require.ErrorContains(t, err, "too many signatures")
 }
+
+func TestFillCachedHashes(t *testing.T) {
+	txs := makeTxs(37, 64)
+	block := MakeBlock(1, MakeData(txs), new(Commit), nil)
+	require.Empty(t, block.CachedHashes())
+
+	block.FillCachedHashes()
+
+	hashes := block.CachedHashes()
+	require.Len(t, hashes, len(txs))
+	for i, tx := range txs {
+		require.Equal(t, tx.Hash(), hashes[i])
+	}
+
+	empty := MakeBlock(1, MakeData(nil), new(Commit), nil)
+	empty.FillCachedHashes()
+	require.Empty(t, empty.CachedHashes())
+}
