@@ -123,6 +123,22 @@ func (cps *CombinedPartSet) CanDecode() bool {
 		!cps.catchup
 }
 
+// Decode rebuilds the whole original and parity sets from whatever parts are
+// held. The propagation reactor no longer uses it, see RecoverOriginals; it
+// stays for callers that want a full decode, such as benchmarks.
+func (cps *CombinedPartSet) Decode() error {
+	cps.mtx.Lock()
+	defer cps.mtx.Unlock()
+	ops, eps, err := types.Decode(cps.original, cps.parity, int(cps.lastLen))
+	if err != nil {
+		return err
+	}
+	cps.totalMap.Fill()
+	cps.original = ops
+	cps.parity = eps
+	return nil
+}
+
 // RecoverOriginals reconstructs only the original parts that are still
 // missing. Parity parts are never generated: completing the original set is
 // what consensus needs, and a node must not advertise parity it does not hold.
