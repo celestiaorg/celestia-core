@@ -2,8 +2,10 @@ package node
 
 import (
 	"context"
+	"net"
 	"os"
 	"path/filepath"
+	"syscall"
 	"testing"
 	"time"
 
@@ -40,6 +42,36 @@ func TestNodePrivValidatorGRPCPartialTLS(t *testing.T) {
 		_ = n.Stop()
 	}
 	require.ErrorContains(t, err, "must be set together")
+}
+
+// TestNodePrivValidatorGRPCStoppedOnFailedStart checks that the signer is
+// shut down when a later startup step fails, since a failed Start never
+// reaches OnStop.
+func TestNodePrivValidatorGRPCStoppedOnFailedStart(t *testing.T) {
+	config := test.ResetTestRoot("node_privval_grpc_failed_start_test")
+	defer os.RemoveAll(config.RootDir)
+	testFreeConfig(t, config)
+
+	// Occupy the RPC port so Start fails after the signer is up.
+	taken, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	defer taken.Close()
+	config.RPC.ListenAddress = "tcp://" + taken.Addr().String()
+
+	addr := testFreeAddr(t)
+	config.PrivValidatorGRPCListenAddr = addr
+	config.PrivValidatorGRPCAllowInsecure = true
+
+	n, err := DefaultNewNode(config, log.TestingLogger())
+	require.NoError(t, err)
+	err = n.Start()
+	if err == nil {
+		_ = n.Stop()
+	}
+	require.True(t, isAddrInUseErr(err), err)
+
+	_, err = net.DialTimeout("tcp", addr, time.Second)
+	require.ErrorIs(t, err, syscall.ECONNREFUSED)
 }
 
 // TestNodePrivValidatorGRPCMissingTLSFile checks that Start fails when all

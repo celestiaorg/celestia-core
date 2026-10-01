@@ -613,7 +613,7 @@ func NewNodeWithContext(ctx context.Context,
 }
 
 // OnStart starts the Node. It implements service.Service.
-func (n *Node) OnStart() error {
+func (n *Node) OnStart() (err error) {
 	now := cmttime.Now()
 	genTime := n.genesisDoc.GenesisTime
 	if genTime.After(now) {
@@ -627,6 +627,14 @@ func (n *Node) OnStart() error {
 		if err := n.startPrivValGRPCServer(); err != nil {
 			return err
 		}
+		// A failed start never reaches OnStop, so don't leave the signer bound
+		// in a node that never came up.
+		defer func() {
+			if err != nil {
+				n.privvalGRPCServer.Stop()
+				n.privvalGRPCServer = nil
+			}
+		}()
 	}
 
 	// run pprof server if it is enabled
