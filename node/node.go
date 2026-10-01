@@ -621,6 +621,17 @@ func (n *Node) OnStart() error {
 		time.Sleep(genTime.Sub(now))
 	}
 
+	// Reject a misconfigured privval gRPC signer before any listener opens, so a
+	// failed start never leaves the RPC or signer endpoints reachable.
+	if n.config.PrivValidatorGRPCListenAddr != "" {
+		if err := n.config.ValidatePrivValTLSComplete(); err != nil {
+			return err
+		}
+		if err := n.config.ValidatePrivValidatorGRPCExposure(); err != nil {
+			return err
+		}
+	}
+
 	// run pprof server if it is enabled
 	if n.config.RPC.IsPprofEnabled() {
 		n.pprofSrv = n.startPprofServer()
@@ -643,15 +654,10 @@ func (n *Node) OnStart() error {
 
 	// Start the gRPC PrivValidator server if configured.
 	if n.config.PrivValidatorGRPCListenAddr != "" {
-		// Validate exposure and TLS material before opening the port so the
-		// endpoint is never reachable in a misconfigured state.
-		if err := n.config.ValidatePrivValidatorGRPCExposure(); err != nil {
-			return err
-		}
 		addr := n.config.PrivValidatorGRPCListenAddr
 		var serverOpts []grpc.ServerOption
 		switch {
-		case n.config.PrivValidatorGRPCCert != "":
+		case n.config.PrivValTLSEnabled():
 			creds, err := privval.GRPCServerCredentials(
 				n.config.PrivValidatorGRPCCertFile(),
 				n.config.PrivValidatorGRPCKeyFile(),

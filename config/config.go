@@ -397,19 +397,31 @@ func (cfg BaseConfig) ValidateBasic() error {
 		return errors.New("unknown log_format (must be 'plain' or 'json')")
 	}
 
-	if cfg.privValidatorGRPCTLSSet() && !cfg.privValidatorGRPCTLSComplete() {
-		return errors.New("priv_validator_grpc_cert_file, priv_validator_grpc_key_file and priv_validator_grpc_client_ca_file must be set together")
+	if err := cfg.ValidatePrivValTLSComplete(); err != nil {
+		return err
 	}
 	return cfg.ValidatePrivValidatorGRPCExposure()
 }
 
-// privValidatorGRPCTLSSet reports whether any PrivValidator gRPC TLS file is configured.
-func (cfg BaseConfig) privValidatorGRPCTLSSet() bool {
-	return cfg.PrivValidatorGRPCCert != "" || cfg.PrivValidatorGRPCKey != "" || cfg.PrivValidatorGRPCClientCA != ""
+// ValidatePrivValTLSComplete refuses a partial PrivValidator gRPC TLS
+// configuration. It applies regardless of the listen address or
+// priv_validator_grpc_allow_insecure, so a half-configured TLS setup never
+// silently falls back to plaintext.
+func (cfg BaseConfig) ValidatePrivValTLSComplete() error {
+	if cfg.privValTLSPartial() {
+		return errors.New("priv_validator_grpc_cert_file, priv_validator_grpc_key_file and priv_validator_grpc_client_ca_file must be set together")
+	}
+	return nil
 }
 
-// privValidatorGRPCTLSComplete reports whether all PrivValidator gRPC TLS files are configured.
-func (cfg BaseConfig) privValidatorGRPCTLSComplete() bool {
+// privValTLSPartial reports whether some but not all PrivValidator gRPC TLS files are configured.
+func (cfg BaseConfig) privValTLSPartial() bool {
+	anySet := cfg.PrivValidatorGRPCCert != "" || cfg.PrivValidatorGRPCKey != "" || cfg.PrivValidatorGRPCClientCA != ""
+	return anySet && !cfg.PrivValTLSEnabled()
+}
+
+// PrivValTLSEnabled reports whether all PrivValidator gRPC TLS files are configured.
+func (cfg BaseConfig) PrivValTLSEnabled() bool {
 	return cfg.PrivValidatorGRPCCert != "" && cfg.PrivValidatorGRPCKey != "" && cfg.PrivValidatorGRPCClientCA != ""
 }
 
@@ -426,7 +438,7 @@ func (cfg BaseConfig) ValidatePrivValidatorGRPCExposure() error {
 	if BindsToLocalhostOnly(cfg.PrivValidatorGRPCListenAddr) {
 		return nil
 	}
-	if !cfg.privValidatorGRPCTLSComplete() {
+	if !cfg.PrivValTLSEnabled() {
 		msg := fmt.Sprintf("priv_validator_grpc_laddr %q is reachable beyond localhost without mutual TLS: "+
 			"anyone who can reach this endpoint can request signatures from the validator key. "+
 			"Set priv_validator_grpc_cert_file, priv_validator_grpc_key_file and priv_validator_grpc_client_ca_file (see %s), "+

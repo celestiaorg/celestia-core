@@ -89,6 +89,44 @@ func TestBaseConfigValidateBasicPrivValGRPCTLS(t *testing.T) {
 	assert.ErrorContains(t, cfg.ValidateBasic(), "must be set together")
 }
 
+func TestValidatePrivValTLSComplete(t *testing.T) {
+	partial := []struct{ cert, key, ca string }{
+		{"server.crt", "", ""},
+		{"", "server.key", ""},
+		{"", "", "ca.crt"},
+		{"server.crt", "server.key", ""},
+		{"server.crt", "", "ca.crt"},
+		{"", "server.key", "ca.crt"},
+	}
+
+	// Partial TLS is refused regardless of address or the insecure override.
+	for _, addr := range []string{"127.0.0.1:26669", "0.0.0.0:26669"} {
+		for _, allowInsecure := range []bool{false, true} {
+			for _, p := range partial {
+				cfg := config.TestBaseConfig()
+				cfg.PrivValidatorGRPCListenAddr = addr
+				cfg.PrivValidatorGRPCAllowInsecure = allowInsecure
+				cfg.PrivValidatorGRPCCert = p.cert
+				cfg.PrivValidatorGRPCKey = p.key
+				cfg.PrivValidatorGRPCClientCA = p.ca
+				assert.ErrorContains(t, cfg.ValidatePrivValTLSComplete(), "must be set together", addr, allowInsecure, p)
+				assert.False(t, cfg.PrivValTLSEnabled())
+			}
+		}
+	}
+
+	// No TLS fields and all TLS fields are both accepted.
+	cfg := config.TestBaseConfig()
+	assert.NoError(t, cfg.ValidatePrivValTLSComplete())
+	assert.False(t, cfg.PrivValTLSEnabled())
+
+	cfg.PrivValidatorGRPCCert = "server.crt"
+	cfg.PrivValidatorGRPCKey = "server.key"
+	cfg.PrivValidatorGRPCClientCA = "ca.crt"
+	assert.NoError(t, cfg.ValidatePrivValTLSComplete())
+	assert.True(t, cfg.PrivValTLSEnabled())
+}
+
 func TestValidatePrivValidatorGRPCExposure(t *testing.T) {
 	loopback := []string{"127.0.0.1:26669", "[::1]:26669"}
 	// Hostnames, including localhost, are resolved by net.Listen and may bind beyond loopback.
