@@ -389,6 +389,10 @@ func (blockProp *Reactor) handleWants(peer p2p.ID, wants *proptypes.WantParts) {
 		return
 	}
 
+	p.serveMtx.Lock()
+	defer p.serveMtx.Unlock()
+	p.Initialize(height, round, int(parts.Total()))
+
 	// if we have the parts, send them to the peer.
 	wc := wants.Parts.Copy()
 	canSend := parts.BitArray().And(wc)
@@ -424,6 +428,7 @@ func (blockProp *Reactor) handleWants(peer p2p.ID, wants *proptypes.WantParts) {
 			continue
 		}
 		p.DecreaseRemainingRequests(height, round, 1)
+		_ = p.SetWant(height, round, partIndex, false)
 		// p.SetHave(height, round, int(partIndex))
 		schema.WriteBlockPart(blockProp.traceClient, height, round, part.Index, wants.Prove, string(peer), schema.Upload)
 	}
@@ -532,6 +537,7 @@ func (blockProp *Reactor) handleRecoveryPart(peer p2p.ID, part *proptypes.Recove
 	// nothing to reconstruct, so the erasure decode is skipped entirely.
 	if parts.IsComplete() {
 		blockProp.broadcastLocalHaves(peer, cb, parts)
+		blockProp.generateParity(cb, parts)
 		return
 	}
 
@@ -609,6 +615,7 @@ func (blockProp *Reactor) handleRecoveryPart(peer p2p.ID, part *proptypes.Recove
 			blockProp.clearWants(msg, p.GetProof())
 		}
 	}(part.Height, part.Round, recovered)
+	blockProp.generateParity(cb, parts)
 }
 
 // broadcastLocalHaves advertises exactly the parts that exist locally. Nodes
@@ -638,50 +645,44 @@ func (blockProp *Reactor) broadcastLocalHaves(from p2p.ID, cb *proptypes.Compact
 // so, it attempts to send them that part.
 func (blockProp *Reactor) clearWants(part *proptypes.RecoveryPart, proof merkle.Proof) {
 	for _, peer := range blockProp.getPeers() {
-		if peer.WantsPart(part.Height, part.Round, part.Index) {
-			if peer.GetRemainingRequests(part.Height, part.Round) <= 0 {
-				continue
-			}
-			e := p2p.Envelope{
-				ChannelID: DataChannel,
-				Message: &propproto.RecoveryPart{
-					Height: part.Height,
-					Round:  part.Round,
-					Index:  part.Index,
-					Data:   part.Data,
-					Proof: crypto.Proof{
-						Total:    proof.Total,
-						Index:    proof.Index,
-						LeafHash: proof.LeafHash,
-						Aunts:    proof.Aunts,
-					},
-				},
-			}
-
-			if !peer.peer.TrySend(e) {
-				blockProp.Logger.Error("failed to send part", "peer", peer.peer.ID(), "height", part.Height, "round", part.Round, "part", part.Index)
-				continue
-			}
-
-			err := peer.SetHave(part.Height, part.Round, int(part.Index))
-			if err != nil {
-				continue
-			}
-
-			err = peer.SetWant(part.Height, part.Round, int(part.Index), false)
-			if err != nil {
-				continue
-			}
-
-			catchup := false
-			blockProp.pmtx.Lock()
-			if part.Height < blockProp.height {
-				catchup = true
-			}
-
-			blockProp.pmtx.Unlock()
-			peer.DecreaseRemainingRequests(part.Height, part.Round, 1)
-			schema.WriteBlockPart(blockProp.traceClient, part.Height, part.Round, part.Index, catchup, string(peer.peer.ID()), schema.Upload)
-		}
+		blockProp.clearPeerWants(peer, part, proof)
 	}
+}
+
+func (blockProp *Reactor) clearPeerWants(peer *PeerState, part *proptypes.RecoveryPart, proof merkle.Proof) {
+	peer.serveMtx.Lock()
+	defer peer.serveMtx.Unlock()
+	if !peer.WantsPart(part.Height, part.Round, part.Index) || peer.GetRemainingRequests(part.Height, part.Round) <= 0 {
+		return
+	}
+	e := p2p.Envelope{
+		ChannelID: DataChannel,
+		Message: &propproto.RecoveryPart{
+			Height: part.Height,
+			Round:  part.Round,
+			Index:  part.Index,
+			Data:   part.Data,
+			Proof: crypto.Proof{
+				Total:    proof.Total,
+				Index:    proof.Index,
+				LeafHash: proof.LeafHash,
+				Aunts:    proof.Aunts,
+			},
+		},
+	}
+	if !peer.peer.TrySend(e) {
+		blockProp.Logger.Error("failed to send part", "peer", peer.peer.ID(), "height", part.Height, "round", part.Round, "part", part.Index)
+		return
+	}
+	if err := peer.SetHave(part.Height, part.Round, int(part.Index)); err != nil {
+		return
+	}
+	if err := peer.SetWant(part.Height, part.Round, int(part.Index), false); err != nil {
+		return
+	}
+	blockProp.pmtx.Lock()
+	catchup := part.Height < blockProp.height
+	blockProp.pmtx.Unlock()
+	peer.DecreaseRemainingRequests(part.Height, part.Round, 1)
+	schema.WriteBlockPart(blockProp.traceClient, part.Height, part.Round, part.Index, catchup, string(peer.peer.ID()), schema.Upload)
 }

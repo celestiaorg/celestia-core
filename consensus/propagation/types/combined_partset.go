@@ -1,6 +1,8 @@
 package types
 
 import (
+	"bytes"
+	"errors"
 	"fmt"
 	"math"
 	"sync"
@@ -78,6 +80,21 @@ func (cps *CombinedPartSet) Parity() *types.PartSet {
 	cps.mtx.Lock()
 	defer cps.mtx.Unlock()
 	return cps.parity
+}
+
+// SetParity installs a complete parity set matching the compact block's commitment.
+func (cps *CombinedPartSet) SetParity(parity *types.PartSet) error {
+	cps.mtx.Lock()
+	defer cps.mtx.Unlock()
+	if !cps.original.IsComplete() || parity == nil || !parity.IsComplete() {
+		return errors.New("original and parity parts must be complete")
+	}
+	if parity.Total() != cps.original.Total() || !bytes.Equal(parity.Hash(), cps.parity.Hash()) {
+		return errors.New("generated parity does not match its commitment")
+	}
+	cps.parity = parity
+	cps.totalMap.Fill()
+	return nil
 }
 
 func (cps *CombinedPartSet) BitArray() *bits.BitArray {

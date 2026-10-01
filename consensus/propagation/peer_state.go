@@ -32,6 +32,8 @@ type PeerState struct {
 	peer   p2p.Peer
 
 	mtx *sync.RWMutex
+	// serveMtx serializes request registration and delivery for this peer.
+	serveMtx sync.Mutex
 	// state organized the haves and wants for each data is indexed by height
 	// and round.
 	state map[int64]map[int32]*partState

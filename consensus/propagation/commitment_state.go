@@ -1,6 +1,7 @@
 package propagation
 
 import (
+	stdsync "sync"
 	"sync/atomic"
 
 	proptypes "github.com/cometbft/cometbft/consensus/propagation/types"
@@ -15,6 +16,7 @@ type proposalData struct {
 	block        *proptypes.CombinedPartSet
 	maxRequests  *bits.BitArray
 	catchup      bool
+	parityOnce   stdsync.Once
 }
 
 type ProposalCache struct {

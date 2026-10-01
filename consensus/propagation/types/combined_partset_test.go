@@ -150,3 +150,27 @@ func TestRecoverOriginals_WrongLastLenAddsNothing(t *testing.T) {
 	assert.False(t, cps.Original().HasPart(0))
 	assert.Equal(t, []int{1, 2, 4, 5}, cps.BitArray().GetTrueIndices())
 }
+
+func TestSetParityValidatesCommitment(t *testing.T) {
+	cps, ops, eps, proofs := newTestCombinedPartSet(t, 3*int(types.BlockPartSizeBytes)+1001)
+	require.Error(t, cps.SetParity(eps), "incomplete originals")
+	for i := uint32(0); i < ops.Total(); i++ {
+		addTestPart(t, cps, ops, i, i, proofs)
+	}
+	addTestPart(t, cps, eps, 0, ops.Total(), proofs)
+	previous := cps.Parity()
+	indices := cps.BitArray().GetTrueIndices()
+
+	wrongRoot, err := types.NewPartSetFromData(cmtrand.Bytes(int(eps.Total()*types.BlockPartSizeBytes)), types.BlockPartSizeBytes)
+	require.NoError(t, err)
+	wrongTotal, err := types.NewPartSetFromData(cmtrand.Bytes(int(types.BlockPartSizeBytes)), types.BlockPartSizeBytes)
+	require.NoError(t, err)
+	for _, invalid := range []*types.PartSet{nil, types.NewPartSetFromHeader(eps.Header(), types.BlockPartSizeBytes), wrongRoot, wrongTotal} {
+		require.Error(t, cps.SetParity(invalid))
+		require.Same(t, previous, cps.Parity())
+		require.Equal(t, indices, cps.BitArray().GetTrueIndices())
+	}
+	require.NoError(t, cps.SetParity(eps))
+	require.Same(t, eps, cps.Parity())
+	require.True(t, cps.BitArray().IsFull())
+}
