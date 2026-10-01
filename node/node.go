@@ -621,13 +621,10 @@ func (n *Node) OnStart() error {
 		time.Sleep(genTime.Sub(now))
 	}
 
-	// Reject a misconfigured privval gRPC signer before any listener opens, so a
-	// failed start never leaves the RPC or signer endpoints reachable.
+	// Start the privval gRPC signer first so a misconfiguration fails before
+	// any other listener opens.
 	if n.config.PrivValidatorGRPCListenAddr != "" {
-		if err := n.config.ValidatePrivValTLSComplete(); err != nil {
-			return err
-		}
-		if err := n.config.ValidatePrivValidatorGRPCExposure(); err != nil {
+		if err := n.startPrivValGRPCServer(); err != nil {
 			return err
 		}
 	}
@@ -650,51 +647,6 @@ func (n *Node) OnStart() error {
 			return err
 		}
 		n.rpcListeners = listeners
-	}
-
-	// Start the gRPC PrivValidator server if configured.
-	if n.config.PrivValidatorGRPCListenAddr != "" {
-		addr := n.config.PrivValidatorGRPCListenAddr
-		var serverOpts []grpc.ServerOption
-		switch {
-		case n.config.PrivValTLSEnabled():
-			creds, err := privval.GRPCServerCredentials(
-				n.config.PrivValidatorGRPCCertFile(),
-				n.config.PrivValidatorGRPCKeyFile(),
-				n.config.PrivValidatorGRPCClientCAFile(),
-			)
-			if err != nil {
-				return fmt.Errorf("failed to load privval gRPC TLS credentials (see %s for the recommended way to generate certificates): %w",
-					cfg.PrivValGRPCTLSDocs, err)
-			}
-			serverOpts = append(serverOpts, grpc.Creds(creds))
-		case cfg.BindsToLocalhostOnly(addr):
-			n.Logger.Info("privval gRPC server running without TLS on loopback only", "addr", addr)
-		default:
-			n.Logger.Error("privval gRPC server is reachable beyond localhost without TLS because priv_validator_grpc_allow_insecure is set; "+
-				"anyone who can reach this endpoint can request signatures from the validator key",
-				"addr", addr)
-		}
-		// Cap concurrent connections and bound the handshake so stalled
-		// unauthenticated peers can't exhaust the process's file descriptors.
-		serverOpts = append(serverOpts, grpc.ConnectionTimeout(privval.GRPCConnectionTimeout))
-		lis, err := net.Listen("tcp", addr)
-		if err != nil {
-			return fmt.Errorf("failed to listen for privval gRPC: %w", err)
-		}
-		grpcServer := grpc.NewServer(serverOpts...)
-		privvalproto.RegisterPrivValidatorAPIServer(grpcServer, privval.NewPrivValidatorGRPCServer(
-			n.privValidator,
-			n.genesisDoc.ChainID,
-			n.Logger.With("module", "privval-grpc"),
-		))
-		n.privvalGRPCServer = grpcServer
-		go func() {
-			if err := grpcServer.Serve(privval.LimitGRPCListener(lis)); err != nil {
-				n.Logger.Error("privval gRPC server error", "err", err)
-			}
-		}()
-		n.Logger.Info("Started privval gRPC server", "addr", addr)
 	}
 
 	if n.config.Instrumentation.PyroscopeURL != "" {
@@ -745,6 +697,60 @@ func (n *Node) OnStart() error {
 		}
 	}
 
+	return nil
+}
+
+// startPrivValGRPCServer validates the privval gRPC signer config, loads TLS
+// credentials when configured, and serves the signer.
+func (n *Node) startPrivValGRPCServer() error {
+	addr := n.config.PrivValidatorGRPCListenAddr
+	if err := n.config.ValidatePrivValTLSComplete(); err != nil {
+		return err
+	}
+	if err := n.config.ValidatePrivValidatorGRPCExposure(); err != nil {
+		return err
+	}
+
+	// Cap concurrent connections and bound the handshake so stalled
+	// unauthenticated peers can't exhaust the process's file descriptors.
+	opts := []grpc.ServerOption{grpc.ConnectionTimeout(privval.GRPCConnectionTimeout)}
+	switch {
+	case n.config.PrivValTLSEnabled():
+		creds, err := privval.GRPCServerCredentials(
+			n.config.PrivValidatorGRPCCertFile(),
+			n.config.PrivValidatorGRPCKeyFile(),
+			n.config.PrivValidatorGRPCClientCAFile(),
+		)
+		if err != nil {
+			return fmt.Errorf("failed to load privval gRPC TLS credentials (see %s for the recommended way to generate certificates): %w",
+				cfg.PrivValGRPCTLSDocs, err)
+		}
+		opts = append(opts, grpc.Creds(creds))
+	case cfg.BindsToLocalhostOnly(addr):
+		n.Logger.Info("privval gRPC server running without TLS on loopback only", "addr", addr)
+	default:
+		n.Logger.Error("privval gRPC server is reachable beyond localhost without TLS because priv_validator_grpc_allow_insecure is set; "+
+			"anyone who can reach this endpoint can request signatures from the validator key",
+			"addr", addr)
+	}
+
+	lis, err := net.Listen("tcp", addr)
+	if err != nil {
+		return fmt.Errorf("failed to listen for privval gRPC: %w", err)
+	}
+	grpcServer := grpc.NewServer(opts...)
+	privvalproto.RegisterPrivValidatorAPIServer(grpcServer, privval.NewPrivValidatorGRPCServer(
+		n.privValidator,
+		n.genesisDoc.ChainID,
+		n.Logger.With("module", "privval-grpc"),
+	))
+	n.privvalGRPCServer = grpcServer
+	go func() {
+		if err := grpcServer.Serve(privval.LimitGRPCListener(lis)); err != nil {
+			n.Logger.Error("privval gRPC server error", "err", err)
+		}
+	}()
+	n.Logger.Info("Started privval gRPC server", "addr", addr)
 	return nil
 }
 

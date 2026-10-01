@@ -3,6 +3,7 @@ package node
 import (
 	"context"
 	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -39,6 +40,29 @@ func TestNodePrivValidatorGRPCPartialTLS(t *testing.T) {
 		_ = n.Stop()
 	}
 	require.ErrorContains(t, err, "must be set together")
+}
+
+// TestNodePrivValidatorGRPCMissingTLSFile checks that Start fails when all
+// three TLS fields are set but a file cannot be loaded.
+func TestNodePrivValidatorGRPCMissingTLSFile(t *testing.T) {
+	config := test.ResetTestRoot("node_privval_grpc_missing_tls_file_test")
+	defer os.RemoveAll(config.RootDir)
+	testFreeConfig(t, config)
+
+	_, certFile, keyFile, _ := test.NewServerCertFiles(t)
+	config.PrivValidatorGRPCListenAddr = testFreeAddr(t)
+	config.PrivValidatorGRPCCert = certFile
+	config.PrivValidatorGRPCKey = keyFile
+	config.PrivValidatorGRPCClientCA = filepath.Join(t.TempDir(), "missing-ca.crt")
+
+	n, err := DefaultNewNode(config, log.TestingLogger())
+	require.NoError(t, err)
+	err = n.Start()
+	if err == nil {
+		_ = n.Stop()
+	}
+	require.ErrorContains(t, err, "failed to load privval gRPC TLS credentials")
+	require.ErrorIs(t, err, os.ErrNotExist)
 }
 
 // TestNodePrivValidatorGRPCMutualTLS checks that a complete TLS configuration
