@@ -158,38 +158,61 @@ func (blockExec *BlockExecutor) CreateProposalBlock(
 
 	txs := blockExec.mempool.ReapMaxBytesMaxGas(maxReapBytes, maxGas)
 	commit := lastExtCommit.ToCommit()
-	block, err := state.MakeBlockWithoutPartset(height, types.MakeData(types.TxsFromCachedTxs(txs)), commit, evidence, proposerAddr)
+
+	// The request needs the transactions, the height, the time, the evidence,
+	// the next validators hash and the proposer address. None of that requires
+	// a block, and building one to carry it costs a full Data.Hash() over 25%
+	// more bytes than the block will hold, thrown away once PrepareProposal
+	// returns the data root. So the request is built directly and a block is
+	// only made once the application has replied.
+	timestamp, err := state.proposalTime(height, commit)
 	if err != nil {
 		return nil, nil, err
 	}
 	req := &abci.RequestPrepareProposal{
 		MaxTxBytes:         maxDataBytes,
-		Txs:                block.Txs.ToSliceOfBytes(),
+		Txs:                types.CachedTxToSliceOfBytes(txs),
 		LocalLastCommit:    buildExtendedCommitInfoFromStore(lastExtCommit, blockExec.store, state.InitialHeight, state.ConsensusParams.ABCI),
-		Misbehavior:        block.Evidence.Evidence.ToABCI(),
-		Height:             block.Height,
-		Time:               block.Time,
-		NextValidatorsHash: block.NextValidatorsHash,
-		ProposerAddress:    block.ProposerAddress,
+		Misbehavior:        types.EvidenceList(evidence).ToABCI(),
+		Height:             height,
+		Time:               timestamp,
+		NextValidatorsHash: state.NextValidators.Hash(),
+		ProposerAddress:    proposerAddr,
+	}
+
+	// failedBlock rebuilds what the proposer was about to propose, for the
+	// debug dump on the failure paths below, so the hashing stays off the
+	// happy path.
+	failedBlock := func() *types.Block {
+		block, err := state.MakeBlockWithoutPartset(height, types.MakeData(types.TxsFromCachedTxs(txs)), commit, evidence, proposerAddr)
+		if err != nil {
+			blockExec.logger.Error("failed to rebuild the proposal block for the debug dump", "err", err)
+			return nil
+		}
+		return block
 	}
 
 	var rpp *abci.ResponsePrepareProposal
 	func() {
 		defer func() {
 			if r := recover(); r != nil {
-				blockExec.saveFailedProposalBlock(state, block, "prepare_proposal_panic")
+				if block := failedBlock(); block != nil {
+					blockExec.saveFailedProposalBlock(state, block, "prepare_proposal_panic")
+				}
 				err = fmt.Errorf("PrepareProposal panicked: %v", r)
 			}
 		}()
 
-		schema.WriteABCI(blockExec.tracer, schema.PrepareProposalStart, block.Height, -1)
+		schema.WriteABCI(blockExec.tracer, schema.PrepareProposalStart, height, -1)
 		rpp, err = blockExec.proxyApp.PrepareProposal(ctx, req)
-		schema.WriteABCI(blockExec.tracer, schema.PrepareProposalEnd, block.Height, -1)
+		schema.WriteABCI(blockExec.tracer, schema.PrepareProposalEnd, height, -1)
 	}()
 	if err != nil {
 		// For non-panic errors, also save the failed proposal block
 		if rpp == nil {
-			blockExec.saveFailedProposalBlock(state, block, "prepare_proposal_error")
+			if block := failedBlock(); block != nil {
+				blockExec.saveFailedProposalBlock(state, block, "prepare_proposal_error")
+			}
 		}
 		// The App MUST ensure that only valid (and hence 'processable') transactions
 		// enter the mempool. Hence, at this point, we can't have any non-processable

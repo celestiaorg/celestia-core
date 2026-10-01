@@ -281,6 +281,21 @@ func (state State) MakeBlock(
 	return block, ops, err
 }
 
+// proposalTime is the timestamp a block proposed at height carries: the genesis
+// time at the initial height, and the median of the last commit's votes after
+// that. It is split out so a proposer can fill an ABCI request with it without
+// building a block first.
+func (state State) proposalTime(height int64, lastCommit *types.Commit) (time.Time, error) {
+	if height == state.InitialHeight {
+		return state.LastBlockTime, nil // genesis time
+	}
+	timestamp, err := MedianTime(lastCommit, state.LastValidators)
+	if err != nil {
+		return time.Time{}, fmt.Errorf("error making block while calculating median time: %w", err)
+	}
+	return timestamp, nil
+}
+
 func (state State) MakeBlockWithoutPartset(
 	height int64,
 	data types.Data,
@@ -292,15 +307,9 @@ func (state State) MakeBlockWithoutPartset(
 	block := types.MakeBlock(height, data, lastCommit, evidence)
 
 	// Set time.
-	var timestamp time.Time
-	if height == state.InitialHeight {
-		timestamp = state.LastBlockTime // genesis time
-	} else {
-		ts, err := MedianTime(lastCommit, state.LastValidators)
-		if err != nil {
-			return nil, fmt.Errorf("error making block while calculating median time: %w", err)
-		}
-		timestamp = ts
+	timestamp, err := state.proposalTime(height, lastCommit)
+	if err != nil {
+		return nil, err
 	}
 
 	// Fill rest of header with state data.
