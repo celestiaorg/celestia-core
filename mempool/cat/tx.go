@@ -78,7 +78,12 @@ func (set *txSet) addTxToSet(wtx *wrappedTx) {
 		set.bytes += wtx.size()
 		set.firstTimestamp = wtx.timestamp
 		set.firstHeight = wtx.height
-		set.aggregatedPriority = set.weightedPrioritySum / set.totalGasWanted
+		// Guard against zero gas: the application is not required to return a
+		// positive GasWanted, and dividing by zero here would panic mid-insert
+		// and leave the store's indexes inconsistent.
+		if set.totalGasWanted > 0 {
+			set.aggregatedPriority = set.weightedPrioritySum / set.totalGasWanted
+		}
 		return
 	}
 	idx := sort.Search(len(set.txs), func(i int) bool {
