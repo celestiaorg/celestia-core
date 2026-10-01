@@ -150,6 +150,14 @@ func PrometheusMetrics(namespace string, labelsAndValues ...string) *Metrics {
 
 			Buckets: stdprometheus.ExponentialBucketsRange(0.1, 100, 8),
 		}, append(labels, "step")).With(labelsAndValues...),
+		WALWriteDurationSeconds: prometheus.NewHistogramFrom(stdprometheus.HistogramOpts{
+			Namespace: namespace,
+			Subsystem: MetricsSubsystem,
+			Name:      "wal_write_duration_seconds",
+			Help:      "Histogram of time spent writing to the consensus WAL, labeled by the operation that triggered the write.",
+
+			Buckets: stdprometheus.ExponentialBucketsRange(0.0001, 10, 12),
+		}, append(labels, "op")).With(labelsAndValues...),
 		BlockGossipPartsReceived: prometheus.NewCounterFrom(stdprometheus.CounterOpts{
 			Namespace: namespace,
 			Subsystem: MetricsSubsystem,
@@ -273,6 +281,7 @@ func NopMetrics() *Metrics {
 		DuplicateBlockPart:           discard.NewCounter(),
 		DuplicateVote:                discard.NewCounter(),
 		StepDurationSeconds:          discard.NewHistogram(),
+		WALWriteDurationSeconds:      discard.NewHistogram(),
 		BlockGossipPartsReceived:     discard.NewCounter(),
 		QuorumPrevoteDelay:           discard.NewGauge(),
 		QuorumPrecommitDelay:         discard.NewGauge(),

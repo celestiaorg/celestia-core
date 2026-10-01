@@ -916,9 +916,33 @@ func (cs *State) updateToState(state sm.State) {
 	cs.newStep()
 }
 
+// walWrite writes msg to the WAL and records the time it took.
+func (cs *State) walWrite(op string, msg WALMessage) error {
+	start := time.Now()
+	err := cs.wal.Write(msg)
+	cs.metrics.WALWriteDurationSeconds.With("op", op).Observe(time.Since(start).Seconds())
+	return err
+}
+
+// walWriteSync writes msg to the WAL, fsyncs it, and records the time it took.
+func (cs *State) walWriteSync(op string, msg WALMessage) error {
+	start := time.Now()
+	err := cs.wal.WriteSync(msg)
+	cs.metrics.WALWriteDurationSeconds.With("op", op).Observe(time.Since(start).Seconds())
+	return err
+}
+
+// walFlushAndSync flushes and fsyncs the WAL and records the time it took.
+func (cs *State) walFlushAndSync(op string) error {
+	start := time.Now()
+	err := cs.wal.FlushAndSync()
+	cs.metrics.WALWriteDurationSeconds.With("op", op).Observe(time.Since(start).Seconds())
+	return err
+}
+
 func (cs *State) newStep() {
 	rs := cs.rs.RoundStateEvent()
-	if err := cs.wal.Write(rs); err != nil {
+	if err := cs.walWrite("step", rs); err != nil {
 		cs.Logger.Error("failed writing to WAL", "err", err)
 	}
 
@@ -993,7 +1017,7 @@ func (cs *State) receiveRoutine(maxSteps int) {
 
 		case mi = <-cs.peerMsgQueue:
 			if !cs.config.OnlyInternalWal {
-				if err := cs.wal.Write(mi); err != nil {
+				if err := cs.walWrite("peer", mi); err != nil {
 					cs.Logger.Error("failed writing to WAL", "err", err)
 				}
 			}
@@ -1002,7 +1026,7 @@ func (cs *State) receiveRoutine(maxSteps int) {
 			cs.handleMsg(mi)
 
 		case mi = <-cs.internalMsgQueue:
-			err := cs.wal.WriteSync(mi) // NOTE: fsync
+			err := cs.walWriteSync("internal", mi) // NOTE: fsync
 			if err != nil {
 				panic(fmt.Sprintf(
 					"failed to write %v msg to consensus WAL due to %v; check your file system and restart the node",
@@ -1022,7 +1046,7 @@ func (cs *State) receiveRoutine(maxSteps int) {
 			cs.handleMsg(mi)
 
 		case ti := <-cs.timeoutTicker.Chan(): // tockChan:
-			if err := cs.wal.Write(ti); err != nil {
+			if err := cs.walWrite("timeout", ti); err != nil {
 				cs.Logger.Error("failed writing to WAL", "err", err)
 			}
 
@@ -1401,7 +1425,7 @@ func (cs *State) defaultDecideProposal(height int64, round int32) {
 
 	// Flush the WAL. Otherwise, we may not recompute the same proposal to sign,
 	// and the privValidator will refuse to sign anything.
-	if err := cs.wal.FlushAndSync(); err != nil {
+	if err := cs.walFlushAndSync("sign_proposal"); err != nil {
 		cs.Logger.Error("failed flushing WAL to disk")
 	}
 
@@ -2030,7 +2054,7 @@ func (cs *State) finalizeCommit(height int64) {
 	// successfully call ApplyBlock (ie. later here, or in Handshake after
 	// restart).
 	endMsg := EndHeightMessage{height}
-	if err := cs.wal.WriteSync(endMsg); err != nil { // NOTE: fsync
+	if err := cs.walWriteSync("end_height", endMsg); err != nil { // NOTE: fsync
 		panic(fmt.Sprintf(
 			"failed to write %v msg to consensus WAL due to %v; check your file system and restart the node",
 			endMsg, err,
@@ -2772,7 +2796,7 @@ func (cs *State) signVote(
 ) (*types.Vote, error) {
 	// Flush the WAL. Otherwise, we may not recompute the same vote to sign,
 	// and the privValidator will refuse to sign anything.
-	if err := cs.wal.FlushAndSync(); err != nil {
+	if err := cs.walFlushAndSync("sign_vote"); err != nil {
 		return nil, err
 	}
 

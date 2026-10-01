@@ -77,6 +77,10 @@ type Metrics struct {
 	StepDurationSeconds metrics.Histogram `metrics_labels:"step" metrics_buckettype:"exprange" metrics_bucketsizes:"0.1, 100, 8"`
 	stepStart           time.Time
 
+	// Histogram of time spent writing to the consensus WAL, labeled by the
+	// operation that triggered the write.
+	WALWriteDurationSeconds metrics.Histogram `metrics_name:"wal_write_duration_seconds" metrics_labels:"op" metrics_buckettype:"exprange" metrics_bucketsizes:"0.0001, 10, 12"`
+
 	// Number of block parts received by the node, separated by whether the part
 	// was relevant to the block the node is trying to gather or not.
 	BlockGossipPartsReceived metrics.Counter `metrics_labels:"matches_current"`
