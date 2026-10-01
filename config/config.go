@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strings"
 	"time"
 
 	"github.com/cometbft/cometbft/version"
@@ -426,11 +427,15 @@ func (cfg BaseConfig) ValidatePrivValidatorGRPCExposure() error {
 		return nil
 	}
 	if !cfg.privValidatorGRPCTLSComplete() {
-		return fmt.Errorf("priv_validator_grpc_laddr %q is reachable beyond localhost without mutual TLS: "+
+		msg := fmt.Sprintf("priv_validator_grpc_laddr %q is reachable beyond localhost without mutual TLS: "+
 			"anyone who can reach this endpoint can request signatures from the validator key. "+
 			"Set priv_validator_grpc_cert_file, priv_validator_grpc_key_file and priv_validator_grpc_client_ca_file (see %s), "+
 			"or set priv_validator_grpc_allow_insecure to force startup without TLS",
 			cfg.PrivValidatorGRPCListenAddr, PrivValGRPCTLSDocs)
+		if host, _, err := net.SplitHostPort(cfg.PrivValidatorGRPCListenAddr); err == nil && strings.EqualFold(host, "localhost") {
+			msg += `; only loopback IP literals count as localhost, so use "127.0.0.1" instead of "localhost" to keep serving plaintext on loopback`
+		}
+		return errors.New(msg)
 	}
 	return nil
 }
