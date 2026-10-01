@@ -20,6 +20,7 @@ import (
 	"github.com/cometbft/cometbft/internal/test"
 	"github.com/cometbft/cometbft/libs/log"
 	privvalproto "github.com/cometbft/cometbft/proto/tendermint/privval"
+	"github.com/cometbft/cometbft/types"
 )
 
 // TestNodePrivValidatorGRPCPartialTLS checks that Start refuses a partial TLS
@@ -73,6 +74,94 @@ func TestNodePrivValidatorGRPCStoppedOnFailedStart(t *testing.T) {
 
 	_, err = net.DialTimeout("tcp", addr, time.Second)
 	require.ErrorIs(t, err, syscall.ECONNREFUSED)
+}
+
+// TestNodePrivValidatorGRPCFailedStartIgnoresStalledClient checks that
+// failed-start cleanup returns while a client holds a signer RPC open.
+// Draining would wait for that client indefinitely and hang Start.
+func TestNodePrivValidatorGRPCFailedStartIgnoresStalledClient(t *testing.T) {
+	config := test.ResetTestRoot("node_privval_grpc_stalled_client_test")
+	defer os.RemoveAll(config.RootDir)
+	testFreeConfig(t, config)
+
+	addr := testFreeAddr(t)
+	config.PrivValidatorGRPCListenAddr = addr
+	config.PrivValidatorGRPCAllowInsecure = true
+
+	n, err := DefaultNewNode(config, log.TestingLogger())
+	require.NoError(t, err)
+	stalled := newStallingPrivValidator(n.privValidator)
+	defer close(stalled.release)
+	n.privValidator = stalled
+	require.NoError(t, n.startPrivValGRPCServer())
+
+	// Open a SignRawBytes RPC that stays in flight until release is closed.
+	conn, err := grpc.NewClient(addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	require.NoError(t, err)
+	defer func() { _ = conn.Close() }()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	rpcErr := make(chan error, 1)
+	go func() {
+		_, err := privvalproto.NewPrivValidatorAPIClient(conn).SignRawBytes(ctx, &privvalproto.SignRawBytesRequest{
+			ChainId:  n.genesisDoc.ChainID,
+			RawBytes: []byte("stalled"),
+			UniqueId: "stalled",
+		})
+		rpcErr <- err
+	}()
+	select {
+	case <-stalled.inFlight:
+	case <-time.After(5 * time.Second):
+		t.Fatal("signer RPC never reached the handler")
+	}
+
+	done := make(chan struct{})
+	go func() {
+		n.stopPrivValGRPCServer((*grpc.Server).Stop)
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-time.After(10 * time.Second):
+		t.Fatal("failed-start cleanup waited for a client holding an RPC open")
+	}
+
+	// The in-flight RPC is cut off rather than left waiting, and the port is
+	// released.
+	select {
+	case err := <-rpcErr:
+		require.Equal(t, codes.Unavailable, status.Code(err), err)
+	case <-time.After(5 * time.Second):
+		t.Fatal("stalled client was left connected")
+	}
+	_, err = net.DialTimeout("tcp", addr, time.Second)
+	require.ErrorIs(t, err, syscall.ECONNREFUSED)
+}
+
+// stallingPrivValidator signals inFlight when SignRawBytes is called and
+// blocks it until release is closed.
+type stallingPrivValidator struct {
+	types.PrivValidator
+	inFlight chan struct{}
+	release  chan struct{}
+}
+
+func newStallingPrivValidator(pv types.PrivValidator) *stallingPrivValidator {
+	return &stallingPrivValidator{
+		PrivValidator: pv,
+		inFlight:      make(chan struct{}, 1),
+		release:       make(chan struct{}),
+	}
+}
+
+func (pv *stallingPrivValidator) SignRawBytes(chainID, uniqueID string, rawBytes []byte) ([]byte, error) {
+	select {
+	case pv.inFlight <- struct{}{}:
+	default:
+	}
+	<-pv.release
+	return pv.PrivValidator.SignRawBytes(chainID, uniqueID, rawBytes)
 }
 
 // TestNodePrivValidatorGRPCMissingTLSFile checks that Start fails when all

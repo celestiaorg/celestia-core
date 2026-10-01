@@ -630,10 +630,12 @@ func (n *Node) OnStart() (err error) {
 			return err
 		}
 		// A failed start never reaches OnStop, so don't leave the signer bound
-		// in a node that never came up. err is OnStart's named return.
+		// in a node that never came up. Stop rather than GracefulStop: a client
+		// holding an RPC open would otherwise block Start until it disconnects.
+		// err is OnStart's named return.
 		defer func() {
 			if err != nil {
-				n.stopPrivValGRPCServer()
+				n.stopPrivValGRPCServer((*grpc.Server).Stop)
 			}
 		}()
 	}
@@ -764,12 +766,14 @@ func (n *Node) startPrivValGRPCServer() error {
 	return nil
 }
 
-// stopPrivValGRPCServer stops the privval gRPC signer and closes its listener.
-func (n *Node) stopPrivValGRPCServer() {
+// stopPrivValGRPCServer stops the privval gRPC signer with stop and closes
+// its listener. Pass GracefulStop to drain in-flight RPCs, or Stop to close
+// them without waiting.
+func (n *Node) stopPrivValGRPCServer(stop func(*grpc.Server)) {
 	if n.privvalGRPCServer == nil {
 		return
 	}
-	n.privvalGRPCServer.GracefulStop()
+	stop(n.privvalGRPCServer)
 	// GracefulStop only closes listeners Serve has registered, so close ours
 	// too in case it wins the race with the Serve goroutine.
 	_ = n.privvalGRPCListener.Close()
@@ -811,7 +815,7 @@ func (n *Node) OnStop() {
 		}
 	}
 
-	n.stopPrivValGRPCServer()
+	n.stopPrivValGRPCServer((*grpc.Server).GracefulStop)
 
 	if pvsc, ok := n.privValidator.(service.Service); ok {
 		if err := pvsc.Stop(); err != nil {
