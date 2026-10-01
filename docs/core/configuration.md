@@ -438,7 +438,7 @@ create_empty_blocks = true
 create_empty_blocks_interval = "0s"
 
 # Reactor sleep duration parameters
-peer_gossip_sleep_duration = "100ms"
+peer_gossip_sleep_duration = "10ms"
 peer_query_maj23_sleep_duration = "2s"
 
 #######################################################
