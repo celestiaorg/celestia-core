@@ -3,6 +3,7 @@ package node
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"net"
 	"net/http"
@@ -624,15 +625,15 @@ func (n *Node) OnStart() (err error) {
 	// Start the privval gRPC signer first so a misconfiguration fails before
 	// any other listener opens.
 	if n.config.PrivValidatorGRPCListenAddr != "" {
-		if err := n.startPrivValGRPCServer(); err != nil {
-			return err
+		stopSigner, startErr := n.startPrivValGRPCServer()
+		if startErr != nil {
+			return startErr
 		}
 		// A failed start never reaches OnStop, so don't leave the signer bound
-		// in a node that never came up.
+		// in a node that never came up. err is OnStart's named return.
 		defer func() {
 			if err != nil {
-				n.privvalGRPCServer.Stop()
-				n.privvalGRPCServer = nil
+				stopSigner()
 			}
 		}()
 	}
@@ -709,14 +710,15 @@ func (n *Node) OnStart() (err error) {
 }
 
 // startPrivValGRPCServer validates the privval gRPC signer config, loads TLS
-// credentials when configured, and serves the signer.
-func (n *Node) startPrivValGRPCServer() error {
+// credentials when configured, and serves the signer. The returned func stops
+// the server and closes its listener.
+func (n *Node) startPrivValGRPCServer() (stop func(), err error) {
 	addr := n.config.PrivValidatorGRPCListenAddr
 	if err := n.config.ValidatePrivValTLSComplete(); err != nil {
-		return err
+		return nil, err
 	}
 	if err := n.config.ValidatePrivValidatorGRPCExposure(); err != nil {
-		return err
+		return nil, err
 	}
 
 	// Cap concurrent connections and bound the handshake so stalled
@@ -730,7 +732,7 @@ func (n *Node) startPrivValGRPCServer() error {
 			n.config.PrivValidatorGRPCClientCAFile(),
 		)
 		if err != nil {
-			return fmt.Errorf("failed to load privval gRPC TLS credentials (see %s for the recommended way to generate certificates): %w",
+			return nil, fmt.Errorf("failed to load privval gRPC TLS credentials (see %s for the recommended way to generate certificates): %w",
 				cfg.PrivValGRPCTLSDocs, err)
 		}
 		opts = append(opts, grpc.Creds(creds))
@@ -744,7 +746,7 @@ func (n *Node) startPrivValGRPCServer() error {
 
 	lis, err := net.Listen("tcp", addr)
 	if err != nil {
-		return fmt.Errorf("failed to listen for privval gRPC: %w", err)
+		return nil, fmt.Errorf("failed to listen for privval gRPC: %w", err)
 	}
 	grpcServer := grpc.NewServer(opts...)
 	privvalproto.RegisterPrivValidatorAPIServer(grpcServer, privval.NewPrivValidatorGRPCServer(
@@ -754,12 +756,18 @@ func (n *Node) startPrivValGRPCServer() error {
 	))
 	n.privvalGRPCServer = grpcServer
 	go func() {
-		if err := grpcServer.Serve(privval.LimitGRPCListener(lis)); err != nil {
+		if err := grpcServer.Serve(privval.LimitGRPCListener(lis)); err != nil && !errors.Is(err, grpc.ErrServerStopped) {
 			n.Logger.Error("privval gRPC server error", "err", err)
 		}
 	}()
 	n.Logger.Info("Started privval gRPC server", "addr", addr)
-	return nil
+	return func() {
+		// Stop only closes listeners Serve has registered, so close ours too
+		// in case Stop wins the race with the Serve goroutine.
+		grpcServer.Stop()
+		_ = lis.Close()
+		n.privvalGRPCServer = nil
+	}, nil
 }
 
 // OnStop stops the Node. It implements service.Service.

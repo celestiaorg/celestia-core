@@ -68,7 +68,8 @@ func TestNodePrivValidatorGRPCStoppedOnFailedStart(t *testing.T) {
 	if err == nil {
 		_ = n.Stop()
 	}
-	require.True(t, isAddrInUseErr(err), err)
+	// Start must have failed at the RPC bind, after the signer was up.
+	require.ErrorContains(t, err, "failed to listen on "+taken.Addr().String())
 
 	_, err = net.DialTimeout("tcp", addr, time.Second)
 	require.ErrorIs(t, err, syscall.ECONNREFUSED)
