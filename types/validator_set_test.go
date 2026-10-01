@@ -1403,6 +1403,12 @@ func TestNewValidatorSetFromExistingValidators(t *testing.T) {
 	assert.Equal(t, valSet.CopyIncrementProposerPriority(3), existingValSet.CopyIncrementProposerPriority(3))
 }
 
+func TestValidatorSetFromExistingValidatorsRejectsDuplicates(t *testing.T) {
+	val := NewMockPV().ExtractIntoValidator(10)
+	_, err := ValidatorSetFromExistingValidators([]*Validator{val, val.Copy()})
+	assert.ErrorContains(t, err, "duplicate validator address")
+}
+
 func TestValSetUpdateOverflowRelated(t *testing.T) {
 	testCases := []testVSetCfg{
 		{
