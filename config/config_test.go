@@ -90,8 +90,9 @@ func TestBaseConfigValidateBasicPrivValGRPCTLS(t *testing.T) {
 }
 
 func TestValidatePrivValidatorGRPCExposure(t *testing.T) {
-	loopback := []string{"127.0.0.1:26669", "localhost:26669", "[::1]:26669"}
-	exposed := []string{"0.0.0.0:26669", "10.0.0.5:26669", ":26669", "signer.example.com:26669"}
+	loopback := []string{"127.0.0.1:26669", "[::1]:26669"}
+	// Hostnames, including localhost, are resolved by net.Listen and may bind beyond loopback.
+	exposed := []string{"0.0.0.0:26669", "10.0.0.5:26669", ":26669", "signer.example.com:26669", "localhost:26669"}
 
 	// Loopback addresses need no TLS.
 	for _, addr := range loopback {

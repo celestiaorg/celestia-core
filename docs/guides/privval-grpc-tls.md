@@ -6,8 +6,11 @@ endpoint signs raw bytes with the validator consensus key, so anyone who can
 reach it can request unauthorized signatures.
 
 The node therefore refuses to start when `priv_validator_grpc_laddr` is set to a
-non-localhost address unless mutual TLS is fully configured (or the check is
-explicitly bypassed with `priv_validator_grpc_allow_insecure = true`).
+non-loopback address unless mutual TLS is fully configured (or the check is
+explicitly bypassed with `priv_validator_grpc_allow_insecure = true`). Only
+loopback IP literals (`127.0.0.1`, `::1`) count as loopback; hostnames,
+including `localhost`, are treated as exposed because the resolver may map them
+elsewhere.
 
 ## Generating certificates
 
@@ -51,7 +54,7 @@ priv_validator_grpc_client_ca_file = "ca.crt"
 ```
 
 Paths are absolute or relative to the node home. All three must be set
-together; leave all three empty for plaintext on localhost. Only clients
+together; leave all three empty for plaintext on a loopback IP. Only clients
 presenting a certificate signed by the CA may request signatures.
 
 ## Client configuration (fibre)
