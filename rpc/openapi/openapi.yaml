@@ -724,6 +724,14 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+        "503":
+          description: |
+            Service unavailable. The server's concurrent heavy-request limit
+            (max_concurrent_heavy_requests) is saturated. Retry with backoff.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
   /genesis_chunked:
     get:
       summary: Get Genesis in multiple chunks
@@ -755,6 +763,14 @@ paths:
                 $ref: "#/components/schemas/GenesisChunkedResponse"
         "500":
           description: Error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "503":
+          description: |
+            Service unavailable. The server's concurrent heavy-request limit
+            (max_concurrent_heavy_requests) is saturated. Retry with backoff.
           content:
             application/json:
               schema:
