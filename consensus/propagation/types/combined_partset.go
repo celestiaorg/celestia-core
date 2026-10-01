@@ -1,9 +1,12 @@
 package types
 
 import (
+	"fmt"
 	"math"
 	"sync"
 	"sync/atomic"
+
+	"github.com/klauspost/reedsolomon"
 
 	"github.com/cometbft/cometbft/crypto/merkle"
 	"github.com/cometbft/cometbft/libs/bits"
@@ -120,17 +123,92 @@ func (cps *CombinedPartSet) CanDecode() bool {
 		!cps.catchup
 }
 
-func (cps *CombinedPartSet) Decode() error {
+// RecoverOriginals reconstructs only the original parts that are still
+// missing. Parity parts are never generated: completing the original set is
+// what consensus needs, and a node must not advertise parity it does not hold.
+// The proofs committed in the compact block are reused, and each reconstructed
+// part is verified against its committed hash. It returns the indexes it
+// recovered.
+func (cps *CombinedPartSet) RecoverOriginals(proofs []*merkle.Proof) ([]uint32, error) {
 	cps.mtx.Lock()
 	defer cps.mtx.Unlock()
-	ops, eps, err := types.Decode(cps.original, cps.parity, int(cps.lastLen))
-	if err != nil {
-		return err
+
+	total := int(cps.original.Total())
+	parityTotal := int(cps.parity.Total())
+	missing := cps.original.BitArray().Not().GetTrueIndices()
+	if len(missing) == 0 {
+		return nil, nil
 	}
-	cps.totalMap.Fill()
-	cps.original = ops
-	cps.parity = eps
-	return nil
+	if len(proofs) < total {
+		return nil, fmt.Errorf("compact block has %d proofs, need %d", len(proofs), total)
+	}
+
+	partSize := int(types.BlockPartSizeBytes)
+	shards := make([][]byte, total+parityTotal)
+	for i := 0; i < total; i++ {
+		chunk := cps.original.GetPartBytes(i)
+		if chunk == nil {
+			continue
+		}
+		// reed-solomon needs every shard the same size, so the short last part
+		// is padded back out with the zeros the encoder used.
+		if len(chunk) != partSize {
+			padded := make([]byte, partSize)
+			copy(padded, chunk)
+			chunk = padded
+		}
+		shards[i] = chunk
+	}
+	for i := 0; i < parityTotal; i++ {
+		shards[total+i] = cps.parity.GetPartBytes(i)
+	}
+
+	enc, err := reedsolomon.New(total, parityTotal)
+	if err != nil {
+		return nil, err
+	}
+	// ReconstructData recreates the missing data shards only and leaves the
+	// missing parity shards nil.
+	if err := enc.ReconstructData(shards); err != nil {
+		return nil, err
+	}
+
+	// drop the padding the encoder added to the last part.
+	if cps.lastLen > 0 && int(cps.lastLen) < len(shards[total-1]) {
+		shards[total-1] = shards[total-1][:cps.lastLen]
+	}
+
+	// Verify every reconstructed part before adding any, so a failure leaves
+	// the set exactly as it was. Adding as we go would strand the parts added
+	// before the failure: recorded as held, never forwarded to consensus, and
+	// never requested again.
+	root := cps.original.Hash()
+	for _, i := range missing {
+		if proofs[i].Total != int64(total) {
+			return nil, fmt.Errorf("proof for part %d has total %d, expected %d", i, proofs[i].Total, total)
+		}
+		if err := proofs[i].Verify(root, shards[i]); err != nil {
+			return nil, fmt.Errorf("reconstructed part %d does not match its committed proof: %w", i, err)
+		}
+	}
+
+	recovered := make([]uint32, 0, len(missing))
+	for _, i := range missing {
+		added, err := cps.original.AddPart(&types.Part{
+			Index: uint32(i),
+			Bytes: shards[i],
+			Proof: *proofs[i],
+		})
+		if err != nil {
+			return recovered, err
+		}
+		if !added {
+			return recovered, fmt.Errorf("failed to add reconstructed part %d", i)
+		}
+		cps.totalMap.SetIndex(i, true)
+		recovered = append(recovered, uint32(i))
+	}
+	return recovered, nil
 }
 
 // AddPart adds a recovery part to the combined part set. It assumes that the parts being
