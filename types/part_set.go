@@ -15,6 +15,7 @@ import (
 	cmtbytes "github.com/cometbft/cometbft/libs/bytes"
 	cmtjson "github.com/cometbft/cometbft/libs/json"
 	cmtmath "github.com/cometbft/cometbft/libs/math"
+	"github.com/cometbft/cometbft/libs/parallel"
 	cmtsync "github.com/cometbft/cometbft/libs/sync"
 	cmtproto "github.com/cometbft/cometbft/proto/tendermint/types"
 )
@@ -595,16 +596,75 @@ func (ps *PartSet) AddPart(part *Part) (bool, error) {
 		return false, nil
 	}
 
-	// The proof should be compatible with the number of parts.
-	if part.Proof.Total != int64(ps.total) {
-		return false, fmt.Errorf(ErrPartSetInvalidProofTotal.Error()+":%v %v", part.Proof.Total, ps.total)
-	}
-
-	if err := part.Proof.Verify(ps.Hash(), part.Bytes); err != nil {
-		return false, fmt.Errorf("%w:%w", ErrPartSetInvalidProofHash, err)
+	if err := ps.verifyPartProof(part, ps.Hash()); err != nil {
+		return false, err
 	}
 
 	return ps.addPart(part)
+}
+
+// verifyPartProof checks that the part's proof commits to it under root, which
+// must be ps.Hash(). It is the expensive half of AddPart: a hash over the whole
+// part plus a walk up the tree.
+func (ps *PartSet) verifyPartProof(part *Part, root []byte) error {
+	// The proof should be compatible with the number of parts.
+	if part.Proof.Total != int64(ps.total) {
+		return fmt.Errorf(ErrPartSetInvalidProofTotal.Error()+":%v %v", part.Proof.Total, ps.total)
+	}
+
+	if err := part.Proof.Verify(root, part.Bytes); err != nil {
+		return fmt.Errorf("%w:%w", ErrPartSetInvalidProofHash, err)
+	}
+	return nil
+}
+
+// partVerificationGrain is the smallest number of parts worth handing to a
+// goroutine in AddParts. One verification hashes a 64 KiB part, so a couple of
+// parts already outweigh the fan-out.
+const partVerificationGrain = 2
+
+// AddParts adds several parts at once. It makes exactly the checks AddPart
+// makes, in the same order, but verifies the proofs concurrently; insertion
+// stays serial. It returns, index aligned with parts, whether each part was
+// added and the error that stopped it.
+func (ps *PartSet) AddParts(parts []*Part) ([]bool, []error) {
+	added := make([]bool, len(parts))
+	errs := make([]error, len(parts))
+	if ps == nil {
+		return added, errs
+	}
+
+	// skip marks a part that must not reach verification or insertion: it
+	// already failed a cheap check, or the part set already has it, both of
+	// which AddPart answers without verifying a proof.
+	skip := make([]bool, len(parts))
+	for i, part := range parts {
+		switch {
+		case part == nil:
+			errs[i], skip[i] = errors.New("nil part"), true
+		case part.validateBasicWithPartSize(ps.partSize) != nil:
+			errs[i], skip[i] = part.validateBasicWithPartSize(ps.partSize), true
+		case ps.partsBitArray.GetIndex(int(part.Index)):
+			skip[i] = true
+		}
+	}
+
+	root := ps.Hash()
+	parallel.For(len(parts), partVerificationGrain, func(i int) {
+		if skip[i] {
+			return
+		}
+		errs[i] = ps.verifyPartProof(parts[i], root)
+	})
+
+	for i, part := range parts {
+		if skip[i] || errs[i] != nil {
+			continue
+		}
+		added[i], errs[i] = ps.addPart(part)
+	}
+
+	return added, errs
 }
 
 func (ps *PartSet) AddPartWithoutProof(part *Part) (bool, error) {

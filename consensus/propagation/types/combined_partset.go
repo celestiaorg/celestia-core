@@ -173,6 +173,25 @@ func (cps *CombinedPartSet) AddOriginalPart(part *types.Part) (bool, error) {
 	return added, err
 }
 
+// AddOriginalParts adds several recovered original parts at once, verifying
+// their proofs concurrently. It returns the parts that were added and, index
+// aligned with parts, the error that stopped each of the others.
+func (cps *CombinedPartSet) AddOriginalParts(parts []*types.Part) ([]*types.Part, []error) {
+	cps.mtx.Lock()
+	defer cps.mtx.Unlock()
+
+	added, errs := cps.original.AddParts(parts)
+	out := make([]*types.Part, 0, len(parts))
+	for i, ok := range added {
+		if !ok {
+			continue
+		}
+		cps.totalMap.SetIndex(int(parts[i].Index), true)
+		out = append(out, parts[i])
+	}
+	return out, errs
+}
+
 func (cps *CombinedPartSet) HasPart(index int) bool {
 	return cps.totalMap.GetIndex(index)
 }

@@ -8,14 +8,11 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/cosmos/gogoproto/proto"
-
 	proptypes "github.com/cometbft/cometbft/consensus/propagation/types"
 	"github.com/cometbft/cometbft/crypto/merkle"
 	"github.com/cometbft/cometbft/libs/bits"
 	"github.com/cometbft/cometbft/libs/trace/schema"
 	"github.com/cometbft/cometbft/p2p"
-	"github.com/cometbft/cometbft/proto/tendermint/mempool"
 	"github.com/cometbft/cometbft/proto/tendermint/propagation"
 	"github.com/cometbft/cometbft/types"
 )
@@ -279,9 +276,10 @@ func (blockProp *Reactor) processValidatedCompactBlock(cb *proptypes.CompactBloc
 // in the same order, which is what TxsToParts expects.
 //
 // The lookups run in parallel: each one takes only a read lock on the mempool
-// and the marshalling that follows is pure, so the work divides cleanly. Each
+// and the framing that follows is pure, so the work divides cleanly. Each
 // result is written at its own index, so the outcome does not depend on
-// scheduling.
+// scheduling. The mempool's bytes are referenced, not copied: they are copied
+// once, straight into the part buffers, when the parts are rebuilt.
 func (blockProp *Reactor) lookupTxsInMempool(blobs []proptypes.TxMetaData) []proptypes.UnmarshalledTx {
 	unmarshalled := make([]proptypes.UnmarshalledTx, len(blobs))
 	held := make([]bool, len(blobs))
@@ -310,14 +308,7 @@ func (blockProp *Reactor) lookupTxsInMempool(blobs []proptypes.TxMetaData) []pro
 					continue
 				}
 
-				protoTxs := mempool.Txs{Txs: [][]byte{tx.Tx}}
-				marshalledTx, err := proto.Marshal(&protoTxs)
-				if err != nil {
-					blockProp.Logger.Error("failed to encode tx", "err", err, "tx", txMetaData)
-					continue
-				}
-
-				unmarshalled[i] = proptypes.UnmarshalledTx{MetaData: txMetaData, Key: txKey, TxBytes: marshalledTx}
+				unmarshalled[i] = proptypes.NewUnmarshalledTx(txMetaData, txKey, tx.Tx)
 				held[i] = true
 			}
 		})
@@ -365,45 +356,46 @@ func (blockProp *Reactor) recoverPartsFromMempool(cb *proptypes.CompactBlock) {
 		return
 	}
 
-	recoveredCount := 0
+	// Attach the committed proof to every rebuilt part and drop the ones already
+	// held, so the verification below only runs on parts that can be added.
+	candidates := parts[:0]
+	for _, part := range parts {
+		if partSet.HasPart(int(part.Index)) || int(part.Index) >= len(proofs) {
+			continue
+		}
+		part.Proof = *proofs[part.Index]
+		candidates = append(candidates, part)
+	}
+
+	// Proof verification dominates insertion, so the parts are added together
+	// and their proofs verified across cores.
+	added, errs := partSet.AddOriginalParts(candidates)
+	for i, err := range errs {
+		if err != nil {
+			blockProp.Logger.Error("failed to add locally recovered part", "part", candidates[i].Index, "err", err)
+		}
+	}
+
 	haves := proptypes.HaveParts{
 		Height: cb.Proposal.Height,
 		Round:  cb.Proposal.Round,
-		Parts:  make([]proptypes.PartMetaData, 0),
+		Parts:  make([]proptypes.PartMetaData, 0, len(added)),
 	}
-	for _, p := range parts {
-		if partSet.HasPart(int(p.Index)) {
-			continue
-		}
-		p.Proof = *proofs[p.Index]
-
-		added, err := partSet.AddOriginalPart(p)
-		if err != nil {
-			blockProp.Logger.Error("failed to add locally recovered part", "err", err)
-			continue
-		}
-
-		if !added {
-			blockProp.Logger.Error("failed to add locally recovered part", "part", p.Index)
-			continue
-		}
-
+	for _, part := range added {
 		select {
 		case <-blockProp.ctx.Done():
 			return
 		case blockProp.partChan <- types.PartInfo{
-			Part:   p,
+			Part:   part,
 			Height: cb.Proposal.Height,
 			Round:  cb.Proposal.Round,
 		}:
 		}
 
-		recoveredCount++
-
-		haves.Parts = append(haves.Parts, proptypes.PartMetaData{Index: p.Index, Hash: p.Proof.LeafHash})
+		haves.Parts = append(haves.Parts, proptypes.PartMetaData{Index: part.Index, Hash: part.Proof.LeafHash})
 	}
 
-	schema.WriteMempoolRecoveredParts(blockProp.traceClient, cb.Proposal.Height, cb.Proposal.Round, recoveredCount, time.Since(startTime).Nanoseconds())
+	schema.WriteMempoolRecoveredParts(blockProp.traceClient, cb.Proposal.Height, cb.Proposal.Round, len(added), time.Since(startTime).Nanoseconds())
 
 	if len(haves.Parts) > 0 {
 		blockProp.broadcastHaves(&haves, blockProp.self, int(partSet.Total()))

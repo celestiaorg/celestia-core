@@ -6,12 +6,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cosmos/gogoproto/proto"
-
 	"github.com/stretchr/testify/require"
 
 	cmtrand "github.com/cometbft/cometbft/libs/rand"
-	"github.com/cometbft/cometbft/proto/tendermint/mempool"
 	"github.com/cometbft/cometbft/state"
 	"github.com/cometbft/cometbft/types"
 )
@@ -89,22 +86,14 @@ func TestTxsToParts_Correctness(t *testing.T) {
 			txsFound := make([]UnmarshalledTx, len(partSet.TxPos))
 			for i, pos := range partSet.TxPos {
 				// Wrap the tx bytes in the mempool.Txs structure.
-				protoTxs := mempool.Txs{Txs: [][]byte{data.Txs[i]}}
-				marshalledTx, err := proto.Marshal(&protoTxs)
-				require.NoError(t, err)
-
 				txKey, err := types.TxKeyFromBytes(block.Txs[i].Hash())
 				require.NoError(t, err)
 
-				txsFound[i] = UnmarshalledTx{
-					MetaData: TxMetaData{
-						Start: pos.Start,
-						End:   pos.End,
-						Hash:  block.Txs[i].Hash(),
-					},
-					Key:     txKey,
-					TxBytes: marshalledTx,
-				}
+				txsFound[i] = NewUnmarshalledTx(
+					TxMetaData{Start: pos.Start, End: pos.End, Hash: block.Txs[i].Hash()},
+					txKey,
+					data.Txs[i],
+				)
 			}
 
 			// For each possible combination of transactions, verify the parts.
@@ -153,22 +142,14 @@ func TestTxsToParts_EdgeCases(t *testing.T) {
 
 		txsFound := make([]UnmarshalledTx, len(partSet.TxPos))
 		for i, pos := range partSet.TxPos {
-			protoTxs := mempool.Txs{Txs: [][]byte{data.Txs[i]}}
-			marshalledTx, err := proto.Marshal(&protoTxs)
-			require.NoError(t, err)
-
 			txKey, err := types.TxKeyFromBytes(block.Txs[i].Hash())
 			require.NoError(t, err)
 
-			txsFound[i] = UnmarshalledTx{
-				MetaData: TxMetaData{
-					Start: pos.Start,
-					End:   pos.End,
-					Hash:  block.Txs[i].Hash(),
-				},
-				Key:     txKey,
-				TxBytes: marshalledTx,
-			}
+			txsFound[i] = NewUnmarshalledTx(
+				TxMetaData{Start: pos.Start, End: pos.End, Hash: block.Txs[i].Hash()},
+				txKey,
+				data.Txs[i],
+			)
 		}
 
 		// Remove one transaction to simulate an incomplete part.
@@ -190,22 +171,14 @@ func TestTxsToParts_EdgeCases(t *testing.T) {
 
 		txsFound := make([]UnmarshalledTx, len(partSet.TxPos))
 		for i, pos := range partSet.TxPos {
-			protoTxs := mempool.Txs{Txs: [][]byte{data.Txs[i]}}
-			marshalledTx, err := proto.Marshal(&protoTxs)
-			require.NoError(t, err)
-
 			txKey, err := types.TxKeyFromBytes(block.Txs[i].Hash())
 			require.NoError(t, err)
 
-			txsFound[i] = UnmarshalledTx{
-				MetaData: TxMetaData{
-					Start: pos.Start,
-					End:   pos.End,
-					Hash:  block.Txs[i].Hash(),
-				},
-				Key:     txKey,
-				TxBytes: marshalledTx,
-			}
+			txsFound[i] = NewUnmarshalledTx(
+				TxMetaData{Start: pos.Start, End: pos.End, Hash: block.Txs[i].Hash()},
+				txKey,
+				data.Txs[i],
+			)
 		}
 
 		// Remove the last transaction to simulate that the final part is incomplete.
@@ -247,26 +220,16 @@ func FuzzTxsToParts(f *testing.F) {
 
 		txsFound := make([]UnmarshalledTx, len(partSet.TxPos))
 		for i, pos := range partSet.TxPos {
-			protoTxs := mempool.Txs{Txs: [][]byte{data.Txs[i]}}
-			marshalledTx, err := proto.Marshal(&protoTxs)
-			if err != nil {
-				t.Skip("Skipping due to proto.Marshal error")
-			}
-
 			txKey, err := types.TxKeyFromBytes(block.Txs[i].Hash())
 			if err != nil {
 				t.Skip("Skipping due to TxKeyFromBytes error")
 			}
 
-			txsFound[i] = UnmarshalledTx{
-				MetaData: TxMetaData{
-					Start: pos.Start,
-					End:   pos.End,
-					Hash:  block.Txs[i].Hash(),
-				},
-				Key:     txKey,
-				TxBytes: marshalledTx,
-			}
+			txsFound[i] = NewUnmarshalledTx(
+				TxMetaData{Start: pos.Start, End: pos.End, Hash: block.Txs[i].Hash()},
+				txKey,
+				data.Txs[i],
+			)
 		}
 
 		var subset []UnmarshalledTx
@@ -334,26 +297,16 @@ func TestTxsToParts_Panic(t *testing.T) {
 
 		txsFound := make([]UnmarshalledTx, len(partSet.TxPos))
 		for i, pos := range partSet.TxPos {
-			protoTxs := mempool.Txs{Txs: [][]byte{data.Txs[i]}}
-			marshalledTx, err := proto.Marshal(&protoTxs)
-			if err != nil {
-				t.Skip("Skipping due to proto.Marshal error")
-			}
-
 			txKey, err := types.TxKeyFromBytes(block.Txs[i].Hash())
 			if err != nil {
 				t.Skip("Skipping due to TxKeyFromBytes error")
 			}
 
-			txsFound[i] = UnmarshalledTx{
-				MetaData: TxMetaData{
-					Start: pos.Start,
-					End:   pos.End,
-					Hash:  block.Txs[i].Hash(),
-				},
-				Key:     txKey,
-				TxBytes: marshalledTx,
-			}
+			txsFound[i] = NewUnmarshalledTx(
+				TxMetaData{Start: pos.Start, End: pos.End, Hash: block.Txs[i].Hash()},
+				txKey,
+				data.Txs[i],
+			)
 		}
 
 		lastPart := partSet.GetPart(int(partSet.Total() - 1))
@@ -423,26 +376,16 @@ func FuzzTxsToParts_Panic(f *testing.F) {
 
 		txsFound := make([]UnmarshalledTx, len(partSet.TxPos))
 		for i, pos := range partSet.TxPos {
-			protoTxs := mempool.Txs{Txs: [][]byte{dataObj.Txs[i]}}
-			marshalledTx, err := proto.Marshal(&protoTxs)
-			if err != nil {
-				t.Skip("Skipping due to proto.Marshal error")
-			}
-
 			txKey, err := types.TxKeyFromBytes(block.Txs[i].Hash())
 			if err != nil {
 				t.Skip("Skipping due to TxKeyFromBytes error")
 			}
 
-			txsFound[i] = UnmarshalledTx{
-				MetaData: TxMetaData{
-					Start: pos.Start,
-					End:   pos.End,
-					Hash:  block.Txs[i].Hash(),
-				},
-				Key:     txKey,
-				TxBytes: marshalledTx,
-			}
+			txsFound[i] = NewUnmarshalledTx(
+				TxMetaData{Start: pos.Start, End: pos.End, Hash: block.Txs[i].Hash()},
+				txKey,
+				dataObj.Txs[i],
+			)
 		}
 
 		lastPart := partSet.GetPart(int(partSet.Total() - 1))

@@ -583,3 +583,60 @@ func BenchmarkPartSetEncodeDecode(b *testing.B) {
 		})
 	}
 }
+
+// TestAddPartsMatchesAddPart checks that AddParts reaches exactly the verdict
+// AddPart reaches for every kind of part: valid, duplicate, nil, bad proof
+// total, bad proof, and the wrong part size.
+func TestAddPartsMatchesAddPart(t *testing.T) {
+	data := cmtrand.Bytes(int(BlockPartSizeBytes)*5 + 123)
+	full, err := NewPartSetFromData(data, BlockPartSizeBytes)
+	require.NoError(t, err)
+
+	badProof := *full.GetPart(2)
+	badProof.Bytes = append([]byte{}, badProof.Bytes...)
+	badProof.Bytes[0] ^= 0xff
+
+	badTotal := *full.GetPart(3)
+	badTotal.Proof.Total++
+
+	parts := []*Part{
+		full.GetPart(0),
+		full.GetPart(1),
+		full.GetPart(1), // duplicate within the batch
+		nil,
+		&badProof,
+		&badTotal,
+		full.GetPart(4),
+		full.GetPart(5),
+	}
+
+	serial := NewPartSetFromHeader(full.Header(), BlockPartSizeBytes)
+	wantAdded := make([]bool, len(parts))
+	wantErrs := make([]error, len(parts))
+	for i, part := range parts {
+		wantAdded[i], wantErrs[i] = serial.AddPart(part)
+	}
+
+	batched := NewPartSetFromHeader(full.Header(), BlockPartSizeBytes)
+	gotAdded, gotErrs := batched.AddParts(parts)
+
+	require.Equal(t, wantAdded, gotAdded)
+	for i := range parts {
+		if wantErrs[i] == nil {
+			require.NoError(t, gotErrs[i], "part %d", i)
+		} else {
+			require.EqualError(t, gotErrs[i], wantErrs[i].Error(), "part %d", i)
+		}
+	}
+	require.Equal(t, serial.BitArray().String(), batched.BitArray().String())
+
+	// A part already in the set is skipped, not re-verified, exactly as AddPart.
+	again, errs := batched.AddParts([]*Part{full.GetPart(0)})
+	require.Equal(t, []bool{false}, again)
+	require.NoError(t, errs[0])
+
+	var nilSet *PartSet
+	added, errs := nilSet.AddParts(parts)
+	require.Equal(t, make([]bool, len(parts)), added)
+	require.Equal(t, make([]error, len(parts)), errs)
+}
