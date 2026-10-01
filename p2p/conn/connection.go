@@ -488,6 +488,12 @@ FOR_LOOP:
 				case c.send <- struct{}{}:
 				default:
 				}
+			} else {
+				// Nothing is left to send on any channel, so flush now rather
+				// than let a finished message sit until the throttle timer
+				// fires. While data keeps coming the buffered writer flushes
+				// itself as it fills, so a busy connection still coalesces.
+				c.flush()
 			}
 		}
 
