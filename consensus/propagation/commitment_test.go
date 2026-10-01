@@ -82,6 +82,15 @@ func TestPropose(t *testing.T) {
 		}
 	}
 
+	// The uncovered parts (the header and the last commit here) were pushed
+	// by the proposer and accepted by both peers.
+	for _, r := range []*Reactor{reactor2, reactor3} {
+		_, parts, _, has := r.getAllState(prop.Height, prop.Round, false)
+		require.True(t, has)
+		assert.True(t, parts.HasPart(0))
+		assert.True(t, parts.HasPart(int(partSet.Total()-1)))
+	}
+
 	time.Sleep(500 * time.Millisecond)
 
 	for _, r := range reactors {

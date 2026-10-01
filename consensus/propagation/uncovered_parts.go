@@ -8,10 +8,10 @@ import (
 )
 
 // maxPushedParts bounds how many parts the proposer pushes to each peer up
-// front. Past this many, a peer is better off recovering the transactions it
-// already holds from its mempool and decoding the block than receiving a large
-// push it mostly did not need.
-const maxPushedParts = 10
+// front. Measured blocks leave two or three parts uncovered (the header, the
+// last commit, padding); past this many, the lowest are pushed and a peer
+// fetches the rest through have/want or recovers them from its mempool.
+const maxPushedParts = 20
 
 // uncoveredParts returns the indices of the parts a peer cannot rebuild from
 // the transactions the compact block points at, because some of their bytes

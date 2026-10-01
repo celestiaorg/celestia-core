@@ -60,7 +60,7 @@ func TestUncoveredParts(t *testing.T) {
 			blobs:   nil,
 			total:   maxPushedParts + 5,
 			lastLen: partSize,
-			want:    []uint32{0, 1, 2, 3, 4, 5, 6, 7, 8, 9},
+			want:    []uint32{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19},
 		},
 	}
 

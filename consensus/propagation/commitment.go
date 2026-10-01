@@ -84,12 +84,14 @@ func (blockProp *Reactor) ProposeBlock(proposal *types.Proposal, block *types.Pa
 	// Push exactly the parts peers cannot rebuild from the transactions they
 	// already hold, rather than a fixed first-and-last guess.
 	original := parts.Original()
+	initialParts := make([]*types.Part, 0, maxPushedParts)
 	initialPartsMeta := make([]*propagation.PartMetaData, 0, maxPushedParts)
 	for _, index := range uncoveredParts(cb.Blobs, original.Total(), types.BlockPartSizeBytes, cb.LastLen) {
 		part := original.GetPart(int(index))
 		if part == nil {
 			continue
 		}
+		initialParts = append(initialParts, part)
 		initialPartsMeta = append(initialPartsMeta, &propagation.PartMetaData{Index: part.Index, Hash: part.Proof.LeafHash})
 	}
 	for index, peer := range peers {
@@ -132,6 +134,31 @@ func (blockProp *Reactor) ProposeBlock(proposal *types.Proposal, block *types.Pa
 		}
 
 		schema.WriteBlockPartState(blockProp.traceClient, proposal.Height, proposal.Round, chunks[index].GetTrueIndices(), true, string(peer.peer.ID()), schema.Upload, "have")
+
+		// Send the uncovered parts themselves, unasked. No peer can rebuild
+		// them from its mempool, so this removes a have/want round trip from
+		// every peer's path to a complete block. They follow the compact block
+		// and the haves on the same channel, so the peer already holds the
+		// proposal when they arrive. Only the proposer pushes.
+		for _, part := range initialParts {
+			data := make([]byte, len(part.Bytes))
+			copy(data, part.Bytes)
+			pe := p2p.Envelope{
+				ChannelID: DataChannel,
+				Message: &propagation.RecoveryPart{
+					Height: proposal.Height,
+					Round:  proposal.Round,
+					Index:  part.Index,
+					Data:   data,
+					Proof:  *part.Proof.ToProto(),
+				},
+			}
+			if !peer.peer.TrySend(pe) {
+				blockProp.Logger.Error("failed to push uncovered part", "peer", peer, "height", proposal.Height, "round", proposal.Round, "part", part.Index)
+				continue
+			}
+			schema.WriteBlockPart(blockProp.traceClient, proposal.Height, proposal.Round, part.Index, false, string(peer.peer.ID()), schema.Upload)
+		}
 	}
 	return nil
 }
