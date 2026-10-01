@@ -145,7 +145,19 @@ proto-gen: check-proto-deps
 	@$(BUF) generate
 	@mv ./proto/tendermint/abci/types.pb.go ./abci/types/
 	@cp ./proto/tendermint/rpc/grpc/types.pb.go ./rpc/grpc
+	@$(MAKE) proto-inventory
 .PHONY: proto-gen
+
+#? proto-inventory: Generate the descriptor-based message inventory
+#? proto-inventory-check: Check the inventory without modifying it
+proto-inventory-check: INVENTORY_CHECK := -check
+proto-inventory proto-inventory-check:
+	@set -eu; \
+	  inventory_tmp=$$(mktemp -d); \
+	  trap 'rm -rf "$$inventory_tmp"' EXIT; \
+	  $(BUF) build --as-file-descriptor-set --exclude-source-info -o "$$inventory_tmp/descriptors.binpb"; \
+	  go run ./scripts/proto-inventory -input "$$inventory_tmp/descriptors.binpb" $(INVENTORY_CHECK)
+.PHONY: proto-inventory proto-inventory-check
 
 # These targets are provided for convenience and are intended for local
 # execution only.
