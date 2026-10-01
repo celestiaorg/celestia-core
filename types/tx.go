@@ -34,7 +34,8 @@ func (tx TxKey) String() string {
 	return fmt.Sprintf("TxKey{%X}", tx[:])
 }
 
-// Hash computes the TMHASH hash of the wire encoded transaction.
+// CachedTx is a transaction that remembers its hash, so repeated lookups do
+// not unwrap and hash the same bytes again.
 type CachedTx struct {
 	Tx
 	hash []byte
@@ -95,13 +96,7 @@ func CachedTxToSliceOfBytes(cachedTxs []*CachedTx) [][]byte {
 // Hash computes the TMHASH hash of the wire encoded transaction. It attempts to
 // unwrap the transaction if it is a IndexWrapper or a BlobTx.
 func (tx Tx) Hash() []byte {
-	if indexWrapper, isIndexWrapper := UnmarshalIndexWrapper(tx); isIndexWrapper {
-		return tmhash.Sum(indexWrapper.Tx)
-	}
-	if blobTx, isBlobTx := UnmarshalBlobTx(tx); isBlobTx {
-		return tmhash.Sum(blobTx.Tx)
-	}
-	return tmhash.Sum(tx)
+	return tmhash.Sum(unwrap(tx))
 }
 
 func (tx Tx) ToCachedTx() *CachedTx {
@@ -111,13 +106,7 @@ func (tx Tx) ToCachedTx() *CachedTx {
 // Key returns the sha256 hash of the wire encoded transaction. It attempts to
 // unwrap the transaction if it is a BlobTx or a IndexWrapper.
 func (tx Tx) Key() TxKey {
-	if blobTx, isBlobTx := UnmarshalBlobTx(tx); isBlobTx {
-		return sha256.Sum256(blobTx.Tx)
-	}
-	if indexWrapper, isIndexWrapper := UnmarshalIndexWrapper(tx); isIndexWrapper {
-		return sha256.Sum256(indexWrapper.Tx)
-	}
-	return sha256.Sum256(tx)
+	return sha256.Sum256(unwrap(tx))
 }
 
 // String returns the hex-encoded transaction as a string.
