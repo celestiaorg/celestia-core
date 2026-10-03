@@ -1304,3 +1304,25 @@ func makeBlockID(hash []byte, partSetSize uint32, partSetHash []byte) types.Bloc
 		},
 	}
 }
+
+func TestNumHashWorkers(t *testing.T) {
+	testCases := []struct {
+		name    string
+		numCPU  int
+		txCount int
+		want    int
+	}{
+		{"single cpu, one tx", 1, 1, 1},
+		{"single cpu, many txs", 1, 10, 1},
+		{"two cpus, many txs", 2, 10, 1},
+		{"more cpus than txs", 8, 3, 3},
+		{"more txs than cpus", 8, 20, 7},
+		{"no txs", 8, 0, 0},
+		{"no txs, single cpu", 1, 0, 0},
+	}
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			require.Equal(t, tc.want, sm.NumHashWorkers(tc.numCPU, tc.txCount))
+		})
+	}
+}

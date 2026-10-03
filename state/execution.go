@@ -225,7 +225,7 @@ func (blockExec *BlockExecutor) CreateProposalBlock(
 	// TODO: make sure that the hashes are correct here
 	// via also removing hashes that the application removed!
 	hashes := make([][]byte, len(newData.Txs))
-	numWorkers := min(runtime.NumCPU()-1, len(newData.Txs))
+	numWorkers := numHashWorkers(runtime.NumCPU(), len(newData.Txs))
 	workers := make(chan struct{}, numWorkers)
 	var wg sync.WaitGroup
 	for i, tx := range newData.Txs {
@@ -1013,4 +1013,15 @@ func (blockExec *BlockExecutor) saveFailedProposalBlock(state State, block *type
 	} else {
 		blockExec.logger.Info("saved failed proposal block", "file", filepath.Join(debugDir, filename), "reason", reason)
 	}
+}
+
+// numHashWorkers returns how many goroutines may hash transactions
+// concurrently. It always returns at least one worker when there are
+// transactions: with a single CPU, numCPU-1 is zero, which would make the
+// semaphore channel unbuffered and block the proposer forever on its first send.
+func numHashWorkers(numCPU, txCount int) int {
+	if txCount == 0 {
+		return 0
+	}
+	return max(1, min(numCPU-1, txCount))
 }
