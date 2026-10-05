@@ -294,3 +294,50 @@ func TestHandleWantsReplayStoredBlockAcrossRounds(t *testing.T) {
 	assert.LessOrEqual(t, len(ps.state[1]), 1, "replayed rounds should not grow peer state")
 	ps.mtx.RUnlock()
 }
+
+// TestHandleWantsLatestRoundAliasDoesNotHideStoredBlock verifies that serving
+// the latest cached round doesn't mark the committed block's parts as sent.
+func TestHandleWantsLatestRoundAliasDoesNotHideStoredBlock(t *testing.T) {
+	reactors, _ := testBlockPropReactors(2, cfg.DefaultP2PConfig())
+	r1, r2 := reactors[0], reactors[1]
+
+	cleanup, _, sm, pv := state.SetupTestCaseWithPrivVal(t)
+	t.Cleanup(func() { cleanup(t) })
+
+	ps := r1.getPeer(r2.self)
+	require.NotNil(t, ps)
+	cp := &countingPeer{Peer: ps.peer, sent: make(map[uint32]int)}
+	ps.peer = cp
+
+	// the committed block is stored, while a different round-1 proposal for
+	// the same height is still cached.
+	_, committed, block, _ := createTestProposal(t, sm, pv, 1, 0, 100, 1000)
+	r1.store.SaveBlock(block, committed, &types.Commit{Height: 1})
+	_, other, _, _ := createTestProposal(t, sm, pv, 1, 1, 100, 1000)
+	require.Equal(t, committed.Total(), other.Total())
+	r1.pmtx.Lock()
+	r1.proposals[1] = map[int32]*proposalData{
+		1: {block: proptypes.NewCombinedPartSetFromOriginal(other, true)},
+	}
+	r1.height = 2
+	r1.pmtx.Unlock()
+
+	total := int(committed.Total()) * 2
+	want := bits.NewBitArray(total)
+	want.Fill()
+	sendWant := func(round int32) {
+		r1.handleWants(r2.self, &proptypes.WantParts{
+			Parts:             want,
+			Height:            1,
+			Round:             round,
+			Prove:             true,
+			MissingPartsCount: int32(committed.Total()),
+		})
+	}
+
+	sendWant(-2) // latest-round alias: serves the cached round-1 proposal
+	sendWant(0)  // uncached round: serves the committed block from the store
+	for i := 0; i < int(committed.Total()); i++ {
+		assert.Equal(t, 2, cp.sent[uint32(i)], "part %d", i)
+	}
+}

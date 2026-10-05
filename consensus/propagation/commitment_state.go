@@ -214,12 +214,25 @@ func (p *ProposalCache) getAllState(height int64, round int32, catchup bool) (*p
 // the block store, which are looked up by height only.
 const storedPartsRound = math.MinInt32
 
-// hasCachedRound reports whether the exact height and round is cached.
-func (p *ProposalCache) hasCachedRound(height int64, round int32) bool {
+// servedRound returns the round whose parts getAllState serves for a request,
+// and whether they come from the cache rather than the block store.
+func (p *ProposalCache) servedRound(height int64, round int32) (int32, bool) {
 	p.pmtx.Lock()
 	defer p.pmtx.Unlock()
-	_, has := p.proposals[height][round]
-	return has
+	cachedProps := p.proposals[height]
+	if _, has := cachedProps[round]; has {
+		return round, true
+	}
+	if round < -1 && len(cachedProps) > 0 {
+		var latestRound int32
+		for r := range cachedProps {
+			if r > latestRound {
+				latestRound = r
+			}
+		}
+		return latestRound, true
+	}
+	return storedPartsRound, false
 }
 
 // GetCurrentProposal returns the current proposal and block for the current

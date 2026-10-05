@@ -396,13 +396,9 @@ func (blockProp *Reactor) handleWants(peer p2p.ID, wants *proptypes.WantParts) {
 		blockProp.Logger.Error("nil can send", "peer", peer, "height", height, "round", round, "wants", wants, "wc", wc)
 		return
 	}
-	// Stored blocks and the latest-round alias ignore the requested round, so
-	// track them under one round to stop peers replaying with new rounds.
-	keyRound := round
-	cached := blockProp.hasCachedRound(height, round)
-	if !cached {
-		keyRound = storedPartsRound
-	}
+	// Track sent parts under the round actually served, so peers can't
+	// replay a want for the same block under a different round.
+	keyRound, cached := blockProp.servedRound(height, round)
 
 	// skip parts already served to this peer so replayed wants are free.
 	canSend := p.Unsent(height, keyRound, available, wants.Prove)
@@ -442,7 +438,7 @@ func (blockProp *Reactor) handleWants(peer p2p.ID, wants *proptypes.WantParts) {
 	// Only exact cached rounds can still receive parts worth waiting for.
 	stillMissing := wants.Parts.Sub(available)
 	if cached && !stillMissing.IsEmpty() {
-		p.AddWants(height, round, stillMissing)
+		p.AddWants(height, keyRound, stillMissing)
 	}
 }
 
