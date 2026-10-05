@@ -391,11 +391,13 @@ func (blockProp *Reactor) handleWants(peer p2p.ID, wants *proptypes.WantParts) {
 
 	// if we have the parts, send them to the peer.
 	wc := wants.Parts.Copy()
-	canSend := parts.BitArray().And(wc)
-	if canSend == nil {
+	available := parts.BitArray().And(wc)
+	if available == nil {
 		blockProp.Logger.Error("nil can send", "peer", peer, "height", height, "round", round, "wants", wants, "wc", wc)
 		return
 	}
+	// skip parts already served to this peer so replayed wants are free.
+	canSend := p.Unsent(height, round, available, wants.Prove)
 
 	p.SetRemainingRequests(height, round, int(wants.MissingPartsCount))
 	for _, partIndex := range canSend.GetTrueIndices() {
@@ -424,12 +426,12 @@ func (blockProp *Reactor) handleWants(peer p2p.ID, wants *proptypes.WantParts) {
 			continue
 		}
 		p.DecreaseRemainingRequests(height, round, 1)
-		// p.SetHave(height, round, int(partIndex))
+		p.MarkSent(height, round, partIndex, wants.Prove)
 		schema.WriteBlockPart(blockProp.traceClient, height, round, part.Index, wants.Prove, string(peer), schema.Upload)
 	}
 
 	// for parts that we don't have, but they still want, store the wants.
-	stillMissing := wants.Parts.Sub(canSend)
+	stillMissing := wants.Parts.Sub(available)
 	if !stillMissing.IsEmpty() {
 		p.AddWants(height, round, stillMissing)
 	}
@@ -629,6 +631,8 @@ func (blockProp *Reactor) clearWants(part *proptypes.RecoveryPart, proof merkle.
 				blockProp.Logger.Error("failed to send part", "peer", peer.peer.ID(), "height", part.Height, "round", part.Round, "part", part.Index)
 				continue
 			}
+
+			peer.MarkSent(part.Height, part.Round, int(part.Index), true)
 
 			err := peer.SetHave(part.Height, part.Round, int(part.Index))
 			if err != nil {
