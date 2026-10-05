@@ -306,7 +306,7 @@ func TestHeavySlotHeldThroughResponseWrite(t *testing.T) {
 		"uri":     {httptest.NewRequest(http.MethodGet, "/heavy", nil), 1},
 		"jsonrpc": {httptest.NewRequest(http.MethodPost, "/", strings.NewReader(`{"jsonrpc":"2.0","method":"heavy","id":0}`)), 1},
 		"jsonrpc batch": {httptest.NewRequest(http.MethodPost, "/", strings.NewReader(
-			`[{"jsonrpc":"2.0","method":"heavy","id":0},{"jsonrpc":"2.0","method":"heavy","id":1}]`)), 2},
+			`[{"jsonrpc":"2.0","method":"heavy","id":0},{"jsonrpc":"2.0","method":"heavy","id":1}]`)), 1},
 	}
 	for name, tc := range tests {
 		t.Run(name, func(t *testing.T) {
@@ -320,4 +320,29 @@ func TestHeavySlotHeldThroughResponseWrite(t *testing.T) {
 			assert.Equal(t, 0, len(sem), "heavy slot leaked")
 		})
 	}
+}
+
+// TestHeavyBatchUsesOneSlot checks that a batch takes one heavy slot, so its
+// own calls don't exhaust the limit and reject one another.
+func TestHeavyBatchUsesOneSlot(t *testing.T) {
+	sem := make(chan struct{}, 1)
+	funcMap := map[string]*RPCFunc{
+		"heavy": NewRPCFunc(func(ctx *types.Context) (string, error) { return "big", nil }, "", HeavyFn(sem)),
+	}
+	mux := http.NewServeMux()
+	RegisterRPCFuncs(mux, funcMap, log.NewNopLogger())
+
+	req := httptest.NewRequest(http.MethodPost, "/", strings.NewReader(
+		`[{"jsonrpc":"2.0","method":"heavy","id":0},{"jsonrpc":"2.0","method":"heavy","id":1}]`))
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, req)
+	require.Equal(t, http.StatusOK, rec.Code)
+
+	var responses []types.RPCResponse
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &responses))
+	require.Len(t, responses, 2)
+	for _, res := range responses {
+		assert.Nil(t, res.Error)
+	}
+	assert.Equal(t, 0, len(sem), "heavy slot leaked")
 }
