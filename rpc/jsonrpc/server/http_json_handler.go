@@ -105,18 +105,17 @@ func makeJSONRPCHandler(funcMap map[string]*RPCFunc, logger log.Logger) http.Han
 				cache = false
 			}
 
-			// Bound concurrent heavy responses; reject fast when saturated.
-			// release() is deferred so a panic can't leak the slot.
+			// Bound concurrent heavy responses; reject fast when saturated. Slots
+			// are held until the responses are fully written, since the large
+			// buffers live that long.
 			admitted, release := rpcFunc.tryAcquire()
 			if !admitted {
 				responses = append(responses, types.RPCInternalError(request.ID, errHeavyRequestLimit))
 				cache = false
 				continue
 			}
-			returns := func() []reflect.Value {
-				defer release()
-				return rpcFunc.f.Call(args)
-			}()
+			defer release()
+			returns := rpcFunc.f.Call(args)
 			result, err := unreflectResult(returns)
 			if err != nil {
 				responses = append(responses, types.RPCInternalError(request.ID, err))

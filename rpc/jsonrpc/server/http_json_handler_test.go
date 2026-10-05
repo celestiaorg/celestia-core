@@ -276,3 +276,48 @@ func TestRPCResponseCache(t *testing.T) {
 	res.Body.Close()
 	require.Nil(t, err, "reading from the body should not give back an error")
 }
+
+// slotRecorder records how many heavy slots are held when the response body is written.
+type slotRecorder struct {
+	*httptest.ResponseRecorder
+	sem         chan struct{}
+	heldOnWrite []int
+}
+
+func (s *slotRecorder) Write(b []byte) (int, error) {
+	s.heldOnWrite = append(s.heldOnWrite, len(s.sem))
+	return s.ResponseRecorder.Write(b)
+}
+
+// TestHeavySlotHeldThroughResponseWrite checks that a heavy request keeps its
+// slot until its response is written, on both the URI and JSON-RPC paths.
+func TestHeavySlotHeldThroughResponseWrite(t *testing.T) {
+	sem := make(chan struct{}, 2)
+	funcMap := map[string]*RPCFunc{
+		"heavy": NewRPCFunc(func(ctx *types.Context) (string, error) { return "big", nil }, "", HeavyFn(sem)),
+	}
+	mux := http.NewServeMux()
+	RegisterRPCFuncs(mux, funcMap, log.NewNopLogger())
+
+	tests := map[string]struct {
+		req      *http.Request
+		wantHeld int
+	}{
+		"uri":     {httptest.NewRequest(http.MethodGet, "/heavy", nil), 1},
+		"jsonrpc": {httptest.NewRequest(http.MethodPost, "/", strings.NewReader(`{"jsonrpc":"2.0","method":"heavy","id":0}`)), 1},
+		"jsonrpc batch": {httptest.NewRequest(http.MethodPost, "/", strings.NewReader(
+			`[{"jsonrpc":"2.0","method":"heavy","id":0},{"jsonrpc":"2.0","method":"heavy","id":1}]`)), 2},
+	}
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			rec := &slotRecorder{ResponseRecorder: httptest.NewRecorder(), sem: sem}
+			mux.ServeHTTP(rec, tc.req)
+			require.Equal(t, http.StatusOK, rec.Code)
+			require.NotEmpty(t, rec.heldOnWrite)
+			for _, held := range rec.heldOnWrite {
+				assert.Equal(t, tc.wantHeld, held, "heavy slot released before response was written")
+			}
+			assert.Equal(t, 0, len(sem), "heavy slot leaked")
+		})
+	}
+}
