@@ -253,3 +253,44 @@ func TestHandleWantsReplay(t *testing.T) {
 		assert.Equal(t, 2, cp.sent[uint32(i)], "part %d", i)
 	}
 }
+
+// TestHandleWantsReplayStoredBlockAcrossRounds verifies that catchup wants for
+// a stored block can't bypass deduplication by changing the round.
+func TestHandleWantsReplayStoredBlockAcrossRounds(t *testing.T) {
+	reactors, _ := testBlockPropReactors(2, cfg.DefaultP2PConfig())
+	r1, r2 := reactors[0], reactors[1]
+
+	cleanup, _, sm, pv := state.SetupTestCaseWithPrivVal(t)
+	t.Cleanup(func() { cleanup(t) })
+
+	ps := r1.getPeer(r2.self)
+	require.NotNil(t, ps)
+	cp := &countingPeer{Peer: ps.peer, sent: make(map[uint32]int)}
+	ps.peer = cp
+
+	_, partSet, block, _ := createTestProposal(t, sm, pv, 1, 0, 100, 1000)
+	r1.store.SaveBlock(block, partSet, &types.Commit{Height: 1})
+	r1.pmtx.Lock()
+	r1.height = 2
+	r1.pmtx.Unlock()
+
+	total := int(partSet.Total()) * 2
+	want := bits.NewBitArray(total)
+	want.Fill()
+	for round := int32(-50); round < 50; round++ {
+		r1.handleWants(r2.self, &proptypes.WantParts{
+			Parts:             want,
+			Height:            1,
+			Round:             round,
+			Prove:             true,
+			MissingPartsCount: int32(partSet.Total()),
+		})
+	}
+
+	for i := 0; i < int(partSet.Total()); i++ {
+		assert.Equal(t, 1, cp.sent[uint32(i)], "part %d", i)
+	}
+	ps.mtx.RLock()
+	assert.LessOrEqual(t, len(ps.state[1]), 1, "replayed rounds should not grow peer state")
+	ps.mtx.RUnlock()
+}

@@ -396,12 +396,20 @@ func (blockProp *Reactor) handleWants(peer p2p.ID, wants *proptypes.WantParts) {
 		blockProp.Logger.Error("nil can send", "peer", peer, "height", height, "round", round, "wants", wants, "wc", wc)
 		return
 	}
-	// skip parts already served to this peer so replayed wants are free.
-	canSend := p.Unsent(height, round, available, wants.Prove)
+	// Stored blocks and the latest-round alias ignore the requested round, so
+	// track them under one round to stop peers replaying with new rounds.
+	keyRound := round
+	cached := blockProp.hasCachedRound(height, round)
+	if !cached {
+		keyRound = storedPartsRound
+	}
 
-	p.SetRemainingRequests(height, round, int(wants.MissingPartsCount))
+	// skip parts already served to this peer so replayed wants are free.
+	canSend := p.Unsent(height, keyRound, available, wants.Prove)
+
+	p.SetRemainingRequests(height, keyRound, int(wants.MissingPartsCount))
 	for _, partIndex := range canSend.GetTrueIndices() {
-		if p.GetRemainingRequests(height, round) <= 0 {
+		if p.GetRemainingRequests(height, keyRound) <= 0 {
 			break
 		}
 		part, _ := parts.GetPart(uint32(partIndex))
@@ -425,14 +433,15 @@ func (blockProp *Reactor) handleWants(peer p2p.ID, wants *proptypes.WantParts) {
 			blockProp.Logger.Error("failed to send part", "peer", peer, "height", height, "round", round, "part", partIndex)
 			continue
 		}
-		p.DecreaseRemainingRequests(height, round, 1)
-		p.MarkSent(height, round, partIndex, wants.Prove)
+		p.DecreaseRemainingRequests(height, keyRound, 1)
+		p.MarkSent(height, keyRound, partIndex, wants.Prove)
 		schema.WriteBlockPart(blockProp.traceClient, height, round, part.Index, wants.Prove, string(peer), schema.Upload)
 	}
 
 	// for parts that we don't have, but they still want, store the wants.
+	// Only exact cached rounds can still receive parts worth waiting for.
 	stillMissing := wants.Parts.Sub(available)
-	if !stillMissing.IsEmpty() {
+	if cached && !stillMissing.IsEmpty() {
 		p.AddWants(height, round, stillMissing)
 	}
 }

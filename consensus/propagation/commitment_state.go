@@ -1,6 +1,7 @@
 package propagation
 
 import (
+	"math"
 	"sync/atomic"
 
 	proptypes "github.com/cometbft/cometbft/consensus/propagation/types"
@@ -207,6 +208,18 @@ func (p *ProposalCache) getAllState(height int64, round int32, catchup bool) (*p
 	default:
 		return nil, nil, nil, false
 	}
+}
+
+// storedPartsRound is the peer state round used to track parts served from
+// the block store, which are looked up by height only.
+const storedPartsRound = math.MinInt32
+
+// hasCachedRound reports whether the exact height and round is cached.
+func (p *ProposalCache) hasCachedRound(height int64, round int32) bool {
+	p.pmtx.Lock()
+	defer p.pmtx.Unlock()
+	_, has := p.proposals[height][round]
+	return has
 }
 
 // GetCurrentProposal returns the current proposal and block for the current
