@@ -168,13 +168,36 @@ func (p *ProposalCache) safeRelevant(height int64, round int32) bool {
 func (p *ProposalCache) getAllState(height int64, round int32, catchup bool) (*proptypes.CompactBlock, *proptypes.CombinedPartSet, *bits.BitArray, bool) {
 	p.pmtx.Lock()
 	defer p.pmtx.Unlock()
-
-	if !catchup && !p.relevant(height, round) {
+	prop, parts, _, has := p.getServedState(height, round, catchup)
+	if prop != nil {
+		return prop.compactBlock, prop.block, prop.maxRequests, true
+	}
+	if !has {
 		return nil, nil, nil, false
 	}
+	return nil, parts, parts.BitArray(), true
+}
 
-	cachedProps, has := p.proposals[height]
-	cachedProp, hasRound := cachedProps[round]
+// getServedParts returns the parts served for a request together with the
+// round they are tracked under, and whether they come from the cache.
+func (p *ProposalCache) getServedParts(height int64, round int32, catchup bool) (parts *proptypes.CombinedPartSet, servedRound int32, cached, has bool) {
+	p.pmtx.Lock()
+	defer p.pmtx.Unlock()
+	prop, parts, servedRound, has := p.getServedState(height, round, catchup)
+	return parts, servedRound, prop != nil, has
+}
+
+// getServedState resolves a request to the cached proposal or stored parts
+// that serve it, and the round they belong to. Callers must hold pmtx.
+func (p *ProposalCache) getServedState(height int64, round int32, catchup bool) (*proposalData, *proptypes.CombinedPartSet, int32, bool) {
+	if !catchup && !p.relevant(height, round) {
+		return nil, nil, 0, false
+	}
+
+	cachedProps := p.proposals[height]
+	if cachedProp, has := cachedProps[round]; has {
+		return cachedProp, cachedProp.block, round, true
+	}
 
 	// if the round is less than -1, then they're asking for the latest
 	// proposal
@@ -186,53 +209,29 @@ func (p *ProposalCache) getAllState(height int64, round int32, catchup bool) (*p
 				latestRound = r
 			}
 		}
-		cachedProp = cachedProps[latestRound]
-		hasRound = true
+		cachedProp := cachedProps[latestRound]
+		return cachedProp, cachedProp.block, latestRound, true
 	}
 
-	var hasStored *types.BlockMeta
-	if height < p.height {
-		hasStored = p.store.LoadBlockMeta(height)
+	if height >= p.height || p.store.LoadBlockMeta(height) == nil {
+		return nil, nil, 0, false
 	}
-
-	switch {
-	case has && hasRound:
-		return cachedProp.compactBlock, cachedProp.block, cachedProp.maxRequests, true
-	case hasStored != nil:
-		parts, _, err := p.store.LoadPartSet(height)
-		if err != nil {
-			return nil, nil, nil, false
-		}
-		cparts := proptypes.NewCombinedPartSetFromOriginal(parts, false)
-		return nil, cparts, cparts.BitArray(), true
-	default:
-		return nil, nil, nil, false
+	parts, _, err := p.store.LoadPartSet(height)
+	if err != nil {
+		return nil, nil, 0, false
 	}
+	return nil, proptypes.NewCombinedPartSetFromOriginal(parts, false), storedPartsRound, true
 }
 
 // storedPartsRound is the peer state round used to track parts served from
 // the block store, which are looked up by height only.
 const storedPartsRound = math.MinInt32
 
-// servedRound returns the round whose parts getAllState serves for a request,
-// and whether they come from the cache rather than the block store.
-func (p *ProposalCache) servedRound(height int64, round int32) (int32, bool) {
-	p.pmtx.Lock()
-	defer p.pmtx.Unlock()
-	cachedProps := p.proposals[height]
-	if _, has := cachedProps[round]; has {
-		return round, true
-	}
-	if round < -1 && len(cachedProps) > 0 {
-		var latestRound int32
-		for r := range cachedProps {
-			if r > latestRound {
-				latestRound = r
-			}
-		}
-		return latestRound, true
-	}
-	return storedPartsRound, false
+// isServing reports whether parts are still the cached block for the round.
+// Callers must hold pmtx.
+func (p *ProposalCache) isServing(height int64, round int32, parts *proptypes.CombinedPartSet) bool {
+	prop := p.proposals[height][round]
+	return prop != nil && prop.block == parts
 }
 
 // GetCurrentProposal returns the current proposal and block for the current

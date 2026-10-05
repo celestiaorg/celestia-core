@@ -341,3 +341,33 @@ func TestHandleWantsLatestRoundAliasDoesNotHideStoredBlock(t *testing.T) {
 		assert.Equal(t, 2, cp.sent[uint32(i)], "part %d", i)
 	}
 }
+
+// TestMarkServedSkipsReplacedProposal verifies that parts sent from a cached
+// proposal aren't recorded once that proposal has been replaced.
+func TestMarkServedSkipsReplacedProposal(t *testing.T) {
+	reactors, _ := testBlockPropReactors(2, cfg.DefaultP2PConfig())
+	r1, r2 := reactors[0], reactors[1]
+
+	cleanup, _, sm, pv := state.SetupTestCaseWithPrivVal(t)
+	t.Cleanup(func() { cleanup(t) })
+
+	_, oldParts, _, _ := createTestProposal(t, sm, pv, 1, 0, 100, 1000)
+	_, newParts, _, _ := createTestProposal(t, sm, pv, 1, 0, 100, 1000)
+	served := proptypes.NewCombinedPartSetFromOriginal(oldParts, true)
+	r1.pmtx.Lock()
+	r1.proposals[1] = map[int32]*proposalData{
+		0: {block: proptypes.NewCombinedPartSetFromOriginal(newParts, true)},
+	}
+	r1.pmtx.Unlock()
+
+	ps := r1.getPeer(r2.self)
+	require.NotNil(t, ps)
+	total := int(served.Total())
+	ps.Initialize(1, 0, total)
+
+	r1.markServed(ps, 1, 0, served, true, []int{0, 1}, true)
+
+	want := bits.NewBitArray(total)
+	want.Fill()
+	assert.Equal(t, total, len(ps.Unsent(1, 0, want, true).GetTrueIndices()))
+}

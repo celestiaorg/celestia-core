@@ -375,7 +375,9 @@ func (blockProp *Reactor) handleWants(peer p2p.ID, wants *proptypes.WantParts) {
 
 	// get data, use the prove as a proxy for determining if this Want message
 	// if for catchup
-	_, parts, _, has := blockProp.getAllState(height, round, wants.Prove)
+	// keyRound is the round actually served; sent parts are tracked under it
+	// so peers can't replay a want for the same block under another round.
+	parts, keyRound, cached, has := blockProp.getServedParts(height, round, wants.Prove)
 	// the peer must always send the proposal before sending parts, if they did
 	//  not, this node must disconnect from them.
 	if !has {
@@ -396,12 +398,9 @@ func (blockProp *Reactor) handleWants(peer p2p.ID, wants *proptypes.WantParts) {
 		blockProp.Logger.Error("nil can send", "peer", peer, "height", height, "round", round, "wants", wants, "wc", wc)
 		return
 	}
-	// Track sent parts under the round actually served, so peers can't
-	// replay a want for the same block under a different round.
-	keyRound, cached := blockProp.servedRound(height, round)
-
 	// skip parts already served to this peer so replayed wants are free.
 	canSend := p.Unsent(height, keyRound, available, wants.Prove)
+	sent := make([]int, 0, len(canSend.GetTrueIndices()))
 
 	p.SetRemainingRequests(height, keyRound, int(wants.MissingPartsCount))
 	for _, partIndex := range canSend.GetTrueIndices() {
@@ -430,15 +429,30 @@ func (blockProp *Reactor) handleWants(peer p2p.ID, wants *proptypes.WantParts) {
 			continue
 		}
 		p.DecreaseRemainingRequests(height, keyRound, 1)
-		p.MarkSent(height, keyRound, partIndex, wants.Prove)
+		sent = append(sent, partIndex)
 		schema.WriteBlockPart(blockProp.traceClient, height, round, part.Index, wants.Prove, string(peer), schema.Upload)
 	}
+
+	blockProp.markServed(p, height, keyRound, parts, cached, sent, wants.Prove)
 
 	// for parts that we don't have, but they still want, store the wants.
 	// Only exact cached rounds can still receive parts worth waiting for.
 	stillMissing := wants.Parts.Sub(available)
 	if cached && !stillMissing.IsEmpty() {
 		p.AddWants(height, keyRound, stillMissing)
+	}
+}
+
+// markServed records the parts sent to a peer, unless the cached proposal they
+// came from was replaced meanwhile, which also reset the peer's part state.
+func (blockProp *Reactor) markServed(p *PeerState, height int64, round int32, parts *proptypes.CombinedPartSet, cached bool, sent []int, proven bool) {
+	blockProp.pmtx.Lock()
+	defer blockProp.pmtx.Unlock()
+	if cached && !blockProp.isServing(height, round, parts) {
+		return
+	}
+	for _, partIndex := range sent {
+		p.MarkSent(height, round, partIndex, proven)
 	}
 }
 
