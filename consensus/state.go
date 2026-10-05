@@ -1016,7 +1016,11 @@ func (cs *State) receiveRoutine(maxSteps int) {
 			cs.handleTxsAvailable()
 
 		case mi = <-cs.peerMsgQueue:
-			if !cs.config.OnlyInternalWal {
+			// Block parts from peers are not written to the WAL. The proposer
+			// keeps its own parts in its WAL, and peers refetch them after a
+			// restart.
+			_, isBlockPart := mi.Msg.(*BlockPartMessage)
+			if !cs.config.OnlyInternalWal && !isBlockPart {
 				if err := cs.walWrite("peer", mi); err != nil {
 					cs.Logger.Error("failed writing to WAL", "err", err)
 				}
