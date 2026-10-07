@@ -283,3 +283,38 @@ func BenchmarkWalDecode100MB(b *testing.B) {
 func BenchmarkWalDecode1GB(b *testing.B) {
 	benchmarkWalDecode(b, 1024*1024*1024)
 }
+
+func setupBenchmarkWAL(b *testing.B) *BaseWAL {
+	b.Helper()
+	walDir := b.TempDir()
+	walFile := filepath.Join(walDir, "wal")
+	wal, err := NewWAL(walFile)
+	require.NoError(b, err)
+	wal.SetLogger(log.TestingLogger())
+	err = wal.Start()
+	require.NoError(b, err)
+	b.Cleanup(func() {
+		if err := wal.Stop(); err != nil {
+			b.Error(err)
+		}
+		wal.Wait()
+	})
+	return wal
+}
+
+// BenchmarkWALFlushAndSyncClean measures FlushAndSync with no pending data.
+func BenchmarkWALFlushAndSyncClean(b *testing.B) {
+	wal := setupBenchmarkWAL(b)
+
+	if err := wal.FlushAndSync(); err != nil {
+		b.Fatal(err)
+	}
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		if err := wal.FlushAndSync(); err != nil {
+			b.Fatal(err)
+		}
+	}
+	b.ReportAllocs()
+}
