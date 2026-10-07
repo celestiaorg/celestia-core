@@ -2896,3 +2896,56 @@ func TestHandleMsgReleasesLockBeforeStatsMsgQueueSend(t *testing.T) {
 
 	<-cs.statsMsgQueue
 }
+
+// countingWAL is a WAL spy that records which messages triggered Write vs WriteSync.
+type countingWAL struct {
+	nilWAL
+	writes     []WALMessage
+	writeSyncs []WALMessage
+}
+
+func (w *countingWAL) Write(msg WALMessage) error {
+	w.writes = append(w.writes, msg)
+	return nil
+}
+
+func (w *countingWAL) WriteSync(msg WALMessage) error {
+	w.writeSyncs = append(w.writeSyncs, msg)
+	return nil
+}
+
+// TestWALSelectiveFsync checks WAL dispatch for internal message types.
+func TestWALSelectiveFsync(t *testing.T) {
+	cwal := &countingWAL{}
+	cs := &State{wal: cwal}
+
+	messages := []msgInfo{
+		{Msg: &VoteMessage{Vote: &types.Vote{}}},
+		{Msg: &ProposalMessage{Proposal: &types.Proposal{}}},
+		{Msg: &BlockPartMessage{Height: 1, Round: 0, Part: &types.Part{Index: 0}}},
+	}
+
+	for _, mi := range messages {
+		require.NotPanics(t, func() {
+			cs.writeInternalMsgToWAL(mi)
+		})
+	}
+
+	// VoteMessage and ProposalMessage should have used WriteSync
+	require.Len(t, cwal.writeSyncs, 2)
+	assert.IsType(t, &VoteMessage{}, cwal.writeSyncs[0].(msgInfo).Msg)
+	assert.IsType(t, &ProposalMessage{}, cwal.writeSyncs[1].(msgInfo).Msg)
+
+	// BlockPartMessage should have used Write (no fsync)
+	require.Len(t, cwal.writes, 1)
+	assert.IsType(t, &BlockPartMessage{}, cwal.writes[0].(msgInfo).Msg)
+}
+
+func TestWALSelectiveFsyncUnexpectedTypePanics(t *testing.T) {
+	cs := &State{wal: &countingWAL{}}
+	unknown := msgInfo{Msg: &HasVoteMessage{}}
+
+	require.Panics(t, func() {
+		cs.writeInternalMsgToWAL(unknown)
+	})
+}
