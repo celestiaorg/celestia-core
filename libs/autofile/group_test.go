@@ -94,7 +94,7 @@ func TestCheckHeadSizeLimit(t *testing.T) {
 	assertGroupInfo(t, g.ReadGroupInfo(), 0, 2, 2000000, 0)
 
 	// Write 1000 more bytes.
-	_, err = g.Head.Write([]byte(cmtrand.Str(999) + "\n"))
+	err = g.WriteLine(cmtrand.Str(999))
 	require.NoError(t, err, "Error appending to head")
 	err = g.FlushAndSync()
 	require.NoError(t, err)
@@ -127,7 +127,7 @@ func TestRotateFile(t *testing.T) {
 	err = os.Chdir(dir)
 	require.NoError(t, err)
 
-	require.True(t, filepath.IsAbs(g.Head.Path))
+	require.True(t, filepath.IsAbs(g.head.Path))
 	require.True(t, filepath.IsAbs(g.Dir))
 
 	// Create and rotate files
@@ -149,15 +149,15 @@ func TestRotateFile(t *testing.T) {
 	err = g.FlushAndSync()
 	require.NoError(t, err)
 
-	// Read g.Head.Path+"000"
-	body1, err := os.ReadFile(g.Head.Path + ".000")
+	// Read g.head.Path+"000"
+	body1, err := os.ReadFile(g.head.Path + ".000")
 	assert.NoError(t, err, "Failed to read first rolled file")
 	if string(body1) != "Line 1\nLine 2\nLine 3\n" {
 		t.Errorf("got unexpected contents: [%v]", string(body1))
 	}
 
-	// Read g.Head.Path
-	body2, err := os.ReadFile(g.Head.Path)
+	// Read g.head.Path
+	body2, err := os.ReadFile(g.head.Path)
 	assert.NoError(t, err, "Failed to read first rolled file")
 	if string(body2) != "Line 4\nLine 5\nLine 6\n" {
 		t.Errorf("got unexpected contents: [%v]", string(body2))
