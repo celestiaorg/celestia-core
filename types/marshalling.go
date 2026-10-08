@@ -5,7 +5,10 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"runtime"
+	"sync"
 
+	cmtproto "github.com/cometbft/cometbft/proto/tendermint/types"
 	"github.com/cosmos/gogoproto/proto"
 )
 
@@ -29,6 +32,9 @@ func safeAddUint32(a, b uint32) (uint32, error) {
 // and returns both the encoded []byte and a slice of positions marking the
 // boundaries of each nested tx (repeated []byte field) inside Data (field number 1).
 func MarshalBlockWithTxPositions(block proto.Message, txsCount int) ([]byte, []TxPosition, error) {
+	if pb, ok := block.(*cmtproto.Block); ok && len(pb.Data.Txs) == txsCount && len(pb.Data.Txs) >= 16 && pb.Data.Size() >= 1<<20 && runtime.GOMAXPROCS(0) > 1 && pb.Size() <= math.MaxUint32 {
+		return marshalLargeBlockByAlias(pb)
+	}
 	// First, marshal the entire message normally.
 	b, err := proto.Marshal(block)
 	if err != nil {
@@ -116,6 +122,54 @@ func MarshalBlockWithTxPositions(block proto.Message, txsCount int) ([]byte, []T
 		}
 	}
 
+	return b, positions, nil
+}
+
+// marshalLargeBlockByAlias copies large transaction payloads in parallel, then
+// lets the generated marshaler write the canonical protobuf framing. Its tx
+// sources already point at their final offsets, so the generated copies have
+// identical source and destination slices.
+func marshalLargeBlockByAlias(pb *cmtproto.Block) ([]byte, []TxPosition, error) {
+	b := make([]byte, pb.Size())
+	positions := make([]TxPosition, len(pb.Data.Txs))
+	txAliases := make([][]byte, len(pb.Data.Txs))
+	var varint [binary.MaxVarintLen64]byte
+	pos := 1 + binary.PutUvarint(varint[:], uint64(pb.Header.Size())) + pb.Header.Size()
+	pos += 1 + binary.PutUvarint(varint[:], uint64(pb.Data.Size()))
+	for i, tx := range pb.Data.Txs {
+		start := pos
+		pos += 1 + binary.PutUvarint(varint[:], uint64(len(tx)))
+		txAliases[i] = b[pos : pos+len(tx) : pos+len(tx)]
+		pos += len(tx)
+		positions[i] = TxPosition{Start: uint32(start), End: uint32(pos)}
+	}
+
+	jobs := make(chan int, len(pb.Data.Txs))
+	var wg sync.WaitGroup
+	for range min(runtime.GOMAXPROCS(0), len(pb.Data.Txs)) {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for i := range jobs {
+				copy(txAliases[i], pb.Data.Txs[i])
+			}
+		}()
+	}
+	for i := range pb.Data.Txs {
+		jobs <- i
+	}
+	close(jobs)
+	wg.Wait()
+
+	blockCopy := *pb
+	blockCopy.Data.Txs = txAliases
+	n, err := blockCopy.MarshalToSizedBuffer(b)
+	if err != nil {
+		return nil, nil, err
+	}
+	if n != len(b) {
+		return nil, nil, fmt.Errorf("marshaled block length %d != expected %d", n, len(b))
+	}
 	return b, positions, nil
 }
 
