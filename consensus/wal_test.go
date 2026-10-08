@@ -302,6 +302,40 @@ func setupBenchmarkWAL(b *testing.B) *BaseWAL {
 	return wal
 }
 
+func BenchmarkWALWrite(b *testing.B) {
+	wal := setupBenchmarkWAL(b)
+	msg := msgInfo{Msg: &BlockPartMessage{Height: 1, Round: 0, Part: &cmttypes.Part{
+		Index: 0,
+		Bytes: nBytes(512),
+		Proof: merkle.Proof{Total: 1, Index: 0, LeafHash: nBytes(32)},
+	}}}
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		if err := wal.Write(msg); err != nil {
+			b.Fatal(err)
+		}
+	}
+	b.ReportAllocs()
+}
+
+func BenchmarkWALWriteSync(b *testing.B) {
+	wal := setupBenchmarkWAL(b)
+	msg := msgInfo{Msg: &BlockPartMessage{Height: 1, Round: 0, Part: &cmttypes.Part{
+		Index: 0,
+		Bytes: nBytes(512),
+		Proof: merkle.Proof{Total: 1, Index: 0, LeafHash: nBytes(32)},
+	}}}
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		if err := wal.WriteSync(msg); err != nil {
+			b.Fatal(err)
+		}
+	}
+	b.ReportAllocs()
+}
+
 // BenchmarkWALFlushAndSyncClean measures FlushAndSync with no pending data.
 func BenchmarkWALFlushAndSyncClean(b *testing.B) {
 	wal := setupBenchmarkWAL(b)
@@ -317,4 +351,54 @@ func BenchmarkWALFlushAndSyncClean(b *testing.B) {
 		}
 	}
 	b.ReportAllocs()
+}
+
+// BenchmarkWALRoundSimulation simulates a proposer's round with N block parts,
+// comparing the old approach (WriteSync for all) vs new (Write for block parts).
+func BenchmarkWALRoundSimulation(b *testing.B) {
+	const numBlockParts = 50
+
+	proposal := msgInfo{Msg: &ProposalMessage{Proposal: &cmttypes.Proposal{}}}
+	vote := msgInfo{Msg: &VoteMessage{Vote: &cmttypes.Vote{}}}
+	blockPart := msgInfo{Msg: &BlockPartMessage{Height: 1, Round: 0, Part: &cmttypes.Part{
+		Index: 0,
+		Bytes: nBytes(512),
+		Proof: merkle.Proof{Total: 1, Index: 0, LeafHash: nBytes(32)},
+	}}}
+
+	b.Run("AllWriteSync", func(b *testing.B) {
+		wal := setupBenchmarkWAL(b)
+		b.ResetTimer()
+		for i := 0; i < b.N; i++ {
+			if err := wal.WriteSync(proposal); err != nil {
+				b.Fatal(err)
+			}
+			for j := 0; j < numBlockParts; j++ {
+				if err := wal.WriteSync(blockPart); err != nil {
+					b.Fatal(err)
+				}
+			}
+			if err := wal.WriteSync(vote); err != nil {
+				b.Fatal(err)
+			}
+		}
+	})
+
+	b.Run("SelectiveFsync", func(b *testing.B) {
+		wal := setupBenchmarkWAL(b)
+		b.ResetTimer()
+		for i := 0; i < b.N; i++ {
+			if err := wal.WriteSync(proposal); err != nil {
+				b.Fatal(err)
+			}
+			for j := 0; j < numBlockParts; j++ {
+				if err := wal.Write(blockPart); err != nil {
+					b.Fatal(err)
+				}
+			}
+			if err := wal.WriteSync(vote); err != nil {
+				b.Fatal(err)
+			}
+		}
+	})
 }
