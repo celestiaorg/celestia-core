@@ -162,7 +162,7 @@ func (b *Block) MakePartSet(partSize uint32) (*PartSet, error) {
 	if err != nil {
 		return nil, err
 	}
-	ops, err := NewPartSetFromData(bz, partSize)
+	ops, err := newPartSetFromOwnedData(bz, partSize)
 	if err != nil {
 		return nil, err
 	}
