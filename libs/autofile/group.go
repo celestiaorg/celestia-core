@@ -55,9 +55,9 @@ type Group struct {
 	service.BaseService
 
 	ID                 string
-	Head               *AutoFile // The head AutoFile to write to
+	head               *AutoFile // The head AutoFile to write to
 	headBuf            *bufio.Writer
-	Dir                string // Directory that contains .Head
+	Dir                string // Directory that contains .head
 	ticker             *time.Ticker
 	mtx                sync.Mutex
 	headSizeLimit      int64
@@ -90,7 +90,7 @@ func OpenGroup(headPath string, groupOptions ...func(*Group)) (*Group, error) {
 
 	g := &Group{
 		ID:                 "group:" + head.ID,
-		Head:               head,
+		head:               head,
 		headBuf:            bufio.NewWriterSize(head, 4096*10),
 		Dir:                dir,
 		headSizeLimit:      defaultHeadSizeLimit,
@@ -143,7 +143,7 @@ func (g *Group) OnStart() error {
 }
 
 // OnStop implements service.Service by stopping the goroutine described above.
-// NOTE: g.Head must be closed separately using Close.
+// NOTE: g.head must be closed separately using Close.
 func (g *Group) OnStop() {
 	g.ticker.Stop()
 	if err := g.FlushAndSync(); err != nil {
@@ -165,8 +165,13 @@ func (g *Group) Close() {
 	}
 
 	g.mtx.Lock()
-	_ = g.Head.closeFile()
+	_ = g.head.closeFile()
 	g.mtx.Unlock()
+}
+
+// HeadSize returns the current size of the head file.
+func (g *Group) HeadSize() (int64, error) {
+	return g.head.Size()
 }
 
 // HeadSizeLimit returns the current head size limit.
@@ -242,7 +247,7 @@ func (g *Group) FlushAndSync() error {
 	}
 	err := g.headBuf.Flush()
 	if err == nil {
-		err = g.Head.Sync()
+		err = g.head.Sync()
 	}
 	if err == nil {
 		g.dirty = false
@@ -269,9 +274,9 @@ func (g *Group) checkHeadSizeLimit() {
 	if limit == 0 {
 		return
 	}
-	size, err := g.Head.Size()
+	size, err := g.head.Size()
 	if err != nil {
-		g.Logger.Error("Group's head may grow without bound", "head", g.Head.Path, "err", err)
+		g.Logger.Error("Group's head may grow without bound", "head", g.head.Path, "err", err)
 		return
 	}
 	if size >= limit {
@@ -294,10 +299,10 @@ func (g *Group) checkTotalSizeLimit() {
 		}
 		if index == gInfo.MaxIndex {
 			// Special degenerate case, just do nothing.
-			g.Logger.Error("Group's head may grow without bound", "head", g.Head.Path)
+			g.Logger.Error("Group's head may grow without bound", "head", g.head.Path)
 			return
 		}
-		pathToRemove := filePathForIndex(g.Head.Path, index, gInfo.MaxIndex)
+		pathToRemove := filePathForIndex(g.head.Path, index, gInfo.MaxIndex)
 		fInfo, err := os.Stat(pathToRemove)
 		if err != nil {
 			g.Logger.Error("Failed to fetch info for file", "file", pathToRemove)
@@ -318,19 +323,19 @@ func (g *Group) RotateFile() {
 	g.mtx.Lock()
 	defer g.mtx.Unlock()
 
-	headPath := g.Head.Path
+	headPath := g.head.Path
 
 	if err := g.headBuf.Flush(); err != nil {
 		panic(err)
 	}
 
-	if err := g.Head.Sync(); err != nil {
+	if err := g.head.Sync(); err != nil {
 		panic(err)
 	}
 
 	g.dirty = false
 
-	if err := g.Head.closeFile(); err != nil {
+	if err := g.head.closeFile(); err != nil {
 		panic(err)
 	}
 
@@ -361,7 +366,7 @@ type GroupInfo struct {
 	HeadSize  int64 // size of the head
 }
 
-// Returns info after scanning all files in g.Head's dir.
+// Returns info after scanning all files in g.head's dir.
 func (g *Group) ReadGroupInfo() GroupInfo {
 	g.mtx.Lock()
 	defer g.mtx.Unlock()
@@ -371,8 +376,8 @@ func (g *Group) ReadGroupInfo() GroupInfo {
 // Index includes the head.
 // CONTRACT: caller should have called g.mtx.Lock
 func (g *Group) readGroupInfo() GroupInfo {
-	groupDir := filepath.Dir(g.Head.Path)
-	headBase := filepath.Base(g.Head.Path)
+	groupDir := filepath.Dir(g.head.Path)
+	headBase := filepath.Base(g.head.Path)
 	var minIndex, maxIndex int = -1, -1 //nolint:staticcheck
 	var totalSize, headSize int64 = 0, 0
 
@@ -522,7 +527,7 @@ func (gr *GroupReader) openFile(index int) error {
 		return io.EOF
 	}
 
-	curFilePath := filePathForIndex(gr.Head.Path, index, gr.Group.maxIndex) //nolint:staticcheck
+	curFilePath := filePathForIndex(gr.head.Path, index, gr.Group.maxIndex) //nolint:staticcheck
 	curFile, err := os.OpenFile(curFilePath, os.O_RDONLY|os.O_CREATE, autoFilePerms)
 	if err != nil {
 		return err

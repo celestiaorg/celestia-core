@@ -122,7 +122,7 @@ func (wal *BaseWAL) SetLogger(l log.Logger) {
 }
 
 func (wal *BaseWAL) OnStart() error {
-	size, err := wal.group.Head.Size()
+	size, err := wal.group.HeadSize()
 	if err != nil {
 		return err
 	} else if size == 0 {
