@@ -290,7 +290,7 @@ func Encode(ops *PartSet, partSize uint32) (*PartSet, int, error) {
 	ops.mtx.Unlock()
 
 	ps := int(partSize)
-	parityBuffer := make([]byte, total*ps) // allocate once, only slice later
+	parityBuffer := reedsolomon.AllocAligned(1, total*ps)[0]
 	for i := 0; i < total; i++ {
 		chunks[total+i] = parityBuffer[i*ps : (i+1)*ps]
 	}
