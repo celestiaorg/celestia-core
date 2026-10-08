@@ -319,15 +319,23 @@ func Encode(ops *PartSet, partSize uint32) (*PartSet, int, error) {
 		workers := min(runtime.GOMAXPROCS(0)*2, 16)
 		segmentSize := ((ps/workers + 63) / 64) * 64
 		var group errgroup.Group
+		var first [][]byte
 		for start := 0; start < ps; start += segmentSize {
 			end := min(start+segmentSize, ps)
 			segment := make([][]byte, len(chunks))
 			for i, chunk := range chunks {
 				segment[i] = chunk[start:end]
 			}
-			group.Go(func() error { return enc.Encode(segment) })
+			if start == 0 {
+				first = segment
+			} else {
+				group.Go(func() error { return enc.Encode(segment) })
+			}
 		}
-		err = group.Wait()
+		err = enc.Encode(first)
+		if groupErr := group.Wait(); err == nil {
+			err = groupErr
+		}
 	} else {
 		err = enc.Encode(chunks)
 	}
