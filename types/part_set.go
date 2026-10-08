@@ -276,42 +276,6 @@ func newPartSetFromOwnedData(data []byte, partSize uint32) (ops *PartSet, err er
 	return ops, nil
 }
 
-// newPartSetFromChunks creates a new PartSet from given data chunks, and other data.
-func newPartSetFromChunks(chunks [][]byte, root cmtbytes.HexBytes, proofs []*merkle.Proof, partSize int) (*PartSet, error) {
-	total := len(chunks)
-	if total != len(proofs) {
-		return nil, fmt.Errorf("chunks and proofs have different lengths: %d != %d", len(chunks), len(proofs))
-	}
-	if root == nil {
-		return nil, fmt.Errorf("root is nil")
-	}
-
-	// create a new partset using the new parity parts.
-	ps := NewPartSetFromHeader(PartSetHeader{
-		Total: uint32(total),
-		Hash:  root,
-	}, uint32(partSize))
-
-	// access ps directly, without mutex, because we know it is not used elsewhere
-	for i := 0; i < total; i++ {
-		start := i * partSize
-		end := start + len(chunks[i])
-
-		// Ensure we don't exceed buffer bounds
-		if end > len(ps.buffer) {
-			return nil, fmt.Errorf("part data exceeds buffer bounds")
-		}
-
-		copy(ps.buffer[start:end], chunks[i])
-		ps.proofs[i] = *proofs[i]
-	}
-	ps.partsBitArray.Fill()
-	ps.count = uint32(total)
-	ps.lastPartSize = len(chunks[total-1])
-	ps.byteSize = int64(len(ps.buffer))
-	return ps, nil
-}
-
 // Encode Extend erasure encodes the block parts. Only the original parts should be
 // provided. The parity data is formed into its own PartSet and returned
 // alongside the length of the last part. The length of the last part is
@@ -358,11 +322,21 @@ func Encode(ops *PartSet, partSize uint32) (*PartSet, int, error) {
 	// only the parity data is needed for the new partset.
 	chunks = chunks[total:]
 	eroot, eproofs := merkle.ParallelProofsFromByteSlices(chunks)
-
-	eps, err := newPartSetFromChunks(chunks, eroot, eproofs, ps)
-	if err != nil {
-		return nil, 0, err
+	eps := &PartSet{
+		total:         uint32(total),
+		hash:          eroot,
+		buffer:        parityBuffer,
+		partSize:      ps,
+		lastPartSize:  ps,
+		proofs:        make([]merkle.Proof, total),
+		partsBitArray: bits.NewBitArray(total),
+		count:         uint32(total),
+		byteSize:      int64(len(parityBuffer)),
 	}
+	for i, proof := range eproofs {
+		eps.proofs[i] = *proof
+	}
+	eps.partsBitArray.Fill()
 	return eps, lastLen, nil
 }
 
