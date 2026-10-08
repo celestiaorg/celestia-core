@@ -308,7 +308,7 @@ func Encode(ops *PartSet, partSize uint32) (*PartSet, int, error) {
 
 	// init an encoder if it is not already initialized using the original
 	// number of parts.
-	enc, err := reedsolomon.New(total, total)
+	enc, err := reedsolomon.New(total, total, reedsolomon.WithGFNI(false))
 	if err != nil {
 		return nil, 0, err
 	}
