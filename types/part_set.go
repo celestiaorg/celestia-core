@@ -313,8 +313,24 @@ func Encode(ops *PartSet, partSize uint32) (*PartSet, int, error) {
 		return nil, 0, err
 	}
 
-	// Encode the parts.
-	err = enc.Encode(chunks)
+	// Large GF16 blocks can encode disjoint byte ranges independently.
+	// Keep each range 64-byte aligned for the encoder's SIMD kernels.
+	if total > 256 && ps >= 64*1024 && ps%64 == 0 && runtime.GOMAXPROCS(0) > 1 {
+		workers := min(runtime.GOMAXPROCS(0), 4)
+		segmentSize := ((ps/workers + 63) / 64) * 64
+		var group errgroup.Group
+		for start := 0; start < ps; start += segmentSize {
+			end := min(start+segmentSize, ps)
+			segment := make([][]byte, len(chunks))
+			for i, chunk := range chunks {
+				segment[i] = chunk[start:end]
+			}
+			group.Go(func() error { return enc.Encode(segment) })
+		}
+		err = group.Wait()
+	} else {
+		err = enc.Encode(chunks)
+	}
 	if err != nil {
 		return nil, 0, err
 	}
