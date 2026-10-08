@@ -316,7 +316,7 @@ func Encode(ops *PartSet, partSize uint32) (*PartSet, int, error) {
 	// Large GF16 blocks can encode disjoint byte ranges independently.
 	// Keep each range 64-byte aligned for the encoder's SIMD kernels.
 	if total > 256 && ps >= 64*1024 && ps%64 == 0 && runtime.GOMAXPROCS(0) > 1 {
-		workers := min(runtime.GOMAXPROCS(0), 8)
+		workers := min(runtime.GOMAXPROCS(0)*2, 16)
 		segmentSize := ((ps/workers + 63) / 64) * 64
 		var group errgroup.Group
 		for start := 0; start < ps; start += segmentSize {
