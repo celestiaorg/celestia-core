@@ -39,7 +39,7 @@ func ParallelHashFromByteSlices(items [][]byte) []byte {
 
 func parallelHash(items [][]byte) []byte {
 	numItems := len(items)
-	numWorkers := runtime.NumCPU()
+	numWorkers := runtime.GOMAXPROCS(0)
 
 	// Adaptive threshold based on dataset characteristics
 	var useParallel bool
@@ -192,7 +192,7 @@ func shouldUseParallelProofs(items [][]byte) bool {
 
 // parallelProofsFromByteSlices implements parallel proof generation
 func parallelProofsFromByteSlices(items [][]byte) (rootHash []byte, proofs []*Proof) {
-	numWorkers := runtime.NumCPU()
+	numWorkers := runtime.GOMAXPROCS(0)
 
 	// Phase 1: Compute all leaf hashes in parallel (reuse from tree building)
 	leafHashes := computeLeafHashesParallel(items, numWorkers)
@@ -296,7 +296,7 @@ func shouldUseParallelProofsFromLeafHashes(leafHashes [][]byte) bool {
 
 // parallelProofsFromLeafHashes implements parallel proof generation for leaf hashes
 func parallelProofsFromLeafHashes(leafHashes [][]byte) (rootHash []byte, proofs []*Proof) {
-	numWorkers := runtime.NumCPU()
+	numWorkers := runtime.GOMAXPROCS(0)
 
 	// Build tree structure for proof generation using parallel approach
 	trails, rootNode := trailsFromLeafHashesParallel(leafHashes, numWorkers)
