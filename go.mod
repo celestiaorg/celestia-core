@@ -1,6 +1,6 @@
 module github.com/cometbft/cometbft
 
-go 1.26.6
+go 1.26.9
 
 require (
 	github.com/BurntSushi/toml v1.6.0
@@ -52,7 +52,7 @@ require (
 	go.opentelemetry.io/otel/exporters/stdout/stdouttrace v1.46.0
 	go.opentelemetry.io/otel/sdk v1.46.0
 	golang.org/x/crypto v0.57.0
-	golang.org/x/net v0.59.0
+	golang.org/x/net v0.60.0
 	golang.org/x/sync v0.23.0
 	gonum.org/v1/gonum v0.17.0
 	google.golang.org/grpc v1.83.2
