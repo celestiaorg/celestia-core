@@ -32,7 +32,10 @@ func safeAddUint32(a, b uint32) (uint32, error) {
 // and returns both the encoded []byte and a slice of positions marking the
 // boundaries of each nested tx (repeated []byte field) inside Data (field number 1).
 func MarshalBlockWithTxPositions(block proto.Message, txsCount int) ([]byte, []TxPosition, error) {
-	if pb, ok := block.(*cmtproto.Block); ok && len(pb.Data.Txs) == txsCount && len(pb.Data.Txs) >= 16 && pb.Data.Size() >= 1<<20 && runtime.GOMAXPROCS(0) > 1 && pb.Size() <= math.MaxUint32 {
+	if pb, ok := block.(*cmtproto.Block); ok && len(pb.Data.Txs) == txsCount && len(pb.Data.Txs) >= 16 && pb.Data.Size() >= 1<<20 && runtime.GOMAXPROCS(0) > 1 &&
+		// uint64 rather than comparing an int against math.MaxUint32, which
+		// does not fit an int on 32-bit platforms and fails to compile there.
+		uint64(pb.Size()) <= math.MaxUint32 {
 		return marshalLargeBlockByAlias(pb)
 	}
 	// First, marshal the entire message normally.
