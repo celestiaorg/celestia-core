@@ -60,6 +60,7 @@ func makeJSONRPCHandler(funcMap map[string]*RPCFunc, logger log.Logger) http.Han
 		// 2. Any RPC request doesn't allow to be cached.
 		// 3. Any RPC request has the height argument and the value is 0 (the default).
 		cache := true
+		heldSems := make(map[chan struct{}]struct{})
 		for _, request := range requests {
 			request := request
 
@@ -105,18 +106,22 @@ func makeJSONRPCHandler(funcMap map[string]*RPCFunc, logger log.Logger) http.Han
 				cache = false
 			}
 
-			// Bound concurrent heavy responses; reject fast when saturated.
-			// release() is deferred so a panic can't leak the slot.
-			admitted, release := rpcFunc.tryAcquire()
-			if !admitted {
-				responses = append(responses, types.RPCInternalError(request.ID, errHeavyRequestLimit))
-				cache = false
-				continue
-			}
-			returns := func() []reflect.Value {
+			// Bound concurrent heavy responses; reject fast when saturated. A
+			// batch takes one slot per semaphore, held until the responses are
+			// fully written, since the large buffers live that long.
+			if _, ok := heldSems[rpcFunc.heavySem]; !ok {
+				admitted, release := rpcFunc.tryAcquire()
+				if !admitted {
+					responses = append(responses, types.RPCInternalError(request.ID, errHeavyRequestLimit))
+					cache = false
+					continue
+				}
+				if rpcFunc.heavySem != nil {
+					heldSems[rpcFunc.heavySem] = struct{}{}
+				}
 				defer release()
-				return rpcFunc.f.Call(args)
-			}()
+			}
+			returns := rpcFunc.f.Call(args)
 			result, err := unreflectResult(returns)
 			if err != nil {
 				responses = append(responses, types.RPCInternalError(request.ID, err))
