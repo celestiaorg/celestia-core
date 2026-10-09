@@ -98,6 +98,7 @@ linters:
             - github.com/gogo/protobuf/proto
             - google.golang.org/protobuf/encoding/protowire
             - github.com/filecoin-project/go-clock
+            - github.com/klauspost/reedsolomon
     dogsled:
       max-blank-identifiers: 3
     gosec:
