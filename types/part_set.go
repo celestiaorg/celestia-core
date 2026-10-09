@@ -322,6 +322,19 @@ func Encode(ops *PartSet, partSize uint32) (*PartSet, int, error) {
 	// only the parity data is needed for the new partset.
 	chunks = chunks[total:]
 	eroot, eproofs := merkle.ParallelProofsFromByteSlices(chunks)
+	// The parity PartSet takes ownership of the buffer Reed-Solomon encoding
+	// filled in place, so getPartBytes can find parity shard i at
+	// [i*ps, (i+1)*ps). That requires one contiguous allocation of exactly
+	// total*ps bytes - the layout the pre-slicing above established. Checked
+	// rather than assumed: reedsolomon.AllocAligned(total, ps) would pad each
+	// shard to a 64-byte multiple and return non-contiguous slices, and the
+	// part set would then hand back the wrong bytes with no error anywhere.
+	if len(parityBuffer) != total*ps {
+		return nil, 0, fmt.Errorf("parity buffer is %d bytes, expected %d", len(parityBuffer), total*ps)
+	}
+	if len(eproofs) != total {
+		return nil, 0, fmt.Errorf("got %d parity proofs, expected %d", len(eproofs), total)
+	}
 	eps := &PartSet{
 		total:         uint32(total),
 		hash:          eroot,
