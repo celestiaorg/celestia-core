@@ -616,7 +616,11 @@ const (
 	// Max size of commit without any commitSigs -> 79 for BlockID, 8 for Height, 4 for Round.
 	MaxCommitOverheadBytes int64 = 91
 	// Commit sig size is made up of 64 bytes for the signature, 20 bytes for the address,
-	// 1 byte for the flag and 14 bytes for the timestamp
+	// 1 byte for the flag and 14 bytes for the timestamp.
+	// This is bounded by ed25519, not MaxSignatureSize: Celestia validators only
+	// use ed25519 keys, and a larger signature fails verification before it can
+	// enter a commit. Deriving it from MaxSignatureSize would shrink MaxDataBytes
+	// by ~3.2KB per validator for no benefit.
 	MaxCommitSigBytes int64 = 109
 )
 

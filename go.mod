@@ -13,6 +13,7 @@ require (
 	github.com/btcsuite/btcd/btcutil v1.2.0
 	github.com/celestiaorg/go-square/v3 v3.0.2
 	github.com/celestiaorg/nmt v0.24.5
+	github.com/cloudflare/circl v1.6.3
 	github.com/cometbft/cometbft-db v1.0.4
 	github.com/cosmos/gogoproto v1.7.2
 	github.com/decred/dcrd/dcrec/secp256k1/v4 v4.3.0
@@ -126,7 +127,6 @@ require (
 	github.com/charmbracelet/x/cellbuf v0.0.13-0.20250311204145-2c3ea96c31dd // indirect
 	github.com/charmbracelet/x/term v0.2.1 // indirect
 	github.com/ckaznocha/intrange v0.3.1 // indirect
-	github.com/cloudflare/circl v1.6.3 // indirect
 	github.com/cockroachdb/errors v1.11.3 // indirect
 	github.com/cockroachdb/fifo v0.0.0-20240816210425-c5d0cb0b6fc0 // indirect
 	github.com/cockroachdb/logtags v0.0.0-20241215232642-bb51bb14a506 // indirect
