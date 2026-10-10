@@ -296,6 +296,34 @@ func (d *PeerState) GetRequests(height int64, round int32) (empty *bits.BitArray
 	return rdata.requests, true
 }
 
+// MarkSent records that a part was sent to the peer. A part sent with a proof
+// also satisfies requests that don't need one.
+func (d *PeerState) MarkSent(height int64, round int32, part int, proven bool) {
+	d.mtx.Lock()
+	defer d.mtx.Unlock()
+	if d.state[height] == nil || d.state[height][round] == nil {
+		return
+	}
+	ps := d.state[height][round]
+	ps.sent.SetIndex(part, true)
+	if proven {
+		ps.sentProven.SetIndex(part, true)
+	}
+}
+
+// Unsent returns the parts in want that have not yet been sent to the peer
+// with the given proof requirement.
+func (d *PeerState) Unsent(height int64, round int32, want *bits.BitArray, proven bool) *bits.BitArray {
+	d.mtx.Lock()
+	defer d.mtx.Unlock()
+	d.initialize(height, round, want.Size())
+	ps := d.state[height][round]
+	if proven {
+		return want.Sub(ps.sentProven)
+	}
+	return want.Sub(ps.sent)
+}
+
 // WantsPart checks if the peer wants a given part.
 func (d *PeerState) WantsPart(height int64, round int32, part uint32) bool {
 	w, has := d.GetWants(height, round)
@@ -413,14 +441,20 @@ type partState struct {
 	haves    *bits.BitArray
 	wants    *bits.BitArray
 	requests *bits.BitArray
+	// sent and sentProven track the parts this node already served to the
+	// peer, without and with a proof, so replayed wants are not served again.
+	sent       *bits.BitArray
+	sentProven *bits.BitArray
 }
 
 // newpartState initializes and returns a new partState
 func newpartState(size int, _ int64, _ int32) *partState {
 	return &partState{
-		haves:    bits.NewBitArray(size),
-		wants:    bits.NewBitArray(size),
-		requests: bits.NewBitArray(size),
+		haves:      bits.NewBitArray(size),
+		wants:      bits.NewBitArray(size),
+		requests:   bits.NewBitArray(size),
+		sent:       bits.NewBitArray(size),
+		sentProven: bits.NewBitArray(size),
 	}
 }
 

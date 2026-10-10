@@ -1,6 +1,7 @@
 package propagation
 
 import (
+	"sync"
 	"testing"
 	"time"
 
@@ -9,7 +10,10 @@ import (
 
 	cfg "github.com/cometbft/cometbft/config"
 	proptypes "github.com/cometbft/cometbft/consensus/propagation/types"
+	"github.com/cometbft/cometbft/libs/bits"
 	cmtrand "github.com/cometbft/cometbft/libs/rand"
+	"github.com/cometbft/cometbft/p2p"
+	propproto "github.com/cometbft/cometbft/proto/tendermint/propagation"
 	"github.com/cometbft/cometbft/state"
 	"github.com/cometbft/cometbft/types"
 )
@@ -182,4 +186,188 @@ func TestCountRemainingParts(t *testing.T) {
 			}
 		})
 	}
+}
+
+// countingPeer records every RecoveryPart sent to it on the data channel.
+type countingPeer struct {
+	p2p.Peer
+	mtx  sync.Mutex
+	sent map[uint32]int
+}
+
+func (c *countingPeer) TrySend(e p2p.Envelope) bool {
+	if rp, ok := e.Message.(*propproto.RecoveryPart); ok && e.ChannelID == DataChannel {
+		c.mtx.Lock()
+		c.sent[rp.Index]++
+		c.mtx.Unlock()
+	}
+	return true
+}
+
+// TestHandleWantsReplay verifies that replayed WantParts do not make the node
+// resend parts it already served to the same peer.
+func TestHandleWantsReplay(t *testing.T) {
+	reactors, _ := testBlockPropReactors(2, cfg.DefaultP2PConfig())
+	r1, r2 := reactors[0], reactors[1]
+
+	cleanup, _, sm, pv := state.SetupTestCaseWithPrivVal(t)
+	t.Cleanup(func() { cleanup(t) })
+
+	// swap in the counting peer first so r2 never hears about the proposal
+	// and only the wants sent below reach r1.
+	ps := r1.getPeer(r2.self)
+	require.NotNil(t, ps)
+	cp := &countingPeer{Peer: ps.peer, sent: make(map[uint32]int)}
+	ps.peer = cp
+
+	prop, partSet, _, metaData := createTestProposal(t, sm, pv, 1, 0, 100, 1000)
+	require.NoError(t, r1.ProposeBlock(prop, partSet, metaData))
+
+	_, parts, _, has := r1.getAllState(prop.Height, prop.Round, false)
+	require.True(t, has)
+	// combined part set: original plus parity parts
+	total := int(parts.Total())
+
+	want := bits.NewBitArray(total)
+	want.Fill()
+	sendWants := func(prove bool, replays int) {
+		for i := 0; i < replays; i++ {
+			r1.handleWants(r2.self, &proptypes.WantParts{
+				Parts:             want,
+				Height:            prop.Height,
+				Round:             prop.Round,
+				Prove:             prove,
+				MissingPartsCount: int32(total),
+			})
+		}
+	}
+
+	sendWants(false, 100)
+	for i := 0; i < total; i++ {
+		assert.Equal(t, 1, cp.sent[uint32(i)], "part %d", i)
+	}
+
+	// A request that needs proofs is served once more, then deduplicated too.
+	sendWants(true, 100)
+	for i := 0; i < total; i++ {
+		assert.Equal(t, 2, cp.sent[uint32(i)], "part %d", i)
+	}
+}
+
+// TestHandleWantsReplayStoredBlockAcrossRounds verifies that catchup wants for
+// a stored block can't bypass deduplication by changing the round.
+func TestHandleWantsReplayStoredBlockAcrossRounds(t *testing.T) {
+	reactors, _ := testBlockPropReactors(2, cfg.DefaultP2PConfig())
+	r1, r2 := reactors[0], reactors[1]
+
+	cleanup, _, sm, pv := state.SetupTestCaseWithPrivVal(t)
+	t.Cleanup(func() { cleanup(t) })
+
+	ps := r1.getPeer(r2.self)
+	require.NotNil(t, ps)
+	cp := &countingPeer{Peer: ps.peer, sent: make(map[uint32]int)}
+	ps.peer = cp
+
+	_, partSet, block, _ := createTestProposal(t, sm, pv, 1, 0, 100, 1000)
+	r1.store.SaveBlock(block, partSet, &types.Commit{Height: 1})
+	r1.pmtx.Lock()
+	r1.height = 2
+	r1.pmtx.Unlock()
+
+	total := int(partSet.Total()) * 2
+	want := bits.NewBitArray(total)
+	want.Fill()
+	for round := int32(-50); round < 50; round++ {
+		r1.handleWants(r2.self, &proptypes.WantParts{
+			Parts:             want,
+			Height:            1,
+			Round:             round,
+			Prove:             true,
+			MissingPartsCount: int32(partSet.Total()),
+		})
+	}
+
+	for i := 0; i < int(partSet.Total()); i++ {
+		assert.Equal(t, 1, cp.sent[uint32(i)], "part %d", i)
+	}
+	ps.mtx.RLock()
+	assert.LessOrEqual(t, len(ps.state[1]), 1, "replayed rounds should not grow peer state")
+	ps.mtx.RUnlock()
+}
+
+// TestHandleWantsLatestRoundAliasDoesNotHideStoredBlock verifies that serving
+// the latest cached round doesn't mark the committed block's parts as sent.
+func TestHandleWantsLatestRoundAliasDoesNotHideStoredBlock(t *testing.T) {
+	reactors, _ := testBlockPropReactors(2, cfg.DefaultP2PConfig())
+	r1, r2 := reactors[0], reactors[1]
+
+	cleanup, _, sm, pv := state.SetupTestCaseWithPrivVal(t)
+	t.Cleanup(func() { cleanup(t) })
+
+	ps := r1.getPeer(r2.self)
+	require.NotNil(t, ps)
+	cp := &countingPeer{Peer: ps.peer, sent: make(map[uint32]int)}
+	ps.peer = cp
+
+	// the committed block is stored, while a different round-1 proposal for
+	// the same height is still cached.
+	_, committed, block, _ := createTestProposal(t, sm, pv, 1, 0, 100, 1000)
+	r1.store.SaveBlock(block, committed, &types.Commit{Height: 1})
+	_, other, _, _ := createTestProposal(t, sm, pv, 1, 1, 100, 1000)
+	require.Equal(t, committed.Total(), other.Total())
+	r1.pmtx.Lock()
+	r1.proposals[1] = map[int32]*proposalData{
+		1: {block: proptypes.NewCombinedPartSetFromOriginal(other, true)},
+	}
+	r1.height = 2
+	r1.pmtx.Unlock()
+
+	total := int(committed.Total()) * 2
+	want := bits.NewBitArray(total)
+	want.Fill()
+	sendWant := func(round int32) {
+		r1.handleWants(r2.self, &proptypes.WantParts{
+			Parts:             want,
+			Height:            1,
+			Round:             round,
+			Prove:             true,
+			MissingPartsCount: int32(committed.Total()),
+		})
+	}
+
+	sendWant(-2) // latest-round alias: serves the cached round-1 proposal
+	sendWant(0)  // uncached round: serves the committed block from the store
+	for i := 0; i < int(committed.Total()); i++ {
+		assert.Equal(t, 2, cp.sent[uint32(i)], "part %d", i)
+	}
+}
+
+// TestMarkServedSkipsReplacedProposal verifies that parts sent from a cached
+// proposal aren't recorded once that proposal has been replaced.
+func TestMarkServedSkipsReplacedProposal(t *testing.T) {
+	reactors, _ := testBlockPropReactors(2, cfg.DefaultP2PConfig())
+	r1, r2 := reactors[0], reactors[1]
+
+	cleanup, _, sm, pv := state.SetupTestCaseWithPrivVal(t)
+	t.Cleanup(func() { cleanup(t) })
+
+	_, oldParts, _, _ := createTestProposal(t, sm, pv, 1, 0, 100, 1000)
+	_, newParts, _, _ := createTestProposal(t, sm, pv, 1, 0, 100, 1000)
+	served := proptypes.NewCombinedPartSetFromOriginal(oldParts, true)
+	r1.pmtx.Lock()
+	r1.proposals[1] = map[int32]*proposalData{
+		0: {block: proptypes.NewCombinedPartSetFromOriginal(newParts, true)},
+	}
+	r1.pmtx.Unlock()
+
+	ps := r1.getPeer(r2.self)
+	require.NotNil(t, ps)
+	total := int(served.Total())
+	ps.Initialize(1, 0, total)
+
+	r1.markServed(ps, 1, 0, served, true, []int{0, 1}, true)
+
+	want := bits.NewBitArray(total)
+	want.Fill()
+	assert.Equal(t, total, len(ps.Unsent(1, 0, want, true).GetTrueIndices()))
 }
