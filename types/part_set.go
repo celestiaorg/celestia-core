@@ -236,6 +236,12 @@ type PartSet struct {
 // The data bytes are split into "partSize" chunks, and merkle tree computed.
 // CONTRACT: partSize is greater than zero.
 func NewPartSetFromData(data []byte, partSize uint32) (ops *PartSet, err error) {
+	return newPartSetFromOwnedData(bytes.Clone(data), partSize)
+}
+
+// newPartSetFromOwnedData takes ownership of data, which must not be modified
+// by the caller after this function returns.
+func newPartSetFromOwnedData(data []byte, partSize uint32) (ops *PartSet, err error) {
 	total := (uint32(len(data)) + partSize - 1) / partSize
 	chunks := make([][]byte, total)
 	for i := uint32(0); i < total; i++ {
@@ -246,15 +252,15 @@ func NewPartSetFromData(data []byte, partSize uint32) (ops *PartSet, err error) 
 	// Compute merkle proofs
 	root, proofs := merkle.ParallelProofsFromByteSlices(chunks)
 
-	ops = NewPartSetFromHeader(PartSetHeader{
-		Total: total,
-		Hash:  root,
-	}, partSize)
-
-	// Fill the buffer in a single copy and populate metadata.
-	copied := copy(ops.buffer, data)
-	if copied != len(data) {
-		return nil, fmt.Errorf("copy failed: %d < %d", copied, len(data))
+	ops = &PartSet{
+		total:         total,
+		hash:          root,
+		buffer:        data,
+		partSize:      int(partSize),
+		proofs:        make([]merkle.Proof, total),
+		partsBitArray: bits.NewBitArray(int(total)),
+		count:         total,
+		byteSize:      int64(len(data)),
 	}
 
 	// Set sizes and bookkeeping.
@@ -262,13 +268,10 @@ func NewPartSetFromData(data []byte, partSize uint32) (ops *PartSet, err error) 
 		lastIdx := total - 1
 		ops.lastPartSize = len(chunks[lastIdx])
 	}
-	ops.proofs = make([]merkle.Proof, total)
 	for i := uint32(0); i < total; i++ {
 		ops.proofs[i] = *proofs[i]
 	}
 	ops.partsBitArray.Fill()
-	ops.count = total
-	ops.byteSize = int64(len(data))
 
 	return ops, nil
 }
