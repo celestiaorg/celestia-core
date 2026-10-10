@@ -9,6 +9,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
+
 	proptypes "github.com/cometbft/cometbft/consensus/propagation/types"
 	"github.com/cometbft/cometbft/crypto/merkle"
 	"github.com/cometbft/cometbft/types"
@@ -18,12 +20,12 @@ var proposalCoreBenchSink []byte
 
 // BenchmarkProposalCore32MB measures the proposer-side work that follows
 // PrepareProposal for a 32 MB block of 64 blob transactions.
-//
-// types.Encode is around 90% of the result, so a change to any other step will
-// sit at or below this benchmark's noise floor and needs measuring on its own.
-// Not measured: PrepareProposal, transaction hashing (the fixture pre-computes
-// it), the proposal signature, peer networking and the receiving side.
 func BenchmarkProposalCore32MB(b *testing.B) {
+	// types.Encode is around 90% of the result, so a change to any other step
+	// sits at or below this benchmark's noise floor and needs measuring on its
+	// own. Not measured: PrepareProposal, transaction hashing (the fixture
+	// pre-computes it), the proposal signature, peer networking and the
+	// receiving side.
 	const (
 		txCount = 64
 		txSize  = 500_000
@@ -67,13 +69,9 @@ func BenchmarkProposalCore32MB(b *testing.B) {
 			start = time.Now()
 		}
 		original, err = block.MakePartSet(types.BlockPartSizeBytes)
-		if err != nil {
-			b.Fatal(err)
-		}
+		require.NoError(b, err)
 		parity, lastLen, err = types.Encode(original, types.BlockPartSizeBytes)
-		if err != nil {
-			b.Fatal(err)
-		}
+		require.NoError(b, err)
 
 		metadata := make([]proptypes.TxMetaData, len(original.TxPos))
 		for j, pos := range original.TxPos {
@@ -91,9 +89,7 @@ func BenchmarkProposalCore32MB(b *testing.B) {
 		}
 		compact.SetProofCache(extractProofs(original, parity))
 		signBytes, err = compact.SignBytes()
-		if err != nil {
-			b.Fatal(err)
-		}
+		require.NoError(b, err)
 
 		// Checking the output costs ~64 MiB of hashing, and collecting the
 		// garbage this iteration produced costs more, so both happen with the
@@ -111,8 +107,9 @@ func BenchmarkProposalCore32MB(b *testing.B) {
 		parityDigestNow := sha256.Sum256(parity.GetBytes())
 		if i < 0 {
 			originalDigest, parityDigest = digest, parityDigestNow
-		} else if digest != originalDigest || parityDigestNow != parityDigest {
-			b.Fatal("part set bytes changed between iterations")
+		} else {
+			require.Equal(b, originalDigest, digest, "original part set bytes changed between iterations")
+			require.Equal(b, parityDigest, parityDigestNow, "parity part set bytes changed between iterations")
 		}
 
 		// One iteration allocates over 100 MB. Collecting between iterations
@@ -131,38 +128,29 @@ func BenchmarkProposalCore32MB(b *testing.B) {
 	// The fixture is exactly deterministic, so the expected shape is exact. A
 	// mismatch means the fixture drifted and the numbers are not comparable
 	// with earlier runs.
-	if len(original.TxPos) != txCount || original.Total() != expectedParts {
-		b.Fatalf("unexpected original part count or metadata: %d parts, %d txs", original.Total(), len(original.TxPos))
-	}
-	if int(original.ByteSize()) != blockBytes {
-		b.Fatalf("fixture drifted: block is %d bytes, expected %d", original.ByteSize(), blockBytes)
-	}
-	if parity.Total() != original.Total() || lastLen <= 0 || len(signBytes) == 0 {
-		b.Fatalf("invalid parity or compact block: %d parity parts, last len %d, sign bytes %d", parity.Total(), lastLen, len(signBytes))
-	}
-	if root, _ := merkle.ProofsFromLeafHashes(compact.PartsHashes[:original.Total()]); !bytes.Equal(root, original.Hash()) {
-		b.Fatal("original commitment mismatch")
-	}
-	if root, _ := merkle.ProofsFromLeafHashes(compact.PartsHashes[original.Total():]); !bytes.Equal(root, parity.Hash()) {
-		b.Fatal("parity commitment mismatch")
-	}
+	require.Len(b, original.TxPos, txCount, "unexpected tx metadata count")
+	require.Equal(b, uint32(expectedParts), original.Total(), "unexpected original part count")
+	require.Equal(b, int64(blockBytes), original.ByteSize(), "fixture drifted")
+	require.Equal(b, original.Total(), parity.Total(), "unexpected parity part count")
+	require.Positive(b, lastLen)
+	require.NotEmpty(b, signBytes)
+	originalRoot, _ := merkle.ProofsFromLeafHashes(compact.PartsHashes[:original.Total()])
+	require.True(b, bytes.Equal(originalRoot, original.Hash()), "original commitment mismatch")
+	parityRoot, _ := merkle.ProofsFromLeafHashes(compact.PartsHashes[original.Total():])
+	require.True(b, bytes.Equal(parityRoot, parity.Hash()), "parity commitment mismatch")
 	// The commitments above are derived from the same leaf hashes the part sets
 	// were built with, so they only check tree aggregation. Dropping a part and
 	// reconstructing it from the parity is what checks the content: it is the
 	// only assertion here that fails if the parity bytes are wrong.
 	partial := types.NewPartSetFromHeader(original.Header(), types.BlockPartSizeBytes)
 	for j := 1; j < int(original.Total()); j++ {
-		if _, err := partial.AddPart(original.GetPart(j)); err != nil {
-			b.Fatal(err)
-		}
+		_, err := partial.AddPart(original.GetPart(j))
+		require.NoError(b, err)
 	}
 	recovered, _, err := types.Decode(partial, parity, lastLen)
-	if err != nil {
-		b.Fatal(err)
-	}
-	if !bytes.Equal(recovered.GetBytes(), original.GetBytes()) {
-		b.Fatal("parity does not reconstruct the block bytes")
-	}
+	require.NoError(b, err)
+	require.True(b, bytes.Equal(recovered.GetBytes(), original.GetBytes()),
+		"parity does not reconstruct the block bytes")
 	proposalCoreBenchSink = signBytes
 	b.ReportMetric(float64(elapsed.Nanoseconds())/float64(b.N)/1_000_000, "proposal_ms/op")
 }
