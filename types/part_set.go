@@ -290,7 +290,7 @@ func Encode(ops *PartSet, partSize uint32) (*PartSet, int, error) {
 	ops.mtx.Unlock()
 
 	ps := int(partSize)
-	parityBuffer := make([]byte, total*ps) // allocate once, only slice later
+	parityBuffer := reedsolomon.AllocAligned(1, total*ps)[0]
 	for i := 0; i < total; i++ {
 		chunks[total+i] = parityBuffer[i*ps : (i+1)*ps]
 	}
@@ -313,8 +313,55 @@ func Encode(ops *PartSet, partSize uint32) (*PartSet, int, error) {
 		return nil, 0, err
 	}
 
-	// Encode the parts.
-	err = enc.Encode(chunks)
+	// GF16 encodes each byte position independently, so disjoint byte ranges of
+	// the shards can be encoded concurrently and the result is byte-identical
+	// to one call over the whole range. leopardFF16.encode already splits the
+	// shards this way internally; this hoists that split out one level so the
+	// pieces can run in parallel.
+	//
+	// The threshold keeps this on the leopard GF16 codec, which reedsolomon
+	// selects above 256 total shards - and Encode asks for as many parity
+	// shards as data shards, so 2*total is what counts. Each range is
+	// rounded up to 64 bytes because GF16 packs lo and hi halves within each
+	// 64-byte block. Anything else takes the single call below unchanged.
+	procs := runtime.GOMAXPROCS(0)
+	if total > 256 && ps >= 64*1024 && ps%64 == 0 && procs > 1 && chunksAreFull(chunks, ps) {
+		workers := min(procs*2, 16)
+		segmentSize := ((ps/workers + 63) / 64) * 64
+		if segmentSize <= 0 {
+			segmentSize = ps
+		}
+		var group errgroup.Group
+		var first [][]byte
+		for start := 0; start < ps; start += segmentSize {
+			end := min(start+segmentSize, ps)
+			segment := make([][]byte, len(chunks))
+			for i, chunk := range chunks {
+				segment[i] = chunk[start:end]
+			}
+			if start == 0 {
+				first = segment
+			} else {
+				group.Go(func() (err error) {
+					// A panic in a worker goroutine bypasses the consensus
+					// recover and aborts the process instead of stopping the
+					// WAL cleanly. Turn it into an error on this path.
+					defer func() {
+						if r := recover(); r != nil {
+							err = fmt.Errorf("reed-solomon segment: %v", r)
+						}
+					}()
+					return enc.Encode(segment)
+				})
+			}
+		}
+		err = enc.Encode(first)
+		if groupErr := group.Wait(); err == nil {
+			err = groupErr
+		}
+	} else {
+		err = enc.Encode(chunks)
+	}
 	if err != nil {
 		return nil, 0, err
 	}
@@ -351,6 +398,19 @@ func Encode(ops *PartSet, partSize uint32) (*PartSet, int, error) {
 	}
 	eps.partsBitArray.Fill()
 	return eps, lastLen, nil
+}
+
+// chunksAreFull reports whether every shard is present and exactly partSize
+// bytes. The segmented path slices each shard directly, which would panic on a
+// short or absent one, where the single call reports ErrShardSize or
+// ErrShardNoData through the library.
+func chunksAreFull(chunks [][]byte, partSize int) bool {
+	for _, chunk := range chunks {
+		if len(chunk) != partSize {
+			return false
+		}
+	}
+	return true
 }
 
 // IsReadyForDecoding returns true if the PartSet has every single part, not just
