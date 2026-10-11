@@ -310,24 +310,11 @@ func Encode(ops *PartSet, partSize uint32) (*PartSet, int, error) {
 		return nil, 0, err
 	}
 
-	// GF16 encodes each byte position independently, so disjoint byte ranges of
-	// the shards can be encoded concurrently and the result is byte-identical
-	// to one call over the whole range. leopardFF16.encode already splits the
-	// shards this way internally; this hoists that split out one level so the
-	// pieces can run in parallel.
-	//
-	// The threshold keeps this on the leopard GF16 codec, which reedsolomon
-	// selects above 256 total shards - and Encode asks for as many parity
-	// shards as data shards, so 2*total is what counts. Each range is
-	// rounded up to 64 bytes because GF16 packs lo and hi halves within each
-	// 64-byte block. Anything else takes the single call below unchanged.
-	procs := runtime.GOMAXPROCS(0)
-	if total > 256 && ps >= 64*1024 && ps%64 == 0 && procs > 1 && chunksAreFull(chunks, ps) {
-		workers := min(procs*2, 16)
-		segmentSize := ((ps/workers + 63) / 64) * 64
-		if segmentSize <= 0 {
-			segmentSize = ps
-		}
+	// GF16 encodes each byte position independently, so disjoint byte ranges
+	// encode concurrently to a byte-identical result. Anything the guard
+	// rejects takes the single call below.
+	if segmentedEncodeOK(total, runtime.GOMAXPROCS(0)) && chunksAreFull(chunks, ps) {
+		segmentSize := segmentBytes
 		var group errgroup.Group
 		var first [][]byte
 		for start := 0; start < ps; start += segmentSize {
@@ -397,10 +384,24 @@ func Encode(ops *PartSet, partSize uint32) (*PartSet, int, error) {
 	return eps, lastLen, nil
 }
 
+// reedsolomon picks leopard GF16 at dataShards+parityShards > 256, so with
+// equal parity segmenting starts at total > 128; below that it is a loss.
+// segmentBytes is a multiple of 64 because GF16 packs lo and hi halves within
+// each 64-byte block.
+const (
+	minSegmentedShards = 129
+	segmentBytes       = 1024
+)
+
+// segmentedEncodeOK reports whether parity should be encoded as concurrent
+// byte ranges rather than in one call.
+func segmentedEncodeOK(total, procs int) bool {
+	return total >= minSegmentedShards && procs > 1
+}
+
 // chunksAreFull reports whether every shard is present and exactly partSize
-// bytes. The segmented path slices each shard directly, which would panic on a
-// short or absent one, where the single call reports ErrShardSize or
-// ErrShardNoData through the library.
+// bytes. The segmented path slices each shard directly and would panic on a
+// short or absent one, where the single call returns an error.
 func chunksAreFull(chunks [][]byte, partSize int) bool {
 	for _, chunk := range chunks {
 		if len(chunk) != partSize {

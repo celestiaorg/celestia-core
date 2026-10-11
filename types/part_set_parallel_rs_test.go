@@ -7,100 +7,133 @@ import (
 	"runtime"
 	"testing"
 
-	"github.com/klauspost/reedsolomon"
 	"github.com/stretchr/testify/require"
 )
 
-// TestEncodeMatchesSingleCallAboveThreshold checks that the parity Encode
-// produces above the parallel threshold is identical to one unsegmented call
-// and still reconstructs a missing part.
-func TestEncodeMatchesSingleCallAboveThreshold(t *testing.T) {
+// TestEncodeSegmentedMatchesSequential is what the segmented path rests on:
+// encoding a block both ways must produce identical parity, byte for byte.
+// That only holds because GF16 treats each byte position independently, which
+// the library documents nowhere, so a version bump could silently break every
+// block this node proposes.
+//
+// leopard decomposes work over m = ceilPow2(parityShards) buffers, so the
+// shard counts below are the smallest in each of the first three m regimes,
+// plus a 32 MiB block.
+func TestEncodeSegmentedMatchesSequential(t *testing.T) {
 	if testing.Short() {
-		t.Skip("encodes a 16 MiB part set")
+		t.Skip("encodes up to a 32 MiB part set")
 	}
 
-	const total = 257
-	ps := int(BlockPartSizeBytes)
+	for _, tc := range []struct {
+		name  string
+		total int
+	}{
+		{"8 MiB, m=256", minSegmentedShards},
+		{"16 MiB, m=512", 257},
+		{"32 MiB", 512},
+		{"32 MiB, m=1024", 513},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			ops := randomPartSet(t, tc.total)
 
-	data := make([]byte, total*ps)
-	_, err := rand.Read(data)
-	require.NoError(t, err)
+			sequential, seqLast := encodeWithProcs(t, ops, 1)
+			segmented, segLast := encodeWithProcs(t, ops, 4)
 
-	original, err := NewPartSetFromData(data, BlockPartSizeBytes)
-	require.NoError(t, err)
-	require.Equal(t, total, int(original.Total()), "the segmented path needs more than 256 shards")
-
-	// The reference: one call over whole shards, no segmentation. Encode is
-	// only byte-identical to it because GF16 treats each byte position
-	// independently - an implementation detail of the codec, documented nowhere
-	// in its API - so a library bump that changed the in-shard symbol packing
-	// would silently produce invalid parity for every block this node proposes.
-	shards := make([][]byte, 2*total)
-	for i := range total {
-		shards[i] = append([]byte(nil), data[i*ps:(i+1)*ps]...)
-		shards[total+i] = make([]byte, ps)
-	}
-	enc, err := reedsolomon.New(total, total)
-	require.NoError(t, err)
-	require.NoError(t, enc.Encode(shards))
-
-	// Encode sizes its segments from GOMAXPROCS. 3 is the smallest value whose
-	// worker count leaves the last segment shorter than the others; the
-	// machine's own value covers whatever CI happens to run on. No other test
-	// in this package reaches the segmented branch: they all stay under 129
-	// shards.
-	for _, procs := range []int{runtime.GOMAXPROCS(0), 3} {
-		t.Run(fmt.Sprintf("gomaxprocs_%d", procs), func(t *testing.T) {
-			defer runtime.GOMAXPROCS(runtime.GOMAXPROCS(procs))
-
-			parity, lastLen, err := Encode(original, BlockPartSizeBytes)
-			require.NoError(t, err)
-			require.Equal(t, total, int(parity.Total()))
-			require.Positive(t, lastLen)
-
-			for i := range total {
-				// bytes.Equal, not require.Equal: Part.Bytes is
-				// cmtbytes.HexBytes, and require.Equal compares types as well
-				// as contents.
-				require.True(t, bytes.Equal(shards[total+i], parity.GetPart(i).Bytes),
-					"parity part %d differs from the unsegmented encode", i)
+			require.Equal(t, seqLast, segLast)
+			require.Equal(t, sequential.Total(), segmented.Total())
+			for i := range tc.total {
+				// bytes.Equal, not require.Equal: Part.Bytes is cmtbytes.HexBytes.
+				require.True(t, bytes.Equal(sequential.GetPart(i).Bytes, segmented.GetPart(i).Bytes),
+					"parity part %d differs between the sequential and segmented encodes", i)
 			}
-
-			// Drop a part and rebuild it from the parity. Decode checks the
-			// reconstructed set against the original root, so this fails if
-			// any parity byte is wrong.
-			partial := NewPartSetFromHeader(original.Header(), BlockPartSizeBytes)
-			for i := 1; i < total; i++ {
-				added, err := partial.AddPart(original.GetPart(i))
-				require.NoError(t, err)
-				require.True(t, added)
-			}
-			recovered, _, err := Decode(partial, parity, lastLen)
-			require.NoError(t, err)
-			require.True(t, bytes.Equal(original.GetPart(0).Bytes, recovered.GetPart(0).Bytes),
-				"the reconstructed part differs from the original")
 		})
 	}
 }
 
-// TestEncodeSegmentsCoverEveryByte pins the segment arithmetic itself across
-// worker counts, which the production runs above exercise only at the two
-// GOMAXPROCS values they set.
-func TestEncodeSegmentsCoverEveryByte(t *testing.T) {
-	ps := int(BlockPartSizeBytes)
-	for _, workers := range []int{2, 3, 7, 8, 16} {
-		segmentSize := ((ps/workers + 63) / 64) * 64
-		require.Positive(t, segmentSize)
-		require.Zero(t, segmentSize%64, "segments must stay 64-byte aligned")
+// TestEncodeParityDecodes rebuilds a dropped part from segmented parity.
+// Decode checks the rebuilt set against the original root, so this fails if
+// any parity byte is wrong.
+func TestEncodeParityDecodes(t *testing.T) {
+	if testing.Short() {
+		t.Skip("encodes an 8 MiB part set")
+	}
+	const total = minSegmentedShards
+	ops := randomPartSet(t, total)
 
-		covered, segments := 0, 0
-		for start := 0; start < ps; start += segmentSize {
-			end := min(start+segmentSize, ps)
-			require.Equal(t, covered, start, "segments must be contiguous")
-			covered = end
-			segments++
-		}
-		require.Equal(t, ps, covered, "segments must cover the whole shard")
-		require.LessOrEqual(t, segments, workers, "never more segments than workers")
+	parity, lastLen := encodeWithProcs(t, ops, 4)
+
+	partial := NewPartSetFromHeader(ops.Header(), BlockPartSizeBytes)
+	for i := 1; i < total; i++ {
+		added, err := partial.AddPart(ops.GetPart(i))
+		require.NoError(t, err)
+		require.True(t, added)
+	}
+	recovered, _, err := Decode(partial, parity, lastLen)
+	require.NoError(t, err)
+	require.True(t, bytes.Equal(ops.GetPart(0).Bytes, recovered.GetPart(0).Bytes))
+}
+
+func randomPartSet(t *testing.T, total int) *PartSet {
+	t.Helper()
+	data := make([]byte, total*int(BlockPartSizeBytes))
+	_, err := rand.Read(data)
+	require.NoError(t, err)
+	ops, err := NewPartSetFromData(data, BlockPartSizeBytes)
+	require.NoError(t, err)
+	require.Equal(t, total, int(ops.Total()))
+	return ops
+}
+
+// encodeWithProcs encodes at a given GOMAXPROCS and restores the previous
+// setting. One P is how the single-call path is selected; more than one takes
+// the segmented path, which the assertion here pins.
+func encodeWithProcs(t *testing.T, ops *PartSet, procs int) (*PartSet, int) {
+	t.Helper()
+	defer runtime.GOMAXPROCS(runtime.GOMAXPROCS(procs))
+	require.Equal(t, procs > 1, segmentedEncodeOK(int(ops.Total()), procs))
+	parity, lastLen, err := Encode(ops, BlockPartSizeBytes)
+	require.NoError(t, err)
+	require.Positive(t, lastLen)
+	return parity, lastLen
+}
+
+// TestSegmentedEncodeBounds pins the lower end, a codec property, so crossing
+// it by one shard flips the decision. There is no upper bound.
+func TestSegmentedEncodeBounds(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		total int
+		procs int
+		want  bool
+	}{
+		{"one below the lower bound", 128, 8, false},
+		{"the lower bound", 129, 8, true},
+		{"across the work-buffer doubling at 513", 513, 8, true},
+		{"a 64 MiB block", 1024, 8, true},
+		{"a single core cannot overlap anything", 300, 1, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			require.Equal(t, tc.want, segmentedEncodeOK(tc.total, tc.procs))
+		})
+	}
+}
+
+// TestEncodeSegmentsCoverEveryByte pins the segment arithmetic, including part
+// sizes that leave a short final segment.
+func TestEncodeSegmentsCoverEveryByte(t *testing.T) {
+	for _, ps := range []int{int(BlockPartSizeBytes), 96 * 1024, 1 << 20, 64*1024 + 192} {
+		t.Run(fmt.Sprintf("part_size_%d", ps), func(t *testing.T) {
+			require.Zero(t, segmentBytes%64, "segments must stay 64-byte aligned")
+
+			covered, segments := 0, 0
+			for start := 0; start < ps; start += segmentBytes {
+				end := min(start+segmentBytes, ps)
+				require.Equal(t, covered, start, "segments must be contiguous")
+				covered = end
+				segments++
+			}
+			require.Equal(t, ps, covered, "segments must cover the whole shard")
+			require.Positive(t, segments)
+		})
 	}
 }
