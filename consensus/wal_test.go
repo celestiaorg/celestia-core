@@ -111,7 +111,7 @@ func TestWALEncoderDecoder(t *testing.T) {
 	}
 }
 
-func TestWALEncoderDirectCompactBlockPart(t *testing.T) {
+func TestWALEncoderCompactBlockPart(t *testing.T) {
 	partBytes := bytes.Repeat([]byte{0xAB}, int(cmttypes.BlockPartSizeBytes))
 	msg := msgInfo{
 		PeerID: "peer-id",
@@ -146,47 +146,14 @@ func TestWALEncoderDirectCompactBlockPart(t *testing.T) {
 	assert.Equal(t, msg, decoded.Msg)
 }
 
-func TestWALDecoderReadsCompactBlockPart(t *testing.T) {
-	const repeated = byte(0xCD)
-	const count = uint32(1024)
-	msg := msgInfo{
-		PeerID: "legacy-peer",
-		Msg: &BlockPartMessage{
-			Height: 7,
-			Round:  2,
-			Part: &cmttypes.Part{
-				Index: 0,
-				Bytes: bytes.Repeat([]byte{repeated}, int(count)),
-				Proof: merkle.Proof{Total: 1, Index: 0, LeafHash: nBytes(32)},
-			},
-		},
-	}
-
-	// Build the compact representation via the original conversion-and-shrink
-	// path to ensure WAL entries written by that implementation remain readable.
-	pbMsg, err := WALToProto(msg)
-	require.NoError(t, err)
-	pbMsg.GetMsgInfo().Msg.GetBlockPart().Part.Bytes = []byte{repeated}
-	pbMsg.GetMsgInfo().BlockPartBytesCount = count
-	encoded := marshalWALProto(t, &cmtcons.TimedWALMessage{Time: cmttime.Now(), Msg: pbMsg})
-
-	decoded, err := NewWALDecoder(bytes.NewReader(encoded)).Decode()
-	require.NoError(t, err)
-	assert.Equal(t, msg, decoded.Msg)
-}
-
 func TestWALDecoderRejectsInvalidCompactBlockPart(t *testing.T) {
-	pbMsg, err := WALToProto(EndHeightMessage{1})
-	require.NoError(t, err)
-	pbMsg.Sum = &cmtcons.WALMessage_MsgInfo{MsgInfo: &cmtcons.MsgInfo{
-		Msg:                 cmtcons.Message{},
-		BlockPartBytesCount: uint32(cmttypes.BlockPartSizeBytes) + 1,
-	}}
+	pbMsg := &cmtcons.WALMessage{Sum: &cmtcons.WALMessage_MsgInfo{MsgInfo: &cmtcons.MsgInfo{
+		BlockPartBytesCount: cmttypes.BlockPartSizeBytes + 1,
+	}}}
 	encoded := marshalWALProto(t, &cmtcons.TimedWALMessage{Time: cmttime.Now(), Msg: pbMsg})
 
-	_, err = NewWALDecoder(bytes.NewReader(encoded)).Decode()
-	require.Error(t, err)
-	assert.True(t, IsDataCorruptionError(err))
+	_, err := NewWALDecoder(bytes.NewReader(encoded)).Decode()
+	assert.True(t, IsDataCorruptionError(err), err)
 }
 
 func marshalWALProto(t *testing.T, msg *cmtcons.TimedWALMessage) []byte {

@@ -18,7 +18,6 @@ import (
 	cmtos "github.com/cometbft/cometbft/libs/os"
 	"github.com/cometbft/cometbft/libs/service"
 	cmtcons "github.com/cometbft/cometbft/proto/tendermint/consensus"
-	cmtproto "github.com/cometbft/cometbft/proto/tendermint/types"
 	cmttypes "github.com/cometbft/cometbft/types"
 	cmttime "github.com/cometbft/cometbft/types/time"
 )
@@ -302,10 +301,11 @@ func NewWALEncoder(wr io.Writer) *WALEncoder {
 // the encoded size of v is greater than 1MB. Any error encountered
 // during the write is also returned.
 func (enc *WALEncoder) Encode(v *TimedWALMessage) error {
-	pbMsg, err := walToProto(v.Msg)
+	pbMsg, err := WALToProto(v.Msg)
 	if err != nil {
 		return err
 	}
+	compactBlockPart(pbMsg)
 	pv := cmtcons.TimedWALMessage{
 		Time: v.Time,
 		Msg:  pbMsg,
@@ -332,57 +332,23 @@ func (enc *WALEncoder) Encode(v *TimedWALMessage) error {
 	return err
 }
 
-// walToProto encodes repeated-byte block parts directly in their compact WAL
-// form. Building the regular protobuf first would retain the entire block-part
-// byte slice only to replace it with a single byte afterwards.
-func walToProto(msg WALMessage) (*cmtcons.WALMessage, error) {
-	mi, ok := msg.(msgInfo)
-	if !ok {
-		return WALToProto(msg)
+// compactBlockPart stores a block part whose bytes are all equal as that byte
+// plus a count. WALToProto aliases the part bytes, so this copies nothing and
+// leaves the caller's message untouched.
+func compactBlockPart(msg *cmtcons.WALMessage) {
+	mi := msg.GetMsgInfo()
+	if mi == nil {
+		return
 	}
-	bp, ok := mi.Msg.(*BlockPartMessage)
-	if !ok || bp.Part == nil {
-		return WALToProto(msg)
+	bp := mi.Msg.GetBlockPart()
+	if bp == nil || len(bp.Part.Bytes) < 2 {
+		return
 	}
-	repeated, ok := repeatedByte(bp.Part.Bytes)
-	if !ok {
-		return WALToProto(msg)
+	// All bytes are equal iff the slice equals itself shifted by one.
+	if b := bp.Part.Bytes; bytes.Equal(b[1:], b[:len(b)-1]) {
+		mi.BlockPartBytesCount = uint32(len(b))
+		bp.Part.Bytes = b[:1]
 	}
-
-	proof := bp.Part.Proof.ToProto()
-	compactPart := &cmtcons.BlockPart{
-		Height: bp.Height,
-		Round:  bp.Round,
-		Part: cmtproto.Part{
-			Index: bp.Part.Index,
-			Bytes: []byte{repeated},
-			Proof: *proof,
-		},
-	}
-	return &cmtcons.WALMessage{
-		Sum: &cmtcons.WALMessage_MsgInfo{
-			MsgInfo: &cmtcons.MsgInfo{
-				Msg: cmtcons.Message{
-					Sum: &cmtcons.Message_BlockPart{BlockPart: compactPart},
-				},
-				PeerID:              string(mi.PeerID),
-				BlockPartBytesCount: uint32(len(bp.Part.Bytes)),
-			},
-		},
-	}, nil
-}
-
-func repeatedByte(data []byte) (byte, bool) {
-	if len(data) < 2 {
-		return 0, false
-	}
-	first := data[0]
-	for _, b := range data[1:] {
-		if b != first {
-			return 0, false
-		}
-	}
-	return first, true
 }
 
 // IsDataCorruptionError returns true if data has been corrupted inside WAL.
@@ -483,7 +449,7 @@ func expandCompactBlockPart(msg *cmtcons.WALMessage) error {
 	if mi == nil || mi.BlockPartBytesCount == 0 {
 		return nil
 	}
-	if mi.BlockPartBytesCount > uint32(cmttypes.BlockPartSizeBytes) {
+	if mi.BlockPartBytesCount > cmttypes.BlockPartSizeBytes {
 		return fmt.Errorf("byte count %d exceeds block part size %d", mi.BlockPartBytesCount, cmttypes.BlockPartSizeBytes)
 	}
 	bp := mi.Msg.GetBlockPart()
