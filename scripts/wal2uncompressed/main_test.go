@@ -1,24 +1,20 @@
 package main
 
 import (
-	"errors"
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 )
 
 func TestConvertRemovesPartialOutputOnError(t *testing.T) {
 	dir := t.TempDir()
 	input := filepath.Join(dir, "wal")
 	output := filepath.Join(dir, "wal.uncompressed")
-	if err := os.WriteFile(input, []byte("invalid WAL"), 0o600); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, os.WriteFile(input, []byte("invalid WAL"), 0o600))
 
-	if err := convert(input, output); err == nil {
-		t.Fatal("expected conversion to fail")
-	}
-	if _, err := os.Stat(output); !errors.Is(err, os.ErrNotExist) {
-		t.Fatalf("expected partial output to be removed, got %v", err)
-	}
+	require.Error(t, convert(input, output))
+	_, err := os.Stat(output)
+	require.ErrorIs(t, err, os.ErrNotExist)
 }
