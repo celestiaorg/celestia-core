@@ -3,6 +3,8 @@ package consensus
 import (
 	"bytes"
 	"crypto/rand"
+	"encoding/binary"
+	"hash/crc32"
 	"os"
 	"path/filepath"
 
@@ -10,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cosmos/gogoproto/proto"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -17,6 +20,7 @@ import (
 	"github.com/cometbft/cometbft/crypto/merkle"
 	"github.com/cometbft/cometbft/libs/autofile"
 	"github.com/cometbft/cometbft/libs/log"
+	cmtcons "github.com/cometbft/cometbft/proto/tendermint/consensus"
 	cmttypes "github.com/cometbft/cometbft/types"
 	cmttime "github.com/cometbft/cometbft/types/time"
 )
@@ -105,6 +109,95 @@ func TestWALEncoderDecoder(t *testing.T) {
 		assert.Equal(t, msg.Time.UTC(), decoded.Time)
 		assert.Equal(t, msg.Msg, decoded.Msg)
 	}
+}
+
+func TestWALEncoderDirectCompactBlockPart(t *testing.T) {
+	partBytes := bytes.Repeat([]byte{0xAB}, int(cmttypes.BlockPartSizeBytes))
+	msg := msgInfo{
+		PeerID: "peer-id",
+		Msg: &BlockPartMessage{
+			Height: 11,
+			Round:  3,
+			Part: &cmttypes.Part{
+				Index: 2,
+				Bytes: partBytes,
+				Proof: merkle.Proof{
+					Total:    3,
+					Index:    2,
+					LeafHash: nBytes(32),
+					Aunts:    [][]byte{nBytes(32), nBytes(32)},
+				},
+			},
+		},
+	}
+	originalBytes := bytes.Clone(partBytes)
+
+	var encoded bytes.Buffer
+	enc := NewWALEncoder(&encoded)
+	require.NoError(t, enc.Encode(&TimedWALMessage{Time: cmttime.Now(), Msg: msg}))
+
+	// Encoding must not compact the caller's block part in place.
+	require.True(t, bytes.Equal(originalBytes, msg.Msg.(*BlockPartMessage).Part.Bytes))
+	// A compact entry should be far smaller than the 64 KiB source part.
+	require.Less(t, encoded.Len(), 1024)
+
+	decoded, err := NewWALDecoder(&encoded).Decode()
+	require.NoError(t, err)
+	assert.Equal(t, msg, decoded.Msg)
+}
+
+func TestWALDecoderReadsCompactBlockPart(t *testing.T) {
+	const repeated = byte(0xCD)
+	const count = uint32(1024)
+	msg := msgInfo{
+		PeerID: "legacy-peer",
+		Msg: &BlockPartMessage{
+			Height: 7,
+			Round:  2,
+			Part: &cmttypes.Part{
+				Index: 0,
+				Bytes: bytes.Repeat([]byte{repeated}, int(count)),
+				Proof: merkle.Proof{Total: 1, Index: 0, LeafHash: nBytes(32)},
+			},
+		},
+	}
+
+	// Build the compact representation via the original conversion-and-shrink
+	// path to ensure WAL entries written by that implementation remain readable.
+	pbMsg, err := WALToProto(msg)
+	require.NoError(t, err)
+	pbMsg.GetMsgInfo().Msg.GetBlockPart().Part.Bytes = []byte{repeated}
+	pbMsg.GetMsgInfo().BlockPartBytesCount = count
+	encoded := marshalWALProto(t, &cmtcons.TimedWALMessage{Time: cmttime.Now(), Msg: pbMsg})
+
+	decoded, err := NewWALDecoder(bytes.NewReader(encoded)).Decode()
+	require.NoError(t, err)
+	assert.Equal(t, msg, decoded.Msg)
+}
+
+func TestWALDecoderRejectsInvalidCompactBlockPart(t *testing.T) {
+	pbMsg, err := WALToProto(EndHeightMessage{1})
+	require.NoError(t, err)
+	pbMsg.Sum = &cmtcons.WALMessage_MsgInfo{MsgInfo: &cmtcons.MsgInfo{
+		Msg:                 cmtcons.Message{},
+		BlockPartBytesCount: uint32(cmttypes.BlockPartSizeBytes) + 1,
+	}}
+	encoded := marshalWALProto(t, &cmtcons.TimedWALMessage{Time: cmttime.Now(), Msg: pbMsg})
+
+	_, err = NewWALDecoder(bytes.NewReader(encoded)).Decode()
+	require.Error(t, err)
+	assert.True(t, IsDataCorruptionError(err))
+}
+
+func marshalWALProto(t *testing.T, msg *cmtcons.TimedWALMessage) []byte {
+	t.Helper()
+	data, err := proto.Marshal(msg)
+	require.NoError(t, err)
+	encoded := make([]byte, 8+len(data))
+	binary.BigEndian.PutUint32(encoded[:4], crc32.Checksum(data, crc32c))
+	binary.BigEndian.PutUint32(encoded[4:8], uint32(len(data)))
+	copy(encoded[8:], data)
+	return encoded
 }
 
 func TestWALWrite(t *testing.T) {

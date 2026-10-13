@@ -13,6 +13,9 @@ import "google/protobuf/timestamp.proto";
 message MsgInfo {
   Message msg     = 1 [(gogoproto.nullable) = false];
   string  peer_id = 2 [(gogoproto.customname) = "PeerID"];
+  // block_part_bytes_count is set when a block part's bytes are all equal.
+  // In that case msg.block_part.part.bytes contains the repeated byte once.
+  uint32 block_part_bytes_count = 3;
 }
 
 // TimeoutInfo internally generated messages which may update the state
