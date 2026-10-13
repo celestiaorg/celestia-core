@@ -144,6 +144,14 @@ func TestWALEncoderCompression(t *testing.T) {
 		assert.Equal(t, tc.wantCompressed, lengthField&walCompressionFlag != 0, tc.name)
 	}
 
+	// Encoding a second block part must reuse the encoder's buffers.
+	enc := NewWALEncoder(io.Discard)
+	require.NoError(t, enc.Encode(&tests[0].msg))
+	buf, compressedBuf := &enc.buf[0], &enc.compressedBuf[0]
+	require.NoError(t, enc.Encode(&tests[0].msg))
+	require.Same(t, buf, &enc.buf[0])
+	require.Same(t, compressedBuf, &enc.compressedBuf[0])
+
 	dec := NewWALDecoder(&stream)
 	decoded := make([]*TimedWALMessage, len(tests))
 	for i, tc := range tests {
