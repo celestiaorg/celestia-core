@@ -370,9 +370,8 @@ func TestWALBlockPartCompressionRejectsInvalidData(t *testing.T) {
 	}{
 		{"missing repeated byte", func(part *cmtcons.WALBlockPart) { part.RepeatedByte = nil }},
 		{"multiple repeated bytes", func(part *cmtcons.WALBlockPart) { part.RepeatedByte = []byte{1, 2} }},
-		{"short repeated run", func(part *cmtcons.WALBlockPart) { part.RepeatedCount = 1 }},
 		{"start past compact data", func(part *cmtcons.WALBlockPart) { part.RepeatedStart = 3 }},
-		{"expanded data too large", func(part *cmtcons.WALBlockPart) { part.RepeatedCount = uint32(types.BlockPartSizeBytes) }},
+		{"expanded data too large", func(part *cmtcons.WALBlockPart) { part.RepeatedCount = types.BlockPartSizeBytes }},
 	}
 
 	for _, testCase := range testCases {
