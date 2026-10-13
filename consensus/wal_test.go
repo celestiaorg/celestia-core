@@ -112,73 +112,53 @@ func TestWALEncoderDecoder(t *testing.T) {
 	}
 }
 
-func TestWALEncoderCompressesAndReusesBuffers(t *testing.T) {
+func TestWALEncoderCompression(t *testing.T) {
 	msg := TimedWALMessage{
-		Time: cmttime.Now(),
+		Time: cmttime.Now().UTC(),
 		Msg: msgInfo{Msg: &BlockPartMessage{Height: 1, Part: &cmttypes.Part{
 			Bytes: bytes.Repeat([]byte{0xab}, 64*1024),
 			Proof: merkle.Proof{Total: 1, LeafHash: nBytes(32)},
 		}}},
 	}
 
-	buf := new(bytes.Buffer)
-	enc := NewWALEncoder(buf)
+	var stream bytes.Buffer
+	enc := NewWALEncoder(&stream)
 	require.NoError(t, enc.Encode(&msg))
+	require.NotZero(t, binary.BigEndian.Uint32(stream.Bytes()[4:8])&walCompressedMask)
 
-	encoded := bytes.Clone(buf.Bytes())
-	require.GreaterOrEqual(t, len(encoded), 8)
-	require.NotZero(t, binary.BigEndian.Uint32(encoded[4:8])&walCompressedMask)
-	encodeBuf := &enc.buf[0]
-	compressedBuf := &enc.compressedBuf[0]
-
-	decoded, err := NewWALDecoder(bytes.NewReader(encoded)).Decode()
-	require.NoError(t, err)
-	require.Equal(t, msg.Time.UTC(), decoded.Time)
-	require.Equal(t, msg.Msg, decoded.Msg)
-
-	buf.Reset()
+	// A second encode must reuse both buffers.
+	encodeBuf, compressedBuf := &enc.buf[0], &enc.compressedBuf[0]
 	require.NoError(t, enc.Encode(&msg))
 	require.Same(t, encodeBuf, &enc.buf[0])
 	require.Same(t, compressedBuf, &enc.compressedBuf[0])
-}
 
-func TestWALDecoderReadsLegacyUncompressedEntry(t *testing.T) {
-	msg := TimedWALMessage{
-		Time: cmttime.Now(),
-		Msg: msgInfo{Msg: &BlockPartMessage{Height: 1, Part: &cmttypes.Part{
-			Bytes: bytes.Repeat([]byte{0xab}, 64*1024),
-			Proof: merkle.Proof{Total: 1, LeafHash: nBytes(32)},
-		}}},
-	}
-
+	// Large entries written before compression existed must stay readable.
 	pbMsg, err := WALToProto(msg.Msg)
 	require.NoError(t, err)
-	pv := cmtcons.TimedWALMessage{Time: msg.Time, Msg: pbMsg}
-	payload, err := pv.Marshal()
+	payload, err := (&cmtcons.TimedWALMessage{Time: msg.Time, Msg: pbMsg}).Marshal()
 	require.NoError(t, err)
+	stream.Write(walFrame(payload, uint32(len(payload))))
 
-	var header [8]byte
-	binary.BigEndian.PutUint32(header[0:4], crc32.Checksum(payload, crc32c))
-	binary.BigEndian.PutUint32(header[4:8], uint32(len(payload)))
-	legacy := append(header[:], payload...)
-
-	decoded, err := NewWALDecoder(bytes.NewReader(legacy)).Decode()
-	require.NoError(t, err)
-	require.Equal(t, msg.Time.UTC(), decoded.Time)
-	require.Equal(t, msg.Msg, decoded.Msg)
+	dec := NewWALDecoder(&stream)
+	for i := 0; i < 3; i++ {
+		decoded, err := dec.Decode()
+		require.NoError(t, err)
+		require.Equal(t, msg, *decoded)
+	}
 }
 
 func TestWALDecoderRejectsOversizedCompressedEntry(t *testing.T) {
 	payload := binary.AppendUvarint(nil, uint64(maxMsgSizeBytes+1))
-	var header [8]byte
-	binary.BigEndian.PutUint32(header[0:4], crc32.Checksum(payload, crc32c))
-	binary.BigEndian.PutUint32(header[4:8], uint32(len(payload))|walCompressedMask)
-	encoded := append(header[:], payload...)
-
-	_, err := NewWALDecoder(bytes.NewReader(encoded)).Decode()
-	require.Error(t, err)
-	require.True(t, IsDataCorruptionError(err))
+	_, err := NewWALDecoder(bytes.NewReader(walFrame(payload, uint32(len(payload))|walCompressedMask))).Decode()
+	require.True(t, IsDataCorruptionError(err), err)
 	require.Contains(t, err.Error(), "decoded length")
+}
+
+func walFrame(payload []byte, length uint32) []byte {
+	frame := make([]byte, 8, 8+len(payload))
+	binary.BigEndian.PutUint32(frame[0:4], crc32.Checksum(payload, crc32c))
+	binary.BigEndian.PutUint32(frame[4:8], length)
+	return append(frame, payload...)
 }
 
 func TestWALWrite(t *testing.T) {

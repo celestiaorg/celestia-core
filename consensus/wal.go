@@ -333,34 +333,21 @@ func (enc *WALEncoder) Encode(v *TimedWALMessage) error {
 		panic(fmt.Errorf("encode timed wal message failure: %w", err))
 	}
 
-	payload := enc.buf[8:]
-	storedLength := length
+	frame := enc.buf
 	if size >= walCompressMinSize {
-		maxCompressedSize := snappy.MaxEncodedLen(size)
-		if cap(enc.compressedBuf) < 8+maxCompressedSize {
-			enc.compressedBuf = make([]byte, 8+maxCompressedSize)
-		} else {
-			enc.compressedBuf = enc.compressedBuf[:8+maxCompressedSize]
+		if n := 8 + snappy.MaxEncodedLen(size); cap(enc.compressedBuf) < n {
+			enc.compressedBuf = make([]byte, n)
 		}
-
-		compressed := snappy.Encode(enc.compressedBuf[8:], payload)
+		compressed := snappy.Encode(enc.compressedBuf[8:cap(enc.compressedBuf)], enc.buf[8:])
 		if len(compressed) < size {
-			payload = compressed
-			storedLength = uint32(len(compressed)) | walCompressedMask
+			frame = enc.compressedBuf[:8+len(compressed)]
+			length = uint32(len(compressed)) | walCompressedMask
 		}
 	}
 
-	if storedLength&walCompressedMask != 0 {
-		frame := enc.compressedBuf[:8+len(payload)]
-		binary.BigEndian.PutUint32(frame[0:4], crc32.Checksum(payload, crc32c))
-		binary.BigEndian.PutUint32(frame[4:8], storedLength)
-		_, err = enc.wr.Write(frame)
-		return err
-	}
-
-	binary.BigEndian.PutUint32(enc.buf[0:4], crc32.Checksum(payload, crc32c))
-	binary.BigEndian.PutUint32(enc.buf[4:8], storedLength)
-	_, err = enc.wr.Write(enc.buf)
+	binary.BigEndian.PutUint32(frame[0:4], crc32.Checksum(frame[8:], crc32c))
+	binary.BigEndian.PutUint32(frame[4:8], length)
+	_, err = enc.wr.Write(frame)
 	return err
 }
 
@@ -439,23 +426,18 @@ func (dec *WALDecoder) Decode() (*TimedWALMessage, error) {
 	}
 
 	if compressed {
-		decodedLength, err := snappy.DecodedLen(data)
+		n, err := snappy.DecodedLen(data)
 		if err != nil {
 			return nil, DataCorruptionError{fmt.Errorf("failed to read compressed data length: %v", err)}
 		}
-		if decodedLength > maxMsgSizeBytes {
+		if n > maxMsgSizeBytes {
 			return nil, DataCorruptionError{fmt.Errorf(
-				"decoded length %d exceeded maximum possible value of %d bytes",
-				decodedLength,
-				maxMsgSizeBytes)}
+				"decoded length %d exceeded maximum possible value of %d bytes", n, maxMsgSizeBytes)}
 		}
-		if cap(dec.decompressedBuf) < decodedLength {
-			dec.decompressedBuf = make([]byte, decodedLength)
-		} else {
-			dec.decompressedBuf = dec.decompressedBuf[:decodedLength]
+		if cap(dec.decompressedBuf) < n {
+			dec.decompressedBuf = make([]byte, n)
 		}
-		data, err = snappy.Decode(dec.decompressedBuf, data)
-		if err != nil {
+		if data, err = snappy.Decode(dec.decompressedBuf[:cap(dec.decompressedBuf)], data); err != nil {
 			return nil, DataCorruptionError{fmt.Errorf("failed to decompress data: %v", err)}
 		}
 	}

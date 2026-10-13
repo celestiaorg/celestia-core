@@ -67,6 +67,7 @@ linters:
             - github.com/celestiaorg/go-square/v3
             - github.com/stretchr/testify/assert
             - github.com/klauspost/reedsolomon
+            - github.com/golang/snappy
             - github.com/filecoin-project/go-clock
         test:
           files:
@@ -99,6 +100,7 @@ linters:
             - google.golang.org/protobuf/encoding/protowire
             - github.com/filecoin-project/go-clock
             - github.com/klauspost/reedsolomon
+            - github.com/golang/snappy
     dogsled:
       max-blank-identifiers: 3
     gosec:
