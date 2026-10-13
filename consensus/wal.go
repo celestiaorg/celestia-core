@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/cosmos/gogoproto/proto"
+	"github.com/klauspost/compress/s2"
 
 	auto "github.com/cometbft/cometbft/libs/autofile"
 	cmtjson "github.com/cometbft/cometbft/libs/json"
@@ -26,6 +27,12 @@ const (
 
 	// how often the WAL should be sync'd during period sync'ing
 	walDefaultFlushInterval = 2 * time.Second
+
+	// The high bit of the stored length marks a Snappy-compressed record. WAL
+	// messages are capped well below this bit, so old uncompressed records keep
+	// their existing framing and remain readable.
+	walCompressionFlag    uint32 = 1 << 31
+	walCompressionMinSize        = 4 * 1024
 )
 
 //--------------------------------------------------------
@@ -285,10 +292,13 @@ func (wal *BaseWAL) SearchForEndHeight(
 
 // A WALEncoder writes custom-encoded WAL messages to an output stream.
 //
-// Format: 4 bytes CRC sum + 4 bytes length + arbitrary-length value
+// Format: 4 bytes CRC sum + 4 bytes length + arbitrary-length value. The high
+// bit of the length marks a Snappy-compressed value. The CRC covers the stored
+// value, before decompression.
 type WALEncoder struct {
-	wr  io.Writer
-	buf []byte
+	wr            io.Writer
+	buf           []byte
+	compressedBuf []byte
 }
 
 // NewWALEncoder returns a new encoder that writes to wr.
@@ -326,10 +336,30 @@ func (enc *WALEncoder) Encode(v *TimedWALMessage) error {
 		panic(fmt.Errorf("encode timed wal message failure: %w", err))
 	}
 
-	binary.BigEndian.PutUint32(enc.buf[0:4], crc32.Checksum(enc.buf[8:], crc32c))
-	binary.BigEndian.PutUint32(enc.buf[4:8], length)
+	record := enc.buf
+	payload := record[8:]
+	lengthField := length
+	if size >= walCompressionMinSize {
+		maxCompressedSize := s2.MaxEncodedLen(size)
+		compressedTotal := 8 + maxCompressedSize
+		if cap(enc.compressedBuf) < compressedTotal {
+			enc.compressedBuf = make([]byte, compressedTotal)
+		} else {
+			enc.compressedBuf = enc.compressedBuf[:compressedTotal]
+		}
 
-	_, err = enc.wr.Write(enc.buf)
+		compressed := s2.EncodeSnappy(enc.compressedBuf[8:], payload)
+		if len(compressed) < len(payload) {
+			record = enc.compressedBuf[:8+len(compressed)]
+			payload = compressed
+			lengthField = uint32(len(compressed)) | walCompressionFlag
+		}
+	}
+
+	binary.BigEndian.PutUint32(record[0:4], crc32.Checksum(payload, crc32c))
+	binary.BigEndian.PutUint32(record[4:8], lengthField)
+
+	_, err = enc.wr.Write(record)
 	return err
 }
 
@@ -358,9 +388,10 @@ func (e DataCorruptionError) Cause() error {
 // It will also compare the checksums and make sure data size is equal to the
 // length from the header. If that is not the case, error will be returned.
 type WALDecoder struct {
-	rd     io.Reader
-	header [8]byte
-	buf    []byte
+	rd         io.Reader
+	header     [8]byte
+	buf        []byte
+	decodedBuf []byte
 }
 
 // NewWALDecoder returns a new decoder that reads from rd.
@@ -379,7 +410,9 @@ func (dec *WALDecoder) Decode() (*TimedWALMessage, error) {
 	}
 
 	crc := binary.BigEndian.Uint32(dec.header[0:4])
-	length := binary.BigEndian.Uint32(dec.header[4:8])
+	lengthField := binary.BigEndian.Uint32(dec.header[4:8])
+	compressed := lengthField&walCompressionFlag != 0
+	length := lengthField &^ walCompressionFlag
 
 	if length > maxMsgSizeBytes {
 		return nil, DataCorruptionError{fmt.Errorf(
@@ -402,6 +435,30 @@ func (dec *WALDecoder) Decode() (*TimedWALMessage, error) {
 	// check checksum before decoding data
 	if actualCRC := crc32.Checksum(data, crc32c); actualCRC != crc {
 		return nil, DataCorruptionError{fmt.Errorf("checksums do not match: read: %v, actual: %v", crc, actualCRC)}
+	}
+
+	if compressed {
+		decodedLen, err := s2.DecodedLen(data)
+		if err != nil {
+			return nil, DataCorruptionError{fmt.Errorf("failed to read compressed length: %v", err)}
+		}
+		if decodedLen > int(maxMsgSizeBytes) {
+			return nil, DataCorruptionError{fmt.Errorf(
+				"decoded length %d exceeded maximum possible value of %d bytes",
+				decodedLen,
+				maxMsgSizeBytes)}
+		}
+
+		if cap(dec.decodedBuf) < decodedLen {
+			dec.decodedBuf = make([]byte, decodedLen)
+		} else {
+			dec.decodedBuf = dec.decodedBuf[:decodedLen]
+		}
+		data, err = s2.Decode(dec.decodedBuf, data)
+		if err != nil {
+			return nil, DataCorruptionError{fmt.Errorf("failed to decompress data: %v", err)}
+		}
+		dec.decodedBuf = data
 	}
 
 	res := new(cmtcons.TimedWALMessage)
