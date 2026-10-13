@@ -257,6 +257,28 @@ Recovering from data corruption can be hard and time-consuming. Here are two app
     ./scripts/json2wal/json2wal /tmp/corrupted_wal  $CMTHOME/data/cs.wal/wal
     ```
 
+### Rolling back WAL compression
+
+Versions that predate WAL compression cannot read compressed WAL records. Before
+rolling back, stop CometBFT and use the current version to convert every WAL
+segment to the legacy uncompressed format:
+
+```sh
+go build -o /tmp/wal2uncompressed ./scripts/wal2uncompressed
+cp -a "$CMTHOME/data/cs.wal" "/tmp/cs.wal.backup"
+
+shopt -s nullglob
+wal_files=("$CMTHOME"/data/cs.wal/wal.[0-9][0-9][0-9] "$CMTHOME"/data/cs.wal/wal)
+for wal_file in "${wal_files[@]}"; do
+  /tmp/wal2uncompressed "$wal_file" "${wal_file}.uncompressed"
+  mv "${wal_file}.uncompressed" "$wal_file"
+done
+```
+
+Only start the older binary after all segments have been converted. If a
+conversion fails, keep the original files and restore the backup before
+retrying.
+
 ## Hardware
 
 ### Processor and Memory
