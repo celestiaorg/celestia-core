@@ -3,6 +3,8 @@ package consensus
 import (
 	"bytes"
 	"crypto/rand"
+	"encoding/binary"
+	"hash/crc32"
 	"os"
 	"path/filepath"
 
@@ -10,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/klauspost/compress/s2"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -99,6 +102,7 @@ func TestWALEncoderDecoder(t *testing.T) {
 		enc := NewWALEncoder(b)
 		err := enc.Encode(&msg)
 		require.NoError(t, err)
+		require.Zero(t, binary.BigEndian.Uint32(b.Bytes()[4:8])&walCompressionFlag)
 
 		dec := NewWALDecoder(b)
 		decoded, err := dec.Decode()
@@ -106,6 +110,77 @@ func TestWALEncoderDecoder(t *testing.T) {
 		assert.Equal(t, msg.Time.UTC(), decoded.Time)
 		assert.Equal(t, msg.Msg, decoded.Msg)
 	}
+}
+
+func TestWALEncoderCompressedBlockPart(t *testing.T) {
+	part := &cmttypes.Part{
+		Index: 0,
+		Bytes: bytes.Repeat([]byte{0xAB}, int(cmttypes.BlockPartSizeBytes)),
+		Proof: merkle.Proof{Total: 1, Index: 0, LeafHash: bytes.Repeat([]byte{1}, 32)},
+	}
+	original := TimedWALMessage{
+		Time: time.Unix(1, 0).UTC(),
+		Msg:  msgInfo{Msg: &BlockPartMessage{Height: 1, Round: 0, Part: part}},
+	}
+
+	var encoded bytes.Buffer
+	require.NoError(t, NewWALEncoder(&encoded).Encode(&original))
+	lengthField := binary.BigEndian.Uint32(encoded.Bytes()[4:8])
+	require.NotZero(t, lengthField&walCompressionFlag)
+	require.Less(t, int(lengthField&^walCompressionFlag), len(part.Bytes))
+
+	decoded, err := NewWALDecoder(&encoded).Decode()
+	require.NoError(t, err)
+	assert.Equal(t, original.Time, decoded.Time)
+	assert.Equal(t, original.Msg, decoded.Msg)
+}
+
+func TestWALEncoderKeepsIncompressibleBlockPartUncompressed(t *testing.T) {
+	part := &cmttypes.Part{
+		Index: 0,
+		Bytes: nBytes(int(cmttypes.BlockPartSizeBytes)),
+		Proof: merkle.Proof{Total: 1, Index: 0, LeafHash: nBytes(32)},
+	}
+	original := TimedWALMessage{
+		Time: time.Unix(1, 0).UTC(),
+		Msg:  msgInfo{Msg: &BlockPartMessage{Height: 1, Round: 0, Part: part}},
+	}
+
+	var encoded bytes.Buffer
+	require.NoError(t, NewWALEncoder(&encoded).Encode(&original))
+	require.Zero(t, binary.BigEndian.Uint32(encoded.Bytes()[4:8])&walCompressionFlag)
+
+	decoded, err := NewWALDecoder(&encoded).Decode()
+	require.NoError(t, err)
+	assert.Equal(t, original.Msg, decoded.Msg)
+}
+
+func TestWALDecoderRejectsInvalidCompressedData(t *testing.T) {
+	encoded := compressedWALRecord([]byte{0xFF})
+
+	_, err := NewWALDecoder(bytes.NewReader(encoded)).Decode()
+	require.Error(t, err)
+	assert.True(t, IsDataCorruptionError(err))
+	assert.Contains(t, err.Error(), "compressed length")
+}
+
+func TestWALDecoderRejectsOversizedCompressedData(t *testing.T) {
+	payload := s2.EncodeSnappy(nil, make([]byte, maxMsgSizeBytes+1))
+	encoded := compressedWALRecord(payload)
+
+	_, err := NewWALDecoder(bytes.NewReader(encoded)).Decode()
+	require.Error(t, err)
+	assert.True(t, IsDataCorruptionError(err))
+	assert.Contains(t, err.Error(), "decoded length")
+	assert.Contains(t, err.Error(), "exceeded maximum")
+}
+
+func compressedWALRecord(payload []byte) []byte {
+	record := make([]byte, 8+len(payload))
+	binary.BigEndian.PutUint32(record[0:4], crc32.Checksum(payload, crc32c))
+	binary.BigEndian.PutUint32(record[4:8], uint32(len(payload))|walCompressionFlag)
+	copy(record[8:], payload)
+	return record
 }
 
 func TestWALWrite(t *testing.T) {
