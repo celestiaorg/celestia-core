@@ -270,8 +270,8 @@ cp -a "$CMTHOME/data/cs.wal" "/tmp/cs.wal.backup"
 shopt -s nullglob
 wal_files=("$CMTHOME"/data/cs.wal/wal.[0-9][0-9][0-9] "$CMTHOME"/data/cs.wal/wal)
 for wal_file in "${wal_files[@]}"; do
-  /tmp/wal2uncompressed "$wal_file" "${wal_file}.uncompressed"
-  mv "${wal_file}.uncompressed" "$wal_file"
+  /tmp/wal2uncompressed "$wal_file" "${wal_file}.uncompressed" || exit 1
+  mv "${wal_file}.uncompressed" "$wal_file" || exit 1
 done
 ```
 
