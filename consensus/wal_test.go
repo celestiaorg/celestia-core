@@ -87,6 +87,10 @@ func TestWALEncoderDecoder(t *testing.T) {
 		{Time: now, Msg: EndHeightMessage{0}},
 		{Time: now, Msg: timeoutInfo{Duration: time.Second, Height: 1, Round: 1, Step: types.RoundStepPropose}},
 		{Time: now, Msg: cmttypes.EventDataRoundState{Height: 1, Round: 1, Step: ""}},
+		{Time: now, Msg: msgInfo{Msg: &BlockPartMessage{Height: 1, Part: &cmttypes.Part{
+			Bytes: make([]byte, 512),
+			Proof: merkle.Proof{Total: 1, Index: 0, LeafHash: nBytes(32)},
+		}}}},
 	}
 
 	b := new(bytes.Buffer)

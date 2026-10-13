@@ -30,12 +30,24 @@ message EndHeight {
   int64 height = 1;
 }
 
+// WALBlockPart is a WAL-only representation of a block part whose longest run of
+// repeated bytes has been removed. repeated_byte and repeated_count describe
+// the removed run, which starts at repeated_start in the original part bytes.
+message WALBlockPart {
+  BlockPart block_part     = 1 [(gogoproto.nullable) = false];
+  string    peer_id        = 2 [(gogoproto.customname) = "PeerID"];
+  uint32    repeated_start = 3;
+  uint32    repeated_count = 4;
+  bytes     repeated_byte  = 5;
+}
+
 message WALMessage {
   oneof sum {
     tendermint.types.EventDataRoundState event_data_round_state = 1;
     MsgInfo                              msg_info               = 2;
     TimeoutInfo                          timeout_info           = 3;
     EndHeight                            end_height             = 4;
+    WALBlockPart                         block_part             = 5;
   }
 }
 

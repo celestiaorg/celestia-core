@@ -268,6 +268,12 @@ func WALToProto(msg WALMessage) (*cmtcons.WALMessage, error) {
 				},
 			},
 		}
+		if blockPart, ok := cm.Sum.(*cmtcons.Message_BlockPart); ok {
+			compressed := compressedBlockPart(blockPart.BlockPart, string(msg.PeerID), pb.Size())
+			if compressed != nil {
+				pb = *compressed
+			}
+		}
 	case timeoutInfo:
 		pb = cmtcons.WALMessage{
 			Sum: &cmtcons.WALMessage_TimeoutInfo{
@@ -321,6 +327,19 @@ func WALFromProto(msg *cmtcons.WALMessage) (WALMessage, error) {
 			Msg:    walMsg,
 			PeerID: p2p.ID(msg.MsgInfo.PeerID),
 		}
+	case *cmtcons.WALMessage_BlockPart:
+		blockPart, err := expandBlockPart(msg.BlockPart)
+		if err != nil {
+			return nil, fmt.Errorf("block part from proto error: %w", err)
+		}
+		walMsg, err := MsgFromProto(blockPart)
+		if err != nil {
+			return nil, fmt.Errorf("block part from proto error: %w", err)
+		}
+		pb = msgInfo{
+			Msg:    walMsg,
+			PeerID: p2p.ID(msg.BlockPart.PeerID),
+		}
 
 	case *cmtcons.WALMessage_TimeoutInfo:
 		tis, err := cmtmath.SafeConvertUint8(int64(msg.TimeoutInfo.Step))
@@ -344,4 +363,92 @@ func WALFromProto(msg *cmtcons.WALMessage) (WALMessage, error) {
 		return nil, fmt.Errorf("from proto: wal message not recognized: %T", msg)
 	}
 	return pb, nil
+}
+
+func compressedBlockPart(blockPart *cmtcons.BlockPart, peerID string, legacySize int) *cmtcons.WALMessage {
+	if len(blockPart.Part.Bytes) == 0 {
+		return nil
+	}
+	start, count := longestRepeatedByteRun(blockPart.Part.Bytes)
+
+	part := blockPart.Part
+	// Size only depends on the byte slice length, so first use a zero-allocation
+	// placeholder to avoid copying parts that would not become smaller.
+	part.Bytes = part.Bytes[:len(part.Bytes)-count]
+	compressed := &cmtcons.WALMessage{
+		Sum: &cmtcons.WALMessage_BlockPart{
+			BlockPart: &cmtcons.WALBlockPart{
+				BlockPart: cmtcons.BlockPart{
+					Height: blockPart.Height,
+					Round:  blockPart.Round,
+					Part:   part,
+				},
+				PeerID:        peerID,
+				RepeatedStart: uint32(start),
+				RepeatedCount: uint32(count),
+				RepeatedByte:  []byte{blockPart.Part.Bytes[start]},
+			},
+		},
+	}
+	if compressed.Size() >= legacySize {
+		return nil
+	}
+
+	part.Bytes = make([]byte, 0, len(blockPart.Part.Bytes)-count)
+	part.Bytes = append(part.Bytes, blockPart.Part.Bytes[:start]...)
+	part.Bytes = append(part.Bytes, blockPart.Part.Bytes[start+count:]...)
+	compressed.Sum.(*cmtcons.WALMessage_BlockPart).BlockPart.BlockPart.Part = part
+	return compressed
+}
+
+func longestRepeatedByteRun(data []byte) (start, count int) {
+	bestStart, bestCount := 0, 1
+	for runStart := 0; runStart < len(data); {
+		runEnd := runStart + 1
+		for runEnd < len(data) && data[runEnd] == data[runStart] {
+			runEnd++
+		}
+		if runEnd-runStart > bestCount {
+			bestStart, bestCount = runStart, runEnd-runStart
+		}
+		runStart = runEnd
+	}
+	return bestStart, bestCount
+}
+
+func expandBlockPart(compressed *cmtcons.WALBlockPart) (*cmtcons.BlockPart, error) {
+	if compressed == nil {
+		return nil, errors.New("nil compressed block part")
+	}
+	if len(compressed.RepeatedByte) != 1 {
+		return nil, fmt.Errorf("repeated byte must contain exactly one byte, got %d", len(compressed.RepeatedByte))
+	}
+	if compressed.RepeatedCount < 2 {
+		return nil, fmt.Errorf("repeated count must be at least 2, got %d", compressed.RepeatedCount)
+	}
+	compactBytes := compressed.BlockPart.Part.Bytes
+	if len(compactBytes) > int(types.BlockPartSizeBytes) {
+		return nil, fmt.Errorf("compact block part exceeds maximum size %d", types.BlockPartSizeBytes)
+	}
+	if compressed.RepeatedStart > uint32(len(compactBytes)) {
+		return nil, fmt.Errorf("repeated start %d exceeds compact block part length %d", compressed.RepeatedStart, len(compactBytes))
+	}
+	if compressed.RepeatedCount > uint32(types.BlockPartSizeBytes)-uint32(len(compactBytes)) {
+		return nil, fmt.Errorf("expanded block part exceeds maximum size %d", types.BlockPartSizeBytes)
+	}
+
+	part := compressed.BlockPart.Part
+	part.Bytes = make([]byte, len(compactBytes)+int(compressed.RepeatedCount))
+	start := int(compressed.RepeatedStart)
+	copy(part.Bytes, compactBytes[:start])
+	for i := start; i < start+int(compressed.RepeatedCount); i++ {
+		part.Bytes[i] = compressed.RepeatedByte[0]
+	}
+	copy(part.Bytes[start+int(compressed.RepeatedCount):], compactBytes[start:])
+
+	return &cmtcons.BlockPart{
+		Height: compressed.BlockPart.Height,
+		Round:  compressed.BlockPart.Round,
+		Part:   part,
+	}, nil
 }

@@ -15,6 +15,7 @@ import (
 	cmtrand "github.com/cometbft/cometbft/libs/rand"
 	"github.com/cometbft/cometbft/p2p"
 	cmtcons "github.com/cometbft/cometbft/proto/tendermint/consensus"
+	cmtcrypto "github.com/cometbft/cometbft/proto/tendermint/crypto"
 	cmtproto "github.com/cometbft/cometbft/proto/tendermint/types"
 	"github.com/cometbft/cometbft/types"
 )
@@ -296,6 +297,92 @@ func TestWALMsgProto(t *testing.T) {
 			} else {
 				require.Error(t, err, tt.testName)
 			}
+		})
+	}
+}
+
+func TestWALBlockPartCompression(t *testing.T) {
+	partBytes := append([]byte{1, 2, 3}, make([]byte, 512)...)
+	partBytes = append(partBytes, 4, 5, 6)
+	msg := msgInfo{
+		Msg: &BlockPartMessage{
+			Height: 100,
+			Round:  2,
+			Part: &types.Part{
+				Index: 0,
+				Bytes: partBytes,
+				Proof: merkle.Proof{Total: 1, Index: 0, LeafHash: cmtrand.Bytes(32)},
+			},
+		},
+		PeerID: p2p.ID("peer"),
+	}
+
+	pb, err := WALToProto(msg)
+	require.NoError(t, err)
+	compressed, ok := pb.Sum.(*cmtcons.WALMessage_BlockPart)
+	require.True(t, ok)
+	assert.Equal(t, uint32(3), compressed.BlockPart.RepeatedStart)
+	assert.Equal(t, uint32(512), compressed.BlockPart.RepeatedCount)
+	assert.Equal(t, []byte{0}, compressed.BlockPart.RepeatedByte)
+	assert.Equal(t, []byte{1, 2, 3, 4, 5, 6}, compressed.BlockPart.BlockPart.Part.Bytes)
+
+	decoded, err := WALFromProto(pb)
+	require.NoError(t, err)
+	assert.Equal(t, msg, decoded)
+}
+
+func TestWALBlockPartCompressionFallsBackToLegacyFormat(t *testing.T) {
+	msg := msgInfo{
+		Msg: &BlockPartMessage{
+			Height: 1,
+			Part: &types.Part{
+				Bytes: []byte{1, 2, 3, 4},
+				Proof: merkle.Proof{Total: 1, Index: 0, LeafHash: cmtrand.Bytes(32)},
+			},
+		},
+	}
+
+	pb, err := WALToProto(msg)
+	require.NoError(t, err)
+	_, ok := pb.Sum.(*cmtcons.WALMessage_MsgInfo)
+	assert.True(t, ok)
+}
+
+func TestWALBlockPartCompressionRejectsInvalidData(t *testing.T) {
+	valid := func() *cmtcons.WALBlockPart {
+		return &cmtcons.WALBlockPart{
+			BlockPart: cmtcons.BlockPart{
+				Height: 1,
+				Part: cmtproto.Part{
+					Bytes: []byte{1, 2},
+					Proof: cmtcrypto.Proof{Total: 1, Index: 0, LeafHash: cmtrand.Bytes(32)},
+				},
+			},
+			RepeatedStart: 1,
+			RepeatedCount: 2,
+			RepeatedByte:  []byte{0},
+		}
+	}
+
+	testCases := []struct {
+		name   string
+		mutate func(*cmtcons.WALBlockPart)
+	}{
+		{"missing repeated byte", func(part *cmtcons.WALBlockPart) { part.RepeatedByte = nil }},
+		{"multiple repeated bytes", func(part *cmtcons.WALBlockPart) { part.RepeatedByte = []byte{1, 2} }},
+		{"short repeated run", func(part *cmtcons.WALBlockPart) { part.RepeatedCount = 1 }},
+		{"start past compact data", func(part *cmtcons.WALBlockPart) { part.RepeatedStart = 3 }},
+		{"expanded data too large", func(part *cmtcons.WALBlockPart) { part.RepeatedCount = uint32(types.BlockPartSizeBytes) }},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			part := valid()
+			testCase.mutate(part)
+			_, err := WALFromProto(&cmtcons.WALMessage{
+				Sum: &cmtcons.WALMessage_BlockPart{BlockPart: part},
+			})
+			require.Error(t, err)
 		})
 	}
 }
