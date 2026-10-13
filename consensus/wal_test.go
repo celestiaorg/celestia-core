@@ -3,6 +3,8 @@ package consensus
 import (
 	"bytes"
 	"crypto/rand"
+	"encoding/binary"
+	"hash/crc32"
 	"os"
 	"path/filepath"
 
@@ -17,6 +19,7 @@ import (
 	"github.com/cometbft/cometbft/crypto/merkle"
 	"github.com/cometbft/cometbft/libs/autofile"
 	"github.com/cometbft/cometbft/libs/log"
+	cmtcons "github.com/cometbft/cometbft/proto/tendermint/consensus"
 	cmtproto "github.com/cometbft/cometbft/proto/tendermint/types"
 	cmttypes "github.com/cometbft/cometbft/types"
 	cmttime "github.com/cometbft/cometbft/types/time"
@@ -99,6 +102,7 @@ func TestWALEncoderDecoder(t *testing.T) {
 		enc := NewWALEncoder(b)
 		err := enc.Encode(&msg)
 		require.NoError(t, err)
+		require.Zero(t, binary.BigEndian.Uint32(b.Bytes()[4:8])&walCompressedMask)
 
 		dec := NewWALDecoder(b)
 		decoded, err := dec.Decode()
@@ -106,6 +110,75 @@ func TestWALEncoderDecoder(t *testing.T) {
 		assert.Equal(t, msg.Time.UTC(), decoded.Time)
 		assert.Equal(t, msg.Msg, decoded.Msg)
 	}
+}
+
+func TestWALEncoderCompressesAndReusesBuffers(t *testing.T) {
+	msg := TimedWALMessage{
+		Time: cmttime.Now(),
+		Msg: msgInfo{Msg: &BlockPartMessage{Height: 1, Part: &cmttypes.Part{
+			Bytes: bytes.Repeat([]byte{0xab}, 64*1024),
+			Proof: merkle.Proof{Total: 1, LeafHash: nBytes(32)},
+		}}},
+	}
+
+	buf := new(bytes.Buffer)
+	enc := NewWALEncoder(buf)
+	require.NoError(t, enc.Encode(&msg))
+
+	encoded := bytes.Clone(buf.Bytes())
+	require.GreaterOrEqual(t, len(encoded), 8)
+	require.NotZero(t, binary.BigEndian.Uint32(encoded[4:8])&walCompressedMask)
+	encodeBuf := &enc.buf[0]
+	compressedBuf := &enc.compressedBuf[0]
+
+	decoded, err := NewWALDecoder(bytes.NewReader(encoded)).Decode()
+	require.NoError(t, err)
+	require.Equal(t, msg.Time.UTC(), decoded.Time)
+	require.Equal(t, msg.Msg, decoded.Msg)
+
+	buf.Reset()
+	require.NoError(t, enc.Encode(&msg))
+	require.Same(t, encodeBuf, &enc.buf[0])
+	require.Same(t, compressedBuf, &enc.compressedBuf[0])
+}
+
+func TestWALDecoderReadsLegacyUncompressedEntry(t *testing.T) {
+	msg := TimedWALMessage{
+		Time: cmttime.Now(),
+		Msg: msgInfo{Msg: &BlockPartMessage{Height: 1, Part: &cmttypes.Part{
+			Bytes: bytes.Repeat([]byte{0xab}, 64*1024),
+			Proof: merkle.Proof{Total: 1, LeafHash: nBytes(32)},
+		}}},
+	}
+
+	pbMsg, err := WALToProto(msg.Msg)
+	require.NoError(t, err)
+	pv := cmtcons.TimedWALMessage{Time: msg.Time, Msg: pbMsg}
+	payload, err := pv.Marshal()
+	require.NoError(t, err)
+
+	var header [8]byte
+	binary.BigEndian.PutUint32(header[0:4], crc32.Checksum(payload, crc32c))
+	binary.BigEndian.PutUint32(header[4:8], uint32(len(payload)))
+	legacy := append(header[:], payload...)
+
+	decoded, err := NewWALDecoder(bytes.NewReader(legacy)).Decode()
+	require.NoError(t, err)
+	require.Equal(t, msg.Time.UTC(), decoded.Time)
+	require.Equal(t, msg.Msg, decoded.Msg)
+}
+
+func TestWALDecoderRejectsOversizedCompressedEntry(t *testing.T) {
+	payload := binary.AppendUvarint(nil, uint64(maxMsgSizeBytes+1))
+	var header [8]byte
+	binary.BigEndian.PutUint32(header[0:4], crc32.Checksum(payload, crc32c))
+	binary.BigEndian.PutUint32(header[4:8], uint32(len(payload))|walCompressedMask)
+	encoded := append(header[:], payload...)
+
+	_, err := NewWALDecoder(bytes.NewReader(encoded)).Decode()
+	require.Error(t, err)
+	require.True(t, IsDataCorruptionError(err))
+	require.Contains(t, err.Error(), "decoded length")
 }
 
 func TestWALWrite(t *testing.T) {

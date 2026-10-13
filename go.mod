@@ -24,6 +24,7 @@ require (
 	github.com/go-logfmt/logfmt v0.6.1
 	github.com/gofrs/uuid v4.4.0+incompatible
 	github.com/gogo/protobuf v1.3.2
+	github.com/golang/snappy v0.0.4
 	github.com/golang/protobuf v1.5.4
 	github.com/google/orderedcode v0.0.1
 	github.com/google/uuid v1.6.0
@@ -172,7 +173,6 @@ require (
 	github.com/godoc-lint/godoc-lint v0.11.1 // indirect
 	github.com/gofrs/flock v0.13.0 // indirect
 	github.com/golang/groupcache v0.0.0-20241129210726-2c02b8208cf8 // indirect
-	github.com/golang/snappy v0.0.4 // indirect
 	github.com/golangci/asciicheck v0.5.0 // indirect
 	github.com/golangci/dupl v0.0.0-20250308024227-f665c8d69b32 // indirect
 	github.com/golangci/go-printf-func-name v0.1.1 // indirect
