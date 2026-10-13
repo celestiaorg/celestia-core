@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"encoding/binary"
 	"hash/crc32"
+	"io"
 	"os"
 	"path/filepath"
 
@@ -155,6 +156,69 @@ func TestWALEncoderKeepsIncompressibleBlockPartUncompressed(t *testing.T) {
 	assert.Equal(t, original.Msg, decoded.Msg)
 }
 
+func TestWALEncoderWithoutCompression(t *testing.T) {
+	original := TimedWALMessage{
+		Time: time.Unix(1, 0).UTC(),
+		Msg: msgInfo{Msg: &BlockPartMessage{Height: 1, Round: 0, Part: &cmttypes.Part{
+			Index: 0,
+			Bytes: bytes.Repeat([]byte{0xAB}, int(cmttypes.BlockPartSizeBytes)),
+			Proof: merkle.Proof{Total: 1, Index: 0, LeafHash: bytes.Repeat([]byte{1}, 32)},
+		}}},
+	}
+
+	var encoded bytes.Buffer
+	require.NoError(t, NewWALEncoderWithoutCompression(&encoded).Encode(&original))
+	require.Zero(t, binary.BigEndian.Uint32(encoded.Bytes()[4:8])&walCompressionFlag)
+
+	decoded, err := NewWALDecoder(&encoded).Decode()
+	require.NoError(t, err)
+	assert.Equal(t, original.Msg, decoded.Msg)
+}
+
+func TestWALEncoderDecoderMixedStream(t *testing.T) {
+	now := time.Unix(1, 0).UTC()
+	compressedPart := &cmttypes.Part{
+		Index: 0,
+		Bytes: bytes.Repeat([]byte{0xAB}, int(cmttypes.BlockPartSizeBytes)),
+		Proof: merkle.Proof{Total: 1, Index: 0, LeafHash: bytes.Repeat([]byte{1}, 32)},
+	}
+	incompressiblePart := &cmttypes.Part{
+		Index: 0,
+		Bytes: nBytes(int(cmttypes.BlockPartSizeBytes)),
+		Proof: merkle.Proof{Total: 1, Index: 0, LeafHash: nBytes(32)},
+	}
+	messages := []TimedWALMessage{
+		{Time: now, Msg: EndHeightMessage{0}},
+		{Time: now, Msg: msgInfo{Msg: &BlockPartMessage{Height: 1, Round: 0, Part: compressedPart}}},
+		{Time: now, Msg: timeoutInfo{Duration: time.Second, Height: 1, Round: 0, Step: types.RoundStepPropose}},
+		{Time: now, Msg: msgInfo{Msg: &BlockPartMessage{Height: 1, Round: 0, Part: incompressiblePart}}},
+		{Time: now, Msg: EndHeightMessage{1}},
+	}
+
+	var stream bytes.Buffer
+	enc := NewWALEncoder(&stream)
+	for i := range messages {
+		require.NoError(t, enc.Encode(&messages[i]))
+	}
+
+	dec := NewWALDecoder(&stream)
+	decoded := make([]*TimedWALMessage, len(messages))
+	for i := range messages {
+		var err error
+		decoded[i], err = dec.Decode()
+		require.NoError(t, err)
+		assert.Equal(t, messages[i].Time, decoded[i].Time)
+		assert.Equal(t, messages[i].Msg, decoded[i].Msg)
+	}
+	_, err := dec.Decode()
+	require.ErrorIs(t, err, io.EOF)
+
+	// Later reads must not mutate messages decoded from reused buffers.
+	for i := range messages {
+		assert.Equal(t, messages[i].Msg, decoded[i].Msg)
+	}
+}
+
 func TestWALDecoderRejectsInvalidCompressedData(t *testing.T) {
 	encoded := compressedWALRecord([]byte{0xFF})
 
@@ -162,6 +226,15 @@ func TestWALDecoderRejectsInvalidCompressedData(t *testing.T) {
 	require.Error(t, err)
 	assert.True(t, IsDataCorruptionError(err))
 	assert.Contains(t, err.Error(), "compressed length")
+}
+
+func TestWALDecoderRejectsInvalidCompressedBody(t *testing.T) {
+	encoded := compressedWALRecord([]byte{0x01, 0x00})
+
+	_, err := NewWALDecoder(bytes.NewReader(encoded)).Decode()
+	require.Error(t, err)
+	assert.True(t, IsDataCorruptionError(err))
+	assert.Contains(t, err.Error(), "failed to decompress data")
 }
 
 func TestWALDecoderRejectsOversizedCompressedData(t *testing.T) {
