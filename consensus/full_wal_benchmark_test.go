@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"flag"
 	"fmt"
+	mathrand "math/rand"
 	"os"
 	"path/filepath"
 	"sort"
@@ -42,18 +43,14 @@ func TestFullWAL32MiB100Validators(t *testing.T) {
 		t.Skip("campaign benchmark runs only when selected explicitly")
 	}
 
-	workload := makeFullWALWorkload(t)
-	runFullWALSample(t, workload)
+	compressible := makeFullWALWorkload(t, true)
+	compressibleMedian := measureFullWAL(t, compressible)
+	fmt.Printf("WAL_MEDIAN_MS: %.3f\n", float64(compressibleMedian)/float64(time.Millisecond))
+	fmt.Printf("WAL_PARTS: %d\n", len(compressible.parts))
 
-	samples := make([]time.Duration, fullWALSamples)
-	for i := range samples {
-		samples[i] = runFullWALSample(t, workload)
-	}
-	sort.Slice(samples, func(i, j int) bool { return samples[i] < samples[j] })
-	median := samples[len(samples)/2]
-
-	fmt.Printf("WAL_MEDIAN_MS: %.3f\n", float64(median)/float64(time.Millisecond))
-	fmt.Printf("WAL_PARTS: %d\n", len(workload.parts))
+	incompressible := makeFullWALWorkload(t, false)
+	incompressibleMedian := measureFullWAL(t, incompressible)
+	fmt.Printf("WAL_INCOMPRESSIBLE_MEDIAN_MS: %.3f\n", float64(incompressibleMedian)/float64(time.Millisecond))
 }
 
 func testingRunPattern() string {
@@ -64,14 +61,33 @@ func testingRunPattern() string {
 	return run.Value.String()
 }
 
-func makeFullWALWorkload(t *testing.T) fullWALWorkload {
+func measureFullWAL(t *testing.T, workload fullWALWorkload) time.Duration {
+	t.Helper()
+	runFullWALSample(t, workload)
+
+	samples := make([]time.Duration, fullWALSamples)
+	for i := range samples {
+		samples[i] = runFullWALSample(t, workload)
+	}
+	sort.Slice(samples, func(i, j int) bool { return samples[i] < samples[j] })
+	return samples[len(samples)/2]
+}
+
+func makeFullWALWorkload(t *testing.T, compressible bool) fullWALWorkload {
 	t.Helper()
 
 	txs := make([]cmttypes.Tx, 0, fullWALBlobCount)
 	for i := 0; i < fullWALBlobCount; i++ {
+		data := bytes.Repeat([]byte{byte(i + 1)}, fullWALBlobSize)
+		if !compressible {
+			rng := mathrand.New(mathrand.NewSource(int64(i + 1))) //nolint:gosec
+			if _, err := rng.Read(data); err != nil {
+				t.Fatal(err)
+			}
+		}
 		blob := &cmtproto.Blob{
 			NamespaceId:      bytes.Repeat([]byte{byte(i + 1)}, 28),
-			Data:             bytes.Repeat([]byte{byte(i + 1)}, fullWALBlobSize),
+			Data:             data,
 			ShareVersion:     0,
 			NamespaceVersion: 0,
 		}
