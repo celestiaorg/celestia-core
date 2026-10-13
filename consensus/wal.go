@@ -348,15 +348,10 @@ func (enc *WALEncoder) Encode(v *TimedWALMessage) error {
 	payload := record[8:]
 	lengthField := length
 	if enc.compressionEnabled && size >= walCompressionMinSize {
-		maxCompressedSize := s2.MaxEncodedLen(size)
-		compressedTotal := 8 + maxCompressedSize
-		if cap(enc.compressedBuf) < compressedTotal {
-			enc.compressedBuf = make([]byte, compressedTotal)
-		} else {
-			enc.compressedBuf = enc.compressedBuf[:compressedTotal]
+		if n := 8 + s2.MaxEncodedLen(size); cap(enc.compressedBuf) < n {
+			enc.compressedBuf = make([]byte, n)
 		}
-
-		compressed := s2.EncodeSnappy(enc.compressedBuf[8:], payload)
+		compressed := s2.EncodeSnappy(enc.compressedBuf[8:cap(enc.compressedBuf)], payload)
 		if len(compressed) < len(payload) {
 			record = enc.compressedBuf[:8+len(compressed)]
 			payload = compressed
@@ -446,27 +441,20 @@ func (dec *WALDecoder) Decode() (*TimedWALMessage, error) {
 	}
 
 	if compressed {
-		decodedLen, err := s2.DecodedLen(data)
+		n, err := s2.DecodedLen(data)
 		if err != nil {
 			return nil, DataCorruptionError{fmt.Errorf("failed to read compressed length: %v", err)}
 		}
-		if decodedLen > int(maxMsgSizeBytes) {
+		if n > maxMsgSizeBytes {
 			return nil, DataCorruptionError{fmt.Errorf(
-				"decoded length %d exceeded maximum possible value of %d bytes",
-				decodedLen,
-				maxMsgSizeBytes)}
+				"decoded length %d exceeded maximum possible value of %d bytes", n, maxMsgSizeBytes)}
 		}
-
-		if cap(dec.decodedBuf) < decodedLen {
-			dec.decodedBuf = make([]byte, decodedLen)
-		} else {
-			dec.decodedBuf = dec.decodedBuf[:decodedLen]
+		if cap(dec.decodedBuf) < n {
+			dec.decodedBuf = make([]byte, n)
 		}
-		data, err = s2.Decode(dec.decodedBuf, data)
-		if err != nil {
+		if data, err = s2.Decode(dec.decodedBuf[:cap(dec.decodedBuf)], data); err != nil {
 			return nil, DataCorruptionError{fmt.Errorf("failed to decompress data: %v", err)}
 		}
-		dec.decodedBuf = data
 	}
 
 	res := new(cmtcons.TimedWALMessage)
