@@ -296,13 +296,21 @@ func (wal *BaseWAL) SearchForEndHeight(
 // bit of the length marks a Snappy-compressed value. The CRC covers the stored
 // value, before decompression.
 type WALEncoder struct {
-	wr            io.Writer
-	buf           []byte
-	compressedBuf []byte
+	wr                 io.Writer
+	compressionEnabled bool
+	buf                []byte
+	compressedBuf      []byte
 }
 
 // NewWALEncoder returns a new encoder that writes to wr.
 func NewWALEncoder(wr io.Writer) *WALEncoder {
+	return &WALEncoder{wr: wr, compressionEnabled: true}
+}
+
+// NewWALEncoderWithoutCompression returns an encoder that writes the legacy
+// uncompressed WAL format. It is intended for converting WAL files before
+// rolling back to a version that does not support compressed records.
+func NewWALEncoderWithoutCompression(wr io.Writer) *WALEncoder {
 	return &WALEncoder{wr: wr}
 }
 
@@ -339,7 +347,7 @@ func (enc *WALEncoder) Encode(v *TimedWALMessage) error {
 	record := enc.buf
 	payload := record[8:]
 	lengthField := length
-	if size >= walCompressionMinSize {
+	if enc.compressionEnabled && size >= walCompressionMinSize {
 		maxCompressedSize := s2.MaxEncodedLen(size)
 		compressedTotal := 8 + maxCompressedSize
 		if cap(enc.compressedBuf) < compressedTotal {
