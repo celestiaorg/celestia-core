@@ -3,6 +3,7 @@ package conn
 import (
 	"encoding/hex"
 	"net"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -704,4 +705,69 @@ func stopAll(t *testing.T, stoppers ...stopper) func() {
 			}
 		}
 	}
+}
+
+// writeCountingConn counts Write calls, i.e. flushes of the buffered writer.
+type writeCountingConn struct {
+	net.Conn
+	writes atomic.Int32
+}
+
+func (c *writeCountingConn) Write(b []byte) (int, error) {
+	c.writes.Add(1)
+	return c.Conn.Write(b)
+}
+
+// newFlushTestMConnection returns a started MConnection whose flush throttle
+// and ping interval are long enough that only an explicit flush can get a
+// packet onto the wire within the test.
+func newFlushTestMConnection(t *testing.T, conn net.Conn, flushOnMessageEnd bool) *MConnection {
+	t.Helper()
+	cfg := DefaultMConnConfig()
+	cfg.FlushThrottle = time.Hour
+	cfg.PingInterval = time.Hour
+	cfg.PongTimeout = time.Minute
+	cfg.FlushOnMessageEnd = flushOnMessageEnd
+	chDescs := []*ChannelDescriptor{{ID: 0x01, Priority: 1, SendQueueCapacity: 1}}
+	c := NewMConnectionWithConfig(conn, chDescs, func(byte, []byte) {}, func(interface{}) {}, cfg)
+	c.SetLogger(log.TestingLogger())
+	require.NoError(t, c.Start())
+	t.Cleanup(func() { _ = c.Stop() })
+	return c
+}
+
+func TestMConnectionFlushOnMessageEnd(t *testing.T) {
+	server, client := net.Pipe()
+	defer server.Close()
+	defer client.Close()
+	conn := &writeCountingConn{Conn: client}
+
+	mconn := newFlushTestMConnection(t, conn, true)
+	// Spans several packets, which should still go out in a single write.
+	msg := make([]byte, 3*mconn.config.MaxPacketMsgPayloadSize+1)
+	require.True(t, mconn.Send(0x01, msg))
+
+	require.NoError(t, server.SetReadDeadline(time.Now().Add(time.Second)))
+	read := 0
+	for read < len(msg) {
+		n, err := server.Read(make([]byte, 2*len(msg)))
+		require.NoError(t, err, "completed message should reach the socket without the flush timer")
+		read += n
+	}
+	require.EqualValues(t, 1, conn.writes.Load())
+}
+
+func TestMConnectionWaitsForFlushTimerWithoutFlushOnMessageEnd(t *testing.T) {
+	server, client := net.Pipe()
+	defer server.Close()
+	defer client.Close()
+
+	mconn := newFlushTestMConnection(t, client, false)
+	require.True(t, mconn.Send(0x01, []byte("vote")))
+
+	require.NoError(t, server.SetReadDeadline(time.Now().Add(200*time.Millisecond)))
+	_, err := server.Read(make([]byte, 64))
+	var netErr net.Error
+	require.ErrorAs(t, err, &netErr)
+	require.True(t, netErr.Timeout(), "packet should stay buffered until the flush timer fires")
 }
