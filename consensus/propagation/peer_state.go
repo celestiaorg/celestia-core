@@ -205,16 +205,35 @@ func (d *PeerState) AddWants(height int64, round int32, wants *bits.BitArray) {
 	d.state[height][round].addWants(wants)
 }
 
-// AddRequests sets the requests for a given height and round.
-func (d *PeerState) AddRequests(height int64, round int32, requests *bits.BitArray) {
+// AddRequests sets the requests for a given height and round and returns the
+// ones that were not already set.
+func (d *PeerState) AddRequests(height int64, round int32, requests *bits.BitArray) *bits.BitArray {
 	if requests == nil || requests.Size() == 0 {
 		d.logger.Error("peer state requests is nil or empty")
-		return
+		return nil
 	}
 	d.mtx.Lock()
 	defer d.mtx.Unlock()
 	d.initialize(height, round, requests.Size())
+	added := requests.Sub(d.state[height][round].requests)
 	d.state[height][round].addRequests(requests)
+	return added
+}
+
+// RemoveRequests unsets the given requests, undoing AddRequests for a request
+// that could not be sent.
+func (d *PeerState) RemoveRequests(height int64, round int32, requests *bits.BitArray) {
+	if requests == nil {
+		return
+	}
+	d.mtx.Lock()
+	defer d.mtx.Unlock()
+	if d.state[height] == nil || d.state[height][round] == nil {
+		return
+	}
+	for _, i := range requests.GetTrueIndices() {
+		d.state[height][round].requests.SetIndex(i, false)
+	}
 }
 
 // SetHave sets the have bit for a given part.
@@ -349,6 +368,10 @@ func (d *PeerState) prune(prunePastHeight int64) {
 		if height < prunePastHeight {
 			delete(d.state, height)
 			delete(d.remainingRequests, height)
+		}
+	}
+	for height := range d.pushAllowance {
+		if height < prunePastHeight {
 			delete(d.pushAllowance, height)
 		}
 	}

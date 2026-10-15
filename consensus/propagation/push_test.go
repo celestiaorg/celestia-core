@@ -115,3 +115,47 @@ func TestProposePushesUncoveredParts(t *testing.T) {
 		require.Len(t, r.getPeers(), 2)
 	}
 }
+
+func TestPushAllowancePruned(t *testing.T) {
+	reactors, _ := testBlockPropReactors(2, cfg.DefaultP2PConfig())
+	p := reactors[0].getPeer(reactors[1].self)
+	for h := int64(1); h <= 5; h++ {
+		p.GrantPushAllowance(h, 0, maxPushedParts)
+	}
+	p.prune(4)
+	require.False(t, p.ConsumePushAllowance(3, 0))
+	require.True(t, p.ConsumePushAllowance(4, 0))
+}
+
+func TestRemoveRequestsKeepsEarlierRequests(t *testing.T) {
+	reactors, _ := testBlockPropReactors(2, cfg.DefaultP2PConfig())
+	p := reactors[0].getPeer(reactors[1].self)
+	p.AddRequests(1, 0, createBitArray(4, []int{0}))
+
+	added := p.AddRequests(1, 0, createBitArray(4, []int{0, 1}))
+	require.Equal(t, []int{1}, added.GetTrueIndices())
+
+	p.RemoveRequests(1, 0, added)
+	require.True(t, p.Requested(1, 0, 0))
+	require.False(t, p.Requested(1, 0, 1))
+}
+
+func TestCachedCompactBlockGrantsPushAllowance(t *testing.T) {
+	reactors, _ := createTestReactors(2, defaultTestP2PConf(), false, "")
+	receiver, sender := reactors[0], reactors[1]
+	cleanup, _, sm, pv := state.SetupTestCaseWithPrivVal(t)
+	t.Cleanup(func() { cleanup(t) })
+
+	receiver.SetConsensusState(1, 0, mockPubKey)
+	cb, _, _, _ := testCompactBlock(t, sm, pv, 2, 0)
+
+	// cached while behind, then replayed on reaching height 2
+	receiver.handleCompactBlock(cb, sender.self, false)
+	require.NotNil(t, receiver.GetUnverifiedProposal(2))
+	receiver.Prune(1)
+	receiver.SetConsensusState(2, 0, mockPubKey)
+
+	_, _, has := receiver.GetProposal(2, 0)
+	require.True(t, has)
+	require.True(t, receiver.getPeer(sender.self).ConsumePushAllowance(2, 0))
+}

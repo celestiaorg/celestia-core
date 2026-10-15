@@ -291,7 +291,11 @@ func (blockProp *Reactor) sendWant(ps *PeerState, want *proptypes.WantParts) {
 		Message:   want.ToProto(),
 	}
 
+	// record the request before sending so a fast reply isn't treated as
+	// unrequested
+	added := ps.AddRequests(want.Height, want.Round, want.Parts)
 	if !ps.peer.TrySend(e) {
+		ps.RemoveRequests(want.Height, want.Round, added)
 		blockProp.Logger.Error("failed to send part state", "peer", ps.peer.ID(), "height", want.Height, "round", want.Round)
 		return
 	}
@@ -307,8 +311,6 @@ func (blockProp *Reactor) sendWant(ps *PeerState, want *proptypes.WantParts) {
 		"want",
 	)
 
-	// keep track of the parts that this node has requested.
-	ps.AddRequests(want.Height, want.Round, want.Parts)
 	ps.IncreaseConcurrentReqs(int64(len(want.Parts.GetTrueIndices())))
 }
 
