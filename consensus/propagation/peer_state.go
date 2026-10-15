@@ -54,6 +54,10 @@ type PeerState struct {
 	// These have NOT been verified via the consensus reactor's verification
 	// function. Limited to MaxUnverifiedProposals entries, keeping lowest heights.
 	unverifiedProposals map[int64]*proptypes.CompactBlock
+
+	// pushAllowance is how many more parts this peer may send unrequested
+	// for a height and round. It is set when the peer sends the compact block.
+	pushAllowance map[int64]map[int32]int
 }
 
 type partData struct {
@@ -78,6 +82,7 @@ func newPeerState(ctx context.Context, peer p2p.Peer, logger log.Logger) *PeerSt
 		remainingRequests:   make(map[int64]map[int32]int),
 		consensusPeerState:  noOpPSE{},
 		unverifiedProposals: make(map[int64]*proptypes.CompactBlock),
+		pushAllowance:       make(map[int64]map[int32]int),
 	}
 }
 
@@ -344,6 +349,7 @@ func (d *PeerState) prune(prunePastHeight int64) {
 		if height < prunePastHeight {
 			delete(d.state, height)
 			delete(d.remainingRequests, height)
+			delete(d.pushAllowance, height)
 		}
 	}
 	// Prune unverified proposals for heights <= prunePastHeight
@@ -407,6 +413,38 @@ func (d *PeerState) DeleteUnverifiedProposal(height int64) {
 	d.mtx.Lock()
 	defer d.mtx.Unlock()
 	delete(d.unverifiedProposals, height)
+}
+
+// GrantPushAllowance lets the peer send up to n parts unrequested for a height
+// and round. Only the first grant counts, so resending the compact block does
+// not refill it.
+func (d *PeerState) GrantPushAllowance(height int64, round int32, n int) {
+	d.mtx.Lock()
+	defer d.mtx.Unlock()
+	if d.pushAllowance[height] == nil {
+		d.pushAllowance[height] = make(map[int32]int)
+	}
+	if _, granted := d.pushAllowance[height][round]; !granted {
+		d.pushAllowance[height][round] = n
+	}
+}
+
+// ConsumePushAllowance uses one unrequested part from the peer's allowance and
+// reports whether there was one left.
+func (d *PeerState) ConsumePushAllowance(height int64, round int32) bool {
+	d.mtx.Lock()
+	defer d.mtx.Unlock()
+	if d.pushAllowance[height][round] <= 0 {
+		return false
+	}
+	d.pushAllowance[height][round]--
+	return true
+}
+
+// Requested reports whether this node requested the part from the peer.
+func (d *PeerState) Requested(height int64, round int32, index uint32) bool {
+	reqs, has := d.GetRequests(height, round)
+	return has && reqs.GetIndex(int(index))
 }
 
 type partState struct {
