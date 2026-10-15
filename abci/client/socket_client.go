@@ -455,6 +455,8 @@ func (cli *socketClient) flushQueue() {
 		reqres := req.Value.(*ReqRes)
 		reqres.Done()
 	}
+	// Clear the list so a late response can't call Done on these again.
+	cli.reqSent.Init()
 
 	// mark all queued messages as resolved
 LOOP:
