@@ -5,7 +5,6 @@ import (
 	"math/rand/v2"
 	"os"
 	"runtime/pprof"
-	"sync"
 	"testing"
 	"time"
 
@@ -405,9 +404,8 @@ func TestValidateCompactBlockUsesRoundProposer(t *testing.T) {
 	require.True(t, has, "genuine compact block from the round-2 proposer must be applied")
 }
 
-// TestForwardCompactBlockBeforeRecovery checks that a slow mempool recovery
-// does not delay forwarding a validated compact block, and that recovery still
-// runs afterwards.
+// TestForwardCompactBlockBeforeRecovery checks that a stalled mempool recovery
+// does not delay forwarding, and that recovery still completes afterwards.
 func TestForwardCompactBlockBeforeRecovery(t *testing.T) {
 	reactors, _ := testBlockPropReactors(3, defaultTestP2PConf())
 	n1, n2, n3 := reactors[0], reactors[1], reactors[2]
@@ -416,27 +414,10 @@ func TestForwardCompactBlockBeforeRecovery(t *testing.T) {
 	t.Cleanup(func() { cleanup(t) })
 
 	prop, ps, block, metaData := createTestProposal(t, sm, pv, 1, 0, 2, 1000000)
-	pse, lastLen, err := types.Encode(ps, types.BlockPartSizeBytes)
-	require.NoError(t, err)
-	cb := &proptypes.CompactBlock{
-		BpHash:      pse.Header().Hash,
-		LastLen:     uint32(lastLen),
-		Blobs:       metaData,
-		PartsHashes: extractHashes(ps, pse),
-		Proposal:    *prop,
-	}
-	cb.SetProofCache(extractProofs(ps, pse))
-	signBytes, err := cb.SignBytes()
-	require.NoError(t, err)
-	cb.Signature, err = mockPrivVal.SignRawBytes("test", CompactBlockUID, signBytes)
-	require.NoError(t, err)
+	cb, _, _ := compactBlockFor(t, prop, ps, metaData)
 
 	// n1 has the block's txs but its mempool lookups block until released.
-	pool := &blockingMempool{
-		mockMempool: mockMempool{txs: make(map[types.TxKey]*types.CachedTx)},
-		entered:     make(chan struct{}),
-		release:     make(chan struct{}),
-	}
+	pool := &blockingMempool{mockMempool{txs: make(map[types.TxKey]*types.CachedTx)}, make(chan struct{})}
 	for _, tx := range block.Txs {
 		pool.AddTx(tx)
 	}
@@ -448,47 +429,36 @@ func TestForwardCompactBlockBeforeRecovery(t *testing.T) {
 		close(done)
 	}()
 
-	select {
-	case <-pool.entered:
-	case <-time.After(5 * time.Second):
-		t.Fatal("recovery never started")
-	}
-
-	// n3 receives the compact block while n1 is still stuck in recovery.
 	require.Eventually(t, func() bool {
 		_, _, has := n3.GetProposal(1, 0)
 		return has
 	}, 5*time.Second, 10*time.Millisecond)
-	select {
-	case <-done:
-		t.Fatal("handler returned before recovery was released")
-	default:
-	}
+	require.Never(t, func() bool { return isClosed(done) }, 100*time.Millisecond, 10*time.Millisecond)
 
 	close(pool.release)
-	select {
-	case <-done:
-	case <-time.After(5 * time.Second):
-		t.Fatal("handler did not return after recovery was released")
-	}
-
-	_, parts, has := n1.GetProposal(1, 0)
-	require.True(t, has)
-	require.NotZero(t, parts.Count(), "n1 should have recovered parts from its mempool")
+	require.Eventually(t, func() bool { return isClosed(done) }, 5*time.Second, 10*time.Millisecond)
+	_, parts, _ := n1.GetProposal(1, 0)
+	require.NotZero(t, parts.Count(), "n1 should recover parts from its mempool")
 }
 
 // blockingMempool blocks every lookup until release is closed.
 type blockingMempool struct {
 	mockMempool
-	once    sync.Once
-	entered chan struct{}
 	release chan struct{}
 }
 
 func (m *blockingMempool) GetTxByKey(key types.TxKey) (*types.CachedTx, bool) {
-	m.once.Do(func() { close(m.entered) })
 	<-m.release
 	return m.mockMempool.GetTxByKey(key)
+}
+
+func isClosed(ch chan struct{}) bool {
+	select {
+	case <-ch:
+		return true
+	default:
+		return false
+	}
 }
 
 // TestHandleCompactBlockForwarding checks that only a valid, unseen compact
@@ -497,53 +467,28 @@ func TestHandleCompactBlockForwarding(t *testing.T) {
 	cleanup, _, sm, pv := state.SetupTestCaseWithPrivVal(t)
 	t.Cleanup(func() { cleanup(t) })
 
-	tests := []struct {
-		name    string
-		setup   func(n1 *Reactor, cb *proptypes.CompactBlock)
-		forward bool
-	}{
-		{
-			name:    "valid",
-			setup:   func(*Reactor, *proptypes.CompactBlock) {},
-			forward: true,
-		},
-		{
-			name: "invalid signature",
-			setup: func(_ *Reactor, cb *proptypes.CompactBlock) {
-				cb.Proposal.Signature = cmtrand.Bytes(64)
-			},
-		},
-		{
-			name: "stale height",
-			setup: func(n1 *Reactor, _ *proptypes.CompactBlock) {
-				n1.pmtx.Lock()
-				n1.height = 2
-				n1.pmtx.Unlock()
-			},
-		},
-		{
-			name: "duplicate",
-			setup: func(n1 *Reactor, cb *proptypes.CompactBlock) {
-				require.True(t, n1.AddProposal(cb))
-			},
-		},
+	tests := map[string]func(n1 *Reactor, cb *proptypes.CompactBlock){
+		"valid":             nil,
+		"invalid signature": func(_ *Reactor, cb *proptypes.CompactBlock) { cb.Proposal.Signature = cmtrand.Bytes(64) },
+		"stale height":      func(n1 *Reactor, _ *proptypes.CompactBlock) { n1.Prune(2) },
+		"duplicate":         func(n1 *Reactor, cb *proptypes.CompactBlock) { require.True(t, n1.AddProposal(cb)) },
 	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
+	for name, setup := range tests {
+		t.Run(name, func(t *testing.T) {
 			reactors, _ := testBlockPropReactors(3, defaultTestP2PConf())
 			n1, n2, n3 := reactors[0], reactors[1], reactors[2]
 
 			cb, _, _, _ := testCompactBlock(t, sm, pv, 1, 0)
-			tt.setup(n1, cb)
-
+			if setup != nil {
+				setup(n1, cb)
+			}
 			n1.handleCompactBlock(cb, n2.self, false)
 
 			received := func() bool {
 				_, _, has := n3.GetProposal(1, 0)
 				return has
 			}
-			if tt.forward {
+			if setup == nil {
 				require.Eventually(t, received, 5*time.Second, 10*time.Millisecond)
 			} else {
 				require.Never(t, received, 500*time.Millisecond, 10*time.Millisecond)
