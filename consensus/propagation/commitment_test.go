@@ -484,9 +484,11 @@ func TestHandleCompactBlockForwarding(t *testing.T) {
 			}
 			n1.handleCompactBlock(cb, n2.self, false)
 
+			// n3 caches compact blocks it rejects, so this also catches
+			// forwarded blocks that n3 fails to validate.
 			received := func() bool {
 				_, _, has := n3.GetProposal(1, 0)
-				return has
+				return has || n3.getPeer(n1.self).GetUnverifiedProposal(1) != nil
 			}
 			if setup == nil {
 				require.Eventually(t, received, 5*time.Second, 10*time.Millisecond)
