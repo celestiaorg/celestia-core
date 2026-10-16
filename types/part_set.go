@@ -273,42 +273,6 @@ func NewPartSetFromData(data []byte, partSize uint32) (ops *PartSet, err error) 
 	return ops, nil
 }
 
-// newPartSetFromChunks creates a new PartSet from given data chunks, and other data.
-func newPartSetFromChunks(chunks [][]byte, root cmtbytes.HexBytes, proofs []*merkle.Proof, partSize int) (*PartSet, error) {
-	total := len(chunks)
-	if total != len(proofs) {
-		return nil, fmt.Errorf("chunks and proofs have different lengths: %d != %d", len(chunks), len(proofs))
-	}
-	if root == nil {
-		return nil, fmt.Errorf("root is nil")
-	}
-
-	// create a new partset using the new parity parts.
-	ps := NewPartSetFromHeader(PartSetHeader{
-		Total: uint32(total),
-		Hash:  root,
-	}, uint32(partSize))
-
-	// access ps directly, without mutex, because we know it is not used elsewhere
-	for i := 0; i < total; i++ {
-		start := i * partSize
-		end := start + len(chunks[i])
-
-		// Ensure we don't exceed buffer bounds
-		if end > len(ps.buffer) {
-			return nil, fmt.Errorf("part data exceeds buffer bounds")
-		}
-
-		copy(ps.buffer[start:end], chunks[i])
-		ps.proofs[i] = *proofs[i]
-	}
-	ps.partsBitArray.Fill()
-	ps.count = uint32(total)
-	ps.lastPartSize = len(chunks[total-1])
-	ps.byteSize = int64(len(ps.buffer))
-	return ps, nil
-}
-
 // Encode Extend erasure encodes the block parts. Only the original parts should be
 // provided. The parity data is formed into its own PartSet and returned
 // alongside the length of the last part. The length of the last part is
@@ -323,7 +287,7 @@ func Encode(ops *PartSet, partSize uint32) (*PartSet, int, error) {
 	ops.mtx.Unlock()
 
 	ps := int(partSize)
-	parityBuffer := make([]byte, total*ps) // allocate once, only slice later
+	parityBuffer := reedsolomon.AllocAligned(1, total*ps)[0]
 	for i := 0; i < total; i++ {
 		chunks[total+i] = parityBuffer[i*ps : (i+1)*ps]
 	}
@@ -346,8 +310,42 @@ func Encode(ops *PartSet, partSize uint32) (*PartSet, int, error) {
 		return nil, 0, err
 	}
 
-	// Encode the parts.
-	err = enc.Encode(chunks)
+	// GF16 encodes each byte position independently, so disjoint byte ranges
+	// encode concurrently to a byte-identical result. Anything the guard
+	// rejects takes the single call below.
+	if segmentedEncodeOK(total, runtime.GOMAXPROCS(0)) && chunksAreFull(chunks, ps) {
+		segmentSize := segmentBytes
+		var group errgroup.Group
+		var first [][]byte
+		for start := 0; start < ps; start += segmentSize {
+			end := min(start+segmentSize, ps)
+			segment := make([][]byte, len(chunks))
+			for i, chunk := range chunks {
+				segment[i] = chunk[start:end]
+			}
+			if start == 0 {
+				first = segment
+			} else {
+				group.Go(func() (err error) {
+					// A panic in a worker goroutine bypasses the consensus
+					// recover and aborts the process instead of stopping the
+					// WAL cleanly. Turn it into an error on this path.
+					defer func() {
+						if r := recover(); r != nil {
+							err = fmt.Errorf("reed-solomon segment: %v", r)
+						}
+					}()
+					return enc.Encode(segment)
+				})
+			}
+		}
+		err = enc.Encode(first)
+		if groupErr := group.Wait(); err == nil {
+			err = groupErr
+		}
+	} else {
+		err = enc.Encode(chunks)
+	}
 	if err != nil {
 		return nil, 0, err
 	}
@@ -355,12 +353,62 @@ func Encode(ops *PartSet, partSize uint32) (*PartSet, int, error) {
 	// only the parity data is needed for the new partset.
 	chunks = chunks[total:]
 	eroot, eproofs := merkle.ParallelProofsFromByteSlices(chunks)
-
-	eps, err := newPartSetFromChunks(chunks, eroot, eproofs, ps)
-	if err != nil {
-		return nil, 0, err
+	// The parity PartSet takes ownership of the buffer Reed-Solomon encoding
+	// filled in place, so getPartBytes can find parity shard i at
+	// [i*ps, (i+1)*ps). That requires one contiguous allocation of exactly
+	// total*ps bytes - the layout the pre-slicing above established. Checked
+	// rather than assumed: reedsolomon.AllocAligned(total, ps) would pad each
+	// shard to a 64-byte multiple and return non-contiguous slices, and the
+	// part set would then hand back the wrong bytes with no error anywhere.
+	if len(parityBuffer) != total*ps {
+		return nil, 0, fmt.Errorf("parity buffer is %d bytes, expected %d", len(parityBuffer), total*ps)
 	}
+	if len(eproofs) != total {
+		return nil, 0, fmt.Errorf("got %d parity proofs, expected %d", len(eproofs), total)
+	}
+	eps := &PartSet{
+		total:         uint32(total),
+		hash:          eroot,
+		buffer:        parityBuffer,
+		partSize:      ps,
+		lastPartSize:  ps,
+		proofs:        make([]merkle.Proof, total),
+		partsBitArray: bits.NewBitArray(total),
+		count:         uint32(total),
+		byteSize:      int64(len(parityBuffer)),
+	}
+	for i, proof := range eproofs {
+		eps.proofs[i] = *proof
+	}
+	eps.partsBitArray.Fill()
 	return eps, lastLen, nil
+}
+
+// reedsolomon picks leopard GF16 at dataShards+parityShards > 256, so with
+// equal parity segmenting starts at total > 128; below that it is a loss.
+// segmentBytes is a multiple of 64 because GF16 packs lo and hi halves within
+// each 64-byte block.
+const (
+	minSegmentedShards = 129
+	segmentBytes       = 1024
+)
+
+// segmentedEncodeOK reports whether parity should be encoded as concurrent
+// byte ranges rather than in one call.
+func segmentedEncodeOK(total, procs int) bool {
+	return total >= minSegmentedShards && procs > 1
+}
+
+// chunksAreFull reports whether every shard is present and exactly partSize
+// bytes. The segmented path slices each shard directly and would panic on a
+// short or absent one, where the single call returns an error.
+func chunksAreFull(chunks [][]byte, partSize int) bool {
+	for _, chunk := range chunks {
+		if len(chunk) != partSize {
+			return false
+		}
+	}
+	return true
 }
 
 // IsReadyForDecoding returns true if the PartSet has every single part, not just

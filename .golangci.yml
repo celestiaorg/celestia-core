@@ -100,6 +100,7 @@ linters:
             - github.com/gogo/protobuf/proto
             - google.golang.org/protobuf/encoding/protowire
             - github.com/filecoin-project/go-clock
+            - github.com/klauspost/reedsolomon
         proto-inventory:
           files:
             - '**/scripts/proto-inventory/**'
