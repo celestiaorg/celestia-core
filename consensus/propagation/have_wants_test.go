@@ -10,7 +10,7 @@ import (
 
 	cfg "github.com/cometbft/cometbft/config"
 	proptypes "github.com/cometbft/cometbft/consensus/propagation/types"
-	"github.com/cometbft/cometbft/libs/bits"
+	cmtbits "github.com/cometbft/cometbft/libs/bits"
 	cmtrand "github.com/cometbft/cometbft/libs/rand"
 	"github.com/cometbft/cometbft/p2p"
 	propproto "github.com/cometbft/cometbft/proto/tendermint/propagation"
@@ -228,7 +228,7 @@ func TestHandleWantsReplay(t *testing.T) {
 	// combined part set: original plus parity parts
 	total := int(parts.Total())
 
-	want := bits.NewBitArray(total)
+	want := cmtbits.NewBitArray(total)
 	want.Fill()
 	sendWants := func(prove bool, replays int) {
 		for i := 0; i < replays; i++ {
@@ -275,7 +275,7 @@ func TestHandleWantsReplayStoredBlockAcrossRounds(t *testing.T) {
 	r1.pmtx.Unlock()
 
 	total := int(partSet.Total()) * 2
-	want := bits.NewBitArray(total)
+	want := cmtbits.NewBitArray(total)
 	want.Fill()
 	for round := int32(-50); round < 50; round++ {
 		r1.handleWants(r2.self, &proptypes.WantParts{
@@ -323,7 +323,7 @@ func TestHandleWantsLatestRoundAliasDoesNotHideStoredBlock(t *testing.T) {
 	r1.pmtx.Unlock()
 
 	total := int(committed.Total()) * 2
-	want := bits.NewBitArray(total)
+	want := cmtbits.NewBitArray(total)
 	want.Fill()
 	sendWant := func(round int32) {
 		r1.handleWants(r2.self, &proptypes.WantParts{
@@ -367,7 +367,7 @@ func TestMarkServedSkipsReplacedProposal(t *testing.T) {
 
 	r1.markServed(ps, 1, 0, served, true, []int{0, 1}, true)
 
-	want := bits.NewBitArray(total)
+	want := cmtbits.NewBitArray(total)
 	want.Fill()
 	assert.Equal(t, total, len(ps.Unsent(1, 0, want, true).GetTrueIndices()))
 }
