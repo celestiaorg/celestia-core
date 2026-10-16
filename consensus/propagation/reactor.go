@@ -158,6 +158,7 @@ func (blockProp *Reactor) GetChannels() []*conn.ChannelDescriptor {
 			Priority:            145,
 			SendQueueCapacity:   20000,
 			RecvMessageCapacity: maxMsgSize,
+			RecvMessagePrecheck: validatePropagationBytes,
 			MessageType:         &propproto.Message{},
 		},
 		{
@@ -165,6 +166,7 @@ func (blockProp *Reactor) GetChannels() []*conn.ChannelDescriptor {
 			Priority:            140,
 			SendQueueCapacity:   20000,
 			RecvMessageCapacity: maxMsgSize,
+			RecvMessagePrecheck: validatePropagationBytes,
 			MessageType:         &propproto.Message{},
 		},
 	}
