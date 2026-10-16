@@ -283,3 +283,39 @@ func TestAllocationUnits(t *testing.T) {
 		t.Fatal("root work not charged")
 	}
 }
+
+func BenchmarkMetadataDecode(b *testing.B) {
+	blobs := make([]*propproto.TxMetaData, 1000)
+	for i := range blobs {
+		blobs[i] = &propproto.TxMetaData{Hash: make([]byte, 32), Start: uint32(i), End: uint32(i + 1)}
+	}
+	msg := &propproto.Message{Sum: &propproto.Message_CompactBlock{CompactBlock: &propproto.CompactBlock{Blobs: blobs}}}
+	wire, err := proto.Marshal(msg)
+	if err != nil {
+		b.Fatal(err)
+	}
+	l := limits()
+	l.Fields = 10000
+	l.Messages = 10000
+	l.Elements = 10000
+	p := profile(b, "tendermint.propagation.Message", l, protoresource.FieldLimits{"tendermint.propagation.CompactBlock.blobs": 1000})
+	for _, mode := range []string{"preflight", "decode", "both"} {
+		b.Run(mode, func(b *testing.B) {
+			b.ReportAllocs()
+			b.SetBytes(int64(len(wire)))
+			for b.Loop() {
+				if mode != "decode" {
+					if err := p.Check(wire); err != nil {
+						b.Fatal(err)
+					}
+				}
+				if mode != "preflight" {
+					var out propproto.Message
+					if err := proto.Unmarshal(wire, &out); err != nil {
+						b.Fatal(err)
+					}
+				}
+			}
+		})
+	}
+}
