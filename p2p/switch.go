@@ -40,6 +40,7 @@ const (
 func MConnConfig(cfg *config.P2PConfig) conn.MConnConfig {
 	mConfig := conn.DefaultMConnConfig()
 	mConfig.FlushThrottle = cfg.FlushThrottleTimeout
+	mConfig.FlushOnMessageEnd = cfg.FlushOnMessageEnd
 	mConfig.SendRate = cfg.SendRate
 	mConfig.RecvRate = cfg.RecvRate
 	mConfig.MaxPacketMsgPayloadSize = cfg.MaxPacketMsgPayloadSize
