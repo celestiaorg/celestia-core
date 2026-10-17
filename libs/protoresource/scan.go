@@ -32,7 +32,7 @@ func (p *Profile) Measure(data []byte) (uint64, error) {
 	if uint64(len(data)) > p.limits.Bytes {
 		return 0, ErrBudget
 	}
-	u := usage{limits: p.limits, counts: make([]uint64, p.counts)}
+	u := usage{limits: p.limits, counts: make([]uint64, p.counts), messages: 1}
 	if err := u.charge(1, 4096); err != nil {
 		return 0, err
 	}
