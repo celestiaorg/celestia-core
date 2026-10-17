@@ -105,6 +105,7 @@ linters:
             - '**/libs/protoresource/**'
           allow:
             - $gostd
+            - github.com/stretchr/testify/require
             - github.com/cometbft/cometbft/proto/tendermint/blocksync
             - github.com/cometbft/cometbft/proto/tendermint/propagation
             - github.com/cometbft/cometbft/libs/protoresource

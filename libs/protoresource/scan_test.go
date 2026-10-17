@@ -4,16 +4,18 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/cometbft/cometbft/libs/protoresource"
-	bcproto "github.com/cometbft/cometbft/proto/tendermint/blocksync"
-	propproto "github.com/cometbft/cometbft/proto/tendermint/propagation"
 	"github.com/cosmos/gogoproto/proto"
+	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/encoding/protowire"
 	v2proto "google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/reflect/protodesc"
 	"google.golang.org/protobuf/reflect/protoreflect"
 	"google.golang.org/protobuf/reflect/protoregistry"
 	"google.golang.org/protobuf/types/descriptorpb"
+
+	"github.com/cometbft/cometbft/libs/protoresource"
+	bcproto "github.com/cometbft/cometbft/proto/tendermint/blocksync"
+	propproto "github.com/cometbft/cometbft/proto/tendermint/propagation"
 )
 
 func limits() protoresource.Limits {
@@ -22,13 +24,9 @@ func limits() protoresource.Limits {
 func profile(t testing.TB, name string, l protoresource.Limits, caps protoresource.FieldLimits) *protoresource.Profile {
 	t.Helper()
 	d, err := proto.HybridResolver.FindDescriptorByName(protoreflect.FullName(name))
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	p, err := protoresource.New(proto.HybridResolver, d.FullName(), l, caps)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	return p
 }
 func bytesField(data []byte, num protowire.Number, value []byte) []byte {
@@ -49,12 +47,8 @@ func TestCumulativeOverwrittenMessages(t *testing.T) {
 	}
 	wire = bytesField(wire, 5, scalar(nil, 1, 1))
 	var got bcproto.Message
-	if err := proto.Unmarshal(wire, &got); err != nil {
-		t.Fatal(err)
-	}
-	if err := p.Check(wire); !errors.Is(err, protoresource.ErrBudget) {
-		t.Fatalf("want budget, got %v", err)
-	}
+	require.NoError(t, proto.Unmarshal(wire, &got))
+	require.ErrorIs(t, p.Check(wire), protoresource.ErrBudget)
 }
 
 func TestRepeatedAndSplitFields(t *testing.T) {
@@ -67,13 +61,9 @@ func TestRepeatedAndSplitFields(t *testing.T) {
 	child := root.Fields().ByName("compact_block").Message().Fields().ByName("blobs").Number()
 	wire := bytesField(nil, outer, bytesField(nil, child, nil))
 	wire = bytesField(wire, outer, bytesField(nil, child, nil))
-	if err := p.Check(wire); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, p.Check(wire))
 	wire = bytesField(wire, outer, bytesField(nil, child, nil))
-	if err := p.Check(wire); !errors.Is(err, protoresource.ErrBudget) {
-		t.Fatalf("want cumulative field budget, got %v", err)
-	}
+	require.ErrorIs(t, p.Check(wire), protoresource.ErrBudget)
 }
 
 func TestCopyAndFieldBudgets(t *testing.T) {
@@ -90,9 +80,7 @@ func TestCopyAndFieldBudgets(t *testing.T) {
 			l := limits()
 			test.modify(&l)
 			p := profile(t, "tendermint.blocksync.Message", l, nil)
-			if !errors.Is(p.Check(test.wire), protoresource.ErrBudget) {
-				t.Fatal("expected budget rejection")
-			}
+			require.ErrorIs(t, p.Check(test.wire), protoresource.ErrBudget, "expected budget rejection")
 		})
 	}
 }
@@ -103,13 +91,9 @@ func packedDescriptor(t testing.TB) *protoregistry.Files {
 		{Name: v2proto.String("numbers"), Number: v2proto.Int32(1), Type: descriptorpb.FieldDescriptorProto_TYPE_UINT64.Enum(), Label: descriptorpb.FieldDescriptorProto_LABEL_REPEATED.Enum()},
 		{Name: v2proto.String("fixed"), Number: v2proto.Int32(2), Type: descriptorpb.FieldDescriptorProto_TYPE_FIXED32.Enum(), Label: descriptorpb.FieldDescriptorProto_LABEL_REPEATED.Enum()},
 	}}}}, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	files := new(protoregistry.Files)
-	if err := files.RegisterFile(fd); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, files.RegisterFile(fd))
 	return files
 }
 
@@ -117,23 +101,13 @@ func TestPackedUnpackedMixtures(t *testing.T) {
 	l := limits()
 	l.Elements = 3
 	p, err := protoresource.New(packedDescriptor(t), "Lists", l, protoresource.FieldLimits{"Lists.numbers": 3})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	wire := scalar(nil, 1, 1)
 	wire = bytesField(wire, 1, []byte{2, 3})
-	if err := p.Check(wire); err != nil {
-		t.Fatal(err)
-	}
-	if !errors.Is(p.Check(scalar(wire, 1, 4)), protoresource.ErrBudget) {
-		t.Fatal("split packed/unpacked counters reset")
-	}
-	if err := p.Check(bytesField(nil, 2, []byte{0, 0, 0})); err == nil {
-		t.Fatal("accepted truncated packed fixed32")
-	}
-	if err := p.Check(bytesField(nil, 1, []byte{0x80})); err == nil {
-		t.Fatal("accepted truncated packed varint")
-	}
+	require.NoError(t, p.Check(wire))
+	require.ErrorIs(t, p.Check(scalar(wire, 1, 4)), protoresource.ErrBudget, "split packed/unpacked counters reset")
+	require.Error(t, p.Check(bytesField(nil, 2, []byte{0, 0, 0})), "accepted truncated packed fixed32")
+	require.Error(t, p.Check(bytesField(nil, 1, []byte{0x80})), "accepted truncated packed varint")
 }
 
 func TestUnknownGroupsAndMalformed(t *testing.T) {
@@ -141,13 +115,9 @@ func TestUnknownGroupsAndMalformed(t *testing.T) {
 	wire := protowire.AppendTag(nil, 100, protowire.StartGroupType)
 	wire = bytesField(wire, 2, []byte("unknown"))
 	wire = protowire.AppendTag(wire, 100, protowire.EndGroupType)
-	if err := p.Check(wire); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, p.Check(wire))
 	for _, data := range [][]byte{{0}, {0x80}, {0x0f}, wire[:len(wire)-1], bytesField(nil, 3, []byte{0x80}), protowire.AppendTag(nil, 100, protowire.EndGroupType)} {
-		if err := p.Check(data); err == nil {
-			t.Fatalf("accepted malformed %x", data)
-		}
+		require.Errorf(t, p.Check(data), "accepted malformed %x", data)
 	}
 	l := limits()
 	l.Depth = 2
@@ -155,32 +125,24 @@ func TestUnknownGroupsAndMalformed(t *testing.T) {
 	nested := protowire.AppendTag(nil, 100, protowire.StartGroupType)
 	nested = append(nested, wire...)
 	nested = protowire.AppendTag(nested, 100, protowire.EndGroupType)
-	if !errors.Is(p.Check(nested), protoresource.ErrBudget) {
-		t.Fatal("unknown groups bypassed depth budget")
-	}
+	require.ErrorIs(t, p.Check(nested), protoresource.ErrBudget, "unknown groups bypassed depth budget")
 }
 
 func TestSetupFailsClosed(t *testing.T) {
 	d, _ := proto.HybridResolver.FindDescriptorByName("tendermint.blocksync.Message")
 	root := d.FullName()
-	if _, err := protoresource.New(proto.HybridResolver, root, protoresource.Limits{}, nil); err == nil {
-		t.Fatal("accepted zero limits")
-	}
-	if _, err := protoresource.New(proto.HybridResolver, root, limits(), protoresource.FieldLimits{"missing.field": 1}); err == nil {
-		t.Fatal("accepted stale policy")
-	}
+	_, err := protoresource.New(proto.HybridResolver, root, protoresource.Limits{}, nil)
+	require.Error(t, err, "accepted zero limits")
+	_, err = protoresource.New(proto.HybridResolver, root, limits(), protoresource.FieldLimits{"missing.field": 1})
+	require.Error(t, err, "accepted stale policy")
 }
 
 func TestValidMessages(t *testing.T) {
 	for _, msg := range []proto.Message{&bcproto.Message{Sum: &bcproto.Message_StatusResponse{StatusResponse: &bcproto.StatusResponse{Height: 42, Base: 1}}}, &propproto.Message{}} {
 		wire, err := proto.Marshal(msg)
-		if err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, err)
 		p := profile(t, proto.MessageName(msg), limits(), nil)
-		if err := p.Check(wire); err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, p.Check(wire))
 	}
 }
 
@@ -198,8 +160,8 @@ func FuzzCheck(t *testing.F) {
 		var m bcproto.Message
 		// Preflight does not replace custom decoder semantic checks (for example,
 		// timestamp ranges). Preserve every decoder-supported encoding within budget.
-		if decodeErr := proto.Unmarshal(data, &m); decodeErr == nil && err != nil {
-			t.Fatalf("guard rejected decoder-supported input: %v", err)
+		if decodeErr := proto.Unmarshal(data, &m); decodeErr == nil {
+			require.NoError(t, err, "guard rejected decoder-supported input")
 		}
 	})
 }
@@ -224,12 +186,8 @@ func TestProductionWireCompatibility(t *testing.T) {
 		{0x88, 0x80, 0x80, 0x80, 0x80, 1, 1},
 	} {
 		var msg bcproto.StatusResponse
-		if err := msg.Unmarshal(wire); err != nil {
-			t.Fatal(err)
-		}
-		if err := p.Check(wire); err != nil {
-			t.Fatalf("rejected decoder-supported input %x: %v", wire, err)
-		}
+		require.NoError(t, msg.Unmarshal(wire))
+		require.NoErrorf(t, p.Check(wire), "rejected decoder-supported input %x", wire)
 	}
 }
 
@@ -245,43 +203,27 @@ func TestMapsAndRecursion(t *testing.T) {
 			},
 		}},
 	}, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	files := new(protoregistry.Files)
-	if err := files.RegisterFile(fd); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, files.RegisterFile(fd))
 	l := limits()
 	l.Elements = 1
 	l.Depth = 2
 	p, err := protoresource.New(files, "Node", l, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !errors.Is(p.Check(bytesField(bytesField(nil, 1, nil), 1, nil)), protoresource.ErrBudget) {
-		t.Fatal("map entries bypassed element budget")
-	}
-	if !errors.Is(p.Check(bytesField(nil, 2, bytesField(nil, 2, nil))), protoresource.ErrBudget) {
-		t.Fatal("recursive schema bypassed depth budget")
-	}
+	require.NoError(t, err)
+	require.ErrorIs(t, p.Check(bytesField(bytesField(nil, 1, nil), 1, nil)), protoresource.ErrBudget, "map entries bypassed element budget")
+	require.ErrorIs(t, p.Check(bytesField(nil, 2, bytesField(nil, 2, nil))), protoresource.ErrBudget, "recursive schema bypassed depth budget")
 }
 
 func TestAllocationUnits(t *testing.T) {
 	l := limits()
 	l.AllocationUnits = 4096
 	p := profile(t, "tendermint.blocksync.StatusResponse", l, nil)
-	if err := p.Check(nil); err != nil {
-		t.Fatal(err)
-	}
-	if !errors.Is(p.Check(scalar(nil, 1, 1)), protoresource.ErrBudget) {
-		t.Fatal("field work not charged")
-	}
+	require.NoError(t, p.Check(nil))
+	require.ErrorIs(t, p.Check(scalar(nil, 1, 1)), protoresource.ErrBudget, "field work not charged")
 	l.AllocationUnits = 1
 	p = profile(t, "tendermint.blocksync.StatusResponse", l, nil)
-	if !errors.Is(p.Check(nil), protoresource.ErrBudget) {
-		t.Fatal("root work not charged")
-	}
+	require.ErrorIs(t, p.Check(nil), protoresource.ErrBudget, "root work not charged")
 }
 
 func BenchmarkMetadataDecode(b *testing.B) {
@@ -317,5 +259,25 @@ func BenchmarkMetadataDecode(b *testing.B) {
 				}
 			}
 		})
+	}
+}
+
+func TestMessageLimitIncludesRoot(t *testing.T) {
+	for _, max := range []uint64{1, 2} {
+		l := limits()
+		l.Messages = max
+		p := profile(t, "tendermint.blocksync.Message", l, nil)
+		require.NoError(t, p.Check(nil))
+		_, err := p.Measure(nil)
+		require.NoError(t, err)
+		wire := bytesField(nil, 4, nil)
+		_, err = p.Measure(wire)
+		if max == 1 {
+			require.ErrorIs(t, err, protoresource.ErrBudget)
+			require.ErrorIs(t, p.Check(wire), protoresource.ErrBudget)
+		} else {
+			require.NoError(t, err)
+			require.NoError(t, p.Check(wire))
+		}
 	}
 }

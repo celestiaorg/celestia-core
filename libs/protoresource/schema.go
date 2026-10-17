@@ -2,6 +2,7 @@
 package protoresource
 
 import (
+	"errors"
 	"fmt"
 
 	"google.golang.org/protobuf/reflect/protodesc"
@@ -42,7 +43,7 @@ type field struct {
 // Unknown policy fields and unsupported schema features fail at setup time.
 func New(resolver protodesc.Resolver, name protoreflect.FullName, limits Limits, caps FieldLimits) (*Profile, error) {
 	if resolver == nil || !name.IsValid() || limits.Bytes == 0 || limits.Fields == 0 || limits.Messages == 0 || limits.Elements == 0 || limits.CopyBytes == 0 || limits.AllocationUnits == 0 || limits.Depth <= 0 || limits.Depth > 100 {
-		return nil, fmt.Errorf("protoresource: missing schema or invalid limits")
+		return nil, errors.New("protoresource: missing schema or invalid limits")
 	}
 	p := &Profile{limits: limits}
 	seen := make(map[protoreflect.FullName]*message)
