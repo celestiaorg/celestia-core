@@ -61,3 +61,6 @@ func Int64ToBytes(val int64) []byte {
 func Int64FromBytes(val []byte) int64 {
 	return int64FromBytes(val)
 }
+
+// NumHashWorkers exposes numHashWorkers to the state_test package.
+func NumHashWorkers(numCPU, txCount int) int { return numHashWorkers(numCPU, txCount) }
