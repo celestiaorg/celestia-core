@@ -878,7 +878,7 @@ func fireEvents(
 	}
 
 	for i, tx := range block.Data.Txs { //nolint:staticcheck
-		tx, _ = types.UnwrapBlobTx(tx)
+		tx, _ = types.UnwrapBlobTx(tx, block.Version.App)
 		if err := eventBus.PublishEventTx(types.EventDataTx{TxResult: abci.TxResult{
 			Height: block.Height,
 			Index:  uint32(i),
@@ -897,11 +897,12 @@ func fireEvents(
 	}
 }
 
-// unwrapBlobTxs returns the block's transactions with BlobTx wrappers removed.
+// unwrapBlobTxs returns the block's transactions with BlobTx wrappers removed,
+// using the BlobTx rules of the block's app version.
 func unwrapBlobTxs(block *types.Block) [][]byte {
 	txs := make([][]byte, len(block.Txs))
 	for i, tx := range block.Txs {
-		txs[i], _ = types.UnwrapBlobTx(tx)
+		txs[i], _ = types.UnwrapBlobTx(tx, block.Version.App)
 	}
 	return txs
 }

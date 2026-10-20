@@ -92,12 +92,13 @@ func CachedTxToSliceOfBytes(cachedTxs []*CachedTx) [][]byte {
 }
 
 // Hash computes the TMHASH hash of the wire encoded transaction. It attempts to
-// unwrap the transaction if it is a IndexWrapper or a BlobTx.
+// unwrap the transaction if it is a IndexWrapper or a BlobTx. BlobTxs use the
+// legacy rules at every app version because Hash feeds Header.DataHash.
 func (tx Tx) Hash() []byte {
 	if indexWrapper, isIndexWrapper := UnmarshalIndexWrapper(tx); isIndexWrapper {
 		return tmhash.Sum(indexWrapper.Tx)
 	}
-	if innerTx, isBlobTx := UnwrapBlobTx(tx); isBlobTx {
+	if innerTx, isBlobTx := unwrapLegacyBlobTx(tx); isBlobTx {
 		return tmhash.Sum(innerTx)
 	}
 	return tmhash.Sum(tx)
@@ -108,9 +109,10 @@ func (tx Tx) ToCachedTx() *CachedTx {
 }
 
 // Key returns the sha256 hash of the wire encoded transaction. It attempts to
-// unwrap the transaction if it is a BlobTx or a IndexWrapper.
+// unwrap the transaction if it is a BlobTx or a IndexWrapper, using the same
+// BlobTx rules as Hash.
 func (tx Tx) Key() TxKey {
-	if innerTx, isBlobTx := UnwrapBlobTx(tx); isBlobTx {
+	if innerTx, isBlobTx := unwrapLegacyBlobTx(tx); isBlobTx {
 		return sha256.Sum256(innerTx)
 	}
 	if indexWrapper, isIndexWrapper := UnmarshalIndexWrapper(tx); isIndexWrapper {

@@ -85,6 +85,7 @@ func TestApplyBlock(t *testing.T) {
 type txCapturingApp struct {
 	abci.BaseApplication
 	CapturedTxs [][]byte
+	AppVersion  uint64
 }
 
 func (app *txCapturingApp) FinalizeBlock(_ context.Context, req *abci.RequestFinalizeBlock) (*abci.ResponseFinalizeBlock, error) {
@@ -94,11 +95,15 @@ func (app *txCapturingApp) FinalizeBlock(_ context.Context, req *abci.RequestFin
 	for i := range req.Txs {
 		txResults[i] = &abci.ExecTxResult{Code: abci.CodeTypeOK}
 	}
+	appVersion := app.AppVersion
+	if appVersion == 0 {
+		appVersion = 1
+	}
 	return &abci.ResponseFinalizeBlock{
 		TxResults: txResults,
 		AppHash:   []byte("apphash"),
 		ConsensusParamUpdates: &cmtproto.ConsensusParams{
-			Version: &cmtproto.VersionParams{App: 1},
+			Version: &cmtproto.VersionParams{App: appVersion},
 		},
 	}, nil
 }
@@ -120,21 +125,24 @@ func TestExecCommitBlockBlobTxStripping(t *testing.T) {
 	require.NoError(t, err)
 	blobTx, err := squaretx.MarshalBlobTx(innerTx, blob)
 	require.NoError(t, err)
-	// An unknown field makes the BlobTx non-canonical, so go-square rejects it
-	// and the tx is sent to the app unchanged.
+	// An unknown field is skipped by the legacy decoder but rejected as
+	// non-canonical by go-square.
 	nonCanonicalBlobTx := append(append([]byte{}, blobTx...), 0x78, 0x01) // field 15, varint 1
 
 	testCases := []struct {
-		name string
-		tx   []byte
-		want []byte
+		name       string
+		appVersion uint64
+		tx         []byte
+		want       []byte
 	}{
-		{"valid blob tx", blobTx, innerTx},
-		{"non-canonical blob tx", nonCanonicalBlobTx, nonCanonicalBlobTx},
+		{"valid blob tx before validation version", types.BlobTxValidationAppVersion - 1, blobTx, innerTx},
+		{"valid blob tx at validation version", types.BlobTxValidationAppVersion, blobTx, innerTx},
+		{"non-canonical blob tx before validation version", types.BlobTxValidationAppVersion - 1, nonCanonicalBlobTx, innerTx},
+		{"non-canonical blob tx at validation version", types.BlobTxValidationAppVersion, nonCanonicalBlobTx, nonCanonicalBlobTx},
 	}
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			applyTxs, replayTxs := applyAndReplayTx(t, tc.tx)
+			applyTxs, replayTxs := applyAndReplayTx(t, tc.appVersion, tc.tx)
 			assert.Equal(t, tc.want, applyTxs[0], "ApplyBlock sent unexpected tx bytes")
 			assert.Equal(t, applyTxs[0], replayTxs[0],
 				"ExecCommitBlock sent different tx bytes to FinalizeBlock than ApplyBlock. "+
@@ -143,19 +151,20 @@ func TestExecCommitBlockBlobTxStripping(t *testing.T) {
 	}
 }
 
-// applyAndReplayTx executes a block containing tx through both ApplyBlock and
-// ExecCommitBlock and returns the txs each sent to FinalizeBlock.
-func applyAndReplayTx(t *testing.T, tx []byte) (applyTxs, replayTxs [][]byte) {
+// applyAndReplayTx executes a block containing tx at appVersion through both
+// ApplyBlock and ExecCommitBlock and returns the txs each sent to FinalizeBlock.
+func applyAndReplayTx(t *testing.T, appVersion uint64, tx []byte) (applyTxs, replayTxs [][]byte) {
 	t.Helper()
 
 	// --- Path 1: ApplyBlock (normal execution) ---
-	applyApp := &txCapturingApp{}
+	applyApp := &txCapturingApp{AppVersion: appVersion}
 	cc1 := proxy.NewLocalClientCreator(applyApp)
 	proxyApp1 := proxy.NewAppConns(cc1, proxy.NopMetrics())
 	require.NoError(t, proxyApp1.Start())
 	defer proxyApp1.Stop() //nolint:errcheck
 
 	state, stateDB, _ := makeState(1, 1)
+	state.Version.Consensus.App = appVersion
 	stateStore := sm.NewStore(stateDB, sm.StoreOptions{DiscardABCIResponses: false})
 	blockStore := store.NewBlockStore(dbm.NewMemDB())
 
@@ -172,6 +181,7 @@ func applyAndReplayTx(t *testing.T, tx []byte) (applyTxs, replayTxs [][]byte) {
 
 	block, bps, err := state.MakeBlock(1, types.MakeData(types.Txs{tx}), new(types.Commit), nil, state.Validators.GetProposer().Address)
 	require.NoError(t, err)
+	require.Equal(t, appVersion, block.Version.App)
 	blockID := types.BlockID{Hash: block.Hash(), PartSetHeader: bps.Header()}
 
 	_, err = blockExec.ApplyBlock(state, blockID, block, nil)
@@ -179,7 +189,7 @@ func applyAndReplayTx(t *testing.T, tx []byte) (applyTxs, replayTxs [][]byte) {
 	require.Len(t, applyApp.CapturedTxs, 1)
 
 	// --- Path 2: ExecCommitBlock (crash replay) ---
-	replayApp := &txCapturingApp{}
+	replayApp := &txCapturingApp{AppVersion: appVersion}
 	cc2 := proxy.NewLocalClientCreator(replayApp)
 	proxyApp2 := proxy.NewAppConns(cc2, proxy.NopMetrics())
 	require.NoError(t, proxyApp2.Start())

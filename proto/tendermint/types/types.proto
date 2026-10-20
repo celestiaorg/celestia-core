@@ -214,7 +214,8 @@ message IndexWrapper {
 // The raw bytes of the blobs are not signed over, instead we verify each blob
 // using the relevant MsgPayForBlobs that is signed over in the encoded sdk.Tx.
 //
-// Deprecated: Use go-square's tx.BlobTx. Core no longer decodes this message.
+// Deprecated: Use go-square's tx.BlobTx. Core keeps this message only for the
+// legacy BlobTx rules used before BlobTxValidationAppVersion.
 message BlobTx {
   bytes         tx      = 1;
   repeated Blob blobs   = 2;
