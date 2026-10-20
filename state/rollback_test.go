@@ -1,6 +1,7 @@
 package state_test
 
 import (
+	"context"
 	"crypto/rand"
 	"fmt"
 	"testing"
@@ -514,6 +515,13 @@ func TestCheckRollbackToHeightInfo(t *testing.T) {
 	require.Equal(t, params.Version.App, info.TargetAppVersion)
 	require.Equal(t, states[n].Version.Consensus.App, info.CurrentAppVersion)
 
+	// Target before the app version change.
+	info, err = state.CheckRollbackToHeight(bs, ss, 3, false)
+	require.NoError(t, err)
+	require.Equal(t, states[3].Version.Consensus.App, info.TargetAppVersion)
+	require.Equal(t, states[n].Version.Consensus.App, info.CurrentAppVersion)
+	require.NotEqual(t, info.TargetAppVersion, info.CurrentAppVersion)
+
 	info, err = state.CheckRollbackToHeight(bs, ss, n, false)
 	require.NoError(t, err)
 	require.Equal(t, states[n].AppHash, info.TargetAppHash)
@@ -533,10 +541,11 @@ func TestDefaultRollbackHeight(t *testing.T) {
 	require.ErrorIs(t, err, state.ErrBlockNotExecuted)
 }
 
-// makeRollbackChain executes n blocks, changing one validator's power at valChangeAt.
+// makeRollbackChain executes n blocks, changing one validator's power at valChangeAt
+// and the app version from 1 to 2 at height 8.
 func makeRollbackChain(t *testing.T, n int, valChangeAt int64) (*store.BlockStore, state.Store, map[int64]state.State) {
 	t.Helper()
-	app := &testApp{}
+	app := &versionedApp{testApp: &testApp{}}
 	proxyApp := proxy.NewAppConns(proxy.NewLocalClientCreator(app), proxy.NopMetrics())
 	require.NoError(t, proxyApp.Start())
 	t.Cleanup(func() { _ = proxyApp.Stop() })
@@ -563,6 +572,10 @@ func makeRollbackChain(t *testing.T, n int, valChangeAt int64) (*store.BlockStor
 	lastCommit := &types.Commit{}
 	for h := int64(1); h <= int64(n); h++ {
 		app.AppHash = tmhash.Sum([]byte{byte(h)})
+		app.appVersion = 1
+		if h >= 8 {
+			app.appVersion = 2
+		}
 		app.ValidatorUpdates = nil
 		if h == valChangeAt {
 			_, val := st.NextValidators.GetByIndex(0)
@@ -584,6 +597,21 @@ func makeRollbackChain(t *testing.T, n int, valChangeAt int64) (*store.BlockStor
 		lastCommit = commit.ToCommit()
 	}
 	return blockStore, stateStore, states
+}
+
+// versionedApp is a testApp that returns appVersion in its params updates.
+type versionedApp struct {
+	*testApp
+	appVersion uint64
+}
+
+func (app *versionedApp) FinalizeBlock(ctx context.Context, req *abci.RequestFinalizeBlock) (*abci.ResponseFinalizeBlock, error) {
+	res, err := app.testApp.FinalizeBlock(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+	res.ConsensusParamUpdates.Version.App = app.appVersion
+	return res, nil
 }
 
 // saveUnexecutedBlock saves the next block to the blockstore without executing it.
