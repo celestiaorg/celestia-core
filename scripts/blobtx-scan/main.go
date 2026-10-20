@@ -125,6 +125,10 @@ func run(ctx context.Context, c config) (*checkpoint, error) {
 			return nil, fmt.Errorf("checkpoint %s is for chain %s from %d with stride %d; delete it or pass another -checkpoint",
 				c.cpPath, prev.Chain, prev.From, prev.Stride)
 		}
+		if end < prev.Done {
+			return nil, fmt.Errorf("checkpoint %s already covers heights up to %d, past -to %d; delete it or pass another -checkpoint",
+				c.cpPath, prev.Done, end)
+		}
 		cp = prev
 		log.Printf("resuming after checkpoint height %d", cp.Done)
 	default:

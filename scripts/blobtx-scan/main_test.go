@@ -136,7 +136,14 @@ func TestRunRejectsMismatchedCheckpoint(t *testing.T) {
 	_, err = run(context.Background(), c)
 	require.ErrorContains(t, err, "stride 10")
 
+	// Nor report a shorter range than the checkpoint already covers.
+	c.stride = 10
+	c.to = 5
+	_, err = run(context.Background(), c)
+	require.ErrorContains(t, err, "already covers heights up to 20")
+
 	// Nor append to its findings file without a checkpoint.
+	c.stride, c.to = 1, 0
 	require.NoError(t, os.Remove(c.cpPath))
 	require.NoError(t, os.WriteFile(c.outPath, []byte("{}\n"), 0o644))
 	_, err = run(context.Background(), c)
