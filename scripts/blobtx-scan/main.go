@@ -192,7 +192,7 @@ func scanBatch(ctx context.Context, client *rpcClient, lo, hi, stride int64, wor
 // fetchBlock loads one block, retrying transient RPC errors with backoff.
 func fetchBlock(ctx context.Context, client *rpcClient, height int64) (*types.Block, error) {
 	var err error
-	for attempt := range 6 {
+	for attempt := range 10 {
 		res := new(ctypes.ResultBlock)
 		e := client.get(ctx, "/block?height="+strconv.FormatInt(height, 10), res)
 		if e == nil && res.Block != nil {
@@ -202,10 +202,16 @@ func fetchBlock(ctx context.Context, client *rpcClient, height int64) (*types.Bl
 		if err == nil {
 			err = errors.New("empty block response")
 		}
-		if ctx.Err() != nil {
-			return nil, ctx.Err()
+		wait := min(time.Duration(1<<attempt)*time.Second, time.Minute)
+		var rl *rateLimitError
+		if errors.As(err, &rl) && rl.retryAfter > wait {
+			wait = rl.retryAfter
 		}
-		time.Sleep(time.Duration(1<<attempt) * time.Second)
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-time.After(wait):
+		}
 	}
 	return nil, fmt.Errorf("height %d: %w", height, err)
 }
@@ -216,6 +222,11 @@ type rpcClient struct {
 	remote string
 	http   *http.Client
 }
+
+// rateLimitError is returned for HTTP 429 responses.
+type rateLimitError struct{ retryAfter time.Duration }
+
+func (e *rateLimitError) Error() string { return "rate limited (429)" }
 
 func (c *rpcClient) get(ctx context.Context, path string, result any) error {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.remote+path, nil)
@@ -230,6 +241,10 @@ func (c *rpcClient) get(ctx context.Context, path string, result any) error {
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return err
+	}
+	if resp.StatusCode == http.StatusTooManyRequests {
+		secs, _ := strconv.Atoi(resp.Header.Get("Retry-After"))
+		return &rateLimitError{retryAfter: time.Duration(secs) * time.Second}
 	}
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("GET %s: %s", path, resp.Status)
