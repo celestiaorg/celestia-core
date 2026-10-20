@@ -5,7 +5,6 @@ import (
 	"math/rand"
 	"testing"
 
-	"github.com/celestiaorg/go-square/v4/share"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -185,31 +184,4 @@ func TestUnmarshalIndexWrapper(t *testing.T) {
 	indexWrapper, ok := UnmarshalIndexWrapper(IndexWrapper)
 	require.True(t, ok)
 	require.Equal(t, rawBlock, indexWrapper.Tx)
-}
-
-func TestUnmarshalBlobTx(t *testing.T) {
-	tx := []byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 1, 2, 3, 4, 5, 6, 7, 8, 9}
-	namespaceOne := bytes.Repeat([]byte{1}, share.NamespaceIDSize)
-	blob := cmtproto.Blob{ //nolint:staticcheck // tests the deprecated legacy API
-		NamespaceId:      namespaceOne,
-		Data:             []byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 1, 2, 3, 4, 5, 6, 7, 8, 9},
-		ShareVersion:     0,
-		NamespaceVersion: 0,
-	}
-	bTx, err := MarshalBlobTx(tx, &blob)
-	require.NoError(t, err)
-
-	resTx, isBlob := UnmarshalBlobTx(bTx)
-	require.True(t, isBlob)
-
-	assert.Equal(t, tx, resTx.Tx)
-	require.Len(t, resTx.Blobs, 1)
-	assert.Equal(t, blob, *resTx.Blobs[0])
-}
-
-// todo: add fuzzing
-func TestUnmarshalBlobTxFalsePositive(t *testing.T) {
-	tx := []byte("sender-193-0=D16B687628035716B1DA53BE1491A1B3D4CEA3AB=1025")
-	_, isBlob := UnmarshalBlobTx(tx)
-	require.False(t, isBlob)
 }

@@ -16,10 +16,10 @@ import (
 	"github.com/cometbft/cometbft/crypto/tmhash"
 )
 
-// TestUnwrapBlobTxDifferential compares the legacy and go-square BlobTx rules
-// on the same bytes. Rows where the rules disagree are the transactions whose
-// handling changes at BlobTxValidationAppVersion.
-func TestUnwrapBlobTxDifferential(t *testing.T) {
+// TestUnwrapBlobTx checks which BlobTxs UnwrapBlobTx accepts. The v042x column
+// records what core v0.42.x and earlier accepted with their own decoder; rows
+// where it differs are the BlobTxs whose hash and FinalizeBlock bytes change.
+func TestUnwrapBlobTx(t *testing.T) {
 	innerTx := []byte("inner-tx")
 	nsID := append(make([]byte, share.NamespaceVersionZeroPrefixSize), bytes.Repeat([]byte{1}, share.NamespaceVersionZeroIDSize)...)
 	signer := bytes.Repeat([]byte{2}, share.SignerSize)
@@ -37,13 +37,14 @@ func TestUnwrapBlobTxDifferential(t *testing.T) {
 	testCases := []struct {
 		name string
 		tx   func(t *testing.T) []byte
-		// legacy and strict report whether each rule set unwraps the tx.
-		legacy, strict bool
+		// v042x reports whether core v0.42.x unwrapped the tx; goSquare whether
+		// UnwrapBlobTx does.
+		v042x, goSquare bool
 	}{
 		{
-			name:   "valid v0 blob",
-			tx:     valid,
-			legacy: true, strict: true,
+			name:  "valid v0 blob",
+			tx:    valid,
+			v042x: true, goSquare: true,
 		},
 		{
 			name: "valid v1 blob with signer",
@@ -53,7 +54,7 @@ func TestUnwrapBlobTxDifferential(t *testing.T) {
 				b.Signer = signer
 				return marshal(t, innerTx, squaretx.ProtoBlobTxTypeID, b)
 			},
-			legacy: true, strict: true,
+			v042x: true, goSquare: true,
 		},
 		{
 			name: "namespace ID too short",
@@ -62,7 +63,7 @@ func TestUnwrapBlobTxDifferential(t *testing.T) {
 				b.NamespaceId = nsID[1:]
 				return marshal(t, innerTx, squaretx.ProtoBlobTxTypeID, b)
 			},
-			legacy: false, strict: false,
+			v042x: false, goSquare: false,
 		},
 		{
 			name: "v0 namespace without zero prefix",
@@ -71,7 +72,7 @@ func TestUnwrapBlobTxDifferential(t *testing.T) {
 				b.NamespaceId = bytes.Repeat([]byte{1}, share.NamespaceIDSize)
 				return marshal(t, innerTx, squaretx.ProtoBlobTxTypeID, b)
 			},
-			legacy: true, strict: false,
+			v042x: true, goSquare: false,
 		},
 		{
 			name: "unsupported namespace version",
@@ -80,7 +81,7 @@ func TestUnwrapBlobTxDifferential(t *testing.T) {
 				b.NamespaceVersion = 1
 				return marshal(t, innerTx, squaretx.ProtoBlobTxTypeID, b)
 			},
-			legacy: true, strict: false,
+			v042x: true, goSquare: false,
 		},
 		{
 			name: "unsupported share version",
@@ -89,7 +90,7 @@ func TestUnwrapBlobTxDifferential(t *testing.T) {
 				b.ShareVersion = 7
 				return marshal(t, innerTx, squaretx.ProtoBlobTxTypeID, b)
 			},
-			legacy: true, strict: false,
+			v042x: true, goSquare: false,
 		},
 		{
 			name: "v1 blob without signer",
@@ -98,7 +99,7 @@ func TestUnwrapBlobTxDifferential(t *testing.T) {
 				b.ShareVersion = uint32(share.ShareVersionOne)
 				return marshal(t, innerTx, squaretx.ProtoBlobTxTypeID, b)
 			},
-			legacy: true, strict: false,
+			v042x: true, goSquare: false,
 		},
 		{
 			name: "empty blob data",
@@ -107,34 +108,34 @@ func TestUnwrapBlobTxDifferential(t *testing.T) {
 				b.Data = nil
 				return marshal(t, innerTx, squaretx.ProtoBlobTxTypeID, b)
 			},
-			legacy: true, strict: false,
+			v042x: true, goSquare: false,
 		},
 		{
-			name:   "no blobs",
-			tx:     func(t *testing.T) []byte { return marshal(t, innerTx, squaretx.ProtoBlobTxTypeID) },
-			legacy: false, strict: false,
+			name:  "no blobs",
+			tx:    func(t *testing.T) []byte { return marshal(t, innerTx, squaretx.ProtoBlobTxTypeID) },
+			v042x: false, goSquare: false,
 		},
 		{
-			name:   "wrong type ID",
-			tx:     func(t *testing.T) []byte { return marshal(t, innerTx, "BLOX", validBlob()) },
-			legacy: false, strict: false,
+			name:  "wrong type ID",
+			tx:    func(t *testing.T) []byte { return marshal(t, innerTx, "BLOX", validBlob()) },
+			v042x: false, goSquare: false,
 		},
 		{
-			name:   "truncated protobuf",
-			tx:     func(t *testing.T) []byte { bz := valid(t); return bz[:len(bz)-1] },
-			legacy: false, strict: false,
+			name:  "truncated protobuf",
+			tx:    func(t *testing.T) []byte { bz := valid(t); return bz[:len(bz)-1] },
+			v042x: false, goSquare: false,
 		},
 		{
-			name:   "non-protobuf bytes",
-			tx:     func(*testing.T) []byte { return []byte("sender-193-0=D16B687628035716B1DA53BE1491A1B3D4CEA3AB=1025") },
-			legacy: false, strict: false,
+			name:  "non-protobuf bytes",
+			tx:    func(*testing.T) []byte { return []byte("sender-193-0=D16B687628035716B1DA53BE1491A1B3D4CEA3AB=1025") },
+			v042x: false, goSquare: false,
 		},
 		{
 			name: "unknown BlobTx field",
 			tx: func(t *testing.T) []byte {
 				return protowire.AppendVarint(protowire.AppendTag(valid(t), 15, protowire.VarintType), 1)
 			},
-			legacy: true, strict: false,
+			v042x: true, goSquare: false,
 		},
 		{
 			name: "unknown blob field",
@@ -146,28 +147,28 @@ func TestUnwrapBlobTxDifferential(t *testing.T) {
 				bz = protowire.AppendBytes(protowire.AppendTag(bz, 2, protowire.BytesType), blob)
 				return protowire.AppendString(protowire.AppendTag(bz, 3, protowire.BytesType), squaretx.ProtoBlobTxTypeID)
 			},
-			legacy: true, strict: false,
+			v042x: true, goSquare: false,
 		},
 		{
 			name: "duplicate type ID field",
 			tx: func(t *testing.T) []byte {
 				return protowire.AppendString(protowire.AppendTag(valid(t), 3, protowire.BytesType), squaretx.ProtoBlobTxTypeID)
 			},
-			legacy: true, strict: false,
+			v042x: true, goSquare: false,
 		},
 		{
 			name: "known field with wrong wire type",
 			tx: func(t *testing.T) []byte {
 				return protowire.AppendVarint(protowire.AppendTag(valid(t), 1, protowire.VarintType), 1)
 			},
-			legacy: false, strict: false,
+			v042x: false, goSquare: false,
 		},
 		{
 			name: "nested blob tx",
 			tx: func(t *testing.T) []byte {
 				return marshal(t, valid(t), squaretx.ProtoBlobTxTypeID, validBlob())
 			},
-			legacy: true, strict: false,
+			v042x: true, goSquare: false,
 		},
 	}
 
@@ -175,36 +176,18 @@ func TestUnwrapBlobTxDifferential(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			tx := Tx(tc.tx(t))
 
-			legacyTx, legacyOK := UnwrapBlobTx(tx, BlobTxValidationAppVersion-1)
-			strictTx, strictOK := UnwrapBlobTx(tx, BlobTxValidationAppVersion)
-			require.Equal(t, tc.legacy, legacyOK, "legacy rules")
-			require.Equal(t, tc.strict, strictOK, "go-square rules")
+			got, ok := UnwrapBlobTx(tx)
+			require.Equal(t, tc.goSquare, ok)
+			_, isBlob, err := squaretx.UnmarshalBlobTx(tx)
+			require.Equal(t, isBlob && err == nil, ok, "must match go-square")
 
-			// The legacy rules must match the deprecated decoder exactly.
-			bTx, isBlob := UnmarshalBlobTx(tx)
-			require.Equal(t, isBlob, legacyOK)
-			if isBlob {
-				assert.Equal(t, Tx(bTx.Tx), legacyTx)
+			want := []byte(tx)
+			if ok {
+				want = innerTx
 			}
-
-			// Unwrapping returns the inner tx when recognized and tx otherwise.
-			for _, c := range []struct {
-				ok  bool
-				got Tx
-			}{{legacyOK, legacyTx}, {strictOK, strictTx}} {
-				if c.ok {
-					assert.NotEqual(t, tx, c.got)
-				} else {
-					assert.Equal(t, tx, c.got)
-				}
-			}
-			if legacyOK && strictOK {
-				assert.Equal(t, legacyTx, strictTx)
-			}
-
-			// Hash and Key always use the legacy rules.
-			assert.Equal(t, tmhash.Sum(legacyTx), tx.Hash())
-			assert.Equal(t, TxKey(sha256.Sum256(legacyTx)), tx.Key())
+			assert.Equal(t, Tx(want), got)
+			assert.Equal(t, tmhash.Sum(want), tx.Hash())
+			assert.Equal(t, TxKey(sha256.Sum256(want)), tx.Key())
 		})
 	}
 }

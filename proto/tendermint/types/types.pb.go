@@ -1336,8 +1336,7 @@ func (m *IndexWrapper) GetTypeId() string {
 // The raw bytes of the blobs are not signed over, instead we verify each blob
 // using the relevant MsgPayForBlobs that is signed over in the encoded sdk.Tx.
 //
-// Deprecated: Use go-square's tx.BlobTx. Core keeps this message only for the
-// legacy BlobTx rules used before BlobTxValidationAppVersion.
+// Deprecated: Use go-square's tx.BlobTx. Core no longer decodes this message.
 type BlobTx struct {
 	Tx     []byte  `protobuf:"bytes,1,opt,name=tx,proto3" json:"tx,omitempty"`
 	Blobs  []*Blob `protobuf:"bytes,2,rep,name=blobs,proto3" json:"blobs,omitempty"`
