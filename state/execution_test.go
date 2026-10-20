@@ -7,7 +7,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/celestiaorg/go-square/v3/share"
+	"github.com/celestiaorg/go-square/v4/share"
+	squaretx "github.com/celestiaorg/go-square/v4/tx"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
@@ -84,6 +85,7 @@ func TestApplyBlock(t *testing.T) {
 type txCapturingApp struct {
 	abci.BaseApplication
 	CapturedTxs [][]byte
+	AppVersion  uint64
 }
 
 func (app *txCapturingApp) FinalizeBlock(_ context.Context, req *abci.RequestFinalizeBlock) (*abci.ResponseFinalizeBlock, error) {
@@ -93,11 +95,15 @@ func (app *txCapturingApp) FinalizeBlock(_ context.Context, req *abci.RequestFin
 	for i := range req.Txs {
 		txResults[i] = &abci.ExecTxResult{Code: abci.CodeTypeOK}
 	}
+	appVersion := app.AppVersion
+	if appVersion == 0 {
+		appVersion = 1
+	}
 	return &abci.ResponseFinalizeBlock{
 		TxResults: txResults,
 		AppHash:   []byte("apphash"),
 		ConsensusParamUpdates: &cmtproto.ConsensusParams{
-			Version: &cmtproto.VersionParams{App: 1},
+			Version: &cmtproto.VersionParams{App: appVersion},
 		},
 	}, nil
 }
@@ -113,32 +119,52 @@ func (app *txCapturingApp) Commit(_ context.Context, _ *abci.RequestCommit) (*ab
 // sends unwrapped inner transactions, the application will compute a
 // different AppHash during replay, causing a panic.
 func TestExecCommitBlockBlobTxStripping(t *testing.T) {
-	// Create a BlobTx: an inner transaction wrapped with blob metadata
 	innerTx := []byte("inner-tx-bytes")
-	namespaceID := bytes.Repeat([]byte{1}, share.NamespaceIDSize)
-	blob := &cmtproto.Blob{
-		NamespaceId:      namespaceID,
-		Data:             []byte("blob-data"),
-		ShareVersion:     0,
-		NamespaceVersion: 0,
-	}
-	wrappedBlobTx, err := types.MarshalBlobTx(innerTx, blob)
+	ns := share.MustNewV0Namespace(bytes.Repeat([]byte{1}, share.NamespaceVersionZeroIDSize))
+	blob, err := share.NewV0Blob(ns, []byte("blob-data"))
 	require.NoError(t, err)
+	blobTx, err := squaretx.MarshalBlobTx(innerTx, blob)
+	require.NoError(t, err)
+	// An unknown field is skipped by the legacy decoder but rejected as
+	// non-canonical by go-square.
+	nonCanonicalBlobTx := append(append([]byte{}, blobTx...), 0x78, 0x01) // field 15, varint 1
 
-	// Verify it's a valid BlobTx
-	blobTx, isBlobTx := types.UnmarshalBlobTx(wrappedBlobTx)
-	require.True(t, isBlobTx)
-	require.Equal(t, innerTx, blobTx.Tx)
+	testCases := []struct {
+		name       string
+		appVersion uint64
+		tx         []byte
+		want       []byte
+	}{
+		{"valid blob tx before validation version", types.BlobTxValidationAppVersion - 1, blobTx, innerTx},
+		{"valid blob tx at validation version", types.BlobTxValidationAppVersion, blobTx, innerTx},
+		{"non-canonical blob tx before validation version", types.BlobTxValidationAppVersion - 1, nonCanonicalBlobTx, innerTx},
+		{"non-canonical blob tx at validation version", types.BlobTxValidationAppVersion, nonCanonicalBlobTx, nonCanonicalBlobTx},
+	}
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			applyTxs, replayTxs := applyAndReplayTx(t, tc.appVersion, tc.tx)
+			assert.Equal(t, tc.want, applyTxs[0], "ApplyBlock sent unexpected tx bytes")
+			assert.Equal(t, applyTxs[0], replayTxs[0],
+				"ExecCommitBlock sent different tx bytes to FinalizeBlock than ApplyBlock. "+
+					"This causes AppHash mismatch during crash recovery replay.")
+		})
+	}
+}
+
+// applyAndReplayTx executes a block containing tx at appVersion through both
+// ApplyBlock and ExecCommitBlock and returns the txs each sent to FinalizeBlock.
+func applyAndReplayTx(t *testing.T, appVersion uint64, tx []byte) (applyTxs, replayTxs [][]byte) {
+	t.Helper()
 
 	// --- Path 1: ApplyBlock (normal execution) ---
-	applyApp := &txCapturingApp{}
+	applyApp := &txCapturingApp{AppVersion: appVersion}
 	cc1 := proxy.NewLocalClientCreator(applyApp)
 	proxyApp1 := proxy.NewAppConns(cc1, proxy.NopMetrics())
-	err = proxyApp1.Start()
-	require.NoError(t, err)
+	require.NoError(t, proxyApp1.Start())
 	defer proxyApp1.Stop() //nolint:errcheck
 
 	state, stateDB, _ := makeState(1, 1)
+	state.Version.Consensus.App = appVersion
 	stateStore := sm.NewStore(stateDB, sm.StoreOptions{DiscardABCIResponses: false})
 	blockStore := store.NewBlockStore(dbm.NewMemDB())
 
@@ -153,43 +179,27 @@ func TestExecCommitBlockBlobTxStripping(t *testing.T) {
 	blockExec := sm.NewBlockExecutor(stateStore, log.TestingLogger(), proxyApp1.Consensus(),
 		mp, sm.EmptyEvidencePool{}, blockStore)
 
-	// Create a block containing the BlobTx
-	block, bps, err := state.MakeBlock(1, types.MakeData(types.Txs{wrappedBlobTx}), new(types.Commit), nil, state.Validators.GetProposer().Address)
+	block, bps, err := state.MakeBlock(1, types.MakeData(types.Txs{tx}), new(types.Commit), nil, state.Validators.GetProposer().Address)
 	require.NoError(t, err)
+	require.Equal(t, appVersion, block.Version.App)
 	blockID := types.BlockID{Hash: block.Hash(), PartSetHeader: bps.Header()}
 
 	_, err = blockExec.ApplyBlock(state, blockID, block, nil)
 	require.NoError(t, err)
-
-	applyTxs := applyApp.CapturedTxs
-	require.Len(t, applyTxs, 1)
+	require.Len(t, applyApp.CapturedTxs, 1)
 
 	// --- Path 2: ExecCommitBlock (crash replay) ---
-	replayApp := &txCapturingApp{}
+	replayApp := &txCapturingApp{AppVersion: appVersion}
 	cc2 := proxy.NewLocalClientCreator(replayApp)
 	proxyApp2 := proxy.NewAppConns(cc2, proxy.NopMetrics())
-	err = proxyApp2.Start()
-	require.NoError(t, err)
+	require.NoError(t, proxyApp2.Start())
 	defer proxyApp2.Stop() //nolint:errcheck
 
 	_, err = sm.ExecCommitBlock(proxyApp2.Consensus(), block, log.TestingLogger(), stateStore, 1)
 	require.NoError(t, err)
+	require.Len(t, replayApp.CapturedTxs, 1)
 
-	replayTxs := replayApp.CapturedTxs
-	require.Len(t, replayTxs, 1)
-
-	// The critical assertion: both paths must send the same transaction bytes
-	// to FinalizeBlock. If ExecCommitBlock doesn't strip BlobTx wrappers,
-	// it will send the raw wrapped bytes instead of the inner transaction.
-	assert.Equal(t, applyTxs[0], replayTxs[0],
-		"ExecCommitBlock sent different tx bytes to FinalizeBlock than ApplyBlock. "+
-			"ApplyBlock sent the unwrapped inner tx (%d bytes) but ExecCommitBlock sent raw BlobTx (%d bytes). "+
-			"This causes AppHash mismatch during crash recovery replay.",
-		len(applyTxs[0]), len(replayTxs[0]))
-
-	// Additionally verify that what was sent is the inner tx, not the wrapped BlobTx
-	assert.Equal(t, innerTx, applyTxs[0], "ApplyBlock should send unwrapped inner tx")
-	assert.Equal(t, innerTx, replayTxs[0], "ExecCommitBlock should send unwrapped inner tx")
+	return applyApp.CapturedTxs, replayApp.CapturedTxs
 }
 
 // TestFinalizeBlockDecidedLastCommit ensures we correctly send the
