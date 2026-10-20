@@ -40,6 +40,9 @@ func TestUnmarshalBlobTxDifferential(t *testing.T) {
 		// core and goSquare report whether each decoder accepts the tx as a
 		// valid BlobTx.
 		core, goSquare bool
+		// inner returns the tx core unwraps to. It defaults to innerTx when
+		// core accepts the tx, and to the tx itself otherwise.
+		inner func(t *testing.T) []byte
 	}{
 		{
 			name: "valid v0 blob",
@@ -169,6 +172,7 @@ func TestUnmarshalBlobTxDifferential(t *testing.T) {
 				return marshal(t, valid(t), squaretx.ProtoBlobTxTypeID, validBlob())
 			},
 			core: true, goSquare: false,
+			inner: valid,
 		},
 	}
 
@@ -185,10 +189,16 @@ func TestUnmarshalBlobTxDifferential(t *testing.T) {
 				assert.Equal(t, squareTx.Tx, coreTx.Tx)
 			}
 
-			// Hash and Key unwrap with core's decoder.
+			// Core unwraps exactly one layer, and Hash and Key hash that result.
 			inner := []byte(tx)
+			switch {
+			case tc.inner != nil:
+				inner = tc.inner(t)
+			case tc.core:
+				inner = innerTx
+			}
 			if coreOK {
-				inner = coreTx.Tx
+				assert.Equal(t, inner, coreTx.Tx)
 			}
 			assert.Equal(t, tmhash.Sum(inner), tx.Hash())
 			assert.Equal(t, TxKey(sha256.Sum256(inner)), tx.Key())
