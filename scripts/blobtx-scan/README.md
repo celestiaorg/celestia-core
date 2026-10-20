@@ -22,7 +22,9 @@ go build -o blobtx-scan .
   -out mainnet-findings.jsonl -checkpoint mainnet.checkpoint
 ```
 
-The scan resumes from the checkpoint file if it is interrupted. When it finishes,
-it prints a summary. `findings: 0` means both decoders unwrap every historical
+The scan resumes from the checkpoint file if it is interrupted. The checkpoint
+also stores the chain, start height, stride and totals so far, and the scan
+refuses a checkpoint written with different settings. When it finishes, it
+prints a summary for the whole range. `findings: 0` means both decoders unwrap every historical
 transaction to the same bytes. `-stride N` samples every Nth height for a quick
 check.

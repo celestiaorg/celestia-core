@@ -62,75 +62,112 @@ type stats struct {
 	ByReason     map[string]int64 `json:"findings_by_reason"`
 }
 
+// config holds the scan's command-line settings.
+type config struct {
+	remote     string
+	from, to   int64
+	stride     int64
+	workers    int
+	outPath    string
+	cpPath     string
+	maxRawSize int
+}
+
 func main() {
-	var (
-		remote     = flag.String("rpc", "http://127.0.0.1:26657", "CometBFT RPC address")
-		from       = flag.Int64("from", 0, "first height to scan (default: the node's earliest height)")
-		to         = flag.Int64("to", 0, "last height to scan (default: the node's latest height)")
-		stride     = flag.Int64("stride", 1, "scan every Nth height, for sampling")
-		workers    = flag.Int("workers", 16, "concurrent block fetches")
-		outPath    = flag.String("out", "blobtx-scan-findings.jsonl", "file to append findings to")
-		checkpoint = flag.String("checkpoint", "blobtx-scan.checkpoint", "file recording the last fully scanned height; resumes from it if present")
-		maxRawSize = flag.Int("max-raw-size", 4096, "include raw tx hex in findings up to this many bytes")
-	)
+	var c config
+	flag.StringVar(&c.remote, "rpc", "http://127.0.0.1:26657", "CometBFT RPC address")
+	flag.Int64Var(&c.from, "from", 0, "first height to scan (default: the node's earliest height)")
+	flag.Int64Var(&c.to, "to", 0, "last height to scan (default: the node's latest height)")
+	flag.Int64Var(&c.stride, "stride", 1, "scan every Nth height, for sampling")
+	flag.IntVar(&c.workers, "workers", 16, "concurrent block fetches")
+	flag.StringVar(&c.outPath, "out", "blobtx-scan-findings.jsonl", "file to append findings to")
+	flag.StringVar(&c.cpPath, "checkpoint", "blobtx-scan.checkpoint", "file recording the scan's progress and totals; resumes from it if present")
+	flag.IntVar(&c.maxRawSize, "max-raw-size", 4096, "include raw tx hex in findings up to this many bytes")
 	flag.Parse()
-	if *stride < 1 || *workers < 1 {
-		log.Fatal("stride and workers must be at least 1")
-	}
 
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer cancel()
 
-	client := &rpcClient{remote: strings.TrimSuffix(*remote, "/"), http: &http.Client{Timeout: 2 * time.Minute}}
+	cp, err := run(ctx, c)
+	if err != nil {
+		log.Fatal(err)
+	}
+	summary, _ := json.MarshalIndent(cp, "", "  ")
+	fmt.Println(string(summary))
+}
+
+// run scans the configured range, resuming from the checkpoint if one exists,
+// and returns the final checkpoint with totals for the whole range.
+func run(ctx context.Context, c config) (*checkpoint, error) {
+	if c.stride < 1 || c.workers < 1 {
+		return nil, errors.New("stride and workers must be at least 1")
+	}
+	client := &rpcClient{remote: strings.TrimSuffix(c.remote, "/"), http: &http.Client{Timeout: 2 * time.Minute}}
 	status := new(ctypes.ResultStatus)
 	if err := client.get(ctx, "/status", status); err != nil {
-		log.Fatalf("status: %v", err)
+		return nil, fmt.Errorf("status: %w", err)
 	}
-	start, end := *from, *to
+	start, end := c.from, c.to
 	if start == 0 {
 		start = status.SyncInfo.EarliestBlockHeight
 	}
 	if end == 0 {
 		end = status.SyncInfo.LatestBlockHeight
 	}
-	if done, ok := readCheckpoint(*checkpoint); ok && done >= start {
-		log.Printf("resuming after checkpoint height %d", done)
-		start = done + *stride
+	cp := &checkpoint{Chain: status.NodeInfo.Network, From: start, Stride: c.stride, Done: start - c.stride,
+		Stats: &stats{ByAppVersion: map[uint64]int64{}, ByReason: map[string]int64{}}}
+	prev, err := readCheckpoint(c.cpPath)
+	switch {
+	case err != nil:
+		return nil, err
+	case prev != nil:
+		if prev.Chain != cp.Chain || prev.From != cp.From || prev.Stride != cp.Stride {
+			return nil, fmt.Errorf("checkpoint %s is for chain %s from %d with stride %d; delete it or pass another -checkpoint",
+				c.cpPath, prev.Chain, prev.From, prev.Stride)
+		}
+		cp = prev
+		log.Printf("resuming after checkpoint height %d", cp.Done)
+	default:
+		if fi, err := os.Stat(c.outPath); err == nil && fi.Size() > 0 {
+			return nil, fmt.Errorf("findings file %s already has entries but there is no checkpoint; delete it or pass another -out", c.outPath)
+		}
 	}
+	cp.To = end
+	s := cp.Stats
+	start = cp.Done + c.stride
 	log.Printf("chain %s: scanning heights %d..%d (stride %d, earliest available %d)",
-		status.NodeInfo.Network, start, end, *stride, status.SyncInfo.EarliestBlockHeight)
+		status.NodeInfo.Network, start, end, c.stride, status.SyncInfo.EarliestBlockHeight)
 
-	out, err := os.OpenFile(*outPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
+	out, err := os.OpenFile(c.outPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
 	if err != nil {
-		log.Fatalf("open findings file: %v", err)
+		return nil, fmt.Errorf("open findings file: %w", err)
 	}
 	defer out.Close()
 	w := bufio.NewWriter(out)
-	defer w.Flush()
 
-	s := &stats{ByAppVersion: map[uint64]int64{}, ByReason: map[string]int64{}}
+	resumedBlocks := s.Blocks
 	const batch = 1000
 	began := time.Now()
-	for lo := start; lo <= end; lo += batch * *stride {
-		hi := min(lo+(batch-1)*(*stride), end)
-		findings, err := scanBatch(ctx, client, lo, hi, *stride, *workers, *maxRawSize, s)
+	for lo := start; lo <= end; lo += batch * c.stride {
+		hi := min(lo+(batch-1)*c.stride, end)
+		findings, err := scanBatch(ctx, client, lo, hi, c.stride, c.workers, c.maxRawSize, s)
 		if err != nil {
-			log.Fatalf("scan %d..%d: %v", lo, hi, err)
+			return nil, fmt.Errorf("scan %d..%d: %w", lo, hi, err)
 		}
 		for _, f := range findings {
 			bz, _ := json.Marshal(f)
 			fmt.Fprintln(w, string(bz))
 		}
 		if err := w.Flush(); err != nil {
-			log.Fatalf("write findings: %v", err)
+			return nil, fmt.Errorf("write findings: %w", err)
 		}
-		writeCheckpoint(*checkpoint, hi)
-		logProgress(s, start, hi, end, began)
+		cp.Done = hi
+		if err := writeCheckpoint(c.cpPath, cp); err != nil {
+			return nil, err
+		}
+		logProgress(s, start, hi, end, resumedBlocks, began)
 	}
-	s.mu.Lock()
-	summary, _ := json.MarshalIndent(s, "", "  ")
-	s.mu.Unlock()
-	fmt.Println(string(summary))
+	return cp, nil
 }
 
 // scanBatch fetches heights lo..hi and returns their findings sorted by height.
@@ -353,30 +390,55 @@ func reason(f Finding) string {
 	}
 }
 
-func readCheckpoint(path string) (int64, bool) {
-	bz, err := os.ReadFile(path)
-	if err != nil {
-		return 0, false
-	}
-	h, err := strconv.ParseInt(strings.TrimSpace(string(bz)), 10, 64)
-	return h, err == nil
+// checkpoint records a scan's settings, the last fully scanned height and
+// the totals so far, so that a resumed scan reports the whole range.
+type checkpoint struct {
+	Chain  string `json:"chain"`
+	From   int64  `json:"from"`
+	To     int64  `json:"to"`
+	Stride int64  `json:"stride"`
+	Done   int64  `json:"done"`
+	Stats  *stats `json:"stats"`
 }
 
-func writeCheckpoint(path string, height int64) {
+// readCheckpoint returns nil if path does not exist.
+func readCheckpoint(path string) (*checkpoint, error) {
+	bz, err := os.ReadFile(path)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("read checkpoint: %w", err)
+	}
+	cp := new(checkpoint)
+	if err := json.Unmarshal(bz, cp); err != nil || cp.Stats == nil {
+		return nil, fmt.Errorf("read checkpoint %s: invalid contents", path)
+	}
+	return cp, nil
+}
+
+func writeCheckpoint(path string, cp *checkpoint) error {
+	cp.Stats.mu.Lock()
+	bz, err := json.Marshal(cp)
+	cp.Stats.mu.Unlock()
+	if err != nil {
+		return fmt.Errorf("write checkpoint: %w", err)
+	}
 	tmp := path + ".tmp"
-	if err := os.WriteFile(tmp, []byte(strconv.FormatInt(height, 10)+"\n"), 0o644); err != nil {
-		log.Fatalf("write checkpoint: %v", err)
+	if err := os.WriteFile(tmp, bz, 0o644); err != nil {
+		return fmt.Errorf("write checkpoint: %w", err)
 	}
 	if err := os.Rename(tmp, path); err != nil {
-		log.Fatalf("write checkpoint: %v", err)
+		return fmt.Errorf("write checkpoint: %w", err)
 	}
+	return nil
 }
 
-func logProgress(s *stats, start, done, end int64, began time.Time) {
+func logProgress(s *stats, start, done, end, resumedBlocks int64, began time.Time) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	elapsed := time.Since(began).Seconds()
-	rate := float64(s.Blocks) / elapsed
+	rate := float64(s.Blocks-resumedBlocks) / elapsed
 	var eta time.Duration
 	if done < end && rate > 0 {
 		frac := float64(done-start+1) / float64(end-start+1)
