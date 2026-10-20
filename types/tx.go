@@ -8,8 +8,8 @@ import (
 
 	"github.com/cosmos/gogoproto/proto"
 
-	share "github.com/celestiaorg/go-square/v3/share"
-	square "github.com/celestiaorg/go-square/v3/tx"
+	share "github.com/celestiaorg/go-square/v4/share"
+	square "github.com/celestiaorg/go-square/v4/tx"
 
 	"github.com/cometbft/cometbft/crypto/merkle"
 	"github.com/cometbft/cometbft/crypto/tmhash"
@@ -322,6 +322,10 @@ func MarshalIndexWrapper(tx Tx, shareIndexes ...uint32) (Tx, error) {
 
 // UnmarshalBlobTx attempts to unmarshal a transaction into blob transaction. If an
 // error is thrown, false is returned.
+//
+// It only checks the type ID, the blob count and namespace ID lengths, so it
+// recognizes some BlobTxs that go-square's tx.UnmarshalBlobTx rejects. Tx.Hash,
+// Tx.Key and block execution depend on these rules, so they must not change.
 func UnmarshalBlobTx(tx Tx) (bTx cmtproto.BlobTx, isBlob bool) {
 	err := bTx.Unmarshal(tx)
 	if err != nil {
