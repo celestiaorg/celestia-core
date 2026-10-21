@@ -526,9 +526,15 @@ func TestTxPool_ReapMaxBytesMaxGasProperties(t *testing.T) {
 		numSets := 1 + rng.Intn(30)
 		for s := 0; s < numSets; s++ {
 			sender := []byte(fmt.Sprintf("signer-%d", s))
+			if rng.Intn(3) == 0 {
+				sender = nil // each unsigned tx is its own set
+			}
 			n := 1 + rng.Intn(5)
-			for _, seq := range rng.Perm(n) {
-				tx := types.Tx(fmt.Sprintf("%s-%d-%s", sender, seq, bytes.Repeat([]byte{'x'}, rng.Intn(50))))
+			for k, seq := range rng.Perm(n) {
+				if rng.Intn(4) == 0 {
+					seq = rng.Intn(n) // duplicate sequences are ordered by arrival
+				}
+				tx := types.Tx(fmt.Sprintf("%d-%d-%s", s, k, bytes.Repeat([]byte{'x'}, rng.Intn(50))))
 				wtx := newWrappedTx(tx.ToCachedTx(), 1, rng.Int63n(10), rng.Int63n(100), sender, uint64(seq), false)
 				require.True(t, txmp.store.set(wtx))
 				totalBytes += wtx.size()

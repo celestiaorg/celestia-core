@@ -457,9 +457,6 @@ func (txmp *TxPool) ReapMaxBytesMaxGas(maxBytes, maxGas int64) []*types.CachedTx
 				totalGas += wtx.gasWanted
 				keep = append(keep, wtx.tx)
 			}
-			if totalBytes == maxBytes {
-				break
-			}
 		}
 	})
 	return keep
