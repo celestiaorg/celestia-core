@@ -64,7 +64,7 @@ func zip215Vectors(t *testing.T) []zip215Vector {
 		require.NoError(t, err)
 		return b
 	}
-	var vectors []zip215Vector
+	vectors := make([]zip215Vector, 0, len(smallOrderEncodings)*len(smallOrderEncodings)+len(speccheckCases))
 	for i, a := range smallOrderEncodings {
 		for j, r := range smallOrderEncodings {
 			sig := append(unhex(r), make([]byte, 32)...)
