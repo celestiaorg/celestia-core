@@ -4,7 +4,10 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"runtime"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"time"
 
 	gogotypes "github.com/cosmos/gogoproto/types"
@@ -263,6 +266,30 @@ func (b *Block) CachedHashes() [][]byte {
 // the hashes of the txs alongside the block, they are not included in any
 // validity rule or encoding of the block.
 func (b *Block) SetCachedHashes(hashes [][]byte) {
+	b.cachedHashes = hashes
+}
+
+// FillCachedHashes hashes the block's txs in parallel unless the cached hashes
+// already cover them. Hashes are always computed locally, never taken from the network.
+func (b *Block) FillCachedHashes() {
+	if len(b.cachedHashes) == len(b.Txs) {
+		return
+	}
+	hashes := make([][]byte, len(b.Txs))
+	var next atomic.Int64
+	var wg sync.WaitGroup
+	for range min(runtime.GOMAXPROCS(0), len(b.Txs)) {
+		wg.Go(func() {
+			for {
+				i := int(next.Add(1)) - 1
+				if i >= len(b.Txs) {
+					return
+				}
+				hashes[i] = b.Txs[i].Hash()
+			}
+		})
+	}
+	wg.Wait()
 	b.cachedHashes = hashes
 }
 
