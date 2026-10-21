@@ -93,13 +93,14 @@ func CachedTxToSliceOfBytes(cachedTxs []*CachedTx) [][]byte {
 }
 
 // Hash computes the TMHASH hash of the wire encoded transaction. It attempts to
-// unwrap the transaction if it is a IndexWrapper or a BlobTx.
+// unwrap the transaction if it is a BlobTx or a IndexWrapper.
 func (tx Tx) Hash() []byte {
-	if indexWrapper, isIndexWrapper := UnmarshalIndexWrapper(tx); isIndexWrapper {
-		return tmhash.Sum(indexWrapper.Tx)
-	}
+	// BlobTx first: parsed as an IndexWrapper, a blob decodes as packed share indexes.
 	if blobTx, isBlobTx := UnmarshalBlobTx(tx); isBlobTx {
 		return tmhash.Sum(blobTx.Tx)
+	}
+	if indexWrapper, isIndexWrapper := UnmarshalIndexWrapper(tx); isIndexWrapper {
+		return tmhash.Sum(indexWrapper.Tx)
 	}
 	return tmhash.Sum(tx)
 }
