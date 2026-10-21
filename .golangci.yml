@@ -20,6 +20,7 @@ linters:
           files:
             - $all
             - '!$test'
+            - '!**/libs/protoresource/**'
           allow:
             - $gostd
             - go/
@@ -71,6 +72,7 @@ linters:
         test:
           files:
             - $test
+            - '!**/libs/protoresource/**'
           allow:
             - $gostd
             - github.com/cosmos
@@ -99,6 +101,22 @@ linters:
             - google.golang.org/protobuf/encoding/protowire
             - google.golang.org/protobuf/proto
             - github.com/filecoin-project/go-clock
+        protoresource:
+          files:
+            - '**/libs/protoresource/**'
+          allow:
+            - $gostd
+            - github.com/stretchr/testify/require
+            - github.com/cometbft/cometbft/proto/tendermint/blocksync
+            - github.com/cometbft/cometbft/proto/tendermint/propagation
+            - github.com/cometbft/cometbft/libs/protoresource
+            - github.com/cosmos/gogoproto/proto
+            - google.golang.org/protobuf/encoding/protowire
+            - google.golang.org/protobuf/proto
+            - google.golang.org/protobuf/reflect/protodesc
+            - google.golang.org/protobuf/reflect/protoreflect
+            - google.golang.org/protobuf/reflect/protoregistry
+            - google.golang.org/protobuf/types/descriptorpb
     dogsled:
       max-blank-identifiers: 3
     gosec:
