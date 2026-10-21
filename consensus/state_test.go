@@ -188,6 +188,35 @@ func TestStateEnterProposeYesPrivValidator(t *testing.T) {
 	ensureNoNewTimeout(timeoutCh, cs.config.TimeoutPropose.Nanoseconds())
 }
 
+// A block assembled from parts carries tx hashes computed locally, not the proposer's.
+func TestAddProposalBlockPartFillsCachedHashes(t *testing.T) {
+	cs1, _ := randState(1)
+	deliverTxsRange(t, cs1, 0, 10)
+
+	block, parts, err := cs1.createProposalBlock(context.Background())
+	require.NoError(t, err)
+	require.Len(t, block.Txs, 10)
+	want := make([][]byte, len(block.Txs))
+	for i, tx := range block.Txs {
+		want[i] = tx.Hash()
+	}
+	bogus := make([][]byte, len(block.Txs))
+	for i := range bogus {
+		bogus[i] = []byte("bogus")
+	}
+	block.SetCachedHashes(bogus)
+
+	cs1.rs.ProposalBlockParts = types.NewPartSetFromHeader(parts.Header(), types.BlockPartSizeBytes)
+	for i := range parts.Total() {
+		msg := &BlockPartMessage{Height: cs1.rs.Height, Round: cs1.rs.Round, Part: parts.GetPart(int(i))}
+		_, err := cs1.addProposalBlockPart(msg, "peer")
+		require.NoError(t, err)
+	}
+
+	require.NotNil(t, cs1.rs.ProposalBlock)
+	require.Equal(t, want, cs1.rs.ProposalBlock.CachedHashes())
+}
+
 func TestStateBadProposal(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
