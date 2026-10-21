@@ -48,11 +48,12 @@ Celestia-specific ADRs live in `docs/celestia-architecture/`.
 - Import alias conventions: `cmtcfg`, `cmttypes`, `cmtbits` etc. for internal packages; `dbm` for cometbft-db
 - "Save"/"Load" for persistence; "Encode"/"Decode" for parsing bytes
 - Functions returning functions get `Fn` suffix
-- Follow [conventional commits](https://www.conventionalcommits.org/) for PR titles
 
 ## Pull Requests
 
-Keep PR descriptions short. Add a "Note for reviewers" for consensus-affecting, breaking, or migration-required changes.
+- Titles: `type(scope)!: [level] subject` ([conventional commits](https://www.conventionalcommits.org/) plus a review level tag), e.g. `fix(mempool): [high] reject oversized txs`. Levels are defined in [README.md#contributing](README.md#contributing); use the higher level when unsure. `[high]` covers consensus, mempool/CAT, p2p, ABCI, state/block execution, light client, crypto, and breaking changes.
+- Include the tag in the description with a brief reason, e.g. `Review level: [low] — documentation only.`
+- Keep PR descriptions short. Add a "Note for reviewers" for consensus-affecting, breaking, or migration-required changes.
 
 ## Changelog
 

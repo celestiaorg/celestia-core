@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"runtime"
 	"testing"
 	"time"
 
@@ -883,6 +884,8 @@ func TestPrepareProposalTxsAllIncluded(t *testing.T) {
 
 	evpool := &mocks.EvidencePool{}
 	evpool.On("PendingEvidence", mock.Anything).Return([]types.Evidence{}, int64(0))
+	// A single proc must not stall the parallel tx hashing.
+	defer runtime.GOMAXPROCS(runtime.GOMAXPROCS(1))
 
 	txs := test.MakeNTxs(height, 10)
 	cachedTxs := types.CachedTxFromTxs(txs)
@@ -916,6 +919,7 @@ func TestPrepareProposalTxsAllIncluded(t *testing.T) {
 
 	for i, tx := range block.Data.Txs { //nolint:staticcheck
 		require.Equal(t, txs[i], tx)
+		require.Equal(t, tx.Hash(), block.CachedHashes()[i])
 	}
 
 	mp.AssertExpectations(t)

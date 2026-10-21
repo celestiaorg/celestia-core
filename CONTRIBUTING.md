@@ -157,6 +157,10 @@ Celestia-core follows a specific contribution workflow due to its dual-branch ma
 
 #### Pull Request Guidelines
 
+PR titles must follow conventional commits and start the subject with a review
+level tag (`[high]`, `[medium]`, or `[low]`), e.g. `fix(consensus): [high] ...`.
+See [README.md#contributing](README.md#contributing) for the level definitions.
+
 **For changes intended for celestia-app v4:**
 - Unless the change is temporary and v4-specific, **always merge to `main` first**
 - After merging to `main`, backport to `v0.38.x-celestia` using mergify
@@ -284,7 +288,8 @@ Fixes #nnnn
 
 Each PR should have one commit once it lands on `main`; this can be accomplished
 by using the "squash and merge" button on GitHub. Be sure to edit your commit
-message, though!
+message, though! In this repo the squashed commit subject is the PR title, which
+uses the review level format in [README.md#contributing](README.md#contributing).
 
 ## Testing
 

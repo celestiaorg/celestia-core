@@ -4,7 +4,10 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"runtime"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"time"
 
 	gogotypes "github.com/cosmos/gogoproto/types"
@@ -264,6 +267,40 @@ func (b *Block) CachedHashes() [][]byte {
 // validity rule or encoding of the block.
 func (b *Block) SetCachedHashes(hashes [][]byte) {
 	b.cachedHashes = hashes
+}
+
+// FillCachedHashes hashes the block's txs in parallel unless the cached hashes
+// already cover them. Hashes are always computed locally, never taken from the network.
+func (b *Block) FillCachedHashes() {
+	if len(b.cachedHashes) == len(b.Txs) {
+		return
+	}
+	hashes := make([][]byte, len(b.Txs))
+	var next atomic.Int64
+	var wg sync.WaitGroup
+	for range min(runtime.GOMAXPROCS(0), len(b.Txs)) {
+		wg.Go(func() {
+			for {
+				i := int(next.Add(1)) - 1
+				if i >= len(b.Txs) {
+					return
+				}
+				hashes[i] = b.Txs[i].Hash()
+			}
+		})
+	}
+	wg.Wait()
+	b.cachedHashes = hashes
+}
+
+// CachedTxs returns the block's txs paired with their cached hashes.
+func (b *Block) CachedTxs() []*CachedTx {
+	b.FillCachedHashes()
+	txs := make([]*CachedTx, len(b.Txs))
+	for i, tx := range b.Txs {
+		txs[i] = NewCachedTx(tx, b.cachedHashes[i])
+	}
+	return txs
 }
 
 // FromProto sets a protobuf Block to the given pointer.
