@@ -491,6 +491,87 @@ func TestTxPool_ReapMaxBytesMaxGas(t *testing.T) {
 	require.Len(t, reapedTxs, 25)
 }
 
+// Regression for #3494: a multi-tx signer set crossing the byte budget must not
+// pull in the rest of the pool.
+func TestTxPool_ReapMaxBytesMaxGasMultiTxSetAtBoundary(t *testing.T) {
+	txmp := setup(t, 0)
+	var top []types.Tx
+	for i := 0; i < 3; i++ {
+		tx := types.Tx(fmt.Sprintf("s000=%02d=%03d", i, 999))
+		top = append(top, tx)
+		require.NoError(t, txmp.CheckTx(tx, nil, mempool.TxInfo{}))
+	}
+	for i := 1; i <= 50; i++ {
+		require.NoError(t, txmp.CheckTx(types.Tx(fmt.Sprintf("s%03d=00=%03d", i, i)), nil, mempool.TxInfo{}))
+	}
+
+	reaped := types.TxsFromCachedTxs(txmp.ReapMaxBytesMaxGas(int64(2*len(top[0])), -1))
+	require.Equal(t, types.Txs(top[:2]), reaped)
+}
+
+func TestTxPool_ReapMaxBytesMaxGasProperties(t *testing.T) {
+	seed := time.Now().UnixNano()
+	t.Logf("seed %d", seed)
+	rng := rand.New(rand.NewSource(seed))
+	budget := func(total int64) int64 {
+		if rng.Intn(4) == 0 {
+			return -1
+		}
+		return rng.Int63n(total + 2)
+	}
+
+	for iter := 0; iter < 500; iter++ {
+		txmp := &TxPool{store: newStore()}
+		var totalBytes, totalGas int64
+		numSets := 1 + rng.Intn(30)
+		for s := 0; s < numSets; s++ {
+			sender := []byte(fmt.Sprintf("signer-%d", s))
+			n := 1 + rng.Intn(5)
+			for _, seq := range rng.Perm(n) {
+				tx := types.Tx(fmt.Sprintf("%s-%d-%s", sender, seq, bytes.Repeat([]byte{'x'}, rng.Intn(50))))
+				wtx := newWrappedTx(tx.ToCachedTx(), 1, rng.Int63n(10), rng.Int63n(100), sender, uint64(seq), false)
+				require.True(t, txmp.store.set(wtx))
+				totalBytes += wtx.size()
+				totalGas += wtx.gasWanted
+			}
+		}
+		maxBytes, maxGas := budget(totalBytes), budget(totalGas)
+		reaped := txmp.ReapMaxBytesMaxGas(maxBytes, maxGas)
+
+		var reapedBytes, reapedGas int64
+		var sets []*txSet
+		txmp.store.processOrderedTxSets(func(txSets []*txSet) { sets = append(sets, txSets...) })
+		for _, tx := range reaped {
+			wtx := txmp.store.get(tx.Key())
+			reapedBytes += wtx.size()
+			reapedGas += wtx.gasWanted
+		}
+		if maxBytes >= 0 {
+			require.LessOrEqual(t, reapedBytes, maxBytes)
+		}
+		if maxGas >= 0 {
+			require.LessOrEqual(t, reapedGas, maxGas)
+		}
+
+		// Reaped txs are, in priority order, a sequence-ordered prefix of each set, and a
+		// set is cut short only where its next tx no longer fits.
+		i := 0
+		for _, set := range sets {
+			m := 0
+			for m < len(set.txs) && i < len(reaped) && reaped[i].Key() == set.txs[m].key() {
+				m++
+				i++
+			}
+			if m < len(set.txs) {
+				next := set.txs[m]
+				require.True(t, maxBytes >= 0 && reapedBytes+next.size() > maxBytes ||
+					maxGas >= 0 && reapedGas+next.gasWanted > maxGas)
+			}
+		}
+		require.Equal(t, len(reaped), i, "reaped txs out of priority or sequence order")
+	}
+}
+
 func TestTxMempoolTxLargerThanMaxBytes(t *testing.T) {
 	rng := rand.New(rand.NewSource(time.Now().UnixNano()))
 	txmp := setup(t, 0)

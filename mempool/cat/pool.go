@@ -446,64 +446,23 @@ func (txmp *TxPool) ReapMaxBytesMaxGas(maxBytes, maxGas int64) []*types.CachedTx
 
 	var keep []*types.CachedTx
 	txmp.store.processOrderedTxSets(func(txSets []*txSet) {
-		for idx, txSet := range txSets {
-			if maxBytes >= 0 && totalBytes+txSet.bytes > maxBytes ||
-				maxGas >= 0 && totalGas+txSet.totalGasWanted > maxGas {
-				// if the next transaction set can not fit, then we need to break down the indidual transactions
-				// and work out the residual set that has the highest accumulative priority and append that
-				keep = append(keep, txmp.determineLeftoverTxs(txSets[idx:], maxBytes-totalBytes, maxGas-totalGas)...)
+		for _, txSet := range txSets {
+			// Take the longest sequence-ordered prefix of each set that still fits.
+			for _, wtx := range txSet.txs {
+				if maxBytes >= 0 && totalBytes+wtx.size() > maxBytes ||
+					maxGas >= 0 && totalGas+wtx.gasWanted > maxGas {
+					break
+				}
+				totalBytes += wtx.size()
+				totalGas += wtx.gasWanted
+				keep = append(keep, wtx.tx)
+			}
+			if totalBytes == maxBytes {
 				break
 			}
-			totalBytes += txSet.bytes
-			totalGas += txSet.totalGasWanted
-			keep = append(keep, txSet.rawTxs()...)
 		}
 	})
 	return keep
-}
-
-// this function iterates over remaining txSets starting at all possible offsets i.e. from
-// the first, second, third etc. transaction and working out what permutation given the remaining
-// available bytes and gas has the highest aggregated priority
-func (txmp *TxPool) determineLeftoverTxs(txSets []*txSet, remainingBytes, remainingGas int64) []*types.CachedTx {
-	priorities := make([]int64, len(txSets))
-	possibleTxPermutations := make([][]*types.CachedTx, len(txSets))
-	for i := 0; i < len(txSets); i++ {
-		priorities[i], possibleTxPermutations[i] = txmp.getAggregatedPriorityAndTxs(txSets[i:], remainingBytes, remainingGas)
-	}
-	highestPriorityIndex := 0
-	for i := 1; i < len(priorities); i++ {
-		if priorities[i] > priorities[highestPriorityIndex] {
-			highestPriorityIndex = i
-		}
-	}
-	return possibleTxPermutations[highestPriorityIndex]
-}
-
-// getAggregatedPriorityAndTxs return the first n txs in the provided txSets that fit within
-// the remaining bytes and gas and returns the aggregated priority of the resulting txs
-func (txmp *TxPool) getAggregatedPriorityAndTxs(txSets []*txSet, remainingBytes, remainingGas int64) (int64, []*types.CachedTx) {
-	aggregatedTxSubSets := make([]*txSet, 0, len(txSets))
-
-	for _, txSet := range txSets {
-		slicedSet := txSet.sliceTxsByBytesAndGas(remainingBytes, remainingGas)
-		aggregatedTxSubSets = append(aggregatedTxSubSets, slicedSet)
-		// if the full tx set is not returned, that indicates there are no more bytes or gas left
-		if len(slicedSet.txs) != len(txSet.txs) {
-			return aggregatePriorityAcrossSets(aggregatedTxSubSets), flattenTxSets(aggregatedTxSubSets)
-		}
-		remainingBytes -= txSet.bytes
-		remainingGas -= txSet.totalGasWanted
-	}
-	return aggregatePriorityAcrossSets(aggregatedTxSubSets), flattenTxSets(aggregatedTxSubSets)
-}
-
-func flattenTxSets(txSets []*txSet) []*types.CachedTx {
-	txs := make([]*types.CachedTx, 0, len(txSets))
-	for _, txSet := range txSets {
-		txs = append(txs, txSet.rawTxs()...)
-	}
-	return txs
 }
 
 // ReapMaxTxs returns up to max transactions from the mempool. The results are
