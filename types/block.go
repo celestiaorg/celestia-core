@@ -293,6 +293,16 @@ func (b *Block) FillCachedHashes() {
 	b.cachedHashes = hashes
 }
 
+// CachedTxs returns the block's txs paired with their cached hashes.
+func (b *Block) CachedTxs() []*CachedTx {
+	b.FillCachedHashes()
+	txs := make([]*CachedTx, len(b.Txs))
+	for i, tx := range b.Txs {
+		txs[i] = NewCachedTx(tx, b.cachedHashes[i])
+	}
+	return txs
+}
+
 // FromProto sets a protobuf Block to the given pointer.
 // It returns an error if the block is invalid.
 func BlockFromProto(bp *cmtproto.Block) (*Block, error) {

@@ -83,6 +83,16 @@ func TestBlockFillCachedHashes(t *testing.T) {
 	}
 }
 
+// Mempool keys come from CachedTxs, so the cached hash must equal Tx.Key.
+func TestBlockCachedTxsMatchKey(t *testing.T) {
+	txs := mixedTxs(t)
+	b := &Block{Data: Data{Txs: txs}}
+	for i, ctx := range b.CachedTxs() {
+		require.Equal(t, txs[i], ctx.Tx)
+		require.Equal(t, txs[i].Key(), ctx.Key())
+	}
+}
+
 func TestBlockFillCachedHashesSingleProc(t *testing.T) {
 	defer runtime.GOMAXPROCS(runtime.GOMAXPROCS(1))
 	txs := mixedTxs(t)
