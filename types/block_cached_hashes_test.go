@@ -9,19 +9,20 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	share "github.com/celestiaorg/go-square/v3/share"
-
-	cmtproto "github.com/cometbft/cometbft/proto/tendermint/types"
+	share "github.com/celestiaorg/go-square/v4/share"
+	squaretx "github.com/celestiaorg/go-square/v4/tx"
 )
 
 func makeBlobTx(t testing.TB, blobSize int) Tx {
 	t.Helper()
 	data := make([]byte, blobSize)
 	_, _ = rand.Read(data)
-	blob := &cmtproto.Blob{NamespaceId: bytes.Repeat([]byte{1}, share.NamespaceIDSize), Data: data}
+	ns := share.MustNewV0Namespace(bytes.Repeat([]byte{1}, share.NamespaceVersionZeroIDSize))
+	blob, err := share.NewV0Blob(ns, data)
+	require.NoError(t, err)
 	inner := make([]byte, 300)
 	_, _ = rand.Read(inner)
-	tx, err := MarshalBlobTx(inner, blob)
+	tx, err := squaretx.MarshalBlobTx(inner, blob)
 	require.NoError(t, err)
 	return tx
 }

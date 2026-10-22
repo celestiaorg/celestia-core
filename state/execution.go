@@ -335,15 +335,7 @@ func (blockExec *BlockExecutor) ApplyBlock(
 func (blockExec *BlockExecutor) applyBlock(state State, blockID types.BlockID, block *types.Block, lastCommit *types.Commit) (State, error) {
 	startTime := time.Now().UnixNano()
 
-	// Unmarshal blob txs
-	txs := make([][]byte, len(block.Txs))
-	for i, tx := range block.Txs {
-		blobTx, isBlobTx := types.UnmarshalBlobTx(tx)
-		if isBlobTx {
-			tx = blobTx.Tx
-		}
-		txs[i] = tx
-	}
+	txs := unwrapBlobTxs(block)
 	pbHeader := block.Header.ToProto()
 
 	abciResponse, err := blockExec.proxyApp.FinalizeBlock(context.TODO(), &abci.RequestFinalizeBlock{
@@ -865,10 +857,7 @@ func fireEvents(
 	}
 
 	for i, tx := range block.Data.Txs { //nolint:staticcheck
-		blobTx, isBlobTx := types.UnmarshalBlobTx(tx)
-		if isBlobTx {
-			tx = blobTx.Tx
-		}
+		tx, _ = types.UnwrapBlobTx(tx, block.Version.App)
 		if err := eventBus.PublishEventTx(types.EventDataTx{TxResult: abci.TxResult{
 			Height: block.Height,
 			Index:  uint32(i),
@@ -887,6 +876,16 @@ func fireEvents(
 	}
 }
 
+// unwrapBlobTxs returns the block's transactions with BlobTx wrappers removed,
+// using the BlobTx rules of the block's app version.
+func unwrapBlobTxs(block *types.Block) [][]byte {
+	txs := make([][]byte, len(block.Txs))
+	for i, tx := range block.Txs {
+		txs[i], _ = types.UnwrapBlobTx(tx, block.Version.App)
+	}
+	return txs
+}
+
 //----------------------------------------------------------------------------------------------------
 // Execute block without state. TODO: eliminate
 
@@ -902,16 +901,8 @@ func ExecCommitBlock(
 	commitInfo := buildLastCommitInfoFromStore(block, store, initialHeight)
 	pbHeader := block.Header.ToProto()
 
-	// Unmarshal blob txs to match the behavior of applyBlock, which strips
-	// BlobTx wrappers before sending transactions to FinalizeBlock.
-	txs := make([][]byte, len(block.Txs))
-	for i, tx := range block.Txs {
-		blobTx, isBlobTx := types.UnmarshalBlobTx(tx)
-		if isBlobTx {
-			tx = blobTx.Tx
-		}
-		txs[i] = tx
-	}
+	// Strip BlobTx wrappers to match applyBlock.
+	txs := unwrapBlobTxs(block)
 
 	resp, err := appConnConsensus.FinalizeBlock(context.TODO(), &abci.RequestFinalizeBlock{
 		Hash:               block.Hash(),

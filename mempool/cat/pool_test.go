@@ -13,7 +13,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/celestiaorg/go-square/v3/share"
+	"github.com/celestiaorg/go-square/v4/share"
+	squaretx "github.com/celestiaorg/go-square/v4/tx"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -24,7 +25,6 @@ import (
 	"github.com/cometbft/cometbft/config"
 	"github.com/cometbft/cometbft/libs/log"
 	"github.com/cometbft/cometbft/mempool"
-	tmproto "github.com/cometbft/cometbft/proto/tendermint/types"
 	"github.com/cometbft/cometbft/proxy"
 	"github.com/cometbft/cometbft/types"
 )
@@ -890,16 +890,12 @@ func TestTxPool_RemoveBlobTx(t *testing.T) {
 	originalTx := []byte("sender=00001")
 	indexWrapper, err := types.MarshalIndexWrapper(originalTx, 100)
 	require.NoError(t, err)
-	namespaceOne := bytes.Repeat([]byte{1}, share.NamespaceIDSize)
+	namespaceOne := share.MustNewV0Namespace(bytes.Repeat([]byte{1}, share.NamespaceVersionZeroIDSize))
 
 	// create the blobTx
-	b := tmproto.Blob{
-		NamespaceId:      namespaceOne,
-		Data:             []byte{1, 2, 3, 4, 5, 6, 7, 8, 1, 2, 3, 4, 5, 6, 7, 8, 9},
-		ShareVersion:     0,
-		NamespaceVersion: 0,
-	}
-	bTx, err := types.MarshalBlobTx(originalTx, &b)
+	b, err := share.NewV0Blob(namespaceOne, []byte{1, 2, 3, 4, 5, 6, 7, 8, 1, 2, 3, 4, 5, 6, 7, 8, 9})
+	require.NoError(t, err)
+	bTx, err := squaretx.MarshalBlobTx(originalTx, b)
 	require.NoError(t, err)
 
 	err = txmp.CheckTx(bTx, nil, mempool.TxInfo{})
