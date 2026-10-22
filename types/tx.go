@@ -8,8 +8,7 @@ import (
 
 	"github.com/cosmos/gogoproto/proto"
 
-	share "github.com/celestiaorg/go-square/v3/share"
-	square "github.com/celestiaorg/go-square/v3/tx"
+	square "github.com/celestiaorg/go-square/v4/tx"
 
 	"github.com/cometbft/cometbft/crypto/merkle"
 	"github.com/cometbft/cometbft/crypto/tmhash"
@@ -93,13 +92,15 @@ func CachedTxToSliceOfBytes(cachedTxs []*CachedTx) [][]byte {
 }
 
 // Hash computes the TMHASH hash of the wire encoded transaction. It attempts to
-// unwrap the transaction if it is a IndexWrapper or a BlobTx.
+// unwrap the transaction if it is a BlobTx or a IndexWrapper. BlobTxs use the
+// legacy rules at every app version because Hash feeds Header.DataHash.
 func (tx Tx) Hash() []byte {
+	// BlobTx first: parsed as an IndexWrapper, a blob decodes as packed share indexes.
+	if innerTx, isBlobTx := unwrapLegacyBlobTx(tx); isBlobTx {
+		return tmhash.Sum(innerTx)
+	}
 	if indexWrapper, isIndexWrapper := UnmarshalIndexWrapper(tx); isIndexWrapper {
 		return tmhash.Sum(indexWrapper.Tx)
-	}
-	if blobTx, isBlobTx := UnmarshalBlobTx(tx); isBlobTx {
-		return tmhash.Sum(blobTx.Tx)
 	}
 	return tmhash.Sum(tx)
 }
@@ -109,10 +110,11 @@ func (tx Tx) ToCachedTx() *CachedTx {
 }
 
 // Key returns the sha256 hash of the wire encoded transaction. It attempts to
-// unwrap the transaction if it is a BlobTx or a IndexWrapper.
+// unwrap the transaction if it is a BlobTx or a IndexWrapper, using the same
+// BlobTx rules as Hash.
 func (tx Tx) Key() TxKey {
-	if blobTx, isBlobTx := UnmarshalBlobTx(tx); isBlobTx {
-		return sha256.Sum256(blobTx.Tx)
+	if innerTx, isBlobTx := unwrapLegacyBlobTx(tx); isBlobTx {
+		return sha256.Sum256(innerTx)
 	}
 	if indexWrapper, isIndexWrapper := UnmarshalIndexWrapper(tx); isIndexWrapper {
 		return sha256.Sum256(indexWrapper.Tx)
@@ -318,40 +320,4 @@ func MarshalIndexWrapper(tx Tx, shareIndexes ...uint32) (Tx, error) {
 		TypeId:       square.ProtoIndexWrapperTypeID,
 	}
 	return proto.Marshal(&wTx)
-}
-
-// UnmarshalBlobTx attempts to unmarshal a transaction into blob transaction. If an
-// error is thrown, false is returned.
-func UnmarshalBlobTx(tx Tx) (bTx cmtproto.BlobTx, isBlob bool) {
-	err := bTx.Unmarshal(tx)
-	if err != nil {
-		return cmtproto.BlobTx{}, false
-	}
-	// perform some quick basic checks to prevent false positives
-	if bTx.TypeId != square.ProtoBlobTxTypeID {
-		return bTx, false
-	}
-	if len(bTx.Blobs) == 0 {
-		return bTx, false
-	}
-	for _, b := range bTx.Blobs {
-		if len(b.NamespaceId) != share.NamespaceIDSize {
-			return bTx, false
-		}
-	}
-	return bTx, true
-}
-
-// MarshalBlobTx creates a BlobTx using a normal transaction and some number of
-// blobs.
-//
-// NOTE: Any checks on the blobs or the transaction must be performed in the
-// application.
-func MarshalBlobTx(tx []byte, blobs ...*cmtproto.Blob) (Tx, error) {
-	bTx := cmtproto.BlobTx{
-		Tx:     tx,
-		Blobs:  blobs,
-		TypeId: square.ProtoBlobTxTypeID,
-	}
-	return bTx.Marshal()
 }

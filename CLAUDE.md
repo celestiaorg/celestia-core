@@ -1,7 +1,5 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
-
 ## Project Overview
 
 Celestia-core is a fork of CometBFT (formerly Tendermint) — a BFT consensus engine — with Celestia-specific modifications for data availability. The Go module path is `github.com/cometbft/cometbft`. It maintains minimal divergence from upstream CometBFT.
@@ -36,71 +34,30 @@ make mockery              # Generate test mocks
 make metrics              # Generate metrics code
 ```
 
-**Run a single test:**
-```bash
-go test -v -run TestName ./package/path/
-```
-
-**Run a single package's tests:**
-```bash
-go test -v ./consensus/...
-```
-
-**CI splits tests across parallel jobs using:**
-```bash
-NUM_SPLIT=4 make test-group-0  # Run test group 0 of 4
-```
-
 **Build configuration:** CGO_ENABLED=0 by default. Build tags: `cometbft` (default), `deadlock` (tests), `race`. PebbleDB is the only supported DB backend (since cometbft-db v1.0.4, no build tag needed).
 
-## Architecture
+## Code Generation
 
-The codebase follows CometBFT's modular architecture. Key packages and their roles:
-
-- **abci/**: Application Blockchain Interface — the boundary between the consensus engine and the application. Types are generated from `proto/tendermint/abci/`.
-- **consensus/**: The core BFT state machine (propose, prevote, precommit rounds).
-- **mempool/**: Transaction pool — holds unconfirmed transactions before they enter a block.
-- **p2p/**: Peer-to-peer networking layer with reactor-based message routing.
-- **state/**: Manages application state transitions and stores validated state.
-- **store/**: Block storage and retrieval (backed by `cometbft-db`).
-- **types/**: Core data types (Block, Vote, Validator, etc.) shared across packages.
-- **rpc/**: JSON-RPC and gRPC server endpoints for external clients.
-- **node/**: Orchestrates startup — wires together all components into a running node.
-- **light/**: Light client implementation for header verification without full blocks.
-- **evidence/**: Detects and manages evidence of Byzantine validator behavior.
-- **proxy/**: ABCI proxy layer between consensus and the application.
-- **crypto/**: Key types, signing, and hash functions.
-- **libs/**: Internal utility libraries (pubsub, events, logging, async, etc.).
-- **config/**: Configuration structs and TOML parsing.
-
-**Celestia-specific additions:**
-- Depends on `github.com/celestiaorg/go-square/v3` (data square utilities) and `github.com/celestiaorg/nmt` (Namespace Merkle Tree)
-- Celestia ADRs in `docs/celestia-architecture/` describe block propagation, IPLD DA sampling, and data retrieval modifications
+Celestia-specific ADRs live in `docs/celestia-architecture/`.
 
 **Protobuf:** Definitions live in `proto/tendermint/`. Generated code uses `gogofaster` plugin via buf. After `make proto-gen`, ABCI types are moved to `abci/types/` and gRPC types to `rpc/grpc/`.
 
 ## Code Conventions
 
 - Follow [Uber Go Style Guide](https://github.com/uber-go/guide/blob/master/style.md) as baseline
-- Keep godoc comments short and easy to understand: one or two plain-language sentences saying what the thing does. Avoid big blocks of text — they are hard to read and reason about.
-- Use `errors.New()` over `fmt.Errorf()` unless formatting with arguments; wrap errors with `%w`
-- Use `testify/assert` and `testify/require` for test assertions; prefer table-driven tests
 - Import alias conventions: `cmtcfg`, `cmttypes`, `cmtbits` etc. for internal packages; `dbm` for cometbft-db
-- Separate imports into blocks: stdlib, external, application
-- No anonymous dot imports
 - "Save"/"Load" for persistence; "Encode"/"Decode" for parsing bytes
 - Functions returning functions get `Fn` suffix
-- Follow [conventional commits](https://www.conventionalcommits.org/) for PR titles
 
 ## Pull Requests
 
-Keep PR descriptions short — aim for under ~10 lines. A short paragraph on what changed and why is usually enough. Don't add section headers (`## Problem`, `## Fix`, `## Tests`) for small PRs, don't narrate the code path or the reasoning that led to the change, and don't list which tests were added or that they pass — reviewers read the diff and CI for that. Add a "Note for reviewers" line only when there's a real risk (consensus-affecting, breaking, migration-required).
+- Titles: `type(scope)!: [level] subject` ([conventional commits](https://www.conventionalcommits.org/) plus a review level tag), e.g. `fix(mempool): [high] reject oversized txs`. Levels are defined in [README.md#contributing](README.md#contributing); use the higher level when unsure. `[high]` covers consensus, mempool/CAT, p2p, ABCI, state/block execution, light client, crypto, and breaking changes.
+- Include the tag in the description with a brief reason, e.g. `Review level: [low] — documentation only.`
+- Keep PR descriptions short. Add a "Note for reviewers" for consensus-affecting, breaking, or migration-required changes.
 
 ## Changelog
 
-This repo does not use changelogs. There is no `CHANGELOG.md` and no `.changelog/` directory, and neither should be reintroduced — the commit log and GitHub release notes are the record of what changed.
-
-Do not create changelog entries, do not add files under `.changelog/`, and do not recreate `CHANGELOG.md`. Ignore any older guidance (in CONTRIBUTING.md, comments, or upstream CometBFT docs) that asks you to add a changelog entry. If you find a changelog file in a branch or PR, delete it rather than updating it.
+Do not create `CHANGELOG.md` or `.changelog/` entries; use the commit log and GitHub release notes. This overrides older upstream guidance in CONTRIBUTING.md or other docs. Delete changelog files encountered in a branch or PR rather than updating them.
 
 ## Security PRs
 

@@ -455,6 +455,8 @@ func (m *Data) GetHash() []byte {
 // to be published to the Celestia blockchain. The data of a Blob is published
 // to a namespace and is encoded into shares based on the format specified by
 // share_version.
+//
+// Deprecated: Use go-square's share.Blob, which can carry a signer.
 type Blob struct {
 	NamespaceId      []byte `protobuf:"bytes,1,opt,name=namespace_id,json=namespaceId,proto3" json:"namespace_id,omitempty"`
 	Data             []byte `protobuf:"bytes,2,opt,name=data,proto3" json:"data,omitempty"`
@@ -1333,6 +1335,9 @@ func (m *IndexWrapper) GetTypeId() string {
 // BlobTx wraps an encoded sdk.Tx with a second field to contain blobs of data.
 // The raw bytes of the blobs are not signed over, instead we verify each blob
 // using the relevant MsgPayForBlobs that is signed over in the encoded sdk.Tx.
+//
+// Deprecated: Use go-square's tx.BlobTx. Core keeps this message only for the
+// legacy BlobTx rules used before BlobTxValidationAppVersion.
 type BlobTx struct {
 	Tx     []byte  `protobuf:"bytes,1,opt,name=tx,proto3" json:"tx,omitempty"`
 	Blobs  []*Blob `protobuf:"bytes,2,rep,name=blobs,proto3" json:"blobs,omitempty"`

@@ -6,8 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"path/filepath"
-	"runtime"
-	"sync"
 	"time"
 
 	"github.com/cometbft/cometbft/libs/trace"
@@ -221,26 +219,7 @@ func (blockExec *BlockExecutor) CreateProposalBlock(
 		return nil, nil, err
 	}
 
-	// get the cached hashes
-	// TODO: make sure that the hashes are correct here
-	// via also removing hashes that the application removed!
-	hashes := make([][]byte, len(newData.Txs))
-	numWorkers := min(runtime.NumCPU()-1, len(newData.Txs))
-	workers := make(chan struct{}, numWorkers)
-	var wg sync.WaitGroup
-	for i, tx := range newData.Txs {
-		workers <- struct{}{}
-		wg.Add(1)
-		go func() {
-			defer func() {
-				<-workers
-				wg.Done()
-			}()
-			hashes[i] = tx.Hash()
-		}()
-	}
-	wg.Wait()
-	block.SetCachedHashes(hashes)
+	block.FillCachedHashes()
 
 	return block, partset, nil
 }
@@ -356,15 +335,7 @@ func (blockExec *BlockExecutor) ApplyBlock(
 func (blockExec *BlockExecutor) applyBlock(state State, blockID types.BlockID, block *types.Block, lastCommit *types.Commit) (State, error) {
 	startTime := time.Now().UnixNano()
 
-	// Unmarshal blob txs
-	txs := make([][]byte, len(block.Txs))
-	for i, tx := range block.Txs {
-		blobTx, isBlobTx := types.UnmarshalBlobTx(tx)
-		if isBlobTx {
-			tx = blobTx.Tx
-		}
-		txs[i] = tx
-	}
+	txs := unwrapBlobTxs(block)
 	pbHeader := block.Header.ToProto()
 
 	abciResponse, err := blockExec.proxyApp.FinalizeBlock(context.TODO(), &abci.RequestFinalizeBlock{
@@ -574,7 +545,7 @@ func (blockExec *BlockExecutor) Commit(
 	// Update mempool.
 	err = blockExec.mempool.Update(
 		block.Height,
-		types.CachedTxFromTxs(block.Txs),
+		block.CachedTxs(),
 		abciResponse.TxResults,
 		TxPreCheck(state),
 		TxPostCheck(state),
@@ -886,10 +857,7 @@ func fireEvents(
 	}
 
 	for i, tx := range block.Data.Txs { //nolint:staticcheck
-		blobTx, isBlobTx := types.UnmarshalBlobTx(tx)
-		if isBlobTx {
-			tx = blobTx.Tx
-		}
+		tx, _ = types.UnwrapBlobTx(tx, block.Version.App)
 		if err := eventBus.PublishEventTx(types.EventDataTx{TxResult: abci.TxResult{
 			Height: block.Height,
 			Index:  uint32(i),
@@ -908,6 +876,16 @@ func fireEvents(
 	}
 }
 
+// unwrapBlobTxs returns the block's transactions with BlobTx wrappers removed,
+// using the BlobTx rules of the block's app version.
+func unwrapBlobTxs(block *types.Block) [][]byte {
+	txs := make([][]byte, len(block.Txs))
+	for i, tx := range block.Txs {
+		txs[i], _ = types.UnwrapBlobTx(tx, block.Version.App)
+	}
+	return txs
+}
+
 //----------------------------------------------------------------------------------------------------
 // Execute block without state. TODO: eliminate
 
@@ -923,16 +901,8 @@ func ExecCommitBlock(
 	commitInfo := buildLastCommitInfoFromStore(block, store, initialHeight)
 	pbHeader := block.Header.ToProto()
 
-	// Unmarshal blob txs to match the behavior of applyBlock, which strips
-	// BlobTx wrappers before sending transactions to FinalizeBlock.
-	txs := make([][]byte, len(block.Txs))
-	for i, tx := range block.Txs {
-		blobTx, isBlobTx := types.UnmarshalBlobTx(tx)
-		if isBlobTx {
-			tx = blobTx.Tx
-		}
-		txs[i] = tx
-	}
+	// Strip BlobTx wrappers to match applyBlock.
+	txs := unwrapBlobTxs(block)
 
 	resp, err := appConnConsensus.FinalizeBlock(context.TODO(), &abci.RequestFinalizeBlock{
 		Hash:               block.Hash(),

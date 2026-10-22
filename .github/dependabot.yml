@@ -1,8 +1,12 @@
 version: 2
+# Titles must carry a review level tag (see README.md#contributing). The trailing
+# space in each prefix stops Dependabot from appending a colon after the tag.
 updates:
   # GitHub Actions configurations
   - package-ecosystem: github-actions
     directory: "/"
+    commit-message:
+      prefix: "build(deps): [medium] "
     schedule:
       interval: weekly
     cooldown:
@@ -16,6 +20,8 @@ updates:
   # Go package configurations
   - package-ecosystem: gomod
     directory: "/"
+    commit-message:
+      prefix: "build(deps): [high] "
     schedule:
       interval: weekly
     cooldown:
