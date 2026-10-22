@@ -371,3 +371,47 @@ func TestMarkServedSkipsReplacedProposal(t *testing.T) {
 	want.Fill()
 	assert.Equal(t, total, len(ps.Unsent(1, 0, want, true).GetTrueIndices()))
 }
+
+func TestClearWantsSkipsReplacedProposal(t *testing.T) {
+	reactors, _ := testBlockPropReactors(2, cfg.DefaultP2PConfig())
+	r1, r2 := reactors[0], reactors[1]
+	cleanup, _, sm, pv := state.SetupTestCaseWithPrivVal(t)
+	t.Cleanup(func() { cleanup(t) })
+	_, oldParts, _, _ := createTestProposal(t, sm, pv, 1, 0, 100, 1000)
+	_, newParts, _, _ := createTestProposal(t, sm, pv, 1, 0, 100, 1000)
+	r1.pmtx.Lock()
+	r1.proposals[1] = map[int32]*proposalData{
+		0: {block: proptypes.NewCombinedPartSetFromOriginal(newParts, true)},
+	}
+	r1.pmtx.Unlock()
+
+	ps := r1.getPeer(r2.self)
+	require.NotNil(t, ps)
+	cp := &countingPeer{Peer: ps.peer, sent: make(map[uint32]int)}
+	ps.peer = cp
+	want := cmtbits.NewBitArray(int(newParts.Total()) * 2)
+	want.SetIndex(0, true)
+	ps.AddWants(1, 0, want)
+	ps.SetRemainingRequests(1, 0, 1)
+
+	// A clearWants goroutine queued before AddCommitment replaced the proposal
+	// must not mark the replacement's part as sent when it resumes.
+	part := oldParts.GetPart(0)
+	r1.clearWants(&proptypes.RecoveryPart{
+		Height: 1, Round: 0, Index: 0, Data: part.Bytes,
+	}, part.Proof, proptypes.NewCombinedPartSetFromOriginal(oldParts, true))
+	assert.Empty(t, cp.sent)
+	assert.True(t, ps.Unsent(1, 0, want, true).GetIndex(0))
+	assert.True(t, ps.WantsPart(1, 0, 0))
+	assert.Equal(t, 1, ps.GetRemainingRequests(1, 0))
+
+	// The same path must still serve and record the current proposal.
+	_, current, _, has := r1.getAllState(1, 0, true)
+	require.True(t, has)
+	part = newParts.GetPart(0)
+	r1.clearWants(&proptypes.RecoveryPart{
+		Height: 1, Round: 0, Index: 0, Data: part.Bytes,
+	}, part.Proof, current)
+	assert.Equal(t, 1, cp.sent[0])
+	assert.False(t, ps.Unsent(1, 0, want, true).GetIndex(0))
+}

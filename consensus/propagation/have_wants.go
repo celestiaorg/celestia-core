@@ -546,7 +546,7 @@ func (blockProp *Reactor) handleRecoveryPart(peer p2p.ID, part *proptypes.Recove
 		}
 	}
 
-	go blockProp.clearWants(part, *proof)
+	go blockProp.clearWants(part, *proof, parts)
 
 	// attempt to decode the remaining block parts. If they are decoded, then
 	// this node should send all the wanted parts that nodes have requested. cp
@@ -614,7 +614,7 @@ func (blockProp *Reactor) handleRecoveryPart(peer p2p.ID, part *proptypes.Recove
 					Index:  i,
 					Data:   pbz,
 				}
-				blockProp.clearWants(msg, p.GetProof())
+				blockProp.clearWants(msg, p.GetProof(), parts)
 			}
 		}(part.Height, part.Round, parts)
 
@@ -624,7 +624,15 @@ func (blockProp *Reactor) handleRecoveryPart(peer p2p.ID, part *proptypes.Recove
 
 // clearWants checks the wantState to see if any peers want the given part, if
 // so, it attempts to send them that part.
-func (blockProp *Reactor) clearWants(part *proptypes.RecoveryPart, proof merkle.Proof) {
+func (blockProp *Reactor) clearWants(part *proptypes.RecoveryPart, proof merkle.Proof, parts *proptypes.CombinedPartSet) {
+	// A queued send may outlive its proposal. Keep the identity stable through
+	// the send and peer bookkeeping so old parts cannot hide replacement parts.
+	blockProp.pmtx.Lock()
+	defer blockProp.pmtx.Unlock()
+	if !blockProp.isServing(part.Height, part.Round, parts) {
+		return
+	}
+
 	for _, peer := range blockProp.getPeers() {
 		if peer.WantsPart(part.Height, part.Round, part.Index) {
 			if peer.GetRemainingRequests(part.Height, part.Round) <= 0 {
@@ -663,13 +671,7 @@ func (blockProp *Reactor) clearWants(part *proptypes.RecoveryPart, proof merkle.
 				continue
 			}
 
-			catchup := false
-			blockProp.pmtx.Lock()
-			if part.Height < blockProp.height {
-				catchup = true
-			}
-
-			blockProp.pmtx.Unlock()
+			catchup := part.Height < blockProp.height
 			peer.DecreaseRemainingRequests(part.Height, part.Round, 1)
 			schema.WriteBlockPart(blockProp.traceClient, part.Height, part.Round, part.Index, catchup, string(peer.peer.ID()), schema.Upload)
 		}
