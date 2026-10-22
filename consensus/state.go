@@ -2390,7 +2390,13 @@ func (cs *State) addProposalBlockPart(msg *BlockPartMessage, peerID p2p.ID) (add
 		bz := cs.rs.ProposalBlockParts.GetBytes()
 
 		pbb := new(cmtproto.Block)
-		err = proto.Unmarshal(bz, pbb)
+		// Use committed state, never the proposer's claimed header version:
+		// transaction cardinality must be bounded before protobuf allocates.
+		if cs.state.Version.Consensus.App >= types.BlockTxLimitAppVersion {
+			err = pbb.UnmarshalWithTxLimit(bz, types.MaxBlockTxs)
+		} else {
+			err = proto.Unmarshal(bz, pbb)
+		}
 		if err != nil {
 			cs.Logger.Error(
 				"failed to unmarshal completed proposal block",

@@ -207,9 +207,35 @@ func (bcR *Reactor) GetChannels() []*p2p.ChannelDescriptor {
 			RecvBufferCapacity:  50 * 4096,
 			RecvMessageCapacity: MaxMsgSize,
 			MessageType:         &bcproto.Message{},
-			RecvMessagePrecheck: validateBlockSyncBytes,
+			RecvMessagePrecheck: bcR.validateBlockSyncBytes,
 		},
 	}
+}
+
+// validateBlockSyncBytes rejects transaction cardinality before the generated
+// Block decoder can allocate one slice entry per transaction. The committed app
+// version activates the limit; incoming header fields are attacker controlled,
+// and pre-v11 historical sync must retain its original validity rules.
+func (bcR *Reactor) validateBlockSyncBytes(msgBytes []byte) error {
+	stub, err := scanBlockSyncBytes(msgBytes)
+	if err != nil {
+		return err
+	}
+	if stub.BlockResponse == nil {
+		return nil
+	}
+	if err := validateMaxVotes(stub.BlockResponse); err != nil {
+		return err
+	}
+	block := stub.BlockResponse.Block
+	if block == nil || block.Data == nil || len(block.Data.Txs) <= types.MaxBlockTxs {
+		return nil
+	}
+	state, err := bcR.blockExec.Store().Load()
+	if err != nil {
+		return fmt.Errorf("loading committed state for blocksync transaction limit: %w", err)
+	}
+	return validateMaxBlockTxs(stub.BlockResponse, state.Version.Consensus.App)
 }
 
 // AddPeer implements Reactor by sending our state to peer.

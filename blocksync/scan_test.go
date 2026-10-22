@@ -11,7 +11,11 @@ import (
 	"google.golang.org/protobuf/encoding/protowire"
 
 	bcproto "github.com/cometbft/cometbft/proto/tendermint/blocksync"
+	cmtstate "github.com/cometbft/cometbft/proto/tendermint/state"
 	cmtproto "github.com/cometbft/cometbft/proto/tendermint/types"
+	cmtversion "github.com/cometbft/cometbft/proto/tendermint/version"
+	sm "github.com/cometbft/cometbft/state"
+	smmocks "github.com/cometbft/cometbft/state/mocks"
 	"github.com/cometbft/cometbft/types"
 )
 
@@ -23,6 +27,66 @@ func TestBlocksyncChannelPrecheck(t *testing.T) {
 
 	require.ErrorIs(t, channel.RecvMessagePrecheck(blockResponseBytes(t, types.MaxVotesCount+1, 0)), errTooManySigs)
 	require.NoError(t, channel.RecvMessagePrecheck(blockResponseBytes(t, 10, 0)))
+}
+
+func TestValidateBlockSyncTxLimitActivation(t *testing.T) {
+	for _, version := range []uint64{10, 11} {
+		for _, count := range []int{types.MaxBlockTxs, types.MaxBlockTxs + 1, 100_000} {
+			payload := blockResponseWithTxs(t, count, nil)
+			stub, err := scanBlockSyncBytes(payload)
+			require.NoError(t, err)
+			err = validateMaxBlockTxs(stub.BlockResponse, version)
+			if version >= types.BlockTxLimitAppVersion && count > types.MaxBlockTxs {
+				require.ErrorIs(t, err, errTooManyTxs)
+			} else {
+				require.NoError(t, err)
+			}
+		}
+	}
+}
+
+func TestBlocksyncChannelTxLimitUsesCommittedVersion(t *testing.T) {
+	for _, version := range []uint64{10, 11} {
+		stateStore := &smmocks.Store{}
+		stateStore.On("Load").Return(sm.State{Version: cmtstate.Version{
+			Consensus: cmtversion.Consensus{App: version},
+		}}, nil).Once()
+		blockExec := sm.NewBlockExecutor(stateStore, nil, nil, nil, nil, nil)
+		channel := (&Reactor{blockExec: blockExec}).GetChannels()[0]
+
+		err := channel.RecvMessagePrecheck(blockResponseWithTxs(t, types.MaxBlockTxs+1, nil))
+		if version >= types.BlockTxLimitAppVersion {
+			require.ErrorIs(t, err, errTooManyTxs)
+		} else {
+			require.NoError(t, err, "historical sync must retain pre-v11 decoding")
+		}
+		stateStore.AssertExpectations(t)
+	}
+
+	// Ordinary responses do not add a state-store read to the hot path.
+	stateStore := &smmocks.Store{}
+	blockExec := sm.NewBlockExecutor(stateStore, nil, nil, nil, nil, nil)
+	channel := (&Reactor{blockExec: blockExec}).GetChannels()[0]
+	require.NoError(t, channel.RecvMessagePrecheck(blockResponseWithTxs(t, types.MaxBlockTxs, nil)))
+	stateStore.AssertNotCalled(t, "Load")
+}
+
+func TestValidateBlockSyncTxLimitDuplicateFields(t *testing.T) {
+	half := types.MaxBlockTxs/2 + 1
+	data := mustMarshal(t, &cmtproto.Data{Txs: make([][]byte, half)})
+	dataNum := protoFieldNum(t, cmtproto.Block{}, "Data")
+	blockNum := protoFieldNum(t, bcproto.BlockResponse{}, "Block")
+	responseNum := protoFieldNum(t, bcproto.Message_BlockResponse{}, "BlockResponse")
+
+	for _, payload := range [][]byte{
+		wireField(responseNum, wireField(blockNum, wireField(dataNum, data, data))),
+		wireField(responseNum, wireField(blockNum, wireField(dataNum, data), wireField(dataNum, data))),
+		wireField(responseNum, wireField(blockNum, wireField(dataNum, data)), wireField(blockNum, wireField(dataNum, data))),
+	} {
+		stub, err := scanBlockSyncBytes(payload)
+		require.NoError(t, err)
+		require.ErrorIs(t, validateMaxBlockTxs(stub.BlockResponse, types.BlockTxLimitAppVersion), errTooManyTxs)
+	}
 }
 
 func TestValidateBlockSyncBytes(t *testing.T) {
@@ -156,6 +220,8 @@ func TestSigCountStubFieldNumbersMatchRealProtos(t *testing.T) {
 		{"Message.block_response", bcproto.Message_BlockResponse{}, "BlockResponse", bcproto.SigCountMessage{}, "BlockResponse"},
 		{"BlockResponse.block", bcproto.BlockResponse{}, "Block", bcproto.SigCountBlockResponse{}, "Block"},
 		{"BlockResponse.ext_commit", bcproto.BlockResponse{}, "ExtCommit", bcproto.SigCountBlockResponse{}, "ExtCommit"},
+		{"Block.data", cmtproto.Block{}, "Data", bcproto.SigCountBlock{}, "Data"},
+		{"Data.txs", cmtproto.Data{}, "Txs", bcproto.SigCountData{}, "Txs"},
 		{"Block.last_commit", cmtproto.Block{}, "LastCommit", bcproto.SigCountBlock{}, "LastCommit"},
 		{"Block.evidence", cmtproto.Block{}, "Evidence", bcproto.SigCountBlock{}, "Evidence"},
 		{"EvidenceList.evidence", cmtproto.EvidenceList{}, "Evidence", bcproto.SigCountEvidenceList{}, "Evidence"},
@@ -191,15 +257,23 @@ func TestStubUnmarshalAllocs(t *testing.T) {
 		{"10k ext commit sigs", 0, 10_000},
 		{"100k ext commit sigs", 0, 100_000},
 		{"1m ext commit sigs", 0, 1_000_000},
+		{"1m transactions", 0, 0},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			payload := blockResponseBytes(t, tc.nSigs, tc.nExtSigs)
+			if tc.name == "1m transactions" {
+				payload = blockResponseWithTxs(t, 1_000_000, nil)
+			}
 			allocs := testing.AllocsPerRun(20, func() {
 				var stub bcproto.SigCountMessage
 				require.NoError(t, stub.Unmarshal(payload))
-				require.Len(t, stub.BlockResponse.Block.LastCommit.Signatures, tc.nSigs)
-				require.Len(t, stub.BlockResponse.ExtCommit.ExtendedSignatures, tc.nExtSigs)
+				if tc.name == "1m transactions" {
+					require.Len(t, stub.BlockResponse.Block.Data.Txs, 1_000_000)
+				} else {
+					require.Len(t, stub.BlockResponse.Block.LastCommit.Signatures, tc.nSigs)
+					require.Len(t, stub.BlockResponse.ExtCommit.ExtendedSignatures, tc.nExtSigs)
+				}
 			})
 			const maxAllocs = 50
 			require.LessOrEqualf(t, int(allocs), maxAllocs, "unmarshal allocated %d times (max %d)", int(allocs), maxAllocs)
@@ -232,6 +306,17 @@ func blockResponseBytes(t *testing.T, nSigs, nExtSigs int) []byte {
 	return mustMarshal(t, blockResponseMsg(&bcproto.BlockResponse{
 		Block:     &cmtproto.Block{LastCommit: commitWithSigs(nSigs)},
 		ExtCommit: extCommitWithSigs(nExtSigs),
+	}))
+}
+
+func blockResponseWithTxs(t *testing.T, count int, tx []byte) []byte {
+	t.Helper()
+	txs := make([][]byte, count)
+	for i := range txs {
+		txs[i] = tx
+	}
+	return mustMarshal(t, blockResponseMsg(&bcproto.BlockResponse{
+		Block: &cmtproto.Block{Data: cmtproto.Data{Txs: txs}},
 	}))
 }
 
