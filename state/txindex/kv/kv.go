@@ -113,8 +113,11 @@ func (txi *TxIndex) AddBatch(b *txindex.Batch) error {
 	storeBatch := txi.store.NewBatch()
 	defer storeBatch.Close()
 
+	// written holds the result set for each tx hash earlier in this batch;
+	// Get reads the store and does not see it yet.
+	written := make(map[string]*abci.TxResult, len(b.Ops))
 	for _, result := range b.Ops {
-		err := txi.indexResult(storeBatch, result)
+		err := txi.indexResult(storeBatch, result, written)
 		if err != nil {
 			return err
 		}
@@ -146,7 +149,9 @@ func (txi *TxIndex) Index(result *abci.TxResult) error {
 
 		// if the new transaction failed and it's already indexed in an older block and was successful
 		// we skip it as we want users to get the older successful transaction when they query.
-		if oldResult != nil && oldResult.Result.Code == abci.CodeTypeOK {
+		// A result at the same height and index is the same tx executed again after a rollback,
+		// so it replaces the old one.
+		if oldResult != nil && oldResult.Result.Code == abci.CodeTypeOK && !samePosition(oldResult, result) {
 			return nil
 		}
 	}
@@ -939,6 +944,11 @@ func keyForHeight(result *abci.TxResult) []byte {
 	))
 }
 
+// samePosition reports whether a and b are the tx at the same height and index.
+func samePosition(a, b *abci.TxResult) bool {
+	return a.Height == b.Height && a.Index == b.Index
+}
+
 func startKeyForCondition(c syntax.Condition, height int64) []byte {
 	if height > 0 {
 		return startKey(c.Tag, c.Arg.Value(), height)
@@ -954,7 +964,7 @@ func startKey(fields ...interface{}) []byte {
 	return b.Bytes()
 }
 
-func (txi *TxIndex) indexResult(batch dbm.Batch, result *abci.TxResult) error {
+func (txi *TxIndex) indexResult(batch dbm.Batch, result *abci.TxResult, written map[string]*abci.TxResult) error {
 	hash := types.Tx(result.Tx).Hash()
 
 	rawBytes, err := proto.Marshal(result)
@@ -963,14 +973,19 @@ func (txi *TxIndex) indexResult(batch dbm.Batch, result *abci.TxResult) error {
 	}
 
 	if !result.Result.IsOK() {
-		oldResult, err := txi.Get(hash)
-		if err != nil {
-			return err
+		oldResult, ok := written[string(hash)]
+		if !ok {
+			oldResult, err = txi.Get(hash)
+			if err != nil {
+				return err
+			}
 		}
 
 		// if the new transaction failed and it's already indexed in an older block and was successful
 		// we skip it as we want users to get the older successful transaction when they query.
-		if oldResult != nil && oldResult.Result.Code == abci.CodeTypeOK {
+		// A result at the same height and index is the same tx executed again after a rollback,
+		// so it replaces the old one.
+		if oldResult != nil && oldResult.Result.Code == abci.CodeTypeOK && !samePosition(oldResult, result) {
 			return nil
 		}
 	}
@@ -992,5 +1007,6 @@ func (txi *TxIndex) indexResult(batch dbm.Batch, result *abci.TxResult) error {
 	if err != nil {
 		return err
 	}
+	written[string(hash)] = result
 	return nil
 }
