@@ -471,3 +471,26 @@ func TestBigInt(t *testing.T) {
 		})
 	}
 }
+
+func TestBlockSearchCapsIntersection(t *testing.T) {
+	idx := blockidxkv.New(db.NewMemDB(), blockidxkv.WithMaxSearchResults(2))
+	for i := 1; i <= 10; i++ {
+		recipient := "common"
+		if i == 1 {
+			recipient = "rare"
+		}
+		require.NoError(t, idx.Index(types.EventDataNewBlockEvents{
+			Height: int64(i), Events: []abci.Event{{Type: "transfer", Attributes: []abci.EventAttribute{
+				{Key: "recipient", Value: recipient, Index: true},
+				{Key: "amount", Value: "1", Index: true},
+			}}},
+		}))
+	}
+	for _, condition := range []string{"transfer.amount = 1", "transfer.amount EXISTS", "transfer.amount CONTAINS '1'"} {
+		results, err := idx.Search(context.Background(), query.MustCompile("transfer.recipient = 'rare' AND "+condition))
+		require.NoError(t, err, condition)
+		require.Equal(t, []int64{1}, results, condition)
+	}
+	_, err := idx.Search(context.Background(), query.MustCompile("transfer.amount = 1"))
+	require.ErrorIs(t, err, indexer.ErrTooManyResults, "the first condition must remain bounded")
+}
