@@ -206,10 +206,36 @@ func (bcR *Reactor) GetChannels() []*p2p.ChannelDescriptor {
 			SendQueueCapacity:   1000,
 			RecvBufferCapacity:  50 * 4096,
 			RecvMessageCapacity: MaxMsgSize,
-			MessageType:         &bcproto.Message{},
-			RecvMessagePrecheck: validateBlockSyncBytes,
+			MessageType:         &syncMessage{},
+			RecvMessagePrecheck: bcR.validateBlockSyncBytes,
 		},
 	}
+}
+
+// validateBlockSyncBytes rejects transaction cardinality before the generated
+// Block decoder can allocate one slice entry per transaction. The committed app
+// version activates immediate rejection. Before activation, syncMessage defers
+// oversized responses until their height's version is known from applied state.
+func (bcR *Reactor) validateBlockSyncBytes(msgBytes []byte) error {
+	stub, err := scanBlockSyncBytes(msgBytes)
+	if err != nil {
+		return err
+	}
+	if stub.BlockResponse == nil {
+		return nil
+	}
+	if err := validateMaxVotes(stub.BlockResponse); err != nil {
+		return err
+	}
+	block := stub.BlockResponse.Block
+	if block == nil || block.Data == nil || len(block.Data.Txs) <= types.MaxBlockTxs {
+		return nil
+	}
+	state, err := bcR.blockExec.Store().Load()
+	if err != nil {
+		return fmt.Errorf("loading committed state for blocksync transaction limit: %w", err)
+	}
+	return validateMaxBlockTxs(stub.BlockResponse, state.Version.Consensus.App)
 }
 
 // AddPeer implements Reactor by sending our state to peer.
@@ -275,6 +301,11 @@ func (bcR *Reactor) respondToPeer(msg *bcproto.BlockRequest, src p2p.Peer) (queu
 
 // Receive implements Reactor by handling 4 types of messages (look below).
 func (bcR *Reactor) Receive(e p2p.Envelope) {
+	var raw []byte
+	if deferred, ok := e.Message.(*deferredResponse); ok {
+		raw = deferred.raw
+		e.Message = deferred.BlockResponse
+	}
 	if err := ValidateMsg(e.Message); err != nil {
 		bcR.Logger.Error("Peer sent us invalid msg", "peer", e.Src, "msg", e.Message, "err", err)
 		bcR.Switch.StopPeerForError(e.Src, err, bcR.String())
@@ -306,9 +337,13 @@ func (bcR *Reactor) Receive(e p2p.Envelope) {
 			}
 		}
 
-		schema.WriteBlocksyncBlockReceived(bcR.traceClient, bi.Height, string(e.Src.ID()), msg.Block.Size())
+		blockSize := msg.Block.Size()
+		if len(raw) > 0 {
+			blockSize = len(raw)
+		}
+		schema.WriteBlocksyncBlockReceived(bcR.traceClient, bi.Height, string(e.Src.ID()), blockSize)
 
-		if err := bcR.pool.AddBlock(e.Src.ID(), bi, extCommit, msg.Block.Size()); err != nil {
+		if err := bcR.pool.addBlockResponse(e.Src.ID(), bi, extCommit, blockSize, raw); err != nil {
 			bcR.Logger.Error("failed to add block", "peer", e.Src, "err", err)
 		}
 	case *bcproto.StatusRequest:
@@ -480,7 +515,7 @@ FOR_LOOP:
 			// routine.
 
 			// See if there are any blocks to sync.
-			first, second, extCommit := bcR.pool.PeekTwoBlocks()
+			first, second, extCommit, raw := bcR.pool.peekTwoBlockResponses()
 			if first == nil || second == nil {
 				// we need to have fetched two consecutive blocks in order to
 				// perform blocksync verification
@@ -505,6 +540,20 @@ FOR_LOOP:
 			}
 			// Try again quickly next loop.
 			didProcessCh <- struct{}{}
+
+			// Only the first height has a version determined by applied state.
+			// Keep the second block's transactions encoded during lookahead.
+			var decodeErr error
+			if len(raw) > 0 {
+				first, decodeErr = decodeDeferredBlock(raw, state.Version.Consensus.App)
+			}
+			if decodeErr != nil {
+				peerID := bcR.pool.RemovePeerAndRedoAllPeerRequests(bcR.pool.Height())
+				if peer := bcR.Switch.Peers().Get(peerID); peer != nil {
+					bcR.Switch.StopPeerForError(peer, decodeErr, bcR.String())
+				}
+				continue FOR_LOOP
+			}
 
 			firstParts, err := first.MakePartSet(types.BlockPartSizeBytes)
 			if err != nil {

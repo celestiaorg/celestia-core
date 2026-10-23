@@ -314,12 +314,20 @@ func (pool *BlockPool) anyPeerHasBlocks() bool {
 //
 // The caller will verify the commit.
 func (pool *BlockPool) PeekTwoBlocks() (first, second *types.Block, firstExtCommit *types.ExtendedCommit) {
+	first, second, firstExtCommit, _ = pool.peekTwoBlockResponses()
+	return
+}
+
+// Snapshot the first block and its wire bytes together, so a concurrent peer
+// removal cannot leave a stripped block without its deferred transactions.
+func (pool *BlockPool) peekTwoBlockResponses() (first, second *types.Block, firstExtCommit *types.ExtendedCommit, raw []byte) {
 	pool.mtx.Lock()
 	defer pool.mtx.Unlock()
 
 	if r := pool.requesters[pool.height]; r != nil {
-		first = r.getBlock()
-		firstExtCommit = r.getExtendedCommit()
+		r.mtx.Lock()
+		first, firstExtCommit, raw = r.block, r.extCommit, r.rawBlock
+		r.mtx.Unlock()
 	}
 	if r := pool.requesters[pool.height+1]; r != nil {
 		second = r.getBlock()
@@ -400,7 +408,11 @@ func (pool *BlockPool) RedoRequestFrom(height int64, peerID p2p.ID) {
 // do not add the block and return an error.
 // TODO: ensure that blocks come in order for each peer.
 func (pool *BlockPool) AddBlock(peerID p2p.ID, block *types.Block, extCommit *types.ExtendedCommit, blockSize int) error {
-	err, removePeer := pool.addBlock(peerID, block, extCommit, blockSize)
+	return pool.addBlockResponse(peerID, block, extCommit, blockSize, nil)
+}
+
+func (pool *BlockPool) addBlockResponse(peerID p2p.ID, block *types.Block, extCommit *types.ExtendedCommit, blockSize int, raw []byte) error {
+	err, removePeer := pool.addBlock(peerID, block, extCommit, blockSize, raw)
 
 	// Send the error outside pool.mtx: sendError can block on errorsCh, and
 	// blocking under the lock would deadlock everyone waiting for pool.mtx.
@@ -413,7 +425,7 @@ func (pool *BlockPool) AddBlock(peerID p2p.ID, block *types.Block, extCommit *ty
 // addBlock applies the block under pool.mtx, returning the error to report and
 // whether the peer should be disconnected for it (dispatched by AddBlock() after
 // the lock is released).
-func (pool *BlockPool) addBlock(peerID p2p.ID, block *types.Block, extCommit *types.ExtendedCommit, blockSize int) (err error, removePeer bool) {
+func (pool *BlockPool) addBlock(peerID p2p.ID, block *types.Block, extCommit *types.ExtendedCommit, blockSize int, raw []byte) (err error, removePeer bool) {
 	pool.mtx.Lock()
 	defer pool.mtx.Unlock()
 
@@ -436,7 +448,7 @@ func (pool *BlockPool) addBlock(peerID p2p.ID, block *types.Block, extCommit *ty
 		return fmt.Errorf("got an already committed block #%d (possibly from the slow peer %s)", block.Height, peerID), false
 	}
 
-	blockSet, err := requester.setBlock(block, extCommit, peerID)
+	blockSet, err := requester.setBlock(block, extCommit, peerID, raw)
 	if err != nil {
 		// Check if this peer was recently banned. If so, this is likely a race condition
 		// where the block arrived after the peer was banned and reset from the requester.
@@ -818,6 +830,7 @@ type bpRequester struct {
 	mtx          cmtsync.Mutex
 	gotBlockFrom p2p.ID
 	block        *types.Block
+	rawBlock     []byte // oversized response; transactions decoded only at pool.height
 	extCommit    *types.ExtendedCommit
 }
 
@@ -842,7 +855,7 @@ func (bpr *bpRequester) OnStart() error {
 }
 
 // Returns true if the peer(s) match and block doesn't already exist.
-func (bpr *bpRequester) setBlock(block *types.Block, extCommit *types.ExtendedCommit, peerID p2p.ID) (bool, error) {
+func (bpr *bpRequester) setBlock(block *types.Block, extCommit *types.ExtendedCommit, peerID p2p.ID, raw []byte) (bool, error) {
 	bpr.mtx.Lock()
 	_, isRequested := bpr.requestedFromPeers[peerID]
 	if !isRequested {
@@ -858,6 +871,7 @@ func (bpr *bpRequester) setBlock(block *types.Block, extCommit *types.ExtendedCo
 	}
 
 	bpr.block = block
+	bpr.rawBlock = raw
 	bpr.extCommit = extCommit
 	bpr.gotBlockFrom = peerID
 	bpr.mtx.Unlock()
@@ -875,13 +889,6 @@ func (bpr *bpRequester) getBlock() *types.Block {
 	return bpr.block
 }
 
-func (bpr *bpRequester) getExtendedCommit() *types.ExtendedCommit {
-	bpr.mtx.Lock()
-	defer bpr.mtx.Unlock()
-	return bpr.extCommit
-}
-
-// Returns true if we've requested a block from the given peer.
 func (bpr *bpRequester) didRequestFrom(peerID p2p.ID) bool {
 	bpr.mtx.Lock()
 	defer bpr.mtx.Unlock()
@@ -910,6 +917,7 @@ func (bpr *bpRequester) resetAll() p2p.ID {
 func (bpr *bpRequester) tryRemoveBlock(peerID p2p.ID) bool {
 	if bpr.gotBlockFrom == peerID {
 		bpr.block = nil
+		bpr.rawBlock = nil
 		bpr.extCommit = nil
 		bpr.gotBlockFrom = ""
 		atomic.AddInt32(&bpr.pool.numPending, 1)

@@ -981,3 +981,28 @@ func TestWrappedTxIndex(t *testing.T) {
 	require.NoError(t, err)
 	assert.True(t, proto.Equal(txResult, loadedTxResult))
 }
+
+func TestTxSearchCapsIntersection(t *testing.T) {
+	txi := NewTxIndex(db.NewMemDB(), WithMaxSearchResults(2))
+	for i := 1; i <= 10; i++ {
+		recipient := "common"
+		if i == 1 {
+			recipient = "rare"
+		}
+		require.NoError(t, txi.Index(&abci.TxResult{
+			Height: int64(i), Tx: types.Tx(fmt.Sprintf("tx%d", i)),
+			Result: abci.ExecTxResult{Events: []abci.Event{{Type: "transfer", Attributes: []abci.EventAttribute{
+				{Key: "recipient", Value: recipient, Index: true},
+				{Key: "amount", Value: "1", Index: true},
+			}}}},
+		}))
+	}
+	for _, condition := range []string{"transfer.amount = 1", "transfer.amount EXISTS", "transfer.amount CONTAINS '1'"} {
+		results, err := txi.Search(context.Background(), query.MustCompile("transfer.recipient = 'rare' AND "+condition))
+		require.NoError(t, err, condition)
+		require.Len(t, results, 1, condition)
+		require.EqualValues(t, 1, results[0].Height)
+	}
+	_, err := txi.Search(context.Background(), query.MustCompile("transfer.amount = 1"))
+	require.ErrorIs(t, err, indexer.ErrTooManyResults, "the first condition must remain bounded")
+}

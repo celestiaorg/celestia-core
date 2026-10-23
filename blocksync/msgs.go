@@ -29,22 +29,39 @@ const maxEvidenceSigs = types.MaxVotesCount * 100
 var errTooManySigs = fmt.Errorf("too many signatures (max: %d)", types.MaxVotesCount)
 var errTooManyExtendedsigs = fmt.Errorf("too many extended signatures (max: %d)", types.MaxVotesCount)
 var errTooManyEvidenceSigs = fmt.Errorf("too many evidence signatures (max: %d)", maxEvidenceSigs)
+var errTooManyTxs = fmt.Errorf("too many transactions (max: %d)", types.MaxBlockTxs)
 
 // validateBlockSyncBytes rejects block responses that encode too many commit
 // signatures before protobuf unmarshalling can allocate one object per signature.
 func validateBlockSyncBytes(msgBytes []byte) error {
+	stub, err := scanBlockSyncBytes(msgBytes)
+	if err != nil {
+		return err
+	}
+	if stub.BlockResponse == nil {
+		return nil
+	}
+	return validateMaxVotes(stub.BlockResponse)
+}
+
+func scanBlockSyncBytes(msgBytes []byte) (*bcproto.SigCountMessage, error) {
 	// unmarshal into custom stub struct that will do no allocations so we can
 	// quickly and cheaply check the validity of BlockResponse message
 	var stub bcproto.SigCountMessage
 	if err := stub.Unmarshal(msgBytes); err != nil {
-		return fmt.Errorf("malformed blocksync message %w", err)
+		return nil, fmt.Errorf("malformed blocksync message %w", err)
 	}
-	if stub.BlockResponse == nil {
-		// Not a BlockResponse oneof case, no extra validation to do in this
-		// case
+	return &stub, nil
+}
+
+func validateMaxBlockTxs(br *bcproto.SigCountBlockResponse, appVersion uint64) error {
+	if appVersion < types.BlockTxLimitAppVersion || br == nil || br.Block == nil || br.Block.Data == nil {
 		return nil
 	}
-	return validateMaxVotes(stub.BlockResponse)
+	if count := len(br.Block.Data.Txs); count > types.MaxBlockTxs {
+		return fmt.Errorf("%w (got %d)", errTooManyTxs, count)
+	}
+	return nil
 }
 
 // validateMaxVotes validates that the number of commit signatures and extended
