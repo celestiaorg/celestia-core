@@ -660,6 +660,41 @@ func TestTxIndexDuplicatePreviouslySuccessful(t *testing.T) {
 	}
 }
 
+// TestTxIndexDuplicateInBatch indexes a block where the same tx succeeds and then
+// fails as a duplicate, and checks that the successful result is kept.
+func TestTxIndexDuplicateInBatch(t *testing.T) {
+	mockTx := types.Tx("MOCK_TX_HASH")
+	result := func(index uint32, code uint32) *abci.TxResult {
+		return &abci.TxResult{Height: 2, Index: index, Tx: mockTx, Result: abci.ExecTxResult{Code: code}}
+	}
+
+	testCases := []struct {
+		name   string
+		stored *abci.TxResult // indexed before the batch, e.g. before a rollback
+	}{
+		{"nothing indexed before", nil},
+		{"the duplicate succeeded before a rollback", result(1, abci.CodeTypeOK)},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			indexer := NewTxIndex(db.NewMemDB())
+			if tc.stored != nil {
+				require.NoError(t, indexer.Index(tc.stored))
+			}
+
+			batch := txindex.NewBatch(2)
+			require.NoError(t, batch.Add(result(0, abci.CodeTypeOK)))
+			require.NoError(t, batch.Add(result(1, abci.CodeTypeOK+1)))
+			require.NoError(t, indexer.AddBatch(batch))
+
+			res, err := indexer.Get(mockTx.Hash())
+			require.NoError(t, err)
+			require.Equal(t, result(0, abci.CodeTypeOK), res)
+		})
+	}
+}
+
 func TestTxSearchMultipleTxs(t *testing.T) {
 	indexer := NewTxIndex(db.NewMemDB())
 
