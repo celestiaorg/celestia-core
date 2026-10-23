@@ -627,8 +627,16 @@ func (blockProp *Reactor) handleRecoveryPart(peer p2p.ID, part *proptypes.Recove
 func (blockProp *Reactor) clearWants(part *proptypes.RecoveryPart, proof merkle.Proof, parts *proptypes.CombinedPartSet) {
 	// A queued send may outlive its proposal. Keep the identity stable through
 	// the send and peer bookkeeping so old parts cannot hide replacement parts.
+	// Trace writes can block, so they happen after pmtx is released.
+	var uploaded []p2p.ID
 	blockProp.pmtx.Lock()
-	defer blockProp.pmtx.Unlock()
+	catchup := part.Height < blockProp.height
+	defer func() {
+		blockProp.pmtx.Unlock()
+		for _, id := range uploaded {
+			schema.WriteBlockPart(blockProp.traceClient, part.Height, part.Round, part.Index, catchup, string(id), schema.Upload)
+		}
+	}()
 	if !blockProp.isServing(part.Height, part.Round, parts) {
 		return
 	}
@@ -671,9 +679,8 @@ func (blockProp *Reactor) clearWants(part *proptypes.RecoveryPart, proof merkle.
 				continue
 			}
 
-			catchup := part.Height < blockProp.height
 			peer.DecreaseRemainingRequests(part.Height, part.Round, 1)
-			schema.WriteBlockPart(blockProp.traceClient, part.Height, part.Round, part.Index, catchup, string(peer.peer.ID()), schema.Upload)
+			uploaded = append(uploaded, peer.peer.ID())
 		}
 	}
 }
