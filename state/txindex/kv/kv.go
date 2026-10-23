@@ -424,8 +424,14 @@ func lookForHash(conditions []syntax.Condition) (hash []byte, ok bool, err error
 	return
 }
 
-func (txi *TxIndex) setTmpHashes(tmpHeights map[string]txRef, key, value []byte) {
+func (txi *TxIndex) setTmpHashes(tmpHeights map[string]txRef, key, value []byte, filteredHashes map[string]txRef, firstRun bool) {
 	eventSeq := extractEventSeqFromKey(key)
+	resultKey := string(value) + eventSeq
+	if !firstRun {
+		if _, ok := filteredHashes[resultKey]; !ok {
+			return
+		}
+	}
 
 	// Copy the value because the iterator will be reused.
 	valueCopy := make([]byte, len(value))
@@ -449,7 +455,7 @@ func (txi *TxIndex) setTmpHashes(tmpHeights map[string]txRef, key, value []byte)
 		}
 	}
 
-	tmpHeights[string(valueCopy)+eventSeq] = ref
+	tmpHeights[resultKey] = ref
 }
 
 // match returns all matching txs by hash that meet a given condition and start
@@ -500,7 +506,7 @@ func (txi *TxIndex) match(
 			if !withinBounds {
 				continue
 			}
-			txi.setTmpHashes(tmpHashes, key, it.Value())
+			txi.setTmpHashes(tmpHashes, key, it.Value(), filteredHashes, firstRun)
 			// Potentially exit early.
 			select {
 			case <-ctx.Done():
@@ -540,7 +546,7 @@ func (txi *TxIndex) match(
 			if !withinBounds {
 				continue
 			}
-			txi.setTmpHashes(tmpHashes, key, it.Value())
+			txi.setTmpHashes(tmpHashes, key, it.Value(), filteredHashes, firstRun)
 
 			// Potentially exit early.
 			select {
@@ -587,7 +593,7 @@ func (txi *TxIndex) match(
 				if !withinBounds {
 					continue
 				}
-				txi.setTmpHashes(tmpHashes, key, it.Value())
+				txi.setTmpHashes(tmpHashes, key, it.Value(), filteredHashes, firstRun)
 			}
 
 			// Potentially exit early.
@@ -712,7 +718,7 @@ LOOP:
 			if err != nil {
 				txi.log.Error("failed to parse bounds:", err)
 			} else if withinBounds {
-				txi.setTmpHashes(tmpHashes, key, it.Value())
+				txi.setTmpHashes(tmpHashes, key, it.Value(), filteredHashes, firstRun)
 			}
 
 			// XXX: passing time in a ABCI Events is not yet implemented
