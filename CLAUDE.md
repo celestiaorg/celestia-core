@@ -5,7 +5,7 @@
 Celestia-core is a fork of CometBFT (formerly Tendermint) — a BFT consensus engine — with Celestia-specific modifications for data availability. The Go module path is `github.com/cometbft/cometbft`. It maintains minimal divergence from upstream CometBFT.
 
 **Active branches:**
-- `main`: Development for celestia-app
+- `main`: Development for the next celestia-app major version (`v11.x`); will be cut as `v0.43.x`
 - `v0.42.x`: Current release line, used by celestia-app `v10.x` (no `-celestia` suffix)
 - `v0.40.x`: Used by celestia-app `v9.x` (no `-celestia` suffix)
 - `v0.39.x-celestia`: Used by celestia-app `v6.x` through `v8.x`

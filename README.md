@@ -85,8 +85,11 @@ make proto-gen
 
 `main` is the canonical branch for development. Most PRs should target `main` and optionally be backported to a release branch.
 
+`main` is the development line for the next celestia-app major version. The next `v0.X.x` release branch is cut from `main` for it, so `main` will become `v0.43.x` for celestia-app `v11.x`. Changes intended only for an upcoming celestia-app version, such as behavior gated on a new app version, belong on `main`. Release branches only take backports of fixes that also apply to the celestia-app versions they serve.
+
 | Branch             | Based on CometBFT | Release format          | Used by celestia-app  |
 | ------------------ | ----------------- | ----------------------- | --------------------- |
+| `main`             | `v0.38.x`         | `v0.43.0` (unreleased)  | `v11.x` (`main`)      |
 | `v0.42.x`          | `v0.38.x`         | `v0.42.0`               | `v10.x`               |
 | `v0.40.x`          | `v0.38.x`         | `v0.40.0`               | `v9.x`                |
 | `v0.39.x-celestia` | `v0.38.x`         | `v0.39.0`               | `v6.x` through `v8.x` |
@@ -94,6 +97,8 @@ make proto-gen
 | `v0.34.x-celestia` | `v0.34.x`         | `v1.52.1-tm-v0.34.35`   | `v1.x` through `v3.x` |
 
 Branches cut from `main` after `v0.39.x-celestia` have no `-celestia` suffix. Newer celestia-app versions still depend on `v0.34.x-celestia` to multiplex ABCI v1 requests, via a `github.com/tendermint/tendermint` replace directive.
+
+Until the next release branch is cut, celestia-app `main` may temporarily pin a release from the previous branch (for example a `v0.42.x` release).
 
 The `replace` directives in [celestia-app's `go.mod`](https://github.com/celestiaorg/celestia-app/blob/main/go.mod) are the source of truth for which celestia-core version a given celestia-app branch consumes.
 
