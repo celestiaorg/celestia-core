@@ -146,7 +146,9 @@ func (txi *TxIndex) Index(result *abci.TxResult) error {
 
 		// if the new transaction failed and it's already indexed in an older block and was successful
 		// we skip it as we want users to get the older successful transaction when they query.
-		if oldResult != nil && oldResult.Result.Code == abci.CodeTypeOK {
+		// A result at the same height and index is the same tx executed again after a rollback,
+		// so it replaces the old one.
+		if oldResult != nil && oldResult.Result.Code == abci.CodeTypeOK && !samePosition(oldResult, result) {
 			return nil
 		}
 	}
@@ -939,6 +941,11 @@ func keyForHeight(result *abci.TxResult) []byte {
 	))
 }
 
+// samePosition reports whether a and b are the tx at the same height and index.
+func samePosition(a, b *abci.TxResult) bool {
+	return a.Height == b.Height && a.Index == b.Index
+}
+
 func startKeyForCondition(c syntax.Condition, height int64) []byte {
 	if height > 0 {
 		return startKey(c.Tag, c.Arg.Value(), height)
@@ -970,7 +977,9 @@ func (txi *TxIndex) indexResult(batch dbm.Batch, result *abci.TxResult) error {
 
 		// if the new transaction failed and it's already indexed in an older block and was successful
 		// we skip it as we want users to get the older successful transaction when they query.
-		if oldResult != nil && oldResult.Result.Code == abci.CodeTypeOK {
+		// A result at the same height and index is the same tx executed again after a rollback,
+		// so it replaces the old one.
+		if oldResult != nil && oldResult.Result.Code == abci.CodeTypeOK && !samePosition(oldResult, result) {
 			return nil
 		}
 	}

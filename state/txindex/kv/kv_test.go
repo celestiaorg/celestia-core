@@ -580,31 +580,83 @@ func TestTxIndexDuplicatePreviouslySuccessful(t *testing.T) {
 			},
 			true,
 		},
+		{
+			"overwrite as the failed tx is the same tx executed again after a rollback",
+			&abci.TxResult{
+				Height: 2,
+				Index:  0,
+				Tx:     mockTx,
+				Result: abci.ExecTxResult{
+					Code: abci.CodeTypeOK,
+				},
+			},
+			&abci.TxResult{
+				Height: 2,
+				Index:  0,
+				Tx:     mockTx,
+				Result: abci.ExecTxResult{
+					Code: abci.CodeTypeOK + 1,
+				},
+			},
+			true,
+		},
+		{
+			"don't overwrite as the failed tx is a duplicate later in the same block",
+			&abci.TxResult{
+				Height: 2,
+				Index:  0,
+				Tx:     mockTx,
+				Result: abci.ExecTxResult{
+					Code: abci.CodeTypeOK,
+				},
+			},
+			&abci.TxResult{
+				Height: 2,
+				Index:  1,
+				Tx:     mockTx,
+				Result: abci.ExecTxResult{
+					Code: abci.CodeTypeOK + 1,
+				},
+			},
+			false,
+		},
 	}
 
 	hash := mockTx.Hash()
 
 	for _, tc := range testCases {
-		t.Run(tc.name, func(t *testing.T) {
-			indexer := NewTxIndex(db.NewMemDB())
+		for _, batched := range []bool{false, true} {
+			t.Run(fmt.Sprintf("%s/batched=%t", tc.name, batched), func(t *testing.T) {
+				indexer := NewTxIndex(db.NewMemDB())
 
-			// index the first tx
-			err := indexer.Index(tc.tx1)
-			require.NoError(t, err)
+				// index the first tx
+				err := indexer.Index(tc.tx1)
+				require.NoError(t, err)
 
-			// index the same tx with different results
-			err = indexer.Index(tc.tx2)
-			require.NoError(t, err)
+				// index the same tx with different results
+				if batched {
+					batch := txindex.NewBatch(int64(tc.tx2.Index) + 1)
+					if tc.tx2.Index > 0 {
+						// tx1 is earlier in the same block, so it is in the batch too.
+						require.NoError(t, batch.Add(tc.tx1))
+					}
+					require.NoError(t, batch.Add(tc.tx2))
+					err = indexer.AddBatch(batch)
+				} else {
+					err = indexer.Index(tc.tx2)
+				}
+				require.NoError(t, err)
 
-			res, err := indexer.Get(hash)
-			require.NoError(t, err)
+				res, err := indexer.Get(hash)
+				require.NoError(t, err)
 
-			if tc.expOverwrite {
-				require.Equal(t, tc.tx2, res)
-			} else {
-				require.Equal(t, tc.tx1, res)
-			}
-		})
+				if tc.expOverwrite {
+					require.Equal(t, tc.tx2, res)
+				} else {
+					require.Equal(t, tc.tx1, res)
+				}
+			})
+		}
 	}
 }
 
