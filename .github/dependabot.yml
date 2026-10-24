@@ -1,6 +1,8 @@
 version: 2
 # Titles must carry a review level tag (see README.md#contributing). The trailing
 # space in each prefix stops Dependabot from appending a colon after the tag.
+# Do not set target-branch: Dependabot then ignores these settings (prefix,
+# labels) for security-update PRs, which fail the PR title check as a result.
 updates:
   # GitHub Actions configurations
   - package-ecosystem: github-actions
@@ -11,7 +13,6 @@ updates:
       interval: weekly
     cooldown:
       default-days: 7
-    target-branch: "main"
     open-pull-requests-limit: 10
     labels:
       - dependencies
@@ -26,7 +27,6 @@ updates:
       interval: weekly
     cooldown:
       default-days: 7
-    target-branch: "main"
     open-pull-requests-limit: 10
     labels:
       - dependencies
