@@ -753,6 +753,10 @@ type P2PConfig struct {
 	// Time to wait before flushing messages out on the connection
 	FlushThrottleTimeout time.Duration `mapstructure:"flush_throttle_timeout"`
 
+	// Flush as soon as a whole message is written instead of waiting for the
+	// flush throttle
+	FlushOnMessageEnd bool `mapstructure:"flush_on_message_end"`
+
 	// Maximum size of a message packet payload, in bytes
 	MaxPacketMsgPayloadSize int `mapstructure:"max_packet_msg_payload_size"`
 
@@ -801,6 +805,7 @@ func DefaultP2PConfig() *P2PConfig {
 		MaxNumOutboundPeers:          10,
 		PersistentPeersMaxDialPeriod: 0 * time.Second,
 		FlushThrottleTimeout:         100 * time.Millisecond,
+		FlushOnMessageEnd:            true,
 		MaxPacketMsgPayloadSize:      1024,    // 1 kB
 		SendRate:                     5120000, // 5 mB/s
 		RecvRate:                     5120000, // 5 mB/s
