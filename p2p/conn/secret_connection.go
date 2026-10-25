@@ -172,8 +172,14 @@ func MakeSecretConnection(conn io.ReadWriteCloser, locPrivKey crypto.PrivKey) (*
 	}
 
 	remPubKey, remSignature := authSigMsg.Key, authSigMsg.Sig
-	if _, ok := remPubKey.(ed25519.PubKey); !ok {
+	remoteEd25519, ok := remPubKey.(ed25519.PubKey)
+	if !ok {
 		return nil, fmt.Errorf("expected ed25519 pubkey, got %T", remPubKey)
+	}
+	// ZIP-215 signature verification alone does not establish ownership of a
+	// weak key. Check the key before granting it a peer identity.
+	if err := remoteEd25519.ValidateAuthorityKey(); err != nil {
+		return nil, fmt.Errorf("invalid remote authentication key: %w", err)
 	}
 	if !remPubKey.VerifySignature(challenge[:], remSignature) {
 		return nil, errors.New("challenge verification failed")
