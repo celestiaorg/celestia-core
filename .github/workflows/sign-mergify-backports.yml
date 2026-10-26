@@ -55,4 +55,4 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.BACKPORT_SIGNING_TOKEN }}
           PR: ${{ inputs.pr }}
-        run: python3 .github/scripts/sign-mergify-backports.py ${PR}
+        run: python3 .github/scripts/sign-mergify-backports.py ${PR:+"$PR"}
