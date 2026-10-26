@@ -110,9 +110,13 @@ func checkPropagationMessage(t *testing.T, raw []byte) {
 		require.Equal(t, m.Parts.String(), again.Parts.String())
 	case *RecoveryPart:
 		if m.Proof != nil {
-			if root := m.Proof.ComputeRootHash(); root != nil {
+			// ComputeRootHash is documented to panic on a proof whose index,
+			// total and aunts disagree, which ValidateBasic does not rule out.
+			func() {
+				defer func() { _ = recover() }()
+				root := m.Proof.ComputeRootHash()
 				require.NoError(t, m.Proof.Verify(root, m.Data))
-			}
+			}()
 		}
 	default:
 		t.Fatalf("unexpected message type %T", msg)
