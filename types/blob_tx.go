@@ -1,6 +1,8 @@
 package types
 
 import (
+	"bytes"
+
 	"github.com/celestiaorg/go-square/v4/share"
 	squaretx "github.com/celestiaorg/go-square/v4/tx"
 	"google.golang.org/protobuf/encoding/protowire"
@@ -17,7 +19,13 @@ const BlobTxValidationAppVersion uint64 = 11
 // tx and false if tx is not a BlobTx under the rules for appVersion.
 func UnwrapBlobTx(tx Tx, appVersion uint64) (Tx, bool) {
 	if appVersion < BlobTxValidationAppVersion {
-		return unwrapLegacyBlobTx(tx)
+		inner, isBlobTx := unwrapLegacyBlobTx(tx)
+		if !isBlobTx {
+			return tx, false
+		}
+		// Copy so callers that keep the inner tx, such as queued tx events,
+		// do not keep the blobs alive.
+		return bytes.Clone(inner), true
 	}
 	bTx, isBlob, err := squaretx.UnmarshalBlobTx(tx)
 	if !isBlob || err != nil {
