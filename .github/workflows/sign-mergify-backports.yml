@@ -6,9 +6,9 @@ name: sign-mergify-backports
 # default branch because backport PRs target release branches, which would each
 # need a copy of a pull_request workflow.
 #
-# BACKPORT_SIGNING_TOKEN must be a token whose pushes trigger CI (a GitHub App
-# installation token or a personal access token, not GITHUB_TOKEN) with
-# Contents: write on this repository, and Workflows: write if backports may
+# BACKPORT_SIGNING_TOKEN must be a fine-grained personal access token, not
+# GITHUB_TOKEN, whose pushes do not trigger CI. It needs Contents: write and
+# Pull requests: read on this repository, and Workflows: write if backports may
 # touch .github/workflows. The replayed commits are authored by its owner, with
 # the original author kept as a Co-authored-by trailer.
 on:
