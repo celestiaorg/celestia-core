@@ -230,7 +230,7 @@ func TestReactorSendsTxAfterReceivingWantTx(t *testing.T) {
 	msgWant := &protomem.WantTx{TxKey: key[:]}
 
 	peer := genPeer()
-	peer.On("Send", txEnvelope).Return(true)
+	peer.On("TrySend", txEnvelope).Return(true)
 
 	// add the transaction to the nodes pool. It's not connected to
 	// any peers so it shouldn't broadcast anything yet
@@ -300,7 +300,7 @@ func TestReactorBroadcastsSeenTxAfterReceivingTx(t *testing.T) {
 		ChannelID: MempoolDataChannel,
 		Message:   seenMsg,
 	}
-	peers[1].On("Send", env).Return(true)
+	peers[1].On("TrySend", env).Return(true)
 
 	_, err := reactor.InitPeer(peers[0])
 	require.NoError(t, err)
@@ -1105,7 +1105,7 @@ func TestReactorRequestsQueuedTxAfterSequenceBecomesAvailable(t *testing.T) {
 	sourcePeer := genPeer()
 	_, err = reactor.InitPeer(sourcePeer)
 	require.NoError(t, err)
-	sourcePeer.On("Send", mock.Anything).Return(true).Maybe()
+	sourcePeer.On("TrySend", matchDataChannel).Return(true).Maybe()
 
 	targetTx := newDefaultTx("future-tx")
 	targetKey := targetTx.Key()
@@ -1135,7 +1135,7 @@ func TestReactorRequestsQueuedTxAfterSequenceBecomesAvailable(t *testing.T) {
 	providerPeer := genPeer()
 	_, err = reactor.InitPeer(providerPeer)
 	require.NoError(t, err)
-	providerPeer.On("Send", mock.Anything).Return(true).Maybe()
+	providerPeer.On("TrySend", matchDataChannel).Return(true).Maybe()
 
 	app.SetSequence(string(signer), 2)
 
@@ -1172,7 +1172,7 @@ func TestPendingSeenClearedWhenTxArrives(t *testing.T) {
 	sourcePeer := genPeer()
 	_, err = reactor.InitPeer(sourcePeer)
 	require.NoError(t, err)
-	sourcePeer.On("Send", mock.Anything).Return(true).Maybe()
+	sourcePeer.On("TrySend", matchDataChannel).Return(true).Maybe()
 
 	targetTx := newDefaultTx("future-tx")
 	targetKey := targetTx.Key()
@@ -1192,7 +1192,7 @@ func TestPendingSeenClearedWhenTxArrives(t *testing.T) {
 	providerPeer := genPeer()
 	_, err = reactor.InitPeer(providerPeer)
 	require.NoError(t, err)
-	providerPeer.On("Send", mock.Anything).Return(true).Maybe()
+	providerPeer.On("TrySend", matchDataChannel).Return(true).Maybe()
 
 	requestTxFromPeer(t, reactor, providerPeer, targetKey)
 	reactor.Receive(p2p.Envelope{
@@ -1259,7 +1259,7 @@ func TestPendingSeenDroppedWhenSequenceAdvances(t *testing.T) {
 	_, err = reactor.InitPeer(sourcePeer)
 	require.NoError(t, err)
 	sourcePeer.On("TrySend", mock.Anything).Return(true).Maybe()
-	sourcePeer.On("Send", mock.Anything).Return(true).Maybe()
+	sourcePeer.On("TrySend", matchDataChannel).Return(true).Maybe()
 
 	targetTx := newDefaultTx("future-tx")
 	targetKey := targetTx.Key()
@@ -1405,7 +1405,7 @@ func TestProcessPendingSeenForSignerSkipsAlreadyInMempool(t *testing.T) {
 	peer := genPeer()
 	_, err = reactor.InitPeer(peer)
 	require.NoError(t, err)
-	peer.On("Send", mock.Anything).Return(true).Maybe()
+	peer.On("TrySend", matchDataChannel).Return(true).Maybe()
 
 	// Add tx for sequence 5 to mempool first
 	tx5 := newDefaultTx("tx-5")
@@ -2192,7 +2192,7 @@ func newPlannedPeer(p plannedPeer) *mocks.Peer {
 	peer.On("ID").Return(p.id)
 	peer.On("Get", types.PeerStateKey).Return(nil).Maybe()
 	peer.On("IsPersistent").Return(p.persistent).Maybe()
-	peer.On("Send", mock.Anything).Return(true).Maybe()
+	peer.On("TrySend", matchDataChannel).Return(true).Maybe()
 	return peer
 }
 
@@ -2218,12 +2218,12 @@ func stickyTestReactor(t *testing.T, opts *ReactorOptions, plans []plannedPeer) 
 	return reactor, mockPeers
 }
 
-// sendRecipientIDs returns the set of peer IDs whose Send mock was invoked.
+// sendRecipientIDs returns the set of peer IDs whose TrySend mock was invoked.
 func sendRecipientIDs(peers []*mocks.Peer) map[p2p.ID]bool {
 	recipients := make(map[p2p.ID]bool)
 	for _, p := range peers {
 		for _, c := range p.Calls {
-			if c.Method == "Send" {
+			if c.Method == "TrySend" {
 				recipients[p.ID()] = true
 				break
 			}
@@ -2368,3 +2368,6 @@ func TestBroadcastSeenTxDeterministicPersistentSelection(t *testing.T) {
 	require.Equal(t, rec1, rec2, "persistent peer selection must be deterministic across reactors")
 	require.Len(t, rec1, maxSeenTxBroadcast+maxPersistent)
 }
+
+// matchDataChannel matches any envelope sent on the mempool data channel.
+var matchDataChannel = mock.MatchedBy(func(e p2p.Envelope) bool { return e.ChannelID == MempoolDataChannel })

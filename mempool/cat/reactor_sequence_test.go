@@ -419,7 +419,6 @@ func TestReactorPendingQueueSorting(t *testing.T) {
 		_, err := reactor.InitPeer(peer)
 		require.NoError(t, err)
 		peer.On("TrySend", matchAny).Return(true).Maybe()
-		peer.On("Send", matchAny).Return(true).Maybe()
 	}
 
 	// Send SeenTx messages out of order: sequences 10, 5, 15, 2, 8
@@ -474,7 +473,6 @@ func TestReactorSingleOutstandingRequestPerSigner(t *testing.T) {
 	require.NoError(t, err)
 
 	peer.On("TrySend", matchAny).Return(true).Maybe()
-	peer.On("Send", matchAny).Return(true).Maybe()
 
 	// Send multiple SeenTx messages with different sequences
 	txs := make([]types.Tx, 10)

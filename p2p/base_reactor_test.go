@@ -6,6 +6,7 @@ import (
 	"errors"
 	"net"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -433,4 +434,83 @@ func TestBaseReactorRecvMessagePrecheck(t *testing.T) {
 	// Only the allowed message reached Receive; the rejected one was dropped
 	// before unmarshalling.
 	require.Equal(t, []string{"allow me"}, r.received)
+}
+
+var _ p2p.Reactor = &stalledReactor{}
+
+// stalledReactor blocks in Receive until unblock is closed.
+type stalledReactor struct {
+	p2p.BaseReactor
+
+	started  chan struct{}
+	unblock  chan struct{}
+	received atomic.Int32
+}
+
+func newStalledReactor() *stalledReactor {
+	r := &stalledReactor{started: make(chan struct{}, 1), unblock: make(chan struct{})}
+	r.BaseReactor = *p2p.NewBaseReactor("StalledReactor", r,
+		p2p.WithIncomingQueueSize(1),
+		p2p.WithQueueingFunc(r.TryQueueUnprocessedEnvelope),
+	)
+	return r
+}
+
+func (r *stalledReactor) GetChannels() []*conn.ChannelDescriptor {
+	return []*conn.ChannelDescriptor{
+		{
+			ID:                  0x78,
+			Priority:            1,
+			RecvMessageCapacity: 1024,
+			MessageType:         &mempool.Txs{},
+		},
+	}
+}
+
+func (r *stalledReactor) Receive(p2p.Envelope) {
+	select {
+	case r.started <- struct{}{}:
+	default:
+	}
+	<-r.unblock
+	r.received.Add(1)
+}
+
+// TestBaseReactorWithQueueingFunc verifies that QueueUnprocessedEnvelope uses
+// the queueing function set via WithQueueingFunc: with a non-blocking queueing
+// function, a stalled processor and a full queue cause messages to be dropped
+// instead of blocking the caller (the peer's receive routine).
+func TestBaseReactorWithQueueingFunc(t *testing.T) {
+	r := newStalledReactor()
+	peer := &imaginaryPeer{}
+	msg, err := proto.Marshal(&mempool.Txs{Txs: [][]byte{[]byte("tx")}})
+	require.NoError(t, err)
+	env := p2p.UnprocessedEnvelope{Src: peer, Message: msg, ChannelID: 0x78}
+
+	// The first message stalls the processor.
+	r.QueueUnprocessedEnvelope(env)
+	select {
+	case <-r.started:
+	case <-time.After(time.Second):
+		t.Fatal("processor did not start processing the first message")
+	}
+
+	// The second message fills the queue; the third must be dropped without
+	// blocking.
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		r.QueueUnprocessedEnvelope(env)
+		r.QueueUnprocessedEnvelope(env)
+	}()
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("QueueUnprocessedEnvelope blocked on a full queue")
+	}
+
+	close(r.unblock)
+	require.Eventually(t, func() bool { return r.received.Load() == 2 }, time.Second, 10*time.Millisecond)
+	time.Sleep(50 * time.Millisecond)
+	require.EqualValues(t, 2, r.received.Load())
 }
