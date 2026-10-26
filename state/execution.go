@@ -445,7 +445,7 @@ func (blockExec *BlockExecutor) applyBlock(state State, blockID types.BlockID, b
 
 	// Events are fired after everything else.
 	// NOTE: if we crash between Commit and Save, events wont be fired during replay
-	fireEvents(blockExec.logger, blockExec.eventBus, block, blockID, abciResponse, validatorUpdates, state.Validators, lastCommit)
+	fireEvents(blockExec.logger, blockExec.eventBus, block, txs, blockID, abciResponse, validatorUpdates, state.Validators, lastCommit)
 
 	return state, nil
 }
@@ -799,12 +799,14 @@ func updateState(
 }
 
 // Fire NewBlock, NewBlockHeader.
-// Fire TxEvent for every tx.
+// Fire TxEvent for every tx. txs are the block's transactions as sent to
+// FinalizeBlock, with BlobTx wrappers already removed.
 // NOTE: if CometBFT crashes before commit, some or all of these events may be published again.
 func fireEvents(
 	logger log.Logger,
 	eventBus types.BlockEventPublisher,
 	block *types.Block,
+	txs [][]byte,
 	blockID types.BlockID,
 	abciResponse *abci.ResponseFinalizeBlock,
 	validatorUpdates []*types.Validator,
@@ -856,8 +858,7 @@ func fireEvents(
 		}
 	}
 
-	for i, tx := range block.Data.Txs { //nolint:staticcheck
-		tx, _ = types.UnwrapBlobTx(tx, block.Version.App)
+	for i, tx := range txs {
 		if err := eventBus.PublishEventTx(types.EventDataTx{TxResult: abci.TxResult{
 			Height: block.Height,
 			Index:  uint32(i),
