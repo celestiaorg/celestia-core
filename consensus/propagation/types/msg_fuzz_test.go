@@ -9,9 +9,9 @@ import (
 
 	"github.com/cometbft/cometbft/crypto/merkle"
 	"github.com/cometbft/cometbft/crypto/tmhash"
-	"github.com/cometbft/cometbft/libs/bits"
+	cmtbits "github.com/cometbft/cometbft/libs/bits"
 	protoprop "github.com/cometbft/cometbft/proto/tendermint/propagation"
-	"github.com/cometbft/cometbft/types"
+	cmttypes "github.com/cometbft/cometbft/types"
 )
 
 // propagationSeeds returns one valid wire message of each propagation type.
@@ -24,9 +24,9 @@ func propagationSeeds(tb testing.TB) [][]byte {
 	partHashes := [][]byte{hash(1), hash(2), hash(3), hash(4)}
 	root, _ := merkle.ParallelProofsFromLeafHashes(partHashes[:2])
 	parityRoot, _ := merkle.ParallelProofsFromLeafHashes(partHashes[2:])
-	proposal := types.NewProposal(10, 1, -1, types.BlockID{
+	proposal := cmttypes.NewProposal(10, 1, -1, cmttypes.BlockID{
 		Hash:          hash(9),
-		PartSetHeader: types.PartSetHeader{Total: 2, Hash: root},
+		PartSetHeader: cmttypes.PartSetHeader{Total: 2, Hash: root},
 	})
 	proposal.Signature = bytes.Repeat([]byte{7}, 64)
 	compact := &CompactBlock{
@@ -40,7 +40,7 @@ func propagationSeeds(tb testing.TB) [][]byte {
 	require.NoError(tb, compact.ValidateBasic())
 
 	haves := &HaveParts{Height: 10, Round: 1, Parts: []PartMetaData{{Index: 0, Hash: hash(1)}, {Index: 3, Hash: hash(4)}}}
-	wants := &WantParts{Parts: bits.NewBitArray(4), Height: 10, Round: 1, Prove: true, MissingPartsCount: 2}
+	wants := &WantParts{Parts: cmtbits.NewBitArray(4), Height: 10, Round: 1, Prove: true, MissingPartsCount: 2}
 	wants.Parts.SetIndex(1, true)
 	wants.Parts.SetIndex(2, true)
 
@@ -107,7 +107,7 @@ func checkPropagationMessage(t *testing.T, raw []byte) {
 		_ = m.Parts.Copy()
 		again, err := WantPartsFromProto(m.ToProto())
 		require.NoError(t, err)
-		require.Equal(t, m.Parts.String(), again.Parts.String())
+		require.Equal(t, m.ToProto(), again.ToProto())
 	case *RecoveryPart:
 		if m.Proof != nil {
 			// ComputeRootHash is documented to panic on a proof whose index,

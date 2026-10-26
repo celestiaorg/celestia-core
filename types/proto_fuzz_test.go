@@ -11,10 +11,15 @@ import (
 	cmtproto "github.com/cometbft/cometbft/proto/tendermint/types"
 )
 
+// protoSeedSet holds one valid wire encoding of each block-level type.
+type protoSeedSet struct {
+	block, part, vote, proposal, commit, evidence []byte
+}
+
 // protoSeeds builds valid wire bytes for the block-level types that peers
 // send: a block with txs and a commit, its first part, a vote, a proposal,
 // the commit on its own, and duplicate vote evidence.
-func protoSeeds(tb testing.TB) (block, part, vote, proposal, commit, evidence []byte) {
+func protoSeeds(tb testing.TB) protoSeedSet {
 	tb.Helper()
 	marshal := func(msg proto.Message) []byte {
 		raw, err := proto.Marshal(msg)
@@ -59,7 +64,14 @@ func protoSeeds(tb testing.TB) (block, part, vote, proposal, commit, evidence []
 	pbEvidence, err := EvidenceToProto(dve)
 	require.NoError(tb, err)
 
-	return marshal(pbBlock), marshal(pbPart), marshal(v.ToProto()), marshal(pbProposal), marshal(lastCommit.ToProto()), marshal(pbEvidence)
+	return protoSeedSet{
+		block:    marshal(pbBlock),
+		part:     marshal(pbPart),
+		vote:     marshal(v.ToProto()),
+		proposal: marshal(pbProposal),
+		commit:   marshal(lastCommit.ToProto()),
+		evidence: marshal(pbEvidence),
+	}
 }
 
 // proofRoot computes the root a proof commits to. ComputeRootHash is
@@ -77,7 +89,7 @@ func proofRoot(proof *merkle.Proof) (root []byte, ok bool) {
 // FuzzBlockFromProto decodes peer-supplied block bytes the way blocksync and
 // the propagation reactor do, then validates and re-encodes the result.
 func FuzzBlockFromProto(f *testing.F) {
-	block, _, _, _, _, _ := protoSeeds(f)
+	block := protoSeeds(f).block
 	f.Add(block)
 	f.Add([]byte{})
 	f.Fuzz(func(t *testing.T, raw []byte) {
@@ -106,7 +118,7 @@ func FuzzBlockFromProto(f *testing.F) {
 // header is taken from the part's own proof, which is what a receiving node
 // does for parts of a proposal it has only the header for.
 func FuzzPartFromProto(f *testing.F) {
-	_, part, _, _, _, _ := protoSeeds(f)
+	part := protoSeeds(f).part
 	f.Add(part)
 	f.Add([]byte{})
 	f.Fuzz(func(t *testing.T, raw []byte) {
@@ -138,7 +150,7 @@ func FuzzPartFromProto(f *testing.F) {
 
 // FuzzVoteFromProto decodes a vote the way the consensus reactor does.
 func FuzzVoteFromProto(f *testing.F) {
-	_, _, vote, _, _, _ := protoSeeds(f)
+	vote := protoSeeds(f).vote
 	f.Add(vote)
 	f.Add([]byte{})
 	f.Fuzz(func(t *testing.T, raw []byte) {
@@ -164,7 +176,7 @@ func FuzzVoteFromProto(f *testing.F) {
 // FuzzProposalFromProto decodes a proposal the way the consensus and
 // propagation reactors do.
 func FuzzProposalFromProto(f *testing.F) {
-	_, _, _, proposal, _, _ := protoSeeds(f)
+	proposal := protoSeeds(f).proposal
 	f.Add(proposal)
 	f.Add([]byte{})
 	f.Fuzz(func(t *testing.T, raw []byte) {
@@ -190,7 +202,7 @@ func FuzzProposalFromProto(f *testing.F) {
 // FuzzCommitFromProto decodes a commit the way blocksync and the light client
 // do and checks the vote-set helpers on it.
 func FuzzCommitFromProto(f *testing.F) {
-	_, _, _, _, commit, _ := protoSeeds(f)
+	commit := protoSeeds(f).commit
 	f.Add(commit)
 	f.Add([]byte{})
 	f.Fuzz(func(t *testing.T, raw []byte) {
@@ -218,7 +230,7 @@ func FuzzCommitFromProto(f *testing.F) {
 
 // FuzzEvidenceFromProto decodes evidence the way the evidence reactor does.
 func FuzzEvidenceFromProto(f *testing.F) {
-	_, _, _, _, _, evidence := protoSeeds(f)
+	evidence := protoSeeds(f).evidence
 	f.Add(evidence)
 	f.Add([]byte{})
 	f.Fuzz(func(t *testing.T, raw []byte) {
@@ -246,7 +258,8 @@ func FuzzEvidenceFromProto(f *testing.F) {
 // TestProtoFuzzSeeds keeps the seed corpus meaningful: every seed decodes and
 // validates, so the fuzzer starts from accepted inputs.
 func TestProtoFuzzSeeds(t *testing.T) {
-	block, part, vote, proposal, commit, evidence := protoSeeds(t)
+	seeds := protoSeeds(t)
+	block, part, vote, proposal, commit, evidence := seeds.block, seeds.part, seeds.vote, seeds.proposal, seeds.commit, seeds.evidence
 
 	var pbBlock cmtproto.Block
 	require.NoError(t, proto.Unmarshal(block, &pbBlock))
