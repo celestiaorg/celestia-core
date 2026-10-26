@@ -37,6 +37,20 @@ def paginate(path):
     return [item for page in pages for item in page]
 
 
+def push(sha, ref, expected):
+    auth = base64.b64encode(
+        ("x-access-token:" + os.environ["GH_TOKEN"]).encode()).decode()
+    # Pass the credential through the environment rather than argv.
+    env = dict(os.environ, GIT_CONFIG_COUNT="1",
+               GIT_CONFIG_KEY_0="http.https://github.com/.extraheader",
+               GIT_CONFIG_VALUE_0="AUTHORIZATION: basic " + auth)
+    subprocess.check_call(
+        ["git", "push", "--quiet",
+         "--force-with-lease=refs/heads/{}:{}".format(ref, expected),
+         "https://github.com/{}.git".format(REPO),
+         "{}:refs/heads/{}".format(sha, ref)], env=env)
+
+
 def graphql(payload):
     result = json.loads(run("gh", "api", "graphql", "--input", "-",
                             data=json.dumps(payload).encode()))
@@ -124,12 +138,10 @@ def sign(pr):
         for commit in commits:
             new_head = create_commit(temp, new_head, commit, parent)
             parent = commit["sha"]
-        # Do not overwrite anything pushed to the PR while we were replaying.
-        current = api("repos/{}/pulls/{}".format(REPO, number))["head"]["sha"]
-        if current != head:
-            raise RuntimeError("head moved during replay; will retry next run")
-        api("repos/{}/git/refs/heads/{}".format(REPO, ref), "-X", "PATCH",
-            "-f", "sha=" + new_head, "-F", "force=true")
+        git("fetch", "--quiet", "--no-tags", "origin", new_head)
+        # The lease rejects the update if anything was pushed to the PR since
+        # we read its head, instead of overwriting it.
+        push(new_head, ref, head)
         print("#{}: replaced {} with verified {}".format(number, head, new_head))
     finally:
         run("gh", "api", "-X", "DELETE",

@@ -31,12 +31,13 @@ jobs:
   sign:
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    env:
-      # The `secrets` context is not available in `if:` conditions.
-      SIGNING_TOKEN: ${{ secrets.BACKPORT_SIGNING_TOKEN }}
     steps:
       - name: Check that the signing token is configured
         id: creds
+        env:
+          # The `secrets` context is not available in `if:` conditions. Scope
+          # the token to the steps that need it so other actions cannot read it.
+          SIGNING_TOKEN: ${{ secrets.BACKPORT_SIGNING_TOKEN }}
         run: |
           if [ -z "${SIGNING_TOKEN}" ]; then
             echo "configured=false" >> "$GITHUB_OUTPUT"
@@ -45,7 +46,7 @@ jobs:
             echo "configured=true" >> "$GITHUB_OUTPUT"
           fi
 
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         if: steps.creds.outputs.configured == 'true'
         with:
           persist-credentials: false
