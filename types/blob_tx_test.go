@@ -206,3 +206,101 @@ func TestUnwrapBlobTxDifferential(t *testing.T) {
 		})
 	}
 }
+
+// legacyBlobTxSeeds returns BlobTxs, IndexWrappers and malformed envelopes to
+// seed the differential fuzz test.
+func legacyBlobTxSeeds(tb testing.TB) [][]byte {
+	tb.Helper()
+	nsID := append(make([]byte, share.NamespaceVersionZeroPrefixSize), bytes.Repeat([]byte{1}, share.NamespaceVersionZeroIDSize)...)
+	blob := &blobv4.BlobProto{NamespaceId: nsID, Data: []byte("data")}
+	marshal := func(msg proto.Message) []byte {
+		bz, err := proto.Marshal(msg)
+		require.NoError(tb, err)
+		return bz
+	}
+	valid := marshal(&blobv4.BlobTx{Tx: []byte("inner-tx"), Blobs: []*blobv4.BlobProto{blob, blob}, TypeId: squaretx.ProtoBlobTxTypeID})
+	indexWrapper, err := MarshalIndexWrapper([]byte("inner-tx"), 1, 2, 3)
+	require.NoError(tb, err)
+	return [][]byte{
+		nil,
+		[]byte("not a protobuf"),
+		valid,
+		valid[:len(valid)-1],
+		marshal(&blobv4.BlobTx{Tx: []byte("inner-tx"), TypeId: squaretx.ProtoBlobTxTypeID}),
+		marshal(&blobv4.BlobTx{Blobs: []*blobv4.BlobProto{blob}, TypeId: squaretx.ProtoBlobTxTypeID}),
+		marshal(&blobv4.BlobTx{Tx: valid, Blobs: []*blobv4.BlobProto{blob}, TypeId: squaretx.ProtoBlobTxTypeID}),
+		marshal(&blobv4.BlobTx{Tx: []byte("inner-tx"), Blobs: []*blobv4.BlobProto{{NamespaceId: nsID[1:]}}, TypeId: squaretx.ProtoBlobTxTypeID}),
+		protowire.AppendVarint(protowire.AppendTag(valid, 15, protowire.VarintType), 1),
+		protowire.AppendVarint(protowire.AppendTag(valid, 1, protowire.VarintType), 1),
+		protowire.AppendTag(protowire.AppendTag(valid, 15, protowire.StartGroupType), 15, protowire.EndGroupType),
+		indexWrapper,
+	}
+}
+
+// FuzzUnwrapLegacyBlobTx checks that the zero-copy scan agrees with the
+// generated decoder on every input, so Tx.Hash, Tx.Key and the bytes sent to
+// the application before BlobTxValidationAppVersion are unchanged.
+func FuzzUnwrapLegacyBlobTx(f *testing.F) {
+	for _, seed := range legacyBlobTxSeeds(f) {
+		f.Add(seed)
+	}
+	f.Fuzz(func(t *testing.T, bz []byte) {
+		tx := Tx(bz)
+		wantTx, wantOK := decodeLegacyBlobTx(tx)
+
+		// When the scan decides on its own, it must agree with the decoder.
+		if inner, isBlobTx, ok := scanLegacyBlobTx(tx); ok {
+			require.Equal(t, wantOK, isBlobTx, "scan verdict")
+			if isBlobTx {
+				require.Equal(t, []byte(wantTx), inner, "scan inner tx")
+				require.Equal(t, wantTx == nil, inner == nil, "scan inner tx nil-ness")
+			}
+		}
+
+		gotTx, gotOK := unwrapLegacyBlobTx(tx)
+		require.Equal(t, wantOK, gotOK)
+		require.Equal(t, wantTx, gotTx)
+
+		// Hash and Key as computed before the scan was introduced.
+		want := []byte(tx)
+		if wantOK {
+			want = wantTx
+		} else if iw, ok := UnmarshalIndexWrapper(tx); ok {
+			want = iw.Tx
+		}
+		require.Equal(t, tmhash.Sum(want), tx.Hash())
+		require.Equal(t, TxKey(sha256.Sum256(want)), tx.Key())
+	})
+}
+
+// BenchmarkTxHashBlobTx hashes an 8 MiB BlobTx carrying many blobs with the
+// zero-copy scan and with the generated decoder it replaces.
+func BenchmarkTxHashBlobTx(b *testing.B) {
+	const (
+		blobCount = 64
+		blobSize  = 8 << 20 / blobCount
+	)
+	nsID := append(make([]byte, share.NamespaceVersionZeroPrefixSize), bytes.Repeat([]byte{1}, share.NamespaceVersionZeroIDSize)...)
+	blobs := make([]*blobv4.BlobProto, blobCount)
+	for i := range blobs {
+		blobs[i] = &blobv4.BlobProto{NamespaceId: nsID, Data: bytes.Repeat([]byte{byte(i)}, blobSize)}
+	}
+	bz, err := proto.Marshal(&blobv4.BlobTx{Tx: bytes.Repeat([]byte{1}, 400), Blobs: blobs, TypeId: squaretx.ProtoBlobTxTypeID})
+	require.NoError(b, err)
+	tx := Tx(bz)
+
+	b.Run("scan", func(b *testing.B) {
+		b.ReportAllocs()
+		for b.Loop() {
+			inner, _ := unwrapLegacyBlobTx(tx)
+			tmhash.Sum(inner)
+		}
+	})
+	b.Run("decode", func(b *testing.B) {
+		b.ReportAllocs()
+		for b.Loop() {
+			inner, _ := decodeLegacyBlobTx(tx)
+			tmhash.Sum(inner)
+		}
+	})
+}
