@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -1463,6 +1464,49 @@ func TestSetValidBlockOnDelayedProposal(t *testing.T) {
 			rs.ValidBlockParts.Header().Equals(propBlockParts.Header()) &&
 			rs.ValidRound == round
 	}, ensureTimeout, 10*time.Millisecond)
+}
+
+// TestStatePolkaBeforeProposalStepOrder pins the step order when a polka arrives
+// before its proposal: Prevote then Precommit, never back to Prevote.
+func TestStatePolkaBeforeProposalStepOrder(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	cs1, vss := randState(4)
+	vs2, vs3, vs4 := vss[1], vss[2], vss[3]
+	height, round := cs1.rs.Height, cs1.rs.Round+1 // vs2 proposes round 1
+	incrementRound(vs2, vs3, vs4)
+	cs1.state.Timeouts.TimeoutPropose = time.Minute
+
+	var mu sync.Mutex
+	var steps []string
+	stepCh := subscribe(cs1.eventBus, types.EventQueryNewRoundStep)
+	go func() {
+		for msg := range stepCh {
+			if rs := msg.Data().(types.EventDataRoundState); rs.Round == round {
+				mu.Lock()
+				steps = append(steps, rs.Step)
+				mu.Unlock()
+			}
+		}
+	}()
+	pv1, err := cs1.privValidator.GetPubKey()
+	require.NoError(t, err)
+	voteCh := subscribeToVoter(cs1, pv1.Address())
+
+	startTestRound(cs1, height, round)
+	prop, propBlock := decideProposal(ctx, t, cs1, vs2, vs2.Height, vs2.Round)
+	propBlockParts, err := propBlock.MakePartSet(types.BlockPartSizeBytes)
+	require.NoError(t, err)
+	signAddVotes(cs1, cmtproto.PrevoteType, propBlock.Hash(), propBlockParts.Header(), false, vs2, vs3, vs4)
+	require.NoError(t, cs1.SetProposalAndBlock(prop, propBlock, propBlockParts, "some peer"))
+
+	ensurePrevoteMatch(t, voteCh, height, round, propBlock.Hash())
+	ensurePrecommitMatch(t, voteCh, height, round, propBlock.Hash())
+	time.Sleep(200 * time.Millisecond) // let our own prevote be processed
+	mu.Lock()
+	defer mu.Unlock()
+	require.Equal(t, []string{"RoundStepPropose", "RoundStepPrevote", "RoundStepPrecommit"}, steps)
 }
 
 func TestProcessProposalAccept(t *testing.T) {

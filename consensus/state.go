@@ -1548,6 +1548,7 @@ func (cs *State) enterPrevote(height int64, round int32) {
 	// Sign and broadcast vote as necessary
 	cs.doPrevote(height, round)
 
+	// Not deferred: a deferred update would drop a Precommit step set by handlePrevoteQuorum.
 	cs.updateRoundStep(round, cstypes.RoundStepPrevote)
 	cs.newStep()
 

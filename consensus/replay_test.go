@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"sort"
 	"testing"
 	"time"
@@ -222,35 +223,17 @@ func TestRestartAfterPrevoteWithLostProposal(t *testing.T) {
 
 	app := kvstore.NewInMemoryApplication()
 	state, privVals := randGenesisState(4, false, testMinPower, test.ConsensusParams())
-	resp, err := app.Info(context.Background(), proxy.RequestInfo)
-	require.NoError(t, err)
 	state.Timeouts.TimeoutPropose = time.Second
-	state.Timeouts.TimeoutPrevote = resp.TimeoutInfo.TimeoutPrevote
-	state.Timeouts.TimeoutPrecommit = resp.TimeoutInfo.TimeoutPrecommit
-	state.Timeouts.TimeoutCommit = resp.TimeoutInfo.TimeoutCommit
 
 	vss := make([]*validatorStub, len(privVals))
 	for i, pv := range privVals {
 		vss[i] = newValidatorStub(pv, int32(i))
 		vss[i].Height = 1
 	}
-	proposerAddr := state.Validators.GetProposer().Address
-	ours, proposer := -1, -1
-	for i, val := range state.Validators.Validators {
-		if bytes.Equal(val.Address, proposerAddr) {
-			proposer = i
-		} else if ours == -1 {
-			ours = i
-		}
-	}
-	var others []*validatorStub
-	for i, vs := range vss {
-		if i != ours {
-			others = append(others, vs)
-		}
-	}
+	proposer, _ := state.Validators.GetByAddress(state.Validators.GetProposer().Address)
+	ours := (proposer + 1) % int32(len(vss))
+	others := slices.Delete(slices.Clone(vss), int(ours), int(ours)+1)
 
-	ensureDir(filepath.Dir(config.PrivValidatorKeyFile()), 0o700)
 	filePV := privval.NewFilePV(privVals[ours].(types.MockPV).PrivKey,
 		config.PrivValidatorKeyFile(), config.PrivValidatorStateFile())
 	filePV.Save()
@@ -275,7 +258,7 @@ func TestRestartAfterPrevoteWithLostProposal(t *testing.T) {
 	timeoutCh := subscribe(cs2.eventBus, types.EventQueryTimeoutPropose)
 	voteCh = subscribeToVoter(cs2, filePV.Key.Address)
 	require.NoError(t, cs2.Start())
-	defer func() { _ = cs2.Stop() }()
+	defer func() { _ = cs2.Stop(); cs2.Wait() }()
 	ensureNewRound(newRoundCh, 1, 0)
 	ensurePrevoteMatch(t, voteCh, 1, 0, block.Hash())
 
