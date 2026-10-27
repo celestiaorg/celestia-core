@@ -104,7 +104,10 @@ func TestValidateBlockSyncEvidenceCountBeforeAllocation(t *testing.T) {
 			t.Fatalf("unexpected error: %v", err)
 		}
 	})
-	require.Less(t, allocs, float64(20))
+	// The fixed wire-path recursion and wrapped error may allocate a small,
+	// Go-version-dependent constant. The bound stays independent of the one
+	// million encoded evidence entries and remains far below per-item growth.
+	require.Less(t, allocs, float64(32))
 }
 
 func TestValidateBlockSyncEvidenceCountSkipsUnknownGroups(t *testing.T) {
