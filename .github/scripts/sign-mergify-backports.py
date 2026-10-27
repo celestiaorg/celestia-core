@@ -64,18 +64,23 @@ def git(*args):
 
 
 def file_changes(parent, commit):
-    entries = git("diff", "--name-status", "--no-renames", "-z",
+    # createCommitOnBranch only writes regular files, so it cannot reproduce
+    # executables, symlinks, submodules or mode changes.
+    entries = git("diff", "--raw", "--no-renames", "--no-abbrev", "-z",
                   parent, commit).split(b"\0")
     additions, deletions = [], []
     for index in range(0, len(entries) - 1, 2):
-        status, path = entries[index].decode(), entries[index + 1].decode()
+        old_mode, new_mode, _, _, status = entries[index].decode()[1:].split()
+        path = entries[index + 1].decode()
         if status == "D":
             deletions.append({"path": path})
-        elif status in ("A", "M"):
+        elif status in ("A", "M") and new_mode == "100644" and (
+                status == "A" or old_mode == new_mode):
             additions.append({"path": path, "contents": base64.b64encode(
                 git("show", commit + ":" + path)).decode()})
         else:
-            raise RuntimeError("unsupported change " + status + " " + path)
+            raise RuntimeError("{} changes {} to mode {}; sign it by hand".format(
+                commit, path, new_mode))
     return {"additions": additions, "deletions": deletions}
 
 
@@ -91,7 +96,7 @@ def message(commit):
     return {"headline": headline, "body": body.strip("\n")}
 
 
-def create_commit(branch, head, commit, parent):
+def create_commit(branch, head, commit, changes):
     data = graphql({
         "query": """mutation($input: CreateCommitOnBranchInput!) {
           createCommitOnBranch(input: $input) {
@@ -102,7 +107,7 @@ def create_commit(branch, head, commit, parent):
             "branch": {"repositoryNameWithOwner": REPO, "branchName": branch},
             "expectedHeadOid": head,
             "message": message(commit),
-            "fileChanges": file_changes(parent, commit["sha"]),
+            "fileChanges": changes,
         }},
     })
     created = data["createCommitOnBranch"]["commit"]
@@ -127,6 +132,9 @@ def sign(pr):
     git("fetch", "--quiet", "--no-tags", "--depth", str(len(commits) + 1),
         "origin", head)
     parent = commits[0]["parents"][0]["sha"]
+    # Build every change before touching the repository, so an unsupported
+    # change fails without creating anything.
+    changes = [file_changes(c["parents"][0]["sha"], c["sha"]) for c in commits]
     temp = "mergify-sign/pr-{}".format(number)
     # Clear a temp branch left behind by an interrupted run.
     subprocess.run(["gh", "api", "-X", "DELETE", "repos/{}/git/refs/heads/{}".format(
@@ -135,9 +143,8 @@ def sign(pr):
         "-f", "sha=" + parent)
     try:
         new_head = parent
-        for commit in commits:
-            new_head = create_commit(temp, new_head, commit, parent)
-            parent = commit["sha"]
+        for commit, change in zip(commits, changes):
+            new_head = create_commit(temp, new_head, commit, change)
         git("fetch", "--quiet", "--no-tags", "origin", new_head)
         # The lease rejects the update if anything was pushed to the PR since
         # we read its head, instead of overwriting it.
