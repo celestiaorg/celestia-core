@@ -23,6 +23,7 @@ import (
 	abci "github.com/cometbft/cometbft/abci/types"
 	"github.com/cometbft/cometbft/abci/types/mocks"
 	cfg "github.com/cometbft/cometbft/config"
+	cstypes "github.com/cometbft/cometbft/consensus/types"
 	cryptoenc "github.com/cometbft/cometbft/crypto/encoding"
 	"github.com/cometbft/cometbft/internal/test"
 	"github.com/cometbft/cometbft/libs/log"
@@ -209,6 +210,87 @@ func TestWALCrashOnInternalBlockPartWrite(t *testing.T) {
 	_ = cs.Stop()
 	stopCrashedWAL(t, csWal)
 	startNewStateAndWaitForBlock(t, consensusReplayConfig, blockDB, stateStore)
+}
+
+// TestRestartAfterPrevoteWithLostProposal reproduces celestia-core#3505: a
+// validator that prevoted a peer's block and restarts without it in the WAL
+// (only_internal_wal) must still leave round 0 once the prevotes arrive.
+func TestRestartAfterPrevoteWithLostProposal(t *testing.T) {
+	config := ResetConfig(t.Name())
+	defer os.RemoveAll(config.RootDir)
+	config.Consensus.OnlyInternalWal = true
+
+	app := kvstore.NewInMemoryApplication()
+	state, privVals := randGenesisState(4, false, testMinPower, test.ConsensusParams())
+	resp, err := app.Info(context.Background(), proxy.RequestInfo)
+	require.NoError(t, err)
+	state.Timeouts.TimeoutPropose = time.Second
+	state.Timeouts.TimeoutPrevote = resp.TimeoutInfo.TimeoutPrevote
+	state.Timeouts.TimeoutPrecommit = resp.TimeoutInfo.TimeoutPrecommit
+	state.Timeouts.TimeoutCommit = resp.TimeoutInfo.TimeoutCommit
+
+	vss := make([]*validatorStub, len(privVals))
+	for i, pv := range privVals {
+		vss[i] = newValidatorStub(pv, int32(i))
+		vss[i].Height = 1
+	}
+	proposerAddr := state.Validators.GetProposer().Address
+	ours, proposer := -1, -1
+	for i, val := range state.Validators.Validators {
+		if bytes.Equal(val.Address, proposerAddr) {
+			proposer = i
+		} else if ours == -1 {
+			ours = i
+		}
+	}
+	var others []*validatorStub
+	for i, vs := range vss {
+		if i != ours {
+			others = append(others, vs)
+		}
+	}
+
+	ensureDir(filepath.Dir(config.PrivValidatorKeyFile()), 0o700)
+	filePV := privval.NewFilePV(privVals[ours].(types.MockPV).PrivKey,
+		config.PrivValidatorKeyFile(), config.PrivValidatorStateFile())
+	filePV.Save()
+	blockDB := dbm.NewMemDB()
+
+	// Before the crash: prevote the proposer's block, received from a peer.
+	cs1 := newStateWithConfigAndBlockStore(config, state, filePV, app, blockDB)
+	require.NoError(t, cs1.Start())
+	voteCh := subscribeToVoter(cs1, filePV.Key.Address)
+	prop, block := decideProposal(context.Background(), t, cs1, vss[proposer], 1, 0)
+	parts, err := block.MakePartSet(types.BlockPartSizeBytes)
+	require.NoError(t, err)
+	require.NoError(t, cs1.SetProposalAndBlock(prop, block, parts, "peer"))
+	ensurePrevoteMatch(t, voteCh, 1, 0, block.Hash())
+	require.NoError(t, cs1.Stop())
+	cs1.Wait()
+
+	// After the restart the WAL replays our prevote but not the proposal.
+	pv2 := privval.LoadFilePV(config.PrivValidatorKeyFile(), config.PrivValidatorStateFile())
+	cs2 := newStateWithConfigAndBlockStore(config, state, pv2, app, blockDB)
+	newRoundCh := subscribe(cs2.eventBus, types.EventQueryNewRound)
+	timeoutCh := subscribe(cs2.eventBus, types.EventQueryTimeoutPropose)
+	voteCh = subscribeToVoter(cs2, filePV.Key.Address)
+	require.NoError(t, cs2.Start())
+	defer func() { _ = cs2.Stop() }()
+	ensureNewRound(newRoundCh, 1, 0)
+	ensurePrevoteMatch(t, voteCh, 1, 0, block.Hash())
+
+	// Every peer's prevote lands while we are still waiting for the proposal.
+	signAddVotes(cs2, cmtproto.PrevoteType, block.Hash(), parts.Header(), false, others...)
+	require.Eventually(t, func() bool {
+		return cs2.GetRoundState().Votes.Prevotes(0).HasAll()
+	}, time.Second, time.Millisecond)
+	require.Equal(t, cstypes.RoundStepPropose, cs2.GetRoundState().Step)
+
+	// timeoutPropose: the nil prevote is refused, yet we must still precommit.
+	ensureNewTimeout(timeoutCh, 1, 0, state.Timeouts.TimeoutPropose.Nanoseconds())
+	ensurePrecommitMatch(t, voteCh, 1, 0, nil)
+	signAddVotes(cs2, cmtproto.PrecommitType, nil, types.PartSetHeader{}, false, others...)
+	ensureNewRound(newRoundCh, 1, 1)
 }
 
 // stopCrashedWAL stops the WAL of a State whose receiveRoutine exited via a
