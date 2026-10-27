@@ -52,7 +52,7 @@ Celestia-specific ADRs live in `docs/celestia-architecture/`.
 ## Pull Requests
 
 - Titles: `type(scope)!: [level] subject` ([conventional commits](https://www.conventionalcommits.org/) plus a review level tag), e.g. `fix(mempool): [high] reject oversized txs`. Levels are defined in [README.md#contributing](README.md#contributing); use the higher level when unsure. `[high]` covers consensus, mempool/CAT, p2p, ABCI, state/block execution, light client, crypto, and breaking changes.
-- Include the tag in the description with a brief reason, e.g. `Review level: [low] — documentation only.`
+- Don't repeat the review tag in the PR description; the title already carries it.
 - Keep PR descriptions short. Add a "Note for reviewers" for consensus-affecting, breaking, or migration-required changes.
 
 ## Changelog
