@@ -11,7 +11,7 @@ import (
 )
 
 func TestProposalTxLimitActivationAndRecovery(t *testing.T) {
-	for _, version := range []uint64{10, 11} {
+	for _, version := range []uint64{9, 10, 11} {
 		for _, tx := range [][]byte{nil, {1}} {
 			cs, _ := randState(4)
 			cs.state.Version.Consensus.App = version
@@ -21,7 +21,12 @@ func TestProposalTxLimitActivationAndRecovery(t *testing.T) {
 			require.NoError(t, err)
 			// A forged legacy header must not switch off the v11 bound.
 			pb.Header.Version.App = 10
-			pb.Data.Txs = make([][]byte, types.MaxBlockTxs+1)
+			limit := types.MaxBlockTxsForAppVersion(version)
+			count := types.MaxBlockTxs + 1
+			if version == types.BlockTxSafetyLimitAppVersion {
+				count = types.MaxBlockTxsV10 + 1
+			}
+			pb.Data.Txs = make([][]byte, count)
 			for i := range pb.Data.Txs {
 				pb.Data.Txs[i] = tx
 			}
@@ -36,12 +41,12 @@ func TestProposalTxLimitActivationAndRecovery(t *testing.T) {
 					Height: cs.rs.Height, Round: cs.rs.Round, Part: parts.GetPart(int(i)),
 				}, "peer")
 			}
-			if version >= types.BlockTxLimitAppVersion {
+			if limit > 0 && count > limit {
 				require.ErrorIs(t, err, cmtproto.ErrTooManyBlockTxs)
 				require.Nil(t, cs.rs.ProposalBlock)
 			} else {
 				require.NoError(t, err, "legacy proposal decoding is unchanged")
-				require.Len(t, cs.rs.ProposalBlock.Txs, types.MaxBlockTxs+1)
+				require.Len(t, cs.rs.ProposalBlock.Txs, count)
 			}
 
 			// Receiving another proposal's part set still works after rejection.

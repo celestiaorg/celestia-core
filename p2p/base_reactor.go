@@ -78,6 +78,7 @@ type BaseReactor struct {
 
 	incoming     chan UnmarshalResult
 	queueingFunc func(UnprocessedEnvelope)
+	unmarshalSem chan struct{}
 
 	ctx    context.Context
 	cancel context.CancelFunc
@@ -184,11 +185,31 @@ func WithIncomingQueueSize(size int) ReactorOptions {
 	}
 }
 
+// WithUnmarshalConcurrency limits concurrent wire prechecks, protobuf decoding,
+// and delivery into the incoming queue. This prevents peer receive goroutines
+// from bypassing queue backpressure by decoding before a full queue blocks.
+func WithUnmarshalConcurrency(limit int) ReactorOptions {
+	return func(br *BaseReactor) {
+		if limit <= 0 {
+			panic("unmarshal concurrency must be positive")
+		}
+		br.unmarshalSem = make(chan struct{}, limit)
+	}
+}
+
 // QueueUnprocessedEnvelope is called by the switch when an unprocessed
 // envelope is received. Unprocessed envelopes are immediately buffered in a
 // queue to avoid blocking. The size of the queue can be changed by passing
 // options to the base reactor.
 func (br *BaseReactor) QueueUnprocessedEnvelope(e UnprocessedEnvelope) {
+	if br.unmarshalSem != nil {
+		select {
+		case <-br.ctx.Done():
+			return
+		case br.unmarshalSem <- struct{}{}:
+			defer func() { <-br.unmarshalSem }()
+		}
+	}
 	if len(br.incoming) == cap(br.incoming) {
 		schema.WriteQueueLimit(br.traceClient, e.ChannelID, br.name, true)
 	}
@@ -203,6 +224,14 @@ func (br *BaseReactor) QueueUnprocessedEnvelope(e UnprocessedEnvelope) {
 // TryQueueUnprocessedEnvelope an alternative to QueueUnprocessedEnvelope that attempts to queue an unprocessed envelope.
 // If the queue is full, it drops the envelope.
 func (br *BaseReactor) TryQueueUnprocessedEnvelope(e UnprocessedEnvelope) {
+	if br.unmarshalSem != nil {
+		select {
+		case br.unmarshalSem <- struct{}{}:
+			defer func() { <-br.unmarshalSem }()
+		default:
+			return
+		}
+	}
 	if len(br.incoming) == cap(br.incoming) {
 		schema.WriteQueueLimit(br.traceClient, e.ChannelID, br.name, true)
 	}

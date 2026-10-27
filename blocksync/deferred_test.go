@@ -53,11 +53,26 @@ func TestPrefetchedTxsDeferredAcrossActivation(t *testing.T) {
 	require.ErrorIs(t, err, errTooManyTxs)
 	require.Nil(t, decoded)
 
-	// A genuinely historical height still decodes with its original rules.
+	// The v10 compatibility ceiling is deliberately much larger than the v11
+	// protocol limit, so this response retains its original validity.
 	decoded, err = decodeDeferredBlock(response.raw, 10)
 	require.NoError(t, err)
 	require.Len(t, decoded.Txs, len(original.Txs))
 	require.Equal(t, original.Hash(), decoded.Hash())
+}
+
+func TestDeferredDecodeV10SafetyLimit(t *testing.T) {
+	wire := blockResponseWithTxs(t, types.MaxBlockTxsV10+1, nil)
+	var message syncMessage
+	require.NoError(t, message.Unmarshal(wire))
+	response, err := message.Unwrap()
+	require.NoError(t, err)
+	deferred := response.(*deferredResponse)
+	require.Empty(t, deferred.Block.Data.Txs)
+
+	decoded, err := decodeDeferredBlock(deferred.raw, 10)
+	require.ErrorIs(t, err, errTooManyTxs)
+	require.Nil(t, decoded)
 }
 
 func TestDeferredResponsePoolSnapshotAndRetry(t *testing.T) {

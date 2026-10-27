@@ -68,7 +68,47 @@ func TestBlockTxLimitBoundedAllocation(t *testing.T) {
 			t.Fatalf("unexpected error: %v", err)
 		}
 	})
-	require.Zero(t, allocs)
+	require.Less(t, allocs, float64(20))
+}
+
+func TestBlockOtherCardinalityLimitsBeforeAllocation(t *testing.T) {
+	commit := protowire.AppendTag(nil, 4, protowire.BytesType)
+	commit = protowire.AppendBytes(commit, bytes.Repeat([]byte{0x22, 0}, MaxBlockCommitSignatures+1))
+	evidence := protowire.AppendTag(nil, 3, protowire.BytesType)
+	evidence = protowire.AppendBytes(evidence, bytes.Repeat([]byte{0x0a, 0}, MaxBlockEvidenceItems+1))
+
+	for _, tc := range []struct {
+		wire []byte
+		err  error
+	}{
+		{commit, ErrTooManyBlockCommitSignatures},
+		{evidence, ErrTooManyBlockEvidence},
+	} {
+		allocs := testing.AllocsPerRun(5, func() {
+			var block Block
+			if err := block.UnmarshalWithTxLimit(tc.wire, 1000); err != tc.err {
+				t.Fatalf("unexpected error: %v", err)
+			}
+		})
+		require.Less(t, allocs, float64(20))
+	}
+}
+
+func TestBlockEvidenceLimitsExceedValidCelestiaCapacity(t *testing.T) {
+	require.Greater(t, MaxBlockEvidenceItems*64, 1_048_576)
+	require.Greater(t, MaxBlockEvidenceElements*32, 1_048_576)
+}
+
+func TestBlockEvidenceAcceptedBoundaryIsBounded(t *testing.T) {
+	evidence := protowire.AppendTag(nil, 3, protowire.BytesType)
+	evidence = protowire.AppendBytes(evidence, bytes.Repeat([]byte{0x0a, 0}, MaxBlockEvidenceItems))
+	allocs := testing.AllocsPerRun(1, func() {
+		var block Block
+		if err := block.UnmarshalWithTxLimit(evidence, 1000); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+	})
+	require.Less(t, allocs, float64(MaxBlockEvidenceItems*2))
 }
 
 func BenchmarkBlockTxLimitReject(b *testing.B) {

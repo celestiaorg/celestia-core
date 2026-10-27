@@ -32,8 +32,10 @@ const (
 	// check if we should switch to consensus reactor
 	switchToConsensusIntervalSeconds = 1
 
-	// ReactorIncomingMessageQueueSize the size of the reactor's message queue.
-	ReactorIncomingMessageQueueSize = 100
+	// ReactorIncomingMessageQueueSize bounds decoded blocks retained while the
+	// single reactor processor drains them. Peer receive loops provide
+	// backpressure when this queue fills.
+	ReactorIncomingMessageQueueSize = 8
 )
 
 type consensusReactor interface {
@@ -138,7 +140,11 @@ func NewReactorWithAddr(state sm.State, blockExec *sm.BlockExecutor, store *stor
 		metrics:      metrics,
 		traceClient:  traceClient,
 	}
-	bcR.BaseReactor = *p2p.NewBaseReactor("BlockSync", bcR, p2p.WithIncomingQueueSize(ReactorIncomingMessageQueueSize), p2p.WithTraceClient(traceClient))
+	bcR.BaseReactor = *p2p.NewBaseReactor("BlockSync", bcR,
+		p2p.WithIncomingQueueSize(ReactorIncomingMessageQueueSize),
+		p2p.WithUnmarshalConcurrency(1),
+		p2p.WithTraceClient(traceClient),
+	)
 
 	for _, option := range options {
 		option(bcR)
@@ -228,7 +234,14 @@ func (bcR *Reactor) validateBlockSyncBytes(msgBytes []byte) error {
 		return err
 	}
 	block := stub.BlockResponse.Block
-	if block == nil || block.Data == nil || len(block.Data.Txs) <= types.MaxBlockTxs {
+	if block == nil {
+		return nil
+	}
+	txCount := 0
+	if block.Data != nil {
+		txCount = len(block.Data.Txs)
+	}
+	if txCount <= types.MaxBlockTxs {
 		return nil
 	}
 	state, err := bcR.blockExec.Store().Load()
