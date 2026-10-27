@@ -67,10 +67,12 @@ type deferredResponse struct {
 // omitFields copies the wire message while removing every occurrence at path.
 // Recursion over embedded messages is bounded by the fixed path.
 func omitFields(bz []byte, path []protowire.Number) ([]byte, error) {
-	// Reserve enough space for the input and temporary length prefixes at
-	// each fixed nesting level. No allocation is indexed by transaction count
-	// or by the number of duplicate embedded Data fields.
-	return appendOmittingFields(make([]byte, 0, len(bz)+10*len(path)), bz, path)
+	// Most of an adversarial input can be the omitted field. Do not reserve the
+	// full message size and briefly double its retained memory. Grow only when
+	// the fields that remain actually need it.
+	const initialCapacity = 64 * 1024
+	capacity := min(len(bz)+10*len(path), initialCapacity)
+	return appendOmittingFields(make([]byte, 0, capacity), bz, path)
 }
 
 func appendOmittingFields(out, bz []byte, path []protowire.Number) ([]byte, error) {
@@ -94,7 +96,7 @@ func appendOmittingFields(out, bz []byte, path []protowire.Number) ([]byte, erro
 				payload, _ := protowire.ConsumeBytes(bz[tagLen:end])
 				out = append(out, bz[:tagLen]...)
 				lengthAt := len(out)
-				out = out[:lengthAt+10]
+				out = append(out, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0)
 				var err error
 				out, err = appendOmittingFields(out, payload, path[1:])
 				if err != nil {

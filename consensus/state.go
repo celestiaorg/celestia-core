@@ -2392,8 +2392,8 @@ func (cs *State) addProposalBlockPart(msg *BlockPartMessage, peerID p2p.ID) (add
 		pbb := new(cmtproto.Block)
 		// Use committed state, never the proposer's claimed header version:
 		// transaction cardinality must be bounded before protobuf allocates.
-		if cs.state.Version.Consensus.App >= types.BlockTxLimitAppVersion {
-			err = pbb.UnmarshalWithTxLimit(bz, types.MaxBlockTxs)
+		if maxTxs := types.MaxBlockTxsForAppVersion(cs.state.Version.Consensus.App); maxTxs > 0 {
+			err = pbb.UnmarshalWithTxLimit(bz, maxTxs)
 		} else {
 			err = proto.Unmarshal(bz, pbb)
 		}

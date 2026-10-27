@@ -1,11 +1,15 @@
 package blocksync
 
 import (
+	"errors"
 	"fmt"
+	"io"
 
 	"github.com/cosmos/gogoproto/proto"
+	"google.golang.org/protobuf/encoding/protowire"
 
 	bcproto "github.com/cometbft/cometbft/proto/tendermint/blocksync"
+	cmtproto "github.com/cometbft/cometbft/proto/tendermint/types"
 	"github.com/cometbft/cometbft/types"
 )
 
@@ -29,7 +33,7 @@ const maxEvidenceSigs = types.MaxVotesCount * 100
 var errTooManySigs = fmt.Errorf("too many signatures (max: %d)", types.MaxVotesCount)
 var errTooManyExtendedsigs = fmt.Errorf("too many extended signatures (max: %d)", types.MaxVotesCount)
 var errTooManyEvidenceSigs = fmt.Errorf("too many evidence signatures (max: %d)", maxEvidenceSigs)
-var errTooManyTxs = fmt.Errorf("too many transactions (max: %d)", types.MaxBlockTxs)
+var errTooManyTxs = errors.New("too many transactions")
 
 // validateBlockSyncBytes rejects block responses that encode too many commit
 // signatures before protobuf unmarshalling can allocate one object per signature.
@@ -45,6 +49,24 @@ func validateBlockSyncBytes(msgBytes []byte) error {
 }
 
 func scanBlockSyncBytes(msgBytes []byte) (*bcproto.SigCountMessage, error) {
+	if err := validateEvidenceItemCount(msgBytes); err != nil {
+		return nil, err
+	}
+	blockScanner := cmtproto.NewBlockCardinalityScanner(-1)
+	if err := visitProtoPath(msgBytes, []protowire.Number{3, 1}, func(block []byte) error {
+		err := blockScanner.Scan(block)
+		switch {
+		case errors.Is(err, cmtproto.ErrTooManyBlockCommitSignatures):
+			return fmt.Errorf("%w: %v", errTooManySigs, err)
+		case errors.Is(err, cmtproto.ErrTooManyBlockEvidence),
+			errors.Is(err, cmtproto.ErrTooManyBlockEvidenceElements):
+			return fmt.Errorf("%w: %v", errTooManyEvidenceSigs, err)
+		default:
+			return err
+		}
+	}); err != nil {
+		return nil, err
+	}
 	// unmarshal into custom stub struct that will do no allocations so we can
 	// quickly and cheaply check the validity of BlockResponse message
 	var stub bcproto.SigCountMessage
@@ -54,12 +76,105 @@ func scanBlockSyncBytes(msgBytes []byte) (*bcproto.SigCountMessage, error) {
 	return &stub, nil
 }
 
+// validateEvidenceItemCount rejects an oversized EvidenceList before the
+// generated stub decoder appends one entry per evidence item.
+func validateEvidenceItemCount(msgBytes []byte) error {
+	count := 0
+	path := []protowire.Number{3, 1, 3, 1} // Message.response.block.evidence.evidence
+	return visitProtoPath(msgBytes, path, func([]byte) error {
+		count++
+		if count > maxEvidenceSigs {
+			return fmt.Errorf("%w (evidence got %d)", errTooManyEvidenceSigs, count)
+		}
+		return nil
+	})
+}
+
+// visitProtoPath calls visit for every length-delimited field at path.
+func visitProtoPath(bz []byte, path []protowire.Number, visit func([]byte) error) error {
+	for len(bz) > 0 {
+		num, typ, tagLen := protowire.ConsumeTag(bz)
+		if tagLen < 0 {
+			return protowire.ParseError(tagLen)
+		}
+		end, err := skipProtoField(bz)
+		if err != nil {
+			return err
+		}
+		if num == path[0] {
+			if typ != protowire.BytesType {
+				return fmt.Errorf("wrong wire type %d for field %d", typ, num)
+			}
+			payload, size := protowire.ConsumeBytes(bz[tagLen:end])
+			if size < 0 {
+				return protowire.ParseError(size)
+			}
+			if len(path) == 1 {
+				if err := visit(payload); err != nil {
+					return err
+				}
+			} else if err := visitProtoPath(payload, path[1:], visit); err != nil {
+				return err
+			}
+		}
+		bz = bz[end:]
+	}
+	return nil
+}
+
+// skipProtoField consumes one field, including groups, without recursion.
+func skipProtoField(bz []byte) (int, error) {
+	i, depth := 0, 0
+	for i < len(bz) {
+		_, typ, tagLen := protowire.ConsumeTag(bz[i:])
+		if tagLen < 0 {
+			return 0, protowire.ParseError(tagLen)
+		}
+		i += tagLen
+		switch typ {
+		case protowire.VarintType:
+			_, n := protowire.ConsumeVarint(bz[i:])
+			if n < 0 {
+				return 0, protowire.ParseError(n)
+			}
+			i += n
+		case protowire.Fixed64Type:
+			i += 8
+		case protowire.BytesType:
+			_, n := protowire.ConsumeBytes(bz[i:])
+			if n < 0 {
+				return 0, protowire.ParseError(n)
+			}
+			i += n
+		case protowire.StartGroupType:
+			depth++
+		case protowire.EndGroupType:
+			if depth == 0 {
+				return 0, fmt.Errorf("unexpected end group")
+			}
+			depth--
+		case protowire.Fixed32Type:
+			i += 4
+		default:
+			return 0, fmt.Errorf("illegal wire type %d", typ)
+		}
+		if i < 0 || i > len(bz) {
+			return 0, io.ErrUnexpectedEOF
+		}
+		if depth == 0 {
+			return i, nil
+		}
+	}
+	return 0, io.ErrUnexpectedEOF
+}
+
 func validateMaxBlockTxs(br *bcproto.SigCountBlockResponse, appVersion uint64) error {
-	if appVersion < types.BlockTxLimitAppVersion || br == nil || br.Block == nil || br.Block.Data == nil {
+	maxTxs := types.MaxBlockTxsForAppVersion(appVersion)
+	if maxTxs == 0 || br == nil || br.Block == nil || br.Block.Data == nil {
 		return nil
 	}
-	if count := len(br.Block.Data.Txs); count > types.MaxBlockTxs {
-		return fmt.Errorf("%w (got %d)", errTooManyTxs, count)
+	if count := len(br.Block.Data.Txs); count > maxTxs {
+		return fmt.Errorf("%w (max: %d, got %d)", errTooManyTxs, maxTxs, count)
 	}
 	return nil
 }

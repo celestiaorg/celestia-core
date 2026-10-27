@@ -1,6 +1,8 @@
 package blocksync
 
 import (
+	"bytes"
+	"errors"
 	"reflect"
 	"strconv"
 	"strings"
@@ -30,13 +32,13 @@ func TestBlocksyncChannelPrecheck(t *testing.T) {
 }
 
 func TestValidateBlockSyncTxLimitActivation(t *testing.T) {
-	for _, version := range []uint64{10, 11} {
-		for _, count := range []int{types.MaxBlockTxs, types.MaxBlockTxs + 1, 100_000} {
+	for _, version := range []uint64{9, 10, 11} {
+		for _, count := range []int{types.MaxBlockTxs, types.MaxBlockTxs + 1, 100_000, types.MaxBlockTxsV10 + 1} {
 			payload := blockResponseWithTxs(t, count, nil)
 			stub, err := scanBlockSyncBytes(payload)
 			require.NoError(t, err)
 			err = validateMaxBlockTxs(stub.BlockResponse, version)
-			if version >= types.BlockTxLimitAppVersion && count > types.MaxBlockTxs {
+			if limit := types.MaxBlockTxsForAppVersion(version); limit > 0 && count > limit {
 				require.ErrorIs(t, err, errTooManyTxs)
 			} else {
 				require.NoError(t, err)
@@ -46,7 +48,7 @@ func TestValidateBlockSyncTxLimitActivation(t *testing.T) {
 }
 
 func TestBlocksyncChannelTxLimitUsesCommittedVersion(t *testing.T) {
-	for _, version := range []uint64{10, 11} {
+	for _, version := range []uint64{9, 10, 11} {
 		stateStore := &smmocks.Store{}
 		stateStore.On("Load").Return(sm.State{Version: cmtstate.Version{
 			Consensus: cmtversion.Consensus{App: version},
@@ -54,11 +56,15 @@ func TestBlocksyncChannelTxLimitUsesCommittedVersion(t *testing.T) {
 		blockExec := sm.NewBlockExecutor(stateStore, nil, nil, nil, nil, nil)
 		channel := (&Reactor{blockExec: blockExec}).GetChannels()[0]
 
-		err := channel.RecvMessagePrecheck(blockResponseWithTxs(t, types.MaxBlockTxs+1, nil))
-		if version >= types.BlockTxLimitAppVersion {
+		count := types.MaxBlockTxs + 1
+		if version == types.BlockTxSafetyLimitAppVersion {
+			count = types.MaxBlockTxsV10 + 1
+		}
+		err := channel.RecvMessagePrecheck(blockResponseWithTxs(t, count, nil))
+		if limit := types.MaxBlockTxsForAppVersion(version); limit > 0 && count > limit {
 			require.ErrorIs(t, err, errTooManyTxs)
 		} else {
-			require.NoError(t, err, "historical sync must retain pre-v11 decoding")
+			require.NoError(t, err, "the response must remain valid at this app version")
 		}
 		stateStore.AssertExpectations(t)
 	}
@@ -87,6 +93,35 @@ func TestValidateBlockSyncTxLimitDuplicateFields(t *testing.T) {
 		require.NoError(t, err)
 		require.ErrorIs(t, validateMaxBlockTxs(stub.BlockResponse, types.BlockTxLimitAppVersion), errTooManyTxs)
 	}
+}
+
+func TestValidateBlockSyncEvidenceCountBeforeAllocation(t *testing.T) {
+	evidence := bytes.Repeat([]byte{0x0a, 0}, maxEvidenceSigs+1)
+	wire := wireField(3, wireField(1, wireField(3, evidence)))
+	allocs := testing.AllocsPerRun(5, func() {
+		err := validateBlockSyncBytes(wire)
+		if !errors.Is(err, errTooManyEvidenceSigs) {
+			t.Fatalf("unexpected error: %v", err)
+		}
+	})
+	require.Less(t, allocs, float64(20))
+}
+
+func TestValidateBlockSyncEvidenceCountSkipsUnknownGroups(t *testing.T) {
+	group := protowire.AppendTag(nil, 100, protowire.StartGroupType)
+	group = protowire.AppendTag(group, 1, protowire.VarintType)
+	group = protowire.AppendVarint(group, 1)
+	group = protowire.AppendTag(group, 100, protowire.EndGroupType)
+	wire := append(blockResponseWithTxs(t, 0, nil), group...)
+	require.NoError(t, validateBlockSyncBytes(wire))
+}
+
+func TestValidateBlockSyncCardinalityAcrossDuplicateBlocks(t *testing.T) {
+	entries := bytes.Repeat([]byte{0x0a, 0}, cmtproto.MaxBlockEvidenceItems/2+1)
+	block := wireField(3, entries)
+	part := wireField(3, wireField(1, block))
+	wire := append(append([]byte{}, part...), part...)
+	require.ErrorIs(t, validateBlockSyncBytes(wire), errTooManyEvidenceSigs)
 }
 
 func TestValidateBlockSyncBytes(t *testing.T) {
