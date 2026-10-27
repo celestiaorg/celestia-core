@@ -1543,19 +1543,28 @@ func (cs *State) enterPrevote(height int64, round int32) {
 		return
 	}
 
-	defer func() {
-		// Done enterPrevote:
-		cs.updateRoundStep(round, cstypes.RoundStepPrevote)
-		cs.newStep()
-	}()
-
 	logger.Debug("entering prevote step", "current", log.NewLazySprintf("%v/%v/%v", cs.rs.Height, cs.rs.Round, cs.rs.Step))
 
 	// Sign and broadcast vote as necessary
 	cs.doPrevote(height, round)
 
-	// Once `addVote` hits any +2/3 prevotes, we will go to PrevoteWait
-	// (so we have more time to try and collect +2/3 prevotes for a single block)
+	cs.updateRoundStep(round, cstypes.RoundStepPrevote)
+	cs.newStep()
+
+	// Prevotes collected before this step are otherwise only acted on when our own
+	// prevote is added, which never happens if the signer refused it (#3505).
+	cs.handlePrevoteQuorum(height, round)
+}
+
+// handlePrevoteQuorum moves on from the prevote step once +2/3 prevotes are in.
+func (cs *State) handlePrevoteQuorum(height int64, round int32) {
+	prevotes := cs.rs.Votes.Prevotes(round)
+	blockID, ok := prevotes.TwoThirdsMajority()
+	if ok && (cs.isProposalComplete() || len(blockID.Hash) == 0) {
+		cs.enterPrecommit(height, round)
+	} else if prevotes.HasTwoThirdsAny() {
+		cs.enterPrevoteWait(height, round)
+	}
 }
 
 func (cs *State) defaultDoPrevote(height int64, round int32) {
@@ -2453,9 +2462,6 @@ func (cs *State) handleCompleteProposal(blockHeight int64) {
 	if cs.rs.Step <= cstypes.RoundStepPropose && cs.isProposalComplete() {
 		// Move onto the next step
 		cs.enterPrevote(blockHeight, cs.rs.Round)
-		if hasTwoThirds { // this is optimisation as this will be triggered when prevote is added
-			cs.enterPrecommit(blockHeight, cs.rs.Round)
-		}
 	} else if cs.rs.Step == cstypes.RoundStepCommit {
 		// If we're waiting on the proposal block...
 		cs.tryFinalizeCommit(blockHeight)
@@ -2730,12 +2736,7 @@ func (cs *State) addVote(vote *types.Vote, peerID p2p.ID) (added bool, err error
 			cs.enterNewRound(height, vote.Round)
 
 		case cs.rs.Round == vote.Round && cstypes.RoundStepPrevote <= cs.rs.Step: // current round
-			blockID, ok := prevotes.TwoThirdsMajority()
-			if ok && (cs.isProposalComplete() || len(blockID.Hash) == 0) {
-				cs.enterPrecommit(height, vote.Round)
-			} else if prevotes.HasTwoThirdsAny() {
-				cs.enterPrevoteWait(height, vote.Round)
-			}
+			cs.handlePrevoteQuorum(height, vote.Round)
 
 		case cs.rs.Proposal != nil && 0 <= cs.rs.Proposal.POLRound && cs.rs.Proposal.POLRound == vote.Round:
 			// If the proposal is now complete, enter prevote of cs.rs.Round.
