@@ -442,9 +442,10 @@ var _ p2p.Reactor = &stalledReactor{}
 type stalledReactor struct {
 	p2p.BaseReactor
 
-	started  chan struct{}
-	unblock  chan struct{}
-	received atomic.Int32
+	started     chan struct{}
+	unblock     chan struct{}
+	unblockOnce sync.Once
+	received    atomic.Int32
 }
 
 func newStalledReactor() *stalledReactor {
@@ -454,6 +455,11 @@ func newStalledReactor() *stalledReactor {
 		p2p.WithQueueingFunc(r.TryQueueUnprocessedEnvelope),
 	)
 	return r
+}
+
+// release unblocks Receive. It is safe to call more than once.
+func (r *stalledReactor) release() {
+	r.unblockOnce.Do(func() { close(r.unblock) })
 }
 
 func (r *stalledReactor) GetChannels() []*conn.ChannelDescriptor {
@@ -482,6 +488,10 @@ func (r *stalledReactor) Receive(p2p.Envelope) {
 // instead of blocking the caller (the peer's receive routine).
 func TestBaseReactorWithQueueingFunc(t *testing.T) {
 	r := newStalledReactor()
+	t.Cleanup(func() {
+		r.release()
+		r.OnStop()
+	})
 	peer := &imaginaryPeer{}
 	msg, err := proto.Marshal(&mempool.Txs{Txs: [][]byte{[]byte("tx")}})
 	require.NoError(t, err)
@@ -509,7 +519,7 @@ func TestBaseReactorWithQueueingFunc(t *testing.T) {
 		t.Fatal("QueueUnprocessedEnvelope blocked on a full queue")
 	}
 
-	close(r.unblock)
+	r.release()
 	require.Eventually(t, func() bool { return r.received.Load() == 2 }, time.Second, 10*time.Millisecond)
 	time.Sleep(50 * time.Millisecond)
 	require.EqualValues(t, 2, r.received.Load())
