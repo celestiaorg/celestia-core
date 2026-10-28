@@ -9,6 +9,7 @@ on:
   pull_request:
     paths:
       - "**.go"
+      - "**/testdata/fuzz/**"
       - "go.mod"
       - "go.sum"
       - ".github/workflows/fuzz-nightly.yml"
