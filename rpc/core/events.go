@@ -59,8 +59,12 @@ func (env *Environment) Subscribe(ctx *rpctypes.Context, query string) (*ctypes.
 					resp        = rpctypes.NewRPCSuccessResponse(subscriptionID, resultEvent)
 				)
 				writeCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-				defer cancel()
-				if err := ctx.WSConn.WriteRPCResponse(writeCtx, resp); err != nil {
+				err := ctx.WSConn.WriteRPCResponse(writeCtx, resp)
+				// Cancel immediately rather than defer: a defer would only run
+				// when the subscription ends, retaining one context per
+				// delivered event for the subscription's lifetime.
+				cancel()
+				if err != nil {
 					env.Logger.Info("Can't write response (slow client)",
 						"to", addr, "subscriptionID", subscriptionID, "err", err)
 
