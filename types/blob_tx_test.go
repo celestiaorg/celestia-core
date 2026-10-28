@@ -304,3 +304,66 @@ func BenchmarkTxHashBlobTx(b *testing.B) {
 		}
 	})
 }
+
+// TestUnwrapBlobTxDoesNotAlias checks that the inner tx UnwrapBlobTx returns
+// does not share memory with the BlobTx at any app version, so callers that
+// keep it, such as queued tx events, do not keep the blobs alive.
+func TestUnwrapBlobTxDoesNotAlias(t *testing.T) {
+	nsID := append(make([]byte, share.NamespaceVersionZeroPrefixSize), bytes.Repeat([]byte{1}, share.NamespaceVersionZeroIDSize)...)
+	blob := &blobv4.BlobProto{NamespaceId: nsID, Data: []byte("data")}
+	tx, err := proto.Marshal(&blobv4.BlobTx{Tx: []byte("inner-tx"), Blobs: []*blobv4.BlobProto{blob}, TypeId: squaretx.ProtoBlobTxTypeID})
+	require.NoError(t, err)
+
+	for _, appVersion := range []uint64{BlobTxValidationAppVersion - 1, BlobTxValidationAppVersion} {
+		bz := bytes.Clone(tx)
+		inner, isBlobTx := UnwrapBlobTx(bz, appVersion)
+		require.True(t, isBlobTx)
+		require.Equal(t, Tx("inner-tx"), inner)
+
+		for i := range bz {
+			bz[i] = 0
+		}
+		require.Equal(t, Tx("inner-tx"), inner, "app version %d: inner tx aliases the BlobTx", appVersion)
+	}
+}
+
+// BenchmarkUnwrapBlobTx unwraps an 8 MiB BlobTx carrying many blobs with the
+// rules of each app version, and with the copying go-square decoder that the
+// no-copy one replaces at BlobTxValidationAppVersion.
+func BenchmarkUnwrapBlobTx(b *testing.B) {
+	const (
+		blobCount = 64
+		blobSize  = 8 << 20 / blobCount
+	)
+	nsID := append(make([]byte, share.NamespaceVersionZeroPrefixSize), bytes.Repeat([]byte{1}, share.NamespaceVersionZeroIDSize)...)
+	blobs := make([]*blobv4.BlobProto, blobCount)
+	for i := range blobs {
+		blobs[i] = &blobv4.BlobProto{NamespaceId: nsID, Data: bytes.Repeat([]byte{byte(i)}, blobSize)}
+	}
+	bz, err := proto.Marshal(&blobv4.BlobTx{Tx: bytes.Repeat([]byte{1}, 400), Blobs: blobs, TypeId: squaretx.ProtoBlobTxTypeID})
+	require.NoError(b, err)
+	tx := Tx(bz)
+
+	b.Run("legacy", func(b *testing.B) {
+		b.ReportAllocs()
+		for b.Loop() {
+			UnwrapBlobTx(tx, BlobTxValidationAppVersion-1)
+		}
+	})
+	b.Run("v11", func(b *testing.B) {
+		b.ReportAllocs()
+		for b.Loop() {
+			UnwrapBlobTx(tx, BlobTxValidationAppVersion)
+		}
+	})
+	b.Run("v11 copying decoder", func(b *testing.B) {
+		b.ReportAllocs()
+		for b.Loop() {
+			bTx, _, err := squaretx.UnmarshalBlobTx(tx)
+			if err != nil {
+				b.Fatal(err)
+			}
+			_ = bytes.Clone(bTx.Tx)
+		}
+	})
+}
