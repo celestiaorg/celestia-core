@@ -17,7 +17,7 @@ import (
 
 // lockedBlockFile is where a stalled height's locked block is copied; a dedicated-disk option only changes this path.
 func lockedBlockFile(config *cfg.ConsensusConfig) string {
-	return filepath.Join(filepath.Dir(config.WalFile()), "wal_blocks")
+	return filepath.Join(filepath.Dir(config.WalFile()), "locked_block") // not "wal*": the WAL group counts those
 }
 
 // lockedBlockWriter copies the locked block's parts to a file once a height has stayed open
@@ -26,9 +26,11 @@ type lockedBlockWriter struct {
 	path   string
 	logger log.Logger
 
-	mtx   sync.Mutex
-	job   *lockedBlockJob
-	stale bool // the file holds a previous run's records
+	mtx      sync.Mutex
+	job      *lockedBlockJob
+	tail     chan struct{} // closed once the last goroutine started is done with the file
+	stale    bool          // the file holds a previous run's records
+	restored types.BlockID // the stale file holds this block of the current height
 }
 
 type lockedBlockJob struct {
@@ -55,20 +57,33 @@ func (w *lockedBlockWriter) arm(delay time.Duration, li LockInfo, parts *types.P
 	if w.job != nil && w.job.height == li.Height && w.job.blockID.Equals(li.BlockID) {
 		return
 	}
-	prev := w.job
-	if prev != nil {
-		close(prev.quit)
+	if w.job == nil && w.stale && w.restored.Equals(li.BlockID) {
+		return
 	}
-	w.job = &lockedBlockJob{height: li.Height, blockID: li.BlockID, quit: make(chan struct{}), done: make(chan struct{})}
+	if w.job != nil {
+		close(w.job.quit)
+	}
+	job := &lockedBlockJob{height: li.Height, blockID: li.BlockID, quit: make(chan struct{})}
+	job.done = w.goAfterTail(func() { w.run(job, delay, li, parts) })
+	w.job = job
 	w.stale = false
-	go w.run(w.job, prev, delay, li, parts)
 }
 
-func (w *lockedBlockWriter) run(job, prev *lockedBlockJob, delay time.Duration, li LockInfo, parts *types.PartSet) {
-	defer close(job.done)
-	if prev != nil {
-		<-prev.done
-	}
+// goAfterTail runs f once every earlier goroutine is done with the file. Callers hold mtx.
+func (w *lockedBlockWriter) goAfterTail(f func()) chan struct{} {
+	prev, done := w.tail, make(chan struct{})
+	w.tail = done
+	go func() {
+		defer close(done)
+		if prev != nil {
+			<-prev
+		}
+		f()
+	}()
+	return done
+}
+
+func (w *lockedBlockWriter) run(job *lockedBlockJob, delay time.Duration, li LockInfo, parts *types.PartSet) {
 	timer := time.NewTimer(delay)
 	defer timer.Stop()
 	select {
@@ -80,9 +95,13 @@ func (w *lockedBlockWriter) run(job, prev *lockedBlockJob, delay time.Duration, 
 		<-job.quit
 	}
 	if !job.keep {
-		if err := os.Remove(w.path); err != nil && !os.IsNotExist(err) {
-			w.logger.Error("failed to remove the locked block's parts", "err", err)
-		}
+		w.remove()
+	}
+}
+
+func (w *lockedBlockWriter) remove() {
+	if err := os.Remove(w.path); err != nil && !os.IsNotExist(err) {
+		w.logger.Error("failed to remove the locked block's parts", "err", err)
 	}
 }
 
@@ -122,24 +141,26 @@ func (w *lockedBlockWriter) reset() {
 		close(w.job.quit)
 		w.job = nil
 	} else if w.stale {
-		_ = os.Remove(w.path)
+		w.goAfterTail(w.remove)
 	}
 	w.stale = false
 }
 
-// stop ends the job and waits for it, keeping the file for the next start.
+// stop ends the job and waits for every goroutine, keeping the job's file for the next start.
 func (w *lockedBlockWriter) stop() {
 	if w == nil {
 		return
 	}
 	w.mtx.Lock()
-	job := w.job
+	job, tail := w.job, w.tail
 	w.job = nil
 	w.mtx.Unlock()
 	if job != nil {
 		job.keep = true
 		close(job.quit)
-		<-job.done
+	}
+	if tail != nil {
+		<-tail
 	}
 }
 
@@ -182,5 +203,8 @@ func (w *lockedBlockWriter) read(li LockInfo) (*types.Block, *types.PartSet) {
 		return nil, nil
 	}
 	block.FillCachedHashes()
+	w.mtx.Lock()
+	w.restored = li.BlockID
+	w.mtx.Unlock()
 	return block, parts
 }

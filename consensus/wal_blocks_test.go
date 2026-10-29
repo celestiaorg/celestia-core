@@ -61,6 +61,12 @@ func TestLockedBlockRestoredFromFile(t *testing.T) {
 	require.EqualValues(t, 0, rs.ValidRound)
 	require.True(t, blockMatchesBlockID(rs.ValidBlock, rs.ValidBlockParts, xID))
 	require.NotContains(t, rec.snapshot(), propagatorCall{commitment: true, height: 1, round: 0, psh: parts.Header()})
+
+	// Relocking on the restored block keeps the file instead of rewriting it.
+	cs.lockedBlocks.arm(0, LockInfo{Height: 1, BlockID: xID}, parts)
+	cs.lockedBlocks.mtx.Lock()
+	defer cs.lockedBlocks.mtx.Unlock()
+	require.Nil(t, cs.lockedBlocks.job)
 }
 
 // A torn file degrades to the refetch path.
@@ -119,7 +125,7 @@ func TestLockedBlockNotWrittenForOwnProposal(t *testing.T) {
 
 // stop and reset end the writer goroutine; only reset removes the file.
 func TestLockedBlockWriterLifecycle(t *testing.T) {
-	path := t.TempDir() + "/wal_blocks"
+	path := t.TempDir() + "/locked_block"
 	parts, err := types.NewPartSetFromData(cmtrand.Bytes(3*int(types.BlockPartSizeBytes)), types.BlockPartSizeBytes)
 	require.NoError(t, err)
 	li := LockInfo{Height: 5, BlockID: types.BlockID{Hash: cmtrand.Bytes(32), PartSetHeader: parts.Header()}}
@@ -140,9 +146,10 @@ func TestLockedBlockWriterLifecycle(t *testing.T) {
 	<-job.done
 	require.Equal(t, 1+int(parts.Total()), countRecords(t, path))
 
-	// A restart finds the previous run's file; the next height removes it.
+	// A restart finds the previous run's file; the next height removes it in the background.
 	w = newLockedBlockWriter(path, log.TestingLogger())
 	w.reset()
+	w.stop()
 	require.NoFileExists(t, path)
 
 	// A new height ends the job and removes its file.
@@ -168,5 +175,22 @@ func countRecords(t *testing.T, path string) int {
 			return n
 		}
 		n++
+	}
+}
+
+// stop also joins a job that a new height already ended.
+func TestLockedBlockWriterStopJoinsEndedJob(t *testing.T) {
+	parts, err := types.NewPartSetFromData(cmtrand.Bytes(3*int(types.BlockPartSizeBytes)), types.BlockPartSizeBytes)
+	require.NoError(t, err)
+	li := LockInfo{Height: 5, BlockID: types.BlockID{Hash: cmtrand.Bytes(32), PartSetHeader: parts.Header()}}
+	w := newLockedBlockWriter(t.TempDir()+"/locked_block", log.TestingLogger())
+	w.arm(time.Hour, li, parts)
+	job := w.job
+	w.reset()
+	w.stop()
+	select {
+	case <-job.done:
+	default:
+		t.Fatal("ended job outlives stop")
 	}
 }
