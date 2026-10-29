@@ -65,6 +65,33 @@ func TestGapCatchup(t *testing.T) {
 	require.True(t, caughtUp.IsComplete())
 }
 
+// After a restart every reactor starts empty: r2 asks for the block too early
+// (a catch-up stub, as for a restored lock), r3 has nothing, and r1 re-seeds
+// from its replayed proposal. Both must fetch the whole block from r1.
+func TestReseedAfterRestart(t *testing.T) {
+	reactors, _ := createTestReactors(3, defaultTestP2PConf(), false, "")
+	r1, r2, r3 := reactors[0], reactors[1], reactors[2]
+	cleanup, _, sm, pv := state.SetupTestCaseWithPrivVal(t)
+	t.Cleanup(func() {
+		cleanup(t)
+	})
+
+	prop, ps, _, metaData := createTestProposal(t, sm, pv, 1, 0, 2, 1000000)
+	psh := ps.Header()
+	r2.AddCommitment(prop.Height, prop.Round, &psh)
+
+	require.NoError(t, r1.ProposeBlock(prop, ps, metaData))
+
+	for _, r := range []*Reactor{r2, r3} {
+		require.Eventually(t, func() bool {
+			_, parts, has := r.GetProposal(prop.Height, prop.Round)
+			return has && parts.IsComplete()
+		}, 2*RetryTime, 50*time.Millisecond)
+		_, parts, _ := r.GetProposal(prop.Height, prop.Round)
+		require.Equal(t, psh, parts.Header())
+	}
+}
+
 func TestReceiveHaveOnCatchupBlock(t *testing.T) {
 	p2pCfg := defaultTestP2PConf()
 	nodes := 2

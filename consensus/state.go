@@ -475,6 +475,7 @@ func (cs *State) OnStart() error {
 	cs.rsMtx.RUnlock()
 	if proposer != nil {
 		cs.propagator.SetConsensusState(height, round, proposer.PubKey)
+		cs.reseedPropagator()
 	}
 
 	// now start the receiveRoutine
@@ -1442,17 +1443,7 @@ func (cs *State) defaultDecideProposal(height int64, round int32) {
 		}
 
 		cs.Logger.Debug("verified proposal signature", "proposal", proposal)
-		metaData := make([]proptypes.TxMetaData, len(block.Txs))
-		hashes := block.CachedHashes()
-		for i, pos := range blockParts.TxPos {
-			metaData[i] = proptypes.TxMetaData{
-				Start: pos.Start,
-				End:   pos.End,
-				Hash:  hashes[i],
-			}
-		}
-
-		err = cs.propagator.ProposeBlock(proposal, blockParts, metaData)
+		err = cs.propagator.ProposeBlock(proposal, blockParts, txMetaData(block, blockParts))
 		if err != nil {
 			cs.Logger.Error("propagation reactor failed to propose the block", "err", err)
 			if !cs.gossipDataEnabled.Load() {
@@ -1476,6 +1467,44 @@ func (cs *State) defaultDecideProposal(height int64, round int32) {
 		cs.Logger.Debug("propagated proposal", "height", height, "round", round, "proposal", proposal)
 	} else if !cs.replayMode {
 		cs.Logger.Error("propose step; failed signing proposal", "height", height, "round", round, "err", err)
+	}
+}
+
+// txMetaData returns the propagation metadata of block; parts must come from block.MakePartSet.
+func txMetaData(block *types.Block, parts *types.PartSet) []proptypes.TxMetaData {
+	metaData := make([]proptypes.TxMetaData, len(block.Txs))
+	hashes := block.CachedHashes()
+	for i, pos := range parts.TxPos {
+		metaData[i] = proptypes.TxMetaData{
+			Start: pos.Start,
+			End:   pos.End,
+			Hash:  hashes[i],
+		}
+	}
+	return metaData
+}
+
+// reseedPropagator hands our replayed proposal back to the propagation reactor, which starts
+// empty after a restart. Only the round's proposer can: peers verify the compact block against its key.
+func (cs *State) reseedPropagator() {
+	rs := &cs.rs
+	prop, block := rs.Proposal, rs.ProposalBlock
+	if prop == nil || block == nil || prop.Height != rs.Height || prop.Round != rs.Round ||
+		cs.privValidatorPubKey == nil || !cs.isProposer(cs.privValidatorPubKey.Address()) {
+		return
+	}
+	// ProposeBlock would overwrite the parts of an entry already held for this round.
+	if _, _, has := cs.propagator.GetProposal(prop.Height, prop.Round); has {
+		return
+	}
+	block.FillCachedHashes()
+	parts, err := block.MakePartSet(types.BlockPartSizeBytes)
+	if err != nil || !parts.HasHeader(prop.BlockID.PartSetHeader) {
+		cs.Logger.Error("cannot rebuild the replayed proposal's part set", "height", prop.Height, "round", prop.Round, "err", err)
+		return
+	}
+	if err := cs.propagator.ProposeBlock(prop, parts, txMetaData(block, parts)); err != nil {
+		cs.Logger.Error("failed to re-seed the propagation reactor", "height", prop.Height, "round", prop.Round, "err", err)
 	}
 }
 
