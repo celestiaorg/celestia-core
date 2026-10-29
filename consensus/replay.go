@@ -116,6 +116,13 @@ func (cs *State) applyLockInfo(li LockInfo) {
 		cs.rs.LockedBlock, cs.rs.LockedBlockParts = cs.rs.ProposalBlock, cs.rs.ProposalBlockParts
 		return
 	}
+	if block, parts := cs.lockedBlocks.read(li); block != nil {
+		cs.fillLockBytes(block, parts)
+		if cs.rs.ProposalBlockParts == nil || cs.rs.ProposalBlockParts.HasHeader(li.BlockID.PartSetHeader) {
+			cs.rs.ProposalBlock, cs.rs.ProposalBlockParts = block, parts
+		}
+		return
+	}
 	// Refetch the bytes; the propagator only sends requests once it starts processing.
 	if cs.rs.ProposalBlockParts == nil {
 		cs.rs.ProposalBlockParts = types.NewPartSetFromHeader(li.BlockID.PartSetHeader, types.BlockPartSizeBytes)
