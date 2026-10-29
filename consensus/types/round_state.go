@@ -79,7 +79,7 @@ type RoundState struct {
 	LockedRound        int32               `json:"locked_round"`
 	LockedBlockID      types.BlockID       `json:"locked_block_id"`
 	LockedBlockTime    time.Time           `json:"locked_block_time"`
-	// LockedBlock and LockedBlockParts are optional: a lock restored from the WAL has only the ID.
+	// LockedBlock and LockedBlockParts are optional: a lock restored from the WAL may have only the ID.
 	LockedBlock      *types.Block   `json:"locked_block"`
 	LockedBlockParts *types.PartSet `json:"locked_block_parts"`
 

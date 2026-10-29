@@ -23,8 +23,8 @@ import (
 	"github.com/cometbft/cometbft/types"
 )
 
-// lockFixture is a 4-validator height 1 where our node is neither the round 0
-// nor the round 1 proposer, so its WAL never holds the proposed block's bytes.
+// lockFixture is a 4-validator height 1. Unless asProposer, our node is neither
+// the round 0 nor the round 1 proposer, so its WAL never holds the block's bytes.
 type lockFixture struct {
 	config  *cfg.Config
 	state   sm.State
@@ -35,7 +35,7 @@ type lockFixture struct {
 	p0, p1  int32
 }
 
-func newLockFixture(t *testing.T, onlyInternalWal bool) *lockFixture {
+func newLockFixture(t *testing.T, onlyInternalWal, asProposer bool) *lockFixture {
 	t.Helper()
 	config := ResetConfig(strings.ReplaceAll(t.Name(), "/", "_"))
 	t.Cleanup(func() { os.RemoveAll(config.RootDir) })
@@ -55,10 +55,13 @@ func newLockFixture(t *testing.T, onlyInternalWal bool) *lockFixture {
 	vals.IncrementProposerPriority(1)
 	f.p1, _ = state.Validators.GetByAddress(vals.GetProposer().Address)
 	ours := int32(-1)
+	if asProposer {
+		ours = f.p0
+	}
 	for i := range f.vss {
-		if int32(i) != f.p0 && int32(i) != f.p1 && ours < 0 {
+		if ours < 0 && int32(i) != f.p0 && int32(i) != f.p1 {
 			ours = int32(i)
-		} else {
+		} else if int32(i) != ours {
 			f.others = append(f.others, f.vss[i])
 		}
 	}
@@ -173,7 +176,7 @@ func startRestarted(t *testing.T, cs *State) (newRoundCh, voteCh <-chan cmtpubsu
 func TestLockSurvivesRestart(t *testing.T) {
 	for _, onlyInternal := range []bool{true, false} {
 		t.Run(fmt.Sprintf("only_internal_wal=%v", onlyInternal), func(t *testing.T) {
-			f := newLockFixture(t, onlyInternal)
+			f := newLockFixture(t, onlyInternal, false)
 			_, block, parts := f.lockAndStop(t)
 			xID := types.BlockID{Hash: block.Hash(), PartSetHeader: parts.Header()}
 
@@ -197,7 +200,7 @@ func TestLockSurvivesRestart(t *testing.T) {
 
 // A lock restored without bytes still commits once the parts arrive.
 func TestLockByIDFinalizesWhenBytesArrive(t *testing.T) {
-	f := newLockFixture(t, true)
+	f := newLockFixture(t, true, false)
 	prop, block, parts := f.lockAndStop(t)
 
 	cs := f.newState()
@@ -213,7 +216,7 @@ func TestLockByIDFinalizesWhenBytesArrive(t *testing.T) {
 
 // A restored lock is released by a polka for another block at a later round.
 func TestLockByIDReleasedByLaterPolka(t *testing.T) {
-	f := newLockFixture(t, true)
+	f := newLockFixture(t, true, false)
 	_, block, _ := f.lockAndStop(t)
 
 	cs := f.newState()
@@ -230,6 +233,47 @@ func TestLockByIDReleasedByLaterPolka(t *testing.T) {
 	rs := cs.GetRoundState()
 	require.EqualValues(t, 1, rs.LockedRound)
 	require.Equal(t, yID, rs.LockedBlockID)
+}
+
+// A later nil polka releases a lock held by ID only, and the release survives a restart.
+func TestUnlockSurvivesRestart(t *testing.T) {
+	f := newLockFixture(t, true, false)
+	f.lockAndStop(t)
+
+	cs := f.newState()
+	newRoundCh, voteCh := startRestarted(t, cs)
+	f.moveToRound1(t, cs, newRoundCh)
+	signAddVotes(cs, cmtproto.PrevoteType, nil, types.PartSetHeader{}, false, f.others...)
+	blockY, partsY := f.proposeFreshY(t, cs)
+	v := nextVote(t, voteCh, 1, 1, cmtproto.PrevoteType)
+	require.Equal(t, types.BlockID{Hash: blockY.Hash(), PartSetHeader: partsY.Header()}, v.BlockID,
+		"the nil polka must release the lock before we prevote")
+	nextVote(t, voteCh, 1, 1, cmtproto.PrecommitType)
+	require.NoError(t, cs.Stop())
+	cs.Wait()
+
+	cs = f.newState()
+	startRestarted(t, cs)
+	require.False(t, cs.GetRoundState().IsLocked(), "unlock lost across the restart")
+}
+
+// A proposer locked on its own block gets the bytes back from its WAL.
+func TestLockRestoresOwnProposalBytes(t *testing.T) {
+	f := newLockFixture(t, true, true)
+	cs := f.newState()
+	voteCh := subscribeToVoter(cs, cs.privValidatorPubKey.Address())
+	require.NoError(t, cs.Start())
+	v := nextVote(t, voteCh, 1, 0, cmtproto.PrevoteType)
+	signAddVotes(cs, cmtproto.PrevoteType, v.BlockID.Hash, v.BlockID.PartSetHeader, false, f.others...)
+	nextVote(t, voteCh, 1, 0, cmtproto.PrecommitType)
+	require.NoError(t, cs.Stop())
+	cs.Wait()
+
+	cs = f.newState()
+	startRestarted(t, cs)
+	rs := cs.GetRoundState()
+	require.Equal(t, v.BlockID, rs.LockedBlockID)
+	require.True(t, blockMatchesBlockID(rs.LockedBlock, rs.LockedBlockParts, v.BlockID))
 }
 
 // crashBeforeSignWAL crashes at the first flush that follows a LockInfo write,
@@ -259,7 +303,7 @@ func (w *crashBeforeSignWAL) FlushAndSync() error {
 // A crash after the lock record and before the signature leaves a locked node
 // that has not precommitted; once the polka is back it precommits X by ID.
 func TestLockRecordCrashBeforePrecommit(t *testing.T) {
-	f := newLockFixture(t, true)
+	f := newLockFixture(t, true, false)
 	cs := f.newState()
 	csWal, err := cs.OpenWAL(f.config.Consensus.WalFile())
 	require.NoError(t, err)
@@ -294,7 +338,7 @@ func TestLockRecordCrashBeforePrecommit(t *testing.T) {
 
 // A WAL written before lock records existed replays as before: no lock.
 func TestReplayWALWithoutLockRecords(t *testing.T) {
-	f := newLockFixture(t, true)
+	f := newLockFixture(t, true, false)
 	f.lockAndStop(t)
 	walFile := f.config.Consensus.WalFile()
 	require.Positive(t, dropLockRecords(t, walFile))
