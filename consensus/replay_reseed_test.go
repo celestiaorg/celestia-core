@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -58,11 +59,7 @@ func (r *proposeRecorder) ProposeBlock(prop *types.Proposal, parts *types.PartSe
 // The round 0 proposer restarts with its proposal and parts replayed and hands
 // them back to the propagator, after SetConsensusState.
 func TestRestartedProposerReseedsPropagator(t *testing.T) {
-	f := newLockFixture(t, true, false)
-	// Our node is the round 0 proposer.
-	privval.NewFilePV(f.vss[f.p0].PrivValidator.(types.MockPV).PrivKey,
-		f.config.PrivValidatorKeyFile(), f.config.PrivValidatorStateFile()).Save()
-
+	f := newLockFixture(t, true, true)
 	cs1 := f.newState()
 	require.NoError(t, cs1.Start())
 	voteCh := subscribeToVoter(cs1, cs1.privValidatorPubKey.Address())
@@ -196,10 +193,9 @@ func startPropagationNet(t *testing.T, css []*State) ([]*Reactor, []types.Subscr
 	return reactors, blocksSubs, eventBuses
 }
 
-// Four validators with only_internal_wal are stopped together while sleeping in
-// the precommit delay of height 3 (all prevoted the proposal X, nobody locked).
-// Restarting the three non-proposers must recover; restarting all four must
-// commit X, which only the proposer's replayed WAL holds.
+// Four only_internal_wal validators stop together in a precommit delay from height 3 on
+// (all prevoted X, nobody locked). Restarting the three non-proposers must recover;
+// restarting all four must commit X, which only the proposer's replayed WAL holds.
 func TestCorrelatedRestartDuringPrecommitDelay(t *testing.T) {
 	for _, tc := range []struct {
 		restartProposer, legacyGossip bool
@@ -263,21 +259,26 @@ func testCorrelatedRestart(t *testing.T, restartProposer, legacyGossip bool) {
 	}
 
 	reactors, blocksSubs, eventBuses := start(css)
+	stopRun1 := sync.OnceFunc(func() { stopConsensusNet(logger, reactors, eventBuses) })
+	t.Cleanup(stopRun1)
 	for h := int64(1); h < target; h++ {
 		timeoutWaitGroup(n, func(j int) { <-blocksSubs[j].Out() })
 	}
+	// A node that applied the proposal from its catch-up cache skips the delay: wait for a later height.
 	require.Eventually(t, func() bool {
+		height := css[0].GetRoundState().Height
 		for _, cs := range css {
 			rs := cs.GetRoundState()
-			if rs.Height != target || rs.Round != 0 || !cs.StartedPrecommitSleep.Load() {
+			if height < target || rs.Height != height || rs.Round != 0 || !cs.StartedPrecommitSleep.Load() {
 				return false
 			}
 		}
 		return true
 	}, 20*time.Second, 2*time.Millisecond)
-	stopConsensusNet(logger, reactors, eventBuses)
+	stopRun1()
 
 	rs := css[0].GetRoundState()
+	height := rs.Height
 	proposer := rs.Validators.GetProposer().Address
 	restart := make([]int, 0, n)
 	var x []byte
@@ -312,8 +313,8 @@ func testCorrelatedRestart(t *testing.T, restartProposer, legacyGossip bool) {
 	}
 	for range css2 {
 		b := <-blocks
-		require.NotNil(t, b, "no block at height %d within 30s of the restart", target)
-		require.Equal(t, target, b.Height)
+		require.NotNil(t, b, "no block at height %d within 30s of the restart", height)
+		require.Equal(t, height, b.Height)
 		if restartProposer {
 			require.Equal(t, x, b.Hash().Bytes(), "the replayed proposal was not committed")
 		}
