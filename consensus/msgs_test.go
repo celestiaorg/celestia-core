@@ -210,6 +210,12 @@ func TestWALMsgProto(t *testing.T) {
 	pbParts, err := parts.ToProto()
 	require.NoError(t, err)
 
+	lockTime := time.Date(2026, 10, 29, 12, 0, 0, 0, time.UTC)
+	lockBlockID := types.BlockID{
+		Hash:          cmtrand.Bytes(32),
+		PartSetHeader: types.PartSetHeader{Total: 3, Hash: cmtrand.Bytes(32)},
+	}
+
 	testsCases := []struct {
 		testName string
 		msg      WALMessage
@@ -273,6 +279,32 @@ func TestWALMsgProto(t *testing.T) {
 			Sum: &cmtcons.WALMessage_EndHeight{
 				EndHeight: &cmtcons.EndHeight{
 					Height: 1,
+				},
+			},
+		}, false},
+		{"successful LockInfo", LockInfo{
+			Height:    5,
+			Round:     2,
+			BlockID:   lockBlockID,
+			BlockTime: lockTime,
+		}, &cmtcons.WALMessage{
+			Sum: &cmtcons.WALMessage_LockInfo{
+				LockInfo: &cmtcons.LockInfo{
+					Height:    5,
+					Round:     2,
+					BlockId:   lockBlockID.ToProto(),
+					BlockTime: lockTime,
+				},
+			},
+		}, false},
+		{"successful LockInfo unlock", LockInfo{
+			Height: 5,
+			Round:  -1,
+		}, &cmtcons.WALMessage{
+			Sum: &cmtcons.WALMessage_LockInfo{
+				LockInfo: &cmtcons.LockInfo{
+					Height: 5,
+					Round:  -1,
 				},
 			},
 		}, false},
