@@ -58,7 +58,7 @@ func (r *proposeRecorder) ProposeBlock(prop *types.Proposal, parts *types.PartSe
 // The round 0 proposer restarts with its proposal and parts replayed and hands
 // them back to the propagator, after SetConsensusState.
 func TestRestartedProposerReseedsPropagator(t *testing.T) {
-	f := newLockFixture(t, true)
+	f := newLockFixture(t, true, false)
 	// Our node is the round 0 proposer.
 	privval.NewFilePV(f.vss[f.p0].PrivValidator.(types.MockPV).PrivKey,
 		f.config.PrivValidatorKeyFile(), f.config.PrivValidatorStateFile()).Save()
