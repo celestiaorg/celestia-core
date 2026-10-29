@@ -21,9 +21,9 @@ This guide provides instructions for upgrading to specific versions of CometBFT.
 
 * The consensus WAL now records the node's lock (`LockInfo`) so it survives a
   restart, also with `only_internal_wal = true`. Older binaries do not know this
-  record: downgrading after it was written makes the node repair the WAL at
-  startup, truncating the WAL head file at its first lock record, so part or all
-  of the current height is not replayed, as before this change;
+  record: if the height being replayed holds one, a downgraded node repairs the
+  WAL at startup, truncating the WAL head file at its first lock record (possibly
+  in an earlier height), so part or all of the current height is not replayed;
   `priv_validator_state.json` still prevents double signing.
 
 ## v0.38.13
