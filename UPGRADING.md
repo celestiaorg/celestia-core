@@ -25,6 +25,10 @@ This guide provides instructions for upgrading to specific versions of CometBFT.
   WAL at startup, truncating the WAL head file at its first lock record (possibly
   in an earlier height), so part or all of the current height is not replayed;
   `priv_validator_state.json` still prevents double signing.
+* With `only_internal_wal = true`, a height that stays open after the node locks
+  on a peer's block copies that block (up to the max block size) to `wal_blocks`
+  next to the WAL, without fsync, so a restart can restore it. The file is
+  removed once the height commits.
 
 ## v0.38.13
 
