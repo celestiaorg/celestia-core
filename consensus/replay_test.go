@@ -227,8 +227,8 @@ func TestReplayLockInfo(t *testing.T) {
 }
 
 // TestRestartAfterPrevoteWithLostProposal reproduces celestia-core#3505: a
-// validator that prevoted a peer's block and restarts without it in the WAL
-// (only_internal_wal) must still leave round 0 once the prevotes arrive.
+// validator that prevoted a peer's block and restarts without its parts in the
+// WAL (only_internal_wal) must still leave round 0 once the prevotes arrive.
 func TestRestartAfterPrevoteWithLostProposal(t *testing.T) {
 	config := ResetConfig(t.Name())
 	defer os.RemoveAll(config.RootDir)
@@ -264,7 +264,7 @@ func TestRestartAfterPrevoteWithLostProposal(t *testing.T) {
 	require.NoError(t, cs1.Stop())
 	cs1.Wait()
 
-	// After the restart the WAL replays our prevote but not the proposal.
+	// After the restart the WAL replays the proposal and our prevote, not the parts.
 	pv2 := privval.LoadFilePV(config.PrivValidatorKeyFile(), config.PrivValidatorStateFile())
 	cs2 := newStateWithConfigAndBlockStore(config, state, pv2, app, blockDB)
 	newRoundCh := subscribe(cs2.eventBus, types.EventQueryNewRound)
@@ -275,7 +275,7 @@ func TestRestartAfterPrevoteWithLostProposal(t *testing.T) {
 	ensureNewRound(newRoundCh, 1, 0)
 	ensurePrevoteMatch(t, voteCh, 1, 0, block.Hash())
 
-	// Every peer's prevote lands while we are still waiting for the proposal.
+	// Every peer's prevote lands while we are still waiting for the block.
 	signAddVotes(cs2, cmtproto.PrevoteType, block.Hash(), parts.Header(), false, others...)
 	require.Eventually(t, func() bool {
 		return cs2.GetRoundState().Votes.Prevotes(0).HasAll()

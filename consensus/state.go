@@ -990,7 +990,7 @@ func (cs *State) receiveRoutine(maxSteps int) {
 			cs.handleTxsAvailable()
 
 		case mi = <-cs.peerMsgQueue:
-			if !cs.config.OnlyInternalWal {
+			if !cs.config.OnlyInternalWal || walPeerMsg(&rs, mi) {
 				if err := cs.wal.Write(mi); err != nil {
 					cs.Logger.Error("failed writing to WAL", "err", err)
 				}
@@ -1027,6 +1027,13 @@ func (cs *State) receiveRoutine(maxSteps int) {
 			return
 		}
 	}
+}
+
+// walPeerMsg reports whether only_internal_wal still journals a peer message: the
+// round's first proposal, so a restarted node can accept the block's parts again.
+func walPeerMsg(rs *cstypes.RoundState, mi msgInfo) bool {
+	m, ok := mi.Msg.(*ProposalMessage)
+	return ok && m.Proposal.Height == rs.Height && m.Proposal.Round == rs.Round && rs.Proposal == nil
 }
 
 // writeInternalMsgToWAL persists local messages with per-type durability.
@@ -2430,6 +2437,16 @@ func (cs *State) addProposalBlockPart(msg *BlockPartMessage, peerID p2p.ID) (add
 }
 
 func (cs *State) handleCompleteProposal(blockHeight int64) {
+	// A lock restored from the WAL gets its bytes back; Valid* follows so a proposer re-proposes it.
+	if cs.rs.IsLocked() && cs.rs.LockedBlock == nil &&
+		blockMatchesBlockID(cs.rs.ProposalBlock, cs.rs.ProposalBlockParts, cs.rs.LockedBlockID) {
+		cs.rs.LockedBlock, cs.rs.LockedBlockParts = cs.rs.ProposalBlock, cs.rs.ProposalBlockParts
+		if cs.rs.ValidRound < cs.rs.LockedRound {
+			cs.rs.ValidRound = cs.rs.LockedRound
+			cs.rs.ValidBlock, cs.rs.ValidBlockParts = cs.rs.LockedBlock, cs.rs.LockedBlockParts
+		}
+	}
+
 	// Update Valid* if we can.
 	prevotes := cs.rs.Votes.Prevotes(cs.rs.Round)
 	blockID, hasTwoThirds := prevotes.TwoThirdsMajority()
