@@ -1,0 +1,160 @@
+package consensus
+
+import (
+	"bytes"
+	"context"
+	"testing"
+	"time"
+
+	"github.com/stretchr/testify/require"
+
+	"github.com/cometbft/cometbft/consensus/propagation"
+	cstypes "github.com/cometbft/cometbft/consensus/types"
+	"github.com/cometbft/cometbft/crypto"
+	cmtrand "github.com/cometbft/cometbft/libs/rand"
+	cmtsync "github.com/cometbft/cometbft/libs/sync"
+	cmtproto "github.com/cometbft/cometbft/proto/tendermint/types"
+	"github.com/cometbft/cometbft/types"
+)
+
+// propagatorCall is one AddCommitment or SetConsensusState call.
+type propagatorCall struct {
+	commitment bool
+	height     int64
+	round      int32
+	psh        types.PartSetHeader
+}
+
+// callRecorder records, in order, the calls that move the propagator's height and round.
+type callRecorder struct {
+	propagation.Propagator
+
+	mtx   cmtsync.Mutex
+	calls []propagatorCall
+}
+
+func (r *callRecorder) AddCommitment(height int64, round int32, psh *types.PartSetHeader) {
+	r.mtx.Lock()
+	r.calls = append(r.calls, propagatorCall{commitment: true, height: height, round: round, psh: *psh})
+	r.mtx.Unlock()
+	r.Propagator.AddCommitment(height, round, psh)
+}
+
+func (r *callRecorder) SetConsensusState(height int64, round int32, proposer crypto.PubKey) {
+	r.mtx.Lock()
+	r.calls = append(r.calls, propagatorCall{height: height, round: round})
+	r.mtx.Unlock()
+	r.Propagator.SetConsensusState(height, round, proposer)
+}
+
+func (r *callRecorder) snapshot() []propagatorCall {
+	r.mtx.Lock()
+	defer r.mtx.Unlock()
+	return append([]propagatorCall(nil), r.calls...)
+}
+
+func TestWALPeerMsg(t *testing.T) {
+	prop := &types.Proposal{Height: 2, Round: 1}
+	rs := cstypes.RoundState{Height: 2, Round: 1}
+	require.True(t, walPeerMsg(&rs, msgInfo{Msg: &ProposalMessage{prop}}))
+	require.False(t, walPeerMsg(&rs, msgInfo{Msg: &ProposalMessage{&types.Proposal{Height: 2, Round: 2}}}))
+	require.False(t, walPeerMsg(&rs, msgInfo{Msg: &ProposalMessage{&types.Proposal{Height: 3, Round: 1}}}))
+	require.False(t, walPeerMsg(&rs, msgInfo{Msg: &BlockPartMessage{Height: 2, Round: 1}}))
+	require.False(t, walPeerMsg(&rs, msgInfo{Msg: &VoteMessage{&types.Vote{Height: 2, Round: 1}}}))
+	rs.Proposal = prop
+	require.False(t, walPeerMsg(&rs, msgInfo{Msg: &ProposalMessage{prop}}))
+}
+
+// Replaying a lock without its bytes prepares the part set and asks the propagator for them.
+func TestReplayLockInfoRefetchesBytes(t *testing.T) {
+	cs, _ := randState(1)
+	rec := &callRecorder{Propagator: cs.propagator}
+	cs.propagator = rec
+	psh := types.PartSetHeader{Total: 2, Hash: cmtrand.Bytes(32)}
+	li := LockInfo{Height: 1, Round: 0, BlockID: types.BlockID{Hash: cmtrand.Bytes(32), PartSetHeader: psh}}
+
+	require.NoError(t, cs.readReplayMessage(&TimedWALMessage{Msg: li}, nil))
+	require.True(t, cs.GetRoundState().ProposalBlockParts.HasHeader(psh))
+	require.Equal(t, []propagatorCall{{commitment: true, height: 1, round: 0, psh: psh}}, rec.snapshot())
+}
+
+// A validator that prevoted a peer's block restarts with the proposal, so the
+// block's parts are accepted again and it precommits the block on the polka.
+func TestRestartAfterPrevoteRefetchesProposalBlock(t *testing.T) {
+	f := newLockFixture(t, true)
+	cs1 := f.newState()
+	require.NoError(t, cs1.Start())
+	voteCh := subscribeToVoter(cs1, cs1.privValidatorPubKey.Address())
+	prop, block := decideProposal(context.Background(), t, cs1, f.vss[f.p0], 1, 0)
+	parts, err := block.MakePartSet(types.BlockPartSizeBytes)
+	require.NoError(t, err)
+	require.NoError(t, cs1.SetProposalAndBlock(prop, block, parts, "peer"))
+	nextVote(t, voteCh, 1, 0, cmtproto.PrevoteType)
+	require.NoError(t, cs1.Stop())
+	cs1.Wait()
+
+	cs := f.newState()
+	_, voteCh = startRestarted(t, cs)
+	rs := cs.GetRoundState()
+	require.NotNil(t, rs.Proposal, "the peer's proposal was not journaled")
+	require.Equal(t, prop.BlockID, rs.Proposal.BlockID)
+	require.Nil(t, rs.ProposalBlock)
+
+	addParts(t, cs, parts, 0)
+	signAddVotes(cs, cmtproto.PrevoteType, block.Hash(), parts.Header(), false, f.others...)
+	v := nextVote(t, voteCh, 1, 0, cmtproto.PrecommitType)
+	require.Equal(t, prop.BlockID, v.BlockID)
+}
+
+// A node locked by ID refetches the block, fills the lock bytes once the parts
+// arrive and, as a later proposer, re-proposes the locked block.
+func TestRestartedLockRefetchesAndReproposes(t *testing.T) {
+	f := newLockFixture(t, true)
+	_, block, parts := f.lockAndStop(t)
+	xID := types.BlockID{Hash: block.Hash(), PartSetHeader: parts.Header()}
+
+	cs := f.newState()
+	rec := &callRecorder{Propagator: cs.propagator}
+	cs.propagator = rec
+	newRoundCh, _ := startRestarted(t, cs)
+	calls := rec.snapshot()
+	require.Contains(t, calls, propagatorCall{commitment: true, height: 1, round: 0, psh: parts.Header()})
+	require.Equal(t, propagatorCall{height: 1, round: 0}, calls[len(calls)-1], "SetConsensusState must follow the refetch")
+	require.Nil(t, cs.GetRoundState().LockedBlock)
+
+	addParts(t, cs, parts, 0)
+	require.Eventually(t, func() bool {
+		rs := cs.GetRoundState()
+		return blockMatchesBlockID(rs.LockedBlock, rs.LockedBlockParts, xID)
+	}, 5*time.Second, 10*time.Millisecond)
+	rs := cs.GetRoundState()
+	require.EqualValues(t, 0, rs.ValidRound)
+	require.True(t, blockMatchesBlockID(rs.ValidBlock, rs.ValidBlockParts, xID))
+
+	// Skip rounds with nil precommits until our node proposes.
+	vals := f.state.Validators.Copy()
+	ours := cs.privValidatorPubKey.Address()
+	r := int32(0)
+	for ; !bytes.Equal(vals.GetProposer().Address, ours); r++ {
+		vals.IncrementProposerPriority(1)
+	}
+	for rr := int32(0); rr < r; rr++ {
+		signAddVotes(cs, cmtproto.PrecommitType, nil, types.PartSetHeader{}, false, f.others...)
+		waitRound(t, newRoundCh, 1, rr+1)
+		incrementRound(f.vss...)
+	}
+	require.Eventually(t, func() bool {
+		p := cs.GetRoundState().Proposal
+		return p != nil && p.Round == r
+	}, 5*time.Second, 10*time.Millisecond)
+	p := cs.GetRoundState().Proposal
+	require.Equal(t, xID, p.BlockID)
+	require.EqualValues(t, 0, p.POLRound)
+}
+
+func addParts(t *testing.T, cs *State, parts *types.PartSet, round int32) {
+	t.Helper()
+	for i := 0; i < int(parts.Total()); i++ {
+		require.NoError(t, cs.AddProposalBlockPart(1, round, parts.GetPart(i), "peer"))
+	}
+}
