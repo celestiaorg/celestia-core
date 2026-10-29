@@ -1158,7 +1158,8 @@ func (cs *State) handleInternalMsg(mi msgInfo) {
 
 // handlePeerMsg logs a peer message to the WAL and handles it.
 func (cs *State) handlePeerMsg(mi msgInfo) {
-	if !cs.config.OnlyInternalWal || walPeerMsg(&cs.rs, mi) {
+	before := cs.rs.Proposal
+	if !cs.config.OnlyInternalWal {
 		if err := cs.wal.Write(mi); err != nil {
 			cs.Logger.Error("failed writing to WAL", "err", err)
 		}
@@ -1166,13 +1167,18 @@ func (cs *State) handlePeerMsg(mi msgInfo) {
 	// handles proposals, block parts, votes
 	// may generate internal events (votes, complete proposals, 2/3 majorities)
 	cs.handleMsg(mi)
+	if cs.config.OnlyInternalWal && walPeerMsg(before, cs.rs.Proposal, mi) {
+		if err := cs.wal.Write(mi); err != nil {
+			cs.Logger.Error("failed writing to WAL", "err", err)
+		}
+	}
 }
 
-// walPeerMsg reports whether only_internal_wal still journals a peer message: the
-// round's first proposal, so a restarted node can accept the block's parts again.
-func walPeerMsg(rs *cstypes.RoundState, mi msgInfo) bool {
+// walPeerMsg reports whether only_internal_wal still journals a peer message: a
+// proposal handleMsg just accepted, so a restarted node can accept its block's parts again.
+func walPeerMsg(before, after *types.Proposal, mi msgInfo) bool {
 	m, ok := mi.Msg.(*ProposalMessage)
-	return ok && m.Proposal.Height == rs.Height && m.Proposal.Round == rs.Round && rs.Proposal == nil
+	return ok && before == nil && after == m.Proposal
 
 }
 
