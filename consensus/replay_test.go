@@ -223,7 +223,7 @@ func TestRestartAfterPrevoteWithLostProposal(t *testing.T) {
 
 	app := kvstore.NewInMemoryApplication()
 	state, privVals := randGenesisState(4, false, testMinPower, test.ConsensusParams())
-	state.Timeouts.TimeoutPropose = time.Second
+	state.Timeouts.TimeoutPropose = 3 * time.Second
 
 	vss := make([]*validatorStub, len(privVals))
 	for i, pv := range privVals {

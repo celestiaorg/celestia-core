@@ -1480,9 +1480,10 @@ func TestStatePolkaBeforeProposalStepOrder(t *testing.T) {
 
 	var mu sync.Mutex
 	var steps []string
-	stepCh := subscribe(cs1.eventBus, types.EventQueryNewRoundStep)
+	sub, err := cs1.eventBus.Subscribe(ctx, testSubscriber, types.EventQueryNewRoundStep, 10)
+	require.NoError(t, err)
 	go func() {
-		for msg := range stepCh {
+		for msg := range sub.Out() {
 			if rs := msg.Data().(types.EventDataRoundState); rs.Round == round {
 				mu.Lock()
 				steps = append(steps, rs.Step)
