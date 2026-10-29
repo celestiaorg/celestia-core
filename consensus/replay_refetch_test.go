@@ -67,7 +67,7 @@ func TestWALPeerMsg(t *testing.T) {
 
 // A peer cannot make the node journal proposals it rejects.
 func TestWALJournalsOnlyAcceptedProposal(t *testing.T) {
-	f := newLockFixture(t, true)
+	f := newLockFixture(t, true, false)
 	cs := f.newState()
 	require.NoError(t, cs.Start())
 	prop, _ := decideProposal(context.Background(), t, cs, f.vss[f.p0], 1, 0)
@@ -118,7 +118,7 @@ func TestReplayLockInfoRefetchesBytes(t *testing.T) {
 // A validator that prevoted a peer's block restarts with the proposal, so the
 // block's parts are accepted again and it precommits the block on the polka.
 func TestRestartAfterPrevoteRefetchesProposalBlock(t *testing.T) {
-	f := newLockFixture(t, true)
+	f := newLockFixture(t, true, false)
 	cs1 := f.newState()
 	require.NoError(t, cs1.Start())
 	voteCh := subscribeToVoter(cs1, cs1.privValidatorPubKey.Address())
@@ -146,7 +146,7 @@ func TestRestartAfterPrevoteRefetchesProposalBlock(t *testing.T) {
 // A node locked by ID refetches the block, fills the lock bytes once the parts
 // arrive and, as a later proposer, re-proposes the locked block.
 func TestRestartedLockRefetchesAndReproposes(t *testing.T) {
-	f := newLockFixture(t, true)
+	f := newLockFixture(t, true, false)
 	_, block, parts := f.lockAndStop(t)
 	xID := types.BlockID{Hash: block.Hash(), PartSetHeader: parts.Header()}
 
