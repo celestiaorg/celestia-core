@@ -3,13 +3,13 @@ package consensus
 import (
 	"bytes"
 	"context"
+	"os"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/require"
 
 	"github.com/cometbft/cometbft/consensus/propagation"
-	cstypes "github.com/cometbft/cometbft/consensus/types"
 	"github.com/cometbft/cometbft/crypto"
 	cmtrand "github.com/cometbft/cometbft/libs/rand"
 	cmtsync "github.com/cometbft/cometbft/libs/sync"
@@ -55,14 +55,51 @@ func (r *callRecorder) snapshot() []propagatorCall {
 
 func TestWALPeerMsg(t *testing.T) {
 	prop := &types.Proposal{Height: 2, Round: 1}
-	rs := cstypes.RoundState{Height: 2, Round: 1}
-	require.True(t, walPeerMsg(&rs, msgInfo{Msg: &ProposalMessage{prop}}))
-	require.False(t, walPeerMsg(&rs, msgInfo{Msg: &ProposalMessage{&types.Proposal{Height: 2, Round: 2}}}))
-	require.False(t, walPeerMsg(&rs, msgInfo{Msg: &ProposalMessage{&types.Proposal{Height: 3, Round: 1}}}))
-	require.False(t, walPeerMsg(&rs, msgInfo{Msg: &BlockPartMessage{Height: 2, Round: 1}}))
-	require.False(t, walPeerMsg(&rs, msgInfo{Msg: &VoteMessage{&types.Vote{Height: 2, Round: 1}}}))
-	rs.Proposal = prop
-	require.False(t, walPeerMsg(&rs, msgInfo{Msg: &ProposalMessage{prop}}))
+	mi := msgInfo{Msg: &ProposalMessage{prop}}
+	require.True(t, walPeerMsg(nil, prop, mi))
+	require.False(t, walPeerMsg(nil, nil, mi), "rejected")
+	require.False(t, walPeerMsg(prop, prop, mi), "already set")
+	other := &types.Proposal{Height: 2, Round: 1}
+	require.False(t, walPeerMsg(other, other, mi), "another proposal already set")
+	require.False(t, walPeerMsg(nil, prop, msgInfo{Msg: &BlockPartMessage{Height: 2, Round: 1}}))
+	require.False(t, walPeerMsg(nil, prop, msgInfo{Msg: &VoteMessage{&types.Vote{Height: 2, Round: 1}}}))
+}
+
+// A peer cannot make the node journal proposals it rejects.
+func TestWALJournalsOnlyAcceptedProposal(t *testing.T) {
+	f := newLockFixture(t, true, false)
+	cs := f.newState()
+	require.NoError(t, cs.Start())
+	prop, _ := decideProposal(context.Background(), t, cs, f.vss[f.p0], 1, 0)
+	for i := 0; i < 5; i++ {
+		bad := *prop
+		bad.Signature = append([]byte(nil), prop.Signature...)
+		bad.Signature[i] ^= 1
+		require.NoError(t, cs.SetProposal(&bad, "peer"))
+	}
+	require.NoError(t, cs.SetProposal(prop, "peer"))
+	require.Eventually(t, func() bool { return cs.GetRoundState().Proposal != nil }, 5*time.Second, 10*time.Millisecond)
+	require.NoError(t, cs.Stop())
+	cs.Wait()
+
+	in, err := os.Open(f.config.Consensus.WalFile())
+	require.NoError(t, err)
+	defer in.Close()
+	dec := NewWALDecoder(in)
+	var journaled []*types.Proposal
+	for {
+		msg, err := dec.Decode()
+		if err != nil {
+			break
+		}
+		if mi, ok := msg.Msg.(msgInfo); ok {
+			if pm, ok := mi.Msg.(*ProposalMessage); ok {
+				journaled = append(journaled, pm.Proposal)
+			}
+		}
+	}
+	require.Len(t, journaled, 1)
+	require.Equal(t, prop.Signature, journaled[0].Signature)
 }
 
 // Replaying a lock without its bytes prepares the part set and asks the propagator for them.
@@ -81,7 +118,7 @@ func TestReplayLockInfoRefetchesBytes(t *testing.T) {
 // A validator that prevoted a peer's block restarts with the proposal, so the
 // block's parts are accepted again and it precommits the block on the polka.
 func TestRestartAfterPrevoteRefetchesProposalBlock(t *testing.T) {
-	f := newLockFixture(t, true)
+	f := newLockFixture(t, true, false)
 	cs1 := f.newState()
 	require.NoError(t, cs1.Start())
 	voteCh := subscribeToVoter(cs1, cs1.privValidatorPubKey.Address())
@@ -109,7 +146,7 @@ func TestRestartAfterPrevoteRefetchesProposalBlock(t *testing.T) {
 // A node locked by ID refetches the block, fills the lock bytes once the parts
 // arrive and, as a later proposer, re-proposes the locked block.
 func TestRestartedLockRefetchesAndReproposes(t *testing.T) {
-	f := newLockFixture(t, true)
+	f := newLockFixture(t, true, false)
 	_, block, parts := f.lockAndStop(t)
 	xID := types.BlockID{Hash: block.Hash(), PartSetHeader: parts.Header()}
 
