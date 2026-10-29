@@ -209,6 +209,7 @@ func TestEnterPrecommitDoesNotRelockBlockFromDifferentPartSet(t *testing.T) {
 
 	// We are locked on the body built from our own part set.
 	cs.rs.LockedRound = round
+	cs.rs.LockedBlockID = types.BlockID{Hash: block.Hash(), PartSetHeader: parts.Header()}
 	cs.rs.LockedBlock = block
 	cs.rs.LockedBlockParts = parts
 	cs.rs.Step = cstypes.RoundStepPrevote
@@ -249,6 +250,7 @@ func TestPOLUnlocksBlockFromDifferentPartSet(t *testing.T) {
 	// Locked in round 0 on the body built from our own part set; the node has
 	// since moved to round 1.
 	cs.rs.LockedRound = 0
+	cs.rs.LockedBlockID = types.BlockID{Hash: block.Hash(), PartSetHeader: parts.Header()}
 	cs.rs.LockedBlock = block
 	cs.rs.LockedBlockParts = parts
 	cs.rs.Round = 1
@@ -288,6 +290,7 @@ func TestEnterCommitKeepsCommittedProposalOverAliasedLock(t *testing.T) {
 	// We locked on the aliased body, but hold the committed block and are
 	// collecting the committed part set.
 	cs.rs.LockedRound = round
+	cs.rs.LockedBlockID = types.BlockID{Hash: alias.Hash(), PartSetHeader: aliasParts.Header()}
 	cs.rs.LockedBlock = alias
 	cs.rs.LockedBlockParts = aliasParts
 	cs.rs.ProposalBlock = block

@@ -77,8 +77,11 @@ type RoundState struct {
 	ProposalBlock      *types.Block        `json:"proposal_block"`
 	ProposalBlockParts *types.PartSet      `json:"proposal_block_parts"`
 	LockedRound        int32               `json:"locked_round"`
-	LockedBlock        *types.Block        `json:"locked_block"`
-	LockedBlockParts   *types.PartSet      `json:"locked_block_parts"`
+	LockedBlockID      types.BlockID       `json:"locked_block_id"`
+	LockedBlockTime    time.Time           `json:"locked_block_time"`
+	// LockedBlock and LockedBlockParts are optional: a lock restored from the WAL has only the ID.
+	LockedBlock      *types.Block   `json:"locked_block"`
+	LockedBlockParts *types.PartSet `json:"locked_block_parts"`
 
 	// The variables below starting with "Valid..." derive their name from
 	// the algorithm presented in this paper:
@@ -100,6 +103,11 @@ type RoundState struct {
 	LastCommit                *types.VoteSet      `json:"last_commit"`  // Last precommits at Height-1
 	LastValidators            *types.ValidatorSet `json:"last_validators"`
 	TriggeredTimeoutPrecommit bool                `json:"triggered_timeout_precommit"`
+}
+
+// IsLocked reports whether the node holds a lock; the locked block's bytes may be absent.
+func (rs *RoundState) IsLocked() bool {
+	return rs.LockedRound >= 0
 }
 
 // Compressed version of the RoundState for use in RPC
@@ -127,7 +135,7 @@ func (rs *RoundState) RoundStateSimple() RoundStateSimple {
 		HeightRoundStep:   fmt.Sprintf("%d/%d/%d", rs.Height, rs.Round, rs.Step),
 		StartTime:         rs.StartTime,
 		ProposalBlockHash: rs.ProposalBlock.Hash(),
-		LockedBlockHash:   rs.LockedBlock.Hash(),
+		LockedBlockHash:   rs.LockedBlockID.Hash,
 		ValidBlockHash:    rs.ValidBlock.Hash(),
 		Votes:             votesJSON,
 		Proposer: types.ValidatorInfo{
@@ -208,7 +216,7 @@ func (rs *RoundState) StringIndented(indent string) string {
 		indent, rs.Proposal,
 		indent, rs.ProposalBlockParts.StringShort(), rs.ProposalBlock.StringShort(),
 		indent, rs.LockedRound,
-		indent, rs.LockedBlockParts.StringShort(), rs.LockedBlock.StringShort(),
+		indent, rs.LockedBlockID, rs.LockedBlock.StringShort(),
 		indent, rs.ValidRound,
 		indent, rs.ValidBlockParts.StringShort(), rs.ValidBlock.StringShort(),
 		indent, rs.Votes.StringIndented(indent+"  "),
