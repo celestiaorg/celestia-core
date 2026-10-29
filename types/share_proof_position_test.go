@@ -124,6 +124,11 @@ func TestShareProofValidatePositions(t *testing.T) {
 			wantErr: true,
 		},
 		{
+			name:    "range that stops before the end of an earlier row",
+			sp:      func() ShareProof { return sq.shareProof(testNamespace, rowRange{0, 0, 1}, rowRange{1, 0, 1}) },
+			wantErr: true,
+		},
+		{
 			name:    "parity row",
 			sp:      func() ShareProof { return sq.shareProof(parity, rowRange{2, 0, 1}) },
 			wantErr: true,
