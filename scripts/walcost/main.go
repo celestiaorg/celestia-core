@@ -1,3 +1,5 @@
+//go:build !windows
+
 // walcost measures what the consensus goroutine waits on when writing the WAL in the worst case
 // (32 MiB blocks, 100 validators), framing records like consensus.WALEncoder on an autofile.Group.
 // Usage: go run ./scripts/walcost -arm B0,B1,B2 -heights 500 -dir /data/walcost (-h lists the arms).
@@ -57,7 +59,7 @@ type spec struct {
 
 var arms = map[string]spec{
 	"B0":  {kind: nonProposer, desc: "non-proposer height today: own prevote, own precommit, EndHeight"},
-	"B1":  {kind: nonProposer, lock: 1, desc: "B0 + lock record written before signVote's FlushAndSync (plan placement)"},
+	"B1":  {kind: nonProposer, lock: 1, desc: "B0 + lock record written before signVote's FlushAndSync"},
 	"B1b": {kind: nonProposer, lock: 2, desc: "B0 + lock record written after signing, before the precommit WriteSync (enterPrecommit today)"},
 	"B2":  {kind: nonProposer, lock: 1, peerProposal: true, desc: "B1 + peer proposal record (buffered) before the prevote"},
 	"B2b": {kind: nonProposer, lock: 2, peerProposal: true, desc: "B1b + peer proposal record (buffered) before the prevote"},
@@ -237,8 +239,8 @@ type arm struct {
 	spec
 	dir, bulkDir string
 	w            *wal
-	bulk         *auto.Group // A6 bulk Group (B5, B5d, B5s)
-	file         *bulkFile   // A6 bulk as a plain file (B5p) or O_DIRECT (B5b, -odirect)
+	bulk         *auto.Group // bulk block Group (B5, B5d, B5s)
+	file         *bulkFile   // bulk block store as a plain file (B5p) or O_DIRECT (B5b, -odirect)
 	bulkEnc      rec
 }
 
@@ -411,7 +413,7 @@ func (a *arm) endHeight(s sample) {
 	})
 }
 
-// contend streams one block to the A6 bulk file in the background while the
+// contend streams one block to the bulk block file in the background while the
 // consensus goroutine does 8 vote WriteSyncs 5 ms apart (the "vote" samples).
 func (a *arm) contend(s sample) {
 	done := make(chan time.Duration, 1)
