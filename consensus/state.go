@@ -1761,11 +1761,11 @@ func (cs *State) enterPrecommit(height int64, round int32) {
 
 	// +2/3 prevoted nil. Unlock and precommit nil.
 	if len(blockID.Hash) == 0 {
-		if !cs.rs.IsLocked() {
+		unlocked := cs.unlock()
+		if !unlocked {
 			logger.Debug("precommit step; +2/3 prevoted for nil")
 		} else {
 			logger.Debug("precommit step; +2/3 prevoted for nil; unlocking")
-			cs.unlock()
 
 			if err := cs.eventBus.PublishEventUnlock(cs.rs.RoundStateEvent()); err != nil {
 				logger.Error("failed publishing event unlock", "err", err)
@@ -1773,6 +1773,9 @@ func (cs *State) enterPrecommit(height int64, round int32) {
 		}
 
 		cs.signAddVote(cmtproto.PrecommitType, nil, types.PartSetHeader{}, nil)
+		if unlocked {
+			cs.writeLockInfo()
+		}
 		return
 	}
 
@@ -1788,6 +1791,7 @@ func (cs *State) enterPrecommit(height int64, round int32) {
 		}
 
 		cs.signAddVote(cmtproto.PrecommitType, blockID.Hash, blockID.PartSetHeader, cs.rs.LockedBlock)
+		cs.writeLockInfo()
 		return
 	}
 
@@ -1807,6 +1811,7 @@ func (cs *State) enterPrecommit(height int64, round int32) {
 		}
 
 		cs.signAddVote(cmtproto.PrecommitType, blockID.Hash, blockID.PartSetHeader, cs.rs.ProposalBlock)
+		cs.writeLockInfo()
 		return
 	}
 
@@ -1815,7 +1820,7 @@ func (cs *State) enterPrecommit(height int64, round int32) {
 	// The +2/3 prevotes for this round is the POL for our unlock.
 	logger.Debug("precommit step; +2/3 prevotes for a block we do not have; voting nil", "block_id", blockID)
 
-	cs.unlock()
+	unlocked := cs.unlock()
 
 	if !cs.rs.ProposalBlockParts.HasHeader(blockID.PartSetHeader) {
 		cs.rs.ProposalBlock = nil
@@ -1829,6 +1834,9 @@ func (cs *State) enterPrecommit(height int64, round int32) {
 	}
 
 	cs.signAddVote(cmtproto.PrecommitType, nil, types.PartSetHeader{}, nil)
+	if unlocked {
+		cs.writeLockInfo()
+	}
 }
 
 // Enter: any +2/3 precommits for next round.
@@ -2722,6 +2730,7 @@ func (cs *State) addVote(vote *types.Vote, peerID p2p.ID) (added bool, err error
 				cs.Logger.Debug("unlocking because of POL", "locked_round", cs.rs.LockedRound, "pol_round", vote.Round)
 
 				cs.unlock()
+				cs.writeLockInfo()
 
 				if err := cs.eventBus.PublishEventUnlock(cs.rs.RoundStateEvent()); err != nil {
 					return added, err
@@ -3193,23 +3202,22 @@ func blockMatchesBlockID(block *types.Block, parts *types.PartSet, blockID types
 	return block.HashesTo(blockID.Hash) && parts.HasHeader(blockID.PartSetHeader)
 }
 
-// lockOn locks on blockID and journals it; the caller's precommit signature flushes the record first.
+// lockOn locks on blockID; the caller journals it with writeLockInfo once the precommit is signed.
 func (cs *State) lockOn(round int32, blockID types.BlockID, blockTime time.Time, block *types.Block, parts *types.PartSet) {
 	cs.rs.LockedRound = round
 	cs.rs.LockedBlockID = blockID
 	cs.rs.LockedBlockTime = blockTime
 	cs.rs.LockedBlock = block
 	cs.rs.LockedBlockParts = parts
-	cs.writeLockInfo(LockInfo{Height: cs.rs.Height, Round: round, BlockID: blockID, BlockTime: blockTime})
 }
 
-// unlock releases the lock and journals the release.
-func (cs *State) unlock() {
+// unlock releases the lock and reports whether one was held; the caller journals it.
+func (cs *State) unlock() bool {
 	if !cs.rs.IsLocked() {
-		return
+		return false
 	}
 	cs.clearLock()
-	cs.writeLockInfo(LockInfo{Height: cs.rs.Height, Round: -1})
+	return true
 }
 
 func (cs *State) clearLock() {
@@ -3220,7 +3228,10 @@ func (cs *State) clearLock() {
 	cs.rs.LockedBlockParts = nil
 }
 
-func (cs *State) writeLockInfo(li LockInfo) {
+// writeLockInfo journals the current lock, buffered. Called after signing, it rides
+// the precommit's WriteSync, which runs before the vote is handled or gossiped.
+func (cs *State) writeLockInfo() {
+	li := LockInfo{Height: cs.rs.Height, Round: cs.rs.LockedRound, BlockID: cs.rs.LockedBlockID, BlockTime: cs.rs.LockedBlockTime}
 	if err := cs.wal.Write(li); err != nil {
 		panic(fmt.Errorf(
 			"failed to write %v msg to consensus WAL; check your file system and restart the node: %w",
