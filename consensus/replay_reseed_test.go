@@ -98,7 +98,7 @@ func TestReseedPropagatorGuards(t *testing.T) {
 	parts, err := block.MakePartSet(types.BlockPartSizeBytes)
 	require.NoError(t, err)
 
-	run := func(edit func(rs *proposeRecorder)) int {
+	run := func(edit func(rec *proposeRecorder)) int {
 		rec := &proposeRecorder{Propagator: propagation.NewNoOpPropagator()}
 		cs.propagator = rec
 		cs.rs.Proposal, cs.rs.ProposalBlock, cs.rs.ProposalBlockParts = prop, block, parts
@@ -133,28 +133,10 @@ func (heldPropagator) GetProposal(int64, int32) (*types.Proposal, *types.PartSet
 	return nil, nil, true
 }
 
-// timeoutsApp reports fixed timeouts so the test controls the precommit delay.
+// timeoutsApp keeps the fixed timeouts across heights so the test controls the precommit delay.
 type timeoutsApp struct {
 	*kvstore.Application
 	ti abci.TimeoutInfo
-}
-
-func (a *timeoutsApp) Info(ctx context.Context, req *abci.RequestInfo) (*abci.ResponseInfo, error) {
-	res, err := a.Application.Info(ctx, req)
-	if err != nil {
-		return nil, err
-	}
-	res.TimeoutInfo = a.ti
-	return res, nil
-}
-
-func (a *timeoutsApp) InitChain(ctx context.Context, req *abci.RequestInitChain) (*abci.ResponseInitChain, error) {
-	res, err := a.Application.InitChain(ctx, req)
-	if err != nil {
-		return nil, err
-	}
-	res.TimeoutInfo = a.ti
-	return res, nil
 }
 
 func (a *timeoutsApp) FinalizeBlock(ctx context.Context, req *abci.RequestFinalizeBlock) (*abci.ResponseFinalizeBlock, error) {
@@ -166,9 +148,8 @@ func (a *timeoutsApp) FinalizeBlock(ctx context.Context, req *abci.RequestFinali
 	return res, nil
 }
 
-// startPropagationNet is startConsensusNet with legacy block gossip off: block
-// data moves only through each state's propagation reactor, as in production.
-// A non-nil wrap wraps node i's reactors, e.g. with a message filter; held nodes are
+// startPropagationNet is startConsensusNet with block data only on the propagation reactor.
+// A non-nil wrap wraps node i's reactors (e.g. a message filter); held nodes are
 // connected but their consensus is left for the caller to start.
 func startPropagationNet(t *testing.T, css []*State, wrap func(i int, r p2p.Reactor) p2p.Reactor, held ...int) ([]*Reactor, []types.Subscription, []*types.EventBus) {
 	n := len(css)
@@ -286,9 +267,12 @@ func testCorrelatedRestart(t *testing.T, restartProposer, legacyGossip bool) {
 	// A node that applied the proposal from its catch-up cache skips the delay: wait for a later height.
 	require.Eventually(t, func() bool {
 		height := css[0].GetRoundState().Height
+		if height < target {
+			return false
+		}
 		for _, cs := range css {
 			rs := cs.GetRoundState()
-			if height < target || rs.Height != height || rs.Round != 0 || !cs.StartedPrecommitSleep.Load() {
+			if rs.Height != height || rs.Round != 0 || !cs.StartedPrecommitSleep.Load() {
 				return false
 			}
 		}
