@@ -523,7 +523,7 @@ func (txmp *TxPool) Update(
 
 // UpdateAsyncRecheck is Update with the recheck pass moved to a goroutine that inherits the
 // caller's lock, so admission and the next Commit wait for it while reaping does not.
-// It is plain Update when async_recheck is off or the previous pass outlived the interval.
+// It is plain Update when disable_async_recheck is set or the previous pass outlived the interval.
 func (txmp *TxPool) UpdateAsyncRecheck(
 	blockHeight int64,
 	blockTxs []*types.CachedTx,
@@ -538,7 +538,7 @@ func (txmp *TxPool) UpdateAsyncRecheck(
 			unlock()
 		}
 	}()
-	if !txmp.config.AsyncRecheck {
+	if txmp.config.DisableAsyncRecheck {
 		return txmp.Update(blockHeight, blockTxs, deliverTxResponses, newPreFn, newPostFn)
 	}
 	if txmp.recheckLate {

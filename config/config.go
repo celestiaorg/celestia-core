@@ -909,10 +909,9 @@ type MempoolConfig struct {
 	// transaction. We consider that the ABCI application runs in the same location as the CometBFT binary
 	// so that the recheck duration is not affected by network delays when making requests and receiving responses.
 	RecheckTimeout time.Duration `mapstructure:"recheck_timeout"`
-	// AsyncRecheck (default: true) runs the recheck as a background pass after
-	// Commit returns instead of inside it. New transactions wait for the pass;
-	// reaping does not. Only the CAT mempool supports it.
-	AsyncRecheck bool `mapstructure:"async_recheck"`
+	// DisableAsyncRecheck (default: false) rechecks inside Commit, as before. Otherwise CAT
+	// runs the recheck as a background pass after Commit: admission waits for it, reaping does not.
+	DisableAsyncRecheck bool `mapstructure:"disable_async_recheck"`
 	// Broadcast (default: true) defines whether the mempool should relay
 	// transactions to other peers. Setting this to false will stop the mempool
 	// from relaying transactions to other peers until they are included in a
@@ -994,7 +993,6 @@ func DefaultMempoolConfig() *MempoolConfig {
 		Type:           MempoolTypeCAT,
 		Recheck:        true,
 		RecheckTimeout: 1000 * time.Millisecond,
-		AsyncRecheck:   true,
 		Broadcast:      true,
 		WalPath:        "",
 		// Each signature verification takes .5ms, Size reduced until we implement
