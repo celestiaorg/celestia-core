@@ -45,6 +45,9 @@ type Metrics struct {
 	// Number of times transactions are rechecked in the mempool.
 	RecheckTimes metrics.Counter
 
+	// Duration of a full recheck pass in seconds.
+	RecheckDurationSeconds metrics.Histogram `metrics_bucketsizes:"0.01, 0.05, 0.1, 0.25, 0.5, 1, 2, 4"`
+
 	// Number of connections being actively used for gossiping transactions
 	// (experimental feature).
 	ActiveOutboundConnections metrics.Gauge

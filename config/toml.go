@@ -387,6 +387,11 @@ recheck = {{ .Mempool.Recheck }}
 # so that the recheck duration is not affected by network delays when making requests and receiving responses.
 recheck_timeout = "{{ .Mempool.RecheckTimeout }}"
 
+# async_recheck (default: true) runs the recheck as a background pass after the
+# commit instead of inside it. New transactions wait for the pass; proposals do
+# not, so a tx the block invalidated may be proposed once more. CAT only.
+async_recheck = {{ .Mempool.AsyncRecheck }}
+
 # Broadcast (default: true) defines whether the mempool should relay
 # transactions to other peers. Setting this to false will stop the mempool
 # from relaying transactions to other peers until they are included in a

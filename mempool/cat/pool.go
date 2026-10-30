@@ -505,6 +505,53 @@ func (txmp *TxPool) Update(
 	newPreFn mempool.PreCheckFunc,
 	newPostFn mempool.PostCheckFunc,
 ) error {
+	if txmp.update(blockHeight, blockTxs, deliverTxResponses, newPreFn, newPostFn) {
+		txmp.recheckTransactions()
+	}
+	txmp.signalHeight()
+	return nil
+}
+
+// UpdateAsyncRecheck is Update with the recheck pass moved to a goroutine that inherits the
+// caller's lock, so admission and the next Commit wait for it while reaping does not.
+// With async_recheck off it is Update followed by unlock.
+func (txmp *TxPool) UpdateAsyncRecheck(
+	blockHeight int64,
+	blockTxs []*types.CachedTx,
+	deliverTxResponses []*abci.ExecTxResult,
+	newPreFn mempool.PreCheckFunc,
+	newPostFn mempool.PostCheckFunc,
+	unlock func(),
+) error {
+	if !txmp.config.AsyncRecheck {
+		defer unlock()
+		return txmp.Update(blockHeight, blockTxs, deliverTxResponses, newPreFn, newPostFn)
+	}
+	if !txmp.update(blockHeight, blockTxs, deliverTxResponses, newPreFn, newPostFn) {
+		txmp.signalHeight()
+		unlock()
+		return nil
+	}
+	go func() {
+		defer unlock()
+		// Flush and RemoveTxByKey do not take the lock and may have emptied the pool.
+		if txmp.Size() > 0 {
+			txmp.recheckTransactions()
+		}
+		txmp.signalHeight()
+	}()
+	return nil
+}
+
+// update removes the committed and expired transactions, advances the height
+// and reports whether a recheck pass is due. The caller must hold txmp.mtx.
+func (txmp *TxPool) update(
+	blockHeight int64,
+	blockTxs []*types.CachedTx,
+	deliverTxResponses []*abci.ExecTxResult,
+	newPreFn mempool.PreCheckFunc,
+	newPostFn mempool.PostCheckFunc,
+) bool {
 	// Safety check: Transactions and responses must match in number.
 	if len(blockTxs) != len(deliverTxResponses) {
 		panic(fmt.Sprintf("mempool: got %d transactions but %d DeliverTx responses",
@@ -550,26 +597,27 @@ func (txmp *TxPool) Update(
 	// TTL purging should happen to maintain checkTxState consistency.
 	txmp.purgeExpiredTxs(blockHeight)
 
-	// If there any uncommitted transactions left in the mempool, we either
-	// initiate re-CheckTx per remaining transaction or notify that remaining
-	// transactions are left.
+	// If there any uncommitted transactions left in the mempool, the caller
+	// either rechecks them or (recheck disabled) they are announced as available.
 	size := txmp.Size()
 	txmp.metrics.Size.Set(float64(size))
 	txmp.metrics.SizeBytes.Set(float64(txmp.SizeBytes()))
-	if size > 0 {
-		if txmp.config.Recheck {
-			txmp.recheckTransactions()
-		} else {
-			txmp.notifyTxsAvailable()
-		}
+	if size == 0 {
+		return false
 	}
+	if !txmp.config.Recheck {
+		txmp.notifyTxsAvailable()
+		return false
+	}
+	return true
+}
 
+// signalHeight tells the reactor the height advanced and, if recheck ran, that it finished.
+func (txmp *TxPool) signalHeight() {
 	select {
 	case txmp.heightSignal <- struct{}{}:
 	default:
 	}
-
-	return nil
 }
 
 // addNewTransaction handles the ABCI CheckTx response for the first time a
@@ -752,6 +800,9 @@ func (txmp *TxPool) recheckTransactions() {
 		"num_txs", txmp.Size(),
 		"height", txmp.height,
 	)
+
+	start := time.Now()
+	defer func() { txmp.metrics.RecheckDurationSeconds.Observe(time.Since(start).Seconds()) }()
 
 	// Get all transactions currently in the mempool requiring recheck.
 	// This avoids holding the store lock during the CheckTx calls which could
