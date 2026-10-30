@@ -48,6 +48,7 @@ jobs:
           - {package: consensus, target: ConsensusStateHandleMsg}
           - {package: consensus, target: ConsensusReactorReceive}
           - {package: blocksync, target: BlockSyncMessage}
+          - {package: blocksync, target: BlockSyncReactor}
           - {package: consensus/propagation/types, target: PropagationMessage}
           - {package: types, target: BlockFromProto}
           - {package: types, target: PartFromProto}
