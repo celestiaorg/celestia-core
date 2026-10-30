@@ -31,7 +31,6 @@ const directIOAlign = 4096
 // for a while, so a restarted node can restore the lock's bytes without peers. Never fsynced.
 type lockedBlockWriter struct {
 	path   string
-	open   func(path string) (*os.File, error)
 	logger log.Logger
 
 	mtx      sync.Mutex
@@ -46,8 +45,6 @@ type lockedBlockJob struct {
 	height  int64
 	blockID types.BlockID
 	quit    chan struct{}
-	done    chan struct{}
-	keep    bool // set before quit is closed: leave the file for the next start
 }
 
 // newLockedBlockWriter returns nil, turning the copy off, where O_DIRECT is unavailable.
@@ -56,7 +53,7 @@ func newLockedBlockWriter(path string, logger log.Logger) *lockedBlockWriter {
 		return nil
 	}
 	_, err := os.Stat(path)
-	return &lockedBlockWriter{path: path, open: openLockedBlockFile, logger: logger, stale: err == nil}
+	return &lockedBlockWriter{path: path, logger: logger, stale: err == nil}
 }
 
 // arm writes parts after delay unless reset or stop comes first. The file is
@@ -73,20 +70,27 @@ func (w *lockedBlockWriter) arm(delay time.Duration, li LockInfo, parts *types.P
 	if w.job != nil && w.job.height == li.Height && w.job.blockID.Equals(li.BlockID) {
 		return
 	}
-	if w.job == nil && w.stale && w.restored.Equals(li.BlockID) {
+	if w.stale && w.restored.Equals(li.BlockID) {
 		return
 	}
-	if w.job != nil {
-		close(w.job.quit)
-	}
+	w.endJob()
 	job := &lockedBlockJob{height: li.Height, blockID: li.BlockID, quit: make(chan struct{})}
-	job.done = w.goAfterTail(func() { w.run(job, delay, li, parts) })
+	w.goAfterTail(func() { w.run(job.quit, delay, li, parts) })
 	w.job = job
 	w.stale = false
 }
 
+// endJob stops the current job and removes its file. Callers hold mtx.
+func (w *lockedBlockWriter) endJob() {
+	if w.job != nil {
+		close(w.job.quit)
+		w.job = nil
+		w.goAfterTail(w.remove)
+	}
+}
+
 // goAfterTail runs f once every earlier goroutine is done with the file. Callers hold mtx.
-func (w *lockedBlockWriter) goAfterTail(f func()) chan struct{} {
+func (w *lockedBlockWriter) goAfterTail(f func()) {
 	prev, done := w.tail, make(chan struct{})
 	w.tail = done
 	go func() {
@@ -96,24 +100,19 @@ func (w *lockedBlockWriter) goAfterTail(f func()) chan struct{} {
 		}
 		f()
 	}()
-	return done
 }
 
-func (w *lockedBlockWriter) run(job *lockedBlockJob, delay time.Duration, li LockInfo, parts *types.PartSet) {
+func (w *lockedBlockWriter) run(quit <-chan struct{}, delay time.Duration, li LockInfo, parts *types.PartSet) {
 	timer := time.NewTimer(delay)
 	defer timer.Stop()
 	select {
-	case <-job.quit:
+	case <-quit:
 	case <-timer.C:
-		if err := w.write(job.quit, li, parts); errors.Is(err, syscall.EINVAL) {
+		if err := w.write(quit, li, parts); errors.Is(err, syscall.EINVAL) {
 			w.disable(err)
 		} else if err != nil {
 			w.logger.Error("failed to write the locked block's parts", "height", li.Height, "err", err)
 		}
-		<-job.quit
-	}
-	if !job.keep {
-		w.remove()
 	}
 }
 
@@ -136,7 +135,7 @@ func (w *lockedBlockWriter) remove() {
 // write stores li as a header followed by one record per part, as the WAL encodes them,
 // each zero-padded to directIOAlign.
 func (w *lockedBlockWriter) write(quit <-chan struct{}, li LockInfo, parts *types.PartSet) error {
-	f, err := w.open(w.path)
+	f, err := openLockedBlockFile(w.path)
 	if err != nil {
 		return err
 	}
@@ -206,12 +205,10 @@ func (w *lockedBlockWriter) reset() {
 	}
 	w.mtx.Lock()
 	defer w.mtx.Unlock()
-	if w.job != nil {
-		close(w.job.quit)
-		w.job = nil
-	} else if w.stale {
+	if w.stale {
 		w.goAfterTail(w.remove)
 	}
+	w.endJob()
 	w.stale = false
 }
 
@@ -225,7 +222,6 @@ func (w *lockedBlockWriter) stop() {
 	w.job = nil
 	w.mtx.Unlock()
 	if job != nil {
-		job.keep = true
 		close(job.quit)
 	}
 	if tail != nil {
@@ -257,10 +253,9 @@ func (w *lockedBlockWriter) read(li LockInfo) (*types.Block, *types.PartSet) {
 		if err != nil {
 			return nil, nil
 		}
-		if mi, ok := msg.Msg.(msgInfo); ok {
-			if bp, ok := mi.Msg.(*BlockPartMessage); ok {
-				_, _ = parts.AddPart(bp.Part) // verifies the part's proof against the header
-			}
+		mi, _ := msg.Msg.(msgInfo)
+		if bp, ok := mi.Msg.(*BlockPartMessage); ok {
+			_, _ = parts.AddPart(bp.Part) // verifies the part's proof against the header
 		}
 	}
 	pbb := new(cmtproto.Block)
