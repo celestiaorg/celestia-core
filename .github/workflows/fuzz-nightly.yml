@@ -34,6 +34,8 @@ jobs:
         include:
           - {package: test/fuzz/tests, target: Mempool}
           - {package: test/fuzz/tests, target: P2PSecretConnection}
+          - {package: p2p, target: TransportUpgrade}
+          - {package: p2p, target: PeerReceive}
           - {package: test/fuzz/tests, target: RPCJSONRPCServer}
           - {package: mempool/cat, target: MempoolMessage}
           - {package: consensus, target: ConsensusMessage}
