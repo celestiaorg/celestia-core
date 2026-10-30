@@ -1824,7 +1824,9 @@ func (cs *State) enterPrecommit(height int64, round int32) {
 func (cs *State) enterPrecommitWait(height int64, round int32) {
 	logger := cs.Logger.With("height", height, "round", round)
 
-	if cs.rs.Height != height || round < cs.rs.Round || (cs.rs.Round == round && cs.rs.TriggeredTimeoutPrecommit) {
+	// a commit for an earlier round must not fall back to waiting on this round's precommits.
+	if cs.rs.Height != height || round < cs.rs.Round ||
+		(cs.rs.Round == round && (cs.rs.TriggeredTimeoutPrecommit || cs.rs.Step == cstypes.RoundStepCommit)) {
 		logger.Debug(
 			"entering precommit wait step with invalid args",
 			"triggered_timeout", cs.rs.TriggeredTimeoutPrecommit,
