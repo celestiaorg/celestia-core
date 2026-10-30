@@ -21,6 +21,7 @@ func lockAndWaitForCopy(t *testing.T, f *lockFixture) (*types.Block, *types.Part
 	f.lazyDelay = 10 * time.Millisecond
 	cs := f.newState()
 	require.NoError(t, cs.Start())
+	t.Cleanup(func() { _ = cs.Stop(); cs.Wait() }) // a failure must not leave the WAL running
 	voteCh := subscribeToVoter(cs, cs.privValidatorPubKey.Address())
 	_, block, parts := f.lockOnX(t, cs)
 	nextVote(t, voteCh, 1, 0, cmtproto.PrecommitType)
@@ -87,6 +88,24 @@ func TestLockedBlockPartialFileRefetches(t *testing.T) {
 	require.Equal(t, xID, rs.LockedBlockID)
 	require.Nil(t, rs.LockedBlock)
 	require.Contains(t, rec.snapshot(), propagatorCall{commitment: true, height: 1, round: 0, psh: parts.Header()})
+}
+
+// A lock restored by ID copies its block once a peer delivers it, for the next restart.
+func TestLockedBlockCopiedAfterRefetch(t *testing.T) {
+	f := newLockFixture(t, true, false)
+	prop, block, parts := f.lockAndStop(t)
+	require.NoFileExists(t, lockedBlockFile(f.config.Consensus))
+
+	f.lazyDelay = 10 * time.Millisecond
+	cs := f.newState()
+	startRestarted(t, cs)
+	require.Nil(t, cs.GetRoundState().LockedBlock)
+	require.NoError(t, cs.SetProposalAndBlock(prop, block, parts, "peer"))
+	li := LockInfo{Height: 1, BlockID: types.BlockID{Hash: block.Hash(), PartSetHeader: parts.Header()}}
+	require.Eventually(t, func() bool {
+		b, _ := cs.lockedBlocks.read(li)
+		return b != nil
+	}, 5*time.Second, 10*time.Millisecond)
 }
 
 // A height that commits before the delay never writes the file.
