@@ -14,6 +14,7 @@ import (
 	cfg "github.com/cometbft/cometbft/config"
 	"github.com/cometbft/cometbft/consensus/propagation"
 	cstypes "github.com/cometbft/cometbft/consensus/types"
+	cmtpubsub "github.com/cometbft/cometbft/libs/pubsub"
 	"github.com/cometbft/cometbft/p2p"
 	cmtcons "github.com/cometbft/cometbft/proto/tendermint/consensus"
 	propproto "github.com/cometbft/cometbft/proto/tendermint/propagation"
@@ -172,7 +173,8 @@ func TestReactorCommitsBlockNeverReceived(t *testing.T) {
 	require.EqualValues(t, 1, commit.Round)
 }
 
-// partFeeder hands consensus the parts a test sends instead of the propagator's.
+// partFeeder hands consensus the parts a test sends instead of the propagator's, and
+// holds no block of its own.
 type partFeeder struct {
 	propagation.Propagator
 	parts chan types.PartInfo
@@ -180,14 +182,14 @@ type partFeeder struct {
 
 func (p partFeeder) GetPartChan() <-chan types.PartInfo { return p.parts }
 
-// A node that enters the commit step for an earlier round than its current one stays
-// there on its current round's precommits, takes the commit round's parts and commits.
-func TestCommitForEarlierRoundTakesItsParts(t *testing.T) {
-	cs1, vss := randState(4)
-	others := vss[1:]
-	feeder := partFeeder{Propagator: cs1.propagator, parts: make(chan types.PartInfo, 16)}
-	cs1.propagator = feeder
-	_, blockX := decideProposal(context.Background(), t, cs1, vss[1], 1, 0)
+func (p partFeeder) GetProposal(int64, int32) (*types.Proposal, *types.PartSet, bool) {
+	return nil, nil, false
+}
+
+// commitEarlierRound starts cs1 (round 0's proposer), moves it to round 1 on a nil polka
+// and has the round-0 precommits for its block X commit X while it is in round 1.
+func commitEarlierRound(t *testing.T, cs1 *State, others []*validatorStub) (*types.PartSet, <-chan cmtpubsub.Message) {
+	_, blockX := decideProposal(context.Background(), t, cs1, others[0], 1, 0)
 	partsX, err := blockX.MakePartSet(types.BlockPartSizeBytes)
 	require.NoError(t, err)
 	newRoundCh := subscribe(cs1.eventBus, types.EventQueryNewRound)
@@ -196,7 +198,6 @@ func TestCommitForEarlierRoundTakesItsParts(t *testing.T) {
 	t.Cleanup(func() { _ = cs1.Stop(); cs1.Wait() })
 	ensureNewRound(newRoundCh, 1, 0)
 
-	// a round-1 polka moves the node on; the round-0 precommits for X then commit it.
 	incrementRound(others...)
 	signAddVotes(cs1, cmtproto.PrevoteType, nil, types.PartSetHeader{}, false, others...)
 	ensureNewRound(newRoundCh, 1, 1)
@@ -204,10 +205,22 @@ func TestCommitForEarlierRoundTakesItsParts(t *testing.T) {
 		vs.Round = 0
 	}
 	signAddVotes(cs1, cmtproto.PrecommitType, blockX.Hash(), partsX.Header(), true, others...)
+	return partsX, newBlockCh
+}
+
+// A node that enters the commit step for an earlier round than its current one stays
+// there on its current round's precommits, takes the commit round's parts and commits.
+func TestCommitForEarlierRoundTakesItsParts(t *testing.T) {
+	cs1, vss := randState(4)
+	others := vss[1:]
+	feeder := partFeeder{Propagator: cs1.propagator, parts: make(chan types.PartInfo, 16)}
+	cs1.propagator = feeder
+	partsX, newBlockCh := commitEarlierRound(t, cs1, others)
 	require.Eventually(t, func() bool {
 		rs := cs1.GetRoundState()
 		return rs.Step == cstypes.RoundStepCommit && rs.CommitRound == 0 && rs.Round == 1
 	}, 5*time.Second, 10*time.Millisecond)
+
 	for _, vs := range others {
 		vs.Round = 1
 	}
@@ -220,5 +233,13 @@ func TestCommitForEarlierRoundTakesItsParts(t *testing.T) {
 	for i := 0; i < int(partsX.Total()); i++ {
 		feeder.parts <- types.PartInfo{Part: partsX.GetPart(i), Height: 1, Round: 0}
 	}
+	ensureNewBlock(newBlockCh, 1)
+}
+
+// The proposer's propagator still holds its round-0 block, complete, after consensus
+// dropped it for round 1: the late commit of that block takes it from there.
+func TestCommitForEarlierRoundTakesHeldBlock(t *testing.T) {
+	cs1, vss := randState(4)
+	_, newBlockCh := commitEarlierRound(t, cs1, vss[1:])
 	ensureNewBlock(newBlockCh, 1)
 }
