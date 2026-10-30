@@ -92,7 +92,7 @@ func (cs *State) readReplayMessage(msg *TimedWALMessage, newStepSub types.Subscr
 	return nil
 }
 
-// applyLockInfo restores the lock journaled by lockOn/unlock; the last record wins.
+// applyLockInfo restores the lock journaled by writeLockInfo; the last record wins.
 func (cs *State) applyLockInfo(li LockInfo) {
 	cs.lockAll()
 	defer cs.unlockAll()
@@ -113,7 +113,7 @@ func (cs *State) applyLockInfo(li LockInfo) {
 	}
 	cs.rs.LockedBlock, cs.rs.LockedBlockParts = nil, nil
 	if blockMatchesBlockID(cs.rs.ProposalBlock, cs.rs.ProposalBlockParts, li.BlockID) {
-		cs.rs.LockedBlock, cs.rs.LockedBlockParts = cs.rs.ProposalBlock, cs.rs.ProposalBlockParts
+		cs.fillLockBytes(cs.rs.ProposalBlock, cs.rs.ProposalBlockParts)
 		return
 	}
 	if block, parts := cs.lockedBlocks.read(li); block != nil {
