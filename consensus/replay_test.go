@@ -216,10 +216,7 @@ func TestWALCrashOnInternalBlockPartWrite(t *testing.T) {
 func TestReplayLockInfo(t *testing.T) {
 	cs, _ := randState(1)
 	for _, li := range []LockInfo{
-		{Height: 1, Round: 0, BlockID: types.BlockID{
-			Hash:          cmtrand.Bytes(32),
-			PartSetHeader: types.PartSetHeader{Total: 2, Hash: cmtrand.Bytes(32)},
-		}},
+		{Height: 1, Round: 0, BlockID: test.MakeBlockID()},
 		{Height: 1, Round: -1},
 	} {
 		require.NoError(t, cs.readReplayMessage(&TimedWALMessage{Msg: li}, nil))
