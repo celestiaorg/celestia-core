@@ -6,7 +6,9 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"maps"
 	"math/big"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -353,7 +355,10 @@ func (txi *TxIndex) searchRefs(ctx context.Context, q *query.Query) (map[string]
 	if len(ranges) > 0 {
 		skipIndexes = append(skipIndexes, rangeIndexes...)
 
-		for _, qr := range ranges {
+		// Visit ranges in a fixed order so the result, including whether the
+		// search cap is hit, does not depend on map iteration order.
+		for _, key := range slices.Sorted(maps.Keys(ranges)) {
+			qr := ranges[key]
 
 			// If we have a query range over height and want to still look for
 			// specific event values we do not want to simply return all
@@ -424,8 +429,14 @@ func lookForHash(conditions []syntax.Condition) (hash []byte, ok bool, err error
 	return
 }
 
-func (txi *TxIndex) setTmpHashes(tmpHeights map[string]txRef, key, value []byte) {
+func (txi *TxIndex) setTmpHashes(tmpHeights map[string]txRef, key, value []byte, filteredHashes map[string]txRef, firstRun bool) {
 	eventSeq := extractEventSeqFromKey(key)
+	resultKey := string(value) + eventSeq
+	if !firstRun {
+		if _, ok := filteredHashes[resultKey]; !ok {
+			return
+		}
+	}
 
 	// Copy the value because the iterator will be reused.
 	valueCopy := make([]byte, len(value))
@@ -449,7 +460,7 @@ func (txi *TxIndex) setTmpHashes(tmpHeights map[string]txRef, key, value []byte)
 		}
 	}
 
-	tmpHeights[string(valueCopy)+eventSeq] = ref
+	tmpHeights[resultKey] = ref
 }
 
 // match returns all matching txs by hash that meet a given condition and start
@@ -500,7 +511,7 @@ func (txi *TxIndex) match(
 			if !withinBounds {
 				continue
 			}
-			txi.setTmpHashes(tmpHashes, key, it.Value())
+			txi.setTmpHashes(tmpHashes, key, it.Value(), filteredHashes, firstRun)
 			// Potentially exit early.
 			select {
 			case <-ctx.Done():
@@ -540,7 +551,7 @@ func (txi *TxIndex) match(
 			if !withinBounds {
 				continue
 			}
-			txi.setTmpHashes(tmpHashes, key, it.Value())
+			txi.setTmpHashes(tmpHashes, key, it.Value(), filteredHashes, firstRun)
 
 			// Potentially exit early.
 			select {
@@ -587,7 +598,7 @@ func (txi *TxIndex) match(
 				if !withinBounds {
 					continue
 				}
-				txi.setTmpHashes(tmpHashes, key, it.Value())
+				txi.setTmpHashes(tmpHashes, key, it.Value(), filteredHashes, firstRun)
 			}
 
 			// Potentially exit early.
@@ -712,7 +723,7 @@ LOOP:
 			if err != nil {
 				txi.log.Error("failed to parse bounds:", err)
 			} else if withinBounds {
-				txi.setTmpHashes(tmpHashes, key, it.Value())
+				txi.setTmpHashes(tmpHashes, key, it.Value(), filteredHashes, firstRun)
 			}
 
 			// XXX: passing time in a ABCI Events is not yet implemented

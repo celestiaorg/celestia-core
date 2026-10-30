@@ -5,7 +5,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"math/big"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -165,7 +167,10 @@ func (idx *BlockerIndexer) Search(ctx context.Context, q *query.Query) ([]int64,
 	if len(ranges) > 0 {
 		skipIndexes = append(skipIndexes, rangeIndexes...)
 
-		for _, qr := range ranges {
+		// Visit ranges in a fixed order so the result, including whether the
+		// search cap is hit, does not depend on map iteration order.
+		for _, key := range slices.Sorted(maps.Keys(ranges)) {
+			qr := ranges[key]
 			// If we have a query range over height and want to still look for
 			// specific event values we do not want to simply return all
 			// blocks in this height range. We remember the height range info
@@ -179,7 +184,7 @@ func (idx *BlockerIndexer) Search(ctx context.Context, q *query.Query) ([]int64,
 				continue
 
 			}
-			prefix, err := orderedcode.Append(nil, qr.Key)
+			prefix, err := keyPrefix(qr.Key)
 			if err != nil {
 				return nil, fmt.Errorf("failed to create prefix key: %w", err)
 			}
@@ -355,7 +360,7 @@ LOOP:
 				idx.log.Error("failed to parse bounds:", err)
 			} else {
 				if withinBounds {
-					idx.setTmpHeights(tmpHeights, it)
+					idx.setTmpHeights(tmpHeights, it, filteredHeights, firstRun)
 				}
 			}
 		}
@@ -407,16 +412,22 @@ FOR_LOOP:
 	return filteredHeights, nil
 }
 
-func (idx *BlockerIndexer) setTmpHeights(tmpHeights map[string][]byte, it dbm.Iterator) {
+func (idx *BlockerIndexer) setTmpHeights(tmpHeights map[string][]byte, it dbm.Iterator, filteredHeights map[string][]byte, firstRun bool) {
 	// If we return attributes that occur within the same events, then store the
 	// event sequence in the result map as well.
 	eventSeq, _ := parseEventSeqFromEventKey(it.Key())
+	resultKey := string(it.Value()) + strconv.FormatInt(eventSeq, 10)
+	if !firstRun {
+		if _, ok := filteredHeights[resultKey]; !ok {
+			return
+		}
+	}
 
 	// Copy the value because the iterator will be reused.
 	value := make([]byte, len(it.Value()))
 	copy(value, it.Value())
 
-	tmpHeights[string(value)+strconv.FormatInt(eventSeq, 10)] = value
+	tmpHeights[resultKey] = value
 
 }
 
@@ -466,7 +477,7 @@ func (idx *BlockerIndexer) match(
 				continue
 			}
 
-			idx.setTmpHeights(tmpHeights, it)
+			idx.setTmpHeights(tmpHeights, it, filteredHeights, firstRun)
 			if indexer.IsLimitReached(len(tmpHeights), idx.maxSearchResults) {
 				return nil, indexer.ErrTooManyResults
 			}
@@ -509,7 +520,7 @@ func (idx *BlockerIndexer) match(
 				continue
 			}
 
-			idx.setTmpHeights(tmpHeights, it)
+			idx.setTmpHeights(tmpHeights, it, filteredHeights, firstRun)
 			if indexer.IsLimitReached(len(tmpHeights), idx.maxSearchResults) {
 				return nil, indexer.ErrTooManyResults
 			}
@@ -559,7 +570,7 @@ func (idx *BlockerIndexer) match(
 				if !withinHeight {
 					continue
 				}
-				idx.setTmpHeights(tmpHeights, it)
+				idx.setTmpHeights(tmpHeights, it, filteredHeights, firstRun)
 			}
 			if indexer.IsLimitReached(len(tmpHeights), idx.maxSearchResults) {
 				return nil, indexer.ErrTooManyResults
