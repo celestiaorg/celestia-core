@@ -1565,7 +1565,7 @@ func (cs *State) enterPrevote(height int64, round int32) {
 	cs.newStep()
 
 	// Prevotes collected before this step are otherwise only acted on when our own
-	// prevote is added, which never happens if the signer refused it (#3505).
+	// prevote is added, which never happens if the signer refused it.
 	cs.handlePrevoteQuorum(height, round)
 }
 
@@ -1749,6 +1749,13 @@ func (cs *State) enterPrecommit(height int64, round int32) {
 			logger.Debug("precommit step; no +2/3 prevotes during enterPrecommit; precommitting nil")
 		}
 
+		cs.signAddVote(cmtproto.PrecommitType, nil, types.PartSetHeader{}, nil)
+		return
+	}
+
+	// Replay can resume below a restored lock's round: an older polka must not move the lock.
+	if cs.rs.IsLocked() && round < cs.rs.LockedRound {
+		logger.Debug("precommit step; polka below the locked round; precommitting nil", "locked_round", cs.rs.LockedRound)
 		cs.signAddVote(cmtproto.PrecommitType, nil, types.PartSetHeader{}, nil)
 		return
 	}

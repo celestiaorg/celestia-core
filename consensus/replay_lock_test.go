@@ -15,6 +15,7 @@ import (
 
 	"github.com/cometbft/cometbft/abci/example/kvstore"
 	cfg "github.com/cometbft/cometbft/config"
+	cstypes "github.com/cometbft/cometbft/consensus/types"
 	"github.com/cometbft/cometbft/crypto/tmhash"
 	cmtpubsub "github.com/cometbft/cometbft/libs/pubsub"
 	cmtrand "github.com/cometbft/cometbft/libs/rand"
@@ -313,6 +314,65 @@ func TestPrecommitUnlockSurvivesRestart(t *testing.T) {
 	}
 }
 
+// A peer-driven round skip is not journaled, so replay resumes below the lock
+// round; a polka of that older round must neither release nor lower the lock.
+func TestStalePolkaKeepsRestoredLock(t *testing.T) {
+	unknown := types.BlockID{Hash: cmtrand.Bytes(tmhash.Size), PartSetHeader: types.PartSetHeader{Total: 1, Hash: cmtrand.Bytes(tmhash.Size)}}
+	for _, tc := range []struct {
+		name  string
+		polka func(x types.BlockID) types.BlockID
+	}{
+		{"nil", func(types.BlockID) types.BlockID { return types.BlockID{} }},
+		{"locked block", func(x types.BlockID) types.BlockID { return x }},
+		{"unknown block", func(types.BlockID) types.BlockID { return unknown }},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			f := newLockFixture(t, true, false)
+			cs := f.newState()
+			newRoundCh, voteCh := startRestarted(t, cs)
+			nextVote(t, voteCh, 1, 0, cmtproto.PrevoteType)
+			incrementRound(f.vss...)
+			prop, block := decideProposal(context.Background(), t, cs, f.vss[f.p1], 1, 1)
+			parts, err := block.MakePartSet(types.BlockPartSizeBytes)
+			require.NoError(t, err)
+			xID := types.BlockID{Hash: block.Hash(), PartSetHeader: parts.Header()}
+			signAddVotes(cs, cmtproto.PrevoteType, xID.Hash, xID.PartSetHeader, false, f.others...)
+			waitRound(t, newRoundCh, 1, 1)
+			require.NoError(t, cs.SetProposalAndBlock(prop, block, parts, "peer"))
+			require.Equal(t, xID, nextVote(t, voteCh, 1, 1, cmtproto.PrecommitType).BlockID)
+			require.NoError(t, cs.Stop())
+			cs.Wait()
+
+			cs = f.newState()
+			startRestarted(t, cs)
+			rs := cs.GetRoundState()
+			require.EqualValues(t, 0, rs.Round, "replay should resume below the lock round")
+			require.EqualValues(t, 1, rs.LockedRound)
+
+			for _, vs := range f.vss {
+				vs.Round = 0
+			}
+			stale := tc.polka(xID)
+			signAddVotes(cs, cmtproto.PrevoteType, stale.Hash, stale.PartSetHeader, false, f.others...)
+			require.Eventually(t, func() bool {
+				rs := cs.GetRoundState()
+				return rs.Round == 0 && rs.Step == cstypes.RoundStepPrecommit
+			}, 5*time.Second, 10*time.Millisecond)
+			rs = cs.GetRoundState()
+			require.EqualValues(t, 1, rs.LockedRound, "lock moved by a stale polka")
+			require.Equal(t, xID, rs.LockedBlockID)
+			require.NoError(t, cs.Stop())
+			cs.Wait()
+
+			cs = f.newState()
+			startRestarted(t, cs)
+			rs = cs.GetRoundState()
+			require.EqualValues(t, 1, rs.LockedRound, "lock record moved by a stale polka")
+			require.Equal(t, xID, rs.LockedBlockID)
+		})
+	}
+}
+
 // A proposer locked on its own block gets the bytes back from its WAL.
 func TestLockRestoresOwnProposalBytes(t *testing.T) {
 	f := newLockFixture(t, true, true)
@@ -348,9 +408,7 @@ func (w *crashAtPrecommitWAL) FlushAndSync() error {
 }
 
 func (w *crashAtPrecommitWAL) WriteSync(m WALMessage) error {
-	mi, ok := m.(msgInfo)
-	vm, isVote := mi.Msg.(*VoteMessage)
-	if !ok || !isVote || vm.Vote.Type != cmtproto.PrecommitType {
+	if !isOwnPrecommit(m) {
 		err := w.BaseWAL.WriteSync(m)
 		w.synced, _ = w.Group().HeadSize()
 		return err
@@ -398,19 +456,19 @@ func (f *lockFixture) crashAtPrecommit(t *testing.T, after bool) (*types.Proposa
 }
 
 // walMsgs returns the records of the WAL head file.
-func walMsgs(t *testing.T, walFile string) []WALMessage {
+func walMsgs(t *testing.T, walFile string) []*TimedWALMessage {
 	t.Helper()
 	in, err := os.Open(walFile)
 	require.NoError(t, err)
 	defer in.Close()
 	dec := NewWALDecoder(in)
-	var msgs []WALMessage
+	var msgs []*TimedWALMessage
 	for {
 		msg, err := dec.Decode()
 		if err != nil {
 			return msgs
 		}
-		msgs = append(msgs, msg.Msg)
+		msgs = append(msgs, msg)
 	}
 }
 
@@ -430,8 +488,8 @@ func TestLockRecordCrashBeforePrecommit(t *testing.T) {
 	f := newLockFixture(t, true, false)
 	prop, block, parts := f.crashAtPrecommit(t, false)
 	for _, m := range walMsgs(t, f.config.Consensus.WalFile()) {
-		_, isLock := m.(LockInfo)
-		require.False(t, isLock || isOwnPrecommit(m), "unsynced record in the WAL: %v", m)
+		_, isLock := m.Msg.(LockInfo)
+		require.False(t, isLock || isOwnPrecommit(m.Msg), "unsynced record in the WAL: %v", m.Msg)
 	}
 	pv := privval.LoadFilePV(f.config.PrivValidatorKeyFile(), f.config.PrivValidatorStateFile())
 	require.Equal(t, int8(3), pv.LastSignState.Step, "the precommit was signed before the crash")
@@ -456,10 +514,10 @@ func TestLockRecordCrashAfterPrecommit(t *testing.T) {
 	_, block, parts := f.crashAtPrecommit(t, true)
 	lockAt, voteAt := -1, -1
 	for i, m := range walMsgs(t, f.config.Consensus.WalFile()) {
-		if _, ok := m.(LockInfo); ok && lockAt < 0 {
+		if _, ok := m.Msg.(LockInfo); ok && lockAt < 0 {
 			lockAt = i
 		}
-		if isOwnPrecommit(m) {
+		if isOwnPrecommit(m.Msg) {
 			voteAt = i
 		}
 	}
@@ -488,28 +546,16 @@ func TestReplayWALWithoutLockRecords(t *testing.T) {
 // dropLockRecords rewrites the WAL head file without its LockInfo records.
 func dropLockRecords(t *testing.T, walFile string) int {
 	t.Helper()
-	in, err := os.Open(walFile)
+	msgs := walMsgs(t, walFile)
+	out, err := os.Create(walFile)
 	require.NoError(t, err)
-	dec := NewWALDecoder(in)
-	var msgs []*TimedWALMessage
+	enc := NewWALEncoder(out)
 	dropped := 0
-	for {
-		msg, err := dec.Decode()
-		if err != nil {
-			break
-		}
+	for _, msg := range msgs {
 		if _, ok := msg.Msg.(LockInfo); ok {
 			dropped++
 			continue
 		}
-		msgs = append(msgs, msg)
-	}
-	require.NoError(t, in.Close())
-
-	out, err := os.Create(walFile)
-	require.NoError(t, err)
-	enc := NewWALEncoder(out)
-	for _, msg := range msgs {
 		require.NoError(t, enc.Encode(msg))
 	}
 	require.NoError(t, out.Close())
