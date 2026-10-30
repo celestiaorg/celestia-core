@@ -9,11 +9,13 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/cometbft/cometbft/abci/example/kvstore"
 	"github.com/cometbft/cometbft/consensus/propagation"
 	"github.com/cometbft/cometbft/crypto"
 	cmtpubsub "github.com/cometbft/cometbft/libs/pubsub"
 	cmtrand "github.com/cometbft/cometbft/libs/rand"
 	cmtsync "github.com/cometbft/cometbft/libs/sync"
+	mempl "github.com/cometbft/cometbft/mempool"
 	cmtproto "github.com/cometbft/cometbft/proto/tendermint/types"
 	"github.com/cometbft/cometbft/types"
 )
@@ -198,17 +200,61 @@ func TestRestartedProposerReproposesLock(t *testing.T) {
 	require.EqualValues(t, 0, p.POLRound)
 }
 
+// A proposer that relocks its own block at a later round restarts with Valid*
+// at the relock round, as before the crash, and uses it as POL when it proposes again.
+func TestRestartedProposerKeepsRelockRound(t *testing.T) {
+	f := newLockFixture(t, true, true)
+	cs1 := f.newState()
+	newRoundCh, voteCh := startRestarted(t, cs1)
+	v := nextVote(t, voteCh, 1, 0, cmtproto.PrevoteType)
+	signAddVotes(cs1, cmtproto.PrevoteType, v.BlockID.Hash, v.BlockID.PartSetHeader, false, f.others...)
+	nextVote(t, voteCh, 1, 0, cmtproto.PrecommitType)
+	// Two nil precommits: round 1 starts on the precommit timeout, which is journaled.
+	signAddVotes(cs1, cmtproto.PrecommitType, nil, types.PartSetHeader{}, false, f.others[:2]...)
+	waitRound(t, newRoundCh, 1, 1)
+	incrementRound(f.vss...)
+
+	rs := cs1.GetRoundState()
+	prop := types.NewProposal(1, 1, 0, v.BlockID)
+	pp := prop.ToProto()
+	require.NoError(t, f.vss[f.p1].SignProposal(cs1.state.ChainID, pp))
+	prop.Signature = pp.Signature
+	require.NoError(t, cs1.SetProposalAndBlock(prop, rs.LockedBlock, rs.LockedBlockParts, "peer"))
+	nextVote(t, voteCh, 1, 1, cmtproto.PrevoteType)
+	signAddVotes(cs1, cmtproto.PrevoteType, v.BlockID.Hash, v.BlockID.PartSetHeader, false, f.others...)
+	nextVote(t, voteCh, 1, 1, cmtproto.PrecommitType)
+	rs = cs1.GetRoundState()
+	require.EqualValues(t, 1, rs.LockedRound)
+	require.EqualValues(t, 1, rs.ValidRound)
+	require.NoError(t, cs1.Stop())
+	cs1.Wait()
+
+	cs := f.newState()
+	newRoundCh, _ = startRestarted(t, cs)
+	rs = cs.GetRoundState()
+	require.EqualValues(t, 1, rs.Round)
+	require.EqualValues(t, 1, rs.LockedRound)
+	require.EqualValues(t, 1, rs.ValidRound)
+
+	p := f.nextOwnProposal(t, cs, newRoundCh)
+	require.Equal(t, v.BlockID, p.BlockID)
+	require.EqualValues(t, 1, p.POLRound)
+}
+
 // nextOwnProposal skips rounds with nil precommits until our node proposes again
-// and returns its proposal.
+// and returns its proposal; a mempool tx makes a fresh block differ from the lock.
 func (f *lockFixture) nextOwnProposal(t *testing.T, cs *State, newRoundCh <-chan cmtpubsub.Message) *types.Proposal {
 	t.Helper()
+	require.NoError(t, assertMempool(cs.txNotifier).CheckTx(kvstore.NewTx("fresh", "z"), nil, mempl.TxInfo{}))
 	vals := f.state.Validators.Copy()
 	ours := cs.privValidatorPubKey.Address()
-	r := int32(1)
-	for vals.IncrementProposerPriority(1); !bytes.Equal(vals.GetProposer().Address, ours); r++ {
+	from := cs.GetRoundState().Round
+	r := int32(0)
+	for r <= from || !bytes.Equal(vals.GetProposer().Address, ours) {
 		vals.IncrementProposerPriority(1)
+		r++
 	}
-	for rr := int32(0); rr < r; rr++ {
+	for rr := from; rr < r; rr++ {
 		signAddVotes(cs, cmtproto.PrecommitType, nil, types.PartSetHeader{}, false, f.others...)
 		waitRound(t, newRoundCh, 1, rr+1)
 		incrementRound(f.vss...)
