@@ -497,13 +497,15 @@ func wireProto(pb proto.Message) proto.Message {
 // checkRoundState asserts invariants that must hold whatever peers send.
 func (n *fuzzNode) checkRoundState(t *testing.T) {
 	rs := n.cs.GetRoundState()
-	state := n.cs.GetState()
 	if rs.Proposal != nil {
-		proposer := n.proposerFor(rs.Proposal.Round)
-		pub := state.Validators.Validators[proposer].PubKey
+		// Verify against the live proposer of the current round, not the
+		// harness's proposerFor, which gives up beyond fuzzMaxRounds even
+		// though the state can legitimately get there via timeouts.
+		pub := rs.Validators.GetProposer().PubKey
 		require.True(t, pub.VerifySignature(types.ProposalSignBytes(n.chainID, rs.Proposal.ToProto()), rs.Proposal.Signature),
 			"accepted proposal with invalid signature")
 		require.Equal(t, rs.Height, rs.Proposal.Height)
+		require.Equal(t, rs.Round, rs.Proposal.Round)
 	}
 	for round := int32(0); round <= rs.Round; round++ {
 		for _, vs := range []*types.VoteSet{rs.Votes.Prevotes(round), rs.Votes.Precommits(round)} {
@@ -528,17 +530,101 @@ func checkVoteSet(t *testing.T, chainID string, vs *types.VoteSet, vals *types.V
 	}
 }
 
+// fuzzOps encodes harness operations in the byte format the fuzz targets
+// read, so seeds stay in sync with the fuzzBytes reader. Each method mirrors
+// the reads of the corresponding fuzzNode builder.
+type fuzzOps []byte
+
+// fuzzRound selects a round relative to the current one, as fuzzBytes.round
+// reads it: a skip byte followed by an index byte.
+type fuzzRound [2]byte
+
+var fuzzRoundCur = fuzzRound{0, 5}
+
+// fuzzRoundSkip selects the current round plus k (k < fuzzMaxRounds).
+func fuzzRoundSkip(k byte) fuzzRound { return fuzzRound{k, 1} }
+
+const (
+	fuzzHeightCur   = 5    // fuzzBytes.height index of the current height
+	fuzzBlockNil    = 0xff // fuzzOps block argument for a nil block ID
+	fuzzSignerFixed = -1   // fuzzOps proposal signer: keep the harness choice
+)
+
+// blockID encodes fuzzNode.blockID choosing harness block variant b (or nil).
+func (o fuzzOps) blockID(b byte) fuzzOps {
+	if b == fuzzBlockNil {
+		return append(o, 0)
+	}
+	return append(o, b+1)
+}
+
+// proposal encodes a proposal at the current height for harness block b with
+// POL round -1 and no mutation. signer overrides the harness's proposer
+// choice unless it is fuzzSignerFixed.
+func (o fuzzOps) proposal(rnd fuzzRound, signer int, b byte) fuzzOps {
+	o = append(o, 0, fuzzHeightCur, rnd[0], rnd[1], 0, 0) // kind, height, round, POL (-1)
+	if signer == fuzzSignerFixed {
+		o = append(o, 1)
+	} else {
+		o = append(o, 0, byte(signer))
+	}
+	return append(o.blockID(b), 4) // no mutation
+}
+
+// part encodes block part idx of harness block b at the current height and
+// round, unmutated.
+func (o fuzzOps) part(b, idx byte) fuzzOps {
+	return append(o, 1, b, idx, 7, fuzzHeightCur, fuzzRoundCur[0], fuzzRoundCur[1])
+}
+
+// vote encodes an unmutated vote of type typ at the current height.
+func (o fuzzOps) vote(signer byte, typ cmtproto.SignedMsgType, rnd fuzzRound, b byte) fuzzOps {
+	sel := map[cmtproto.SignedMsgType]byte{cmtproto.PrevoteType: 0, cmtproto.PrecommitType: 2}[typ]
+	o = append(o, 2, signer, 0, sel, fuzzHeightCur, rnd[0], rnd[1])
+	return append(o.blockID(b), 7) // no mutation
+}
+
+// votes encodes a vote from every validator index; the node's own index is
+// remapped to the byzantine validator by the harness.
+func (o fuzzOps) votes(typ cmtproto.SignedMsgType, rnd fuzzRound, b byte) fuzzOps {
+	for s := byte(0); s < fuzzNumVals; s++ {
+		o = o.vote(s, typ, rnd, b)
+	}
+	return o
+}
+
+func (o fuzzOps) timeout() fuzzOps { return append(o, 3) }
+
+// fuzzSeedHappy commits harness block 0 at height 1: the genesis proposer's
+// proposal and its only part, prevotes and precommits from every validator,
+// then the commit timeout that starts height 2.
+func fuzzSeedHappy() []byte {
+	return fuzzOps{}.
+		proposal(fuzzRoundCur, fuzzSignerFixed, 0).
+		part(0, 0).
+		votes(cmtproto.PrevoteType, fuzzRoundCur, 0).
+		votes(cmtproto.PrecommitType, fuzzRoundCur, 0).
+		timeout()
+}
+
+// fuzzSeedRound17 reaches round 17 of height 1, beyond fuzzMaxRounds, via
+// nil precommit quorums and precommit timeouts, then offers a proposal for
+// harness block 0 signed by each validator so the live proposer's is
+// accepted (or the node proposes itself).
+func fuzzSeedRound17() []byte {
+	o := fuzzOps{}.
+		votes(cmtproto.PrecommitType, fuzzRoundSkip(15), fuzzBlockNil).timeout(). // round 15 -> 16
+		votes(cmtproto.PrecommitType, fuzzRoundCur, fuzzBlockNil).timeout()       // round 16 -> 17
+	for s := 0; s < fuzzNumVals; s++ {
+		o = o.proposal(fuzzRoundCur, s, 0)
+	}
+	return o.part(0, 0)
+}
+
 func fuzzSeeds(f *testing.F) {
 	f.Add([]byte{})
-	// Height 1 happy path: proposal and part for harness block 0, prevotes
-	// and precommits for it from every validator, then the commit timeout.
-	happy := []byte{0, 5, 5, 0, 0, 1, 1, 7, 1, 0, 0, 9, 5, 5}
-	for _, typ := range []byte{0, 2} {
-		for s := byte(0); s < fuzzNumVals; s++ {
-			happy = append(happy, 2, s, typ, 5, 5, 1, 9)
-		}
-	}
-	f.Add(append(happy, 3))
+	f.Add(fuzzSeedHappy())
+	f.Add(fuzzSeedRound17())
 	f.Add(bytes.Repeat([]byte{1, 3, 7, 0, 1, 5, 5}, 6))
 }
 
@@ -554,55 +640,90 @@ func FuzzConsensusStateHandleMsg(f *testing.F) {
 		if len(data) > fuzzMaxInput {
 			return
 		}
-		n := newFuzzNode(t, genDoc, pvs)
-		for i := int32(0); i < fuzzNumVals; i++ {
-			n.honest[i] = i != n.byz && i != n.ours
+		runStateHandleMsg(t, genDoc, pvs, data)
+	})
+}
+
+// runStateHandleMsg is the body of FuzzConsensusStateHandleMsg; it returns
+// the node so deterministic tests can inspect where an input leads.
+func runStateHandleMsg(t *testing.T, genDoc *types.GenesisDoc, pvs map[string]types.PrivValidator, data []byte) *fuzzNode {
+	n := newFuzzNode(t, genDoc, pvs)
+	for i := int32(0); i < fuzzNumVals; i++ {
+		n.honest[i] = i != n.byz && i != n.ours
+	}
+	r := &fuzzBytes{b: data}
+	prev := n.cs.GetRoundState()
+	vals := n.cs.GetState().Validators
+	for op := 0; op < fuzzMaxOps && len(r.b) > 0; op++ {
+		var msg Message
+		switch r.u8() % 4 {
+		case 0:
+			msg = &ProposalMessage{Proposal: n.proposal(r)}
+		case 1:
+			msg = n.part(r)
+		case 2:
+			msg = &VoteMessage{Vote: n.vote(r)}
+		default:
+			n.fireTimeout()
 		}
-		r := &fuzzBytes{b: data}
-		prev := n.cs.GetRoundState()
-		vals := n.cs.GetState().Validators
-		for op := 0; op < fuzzMaxOps && len(r.b) > 0; op++ {
-			var msg Message
-			switch r.u8() % 4 {
-			case 0:
-				msg = &ProposalMessage{Proposal: n.proposal(r)}
-			case 1:
-				msg = n.part(r)
-			case 2:
-				msg = &VoteMessage{Vote: n.vote(r)}
-			default:
-				n.fireTimeout()
-			}
-			if msg != nil {
-				// Only messages that survive the reactor's decode and
-				// ValidateBasic reach the state machine.
-				if pb := wire(msg); pb != nil {
-					if decoded, err := MsgFromProto(pb); err == nil && decoded.ValidateBasic() == nil {
-						n.cs.handleMsg(msgInfo{decoded, "peer"})
-						n.drain()
-					}
+		if msg != nil {
+			// Only messages that survive the reactor's decode and
+			// ValidateBasic reach the state machine.
+			if pb := wire(msg); pb != nil {
+				if decoded, err := MsgFromProto(pb); err == nil && decoded.ValidateBasic() == nil {
+					n.cs.handleMsg(msgInfo{decoded, "peer"})
+					n.drain()
 				}
 			}
-			for len(n.cs.statsMsgQueue) > 0 {
-				<-n.cs.statsMsgQueue
-			}
-			n.checkRoundState(t)
-
-			rs := n.cs.GetRoundState()
-			require.GreaterOrEqual(t, CompareHRS(rs.Height, rs.Round, rs.Step, prev.Height, prev.Round, prev.Step), 0,
-				"round state moved backwards from %d/%d/%v to %d/%d/%v", prev.Height, prev.Round, prev.Step, rs.Height, rs.Round, rs.Step)
-			require.LessOrEqual(t, rs.Height, prev.Height+1)
-			if rs.Height > prev.Height {
-				meta := n.cs.blockStore.LoadBlockMeta(prev.Height)
-				require.NotNil(t, meta, "advanced height without storing block %d", prev.Height)
-				seen := n.cs.blockStore.LoadSeenCommit(prev.Height)
-				require.NotNil(t, seen)
-				require.NoError(t, vals.VerifyCommit(n.chainID, meta.BlockID, prev.Height, seen),
-					"committed block without +2/3 precommits")
-			}
-			prev = rs
 		}
-	})
+		for len(n.cs.statsMsgQueue) > 0 {
+			<-n.cs.statsMsgQueue
+		}
+		n.checkRoundState(t)
+
+		rs := n.cs.GetRoundState()
+		require.GreaterOrEqual(t, CompareHRS(rs.Height, rs.Round, rs.Step, prev.Height, prev.Round, prev.Step), 0,
+			"round state moved backwards from %d/%d/%v to %d/%d/%v", prev.Height, prev.Round, prev.Step, rs.Height, rs.Round, rs.Step)
+		require.LessOrEqual(t, rs.Height, prev.Height+1)
+		if rs.Height > prev.Height {
+			meta := n.cs.blockStore.LoadBlockMeta(prev.Height)
+			require.NotNil(t, meta, "advanced height without storing block %d", prev.Height)
+			seen := n.cs.blockStore.LoadSeenCommit(prev.Height)
+			require.NotNil(t, seen)
+			require.NoError(t, vals.VerifyCommit(n.chainID, meta.BlockID, prev.Height, seen),
+				"committed block without +2/3 precommits")
+		}
+		prev = rs
+	}
+	return n
+}
+
+// TestFuzzSeedHappyPathCommits guards the happy-path seed against drifting
+// out of sync with the fuzzBytes reader: replaying it must commit height 1.
+func TestFuzzSeedHappyPathCommits(t *testing.T) {
+	genDoc, pvs := fuzzGenesis(t)
+	n := runStateHandleMsg(t, genDoc, pvs, fuzzSeedHappy())
+	meta := n.cs.blockStore.LoadBlockMeta(1)
+	require.NotNil(t, meta, "happy-path seed did not commit height 1")
+	blk := n.blocks["1/0"]
+	require.NotNil(t, blk, "seed never referenced harness block 0 at height 1")
+	require.Equal(t, blk.id, meta.BlockID, "committed an unexpected block")
+	require.Equal(t, int64(2), n.cs.GetRoundState().Height)
+}
+
+// TestFuzzSeedRound17AcceptsProposal is a regression test: past
+// fuzzMaxRounds the accepted proposal must be checked against the live
+// proposer, not the harness's fallback signer.
+func TestFuzzSeedRound17AcceptsProposal(t *testing.T) {
+	genDoc, pvs := fuzzGenesis(t)
+	n := runStateHandleMsg(t, genDoc, pvs, fuzzSeedRound17())
+	rs := n.cs.GetRoundState()
+	require.Equal(t, int64(1), rs.Height)
+	require.Equal(t, int32(fuzzMaxRounds+1), rs.Round)
+	require.NotNil(t, rs.Proposal, "no proposal accepted at round %d", rs.Round)
+	proposer, _ := rs.Validators.GetByAddress(rs.Validators.GetProposer().Address)
+	require.NotEqual(t, n.proposerFor(rs.Round), proposer,
+		"seed no longer exercises a live proposer that differs from the harness fallback")
 }
 
 // FuzzConsensusReactorReceive drives Reactor.receive (the body of Receive,
