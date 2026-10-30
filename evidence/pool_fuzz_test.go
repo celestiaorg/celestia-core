@@ -24,7 +24,7 @@ import (
 	cmtproto "github.com/cometbft/cometbft/proto/tendermint/types"
 	cmtversion "github.com/cometbft/cometbft/proto/tendermint/version"
 	sm "github.com/cometbft/cometbft/state"
-	"github.com/cometbft/cometbft/types"
+	cmttypes "github.com/cometbft/cometbft/types"
 	"github.com/cometbft/cometbft/version"
 )
 
@@ -44,9 +44,9 @@ var fzBaseTime = time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)
 func fzBlockTime(h int64) time.Time { return fzBaseTime.Add(time.Duration(h) * time.Minute) }
 
 type evFixture struct {
-	privVals   []types.PrivValidator // ordered like valSet.Validators
-	phantom    types.PrivValidator
-	valSet     *types.ValidatorSet
+	privVals   []cmttypes.PrivValidator // ordered like valSet.Validators
+	phantom    cmttypes.PrivValidator
+	valSet     *cmttypes.ValidatorSet
 	stateStore sm.Store
 	blockStore *fzBlockStore
 }
@@ -60,20 +60,20 @@ var (
 // shared by all iterations. Pools never write to them.
 func fuzzEvidenceFixture(tb testing.TB) *evFixture {
 	evFixtureOnce.Do(func() {
-		fx := &evFixture{phantom: types.NewMockPVWithParams(ed25519.GenPrivKeyFromSecret([]byte("phantom")), false, false)}
-		byAddr := map[string]types.PrivValidator{}
-		vals := make([]*types.Validator, 4)
+		fx := &evFixture{phantom: cmttypes.NewMockPVWithParams(ed25519.GenPrivKeyFromSecret([]byte("phantom")), false, false)}
+		byAddr := map[string]cmttypes.PrivValidator{}
+		vals := make([]*cmttypes.Validator, 4)
 		for i := range vals {
-			pv := types.NewMockPVWithParams(ed25519.GenPrivKeyFromSecret([]byte{byte(i)}), false, false)
-			vals[i] = types.NewValidator(pv.PrivKey.PubKey(), int64(10*(i+1)))
+			pv := cmttypes.NewMockPVWithParams(ed25519.GenPrivKeyFromSecret([]byte{byte(i)}), false, false)
+			vals[i] = cmttypes.NewValidator(pv.PrivKey.PubKey(), int64(10*(i+1)))
 			byAddr[string(vals[i].Address)] = pv
 		}
-		fx.valSet = types.NewValidatorSet(vals)
+		fx.valSet = cmttypes.NewValidatorSet(vals)
 		for _, v := range fx.valSet.Validators {
 			fx.privVals = append(fx.privVals, byAddr[string(v.Address)])
 		}
-		params := *types.DefaultConsensusParams()
-		params.Evidence = types.EvidenceParams{MaxAgeNumBlocks: fzMaxAge, MaxAgeDuration: fzMaxAge * time.Minute, MaxBytes: 1 << 20}
+		params := *cmttypes.DefaultConsensusParams()
+		params.Evidence = cmttypes.EvidenceParams{MaxAgeNumBlocks: fzMaxAge, MaxAgeDuration: fzMaxAge * time.Minute, MaxBytes: 1 << 20}
 		state := sm.State{
 			ChainID: fzChainID, InitialHeight: 1, LastBlockTime: fzBlockTime(fzHeight),
 			Validators: fx.valSet, NextValidators: fx.valSet, LastValidators: fx.valSet,
@@ -84,21 +84,21 @@ func fuzzEvidenceFixture(tb testing.TB) *evFixture {
 			state.LastBlockHeight = i
 			require.NoError(tb, fx.stateStore.Save(state))
 		}
-		fx.blockStore = &fzBlockStore{metas: map[int64]*types.BlockMeta{}, commits: map[int64]*types.Commit{}}
-		lastCommit, lastID := &types.Commit{}, types.BlockID{}
+		fx.blockStore = &fzBlockStore{metas: map[int64]*cmttypes.BlockMeta{}, commits: map[int64]*cmttypes.Commit{}}
+		lastCommit, lastID := &cmttypes.Commit{}, cmttypes.BlockID{}
 		for h := int64(1); h <= fzHeight; h++ {
-			block := types.MakeBlock(h, types.MakeData(test.MakeNTxs(h, 1)), lastCommit, nil)
+			block := cmttypes.MakeBlock(h, cmttypes.MakeData(test.MakeNTxs(h, 1)), lastCommit, nil)
 			block.Version = cmtversion.Consensus{Block: version.BlockProtocol, App: 1}
 			block.ChainID, block.Time, block.LastBlockID = fzChainID, fzBlockTime(h), lastID
 			block.ValidatorsHash, block.NextValidatorsHash = fx.valSet.Hash(), fx.valSet.Hash()
 			block.ConsensusHash, block.AppHash = params.Hash(), fzHash("app", h)
 			block.LastResultsHash, block.ProposerAddress = fzHash("results", h), fx.valSet.Proposer.Address
-			parts, err := block.MakePartSet(types.BlockPartSizeBytes)
+			parts, err := block.MakePartSet(cmttypes.BlockPartSizeBytes)
 			require.NoError(tb, err)
-			lastID = types.BlockID{Hash: block.Hash(), PartSetHeader: parts.Header()}
+			lastID = cmttypes.BlockID{Hash: block.Hash(), PartSetHeader: parts.Header()}
 			lastCommit, err = test.MakeCommit(lastID, h, 0, fx.valSet, fx.privVals, fzChainID, fzBlockTime(h))
 			require.NoError(tb, err)
-			fx.blockStore.metas[h] = types.NewBlockMeta(block, parts)
+			fx.blockStore.metas[h] = cmttypes.NewBlockMeta(block, parts)
 			if h > 1 { // like store.BlockStore, a commit comes from the next block
 				fx.blockStore.commits[h-1] = block.LastCommit
 			}
@@ -111,13 +111,13 @@ func fuzzEvidenceFixture(tb testing.TB) *evFixture {
 // fzBlockStore is an in-memory BlockStore (store.BlockStore would be an
 // import cycle). It only has commits up to fzHeight-1, like a real store.
 type fzBlockStore struct {
-	metas   map[int64]*types.BlockMeta
-	commits map[int64]*types.Commit
+	metas   map[int64]*cmttypes.BlockMeta
+	commits map[int64]*cmttypes.Commit
 }
 
-func (s *fzBlockStore) LoadBlockMeta(h int64) *types.BlockMeta { return s.metas[h] }
-func (s *fzBlockStore) Height() int64                          { return fzHeight }
-func (s *fzBlockStore) LoadBlockCommit(h int64) *types.Commit {
+func (s *fzBlockStore) LoadBlockMeta(h int64) *cmttypes.BlockMeta { return s.metas[h] }
+func (s *fzBlockStore) Height() int64                             { return fzHeight }
+func (s *fzBlockStore) LoadBlockCommit(h int64) *cmttypes.Commit {
 	if c, ok := s.commits[h]; ok {
 		return c.Clone()
 	}
@@ -177,7 +177,7 @@ func (r *fzReader) hash(tag string, h int64) []byte {
 // fzCase is a piece of generated evidence and whether the oracle expects the
 // pool to accept it.
 type fzCase struct {
-	ev      types.Evidence
+	ev      cmttypes.Evidence
 	valid   bool
 	decoded bool // false if EvidenceFromProto (incl. ValidateBasic) rejects it
 }
@@ -202,9 +202,9 @@ func (fx *evFixture) dupVoteEvidence(r *fzReader) fzCase {
 	if r.byte()&1 == 1 {
 		typ = cmtproto.PrecommitType
 	}
-	ids := []types.BlockID{
-		{Hash: r.hash("a", h), PartSetHeader: types.PartSetHeader{Total: 1 + uint32(r.byte()), Hash: fzHash("pa", h)}},
-		{Hash: r.hash("b", h), PartSetHeader: types.PartSetHeader{Total: 1, Hash: fzHash("pb", h)}},
+	ids := []cmttypes.BlockID{
+		{Hash: r.hash("a", h), PartSetHeader: cmttypes.PartSetHeader{Total: 1 + uint32(r.byte()), Hash: fzHash("pa", h)}},
+		{Hash: r.hash("b", h), PartSetHeader: cmttypes.PartSetHeader{Total: 1, Hash: fzHash("pb", h)}},
 	}
 	if mut&0x01 != 0 || ids[0].Equals(ids[1]) {
 		ids[1], valid = ids[0], false
@@ -215,7 +215,7 @@ func (fx *evFixture) dupVoteEvidence(r *fzReader) fzCase {
 	if mut&0x02 != 0 { // unsorted votes fail ValidateBasic
 		ids[0], ids[1], valid = ids[1], ids[0], false
 	}
-	votes := make([]*types.Vote, 2)
+	votes := make([]*cmttypes.Vote, 2)
 	for i := range votes {
 		signer, chainID, vh, vr, vt := fx.privVals[idx], fzChainID, h, round, typ
 		if i == 1 {
@@ -230,7 +230,7 @@ func (fx *evFixture) dupVoteEvidence(r *fzReader) fzCase {
 				vt, valid = cmtproto.PrevoteType+cmtproto.PrecommitType-vt, false
 			}
 		}
-		v := &types.Vote{
+		v := &cmttypes.Vote{
 			Type: vt, Height: vh, Round: vr, BlockID: ids[i], Timestamp: fzBaseTime.Add(time.Duration(r.byte())),
 			ValidatorAddress: val.Address, ValidatorIndex: int32(idx),
 		}
@@ -243,7 +243,7 @@ func (fx *evFixture) dupVoteEvidence(r *fzReader) fzCase {
 		}
 		votes[i] = v
 	}
-	ev := &types.DuplicateVoteEvidence{
+	ev := &cmttypes.DuplicateVoteEvidence{
 		VoteA: votes[0], VoteB: votes[1], Timestamp: fzBlockTime(h),
 		ValidatorPower: val.VotingPower, TotalVotingPower: fx.valSet.TotalVotingPower(),
 	}
@@ -288,8 +288,8 @@ func (fx *evFixture) lightAttackEvidence(r *fzReader) fzCase {
 		if r.byte()&1 == 1 { // add a validator unknown to the chain
 			confVals = fx.valSet.Copy()
 			pk, _ := fx.phantom.GetPubKey()
-			require.NoError(r.t, confVals.UpdateWithChangeSet([]*types.Validator{types.NewValidator(pk, 1+int64(r.byte()))}))
-			confPrivs = append(append([]types.PrivValidator{}, fx.privVals...), fx.phantom)
+			require.NoError(r.t, confVals.UpdateWithChangeSet([]*cmttypes.Validator{cmttypes.NewValidator(pk, 1+int64(r.byte()))}))
+			confPrivs = append(append([]cmttypes.PrivValidator{}, fx.privVals...), fx.phantom)
 		}
 		header.ValidatorsHash = confVals.Hash()
 	} else {
@@ -305,9 +305,9 @@ func (fx *evFixture) lightAttackEvidence(r *fzReader) fzCase {
 		round, valid = 1+int32(r.byte()%3), false
 	}
 	signMask := r.byte()
-	var signers []types.PrivValidator
+	var signers []cmttypes.PrivValidator
 	var confPower, commonPower int64
-	var byz []*types.Validator
+	var byz []*cmttypes.Validator
 	for _, pv := range confPrivs {
 		if signMask&1 == 0 { // default: everyone signs
 			pk, _ := pv.GetPubKey()
@@ -326,7 +326,7 @@ func (fx *evFixture) lightAttackEvidence(r *fzReader) fzCase {
 	if lunatic && commonPower <= fx.valSet.TotalVotingPower()/3 {
 		valid = false
 	}
-	sort.Sort(types.ValidatorsByVotingPower(byz))
+	sort.Sort(cmttypes.ValidatorsByVotingPower(byz))
 	mut := r.byte()
 	if mut&0x80 == 0 {
 		mut = 0
@@ -335,12 +335,12 @@ func (fx *evFixture) lightAttackEvidence(r *fzReader) fzCase {
 	if mut&0x01 != 0 {
 		chainID, valid = "other-chain", false
 	}
-	blockID := types.BlockID{Hash: header.Hash(), PartSetHeader: types.PartSetHeader{Total: 1, Hash: fzHash("cp", height)}}
+	blockID := cmttypes.BlockID{Hash: header.Hash(), PartSetHeader: cmttypes.PartSetHeader{Total: 1, Hash: fzHash("cp", height)}}
 	commit, err := test.MakeCommit(blockID, height, round, confVals, signers, chainID, header.Time)
 	require.NoError(r.t, err)
 	if mut&0x02 != 0 && len(signers) > 0 {
 		for i := range commit.Signatures {
-			if commit.Signatures[i].BlockIDFlag == types.BlockIDFlagCommit {
+			if commit.Signatures[i].BlockIDFlag == cmttypes.BlockIDFlagCommit {
 				commit.Signatures[i].Signature[0] ^= 1
 				break
 			}
@@ -358,9 +358,9 @@ func (fx *evFixture) lightAttackEvidence(r *fzReader) fzCase {
 	case mut&0x10 != 0 && len(byz) > 0:
 		byz[len(byz)-1].VotingPower, valid = byz[len(byz)-1].VotingPower+1, false
 	}
-	ev := &types.LightClientAttackEvidence{
-		ConflictingBlock: &types.LightBlock{
-			SignedHeader: &types.SignedHeader{Header: &header, Commit: commit},
+	ev := &cmttypes.LightClientAttackEvidence{
+		ConflictingBlock: &cmttypes.LightBlock{
+			SignedHeader: &cmttypes.SignedHeader{Header: &header, Commit: commit},
 			ValidatorSet: confVals,
 		},
 		CommonHeight: common, ByzantineValidators: byz,
@@ -375,7 +375,7 @@ func (fx *evFixture) lightAttackEvidence(r *fzReader) fzCase {
 	return fzCase{ev: ev, valid: valid}
 }
 
-func indexOf(vals *types.ValidatorSet, v *types.Validator) int {
+func indexOf(vals *cmttypes.ValidatorSet, v *cmttypes.Validator) int {
 	idx, _ := vals.GetByAddress(v.Address)
 	return int(idx)
 }
@@ -396,13 +396,13 @@ func (fx *evFixture) generate(t testing.TB, data []byte) []fzCase {
 		default:
 			c = fx.lightAttackEvidence(r)
 		}
-		pb, err := types.EvidenceToProto(c.ev)
+		pb, err := cmttypes.EvidenceToProto(c.ev)
 		require.NoError(t, err)
 		bz, err := pb.Marshal()
 		require.NoError(t, err)
 		var decoded cmtproto.Evidence
 		require.NoError(t, decoded.Unmarshal(bz))
-		if ev, err := types.EvidenceFromProto(&decoded); err == nil {
+		if ev, err := cmttypes.EvidenceFromProto(&decoded); err == nil {
 			c.ev, c.decoded = ev, true
 		} else {
 			require.False(t, c.valid, "valid evidence failed to decode: %v", err)
@@ -414,17 +414,17 @@ func (fx *evFixture) generate(t testing.TB, data []byte) []fzCase {
 
 // requireSignedByValidators independently checks that pending evidence can
 // only implicate validators who actually signed conflicting data.
-func (fx *evFixture) requireSignedByValidators(t *testing.T, ev types.Evidence) {
+func (fx *evFixture) requireSignedByValidators(t *testing.T, ev cmttypes.Evidence) {
 	switch ev := ev.(type) {
-	case *types.DuplicateVoteEvidence:
+	case *cmttypes.DuplicateVoteEvidence:
 		_, val := fx.valSet.GetByAddress(ev.VoteA.ValidatorAddress)
 		require.NotNil(t, val)
 		require.False(t, ev.VoteA.BlockID.Equals(ev.VoteB.BlockID))
-		for _, v := range []*types.Vote{ev.VoteA, ev.VoteB} {
+		for _, v := range []*cmttypes.Vote{ev.VoteA, ev.VoteB} {
 			require.Equal(t, val.Address, v.ValidatorAddress)
-			require.True(t, val.PubKey.VerifySignature(types.VoteSignBytes(fzChainID, v.ToProto()), v.Signature))
+			require.True(t, val.PubKey.VerifySignature(cmttypes.VoteSignBytes(fzChainID, v.ToProto()), v.Signature))
 		}
-	case *types.LightClientAttackEvidence:
+	case *cmttypes.LightClientAttackEvidence:
 		cb := ev.ConflictingBlock
 		require.NoError(t, fx.valSet.VerifyCommitLightTrustingAllSignatures(fzChainID, cb.Commit,
 			light.DefaultTrustLevel))
@@ -444,7 +444,7 @@ type evKey struct {
 	hash   string
 }
 
-func keyOf(ev types.Evidence) evKey { return evKey{ev.Height(), string(ev.Hash())} }
+func keyOf(ev cmttypes.Evidence) evKey { return evKey{ev.Height(), string(ev.Hash())} }
 
 // requirePending checks that the pool holds exactly the expected evidence and
 // that each item is independently verifiable.
@@ -510,7 +510,7 @@ func TestFuzzEvidencePoolTimestampOverflow(t *testing.T) {
 // runEvidencePoolFuzz runs one FuzzEvidencePool iteration.
 func runEvidencePoolFuzz(t *testing.T, fx *evFixture, data []byte) {
 	cases := fx.generate(t, data)
-	all := make(types.EvidenceList, len(cases))
+	all := make(cmttypes.EvidenceList, len(cases))
 	for i, c := range cases {
 		all[i] = c.ev
 	}
@@ -552,7 +552,7 @@ func runEvidencePoolFuzz(t *testing.T, fx *evFixture, data []byte) {
 	// AddEvidence and CheckEvidence are only reached with evidence
 	// that passed decoding and ValidateBasic.
 	cases = decoded
-	evs := make(types.EvidenceList, len(cases))
+	evs := make(cmttypes.EvidenceList, len(cases))
 	for i, c := range cases {
 		evs[i] = c.ev
 	}
@@ -570,7 +570,7 @@ func runEvidencePoolFuzz(t *testing.T, fx *evFixture, data []byte) {
 			require.NoError(t, err)
 			want[keyOf(c.ev)] = true
 		} else {
-			var invalid *types.ErrInvalidEvidence
+			var invalid *cmttypes.ErrInvalidEvidence
 			require.ErrorAs(t, err, &invalid)
 		}
 	}
@@ -597,7 +597,7 @@ func runEvidencePoolFuzz(t *testing.T, fx *evFixture, data []byte) {
 	pool.Update(state, evs)
 	require.Zero(t, pool.Size())
 	for _, ev := range evs {
-		require.Error(t, pool.CheckEvidence(types.EvidenceList{ev}))
+		require.Error(t, pool.CheckEvidence(cmttypes.EvidenceList{ev}))
 		require.NoError(t, pool.AddEvidence(ev))
 	}
 	require.Zero(t, pool.Size())
@@ -609,7 +609,7 @@ func runEvidencePoolFuzz(t *testing.T, fx *evFixture, data []byte) {
 func FuzzEvidenceReactorReceive(f *testing.F) {
 	fx := fuzzEvidenceFixture(f)
 	for _, seed := range [][]byte{{}, {0, 1}, {0, 1, 0, 1, 0, 0, 0, 1}, {0, 0, 0, 0x84}, {3, 0, 0, 0x81, 0, 3, 0}} {
-		var evs types.EvidenceList
+		var evs cmttypes.EvidenceList
 		for _, c := range fx.generate(f, seed) {
 			evs = append(evs, c.ev)
 		}
@@ -642,7 +642,7 @@ func FuzzEvidenceReactorReceive(f *testing.F) {
 		require.LessOrEqual(t, len(pending), len(decoded))
 		require.EqualValues(t, len(pending), pool.Size())
 		for _, ev := range pending {
-			require.True(t, types.EvidenceList(decoded).Has(ev))
+			require.True(t, cmttypes.EvidenceList(decoded).Has(ev))
 			fx.requireSignedByValidators(t, ev)
 		}
 	})
