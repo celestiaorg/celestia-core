@@ -109,6 +109,7 @@ func (cs *State) applyLockInfo(li LockInfo) {
 	cs.rs.LockedBlockID = li.BlockID
 	cs.rs.LockedBlockTime = li.BlockTime
 	if blockMatchesBlockID(cs.rs.LockedBlock, cs.rs.LockedBlockParts, li.BlockID) {
+		cs.fillLockBytes(cs.rs.LockedBlock, cs.rs.LockedBlockParts) // relock: raise Valid*
 		return
 	}
 	cs.rs.LockedBlock, cs.rs.LockedBlockParts = nil, nil
