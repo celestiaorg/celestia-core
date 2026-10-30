@@ -38,6 +38,7 @@ jobs:
           - {package: mempool/cat, target: MempoolMessage}
           - {package: consensus, target: ConsensusMessage}
           - {package: blocksync, target: BlockSyncMessage}
+          - {package: statesync, target: StateSyncReactor}
           - {package: consensus/propagation/types, target: PropagationMessage}
           - {package: types, target: BlockFromProto}
           - {package: types, target: PartFromProto}
