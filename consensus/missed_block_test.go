@@ -13,6 +13,7 @@ import (
 	abci "github.com/cometbft/cometbft/abci/types"
 	cfg "github.com/cometbft/cometbft/config"
 	"github.com/cometbft/cometbft/consensus/propagation"
+	cstypes "github.com/cometbft/cometbft/consensus/types"
 	"github.com/cometbft/cometbft/p2p"
 	cmtcons "github.com/cometbft/cometbft/proto/tendermint/consensus"
 	propproto "github.com/cometbft/cometbft/proto/tendermint/propagation"
@@ -169,4 +170,47 @@ func TestReactorCommitsBlockNeverReceived(t *testing.T) {
 	commit := css[d].blockStore.LoadSeenCommit(target)
 	require.NotNil(t, commit)
 	require.EqualValues(t, 1, commit.Round)
+}
+
+// partFeeder hands consensus the parts a test sends instead of the propagator's.
+type partFeeder struct {
+	propagation.Propagator
+	parts chan types.PartInfo
+}
+
+func (p partFeeder) GetPartChan() <-chan types.PartInfo { return p.parts }
+
+// A node that enters the commit step for an earlier round than its current one takes
+// that round's parts from the propagator and commits.
+func TestCommitForEarlierRoundTakesItsParts(t *testing.T) {
+	cs1, vss := randState(4)
+	others := vss[1:]
+	feeder := partFeeder{Propagator: cs1.propagator, parts: make(chan types.PartInfo, 16)}
+	cs1.propagator = feeder
+	_, blockX := decideProposal(context.Background(), t, cs1, vss[1], 1, 0)
+	partsX, err := blockX.MakePartSet(types.BlockPartSizeBytes)
+	require.NoError(t, err)
+	newRoundCh := subscribe(cs1.eventBus, types.EventQueryNewRound)
+	newBlockCh := subscribe(cs1.eventBus, types.EventQueryNewBlock)
+	require.NoError(t, cs1.Start())
+	t.Cleanup(func() { _ = cs1.Stop(); cs1.Wait() })
+	ensureNewRound(newRoundCh, 1, 0)
+
+	// a round-1 polka moves the node on; the round-0 precommits for X then commit it.
+	incrementRound(others...)
+	signAddVotes(cs1, cmtproto.PrevoteType, nil, types.PartSetHeader{}, false, others...)
+	ensureNewRound(newRoundCh, 1, 1)
+	for _, vs := range others {
+		vs.Round = 0
+	}
+	signAddVotes(cs1, cmtproto.PrecommitType, blockX.Hash(), partsX.Header(), true, others...)
+	require.Eventually(t, func() bool {
+		rs := cs1.GetRoundState()
+		return rs.Step == cstypes.RoundStepCommit && rs.CommitRound == 0 && rs.Round == 1
+	}, 5*time.Second, 10*time.Millisecond)
+
+	for i := 0; i < int(partsX.Total()); i++ {
+		feeder.parts <- types.PartInfo{Part: partsX.GetPart(i), Height: 1, Round: 0}
+	}
+	ensureNewBlock(newBlockCh, 1)
 }
