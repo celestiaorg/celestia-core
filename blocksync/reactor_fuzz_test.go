@@ -38,6 +38,9 @@ const (
 	fzNumPeers    = 3
 	fzMaxReqs     = 4 // requesters the harness keeps open, like defaultMaxRequesters
 	fzMaxOps      = 48
+
+	// Excluded pending FINDING-blocksync-2; remove with the fix.
+	fzCheckExtSigs = false
 )
 
 var fzGenesisTime = time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)
@@ -297,6 +300,16 @@ func (h *bsHarness) syncStep() {
 	r.pool.PopRequest()
 	if extEnabled {
 		require.Equal(t, h.chain.extCommits[first.Height].ToCommit().Hash(), extCommit.ToCommit().Hash())
+		// ToCommit drops vote extensions, so check the persisted extension
+		// signatures separately: consensus re-verifies them on restart.
+		for i, sig := range extCommit.ExtendedSignatures {
+			if !fzCheckExtSigs || sig.BlockIDFlag != cmttypes.BlockIDFlagCommit {
+				continue
+			}
+			_, val := h.state.Validators.GetByIndex(int32(i))
+			require.NoError(t, extCommit.GetExtendedVote(int32(i)).VerifyExtension(chainID, val.PubKey),
+				"blocksync would persist an invalid vote extension at %d", first.Height)
+		}
 		r.store.SaveBlockWithExtendedCommit(first, firstParts, extCommit)
 	} else {
 		r.store.SaveBlock(first, firstParts, second.LastCommit)
@@ -449,16 +462,29 @@ func (h *bsHarness) blockResponse(r *fzReader, height int64) (msg *bcproto.Block
 func FuzzBlockSyncReactor(f *testing.F) {
 	chain := fuzzChain(f)
 	// Every peer reports [1, 7], then answer each peer's request and sync.
-	honest := []byte{0, 0, 0x10, 0x10, 0, 1, 0x10, 0x10, 0, 2, 0x10, 0x10}
-	for i := 0; i < 8; i++ {
-		honest = append(honest, 6, 0, 1, 0, 0, 0, 1, 1, 0, 0, 1, 2, 0, 0, 6, 0)
+	// After round 0 only peer 2 still has a request outstanding, so round i
+	// syncs height i+1 from peer 2 with the blockResponse mutation bytes in
+	// mutations[i] (canonical if absent).
+	syncSeed := func(mutations map[int][]byte) []byte {
+		seed := []byte{0, 0, 0x10, 0x10, 0, 1, 0x10, 0x10, 0, 2, 0x10, 0x10}
+		for i := 0; i < 8; i++ {
+			mut, ok := mutations[i]
+			if !ok {
+				mut = []byte{0}
+			}
+			seed = append(seed, 6, 0, 1, 0, 0, 0, 1, 1, 0, 0, 1, 2, 0)
+			seed = append(seed, mut...)
+			seed = append(seed, 6, 0)
+		}
+		return seed
 	}
-	f.Add(honest)
-	// The same with byzantine responses (corrupt LastCommit signature,
-	// tampered extended commit) from some peers.
-	byz := append([]byte{}, honest...)
-	byz[19], byz[47], byz[71] = 0x80, 0x85, 0x84
-	f.Add(byz)
+	f.Add(syncSeed(nil))
+	// The same with a byzantine response: a corrupted LastCommit signature
+	// at height 3, a corrupted extended commit signature at height 5, and a
+	// dropped extended commit at height 5.
+	f.Add(syncSeed(map[int][]byte{2: {0x80, 0, 0}}))
+	f.Add(syncSeed(map[int][]byte{4: {0x85, 0, 1}}))
+	f.Add(syncSeed(map[int][]byte{4: {0x84}}))
 	// Extreme and invalid status ranges, unsolicited blocks, requests.
 	f.Add([]byte{0, 0, 5, 0, 0, 1, 0x10, 6, 2, 0, 0, 0, 3, 1, 0, 4, 0, 0x08, 5, 1, 7, 2, 7, 2})
 	f.Add([]byte{0, 0, 0x10, 0x10, 6, 0, 2, 1, 1, 0, 1, 0, 0, 0x83, 0x18, 6, 0})
@@ -524,8 +550,9 @@ func FuzzBlockSyncReactor(f *testing.F) {
 				if decodeErr == nil {
 					bpr, banned := pool.requesters[block.Height], pool.isPeerBanned(p.id)
 					// Excluded pending PROTOCO-3517; remove with the fix.
-					if bp := pool.peers[p.id]; bpr == nil && bp != nil && bp.recvMonitor == nil &&
-						block.Height >= pool.startHeight && block.Height <= pool.height {
+					if bp := pool.peers[p.id]; bp != nil && bp.recvMonitor == nil &&
+						((bpr == nil && block.Height >= pool.startHeight && block.Height <= pool.height) ||
+							(bpr != nil && bpr.didRequestFrom(p.id) && bpr.getBlock() == nil)) {
 						skip = true
 					}
 					expectErr = (msg.ExtCommit != nil && msg.ExtCommit.Height != block.Height) ||
