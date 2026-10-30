@@ -19,7 +19,7 @@ import (
 	dbs "github.com/cometbft/cometbft/light/store/db"
 	cmtproto "github.com/cometbft/cometbft/proto/tendermint/types"
 	cmtversion "github.com/cometbft/cometbft/proto/tendermint/version"
-	"github.com/cometbft/cometbft/types"
+	cmttypes "github.com/cometbft/cometbft/types"
 	"github.com/cometbft/cometbft/version"
 )
 
@@ -51,36 +51,36 @@ var (
 // fzValSet returns the honest validator set at height h. Sets rotate so that
 // heights two apart share half of their power and heights three apart share
 // only the byzantine key, which forces bisection in skipping mode.
-func fzValSet(h int64) *types.ValidatorSet {
+func fzValSet(h int64) *cmttypes.ValidatorSet {
 	idx := []int{0, 1 + int(h%8), 1 + int((h+1)%8), 1 + int((h+2)%8)}
 	return fzValSetOf(idx)
 }
 
-func fzValSetOf(idx []int) *types.ValidatorSet {
-	vals := make([]*types.Validator, len(idx))
+func fzValSetOf(idx []int) *cmttypes.ValidatorSet {
+	vals := make([]*cmttypes.Validator, len(idx))
 	for i, k := range idx {
-		vals[i] = types.NewValidator(fzKeys[k].PubKey(), 10)
+		vals[i] = cmttypes.NewValidator(fzKeys[k].PubKey(), 10)
 	}
-	return types.NewValidatorSet(vals)
+	return cmttypes.NewValidatorSet(vals)
 }
 
 // fzSign builds a commit for header signed by every member of vals whose key
 // is in signers; the others are absent.
-func fzSign(header *types.Header, vals *types.ValidatorSet, signers []int) *types.Commit {
-	blockID := types.BlockID{Hash: header.Hash(), PartSetHeader: types.PartSetHeader{Total: 1, Hash: fzPartsHash}}
-	sigs := make([]types.CommitSig, vals.Size())
+func fzSign(header *cmttypes.Header, vals *cmttypes.ValidatorSet, signers []int) *cmttypes.Commit {
+	blockID := cmttypes.BlockID{Hash: header.Hash(), PartSetHeader: cmttypes.PartSetHeader{Total: 1, Hash: fzPartsHash}}
+	sigs := make([]cmttypes.CommitSig, vals.Size())
 	for i, val := range vals.Validators {
-		sigs[i] = types.NewCommitSigAbsent()
+		sigs[i] = cmttypes.NewCommitSigAbsent()
 		for _, k := range signers {
 			key := fzKeys[k]
 			if !bytes.Equal(key.PubKey().Address(), val.Address) {
 				continue
 			}
-			vote := &types.Vote{
+			vote := &cmttypes.Vote{
 				Type: cmtproto.PrecommitType, Height: header.Height, Round: 1, BlockID: blockID,
 				Timestamp: header.Time, ValidatorAddress: val.Address, ValidatorIndex: int32(i),
 			}
-			sig, err := key.Sign(types.VoteSignBytes(header.ChainID, vote.ToProto()))
+			sig, err := key.Sign(cmttypes.VoteSignBytes(header.ChainID, vote.ToProto()))
 			if err != nil {
 				panic(err)
 			}
@@ -88,25 +88,25 @@ func fzSign(header *types.Header, vals *types.ValidatorSet, signers []int) *type
 			sigs[i] = vote.CommitSig()
 		}
 	}
-	return &types.Commit{Height: header.Height, Round: 1, BlockID: blockID, Signatures: sigs}
+	return &cmttypes.Commit{Height: header.Height, Round: 1, BlockID: blockID, Signatures: sigs}
 }
 
 // fzGenChain deterministically builds the honest chain at heights 1..fzHeights.
-func fzGenChain() map[int64]*types.LightBlock {
-	chain := make(map[int64]*types.LightBlock, fzHeights)
+func fzGenChain() map[int64]*cmttypes.LightBlock {
+	chain := make(map[int64]*cmttypes.LightBlock, fzHeights)
 	all := []int{0, 1, 2, 3, 4, 5, 6, 7, 8}
-	var last types.BlockID
+	var last cmttypes.BlockID
 	for h := int64(1); h <= fzHeights; h++ {
 		vals := fzValSet(h)
-		header := &types.Header{
+		header := &cmttypes.Header{
 			Version: cmtversion.Consensus{Block: version.BlockProtocol}, ChainID: fzChainID, Height: h,
 			Time: fzTime.Add(time.Duration(h) * time.Minute), LastBlockID: last,
 			ValidatorsHash: vals.Hash(), NextValidatorsHash: fzValSet(h + 1).Hash(),
 			AppHash: hash("app"), ConsensusHash: hash("cons"), LastResultsHash: hash("res"),
 			ProposerAddress: vals.GetProposer().Address,
 		}
-		sh := &types.SignedHeader{Header: header, Commit: fzSign(header, vals, all)}
-		chain[h] = &types.LightBlock{SignedHeader: sh, ValidatorSet: vals}
+		sh := &cmttypes.SignedHeader{Header: header, Commit: fzSign(header, vals, all)}
+		chain[h] = &cmttypes.LightBlock{SignedHeader: sh, ValidatorSet: vals}
 		last = sh.Commit.BlockID
 	}
 	return chain
@@ -114,7 +114,7 @@ func fzGenChain() map[int64]*types.LightBlock {
 
 // fzCopy deep-copies a light block through its wire encoding, so that
 // tampering never aliases the honest chain's byte slices.
-func fzCopy(lb *types.LightBlock) (*types.LightBlock, error) {
+func fzCopy(lb *cmttypes.LightBlock) (*cmttypes.LightBlock, error) {
 	pb, err := lb.ToProto()
 	if err != nil {
 		return nil, err
@@ -127,21 +127,21 @@ func fzCopy(lb *types.LightBlock) (*types.LightBlock, error) {
 	if err := out.Unmarshal(raw); err != nil {
 		return nil, err
 	}
-	return types.LightBlockFromProto(&out)
+	return cmttypes.LightBlockFromProto(&out)
 }
 
 // fzProvider serves a fixed, possibly tampered, set of light blocks and
 // validates them the way the HTTP provider does. Its call count is shared by
 // all providers of one input.
 type fzProvider struct {
-	blocks map[int64]*types.LightBlock
+	blocks map[int64]*cmttypes.LightBlock
 	errs   map[int64]error
 	calls  *atomic.Int64
 }
 
 func (p *fzProvider) ChainID() string { return fzChainID }
 
-func (p *fzProvider) LightBlock(_ context.Context, height int64) (*types.LightBlock, error) {
+func (p *fzProvider) LightBlock(_ context.Context, height int64) (*cmttypes.LightBlock, error) {
 	if p.calls.Add(1) > fzMaxCalls {
 		// Stop a looping client; the call count assertion reports it.
 		return nil, provider.ErrNoResponse
@@ -175,14 +175,14 @@ func (p *fzProvider) LightBlock(_ context.Context, height int64) (*types.LightBl
 	return lb, nil
 }
 
-func (p *fzProvider) ReportEvidence(context.Context, types.Evidence) error { return nil }
+func (p *fzProvider) ReportEvidence(context.Context, cmttypes.Evidence) error { return nil }
 
 // fzTamper applies one mutation to the provider's block at a height. Forged
 // headers can only be re-signed with the byzantine keys.
 func fzTamper(p *fzProvider, height int64, kind, param byte) {
 	lb := p.blocks[height]
 	h := lb.Header
-	resign := func(vals *types.ValidatorSet) {
+	resign := func(vals *cmttypes.ValidatorSet) {
 		lb.ValidatorSet = vals
 		h.ValidatorsHash = vals.Hash()
 		lb.Commit = fzSign(h, vals, fzByzantine)
@@ -227,7 +227,7 @@ func fzTamper(p *fzProvider, height int64, kind, param byte) {
 				cs.Signature[int(param)%len(cs.Signature)] ^= 1
 			}
 		case 1:
-			*cs = types.NewCommitSigAbsent()
+			*cs = cmttypes.NewCommitSigAbsent()
 		case 2:
 			lb.Commit.Signatures[0], *cs = *cs, lb.Commit.Signatures[0]
 		}
@@ -250,7 +250,7 @@ func fzTamper(p *fzProvider, height int64, kind, param byte) {
 // fzNewProvider builds a provider over a private copy of the honest chain
 // with mutations applied, read as (height, kind, param) triples.
 func fzNewProvider(t *testing.T, muts []byte, calls *atomic.Int64) (*fzProvider, bool) {
-	p := &fzProvider{blocks: map[int64]*types.LightBlock{}, errs: map[int64]error{}, calls: calls}
+	p := &fzProvider{blocks: map[int64]*cmttypes.LightBlock{}, errs: map[int64]error{}, calls: calls}
 	for h, lb := range fzHonest {
 		cp, err := fzCopy(lb)
 		require.NoError(t, err)
@@ -320,7 +320,7 @@ func FuzzLightClientVerify(f *testing.F) {
 		}
 		// checkHonest asserts a light block the client returned or stored is
 		// the honest one at an existing height.
-		checkHonest := func(lb *types.LightBlock, what string) {
+		checkHonest := func(lb *cmttypes.LightBlock, what string) {
 			require.True(t, lb.Height >= 1 && lb.Height <= fzHeights, "%s a light block at nonexistent height %d", what, lb.Height)
 			require.Equal(t, fzHonest[lb.Height].Hash(), lb.Hash(), "%s a forged header at %d", what, lb.Height)
 			require.Equal(t, fzHonest[lb.Height].ValidatorSet.Hash(), lb.ValidatorSet.Hash(),
@@ -329,13 +329,13 @@ func FuzzLightClientVerify(f *testing.F) {
 		if err == nil {
 			for _, h := range []int64{target, second} {
 				if h == 0 {
-					var lb *types.LightBlock
+					var lb *cmttypes.LightBlock
 					lb, err = c.Update(context.Background(), fzNow)
 					if err == nil && lb != nil {
 						checkHonest(lb, "Update returned")
 					}
 				} else {
-					var lb *types.LightBlock
+					var lb *cmttypes.LightBlock
 					lb, err = c.VerifyLightBlockAtHeight(context.Background(), h, fzNow)
 					if err == nil {
 						require.Equal(t, fzHonest[h].Hash(), lb.Hash(), "verified a forged light block at %d", h)

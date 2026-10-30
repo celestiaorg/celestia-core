@@ -20,7 +20,7 @@ import (
 	cmtversion "github.com/cometbft/cometbft/proto/tendermint/version"
 	rpchttp "github.com/cometbft/cometbft/rpc/client/http"
 	ctypes "github.com/cometbft/cometbft/rpc/core/types"
-	"github.com/cometbft/cometbft/types"
+	cmttypes "github.com/cometbft/cometbft/types"
 	"github.com/cometbft/cometbft/version"
 )
 
@@ -81,15 +81,15 @@ func (s *fuzzRPC) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 // fuzzHTTPSeeds returns valid /commit and /validators results for height 3.
 func fuzzHTTPSeeds(tb testing.TB) (commit, validators []byte) {
 	tb.Helper()
-	pvs := make([]types.PrivValidator, 3)
-	vals := make([]*types.Validator, 3)
+	pvs := make([]cmttypes.PrivValidator, 3)
+	vals := make([]*cmttypes.Validator, 3)
 	for i := range pvs {
 		key := ed25519.GenPrivKeyFromSecret([]byte{'h', byte(i)})
-		pvs[i] = types.NewMockPVWithParams(key, false, false)
-		vals[i] = types.NewValidator(key.PubKey(), int64(10*(i+1)))
+		pvs[i] = cmttypes.NewMockPVWithParams(key, false, false)
+		vals[i] = cmttypes.NewValidator(key.PubKey(), int64(10*(i+1)))
 	}
-	valSet := types.NewValidatorSet(vals)
-	ordered := make([]types.PrivValidator, len(pvs))
+	valSet := cmttypes.NewValidatorSet(vals)
+	ordered := make([]cmttypes.PrivValidator, len(pvs))
 	for i, v := range valSet.Validators {
 		for _, pv := range pvs {
 			if pk, _ := pv.GetPubKey(); bytes.Equal(pk.Address(), v.Address) {
@@ -98,16 +98,16 @@ func fuzzHTTPSeeds(tb testing.TB) (commit, validators []byte) {
 		}
 	}
 	now := time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)
-	h := &types.Header{
+	h := &cmttypes.Header{
 		Version: cmtversion.Consensus{Block: version.BlockProtocol}, ChainID: fuzzHTTPChainID, Height: 3, Time: now,
 		ValidatorsHash: valSet.Hash(), NextValidatorsHash: valSet.Hash(), ProposerAddress: valSet.GetProposer().Address,
 	}
-	blockID := types.BlockID{Hash: h.Hash(), PartSetHeader: types.PartSetHeader{Total: 1, Hash: make([]byte, 32)}}
-	voteSet := types.NewVoteSet(fuzzHTTPChainID, h.Height, 0, cmtproto.PrecommitType, valSet)
-	ec, err := types.MakeExtCommit(blockID, h.Height, 0, voteSet, ordered, now, false)
+	blockID := cmttypes.BlockID{Hash: h.Hash(), PartSetHeader: cmttypes.PartSetHeader{Total: 1, Hash: make([]byte, 32)}}
+	voteSet := cmttypes.NewVoteSet(fuzzHTTPChainID, h.Height, 0, cmtproto.PrecommitType, valSet)
+	ec, err := cmttypes.MakeExtCommit(blockID, h.Height, 0, voteSet, ordered, now, false)
 	require.NoError(tb, err)
-	sh := types.SignedHeader{Header: h, Commit: ec.ToCommit()}
-	require.NoError(tb, (&types.LightBlock{SignedHeader: &sh, ValidatorSet: valSet}).ValidateBasic(fuzzHTTPChainID))
+	sh := cmttypes.SignedHeader{Header: h, Commit: ec.ToCommit()}
+	require.NoError(tb, (&cmttypes.LightBlock{SignedHeader: &sh, ValidatorSet: valSet}).ValidateBasic(fuzzHTTPChainID))
 
 	commit, err = cmtjson.Marshal(ctypes.ResultCommit{SignedHeader: sh, CanonicalCommit: true})
 	require.NoError(tb, err)
