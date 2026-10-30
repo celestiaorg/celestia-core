@@ -1133,3 +1133,24 @@ func txQueryRange(t *testing.T, q string) (indexer.QueryRange, HeightInfo) {
 	}
 	return indexer.QueryRange{}, heightInfo
 }
+
+// TestTxSearchRangeOrderIsDeterministic checks that two range conditions are
+// visited in a fixed order, so the result does not depend on map iteration.
+func TestTxSearchRangeOrderIsDeterministic(t *testing.T) {
+	txi := NewTxIndex(db.NewMemDB(), WithMaxSearchResults(2))
+	for i := 1; i <= 10; i++ {
+		require.NoError(t, txi.Index(&abci.TxResult{
+			Height: int64(i), Tx: types.Tx(fmt.Sprintf("tx%d", i)),
+			Result: abci.ExecTxResult{Events: []abci.Event{{Type: "transfer", Attributes: []abci.EventAttribute{
+				{Key: "amount", Value: fmt.Sprint(i), Index: true},
+				{Key: "kind", Value: "1", Index: true},
+			}}}},
+		}))
+	}
+	q := query.MustCompile("transfer.amount < 2 AND transfer.kind > 0")
+	for range 50 {
+		results, err := txi.Search(context.Background(), q)
+		require.NoError(t, err)
+		require.Len(t, results, 1)
+	}
+}

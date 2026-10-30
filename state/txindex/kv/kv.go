@@ -6,7 +6,9 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"maps"
 	"math/big"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -353,7 +355,10 @@ func (txi *TxIndex) searchRefs(ctx context.Context, q *query.Query) (map[string]
 	if len(ranges) > 0 {
 		skipIndexes = append(skipIndexes, rangeIndexes...)
 
-		for _, qr := range ranges {
+		// Visit ranges in a fixed order so the result, including whether the
+		// search cap is hit, does not depend on map iteration order.
+		for _, key := range slices.Sorted(maps.Keys(ranges)) {
+			qr := ranges[key]
 
 			// If we have a query range over height and want to still look for
 			// specific event values we do not want to simply return all
