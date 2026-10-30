@@ -36,9 +36,16 @@ jobs:
           - {package: test/fuzz/tests, target: P2PSecretConnection}
           - {package: p2p, target: TransportUpgrade}
           - {package: p2p, target: PeerReceive}
+          - {package: p2p/conn, target: SecretConnectionHandshake}
+          - {package: p2p/conn, target: SecretConnectionRead}
+          - {package: p2p/conn, target: MConnectionRecv}
           - {package: test/fuzz/tests, target: RPCJSONRPCServer}
+          - {package: rpc/core, target: RPCCoreHandlers}
+          - {package: rpc/core, target: RPCCoreJSONRPC}
           - {package: mempool/cat, target: MempoolMessage}
           - {package: consensus, target: ConsensusMessage}
+          - {package: consensus, target: ConsensusStateHandleMsg}
+          - {package: consensus, target: ConsensusReactorReceive}
           - {package: blocksync, target: BlockSyncMessage}
           - {package: consensus/propagation/types, target: PropagationMessage}
           - {package: types, target: BlockFromProto}
