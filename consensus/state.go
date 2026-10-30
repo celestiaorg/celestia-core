@@ -3230,13 +3230,16 @@ func (cs *State) lockOn(round int32, blockID types.BlockID, blockTime time.Time,
 
 // copyLockedBlock arms the copy of the locked block's parts unless the WAL holds them.
 func (cs *State) copyLockedBlock() {
-	// Our own proposal's parts are already internal WAL records.
-	ownProposal := cs.rs.Proposal != nil && cs.rs.Proposal.BlockID.Equals(cs.rs.LockedBlockID) &&
-		cs.privValidatorPubKey != nil && cs.isProposer(cs.privValidatorPubKey.Address())
-	if cs.rs.LockedBlockParts != nil && !cs.replayMode && !ownProposal {
-		li := LockInfo{Height: cs.rs.Height, Round: cs.rs.LockedRound, BlockID: cs.rs.LockedBlockID, BlockTime: cs.rs.LockedBlockTime}
-		cs.lockedBlocks.arm(cs.lockedBlockDelay(), li, cs.rs.LockedBlockParts)
+	if cs.lockedBlocks == nil || cs.replayMode || cs.rs.LockedBlockParts == nil {
+		return
 	}
+	// Our own proposal's parts are already internal WAL records.
+	if cs.rs.Proposal != nil && cs.rs.Proposal.BlockID.Equals(cs.rs.LockedBlockID) &&
+		cs.privValidatorPubKey != nil && cs.isProposer(cs.privValidatorPubKey.Address()) {
+		return
+	}
+	li := LockInfo{Height: cs.rs.Height, Round: cs.rs.LockedRound, BlockID: cs.rs.LockedBlockID, BlockTime: cs.rs.LockedBlockTime}
+	cs.lockedBlocks.arm(cs.lockedBlockDelay(), li, cs.rs.LockedBlockParts)
 }
 
 // defaultLockedBlockDelay is how long a lock stays open before its block is copied; healthy heights commit sooner.

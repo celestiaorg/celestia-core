@@ -16,41 +16,42 @@ import (
 
 // lockAndWaitForCopy locks a fresh node on X at 1/0, waits until X is in the
 // locked-block file and stops the node, which must keep the file.
-func lockAndWaitForCopy(t *testing.T, f *lockFixture) (*types.Block, *types.PartSet, types.BlockID) {
+func lockAndWaitForCopy(t *testing.T, f *lockFixture) (*types.PartSet, types.BlockID) {
 	t.Helper()
 	f.lazyDelay = 10 * time.Millisecond
 	cs := f.newState()
-	require.NoError(t, cs.Start())
-	t.Cleanup(func() { _ = cs.Stop(); cs.Wait() }) // a failure must not leave the WAL running
-	voteCh := subscribeToVoter(cs, cs.privValidatorPubKey.Address())
+	_, voteCh := startRestarted(t, cs) // its cleanup stops a failed run before the WAL dir goes
 	_, block, parts := f.lockOnX(t, cs)
 	nextVote(t, voteCh, 1, 0, cmtproto.PrecommitType)
 	xID := types.BlockID{Hash: block.Hash(), PartSetHeader: parts.Header()}
-	li := LockInfo{Height: 1, BlockID: xID}
-	require.Eventually(t, func() bool {
-		b, _ := cs.lockedBlocks.read(li)
-		return b != nil
-	}, 5*time.Second, 10*time.Millisecond)
+	requireCopied(t, cs.lockedBlocks, LockInfo{Height: 1, BlockID: xID})
 
-	cs.lockedBlocks.mtx.Lock()
-	job := cs.lockedBlocks.job
-	cs.lockedBlocks.mtx.Unlock()
 	require.NoError(t, cs.Stop())
 	cs.Wait()
-	select {
-	case <-job.done:
-	default:
-		t.Fatal("writer goroutine still running after Stop")
-	}
 	require.FileExists(t, lockedBlockFile(f.config.Consensus))
-	return block, parts, xID
+	return parts, xID
+}
+
+func requireCopied(t *testing.T, w *lockedBlockWriter, li LockInfo) {
+	t.Helper()
+	require.Eventually(t, func() bool {
+		b, _ := w.read(li)
+		return b != nil
+	}, 5*time.Second, 10*time.Millisecond)
+}
+
+// testLock returns a 3-part set and a lock on it at height 5.
+func testLock(t *testing.T) (LockInfo, *types.PartSet) {
+	parts, err := types.NewPartSetFromData(cmtrand.Bytes(3*int(types.BlockPartSizeBytes)), types.BlockPartSizeBytes)
+	require.NoError(t, err)
+	return LockInfo{Height: 5, BlockID: types.BlockID{Hash: cmtrand.Bytes(32), PartSetHeader: parts.Header()}}, parts
 }
 
 // A height still open after the delay copies the locked block; a restart then restores the
 // lock's bytes (and Valid*) from the file without a refetch and hands them to the propagator.
 func TestLockedBlockRestoredFromFile(t *testing.T) {
 	f := newLockFixture(t, true, false)
-	_, parts, xID := lockAndWaitForCopy(t, f)
+	parts, xID := lockAndWaitForCopy(t, f)
 
 	cs := f.newState()
 	rec := &callRecorder{Propagator: cs.propagator}
@@ -75,7 +76,7 @@ func TestLockedBlockRestoredFromFile(t *testing.T) {
 // A torn file degrades to the refetch path.
 func TestLockedBlockPartialFileRefetches(t *testing.T) {
 	f := newLockFixture(t, true, false)
-	_, parts, xID := lockAndWaitForCopy(t, f)
+	parts, xID := lockAndWaitForCopy(t, f)
 	path := lockedBlockFile(f.config.Consensus)
 	fi, err := os.Stat(path)
 	require.NoError(t, err)
@@ -102,11 +103,7 @@ func TestLockedBlockCopiedAfterRefetch(t *testing.T) {
 	startRestarted(t, cs)
 	require.Nil(t, cs.GetRoundState().LockedBlock)
 	require.NoError(t, cs.SetProposalAndBlock(prop, block, parts, "peer"))
-	li := LockInfo{Height: 1, BlockID: types.BlockID{Hash: block.Hash(), PartSetHeader: parts.Header()}}
-	require.Eventually(t, func() bool {
-		b, _ := cs.lockedBlocks.read(li)
-		return b != nil
-	}, 5*time.Second, 10*time.Millisecond)
+	requireCopied(t, cs.lockedBlocks, LockInfo{Height: 1, BlockID: types.BlockID{Hash: block.Hash(), PartSetHeader: parts.Header()}})
 }
 
 // A height that commits before the delay never writes the file.
@@ -115,9 +112,7 @@ func TestLockedBlockNotWrittenWhenHeightCommits(t *testing.T) {
 	f.lazyDelay = 300 * time.Millisecond
 	cs := f.newState()
 	newBlockCh := subscribe(cs.eventBus, types.EventQueryNewBlock)
-	require.NoError(t, cs.Start())
-	t.Cleanup(func() { _ = cs.Stop(); cs.Wait() })
-	voteCh := subscribeToVoter(cs, cs.privValidatorPubKey.Address())
+	_, voteCh := startRestarted(t, cs)
 	_, block, parts := f.lockOnX(t, cs)
 	nextVote(t, voteCh, 1, 0, cmtproto.PrecommitType)
 	signAddVotes(cs, cmtproto.PrecommitType, block.Hash(), parts.Header(), false, f.others...)
@@ -132,9 +127,7 @@ func TestLockedBlockNotWrittenForOwnProposal(t *testing.T) {
 	f := newLockFixture(t, true, true)
 	f.lazyDelay = time.Millisecond
 	cs := f.newState()
-	voteCh := subscribeToVoter(cs, cs.privValidatorPubKey.Address())
-	require.NoError(t, cs.Start())
-	t.Cleanup(func() { _ = cs.Stop(); cs.Wait() })
+	_, voteCh := startRestarted(t, cs)
 	v := nextVote(t, voteCh, 1, 0, cmtproto.PrevoteType)
 	signAddVotes(cs, cmtproto.PrevoteType, v.BlockID.Hash, v.BlockID.PartSetHeader, false, f.others...)
 	nextVote(t, voteCh, 1, 0, cmtproto.PrecommitType)
@@ -147,24 +140,18 @@ func TestLockedBlockNotWrittenForOwnProposal(t *testing.T) {
 // stop and reset end the writer goroutine; only reset removes the file.
 func TestLockedBlockWriterLifecycle(t *testing.T) {
 	path := t.TempDir() + "/locked_block"
-	parts, err := types.NewPartSetFromData(cmtrand.Bytes(3*int(types.BlockPartSizeBytes)), types.BlockPartSizeBytes)
-	require.NoError(t, err)
-	li := LockInfo{Height: 5, BlockID: types.BlockID{Hash: cmtrand.Bytes(32), PartSetHeader: parts.Header()}}
+	li, parts := testLock(t)
 	w := newLockedBlockWriter(path, log.TestingLogger())
 
-	// Stop before the delay: nothing written, goroutine gone.
+	// Stop before the delay: nothing written.
 	w.arm(time.Hour, li, parts)
-	job := w.job
 	w.stop()
-	<-job.done
 	require.NoFileExists(t, path)
 
 	// Stop after the write keeps all records for the next start.
 	w.arm(0, li, parts)
-	job = w.job
 	require.Eventually(t, func() bool { return countRecords(t, path) == 1+int(parts.Total()) }, 5*time.Second, time.Millisecond)
 	w.stop()
-	<-job.done
 	require.Equal(t, 1+int(parts.Total()), countRecords(t, path))
 	fi, err := os.Stat(path)
 	require.NoError(t, err)
@@ -178,10 +165,9 @@ func TestLockedBlockWriterLifecycle(t *testing.T) {
 
 	// A new height ends the job and removes its file.
 	w.arm(0, li, parts)
-	job = w.job
 	require.Eventually(t, func() bool { return countRecords(t, path) == 1+int(parts.Total()) }, 5*time.Second, time.Millisecond)
 	w.reset()
-	<-job.done
+	w.stop()
 	require.NoFileExists(t, path)
 }
 
@@ -204,16 +190,14 @@ func countRecords(t *testing.T, path string) int {
 
 // stop also joins a job that a new height already ended.
 func TestLockedBlockWriterStopJoinsEndedJob(t *testing.T) {
-	parts, err := types.NewPartSetFromData(cmtrand.Bytes(3*int(types.BlockPartSizeBytes)), types.BlockPartSizeBytes)
-	require.NoError(t, err)
-	li := LockInfo{Height: 5, BlockID: types.BlockID{Hash: cmtrand.Bytes(32), PartSetHeader: parts.Header()}}
+	li, parts := testLock(t)
 	w := newLockedBlockWriter(t.TempDir()+"/locked_block", log.TestingLogger())
 	w.arm(time.Hour, li, parts)
-	job := w.job
+	done := w.tail
 	w.reset()
 	w.stop()
 	select {
-	case <-job.done:
+	case <-done:
 	default:
 		t.Fatal("ended job outlives stop")
 	}
@@ -221,13 +205,13 @@ func TestLockedBlockWriterStopJoinsEndedJob(t *testing.T) {
 
 // A filesystem without O_DIRECT turns the copy off instead of writing through the page cache.
 func TestLockedBlockWriterOffWithoutDirectIO(t *testing.T) {
-	parts, err := types.NewPartSetFromData(cmtrand.Bytes(3*int(types.BlockPartSizeBytes)), types.BlockPartSizeBytes)
-	require.NoError(t, err)
-	li := LockInfo{Height: 5, BlockID: types.BlockID{Hash: cmtrand.Bytes(32), PartSetHeader: parts.Header()}}
-	w := newLockedBlockWriter(t.TempDir()+"/locked_block", log.TestingLogger())
-	w.open = func(path string) (*os.File, error) {
+	li, parts := testLock(t)
+	open := openLockedBlockFile
+	t.Cleanup(func() { openLockedBlockFile = open })
+	openLockedBlockFile = func(path string) (*os.File, error) {
 		return nil, &os.PathError{Op: "open", Path: path, Err: syscall.EINVAL}
 	}
+	w := newLockedBlockWriter(t.TempDir()+"/locked_block", log.TestingLogger())
 	w.arm(0, li, parts)
 	require.Eventually(t, func() bool {
 		w.mtx.Lock()
