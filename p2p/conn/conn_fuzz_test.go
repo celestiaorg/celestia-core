@@ -289,8 +289,9 @@ func FuzzSecretConnectionRead(f *testing.F) {
 				frame := make([]byte, totalFrameSize)
 				var chunkLen uint32
 				if op%4 == 0 {
-					hdr := take(2)
-					hdr = append(hdr, 0, 0)
+					// Copy before appending: take returns a subslice of
+					// ops, so appending in place would overwrite the input.
+					hdr := append(append([]byte{}, take(2)...), 0, 0)
 					chunkLen = uint32(binary.BigEndian.Uint16(hdr)) % (dataMaxSize + 1)
 				} else {
 					hdr := append(append([]byte{}, take(4)...), 0, 0, 0, 0)
@@ -345,6 +346,15 @@ func FuzzSecretConnectionRead(f *testing.F) {
 			}
 		}
 
+		// A sealed frame with a zero length prefix legitimately reads as
+		// (0, nil); anything beyond one such read per sealed frame in the
+		// stream means Read is spinning without consuming input.
+		var streamLen int
+		for _, w := range stream {
+			streamLen += len(w)
+		}
+		maxEmptyReads := streamLen / sealedFrameSize
+
 		done := make(chan struct{})
 		go func() {
 			defer close(done)
@@ -356,9 +366,28 @@ func FuzzSecretConnectionRead(f *testing.F) {
 			}
 		}()
 
+		// The endpoints are io.Pipes, which have no read deadline (and
+		// SecretConnection.SetReadDeadline requires a net.Conn), so a
+		// watchdog closes them to unblock a stuck Read. Cleanup closes them
+		// even if the loop below fails, which also unblocks the writer.
+		victimConn := victim.conn.(kvstoreConn)
+		var timedOut atomic.Bool
+		watchdog := time.AfterFunc(fuzzWatchdog, func() {
+			timedOut.Store(true)
+			_ = victimConn.Close()
+			_ = attackerConn.Close()
+		})
+		t.Cleanup(func() {
+			watchdog.Stop()
+			_ = victimConn.Close()
+			_ = attackerConn.Close()
+			<-done
+		})
+
 		var (
-			got     []byte
-			readErr error
+			got        []byte
+			readErr    error
+			emptyReads int
 		)
 		for i := 0; ; i++ {
 			size := dataMaxSize
@@ -375,14 +404,23 @@ func FuzzSecretConnectionRead(f *testing.F) {
 				readErr = err
 				break
 			}
+			if n == 0 {
+				if emptyReads++; emptyReads > maxEmptyReads {
+					t.Fatalf("Read returned (0, nil) %d times for %d sealed frames", emptyReads, maxEmptyReads)
+				}
+			}
 			if len(got) > len(expected) {
 				t.Fatalf("read %d bytes, model expects at most %d", len(got), len(expected))
 			}
 		}
+		watchdog.Stop()
 		_ = victim.Close()
 		<-done
 		_ = attacker.Close()
 
+		if timedOut.Load() {
+			t.Fatalf("Read loop did not finish within %v (read %d of %d bytes)", fuzzWatchdog, len(got), len(expected))
+		}
 		if !bytes.Equal(got, expected) {
 			t.Fatalf("read %d bytes, expected %d (err=%v)", len(got), len(expected), readErr)
 		}
