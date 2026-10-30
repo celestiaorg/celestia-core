@@ -213,6 +213,16 @@ func TestWALCrashOnInternalBlockPartWrite(t *testing.T) {
 	startNewStateAndWaitForBlock(t, consensusReplayConfig, blockDB, stateStore)
 }
 
+func TestReplayLockInfo(t *testing.T) {
+	cs, _ := randState(1)
+	for _, li := range []LockInfo{
+		{Height: 1, Round: 0, BlockID: test.MakeBlockID()},
+		{Height: 1, Round: -1},
+	} {
+		require.NoError(t, cs.readReplayMessage(&TimedWALMessage{Msg: li}, nil))
+	}
+}
+
 // TestRestartAfterPrevoteWithLostProposal reproduces celestia-core#3505: a
 // validator that prevoted a peer's block and restarts without it in the WAL
 // (only_internal_wal) must still leave round 0 once the prevotes arrive.

@@ -87,6 +87,8 @@ func TestWALEncoderDecoder(t *testing.T) {
 		{Time: now, Msg: EndHeightMessage{0}},
 		{Time: now, Msg: timeoutInfo{Duration: time.Second, Height: 1, Round: 1, Step: types.RoundStepPropose}},
 		{Time: now, Msg: cmttypes.EventDataRoundState{Height: 1, Round: 1, Step: ""}},
+		{Time: now, Msg: LockInfo{Height: 1, Round: 0, BlockID: cmttypes.MakeBlockIDRandom(), BlockTime: now}},
+		{Time: now, Msg: LockInfo{Height: 1, Round: -1}},
 	}
 
 	b := new(bytes.Buffer)

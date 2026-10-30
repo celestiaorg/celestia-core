@@ -287,6 +287,17 @@ func WALToProto(msg WALMessage) (*cmtcons.WALMessage, error) {
 				},
 			},
 		}
+	case LockInfo:
+		pb = cmtcons.WALMessage{
+			Sum: &cmtcons.WALMessage_LockInfo{
+				LockInfo: &cmtcons.LockInfo{
+					Height:    msg.Height,
+					Round:     msg.Round,
+					BlockId:   msg.BlockID.ToProto(),
+					BlockTime: msg.BlockTime,
+				},
+			},
+		}
 	default:
 		return nil, fmt.Errorf("to proto: wal message not recognized: %T", msg)
 	}
@@ -340,6 +351,17 @@ func WALFromProto(msg *cmtcons.WALMessage) (WALMessage, error) {
 			Height: msg.EndHeight.Height,
 		}
 		return pb, nil
+	case *cmtcons.WALMessage_LockInfo:
+		blockID, err := types.BlockIDFromProto(&msg.LockInfo.BlockId)
+		if err != nil {
+			return nil, fmt.Errorf("lockInfo from proto error: %w", err)
+		}
+		return LockInfo{
+			Height:    msg.LockInfo.Height,
+			Round:     msg.LockInfo.Round,
+			BlockID:   *blockID,
+			BlockTime: msg.LockInfo.BlockTime,
+		}, nil
 	default:
 		return nil, fmt.Errorf("from proto: wal message not recognized: %T", msg)
 	}
