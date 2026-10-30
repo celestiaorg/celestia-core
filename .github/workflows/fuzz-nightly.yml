@@ -40,6 +40,8 @@ jobs:
           - {package: blocksync, target: BlockSyncMessage}
           - {package: consensus/propagation/types, target: PropagationMessage}
           - {package: types, target: BlockFromProto}
+          - {package: state, target: BlockExecValidateApply}
+          - {package: state, target: VerifyVoteExtension}
           - {package: types, target: PartFromProto}
           - {package: types, target: VoteFromProto}
           - {package: types, target: ProposalFromProto}
