@@ -143,8 +143,9 @@ func TestExecCommitBlockBlobTxStripping(t *testing.T) {
 	}
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			applyTxs, replayTxs := applyAndReplayTx(t, tc.appVersion, tc.tx)
+			applyTxs, replayTxs, eventTx := applyAndReplayTx(t, tc.appVersion, tc.tx)
 			assert.Equal(t, tc.want, applyTxs[0], "ApplyBlock sent unexpected tx bytes")
+			assert.Equal(t, applyTxs[0], eventTx, "tx event carries different bytes than were sent to FinalizeBlock")
 			assert.Equal(t, applyTxs[0], replayTxs[0],
 				"ExecCommitBlock sent different tx bytes to FinalizeBlock than ApplyBlock. "+
 					"This causes AppHash mismatch during crash recovery replay.")
@@ -153,8 +154,9 @@ func TestExecCommitBlockBlobTxStripping(t *testing.T) {
 }
 
 // applyAndReplayTx executes a block containing tx at appVersion through both
-// ApplyBlock and ExecCommitBlock and returns the txs each sent to FinalizeBlock.
-func applyAndReplayTx(t *testing.T, appVersion uint64, tx []byte) (applyTxs, replayTxs [][]byte) {
+// ApplyBlock and ExecCommitBlock and returns the txs each sent to FinalizeBlock,
+// along with the tx bytes of the tx event fired by ApplyBlock.
+func applyAndReplayTx(t *testing.T, appVersion uint64, tx []byte) (applyTxs, replayTxs [][]byte, eventTx []byte) {
 	t.Helper()
 
 	// --- Path 1: ApplyBlock (normal execution) ---
@@ -180,6 +182,13 @@ func applyAndReplayTx(t *testing.T, appVersion uint64, tx []byte) (applyTxs, rep
 	blockExec := sm.NewBlockExecutor(stateStore, log.TestingLogger(), proxyApp1.Consensus(),
 		mp, sm.EmptyEvidencePool{}, blockStore)
 
+	eventBus := types.NewEventBus()
+	require.NoError(t, eventBus.Start())
+	defer eventBus.Stop() //nolint:errcheck
+	blockExec.SetEventBus(eventBus)
+	txSub, err := eventBus.Subscribe(context.Background(), "applyAndReplayTx", types.EventQueryTx)
+	require.NoError(t, err)
+
 	block, bps, err := state.MakeBlock(1, types.MakeData(types.Txs{tx}), new(types.Commit), nil, state.Validators.GetProposer().Address)
 	require.NoError(t, err)
 	require.Equal(t, appVersion, block.Version.App)
@@ -188,6 +197,13 @@ func applyAndReplayTx(t *testing.T, appVersion uint64, tx []byte) (applyTxs, rep
 	_, err = blockExec.ApplyBlock(state, blockID, block, nil)
 	require.NoError(t, err)
 	require.Len(t, applyApp.CapturedTxs, 1)
+
+	select {
+	case msg := <-txSub.Out():
+		eventTx = msg.Data().(types.EventDataTx).Tx
+	case <-time.After(time.Second):
+		t.Fatal("did not receive tx event")
+	}
 
 	// --- Path 2: ExecCommitBlock (crash replay) ---
 	replayApp := &txCapturingApp{AppVersion: appVersion}
@@ -200,7 +216,7 @@ func applyAndReplayTx(t *testing.T, appVersion uint64, tx []byte) (applyTxs, rep
 	require.NoError(t, err)
 	require.Len(t, replayApp.CapturedTxs, 1)
 
-	return applyApp.CapturedTxs, replayApp.CapturedTxs
+	return applyApp.CapturedTxs, replayApp.CapturedTxs, eventTx
 }
 
 // TestFinalizeBlockDecidedLastCommit ensures we correctly send the

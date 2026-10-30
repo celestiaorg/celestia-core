@@ -47,7 +47,10 @@ jobs:
         run: |
           make test-group-${{ matrix.part }} NUM_SPLIT=6
         if: env.GIT_DIFF
+      # Retry the whole action: OIDC token requests can time out before upload.
       - name: Upload coverage
+        id: coverage
+        continue-on-error: true
         uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7.1.1
         with:
           disable_search: true
@@ -56,3 +59,12 @@ jobs:
           name: unit-${{ matrix.part }}
           use_oidc: true
         if: env.GIT_DIFF
+      - name: Retry coverage upload
+        uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7.1.1
+        with:
+          disable_search: true
+          fail_ci_if_error: true
+          files: ./build/${{ matrix.part }}.profile.out
+          name: unit-${{ matrix.part }}
+          use_oidc: true
+        if: ${{ success() && steps.coverage.outcome == 'failure' }}

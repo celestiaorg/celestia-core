@@ -37,7 +37,7 @@ Whenever you generate code or documentation:
 
 ## Pull Request Rules
 - When naming a PR or commits, always follow [conventional commits](https://www.conventionalcommits.org/en/v1.0.0/#summary)
-- Start the PR title subject with a review level tag: `[high]`, `[medium]`, or `[low]` (e.g. `fix(p2p): [high] bound peer message size`). See [README.md#contributing](../README.md#contributing); pick the higher level when unsure and repeat the tag in the description as `Review level: [level] — reason`.
+- Start the PR title subject with a review level tag: `[high]`, `[medium]`, or `[low]` (e.g. `fix(p2p): [high] bound peer message size`). See [README.md#contributing](../README.md#contributing); pick the higher level when unsure. Don't repeat the review tag in the PR description; the title already carries it.
 
 ## Code Organization
 - Analyze the project structure entirely before deciding where something should go.
