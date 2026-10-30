@@ -2,6 +2,7 @@ package consensus
 
 import (
 	"os"
+	"syscall"
 	"testing"
 	"time"
 
@@ -76,7 +77,7 @@ func TestLockedBlockPartialFileRefetches(t *testing.T) {
 	path := lockedBlockFile(f.config.Consensus)
 	fi, err := os.Stat(path)
 	require.NoError(t, err)
-	require.NoError(t, os.Truncate(path, fi.Size()-10))
+	require.NoError(t, os.Truncate(path, fi.Size()-directIOAlign+10)) // 10 bytes into the last record
 
 	cs := f.newState()
 	rec := &callRecorder{Propagator: cs.propagator}
@@ -145,6 +146,9 @@ func TestLockedBlockWriterLifecycle(t *testing.T) {
 	w.stop()
 	<-job.done
 	require.Equal(t, 1+int(parts.Total()), countRecords(t, path))
+	fi, err := os.Stat(path)
+	require.NoError(t, err)
+	require.Zero(t, fi.Size()%directIOAlign)
 
 	// A restart finds the previous run's file; the next height removes it in the background.
 	w = newLockedBlockWriter(path, log.TestingLogger())
@@ -171,7 +175,7 @@ func countRecords(t *testing.T, path string) int {
 	dec := NewWALDecoder(f)
 	n := 0
 	for {
-		if _, err := dec.Decode(); err != nil {
+		if _, err := decodePadded(f, dec); err != nil {
 			return n
 		}
 		n++
@@ -193,4 +197,26 @@ func TestLockedBlockWriterStopJoinsEndedJob(t *testing.T) {
 	default:
 		t.Fatal("ended job outlives stop")
 	}
+}
+
+// A filesystem without O_DIRECT turns the copy off instead of writing through the page cache.
+func TestLockedBlockWriterOffWithoutDirectIO(t *testing.T) {
+	parts, err := types.NewPartSetFromData(cmtrand.Bytes(3*int(types.BlockPartSizeBytes)), types.BlockPartSizeBytes)
+	require.NoError(t, err)
+	li := LockInfo{Height: 5, BlockID: types.BlockID{Hash: cmtrand.Bytes(32), PartSetHeader: parts.Header()}}
+	w := newLockedBlockWriter(t.TempDir()+"/locked_block", log.TestingLogger())
+	w.open = func(path string) (*os.File, error) {
+		return nil, &os.PathError{Op: "open", Path: path, Err: syscall.EINVAL}
+	}
+	w.arm(0, li, parts)
+	require.Eventually(t, func() bool {
+		w.mtx.Lock()
+		defer w.mtx.Unlock()
+		return w.off
+	}, 5*time.Second, time.Millisecond)
+	w.reset()
+	li.Height++
+	w.arm(0, li, parts)
+	require.Nil(t, w.job)
+	w.stop()
 }

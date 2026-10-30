@@ -1,10 +1,14 @@
 package consensus
 
 import (
+	"errors"
+	"io"
 	"os"
 	"path/filepath"
 	"sync"
+	"syscall"
 	"time"
+	"unsafe"
 
 	"github.com/cosmos/gogoproto/proto"
 
@@ -20,10 +24,14 @@ func lockedBlockFile(config *cfg.ConsensusConfig) string {
 	return filepath.Join(filepath.Dir(config.WalFile()), "locked_block") // not "wal*": the WAL group counts those
 }
 
+// directIOAlign is the buffer, length and offset alignment O_DIRECT writes need.
+const directIOAlign = 4096
+
 // lockedBlockWriter copies the locked block's parts to a file once a height has stayed open
 // for a while, so a restarted node can restore the lock's bytes without peers. Never fsynced.
 type lockedBlockWriter struct {
 	path   string
+	open   func(path string) (*os.File, error)
 	logger log.Logger
 
 	mtx      sync.Mutex
@@ -31,6 +39,7 @@ type lockedBlockWriter struct {
 	tail     chan struct{} // closed once the last goroutine started is done with the file
 	stale    bool          // the file holds a previous run's records
 	restored types.BlockID // the stale file holds this block of the current height
+	off      bool          // the filesystem rejected O_DIRECT
 }
 
 type lockedBlockJob struct {
@@ -41,9 +50,13 @@ type lockedBlockJob struct {
 	keep    bool // set before quit is closed: leave the file for the next start
 }
 
+// newLockedBlockWriter returns nil, turning the copy off, where O_DIRECT is unavailable.
 func newLockedBlockWriter(path string, logger log.Logger) *lockedBlockWriter {
+	if openLockedBlockFile == nil {
+		return nil
+	}
 	_, err := os.Stat(path)
-	return &lockedBlockWriter{path: path, logger: logger, stale: err == nil}
+	return &lockedBlockWriter{path: path, open: openLockedBlockFile, logger: logger, stale: err == nil}
 }
 
 // arm writes parts after delay unless reset or stop comes first. The file is
@@ -54,6 +67,9 @@ func (w *lockedBlockWriter) arm(delay time.Duration, li LockInfo, parts *types.P
 	}
 	w.mtx.Lock()
 	defer w.mtx.Unlock()
+	if w.off {
+		return
+	}
 	if w.job != nil && w.job.height == li.Height && w.job.blockID.Equals(li.BlockID) {
 		return
 	}
@@ -89,7 +105,9 @@ func (w *lockedBlockWriter) run(job *lockedBlockJob, delay time.Duration, li Loc
 	select {
 	case <-job.quit:
 	case <-timer.C:
-		if err := w.write(job.quit, li, parts); err != nil {
+		if err := w.write(job.quit, li, parts); errors.Is(err, syscall.EINVAL) {
+			w.disable(err)
+		} else if err != nil {
 			w.logger.Error("failed to write the locked block's parts", "height", li.Height, "err", err)
 		}
 		<-job.quit
@@ -99,20 +117,31 @@ func (w *lockedBlockWriter) run(job *lockedBlockJob, delay time.Duration, li Loc
 	}
 }
 
+// disable stops all later copies; buffered writes are not an option (their writeback stalls WAL fsyncs).
+func (w *lockedBlockWriter) disable(err error) {
+	w.mtx.Lock()
+	defer w.mtx.Unlock()
+	if !w.off {
+		w.off = true
+		w.logger.Info("not copying locked blocks: the WAL filesystem does not support O_DIRECT", "err", err)
+	}
+}
+
 func (w *lockedBlockWriter) remove() {
 	if err := os.Remove(w.path); err != nil && !os.IsNotExist(err) {
 		w.logger.Error("failed to remove the locked block's parts", "err", err)
 	}
 }
 
-// write stores li as a header followed by one record per part, as the WAL encodes them.
+// write stores li as a header followed by one record per part, as the WAL encodes them,
+// each zero-padded to directIOAlign.
 func (w *lockedBlockWriter) write(quit <-chan struct{}, li LockInfo, parts *types.PartSet) error {
-	f, err := os.OpenFile(w.path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o600)
+	f, err := w.open(w.path)
 	if err != nil {
 		return err
 	}
 	defer f.Close()
-	enc := NewWALEncoder(f)
+	enc := NewWALEncoder(&alignedWriter{f: f})
 	if err := enc.Encode(&TimedWALMessage{cmttime.Now(), li}); err != nil {
 		return err
 	}
@@ -128,6 +157,46 @@ func (w *lockedBlockWriter) write(quit <-chan struct{}, li LockInfo, parts *type
 		}
 	}
 	return nil
+}
+
+// alignedWriter writes each record zero-padded to directIOAlign from one aligned buffer.
+type alignedWriter struct {
+	f   *os.File
+	buf []byte
+}
+
+func (a *alignedWriter) Write(p []byte) (int, error) {
+	n := alignUp(len(p))
+	if cap(a.buf) < n { // sized for a part record, so a job allocates once
+		a.buf = alignedBuf(max(n, alignUp(int(types.BlockPartSizeBytes)+1)))
+	}
+	b := a.buf[:n]
+	clear(b[copy(b, p):])
+	if _, err := a.f.Write(b); err != nil {
+		return 0, err
+	}
+	return len(p), nil
+}
+
+func alignUp(n int) int { return (n + directIOAlign - 1) &^ (directIOAlign - 1) }
+
+func alignedBuf(n int) []byte {
+	b := make([]byte, n+directIOAlign)
+	skip := (directIOAlign - int(uintptr(unsafe.Pointer(&b[0]))%directIOAlign)) % directIOAlign
+	return b[skip : skip+n]
+}
+
+// decodePadded decodes the next record and skips its padding.
+func decodePadded(f *os.File, dec *WALDecoder) (*TimedWALMessage, error) {
+	msg, err := dec.Decode()
+	if err != nil {
+		return nil, err
+	}
+	off, err := f.Seek(0, io.SeekCurrent)
+	if err == nil {
+		_, err = f.Seek(int64(alignUp(int(off))), io.SeekStart)
+	}
+	return msg, err
 }
 
 // reset drops the current height's job and its file.
@@ -175,7 +244,7 @@ func (w *lockedBlockWriter) read(li LockInfo) (*types.Block, *types.PartSet) {
 	}
 	defer f.Close()
 	dec := NewWALDecoder(f)
-	msg, err := dec.Decode()
+	msg, err := decodePadded(f, dec)
 	if err != nil {
 		return nil, nil
 	}
@@ -184,7 +253,7 @@ func (w *lockedBlockWriter) read(li LockInfo) (*types.Block, *types.PartSet) {
 	}
 	parts := types.NewPartSetFromHeader(li.BlockID.PartSetHeader, types.BlockPartSizeBytes)
 	for !parts.IsComplete() {
-		msg, err := dec.Decode()
+		msg, err := decodePadded(f, dec)
 		if err != nil {
 			return nil, nil
 		}
