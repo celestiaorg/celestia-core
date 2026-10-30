@@ -105,6 +105,7 @@ func (blockProp *Reactor) AddBlock(height int64, round int32, parts *types.PartS
 		maxRequests:  bits.NewBitArray(int(psh.Total * 2)),
 	}
 	blockProp.pmtx.Lock()
+	defer blockProp.pmtx.Unlock()
 	if blockProp.proposals[height] == nil {
 		blockProp.proposals[height] = make(map[int32]*proposalData)
 	}
@@ -115,13 +116,11 @@ func (blockProp *Reactor) AddBlock(height int64, round int32, parts *types.PartS
 			peer.DeleteRound(height, round)
 		}
 	case prop.block.IsComplete():
-		blockProp.pmtx.Unlock()
 		return
 	default:
 		entry.compactBlock, entry.catchup = prop.compactBlock, prop.catchup
 	}
 	blockProp.proposals[height][round] = entry
-	blockProp.pmtx.Unlock()
 
 	// answer the wants peers parked on the incomplete entry.
 	go func() {

@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"os"
 	"testing"
 	"time"
 
@@ -94,17 +93,9 @@ func TestWALJournalsOnlyAcceptedProposal(t *testing.T) {
 	require.NoError(t, cs.Stop())
 	cs.Wait()
 
-	in, err := os.Open(f.config.Consensus.WalFile())
-	require.NoError(t, err)
-	defer in.Close()
-	dec := NewWALDecoder(in)
 	var journaled []*types.Proposal
-	for {
-		msg, err := dec.Decode()
-		if err != nil {
-			break
-		}
-		if mi, ok := msg.Msg.(msgInfo); ok {
+	for _, m := range walMsgs(t, f.config.Consensus.WalFile()) {
+		if mi, ok := m.Msg.(msgInfo); ok {
 			if pm, ok := mi.Msg.(*ProposalMessage); ok {
 				journaled = append(journaled, pm.Proposal)
 			}
@@ -190,33 +181,26 @@ func TestRestartedLockRefetchesAndReproposes(t *testing.T) {
 // adopts and hands it over for round 1 on a polka for X while Y is proposed there.
 func TestLockedBlockSharedWithPropagator(t *testing.T) {
 	f := newLockFixture(t, true, true)
-	cs1 := f.newState()
-	voteCh := subscribeToVoter(cs1, cs1.privValidatorPubKey.Address())
-	require.NoError(t, cs1.Start())
-	v := nextVote(t, voteCh, 1, 0, cmtproto.PrevoteType)
-	signAddVotes(cs1, cmtproto.PrevoteType, v.BlockID.Hash, v.BlockID.PartSetHeader, false, f.others...)
-	nextVote(t, voteCh, 1, 0, cmtproto.PrecommitType)
-	require.NoError(t, cs1.Stop())
-	cs1.Wait()
+	xID := f.lockOwnAndStop(t)
 
 	cs := f.newState()
 	rec := &callRecorder{Propagator: cs.propagator}
 	cs.propagator = rec
 	newRoundCh, voteCh := startRestarted(t, cs)
-	psh := v.BlockID.PartSetHeader
+	psh := xID.PartSetHeader
 	require.Contains(t, rec.snapshot(), propagatorCall{block: true, height: 1, round: 0, psh: psh})
 
 	f.moveToRound1(t, cs, newRoundCh)
 	f.proposeFreshY(t, cs)
 	nextVote(t, voteCh, 1, 1, cmtproto.PrevoteType)
-	signAddVotes(cs, cmtproto.PrevoteType, v.BlockID.Hash, psh, false, f.others...)
+	signAddVotes(cs, cmtproto.PrevoteType, xID.Hash, psh, false, f.others...)
 	nextVote(t, voteCh, 1, 1, cmtproto.PrecommitType)
 	calls := rec.snapshot()
 	require.Contains(t, calls, propagatorCall{block: true, height: 1, round: 1, psh: psh})
 	require.NotContains(t, calls, propagatorCall{commitment: true, height: 1, round: 1, psh: psh})
 	rs := cs.GetRoundState()
 	require.EqualValues(t, 1, rs.ValidRound)
-	require.True(t, blockMatchesBlockID(rs.ValidBlock, rs.ValidBlockParts, v.BlockID))
+	require.True(t, blockMatchesBlockID(rs.ValidBlock, rs.ValidBlockParts, xID))
 }
 
 // A polka for the locked block, re-proposed without its parts, completes the
@@ -281,23 +265,16 @@ func TestValidBlockUsedAfterUnlock(t *testing.T) {
 // WAL and re-proposes that block, with its lock round as POL, when it proposes again.
 func TestRestartedProposerReproposesLock(t *testing.T) {
 	f := newLockFixture(t, true, true)
-	cs1 := f.newState()
-	voteCh := subscribeToVoter(cs1, cs1.privValidatorPubKey.Address())
-	require.NoError(t, cs1.Start())
-	v := nextVote(t, voteCh, 1, 0, cmtproto.PrevoteType)
-	signAddVotes(cs1, cmtproto.PrevoteType, v.BlockID.Hash, v.BlockID.PartSetHeader, false, f.others...)
-	nextVote(t, voteCh, 1, 0, cmtproto.PrecommitType)
-	require.NoError(t, cs1.Stop())
-	cs1.Wait()
+	xID := f.lockOwnAndStop(t)
 
 	cs := f.newState()
 	newRoundCh, _ := startRestarted(t, cs)
 	rs := cs.GetRoundState()
-	require.True(t, blockMatchesBlockID(rs.LockedBlock, rs.LockedBlockParts, v.BlockID))
+	require.True(t, blockMatchesBlockID(rs.LockedBlock, rs.LockedBlockParts, xID))
 	require.EqualValues(t, 0, rs.ValidRound)
 
 	p := f.nextOwnProposal(t, cs, newRoundCh)
-	require.Equal(t, v.BlockID, p.BlockID)
+	require.Equal(t, xID, p.BlockID)
 	require.EqualValues(t, 0, p.POLRound)
 }
 
@@ -340,6 +317,20 @@ func TestRestartedProposerKeepsRelockRound(t *testing.T) {
 	p := f.nextOwnProposal(t, cs, newRoundCh)
 	require.Equal(t, v.BlockID, p.BlockID)
 	require.EqualValues(t, 1, p.POLRound)
+}
+
+// lockOwnAndStop has our round 0 proposer lock on its own proposal, then stops it.
+func (f *lockFixture) lockOwnAndStop(t *testing.T) types.BlockID {
+	t.Helper()
+	cs := f.newState()
+	voteCh := subscribeToVoter(cs, cs.privValidatorPubKey.Address())
+	require.NoError(t, cs.Start())
+	v := nextVote(t, voteCh, 1, 0, cmtproto.PrevoteType)
+	signAddVotes(cs, cmtproto.PrevoteType, v.BlockID.Hash, v.BlockID.PartSetHeader, false, f.others...)
+	nextVote(t, voteCh, 1, 0, cmtproto.PrecommitType)
+	require.NoError(t, cs.Stop())
+	cs.Wait()
+	return v.BlockID
 }
 
 // nextOwnProposal skips rounds with nil precommits until our node proposes again
