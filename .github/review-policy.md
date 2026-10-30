@@ -1,7 +1,7 @@
 # Required review policy
 
-PRs into `main`, and PRs stacked on them, need independent human approval
-according to their risk tier.
+PRs need independent human approval according to their risk tier, whatever
+their base branch.
 GitHub's native required approvals enforce it, and one small workflow,
 `.github/workflows/auto-approve.yml`, supplies the approval for PRs that need
 no human. The policy supplements CI and conversation resolution; it does not
@@ -74,5 +74,6 @@ celestia-core reuses the GitHub App that auto-approves celestia-app PRs.
 5. Keep "Allow GitHub Actions to create and approve pull requests" disabled.
    The App, not `GITHUB_TOKEN`, supplies approvals.
 
-This policy governs `main` and PRs stacked on it. Release branches keep their
-own protections.
+The workflow evaluates PRs whatever their base, including release branches,
+so a trusted author's `[low]` or `[medium]` backport PR is approved too.
+Mergify backport PRs are bot-authored, so they always need a human approval.
