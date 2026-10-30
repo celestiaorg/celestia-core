@@ -27,11 +27,16 @@ func UnwrapBlobTx(tx Tx, appVersion uint64) (Tx, bool) {
 		// do not keep the blobs alive.
 		return bytes.Clone(inner), true
 	}
-	bTx, isBlob, err := squaretx.UnmarshalBlobTx(tx)
+	// The no-copy decoder gives the same verdict as UnmarshalBlobTx but
+	// aliases tx instead of copying the inner tx and every blob. The blobs are
+	// dropped here, so only the inner tx is copied, for the same reason as
+	// above: fireEvents queues it in tx events, and an alias would keep the
+	// whole BlobTx, blobs included, alive until every subscriber drained it.
+	bTx, isBlob, err := squaretx.UnmarshalBlobTxNoCopy(tx)
 	if !isBlob || err != nil {
 		return tx, false
 	}
-	return bTx.Tx, true
+	return bytes.Clone(bTx.Tx), true
 }
 
 // unwrapLegacyBlobTx extracts the inner transaction using the legacy rules,

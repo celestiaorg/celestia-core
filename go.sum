@@ -145,8 +145,8 @@ github.com/catenacyber/perfsprint v0.10.1 h1:u7Riei30bk46XsG8nknMhKLXG9BcXz3+3tl
 github.com/catenacyber/perfsprint v0.10.1/go.mod h1:DJTGsi/Zufpuus6XPGJyKOTMELe347o6akPvWG9Zcsc=
 github.com/ccojocar/zxcvbn-go v1.0.4 h1:FWnCIRMXPj43ukfX000kvBZvV6raSxakYr1nzyNrUcc=
 github.com/ccojocar/zxcvbn-go v1.0.4/go.mod h1:3GxGX+rHmueTUMvm5ium7irpyjmm7ikxYFOSJB21Das=
-github.com/celestiaorg/go-square/v4 v4.1.0 h1:s0HuJgHuNPg+4oYe/3lm1xQNvJTL8kIzlYv30AIqaVU=
-github.com/celestiaorg/go-square/v4 v4.1.0/go.mod h1:g/ygGP7g5DCNMEMPykXSAVMQEdZ9lL0R417o8Whh3e0=
+github.com/celestiaorg/go-square/v4 v4.2.2 h1:hfW3zJ9PrkLJpEfEzC8hKsPoiDUFThY2bIb8tqOzP/o=
+github.com/celestiaorg/go-square/v4 v4.2.2/go.mod h1:g/ygGP7g5DCNMEMPykXSAVMQEdZ9lL0R417o8Whh3e0=
 github.com/celestiaorg/nmt v0.24.5 h1:B98yOeR5OZc/aNXYcSBZHurI1/7UX3pL/L5eBev+fTw=
 github.com/celestiaorg/nmt v0.24.5/go.mod h1:z1xKcFCOPcBW5gi80fyXuILU1q1mtCOWZ8vnJ5QJsEw=
 github.com/cenkalti/backoff v2.2.1+incompatible h1:tNowT99t7UNflLxfYYSlKYsBpXdEet03Pg2g16Swow4=
