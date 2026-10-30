@@ -21,7 +21,7 @@ import (
 	"github.com/cometbft/cometbft/p2p"
 	"github.com/cometbft/cometbft/p2p/mock"
 	protomem "github.com/cometbft/cometbft/proto/tendermint/mempool"
-	"github.com/cometbft/cometbft/types"
+	cmttypes "github.com/cometbft/cometbft/types"
 )
 
 const (
@@ -127,12 +127,12 @@ func (in *fzInput) bytes(n int) []byte {
 
 // fzTxMeta is the true signer/sequence of a generated tx.
 type fzTxMeta struct {
-	tx     types.Tx
+	tx     cmttypes.Tx
 	signer []byte
 	seq    uint64
 }
 
-func fzKey(tx types.Tx) []byte {
+func fzKey(tx cmttypes.Tx) []byte {
 	k := tx.Key()
 	return k[:]
 }
@@ -145,7 +145,7 @@ type fuzzSeqApp struct {
 	abci.BaseApplication
 	mtx      sync.Mutex
 	seqs     map[string]uint64
-	accepted map[types.TxKey]bool
+	accepted map[cmttypes.TxKey]bool
 }
 
 var errFzUnknownSigner = errors.New("unknown signer")
@@ -167,7 +167,7 @@ func (app *fuzzSeqApp) CheckTx(_ context.Context, req *abci.RequestCheckTx) (*ab
 		return &abci.ResponseCheckTx{Code: 32, Address: parts[0], Sequence: seq}, nil
 	}
 	app.seqs[signer]++
-	app.accepted[types.Tx(req.Tx).Key()] = true
+	app.accepted[cmttypes.Tx(req.Tx).Key()] = true
 	return &abci.ResponseCheckTx{Address: parts[0], Sequence: seq, Priority: prio, GasWanted: 1}, nil
 }
 
@@ -228,14 +228,14 @@ type catFuzzHarness struct {
 	r        *Reactor
 	sw       *p2p.Switch
 	peers    [fzPeers]*fuzzPeer
-	wants    [fzPeers][]types.TxKey // WantTx keys sent to each peer, in order
-	txs      map[types.TxKey]fzTxMeta
-	poisoned map[types.TxKey]bool
+	wants    [fzPeers][]cmttypes.TxKey // WantTx keys sent to each peer, in order
+	txs      map[cmttypes.TxKey]fzTxMeta
+	poisoned map[cmttypes.TxKey]bool
 	height   int64
 }
 
 func newCatFuzzHarness(t *testing.T, limits byte) *catFuzzHarness {
-	app := &fuzzSeqApp{seqs: map[string]uint64{}, accepted: map[types.TxKey]bool{}}
+	app := &fuzzSeqApp{seqs: map[string]uint64{}, accepted: map[cmttypes.TxKey]bool{}}
 	conn := abciclient.NewLocalClient(new(cmtsync.Mutex), app)
 	require.NoError(t, conn.Start())
 	cfg := cmtcfg.TestMempoolConfig()
@@ -253,7 +253,7 @@ func newCatFuzzHarness(t *testing.T, limits byte) *catFuzzHarness {
 	sw.AddReactor("MEMPOOL", r)
 	h := &catFuzzHarness{
 		t: t, app: app, cfg: cfg, pool: pool, r: r, sw: sw, height: 1,
-		txs: map[types.TxKey]fzTxMeta{}, poisoned: map[types.TxKey]bool{},
+		txs: map[cmttypes.TxKey]fzTxMeta{}, poisoned: map[cmttypes.TxKey]bool{},
 	}
 	t.Cleanup(func() {
 		r.requests.Close()
@@ -285,7 +285,7 @@ func (h *catFuzzHarness) peerID(i int) uint16 { return h.r.ids.GetIDForPeer(h.pe
 func (h *catFuzzHarness) tx(s int, seq uint64, v byte) fzTxMeta {
 	prio := 1 + (seq*7+uint64(v)*3+uint64(s))%5
 	m := fzTxMeta{
-		tx:     types.Tx(fmt.Sprintf("sig%d=%d=%d=v%d", s, seq, prio, v&1)),
+		tx:     cmttypes.Tx(fmt.Sprintf("sig%d=%d=%d=v%d", s, seq, prio, v&1)),
 		signer: fzSigner(s),
 		seq:    seq,
 	}
@@ -351,8 +351,8 @@ func (h *catFuzzHarness) step(in *fzInput) {
 		}
 		expectBan = len(key) != 32 || len(signer) == 0 || len(signer) > maxSignerLength
 		if len(key) == 32 {
-			if tm, ok := h.txs[types.TxKey(key)]; ok && (!bytes.Equal(tm.signer, signer) || tm.seq != seq) {
-				h.poisoned[types.TxKey(key)] = true
+			if tm, ok := h.txs[cmttypes.TxKey(key)]; ok && (!bytes.Equal(tm.signer, signer) || tm.seq != seq) {
+				h.poisoned[cmttypes.TxKey(key)] = true
 			}
 		}
 		h.receive(i, &protomem.SeenTx{TxKey: key, Signer: signer, Sequence: seq}, MempoolDataChannel)
@@ -388,9 +388,9 @@ func (h *catFuzzHarness) step(in *fzInput) {
 			key = in.bytes(int(in.byte() % 40))
 		}
 		expectBan = len(key) != 32
-		var pooled *types.CachedTx
+		var pooled *cmttypes.CachedTx
 		if !expectBan {
-			if tx, ok := h.pool.GetTxByKey(types.TxKey(key)); ok {
+			if tx, ok := h.pool.GetTxByKey(cmttypes.TxKey(key)); ok {
 				pooled = tx
 			}
 		}
@@ -450,7 +450,7 @@ func (h *catFuzzHarness) timeout(i int, b byte) {
 	pid := h.peerID(i)
 	rq := h.r.requests
 	rq.mtx.Lock()
-	keys := make([]types.TxKey, 0, len(rq.requestsByPeer[pid]))
+	keys := make([]cmttypes.TxKey, 0, len(rq.requestsByPeer[pid]))
 	for k := range rq.requestsByPeer[pid] {
 		keys = append(keys, k)
 	}
@@ -484,7 +484,7 @@ func (h *catFuzzHarness) checkSent(reRequested bool) {
 			case *protomem.Message: // SeenTx / WantTx are sent wrapped
 				switch inner := m.Sum.(type) {
 				case *protomem.Message_SeenTx:
-					key, err := types.TxKeyFromBytes(inner.SeenTx.TxKey)
+					key, err := cmttypes.TxKeyFromBytes(inner.SeenTx.TxKey)
 					require.NoError(h.t, err)
 					h.app.mtx.Lock()
 					accepted := h.app.accepted[key]
@@ -498,7 +498,7 @@ func (h *catFuzzHarness) checkSent(reRequested bool) {
 						require.Equal(h.t, tm.seq, inner.SeenTx.Sequence)
 					}
 				case *protomem.Message_WantTx:
-					key, err := types.TxKeyFromBytes(inner.WantTx.TxKey)
+					key, err := cmttypes.TxKeyFromBytes(inner.WantTx.TxKey)
 					require.NoError(h.t, err)
 					if !reRequested {
 						require.False(h.t, h.pool.Has(key), "requested a tx already in the pool")
