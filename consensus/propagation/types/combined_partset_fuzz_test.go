@@ -1,7 +1,6 @@
 package types
 
 import (
-	"bytes"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -64,6 +63,10 @@ func FuzzCombinedPartSetDecode(f *testing.F) {
 			return eps.GetPart(int(i - total))
 		}
 
+		// accepted tracks which AddPart calls succeeded, independently of the
+		// set's own bitmap, so a bitmap or CanDecode bug cannot hide itself.
+		accepted := make([]bool, 2*total)
+		acceptedCount := uint32(0)
 		for i := uint32(0); i < 2*total; i++ {
 			if present&(1<<i) == 0 {
 				continue
@@ -87,10 +90,24 @@ func FuzzCombinedPartSetDecode(f *testing.F) {
 			if added {
 				require.NoError(t, err)
 				require.Equal(t, []byte(want.Bytes), part.Data, "part %d accepted with data that does not match its root", i)
+				accepted[i] = true
+				acceptedCount++
 			}
-			require.True(t, cps.HasPart(int(i)) == bytes.Equal(genuine(i).Bytes, mustGetPart(t, cps, i)), "bitmap and stored part %d disagree", i)
+			for j := uint32(0); j < 2*total; j++ {
+				require.Equal(t, accepted[j], cps.HasPart(int(j)), "bitmap disagrees with accepted parts at %d", j)
+				stored := storedPart(cps, total, j)
+				if accepted[j] {
+					require.NotNil(t, stored, "accepted part %d not stored", j)
+					require.Equal(t, genuine(j).Bytes, stored.Bytes, "stored part %d differs from the genuine part", j)
+				} else {
+					require.Nil(t, stored, "part %d stored without being accepted", j)
+				}
+			}
 		}
 
+		if acceptedCount >= total {
+			require.True(t, cps.CanDecode(), "%d of %d parts accepted but CanDecode is false", acceptedCount, total)
+		}
 		if !cps.CanDecode() {
 			return
 		}
@@ -113,19 +130,19 @@ func FuzzCombinedPartSetDecode(f *testing.F) {
 	})
 }
 
-// mustGetPart returns the stored bytes of part i, or nil if it is absent.
-func mustGetPart(t *testing.T, cps *CombinedPartSet, i uint32) []byte {
-	t.Helper()
-	p, ok := cps.GetPart(i)
-	if !ok {
-		return nil
+// storedPart returns combined part i as stored in the underlying original or
+// parity part set, bypassing the combined bitmap, or nil if it is absent.
+func storedPart(cps *CombinedPartSet, total, i uint32) *types.Part {
+	if i < total {
+		return cps.Original().GetPart(int(i))
 	}
-	return p.Bytes
+	return cps.Parity().GetPart(int(i - total))
 }
 
 // FuzzTxsToPartsMetadata feeds TxsToParts attacker-chosen tx metadata, as a
 // byzantine proposer controls it in a compact block. TxsToParts must not
-// panic and may only return whole parts at valid indexes.
+// panic and may only return parts at valid indexes whose length matches the
+// part size, or lastPartLen for a short final part.
 func FuzzTxsToPartsMetadata(f *testing.F) {
 	f.Add(uint8(4), uint32(1000), []byte{0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 2, 0})
 	f.Add(uint8(1), uint32(10), []byte{0, 0, 0, 0, 10, 0, 0, 0})
@@ -153,7 +170,8 @@ func FuzzTxsToPartsMetadata(f *testing.F) {
 			}
 			txs = append(txs, UnmarshalledTx{MetaData: TxMetaData{Start: start, End: end}, TxBytes: tx})
 		}
-		parts, err := TxsToParts(txs, count, partSize, lastPartLen%(partSize+2))
+		lastLen := lastPartLen % (partSize + 2)
+		parts, err := TxsToParts(txs, count, partSize, lastLen)
 		if err != nil {
 			return
 		}
@@ -162,10 +180,11 @@ func FuzzTxsToPartsMetadata(f *testing.F) {
 			require.Less(t, p.Index, count)
 			require.False(t, seen[p.Index], "duplicate part %d", p.Index)
 			seen[p.Index] = true
-			require.LessOrEqual(t, len(p.Bytes), int(partSize))
-			if p.Index < count-1 {
-				require.Len(t, p.Bytes, int(partSize))
+			wantLen := int(partSize)
+			if p.Index == count-1 && lastLen > 0 && lastLen < partSize {
+				wantLen = int(lastLen)
 			}
+			require.Len(t, p.Bytes, wantLen, "part %d has the wrong length", p.Index)
 		}
 	})
 }
