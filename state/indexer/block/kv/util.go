@@ -51,6 +51,11 @@ func heightKey(height int64) ([]byte, error) {
 	)
 }
 
+// keyPrefix returns the store prefix shared by every event key for compositeKey.
+func keyPrefix(compositeKey string) ([]byte, error) {
+	return orderedcode.Append(nil, compositeKey)
+}
+
 func eventKey(compositeKey, eventValue string, height int64, eventSeq int64) ([]byte, error) {
 	return orderedcode.Append(
 		nil,
