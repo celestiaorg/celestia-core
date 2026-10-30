@@ -494,7 +494,7 @@ func (memR *Reactor) Receive(e p2p.Envelope) {
 		if has && !memR.opts.ListenOnly {
 			peerID := memR.ids.GetIDForPeer(e.Src.ID())
 			memR.Logger.Trace("sending a tx in response to a want msg", "peer", peerID)
-			if e.Src.Send(p2p.Envelope{
+			if e.Src.TrySend(p2p.Envelope{
 				ChannelID: MempoolDataChannel,
 				Message:   &protomem.Txs{Txs: [][]byte{tx.Tx}},
 			}) {
@@ -581,7 +581,7 @@ func (memR *Reactor) broadcastSeenTxWithHeight(txKey types.TxKey, height int64, 
 			continue
 		}
 
-		if peer.Send(
+		if peer.TrySend(
 			p2p.Envelope{
 				ChannelID: MempoolDataChannel,
 				Message:   msg,
