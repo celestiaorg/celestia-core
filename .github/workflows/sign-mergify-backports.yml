@@ -1,0 +1,59 @@
+name: sign-mergify-backports
+
+# Mergify's backport action pushes unsigned cherry-picks, so branch protection
+# that requires signed commits blocks the backport PRs. This replays their
+# commits through GitHub's API, which signs them. It runs on a schedule from the
+# default branch because backport PRs target release branches, which would each
+# need a copy of a pull_request workflow.
+#
+# BACKPORT_SIGNING_TOKEN must be a fine-grained personal access token, not
+# GITHUB_TOKEN, whose pushes do not trigger CI. It needs Contents: write and
+# Pull requests: read on this repository, and Workflows: write if backports may
+# touch .github/workflows. The replayed commits are authored by its owner, with
+# the original author kept as a Co-authored-by trailer.
+on:
+  schedule:
+    - cron: "*/10 * * * *"
+  workflow_dispatch:
+    inputs:
+      pr:
+        description: "Only sign this PR number"
+        required: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sign-mergify-backports
+  cancel-in-progress: false
+
+jobs:
+  sign:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check that the signing token is configured
+        id: creds
+        env:
+          # The `secrets` context is not available in `if:` conditions. Scope
+          # the token to the steps that need it so other actions cannot read it.
+          SIGNING_TOKEN: ${{ secrets.BACKPORT_SIGNING_TOKEN }}
+        run: |
+          if [ -z "${SIGNING_TOKEN}" ]; then
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::BACKPORT_SIGNING_TOKEN is unset; skipping."
+          else
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        if: steps.creds.outputs.configured == 'true'
+        with:
+          persist-credentials: false
+
+      - name: Sign unsigned backport commits
+        if: steps.creds.outputs.configured == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.BACKPORT_SIGNING_TOKEN }}
+          PR: ${{ inputs.pr }}
+        run: python3 .github/scripts/sign-mergify-backports.py ${PR:+"$PR"}

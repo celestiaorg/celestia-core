@@ -2,17 +2,21 @@ package propagation
 
 import (
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	dbm "github.com/cometbft/cometbft-db"
+
 	cfg "github.com/cometbft/cometbft/config"
 	proptypes "github.com/cometbft/cometbft/consensus/propagation/types"
 	"github.com/cometbft/cometbft/libs/log"
 	cmtrand "github.com/cometbft/cometbft/libs/rand"
 	"github.com/cometbft/cometbft/state"
+	"github.com/cometbft/cometbft/store"
 	"github.com/cometbft/cometbft/types"
 )
 
@@ -63,6 +67,33 @@ func TestGapCatchup(t *testing.T) {
 	_, caughtUp, has = n3.GetProposal(prop.Height, prop.Round)
 	require.True(t, has)
 	require.True(t, caughtUp.IsComplete())
+}
+
+// After a restart every reactor starts empty: r2 asks for the block too early
+// (a catch-up stub, as for a restored lock), r3 has nothing, and r1 re-seeds
+// from its replayed proposal. Both must fetch the whole block from r1.
+func TestReseedAfterRestart(t *testing.T) {
+	reactors, _ := createTestReactors(3, defaultTestP2PConf(), false, "")
+	r1, r2, r3 := reactors[0], reactors[1], reactors[2]
+	cleanup, _, sm, pv := state.SetupTestCaseWithPrivVal(t)
+	t.Cleanup(func() {
+		cleanup(t)
+	})
+
+	prop, ps, _, metaData := createTestProposal(t, sm, pv, 1, 0, 2, 1000000)
+	psh := ps.Header()
+	r2.AddCommitment(prop.Height, prop.Round, &psh)
+
+	require.NoError(t, r1.ProposeBlock(prop, ps, metaData))
+
+	for _, r := range []*Reactor{r2, r3} {
+		require.Eventually(t, func() bool {
+			_, parts, has := r.GetProposal(prop.Height, prop.Round)
+			return has && parts.IsComplete()
+		}, 2*RetryTime, 50*time.Millisecond)
+		_, parts, _ := r.GetProposal(prop.Height, prop.Round)
+		require.Equal(t, psh, parts.Header())
+	}
 }
 
 func TestReceiveHaveOnCatchupBlock(t *testing.T) {
@@ -523,6 +554,148 @@ func TestAddCommitment_ReplaceProposalData(t *testing.T) {
 	actualSecondPsh := r1.proposals[secondProposal.Height][secondProposal.Round].block.Original().Header()
 	assert.Equal(t, secondPartset.Total(), actualSecondPsh.Total)
 	assert.Equal(t, secondPsh.Hash, actualSecondPsh.Hash)
+}
+
+// TestPruneServesCommittedBlockToParkedWants asserts that committing a block
+// fills the catch-up stub for it and answers the wants peers parked on that stub.
+func TestPruneServesCommittedBlockToParkedWants(t *testing.T) {
+	reactors, _ := createTestReactors(2, defaultTestP2PConf(), false, "")
+	server, requester := reactors[0], reactors[1]
+	cleanup, _, sm, pv := state.SetupTestCaseWithPrivVal(t)
+	t.Cleanup(func() { cleanup(t) })
+
+	prop, ps, block, _ := createTestProposal(t, sm, pv, 1, 0, 2, 1000000)
+	psh := ps.Header()
+
+	// the server only holds an empty stub, so it parks the requester's want.
+	server.AddCommitment(prop.Height, prop.Round, &psh)
+	requester.AddCommitment(prop.Height, prop.Round, &psh)
+	require.Eventually(t, func() bool {
+		wants, has := server.getPeer(requester.self).GetWants(prop.Height, prop.Round)
+		return has && !wants.IsEmpty()
+	}, time.Second, 10*time.Millisecond)
+
+	// the server commits the block without receiving it through propagation.
+	server.store.SaveBlock(block, ps, testCommit(block, ps))
+	server.Prune(prop.Height)
+
+	require.Eventually(t, func() bool {
+		_, parts, has := requester.GetProposal(prop.Height, prop.Round)
+		return has && parts.IsComplete()
+	}, 2*time.Second, 10*time.Millisecond)
+}
+
+// TestRetryWantsReRequestsAfterWrongBlockPart asserts that a catch-up want answered
+// with another block's parts is asked again on the next retry tick.
+func TestRetryWantsReRequestsAfterWrongBlockPart(t *testing.T) {
+	reactors, _ := createTestReactors(2, defaultTestP2PConf(), false, "")
+	requester, server := reactors[0], reactors[1]
+	cleanup, _, sm, pv := state.SetupTestCaseWithPrivVal(t)
+	t.Cleanup(func() { cleanup(t) })
+
+	propX, psX, blockX, _ := createTestProposal(t, sm, pv, 1, 0, 2, 1000000)
+	propY, psY, _, metaY := createTestProposal(t, sm, pv, 1, 0, 2, 1000000)
+	require.Equal(t, psX.Total(), psY.Total())
+
+	// the server holds Y at the round the requester needs X for.
+	cbY, parityY := createCompactBlock(t, propY, psY, metaY)
+	require.True(t, server.AddProposal(cbY))
+	_, partsY, _, has := server.getAllState(propY.Height, propY.Round, true)
+	require.True(t, has)
+	partsY.SetProposalData(psY, parityY)
+
+	pshX := psX.Header()
+	requester.AddCommitment(propX.Height, propX.Round, &pshX)
+	require.Eventually(t, func() bool {
+		reqs, has := requester.getPeer(server.self).GetRequests(propX.Height, propX.Round)
+		return has && !reqs.IsEmpty()
+	}, time.Second, 10*time.Millisecond)
+	time.Sleep(200 * time.Millisecond)
+	_, parts, _ := requester.GetProposal(propX.Height, propX.Round)
+	require.Zero(t, parts.Count(), "Y's parts must not verify against X")
+
+	// once the server commits X, the next retry must reach it again.
+	server.store.SaveBlock(blockX, psX, testCommit(blockX, psX))
+	server.Prune(propX.Height)
+	requester.retryWants()
+
+	require.Eventually(t, func() bool {
+		_, parts, has := requester.GetProposal(propX.Height, propX.Round)
+		return has && parts.IsComplete()
+	}, 2*time.Second, 10*time.Millisecond)
+}
+
+// TestRecoveryPartForOlderRound asserts that a proven part answering a catch-up want is
+// accepted after the reactor moved on to a later round of the same height.
+func TestRecoveryPartForOlderRound(t *testing.T) {
+	reactors, _ := createTestReactors(2, defaultTestP2PConf(), false, "")
+	r1, r2 := reactors[0], reactors[1]
+	cleanup, _, sm, pv := state.SetupTestCaseWithPrivVal(t)
+	t.Cleanup(func() { cleanup(t) })
+
+	prop, ps, _, _ := createTestProposal(t, sm, pv, 1, 0, 2, 1000000)
+	psh := ps.Header()
+	r1.AddCommitment(prop.Height, 0, &psh)
+	pubKey, err := pv.GetPubKey()
+	require.NoError(t, err)
+	r1.SetConsensusState(prop.Height, 1, pubKey)
+
+	part := ps.GetPart(0)
+	r1.handleRecoveryPart(r2.self, &proptypes.RecoveryPart{Height: prop.Height, Round: 0, Index: 0, Data: part.Bytes, Proof: &part.Proof})
+	_, parts, has := r1.GetProposal(prop.Height, 0)
+	require.True(t, has)
+	require.True(t, parts.HasPart(0))
+}
+
+// countingDB counts point reads.
+type countingDB struct {
+	dbm.DB
+	reads atomic.Int64
+}
+
+func (d *countingDB) Get(key []byte) ([]byte, error) {
+	d.reads.Add(1)
+	return d.DB.Get(key)
+}
+
+func (d *countingDB) Has(key []byte) (bool, error) {
+	d.reads.Add(1)
+	return d.DB.Has(key)
+}
+
+// TestRecoveryPartReadsNoStore asserts that an unsolicited proven part for a
+// committed height is dropped without reading the block store.
+func TestRecoveryPartReadsNoStore(t *testing.T) {
+	reactors, _ := createTestReactors(2, defaultTestP2PConf(), false, "")
+	r1, r2 := reactors[0], reactors[1]
+	cleanup, _, sm, pv := state.SetupTestCaseWithPrivVal(t)
+	t.Cleanup(func() { cleanup(t) })
+
+	prop, ps, block, _ := createTestProposal(t, sm, pv, 1, 0, 2, 1000000)
+	db := &countingDB{DB: dbm.NewMemDB()}
+	r1.pmtx.Lock()
+	r1.store = store.NewBlockStore(db)
+	r1.pmtx.Unlock()
+	r1.store.SaveBlock(block, ps, testCommit(block, ps))
+	pubKey, err := pv.GetPubKey()
+	require.NoError(t, err)
+	r1.SetConsensusState(prop.Height+1, 0, pubKey)
+
+	before := db.reads.Load()
+	for i := range ps.Total() {
+		part := ps.GetPart(int(i))
+		r1.handleRecoveryPart(r2.self, &proptypes.RecoveryPart{Height: prop.Height, Round: 0, Index: i, Data: part.Bytes, Proof: &part.Proof})
+	}
+	require.Equal(t, before, db.reads.Load())
+	_, _, has := r1.getCachedState(prop.Height, 0, true)
+	require.False(t, has)
+}
+
+func testCommit(block *types.Block, ps *types.PartSet) *types.Commit {
+	return &types.Commit{
+		Height:  block.Height,
+		BlockID: types.BlockID{Hash: block.Hash(), PartSetHeader: ps.Header()},
+	}
 }
 
 // signedCompactBlock returns a compact block for the given height and round
