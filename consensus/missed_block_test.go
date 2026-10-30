@@ -190,9 +190,12 @@ func commitEarlierRound(t *testing.T, cs1 *State, others []*validatorStub) (*typ
 	require.NoError(t, err)
 	newRoundCh := subscribe(cs1.eventBus, types.EventQueryNewRound)
 	newBlockCh := subscribe(cs1.eventBus, types.EventQueryNewBlock)
+	proposalCh := subscribe(cs1.eventBus, types.EventQueryCompleteProposal)
 	require.NoError(t, cs1.Start())
 	t.Cleanup(func() { _ = cs1.Stop(); cs1.Wait() })
 	ensureNewRound(newRoundCh, 1, 0)
+	// own parts still queued after the round skip would complete X in the commit step.
+	ensureNewProposal(proposalCh, 1, 0)
 
 	incrementRound(others...)
 	signAddVotes(cs1, cmtproto.PrevoteType, nil, types.PartSetHeader{}, false, others...)
