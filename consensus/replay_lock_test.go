@@ -276,64 +276,144 @@ func TestLockRestoresOwnProposalBytes(t *testing.T) {
 	require.True(t, blockMatchesBlockID(rs.LockedBlock, rs.LockedBlockParts, v.BlockID))
 }
 
-// crashBeforeSignWAL crashes at the first flush that follows a LockInfo write,
-// i.e. after the lock is journaled and before the precommit is signed.
-type crashBeforeSignWAL struct {
-	WAL
+// crashAtPrecommitWAL crashes at our precommit's WriteSync: before it (the
+// signed vote and the buffered lock record are lost) or right after it.
+type crashAtPrecommitWAL struct {
+	*BaseWAL
+	after   bool
+	synced  int64 // head size at the last flush or sync
 	panicCh chan error
-	locked  bool
 }
 
-func (w *crashBeforeSignWAL) Write(m WALMessage) error {
-	if _, ok := m.(LockInfo); ok {
-		w.locked = true
-	}
-	return w.WAL.Write(m)
-}
-
-func (w *crashBeforeSignWAL) FlushAndSync() error {
-	err := w.WAL.FlushAndSync()
-	if w.locked {
-		w.panicCh <- err
-		runtime.Goexit()
-	}
+func (w *crashAtPrecommitWAL) FlushAndSync() error {
+	err := w.BaseWAL.FlushAndSync()
+	w.synced, _ = w.Group().HeadSize()
 	return err
 }
 
-// A crash after the lock record and before the signature leaves a locked node
-// that has not precommitted; once the polka is back it precommits X by ID.
-func TestLockRecordCrashBeforePrecommit(t *testing.T) {
-	f := newLockFixture(t, true, false)
+func (w *crashAtPrecommitWAL) WriteSync(m WALMessage) error {
+	mi, ok := m.(msgInfo)
+	vm, isVote := mi.Msg.(*VoteMessage)
+	if !ok || !isVote || vm.Vote.Type != cmtproto.PrecommitType {
+		err := w.BaseWAL.WriteSync(m)
+		w.synced, _ = w.Group().HeadSize()
+		return err
+	}
+	var err error
+	if w.after {
+		err = w.BaseWAL.WriteSync(m)
+	}
+	w.panicCh <- err
+	runtime.Goexit()
+	return nil
+}
+
+// crashAtPrecommit locks a fresh node on X at 1/0 and crashes it at its
+// precommit's WriteSync, leaving the WAL as a crash would.
+func (f *lockFixture) crashAtPrecommit(t *testing.T, after bool) (*types.Proposal, *types.Block, *types.PartSet) {
+	t.Helper()
 	cs := f.newState()
 	csWal, err := cs.OpenWAL(f.config.Consensus.WalFile())
 	require.NoError(t, err)
-	walPanicked := make(chan error, 1)
-	cs.wal = &crashBeforeSignWAL{WAL: csWal, panicCh: walPanicked}
+	w := &crashAtPrecommitWAL{BaseWAL: csWal.(*BaseWAL), after: after, panicCh: make(chan error, 1)}
+	cs.wal = w
+	voteCh := subscribeToVoter(cs, cs.privValidatorPubKey.Address())
 	require.NoError(t, cs.Start())
-	_, block, parts := f.lockOnX(t, cs)
+	prop, block := decideProposal(context.Background(), t, cs, f.vss[f.p0], 1, 0)
+	parts, err := block.MakePartSet(types.BlockPartSizeBytes)
+	require.NoError(t, err)
+	require.NoError(t, cs.SetProposalAndBlock(prop, block, parts, "peer"))
+	// Our prevote's WriteSync must come before the lock record, or it syncs the record too.
+	nextVote(t, voteCh, 1, 0, cmtproto.PrevoteType)
+	signAddVotes(cs, cmtproto.PrevoteType, block.Hash(), parts.Header(), false, f.others...)
 	select {
-	case err := <-walPanicked:
+	case err := <-w.panicCh:
 		require.NoError(t, err)
 	case <-time.After(10 * time.Second):
-		t.Fatal("did not crash before signing the precommit")
+		t.Fatal("did not reach the precommit WriteSync")
 	}
 	_ = cs.Stop()
 	stopCrashedWAL(t, csWal)
+	if !after {
+		// Drop what was buffered but never synced (the lock record).
+		require.NoError(t, os.Truncate(f.config.Consensus.WalFile(), w.synced))
+	}
+	return prop, block, parts
+}
 
+// walMsgs returns the records of the WAL head file.
+func walMsgs(t *testing.T, walFile string) []WALMessage {
+	t.Helper()
+	in, err := os.Open(walFile)
+	require.NoError(t, err)
+	defer in.Close()
+	dec := NewWALDecoder(in)
+	var msgs []WALMessage
+	for {
+		msg, err := dec.Decode()
+		if err != nil {
+			return msgs
+		}
+		msgs = append(msgs, msg.Msg)
+	}
+}
+
+func isOwnPrecommit(m WALMessage) bool {
+	mi, ok := m.(msgInfo)
+	if !ok {
+		return false
+	}
+	vm, ok := mi.Msg.(*VoteMessage)
+	return ok && mi.PeerID == "" && vm.Vote.Type == cmtproto.PrecommitType
+}
+
+// A crash after signing and before the precommit's WriteSync loses both the
+// lock record and the precommit, which never left the node. The node restarts
+// unlocked; the signer only lets it re-send that same precommit.
+func TestLockRecordCrashBeforePrecommit(t *testing.T) {
+	f := newLockFixture(t, true, false)
+	prop, block, parts := f.crashAtPrecommit(t, false)
+	for _, m := range walMsgs(t, f.config.Consensus.WalFile()) {
+		_, isLock := m.(LockInfo)
+		require.False(t, isLock || isOwnPrecommit(m), "unsynced record in the WAL: %v", m)
+	}
 	pv := privval.LoadFilePV(f.config.PrivValidatorKeyFile(), f.config.PrivValidatorStateFile())
-	require.Equal(t, int8(2), pv.LastSignState.Step, "the precommit must not have been signed")
+	require.Equal(t, int8(3), pv.LastSignState.Step, "the precommit was signed before the crash")
 
-	cs2 := f.newState()
-	_, voteCh := startRestarted(t, cs2)
-	rs := cs2.GetRoundState()
-	xID := types.BlockID{Hash: block.Hash(), PartSetHeader: parts.Header()}
-	require.EqualValues(t, 0, rs.LockedRound)
-	require.Equal(t, xID, rs.LockedBlockID)
-	require.Nil(t, rs.LockedBlock)
+	cs := f.newState()
+	_, voteCh := startRestarted(t, cs)
+	require.False(t, cs.GetRoundState().IsLocked())
 
-	signAddVotes(cs2, cmtproto.PrevoteType, block.Hash(), parts.Header(), false, f.others...)
+	require.NoError(t, cs.SetProposalAndBlock(prop, block, parts, "peer"))
+	signAddVotes(cs, cmtproto.PrevoteType, block.Hash(), parts.Header(), false, f.others...)
 	v := nextVote(t, voteCh, 1, 0, cmtproto.PrecommitType)
+	xID := types.BlockID{Hash: block.Hash(), PartSetHeader: parts.Header()}
 	require.Equal(t, xID, v.BlockID)
+	require.Equal(t, pv.LastSignState.Signature, v.Signature, "must re-send the precommit signed before the crash")
+	require.Equal(t, xID, cs.GetRoundState().LockedBlockID)
+}
+
+// A crash right after the precommit's WriteSync keeps the lock: the record
+// precedes the precommit in the WAL.
+func TestLockRecordCrashAfterPrecommit(t *testing.T) {
+	f := newLockFixture(t, true, false)
+	_, block, parts := f.crashAtPrecommit(t, true)
+	lockAt, voteAt := -1, -1
+	for i, m := range walMsgs(t, f.config.Consensus.WalFile()) {
+		if _, ok := m.(LockInfo); ok && lockAt < 0 {
+			lockAt = i
+		}
+		if isOwnPrecommit(m) {
+			voteAt = i
+		}
+	}
+	require.True(t, lockAt >= 0 && lockAt < voteAt, "want [LockInfo]...[own precommit], got %d, %d", lockAt, voteAt)
+
+	cs := f.newState()
+	startRestarted(t, cs)
+	rs := cs.GetRoundState()
+	require.EqualValues(t, 0, rs.LockedRound)
+	require.Equal(t, types.BlockID{Hash: block.Hash(), PartSetHeader: parts.Header()}, rs.LockedBlockID)
 }
 
 // A WAL written before lock records existed replays as before: no lock.
