@@ -89,13 +89,17 @@ func FuzzRPCGRPCAPI(f *testing.F) {
 			stream, err := blocks.BlockByHeight(ctx, &coregrpc.BlockByHeightRequest{Height: height, Prove: prove})
 			require.NoError(t, err)
 			n, err := drainParts(t, stream.Recv)
-			if height >= 0 && height <= h {
+			if height < 0 {
+				require.Error(t, err)
+			} else if height <= h {
 				require.NoError(t, err)
 				require.Positive(t, n)
 			}
 		case 3:
 			res, err := blocks.Commit(ctx, &coregrpc.CommitRequest{Height: height})
-			if height >= 0 && height <= h {
+			if height < 0 {
+				require.Error(t, err)
+			} else if height <= h {
 				require.NoError(t, err)
 				want := height
 				if want == 0 {
