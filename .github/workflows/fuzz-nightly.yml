@@ -39,6 +39,7 @@ jobs:
           - {package: consensus, target: ConsensusMessage}
           - {package: blocksync, target: BlockSyncMessage}
           - {package: consensus/propagation/types, target: PropagationMessage}
+          - {package: consensus/propagation, target: PropagationReactor}
           - {package: types, target: BlockFromProto}
           - {package: types, target: PartFromProto}
           - {package: types, target: VoteFromProto}
