@@ -115,8 +115,9 @@ func FuzzRPCCoreJSONRPC(f *testing.F) {
 			if mode%5 == 1 {
 				body = structured()
 			}
+			want, jsonBody := fuzzHTTPReplies(body)
 			req := httptest.NewRequest(http.MethodPost, "/", bytes.NewReader(body))
-			fuzzCheckHTTPResponse(t, handler, req)
+			fuzzCheckHTTPResponse(t, handler, req, want, jsonBody)
 		case 2:
 			req, err := http.NewRequest(http.MethodGet, "http://localhost/"+name+"?"+string(data), nil)
 			if err != nil {
@@ -131,7 +132,8 @@ func FuzzRPCCoreJSONRPC(f *testing.F) {
 				}
 			}
 			req.Body = http.NoBody // as for any server-side request
-			fuzzCheckHTTPResponse(t, handler, req)
+			// URI requests carry no id; the server answers with id -1.
+			fuzzCheckHTTPResponse(t, handler, req, []fuzzReply{{id: rpctypes.JSONRPCIntID(-1)}}, true)
 		case 3, 4:
 			frames := bytes.Split(data, []byte{0})
 			if mode%5 == 4 {
@@ -180,54 +182,159 @@ func fuzzMissingParams(routes RoutesMap, bodies [][]byte, ws bool) bool {
 	return false
 }
 
-func fuzzCheckHTTPResponse(t *testing.T, handler http.Handler, req *http.Request) {
+// fuzzReply is a response the server must send: id is the request ID it
+// echoes, or nil when the server could not determine one, in which case code
+// is the JSON-RPC error code it must carry.
+type fuzzReply struct {
+	id   any
+	code int
+}
+
+// fuzzHTTPReplies models which responses makeJSONRPCHandler behind
+// PreChecksHandler writes for a POST body, in order. ok is false for an empty
+// body, which is answered with the HTML list of endpoints.
+func fuzzHTTPReplies(body []byte) (replies []fuzzReply, ok bool) {
+	if len(body) == 0 {
+		return nil, false
+	}
+	var reqs []rpctypes.RPCRequest
+	if json.Unmarshal(body, &reqs) == nil && len(reqs) > rpcserver.DefaultConfig().MaxRequestBatchSize {
+		return []fuzzReply{{code: -32600}}, true
+	}
+	if json.Unmarshal(body, &reqs) != nil {
+		var req rpctypes.RPCRequest
+		if json.Unmarshal(body, &req) != nil {
+			return []fuzzReply{{code: -32700}}, true
+		}
+		reqs = []rpctypes.RPCRequest{req}
+	}
+	for _, req := range reqs {
+		// Notifications (no id) get no response.
+		if req.ID != nil {
+			replies = append(replies, fuzzReply{id: req.ID})
+		}
+	}
+	return replies, true
+}
+
+// fuzzCheckEnvelope validates a single JSON-RPC response object against what
+// the server emits: jsonrpc "2.0", exactly one of result and error, and an id
+// that is omitted only on errors raised before a request id is known.
+func fuzzCheckEnvelope(t *testing.T, raw []byte) rpctypes.RPCResponse {
+	t.Helper()
+	var fields map[string]json.RawMessage
+	require.NoError(t, json.Unmarshal(raw, &fields), "%s", raw)
+	for k := range fields {
+		require.Contains(t, []string{"jsonrpc", "id", "result", "error"}, k, "%s", raw)
+	}
+	require.Equal(t, `"2.0"`, string(fields["jsonrpc"]), "%s", raw)
+	_, hasResult := fields["result"]
+	errRaw, hasError := fields["error"]
+	require.True(t, hasResult != hasError, "want exactly one of result and error: %s", raw)
+	var res rpctypes.RPCResponse
+	require.NoError(t, json.Unmarshal(raw, &res), "%s", raw)
+	if hasError {
+		require.NotEqual(t, "null", string(errRaw), "%s", raw)
+		require.NotNil(t, res.Error, "%s", raw)
+		require.NotZero(t, res.Error.Code, "%s", raw)
+	}
+	if _, hasID := fields["id"]; hasID {
+		require.NotNil(t, res.ID, "null id: %s", raw)
+	} else {
+		require.NotNil(t, res.Error, "success response without id: %s", raw)
+		require.Contains(t, []int{-32700, -32600}, res.Error.Code, "error without id: %s", raw)
+	}
+	return res
+}
+
+// fuzzMatchReply reports whether res is the response want describes.
+func fuzzMatchReply(res rpctypes.RPCResponse, want fuzzReply) bool {
+	if want.id != nil {
+		return any(res.ID) == want.id
+	}
+	return res.ID == nil && res.Error != nil && res.Error.Code == want.code
+}
+
+// fuzzCheckHTTPResponse serves req and checks that the response carries
+// exactly the replies (single object for one, array otherwise), in order.
+func fuzzCheckHTTPResponse(t *testing.T, handler http.Handler, req *http.Request, want []fuzzReply, jsonBody bool) {
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, req)
 	blob, err := io.ReadAll(rec.Result().Body)
 	require.NoError(t, err)
 	require.Less(t, len(blob), 1<<20)
-	if len(blob) == 0 || rec.Header().Get("Content-Type") != "application/json" {
+	if !jsonBody {
 		return
 	}
-	var batch []rpctypes.RPCResponse
-	if json.Unmarshal(blob, &batch) == nil {
-		require.LessOrEqual(t, len(batch), rpcserver.DefaultConfig().MaxRequestBatchSize)
+	if len(want) == 0 {
+		require.Empty(t, blob)
 		return
 	}
-	var single rpctypes.RPCResponse
-	require.NoError(t, json.Unmarshal(blob, &single), "%s", blob)
+	require.Equal(t, "application/json", rec.Header().Get("Content-Type"), "%s", blob)
+	raws := []json.RawMessage{blob}
+	if len(want) > 1 {
+		require.NoError(t, json.Unmarshal(blob, &raws), "%s", blob)
+		require.Len(t, raws, len(want), "%s", blob)
+	}
+	for i, raw := range raws {
+		res := fuzzCheckEnvelope(t, raw)
+		require.True(t, fuzzMatchReply(res, want[i]), "response %d: want %+v, got %s", i, want[i], raw)
+	}
 }
 
+// fuzzWebsocket sends frames followed by a sentinel request and checks that,
+// before the sentinel's response, the server answers every frame it must
+// answer, in order (see wsConnection.readRoutine), without closing the
+// connection.
 func fuzzWebsocket(t *testing.T, url string, frames [][]byte) {
+	var want []fuzzReply
+	ids := map[any]bool{}
+	subs := map[any]bool{}
+	for _, frame := range frames {
+		var req rpctypes.RPCRequest
+		switch {
+		case json.NewDecoder(bytes.NewReader(frame)).Decode(&req) != nil:
+			want = append(want, fuzzReply{code: -32700})
+		case req.ID == nil: // notification: no response
+		default:
+			want = append(want, fuzzReply{id: req.ID})
+			ids[req.ID] = true
+			if req.Method == "subscribe" {
+				// Events are delivered asynchronously under this id.
+				subs[req.ID] = true
+			}
+		}
+	}
+	sentinelID := rpctypes.JSONRPCStringID("fuzz-sentinel")
+	for i := 0; ids[sentinelID]; i++ {
+		sentinelID = rpctypes.JSONRPCStringID(fmt.Sprintf("fuzz-sentinel-%d", i))
+	}
+	sentinel, err := json.Marshal(map[string]any{"jsonrpc": "2.0", "id": string(sentinelID), "method": "health"})
+	require.NoError(t, err)
+
 	conn, resp, err := websocket.DefaultDialer.Dial(url, nil)
 	require.NoError(t, err)
 	if resp != nil && resp.Body != nil {
 		resp.Body.Close()
 	}
 	defer conn.Close()
-	sentinel := []byte(`{"jsonrpc":"2.0","id":"fuzz-sentinel","method":"health"}`)
 	for _, frame := range append(frames, sentinel) {
-		if err := conn.WriteMessage(websocket.TextMessage, frame); err != nil {
-			return
-		}
+		require.NoError(t, conn.WriteMessage(websocket.TextMessage, frame))
 	}
-	// The server answers in order, so the sentinel response comes last.
 	require.NoError(t, conn.SetReadDeadline(time.Now().Add(30*time.Second)))
 	for {
 		_, msg, err := conn.ReadMessage()
-		if err != nil {
-			require.False(t, isTimeout(err), "no websocket response: %v", err)
+		require.NoError(t, err, "connection ended with %d responses outstanding", len(want))
+		res := fuzzCheckEnvelope(t, msg)
+		switch {
+		case len(want) > 0 && fuzzMatchReply(res, want[0]):
+			want = want[1:]
+		case any(res.ID) == any(sentinelID):
+			require.Empty(t, want, "sentinel answered before responses %+v", want)
 			return
-		}
-		var res rpctypes.RPCResponse
-		require.NoError(t, json.Unmarshal(msg, &res), "%s", msg)
-		if res.ID == rpctypes.JSONRPCStringID("fuzz-sentinel") {
-			return
+		case res.ID != nil && subs[any(res.ID)]:
+		default:
+			require.Failf(t, "unexpected websocket response", "want %+v, got %s", want, msg)
 		}
 	}
-}
-
-func isTimeout(err error) bool {
-	ne, ok := err.(interface{ Timeout() bool })
-	return ok && ne.Timeout()
 }
