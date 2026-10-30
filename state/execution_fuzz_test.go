@@ -656,6 +656,9 @@ func FuzzVerifyVoteExtension(f *testing.F) {
 			return
 		}
 		if err := vote.VerifyExtension(fuzzExecChainID, val.PubKey); err != nil {
+			// Only a mutation of a signed field (extension, height, round,
+			// index or the signature itself) may make verification fail.
+			require.False(t, extBound, "valid extension signature rejected: %v", err)
 			return
 		}
 		require.True(t, extBound, "extension signature accepted for altered vote")
