@@ -318,10 +318,22 @@ func FuzzLightClientVerify(f *testing.F) {
 		if honest {
 			require.NoError(t, err, "honest providers rejected at init")
 		}
+		// checkHonest asserts a light block the client returned or stored is
+		// the honest one at an existing height.
+		checkHonest := func(lb *types.LightBlock, what string) {
+			require.True(t, lb.Height >= 1 && lb.Height <= fzHeights, "%s a light block at nonexistent height %d", what, lb.Height)
+			require.Equal(t, fzHonest[lb.Height].Hash(), lb.Hash(), "%s a forged header at %d", what, lb.Height)
+			require.Equal(t, fzHonest[lb.Height].ValidatorSet.Hash(), lb.ValidatorSet.Hash(),
+				"%s a forged validator set at %d", what, lb.Height)
+		}
 		if err == nil {
 			for _, h := range []int64{target, second} {
 				if h == 0 {
-					_, err = c.Update(context.Background(), fzNow)
+					var lb *types.LightBlock
+					lb, err = c.Update(context.Background(), fzNow)
+					if err == nil && lb != nil {
+						checkHonest(lb, "Update returned")
+					}
 				} else {
 					var lb *types.LightBlock
 					lb, err = c.VerifyLightBlockAtHeight(context.Background(), h, fzNow)
@@ -335,14 +347,15 @@ func FuzzLightClientVerify(f *testing.F) {
 			}
 		}
 
+		if last, err := trustedStore.LastLightBlockHeight(); err == nil {
+			require.LessOrEqual(t, last, int64(fzHeights), "trusted store holds a light block above the chain tip")
+		}
 		for h := int64(1); h <= fzHeights; h++ {
 			lb, err := trustedStore.LightBlock(h)
 			if err != nil {
 				continue
 			}
-			require.Equal(t, fzHonest[h].Hash(), lb.Hash(), "trusted store holds a forged header at %d", h)
-			require.Equal(t, fzHonest[h].ValidatorSet.Hash(), lb.ValidatorSet.Hash(),
-				"trusted store holds a forged validator set at %d", h)
+			checkHonest(lb, "trusted store holds")
 		}
 		require.LessOrEqual(t, calls.Load(), int64(fzMaxCalls), "unbounded provider requests")
 	})
