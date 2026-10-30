@@ -487,6 +487,12 @@ func FuzzBlockExecValidateApply(f *testing.F) {
 			require.Equal(t, c.block1Time, dve.Timestamp)
 			require.Equal(t, dve.VoteA.Height, dve.VoteB.Height)
 			require.False(t, dve.VoteA.BlockID.Equals(dve.VoteB.BlockID))
+			// Both votes must carry the implicated validator's signature over
+			// their canonical sign bytes; metadata alone does not prove it.
+			_, val := state.LastValidators.GetByAddress(dve.VoteA.ValidatorAddress)
+			require.NotNil(t, val, "evidence against a non-validator accepted")
+			require.NoError(t, dve.VoteA.Verify(fuzzExecChainID, val.PubKey), "evidence VoteA signature invalid")
+			require.NoError(t, dve.VoteB.Verify(fuzzExecChainID, val.PubKey), "evidence VoteB signature invalid")
 		}
 		// Every state-derived header field is what the state dictates: only
 		// txs, data root, evidence, proposer and LastCommit are the proposer's.
