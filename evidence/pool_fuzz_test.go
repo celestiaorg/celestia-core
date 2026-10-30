@@ -16,6 +16,7 @@ import (
 
 	cmtcfg "github.com/cometbft/cometbft/config"
 	"github.com/cometbft/cometbft/crypto/ed25519"
+	"github.com/cometbft/cometbft/internal/fuzzinput"
 	"github.com/cometbft/cometbft/internal/test"
 	"github.com/cometbft/cometbft/libs/log"
 	"github.com/cometbft/cometbft/light"
@@ -603,9 +604,82 @@ func runEvidencePoolFuzz(t *testing.T, fx *evFixture, data []byte) {
 	require.Zero(t, pool.Size())
 }
 
+// maxFuzzEdits bounds the field edits applied to one structured message.
+const maxFuzzEdits = 16
+
+// evidenceEditSeeds are structured inputs for FuzzEvidenceReactorReceive: a
+// length-prefixed fzReader input for generate, an edit count, then per edit a
+// field selector and its value.
+var evidenceEditSeeds = [][]byte{
+	{0, 0},                                  // one valid duplicate vote, unedited
+	{2, 0, 1, 0},                            // valid equivocation attack, unedited
+	{8, 0, 1, 0, 1, 0, 0, 0, 1, 0},          // lunatic attack with a phantom validator, unedited
+	{0, 1, 0, 0, 0, 0, 0, 0, 2},             // duplicate vote: vote B moved to height 2
+	{0, 1, 0, 0, 2, 0, 0, 0, 7},             // duplicate vote: vote B moved to height 7, re-signed
+	{0, 1, 0, 0, 3, 0, 3, 0},                // duplicate vote: vote B timestamp moved, re-signed
+	{0, 1, 0, 0, 7},                         // duplicate vote: votes swapped
+	{0, 1, 0, 0, 1, 0, 0},                   // duplicate vote: validator power changed
+	{2, 0, 1, 1, 0, 0, 0, 0, 7},             // equivocation: common height 7
+	{2, 0, 1, 2, 0, 0, 6, 0, 0, 5, 0, 0, 7}, // equivocation: app hash flipped, rehashed and re-signed
+	{2, 0, 1, 1, 0, 0, 3, 1},                // equivocation: one byzantine validator dropped
+	{2, 0, 1, 1, 0, 0, 8, 0, 0},             // equivocation: one commit signature cleared
+	{0, 2, 1, 0, 2},                         // duplicate vote repeated, then moved first
+	{0, 1, 3},                               // duplicate vote followed by empty evidence
+}
+
+// evReceiveResult is what FuzzEvidenceReactorReceive observed for one list.
+type evReceiveResult struct {
+	decodeErr error
+	stopped   bool
+	pending   int
+}
+
+// checkEvidenceReceive delivers list to a fresh reactor and replays the
+// decoded evidence on an identical pool to decide whether the peer must be
+// punished and what must end up pending.
+func (fx *evFixture) checkEvidenceReceive(t *testing.T, list *cmtproto.EvidenceList) evReceiveResult {
+	pool := fx.newPool(t)
+	reactor, peer := newFuzzReactor(t, pool)
+	reactor.Receive(p2p.Envelope{Src: peer, ChannelID: EvidenceChannel, Message: list})
+	decoded, err := evidenceListFromProto(list)
+	if err != nil {
+		require.False(t, peer.IsRunning(), "peer sent undecodable evidence")
+		require.Zero(t, pool.Size())
+		return evReceiveResult{decodeErr: err, stopped: true}
+	}
+	// Replay the decoded list on an identical pool to decide, per item,
+	// whether the reactor must punish the peer: the first evidence the
+	// pool rejects as invalid stops the peer and ends processing, while
+	// other errors (duplicates, committed evidence) are skipped.
+	model := fx.newPool(t)
+	wantStopped := false
+	for _, ev := range decoded {
+		if _, invalid := model.AddEvidence(ev).(*cmttypes.ErrInvalidEvidence); invalid {
+			wantStopped = true
+			break
+		}
+	}
+	require.Equal(t, wantStopped, !peer.IsRunning(), "peer punishment disagrees with evidence verification")
+	pending, _ := pool.PendingEvidence(-1)
+	wantPending, _ := model.PendingEvidence(-1)
+	require.Equal(t, len(wantPending), len(pending))
+	require.EqualValues(t, len(pending), pool.Size())
+	for _, ev := range pending {
+		require.True(t, cmttypes.EvidenceList(wantPending).Has(ev))
+		fx.requireSignedByValidators(t, ev)
+	}
+	return evReceiveResult{stopped: wantStopped, pending: len(pending)}
+}
+
 // FuzzEvidenceReactorReceive feeds raw EvidenceList bytes to the reactor.
 // Undecodable evidence must stop the peer; anything that reaches the pending
 // pool must be signed by the implicated validators.
+//
+// With empty edits, raw is decoded as wire bytes. Otherwise edits drives
+// generate to build signed evidence, applies field-level edits to its proto
+// form, optionally re-signing it with the fixture keys, and sends the
+// re-encoded list through the same check, so that verification past
+// signature and hash checks is reached far more often.
 func FuzzEvidenceReactorReceive(f *testing.F) {
 	fx := fuzzEvidenceFixture(f)
 	for _, seed := range [][]byte{{}, {0, 1}, {0, 1, 0, 1, 0, 0, 0, 1}, {0, 0, 0, 0x84}, {3, 0, 0, 0x81, 0, 3, 0}} {
@@ -617,47 +691,308 @@ func FuzzEvidenceReactorReceive(f *testing.F) {
 		require.NoError(f, err)
 		bz, err := proto.Marshal(list)
 		require.NoError(f, err)
-		f.Add(bz)
+		f.Add(bz, []byte(nil))
 	}
-	f.Add([]byte{})
-	f.Add([]byte{0x0a, 0x00})
-	f.Fuzz(func(t *testing.T, raw []byte) {
-		if len(raw) > maxMsgSize {
-			return
-		}
-		var list cmtproto.EvidenceList
-		if err := proto.Unmarshal(raw, &list); err != nil {
-			return // the p2p layer drops undecodable envelopes
-		}
-		pool := fx.newPool(t)
-		reactor, peer := newFuzzReactor(t, pool)
-		reactor.Receive(p2p.Envelope{Src: peer, ChannelID: EvidenceChannel, Message: &list})
-		decoded, err := evidenceListFromProto(&list)
-		if err != nil {
-			require.False(t, peer.IsRunning(), "peer sent undecodable evidence")
-			require.Zero(t, pool.Size())
-			return
-		}
-		// Replay the decoded list on an identical pool to decide, per item,
-		// whether the reactor must punish the peer: the first evidence the
-		// pool rejects as invalid stops the peer and ends processing, while
-		// other errors (duplicates, committed evidence) are skipped.
-		model := fx.newPool(t)
-		wantStopped := false
-		for _, ev := range decoded {
-			if _, invalid := model.AddEvidence(ev).(*cmttypes.ErrInvalidEvidence); invalid {
-				wantStopped = true
-				break
+	f.Add([]byte{}, []byte(nil))
+	f.Add([]byte{0x0a, 0x00}, []byte(nil))
+	for _, edits := range evidenceEditSeeds {
+		f.Add([]byte(nil), edits)
+	}
+	signers := map[string]cmttypes.PrivValidator{}
+	for _, pv := range append(append([]cmttypes.PrivValidator{}, fx.privVals...), fx.phantom) {
+		pk, err := pv.GetPubKey()
+		require.NoError(f, err)
+		signers[string(pk.Address())] = pv
+	}
+	f.Fuzz(func(t *testing.T, raw []byte, edits []byte) {
+		if len(edits) == 0 {
+			if len(raw) > maxMsgSize {
+				return
 			}
+			var list cmtproto.EvidenceList
+			if err := proto.Unmarshal(raw, &list); err != nil {
+				return // the p2p layer drops undecodable envelopes
+			}
+			fx.checkEvidenceReceive(t, &list)
+			return
 		}
-		require.Equal(t, wantStopped, !peer.IsRunning(), "peer punishment disagrees with evidence verification")
-		pending, _ := pool.PendingEvidence(-1)
-		wantPending, _ := model.PendingEvidence(-1)
-		require.Equal(t, len(wantPending), len(pending))
-		require.EqualValues(t, len(pending), pool.Size())
-		for _, ev := range pending {
-			require.True(t, cmttypes.EvidenceList(wantPending).Has(ev))
-			fx.requireSignedByValidators(t, ev)
+		r := fuzzinput.New(edits)
+		cases := fx.generate(t, r.Bytes(64))
+		evs := make(cmttypes.EvidenceList, len(cases))
+		for i, c := range cases {
+			evs[i] = c.ev
+		}
+		list, err := evidenceListToProto(evs)
+		require.NoError(t, err)
+		n := r.Intn(maxFuzzEdits + 1)
+		for i := 0; i < n; i++ {
+			editEvidenceList(t, r, list, signers)
+		}
+		// Re-encode the list as a peer would send it.
+		bz, err := proto.Marshal(list)
+		require.NoError(t, err)
+		var wire cmtproto.EvidenceList
+		require.NoError(t, proto.Unmarshal(bz, &wire))
+		got := fx.checkEvidenceReceive(t, &wire)
+		if n > 0 {
+			return
+		}
+		// Unedited evidence the generator built as valid must be accepted
+		// without punishing the peer, each distinct piece once.
+		distinct, allValid := map[evKey]bool{}, true
+		for _, c := range cases {
+			allValid = allValid && c.valid && c.decoded
+			distinct[keyOf(c.ev)] = true
+		}
+		if allValid {
+			require.NoError(t, got.decodeErr)
+			require.False(t, got.stopped, "peer punished for valid evidence")
+			require.Equal(t, len(distinct), got.pending)
 		}
 	})
+}
+
+// editEvidenceList applies one edit to the list or to one piece of evidence
+// in it. signers maps validator addresses to the fixture keys for re-signing.
+func editEvidenceList(t *testing.T, r *fuzzinput.Reader, list *cmtproto.EvidenceList, signers map[string]cmttypes.PrivValidator) {
+	evs := list.Evidence
+	switch op := r.Intn(4); {
+	case op == 1 && len(evs) > 0 && len(evs) < 2*fzMaxEvs: // repeat a piece
+		list.Evidence = append(evs, evs[r.Intn(len(evs))])
+		return
+	case op == 2 && len(evs) > 1: // move the last piece first
+		list.Evidence = append([]cmtproto.Evidence{evs[len(evs)-1]}, evs[:len(evs)-1]...)
+		return
+	case op == 3 && len(evs) < 2*fzMaxEvs: // evidence with no type set
+		list.Evidence = append(evs, cmtproto.Evidence{})
+		return
+	case len(evs) == 0:
+		return
+	}
+	// Copy the chosen piece, so repeated pieces can diverge.
+	i := r.Intn(len(evs))
+	bz, err := evs[i].Marshal()
+	require.NoError(t, err)
+	var ev cmtproto.Evidence
+	require.NoError(t, ev.Unmarshal(bz))
+	switch e := ev.Sum.(type) {
+	case *cmtproto.Evidence_DuplicateVoteEvidence:
+		editDuplicateVote(t, r, e.DuplicateVoteEvidence, signers)
+	case *cmtproto.Evidence_LightClientAttackEvidence:
+		editLightClientAttack(t, r, e.LightClientAttackEvidence, signers)
+	}
+	evs[i] = ev
+}
+
+func editDuplicateVote(t *testing.T, r *fuzzinput.Reader, ev *cmtproto.DuplicateVoteEvidence, signers map[string]cmttypes.PrivValidator) {
+	switch op := r.Intn(8); op {
+	case 0, 2, 3: // a vote field; 2 and 3 also re-sign the vote
+		vote := ev.VoteB
+		if r.Bool() {
+			vote = ev.VoteA
+		}
+		if vote == nil {
+			return
+		}
+		editVote(r, vote)
+		if op != 0 {
+			signVote(t, vote, signers)
+		}
+	case 1:
+		switch r.Intn(3) {
+		case 0:
+			ev.ValidatorPower += fzDelta(r)
+		case 1:
+			ev.TotalVotingPower += fzDelta(r)
+		case 2:
+			ev.Timestamp = ev.Timestamp.Add(time.Duration(fzDelta(r)))
+		}
+	case 4:
+		if r.Bool() {
+			ev.VoteA = nil
+		} else {
+			ev.VoteB = nil
+		}
+	case 5: // vote B copies vote A, so the block IDs agree
+		if ev.VoteA != nil {
+			v := *ev.VoteA
+			ev.VoteB = &v
+		}
+	case 6: // claim the other validator's address, then re-sign
+		if ev.VoteA != nil && ev.VoteB != nil {
+			pk, err := signerList(signers)[r.Intn(len(signers))].GetPubKey()
+			require.NoError(t, err)
+			ev.VoteA.ValidatorAddress, ev.VoteB.ValidatorAddress = pk.Address(), pk.Address()
+			signVote(t, ev.VoteA, signers)
+			signVote(t, ev.VoteB, signers)
+		}
+	case 7:
+		ev.VoteA, ev.VoteB = ev.VoteB, ev.VoteA
+	}
+}
+
+func editVote(r *fuzzinput.Reader, v *cmtproto.Vote) {
+	switch r.Intn(7) {
+	case 0:
+		v.Height = fzEditHeight(r, v.Height)
+	case 1:
+		v.Round += int32(fzDelta(r))
+	case 2:
+		v.Type = cmtproto.PrevoteType + cmtproto.PrecommitType - v.Type
+	case 3:
+		v.Timestamp = v.Timestamp.Add(time.Duration(fzDelta(r)))
+	case 4:
+		if len(v.BlockID.Hash) > 0 {
+			v.BlockID.Hash[r.Intn(len(v.BlockID.Hash))] ^= 1 | r.Byte()
+		}
+	case 5:
+		v.ValidatorIndex += int32(fzDelta(r))
+	case 6:
+		if len(v.Signature) > 0 {
+			v.Signature[r.Intn(len(v.Signature))] ^= 1 | r.Byte()
+		}
+	}
+}
+
+func editLightClientAttack(t *testing.T, r *fuzzinput.Reader, ev *cmtproto.LightClientAttackEvidence, signers map[string]cmttypes.PrivValidator) {
+	op := r.Intn(11)
+	switch op {
+	case 0:
+		ev.CommonHeight = fzEditHeight(r, ev.CommonHeight)
+		return
+	case 1:
+		if r.Bool() {
+			ev.TotalVotingPower += fzDelta(r)
+		} else {
+			ev.Timestamp = ev.Timestamp.Add(time.Duration(fzDelta(r)) * time.Second)
+		}
+		return
+	case 2:
+		ev.ConflictingBlock = nil
+		return
+	case 3:
+		byz := ev.ByzantineValidators
+		switch {
+		case r.Bool() && len(byz) > 0:
+			ev.ByzantineValidators = byz[:len(byz)-1]
+		case len(byz) > 0 && len(byz) < 2*len(signers):
+			ev.ByzantineValidators = append(byz, byz[r.Intn(len(byz))])
+		}
+		return
+	}
+	cb := ev.ConflictingBlock
+	if cb == nil || cb.SignedHeader == nil || cb.SignedHeader.Header == nil || cb.SignedHeader.Commit == nil {
+		return
+	}
+	h, c := cb.SignedHeader.Header, cb.SignedHeader.Commit
+	switch op {
+	case 4:
+		h.Height = fzEditHeight(r, h.Height)
+	case 5:
+		h.Time = h.Time.Add(time.Duration(fzDelta(r)) * time.Second)
+	case 6:
+		hashes := []*[]byte{&h.AppHash, &h.DataHash, &h.ValidatorsHash, &h.NextValidatorsHash, &h.LastResultsHash}
+		p := hashes[r.Intn(len(hashes))]
+		if len(*p) > 0 {
+			(*p)[r.Intn(len(*p))] ^= 1 | r.Byte()
+		}
+	case 7: // rehash the header into the commit and re-sign it
+		if header, err := cmttypes.HeaderFromProto(h); err == nil {
+			c.BlockID.Hash = header.Hash()
+		}
+		signCommit(t, c, signers)
+	case 8:
+		if len(c.Signatures) > 0 {
+			s := &c.Signatures[r.Intn(len(c.Signatures))]
+			switch r.Intn(3) {
+			case 0:
+				*s = cmtproto.CommitSig{BlockIdFlag: cmtproto.BlockIDFlagAbsent}
+			case 1:
+				if len(s.Signature) > 0 {
+					s.Signature[r.Intn(len(s.Signature))] ^= 1 | r.Byte()
+				}
+			case 2:
+				s.Timestamp = s.Timestamp.Add(time.Duration(fzDelta(r)))
+			}
+		}
+	case 9:
+		if r.Bool() {
+			c.Round += int32(fzDelta(r))
+		} else {
+			c.Height = fzEditHeight(r, c.Height)
+		}
+	case 10:
+		if vs := cb.ValidatorSet; vs != nil && len(vs.Validators) > 0 {
+			if v := vs.Validators[r.Intn(len(vs.Validators))]; v != nil {
+				v.VotingPower += fzDelta(r)
+			}
+		}
+	}
+}
+
+// fzDelta returns a small signed adjustment, usually -1 or 1.
+func fzDelta(r *fuzzinput.Reader) int64 {
+	switch b := r.Byte(); b % 4 {
+	case 0:
+		return 1
+	case 1:
+		return -1
+	default:
+		return int64(int8(b))
+	}
+}
+
+// fzEditHeight moves h by a small step, or to a height around the fixture's
+// evidence window.
+func fzEditHeight(r *fuzzinput.Reader, h int64) int64 {
+	if r.Bool() {
+		return h + fzDelta(r)
+	}
+	return int64(r.Intn(fzHeight + 3))
+}
+
+// signerList returns the fixture keys in a fixed order.
+func signerList(signers map[string]cmttypes.PrivValidator) []cmttypes.PrivValidator {
+	addrs := make([]string, 0, len(signers))
+	for a := range signers {
+		addrs = append(addrs, a)
+	}
+	sort.Strings(addrs)
+	out := make([]cmttypes.PrivValidator, len(addrs))
+	for i, a := range addrs {
+		out[i] = signers[a]
+	}
+	return out
+}
+
+// signVote re-signs v on the fixture chain with the key for its validator
+// address, if there is one.
+func signVote(t *testing.T, v *cmtproto.Vote, signers map[string]cmttypes.PrivValidator) {
+	pv, ok := signers[string(v.ValidatorAddress)]
+	if !ok {
+		return
+	}
+	require.NoError(t, pv.SignVote(fzChainID, v))
+}
+
+// signCommit re-signs every commit signature with the key for its validator
+// address, if the commit still converts.
+func signCommit(t *testing.T, c *cmtproto.Commit, signers map[string]cmttypes.PrivValidator) {
+	commit, err := cmttypes.CommitFromProto(c)
+	if err != nil {
+		return
+	}
+	for i := range c.Signatures {
+		s := &c.Signatures[i]
+		if s.BlockIdFlag != cmtproto.BlockIDFlagCommit {
+			continue
+		}
+		pv, ok := signers[string(s.ValidatorAddress)]
+		if !ok {
+			continue
+		}
+		vote := commit.GetVote(int32(i)).ToProto()
+		require.NoError(t, pv.SignVote(fzChainID, vote))
+		s.Signature = vote.Signature
+	}
 }
