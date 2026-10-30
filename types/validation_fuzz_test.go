@@ -105,6 +105,7 @@ func buildVerifyCommit(t *testing.T, r *fuzzBytes, vals *ValidatorSet, blockID B
 		signer, height := key, verifyFuzzHeight
 		switch op & 0x0F {
 		case 0: // absent
+			commit.Signatures[i] = NewCommitSigAbsent()
 			continue
 		case 2: // another pool key signs and claims its own address
 			signer = verifyFuzzPool[int(r.next(0))%verifyFuzzKeys]
@@ -486,4 +487,17 @@ func TestVerifyCommitFuzzSeed(t *testing.T) {
 	require.NoError(t, vals.VerifyCommit(verifyFuzzChainID, blockID, verifyFuzzHeight, commit))
 	require.NoError(t, vals.VerifyCommitLight(verifyFuzzChainID, blockID, verifyFuzzHeight, commit))
 	require.NoError(t, vals.VerifyCommitLightTrusting(verifyFuzzChainID, commit, cmtmath.Fraction{Numerator: 1, Denominator: 3}))
+}
+
+// TestVerifyCommitFuzzAbsentSlot checks that the harness encodes an absent
+// slot as a valid absent CommitSig, so absent votes reach the verifiers.
+func TestVerifyCommitFuzzAbsentSlot(t *testing.T) {
+	vals := buildVerifyValSet(&fuzzBytes{b: []byte{10, 10, 10, 10}}, []int{0, 1, 2, 3})
+	blockID := makeBlockID(bytes.Repeat([]byte{1}, 32), 1, bytes.Repeat([]byte{2}, 32))
+	// Slot 0 absent, slots 1-3 honest commits.
+	commit := buildVerifyCommit(t, &fuzzBytes{b: []byte{0, 0, 1, 0, 1, 0, 1, 0}}, vals, blockID, 0, vals.Size())
+	require.Equal(t, BlockIDFlagAbsent, commit.Signatures[0].BlockIDFlag)
+	require.NoError(t, commit.ValidateBasic())
+	require.NoError(t, vals.VerifyCommit(verifyFuzzChainID, blockID, verifyFuzzHeight, commit))
+	require.NoError(t, vals.VerifyCommitLight(verifyFuzzChainID, blockID, verifyFuzzHeight, commit))
 }
