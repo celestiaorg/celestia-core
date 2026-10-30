@@ -3,6 +3,7 @@ package consensus
 import (
 	"bytes"
 	"context"
+	"errors"
 	"testing"
 
 	"github.com/cosmos/gogoproto/proto"
@@ -72,7 +73,7 @@ func TestProposalTxCountRejectsMalformedTail(t *testing.T) {
 	wire, err := pb.Marshal()
 	require.NoError(t, err)
 	wire = append(wire, 0x12) // Block.data tag with a missing length
-	require.Error(t, cmtproto.CheckBlockCardinality(wire, types.MaxBlockTxs, true))
+	require.Error(t, cmtproto.CheckBlockCardinality(wire, cmtproto.BlockLimits{Txs: types.MaxBlockTxs, EvidenceBytes: 1 << 20}))
 	require.Error(t, proto.Unmarshal(wire, new(cmtproto.Block)), "the full decoder rejects it too")
 }
 
@@ -82,7 +83,7 @@ func TestProposalEvidenceOneofCountedFromV11(t *testing.T) {
 	field := func(num protowire.Number, payload []byte) []byte {
 		return protowire.AppendBytes(protowire.AppendTag(nil, num, protowire.BytesType), payload)
 	}
-	junk := field(2, bytes.Repeat([]byte{0x1a, 0}, cmtproto.MaxBlockEvidenceElements+1))
+	junk := field(2, bytes.Repeat([]byte{0x1a, 0}, int(types.DefaultEvidenceParams().MaxBytes/32)+2))
 	evidence := field(3, field(1, append(junk, field(1, nil)...)))
 
 	for _, version := range []uint64{10, 11} {
@@ -107,5 +108,18 @@ func TestProposalEvidenceOneofCountedFromV11(t *testing.T) {
 		} else {
 			require.NotErrorIs(t, err, cmtproto.ErrTooManyBlockEvidenceElements)
 		}
+	}
+}
+
+// Evidence limits follow the committed allowance, which may exceed the default.
+func TestProposalEvidenceLimitFollowsParams(t *testing.T) {
+	items := int(types.DefaultEvidenceParams().MaxBytes/64) + 2
+	evidence := protowire.AppendBytes(protowire.AppendTag(nil, 3, protowire.BytesType), bytes.Repeat([]byte{0x0a, 0}, items))
+	for _, maxBytes := range []int64{types.DefaultEvidenceParams().MaxBytes, 12 << 20} {
+		cs, _ := randState(4)
+		cs.state.Version.Consensus.App = types.BlockTxLimitAppVersion - 1
+		cs.state.ConsensusParams.Evidence.MaxBytes = maxBytes
+		require.Equal(t, maxBytes == types.DefaultEvidenceParams().MaxBytes,
+			errors.Is(cmtproto.CheckBlockCardinality(evidence, blockLimits(cs.state)), cmtproto.ErrTooManyBlockEvidence))
 	}
 }

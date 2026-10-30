@@ -34,8 +34,9 @@ var errTooManyEvidenceSigs = fmt.Errorf("too many evidence signatures (max: %d)"
 
 // validateBlockSyncCardinality bounds the transactions, commit signatures and
 // evidence of every Message.block_response.block before anything is unmarshalled.
-func validateBlockSyncCardinality(msgBytes []byte, maxTxs int) error {
-	err := cmtproto.CheckBlockCardinality(msgBytes, maxTxs, true, 3, 1)
+func validateBlockSyncCardinality(msgBytes []byte, lim cmtproto.BlockLimits) error {
+	lim.AllOneofs = true
+	err := cmtproto.CheckBlockCardinality(msgBytes, lim, 3, 1)
 	switch {
 	case errors.Is(err, cmtproto.ErrTooManyBlockCommitSignatures):
 		return fmt.Errorf("%w: %w", errTooManySigs, err)

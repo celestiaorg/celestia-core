@@ -13,7 +13,11 @@ import (
 	"google.golang.org/protobuf/encoding/protowire"
 
 	bcproto "github.com/cometbft/cometbft/proto/tendermint/blocksync"
+	cmtstate "github.com/cometbft/cometbft/proto/tendermint/state"
 	cmtproto "github.com/cometbft/cometbft/proto/tendermint/types"
+	cmtversion "github.com/cometbft/cometbft/proto/tendermint/version"
+	sm "github.com/cometbft/cometbft/state"
+	smmocks "github.com/cometbft/cometbft/state/mocks"
 	"github.com/cometbft/cometbft/types"
 )
 
@@ -272,9 +276,9 @@ func wireField(num protowire.Number, payloads ...[]byte) []byte {
 }
 
 func TestValidateBlockSyncTxCeiling(t *testing.T) {
-	require.NoError(t, validateBlockSyncCardinality(blockResponseWithTxs(t, types.MaxBlockTxsCeiling, nil), types.MaxBlockTxsCeiling))
-	err := validateBlockSyncCardinality(blockResponseWithTxs(t, types.MaxBlockTxsCeiling+1, nil), types.MaxBlockTxsCeiling)
-	require.ErrorIs(t, err, cmtproto.ErrTooManyBlockTxs)
+	precheck := precheckWithState(t, 10, types.DefaultEvidenceParams().MaxBytes)
+	require.NoError(t, precheck(blockResponseWithTxs(t, types.MaxBlockTxsCeiling, nil)))
+	require.ErrorIs(t, precheck(blockResponseWithTxs(t, types.MaxBlockTxsCeiling+1, nil)), cmtproto.ErrTooManyBlockTxs)
 }
 
 func TestValidateBlockSyncTxLimitDuplicateFields(t *testing.T) {
@@ -289,12 +293,12 @@ func TestValidateBlockSyncTxLimitDuplicateFields(t *testing.T) {
 		wireField(responseNum, wireField(blockNum, wireField(dataNum, data), wireField(dataNum, data))),
 		wireField(responseNum, wireField(blockNum, wireField(dataNum, data)), wireField(blockNum, wireField(dataNum, data))),
 	} {
-		require.ErrorIs(t, validateBlockSyncCardinality(payload, types.MaxBlockTxs), cmtproto.ErrTooManyBlockTxs)
+		require.ErrorIs(t, precheckWithState(t, 11, types.DefaultEvidenceParams().MaxBytes)(payload), cmtproto.ErrTooManyBlockTxs)
 	}
 }
 
 func TestValidateBlockSyncEvidenceCountBeforeAllocation(t *testing.T) {
-	precheck := (&Reactor{}).GetChannels()[0].RecvMessagePrecheck
+	precheck := precheckWithState(t, 10, types.DefaultEvidenceParams().MaxBytes)
 	evidence := bytes.Repeat([]byte{0x0a, 0}, maxEvidenceSigs+1)
 	wire := wireField(3, wireField(1, wireField(3, evidence)))
 	allocs := testing.AllocsPerRun(5, func() {
@@ -302,7 +306,8 @@ func TestValidateBlockSyncEvidenceCountBeforeAllocation(t *testing.T) {
 			t.Fatalf("unexpected error: %v", err)
 		}
 	})
-	require.Less(t, allocs, float64(32))
+	// Includes the committed-state lookup, still independent of the item count.
+	require.Less(t, allocs, float64(64))
 }
 
 func TestValidateBlockSyncEvidenceCountSkipsUnknownGroups(t *testing.T) {
@@ -315,10 +320,31 @@ func TestValidateBlockSyncEvidenceCountSkipsUnknownGroups(t *testing.T) {
 }
 
 func TestValidateBlockSyncCardinalityAcrossDuplicateBlocks(t *testing.T) {
-	entries := bytes.Repeat([]byte{0x0a, 0}, cmtproto.MaxBlockEvidenceItems/2+1)
+	entries := bytes.Repeat([]byte{0x0a, 0}, int(types.DefaultEvidenceParams().MaxBytes/64)/2+1)
 	part := wireField(3, wireField(1, wireField(3, entries)))
 	wire := append(append([]byte{}, part...), part...)
-	require.ErrorIs(t, validateBlockSyncCardinality(wire, types.MaxBlockTxs), errTooManyEvidenceSigs)
+	require.ErrorIs(t, precheckWithState(t, 10, types.DefaultEvidenceParams().MaxBytes)(wire), errTooManyEvidenceSigs)
+}
+
+// Evidence beyond the default limits is checked against the committed allowance.
+func TestValidateBlockSyncEvidenceAllowance(t *testing.T) {
+	items := int(types.DefaultEvidenceParams().MaxBytes/64) + 2
+	wire := wireField(3, wireField(1, wireField(3, bytes.Repeat([]byte{0x0a, 0}, items))))
+	require.ErrorIs(t, precheckWithState(t, 10, types.DefaultEvidenceParams().MaxBytes)(wire), errTooManyEvidenceSigs)
+	require.NoError(t, precheckWithState(t, 10, 12<<20)(wire))
+}
+
+func precheckWithState(t *testing.T, appVersion uint64, evidenceBytes int64) func([]byte) error {
+	t.Helper()
+	params := types.DefaultConsensusParams()
+	params.Evidence.MaxBytes = evidenceBytes
+	stateStore := &smmocks.Store{}
+	stateStore.On("Load").Return(sm.State{
+		Version:         cmtstate.Version{Consensus: cmtversion.Consensus{App: appVersion}},
+		ConsensusParams: *params,
+	}, nil)
+	reactor := &Reactor{blockExec: sm.NewBlockExecutor(stateStore, nil, nil, nil, nil, nil)}
+	return reactor.GetChannels()[0].RecvMessagePrecheck
 }
 
 func blockResponseWithTxs(t *testing.T, count int, tx []byte) []byte {
