@@ -109,12 +109,20 @@ func (cs *State) applyLockInfo(li LockInfo) {
 	cs.rs.LockedBlockID = li.BlockID
 	cs.rs.LockedBlockTime = li.BlockTime
 	if blockMatchesBlockID(cs.rs.LockedBlock, cs.rs.LockedBlockParts, li.BlockID) {
+		cs.fillLockBytes(cs.rs.LockedBlock, cs.rs.LockedBlockParts) // relock: raise Valid*
 		return
 	}
 	cs.rs.LockedBlock, cs.rs.LockedBlockParts = nil, nil
 	if blockMatchesBlockID(cs.rs.ProposalBlock, cs.rs.ProposalBlockParts, li.BlockID) {
-		cs.rs.LockedBlock, cs.rs.LockedBlockParts = cs.rs.ProposalBlock, cs.rs.ProposalBlockParts
+		cs.fillLockBytes(cs.rs.ProposalBlock, cs.rs.ProposalBlockParts)
+		return
 	}
+	// Refetch the bytes; the propagator only sends requests once it starts processing.
+	if cs.rs.ProposalBlockParts == nil {
+		cs.rs.ProposalBlockParts = types.NewPartSetFromHeader(li.BlockID.PartSetHeader, types.BlockPartSizeBytes)
+	}
+	psh := li.BlockID.PartSetHeader
+	cs.propagator.AddCommitment(li.Height, li.Round, &psh)
 }
 
 // Replay only those messages since the last block.  `timeoutRoutine` should
