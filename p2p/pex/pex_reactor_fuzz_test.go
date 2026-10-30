@@ -13,7 +13,7 @@ import (
 	"github.com/cosmos/gogoproto/proto"
 	"github.com/stretchr/testify/require"
 
-	"github.com/cometbft/cometbft/config"
+	cmtcfg "github.com/cometbft/cometbft/config"
 	"github.com/cometbft/cometbft/crypto/ed25519"
 	"github.com/cometbft/cometbft/libs/log"
 	"github.com/cometbft/cometbft/libs/trace"
@@ -223,7 +223,7 @@ func FuzzPexReactor(f *testing.F) {
 		f.Add(byte(1), append([]byte{0, 0, 7, 0, byte(len(raw))}, raw...))
 	}
 
-	cfg := config.DefaultP2PConfig()
+	cfg := cmtcfg.DefaultP2PConfig()
 	nodeKey := p2p.NodeKey{PrivKey: ed25519.GenPrivKeyFromSecret([]byte("pex-fuzz"))}
 	sw := p2p.NewSwitch(cfg, p2p.NewMultiplexTransport(p2p.DefaultNodeInfo{}, nodeKey, p2p.MConnConfig(cfg), trace.NoOpTracer()))
 	sw.SetLogger(log.NewNopLogger())
