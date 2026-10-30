@@ -3092,6 +3092,10 @@ func (cs *State) syncData() {
 			}
 			cs.rsMtx.RLock()
 			height, round := cs.rs.Height, cs.rs.Round
+			// the propagator may already hold a commit for an earlier round.
+			if cs.rs.Step == cstypes.RoundStepCommit {
+				round = cs.rs.CommitRound
+			}
 			currentProposalParts := cs.rs.ProposalBlockParts
 			cs.rsMtx.RUnlock()
 			if currentProposalParts == nil {
@@ -3134,7 +3138,7 @@ func (cs *State) syncData() {
 				}
 			}
 
-			cs.peerMsgQueue <- msgInfo{&BlockPartMessage{h, r, part.Part}, ""}
+			cs.peerMsgQueue <- msgInfo{&BlockPartMessage{h, part.Round, part.Part}, ""}
 		}
 	}
 }
