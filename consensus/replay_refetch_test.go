@@ -3,6 +3,7 @@ package consensus
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"os"
 	"testing"
 	"time"
@@ -216,6 +217,64 @@ func TestLockedBlockSharedWithPropagator(t *testing.T) {
 	rs := cs.GetRoundState()
 	require.EqualValues(t, 1, rs.ValidRound)
 	require.True(t, blockMatchesBlockID(rs.ValidBlock, rs.ValidBlockParts, v.BlockID))
+}
+
+// A polka for the locked block, re-proposed without its parts, completes the
+// proposal from the lock, so the node prevotes before the propose timeout.
+func TestPolkaOnHeldBlockPrevotesAtOnce(t *testing.T) {
+	f := newLockFixture(t, true, false)
+	cs := f.newState()
+	newRoundCh, voteCh := startRestarted(t, cs)
+	_, block, parts := f.lockOnX(t, cs)
+	nextVote(t, voteCh, 1, 0, cmtproto.PrecommitType)
+	f.moveToRound1(t, cs, newRoundCh)
+
+	xID := types.BlockID{Hash: block.Hash(), PartSetHeader: parts.Header()}
+	prop := types.NewProposal(1, 1, 0, xID)
+	pp := prop.ToProto()
+	require.NoError(t, f.vss[f.p1].SignProposal(cs.state.ChainID, pp))
+	prop.Signature = pp.Signature
+	require.NoError(t, cs.SetProposal(prop, "peer"))
+	require.Eventually(t, func() bool { return cs.GetRoundState().Proposal != nil }, time.Second, 5*time.Millisecond)
+
+	start := time.Now()
+	signAddVotes(cs, cmtproto.PrevoteType, xID.Hash, xID.PartSetHeader, false, f.others...)
+	require.Equal(t, xID, nextVote(t, voteCh, 1, 1, cmtproto.PrevoteType).BlockID)
+	require.Less(t, time.Since(start), cs.state.Timeouts.TimeoutPropose/2)
+}
+
+// A node that unlocked keeps X as its valid block; when X gets a polka or a commit in a
+// later round whose proposal it never received, it precommits and commits X without refetching.
+func TestValidBlockUsedAfterUnlock(t *testing.T) {
+	for _, polka := range []bool{true, false} {
+		t.Run(fmt.Sprintf("polka=%v", polka), func(t *testing.T) {
+			f := newLockFixture(t, true, false)
+			cs := f.newState()
+			newRoundCh, voteCh := startRestarted(t, cs)
+			_, block, parts := f.lockOnX(t, cs)
+			xID := types.BlockID{Hash: block.Hash(), PartSetHeader: parts.Header()}
+			nextVote(t, voteCh, 1, 0, cmtproto.PrecommitType)
+			f.moveToRound1(t, cs, newRoundCh)
+			signAddVotes(cs, cmtproto.PrevoteType, nil, types.PartSetHeader{}, false, f.others...)
+			require.Eventually(t, func() bool { return !cs.GetRoundState().IsLocked() }, time.Second, 5*time.Millisecond)
+
+			// first later round whose proposer is not us, so X is not proposed to us there
+			vals, r := cs.GetRoundState().Validators.Copy(), int32(1)
+			for r == 1 || bytes.Equal(vals.GetProposer().Address, cs.privValidatorPubKey.Address()) {
+				vals.IncrementProposerPriority(1)
+				r++
+				incrementRound(f.vss...)
+			}
+			if polka {
+				signAddVotes(cs, cmtproto.PrevoteType, xID.Hash, xID.PartSetHeader, false, f.others...)
+			}
+			signAddVotes(cs, cmtproto.PrecommitType, xID.Hash, xID.PartSetHeader, false, f.others...)
+			require.Eventually(t, func() bool { return cs.GetRoundState().Height == 2 }, 5*time.Second, 10*time.Millisecond)
+			if polka {
+				require.Equal(t, xID, nextVote(t, voteCh, 1, r, cmtproto.PrecommitType).BlockID)
+			}
+		})
+	}
 }
 
 // A round-0 proposer locked on its own block restarts with the bytes from its
