@@ -35,6 +35,8 @@ jobs:
           - {package: test/fuzz/tests, target: Mempool}
           - {package: test/fuzz/tests, target: P2PSecretConnection}
           - {package: test/fuzz/tests, target: RPCJSONRPCServer}
+          - {package: rpc/core, target: RPCCoreHandlers}
+          - {package: rpc/core, target: RPCCoreJSONRPC}
           - {package: mempool/cat, target: MempoolMessage}
           - {package: consensus, target: ConsensusMessage}
           - {package: blocksync, target: BlockSyncMessage}
