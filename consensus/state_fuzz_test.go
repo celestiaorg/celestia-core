@@ -13,7 +13,7 @@ import (
 	dbm "github.com/cometbft/cometbft-db"
 	abcicli "github.com/cometbft/cometbft/abci/client"
 	"github.com/cometbft/cometbft/abci/example/kvstore"
-	cfg "github.com/cometbft/cometbft/config"
+	cmtcfg "github.com/cometbft/cometbft/config"
 	"github.com/cometbft/cometbft/consensus/propagation"
 	cstypes "github.com/cometbft/cometbft/consensus/types"
 	"github.com/cometbft/cometbft/crypto/ed25519"
@@ -28,7 +28,7 @@ import (
 	"github.com/cometbft/cometbft/proxy"
 	sm "github.com/cometbft/cometbft/state"
 	"github.com/cometbft/cometbft/store"
-	"github.com/cometbft/cometbft/types"
+	cmttypes "github.com/cometbft/cometbft/types"
 )
 
 // Shared harness for the consensus state and reactor fuzz targets. Every
@@ -112,27 +112,27 @@ func (r *fuzzBytes) hash() []byte {
 	return append(r.bytes(32), make([]byte, 32)...)[:32]
 }
 
-func (r *fuzzBytes) partSetHeader() types.PartSetHeader {
-	return types.PartSetHeader{Total: uint32(r.u16()), Hash: r.hash()}
+func (r *fuzzBytes) partSetHeader() cmttypes.PartSetHeader {
+	return cmttypes.PartSetHeader{Total: uint32(r.u16()), Hash: r.hash()}
 }
 
 type fuzzBlock struct {
-	parts *types.PartSet
-	id    types.BlockID
+	parts *cmttypes.PartSet
+	id    cmttypes.BlockID
 }
 
 type fuzzNode struct {
 	t       testing.TB
 	cs      *State
-	pvs     []types.PrivValidator // indexed like the validator set
-	byz     int32                 // may sign anything; holds < 1/3 power
-	ours    int32                 // the node under test
-	honest  map[int32]bool        // validators that only sign harness blocks and never equivocate
-	forge   bool                  // only byz signs; other signatures are forged
+	pvs     []cmttypes.PrivValidator // indexed like the validator set
+	byz     int32                    // may sign anything; holds < 1/3 power
+	ours    int32                    // the node under test
+	honest  map[int32]bool           // validators that only sign harness blocks and never equivocate
+	forge   bool                     // only byz signs; other signatures are forged
 	ticker  *fuzzTicker
 	blocks  map[string]*fuzzBlock // "height/variant"
-	fuzzPS  *types.PartSet        // part set over fuzzed bytes
-	signed  map[string]types.BlockID
+	fuzzPS  *cmttypes.PartSet     // part set over fuzzed bytes
+	signed  map[string]cmttypes.BlockID
 	chainID string
 }
 
@@ -157,17 +157,17 @@ func (tk *fuzzTicker) ScheduleTimeout(ti timeoutInfo) {
 	tk.last, tk.pending = ti, true
 }
 
-func fuzzGenesis(tb testing.TB) (*types.GenesisDoc, map[string]types.PrivValidator) {
-	pvs := make(map[string]types.PrivValidator, fuzzNumVals)
-	vals := make([]types.GenesisValidator, fuzzNumVals)
+func fuzzGenesis(tb testing.TB) (*cmttypes.GenesisDoc, map[string]cmttypes.PrivValidator) {
+	pvs := make(map[string]cmttypes.PrivValidator, fuzzNumVals)
+	vals := make([]cmttypes.GenesisValidator, fuzzNumVals)
 	for i := range vals {
 		pk := ed25519.GenPrivKeyFromSecret([]byte{'f', 'u', 'z', 'z', byte(i)})
-		pvs[string(pk.PubKey().Address())] = types.NewMockPVWithParams(pk, false, false)
-		vals[i] = types.GenesisValidator{PubKey: pk.PubKey(), Power: 10}
+		pvs[string(pk.PubKey().Address())] = cmttypes.NewMockPVWithParams(pk, false, false)
+		vals[i] = cmttypes.GenesisValidator{PubKey: pk.PubKey(), Power: 10}
 	}
-	genDoc := &types.GenesisDoc{
+	genDoc := &cmttypes.GenesisDoc{
 		GenesisTime: fuzzGenesisTime, InitialHeight: 1, ChainID: test.DefaultTestChainID,
-		Validators: vals, ConsensusParams: types.DefaultConsensusParams(),
+		Validators: vals, ConsensusParams: cmttypes.DefaultConsensusParams(),
 	}
 	require.NoError(tb, genDoc.ValidateAndComplete())
 	return genDoc, pvs
@@ -175,7 +175,7 @@ func fuzzGenesis(tb testing.TB) (*types.GenesisDoc, map[string]types.PrivValidat
 
 // newFuzzNode builds an unstarted State at height 1, round 0. The genesis
 // proposer is the byzantine validator; the node under test is another one.
-func newFuzzNode(t testing.TB, genDoc *types.GenesisDoc, pvByAddr map[string]types.PrivValidator) *fuzzNode {
+func newFuzzNode(t testing.TB, genDoc *cmttypes.GenesisDoc, pvByAddr map[string]cmttypes.PrivValidator) *fuzzNode {
 	state, err := sm.MakeGenesisState(genDoc)
 	require.NoError(t, err)
 	db := dbm.NewMemDB()
@@ -188,8 +188,8 @@ func newFuzzNode(t testing.TB, genDoc *types.GenesisDoc, pvByAddr map[string]typ
 	blockExec := sm.NewBlockExecutor(stateStore, logger, proxyApp, emptyMempool{}, sm.EmptyEvidencePool{}, blockStore)
 
 	n := &fuzzNode{
-		t: t, pvs: make([]types.PrivValidator, fuzzNumVals), honest: map[int32]bool{},
-		ticker: &fuzzTicker{}, blocks: map[string]*fuzzBlock{}, signed: map[string]types.BlockID{},
+		t: t, pvs: make([]cmttypes.PrivValidator, fuzzNumVals), honest: map[int32]bool{},
+		ticker: &fuzzTicker{}, blocks: map[string]*fuzzBlock{}, signed: map[string]cmttypes.BlockID{},
 		chainID: state.ChainID,
 	}
 	for i, v := range state.Validators.Validators {
@@ -198,12 +198,12 @@ func newFuzzNode(t testing.TB, genDoc *types.GenesisDoc, pvByAddr map[string]typ
 	n.byz, _ = state.Validators.GetByAddress(state.Validators.GetProposer().Address)
 	n.ours = (n.byz + 1) % fuzzNumVals
 
-	consCfg := cfg.TestConsensusConfig()
+	consCfg := cmtcfg.TestConsensusConfig()
 	cs := NewState(consCfg, state, blockExec, blockStore, propagation.NewNoOpPropagator(), emptyMempool{}, sm.EmptyEvidencePool{})
 	cs.SetLogger(logger)
 	cs.SetPrivValidator(n.pvs[n.ours])
 	cs.SetTimeoutTicker(n.ticker)
-	eventBus := types.NewEventBus()
+	eventBus := cmttypes.NewEventBus()
 	eventBus.SetLogger(logger)
 	require.NoError(t, eventBus.Start())
 	t.Cleanup(func() { _ = eventBus.Stop() })
@@ -254,31 +254,31 @@ func (n *fuzzNode) block(variant byte) *fuzzBlock {
 	if b, ok := n.blocks[key]; ok {
 		return b
 	}
-	commit := &types.Commit{}
+	commit := &cmttypes.Commit{}
 	if rs.Height > state.InitialHeight {
 		commit = rs.LastCommit.MakeExtendedCommit(state.ConsensusParams.ABCI).ToCommit()
 	}
-	var txs []types.Tx
+	var txs []cmttypes.Tx
 	if variant == 1 {
-		txs = []types.Tx{types.Tx("fuzz=1")}
+		txs = []cmttypes.Tx{cmttypes.Tx("fuzz=1")}
 	}
 	proposer := state.Validators.GetProposer().Address
 	if variant == 2 {
 		proposer = bytes.Repeat([]byte{0xab}, 20)
 	}
-	blk, parts, err := state.MakeBlock(rs.Height, types.MakeData(txs), commit, nil, proposer)
+	blk, parts, err := state.MakeBlock(rs.Height, cmttypes.MakeData(txs), commit, nil, proposer)
 	require.NoError(n.t, err)
-	b := &fuzzBlock{parts: parts, id: types.BlockID{Hash: blk.Hash(), PartSetHeader: parts.Header()}}
+	b := &fuzzBlock{parts: parts, id: cmttypes.BlockID{Hash: blk.Hash(), PartSetHeader: parts.Header()}}
 	n.blocks[key] = b
 	return b
 }
 
 // fuzzParts returns a part set over fuzzed bytes, built once per iteration.
-func (n *fuzzNode) fuzzParts(r *fuzzBytes) *types.PartSet {
+func (n *fuzzNode) fuzzParts(r *fuzzBytes) *cmttypes.PartSet {
 	if n.fuzzPS == nil {
-		size := []int{1, 100, int(types.BlockPartSizeBytes) + 1, 2*int(types.BlockPartSizeBytes) + 7}[r.u8()%4]
+		size := []int{1, 100, int(cmttypes.BlockPartSizeBytes) + 1, 2*int(cmttypes.BlockPartSizeBytes) + 7}[r.u8()%4]
 		seed := append(r.bytes(int(r.u8())), 0)
-		ps, err := types.NewPartSetFromData(bytes.Repeat(seed, size/len(seed)+1)[:size], types.BlockPartSizeBytes)
+		ps, err := cmttypes.NewPartSetFromData(bytes.Repeat(seed, size/len(seed)+1)[:size], cmttypes.BlockPartSizeBytes)
 		require.NoError(n.t, err)
 		n.fuzzPS = ps
 	}
@@ -287,26 +287,26 @@ func (n *fuzzNode) fuzzParts(r *fuzzBytes) *types.PartSet {
 
 // blockID picks a block ID; honest signers only ever reference valid
 // harness blocks (or nil).
-func (n *fuzzNode) blockID(r *fuzzBytes, honest bool) types.BlockID {
+func (n *fuzzNode) blockID(r *fuzzBytes, honest bool) cmttypes.BlockID {
 	c := r.u8() % 7
 	if honest {
 		c %= 3
 	}
 	switch c {
 	case 0:
-		return types.BlockID{}
+		return cmttypes.BlockID{}
 	case 1, 2, 3:
 		return n.block(c - 1).id
 	case 4:
 		ps := n.fuzzParts(r)
-		return types.BlockID{Hash: r.hash(), PartSetHeader: ps.Header()}
+		return cmttypes.BlockID{Hash: r.hash(), PartSetHeader: ps.Header()}
 	case 5:
 		if meta := n.cs.blockStore.LoadBlockMeta(n.cs.GetRoundState().Height - 1); meta != nil {
 			return meta.BlockID
 		}
-		return types.BlockID{}
+		return cmttypes.BlockID{}
 	default:
-		return types.BlockID{Hash: r.hash(), PartSetHeader: r.partSetHeader()}
+		return cmttypes.BlockID{Hash: r.hash(), PartSetHeader: r.partSetHeader()}
 	}
 }
 
@@ -324,7 +324,7 @@ func (n *fuzzNode) proposerFor(round int32) int32 {
 
 // once enforces that honest validators never sign two different block IDs
 // for the same height/round/type; it returns the ID they signed first.
-func (n *fuzzNode) once(signer int32, h int64, rnd int32, typ cmtproto.SignedMsgType, id types.BlockID) types.BlockID {
+func (n *fuzzNode) once(signer int32, h int64, rnd int32, typ cmtproto.SignedMsgType, id cmttypes.BlockID) cmttypes.BlockID {
 	key := fmt.Sprintf("%d/%d/%d/%d", signer, h, rnd, typ)
 	if prev, ok := n.signed[key]; ok {
 		return prev
@@ -335,7 +335,7 @@ func (n *fuzzNode) once(signer int32, h int64, rnd int32, typ cmtproto.SignedMsg
 
 // proposal returns a proposal signed by a validator, possibly mutated after
 // signing so the signature no longer verifies.
-func (n *fuzzNode) proposal(r *fuzzBytes) *types.Proposal {
+func (n *fuzzNode) proposal(r *fuzzBytes) *cmttypes.Proposal {
 	rs := n.cs.GetRoundState()
 	h, rnd := r.height(rs.Height), r.round(rs.Round)
 	pol := []int32{-1, -1, rnd - 1, rnd, -2, int32(r.u8())}[r.u8()%6]
@@ -351,7 +351,7 @@ func (n *fuzzNode) proposal(r *fuzzBytes) *types.Proposal {
 	if honest {
 		id = n.once(signer, h, rnd, cmtproto.ProposalType, id)
 	}
-	prop := types.NewProposal(h, rnd, pol, id)
+	prop := cmttypes.NewProposal(h, rnd, pol, id)
 	prop.Timestamp = fuzzGenesisTime.Add(time.Duration(rnd) * time.Second)
 	prop.Signature = make([]byte, 64) // sign bytes require a well-formed block ID
 	if id.ValidateBasic() == nil {
@@ -380,14 +380,14 @@ func (n *fuzzNode) proposal(r *fuzzBytes) *types.Proposal {
 // with mutated bytes, index or proof.
 func (n *fuzzNode) part(r *fuzzBytes) *BlockPartMessage {
 	rs := n.cs.GetRoundState()
-	var ps *types.PartSet
+	var ps *cmttypes.PartSet
 	if c := r.u8() % 5; c < 3 {
 		ps = n.block(c).parts
 	} else {
 		ps = n.fuzzParts(r)
 	}
 	src := ps.GetPart(int(r.u8()) % int(ps.Total()))
-	part := &types.Part{
+	part := &cmttypes.Part{
 		Index: src.Index, Bytes: append([]byte(nil), src.Bytes...),
 		Proof: src.Proof,
 	}
@@ -416,7 +416,7 @@ func (n *fuzzNode) part(r *fuzzBytes) *BlockPartMessage {
 }
 
 // vote returns a vote signed by a validator, possibly mutated after signing.
-func (n *fuzzNode) vote(r *fuzzBytes) *types.Vote {
+func (n *fuzzNode) vote(r *fuzzBytes) *cmttypes.Vote {
 	rs := n.cs.GetRoundState()
 	signer := int32(r.u8() % fuzzNumVals)
 	if signer == n.ours {
@@ -431,7 +431,7 @@ func (n *fuzzNode) vote(r *fuzzBytes) *types.Vote {
 		// low rounds.
 		rnd = min(rnd, fuzzMaxRounds)
 		if h != rs.Height {
-			id = types.BlockID{}
+			id = cmttypes.BlockID{}
 			if h == rs.Height-1 && typ == cmtproto.PrecommitType {
 				if meta := n.cs.blockStore.LoadBlockMeta(h); meta != nil {
 					id = meta.BlockID
@@ -441,7 +441,7 @@ func (n *fuzzNode) vote(r *fuzzBytes) *types.Vote {
 		id = n.once(signer, h, rnd, typ, id)
 	}
 	addr := n.cs.GetState().Validators.Validators[signer].Address
-	v := &types.Vote{
+	v := &cmttypes.Vote{
 		Type: typ, Height: h, Round: rnd, BlockID: id, ValidatorAddress: addr, ValidatorIndex: signer,
 		Timestamp: fuzzGenesisTime.Add(time.Duration(max(h, 0)%1000) * time.Second),
 	}
@@ -502,13 +502,13 @@ func (n *fuzzNode) checkRoundState(t *testing.T) {
 		// harness's proposerFor, which gives up beyond fuzzMaxRounds even
 		// though the state can legitimately get there via timeouts.
 		pub := rs.Validators.GetProposer().PubKey
-		require.True(t, pub.VerifySignature(types.ProposalSignBytes(n.chainID, rs.Proposal.ToProto()), rs.Proposal.Signature),
+		require.True(t, pub.VerifySignature(cmttypes.ProposalSignBytes(n.chainID, rs.Proposal.ToProto()), rs.Proposal.Signature),
 			"accepted proposal with invalid signature")
 		require.Equal(t, rs.Height, rs.Proposal.Height)
 		require.Equal(t, rs.Round, rs.Proposal.Round)
 	}
 	for round := int32(0); round <= rs.Round; round++ {
-		for _, vs := range []*types.VoteSet{rs.Votes.Prevotes(round), rs.Votes.Precommits(round)} {
+		for _, vs := range []*cmttypes.VoteSet{rs.Votes.Prevotes(round), rs.Votes.Precommits(round)} {
 			checkVoteSet(t, n.chainID, vs, rs.Validators)
 		}
 	}
@@ -517,7 +517,7 @@ func (n *fuzzNode) checkRoundState(t *testing.T) {
 	}
 }
 
-func checkVoteSet(t *testing.T, chainID string, vs *types.VoteSet, vals *types.ValidatorSet) {
+func checkVoteSet(t *testing.T, chainID string, vs *cmttypes.VoteSet, vals *cmttypes.ValidatorSet) {
 	for i := int32(0); vs != nil && i < int32(vals.Size()); i++ {
 		v := vs.GetByIndex(i)
 		if v == nil {
@@ -646,7 +646,7 @@ func FuzzConsensusStateHandleMsg(f *testing.F) {
 
 // runStateHandleMsg is the body of FuzzConsensusStateHandleMsg; it returns
 // the node so deterministic tests can inspect where an input leads.
-func runStateHandleMsg(t *testing.T, genDoc *types.GenesisDoc, pvs map[string]types.PrivValidator, data []byte) *fuzzNode {
+func runStateHandleMsg(t *testing.T, genDoc *cmttypes.GenesisDoc, pvs map[string]cmttypes.PrivValidator, data []byte) *fuzzNode {
 	n := newFuzzNode(t, genDoc, pvs)
 	for i := int32(0); i < fuzzNumVals; i++ {
 		n.honest[i] = i != n.byz && i != n.ours
@@ -744,7 +744,7 @@ func FuzzConsensusReactorReceive(f *testing.F) {
 		n.forge = true
 		conR := NewReactor(n.cs, propagation.NewNoOpPropagator(), true)
 		conR.SetLogger(log.NewNopLogger())
-		conR.SetSwitch(p2p.NewSwitch(cfg.DefaultP2PConfig(), nil))
+		conR.SetSwitch(p2p.NewSwitch(cmtcfg.DefaultP2PConfig(), nil))
 		require.NoError(t, conR.Start())
 		conR.mtx.Lock()
 		conR.waitSync = false // accept data and votes without starting the State
@@ -758,7 +758,7 @@ func FuzzConsensusReactorReceive(f *testing.F) {
 		peer := p2pmock.NewPeer(nil)
 		_, err := conR.InitPeer(peer)
 		require.NoError(t, err)
-		ps := peer.Get(types.PeerStateKey).(*PeerState)
+		ps := peer.Get(cmttypes.PeerStateKey).(*PeerState)
 
 		r := &fuzzBytes{b: data}
 		for op := 0; op < fuzzMaxOps && len(r.b) > 0; op++ {
@@ -861,7 +861,7 @@ func checkPeerState(t *testing.T, ps *PeerState, rs *cstypes.RoundState) {
 			}
 		}
 	}
-	for _, vs := range []types.VoteSetReader{rs.Votes.Prevotes(rs.Round), rs.Votes.Precommits(rs.Round)} {
+	for _, vs := range []cmttypes.VoteSetReader{rs.Votes.Prevotes(rs.Round), rs.Votes.Precommits(rs.Round)} {
 		if vote, ok := ps.PickVoteToSend(vs); ok {
 			require.NotNil(t, vote)
 		}
