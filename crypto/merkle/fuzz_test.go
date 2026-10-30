@@ -2,216 +2,168 @@ package merkle
 
 import (
 	"bytes"
-	"crypto/rand"
 	"testing"
-	"testing/quick"
+
+	"github.com/cometbft/cometbft/internal/fuzzinput"
 )
 
+// fuzzLeafSizes are the leaf size ranges FuzzParallelImplementations draws
+// from. The 1 KiB boundary is where the parallel code switches strategy.
+var fuzzLeafSizes = [...]struct{ min, max int }{
+	{0, 32},                      // small leaves, including empty ones
+	{32, 512},                    // medium leaves
+	{512, 8192},                  // large leaves
+	{1, 2048},                    // mixed sizes around minLeafSizeForParallel
+	{65536 - 1024, 65536 + 1024}, // ~64 KiB leaves, like Celestia block parts
+}
+
 // FuzzParallelImplementations tests that all parallel implementations
-// produce identical results to the original sequential implementation
+// produce identical results to the original sequential implementation.
+// Everything (item count, leaf sizes and bytes, derived trees and proof
+// indices) is derived from the fuzz input, so every input replays exactly.
 func FuzzParallelImplementations(f *testing.F) {
-	// Seed with diverse test cases
 	f.Add([]byte{1, 2, 3, 4, 5})
 	f.Add([]byte{0xFF, 0xAB, 0xCD, 0xEF})
-	f.Add(make([]byte, 1000)) // Large zero-filled data
+	f.Add(make([]byte, 1000))
+	f.Add([]byte{0})                                    // empty tree
+	f.Add([]byte{40, 0, 0, 0, 0, 0, 1, 2, 3})           // >= minItemsForSmallLeaves small leaves
+	f.Add([]byte{9, 2, 0x00, 0x04, 0x01, 0x02, 0x03})   // >= minItemsForParallel large leaves
+	f.Add([]byte{100, 4, 0xFF, 0xFF, 0xAA, 0x55, 5, 1}) // ~64 KiB leaves
 
 	f.Fuzz(func(t *testing.T, data []byte) {
-		if len(data) == 0 {
-			return
-		}
+		r := fuzzinput.New(data)
 
-		// Use data bytes to determine variable parameters for more robust testing
-		dataIdx := 0
-		nextByte := func() byte {
-			if dataIdx >= len(data) {
-				dataIdx = 0
-			}
-			b := data[dataIdx]
-			dataIdx++
-			return b
-		}
-
-		// Vary the number of items (1 to 100)
-		numItems := max(1, int(nextByte())%100+1)
-
-		// Vary leaf size ranges based on fuzz input
-		leafSizeVariant := nextByte() % 5
-		var minLeafSize, maxLeafSize int
-		switch leafSizeVariant {
-		case 0: // Small leaves (1-32 bytes)
-			minLeafSize, maxLeafSize = 1, 32
-		case 1: // Medium leaves (32-512 bytes)
-			minLeafSize, maxLeafSize = 32, 512
-		case 2: // Large leaves (512-8192 bytes)
-			minLeafSize, maxLeafSize = 512, 8192
-		case 3: // Mixed sizes (1-2048 bytes)
-			minLeafSize, maxLeafSize = 1, 2048
-		case 4: // Very large leaves (~64KB, like Celestia blocks)
-			minLeafSize, maxLeafSize = 65536-1024, 65536+1024 // ~65KB ± 1KB
-		}
-
-		// Create items with varying sizes
+		numItems := r.Intn(129) // 0..128
+		sizes := fuzzLeafSizes[r.Intn(len(fuzzLeafSizes))]
 		items := make([][]byte, numItems)
-		for i := 0; i < numItems; i++ {
-			// Vary leaf size within the range
-			leafSize := minLeafSize + int(nextByte())%(maxLeafSize-minLeafSize+1)
-
-			// Create leaf data by cycling through available data
-			leaf := make([]byte, leafSize)
-			for j := 0; j < leafSize; j++ {
-				leaf[j] = nextByte()
-			}
-			items[i] = leaf
+		for i := range items {
+			size := sizes.min + int(r.Uint16())%(sizes.max-sizes.min+1)
+			items[i] = fuzzLeaf(r.Bytes(32), i, size)
 		}
+		testParallelCorrectness(t, items, fuzzIndices(r, numItems))
 
-		// Test with the generated inputs
-		testParallelCorrectness(t, items)
-
-		// Additional test with different leaf count but same data pattern
-		if numItems > 1 {
-			// Test with fewer items (stress different tree shapes)
-			reducedCount := max(1, numItems/2)
-			reducedItems := make([][]byte, reducedCount)
-			for i := 0; i < reducedCount; i++ {
-				reducedItems[i] = items[i*2%len(items)] // Sample every other item
+		// Trees made of fuzz-chosen items (repeats allowed) stress other
+		// shapes, including power-of-two and non-power-of-two counts.
+		for range r.Intn(4) {
+			if numItems == 0 {
+				break
 			}
-			testParallelCorrectness(t, reducedItems)
-		}
-
-		// Test with power-of-2 and non-power-of-2 counts (different tree structures)
-		if numItems >= 4 {
-			// Power of 2 test
-			powerOf2Count := 1
-			for powerOf2Count < numItems {
-				powerOf2Count *= 2
+			sub := make([][]byte, r.Intn(129))
+			for i := range sub {
+				sub[i] = items[r.Intn(numItems)]
 			}
-			powerOf2Count /= 2 // Get largest power of 2 <= numItems
-
-			if powerOf2Count >= 2 && powerOf2Count != numItems {
-				powerOf2Items := make([][]byte, powerOf2Count)
-				for i := 0; i < powerOf2Count; i++ {
-					powerOf2Items[i] = items[i%len(items)]
-				}
-				testParallelCorrectness(t, powerOf2Items)
-			}
+			testParallelCorrectness(t, sub, fuzzIndices(r, len(sub)))
 		}
 	})
 }
 
-func testParallelCorrectness(t *testing.T, items [][]byte) {
+// fuzzLeaf returns a leaf of exactly size bytes whose content is seed
+// repeated and mixed with the item index, so leaves differ even when the
+// fuzz input runs out.
+func fuzzLeaf(seed []byte, index, size int) []byte {
+	leaf := make([]byte, size)
+	for j := range leaf {
+		b := byte(index*31 + j)
+		if len(seed) > 0 {
+			b ^= seed[j%len(seed)]
+		}
+		leaf[j] = b
+	}
+	return leaf
+}
+
+// fuzzIndices returns up to eight fuzz-chosen proof indices in [0, n), plus
+// the first and the last index.
+func fuzzIndices(r *fuzzinput.Reader, n int) []int {
+	if n == 0 {
+		return nil
+	}
+	indices := []int{0, n - 1}
+	for range r.Intn(9) {
+		indices = append(indices, int(r.Uint16())%n)
+	}
+	return indices
+}
+
+func testParallelCorrectness(t *testing.T, items [][]byte, verify []int) {
+	t.Helper()
 	// Get reference result from original implementation
 	expected := HashFromByteSlices(items)
 
 	// Test the optimized parallel implementation
-	implementations := map[string]func([][]byte) []byte{
-		"ParallelHashFromByteSlices": ParallelHashFromByteSlices,
-	}
-
-	for name, impl := range implementations {
-		result := impl(items)
-		if !bytes.Equal(expected, result) {
-			t.Errorf("%s produced different result than HashFromByteSlices", name)
-			t.Errorf("Expected: %x", expected)
-			t.Errorf("Got:      %x", result)
-			t.Errorf("Items count: %d", len(items))
-		}
+	if result := ParallelHashFromByteSlices(items); !bytes.Equal(expected, result) {
+		t.Fatalf("ParallelHashFromByteSlices produced %x, HashFromByteSlices %x (%d items)", result, expected, len(items))
 	}
 
 	// Also test proof generation correctness
-	testParallelProofCorrectness(t, items)
+	expectedRoot, expectedProofs := ProofsFromByteSlices(items)
+	actualRoot, actualProofs := ParallelProofsFromByteSlices(items)
+	compareProofs(t, "ParallelProofsFromByteSlices", expectedRoot, expectedProofs, actualRoot, actualProofs)
+	if !bytes.Equal(expected, actualRoot) {
+		t.Fatalf("ParallelProofsFromByteSlices root %x differs from HashFromByteSlices %x", actualRoot, expected)
+	}
+
+	leafHashes := make([][]byte, len(items))
+	for i, item := range items {
+		leafHashes[i] = leafHash(item)
+	}
+	expectedRoot, expectedProofs = ProofsFromLeafHashes(leafHashes)
+	leafRoot, leafProofs := ParallelProofsFromLeafHashes(leafHashes)
+	compareProofs(t, "ParallelProofsFromLeafHashes", expectedRoot, expectedProofs, leafRoot, leafProofs)
+
+	// Verify the proofs can verify against the root with the original item
+	for _, i := range verify {
+		if err := actualProofs[i].Verify(actualRoot, items[i]); err != nil {
+			t.Fatalf("parallel proof %d of %d failed verification: %v", i, len(items), err)
+		}
+		if err := leafProofs[i].Verify(leafRoot, items[i]); err != nil {
+			t.Fatalf("parallel leaf-hash proof %d of %d failed verification: %v", i, len(items), err)
+		}
+	}
 }
 
-// testParallelProofCorrectness tests that parallel proof generation
-// produces identical results to the original implementation
-func testParallelProofCorrectness(t *testing.T, items [][]byte) {
-	// Get reference results from original implementation
-	expectedRoot, expectedProofs := ProofsFromByteSlices(items)
-
-	// Test parallel proof generation
-	actualRoot, actualProofs := ParallelProofsFromByteSlices(items)
-
-	// Root hashes must match
+// compareProofs checks that a parallel implementation returned exactly the
+// root and proofs of its sequential counterpart.
+func compareProofs(t *testing.T, name string, expectedRoot []byte, expectedProofs []*Proof, actualRoot []byte, actualProofs []*Proof) {
+	t.Helper()
 	if !bytes.Equal(expectedRoot, actualRoot) {
-		t.Errorf("ParallelProofsFromByteSlices root hash differs from ProofsFromByteSlices")
-		t.Errorf("Expected root: %x", expectedRoot)
-		t.Errorf("Got root:      %x", actualRoot)
-		t.Errorf("Items count: %d", len(items))
-		return
+		t.Fatalf("%s root %x differs from sequential %x (%d proofs)", name, actualRoot, expectedRoot, len(expectedProofs))
 	}
-
-	// Number of proofs must match
 	if len(expectedProofs) != len(actualProofs) {
-		t.Errorf("ParallelProofsFromByteSlices proof count differs from ProofsFromByteSlices")
-		t.Errorf("Expected: %d proofs", len(expectedProofs))
-		t.Errorf("Got:      %d proofs", len(actualProofs))
-		return
+		t.Fatalf("%s returned %d proofs, sequential %d", name, len(actualProofs), len(expectedProofs))
 	}
-
-	// Each proof must be identical
-	for i := range expectedProofs {
-		expected := expectedProofs[i]
+	for i, expected := range expectedProofs {
 		actual := actualProofs[i]
-
-		if expected.Total != actual.Total {
-			t.Errorf("Proof %d Total differs: expected %d, got %d", i, expected.Total, actual.Total)
-		}
-		if expected.Index != actual.Index {
-			t.Errorf("Proof %d Index differs: expected %d, got %d", i, expected.Index, actual.Index)
+		if expected.Total != actual.Total || expected.Index != actual.Index {
+			t.Fatalf("%s proof %d: total/index %d/%d, sequential %d/%d", name, i, actual.Total, actual.Index, expected.Total, expected.Index)
 		}
 		if !bytes.Equal(expected.LeafHash, actual.LeafHash) {
-			t.Errorf("Proof %d LeafHash differs", i)
+			t.Fatalf("%s proof %d LeafHash differs", name, i)
 		}
 		if len(expected.Aunts) != len(actual.Aunts) {
-			t.Errorf("Proof %d Aunts count differs: expected %d, got %d", i, len(expected.Aunts), len(actual.Aunts))
-			continue
+			t.Fatalf("%s proof %d has %d aunts, sequential %d", name, i, len(actual.Aunts), len(expected.Aunts))
 		}
 		for j := range expected.Aunts {
 			if !bytes.Equal(expected.Aunts[j], actual.Aunts[j]) {
-				t.Errorf("Proof %d Aunt %d differs", i, j)
+				t.Fatalf("%s proof %d aunt %d differs", name, i, j)
 			}
-		}
-
-		// Verify the proof can verify against the root with the original item
-		if err := actual.Verify(actualRoot, items[i]); err != nil {
-			t.Errorf("Parallel proof %d failed verification: %v", i, err)
 		}
 	}
 }
 
-// TestParallelImplementationsProperty uses property-based testing
+// TestParallelImplementationsProperty checks deterministic item counts and
+// sizes on both sides of the parallel thresholds.
 func TestParallelImplementationsProperty(t *testing.T) {
-	property := func(numItems uint8, itemSize uint16) bool {
-		if numItems == 0 || numItems > 100 || itemSize == 0 || itemSize > 1000 {
-			return true // Skip invalid inputs
-		}
-
-		items := make([][]byte, numItems)
-		for i := range items {
-			items[i] = make([]byte, itemSize)
-			if _, err := rand.Read(items[i]); err != nil {
-				t.Fatalf("Failed to read random data: %v", err)
+	for _, numItems := range []int{1, 2, 3, 7, 8, 9, 31, 32, 33, 64, 100} {
+		for _, itemSize := range []int{1, 31, 32, 33, 512, 1000, 1023, 1024, 1025} {
+			items := make([][]byte, numItems)
+			for i := range items {
+				items[i] = fuzzLeaf([]byte{byte(numItems), byte(itemSize)}, i, itemSize)
+			}
+			if !bytes.Equal(HashFromByteSlices(items), ParallelHashFromByteSlices(items)) {
+				t.Errorf("ParallelHashFromByteSlices differs for %d items of %d bytes", numItems, itemSize)
 			}
 		}
-
-		expected := HashFromByteSlices(items)
-
-		// Test the optimized implementation
-		implementations := []func([][]byte) []byte{
-			ParallelHashFromByteSlices,
-		}
-
-		for _, impl := range implementations {
-			result := impl(items)
-			if !bytes.Equal(expected, result) {
-				return false
-			}
-		}
-
-		return true
-	}
-
-	if err := quick.Check(property, nil); err != nil {
-		t.Error(err)
 	}
 }
 
@@ -219,14 +171,11 @@ func TestParallelImplementationsProperty(t *testing.T) {
 func TestParallelImplementationsLargeDataset(t *testing.T) {
 	// Test with dataset similar to actual use case: 4000 items of 64KiB each
 	const numItems = 128       // Reduced for testing, but same pattern
-	const itemSize = 1024 * 64 // 1KiB for testing
+	const itemSize = 1024 * 64 // 64KiB
 
 	items := make([][]byte, numItems)
 	for i := range items {
-		items[i] = make([]byte, itemSize)
-		if _, err := rand.Read(items[i]); err != nil {
-			t.Fatalf("Failed to read random data: %v", err)
-		}
+		items[i] = fuzzLeaf([]byte("large dataset"), i, itemSize)
 	}
 
 	expected := HashFromByteSlices(items)

@@ -237,40 +237,229 @@ func legacyBlobTxSeeds(tb testing.TB) [][]byte {
 	}
 }
 
+// checkLegacyBlobTx checks that the zero-copy scan agrees with the generated
+// decoder on bz, so Tx.Hash, Tx.Key and the bytes sent to the application
+// before BlobTxValidationAppVersion are unchanged.
+func checkLegacyBlobTx(t *testing.T, bz []byte) {
+	tx := Tx(bz)
+	wantTx, wantOK := decodeLegacyBlobTx(tx)
+
+	// When the scan decides on its own, it must agree with the decoder.
+	if inner, isBlobTx, ok := scanLegacyBlobTx(tx); ok {
+		require.Equal(t, wantOK, isBlobTx, "scan verdict")
+		if isBlobTx {
+			require.Equal(t, []byte(wantTx), inner, "scan inner tx")
+			require.Equal(t, wantTx == nil, inner == nil, "scan inner tx nil-ness")
+		}
+	}
+
+	gotTx, gotOK := unwrapLegacyBlobTx(tx)
+	require.Equal(t, wantOK, gotOK)
+	require.Equal(t, wantTx, gotTx)
+
+	// Hash and Key as computed before the scan was introduced.
+	want := []byte(tx)
+	if wantOK {
+		want = wantTx
+	} else if iw, ok := UnmarshalIndexWrapper(tx); ok {
+		want = iw.Tx
+	}
+	require.Equal(t, tmhash.Sum(want), tx.Hash())
+	require.Equal(t, TxKey(sha256.Sum256(want)), tx.Key())
+}
+
+// Edit kinds of a BlobTx. Struct edits change the message; wire edits change
+// the encoded bytes and apply after it is marshaled, in order.
+const (
+	blobTxEditTx = iota
+	blobTxEditAddBlob
+	blobTxEditDropBlob
+	blobTxEditNamespace
+	blobTxEditData
+	blobTxEditShareVersion
+	blobTxEditNamespaceVersion
+	blobTxEditTypeID
+	blobTxEditIndexWrapper // wire: re-encode as an IndexWrapper of the inner tx
+	blobTxEditUnknownField // wire: append a field of any number and wire type
+	blobTxEditKnownField   // wire: append a known field again or with another wire type
+	blobTxEditTruncate     // wire: drop trailing bytes
+	blobTxEditNest         // wire: wrap the bytes as the inner tx of a BlobTx
+	blobTxEditNormalize    // neutral: restore the type ID, a blob and namespace sizes
+	blobTxEditKinds
+)
+
+// maxFuzzBlobs bounds how many blobs edits can grow a BlobTx to.
+const maxFuzzBlobs = 8
+
 // FuzzUnwrapLegacyBlobTx checks that the zero-copy scan agrees with the
 // generated decoder on every input, so Tx.Hash, Tx.Key and the bytes sent to
 // the application before BlobTxValidationAppVersion are unchanged.
+//
+// With edits, it starts from a valid BlobTx and edits the inner tx, blobs,
+// namespaces and type ID, then edits the encoding (IndexWrapper envelope,
+// unknown, repeated and mistyped fields, truncation, nesting), so that the
+// scan sees near-valid envelopes instead of random bytes. A BlobTx whose
+// encoding was not edited, and whose type ID and namespace sizes were
+// restored, must unwrap to its inner tx.
 func FuzzUnwrapLegacyBlobTx(f *testing.F) {
 	for _, seed := range legacyBlobTxSeeds(f) {
-		f.Add(seed)
+		f.Add(seed, []byte(nil))
 	}
-	f.Fuzz(func(t *testing.T, bz []byte) {
-		tx := Tx(bz)
-		wantTx, wantOK := decodeLegacyBlobTx(tx)
+	f.Add([]byte{}, []byte{blobTxEditDropBlob, 0, 0})
+	f.Add([]byte{}, []byte{blobTxEditNamespace, 0, 0, 1, 0, 0})
+	f.Add([]byte{}, []byte{blobTxEditTypeID, 3, 4, 'I', 'N', 'D', 'X'})
+	f.Add([]byte{}, []byte{blobTxEditIndexWrapper, 2, 1, 0, 0, 0, 2, 0, 0, 0})
+	f.Add([]byte{}, []byte{blobTxEditKnownField, 3, 2})
+	f.Add([]byte{}, []byte{blobTxEditUnknownField, 15, 3})
+	f.Add([]byte{}, []byte{blobTxEditNest, blobTxEditTruncate, 1, 0})
+	f.Add([]byte{}, []byte{blobTxEditNormalize})
+	f.Add([]byte{}, []byte{blobTxEditDropBlob, 0, 0, blobTxEditDropBlob, 0, 0, blobTxEditTypeID, 4, blobTxEditNormalize})
+	f.Add([]byte{}, []byte{blobTxEditAddBlob, 1, 0, 0, 3, 'a', 'b', 'c', blobTxEditTx, 4, blobTxEditNormalize})
 
-		// When the scan decides on its own, it must agree with the decoder.
-		if inner, isBlobTx, ok := scanLegacyBlobTx(tx); ok {
-			require.Equal(t, wantOK, isBlobTx, "scan verdict")
-			if isBlobTx {
-				require.Equal(t, []byte(wantTx), inner, "scan inner tx")
-				require.Equal(t, wantTx == nil, inner == nil, "scan inner tx nil-ness")
+	nsID := append(make([]byte, share.NamespaceVersionZeroPrefixSize), bytes.Repeat([]byte{1}, share.NamespaceVersionZeroIDSize)...)
+	innerTx := []byte("inner-tx")
+	fixture := func() *blobv4.BlobTx {
+		blob := func() *blobv4.BlobProto { return &blobv4.BlobProto{NamespaceId: nsID, Data: []byte("data")} }
+		return &blobv4.BlobTx{Tx: innerTx, Blobs: []*blobv4.BlobProto{blob(), blob()}, TypeId: squaretx.ProtoBlobTxTypeID}
+	}
+	f.Fuzz(func(t *testing.T, raw, edits []byte) {
+		if len(edits) == 0 {
+			checkLegacyBlobTx(t, raw)
+			return
+		}
+		btx := fixture()
+		e := newFuzzEditor(edits)
+		var wire []func([]byte) []byte
+		blob := func() *blobv4.BlobProto {
+			if i := e.index(len(btx.Blobs)); i >= 0 {
+				return btx.Blobs[i]
 			}
+			return &blobv4.BlobProto{}
 		}
-
-		gotTx, gotOK := unwrapLegacyBlobTx(tx)
-		require.Equal(t, wantOK, gotOK)
-		require.Equal(t, wantTx, gotTx)
-
-		// Hash and Key as computed before the scan was introduced.
-		want := []byte(tx)
-		if wantOK {
-			want = wantTx
-		} else if iw, ok := UnmarshalIndexWrapper(tx); ok {
-			want = iw.Tx
+		normalize := false
+		// The type ID is appended by hand, as the last field like the
+		// marshaler would, so that it may be invalid UTF-8.
+		typeID := []byte(btx.TypeId)
+		e.run(blobTxEditKinds, blobTxEditNormalize, func(kind int) {
+			switch kind {
+			case blobTxEditTx:
+				btx.Tx = e.bytes(btx.Tx, 255)
+			case blobTxEditAddBlob:
+				if len(btx.Blobs) < maxFuzzBlobs {
+					btx.Blobs = append(btx.Blobs, &blobv4.BlobProto{NamespaceId: e.bytes(nsID, 64), Data: e.r.Bytes(255)})
+				}
+			case blobTxEditDropBlob:
+				if i := e.index(len(btx.Blobs)); i >= 0 {
+					btx.Blobs = append(btx.Blobs[:i:i], btx.Blobs[i+1:]...)
+				}
+			case blobTxEditNamespace:
+				b := blob()
+				b.NamespaceId = e.bytes(b.NamespaceId, 64)
+			case blobTxEditData:
+				b := blob()
+				b.Data = e.bytes(b.Data, 255)
+			case blobTxEditShareVersion:
+				b := blob()
+				b.ShareVersion = nearInt(e, b.ShareVersion, 1, 255)
+			case blobTxEditNamespaceVersion:
+				b := blob()
+				b.NamespaceVersion = nearInt(e, b.NamespaceVersion, 1, 255)
+			case blobTxEditTypeID:
+				typeID = e.bytes(typeID, 8)
+			case blobTxEditIndexWrapper:
+				indexes := make([]uint32, e.r.Intn(4))
+				for i := range indexes {
+					indexes[i] = e.r.Uint32()
+				}
+				wire = append(wire, func([]byte) []byte {
+					bz, err := MarshalIndexWrapper(btx.Tx, indexes...)
+					require.NoError(t, err)
+					return bz
+				})
+			case blobTxEditUnknownField:
+				num := protowire.Number(1 + int(e.r.Uint16())%int(protowire.MaxValidNumber-1))
+				typ := protowire.Type(e.r.Intn(6))
+				payload := e.r.Bytes(16)
+				wire = append(wire, func(bz []byte) []byte {
+					return appendField(protowire.AppendTag(bz, num, typ), typ, payload)
+				})
+			case blobTxEditKnownField:
+				num := protowire.Number(1 + e.r.Intn(3))
+				typ := protowire.BytesType
+				if e.r.Bool() {
+					typ = protowire.Type(e.r.Intn(6))
+				}
+				payload := e.r.Bytes(16)
+				wire = append(wire, func(bz []byte) []byte {
+					return appendField(protowire.AppendTag(bz, num, typ), typ, payload)
+				})
+			case blobTxEditTruncate:
+				n := int(e.r.Uint16())
+				wire = append(wire, func(bz []byte) []byte {
+					return bz[:len(bz)-n%(len(bz)+1)]
+				})
+			case blobTxEditNest:
+				wire = append(wire, func(bz []byte) []byte {
+					outer := fixture()
+					outer.Tx = bz
+					nested, err := proto.Marshal(outer)
+					require.NoError(t, err)
+					return nested
+				})
+			case blobTxEditNormalize:
+				normalize = true
+			}
+		})
+		if normalize {
+			normalizeBlobTx(btx)
+			typeID = []byte(squaretx.ProtoBlobTxTypeID)
 		}
-		require.Equal(t, tmhash.Sum(want), tx.Hash())
-		require.Equal(t, TxKey(sha256.Sum256(want)), tx.Key())
+		btx.TypeId = ""
+		bz, err := proto.Marshal(btx)
+		require.NoError(t, err)
+		if len(typeID) > 0 {
+			bz = protowire.AppendBytes(protowire.AppendTag(bz, blobTxTypeIDField, protowire.BytesType), typeID)
+		}
+		for _, edit := range wire {
+			bz = edit(bz)
+		}
+		checkLegacyBlobTx(t, bz)
+		if len(wire) == 0 && (normalize || !e.mutated) {
+			got, ok := unwrapLegacyBlobTx(bz)
+			require.True(t, ok, "valid BlobTx not unwrapped")
+			require.True(t, bytes.Equal(btx.Tx, got), "valid BlobTx unwrapped to the wrong inner tx")
+		}
 	})
+}
+
+// normalizeBlobTx gives btx at least one blob and namespace IDs of exactly
+// share.NamespaceIDSize bytes, as the legacy rules require.
+func normalizeBlobTx(btx *blobv4.BlobTx) {
+	if len(btx.Blobs) == 0 {
+		btx.Blobs = append(btx.Blobs, &blobv4.BlobProto{})
+	}
+	for _, b := range btx.Blobs {
+		ns := make([]byte, share.NamespaceIDSize)
+		copy(ns, b.NamespaceId)
+		b.NamespaceId = ns
+	}
+}
+
+// appendField appends a value of wire type typ carrying payload. Group types
+// get no value, so a start group without its end stays malformed.
+func appendField(bz []byte, typ protowire.Type, payload []byte) []byte {
+	switch typ {
+	case protowire.VarintType:
+		return protowire.AppendVarint(bz, uint64(len(payload)))
+	case protowire.Fixed32Type:
+		return protowire.AppendFixed32(bz, uint32(len(payload)))
+	case protowire.Fixed64Type:
+		return protowire.AppendFixed64(bz, uint64(len(payload)))
+	case protowire.BytesType:
+		return protowire.AppendBytes(bz, payload)
+	default:
+		return bz
+	}
 }
 
 // BenchmarkTxHashBlobTx hashes an 8 MiB BlobTx carrying many blobs with the

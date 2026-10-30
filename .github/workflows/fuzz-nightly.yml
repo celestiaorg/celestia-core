@@ -92,12 +92,14 @@ jobs:
         id: fuzz-cache
         run: echo "path=$(go env GOCACHE)/fuzz" >> "$GITHUB_OUTPUT"
 
+      # Bump the key prefix whenever fuzz target signatures change, so
+      # entries cached under an old signature are not replayed.
       - name: Restore fuzz corpus
         uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: ${{ steps.fuzz-cache.outputs.path }}
-          key: fuzz-${{ runner.os }}-${{ matrix.target }}-${{ github.run_id }}-${{ github.run_attempt }}
-          restore-keys: fuzz-${{ runner.os }}-${{ matrix.target }}-
+          key: fuzz-v2-${{ runner.os }}-${{ matrix.target }}-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: fuzz-v2-${{ runner.os }}-${{ matrix.target }}-
 
       - name: Fuzz
         env:
