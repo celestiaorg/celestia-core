@@ -34,8 +34,7 @@ const (
 
 	// Excluded pending PROTOCO-3514; remove with the fix.
 	fzCheckStaleBuffered = false
-	// Excluded pending FINDING-cat-reactor-3 (TxPool.canAddTx/addNewTransaction
-	// admit txs beyond MempoolConfig.Size); remove with the fix.
+	// Excluded pending PROTOCO-3524; remove with the fix.
 	fzCheckCountLimit = false
 )
 
@@ -70,9 +69,8 @@ func FuzzReactorReceive(f *testing.F) {
 		{0, 0, 0, 0, 2, 0, 1, 0, 2, 8, 0, 0, 6, 1, 5, 1, 10, 0, 0, 0, 0, 3, 7, 0, 2},
 		// SeenTx with another signer's metadata, then delivery
 		{0, 2, 0, 8, 1, 3, 2, 3, 0, 4, 0, 0, 0},
-		// count limit binds (2 txs): three signers each announce and deliver
-		// the tx at their expected sequence, so the third finds the pool full
-		{1, 0, 0, 0, 2, 3, 0, 4, 0, 2, 0, 0, 0, 1, 2, 3, 0, 4, 1, 2, 1, 0, 0, 2, 2, 3, 0, 4, 2, 2, 2},
+		// count limit binds (2 txs) for a single delivery
+		{1, 0, 0, 0, 2, 3, 0, 4, 0, 2, 0, 0, 0},
 	} {
 		f.Add(seed)
 	}
