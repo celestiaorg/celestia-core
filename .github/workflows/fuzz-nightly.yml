@@ -34,19 +34,43 @@ jobs:
         include:
           - {package: test/fuzz/tests, target: Mempool}
           - {package: test/fuzz/tests, target: P2PSecretConnection}
+          - {package: p2p, target: TransportUpgrade}
+          - {package: p2p, target: PeerReceive}
+          - {package: p2p/conn, target: SecretConnectionHandshake}
+          - {package: p2p/conn, target: SecretConnectionRead}
+          - {package: p2p/conn, target: MConnectionRecv}
           - {package: test/fuzz/tests, target: RPCJSONRPCServer}
+          - {package: rpc/core, target: RPCCoreHandlers}
+          - {package: rpc/core, target: RPCCoreJSONRPC}
           - {package: mempool/cat, target: MempoolMessage}
+          - {package: mempool/cat, target: ReactorReceive}
           - {package: consensus, target: ConsensusMessage}
+          - {package: consensus, target: ConsensusStateHandleMsg}
+          - {package: consensus, target: ConsensusReactorReceive}
           - {package: blocksync, target: BlockSyncMessage}
           - {package: statesync, target: StateSyncReactor}
+          - {package: blocksync, target: BlockSyncReactor}
           - {package: consensus/propagation/types, target: PropagationMessage}
+          - {package: consensus/propagation/types, target: CombinedPartSetDecode}
+          - {package: consensus/propagation/types, target: TxsToPartsMetadata}
+          - {package: consensus/propagation/types, target: TxsToParts}
+          - {package: consensus/propagation/types, target: TxsToParts_Panic}
+          - {package: consensus/propagation, target: PropagationReactor}
           - {package: types, target: BlockFromProto}
           - {package: types, target: PartFromProto}
           - {package: types, target: VoteFromProto}
           - {package: types, target: ProposalFromProto}
           - {package: types, target: CommitFromProto}
+          - {package: types, target: VerifyCommit}
+          - {package: types, target: ExtendedCommitFromProto}
+          - {package: types, target: LightBlockFromProto}
+          - {package: types, target: ValidatorSetFromProto}
           - {package: types, target: EvidenceFromProto}
+          - {package: evidence, target: EvidencePool}
+          - {package: evidence, target: EvidenceReactorReceive}
           - {package: types, target: UnwrapLegacyBlobTx}
+          - {package: light, target: LightClientVerify}
+          - {package: light/provider/http, target: HTTPProviderLightBlock}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
