@@ -348,9 +348,7 @@ func (w *crashAtPrecommitWAL) FlushAndSync() error {
 }
 
 func (w *crashAtPrecommitWAL) WriteSync(m WALMessage) error {
-	mi, ok := m.(msgInfo)
-	vm, isVote := mi.Msg.(*VoteMessage)
-	if !ok || !isVote || vm.Vote.Type != cmtproto.PrecommitType {
+	if !isOwnPrecommit(m) {
 		err := w.BaseWAL.WriteSync(m)
 		w.synced, _ = w.Group().HeadSize()
 		return err
@@ -398,19 +396,19 @@ func (f *lockFixture) crashAtPrecommit(t *testing.T, after bool) (*types.Proposa
 }
 
 // walMsgs returns the records of the WAL head file.
-func walMsgs(t *testing.T, walFile string) []WALMessage {
+func walMsgs(t *testing.T, walFile string) []*TimedWALMessage {
 	t.Helper()
 	in, err := os.Open(walFile)
 	require.NoError(t, err)
 	defer in.Close()
 	dec := NewWALDecoder(in)
-	var msgs []WALMessage
+	var msgs []*TimedWALMessage
 	for {
 		msg, err := dec.Decode()
 		if err != nil {
 			return msgs
 		}
-		msgs = append(msgs, msg.Msg)
+		msgs = append(msgs, msg)
 	}
 }
 
@@ -430,8 +428,8 @@ func TestLockRecordCrashBeforePrecommit(t *testing.T) {
 	f := newLockFixture(t, true, false)
 	prop, block, parts := f.crashAtPrecommit(t, false)
 	for _, m := range walMsgs(t, f.config.Consensus.WalFile()) {
-		_, isLock := m.(LockInfo)
-		require.False(t, isLock || isOwnPrecommit(m), "unsynced record in the WAL: %v", m)
+		_, isLock := m.Msg.(LockInfo)
+		require.False(t, isLock || isOwnPrecommit(m.Msg), "unsynced record in the WAL: %v", m.Msg)
 	}
 	pv := privval.LoadFilePV(f.config.PrivValidatorKeyFile(), f.config.PrivValidatorStateFile())
 	require.Equal(t, int8(3), pv.LastSignState.Step, "the precommit was signed before the crash")
@@ -456,10 +454,10 @@ func TestLockRecordCrashAfterPrecommit(t *testing.T) {
 	_, block, parts := f.crashAtPrecommit(t, true)
 	lockAt, voteAt := -1, -1
 	for i, m := range walMsgs(t, f.config.Consensus.WalFile()) {
-		if _, ok := m.(LockInfo); ok && lockAt < 0 {
+		if _, ok := m.Msg.(LockInfo); ok && lockAt < 0 {
 			lockAt = i
 		}
-		if isOwnPrecommit(m) {
+		if isOwnPrecommit(m.Msg) {
 			voteAt = i
 		}
 	}
@@ -488,28 +486,16 @@ func TestReplayWALWithoutLockRecords(t *testing.T) {
 // dropLockRecords rewrites the WAL head file without its LockInfo records.
 func dropLockRecords(t *testing.T, walFile string) int {
 	t.Helper()
-	in, err := os.Open(walFile)
+	msgs := walMsgs(t, walFile)
+	out, err := os.Create(walFile)
 	require.NoError(t, err)
-	dec := NewWALDecoder(in)
-	var msgs []*TimedWALMessage
+	enc := NewWALEncoder(out)
 	dropped := 0
-	for {
-		msg, err := dec.Decode()
-		if err != nil {
-			break
-		}
+	for _, msg := range msgs {
 		if _, ok := msg.Msg.(LockInfo); ok {
 			dropped++
 			continue
 		}
-		msgs = append(msgs, msg)
-	}
-	require.NoError(t, in.Close())
-
-	out, err := os.Create(walFile)
-	require.NoError(t, err)
-	enc := NewWALEncoder(out)
-	for _, msg := range msgs {
 		require.NoError(t, enc.Encode(msg))
 	}
 	require.NoError(t, out.Close())

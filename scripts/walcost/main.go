@@ -4,7 +4,6 @@
 package main
 
 import (
-	"crypto/rand"
 	"encoding/binary"
 	"encoding/json"
 	"flag"
@@ -23,6 +22,7 @@ import (
 
 	"github.com/cometbft/cometbft/consensus"
 	auto "github.com/cometbft/cometbft/libs/autofile"
+	cmtrand "github.com/cometbft/cometbft/libs/rand"
 	cmtcons "github.com/cometbft/cometbft/proto/tendermint/consensus"
 	cmtcrypto "github.com/cometbft/cometbft/proto/tendermint/crypto"
 	cmtproto "github.com/cometbft/cometbft/proto/tendermint/types"
@@ -33,6 +33,8 @@ const (
 	partSize = 64 << 10 // types.BlockPartSizeBytes
 	nParts   = 512      // 32 MiB block
 	nVals    = 100
+
+	walHeight = 1 << 22
 )
 
 type kind int
@@ -102,16 +104,12 @@ func (r *rec) encode(m *cmtcons.WALMessage) []byte {
 	return r.buf
 }
 
-func rnd(n int) []byte {
-	b := make([]byte, n)
-	_, _ = rand.Read(b)
-	return b
-}
-
 var (
-	blockID = cmtproto.BlockID{Hash: rnd(32), PartSetHeader: cmtproto.PartSetHeader{Total: nParts, Hash: rnd(32)}}
-	partBuf = rnd(partSize)
-	aunts   = [][]byte{rnd(32), rnd(32), rnd(32), rnd(32), rnd(32), rnd(32), rnd(32), rnd(32), rnd(32)}
+	blockID = cmtproto.BlockID{Hash: cmtrand.Bytes(32), PartSetHeader: cmtproto.PartSetHeader{Total: nParts, Hash: cmtrand.Bytes(32)}}
+	partBuf = cmtrand.Bytes(partSize)
+	aunts   = [][]byte{cmtrand.Bytes(32), cmtrand.Bytes(32), cmtrand.Bytes(32), cmtrand.Bytes(32), cmtrand.Bytes(32), cmtrand.Bytes(32), cmtrand.Bytes(32), cmtrand.Bytes(32), cmtrand.Bytes(32)}
+	valAddr = cmtrand.Bytes(20)
+	sig     = cmtrand.Bytes(64)
 	peerID  = strings.Repeat("ab", 20)
 )
 
@@ -121,27 +119,27 @@ func msgInfo(m cmtcons.Message, peer string) *cmtcons.WALMessage {
 
 func step(name string) *cmtcons.WALMessage {
 	return &cmtcons.WALMessage{Sum: &cmtcons.WALMessage_EventDataRoundState{
-		EventDataRoundState: &cmtproto.EventDataRoundState{Height: 1 << 22, Step: name}}}
+		EventDataRoundState: &cmtproto.EventDataRoundState{Height: walHeight, Step: name}}}
 }
 
 func timeout() *cmtcons.WALMessage {
 	return &cmtcons.WALMessage{Sum: &cmtcons.WALMessage_TimeoutInfo{
-		TimeoutInfo: &cmtcons.TimeoutInfo{Duration: time.Second, Height: 1 << 22, Step: 1}}}
+		TimeoutInfo: &cmtcons.TimeoutInfo{Duration: time.Second, Height: walHeight, Step: 1}}}
 }
 
 func endHeight() *cmtcons.WALMessage {
-	return &cmtcons.WALMessage{Sum: &cmtcons.WALMessage_EndHeight{EndHeight: &cmtcons.EndHeight{Height: 1 << 22}}}
+	return &cmtcons.WALMessage{Sum: &cmtcons.WALMessage_EndHeight{EndHeight: &cmtcons.EndHeight{Height: walHeight}}}
 }
 
 func vote(t cmtproto.SignedMsgType, peer string) *cmtcons.WALMessage {
-	v := &cmtproto.Vote{Type: t, Height: 1 << 22, BlockID: blockID, Timestamp: time.Now(),
-		ValidatorAddress: rnd(20), ValidatorIndex: 42, Signature: rnd(64)}
+	v := &cmtproto.Vote{Type: t, Height: walHeight, BlockID: blockID, Timestamp: time.Now(),
+		ValidatorAddress: valAddr, ValidatorIndex: 42, Signature: sig}
 	return msgInfo(cmtcons.Message{Sum: &cmtcons.Message_Vote{Vote: &cmtcons.Vote{Vote: v}}}, peer)
 }
 
 func proposal(peer string) *cmtcons.WALMessage {
-	p := cmtproto.Proposal{Type: cmtproto.ProposalType, Height: 1 << 22, PolRound: -1, BlockID: blockID,
-		Timestamp: time.Now(), Signature: rnd(64)}
+	p := cmtproto.Proposal{Type: cmtproto.ProposalType, Height: walHeight, PolRound: -1, BlockID: blockID,
+		Timestamp: time.Now(), Signature: sig}
 	return msgInfo(cmtcons.Message{Sum: &cmtcons.Message_Proposal{Proposal: &cmtcons.Proposal{Proposal: p}}}, peer)
 }
 
@@ -150,7 +148,7 @@ func lockInfo() *cmtcons.WALMessage {
 	if err != nil {
 		panic(err)
 	}
-	m, err := consensus.WALToProto(consensus.LockInfo{Height: 1 << 22, BlockID: *id, BlockTime: time.Now()})
+	m, err := consensus.WALToProto(consensus.LockInfo{Height: walHeight, BlockID: *id, BlockTime: time.Now()})
 	if err != nil {
 		panic(err)
 	}
@@ -160,7 +158,7 @@ func lockInfo() *cmtcons.WALMessage {
 func part(i int, peer string) *cmtcons.WALMessage {
 	p := cmtproto.Part{Index: uint32(i), Bytes: partBuf,
 		Proof: cmtcrypto.Proof{Total: nParts, Index: int64(i), LeafHash: aunts[0], Aunts: aunts}}
-	return msgInfo(cmtcons.Message{Sum: &cmtcons.Message_BlockPart{BlockPart: &cmtcons.BlockPart{Height: 1 << 22, Part: p}}}, peer)
+	return msgInfo(cmtcons.Message{Sum: &cmtcons.Message_BlockPart{BlockPart: &cmtcons.BlockPart{Height: walHeight, Part: p}}}, peer)
 }
 
 // wal is a consensus WAL: an autofile.Group with BaseWAL's 2 s flush ticker.
@@ -240,6 +238,7 @@ type arm struct {
 	bulk         *auto.Group // bulk block Group (B5, B5d, B5s)
 	file         *bulkFile   // bulk block store as a plain file (B5p) or O_DIRECT (B5b, -odirect)
 	bulkEnc      rec
+	votes        []time.Duration // per-vote samples of the last B5 height
 }
 
 func newArm(token string) *arm {
@@ -298,23 +297,24 @@ func (a *arm) close() {
 
 func (a *arm) height() sample {
 	s := sample{}
+	if a.kind == contention {
+		a.contend(s)
+		return s
+	}
 	w := a.w
+	w.write(step("RoundStepNewHeight"))
+	w.write(timeout())
+	w.write(step("RoundStepNewRound"))
 	switch a.kind {
 	case nonProposer:
-		w.write(step("RoundStepNewHeight"))
-		w.write(timeout())
-		w.write(step("RoundStepNewRound"))
 		w.write(step("RoundStepPropose"))
 		if a.peerProposal {
 			w.write(proposal(peerID))
 		}
 		a.prevote(s)
-		a.precommit(s, a.lock)
+		a.precommit(s)
 		a.endHeight(s)
 	case proposer:
-		w.write(step("RoundStepNewHeight"))
-		w.write(timeout())
-		w.write(step("RoundStepNewRound"))
 		timed(s, "propose", func() {
 			w.sync() // decideProposal flushes before signing
 			w.write(step("RoundStepPropose"))
@@ -327,12 +327,9 @@ func (a *arm) height() sample {
 			}
 		})
 		a.prevote(s)
-		a.precommit(s, 0)
+		a.precommit(s)
 		a.endHeight(s)
 	case cachedParts:
-		w.write(step("RoundStepNewHeight"))
-		w.write(timeout())
-		w.write(step("RoundStepNewRound"))
 		w.write(step("RoundStepPropose"))
 		timed(s, "parts", func() {
 			for i := 0; i < nParts; i++ {
@@ -340,12 +337,9 @@ func (a *arm) height() sample {
 			}
 		})
 		a.prevote(s)
-		a.precommit(s, 0)
+		a.precommit(s)
 		a.endHeight(s)
 	case fullWAL:
-		w.write(step("RoundStepNewHeight"))
-		w.write(timeout())
-		w.write(step("RoundStepNewRound"))
 		w.write(step("RoundStepPropose"))
 		timed(s, "parts", func() {
 			w.write(proposal(peerID))
@@ -359,16 +353,13 @@ func (a *arm) height() sample {
 				w.write(vote(cmtproto.PrevoteType, peerID))
 			}
 		})
-		a.precommit(s, 0)
+		a.precommit(s)
 		timed(s, "peervotes", func() {
 			for i := 0; i < nVals; i++ {
 				w.write(vote(cmtproto.PrecommitType, peerID))
 			}
 		})
 		a.endHeight(s)
-	case contention:
-		a.contend(s)
-		return s
 	}
 	var sum time.Duration
 	for _, d := range s {
@@ -388,13 +379,13 @@ func (a *arm) prevote(s sample) {
 	})
 }
 
-func (a *arm) precommit(s sample, lock int) {
+func (a *arm) precommit(s sample) {
 	timed(s, "precommit", func() {
-		if lock == 1 {
+		if a.lock == 1 {
 			a.w.write(lockInfo())
 		}
 		a.w.sync()
-		if lock == 2 { // enterPrecommit writes the record after signAddVote
+		if a.lock == 2 { // enterPrecommit writes the record after signAddVote
 			a.w.write(lockInfo())
 		}
 		a.w.write(step("RoundStepPrecommit"))
@@ -441,11 +432,8 @@ func (a *arm) contend(s sample) {
 		time.Sleep(5 * time.Millisecond)
 	}
 	s["bulk"] = <-done
-	extra[a.label] = append(extra[a.label], votes...)
+	a.votes = votes
 }
-
-// extra holds the per-vote samples of the B5 arms (8 per height).
-var extra = map[string][]time.Duration{}
 
 // bulkFile appends records, never fsynced, wrapping at 1 GiB; with O_DIRECT they are padded to 4 KiB.
 type bulkFile struct {
@@ -498,7 +486,7 @@ func raw(d string) map[string]any {
 	}
 	defer os.Remove(f.Name())
 	defer f.Close()
-	buf := rnd(1 << 20)
+	buf := cmtrand.Bytes(1 << 20)
 	t0 := time.Now()
 	for i := 0; i < 1024; i++ {
 		if _, err := f.Write(buf); err != nil {
@@ -588,10 +576,8 @@ func main() {
 					time.Sleep(time.Until(start.Add(time.Duration(slot) * *interval)))
 				}
 				slot++
-				nv := len(extra[a.label])
 				s := a.height()
 				if j < *warmup {
-					extra[a.label] = extra[a.label][:nv]
 					continue
 				}
 				for m, d := range s {
@@ -600,8 +586,11 @@ func main() {
 						_ = sf.Encode(map[string]any{"host": host, "arm": a.label, "metric": m, "h": j, "us": d.Microseconds()})
 					}
 				}
+				if len(a.votes) > 0 {
+					got[a.label]["vote"] = append(got[a.label]["vote"], a.votes...)
+				}
 				if sf != nil {
-					for _, d := range extra[a.label][nv:] {
+					for _, d := range a.votes {
 						_ = sf.Encode(map[string]any{"host": host, "arm": a.label, "metric": "vote", "h": j, "us": d.Microseconds()})
 					}
 				}
@@ -610,9 +599,6 @@ func main() {
 	}
 	for _, a := range as {
 		a.close()
-		if v := extra[a.label]; len(v) > 0 {
-			got[a.label]["vote"] = v
-		}
 		metrics := make([]string, 0, len(got[a.label]))
 		for m := range got[a.label] {
 			metrics = append(metrics, m)
