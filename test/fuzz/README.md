@@ -116,11 +116,18 @@ Known limits:
 ## CI and crash handling
 
 [The Fuzz Tests workflow](../../.github/workflows/fuzz-nightly.yml) runs each
-listed nightly target independently for ten minutes on the daily schedule and
-manual dispatch, or thirty seconds on relevant pull requests. It uses two
-workers per target, restores previously interesting inputs from the fuzz cache,
-and uploads `testdata/fuzz/Fuzz<Target>/` on failure. Failures on main feed the
-existing `notify-protocol-ci.yml` workflow.
+listed nightly target as its own job for ten minutes on the daily schedule and
+manual dispatch. It uses two workers per target, restores previously
+interesting inputs from the fuzz cache, and uploads `testdata/fuzz/Fuzz<Target>/`
+on failure. Failures on main feed the existing `notify-protocol-ci.yml` workflow.
+
+Pull requests skip that matrix. A single job runs
+[`scripts/fuzz-changed.sh`](../../scripts/fuzz-changed.sh), which fuzzes the
+targets in packages with a changed Go file or corpus entry for 15 seconds each,
+or every target when `internal/fuzzinput`, the script or the workflow changes.
+Seed corpora run on every pull request as part of the regular test jobs. Use
+`DRY_RUN=1 scripts/fuzz-changed.sh origin/main` to list the targets a branch
+would fuzz.
 
 For any crash or invariant failure:
 
