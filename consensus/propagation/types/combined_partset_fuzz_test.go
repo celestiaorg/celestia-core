@@ -87,6 +87,12 @@ func FuzzCombinedPartSetDecode(f *testing.F) {
 				proof = genuine((i + 1) % (2 * total)).Proof
 			}
 			added, err := cps.AddPart(part, proof)
+			if variant%4 == 0 {
+				// An unmodified part with its own proof is genuine and must
+				// be accepted, or acceptance regressions would go unnoticed.
+				require.NoError(t, err, "genuine part %d rejected", i)
+				require.True(t, added, "genuine part %d not added", i)
+			}
 			if added {
 				require.NoError(t, err)
 				require.Equal(t, []byte(want.Bytes), part.Data, "part %d accepted with data that does not match its root", i)
