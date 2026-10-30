@@ -39,7 +39,7 @@ const (
 	fzMaxReqs     = 4 // requesters the harness keeps open, like defaultMaxRequesters
 	fzMaxOps      = 48
 
-	// Excluded pending FINDING-blocksync-2; remove with the fix.
+	// Excluded pending PROTOCO-3528; remove with the fix.
 	fzCheckExtSigs = false
 )
 
