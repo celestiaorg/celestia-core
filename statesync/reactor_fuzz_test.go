@@ -12,7 +12,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	abci "github.com/cometbft/cometbft/abci/types"
-	"github.com/cometbft/cometbft/config"
+	cmtcfg "github.com/cometbft/cometbft/config"
 	"github.com/cometbft/cometbft/crypto/ed25519"
 	"github.com/cometbft/cometbft/libs/log"
 	"github.com/cometbft/cometbft/libs/trace"
@@ -22,7 +22,7 @@ import (
 	ssproto "github.com/cometbft/cometbft/proto/tendermint/statesync"
 	cmtversion "github.com/cometbft/cometbft/proto/tendermint/version"
 	sm "github.com/cometbft/cometbft/state"
-	"github.com/cometbft/cometbft/types"
+	cmttypes "github.com/cometbft/cometbft/types"
 )
 
 // fuzzMaxSnapshotChunks keeps chunk queues small so each input stays fast. The
@@ -191,8 +191,8 @@ type fuzzStateProvider struct{}
 
 func (fuzzStateProvider) AppHash(context.Context, uint64) ([]byte, error) { return fuzzAppHash, nil }
 
-func (fuzzStateProvider) Commit(_ context.Context, height uint64) (*types.Commit, error) {
-	return &types.Commit{Height: int64(height), BlockID: types.BlockID{Hash: []byte("blockhash")}}, nil
+func (fuzzStateProvider) Commit(_ context.Context, height uint64) (*cmttypes.Commit, error) {
+	return &cmttypes.Commit{Height: int64(height), BlockID: cmttypes.BlockID{Hash: []byte("blockhash")}}, nil
 }
 
 func (fuzzStateProvider) State(_ context.Context, height uint64) (sm.State, error) {
@@ -201,14 +201,14 @@ func (fuzzStateProvider) State(_ context.Context, height uint64) (sm.State, erro
 		Version:         cmtstate.Version{Consensus: cmtversion.Consensus{App: testAppVersion}},
 		LastBlockHeight: int64(height),
 		AppHash:         fuzzAppHash,
-		ConsensusParams: *types.DefaultConsensusParams(),
+		ConsensusParams: *cmttypes.DefaultConsensusParams(),
 	}
 	s.ConsensusParams.Version.App = testAppVersion
 	return s, nil
 }
 
 func newFuzzSwitch(tb testing.TB) *p2p.Switch {
-	cfg := config.DefaultP2PConfig()
+	cfg := cmtcfg.DefaultP2PConfig()
 	nodeKey := p2p.NodeKey{PrivKey: ed25519.GenPrivKeyFromSecret([]byte("statesync-fuzz"))}
 	transport := p2p.NewMultiplexTransport(p2p.DefaultNodeInfo{}, nodeKey, p2p.MConnConfig(cfg), trace.NoOpTracer())
 	sw := p2p.NewSwitch(cfg, transport)
@@ -255,7 +255,7 @@ func FuzzStateSyncReactor(f *testing.F) {
 		}
 		in := &fuzzBytes{b: data}
 
-		cfg := *config.DefaultStateSyncConfig()
+		cfg := *cmtcfg.DefaultStateSyncConfig()
 		cfg.MaxSnapshotChunks = fuzzMaxSnapshotChunks
 		cfg.ChunkFetchers = 0 // Sync must not spawn fetchers that outlive the input
 		conn := &fuzzSnapshotConn{script: &fuzzBytes{}, accepted: map[uint32]bool{}}
