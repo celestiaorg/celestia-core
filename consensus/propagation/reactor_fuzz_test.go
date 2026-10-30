@@ -2,6 +2,7 @@ package propagation
 
 import (
 	"bytes"
+	"flag"
 	"fmt"
 	"math/rand"
 	"runtime"
@@ -14,7 +15,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	dbm "github.com/cometbft/cometbft-db"
-	cfg "github.com/cometbft/cometbft/config"
+	cmtcfg "github.com/cometbft/cometbft/config"
 	proptypes "github.com/cometbft/cometbft/consensus/propagation/types"
 	"github.com/cometbft/cometbft/crypto"
 	"github.com/cometbft/cometbft/crypto/ed25519"
@@ -44,6 +45,7 @@ type fuzzBlock struct {
 	original *types.PartSet
 	parity   *types.PartSet
 	txs      types.Txs
+	keys     []types.TxKey // keys of txs, hashed once rather than per iteration
 }
 
 // part returns the bytes and proof of combined index i.
@@ -122,7 +124,11 @@ func loadFuzzFixtures(tb testing.TB) *fuzzFixtures {
 				PartsHashes: extractHashes(ps, parity),
 			}
 			fx.sign(tb, cb, true)
-			return &fuzzBlock{cb: cb, original: ps, parity: parity, txs: txs}
+			keys := make([]types.TxKey, len(txs))
+			for i, tx := range txs {
+				keys[i] = tx.Key()
+			}
+			return &fuzzBlock{cb: cb, original: ps, parity: parity, txs: txs, keys: keys}
 		}
 		a := deterministicTxs(5, 30_000, 50_000, 70_000, 40_000, 60_000)
 		fx.blocks = []*fuzzBlock{
@@ -150,23 +156,19 @@ func (fx *fuzzFixtures) sign(tb testing.TB, cb *proptypes.CompactBlock, proposal
 	require.NoError(tb, err)
 }
 
-// fuzzPeer records the recovery parts the reactor sends so the harness can
-// check that only verified data is ever relayed.
+// fuzzPeer checks every recovery part the reactor sends at send time, so
+// parts relayed by goroutines that outlive the iteration's steps (clearWants)
+// are checked too.
 type fuzzPeer struct {
 	*mock.Peer
-	mtx  sync.Mutex
-	sent []*propproto.RecoveryPart
+	check func(*propproto.RecoveryPart)
 }
 
 func (p *fuzzPeer) TrySend(e p2p.Envelope) bool { return p.Send(e) }
 
 func (p *fuzzPeer) Send(e p2p.Envelope) bool {
 	if rp, ok := e.Message.(*propproto.RecoveryPart); ok {
-		p.mtx.Lock()
-		if len(p.sent) < 4096 {
-			p.sent = append(p.sent, rp)
-		}
-		p.mtx.Unlock()
+		p.check(rp)
 	}
 	return true
 }
@@ -232,6 +234,15 @@ func (r *fuzzReader) hash() []byte {
 	return h
 }
 
+// signedProposal is a part set header the reactor may legitimately hold at a
+// height: one the proposer signed (a fixture or a re-signed byzantine compact
+// block) or one consensus reported as committed.
+type signedProposal struct {
+	height int64
+	psh    types.PartSetHeader
+	blk    *fuzzBlock // fixture with that part set, nil if none
+}
+
 type reactorFuzzer struct {
 	t      *testing.T
 	fx     *fuzzFixtures
@@ -240,11 +251,20 @@ type reactorFuzzer struct {
 	editor []*fuzzPeerStateEditor
 	mtx    sync.Mutex
 	panics []string
+	// signed and badSends are guarded by mtx; badSends is written by reactor
+	// goroutines when they send a part that no signed proposal commits to.
+	signed   []signedProposal
+	badSends []string
 }
 
 func newReactorFuzzer(t *testing.T, fx *fuzzFixtures, rd *fuzzReader) *reactorFuzzer {
 	f := &reactorFuzzer{t: t, fx: fx}
-	p2pCfg := cfg.DefaultP2PConfig()
+	for _, b := range fx.blocks {
+		f.addSigned(b.cb.Proposal.Height, b.original.Header())
+	}
+	// Registered first so it runs last, after the reactor has stopped.
+	t.Cleanup(func() { require.Empty(t, f.badSendsCopy(), "reactor sent unverified data") })
+	p2pCfg := cmtcfg.DefaultP2PConfig()
 	nodeKey := p2p.NodeKey{PrivKey: ed25519.GenPrivKeyFromSecret([]byte("propagation-fuzz-node"))}
 	transport := p2p.NewMultiplexTransport(p2p.DefaultNodeInfo{}, nodeKey, p2p.MConnConfig(p2pCfg), trace.NoOpTracer())
 	sw := p2p.NewSwitch(p2pCfg, transport)
@@ -254,9 +274,9 @@ func newReactorFuzzer(t *testing.T, fx *fuzzFixtures, rd *fuzzReader) *reactorFu
 	mask := rd.u32()
 	n := 0
 	for _, b := range fx.blocks {
-		for _, tx := range b.txs {
+		for i, tx := range b.txs {
 			if mask&(1<<(n%32)) != 0 {
-				mp.AddTx(tx)
+				mp.txs[b.keys[i]] = &types.CachedTx{Tx: tx}
 			}
 			n++
 		}
@@ -288,11 +308,15 @@ func newReactorFuzzer(t *testing.T, fx *fuzzFixtures, rd *fuzzReader) *reactorFu
 	}()
 	t.Cleanup(func() {
 		_ = r.Stop()
+		// Reactor.OnStop does not cancel the base reactor's processor
+		// goroutine, which keeps the whole reactor reachable; without this
+		// every iteration leaks a goroutine and several MB of heap.
+		r.BaseReactor.OnStop()
 		<-drained
 	})
 
 	for i, n := 0, 1+int(rd.byte()%3); i < n; i++ {
-		peer := &fuzzPeer{Peer: mock.NewPeer(nil)}
+		peer := &fuzzPeer{Peer: mock.NewPeer(nil), check: f.checkSent}
 		editor := &fuzzPeerStateEditor{height: fuzzStoredHeight + int64(rd.byte()%4)}
 		peer.Set(types.PeerStateKey, editor)
 		r.AddPeer(peer)
@@ -387,6 +411,7 @@ func (f *reactorFuzzer) step(rd *fuzzReader) {
 		}
 		if op == 1 {
 			fx.sign(f.t, cb, true)
+			f.addSigned(cb.Proposal.Height, cb.Proposal.BlockID.PartSetHeader)
 		} else if rd.byte()%2 == 0 {
 			cb.Signature = append([]byte{}, rd.bytes(64)...)
 		}
@@ -487,6 +512,7 @@ func (f *reactorFuzzer) step(rd *fuzzReader) {
 		h, _ := f.height()
 		if blk.cb.Proposal.Height >= h {
 			psh := blk.original.Header()
+			f.addSigned(blk.cb.Proposal.Height, psh)
 			f.r.AddCommitment(blk.cb.Proposal.Height, blk.cb.Proposal.Round+int32(rd.byte()%2), &psh)
 		}
 	case 11:
@@ -535,11 +561,51 @@ func (f *reactorFuzzer) fixtureFor(psh types.PartSetHeader) *fuzzBlock {
 	return nil
 }
 
+// addSigned records that the reactor may hold part set psh at height.
+func (f *reactorFuzzer) addSigned(height int64, psh types.PartSetHeader) {
+	f.mtx.Lock()
+	defer f.mtx.Unlock()
+	for _, sp := range f.signed {
+		if sp.height == height && sp.psh.Equals(psh) {
+			return
+		}
+	}
+	f.signed = append(f.signed, signedProposal{height: height, psh: psh, blk: f.fixtureFor(psh)})
+}
+
+// signedAt returns the fixture holding part set psh if a signed proposal or
+// commitment for psh exists at height.
+func (f *reactorFuzzer) signedAt(height int64, psh types.PartSetHeader) (*fuzzBlock, bool) {
+	f.mtx.Lock()
+	defer f.mtx.Unlock()
+	for _, sp := range f.signed {
+		if sp.height == height && sp.psh.Equals(psh) {
+			return sp.blk, true
+		}
+	}
+	return nil, false
+}
+
+// checkSent runs on reactor goroutines for every recovery part sent to a peer.
+func (f *reactorFuzzer) checkSent(rp *propproto.RecoveryPart) {
+	if f.knownPart(rp) {
+		return
+	}
+	f.mtx.Lock()
+	defer f.mtx.Unlock()
+	if len(f.badSends) < 16 {
+		f.badSends = append(f.badSends, fmt.Sprintf("part %d of %d/%d", rp.Index, rp.Height, rp.Round))
+	}
+}
+
 func (f *reactorFuzzer) checkInvariants() {
 	t := f.t
+	// Assertions never run while holding a lock: a failing one would leave it
+	// held and deadlock the cleanup.
 	f.mtx.Lock()
-	require.Empty(t, f.panics, "reactor recovered a panic")
+	panics := append([]string(nil), f.panics...)
 	f.mtx.Unlock()
+	require.Empty(t, panics, "reactor recovered a panic")
 
 	f.r.pmtx.Lock()
 	type entry struct {
@@ -557,9 +623,9 @@ func (f *reactorFuzzer) checkInvariants() {
 
 	for _, e := range entries {
 		orig := e.data.block.Original()
-		blk := f.fixtureFor(orig.Header())
-		require.NotNil(t, blk, "proposal %d/%d has a part set header no proposer signed", e.height, e.round)
-		require.Equal(t, blk.cb.Proposal.Height, e.height)
+		blk, ok := f.signedAt(e.height, orig.Header())
+		require.True(t, ok, "proposal %d/%d has a part set header no proposer signed at that height", e.height, e.round)
+		require.NotNil(t, blk, "proposal %d/%d has parts but its part set header matches no fixture", e.height, e.round)
 		for i := 0; i < int(orig.Total()); i++ {
 			if p := orig.GetPart(i); p != nil {
 				require.Equal(t, blk.original.GetPart(i).Bytes, p.Bytes, "original part %d of %d/%d differs from the signed block", i, e.height, e.round)
@@ -578,31 +644,44 @@ func (f *reactorFuzzer) checkInvariants() {
 		}
 	}
 
+	type key struct {
+		height int64
+		round  int32
+	}
 	for _, ps := range f.r.getPeers() {
+		var stateKeys, requestKeys []key
 		ps.mtx.RLock()
-		require.LessOrEqual(t, len(ps.unverifiedProposals), MaxUnverifiedProposals)
+		unverified := len(ps.unverifiedProposals)
 		for h, rounds := range ps.state {
 			for r := range rounds {
-				require.True(t, h >= fuzzStoredHeight && h <= fuzzMaxHeight && r >= 0 && r <= fuzzMaxRound+1,
-					"peer state grew an entry for %d/%d", h, r)
+				stateKeys = append(stateKeys, key{h, r})
 			}
 		}
 		for h, rounds := range ps.remainingRequests {
 			for r := range rounds {
-				require.True(t, h >= fuzzStoredHeight && h <= fuzzMaxHeight && r >= 0 && r <= fuzzMaxRound+1,
-					"peer request counter grew an entry for %d/%d", h, r)
+				requestKeys = append(requestKeys, key{h, r})
 			}
 		}
 		ps.mtx.RUnlock()
+		inRange := func(k key) bool {
+			return k.height >= fuzzStoredHeight && k.height <= fuzzMaxHeight && k.round >= 0 && k.round <= fuzzMaxRound+1
+		}
+		require.LessOrEqual(t, unverified, MaxUnverifiedProposals)
+		for _, k := range stateKeys {
+			require.True(t, inRange(k), "peer state grew an entry for %d/%d", k.height, k.round)
+		}
+		for _, k := range requestKeys {
+			require.True(t, inRange(k), "peer request counter grew an entry for %d/%d", k.height, k.round)
+		}
 	}
 
-	for _, peer := range f.peers {
-		peer.mtx.Lock()
-		for _, rp := range peer.sent {
-			require.True(t, f.knownPart(rp), "reactor sent unverified data for part %d of %d/%d", rp.Index, rp.Height, rp.Round)
-		}
-		peer.mtx.Unlock()
-	}
+	require.Empty(t, f.badSendsCopy(), "reactor sent unverified data")
+}
+
+func (f *reactorFuzzer) badSendsCopy() []string {
+	f.mtx.Lock()
+	defer f.mtx.Unlock()
+	return append([]string(nil), f.badSends...)
 }
 
 // knownPart reports whether a sent part carries the data of a block signed by
@@ -611,8 +690,13 @@ func (f *reactorFuzzer) knownPart(rp *propproto.RecoveryPart) bool {
 	if rp.Height == fuzzStoredHeight && rp.Index < f.fx.stored.Total() {
 		return bytes.Equal(f.fx.stored.GetPart(int(rp.Index)).Bytes, rp.Data)
 	}
-	for _, b := range f.fx.blocks {
-		if p, ok := b.part(rp.Index); ok && b.cb.Proposal.Height == rp.Height && bytes.Equal(p.Bytes, rp.Data) {
+	f.mtx.Lock()
+	defer f.mtx.Unlock()
+	for _, sp := range f.signed {
+		if sp.height != rp.Height || sp.blk == nil {
+			continue
+		}
+		if p, ok := sp.blk.part(rp.Index); ok && bytes.Equal(p.Bytes, rp.Data) {
 			return true
 		}
 	}
@@ -624,10 +708,25 @@ func (f *reactorFuzzer) knownPart(rp *propproto.RecoveryPart) bool {
 // transitions, then checks that only data committed to by a signed proposal
 // is stored or relayed and that per-peer state stays bounded.
 func FuzzPropagationReactor(f *testing.F) {
+	if fl := flag.Lookup("test.fuzzworker"); fl != nil && fl.Value.String() == "true" {
+		// Each iteration hashes and erasure-codes 64 KiB parts on several
+		// goroutines. Uncapped, two workers saturate every CPU of a CI runner
+		// and starve the fuzzing coordinator process. When -fuzztime expires,
+		// the coordinator compares its deadline error against a child context
+		// that context.cancel has not reached yet, and a starved coordinator
+		// sometimes reports that as a bare "context deadline exceeded" failure.
+		// One P per worker leaves CPU for the coordinator.
+		runtime.GOMAXPROCS(1)
+	}
 	fx := loadFuzzFixtures(f)
 	// Each step is (peer, fixture, op, op-specific bytes); see step.
 	seed := func(steps ...[]byte) []byte {
-		in := []byte{0xff, 0xff, 0xff, 0xff, 1, 1, 2} // all txs in the mempool, two peers
+		n := 7
+		for _, s := range steps {
+			n += len(s)
+		}
+		in := make([]byte, 0, n)
+		in = append(in, 0xff, 0xff, 0xff, 0xff, 1, 1, 2) // all txs in the mempool, two peers
 		for _, s := range steps {
 			in = append(in, s...)
 		}
@@ -670,11 +769,33 @@ func FuzzPropagationReactor(f *testing.F) {
 		})
 		defer watchdog.Stop()
 
-		rd := &fuzzReader{data: input}
-		fz := newReactorFuzzer(t, fx, rd)
-		for i := 0; i < fuzzMaxOps && len(rd.data) > 0; i++ {
-			fz.step(rd)
-		}
-		fz.checkInvariants()
+		runReactorFuzz(t, fx, input)
 	})
+}
+
+func runReactorFuzz(t *testing.T, fx *fuzzFixtures, input []byte) *reactorFuzzer {
+	rd := &fuzzReader{data: input}
+	fz := newReactorFuzzer(t, fx, rd)
+	for i := 0; i < fuzzMaxOps && len(rd.data) > 0; i++ {
+		fz.step(rd)
+	}
+	fz.checkInvariants()
+	return fz
+}
+
+// TestFuzzPropagationReactorResignedHeight replays a sequence where a
+// byzantine proposer re-signs the height-6 fixture's part set for the current
+// height 5. The reactor rightly accepts it, so the harness must check stored
+// proposals against what was signed rather than the fixture's original height.
+func TestFuzzPropagationReactorResignedHeight(t *testing.T) {
+	fx := loadFuzzFixtures(t)
+	fz := runReactorFuzz(t, fx, []byte{
+		0, 0, 0, 0, 2, 0, 0, 0, // empty mempool, three peers at the stored height
+		0, 3, 1, 5, 1, 0, // peer 0, fixture 3, re-signed compact block moved to height 5 round 0
+	})
+	fz.r.pmtx.Lock()
+	pd := fz.r.proposals[5][0]
+	fz.r.pmtx.Unlock()
+	require.NotNil(t, pd, "re-signed compact block was not accepted")
+	require.True(t, pd.block.Original().Header().Equals(fx.blocks[3].original.Header()))
 }
