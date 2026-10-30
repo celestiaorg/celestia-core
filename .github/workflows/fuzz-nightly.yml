@@ -45,6 +45,8 @@ jobs:
           - {package: types, target: ProposalFromProto}
           - {package: types, target: CommitFromProto}
           - {package: types, target: EvidenceFromProto}
+          - {package: evidence, target: EvidencePool}
+          - {package: evidence, target: EvidenceReactorReceive}
           - {package: types, target: UnwrapLegacyBlobTx}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
