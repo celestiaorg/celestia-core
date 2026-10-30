@@ -25,6 +25,9 @@ func (blockProp *Reactor) retryWants() {
 		if prop.block.IsComplete() {
 			continue
 		}
+		blockProp.pmtx.Lock()
+		catchup := prop.catchup
+		blockProp.pmtx.Unlock()
 
 		// only re-request original parts that are missing, not parity parts.
 		missing := prop.block.MissingOriginal()
@@ -45,8 +48,10 @@ func (blockProp *Reactor) retryWants() {
 			}
 			mc := missing.Copy()
 
+			// catch-up entries re-ask every peer each time: a peer may have answered
+			// with another block's parts or parked the want on an entry it never fills.
 			reqs, has := peer.GetRequests(height, round)
-			if has {
+			if has && !catchup {
 				mc = mc.Sub(reqs)
 			}
 
@@ -137,6 +142,43 @@ func (blockProp *Reactor) AddCommitment(height int64, round int32, psh *types.Pa
 	blockProp.round = 0
 	blockProp.ticker.Reset(RetryTime)
 	go blockProp.retryWants()
+}
+
+// serveCommitted fills incomplete entries of the committed block from the store and
+// answers the wants parked on them: a node that committed from its locked block never
+// receives those parts, so nothing else would.
+func (blockProp *Reactor) serveCommitted(height int64) {
+	meta := blockProp.store.LoadBlockMeta(height)
+	if meta == nil {
+		return
+	}
+	blockProp.pmtx.Lock()
+	entries := make(map[int32]*proptypes.CombinedPartSet)
+	for round, prop := range blockProp.proposals[height] {
+		if !prop.block.IsComplete() && prop.block.Original().Header().Equals(meta.BlockID.PartSetHeader) {
+			entries[round] = prop.block
+		}
+	}
+	blockProp.pmtx.Unlock()
+	if len(entries) == 0 {
+		return
+	}
+
+	parts, _, err := blockProp.store.LoadPartSet(height)
+	if err != nil {
+		blockProp.Logger.Error("failed to load committed parts", "height", height, "err", err)
+		return
+	}
+	for round, block := range entries {
+		for i := 0; i < int(parts.Total()); i++ {
+			part := parts.GetPart(i)
+			if _, err := block.AddOriginalPart(part); err != nil {
+				blockProp.Logger.Error("failed to add committed part", "height", height, "round", round, "part", i, "err", err)
+				return
+			}
+			blockProp.clearWants(&proptypes.RecoveryPart{Height: height, Round: round, Index: part.Index, Data: part.Bytes}, part.Proof)
+		}
+	}
 }
 
 func shuffle[T any](slice []T) []T {
