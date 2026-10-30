@@ -417,7 +417,7 @@ func FuzzLightBlockFromProto(f *testing.F) {
 			_ = lb.SignedHeader.ValidateBasic(verifyFuzzChainID)
 			sh, err := SignedHeaderFromProto(lb.SignedHeader.ToProto())
 			require.NoError(t, err)
-			require.Equal(t, lb.SignedHeader.Hash(), sh.Hash())
+			require.Equal(t, lb.Hash(), sh.Hash())
 		}
 		if err := lb.ValidateBasic(verifyFuzzChainID); err != nil {
 			return
