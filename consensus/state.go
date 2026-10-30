@@ -1606,7 +1606,7 @@ func (cs *State) enterPrevote(height int64, round int32) {
 	cs.newStep()
 
 	// Prevotes collected before this step are otherwise only acted on when our own
-	// prevote is added, which never happens if the signer refused it (#3505).
+	// prevote is added, which never happens if the signer refused it.
 	cs.handlePrevoteQuorum(height, round)
 }
 
@@ -1790,6 +1790,13 @@ func (cs *State) enterPrecommit(height int64, round int32) {
 			logger.Debug("precommit step; no +2/3 prevotes during enterPrecommit; precommitting nil")
 		}
 
+		cs.signAddVote(cmtproto.PrecommitType, nil, types.PartSetHeader{}, nil)
+		return
+	}
+
+	// Replay can resume below a restored lock's round: an older polka must not move the lock.
+	if cs.rs.IsLocked() && round < cs.rs.LockedRound {
+		logger.Debug("precommit step; polka below the locked round; precommitting nil", "locked_round", cs.rs.LockedRound)
 		cs.signAddVote(cmtproto.PrecommitType, nil, types.PartSetHeader{}, nil)
 		return
 	}
@@ -2791,6 +2798,10 @@ func (cs *State) addVote(vote *types.Vote, peerID p2p.ID) (added bool, err error
 		case cs.rs.Round == vote.Round && cstypes.RoundStepPrevote <= cs.rs.Step: // current round
 			cs.handlePrevoteQuorum(height, vote.Round)
 
+		case cs.rs.Round == vote.Round && cs.isProposalComplete():
+			// A held block made the proposal block above, as its last part arriving would have.
+			cs.enterPrevote(height, cs.rs.Round)
+
 		case cs.rs.Proposal != nil && 0 <= cs.rs.Proposal.POLRound && cs.rs.Proposal.POLRound == vote.Round:
 			// If the proposal is now complete, enter prevote of cs.rs.Round.
 			if cs.isProposalComplete() {
@@ -3148,6 +3159,10 @@ func (cs *State) syncData() {
 			}
 			cs.rsMtx.RLock()
 			height, round := cs.rs.Height, cs.rs.Round
+			// the propagator may already hold a commit for an earlier round.
+			if cs.rs.Step == cstypes.RoundStepCommit {
+				round = cs.rs.CommitRound
+			}
 			currentProposalParts := cs.rs.ProposalBlockParts
 			cs.rsMtx.RUnlock()
 			if currentProposalParts == nil {
@@ -3190,7 +3205,7 @@ func (cs *State) syncData() {
 				}
 			}
 
-			cs.peerMsgQueue <- msgInfo{&BlockPartMessage{h, r, part.Part}, ""}
+			cs.peerMsgQueue <- msgInfo{&BlockPartMessage{h, part.Round, part.Part}, ""}
 		}
 	}
 }

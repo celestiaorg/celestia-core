@@ -95,6 +95,21 @@ func (p *ProposalCache) conflictsWith(cb *proptypes.CompactBlock) bool {
 	return existing != nil && !sameProposalIdentity(existing, cb)
 }
 
+// getCachedState returns the cached entry at (height, round) without falling back
+// to the store; unless catchup, the entry must also be relevant.
+func (p *ProposalCache) getCachedState(height int64, round int32, catchup bool) (*proptypes.CompactBlock, *proptypes.CombinedPartSet, bool) {
+	p.pmtx.Lock()
+	defer p.pmtx.Unlock()
+	if !catchup && !p.relevant(height, round) {
+		return nil, nil, false
+	}
+	prop, has := p.proposals[height][round]
+	if !has {
+		return nil, nil, false
+	}
+	return prop.compactBlock, prop.block, true
+}
+
 // GetProposal returns the proposal and block for a given height and round if
 // this node has it stored or cached.
 func (p *ProposalCache) GetProposal(height int64, round int32) (*types.Proposal, *types.PartSet, bool) {

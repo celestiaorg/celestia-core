@@ -5,7 +5,6 @@ import (
 	"context"
 	"fmt"
 	"strings"
-	"sync"
 	"testing"
 	"time"
 
@@ -1478,19 +1477,8 @@ func TestStatePolkaBeforeProposalStepOrder(t *testing.T) {
 	incrementRound(vs2, vs3, vs4)
 	cs1.state.Timeouts.TimeoutPropose = time.Minute
 
-	var mu sync.Mutex
-	var steps []string
-	sub, err := cs1.eventBus.Subscribe(ctx, testSubscriber, types.EventQueryNewRoundStep, 10)
+	stepSub, err := cs1.eventBus.Subscribe(ctx, testSubscriber, types.EventQueryNewRoundStep, 10)
 	require.NoError(t, err)
-	go func() {
-		for msg := range sub.Out() {
-			if rs := msg.Data().(types.EventDataRoundState); rs.Round == round {
-				mu.Lock()
-				steps = append(steps, rs.Step)
-				mu.Unlock()
-			}
-		}
-	}()
 	pv1, err := cs1.privValidator.GetPubKey()
 	require.NoError(t, err)
 	voteCh := subscribeToVoter(cs1, pv1.Address())
@@ -1504,9 +1492,12 @@ func TestStatePolkaBeforeProposalStepOrder(t *testing.T) {
 
 	ensurePrevoteMatch(t, voteCh, height, round, propBlock.Hash())
 	ensurePrecommitMatch(t, voteCh, height, round, propBlock.Hash())
-	time.Sleep(200 * time.Millisecond) // let our own prevote be processed
-	mu.Lock()
-	defer mu.Unlock()
+	var steps []string
+	for len(stepSub.Out()) > 0 {
+		if rs := (<-stepSub.Out()).Data().(types.EventDataRoundState); rs.Round == round {
+			steps = append(steps, rs.Step)
+		}
+	}
 	require.Equal(t, []string{"RoundStepPropose", "RoundStepPrevote", "RoundStepPrecommit"}, steps)
 }
 
