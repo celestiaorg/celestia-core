@@ -1,0 +1,136 @@
+package core_test
+
+import (
+	"context"
+	"io"
+	"net"
+	"testing"
+	"time"
+
+	"github.com/stretchr/testify/require"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/test/bufconn"
+
+	"github.com/cometbft/cometbft/rpc/core"
+	coregrpc "github.com/cometbft/cometbft/rpc/grpc"
+	"github.com/cometbft/cometbft/types"
+)
+
+// FuzzRPCGRPCAPI calls the legacy gRPC BroadcastAPI, BlockAPI and
+// BlobstreamAPI servers over an in-memory bufconn listener with fuzzed
+// request fields, against an Environment with committed blocks.
+func FuzzRPCGRPCAPI(f *testing.F) {
+	env := core.NewEnvForTest(f)
+	// BroadcastTx waits for the tx to be committed; nothing commits blocks
+	// here, so let it time out right away.
+	env.Config.TimeoutBroadcastTxCommit = time.Millisecond
+
+	lis := bufconn.Listen(1 << 20)
+	served := make(chan struct{})
+	go func() {
+		defer close(served)
+		_ = coregrpc.StartGRPCServer(env, lis)
+	}()
+	conn, err := grpc.NewClient("passthrough:///bufnet",
+		grpc.WithContextDialer(func(ctx context.Context, _ string) (net.Conn, error) { return lis.DialContext(ctx) }),
+		grpc.WithTransportCredentials(insecure.NewCredentials()))
+	require.NoError(f, err)
+	f.Cleanup(func() {
+		_ = conn.Close()
+		_ = lis.Close()
+		<-served
+	})
+	broadcast := coregrpc.NewBroadcastAPIClient(conn)
+	blocks := coregrpc.NewBlockAPIClient(conn)
+	blobstream := coregrpc.NewBlobstreamAPIClient(conn)
+	h := int64(core.EnvTestHeight)
+
+	for sel := uint8(0); sel < 6; sel++ {
+		f.Add(sel, int64(2), uint64(1), uint64(h+1), []byte("k=v"))
+	}
+	f.Add(uint8(1), int64(0), uint64(1), uint64(0), []byte(core.EnvTestTx(1, 0).Hash()))
+	f.Add(uint8(2), int64(-1), uint64(0), uint64(0), []byte{})
+	f.Add(uint8(5), int64(-1), uint64(1), ^uint64(0), []byte{})
+
+	f.Fuzz(func(t *testing.T, sel uint8, height int64, a, b uint64, data []byte) {
+		if len(data) > 2*core.EnvTestMaxTxBytes {
+			return
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		prove := a&1 == 1
+		switch sel % 6 {
+		case 0:
+			res, err := broadcast.BroadcastTx(ctx, &coregrpc.RequestBroadcastTx{Tx: data})
+			if err == nil {
+				require.NotNil(t, res.CheckTx)
+			}
+		case 1:
+			stream, err := blocks.BlockByHash(ctx, &coregrpc.BlockByHashRequest{Hash: data, Prove: prove})
+			require.NoError(t, err)
+			drainParts(t, stream.Recv)
+		case 2:
+			stream, err := blocks.BlockByHeight(ctx, &coregrpc.BlockByHeightRequest{Height: height, Prove: prove})
+			require.NoError(t, err)
+			n, err := drainParts(t, stream.Recv)
+			if height >= 0 && height <= h {
+				require.NoError(t, err)
+				require.Positive(t, n)
+			}
+		case 3:
+			res, err := blocks.Commit(ctx, &coregrpc.CommitRequest{Height: height})
+			if height >= 0 && height <= h {
+				require.NoError(t, err)
+				want := height
+				if want == 0 {
+					want = h
+				}
+				require.Equal(t, want, res.Commit.Height)
+			}
+		case 4:
+			res, err := blocks.ValidatorSet(ctx, &coregrpc.ValidatorSetRequest{Height: height})
+			if height < 0 {
+				require.Error(t, err)
+			} else if err == nil {
+				vs, err := types.ValidatorSetFromProto(res.ValidatorSet)
+				require.NoError(t, err)
+				require.Equal(t, 1, vs.Size())
+			}
+		case 5:
+			res, err := blobstream.DataRootInclusionProof(ctx, &coregrpc.DataRootInclusionProofRequest{Height: height, Start: a, End: b})
+			if err == nil {
+				require.True(t, a >= 1 && a < b && b <= uint64(h)+1)
+				require.True(t, height >= 0 && uint64(height) >= a && uint64(height) < b)
+				require.EqualValues(t, b-a, res.Proof.Total)
+			}
+		}
+		// BroadcastTx subscribes as "" and must always unsubscribe.
+		require.Zero(t, env.EventBus.NumClientSubscriptions(""))
+		env.Mempool.Flush()
+	})
+}
+
+// partResponse is the common shape of the BlockByHash/BlockByHeight responses.
+type partResponse interface{ GetIsLast() bool }
+
+// drainParts reads a block stream to the end and returns the number of parts.
+func drainParts[R partResponse](t *testing.T, recv func() (R, error)) (int, error) {
+	n := 0
+	for {
+		res, err := recv()
+		if err == io.EOF {
+			return n, nil
+		}
+		if err != nil {
+			return n, err
+		}
+		n++
+		require.LessOrEqual(t, n, int(types.MaxBlockPartsCount))
+		if res.GetIsLast() {
+			_, err = recv()
+			require.ErrorIs(t, err, io.EOF)
+			return n, nil
+		}
+	}
+}
