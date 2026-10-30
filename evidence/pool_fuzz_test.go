@@ -638,11 +638,25 @@ func FuzzEvidenceReactorReceive(f *testing.F) {
 			require.Zero(t, pool.Size())
 			return
 		}
+		// Replay the decoded list on an identical pool to decide, per item,
+		// whether the reactor must punish the peer: the first evidence the
+		// pool rejects as invalid stops the peer and ends processing, while
+		// other errors (duplicates, committed evidence) are skipped.
+		model := fx.newPool(t)
+		wantStopped := false
+		for _, ev := range decoded {
+			if _, invalid := model.AddEvidence(ev).(*cmttypes.ErrInvalidEvidence); invalid {
+				wantStopped = true
+				break
+			}
+		}
+		require.Equal(t, wantStopped, !peer.IsRunning(), "peer punishment disagrees with evidence verification")
 		pending, _ := pool.PendingEvidence(-1)
-		require.LessOrEqual(t, len(pending), len(decoded))
+		wantPending, _ := model.PendingEvidence(-1)
+		require.Equal(t, len(wantPending), len(pending))
 		require.EqualValues(t, len(pending), pool.Size())
 		for _, ev := range pending {
-			require.True(t, cmttypes.EvidenceList(decoded).Has(ev))
+			require.True(t, cmttypes.EvidenceList(wantPending).Has(ev))
 			fx.requireSignedByValidators(t, ev)
 		}
 	})
