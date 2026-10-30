@@ -104,7 +104,7 @@ func (app *seqApp) commit(txs []types.Tx) {
 func setupSeqPool(t testing.TB, app *seqApp, mutate func(*config.MempoolConfig)) *TxPool {
 	t.Helper()
 	cfg := config.TestMempoolConfig()
-	cfg.AsyncRecheck = true
+	cfg.DisableAsyncRecheck = false
 	if mutate != nil {
 		mutate(cfg)
 	}
@@ -339,21 +339,21 @@ func TestAsyncRecheck_PassesNeverPileUp(t *testing.T) {
 	require.Equal(t, pool, txmp.Size())
 }
 
-// With async_recheck off, or recheck off, the lock is released before return.
+// With disable_async_recheck set, or recheck off, the lock is released before return.
 func TestAsyncRecheck_SwitchesOffStaySynchronous(t *testing.T) {
 	for _, tc := range []struct {
 		name         string
-		async        bool
+		disableAsync bool
 		recheck      bool
 		wantRechecks int32
 	}{
-		{"async off", false, true, 2},
-		{"recheck off", true, false, 0},
+		{"async disabled", true, true, 2},
+		{"recheck off", false, false, 0},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			app := newSeqApp()
 			txmp := setupSeqPool(t, app, func(c *config.MempoolConfig) {
-				c.AsyncRecheck = tc.async
+				c.DisableAsyncRecheck = tc.disableAsync
 				c.Recheck = tc.recheck
 			})
 			txmp.EnableTxsAvailable()
