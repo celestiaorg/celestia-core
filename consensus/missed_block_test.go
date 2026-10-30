@@ -14,6 +14,7 @@ import (
 	cfg "github.com/cometbft/cometbft/config"
 	"github.com/cometbft/cometbft/consensus/propagation"
 	cstypes "github.com/cometbft/cometbft/consensus/types"
+	cmtpubsub "github.com/cometbft/cometbft/libs/pubsub"
 	"github.com/cometbft/cometbft/p2p"
 	cmtcons "github.com/cometbft/cometbft/proto/tendermint/consensus"
 	propproto "github.com/cometbft/cometbft/proto/tendermint/propagation"
@@ -49,34 +50,33 @@ func (f *missedBlockFilter) drop(e p2p.UnprocessedEnvelope) bool {
 			val := f.valIdx[v.Vote.ValidatorIndex]
 			return (val == f.c && f.node != f.c) || (val == f.b && f.node == f.c)
 		}
-		if f.node != f.d {
-			return false
+		if p := m.GetProposal(); p != nil {
+			return f.hidden(p.Proposal.Height, p.Proposal.Round)
 		}
-		if p := m.GetProposal(); p != nil && p.Proposal.Height == f.target && p.Proposal.Round == 0 {
-			return true
-		}
-		if bp := m.GetBlockPart(); bp != nil && bp.Height == f.target && bp.Round == 0 {
-			return true
+		if bp := m.GetBlockPart(); bp != nil {
+			return f.hidden(bp.Height, bp.Round)
 		}
 	case propagation.DataChannel, propagation.WantChannel:
-		if f.node != f.d {
-			return false
-		}
 		m := &propproto.Message{}
-		if proto.Unmarshal(e.Message, m) != nil {
+		if f.node != f.d || proto.Unmarshal(e.Message, m) != nil {
 			return false
 		}
-		if cb := m.GetCompactBlock(); cb != nil && cb.Proposal != nil && cb.Proposal.Height == f.target && cb.Proposal.Round == 0 {
-			return true
+		if cb := m.GetCompactBlock(); cb != nil && cb.Proposal != nil {
+			return f.hidden(cb.Proposal.Height, cb.Proposal.Round)
 		}
-		if hp := m.GetHaveParts(); hp != nil && hp.Height == f.target && hp.Round == 0 {
-			return true
+		if hp := m.GetHaveParts(); hp != nil {
+			return f.hidden(hp.Height, hp.Round)
 		}
-		if rp := m.GetRecoveryPart(); rp != nil && rp.Height == f.target && rp.Round == 0 {
-			return true
+		if rp := m.GetRecoveryPart(); rp != nil {
+			return f.hidden(rp.Height, rp.Round)
 		}
 	}
 	return false
+}
+
+// hidden reports whether node d must not see this round-0 block data.
+func (f *missedBlockFilter) hidden(height int64, round int32) bool {
+	return f.node == f.d && height == f.target && round == 0
 }
 
 // configTimeoutsApp leaves the round timeouts to the consensus config.
@@ -96,7 +96,7 @@ func (a configTimeoutsApp) FinalizeBlock(ctx context.Context, req *abci.RequestF
 func TestReactorCommitsBlockNeverReceived(t *testing.T) {
 	const n = 4
 	const target = int64(3)
-	css, cleanup := randConsensusNet(t, n, "consensus_missed_block_test", newMockTickerFunc(false),
+	css, cleanup := randConsensusNet(t, n, "consensus_missed_block_test", NewTimeoutTicker,
 		func() abci.Application { return configTimeoutsApp{kvstore.NewInMemoryApplication()} },
 		func(c *cfg.Config) {
 			c.Consensus.TimeoutPropose = 2 * time.Second
@@ -107,9 +107,6 @@ func TestReactorCommitsBlockNeverReceived(t *testing.T) {
 			c.Consensus.SkipTimeoutCommit = false
 		})
 	t.Cleanup(cleanup)
-	for i := range css {
-		css[i].SetTimeoutTicker(NewTimeoutTicker())
-	}
 
 	// roles at the target height: proposer priorities advance once per height.
 	vals := css[0].GetState().Validators.CopyIncrementProposerPriority(int32(target - 1))
@@ -172,13 +169,43 @@ func TestReactorCommitsBlockNeverReceived(t *testing.T) {
 	require.EqualValues(t, 1, commit.Round)
 }
 
-// partFeeder hands consensus the parts a test sends instead of the propagator's.
+// partFeeder hands consensus the parts a test sends instead of the propagator's, and
+// holds no block of its own.
 type partFeeder struct {
 	propagation.Propagator
 	parts chan types.PartInfo
 }
 
 func (p partFeeder) GetPartChan() <-chan types.PartInfo { return p.parts }
+
+func (p partFeeder) GetProposal(int64, int32) (*types.Proposal, *types.PartSet, bool) {
+	return nil, nil, false
+}
+
+// commitEarlierRound starts cs1 (round 0's proposer), moves it to round 1 on a nil polka
+// and has the round-0 precommits for its block X commit X while it is in round 1.
+func commitEarlierRound(t *testing.T, cs1 *State, others []*validatorStub) (*types.PartSet, <-chan cmtpubsub.Message) {
+	_, blockX := decideProposal(context.Background(), t, cs1, others[0], 1, 0)
+	partsX, err := blockX.MakePartSet(types.BlockPartSizeBytes)
+	require.NoError(t, err)
+	newRoundCh := subscribe(cs1.eventBus, types.EventQueryNewRound)
+	newBlockCh := subscribe(cs1.eventBus, types.EventQueryNewBlock)
+	proposalCh := subscribe(cs1.eventBus, types.EventQueryCompleteProposal)
+	require.NoError(t, cs1.Start())
+	t.Cleanup(func() { _ = cs1.Stop(); cs1.Wait() })
+	ensureNewRound(newRoundCh, 1, 0)
+	// own parts still queued after the round skip would complete X in the commit step.
+	ensureNewProposal(proposalCh, 1, 0)
+
+	incrementRound(others...)
+	signAddVotes(cs1, cmtproto.PrevoteType, nil, types.PartSetHeader{}, false, others...)
+	ensureNewRound(newRoundCh, 1, 1)
+	for _, vs := range others {
+		vs.Round = 0
+	}
+	signAddVotes(cs1, cmtproto.PrecommitType, blockX.Hash(), partsX.Header(), true, others...)
+	return partsX, newBlockCh
+}
 
 // A node that enters the commit step for an earlier round than its current one stays
 // there on its current round's precommits, takes the commit round's parts and commits.
@@ -187,27 +214,12 @@ func TestCommitForEarlierRoundTakesItsParts(t *testing.T) {
 	others := vss[1:]
 	feeder := partFeeder{Propagator: cs1.propagator, parts: make(chan types.PartInfo, 16)}
 	cs1.propagator = feeder
-	_, blockX := decideProposal(context.Background(), t, cs1, vss[1], 1, 0)
-	partsX, err := blockX.MakePartSet(types.BlockPartSizeBytes)
-	require.NoError(t, err)
-	newRoundCh := subscribe(cs1.eventBus, types.EventQueryNewRound)
-	newBlockCh := subscribe(cs1.eventBus, types.EventQueryNewBlock)
-	require.NoError(t, cs1.Start())
-	t.Cleanup(func() { _ = cs1.Stop(); cs1.Wait() })
-	ensureNewRound(newRoundCh, 1, 0)
-
-	// a round-1 polka moves the node on; the round-0 precommits for X then commit it.
-	incrementRound(others...)
-	signAddVotes(cs1, cmtproto.PrevoteType, nil, types.PartSetHeader{}, false, others...)
-	ensureNewRound(newRoundCh, 1, 1)
-	for _, vs := range others {
-		vs.Round = 0
-	}
-	signAddVotes(cs1, cmtproto.PrecommitType, blockX.Hash(), partsX.Header(), true, others...)
+	partsX, newBlockCh := commitEarlierRound(t, cs1, others)
 	require.Eventually(t, func() bool {
 		rs := cs1.GetRoundState()
 		return rs.Step == cstypes.RoundStepCommit && rs.CommitRound == 0 && rs.Round == 1
 	}, 5*time.Second, 10*time.Millisecond)
+
 	for _, vs := range others {
 		vs.Round = 1
 	}
@@ -220,5 +232,13 @@ func TestCommitForEarlierRoundTakesItsParts(t *testing.T) {
 	for i := 0; i < int(partsX.Total()); i++ {
 		feeder.parts <- types.PartInfo{Part: partsX.GetPart(i), Height: 1, Round: 0}
 	}
+	ensureNewBlock(newBlockCh, 1)
+}
+
+// The proposer's propagator still holds its round-0 block, complete, after consensus
+// dropped it for round 1: the late commit of that block takes it from there.
+func TestCommitForEarlierRoundTakesHeldBlock(t *testing.T) {
+	cs1, vss := randState(4)
+	_, newBlockCh := commitEarlierRound(t, cs1, vss[1:])
 	ensureNewBlock(newBlockCh, 1)
 }
