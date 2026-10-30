@@ -593,6 +593,28 @@ func TestRetryWantsReRequestsAfterWrongBlockPart(t *testing.T) {
 	}, RetryTime+2*time.Second, 50*time.Millisecond)
 }
 
+// TestRecoveryPartForOlderRound asserts that a proven part answering a catch-up want is
+// accepted after the reactor moved on to a later round of the same height.
+func TestRecoveryPartForOlderRound(t *testing.T) {
+	reactors, _ := createTestReactors(2, defaultTestP2PConf(), false, "")
+	r1, r2 := reactors[0], reactors[1]
+	cleanup, _, sm, pv := state.SetupTestCaseWithPrivVal(t)
+	t.Cleanup(func() { cleanup(t) })
+
+	prop, ps, _, _ := createTestProposal(t, sm, pv, 1, 0, 2, 1000000)
+	psh := ps.Header()
+	r1.AddCommitment(prop.Height, 0, &psh)
+	pubKey, err := pv.GetPubKey()
+	require.NoError(t, err)
+	r1.SetConsensusState(prop.Height, 1, pubKey)
+
+	part := ps.GetPart(0)
+	r1.handleRecoveryPart(r2.self, &proptypes.RecoveryPart{Height: prop.Height, Round: 0, Index: 0, Data: part.Bytes, Proof: &part.Proof})
+	_, parts, has := r1.GetProposal(prop.Height, 0)
+	require.True(t, has)
+	require.True(t, parts.HasPart(0))
+}
+
 func testCommit(block *types.Block, ps *types.PartSet) *types.Commit {
 	return &types.Commit{
 		Height:  block.Height,
