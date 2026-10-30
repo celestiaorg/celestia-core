@@ -2450,14 +2450,10 @@ func (cs *State) addProposalBlockPart(msg *BlockPartMessage, peerID p2p.ID) (add
 }
 
 func (cs *State) handleCompleteProposal(blockHeight int64) {
-	// A lock restored from the WAL gets its bytes back; Valid* follows so a proposer re-proposes it.
+	// A lock restored from the WAL gets its bytes back.
 	if cs.rs.IsLocked() && cs.rs.LockedBlock == nil &&
 		blockMatchesBlockID(cs.rs.ProposalBlock, cs.rs.ProposalBlockParts, cs.rs.LockedBlockID) {
-		cs.rs.LockedBlock, cs.rs.LockedBlockParts = cs.rs.ProposalBlock, cs.rs.ProposalBlockParts
-		if cs.rs.ValidRound < cs.rs.LockedRound {
-			cs.rs.ValidRound = cs.rs.LockedRound
-			cs.rs.ValidBlock, cs.rs.ValidBlockParts = cs.rs.LockedBlock, cs.rs.LockedBlockParts
-		}
+		cs.fillLockBytes(cs.rs.ProposalBlock, cs.rs.ProposalBlockParts)
 	}
 
 	// Update Valid* if we can.
@@ -3177,6 +3173,15 @@ func (cs *State) lockOn(round int32, blockID types.BlockID, blockTime time.Time,
 	cs.rs.LockedBlockTime = blockTime
 	cs.rs.LockedBlock = block
 	cs.rs.LockedBlockParts = parts
+}
+
+// fillLockBytes gives a lock held by ID its bytes; Valid* follows so a proposer re-proposes it.
+func (cs *State) fillLockBytes(block *types.Block, parts *types.PartSet) {
+	cs.rs.LockedBlock, cs.rs.LockedBlockParts = block, parts
+	if cs.rs.ValidRound < cs.rs.LockedRound {
+		cs.rs.ValidRound = cs.rs.LockedRound
+		cs.rs.ValidBlock, cs.rs.ValidBlockParts = block, parts
+	}
 }
 
 // unlock releases the lock and reports whether one was held; the caller journals it.
