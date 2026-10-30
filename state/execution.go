@@ -512,13 +512,20 @@ func (blockExec *BlockExecutor) VerifyVoteExtension(ctx context.Context, vote *t
 // The Mempool must be locked during commit and update because state is
 // typically reset on Commit and old txs must be replayed against committed
 // state before new txs are run in the mempool, lest they be invalid.
+// An AsyncRechecker mempool may keep the lock after Commit returns, for its
+// recheck pass; committed txs are removed before Commit returns.
 func (blockExec *BlockExecutor) Commit(
 	state State,
 	block *types.Block,
 	abciResponse *abci.ResponseFinalizeBlock,
 ) (int64, error) {
 	blockExec.mempool.Lock()
-	defer blockExec.mempool.Unlock()
+	unlock := blockExec.mempool.Unlock
+	defer func() {
+		if unlock != nil {
+			unlock()
+		}
+	}()
 
 	// while mempool is Locked, flush to ensure all async requests have completed
 	// in the ABCI app before Commit.
@@ -543,6 +550,19 @@ func (blockExec *BlockExecutor) Commit(
 	)
 
 	// Update mempool.
+	if mp, ok := blockExec.mempool.(mempool.AsyncRechecker); ok {
+		releaseLock := unlock
+		unlock = nil // ownership of the lock moves to the mempool
+		err = mp.UpdateAsyncRecheck(
+			block.Height,
+			block.CachedTxs(),
+			abciResponse.TxResults,
+			TxPreCheck(state),
+			TxPostCheck(state),
+			releaseLock,
+		)
+		return res.RetainHeight, err
+	}
 	err = blockExec.mempool.Update(
 		block.Height,
 		block.CachedTxs(),
