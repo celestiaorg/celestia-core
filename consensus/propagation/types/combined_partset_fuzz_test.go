@@ -5,7 +5,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/cometbft/cometbft/types"
+	cmttypes "github.com/cometbft/cometbft/types"
 )
 
 const fuzzMaxParts = 6
@@ -22,41 +22,41 @@ func FuzzCombinedPartSetDecode(f *testing.F) {
 	f.Add(uint32(200_000), uint16(0x00f5), true, uint32(0), []byte{0, 1, 2, 3, 0, 0, 0, 0})
 	f.Add(uint32(70_000), uint16(0x000c), false, uint32(1<<31|5), []byte{})
 	f.Fuzz(func(t *testing.T, size uint32, present uint16, byzantineParity bool, lastLenOverride uint32, variants []byte) {
-		dataLen := 1 + int(size%(fuzzMaxParts*types.BlockPartSizeBytes))
+		dataLen := 1 + int(size%(fuzzMaxParts*cmttypes.BlockPartSizeBytes))
 		data := make([]byte, dataLen)
 		for i := range data {
 			data[i] = byte(i*31 + int(size))
 		}
-		ops, err := types.NewPartSetFromData(data, types.BlockPartSizeBytes)
+		ops, err := cmttypes.NewPartSetFromData(data, cmttypes.BlockPartSizeBytes)
 		require.NoError(t, err)
-		eps, lastLen, err := types.Encode(ops, types.BlockPartSizeBytes)
+		eps, lastLen, err := cmttypes.Encode(ops, cmttypes.BlockPartSizeBytes)
 		require.NoError(t, err)
 		total := ops.Total()
 
 		if byzantineParity {
 			// A byzantine proposer commits to parity data that is not the
 			// erasure coding of the block.
-			parity := make([]byte, 0, int(total)*int(types.BlockPartSizeBytes))
+			parity := make([]byte, 0, int(total)*int(cmttypes.BlockPartSizeBytes))
 			for i := 0; i < int(total); i++ {
 				parity = append(parity, eps.GetPart(i).Bytes...)
 			}
 			parity[int(size)%len(parity)] ^= 0xff
-			eps, err = types.NewPartSetFromData(parity, types.BlockPartSizeBytes)
+			eps, err = cmttypes.NewPartSetFromData(parity, cmttypes.BlockPartSizeBytes)
 			require.NoError(t, err)
 		}
 
 		cbLastLen := uint32(lastLen)
 		if lastLenOverride>>31 == 1 {
-			cbLastLen = lastLenOverride % (types.BlockPartSizeBytes + 1)
+			cbLastLen = lastLenOverride % (cmttypes.BlockPartSizeBytes + 1)
 		}
 		cb := &CompactBlock{
 			BpHash:   eps.Hash(),
 			LastLen:  cbLastLen,
-			Proposal: types.Proposal{BlockID: types.BlockID{PartSetHeader: ops.Header()}},
+			Proposal: cmttypes.Proposal{BlockID: cmttypes.BlockID{PartSetHeader: ops.Header()}},
 		}
 		cps := NewCombinedSetFromCompactBlock(cb)
 
-		genuine := func(i uint32) *types.Part {
+		genuine := func(i uint32) *cmttypes.Part {
 			if i < total {
 				return ops.GetPart(int(i))
 			}
@@ -132,7 +132,7 @@ func FuzzCombinedPartSetDecode(f *testing.F) {
 
 // storedPart returns combined part i as stored in the underlying original or
 // parity part set, bypassing the combined bitmap, or nil if it is absent.
-func storedPart(cps *CombinedPartSet, total, i uint32) *types.Part {
+func storedPart(cps *CombinedPartSet, total, i uint32) *cmttypes.Part {
 	if i < total {
 		return cps.Original().GetPart(int(i))
 	}
@@ -148,7 +148,7 @@ func FuzzTxsToPartsMetadata(f *testing.F) {
 	f.Add(uint8(1), uint32(10), []byte{0, 0, 0, 0, 10, 0, 0, 0})
 	f.Fuzz(func(t *testing.T, partCount uint8, lastPartLen uint32, meta []byte) {
 		count := uint32(partCount%16) + 1
-		partSize := types.BlockPartSizeBytes
+		partSize := cmttypes.BlockPartSizeBytes
 		limit := count*partSize + 16
 		var txs []UnmarshalledTx
 		budget := 4 * int(partSize) * 4
