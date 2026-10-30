@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -56,14 +57,16 @@ func (r *proposeRecorder) ProposeBlock(prop *types.Proposal, parts *types.PartSe
 	return r.Propagator.ProposeBlock(prop, parts, txs)
 }
 
-// The round 0 proposer restarts with its proposal and parts replayed and hands
-// them back to the propagator, after SetConsensusState.
+// The round 0 proposer, locked on its proposal, restarts with the proposal and parts
+// replayed and hands them back to the propagator, after SetConsensusState.
 func TestRestartedProposerReseedsPropagator(t *testing.T) {
 	f := newLockFixture(t, true, true)
 	cs1 := f.newState()
 	require.NoError(t, cs1.Start())
 	voteCh := subscribeToVoter(cs1, cs1.privValidatorPubKey.Address())
-	nextVote(t, voteCh, 1, 0, cmtproto.PrevoteType)
+	v := nextVote(t, voteCh, 1, 0, cmtproto.PrevoteType)
+	signAddVotes(cs1, cmtproto.PrevoteType, v.BlockID.Hash, v.BlockID.PartSetHeader, false, f.others...)
+	nextVote(t, voteCh, 1, 0, cmtproto.PrecommitType)
 	prop := cs1.GetRoundState().Proposal
 	require.NotNil(t, prop)
 	require.NoError(t, cs1.Stop())
@@ -165,7 +168,9 @@ func (a *timeoutsApp) FinalizeBlock(ctx context.Context, req *abci.RequestFinali
 
 // startPropagationNet is startConsensusNet with legacy block gossip off: block
 // data moves only through each state's propagation reactor, as in production.
-func startPropagationNet(t *testing.T, css []*State) ([]*Reactor, []types.Subscription, []*types.EventBus) {
+// A non-nil wrap wraps node i's reactors, e.g. with a message filter; held nodes are
+// connected but their consensus is left for the caller to start.
+func startPropagationNet(t *testing.T, css []*State, wrap func(i int, r p2p.Reactor) p2p.Reactor, held ...int) ([]*Reactor, []types.Subscription, []*types.EventBus) {
 	n := len(css)
 	reactors := make([]*Reactor, n)
 	blocksSubs := make([]types.Subscription, n)
@@ -182,13 +187,19 @@ func startPropagationNet(t *testing.T, css []*State) ([]*Reactor, []types.Subscr
 	p2p.MakeConnectedSwitches(config.P2P, n, func(i int, s *p2p.Switch) *p2p.Switch {
 		prop := css[i].propagator.(*propagation.Reactor)
 		prop.SetLogger(css[i].Logger.With("module", "propagation"))
-		s.AddReactor("CONSENSUS", reactors[i])
-		s.AddReactor("RECOVERY", prop)
+		var cons, rec p2p.Reactor = reactors[i], prop
+		if wrap != nil {
+			cons, rec = wrap(i, cons), wrap(i, rec)
+		}
+		s.AddReactor("CONSENSUS", cons)
+		s.AddReactor("RECOVERY", rec)
 		s.SetLogger(css[i].Logger.With("module", "p2p"))
 		return s
 	}, p2p.Connect2Switches)
 	for i := 0; i < n; i++ {
-		reactors[i].SwitchToConsensus(reactors[i].conS.GetState(), false)
+		if !slices.Contains(held, i) {
+			reactors[i].SwitchToConsensus(reactors[i].conS.GetState(), false)
+		}
 	}
 	return reactors, blocksSubs, eventBuses
 }
@@ -208,22 +219,15 @@ func TestCorrelatedRestartDuringPrecommitDelay(t *testing.T) {
 	}
 }
 
-func testCorrelatedRestart(t *testing.T, restartProposer, legacyGossip bool) {
-	const n = 4
-	const target = int64(3)
-	ti := abci.TimeoutInfo{
-		TimeoutPropose: 3 * time.Second, TimeoutProposeDelta: 500 * time.Millisecond,
-		TimeoutPrevote: 500 * time.Millisecond, TimeoutPrevoteDelta: 100 * time.Millisecond,
-		TimeoutPrecommit: 500 * time.Millisecond, TimeoutPrecommitDelta: 100 * time.Millisecond,
-		TimeoutCommit:           200 * time.Millisecond,
-		DelayedPrecommitTimeout: 2 * time.Second,
-	}
+// newRestartFleet builds n only_internal_wal validators with FilePVs and fixed timeouts.
+// restart(i) replaces node i with a fresh State on the same stores, WAL and privval.
+func newRestartFleet(t *testing.T, n int, ti abci.TimeoutInfo) (css []*State, restart func(i int) *State) {
 	genDoc, mockPVs := randGenesisDoc(n, false, 30, nil)
 	logger := consensusLogger()
 	configs := make([]*cfg.Config, n)
 	apps := make([]abci.Application, n)
 	dbs := make([]dbm.DB, n)
-	css := make([]*State, n)
+	css = make([]*State, n)
 	newState := func(i int, state sm.State, run int) *State {
 		pv := privval.LoadFilePV(configs[i].PrivValidatorKeyFile(), configs[i].PrivValidatorStateFile())
 		cs := newStateWithConfigAndBlockStore(configs[i], state, pv, apps[i], dbs[i])
@@ -251,11 +255,26 @@ func testCorrelatedRestart(t *testing.T, restartProposer, legacyGossip bool) {
 			configs[i].PrivValidatorKeyFile(), configs[i].PrivValidatorStateFile()).Save()
 		css[i] = newState(i, state, 1)
 	}
+	return css, func(i int) *State { return newState(i, css[i].GetState(), 2) }
+}
+
+func testCorrelatedRestart(t *testing.T, restartProposer, legacyGossip bool) {
+	const n = 4
+	const target = int64(3)
+	ti := abci.TimeoutInfo{
+		TimeoutPropose: 3 * time.Second, TimeoutProposeDelta: 500 * time.Millisecond,
+		TimeoutPrevote: 500 * time.Millisecond, TimeoutPrevoteDelta: 100 * time.Millisecond,
+		TimeoutPrecommit: 500 * time.Millisecond, TimeoutPrecommitDelta: 100 * time.Millisecond,
+		TimeoutCommit:           200 * time.Millisecond,
+		DelayedPrecommitTimeout: 2 * time.Second,
+	}
+	css, restartNode := newRestartFleet(t, n, ti)
+	logger := css[0].Logger
 	start := func(css []*State) ([]*Reactor, []types.Subscription, []*types.EventBus) {
 		if legacyGossip {
 			return startConsensusNet(t, css, len(css))
 		}
-		return startPropagationNet(t, css)
+		return startPropagationNet(t, css, nil)
 	}
 
 	reactors, blocksSubs, eventBuses := start(css)
@@ -295,7 +314,7 @@ func testCorrelatedRestart(t *testing.T, restartProposer, legacyGossip bool) {
 
 	css2 := make([]*State, len(restart))
 	for k, i := range restart {
-		css2[k] = newState(i, css[i].GetState(), 2)
+		css2[k] = restartNode(i)
 	}
 	reactors2, blocksSubs2, eventBuses2 := start(css2)
 	defer stopConsensusNet(logger, reactors2, eventBuses2)
