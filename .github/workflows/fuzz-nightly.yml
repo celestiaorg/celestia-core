@@ -40,6 +40,7 @@ jobs:
           - {package: p2p/conn, target: SecretConnectionRead}
           - {package: p2p/conn, target: MConnectionRecv}
           - {package: test/fuzz/tests, target: RPCJSONRPCServer}
+          - {package: p2p/pex, target: PexReactor}
           - {package: rpc/core, target: RPCCoreHandlers}
           - {package: rpc/core, target: RPCCoreJSONRPC}
           - {package: mempool/cat, target: MempoolMessage}
