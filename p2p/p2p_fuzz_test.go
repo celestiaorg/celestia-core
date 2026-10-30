@@ -294,7 +294,7 @@ func FuzzPeerReceive(f *testing.F) {
 	f.Add([]byte{0x01, 0x00, 0x02, 0x0a, 0x00}, uint8(2), []byte{0x12, 0x00})
 	f.Add([]byte{0xc1, 0x81, 3, 0x40, 0x7f, 0, 0, 0, 0, 0x50, 0x50}, uint8(0x7e), []byte{})
 	f.Add([]byte{0x02, 0x00, 0x01}, uint8(0x33), []byte{0x0a, 0x00})    // unknown channel
-	f.Add([]byte{0x00, 0x20, 0x00, 0x80}, uint8(1), []byte{0x12, 0x02}) // over capacity
+	f.Add([]byte{0x00, 0x11, 0x00, 0x80}, uint8(1), []byte{0x12, 0x02}) // over capacity (0x1100 > fuzzRecvCap)
 
 	f.Fuzz(func(t *testing.T, msgs []byte, directCh uint8, direct []byte) {
 		if len(msgs)+len(direct) > fuzzMaxInput {
@@ -307,10 +307,15 @@ func FuzzPeerReceive(f *testing.F) {
 		}
 
 		// Build the messages and the expected deliveries.
+		type delivery struct {
+			ch  byte
+			msg proto.Message
+		}
 		var (
-			sent     []fuzzEnvelope
-			expected []proto.Message
-			stopped  bool
+			sent       []fuzzEnvelope
+			expected   []delivery
+			stopped    bool
+			stopReason string // substring of the error the peer must stop with
 		)
 		for len(msgs) > 0 && len(sent) < 64 {
 			op := msgs[0]
@@ -338,12 +343,17 @@ func FuzzPeerReceive(f *testing.F) {
 			if stopped {
 				continue
 			}
-			if e.ch == 0x03 || len(e.msg) > fuzzRecvCap {
-				stopped = true // MConnection drops the peer
+			// MConnection drops the peer; it checks the channel first.
+			switch {
+			case e.ch == 0x03:
+				stopped, stopReason = true, fmt.Sprintf("unknown channel %X", int32(e.ch))
+				continue
+			case len(e.msg) > fuzzRecvCap:
+				stopped, stopReason = true, "received message exceeds available capacity"
 				continue
 			}
 			if m := expectedDelivery(e); m != nil {
-				expected = append(expected, m)
+				expected = append(expected, delivery{e.ch, m})
 			}
 		}
 		if directCh == fuzzSentinel {
@@ -351,7 +361,7 @@ func FuzzPeerReceive(f *testing.F) {
 		}
 		directEnv := fuzzEnvelope{ch: directCh, msg: direct}
 		if m := expectedDelivery(directEnv); m != nil {
-			expected = append(expected, m)
+			expected = append(expected, delivery{directEnv.ch, m})
 		}
 
 		// Set up a running peer with an authenticated remote side.
@@ -421,6 +431,11 @@ func FuzzPeerReceive(f *testing.F) {
 		if err, ok := errArg.(error); ok && strings.HasPrefix(err.Error(), "recovered from panic") {
 			t.Fatalf("peer recv path panicked: %v", err)
 		}
+		if stopped {
+			if err, ok := errArg.(error); !ok || !strings.Contains(err.Error(), stopReason) {
+				t.Fatalf("peer stopped with %v, model expects %q", errArg, stopReason)
+			}
+		}
 		_ = local.Close()
 		wg.Wait()
 
@@ -439,8 +454,9 @@ func FuzzPeerReceive(f *testing.F) {
 			t.Fatalf("Receive got %d envelopes, expected %d (peer error: %v)", len(r.got), len(expected), errArg)
 		}
 		for i, e := range r.got {
-			if e.Src != p || !proto.Equal(e.Message, expected[i]) {
-				t.Fatalf("envelope %d: got %v from %v, expected %v", i, e.Message, e.Src, expected[i])
+			if e.Src != p || e.ChannelID != expected[i].ch || !proto.Equal(e.Message, expected[i].msg) {
+				t.Fatalf("envelope %d: got %v on channel %#x from %v, expected %v on channel %#x",
+					i, e.Message, e.ChannelID, e.Src, expected[i].msg, expected[i].ch)
 			}
 		}
 	})
