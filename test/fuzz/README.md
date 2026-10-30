@@ -11,6 +11,19 @@ go test -run='^$' -fuzz='^FuzzPartFromProto$' -fuzztime=1m -parallel=2 ./types
 Use `go test -run='^Fuzz' ./<package>` to replay seed corpora without mutation. See the
 [Go fuzzing introduction](https://go.dev/doc/fuzz/) for more information.
 
+### Structured inputs
+
+Decoder targets and the legacy `test/fuzz/tests` targets take two byte slices,
+`(raw, edits)` or `(raw, ops)`. With an empty second argument they feed `raw`
+straight to the decoder, as a peer's wire bytes would arrive. Otherwise they
+start from a valid fixture (a signed vote, a block, a message envelope, a
+JSON-RPC request), apply the field edits that `internal/fuzzinput` reads from
+the second argument, re-sign or rehash where needed, and encode the result
+before running the same checks. Raw mode covers parser robustness; structured
+mode reaches validation, signature and round-trip checks that random bytes
+rarely get past. Stateful targets read their whole operation sequence through
+the same kind of typed decoding.
+
 ## Decoder coverage inventory
 
 Audited for [PROTOCO-3327](https://linear.app/celestia/issue/PROTOCO-3327)
@@ -61,7 +74,8 @@ Core's CAT-specific precheck and propagation paths require local targets.
 
 Outside the decoder suite, core also has `FuzzParallelImplementations` in
 `crypto/merkle`, which tests tree algorithms rather than network decoders and
-is not in the nightly matrix. `FuzzTxsToParts` and `FuzzTxsToParts_Panic` in
+is not in the nightly matrix. It derives every tree and proof index from the fuzz
+input, so saved inputs replay exactly. `FuzzTxsToParts` and `FuzzTxsToParts_Panic` in
 `consensus/propagation/types` now derive their data from the fuzz input and run
 nightly; see [Entry-point coverage](#entry-point-coverage). `consensus/wal_fuzz.go` is a
 legacy `gofuzz`-tagged WAL harness; `p2p/fuzz.go` simulates connection faults and
