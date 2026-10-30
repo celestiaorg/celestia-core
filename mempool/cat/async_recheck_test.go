@@ -226,12 +226,61 @@ func TestAsyncRecheck_NextCommitWaitsForPass(t *testing.T) {
 		}
 		app.recheckGate <- struct{}{}
 	}
-	<-committed
 	close(app.recheckGate)
+	<-committed
 	waitForPass(txmp)
 	require.False(t, app.commitRaced.Load())
 	require.EqualValues(t, 3+2, app.rechecks.Load())
 	require.Equal(t, 2, txmp.Size())
+}
+
+// A commit that had to wait for the previous pass rechecks synchronously, so
+// admission keeps the next interval; the following commit is async again.
+func TestAsyncRecheck_LatePassFallsBackToSync(t *testing.T) {
+	app := newSeqApp()
+	txmp := setupSeqPool(t, app, nil)
+	addSeqTxs(t, txmp, "a", 0, 6)
+
+	app.recheckGate = make(chan struct{})
+	commitBlock(t, txmp, app, 1, []types.Tx{seqTx("a", 0)}) // async pass over 5 txs
+	committed := make(chan struct{})
+	go func() {
+		commitBlock(t, txmp, app, 2, []types.Tx{seqTx("a", 1)})
+		close(committed)
+	}()
+	time.Sleep(50 * time.Millisecond) // let the commit queue on the lock
+	for i := 0; i < 5; i++ {
+		app.recheckGate <- struct{}{}
+	}
+	select {
+	case <-committed:
+		t.Fatal("late commit returned before rechecking synchronously")
+	case <-time.After(100 * time.Millisecond):
+	}
+	for i := 0; i < 4; i++ {
+		app.recheckGate <- struct{}{}
+	}
+	<-committed
+	require.True(t, txmp.mtx.TryLock(), "late commit left a background pass holding the lock")
+	txmp.mtx.Unlock()
+
+	commitBlock(t, txmp, app, 3, []types.Tx{seqTx("a", 2)}) // async again: returns with the pass gated
+	require.False(t, txmp.mtx.TryLock())
+	close(app.recheckGate)
+	waitForPass(txmp)
+	require.EqualValues(t, 5+4+3, app.rechecks.Load())
+	require.Equal(t, 3, txmp.Size())
+}
+
+// A panic in the synchronous part still releases the lock.
+func TestAsyncRecheck_PanicReleasesLock(t *testing.T) {
+	txmp := setupSeqPool(t, newSeqApp(), nil)
+	txmp.Lock()
+	require.Panics(t, func() {
+		_ = txmp.UpdateAsyncRecheck(1, []*types.CachedTx{seqTx("a", 0).ToCachedTx()}, nil, nil, nil, txmp.Unlock)
+	})
+	require.True(t, txmp.mtx.TryLock())
+	txmp.mtx.Unlock()
 }
 
 // The height signal and txs-available notification fire after the pass.

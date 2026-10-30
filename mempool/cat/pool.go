@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"sort"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	abci "github.com/cometbft/cometbft/abci/types"
@@ -81,6 +82,11 @@ type TxPool struct {
 
 	// heightSignal notifies listeners whenever the mempool height advances.
 	heightSignal chan struct{}
+
+	// rechecking is set while a background recheck pass holds mtx; recheckLate
+	// (guarded by mtx) records that the last Lock caller had to wait for one.
+	rechecking  atomic.Bool
+	recheckLate bool
 }
 
 // NewTxPool constructs a new, empty content addressable txpool at the specified
@@ -141,9 +147,12 @@ func WithTracer(tracer trace.Tracer) TxPoolOption {
 	return func(txmp *TxPool) { txmp.traceClient = tracer }
 }
 
-// Lock locks the mempool, no new transactions can be processed
+// Lock locks the mempool, no new transactions can be processed. If a recheck
+// pass is still running, the next UpdateAsyncRecheck rechecks synchronously.
 func (txmp *TxPool) Lock() {
+	late := txmp.rechecking.Load()
 	txmp.mtx.Lock()
+	txmp.recheckLate = late
 }
 
 // Unlock unlocks the mempool
@@ -514,7 +523,7 @@ func (txmp *TxPool) Update(
 
 // UpdateAsyncRecheck is Update with the recheck pass moved to a goroutine that inherits the
 // caller's lock, so admission and the next Commit wait for it while reaping does not.
-// With async_recheck off it is Update followed by unlock.
+// It is plain Update when async_recheck is off or the previous pass outlived the interval.
 func (txmp *TxPool) UpdateAsyncRecheck(
 	blockHeight int64,
 	blockTxs []*types.CachedTx,
@@ -523,22 +532,31 @@ func (txmp *TxPool) UpdateAsyncRecheck(
 	newPostFn mempool.PostCheckFunc,
 	unlock func(),
 ) error {
+	handedOff := false
+	defer func() {
+		if !handedOff {
+			unlock()
+		}
+	}()
 	if !txmp.config.AsyncRecheck {
-		defer unlock()
+		return txmp.Update(blockHeight, blockTxs, deliverTxResponses, newPreFn, newPostFn)
+	}
+	if txmp.recheckLate {
+		// A sync pass gives admission the whole next interval, as before async recheck.
+		txmp.metrics.RecheckLateCommits.Add(1)
 		return txmp.Update(blockHeight, blockTxs, deliverTxResponses, newPreFn, newPostFn)
 	}
 	if !txmp.update(blockHeight, blockTxs, deliverTxResponses, newPreFn, newPostFn) {
 		txmp.signalHeight()
-		unlock()
 		return nil
 	}
+	txmp.rechecking.Store(true)
+	handedOff = true
 	go func() {
 		defer unlock()
-		// Flush and RemoveTxByKey do not take the lock and may have emptied the pool.
-		if txmp.Size() > 0 {
-			txmp.recheckTransactions()
-		}
+		txmp.recheckTransactions()
 		txmp.signalHeight()
+		txmp.rechecking.Store(false)
 	}()
 	return nil
 }
@@ -789,11 +807,11 @@ func (txmp *TxPool) handleRecheckResult(wtx *wrappedTx, checkTxRes *abci.Respons
 // currently in the mempool. It reports the number of recheck calls that were
 // successfully initiated.
 //
-// Precondition: The mempool is not empty.
-// The caller must hold txmp.mtx exclusively.
+// The caller must hold txmp.mtx exclusively. Flush and RemoveTxByKey do not
+// take it, so the pool may be empty.
 func (txmp *TxPool) recheckTransactions() {
 	if txmp.Size() == 0 {
-		panic("mempool: cannot run recheck on an empty mempool")
+		return
 	}
 	txmp.logger.Trace(
 		"executing re-CheckTx for all remaining transactions",
