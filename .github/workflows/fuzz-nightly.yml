@@ -50,6 +50,10 @@ jobs:
           - {package: blocksync, target: BlockSyncMessage}
           - {package: blocksync, target: BlockSyncReactor}
           - {package: consensus/propagation/types, target: PropagationMessage}
+          - {package: consensus/propagation/types, target: CombinedPartSetDecode}
+          - {package: consensus/propagation/types, target: TxsToPartsMetadata}
+          - {package: consensus/propagation/types, target: TxsToParts}
+          - {package: consensus/propagation/types, target: TxsToParts_Panic}
           - {package: consensus/propagation, target: PropagationReactor}
           - {package: types, target: BlockFromProto}
           - {package: types, target: PartFromProto}
