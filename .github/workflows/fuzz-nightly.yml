@@ -43,6 +43,7 @@ jobs:
           - {package: rpc/core, target: RPCCoreHandlers}
           - {package: rpc/core, target: RPCCoreJSONRPC}
           - {package: mempool/cat, target: MempoolMessage}
+          - {package: mempool/cat, target: ReactorReceive}
           - {package: consensus, target: ConsensusMessage}
           - {package: consensus, target: ConsensusStateHandleMsg}
           - {package: consensus, target: ConsensusReactorReceive}
