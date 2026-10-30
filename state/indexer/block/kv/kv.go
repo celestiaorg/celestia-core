@@ -355,7 +355,7 @@ LOOP:
 				idx.log.Error("failed to parse bounds:", err)
 			} else {
 				if withinBounds {
-					idx.setTmpHeights(tmpHeights, it, filteredHeights, firstRun)
+					idx.setTmpHeights(tmpHeights, it)
 				}
 			}
 		}
@@ -407,22 +407,16 @@ FOR_LOOP:
 	return filteredHeights, nil
 }
 
-func (idx *BlockerIndexer) setTmpHeights(tmpHeights map[string][]byte, it dbm.Iterator, filteredHeights map[string][]byte, firstRun bool) {
+func (idx *BlockerIndexer) setTmpHeights(tmpHeights map[string][]byte, it dbm.Iterator) {
 	// If we return attributes that occur within the same events, then store the
 	// event sequence in the result map as well.
 	eventSeq, _ := parseEventSeqFromEventKey(it.Key())
-	resultKey := string(it.Value()) + strconv.FormatInt(eventSeq, 10)
-	if !firstRun {
-		if _, ok := filteredHeights[resultKey]; !ok {
-			return
-		}
-	}
 
 	// Copy the value because the iterator will be reused.
 	value := make([]byte, len(it.Value()))
 	copy(value, it.Value())
 
-	tmpHeights[resultKey] = value
+	tmpHeights[string(value)+strconv.FormatInt(eventSeq, 10)] = value
 
 }
 
@@ -472,7 +466,7 @@ func (idx *BlockerIndexer) match(
 				continue
 			}
 
-			idx.setTmpHeights(tmpHeights, it, filteredHeights, firstRun)
+			idx.setTmpHeights(tmpHeights, it)
 			if indexer.IsLimitReached(len(tmpHeights), idx.maxSearchResults) {
 				return nil, indexer.ErrTooManyResults
 			}
@@ -515,7 +509,7 @@ func (idx *BlockerIndexer) match(
 				continue
 			}
 
-			idx.setTmpHeights(tmpHeights, it, filteredHeights, firstRun)
+			idx.setTmpHeights(tmpHeights, it)
 			if indexer.IsLimitReached(len(tmpHeights), idx.maxSearchResults) {
 				return nil, indexer.ErrTooManyResults
 			}
@@ -565,7 +559,7 @@ func (idx *BlockerIndexer) match(
 				if !withinHeight {
 					continue
 				}
-				idx.setTmpHeights(tmpHeights, it, filteredHeights, firstRun)
+				idx.setTmpHeights(tmpHeights, it)
 			}
 			if indexer.IsLimitReached(len(tmpHeights), idx.maxSearchResults) {
 				return nil, indexer.ErrTooManyResults
