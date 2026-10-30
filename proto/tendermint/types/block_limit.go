@@ -12,26 +12,33 @@ var (
 	ErrTooManyBlockEvidenceElements = errors.New("block exceeds maximum nested evidence elements")
 )
 
-const (
-	// Evidence is capped at 1 MiB. Each item holds a 64-byte signature and each
-	// nested validator 32 bytes of key, so no valid block reaches these.
-	MaxBlockEvidenceItems    = 1_048_576/64 + 1
-	MaxBlockEvidenceElements = 1_048_576/32 + 1
-	MaxBlockCommitSignatures = 10_000
-)
+// MaxBlockCommitSignatures is the largest validator set, so no valid commit exceeds it.
+const MaxBlockCommitSignatures = 10_000
 
-// CheckBlockCardinality rejects an encoded Block whose repeated fields exceed
-// their limits, before Unmarshal allocates one entry each. It parses like
-// Unmarshal, so it never fails on bytes Unmarshal accepts within the limits.
-// With allOneofs, evidence values a later oneof field replaces count too.
-// prefix is the path of embedded message fields leading to the Block.
-func CheckBlockCardinality(bz []byte, maxTxs int, allOneofs bool, prefix ...int32) error {
-	c := &cardinality{maxTxs: maxTxs, allOneofs: allOneofs}
+// BlockLimits are the counts CheckBlockCardinality enforces.
+type BlockLimits struct {
+	Txs int
+	// EvidenceBytes is the consensus evidence allowance. Each evidence item holds
+	// a 64-byte signature and each nested validator a 32-byte key.
+	EvidenceBytes int64
+	// AllOneofs also counts evidence values that a later oneof field replaces.
+	AllOneofs bool
+}
+
+// CheckBlockCardinality checks field counts of the Block reached through prefix
+// before Unmarshal allocates them, and never fails on bytes Unmarshal accepts.
+func CheckBlockCardinality(bz []byte, lim BlockLimits, prefix ...int32) error {
+	c := &cardinality{
+		maxTxs:      lim.Txs,
+		maxEvidence: int(lim.EvidenceBytes/64) + 1,
+		maxElements: int(lim.EvidenceBytes/32) + 1,
+		allOneofs:   lim.AllOneofs,
+	}
 	return c.at(bz, prefix)
 }
 
 type cardinality struct {
-	maxTxs                                 int
+	maxTxs, maxEvidence, maxElements       int
 	allOneofs                              bool
 	txs, sigs, evidence                    int
 	byzantineVals, conflictingSigs, valSet int
@@ -71,7 +78,7 @@ func (c *cardinality) block(bz []byte) error {
 // evidenceItem counts an Evidence. Its oneof keeps only the last value set, so
 // unless allOneofs, only a final light_client_attack_evidence is counted.
 func (c *cardinality) evidenceItem(bz []byte) error {
-	if c.evidence++; c.evidence > MaxBlockEvidenceItems {
+	if c.evidence++; c.evidence > c.maxEvidence {
 		return ErrTooManyBlockEvidence
 	}
 	var last []byte
@@ -104,15 +111,15 @@ func (c *cardinality) lightClientAttack(bz []byte) error {
 						if num != 2 {
 							return nil
 						}
-						return countField(f, 4, &c.conflictingSigs, MaxBlockEvidenceElements, ErrTooManyBlockEvidenceElements)
+						return countField(f, 4, &c.conflictingSigs, c.maxElements, ErrTooManyBlockEvidenceElements)
 					})
 				case 2: // validator_set.validators
-					return countField(f, 1, &c.valSet, MaxBlockEvidenceElements, ErrTooManyBlockEvidenceElements)
+					return countField(f, 1, &c.valSet, c.maxElements, ErrTooManyBlockEvidenceElements)
 				}
 				return nil
 			})
 		case 3: // byzantine_validators
-			if c.byzantineVals++; c.byzantineVals > MaxBlockEvidenceElements {
+			if c.byzantineVals++; c.byzantineVals > c.maxElements {
 				return ErrTooManyBlockEvidenceElements
 			}
 		}
