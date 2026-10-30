@@ -211,10 +211,7 @@ func TestWALMsgProto(t *testing.T) {
 	require.NoError(t, err)
 
 	lockTime := time.Date(2026, 10, 29, 12, 0, 0, 0, time.UTC)
-	lockBlockID := types.BlockID{
-		Hash:          cmtrand.Bytes(32),
-		PartSetHeader: types.PartSetHeader{Total: 3, Hash: cmtrand.Bytes(32)},
-	}
+	lockBlockID := types.MakeBlockIDRandom()
 
 	testsCases := []struct {
 		testName string
