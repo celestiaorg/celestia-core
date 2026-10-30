@@ -24,7 +24,7 @@ import (
 	"github.com/cometbft/cometbft/proxy"
 	sm "github.com/cometbft/cometbft/state"
 	"github.com/cometbft/cometbft/store"
-	"github.com/cometbft/cometbft/types"
+	cmttypes "github.com/cometbft/cometbft/types"
 )
 
 const (
@@ -53,7 +53,7 @@ type fuzzExecApp struct {
 
 func (app *fuzzExecApp) ProcessProposal(_ context.Context, req *abci.RequestProcessProposal) (*abci.ResponseProcessProposal, error) {
 	app.ppReq = req
-	if bytes.Equal(req.DataRootHash, types.ToTxs(req.Txs).Hash()) && req.SquareSize == uint64(len(req.Txs)) {
+	if bytes.Equal(req.DataRootHash, cmttypes.ToTxs(req.Txs).Hash()) && req.SquareSize == uint64(len(req.Txs)) {
 		return &abci.ResponseProcessProposal{Status: abci.ResponseProcessProposal_ACCEPT}, nil
 	}
 	return &abci.ResponseProcessProposal{Status: abci.ResponseProcessProposal_REJECT}, nil
@@ -85,24 +85,24 @@ func (app *fuzzExecApp) VerifyVoteExtension(_ context.Context, req *abci.Request
 // fuzzExecKeys holds deterministic validator keys, indexed by validator set
 // position.
 type fuzzExecKeys struct {
-	privVals []types.PrivValidator
-	genVals  []types.GenesisValidator
-	valSet   *types.ValidatorSet
+	privVals []cmttypes.PrivValidator
+	genVals  []cmttypes.GenesisValidator
+	valSet   *cmttypes.ValidatorSet
 }
 
 func newFuzzExecKeys() fuzzExecKeys {
 	var k fuzzExecKeys
-	vals := make([]*types.Validator, fuzzExecVals)
-	pvs := make(map[string]types.PrivValidator, fuzzExecVals)
+	vals := make([]*cmttypes.Validator, fuzzExecVals)
+	pvs := make(map[string]cmttypes.PrivValidator, fuzzExecVals)
 	for i := range vals {
 		pk := ed25519.GenPrivKeyFromSecret([]byte(fmt.Sprintf("state-exec-fuzz-%d", i)))
-		vals[i] = types.NewValidator(pk.PubKey(), fuzzExecPower)
-		pvs[pk.PubKey().Address().String()] = types.NewMockPVWithParams(pk, false, false)
-		k.genVals = append(k.genVals, types.GenesisValidator{
+		vals[i] = cmttypes.NewValidator(pk.PubKey(), fuzzExecPower)
+		pvs[pk.PubKey().Address().String()] = cmttypes.NewMockPVWithParams(pk, false, false)
+		k.genVals = append(k.genVals, cmttypes.GenesisValidator{
 			Address: pk.PubKey().Address(), PubKey: pk.PubKey(), Power: fuzzExecPower,
 		})
 	}
-	k.valSet = types.NewValidatorSet(vals)
+	k.valSet = cmttypes.NewValidatorSet(vals)
 	for _, v := range k.valSet.Validators {
 		k.privVals = append(k.privVals, pvs[v.Address.String()])
 	}
@@ -110,9 +110,9 @@ func newFuzzExecKeys() fuzzExecKeys {
 }
 
 func (k fuzzExecKeys) vote(t *testing.T, idx int, height int64, typ cmtproto.SignedMsgType,
-	blockID types.BlockID, ts time.Time,
-) *types.Vote {
-	v, err := types.MakeVote(k.privVals[idx], fuzzExecChainID, int32(idx), height, 0, typ, blockID, ts)
+	blockID cmttypes.BlockID, ts time.Time,
+) *cmttypes.Vote {
+	v, err := cmttypes.MakeVote(k.privVals[idx], fuzzExecChainID, int32(idx), height, 0, typ, blockID, ts)
 	require.NoError(t, err)
 	return v
 }
@@ -124,14 +124,14 @@ type fuzzExecChain struct {
 	stateStore sm.Store
 	blockStore *store.BlockStore
 	blockExec  *sm.BlockExecutor
-	block1ID   types.BlockID
+	block1ID   cmttypes.BlockID
 	block1Time time.Time
 }
 
 func newFuzzExecChain(t *testing.T, k fuzzExecKeys, appVersion uint64) *fuzzExecChain {
-	params := types.DefaultConsensusParams()
+	params := cmttypes.DefaultConsensusParams()
 	params.Version.App = appVersion
-	genDoc := &types.GenesisDoc{
+	genDoc := &cmttypes.GenesisDoc{
 		ChainID:         fuzzExecChainID,
 		GenesisTime:     fuzzExecGenesisTime,
 		InitialHeight:   1,
@@ -154,9 +154,9 @@ func newFuzzExecChain(t *testing.T, k fuzzExecKeys, appVersion uint64) *fuzzExec
 	blockExec := sm.NewBlockExecutor(stateStore, log.NewNopLogger(), proxyApp.Consensus(),
 		&mempool.NopMempool{}, evpool, blockStore)
 
-	block1, parts1, err := state.MakeBlock(1, types.Data{}, &types.Commit{}, nil, state.Validators.GetProposer().Address)
+	block1, parts1, err := state.MakeBlock(1, cmttypes.Data{}, &cmttypes.Commit{}, nil, state.Validators.GetProposer().Address)
 	require.NoError(t, err)
-	block1ID := types.BlockID{Hash: block1.Hash(), PartSetHeader: parts1.Header()}
+	block1ID := cmttypes.BlockID{Hash: block1.Hash(), PartSetHeader: parts1.Header()}
 	blockStore.SaveBlock(block1, parts1, fullCommit(t, k, 1, block1ID, block1.Time.Add(time.Second)))
 	state, err = blockExec.ApplyBlock(state, block1ID, block1, nil)
 	require.NoError(t, err)
@@ -164,12 +164,12 @@ func newFuzzExecChain(t *testing.T, k fuzzExecKeys, appVersion uint64) *fuzzExec
 }
 
 // fullCommit is a commit signed by every validator at the same time.
-func fullCommit(t *testing.T, k fuzzExecKeys, height int64, blockID types.BlockID, ts time.Time) *types.Commit {
-	sigs := make([]types.CommitSig, fuzzExecVals)
+func fullCommit(t *testing.T, k fuzzExecKeys, height int64, blockID cmttypes.BlockID, ts time.Time) *cmttypes.Commit {
+	sigs := make([]cmttypes.CommitSig, fuzzExecVals)
 	for i := range sigs {
 		sigs[i] = k.vote(t, i, height, cmtproto.PrecommitType, blockID, ts).CommitSig()
 	}
-	return &types.Commit{Height: height, BlockID: blockID, Signatures: sigs}
+	return &cmttypes.Commit{Height: height, BlockID: blockID, Signatures: sigs}
 }
 
 // fuzzExecReader hands out fuzz bytes, returning zero once they run out.
@@ -194,9 +194,9 @@ func (r *fuzzExecReader) bytes(n int) []byte {
 // fuzzExecTxs builds up to fuzzExecMaxTxs txs of the shapes a block carries:
 // plain bytes, empty txs, go-square BlobTxs, legacy-encoded BlobTxs with a
 // fuzzed namespace ID length, and IndexWrappers.
-func fuzzExecTxs(spec []byte) types.Txs {
+func fuzzExecTxs(spec []byte) cmttypes.Txs {
 	r := fuzzExecReader(spec)
-	var txs types.Txs
+	var txs cmttypes.Txs
 	for len(r) > 0 && len(txs) < fuzzExecMaxTxs {
 		kind, payload := r.byte(), r.bytes(int(r.byte()))
 		inner := append([]byte("tx"), payload...)
@@ -239,7 +239,7 @@ func fuzzExecTxs(spec []byte) types.Txs {
 // wantUnwrapped is the tx FinalizeBlock must receive: the go-square decoder's
 // inner tx from app version 11, and the generated legacy decoder's before it.
 func wantUnwrapped(tx []byte, appVersion uint64) []byte {
-	if appVersion >= types.BlobTxValidationAppVersion {
+	if appVersion >= cmttypes.BlobTxValidationAppVersion {
 		if btx, isBlob, err := squaretx.UnmarshalBlobTx(tx); isBlob && err == nil {
 			return btx.Tx
 		}
@@ -276,7 +276,7 @@ func FuzzBlockExecValidateApply(f *testing.F) {
 		}
 		appVersion := uint64(10)
 		if flags&1 != 0 {
-			appVersion = types.BlobTxValidationAppVersion
+			appVersion = cmttypes.BlobTxValidationAppVersion
 		}
 		c := newFuzzExecChain(t, keys, appVersion)
 		state := c.state
@@ -284,7 +284,7 @@ func FuzzBlockExecValidateApply(f *testing.F) {
 		// LastCommit: per validator a flag and a timestamp offset, then
 		// corruptions that are not re-signed.
 		cr := fuzzExecReader(commitSpec)
-		sigs := make([]types.CommitSig, 0, fuzzExecVals+1)
+		sigs := make([]cmttypes.CommitSig, 0, fuzzExecVals+1)
 		genuine := 0
 		for i := 0; i < fuzzExecVals; i++ {
 			flag, off := cr.byte(), time.Duration(int8(cr.byte()))*time.Second
@@ -294,12 +294,12 @@ func FuzzBlockExecValidateApply(f *testing.F) {
 				sigs = append(sigs, keys.vote(t, i, 1, cmtproto.PrecommitType, c.block1ID, ts).CommitSig())
 				genuine++
 			case 2:
-				sigs = append(sigs, keys.vote(t, i, 1, cmtproto.PrecommitType, types.BlockID{}, ts).CommitSig())
+				sigs = append(sigs, keys.vote(t, i, 1, cmtproto.PrecommitType, cmttypes.BlockID{}, ts).CommitSig())
 			case 3:
-				sigs = append(sigs, types.NewCommitSigAbsent())
+				sigs = append(sigs, cmttypes.NewCommitSigAbsent())
 			}
 		}
-		commit := &types.Commit{Height: 1, BlockID: c.block1ID, Signatures: sigs}
+		commit := &cmttypes.Commit{Height: 1, BlockID: c.block1ID, Signatures: sigs}
 		corrupt := false
 		for n := 0; n < fuzzExecMaxOps/2 && len(cr) > 0; n++ {
 			op, arg := cr.byte(), int(cr.byte())
@@ -312,20 +312,20 @@ func FuzzBlockExecValidateApply(f *testing.F) {
 					corrupt = true
 				}
 			case 1:
-				if s.BlockIDFlag != types.BlockIDFlagAbsent {
+				if s.BlockIDFlag != cmttypes.BlockIDFlagAbsent {
 					s.ValidatorAddress = keys.valSet.Validators[(arg/7)%fuzzExecVals].Address
 				}
 			case 2:
 				switch s.BlockIDFlag {
-				case types.BlockIDFlagCommit:
-					s.BlockIDFlag = types.BlockIDFlagNil
-				case types.BlockIDFlagNil:
-					s.BlockIDFlag = types.BlockIDFlagCommit
+				case cmttypes.BlockIDFlagCommit:
+					s.BlockIDFlag = cmttypes.BlockIDFlagNil
+				case cmttypes.BlockIDFlagNil:
+					s.BlockIDFlag = cmttypes.BlockIDFlagCommit
 				}
 			case 3:
 				commit.Signatures = commit.Signatures[:len(commit.Signatures)-1]
 			case 4:
-				commit.Signatures = append(commit.Signatures, types.NewCommitSigAbsent())
+				commit.Signatures = append(commit.Signatures, cmttypes.NewCommitSigAbsent())
 			case 5:
 				commit.Round += int32(arg%3) + 1
 			case 6:
@@ -340,13 +340,13 @@ func FuzzBlockExecValidateApply(f *testing.F) {
 		}
 
 		// Evidence: duplicate votes from one validator at height 1.
-		var evList []types.Evidence
+		var evList []cmttypes.Evidence
 		evMutated := false
 		if flags&4 != 0 {
 			er := fuzzExecReader(evSpec)
 			idx, op, arg := int(er.byte())%fuzzExecVals, er.byte(), int64(int8(er.byte()))
-			idA := types.BlockID{Hash: bytes.Repeat([]byte{1}, 32), PartSetHeader: types.PartSetHeader{Total: 1, Hash: bytes.Repeat([]byte{2}, 32)}}
-			idB := types.BlockID{Hash: bytes.Repeat([]byte{3}, 32), PartSetHeader: types.PartSetHeader{Total: 1, Hash: bytes.Repeat([]byte{4}, 32)}}
+			idA := cmttypes.BlockID{Hash: bytes.Repeat([]byte{1}, 32), PartSetHeader: cmttypes.PartSetHeader{Total: 1, Hash: bytes.Repeat([]byte{2}, 32)}}
+			idB := cmttypes.BlockID{Hash: bytes.Repeat([]byte{3}, 32), PartSetHeader: cmttypes.PartSetHeader{Total: 1, Hash: bytes.Repeat([]byte{4}, 32)}}
 			heightB := int64(1)
 			switch op % 8 {
 			case 4:
@@ -356,7 +356,7 @@ func FuzzBlockExecValidateApply(f *testing.F) {
 			}
 			vA := keys.vote(t, idx, 1, cmtproto.PrevoteType, idA, c.block1Time)
 			vB := keys.vote(t, idx, heightB, cmtproto.PrevoteType, idB, c.block1Time)
-			dve, err := types.NewDuplicateVoteEvidence(vA, vB, c.block1Time, keys.valSet)
+			dve, err := cmttypes.NewDuplicateVoteEvidence(vA, vB, c.block1Time, keys.valSet)
 			if err != nil {
 				return
 			}
@@ -380,7 +380,7 @@ func FuzzBlockExecValidateApply(f *testing.F) {
 		}
 
 		txs := fuzzExecTxs(txSpec)
-		honest, _, err := state.MakeBlock(2, types.NewData(txs, uint64(len(txs)), nil), commit, evList, keys.valSet.Validators[int(flags>>4)%fuzzExecVals].Address)
+		honest, _, err := state.MakeBlock(2, cmttypes.NewData(txs, uint64(len(txs)), nil), commit, evList, keys.valSet.Validators[int(flags>>4)%fuzzExecVals].Address)
 		if err != nil {
 			return
 		}
@@ -411,7 +411,7 @@ func FuzzBlockExecValidateApply(f *testing.F) {
 				block.DataHash = val
 			case 8:
 				block.DataHash = val
-				block.Data = types.NewData(block.Txs, block.SquareSize, val)
+				block.Data = cmttypes.NewData(block.Txs, block.SquareSize, val)
 			case 9:
 				block.ValidatorsHash = val
 			case 10:
@@ -446,7 +446,7 @@ func FuzzBlockExecValidateApply(f *testing.F) {
 				block.SquareSize = uint64(d)
 			case 21:
 				// Honest proposer of a different tx set: rebind both hashes.
-				block.Data = types.NewData(block.Txs, uint64(len(block.Txs)), nil)
+				block.Data = cmttypes.NewData(block.Txs, uint64(len(block.Txs)), nil)
 				block.DataHash = block.Data.Hash()
 			}
 		}
@@ -454,7 +454,7 @@ func FuzzBlockExecValidateApply(f *testing.F) {
 		// Deliver the block the way peers do: as protobuf.
 		pb, err := block.ToProto()
 		require.NoError(t, err)
-		block, err = types.BlockFromProto(pb)
+		block, err = cmttypes.BlockFromProto(pb)
 		if err != nil {
 			return
 		}
@@ -480,7 +480,7 @@ func FuzzBlockExecValidateApply(f *testing.F) {
 		require.GreaterOrEqual(t, genuine*3, fuzzExecVals*2+1, "LastCommit without quorum accepted")
 		require.True(t, lastCommitAllValid(t, keys, block.LastCommit), "LastCommit with an invalid signature accepted")
 		for _, ev := range block.Evidence.Evidence {
-			dve, ok := ev.(*types.DuplicateVoteEvidence)
+			dve, ok := ev.(*cmttypes.DuplicateVoteEvidence)
 			require.True(t, ok)
 			require.Equal(t, int64(fuzzExecPower), dve.ValidatorPower)
 			require.Equal(t, int64(fuzzExecPower*fuzzExecVals), dve.TotalVotingPower)
@@ -490,7 +490,7 @@ func FuzzBlockExecValidateApply(f *testing.F) {
 		}
 		// Every state-derived header field is what the state dictates: only
 		// txs, data root, evidence, proposer and LastCommit are the proposer's.
-		rebuilt, err := state.MakeBlockWithoutPartset(2, types.NewData(block.Txs, block.SquareSize, nil),
+		rebuilt, err := state.MakeBlockWithoutPartset(2, cmttypes.NewData(block.Txs, block.SquareSize, nil),
 			block.LastCommit, block.Evidence.Evidence, block.ProposerAddress)
 		require.NoError(t, err)
 		rebuilt.DataHash = block.DataHash
@@ -514,9 +514,9 @@ func FuzzBlockExecValidateApply(f *testing.F) {
 		require.Equal(t, rebuilt.Hash(), block.Hash(), "accepted block whose data hash does not bind its txs")
 
 		// Commit and execute the block, then check the chain can continue.
-		parts, err := block.MakePartSet(types.BlockPartSizeBytes)
+		parts, err := block.MakePartSet(cmttypes.BlockPartSizeBytes)
 		require.NoError(t, err)
-		blockID := types.BlockID{Hash: block.Hash(), PartSetHeader: parts.Header()}
+		blockID := cmttypes.BlockID{Hash: block.Hash(), PartSetHeader: parts.Header()}
 		commit2 := fullCommit(t, keys, 2, blockID, block.Time.Add(time.Second))
 		c.blockStore.SaveBlock(block, parts, commit2)
 		prevAppHash := state.AppHash
@@ -549,13 +549,13 @@ func FuzzBlockExecValidateApply(f *testing.F) {
 			require.EqualValues(t, len(c.app.finTxs[i])%3, info.Code)
 		}
 
-		block3, parts3, err := state.MakeBlock(3, types.NewData(nil, 0, nil), commit2, nil, state.Validators.GetProposer().Address)
+		block3, parts3, err := state.MakeBlock(3, cmttypes.NewData(nil, 0, nil), commit2, nil, state.Validators.GetProposer().Address)
 		require.NoError(t, err)
 		require.NoError(t, c.blockExec.ValidateBlock(state, block3), "chain cannot continue after block 2")
 		accepted, err = c.blockExec.ProcessProposal(block3, state.InitialHeight)
 		require.NoError(t, err)
 		require.True(t, accepted)
-		block3ID := types.BlockID{Hash: block3.Hash(), PartSetHeader: parts3.Header()}
+		block3ID := cmttypes.BlockID{Hash: block3.Hash(), PartSetHeader: parts3.Header()}
 		c.blockStore.SaveBlock(block3, parts3, fullCommit(t, keys, 3, block3ID, block3.Time.Add(time.Second)))
 		state, err = c.blockExec.ApplyVerifiedBlock(state, block3ID, block3, nil)
 		require.NoError(t, err)
@@ -565,17 +565,17 @@ func FuzzBlockExecValidateApply(f *testing.F) {
 
 // lastCommitAllValid independently checks every non-absent signature of a
 // LastCommit for block 1.
-func lastCommitAllValid(t *testing.T, k fuzzExecKeys, commit *types.Commit) bool {
+func lastCommitAllValid(t *testing.T, k fuzzExecKeys, commit *cmttypes.Commit) bool {
 	t.Helper()
 	for i, s := range commit.Signatures {
-		if s.BlockIDFlag == types.BlockIDFlagAbsent {
+		if s.BlockIDFlag == cmttypes.BlockIDFlagAbsent {
 			continue
 		}
 		if i >= fuzzExecVals || !bytes.Equal(s.ValidatorAddress, k.valSet.Validators[i].Address) {
 			return false
 		}
 		v := commit.GetVote(int32(i))
-		if !k.valSet.Validators[i].PubKey.VerifySignature(types.VoteSignBytes(fuzzExecChainID, v.ToProto()), s.Signature) {
+		if !k.valSet.Validators[i].PubKey.VerifySignature(cmttypes.VoteSignBytes(fuzzExecChainID, v.ToProto()), s.Signature) {
 			return false
 		}
 	}
@@ -604,8 +604,8 @@ func FuzzVerifyVoteExtension(f *testing.F) {
 			proxyApp.Consensus(), &mempool.NopMempool{}, sm.EmptyEvidencePool{}, store.NewBlockStore(dbm.NewMemDB()))
 
 		idx := int(signer) % fuzzExecVals
-		blockID := types.BlockID{Hash: bytes.Repeat([]byte{9}, 32), PartSetHeader: types.PartSetHeader{Total: 1, Hash: bytes.Repeat([]byte{8}, 32)}}
-		vote := &types.Vote{
+		blockID := cmttypes.BlockID{Hash: bytes.Repeat([]byte{9}, 32), PartSetHeader: cmttypes.PartSetHeader{Total: 1, Hash: bytes.Repeat([]byte{8}, 32)}}
+		vote := &cmttypes.Vote{
 			Type: cmtproto.PrecommitType, Height: height, Round: round, BlockID: blockID,
 			Timestamp: fuzzExecGenesisTime, ValidatorAddress: keys.valSet.Validators[idx].Address,
 			ValidatorIndex: int32(idx), Extension: ext,
@@ -674,7 +674,7 @@ func FuzzVerifyVoteExtension(f *testing.F) {
 		if wantOK {
 			require.NoError(t, err)
 		} else {
-			require.ErrorIs(t, err, types.ErrInvalidVoteExtension)
+			require.ErrorIs(t, err, cmttypes.ErrInvalidVoteExtension)
 		}
 	})
 }
