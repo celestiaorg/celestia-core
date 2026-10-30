@@ -142,6 +142,9 @@ type State struct {
 	replayMode   bool // so we don't log signing errors during replay
 	doWALCatchup bool // determines if we even try to do the catchup
 
+	// lockedBlocks copies a stalled height's locked block for a restart (only_internal_wal only).
+	lockedBlocks *lockedBlockWriter
+
 	// for tests where we want to limit the number of transitions the state makes
 	nSteps int
 
@@ -149,6 +152,7 @@ type State struct {
 	decideProposal        func(height int64, round int32)
 	doPrevote             func(height int64, round int32)
 	setProposal           func(proposal *types.Proposal) error
+	lockedBlockDelay      func() time.Duration
 	StartedPrecommitSleep atomic.Bool
 
 	// closed when we finish shutting down
@@ -222,6 +226,7 @@ func NewState(
 	cs.decideProposal = cs.defaultDecideProposal
 	cs.doPrevote = cs.defaultDoPrevote
 	cs.setProposal = cs.defaultSetProposal
+	cs.lockedBlockDelay = cs.defaultLockedBlockDelay
 
 	// We have no votes, so reconstruct LastCommit from SeenCommit.
 	if state.LastBlockHeight > 0 {
@@ -389,6 +394,10 @@ func (cs *State) OnStart() error {
 	}
 
 	cs.metrics.Height.Set(float64(cs.rs.Height))
+
+	if cs.config.OnlyInternalWal {
+		cs.lockedBlocks = newLockedBlockWriter(lockedBlockFile(cs.config), cs.Logger)
+	}
 
 	// we need the timeoutRoutine for replay so
 	// we don't block on the tick chan.
@@ -899,6 +908,7 @@ func (cs *State) updateToState(state sm.State) {
 	cs.rs.ProposalBlockParts = nil
 	cs.proposalReceivedTime = time.Time{}
 	cs.clearLock()
+	cs.lockedBlocks.reset()
 	cs.rs.ValidRound = -1
 	cs.rs.ValidBlock = nil
 	cs.rs.ValidBlockParts = nil
@@ -948,6 +958,8 @@ func (cs *State) receiveRoutine(maxSteps int) {
 		// NOTE: the internalMsgQueue may have signed messages from our
 		// priv_val that haven't hit the WAL, but its ok because
 		// priv_val tracks LastSig
+
+		cs.lockedBlocks.stop()
 
 		// close wal now that we're done writing to it
 		if err := cs.wal.Stop(); err != nil {
@@ -2483,6 +2495,7 @@ func (cs *State) handleCompleteProposal(blockHeight int64) {
 	if cs.rs.IsLocked() && cs.rs.LockedBlock == nil &&
 		blockMatchesBlockID(cs.rs.ProposalBlock, cs.rs.ProposalBlockParts, cs.rs.LockedBlockID) {
 		cs.fillLockBytes(cs.rs.ProposalBlock, cs.rs.ProposalBlockParts)
+		cs.copyLockedBlock()
 	}
 
 	// Update Valid* if we can.
@@ -3212,6 +3225,30 @@ func (cs *State) lockOn(round int32, blockID types.BlockID, blockTime time.Time,
 	cs.rs.LockedBlockTime = blockTime
 	cs.rs.LockedBlock = block
 	cs.rs.LockedBlockParts = parts
+	cs.copyLockedBlock()
+}
+
+// copyLockedBlock arms the copy of the locked block's parts unless the WAL holds them.
+func (cs *State) copyLockedBlock() {
+	if cs.lockedBlocks == nil || cs.replayMode || cs.rs.LockedBlockParts == nil {
+		return
+	}
+	// Our own proposal's parts are already internal WAL records.
+	if cs.rs.Proposal != nil && cs.rs.Proposal.BlockID.Equals(cs.rs.LockedBlockID) &&
+		cs.privValidatorPubKey != nil && cs.isProposer(cs.privValidatorPubKey.Address()) {
+		return
+	}
+	li := LockInfo{Height: cs.rs.Height, Round: cs.rs.LockedRound, BlockID: cs.rs.LockedBlockID, BlockTime: cs.rs.LockedBlockTime}
+	cs.lockedBlocks.arm(cs.lockedBlockDelay(), li, cs.rs.LockedBlockParts)
+}
+
+// defaultLockedBlockDelay is how long a lock stays open before its block is copied; healthy heights commit sooner.
+func (cs *State) defaultLockedBlockDelay() time.Duration {
+	commit := cs.state.Timeouts.TimeoutCommit
+	if commit == 0 {
+		commit = cs.config.TimeoutCommit
+	}
+	return 2*commit + cs.state.Timeouts.DelayedPrecommitTimeout
 }
 
 // fillLockBytes gives a lock held by ID its bytes; Valid* follows so a proposer re-proposes it.

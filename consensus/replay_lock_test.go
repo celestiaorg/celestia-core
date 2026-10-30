@@ -36,6 +36,8 @@ type lockFixture struct {
 	vss     []*validatorStub
 	others  []*validatorStub
 	p0, p1  int32
+	// lazyDelay is how long a lock stays open before its block is copied; long by default.
+	lazyDelay time.Duration
 }
 
 func newLockFixture(t *testing.T, onlyInternalWal, asProposer bool) *lockFixture {
@@ -48,7 +50,7 @@ func newLockFixture(t *testing.T, onlyInternalWal, asProposer bool) *lockFixture
 	state, privVals := randGenesisState(4, false, testMinPower, types.DefaultConsensusParams())
 	state.Timeouts.TimeoutPropose = 3 * time.Second
 
-	f := &lockFixture{config: config, state: state, app: kvstore.NewInMemoryApplication(), blockDB: dbm.NewMemDB()}
+	f := &lockFixture{config: config, state: state, app: kvstore.NewInMemoryApplication(), blockDB: dbm.NewMemDB(), lazyDelay: time.Hour}
 	for i, pv := range privVals {
 		f.vss = append(f.vss, newValidatorStub(pv, int32(i)))
 		f.vss[i].Height = 1
@@ -75,7 +77,9 @@ func newLockFixture(t *testing.T, onlyInternalWal, asProposer bool) *lockFixture
 // newState builds our node from the files on disk, as a restart would.
 func (f *lockFixture) newState() *State {
 	pv := privval.LoadFilePV(f.config.PrivValidatorKeyFile(), f.config.PrivValidatorStateFile())
-	return newStateWithConfigAndBlockStore(f.config, f.state, pv, f.app, f.blockDB)
+	cs := newStateWithConfigAndBlockStore(f.config, f.state, pv, f.app, f.blockDB)
+	cs.lockedBlockDelay = func() time.Duration { return f.lazyDelay }
+	return cs
 }
 
 // lockOnX drives a started cs to prevote the round 0 proposal X and receive a
