@@ -3,6 +3,7 @@ package pex
 import (
 	"encoding/binary"
 	"encoding/hex"
+	"hash/fnv"
 	"net"
 	"path/filepath"
 	"strings"
@@ -10,7 +11,6 @@ import (
 	"time"
 
 	"github.com/cosmos/gogoproto/proto"
-	"github.com/minio/highwayhash"
 	"github.com/stretchr/testify/require"
 
 	"github.com/cometbft/cometbft/config"
@@ -99,7 +99,13 @@ func (r *fuzzInput) netAddress() tmp2p.NetAddress {
 
 var (
 	fuzzPrivateID = p2p.ID(strings.Repeat("ee", p2p.IDByteLength))
-	fuzzOurAddr   = p2p.NewNetAddressIPPort(net.ParseIP("8.8.8.8"), 26656)
+	// fuzzOurAddr is fuzzIDs[7] at fuzzIPs[0] with the default port, which
+	// netAddress emits for the bytes {58, 3, 0}.
+	fuzzOurAddr = func() *p2p.NetAddress {
+		addr := p2p.NewNetAddressIPPort(net.ParseIP(fuzzIPs[0]), 26656)
+		addr.ID = fuzzIDs[7]
+		return addr
+	}()
 )
 
 // fuzzPexPeer is a running mock peer with a fixed ID and node info that
@@ -131,12 +137,10 @@ func (p *fuzzPexPeer) Send(e p2p.Envelope) bool {
 
 // newFuzzAddrBook returns an address book whose bucket placement does not
 // depend on random keys, so inputs replay the same way.
-func newFuzzAddrBook(tb testing.TB, dir string, strict bool) *addrBook {
+func newFuzzAddrBook(dir string, strict bool) *addrBook {
 	book := NewAddrBook(filepath.Join(dir, "addrbook.json"), strict).(*addrBook)
 	book.key = strings.Repeat("ab", 12)
-	hasher, err := highwayhash.New64(make([]byte, highwayhash.Size))
-	require.NoError(tb, err)
-	book.hasher = hasher
+	book.hasher = fnv.New64a() // unkeyed, unlike the production hasher
 	book.rand.Seed(1)
 	book.SetLogger(log.NewNopLogger())
 	book.AddOurAddress(fuzzOurAddr)
@@ -189,7 +193,12 @@ func FuzzPexReactor(f *testing.F) {
 	// addr encodes a known ID and one of fuzzIPs with the default port.
 	addr := func(id, ip int) []byte { return []byte{byte(2 + 8*id), byte(3 + 4*ip), 0} }
 	list := func(entries ...[]byte) []byte {
-		out := []byte{1, 0, byte(len(entries))}
+		n := 3
+		for _, e := range entries {
+			n += len(e)
+		}
+		out := make([]byte, 0, n)
+		out = append(out, 1, 0, byte(len(entries)))
 		for _, e := range entries {
 			out = append(out, e...)
 		}
@@ -203,6 +212,7 @@ func FuzzPexReactor(f *testing.F) {
 	f.Add(byte(1), append([]byte{0, 0}, list([]byte{2, 2, 3, 'x', 'y', 'z', 0})...))          // unparsable IP
 	f.Add(byte(1), append([]byte{0, 0}, list([]byte{2, 7, 0x80, 0xff, 0xff, 0xff, 0xff})...)) // port overflow
 	f.Add(byte(1), []byte{2, 0, 2, 0, 2, 0, 3, 0, 2, 0})                                      // request flood, then reset
+	f.Add(byte(1), append([]byte{0, 0}, list(addr(7, 0), addr(4, 1))...))                     // our own address, solicited
 	f.Add(byte(1), append(append([]byte{0, 0}, mixed...), 4, 0, 0, 2, 0, 5, 0, 10, 7, 0, 6, 0, 50))
 	for _, msg := range []p2p.Wrapper{
 		&tmp2p.PexRequest{},
@@ -224,7 +234,7 @@ func FuzzPexReactor(f *testing.F) {
 			return
 		}
 		in := &fuzzInput{b: data}
-		book := newFuzzAddrBook(t, dir, flags&1 == 1)
+		book := newFuzzAddrBook(dir, flags&1 == 1)
 		r := NewReactor(book, &ReactorConfig{})
 		r.SetSwitch(sw)
 		r.SetLogger(log.NewNopLogger())
