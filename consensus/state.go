@@ -2747,6 +2747,10 @@ func (cs *State) addVote(vote *types.Vote, peerID p2p.ID) (added bool, err error
 		case cs.rs.Round == vote.Round && cstypes.RoundStepPrevote <= cs.rs.Step: // current round
 			cs.handlePrevoteQuorum(height, vote.Round)
 
+		case cs.rs.Round == vote.Round && cs.isProposalComplete():
+			// A held block made the proposal block above, as its last part arriving would have.
+			cs.enterPrevote(height, cs.rs.Round)
+
 		case cs.rs.Proposal != nil && 0 <= cs.rs.Proposal.POLRound && cs.rs.Proposal.POLRound == vote.Round:
 			// If the proposal is now complete, enter prevote of cs.rs.Round.
 			if cs.isProposalComplete() {
