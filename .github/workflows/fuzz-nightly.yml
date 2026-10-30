@@ -60,6 +60,10 @@ jobs:
           - {package: types, target: VoteFromProto}
           - {package: types, target: ProposalFromProto}
           - {package: types, target: CommitFromProto}
+          - {package: types, target: VerifyCommit}
+          - {package: types, target: ExtendedCommitFromProto}
+          - {package: types, target: LightBlockFromProto}
+          - {package: types, target: ValidatorSetFromProto}
           - {package: types, target: EvidenceFromProto}
           - {package: evidence, target: EvidencePool}
           - {package: evidence, target: EvidenceReactorReceive}
