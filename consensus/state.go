@@ -2495,6 +2495,7 @@ func (cs *State) handleCompleteProposal(blockHeight int64) {
 	if cs.rs.IsLocked() && cs.rs.LockedBlock == nil &&
 		blockMatchesBlockID(cs.rs.ProposalBlock, cs.rs.ProposalBlockParts, cs.rs.LockedBlockID) {
 		cs.fillLockBytes(cs.rs.ProposalBlock, cs.rs.ProposalBlockParts)
+		cs.copyLockedBlock()
 	}
 
 	// Update Valid* if we can.
@@ -3214,12 +3215,17 @@ func (cs *State) lockOn(round int32, blockID types.BlockID, blockTime time.Time,
 	cs.rs.LockedBlockTime = blockTime
 	cs.rs.LockedBlock = block
 	cs.rs.LockedBlockParts = parts
+	cs.copyLockedBlock()
+}
+
+// copyLockedBlock arms the copy of the locked block's parts unless the WAL holds them.
+func (cs *State) copyLockedBlock() {
 	// Our own proposal's parts are already internal WAL records.
-	ownProposal := cs.rs.Proposal != nil && cs.rs.Proposal.BlockID.Equals(blockID) &&
+	ownProposal := cs.rs.Proposal != nil && cs.rs.Proposal.BlockID.Equals(cs.rs.LockedBlockID) &&
 		cs.privValidatorPubKey != nil && cs.isProposer(cs.privValidatorPubKey.Address())
-	if parts != nil && !cs.replayMode && !ownProposal {
-		li := LockInfo{Height: cs.rs.Height, Round: round, BlockID: blockID, BlockTime: blockTime}
-		cs.lockedBlocks.arm(cs.lockedBlockDelay(), li, parts)
+	if cs.rs.LockedBlockParts != nil && !cs.replayMode && !ownProposal {
+		li := LockInfo{Height: cs.rs.Height, Round: cs.rs.LockedRound, BlockID: cs.rs.LockedBlockID, BlockTime: cs.rs.LockedBlockTime}
+		cs.lockedBlocks.arm(cs.lockedBlockDelay(), li, cs.rs.LockedBlockParts)
 	}
 }
 
