@@ -31,10 +31,9 @@ func (f laterRoundsFilter) QueueUnprocessedEnvelope(e p2p.UnprocessedEnvelope) {
 	f.missedBlockFilter.QueueUnprocessedEnvelope(e)
 }
 
-// Three validators lock on X at round 0 without a precommit quorum; the round-1
-// proposer never got X and proposes Y. After stopping and restarting all four in
-// round 1, the chain must still commit X, also when the round-0 proposer, the only
-// node with X's bytes, starts consensus late.
+// Three validators lock on X at round 0 without a precommit quorum and the round-1 proposer
+// proposes Y. After restarting all four in round 1 the chain must still commit X, also when
+// the round-0 proposer, the only node with X's bytes, starts consensus late.
 func TestRestartAllAfterLockInEarlierRound(t *testing.T) {
 	t.Run("restart_all", func(t *testing.T) { testRestartAllAfterLock(t, 0) })
 	t.Run("p0_late", func(t *testing.T) { testRestartAllAfterLock(t, 10*time.Second) })
@@ -99,16 +98,10 @@ func testRestartAllAfterLock(t *testing.T, p0Delay time.Duration) {
 	for i := range css {
 		css2[i] = restartNode(i)
 	}
-	var held []int
-	if p0Delay > 0 {
-		held = []int{p0}
-	}
-	reactors2, _, eventBuses2 := startPropagationNet(t, css2, nil, held...)
+	reactors2, _, eventBuses2 := startPropagationNet(t, css2, nil, p0)
 	defer stopConsensusNet(css2[0].Logger, reactors2, eventBuses2)
-	if p0Delay > 0 {
-		time.Sleep(p0Delay)
-		reactors2[p0].SwitchToConsensus(css2[p0].GetState(), false)
-	}
+	time.Sleep(p0Delay)
+	reactors2[p0].SwitchToConsensus(css2[p0].GetState(), false)
 	require.Eventually(t, func() bool {
 		for _, cs := range css2 {
 			if cs.GetRoundState().Height <= target {
