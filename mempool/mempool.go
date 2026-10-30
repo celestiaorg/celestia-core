@@ -29,6 +29,13 @@ const (
 	MaxTxsPerMessage = 1
 )
 
+// PendingSequencer reports the highest sequence a signer has pending in the
+// mempool. Implementations must not take the mempool lock, so an application
+// can call it from its own locked sections without deadlocking Commit.
+type PendingSequencer interface {
+	HighestPendingSequence(signer []byte) (uint64, bool)
+}
+
 //go:generate ../scripts/mockery_generate.sh Mempool
 
 // Mempool defines the mempool interface.
