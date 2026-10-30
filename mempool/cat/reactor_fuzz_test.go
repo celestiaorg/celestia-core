@@ -30,13 +30,25 @@ const (
 	fzPeers      = 3
 	fzSigners    = 3
 	fzSeenLimit  = 8 // lowered tracker caps so short sequences reach overflow paths
-	fzPoolBytes  = 96
-	fzPoolTxs    = 16
 	fzIterBudget = 20 * time.Second
 
 	// Excluded pending PROTOCO-3514; remove with the fix.
 	fzCheckStaleBuffered = false
+	// Excluded pending FINDING-cat-reactor-3 (TxPool.canAddTx/addNewTransaction
+	// admit txs beyond MempoolConfig.Size); remove with the fix.
+	fzCheckCountLimit = false
 )
+
+// fzPoolLimits derives the pool's count and byte limits from the first input
+// byte. Generated txs are 11-13 bytes, so with an even byte the byte limit
+// binds (96 bytes holds at most 8 txs, below the count limit of 16) and with an
+// odd byte the count limit (2-5 txs) binds well before the byte limit.
+func fzPoolLimits(b byte) (txs int, bytes int64) {
+	if b&1 == 0 {
+		return 16, 96
+	}
+	return 2 + int(b>>1)%4, 4096
+}
 
 // FuzzReactorReceive drives the CAT reactor's Receive with a short sequence of
 // Txs/SeenTx/WantTx messages from up to three mock peers, interleaved with
@@ -46,16 +58,21 @@ const (
 func FuzzReactorReceive(f *testing.F) {
 	for _, seed := range [][]byte{
 		{},
+		// The first byte selects the pool limits (see fzPoolLimits); 0 makes the
+		// byte limit bind.
 		// SeenTx at the expected sequence, delivery, WantTx for it, commit
-		{0, 0, 0, 2, 3, 0, 4, 0, 0, 0, 4, 1, 0, 0, 7, 0, 1},
+		{0, 0, 0, 0, 2, 3, 0, 4, 0, 0, 0, 4, 1, 0, 0, 7, 0, 1},
 		// future-sequence burst, gap fill, out-of-order delivery, sequence jump
-		{1, 0, 0, 1, 5, 0, 1, 0, 2, 3, 1, 4, 0, 0, 0, 3, 0, 4, 0, 0, 2, 3, 0, 4, 0, 0, 0, 3, 0, 4, 0, 0, 1, 3, 0, 4, 0, 0, 4, 9, 0, 0, 3},
+		{0, 1, 0, 0, 1, 5, 0, 1, 0, 2, 3, 1, 4, 0, 0, 0, 3, 0, 4, 0, 0, 2, 3, 0, 4, 0, 0, 0, 3, 0, 4, 0, 0, 1, 3, 0, 4, 0, 0, 4, 9, 0, 0, 3},
 		// malformed SeenTx key, empty Txs, reconnect, malformed WantTx key
-		{2, 0, 6, 0, 0, 0, 5, 1, 2, 3, 4, 5, 3, 1, 0, 5, 0, 4, 0, 0, 0x40, 3, 1, 2, 3},
+		{0, 2, 0, 6, 0, 0, 0, 5, 1, 2, 3, 4, 5, 3, 1, 0, 5, 0, 4, 0, 0, 0x40, 3, 1, 2, 3},
 		// request, timeout and re-request, churn, failed sends, commit
-		{0, 0, 0, 2, 0, 1, 0, 2, 8, 0, 0, 6, 1, 5, 1, 10, 0, 0, 0, 0, 3, 7, 0, 2},
+		{0, 0, 0, 0, 2, 0, 1, 0, 2, 8, 0, 0, 6, 1, 5, 1, 10, 0, 0, 0, 0, 3, 7, 0, 2},
 		// SeenTx with another signer's metadata, then delivery
-		{2, 0, 8, 1, 3, 2, 3, 0, 4, 0, 0, 0},
+		{0, 2, 0, 8, 1, 3, 2, 3, 0, 4, 0, 0, 0},
+		// count limit binds (2 txs): three signers each announce and deliver
+		// the tx at their expected sequence, so the third finds the pool full
+		{1, 0, 0, 0, 2, 3, 0, 4, 0, 2, 0, 0, 0, 1, 2, 3, 0, 4, 1, 2, 1, 0, 0, 2, 2, 3, 0, 4, 2, 2, 2},
 	} {
 		f.Add(seed)
 	}
@@ -67,8 +84,8 @@ func FuzzReactorReceive(f *testing.F) {
 		watchdog := time.AfterFunc(fzIterBudget, func() { panic("FuzzReactorReceive: iteration hung") })
 		defer watchdog.Stop()
 
-		h := newCatFuzzHarness(t)
 		in := &fzInput{data: data}
+		h := newCatFuzzHarness(t, in.byte())
 		for op := 0; op < fzMaxOps && len(in.data) > 0; op++ {
 			h.step(in)
 			h.checkInvariants()
@@ -83,9 +100,10 @@ func FuzzReactorReceive(f *testing.F) {
 		h.checkInvariants()
 		require.Zero(t, h.pool.seenTracker.Len())
 		h.r.requests.mtx.Lock()
-		require.Empty(t, h.r.requests.requestsByTx)
-		require.Empty(t, h.r.requests.requestsByPeer)
+		byTx, byPeer := len(h.r.requests.requestsByTx), len(h.r.requests.requestsByPeer)
 		h.r.requests.mtx.Unlock()
+		require.Zero(t, byTx)
+		require.Zero(t, byPeer)
 	})
 }
 
@@ -218,15 +236,14 @@ type catFuzzHarness struct {
 	height   int64
 }
 
-func newCatFuzzHarness(t *testing.T) *catFuzzHarness {
+func newCatFuzzHarness(t *testing.T, limits byte) *catFuzzHarness {
 	app := &fuzzSeqApp{seqs: map[string]uint64{}, accepted: map[types.TxKey]bool{}}
 	conn := abciclient.NewLocalClient(new(cmtsync.Mutex), app)
 	require.NoError(t, conn.Start())
 	cfg := cmtcfg.TestMempoolConfig()
 	cfg.Recheck = false
 	cfg.Broadcast = false
-	cfg.Size = fzPoolTxs
-	cfg.MaxTxsBytes = fzPoolBytes
+	cfg.Size, cfg.MaxTxsBytes = fzPoolLimits(limits)
 	cfg.CacheSize = 100
 	pool := NewTxPool(log.NewNopLogger(), cfg, conn, 1)
 	pool.seenTracker.perPeerLimit = fzSeenLimit
@@ -356,7 +373,7 @@ func (h *catFuzzHarness) step(in *fzInput) {
 			txs = [][]byte{append([]byte{'x'}, in.bytes(int(in.byte()%32))...)}
 		default:
 			s := int(in.byte() % fzSigners)
-			m := h.tx(s, h.seqNear(s, in.byte()), byte(mode&1))
+			m := h.tx(s, h.seqNear(s, in.byte()), mode&1)
 			if w := h.wants[i]; len(w) > 0 {
 				if wm, ok := h.txs[w[int(in.byte())%len(w)]]; ok && mode != 7 {
 					m = wm
@@ -499,20 +516,49 @@ func (h *catFuzzHarness) checkSent(reRequested bool) {
 	}
 }
 
+// checkInvariants checks the pool, request, tracker and buffer state. Each
+// locked section releases its lock in a defer, so a failing assertion (which
+// exits the goroutine) never leaves a lock held for the cleanup to block on.
 func (h *catFuzzHarness) checkInvariants() {
 	t := h.t
 	require.LessOrEqual(t, h.pool.SizeBytes(), h.cfg.MaxTxsBytes)
-	require.LessOrEqual(t, h.pool.Size(), h.cfg.Size)
-	h.app.mtx.Lock()
-	for _, k := range h.pool.store.getAllKeys() {
-		require.True(t, h.app.accepted[k], "pool holds a tx the app never accepted")
+	if fzCheckCountLimit {
+		require.LessOrEqual(t, h.pool.Size(), h.cfg.Size)
 	}
-	h.app.mtx.Unlock()
+	func() {
+		h.app.mtx.Lock()
+		defer h.app.mtx.Unlock()
+		for _, k := range h.pool.store.getAllKeys() {
+			require.True(t, h.app.accepted[k], "pool holds a tx the app never accepted")
+		}
+	}()
 
 	active := func(id uint16) bool { return id != 0 && h.r.ids.GetPeer(id) != nil }
 
+	func() {
+		rq := h.r.requests
+		rq.mtx.Lock()
+		defer rq.mtx.Unlock()
+		h.checkRequests(active)
+	}()
+	func() {
+		st := h.pool.seenTracker
+		st.mtx.Lock()
+		defer st.mtx.Unlock()
+		h.checkSeenTracker(active)
+	}()
+	func() {
+		rb := h.r.receivedBuffer
+		rb.mu.Lock()
+		defer rb.mu.Unlock()
+		h.checkReceivedBuffer()
+	}()
+}
+
+// checkRequests runs with h.r.requests.mtx held.
+func (h *catFuzzHarness) checkRequests(active func(uint16) bool) {
+	t := h.t
 	rq := h.r.requests
-	rq.mtx.Lock()
 	for pid, set := range rq.requestsByPeer {
 		require.True(t, active(pid), "requests held for inactive peer %d", pid)
 		require.LessOrEqual(t, len(set), maxRequestsPerPeer)
@@ -521,10 +567,12 @@ func (h *catFuzzHarness) checkInvariants() {
 		_, ok := rq.requestsByPeer[owner][key]
 		require.True(t, ok, "request owner has no slot")
 	}
-	rq.mtx.Unlock()
+}
 
+// checkSeenTracker runs with h.pool.seenTracker.mtx held.
+func (h *catFuzzHarness) checkSeenTracker(active func(uint16) bool) {
+	t := h.t
 	st := h.pool.seenTracker
-	st.mtx.Lock()
 	counts := map[uint16]int{}
 	pending := 0
 	for key, e := range st.txByKey {
@@ -558,10 +606,12 @@ func (h *catFuzzHarness) checkInvariants() {
 		queued += len(q)
 	}
 	require.Equal(t, pending, queued)
-	st.mtx.Unlock()
+}
 
+// checkReceivedBuffer runs with h.r.receivedBuffer.mu held.
+func (h *catFuzzHarness) checkReceivedBuffer() {
+	t := h.t
 	rb := h.r.receivedBuffer
-	rb.mu.Lock()
 	byPeer := map[string]int{}
 	for _, buf := range rb.buffers {
 		require.NotEmpty(t, buf)
@@ -575,7 +625,6 @@ func (h *catFuzzHarness) checkInvariants() {
 	for _, n := range rb.countByPeer {
 		require.LessOrEqual(t, n, maxRequestsPerPeer)
 	}
-	rb.mu.Unlock()
 }
 
 // checkNoStaleBuffered runs after a refresh and checks that no buffered tx is
