@@ -16,7 +16,7 @@ import (
 
 	"github.com/cometbft/cometbft/rpc/core"
 	coregrpc "github.com/cometbft/cometbft/rpc/grpc"
-	"github.com/cometbft/cometbft/types"
+	cmttypes "github.com/cometbft/cometbft/types"
 )
 
 // FuzzRPCGRPCAPI calls the legacy gRPC BroadcastAPI, BlockAPI and
@@ -112,7 +112,7 @@ func FuzzRPCGRPCAPI(f *testing.F) {
 				require.NoError(t, err)
 				fallthrough
 			case err == nil:
-				vs, err := types.ValidatorSetFromProto(res.ValidatorSet)
+				vs, err := cmttypes.ValidatorSetFromProto(res.ValidatorSet)
 				require.NoError(t, err)
 				require.Equal(t, 1, vs.Size())
 			}
@@ -152,7 +152,7 @@ func drainParts[R partResponse](t *testing.T, recv func() (R, error)) (int, erro
 			return n, err
 		}
 		n++
-		require.LessOrEqual(t, n, int(types.MaxBlockPartsCount))
+		require.LessOrEqual(t, n, int(cmttypes.MaxBlockPartsCount))
 		if res.GetIsLast() {
 			_, err = recv()
 			require.ErrorIs(t, err, io.EOF)
