@@ -15,6 +15,7 @@ import (
 
 	"github.com/cometbft/cometbft/abci/example/kvstore"
 	cfg "github.com/cometbft/cometbft/config"
+	cstypes "github.com/cometbft/cometbft/consensus/types"
 	"github.com/cometbft/cometbft/crypto/tmhash"
 	cmtpubsub "github.com/cometbft/cometbft/libs/pubsub"
 	cmtrand "github.com/cometbft/cometbft/libs/rand"
@@ -309,6 +310,65 @@ func TestPrecommitUnlockSurvivesRestart(t *testing.T) {
 			cs = f.newState()
 			startRestarted(t, cs)
 			require.False(t, cs.GetRoundState().IsLocked(), "unlock lost across the restart")
+		})
+	}
+}
+
+// A peer-driven round skip is not journaled, so replay resumes below the lock
+// round; a polka of that older round must neither release nor lower the lock.
+func TestStalePolkaKeepsRestoredLock(t *testing.T) {
+	unknown := types.BlockID{Hash: cmtrand.Bytes(tmhash.Size), PartSetHeader: types.PartSetHeader{Total: 1, Hash: cmtrand.Bytes(tmhash.Size)}}
+	for _, tc := range []struct {
+		name  string
+		polka func(x types.BlockID) types.BlockID
+	}{
+		{"nil", func(types.BlockID) types.BlockID { return types.BlockID{} }},
+		{"locked block", func(x types.BlockID) types.BlockID { return x }},
+		{"unknown block", func(types.BlockID) types.BlockID { return unknown }},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			f := newLockFixture(t, true, false)
+			cs := f.newState()
+			newRoundCh, voteCh := startRestarted(t, cs)
+			nextVote(t, voteCh, 1, 0, cmtproto.PrevoteType)
+			incrementRound(f.vss...)
+			prop, block := decideProposal(context.Background(), t, cs, f.vss[f.p1], 1, 1)
+			parts, err := block.MakePartSet(types.BlockPartSizeBytes)
+			require.NoError(t, err)
+			xID := types.BlockID{Hash: block.Hash(), PartSetHeader: parts.Header()}
+			signAddVotes(cs, cmtproto.PrevoteType, xID.Hash, xID.PartSetHeader, false, f.others...)
+			waitRound(t, newRoundCh, 1, 1)
+			require.NoError(t, cs.SetProposalAndBlock(prop, block, parts, "peer"))
+			require.Equal(t, xID, nextVote(t, voteCh, 1, 1, cmtproto.PrecommitType).BlockID)
+			require.NoError(t, cs.Stop())
+			cs.Wait()
+
+			cs = f.newState()
+			startRestarted(t, cs)
+			rs := cs.GetRoundState()
+			require.EqualValues(t, 0, rs.Round, "replay should resume below the lock round")
+			require.EqualValues(t, 1, rs.LockedRound)
+
+			for _, vs := range f.vss {
+				vs.Round = 0
+			}
+			stale := tc.polka(xID)
+			signAddVotes(cs, cmtproto.PrevoteType, stale.Hash, stale.PartSetHeader, false, f.others...)
+			require.Eventually(t, func() bool {
+				rs := cs.GetRoundState()
+				return rs.Round == 0 && rs.Step == cstypes.RoundStepPrecommit
+			}, 5*time.Second, 10*time.Millisecond)
+			rs = cs.GetRoundState()
+			require.EqualValues(t, 1, rs.LockedRound, "lock moved by a stale polka")
+			require.Equal(t, xID, rs.LockedBlockID)
+			require.NoError(t, cs.Stop())
+			cs.Wait()
+
+			cs = f.newState()
+			startRestarted(t, cs)
+			rs = cs.GetRoundState()
+			require.EqualValues(t, 1, rs.LockedRound, "lock record moved by a stale polka")
+			require.Equal(t, xID, rs.LockedBlockID)
 		})
 	}
 }
