@@ -9,7 +9,9 @@ import (
 
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/status"
 	"google.golang.org/grpc/test/bufconn"
 
 	"github.com/cometbft/cometbft/rpc/core"
@@ -30,7 +32,7 @@ func FuzzRPCGRPCAPI(f *testing.F) {
 	served := make(chan struct{})
 	go func() {
 		defer close(served)
-		_ = coregrpc.StartGRPCServer(env, lis)
+		_ = coregrpc.StartGRPCServer(env, lis) //nolint:staticcheck // legacy gRPC API is still served and is the attack surface under test
 	}()
 	conn, err := grpc.NewClient("passthrough:///bufnet",
 		grpc.WithContextDialer(func(ctx context.Context, _ string) (net.Conn, error) { return lis.DialContext(ctx) }),
@@ -45,11 +47,18 @@ func FuzzRPCGRPCAPI(f *testing.F) {
 	blocks := coregrpc.NewBlockAPIClient(conn)
 	blobstream := coregrpc.NewBlobstreamAPIClient(conn)
 	h := int64(core.EnvTestHeight)
+	// BlockByHash serves a block only once its commit is stored, which
+	// happens when the next block is saved, so every block but the tip.
+	servedHashes := make(map[string]bool, h-1)
+	for height := int64(1); height <= h; height++ {
+		hash := env.BlockStore.LoadBlockMeta(height).BlockID.Hash
+		servedHashes[string(hash)] = height < h
+		f.Add(uint8(1), int64(0), uint64(height), uint64(0), []byte(hash))
+	}
 
 	for sel := uint8(0); sel < 6; sel++ {
 		f.Add(sel, int64(2), uint64(1), uint64(h+1), []byte("k=v"))
 	}
-	f.Add(uint8(1), int64(0), uint64(1), uint64(0), []byte(core.EnvTestTx(1, 0).Hash()))
 	f.Add(uint8(2), int64(-1), uint64(0), uint64(0), []byte{})
 	f.Add(uint8(5), int64(-1), uint64(1), ^uint64(0), []byte{})
 
@@ -69,7 +78,13 @@ func FuzzRPCGRPCAPI(f *testing.F) {
 		case 1:
 			stream, err := blocks.BlockByHash(ctx, &coregrpc.BlockByHashRequest{Hash: data, Prove: prove})
 			require.NoError(t, err)
-			drainParts(t, stream.Recv)
+			n, err := drainParts(t, stream.Recv)
+			if servedHashes[string(data)] {
+				require.NoError(t, err)
+				require.Positive(t, n)
+			} else {
+				require.Error(t, err)
+			}
 		case 2:
 			stream, err := blocks.BlockByHeight(ctx, &coregrpc.BlockByHeightRequest{Height: height, Prove: prove})
 			require.NoError(t, err)
@@ -90,20 +105,30 @@ func FuzzRPCGRPCAPI(f *testing.F) {
 			}
 		case 4:
 			res, err := blocks.ValidatorSet(ctx, &coregrpc.ValidatorSetRequest{Height: height})
-			if height < 0 {
+			switch {
+			case height < 0:
 				require.Error(t, err)
-			} else if err == nil {
+			case height <= h:
+				require.NoError(t, err)
+				fallthrough
+			case err == nil:
 				vs, err := types.ValidatorSetFromProto(res.ValidatorSet)
 				require.NoError(t, err)
 				require.Equal(t, 1, vs.Size())
 			}
 		case 5:
 			res, err := blobstream.DataRootInclusionProof(ctx, &coregrpc.DataRootInclusionProofRequest{Height: height, Start: a, End: b})
-			if err == nil {
-				require.True(t, a >= 1 && a < b && b <= uint64(h)+1)
-				require.True(t, height >= 0 && uint64(height) >= a && uint64(height) < b)
-				require.EqualValues(t, b-a, res.Proof.Total)
+			// Same validity oracle as the DataRootInclusionProof case of
+			// FuzzRPCCoreHandlers, as an equivalence: b-a never exceeds
+			// dataCommitmentBlocksLimit here since b <= h+1.
+			valid := a >= 1 && a < b && b <= uint64(h)+1 &&
+				height >= 0 && uint64(height) >= a && uint64(height) < b
+			if !valid {
+				require.Error(t, err)
+				break
 			}
+			require.NoError(t, err)
+			require.EqualValues(t, b-a, res.Proof.Total)
 		}
 		// BroadcastTx subscribes as "" and must always unsubscribe.
 		require.Zero(t, env.EventBus.NumClientSubscriptions(""))
@@ -114,15 +139,16 @@ func FuzzRPCGRPCAPI(f *testing.F) {
 // partResponse is the common shape of the BlockByHash/BlockByHeight responses.
 type partResponse interface{ GetIsLast() bool }
 
-// drainParts reads a block stream to the end and returns the number of parts.
+// drainParts reads a block stream to the end and returns the number of parts
+// and the stream's error. A stream that ends without error must have sent a
+// final part marked IsLast; the call must not have hit the test deadline.
 func drainParts[R partResponse](t *testing.T, recv func() (R, error)) (int, error) {
 	n := 0
 	for {
 		res, err := recv()
-		if err == io.EOF {
-			return n, nil
-		}
+		require.NotErrorIs(t, err, io.EOF, "stream ended after %d parts without IsLast", n)
 		if err != nil {
+			require.NotEqual(t, codes.DeadlineExceeded, status.Code(err), "%v", err)
 			return n, err
 		}
 		n++
