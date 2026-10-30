@@ -11,6 +11,7 @@ import (
 
 	"github.com/cometbft/cometbft/consensus/propagation"
 	"github.com/cometbft/cometbft/crypto"
+	cmtpubsub "github.com/cometbft/cometbft/libs/pubsub"
 	cmtrand "github.com/cometbft/cometbft/libs/rand"
 	cmtsync "github.com/cometbft/cometbft/libs/sync"
 	cmtproto "github.com/cometbft/cometbft/proto/tendermint/types"
@@ -168,11 +169,43 @@ func TestRestartedLockRefetchesAndReproposes(t *testing.T) {
 	require.EqualValues(t, 0, rs.ValidRound)
 	require.True(t, blockMatchesBlockID(rs.ValidBlock, rs.ValidBlockParts, xID))
 
-	// Skip rounds with nil precommits until our node proposes.
+	p := f.nextOwnProposal(t, cs, newRoundCh)
+	require.Equal(t, xID, p.BlockID)
+	require.EqualValues(t, 0, p.POLRound)
+}
+
+// A round-0 proposer locked on its own block restarts with the bytes from its
+// WAL and re-proposes that block, with its lock round as POL, when it proposes again.
+func TestRestartedProposerReproposesLock(t *testing.T) {
+	f := newLockFixture(t, true, true)
+	cs1 := f.newState()
+	voteCh := subscribeToVoter(cs1, cs1.privValidatorPubKey.Address())
+	require.NoError(t, cs1.Start())
+	v := nextVote(t, voteCh, 1, 0, cmtproto.PrevoteType)
+	signAddVotes(cs1, cmtproto.PrevoteType, v.BlockID.Hash, v.BlockID.PartSetHeader, false, f.others...)
+	nextVote(t, voteCh, 1, 0, cmtproto.PrecommitType)
+	require.NoError(t, cs1.Stop())
+	cs1.Wait()
+
+	cs := f.newState()
+	newRoundCh, _ := startRestarted(t, cs)
+	rs := cs.GetRoundState()
+	require.True(t, blockMatchesBlockID(rs.LockedBlock, rs.LockedBlockParts, v.BlockID))
+	require.EqualValues(t, 0, rs.ValidRound)
+
+	p := f.nextOwnProposal(t, cs, newRoundCh)
+	require.Equal(t, v.BlockID, p.BlockID)
+	require.EqualValues(t, 0, p.POLRound)
+}
+
+// nextOwnProposal skips rounds with nil precommits until our node proposes again
+// and returns its proposal.
+func (f *lockFixture) nextOwnProposal(t *testing.T, cs *State, newRoundCh <-chan cmtpubsub.Message) *types.Proposal {
+	t.Helper()
 	vals := f.state.Validators.Copy()
 	ours := cs.privValidatorPubKey.Address()
-	r := int32(0)
-	for ; !bytes.Equal(vals.GetProposer().Address, ours); r++ {
+	r := int32(1)
+	for vals.IncrementProposerPriority(1); !bytes.Equal(vals.GetProposer().Address, ours); r++ {
 		vals.IncrementProposerPriority(1)
 	}
 	for rr := int32(0); rr < r; rr++ {
@@ -184,9 +217,7 @@ func TestRestartedLockRefetchesAndReproposes(t *testing.T) {
 		p := cs.GetRoundState().Proposal
 		return p != nil && p.Round == r
 	}, 5*time.Second, 10*time.Millisecond)
-	p := cs.GetRoundState().Proposal
-	require.Equal(t, xID, p.BlockID)
-	require.EqualValues(t, 0, p.POLRound)
+	return cs.GetRoundState().Proposal
 }
 
 func addParts(t *testing.T, cs *State, parts *types.PartSet, round int32) {
