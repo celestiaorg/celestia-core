@@ -800,6 +800,11 @@ func (n *Node) OnStop() {
 	if err := n.sw.Stop(); err != nil {
 		n.Logger.Error("Error closing switch", "err", err)
 	}
+	// Wait for a background recheck pass so it does not outlive the node into app shutdown.
+	if n.mempool != nil {
+		n.mempool.Lock()
+		n.mempool.Unlock() //nolint:staticcheck // empty critical section waits for the pass
+	}
 
 	if err := n.transport.Close(); err != nil {
 		n.Logger.Error("Error closing transport", "err", err)
