@@ -15,7 +15,9 @@ import (
 
 	"github.com/cometbft/cometbft/abci/example/kvstore"
 	cfg "github.com/cometbft/cometbft/config"
+	"github.com/cometbft/cometbft/crypto/tmhash"
 	cmtpubsub "github.com/cometbft/cometbft/libs/pubsub"
+	cmtrand "github.com/cometbft/cometbft/libs/rand"
 	mempl "github.com/cometbft/cometbft/mempool"
 	"github.com/cometbft/cometbft/privval"
 	cmtproto "github.com/cometbft/cometbft/proto/tendermint/types"
@@ -255,6 +257,60 @@ func TestUnlockSurvivesRestart(t *testing.T) {
 	cs = f.newState()
 	startRestarted(t, cs)
 	require.False(t, cs.GetRoundState().IsLocked(), "unlock lost across the restart")
+}
+
+// A relock at a later round survives a restart: a stale LockedRound would let an
+// older polka for another block release it.
+func TestRelockSurvivesRestart(t *testing.T) {
+	f := newLockFixture(t, true, false)
+	cs := f.newState()
+	newRoundCh, voteCh := startRestarted(t, cs)
+	_, block, parts := f.lockOnX(t, cs)
+	nextVote(t, voteCh, 1, 0, cmtproto.PrecommitType)
+	f.moveToRound1(t, cs, newRoundCh)
+	signAddVotes(cs, cmtproto.PrevoteType, block.Hash(), parts.Header(), false, f.others...)
+	signAddVotes(cs, cmtproto.PrecommitType, nil, types.PartSetHeader{}, false, f.others...)
+	v := nextVote(t, voteCh, 1, 1, cmtproto.PrecommitType)
+	require.Equal(t, types.BlockID{Hash: block.Hash(), PartSetHeader: parts.Header()}, v.BlockID)
+	require.EqualValues(t, 1, cs.GetRoundState().LockedRound)
+	require.NoError(t, cs.Stop())
+	cs.Wait()
+
+	cs = f.newState()
+	startRestarted(t, cs)
+	require.EqualValues(t, 1, cs.GetRoundState().LockedRound, "relock lost across the restart")
+}
+
+// A polka seen only in enterPrecommit (round skip) for nil or for a block we do
+// not have releases the lock there; the release survives a restart.
+func TestPrecommitUnlockSurvivesRestart(t *testing.T) {
+	for name, hash := range map[string][]byte{"nil": nil, "unknown block": cmtrand.Bytes(tmhash.Size)} {
+		t.Run(name, func(t *testing.T) {
+			f := newLockFixture(t, true, false)
+			f.lockAndStop(t)
+
+			cs := f.newState()
+			_, voteCh := startRestarted(t, cs)
+			require.True(t, cs.GetRoundState().IsLocked())
+			incrementRound(f.vss...)
+			incrementRound(f.vss...)
+			var psh types.PartSetHeader
+			if hash != nil {
+				psh = types.PartSetHeader{Total: 1, Hash: cmtrand.Bytes(tmhash.Size)}
+			}
+			signAddVotes(cs, cmtproto.PrevoteType, hash, psh, false, f.others...)
+			signAddVotes(cs, cmtproto.PrecommitType, nil, types.PartSetHeader{}, false, f.others...)
+			v := nextVote(t, voteCh, 1, 2, cmtproto.PrecommitType)
+			require.Nil(t, v.BlockID.Hash)
+			require.False(t, cs.GetRoundState().IsLocked())
+			require.NoError(t, cs.Stop())
+			cs.Wait()
+
+			cs = f.newState()
+			startRestarted(t, cs)
+			require.False(t, cs.GetRoundState().IsLocked(), "unlock lost across the restart")
+		})
+	}
 }
 
 // A proposer locked on its own block gets the bytes back from its WAL.
