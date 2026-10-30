@@ -14,7 +14,7 @@ import (
 
 	dbm "github.com/cometbft/cometbft-db"
 
-	cfg "github.com/cometbft/cometbft/config"
+	cmtcfg "github.com/cometbft/cometbft/config"
 	"github.com/cometbft/cometbft/crypto/ed25519"
 	"github.com/cometbft/cometbft/internal/test"
 	"github.com/cometbft/cometbft/libs/log"
@@ -249,7 +249,7 @@ func (fx *evFixture) dupVoteEvidence(r *fzReader) fzCase {
 	}
 	switch r.intn(16) {
 	case 1:
-		ev.Timestamp, valid = ev.Timestamp.Add(time.Duration(1+r.byte())), false
+		ev.Timestamp, valid = ev.Timestamp.Add(time.Duration(r.byte())+1), false
 	case 2:
 		ev.ValidatorPower, valid = ev.ValidatorPower+1+int64(r.byte()), false
 	case 3:
@@ -467,7 +467,7 @@ func (nopTransport) Cleanup(p2p.Peer) {}
 func newFuzzReactor(t *testing.T, pool *Pool) (*Reactor, *mock.Peer) {
 	r := NewReactor(pool)
 	r.SetLogger(log.NewNopLogger())
-	sw := p2p.NewSwitch(cfg.DefaultP2PConfig(), nopTransport{})
+	sw := p2p.NewSwitch(cmtcfg.DefaultP2PConfig(), nopTransport{})
 	sw.SetLogger(log.NewNopLogger())
 	r.SetSwitch(sw)
 	peer := mock.NewPeer(nil)
@@ -496,99 +496,111 @@ func FuzzEvidencePool(f *testing.F) {
 		if len(data) > 4096 {
 			return
 		}
-		cases := fx.generate(t, data)
-		all := make(types.EvidenceList, len(cases))
-		for i, c := range cases {
-			all[i] = c.ev
-		}
-
-		// Reactor: one undecodable piece rejects the whole message.
-		// Otherwise evidence is added in order until the first invalid
-		// piece, which gets the peer stopped. Evidence already pending is
-		// skipped without verification.
-		pool := fx.newPool(t)
-		reactor, peer := newFuzzReactor(t, pool)
-		list, err := evidenceListToProto(all)
-		require.NoError(t, err)
-		reactor.Receive(p2p.Envelope{Src: peer, ChannelID: EvidenceChannel, Message: list})
-		want, punished := map[evKey]bool{}, false
-		var decoded []fzCase
-		for _, c := range cases {
-			if c.decoded {
-				decoded = append(decoded, c)
-			} else {
-				punished = true
-			}
-		}
-		for _, c := range cases {
-			if punished {
-				break
-			}
-			if want[keyOf(c.ev)] {
-				continue
-			}
-			if !c.valid {
-				punished = true
-				break
-			}
-			want[keyOf(c.ev)] = true
-		}
-		require.Equal(t, punished, !peer.IsRunning(), "peer stopped for error mismatch")
-		fx.requirePending(t, pool, want)
-
-		// AddEvidence and CheckEvidence are only reached with evidence
-		// that passed decoding and ValidateBasic.
-		cases = decoded
-		evs := make(types.EvidenceList, len(cases))
-		for i, c := range cases {
-			evs[i] = c.ev
-		}
-
-		// AddEvidence on a fresh pool reports each item independently.
-		pool = fx.newPool(t)
-		want = map[evKey]bool{}
-		for _, c := range cases {
-			err := pool.AddEvidence(c.ev)
-			if want[keyOf(c.ev)] {
-				require.NoError(t, err)
-				continue
-			}
-			if c.valid {
-				require.NoError(t, err)
-				want[keyOf(c.ev)] = true
-			} else {
-				var invalid *types.ErrInvalidEvidence
-				require.ErrorAs(t, err, &invalid)
-			}
-		}
-		fx.requirePending(t, pool, want)
-
-		// CheckEvidence treats the list as a proposed block's evidence.
-		pool = fx.newPool(t)
-		ok, seen := true, map[string]bool{}
-		for _, c := range cases {
-			ok = ok && c.valid && !seen[string(c.ev.Hash())]
-			seen[string(c.ev.Hash())] = true
-		}
-		err = pool.CheckEvidence(evs)
-		if !ok {
-			require.Error(t, err)
-			return
-		}
-		require.NoError(t, err)
-		// Committing the block removes it from pending, after which the
-		// same evidence is rejected in a block and ignored from peers.
-		state := pool.State()
-		state.LastBlockHeight++
-		state.LastBlockTime = state.LastBlockTime.Add(time.Minute)
-		pool.Update(state, evs)
-		require.Zero(t, pool.Size())
-		for _, ev := range evs {
-			require.Error(t, pool.CheckEvidence(types.EvidenceList{ev}))
-			require.NoError(t, pool.AddEvidence(ev))
-		}
-		require.Zero(t, pool.Size())
+		runEvidencePoolFuzz(t, fx, data)
 	})
+}
+
+// TestFuzzEvidencePoolTimestampOverflow replays an input that shifts a
+// duplicate vote evidence timestamp by 1+255 ns. Computed in byte arithmetic
+// that wrapped to 0, leaving valid evidence the harness expected to be rejected.
+func TestFuzzEvidencePoolTimestampOverflow(t *testing.T) {
+	runEvidencePoolFuzz(t, fuzzEvidenceFixture(t), []byte{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 255})
+}
+
+// runEvidencePoolFuzz runs one FuzzEvidencePool iteration.
+func runEvidencePoolFuzz(t *testing.T, fx *evFixture, data []byte) {
+	cases := fx.generate(t, data)
+	all := make(types.EvidenceList, len(cases))
+	for i, c := range cases {
+		all[i] = c.ev
+	}
+
+	// Reactor: one undecodable piece rejects the whole message.
+	// Otherwise evidence is added in order until the first invalid
+	// piece, which gets the peer stopped. Evidence already pending is
+	// skipped without verification.
+	pool := fx.newPool(t)
+	reactor, peer := newFuzzReactor(t, pool)
+	list, err := evidenceListToProto(all)
+	require.NoError(t, err)
+	reactor.Receive(p2p.Envelope{Src: peer, ChannelID: EvidenceChannel, Message: list})
+	want, punished := map[evKey]bool{}, false
+	var decoded []fzCase
+	for _, c := range cases {
+		if c.decoded {
+			decoded = append(decoded, c)
+		} else {
+			punished = true
+		}
+	}
+	for _, c := range cases {
+		if punished {
+			break
+		}
+		if want[keyOf(c.ev)] {
+			continue
+		}
+		if !c.valid {
+			punished = true
+			break
+		}
+		want[keyOf(c.ev)] = true
+	}
+	require.Equal(t, punished, !peer.IsRunning(), "peer stopped for error mismatch")
+	fx.requirePending(t, pool, want)
+
+	// AddEvidence and CheckEvidence are only reached with evidence
+	// that passed decoding and ValidateBasic.
+	cases = decoded
+	evs := make(types.EvidenceList, len(cases))
+	for i, c := range cases {
+		evs[i] = c.ev
+	}
+
+	// AddEvidence on a fresh pool reports each item independently.
+	pool = fx.newPool(t)
+	want = map[evKey]bool{}
+	for _, c := range cases {
+		err := pool.AddEvidence(c.ev)
+		if want[keyOf(c.ev)] {
+			require.NoError(t, err)
+			continue
+		}
+		if c.valid {
+			require.NoError(t, err)
+			want[keyOf(c.ev)] = true
+		} else {
+			var invalid *types.ErrInvalidEvidence
+			require.ErrorAs(t, err, &invalid)
+		}
+	}
+	fx.requirePending(t, pool, want)
+
+	// CheckEvidence treats the list as a proposed block's evidence.
+	pool = fx.newPool(t)
+	ok, seen := true, map[string]bool{}
+	for _, c := range cases {
+		ok = ok && c.valid && !seen[string(c.ev.Hash())]
+		seen[string(c.ev.Hash())] = true
+	}
+	err = pool.CheckEvidence(evs)
+	if !ok {
+		require.Error(t, err)
+		return
+	}
+	require.NoError(t, err)
+	// Committing the block removes it from pending, after which the
+	// same evidence is rejected in a block and ignored from peers.
+	state := pool.State()
+	state.LastBlockHeight++
+	state.LastBlockTime = state.LastBlockTime.Add(time.Minute)
+	pool.Update(state, evs)
+	require.Zero(t, pool.Size())
+	for _, ev := range evs {
+		require.Error(t, pool.CheckEvidence(types.EvidenceList{ev}))
+		require.NoError(t, pool.AddEvidence(ev))
+	}
+	require.Zero(t, pool.Size())
 }
 
 // FuzzEvidenceReactorReceive feeds raw EvidenceList bytes to the reactor.
