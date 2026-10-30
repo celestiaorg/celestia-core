@@ -1,5 +1,3 @@
-//go:build !windows
-
 // walcost measures what the consensus goroutine waits on when writing the WAL in the worst case
 // (32 MiB blocks, 100 validators), framing records like consensus.WALEncoder on an autofile.Group.
 // Usage: go run ./scripts/walcost -arm B0,B1,B2 -heights 500 -dir /data/walcost (-h lists the arms).
@@ -14,12 +12,12 @@ import (
 	"hash/crc32"
 	"math"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"sort"
 	"strings"
 	"sync"
-	"syscall"
 	"time"
 	"unsafe"
 
@@ -581,7 +579,7 @@ func main() {
 	slot := 0
 	for h := 0; h < total; h += *block {
 		if *block > 1 && h > 0 {
-			syscall.Sync() //nolint:errcheck // returns nothing on linux
+			_ = exec.Command("sync").Run() // portable sync(2)
 		}
 		for k := range as {
 			a := as[(k + h / *block)%len(as)] // rotate the order so no arm always runs first
