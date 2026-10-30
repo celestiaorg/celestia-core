@@ -220,21 +220,21 @@ func (p *ProposalCache) getAllState(height int64, round int32, catchup bool) (*p
 	}
 }
 
-// getCachedState returns the cached part set for a height and round. Unlike
-// getAllState, it never reads the block store. committed reports whether the
-// height is committed: below the working height, or, for catchup, in the store.
-func (p *ProposalCache) getCachedState(height int64, round int32, catchup bool) (parts *proptypes.CombinedPartSet, has bool, committed bool) {
+// getCachedState returns the cached compact block and part set for a height and
+// round. Unlike getAllState, it never reads the block store. committed reports whether
+// the height is committed: below the working height, or, for catchup, in the store.
+func (p *ProposalCache) getCachedState(height int64, round int32, catchup bool) (cb *proptypes.CompactBlock, parts *proptypes.CombinedPartSet, has bool, committed bool) {
 	p.pmtx.Lock()
 	defer p.pmtx.Unlock()
 
 	committed = height < p.height || (catchup && height <= p.store.Height())
 	if !catchup && !p.relevant(height, round) {
-		return nil, false, committed
+		return nil, nil, false, committed
 	}
 	if cachedProp := p.cachedLocked(height, round); cachedProp != nil {
-		return cachedProp.block, true, committed
+		return cachedProp.compactBlock, cachedProp.block, true, committed
 	}
-	return nil, false, committed
+	return nil, nil, false, committed
 }
 
 // cachedLocked returns the cached proposal for a height and round, or nil. A

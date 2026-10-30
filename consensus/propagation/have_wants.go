@@ -375,7 +375,7 @@ func (blockProp *Reactor) handleWants(peer p2p.ID, wants *proptypes.WantParts) {
 
 	// get data, use the prove as a proxy for determining if this Want message
 	// if for catchup
-	parts, has, committed := blockProp.getCachedState(height, round, wants.Prove)
+	_, parts, has, committed := blockProp.getCachedState(height, round, wants.Prove)
 	// at a committed height only the committed block is useful: a cached entry for
 	// another block must not shadow the store.
 	if has && wants.Prove && committed {
@@ -522,7 +522,8 @@ func (blockProp *Reactor) handleRecoveryPart(peer p2p.ID, part *proptypes.Recove
 	// the peer must always send the proposal before sending parts, if they did
 	// not this node must disconnect from them.
 	// proven parts answer catch-up wants, which may be for a round we already left.
-	cb, parts, _, has := blockProp.getAllState(part.Height, part.Round, part.Proof != nil)
+	// Only an incomplete cached entry can use a part, so never read the store here.
+	cb, parts, has, _ := blockProp.getCachedState(part.Height, part.Round, part.Proof != nil)
 	if !has {
 		blockProp.Logger.Debug("received part for unknown proposal", "peer", peer, "height", part.Height, "round", part.Round)
 		// blockProp.Switch.StopPeerForError(p.peer, errors.New("received recovery part for unknown proposal"))
