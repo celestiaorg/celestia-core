@@ -674,3 +674,49 @@ func createCompactBlock(
 	cb.SetProofCache(proofs)
 	return cb, parityBlock
 }
+
+// TestAddBlockServesWants asserts that a block handed over by consensus answers
+// wants parked on a stub for it and replaces another block's entry at that round.
+func TestAddBlockServesWants(t *testing.T) {
+	cleanup, _, sm, pv := state.SetupTestCaseWithPrivVal(t)
+	t.Cleanup(func() { cleanup(t) })
+	propX, psX, _, _ := createTestProposal(t, sm, pv, 1, 0, 2, 1000000)
+	propY, psY, _, metaY := createTestProposal(t, sm, pv, 1, 0, 2, 1000000)
+	pshX := psX.Header()
+
+	complete := func(r *Reactor) func() bool {
+		return func() bool {
+			_, parts, has := r.GetProposal(propX.Height, propX.Round)
+			return has && parts.IsComplete() && parts.HasHeader(pshX)
+		}
+	}
+
+	t.Run("parked want", func(t *testing.T) {
+		reactors, _ := createTestReactors(2, defaultTestP2PConf(), false, "")
+		server, requester := reactors[0], reactors[1]
+		server.AddCommitment(propX.Height, propX.Round, &pshX)
+		requester.AddCommitment(propX.Height, propX.Round, &pshX)
+		require.Eventually(t, func() bool {
+			wants, has := server.getPeer(requester.self).GetWants(propX.Height, propX.Round)
+			return has && !wants.IsEmpty()
+		}, time.Second, 10*time.Millisecond)
+
+		server.AddBlock(propX.Height, propX.Round, psX)
+		require.Eventually(t, complete(requester), 2*time.Second, 10*time.Millisecond)
+	})
+
+	t.Run("replaces another block", func(t *testing.T) {
+		reactors, _ := createTestReactors(2, defaultTestP2PConf(), false, "")
+		server, requester := reactors[0], reactors[1]
+		cbY, parityY := createCompactBlock(t, propY, psY, metaY)
+		require.True(t, server.AddProposal(cbY))
+		_, partsY, _, has := server.getAllState(propY.Height, propY.Round, true)
+		require.True(t, has)
+		partsY.SetProposalData(psY, parityY)
+
+		server.AddBlock(propX.Height, propX.Round, psX)
+		require.True(t, complete(server)())
+		requester.AddCommitment(propX.Height, propX.Round, &pshX)
+		require.Eventually(t, complete(requester), 2*time.Second, 10*time.Millisecond)
+	})
+}

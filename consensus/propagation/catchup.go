@@ -91,6 +91,47 @@ func (blockProp *Reactor) retryWants() {
 	}
 }
 
+// AddBlock stores a complete block that has a polka or commit at (height, round), so peers'
+// wants there are served without a compact block. Like AddCommitment, it replaces an entry
+// for another block, whose proposal lost that round.
+func (blockProp *Reactor) AddBlock(height int64, round int32, parts *types.PartSet) {
+	if parts == nil || !parts.IsComplete() {
+		return
+	}
+	psh := parts.Header()
+	entry := &proposalData{
+		compactBlock: &proptypes.CompactBlock{Proposal: types.Proposal{Height: height, Round: round}},
+		block:        proptypes.NewCombinedPartSetFromOriginal(parts, true),
+		maxRequests:  bits.NewBitArray(int(psh.Total * 2)),
+	}
+	blockProp.pmtx.Lock()
+	if blockProp.proposals[height] == nil {
+		blockProp.proposals[height] = make(map[int32]*proposalData)
+	}
+	switch prop := blockProp.proposals[height][round]; {
+	case prop == nil:
+	case !prop.block.Original().Header().Equals(psh):
+		for _, peer := range blockProp.getPeers() {
+			peer.DeleteRound(height, round)
+		}
+	case prop.block.IsComplete():
+		blockProp.pmtx.Unlock()
+		return
+	default:
+		entry.compactBlock, entry.catchup = prop.compactBlock, prop.catchup
+	}
+	blockProp.proposals[height][round] = entry
+	blockProp.pmtx.Unlock()
+
+	// answer the wants peers parked on the incomplete entry.
+	go func() {
+		for i := 0; i < int(parts.Total()); i++ {
+			part := parts.GetPart(i)
+			blockProp.clearWants(&proptypes.RecoveryPart{Height: height, Round: round, Index: part.Index, Data: part.Bytes}, part.Proof)
+		}
+	}()
+}
+
 func (blockProp *Reactor) AddCommitment(height int64, round int32, psh *types.PartSetHeader) {
 	blockProp.Logger.Info("adding commitment", "height", height, "round", round, "psh", psh)
 	blockProp.pmtx.Lock()
