@@ -92,7 +92,7 @@ func (cs *State) readReplayMessage(msg *TimedWALMessage, newStepSub types.Subscr
 	return nil
 }
 
-// applyLockInfo restores the lock journaled by lockOn/unlock; the last record wins.
+// applyLockInfo restores the lock journaled by writeLockInfo; the last record wins.
 func (cs *State) applyLockInfo(li LockInfo) {
 	cs.lockAll()
 	defer cs.unlockAll()
