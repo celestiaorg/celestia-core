@@ -115,6 +115,8 @@ type fuzzSnapshotConn struct {
 	script   *fuzzBytes
 	applies  int
 	accepted map[uint32]bool
+	// rejectSenders holds every nonempty sender the app asked to reject.
+	rejectSenders []p2p.ID
 }
 
 func (*fuzzSnapshotConn) Error() error { return nil }
@@ -158,6 +160,11 @@ func (c *fuzzSnapshotConn) ApplySnapshotChunk(_ context.Context, req *abci.Reque
 		if b&0x80 != 0 {
 			resp.RefetchChunks = []uint32{c.script.small32(0x1f)}
 			resp.RejectSenders = []string{req.Sender, string(c.script.bytes())}
+			for _, sender := range resp.RejectSenders {
+				if sender != "" {
+					c.rejectSenders = append(c.rejectSenders, p2p.ID(sender))
+				}
+			}
 		}
 	}
 	return resp, nil
@@ -413,8 +420,11 @@ func FuzzStateSyncReactor(f *testing.F) {
 		} else if conn.offer == abci.ResponseOfferSnapshot_ABORT {
 			require.ErrorIs(t, err, errAbort)
 		}
-		for _, id := range rejected {
-			require.True(t, s.snapshots.peerBlacklist[id])
+		// Every sender the app asked to reject is blacklisted and reported,
+		// and nothing else is reported.
+		for _, id := range conn.rejectSenders {
+			require.True(t, s.snapshots.peerBlacklist[id], "sender %q the app rejected is not blacklisted", id)
 		}
+		require.ElementsMatch(t, conn.rejectSenders, rejected, "rejected senders reported via the callback")
 	})
 }
