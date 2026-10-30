@@ -60,11 +60,10 @@ neither tree has dedicated reactor-envelope or block-level decoder fuzz files.
 Core's CAT-specific precheck and propagation paths require local targets.
 
 Outside the decoder suite, core also has `FuzzParallelImplementations` in
-`crypto/merkle` and `FuzzTxsToParts` / `FuzzTxsToParts_Panic` in
-`consensus/propagation/types`. These test tree algorithms and reconstruction,
-not raw network decoders, and are not in this nightly matrix. The reconstruction
-harnesses also generate data from wall-clock-seeded randomness, so saved inputs
-do not fully reproduce their generated blocks. `consensus/wal_fuzz.go` is a
+`crypto/merkle`, which tests tree algorithms rather than network decoders and
+is not in the nightly matrix. `FuzzTxsToParts` and `FuzzTxsToParts_Panic` in
+`consensus/propagation/types` now derive their data from the fuzz input and run
+nightly; see [Entry-point coverage](#entry-point-coverage). `consensus/wal_fuzz.go` is a
 legacy `gofuzz`-tagged WAL harness; `p2p/fuzz.go` simulates connection faults and
 is not a native fuzz target. `test/fuzz/mempool/checktx.go` is a legacy byte-slice
 harness, separate from the native CheckTx target. The OSS-Fuzz build script
@@ -99,7 +98,7 @@ run in the nightly matrix.
 | RPC handlers and JSON-RPC server | URI, JSON-RPC (single, batch, websocket) requests | `FuzzRPCCoreHandlers`, `FuzzRPCCoreJSONRPC` in `rpc/core` |
 | Legacy gRPC API | BlockAPI and BlobstreamAPI requests | `FuzzRPCGRPCAPI` in `rpc/core` |
 
-With these **30 targets** the nightly matrix runs **44 targets**.
+With these **29 targets** the nightly matrix runs **43 targets**.
 
 Known limits:
 
