@@ -525,7 +525,7 @@ func FuzzBlockExecValidateApply(f *testing.F) {
 		require.EqualValues(t, 2, state.LastBlockHeight)
 		require.Equal(t, blockID, state.LastBlockID)
 		require.Equal(t, block.Time, state.LastBlockTime)
-		require.Equal(t, c.app.appHash, []byte(state.AppHash))
+		require.Equal(t, c.app.appHash, state.AppHash)
 		require.NotEqual(t, prevAppHash, state.AppHash)
 		loaded, err := c.stateStore.Load()
 		require.NoError(t, err)
