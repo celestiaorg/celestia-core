@@ -20,15 +20,16 @@ import (
 	"github.com/cometbft/cometbft/types"
 )
 
-// propagatorCall is one AddCommitment or SetConsensusState call.
+// propagatorCall is one AddCommitment, AddBlock or SetConsensusState call.
 type propagatorCall struct {
 	commitment bool
+	block      bool
 	height     int64
 	round      int32
 	psh        types.PartSetHeader
 }
 
-// callRecorder records, in order, the calls that move the propagator's height and round.
+// callRecorder records, in order, the calls that point the propagator at a block or move its round.
 type callRecorder struct {
 	propagation.Propagator
 
@@ -41,6 +42,13 @@ func (r *callRecorder) AddCommitment(height int64, round int32, psh *types.PartS
 	r.calls = append(r.calls, propagatorCall{commitment: true, height: height, round: round, psh: *psh})
 	r.mtx.Unlock()
 	r.Propagator.AddCommitment(height, round, psh)
+}
+
+func (r *callRecorder) AddBlock(height int64, round int32, parts *types.PartSet) {
+	r.mtx.Lock()
+	r.calls = append(r.calls, propagatorCall{block: true, height: height, round: round, psh: parts.Header()})
+	r.mtx.Unlock()
+	r.Propagator.AddBlock(height, round, parts)
 }
 
 func (r *callRecorder) SetConsensusState(height int64, round int32, proposer crypto.PubKey) {
@@ -170,10 +178,44 @@ func TestRestartedLockRefetchesAndReproposes(t *testing.T) {
 	rs := cs.GetRoundState()
 	require.EqualValues(t, 0, rs.ValidRound)
 	require.True(t, blockMatchesBlockID(rs.ValidBlock, rs.ValidBlockParts, xID))
+	require.Contains(t, rec.snapshot(), propagatorCall{block: true, height: 1, round: 0, psh: parts.Header()})
 
 	p := f.nextOwnProposal(t, cs, newRoundCh)
 	require.Equal(t, xID, p.BlockID)
 	require.EqualValues(t, 0, p.POLRound)
+}
+
+// A restarted node hands its locked block X to the propagator for the lock round, and
+// adopts and hands it over for round 1 on a polka for X while Y is proposed there.
+func TestLockedBlockSharedWithPropagator(t *testing.T) {
+	f := newLockFixture(t, true, true)
+	cs1 := f.newState()
+	voteCh := subscribeToVoter(cs1, cs1.privValidatorPubKey.Address())
+	require.NoError(t, cs1.Start())
+	v := nextVote(t, voteCh, 1, 0, cmtproto.PrevoteType)
+	signAddVotes(cs1, cmtproto.PrevoteType, v.BlockID.Hash, v.BlockID.PartSetHeader, false, f.others...)
+	nextVote(t, voteCh, 1, 0, cmtproto.PrecommitType)
+	require.NoError(t, cs1.Stop())
+	cs1.Wait()
+
+	cs := f.newState()
+	rec := &callRecorder{Propagator: cs.propagator}
+	cs.propagator = rec
+	newRoundCh, voteCh := startRestarted(t, cs)
+	psh := v.BlockID.PartSetHeader
+	require.Contains(t, rec.snapshot(), propagatorCall{block: true, height: 1, round: 0, psh: psh})
+
+	f.moveToRound1(t, cs, newRoundCh)
+	f.proposeFreshY(t, cs)
+	nextVote(t, voteCh, 1, 1, cmtproto.PrevoteType)
+	signAddVotes(cs, cmtproto.PrevoteType, v.BlockID.Hash, psh, false, f.others...)
+	nextVote(t, voteCh, 1, 1, cmtproto.PrecommitType)
+	calls := rec.snapshot()
+	require.Contains(t, calls, propagatorCall{block: true, height: 1, round: 1, psh: psh})
+	require.NotContains(t, calls, propagatorCall{commitment: true, height: 1, round: 1, psh: psh})
+	rs := cs.GetRoundState()
+	require.EqualValues(t, 1, rs.ValidRound)
+	require.True(t, blockMatchesBlockID(rs.ValidBlock, rs.ValidBlockParts, v.BlockID))
 }
 
 // A round-0 proposer locked on its own block restarts with the bytes from its
