@@ -1739,6 +1739,13 @@ func (cs *State) enterPrecommit(height int64, round int32) {
 		return
 	}
 
+	// Replay can resume below a restored lock's round: an older polka must not move the lock.
+	if cs.rs.IsLocked() && round < cs.rs.LockedRound {
+		logger.Debug("precommit step; polka below the locked round; precommitting nil", "locked_round", cs.rs.LockedRound)
+		cs.signAddVote(cmtproto.PrecommitType, nil, types.PartSetHeader{}, nil)
+		return
+	}
+
 	// At this point +2/3 prevoted for a particular block or nil.
 	if err := cs.eventBus.PublishEventPolka(cs.rs.RoundStateEvent()); err != nil {
 		logger.Error("failed publishing polka", "err", err)
