@@ -524,3 +524,70 @@ func TestBaseReactorWithQueueingFunc(t *testing.T) {
 	time.Sleep(50 * time.Millisecond)
 	require.EqualValues(t, 2, r.received.Load())
 }
+
+type concurrencyReactor struct {
+	p2p.BaseReactor
+	entered chan struct{}
+	release chan struct{}
+}
+
+func newConcurrencyReactor() *concurrencyReactor {
+	r := &concurrencyReactor{
+		entered: make(chan struct{}, 2),
+		release: make(chan struct{}),
+	}
+	r.BaseReactor = *p2p.NewBaseReactor("ConcurrencyReactor", r,
+		p2p.WithIncomingQueueSize(1),
+		p2p.WithUnmarshalConcurrency(1),
+		p2p.WithProcessor(func(ctx context.Context, _ <-chan p2p.UnmarshalResult) {
+			<-ctx.Done()
+		}),
+	)
+	return r
+}
+
+func (r *concurrencyReactor) GetChannels() []*conn.ChannelDescriptor {
+	return []*conn.ChannelDescriptor{{
+		ID:                  0x78,
+		Priority:            1,
+		RecvMessageCapacity: 1024,
+		MessageType:         &mempool.Txs{},
+		RecvMessagePrecheck: func([]byte) error {
+			r.entered <- struct{}{}
+			<-r.release
+			return nil
+		},
+	}}
+}
+
+func (r *concurrencyReactor) Receive(p2p.Envelope) {}
+
+func TestBaseReactorUnmarshalConcurrency(t *testing.T) {
+	r := newConcurrencyReactor()
+	peer := &imaginaryPeer{}
+	msg, err := proto.Marshal(&mempool.Txs{Txs: [][]byte{[]byte("message")}})
+	require.NoError(t, err)
+	envelope := p2p.UnprocessedEnvelope{Src: peer, Message: msg, ChannelID: 0x78}
+
+	var wg sync.WaitGroup
+	wg.Add(2)
+	go func() {
+		defer wg.Done()
+		r.QueueUnprocessedEnvelope(envelope)
+	}()
+	<-r.entered
+	go func() {
+		defer wg.Done()
+		r.QueueUnprocessedEnvelope(envelope)
+	}()
+
+	select {
+	case <-r.entered:
+		t.Fatal("second precheck bypassed the unmarshal concurrency bound")
+	case <-time.After(50 * time.Millisecond):
+	}
+	close(r.release)
+	<-r.entered
+	r.OnStop()
+	wg.Wait()
+}

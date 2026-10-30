@@ -2391,7 +2391,9 @@ func (cs *State) addProposalBlockPart(msg *BlockPartMessage, peerID p2p.ID) (add
 
 		pbb := new(cmtproto.Block)
 		// Use committed state, never the proposer's claimed header version.
-		err = checkProposalTxCount(bz, types.MaxBlockTxsForAppVersion(cs.state.Version.Consensus.App))
+		appVersion := cs.state.Version.Consensus.App
+		err = cmtproto.CheckBlockCardinality(bz, types.MaxBlockTxsForAppVersion(appVersion),
+			appVersion >= types.BlockTxLimitAppVersion)
 		if err == nil {
 			err = proto.Unmarshal(bz, pbb)
 		}
@@ -2464,21 +2466,6 @@ func (cs *State) handleCompleteProposal(blockHeight int64) {
 		// If we're waiting on the proposal block...
 		cs.tryFinalizeCommit(blockHeight)
 	}
-}
-
-// checkProposalTxCount counts txs before the full decoder allocates per tx.
-func checkProposalTxCount(bz []byte, maxTxs int) error {
-	if maxTxs <= 0 {
-		return nil
-	}
-	n, err := cmtproto.CountBlockTxs(bz, maxTxs)
-	if err != nil {
-		return err
-	}
-	if n > maxTxs {
-		return fmt.Errorf("%w (max: %d)", types.ErrTooManyBlockTxs, maxTxs)
-	}
-	return nil
 }
 
 // Attempt to add the vote. if its a duplicate signature, dupeout the validator
