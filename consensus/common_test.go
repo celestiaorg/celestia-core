@@ -352,20 +352,20 @@ func validatePrecommit(
 
 	rs := cs.GetRoundState()
 	if lockedBlockHash == nil {
-		if rs.LockedRound != lockRound || rs.LockedBlock != nil {
+		if rs.LockedRound != lockRound || rs.IsLocked() {
 			panic(fmt.Sprintf(
 				"Expected to be locked on nil at round %d. Got locked at round %d with block %v",
 				lockRound,
 				rs.LockedRound,
-				rs.LockedBlock))
+				rs.LockedBlockID))
 		}
 	} else {
-		if rs.LockedRound != lockRound || !bytes.Equal(rs.LockedBlock.Hash(), lockedBlockHash) {
+		if rs.LockedRound != lockRound || !bytes.Equal(rs.LockedBlockID.Hash, lockedBlockHash) {
 			panic(fmt.Sprintf(
 				"Expected block to be locked on round %d, got %d. Got locked block %X, expected %X",
 				lockRound,
 				rs.LockedRound,
-				rs.LockedBlock.Hash(),
+				rs.LockedBlockID.Hash,
 				lockedBlockHash))
 		}
 	}
