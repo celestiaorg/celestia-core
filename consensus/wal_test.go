@@ -87,15 +87,7 @@ func TestWALEncoderDecoder(t *testing.T) {
 		{Time: now, Msg: EndHeightMessage{0}},
 		{Time: now, Msg: timeoutInfo{Duration: time.Second, Height: 1, Round: 1, Step: types.RoundStepPropose}},
 		{Time: now, Msg: cmttypes.EventDataRoundState{Height: 1, Round: 1, Step: ""}},
-		{Time: now, Msg: LockInfo{
-			Height: 1,
-			Round:  0,
-			BlockID: cmttypes.BlockID{
-				Hash:          []byte("01234567890123456789012345678901"),
-				PartSetHeader: cmttypes.PartSetHeader{Total: 2, Hash: []byte("01234567890123456789012345678901")},
-			},
-			BlockTime: time.Date(2026, 10, 29, 12, 0, 0, 0, time.UTC),
-		}},
+		{Time: now, Msg: LockInfo{Height: 1, Round: 0, BlockID: cmttypes.MakeBlockIDRandom(), BlockTime: now}},
 		{Time: now, Msg: LockInfo{Height: 1, Round: -1}},
 	}
 
