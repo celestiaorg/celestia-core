@@ -180,8 +180,8 @@ type partFeeder struct {
 
 func (p partFeeder) GetPartChan() <-chan types.PartInfo { return p.parts }
 
-// A node that enters the commit step for an earlier round than its current one takes
-// that round's parts from the propagator and commits.
+// A node that enters the commit step for an earlier round than its current one stays
+// there on its current round's precommits, takes the commit round's parts and commits.
 func TestCommitForEarlierRoundTakesItsParts(t *testing.T) {
 	cs1, vss := randState(4)
 	others := vss[1:]
@@ -208,6 +208,14 @@ func TestCommitForEarlierRoundTakesItsParts(t *testing.T) {
 		rs := cs1.GetRoundState()
 		return rs.Step == cstypes.RoundStepCommit && rs.CommitRound == 0 && rs.Round == 1
 	}, 5*time.Second, 10*time.Millisecond)
+	for _, vs := range others {
+		vs.Round = 1
+	}
+	signAddVotes(cs1, cmtproto.PrecommitType, nil, types.PartSetHeader{}, true, others...)
+	require.Eventually(t, func() bool {
+		return cs1.GetRoundState().Votes.Precommits(1).HasTwoThirdsAny()
+	}, 5*time.Second, 10*time.Millisecond)
+	require.Equal(t, cstypes.RoundStepCommit, cs1.GetRoundState().Step)
 
 	for i := 0; i < int(partsX.Total()); i++ {
 		feeder.parts <- types.PartInfo{Part: partsX.GetPart(i), Height: 1, Round: 0}
