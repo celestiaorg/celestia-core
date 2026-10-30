@@ -48,8 +48,8 @@ func (blockProp *Reactor) retryWants() {
 			}
 			mc := missing.Copy()
 
-			// catch-up entries re-ask every peer each time: a peer may have answered
-			// with another block's parts or parked the want on an entry it never fills.
+			// catch-up entries ignore past requests (ReqLimit still caps each pass): a peer
+			// may have answered with another block's parts or parked the want on a stub.
 			reqs, has := peer.GetRequests(height, round)
 			if has && !catchup {
 				mc = mc.Sub(reqs)
