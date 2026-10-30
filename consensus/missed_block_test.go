@@ -50,34 +50,33 @@ func (f *missedBlockFilter) drop(e p2p.UnprocessedEnvelope) bool {
 			val := f.valIdx[v.Vote.ValidatorIndex]
 			return (val == f.c && f.node != f.c) || (val == f.b && f.node == f.c)
 		}
-		if f.node != f.d {
-			return false
+		if p := m.GetProposal(); p != nil {
+			return f.hidden(p.Proposal.Height, p.Proposal.Round)
 		}
-		if p := m.GetProposal(); p != nil && p.Proposal.Height == f.target && p.Proposal.Round == 0 {
-			return true
-		}
-		if bp := m.GetBlockPart(); bp != nil && bp.Height == f.target && bp.Round == 0 {
-			return true
+		if bp := m.GetBlockPart(); bp != nil {
+			return f.hidden(bp.Height, bp.Round)
 		}
 	case propagation.DataChannel, propagation.WantChannel:
-		if f.node != f.d {
-			return false
-		}
 		m := &propproto.Message{}
-		if proto.Unmarshal(e.Message, m) != nil {
+		if f.node != f.d || proto.Unmarshal(e.Message, m) != nil {
 			return false
 		}
-		if cb := m.GetCompactBlock(); cb != nil && cb.Proposal != nil && cb.Proposal.Height == f.target && cb.Proposal.Round == 0 {
-			return true
+		if cb := m.GetCompactBlock(); cb != nil && cb.Proposal != nil {
+			return f.hidden(cb.Proposal.Height, cb.Proposal.Round)
 		}
-		if hp := m.GetHaveParts(); hp != nil && hp.Height == f.target && hp.Round == 0 {
-			return true
+		if hp := m.GetHaveParts(); hp != nil {
+			return f.hidden(hp.Height, hp.Round)
 		}
-		if rp := m.GetRecoveryPart(); rp != nil && rp.Height == f.target && rp.Round == 0 {
-			return true
+		if rp := m.GetRecoveryPart(); rp != nil {
+			return f.hidden(rp.Height, rp.Round)
 		}
 	}
 	return false
+}
+
+// hidden reports whether node d must not see this round-0 block data.
+func (f *missedBlockFilter) hidden(height int64, round int32) bool {
+	return f.node == f.d && height == f.target && round == 0
 }
 
 // configTimeoutsApp leaves the round timeouts to the consensus config.
@@ -97,7 +96,7 @@ func (a configTimeoutsApp) FinalizeBlock(ctx context.Context, req *abci.RequestF
 func TestReactorCommitsBlockNeverReceived(t *testing.T) {
 	const n = 4
 	const target = int64(3)
-	css, cleanup := randConsensusNet(t, n, "consensus_missed_block_test", newMockTickerFunc(false),
+	css, cleanup := randConsensusNet(t, n, "consensus_missed_block_test", NewTimeoutTicker,
 		func() abci.Application { return configTimeoutsApp{kvstore.NewInMemoryApplication()} },
 		func(c *cfg.Config) {
 			c.Consensus.TimeoutPropose = 2 * time.Second
@@ -108,9 +107,6 @@ func TestReactorCommitsBlockNeverReceived(t *testing.T) {
 			c.Consensus.SkipTimeoutCommit = false
 		})
 	t.Cleanup(cleanup)
-	for i := range css {
-		css[i].SetTimeoutTicker(NewTimeoutTicker())
-	}
 
 	// roles at the target height: proposer priorities advance once per height.
 	vals := css[0].GetState().Validators.CopyIncrementProposerPriority(int32(target - 1))
