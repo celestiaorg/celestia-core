@@ -111,7 +111,9 @@ func (t *timeoutTicker) timeoutRoutine() {
 				if newti.Round < ti.Round {
 					continue
 				} else if newti.Round == ti.Round {
-					if ti.Step > 0 && newti.Step <= ti.Step {
+					// Only the pacing gate may re-arm the same step, once its timer fired.
+					rearm := newti.rearm && newti.Step == ti.Step && !t.timerActive
+					if ti.Step > 0 && newti.Step <= ti.Step && !rearm {
 						continue
 					}
 				}

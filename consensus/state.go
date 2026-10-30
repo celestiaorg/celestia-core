@@ -67,6 +67,8 @@ type timeoutInfo struct {
 	Height   int64                 `json:"height"`
 	Round    int32                 `json:"round"`
 	Step     cstypes.RoundStepType `json:"step"`
+	// rearm lets the pacing gate reschedule a NewHeight timeout that already fired.
+	rearm bool
 }
 
 func (ti *timeoutInfo) String() string {
@@ -180,6 +182,9 @@ type State struct {
 	// proposalReceivedTime tracks when the proposal was received for the current height/round
 	// Used to calculate the duration until full block is received
 	proposalReceivedTime time.Time
+
+	// pacingStarted is set after a local commit anchors the dynamic timeout commit.
+	pacingStarted bool
 }
 
 // StateOption sets an optional parameter on the State.
@@ -652,9 +657,14 @@ func (cs *State) scheduleRound0(rs *cstypes.RoundState) {
 	cs.scheduleTimeout(sleepDuration, rs.Height, 0, cstypes.RoundStepNewHeight)
 }
 
+// dynamicTimeoutCommit is the app's floor on the height interval; 0 keeps the legacy rule.
+func (cs *State) dynamicTimeoutCommit() time.Duration {
+	return cs.state.Timeouts.DynamicTimeoutCommit
+}
+
 // Attempt to schedule a timeout (by sending timeoutInfo on the tickChan)
 func (cs *State) scheduleTimeout(duration time.Duration, height int64, round int32, step cstypes.RoundStepType) {
-	cs.timeoutTicker.ScheduleTimeout(timeoutInfo{duration, height, round, step})
+	cs.timeoutTicker.ScheduleTimeout(timeoutInfo{Duration: duration, Height: height, Round: round, Step: step})
 }
 
 // Propose returns the amount of time to wait for a proposal, using application timeouts
@@ -869,6 +879,7 @@ func (cs *State) updateToState(state sm.State) {
 	cs.updateHeight(height)
 	cs.updateRoundStep(0, cstypes.RoundStepNewHeight)
 
+	prevStartTime := cs.rs.StartTime
 	if cs.rs.CommitTime.IsZero() {
 		// "Now" makes it easier to sync up dev nodes.
 		// We add timeoutCommit to allow transactions
@@ -889,6 +900,7 @@ func (cs *State) updateToState(state sm.State) {
 			cs.rs.StartTime = cs.config.CommitWithCustomTimeout(cs.rs.CommitTime, cs.state.Timeouts.TimeoutCommit)
 		}
 	}
+	cs.applyDynamicTimeoutCommit(prevStartTime, state.Timeouts.DynamicTimeoutCommit)
 
 	cs.rs.Validators = validators
 	cs.rs.Proposal = nil
@@ -914,6 +926,36 @@ func (cs *State) updateToState(state sm.State) {
 
 	// Finally, broadcast RoundState
 	cs.newStep()
+}
+
+// applyDynamicTimeoutCommit raises StartTime to the previous deadline plus dynamic,
+// measured on the local clock, and never leaves it in the past. 0 is a no-op.
+func (cs *State) applyDynamicTimeoutCommit(prevStartTime time.Time, dynamic time.Duration) {
+	if dynamic <= 0 {
+		cs.pacingStarted = false
+		return
+	}
+	now := cmttime.Now()
+	anchor := prevStartTime
+	switch {
+	case cs.rs.CommitTime.IsZero():
+		anchor = now
+	case !cs.pacingStarted || anchor.After(cs.rs.CommitTime):
+		// Bootstrap from our own commit; an early commit must not carry an unused deadline.
+		anchor = cs.rs.CommitTime
+	}
+	cs.pacingStarted = !cs.rs.CommitTime.IsZero()
+	if deadline := anchor.Add(dynamic); deadline.After(cs.rs.StartTime) {
+		cs.rs.StartTime = deadline
+	}
+	if wait := cs.rs.StartTime.Sub(now); wait > 0 {
+		cs.metrics.PacingFloorWaitSeconds.Observe(wait.Seconds())
+		return
+	}
+	// After a slow height, start now rather than carry an expired deadline.
+	cs.rs.StartTime = now
+	cs.metrics.PacingFloorWaitSeconds.Observe(0)
+	cs.metrics.PacingBypass.With("reason", "slow").Add(1)
 }
 
 func (cs *State) newStep() {
@@ -1207,7 +1249,8 @@ func (cs *State) handleTxsAvailable() {
 // State functions
 // Used internally by handleTimeout and handleMsg to make state transitions
 
-// Enter: `timeoutNewHeight` by startTime (commitTime+timeoutCommit),
+// Enter: `timeoutNewHeight` by startTime (commitTime+timeoutCommit, or the
+// dynamic timeout commit deadline if later),
 //
 //	or, if SkipTimeoutCommit==true, after receiving all precommits from (height,round-1)
 //
@@ -1227,6 +1270,22 @@ func (cs *State) enterNewRound(height int64, round int32) {
 	}
 
 	if now := cmttime.Now(); cs.rs.StartTime.After(now) {
+		dynamic := cs.dynamicTimeoutCommit()
+		if dynamic > 0 && !cs.replayMode && round == 0 {
+			// Round 0 waits for the deadline unless +2/3 precommits for the height exist.
+			if !cs.rs.Votes.Precommits(round).HasTwoThirdsAny() {
+				// A backward clock step must not hold round 0 longer than one interval.
+				timeoutCommit := cs.config.CommitWithCustomTimeout(now, cs.state.Timeouts.TimeoutCommit).Sub(now)
+				if limit := now.Add(max(dynamic, timeoutCommit)); cs.rs.StartTime.After(limit) {
+					cs.rs.StartTime = limit
+				}
+				logger.Debug("deferring round 0 until the height start time", "start_time", cs.rs.StartTime)
+				cs.timeoutTicker.ScheduleTimeout(timeoutInfo{Duration: cs.rs.StartTime.Sub(now),
+					Height: height, Step: cstypes.RoundStepNewHeight, rearm: true})
+				return
+			}
+			cs.metrics.PacingBypass.With("reason", "quorum").Add(1)
+		}
 		logger.Trace("need to set a buffer and log message here for sanity", "start_time", cs.rs.StartTime, "now", now)
 	}
 
@@ -1285,7 +1344,9 @@ func (cs *State) enterNewRound(height int64, round int32) {
 	// Wait for txs to be available in the mempool
 	// before we enterPropose in round 0. If the last block changed the app hash,
 	// we may need an empty "proof" block, and enterPropose immediately.
-	waitForTxs := cs.config.WaitForTxs() && round == 0 && !cs.needProofBlock(height)
+	// A proposal held until the dynamic deadline is processed without waiting for txs.
+	waitForTxs := cs.config.WaitForTxs() && round == 0 && !cs.needProofBlock(height) &&
+		(cs.dynamicTimeoutCommit() == 0 || !cs.isProposalComplete())
 	if waitForTxs {
 		if cs.config.CreateEmptyBlocksInterval > 0 {
 			cs.scheduleTimeout(cs.config.CreateEmptyBlocksInterval, height, round,
@@ -2450,7 +2511,10 @@ func (cs *State) handleCompleteProposal(blockHeight int64) {
 		// procedure at this point.
 	}
 
-	if cs.rs.Step <= cstypes.RoundStepPropose && cs.isProposalComplete() {
+	// With a dynamic timeout commit, a proposal completed during NewHeight is held
+	// until round 0 starts. WAL replay still restores votes and locks.
+	held := cs.dynamicTimeoutCommit() > 0 && !cs.replayMode && cs.rs.Step < cstypes.RoundStepNewRound
+	if !held && cs.rs.Step <= cstypes.RoundStepPropose && cs.isProposalComplete() {
 		// Move onto the next step
 		cs.enterPrevote(blockHeight, cs.rs.Round)
 		if hasTwoThirds { // this is optimisation as this will be triggered when prevote is added
