@@ -549,6 +549,40 @@ Here's a brief summary of the timeouts:
   on the new height (this gives us a chance to receive some more precommits,
   even though we already have +2/3)
 
+### Dynamic timeout commit (application-set)
+
+`timeout_commit`, `skip_timeout_commit` and the application's delayed precommit
+timeout behave as described above. The application can also return
+`dynamic_timeout_commit` in `TimeoutInfo`, a floor on the interval between the
+start times of consecutive heights. It has no `config.toml` setting, and `0`
+(the default) disables it, leaving the behaviour above unchanged. When it is set,
+a node starts height `H+1` at
+
+`max(now, CommitTime(H) + timeout_commit, StartTime(H) + dynamic_timeout_commit)`
+
+where `StartTime(H)` is when the node started height `H` on its own clock
+(`CommitTime(H)` on the first height after start-up, or when `H` was committed
+before its `StartTime`). As before, `timeout_commit` is the value in effect at
+height `H-1`, while `dynamic_timeout_commit` is the one returned for `H`, so an
+upgrade enabling it paces `H+1` at once; disabling it leaves one height paced
+only by `timeout_commit`. Proposal, voting and block execution count towards the
+interval, so a loaded block pays only for its own work, and a height that already
+took longer starts the next one immediately. Round 0 does not start before the
+deadline (at most `max(dynamic_timeout_commit, timeout_commit)` after a backward
+clock step; WAL replay is never held) and a complete proposal received earlier
+is held until then;
+`skip_timeout_commit` cannot shorten this deadline. +2/3 precommits for the new
+height start round 0 at once, and a node commits on a +2/3 majority from any step,
+which is how a lagging node catches up without waiting at every height.
+
+The floor is per node, start to start on its own clock: nodes that started a
+height at different times keep that offset, so the network-wide interval is
+`dynamic_timeout_commit` on average, not at every height. With a short
+`timeout_commit`, a validator whose precommit arrives after the next proposal is
+built may be absent from its `LastCommit`. Applications that move pacing to the
+dynamic floor return `timeout_commit = 1ns` (`0` means "use `config.toml`") and a
+delayed precommit timeout of `0`.
+
 ### The adverse effect of using inconsistent `timeout_propose` in a network
 
 Here's an interesting question. What happens if a particular validator sets a
