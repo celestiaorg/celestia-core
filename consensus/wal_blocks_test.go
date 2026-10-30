@@ -46,8 +46,8 @@ func lockAndWaitForCopy(t *testing.T, f *lockFixture) (*types.Block, *types.Part
 	return block, parts, xID
 }
 
-// A height still open after the delay copies the locked block; a restart then
-// restores the lock's bytes (and Valid*) from the file without a refetch.
+// A height still open after the delay copies the locked block; a restart then restores the
+// lock's bytes (and Valid*) from the file without a refetch and hands them to the propagator.
 func TestLockedBlockRestoredFromFile(t *testing.T) {
 	f := newLockFixture(t, true, false)
 	_, parts, xID := lockAndWaitForCopy(t, f)
@@ -63,6 +63,7 @@ func TestLockedBlockRestoredFromFile(t *testing.T) {
 	require.EqualValues(t, 0, rs.ValidRound)
 	require.True(t, blockMatchesBlockID(rs.ValidBlock, rs.ValidBlockParts, xID))
 	require.NotContains(t, rec.snapshot(), propagatorCall{commitment: true, height: 1, round: 0, psh: parts.Header()})
+	require.Contains(t, rec.snapshot(), propagatorCall{block: true, height: 1, round: 0, psh: parts.Header()})
 
 	// Relocking on the restored block keeps the file instead of rewriting it.
 	cs.lockedBlocks.arm(0, LockInfo{Height: 1, BlockID: xID}, parts)
