@@ -113,7 +113,7 @@ func (cs *State) applyLockInfo(li LockInfo) {
 	}
 	cs.rs.LockedBlock, cs.rs.LockedBlockParts = nil, nil
 	if blockMatchesBlockID(cs.rs.ProposalBlock, cs.rs.ProposalBlockParts, li.BlockID) {
-		cs.rs.LockedBlock, cs.rs.LockedBlockParts = cs.rs.ProposalBlock, cs.rs.ProposalBlockParts
+		cs.fillLockBytes(cs.rs.ProposalBlock, cs.rs.ProposalBlockParts)
 		return
 	}
 	// Refetch the bytes; the propagator only sends requests once it starts processing.
