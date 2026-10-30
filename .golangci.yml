@@ -93,6 +93,7 @@ linters:
             - github.com/stretchr/testify
             - github.com/decred/dcrd/dcrec/secp256k1/v4
             - github.com/celestiaorg/go-square/v4
+            - github.com/celestiaorg/nmt
             - github.com/stretchr/testify/require
             - github.com/stretchr/testify/suite
             - github.com/gogo/protobuf/proto
