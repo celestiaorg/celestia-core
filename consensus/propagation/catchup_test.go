@@ -586,11 +586,12 @@ func TestRetryWantsReRequestsAfterWrongBlockPart(t *testing.T) {
 	// once the server commits X, the next retry must reach it again.
 	server.store.SaveBlock(blockX, psX, testCommit(blockX, psX))
 	server.Prune(propX.Height)
+	requester.retryWants()
 
 	require.Eventually(t, func() bool {
 		_, parts, has := requester.GetProposal(propX.Height, propX.Round)
 		return has && parts.IsComplete()
-	}, RetryTime+2*time.Second, 50*time.Millisecond)
+	}, 2*time.Second, 10*time.Millisecond)
 }
 
 // TestRecoveryPartForOlderRound asserts that a proven part answering a catch-up want is
