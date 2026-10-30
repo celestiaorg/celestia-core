@@ -17,7 +17,7 @@ import (
 	dbm "github.com/cometbft/cometbft-db"
 
 	abci "github.com/cometbft/cometbft/abci/types"
-	cfg "github.com/cometbft/cometbft/config"
+	cmtcfg "github.com/cometbft/cometbft/config"
 	"github.com/cometbft/cometbft/crypto/ed25519"
 	"github.com/cometbft/cometbft/libs/log"
 	"github.com/cometbft/cometbft/libs/service"
@@ -29,7 +29,7 @@ import (
 	"github.com/cometbft/cometbft/proxy"
 	sm "github.com/cometbft/cometbft/state"
 	"github.com/cometbft/cometbft/store"
-	"github.com/cometbft/cometbft/types"
+	cmttypes "github.com/cometbft/cometbft/types"
 )
 
 const (
@@ -44,9 +44,9 @@ var fzGenesisTime = time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)
 
 // fzChain is a deterministic canonical chain signed by four validators.
 type fzChain struct {
-	genDoc     *types.GenesisDoc
-	blocks     map[int64]*types.Block
-	extCommits map[int64]*types.ExtendedCommit
+	genDoc     *cmttypes.GenesisDoc
+	blocks     map[int64]*cmttypes.Block
+	extCommits map[int64]*cmttypes.ExtendedCommit
 }
 
 var (
@@ -54,7 +54,7 @@ var (
 	fzChainVal  *fzChain
 )
 
-func newFzBlockExec(tb testing.TB, genDoc *types.GenesisDoc) (sm.State, *sm.BlockExecutor, *store.BlockStore, proxy.AppConns) {
+func newFzBlockExec(tb testing.TB, genDoc *cmttypes.GenesisDoc) (sm.State, *sm.BlockExecutor, *store.BlockStore, proxy.AppConns) {
 	proxyApp := proxy.NewAppConns(proxy.NewLocalClientCreator(abci.NewBaseApplication()), proxy.NopMetrics())
 	require.NoError(tb, proxyApp.Start())
 	stateStore := sm.NewStore(dbm.NewMemDB(), sm.StoreOptions{})
@@ -73,26 +73,26 @@ func newFzBlockExec(tb testing.TB, genDoc *types.GenesisDoc) (sm.State, *sm.Bloc
 
 func fuzzChain(tb testing.TB) *fzChain {
 	fzChainOnce.Do(func() {
-		privVals := map[string]types.PrivValidator{}
-		genDoc := &types.GenesisDoc{GenesisTime: fzGenesisTime, ChainID: "blocksync-fuzz", ConsensusParams: types.DefaultConsensusParams()}
+		privVals := map[string]cmttypes.PrivValidator{}
+		genDoc := &cmttypes.GenesisDoc{GenesisTime: fzGenesisTime, ChainID: "blocksync-fuzz", ConsensusParams: cmttypes.DefaultConsensusParams()}
 		genDoc.ConsensusParams.ABCI.VoteExtensionsEnableHeight = fzExtHeight
 		for i := 0; i < 4; i++ {
-			pv := types.NewMockPVWithParams(ed25519.GenPrivKeyFromSecret([]byte{byte(i)}), false, false)
+			pv := cmttypes.NewMockPVWithParams(ed25519.GenPrivKeyFromSecret([]byte{byte(i)}), false, false)
 			privVals[pv.PrivKey.PubKey().Address().String()] = pv
-			genDoc.Validators = append(genDoc.Validators, types.GenesisValidator{PubKey: pv.PrivKey.PubKey(), Power: 10})
+			genDoc.Validators = append(genDoc.Validators, cmttypes.GenesisValidator{PubKey: pv.PrivKey.PubKey(), Power: 10})
 		}
 		require.NoError(tb, genDoc.ValidateAndComplete())
 		state, blockExec, _, app := newFzBlockExec(tb, genDoc)
 		defer func() { _ = app.Stop() }()
-		c := &fzChain{genDoc: genDoc, blocks: map[int64]*types.Block{}, extCommits: map[int64]*types.ExtendedCommit{}}
-		lastCommit := &types.Commit{}
+		c := &fzChain{genDoc: genDoc, blocks: map[int64]*cmttypes.Block{}, extCommits: map[int64]*cmttypes.ExtendedCommit{}}
+		lastCommit := &cmttypes.Commit{}
 		for h := int64(1); h <= fzChainHeight; h++ {
-			block, parts, err := state.MakeBlock(h, types.MakeData(types.Txs{types.Tx(fmt.Sprintf("tx%d", h))}), lastCommit, nil, state.Validators.GetProposer().Address)
+			block, parts, err := state.MakeBlock(h, cmttypes.MakeData(cmttypes.Txs{cmttypes.Tx(fmt.Sprintf("tx%d", h))}), lastCommit, nil, state.Validators.GetProposer().Address)
 			require.NoError(tb, err)
-			blockID := types.BlockID{Hash: block.Hash(), PartSetHeader: parts.Header()}
-			ec := &types.ExtendedCommit{Height: h, BlockID: blockID}
+			blockID := cmttypes.BlockID{Hash: block.Hash(), PartSetHeader: parts.Header()}
+			ec := &cmttypes.ExtendedCommit{Height: h, BlockID: blockID}
 			for i, val := range state.Validators.Validators {
-				vote, err := types.MakeVote(privVals[val.Address.String()], genDoc.ChainID, int32(i), h, 0,
+				vote, err := cmttypes.MakeVote(privVals[val.Address.String()], genDoc.ChainID, int32(i), h, 0,
 					cmtproto.PrecommitType, blockID, fzGenesisTime.Add(time.Duration(h)*time.Second))
 				require.NoError(tb, err)
 				ec.ExtendedSignatures = append(ec.ExtendedSignatures, vote.ExtendedCommitSig())
@@ -146,7 +146,7 @@ func newBSHarness(t *testing.T, chain *fzChain) *bsHarness {
 	r.SetLogger(log.NewNopLogger())
 	r.pool.BaseService = *service.NewBaseService(nil, "BlockPool", service.NewBaseService(nil, "nop", nil))
 	require.NoError(t, r.pool.Start())
-	sw := p2p.NewSwitch(cfg.DefaultP2PConfig(), nopTransport{})
+	sw := p2p.NewSwitch(cmtcfg.DefaultP2PConfig(), nopTransport{})
 	sw.SetLogger(log.NewNopLogger())
 	sw.AddReactor("BLOCKSYNC", r)
 	h := &bsHarness{t: t, chain: chain, r: r, sw: sw, state: state, stoppedBy: map[p2p.ID]bool{}}
@@ -250,9 +250,9 @@ func (h *bsHarness) syncStep() {
 	}
 	require.Equal(t, h.state.LastBlockHeight+1, first.Height)
 	require.Equal(t, first.Height+1, second.Height)
-	firstParts, err := first.MakePartSet(types.BlockPartSizeBytes)
+	firstParts, err := first.MakePartSet(cmttypes.BlockPartSizeBytes)
 	require.NoError(t, err)
-	firstID := types.BlockID{Hash: first.Hash(), PartSetHeader: firstParts.Header()}
+	firstID := cmttypes.BlockID{Hash: first.Hash(), PartSetHeader: firstParts.Header()}
 	chainID := h.state.ChainID
 	err = h.state.Validators.VerifyCommit(chainID, firstID, first.Height, second.LastCommit)
 	if err == nil {
@@ -385,7 +385,7 @@ func (h *bsHarness) blockResponse(r *fzReader, height int64) (msg *bcproto.Block
 		require.NoError(h.t, err)
 		var copied cmtproto.Block
 		require.NoError(h.t, copied.Unmarshal(bz))
-		block, err = types.BlockFromProto(&copied)
+		block, err = cmttypes.BlockFromProto(&copied)
 		require.NoError(h.t, err)
 		rebuild := true
 		switch m % 8 {
@@ -394,7 +394,7 @@ func (h *bsHarness) blockResponse(r *fzReader, height int64) (msg *bcproto.Block
 				block.LastCommit.Signatures[int(r.byte())%len(block.LastCommit.Signatures)].Signature[0] ^= 1 + r.byte()%255
 			}
 		case 1:
-			block.Txs = append(block.Txs, types.Tx{r.byte()})
+			block.Txs = append(block.Txs, cmttypes.Tx{r.byte()})
 		case 2:
 			block.AppHash = []byte{r.byte()}
 		case 3:
@@ -427,7 +427,7 @@ func (h *bsHarness) blockResponse(r *fzReader, height int64) (msg *bcproto.Block
 		case 7:
 			rebuild = false
 			if ec != nil && len(ec.ExtendedSignatures) > 0 {
-				ec.ExtendedSignatures[int(r.byte())%len(ec.ExtendedSignatures)].BlockIDFlag = types.BlockIDFlagAbsent
+				ec.ExtendedSignatures[int(r.byte())%len(ec.ExtendedSignatures)].BlockIDFlag = cmttypes.BlockIDFlagAbsent
 			}
 		}
 		if rebuild {
@@ -500,17 +500,25 @@ func FuzzBlockSyncReactor(f *testing.F) {
 				}
 			case 1, 2:
 				height := pool.Height() + int64(r.byte()%(fzMaxReqs+2)) - 1
-				if kind == 1 { // answer a request made to this peer, if any
+				if kind == 1 { // answer the lowest request made to this peer, if any
 					pool.mtx.Lock()
-					for hh, bpr := range pool.requesters {
-						if bpr.didRequestFrom(p.id) && bpr.getBlock() == nil {
+					// Visit heights in order: map iteration order would make
+					// replays of the same input pick different heights.
+					heights := make([]int64, 0, len(pool.requesters))
+					for hh := range pool.requesters {
+						heights = append(heights, hh)
+					}
+					sort.Slice(heights, func(i, j int) bool { return heights[i] < heights[j] })
+					for _, hh := range heights {
+						if bpr := pool.requesters[hh]; bpr.didRequestFrom(p.id) && bpr.getBlock() == nil {
 							height = hh
+							break
 						}
 					}
 					pool.mtx.Unlock()
 				}
 				msg, _ := h.blockResponse(r, height)
-				block, decodeErr := types.BlockFromProto(msg.Block)
+				block, decodeErr := cmttypes.BlockFromProto(msg.Block)
 				pool.mtx.Lock()
 				expectErr, skip := false, false
 				if decodeErr == nil {
@@ -549,7 +557,7 @@ func FuzzBlockSyncReactor(f *testing.F) {
 				if height >= 1 && height <= h.r.store.Height() {
 					resp, ok := p.sent[0].(*bcproto.BlockResponse)
 					require.True(t, ok, "expected block response for %d", height)
-					got, err := types.BlockFromProto(resp.Block)
+					got, err := cmttypes.BlockFromProto(resp.Block)
 					require.NoError(t, err)
 					require.Equal(t, h.chain.blocks[height].Hash(), got.Hash())
 				} else {
