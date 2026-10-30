@@ -23,7 +23,7 @@ import (
 	blockidxkv "github.com/cometbft/cometbft/state/indexer/block/kv"
 	"github.com/cometbft/cometbft/state/txindex/kv"
 	"github.com/cometbft/cometbft/store"
-	"github.com/cometbft/cometbft/types"
+	cmttypes "github.com/cometbft/cometbft/types"
 )
 
 const (
@@ -41,8 +41,8 @@ func (testConsensusReactor) WaitSync() bool     { return false }
 func (testConsensusReactor) IsCatchingUp() bool { return false }
 
 // EnvTestTx returns the i-th tx committed at height h by NewTestEnvironment.
-func EnvTestTx(h int64, i int) types.Tx {
-	return types.Tx(fmt.Sprintf("key%d-%d=value%d", h, i, i))
+func EnvTestTx(h int64, i int) cmttypes.Tx {
+	return cmttypes.Tx(fmt.Sprintf("key%d-%d=value%d", h, i, i))
 }
 
 // NewTestEnvironment returns an RPC Environment backed by in-memory stores, a
@@ -54,15 +54,15 @@ func NewEnvForTest(tb testing.TB) *Environment {
 	logger := log.NewNopLogger()
 
 	privKey := ed25519.GenPrivKeyFromSecret([]byte("rpc-core-fuzz"))
-	pv := types.NewMockPVWithParams(privKey, false, false)
+	pv := cmttypes.NewMockPVWithParams(privKey, false, false)
 	pubKey := privKey.PubKey()
 	genTime := time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)
-	genDoc := &types.GenesisDoc{
+	genDoc := &cmttypes.GenesisDoc{
 		ChainID:         "rpc-core-fuzz",
 		GenesisTime:     genTime,
 		InitialHeight:   1,
-		ConsensusParams: types.DefaultConsensusParams(),
-		Validators:      []types.GenesisValidator{{Address: pubKey.Address(), PubKey: pubKey, Power: 10}},
+		ConsensusParams: cmttypes.DefaultConsensusParams(),
+		Validators:      []cmttypes.GenesisValidator{{Address: pubKey.Address(), PubKey: pubKey, Power: 10}},
 	}
 	require.NoError(tb, genDoc.ValidateAndComplete())
 
@@ -85,18 +85,18 @@ func NewEnvForTest(tb testing.TB) *Environment {
 	blockIndexer := blockidxkv.New(dbm.NewMemDB())
 	blockExec := sm.NewBlockExecutor(stateStore, logger, proxyApp.Consensus(), mp, sm.EmptyEvidencePool{}, blockStore)
 
-	lastCommit := &types.Commit{}
+	lastCommit := &cmttypes.Commit{}
 	for h := int64(1); h <= EnvTestHeight; h++ {
-		txs := make([]types.Tx, EnvTestTxsPerBlock)
+		txs := make([]cmttypes.Tx, EnvTestTxsPerBlock)
 		for i := range txs {
 			txs[i] = EnvTestTx(h, i)
 		}
-		block, parts, err := state.MakeBlock(h, types.MakeData(txs), lastCommit, nil, state.Validators.Proposer.Address)
+		block, parts, err := state.MakeBlock(h, cmttypes.MakeData(txs), lastCommit, nil, state.Validators.Proposer.Address)
 		require.NoError(tb, err)
-		blockID := types.BlockID{Hash: block.Hash(), PartSetHeader: parts.Header()}
-		vote, err := types.MakeVote(pv, genDoc.ChainID, 0, h, 0, cmtproto.PrecommitType, blockID, genTime.Add(time.Duration(h)*time.Second))
+		blockID := cmttypes.BlockID{Hash: block.Hash(), PartSetHeader: parts.Header()}
+		vote, err := cmttypes.MakeVote(pv, genDoc.ChainID, 0, h, 0, cmtproto.PrecommitType, blockID, genTime.Add(time.Duration(h)*time.Second))
 		require.NoError(tb, err)
-		seenCommit := &types.Commit{Height: h, BlockID: blockID, Signatures: []types.CommitSig{vote.CommitSig()}}
+		seenCommit := &cmttypes.Commit{Height: h, BlockID: blockID, Signatures: []cmttypes.CommitSig{vote.CommitSig()}}
 		blockStore.SaveBlock(block, parts, seenCommit)
 
 		state, err = blockExec.ApplyBlock(state, blockID, block, lastCommit)
@@ -107,7 +107,7 @@ func NewEnvForTest(tb testing.TB) *Environment {
 		for i, tx := range txs {
 			require.NoError(tb, txIndexer.Index(&abci.TxResult{Height: h, Index: uint32(i), Tx: tx, Result: *resp.TxResults[i]})) //nolint:gosec
 		}
-		require.NoError(tb, blockIndexer.Index(types.EventDataNewBlockEvents{Height: h, Events: resp.Events, NumTxs: int64(len(txs))}))
+		require.NoError(tb, blockIndexer.Index(cmttypes.EventDataNewBlockEvents{Height: h, Events: resp.Events, NumTxs: int64(len(txs))}))
 		lastCommit = seenCommit
 	}
 
@@ -115,7 +115,7 @@ func NewEnvForTest(tb testing.TB) *Environment {
 	require.NoError(tb, err)
 	evpool.SetLogger(logger)
 
-	eventBus := types.NewEventBus()
+	eventBus := cmttypes.NewEventBus()
 	eventBus.SetLogger(logger)
 	require.NoError(tb, eventBus.Start())
 	tb.Cleanup(func() { _ = eventBus.Stop() })

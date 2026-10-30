@@ -11,7 +11,7 @@ import (
 	"github.com/cometbft/cometbft/mempool/cat"
 	cmtproto "github.com/cometbft/cometbft/proto/tendermint/types"
 	rpctypes "github.com/cometbft/cometbft/rpc/jsonrpc/types"
-	"github.com/cometbft/cometbft/types"
+	cmttypes "github.com/cometbft/cometbft/types"
 )
 
 type fuzzWSConn struct{ ctx context.Context }
@@ -56,7 +56,7 @@ func FuzzRPCCoreHandlers(f *testing.F) {
 				require.Error(t, err)
 			}
 			if err == nil {
-				require.Equal(t, types.Tx(data).Hash(), []byte(res.Hash))
+				require.Equal(t, cmttypes.Tx(data).Hash(), []byte(res.Hash))
 			}
 		case 1:
 			res, err := env.BroadcastTxSync(ctx, data)
@@ -64,7 +64,7 @@ func FuzzRPCCoreHandlers(f *testing.F) {
 				require.Error(t, err)
 			}
 			if err == nil {
-				require.Equal(t, types.Tx(data).Hash(), []byte(res.Hash))
+				require.Equal(t, cmttypes.Tx(data).Hash(), []byte(res.Hash))
 			}
 		case 2:
 			_, err := env.CheckTx(ctx, data)
@@ -74,7 +74,7 @@ func FuzzRPCCoreHandlers(f *testing.F) {
 			if pb.Unmarshal(data) != nil {
 				return
 			}
-			ev, err := types.EvidenceFromProto(&pb)
+			ev, err := cmttypes.EvidenceFromProto(&pb)
 			if err != nil {
 				return
 			}
