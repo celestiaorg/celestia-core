@@ -58,6 +58,8 @@ jobs:
           - {package: consensus/propagation/types, target: TxsToParts_Panic}
           - {package: consensus/propagation, target: PropagationReactor}
           - {package: types, target: BlockFromProto}
+          - {package: state, target: BlockExecValidateApply}
+          - {package: state, target: VerifyVoteExtension}
           - {package: types, target: PartFromProto}
           - {package: types, target: VoteFromProto}
           - {package: types, target: ProposalFromProto}
