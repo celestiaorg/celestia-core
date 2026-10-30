@@ -7,7 +7,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	db "github.com/cometbft/cometbft-db"
+	dbm "github.com/cometbft/cometbft-db"
 
 	abci "github.com/cometbft/cometbft/abci/types"
 	"github.com/cometbft/cometbft/libs/pubsub/query"
@@ -20,7 +20,7 @@ import (
 // does not hit the cap. Search visits ranges in map order, so the earlier
 // results are seeded directly.
 func TestBlockSearchCapsLaterRange(t *testing.T) {
-	idx := New(db.NewMemDB(), WithMaxSearchResults(2))
+	idx := New(dbm.NewMemDB(), WithMaxSearchResults(2))
 	for i := 1; i <= 10; i++ {
 		require.NoError(t, idx.Index(types.EventDataNewBlockEvents{
 			Height: int64(i), Events: []abci.Event{{Type: "transfer", Attributes: []abci.EventAttribute{
