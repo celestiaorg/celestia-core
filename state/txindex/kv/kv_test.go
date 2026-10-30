@@ -1093,3 +1093,43 @@ func TestTxSearchCapsIntersection(t *testing.T) {
 	_, err := txi.Search(context.Background(), query.MustCompile("transfer.amount = 1"))
 	require.ErrorIs(t, err, indexer.ErrTooManyResults, "the first condition must remain bounded")
 }
+
+// TestTxSearchCapsLaterRange checks that a later range condition keeps only
+// matches already in the earlier results, so its broad standalone match set
+// does not hit the cap. Search visits ranges in map order, so the earlier
+// results are seeded directly.
+func TestTxSearchCapsLaterRange(t *testing.T) {
+	txi := NewTxIndex(db.NewMemDB(), WithMaxSearchResults(2))
+	for i := 1; i <= 10; i++ {
+		require.NoError(t, txi.Index(&abci.TxResult{
+			Height: int64(i), Tx: types.Tx(fmt.Sprintf("tx%d", i)),
+			Result: abci.ExecTxResult{Events: []abci.Event{{Type: "transfer", Attributes: []abci.EventAttribute{
+				{Key: "amount", Value: fmt.Sprint(i), Index: true},
+			}}}},
+		}))
+	}
+	ctx := context.Background()
+	narrow, heightInfo := txQueryRange(t, "transfer.amount < 2")
+	filtered, err := txi.matchRange(ctx, narrow, startKey(narrow.Key), map[string]txRef{}, true, heightInfo)
+	require.NoError(t, err)
+	require.Len(t, filtered, 1)
+
+	broad, heightInfo := txQueryRange(t, "transfer.amount > 0")
+	_, err = txi.matchRange(ctx, broad, startKey(broad.Key), map[string]txRef{}, true, heightInfo)
+	require.ErrorIs(t, err, indexer.ErrTooManyResults, "the broad range alone must exceed the cap")
+	results, err := txi.matchRange(ctx, broad, startKey(broad.Key), filtered, false, heightInfo)
+	require.NoError(t, err)
+	require.Len(t, results, 1)
+}
+
+func txQueryRange(t *testing.T, q string) (indexer.QueryRange, HeightInfo) {
+	t.Helper()
+	conditions, heightInfo := dedupHeight(query.MustCompile(q).Syntax())
+	ranges, _, heightRange := indexer.LookForRangesWithHeight(conditions)
+	heightInfo.heightRange = heightRange
+	require.Len(t, ranges, 1)
+	for _, qr := range ranges {
+		return qr, heightInfo
+	}
+	return indexer.QueryRange{}, heightInfo
+}

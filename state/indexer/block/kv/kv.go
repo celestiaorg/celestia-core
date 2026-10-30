@@ -179,7 +179,7 @@ func (idx *BlockerIndexer) Search(ctx context.Context, q *query.Query) ([]int64,
 				continue
 
 			}
-			prefix, err := orderedcode.Append(nil, qr.Key)
+			prefix, err := keyPrefix(qr.Key)
 			if err != nil {
 				return nil, fmt.Errorf("failed to create prefix key: %w", err)
 			}
