@@ -71,23 +71,31 @@ jobs:
               : (await github.paginate(github.rest.pulls.list, { owner, repo, state: 'open', per_page: 100 }))
                   .map((p) => p.number);
 
+            // Check each PR on its own so one failed API call does not skip the rest.
+            const failed = [];
             for (const n of numbers) {
-              const pr = await get(n);
-              if (pr.state !== 'open') continue;
-              const ok = tierOK(pr) && human(pr.user) && (await trusted(pr.user.login));
-              const reviews = await github.paginate(github.rest.pulls.listReviews, {
-                owner, repo, pull_number: n, per_page: 100,
-              });
-              const mine = reviews.filter((r) => r.user?.login === process.env.APP_LOGIN && r.state === 'APPROVED');
-              core.info(`#${n} "${pr.title}": qualifies=${ok}, app approvals=${mine.length}`);
-              if (ok && mine.length === 0) {
-                const { data: review } = await github.rest.pulls.createReview({
-                  owner, repo, pull_number: n, commit_id: pr.head.sha, event: 'APPROVE',
-                  body: 'Auto-approved: [low]/[medium] PR from a trusted author (.github/review-policy.md).',
+              try {
+                const pr = await get(n);
+                if (pr.state !== 'open') continue;
+                const ok = tierOK(pr) && human(pr.user) && (await trusted(pr.user.login));
+                const reviews = await github.paginate(github.rest.pulls.listReviews, {
+                  owner, repo, pull_number: n, per_page: 100,
                 });
-                // Close the race with a retitle or draft that landed mid-run.
-                if (!tierOK(await get(n))) await dismiss(pr, review.id);
-              } else if (!ok) {
-                for (const r of mine) await dismiss(pr, r.id);
+                const mine = reviews.filter((r) => r.user?.login === process.env.APP_LOGIN && r.state === 'APPROVED');
+                core.info(`#${n} "${pr.title}": qualifies=${ok}, app approvals=${mine.length}`);
+                if (ok && mine.length === 0) {
+                  const { data: review } = await github.rest.pulls.createReview({
+                    owner, repo, pull_number: n, commit_id: pr.head.sha, event: 'APPROVE',
+                    body: 'Auto-approved: [low]/[medium] PR from a trusted author (.github/review-policy.md).',
+                  });
+                  // Close the race with a retitle or draft that landed mid-run.
+                  if (!tierOK(await get(n))) await dismiss(pr, review.id);
+                } else if (!ok) {
+                  for (const r of mine) await dismiss(pr, r.id);
+                }
+              } catch (e) {
+                core.error(`#${n}: ${e.message}`);
+                failed.push(n);
               }
             }
+            if (failed.length) core.setFailed(`Failed to check PRs: ${failed.map((n) => `#${n}`).join(', ')}`);
