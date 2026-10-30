@@ -268,11 +268,14 @@ func TestStoredHeightWantsShareGlobalBudget(t *testing.T) {
 func TestUncommittedHeightWantIsNotServedFromStore(t *testing.T) {
 	r, ps := newStoredBlockReactor(t)
 	rp := addRecordingPeer(t, r, 1_000_000)
+	// the store, not p.height, decides whether a height is committed.
 	r.pmtx.Lock()
-	r.height = storedTestHeight
+	r.height = storedTestHeight + 1
 	r.pmtx.Unlock()
 
-	r.handleWants(rp.ID(), storedWant(ps.Total(), 1, 0))
+	want := storedWant(ps.Total(), 1, 0)
+	want.Height = storedTestHeight + 1
+	r.handleWants(rp.ID(), want)
 	require.Empty(t, rp.sentParts())
 }
 

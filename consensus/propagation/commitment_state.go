@@ -190,16 +190,18 @@ func (p *ProposalCache) getAllState(height int64, round int32, catchup bool) (*p
 		return nil, nil, nil, false
 	}
 
-	if cachedProp := p.cachedLocked(height, round); cachedProp != nil {
-		return cachedProp.compactBlock, cachedProp.block, cachedProp.maxRequests, true
-	}
+	cachedProp := p.cachedLocked(height, round)
 
 	var hasStored *types.BlockMeta
-	if height < p.height {
+	if height < p.height || (catchup && height <= p.store.Height()) {
 		hasStored = p.store.LoadBlockMeta(height)
 	}
 
 	switch {
+	// at a committed height only the committed block is useful: a cached entry for
+	// another block must not shadow the store.
+	case cachedProp != nil && (hasStored == nil || cachedProp.block.Original().Header().Equals(hasStored.BlockID.PartSetHeader)):
+		return cachedProp.compactBlock, cachedProp.block, cachedProp.maxRequests, true
 	case hasStored != nil:
 		parts, _, err := p.store.LoadPartSet(height)
 		if err != nil {
@@ -214,12 +216,12 @@ func (p *ProposalCache) getAllState(height int64, round int32, catchup bool) (*p
 
 // getCachedState returns the cached part set for a height and round. Unlike
 // getAllState, it never reads the block store. committed reports whether the
-// height is below the height this node is working on.
+// height is committed: below the working height, or, for catchup, in the store.
 func (p *ProposalCache) getCachedState(height int64, round int32, catchup bool) (parts *proptypes.CombinedPartSet, has bool, committed bool) {
 	p.pmtx.Lock()
 	defer p.pmtx.Unlock()
 
-	committed = height < p.height
+	committed = height < p.height || (catchup && height <= p.store.Height())
 	if !catchup && !p.relevant(height, round) {
 		return nil, false, committed
 	}
