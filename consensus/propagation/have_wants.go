@@ -452,7 +452,8 @@ func (blockProp *Reactor) handleRecoveryPart(peer p2p.ID, part *proptypes.Recove
 	}
 	// the peer must always send the proposal before sending parts, if they did
 	// not this node must disconnect from them.
-	cb, parts, _, has := blockProp.getAllState(part.Height, part.Round, false)
+	// proven parts answer catch-up wants, which may be for a round we already left.
+	cb, parts, _, has := blockProp.getAllState(part.Height, part.Round, part.Proof != nil)
 	if !has {
 		blockProp.Logger.Debug("received part for unknown proposal", "peer", peer, "height", part.Height, "round", part.Round)
 		// blockProp.Switch.StopPeerForError(p.peer, errors.New("received recovery part for unknown proposal"))
