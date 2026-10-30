@@ -28,7 +28,7 @@ import (
 	propproto "github.com/cometbft/cometbft/proto/tendermint/propagation"
 	cmtproto "github.com/cometbft/cometbft/proto/tendermint/types"
 	"github.com/cometbft/cometbft/store"
-	"github.com/cometbft/cometbft/types"
+	cmttypes "github.com/cometbft/cometbft/types"
 )
 
 // Heights used by the reactor fuzzer. Height fuzzStoredHeight is committed in
@@ -42,14 +42,14 @@ const (
 
 type fuzzBlock struct {
 	cb       *proptypes.CompactBlock // signed by the proposer; only sent as wire bytes
-	original *types.PartSet
-	parity   *types.PartSet
-	txs      types.Txs
-	keys     []types.TxKey // keys of txs, hashed once rather than per iteration
+	original *cmttypes.PartSet
+	parity   *cmttypes.PartSet
+	txs      cmttypes.Txs
+	keys     []cmttypes.TxKey // keys of txs, hashed once rather than per iteration
 }
 
 // part returns the bytes and proof of combined index i.
-func (b *fuzzBlock) part(i uint32) (*types.Part, bool) {
+func (b *fuzzBlock) part(i uint32) (*cmttypes.Part, bool) {
 	if i < b.original.Total() {
 		return b.original.GetPart(int(i)), true
 	}
@@ -60,11 +60,11 @@ func (b *fuzzBlock) part(i uint32) (*types.Part, bool) {
 }
 
 type fuzzFixtures struct {
-	pv       types.MockPV
+	pv       cmttypes.MockPV
 	pub      crypto.PubKey
 	otherPub crypto.PubKey
 	store    *store.BlockStore
-	stored   *types.PartSet
+	stored   *cmttypes.PartSet
 	blocks   []*fuzzBlock
 }
 
@@ -75,9 +75,9 @@ var (
 
 // deterministicTxs returns txs of the given sizes from a fixed seed so fuzz
 // inputs replay the same blocks in every process.
-func deterministicTxs(seed int64, sizes ...int) types.Txs {
+func deterministicTxs(seed int64, sizes ...int) cmttypes.Txs {
 	r := rand.New(rand.NewSource(seed)) //nolint:gosec
-	txs := make(types.Txs, len(sizes))
+	txs := make(cmttypes.Txs, len(sizes))
 	for i, size := range sizes {
 		txs[i] = make([]byte, size)
 		_, _ = r.Read(txs[i])
@@ -87,7 +87,7 @@ func deterministicTxs(seed int64, sizes ...int) types.Txs {
 
 func loadFuzzFixtures(tb testing.TB) *fuzzFixtures {
 	fuzzFixturesOnce.Do(func() {
-		pv := types.NewMockPVWithParams(ed25519.GenPrivKeyFromSecret([]byte("propagation-fuzz-proposer")), false, false)
+		pv := cmttypes.NewMockPVWithParams(ed25519.GenPrivKeyFromSecret([]byte("propagation-fuzz-proposer")), false, false)
 		fx := &fuzzFixtures{
 			pv:       pv,
 			pub:      pv.PrivKey.PubKey(),
@@ -96,27 +96,27 @@ func loadFuzzFixtures(tb testing.TB) *fuzzFixtures {
 		}
 		ts := time.Unix(1_700_000_000, 0).UTC()
 
-		stored := types.MakeBlock(fuzzStoredHeight, types.Data{Txs: deterministicTxs(4, 80_000)}, &types.Commit{Height: fuzzStoredHeight - 1}, nil)
+		stored := cmttypes.MakeBlock(fuzzStoredHeight, cmttypes.Data{Txs: deterministicTxs(4, 80_000)}, &cmttypes.Commit{Height: fuzzStoredHeight - 1}, nil)
 		stored.ProposerAddress = fx.pub.Address()
-		storedParts, err := stored.MakePartSet(types.BlockPartSizeBytes)
+		storedParts, err := stored.MakePartSet(cmttypes.BlockPartSizeBytes)
 		require.NoError(tb, err)
-		fx.store.SaveBlock(stored, storedParts, &types.Commit{Height: fuzzStoredHeight})
+		fx.store.SaveBlock(stored, storedParts, &cmttypes.Commit{Height: fuzzStoredHeight})
 		fx.stored = storedParts
 
-		makeBlock := func(height int64, round int32, txs types.Txs) *fuzzBlock {
-			block := types.MakeBlock(height, types.Data{Txs: txs}, nil, nil)
-			ps, err := block.MakePartSet(types.BlockPartSizeBytes)
+		makeBlock := func(height int64, round int32, txs cmttypes.Txs) *fuzzBlock {
+			block := cmttypes.MakeBlock(height, cmttypes.Data{Txs: txs}, nil, nil)
+			ps, err := block.MakePartSet(cmttypes.BlockPartSizeBytes)
 			require.NoError(tb, err)
-			parity, lastLen, err := types.Encode(ps, types.BlockPartSizeBytes)
+			parity, lastLen, err := cmttypes.Encode(ps, cmttypes.BlockPartSizeBytes)
 			require.NoError(tb, err)
 			blobs := make([]proptypes.TxMetaData, len(ps.TxPos))
 			for i, pos := range ps.TxPos {
 				blobs[i] = proptypes.TxMetaData{Start: pos.Start, End: pos.End, Hash: block.Txs[i].Hash()}
 			}
 			cb := &proptypes.CompactBlock{
-				Proposal: types.Proposal{
+				Proposal: cmttypes.Proposal{
 					Type: cmtproto.ProposalType, Height: height, Round: round, POLRound: -1, Timestamp: ts,
-					BlockID: types.BlockID{Hash: tmhash.Sum(ps.Hash()), PartSetHeader: ps.Header()},
+					BlockID: cmttypes.BlockID{Hash: tmhash.Sum(ps.Hash()), PartSetHeader: ps.Header()},
 				},
 				LastLen:     uint32(lastLen),
 				BpHash:      parity.Hash(),
@@ -124,7 +124,7 @@ func loadFuzzFixtures(tb testing.TB) *fuzzFixtures {
 				PartsHashes: extractHashes(ps, parity),
 			}
 			fx.sign(tb, cb, true)
-			keys := make([]types.TxKey, len(txs))
+			keys := make([]cmttypes.TxKey, len(txs))
 			for i, tx := range txs {
 				keys[i] = tx.Key()
 			}
@@ -146,7 +146,7 @@ func loadFuzzFixtures(tb testing.TB) *fuzzFixtures {
 // proposer key, as a byzantine proposer could for arbitrary contents.
 func (fx *fuzzFixtures) sign(tb testing.TB, cb *proptypes.CompactBlock, proposal bool) {
 	if proposal {
-		sig, err := fx.pv.PrivKey.Sign(types.ProposalSignBytes(TestChainID, cb.Proposal.ToProto()))
+		sig, err := fx.pv.PrivKey.Sign(cmttypes.ProposalSignBytes(TestChainID, cb.Proposal.ToProto()))
 		require.NoError(tb, err)
 		cb.Proposal.Signature = sig
 	}
@@ -178,7 +178,7 @@ type fuzzPeerStateEditor struct {
 	height int64
 }
 
-func (*fuzzPeerStateEditor) SetHasProposal(*types.Proposal)            {}
+func (*fuzzPeerStateEditor) SetHasProposal(*cmttypes.Proposal)         {}
 func (*fuzzPeerStateEditor) SetHasProposalBlockPart(int64, int32, int) {}
 func (e *fuzzPeerStateEditor) GetHeight() int64 {
 	e.mtx.Lock()
@@ -239,7 +239,7 @@ func (r *fuzzReader) hash() []byte {
 // block) or one consensus reported as committed.
 type signedProposal struct {
 	height int64
-	psh    types.PartSetHeader
+	psh    cmttypes.PartSetHeader
 	blk    *fuzzBlock // fixture with that part set, nil if none
 }
 
@@ -270,20 +270,20 @@ func newReactorFuzzer(t *testing.T, fx *fuzzFixtures, rd *fuzzReader) *reactorFu
 	sw := p2p.NewSwitch(p2pCfg, transport)
 	sw.SetLogger(panicWatchLogger{Logger: log.NewNopLogger(), mtx: &f.mtx, panics: &f.panics})
 
-	mp := &mockMempool{txs: make(map[types.TxKey]*types.CachedTx)}
+	mp := &mockMempool{txs: make(map[cmttypes.TxKey]*cmttypes.CachedTx)}
 	mask := rd.u32()
 	n := 0
 	for _, b := range fx.blocks {
 		for i, tx := range b.txs {
 			if mask&(1<<(n%32)) != 0 {
-				mp.txs[b.keys[i]] = &types.CachedTx{Tx: tx}
+				mp.txs[b.keys[i]] = &cmttypes.CachedTx{Tx: tx}
 			}
 			n++
 		}
 	}
 
 	r := NewReactor(nodeKey.ID(), Config{
-		Store: fx.store, Mempool: mp, Privval: fx.pv, ChainID: TestChainID, BlockMaxBytes: int64(types.MaxBlockSizeBytes),
+		Store: fx.store, Mempool: mp, Privval: fx.pv, ChainID: TestChainID, BlockMaxBytes: int64(cmttypes.MaxBlockSizeBytes),
 	})
 	r.ticker.Stop() // catchup retries are driven explicitly by the fuzzer
 	r.SetLogger(log.NewNopLogger())
@@ -318,7 +318,7 @@ func newReactorFuzzer(t *testing.T, fx *fuzzFixtures, rd *fuzzReader) *reactorFu
 	for i, n := 0, 1+int(rd.byte()%3); i < n; i++ {
 		peer := &fuzzPeer{Peer: mock.NewPeer(nil), check: f.checkSent}
 		editor := &fuzzPeerStateEditor{height: fuzzStoredHeight + int64(rd.byte()%4)}
-		peer.Set(types.PeerStateKey, editor)
+		peer.Set(cmttypes.PeerStateKey, editor)
 		r.AddPeer(peer)
 		f.peers = append(f.peers, peer)
 		f.editor = append(f.editor, editor)
@@ -382,7 +382,7 @@ func (f *reactorFuzzer) step(rd *fuzzReader) {
 		switch rd.byte() % 7 {
 		case 0: // attacker-chosen tx metadata offsets
 			cb.Blobs = cb.Blobs[:int(rd.byte())%(len(cb.Blobs)+1)]
-			limit := total*types.BlockPartSizeBytes + 64
+			limit := total*cmttypes.BlockPartSizeBytes + 64
 			for i := range cb.Blobs {
 				cb.Blobs[i].Start = rd.u32() % limit
 				cb.Blobs[i].End = rd.u32() % limit
@@ -391,7 +391,7 @@ func (f *reactorFuzzer) step(rd *fuzzReader) {
 				}
 			}
 		case 1:
-			cb.LastLen = rd.u32() % (types.BlockPartSizeBytes + 2)
+			cb.LastLen = rd.u32() % (cmttypes.BlockPartSizeBytes + 2)
 		case 2:
 			i, j := int(rd.byte())%len(cb.PartsHashes), int(rd.byte())%len(cb.PartsHashes)
 			cb.PartsHashes[i], cb.PartsHashes[j] = cb.PartsHashes[j], cb.PartsHashes[i]
@@ -552,7 +552,7 @@ func cloneCompactBlock(t *testing.T, cb *proptypes.CompactBlock) *proptypes.Comp
 }
 
 // fixtureFor returns the fixture whose original part set header is psh.
-func (f *reactorFuzzer) fixtureFor(psh types.PartSetHeader) *fuzzBlock {
+func (f *reactorFuzzer) fixtureFor(psh cmttypes.PartSetHeader) *fuzzBlock {
 	for _, b := range f.fx.blocks {
 		if b.original.Header().Equals(psh) {
 			return b
@@ -562,7 +562,7 @@ func (f *reactorFuzzer) fixtureFor(psh types.PartSetHeader) *fuzzBlock {
 }
 
 // addSigned records that the reactor may hold part set psh at height.
-func (f *reactorFuzzer) addSigned(height int64, psh types.PartSetHeader) {
+func (f *reactorFuzzer) addSigned(height int64, psh cmttypes.PartSetHeader) {
 	f.mtx.Lock()
 	defer f.mtx.Unlock()
 	for _, sp := range f.signed {
@@ -575,7 +575,7 @@ func (f *reactorFuzzer) addSigned(height int64, psh types.PartSetHeader) {
 
 // signedAt returns the fixture holding part set psh if a signed proposal or
 // commitment for psh exists at height.
-func (f *reactorFuzzer) signedAt(height int64, psh types.PartSetHeader) (*fuzzBlock, bool) {
+func (f *reactorFuzzer) signedAt(height int64, psh cmttypes.PartSetHeader) (*fuzzBlock, bool) {
 	f.mtx.Lock()
 	defer f.mtx.Unlock()
 	for _, sp := range f.signed {
