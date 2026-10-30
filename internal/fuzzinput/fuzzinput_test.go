@@ -31,3 +31,10 @@ func TestReaderBytesCap(t *testing.T) {
 	require.Equal(t, []byte{1, 2}, r.Bytes(2))
 	require.Equal(t, []byte{3, 4}, r.Rest())
 }
+
+func TestReaderBytesNegativeLimit(t *testing.T) {
+	for _, data := range [][]byte{{3, 1, 2, 3}, {}, nil} {
+		r := New(data)
+		require.Empty(t, r.Bytes(-1))
+	}
+}

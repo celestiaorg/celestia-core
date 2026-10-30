@@ -77,12 +77,13 @@ func (r *Reader) Intn(n int) int {
 	return int(r.Byte()) % n
 }
 
-// Bytes reads a one-byte length, capped at max, followed by that many bytes.
-// The result is a copy, so callers may modify it.
-func (r *Reader) Bytes(max int) []byte {
+// Bytes reads a one-byte length, capped at limit, followed by that many bytes.
+// A negative limit is treated as zero. The result is a copy, so callers may
+// modify it.
+func (r *Reader) Bytes(limit int) []byte {
 	n := int(r.Byte())
-	if n > max {
-		n = max
+	if n > limit {
+		n = max(limit, 0)
 	}
 	if n > len(r.data) {
 		n = len(r.data)
