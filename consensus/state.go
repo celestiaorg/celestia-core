@@ -1553,7 +1553,7 @@ func (cs *State) enterPrevote(height int64, round int32) {
 	cs.newStep()
 
 	// Prevotes collected before this step are otherwise only acted on when our own
-	// prevote is added, which never happens if the signer refused it (#3505).
+	// prevote is added, which never happens if the signer refused it.
 	cs.handlePrevoteQuorum(height, round)
 }
 
