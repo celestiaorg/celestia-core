@@ -262,8 +262,17 @@ func newReactorFuzzer(t *testing.T, fx *fuzzFixtures, rd *fuzzReader) *reactorFu
 	for _, b := range fx.blocks {
 		f.addSigned(b.cb.Proposal.Height, b.original.Header())
 	}
-	// Registered first so it runs last, after the reactor has stopped.
-	t.Cleanup(func() { require.Empty(t, f.badSendsCopy(), "reactor sent unverified data") })
+	// Registered first so it runs last, after the reactor has stopped. Peer
+	// routines started by earlier steps may still be finishing, and a panic
+	// they recover is recorded when they exit, so wait for them first.
+	t.Cleanup(func() {
+		waitReactorGoroutines()
+		f.mtx.Lock()
+		panics := append([]string(nil), f.panics...)
+		f.mtx.Unlock()
+		require.Empty(t, panics, "reactor recovered a panic")
+		require.Empty(t, f.badSendsCopy(), "reactor sent unverified data")
+	})
 	p2pCfg := cmtcfg.DefaultP2PConfig()
 	nodeKey := p2p.NodeKey{PrivKey: ed25519.GenPrivKeyFromSecret([]byte("propagation-fuzz-node"))}
 	transport := p2p.NewMultiplexTransport(p2p.DefaultNodeInfo{}, nodeKey, p2p.MConnConfig(p2pCfg), trace.NoOpTracer())
@@ -343,7 +352,11 @@ func (f *reactorFuzzer) sendRaw(peer *fuzzPeer, ch byte, raw []byte) {
 		return
 	}
 	var pb propproto.Message
-	if proto.Unmarshal(raw, &pb) != nil {
+	if err := proto.Unmarshal(raw, &pb); err != nil {
+		// BaseReactor.unmarshalEnvelope fails on these bytes before Receive
+		// runs, and ProcessorWithReactor then disconnects the sender.
+		f.r.Switch.StopPeerForError(peer, err, f.r.String())
+		require.Nil(f.t, f.r.getPeer(peer.ID()), "peer sending undecodable bytes must be removed")
 		return
 	}
 	decoded, decErr := proptypes.MsgFromProto(&pb)
@@ -358,6 +371,19 @@ func (f *reactorFuzzer) sendRaw(peer *fuzzPeer, ch byte, raw []byte) {
 	if decErr != nil {
 		require.Nil(f.t, f.r.getPeer(peer.ID()), "peer sending an invalid message must be removed: %v", decErr)
 		require.False(f.t, peer.IsRunning(), "peer sending an invalid message must be stopped")
+	}
+}
+
+// waitReactorGoroutines waits, for a bounded time, until no goroutine is
+// running reactor code, so state checked afterwards is final.
+func waitReactorGoroutines() {
+	buf := make([]byte, 1<<20)
+	for i := 0; i < 500; i++ {
+		n := runtime.Stack(buf, true)
+		if !bytes.Contains(buf[:n], []byte("propagation.(*Reactor).")) {
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
 	}
 }
 
@@ -757,6 +783,11 @@ func FuzzPropagationReactor(f *testing.F) {
 		[]byte{1, 3, 0},
 		[]byte{0, 0, 9},
 		[]byte{0, 3, 6, 0x03, 0, 0, 0, 1},
+	))
+	f.Add(seed( // undecodable wire bytes disconnect the sender, whose later messages are dropped
+		[]byte{1, 0, 7, 1, 3, 0xff, 0xff, 0xff},
+		[]byte{1, 0, 0},
+		[]byte{0, 0, 0},
 	))
 	f.Fuzz(func(t *testing.T, input []byte) {
 		if len(input) > 1<<14 {
