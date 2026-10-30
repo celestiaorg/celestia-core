@@ -138,7 +138,8 @@ on failure. Failures on main feed the existing `notify-protocol-ci.yml` workflow
 Pull requests skip that matrix. A single job runs
 [`scripts/fuzz-changed.sh`](../../scripts/fuzz-changed.sh), which fuzzes the
 targets in packages with a changed Go file or corpus entry for 15 seconds each,
-or every target when `internal/fuzzinput`, the script or the workflow changes.
+or every target when `go.mod`, `go.sum`, `internal/fuzzinput`, the script or
+the workflow changes.
 Seed corpora run on every pull request as part of the regular test jobs. Use
 `DRY_RUN=1 scripts/fuzz-changed.sh origin/main` to list the targets a branch
 would fuzz.

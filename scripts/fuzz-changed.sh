@@ -7,9 +7,10 @@
 #   FUZZTIME   time to fuzz each target (default 15s)
 #   DRY_RUN=1  list the targets that would run without fuzzing them
 #
-# Every target runs when the shared fuzz plumbing changes: internal/fuzzinput,
-# this script, or the fuzz workflow. Otherwise only targets in packages with a
-# changed Go file or saved corpus entry run. Seed corpora already run in the
+# Every target runs when a dependency or the shared fuzz plumbing changes:
+# go.mod, go.sum, internal/fuzzinput, this script, or the fuzz workflow.
+# Otherwise only targets in packages with a changed Go file or saved corpus
+# entry run. Seed corpora already run in the
 # regular test jobs, which call `go test` on every package.
 set -euo pipefail
 
@@ -24,7 +25,7 @@ fuzz_dirs() {
 		xargs -r -n1 dirname | sed 's|^\./||' | sort -u
 }
 
-if grep -qE '^(internal/fuzzinput/|scripts/fuzz-changed\.sh$|\.github/workflows/fuzz-nightly\.yml$)' <<<"$changed"; then
+if grep -qE '^(go\.mod$|go\.sum$|internal/fuzzinput/|scripts/fuzz-changed\.sh$|\.github/workflows/fuzz-nightly\.yml$)' <<<"$changed"; then
 	dirs=$(fuzz_dirs)
 else
 	# A corpus entry lives in <pkg>/testdata/fuzz/<Target>/; map it to <pkg>.
