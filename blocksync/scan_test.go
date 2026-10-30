@@ -1,6 +1,8 @@
 package blocksync
 
 import (
+	"bytes"
+	"errors"
 	"reflect"
 	"strconv"
 	"strings"
@@ -23,11 +25,6 @@ func TestBlocksyncChannelPrecheck(t *testing.T) {
 
 	require.ErrorIs(t, channel.RecvMessagePrecheck(blockResponseBytes(t, types.MaxVotesCount+1, 0)), errTooManySigs)
 	require.NoError(t, channel.RecvMessagePrecheck(blockResponseBytes(t, 10, 0)))
-}
-
-func TestValidateBlockSyncTxCeiling(t *testing.T) {
-	require.NoError(t, validateBlockSyncBytes(blockResponseWithTxs(t, types.MaxBlockTxsV10)))
-	require.ErrorIs(t, validateBlockSyncBytes(blockResponseWithTxs(t, types.MaxBlockTxsV10+1)), types.ErrTooManyBlockTxs)
 }
 
 func TestValidateBlockSyncBytes(t *testing.T) {
@@ -161,9 +158,6 @@ func TestSigCountStubFieldNumbersMatchRealProtos(t *testing.T) {
 		{"Message.block_response", bcproto.Message_BlockResponse{}, "BlockResponse", bcproto.SigCountMessage{}, "BlockResponse"},
 		{"BlockResponse.block", bcproto.BlockResponse{}, "Block", bcproto.SigCountBlockResponse{}, "Block"},
 		{"BlockResponse.ext_commit", bcproto.BlockResponse{}, "ExtCommit", bcproto.SigCountBlockResponse{}, "ExtCommit"},
-		{"Block.data", cmtproto.Block{}, "Data", bcproto.SigCountBlock{}, "Data"},
-		{"Data.txs", cmtproto.Data{}, "Txs", bcproto.SigCountData{}, "Txs"},
-
 		{"Block.last_commit", cmtproto.Block{}, "LastCommit", bcproto.SigCountBlock{}, "LastCommit"},
 		{"Block.evidence", cmtproto.Block{}, "Evidence", bcproto.SigCountBlock{}, "Evidence"},
 		{"EvidenceList.evidence", cmtproto.EvidenceList{}, "Evidence", bcproto.SigCountEvidenceList{}, "Evidence"},
@@ -215,16 +209,6 @@ func TestStubUnmarshalAllocs(t *testing.T) {
 	}
 }
 
-func TestStubUnmarshalTxsAllocs(t *testing.T) {
-	payload := blockResponseWithTxs(t, 1_000_000)
-	allocs := testing.AllocsPerRun(20, func() {
-		var stub bcproto.SigCountMessage
-		require.NoError(t, stub.Unmarshal(payload))
-		require.Len(t, stub.BlockResponse.Block.Data.Txs, 1_000_000)
-	})
-	require.LessOrEqual(t, int(allocs), 50)
-}
-
 // protoFieldNum extracts the wire field number from a generated struct's
 // protobuf tag, e.g. `protobuf:"bytes,3,opt,name=block_response"` -> 3.
 func protoFieldNum(t *testing.T, msg interface{}, goField string) protowire.Number {
@@ -250,13 +234,6 @@ func blockResponseBytes(t *testing.T, nSigs, nExtSigs int) []byte {
 	return mustMarshal(t, blockResponseMsg(&bcproto.BlockResponse{
 		Block:     &cmtproto.Block{LastCommit: commitWithSigs(nSigs)},
 		ExtCommit: extCommitWithSigs(nExtSigs),
-	}))
-}
-
-func blockResponseWithTxs(t *testing.T, n int) []byte {
-	t.Helper()
-	return mustMarshal(t, blockResponseMsg(&bcproto.BlockResponse{
-		Block: &cmtproto.Block{Data: cmtproto.Data{Txs: make([][]byte, n)}},
 	}))
 }
 
@@ -292,4 +269,65 @@ func wireField(num protowire.Number, payloads ...[]byte) []byte {
 		bz = protowire.AppendBytes(bz, p)
 	}
 	return bz
+}
+
+func TestValidateBlockSyncTxCeiling(t *testing.T) {
+	require.NoError(t, validateBlockSyncCardinality(blockResponseWithTxs(t, types.MaxBlockTxsCeiling, nil), types.MaxBlockTxsCeiling))
+	err := validateBlockSyncCardinality(blockResponseWithTxs(t, types.MaxBlockTxsCeiling+1, nil), types.MaxBlockTxsCeiling)
+	require.ErrorIs(t, err, cmtproto.ErrTooManyBlockTxs)
+}
+
+func TestValidateBlockSyncTxLimitDuplicateFields(t *testing.T) {
+	half := types.MaxBlockTxs/2 + 1
+	data := mustMarshal(t, &cmtproto.Data{Txs: make([][]byte, half)})
+	dataNum := protoFieldNum(t, cmtproto.Block{}, "Data")
+	blockNum := protoFieldNum(t, bcproto.BlockResponse{}, "Block")
+	responseNum := protoFieldNum(t, bcproto.Message_BlockResponse{}, "BlockResponse")
+
+	for _, payload := range [][]byte{
+		wireField(responseNum, wireField(blockNum, wireField(dataNum, data, data))),
+		wireField(responseNum, wireField(blockNum, wireField(dataNum, data), wireField(dataNum, data))),
+		wireField(responseNum, wireField(blockNum, wireField(dataNum, data)), wireField(blockNum, wireField(dataNum, data))),
+	} {
+		require.ErrorIs(t, validateBlockSyncCardinality(payload, types.MaxBlockTxs), cmtproto.ErrTooManyBlockTxs)
+	}
+}
+
+func TestValidateBlockSyncEvidenceCountBeforeAllocation(t *testing.T) {
+	precheck := (&Reactor{}).GetChannels()[0].RecvMessagePrecheck
+	evidence := bytes.Repeat([]byte{0x0a, 0}, maxEvidenceSigs+1)
+	wire := wireField(3, wireField(1, wireField(3, evidence)))
+	allocs := testing.AllocsPerRun(5, func() {
+		if err := precheck(wire); !errors.Is(err, errTooManyEvidenceSigs) {
+			t.Fatalf("unexpected error: %v", err)
+		}
+	})
+	require.Less(t, allocs, float64(32))
+}
+
+func TestValidateBlockSyncEvidenceCountSkipsUnknownGroups(t *testing.T) {
+	precheck := (&Reactor{}).GetChannels()[0].RecvMessagePrecheck
+	group := protowire.AppendTag(nil, 100, protowire.StartGroupType)
+	group = protowire.AppendTag(group, 1, protowire.VarintType)
+	group = protowire.AppendVarint(group, 1)
+	group = protowire.AppendTag(group, 100, protowire.EndGroupType)
+	require.NoError(t, precheck(append(blockResponseWithTxs(t, 0, nil), group...)))
+}
+
+func TestValidateBlockSyncCardinalityAcrossDuplicateBlocks(t *testing.T) {
+	entries := bytes.Repeat([]byte{0x0a, 0}, cmtproto.MaxBlockEvidenceItems/2+1)
+	part := wireField(3, wireField(1, wireField(3, entries)))
+	wire := append(append([]byte{}, part...), part...)
+	require.ErrorIs(t, validateBlockSyncCardinality(wire, types.MaxBlockTxs), errTooManyEvidenceSigs)
+}
+
+func blockResponseWithTxs(t *testing.T, count int, tx []byte) []byte {
+	t.Helper()
+	txs := make([][]byte, count)
+	for i := range txs {
+		txs[i] = tx
+	}
+	return mustMarshal(t, blockResponseMsg(&bcproto.BlockResponse{
+		Block: &cmtproto.Block{Data: cmtproto.Data{Txs: txs}},
+	}))
 }
