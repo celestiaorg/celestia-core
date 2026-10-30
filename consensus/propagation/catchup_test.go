@@ -2,17 +2,21 @@ package propagation
 
 import (
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	dbm "github.com/cometbft/cometbft-db"
+
 	cfg "github.com/cometbft/cometbft/config"
 	proptypes "github.com/cometbft/cometbft/consensus/propagation/types"
 	"github.com/cometbft/cometbft/libs/log"
 	cmtrand "github.com/cometbft/cometbft/libs/rand"
 	"github.com/cometbft/cometbft/state"
+	"github.com/cometbft/cometbft/store"
 	"github.com/cometbft/cometbft/types"
 )
 
@@ -614,6 +618,50 @@ func TestRecoveryPartForOlderRound(t *testing.T) {
 	_, parts, has := r1.GetProposal(prop.Height, 0)
 	require.True(t, has)
 	require.True(t, parts.HasPart(0))
+}
+
+// countingDB counts point reads.
+type countingDB struct {
+	dbm.DB
+	reads atomic.Int64
+}
+
+func (d *countingDB) Get(key []byte) ([]byte, error) {
+	d.reads.Add(1)
+	return d.DB.Get(key)
+}
+
+func (d *countingDB) Has(key []byte) (bool, error) {
+	d.reads.Add(1)
+	return d.DB.Has(key)
+}
+
+// TestRecoveryPartReadsNoStore asserts that an unsolicited proven part for a
+// committed height is dropped without reading the block store.
+func TestRecoveryPartReadsNoStore(t *testing.T) {
+	reactors, _ := createTestReactors(2, defaultTestP2PConf(), false, "")
+	r1, r2 := reactors[0], reactors[1]
+	cleanup, _, sm, pv := state.SetupTestCaseWithPrivVal(t)
+	t.Cleanup(func() { cleanup(t) })
+
+	prop, ps, block, _ := createTestProposal(t, sm, pv, 1, 0, 2, 1000000)
+	db := &countingDB{DB: dbm.NewMemDB()}
+	r1.pmtx.Lock()
+	r1.store = store.NewBlockStore(db)
+	r1.pmtx.Unlock()
+	r1.store.SaveBlock(block, ps, testCommit(block, ps))
+	pubKey, err := pv.GetPubKey()
+	require.NoError(t, err)
+	r1.SetConsensusState(prop.Height+1, 0, pubKey)
+
+	before := db.reads.Load()
+	for i := range ps.Total() {
+		part := ps.GetPart(int(i))
+		r1.handleRecoveryPart(r2.self, &proptypes.RecoveryPart{Height: prop.Height, Round: 0, Index: i, Data: part.Bytes, Proof: &part.Proof})
+	}
+	require.Equal(t, before, db.reads.Load())
+	_, _, has := r1.getCachedState(prop.Height, 0, true)
+	require.False(t, has)
 }
 
 func testCommit(block *types.Block, ps *types.PartSet) *types.Commit {
