@@ -369,10 +369,10 @@ func resignExtensions(t *testing.T, pb *cmtproto.ExtendedCommit) {
 	for i := range pb.ExtendedSignatures {
 		ecs := &pb.ExtendedSignatures[i]
 		key := poolKey(ecs.ValidatorAddress)
-		if key == nil || ecs.BlockIdFlag != cmtproto.BlockIDFlagCommit {
+		if key == nil || decodedFlag(ecs.BlockIdFlag) != cmtproto.BlockIDFlagCommit {
 			continue
 		}
-		v := precommit(pb.Height, pb.Round, pb.BlockID, ecs.BlockIdFlag, ecs.Timestamp)
+		v := precommit(pb.Height, pb.Round, pb.BlockID, cmtproto.BlockIDFlagCommit, ecs.Timestamp)
 		v.Extension = ecs.Extension
 		sig, err := key.Sign(VoteExtensionSignBytes(verifyFuzzChainID, v))
 		require.NoError(t, err)
