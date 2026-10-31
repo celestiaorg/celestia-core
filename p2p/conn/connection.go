@@ -131,6 +131,10 @@ type MConnConfig struct {
 	// Interval to flush writes (throttled)
 	FlushThrottle time.Duration `mapstructure:"flush_throttle"`
 
+	// FlushOnMessageEnd flushes as soon as the last packet of a message is
+	// written instead of waiting for the flush throttle.
+	FlushOnMessageEnd bool `mapstructure:"flush_on_message_end"`
+
 	// Interval to send pings
 	PingInterval time.Duration `mapstructure:"ping_interval"`
 
@@ -149,6 +153,7 @@ func DefaultMConnConfig() MConnConfig {
 		RecvRate:                defaultRecvRate,
 		MaxPacketMsgPayloadSize: defaultMaxPacketMsgPayloadSize,
 		FlushThrottle:           defaultFlushThrottle,
+		FlushOnMessageEnd:       true,
 		PingInterval:            defaultPingInterval,
 		PongTimeout:             defaultPongTimeout,
 	}
@@ -578,7 +583,11 @@ func (c *MConnection) sendPacketMsgOnChannel(w protoio.Writer, sendChannel *Chan
 		c.stopForError(err)
 		return n, true
 	}
-	// TODO: Change this to only add flush signals at the start and end of the batch.
+	// sending is cleared once the last packet of a message is written.
+	if c.config.FlushOnMessageEnd && len(sendChannel.sending) == 0 {
+		c.flush()
+		return n, false
+	}
 	c.flushTimer.Set()
 	return n, false
 }
