@@ -1,6 +1,11 @@
 # Runs the native Go fuzz targets listed in test/fuzz/README.md nightly.
 # Failures on main are reported to #protocol-ci by notify-protocol-ci.yml,
 # which watches this workflow by name.
+#
+# Pull requests skip the per-target matrix, which would start one job per
+# target, and run fuzz-changed instead: a single job that briefly fuzzes the
+# targets in the packages the pull request changes. Seed corpora run in the
+# regular test jobs either way.
 name: Fuzz Tests
 on:
   workflow_dispatch:  # allow running workflow manually
@@ -12,6 +17,7 @@ on:
       - "**/testdata/fuzz/**"
       - "go.mod"
       - "go.sum"
+      - "scripts/fuzz-changed.sh"
       - ".github/workflows/fuzz-nightly.yml"
 
 permissions:
@@ -26,6 +32,7 @@ concurrency:
 jobs:
   fuzz:
     name: Fuzz ${{ matrix.target }}
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     strategy:
@@ -94,13 +101,11 @@ jobs:
           key: fuzz-v2-${{ runner.os }}-${{ matrix.target }}-${{ github.run_id }}-${{ github.run_attempt }}
           restore-keys: fuzz-v2-${{ runner.os }}-${{ matrix.target }}-
 
-      # Fuzz for 10 minutes on the nightly schedule; keep pull request runs
-      # short since they only check that the targets still build and run.
       - name: Fuzz
         env:
           FUZZ_PACKAGE: ${{ matrix.package }}
           FUZZ_TARGET: Fuzz${{ matrix.target }}
-          FUZZTIME: ${{ github.event_name == 'pull_request' && '30s' || '10m' }}
+          FUZZTIME: 10m
         run: go test -run='^$' -fuzz="^${FUZZ_TARGET}$" -fuzztime="$FUZZTIME" -parallel=2 "./${FUZZ_PACKAGE}"
 
       # Go writes any input that triggered a failure to testdata/fuzz/<Target>/.
@@ -110,5 +115,34 @@ jobs:
         with:
           name: failing-inputs-${{ matrix.target }}
           path: ${{ matrix.package }}/testdata/fuzz/Fuzz${{ matrix.target }}/
+          if-no-files-found: ignore
+          retention-days: 7
+
+  fuzz-changed:
+    name: Fuzz changed packages
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: 'go.mod'
+
+      - name: Fuzz targets in changed packages
+        env:
+          BASE_REF: ${{ github.base_ref }}
+          FUZZTIME: 15s
+        run: scripts/fuzz-changed.sh "origin/${BASE_REF}"
+
+      # Go writes any input that triggered a failure to testdata/fuzz/<Target>/.
+      - name: Archive failing inputs
+        if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: failing-inputs-changed
+          path: '**/testdata/fuzz/'
           if-no-files-found: ignore
           retention-days: 7
