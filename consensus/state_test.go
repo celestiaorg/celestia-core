@@ -1465,6 +1465,42 @@ func TestSetValidBlockOnDelayedProposal(t *testing.T) {
 	}, ensureTimeout, 10*time.Millisecond)
 }
 
+// TestStatePolkaBeforeProposalStepOrder pins the step order when a polka arrives
+// before its proposal: Prevote then Precommit, never back to Prevote.
+func TestStatePolkaBeforeProposalStepOrder(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	cs1, vss := randState(4)
+	vs2, vs3, vs4 := vss[1], vss[2], vss[3]
+	height, round := cs1.rs.Height, cs1.rs.Round+1 // vs2 proposes round 1
+	incrementRound(vs2, vs3, vs4)
+	cs1.state.Timeouts.TimeoutPropose = time.Minute
+
+	stepSub, err := cs1.eventBus.Subscribe(ctx, testSubscriber, types.EventQueryNewRoundStep, 10)
+	require.NoError(t, err)
+	pv1, err := cs1.privValidator.GetPubKey()
+	require.NoError(t, err)
+	voteCh := subscribeToVoter(cs1, pv1.Address())
+
+	startTestRound(cs1, height, round)
+	prop, propBlock := decideProposal(ctx, t, cs1, vs2, vs2.Height, vs2.Round)
+	propBlockParts, err := propBlock.MakePartSet(types.BlockPartSizeBytes)
+	require.NoError(t, err)
+	signAddVotes(cs1, cmtproto.PrevoteType, propBlock.Hash(), propBlockParts.Header(), false, vs2, vs3, vs4)
+	require.NoError(t, cs1.SetProposalAndBlock(prop, propBlock, propBlockParts, "some peer"))
+
+	ensurePrevoteMatch(t, voteCh, height, round, propBlock.Hash())
+	ensurePrecommitMatch(t, voteCh, height, round, propBlock.Hash())
+	var steps []string
+	for len(stepSub.Out()) > 0 {
+		if rs := (<-stepSub.Out()).Data().(types.EventDataRoundState); rs.Round == round {
+			steps = append(steps, rs.Step)
+		}
+	}
+	require.Equal(t, []string{"RoundStepPropose", "RoundStepPrevote", "RoundStepPrecommit"}, steps)
+}
+
 func TestProcessProposalAccept(t *testing.T) {
 	for _, testCase := range []struct {
 		name               string
