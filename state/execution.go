@@ -794,6 +794,7 @@ func updateState(
 			TimeoutPrecommit:        abciResponse.TimeoutInfo.TimeoutPrecommit,
 			TimeoutPrecommitDelta:   abciResponse.TimeoutInfo.TimeoutPrecommitDelta,
 			DelayedPrecommitTimeout: abciResponse.TimeoutInfo.DelayedPrecommitTimeout,
+			DynamicTimeoutCommit:    abciResponse.TimeoutInfo.DynamicTimeoutCommit,
 		},
 	}, nil
 }
