@@ -95,6 +95,21 @@ func (p *ProposalCache) conflictsWith(cb *proptypes.CompactBlock) bool {
 	return existing != nil && !sameProposalIdentity(existing, cb)
 }
 
+// getCachedState returns the cached entry at (height, round) without falling back
+// to the store; unless catchup, the entry must also be relevant.
+func (p *ProposalCache) getCachedState(height int64, round int32, catchup bool) (*proptypes.CompactBlock, *proptypes.CombinedPartSet, bool) {
+	p.pmtx.Lock()
+	defer p.pmtx.Unlock()
+	if !catchup && !p.relevant(height, round) {
+		return nil, nil, false
+	}
+	prop, has := p.proposals[height][round]
+	if !has {
+		return nil, nil, false
+	}
+	return prop.compactBlock, prop.block, true
+}
+
 // GetProposal returns the proposal and block for a given height and round if
 // this node has it stored or cached.
 func (p *ProposalCache) GetProposal(height int64, round int32) (*types.Proposal, *types.PartSet, bool) {
@@ -134,6 +149,12 @@ func (p *ProposalCache) unfinishedHeights() []*proposalData {
 		// replaying cached proposals to catch up.
 		if prop.catchup || !prop.block.IsComplete() {
 			data = append(data, prop)
+		}
+		// a commit can be for an older round than the newest proposal we hold.
+		for _, pd := range heightData {
+			if pd != prop && pd.catchup && !pd.block.IsComplete() {
+				data = append(data, pd)
+			}
 		}
 	}
 	return data
@@ -190,12 +211,14 @@ func (p *ProposalCache) getAllState(height int64, round int32, catchup bool) (*p
 	}
 
 	var hasStored *types.BlockMeta
-	if height < p.height {
+	if height < p.height || (catchup && height <= p.store.Height()) {
 		hasStored = p.store.LoadBlockMeta(height)
 	}
 
 	switch {
-	case has && hasRound:
+	// at a committed height only the committed block is useful: a cached entry for
+	// another block must not shadow the store.
+	case has && hasRound && (hasStored == nil || cachedProp.block.Original().Header().Equals(hasStored.BlockID.PartSetHeader)):
 		return cachedProp.compactBlock, cachedProp.block, cachedProp.maxRequests, true
 	case hasStored != nil:
 		parts, _, err := p.store.LoadPartSet(height)

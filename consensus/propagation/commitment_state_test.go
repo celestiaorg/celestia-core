@@ -320,6 +320,21 @@ func TestProposalCache_unfinishedHeightsTreatsCatchupAsPending(t *testing.T) {
 	require.True(t, unfinished[0].catchup)
 }
 
+func TestProposalCache_unfinishedHeightsIncludesOlderCatchup(t *testing.T) {
+	pc := NewProposalCache(makeTestBlockStore(t))
+	ps, err := types.NewPartSetFromData([]byte("abc"), types.BlockPartSizeBytes)
+	require.NoError(t, err)
+	stub := proptypes.NewCombinedPartSetFromOriginal(types.NewPartSetFromHeader(ps.Header(), types.BlockPartSizeBytes), true)
+	pc.proposals[2] = map[int32]*proposalData{
+		0: {compactBlock: makeCompactBlock(2, 0, ps.Total()), block: stub, catchup: true},
+		1: {compactBlock: makeCompactBlock(2, 1, ps.Total()), block: proptypes.NewCombinedPartSetFromOriginal(ps, false)},
+	}
+
+	unfinished := pc.unfinishedHeights()
+	require.Len(t, unfinished, 1, "the round-0 commit stub must not be shadowed by the complete round-1 proposal")
+	require.EqualValues(t, 0, unfinished[0].compactBlock.Proposal.Round)
+}
+
 // TestProposalCache_GetProposal_NilCompactBlock guards against the nil pointer
 // panic reported in #3039, where GetProposal dereferenced cb.Proposal when
 // getAllState returned has=true with a nil *CompactBlock. The stored-block
