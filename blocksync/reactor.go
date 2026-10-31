@@ -1,6 +1,7 @@
 package blocksync
 
 import (
+	"errors"
 	"fmt"
 	"reflect"
 	"sync"
@@ -12,6 +13,7 @@ import (
 	"github.com/cometbft/cometbft/libs/trace/schema"
 	"github.com/cometbft/cometbft/p2p"
 	bcproto "github.com/cometbft/cometbft/proto/tendermint/blocksync"
+	cmtproto "github.com/cometbft/cometbft/proto/tendermint/types"
 	sm "github.com/cometbft/cometbft/state"
 	"github.com/cometbft/cometbft/store"
 	"github.com/cometbft/cometbft/types"
@@ -32,8 +34,9 @@ const (
 	// check if we should switch to consensus reactor
 	switchToConsensusIntervalSeconds = 1
 
-	// ReactorIncomingMessageQueueSize the size of the reactor's message queue.
-	ReactorIncomingMessageQueueSize = 100
+	// ReactorIncomingMessageQueueSize bounds decoded blocks waiting for the
+	// single processor; a full queue blocks peer receive loops.
+	ReactorIncomingMessageQueueSize = 8
 )
 
 type consensusReactor interface {
@@ -138,7 +141,11 @@ func NewReactorWithAddr(state sm.State, blockExec *sm.BlockExecutor, store *stor
 		metrics:      metrics,
 		traceClient:  traceClient,
 	}
-	bcR.BaseReactor = *p2p.NewBaseReactor("BlockSync", bcR, p2p.WithIncomingQueueSize(ReactorIncomingMessageQueueSize), p2p.WithTraceClient(traceClient))
+	bcR.BaseReactor = *p2p.NewBaseReactor("BlockSync", bcR,
+		p2p.WithIncomingQueueSize(ReactorIncomingMessageQueueSize),
+		p2p.WithUnmarshalConcurrency(1),
+		p2p.WithTraceClient(traceClient),
+	)
 
 	for _, option := range options {
 		option(bcR)
@@ -207,9 +214,32 @@ func (bcR *Reactor) GetChannels() []*p2p.ChannelDescriptor {
 			RecvBufferCapacity:  50 * 4096,
 			RecvMessageCapacity: MaxMsgSize,
 			MessageType:         &bcproto.Message{},
-			RecvMessagePrecheck: validateBlockSyncBytes,
+			RecvMessagePrecheck: bcR.validateBlockSyncBytes,
 		},
 	}
+}
+
+// validateBlockSyncBytes checks against default limits first, and against the
+// committed state's only when those are exceeded. App versions only increase.
+func (bcR *Reactor) validateBlockSyncBytes(msgBytes []byte) error {
+	err := validateBlockSyncCardinality(msgBytes, cmtproto.BlockLimits{
+		Txs:           types.MaxBlockTxs,
+		EvidenceBytes: types.DefaultEvidenceParams().MaxBytes,
+	})
+	if errors.Is(err, cmtproto.ErrTooManyBlockTxs) || errors.Is(err, errTooManyEvidenceSigs) {
+		state, loadErr := bcR.blockExec.Store().Load()
+		if loadErr != nil {
+			return loadErr
+		}
+		err = validateBlockSyncCardinality(msgBytes, cmtproto.BlockLimits{
+			Txs:           types.MaxBlockTxsForAppVersion(state.Version.Consensus.App),
+			EvidenceBytes: state.ConsensusParams.Evidence.MaxBytes,
+		})
+	}
+	if err != nil {
+		return err
+	}
+	return validateBlockSyncBytes(msgBytes)
 }
 
 // AddPeer implements Reactor by sending our state to peer.
@@ -541,6 +571,11 @@ FOR_LOOP:
 				} else {
 					err = bcR.blockExec.ValidateBlockSkipLastCommit(state, first)
 				}
+			}
+
+			// The precheck may have used an older version's limit for this height.
+			if maxTxs := types.MaxBlockTxsForAppVersion(state.Version.Consensus.App); err == nil && len(first.Txs) > maxTxs {
+				err = fmt.Errorf("%w (max: %d, got %d)", cmtproto.ErrTooManyBlockTxs, maxTxs, len(first.Txs))
 			}
 
 			if err == nil && bcR.verifyData {

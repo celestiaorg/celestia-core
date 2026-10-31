@@ -1,11 +1,13 @@
 package blocksync
 
 import (
+	"errors"
 	"fmt"
 
 	"github.com/cosmos/gogoproto/proto"
 
 	bcproto "github.com/cometbft/cometbft/proto/tendermint/blocksync"
+	cmtproto "github.com/cometbft/cometbft/proto/tendermint/types"
 	"github.com/cometbft/cometbft/types"
 )
 
@@ -29,6 +31,20 @@ const maxEvidenceSigs = types.MaxVotesCount * 100
 var errTooManySigs = fmt.Errorf("too many signatures (max: %d)", types.MaxVotesCount)
 var errTooManyExtendedsigs = fmt.Errorf("too many extended signatures (max: %d)", types.MaxVotesCount)
 var errTooManyEvidenceSigs = fmt.Errorf("too many evidence signatures (max: %d)", maxEvidenceSigs)
+
+// validateBlockSyncCardinality bounds the transactions, commit signatures and
+// evidence of every Message.block_response.block before anything is unmarshalled.
+func validateBlockSyncCardinality(msgBytes []byte, lim cmtproto.BlockLimits) error {
+	lim.AllOneofs = true
+	err := cmtproto.CheckBlockCardinality(msgBytes, lim, 3, 1)
+	switch {
+	case errors.Is(err, cmtproto.ErrTooManyBlockCommitSignatures):
+		return fmt.Errorf("%w: %w", errTooManySigs, err)
+	case errors.Is(err, cmtproto.ErrTooManyBlockEvidence), errors.Is(err, cmtproto.ErrTooManyBlockEvidenceElements):
+		return fmt.Errorf("%w: %w", errTooManyEvidenceSigs, err)
+	}
+	return err
+}
 
 // validateBlockSyncBytes rejects block responses that encode too many commit
 // signatures before protobuf unmarshalling can allocate one object per signature.
