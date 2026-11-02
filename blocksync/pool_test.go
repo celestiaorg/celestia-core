@@ -774,3 +774,34 @@ func TestAddBlockDoesNotDeadlockOnSendError(t *testing.T) {
 		t.Fatal("deadlock: AddBlock held pool.mtx while blocked in sendError")
 	}
 }
+
+// TestAddBlockFromReconnectedPeer checks that a block from a peer that was
+// removed and added back, after we requested that block from it, does not
+// panic in the pending request accounting.
+func TestAddBlockFromReconnectedPeer(t *testing.T) {
+	requestsCh := make(chan BlockRequest, 10)
+	errorsCh := make(chan peerError, 10)
+	pool := NewBlockPool(1, requestsCh, errorsCh)
+	pool.SetLogger(log.TestingLogger())
+
+	pool.SetPeerRange("A", 1, 10)
+	pool.mtx.Lock()
+	req := newBPRequester(pool, 1)
+	req.peerID = "A"
+	req.requestedFromPeers["A"] = struct{}{}
+	pool.requesters[1] = req
+	pool.mtx.Unlock()
+
+	// The peer disconnects and reconnects, so the pool tracks it as a new
+	// peer with no pending requests.
+	pool.RemovePeer("A")
+	pool.SetPeerRange("A", 1, 10)
+
+	block := &types.Block{Header: types.Header{Height: 1}, LastCommit: &types.Commit{}}
+	extCommit := &types.ExtendedCommit{Height: 1}
+	require.NotPanics(t, func() { _ = pool.AddBlock("A", block, extCommit, 123) })
+
+	pool.mtx.Lock()
+	defer pool.mtx.Unlock()
+	assert.EqualValues(t, 0, pool.peers["A"].numPending)
+}

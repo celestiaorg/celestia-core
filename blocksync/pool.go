@@ -776,6 +776,12 @@ func (peer *bpPeer) incrPending() {
 }
 
 func (peer *bpPeer) decrPending(recvSize int) {
+	// A block can arrive for a request made to an earlier connection with
+	// this peer, so this peer may have nothing pending. Its monitor and timer
+	// are only set once it has a pending request.
+	if peer.numPending <= 0 {
+		return
+	}
 	peer.numPending--
 	if peer.numPending == 0 {
 		peer.timeout.Stop()
