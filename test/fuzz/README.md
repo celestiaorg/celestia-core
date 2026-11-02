@@ -123,8 +123,9 @@ Known limits:
   run only as far as the harness drives them; they are not fuzzed on their own
   schedule.
 - State sync gets its light blocks and params from RPC providers, not peers.
-  `FuzzStateSyncReactor` uses a fixed trusted state provider; the provider
-  path is covered by `FuzzHTTPProviderLightBlock` and `FuzzLightClientVerify`.
+  `FuzzStateSyncReactor` uses a fixed trusted state provider.
+  `FuzzHTTPProviderLightBlock` and `FuzzLightClientVerify` cover light-block
+  fetching and verification; the `consensus_params` call is not fuzzed.
 - `broadcast_tx_commit` over JSON-RPC is not exercised, because it blocks on
   block commit.
 - The trace, pprof and Prometheus listeners (CORE-44) are operator-only and out
