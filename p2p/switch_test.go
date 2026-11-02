@@ -590,8 +590,10 @@ func TestSwitchDialPeersAsync(t *testing.T) {
 
 	err = sw.DialPeersAsync([]string{rp.Addr().String()})
 	require.NoError(t, err)
-	time.Sleep(dialRandomizerIntervalMilliseconds * time.Millisecond)
-	require.NotNil(t, sw.Peers().Get(rp.ID()))
+	// DialPeersAsync sleeps for up to dialRandomizerIntervalMilliseconds before
+	// dialing, and the handshake runs after that, so wait for the peer itself.
+	require.Eventually(t, func() bool { return sw.Peers().Get(rp.ID()) != nil },
+		dialRandomizerIntervalMilliseconds*time.Millisecond+5*time.Second, 10*time.Millisecond)
 }
 
 func waitUntilSwitchHasAtLeastNPeers(sw *Switch, n int) {
