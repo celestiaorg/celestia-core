@@ -754,6 +754,10 @@ func FuzzConsensusReactorReceive(f *testing.F) {
 			conR.waitSync = true // the State was never started, so do not wait on it
 			conR.mtx.Unlock()
 			require.NoError(t, conR.Stop())
+			// Reactor.OnStop does not cancel the base reactor's processor
+			// goroutine, which would otherwise keep this iteration's State and
+			// its message queues alive for the rest of the fuzzing run.
+			conR.BaseReactor.OnStop()
 		})
 		peer := p2pmock.NewPeer(nil)
 		_, err := conR.InitPeer(peer)

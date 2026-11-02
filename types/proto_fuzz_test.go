@@ -451,6 +451,12 @@ func signable(id *cmtproto.BlockID, ts time.Time) bool {
 	return err == nil && timestamppb.New(ts).CheckValid() == nil
 }
 
+// decodedFlag returns the flag a decoded signature carries: decoding keeps
+// only the low byte of the wire value.
+func decodedFlag(flag cmtproto.BlockIDFlag) cmtproto.BlockIDFlag {
+	return cmtproto.BlockIDFlag(BlockIDFlag(flag))
+}
+
 // resignCommit re-signs every commit and nil signature whose address belongs
 // to a pool key, with that key, for the commit's current height, round and
 // block ID.
@@ -460,11 +466,12 @@ func resignCommit[S any](t *testing.T, height int64, round int32, blockID cmtpro
 	for i := range sigs {
 		f := fields(&sigs[i])
 		key := poolKey(*f.addr)
-		if key == nil || (*f.flag != cmtproto.BlockIDFlagCommit && *f.flag != cmtproto.BlockIDFlagNil) ||
+		flag := decodedFlag(*f.flag)
+		if key == nil || (flag != cmtproto.BlockIDFlagCommit && flag != cmtproto.BlockIDFlagNil) ||
 			!signable(&blockID, *f.ts) {
 			continue
 		}
-		sig, err := key.Sign(VoteSignBytes(verifyFuzzChainID, precommit(height, round, blockID, *f.flag, *f.ts)))
+		sig, err := key.Sign(VoteSignBytes(verifyFuzzChainID, precommit(height, round, blockID, flag, *f.ts)))
 		require.NoError(t, err)
 		*f.sig = sig
 	}
