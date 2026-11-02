@@ -48,7 +48,7 @@ date has been recorded for these entries.
 | `conn.SecretConnection.Read` / `Write` | Encrypted peer connection traffic | `FuzzP2PSecretConnection` in `test/fuzz/tests` | Yes |
 | JSON-RPC server | RPC request bytes | `FuzzRPCJSONRPCServer` in `test/fuzz/tests` | Yes |
 | Evidence reactor envelope | EvidenceList protobuf envelope | `FuzzEvidenceReactorReceive` in `evidence` | Yes |
-| State-sync message decoding | Snapshot/chunk/light-block/params envelopes | `FuzzStateSyncReactor` in `statesync` | Yes |
+| State-sync message decoding | Snapshot and chunk envelopes | `FuzzStateSyncReactor` in `statesync` | Yes |
 | P2P packet framing and node-info handshake | Packet and node-info wire bytes | `FuzzMConnectionRecv` in `p2p/conn`, `FuzzTransportUpgrade` in `p2p` | Yes |
 
 The original decoder suite has **14 targets**; the last three rows are now
@@ -106,7 +106,7 @@ run in the nightly matrix.
 | Blocksync reactor and pool | Status, block request and response sequences | `FuzzBlockSyncReactor` in `blocksync` |
 | Commit and validator-set verification | Commits, extended commits, light blocks, validator sets | `FuzzVerifyCommit`, `FuzzExtendedCommitFromProto`, `FuzzLightBlockFromProto`, `FuzzValidatorSetFromProto` in `types` |
 | Light client | Light blocks from primary and witnesses; provider HTTP responses | `FuzzLightClientVerify` in `light`, `FuzzHTTPProviderLightBlock` in `light/provider/http` |
-| State-sync reactor and syncer | Snapshots, chunks, light blocks, params | `FuzzStateSyncReactor` in `statesync` |
+| State-sync reactor and syncer | Snapshots and chunks (trusted state comes from a fixed provider) | `FuzzStateSyncReactor` in `statesync` |
 | PEX reactor and address book | Address requests and address lists | `FuzzPexReactor` in `p2p/pex` |
 | Block validation and execution | Proposed blocks and vote extensions | `FuzzBlockExecValidateApply`, `FuzzVerifyVoteExtension` in `state` |
 | RPC handlers and JSON-RPC server | URI, JSON-RPC (single, batch, websocket) requests | `FuzzRPCCoreHandlers`, `FuzzRPCCoreJSONRPC` in `rpc/core` |
@@ -122,6 +122,9 @@ Known limits:
 - Timer-driven routines (gossip goroutines, blocksync pool request routines)
   run only as far as the harness drives them; they are not fuzzed on their own
   schedule.
+- State sync gets its light blocks and params from RPC providers, not peers.
+  `FuzzStateSyncReactor` uses a fixed trusted state provider; the provider
+  path is covered by `FuzzHTTPProviderLightBlock` and `FuzzLightClientVerify`.
 - `broadcast_tx_commit` over JSON-RPC is not exercised, because it blocks on
   block commit.
 - The trace, pprof and Prometheus listeners (CORE-44) are operator-only and out
