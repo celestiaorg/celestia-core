@@ -2,6 +2,10 @@
 # Failures on main are reported to #protocol-ci by notify-protocol-ci.yml,
 # which watches this workflow by name.
 #
+# A crashing input can describe an exploitable bug, and this repository's logs
+# and artifacts are public. The nightly jobs therefore print only PASS or FAIL,
+# and on main file a Linear issue holding the output and the crashing input.
+#
 # Pull requests skip the per-target matrix, which would start one job per
 # target, and run fuzz-changed instead: a single job that briefly fuzzes the
 # targets in the packages the pull request changes. Seed corpora run in the
@@ -38,50 +42,53 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
+        # priority is the entry point's risk in the PROTOCO-3321 inventory and
+        # sets the Linear priority of the issue filed on failure:
+        # 1 = Urgent, 2 = High.
         include:
-          - {package: test/fuzz/tests, target: Mempool}
-          - {package: test/fuzz/tests, target: P2PSecretConnection}
-          - {package: p2p, target: TransportUpgrade}
-          - {package: p2p, target: PeerReceive}
-          - {package: p2p/conn, target: SecretConnectionHandshake}
-          - {package: p2p/conn, target: SecretConnectionRead}
-          - {package: p2p/conn, target: MConnectionRecv}
-          - {package: test/fuzz/tests, target: RPCJSONRPCServer}
-          - {package: rpc/core, target: RPCGRPCAPI}
-          - {package: p2p/pex, target: PexReactor}
-          - {package: rpc/core, target: RPCCoreHandlers}
-          - {package: rpc/core, target: RPCCoreJSONRPC}
-          - {package: mempool/cat, target: MempoolMessage}
-          - {package: mempool/cat, target: ReactorReceive}
-          - {package: consensus, target: ConsensusMessage}
-          - {package: consensus, target: ConsensusStateHandleMsg}
-          - {package: consensus, target: ConsensusReactorReceive}
-          - {package: blocksync, target: BlockSyncMessage}
-          - {package: statesync, target: StateSyncReactor}
-          - {package: blocksync, target: BlockSyncReactor}
-          - {package: consensus/propagation/types, target: PropagationMessage}
-          - {package: consensus/propagation/types, target: CombinedPartSetDecode}
-          - {package: consensus/propagation/types, target: TxsToPartsMetadata}
-          - {package: consensus/propagation/types, target: TxsToParts}
-          - {package: consensus/propagation/types, target: TxsToParts_Panic}
-          - {package: consensus/propagation, target: PropagationReactor}
-          - {package: types, target: BlockFromProto}
-          - {package: state, target: BlockExecValidateApply}
-          - {package: state, target: VerifyVoteExtension}
-          - {package: types, target: PartFromProto}
-          - {package: types, target: VoteFromProto}
-          - {package: types, target: ProposalFromProto}
-          - {package: types, target: CommitFromProto}
-          - {package: types, target: VerifyCommit}
-          - {package: types, target: ExtendedCommitFromProto}
-          - {package: types, target: LightBlockFromProto}
-          - {package: types, target: ValidatorSetFromProto}
-          - {package: types, target: EvidenceFromProto}
-          - {package: evidence, target: EvidencePool}
-          - {package: evidence, target: EvidenceReactorReceive}
-          - {package: types, target: UnwrapLegacyBlobTx}
-          - {package: light, target: LightClientVerify}
-          - {package: light/provider/http, target: HTTPProviderLightBlock}
+          - {package: test/fuzz/tests, target: Mempool, priority: 1}
+          - {package: test/fuzz/tests, target: P2PSecretConnection, priority: 1}
+          - {package: p2p, target: TransportUpgrade, priority: 1}
+          - {package: p2p, target: PeerReceive, priority: 1}
+          - {package: p2p/conn, target: SecretConnectionHandshake, priority: 1}
+          - {package: p2p/conn, target: SecretConnectionRead, priority: 1}
+          - {package: p2p/conn, target: MConnectionRecv, priority: 1}
+          - {package: test/fuzz/tests, target: RPCJSONRPCServer, priority: 2}
+          - {package: rpc/core, target: RPCGRPCAPI, priority: 2}
+          - {package: p2p/pex, target: PexReactor, priority: 2}
+          - {package: rpc/core, target: RPCCoreHandlers, priority: 2}
+          - {package: rpc/core, target: RPCCoreJSONRPC, priority: 2}
+          - {package: mempool/cat, target: MempoolMessage, priority: 1}
+          - {package: mempool/cat, target: ReactorReceive, priority: 1}
+          - {package: consensus, target: ConsensusMessage, priority: 1}
+          - {package: consensus, target: ConsensusStateHandleMsg, priority: 1}
+          - {package: consensus, target: ConsensusReactorReceive, priority: 1}
+          - {package: blocksync, target: BlockSyncMessage, priority: 1}
+          - {package: statesync, target: StateSyncReactor, priority: 2}
+          - {package: blocksync, target: BlockSyncReactor, priority: 1}
+          - {package: consensus/propagation/types, target: PropagationMessage, priority: 1}
+          - {package: consensus/propagation/types, target: CombinedPartSetDecode, priority: 1}
+          - {package: consensus/propagation/types, target: TxsToPartsMetadata, priority: 1}
+          - {package: consensus/propagation/types, target: TxsToParts, priority: 1}
+          - {package: consensus/propagation/types, target: TxsToParts_Panic, priority: 1}
+          - {package: consensus/propagation, target: PropagationReactor, priority: 1}
+          - {package: types, target: BlockFromProto, priority: 1}
+          - {package: state, target: BlockExecValidateApply, priority: 1}
+          - {package: state, target: VerifyVoteExtension, priority: 1}
+          - {package: types, target: PartFromProto, priority: 1}
+          - {package: types, target: VoteFromProto, priority: 1}
+          - {package: types, target: ProposalFromProto, priority: 1}
+          - {package: types, target: CommitFromProto, priority: 1}
+          - {package: types, target: VerifyCommit, priority: 1}
+          - {package: types, target: ExtendedCommitFromProto, priority: 1}
+          - {package: types, target: LightBlockFromProto, priority: 2}
+          - {package: types, target: ValidatorSetFromProto, priority: 2}
+          - {package: types, target: EvidenceFromProto, priority: 1}
+          - {package: evidence, target: EvidencePool, priority: 1}
+          - {package: evidence, target: EvidenceReactorReceive, priority: 1}
+          - {package: types, target: UnwrapLegacyBlobTx, priority: 1}
+          - {package: light, target: LightClientVerify, priority: 2}
+          - {package: light/provider/http, target: HTTPProviderLightBlock, priority: 2}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
@@ -101,22 +108,39 @@ jobs:
           key: fuzz-v2-${{ runner.os }}-${{ matrix.target }}-${{ github.run_id }}-${{ github.run_attempt }}
           restore-keys: fuzz-v2-${{ runner.os }}-${{ matrix.target }}-
 
+      # The output stays in a file under runner.temp and is sent only to Linear.
       - name: Fuzz
         env:
-          FUZZ_PACKAGE: ${{ matrix.package }}
+          FUZZ_PACKAGE: ./${{ matrix.package }}
           FUZZ_TARGET: Fuzz${{ matrix.target }}
+          FUZZ_PRIORITY: ${{ matrix.priority }}
           FUZZTIME: 10m
-        run: go test -run='^$' -fuzz="^${FUZZ_TARGET}$" -fuzztime="$FUZZTIME" -parallel=2 "./${FUZZ_PACKAGE}"
+          FUZZ_LOG_DIR: ${{ runner.temp }}/fuzz
+        run: |
+          mkdir -p "$FUZZ_LOG_DIR"
+          : >"$FUZZ_LOG_DIR/failed.txt"
+          log="$FUZZ_LOG_DIR/$FUZZ_TARGET.log"
+          # go test exits 0 with "no fuzz tests to fuzz" when the target is missing.
+          if go test -run='^$' -fuzz="^${FUZZ_TARGET}$" -fuzztime="$FUZZTIME" -parallel=2 "$FUZZ_PACKAGE" >"$log" 2>&1 &&
+            ! grep -q 'no fuzz tests to fuzz' "$log"; then
+            echo "PASS $FUZZ_TARGET"
+          else
+            echo "FAIL $FUZZ_TARGET (output withheld; see the Linear issue)"
+            echo "$FUZZ_PRIORITY $FUZZ_PACKAGE $FUZZ_TARGET" >>"$FUZZ_LOG_DIR/failed.txt"
+            exit 1
+          fi
 
-      # Go writes any input that triggered a failure to testdata/fuzz/<Target>/.
-      - name: Archive failing inputs
-        if: failure()
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        with:
-          name: failing-inputs-${{ matrix.target }}
-          path: ${{ matrix.package }}/testdata/fuzz/Fuzz${{ matrix.target }}/
-          if-no-files-found: ignore
-          retention-days: 7
+      - name: File Linear issue for failing target
+        if: ${{ failure() && github.ref == 'refs/heads/main' }}
+        env:
+          LINEAR_API_KEY: ${{ secrets.LINEAR_API_KEY }}
+          LINEAR_TEAM_KEY: PROTOCO
+          LINEAR_ASSIGNEE_ID: ${{ vars.FUZZ_LINEAR_ASSIGNEE_ID || 'e9929f5b-e156-4046-95df-aeea6faa9a58' }}
+          FUZZ_LOG_DIR: ${{ runner.temp }}/fuzz
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          COMMIT_SHA: ${{ github.sha }}
+          TITLE_PREFIX: Nightly celestia-core fuzz failure
+        run: python3 .github/scripts/report-fuzz-failures.py
 
   fuzz-changed:
     name: Fuzz changed packages

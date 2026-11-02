@@ -131,9 +131,22 @@ Known limits:
 
 [The Fuzz Tests workflow](../../.github/workflows/fuzz-nightly.yml) runs each
 listed nightly target as its own job for ten minutes on the daily schedule and
-manual dispatch. It uses two workers per target, restores previously
-interesting inputs from the fuzz cache, and uploads `testdata/fuzz/Fuzz<Target>/`
-on failure. Failures on main feed the existing `notify-protocol-ci.yml` workflow.
+manual dispatch. It uses two workers per target and restores previously
+interesting inputs from the fuzz cache. Failures on main feed the existing
+`notify-protocol-ci.yml` workflow.
+
+A crashing input can describe an exploitable bug, and this repository's logs and
+artifacts are public. The nightly jobs therefore write `go test` output to a file
+on the runner and print only `PASS` or `FAIL`. When a target fails on main,
+[`report-fuzz-failures.py`](../../.github/scripts/report-fuzz-failures.py) files
+a PROTOCO Linear issue titled `Nightly celestia-core fuzz failure: Fuzz<Target>`,
+or comments on the open issue with that title. The issue holds the run URL, the
+commit, the output tail and the complete crashing corpus file. Its priority comes
+from the target's `priority` in the workflow matrix, which follows the
+PROTOCO-3321 inventory: 1 (Urgent) for P1 entry points, 2 (High) for P2. This
+needs the `LINEAR_API_KEY` repository secret; the `FUZZ_LINEAR_ASSIGNEE_ID`
+repository variable optionally overrides the assignee. Add a `priority` to each
+new matrix entry.
 
 Pull requests skip that matrix. A single job runs
 [`scripts/fuzz-changed.sh`](../../scripts/fuzz-changed.sh), which fuzzes the
@@ -146,10 +159,13 @@ would fuzz.
 
 For any crash or invariant failure:
 
-1. Download the failing-input artifact and copy its files into the target
+1. Download the complete corpus file from the Linear issue (for a pull request
+   crash, from the `failing-inputs-changed` artifact) and save it in the target
    package's `testdata/fuzz/Fuzz<Target>/` directory.
 2. Replay with `go test -run='Fuzz<Target>/<input-hash>' ./<package>`.
-3. File a ticket linked to PROTOCO-3327 with the commit, target, input, command
-   and stack trace. Distinguish a production failure from a harness assumption.
+3. Link the nightly issue to PROTOCO-3327, or file one for a crash found
+   elsewhere, with the commit, target, input, command and stack trace. Keep
+   crash details out of public PRs and issues. Distinguish a production failure
+   from a harness assumption.
 4. Include the minimized input as a regression corpus entry with the fix and
    replay it in ordinary tests before rerunning the fuzzer.
