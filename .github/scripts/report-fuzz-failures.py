@@ -38,7 +38,7 @@ def graphql(query, variables):
     with urllib.request.urlopen(request, timeout=30) as response:
         body = json.load(response)
     if body.get("errors"):
-        sys.exit("Linear API error: " + json.dumps(body["errors"]))
+        raise RuntimeError("Linear API error: " + json.dumps(body["errors"]))
     return body["data"]
 
 
