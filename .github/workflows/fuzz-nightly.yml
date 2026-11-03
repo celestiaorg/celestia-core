@@ -157,22 +157,11 @@ jobs:
 
       # Output stays out of the public log and no artifact is uploaded: a
       # crashing input can describe an exploitable bug in code already on main.
+      # No secret is exposed here either, since the job runs the PR's code;
+      # the author reproduces a failure locally with scripts/fuzz-changed.sh.
       - name: Fuzz targets in changed packages
         env:
           BASE_REF: ${{ github.base_ref }}
           FUZZTIME: 15s
           FUZZ_LOG_DIR: ${{ runner.temp }}/fuzz
         run: scripts/fuzz-changed.sh "origin/${BASE_REF}"
-
-      # Pull requests from forks get no secrets; their authors reproduce locally.
-      - name: File Linear issue for failing target
-        if: ${{ failure() && github.event.pull_request.head.repo.full_name == github.repository }}
-        env:
-          LINEAR_API_KEY: ${{ secrets.LINEAR_API_KEY }}
-          LINEAR_TEAM_KEY: PROTOCO
-          LINEAR_ASSIGNEE_ID: ${{ vars.FUZZ_LINEAR_ASSIGNEE_ID || 'e9929f5b-e156-4046-95df-aeea6faa9a58' }}
-          FUZZ_LOG_DIR: ${{ runner.temp }}/fuzz
-          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-          COMMIT_SHA: ${{ github.event.pull_request.head.sha }}
-          TITLE_PREFIX: celestia-core PR fuzz failure
-        run: python3 .github/scripts/report-fuzz-failures.py
