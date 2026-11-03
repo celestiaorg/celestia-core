@@ -155,18 +155,24 @@ jobs:
         with:
           go-version-file: 'go.mod'
 
+      # Output stays out of the public log and no artifact is uploaded: a
+      # crashing input can describe an exploitable bug in code already on main.
       - name: Fuzz targets in changed packages
         env:
           BASE_REF: ${{ github.base_ref }}
           FUZZTIME: 15s
+          FUZZ_LOG_DIR: ${{ runner.temp }}/fuzz
         run: scripts/fuzz-changed.sh "origin/${BASE_REF}"
 
-      # Go writes any input that triggered a failure to testdata/fuzz/<Target>/.
-      - name: Archive failing inputs
-        if: failure()
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        with:
-          name: failing-inputs-changed
-          path: '**/testdata/fuzz/'
-          if-no-files-found: ignore
-          retention-days: 7
+      # Pull requests from forks get no secrets; their authors reproduce locally.
+      - name: File Linear issue for failing target
+        if: ${{ failure() && github.event.pull_request.head.repo.full_name == github.repository }}
+        env:
+          LINEAR_API_KEY: ${{ secrets.LINEAR_API_KEY }}
+          LINEAR_TEAM_KEY: PROTOCO
+          LINEAR_ASSIGNEE_ID: ${{ vars.FUZZ_LINEAR_ASSIGNEE_ID || 'e9929f5b-e156-4046-95df-aeea6faa9a58' }}
+          FUZZ_LOG_DIR: ${{ runner.temp }}/fuzz
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          COMMIT_SHA: ${{ github.event.pull_request.head.sha }}
+          TITLE_PREFIX: celestia-core PR fuzz failure
+        run: python3 .github/scripts/report-fuzz-failures.py

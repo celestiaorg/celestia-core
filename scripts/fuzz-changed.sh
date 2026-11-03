@@ -4,8 +4,12 @@
 # this gives pull requests a quick check without starting one job per target.
 #
 # Usage: scripts/fuzz-changed.sh <base-ref>
-#   FUZZTIME   time to fuzz each target (default 15s)
-#   DRY_RUN=1  list the targets that would run without fuzzing them
+#   FUZZTIME      time to fuzz each target (default 15s)
+#   DRY_RUN=1     list the targets that would run without fuzzing them
+#   FUZZ_LOG_DIR  write each target's output to FUZZ_LOG_DIR/<target>.log
+#                 instead of stdout, and list failing targets in
+#                 FUZZ_LOG_DIR/failed.txt. CI sets it: a crashing input can
+#                 describe an exploitable bug, so it must not reach a public log.
 #
 # Every target runs when a dependency or the shared fuzz plumbing changes:
 # go.mod, go.sum, internal/fuzzinput, this script, or the fuzz workflow.
@@ -43,6 +47,11 @@ if [[ -z $dirs ]]; then
 	exit 0
 fi
 
+if [[ -n ${FUZZ_LOG_DIR:-} ]]; then
+	mkdir -p "$FUZZ_LOG_DIR"
+	: >"$FUZZ_LOG_DIR/failed.txt"
+fi
+
 failed=()
 for dir in $dirs; do
 	targets=$(grep -ohE '^func (Fuzz[A-Za-z0-9_]*)\(f \*testing\.F\)' "$dir"/*_test.go |
@@ -52,8 +61,21 @@ for dir in $dirs; do
 			echo "$dir $target"
 			continue
 		fi
+		args=(-run='^$' -fuzz="^${target}\$" -fuzztime="$fuzztime" -parallel=2 "./$dir")
+		if [[ -n ${FUZZ_LOG_DIR:-} ]]; then
+			log="$FUZZ_LOG_DIR/$target.log"
+			if go test "${args[@]}" >"$log" 2>&1; then
+				echo "PASS $dir $target"
+			else
+				echo "FAIL $dir $target (output withheld)"
+				# Priority 2 (High): a PR-time crash is usually the PR's own bug.
+				echo "2 ./$dir $target" >>"$FUZZ_LOG_DIR/failed.txt"
+				failed+=("$dir $target")
+			fi
+			continue
+		fi
 		echo "::group::$dir $target"
-		if ! go test -run='^$' -fuzz="^${target}\$" -fuzztime="$fuzztime" -parallel=2 "./$dir"; then
+		if ! go test "${args[@]}"; then
 			failed+=("$dir $target")
 		fi
 		echo "::endgroup::"
@@ -62,5 +84,8 @@ done
 
 if ((${#failed[@]})); then
 	printf 'Fuzz target failed: %s\n' "${failed[@]}"
+	if [[ -n ${FUZZ_LOG_DIR:-} ]]; then
+		echo "Reproduce locally with: scripts/fuzz-changed.sh <base-ref>, or go test -run='^\$' -fuzz='^<target>\$' ./<package>."
+	fi
 	exit 1
 fi
