@@ -22,6 +22,7 @@ on:
       - "go.mod"
       - "go.sum"
       - "scripts/fuzz-changed.sh"
+      - "scripts/fuzz-only-deadline*.sh"
       - ".github/workflows/fuzz-nightly.yml"
 
 permissions:
@@ -156,6 +157,9 @@ jobs:
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: 'go.mod'
+
+      - name: Test the fuzz deadline filter
+        run: scripts/fuzz-only-deadline_test.sh
 
       - name: Fuzz targets in changed packages
         env:
