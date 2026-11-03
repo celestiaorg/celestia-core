@@ -15,6 +15,7 @@ import (
 
 	"github.com/cometbft/cometbft/crypto/ed25519"
 	cmtjson "github.com/cometbft/cometbft/libs/json"
+	"github.com/cometbft/cometbft/light/provider"
 	lighthttp "github.com/cometbft/cometbft/light/provider/http"
 	cmtproto "github.com/cometbft/cometbft/proto/tendermint/types"
 	cmtversion "github.com/cometbft/cometbft/proto/tendermint/version"
@@ -180,4 +181,48 @@ func TestHTTPProviderFuzzSeed(t *testing.T) {
 	lb, err := lighthttp.NewWithClient(fuzzHTTPChainID, client).LightBlock(context.Background(), 3)
 	require.NoError(t, err)
 	require.EqualValues(t, 3, lb.Height)
+}
+
+// TestHTTPProviderIncompleteSignedHeader checks the error returned for a
+// /commit response whose signed header lacks its header, its commit, or both.
+func TestHTTPProviderIncompleteSignedHeader(t *testing.T) {
+	commit, validators := fuzzHTTPSeeds(t)
+	rpc := &fuzzRPC{}
+	server := httptest.NewServer(rpc)
+	t.Cleanup(server.Close)
+	client, err := rpchttp.New(server.URL, "/websocket")
+	require.NoError(t, err)
+	p := lighthttp.NewWithClient(fuzzHTTPChainID, client)
+
+	without := func(fields ...string) []byte {
+		var res map[string]json.RawMessage
+		require.NoError(t, json.Unmarshal(commit, &res))
+		var sh map[string]json.RawMessage
+		require.NoError(t, json.Unmarshal(res["signed_header"], &sh))
+		for _, f := range fields {
+			sh[f] = json.RawMessage("null")
+		}
+		bz, err := json.Marshal(sh)
+		require.NoError(t, err)
+		res["signed_header"] = bz
+		bz, err = json.Marshal(res)
+		require.NoError(t, err)
+		return bz
+	}
+
+	for _, field := range []string{"header", "commit"} {
+		t.Run("missing "+field, func(t *testing.T) {
+			rpc.set(without(field), validators, false, false)
+			lb, err := p.LightBlock(context.Background(), 3)
+			require.Nil(t, lb)
+			var bad provider.ErrBadLightBlock
+			require.ErrorAs(t, err, &bad)
+		})
+	}
+	t.Run("missing both", func(t *testing.T) {
+		rpc.set(without("header", "commit"), validators, false, false)
+		lb, err := p.LightBlock(context.Background(), 3)
+		require.Nil(t, lb)
+		require.ErrorIs(t, err, provider.ErrHeightTooHigh)
+	})
 }
