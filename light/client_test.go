@@ -887,6 +887,42 @@ func TestClient_BackwardsVerification(t *testing.T) {
 	}
 }
 
+// TestClient_BackwardsVerificationPrimaryReplaced checks that backwards
+// verification rejects the primary's header when the primary is replaced
+// partway through and the verified hash chain ends at a different header.
+func TestClient_BackwardsVerificationPrimaryReplaced(t *testing.T) {
+	forgedH1 := keys.GenSignedHeader(chainID, 1, bTime, nil, vals, vals,
+		hash("forged_app_hash"), hash("cons_hash"), hash("results_hash"), 0, len(keys))
+	require.NotEqual(t, h1.Hash(), forgedH1.Hash())
+	// The primary serves a forged header at height 1 and nothing at height 2,
+	// so the client replaces it with the honest witness during the walk.
+	primary := mockp.New(
+		chainID,
+		map[int64]*types.SignedHeader{1: forgedH1, 3: h3},
+		valSet,
+	)
+	trustedStore := dbs.New(dbm.NewMemDB(), chainID)
+	c, err := light.NewClient(
+		ctx,
+		chainID,
+		light.TrustOptions{Period: 4 * time.Hour, Height: 3, Hash: h3.Hash()},
+		primary,
+		[]provider.Provider{fullNode},
+		trustedStore,
+		light.Logger(log.TestingLogger()),
+		light.MaxRetryAttempts(1),
+	)
+	require.NoError(t, err)
+
+	lb, err := c.VerifyLightBlockAtHeight(ctx, 1, bTime.Add(2*time.Hour))
+	if err == nil {
+		require.Equal(t, h1.Hash(), lb.Hash(), "verified a forged light block")
+	}
+	if stored, err := trustedStore.LightBlock(1); err == nil {
+		require.Equal(t, h1.Hash(), stored.Hash(), "trusted store holds a forged light block")
+	}
+}
+
 func TestClient_NewClientFromTrustedStore(t *testing.T) {
 	// 1) Initiate DB and fill with a "trusted" header
 	db := dbs.New(dbm.NewMemDB(), chainID)

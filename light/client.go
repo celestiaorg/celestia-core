@@ -975,6 +975,14 @@ func (c *Client) backwards(
 		verifiedHeader = interimHeader
 	}
 
+	// The primary can change during the walk, so the verified chain may end at
+	// a different header than the one we were asked to verify.
+	if !bytes.Equal(verifiedHeader.Hash(), newHeader.Hash()) {
+		return ErrInvalidHeader{
+			fmt.Errorf("header hash %X at height %d does not match the verified header hash %X",
+				newHeader.Hash(), newHeader.Height, verifiedHeader.Hash())}
+	}
+
 	return nil
 }
 
