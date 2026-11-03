@@ -630,7 +630,9 @@ func ensureNewRound(roundCh <-chan cmtpubsub.Message, height int64, round int32)
 }
 
 func ensureNewTimeout(timeoutCh <-chan cmtpubsub.Message, height int64, round int32, timeout int64) {
-	timeoutDuration := time.Duration(timeout*10) * time.Nanosecond
+	// Test timeouts are ~10ms, so 10x alone is too tight on a loaded race-enabled
+	// runner. Waiting longer only delays a real failure; it cannot hide one.
+	timeoutDuration := max(time.Duration(timeout*10)*time.Nanosecond, ensureVoteTimeout)
 	ensureNewEvent(timeoutCh, height, round, timeoutDuration,
 		"Timeout expired while waiting for NewTimeout event")
 }

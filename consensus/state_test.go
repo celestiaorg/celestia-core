@@ -497,7 +497,11 @@ func TestStateLockNoPOL(t *testing.T) {
 
 	timeoutProposeCh := subscribe(cs1.eventBus, types.EventQueryTimeoutPropose)
 	timeoutWaitCh := subscribe(cs1.eventBus, types.EventQueryTimeoutWait)
-	voteCh := subscribeUnBuffered(cs1.eventBus, types.EventQueryVote)
+	// Buffered: in round 3 cs1 can time out of propose and prevote before the
+	// test injects the proposal. With an unbuffered channel that vote event
+	// blocks the event bus, so CompleteProposal is never delivered while the
+	// test waits for it ahead of the vote.
+	voteCh := subscribeBuffered(cs1.eventBus, types.EventQueryVote, 100)
 	proposalCh := subscribe(cs1.eventBus, types.EventQueryCompleteProposal)
 	newRoundCh := subscribe(cs1.eventBus, types.EventQueryNewRound)
 
@@ -2698,6 +2702,16 @@ func TestSignSameVoteTwice(t *testing.T) {
 // subscribe subscribes test client to the given query and returns a channel with cap = 1.
 func subscribe(eventBus *types.EventBus, q cmtpubsub.Query) <-chan cmtpubsub.Message {
 	sub, err := eventBus.Subscribe(context.Background(), testSubscriber, q)
+	if err != nil {
+		panic(fmt.Sprintf("failed to subscribe %s to %v", testSubscriber, q))
+	}
+	return sub.Out()
+}
+
+// subscribeBuffered subscribes test client to the given query and returns a
+// channel with the given capacity.
+func subscribeBuffered(eventBus *types.EventBus, q cmtpubsub.Query, capacity int) <-chan cmtpubsub.Message {
+	sub, err := eventBus.Subscribe(context.Background(), testSubscriber, q, capacity)
 	if err != nil {
 		panic(fmt.Sprintf("failed to subscribe %s to %v", testSubscriber, q))
 	}
