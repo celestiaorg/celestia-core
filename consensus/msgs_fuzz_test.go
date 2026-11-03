@@ -87,10 +87,6 @@ func checkConsensusMessage(t *testing.T, raw []byte) bool {
 	if err != nil {
 		return false
 	}
-	// Excluded pending PROTOCO-3546; remove with the fix.
-	if pol, ok := msg.(*ProposalPOLMessage); ok && pol.ProposalPOL.Size() < 0 {
-		return false
-	}
 	require.NoError(t, msg.ValidateBasic())
 	canonical, err := MsgToProto(msg)
 	require.NoError(t, err)
