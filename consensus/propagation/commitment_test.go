@@ -403,3 +403,98 @@ func TestValidateCompactBlockUsesRoundProposer(t *testing.T) {
 	_, _, has = n2.GetProposal(1, 2)
 	require.True(t, has, "genuine compact block from the round-2 proposer must be applied")
 }
+
+// TestForwardCompactBlockBeforeRecovery checks that a stalled mempool recovery
+// does not delay forwarding, and that recovery still completes afterwards.
+func TestForwardCompactBlockBeforeRecovery(t *testing.T) {
+	reactors, _ := testBlockPropReactors(3, defaultTestP2PConf())
+	n1, n2, n3 := reactors[0], reactors[1], reactors[2]
+
+	cleanup, _, sm, pv := state.SetupTestCaseWithPrivVal(t)
+	t.Cleanup(func() { cleanup(t) })
+
+	prop, ps, block, metaData := createTestProposal(t, sm, pv, 1, 0, 2, 1000000)
+	cb, _, _ := compactBlockFor(t, prop, ps, metaData)
+
+	// n1 has the block's txs but its mempool lookups block until released.
+	pool := &blockingMempool{mockMempool{txs: make(map[types.TxKey]*types.CachedTx)}, make(chan struct{})}
+	for _, tx := range block.Txs {
+		pool.AddTx(tx)
+	}
+	n1.mempool = pool
+
+	done := make(chan struct{})
+	go func() {
+		n1.handleCompactBlock(cb, n2.self, false)
+		close(done)
+	}()
+
+	require.Eventually(t, func() bool {
+		_, _, has := n3.GetProposal(1, 0)
+		return has
+	}, 5*time.Second, 10*time.Millisecond)
+	require.Never(t, func() bool { return isClosed(done) }, 100*time.Millisecond, 10*time.Millisecond)
+
+	close(pool.release)
+	require.Eventually(t, func() bool { return isClosed(done) }, 5*time.Second, 10*time.Millisecond)
+	_, parts, _ := n1.GetProposal(1, 0)
+	require.NotZero(t, parts.Count(), "n1 should recover parts from its mempool")
+}
+
+// blockingMempool blocks every lookup until release is closed.
+type blockingMempool struct {
+	mockMempool
+	release chan struct{}
+}
+
+func (m *blockingMempool) GetTxByKey(key types.TxKey) (*types.CachedTx, bool) {
+	<-m.release
+	return m.mockMempool.GetTxByKey(key)
+}
+
+func isClosed(ch chan struct{}) bool {
+	select {
+	case <-ch:
+		return true
+	default:
+		return false
+	}
+}
+
+// TestHandleCompactBlockForwarding checks that only a valid, unseen compact
+// block is forwarded to peers.
+func TestHandleCompactBlockForwarding(t *testing.T) {
+	cleanup, _, sm, pv := state.SetupTestCaseWithPrivVal(t)
+	t.Cleanup(func() { cleanup(t) })
+
+	tests := map[string]func(n1 *Reactor, cb *proptypes.CompactBlock){
+		"valid":             nil,
+		"invalid signature": func(_ *Reactor, cb *proptypes.CompactBlock) { cb.Proposal.Signature = cmtrand.Bytes(64) },
+		"stale height":      func(n1 *Reactor, _ *proptypes.CompactBlock) { n1.Prune(2) },
+		"duplicate":         func(n1 *Reactor, cb *proptypes.CompactBlock) { require.True(t, n1.AddProposal(cb)) },
+	}
+	for name, setup := range tests {
+		t.Run(name, func(t *testing.T) {
+			reactors, _ := testBlockPropReactors(3, defaultTestP2PConf())
+			n1, n2, n3 := reactors[0], reactors[1], reactors[2]
+
+			cb, _, _, _ := testCompactBlock(t, sm, pv, 1, 0)
+			if setup != nil {
+				setup(n1, cb)
+			}
+			n1.handleCompactBlock(cb, n2.self, false)
+
+			// n3 caches compact blocks it rejects, so this also catches
+			// forwarded blocks that n3 fails to validate.
+			received := func() bool {
+				_, _, has := n3.GetProposal(1, 0)
+				return has || n3.getPeer(n1.self).GetUnverifiedProposal(1) != nil
+			}
+			if setup == nil {
+				require.Eventually(t, received, 5*time.Second, 10*time.Millisecond)
+			} else {
+				require.Never(t, received, 500*time.Millisecond, 10*time.Millisecond)
+			}
+		})
+	}
+}

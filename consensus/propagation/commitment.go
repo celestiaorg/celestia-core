@@ -257,12 +257,13 @@ func (blockProp *Reactor) processValidatedCompactBlock(cb *proptypes.CompactBloc
 		return
 	}
 
+	// forward before recovering locally so peers don't wait on our rebuild.
+	blockProp.broadcastCompactBlock(cb, peer)
+
 	if !proposer {
 		// check if we have any transactions that are in the compact block
 		blockProp.recoverPartsFromMempool(cb)
 	}
-
-	blockProp.broadcastCompactBlock(cb, peer)
 }
 
 // recoverPartsFromMempool queries the mempool to see if we can recover any block parts locally.
