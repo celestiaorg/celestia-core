@@ -103,7 +103,7 @@ jobs:
       # Bump the key prefix whenever fuzz target signatures change, so
       # entries cached under an old signature are not replayed.
       - name: Restore fuzz corpus
-        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ${{ steps.fuzz-cache.outputs.path }}
           key: fuzz-v2-${{ runner.os }}-${{ matrix.target }}-${{ github.run_id }}-${{ github.run_attempt }}
