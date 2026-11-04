@@ -2426,7 +2426,11 @@ func (cs *State) addProposalBlockPart(msg *BlockPartMessage, peerID p2p.ID) (add
 		if err != nil {
 			return added, err
 		}
-		if !bytes.Equal(canonical, bz) {
+		// Every part but the last is exactly BlockPartSizeBytes, so a matching
+		// part count also rules out a trailing empty part.
+		partSize := int(types.BlockPartSizeBytes)
+		canonicalTotal := (len(canonical) + partSize - 1) / partSize
+		if !bytes.Equal(canonical, bz) || int(cs.rs.ProposalBlockParts.Total()) != canonicalTotal {
 			cs.Logger.Error(
 				"rejecting proposal block: parts are not the canonical block encoding",
 				"height", height,
