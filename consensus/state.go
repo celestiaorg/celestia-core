@@ -2413,6 +2413,28 @@ func (cs *State) addProposalBlockPart(msg *BlockPartMessage, peerID p2p.ID) (add
 			)
 			return added, err
 		}
+
+		// Require the parts to be the block's canonical encoding. Other nodes
+		// (e.g. blocksync) rebuild the PartSetHeader by re-encoding the block,
+		// so a non-canonical encoding would make the committed BlockID
+		// unverifiable for them.
+		canonicalPB, err := block.ToProto()
+		if err != nil {
+			return added, err
+		}
+		canonical, err := proto.Marshal(canonicalPB)
+		if err != nil {
+			return added, err
+		}
+		if !bytes.Equal(canonical, bz) {
+			cs.Logger.Error(
+				"rejecting proposal block: parts are not the canonical block encoding",
+				"height", height,
+				"round", round,
+				"peer", peerID,
+			)
+			return added, errors.New("proposal block parts are not the canonical block encoding")
+		}
 		block.FillCachedHashes()
 
 		cs.rs.ProposalBlock = block

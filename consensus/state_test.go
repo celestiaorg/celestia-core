@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cosmos/gogoproto/proto"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
@@ -215,6 +216,78 @@ func TestAddProposalBlockPartFillsCachedHashes(t *testing.T) {
 
 	require.NotNil(t, cs1.rs.ProposalBlock)
 	require.Equal(t, want, cs1.rs.ProposalBlock.CachedHashes())
+}
+
+// A proposal whose parts are not the canonical encoding of the block must be
+// rejected: other nodes (e.g. blocksync) rebuild the PartSetHeader by
+// re-encoding the block and could not verify the committed BlockID.
+func TestAddProposalBlockPartRejectsNonCanonicalEncoding(t *testing.T) {
+	testCases := []struct {
+		name   string
+		mutate func(bz []byte) []byte
+	}{
+		{
+			name: "trailing unknown field",
+			mutate: func(bz []byte) []byte {
+				// field 100, varint, value 1
+				return append(bz, 0xa0, 0x06, 0x01)
+			},
+		},
+		{
+			name: "non-minimal varint tag",
+			mutate: func(bz []byte) []byte {
+				// Field 1 (header) tag 0x0a encoded as two bytes.
+				require.Equal(t, byte(0x0a), bz[0])
+				return append([]byte{0x8a, 0x00}, bz[1:]...)
+			},
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			cs1, vss := randState(1)
+			deliverTxsRange(t, cs1, 0, 5)
+
+			block, honestParts, err := cs1.createProposalBlock(context.Background())
+			require.NoError(t, err)
+
+			pbb, err := block.ToProto()
+			require.NoError(t, err)
+			bz, err := proto.Marshal(pbb)
+			require.NoError(t, err)
+			bz = tc.mutate(bz)
+
+			// The mutated bytes decode to the same block.
+			decoded := new(cmtproto.Block)
+			require.NoError(t, proto.Unmarshal(bz, decoded))
+			decodedBlock, err := types.BlockFromProto(decoded)
+			require.NoError(t, err)
+			require.Equal(t, block.Hash(), decodedBlock.Hash())
+
+			parts, err := types.NewPartSetFromData(bz, types.BlockPartSizeBytes)
+			require.NoError(t, err)
+			require.NotEqual(t, honestParts.Header(), parts.Header())
+
+			cs1.rs.ProposalBlockParts = types.NewPartSetFromHeader(parts.Header(), types.BlockPartSizeBytes)
+			for i := range parts.Total() {
+				msg := &BlockPartMessage{Height: cs1.rs.Height, Round: cs1.rs.Round, Part: parts.GetPart(int(i))}
+				_, err = cs1.addProposalBlockPart(msg, "peer")
+			}
+			require.ErrorContains(t, err, "not the canonical block encoding")
+			require.Nil(t, cs1.rs.ProposalBlock)
+
+			// Without the check above, the committed BlockID would not be
+			// verifiable by a node that re-encodes the block (blocksync).
+			signedID := types.BlockID{Hash: block.Hash(), PartSetHeader: parts.Header()}
+			commit, err := test.MakeCommit(signedID, block.Height, 0, cs1.state.Validators,
+				[]types.PrivValidator{vss[0].PrivValidator}, cs1.state.ChainID, time.Now())
+			require.NoError(t, err)
+			reencoded, err := decodedBlock.MakePartSet(types.BlockPartSizeBytes)
+			require.NoError(t, err)
+			reencodedID := types.BlockID{Hash: decodedBlock.Hash(), PartSetHeader: reencoded.Header()}
+			require.Error(t, cs1.state.Validators.VerifyCommit(cs1.state.ChainID, reencodedID, block.Height, commit))
+		})
+	}
 }
 
 func TestStateBadProposal(t *testing.T) {
