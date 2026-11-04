@@ -136,7 +136,7 @@ func (b *receivedTxBuffer) pruneOlderThan(cutoff time.Time) []types.TxKey {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 
-	var removed []types.TxKey
+	removed := make([]types.TxKey, 0, len(b.buffers))
 	for signerKey := range b.buffers {
 		removed = append(removed, b.removeIfLocked(signerKey, func(e *bufferedTx) bool {
 			return e.addedAt.Before(cutoff)

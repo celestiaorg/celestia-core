@@ -540,27 +540,33 @@ func TestReactorReceivedBufferCleanup(t *testing.T) {
 
 	signer := []byte("buffered-signer")
 	app.SetSequence(string(signer), 4)
+	seen := pool.seenTracker
 	buffer := func(seq uint64) types.TxKey {
 		tx := types.Tx(fmt.Sprintf("%s=buffered-%d=%d", signer, seq, seq))
 		require.True(t, reactor.receivedBuffer.add(signer, seq, tx.ToCachedTx(), tx.Key(), mempool.TxInfo{}, "peer"))
+		seen.AddPeer(tx.Key(), 1)
 		return tx.Key()
 	}
 
 	// Sequence jumps from 4 to 8: seq 5 can never apply, seqs 9 and 10 can.
-	buffer(5)
-	buffer(9)
-	buffer(10)
+	key5 := buffer(5)
+	key9 := buffer(9)
+	key10 := buffer(10)
 	app.SetSequence(string(signer), 8)
 	reactor.processReceivedBuffer(signer)
 	require.Nil(t, reactor.receivedBuffer.get(signer, 5))
 	require.NotNil(t, reactor.receivedBuffer.get(signer, 9))
 	n, _ := reactor.receivedBuffer.size()
 	require.Equal(t, 2, n)
+	require.Nil(t, seen.Get(key5), "stale tx should leave the seen tracker")
+	require.NotNil(t, seen.Get(key9))
 
 	// Not yet expired.
 	reactor.pruneExpiredBuffered(time.Now())
 	n, _ = reactor.receivedBuffer.size()
 	require.Equal(t, 2, n)
+	require.NotNil(t, seen.Get(key9))
+	require.NotNil(t, seen.Get(key10))
 
 	// Expired: everything goes, including the per-peer count.
 	reactor.pruneExpiredBuffered(time.Now().Add(seenEntryTTL + time.Second))
@@ -569,4 +575,6 @@ func TestReactorReceivedBufferCleanup(t *testing.T) {
 	require.Zero(t, size)
 	require.Zero(t, reactor.receivedBuffer.countForPeer("peer"))
 	require.Empty(t, reactor.receivedBuffer.signerKeys())
+	require.Nil(t, seen.Get(key9), "expired tx should leave the seen tracker")
+	require.Nil(t, seen.Get(key10))
 }
