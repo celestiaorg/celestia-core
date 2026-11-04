@@ -240,13 +240,17 @@ func (blockProp *Reactor) processValidatedCompactBlock(cb *proptypes.CompactBloc
 	}
 
 	if !proposer {
-		select {
-		case <-blockProp.ctx.Done():
-			return
-		case blockProp.proposalChan <- ProposalAndSrc{
-			Proposal: cb.Proposal,
-			From:     peer,
-		}:
+		// forward each proposal to consensus only once: duplicates of an
+		// already forwarded compact block must not fill proposalChan.
+		if blockProp.claimForward(cb) {
+			select {
+			case <-blockProp.ctx.Done():
+				return
+			case blockProp.proposalChan <- ProposalAndSrc{
+				Proposal: cb.Proposal,
+				From:     peer,
+			}:
+			}
 		}
 		if p := blockProp.getPeer(peer); p != nil {
 			p.consensusPeerState.SetHasProposal(&cb.Proposal)

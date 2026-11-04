@@ -484,7 +484,7 @@ func TestHandleCachedCompactBlockAllowsIdenticalDuplicate(t *testing.T) {
 	select {
 	case prop := <-n1.GetProposalChan():
 		require.True(t, cbA.Proposal.BlockID.Equals(prop.Proposal.BlockID))
-	default:
+	case <-time.After(5 * time.Second):
 		t.Fatal("identical duplicate should have been forwarded to consensus")
 	}
 
@@ -646,4 +646,76 @@ func createCompactBlock(
 	}
 	cb.SetProofCache(proofs)
 	return cb, parityBlock
+}
+
+// TestHandleCachedCompactBlockForwardsOnce ensures a cached proposal is
+// forwarded to consensus at most once, however often it is applied.
+func TestHandleCachedCompactBlockForwardsOnce(t *testing.T) {
+	p2pCfg := defaultTestP2PConf()
+	reactors, _ := createTestReactors(1, p2pCfg, false, "")
+	n1 := reactors[0]
+
+	cleanup, _, sm, pv := state.SetupTestCaseWithPrivVal(t)
+	t.Cleanup(func() {
+		cleanup(t)
+	})
+
+	n1.SetConsensusState(2, 0, mockPubKey)
+
+	cb, _, _, _ := testCompactBlock(t, sm, pv, 2, 0)
+	require.True(t, n1.AddProposal(cb))
+	for len(n1.GetProposalChan()) > 0 {
+		<-n1.GetProposalChan()
+	}
+
+	for i := 0; i < 10; i++ {
+		require.True(t, n1.handleCachedCompactBlock(cb))
+	}
+
+	select {
+	case prop := <-n1.GetProposalChan():
+		require.True(t, cb.Proposal.BlockID.Equals(prop.Proposal.BlockID))
+	case <-time.After(5 * time.Second):
+		t.Fatal("cached proposal should have been forwarded to consensus")
+	}
+	select {
+	case prop := <-n1.GetProposalChan():
+		t.Fatalf("cached proposal was forwarded more than once: %v", prop.Proposal)
+	case <-time.After(200 * time.Millisecond):
+	}
+}
+
+// TestHandleCachedCompactBlockDoesNotBlock ensures applying a cached proposal
+// returns even when consensus is not draining the proposal channel, since it
+// runs on the consensus receive routine.
+func TestHandleCachedCompactBlockDoesNotBlock(t *testing.T) {
+	p2pCfg := defaultTestP2PConf()
+	reactors, _ := createTestReactors(1, p2pCfg, false, "")
+	n1 := reactors[0]
+
+	cleanup, _, sm, pv := state.SetupTestCaseWithPrivVal(t)
+	t.Cleanup(func() {
+		cleanup(t)
+	})
+
+	n1.SetConsensusState(2, 0, mockPubKey)
+
+	cb, _, _, _ := testCompactBlock(t, sm, pv, 2, 0)
+	require.True(t, n1.AddProposal(cb))
+
+	// fill the proposal channel so a blocking send would never complete.
+	for len(n1.proposalChan) < cap(n1.proposalChan) {
+		n1.proposalChan <- ProposalAndSrc{}
+	}
+
+	done := make(chan bool, 1)
+	go func() {
+		done <- n1.handleCachedCompactBlock(cb)
+	}()
+	select {
+	case applied := <-done:
+		require.True(t, applied)
+	case <-time.After(5 * time.Second):
+		t.Fatal("handleCachedCompactBlock blocked on a full proposal channel")
+	}
 }
