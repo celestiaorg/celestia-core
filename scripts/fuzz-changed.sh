@@ -12,7 +12,7 @@
 #                 describe an exploitable bug, so it must not reach a public log.
 #
 # Every target runs when a dependency or the shared fuzz plumbing changes:
-# go.mod, go.sum, internal/fuzzinput, this script, or the fuzz workflow.
+# go.mod, go.sum, internal/fuzzinput, these scripts, or the fuzz workflow.
 # Otherwise only targets in packages with a changed Go file or saved corpus
 # entry run. Seed corpora already run in the
 # regular test jobs, which call `go test` on every package.
@@ -29,7 +29,7 @@ fuzz_dirs() {
 		xargs -r -n1 dirname | sed 's|^\./||' | sort -u
 }
 
-if grep -qE '^(go\.mod$|go\.sum$|internal/fuzzinput/|scripts/fuzz-changed\.sh$|\.github/workflows/fuzz-nightly\.yml$)' <<<"$changed"; then
+if grep -qE '^(go\.mod$|go\.sum$|internal/fuzzinput/|scripts/fuzz-changed\.sh$|scripts/fuzz-only-deadline\.sh$|\.github/workflows/fuzz-nightly\.yml$)' <<<"$changed"; then
 	dirs=$(fuzz_dirs)
 else
 	# A corpus entry lives in <pkg>/testdata/fuzz/<Target>/; map it to <pkg>.
@@ -66,6 +66,8 @@ for dir in $dirs; do
 			log="$FUZZ_LOG_DIR/$target.log"
 			if go test "${args[@]}" >"$log" 2>&1; then
 				echo "PASS $dir $target"
+			elif "$(dirname "$0")/fuzz-only-deadline.sh" "$log" "$target"; then
+				echo "PASS $dir $target (go test reported its own -fuzztime deadline; no failing input)"
 			else
 				echo "FAIL $dir $target (output withheld)"
 				# Priority 2 (High): a PR-time crash is usually the PR's own bug.
