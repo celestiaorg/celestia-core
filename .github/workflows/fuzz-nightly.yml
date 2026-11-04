@@ -22,6 +22,7 @@ on:
       - "go.mod"
       - "go.sum"
       - "scripts/fuzz-changed.sh"
+      - "scripts/fuzz-only-deadline*.sh"
       - ".github/workflows/fuzz-nightly.yml"
 
 permissions:
@@ -124,6 +125,8 @@ jobs:
           if go test -run='^$' -fuzz="^${FUZZ_TARGET}$" -fuzztime="$FUZZTIME" -parallel=2 "$FUZZ_PACKAGE" >"$log" 2>&1 &&
             ! grep -q 'no fuzz tests to fuzz' "$log"; then
             echo "PASS $FUZZ_TARGET"
+          elif scripts/fuzz-only-deadline.sh "$log" "$FUZZ_TARGET"; then
+            echo "PASS $FUZZ_TARGET (go test reported its own -fuzztime deadline; no failing input)"
           else
             echo "FAIL $FUZZ_TARGET (output withheld; see the Linear issue)"
             echo "$FUZZ_PRIORITY $FUZZ_PACKAGE $FUZZ_TARGET" >>"$FUZZ_LOG_DIR/failed.txt"
@@ -154,6 +157,9 @@ jobs:
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: 'go.mod'
+
+      - name: Test the fuzz deadline filter
+        run: scripts/fuzz-only-deadline_test.sh
 
       # Output stays out of the public log and no artifact is uploaded: a
       # crashing input can describe an exploitable bug in code already on main.
