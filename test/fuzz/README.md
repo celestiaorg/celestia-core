@@ -156,7 +156,9 @@ Pull requests skip that matrix. A single job runs
 [`scripts/fuzz-changed.sh`](../../scripts/fuzz-changed.sh), which fuzzes the
 targets in packages with a changed Go file or corpus entry for 15 seconds each,
 or every target when `go.mod`, `go.sum`, `internal/fuzzinput`, the script or
-the workflow changes.
+the workflow changes. It withholds output the same way and uploads no artifact.
+It files no Linear issue: the job runs the pull request's code, so it gets no
+secrets. The author reproduces a failure locally with the same script.
 Seed corpora run on every pull request as part of the regular test jobs. Use
 `DRY_RUN=1 scripts/fuzz-changed.sh origin/main` to list the targets a branch
 would fuzz.
@@ -164,7 +166,7 @@ would fuzz.
 For any crash or invariant failure:
 
 1. Download the complete corpus file from the Linear issue (for a pull request
-   crash, from the `failing-inputs-changed` artifact) and save it in the target
+   crash, reproduce it locally first) and save it in the target
    package's `testdata/fuzz/Fuzz<Target>/` directory.
 2. Replay with `go test -run='Fuzz<Target>/<input-hash>' ./<package>`.
 3. Link the nightly issue to PROTOCO-3327, or file one for a crash found

@@ -161,18 +161,13 @@ jobs:
       - name: Test the fuzz deadline filter
         run: scripts/fuzz-only-deadline_test.sh
 
+      # Output stays out of the public log and no artifact is uploaded: a
+      # crashing input can describe an exploitable bug in code already on main.
+      # No secret is exposed here either, since the job runs the PR's code;
+      # the author reproduces a failure locally with scripts/fuzz-changed.sh.
       - name: Fuzz targets in changed packages
         env:
           BASE_REF: ${{ github.base_ref }}
           FUZZTIME: 15s
+          FUZZ_LOG_DIR: ${{ runner.temp }}/fuzz
         run: scripts/fuzz-changed.sh "origin/${BASE_REF}"
-
-      # Go writes any input that triggered a failure to testdata/fuzz/<Target>/.
-      - name: Archive failing inputs
-        if: failure()
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        with:
-          name: failing-inputs-changed
-          path: '**/testdata/fuzz/'
-          if-no-files-found: ignore
-          retention-days: 7
