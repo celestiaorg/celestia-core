@@ -729,8 +729,13 @@ func FuzzEvidenceReactorReceive(f *testing.F) {
 			editEvidenceList(t, r, list, signers)
 		}
 		// Re-encode the list as a peer would send it.
+		// An edit can shift an unset timestamp before year 1, which gogoproto
+		// refuses to encode, so no peer can send it.
 		bz, err := proto.Marshal(list)
-		require.NoError(t, err)
+		if err != nil {
+			require.NotZero(t, n, "unedited evidence must encode: %v", err)
+			return
+		}
 		var wire cmtproto.EvidenceList
 		require.NoError(t, proto.Unmarshal(bz, &wire))
 		got := fx.checkEvidenceReceive(t, &wire)
@@ -771,8 +776,12 @@ func editEvidenceList(t *testing.T, r *fuzzinput.Reader, list *cmtproto.Evidence
 	}
 	// Copy the chosen piece, so repeated pieces can diverge.
 	i := r.Intn(len(evs))
+	// An earlier edit can shift an unset timestamp before year 1, which
+	// gogoproto refuses to encode; leave such a piece as it is.
 	bz, err := evs[i].Marshal()
-	require.NoError(t, err)
+	if err != nil {
+		return
+	}
 	var ev cmtproto.Evidence
 	require.NoError(t, ev.Unmarshal(bz))
 	switch e := ev.Sum.(type) {
