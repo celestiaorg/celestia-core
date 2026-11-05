@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Usage: scripts/check-fuzz-targets.sh
 #
-# Checks that every native Go fuzz target (`func FuzzX(f *testing.F)` in a
+# Checks that every native Go fuzz target (any `func FuzzX(` in a
 # _test.go file) is either in the nightly matrix of
 # .github/workflows/fuzz-nightly.yml or listed with a reason in
 # test/fuzz/nightly-excluded.txt, and that neither list names a target that no
@@ -17,8 +17,10 @@ excluded=${FUZZ_EXCLUDED:-test/fuzz/nightly-excluded.txt}
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
 
-# "<package dir> <Target>" for every fuzz target in the tree.
-grep -rE --include='*_test.go' '^func Fuzz[A-Za-z0-9_]*\([A-Za-z_][A-Za-z0-9_]* \*testing\.F\)' . |
+# "<package dir> <Target>" for every fuzz target in the tree. Match any
+# top-level func named Fuzz* in a _test.go file, whatever its parameter list
+# looks like (multiline, aliased testing import), so a target can't slip past.
+grep -rE --include='*_test.go' '^func Fuzz[A-Za-z0-9_]*\(' . |
 	sed -E 's|^\./(.*)/[^/]+_test\.go:func Fuzz([A-Za-z0-9_]*)\(.*|\1 \2|' |
 	sort -u >"$tmp/defined"
 
