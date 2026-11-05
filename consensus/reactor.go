@@ -1210,6 +1210,13 @@ func (conR *Reactor) peerStatsRoutine() {
 					conR.Switch.MarkPeerAsGood(peer)
 				}
 			}
+		case pe := <-conR.conS.badPeerQueue:
+			// Stop the peer here rather than in the state machine, which
+			// must not call into the switch while holding its locks.
+			if peer := conR.Switch.Peers().Get(pe.peerID); peer != nil {
+				conR.Switch.StopPeerForError(peer, pe.err, conR.String())
+			}
+
 		case <-conR.conS.Quit():
 			return
 
