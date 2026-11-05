@@ -135,9 +135,9 @@ Known limits:
 
 [The Fuzz Tests workflow](../../.github/workflows/fuzz-nightly.yml) runs each
 listed nightly target as its own job for ten minutes on the daily schedule and
-manual dispatch. It uses two workers per target and restores previously
-interesting inputs from the fuzz cache. Failures on main feed the existing
-`notify-protocol-ci.yml` workflow.
+manual dispatch. It uses two workers per target and starts each target from the
+corpus earlier nights built (see [Persistent corpora](#persistent-corpora)).
+Failures on main feed the existing `notify-protocol-ci.yml` workflow.
 
 A crashing input can describe an exploitable bug, and this repository's logs and
 artifacts are public. The nightly jobs therefore write `go test` output to a file
@@ -175,3 +175,39 @@ For any crash or invariant failure:
    from a harness assumption.
 4. Include the minimized input as a regression corpus entry with the fix and
    replay it in ordinary tests before rerunning the fuzzer.
+
+### Persistent corpora
+
+Each nightly target starts from the inputs earlier nights found. `go test -fuzz`
+stores the inputs that reach new coverage in a cache directory, by default
+`$(go env GOCACHE)/fuzz`. The job passes `-test.fuzzcachedir` to keep each
+target's corpus under `$RUNNER_TEMP/fuzz-corpus/<package>/Fuzz<Target>`
+instead, apart from the Go build cache that `setup-go` saves. It restores that
+directory from an `actions/cache` entry keyed
+`fuzz-corpus-v1-<package>/<target>-<run>`, fuzzes, and saves it under a new key
+even when the target fails. It then deletes the target's older entries, so each
+target keeps one entry. The `gathering baseline coverage` count in a target's
+output is its seeds plus the restored corpus, so it grows from night to night.
+
+The cache holds only inputs that did not fail. `go test` writes a crashing input
+to the package's `testdata/fuzz` directory, which the job never caches or
+uploads; it reaches only the Linear issue. The saved corpus can still hold
+inputs one mutation away from a crash, and a pull request workflow can restore
+caches saved on `main`, so treat the corpus as public.
+
+Corpus files are small. In a local 90-second run, `FuzzConsensusMessage` wrote
+526 files totalling 27 KB. Even if a long-running target grows to a few MB, the
+matrix's 43 targets, with one entry each, need a few hundred MB at most of
+GitHub's 10 GB repository cache. A corpus over 32 MiB (`CORPUS_MAX_MIB` in the
+workflow) is not saved, which bounds the worst case at about 1.4 GB, and the job
+prints a warning. The target then keeps restoring its last saved corpus. Bump
+`v1` in `CORPUS_KEY` to start every target from its seeds again. Entries that no
+longer match a target's argument types are skipped by `go test`, so a signature
+change needs no bump.
+
+To reuse a corpus locally, pass the same directory on successive runs:
+
+```sh
+go test -run='^$' -fuzz='^FuzzConsensusMessage$' -fuzztime=1m -parallel=2 ./consensus \
+  -args -test.fuzzcachedir=/tmp/fuzz-corpus/consensus
+```
