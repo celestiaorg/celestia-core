@@ -2714,6 +2714,22 @@ func TestStateReportsPeerForInvalidVoteSignature(t *testing.T) {
 		}
 	})
 
+	t.Run("precommit with forged core and extension signatures is reported", func(t *testing.T) {
+		precommit := forgeSignature(signVote(vss[1], cmtproto.PrecommitType, blockHash, header, true))
+		precommit.ExtensionSignature = bytes.Clone(precommit.ExtensionSignature)
+		precommit.ExtensionSignature[0] ^= 0x01
+		cs.handleMsg(msgInfo{&VoteMessage{precommit}, peer.ID()})
+
+		select {
+		case pe := <-cs.badPeerQueue:
+			require.Equal(t, peer.ID(), pe.peerID)
+			require.ErrorIs(t, pe.err, types.ErrVoteInvalidSignature)
+			require.NotErrorIs(t, pe.err, types.ErrVoteInvalidExtensionSignature)
+		default:
+			t.Fatal("expected the peer to be reported")
+		}
+	})
+
 	t.Run("our own vote is not reported", func(t *testing.T) {
 		vote := forgeSignature(signVote(vss[1], cmtproto.PrevoteType, blockHash, header, false))
 		cs.handleMsg(msgInfo{&VoteMessage{vote}, ""})

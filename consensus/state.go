@@ -2650,6 +2650,13 @@ func (cs *State) addVote(vote *types.Vote, peerID p2p.ID) (added bool, err error
 				return added, ErrInvalidVote{Reason: fmt.Sprintf("ValidatorIndex %d is out of bounds [0, %d)", vote.ValidatorIndex, valsCount)}
 			}
 			if err := vote.VerifyExtension(cs.state.ChainID, val.PubKey); err != nil {
+				// A bad extension signature alone is not punished (see
+				// tryAddVote), so check the core signature as well: a
+				// peer must not avoid punishment for a forged vote by
+				// also forging its extension.
+				if coreErr := vote.Verify(cs.state.ChainID, val.PubKey); coreErr != nil {
+					return false, coreErr
+				}
 				return false, err
 			}
 
