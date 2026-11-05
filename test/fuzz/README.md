@@ -74,7 +74,8 @@ Core's CAT-specific precheck and propagation paths require local targets.
 
 Outside the decoder suite, core also has `FuzzParallelImplementations` in
 `crypto/merkle`, which tests tree algorithms rather than network decoders and
-is not in the nightly matrix. It derives every tree and proof index from the fuzz
+is not in the nightly matrix; [`nightly-excluded.txt`](nightly-excluded.txt)
+records that with its reason. It derives every tree and proof index from the fuzz
 input, so saved inputs replay exactly. `FuzzTxsToParts` and `FuzzTxsToParts_Panic` in
 `consensus/propagation/types` now derive their data from the fuzz input and run
 nightly; see [Entry-point coverage](#entry-point-coverage). `consensus/wal_fuzz.go` is a
@@ -135,9 +136,18 @@ Known limits:
 
 [The Fuzz Tests workflow](../../.github/workflows/fuzz-nightly.yml) runs each
 listed nightly target as its own job for ten minutes on the daily schedule and
-manual dispatch. It uses two workers per target and restores previously
-interesting inputs from the fuzz cache. Failures on main feed the existing
-`notify-protocol-ci.yml` workflow.
+manual dispatch. It uses two workers per target. Each target's generated
+corpus (`$(go env GOCACHE)/fuzz`) is saved to the Actions cache after a passing
+run and restored by key prefix on the next one, so the corpus keeps growing
+across nights; bump the `fuzz-v2` key prefix when target signatures change.
+Failures on main feed the existing `notify-protocol-ci.yml` workflow.
+
+Every native fuzz target must be either in that matrix or listed with a reason
+in [`nightly-excluded.txt`](nightly-excluded.txt).
+[`scripts/check-fuzz-targets.sh`](../../scripts/check-fuzz-targets.sh) checks
+this on pull requests and also fails on entries for targets that no longer
+exist. When adding a target, add a matrix entry with a `priority` (or an
+exclusion) and a row to the tables above.
 
 A crashing input can describe an exploitable bug, and this repository's logs and
 artifacts are public. The nightly jobs therefore write `go test` output to a file

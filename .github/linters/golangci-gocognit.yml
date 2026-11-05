@@ -1,0 +1,34 @@
+# Cognitive complexity check for new code, run by the gocognit job in
+# .github/workflows/lint.yml with --new-from-merge-base, so only issues on lines
+# a pull request adds or changes are reported. gocognit reports an issue on the
+# line declaring the function, so in practice it flags new functions and
+# functions whose signature changes; existing functions above the limit are
+# grandfathered. Kept separate from .golangci.yml so the other linters keep
+# checking the whole tree.
+#
+# Run locally against main:
+#   go tool golangci-lint run --config .github/linters/golangci-gocognit.yml --new-from-merge-base origin/main
+#
+# Split a flagged function, or justify it with `//nolint:gocognit // <reason>`.
+version: "2"
+run:
+  # Report paths from the module root, not from this config file.
+  relative-path-mode: gomod
+  # Table-driven tests and fuzz harnesses are long by design.
+  tests: false
+linters:
+  default: none
+  enable:
+    - gocognit
+  settings:
+    gocognit:
+      min-complexity: 30
+  exclusions:
+    generated: lax
+    paths:
+      - third_party$
+      - builtin$
+      - examples$
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0
