@@ -15,6 +15,9 @@ type proposalData struct {
 	block        *proptypes.CombinedPartSet
 	maxRequests  *bits.BitArray
 	catchup      bool
+	// forwarded is set once this entry's proposal has been handed to
+	// consensus, so each proposal is forwarded at most once.
+	forwarded bool
 }
 
 type ProposalCache struct {
@@ -82,6 +85,21 @@ func (p *ProposalCache) AddProposal(cb *proptypes.CompactBlock) (added bool) {
 	}
 
 	p.setCurrentProposalPartsCount(int64(block.Total()))
+	return true
+}
+
+// claimForward reports whether cb's proposal should be forwarded to
+// consensus: the entry at cb's height and round must be bound to cb's identity
+// and must not have been forwarded already. A true result marks the entry as
+// forwarded, so it is returned at most once per entry.
+func (p *ProposalCache) claimForward(cb *proptypes.CompactBlock) bool {
+	p.pmtx.Lock()
+	defer p.pmtx.Unlock()
+	existing := p.proposals[cb.Proposal.Height][cb.Proposal.Round]
+	if existing == nil || existing.forwarded || !sameProposalIdentity(existing, cb) {
+		return false
+	}
+	existing.forwarded = true
 	return true
 }
 

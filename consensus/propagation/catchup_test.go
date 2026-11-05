@@ -12,6 +12,7 @@ import (
 	proptypes "github.com/cometbft/cometbft/consensus/propagation/types"
 	"github.com/cometbft/cometbft/libs/log"
 	cmtrand "github.com/cometbft/cometbft/libs/rand"
+	"github.com/cometbft/cometbft/p2p"
 	"github.com/cometbft/cometbft/state"
 	"github.com/cometbft/cometbft/types"
 )
@@ -484,7 +485,7 @@ func TestHandleCachedCompactBlockAllowsIdenticalDuplicate(t *testing.T) {
 	select {
 	case prop := <-n1.GetProposalChan():
 		require.True(t, cbA.Proposal.BlockID.Equals(prop.Proposal.BlockID))
-	default:
+	case <-time.After(5 * time.Second):
 		t.Fatal("identical duplicate should have been forwarded to consensus")
 	}
 
@@ -646,4 +647,118 @@ func createCompactBlock(
 	}
 	cb.SetProofCache(proofs)
 	return cb, parityBlock
+}
+
+// TestHandleCachedCompactBlockForwardsOnce ensures a cached proposal is
+// forwarded to consensus at most once, however often it is applied.
+func TestHandleCachedCompactBlockForwardsOnce(t *testing.T) {
+	p2pCfg := defaultTestP2PConf()
+	reactors, _ := createTestReactors(1, p2pCfg, false, "")
+	n1 := reactors[0]
+
+	cleanup, _, sm, pv := state.SetupTestCaseWithPrivVal(t)
+	t.Cleanup(func() {
+		cleanup(t)
+	})
+
+	n1.SetConsensusState(2, 0, mockPubKey)
+
+	cb, _, _, _ := testCompactBlock(t, sm, pv, 2, 0)
+	require.True(t, n1.AddProposal(cb))
+	for len(n1.GetProposalChan()) > 0 {
+		<-n1.GetProposalChan()
+	}
+
+	for i := 0; i < 10; i++ {
+		require.True(t, n1.handleCachedCompactBlock(cb))
+	}
+
+	select {
+	case prop := <-n1.GetProposalChan():
+		require.True(t, cb.Proposal.BlockID.Equals(prop.Proposal.BlockID))
+	case <-time.After(5 * time.Second):
+		t.Fatal("cached proposal should have been forwarded to consensus")
+	}
+	select {
+	case prop := <-n1.GetProposalChan():
+		t.Fatalf("cached proposal was forwarded more than once: %v", prop.Proposal)
+	case <-time.After(200 * time.Millisecond):
+	}
+}
+
+// stopSwitchesOnCleanup stops the switches (and so their reactors) when the
+// test ends, so goroutines blocked on a reactor's channels exit.
+func stopSwitchesOnCleanup(t *testing.T, switches []*p2p.Switch) {
+	t.Cleanup(func() {
+		for _, s := range switches {
+			_ = s.Stop()
+		}
+	})
+}
+
+// TestHandleCachedCompactBlockDoesNotBlock ensures applying a cached proposal
+// returns even when consensus is not draining the proposal or part channels,
+// since it runs on the consensus receive routine.
+func TestHandleCachedCompactBlockDoesNotBlock(t *testing.T) {
+	tests := []struct {
+		name string
+		// fill is the channel to fill before applying the cached proposal.
+		fill func(r *Reactor)
+	}{
+		{
+			name: "full proposal channel",
+			fill: func(r *Reactor) {
+				for len(r.proposalChan) < cap(r.proposalChan) {
+					r.proposalChan <- ProposalAndSrc{}
+				}
+			},
+		},
+		{
+			name: "full part channel",
+			fill: func(r *Reactor) {
+				for len(r.partChan) < cap(r.partChan) {
+					r.partChan <- types.PartInfo{}
+				}
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			p2pCfg := defaultTestP2PConf()
+			reactors, switches := createTestReactors(1, p2pCfg, false, "")
+			stopSwitchesOnCleanup(t, switches)
+			n1 := reactors[0]
+
+			cleanup, _, sm, pv := state.SetupTestCaseWithPrivVal(t)
+			t.Cleanup(func() {
+				cleanup(t)
+			})
+
+			n1.SetConsensusState(2, 0, mockPubKey)
+
+			// put the block's transactions in the mempool so that applying
+			// the cached proposal recovers parts and sends them to partChan.
+			prop, ps, block, metaData := createTestProposal(t, sm, pv, 2, 0, 10, int(types.BlockPartSizeBytes/3))
+			mp, ok := n1.mempool.(*mockMempool)
+			require.True(t, ok)
+			for _, tx := range block.Txs {
+				mp.AddTx(tx)
+			}
+			cb, _ := createCompactBlock(t, prop, ps, metaData)
+			require.True(t, n1.AddProposal(cb))
+
+			tt.fill(n1)
+
+			done := make(chan bool, 1)
+			go func() {
+				done <- n1.handleCachedCompactBlock(cb)
+			}()
+			select {
+			case applied := <-done:
+				require.True(t, applied)
+			case <-time.After(5 * time.Second):
+				t.Fatal("handleCachedCompactBlock blocked on a full channel")
+			}
+		})
+	}
 }
