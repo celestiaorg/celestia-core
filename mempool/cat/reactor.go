@@ -75,6 +75,7 @@ type Reactor struct {
 	ids            *mempoolIDs
 	requests       *requestScheduler
 	receivedBuffer *receivedTxBuffer // buffer for out-of-order tx arrivals
+	served         *servedTxs        // txs recently sent to each peer in reply to WantTx
 	traceClient    trace.Tracer
 	// stickySalt stores []byte rendezvous salt for sticky peer selection; nil/empty keeps default ordering.
 	stickySalt atomic.Value
@@ -154,6 +155,7 @@ func NewReactor(mempool *TxPool, opts *ReactorOptions) (*Reactor, error) {
 	)
 	memR.stickySalt.Store([]byte(nil)) // establish concrete []byte type for atomic.Value
 	memR.SetStickySalt(opts.StickyPeerSalt)
+	memR.served = newServedTxs()
 	return memR, nil
 }
 
@@ -267,6 +269,7 @@ func (memR *Reactor) GetChannels() []*p2p.ChannelDescriptor {
 // InitPeer implements Reactor by creating a state for the peer.
 func (memR *Reactor) InitPeer(peer p2p.Peer) (p2p.Peer, error) {
 	memR.ids.ReserveForPeer(peer)
+	memR.served.InitPeer(memR.ids.GetIDForPeer(peer.ID()))
 	return peer, nil
 }
 
@@ -276,6 +279,7 @@ func (memR *Reactor) RemovePeer(peer p2p.Peer, reason interface{}) {
 	peerID := memR.ids.Reclaim(peer.ID())
 	// Clear all memory of seen txs by that peer
 	memR.mempool.seenTracker.RemovePeer(peerID)
+	memR.served.RemovePeer(peerID)
 
 	// remove and rerequest all pending outbound requests to that peer since we know
 	// we won't receive any responses from them.
@@ -493,10 +497,17 @@ func (memR *Reactor) Receive(e p2p.Envelope) {
 		tx, has := memR.mempool.GetTxByKey(txKey)
 		if has && !memR.opts.ListenOnly {
 			peerID := memR.ids.GetIDForPeer(e.Src.ID())
+			// Ignore a repeat WantTx while the previous reply is still queued.
+			if memR.served.IsQueued(peerID, txKey, dataQueueSizeFn(e.Src)) {
+				memR.Logger.Trace("ignoring repeat want msg", "peer", peerID, "txKey", txKey)
+				return
+			}
 			memR.Logger.Trace("sending a tx in response to a want msg", "peer", peerID)
-			if e.Src.TrySend(p2p.Envelope{
-				ChannelID: MempoolDataChannel,
-				Message:   &protomem.Txs{Txs: [][]byte{tx.Tx}},
+			if memR.served.Serve(peerID, txKey, func() bool {
+				return e.Src.TrySend(p2p.Envelope{
+					ChannelID: MempoolDataChannel,
+					Message:   &protomem.Txs{Txs: [][]byte{tx.Tx}},
+				})
 			}) {
 				memR.mempool.PeerHasTx(peerID, txKey)
 				schema.WriteMempoolTx(
@@ -581,12 +592,14 @@ func (memR *Reactor) broadcastSeenTxWithHeight(txKey types.TxKey, height int64, 
 			continue
 		}
 
-		if peer.TrySend(
-			p2p.Envelope{
-				ChannelID: MempoolDataChannel,
-				Message:   msg,
-			},
-		) {
+		if memR.served.Send(id, func() bool {
+			return peer.TrySend(
+				p2p.Envelope{
+					ChannelID: MempoolDataChannel,
+					Message:   msg,
+				},
+			)
+		}) {
 			memR.mempool.PeerHasTx(id, txKey)
 			schema.WriteMempoolPeerState(memR.traceClient, string(peer.ID()), schema.SeenTx, txKey[:], schema.Upload)
 			sent++
