@@ -9,6 +9,7 @@ import (
 	"os"
 	"sort"
 	"strconv"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -440,6 +441,19 @@ func TestTxPool_CountLimit(t *testing.T) {
 		// the two highest-priority txs are kept
 		require.True(t, txmp.Has(types.Tx("s049=k=59").Key()))
 		require.True(t, txmp.Has(types.Tx("s048=k=58").Key()))
+		require.True(t, txmp.WasRecentlyEvicted(types.Tx("s000=k=10").Key()))
+	})
+
+	t.Run("count-full pool with byte headroom admits larger higher-priority tx", func(t *testing.T) {
+		txmp := setup(t, 1000)
+		txmp.config.Size = 2
+		txmp.config.MaxTxsBytes = 1 << 20
+		mustCheckTx(t, txmp, "s000=k=10")
+		mustCheckTx(t, txmp, "s001=k=11")
+		big := fmt.Sprintf("s002=%s=100", strings.Repeat("v", 200))
+		mustCheckTx(t, txmp, big)
+		require.Equal(t, txmp.config.Size, txmp.Size())
+		require.True(t, txmp.Has(types.Tx(big).Key()))
 		require.True(t, txmp.WasRecentlyEvicted(types.Tx("s000=k=10").Key()))
 	})
 }

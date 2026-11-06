@@ -603,8 +603,11 @@ func (txmp *TxPool) addNewTransaction(wtx *wrappedTx) error {
 		// The pool must end up with at most config.Size txs including the new one.
 		neededTxs := txmp.Size() - txmp.config.Size + 1
 
+		// Only the bytes the pool is short of need to be freed by eviction.
+		neededBytes := wtx.size() - txmp.availableBytes()
+
 		// If there are no suitable eviction candidates, or they can't free enough bytes or tx slots, drop the new one.
-		if len(victimSets) == 0 || victimBytes < wtx.size() || victimTxs < neededTxs {
+		if len(victimSets) == 0 || victimBytes < neededBytes || victimTxs < neededTxs {
 			txmp.metrics.EvictedTxs.Add(1)
 			txKey := wtx.key()
 			txmp.evictedTxCache.Push(txKey)
