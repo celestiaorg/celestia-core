@@ -397,9 +397,16 @@ func (blockProp *Reactor) handleWants(peer p2p.ID, wants *proptypes.WantParts) {
 		return
 	}
 
-	p.SetRemainingRequests(height, round, int(wants.MissingPartsCount))
+	// Only keep per-peer request state for a proposal cached at exactly this
+	// height and round, which pruning bounds. Wants answered from the block
+	// store are served without it, as they may name any round.
+	tracked := blockProp.hasCachedRound(height, round)
+	untrackedRemaining := int(wants.MissingPartsCount)
+	if tracked {
+		p.SetRemainingRequests(height, round, untrackedRemaining)
+	}
 	for _, partIndex := range canSend.GetTrueIndices() {
-		if p.GetRemainingRequests(height, round) <= 0 {
+		if tracked && p.GetRemainingRequests(height, round) <= 0 || !tracked && untrackedRemaining <= 0 {
 			break
 		}
 		part, _ := parts.GetPart(uint32(partIndex))
@@ -423,14 +430,18 @@ func (blockProp *Reactor) handleWants(peer p2p.ID, wants *proptypes.WantParts) {
 			blockProp.Logger.Error("failed to send part", "peer", peer, "height", height, "round", round, "part", partIndex)
 			continue
 		}
-		p.DecreaseRemainingRequests(height, round, 1)
+		if tracked {
+			p.DecreaseRemainingRequests(height, round, 1)
+		} else {
+			untrackedRemaining--
+		}
 		// p.SetHave(height, round, int(partIndex))
 		schema.WriteBlockPart(blockProp.traceClient, height, round, part.Index, wants.Prove, string(peer), schema.Upload)
 	}
 
 	// for parts that we don't have, but they still want, store the wants.
 	stillMissing := wants.Parts.Sub(canSend)
-	if !stillMissing.IsEmpty() {
+	if tracked && !stillMissing.IsEmpty() {
 		p.AddWants(height, round, stillMissing)
 	}
 }
