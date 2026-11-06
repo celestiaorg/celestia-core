@@ -326,11 +326,13 @@ func (memR *Reactor) handleReceivedTx(tx []byte, e p2p.Envelope) {
 // processNowOrBuffer returns true if the tx can be applied now. Otherwise it
 // buffers the tx for later (or drops it if too far ahead) and returns false.
 func (memR *Reactor) processNowOrBuffer(cachedTx *types.CachedTx, key types.TxKey, txInfo mempool.TxInfo, src p2p.Peer) bool {
-	signer, sequence, ok := memR.mempool.seenTracker.PendingTxInfo(key)
+	// Signer/sequence from a SeenTx is unverified until CheckTx, so only the
+	// metadata the delivering peer itself announced may hold the tx back.
+	signer, sequence, ok := memR.mempool.seenTracker.PendingTxInfoFrom(key, txInfo.SenderID)
 	if !ok {
-		// No pending signer/sequence (no prior SeenTx carried it, or the entry was
-		// demoted from the per-signer queue): we can't tell it is ahead, so process
-		// it now.
+		// No pending signer/sequence from this peer (no prior SeenTx from it
+		// carried it, or the entry was demoted from the per-signer queue): we
+		// can't tell it is ahead, so process it now.
 		return true
 	}
 
@@ -424,6 +426,10 @@ func (memR *Reactor) Receive(e p2p.Envelope) {
 		// actually need to hold the entry for gap-fill. This keeps the
 		// per-signer queue scoped to txs we cannot yet request.
 		memR.mempool.PeerHasTx(peerID, txKey)
+		// Keep the queued signer/sequence attributed only to peers whose
+		// latest announcement matches it, including while a request is in
+		// flight, so a retry to this peer is judged by what it announced.
+		memR.mempool.seenTracker.RecordPendingTxAnnouncement(txKey, peerID, msg.Signer, msg.Sequence)
 
 		// Check if we don't already have the transaction
 		if memR.mempool.Has(txKey) {

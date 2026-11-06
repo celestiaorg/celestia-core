@@ -68,12 +68,20 @@ func (e *SeenEntry) clone() *SeenEntry {
 			signer:    append([]byte(nil), e.pendingTxInfo.signer...),
 			sequence:  e.pendingTxInfo.sequence,
 		}
+		if e.pendingTxInfo.announcers != nil {
+			cp.pendingTxInfo.announcers = make(map[uint16]struct{}, len(e.pendingTxInfo.announcers))
+			for peer := range e.pendingTxInfo.announcers {
+				cp.pendingTxInfo.announcers[peer] = struct{}{}
+			}
+		}
 	}
 
 	return cp
 }
 
-// peerIDs returns candidate peers for the request path.
+// peerIDs returns candidate peers for the request path. Peers that announced
+// the queued signer/sequence come first, so a tx requested for gap-fill is
+// delivered by a peer whose metadata applies to it.
 func (e *SeenEntry) peerIDs() []uint16 {
 	if len(e.peers) == 0 {
 		return nil
@@ -81,7 +89,14 @@ func (e *SeenEntry) peerIDs() []uint16 {
 
 	out := make([]uint16, 0, len(e.peers))
 	for peer := range e.peers {
-		out = append(out, peer)
+		if e.pendingTxInfo.announcedBy(peer) {
+			out = append(out, peer)
+		}
+	}
+	for peer := range e.peers {
+		if !e.pendingTxInfo.announcedBy(peer) {
+			out = append(out, peer)
+		}
 	}
 
 	return out
@@ -94,6 +109,24 @@ type PendingTxInfo struct {
 	// signer is the tx's signer bytes.
 	signer   []byte
 	sequence uint64
+	// announcers are the peers that announced this signer/sequence for the
+	// tx. Only their deliveries are judged by it; the metadata is unverified
+	// until the application checks the tx.
+	announcers map[uint16]struct{}
+}
+
+// announcedBy reports whether peer announced this signer/sequence.
+func (p *PendingTxInfo) announcedBy(peer uint16) bool {
+	if p == nil {
+		return false
+	}
+	_, ok := p.announcers[peer]
+	return ok
+}
+
+// matches reports whether signer/sequence equal this metadata.
+func (p *PendingTxInfo) matches(signer []byte, sequence uint64) bool {
+	return p.sequence == sequence && p.signerKey == string(signer)
 }
 
 // NewSeenTracker creates the shared seen-state tracker used by CAT gossip.
@@ -134,7 +167,46 @@ func (s *SeenTracker) AddPendingTx(txKey types.TxKey, peer uint16, signer []byte
 	if entry.pendingTxInfo == nil {
 		s.indexPendingTxLocked(entry, signer, sequence)
 	}
+	// Record the peer as an announcer if it agrees with the queued metadata.
+	if entry.pendingTxInfo != nil && entry.pendingTxInfo.matches(signer, sequence) {
+		entry.pendingTxInfo.announcers[peer] = struct{}{}
+	}
 	return true
+}
+
+// RecordPendingTxAnnouncement reconciles a peer's announcement with txKey's
+// queued signer/sequence: a matching announcement makes peer an announcer, a
+// different one withdraws it. The queued metadata is dropped once no
+// announcer is left. Nothing is queued if no metadata is queued yet.
+func (s *SeenTracker) RecordPendingTxAnnouncement(txKey types.TxKey, peer uint16, signer []byte, sequence uint64) {
+	s.mtx.Lock()
+	defer s.mtx.Unlock()
+
+	entry, ok := s.txByKey[txKey]
+	if !ok || entry.pendingTxInfo == nil {
+		return
+	}
+	if !entry.pendingTxInfo.matches(signer, sequence) {
+		s.removeAnnouncerLocked(entry, peer)
+		return
+	}
+	// Only a peer known to have the tx can be asked for it.
+	if _, has := entry.peers[peer]; has {
+		entry.pendingTxInfo.announcers[peer] = struct{}{}
+	}
+}
+
+// removeAnnouncerLocked drops peer from the entry's announcers and drops the
+// queued metadata once no announcer is left.
+func (s *SeenTracker) removeAnnouncerLocked(entry *SeenEntry, peer uint16) {
+	if !entry.pendingTxInfo.announcedBy(peer) {
+		return
+	}
+	delete(entry.pendingTxInfo.announcers, peer)
+	if len(entry.pendingTxInfo.announcers) == 0 {
+		s.removeFromPendingQueueLocked(entry)
+		entry.clearPendingTxMetadata()
+	}
 }
 
 // addPeerLocked adds the peer to txByKey (creating the entry if new); returns the entry and whether stored.
@@ -201,9 +273,10 @@ func (s *SeenTracker) indexPendingTxLocked(entry *SeenEntry, signer []byte, sequ
 	}
 
 	entry.pendingTxInfo = &PendingTxInfo{
-		signerKey: signerKey,
-		signer:    append([]byte(nil), signer...),
-		sequence:  sequence,
+		signerKey:  signerKey,
+		signer:     append([]byte(nil), signer...),
+		sequence:   sequence,
+		announcers: make(map[uint16]struct{}, 1),
 	}
 
 	// insert future tx into the queue
@@ -297,6 +370,12 @@ func (s *SeenTracker) RemovePeer(peer uint16) {
 		}
 		if len(entry.peers) == 0 {
 			s.removeEntryLocked(entry)
+			continue
+		}
+		// Peer IDs are reused, so a later peer must not inherit this one's
+		// announcements.
+		if entry.pendingTxInfo != nil {
+			s.removeAnnouncerLocked(entry, peer)
 		}
 	}
 	delete(s.txCountByPeer, peer)
@@ -352,6 +431,20 @@ func (s *SeenTracker) PendingTxInfo(txKey types.TxKey) (signer []byte, sequence 
 
 	entry, found := s.txByKey[txKey]
 	if !found || entry.pendingTxInfo == nil {
+		return nil, 0, false
+	}
+
+	return append([]byte(nil), entry.pendingTxInfo.signer...), entry.pendingTxInfo.sequence, true
+}
+
+// PendingTxInfoFrom is PendingTxInfo restricted to metadata that peer itself
+// announced; ok is false if peer did not announce the queued metadata.
+func (s *SeenTracker) PendingTxInfoFrom(txKey types.TxKey, peer uint16) (signer []byte, sequence uint64, ok bool) {
+	s.mtx.Lock()
+	defer s.mtx.Unlock()
+
+	entry, found := s.txByKey[txKey]
+	if !found || !entry.pendingTxInfo.announcedBy(peer) {
 		return nil, 0, false
 	}
 
@@ -469,6 +562,10 @@ func (s *SeenTracker) RemovePeerFromTx(txKey types.TxKey, peer uint16) {
 	}
 	if len(entry.peers) == 0 {
 		s.removeEntryLocked(entry)
+		return
+	}
+	if entry.pendingTxInfo != nil {
+		s.removeAnnouncerLocked(entry, peer)
 	}
 }
 
