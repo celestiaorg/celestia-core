@@ -364,7 +364,6 @@ func (wsc *wsConnection) readRoutine() {
 			}
 
 			ctx := &types.Context{JSONReq: &request, WSConn: wsc}
-			args := []reflect.Value{reflect.ValueOf(ctx)}
 			fnArgs, err := jsonParamsToArgs(rpcFunc, request.Params)
 			if err != nil {
 				if err := wsc.WriteRPCResponse(writeCtx,
@@ -374,6 +373,8 @@ func (wsc *wsConnection) readRoutine() {
 				}
 				continue
 			}
+			args := make([]reflect.Value, 0, len(fnArgs)+1)
+			args = append(args, reflect.ValueOf(ctx))
 			args = append(args, fnArgs...)
 
 			// Bound concurrent heavy responses; reject fast when saturated so WS

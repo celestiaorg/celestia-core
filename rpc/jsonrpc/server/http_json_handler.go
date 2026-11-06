@@ -88,7 +88,6 @@ func makeJSONRPCHandler(funcMap map[string]*RPCFunc, logger log.Logger) http.Han
 				continue
 			}
 			ctx := &types.Context{JSONReq: &request, HTTPReq: r}
-			args := []reflect.Value{reflect.ValueOf(ctx)}
 			fnArgs, err := jsonParamsToArgs(rpcFunc, request.Params)
 			if err != nil {
 				responses = append(
@@ -98,6 +97,8 @@ func makeJSONRPCHandler(funcMap map[string]*RPCFunc, logger log.Logger) http.Han
 				cache = false
 				continue
 			}
+			args := make([]reflect.Value, 0, len(fnArgs)+1)
+			args = append(args, reflect.ValueOf(ctx))
 			args = append(args, fnArgs...)
 
 			if cache && !rpcFunc.cacheableWithArgs(args) {
