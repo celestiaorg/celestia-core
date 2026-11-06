@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cosmos/gogoproto/proto"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
@@ -16,6 +17,7 @@ import (
 	abci "github.com/cometbft/cometbft/abci/types"
 	abcimocks "github.com/cometbft/cometbft/abci/types/mocks"
 	cstypes "github.com/cometbft/cometbft/consensus/types"
+	"github.com/cometbft/cometbft/crypto/merkle"
 	"github.com/cometbft/cometbft/crypto/tmhash"
 	"github.com/cometbft/cometbft/internal/test"
 	cmtbytes "github.com/cometbft/cometbft/libs/bytes"
@@ -216,6 +218,125 @@ func TestAddProposalBlockPartFillsCachedHashes(t *testing.T) {
 
 	require.NotNil(t, cs1.rs.ProposalBlock)
 	require.Equal(t, want, cs1.rs.ProposalBlock.CachedHashes())
+}
+
+// A proposal whose parts are not the canonical encoding of the block must be
+// rejected: other nodes (e.g. blocksync) rebuild the PartSetHeader by
+// re-encoding the block and could not verify the committed BlockID.
+func TestAddProposalBlockPartRejectsNonCanonicalEncoding(t *testing.T) {
+	partSize := int(types.BlockPartSizeBytes)
+	chunk := func(bz []byte) [][]byte {
+		var chunks [][]byte
+		for len(bz) > partSize {
+			chunks = append(chunks, bz[:partSize])
+			bz = bz[partSize:]
+		}
+		return append(chunks, bz)
+	}
+
+	testCases := []struct {
+		name string
+		// exactParts rebuilds the block so its canonical encoding is an
+		// exact multiple of the part size.
+		exactParts bool
+		mutate     func(t *testing.T, bz []byte) [][]byte
+	}{
+		{
+			name: "trailing unknown field",
+			mutate: func(_ *testing.T, bz []byte) [][]byte {
+				// field 100, varint, value 1
+				return chunk(append(bz, 0xa0, 0x06, 0x01))
+			},
+		},
+		{
+			name: "non-minimal varint tag",
+			mutate: func(t *testing.T, bz []byte) [][]byte {
+				// Field 1 (header) tag 0x0a encoded as two bytes.
+				require.Equal(t, byte(0x0a), bz[0])
+				return chunk(append([]byte{0x8a, 0x00}, bz[1:]...))
+			},
+		},
+		{
+			name:       "trailing empty part",
+			exactParts: true,
+			mutate: func(t *testing.T, bz []byte) [][]byte {
+				require.Zero(t, len(bz)%partSize)
+				return append(chunk(bz), []byte{})
+			},
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			cs1, vss := randState(1)
+			deliverTxsRange(t, cs1, 0, 5)
+
+			block, honestParts, err := cs1.createProposalBlock(context.Background())
+			require.NoError(t, err)
+			if tc.exactParts {
+				block, honestParts = makeBlockWithPartAlignedEncoding(t, cs1.state, block)
+			}
+
+			pbb, err := block.ToProto()
+			require.NoError(t, err)
+			bz, err := proto.Marshal(pbb)
+			require.NoError(t, err)
+			chunks := tc.mutate(t, bz)
+
+			// The mutated parts decode to the same block.
+			decoded := new(cmtproto.Block)
+			require.NoError(t, proto.Unmarshal(bytes.Join(chunks, nil), decoded))
+			decodedBlock, err := types.BlockFromProto(decoded)
+			require.NoError(t, err)
+			require.Equal(t, block.Hash(), decodedBlock.Hash())
+
+			root, proofs := merkle.ProofsFromByteSlices(chunks)
+			header := types.PartSetHeader{Total: uint32(len(chunks)), Hash: root}
+			require.NotEqual(t, honestParts.Header(), header)
+
+			cs1.rs.ProposalBlockParts = types.NewPartSetFromHeader(header, types.BlockPartSizeBytes)
+			for i, c := range chunks {
+				part := &types.Part{Index: uint32(i), Bytes: c, Proof: *proofs[i]}
+				msg := &BlockPartMessage{Height: cs1.rs.Height, Round: cs1.rs.Round, Part: part}
+				_, err = cs1.addProposalBlockPart(msg, "peer")
+			}
+			require.True(t, cs1.rs.ProposalBlockParts.IsComplete())
+			require.ErrorContains(t, err, "not the canonical block encoding")
+			require.Nil(t, cs1.rs.ProposalBlock)
+
+			// Without the check above, the committed BlockID would not be
+			// verifiable by a node that re-encodes the block (blocksync).
+			signedID := types.BlockID{Hash: block.Hash(), PartSetHeader: header}
+			commit, err := test.MakeCommit(signedID, block.Height, 0, cs1.state.Validators,
+				[]types.PrivValidator{vss[0].PrivValidator}, cs1.state.ChainID, time.Now())
+			require.NoError(t, err)
+			reencoded, err := decodedBlock.MakePartSet(types.BlockPartSizeBytes)
+			require.NoError(t, err)
+			reencodedID := types.BlockID{Hash: decodedBlock.Hash(), PartSetHeader: reencoded.Header()}
+			require.Error(t, cs1.state.Validators.VerifyCommit(cs1.state.ChainID, reencodedID, block.Height, commit))
+		})
+	}
+}
+
+// makeBlockWithPartAlignedEncoding rebuilds block with a single tx sized so
+// that the block's encoding is an exact multiple of BlockPartSizeBytes.
+func makeBlockWithPartAlignedEncoding(t *testing.T, state sm.State, block *types.Block) (*types.Block, *types.PartSet) {
+	t.Helper()
+	partSize := int(types.BlockPartSizeBytes)
+	for txLen := partSize - 1024; txLen < partSize; txLen++ {
+		tx := types.Tx(bytes.Repeat([]byte{'a'}, txLen))
+		b, parts, err := state.MakeBlock(block.Height, types.MakeData(types.Txs{tx}), block.LastCommit, nil, block.ProposerAddress)
+		require.NoError(t, err)
+		pbb, err := b.ToProto()
+		require.NoError(t, err)
+		bz, err := proto.Marshal(pbb)
+		require.NoError(t, err)
+		if len(bz)%partSize == 0 {
+			return b, parts
+		}
+	}
+	t.Fatal("no tx size gives a part-aligned block encoding")
+	return nil, nil
 }
 
 func TestStateBadProposal(t *testing.T) {
