@@ -291,7 +291,11 @@ func (blockProp *Reactor) sendWant(ps *PeerState, want *proptypes.WantParts) {
 		Message:   want.ToProto(),
 	}
 
+	// record the request before sending so a fast reply isn't treated as
+	// unrequested
+	added := ps.AddRequests(want.Height, want.Round, want.Parts)
 	if !ps.peer.TrySend(e) {
+		ps.RemoveRequests(want.Height, want.Round, added)
 		blockProp.Logger.Error("failed to send part state", "peer", ps.peer.ID(), "height", want.Height, "round", want.Round)
 		return
 	}
@@ -307,8 +311,6 @@ func (blockProp *Reactor) sendWant(ps *PeerState, want *proptypes.WantParts) {
 		"want",
 	)
 
-	// keep track of the parts that this node has requested.
-	ps.AddRequests(want.Height, want.Round, want.Parts)
 	ps.IncreaseConcurrentReqs(int64(len(want.Parts.GetTrueIndices())))
 }
 
@@ -459,6 +461,10 @@ func (blockProp *Reactor) handleRecoveryPart(peer p2p.ID, part *proptypes.Recove
 		return
 	}
 
+	if p != nil && !blockProp.admitPart(p, cb, parts, part) {
+		return
+	}
+
 	if parts.HasPart(int(part.Index)) || parts.IsComplete() {
 		return
 	}
@@ -599,6 +605,24 @@ func (blockProp *Reactor) handleRecoveryPart(peer p2p.ID, part *proptypes.Recove
 
 		return
 	}
+}
+
+// admitPart reports whether a part from p may be processed: either this node
+// requested it, or p sent the compact block and is still within the push cap.
+// Any other part disconnects p, except during catchup where request state may
+// have been reset and the part is just dropped.
+func (blockProp *Reactor) admitPart(p *PeerState, cb *proptypes.CompactBlock, parts *proptypes.CombinedPartSet, part *proptypes.RecoveryPart) bool {
+	if p.Requested(part.Height, part.Round, part.Index) {
+		return true
+	}
+	if part.Index < parts.Original().Total() && p.ConsumePushAllowance(part.Height, part.Round) {
+		return true
+	}
+	if cb == nil || len(cb.PartsHashes) == 0 {
+		return false
+	}
+	blockProp.Switch.StopPeerForError(p.peer, fmt.Errorf("unrequested part %d at height %d round %d", part.Index, part.Height, part.Round), blockProp.String())
+	return false
 }
 
 // clearWants checks the wantState to see if any peers want the given part, if
