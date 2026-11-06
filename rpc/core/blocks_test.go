@@ -423,3 +423,60 @@ func (store mockBlockStore) Close() error {
 func (store mockBlockStore) DeleteLatestBlock() error {
 	return nil
 }
+
+func TestBlockSearchResponseByteBudget(t *testing.T) {
+	const numBlocks = 5
+	newEnv := func(blockSize int) *Environment {
+		store := &mocks.BlockStore{}
+		for h := int64(1); h <= numBlocks; h++ {
+			block := randomBlock(h)
+			meta := &types.BlockMeta{
+				BlockID:   types.BlockID{Hash: block.Hash()},
+				BlockSize: blockSize,
+				Header:    block.Header,
+			}
+			store.On("LoadBlockMeta", h).Return(meta).Maybe()
+			store.On("LoadBlock", h).Return(block).Maybe()
+		}
+		return &Environment{
+			Logger:       log.NewNopLogger(),
+			BlockStore:   store,
+			BlockIndexer: mockBlockIndexer{beginQueryBlock: 1, endQueryBlock: numBlocks},
+		}
+	}
+	perPage := func(n int) *int { return &n }
+
+	t.Run("page of large blocks is rejected", func(t *testing.T) {
+		env := newEnv(maxBlockSearchResponseBytes / 2)
+		res, err := env.BlockSearch(&rpctypes.Context{}, "block.height > 0", nil, perPage(numBlocks), "asc")
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "exceeds the response limit")
+		require.Nil(t, res)
+	})
+
+	t.Run("page within the budget is served", func(t *testing.T) {
+		env := newEnv(maxBlockSearchResponseBytes / 2)
+		res, err := env.BlockSearch(&rpctypes.Context{}, "block.height > 0", perPage(2), perPage(2), "asc")
+		require.NoError(t, err)
+		require.Equal(t, numBlocks, res.TotalCount)
+		require.Len(t, res.Blocks, 2)
+		require.Equal(t, int64(3), res.Blocks[0].Block.Height)
+		require.Equal(t, int64(4), res.Blocks[1].Block.Height)
+	})
+
+	t.Run("single block larger than the budget is served", func(t *testing.T) {
+		env := newEnv(maxBlockSearchResponseBytes + 1)
+		res, err := env.BlockSearch(&rpctypes.Context{}, "block.height > 0", nil, perPage(1), "desc")
+		require.NoError(t, err)
+		require.Equal(t, numBlocks, res.TotalCount)
+		require.Len(t, res.Blocks, 1)
+		require.Equal(t, int64(numBlocks), res.Blocks[0].Block.Height)
+	})
+
+	t.Run("page of small blocks is served", func(t *testing.T) {
+		env := newEnv(1024)
+		res, err := env.BlockSearch(&rpctypes.Context{}, "block.height > 0", nil, perPage(numBlocks), "asc")
+		require.NoError(t, err)
+		require.Len(t, res.Blocks, numBlocks)
+	})
+}

@@ -24,6 +24,10 @@ const (
 	defaultPerPage = 30
 	maxPerPage     = 100
 
+	// maxBlockSearchResponseBytes bounds the total size of the blocks returned
+	// in one block_search page. A page holding a single block is always served.
+	maxBlockSearchResponseBytes = 64 * 1024 * 1024 // 64 MiB
+
 	// SubscribeTimeout is the maximum time we wait to subscribe for an event.
 	// must be less than the server's write timeout (see rpcserver.DefaultConfig)
 	SubscribeTimeout = 5 * time.Second
