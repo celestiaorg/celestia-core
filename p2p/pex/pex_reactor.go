@@ -204,8 +204,9 @@ func (r *Reactor) AddPeer(p Peer) {
 			r.RequestAddrs(p)
 		}
 	} else {
-		// inbound peer is its own source
-		addr, err := p.NodeInfo().NetAddress()
+		// inbound peer is its own source. Do not resolve its self-reported
+		// address: this runs while the peer is being admitted.
+		addr, err := p2p.NodeInfoIPAddress(p.NodeInfo())
 		if err != nil {
 			r.Logger.Error("Failed to get peer NetAddress", "err", err, "peer", p)
 			return

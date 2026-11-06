@@ -570,7 +570,9 @@ func (mt *MultiplexTransport) wrapPeer(
 		if cfg.outbound {
 			persistent = cfg.isPersistent(socketAddr)
 		} else {
-			selfReportedAddr, err := ni.NetAddress()
+			// Do not resolve the self-reported address: this runs on the
+			// accept path for an inbound peer.
+			selfReportedAddr, err := NodeInfoIPAddress(ni)
 			if err == nil {
 				persistent = cfg.isPersistent(selfReportedAddr)
 			}
