@@ -270,7 +270,13 @@ func (env *Environment) BlockSearch(
 	blockMetas := make([]*types.BlockMeta, 0, pageSize)
 	heights := make([]int64, 0, pageSize)
 	pageBytes := 0
+	// Pruned heights keep their block meta but not their block, so they are
+	// skipped here rather than counted against the budget.
+	base := env.BlockStore.Base()
 	for i := skipCount; i < skipCount+pageSize; i++ {
+		if results[i] < base {
+			continue
+		}
 		blockMeta := env.BlockStore.LoadBlockMeta(results[i])
 		if blockMeta == nil {
 			continue

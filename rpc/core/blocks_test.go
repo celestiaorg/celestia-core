@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 
 	dbm "github.com/cometbft/cometbft-db"
@@ -426,8 +427,9 @@ func (store mockBlockStore) DeleteLatestBlock() error {
 
 func TestBlockSearchResponseByteBudget(t *testing.T) {
 	const numBlocks = 5
-	newEnv := func(blockSize int) *Environment {
+	newEnvWithBase := func(blockSize int, base int64) (*Environment, *mocks.BlockStore) {
 		store := &mocks.BlockStore{}
+		store.On("Base").Return(base).Maybe()
 		for h := int64(1); h <= numBlocks; h++ {
 			block := randomBlock(h)
 			meta := &types.BlockMeta{
@@ -442,16 +444,32 @@ func TestBlockSearchResponseByteBudget(t *testing.T) {
 			Logger:       log.NewNopLogger(),
 			BlockStore:   store,
 			BlockIndexer: mockBlockIndexer{beginQueryBlock: 1, endQueryBlock: numBlocks},
-		}
+		}, store
+	}
+	newEnv := func(blockSize int) *Environment {
+		env, _ := newEnvWithBase(blockSize, 1)
+		return env
 	}
 	perPage := func(n int) *int { return &n }
 
 	t.Run("page of large blocks is rejected", func(t *testing.T) {
-		env := newEnv(maxBlockSearchResponseBytes / 2)
+		env, store := newEnvWithBase(maxBlockSearchResponseBytes/2, 1)
 		res, err := env.BlockSearch(&rpctypes.Context{}, "block.height > 0", nil, perPage(numBlocks), "asc")
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "exceeds the response limit")
 		require.Nil(t, res)
+		// The page is rejected before any block is loaded.
+		store.AssertNotCalled(t, "LoadBlock", mock.Anything)
+	})
+
+	t.Run("pruned heights do not count against the budget", func(t *testing.T) {
+		// Heights 1-3 are pruned; only 4 and 5 remain and fit the budget.
+		env, _ := newEnvWithBase(maxBlockSearchResponseBytes/2, 4)
+		res, err := env.BlockSearch(&rpctypes.Context{}, "block.height > 0", nil, perPage(numBlocks), "asc")
+		require.NoError(t, err)
+		require.Equal(t, numBlocks, res.TotalCount)
+		require.Len(t, res.Blocks, 2)
+		require.Equal(t, int64(4), res.Blocks[0].Block.Height)
 	})
 
 	t.Run("page within the budget is served", func(t *testing.T) {
