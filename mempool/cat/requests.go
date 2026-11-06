@@ -141,6 +141,10 @@ func (r *requestScheduler) CountForPeer(peer uint16) int {
 	return len(r.requestsByPeer[peer])
 }
 
+// ClearAllRequestsFrom drops every request slot held by peer and returns the
+// requests that peer still owned. Slots kept only for late responses, whose tx
+// has since been re-requested from another peer, are dropped without touching
+// that peer's request and are not returned.
 func (r *requestScheduler) ClearAllRequestsFrom(peer uint16) requestSet {
 	r.mtx.Lock()
 	defer r.mtx.Unlock()
@@ -149,12 +153,16 @@ func (r *requestScheduler) ClearAllRequestsFrom(peer uint16) requestSet {
 	if !ok {
 		return requestSet{}
 	}
+	owned := make(requestSet, len(requests))
 	for tx, timer := range requests {
 		timer.Stop()
-		delete(r.requestsByTx, tx)
+		if r.requestsByTx[tx] == peer {
+			delete(r.requestsByTx, tx)
+			owned[tx] = timer
+		}
 	}
 	delete(r.requestsByPeer, peer)
-	return requests
+	return owned
 }
 
 // Remove drops the request for key if it still belongs to peer. This prevents
