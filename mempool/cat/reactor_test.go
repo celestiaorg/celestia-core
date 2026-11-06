@@ -30,6 +30,7 @@ import (
 	"github.com/cometbft/cometbft/libs/log"
 	"github.com/cometbft/cometbft/mempool"
 	"github.com/cometbft/cometbft/p2p"
+	cmtconn "github.com/cometbft/cometbft/p2p/conn"
 	"github.com/cometbft/cometbft/p2p/mocks"
 	protomem "github.com/cometbft/cometbft/proto/tendermint/mempool"
 	"github.com/cometbft/cometbft/proxy"
@@ -2442,3 +2443,121 @@ func TestBroadcastSeenTxDeterministicPersistentSelection(t *testing.T) {
 
 // matchDataChannel matches any envelope sent on the mempool data channel.
 var matchDataChannel = mock.MatchedBy(func(e p2p.Envelope) bool { return e.ChannelID == MempoolDataChannel })
+
+// dataQueueStatus reports n messages pending on the mempool data channel.
+func dataQueueStatus(n int) cmtconn.ConnectionStatus {
+	return cmtconn.ConnectionStatus{
+		Channels: []cmtconn.ChannelStatus{{ID: MempoolDataChannel, SendQueueSize: n}},
+	}
+}
+
+// TestReactorRepeatedWantTxSendsOnce verifies that repeated WantTx messages
+// for the same tx from one peer result in a single send while the reply is
+// still queued, and that the tx is sent again once the queue has drained.
+func TestReactorRepeatedWantTxSendsOnce(t *testing.T) {
+	reactor, pool := setupReactor(t)
+
+	tx := newDefaultTx("hello")
+	key := tx.Key()
+	txEnvelope := p2p.Envelope{
+		Message:   &protomem.Txs{Txs: [][]byte{tx}},
+		ChannelID: MempoolDataChannel,
+	}
+
+	peer := genPeer()
+	peer.On("TrySend", txEnvelope).Return(true).Once()
+	peer.On("Status").Return(dataQueueStatus(1)).Times(10)
+
+	require.NoError(t, pool.CheckTx(tx, nil, mempool.TxInfo{}))
+	_, err := reactor.InitPeer(peer)
+	require.NoError(t, err)
+
+	want := p2p.Envelope{
+		ChannelID: MempoolWantsChannel,
+		Message:   &protomem.WantTx{TxKey: key[:]},
+		Src:       peer,
+	}
+	for i := 0; i < 11; i++ {
+		reactor.Receive(want)
+	}
+	peer.AssertExpectations(t)
+	peer.AssertNumberOfCalls(t, "TrySend", 1)
+
+	// Once the reply has left the queue, a new request is served again.
+	peer.On("Status").Return(dataQueueStatus(0)).Once()
+	peer.On("TrySend", txEnvelope).Return(true).Once()
+	reactor.Receive(want)
+	peer.AssertExpectations(t)
+	peer.AssertNumberOfCalls(t, "TrySend", 2)
+}
+
+// TestReactorWantTxRetriedAfterFailedSend verifies that a WantTx whose reply
+// could not be queued is served when the peer asks again.
+func TestReactorWantTxRetriedAfterFailedSend(t *testing.T) {
+	reactor, pool := setupReactor(t)
+
+	tx := newDefaultTx("hello")
+	key := tx.Key()
+	txEnvelope := p2p.Envelope{
+		Message:   &protomem.Txs{Txs: [][]byte{tx}},
+		ChannelID: MempoolDataChannel,
+	}
+
+	peer := genPeer()
+	peer.On("TrySend", txEnvelope).Return(false).Once()
+	peer.On("TrySend", txEnvelope).Return(true).Once()
+	peer.On("Status").Return(dataQueueStatus(1)).Once()
+
+	require.NoError(t, pool.CheckTx(tx, nil, mempool.TxInfo{}))
+	_, err := reactor.InitPeer(peer)
+	require.NoError(t, err)
+
+	want := p2p.Envelope{
+		ChannelID: MempoolWantsChannel,
+		Message:   &protomem.WantTx{TxKey: key[:]},
+		Src:       peer,
+	}
+	reactor.Receive(want) // send fails
+	reactor.Receive(want) // retried and sent
+	reactor.Receive(want) // reply still queued, ignored
+
+	peer.AssertExpectations(t)
+	peer.AssertNumberOfCalls(t, "TrySend", 2)
+}
+
+// TestReactorWantTxServedAgainAfterReconnect verifies that a peer's served
+// state is cleared when the peer is removed.
+func TestReactorWantTxServedAgainAfterReconnect(t *testing.T) {
+	reactor, pool := setupReactor(t)
+
+	tx := newDefaultTx("hello")
+	key := tx.Key()
+	txEnvelope := p2p.Envelope{
+		Message:   &protomem.Txs{Txs: [][]byte{tx}},
+		ChannelID: MempoolDataChannel,
+	}
+
+	peer := genPeer()
+	peer.On("TrySend", txEnvelope).Return(true).Twice()
+	peer.On("Status").Return(dataQueueStatus(1)).Once()
+
+	require.NoError(t, pool.CheckTx(tx, nil, mempool.TxInfo{}))
+	want := p2p.Envelope{
+		ChannelID: MempoolWantsChannel,
+		Message:   &protomem.WantTx{TxKey: key[:]},
+		Src:       peer,
+	}
+
+	_, err := reactor.InitPeer(peer)
+	require.NoError(t, err)
+	reactor.Receive(want)
+	reactor.Receive(want)
+	reactor.RemovePeer(peer, nil)
+
+	_, err = reactor.InitPeer(peer)
+	require.NoError(t, err)
+	reactor.Receive(want)
+
+	peer.AssertExpectations(t)
+	peer.AssertNumberOfCalls(t, "TrySend", 2)
+}
