@@ -74,7 +74,8 @@ Core's CAT-specific precheck and propagation paths require local targets.
 
 Outside the decoder suite, core also has `FuzzParallelImplementations` in
 `crypto/merkle`, which tests tree algorithms rather than network decoders and
-is not in the nightly matrix. It derives every tree and proof index from the fuzz
+is not in the nightly matrix; [`nightly-excluded.txt`](nightly-excluded.txt)
+records that with its reason. It derives every tree and proof index from the fuzz
 input, so saved inputs replay exactly. `FuzzTxsToParts` and `FuzzTxsToParts_Panic` in
 `consensus/propagation/types` now derive their data from the fuzz input and run
 nightly; see [Entry-point coverage](#entry-point-coverage). `consensus/wal_fuzz.go` is a
@@ -138,6 +139,13 @@ listed nightly target as its own job for ten minutes on the daily schedule and
 manual dispatch. It uses two workers per target and starts each target from the
 corpus earlier nights built (see [Persistent corpora](#persistent-corpora)).
 Failures on main feed the existing `notify-protocol-ci.yml` workflow.
+
+Every native fuzz target must be either in that matrix or listed with a reason
+in [`nightly-excluded.txt`](nightly-excluded.txt).
+[`scripts/check-fuzz-targets.sh`](../../scripts/check-fuzz-targets.sh) checks
+this on pull requests and also fails on entries for targets that no longer
+exist. When adding a target, add a matrix entry with a `priority` (or an
+exclusion) and a row to the tables above.
 
 A crashing input can describe an exploitable bug, and this repository's logs and
 artifacts are public. The nightly jobs therefore write `go test` output to a file
