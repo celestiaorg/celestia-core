@@ -89,18 +89,16 @@ func makeJSONRPCHandler(funcMap map[string]*RPCFunc, logger log.Logger) http.Han
 			}
 			ctx := &types.Context{JSONReq: &request, HTTPReq: r}
 			args := []reflect.Value{reflect.ValueOf(ctx)}
-			if len(request.Params) > 0 {
-				fnArgs, err := jsonParamsToArgs(rpcFunc, request.Params)
-				if err != nil {
-					responses = append(
-						responses,
-						types.RPCInvalidParamsError(request.ID, fmt.Errorf("error converting json params to arguments: %w", err)),
-					)
-					cache = false
-					continue
-				}
-				args = append(args, fnArgs...)
+			fnArgs, err := jsonParamsToArgs(rpcFunc, request.Params)
+			if err != nil {
+				responses = append(
+					responses,
+					types.RPCInvalidParamsError(request.ID, fmt.Errorf("error converting json params to arguments: %w", err)),
+				)
+				cache = false
+				continue
 			}
+			args = append(args, fnArgs...)
 
 			if cache && !rpcFunc.cacheableWithArgs(args) {
 				cache = false
@@ -211,8 +209,15 @@ func arrayParamsToArgs(
 //
 //	rpcFunc.args = [rpctypes.Context string]
 //	rpcFunc.argNames = ["arg"]
+//
+// Absent params are treated like empty named params, so every argument takes
+// its zero value, as it does for params that are null or {}.
 func jsonParamsToArgs(rpcFunc *RPCFunc, raw []byte) ([]reflect.Value, error) {
 	const argsOffset = 1
+
+	if len(raw) == 0 {
+		raw = []byte("{}")
+	}
 
 	// TODO: Make more efficient, perhaps by checking the first character for '{' or '['?
 	// First, try to get the map.

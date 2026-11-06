@@ -86,6 +86,11 @@ func FuzzRPCCoreJSONRPC(f *testing.F) {
 	f.Add(uint8(2), uint8(0), []byte(`hash=0x0102&prove=true&height=1&query="tx.height=1"`))
 	f.Add(uint8(3), uint8(0), []byte(`{"jsonrpc":"2.0","id":7,"method":"subscribe","params":{"query":"tm.event='Tx'"}}`+"\x00"+`{"jsonrpc":"2.0","id":8,"method":"unsubscribe_all"}`))
 	f.Add(uint8(4), uint8(0), []byte(`{"query":"tm.event = 'NewBlock' AND block.height > 2"}`))
+	// Methods that take arguments, called without params.
+	f.Add(uint8(0), uint8(0), []byte(`[{"jsonrpc":"2.0","id":1,"method":"block"},{"jsonrpc":"2.0","id":2,"method":"tx"}]`))
+	f.Add(uint8(3), uint8(0), []byte(`{"jsonrpc":"2.0","id":1,"method":"block"}`))
+	// A lone quote for a 64-bit integer argument.
+	f.Add(uint8(2), uint8(0), []byte(`height="`))
 
 	f.Fuzz(func(t *testing.T, mode, method uint8, data []byte) {
 		if len(data) > 64<<10 {
@@ -104,12 +109,6 @@ func FuzzRPCCoreJSONRPC(f *testing.F) {
 			return b
 		}
 		switch mode % 5 {
-		case 0, 3:
-			if fuzzMissingParams(routes, bytes.Split(data, []byte{0}), mode%5 == 3) {
-				return
-			}
-		}
-		switch mode % 5 {
 		case 0, 1:
 			body := data
 			if mode%5 == 1 {
@@ -122,14 +121,6 @@ func FuzzRPCCoreJSONRPC(f *testing.F) {
 			req, err := http.NewRequest(http.MethodGet, "http://localhost/"+name+"?"+string(data), nil)
 			if err != nil {
 				return
-			}
-			// Excluded pending PROTOCO-3522; remove with the fix.
-			for _, vs := range req.URL.Query() {
-				for _, v := range vs {
-					if v == `"` {
-						return
-					}
-				}
 			}
 			req.Body = http.NoBody // as for any server-side request
 			// URI requests carry no id; the server answers with id -1.
@@ -151,35 +142,6 @@ func FuzzRPCCoreJSONRPC(f *testing.F) {
 		mp.Flush()
 		require.Zero(t, env.EventBus.NumClients())
 	})
-}
-
-// fuzzMissingParams reports whether a request calls a route that takes
-// parameters without passing any.
-// Excluded pending PROTOCO-3521; remove with the fix.
-func fuzzMissingParams(routes RoutesMap, bodies [][]byte, ws bool) bool {
-	noArgs := map[string]bool{"health": true, "genesis": true, "abci_info": true, "num_unconfirmed_txs": true, "unsubscribe_all": true}
-	for _, body := range bodies {
-		var reqs []rpctypes.RPCRequest
-		if ws {
-			// The websocket reader decodes one request and ignores trailing bytes.
-			var req rpctypes.RPCRequest
-			if json.NewDecoder(bytes.NewReader(body)).Decode(&req) == nil {
-				reqs = append(reqs, req)
-			}
-		} else if json.Unmarshal(body, &reqs) != nil {
-			var req rpctypes.RPCRequest
-			if json.Unmarshal(body, &req) != nil {
-				continue
-			}
-			reqs = []rpctypes.RPCRequest{req}
-		}
-		for _, req := range reqs {
-			if _, ok := routes[req.Method]; ok && !noArgs[req.Method] && len(req.Params) == 0 {
-				return true
-			}
-		}
-	}
-	return false
 }
 
 // fuzzReply is a response the server must send: id is the request ID it
