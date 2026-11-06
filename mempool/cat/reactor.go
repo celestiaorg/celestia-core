@@ -503,11 +503,12 @@ func (memR *Reactor) Receive(e p2p.Envelope) {
 				return
 			}
 			memR.Logger.Trace("sending a tx in response to a want msg", "peer", peerID)
-			if e.Src.TrySend(p2p.Envelope{
-				ChannelID: MempoolDataChannel,
-				Message:   &protomem.Txs{Txs: [][]byte{tx.Tx}},
+			if memR.served.Serve(peerID, txKey, func() bool {
+				return e.Src.TrySend(p2p.Envelope{
+					ChannelID: MempoolDataChannel,
+					Message:   &protomem.Txs{Txs: [][]byte{tx.Tx}},
+				})
 			}) {
-				memR.served.MarkServed(peerID, txKey)
 				memR.mempool.PeerHasTx(peerID, txKey)
 				schema.WriteMempoolTx(
 					memR.traceClient,
@@ -591,13 +592,14 @@ func (memR *Reactor) broadcastSeenTxWithHeight(txKey types.TxKey, height int64, 
 			continue
 		}
 
-		if peer.TrySend(
-			p2p.Envelope{
-				ChannelID: MempoolDataChannel,
-				Message:   msg,
-			},
-		) {
-			memR.served.MarkQueued(id)
+		if memR.served.Send(id, func() bool {
+			return peer.TrySend(
+				p2p.Envelope{
+					ChannelID: MempoolDataChannel,
+					Message:   msg,
+				},
+			)
+		}) {
 			memR.mempool.PeerHasTx(id, txKey)
 			schema.WriteMempoolPeerState(memR.traceClient, string(peer.ID()), schema.SeenTx, txKey[:], schema.Upload)
 			sent++
