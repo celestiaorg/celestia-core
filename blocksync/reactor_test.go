@@ -513,6 +513,10 @@ type ByzantineReactor struct {
 	// validation) but its LastCommit has one invalid signature past the +2/3
 	// threshold, which is caught only by commit verification in poolRoutine.
 	invalidBlock *types.Block
+	// tamperedExtSigHeight, when set, is the height at which the served
+	// extended commit carries an altered vote extension signature, leaving
+	// the block and the commit's vote signatures intact.
+	tamperedExtSigHeight int64
 }
 
 func NewByzantineReactor(invalidBlock int64, conR *Reactor) *ByzantineReactor {
@@ -556,6 +560,11 @@ func (bcR *ByzantineReactor) respondToPeer(msg *bcproto.BlockRequest, src p2p.Pe
 			bcR.Logger.Error("found block in store with no extended commit", "block", block)
 			return false
 		}
+	}
+
+	if extCommit != nil && msg.Height == bcR.tamperedExtSigHeight {
+		extCommit = extCommit.Clone()
+		extCommit.ExtendedSignatures[0].ExtensionSignature = []byte{7}
 	}
 
 	bl, err := block.ToProto()
@@ -937,4 +946,52 @@ func TestBlockSyncVerifiesTipCommitSignatures(t *testing.T) {
 	// is never persisted. Under VerifyCommitLight it would be, failing here.
 	require.Less(t, receiver.reactor.store.Height(), maxBlockHeight-1,
 		"block sync must not persist a height whose commit has an invalid signature past the +2/3 threshold")
+}
+
+// TestBlockSyncVerifiesVoteExtensionSignatures checks that block sync verifies
+// the vote extension signatures of an extended commit before persisting it. A
+// peer serves a canonical block whose extended commit has an altered vote
+// extension signature; the receiver must reject it and drop the peer.
+func TestBlockSyncVerifiesVoteExtensionSignatures(t *testing.T) {
+	config = test.ResetTestRoot("blocksync_ext_sigs_test")
+	defer os.RemoveAll(config.RootDir)
+
+	const (
+		maxBlockHeight = int64(10)
+		tamperedHeight = int64(5)
+	)
+	genDoc, privVals := randGenesisDoc(1, false, 30)
+	genDoc.ConsensusParams.ABCI.VoteExtensionsEnableHeight = 1
+
+	source := newReactor(t, log.TestingLogger(), genDoc, privVals, maxBlockHeight)
+	source.reactor.tamperedExtSigHeight = tamperedHeight
+	receiver := newReactor(t, log.TestingLogger(), genDoc, privVals, 0)
+	reactorPairs := []ReactorPair{source, receiver}
+
+	p2p.MakeConnectedSwitches(config.P2P, 2, func(i int, s *p2p.Switch) *p2p.Switch {
+		s.AddReactor("BLOCKSYNC", reactorPairs[i].reactor)
+		return s
+	}, p2p.Connect2Switches)
+
+	defer func() {
+		for _, r := range reactorPairs {
+			_ = r.reactor.Stop()
+			_ = r.app.Stop()
+		}
+	}()
+
+	// Wait until the receiver either drops its only peer or persists the
+	// tampered height.
+	startTime := time.Now()
+	for receiver.reactor.Switch.Peers().Size() != 0 &&
+		receiver.reactor.store.Height() < tamperedHeight {
+		if time.Since(startTime) > 60*time.Second {
+			t.Fatalf("timeout: receiver height %d, peers %d",
+				receiver.reactor.store.Height(), receiver.reactor.Switch.Peers().Size())
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+
+	require.Less(t, receiver.reactor.store.Height(), tamperedHeight,
+		"block sync must not persist an extended commit with an invalid vote extension signature")
 }

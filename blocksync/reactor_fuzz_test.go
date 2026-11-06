@@ -38,9 +38,6 @@ const (
 	fzNumPeers    = 3
 	fzMaxReqs     = 4 // requesters the harness keeps open, like defaultMaxRequesters
 	fzMaxOps      = 48
-
-	// Excluded pending PROTOCO-3528; remove with the fix.
-	fzCheckExtSigs = false
 )
 
 var fzGenesisTime = time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)
@@ -276,10 +273,7 @@ func (h *bsHarness) syncStep() {
 		err = fmt.Errorf("extended commit presence mismatch")
 	}
 	if err == nil && extEnabled {
-		err = extCommit.EnsureExtensions(true)
-	}
-	if err == nil && extEnabled {
-		err = h.state.Validators.VerifyCommit(chainID, firstID, first.Height, extCommit.ToCommit())
+		err = h.state.Validators.VerifyCommitExtended(chainID, firstID, first.Height, extCommit)
 	}
 	if err != nil {
 		for _, height := range []int64{first.Height, second.Height} {
@@ -303,7 +297,7 @@ func (h *bsHarness) syncStep() {
 		// ToCommit drops vote extensions, so check the persisted extension
 		// signatures separately: consensus re-verifies them on restart.
 		for i, sig := range extCommit.ExtendedSignatures {
-			if !fzCheckExtSigs || sig.BlockIDFlag != cmttypes.BlockIDFlagCommit {
+			if sig.BlockIDFlag != cmttypes.BlockIDFlagCommit {
 				continue
 			}
 			_, val := h.state.Validators.GetByIndex(int32(i))
@@ -485,6 +479,8 @@ func FuzzBlockSyncReactor(f *testing.F) {
 	f.Add(syncSeed(map[int][]byte{2: {0x80, 0, 0}}))
 	f.Add(syncSeed(map[int][]byte{4: {0x85, 0, 1}}))
 	f.Add(syncSeed(map[int][]byte{4: {0x84}}))
+	// A vote extension signature altered at height 5.
+	f.Add(syncSeed(map[int][]byte{4: {0x85, 0, 0, 7}}))
 	// Extreme and invalid status ranges, unsolicited blocks, requests.
 	f.Add([]byte{0, 0, 5, 0, 0, 1, 0x10, 6, 2, 0, 0, 0, 3, 1, 0, 4, 0, 0x08, 5, 1, 7, 2, 7, 2})
 	f.Add([]byte{0, 0, 0x10, 0x10, 6, 0, 2, 1, 1, 0, 1, 0, 0, 0x83, 0x18, 6, 0})
