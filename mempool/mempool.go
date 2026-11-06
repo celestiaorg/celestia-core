@@ -124,6 +124,20 @@ type Mempool interface {
 	WasRecentlyRejected(key types.TxKey) (bool, uint32, string)
 }
 
+// AsyncRechecker is a Mempool that can run the post-Update recheck in the background.
+type AsyncRechecker interface {
+	// UpdateAsyncRecheck does Update's removals before returning; a recheck pass may keep the
+	// lock in the background. It always calls unlock exactly once, when the lock is released.
+	UpdateAsyncRecheck(
+		blockHeight int64,
+		blockTxs []*types.CachedTx,
+		deliverTxResponses []*abci.ExecTxResult,
+		newPreFn PreCheckFunc,
+		newPostFn PostCheckFunc,
+		unlock func(),
+	) error
+}
+
 // PreCheckFunc is an optional filter executed before CheckTx and rejects
 // transaction if false is returned. An example would be to ensure that a
 // transaction doesn't exceeded the block size.
