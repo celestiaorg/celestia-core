@@ -22,6 +22,7 @@ func seenMetadataTestReactor(t *testing.T, numPeers int) (*Reactor, *TxPool, *se
 
 	reactor, err := NewReactor(pool, &ReactorOptions{})
 	require.NoError(t, err)
+	t.Cleanup(reactor.requests.Close)
 
 	peers := genPeers(numPeers)
 	for _, peer := range peers {
@@ -134,6 +135,34 @@ func TestReactorDeliveryFromAgreeingPeerIsBuffered(t *testing.T) {
 	require.NotNil(t, reactor.receivedBuffer.get(signer, 3), "the tx must be buffered at its announced sequence")
 }
 
+// TestReactorRetryToPeerAnnouncedDuringRequestIsBuffered checks that a peer
+// announcing the queued metadata while the tx is already being requested is
+// recorded as an announcer, so a retry to it still lands in the buffer.
+func TestReactorRetryToPeerAnnouncedDuringRequestIsBuffered(t *testing.T) {
+	reactor, pool, app, peers := seenMetadataTestReactor(t, 2)
+	first, second := peers[0], peers[1]
+	signer := []byte("sender-000-0")
+	app.SetSequence(string(signer), 1)
+
+	tx := newDefaultTx("retry-metadata")
+	key := tx.Key()
+
+	receiveSeenTx(reactor, first, key, signer, 3)
+	requestTxFromPeer(t, reactor, first, key)
+	receiveSeenTx(reactor, second, key, signer, 3)
+
+	// The first peer goes away, so the request is retried with the second.
+	reactor.RemovePeer(first, "test")
+	secondID := reactor.ids.GetIDForPeer(second.ID())
+	require.EqualValues(t, secondID, reactor.requests.ForTx(key))
+
+	receiveTx(reactor, second, tx)
+
+	require.Zero(t, app.CheckTxCalls(), "a tx ahead of the expected sequence must wait in the buffer")
+	require.False(t, pool.Has(key))
+	require.NotNil(t, reactor.receivedBuffer.get(signer, 3), "the tx must be buffered at its announced sequence")
+}
+
 // TestTryRequestQueuedTxPrefersAnnouncingPeers checks that gap-fill asks a
 // peer that announced the queued sequence before a peer only known to have
 // the tx.
@@ -181,12 +210,61 @@ func TestSeenTrackerPendingTxInfoFrom(t *testing.T) {
 
 	// Agreeing metadata is not withdrawn; conflicting metadata is, and the
 	// queued metadata goes once no announcer is left.
-	tracker.WithdrawConflictingPendingTx(key, 1, signer, 3)
+	tracker.RecordPendingTxAnnouncement(key, 1, signer, 3)
 	_, _, ok = tracker.PendingTxInfoFrom(key, 1)
 	require.True(t, ok)
-	tracker.WithdrawConflictingPendingTx(key, 1, signer, 4)
+	tracker.RecordPendingTxAnnouncement(key, 1, signer, 4)
 	_, _, ok = tracker.PendingTxInfoFrom(key, 1)
 	require.False(t, ok)
 	require.Empty(t, tracker.PendingTxsForSigner(signer))
 	require.True(t, tracker.Has(key, 1), "the peer is still known to have the tx")
+}
+
+// TestSeenTrackerClearsMetadataWithoutAnnouncers checks that queued metadata
+// is dropped once its last announcer goes away, even while other peers are
+// still known to have the tx.
+func TestSeenTrackerClearsMetadataWithoutAnnouncers(t *testing.T) {
+	signer := []byte("signer")
+	removals := map[string]func(*SeenTracker, types.TxKey){
+		"peer removed":        func(s *SeenTracker, _ types.TxKey) { s.RemovePeer(1) },
+		"peer removed for tx": func(s *SeenTracker, key types.TxKey) { s.RemovePeerFromTx(key, 1) },
+	}
+	for name, remove := range removals {
+		t.Run(name, func(t *testing.T) {
+			tracker := NewSeenTracker()
+			key := types.Tx("no-announcers").Key()
+			require.True(t, tracker.AddPendingTx(key, 1, signer, 3))
+			require.True(t, tracker.AddPeer(key, 2))
+
+			remove(tracker, key)
+
+			require.Empty(t, tracker.PendingTxsForSigner(signer))
+			_, _, ok := tracker.PendingTxInfo(key)
+			require.False(t, ok)
+			require.True(t, tracker.Has(key, 2), "the remaining peer is still known to have the tx")
+		})
+	}
+}
+
+// TestReactorContradictionDuringRequestIsApplied checks that a peer whose
+// announcement changes while its tx is being requested cannot have its
+// earlier metadata applied to its delivery.
+func TestReactorContradictionDuringRequestIsApplied(t *testing.T) {
+	reactor, pool, app, peers := seenMetadataTestReactor(t, 1)
+	peer := peers[0]
+	signer := []byte("sender-000-0")
+	app.SetSequence(string(signer), 1)
+
+	tx := newDefaultTx("contradiction-during-request")
+	key := tx.Key()
+
+	receiveSeenTx(reactor, peer, key, signer, 3)
+	requestTxFromPeer(t, reactor, peer, key)
+	receiveSeenTx(reactor, peer, key, []byte("other-signer"), 0)
+
+	receiveTx(reactor, peer, tx)
+
+	require.Equal(t, 1, app.CheckTxCalls(), "the delivered tx must be checked by the application")
+	require.True(t, pool.Has(key))
+	require.Empty(t, reactor.receivedBuffer.signerKeys())
 }

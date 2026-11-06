@@ -426,6 +426,10 @@ func (memR *Reactor) Receive(e p2p.Envelope) {
 		// actually need to hold the entry for gap-fill. This keeps the
 		// per-signer queue scoped to txs we cannot yet request.
 		memR.mempool.PeerHasTx(peerID, txKey)
+		// Keep the queued signer/sequence attributed only to peers whose
+		// latest announcement matches it, including while a request is in
+		// flight, so a retry to this peer is judged by what it announced.
+		memR.mempool.seenTracker.RecordPendingTxAnnouncement(txKey, peerID, msg.Signer, msg.Sequence)
 
 		// Check if we don't already have the transaction
 		if memR.mempool.Has(txKey) {
@@ -447,10 +451,6 @@ func (memR *Reactor) Receive(e p2p.Envelope) {
 
 		switch {
 		case msg.Sequence == expectedSeq:
-			// We request from this peer on the strength of this announcement,
-			// so any different metadata it announced earlier no longer applies
-			// to what it delivers.
-			memR.mempool.seenTracker.WithdrawConflictingPendingTx(txKey, peerID, msg.Signer, msg.Sequence)
 			// continue below to request the expected transaction.
 		case msg.Sequence > expectedSeq:
 			// Hold the tx in the per-signer queue until the gap closes.
