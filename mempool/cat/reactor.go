@@ -326,11 +326,13 @@ func (memR *Reactor) handleReceivedTx(tx []byte, e p2p.Envelope) {
 // processNowOrBuffer returns true if the tx can be applied now. Otherwise it
 // buffers the tx for later (or drops it if too far ahead) and returns false.
 func (memR *Reactor) processNowOrBuffer(cachedTx *types.CachedTx, key types.TxKey, txInfo mempool.TxInfo, src p2p.Peer) bool {
-	signer, sequence, ok := memR.mempool.seenTracker.PendingTxInfo(key)
+	// Signer/sequence from a SeenTx is unverified until CheckTx, so only the
+	// metadata the delivering peer itself announced may hold the tx back.
+	signer, sequence, ok := memR.mempool.seenTracker.PendingTxInfoFrom(key, txInfo.SenderID)
 	if !ok {
-		// No pending signer/sequence (no prior SeenTx carried it, or the entry was
-		// demoted from the per-signer queue): we can't tell it is ahead, so process
-		// it now.
+		// No pending signer/sequence from this peer (no prior SeenTx from it
+		// carried it, or the entry was demoted from the per-signer queue): we
+		// can't tell it is ahead, so process it now.
 		return true
 	}
 
@@ -445,6 +447,10 @@ func (memR *Reactor) Receive(e p2p.Envelope) {
 
 		switch {
 		case msg.Sequence == expectedSeq:
+			// We request from this peer on the strength of this announcement,
+			// so any different metadata it announced earlier no longer applies
+			// to what it delivers.
+			memR.mempool.seenTracker.WithdrawConflictingPendingTx(txKey, peerID, msg.Signer, msg.Sequence)
 			// continue below to request the expected transaction.
 		case msg.Sequence > expectedSeq:
 			// Hold the tx in the per-signer queue until the gap closes.
