@@ -268,6 +268,7 @@ func (env *Environment) BlockSearch(
 	// Check the page against the response byte budget using the block metas
 	// before loading any block, so an oversized page is rejected cheaply.
 	blockMetas := make([]*types.BlockMeta, 0, pageSize)
+	heights := make([]int64, 0, pageSize)
 	pageBytes := 0
 	for i := skipCount; i < skipCount+pageSize; i++ {
 		blockMeta := env.BlockStore.LoadBlockMeta(results[i])
@@ -284,11 +285,12 @@ func (env *Environment) BlockSearch(
 			)
 		}
 		blockMetas = append(blockMetas, blockMeta)
+		heights = append(heights, results[i])
 	}
 
 	apiResults := make([]*ctypes.ResultBlock, 0, len(blockMetas))
-	for _, blockMeta := range blockMetas {
-		block := env.BlockStore.LoadBlock(blockMeta.Header.Height)
+	for j, blockMeta := range blockMetas {
+		block := env.BlockStore.LoadBlock(heights[j])
 		if block != nil {
 			apiResults = append(apiResults, &ctypes.ResultBlock{
 				Block:   block,
