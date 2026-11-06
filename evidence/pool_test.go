@@ -2,6 +2,7 @@ package evidence_test
 
 import (
 	"os"
+	"sync"
 	"testing"
 	"time"
 
@@ -129,7 +130,7 @@ func TestAddExpiredEvidence(t *testing.T) {
 			expiredHeight - 1, expiredEvidenceTime, true,
 			"evidence from height 1 (created at: 2019-01-01 00:00:00 +0000 UTC) is too old",
 		},
-		{height, defaultEvidenceTime.Add(1 * time.Minute), true, "evidence time and block time is different"},
+		{height - 2, defaultEvidenceTime, true, "evidence time and block time is different"},
 	}
 
 	for _, tc := range testCases {
@@ -564,5 +565,207 @@ func createState(height int64, valSet *types.ValidatorSet) sm.State {
 		LastBlockTime:   defaultEvidenceTime,
 		Validators:      valSet,
 		ConsensusParams: *types.DefaultConsensusParams(),
+	}
+}
+
+// Evidence for the same equivocation (validator, height, round and vote type)
+// should only be admitted to the pool once, however it is encoded.
+func TestAddEvidenceIgnoresDuplicateVoteVariants(t *testing.T) {
+	height := int64(10)
+	pool, val := defaultTestPool(t, height)
+	evTime := defaultEvidenceTime.Add(time.Duration(height) * time.Minute)
+
+	ev, err := types.NewMockDuplicateVoteEvidenceWithValidator(height, evTime, val, evidenceChainID)
+	require.NoError(t, err)
+	require.NoError(t, pool.AddEvidence(ev))
+
+	const numVariants = 20
+	var wg sync.WaitGroup
+	for i := 0; i < numVariants; i++ {
+		// A freshly signed equivocation with different block IDs.
+		resigned, err := types.NewMockDuplicateVoteEvidenceWithValidator(height, evTime, val, evidenceChainID)
+		require.NoError(t, err)
+		// The same evidence with fields not covered by the vote signatures changed.
+		mutated := *ev
+		voteA := *ev.VoteA
+		voteA.ValidatorIndex = int32(i + 1)
+		voteA.Extension = []byte{byte(i)}
+		voteA.ExtensionSignature = []byte{byte(i)}
+		mutated.VoteA = &voteA
+
+		for _, variant := range []types.Evidence{resigned, &mutated} {
+			wg.Add(1)
+			go func(variant types.Evidence) {
+				defer wg.Done()
+				assert.NoError(t, pool.AddEvidence(variant))
+			}(variant)
+		}
+	}
+	wg.Wait()
+
+	evs, _ := pool.PendingEvidence(defaultEvidenceMaxBytes)
+	require.Len(t, evs, 1)
+	assert.Equal(t, ev.Hash(), evs[0].Hash())
+	assert.EqualValues(t, 1, pool.Size())
+
+	// Evidence for a different height is still admitted.
+	other, err := types.NewMockDuplicateVoteEvidenceWithValidator(height-1, evTime.Add(-time.Minute), val, evidenceChainID)
+	require.NoError(t, err)
+	require.NoError(t, pool.AddEvidence(other))
+	evs, _ = pool.PendingEvidence(defaultEvidenceMaxBytes)
+	assert.Len(t, evs, 2)
+}
+
+// Duplicate vote evidence whose unsigned fields are not in canonical form is
+// rejected when submitted to the pool.
+func TestAddEvidenceRejectsNonCanonicalDuplicateVote(t *testing.T) {
+	height := int64(10)
+	evTime := defaultEvidenceTime.Add(time.Duration(height) * time.Minute)
+
+	testCases := []struct {
+		name     string
+		malleate func(ev *types.DuplicateVoteEvidence)
+	}{
+		{"wrong validator index on vote A", func(ev *types.DuplicateVoteEvidence) { ev.VoteA.ValidatorIndex = 1 }},
+		{"wrong validator index on vote B", func(ev *types.DuplicateVoteEvidence) { ev.VoteB.ValidatorIndex = 7 }},
+		{"unverified vote extension", func(ev *types.DuplicateVoteEvidence) {
+			ev.VoteB.Extension = []byte("extension")
+			ev.VoteB.ExtensionSignature = []byte("signature")
+		}},
+	}
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			pool, val := defaultTestPool(t, height)
+			ev, err := types.NewMockDuplicateVoteEvidenceWithValidator(height, evTime, val, evidenceChainID)
+			require.NoError(t, err)
+			tc.malleate(ev)
+			require.NoError(t, ev.ValidateBasic())
+
+			err = pool.AddEvidence(ev)
+			var invalidErr *types.ErrInvalidEvidence
+			require.ErrorAs(t, err, &invalidErr)
+			assert.Zero(t, pool.Size())
+
+			// Evidence in a block is validated as before.
+			require.NoError(t, pool.CheckEvidence(types.EvidenceList{ev}))
+		})
+	}
+}
+
+// Once evidence for an equivocation is committed, pending and future evidence
+// for the same equivocation under a different hash is dropped.
+func TestCommittedDuplicateVoteVariantIsDropped(t *testing.T) {
+	height := int64(21)
+	pool, val := defaultTestPool(t, height)
+	evTime := defaultEvidenceTime.Add(time.Duration(height) * time.Minute)
+
+	pending, err := types.NewMockDuplicateVoteEvidenceWithValidator(height, evTime, val, evidenceChainID)
+	require.NoError(t, err)
+	require.NoError(t, pool.AddEvidence(pending))
+
+	committed, err := types.NewMockDuplicateVoteEvidenceWithValidator(height, evTime, val, evidenceChainID)
+	require.NoError(t, err)
+	require.NotEqual(t, pending.Hash(), committed.Hash())
+	require.NoError(t, pool.CheckEvidence(types.EvidenceList{committed}))
+
+	state := pool.State()
+	state.LastBlockHeight = height + 1
+	state.LastBlockTime = evTime.Add(time.Minute)
+	pool.Update(state, types.EvidenceList{committed})
+
+	evs, _ := pool.PendingEvidence(defaultEvidenceMaxBytes)
+	assert.Empty(t, evs)
+	assert.Zero(t, pool.Size())
+	assert.Nil(t, pool.EvidenceFront())
+
+	require.NoError(t, pool.AddEvidence(pending))
+	evs, _ = pool.PendingEvidence(defaultEvidenceMaxBytes)
+	assert.Empty(t, evs)
+}
+
+// A pool restored from a store that holds several pieces of duplicate vote
+// evidence for one equivocation keeps only one of them.
+func TestNewPoolDeduplicatesRestoredDuplicateVotes(t *testing.T) {
+	height := int64(10)
+	evTime := defaultEvidenceTime.Add(time.Duration(height) * time.Minute)
+	val := types.NewMockPV()
+	evidenceDB := dbm.NewMemDB()
+	stateStore := initializeValidatorState(val, height)
+	state, err := stateStore.Load()
+	require.NoError(t, err)
+	blockStore, err := initializeBlockStore(dbm.NewMemDB(), state, val.PrivKey.PubKey().Address())
+	require.NoError(t, err)
+
+	pool, err := evidence.NewPool(evidenceDB, stateStore, blockStore)
+	require.NoError(t, err)
+	for i := 0; i < 5; i++ {
+		ev, err := types.NewMockDuplicateVoteEvidenceWithValidator(height, evTime, val, evidenceChainID)
+		require.NoError(t, err)
+		require.NoError(t, pool.AddPendingEvidenceUnchecked(ev))
+	}
+	other, err := types.NewMockDuplicateVoteEvidenceWithValidator(height-1, evTime.Add(-time.Minute), val, evidenceChainID)
+	require.NoError(t, err)
+	require.NoError(t, pool.AddPendingEvidenceUnchecked(other))
+
+	for restart := 0; restart < 2; restart++ {
+		pool, err = evidence.NewPool(evidenceDB, stateStore, blockStore)
+		require.NoError(t, err)
+		evs, _ := pool.PendingEvidence(-1)
+		assert.Len(t, evs, 2)
+		assert.EqualValues(t, 2, pool.Size())
+		listed := 0
+		for e := pool.EvidenceFront(); e != nil; e = e.Next() {
+			listed++
+		}
+		assert.Equal(t, 2, listed)
+	}
+
+	variant, err := types.NewMockDuplicateVoteEvidenceWithValidator(height, evTime, val, evidenceChainID)
+	require.NoError(t, err)
+	require.NoError(t, pool.AddEvidence(variant))
+	assert.EqualValues(t, 2, pool.Size())
+}
+
+// Duplicate vote evidence admitted while the same equivocation is being
+// committed must not stay pending.
+func TestCommitDuplicateVoteConcurrentWithAdmission(t *testing.T) {
+	height := int64(21)
+	evTime := defaultEvidenceTime.Add(time.Duration(height) * time.Minute)
+	for i := 0; i < 50; i++ {
+		pool, val := defaultTestPool(t, height)
+		pool.SetLogger(log.NewNopLogger())
+		pending, err := types.NewMockDuplicateVoteEvidenceWithValidator(height, evTime, val, evidenceChainID)
+		require.NoError(t, err)
+		require.NoError(t, pool.AddEvidence(pending))
+		committed, err := types.NewMockDuplicateVoteEvidenceWithValidator(height, evTime, val, evidenceChainID)
+		require.NoError(t, err)
+		variants := make([]types.Evidence, 50)
+		for j := range variants {
+			variants[j], err = types.NewMockDuplicateVoteEvidenceWithValidator(height, evTime, val, evidenceChainID)
+			require.NoError(t, err)
+		}
+
+		var wg sync.WaitGroup
+		start := make(chan struct{})
+		for w := 0; w < 4; w++ {
+			wg.Add(1)
+			go func(w int) {
+				defer wg.Done()
+				<-start
+				for j := w; j < len(variants); j += 4 {
+					assert.NoError(t, pool.AddEvidence(variants[j]))
+				}
+			}(w)
+		}
+		state := pool.State()
+		state.LastBlockHeight = height + 1
+		state.LastBlockTime = evTime.Add(time.Minute)
+		close(start)
+		pool.Update(state, types.EvidenceList{committed})
+		wg.Wait()
+
+		evs, _ := pool.PendingEvidence(-1)
+		require.Empty(t, evs, "iteration %d", i)
+		require.Zero(t, pool.Size(), "iteration %d", i)
 	}
 }
