@@ -523,8 +523,9 @@ type RPCConfig struct {
 	//   max_concurrent_heavy_requests * peak_response_bytes < spare_RAM
 	// peak_response_bytes is the largest single response the node serves; count
 	// serialization too, so roughly 2x the payload. Payload per heavy request:
-	// block/block_results/tx/proofs ~ one block; block_search ~ per_page blocks;
-	// unconfirmed_txs (limit=-1) ~ the mempool's max_txs_bytes. spare_RAM is
+	// block/block_results/tx/proofs ~ one block; block_search ~ per_page blocks,
+	// capped at 64 MiB of blocks (or one block) per page; unconfirmed_txs
+	// (limit=-1) ~ the mempool's max_txs_bytes. spare_RAM is
 	// total RAM minus the mempool, app state and OS; leave headroom.
 	// 0 - use the built-in default; negative - unlimited (not recommended).
 	MaxConcurrentHeavyRequests int `mapstructure:"max_concurrent_heavy_requests"`
