@@ -43,6 +43,7 @@ import (
 	statemocks "github.com/cometbft/cometbft/state/mocks"
 	"github.com/cometbft/cometbft/store"
 	"github.com/cometbft/cometbft/types"
+	cmttime "github.com/cometbft/cometbft/types/time"
 )
 
 //----------------------------------------------
@@ -642,6 +643,55 @@ func TestReactorRecordsVotesAndBlockParts(t *testing.T) {
 	assert.Eventually(t, func() bool {
 		return ps.BlockPartsSent() > 0
 	}, 10*time.Second, 100*time.Millisecond, "number of block parts sent should have increased")
+}
+
+// Test that a peer sending a vote with an invalid signature is disconnected.
+func TestReactorStopsPeerForInvalidVoteSignature(t *testing.T) {
+	N := 2
+	css, cleanup := randConsensusNet(t, N, "consensus_reactor_test", newMockTickerFunc(true), newKVStore)
+	defer cleanup()
+	reactors, blocksSubs, eventBuses := startConsensusNet(t, css, N)
+	defer stopConsensusNet(log.TestingLogger(), reactors, eventBuses)
+
+	timeoutWaitGroup(N, func(j int) {
+		<-blocksSubs[j].Out()
+	})
+
+	reactor := reactors[0]
+	peer := reactor.Switch.Peers().List()[0]
+	pubKey, err := css[1].privValidator.GetPubKey()
+	require.NoError(t, err)
+
+	// Consensus keeps moving, so send a fresh vote for the current height and
+	// round until one is processed before the height changes.
+	require.Eventually(t, func() bool {
+		if !peer.IsRunning() {
+			return true
+		}
+		rs := css[0].GetRoundState()
+		valIdx, _ := rs.Validators.GetByAddress(pubKey.Address())
+		vote := &types.Vote{
+			Type:   cmtproto.PrevoteType,
+			Height: rs.Height,
+			Round:  rs.Round,
+			// A block the validator did not vote for, so the vote is not a
+			// duplicate and its signature gets checked.
+			BlockID: types.BlockID{
+				Hash:          cmtrand.Bytes(tmhash.Size),
+				PartSetHeader: types.PartSetHeader{Total: 1, Hash: cmtrand.Bytes(tmhash.Size)},
+			},
+			Timestamp:        cmttime.Now(),
+			ValidatorAddress: pubKey.Address(),
+			ValidatorIndex:   valIdx,
+			Signature:        cmtrand.Bytes(64),
+		}
+		reactor.Receive(p2p.Envelope{
+			ChannelID: VoteChannel,
+			Src:       peer,
+			Message:   &cmtcons.Vote{Vote: vote.ToProto()},
+		})
+		return false
+	}, 10*time.Second, 100*time.Millisecond, "peer that sent a forged vote should be stopped")
 }
 
 //-------------------------------------------------------------
