@@ -10,12 +10,11 @@ import (
 )
 
 // heavyGRPCMethods are the gRPC methods whose responses can be large or whose
-// cost scales with chain data. The unary ones share the same process-wide
-// semaphore as the equivalent HTTP RPC routes so a burst over either transport
-// can't exceed the combined budget. The streaming ones (BlockByHash,
-// BlockByHeight) send one block part at a time and their lifetime depends on
-// the client reading, so they draw from a separate semaphore of the same size
-// (see newHeavyStreamSem) and can't starve the shared budget.
+// cost scales with chain data. They share the same process-wide semaphore as
+// the equivalent HTTP RPC routes so a burst over either transport can't exceed
+// the combined budget. The streaming ones (BlockByHash, BlockByHeight) are
+// bounded by heavyStreamStallTimeout so a stalled client can't hold a slot
+// indefinitely.
 //
 // ValidatorSet is gated here even though the HTTP validators route is not: the
 // gRPC method returns the full validator set for a height unpaginated, while the
@@ -63,22 +62,11 @@ func heavyUnaryInterceptor(sem chan struct{}) grpc.UnaryServerInterceptor {
 // the stream for longer has the stream canceled, which frees its slot.
 const heavyStreamStallTimeout = 30 * time.Second
 
-// newHeavyStreamSem returns the semaphore bounding concurrent heavy streams. It
-// has the same capacity as the shared heavy semaphore but is separate from it,
-// so streams held open by slow clients can't block unary gRPC or HTTP heavy
-// requests. A nil shared semaphore (limit disabled) yields nil.
-func newHeavyStreamSem(sem chan struct{}) chan struct{} {
-	if sem == nil {
-		return nil
-	}
-	return make(chan struct{}, cap(sem))
-}
-
 // heavyStreamInterceptor bounds concurrent heavy streaming responses (e.g.
-// BlockByHash/BlockByHeight, which stream a block part by part) using sem. The
-// slot is held for the duration of the stream; each receive or send on the
-// stream must complete within stallTimeout, otherwise the stream is canceled
-// and the slot released.
+// BlockByHash/BlockByHeight, which stream a block part by part) using the
+// shared semaphore. The slot is held for the duration of the stream; each
+// receive or send on the stream must complete within stallTimeout, otherwise
+// the stream is canceled and the slot released.
 func heavyStreamInterceptor(sem chan struct{}, stallTimeout time.Duration) grpc.StreamServerInterceptor {
 	return func(
 		srv interface{},

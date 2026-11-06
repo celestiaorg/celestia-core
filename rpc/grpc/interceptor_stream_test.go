@@ -2,6 +2,7 @@ package coregrpc
 
 import (
 	"context"
+	"io"
 	"net"
 	"testing"
 	"time"
@@ -35,13 +36,12 @@ func (*streamingBlockAPI) ValidatorSet(context.Context, *ValidatorSetRequest) (*
 
 // startHeavyTestServer starts a gRPC server wired with the heavy-request
 // interceptors the way StartGRPCServer wires them, and returns a client
-// connection to it and the stream semaphore.
-func startHeavyTestServer(t *testing.T, sem chan struct{}, stallTimeout time.Duration) (*grpc.ClientConn, chan struct{}) {
+// connection to it.
+func startHeavyTestServer(t *testing.T, sem chan struct{}, stallTimeout time.Duration) *grpc.ClientConn {
 	t.Helper()
-	streamSem := newHeavyStreamSem(sem)
 	srv := grpc.NewServer(
 		grpc.UnaryInterceptor(heavyUnaryInterceptor(sem)),
-		grpc.StreamInterceptor(heavyStreamInterceptor(streamSem, stallTimeout)),
+		grpc.StreamInterceptor(heavyStreamInterceptor(sem, stallTimeout)),
 	)
 	RegisterBlockAPIServer(srv, &streamingBlockAPI{})
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
@@ -52,13 +52,13 @@ func startHeavyTestServer(t *testing.T, sem chan struct{}, stallTimeout time.Dur
 	cc, err := grpc.NewClient(ln.Addr().String(), grpc.WithTransportCredentials(insecure.NewCredentials()))
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = cc.Close() })
-	return cc, streamSem
+	return cc
 }
 
 // TestHeavyStreamStalledClientReleasesSlot verifies that a block stream whose
 // client never sends its request, or stops reading the response, is canceled
-// after the stall timeout and its slot released, and that such streams never
-// occupy the shared heavy budget used by unary and HTTP heavy requests.
+// after the stall timeout and its shared heavy slot released, so heavy unary
+// and HTTP requests are served again.
 func TestHeavyStreamStalledClientReleasesSlot(t *testing.T) {
 	const stallTimeout = 300 * time.Millisecond
 
@@ -77,20 +77,19 @@ func TestHeavyStreamStalledClientReleasesSlot(t *testing.T) {
 	for name, stall := range testCases {
 		t.Run(name, func(t *testing.T) {
 			sem := make(chan struct{}, 1)
-			cc, streamSem := startHeavyTestServer(t, sem, stallTimeout)
+			cc := startHeavyTestServer(t, sem, stallTimeout)
 
 			stall(t, cc)
-			require.Eventually(t, func() bool { return len(streamSem) == 1 }, 5*time.Second, 5*time.Millisecond,
-				"the stalled stream must hold a stream slot")
-			require.Empty(t, sem, "a stream must not hold a shared heavy slot")
-
-			// Heavy unary requests are still served while the stream stalls.
-			_, err := NewBlockAPIClient(cc).ValidatorSet(t.Context(), &ValidatorSetRequest{Height: 1})
-			require.NoError(t, err)
+			require.Eventually(t, func() bool { return len(sem) == 1 }, 5*time.Second, 5*time.Millisecond,
+				"the stalled stream must hold the shared heavy slot")
 
 			// The stalled stream is canceled and its slot freed.
-			require.Eventually(t, func() bool { return len(streamSem) == 0 }, 5*time.Second, 5*time.Millisecond,
+			require.Eventually(t, func() bool { return len(sem) == 0 }, 5*time.Second, 5*time.Millisecond,
 				"the stalled stream must release its slot after the stall timeout")
+
+			// Heavy unary requests are served again.
+			_, err := NewBlockAPIClient(cc).ValidatorSet(t.Context(), &ValidatorSetRequest{Height: 1})
+			require.NoError(t, err)
 		})
 	}
 }
@@ -101,7 +100,7 @@ func TestHeavyStreamStalledClientReleasesSlot(t *testing.T) {
 func TestHeavyStreamCompletesWithinStallTimeout(t *testing.T) {
 	sem := make(chan struct{}, 1)
 	const stallTimeout = time.Second
-	cc, streamSem := startHeavyTestServer(t, sem, stallTimeout)
+	cc := startHeavyTestServer(t, sem, stallTimeout)
 
 	stream, err := NewBlockAPIClient(cc).BlockByHeight(t.Context(), &BlockByHeightRequest{Height: 1})
 	require.NoError(t, err)
@@ -110,6 +109,7 @@ func TestHeavyStreamCompletesWithinStallTimeout(t *testing.T) {
 	for {
 		_, err := stream.Recv()
 		if err != nil {
+			require.ErrorIs(t, err, io.EOF, "the stream must complete, not be canceled")
 			break
 		}
 		n++
@@ -119,5 +119,5 @@ func TestHeavyStreamCompletesWithinStallTimeout(t *testing.T) {
 	}
 	require.Equal(t, 200, n)
 	require.Greater(t, time.Since(start), stallTimeout)
-	require.Eventually(t, func() bool { return len(streamSem) == 0 }, 5*time.Second, 5*time.Millisecond)
+	require.Eventually(t, func() bool { return len(sem) == 0 }, 5*time.Second, 5*time.Millisecond)
 }
