@@ -403,6 +403,9 @@ func (w *WantParts) ValidateBasic() error {
 	if w.Parts == nil {
 		return errors.New("WantParts: Parts cannot be nil")
 	}
+	if w.Height < 0 || w.Round < 0 {
+		return errors.New("WantParts: Height and Round cannot be negative")
+	}
 	// A block has at most MaxBlockPartsCount original parts plus as many
 	// parity parts, so no valid request can select more bits than that.
 	if maxBits := int(types.MaxBlockPartsCount) * ParityRatio; w.Parts.Size() > maxBits {
