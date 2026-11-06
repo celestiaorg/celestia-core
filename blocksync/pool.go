@@ -429,9 +429,13 @@ func (pool *BlockPool) addBlock(peerID p2p.ID, block *types.Block, extCommit *ty
 			return fmt.Errorf("peer sent us block #%d we didn't expect (current height: %d, start height: %d)",
 				block.Height, pool.height, pool.startHeight), true
 		}
+		// A slow peer may still deliver a block we asked it for after another
+		// peer's copy was already applied. Any other block at this height was
+		// not requested from this peer.
 		peer := pool.peers[peerID]
-		if peer != nil {
-			peer.decrPending(blockSize)
+		if peer == nil || !peer.decrPending(block.Height, blockSize) {
+			return fmt.Errorf("peer sent us block #%d we didn't request from it (current height: %d)",
+				block.Height, pool.height), true
 		}
 		return fmt.Errorf("got an already committed block #%d (possibly from the slow peer %s)", block.Height, peerID), false
 	}
@@ -451,7 +455,7 @@ func (pool *BlockPool) addBlock(peerID p2p.ID, block *types.Block, extCommit *ty
 	atomic.AddInt32(&pool.numPending, -1)
 	peer := pool.peers[peerID]
 	if peer != nil {
-		peer.decrPending(blockSize)
+		peer.decrPending(block.Height, blockSize)
 	}
 
 	if blockSet {
@@ -650,12 +654,12 @@ func (pool *BlockPool) pickIncrAvailablePeer(height int64, ignorePeerID, prevPee
 			}
 			continue
 		}
-		peer.incrPending()
+		peer.incrPending(height)
 		return peer
 	}
 
 	if fallbackPeer != nil {
-		fallbackPeer.incrPending()
+		fallbackPeer.incrPending(height)
 		return fallbackPeer
 	}
 
@@ -734,6 +738,10 @@ type bpPeer struct {
 
 	timeout *time.Timer
 
+	// pendingHeights counts the outstanding requests made to this peer, by
+	// height. Its values sum to numPending.
+	pendingHeights map[int64]int32
+
 	logger log.Logger
 }
 
@@ -746,6 +754,7 @@ func newBPPeer(pool *BlockPool, peerID p2p.ID, base int64, height int64) *bpPeer
 		numPending: 0,
 		logger:     log.NewNopLogger(),
 	}
+	peer.pendingHeights = make(map[int64]int32)
 	return peer
 }
 
@@ -767,20 +776,26 @@ func (peer *bpPeer) resetTimeout() {
 	}
 }
 
-func (peer *bpPeer) incrPending() {
+func (peer *bpPeer) incrPending(height int64) {
 	if peer.numPending == 0 {
 		peer.resetMonitor()
 		peer.resetTimeout()
 	}
 	peer.numPending++
+	peer.pendingHeights[height]++
 }
 
-func (peer *bpPeer) decrPending(recvSize int) {
-	// A block can arrive for a request made to an earlier connection with
-	// this peer, so this peer may have nothing pending. Its monitor and timer
-	// are only set once it has a pending request.
-	if peer.numPending <= 0 {
-		return
+// decrPending marks one outstanding request at height as answered. It returns
+// false, and changes nothing, if no request at height is outstanding with this
+// peer: the block was never requested from it, was already answered, or was
+// requested from an earlier connection with this peer.
+func (peer *bpPeer) decrPending(height int64, recvSize int) bool {
+	if peer.pendingHeights[height] <= 0 {
+		return false
+	}
+	peer.pendingHeights[height]--
+	if peer.pendingHeights[height] == 0 {
+		delete(peer.pendingHeights, height)
 	}
 	peer.numPending--
 	if peer.numPending == 0 {
@@ -789,6 +804,7 @@ func (peer *bpPeer) decrPending(recvSize int) {
 		peer.recvMonitor.Update(recvSize)
 		peer.resetTimeout()
 	}
+	return true
 }
 
 func (peer *bpPeer) onTimeout() {
