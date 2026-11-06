@@ -109,8 +109,9 @@ func (info DefaultNodeInfo) ID() ID {
 // Validate checks the self-reported DefaultNodeInfo is safe.
 // It returns an error if there
 // are too many Channels, if there are any duplicate Channels,
-// if the ListenAddr is malformed, or if the ListenAddr is a host name
-// that can not be resolved to some IP.
+// or if the ListenAddr is malformed. The ListenAddr is only checked
+// syntactically: a host name is not resolved, so validation never
+// performs a DNS lookup.
 // TODO: constraints for Moniker/Other? Or is that for the UI ?
 // JAE: It needs to be done on the client, but to prevent ambiguous
 // unicode characters, maybe it's worth sanitizing it here.
@@ -123,9 +124,9 @@ func (info DefaultNodeInfo) Validate() error {
 
 	// ID is already validated.
 
-	// Validate ListenAddr.
-	_, err := NewNetAddressString(IDAddressString(info.ID(), info.ListenAddr))
-	if err != nil {
+	// Validate ListenAddr syntactically. Do not resolve it: it is supplied
+	// by an unauthenticated peer during the handshake.
+	if _, _, _, err := parseNetAddressString(IDAddressString(info.ID(), info.ListenAddr)); err != nil {
 		return err
 	}
 
@@ -221,6 +222,18 @@ OUTER_LOOP:
 func (info DefaultNodeInfo) NetAddress() (*NetAddress, error) {
 	idAddr := IDAddressString(info.ID(), info.ListenAddr)
 	return NewNetAddressString(idAddr)
+}
+
+// NodeInfoIPAddress returns the address a peer advertised in its NodeInfo
+// without performing a DNS lookup. For a DefaultNodeInfo whose ListenAddr host
+// is not an IP literal, an error is returned. Other NodeInfo implementations
+// fall back to NetAddress().
+func NodeInfoIPAddress(ni NodeInfo) (*NetAddress, error) {
+	info, ok := ni.(DefaultNodeInfo)
+	if !ok {
+		return ni.NetAddress()
+	}
+	return NewNetAddressStringNoLookup(IDAddressString(info.ID(), info.ListenAddr))
 }
 
 func (info DefaultNodeInfo) HasChannel(chID byte) bool {

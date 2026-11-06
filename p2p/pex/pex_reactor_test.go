@@ -1042,3 +1042,44 @@ func TestIsDuplicatePeerIDRejection(t *testing.T) {
 		})
 	}
 }
+
+// hostNamePeer is a mock peer that advertises a host name as its ListenAddr.
+type hostNamePeer struct {
+	*mock.Peer
+	listenAddr string
+}
+
+func (p hostNamePeer) NodeInfo() p2p.NodeInfo {
+	return p2p.DefaultNodeInfo{
+		DefaultNodeID: p.ID(),
+		ListenAddr:    p.listenAddr,
+	}
+}
+
+// TestPEXReactorReceiveAddrsFromHostNamePeer checks that a PEX response from
+// a peer that advertises a host name is accepted without resolving it: the
+// connection's socket address is used as the source in the address book.
+func TestPEXReactorReceiveAddrsFromHostNamePeer(t *testing.T) {
+	r, book := createReactor(&ReactorConfig{})
+	defer teardownReactor(book)
+
+	sw := createSwitchAndAddReactors(r)
+	sw.SetAddrBook(book)
+
+	// The .invalid TLD never resolves (RFC 6761), so a lookup would fail.
+	peer := hostNamePeer{Peer: mock.NewPeer(nil), listenAddr: "peer.invalid:26656"}
+	p2p.AddPeerToSwitchPeerSet(sw, peer)
+
+	r.RequestAddrs(peer)
+	require.True(t, r.requestsSent.Has(string(peer.ID())))
+
+	_, addr := p2p.CreateRoutableAddr()
+	size := book.Size()
+	msg := &tmp2p.PexAddrs{Addrs: []tmp2p.NetAddress{addr.ToProto()}}
+	r.Receive(p2p.Envelope{ChannelID: PexChannel, Src: peer, Message: msg})
+
+	assert.Equal(t, size+1, book.Size())
+	assert.True(t, book.HasAddress(addr))
+	assert.False(t, r.requestsSent.Has(string(peer.ID())))
+	assert.True(t, sw.Peers().Has(peer.ID()), "peer must not be disconnected")
+}

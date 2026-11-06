@@ -204,8 +204,9 @@ func (r *Reactor) AddPeer(p Peer) {
 			r.RequestAddrs(p)
 		}
 	} else {
-		// inbound peer is its own source
-		addr, err := p.NodeInfo().NetAddress()
+		// inbound peer is its own source. Do not resolve its self-reported
+		// address: this runs while the peer is being admitted.
+		addr, err := p2p.NodeInfoIPAddress(p.NodeInfo())
 		if err != nil {
 			r.Logger.Error("Failed to get peer NetAddress", "err", err, "peer", p)
 			return
@@ -363,14 +364,11 @@ func (r *Reactor) ReceiveAddrs(addrs []*p2p.NetAddress, src Peer) error {
 	}
 	r.requestsSent.Delete(id)
 
-	srcAddr, err := src.NodeInfo().NetAddress()
-	if err != nil {
-		return err
-	}
+	srcAddr := peerSourceAddr(src)
 
 	for _, netAddr := range addrs {
 		// NOTE: we check netAddr validity and routability in book#AddAddress.
-		err = r.book.AddAddress(netAddr, srcAddr)
+		err := r.book.AddAddress(netAddr, srcAddr)
 		if err != nil {
 			r.logErrAddrBook(err)
 			// XXX: should we be strict about incoming data and disconnect from a
@@ -391,6 +389,17 @@ func (r *Reactor) ReceiveAddrs(addrs []*p2p.NetAddress, src Peer) error {
 	}
 
 	return nil
+}
+
+// peerSourceAddr returns the address used to attribute addresses received
+// from src in the address book. It never performs a DNS lookup: the peer's
+// self-reported ListenAddr is used only if it is an IP literal, otherwise the
+// socket address of the connection is used.
+func peerSourceAddr(src Peer) *p2p.NetAddress {
+	if addr, err := p2p.NodeInfoIPAddress(src.NodeInfo()); err == nil {
+		return addr
+	}
+	return src.SocketAddr()
 }
 
 // SendAddrs sends addrs to the peer.

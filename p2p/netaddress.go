@@ -63,20 +63,64 @@ func NewNetAddress(id ID, addr net.Addr) *NetAddress {
 	return na
 }
 
+// lookupIP resolves a host name. It is a variable so tests can observe lookups.
+var lookupIP = net.LookupIP
+
 // NewNetAddressString returns a new NetAddress using the provided address in
 // the form of "ID@IP:Port".
 // Also resolves the host if host is not an IP.
 // Errors are of type ErrNetAddressXxx where Xxx is in (NoID, Invalid, Lookup)
 func NewNetAddressString(addr string) (*NetAddress, error) {
+	id, host, port, err := parseNetAddressString(addr)
+	if err != nil {
+		return nil, err
+	}
+
+	ip := net.ParseIP(host)
+	if ip == nil {
+		ips, err := lookupIP(host)
+		if err != nil {
+			return nil, ErrNetAddressLookup{host, err}
+		}
+		ip = ips[0]
+	}
+
+	na := NewNetAddressIPPort(ip, port)
+	na.ID = id
+	return na, nil
+}
+
+// NewNetAddressStringNoLookup is like NewNetAddressString, but it never
+// performs a DNS lookup: the host must be an IP literal.
+// Errors are of type ErrNetAddressXxx where Xxx is in (NoID, Invalid)
+func NewNetAddressStringNoLookup(addr string) (*NetAddress, error) {
+	id, host, port, err := parseNetAddressString(addr)
+	if err != nil {
+		return nil, err
+	}
+
+	ip := net.ParseIP(host)
+	if ip == nil {
+		return nil, ErrNetAddressInvalid{host, errors.New("host is not an IP address")}
+	}
+
+	na := NewNetAddressIPPort(ip, port)
+	na.ID = id
+	return na, nil
+}
+
+// parseNetAddressString checks that addr is of the form "ID@host:port" and
+// returns its parts. It does not resolve host.
+func parseNetAddressString(addr string) (ID, string, uint16, error) {
 	addrWithoutProtocol := removeProtocolIfDefined(addr)
 	spl := strings.Split(addrWithoutProtocol, "@")
 	if len(spl) != 2 {
-		return nil, ErrNetAddressNoID{addr}
+		return "", "", 0, ErrNetAddressNoID{addr}
 	}
 
 	// get ID
 	if err := validateID(ID(spl[0])); err != nil {
-		return nil, ErrNetAddressInvalid{addrWithoutProtocol, err}
+		return "", "", 0, ErrNetAddressInvalid{addrWithoutProtocol, err}
 	}
 	var id ID
 	id, addrWithoutProtocol = ID(spl[0]), spl[1]
@@ -84,31 +128,72 @@ func NewNetAddressString(addr string) (*NetAddress, error) {
 	// get host and port
 	host, portStr, err := net.SplitHostPort(addrWithoutProtocol)
 	if err != nil {
-		return nil, ErrNetAddressInvalid{addrWithoutProtocol, err}
+		return "", "", 0, ErrNetAddressInvalid{addrWithoutProtocol, err}
 	}
 	if len(host) == 0 {
-		return nil, ErrNetAddressInvalid{
+		return "", "", 0, ErrNetAddressInvalid{
 			addrWithoutProtocol,
 			errors.New("host is empty")}
 	}
-
-	ip := net.ParseIP(host)
-	if ip == nil {
-		ips, err := net.LookupIP(host)
-		if err != nil {
-			return nil, ErrNetAddressLookup{host, err}
-		}
-		ip = ips[0]
+	if net.ParseIP(host) == nil && !isDomainName(host) {
+		return "", "", 0, ErrNetAddressInvalid{
+			addrWithoutProtocol,
+			errors.New("host is neither an IP address nor a valid host name")}
 	}
 
 	port, err := strconv.ParseUint(portStr, 10, 16)
 	if err != nil {
-		return nil, ErrNetAddressInvalid{portStr, err}
+		return "", "", 0, ErrNetAddressInvalid{portStr, err}
 	}
 
-	na := NewNetAddressIPPort(ip, uint16(port))
-	na.ID = id
-	return na, nil
+	return id, host, uint16(port), nil
+}
+
+// isDomainName reports whether s is a syntactically valid host name
+// (RFC 1123 labels, also allowing '_' as the Go resolver does). It only checks
+// syntax and never performs a DNS lookup. A single trailing dot is allowed.
+func isDomainName(s string) bool {
+	l := len(s)
+	if l == 0 || l > 254 || l == 254 && s[l-1] != '.' {
+		return false
+	}
+
+	last := byte('.')
+	nonNumeric := false // true once we have seen a letter, '_' or '-'
+	partlen := 0
+	for i := 0; i < l; i++ {
+		c := s[i]
+		switch {
+		case 'a' <= c && c <= 'z' || 'A' <= c && c <= 'Z' || c == '_':
+			nonNumeric = true
+			partlen++
+		case '0' <= c && c <= '9':
+			partlen++
+		case c == '-':
+			// Labels must not start with a hyphen.
+			if last == '.' {
+				return false
+			}
+			partlen++
+			nonNumeric = true
+		case c == '.':
+			// Labels must not be empty or end with a hyphen.
+			if last == '.' || last == '-' {
+				return false
+			}
+			if partlen > 63 {
+				return false
+			}
+			partlen = 0
+		default:
+			return false
+		}
+		last = c
+	}
+	if last == '-' || partlen > 63 {
+		return false
+	}
+	return nonNumeric
 }
 
 // NewNetAddressStrings returns an array of NetAddress'es build using
