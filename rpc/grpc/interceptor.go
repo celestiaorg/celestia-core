@@ -18,7 +18,8 @@ import (
 // HTTP route paginates (max_per_page), so only the gRPC form is unbounded.
 //
 // SubscribeNewHeights is deliberately excluded: it is a long-lived subscription
-// stream and holding a slot for its lifetime would starve the budget. Cheap or
+// stream and holding a slot for its lifetime would starve the budget; it is
+// bounded separately by MaxHeightListeners (see BlockAPI.addHeightListener). Cheap or
 // bounded methods (Ping, Status, BroadcastTx, Commit) are excluded as well.
 var heavyGRPCMethods = map[string]struct{}{
 	"/tendermint.rpc.grpc.BlockAPI/BlockByHash":                 {},

@@ -8,6 +8,9 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 
 	"github.com/cometbft/cometbft/libs/log"
 	"github.com/cometbft/cometbft/rpc/core"
@@ -20,6 +23,15 @@ func newTestBlockAPI(t *testing.T) *BlockAPI {
 	t.Helper()
 	env := &core.Environment{Logger: log.NewNopLogger()}
 	return NewBlockAPI(env)
+}
+
+// mustAddHeightListener registers a height listener and fails the test if
+// the listener cap rejects it.
+func mustAddHeightListener(t *testing.T, api *BlockAPI) chan SubscribeNewHeightsResponse {
+	t.Helper()
+	ch, err := api.addHeightListener()
+	require.NoError(t, err)
+	return ch
 }
 
 // fillChannel writes n placeholder events to ch without blocking the test
@@ -41,8 +53,8 @@ func fillChannel(t *testing.T, ch chan SubscribeNewHeightsResponse, n int) {
 func TestBroadcastToListeners_DoesNotBlockOnSlowSubscriber(t *testing.T) {
 	api := newTestBlockAPI(t)
 
-	slow := api.addHeightListener()
-	fast := api.addHeightListener()
+	slow := mustAddHeightListener(t, api)
+	fast := mustAddHeightListener(t, api)
 
 	// Saturate the slow listener's channel (cap=50, see addHeightListener).
 	fillChannel(t, slow, cap(slow))
@@ -76,7 +88,7 @@ func TestBroadcastToListeners_DoesNotBlockOnSlowSubscriber(t *testing.T) {
 func TestBroadcastToListeners_DoesNotHoldLockDuringSend(t *testing.T) {
 	api := newTestBlockAPI(t)
 
-	slow := api.addHeightListener()
+	slow := mustAddHeightListener(t, api)
 	fillChannel(t, slow, cap(slow))
 
 	// Run the broadcast concurrently. With the bug present, this acquires
@@ -95,7 +107,8 @@ func TestBroadcastToListeners_DoesNotHoldLockDuringSend(t *testing.T) {
 	// addHeightListener must not block on the broadcaster's lock.
 	addDone := make(chan chan SubscribeNewHeightsResponse, 1)
 	go func() {
-		addDone <- api.addHeightListener()
+		ch, _ := api.addHeightListener()
+		addDone <- ch
 	}()
 
 	var newCh chan SubscribeNewHeightsResponse
@@ -130,7 +143,7 @@ func TestBroadcastToListeners_DeliversToAllSubscribersWhenAllDrain(t *testing.T)
 
 	chans := make([]chan SubscribeNewHeightsResponse, numSubs)
 	for i := range chans {
-		chans[i] = api.addHeightListener()
+		chans[i] = mustAddHeightListener(t, api)
 	}
 
 	var wg sync.WaitGroup
@@ -175,8 +188,8 @@ func TestStop_DoesNotDeadlock(t *testing.T) {
 	api := NewBlockAPI(env)
 
 	// Register a couple of listeners so closeAllListeners has work to do.
-	_ = api.addHeightListener()
-	_ = api.addHeightListener()
+	_ = mustAddHeightListener(t, api)
+	_ = mustAddHeightListener(t, api)
 
 	done := make(chan error, 1)
 	go func() {
@@ -204,7 +217,7 @@ func TestBroadcastToListeners_DoesNotDeadlockOnPanic(t *testing.T) {
 
 	// Close the listener's channel so the next send panics with
 	// "send on closed channel", triggering the recover path.
-	ch := api.addHeightListener()
+	ch := mustAddHeightListener(t, api)
 	close(ch)
 
 	done := make(chan struct{})
@@ -229,7 +242,7 @@ func TestBroadcastToListeners_DoesNotDeadlockOnPanic(t *testing.T) {
 // CatchingUp are forwarded to subscribers (issue #3112).
 func TestBroadcastToListeners_IncludesTimeAndCatchingUp(t *testing.T) {
 	api := newTestBlockAPI(t)
-	ch := api.addHeightListener()
+	ch := mustAddHeightListener(t, api)
 
 	blockTime := time.Date(2026, 6, 9, 15, 6, 13, 0, time.UTC)
 	api.broadcastToListeners(context.Background(), 42, []byte("abc"), blockTime, true)
@@ -243,4 +256,78 @@ func TestBroadcastToListeners_IncludesTimeAndCatchingUp(t *testing.T) {
 	case <-time.After(1 * time.Second):
 		t.Fatal("subscriber did not receive the broadcast")
 	}
+}
+
+// fakeHeightsStream is a minimal BlockAPI_SubscribeNewHeightsServer whose
+// lifetime is controlled by ctx.
+type fakeHeightsStream struct {
+	grpc.ServerStream
+	ctx context.Context
+}
+
+func (s *fakeHeightsStream) Context() context.Context                { return s.ctx }
+func (s *fakeHeightsStream) Send(*SubscribeNewHeightsResponse) error { return nil }
+
+func heightListenerCount(api *BlockAPI) int {
+	api.Lock()
+	defer api.Unlock()
+	return len(api.heightListeners)
+}
+
+// TestSubscribeNewHeights_RespectsListenerCap verifies that SubscribeNewHeights
+// rejects streams beyond the listener cap with ResourceExhausted, and that
+// listeners are released when their stream ends so the slot can be reused.
+func TestSubscribeNewHeights_RespectsListenerCap(t *testing.T) {
+	const limit = 3
+	api := newTestBlockAPI(t)
+	api.maxHeightListeners = limit
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	var wg sync.WaitGroup
+	for i := 0; i < limit; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			_ = api.SubscribeNewHeights(&SubscribeNewHeightsRequest{}, &fakeHeightsStream{ctx: ctx})
+		}()
+	}
+	require.Eventually(t, func() bool { return heightListenerCount(api) == limit },
+		2*time.Second, 5*time.Millisecond)
+
+	// The next stream must be rejected immediately rather than registered.
+	errCh := make(chan error, 1)
+	go func() {
+		errCh <- api.SubscribeNewHeights(&SubscribeNewHeightsRequest{}, &fakeHeightsStream{ctx: ctx})
+	}()
+	select {
+	case err := <-errCh:
+		require.Equal(t, codes.ResourceExhausted, status.Code(err))
+	case <-time.After(2 * time.Second):
+		t.Fatal("SubscribeNewHeights admitted a stream beyond the listener cap")
+	}
+	require.Equal(t, limit, heightListenerCount(api))
+
+	// Ending the streams must release their listeners.
+	cancel()
+	wg.Wait()
+	require.Equal(t, 0, heightListenerCount(api))
+
+	// A freed slot can be reused.
+	ctx2, cancel2 := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() {
+		done <- api.SubscribeNewHeights(&SubscribeNewHeightsRequest{}, &fakeHeightsStream{ctx: ctx2})
+	}()
+	require.Eventually(t, func() bool { return heightListenerCount(api) == 1 },
+		2*time.Second, 5*time.Millisecond)
+	cancel2()
+	require.NoError(t, <-done)
+	require.Equal(t, 0, heightListenerCount(api))
+}
+
+func TestNewBlockAPI_DefaultListenerCap(t *testing.T) {
+	api := newTestBlockAPI(t)
+	require.Equal(t, MaxHeightListeners, api.maxHeightListeners)
 }
