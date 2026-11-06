@@ -55,6 +55,8 @@ func TestRPCParams(t *testing.T) {
 
 		// good
 		{`{"jsonrpc": "2.0", "method": "c", "id": "0", "params": null}`, "", types.JSONRPCStringID("0")},
+		{`{"jsonrpc": "2.0", "method": "c", "id": "0"}`, "", types.JSONRPCStringID("0")},
+		{`{"jsonrpc": "2.0", "method": "block", "id": "0"}`, "", types.JSONRPCStringID("0")},
 		{`{"method": "c", "id": "0", "params": {}}`, "", types.JSONRPCStringID("0")},
 		{`{"method": "c", "id": "0", "params": ["a", "10"]}`, "", types.JSONRPCStringID("0")},
 	}

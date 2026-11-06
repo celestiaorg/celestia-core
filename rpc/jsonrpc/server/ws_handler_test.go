@@ -39,6 +39,16 @@ func TestWebsocketManagerHandler(t *testing.T) {
 	err = c.ReadJSON(&resp)
 	require.NoError(t, err)
 	require.Nil(t, resp.Error)
+
+	// a method that takes arguments, called without params, gets the
+	// arguments' zero values
+	err = c.WriteMessage(websocket.TextMessage, []byte(`{"jsonrpc":"2.0","id":"noParams","method":"c"}`))
+	require.NoError(t, err)
+	resp = types.RPCResponse{}
+	err = c.ReadJSON(&resp)
+	require.NoError(t, err)
+	require.Nil(t, resp.Error)
+	require.Equal(t, types.JSONRPCStringID("noParams"), resp.ID)
 	dialResp.Body.Close()
 }
 
