@@ -89,8 +89,12 @@ func FuzzRPCCoreJSONRPC(f *testing.F) {
 	// Methods that take arguments, called without params.
 	f.Add(uint8(0), uint8(0), []byte(`[{"jsonrpc":"2.0","id":1,"method":"block"},{"jsonrpc":"2.0","id":2,"method":"tx"}]`))
 	f.Add(uint8(3), uint8(0), []byte(`{"jsonrpc":"2.0","id":1,"method":"block"}`))
-	// A lone quote for a 64-bit integer argument.
-	f.Add(uint8(2), uint8(0), []byte(`height="`))
+	// A lone quote for a 64-bit integer argument, sent to block (URI mode).
+	blockIdx := sort.SearchStrings(names, "block")
+	require.Less(f, blockIdx, len(names))
+	require.Equal(f, "block", names[blockIdx])
+	require.Less(f, blockIdx, 256)
+	f.Add(uint8(2), uint8(blockIdx), []byte(`height="`))
 
 	f.Fuzz(func(t *testing.T, mode, method uint8, data []byte) {
 		if len(data) > 64<<10 {
