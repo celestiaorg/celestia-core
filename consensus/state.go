@@ -2220,8 +2220,11 @@ func (cs *State) precommitDelay() time.Duration {
 	}
 	precommitVoteTime := cs.rs.StartTime.Add(cs.state.Timeouts.DelayedPrecommitTimeout)
 	waitTime := time.Until(precommitVoteTime)
-	if _, ok := cs.privValidator.(*privval.SignerClient); ok {
-		waitTime = waitTime - KMSSigningDelay
+	// A remote signer reaches consensus as a RetrySignerClient when the node
+	// is configured with priv_validator_laddr, so both types get the allowance.
+	switch cs.privValidator.(type) {
+	case *privval.SignerClient, *privval.RetrySignerClient:
+		waitTime -= KMSSigningDelay
 	}
 	return waitTime
 }
