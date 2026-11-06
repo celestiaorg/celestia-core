@@ -25,6 +25,7 @@ import (
 	cmtrand "github.com/cometbft/cometbft/libs/rand"
 	p2pmock "github.com/cometbft/cometbft/p2p/mock"
 	cmtproto "github.com/cometbft/cometbft/proto/tendermint/types"
+	sm "github.com/cometbft/cometbft/state"
 	smmocks "github.com/cometbft/cometbft/state/mocks"
 	"github.com/cometbft/cometbft/types"
 )
@@ -2889,4 +2890,31 @@ func TestHandleMsgReleasesLockBeforeStatsMsgQueueSend(t *testing.T) {
 	}
 
 	<-cs.statsMsgQueue
+}
+
+// TestStatePrecommitBeforeInitialHeightIgnored checks that a precommit for the
+// height before InitialHeight is ignored, since there is no LastCommit to add
+// it to.
+func TestStatePrecommitBeforeInitialHeightIgnored(t *testing.T) {
+	genDoc, privVals := randGenesisDoc(1, false, 10, test.ConsensusParams())
+	genDoc.InitialHeight = 10
+	state, err := sm.MakeGenesisState(genDoc)
+	require.NoError(t, err)
+
+	cs := newState(state, privVals[0], kvstore.NewInMemoryApplication())
+	require.Equal(t, int64(10), cs.rs.Height)
+	require.Equal(t, cstypes.RoundStepNewHeight, cs.rs.Step)
+	require.Nil(t, cs.rs.LastCommit)
+
+	// The vote does not need to come from a validator.
+	vs := newValidatorStub(types.NewMockPV(), 0)
+	vs.Height = genDoc.InitialHeight - 1
+	vote := signVote(vs, cmtproto.PrecommitType, nil, types.PartSetHeader{}, false)
+
+	require.NotPanics(t, func() {
+		added, err := cs.tryAddVote(vote, "peer")
+		require.NoError(t, err)
+		require.False(t, added)
+	})
+	require.Nil(t, cs.rs.LastCommit)
 }
