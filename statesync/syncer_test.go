@@ -213,6 +213,7 @@ func TestSyncer_SyncAny(t *testing.T) {
 		AppVersion:       testAppVersion,
 		LastBlockHeight:  1,
 		LastBlockAppHash: []byte("app_hash"),
+		TimeoutInfo:      abci.TimeoutInfo{TimeoutCommit: time.Nanosecond, DynamicTimeoutCommit: 800 * time.Millisecond},
 	}, nil)
 
 	newState, lastCommit, err := syncer.SyncAny(0, func() {})
@@ -225,6 +226,8 @@ func TestSyncer_SyncAny(t *testing.T) {
 	chunkRequestsMtx.Unlock()
 
 	expectState := state
+	expectState.Timeouts.TimeoutCommit = time.Nanosecond
+	expectState.Timeouts.DynamicTimeoutCommit = 800 * time.Millisecond
 
 	assert.Equal(t, expectState, newState)
 	assert.Equal(t, commit, lastCommit)

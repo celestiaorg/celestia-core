@@ -1263,3 +1263,24 @@ func TestMedianTime(t *testing.T) {
 		require.Equal(t, medianTime, now.Add(1*time.Minute))
 	})
 }
+
+func TestUpdateStateCopiesDynamicTimeoutCommit(t *testing.T) {
+	tearDown, _, state := setupTestCase(t)
+	defer tearDown(t)
+	block, bps, err := makeBlock(state, state.LastBlockHeight+1, new(types.Commit))
+	require.NoError(t, err)
+	blockID := types.BlockID{Hash: block.Hash(), PartSetHeader: bps.Header()}
+	resp := &abci.ResponseFinalizeBlock{TimeoutInfo: abci.TimeoutInfo{
+		TimeoutCommit: time.Nanosecond, DynamicTimeoutCommit: 800 * time.Millisecond,
+	}}
+
+	updated, err := sm.UpdateState(state, blockID, &block.Header, resp, nil)
+	require.NoError(t, err)
+	require.Equal(t, 800*time.Millisecond, updated.Timeouts.DynamicTimeoutCommit)
+
+	pb, err := updated.ToProto()
+	require.NoError(t, err)
+	roundTrip, err := sm.FromProto(pb)
+	require.NoError(t, err)
+	require.Equal(t, updated.Timeouts, roundTrip.Timeouts)
+}
