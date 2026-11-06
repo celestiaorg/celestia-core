@@ -135,6 +135,11 @@ func parseNetAddressString(addr string) (ID, string, uint16, error) {
 			addrWithoutProtocol,
 			errors.New("host is empty")}
 	}
+	if net.ParseIP(host) == nil && !isDomainName(host) {
+		return "", "", 0, ErrNetAddressInvalid{
+			addrWithoutProtocol,
+			errors.New("host is neither an IP address nor a valid host name")}
+	}
 
 	port, err := strconv.ParseUint(portStr, 10, 16)
 	if err != nil {
@@ -142,6 +147,53 @@ func parseNetAddressString(addr string) (ID, string, uint16, error) {
 	}
 
 	return id, host, uint16(port), nil
+}
+
+// isDomainName reports whether s is a syntactically valid host name
+// (RFC 1123 labels, also allowing '_' as the Go resolver does). It only checks
+// syntax and never performs a DNS lookup. A single trailing dot is allowed.
+func isDomainName(s string) bool {
+	l := len(s)
+	if l == 0 || l > 254 || l == 254 && s[l-1] != '.' {
+		return false
+	}
+
+	last := byte('.')
+	nonNumeric := false // true once we have seen a letter, '_' or '-'
+	partlen := 0
+	for i := 0; i < l; i++ {
+		c := s[i]
+		switch {
+		case 'a' <= c && c <= 'z' || 'A' <= c && c <= 'Z' || c == '_':
+			nonNumeric = true
+			partlen++
+		case '0' <= c && c <= '9':
+			partlen++
+		case c == '-':
+			// Labels must not start with a hyphen.
+			if last == '.' {
+				return false
+			}
+			partlen++
+			nonNumeric = true
+		case c == '.':
+			// Labels must not be empty or end with a hyphen.
+			if last == '.' || last == '-' {
+				return false
+			}
+			if partlen > 63 {
+				return false
+			}
+			partlen = 0
+		default:
+			return false
+		}
+		last = c
+	}
+	if last == '-' || partlen > 63 {
+		return false
+	}
+	return nonNumeric
 }
 
 // NewNetAddressStrings returns an array of NetAddress'es build using

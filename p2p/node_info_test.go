@@ -3,6 +3,7 @@ package p2p
 import (
 	"errors"
 	"net"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -197,4 +198,53 @@ func TestNodeInfoIPAddressDoesNotResolve(t *testing.T) {
 	require.Error(t, err)
 
 	require.Zero(t, lookups, "NodeInfoIPAddress must not resolve the ListenAddr")
+}
+
+// TestNodeInfoValidateRejectsMalformedHostName checks that a ListenAddr whose
+// host is neither an IP nor a syntactically valid host name is rejected,
+// without resolving it.
+func TestNodeInfoValidateRejectsMalformedHostName(t *testing.T) {
+	lookups := 0
+	origLookupIP := lookupIP
+	lookupIP = func(host string) ([]net.IP, error) {
+		lookups++
+		return nil, errors.New("unexpected DNS lookup of " + host)
+	}
+	t.Cleanup(func() { lookupIP = origLookupIP })
+
+	nodeKey := NodeKey{PrivKey: ed25519.GenPrivKey()}
+
+	testCases := []struct {
+		listenAddr string
+		expectErr  bool
+	}{
+		{"localhost:26656", false},
+		{"peer.example.com.:26656", false}, // trailing dot
+		{"node_1:26656", false},            // underscore, as accepted by the Go resolver
+		{"a-b.example.com:26656", false},
+		{"bad host:26656", true},
+		{"bad\x00host:26656", true},
+		{"bad\nhost:26656", true},
+		{"-peer.example.com:26656", true},
+		{"peer-.example.com:26656", true},
+		{"peer..example.com:26656", true},
+		{".peer.example.com:26656", true},
+		{"peer.example.com..:26656", true},
+		{"1.2.3.4.5:26656", true}, // all-numeric, but not an IP
+		{"peer%eth0:26656", true},
+		{strings.Repeat("a", 64) + ".example.com:26656", true}, // label too long
+		{strings.Repeat("a.", 127) + "a:26656", true},          // name too long
+	}
+
+	for _, tc := range testCases {
+		ni := testNodeInfo(nodeKey.ID(), "testing").(DefaultNodeInfo)
+		ni.ListenAddr = tc.listenAddr
+		err := ni.Validate()
+		if tc.expectErr {
+			assert.Error(t, err, "%q", tc.listenAddr)
+		} else {
+			assert.NoError(t, err, "%q", tc.listenAddr)
+		}
+	}
+	require.Zero(t, lookups, "Validate must not resolve the ListenAddr")
 }
