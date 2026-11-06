@@ -32,8 +32,6 @@ const (
 	fzSeenLimit  = 8 // lowered tracker caps so short sequences reach overflow paths
 	fzIterBudget = 20 * time.Second
 
-	// Excluded pending PROTOCO-3514; remove with the fix.
-	fzCheckStaleBuffered = false
 	// Excluded pending PROTOCO-3524; remove with the fix.
 	fzCheckCountLimit = false
 )
@@ -611,15 +609,19 @@ func (h *catFuzzHarness) checkReceivedBuffer() {
 	t := h.t
 	rb := h.r.receivedBuffer
 	byPeer := map[string]int{}
+	var bytes int64
 	for _, buf := range rb.buffers {
 		require.NotEmpty(t, buf)
 		require.LessOrEqual(t, len(buf), maxReceivedBufferSize)
 		for seq, e := range buf {
 			require.Equal(t, seq, e.sequence)
 			byPeer[e.peerID]++
+			bytes += int64(len(e.tx.Tx))
 		}
 	}
 	require.Equal(t, byPeer, rb.countByPeer)
+	require.Equal(t, bytes, rb.totalBytes)
+	require.LessOrEqual(t, rb.totalBytes, rb.maxBytes)
 	for _, n := range rb.countByPeer {
 		require.LessOrEqual(t, n, maxRequestsPerPeer)
 	}
@@ -628,9 +630,6 @@ func (h *catFuzzHarness) checkReceivedBuffer() {
 // checkNoStaleBuffered runs after a refresh and checks that no buffered tx is
 // below its signer's expected sequence.
 func (h *catFuzzHarness) checkNoStaleBuffered() {
-	if !fzCheckStaleBuffered {
-		return
-	}
 	rb := h.r.receivedBuffer
 	rb.mu.Lock()
 	defer rb.mu.Unlock()
