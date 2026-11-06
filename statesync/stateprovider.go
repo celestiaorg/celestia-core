@@ -114,11 +114,19 @@ func (s *lightClientStateProvider) AppHash(ctx context.Context, height uint64) (
 func (s *lightClientStateProvider) Commit(ctx context.Context, height uint64) (*types.Commit, error) {
 	s.Lock()
 	defer s.Unlock()
-	header, err := s.lc.VerifyLightBlockAtHeight(ctx, int64(height), time.Now())
+	lightBlock, err := s.lc.VerifyLightBlockAtHeight(ctx, int64(height), time.Now())
 	if err != nil {
 		return nil, err
 	}
-	return header.Commit, nil
+	// The light client does not verify commit signatures for light blocks
+	// verified backwards from the trusted height, so verify the commit against
+	// the light block's validator set before it is used to bootstrap the node.
+	if err := lightBlock.ValidatorSet.VerifyCommit(
+		s.lc.ChainID(), lightBlock.Commit.BlockID, lightBlock.Height, lightBlock.Commit,
+	); err != nil {
+		return nil, fmt.Errorf("invalid commit at height %d: %w", height, err)
+	}
+	return lightBlock.Commit, nil
 }
 
 // State implements StateProvider.
