@@ -447,6 +447,35 @@ type evKey struct {
 
 func keyOf(ev cmttypes.Evidence) evKey { return evKey{ev.Height(), string(ev.Hash())} }
 
+// pendingModel tracks what the pool should hold: evidence by hash, and which
+// equivocations already have duplicate vote evidence pending.
+type pendingModel struct {
+	want         map[evKey]bool
+	equivocation map[string]bool
+}
+
+func newPendingModel() *pendingModel {
+	return &pendingModel{want: map[evKey]bool{}, equivocation: map[string]bool{}}
+}
+
+// known reports whether the pool ignores ev without verifying it: the same
+// evidence, or other duplicate vote evidence for the same equivocation, is
+// already pending.
+func (m *pendingModel) known(ev cmttypes.Evidence) bool {
+	if m.want[keyOf(ev)] {
+		return true
+	}
+	dve, ok := ev.(*cmttypes.DuplicateVoteEvidence)
+	return ok && m.equivocation[duplicateVoteKey(dve)]
+}
+
+func (m *pendingModel) add(ev cmttypes.Evidence) {
+	m.want[keyOf(ev)] = true
+	if dve, ok := ev.(*cmttypes.DuplicateVoteEvidence); ok {
+		m.equivocation[duplicateVoteKey(dve)] = true
+	}
+}
+
 // requirePending checks that the pool holds exactly the expected evidence and
 // that each item is independently verifiable.
 func (fx *evFixture) requirePending(t *testing.T, pool *Pool, want map[evKey]bool) {
@@ -508,6 +537,13 @@ func TestFuzzEvidencePoolTimestampOverflow(t *testing.T) {
 	runEvidencePoolFuzz(t, fuzzEvidenceFixture(t), []byte{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 255})
 }
 
+// TestFuzzEvidencePoolEquivocationVariants replays an input with two valid
+// duplicate vote evidence for the same validator, height, round and type but
+// different block IDs. Only the first is kept pending.
+func TestFuzzEvidencePoolEquivocationVariants(t *testing.T) {
+	runEvidencePoolFuzz(t, fuzzEvidenceFixture(t), []byte("100020000"))
+}
+
 // runEvidencePoolFuzz runs one FuzzEvidencePool iteration.
 func runEvidencePoolFuzz(t *testing.T, fx *evFixture, data []byte) {
 	cases := fx.generate(t, data)
@@ -518,14 +554,15 @@ func runEvidencePoolFuzz(t *testing.T, fx *evFixture, data []byte) {
 
 	// Reactor: one undecodable piece rejects the whole message.
 	// Otherwise evidence is added in order until the first invalid
-	// piece, which gets the peer stopped. Evidence already pending is
+	// piece, which gets the peer stopped. Evidence already pending, or
+	// duplicate vote evidence for an equivocation already pending, is
 	// skipped without verification.
 	pool := fx.newPool(t)
 	reactor, peer := newFuzzReactor(t, pool)
 	list, err := evidenceListToProto(all)
 	require.NoError(t, err)
 	reactor.Receive(p2p.Envelope{Src: peer, ChannelID: EvidenceChannel, Message: list})
-	want, punished := map[evKey]bool{}, false
+	model, punished := newPendingModel(), false
 	var decoded []fzCase
 	for _, c := range cases {
 		if c.decoded {
@@ -538,17 +575,17 @@ func runEvidencePoolFuzz(t *testing.T, fx *evFixture, data []byte) {
 		if punished {
 			break
 		}
-		if want[keyOf(c.ev)] {
+		if model.known(c.ev) {
 			continue
 		}
 		if !c.valid {
 			punished = true
 			break
 		}
-		want[keyOf(c.ev)] = true
+		model.add(c.ev)
 	}
 	require.Equal(t, punished, !peer.IsRunning(), "peer stopped for error mismatch")
-	fx.requirePending(t, pool, want)
+	fx.requirePending(t, pool, model.want)
 
 	// AddEvidence and CheckEvidence are only reached with evidence
 	// that passed decoding and ValidateBasic.
@@ -560,22 +597,22 @@ func runEvidencePoolFuzz(t *testing.T, fx *evFixture, data []byte) {
 
 	// AddEvidence on a fresh pool reports each item independently.
 	pool = fx.newPool(t)
-	want = map[evKey]bool{}
+	model = newPendingModel()
 	for _, c := range cases {
 		err := pool.AddEvidence(c.ev)
-		if want[keyOf(c.ev)] {
+		if model.known(c.ev) {
 			require.NoError(t, err)
 			continue
 		}
 		if c.valid {
 			require.NoError(t, err)
-			want[keyOf(c.ev)] = true
+			model.add(c.ev)
 		} else {
 			var invalid *cmttypes.ErrInvalidEvidence
 			require.ErrorAs(t, err, &invalid)
 		}
 	}
-	fx.requirePending(t, pool, want)
+	fx.requirePending(t, pool, model.want)
 
 	// CheckEvidence treats the list as a proposed block's evidence.
 	pool = fx.newPool(t)

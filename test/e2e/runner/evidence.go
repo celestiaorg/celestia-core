@@ -96,9 +96,12 @@ func InjectEvidence(ctx context.Context, r *rand.Rand, testnet *e2e.Testnet, amo
 				ctx, privVals, evidenceHeight, valSet, testnet.Name, blockRes.Block.Time, validEv,
 			)
 		} else {
+			// Use a distinct round for each piece of duplicate vote evidence so
+			// that each one is a separate equivocation: the pool keeps only one
+			// piece of evidence per validator, height, round and vote type.
 			var dve *types.DuplicateVoteEvidence
 			dve, err = generateDuplicateVoteEvidence(
-				privVals, evidenceHeight, valSet, testnet.Name, blockRes.Block.Time,
+				privVals, evidenceHeight, int32(i), valSet, testnet.Name, blockRes.Block.Time,
 			)
 			if dve.VoteA.Height < testnet.VoteExtensionsEnableHeight {
 				dve.VoteA.Extension = nil
@@ -220,6 +223,7 @@ func generateLightClientAttackEvidence(
 func generateDuplicateVoteEvidence(
 	privVals []types.MockPV,
 	height int64,
+	round int32,
 	vals *types.ValidatorSet,
 	chainID string,
 	time time.Time,
@@ -228,11 +232,11 @@ func generateDuplicateVoteEvidence(
 	if err != nil {
 		return nil, err
 	}
-	voteA, err := types.MakeVote(privVal, chainID, valIdx, height, 0, 2, makeRandomBlockID(), time)
+	voteA, err := types.MakeVote(privVal, chainID, valIdx, height, round, 2, makeRandomBlockID(), time)
 	if err != nil {
 		return nil, err
 	}
-	voteB, err := types.MakeVote(privVal, chainID, valIdx, height, 0, 2, makeRandomBlockID(), time)
+	voteB, err := types.MakeVote(privVal, chainID, valIdx, height, round, 2, makeRandomBlockID(), time)
 	if err != nil {
 		return nil, err
 	}

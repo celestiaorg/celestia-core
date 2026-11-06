@@ -89,15 +89,27 @@ func NewPool(evidenceDB dbm.DB, stateDB sm.Store, blockStore BlockStore) (*Pool,
 	if err != nil {
 		return nil, err
 	}
-	atomic.StoreUint32(&pool.evidenceSize, uint32(len(evList)))
+	kept := evList[:0]
 	for _, ev := range evList {
-		pool.evidenceList.PushBack(ev)
 		if dve, ok := ev.(*types.DuplicateVoteEvidence); ok {
 			key := duplicateVoteKey(dve)
-			if _, exists := pool.pendingDuplicateVotes[key]; !exists {
-				pool.pendingDuplicateVotes[key] = ev
+			if _, exists := pool.pendingDuplicateVotes[key]; exists {
+				// Pools written before pending duplicate vote evidence was
+				// deduplicated may hold several pieces of evidence for the same
+				// equivocation. Keep only the first.
+				pool.logger.Info("Removing pending evidence for an equivocation that is already pending", "ev", ev)
+				if err := pool.evidenceStore.Delete(keyPending(ev)); err != nil {
+					return nil, fmt.Errorf("cannot delete pending evidence: %w", err)
+				}
+				continue
 			}
+			pool.pendingDuplicateVotes[key] = ev
 		}
+		kept = append(kept, ev)
+	}
+	atomic.StoreUint32(&pool.evidenceSize, uint32(len(kept)))
+	for _, ev := range kept {
+		pool.evidenceList.PushBack(ev)
 	}
 
 	return pool, nil
@@ -466,25 +478,30 @@ func (evpool *Pool) verifyDuplicateVoteAdmission(dve *types.DuplicateVoteEvidenc
 func (evpool *Pool) markEvidenceAsCommitted(evidence types.EvidenceList) {
 	blockEvidenceMap := make(map[string]struct{}, len(evidence))
 	for _, ev := range evidence {
-		if evpool.isPending(ev) {
-			evpool.removePendingEvidence(ev)
-			blockEvidenceMap[evMapKey(ev)] = struct{}{}
-		}
-
 		if dve, ok := ev.(*types.DuplicateVoteEvidence); ok {
-			// Remove any pending evidence for the same equivocation that was
-			// committed under a different hash, and remember that this
-			// equivocation has been committed.
+			// Record that this equivocation has been committed and take any pending
+			// evidence for it out of the index in one step, so that concurrent
+			// admission sees either the pending entry or the committed marker.
 			evpool.dveMtx.Lock()
-			variant, exists := evpool.pendingDuplicateVotes[duplicateVoteKey(dve)]
-			evpool.dveMtx.Unlock()
-			if exists {
-				evpool.removePendingEvidence(variant)
-				blockEvidenceMap[evMapKey(variant)] = struct{}{}
-			}
 			if err := evpool.evidenceStore.Set(keyCommittedDuplicateVote(dve), []byte{}); err != nil {
 				evpool.logger.Error("Unable to save committed duplicate vote evidence", "err", err)
 			}
+			key := duplicateVoteKey(dve)
+			variant, exists := evpool.pendingDuplicateVotes[key]
+			delete(evpool.pendingDuplicateVotes, key)
+			evpool.dveMtx.Unlock()
+
+			// Remove pending evidence for the same equivocation that was
+			// committed under a different hash.
+			if exists && evMapKey(variant) != evMapKey(ev) {
+				evpool.removePendingEvidence(variant)
+				blockEvidenceMap[evMapKey(variant)] = struct{}{}
+			}
+		}
+
+		if evpool.isPending(ev) {
+			evpool.removePendingEvidence(ev)
+			blockEvidenceMap[evMapKey(ev)] = struct{}{}
 		}
 
 		// Add evidence to the committed list. As the evidence is stored in the block store

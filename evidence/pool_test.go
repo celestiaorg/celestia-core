@@ -682,3 +682,90 @@ func TestCommittedDuplicateVoteVariantIsDropped(t *testing.T) {
 	evs, _ = pool.PendingEvidence(defaultEvidenceMaxBytes)
 	assert.Empty(t, evs)
 }
+
+// A pool restored from a store that holds several pieces of duplicate vote
+// evidence for one equivocation keeps only one of them.
+func TestNewPoolDeduplicatesRestoredDuplicateVotes(t *testing.T) {
+	height := int64(10)
+	evTime := defaultEvidenceTime.Add(time.Duration(height) * time.Minute)
+	val := types.NewMockPV()
+	evidenceDB := dbm.NewMemDB()
+	stateStore := initializeValidatorState(val, height)
+	state, err := stateStore.Load()
+	require.NoError(t, err)
+	blockStore, err := initializeBlockStore(dbm.NewMemDB(), state, val.PrivKey.PubKey().Address())
+	require.NoError(t, err)
+
+	pool, err := evidence.NewPool(evidenceDB, stateStore, blockStore)
+	require.NoError(t, err)
+	for i := 0; i < 5; i++ {
+		ev, err := types.NewMockDuplicateVoteEvidenceWithValidator(height, evTime, val, evidenceChainID)
+		require.NoError(t, err)
+		require.NoError(t, pool.AddPendingEvidenceUnchecked(ev))
+	}
+	other, err := types.NewMockDuplicateVoteEvidenceWithValidator(height-1, evTime.Add(-time.Minute), val, evidenceChainID)
+	require.NoError(t, err)
+	require.NoError(t, pool.AddPendingEvidenceUnchecked(other))
+
+	for restart := 0; restart < 2; restart++ {
+		pool, err = evidence.NewPool(evidenceDB, stateStore, blockStore)
+		require.NoError(t, err)
+		evs, _ := pool.PendingEvidence(-1)
+		assert.Len(t, evs, 2)
+		assert.EqualValues(t, 2, pool.Size())
+		listed := 0
+		for e := pool.EvidenceFront(); e != nil; e = e.Next() {
+			listed++
+		}
+		assert.Equal(t, 2, listed)
+	}
+
+	variant, err := types.NewMockDuplicateVoteEvidenceWithValidator(height, evTime, val, evidenceChainID)
+	require.NoError(t, err)
+	require.NoError(t, pool.AddEvidence(variant))
+	assert.EqualValues(t, 2, pool.Size())
+}
+
+// Duplicate vote evidence admitted while the same equivocation is being
+// committed must not stay pending.
+func TestCommitDuplicateVoteConcurrentWithAdmission(t *testing.T) {
+	height := int64(21)
+	evTime := defaultEvidenceTime.Add(time.Duration(height) * time.Minute)
+	for i := 0; i < 50; i++ {
+		pool, val := defaultTestPool(t, height)
+		pool.SetLogger(log.NewNopLogger())
+		pending, err := types.NewMockDuplicateVoteEvidenceWithValidator(height, evTime, val, evidenceChainID)
+		require.NoError(t, err)
+		require.NoError(t, pool.AddEvidence(pending))
+		committed, err := types.NewMockDuplicateVoteEvidenceWithValidator(height, evTime, val, evidenceChainID)
+		require.NoError(t, err)
+		variants := make([]types.Evidence, 50)
+		for j := range variants {
+			variants[j], err = types.NewMockDuplicateVoteEvidenceWithValidator(height, evTime, val, evidenceChainID)
+			require.NoError(t, err)
+		}
+
+		var wg sync.WaitGroup
+		start := make(chan struct{})
+		for w := 0; w < 4; w++ {
+			wg.Add(1)
+			go func(w int) {
+				defer wg.Done()
+				<-start
+				for j := w; j < len(variants); j += 4 {
+					assert.NoError(t, pool.AddEvidence(variants[j]))
+				}
+			}(w)
+		}
+		state := pool.State()
+		state.LastBlockHeight = height + 1
+		state.LastBlockTime = evTime.Add(time.Minute)
+		close(start)
+		pool.Update(state, types.EvidenceList{committed})
+		wg.Wait()
+
+		evs, _ := pool.PendingEvidence(-1)
+		require.Empty(t, evs, "iteration %d", i)
+		require.Zero(t, pool.Size(), "iteration %d", i)
+	}
+}
