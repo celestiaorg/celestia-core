@@ -311,6 +311,7 @@ func (blockProp *Reactor) Prune(committedHeight int64) {
 		peer.prune(prunePast)
 	}
 	blockProp.prune(prunePast)
+	go blockProp.serveCommitted(committedHeight)
 	blockProp.pmtx.Lock()
 	defer blockProp.pmtx.Unlock()
 	blockProp.height = committedHeight
