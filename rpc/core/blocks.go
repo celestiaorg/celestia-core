@@ -265,17 +265,43 @@ func (env *Environment) BlockSearch(
 	skipCount := validateSkipCount(page, perPage)
 	pageSize := cmtmath.MinInt(perPage, totalCount-skipCount)
 
-	apiResults := make([]*ctypes.ResultBlock, 0, pageSize)
+	// Check the page against the response byte budget using the block metas
+	// before loading any block, so an oversized page is rejected cheaply.
+	blockMetas := make([]*types.BlockMeta, 0, pageSize)
+	heights := make([]int64, 0, pageSize)
+	pageBytes := 0
+	// Pruned heights keep their block meta but not their block, so they are
+	// skipped here rather than counted against the budget.
+	base := env.BlockStore.Base()
 	for i := skipCount; i < skipCount+pageSize; i++ {
-		block := env.BlockStore.LoadBlock(results[i])
+		if results[i] < base {
+			continue
+		}
+		blockMeta := env.BlockStore.LoadBlockMeta(results[i])
+		if blockMeta == nil {
+			continue
+		}
+		pageBytes += blockMeta.BlockSize
+		// A single block is always admitted, so any block remains reachable
+		// with per_page=1.
+		if len(blockMetas) > 0 && pageBytes > maxBlockSearchResponseBytes {
+			return nil, fmt.Errorf(
+				"block_search page exceeds the response limit of %d bytes; use a smaller per_page",
+				maxBlockSearchResponseBytes,
+			)
+		}
+		blockMetas = append(blockMetas, blockMeta)
+		heights = append(heights, results[i])
+	}
+
+	apiResults := make([]*ctypes.ResultBlock, 0, len(blockMetas))
+	for j, blockMeta := range blockMetas {
+		block := env.BlockStore.LoadBlock(heights[j])
 		if block != nil {
-			blockMeta := env.BlockStore.LoadBlockMeta(block.Height)
-			if blockMeta != nil {
-				apiResults = append(apiResults, &ctypes.ResultBlock{
-					Block:   block,
-					BlockID: blockMeta.BlockID,
-				})
-			}
+			apiResults = append(apiResults, &ctypes.ResultBlock{
+				Block:   block,
+				BlockID: blockMeta.BlockID,
+			})
 		}
 	}
 
