@@ -62,9 +62,16 @@ func (rp *recordingPeer) sentParts() []*propproto.RecoveryPart {
 // storedTestHeight.
 func newStoredBlockReactor(t *testing.T) (*Reactor, *types.PartSet) {
 	t.Helper()
-	reactors, _ := testBlockPropReactors(1, defaultTestP2PConf())
+	reactors, switches := testBlockPropReactors(1, defaultTestP2PConf())
+	stopSwitchesOnCleanup(t, switches)
 	r := reactors[0]
+	return r, storeTestBlock(t, r)
+}
 
+// storeTestBlock stores a ~8 MB block (123 original parts) at
+// storedTestHeight and moves the reactor past that height.
+func storeTestBlock(t *testing.T, r *Reactor) *types.PartSet {
+	t.Helper()
 	txs := make(types.Txs, 64)
 	for i := range txs {
 		txs[i] = make([]byte, 125_000)
@@ -79,7 +86,69 @@ func newStoredBlockReactor(t *testing.T) (*Reactor, *types.PartSet) {
 	r.pmtx.Lock()
 	r.height = storedTestHeight + 10
 	r.pmtx.Unlock()
-	return r, ps
+	return ps
+}
+
+// A catchup request that the server drops (here, because the stored parts
+// budget is empty) must be sent again later, or the requester stays stuck.
+func TestDroppedStoredCatchupRequestIsRetried(t *testing.T) {
+	reactors, switches := testBlockPropReactors(2, defaultTestP2PConf())
+	stopSwitchesOnCleanup(t, switches)
+	server, client := reactors[0], reactors[1]
+	ps := storeTestBlock(t, server)
+
+	server.storedPartsBudget = newTokenBucket(0, 0)
+	client.requestTimeout = 200 * time.Millisecond
+	serverPeer := client.getPeer(server.self)
+	require.NotNil(t, serverPeer)
+	serverPeer.SetConsensusPeerState(&MockPeerStateEditor{height: storedTestHeight + 10})
+
+	psh := ps.Header()
+	client.AddCommitment(storedTestHeight, 0, &psh)
+	require.Eventually(t, func() bool {
+		requests, has := serverPeer.GetRequests(storedTestHeight, 0)
+		return has && !requests.IsEmpty()
+	}, 2*time.Second, 10*time.Millisecond, "client sends a catchup request")
+
+	// Wait until the server has processed the request and dropped it.
+	clientPeer := server.getPeer(client.self)
+	require.NotNil(t, clientPeer)
+	require.Eventually(t, func() bool {
+		return clientPeer.GetRemainingRequests(storedTestHeight, 0) > 0
+	}, 2*time.Second, 10*time.Millisecond)
+	_, parts, _ := client.GetProposal(storedTestHeight, 0)
+	require.True(t, parts.BitArray().IsEmpty(), "server sent no parts")
+
+	// The server can now serve parts again.
+	b := server.storedPartsBudget
+	b.mtx.Lock()
+	b.burst, b.tokens = 10_000, 10_000
+	b.mtx.Unlock()
+
+	require.Eventually(t, func() bool {
+		client.retryWants()
+		_, parts, has := client.GetProposal(storedTestHeight, 0)
+		return has && parts.IsComplete()
+	}, 3*time.Second, 100*time.Millisecond)
+}
+
+func TestPeerStateExpireRequests(t *testing.T) {
+	ps := newPeerState(context.Background(), mock.NewPeer(net.IP{127, 0, 0, 1}), log.NewNopLogger())
+	reqs := bits.NewBitArray(4)
+	reqs.SetIndex(1, true)
+	ps.AddRequests(1, 0, reqs)
+
+	ps.ExpireRequests(1, 0, time.Hour)
+	got, has := ps.GetRequests(1, 0)
+	require.True(t, has)
+	require.True(t, got.GetIndex(1), "recent requests are kept")
+
+	ps.ExpireRequests(1, 0, 0)
+	got, has = ps.GetRequests(1, 0)
+	require.True(t, has)
+	require.True(t, got.IsEmpty(), "old requests are cleared")
+
+	ps.ExpireRequests(2, 0, 0) // unknown height is a no-op
 }
 
 func addRecordingPeer(t *testing.T, r *Reactor, capacity int) *recordingPeer {

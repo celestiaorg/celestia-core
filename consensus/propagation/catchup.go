@@ -45,6 +45,10 @@ func (blockProp *Reactor) retryWants() {
 			}
 			mc := missing.Copy()
 
+			// A peer may drop a request, for example when its send queue is
+			// full or its stored parts budget is used up. Let old requests
+			// expire so that they can be sent to this peer again.
+			peer.ExpireRequests(height, round, blockProp.requestTimeout)
 			reqs, has := peer.GetRequests(height, round)
 			if has {
 				mc = mc.Sub(reqs)
