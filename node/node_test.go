@@ -181,10 +181,16 @@ func TestPprofServer(t *testing.T) {
 	}()
 	assert.NotNil(t, n.pprofSrv)
 
-	resp, err := http.Get("http://" + config.RPC.PprofListenAddress + "/debug/pprof")
-	assert.NoError(t, err)
-	defer resp.Body.Close()
-	assert.Equal(t, 200, resp.StatusCode)
+	// The pprof server starts listening in a background goroutine, so it may
+	// not accept connections immediately after Start returns.
+	require.Eventually(t, func() bool {
+		resp, err := http.Get("http://" + config.RPC.PprofListenAddress + "/debug/pprof")
+		if err != nil {
+			return false
+		}
+		defer resp.Body.Close()
+		return resp.StatusCode == http.StatusOK
+	}, 10*time.Second, 50*time.Millisecond, "pprof server did not respond with 200")
 }
 
 func TestNodeSetPrivValTCP(t *testing.T) {
