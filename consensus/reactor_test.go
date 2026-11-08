@@ -843,12 +843,13 @@ func TestReactorValidatorSetChanges(t *testing.T) {
 		waitForAndValidateBlock(t, nPeers, activeVals, blocksSubs, css)
 		waitForBlockWithUpdatedValsAndValidateIt(t, nPeers, activeVals, blocksSubs, css)
 
-		if css[nVals].GetRoundState().LastValidators.TotalVotingPower() == previousTotalVotingPower {
-			t.Errorf(
-				"expected voting power to change (before: %d, after: %d)",
-				previousTotalVotingPower,
-				css[nVals].GetRoundState().LastValidators.TotalVotingPower())
-		}
+		// The NewBlock event fires before the consensus state runs
+		// updateToState, so LastValidators may not be updated yet when the
+		// block above is observed. Poll instead of reading once.
+		require.Eventually(t, func() bool {
+			return css[nVals].GetRoundState().LastValidators.TotalVotingPower() != previousTotalVotingPower
+		}, 10*time.Second, 100*time.Millisecond,
+			"expected voting power to change from %d", previousTotalVotingPower)
 	})
 
 	newValidatorPubKey2, err := css[nVals+1].privValidator.GetPubKey()
