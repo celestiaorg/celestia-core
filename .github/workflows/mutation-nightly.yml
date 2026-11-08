@@ -41,7 +41,10 @@ jobs:
           - {package: types, files: "validator_set.go vote.go vote_set.go validation.go"}
           - {package: state, files: "validation.go execution.go"}
           - {package: crypto/merkle, files: ""}
-          - {package: p2p/conn, files: ""}
+          # One worker: several p2p/conn mutants time out and keep their test
+          # processes busy; with parallel workers the runner ran out of
+          # resources and was shut down before a report was written.
+          - {package: p2p/conn, files: "", workers: "1"}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
@@ -56,6 +59,8 @@ jobs:
         env:
           PKG: ${{ matrix.package }}
           FILES: ${{ matrix.files }}
+          # Empty uses gremlins' default (one worker per CPU).
+          WORKERS: ${{ matrix.workers }}
         run: |
           report="build/mutation/${PKG//\//_}.json"
           {
