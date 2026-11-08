@@ -1,13 +1,17 @@
 package cat
 
 import (
+	"fmt"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 
 	"github.com/cometbft/cometbft/mempool"
 	"github.com/cometbft/cometbft/types"
 )
+
+const testReceivedBufferMaxBytes = 1 << 20
 
 func TestReceivedTxBuffer(t *testing.T) {
 	signer1 := []byte("signer1")
@@ -19,7 +23,7 @@ func TestReceivedTxBuffer(t *testing.T) {
 	}
 
 	t.Run("add and get transaction", func(t *testing.T) {
-		buf := newReceivedTxBuffer()
+		buf := newReceivedTxBuffer(testReceivedBufferMaxBytes)
 		tx, key := makeTx("tx1")
 		txInfo := mempool.TxInfo{SenderID: 1}
 
@@ -35,7 +39,7 @@ func TestReceivedTxBuffer(t *testing.T) {
 	})
 
 	t.Run("get returns nil for non-existent signer", func(t *testing.T) {
-		buf := newReceivedTxBuffer()
+		buf := newReceivedTxBuffer(testReceivedBufferMaxBytes)
 		tx, key := makeTx("tx1")
 
 		buf.add(signer1, 5, tx, key, mempool.TxInfo{}, "peer1")
@@ -45,7 +49,7 @@ func TestReceivedTxBuffer(t *testing.T) {
 	})
 
 	t.Run("get returns nil for non-existent sequence", func(t *testing.T) {
-		buf := newReceivedTxBuffer()
+		buf := newReceivedTxBuffer(testReceivedBufferMaxBytes)
 		tx, key := makeTx("tx1")
 
 		buf.add(signer1, 5, tx, key, mempool.TxInfo{}, "peer1")
@@ -55,7 +59,7 @@ func TestReceivedTxBuffer(t *testing.T) {
 	})
 
 	t.Run("add returns false for duplicate", func(t *testing.T) {
-		buf := newReceivedTxBuffer()
+		buf := newReceivedTxBuffer(testReceivedBufferMaxBytes)
 		tx1, key1 := makeTx("tx1")
 		tx2, key2 := makeTx("tx2")
 
@@ -72,7 +76,7 @@ func TestReceivedTxBuffer(t *testing.T) {
 	})
 
 	t.Run("add returns false for empty signer", func(t *testing.T) {
-		buf := newReceivedTxBuffer()
+		buf := newReceivedTxBuffer(testReceivedBufferMaxBytes)
 		tx, key := makeTx("tx1")
 
 		added := buf.add(nil, 5, tx, key, mempool.TxInfo{}, "peer1")
@@ -83,7 +87,7 @@ func TestReceivedTxBuffer(t *testing.T) {
 	})
 
 	t.Run("get returns nil for empty signer", func(t *testing.T) {
-		buf := newReceivedTxBuffer()
+		buf := newReceivedTxBuffer(testReceivedBufferMaxBytes)
 		tx, key := makeTx("tx1")
 
 		buf.add(signer1, 5, tx, key, mempool.TxInfo{}, "peer1")
@@ -96,7 +100,7 @@ func TestReceivedTxBuffer(t *testing.T) {
 	})
 
 	t.Run("respects max buffer size per signer", func(t *testing.T) {
-		buf := newReceivedTxBuffer()
+		buf := newReceivedTxBuffer(testReceivedBufferMaxBytes)
 
 		// Fill buffer to max for signer using different peers to avoid per-peer limit
 		for i := uint64(0); i < maxReceivedBufferSize; i++ {
@@ -117,7 +121,7 @@ func TestReceivedTxBuffer(t *testing.T) {
 	})
 
 	t.Run("respects max buffer size per peer", func(t *testing.T) {
-		buf := newReceivedTxBuffer()
+		buf := newReceivedTxBuffer(testReceivedBufferMaxBytes)
 
 		// Fill buffer to max for peer1 using different signers
 		for i := uint64(0); i < uint64(maxRequestsPerPeer); i++ {
@@ -142,7 +146,7 @@ func TestReceivedTxBuffer(t *testing.T) {
 	})
 
 	t.Run("peer count decrements on removeLowerSeqs", func(t *testing.T) {
-		buf := newReceivedTxBuffer()
+		buf := newReceivedTxBuffer(testReceivedBufferMaxBytes)
 
 		// Add 5 txs from peer1
 		for i := uint64(1); i <= 5; i++ {
@@ -166,7 +170,7 @@ func TestReceivedTxBuffer(t *testing.T) {
 	})
 
 	t.Run("peer count tracks multiple peers correctly", func(t *testing.T) {
-		buf := newReceivedTxBuffer()
+		buf := newReceivedTxBuffer(testReceivedBufferMaxBytes)
 
 		// Add txs from different peers
 		tx1, key1 := makeTx("tx1")
@@ -188,7 +192,7 @@ func TestReceivedTxBuffer(t *testing.T) {
 	})
 
 	t.Run("removeLowerSeqs removes transactions", func(t *testing.T) {
-		buf := newReceivedTxBuffer()
+		buf := newReceivedTxBuffer(testReceivedBufferMaxBytes)
 
 		for i := uint64(1); i <= 5; i++ {
 			tx, key := makeTx("tx" + string(rune(i)))
@@ -209,7 +213,7 @@ func TestReceivedTxBuffer(t *testing.T) {
 	})
 
 	t.Run("removeLowerSeqs cleans up empty signer", func(t *testing.T) {
-		buf := newReceivedTxBuffer()
+		buf := newReceivedTxBuffer(testReceivedBufferMaxBytes)
 		tx, key := makeTx("tx1")
 
 		buf.add(signer1, 5, tx, key, mempool.TxInfo{}, "peer1")
@@ -221,7 +225,7 @@ func TestReceivedTxBuffer(t *testing.T) {
 	})
 
 	t.Run("removeLowerSeqs handles empty signer", func(t *testing.T) {
-		buf := newReceivedTxBuffer()
+		buf := newReceivedTxBuffer(testReceivedBufferMaxBytes)
 		tx, key := makeTx("tx1")
 
 		buf.add(signer1, 5, tx, key, mempool.TxInfo{}, "peer1")
@@ -234,7 +238,7 @@ func TestReceivedTxBuffer(t *testing.T) {
 	})
 
 	t.Run("removeLowerSeqs handles non-existent signer", func(t *testing.T) {
-		buf := newReceivedTxBuffer()
+		buf := newReceivedTxBuffer(testReceivedBufferMaxBytes)
 		tx, key := makeTx("tx1")
 
 		buf.add(signer1, 5, tx, key, mempool.TxInfo{}, "peer1")
@@ -245,7 +249,7 @@ func TestReceivedTxBuffer(t *testing.T) {
 	})
 
 	t.Run("signerKeys returns all signers", func(t *testing.T) {
-		buf := newReceivedTxBuffer()
+		buf := newReceivedTxBuffer(testReceivedBufferMaxBytes)
 		tx1, key1 := makeTx("tx1")
 		tx2, key2 := makeTx("tx2")
 
@@ -265,12 +269,12 @@ func TestReceivedTxBuffer(t *testing.T) {
 	})
 
 	t.Run("signerKeys returns nil for empty buffer", func(t *testing.T) {
-		buf := newReceivedTxBuffer()
+		buf := newReceivedTxBuffer(testReceivedBufferMaxBytes)
 		require.Nil(t, buf.signerKeys())
 	})
 
 	t.Run("multiple signers are independent", func(t *testing.T) {
-		buf := newReceivedTxBuffer()
+		buf := newReceivedTxBuffer(testReceivedBufferMaxBytes)
 		tx1, key1 := makeTx("tx1")
 		tx2, key2 := makeTx("tx2")
 
@@ -290,5 +294,57 @@ func TestReceivedTxBuffer(t *testing.T) {
 
 		require.Nil(t, buf.get(signer1, 5))
 		require.NotNil(t, buf.get(signer2, 5))
+	})
+
+	t.Run("respects total byte limit across peers and signers", func(t *testing.T) {
+		buf := newReceivedTxBuffer(10)
+		tx1, key1 := makeTx("aaaaaa") // 6 bytes
+		tx2, key2 := makeTx("bbbbbb")
+		tx3, key3 := makeTx("cccc")
+
+		require.True(t, buf.add(signer1, 1, tx1, key1, mempool.TxInfo{}, "peer1"))
+		require.False(t, buf.add(signer2, 1, tx2, key2, mempool.TxInfo{}, "peer2"), "would exceed byte limit")
+		require.True(t, buf.add(signer2, 1, tx3, key3, mempool.TxInfo{}, "peer2"), "fits exactly")
+		n, size := buf.size()
+		require.Equal(t, 2, n)
+		require.Equal(t, int64(10), size)
+
+		buf.removeLowerSeqs(signer1, 1)
+		_, size = buf.size()
+		require.Equal(t, int64(4), size)
+		require.True(t, buf.add(signer1, 1, tx2, key2, mempool.TxInfo{}, "peer2"), "space freed")
+	})
+
+	t.Run("removeBelow keeps the boundary sequence", func(t *testing.T) {
+		buf := newReceivedTxBuffer(testReceivedBufferMaxBytes)
+		for seq := uint64(1); seq <= 4; seq++ {
+			tx, key := makeTx(fmt.Sprintf("tx%d", seq))
+			require.True(t, buf.add(signer1, seq, tx, key, mempool.TxInfo{}, "peer1"))
+		}
+
+		removed := buf.removeBelow(signer1, 3)
+		require.Len(t, removed, 2)
+		require.Nil(t, buf.get(signer1, 2))
+		require.NotNil(t, buf.get(signer1, 3))
+		require.Equal(t, 2, buf.countForPeer("peer1"))
+		require.Empty(t, buf.removeBelow(signer1, 0))
+		require.Empty(t, buf.removeBelow(nil, 10))
+	})
+
+	t.Run("pruneOlderThan removes only old entries", func(t *testing.T) {
+		buf := newReceivedTxBuffer(testReceivedBufferMaxBytes)
+		tx1, key1 := makeTx("old")
+		tx2, key2 := makeTx("new")
+		require.True(t, buf.add(signer1, 1, tx1, key1, mempool.TxInfo{}, "peer1"))
+		require.True(t, buf.add(signer2, 1, tx2, key2, mempool.TxInfo{}, "peer2"))
+		buf.buffers[string(signer1)][1].addedAt = time.Now().Add(-time.Hour)
+
+		removed := buf.pruneOlderThan(time.Now().Add(-time.Minute))
+		require.Equal(t, []types.TxKey{key1}, removed)
+		require.Zero(t, buf.countForPeer("peer1"))
+		require.Equal(t, 1, buf.countForPeer("peer2"))
+		require.Equal(t, [][]byte{signer2}, buf.signerKeys())
+		_, size := buf.size()
+		require.Equal(t, int64(len(tx2.Tx)), size)
 	})
 }
