@@ -28,6 +28,9 @@ var (
 	ErrVoteNonDeterministicSignature = errors.New("non-deterministic signature")
 	ErrVoteNil                       = errors.New("nil vote")
 	ErrVoteExtensionAbsent           = errors.New("vote extension absent")
+	// ErrVoteInvalidExtensionSignature wraps ErrVoteInvalidSignature, so
+	// callers matching ErrVoteInvalidSignature also match it.
+	ErrVoteInvalidExtensionSignature = fmt.Errorf("vote extension: %w", ErrVoteInvalidSignature)
 	ErrInvalidVoteExtension          = errors.New("invalid vote extension")
 )
 
@@ -255,7 +258,7 @@ func (vote *Vote) VerifyVoteAndExtension(chainID string, pubKey crypto.PubKey) e
 
 		extSignBytes := VoteExtensionSignBytes(chainID, v)
 		if !pubKey.VerifySignature(extSignBytes, vote.ExtensionSignature) {
-			return ErrVoteInvalidSignature
+			return ErrVoteInvalidExtensionSignature
 		}
 	}
 	return nil
@@ -270,7 +273,7 @@ func (vote *Vote) VerifyExtension(chainID string, pubKey crypto.PubKey) error {
 	v := vote.ToProto()
 	extSignBytes := VoteExtensionSignBytes(chainID, v)
 	if !pubKey.VerifySignature(extSignBytes, vote.ExtensionSignature) {
-		return ErrVoteInvalidSignature
+		return ErrVoteInvalidExtensionSignature
 	}
 	return nil
 }
