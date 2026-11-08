@@ -275,6 +275,15 @@ vulncheck:
 	@go run golang.org/x/vuln/cmd/govulncheck@v1.8.0 ./...
 .PHONY: vulncheck
 
+# Keep in sync with GREMLINS_VERSION in .github/workflows/mutation-nightly.yml.
+GREMLINS_VERSION ?= v0.6.0
+
+#? mutation-test: Run gremlins mutation testing on one package, e.g. make mutation-test PKG=crypto/merkle [FILES="proof.go tree.go"]
+mutation-test:
+	@test -n "$(PKG)" || { echo "usage: make mutation-test PKG=<package dir> [FILES=\"a.go b.go\"]"; exit 2; }
+	@GREMLINS="go run github.com/go-gremlins/gremlins/cmd/gremlins@$(GREMLINS_VERSION)" scripts/mutation-test.sh $(PKG) $(FILES)
+.PHONY: mutation-test
+
 #? lint-typo: Run codespell to check typos
 lint-typo:
 	which codespell || pip3 install codespell
