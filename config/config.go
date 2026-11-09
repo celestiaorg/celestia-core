@@ -753,8 +753,9 @@ type P2PConfig struct {
 	// Time to wait before flushing messages out on the connection
 	FlushThrottleTimeout time.Duration `mapstructure:"flush_throttle_timeout"`
 
-	// Flush as soon as a whole message is written instead of waiting for the
-	// flush throttle
+	// Flush latency-critical messages (votes, round steps, compact blocks,
+	// haves, wants, recovery parts) once written instead of waiting for the
+	// flush throttle. Messages queued together are batched into one write.
 	FlushOnMessageEnd bool `mapstructure:"flush_on_message_end"`
 
 	// Maximum size of a message packet payload, in bytes

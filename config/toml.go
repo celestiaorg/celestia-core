@@ -336,8 +336,9 @@ persistent_peers_max_dial_period = "{{ .P2P.PersistentPeersMaxDialPeriod }}"
 # Time to wait before flushing messages out on the connection
 flush_throttle_timeout = "{{ .P2P.FlushThrottleTimeout }}"
 
-# Flush as soon as a whole message is written instead of waiting for
-# flush_throttle_timeout
+# Flush latency-critical messages (votes, round steps, compact blocks,
+# haves, wants, recovery parts) once written instead of waiting for
+# flush_throttle_timeout. Messages queued together share one write.
 flush_on_message_end = {{ .P2P.FlushOnMessageEnd }}
 
 # Maximum size of a message packet payload, in bytes
