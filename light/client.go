@@ -943,8 +943,8 @@ func (c *Client) updateTrustedLightBlock(l *types.LightBlock) error {
 }
 
 // backwards verification (see VerifyHeaderBackwards func in the spec) verifies
-// headers before a trusted header, then verifies the commit of newLightBlock
-// against its validator set. If a sent header or the commit is invalid the
+// the commit of newLightBlock against its validator set, then verifies headers
+// before a trusted header. If the commit or a sent header is invalid the
 // primary is replaced with another provider and the operation is repeated. It
 // returns the verified light block, which comes from the new primary if the
 // primary was replaced.
@@ -983,6 +983,17 @@ func (c *Client) backwards(
 		return c.backwards(ctx, verifiedHeader, newPrimarysBlock)
 	}
 
+	// Hash chaining only verifies the header. Verify the commit too, since the
+	// light block is saved to the trusted store with it. Do this before the walk:
+	// the walk can promote a witness to primary (see lightBlockFromPrimary), and
+	// replacePrimary removes whoever is primary at the time. Here the primary is
+	// still the provider that served newLightBlock, so it is the one removed.
+	if err := newLightBlock.ValidatorSet.VerifyCommit(
+		c.chainID, newLightBlock.Commit.BlockID, newLightBlock.Height, newLightBlock.Commit,
+	); err != nil {
+		return replacePrimary(ErrInvalidHeader{fmt.Errorf("invalid commit at height %d: %w", newLightBlock.Height, err)})
+	}
+
 	for verifiedHeader.Height > newHeader.Height {
 		interimBlock, err := c.lightBlockFromPrimary(ctx, verifiedHeader.Height-1)
 		if err != nil {
@@ -1006,14 +1017,6 @@ func (c *Client) backwards(
 		return nil, ErrInvalidHeader{
 			fmt.Errorf("header hash %X at height %d does not match the verified header hash %X",
 				newHeader.Hash(), newHeader.Height, verifiedHeader.Hash())}
-	}
-
-	// Hash chaining only verifies the header. Verify the commit too, since the
-	// light block is saved to the trusted store with it.
-	if err := newLightBlock.ValidatorSet.VerifyCommit(
-		c.chainID, newLightBlock.Commit.BlockID, newLightBlock.Height, newLightBlock.Commit,
-	); err != nil {
-		return replacePrimary(ErrInvalidHeader{fmt.Errorf("invalid commit at height %d: %w", newLightBlock.Height, err)})
 	}
 
 	return newLightBlock, nil
