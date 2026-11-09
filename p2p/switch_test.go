@@ -610,6 +610,45 @@ func TestSwitchInboundPersistentPeerMatchedByID(t *testing.T) {
 	assert.Zero(t, lookups, "the advertised host name must not be resolved")
 }
 
+// TestSwitchReconnectsInboundPersistentPeerToConfiguredAddr checks that an
+// inbound persistent peer is redialed at its configured address, not at the
+// address it advertised, and that the new connection is persistent.
+func TestSwitchReconnectsInboundPersistentPeerToConfiguredAddr(t *testing.T) {
+	sw := MakeSwitch(cfg, 1, initSwitchFunc)
+	err := sw.Start()
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		if err := sw.Stop(); err != nil {
+			t.Error(err)
+		}
+	})
+
+	// Nothing listens on the advertised port.
+	rp := &remotePeer{PrivKey: ed25519.GenPrivKey(), Config: cfg, advertisedAddr: "127.0.0.1:1"}
+	rp.Start()
+	defer rp.Stop()
+
+	err = sw.AddPersistentPeers([]string{rp.Addr().String()})
+	require.NoError(t, err)
+
+	conn, err := rp.Dial(sw.NetAddress())
+	require.NoError(t, err)
+	require.Eventually(t, func() bool { return sw.Peers().Get(rp.ID()) != nil }, 5*time.Second, 10*time.Millisecond)
+	p := sw.Peers().Get(rp.ID())
+	require.False(t, p.IsOutbound())
+	require.True(t, p.IsPersistent())
+
+	conn.Close()
+
+	require.Eventually(t, func() bool {
+		p := sw.Peers().Get(rp.ID())
+		return p != nil && p.IsOutbound()
+	}, 5*time.Second, 10*time.Millisecond, "persistent peer must be redialed at its configured address")
+	p = sw.Peers().Get(rp.ID())
+	assert.Equal(t, rp.Addr().String(), p.SocketAddr().String())
+	assert.True(t, p.IsPersistent())
+}
+
 // TestAddPersistentPeersUnresolvableHost checks that a persistent peer whose
 // host can not be resolved, including a host that is not a valid DNS name,
 // is logged and skipped rather than failing.
