@@ -1642,14 +1642,15 @@ func (cs *State) reseedPropagator() {
 		cs.privValidatorPubKey == nil || !cs.isProposer(cs.privValidatorPubKey.Address()) {
 		return
 	}
-	// ProposeBlock would overwrite the parts of an entry already held for this round.
-	if _, _, has := cs.propagator.GetProposal(prop.Height, prop.Round); has {
-		return
-	}
 	block.FillCachedHashes()
 	parts, err := block.MakePartSet(types.BlockPartSizeBytes)
 	if err != nil || !parts.HasHeader(prop.BlockID.PartSetHeader) {
 		cs.Logger.Error("cannot rebuild the replayed proposal's part set", "height", prop.Height, "round", prop.Round, "err", err)
+		return
+	}
+	// A peer's copy of our compact block may already be held without its parts; fill it.
+	if _, _, has := cs.propagator.GetProposal(prop.Height, prop.Round); has {
+		cs.propagator.AddBlock(prop.Height, prop.Round, parts)
 		return
 	}
 	if err := cs.propagator.ProposeBlock(prop, parts, txMetaData(block, parts)); err != nil {

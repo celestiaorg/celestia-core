@@ -89,6 +89,30 @@ func TestRestartedProposerReseedsPropagator(t *testing.T) {
 	require.True(t, held.IsComplete())
 }
 
+// A restarted proposer that never locked may already hold its compact block, without parts,
+// from a peer's cached copy; it must still fill that entry with the replayed block.
+func TestReseedFillsCachedCompactBlock(t *testing.T) {
+	f := newLockFixture(t, true, true)
+	cs1 := f.newState()
+	require.NoError(t, cs1.Start())
+	voteCh := subscribeToVoter(cs1, cs1.privValidatorPubKey.Address())
+	nextVote(t, voteCh, 1, 0, cmtproto.PrevoteType)
+	cb, _, ok := cs1.propagator.(*propagation.Reactor).GetCurrentCompactBlock()
+	require.True(t, ok)
+	require.NoError(t, cs1.Stop())
+	cs1.Wait()
+
+	cs := f.newState()
+	r := cs.propagator.(*propagation.Reactor)
+	require.True(t, r.AddProposal(cb))
+	startRestarted(t, cs)
+	require.False(t, cs.GetRoundState().IsLocked())
+
+	_, parts, has := r.GetProposal(1, 0)
+	require.True(t, has)
+	require.True(t, parts.IsComplete())
+}
+
 func TestReseedPropagatorGuards(t *testing.T) {
 	cs, vss := randState(4)
 	height, round := cs.rs.Height, cs.rs.Round
