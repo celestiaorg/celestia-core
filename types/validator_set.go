@@ -739,17 +739,15 @@ func (vals *ValidatorSet) VerifyCommitExtended(
 		return err
 	}
 
-	// 3. check signatures
-	for idx := range extCommit.ExtendedSignatures {
-		_, val := vals.GetByIndex(int32(idx))
-
-		// should not happen as we verified the commit above
-		if val == nil {
-			return fmt.Errorf("unable to find val #%d out of %d vals", idx, vals.Size())
+	// 3. check vote extension signatures. Only commit votes carry extensions:
+	// EnsureExtensions above rejects extension data on absent and nil votes.
+	// VerifyCommit checked len(vals.Validators) == len(ExtendedSignatures).
+	for idx, ecs := range extCommit.ExtendedSignatures {
+		if ecs.BlockIDFlag != BlockIDFlagCommit {
+			continue
 		}
-
 		vote := extCommit.GetExtendedVote(int32(idx))
-		if err := vote.VerifyExtension(chainID, val.PubKey); err != nil {
+		if err := vote.VerifyExtension(chainID, vals.Validators[idx].PubKey); err != nil {
 			return fmt.Errorf("invalid vote extension signature (val #%d): %w", idx, err)
 		}
 	}

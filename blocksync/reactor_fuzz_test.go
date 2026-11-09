@@ -294,16 +294,14 @@ func (h *bsHarness) syncStep() {
 	r.pool.PopRequest()
 	if extEnabled {
 		require.Equal(t, h.chain.extCommits[first.Height].ToCommit().Hash(), extCommit.ToCommit().Hash())
-		// ToCommit drops vote extensions, so check the persisted extension
-		// signatures separately: consensus re-verifies them on restart.
-		for i, sig := range extCommit.ExtendedSignatures {
-			if sig.BlockIDFlag != cmttypes.BlockIDFlagCommit {
-				continue
-			}
-			_, val := h.state.Validators.GetByIndex(int32(i))
-			require.NoError(t, extCommit.GetExtendedVote(int32(i)).VerifyExtension(chainID, val.PubKey),
-				"blocksync would persist an invalid vote extension at %d", first.Height)
-		}
+		// ToCommit drops vote extensions, so check the persisted extended
+		// commit the way consensus reconstructs it on restart
+		// (votesFromExtendedCommit): ToExtendedVoteSet panics on any invalid
+		// vote or extension.
+		var vs *cmttypes.VoteSet
+		require.NotPanics(t, func() { vs = extCommit.ToExtendedVoteSet(chainID, h.state.Validators) },
+			"blocksync would persist an extended commit consensus cannot load at %d", first.Height)
+		require.True(t, vs.HasTwoThirdsMajority(), "persisted extended commit at %d lacks +2/3", first.Height)
 		r.store.SaveBlockWithExtendedCommit(first, firstParts, extCommit)
 	} else {
 		r.store.SaveBlock(first, firstParts, second.LastCommit)
@@ -418,12 +416,19 @@ func (h *bsHarness) blockResponse(r *fzReader, height int64) (msg *bcproto.Block
 			rebuild = false
 			if ec != nil && len(ec.ExtendedSignatures) > 0 {
 				i := int(r.byte()) % len(ec.ExtendedSignatures)
-				if r.byte()&1 == 0 {
-					ec.ExtendedSignatures[i].ExtensionSignature = []byte{r.byte()}
-				} else {
-					sig := append([]byte{}, ec.ExtendedSignatures[i].Signature...)
+				ecs := &ec.ExtendedSignatures[i]
+				switch r.byte() % 4 {
+				case 0:
+					ecs.ExtensionSignature = []byte{r.byte()}
+				case 1:
+					sig := append([]byte{}, ecs.Signature...)
 					sig[0] ^= 1
-					ec.ExtendedSignatures[i].Signature = sig
+					ecs.Signature = sig
+				case 2: // change the extension, keep its original signature
+					ecs.Extension = append(append([]byte{}, ecs.Extension...), r.byte())
+				case 3: // turn into a nil vote that still carries an extension
+					ecs.BlockIDFlag = cmttypes.BlockIDFlagNil
+					ecs.Extension = []byte{r.byte()}
 				}
 			}
 		case 6:
@@ -479,8 +484,12 @@ func FuzzBlockSyncReactor(f *testing.F) {
 	f.Add(syncSeed(map[int][]byte{2: {0x80, 0, 0}}))
 	f.Add(syncSeed(map[int][]byte{4: {0x85, 0, 1}}))
 	f.Add(syncSeed(map[int][]byte{4: {0x84}}))
-	// A vote extension signature altered at height 5.
+	// At height 5: an altered vote extension signature, an altered
+	// extension that keeps its original signature, and a nil vote carrying
+	// an extension.
 	f.Add(syncSeed(map[int][]byte{4: {0x85, 0, 0, 7}}))
+	f.Add(syncSeed(map[int][]byte{4: {0x85, 0, 2, 7}}))
+	f.Add(syncSeed(map[int][]byte{4: {0x85, 0, 3, 7}}))
 	// Extreme and invalid status ranges, unsolicited blocks, requests.
 	f.Add([]byte{0, 0, 5, 0, 0, 1, 0x10, 6, 2, 0, 0, 0, 3, 1, 0, 4, 0, 0x08, 5, 1, 7, 2, 7, 2})
 	f.Add([]byte{0, 0, 0x10, 0x10, 6, 0, 2, 1, 1, 0, 1, 0, 0, 0x83, 0x18, 6, 0})

@@ -1707,9 +1707,28 @@ func TestVerifyCommitExtended(t *testing.T) {
 		assert.Equal(t, "nil extended commit", err.Error())
 	})
 
-	t.Run("allows absent and nil votes in extended commit", func(t *testing.T) {
+	t.Run("changed extension with old signature", func(t *testing.T) {
 		// ARRANGE
 		blockID := makeBlockIDRandom()
+		voteSet, valSet, vals := randVoteSet(height, round, cmtproto.PrecommitType, 4, 10, true)
+		extCommit, err := MakeExtCommit(blockID, height, round, voteSet, vals, time.Now(), true)
+		require.NoError(t, err)
+		require.NoError(t, valSet.VerifyCommitExtended(chainID, blockID, height, extCommit))
+		// Keep the original, valid extension signature but change the payload.
+		extCommit.ExtendedSignatures[1].Extension = append(extCommit.ExtendedSignatures[1].Extension, []byte("tampered")...)
+
+		// ACT
+		err = valSet.VerifyCommitExtended(chainID, blockID, height, extCommit)
+
+		// ASSERT
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "invalid vote extension signature (val #1)")
+	})
+
+	// makeExtCommitWithNilAndAbsent returns an extended commit for blockID in
+	// which validators 0-4 voted for the block, 5 voted nil and 6 is absent.
+	makeExtCommitWithNilAndAbsent := func(t *testing.T, blockID BlockID) (*ExtendedCommit, *ValidatorSet) {
+		t.Helper()
 		voteSet, valSet, vals := randVoteSet(height, round, cmtproto.PrecommitType, 7, 10, true)
 		now := time.Now()
 
@@ -1745,13 +1764,45 @@ func TestVerifyCommitExtended(t *testing.T) {
 		require.Empty(t, extCommit.ExtendedSignatures[5].ExtensionSignature)
 		require.Empty(t, extCommit.ExtendedSignatures[6].Extension)
 		require.Empty(t, extCommit.ExtendedSignatures[6].ExtensionSignature)
+		return extCommit, valSet
+	}
+
+	t.Run("allows absent and nil votes in extended commit", func(t *testing.T) {
+		// ARRANGE
+		blockID := makeBlockIDRandom()
+		extCommit, valSet := makeExtCommitWithNilAndAbsent(t, blockID)
 
 		// ACT
-		err = valSet.VerifyCommitExtended(chainID, blockID, height, extCommit)
+		err := valSet.VerifyCommitExtended(chainID, blockID, height, extCommit)
 
 		// ASSERT
 		require.NoError(t, err)
 	})
+
+	for _, tc := range []struct {
+		name   string
+		idx    int
+		mutate func(*ExtendedCommitSig)
+		errMsg string
+	}{
+		{"extension on nil vote", 5, func(s *ExtendedCommitSig) { s.Extension = []byte("ext") }, "non-commit vote extension present"},
+		{"extension signature on nil vote", 5, func(s *ExtendedCommitSig) { s.ExtensionSignature = []byte("sig") }, "non-commit vote extension signature present"},
+		{"extension on absent vote", 6, func(s *ExtendedCommitSig) { s.Extension = []byte("ext") }, "non-commit vote extension present"},
+	} {
+		t.Run("rejects "+tc.name, func(t *testing.T) {
+			// ARRANGE
+			blockID := makeBlockIDRandom()
+			extCommit, valSet := makeExtCommitWithNilAndAbsent(t, blockID)
+			tc.mutate(&extCommit.ExtendedSignatures[tc.idx])
+
+			// ACT
+			err := valSet.VerifyCommitExtended(chainID, blockID, height, extCommit)
+
+			// ASSERT
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), tc.errMsg)
+		})
+	}
 }
 
 func TestVerifyCommitSingleWithInvalidSignatures(t *testing.T) {
