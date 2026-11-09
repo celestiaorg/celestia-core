@@ -105,7 +105,7 @@ func TestWALJournalsOnlyAcceptedProposal(t *testing.T) {
 	require.Equal(t, prop.Signature, journaled[0].Signature)
 }
 
-// Replaying a lock without its bytes prepares the part set and asks the propagator for them.
+// Replaying a lock without its bytes asks the propagator for them, leaving the round's proposal alone.
 func TestReplayLockInfoRefetchesBytes(t *testing.T) {
 	cs, _ := randState(1)
 	rec := &callRecorder{Propagator: cs.propagator}
@@ -114,7 +114,7 @@ func TestReplayLockInfoRefetchesBytes(t *testing.T) {
 	li := LockInfo{Height: 1, Round: 0, BlockID: types.BlockID{Hash: cmtrand.Bytes(32), PartSetHeader: psh}}
 
 	require.NoError(t, cs.readReplayMessage(&TimedWALMessage{Msg: li}, nil))
-	require.True(t, cs.GetRoundState().ProposalBlockParts.HasHeader(psh))
+	require.Nil(t, cs.GetRoundState().ProposalBlockParts)
 	require.Equal(t, []propagatorCall{{commitment: true, height: 1, round: 0, psh: psh}}, rec.snapshot())
 }
 
@@ -175,6 +175,98 @@ func TestRestartedLockRefetchesAndReproposes(t *testing.T) {
 	p := f.nextOwnProposal(t, cs, newRoundCh)
 	require.Equal(t, xID, p.BlockID)
 	require.EqualValues(t, 0, p.POLRound)
+}
+
+// lockRoundFeeder delivers a round's parts on the part channel, then holds the complete set, as the propagator does.
+type lockRoundFeeder struct {
+	propagation.Propagator
+
+	partChan chan types.PartInfo
+	mtx      cmtsync.Mutex
+	round    int32
+	parts    *types.PartSet
+}
+
+func (f *lockRoundFeeder) GetPartChan() <-chan types.PartInfo { return f.partChan }
+
+func (f *lockRoundFeeder) GetProposal(height int64, round int32) (*types.Proposal, *types.PartSet, bool) {
+	f.mtx.Lock()
+	defer f.mtx.Unlock()
+	if f.parts != nil && round == f.round {
+		return &types.Proposal{Height: height, Round: round}, f.parts, true
+	}
+	return f.Propagator.GetProposal(height, round)
+}
+
+// deliver holds parts as round's complete set and, if send, passes them on the part channel.
+func (f *lockRoundFeeder) deliver(round int32, parts *types.PartSet, send bool) {
+	f.mtx.Lock()
+	f.round, f.parts = round, parts
+	f.mtx.Unlock()
+	for i := 0; send && i < int(parts.Total()); i++ {
+		f.partChan <- types.PartInfo{Part: parts.GetPart(i), Height: 1, Round: round}
+	}
+}
+
+// A node locked by ID whose lock-round parts arrive only after it left that round, live or
+// during replay, fills the lock and re-proposes it with its lock round as POL. A block the
+// propagator completed without passing parts on is taken when the node proposes.
+func TestRestartedLockFilledInLaterRound(t *testing.T) {
+	for _, tc := range []struct {
+		name           string
+		inReplay, send bool
+	}{{"live", false, true}, {"in_replay", true, true}, {"held_only", false, false}} {
+		inReplay := tc.inReplay
+		t.Run(tc.name, func(t *testing.T) {
+			f := newLockFixture(t, true, false)
+			var block *types.Block
+			var parts *types.PartSet
+			if inReplay {
+				cs1 := f.newState()
+				newRoundCh, voteCh := startRestarted(t, cs1)
+				_, block, parts = f.lockOnX(t, cs1)
+				nextVote(t, voteCh, 1, 0, cmtproto.PrecommitType)
+				// Two nil precommits: round 1 starts on the precommit timeout, which is journaled.
+				signAddVotes(cs1, cmtproto.PrecommitType, nil, types.PartSetHeader{}, false, f.others[:2]...)
+				waitRound(t, newRoundCh, 1, 1)
+				incrementRound(f.vss...)
+				require.NoError(t, cs1.Stop())
+				cs1.Wait()
+			} else {
+				_, block, parts = f.lockAndStop(t)
+			}
+			xID := types.BlockID{Hash: block.Hash(), PartSetHeader: parts.Header()}
+
+			cs := f.newState()
+			feed := &lockRoundFeeder{Propagator: cs.propagator, partChan: make(chan types.PartInfo, parts.Total())}
+			rec := &callRecorder{Propagator: feed}
+			cs.propagator = rec
+			newRoundCh, _ := startRestarted(t, cs)
+			if !inReplay {
+				f.moveToRound1(t, cs, newRoundCh)
+			}
+			rs := cs.GetRoundState()
+			require.EqualValues(t, 1, rs.Round)
+			require.EqualValues(t, 0, rs.LockedRound)
+			require.Nil(t, rs.LockedBlock)
+
+			feed.deliver(0, parts, tc.send)
+			if tc.send {
+				require.Eventually(t, func() bool {
+					rs := cs.GetRoundState()
+					return blockMatchesBlockID(rs.LockedBlock, rs.LockedBlockParts, xID)
+				}, 5*time.Second, 10*time.Millisecond)
+			}
+
+			p := f.nextOwnProposal(t, cs, newRoundCh)
+			require.Equal(t, xID, p.BlockID)
+			require.EqualValues(t, 0, p.POLRound)
+			rs = cs.GetRoundState()
+			require.True(t, blockMatchesBlockID(rs.LockedBlock, rs.LockedBlockParts, xID))
+			require.True(t, blockMatchesBlockID(rs.ValidBlock, rs.ValidBlockParts, xID))
+			require.Contains(t, rec.snapshot(), propagatorCall{block: true, height: 1, round: 0, psh: parts.Header()})
+		})
+	}
 }
 
 // A restarted node hands its locked block X to the propagator for the lock round, and

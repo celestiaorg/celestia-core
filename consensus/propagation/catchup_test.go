@@ -950,7 +950,7 @@ func TestAddBlockServesWants(t *testing.T) {
 	propY, psY, _, metaY := createTestProposal(t, sm, pv, 1, 0, 2, 1000000)
 	pshX := psX.Header()
 
-	complete := func(r *Reactor) func() bool {
+	completeFn := func(r *Reactor) func() bool {
 		return func() bool {
 			_, parts, has := r.GetProposal(propX.Height, propX.Round)
 			return has && parts.IsComplete() && parts.HasHeader(pshX)
@@ -968,7 +968,7 @@ func TestAddBlockServesWants(t *testing.T) {
 		}, time.Second, 10*time.Millisecond)
 
 		server.AddBlock(propX.Height, propX.Round, psX)
-		require.Eventually(t, complete(requester), 2*time.Second, 10*time.Millisecond)
+		require.Eventually(t, completeFn(requester), 2*time.Second, 10*time.Millisecond)
 	})
 
 	t.Run("replaces another block", func(t *testing.T) {
@@ -981,8 +981,8 @@ func TestAddBlockServesWants(t *testing.T) {
 		partsY.SetProposalData(psY, parityY)
 
 		server.AddBlock(propX.Height, propX.Round, psX)
-		require.True(t, complete(server)())
+		require.True(t, completeFn(server)())
 		requester.AddCommitment(propX.Height, propX.Round, &pshX)
-		require.Eventually(t, complete(requester), 2*time.Second, 10*time.Millisecond)
+		require.Eventually(t, completeFn(requester), 2*time.Second, 10*time.Millisecond)
 	})
 }
