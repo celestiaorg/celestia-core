@@ -2,6 +2,7 @@ package blocksync
 
 import (
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"math"
 	"sort"
@@ -265,12 +266,12 @@ func (h *bsHarness) syncStep() {
 	if err == nil && r.verifyData {
 		var ok bool
 		if ok, err = r.blockExec.ProcessProposal(first, h.state.InitialHeight); !ok && err == nil {
-			err = fmt.Errorf("app rejected block")
+			err = errors.New("app rejected block")
 		}
 	}
 	extEnabled := h.state.ConsensusParams.ABCI.VoteExtensionsEnabled(first.Height)
 	if (extCommit != nil) != extEnabled {
-		err = fmt.Errorf("extended commit presence mismatch")
+		err = errors.New("extended commit presence mismatch")
 	}
 	if err == nil && extEnabled {
 		err = h.state.Validators.VerifyCommitExtended(chainID, firstID, first.Height, extCommit)
