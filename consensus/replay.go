@@ -117,10 +117,7 @@ func (cs *State) applyLockInfo(li LockInfo) {
 		cs.fillLockBytes(cs.rs.ProposalBlock, cs.rs.ProposalBlockParts)
 		return
 	}
-	// Refetch the bytes; the propagator only sends requests once it starts processing.
-	if cs.rs.ProposalBlockParts == nil {
-		cs.rs.ProposalBlockParts = types.NewPartSetFromHeader(li.BlockID.PartSetHeader, types.BlockPartSizeBytes)
-	}
+	// Refetch the bytes for the lock round; fillLockFromPropagator takes them, whatever the round by then.
 	psh := li.BlockID.PartSetHeader
 	cs.propagator.AddCommitment(li.Height, li.Round, &psh)
 }
