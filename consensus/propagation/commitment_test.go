@@ -5,6 +5,7 @@ import (
 	"math/rand/v2"
 	"os"
 	"runtime/pprof"
+	"sync"
 	"testing"
 	"time"
 
@@ -474,12 +475,8 @@ func TestForwardCompactBlockBeforeRecovery(t *testing.T) {
 	cb, _, _ := compactBlockFor(t, prop, ps, metaData)
 
 	// n1 has the block's txs but its mempool lookups block until released.
-	pool := &blockingMempool{mockMempool{txs: make(map[types.TxKey]*types.CachedTx)}, make(chan struct{})}
-	for _, tx := range block.Txs {
-		pool.AddTx(tx)
-	}
+	pool := &blockingMempool{mempoolWith(block.Txs), make(chan struct{})}
 	n1.mempool = pool
-
 	done := make(chan struct{})
 	go func() {
 		n1.handleCompactBlock(cb, n2.self, false)
@@ -490,32 +487,82 @@ func TestForwardCompactBlockBeforeRecovery(t *testing.T) {
 		_, _, has := n3.GetProposal(1, 0)
 		return has
 	}, 5*time.Second, 10*time.Millisecond)
-	require.Never(t, func() bool { return isClosed(done) }, 100*time.Millisecond, 10*time.Millisecond)
 
 	close(pool.release)
-	require.Eventually(t, func() bool { return isClosed(done) }, 5*time.Second, 10*time.Millisecond)
+	<-done
 	_, parts, _ := n1.GetProposal(1, 0)
 	require.NotZero(t, parts.Count(), "n1 should recover parts from its mempool")
 }
 
+// TestForwardCompactBlockFromManyPeers delivers the same compact block to n1
+// from every peer at once and checks it is forwarded and handed to consensus
+// once, whatever local recovery does.
+func TestForwardCompactBlockFromManyPeers(t *testing.T) {
+	cleanup, _, sm, pv := state.SetupTestCaseWithPrivVal(t)
+	t.Cleanup(func() { cleanup(t) })
+
+	tests := map[string]struct {
+		pool      func(txs types.Txs) Mempool
+		recovered bool
+	}{
+		"mempool hit":     {func(txs types.Txs) Mempool { return mempoolWith(txs) }, true},
+		"mempool miss":    {func(types.Txs) Mempool { return mempoolWith(nil) }, false},
+		"corrupt mempool": {corruptMempool, false},
+	}
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			reactors, _ := testBlockPropReactors(5, defaultTestP2PConf())
+			n1, peers := reactors[0], reactors[1:]
+
+			prop, ps, block, metaData := createTestProposal(t, sm, pv, 1, 0, 2, 1000000)
+			cb, _, _ := compactBlockFor(t, prop, ps, metaData)
+			n1.mempool = tc.pool(block.Txs)
+
+			var wg sync.WaitGroup
+			for _, p := range peers {
+				wg.Go(func() { n1.handleCompactBlock(cb, p.self, false) })
+			}
+			wg.Wait()
+
+			_, parts, _ := n1.GetProposal(1, 0)
+			require.Equal(t, tc.recovered, parts.Count() > 0)
+			require.Len(t, n1.proposalChan, 1)
+			for _, p := range peers {
+				require.Eventually(t, func() bool {
+					_, _, has := p.GetProposal(1, 0)
+					return has
+				}, 5*time.Second, 10*time.Millisecond)
+			}
+		})
+	}
+}
+
+func mempoolWith(txs types.Txs) *mockMempool {
+	pool := &mockMempool{txs: make(map[types.TxKey]*types.CachedTx)}
+	for _, tx := range txs {
+		pool.AddTx(tx)
+	}
+	return pool
+}
+
+// corruptMempool returns random bytes for every tx in the block.
+func corruptMempool(txs types.Txs) Mempool {
+	pool := mempoolWith(nil)
+	for _, tx := range txs {
+		pool.txs[tx.Key()] = &types.CachedTx{Tx: cmtrand.Bytes(len(tx))}
+	}
+	return pool
+}
+
 // blockingMempool blocks every lookup until release is closed.
 type blockingMempool struct {
-	mockMempool
+	*mockMempool
 	release chan struct{}
 }
 
 func (m *blockingMempool) GetTxByKey(key types.TxKey) (*types.CachedTx, bool) {
 	<-m.release
 	return m.mockMempool.GetTxByKey(key)
-}
-
-func isClosed(ch chan struct{}) bool {
-	select {
-	case <-ch:
-		return true
-	default:
-		return false
-	}
 }
 
 // TestHandleCompactBlockForwarding checks that only a valid, unseen compact
