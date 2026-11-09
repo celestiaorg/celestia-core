@@ -2505,7 +2505,6 @@ func (cs *State) handleCompleteProposal(blockHeight int64) {
 	if cs.rs.IsLocked() && cs.rs.LockedBlock == nil &&
 		blockMatchesBlockID(cs.rs.ProposalBlock, cs.rs.ProposalBlockParts, cs.rs.LockedBlockID) {
 		cs.fillLockBytes(cs.rs.ProposalBlock, cs.rs.ProposalBlockParts)
-		cs.copyLockedBlock()
 	}
 
 	// Update Valid* if we can.
@@ -3308,6 +3307,7 @@ func (cs *State) fillLockBytes(block *types.Block, parts *types.PartSet) {
 		cs.rs.ValidBlock, cs.rs.ValidBlockParts = block, parts
 	}
 	cs.shareBlock(cs.rs.LockedRound, parts)
+	cs.copyLockedBlock()
 }
 
 // fillLockFromPropagator gives a lock held by ID the block the propagator completed

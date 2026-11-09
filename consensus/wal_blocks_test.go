@@ -106,6 +106,21 @@ func TestLockedBlockCopiedAfterRefetch(t *testing.T) {
 	requireCopied(t, cs.lockedBlocks, LockInfo{Height: 1, BlockID: types.BlockID{Hash: block.Hash(), PartSetHeader: parts.Header()}})
 }
 
+// So does one whose block the propagator completes after the node left the lock round.
+func TestLockedBlockCopiedAfterLaterRoundRefetch(t *testing.T) {
+	f := newLockFixture(t, true, false)
+	_, block, parts := f.lockAndStop(t)
+
+	f.lazyDelay = 10 * time.Millisecond
+	cs := f.newState()
+	feed := &lockRoundFeeder{Propagator: cs.propagator, partChan: make(chan types.PartInfo, parts.Total())}
+	cs.propagator = feed
+	newRoundCh, _ := startRestarted(t, cs)
+	f.moveToRound1(t, cs, newRoundCh)
+	feed.deliver(0, parts, true)
+	requireCopied(t, cs.lockedBlocks, LockInfo{Height: 1, BlockID: types.BlockID{Hash: block.Hash(), PartSetHeader: parts.Header()}})
+}
+
 // A height that commits before the delay never writes the file.
 func TestLockedBlockNotWrittenWhenHeightCommits(t *testing.T) {
 	f := newLockFixture(t, true, false)
