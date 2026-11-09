@@ -1,0 +1,7 @@
+# Native fuzz targets deliberately left out of the nightly matrix in
+# .github/workflows/fuzz-nightly.yml. scripts/check-fuzz-targets.sh fails when
+# a `func Fuzz*(f *testing.F)` target is in neither list, so a new target is
+# not silently forgotten.
+#
+# One target per line: <package directory> <Target without the Fuzz prefix> <reason>
+crypto/merkle ParallelImplementations Tests tree algorithms against each other, not a network decoder; seeds replay in the regular test jobs.

@@ -182,6 +182,9 @@ type remotePeer struct {
 	channels   bytes.HexBytes
 	listenAddr string
 	listener   net.Listener
+	// advertisedAddr, if set, is the ListenAddr sent in the NodeInfo instead
+	// of the listener address.
+	advertisedAddr string
 }
 
 func (rp *remotePeer) Addr() *NetAddress {
@@ -257,10 +260,14 @@ func (rp *remotePeer) accept() {
 }
 
 func (rp *remotePeer) nodeInfo() NodeInfo {
+	listenAddr := rp.listener.Addr().String()
+	if rp.advertisedAddr != "" {
+		listenAddr = rp.advertisedAddr
+	}
 	return DefaultNodeInfo{
 		ProtocolVersion: defaultProtocolVersion,
 		DefaultNodeID:   rp.Addr().ID,
-		ListenAddr:      rp.listener.Addr().String(),
+		ListenAddr:      listenAddr,
 		Network:         "testing",
 		Version:         "1.2.3-rc0-deadbeef",
 		Channels:        rp.channels,

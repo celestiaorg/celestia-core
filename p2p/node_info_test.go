@@ -1,9 +1,13 @@
 package p2p
 
 import (
+	"errors"
+	"net"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/cometbft/cometbft/crypto/ed25519"
 )
@@ -125,4 +129,141 @@ func TestNodeInfoCompatible(t *testing.T) {
 		tc.malleateNodeInfo(&ni)
 		assert.Error(t, ni1.CompatibleWith(ni))
 	}
+}
+
+// TestNodeInfoValidateDoesNotResolveListenAddr checks that validating a
+// self-reported ListenAddr never performs a DNS lookup, while malformed
+// addresses are still rejected.
+func TestNodeInfoValidateDoesNotResolveListenAddr(t *testing.T) {
+	lookups := 0
+	origLookupIP := lookupIP
+	lookupIP = func(host string) ([]net.IP, error) {
+		lookups++
+		return nil, errors.New("unexpected DNS lookup of " + host)
+	}
+	t.Cleanup(func() { lookupIP = origLookupIP })
+
+	nodeKey := NodeKey{PrivKey: ed25519.GenPrivKey()}
+
+	testCases := []struct {
+		listenAddr string
+		expectErr  bool
+	}{
+		{"peer.example.com:26656", false},
+		{"tcp://peer.example.com:26656", false},
+		{"1.2.3.4:26656", false},
+		{"[::1]:26656", false},
+		{"peer.example.com", true},       // no port
+		{":26656", true},                 // empty host
+		{"peer.example.com:99999", true}, // port out of range
+		{"peer.example.com:abc", true},   // non-numeric port
+	}
+
+	for _, tc := range testCases {
+		ni := testNodeInfo(nodeKey.ID(), "testing").(DefaultNodeInfo)
+		ni.ListenAddr = tc.listenAddr
+		err := ni.Validate()
+		if tc.expectErr {
+			assert.Error(t, err, tc.listenAddr)
+		} else {
+			assert.NoError(t, err, tc.listenAddr)
+		}
+	}
+	require.Zero(t, lookups, "Validate must not resolve the ListenAddr")
+}
+
+// TestNodeInfoNetAddressDoesNotResolve checks that NetAddress and
+// PeerAddress never perform a DNS lookup, and that PeerAddress uses the
+// connection's IP with the advertised port for a host name.
+func TestNodeInfoNetAddressDoesNotResolve(t *testing.T) {
+	lookups := 0
+	origLookupIP := lookupIP
+	lookupIP = func(host string) ([]net.IP, error) {
+		lookups++
+		return nil, errors.New("unexpected DNS lookup of " + host)
+	}
+	t.Cleanup(func() { lookupIP = origLookupIP })
+
+	nodeKey := NodeKey{PrivKey: ed25519.GenPrivKey()}
+	socketAddr := NewNetAddressIPPort(net.ParseIP("5.6.7.8"), 40000)
+	socketAddr.ID = nodeKey.ID()
+	ni := testNodeInfo(nodeKey.ID(), "testing").(DefaultNodeInfo)
+
+	ni.ListenAddr = "1.2.3.4:26656"
+	addr, err := ni.NetAddress()
+	require.NoError(t, err)
+	assert.Equal(t, IDAddressString(nodeKey.ID(), "1.2.3.4:26656"), addr.String())
+	addr, err = PeerAddress(&addrPeer{ni: ni, socketAddr: socketAddr})
+	require.NoError(t, err)
+	assert.Equal(t, IDAddressString(nodeKey.ID(), "1.2.3.4:26656"), addr.String())
+
+	ni.ListenAddr = "peer.example.com:26656"
+	_, err = ni.NetAddress()
+	require.Error(t, err)
+	addr, err = PeerAddress(&addrPeer{ni: ni, socketAddr: socketAddr})
+	require.NoError(t, err)
+	assert.Equal(t, IDAddressString(nodeKey.ID(), "5.6.7.8:26656"), addr.String())
+	_, err = PeerAddress(&addrPeer{ni: ni})
+	require.Error(t, err, "no connection IP to use for the host name")
+
+	require.Zero(t, lookups, "the ListenAddr must not be resolved")
+}
+
+// addrPeer is a Peer with a given NodeInfo and socket address.
+type addrPeer struct {
+	mockPeer
+	ni         NodeInfo
+	socketAddr *NetAddress
+}
+
+func (p *addrPeer) NodeInfo() NodeInfo      { return p.ni }
+func (p *addrPeer) SocketAddr() *NetAddress { return p.socketAddr }
+
+// TestNodeInfoValidateRejectsMalformedHostName checks that a ListenAddr whose
+// host is neither an IP nor a syntactically valid host name is rejected,
+// without resolving it.
+func TestNodeInfoValidateRejectsMalformedHostName(t *testing.T) {
+	lookups := 0
+	origLookupIP := lookupIP
+	lookupIP = func(host string) ([]net.IP, error) {
+		lookups++
+		return nil, errors.New("unexpected DNS lookup of " + host)
+	}
+	t.Cleanup(func() { lookupIP = origLookupIP })
+
+	nodeKey := NodeKey{PrivKey: ed25519.GenPrivKey()}
+
+	testCases := []struct {
+		listenAddr string
+		expectErr  bool
+	}{
+		{"localhost:26656", false},
+		{"peer.example.com.:26656", false}, // trailing dot
+		{"node_1:26656", false},            // underscore, as accepted by the Go resolver
+		{"a-b.example.com:26656", false},
+		{"bad host:26656", true},
+		{"bad\x00host:26656", true},
+		{"bad\nhost:26656", true},
+		{"-peer.example.com:26656", true},
+		{"peer-.example.com:26656", true},
+		{"peer..example.com:26656", true},
+		{".peer.example.com:26656", true},
+		{"peer.example.com..:26656", true},
+		{"1.2.3.4.5:26656", true}, // all-numeric, but not an IP
+		{"peer%eth0:26656", true},
+		{strings.Repeat("a", 64) + ".example.com:26656", true}, // label too long
+		{strings.Repeat("a.", 127) + "a:26656", true},          // name too long
+	}
+
+	for _, tc := range testCases {
+		ni := testNodeInfo(nodeKey.ID(), "testing").(DefaultNodeInfo)
+		ni.ListenAddr = tc.listenAddr
+		err := ni.Validate()
+		if tc.expectErr {
+			assert.Error(t, err, "%q", tc.listenAddr)
+		} else {
+			assert.NoError(t, err, "%q", tc.listenAddr)
+		}
+	}
+	require.Zero(t, lookups, "Validate must not resolve the ListenAddr")
 }

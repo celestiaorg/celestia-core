@@ -1,3 +1,7 @@
+# Coverage is reported for information only: no Codecov status blocks a pull
+# request. The project status compares against the base commit's report
+# (target: auto) so a drop is visible, and the components below break the
+# number down for the areas where a regression is most costly.
 coverage:
   precision: 2
   round: down
@@ -5,9 +9,42 @@ coverage:
   status:
     project:
       default:
-        threshold: 20%
+        target: auto
+        informational: true
     patch: off
     changes: off
+
+# Per-area coverage for high-risk code. Each component reports its own
+# informational project status against the base report. Paths are package
+# directories; keep them in sync when packages move.
+component_management:
+  default_rules:
+    statuses:
+      - type: project
+        target: auto
+        informational: true
+  individual_components:
+    - component_id: mempool
+      name: mempool (CAT)
+      paths: ["mempool/**"]
+    - component_id: consensus
+      name: consensus and propagation
+      paths: ["consensus/**"]
+    - component_id: p2p
+      name: p2p
+      paths: ["p2p/**"]
+    - component_id: state
+      name: state and block execution
+      paths: ["state/**"]
+    - component_id: light
+      name: light client
+      paths: ["light/**"]
+    - component_id: crypto
+      name: crypto
+      paths: ["crypto/**"]
+    - component_id: types
+      name: types
+      paths: ["types/**"]
 
 github_checks:
   annotations: false
