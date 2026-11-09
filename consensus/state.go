@@ -894,6 +894,7 @@ func (cs *State) updateToState(state sm.State) {
 	cs.rs.Proposal = nil
 	cs.rs.ProposalBlock = nil
 	cs.rs.ProposalBlockParts = nil
+	cs.rs.ProposalBlockNonCanonical = false
 	cs.proposalReceivedTime = time.Time{}
 	cs.rs.LockedRound = -1
 	cs.rs.LockedBlock = nil
@@ -1263,6 +1264,7 @@ func (cs *State) enterNewRound(height int64, round int32) {
 		cs.rs.Proposal = nil
 		cs.rs.ProposalBlock = nil
 		cs.rs.ProposalBlockParts = nil
+		cs.rs.ProposalBlockNonCanonical = false
 		cs.proposalReceivedTime = time.Time{}
 	}
 
@@ -1575,6 +1577,13 @@ func (cs *State) defaultDoPrevote(height int64, round int32) {
 		return
 	}
 
+	// If the parts are not the block's canonical encoding, prevote nil.
+	if cs.rs.ProposalBlockNonCanonical {
+		logger.Error("prevote step: proposal block parts are not the canonical block encoding; prevoting nil")
+		cs.signAddVote(cmtproto.PrevoteType, nil, types.PartSetHeader{}, nil)
+		return
+	}
+
 	// Validate proposal block, from consensus' perspective
 	err := cs.blockExec.ValidateBlock(cs.state, cs.rs.ProposalBlock)
 	if err != nil {
@@ -1776,8 +1785,11 @@ func (cs *State) enterPrecommit(height int64, round int32) {
 		return
 	}
 
-	// If +2/3 prevoted for proposal block, stage and precommit it
-	if blockMatchesBlockID(cs.rs.ProposalBlock, cs.rs.ProposalBlockParts, blockID) {
+	// If +2/3 prevoted for proposal block, stage and precommit it, unless its
+	// parts are not the canonical encoding. Such a block is never locked or
+	// precommitted: it is treated like a polka for a block we do not have.
+	if blockMatchesBlockID(cs.rs.ProposalBlock, cs.rs.ProposalBlockParts, blockID) &&
+		!cs.rs.ProposalBlockNonCanonical {
 		logger.Debug("precommit step; +2/3 prevoted proposal block; locking", "hash", blockID.Hash)
 
 		// Validate the block.
@@ -1808,6 +1820,7 @@ func (cs *State) enterPrecommit(height int64, round int32) {
 
 	if !cs.rs.ProposalBlockParts.HasHeader(blockID.PartSetHeader) {
 		cs.rs.ProposalBlock = nil
+		cs.rs.ProposalBlockNonCanonical = false
 		cs.rs.ProposalBlockParts = types.NewPartSetFromHeader(blockID.PartSetHeader, types.BlockPartSizeBytes)
 		psh := cs.rs.ProposalBlockParts.Header()
 		cs.propagator.AddCommitment(height, round, &psh)
@@ -1893,6 +1906,8 @@ func (cs *State) enterCommit(height int64, commitRound int32) {
 		logger.Debug("commit is for a locked block; set ProposalBlock=LockedBlock", "block_hash", blockID.Hash)
 		cs.rs.ProposalBlock = cs.rs.LockedBlock
 		cs.rs.ProposalBlockParts = cs.rs.LockedBlockParts
+		// A non-canonical block is never locked.
+		cs.rs.ProposalBlockNonCanonical = false
 	}
 
 	// If we don't have the block being committed, set up to get it.
@@ -1902,6 +1917,7 @@ func (cs *State) enterCommit(height int64, commitRound int32) {
 		// to hash to blockID.Hash. Drop it before announcing the new round
 		// state and wait for the committed parts.
 		cs.rs.ProposalBlock = nil
+		cs.rs.ProposalBlockNonCanonical = false
 
 		if !cs.rs.ProposalBlockParts.HasHeader(blockID.PartSetHeader) {
 			logger.Info(
@@ -2414,34 +2430,29 @@ func (cs *State) addProposalBlockPart(msg *BlockPartMessage, peerID p2p.ID) (add
 			return added, err
 		}
 
-		// Require the parts to be the block's canonical encoding. Other nodes
-		// (e.g. blocksync) rebuild the PartSetHeader by re-encoding the block,
-		// so a non-canonical encoding would make the committed BlockID
-		// unverifiable for them.
-		canonicalPB, err := block.ToProto()
-		if err != nil {
-			return added, err
-		}
-		canonical, err := proto.Marshal(canonicalPB)
-		if err != nil {
-			return added, err
-		}
-		// Every part but the last is exactly BlockPartSizeBytes, so a matching
-		// part count also rules out a trailing empty part.
-		partSize := int(types.BlockPartSizeBytes)
-		canonicalTotal := (len(canonical) + partSize - 1) / partSize
-		if !bytes.Equal(canonical, bz) || int(cs.rs.ProposalBlockParts.Total()) != canonicalTotal {
-			cs.Logger.Error(
-				"rejecting proposal block: parts are not the canonical block encoding",
-				"height", height,
-				"round", round,
-				"peer", peerID,
-			)
-			return added, errors.New("proposal block parts are not the canonical block encoding")
+		// Record whether the parts are the block's canonical encoding. Other
+		// nodes (e.g. blocksync) rebuild the PartSetHeader by re-encoding the
+		// block, so a committed non-canonical encoding would make the
+		// BlockID unverifiable for them. This is a voting rule, not an
+		// assembly rule: the block is still kept so it can be finalized if
+		// +2/3 precommitted it, but we never vote for it. At the commit step
+		// no more votes are cast, so the check is skipped.
+		nonCanonical := false
+		if cs.rs.Step != cstypes.RoundStepCommit {
+			nonCanonical = !isCanonicalBlockEncoding(block, bz, cs.rs.ProposalBlockParts.Total())
+			if nonCanonical {
+				cs.Logger.Error(
+					"proposal block parts are not the canonical block encoding; will not vote for it",
+					"height", height,
+					"round", round,
+					"peer", peerID,
+				)
+			}
 		}
 		block.FillCachedHashes()
 
 		cs.rs.ProposalBlock = block
+		cs.rs.ProposalBlockNonCanonical = nonCanonical
 
 		// NOTE: it's possible to receive complete proposal blocks for future rounds without having the proposal
 		cs.Logger.Info("received complete proposal block", "height", cs.rs.ProposalBlock.Height, "hash", cs.rs.ProposalBlock.Hash())
@@ -2458,7 +2469,10 @@ func (cs *State) handleCompleteProposal(blockHeight int64) {
 	prevotes := cs.rs.Votes.Prevotes(cs.rs.Round)
 	blockID, hasTwoThirds := prevotes.TwoThirdsMajority()
 	if hasTwoThirds && !blockID.IsZero() && (cs.rs.ValidRound < cs.rs.Round) {
-		if blockMatchesBlockID(cs.rs.ProposalBlock, cs.rs.ProposalBlockParts, blockID) {
+		// A non-canonical block is never recorded as ValidBlock, so we never
+		// propose it ourselves.
+		if blockMatchesBlockID(cs.rs.ProposalBlock, cs.rs.ProposalBlockParts, blockID) &&
+			!cs.rs.ProposalBlockNonCanonical {
 			cs.Logger.Debug(
 				"updating valid block to new proposal block",
 				"valid_round", cs.rs.Round,
@@ -2714,10 +2728,18 @@ func (cs *State) addVote(vote *types.Vote, peerID p2p.ID) (added bool, err error
 			if len(blockID.Hash) != 0 && (cs.rs.ValidRound < vote.Round) && (vote.Round == cs.rs.Round) {
 				partsMatch := cs.rs.ProposalBlockParts.HasHeader(blockID.PartSetHeader)
 				if cs.rs.ProposalBlock.HashesTo(blockID.Hash) && partsMatch {
-					cs.Logger.Debug("updating valid block because of POL", "valid_round", cs.rs.ValidRound, "pol_round", vote.Round)
-					cs.rs.ValidRound = vote.Round
-					cs.rs.ValidBlock = cs.rs.ProposalBlock
-					cs.rs.ValidBlockParts = cs.rs.ProposalBlockParts
+					if cs.rs.ProposalBlockNonCanonical {
+						// Keep the block so it can still be finalized if it
+						// is committed, but never record it as ValidBlock,
+						// so we never propose it ourselves.
+						cs.Logger.Info("not updating valid block: proposal block parts are not the canonical block encoding",
+							"pol_round", vote.Round)
+					} else {
+						cs.Logger.Debug("updating valid block because of POL", "valid_round", cs.rs.ValidRound, "pol_round", vote.Round)
+						cs.rs.ValidRound = vote.Round
+						cs.rs.ValidBlock = cs.rs.ProposalBlock
+						cs.rs.ValidBlockParts = cs.rs.ProposalBlockParts
+					}
 				} else if cs.rs.ProposalBlock != nil {
 					cs.Logger.Debug(
 						"valid block we do not know about; set ProposalBlock=nil",
@@ -2729,6 +2751,7 @@ func (cs *State) addVote(vote *types.Vote, peerID p2p.ID) (added bool, err error
 
 					// we're getting the wrong block
 					cs.rs.ProposalBlock = nil
+					cs.rs.ProposalBlockNonCanonical = false
 				}
 
 				if !partsMatch {
@@ -3159,6 +3182,25 @@ func (cs *State) syncData() {
 			cs.peerMsgQueue <- msgInfo{&BlockPartMessage{h, r, part.Part}, ""}
 		}
 	}
+}
+
+// isCanonicalBlockEncoding reports whether bz, received as total parts, is
+// the canonical encoding of block, i.e. what block.MakePartSet would produce.
+// Every part but the last is exactly BlockPartSizeBytes, so a matching part
+// count also rules out a trailing empty part. An encoding error is reported
+// as non-canonical.
+func isCanonicalBlockEncoding(block *types.Block, bz []byte, total uint32) bool {
+	pb, err := block.ToProto()
+	if err != nil {
+		return false
+	}
+	canonical, err := proto.Marshal(pb)
+	if err != nil {
+		return false
+	}
+	partSize := int(types.BlockPartSizeBytes)
+	canonicalTotal := (len(canonical) + partSize - 1) / partSize
+	return int(total) == canonicalTotal && bytes.Equal(canonical, bz)
 }
 
 // blockMatchesBlockID reports whether block hashes to blockID.Hash and parts

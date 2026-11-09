@@ -76,9 +76,16 @@ type RoundState struct {
 	Proposal           *types.Proposal     `json:"proposal"`
 	ProposalBlock      *types.Block        `json:"proposal_block"`
 	ProposalBlockParts *types.PartSet      `json:"proposal_block_parts"`
-	LockedRound        int32               `json:"locked_round"`
-	LockedBlock        *types.Block        `json:"locked_block"`
-	LockedBlockParts   *types.PartSet      `json:"locked_block_parts"`
+
+	// ProposalBlockNonCanonical is set when ProposalBlockParts are not the
+	// canonical encoding of ProposalBlock. Such a block is never voted for,
+	// locked, or recorded as ValidBlock, but is still finalized if it gets
+	// +2/3 precommits.
+	ProposalBlockNonCanonical bool `json:"proposal_block_non_canonical"`
+
+	LockedRound      int32          `json:"locked_round"`
+	LockedBlock      *types.Block   `json:"locked_block"`
+	LockedBlockParts *types.PartSet `json:"locked_block_parts"`
 
 	// The variables below starting with "Valid..." derive their name from
 	// the algorithm presented in this paper:
