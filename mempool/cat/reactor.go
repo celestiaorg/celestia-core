@@ -144,7 +144,7 @@ func NewReactor(mempool *TxPool, opts *ReactorOptions) (*Reactor, error) {
 		mempool:        mempool,
 		ids:            newMempoolIDs(),
 		requests:       newRequestScheduler(opts.MaxGossipDelay, defaultGlobalRequestTimeout),
-		receivedBuffer: newReceivedTxBuffer(),
+		receivedBuffer: newReceivedTxBuffer(mempool.config.MaxTxsBytes),
 		traceClient:    traceClient,
 	}
 	memR.BaseReactor = *p2p.NewBaseReactor("CAT", memR,
@@ -494,7 +494,7 @@ func (memR *Reactor) Receive(e p2p.Envelope) {
 		if has && !memR.opts.ListenOnly {
 			peerID := memR.ids.GetIDForPeer(e.Src.ID())
 			memR.Logger.Trace("sending a tx in response to a want msg", "peer", peerID)
-			if e.Src.Send(p2p.Envelope{
+			if e.Src.TrySend(p2p.Envelope{
 				ChannelID: MempoolDataChannel,
 				Message:   &protomem.Txs{Txs: [][]byte{tx.Tx}},
 			}) {
@@ -581,7 +581,7 @@ func (memR *Reactor) broadcastSeenTxWithHeight(txKey types.TxKey, height int64, 
 			continue
 		}
 
-		if peer.Send(
+		if peer.TrySend(
 			p2p.Envelope{
 				ChannelID: MempoolDataChannel,
 				Message:   msg,
@@ -704,6 +704,13 @@ func (memR *Reactor) processReceivedBuffer(signer []byte) {
 		expectedSeq, haveExpected := memR.querySequenceFromApplication(signer)
 		if !haveExpected {
 			break
+		}
+
+		// Txs below the expected sequence can never be applied: their
+		// sequences were consumed some other way. Drop them even when
+		// nothing is buffered at the expected sequence.
+		for _, key := range memR.receivedBuffer.removeBelow(signer, expectedSeq) {
+			memR.mempool.seenTracker.RemoveKey(key)
 		}
 
 		buffered := memR.receivedBuffer.get(signer, expectedSeq)
@@ -845,6 +852,7 @@ func (memR *Reactor) refreshPendingSeenQueues() {
 	// Age out stale entries (peer disconnected, gap never filled) before
 	// scheduling more work.
 	memR.mempool.seenTracker.PruneExpired()
+	memR.pruneExpiredBuffered(time.Now())
 
 	// Collect signers from both the tracker's pending queue and the buffer.
 	seenSigners := make(map[string][]byte)
@@ -866,6 +874,14 @@ func (memR *Reactor) refreshPendingSeenQueues() {
 		memR.processReceivedBuffer(signer)
 		// Then request more pending txs
 		memR.processPendingSeenForSigner(signer)
+	}
+}
+
+// pruneExpiredBuffered drops buffered txs whose gap was not filled within
+// seenEntryTTL, the same lifetime the seen tracker gives pending entries.
+func (memR *Reactor) pruneExpiredBuffered(now time.Time) {
+	for _, key := range memR.receivedBuffer.pruneOlderThan(now.Add(-seenEntryTTL)) {
+		memR.mempool.seenTracker.RemoveKey(key)
 	}
 }
 

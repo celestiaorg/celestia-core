@@ -2,6 +2,7 @@ package http
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"math/rand"
 	"regexp"
@@ -193,6 +194,11 @@ func (p *http) signedHeader(ctx context.Context, height *int64) (*types.SignedHe
 				// Technically this means that the provider still needs to
 				// catch up.
 				return nil, provider.ErrHeightTooHigh
+			}
+			// LightBlock reads the header and the commit before validating
+			// the light block, so a response missing either one is bad.
+			if commit.Header == nil || commit.Commit == nil {
+				return nil, provider.ErrBadLightBlock{Reason: errors.New("signed header is missing its header or commit")}
 			}
 			return &commit.SignedHeader, nil
 

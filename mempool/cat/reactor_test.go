@@ -230,7 +230,7 @@ func TestReactorSendsTxAfterReceivingWantTx(t *testing.T) {
 	msgWant := &protomem.WantTx{TxKey: key[:]}
 
 	peer := genPeer()
-	peer.On("Send", txEnvelope).Return(true)
+	peer.On("TrySend", txEnvelope).Return(true)
 
 	// add the transaction to the nodes pool. It's not connected to
 	// any peers so it shouldn't broadcast anything yet
@@ -254,6 +254,38 @@ func TestReactorSendsTxAfterReceivingWantTx(t *testing.T) {
 	// pool should have marked the peer as having seen the tx
 	peerID := reactor.ids.GetIDForPeer(peer.ID())
 	require.True(t, pool.seenTracker.Has(key, peerID))
+}
+
+// TestReactorFailedWantTxReplyDoesNotMarkPeer verifies that when the reply to a
+// WantTx can't be queued (the peer's send queue is full), the peer is not
+// recorded as having the tx.
+func TestReactorFailedWantTxReplyDoesNotMarkPeer(t *testing.T) {
+	reactor, pool := setupReactor(t)
+
+	tx := newDefaultTx("hello")
+	key := tx.Key()
+	txEnvelope := p2p.Envelope{
+		Message:   &protomem.Txs{Txs: [][]byte{tx}},
+		ChannelID: MempoolDataChannel,
+	}
+
+	peer := genPeer()
+	peer.On("TrySend", txEnvelope).Return(false).Once()
+
+	require.NoError(t, pool.CheckTx(tx, nil, mempool.TxInfo{}))
+	_, err := reactor.InitPeer(peer)
+	require.NoError(t, err)
+	reactor.Receive(
+		p2p.Envelope{
+			ChannelID: MempoolWantsChannel,
+			Message:   &protomem.WantTx{TxKey: key[:]},
+			Src:       peer,
+		},
+	)
+
+	peer.AssertExpectations(t)
+	peerID := reactor.ids.GetIDForPeer(peer.ID())
+	require.False(t, pool.seenTracker.Has(key, peerID))
 }
 
 func TestReactorReceivesRequestedTx(t *testing.T) {
@@ -300,7 +332,7 @@ func TestReactorBroadcastsSeenTxAfterReceivingTx(t *testing.T) {
 		ChannelID: MempoolDataChannel,
 		Message:   seenMsg,
 	}
-	peers[1].On("Send", env).Return(true)
+	peers[1].On("TrySend", env).Return(true)
 
 	_, err := reactor.InitPeer(peers[0])
 	require.NoError(t, err)
@@ -1105,7 +1137,7 @@ func TestReactorRequestsQueuedTxAfterSequenceBecomesAvailable(t *testing.T) {
 	sourcePeer := genPeer()
 	_, err = reactor.InitPeer(sourcePeer)
 	require.NoError(t, err)
-	sourcePeer.On("Send", mock.Anything).Return(true).Maybe()
+	sourcePeer.On("TrySend", matchDataChannel).Return(true).Maybe()
 
 	targetTx := newDefaultTx("future-tx")
 	targetKey := targetTx.Key()
@@ -1135,7 +1167,7 @@ func TestReactorRequestsQueuedTxAfterSequenceBecomesAvailable(t *testing.T) {
 	providerPeer := genPeer()
 	_, err = reactor.InitPeer(providerPeer)
 	require.NoError(t, err)
-	providerPeer.On("Send", mock.Anything).Return(true).Maybe()
+	providerPeer.On("TrySend", matchDataChannel).Return(true).Maybe()
 
 	app.SetSequence(string(signer), 2)
 
@@ -1172,7 +1204,7 @@ func TestPendingSeenClearedWhenTxArrives(t *testing.T) {
 	sourcePeer := genPeer()
 	_, err = reactor.InitPeer(sourcePeer)
 	require.NoError(t, err)
-	sourcePeer.On("Send", mock.Anything).Return(true).Maybe()
+	sourcePeer.On("TrySend", matchDataChannel).Return(true).Maybe()
 
 	targetTx := newDefaultTx("future-tx")
 	targetKey := targetTx.Key()
@@ -1192,7 +1224,7 @@ func TestPendingSeenClearedWhenTxArrives(t *testing.T) {
 	providerPeer := genPeer()
 	_, err = reactor.InitPeer(providerPeer)
 	require.NoError(t, err)
-	providerPeer.On("Send", mock.Anything).Return(true).Maybe()
+	providerPeer.On("TrySend", matchDataChannel).Return(true).Maybe()
 
 	requestTxFromPeer(t, reactor, providerPeer, targetKey)
 	reactor.Receive(p2p.Envelope{
@@ -1259,7 +1291,7 @@ func TestPendingSeenDroppedWhenSequenceAdvances(t *testing.T) {
 	_, err = reactor.InitPeer(sourcePeer)
 	require.NoError(t, err)
 	sourcePeer.On("TrySend", mock.Anything).Return(true).Maybe()
-	sourcePeer.On("Send", mock.Anything).Return(true).Maybe()
+	sourcePeer.On("TrySend", matchDataChannel).Return(true).Maybe()
 
 	targetTx := newDefaultTx("future-tx")
 	targetKey := targetTx.Key()
@@ -1405,7 +1437,7 @@ func TestProcessPendingSeenForSignerSkipsAlreadyInMempool(t *testing.T) {
 	peer := genPeer()
 	_, err = reactor.InitPeer(peer)
 	require.NoError(t, err)
-	peer.On("Send", mock.Anything).Return(true).Maybe()
+	peer.On("TrySend", matchDataChannel).Return(true).Maybe()
 
 	// Add tx for sequence 5 to mempool first
 	tx5 := newDefaultTx("tx-5")
@@ -2151,6 +2183,7 @@ func TestSeenTxDirectPathEnforcesPerPeerRequestLimit(t *testing.T) {
 type plannedPeer struct {
 	id         p2p.ID
 	persistent bool
+	failSend   bool
 }
 
 // planPeers generates `total` peers with deterministic IDs, computes their
@@ -2186,13 +2219,13 @@ func planPeers(signer, salt []byte, total, persistentBottom, persistentTop int) 
 }
 
 // newPlannedPeer creates a *mocks.Peer with the given ID, IsPersistent flag,
-// and a permissive Send stub.
+// and a TrySend stub that succeeds unless failSend is set.
 func newPlannedPeer(p plannedPeer) *mocks.Peer {
 	peer := &mocks.Peer{}
 	peer.On("ID").Return(p.id)
 	peer.On("Get", types.PeerStateKey).Return(nil).Maybe()
 	peer.On("IsPersistent").Return(p.persistent).Maybe()
-	peer.On("Send", mock.Anything).Return(true).Maybe()
+	peer.On("TrySend", matchDataChannel).Return(!p.failSend).Maybe()
 	return peer
 }
 
@@ -2218,12 +2251,12 @@ func stickyTestReactor(t *testing.T, opts *ReactorOptions, plans []plannedPeer) 
 	return reactor, mockPeers
 }
 
-// sendRecipientIDs returns the set of peer IDs whose Send mock was invoked.
+// sendRecipientIDs returns the set of peer IDs whose TrySend mock was invoked.
 func sendRecipientIDs(peers []*mocks.Peer) map[p2p.ID]bool {
 	recipients := make(map[p2p.ID]bool)
 	for _, p := range peers {
 		for _, c := range p.Calls {
-			if c.Method == "Send" {
+			if c.Method == "TrySend" {
 				recipients[p.ID()] = true
 				break
 			}
@@ -2291,6 +2324,44 @@ func TestBroadcastSeenTxNoPersistentNoChange(t *testing.T) {
 	require.Len(t, recipients, maxSeenTxBroadcast)
 	for i := 0; i < maxSeenTxBroadcast; i++ {
 		require.True(t, recipients[ordered[i].peer.ID()])
+	}
+}
+
+// TestBroadcastSeenTxFailedSendDoesNotCount verifies that a SeenTx that can't be
+// queued for a peer does not count toward maxSeenTxBroadcast, so the next
+// ranked peer receives it instead, and the failed peer is not recorded as
+// having the tx.
+func TestBroadcastSeenTxFailedSendDoesNotCount(t *testing.T) {
+	const totalPeers = 30
+
+	signer := []byte("signer-F")
+	salt := []byte("salt-F")
+	plans := planPeers(signer, salt, totalPeers, 0, 0)
+	top := 0
+	for i := range plans {
+		if stickyScore64(signer, string(plans[i].id), salt) > stickyScore64(signer, string(plans[top].id), salt) {
+			top = i
+		}
+	}
+	plans[top].failSend = true
+
+	reactor, peers := stickyTestReactor(t, &ReactorOptions{StickyPeerSalt: salt}, plans)
+	ordered := selectStickyPeers(signer, reactor.ids.GetAll(), totalPeers, salt)
+	require.Equal(t, plans[top].id, ordered[0].peer.ID())
+
+	txKey := types.TxKey{}
+	copy(txKey[:], bytes.Repeat([]byte{0xef}, 32))
+	reactor.broadcastSeenTxWithHeight(txKey, 1, signer, 1)
+
+	// The failed peer was attempted, plus maxSeenTxBroadcast successful sends.
+	recipients := sendRecipientIDs(peers)
+	require.Len(t, recipients, maxSeenTxBroadcast+1)
+	for i := 0; i <= maxSeenTxBroadcast; i++ {
+		require.True(t, recipients[ordered[i].peer.ID()], "ranked peer missing at index %d", i)
+	}
+	require.False(t, reactor.mempool.seenTracker.Has(txKey, ordered[0].id))
+	for i := 1; i <= maxSeenTxBroadcast; i++ {
+		require.True(t, reactor.mempool.seenTracker.Has(txKey, ordered[i].id))
 	}
 }
 
@@ -2368,3 +2439,6 @@ func TestBroadcastSeenTxDeterministicPersistentSelection(t *testing.T) {
 	require.Equal(t, rec1, rec2, "persistent peer selection must be deterministic across reactors")
 	require.Len(t, rec1, maxSeenTxBroadcast+maxPersistent)
 }
+
+// matchDataChannel matches any envelope sent on the mempool data channel.
+var matchDataChannel = mock.MatchedBy(func(e p2p.Envelope) bool { return e.ChannelID == MempoolDataChannel })

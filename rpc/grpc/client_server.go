@@ -36,7 +36,7 @@ func StartGRPCServer(env *core.Environment, ln net.Listener) error {
 	sem := env.HeavySem()
 	grpcServer := grpc.NewServer(
 		grpc.UnaryInterceptor(heavyUnaryInterceptor(sem)),
-		grpc.StreamInterceptor(heavyStreamInterceptor(sem)),
+		grpc.StreamInterceptor(heavyStreamInterceptor(sem, heavyStreamStallTimeout)),
 		grpc.KeepaliveParams(keepalive.ServerParameters{
 			// Send a keepalive ping every 30s of inactivity.
 			Time: 30 * time.Second,

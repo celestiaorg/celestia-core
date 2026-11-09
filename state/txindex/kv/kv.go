@@ -6,7 +6,9 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"maps"
 	"math/big"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -113,8 +115,11 @@ func (txi *TxIndex) AddBatch(b *txindex.Batch) error {
 	storeBatch := txi.store.NewBatch()
 	defer storeBatch.Close()
 
+	// written holds the result set for each tx hash earlier in this batch;
+	// Get reads the store and does not see it yet.
+	written := make(map[string]*abci.TxResult, len(b.Ops))
 	for _, result := range b.Ops {
-		err := txi.indexResult(storeBatch, result)
+		err := txi.indexResult(storeBatch, result, written)
 		if err != nil {
 			return err
 		}
@@ -146,7 +151,9 @@ func (txi *TxIndex) Index(result *abci.TxResult) error {
 
 		// if the new transaction failed and it's already indexed in an older block and was successful
 		// we skip it as we want users to get the older successful transaction when they query.
-		if oldResult != nil && oldResult.Result.Code == abci.CodeTypeOK {
+		// A result at the same height and index is the same tx executed again after a rollback,
+		// so it replaces the old one.
+		if oldResult != nil && oldResult.Result.Code == abci.CodeTypeOK && !samePosition(oldResult, result) {
 			return nil
 		}
 	}
@@ -348,7 +355,10 @@ func (txi *TxIndex) searchRefs(ctx context.Context, q *query.Query) (map[string]
 	if len(ranges) > 0 {
 		skipIndexes = append(skipIndexes, rangeIndexes...)
 
-		for _, qr := range ranges {
+		// Visit ranges in a fixed order so the result, including whether the
+		// search cap is hit, does not depend on map iteration order.
+		for _, key := range slices.Sorted(maps.Keys(ranges)) {
+			qr := ranges[key]
 
 			// If we have a query range over height and want to still look for
 			// specific event values we do not want to simply return all
@@ -419,8 +429,14 @@ func lookForHash(conditions []syntax.Condition) (hash []byte, ok bool, err error
 	return
 }
 
-func (txi *TxIndex) setTmpHashes(tmpHeights map[string]txRef, key, value []byte) {
+func (txi *TxIndex) setTmpHashes(tmpHeights map[string]txRef, key, value []byte, filteredHashes map[string]txRef, firstRun bool) {
 	eventSeq := extractEventSeqFromKey(key)
+	resultKey := string(value) + eventSeq
+	if !firstRun {
+		if _, ok := filteredHashes[resultKey]; !ok {
+			return
+		}
+	}
 
 	// Copy the value because the iterator will be reused.
 	valueCopy := make([]byte, len(value))
@@ -444,7 +460,7 @@ func (txi *TxIndex) setTmpHashes(tmpHeights map[string]txRef, key, value []byte)
 		}
 	}
 
-	tmpHeights[string(valueCopy)+eventSeq] = ref
+	tmpHeights[resultKey] = ref
 }
 
 // match returns all matching txs by hash that meet a given condition and start
@@ -495,7 +511,7 @@ func (txi *TxIndex) match(
 			if !withinBounds {
 				continue
 			}
-			txi.setTmpHashes(tmpHashes, key, it.Value())
+			txi.setTmpHashes(tmpHashes, key, it.Value(), filteredHashes, firstRun)
 			// Potentially exit early.
 			select {
 			case <-ctx.Done():
@@ -535,7 +551,7 @@ func (txi *TxIndex) match(
 			if !withinBounds {
 				continue
 			}
-			txi.setTmpHashes(tmpHashes, key, it.Value())
+			txi.setTmpHashes(tmpHashes, key, it.Value(), filteredHashes, firstRun)
 
 			// Potentially exit early.
 			select {
@@ -582,7 +598,7 @@ func (txi *TxIndex) match(
 				if !withinBounds {
 					continue
 				}
-				txi.setTmpHashes(tmpHashes, key, it.Value())
+				txi.setTmpHashes(tmpHashes, key, it.Value(), filteredHashes, firstRun)
 			}
 
 			// Potentially exit early.
@@ -707,7 +723,7 @@ LOOP:
 			if err != nil {
 				txi.log.Error("failed to parse bounds:", err)
 			} else if withinBounds {
-				txi.setTmpHashes(tmpHashes, key, it.Value())
+				txi.setTmpHashes(tmpHashes, key, it.Value(), filteredHashes, firstRun)
 			}
 
 			// XXX: passing time in a ABCI Events is not yet implemented
@@ -939,6 +955,11 @@ func keyForHeight(result *abci.TxResult) []byte {
 	))
 }
 
+// samePosition reports whether a and b are the tx at the same height and index.
+func samePosition(a, b *abci.TxResult) bool {
+	return a.Height == b.Height && a.Index == b.Index
+}
+
 func startKeyForCondition(c syntax.Condition, height int64) []byte {
 	if height > 0 {
 		return startKey(c.Tag, c.Arg.Value(), height)
@@ -954,7 +975,7 @@ func startKey(fields ...interface{}) []byte {
 	return b.Bytes()
 }
 
-func (txi *TxIndex) indexResult(batch dbm.Batch, result *abci.TxResult) error {
+func (txi *TxIndex) indexResult(batch dbm.Batch, result *abci.TxResult, written map[string]*abci.TxResult) error {
 	hash := types.Tx(result.Tx).Hash()
 
 	rawBytes, err := proto.Marshal(result)
@@ -963,14 +984,19 @@ func (txi *TxIndex) indexResult(batch dbm.Batch, result *abci.TxResult) error {
 	}
 
 	if !result.Result.IsOK() {
-		oldResult, err := txi.Get(hash)
-		if err != nil {
-			return err
+		oldResult, ok := written[string(hash)]
+		if !ok {
+			oldResult, err = txi.Get(hash)
+			if err != nil {
+				return err
+			}
 		}
 
 		// if the new transaction failed and it's already indexed in an older block and was successful
 		// we skip it as we want users to get the older successful transaction when they query.
-		if oldResult != nil && oldResult.Result.Code == abci.CodeTypeOK {
+		// A result at the same height and index is the same tx executed again after a rollback,
+		// so it replaces the old one.
+		if oldResult != nil && oldResult.Result.Code == abci.CodeTypeOK && !samePosition(oldResult, result) {
 			return nil
 		}
 	}
@@ -992,5 +1018,6 @@ func (txi *TxIndex) indexResult(batch dbm.Batch, result *abci.TxResult) error {
 	if err != nil {
 		return err
 	}
+	written[string(hash)] = result
 	return nil
 }

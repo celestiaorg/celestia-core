@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"math"
 
+	"github.com/celestiaorg/go-square/v4/share"
 	"github.com/celestiaorg/nmt"
 
 	"github.com/cometbft/cometbft/libs/consts"
@@ -69,6 +70,9 @@ func ShareProofFromProto(pb tmproto.ShareProof) (ShareProof, error) {
 // The `root` is the block data root that the shares to be proven belong to.
 // Note: these proofs are tested on the app side.
 func (sp ShareProof) Validate(root []byte) error {
+	if len(sp.NamespaceID) != share.NamespaceIDSize {
+		return fmt.Errorf("namespace ID must be %d bytes, got %d", share.NamespaceIDSize, len(sp.NamespaceID))
+	}
 	// Accumulate in int64: the ranges are attacker-supplied int32 values, so
 	// summing them in int32 can overflow and bypass the length check below.
 	numberOfSharesInProofs := int64(0)
@@ -98,6 +102,25 @@ func (sp ShareProof) Validate(root []byte) error {
 		return err
 	}
 
+	// The data root commits to 2k row roots and 2k column roots for a k-wide
+	// original square. Shares must form one contiguous range inside it.
+	width := sp.RowProof.Proofs[0].Total / 4
+	last := len(sp.ShareProofs) - 1
+	for i, proof := range sp.ShareProofs {
+		if sp.RowProof.Proofs[i].Index >= width {
+			return fmt.Errorf("row %d is outside the original data square of width %d", sp.RowProof.Proofs[i].Index, width)
+		}
+		if int64(proof.End) > width {
+			return fmt.Errorf("share proof %d ends at %d past the square width %d", i, proof.End, width)
+		}
+		if i > 0 && proof.Start != 0 {
+			return fmt.Errorf("share proof %d must start at the beginning of its row", i)
+		}
+		if i < last && int64(proof.End) != width {
+			return fmt.Errorf("share proof %d must end at the end of its row", i)
+		}
+	}
+
 	if ok := sp.VerifyProof(); !ok {
 		return errors.New("share proof failed to verify")
 	}
@@ -105,19 +128,30 @@ func (sp ShareProof) Validate(root []byte) error {
 	return nil
 }
 
+// VerifyProof checks only the NMT proofs of the shares against the row roots.
+// It does not check share positions or the row proof. Use Validate for that.
 func (sp ShareProof) VerifyProof() bool {
-	cursor := int32(0)
+	if sp.NamespaceVersion > math.MaxUint8 || len(sp.NamespaceID) != share.NamespaceIDSize {
+		return false
+	}
+	if len(sp.RowProof.RowRoots) != len(sp.ShareProofs) {
+		return false
+	}
+	cursor := int64(0)
 	for i, proof := range sp.ShareProofs {
+		if proof == nil || proof.Start < 0 || proof.End <= proof.Start {
+			return false
+		}
+		sharesUsed := int64(proof.End) - int64(proof.Start)
+		if cursor+sharesUsed > int64(len(sp.Data)) {
+			return false
+		}
 		nmtProof := nmt.NewInclusionProof(
 			int(proof.Start),
 			int(proof.End),
 			proof.Nodes,
 			true,
 		)
-		sharesUsed := proof.End - proof.Start
-		if sp.NamespaceVersion > math.MaxUint8 {
-			return false
-		}
 		// Consider extracting celestia-app's namespace package. We can't use it
 		// here because that would introduce a circulcar import.
 		//nolint:gosec

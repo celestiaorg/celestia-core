@@ -119,7 +119,6 @@ func NewBaseReactor(name string, impl Reactor, opts ...ReactorOptions) *BaseReac
 		name:        name,
 		traceClient: trace.NoOpTracer(),
 	}
-	base.queueingFunc = base.QueueUnprocessedEnvelope
 	for _, opt := range opts {
 		opt(base)
 	}
@@ -185,10 +184,21 @@ func WithIncomingQueueSize(size int) ReactorOptions {
 }
 
 // QueueUnprocessedEnvelope is called by the switch when an unprocessed
-// envelope is received. Unprocessed envelopes are immediately buffered in a
-// queue to avoid blocking. The size of the queue can be changed by passing
-// options to the base reactor.
+// envelope is received. It uses the queueing function set via
+// WithQueueingFunc, if any, and otherwise blocks until the envelope fits in
+// the incoming queue. The size of the queue can be changed by passing options
+// to the base reactor.
 func (br *BaseReactor) QueueUnprocessedEnvelope(e UnprocessedEnvelope) {
+	if br.queueingFunc != nil {
+		br.queueingFunc(e)
+		return
+	}
+	br.queueUnprocessedEnvelopeBlocking(e)
+}
+
+// queueUnprocessedEnvelopeBlocking queues an unprocessed envelope, blocking
+// while the incoming queue is full.
+func (br *BaseReactor) queueUnprocessedEnvelopeBlocking(e UnprocessedEnvelope) {
 	if len(br.incoming) == cap(br.incoming) {
 		schema.WriteQueueLimit(br.traceClient, e.ChannelID, br.name, true)
 	}

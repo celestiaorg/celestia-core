@@ -110,7 +110,7 @@ type wsConnection struct {
 	remoteAddr string
 	baseConn   *websocket.Conn
 	// writeChan is never closed, to allow WriteRPCResponse() to fail.
-	writeChan chan types.RPCResponse
+	writeChan chan wsWriteItem
 
 	// chan, which is closed when/if readRoutine errors
 	// used to abort writeRoutine
@@ -138,6 +138,14 @@ type wsConnection struct {
 
 	ctx    context.Context
 	cancel context.CancelFunc
+}
+
+// wsWriteItem is a response queued for writeRoutine.
+type wsWriteItem struct {
+	resp types.RPCResponse
+	// written, if non-nil, is closed by writeRoutine once resp has been
+	// serialized and written to the socket (or that failed).
+	written chan struct{}
 }
 
 // NewWSConnection wraps websocket.Conn.
@@ -220,7 +228,7 @@ func ReadLimit(readLimit int64) func(*wsConnection) {
 // OnStart implements service.Service by starting the read and write routines. It
 // blocks until there's some error.
 func (wsc *wsConnection) OnStart() error {
-	wsc.writeChan = make(chan types.RPCResponse, wsc.writeChanCapacity)
+	wsc.writeChan = make(chan wsWriteItem, wsc.writeChanCapacity)
 
 	// Read subscriptions/unsubscriptions to events
 	go wsc.readRoutine()
@@ -257,8 +265,29 @@ func (wsc *wsConnection) WriteRPCResponse(ctx context.Context, resp types.RPCRes
 		return errors.New("connection was stopped")
 	case <-ctx.Done():
 		return ctx.Err()
-	case wsc.writeChan <- resp:
+	case wsc.writeChan <- wsWriteItem{resp: resp}:
 		return nil
+	}
+}
+
+// writeRPCResponseAndWait pushes a response to the writeChan and blocks until
+// writeRoutine has serialized and written it, or the connection is stopped.
+// Heavy responses use it so their heavy-request permit stays held until the
+// response has left the process.
+func (wsc *wsConnection) writeRPCResponseAndWait(ctx context.Context, resp types.RPCResponse) error {
+	written := make(chan struct{})
+	select {
+	case <-wsc.Quit():
+		return errors.New("connection was stopped")
+	case <-ctx.Done():
+		return ctx.Err()
+	case wsc.writeChan <- wsWriteItem{resp: resp, written: written}:
+	}
+	select {
+	case <-written:
+		return nil
+	case <-wsc.Quit():
+		return errors.New("connection was stopped")
 	}
 }
 
@@ -269,7 +298,7 @@ func (wsc *wsConnection) TryWriteRPCResponse(resp types.RPCResponse) bool {
 	select {
 	case <-wsc.Quit():
 		return false
-	case wsc.writeChan <- resp:
+	case wsc.writeChan <- wsWriteItem{resp: resp}:
 		return true
 	default:
 		return false
@@ -364,19 +393,18 @@ func (wsc *wsConnection) readRoutine() {
 			}
 
 			ctx := &types.Context{JSONReq: &request, WSConn: wsc}
-			args := []reflect.Value{reflect.ValueOf(ctx)}
-			if len(request.Params) > 0 {
-				fnArgs, err := jsonParamsToArgs(rpcFunc, request.Params)
-				if err != nil {
-					if err := wsc.WriteRPCResponse(writeCtx,
-						types.RPCInternalError(request.ID, fmt.Errorf("error converting json params to arguments: %w", err)),
-					); err != nil {
-						wsc.Logger.Error("Error writing RPC response", "err", err)
-					}
-					continue
+			fnArgs, err := jsonParamsToArgs(rpcFunc, request.Params)
+			if err != nil {
+				if err := wsc.WriteRPCResponse(writeCtx,
+					types.RPCInternalError(request.ID, fmt.Errorf("error converting json params to arguments: %w", err)),
+				); err != nil {
+					wsc.Logger.Error("Error writing RPC response", "err", err)
 				}
-				args = append(args, fnArgs...)
+				continue
 			}
+			args := make([]reflect.Value, 0, len(fnArgs)+1)
+			args = append(args, reflect.ValueOf(ctx))
+			args = append(args, fnArgs...)
 
 			// Bound concurrent heavy responses; reject fast when saturated so WS
 			// clients can't bypass the limit the HTTP handlers enforce.
@@ -387,9 +415,10 @@ func (wsc *wsConnection) readRoutine() {
 				}
 				continue
 			}
-			// Hold the slot across the call and the response marshal+write so the
-			// large response is accounted for until it is queued to the writer.
-			// release() runs via defer so a panic can't leak the slot.
+			// Hold the slot across the call and until writeRoutine has marshaled
+			// and written the response, so a client that stops reading can't
+			// accumulate heavy responses in the write queue. release() runs via
+			// defer so a panic can't leak the slot.
 			func() {
 				defer release()
 
@@ -406,7 +435,13 @@ func (wsc *wsConnection) readRoutine() {
 					return
 				}
 
-				if err := wsc.WriteRPCResponse(writeCtx, types.NewRPCSuccessResponse(request.ID, result)); err != nil {
+				resp := types.NewRPCSuccessResponse(request.ID, result)
+				if rpcFunc.heavySem != nil {
+					err = wsc.writeRPCResponseAndWait(writeCtx, resp)
+				} else {
+					err = wsc.WriteRPCResponse(writeCtx, resp)
+				}
+				if err != nil {
 					wsc.Logger.Error("Error writing RPC response", "err", err)
 				}
 			}()
@@ -446,21 +481,34 @@ func (wsc *wsConnection) writeRoutine() {
 				wsc.Logger.Error("Failed to write ping", "err", err)
 				return
 			}
-		case msg := <-wsc.writeChan:
-			// Use json.MarshalIndent instead of Marshal for pretty output.
-			// Pretty output not necessary, since most consumers of WS events are
-			// automated processes, not humans.
-			jsonBytes, err := json.Marshal(msg)
-			if err != nil {
-				wsc.Logger.Error("Failed to marshal RPCResponse to JSON", "err", err)
-				continue
+		case item := <-wsc.writeChan:
+			ok := wsc.writeResponse(item.resp)
+			if item.written != nil {
+				close(item.written)
 			}
-			if err = wsc.writeMessageWithDeadline(websocket.TextMessage, jsonBytes); err != nil {
-				wsc.Logger.Error("Failed to write response", "err", err)
+			if !ok {
 				return
 			}
 		}
 	}
+}
+
+// writeResponse marshals and writes resp. It returns false if the connection
+// can no longer be written to.
+func (wsc *wsConnection) writeResponse(resp types.RPCResponse) bool {
+	// Use json.MarshalIndent instead of Marshal for pretty output.
+	// Pretty output not necessary, since most consumers of WS events are
+	// automated processes, not humans.
+	jsonBytes, err := json.Marshal(resp)
+	if err != nil {
+		wsc.Logger.Error("Failed to marshal RPCResponse to JSON", "err", err)
+		return true
+	}
+	if err := wsc.writeMessageWithDeadline(websocket.TextMessage, jsonBytes); err != nil {
+		wsc.Logger.Error("Failed to write response", "err", err)
+		return false
+	}
+	return true
 }
 
 // All writes to the websocket must (re)set the write deadline.

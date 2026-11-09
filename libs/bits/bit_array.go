@@ -574,13 +574,16 @@ func (bA *BitArray) FromProto(protoBitArray *cmtprotobits.BitArray) {
 }
 
 // ValidateBasic validates a BitArray. Note that a nil BitArray and BitArray of
-// size 0 bits is valid. However the number of Bits and Elems be valid based on
-// each other.
+// size 0 bits is valid. However the number of Bits must not be negative and
+// the number of Bits and Elems must be valid based on each other.
 func (bA *BitArray) ValidateBasic() error {
 	if bA == nil {
 		return nil
 	}
 
+	if bA.Size() < 0 {
+		return fmt.Errorf("negative number of bits %d", bA.Size())
+	}
 	expectedElems := numElements(bA.Size())
 	if expectedElems != len(bA.Elems) {
 		return fmt.Errorf("mismatch between specified number of bits %d, and number of elements %d, expected %d elements", bA.Size(), len(bA.Elems), expectedElems)

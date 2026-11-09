@@ -92,6 +92,9 @@ func startNewStateAndWaitForBlock(
 		if err := cs.Stop(); err != nil {
 			t.Error(err)
 		}
+		// Wait for receiveRoutine to stop the WAL so it can't write into the
+		// next WAL file opened at the same path.
+		cs.Wait()
 	}()
 
 	// This is just a signal that we haven't halted; its not something contained
@@ -204,7 +207,18 @@ func TestWALCrashOnInternalBlockPartWrite(t *testing.T) {
 	}
 
 	_ = cs.Stop()
+	stopCrashedWAL(t, csWal)
 	startNewStateAndWaitForBlock(t, consensusReplayConfig, blockDB, stateStore)
+}
+
+// stopCrashedWAL stops the WAL of a State whose receiveRoutine exited via a
+// simulated crash, which skips the routine's own WAL shutdown. A leaked WAL
+// keeps flushing buffered entries, and since autofile reopens files by path,
+// they land in whichever WAL file later occupies that path.
+func stopCrashedWAL(t *testing.T, wal WAL) {
+	t.Helper()
+	require.NoError(t, wal.Stop())
+	wal.Wait()
 }
 
 func crashWALandCheckLiveness(t *testing.T, consensusReplayConfig *cfg.Config,
@@ -269,6 +283,7 @@ LOOP:
 			// services, so a second State on the same DB/WAL can race it.
 			cs.Stop() //nolint:errcheck // Logging this error causes failure
 			cancel()
+			stopCrashedWAL(t, csWal)
 
 			// make sure we can make blocks after a crash
 			startNewStateAndWaitForBlock(t, consensusReplayConfig, blockDB, stateStore)

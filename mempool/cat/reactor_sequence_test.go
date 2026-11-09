@@ -419,7 +419,6 @@ func TestReactorPendingQueueSorting(t *testing.T) {
 		_, err := reactor.InitPeer(peer)
 		require.NoError(t, err)
 		peer.On("TrySend", matchAny).Return(true).Maybe()
-		peer.On("Send", matchAny).Return(true).Maybe()
 	}
 
 	// Send SeenTx messages out of order: sequences 10, 5, 15, 2, 8
@@ -474,7 +473,6 @@ func TestReactorSingleOutstandingRequestPerSigner(t *testing.T) {
 	require.NoError(t, err)
 
 	peer.On("TrySend", matchAny).Return(true).Maybe()
-	peer.On("Send", matchAny).Return(true).Maybe()
 
 	// Send multiple SeenTx messages with different sequences
 	txs := make([]types.Tx, 10)
@@ -528,3 +526,55 @@ func TestReactorSingleOutstandingRequestPerSigner(t *testing.T) {
 
 // matchAny is a mock matcher that matches any argument
 var matchAny = mock.MatchedBy(func(interface{}) bool { return true })
+
+// TestReactorReceivedBufferCleanup checks that buffered txs are dropped once
+// they fall below the signer's expected sequence, even with nothing buffered
+// at that sequence, and once they outlive seenEntryTTL.
+func TestReactorReceivedBufferCleanup(t *testing.T) {
+	app := newSequenceTrackingTestApp()
+	pool, cleanup := newMempoolWithApp(proxy.NewLocalClientCreator(app))
+	t.Cleanup(cleanup)
+	reactor, err := NewReactor(pool, &ReactorOptions{})
+	require.NoError(t, err)
+	require.Equal(t, pool.config.MaxTxsBytes, reactor.receivedBuffer.maxBytes)
+
+	signer := []byte("buffered-signer")
+	app.SetSequence(string(signer), 4)
+	seen := pool.seenTracker
+	buffer := func(seq uint64) types.TxKey {
+		tx := types.Tx(fmt.Sprintf("%s=buffered-%d=%d", signer, seq, seq))
+		require.True(t, reactor.receivedBuffer.add(signer, seq, tx.ToCachedTx(), tx.Key(), mempool.TxInfo{}, "peer"))
+		seen.AddPeer(tx.Key(), 1)
+		return tx.Key()
+	}
+
+	// Sequence jumps from 4 to 8: seq 5 can never apply, seqs 9 and 10 can.
+	key5 := buffer(5)
+	key9 := buffer(9)
+	key10 := buffer(10)
+	app.SetSequence(string(signer), 8)
+	reactor.processReceivedBuffer(signer)
+	require.Nil(t, reactor.receivedBuffer.get(signer, 5))
+	require.NotNil(t, reactor.receivedBuffer.get(signer, 9))
+	n, _ := reactor.receivedBuffer.size()
+	require.Equal(t, 2, n)
+	require.Nil(t, seen.Get(key5), "stale tx should leave the seen tracker")
+	require.NotNil(t, seen.Get(key9))
+
+	// Not yet expired.
+	reactor.pruneExpiredBuffered(time.Now())
+	n, _ = reactor.receivedBuffer.size()
+	require.Equal(t, 2, n)
+	require.NotNil(t, seen.Get(key9))
+	require.NotNil(t, seen.Get(key10))
+
+	// Expired: everything goes, including the per-peer count.
+	reactor.pruneExpiredBuffered(time.Now().Add(seenEntryTTL + time.Second))
+	n, size := reactor.receivedBuffer.size()
+	require.Zero(t, n)
+	require.Zero(t, size)
+	require.Zero(t, reactor.receivedBuffer.countForPeer("peer"))
+	require.Empty(t, reactor.receivedBuffer.signerKeys())
+	require.Nil(t, seen.Get(key9), "expired tx should leave the seen tracker")
+	require.Nil(t, seen.Get(key10))
+}

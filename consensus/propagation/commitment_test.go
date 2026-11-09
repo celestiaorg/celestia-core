@@ -404,6 +404,63 @@ func TestValidateCompactBlockUsesRoundProposer(t *testing.T) {
 	require.True(t, has, "genuine compact block from the round-2 proposer must be applied")
 }
 
+// TestProcessValidatedCompactBlockForwardsOnce ensures duplicates of a
+// compact block are not forwarded to consensus again.
+func TestProcessValidatedCompactBlockForwardsOnce(t *testing.T) {
+	p2pCfg := defaultTestP2PConf()
+	reactors, _ := createTestReactors(1, p2pCfg, false, "")
+	n1 := reactors[0]
+
+	cleanup, _, sm, pv := state.SetupTestCaseWithPrivVal(t)
+	t.Cleanup(func() {
+		cleanup(t)
+	})
+
+	n1.SetConsensusState(2, 0, mockPubKey)
+	for len(n1.GetProposalChan()) > 0 {
+		<-n1.GetProposalChan()
+	}
+
+	cb, _, _, _ := testCompactBlock(t, sm, pv, 2, 0)
+	for i := 0; i < 10; i++ {
+		n1.processValidatedCompactBlock(cb, "peer", false)
+	}
+
+	require.Len(t, n1.GetProposalChan(), 1, "compact block should be forwarded to consensus exactly once")
+	prop := <-n1.GetProposalChan()
+	require.True(t, cb.Proposal.BlockID.Equals(prop.Proposal.BlockID))
+}
+
+// TestProcessValidatedCompactBlockForwardsOnceAfterCommitment ensures a
+// compact block matching an entry created by AddCommitment is forwarded to
+// consensus once, and its duplicates are not.
+func TestProcessValidatedCompactBlockForwardsOnceAfterCommitment(t *testing.T) {
+	p2pCfg := defaultTestP2PConf()
+	reactors, _ := createTestReactors(1, p2pCfg, false, "")
+	n1 := reactors[0]
+
+	cleanup, _, sm, pv := state.SetupTestCaseWithPrivVal(t)
+	t.Cleanup(func() {
+		cleanup(t)
+	})
+
+	n1.SetConsensusState(2, 0, mockPubKey)
+	cb, _, _, _ := testCompactBlock(t, sm, pv, 2, 0)
+	psh := cb.Proposal.BlockID.PartSetHeader
+	n1.AddCommitment(2, 0, &psh)
+	for len(n1.GetProposalChan()) > 0 {
+		<-n1.GetProposalChan()
+	}
+
+	for i := 0; i < 10; i++ {
+		n1.processValidatedCompactBlock(cb, "peer", false)
+	}
+
+	require.Len(t, n1.GetProposalChan(), 1, "compact block should be forwarded to consensus exactly once")
+	prop := <-n1.GetProposalChan()
+	require.True(t, cb.Proposal.BlockID.Equals(prop.Proposal.BlockID))
+}
+
 // TestForwardCompactBlockBeforeRecovery checks that a stalled mempool recovery
 // does not delay forwarding, and that recovery still completes afterwards.
 func TestForwardCompactBlockBeforeRecovery(t *testing.T) {

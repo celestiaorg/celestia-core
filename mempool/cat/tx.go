@@ -152,51 +152,10 @@ func (set *txSet) removeTx(wtx *wrappedTx) bool {
 	return false
 }
 
-// sliceTxsByBytesAndGas slices the transactions set into a possible subset
-// that fits within the given bytes and gas constraints ordered by sequence
-func (set *txSet) sliceTxsByBytesAndGas(numBytes int64, numGas int64) *txSet {
-	// check if we have no budget left
-	if numBytes == 0 || numGas == 0 {
-		return newTxSet() // return empty set if no budget
-	}
-	// check if we have unlimited budget or enough budget for the whole set
-	if (numBytes < 0 || numBytes >= set.bytes) && (numGas < 0 || numGas >= set.totalGasWanted) {
-		return set // return full set if budget is sufficient
-	}
-	var (
-		bytesUsed      int64
-		totalGasWanted int64
-	)
-	txSet := newTxSet()
-	for _, tx := range set.txs {
-		txSize := tx.size()
-		if bytesUsed+txSize > numBytes || numGas >= 0 && totalGasWanted+tx.gasWanted > numGas {
-			break
-		}
-		txSet.addTxToSet(tx)
-	}
-	return txSet
-}
-
 func (set *txSet) rawTxs() []*types.CachedTx {
 	txs := make([]*types.CachedTx, len(set.txs))
 	for i, tx := range set.txs {
 		txs[i] = tx.tx
 	}
 	return txs
-}
-
-func aggregatePriorityAcrossSets(txSets []*txSet) int64 {
-	var (
-		totalGasWanted      int64
-		weightedPrioritySum int64
-	)
-	for _, txSet := range txSets {
-		totalGasWanted += txSet.totalGasWanted
-		weightedPrioritySum += txSet.weightedPrioritySum
-	}
-	if totalGasWanted > 0 {
-		return weightedPrioritySum / totalGasWanted
-	}
-	return 0
 }

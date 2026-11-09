@@ -78,6 +78,12 @@ func TestRowProofValidate(t *testing.T) {
 			root:    root,
 			wantErr: true,
 		},
+		{
+			name:    "total that is not a power of two",
+			rp:      nonPowerOfTwoTotal(),
+			root:    root,
+			wantErr: true,
+		},
 	}
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -155,5 +161,12 @@ func columnHalfProofIndex() RowProof {
 func nilProof() RowProof {
 	rp := validRowProof()
 	rp.Proofs[0] = nil
+	return rp
+}
+
+// nonPowerOfTwoTotal claims a total that still verifies against root.
+func nonPowerOfTwoTotal() RowProof {
+	rp := validRowProof()
+	rp.Proofs[0].Total = 100
 	return rp
 }

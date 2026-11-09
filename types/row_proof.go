@@ -58,6 +58,10 @@ func (rp RowProof) Validate(root []byte) error {
 		if proof.Total != rp.Proofs[0].Total {
 			return fmt.Errorf("proof total %d does not match the first proof's total %d", proof.Total, rp.Proofs[0].Total)
 		}
+		// The data root commits to a power-of-two number of roots.
+		if proof.Total < 4 || proof.Total&(proof.Total-1) != 0 {
+			return fmt.Errorf("proof total %d must be a power of two of at least 4", proof.Total)
+		}
 		// The data root commits to the row roots followed by the column
 		// roots, so a row root must live in the first half of the leaves.
 		if proof.Index >= proof.Total/2 {
