@@ -2565,6 +2565,12 @@ func (cs *State) addVote(vote *types.Vote, peerID p2p.ID) (added bool, err error
 			return added, err
 		}
 
+		// There is no LastCommit at the initial height.
+		if cs.rs.LastCommit == nil {
+			cs.Logger.Trace("precommit vote for a height before the initial height has been ignored", "vote", vote)
+			return added, err
+		}
+
 		added, err = cs.rs.LastCommit.AddVote(vote)
 		if !added {
 			// If the vote wasnt added but there's no error, its a duplicate vote
