@@ -979,7 +979,9 @@ func TestClient_BackwardsVerificationInvalidCommit(t *testing.T) {
 	})
 
 	t.Run("no honest witness", func(t *testing.T) {
-		c, trustedStore := newClient(t, badPrimary(), []provider.Provider{badPrimary()})
+		// Two bad witnesses, so the client can promote one and must then reject
+		// the replacement's commit too, instead of stopping at ErrNoWitnesses.
+		c, trustedStore := newClient(t, badPrimary(), []provider.Provider{badPrimary(), badPrimary()})
 
 		_, err := c.VerifyLightBlockAtHeight(ctx, 2, bTime.Add(2*time.Hour))
 		var errInvalid light.ErrInvalidHeader
