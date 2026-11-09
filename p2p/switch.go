@@ -424,7 +424,7 @@ func (sw *Switch) getPeerAddress(peer Peer) (*NetAddress, error) {
 		return peer.SocketAddr(), nil
 	}
 	// For inbound peers, get the self-reported address
-	addr, err := peer.NodeInfo().NetAddress()
+	addr, err := PeerAddress(peer)
 	if err != nil {
 		sw.Logger.Error("Failed to get address for inbound peer",
 			"peer", peer, "err", err)
@@ -721,6 +721,16 @@ func (sw *Switch) IsPeerPersistent(na *NetAddress) bool {
 	return false
 }
 
+// isPeerIDPersistent returns true if na has the ID of a persistent peer.
+func (sw *Switch) isPeerIDPersistent(na *NetAddress) bool {
+	for _, pa := range sw.persistentPeersAddrs {
+		if pa.ID == na.ID {
+			return true
+		}
+	}
+	return false
+}
+
 func (sw *Switch) acceptRoutine() {
 	for {
 		p, err := sw.transport.Accept(peerConfig{
@@ -730,7 +740,7 @@ func (sw *Switch) acceptRoutine() {
 			msgTypeByChID: sw.msgTypeByChID,
 			metrics:       sw.metrics,
 			mlc:           sw.mlc,
-			isPersistent:  sw.IsPeerPersistent,
+			isPersistent:  sw.isPeerIDPersistent,
 		})
 		if err != nil {
 			switch err := err.(type) {

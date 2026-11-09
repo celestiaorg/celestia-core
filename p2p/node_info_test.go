@@ -172,9 +172,10 @@ func TestNodeInfoValidateDoesNotResolveListenAddr(t *testing.T) {
 	require.Zero(t, lookups, "Validate must not resolve the ListenAddr")
 }
 
-// TestNodeInfoIPAddressDoesNotResolve checks that NodeInfoIPAddress never
-// performs a DNS lookup and only returns IP addresses.
-func TestNodeInfoIPAddressDoesNotResolve(t *testing.T) {
+// TestNodeInfoNetAddressDoesNotResolve checks that NetAddress and
+// PeerAddress never perform a DNS lookup, and that PeerAddress uses the
+// connection's IP with the advertised port for a host name.
+func TestNodeInfoNetAddressDoesNotResolve(t *testing.T) {
 	lookups := 0
 	origLookupIP := lookupIP
 	lookupIP = func(host string) ([]net.IP, error) {
@@ -184,21 +185,39 @@ func TestNodeInfoIPAddressDoesNotResolve(t *testing.T) {
 	t.Cleanup(func() { lookupIP = origLookupIP })
 
 	nodeKey := NodeKey{PrivKey: ed25519.GenPrivKey()}
+	socketAddr := NewNetAddressIPPort(net.ParseIP("5.6.7.8"), 40000)
+	socketAddr.ID = nodeKey.ID()
 	ni := testNodeInfo(nodeKey.ID(), "testing").(DefaultNodeInfo)
 
 	ni.ListenAddr = "1.2.3.4:26656"
-	addr, err := NodeInfoIPAddress(ni)
+	addr, err := ni.NetAddress()
 	require.NoError(t, err)
-	assert.Equal(t, "1.2.3.4", addr.IP.String())
-	assert.EqualValues(t, 26656, addr.Port)
-	assert.Equal(t, nodeKey.ID(), addr.ID)
+	assert.Equal(t, IDAddressString(nodeKey.ID(), "1.2.3.4:26656"), addr.String())
+	addr, err = PeerAddress(&addrPeer{ni: ni, socketAddr: socketAddr})
+	require.NoError(t, err)
+	assert.Equal(t, IDAddressString(nodeKey.ID(), "1.2.3.4:26656"), addr.String())
 
 	ni.ListenAddr = "peer.example.com:26656"
-	_, err = NodeInfoIPAddress(ni)
+	_, err = ni.NetAddress()
 	require.Error(t, err)
+	addr, err = PeerAddress(&addrPeer{ni: ni, socketAddr: socketAddr})
+	require.NoError(t, err)
+	assert.Equal(t, IDAddressString(nodeKey.ID(), "5.6.7.8:26656"), addr.String())
+	_, err = PeerAddress(&addrPeer{ni: ni})
+	require.Error(t, err, "no connection IP to use for the host name")
 
-	require.Zero(t, lookups, "NodeInfoIPAddress must not resolve the ListenAddr")
+	require.Zero(t, lookups, "the ListenAddr must not be resolved")
 }
+
+// addrPeer is a Peer with a given NodeInfo and socket address.
+type addrPeer struct {
+	mockPeer
+	ni         NodeInfo
+	socketAddr *NetAddress
+}
+
+func (p *addrPeer) NodeInfo() NodeInfo      { return p.ni }
+func (p *addrPeer) SocketAddr() *NetAddress { return p.socketAddr }
 
 // TestNodeInfoValidateRejectsMalformedHostName checks that a ListenAddr whose
 // host is neither an IP nor a syntactically valid host name is rejected,

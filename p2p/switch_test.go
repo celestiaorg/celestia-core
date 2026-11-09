@@ -570,6 +570,84 @@ func TestSwitchReconnectsToInboundPersistentPeer(t *testing.T) {
 	assert.Equal(t, 1, sw.Peers().Size())
 }
 
+// TestSwitchInboundPersistentPeerMatchedByID checks that an inbound peer is
+// marked persistent by its authenticated ID, even if it advertises a host
+// name, and that the host name is not resolved.
+func TestSwitchInboundPersistentPeerMatchedByID(t *testing.T) {
+	lookups := 0
+	origLookupIP := lookupIP
+	lookupIP = func(host string) ([]net.IP, error) {
+		lookups++
+		return nil, errors.New("unexpected DNS lookup of " + host)
+	}
+	t.Cleanup(func() { lookupIP = origLookupIP })
+
+	sw := MakeSwitch(cfg, 1, initSwitchFunc)
+	err := sw.Start()
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		if err := sw.Stop(); err != nil {
+			t.Error(err)
+		}
+	})
+
+	// The .invalid TLD never resolves (RFC 6761).
+	rp := &remotePeer{PrivKey: ed25519.GenPrivKey(), Config: cfg, advertisedAddr: "peer.invalid:26656"}
+	rp.Start()
+	defer rp.Stop()
+
+	err = sw.AddPersistentPeers([]string{rp.Addr().String()})
+	require.NoError(t, err)
+
+	conn, err := rp.Dial(sw.NetAddress())
+	require.NoError(t, err)
+	defer conn.Close()
+
+	require.Eventually(t, func() bool { return sw.Peers().Get(rp.ID()) != nil }, 5*time.Second, 10*time.Millisecond)
+	p := sw.Peers().Get(rp.ID())
+	assert.False(t, p.IsOutbound())
+	assert.True(t, p.IsPersistent(), "inbound peer with a persistent peer ID must be persistent")
+	assert.Zero(t, lookups, "the advertised host name must not be resolved")
+}
+
+// TestAddPersistentPeersUnresolvableHost checks that a persistent peer whose
+// host can not be resolved, including a host that is not a valid DNS name,
+// is logged and skipped rather than failing.
+func TestAddPersistentPeersUnresolvableHost(t *testing.T) {
+	var lookedUp []string
+	origLookupIP := lookupIP
+	lookupIP = func(host string) ([]net.IP, error) {
+		lookedUp = append(lookedUp, host)
+		if host == "my_peer-" { // resolves via /etc/hosts, say
+			return []net.IP{net.ParseIP("1.2.3.4")}, nil
+		}
+		return nil, errors.New("no such host")
+	}
+	t.Cleanup(func() { lookupIP = origLookupIP })
+
+	nodeKey := NodeKey{PrivKey: ed25519.GenPrivKey()}
+	id := nodeKey.ID()
+	addrs := []string{
+		IDAddressString(id, "-bad.example.com:26656"),
+		IDAddressString(id, "bad..example.com:26656"),
+		IDAddressString(id, "my_peer-:26656"),
+	}
+
+	netAddrs, errs := NewNetAddressStrings(addrs)
+	require.Len(t, errs, 2)
+	for _, err := range errs {
+		assert.IsType(t, ErrNetAddressLookup{}, err)
+	}
+	require.Len(t, netAddrs, 1)
+	assert.Equal(t, "1.2.3.4", netAddrs[0].IP.String())
+	assert.Equal(t, []string{"-bad.example.com", "bad..example.com", "my_peer-"}, lookedUp)
+
+	sw := MakeSwitch(cfg, 1, initSwitchFunc)
+	t.Cleanup(func() { _ = sw.transport.(*MultiplexTransport).Close() })
+	require.NoError(t, sw.AddPersistentPeers(addrs))
+	assert.True(t, sw.IsPeerPersistent(netAddrs[0]))
+}
+
 func TestSwitchDialPeersAsync(t *testing.T) {
 	if testing.Short() {
 		return

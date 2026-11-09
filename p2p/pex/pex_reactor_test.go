@@ -1056,9 +1056,26 @@ func (p hostNamePeer) NodeInfo() p2p.NodeInfo {
 	}
 }
 
+// TestPEXReactorAddInboundHostNamePeer checks that an inbound peer that
+// advertises a host name is added to the address book without resolving the
+// host name: the IP of the connection is used with the advertised port.
+func TestPEXReactorAddInboundHostNamePeer(t *testing.T) {
+	r, book := createReactor(&ReactorConfig{})
+	defer teardownReactor(book)
+
+	// The .invalid TLD never resolves (RFC 6761), so a lookup would fail.
+	peer := hostNamePeer{Peer: mock.NewPeer(nil), listenAddr: "peer.invalid:30000"}
+	want := p2p.NewNetAddressIPPort(peer.SocketAddr().IP, 30000)
+	want.ID = peer.ID()
+
+	size := book.Size()
+	r.AddPeer(peer)
+	assert.Equal(t, size+1, book.Size())
+	assert.True(t, book.HasAddress(want))
+}
+
 // TestPEXReactorReceiveAddrsFromHostNamePeer checks that a PEX response from
-// a peer that advertises a host name is accepted without resolving it: the
-// connection's socket address is used as the source in the address book.
+// a peer that advertises a host name is accepted without resolving it.
 func TestPEXReactorReceiveAddrsFromHostNamePeer(t *testing.T) {
 	r, book := createReactor(&ReactorConfig{})
 	defer teardownReactor(book)
