@@ -70,7 +70,7 @@ func newTestStateProvider(
 	chainID string,
 	trustedHeader *types.SignedHeader,
 	primary provider.Provider,
-	witness provider.Provider,
+	witnesses ...provider.Provider,
 ) *lightClientStateProvider {
 	t.Helper()
 	lc, err := light.NewClient(
@@ -82,7 +82,7 @@ func newTestStateProvider(
 			Hash:   trustedHeader.Hash(),
 		},
 		primary,
-		[]provider.Provider{witness},
+		witnesses,
 		lightdb.New(dbm.NewMemDB(), ""),
 		light.Logger(log.TestingLogger()),
 	)
@@ -108,17 +108,14 @@ func TestLightClientStateProviderCommitVerifiesBackwardsCommit(t *testing.T) {
 		require.Equal(t, headers[targetHeight].Commit, commit)
 	})
 
-	t.Run("commit with invalid signature is rejected", func(t *testing.T) {
-		// The primary serves the authentic header at the target height but
-		// with a commit that does not verify against the validator set.
+	// tamperCommit returns a copy of the target height's commit with the first
+	// commit signature modified by tamper.
+	tamperCommit := func(tamper func(sig *types.CommitSig)) map[int64]*types.SignedHeader {
 		target := headers[targetHeight]
 		badCommit := *target.Commit
 		badCommit.Signatures = make([]types.CommitSig, len(target.Commit.Signatures))
 		copy(badCommit.Signatures, target.Commit.Signatures)
-		badAddr := make([]byte, len(badCommit.Signatures[0].ValidatorAddress))
-		copy(badAddr, badCommit.Signatures[0].ValidatorAddress)
-		badAddr[0] ^= 0x01
-		badCommit.Signatures[0].ValidatorAddress = badAddr
+		tamper(&badCommit.Signatures[0])
 
 		badHeaders := make(map[int64]*types.SignedHeader, len(headers))
 		for h, sh := range headers {
@@ -127,12 +124,57 @@ func TestLightClientStateProviderCommitVerifiesBackwardsCommit(t *testing.T) {
 		badHeaders[targetHeight] = &types.SignedHeader{Header: target.Header, Commit: &badCommit}
 		// The tampered commit must still pass structural validation.
 		require.NoError(t, badHeaders[targetHeight].ValidateBasic(chainID))
+		return badHeaders
+	}
 
-		primary := mockp.New(chainID, badHeaders, valSets)
-		witness := mockp.New(chainID, headers, valSets)
-		sp := newTestStateProvider(t, chainID, headers[numBlocks], primary, witness)
+	// The primary serves the authentic header at the target height but with a
+	// commit that does not verify against the validator set.
+	testCases := []struct {
+		name   string
+		tamper func(sig *types.CommitSig)
+	}{
+		{
+			name: "wrong validator address",
+			tamper: func(sig *types.CommitSig) {
+				addr := make([]byte, len(sig.ValidatorAddress))
+				copy(addr, sig.ValidatorAddress)
+				addr[0] ^= 0x01
+				sig.ValidatorAddress = addr
+			},
+		},
+		{
+			name: "wrong signature",
+			tamper: func(sig *types.CommitSig) {
+				signature := make([]byte, len(sig.Signature))
+				copy(signature, sig.Signature)
+				signature[0] ^= 0x01
+				sig.Signature = signature
+			},
+		},
+	}
+	for _, tc := range testCases {
+		t.Run(tc.name+": honest witness replaces primary", func(t *testing.T) {
+			badHeaders := tamperCommit(tc.tamper)
+			primary := mockp.New(chainID, badHeaders, valSets)
+			// The light client needs a witness left over after replacing the
+			// primary, so give it two honest ones.
+			witness1 := mockp.New(chainID, headers, valSets)
+			witness2 := mockp.New(chainID, headers, valSets)
+			sp := newTestStateProvider(t, chainID, headers[numBlocks], primary, witness1, witness2)
 
-		_, err := sp.Commit(context.Background(), targetHeight)
-		require.Error(t, err)
-	})
+			commit, err := sp.Commit(context.Background(), targetHeight)
+			require.NoError(t, err)
+			require.Equal(t, headers[targetHeight].Commit, commit)
+		})
+
+		t.Run(tc.name+": rejected without honest witness", func(t *testing.T) {
+			badHeaders := tamperCommit(tc.tamper)
+			primary := mockp.New(chainID, badHeaders, valSets)
+			witness := mockp.New(chainID, badHeaders, valSets)
+			sp := newTestStateProvider(t, chainID, headers[numBlocks], primary, witness)
+
+			_, err := sp.Commit(context.Background(), targetHeight)
+			require.Error(t, err)
+		})
+	}
 }
