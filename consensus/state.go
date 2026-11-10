@@ -1057,14 +1057,7 @@ func (cs *State) receiveRoutine(maxSteps int) {
 			cs.handleTxsAvailable()
 
 		case mi = <-cs.peerMsgQueue:
-			if !cs.config.OnlyInternalWal {
-				if err := cs.wal.Write(mi); err != nil {
-					cs.Logger.Error("failed writing to WAL", "err", err)
-				}
-			}
-			// handles proposals, block parts, votes
-			// may generate internal events (votes, complete proposals, 2/3 majorities)
-			cs.handleMsg(mi)
+			cs.handlePeerMsg(mi)
 
 		case mi = <-cs.internalMsgQueue:
 			cs.writeInternalMsgToWAL(mi)
@@ -1081,6 +1074,14 @@ func (cs *State) receiveRoutine(maxSteps int) {
 			cs.handleMsg(mi)
 
 		case ti := <-cs.timeoutTicker.Chan(): // tockChan:
+			if ti.Step == cstypes.RoundStepNewHeight && ti.Height == cs.rs.Height &&
+				cs.rs.Step == cstypes.RoundStepNewHeight && cs.dynamicTimeoutCommit() > 0 {
+				// Precommits queued while the last block executed must reach LastCommit before round 0.
+				for n := len(cs.peerMsgQueue); n > 0; n-- {
+					cs.handlePeerMsg(<-cs.peerMsgQueue)
+				}
+				rs = cs.rs
+			}
 			if err := cs.wal.Write(ti); err != nil {
 				cs.Logger.Error("failed writing to WAL", "err", err)
 			}
@@ -1094,6 +1095,18 @@ func (cs *State) receiveRoutine(maxSteps int) {
 			return
 		}
 	}
+}
+
+// handlePeerMsg logs a peer message to the WAL and handles it.
+func (cs *State) handlePeerMsg(mi msgInfo) {
+	if !cs.config.OnlyInternalWal {
+		if err := cs.wal.Write(mi); err != nil {
+			cs.Logger.Error("failed writing to WAL", "err", err)
+		}
+	}
+	// handles proposals, block parts, votes
+	// may generate internal events (votes, complete proposals, 2/3 majorities)
+	cs.handleMsg(mi)
 }
 
 // writeInternalMsgToWAL persists local messages with per-type durability.

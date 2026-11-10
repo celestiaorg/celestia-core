@@ -1021,6 +1021,14 @@ func (conR *Reactor) gossipVotesForHeight(
 			return true
 		}
 	}
+	// Under dynamic pacing a peer may start its next height without a window, so
+	// it needs late precommits while it still executes this one.
+	if prs.Step == cstypes.RoundStepCommit && prs.Round != -1 && prs.Round <= rs.Round && conR.dynamicPacing() {
+		if conR.pickSendVoteAndTrace(rs.Votes.Precommits(prs.Round), rs, ps) {
+			logger.Trace("Picked rs.Precommits(prs.Round) to send to committing peer", "round", prs.Round)
+			return true
+		}
+	}
 	// If there are prevotes to send...Needed because of validBlock mechanism
 	if prs.Round != -1 && prs.Round <= rs.Round {
 		if conR.pickSendVoteAndTrace(rs.Votes.Prevotes(prs.Round), rs, ps) {
@@ -1040,6 +1048,12 @@ func (conR *Reactor) gossipVotesForHeight(
 	}
 
 	return false
+}
+
+func (conR *Reactor) dynamicPacing() bool {
+	conR.conS.stateMtx.RLock()
+	defer conR.conS.stateMtx.RUnlock()
+	return conR.conS.dynamicTimeoutCommit() > 0
 }
 
 // NOTE: `queryMaj23Routine` has a simple crude design since it only comes
