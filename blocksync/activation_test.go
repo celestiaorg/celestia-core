@@ -122,7 +122,7 @@ func TestBlockSyncAcrossTxLimitActivation(t *testing.T) {
 
 	genDoc, privVals := randGenesisDoc(1, false, 30)
 	genDoc.ConsensusParams.ABCI.VoteExtensionsEnableHeight = 0
-	genDoc.ConsensusParams.Version.App = types.BlockTxSafetyLimitAppVersion
+	genDoc.ConsensusParams.Version.App = types.BlockTxLimitAppVersion - 1
 
 	const (
 		activationHeight = int64(3) // the last height applied under v10
@@ -171,9 +171,9 @@ func TestBlocksyncChannelTxLimitUsesCommittedVersion(t *testing.T) {
 		blockExec := sm.NewBlockExecutor(stateStore, nil, nil, nil, nil, nil)
 		channel := (&Reactor{blockExec: blockExec}).GetChannels()[0]
 
-		err := channel.RecvMessagePrecheck(blockResponseWithTxs(t, types.MaxBlockTxs+1))
+		err := channel.RecvMessagePrecheck(blockResponseWithTxs(t, types.MaxBlockTxs+1, nil))
 		if version >= types.BlockTxLimitAppVersion {
-			require.ErrorIs(t, err, types.ErrTooManyBlockTxs)
+			require.ErrorIs(t, err, cmtproto.ErrTooManyBlockTxs)
 		} else {
 			require.NoError(t, err, "the response may belong to a height before the limit")
 		}
@@ -183,6 +183,6 @@ func TestBlocksyncChannelTxLimitUsesCommittedVersion(t *testing.T) {
 	// Ordinary responses do not add a state-store read to the hot path.
 	stateStore := &smmocks.Store{}
 	channel := (&Reactor{blockExec: sm.NewBlockExecutor(stateStore, nil, nil, nil, nil, nil)}).GetChannels()[0]
-	require.NoError(t, channel.RecvMessagePrecheck(blockResponseWithTxs(t, types.MaxBlockTxs)))
+	require.NoError(t, channel.RecvMessagePrecheck(blockResponseWithTxs(t, types.MaxBlockTxs, nil)))
 	stateStore.AssertNotCalled(t, "Load")
 }
