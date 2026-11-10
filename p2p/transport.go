@@ -50,8 +50,8 @@ type peerConfig struct {
 	onPeerError func(Peer, interface{}, string)
 	outbound    bool
 	// isPersistent allows you to set a function, which, given socket address
-	// (for outbound peers) OR self-reported address (for inbound peers), tells
-	// if the peer is persistent or not.
+	// (whose ID is the authenticated peer ID), tells if the peer is persistent
+	// or not. For inbound peers the Switch matches by ID only.
 	isPersistent  func(*NetAddress) bool
 	reactorsByCh  map[byte]Reactor
 	msgTypeByChID map[byte]proto.Message
@@ -567,14 +567,7 @@ func (mt *MultiplexTransport) wrapPeer(
 
 	persistent := false
 	if cfg.isPersistent != nil {
-		if cfg.outbound {
-			persistent = cfg.isPersistent(socketAddr)
-		} else {
-			selfReportedAddr, err := ni.NetAddress()
-			if err == nil {
-				persistent = cfg.isPersistent(selfReportedAddr)
-			}
-		}
+		persistent = cfg.isPersistent(socketAddr)
 	}
 
 	peerConn := newPeerConn(

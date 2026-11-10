@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"net"
 	"reflect"
 
 	cmtbytes "github.com/cometbft/cometbft/libs/bytes"
@@ -109,8 +110,8 @@ func (info DefaultNodeInfo) ID() ID {
 // Validate checks the self-reported DefaultNodeInfo is safe.
 // It returns an error if there
 // are too many Channels, if there are any duplicate Channels,
-// if the ListenAddr is malformed, or if the ListenAddr is a host name
-// that can not be resolved to some IP.
+// or if the ListenAddr is malformed. A host name in the ListenAddr is only
+// checked syntactically and is never resolved.
 // TODO: constraints for Moniker/Other? Or is that for the UI ?
 // JAE: It needs to be done on the client, but to prevent ambiguous
 // unicode characters, maybe it's worth sanitizing it here.
@@ -123,9 +124,9 @@ func (info DefaultNodeInfo) Validate() error {
 
 	// ID is already validated.
 
-	// Validate ListenAddr.
-	_, err := NewNetAddressString(IDAddressString(info.ID(), info.ListenAddr))
-	if err != nil {
+	// Validate ListenAddr. The IP only stands in for a host name, so that
+	// the rest of the address is checked without resolving it.
+	if _, err := info.listenAddress(net.IPv4zero); err != nil {
 		return err
 	}
 
@@ -218,9 +219,88 @@ OUTER_LOOP:
 // it includes the authenticated peer ID and the self-reported
 // ListenAddr. Note that the ListenAddr is not authenticated and
 // may not match that address actually dialed if its an outbound peer.
+// It never performs a DNS lookup: if the ListenAddr host is not an IP, an
+// error is returned. Use PeerAddress for the address of a connected peer.
 func (info DefaultNodeInfo) NetAddress() (*NetAddress, error) {
+	return info.listenAddress(nil)
+}
+
+// PeerAddress returns the address p advertised in its NodeInfo without
+// performing a DNS lookup. If the advertised host is a host name, the IP of
+// the connection to p is used with the advertised port.
+func PeerAddress(p Peer) (*NetAddress, error) {
+	info, ok := p.NodeInfo().(DefaultNodeInfo)
+	if !ok {
+		return p.NodeInfo().NetAddress()
+	}
+	var socketIP net.IP
+	if socketAddr := p.SocketAddr(); socketAddr != nil {
+		socketIP = socketAddr.IP
+	}
+	return info.listenAddress(socketIP)
+}
+
+// listenAddress returns the ListenAddr as a NetAddress without resolving it.
+// A syntactically valid host name is replaced by hostIP, or rejected if
+// hostIP is nil.
+func (info DefaultNodeInfo) listenAddress(hostIP net.IP) (*NetAddress, error) {
 	idAddr := IDAddressString(info.ID(), info.ListenAddr)
-	return NewNetAddressString(idAddr)
+	return newNetAddressString(idAddr, func(host string) (net.IP, error) {
+		if !isDomainName(host) {
+			return nil, ErrNetAddressInvalid{host, errors.New("host is neither an IP address nor a valid host name")}
+		}
+		if hostIP == nil {
+			return nil, ErrNetAddressInvalid{host, errors.New("host is not an IP address and is not resolved")}
+		}
+		return hostIP, nil
+	})
+}
+
+// isDomainName reports whether s is a syntactically valid host name
+// (RFC 1123 labels, also allowing '_' as the Go resolver does). It only checks
+// syntax and never performs a DNS lookup. A single trailing dot is allowed.
+func isDomainName(s string) bool {
+	l := len(s)
+	if l == 0 || l > 254 || l == 254 && s[l-1] != '.' {
+		return false
+	}
+
+	last := byte('.')
+	nonNumeric := false // true once we have seen a letter, '_' or '-'
+	partlen := 0
+	for i := 0; i < l; i++ {
+		c := s[i]
+		switch {
+		case 'a' <= c && c <= 'z' || 'A' <= c && c <= 'Z' || c == '_':
+			nonNumeric = true
+			partlen++
+		case '0' <= c && c <= '9':
+			partlen++
+		case c == '-':
+			// Labels must not start with a hyphen.
+			if last == '.' {
+				return false
+			}
+			partlen++
+			nonNumeric = true
+		case c == '.':
+			// Labels must not be empty or end with a hyphen.
+			if last == '.' || last == '-' {
+				return false
+			}
+			if partlen > 63 {
+				return false
+			}
+			partlen = 0
+		default:
+			return false
+		}
+		last = c
+	}
+	if last == '-' || partlen > 63 {
+		return false
+	}
+	return nonNumeric
 }
 
 func (info DefaultNodeInfo) HasChannel(chID byte) bool {
