@@ -1410,6 +1410,20 @@ func (cs *State) defaultDecideProposal(height int64, round int32) {
 			return
 		}
 		blockParts = parts
+
+		// Re-propose the exact parts that received the polka. Validators
+		// locked on ValidBlock prevote its original BlockID, so a re-encoding
+		// with a different PartSetHeader would split prevotes and stall the
+		// height. Re-encoding gives the same parts for any canonically encoded
+		// block; it differs only when the original proposer encoded the
+		// block non-canonically. The stored parts have no tx positions, so
+		// the compact block then carries no tx metadata and peers fetch the
+		// parts instead of recovering them from their mempool.
+		if !parts.HasHeader(cs.rs.ValidBlockParts.Header()) {
+			cs.Logger.Info("re-proposing valid block parts that differ from their re-encoding",
+				"height", height, "round", round, "valid_round", cs.rs.ValidRound)
+			blockParts = cs.rs.ValidBlockParts
+		}
 	} else {
 		// Create a new proposal block from state/txs from the mempool.
 		var err error
@@ -1446,7 +1460,8 @@ func (cs *State) defaultDecideProposal(height int64, round int32) {
 		}
 
 		cs.Logger.Debug("verified proposal signature", "proposal", proposal)
-		metaData := make([]proptypes.TxMetaData, len(block.Txs))
+		// TxPos is empty when re-proposing stored ValidBlockParts (see above).
+		metaData := make([]proptypes.TxMetaData, len(blockParts.TxPos))
 		hashes := block.CachedHashes()
 		for i, pos := range blockParts.TxPos {
 			metaData[i] = proptypes.TxMetaData{
