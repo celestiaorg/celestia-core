@@ -207,9 +207,26 @@ func (bcR *Reactor) GetChannels() []*p2p.ChannelDescriptor {
 			RecvBufferCapacity:  50 * 4096,
 			RecvMessageCapacity: MaxMsgSize,
 			MessageType:         &bcproto.Message{},
-			RecvMessagePrecheck: validateBlockSyncBytes,
+			RecvMessagePrecheck: bcR.validateBlockSyncBytes,
 		},
 	}
+}
+
+// validateBlockSyncBytes also applies MaxBlockTxs once committed state reaches
+// BlockTxLimitAppVersion. App versions only increase, so later heights share it.
+func (bcR *Reactor) validateBlockSyncBytes(msgBytes []byte) error {
+	txs, err := scanBlockSyncBytes(msgBytes)
+	if err != nil || txs <= types.MaxBlockTxs {
+		return err
+	}
+	state, err := bcR.blockExec.Store().Load()
+	if err != nil {
+		return err
+	}
+	if state.Version.Consensus.App >= types.BlockTxLimitAppVersion {
+		return fmt.Errorf("%w (max: %d, got %d)", types.ErrTooManyBlockTxs, types.MaxBlockTxs, txs)
+	}
+	return nil
 }
 
 // AddPeer implements Reactor by sending our state to peer.
@@ -537,6 +554,11 @@ FOR_LOOP:
 				} else {
 					err = bcR.blockExec.ValidateBlockSkipLastCommit(state, first)
 				}
+			}
+
+			// The precheck may have used an older version's limit for this height.
+			if maxTxs := types.MaxBlockTxsForAppVersion(state.Version.Consensus.App); err == nil && maxTxs > 0 && len(first.Txs) > maxTxs {
+				err = fmt.Errorf("%w (max: %d, got %d)", types.ErrTooManyBlockTxs, maxTxs, len(first.Txs))
 			}
 
 			if err == nil && bcR.verifyData {
