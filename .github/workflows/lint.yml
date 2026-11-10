@@ -1,7 +1,8 @@
 name: Golang Linter
 # Lint runs golangci-lint over the entire CometBFT repository.
 #
-# This workflow is run on every pull request and push to main.
+# This workflow is run on every pull request and push to main. On pull
+# requests the gocognit job also checks the cognitive complexity of new code.
 #
 # The `golangci` job will pass without running if no *.{go, mod, sum}
 # files have been modified.
@@ -41,3 +42,31 @@ jobs:
             go.sum
       - run: go tool golangci-lint run --timeout 10m
         if: env.GIT_DIFF
+
+  # Cognitive complexity of new code only: existing functions are
+  # grandfathered. See .github/linters/golangci-gocognit.yml.
+  gocognit:
+    name: gocognit (new code)
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: 'go.mod'
+      - uses: technote-space/get-diff-action@f27caffdd0fb9b13f4fc191c016bb4e0632844af # v6.1.2
+        with:
+          PATTERNS: |
+            **/**.go
+            .github/linters/golangci-gocognit.yml
+      - name: golangci-lint (gocognit, new code only)
+        if: env.GIT_DIFF
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: >-
+          go tool golangci-lint run --timeout 10m
+          --config .github/linters/golangci-gocognit.yml
+          --new-from-merge-base "origin/${BASE_REF}"

@@ -55,6 +55,17 @@ var (
 
 var msgQueueSize = 20_000
 
+// badPeerQueueSize bounds the queue of peers to disconnect. Reports are
+// dropped when it is full, so it only needs to absorb a short burst.
+const badPeerQueueSize = 100
+
+// peerError reports a peer that sent a message proving it misbehaved, so the
+// reactor can disconnect it.
+type peerError struct {
+	peerID p2p.ID
+	err    error
+}
+
 // msgs from the reactor which may update the state
 type msgInfo struct {
 	Msg    Message `json:"msg"`
@@ -132,6 +143,10 @@ type State struct {
 	// so statistics can be computed by reactor
 	statsMsgQueue chan msgInfo
 
+	// peers that sent provably bad messages are written on this channel so the
+	// reactor can disconnect them
+	badPeerQueue chan peerError
+
 	// we use eventBus to trigger msg broadcasts in the reactor,
 	// and to notify external subscribers, eg. through a websocket
 	eventBus *types.EventBus
@@ -206,6 +221,7 @@ func NewState(
 		internalMsgQueue:     make(chan msgInfo, msgQueueSize),
 		timeoutTicker:        NewTimeoutTicker(),
 		statsMsgQueue:        make(chan msgInfo, msgQueueSize),
+		badPeerQueue:         make(chan peerError, badPeerQueueSize),
 		done:                 make(chan struct{}),
 		doWALCatchup:         true,
 		wal:                  nilWAL{},
@@ -1096,16 +1112,9 @@ func (cs *State) handleMsg(mi msgInfo) {
 
 	case *VoteMessage:
 		// attempt to add the vote and dupeout the validator if its a duplicate signature
-		// if the vote gives us a 2/3-any or 2/3-one, we transition
+		// if the vote gives us a 2/3-any or 2/3-one, we transition.
+		// tryAddVote reports a peer that sent a vote with an invalid signature.
 		added, _ = cs.tryAddVote(msg.Vote, peerID)
-
-		// if err == ErrAddingVote {
-		// TODO: punish peer
-		// We probably don't want to stop the peer here. The vote does not
-		// necessarily comes from a malicious peer but can be just broadcasted by
-		// a typical peer.
-		// https://github.com/tendermint/tendermint/issues/1281
-		// }
 
 		// NOTE: the vote is broadcast to peers by the reactor listening
 		// for vote events
@@ -2523,6 +2532,15 @@ func (cs *State) tryAddVote(vote *types.Vote, peerID p2p.ID) (bool, error) {
 		} else if errors.Is(err, types.ErrInvalidVoteExtension) {
 			cs.Logger.Debug("vote has invalid extension")
 		} else {
+			// Honest peers only relay votes whose signatures they verified, so
+			// an invalid signature proves the sending peer is faulty. Late,
+			// duplicate, or unwanted-round votes are not punished. Neither are
+			// bad extension signatures: blocksync does not verify them, so an
+			// honest peer can relay one from its block store.
+			if errors.Is(err, types.ErrVoteInvalidSignature) &&
+				!errors.Is(err, types.ErrVoteInvalidExtensionSignature) {
+				cs.reportBadPeer(peerID, err)
+			}
 			// Either
 			// 1) bad peer OR
 			// 2) not a bad peer? this can also err sometimes with "Unexpected step" OR
@@ -2536,6 +2554,21 @@ func (cs *State) tryAddVote(vote *types.Vote, peerID p2p.ID) (bool, error) {
 	}
 
 	return added, nil
+}
+
+// reportBadPeer asks the reactor to disconnect peerID. Our own messages
+// (peerID == "") and messages replayed from the WAL are never reported. It
+// never blocks: when the queue is full the report is dropped, and the peer is
+// reported again on its next bad message.
+func (cs *State) reportBadPeer(peerID p2p.ID, err error) {
+	if peerID == "" || cs.replayMode {
+		return
+	}
+	select {
+	case cs.badPeerQueue <- peerError{peerID: peerID, err: err}:
+	default:
+		cs.Logger.Debug("bad peer queue is full; dropping report", "peer", peerID, "err", err)
+	}
 }
 
 func (cs *State) addVote(vote *types.Vote, peerID p2p.ID) (added bool, err error) {
@@ -2559,6 +2592,12 @@ func (cs *State) addVote(vote *types.Vote, peerID p2p.ID) (added bool, err error
 		if cs.rs.Step != cstypes.RoundStepNewHeight {
 			// Late precommit at prior height is ignored
 			cs.Logger.Trace("precommit vote came in after commit timeout and has been ignored", "vote", vote)
+			return added, err
+		}
+
+		// There is no LastCommit at the initial height.
+		if cs.rs.LastCommit == nil {
+			cs.Logger.Trace("precommit vote for a height before the initial height has been ignored", "vote", vote)
 			return added, err
 		}
 
@@ -2625,6 +2664,13 @@ func (cs *State) addVote(vote *types.Vote, peerID p2p.ID) (added bool, err error
 				return added, ErrInvalidVote{Reason: fmt.Sprintf("ValidatorIndex %d is out of bounds [0, %d)", vote.ValidatorIndex, valsCount)}
 			}
 			if err := vote.VerifyExtension(cs.state.ChainID, val.PubKey); err != nil {
+				// A bad extension signature alone is not punished (see
+				// tryAddVote), so check the core signature as well: a
+				// peer must not avoid punishment for a forged vote by
+				// also forging its extension.
+				if coreErr := vote.Verify(cs.state.ChainID, val.PubKey); coreErr != nil {
+					return false, coreErr
+				}
 				return false, err
 			}
 

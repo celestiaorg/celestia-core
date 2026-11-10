@@ -224,65 +224,67 @@ func TestTxsToParts_EdgeCases(t *testing.T) {
 	})
 }
 
-// FuzzTxsToParts is a fuzz test that randomly selects a subset of transactions from a
-// fixed block and then verifies that TxsToParts returns the expected parts.
+// deterministicBlockTxs builds a block from txs of the given sizes, filled
+// from seed, and returns its part set together with the UnmarshalledTx view
+// of every tx. It uses no wall-clock or global randomness so fuzz inputs
+// replay identically.
+func deterministicBlockTxs(t testing.TB, seed int64, sizes []int) (*types.PartSet, []UnmarshalledTx) {
+	r := rand.New(rand.NewSource(seed)) //nolint:gosec
+	txs := make([]types.Tx, len(sizes))
+	for i, size := range sizes {
+		txs[i] = make([]byte, size)
+		_, _ = r.Read(txs[i])
+	}
+	block := types.MakeBlock(1, types.Data{Txs: txs}, nil, nil)
+	partSet, err := block.MakePartSet(types.BlockPartSizeBytes)
+	require.NoError(t, err)
+
+	txsFound := make([]UnmarshalledTx, len(partSet.TxPos))
+	for i, pos := range partSet.TxPos {
+		marshalledTx, err := proto.Marshal(&mempool.Txs{Txs: [][]byte{txs[i]}})
+		require.NoError(t, err)
+		txKey, err := types.TxKeyFromBytes(block.Txs[i].Hash())
+		require.NoError(t, err)
+		txsFound[i] = UnmarshalledTx{
+			MetaData: TxMetaData{Start: pos.Start, End: pos.End, Hash: block.Txs[i].Hash()},
+			Key:      txKey,
+			TxBytes:  marshalledTx,
+		}
+	}
+	return partSet, txsFound
+}
+
+// checkTxsToParts runs TxsToParts on subset and requires every returned part
+// to equal the block's part at that index.
+func checkTxsToParts(t *testing.T, partSet *types.PartSet, subset []UnmarshalledTx) {
+	lastPart := partSet.GetPart(int(partSet.Total() - 1))
+	parts, err := TxsToParts(subset, partSet.Total(), types.BlockPartSizeBytes, uint32(len(lastPart.Bytes)))
+	require.NoError(t, err)
+	for _, part := range parts {
+		require.Equal(t, partSet.GetPart(int(part.Index)).Bytes, part.Bytes)
+	}
+}
+
+// FuzzTxsToParts selects a subset of the transactions of a fixed block and
+// verifies that TxsToParts returns exactly the block's parts.
 // To run the fuzzer, use: go test -fuzz=FuzzTxsToParts
 func FuzzTxsToParts(f *testing.F) {
-	// Seed the fuzzer with an initial value.
+	sizes := make([]int, 16)
+	for i := range sizes {
+		sizes[i] = int(types.BlockPartSizeBytes / 3)
+	}
+	partSet, txsFound := deterministicBlockTxs(f, 1, sizes)
+
 	f.Add(uint16(0))
-
+	f.Add(uint16(0xffff))
 	f.Fuzz(func(t *testing.T, mask uint16) {
-		cleanup, _, sm, pv := state.SetupTestCaseWithPrivVal(t)
-		t.Cleanup(func() {
-			cleanup(t)
-		})
-
-		numberOfTxs := 16
-		// Using one tx size for fuzzing.
-		txs := generateTxs(numberOfTxs, int(types.BlockPartSizeBytes/3))
-		data := types.Data{Txs: txs}
-		commit := state.MakeTestCommit(t, sm, pv, time.Now())
-		block, partSet, err := sm.MakeBlock(1, data, commit, []types.Evidence{}, cmtrand.Bytes(20))
-		require.NoError(t, err)
-
-		txsFound := make([]UnmarshalledTx, len(partSet.TxPos))
-		for i, pos := range partSet.TxPos {
-			protoTxs := mempool.Txs{Txs: [][]byte{data.Txs[i]}}
-			marshalledTx, err := proto.Marshal(&protoTxs)
-			if err != nil {
-				t.Skip("Skipping due to proto.Marshal error")
-			}
-
-			txKey, err := types.TxKeyFromBytes(block.Txs[i].Hash())
-			if err != nil {
-				t.Skip("Skipping due to TxKeyFromBytes error")
-			}
-
-			txsFound[i] = UnmarshalledTx{
-				MetaData: TxMetaData{
-					Start: pos.Start,
-					End:   pos.End,
-					Hash:  block.Txs[i].Hash(),
-				},
-				Key:     txKey,
-				TxBytes: marshalledTx,
-			}
-		}
-
 		var subset []UnmarshalledTx
-		for i := 0; i < numberOfTxs; i++ {
+		for i := range txsFound {
 			if mask&(1<<i) != 0 {
 				subset = append(subset, txsFound[i])
 			}
 		}
-
-		lastPart := partSet.GetPart(int(partSet.Total() - 1))
-		parts, err := TxsToParts(subset, partSet.Total(), types.BlockPartSizeBytes, uint32(len(lastPart.Bytes)))
-		require.NoError(t, err)
-		for _, part := range parts {
-			expectedPart := partSet.GetPart(int(part.Index))
-			require.Equal(t, expectedPart.Bytes, part.Bytes)
-		}
+		checkTxsToParts(t, partSet, subset)
 	})
 }
 
@@ -363,94 +365,32 @@ func TestTxsToParts_Panic(t *testing.T) {
 	}
 }
 
+// FuzzTxsToParts_Panic builds a block from up to 30 transactions of random
+// sizes, derived only from the fuzz input, and checks TxsToParts on the
+// subset of transactions selected by keep.
 func FuzzTxsToParts_Panic(f *testing.F) {
-	// Seed corpus: one value (e.g. 10 transactions)
-	f.Add(uint(10))
+	f.Add(int64(10), uint8(10), uint32(0x3))
+	f.Add(int64(1), uint8(5), uint32(0x1))
 
-	f.Fuzz(func(t *testing.T, numTx uint) {
-		// Ensure at least one transaction.
-		if numTx == 0 {
-			numTx = 1
+	f.Fuzz(func(t *testing.T, seed int64, numTx uint8, keep uint32) {
+		// Bound the block so an input stays fast: up to 30 transactions of
+		// up to three parts each, enough for transactions to span parts.
+		n := 1 + int(numTx)%30
+		const maxTxSize = 3*int(types.BlockPartSizeBytes) + 1
+		r := rand.New(rand.NewSource(seed)) //nolint:gosec
+		sizes := make([]int, n)
+		for i := range sizes {
+			sizes[i] = 1 + r.Intn(maxTxSize)
 		}
+		partSet, txsFound := deterministicBlockTxs(t, seed, sizes)
 
-		// Set an upper bound to avoid excessive allocations (e.g. no more than 1000 transactions).
-		if numTx > 10 {
-			numTx = 30
-		}
-
-		// Prepare a slice to hold sizes for each transaction.
-		sizes := make([]int, numTx)
-		// Define the maximum allowed size for a transaction.
-		const maxTxSize = 3000000
-
-		// Seed a pseudo-random number generator using the input (for reproducibility).
-		r := rand.New(rand.NewSource(time.Now().UnixNano() + int64(numTx)))
-
-		// Generate a random size (up to 2,000,000) for each transaction.
-		// If the random size exceeds maxTxSize, clamp it.
-		for i := uint(0); i < numTx; i++ {
-			size := r.Intn(maxTxSize)
-			if size < 1 {
-				size = 1
-			}
-			sizes[i] = size
-		}
-
-		// remove a random number of transactions
-		keep := r.Intn(int(numTx))
-		keepInd := make(map[int]bool)
-		for i := 0; i < keep; i++ {
-			k := r.Intn(int(numTx))
-			keepInd[k] = true
-		}
-		kept := make([]int, 0, keep)
-		for k := range keepInd {
-			kept = append(kept, k)
-		}
-
-		// Setup the test environment.
-		cleanup, _, sm, pv := state.SetupTestCaseWithPrivVal(t)
-		t.Cleanup(func() {
-			cleanup(t)
-		})
-
-		txs := genHeterogeneousTxs(sizes)
-
-		dataObj := types.Data{Txs: txs}
-		commit := state.MakeTestCommit(t, sm, pv, time.Now())
-		block, partSet, err := sm.MakeBlock(1, dataObj, commit, []types.Evidence{}, cmtrand.Bytes(20))
-		require.NoError(t, err)
-
-		txsFound := make([]UnmarshalledTx, len(partSet.TxPos))
-		for i, pos := range partSet.TxPos {
-			protoTxs := mempool.Txs{Txs: [][]byte{dataObj.Txs[i]}}
-			marshalledTx, err := proto.Marshal(&protoTxs)
-			if err != nil {
-				t.Skip("Skipping due to proto.Marshal error")
-			}
-
-			txKey, err := types.TxKeyFromBytes(block.Txs[i].Hash())
-			if err != nil {
-				t.Skip("Skipping due to TxKeyFromBytes error")
-			}
-
-			txsFound[i] = UnmarshalledTx{
-				MetaData: TxMetaData{
-					Start: pos.Start,
-					End:   pos.End,
-					Hash:  block.Txs[i].Hash(),
-				},
-				Key:     txKey,
-				TxBytes: marshalledTx,
+		var subset []UnmarshalledTx
+		for i := range txsFound {
+			if keep&(1<<i) != 0 {
+				subset = append(subset, txsFound[i])
 			}
 		}
-
-		lastPart := partSet.GetPart(int(partSet.Total() - 1))
-		// Filter transactions using the provided indices.
-		subset := filter(txsFound, kept)
-
-		_, err = TxsToParts(subset, partSet.Total(), types.BlockPartSizeBytes, uint32(len(lastPart.Bytes)))
-		require.NoError(t, err)
+		checkTxsToParts(t, partSet, subset)
 	})
 }
 

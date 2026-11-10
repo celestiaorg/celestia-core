@@ -605,18 +605,13 @@ FOR_LOOP:
 				)
 			}
 			if err == nil && extensionsEnabled {
-				// if vote extensions were required at this height, ensure they exist.
-				err = extCommit.EnsureExtensions(true)
-			}
-			if err == nil && extensionsEnabled {
-				// Verify all signatures in the extended commit since it will
-				// be persisted to the blockstore. Without this check, a
-				// malicious peer could provide a corrupted ExtendedCommit
-				// (e.g. with wrong ValidatorAddress fields) that would cause
-				// a panic on consensus restart when reconstructLastCommit
-				// calls ToExtendedVoteSet.
-				err = state.Validators.VerifyCommit(
-					chainID, firstID, first.Height, extCommit.ToCommit())
+				// If vote extensions were required at this height, verify all
+				// signatures in the extended commit, including the vote
+				// extension signatures, since it will be persisted to the
+				// blockstore and reconstructed by consensus via
+				// ToExtendedVoteSet.
+				err = state.Validators.VerifyCommitExtended(
+					chainID, firstID, first.Height, extCommit)
 			}
 			if err != nil {
 				bcR.Logger.Error("Error in validation", "err", err)

@@ -7,7 +7,10 @@ import (
 	"strings"
 
 	"github.com/cometbft/cometbft/crypto"
+	"github.com/cometbft/cometbft/crypto/ed25519"
 	ce "github.com/cometbft/cometbft/crypto/encoding"
+	"github.com/cometbft/cometbft/crypto/secp256k1"
+	"github.com/cometbft/cometbft/crypto/sr25519"
 	cmtrand "github.com/cometbft/cometbft/libs/rand"
 	cmtproto "github.com/cometbft/cometbft/proto/tendermint/types"
 )
@@ -46,11 +49,38 @@ func (v *Validator) ValidateBasic() error {
 		return errors.New("validator has negative voting power")
 	}
 
+	// Address panics on a key of the wrong size, and validators can come
+	// from peers or RPC responses, so check the size first.
+	if err := validatePubKeySize(v.PubKey); err != nil {
+		return err
+	}
+
 	addr := v.PubKey.Address()
 	if !bytes.Equal(v.Address, addr) {
 		return fmt.Errorf("validator address is incorrectly derived from pubkey. Exp: %v, got %v", addr, v.Address)
 	}
 
+	return nil
+}
+
+// validatePubKeySize returns an error if pubKey is one of the key types
+// whose Address method panics on a key of the wrong size and pubKey has the
+// wrong size.
+func validatePubKeySize(pubKey crypto.PubKey) error {
+	var got, want int
+	switch pk := pubKey.(type) {
+	case ed25519.PubKey:
+		got, want = len(pk), ed25519.PubKeySize
+	case secp256k1.PubKey:
+		got, want = len(pk), secp256k1.PubKeySize
+	case sr25519.PubKey:
+		got, want = len(pk), sr25519.PubKeySize
+	default:
+		return nil
+	}
+	if got != want {
+		return fmt.Errorf("validator %s public key has size %d, want %d", pubKey.Type(), got, want)
+	}
 	return nil
 }
 

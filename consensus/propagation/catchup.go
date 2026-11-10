@@ -226,6 +226,7 @@ func (blockProp *Reactor) handleCachedCompactBlock(cb *proptypes.CompactBlock) b
 
 	propFound := false
 	conflict := false
+	forward := false
 	blockProp.pmtx.Lock()
 	if props, ok := blockProp.proposals[cb.Proposal.Height]; ok {
 		if prop := props[cb.Proposal.Round]; prop != nil {
@@ -233,6 +234,10 @@ func (blockProp *Reactor) handleCachedCompactBlock(cb *proptypes.CompactBlock) b
 				// Mark as catchup to skip parity requests in retryWants
 				prop.catchup = true
 				propFound = true
+				// forward the proposal to consensus only if it has not been
+				// forwarded already.
+				forward = !prop.forwarded
+				prop.forwarded = true
 			} else {
 				conflict = true
 			}
@@ -249,23 +254,36 @@ func (blockProp *Reactor) handleCachedCompactBlock(cb *proptypes.CompactBlock) b
 		return false
 	}
 
-	// Send proposal to consensus reactor
-	select {
-	case <-blockProp.ctx.Done():
-		return false
-	case blockProp.proposalChan <- ProposalAndSrc{
-		Proposal: cb.Proposal,
-		From:     blockProp.self, // From self since it's from cache
-	}:
+	// This runs on the consensus receive routine (via SetConsensusState) while
+	// consensus holds its locks, and the consumer of proposalChan and partChan
+	// feeds that same routine. Never block here: hand the proposal and any
+	// parts recovered from the mempool to consensus from a separate goroutine.
+	blockProp.ticker.Reset(RetryTime)
+	go blockProp.deliverCachedCompactBlock(cb, forward)
+	return true
+}
+
+// deliverCachedCompactBlock forwards a cached compact block's proposal to
+// consensus (if forward is true), recovers its parts from the mempool, and
+// requests the remaining parts. It may block on proposalChan and partChan, so
+// it must not run on the consensus receive routine.
+func (blockProp *Reactor) deliverCachedCompactBlock(cb *proptypes.CompactBlock, forward bool) {
+	if forward {
+		select {
+		case <-blockProp.ctx.Done():
+			return
+		case blockProp.proposalChan <- ProposalAndSrc{
+			Proposal: cb.Proposal,
+			From:     blockProp.self, // From self since it's from cache
+		}:
+		}
 	}
 
 	// Recover any parts from mempool
 	blockProp.recoverPartsFromMempool(cb)
 
 	// Immediately trigger part requests (like AddCommitment)
-	blockProp.ticker.Reset(RetryTime)
-	go blockProp.retryWants()
-	return true
+	blockProp.retryWants()
 }
 
 // sameProposalIdentity reports whether an existing proposal entry refers to the

@@ -7,6 +7,9 @@ import (
 	"sync"
 	time "time"
 
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
+
 	abci "github.com/cometbft/cometbft/abci/types"
 	"github.com/cometbft/cometbft/crypto/encoding"
 	"github.com/cometbft/cometbft/libs/pubsub"
@@ -49,10 +52,22 @@ func (bapi *broadcastAPI) BroadcastTx(_ context.Context, req *RequestBroadcastTx
 	}, nil
 }
 
+// MaxHeightListeners is the maximum number of concurrent SubscribeNewHeights
+// streams, across all gRPC connections, that a BlockAPI admits.
+const MaxHeightListeners = 1000
+
+// errTooManyHeightListeners is returned when MaxHeightListeners
+// SubscribeNewHeights streams are already active.
+var errTooManyHeightListeners = status.Error(
+	codes.ResourceExhausted,
+	"server busy: too many concurrent SubscribeNewHeights streams, retry later",
+)
+
 type BlockAPI struct {
 	env *core.Environment
 	sync.Mutex
 	heightListeners      map[chan SubscribeNewHeightsResponse]struct{}
+	maxHeightListeners   int
 	newBlockSubscription eventstypes.Subscription
 	subscriptionID       string
 	subscriptionQuery    pubsub.Query
@@ -60,10 +75,11 @@ type BlockAPI struct {
 
 func NewBlockAPI(env *core.Environment) *BlockAPI {
 	return &BlockAPI{
-		env:               env,
-		heightListeners:   make(map[chan SubscribeNewHeightsResponse]struct{}, 1000),
-		subscriptionID:    fmt.Sprintf("block-api-subscription-%s", rand.Str(6)),
-		subscriptionQuery: eventstypes.EventQueryNewBlock,
+		env:                env,
+		heightListeners:    make(map[chan SubscribeNewHeightsResponse]struct{}, MaxHeightListeners),
+		maxHeightListeners: MaxHeightListeners,
+		subscriptionID:     fmt.Sprintf("block-api-subscription-%s", rand.Str(6)),
+		subscriptionQuery:  eventstypes.EventQueryNewBlock,
 	}
 }
 
@@ -220,12 +236,18 @@ func (blockAPI *BlockAPI) sendNonBlocking(ch chan SubscribeNewHeightsResponse, e
 	}
 }
 
-func (blockAPI *BlockAPI) addHeightListener() chan SubscribeNewHeightsResponse {
+// addHeightListener registers a new height listener. It returns
+// errTooManyHeightListeners, without allocating a channel, when
+// maxHeightListeners listeners are already registered.
+func (blockAPI *BlockAPI) addHeightListener() (chan SubscribeNewHeightsResponse, error) {
 	blockAPI.Lock()
 	defer blockAPI.Unlock()
+	if len(blockAPI.heightListeners) >= blockAPI.maxHeightListeners {
+		return nil, errTooManyHeightListeners
+	}
 	ch := make(chan SubscribeNewHeightsResponse, 50)
 	blockAPI.heightListeners[ch] = struct{}{}
-	return ch
+	return ch, nil
 }
 
 func (blockAPI *BlockAPI) removeHeightListener(ch chan SubscribeNewHeightsResponse) {
@@ -454,7 +476,10 @@ func (blockAPI *BlockAPI) ValidatorSet(_ context.Context, req *ValidatorSetReque
 }
 
 func (blockAPI *BlockAPI) SubscribeNewHeights(_ *SubscribeNewHeightsRequest, stream BlockAPI_SubscribeNewHeightsServer) error {
-	heightListener := blockAPI.addHeightListener()
+	heightListener, err := blockAPI.addHeightListener()
+	if err != nil {
+		return err
+	}
 	defer blockAPI.removeHeightListener(heightListener)
 
 	for {
