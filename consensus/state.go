@@ -2376,9 +2376,7 @@ func (cs *State) addProposalBlockPart(msg *BlockPartMessage, peerID p2p.ID) (add
 
 		pbb := new(cmtproto.Block)
 		// Use committed state, never the proposer's claimed header version.
-		appVersion := cs.state.Version.Consensus.App
-		err = cmtproto.CheckBlockCardinality(bz, types.MaxBlockTxsForAppVersion(appVersion),
-			appVersion >= types.BlockTxLimitAppVersion)
+		err = cmtproto.CheckBlockCardinality(bz, blockLimits(cs.state))
 		if err == nil {
 			err = proto.Unmarshal(bz, pbb)
 		}
@@ -2449,6 +2447,16 @@ func (cs *State) handleCompleteProposal(blockHeight int64) {
 	} else if cs.rs.Step == cstypes.RoundStepCommit {
 		// If we're waiting on the proposal block...
 		cs.tryFinalizeCommit(blockHeight)
+	}
+}
+
+// blockLimits bounds decoding of the block that state applies next.
+func blockLimits(state sm.State) cmtproto.BlockLimits {
+	appVersion := state.Version.Consensus.App
+	return cmtproto.BlockLimits{
+		Txs:           types.MaxBlockTxsForAppVersion(appVersion),
+		EvidenceBytes: state.ConsensusParams.Evidence.MaxBytes,
+		AllOneofs:     appVersion >= types.BlockTxLimitAppVersion,
 	}
 }
 

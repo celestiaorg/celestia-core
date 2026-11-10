@@ -219,19 +219,22 @@ func (bcR *Reactor) GetChannels() []*p2p.ChannelDescriptor {
 	}
 }
 
-// validateBlockSyncBytes applies MaxBlockTxs once committed state reaches
-// BlockTxLimitAppVersion. App versions only increase, so later heights share it.
+// validateBlockSyncBytes checks against default limits first, and against the
+// committed state's only when those are exceeded. App versions only increase.
 func (bcR *Reactor) validateBlockSyncBytes(msgBytes []byte) error {
-	err := validateBlockSyncCardinality(msgBytes, types.MaxBlockTxs)
-	if errors.Is(err, cmtproto.ErrTooManyBlockTxs) {
+	err := validateBlockSyncCardinality(msgBytes, cmtproto.BlockLimits{
+		Txs:           types.MaxBlockTxs,
+		EvidenceBytes: types.DefaultEvidenceParams().MaxBytes,
+	})
+	if errors.Is(err, cmtproto.ErrTooManyBlockTxs) || errors.Is(err, errTooManyEvidenceSigs) {
 		state, loadErr := bcR.blockExec.Store().Load()
 		if loadErr != nil {
 			return loadErr
 		}
-		if state.Version.Consensus.App >= types.BlockTxLimitAppVersion {
-			return err
-		}
-		err = validateBlockSyncCardinality(msgBytes, types.MaxBlockTxsCeiling)
+		err = validateBlockSyncCardinality(msgBytes, cmtproto.BlockLimits{
+			Txs:           types.MaxBlockTxsForAppVersion(state.Version.Consensus.App),
+			EvidenceBytes: state.ConsensusParams.Evidence.MaxBytes,
+		})
 	}
 	if err != nil {
 		return err
