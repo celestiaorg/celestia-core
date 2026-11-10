@@ -621,6 +621,38 @@ func TestRecoveryPartForOlderRound(t *testing.T) {
 	require.True(t, parts.HasPart(0))
 }
 
+// TestRetryWantsFetchesOlderPartialProposalOnCommit asserts that a commit for a round whose
+// proposal we hold without parts fetches them, even with a newer proposal cached.
+func TestRetryWantsFetchesOlderPartialProposalOnCommit(t *testing.T) {
+	reactors, _ := createTestReactors(2, defaultTestP2PConf(), false, "")
+	requester, server := reactors[0], reactors[1]
+	cleanup, _, sm, pv := state.SetupTestCaseWithPrivVal(t)
+	t.Cleanup(func() { cleanup(t) })
+
+	propX, psX, _, metaX := createTestProposal(t, sm, pv, 1, 0, 2, 1000000)
+	propY, psY, _, metaY := createTestProposal(t, sm, pv, 1, 1, 2, 1000000)
+	cbX, parityX := createCompactBlock(t, propX, psX, metaX)
+	cbY, _ := createCompactBlock(t, propY, psY, metaY)
+
+	require.True(t, server.AddProposal(cbX))
+	_, partsX, _, has := server.getAllState(propX.Height, propX.Round, true)
+	require.True(t, has)
+	partsX.SetProposalData(psX, parityX)
+
+	// the requester holds X's compact block without parts and Y's newer proposal.
+	require.True(t, requester.AddProposal(cbX))
+	require.True(t, requester.AddProposal(cbY))
+	pshX := psX.Header()
+	requester.AddCommitment(propX.Height, propX.Round, &pshX)
+
+	require.Eventually(t, func() bool {
+		_, parts, has := requester.GetProposal(propX.Height, propX.Round)
+		return has && parts.IsComplete()
+	}, 2*time.Second, 10*time.Millisecond)
+	part := <-requester.GetPartChan()
+	require.Equal(t, propX.Round, part.Round)
+}
+
 // countingDB counts point reads.
 type countingDB struct {
 	dbm.DB

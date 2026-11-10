@@ -116,6 +116,11 @@ func (blockProp *Reactor) AddCommitment(height int64, round int32, psh *types.Pa
 	if blockProp.proposals[height][round] != nil {
 		existingPSH := blockProp.proposals[height][round].block.Original().Header()
 		if existingPSH.Total == psh.Total && bytes.Equal(existingPSH.Hash, psh.Hash) {
+			// a proposal we hold only partly may be committed after we moved on to a later round.
+			if existing := blockProp.proposals[height][round]; !existing.catchup && !existing.block.IsComplete() {
+				existing.catchup = true
+				go blockProp.retryWants()
+			}
 			return
 		}
 		blockProp.Logger.Error("replacing existing proposal with new one", "height", height, "round", round, "psh", psh, "existingPSH", existingPSH)
