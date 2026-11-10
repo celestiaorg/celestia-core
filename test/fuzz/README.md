@@ -45,14 +45,15 @@ date has been recorded for these entries.
 | Propagation `MsgFromProto` and per-message helpers | CompactBlock, HaveParts, WantParts, RecoveryPart | `FuzzPropagationMessage` in `consensus/propagation/types` | Yes |
 | `types` block-level `FromProto`, validation and part-set insertion | Blocks, parts/proofs, votes, proposals, commits, evidence | `FuzzBlockFromProto`, `FuzzPartFromProto`, `FuzzVoteFromProto`, `FuzzProposalFromProto`, `FuzzCommitFromProto`, `FuzzEvidenceFromProto` in `types` | Yes |
 | `types.unwrapLegacyBlobTx`, `Tx.Hash` / `Key` | Legacy BlobTx wire fields | `FuzzUnwrapLegacyBlobTx` in `types` (differential against generated decoder) | Yes |
+| `CheckBlockCardinality` (proposal block bytes, blocksync responses) | Raw block bytes before decoding | `FuzzCheckBlockCardinality` in `proto/tendermint/types` | Yes |
 | `conn.SecretConnection.Read` / `Write` | Encrypted peer connection traffic | `FuzzP2PSecretConnection` in `test/fuzz/tests` | Yes |
 | JSON-RPC server | RPC request bytes | `FuzzRPCJSONRPCServer` in `test/fuzz/tests` | Yes |
 | Evidence reactor envelope | EvidenceList protobuf envelope | `FuzzEvidenceReactorReceive` in `evidence` | Yes |
 | State-sync message decoding | Snapshot and chunk envelopes | `FuzzStateSyncReactor` in `statesync` | Yes |
 | P2P packet framing and node-info handshake | Packet and node-info wire bytes | `FuzzMConnectionRecv` in `p2p/conn`, `FuzzTransportUpgrade` in `p2p` | Yes |
 
-The original decoder suite has **14 targets**; the last three rows are now
-covered by the entry-point targets below.
+The original decoder suite has **14 targets**, and `FuzzCheckBlockCardinality`
+makes 15; the last three rows are now covered by the entry-point targets below.
 CheckTx uses the in-process kvstore app, so it exercises core admission and tx
 hashing, not celestia-app ante handlers. Its pool, caches and app are recreated
 for every input so a full pool or a previously seen tx cannot mask a decoder
@@ -113,7 +114,7 @@ run in the nightly matrix.
 | RPC handlers and JSON-RPC server | URI, JSON-RPC (single, batch, websocket) requests | `FuzzRPCCoreHandlers`, `FuzzRPCCoreJSONRPC` in `rpc/core` |
 | Legacy gRPC API | BlockAPI and BlobstreamAPI requests | `FuzzRPCGRPCAPI` in `rpc/core` |
 
-With these **29 targets** the nightly matrix runs **43 targets**.
+With these **29 targets** the nightly matrix runs **44 targets**.
 
 Known limits:
 
@@ -205,7 +206,7 @@ caches saved on `main`, so treat the corpus as public.
 
 Corpus files are small. In a local 90-second run, `FuzzConsensusMessage` wrote
 526 files totalling 27 KB. Even if a long-running target grows to a few MB, the
-matrix's 43 targets, with one entry each, need a few hundred MB at most of
+matrix's 44 targets, with one entry each, need a few hundred MB at most of
 GitHub's 10 GB repository cache. A corpus over 32 MiB (`CORPUS_MAX_MIB` in the
 workflow) is not saved, which bounds the worst case at about 1.4 GB, and the job
 prints a warning. The target then keeps restoring its last saved corpus. Bump

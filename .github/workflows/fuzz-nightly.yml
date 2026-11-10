@@ -108,6 +108,7 @@ jobs:
           - {package: evidence, target: EvidencePool, priority: 1}
           - {package: evidence, target: EvidenceReactorReceive, priority: 1}
           - {package: types, target: UnwrapLegacyBlobTx, priority: 1}
+          - {package: proto/tendermint/types, target: CheckBlockCardinality, priority: 1}
           - {package: light, target: LightClientVerify, priority: 2}
           - {package: light/provider/http, target: HTTPProviderLightBlock, priority: 2}
     steps:
