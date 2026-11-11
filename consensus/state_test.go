@@ -401,6 +401,8 @@ func TestStateOversizedBlock(t *testing.T) {
 func TestStateFullRound1(t *testing.T) {
 	cs, vss := randState(1)
 	height, round := cs.rs.Height, cs.rs.Round
+	// Building our own proposal can outlast 40 ms under -race; nothing waits on it.
+	cs.state.Timeouts.TimeoutPropose = 500 * time.Millisecond
 
 	// NOTE: buffer capacity of 0 ensures we can validate prevote and last commit
 	// before consensus can move to the next height (and cause a race condition)
@@ -427,7 +429,7 @@ func TestStateFullRound1(t *testing.T) {
 
 	// we're going to roll right into new height
 	ensureNewRound(newRoundCh, height+1, 0)
-	validateLastPrecommit(t, cs, vss[0], propBlockHash)
+	validateLastPrecommit(t, cs, height, vss[0], propBlockHash)
 }
 
 // nil is proposed, so prevote and precommit nil
@@ -900,6 +902,9 @@ func TestStateLockPOLUnlockOnUnknownBlock(t *testing.T) {
 	cs1, vss := randState(4)
 	vs2, vs3, vs4 := vss[1], vss[2], vss[3]
 	height, round := cs1.rs.Height, cs1.rs.Round
+	// Round 2's proposal is built (newState, slow under -race) while its 40 ms
+	// propose timeout already runs. Round 1 waits this timeout out in full.
+	cs1.state.Timeouts.TimeoutPropose = 500 * time.Millisecond
 
 	partSize := types.BlockPartSizeBytes
 

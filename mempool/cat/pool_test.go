@@ -458,6 +458,49 @@ func TestTxPool_CountLimit(t *testing.T) {
 	})
 }
 
+// TestTxPool_EvictionSkipsIncomingSigner checks that a full pool never makes
+// room for a new tx by evicting txs from the new tx's own signer.
+func TestTxPool_EvictionSkipsIncomingSigner(t *testing.T) {
+	t.Run("count-full rejects instead of evicting own txs", func(t *testing.T) {
+		txmp := setup(t, 1000)
+		txmp.config.Size = 2
+		txmp.config.MaxTxsBytes = 1 << 20
+		mustCheckTx(t, txmp, "A=0=1")
+		mustCheckTx(t, txmp, "A=1=1")
+		require.Error(t, txmp.CheckTx([]byte("A=2=100"), nil, mempool.TxInfo{}))
+		require.Equal(t, 2, txmp.Size())
+		require.True(t, txmp.Has(types.Tx("A=0=1").Key()))
+		require.True(t, txmp.Has(types.Tx("A=1=1").Key()))
+		require.False(t, txmp.Has(types.Tx("A=2=100").Key()))
+	})
+
+	t.Run("byte-full rejects instead of evicting own txs", func(t *testing.T) {
+		txmp := setup(t, 1000)
+		txmp.config.Size = 100
+		mustCheckTx(t, txmp, "A=0=1")
+		mustCheckTx(t, txmp, "A=1=1")
+		txmp.config.MaxTxsBytes = txmp.SizeBytes()
+		require.Error(t, txmp.CheckTx([]byte("A=2=100"), nil, mempool.TxInfo{}))
+		require.Equal(t, 2, txmp.Size())
+		require.True(t, txmp.Has(types.Tx("A=0=1").Key()))
+		require.True(t, txmp.Has(types.Tx("A=1=1").Key()))
+		require.False(t, txmp.Has(types.Tx("A=2=100").Key()))
+	})
+
+	t.Run("other signers are still evicted", func(t *testing.T) {
+		txmp := setup(t, 1000)
+		txmp.config.Size = 2
+		txmp.config.MaxTxsBytes = 1 << 20
+		mustCheckTx(t, txmp, "A=0=1")
+		mustCheckTx(t, txmp, "B=0=2")
+		mustCheckTx(t, txmp, "A=1=100")
+		require.Equal(t, 2, txmp.Size())
+		require.True(t, txmp.Has(types.Tx("A=0=1").Key()))
+		require.True(t, txmp.Has(types.Tx("A=1=100").Key()))
+		require.True(t, txmp.WasRecentlyEvicted(types.Tx("B=0=2").Key()))
+	})
+}
+
 func TestTxPool_Flush(t *testing.T) {
 	txmp := setup(t, 0)
 	txs := checkTxs(t, txmp, 100, 0)
