@@ -659,7 +659,12 @@ func TestConcurrentRequestLimit(t *testing.T) {
 // parity partset, and proofs.
 func testCompactBlock(t testing.TB, sm state.State, pv types.PrivValidator, height int64, round int32) (*proptypes.CompactBlock, *types.PartSet, *types.PartSet, []*merkle.Proof) {
 	prop, ps, _, metaData := createTestProposal(t, sm, pv, height, round, 2, 1000000)
+	cb, pse, proofs := compactBlockFor(t, prop, ps, metaData)
+	return cb, ps, pse, proofs
+}
 
+// compactBlockFor builds and signs a compact block for the given proposal.
+func compactBlockFor(t testing.TB, prop *types.Proposal, ps *types.PartSet, metaData []proptypes.TxMetaData) (*proptypes.CompactBlock, *types.PartSet, []*merkle.Proof) {
 	pse, lastLen, err := types.Encode(ps, types.BlockPartSizeBytes)
 	require.NoError(t, err)
 	pseh := pse.Header()
@@ -682,7 +687,7 @@ func testCompactBlock(t testing.TB, sm state.State, pv types.PrivValidator, heig
 	require.NoError(t, err)
 	baseCompactBlock.Signature = sig
 
-	return baseCompactBlock, ps, pse, proofs
+	return baseCompactBlock, pse, proofs
 }
 
 func createBitArray(size int, indices []int) *bits.BitArray {
