@@ -161,7 +161,7 @@ type State struct {
 	replayMode   bool // so we don't log signing errors during replay
 	doWALCatchup bool // determines if we even try to do the catchup
 
-	// replayedBlocks holds the height's proposal blocks completed during replay, by round.
+	// replayedBlocks holds the height's own proposal blocks completed during replay, by round.
 	replayedBlocks map[int32]*types.PartSet
 
 	// lockedBlocks copies a stalled height's locked block for a restart (only_internal_wal only).
@@ -522,10 +522,7 @@ func (cs *State) OnStart() error {
 	}
 	cs.shareBlock(cs.rs.LockedRound, cs.rs.LockedBlockParts)
 	cs.shareBlock(cs.rs.ValidRound, cs.rs.ValidBlockParts)
-	// Replaying into a later round dropped earlier rounds' blocks; peers locked on one may need it.
-	for round, parts := range cs.replayedBlocks {
-		cs.shareBlock(round, parts)
-	}
+	cs.shareReplayedBlocks()
 
 	// now start the receiveRoutine
 	go cs.receiveRoutine(0)
@@ -536,6 +533,16 @@ func (cs *State) OnStart() error {
 	cs.scheduleRound0(cs.GetRoundState())
 
 	return nil
+}
+
+// shareReplayedBlocks serves our replayed proposals, which replaying into a later round dropped,
+// to peers locked on one. The lock and valid rounds are already shared or refetched; keep them.
+func (cs *State) shareReplayedBlocks() {
+	for round, parts := range cs.replayedBlocks {
+		if round != cs.rs.LockedRound && round != cs.rs.ValidRound {
+			cs.shareBlock(round, parts)
+		}
+	}
 }
 
 // timeoutRoutine: receive requests for timeouts on tickChan and fire timeouts on tockChan
@@ -2633,7 +2640,9 @@ func (cs *State) addProposalBlockPart(msg *BlockPartMessage, peerID p2p.ID) (add
 		}
 
 		cs.rs.ProposalBlock = block
-		if cs.replayMode && cs.rs.Proposal != nil {
+		// Only our own proposals: the WAL is the one place that holds them after a restart.
+		if cs.replayMode && cs.rs.Proposal != nil && cs.rs.Proposal.Round == cs.rs.Round &&
+			cs.privValidatorPubKey != nil && cs.isProposer(cs.privValidatorPubKey.Address()) {
 			if cs.replayedBlocks == nil {
 				cs.replayedBlocks = make(map[int32]*types.PartSet)
 			}

@@ -163,6 +163,65 @@ func TestReseedPropagatorGuards(t *testing.T) {
 	cs.privValidatorPubKey = pk
 }
 
+// Replay keeps a completed proposal block only for a round we proposed.
+func TestReplayKeepsOnlyOwnProposalBlocks(t *testing.T) {
+	cs, vss := randState(4)
+	height, round := cs.rs.Height, cs.rs.Round
+	ourIdx, _ := cs.rs.Validators.GetByAddress(cs.privValidatorPubKey.Address())
+	require.True(t, cs.isProposer(cs.privValidatorPubKey.Address()))
+	prop, block := decideProposal(context.Background(), t, cs, vss[ourIdx], height, round)
+	parts, err := block.MakePartSet(types.BlockPartSizeBytes)
+	require.NoError(t, err)
+
+	replay := func() map[int32]*types.PartSet {
+		cs.replayMode, cs.replayedBlocks = true, nil
+		defer func() { cs.replayMode = false }()
+		cs.rs.Proposal, cs.rs.ProposalBlock = prop, nil
+		cs.rs.ProposalBlockParts = types.NewPartSetFromHeader(parts.Header(), types.BlockPartSizeBytes)
+		for i := 0; i < int(parts.Total()); i++ {
+			_, err := cs.addProposalBlockPart(&BlockPartMessage{height, round, parts.GetPart(i)}, "")
+			require.NoError(t, err)
+		}
+		require.NotNil(t, cs.rs.ProposalBlock)
+		return cs.replayedBlocks
+	}
+	kept := replay()
+	require.Equal(t, map[int32]*types.PartSet{round: cs.rs.ProposalBlockParts}, kept)
+
+	pk := cs.privValidatorPubKey
+	cs.privValidatorPubKey = vss[(ourIdx+1)%4].PrivValidator.(types.MockPV).PrivKey.PubKey()
+	require.Empty(t, replay(), "another validator's proposal")
+	cs.privValidatorPubKey = pk
+}
+
+// The lock and valid rounds' entries, possibly a refetch of another block, are not replaced.
+func TestShareReplayedBlocksSkipsLockAndValidRounds(t *testing.T) {
+	cs, _ := randState(1)
+	rec := &callRecorder{Propagator: propagation.NewNoOpPropagator()}
+	cs.propagator = rec
+	_, parts, err := cs.createProposalBlock(context.Background())
+	require.NoError(t, err)
+	cs.rs.LockedRound, cs.rs.ValidRound = 0, 1
+	cs.replayedBlocks = map[int32]*types.PartSet{0: parts, 1: parts, 2: parts}
+
+	cs.shareReplayedBlocks()
+	require.Equal(t, []propagatorCall{{block: true, height: cs.rs.Height, round: 2, psh: parts.Header()}}, rec.snapshot())
+}
+
+// A new height drops the previous height's replayed blocks.
+func TestReplayedBlocksResetAtNewHeight(t *testing.T) {
+	cs, _ := randState(1)
+	height, round := cs.rs.Height, cs.rs.Round
+	cs.replayedBlocks = map[int32]*types.PartSet{round: nil}
+	newBlockCh := subscribe(cs.eventBus, types.EventQueryNewBlock)
+	startTestRound(cs, height, round)
+	ensureNewBlock(newBlockCh, height)
+
+	cs.lockAll()
+	defer cs.unlockAll()
+	require.Nil(t, cs.replayedBlocks)
+}
+
 type heldPropagator struct{ *propagation.NoOpPropagator }
 
 func (heldPropagator) GetProposal(int64, int32) (*types.Proposal, *types.PartSet, bool) {
