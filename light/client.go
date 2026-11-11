@@ -1011,9 +1011,6 @@ func (c *Client) backwards(
 		verifiedHeader = interimHeader
 	}
 
-<<<<<<< HEAD
-	return nil
-=======
 	// The primary can change during the walk, so the verified chain may end at
 	// a different header than the one we were asked to verify.
 	if !bytes.Equal(verifiedHeader.Hash(), newHeader.Hash()) {
@@ -1023,7 +1020,6 @@ func (c *Client) backwards(
 	}
 
 	return newLightBlock, nil
->>>>>>> df57d93 (fix(light): [high] verify commit of light blocks verified backwards (#3628))
 }
 
 // lightBlockFromPrimary retrieves the lightBlock from the primary provider

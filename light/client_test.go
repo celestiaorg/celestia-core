@@ -888,8 +888,6 @@ func TestClient_BackwardsVerification(t *testing.T) {
 	}
 }
 
-<<<<<<< HEAD
-=======
 // TestClient_BackwardsVerificationPrimaryReplaced checks that backwards
 // verification rejects the primary's header when the primary is replaced
 // partway through and the verified hash chain ends at a different header.
@@ -1034,7 +1032,6 @@ func TestClient_BackwardsVerificationInvalidCommit(t *testing.T) {
 	})
 }
 
->>>>>>> df57d93 (fix(light): [high] verify commit of light blocks verified backwards (#3628))
 func TestClient_NewClientFromTrustedStore(t *testing.T) {
 	// 1) Initiate DB and fill with a "trusted" header
 	db := dbs.New(dbm.NewMemDB(), chainID)
