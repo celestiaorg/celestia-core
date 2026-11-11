@@ -671,6 +671,17 @@ func (cs *State) scheduleRound0(rs *cstypes.RoundState) {
 	cs.scheduleTimeout(sleepDuration, rs.Height, 0, cstypes.RoundStepNewHeight)
 }
 
+// dynamicTimeoutCommit is the app's floor on the height interval; 0 keeps the legacy rule.
+func (cs *State) dynamicTimeoutCommit() time.Duration {
+	return cs.state.Timeouts.DynamicTimeoutCommit
+}
+
+// skipTimeoutCommit reports whether all precommits may start round 0 early; never
+// under a dynamic timeout commit, whose deadline only +2/3 precommits can cut short.
+func (cs *State) skipTimeoutCommit() bool {
+	return cs.config.SkipTimeoutCommit && cs.dynamicTimeoutCommit() <= 0
+}
+
 // Attempt to schedule a timeout (by sending timeoutInfo on the tickChan)
 func (cs *State) scheduleTimeout(duration time.Duration, height int64, round int32, step cstypes.RoundStepType) {
 	cs.timeoutTicker.ScheduleTimeout(timeoutInfo{duration, height, round, step})
@@ -1254,7 +1265,8 @@ func (cs *State) handleTxsAvailable() {
 // State functions
 // Used internally by handleTimeout and handleMsg to make state transitions
 
-// Enter: `timeoutNewHeight` by startTime (commitTime+timeoutCommit),
+// Enter: `timeoutNewHeight` by startTime (commitTime+timeoutCommit, or the
+// dynamic timeout commit deadline if later),
 //
 //	or, if SkipTimeoutCommit==true, after receiving all precommits from (height,round-1)
 //
@@ -1274,6 +1286,10 @@ func (cs *State) enterNewRound(height int64, round int32) {
 	}
 
 	if now := cmttime.Now(); cs.rs.StartTime.After(now) {
+		// Before the deadline only +2/3 precommits reach round 0 (skipTimeoutCommit is off).
+		if round == 0 && cs.dynamicTimeoutCommit() > 0 && !cs.replayMode {
+			cs.metrics.PacingBypass.With("reason", "quorum").Add(1)
+		}
 		logger.Trace("need to set a buffer and log message here for sanity", "start_time", cs.rs.StartTime, "now", now)
 	}
 
@@ -1332,7 +1348,9 @@ func (cs *State) enterNewRound(height int64, round int32) {
 	// Wait for txs to be available in the mempool
 	// before we enterPropose in round 0. If the last block changed the app hash,
 	// we may need an empty "proof" block, and enterPropose immediately.
-	waitForTxs := cs.config.WaitForTxs() && round == 0 && !cs.needProofBlock(height)
+	// A proposal held until the dynamic deadline is processed without waiting for txs.
+	waitForTxs := cs.config.WaitForTxs() && round == 0 && !cs.needProofBlock(height) &&
+		(cs.dynamicTimeoutCommit() <= 0 || !cs.isProposalComplete())
 	if waitForTxs {
 		if cs.config.CreateEmptyBlocksInterval > 0 {
 			cs.scheduleTimeout(cs.config.CreateEmptyBlocksInterval, height, round,
@@ -2501,7 +2519,10 @@ func (cs *State) handleCompleteProposal(blockHeight int64) {
 		// procedure at this point.
 	}
 
-	if cs.rs.Step <= cstypes.RoundStepPropose && cs.isProposalComplete() {
+	// With a dynamic timeout commit, a proposal completed during NewHeight is held
+	// until round 0 starts. WAL replay still restores votes and locks.
+	held := cs.dynamicTimeoutCommit() > 0 && !cs.replayMode && cs.rs.Step == cstypes.RoundStepNewHeight
+	if !held && cs.rs.Step <= cstypes.RoundStepPropose && cs.isProposalComplete() {
 		// Move onto the next step
 		cs.enterPrevote(blockHeight, cs.rs.Round)
 		if hasTwoThirds { // this is optimisation as this will be triggered when prevote is added
@@ -2656,7 +2677,7 @@ func (cs *State) addVote(vote *types.Vote, peerID p2p.ID) (added bool, err error
 		cs.evsw.FireEvent(types.EventVote, vote)
 
 		// if we can skip timeoutCommit and have all the votes now,
-		if cs.config.SkipTimeoutCommit && cs.rs.LastCommit.HasAll() {
+		if cs.skipTimeoutCommit() && cs.rs.LastCommit.HasAll() {
 			// go straight to new round (skip timeout commit)
 			// cs.scheduleTimeout(time.Duration(0), cs.rs.Height, 0, cstypes.RoundStepNewHeight)
 			cs.enterNewRound(cs.rs.Height, 0)
@@ -2859,7 +2880,7 @@ func (cs *State) addVote(vote *types.Vote, peerID p2p.ID) (added bool, err error
 
 			if len(blockID.Hash) != 0 {
 				cs.enterCommit(height, vote.Round)
-				if cs.config.SkipTimeoutCommit && precommits.HasAll() {
+				if cs.skipTimeoutCommit() && precommits.HasAll() {
 					cs.enterNewRound(cs.rs.Height, 0)
 				}
 			} else {
