@@ -40,6 +40,15 @@ const (
 
 	// RetryTime automatic catchup retry timeout.
 	RetryTime = 2500 * time.Millisecond
+
+	// StoredPartsPerSecond is how many block parts per second this node loads
+	// from the block store to serve catchup wants, across all peers. At 64 KiB
+	// per part this is about 128 MiB/s. The burst is one maximum-size block.
+	StoredPartsPerSecond = 2000
+
+	// RequestTimeout is how long a catchup request to a peer stays outstanding
+	// before it can be sent to that peer again.
+	RequestTimeout = 2 * RetryTime
 )
 
 type Reactor struct {
@@ -57,6 +66,14 @@ type Reactor struct {
 	privval       types.PrivValidator
 	chainID       string
 	BlockMaxBytes int64
+
+	// storedPartsBudget limits how many block parts this node loads from the
+	// block store per second to serve catchup wants, across all peers.
+	storedPartsBudget *tokenBucket
+
+	// requestTimeout is how long catchup requests to a peer stay outstanding
+	// before retryWants may send them to that peer again.
+	requestTimeout time.Duration
 
 	// mempool access to read the transactions by hash from the mempool
 	// and eventually remove it.
@@ -105,6 +122,9 @@ func NewReactor(
 		partChan:      make(chan types.PartInfo, 30_000),
 		proposalChan:  make(chan ProposalAndSrc, 1000),
 		ticker:        time.NewTicker(RetryTime),
+
+		storedPartsBudget: newTokenBucket(StoredPartsPerSecond, float64(types.MaxBlockPartsCount)),
+		requestTimeout:    RequestTimeout,
 	}
 	for _, option := range options {
 		option(reactor)

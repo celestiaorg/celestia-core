@@ -375,7 +375,11 @@ func (blockProp *Reactor) handleWants(peer p2p.ID, wants *proptypes.WantParts) {
 
 	// get data, use the prove as a proxy for determining if this Want message
 	// if for catchup
-	_, parts, _, has := blockProp.getAllState(height, round, wants.Prove)
+	parts, has, committed := blockProp.getCachedState(height, round, wants.Prove)
+	if !has && wants.Prove && committed {
+		blockProp.handleStoredWants(p, wants)
+		return
+	}
 	// the peer must always send the proposal before sending parts, if they did
 	//  not, this node must disconnect from them.
 	if !has {
@@ -432,6 +436,65 @@ func (blockProp *Reactor) handleWants(peer p2p.ID, wants *proptypes.WantParts) {
 	stillMissing := wants.Parts.Sub(canSend)
 	if !stillMissing.IsEmpty() {
 		p.AddWants(height, round, stillMissing)
+	}
+}
+
+// handleStoredWants serves a catchup want for a committed height that is no
+// longer cached. It loads from the block store only the parts it sends. It
+// stops at the first failed send, and it takes each part load from a budget
+// that all peers share. This bounds the work that small want messages can
+// cause on the reactor's single processing goroutine.
+func (blockProp *Reactor) handleStoredWants(p *PeerState, wants *proptypes.WantParts) {
+	height, round := wants.Height, wants.Round
+	peer := p.peer.ID()
+
+	meta := blockProp.store.LoadBlockMeta(height)
+	if meta == nil {
+		blockProp.Logger.Debug("received catchup want for unknown height", "peer", peer, "height", height)
+		return
+	}
+	// The block store keeps only the original parts. A want covers the
+	// original and parity parts, so its size is twice the original total.
+	total := int(meta.BlockID.PartSetHeader.Total)
+	if wants.Parts.Size() != total*2 {
+		blockProp.Logger.Error("received want part with invalid parts size", "peer", peer, "height", height, "round", round, "expected_parts_size", total*2, "received_parts_size", wants.Parts.Size())
+		return
+	}
+
+	p.SetRemainingRequests(height, round, int(wants.MissingPartsCount))
+	for _, partIndex := range wants.Parts.GetTrueIndices() {
+		// Indices are ascending, so the rest are parity parts.
+		if partIndex >= total {
+			break
+		}
+		if p.GetRemainingRequests(height, round) <= 0 {
+			break
+		}
+		if !blockProp.storedPartsBudget.allow() {
+			blockProp.Logger.Debug("stored parts budget exhausted", "peer", peer, "height", height)
+			break
+		}
+		part := blockProp.store.LoadBlockPart(height, partIndex)
+		if part == nil {
+			blockProp.Logger.Error("stored block part not found", "height", height, "part", partIndex)
+			return
+		}
+		e := p2p.Envelope{
+			ChannelID: DataChannel,
+			Message: &propproto.RecoveryPart{
+				Height: height,
+				Round:  round,
+				Index:  part.Index,
+				Data:   part.Bytes,
+				Proof:  *part.Proof.ToProto(),
+			},
+		}
+		if !p.peer.TrySend(e) {
+			blockProp.Logger.Debug("failed to send stored part", "peer", peer, "height", height, "part", partIndex)
+			break
+		}
+		p.DecreaseRemainingRequests(height, round, 1)
+		schema.WriteBlockPart(blockProp.traceClient, height, round, part.Index, true, string(peer), schema.Upload)
 	}
 }
 
