@@ -378,7 +378,7 @@ func TestStoreGetTxs(t *testing.T) {
 	require.Equal(t, numTxs, len(keys))
 
 	// get sets below a certain priority and compute totals
-	sets, bz := store.getTxSetsBelowPriority(int64(numTxs / 2))
+	sets, bz := store.getTxSetsBelowPriority(int64(numTxs/2), "")
 	require.Equal(t, numTxs/2, len(sets))
 	var actualBz int64
 	countTxs := 0
