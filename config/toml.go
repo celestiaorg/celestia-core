@@ -569,6 +569,14 @@ double_sign_check_height = {{ .Consensus.DoubleSignCheckHeight }}
 # Make progress as soon as we have all the precommits (as if TimeoutCommit = 0)
 skip_timeout_commit = {{ .Consensus.SkipTimeoutCommit }}
 
+# Disaster recovery: ignore the application's dynamic_timeout_commit and pace
+# blocks with the two timeouts below instead (legacy rule). Local timing only;
+# it slows the network once more than 1/3 of the stake enables it. 0 means no wait.
+# No effect while the application returns dynamic_timeout_commit = 0.
+legacy_pacing = {{ .Consensus.LegacyPacing }}
+legacy_pacing_timeout_commit = "{{ .Consensus.LegacyPacingTimeoutCommit }}"
+legacy_pacing_delayed_precommit_timeout = "{{ .Consensus.LegacyPacingDelayedPrecommitTimeout }}"
+
 # EmptyBlocks mode and possible interval between empty blocks
 # DEPRECATED: create_empty_blocks is deprecated and will be removed in a future version.
 create_empty_blocks = {{ .Consensus.CreateEmptyBlocks }}
