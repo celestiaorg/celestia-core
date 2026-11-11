@@ -13,6 +13,7 @@ import (
 
 	cfg "github.com/cometbft/cometbft/config"
 	proptypes "github.com/cometbft/cometbft/consensus/propagation/types"
+	"github.com/cometbft/cometbft/libs/bits"
 	"github.com/cometbft/cometbft/libs/log"
 	cmtrand "github.com/cometbft/cometbft/libs/rand"
 	"github.com/cometbft/cometbft/p2p"
@@ -1041,5 +1042,77 @@ func TestAddBlockServesWants(t *testing.T) {
 		require.True(t, completeFn(server)())
 		requester.AddCommitment(propX.Height, propX.Round, &pshX)
 		require.Eventually(t, completeFn(requester), 2*time.Second, 10*time.Millisecond)
+	})
+}
+
+// TestAddBlockReplacingAnotherBlockDropsPeerRound asserts that peers' wants and
+// requests for the replaced block's round are dropped with it.
+func TestAddBlockReplacingAnotherBlockDropsPeerRound(t *testing.T) {
+	cleanup, _, sm, pv := state.SetupTestCaseWithPrivVal(t)
+	t.Cleanup(func() { cleanup(t) })
+	propX, psX, _, _ := createTestProposal(t, sm, pv, 1, 0, 2, 1000000)
+	propY, psY, _, metaY := createTestProposal(t, sm, pv, 1, 0, 2, 1000000)
+	reactors, _ := createTestReactors(1, defaultTestP2PConf(), false, "")
+	r := reactors[0]
+	cbY, _ := createCompactBlock(t, propY, psY, metaY)
+	require.True(t, r.AddProposal(cbY))
+	ps := r.getPeer(addRecordingPeer(t, r, 1_000_000).ID())
+	h, round := propY.Height, propY.Round
+	ba := bits.NewBitArray(int(psY.Total() * 2))
+	ba.SetIndex(0, true)
+	ps.AddWants(h, round, ba)
+	ps.AddRequests(h, round, ba)
+	ps.SetRemainingRequests(h, round, 1)
+
+	r.AddBlock(propX.Height, propX.Round, psX)
+	_, hasWants := ps.GetWants(h, round)
+	_, hasRequests := ps.GetRequests(h, round)
+	require.False(t, hasWants)
+	require.False(t, hasRequests)
+	require.Zero(t, ps.GetRemainingRequests(h, round))
+}
+
+// TestAddBlockCompletesEntry asserts that AddBlock completing an entry keeps its
+// compact block and catchup flag, and ignores an incomplete part set.
+func TestAddBlockCompletesEntry(t *testing.T) {
+	cleanup, _, sm, pv := state.SetupTestCaseWithPrivVal(t)
+	t.Cleanup(func() { cleanup(t) })
+	prop, ps, _, meta := createTestProposal(t, sm, pv, 1, 0, 2, 1000000)
+	psh := ps.Header()
+	newEntry := func(t *testing.T) (*Reactor, *proptypes.CompactBlock) {
+		reactors, _ := createTestReactors(1, defaultTestP2PConf(), false, "")
+		cb, _ := createCompactBlock(t, prop, ps, meta)
+		require.True(t, reactors[0].AddProposal(cb))
+		reactors[0].AddCommitment(prop.Height, prop.Round, &psh) // marks it catchup
+		return reactors[0], cb
+	}
+	entry := func(r *Reactor) *proposalData {
+		r.pmtx.Lock()
+		defer r.pmtx.Unlock()
+		return r.proposals[prop.Height][prop.Round]
+	}
+
+	t.Run("complete", func(t *testing.T) {
+		r, cb := newEntry(t)
+		r.AddBlock(prop.Height, prop.Round, ps)
+		got, parts, has := r.GetProposal(prop.Height, prop.Round)
+		require.True(t, has)
+		require.True(t, parts.IsComplete())
+		require.Equal(t, cb.Proposal, *got)
+		require.True(t, entry(r).catchup)
+	})
+
+	t.Run("incomplete", func(t *testing.T) {
+		r, _ := newEntry(t)
+		before := entry(r)
+		partial := types.NewPartSetFromHeader(psh, types.BlockPartSizeBytes)
+		added, err := partial.AddPart(ps.GetPart(0))
+		require.NoError(t, err)
+		require.True(t, added)
+		r.AddBlock(prop.Height, prop.Round, partial)
+		require.Same(t, before, entry(r))
+		r.AddBlock(prop.Height, prop.Round, nil)
+		require.Same(t, before, entry(r))
+		require.False(t, entry(r).block.IsComplete())
 	})
 }
