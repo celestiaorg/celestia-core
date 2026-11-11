@@ -1,6 +1,7 @@
 package consensus
 
 import (
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -466,4 +467,38 @@ func TestLockedBlockNotWrittenAfterUnlock(t *testing.T) {
 
 	time.Sleep(time.Until(start.Add(2 * f.lazyDelay)))
 	require.NoFileExists(t, lockedBlockFile(f.config.Consensus))
+}
+
+// Replay arms no copy: earlier locks on blocks rebuilt from the WAL must not end
+// the job and remove the file the last lock is restored from.
+func TestReplayKeepsRestoredLockedBlockFile(t *testing.T) {
+	for _, earlier := range []int{1, 2} {
+		t.Run(fmt.Sprintf("earlier_locks=%d", earlier), func(t *testing.T) {
+			f := newLockFixture(t, true, false)
+			x, xParts := testLock(t)
+			path := lockedBlockFile(f.config.Consensus)
+			require.NoError(t, os.MkdirAll(filepath.Dir(path), 0o700))
+			writeCopy(t, path, x, xParts)
+
+			cs := f.newState()
+			cs.lockedBlocks = newLockedBlockWriter(path, cs.Logger)
+			cs.replayMode = true
+			for r := 0; r < earlier; r++ {
+				y, yParts := testLock(t)
+				y.Round = int32(r)
+				block, err := decodeBlock(yParts, blockLimits(cs.state))
+				require.NoError(t, err)
+				cs.rs.ProposalBlock, cs.rs.ProposalBlockParts = block, yParts
+				cs.applyLockInfo(y)
+				require.True(t, blockMatchesBlockID(cs.rs.LockedBlock, cs.rs.LockedBlockParts, y.BlockID))
+			}
+			cs.rs.ProposalBlock, cs.rs.ProposalBlockParts = nil, nil
+			x.Round = int32(earlier)
+			cs.applyLockInfo(x)
+			cs.replayMode = false
+			cs.lockedBlocks.stop()
+			require.True(t, blockMatchesBlockID(cs.rs.LockedBlock, cs.rs.LockedBlockParts, x.BlockID))
+			require.FileExists(t, path)
+		})
+	}
 }

@@ -3434,7 +3434,7 @@ func (cs *State) lockOn(round int32, blockID types.BlockID, blockTime time.Time,
 
 // copyLockedBlock arms the copy of the locked block's parts unless the WAL holds them.
 func (cs *State) copyLockedBlock() {
-	if cs.lockedBlocks == nil || cs.rs.LockedBlockParts == nil {
+	if cs.lockedBlocks == nil || cs.replayMode || cs.rs.LockedBlockParts == nil {
 		return
 	}
 	// Our own proposal's parts are already internal WAL records.
