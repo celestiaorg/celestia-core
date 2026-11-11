@@ -246,6 +246,20 @@ func PrometheusMetrics(namespace string, labelsAndValues ...string) *Metrics {
 			Name:      "proposer_missed_proposals",
 			Help:      "ProposerMissedProposals is the number of proposals missed by each proposer.",
 		}, append(labels, "proposer_address")).With(labelsAndValues...),
+		PacingFloorWaitSeconds: prometheus.NewHistogramFrom(stdprometheus.HistogramOpts{
+			Namespace: namespace,
+			Subsystem: MetricsSubsystem,
+			Name:      "pacing_floor_wait_seconds",
+			Help:      "PacingFloorWaitSeconds is how long a new height waits for its start time once the previous block is applied, when DynamicTimeoutCommit is set.",
+
+			Buckets: stdprometheus.ExponentialBucketsRange(0.001, 10, 14),
+		}, labels).With(labelsAndValues...),
+		PacingBypass: prometheus.NewCounterFrom(stdprometheus.CounterOpts{
+			Namespace: namespace,
+			Subsystem: MetricsSubsystem,
+			Name:      "pacing_bypass",
+			Help:      "PacingBypass counts heights not held by the DynamicTimeoutCommit floor: slow when the previous height ran past it, quorum when +2/3 precommits came first.",
+		}, append(labels, "reason")).With(labelsAndValues...),
 	}
 }
 
@@ -289,5 +303,7 @@ func NopMetrics() *Metrics {
 		ApplicationRejectedProposals: discard.NewCounter(),
 		TimedOutProposals:            discard.NewCounter(),
 		ProposerMissedProposals:      discard.NewCounter(),
+		PacingFloorWaitSeconds:       discard.NewHistogram(),
+		PacingBypass:                 discard.NewCounter(),
 	}
 }
