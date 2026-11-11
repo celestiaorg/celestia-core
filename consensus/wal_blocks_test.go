@@ -289,9 +289,9 @@ func TestLockedBlockReadRejects(t *testing.T) {
 	}
 	// A header for another hash over this block's parts.
 	require.Nil(t, read(writeCopy(t, dir+"/hash", wrongHash, parts), wrongHash))
-	// This block's header over another block's parts, read for that block.
+	// This block's header over another block's parts: the parts' proofs fail.
 	otherRaw := writeCopy(t, dir+"/other", other, otherParts)
-	require.Nil(t, read(append(good[:directIOAlign:directIOAlign], otherRaw[directIOAlign:]...), other))
+	require.Nil(t, read(append(good[:directIOAlign:directIOAlign], otherRaw[directIOAlign:]...), li))
 
 	for name, n := range map[string]int{"torn tail": len(good) - directIOAlign + 10, "header only": directIOAlign} {
 		require.Nil(t, read(good[:n], li), name)
@@ -326,7 +326,7 @@ func TestLockedBlockStaleFileOfAnotherBlock(t *testing.T) {
 }
 
 // Ending a job mid-write stops the write before the next part. The file is a pipe
-// smaller than a part, so the write is held mid-part until the test reads.
+// shrunk below a part, so the write is held mid-part until the test reads.
 func TestLockedBlockWriterEndedMidWrite(t *testing.T) {
 	li, parts := testLock(t)
 	open := openLockedBlockFile
@@ -337,6 +337,7 @@ func TestLockedBlockWriterEndedMidWrite(t *testing.T) {
 			r, pw, err := os.Pipe()
 			require.NoError(t, err)
 			defer r.Close()
+			shrinkPipe(t, pw)
 			openLockedBlockFile = func(path string) (*os.File, error) {
 				if err := os.WriteFile(path, nil, 0o600); err != nil { // what reset must remove
 					return nil, err
