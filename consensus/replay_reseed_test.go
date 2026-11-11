@@ -194,15 +194,17 @@ func TestReplayKeepsOnlyOwnProposalBlocks(t *testing.T) {
 	cs.privValidatorPubKey = pk
 }
 
-// The lock and valid rounds' entries, possibly a refetch of another block, are not replaced.
+// The lock and valid rounds' entries, possibly a refetch of another block, and a commitment
+// to another block are not replaced.
 func TestShareReplayedBlocksSkipsLockAndValidRounds(t *testing.T) {
 	cs, _ := randState(1)
-	rec := &callRecorder{Propagator: propagation.NewNoOpPropagator()}
+	committed := types.NewPartSetFromHeader(types.PartSetHeader{Total: 1, Hash: cmtrand.Bytes(32)}, types.BlockPartSizeBytes)
+	rec := &callRecorder{Propagator: roundsPropagator{propagation.NewNoOpPropagator(), map[int32]*types.PartSet{3: committed}}}
 	cs.propagator = rec
 	_, parts, err := cs.createProposalBlock(context.Background())
 	require.NoError(t, err)
 	cs.rs.LockedRound, cs.rs.ValidRound = 0, 1
-	cs.replayedBlocks = map[int32]*types.PartSet{0: parts, 1: parts, 2: parts}
+	cs.replayedBlocks = map[int32]*types.PartSet{0: parts, 1: parts, 2: parts, 3: parts}
 
 	cs.shareReplayedBlocks()
 	require.Equal(t, []propagatorCall{{block: true, height: cs.rs.Height, round: 2, psh: parts.Header()}}, rec.snapshot())
@@ -228,6 +230,17 @@ func TestReplayedBlocksResetAtNewHeight(t *testing.T) {
 	cs.lockAll()
 	defer cs.unlockAll()
 	require.Nil(t, cs.replayedBlocks)
+}
+
+// roundsPropagator holds the given part sets by round.
+type roundsPropagator struct {
+	*propagation.NoOpPropagator
+	parts map[int32]*types.PartSet
+}
+
+func (p roundsPropagator) GetProposal(_ int64, round int32) (*types.Proposal, *types.PartSet, bool) {
+	parts, ok := p.parts[round]
+	return &types.Proposal{Round: round}, parts, ok
 }
 
 type heldPropagator struct{ *propagation.NoOpPropagator }

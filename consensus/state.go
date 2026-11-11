@@ -536,9 +536,12 @@ func (cs *State) OnStart() error {
 }
 
 // shareReplayedBlocks serves our replayed proposals, which replaying into a later round dropped,
-// to peers locked on one. The lock and valid rounds are already shared or refetched; keep them.
+// to peers locked on one. The lock and valid rounds, and entries for another block (a commitment), are kept.
 func (cs *State) shareReplayedBlocks() {
 	for round, parts := range cs.replayedBlocks {
+		if _, held, ok := cs.propagator.GetProposal(cs.rs.Height, round); ok && !held.HasHeader(parts.Header()) {
+			continue
+		}
 		if round != cs.rs.LockedRound && round != cs.rs.ValidRound {
 			cs.shareBlock(round, parts)
 		}
