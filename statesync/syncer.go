@@ -334,6 +334,7 @@ func (s *syncer) Sync(snapshot *snapshot, chunks *chunkQueue) (sm.State, *types.
 	state.Timeouts.TimeoutPrecommit = timeouts.TimeoutPrecommit
 	state.Timeouts.TimeoutPrecommitDelta = timeouts.TimeoutPrecommitDelta
 	state.Timeouts.DelayedPrecommitTimeout = timeouts.DelayedPrecommitTimeout
+	state.Timeouts.DynamicTimeoutCommit = timeouts.DynamicTimeoutCommit
 
 	s.logger.Info("Snapshot restored", "height", snapshot.Height, "format", snapshot.Format,
 		"hash", log.NewLazySprintf("%X", snapshot.Hash))
