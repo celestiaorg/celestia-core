@@ -46,7 +46,7 @@ func TestApplyBlockAsyncRecheck(t *testing.T) {
 	require.NoError(t, mpConn.Start())
 	defer mpConn.Stop() //nolint:errcheck // ignore for tests
 	cfg := config.TestMempoolConfig()
-	cfg.DisableAsyncRecheck = false
+	cfg.AsyncRecheck = true
 	mp := cat.NewTxPool(log.NewNopLogger(), cfg, mpConn, 0)
 
 	state, stateDB, _ := makeState(1, 1)
