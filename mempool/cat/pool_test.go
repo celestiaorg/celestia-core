@@ -9,6 +9,7 @@ import (
 	"os"
 	"sort"
 	"strconv"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -413,6 +414,48 @@ func TestTxPool_Eviction(t *testing.T) {
 	require.NoError(t, txmp.RemoveTxByKey(types.Tx("key8=0007=20").Key()))
 	require.False(t, txExists("key8=0007=20"))
 	require.False(t, txmp.WasRecentlyEvicted(types.Tx("key8=0007=20").Key()))
+}
+
+// TestTxPool_CountLimit checks that the pool never holds more than
+// config.Size txs when the byte limit still has room.
+func TestTxPool_CountLimit(t *testing.T) {
+	t.Run("equal priority", func(t *testing.T) {
+		txmp := setup(t, 1000)
+		txmp.config.Size = 2
+		txmp.config.MaxTxsBytes = 1 << 20
+		for i := 0; i < 50; i++ {
+			_ = txmp.CheckTx([]byte(fmt.Sprintf("s%03d=k=10", i)), nil, mempool.TxInfo{})
+		}
+		require.Equal(t, txmp.config.Size, txmp.Size())
+	})
+
+	t.Run("increasing priority evicts by count", func(t *testing.T) {
+		txmp := setup(t, 1000)
+		txmp.config.Size = 2
+		txmp.config.MaxTxsBytes = 1 << 20
+		for i := 0; i < 50; i++ {
+			mustCheckTx(t, txmp, fmt.Sprintf("s%03d=k=%d", i, 10+i))
+			require.LessOrEqual(t, txmp.Size(), txmp.config.Size)
+		}
+		require.Equal(t, txmp.config.Size, txmp.Size())
+		// the two highest-priority txs are kept
+		require.True(t, txmp.Has(types.Tx("s049=k=59").Key()))
+		require.True(t, txmp.Has(types.Tx("s048=k=58").Key()))
+		require.True(t, txmp.WasRecentlyEvicted(types.Tx("s000=k=10").Key()))
+	})
+
+	t.Run("count-full pool with byte headroom admits larger higher-priority tx", func(t *testing.T) {
+		txmp := setup(t, 1000)
+		txmp.config.Size = 2
+		txmp.config.MaxTxsBytes = 1 << 20
+		mustCheckTx(t, txmp, "s000=k=10")
+		mustCheckTx(t, txmp, "s001=k=11")
+		big := fmt.Sprintf("s002=%s=100", strings.Repeat("v", 200))
+		mustCheckTx(t, txmp, big)
+		require.Equal(t, txmp.config.Size, txmp.Size())
+		require.True(t, txmp.Has(types.Tx(big).Key()))
+		require.True(t, txmp.WasRecentlyEvicted(types.Tx("s000=k=10").Key()))
+	})
 }
 
 func TestTxPool_Flush(t *testing.T) {
