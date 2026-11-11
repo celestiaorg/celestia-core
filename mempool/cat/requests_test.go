@@ -80,6 +80,11 @@ func TestRequestSchedulerLateResponseDoesNotClobberRerequest(t *testing.T) {
 
 	rerequested := make(chan struct{})
 	require.True(t, requests.Add(key, peerA, func(cbKey types.TxKey, _ uint16) {
+		// Only peerA's request should time out; give peerB's re-request a
+		// long timeout so the checks below don't race its timer.
+		requests.mtx.Lock()
+		requests.responseTime = time.Minute
+		requests.mtx.Unlock()
 		require.True(t, requests.Add(cbKey, peerB, nil))
 		close(rerequested)
 	}))
@@ -315,4 +320,47 @@ func TestRequestSchedulerCountForPeer(t *testing.T) {
 
 	require.Equal(t, 4, requests.CountForPeer(peerA))
 	require.Equal(t, 0, requests.CountForPeer(peerB))
+}
+
+// TestRequestSchedulerClearAllRequestsFromKeepsOtherPeersRequest checks that
+// clearing a peer only drops requests that peer still owns: a slot kept for a
+// late response must not clear the re-request made to another peer.
+func TestRequestSchedulerClearAllRequestsFromKeepsOtherPeersRequest(t *testing.T) {
+	requests := newRequestScheduler(10*time.Millisecond, time.Minute)
+	t.Cleanup(requests.Close)
+
+	var (
+		peerA uint16 = 1
+		peerB uint16 = 2
+		key          = types.Tx("tx").Key()
+	)
+
+	rerequested := make(chan struct{})
+	require.True(t, requests.Add(key, peerA, func(cbKey types.TxKey, _ uint16) {
+		// Only peerA's request should time out; give peerB's re-request a
+		// long timeout so the checks below don't race its timer.
+		requests.mtx.Lock()
+		requests.responseTime = time.Minute
+		requests.mtx.Unlock()
+		require.True(t, requests.Add(cbKey, peerB, nil))
+		close(rerequested)
+	}))
+	<-rerequested
+	require.True(t, requests.Has(peerA, key)) // late-response slot
+
+	// the late-response slot is dropped but not returned for re-request
+	require.Empty(t, requests.ClearAllRequestsFrom(peerA))
+	require.False(t, requests.Has(peerA, key))
+	require.Equal(t, 0, requests.CountForPeer(peerA))
+	require.Equal(t, peerB, requests.ForTx(key))
+	require.True(t, requests.Has(peerB, key))
+
+	// a request the peer still owns is cleared and returned
+	owned := newRequestScheduler(time.Minute, time.Minute)
+	t.Cleanup(owned.Close)
+	require.True(t, owned.Add(key, peerA, nil))
+	cleared := owned.ClearAllRequestsFrom(peerA)
+	require.Len(t, cleared, 1)
+	require.Contains(t, cleared, key)
+	require.Zero(t, owned.ForTx(key))
 }

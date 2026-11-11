@@ -14,7 +14,9 @@
 # Pull requests skip the per-target matrix, which would start one job per
 # target, and run fuzz-changed instead: a single job that briefly fuzzes the
 # targets in the packages the pull request changes. Seed corpora run in the
-# regular test jobs either way.
+# regular test jobs either way. They also run fuzz-targets-listed, which fails
+# when a fuzz target is in neither the matrix below nor
+# test/fuzz/nightly-excluded.txt.
 name: Fuzz Tests
 on:
   workflow_dispatch:  # allow running workflow manually
@@ -27,6 +29,8 @@ on:
       - "go.mod"
       - "go.sum"
       - "scripts/fuzz-changed.sh"
+      - "scripts/check-fuzz-targets.sh"
+      - "test/fuzz/nightly-excluded.txt"
       - "scripts/fuzz-only-deadline*.sh"
       - ".github/workflows/fuzz-nightly.yml"
 
@@ -104,6 +108,7 @@ jobs:
           - {package: evidence, target: EvidencePool, priority: 1}
           - {package: evidence, target: EvidenceReactorReceive, priority: 1}
           - {package: types, target: UnwrapLegacyBlobTx, priority: 1}
+          - {package: proto/tendermint/types, target: CheckBlockCardinality, priority: 1}
           - {package: light, target: LightClientVerify, priority: 2}
           - {package: light/provider/http, target: HTTPProviderLightBlock, priority: 2}
     steps:
@@ -207,6 +212,16 @@ jobs:
               echo "Deleting $key"
               gh cache delete "$id" || echo "::warning::Could not delete cache $key"
             done
+
+  fuzz-targets-listed:
+    name: Fuzz targets listed
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Check every fuzz target is nightly or excluded
+        run: scripts/check-fuzz-targets.sh
 
   fuzz-changed:
     name: Fuzz changed packages

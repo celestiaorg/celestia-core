@@ -158,6 +158,17 @@ func (s *store) release(txKey types.TxKey) {
 	delete(s.reservedTxs, txKey)
 }
 
+// highestSequence returns the last (highest) sequence in the signer's set.
+func (s *store) highestSequence(signer []byte) (uint64, bool) {
+	s.mtx.RLock()
+	defer s.mtx.RUnlock()
+	set, ok := s.setsBySigner[string(signer)]
+	if !ok || len(set.txs) == 0 {
+		return 0, false
+	}
+	return set.txs[len(set.txs)-1].sequence, true
+}
+
 func (s *store) size() int {
 	s.mtx.RLock()
 	defer s.mtx.RUnlock()
