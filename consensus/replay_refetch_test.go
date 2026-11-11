@@ -376,6 +376,7 @@ func TestFillLockKeepsNewerValidBlock(t *testing.T) {
 }
 
 // lockUnderNewerValid locks cs by ID on B1 at round 1 and sets B2 as its valid block at round 3.
+// It stands in for a replayed WAL: OnStart's shareBlock reads only the height and these rounds.
 func lockUnderNewerValid(t *testing.T, cs *State) (b1 *types.Block, p1 *types.PartSet, b2 *types.Block, p2 *types.PartSet) {
 	t.Helper()
 	b1, p1 = proposalBlock(t, cs)
@@ -389,10 +390,8 @@ func lockUnderNewerValid(t *testing.T, cs *State) (b1 *types.Block, p1 *types.Pa
 func proposalBlock(t *testing.T, cs *State) (*types.Block, *types.PartSet) {
 	t.Helper()
 	cs.mtx.Lock()
-	block, _, err := cs.createProposalBlock(context.Background())
+	block, parts, err := cs.createProposalBlock(context.Background())
 	cs.mtx.Unlock()
-	require.NoError(t, err)
-	parts, err := block.MakePartSet(types.BlockPartSizeBytes)
 	require.NoError(t, err)
 	return block, parts
 }

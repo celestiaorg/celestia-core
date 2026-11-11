@@ -19,7 +19,6 @@ import (
 	"github.com/cometbft/cometbft/crypto/tmhash"
 	cmtpubsub "github.com/cometbft/cometbft/libs/pubsub"
 	cmtrand "github.com/cometbft/cometbft/libs/rand"
-	mempl "github.com/cometbft/cometbft/mempool"
 	"github.com/cometbft/cometbft/privval"
 	cmtproto "github.com/cometbft/cometbft/proto/tendermint/types"
 	sm "github.com/cometbft/cometbft/state"
@@ -111,13 +110,7 @@ func (f *lockFixture) lockAndStop(t *testing.T) (*types.Proposal, *types.Block, 
 // proposeFreshY makes the round 1 proposer propose a block other than X, with no POL.
 func (f *lockFixture) proposeFreshY(t *testing.T, cs *State) (*types.Block, *types.PartSet) {
 	t.Helper()
-	require.NoError(t, assertMempool(cs.txNotifier).CheckTx(kvstore.NewTx("lock", "y"), nil, mempl.TxInfo{}))
-	cs.mtx.Lock()
-	blockY, _, err := cs.createProposalBlock(context.Background())
-	cs.mtx.Unlock()
-	require.NoError(t, err)
-	partsY, err := blockY.MakePartSet(types.BlockPartSizeBytes)
-	require.NoError(t, err)
+	blockY, partsY := freshBlock(t, cs)
 	propY := types.NewProposal(1, 1, -1, types.BlockID{Hash: blockY.Hash(), PartSetHeader: partsY.Header()})
 	p := propY.ToProto()
 	require.NoError(t, f.vss[f.p1].SignProposal(cs.state.ChainID, p))
@@ -616,13 +609,7 @@ func TestReplayDoesNotRewriteLockRecords(t *testing.T) {
 				vals.IncrementProposerPriority(r)
 				proposer, _ = f.state.Validators.GetByAddress(vals.GetProposer().Address)
 			}
-			require.NoError(t, assertMempool(cs.txNotifier).CheckTx(kvstore.NewTx("lock", "z"), nil, mempl.TxInfo{}))
-			cs.mtx.Lock()
-			blockZ, _, err := cs.createProposalBlock(context.Background())
-			cs.mtx.Unlock()
-			require.NoError(t, err)
-			partsZ, err := blockZ.MakePartSet(types.BlockPartSizeBytes)
-			require.NoError(t, err)
+			blockZ, partsZ := freshBlock(t, cs)
 			propZ := types.NewProposal(1, r, -1, types.BlockID{Hash: blockZ.Hash(), PartSetHeader: partsZ.Header()})
 			p := propZ.ToProto()
 			require.NoError(t, f.vss[proposer].SignProposal(cs.state.ChainID, p))
