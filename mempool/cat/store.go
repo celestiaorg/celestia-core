@@ -185,7 +185,8 @@ func (s *store) getAllKeys() []types.TxKey {
 
 // getTxSetsBelowPriority returns sets with aggregated priority below the given value
 // starting from the lowest-priority set, and the cumulative bytes across those sets.
-func (s *store) getTxSetsBelowPriority(priority int64) ([]*txSet, int64) {
+// Sets belonging to excludeSigner are skipped; an empty excludeSigner skips none.
+func (s *store) getTxSetsBelowPriority(priority int64, excludeSigner string) ([]*txSet, int64) {
 	s.mtx.RLock()
 	defer s.mtx.RUnlock()
 
@@ -195,6 +196,9 @@ func (s *store) getTxSetsBelowPriority(priority int64) ([]*txSet, int64) {
 		set := s.orderedTxSets[i]
 		if set.aggregatedPriority >= priority {
 			break
+		}
+		if excludeSigner != "" && set.signerKey == excludeSigner {
+			continue
 		}
 		sets = append(sets, set)
 		bytes += set.bytes

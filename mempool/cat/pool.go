@@ -638,7 +638,9 @@ func (txmp *TxPool) addNewTransaction(wtx *wrappedTx) error {
 	if !txmp.canAddTx(wtx.size()) {
 		// Set-level eviction: aggregate by signer and compare against the new set's aggregated priority
 		newAggPriority := txmp.store.aggregatedPriorityAfterAdd(wtx)
-		victimSets, victimBytes := txmp.store.getTxSetsBelowPriority(newAggPriority)
+		// Never evict the incoming signer's own txs: that would leave a
+		// sequence gap the new tx could not fill.
+		victimSets, victimBytes := txmp.store.getTxSetsBelowPriority(newAggPriority, string(wtx.sender))
 
 		// If there are no suitable eviction candidates, or the total size is insufficient, drop the new one.
 		if len(victimSets) == 0 || victimBytes < wtx.size() {

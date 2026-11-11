@@ -415,6 +415,94 @@ func TestTxPool_Eviction(t *testing.T) {
 	require.False(t, txmp.WasRecentlyEvicted(types.Tx("key8=0007=20").Key()))
 }
 
+<<<<<<< HEAD
+=======
+// TestTxPool_CountLimit checks that the pool never holds more than
+// config.Size txs when the byte limit still has room.
+func TestTxPool_CountLimit(t *testing.T) {
+	t.Run("equal priority", func(t *testing.T) {
+		txmp := setup(t, 1000)
+		txmp.config.Size = 2
+		txmp.config.MaxTxsBytes = 1 << 20
+		for i := 0; i < 50; i++ {
+			_ = txmp.CheckTx([]byte(fmt.Sprintf("s%03d=k=10", i)), nil, mempool.TxInfo{})
+		}
+		require.Equal(t, txmp.config.Size, txmp.Size())
+	})
+
+	t.Run("increasing priority evicts by count", func(t *testing.T) {
+		txmp := setup(t, 1000)
+		txmp.config.Size = 2
+		txmp.config.MaxTxsBytes = 1 << 20
+		for i := 0; i < 50; i++ {
+			mustCheckTx(t, txmp, fmt.Sprintf("s%03d=k=%d", i, 10+i))
+			require.LessOrEqual(t, txmp.Size(), txmp.config.Size)
+		}
+		require.Equal(t, txmp.config.Size, txmp.Size())
+		// the two highest-priority txs are kept
+		require.True(t, txmp.Has(types.Tx("s049=k=59").Key()))
+		require.True(t, txmp.Has(types.Tx("s048=k=58").Key()))
+		require.True(t, txmp.WasRecentlyEvicted(types.Tx("s000=k=10").Key()))
+	})
+
+	t.Run("count-full pool with byte headroom admits larger higher-priority tx", func(t *testing.T) {
+		txmp := setup(t, 1000)
+		txmp.config.Size = 2
+		txmp.config.MaxTxsBytes = 1 << 20
+		mustCheckTx(t, txmp, "s000=k=10")
+		mustCheckTx(t, txmp, "s001=k=11")
+		big := fmt.Sprintf("s002=%s=100", strings.Repeat("v", 200))
+		mustCheckTx(t, txmp, big)
+		require.Equal(t, txmp.config.Size, txmp.Size())
+		require.True(t, txmp.Has(types.Tx(big).Key()))
+		require.True(t, txmp.WasRecentlyEvicted(types.Tx("s000=k=10").Key()))
+	})
+}
+
+// TestTxPool_EvictionSkipsIncomingSigner checks that a full pool never makes
+// room for a new tx by evicting txs from the new tx's own signer.
+func TestTxPool_EvictionSkipsIncomingSigner(t *testing.T) {
+	t.Run("count-full rejects instead of evicting own txs", func(t *testing.T) {
+		txmp := setup(t, 1000)
+		txmp.config.Size = 2
+		txmp.config.MaxTxsBytes = 1 << 20
+		mustCheckTx(t, txmp, "A=0=1")
+		mustCheckTx(t, txmp, "A=1=1")
+		require.Error(t, txmp.CheckTx([]byte("A=2=100"), nil, mempool.TxInfo{}))
+		require.Equal(t, 2, txmp.Size())
+		require.True(t, txmp.Has(types.Tx("A=0=1").Key()))
+		require.True(t, txmp.Has(types.Tx("A=1=1").Key()))
+		require.False(t, txmp.Has(types.Tx("A=2=100").Key()))
+	})
+
+	t.Run("byte-full rejects instead of evicting own txs", func(t *testing.T) {
+		txmp := setup(t, 1000)
+		txmp.config.Size = 100
+		mustCheckTx(t, txmp, "A=0=1")
+		mustCheckTx(t, txmp, "A=1=1")
+		txmp.config.MaxTxsBytes = txmp.SizeBytes()
+		require.Error(t, txmp.CheckTx([]byte("A=2=100"), nil, mempool.TxInfo{}))
+		require.Equal(t, 2, txmp.Size())
+		require.True(t, txmp.Has(types.Tx("A=0=1").Key()))
+		require.True(t, txmp.Has(types.Tx("A=1=1").Key()))
+		require.False(t, txmp.Has(types.Tx("A=2=100").Key()))
+	})
+
+	t.Run("other signers are still evicted", func(t *testing.T) {
+		txmp := setup(t, 1000)
+		txmp.config.Size = 2
+		txmp.config.MaxTxsBytes = 1 << 20
+		mustCheckTx(t, txmp, "A=0=1")
+		mustCheckTx(t, txmp, "B=0=2")
+		mustCheckTx(t, txmp, "A=1=100")
+		require.Equal(t, 2, txmp.Size())
+		require.True(t, txmp.Has(types.Tx("A=0=1").Key()))
+		require.True(t, txmp.Has(types.Tx("A=1=100").Key()))
+		require.True(t, txmp.WasRecentlyEvicted(types.Tx("B=0=2").Key()))
+	})
+}
+
+>>>>>>> fa6b967 (fix(mempool/cat): [high] don't evict the incoming signer's own txs (#3659))
 func TestTxPool_Flush(t *testing.T) {
 	txmp := setup(t, 0)
 	txs := checkTxs(t, txmp, 100, 0)
