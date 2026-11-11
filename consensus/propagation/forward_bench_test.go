@@ -22,11 +22,27 @@ import (
 // long the last peer takes to get the compact block and the full block.
 // Latencies are measured from the first peer receiving the compact block.
 func BenchmarkForwardCompactBlock(b *testing.B) {
-	const peers, txSize = 4, 128 << 10
-	for _, blockMB := range []int{8, 32} {
-		for _, hitPct := range []int{0, 50, 100} {
-			b.Run(fmt.Sprintf("block=%dMB/mempool_hit=%d%%", blockMB, hitPct), func(b *testing.B) {
-				benchmarkForward(b, peers, blockMB<<20/txSize, txSize, hitPct)
+	const (
+		kb = 1024
+		mb = 1024 * kb
+
+		// peers is the number of nodes that forward the block after the proposer.
+		peers = 4
+		// txSize is the size of every tx in the block.
+		txSize = 128 * kb
+	)
+	// blockSizes are the block sizes to benchmark. 32MB is the mainnet
+	// block size; 8MB shows whether latency scales with block size.
+	blockSizes := []int{8 * mb, 32 * mb}
+	// mempoolHitPcts are the shares of the block's txs each peer already has
+	// in its mempool, so it doesn't need to download them.
+	mempoolHitPcts := []int{0, 50, 100}
+
+	for _, blockSize := range blockSizes {
+		for _, hitPct := range mempoolHitPcts {
+			name := fmt.Sprintf("block=%dMB/mempool_hit=%d%%", blockSize/mb, hitPct)
+			b.Run(name, func(b *testing.B) {
+				benchmarkForward(b, peers, blockSize/txSize, txSize, hitPct)
 			})
 		}
 	}
@@ -36,44 +52,75 @@ func benchmarkForward(b *testing.B, peers, txCount, txSize, hitPct int) {
 	cleanup, _, sm, pv := state.SetupTestCaseWithPrivVal(b)
 	b.Cleanup(func() { cleanup(b) })
 
+	// Reactor 0 proposes; reactors 1..peers forward the block down the chain.
 	reactors := chainReactors(b, peers+1)
 	pools := make([]swapMempool, len(reactors))
 	for i, r := range reactors {
 		r.mempool = &pools[i]
 	}
 
-	var total atomic.Uint32
-	cbs, blocks := make(chan arrival, peers), make(chan arrival, peers)
-	ctx := b.Context()
+	// Each forwarding peer reports when it receives the compact block and
+	// when it has every part of the full block.
+	var partsTotal atomic.Uint32
+	cbArrivals := make(chan arrival, peers)
+	blockArrivals := make(chan arrival, peers)
 	for i, r := range reactors[1:] {
-		go drainPeer(ctx, r, i, &total, cbs, blocks)
+		go drainPeer(b.Context(), r, i, &partsTotal, cbArrivals, blockArrivals)
 	}
 
-	hop, cbLast, blockLast := make([]float64, 0, (peers-1)*b.N), make([]float64, 0, b.N), make([]float64, 0, b.N)
+	// Drop setup time so ns/op only covers proposing and collecting.
+	b.ResetTimer()
+	var lat latencies
 	for i := range b.N {
+		height := int64(i + 1)
+
+		// Setup is excluded from the timed section.
 		b.StopTimer()
-		h := int64(i + 1)
-		waitSettled(b, reactors, h-1)
-		prop, ps, block, metaData := createTestProposal(b, sm, pv, h, 0, txCount, txSize)
-		hits := mempoolWith(block.Txs[:len(block.Txs)*hitPct/100])
-		for j, r := range reactors {
-			r.Prune(h)
-			pools[j].Store(hits)
-		}
-		total.Store(ps.Total())
+		waitSettled(b, reactors, height-1)
+		prop, ps, block, metaData := createTestProposal(b, sm, pv, height, 0, txCount, txSize)
+		seedMempools(reactors, pools, block, hitPct, height)
+		partsTotal.Store(ps.Total())
 		b.StartTimer()
 
 		require.NoError(b, reactors[0].ProposeBlock(prop, ps, metaData))
-		cbAt, blockAt := collect(b, cbs, peers), collect(b, blocks, peers)
-		for r := 1; r < peers; r++ {
-			hop = append(hop, ms(cbAt[r].Sub(cbAt[r-1])))
-		}
-		cbLast = append(cbLast, ms(cbAt[peers-1].Sub(cbAt[0])))
-		blockLast = append(blockLast, ms(blockAt[peers-1].Sub(cbAt[0])))
+		cbAt := collect(b, cbArrivals, peers)
+		blockAt := collect(b, blockArrivals, peers)
+		lat.record(cbAt, blockAt)
 	}
-	report(b, "hop", hop)
-	report(b, "last-cb", cbLast)
-	report(b, "last-block", blockLast)
+	lat.report(b)
+}
+
+// seedMempools gives every reactor a fresh mempool holding the first hitPct%
+// of the block's txs, and drops state from earlier heights.
+func seedMempools(reactors []*Reactor, pools []swapMempool, block *types.Block, hitPct int, height int64) {
+	hits := mempoolWith(block.Txs[:len(block.Txs)*hitPct/100])
+	for i, r := range reactors {
+		r.Prune(height)
+		pools[i].Store(hits)
+	}
+}
+
+// latencies collects per-proposal timings, all measured from the first peer
+// receiving the compact block.
+type latencies struct {
+	hop       []float64 // compact block passing from one peer to the next
+	lastCB    []float64 // compact block reaching the last peer
+	lastBlock []float64 // full block reaching the last peer
+}
+
+func (l *latencies) record(cbAt, blockAt []time.Time) {
+	last := len(cbAt) - 1
+	for i := 1; i <= last; i++ {
+		l.hop = append(l.hop, ms(cbAt[i].Sub(cbAt[i-1])))
+	}
+	l.lastCB = append(l.lastCB, ms(cbAt[last].Sub(cbAt[0])))
+	l.lastBlock = append(l.lastBlock, ms(blockAt[last].Sub(cbAt[0])))
+}
+
+func (l *latencies) report(b *testing.B) {
+	report(b, "hop", l.hop)
+	report(b, "last-cb", l.lastCB)
+	report(b, "last-block", l.lastBlock)
 }
 
 // chainReactors connects n reactors in a line so each one has at most two
