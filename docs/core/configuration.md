@@ -264,6 +264,11 @@ persistent_peers_max_dial_period = "0s"
 # Time to wait before flushing messages out on the connection
 flush_throttle_timeout = "100ms"
 
+# Flush latency-critical messages (votes, round steps, compact blocks,
+# haves, wants, recovery parts) as soon as none are left queued, instead of
+# waiting for flush_throttle_timeout. Other traffic stays batched.
+flush_low_latency = true
+
 # Maximum size of a message packet payload, in bytes
 max_packet_msg_payload_size = 1024
 
