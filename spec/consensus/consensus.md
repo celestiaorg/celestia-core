@@ -205,9 +205,11 @@ The Precommit step ends:
 - Move `Precommits` to `LastCommit` and increment height.
 - Set `StartTime = CommitTime+timeoutCommit`
 - If the application sets `dynamicTimeoutCommit > 0`, set
-  `StartTime = max(now, StartTime, StartTime(H-1)+dynamicTimeoutCommit)`
-  (`StartTime(H-1)` is replaced by `CommitTime` on the first height after
-  start-up or when `H-1` was committed before its `StartTime`).
+  `StartTime = max(now, StartTime, StartTime(H-1)+dynamicTimeoutCommit)`,
+  except on a bootstrap height, which keeps `max(now, CommitTime+timeoutCommit)`:
+  the first height after start-up, the first height with
+  `dynamicTimeoutCommit > 0`, or when `H-1` was committed before its `StartTime`.
+  At start-up, before any commit, `StartTime = now+timeoutCommit`.
 - Wait until `StartTime` to receive straggler commits. --> goto
   `Propose(H,0)`. With `dynamicTimeoutCommit > 0`, +2/3 precommits for `(H,0)`
   also end the wait.

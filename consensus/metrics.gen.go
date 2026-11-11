@@ -258,7 +258,7 @@ func PrometheusMetrics(namespace string, labelsAndValues ...string) *Metrics {
 			Namespace: namespace,
 			Subsystem: MetricsSubsystem,
 			Name:      "pacing_bypass",
-			Help:      "PacingBypass counts heights not held by the DynamicTimeoutCommit floor: slow when the previous height ran past it, quorum when +2/3 precommits came first.",
+			Help:      "PacingBypass counts heights not held by the DynamicTimeoutCommit floor: slow when the previous height ran past it, quorum when +2/3 precommits came first, and bootstrap when the node had no paced start and kept the legacy one.",
 		}, append(labels, "reason")).With(labelsAndValues...),
 	}
 }

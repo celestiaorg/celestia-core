@@ -200,7 +200,7 @@ type State struct {
 	// Used to calculate the duration until full block is received
 	proposalReceivedTime time.Time
 
-	// pacingStarted is set after a local commit anchors the dynamic timeout commit.
+	// pacingStarted is set once a local commit has started pacing from its legacy start.
 	pacingStarted bool
 }
 
@@ -997,9 +997,13 @@ func (cs *State) applyDynamicTimeoutCommit(prevStartTime time.Time, dynamic time
 		// After a slow height, start now rather than carry an expired deadline.
 		cs.rs.StartTime, wait = now, 0
 	}
-	if !cs.replayMode {
+	switch {
+	case cs.replayMode:
+	case bootstrap:
+		cs.metrics.PacingBypass.With("reason", "bootstrap").Add(1)
+	default:
 		cs.metrics.PacingFloorWaitSeconds.Observe(wait.Seconds())
-		if wait == 0 && !bootstrap {
+		if wait == 0 {
 			cs.metrics.PacingBypass.With("reason", "slow").Add(1)
 		}
 	}
