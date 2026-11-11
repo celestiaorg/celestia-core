@@ -466,77 +466,153 @@ func TestProcessValidatedCompactBlockForwardsOnceAfterCommitment(t *testing.T) {
 // does not delay forwarding, and that recovery still completes afterwards.
 func TestForwardCompactBlockBeforeRecovery(t *testing.T) {
 	reactors, _ := testBlockPropReactors(3, defaultTestP2PConf())
-	n1, n2, n3 := reactors[0], reactors[1], reactors[2]
+	relay, sender, downstream := reactors[0], reactors[1], reactors[2]
 
 	cleanup, _, sm, pv := state.SetupTestCaseWithPrivVal(t)
 	t.Cleanup(func() { cleanup(t) })
-
 	prop, ps, block, metaData := createTestProposal(t, sm, pv, 1, 0, 2, 1000000)
 	cb, _, _ := compactBlockFor(t, prop, ps, metaData)
 
-	// n1 has the block's txs but its mempool lookups block until released.
-	pool := &blockingMempool{mempoolWith(block.Txs), make(chan struct{})}
-	n1.mempool = pool
-	done := make(chan struct{})
+	// the relay has the block's txs, but its recovery is stuck until released.
+	release := make(chan struct{})
+	relay.mempool = &blockingMempool{mockMempool: mempoolWith(block.Txs), release: release}
+
+	handled := make(chan struct{})
 	go func() {
-		n1.handleCompactBlock(cb, n2.self, false)
-		close(done)
+		defer close(handled)
+		relay.handleCompactBlock(cb, sender.self, false)
 	}()
 
-	require.Eventually(t, func() bool {
-		_, _, has := n3.GetProposal(1, 0)
-		return has
-	}, 5*time.Second, 10*time.Millisecond)
+	// the downstream peer gets the compact block while the relay is still stuck.
+	require.Eventually(t, hasProposal(downstream), 5*time.Second, 10*time.Millisecond)
 
-	close(pool.release)
-	<-done
-	_, parts, _ := n1.GetProposal(1, 0)
-	require.NotZero(t, parts.Count(), "n1 should recover parts from its mempool")
+	// once released, the relay still recovers parts from its mempool.
+	close(release)
+	<-handled
+	_, parts, _ := relay.GetProposal(1, 0)
+	require.NotZero(t, parts.Count())
 }
 
-// TestForwardCompactBlockFromManyPeers delivers the same compact block to n1
-// from every peer at once and checks it is forwarded and handed to consensus
-// once, whatever local recovery does.
+// TestForwardCompactBlockFromManyPeers delivers the same compact block to a
+// relay from every peer at once and checks it is forwarded and handed to
+// consensus once, whatever local recovery does.
 func TestForwardCompactBlockFromManyPeers(t *testing.T) {
 	cleanup, _, sm, pv := state.SetupTestCaseWithPrivVal(t)
 	t.Cleanup(func() { cleanup(t) })
 
-	tests := map[string]struct {
-		pool      func(txs types.Txs) Mempool
+	tests := []struct {
+		name string
+		// mempool builds the relay's mempool from the block's txs.
+		mempool   func(txs types.Txs) Mempool
 		recovered bool
 	}{
-		"mempool hit":     {func(txs types.Txs) Mempool { return mempoolWith(txs) }, true},
-		"mempool miss":    {func(types.Txs) Mempool { return mempoolWith(nil) }, false},
-		"corrupt mempool": {corruptMempool, false},
+		{
+			name:      "mempool hit",
+			mempool:   func(txs types.Txs) Mempool { return mempoolWith(txs) },
+			recovered: true,
+		},
+		{
+			name:    "mempool miss",
+			mempool: func(types.Txs) Mempool { return mempoolWith(nil) },
+		},
+		{
+			name:    "corrupt mempool",
+			mempool: corruptMempool,
+		},
 	}
-	for name, tc := range tests {
-		t.Run(name, func(t *testing.T) {
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
 			reactors, _ := testBlockPropReactors(5, defaultTestP2PConf())
-			n1, peers := reactors[0], reactors[1:]
+			relay, peers := reactors[0], reactors[1:]
 
 			prop, ps, block, metaData := createTestProposal(t, sm, pv, 1, 0, 2, 1000000)
 			cb, _, _ := compactBlockFor(t, prop, ps, metaData)
-			n1.mempool = tc.pool(block.Txs)
+			relay.mempool = tt.mempool(block.Txs)
 
+			// every peer delivers the same compact block at the same time.
 			var wg sync.WaitGroup
 			for _, p := range peers {
-				wg.Go(func() { n1.handleCompactBlock(cb, p.self, false) })
+				wg.Go(func() { relay.handleCompactBlock(cb, p.self, false) })
 			}
 			wg.Wait()
 
-			_, parts, _ := n1.GetProposal(1, 0)
-			require.Equal(t, tc.recovered, parts.Count() > 0)
-			require.Len(t, n1.proposalChan, 1)
+			// consensus sees the proposal exactly once.
+			require.Len(t, relay.proposalChan, 1)
+
+			// every peer ends up with the compact block.
 			for _, p := range peers {
-				require.Eventually(t, func() bool {
-					_, _, has := p.GetProposal(1, 0)
-					return has
-				}, 5*time.Second, 10*time.Millisecond)
+				require.Eventually(t, hasProposal(p), 5*time.Second, 10*time.Millisecond)
+			}
+
+			_, parts, _ := relay.GetProposal(1, 0)
+			require.Equal(t, tt.recovered, parts.Count() > 0)
+		})
+	}
+}
+
+// TestHandleCompactBlockForwarding checks that only a valid, unseen compact
+// block is forwarded to peers.
+func TestHandleCompactBlockForwarding(t *testing.T) {
+	cleanup, _, sm, pv := state.SetupTestCaseWithPrivVal(t)
+	t.Cleanup(func() { cleanup(t) })
+
+	tests := []struct {
+		name string
+		// setup makes the compact block unacceptable to the relay.
+		setup     func(relay *Reactor, cb *proptypes.CompactBlock)
+		forwarded bool
+	}{
+		{
+			name:      "valid",
+			setup:     func(*Reactor, *proptypes.CompactBlock) {},
+			forwarded: true,
+		},
+		{
+			name:  "invalid signature",
+			setup: func(_ *Reactor, cb *proptypes.CompactBlock) { cb.Proposal.Signature = cmtrand.Bytes(64) },
+		},
+		{
+			name:  "stale height",
+			setup: func(relay *Reactor, _ *proptypes.CompactBlock) { relay.Prune(2) },
+		},
+		{
+			name:  "duplicate",
+			setup: func(relay *Reactor, cb *proptypes.CompactBlock) { require.True(t, relay.AddProposal(cb)) },
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			reactors, _ := testBlockPropReactors(3, defaultTestP2PConf())
+			relay, sender, downstream := reactors[0], reactors[1], reactors[2]
+
+			cb, _, _, _ := testCompactBlock(t, sm, pv, 1, 0)
+			tt.setup(relay, cb)
+			relay.handleCompactBlock(cb, sender.self, false)
+
+			// the downstream peer caches compact blocks it rejects, so this
+			// also catches a forwarded block that fails its validation.
+			received := func() bool {
+				return hasProposal(downstream)() ||
+					downstream.getPeer(relay.self).GetUnverifiedProposal(1) != nil
+			}
+			if tt.forwarded {
+				require.Eventually(t, received, 5*time.Second, 10*time.Millisecond)
+			} else {
+				require.Never(t, received, 500*time.Millisecond, 10*time.Millisecond)
 			}
 		})
 	}
 }
 
+// hasProposal reports whether r has stored the proposal for height 1, round 0.
+func hasProposal(r *Reactor) func() bool {
+	return func() bool {
+		_, _, has := r.GetProposal(1, 0)
+		return has
+	}
+}
+
+// mempoolWith returns a mempool holding txs.
 func mempoolWith(txs types.Txs) *mockMempool {
 	pool := &mockMempool{txs: make(map[types.TxKey]*types.CachedTx)}
 	for _, tx := range txs {
@@ -545,7 +621,7 @@ func mempoolWith(txs types.Txs) *mockMempool {
 	return pool
 }
 
-// corruptMempool returns random bytes for every tx in the block.
+// corruptMempool returns a mempool holding random bytes under each tx's key.
 func corruptMempool(txs types.Txs) Mempool {
 	pool := mempoolWith(nil)
 	for _, tx := range txs {
@@ -563,42 +639,4 @@ type blockingMempool struct {
 func (m *blockingMempool) GetTxByKey(key types.TxKey) (*types.CachedTx, bool) {
 	<-m.release
 	return m.mockMempool.GetTxByKey(key)
-}
-
-// TestHandleCompactBlockForwarding checks that only a valid, unseen compact
-// block is forwarded to peers.
-func TestHandleCompactBlockForwarding(t *testing.T) {
-	cleanup, _, sm, pv := state.SetupTestCaseWithPrivVal(t)
-	t.Cleanup(func() { cleanup(t) })
-
-	tests := map[string]func(n1 *Reactor, cb *proptypes.CompactBlock){
-		"valid":             nil,
-		"invalid signature": func(_ *Reactor, cb *proptypes.CompactBlock) { cb.Proposal.Signature = cmtrand.Bytes(64) },
-		"stale height":      func(n1 *Reactor, _ *proptypes.CompactBlock) { n1.Prune(2) },
-		"duplicate":         func(n1 *Reactor, cb *proptypes.CompactBlock) { require.True(t, n1.AddProposal(cb)) },
-	}
-	for name, setup := range tests {
-		t.Run(name, func(t *testing.T) {
-			reactors, _ := testBlockPropReactors(3, defaultTestP2PConf())
-			n1, n2, n3 := reactors[0], reactors[1], reactors[2]
-
-			cb, _, _, _ := testCompactBlock(t, sm, pv, 1, 0)
-			if setup != nil {
-				setup(n1, cb)
-			}
-			n1.handleCompactBlock(cb, n2.self, false)
-
-			// n3 caches compact blocks it rejects, so this also catches
-			// forwarded blocks that n3 fails to validate.
-			received := func() bool {
-				_, _, has := n3.GetProposal(1, 0)
-				return has || n3.getPeer(n1.self).GetUnverifiedProposal(1) != nil
-			}
-			if setup == nil {
-				require.Eventually(t, received, 5*time.Second, 10*time.Millisecond)
-			} else {
-				require.Never(t, received, 500*time.Millisecond, 10*time.Millisecond)
-			}
-		})
-	}
 }
