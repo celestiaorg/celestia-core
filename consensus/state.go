@@ -161,6 +161,9 @@ type State struct {
 	replayMode   bool // so we don't log signing errors during replay
 	doWALCatchup bool // determines if we even try to do the catchup
 
+	// replayedBlocks holds the height's proposal blocks completed during replay, by round.
+	replayedBlocks map[int32]*types.PartSet
+
 	// lockedBlocks copies a stalled height's locked block for a restart (only_internal_wal only).
 	lockedBlocks *lockedBlockWriter
 
@@ -519,6 +522,10 @@ func (cs *State) OnStart() error {
 	}
 	cs.shareBlock(cs.rs.LockedRound, cs.rs.LockedBlockParts)
 	cs.shareBlock(cs.rs.ValidRound, cs.rs.ValidBlockParts)
+	// Replaying into a later round dropped earlier rounds' blocks; peers locked on one may need it.
+	for round, parts := range cs.replayedBlocks {
+		cs.shareBlock(round, parts)
+	}
 
 	// now start the receiveRoutine
 	go cs.receiveRoutine(0)
@@ -976,6 +983,7 @@ func (cs *State) updateToState(state sm.State) {
 	cs.rs.ProposalBlock = nil
 	cs.rs.ProposalBlockParts = nil
 	cs.proposalReceivedTime = time.Time{}
+	cs.replayedBlocks = nil
 	cs.clearLock()
 	cs.lockedBlocks.reset()
 	cs.rs.ValidRound = -1
@@ -2625,6 +2633,12 @@ func (cs *State) addProposalBlockPart(msg *BlockPartMessage, peerID p2p.ID) (add
 		}
 
 		cs.rs.ProposalBlock = block
+		if cs.replayMode && cs.rs.Proposal != nil {
+			if cs.replayedBlocks == nil {
+				cs.replayedBlocks = make(map[int32]*types.PartSet)
+			}
+			cs.replayedBlocks[cs.rs.Proposal.Round] = cs.rs.ProposalBlockParts
+		}
 
 		// NOTE: it's possible to receive complete proposal blocks for future rounds without having the proposal
 		cs.Logger.Info("received complete proposal block", "height", cs.rs.ProposalBlock.Height, "hash", cs.rs.ProposalBlock.Hash())
