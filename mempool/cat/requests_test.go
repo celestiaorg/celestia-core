@@ -80,6 +80,11 @@ func TestRequestSchedulerLateResponseDoesNotClobberRerequest(t *testing.T) {
 
 	rerequested := make(chan struct{})
 	require.True(t, requests.Add(key, peerA, func(cbKey types.TxKey, _ uint16) {
+		// Only peerA's request should time out; give peerB's re-request a
+		// long timeout so the checks below don't race its timer.
+		requests.mtx.Lock()
+		requests.responseTime = time.Minute
+		requests.mtx.Unlock()
 		require.True(t, requests.Add(cbKey, peerB, nil))
 		close(rerequested)
 	}))
@@ -332,6 +337,11 @@ func TestRequestSchedulerClearAllRequestsFromKeepsOtherPeersRequest(t *testing.T
 
 	rerequested := make(chan struct{})
 	require.True(t, requests.Add(key, peerA, func(cbKey types.TxKey, _ uint16) {
+		// Only peerA's request should time out; give peerB's re-request a
+		// long timeout so the checks below don't race its timer.
+		requests.mtx.Lock()
+		requests.responseTime = time.Minute
+		requests.mtx.Unlock()
 		require.True(t, requests.Add(cbKey, peerB, nil))
 		close(rerequested)
 	}))
