@@ -23,8 +23,8 @@ import (
 
 const storedTestHeight = int64(5)
 
-// recordingPeer is a mock peer that records the recovery parts sent to it and
-// accepts at most capacity of them, like a peer with a bounded send queue.
+// recordingPeer is a mock peer that counts the wants sent to it, records the recovery
+// parts and accepts at most capacity of them, like a peer with a bounded send queue.
 type recordingPeer struct {
 	*mock.Peer
 	mtx      sync.Mutex

@@ -318,7 +318,7 @@ func (blockProp *Reactor) handleCachedCompactBlock(cb *proptypes.CompactBlock) b
 	if props, ok := blockProp.proposals[cb.Proposal.Height]; ok {
 		if prop := props[cb.Proposal.Round]; prop != nil {
 			if sameProposalIdentity(prop, cb) {
-				// Mark as catchup to skip parity requests in retryWants
+				// catchup keeps it in unfinishedHeights: parts are fetched and delayed precommit is skipped.
 				prop.catchup = true
 				propFound = true
 				// forward the proposal to consensus only if it has not been

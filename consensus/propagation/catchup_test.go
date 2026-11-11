@@ -635,7 +635,7 @@ func TestRetryWantsWaitsForCatchupRequestExpiry(t *testing.T) {
 	reactors, switches := testBlockPropReactors(1, defaultTestP2PConf())
 	stopSwitchesOnCleanup(t, switches)
 	r := reactors[0]
-	r.requestTimeout = 300 * time.Millisecond
+	r.requestTimeout = time.Hour
 	rp := addRecordingPeer(t, r, 0)
 	peer := r.getPeer(rp.ID())
 	peer.SetConsensusPeerState(&MockPeerStateEditor{height: 10})
@@ -651,7 +651,7 @@ func TestRetryWantsWaitsForCatchupRequestExpiry(t *testing.T) {
 	r.retryWants()
 	require.Equal(t, 1, rp.sentWants(), "in-flight request is not sent again")
 
-	time.Sleep(300 * time.Millisecond)
+	r.requestTimeout = 0
 	r.retryWants()
 	require.Equal(t, 2, rp.sentWants(), "expired request is sent again")
 }
