@@ -158,11 +158,11 @@ type Metrics struct {
 	// ProposerMissedProposals is the number of proposals missed by each proposer.
 	ProposerMissedProposals metrics.Counter `metrics_labels:"proposer_address"`
 
-	// PacingFloorWaitSeconds is how long a new height waits for its start time
+	// PacingFloorWaitSeconds is the wait scheduled for a new height's start time
 	// once the previous block is applied, when DynamicTimeoutCommit is set.
 	PacingFloorWaitSeconds metrics.Histogram `metrics_buckettype:"exprange" metrics_bucketsizes:"0.001, 10, 14"`
-	// PacingBypass counts heights not held by the DynamicTimeoutCommit floor: slow
-	// when the previous height ran past it, quorum when +2/3 precommits came first.
+	// PacingBypass counts heights not held by the DynamicTimeoutCommit floor:
+	// slow when the previous height ran past it.
 	PacingBypass metrics.Counter `metrics_labels:"reason"`
 }
 

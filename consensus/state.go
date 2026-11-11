@@ -671,11 +671,6 @@ func (cs *State) scheduleRound0(rs *cstypes.RoundState) {
 	cs.scheduleTimeout(sleepDuration, rs.Height, 0, cstypes.RoundStepNewHeight)
 }
 
-// dynamicTimeoutCommit is the app's floor on the height interval; 0 keeps the legacy rule.
-func (cs *State) dynamicTimeoutCommit() time.Duration {
-	return cs.state.Timeouts.DynamicTimeoutCommit
-}
-
 // Attempt to schedule a timeout (by sending timeoutInfo on the tickChan)
 func (cs *State) scheduleTimeout(duration time.Duration, height int64, round int32, step cstypes.RoundStepType) {
 	cs.timeoutTicker.ScheduleTimeout(timeoutInfo{duration, height, round, step})
@@ -962,14 +957,17 @@ func (cs *State) applyDynamicTimeoutCommit(prevStartTime time.Time, dynamic time
 	if deadline := anchor.Add(dynamic); deadline.After(cs.rs.StartTime) {
 		cs.rs.StartTime = deadline
 	}
-	if wait := cs.rs.StartTime.Sub(now); wait > 0 {
-		cs.metrics.PacingFloorWaitSeconds.Observe(wait.Seconds())
-		return
+	wait := cs.rs.StartTime.Sub(now)
+	if wait <= 0 {
+		// After a slow height, start now rather than carry an expired deadline.
+		cs.rs.StartTime, wait = now, 0
 	}
-	// After a slow height, start now rather than carry an expired deadline.
-	cs.rs.StartTime = now
-	cs.metrics.PacingFloorWaitSeconds.Observe(0)
-	cs.metrics.PacingBypass.With("reason", "slow").Add(1)
+	if !cs.replayMode {
+		cs.metrics.PacingFloorWaitSeconds.Observe(wait.Seconds())
+		if wait == 0 {
+			cs.metrics.PacingBypass.With("reason", "slow").Add(1)
+		}
+	}
 }
 
 func (cs *State) newStep() {

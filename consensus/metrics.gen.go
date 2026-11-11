@@ -250,7 +250,7 @@ func PrometheusMetrics(namespace string, labelsAndValues ...string) *Metrics {
 			Namespace: namespace,
 			Subsystem: MetricsSubsystem,
 			Name:      "pacing_floor_wait_seconds",
-			Help:      "PacingFloorWaitSeconds is how long a new height waits for its start time once the previous block is applied, when DynamicTimeoutCommit is set.",
+			Help:      "PacingFloorWaitSeconds is the wait scheduled for a new height's start time once the previous block is applied, when DynamicTimeoutCommit is set.",
 
 			Buckets: stdprometheus.ExponentialBucketsRange(0.001, 10, 14),
 		}, labels).With(labelsAndValues...),
@@ -258,7 +258,7 @@ func PrometheusMetrics(namespace string, labelsAndValues ...string) *Metrics {
 			Namespace: namespace,
 			Subsystem: MetricsSubsystem,
 			Name:      "pacing_bypass",
-			Help:      "PacingBypass counts heights not held by the DynamicTimeoutCommit floor: slow when the previous height ran past it, quorum when +2/3 precommits came first.",
+			Help:      "PacingBypass counts heights not held by the DynamicTimeoutCommit floor: slow when the previous height ran past it.",
 		}, append(labels, "reason")).With(labelsAndValues...),
 	}
 }
