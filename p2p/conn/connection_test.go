@@ -722,21 +722,21 @@ func (c *writeCountingConn) Write(b []byte) (int, error) {
 // newFlushTestMConnection returns a started MConnection whose flush throttle
 // and ping interval are long enough that only an explicit flush can get a
 // packet onto the wire within the test. Channel 0x01 is LowLatency, 0x02 isn't.
-func newFlushTestMConnection(t *testing.T, conn net.Conn, flushOnMessageEnd bool) *MConnection {
+func newFlushTestMConnection(t *testing.T, conn net.Conn, flushLowLatency bool) *MConnection {
 	t.Helper()
-	c := newUnstartedFlushTestMConnection(conn, flushOnMessageEnd)
+	c := newUnstartedFlushTestMConnection(conn, flushLowLatency)
 	c.SetLogger(log.TestingLogger())
 	require.NoError(t, c.Start())
 	t.Cleanup(func() { _ = c.Stop() })
 	return c
 }
 
-func newUnstartedFlushTestMConnection(conn net.Conn, flushOnMessageEnd bool) *MConnection {
+func newUnstartedFlushTestMConnection(conn net.Conn, flushLowLatency bool) *MConnection {
 	cfg := DefaultMConnConfig()
 	cfg.FlushThrottle = time.Hour
 	cfg.PingInterval = time.Hour
 	cfg.PongTimeout = time.Minute
-	cfg.FlushOnMessageEnd = flushOnMessageEnd
+	cfg.FlushLowLatency = flushLowLatency
 	chDescs := []*ChannelDescriptor{
 		{ID: 0x01, Priority: 1, SendQueueCapacity: 100, LowLatency: true},
 		{ID: 0x02, Priority: 1, SendQueueCapacity: 100},
@@ -754,7 +754,7 @@ func requireNoRead(t *testing.T, server net.Conn, msg string) {
 	require.True(t, netErr.Timeout(), msg)
 }
 
-func TestMConnectionFlushOnMessageEnd(t *testing.T) {
+func TestMConnectionFlushLowLatency(t *testing.T) {
 	server, client := net.Pipe()
 	defer server.Close()
 	defer client.Close()
@@ -785,7 +785,7 @@ func TestMConnectionBulkChannelWaitsForFlushTimer(t *testing.T) {
 	requireNoRead(t, server, "non LowLatency channel should stay buffered until the flush timer fires")
 }
 
-func TestMConnectionWaitsForFlushTimerWithoutFlushOnMessageEnd(t *testing.T) {
+func TestMConnectionWaitsForFlushTimerWithoutFlushLowLatency(t *testing.T) {
 	server, client := net.Pipe()
 	defer server.Close()
 	defer client.Close()
@@ -841,7 +841,17 @@ func TestMConnectionBatchesQueuedLowLatencyMessages(t *testing.T) {
 	t.Run("batch that drains the queue flushes", func(t *testing.T) {
 		c, conn := newConn(t)
 		queueVotes(c, numBatchPacketMsgs)
-		require.True(t, c.sendBatchPacketMsgs(protoio.NewDelimitedWriter(c.bufConnWriter), numBatchPacketMsgs))
+		c.sendBatchPacketMsgs(protoio.NewDelimitedWriter(c.bufConnWriter), numBatchPacketMsgs)
+		require.Equal(t, 1, conn.writes)
+	})
+
+	t.Run("busy bulk channel doesn't hold back votes", func(t *testing.T) {
+		c, conn := newConn(t)
+		queueVotes(c, 2)
+		for i := 0; i < numBatchPacketMsgs; i++ {
+			require.True(t, c.channelsIdx[0x02].sendBytes([]byte("tx")))
+		}
+		require.False(t, c.sendBatchPacketMsgs(protoio.NewDelimitedWriter(c.bufConnWriter), numBatchPacketMsgs))
 		require.Equal(t, 1, conn.writes)
 	})
 

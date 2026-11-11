@@ -337,9 +337,9 @@ persistent_peers_max_dial_period = "{{ .P2P.PersistentPeersMaxDialPeriod }}"
 flush_throttle_timeout = "{{ .P2P.FlushThrottleTimeout }}"
 
 # Flush latency-critical messages (votes, round steps, compact blocks,
-# haves, wants, recovery parts) once written instead of waiting for
-# flush_throttle_timeout. Messages queued together share one write.
-flush_on_message_end = {{ .P2P.FlushOnMessageEnd }}
+# haves, wants, recovery parts) as soon as none are left queued, instead of
+# waiting for flush_throttle_timeout. Other traffic stays batched.
+flush_low_latency = {{ .P2P.FlushLowLatency }}
 
 # Maximum size of a message packet payload, in bytes
 max_packet_msg_payload_size = {{ .P2P.MaxPacketMsgPayloadSize }}
