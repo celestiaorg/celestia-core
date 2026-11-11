@@ -492,12 +492,12 @@ func TestTxPool_EvictionSkipsIncomingSigner(t *testing.T) {
 		txmp.config.Size = 2
 		txmp.config.MaxTxsBytes = 1 << 20
 		mustCheckTx(t, txmp, "A=0=1")
-		mustCheckTx(t, txmp, "B=0=1")
+		mustCheckTx(t, txmp, "B=0=2")
 		mustCheckTx(t, txmp, "A=1=100")
 		require.Equal(t, 2, txmp.Size())
 		require.True(t, txmp.Has(types.Tx("A=0=1").Key()))
 		require.True(t, txmp.Has(types.Tx("A=1=100").Key()))
-		require.True(t, txmp.WasRecentlyEvicted(types.Tx("B=0=1").Key()))
+		require.True(t, txmp.WasRecentlyEvicted(types.Tx("B=0=2").Key()))
 	})
 }
 
