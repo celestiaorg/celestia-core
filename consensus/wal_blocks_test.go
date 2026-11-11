@@ -503,3 +503,20 @@ func TestReplayKeepsRestoredLockedBlockFile(t *testing.T) {
 		})
 	}
 }
+
+// A replayed unlock keeps the file: a later replayed lock may be restored from it.
+func TestReplayedUnlockKeepsLockedBlockFile(t *testing.T) {
+	f := newLockFixture(t, true, false)
+	x, xParts := testLock(t)
+	path := lockedBlockFile(f.config.Consensus)
+	require.NoError(t, os.MkdirAll(filepath.Dir(path), 0o700))
+	writeCopy(t, path, x, xParts)
+
+	cs := f.newState()
+	cs.lockedBlocks = newLockedBlockWriter(path, cs.Logger)
+	cs.replayMode = true
+	cs.rs.LockedRound, cs.rs.LockedBlockID = 0, x.BlockID
+	require.True(t, cs.unlock())
+	cs.lockedBlocks.stop()
+	require.FileExists(t, path)
+}
