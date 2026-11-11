@@ -596,7 +596,9 @@ legacy_pacing_delayed_precommit_timeout = "550ms"
 
 The node then ignores the application's `dynamic_timeout_commit` and uses these
 two values instead of the application's `timeout_commit` and delayed precommit
-timeout; everything else, including stored state, is unchanged. The interval is
+timeout (`0` means no wait); everything else, including stored state, is
+unchanged. It has no effect while the application returns
+`dynamic_timeout_commit = 0`, so leaving it on cannot change a legacy-paced chain. The interval is
 then about `timeout_commit + delayed precommit timeout + one precommit round`;
 the defaults give about the same block time as the 800 ms dynamic floor.
 

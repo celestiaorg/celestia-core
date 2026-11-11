@@ -10,7 +10,6 @@ import (
 
 func TestLegacyPacingUsesConfigTimeouts(t *testing.T) {
 	cs, vss := pacedState(t, time.Now())
-	cs.state.Timeouts.DelayedPrecommitTimeout = 0
 	cs.config.LegacyPacing = true
 	cs.config.LegacyPacingTimeoutCommit = 200 * time.Millisecond
 	cs.config.LegacyPacingDelayedPrecommitTimeout = 550 * time.Millisecond
@@ -42,6 +41,20 @@ func TestLegacyPacingZeroTimeoutCommitMeansNoWait(t *testing.T) {
 	require.Equal(t, commit, cs.rs.StartTime, "an explicit legacy 0 must not fall back to config timeout_commit")
 }
 
+func TestLegacyPacingKeepsAppTimeoutsWithoutDynamicPacing(t *testing.T) {
+	cs, vss := pacedState(t, time.Now())
+	cs.state.Timeouts.DynamicTimeoutCommit = 0
+	cs.state.Timeouts.TimeoutCommit = 500 * time.Millisecond
+	cs.state.Timeouts.DelayedPrecommitTimeout = 2100 * time.Millisecond
+	cs.config.LegacyPacing = true
+
+	commit := time.Now()
+	pacingCommitHeight(t, cs, vss, 0, commit)
+
+	require.Equal(t, commit.Add(500*time.Millisecond), cs.rs.StartTime, "a v10-style app keeps its own timeout commit")
+	require.Greater(t, cs.precommitDelay(), 2*time.Second, "and its own delayed precommit timeout")
+}
+
 // medianInterval starts nodes with legacy pacing on the given ones and returns
 // the median commit interval seen by the last node (never legacy) over heights 3 to target.
 func medianInterval(t *testing.T, legacy []bool, target int64) time.Duration {
@@ -51,7 +64,6 @@ func medianInterval(t *testing.T, legacy []bool, target int64) time.Duration {
 	})
 	for i, on := range legacy {
 		css[i].config.LegacyPacing = on
-		css[i].config.LegacyPacingTimeoutCommit = 100 * time.Millisecond
 		css[i].config.LegacyPacingDelayedPrecommitTimeout = 1500 * time.Millisecond
 	}
 	_, subs := startPacedNet(t, css, slices.Repeat([]bool{true}, len(legacy)))

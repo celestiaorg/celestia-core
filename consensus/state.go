@@ -680,20 +680,26 @@ func (cs *State) dynamicTimeoutCommit() time.Duration {
 	return cs.pacing(cs.state.Timeouts).DynamicTimeoutCommit
 }
 
-// pacing returns the app's pacing timeouts, or with legacy_pacing set the configured
-// delayed precommit timeout and no dynamic floor. The persisted state is never changed.
+// pacing returns the app's pacing timeouts or, with legacy_pacing set while the app
+// paces dynamically, the configured delayed precommit and no floor. State is unchanged.
 func (cs *State) pacing(t cmtstate.TimeoutInfo) cmtstate.TimeoutInfo {
-	if cs.config.LegacyPacing {
+	if cs.legacyPacing(t) {
 		t.DelayedPrecommitTimeout = cs.config.LegacyPacingDelayedPrecommitTimeout
 		t.DynamicTimeoutCommit = 0
 	}
 	return t
 }
 
+// legacyPacing reports whether legacy_pacing replaces t; it never touches an app that
+// does not pace dynamically, so the switch cannot change legacy-paced chains.
+func (cs *State) legacyPacing(t cmtstate.TimeoutInfo) bool {
+	return cs.config.LegacyPacing && t.DynamicTimeoutCommit > 0
+}
+
 // afterTimeoutCommit returns t plus the timeout commit. An app value of 0 falls back
 // to config; a legacy_pacing value is used as is, so 0 means no wait.
 func (cs *State) afterTimeoutCommit(t time.Time, timeouts cmtstate.TimeoutInfo) time.Time {
-	if cs.config.LegacyPacing {
+	if cs.legacyPacing(timeouts) {
 		return t.Add(cs.config.LegacyPacingTimeoutCommit)
 	}
 	return cs.config.CommitWithCustomTimeout(t, timeouts.TimeoutCommit)
@@ -2324,7 +2330,7 @@ const KMSSigningDelay = 200 * time.Millisecond
 
 // precommitDelay calculates if the process has waited at least a certain number of seconds
 // from their start time before they can vote.
-// If the application's DelayedPrecommitTimeout is set to 0, no precommit wait is done.
+// If the pacing DelayedPrecommitTimeout (the app's, or legacy_pacing's) is 0, no precommit wait is done.
 // When catching up on block data, returns 0 to speed up block processing.
 func (cs *State) precommitDelay() time.Duration {
 	delayed := cs.pacing(cs.state.Timeouts).DelayedPrecommitTimeout
