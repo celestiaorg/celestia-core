@@ -295,6 +295,25 @@ func TestUncommittedHeightWantIsNotServedFromStore(t *testing.T) {
 	require.Empty(t, rp.sentParts())
 }
 
+// An incomplete entry for the committed block, created after Prune filled the
+// entries it saw, must not park a catchup want: nothing would ever fill it.
+func TestIncompleteCommittedEntryWantIsServedFromStore(t *testing.T) {
+	r, ps := newStoredBlockReactor(t)
+	rp := addRecordingPeer(t, r, 1_000_000)
+	// the propagator still sits at the committed height, so the entry is accepted.
+	r.pmtx.Lock()
+	r.height = storedTestHeight
+	r.pmtx.Unlock()
+	psh := ps.Header()
+	r.AddCommitment(storedTestHeight, 0, &psh)
+
+	r.handleWants(rp.ID(), storedWant(ps.Total(), 2, 0, 1))
+	require.Len(t, rp.sentParts(), 2)
+	_, parts, _, has := r.getAllState(storedTestHeight, 0, true)
+	require.True(t, has)
+	require.True(t, parts.IsComplete(), "the store, not the incomplete entry, is returned")
+}
+
 func TestTokenBucket(t *testing.T) {
 	now := time.Unix(0, 0)
 	b := newTokenBucket(10, 3)

@@ -376,11 +376,11 @@ func (blockProp *Reactor) handleWants(peer p2p.ID, wants *proptypes.WantParts) {
 	// get data, use the prove as a proxy for determining if this Want message
 	// if for catchup
 	_, parts, has, committed := blockProp.getCachedState(height, round, wants.Prove)
-	// at a committed height only the committed block is useful: a cached entry for
-	// another block must not shadow the store.
+	// at a committed height, only a complete copy of the committed block beats the
+	// store: a want parked on any other entry may never be answered.
 	if has && wants.Prove && committed {
 		meta := blockProp.store.LoadBlockMeta(height)
-		has = meta == nil || parts.Original().Header().Equals(meta.BlockID.PartSetHeader)
+		has = meta == nil || isCommittedCopy(parts, meta)
 	}
 	if !has && wants.Prove && committed {
 		blockProp.handleStoredWants(p, wants)
