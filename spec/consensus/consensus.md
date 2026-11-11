@@ -209,7 +209,8 @@ The Precommit step ends:
   (`StartTime(H-1)` is replaced by `CommitTime` on the first height after
   start-up or when `H-1` was committed before its `StartTime`).
 - Wait until `StartTime` to receive straggler commits. --> goto
-  `Propose(H,0)`
+  `Propose(H,0)`. With `dynamicTimeoutCommit > 0`, +2/3 precommits for `(H,0)`
+  also end the wait.
 
 ## Proofs
 
