@@ -140,6 +140,56 @@ func TestPacingFirstCommitAlignsLocalStartupTimes(t *testing.T) {
 	}
 }
 
+func TestPacingRejoinAfterRestartStartsOnGrid(t *testing.T) {
+	commit := time.Now().Add(time.Hour)
+	// A node on the grid started 870 ms before the commit, so it starts again at commit + 130 ms.
+	grid, gridVals := pacedState(t)
+	grid.pacingStarted = true
+	grid.rs.StartTime = commit.Add(-870 * time.Millisecond)
+	pacingCommitHeight(t, grid, gridVals, 0, commit)
+
+	// A restarted node has no paced anchor when it commits the same block.
+	rejoin, rejoinVals := pacedState(t)
+	rejoin.pacingStarted = false
+	rejoin.rs.StartTime = commit.Add(-5 * time.Second)
+	pacingCommitHeight(t, rejoin, rejoinVals, 0, commit)
+
+	require.Equal(t, commit.Add(rejoin.state.Timeouts.TimeoutCommit), rejoin.rs.StartTime,
+		"a rejoining node must start one TimeoutCommit after the commit")
+	require.False(t, rejoin.rs.StartTime.After(grid.rs.StartTime),
+		"a rejoining node must not start later than the nodes already on the grid")
+
+	start := rejoin.rs.StartTime
+	pacingCommitHeight(t, rejoin, rejoinVals, 0, start.Add(700*time.Millisecond))
+
+	require.Equal(t, start.Add(testDynamicTimeoutCommit), rejoin.rs.StartTime,
+		"the height after the rejoin must pace on the grid")
+}
+
+func TestPacingBackwardClockStepRestartsFromLegacyStart(t *testing.T) {
+	for _, step := range []time.Duration{time.Second, 2 * time.Second} {
+		t.Run(step.String(), func(t *testing.T) {
+			commit := time.Now().Add(time.Hour)
+			cs, vss := pacedState(t)
+			cs.pacingStarted = true
+			// The height started 700 ms before the commit, then the clock stepped back.
+			cs.rs.StartTime = commit.Add(-700 * time.Millisecond).Add(step)
+			require.True(t, cs.rs.StartTime.After(commit))
+
+			pacingCommitHeight(t, cs, vss, 0, commit)
+
+			require.Equal(t, commit.Add(cs.state.Timeouts.TimeoutCommit), cs.rs.StartTime,
+				"after a backward clock step the next height must start one TimeoutCommit after the commit")
+
+			start := cs.rs.StartTime
+			pacingCommitHeight(t, cs, vss, 0, start.Add(700*time.Millisecond))
+
+			require.Equal(t, start.Add(testDynamicTimeoutCommit), cs.rs.StartTime,
+				"the following height must pace on the grid")
+		})
+	}
+}
+
 func TestPacingPrecommitQuorumStartsRoundZeroBeforeDeadline(t *testing.T) {
 	cs, vss := pacedState(t, time.Now())
 	cs.SetPrivValidator(nil)
