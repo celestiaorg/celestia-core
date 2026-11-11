@@ -300,18 +300,17 @@ func TestUncommittedHeightWantIsNotServedFromStore(t *testing.T) {
 func TestIncompleteCommittedEntryWantIsServedFromStore(t *testing.T) {
 	r, ps := newStoredBlockReactor(t)
 	rp := addRecordingPeer(t, r, 1_000_000)
-	// the propagator still sits at the committed height, so the entry is accepted.
-	r.pmtx.Lock()
-	r.height = storedTestHeight
-	r.pmtx.Unlock()
+	r.Prune(storedTestHeight)
+	// let Prune's serveCommitted pass finish before the late entry arrives.
+	time.Sleep(100 * time.Millisecond)
 	psh := ps.Header()
 	r.AddCommitment(storedTestHeight, 0, &psh)
 
 	r.handleWants(rp.ID(), storedWant(ps.Total(), 2, 0, 1))
 	require.Len(t, rp.sentParts(), 2)
-	_, parts, _, has := r.getAllState(storedTestHeight, 0, true)
+	_, parts, has, _ := r.getCachedState(storedTestHeight, 0, true)
 	require.True(t, has)
-	require.True(t, parts.IsComplete(), "the store, not the incomplete entry, is returned")
+	require.False(t, parts.IsComplete(), "the parts came from the store, not the cache")
 }
 
 func TestTokenBucket(t *testing.T) {

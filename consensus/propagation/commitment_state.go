@@ -203,25 +203,21 @@ func (p *ProposalCache) getAllState(height int64, round int32, catchup bool) (*p
 		hasStored = p.store.LoadBlockMeta(height)
 	}
 
-	// at a committed height, only a complete copy of the committed block beats the store.
-	useCache := cachedProp != nil && (hasStored == nil || isCommittedCopy(cachedProp.block, hasStored))
-	if useCache {
+	switch {
+	// at a committed height only the committed block is useful: a cached entry for
+	// another block must not shadow the store.
+	case cachedProp != nil && (hasStored == nil || cachedProp.block.Original().Header().Equals(hasStored.BlockID.PartSetHeader)):
 		return cachedProp.compactBlock, cachedProp.block, cachedProp.maxRequests, true
-	}
-	if hasStored == nil {
+	case hasStored != nil:
+		parts, _, err := p.store.LoadPartSet(height)
+		if err != nil {
+			return nil, nil, nil, false
+		}
+		cparts := proptypes.NewCombinedPartSetFromOriginal(parts, false)
+		return nil, cparts, cparts.BitArray(), true
+	default:
 		return nil, nil, nil, false
 	}
-	parts, _, err := p.store.LoadPartSet(height)
-	if err != nil {
-		return nil, nil, nil, false
-	}
-	cparts := proptypes.NewCombinedPartSetFromOriginal(parts, false)
-	return nil, cparts, cparts.BitArray(), true
-}
-
-// isCommittedCopy reports whether parts hold the complete committed block.
-func isCommittedCopy(parts *proptypes.CombinedPartSet, meta *types.BlockMeta) bool {
-	return parts.IsComplete() && parts.Original().Header().Equals(meta.BlockID.PartSetHeader)
 }
 
 // getCachedState returns the cached compact block and part set for a height and

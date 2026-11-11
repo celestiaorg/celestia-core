@@ -380,7 +380,7 @@ func (blockProp *Reactor) handleWants(peer p2p.ID, wants *proptypes.WantParts) {
 	// store: a want parked on any other entry may never be answered.
 	if has && wants.Prove && committed {
 		meta := blockProp.store.LoadBlockMeta(height)
-		has = meta == nil || isCommittedCopy(parts, meta)
+		has = meta == nil || (parts.IsComplete() && parts.Original().Header().Equals(meta.BlockID.PartSetHeader))
 	}
 	if !has && wants.Prove && committed {
 		blockProp.handleStoredWants(p, wants)
