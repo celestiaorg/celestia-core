@@ -3450,7 +3450,8 @@ func (cs *State) copyLockedBlock() {
 	if cs.lockedBlocks == nil || cs.replayMode || cs.rs.LockedBlockParts == nil {
 		return
 	}
-	// Our own proposal's parts are already internal WAL records.
+	// Our own proposal's parts are internal WAL records; only skipped while we propose. A relock
+	// under another proposer copies again, which also covers replay rejecting it.
 	if cs.rs.Proposal != nil && cs.rs.Proposal.BlockID.Equals(cs.rs.LockedBlockID) &&
 		cs.privValidatorPubKey != nil && cs.isProposer(cs.privValidatorPubKey.Address()) {
 		return
