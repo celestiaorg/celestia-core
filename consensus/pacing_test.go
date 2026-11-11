@@ -1,7 +1,6 @@
 package consensus
 
 import (
-	"context"
 	"fmt"
 	"testing"
 	"time"
@@ -13,19 +12,28 @@ import (
 	"github.com/cometbft/cometbft/internal/test"
 	cmtrand "github.com/cometbft/cometbft/libs/rand"
 	cmtproto "github.com/cometbft/cometbft/proto/tendermint/types"
+	sm "github.com/cometbft/cometbft/state"
 	"github.com/cometbft/cometbft/types"
 )
 
 const testDynamicTimeoutCommit = time.Second
 
-// pacedState returns a node whose app sets DynamicTimeoutCommit and a 100ms
-// TimeoutCommit, as celestia-app v11 does.
-func pacedState(t *testing.T) (*State, []*validatorStub) {
+func pacingRandState(t *testing.T) (*State, []*validatorStub) {
 	t.Helper()
 	cs, vss := randState(4)
 	t.Cleanup(func() { require.NoError(t, cs.eventBus.Stop()) })
+	return cs, vss
+}
+
+// pacedState returns a node mid-cadence from start whose app sets
+// DynamicTimeoutCommit and a 100ms TimeoutCommit, as celestia-app v11 does.
+func pacedState(t *testing.T, start time.Time) (*State, []*validatorStub) {
+	t.Helper()
+	cs, vss := pacingRandState(t)
 	cs.state.Timeouts.TimeoutCommit = 100 * time.Millisecond
 	cs.state.Timeouts.DynamicTimeoutCommit = testDynamicTimeoutCommit
+	cs.pacingStarted = true
+	cs.rs.StartTime = start
 	return cs, vss
 }
 
@@ -34,15 +42,11 @@ func TestPacingUsesLocalStartAcrossValidatorClockOffsets(t *testing.T) {
 	for _, offset := range []time.Duration{-2 * time.Second, 0, 2 * time.Second} {
 		t.Run(offset.String(), func(t *testing.T) {
 			localStart := base.Add(offset)
-			localCommit := localStart.Add(400 * time.Millisecond)
-			// Every validator receives the same signed proposer timestamp. Its
-			// own clock offset must not change the elapsed pacing interval.
-			cs := pacingCommittedState(t, localStart, localCommit, base.Add(300*time.Millisecond))
-			nextState := cs.state.Copy()
-			nextState.LastBlockHeight = cs.rs.Height
-			nextState.LastValidators = cs.rs.Validators
+			cs, vss := pacedState(t, localStart)
+			// Every validator sees the same proposer timestamp; it must not change the interval.
+			cs.rs.Proposal = &types.Proposal{Timestamp: base.Add(300 * time.Millisecond)}
 
-			cs.updateToState(nextState)
+			pacingCommitHeight(t, cs, vss, 0, localStart.Add(400*time.Millisecond))
 
 			require.Equal(t, testDynamicTimeoutCommit, cs.rs.StartTime.Sub(localStart),
 				"proposal construction and a remote validator's clock must not alter the height interval")
@@ -52,13 +56,10 @@ func TestPacingUsesLocalStartAcrossValidatorClockOffsets(t *testing.T) {
 
 func TestPacingSlowFinalizationDoesNotLeaveStaleStart(t *testing.T) {
 	start := time.Now().Add(-5 * time.Second)
-	cs := pacingCommittedState(t, start, start.Add(100*time.Millisecond), start)
-	nextState := cs.state.Copy()
-	nextState.LastBlockHeight = cs.rs.Height
-	nextState.LastValidators = cs.rs.Validators
+	cs, vss := pacedState(t, start)
 	finalizationComplete := time.Now()
 
-	cs.updateToState(nextState)
+	pacingCommitHeight(t, cs, vss, 0, start.Add(100*time.Millisecond))
 
 	require.False(t, cs.rs.StartTime.Before(finalizationComplete),
 		"a long FinalizeBlock must not leave a stale anchor that lets the following height run early")
@@ -66,12 +67,9 @@ func TestPacingSlowFinalizationDoesNotLeaveStaleStart(t *testing.T) {
 
 func TestPacingCommitBeforeScheduledStartDoesNotAccumulateDelay(t *testing.T) {
 	now := time.Now()
-	cs := pacingCommittedState(t, now.Add(10*time.Second), now, now.Add(10*time.Second))
-	nextState := cs.state.Copy()
-	nextState.LastBlockHeight = cs.rs.Height
-	nextState.LastValidators = cs.rs.Validators
+	cs, vss := pacedState(t, now.Add(10*time.Second))
 
-	cs.updateToState(nextState)
+	pacingCommitHeight(t, cs, vss, 0, now)
 
 	require.False(t, cs.rs.StartTime.After(time.Now().Add(time.Second)),
 		"committing before a scheduled start must not carry an unused deadline into later heights")
@@ -81,13 +79,10 @@ func TestPacingFirstCommitAlignsLocalStartupTimes(t *testing.T) {
 	commit := time.Now().Add(time.Hour)
 	for _, offset := range []time.Duration{-2 * time.Second, -200 * time.Millisecond, 200 * time.Millisecond} {
 		t.Run(offset.String(), func(t *testing.T) {
-			cs := pacingCommittedState(t, commit.Add(offset), commit, commit.Add(-time.Hour))
+			cs, vss := pacedState(t, commit.Add(offset))
 			cs.pacingStarted = false
-			nextState := cs.state.Copy()
-			nextState.LastBlockHeight = cs.rs.Height
-			nextState.LastValidators = cs.rs.Validators
 
-			cs.updateToState(nextState)
+			pacingCommitHeight(t, cs, vss, 0, commit)
 
 			require.Equal(t, testDynamicTimeoutCommit, cs.rs.StartTime.Sub(commit),
 				"startup cadence must anchor on a common observed event, not each validator's startup time")
@@ -96,32 +91,27 @@ func TestPacingFirstCommitAlignsLocalStartupTimes(t *testing.T) {
 }
 
 func TestPacingMultiRoundHeightStartsNextWithinFloorOfCommit(t *testing.T) {
-	const dynamic = testDynamicTimeoutCommit
 	for name, tc := range map[string]struct{ start, commit time.Duration }{
 		"rounds overran the floor": {start: -3 * time.Second, commit: -100 * time.Millisecond},
 		"rounds within the floor":  {start: -300 * time.Millisecond, commit: -50 * time.Millisecond},
 	} {
 		t.Run(name, func(t *testing.T) {
 			now := time.Now()
-			cs, vss := pacedState(t)
-			cs.pacingStarted = true
-			cs.rs.StartTime = now.Add(tc.start)
+			cs, vss := pacedState(t, now.Add(tc.start))
 			commit := now.Add(tc.commit)
 
 			pacingCommitHeight(t, cs, vss, 1, commit)
 
 			require.False(t, cs.rs.StartTime.Before(commit), "the next height must not start before the commit")
-			require.False(t, cs.rs.StartTime.After(commit.Add(dynamic)),
+			require.False(t, cs.rs.StartTime.After(commit.Add(testDynamicTimeoutCommit)),
 				"a multi-round height must not delay the next one by more than DynamicTimeoutCommit")
 		})
 	}
 }
 
 func TestPacingForwardClockJumpRestartsCadence(t *testing.T) {
-	cs, vss := pacedState(t)
-	cs.pacingStarted = true
 	// The wall clock jumped an hour forward after the height started.
-	cs.rs.StartTime = time.Now().Add(-time.Hour)
+	cs, vss := pacedState(t, time.Now().Add(-time.Hour))
 	before := time.Now()
 
 	pacingCommitHeight(t, cs, vss, 0, cs.rs.StartTime.Add(100*time.Millisecond))
@@ -137,8 +127,7 @@ func TestPacingForwardClockJumpRestartsCadence(t *testing.T) {
 }
 
 func TestPacingUpgradeHeightUsesNewDynamicAtOnce(t *testing.T) {
-	cs, vss := randState(4)
-	t.Cleanup(func() { require.NoError(t, cs.eventBus.Stop()) })
+	cs, vss := pacingRandState(t)
 	cs.state.Timeouts.TimeoutCommit = 500 * time.Millisecond
 	commit := time.Now().Add(time.Hour)
 	cs.rs.StartTime = commit.Add(-2 * time.Second)
@@ -146,9 +135,7 @@ func TestPacingUpgradeHeightUsesNewDynamicAtOnce(t *testing.T) {
 	cs.rs.CommitRound = 0
 	pacingAddPrecommitQuorum(t, cs, vss, 0)
 	// The upgrade block's FinalizeBlock returns the new values.
-	nextState := cs.state.Copy()
-	nextState.LastBlockHeight = cs.rs.Height
-	nextState.LastValidators = cs.rs.Validators
+	nextState := pacingNextState(cs)
 	nextState.Timeouts.TimeoutCommit = 100 * time.Millisecond
 	nextState.Timeouts.DynamicTimeoutCommit = 800 * time.Millisecond
 
@@ -175,6 +162,14 @@ func pacingAddPrecommitQuorum(t *testing.T, cs *State, vss []*validatorStub, rou
 	}
 }
 
+// pacingNextState is the state finalizeCommit passes to updateToState.
+func pacingNextState(cs *State) sm.State {
+	nextState := cs.state.Copy()
+	nextState.LastBlockHeight = cs.rs.Height
+	nextState.LastValidators = cs.rs.Validators
+	return nextState
+}
+
 // pacingCommitHeight commits the current height at round and commit time,
 // then moves to the next height as finalizeCommit does.
 func pacingCommitHeight(t *testing.T, cs *State, vss []*validatorStub, round int32, commit time.Time) {
@@ -182,13 +177,9 @@ func pacingCommitHeight(t *testing.T, cs *State, vss []*validatorStub, round int
 	pacingAddPrecommitQuorum(t, cs, vss, round)
 	cs.rs.CommitRound = round
 	cs.rs.CommitTime = commit
-	nextState := cs.state.Copy()
-	nextState.LastBlockHeight = cs.rs.Height
-	nextState.LastValidators = cs.rs.Validators
-	cs.updateToState(nextState)
+	cs.updateToState(pacingNextState(cs))
 }
 
-// legacyStartTime is main's rule: CommitTime + TimeoutCommit, config if the app's is 0.
 func legacyStartTime(cfgTimeoutCommit, appTimeoutCommit time.Duration, commit time.Time) time.Time {
 	if appTimeoutCommit == 0 {
 		appTimeoutCommit = cfgTimeoutCommit
@@ -210,8 +201,7 @@ func TestPacingDisabledStartTimeMatchesLegacyRule(t *testing.T) {
 			"commit in the future (skew)": {prevStart: time.Hour, commit: time.Hour + time.Second},
 		} {
 			t.Run(fmt.Sprintf("%v/%s", appTC, name), func(t *testing.T) {
-				cs, vss := randState(4)
-				t.Cleanup(func() { require.NoError(t, cs.eventBus.Stop()) })
+				cs, vss := pacingRandState(t)
 				require.Zero(t, cs.state.Timeouts.DynamicTimeoutCommit)
 				cs.config.TimeoutCommit = 700 * time.Millisecond
 				cs.state.Timeouts.TimeoutCommit = appTC
@@ -239,28 +229,4 @@ func TestPacingDisabledBootstrapMatchesLegacyRule(t *testing.T) {
 
 	require.False(t, cs.rs.StartTime.Before(before.Add(2*time.Second)))
 	require.False(t, cs.rs.StartTime.After(after.Add(2*time.Second)))
-}
-
-func pacingCommittedState(t *testing.T, start, commit, proposalTime time.Time) *State {
-	t.Helper()
-	cs, vss := pacedState(t)
-	cs.pacingStarted = true
-	block, parts, err := cs.createProposalBlock(context.Background())
-	require.NoError(t, err)
-	blockID := types.BlockID{Hash: block.Hash(), PartSetHeader: parts.Header()}
-	proposal := types.NewProposal(cs.rs.Height, 0, -1, blockID)
-	proposal.Timestamp = proposalTime
-	p := proposal.ToProto()
-	require.NoError(t, cs.privValidator.SignProposal(cs.state.ChainID, p))
-	proposal.Signature = p.Signature
-	require.NoError(t, cs.defaultSetProposal(proposal))
-	for _, vote := range signVotes(cmtproto.PrecommitType, blockID.Hash, blockID.PartSetHeader, true, vss[1:]...) {
-		added, err := cs.rs.Votes.AddVote(vote, "peer", true)
-		require.NoError(t, err)
-		require.True(t, added)
-	}
-	cs.rs.StartTime = start
-	cs.rs.CommitTime = commit
-	cs.rs.CommitRound = 0
-	return cs
 }
