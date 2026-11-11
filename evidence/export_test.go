@@ -14,3 +14,9 @@ func (evpool *Pool) HasCommittedDuplicateVote(dve *types.DuplicateVoteEvidence) 
 	ok, err := evpool.evidenceStore.Has(keyCommittedDuplicateVote(dve))
 	return err == nil && ok
 }
+
+// MarkCommittedWithoutDuplicateVoteMarker records ev as committed the way
+// pools written before duplicate vote commit markers did.
+func (evpool *Pool) MarkCommittedWithoutDuplicateVoteMarker(ev types.Evidence) error {
+	return evpool.evidenceStore.Set(keyCommitted(ev), []byte{})
+}

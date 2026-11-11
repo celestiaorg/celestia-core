@@ -88,10 +88,12 @@ func InjectEvidence(ctx context.Context, r *rand.Rand, testnet *e2e.Testnet, amo
 	}
 
 	// The pool keeps one piece of duplicate vote evidence per validator and
-	// height, so each piece must be for a different validator or height.
+	// height, so each piece must be for a different validator or height. Only
+	// use heights in the newer half of the evidence age window, so that the
+	// evidence is committed before it expires.
 	targets := &duplicateVoteTargets{
 		privVals:  privVals,
-		minHeight: testnet.InitialHeight,
+		minHeight: max(testnet.InitialHeight, evidenceHeight-e2e.EvidenceAgeHeight/2),
 		height:    evidenceHeight + 1,
 		fetch: func(height int64) (time.Time, *types.ValidatorSet, error) {
 			block, err := client.Block(ctx, &height)
@@ -118,16 +120,24 @@ func InjectEvidence(ctx context.Context, r *rand.Rand, testnet *e2e.Testnet, amo
 		} else {
 			var dve *types.DuplicateVoteEvidence
 			dve, err = targets.generate(testnet.Name)
-			if err != nil {
+			switch {
+			case errors.Is(err, errNoDuplicateVoteTarget):
+				// Every usable (height, validator) pair already has evidence.
+				// Send valid light client attack evidence instead.
+				ev, err = generateLightClientAttackEvidence(
+					ctx, privVals, evidenceHeight, valSet, testnet.Name, blockRes.Block.Time, true,
+				)
+			case err != nil:
 				return err
+			default:
+				if dve.VoteA.Height < testnet.VoteExtensionsEnableHeight {
+					dve.VoteA.Extension = nil
+					dve.VoteA.ExtensionSignature = nil
+					dve.VoteB.Extension = nil
+					dve.VoteB.ExtensionSignature = nil
+				}
+				ev = dve
 			}
-			if dve.VoteA.Height < testnet.VoteExtensionsEnableHeight {
-				dve.VoteA.Extension = nil
-				dve.VoteA.ExtensionSignature = nil
-				dve.VoteB.Extension = nil
-				dve.VoteB.ExtensionSignature = nil
-			}
-			ev = dve
 		}
 		if err != nil {
 			return err
@@ -236,6 +246,8 @@ func generateLightClientAttackEvidence(
 	return ev, nil
 }
 
+var errNoDuplicateVoteTarget = errors.New("no height left to generate duplicate vote evidence for")
+
 // duplicateVoteTargets generates duplicate vote evidence for a different
 // (height, validator) pair each time. It uses every validator at a height, then
 // moves one height down.
@@ -263,7 +275,7 @@ func (d *duplicateVoteTargets) generate(chainID string) (*types.DuplicateVoteEvi
 			}
 		}
 		if d.height-1 < d.minHeight {
-			return nil, errors.New("no height left to generate duplicate vote evidence for")
+			return nil, errNoDuplicateVoteTarget
 		}
 		d.height--
 		var err error

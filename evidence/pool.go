@@ -459,7 +459,10 @@ func (evpool *Pool) addPendingDuplicateVoteToStore(dve *types.DuplicateVoteEvide
 }
 
 func (evpool *Pool) addPendingDuplicateVoteLocked(dve *types.DuplicateVoteEvidence) (bool, error) {
-	if evpool.isDuplicateVoteKnownLocked(dve) {
+	// dve may be the canonical copy of the evidence a caller checked, with a
+	// different hash, so check its own hash too. This matters for evidence
+	// committed before commit markers existed, which has no marker.
+	if evpool.isDuplicateVoteKnownLocked(dve) || evpool.isCommitted(dve) {
 		return false, nil
 	}
 	if err := evpool.addPendingEvidence(dve); err != nil {

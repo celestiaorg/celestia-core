@@ -809,11 +809,16 @@ func FuzzEvidenceReactorReceive(f *testing.F) {
 			return
 		}
 		// Unedited evidence the generator built as valid must be accepted
-		// without punishing the peer, each distinct piece once.
-		distinct, allValid := map[evKey]bool{}, true
+		// without punishing the peer: each distinct piece once, and one
+		// piece of duplicate vote evidence per validator and height.
+		distinct, allValid := map[string]bool{}, true
 		for _, c := range cases {
 			allValid = allValid && c.valid && c.decoded
-			distinct[keyOf(c.ev)] = true
+			if dve, ok := c.ev.(*cmttypes.DuplicateVoteEvidence); ok {
+				distinct["dve/"+duplicateVoteKey(dve)] = true
+			} else {
+				distinct[string(c.ev.Hash())] = true
+			}
 		}
 		if allValid {
 			require.NoError(t, got.decodeErr)

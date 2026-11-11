@@ -888,3 +888,27 @@ func newDuplicateVoteAtRound(
 	require.NoError(t, err)
 	return ev
 }
+
+// Evidence committed before commit markers existed must not become pending
+// again when a variant of it is submitted whose canonical form is the
+// committed evidence.
+func TestNonCanonicalVariantOfCommittedEvidenceIsNotPending(t *testing.T) {
+	height := int64(10)
+	evTime := defaultEvidenceTime.Add(time.Duration(height) * time.Minute)
+	pool, val := defaultTestPool(t, height)
+	ev, err := types.NewMockDuplicateVoteEvidenceWithValidator(height, evTime, val, evidenceChainID)
+	require.NoError(t, err)
+	require.NoError(t, pool.MarkCommittedWithoutDuplicateVoteMarker(ev))
+
+	mutated := *ev
+	voteA := *ev.VoteA
+	voteA.ValidatorIndex = 5
+	mutated.VoteA = &voteA
+	require.NotEqual(t, ev.Hash(), mutated.Hash())
+
+	require.NoError(t, pool.AddEvidence(&mutated))
+	assert.Zero(t, pool.Size())
+
+	require.NoError(t, pool.CheckEvidence(types.EvidenceList{&mutated}))
+	assert.Zero(t, pool.Size())
+}
