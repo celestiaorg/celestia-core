@@ -44,13 +44,16 @@ type EndHeightMessage struct {
 	Height int64 `json:"height"`
 }
 
-// LockInfo journals the lock held when a precommit is signed. Round -1 is an unlock.
+// LockInfo records the lock held when a precommit is signed. Round -1 is an unlock.
 type LockInfo struct {
 	Height    int64         `json:"height"`
 	Round     int32         `json:"round"`
 	BlockID   types.BlockID `json:"block_id"`
 	BlockTime time.Time     `json:"block_time"`
 }
+
+// IsUnlock reports whether the record releases the lock (Round -1).
+func (li LockInfo) IsUnlock() bool { return li.Round < 0 }
 
 type WALMessage interface{}
 

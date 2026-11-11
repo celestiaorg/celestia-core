@@ -31,7 +31,7 @@ message EndHeight {
   int64 height = 1;
 }
 
-// LockInfo journals the lock held when a precommit is signed. Round -1 is an unlock.
+// LockInfo records the lock held when a precommit is signed. Round -1 is an unlock.
 message LockInfo {
   int64                     height     = 1;
   int32                     round      = 2;

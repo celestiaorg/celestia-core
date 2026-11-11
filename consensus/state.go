@@ -1198,7 +1198,7 @@ func (cs *State) handlePeerMsg(mi msgInfo) {
 	}
 }
 
-// walPeerMsg reports whether only_internal_wal still journals a peer message: a
+// walPeerMsg reports whether only_internal_wal still writes a peer message: a
 // proposal handleMsg just accepted, so a restarted node can accept its block's parts again.
 func walPeerMsg(before, after *types.Proposal, mi msgInfo) bool {
 	m, ok := mi.Msg.(*ProposalMessage)
@@ -1946,13 +1946,6 @@ func (cs *State) enterPrecommit(height int64, round int32) {
 		return
 	}
 
-	// Replay can resume below a restored lock's round: an older polka must not move the lock.
-	if cs.rs.IsLocked() && round < cs.rs.LockedRound {
-		logger.Debug("precommit step; polka below the locked round; precommitting nil", "locked_round", cs.rs.LockedRound)
-		cs.signAddVote(cmtproto.PrecommitType, nil, types.PartSetHeader{}, nil)
-		return
-	}
-
 	// At this point +2/3 prevoted for a particular block or nil.
 	if err := cs.eventBus.PublishEventPolka(cs.rs.RoundStateEvent()); err != nil {
 		logger.Error("failed publishing polka", "err", err)
@@ -1962,6 +1955,13 @@ func (cs *State) enterPrecommit(height int64, round int32) {
 	polRound, _ := cs.rs.Votes.POLInfo()
 	if polRound < round {
 		panic(fmt.Sprintf("this POLRound should be %v but got %v", round, polRound))
+	}
+
+	// Replay can resume below a restored lock's round: an older polka must not move the lock.
+	if cs.rs.IsLocked() && round < cs.rs.LockedRound {
+		logger.Debug("precommit step; polka below the locked round; precommitting nil", "locked_round", cs.rs.LockedRound)
+		cs.signAddVote(cmtproto.PrecommitType, nil, types.PartSetHeader{}, nil)
+		return
 	}
 
 	// +2/3 prevoted nil. Unlock and precommit nil.
@@ -3425,7 +3425,7 @@ func blockMatchesBlockID(block *types.Block, parts *types.PartSet, blockID types
 	return block.HashesTo(blockID.Hash) && parts.HasHeader(blockID.PartSetHeader)
 }
 
-// lockOn locks on blockID; the caller journals it with writeLockInfo once the precommit is signed.
+// lockOn locks on blockID; the caller persists it with writeLockInfo once the precommit is signed.
 func (cs *State) lockOn(round int32, blockID types.BlockID, blockTime time.Time, block *types.Block, parts *types.PartSet) {
 	cs.rs.LockedRound = round
 	cs.rs.LockedBlockID = blockID
@@ -3514,7 +3514,7 @@ func (cs *State) shareBlock(round int32, parts *types.PartSet) {
 	}
 }
 
-// unlock releases the lock and reports whether one was held; the caller journals it.
+// unlock releases the lock and reports whether one was held; the caller persists it.
 func (cs *State) unlock() bool {
 	if !cs.rs.IsLocked() {
 		return false
@@ -3535,7 +3535,7 @@ func (cs *State) clearLock() {
 	cs.rs.LockedBlockParts = nil
 }
 
-// writeLockInfo journals the current lock, buffered. Called after signing, it rides
+// writeLockInfo writes the current lock to the WAL, buffered. Called after signing, it rides
 // the precommit's WriteSync, which runs before the vote is handled or gossiped. Replay
 // re-derives locks from the WAL; rewriting them appends stale records that replay reads back.
 func (cs *State) writeLockInfo() {

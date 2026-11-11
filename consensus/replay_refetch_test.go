@@ -76,8 +76,8 @@ func TestWALPeerMsg(t *testing.T) {
 	require.False(t, walPeerMsg(nil, prop, msgInfo{Msg: &VoteMessage{&types.Vote{Height: 2, Round: 1}}}))
 }
 
-// A peer cannot make the node journal proposals it rejects.
-func TestWALJournalsOnlyAcceptedProposal(t *testing.T) {
+// A peer cannot make the node write proposals it rejects to the WAL.
+func TestWALWritesOnlyAcceptedProposal(t *testing.T) {
 	f := newLockFixture(t, true, false)
 	cs := f.newState()
 	require.NoError(t, cs.Start())
@@ -93,16 +93,16 @@ func TestWALJournalsOnlyAcceptedProposal(t *testing.T) {
 	require.NoError(t, cs.Stop())
 	cs.Wait()
 
-	var journaled []*types.Proposal
+	var written []*types.Proposal
 	for _, m := range walMsgs(t, f.config.Consensus.WalFile()) {
 		if mi, ok := m.Msg.(msgInfo); ok {
 			if pm, ok := mi.Msg.(*ProposalMessage); ok {
-				journaled = append(journaled, pm.Proposal)
+				written = append(written, pm.Proposal)
 			}
 		}
 	}
-	require.Len(t, journaled, 1)
-	require.Equal(t, prop.Signature, journaled[0].Signature)
+	require.Len(t, written, 1)
+	require.Equal(t, prop.Signature, written[0].Signature)
 }
 
 // Replaying a lock without its bytes leaves the propagator and the round's proposal alone;
@@ -189,7 +189,7 @@ func TestRestartAfterPrevoteRefetchesProposalBlock(t *testing.T) {
 	cs := f.newState()
 	_, voteCh = startRestarted(t, cs)
 	rs := cs.GetRoundState()
-	require.NotNil(t, rs.Proposal, "the peer's proposal was not journaled")
+	require.NotNil(t, rs.Proposal, "the peer's proposal was not written to the WAL")
 	require.Equal(t, prop.BlockID, rs.Proposal.BlockID)
 	require.Nil(t, rs.ProposalBlock)
 
@@ -279,7 +279,7 @@ func TestRestartedLockFilledInLaterRound(t *testing.T) {
 				newRoundCh, voteCh := startRestarted(t, cs1)
 				_, block, parts = f.lockOnX(t, cs1)
 				nextVote(t, voteCh, 1, 0, cmtproto.PrecommitType)
-				// Two nil precommits: round 1 starts on the precommit timeout, which is journaled.
+				// Two nil precommits: round 1 starts on the precommit timeout, which is in the WAL.
 				signAddVotes(cs1, cmtproto.PrecommitType, nil, types.PartSetHeader{}, false, f.others[:2]...)
 				waitRound(t, newRoundCh, 1, 1)
 				incrementRound(f.vss...)
@@ -552,7 +552,7 @@ func TestRestartedProposerKeepsRelockRound(t *testing.T) {
 	v := nextVote(t, voteCh, 1, 0, cmtproto.PrevoteType)
 	signAddVotes(cs1, cmtproto.PrevoteType, v.BlockID.Hash, v.BlockID.PartSetHeader, false, f.others...)
 	nextVote(t, voteCh, 1, 0, cmtproto.PrecommitType)
-	// Two nil precommits: round 1 starts on the precommit timeout, which is journaled.
+	// Two nil precommits: round 1 starts on the precommit timeout, which is in the WAL.
 	signAddVotes(cs1, cmtproto.PrecommitType, nil, types.PartSetHeader{}, false, f.others[:2]...)
 	waitRound(t, newRoundCh, 1, 1)
 	incrementRound(f.vss...)
