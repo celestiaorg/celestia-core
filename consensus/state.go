@@ -200,7 +200,7 @@ type State struct {
 	// Used to calculate the duration until full block is received
 	proposalReceivedTime time.Time
 
-	// pacingStarted is set after a local commit anchors the dynamic timeout commit.
+	// pacingStarted is set once a local commit has started pacing from its legacy start.
 	pacingStarted bool
 }
 
@@ -985,16 +985,11 @@ func (cs *State) applyDynamicTimeoutCommit(prevStartTime time.Time, dynamic time
 		return
 	}
 	now := cmttime.Now()
-	anchor := prevStartTime
-	switch {
-	case cs.rs.CommitTime.IsZero():
-		anchor = now
-	case !cs.pacingStarted || anchor.After(cs.rs.CommitTime):
-		// Bootstrap from our own commit; an early commit must not carry an unused deadline.
-		anchor = cs.rs.CommitTime
-	}
+	// Without a paced anchor keep the legacy start: grid nodes start ~TimeoutCommit after
+	// the same commit, so anchoring on the commit would run one floor late (#3643).
+	bootstrap := cs.rs.CommitTime.IsZero() || !cs.pacingStarted || prevStartTime.After(cs.rs.CommitTime)
 	cs.pacingStarted = !cs.rs.CommitTime.IsZero()
-	if deadline := anchor.Add(dynamic); deadline.After(cs.rs.StartTime) {
+	if deadline := prevStartTime.Add(dynamic); !bootstrap && deadline.After(cs.rs.StartTime) {
 		cs.rs.StartTime = deadline
 	}
 	wait := cs.rs.StartTime.Sub(now)
@@ -1002,7 +997,11 @@ func (cs *State) applyDynamicTimeoutCommit(prevStartTime time.Time, dynamic time
 		// After a slow height, start now rather than carry an expired deadline.
 		cs.rs.StartTime, wait = now, 0
 	}
-	if !cs.replayMode {
+	switch {
+	case cs.replayMode:
+	case bootstrap:
+		cs.metrics.PacingBypass.With("reason", "bootstrap").Add(1)
+	default:
 		cs.metrics.PacingFloorWaitSeconds.Observe(wait.Seconds())
 		if wait == 0 {
 			cs.metrics.PacingBypass.With("reason", "slow").Add(1)

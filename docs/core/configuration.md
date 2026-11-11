@@ -565,12 +565,15 @@ a node starts height `H+1` at
 
 `max(now, CommitTime(H) + timeout_commit, StartTime(H) + dynamic_timeout_commit)`
 
-where `StartTime(H)` is when the node started height `H` on its own clock
-(`CommitTime(H)` on the first height after start-up, or when `H` was committed
-before its `StartTime`). As before, `timeout_commit` is the value in effect at
-height `H-1`, while `dynamic_timeout_commit` is the one returned for `H`, so an
-upgrade enabling it paces `H+1` at once; disabling it leaves one height paced
-only by `timeout_commit`. Proposal, voting and block execution count towards the
+where `StartTime(H)` is when the node started height `H` on its own clock. A node
+with no start on that schedule keeps `max(now, CommitTime(H) + timeout_commit)`
+for one height and paces from there: on the first height after start-up, when `H`
+was committed before its `StartTime` (it fell behind, or its clock stepped back),
+and on the first height with `dynamic_timeout_commit` set, so an upgrade enabling
+it keeps the previous `timeout_commit` at the upgrade height and paces from the
+next one. Nodes already on the schedule also start about `timeout_commit` after
+the same commit, so a restarted node rejoins it at once. Disabling it leaves one
+height paced only by `timeout_commit`. Proposal, voting and block execution count towards the
 interval, so a loaded block pays only for its own work, and a height that already
 took longer starts the next one immediately. Round 0 starts when the deadline's
 timer fires, and a complete proposal received earlier is held until then (WAL
