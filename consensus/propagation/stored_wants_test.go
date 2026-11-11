@@ -300,10 +300,15 @@ func TestUncommittedHeightWantIsNotServedFromStore(t *testing.T) {
 func TestIncompleteCommittedEntryWantIsServedFromStore(t *testing.T) {
 	r, ps := newStoredBlockReactor(t)
 	rp := addRecordingPeer(t, r, 1_000_000)
-	r.Prune(storedTestHeight)
-	// let Prune's serveCommitted pass finish before the late entry arrives.
-	time.Sleep(100 * time.Millisecond)
 	psh := ps.Header()
+	// Prune's background pass fills this entry; once it is complete, the pass's
+	// snapshot is taken and cannot include the late entry.
+	r.AddCommitment(storedTestHeight, 1, &psh)
+	r.Prune(storedTestHeight)
+	require.Eventually(t, func() bool {
+		_, parts, has, _ := r.getCachedState(storedTestHeight, 1, true)
+		return has && parts.IsComplete()
+	}, 5*time.Second, 5*time.Millisecond)
 	r.AddCommitment(storedTestHeight, 0, &psh)
 
 	r.handleWants(rp.ID(), storedWant(ps.Total(), 2, 0, 1))
