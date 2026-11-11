@@ -8,7 +8,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	abci "github.com/cometbft/cometbft/abci/types"
-	cfg "github.com/cometbft/cometbft/config"
+	cmtcfg "github.com/cometbft/cometbft/config"
 	"github.com/cometbft/cometbft/consensus/propagation"
 	"github.com/cometbft/cometbft/libs/log"
 	"github.com/cometbft/cometbft/p2p"
@@ -91,7 +91,7 @@ func newPacedNet(t *testing.T, n int, app func() *pacedApp) []*State {
 	a := app()
 	css, cleanup := randConsensusNet(t, n, "consensus_pacing_test", NewTimeoutTicker,
 		func() abci.Application { return app() },
-		func(c *cfg.Config) {
+		func(c *cmtcfg.Config) {
 			c.Consensus.SkipTimeoutCommit = false
 			if a.timeoutPropose > 0 {
 				c.Consensus.TimeoutPropose = a.timeoutPropose
