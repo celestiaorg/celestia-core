@@ -134,7 +134,7 @@ func TestPacingFirstCommitAlignsLocalStartupTimes(t *testing.T) {
 
 			pacingCommitHeight(t, cs, vss, 0, commit)
 
-			require.Equal(t, testDynamicTimeoutCommit, cs.rs.StartTime.Sub(commit),
+			require.Equal(t, cs.state.Timeouts.TimeoutCommit, cs.rs.StartTime.Sub(commit),
 				"startup cadence must anchor on a common observed event, not each validator's startup time")
 		})
 	}
@@ -143,15 +143,12 @@ func TestPacingFirstCommitAlignsLocalStartupTimes(t *testing.T) {
 func TestPacingRejoinAfterRestartStartsOnGrid(t *testing.T) {
 	commit := time.Now().Add(time.Hour)
 	// A node on the grid started 870 ms before the commit, so it starts again at commit + 130 ms.
-	grid, gridVals := pacedState(t)
-	grid.pacingStarted = true
-	grid.rs.StartTime = commit.Add(-870 * time.Millisecond)
+	grid, gridVals := pacedState(t, commit.Add(-870*time.Millisecond))
 	pacingCommitHeight(t, grid, gridVals, 0, commit)
 
 	// A restarted node has no paced anchor when it commits the same block.
-	rejoin, rejoinVals := pacedState(t)
+	rejoin, rejoinVals := pacedState(t, commit.Add(-5*time.Second))
 	rejoin.pacingStarted = false
-	rejoin.rs.StartTime = commit.Add(-5 * time.Second)
 	pacingCommitHeight(t, rejoin, rejoinVals, 0, commit)
 
 	require.Equal(t, commit.Add(rejoin.state.Timeouts.TimeoutCommit), rejoin.rs.StartTime,
@@ -170,10 +167,8 @@ func TestPacingBackwardClockStepRestartsFromLegacyStart(t *testing.T) {
 	for _, step := range []time.Duration{time.Second, 2 * time.Second} {
 		t.Run(step.String(), func(t *testing.T) {
 			commit := time.Now().Add(time.Hour)
-			cs, vss := pacedState(t)
-			cs.pacingStarted = true
 			// The height started 700 ms before the commit, then the clock stepped back.
-			cs.rs.StartTime = commit.Add(-700 * time.Millisecond).Add(step)
+			cs, vss := pacedState(t, commit.Add(-700*time.Millisecond).Add(step))
 			require.True(t, cs.rs.StartTime.After(commit))
 
 			pacingCommitHeight(t, cs, vss, 0, commit)
@@ -289,7 +284,7 @@ func TestPacingProposalCompletedWhileWaitingForTxsIsPrevoted(t *testing.T) {
 	require.True(t, *prevoted, "only NewHeight holds a proposal; NewRound (waiting for txs) must not")
 }
 
-func TestPacingUpgradeHeightUsesNewDynamicAtOnce(t *testing.T) {
+func TestPacingUpgradeHeightBootstrapsFromLegacyStart(t *testing.T) {
 	cs, vss := pacingRandState(t)
 	cs.state.Timeouts.TimeoutCommit = 500 * time.Millisecond
 	commit := time.Now().Add(time.Hour)
@@ -304,9 +299,12 @@ func TestPacingUpgradeHeightUsesNewDynamicAtOnce(t *testing.T) {
 
 	cs.updateToState(nextState)
 
-	// TimeoutCommit lags one height (as on main); the dynamic floor applies at once,
-	// anchored on the commit since no dynamic height preceded it.
-	require.Equal(t, commit.Add(800*time.Millisecond), cs.rs.StartTime)
+	// No dynamic height preceded it, so the upgrade height keeps the legacy start
+	// (TimeoutCommit lags one height, as on main) and the next height paces from it.
+	require.Equal(t, commit.Add(500*time.Millisecond), cs.rs.StartTime)
+	start := cs.rs.StartTime
+	pacingCommitHeight(t, cs, vss, 0, start.Add(300*time.Millisecond))
+	require.Equal(t, start.Add(800*time.Millisecond), cs.rs.StartTime)
 }
 
 // pacingNoProofStore reports an unchanged app hash, so no proof block is needed.
