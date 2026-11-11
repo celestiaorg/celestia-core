@@ -466,35 +466,36 @@ func TestProcessValidatedCompactBlockForwardsOnceAfterCommitment(t *testing.T) {
 // does not delay forwarding, and that recovery still completes afterwards.
 func TestForwardCompactBlockBeforeRecovery(t *testing.T) {
 	reactors, _ := testBlockPropReactors(3, defaultTestP2PConf())
-	relay, sender, downstream := reactors[0], reactors[1], reactors[2]
+	// n2 sends the compact block to n1, which should forward it to n3.
+	n1, n2, n3 := reactors[0], reactors[1], reactors[2]
 
 	cleanup, _, sm, pv := state.SetupTestCaseWithPrivVal(t)
 	t.Cleanup(func() { cleanup(t) })
 	prop, ps, block, metaData := createTestProposal(t, sm, pv, 1, 0, 2, 1000000)
 	cb, _, _ := compactBlockFor(t, prop, ps, metaData)
 
-	// the relay has the block's txs, but its recovery is stuck until released.
+	// n1 has the block's txs, but its recovery is stuck until released.
 	release := make(chan struct{})
-	relay.mempool = &blockingMempool{mockMempool: mempoolWith(block.Txs), release: release}
+	n1.mempool = &blockingMempool{mockMempool: mempoolWith(block.Txs), release: release}
 
 	handled := make(chan struct{})
 	go func() {
 		defer close(handled)
-		relay.handleCompactBlock(cb, sender.self, false)
+		n1.handleCompactBlock(cb, n2.self, false)
 	}()
 
-	// the downstream peer gets the compact block while the relay is still stuck.
-	require.Eventually(t, hasProposal(downstream), 5*time.Second, 10*time.Millisecond)
+	// n3 gets the compact block while n1 is still stuck.
+	require.Eventually(t, hasProposalFn(n3), 5*time.Second, 10*time.Millisecond)
 
-	// once released, the relay still recovers parts from its mempool.
+	// once released, n1 still recovers parts from its mempool.
 	close(release)
 	<-handled
-	_, parts, _ := relay.GetProposal(1, 0)
+	_, parts, _ := n1.GetProposal(1, 0)
 	require.NotZero(t, parts.Count())
 }
 
 // TestForwardCompactBlockFromManyPeers delivers the same compact block to a
-// relay from every peer at once and checks it is forwarded and handed to
+// node from every peer at once and checks it is forwarded and handed to
 // consensus once, whatever local recovery does.
 func TestForwardCompactBlockFromManyPeers(t *testing.T) {
 	cleanup, _, sm, pv := state.SetupTestCaseWithPrivVal(t)
@@ -502,7 +503,7 @@ func TestForwardCompactBlockFromManyPeers(t *testing.T) {
 
 	tests := []struct {
 		name string
-		// mempool builds the relay's mempool from the block's txs.
+		// mempool builds n1's mempool from the block's txs.
 		mempool   func(txs types.Txs) Mempool
 		recovered bool
 	}{
@@ -523,28 +524,28 @@ func TestForwardCompactBlockFromManyPeers(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			reactors, _ := testBlockPropReactors(5, defaultTestP2PConf())
-			relay, peers := reactors[0], reactors[1:]
+			n1, peers := reactors[0], reactors[1:]
 
 			prop, ps, block, metaData := createTestProposal(t, sm, pv, 1, 0, 2, 1000000)
 			cb, _, _ := compactBlockFor(t, prop, ps, metaData)
-			relay.mempool = tt.mempool(block.Txs)
+			n1.mempool = tt.mempool(block.Txs)
 
 			// every peer delivers the same compact block at the same time.
 			var wg sync.WaitGroup
 			for _, p := range peers {
-				wg.Go(func() { relay.handleCompactBlock(cb, p.self, false) })
+				wg.Go(func() { n1.handleCompactBlock(cb, p.self, false) })
 			}
 			wg.Wait()
 
 			// consensus sees the proposal exactly once.
-			require.Len(t, relay.proposalChan, 1)
+			require.Len(t, n1.proposalChan, 1)
 
 			// every peer ends up with the compact block.
 			for _, p := range peers {
-				require.Eventually(t, hasProposal(p), 5*time.Second, 10*time.Millisecond)
+				require.Eventually(t, hasProposalFn(p), 5*time.Second, 10*time.Millisecond)
 			}
 
-			_, parts, _ := relay.GetProposal(1, 0)
+			_, parts, _ := n1.GetProposal(1, 0)
 			require.Equal(t, tt.recovered, parts.Count() > 0)
 		})
 	}
@@ -558,8 +559,8 @@ func TestHandleCompactBlockForwarding(t *testing.T) {
 
 	tests := []struct {
 		name string
-		// setup makes the compact block unacceptable to the relay.
-		setup     func(relay *Reactor, cb *proptypes.CompactBlock)
+		// setup makes the compact block unacceptable to n1.
+		setup     func(n1 *Reactor, cb *proptypes.CompactBlock)
 		forwarded bool
 	}{
 		{
@@ -573,27 +574,28 @@ func TestHandleCompactBlockForwarding(t *testing.T) {
 		},
 		{
 			name:  "stale height",
-			setup: func(relay *Reactor, _ *proptypes.CompactBlock) { relay.Prune(2) },
+			setup: func(n1 *Reactor, _ *proptypes.CompactBlock) { n1.Prune(2) },
 		},
 		{
 			name:  "duplicate",
-			setup: func(relay *Reactor, cb *proptypes.CompactBlock) { require.True(t, relay.AddProposal(cb)) },
+			setup: func(n1 *Reactor, cb *proptypes.CompactBlock) { require.True(t, n1.AddProposal(cb)) },
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			reactors, _ := testBlockPropReactors(3, defaultTestP2PConf())
-			relay, sender, downstream := reactors[0], reactors[1], reactors[2]
+			// n2 sends the compact block to n1, which forwards it to n3 only if valid.
+			n1, n2, n3 := reactors[0], reactors[1], reactors[2]
 
 			cb, _, _, _ := testCompactBlock(t, sm, pv, 1, 0)
-			tt.setup(relay, cb)
-			relay.handleCompactBlock(cb, sender.self, false)
+			tt.setup(n1, cb)
+			n1.handleCompactBlock(cb, n2.self, false)
 
-			// the downstream peer caches compact blocks it rejects, so this
+			// n3 caches compact blocks it rejects, so this
 			// also catches a forwarded block that fails its validation.
 			received := func() bool {
-				return hasProposal(downstream)() ||
-					downstream.getPeer(relay.self).GetUnverifiedProposal(1) != nil
+				return hasProposalFn(n3)() ||
+					n3.getPeer(n1.self).GetUnverifiedProposal(1) != nil
 			}
 			if tt.forwarded {
 				require.Eventually(t, received, 5*time.Second, 10*time.Millisecond)
@@ -604,8 +606,8 @@ func TestHandleCompactBlockForwarding(t *testing.T) {
 	}
 }
 
-// hasProposal reports whether r has stored the proposal for height 1, round 0.
-func hasProposal(r *Reactor) func() bool {
+// hasProposalFn reports whether r has stored the proposal for height 1, round 0.
+func hasProposalFn(r *Reactor) func() bool {
 	return func() bool {
 		_, _, has := r.GetProposal(1, 0)
 		return has
