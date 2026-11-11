@@ -195,6 +195,9 @@ type State struct {
 	// proposalReceivedTime tracks when the proposal was received for the current height/round
 	// Used to calculate the duration until full block is received
 	proposalReceivedTime time.Time
+
+	// pacingStarted is set after a local commit anchors the dynamic timeout commit.
+	pacingStarted bool
 }
 
 // StateOption sets an optional parameter on the State.
@@ -885,6 +888,7 @@ func (cs *State) updateToState(state sm.State) {
 	cs.updateHeight(height)
 	cs.updateRoundStep(0, cstypes.RoundStepNewHeight)
 
+	prevStartTime := cs.rs.StartTime
 	if cs.rs.CommitTime.IsZero() {
 		// "Now" makes it easier to sync up dev nodes.
 		// We add timeoutCommit to allow transactions
@@ -905,6 +909,7 @@ func (cs *State) updateToState(state sm.State) {
 			cs.rs.StartTime = cs.config.CommitWithCustomTimeout(cs.rs.CommitTime, cs.state.Timeouts.TimeoutCommit)
 		}
 	}
+	cs.applyDynamicTimeoutCommit(prevStartTime, state.Timeouts.DynamicTimeoutCommit)
 
 	cs.rs.Validators = validators
 	cs.rs.Proposal = nil
@@ -930,6 +935,39 @@ func (cs *State) updateToState(state sm.State) {
 
 	// Finally, broadcast RoundState
 	cs.newStep()
+}
+
+// applyDynamicTimeoutCommit raises StartTime to the previous deadline plus dynamic,
+// measured on the local clock, and never leaves it in the past. 0 is a no-op.
+func (cs *State) applyDynamicTimeoutCommit(prevStartTime time.Time, dynamic time.Duration) {
+	if dynamic <= 0 {
+		cs.pacingStarted = false
+		return
+	}
+	now := cmttime.Now()
+	anchor := prevStartTime
+	switch {
+	case cs.rs.CommitTime.IsZero():
+		anchor = now
+	case !cs.pacingStarted || anchor.After(cs.rs.CommitTime):
+		// Bootstrap from our own commit; an early commit must not carry an unused deadline.
+		anchor = cs.rs.CommitTime
+	}
+	cs.pacingStarted = !cs.rs.CommitTime.IsZero()
+	if deadline := anchor.Add(dynamic); deadline.After(cs.rs.StartTime) {
+		cs.rs.StartTime = deadline
+	}
+	wait := cs.rs.StartTime.Sub(now)
+	if wait <= 0 {
+		// After a slow height, start now rather than carry an expired deadline.
+		cs.rs.StartTime, wait = now, 0
+	}
+	if !cs.replayMode {
+		cs.metrics.PacingFloorWaitSeconds.Observe(wait.Seconds())
+		if wait == 0 {
+			cs.metrics.PacingBypass.With("reason", "slow").Add(1)
+		}
+	}
 }
 
 func (cs *State) newStep() {
