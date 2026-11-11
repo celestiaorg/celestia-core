@@ -212,10 +212,18 @@ func TestShareReplayedBlocksSkipsLockAndValidRounds(t *testing.T) {
 func TestReplayedBlocksResetAtNewHeight(t *testing.T) {
 	cs, _ := randState(1)
 	height, round := cs.rs.Height, cs.rs.Round
-	cs.replayedBlocks = map[int32]*types.PartSet{round: nil}
-	newBlockCh := subscribe(cs.eventBus, types.EventQueryNewBlock)
+	cs.replayedBlocks = map[int32]*types.PartSet{round: {}}
+	// NewBlock fires with the locks released, before updateToState; its NewHeight step follows the reset.
+	stepCh := subscribeBuffered(cs.eventBus, types.EventQueryNewRoundStep, 100)
 	startTestRound(cs, height, round)
-	ensureNewBlock(newBlockCh, height)
+	for rs := (types.EventDataRoundState{}); rs.Height != height+1; {
+		select {
+		case msg := <-stepCh:
+			rs = msg.Data().(types.EventDataRoundState)
+		case <-time.After(10 * time.Second):
+			t.Fatal("timed out waiting for the next height")
+		}
+	}
 
 	cs.lockAll()
 	defer cs.unlockAll()
