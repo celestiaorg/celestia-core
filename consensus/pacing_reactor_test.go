@@ -17,12 +17,13 @@ import (
 )
 
 // pacedApp returns v11-style timeouts (100ms TimeoutCommit plus a dynamic floor),
-// delays every ProcessProposal and can make one height slow to execute.
+// delays every ProcessProposal and FinalizeBlock and can make one height slower.
 type pacedApp struct {
 	abci.Application
 	dynamic        time.Duration
 	timeoutPropose time.Duration
 	processDelay   time.Duration
+	execDelay      time.Duration
 	slowHeight     int64
 	slowFor        time.Duration
 }
@@ -33,6 +34,7 @@ func (a *pacedApp) ProcessProposal(ctx context.Context, req *abci.RequestProcess
 }
 
 func (a *pacedApp) FinalizeBlock(ctx context.Context, req *abci.RequestFinalizeBlock) (*abci.ResponseFinalizeBlock, error) {
+	time.Sleep(a.execDelay)
 	if req.Height == a.slowHeight {
 		time.Sleep(a.slowFor)
 	}

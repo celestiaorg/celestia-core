@@ -55,6 +55,9 @@ var (
 
 var msgQueueSize = 20_000
 
+// lateDrainBudget bounds the queued peer messages handled before round 0.
+const lateDrainBudget = 20 * time.Millisecond
+
 // badPeerQueueSize bounds the queue of peers to disconnect. Reports are
 // dropped when it is full, so it only needs to absorb a short burst.
 const badPeerQueueSize = 100
@@ -1057,30 +1060,17 @@ func (cs *State) receiveRoutine(maxSteps int) {
 			cs.handleTxsAvailable()
 
 		case mi = <-cs.peerMsgQueue:
-			if !cs.config.OnlyInternalWal {
-				if err := cs.wal.Write(mi); err != nil {
-					cs.Logger.Error("failed writing to WAL", "err", err)
-				}
-			}
-			// handles proposals, block parts, votes
-			// may generate internal events (votes, complete proposals, 2/3 majorities)
-			cs.handleMsg(mi)
+			cs.handlePeerMsg(mi)
 
 		case mi = <-cs.internalMsgQueue:
-			cs.writeInternalMsgToWAL(mi)
-
-			if _, ok := mi.Msg.(*VoteMessage); ok {
-				// we actually want to simulate failing during
-				// the previous WriteSync, but this isn't easy to do.
-				// Equivalent would be to fail here and manually remove
-				// some bytes from the end of the wal.
-				fail.Fail() // XXX
-			}
-
-			// handles proposals, block parts, votes
-			cs.handleMsg(mi)
+			cs.handleInternalMsg(mi)
 
 		case ti := <-cs.timeoutTicker.Chan(): // tockChan:
+			if ti.Step == cstypes.RoundStepNewHeight && ti.Height == cs.rs.Height &&
+				cs.rs.Step == cstypes.RoundStepNewHeight && cs.dynamicTimeoutCommit() > 0 {
+				cs.drainLatePrecommits()
+				rs = cs.rs
+			}
 			if err := cs.wal.Write(ti); err != nil {
 				cs.Logger.Error("failed writing to WAL", "err", err)
 			}
@@ -1094,6 +1084,48 @@ func (cs *State) receiveRoutine(maxSteps int) {
 			return
 		}
 	}
+}
+
+// drainLatePrecommits handles queued messages before round 0 so precommits received
+// while the last block executed reach LastCommit. Own votes go first; peer messages
+// stop once LastCommit is full or after lateDrainBudget, leaving the rest queued.
+func (cs *State) drainLatePrecommits() {
+	for n := len(cs.internalMsgQueue); n > 0; n-- {
+		cs.handleInternalMsg(<-cs.internalMsgQueue)
+	}
+	start := time.Now()
+	for n := len(cs.peerMsgQueue); n > 0 && cs.rs.LastCommit != nil && !cs.rs.LastCommit.HasAll() &&
+		time.Since(start) < lateDrainBudget; n-- {
+		cs.handlePeerMsg(<-cs.peerMsgQueue)
+	}
+}
+
+// handleInternalMsg logs a local message to the WAL and handles it.
+func (cs *State) handleInternalMsg(mi msgInfo) {
+	cs.writeInternalMsgToWAL(mi)
+
+	if _, ok := mi.Msg.(*VoteMessage); ok {
+		// we actually want to simulate failing during
+		// the previous WriteSync, but this isn't easy to do.
+		// Equivalent would be to fail here and manually remove
+		// some bytes from the end of the wal.
+		fail.Fail() // XXX
+	}
+
+	// handles proposals, block parts, votes
+	cs.handleMsg(mi)
+}
+
+// handlePeerMsg logs a peer message to the WAL and handles it.
+func (cs *State) handlePeerMsg(mi msgInfo) {
+	if !cs.config.OnlyInternalWal {
+		if err := cs.wal.Write(mi); err != nil {
+			cs.Logger.Error("failed writing to WAL", "err", err)
+		}
+	}
+	// handles proposals, block parts, votes
+	// may generate internal events (votes, complete proposals, 2/3 majorities)
+	cs.handleMsg(mi)
 }
 
 // writeInternalMsgToWAL persists local messages with per-type durability.
