@@ -1052,7 +1052,8 @@ func TestAddBlockReplacingAnotherBlockDropsPeerRound(t *testing.T) {
 	t.Cleanup(func() { cleanup(t) })
 	propX, psX, _, _ := createTestProposal(t, sm, pv, 1, 0, 2, 1000000)
 	propY, psY, _, metaY := createTestProposal(t, sm, pv, 1, 0, 2, 1000000)
-	reactors, _ := createTestReactors(1, defaultTestP2PConf(), false, "")
+	reactors, switches := createTestReactors(1, defaultTestP2PConf(), false, "")
+	stopSwitchesOnCleanup(t, switches)
 	r := reactors[0]
 	cbY, _ := createCompactBlock(t, propY, psY, metaY)
 	require.True(t, r.AddProposal(cbY))
@@ -1080,7 +1081,8 @@ func TestAddBlockCompletesEntry(t *testing.T) {
 	prop, ps, _, meta := createTestProposal(t, sm, pv, 1, 0, 2, 1000000)
 	psh := ps.Header()
 	newEntry := func(t *testing.T) (*Reactor, *proptypes.CompactBlock) {
-		reactors, _ := createTestReactors(1, defaultTestP2PConf(), false, "")
+		reactors, switches := createTestReactors(1, defaultTestP2PConf(), false, "")
+		stopSwitchesOnCleanup(t, switches)
 		cb, _ := createCompactBlock(t, prop, ps, meta)
 		require.True(t, reactors[0].AddProposal(cb))
 		reactors[0].AddCommitment(prop.Height, prop.Round, &psh) // marks it catchup
