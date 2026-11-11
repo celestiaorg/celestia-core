@@ -306,15 +306,15 @@ func validatePrevote(t *testing.T, cs *State, round int32, privVal *validatorStu
 	}
 }
 
-func validateLastPrecommit(t *testing.T, cs *State, privVal *validatorStub, blockHash []byte) {
-	cs.rsMtx.RLock()
-	votes := cs.rs.LastCommit
-	cs.rsMtx.RUnlock()
+// validateLastPrecommit reads the stored seen commit of height: the live
+// LastCommit already belongs to the next height once that one commits too.
+func validateLastPrecommit(t *testing.T, cs *State, height int64, privVal *validatorStub, blockHash []byte) {
+	commit := cs.blockStore.LoadSeenCommit(height)
+	require.NotNil(t, commit, "no seen commit at height %d", height)
 	pv, err := privVal.GetPubKey()
 	require.NoError(t, err)
-	address := pv.Address()
-	var vote *types.Vote
-	if vote = votes.GetByAddress(address); vote == nil {
+	vote := commit.GetVote(privVal.Index)
+	if !bytes.Equal(vote.ValidatorAddress, pv.Address()) {
 		panic("Failed to find precommit from validator")
 	}
 	if !bytes.Equal(vote.BlockID.Hash, blockHash) {
