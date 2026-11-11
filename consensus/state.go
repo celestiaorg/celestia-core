@@ -35,6 +35,7 @@ import (
 	"github.com/cometbft/cometbft/libs/trace"
 	"github.com/cometbft/cometbft/libs/trace/schema"
 	"github.com/cometbft/cometbft/p2p"
+	cmtstate "github.com/cometbft/cometbft/proto/tendermint/state"
 	cmtproto "github.com/cometbft/cometbft/proto/tendermint/types"
 	sm "github.com/cometbft/cometbft/state"
 	"github.com/cometbft/cometbft/types"
@@ -676,7 +677,18 @@ func (cs *State) scheduleRound0(rs *cstypes.RoundState) {
 
 // dynamicTimeoutCommit is the app's floor on the height interval; 0 keeps the legacy rule.
 func (cs *State) dynamicTimeoutCommit() time.Duration {
-	return cs.state.Timeouts.DynamicTimeoutCommit
+	return cs.pacing(cs.state.Timeouts).DynamicTimeoutCommit
+}
+
+// pacing returns the app's pacing timeouts, or with legacy_pacing set the configured
+// legacy ones and no dynamic floor. The persisted state is never changed.
+func (cs *State) pacing(t cmtstate.TimeoutInfo) cmtstate.TimeoutInfo {
+	if cs.config.LegacyPacing {
+		t.TimeoutCommit = cs.config.LegacyPacingTimeoutCommit
+		t.DelayedPrecommitTimeout = cs.config.LegacyPacingDelayedPrecommitTimeout
+		t.DynamicTimeoutCommit = 0
+	}
+	return t
 }
 
 // skipTimeoutCommit reports whether all precommits may start round 0 early; never
@@ -911,19 +923,19 @@ func (cs *State) updateToState(state sm.State) {
 		// cs.StartTime = state.LastBlockTime.Add(timeoutCommit)
 		if state.LastBlockHeight == 0 {
 			// Don't use cs.state.Timeouts.TimeoutCommit because that is zero
-			cs.rs.StartTime = cs.config.CommitWithCustomTimeout(cmttime.Now(), state.Timeouts.TimeoutCommit)
+			cs.rs.StartTime = cs.config.CommitWithCustomTimeout(cmttime.Now(), cs.pacing(state.Timeouts).TimeoutCommit)
 		} else {
-			cs.rs.StartTime = cs.config.CommitWithCustomTimeout(cmttime.Now(), cs.state.Timeouts.TimeoutCommit)
+			cs.rs.StartTime = cs.config.CommitWithCustomTimeout(cmttime.Now(), cs.pacing(cs.state.Timeouts).TimeoutCommit)
 		}
 
 	} else {
 		if state.LastBlockHeight == 0 {
-			cs.rs.StartTime = cs.config.CommitWithCustomTimeout(cs.rs.CommitTime, state.Timeouts.TimeoutCommit)
+			cs.rs.StartTime = cs.config.CommitWithCustomTimeout(cs.rs.CommitTime, cs.pacing(state.Timeouts).TimeoutCommit)
 		} else {
-			cs.rs.StartTime = cs.config.CommitWithCustomTimeout(cs.rs.CommitTime, cs.state.Timeouts.TimeoutCommit)
+			cs.rs.StartTime = cs.config.CommitWithCustomTimeout(cs.rs.CommitTime, cs.pacing(cs.state.Timeouts).TimeoutCommit)
 		}
 	}
-	cs.applyDynamicTimeoutCommit(prevStartTime, state.Timeouts.DynamicTimeoutCommit)
+	cs.applyDynamicTimeoutCommit(prevStartTime, cs.pacing(state.Timeouts).DynamicTimeoutCommit)
 
 	cs.rs.Validators = validators
 	cs.rs.Proposal = nil
@@ -2307,7 +2319,8 @@ const KMSSigningDelay = 200 * time.Millisecond
 // If the application's DelayedPrecommitTimeout is set to 0, no precommit wait is done.
 // When catching up on block data, returns 0 to speed up block processing.
 func (cs *State) precommitDelay() time.Duration {
-	if cs.state.Timeouts.DelayedPrecommitTimeout == 0 {
+	delayed := cs.pacing(cs.state.Timeouts).DelayedPrecommitTimeout
+	if delayed == 0 {
 		// setting 0 as a special case not to reschedule the pre-commit
 		return 0
 	}
@@ -2315,7 +2328,7 @@ func (cs *State) precommitDelay() time.Duration {
 	if cs.propagator.IsCatchingUp() {
 		return 0
 	}
-	precommitVoteTime := cs.rs.StartTime.Add(cs.state.Timeouts.DelayedPrecommitTimeout)
+	precommitVoteTime := cs.rs.StartTime.Add(delayed)
 	waitTime := time.Until(precommitVoteTime)
 	if _, ok := cs.privValidator.(*privval.SignerClient); ok {
 		waitTime = waitTime - KMSSigningDelay

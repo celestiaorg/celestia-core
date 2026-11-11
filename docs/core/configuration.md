@@ -583,6 +583,31 @@ dynamic floor return a short `timeout_commit` (celestia-app v11: 100ms, a window
 for late precommits; `0` means "use `config.toml`") and a delayed precommit
 timeout of `0`.
 
+### Disaster recovery: legacy pacing
+
+If dynamic pacing misbehaves on a live network, validators can return to the
+legacy rule without an application release by setting, in `[consensus]`:
+
+```toml
+legacy_pacing = true
+legacy_pacing_timeout_commit = "100ms"
+legacy_pacing_delayed_precommit_timeout = "550ms"
+```
+
+The node then ignores the application's `dynamic_timeout_commit` and uses these
+two values instead of the application's `timeout_commit` and delayed precommit
+timeout; everything else, including stored state, is unchanged. The interval is
+then about `timeout_commit + delayed precommit timeout + one precommit round`;
+the defaults give about the same block time as the 800 ms dynamic floor.
+
+Pacing is local timing, so the switch is safe in a mixed network, but it only
+slows the chain once validators with more than 1/3 of the stake use it: every
+height then waits for one of their delayed precommits. Below 1/3, the others
+commit without them, and because the delayed precommit holds the node's
+consensus routine, these validators fall behind and miss most of their
+signatures. Coordinate the switch, apply it with a rolling restart (restarting
+all validators at once can halt the chain), and revert the same way.
+
 ### The adverse effect of using inconsistent `timeout_propose` in a network
 
 Here's an interesting question. What happens if a particular validator sets a
