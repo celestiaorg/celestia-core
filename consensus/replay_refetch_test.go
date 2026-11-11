@@ -105,8 +105,9 @@ func TestWALJournalsOnlyAcceptedProposal(t *testing.T) {
 	require.Equal(t, prop.Signature, journaled[0].Signature)
 }
 
-// Replaying a lock without its bytes asks the propagator for them, leaving the round's proposal alone.
-func TestReplayLockInfoRefetchesBytes(t *testing.T) {
+// Replaying a lock without its bytes leaves the propagator and the round's proposal alone;
+// OnStart refetches the final lock once replay is done.
+func TestReplayLockInfoDefersRefetch(t *testing.T) {
 	cs, _ := randState(1)
 	rec := &callRecorder{Propagator: cs.propagator}
 	cs.propagator = rec
@@ -114,8 +115,60 @@ func TestReplayLockInfoRefetchesBytes(t *testing.T) {
 	li := LockInfo{Height: 1, Round: 0, BlockID: types.BlockID{Hash: cmtrand.Bytes(32), PartSetHeader: psh}}
 
 	require.NoError(t, cs.readReplayMessage(&TimedWALMessage{Msg: li}, nil))
+	require.EqualValues(t, 0, cs.GetRoundState().LockedRound)
 	require.Nil(t, cs.GetRoundState().ProposalBlockParts)
-	require.Equal(t, []propagatorCall{{commitment: true, height: 1, round: 0, psh: psh}}, rec.snapshot())
+	require.Empty(t, rec.snapshot())
+}
+
+// A node restores its lock by ID and refetches the block once, for the final lock: after
+// a relock at round 1 only that round is asked for, after an unlock nothing is.
+func TestRestoredLockRefetchedOnce(t *testing.T) {
+	for _, relock := range []bool{true, false} {
+		t.Run(fmt.Sprintf("relock=%v", relock), func(t *testing.T) {
+			f := newLockFixture(t, true, false)
+			cs1 := f.newState()
+			newRoundCh, voteCh := startRestarted(t, cs1)
+			_, block, parts := f.lockOnX(t, cs1)
+			xID := types.BlockID{Hash: block.Hash(), PartSetHeader: parts.Header()}
+			nextVote(t, voteCh, 1, 0, cmtproto.PrecommitType)
+			f.moveToRound1(t, cs1, newRoundCh)
+			if relock {
+				prop := types.NewProposal(1, 1, 0, xID)
+				pp := prop.ToProto()
+				require.NoError(t, f.vss[f.p1].SignProposal(cs1.state.ChainID, pp))
+				prop.Signature = pp.Signature
+				require.NoError(t, cs1.SetProposalAndBlock(prop, block, parts, "peer"))
+				signAddVotes(cs1, cmtproto.PrevoteType, xID.Hash, xID.PartSetHeader, false, f.others...)
+			} else {
+				signAddVotes(cs1, cmtproto.PrevoteType, nil, types.PartSetHeader{}, false, f.others...)
+			}
+			nextVote(t, voteCh, 1, 1, cmtproto.PrecommitType)
+			rs := cs1.GetRoundState()
+			require.Equal(t, relock, rs.IsLocked())
+			require.NoError(t, cs1.Stop())
+			cs1.Wait()
+
+			cs := f.newState()
+			rec := &callRecorder{Propagator: cs.propagator}
+			cs.propagator = rec
+			startRestarted(t, cs)
+			var refetches []propagatorCall
+			for _, c := range rec.snapshot() {
+				if c.commitment {
+					refetches = append(refetches, c)
+				}
+			}
+			rs = cs.GetRoundState()
+			if relock {
+				require.EqualValues(t, 1, rs.LockedRound)
+				require.Nil(t, rs.LockedBlock)
+				require.Equal(t, []propagatorCall{{commitment: true, height: 1, round: 1, psh: xID.PartSetHeader}}, refetches)
+			} else {
+				require.False(t, rs.IsLocked())
+				require.Empty(t, refetches)
+			}
+		})
+	}
 }
 
 // A validator that prevoted a peer's block restarts with the proposal, so the

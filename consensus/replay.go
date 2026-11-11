@@ -122,11 +122,7 @@ func (cs *State) applyLockInfo(li LockInfo) {
 		if cs.rs.ProposalBlockParts == nil || cs.rs.ProposalBlockParts.HasHeader(li.BlockID.PartSetHeader) {
 			cs.rs.ProposalBlock, cs.rs.ProposalBlockParts = block, parts
 		}
-		return
 	}
-	// Refetch the bytes for the lock round; fillLockFromPropagator takes them, whatever the round by then.
-	psh := li.BlockID.PartSetHeader
-	cs.propagator.AddCommitment(li.Height, li.Round, &psh)
 }
 
 // Replay only those messages since the last block.  `timeoutRoutine` should
