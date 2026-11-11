@@ -1247,6 +1247,12 @@ func (cs *State) handleMsg(mi msgInfo) {
 		_ = cs.setProposal(msg.Proposal)
 
 	case *BlockPartMessage:
+		// a lock-round part of another block than the current proposal only wakes the lock fill.
+		if cs.rs.IsLocked() && cs.rs.LockedBlock == nil && msg.Round == cs.rs.LockedRound &&
+			msg.Round != cs.rs.Round && !cs.rs.ProposalBlockParts.HasHeader(cs.rs.LockedBlockID.PartSetHeader) {
+			cs.fillLockFromPropagator()
+			break
+		}
 		// if the proposal is complete, we'll enterPrevote or tryFinalizeCommit
 		added, _ = cs.addProposalBlockPart(msg, peerID)
 		cs.fillLockFromPropagator()
@@ -2001,7 +2007,7 @@ func (cs *State) enterPrecommit(height int64, round int32) {
 	}
 
 	// If +2/3 prevoted for proposal block, stage and precommit it
-	if cs.haveBlock(round, blockID) {
+	if cs.useHeldBlock(round, blockID) {
 		logger.Debug("precommit step; +2/3 prevoted proposal block; locking", "hash", blockID.Hash)
 
 		// Validate the block.
@@ -2111,7 +2117,7 @@ func (cs *State) enterCommit(height int64, commitRound int32) {
 	}
 
 	// If we don't have the block being committed, set up to get it.
-	if !cs.haveBlock(commitRound, blockID) {
+	if !cs.useHeldBlock(commitRound, blockID) {
 		// Whatever block we were holding was not built from the part set being
 		// committed, so it cannot be the block to finalize even if it happens
 		// to hash to blockID.Hash. Drop it before announcing the new round
@@ -2957,7 +2963,8 @@ func (cs *State) addVote(vote *types.Vote, peerID p2p.ID) (added bool, err error
 			// Update Valid* if we can.
 			// NOTE: our proposal block may be nil or not what received a polka..
 			if len(blockID.Hash) != 0 && (cs.rs.ValidRound < vote.Round) && (vote.Round == cs.rs.Round) {
-				partsMatch := cs.haveBlock(vote.Round, blockID) || cs.rs.ProposalBlockParts.HasHeader(blockID.PartSetHeader)
+				held := cs.useHeldBlock(vote.Round, blockID)
+				partsMatch := held || cs.rs.ProposalBlockParts.HasHeader(blockID.PartSetHeader)
 				if cs.rs.ProposalBlock.HashesTo(blockID.Hash) && partsMatch {
 					cs.Logger.Debug("updating valid block because of POL", "valid_round", cs.rs.ValidRound, "pol_round", vote.Round)
 					cs.rs.ValidRound = vote.Round
@@ -3004,7 +3011,8 @@ func (cs *State) addVote(vote *types.Vote, peerID p2p.ID) (added bool, err error
 			cs.handlePrevoteQuorum(height, vote.Round)
 
 		case cs.rs.Round == vote.Round && cs.isProposalComplete():
-			// A held block made the proposal block above, as its last part arriving would have.
+			// The proposal is complete but prevote was never entered: a held block became the
+			// proposal block, or the proposal arrived after its parts.
 			cs.enterPrevote(height, cs.rs.Round)
 
 		case cs.rs.Proposal != nil && 0 <= cs.rs.Proposal.POLRound && cs.rs.Proposal.POLRound == vote.Round:
@@ -3487,9 +3495,9 @@ func (cs *State) fillLockFromPropagator() {
 	cs.fillLockBytes(block, parts)
 }
 
-// haveBlock reports whether the proposal block is blockID's, making a matching locked or
+// useHeldBlock reports whether the proposal block is blockID's, making a matching locked or
 // valid block the proposal block, as if its parts had arrived, and sharing it for round.
-func (cs *State) haveBlock(round int32, blockID types.BlockID) bool {
+func (cs *State) useHeldBlock(round int32, blockID types.BlockID) bool {
 	if blockMatchesBlockID(cs.rs.ProposalBlock, cs.rs.ProposalBlockParts, blockID) {
 		return true
 	}

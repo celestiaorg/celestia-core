@@ -4,9 +4,11 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"strings"
 	"testing"
 	"time"
 
+	"github.com/go-kit/kit/metrics"
 	"github.com/stretchr/testify/require"
 
 	"github.com/cometbft/cometbft/abci/example/kvstore"
@@ -261,6 +263,29 @@ func (f *lockRoundFeeder) deliver(round int32, parts *types.PartSet, send bool) 
 	}
 }
 
+// labelCounter counts per label values; With views share the counts.
+type labelCounter struct {
+	mtx    *cmtsync.Mutex
+	counts map[string]float64
+	lvs    string
+}
+
+func (c *labelCounter) With(lvs ...string) metrics.Counter {
+	return &labelCounter{mtx: c.mtx, counts: c.counts, lvs: c.lvs + strings.Join(lvs, "=")}
+}
+
+func (c *labelCounter) Add(delta float64) {
+	c.mtx.Lock()
+	defer c.mtx.Unlock()
+	c.counts[c.lvs] += delta
+}
+
+func (c *labelCounter) get(lvs ...string) float64 {
+	c.mtx.Lock()
+	defer c.mtx.Unlock()
+	return c.counts[strings.Join(lvs, "=")]
+}
+
 // A node locked by ID whose lock-round parts arrive only after it left that round (live, during
 // replay or with the current round's proposal complete) fills the lock and re-proposes it with its
 // lock round as POL. A block the propagator completed without passing parts on is taken when it proposes.
@@ -294,6 +319,8 @@ func TestRestartedLockFilledInLaterRound(t *testing.T) {
 			feed := &lockRoundFeeder{Propagator: cs.propagator, partChan: make(chan types.PartInfo, parts.Total())}
 			rec := &callRecorder{Propagator: feed}
 			cs.propagator = rec
+			received := &labelCounter{mtx: &cmtsync.Mutex{}, counts: map[string]float64{}}
+			cs.metrics.BlockGossipPartsReceived = received
 			newRoundCh, voteCh := startRestarted(t, cs)
 			if !inReplay {
 				f.moveToRound1(t, cs, newRoundCh)
@@ -314,6 +341,7 @@ func TestRestartedLockFilledInLaterRound(t *testing.T) {
 					rs := cs.GetRoundState()
 					return blockMatchesBlockID(rs.LockedBlock, rs.LockedBlockParts, xID)
 				}, 5*time.Second, 10*time.Millisecond)
+				require.Zero(t, received.get("matches_current", "false"), "lock-round parts went through addProposalBlockPart")
 			}
 
 			p := f.nextOwnProposal(t, cs, newRoundCh)
@@ -483,11 +511,11 @@ func TestPolkaOnHeldBlockPrevotesAtOnce(t *testing.T) {
 }
 
 // A polka or commit for the locked block makes it the proposal block, though the valid block differs.
-func TestHaveBlockTakesLockedBlock(t *testing.T) {
+func TestUseHeldBlockTakesLockedBlock(t *testing.T) {
 	cs, _ := randState(1)
 	b1, p1, _, _ := lockUnderNewerValid(t, cs)
 	cs.rs.LockedBlock, cs.rs.LockedBlockParts = b1, p1
-	require.True(t, cs.haveBlock(4, cs.rs.LockedBlockID))
+	require.True(t, cs.useHeldBlock(4, cs.rs.LockedBlockID))
 	require.Same(t, b1, cs.rs.ProposalBlock)
 	require.Same(t, p1, cs.rs.ProposalBlockParts)
 }
