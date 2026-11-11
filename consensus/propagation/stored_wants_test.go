@@ -31,6 +31,7 @@ type recordingPeer struct {
 	capacity int
 	attempts int
 	sent     []*propproto.RecoveryPart
+	wants    int
 }
 
 func newRecordingPeer(capacity int) *recordingPeer {
@@ -40,6 +41,10 @@ func newRecordingPeer(capacity int) *recordingPeer {
 func (rp *recordingPeer) TrySend(e p2p.Envelope) bool {
 	rp.mtx.Lock()
 	defer rp.mtx.Unlock()
+	if _, ok := e.Message.(*propproto.WantParts); ok {
+		rp.wants++
+		return true
+	}
 	part, ok := e.Message.(*propproto.RecoveryPart)
 	if !ok {
 		return true
@@ -50,6 +55,12 @@ func (rp *recordingPeer) TrySend(e p2p.Envelope) bool {
 	}
 	rp.sent = append(rp.sent, part)
 	return true
+}
+
+func (rp *recordingPeer) sentWants() int {
+	rp.mtx.Lock()
+	defer rp.mtx.Unlock()
+	return rp.wants
 }
 
 func (rp *recordingPeer) sentParts() []*propproto.RecoveryPart {
