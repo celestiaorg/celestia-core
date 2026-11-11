@@ -3384,8 +3384,12 @@ func (cs *State) clearLock() {
 }
 
 // writeLockInfo journals the current lock, buffered. Called after signing, it rides
-// the precommit's WriteSync, which runs before the vote is handled or gossiped.
+// the precommit's WriteSync, which runs before the vote is handled or gossiped. Replay
+// re-derives locks from the WAL; rewriting them appends stale records that replay reads back.
 func (cs *State) writeLockInfo() {
+	if cs.replayMode {
+		return
+	}
 	li := LockInfo{Height: cs.rs.Height, Round: cs.rs.LockedRound, BlockID: cs.rs.LockedBlockID, BlockTime: cs.rs.LockedBlockTime}
 	if err := cs.wal.Write(li); err != nil {
 		panic(fmt.Errorf(

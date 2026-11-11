@@ -561,3 +561,73 @@ func dropLockRecords(t *testing.T, walFile string) int {
 	require.NoError(t, out.Close())
 	return dropped
 }
+
+func countLockRecords(t *testing.T, walFile string) int {
+	n := 0
+	for _, m := range walMsgs(t, walFile) {
+		if _, ok := m.Msg.(LockInfo); ok {
+			n++
+		}
+	}
+	return n
+}
+
+// Lock X at r0, unlock and lock Y at r1, restart. Replay re-runs both transitions; each
+// signVote flushes the WAL, so records replay writes are read back by the same replay.
+func TestReplayDoesNotRewriteLockRecords(t *testing.T) {
+	for _, onlyInternal := range []bool{true, false} {
+		t.Run(fmt.Sprintf("only_internal_wal=%v", onlyInternal), func(t *testing.T) {
+			f := newLockFixture(t, onlyInternal, false)
+			walFile := f.config.Consensus.WalFile()
+			cs := f.newState()
+			newRoundCh, voteCh := startRestarted(t, cs)
+			_, blockX, partsX := f.lockOnX(t, cs)
+			nextVote(t, voteCh, 1, 0, cmtproto.PrecommitType)
+			f.moveToRound1(t, cs, newRoundCh)
+			blockY, partsY := f.proposeFreshY(t, cs)
+			xID := types.BlockID{Hash: blockX.Hash(), PartSetHeader: partsX.Header()}
+			require.Equal(t, xID, nextVote(t, voteCh, 1, 1, cmtproto.PrevoteType).BlockID)
+			signAddVotes(cs, cmtproto.PrevoteType, blockY.Hash(), partsY.Header(), false, f.others...)
+			yID := types.BlockID{Hash: blockY.Hash(), PartSetHeader: partsY.Header()}
+			require.Equal(t, yID, nextVote(t, voteCh, 1, 1, cmtproto.PrecommitType).BlockID)
+			require.NoError(t, cs.Stop())
+			cs.Wait()
+			nLocks := countLockRecords(t, walFile)
+
+			cs = f.newState()
+			newRoundCh, voteCh = startRestarted(t, cs)
+			rs := cs.GetRoundState()
+			require.EqualValues(t, 1, rs.LockedRound, "replay ended on a stale lock record")
+			require.Equal(t, yID, rs.LockedBlockID)
+
+			// In the next round a peer proposes, a fresh block Z without POL: still prevote Y.
+			ours, _ := f.state.Validators.GetByAddress(cs.privValidatorPubKey.Address())
+			r, proposer := int32(1), int32(-1)
+			for proposer < 0 || proposer == ours {
+				signAddVotes(cs, cmtproto.PrecommitType, nil, types.PartSetHeader{}, false, f.others...)
+				r++
+				waitRound(t, newRoundCh, 1, r)
+				incrementRound(f.vss...)
+				vals := f.state.Validators.Copy()
+				vals.IncrementProposerPriority(r)
+				proposer, _ = f.state.Validators.GetByAddress(vals.GetProposer().Address)
+			}
+			require.NoError(t, assertMempool(cs.txNotifier).CheckTx(kvstore.NewTx("lock", "z"), nil, mempl.TxInfo{}))
+			cs.mtx.Lock()
+			blockZ, _, err := cs.createProposalBlock(context.Background())
+			cs.mtx.Unlock()
+			require.NoError(t, err)
+			partsZ, err := blockZ.MakePartSet(types.BlockPartSizeBytes)
+			require.NoError(t, err)
+			propZ := types.NewProposal(1, r, -1, types.BlockID{Hash: blockZ.Hash(), PartSetHeader: partsZ.Header()})
+			p := propZ.ToProto()
+			require.NoError(t, f.vss[proposer].SignProposal(cs.state.ChainID, p))
+			propZ.Signature = p.Signature
+			require.NoError(t, cs.SetProposalAndBlock(propZ, blockZ, partsZ, "peer"))
+			require.Equal(t, yID, nextVote(t, voteCh, 1, r, cmtproto.PrevoteType).BlockID, "prevoted Z while locked on Y")
+			require.NoError(t, cs.Stop())
+			cs.Wait()
+			require.Equal(t, nLocks, countLockRecords(t, walFile), "replay wrote lock records")
+		})
+	}
+}
