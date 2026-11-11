@@ -681,14 +681,22 @@ func (cs *State) dynamicTimeoutCommit() time.Duration {
 }
 
 // pacing returns the app's pacing timeouts, or with legacy_pacing set the configured
-// legacy ones and no dynamic floor. The persisted state is never changed.
+// delayed precommit timeout and no dynamic floor. The persisted state is never changed.
 func (cs *State) pacing(t cmtstate.TimeoutInfo) cmtstate.TimeoutInfo {
 	if cs.config.LegacyPacing {
-		t.TimeoutCommit = cs.config.LegacyPacingTimeoutCommit
 		t.DelayedPrecommitTimeout = cs.config.LegacyPacingDelayedPrecommitTimeout
 		t.DynamicTimeoutCommit = 0
 	}
 	return t
+}
+
+// afterTimeoutCommit returns t plus the timeout commit. An app value of 0 falls back
+// to config; a legacy_pacing value is used as is, so 0 means no wait.
+func (cs *State) afterTimeoutCommit(t time.Time, timeouts cmtstate.TimeoutInfo) time.Time {
+	if cs.config.LegacyPacing {
+		return t.Add(cs.config.LegacyPacingTimeoutCommit)
+	}
+	return cs.config.CommitWithCustomTimeout(t, timeouts.TimeoutCommit)
 }
 
 // skipTimeoutCommit reports whether all precommits may start round 0 early; never
@@ -923,16 +931,16 @@ func (cs *State) updateToState(state sm.State) {
 		// cs.StartTime = state.LastBlockTime.Add(timeoutCommit)
 		if state.LastBlockHeight == 0 {
 			// Don't use cs.state.Timeouts.TimeoutCommit because that is zero
-			cs.rs.StartTime = cs.config.CommitWithCustomTimeout(cmttime.Now(), cs.pacing(state.Timeouts).TimeoutCommit)
+			cs.rs.StartTime = cs.afterTimeoutCommit(cmttime.Now(), state.Timeouts)
 		} else {
-			cs.rs.StartTime = cs.config.CommitWithCustomTimeout(cmttime.Now(), cs.pacing(cs.state.Timeouts).TimeoutCommit)
+			cs.rs.StartTime = cs.afterTimeoutCommit(cmttime.Now(), cs.state.Timeouts)
 		}
 
 	} else {
 		if state.LastBlockHeight == 0 {
-			cs.rs.StartTime = cs.config.CommitWithCustomTimeout(cs.rs.CommitTime, cs.pacing(state.Timeouts).TimeoutCommit)
+			cs.rs.StartTime = cs.afterTimeoutCommit(cs.rs.CommitTime, state.Timeouts)
 		} else {
-			cs.rs.StartTime = cs.config.CommitWithCustomTimeout(cs.rs.CommitTime, cs.pacing(cs.state.Timeouts).TimeoutCommit)
+			cs.rs.StartTime = cs.afterTimeoutCommit(cs.rs.CommitTime, cs.state.Timeouts)
 		}
 	}
 	cs.applyDynamicTimeoutCommit(prevStartTime, cs.pacing(state.Timeouts).DynamicTimeoutCommit)

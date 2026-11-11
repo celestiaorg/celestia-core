@@ -30,6 +30,18 @@ func TestLegacyPacingUsesConfigTimeouts(t *testing.T) {
 	require.Zero(t, cs.precommitDelay(), "without the switch the app's delayed precommit timeout (0) applies")
 }
 
+func TestLegacyPacingZeroTimeoutCommitMeansNoWait(t *testing.T) {
+	cs, vss := pacedState(t, time.Now())
+	cs.config.TimeoutCommit = time.Second
+	cs.config.LegacyPacing = true
+	cs.config.LegacyPacingTimeoutCommit = 0
+
+	commit := time.Now()
+	pacingCommitHeight(t, cs, vss, 0, commit)
+
+	require.Equal(t, commit, cs.rs.StartTime, "an explicit legacy 0 must not fall back to config timeout_commit")
+}
+
 // medianInterval starts nodes with legacy pacing on the given ones and returns
 // the median commit interval seen by the last node (never legacy) over heights 3 to target.
 func medianInterval(t *testing.T, legacy []bool, target int64) time.Duration {
