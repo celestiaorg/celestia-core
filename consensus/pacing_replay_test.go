@@ -21,23 +21,15 @@ import (
 	"github.com/cometbft/cometbft/types"
 )
 
-func TestPacingWALReplayRestoresRoundBeforeStartupDeadline(t *testing.T) {
+// pacingReplayState returns a node whose startup deadline is an hour away, so
+// replay never depends on timing, writing to a fresh WAL.
+func pacingReplayState(t *testing.T) (*State, []types.PrivValidator, WAL) {
+	t.Helper()
 	state, privVals := randGenesisState(4, false, 10, test.ConsensusParams())
-	// NewState establishes a new local deadline on restart. Make it long
-	// enough that the test does not depend on how quickly replay executes.
 	state.Timeouts.DynamicTimeoutCommit = time.Hour
 	cs := newState(state, privVals[0], kvstore.NewInMemoryApplication())
 	t.Cleanup(func() { require.NoError(t, cs.eventBus.Stop()) })
 	require.True(t, time.Now().Before(cs.rs.StartTime))
-
-	block, parts, err := cs.createProposalBlock(context.Background())
-	require.NoError(t, err)
-	proposal := types.NewProposal(cs.rs.Height, 0, -1,
-		types.BlockID{Hash: block.Hash(), PartSetHeader: parts.Header()})
-	p := proposal.ToProto()
-	require.NoError(t, cs.privValidator.SignProposal(cs.state.ChainID, p))
-	proposal.Signature = p.Signature
-	cs.SetPrivValidator(nil)
 
 	wal, err := NewWAL(filepath.Join(t.TempDir(), "wal"))
 	require.NoError(t, err)
@@ -47,13 +39,20 @@ func TestPacingWALReplayRestoresRoundBeforeStartupDeadline(t *testing.T) {
 		wal.Wait()
 	})
 	cs.wal = wal
-	// This sequence was received before the crash: the height began and
-	// then a complete signed proposal arrived, taking consensus to Prevote.
-	require.NoError(t, wal.Write(timeoutInfo{
-		Height: cs.rs.Height,
-		Round:  0,
-		Step:   cstypes.RoundStepNewHeight,
-	}))
+	return cs, privVals, wal
+}
+
+// pacingWriteProposal writes the node's signed round 0 proposal and its parts to
+// wal, then stops the node signing so replay alone drives it.
+func pacingWriteProposal(t *testing.T, cs *State, wal WAL) (*types.Block, *types.PartSet) {
+	t.Helper()
+	block, parts, err := cs.createProposalBlock(context.Background())
+	require.NoError(t, err)
+	proposal := types.NewProposal(cs.rs.Height, 0, -1,
+		types.BlockID{Hash: block.Hash(), PartSetHeader: parts.Header()})
+	p := proposal.ToProto()
+	require.NoError(t, cs.privValidator.SignProposal(cs.state.ChainID, p))
+	proposal.Signature = p.Signature
 	require.NoError(t, wal.Write(msgInfo{Msg: &ProposalMessage{Proposal: proposal}}))
 	for i := uint32(0); i < parts.Total(); i++ {
 		require.NoError(t, wal.Write(msgInfo{Msg: &BlockPartMessage{
@@ -62,6 +61,16 @@ func TestPacingWALReplayRestoresRoundBeforeStartupDeadline(t *testing.T) {
 			Part:   parts.GetPart(int(i)),
 		}}))
 	}
+	cs.SetPrivValidator(nil)
+	return block, parts
+}
+
+func TestPacingWALReplayRestoresRoundBeforeStartupDeadline(t *testing.T) {
+	cs, _, wal := pacingReplayState(t)
+	// Before the crash the height began, then a complete signed proposal
+	// arrived, taking consensus to Prevote.
+	require.NoError(t, wal.Write(timeoutInfo{Height: cs.rs.Height, Round: 0, Step: cstypes.RoundStepNewHeight}))
+	pacingWriteProposal(t, cs, wal)
 	require.NoError(t, wal.FlushAndSync())
 
 	require.NoError(t, cs.catchupReplay(cs.rs.Height))
@@ -72,21 +81,8 @@ func TestPacingWALReplayRestoresRoundBeforeStartupDeadline(t *testing.T) {
 }
 
 func TestPacingWALReplayEntersRoundZeroBeforeStartupDeadline(t *testing.T) {
-	state, privVals := randGenesisState(4, false, 10, test.ConsensusParams())
-	state.Timeouts.DynamicTimeoutCommit = time.Hour
-	cs := newState(state, privVals[0], kvstore.NewInMemoryApplication())
-	t.Cleanup(func() { require.NoError(t, cs.eventBus.Stop()) })
+	cs, _, wal := pacingReplayState(t)
 	cs.SetPrivValidator(nil)
-	require.True(t, time.Now().Before(cs.rs.StartTime))
-
-	wal, err := NewWAL(filepath.Join(t.TempDir(), "wal"))
-	require.NoError(t, err)
-	require.NoError(t, wal.Start())
-	t.Cleanup(func() {
-		require.NoError(t, wal.Stop())
-		wal.Wait()
-	})
-	cs.wal = wal
 	// The height had started before the crash, so replay must not wait again.
 	require.NoError(t, wal.Write(timeoutInfo{Height: cs.rs.Height, Round: 0, Step: cstypes.RoundStepNewHeight}))
 	require.NoError(t, wal.FlushAndSync())
@@ -96,40 +92,11 @@ func TestPacingWALReplayEntersRoundZeroBeforeStartupDeadline(t *testing.T) {
 }
 
 func TestPacingWALReplayRestoresLegacyEarlyProposalLock(t *testing.T) {
-	state, privVals := randGenesisState(4, false, 10, test.ConsensusParams())
-	state.Timeouts.DynamicTimeoutCommit = time.Hour
-	cs := newState(state, privVals[0], kvstore.NewInMemoryApplication())
-	t.Cleanup(func() { require.NoError(t, cs.eventBus.Stop()) })
-	require.True(t, time.Now().Before(cs.rs.StartTime))
-
-	block, parts, err := cs.createProposalBlock(context.Background())
-	require.NoError(t, err)
-	proposal := types.NewProposal(cs.rs.Height, 0, -1,
-		types.BlockID{Hash: block.Hash(), PartSetHeader: parts.Header()})
-	p := proposal.ToProto()
-	require.NoError(t, cs.privValidator.SignProposal(cs.state.ChainID, p))
-	proposal.Signature = p.Signature
-	cs.SetPrivValidator(nil)
-
-	wal, err := NewWAL(filepath.Join(t.TempDir(), "wal"))
-	require.NoError(t, err)
-	require.NoError(t, wal.Start())
-	t.Cleanup(func() {
-		require.NoError(t, wal.Stop())
-		wal.Wait()
-	})
-	cs.wal = wal
+	cs, privVals, wal := pacingReplayState(t)
 	// Before the pacing fix, a complete proposal arriving during NewHeight
-	// entered Prevote without a NewHeight timeout. A following prevote quorum
-	// locked this block, and the node could crash after its own precommit.
-	require.NoError(t, wal.Write(msgInfo{Msg: &ProposalMessage{Proposal: proposal}}))
-	for i := uint32(0); i < parts.Total(); i++ {
-		require.NoError(t, wal.Write(msgInfo{Msg: &BlockPartMessage{
-			Height: cs.rs.Height,
-			Round:  0,
-			Part:   parts.GetPart(int(i)),
-		}}))
-	}
+	// entered Prevote without a NewHeight timeout; a prevote quorum then locked
+	// it, and the node could crash after its own precommit.
+	block, parts := pacingWriteProposal(t, cs, wal)
 	validators := make([]*validatorStub, len(privVals))
 	for i, pv := range privVals {
 		validators[i] = newValidatorStub(pv, int32(i))
