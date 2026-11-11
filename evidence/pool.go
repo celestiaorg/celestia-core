@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"strconv"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -24,8 +25,10 @@ const (
 	baseKeyCommitted = byte(0x00)
 	baseKeyPending   = byte(0x01)
 	// baseKeyCommittedDuplicateVote marks that duplicate vote evidence for a
-	// given (height, round, vote type, validator address) has been committed,
-	// regardless of which exact encoding of that evidence was committed.
+	// given (height, validator address) has been committed, regardless of the
+	// round, vote type or encoding of the evidence that was committed. The
+	// value is the evidence time, so that markers can be pruned once evidence
+	// at that height has expired.
 	baseKeyCommittedDuplicateVote = byte(0x02)
 )
 
@@ -58,7 +61,9 @@ type Pool struct {
 	dveMtx sync.Mutex
 	// pendingDuplicateVotes indexes pending DuplicateVoteEvidence by
 	// duplicateVoteKey so that at most one piece of evidence is admitted per
-	// equivocation.
+	// validator and height. One piece is enough to punish the validator, and
+	// this bounds pending duplicate vote evidence by the evidence age window
+	// and the validator set instead of by what an attacker can sign.
 	pendingDuplicateVotes map[string]types.Evidence
 }
 
@@ -91,19 +96,25 @@ func NewPool(evidenceDB dbm.DB, stateDB sm.Store, blockStore BlockStore) (*Pool,
 	}
 	kept := evList[:0]
 	for _, ev := range evList {
-		if dve, ok := ev.(*types.DuplicateVoteEvidence); ok {
-			key := duplicateVoteKey(dve)
-			if _, exists := pool.pendingDuplicateVotes[key]; exists {
-				// Pools written before pending duplicate vote evidence was
-				// deduplicated may hold several pieces of evidence for the same
-				// equivocation. Keep only the first.
-				pool.logger.Info("Removing pending evidence for an equivocation that is already pending", "ev", ev)
-				if err := pool.evidenceStore.Delete(keyPending(ev)); err != nil {
-					return nil, fmt.Errorf("cannot delete pending evidence: %w", err)
-				}
-				continue
+		// Drop pending evidence that is already committed. This can be left
+		// behind if the node stopped while committing it, or, for duplicate
+		// vote evidence, by pools written before it was deduplicated: those may
+		// also hold several pieces of evidence for one validator and height,
+		// of which only the first is kept.
+		drop := pool.isCommitted(ev)
+		if dve, ok := ev.(*types.DuplicateVoteEvidence); ok && !drop {
+			if pool.isDuplicateVoteKnownLocked(dve) {
+				drop = true
+			} else {
+				pool.pendingDuplicateVotes[duplicateVoteKey(dve)] = ev
 			}
-			pool.pendingDuplicateVotes[key] = ev
+		}
+		if drop {
+			pool.logger.Info("Removing pending evidence that is already committed or pending", "ev", ev)
+			if err := pool.evidenceStore.Delete(keyPending(ev)); err != nil {
+				return nil, fmt.Errorf("cannot delete pending evidence: %w", err)
+			}
+			continue
 		}
 		kept = append(kept, ev)
 	}
@@ -160,6 +171,7 @@ func (evpool *Pool) Update(state sm.State, ev types.EvidenceList) {
 		state.LastBlockTime.After(evpool.pruningTime) {
 		evpool.pruningHeight, evpool.pruningTime = evpool.removeExpiredPendingEvidence()
 	}
+	evpool.removeExpiredCommittedDuplicateVotes()
 }
 
 // AddEvidence checks the evidence is valid and adds it to the pool.
@@ -180,9 +192,13 @@ func (evpool *Pool) AddEvidence(ev types.Evidence) error {
 		return nil
 	}
 
+	// Duplicate vote evidence for a validator and height that already has
+	// evidence pending or committed is ignored before it is verified. This
+	// keeps the cost of resubmitting variants low. As a result, a peer that
+	// sends such evidence with invalid signatures is not punished.
 	dve, isDuplicateVote := ev.(*types.DuplicateVoteEvidence)
 	if isDuplicateVote && evpool.isDuplicateVoteKnown(dve) {
-		evpool.logger.Info("Evidence for this duplicate vote already pending or committed, ignoring this one", "ev", ev)
+		evpool.logger.Info("Evidence for this validator and height already pending or committed, ignoring this one", "ev", ev)
 		return nil
 	}
 
@@ -193,17 +209,21 @@ func (evpool *Pool) AddEvidence(ev types.Evidence) error {
 	}
 
 	if isDuplicateVote {
-		if err := evpool.verifyDuplicateVoteAdmission(dve); err != nil {
-			return types.NewErrInvalidEvidence(ev, err)
+		// Keep a canonical copy of the evidence. Fields not covered by the vote
+		// signatures are reset rather than rejected, so that honest peers
+		// relaying non-canonical but valid evidence are not disconnected.
+		canonical, err := evpool.canonicalDuplicateVote(dve)
+		if err != nil {
+			return fmt.Errorf("can't canonicalize evidence: %w", err)
 		}
 
 		// 2) Save to store and 3) add evidence to clist.
-		added, err := evpool.addPendingDuplicateVote(dve)
+		added, err := evpool.addPendingDuplicateVote(canonical)
 		if err != nil {
 			return fmt.Errorf("can't add evidence to pending list: %w", err)
 		}
 		if !added {
-			evpool.logger.Info("Evidence for this duplicate vote already pending or committed, ignoring this one", "ev", ev)
+			evpool.logger.Info("Evidence for this validator and height already pending or committed, ignoring this one", "ev", ev)
 			return nil
 		}
 	} else {
@@ -263,9 +283,14 @@ func (evpool *Pool) CheckEvidence(evList types.EvidenceList) error {
 			}
 
 			if dve, ok := ev.(*types.DuplicateVoteEvidence); ok {
-				// Only keep one pending piece of evidence per equivocation. This does not
-				// affect whether the block's evidence is considered valid.
-				if _, err := evpool.addPendingDuplicateVoteToStore(dve); err != nil {
+				// Only keep one canonical piece of evidence per validator and height
+				// pending. This does not affect whether the block's evidence is
+				// considered valid.
+				canonical, err := evpool.canonicalDuplicateVote(dve)
+				if err == nil {
+					_, err = evpool.addPendingDuplicateVoteToStore(canonical)
+				}
+				if err != nil {
 					evpool.logger.Error("Can't add evidence to pending list", "err", err, "ev", ev)
 				}
 			} else if err := evpool.addPendingEvidence(ev); err != nil {
@@ -392,9 +417,9 @@ func (evpool *Pool) removePendingEvidence(evidence types.Evidence) {
 	}
 }
 
-// isDuplicateVoteKnown returns true if evidence for the same equivocation
-// (height, round, vote type and validator address) as dve is already pending
-// or committed, possibly under a different hash.
+// isDuplicateVoteKnown returns true if duplicate vote evidence for the same
+// validator and height as dve is already pending or committed, possibly at a
+// different round or under a different hash.
 func (evpool *Pool) isDuplicateVoteKnown(dve *types.DuplicateVoteEvidence) bool {
 	evpool.dveMtx.Lock()
 	defer evpool.dveMtx.Unlock()
@@ -444,33 +469,32 @@ func (evpool *Pool) addPendingDuplicateVoteLocked(dve *types.DuplicateVoteEviden
 	return true, nil
 }
 
-// verifyDuplicateVoteAdmission performs checks, in addition to verify, on
-// DuplicateVoteEvidence received from peers or RPC before it is admitted to
-// the pool. These checks reject fields that are not covered by the vote
-// signatures, so that only the canonical form of the evidence is admitted.
-// They are not applied to evidence in blocks.
-func (evpool *Pool) verifyDuplicateVoteAdmission(dve *types.DuplicateVoteEvidence) error {
+// canonicalDuplicateVote returns a copy of dve with the fields that are not
+// covered by the vote signatures set to their canonical values: each vote's
+// ValidatorIndex is the validator's index in the validator set at the
+// evidence height, and vote extensions are removed. Evidence verification does
+// not use these fields, so the copy is valid whenever dve is. dve is not
+// modified, since it may belong to a block.
+func (evpool *Pool) canonicalDuplicateVote(dve *types.DuplicateVoteEvidence) (*types.DuplicateVoteEvidence, error) {
 	valSet, err := evpool.stateDB.LoadValidators(dve.Height())
 	if err != nil {
-		return err
+		return nil, err
 	}
 	idx, val := valSet.GetByAddress(dve.VoteA.ValidatorAddress)
 	if val == nil {
-		return fmt.Errorf("address %X was not a validator at height %d", dve.VoteA.ValidatorAddress, dve.Height())
+		return nil, fmt.Errorf("address %X was not a validator at height %d", dve.VoteA.ValidatorAddress, dve.Height())
 	}
-	chainID := evpool.State().ChainID
-	for _, vote := range []*types.Vote{dve.VoteA, dve.VoteB} {
-		if vote.ValidatorIndex != idx {
-			return fmt.Errorf("vote validator index %d does not match validator set index %d",
-				vote.ValidatorIndex, idx)
-		}
-		if len(vote.Extension) > 0 || len(vote.ExtensionSignature) > 0 {
-			if err := vote.VerifyExtension(chainID, val.PubKey); err != nil {
-				return fmt.Errorf("verifying vote extension: %w", err)
-			}
-		}
+	canonicalVote := func(v *types.Vote) *types.Vote {
+		c := *v
+		c.ValidatorIndex = idx
+		c.Extension = nil
+		c.ExtensionSignature = nil
+		return &c
 	}
-	return nil
+	canonical := *dve
+	canonical.VoteA = canonicalVote(dve.VoteA)
+	canonical.VoteB = canonicalVote(dve.VoteB)
+	return &canonical, nil
 }
 
 // markEvidenceAsCommitted processes all the evidence in the block, marking it as
@@ -478,45 +502,8 @@ func (evpool *Pool) verifyDuplicateVoteAdmission(dve *types.DuplicateVoteEvidenc
 func (evpool *Pool) markEvidenceAsCommitted(evidence types.EvidenceList) {
 	blockEvidenceMap := make(map[string]struct{}, len(evidence))
 	for _, ev := range evidence {
-		if dve, ok := ev.(*types.DuplicateVoteEvidence); ok {
-			// Record that this equivocation has been committed and take any pending
-			// evidence for it out of the index in one step, so that concurrent
-			// admission sees either the pending entry or the committed marker.
-			evpool.dveMtx.Lock()
-			if err := evpool.evidenceStore.Set(keyCommittedDuplicateVote(dve), []byte{}); err != nil {
-				evpool.logger.Error("Unable to save committed duplicate vote evidence", "err", err)
-			}
-			key := duplicateVoteKey(dve)
-			variant, exists := evpool.pendingDuplicateVotes[key]
-			delete(evpool.pendingDuplicateVotes, key)
-			evpool.dveMtx.Unlock()
-
-			// Remove pending evidence for the same equivocation that was
-			// committed under a different hash.
-			if exists && evMapKey(variant) != evMapKey(ev) {
-				evpool.removePendingEvidence(variant)
-				blockEvidenceMap[evMapKey(variant)] = struct{}{}
-			}
-		}
-
-		if evpool.isPending(ev) {
-			evpool.removePendingEvidence(ev)
-			blockEvidenceMap[evMapKey(ev)] = struct{}{}
-		}
-
-		// Add evidence to the committed list. As the evidence is stored in the block store
-		// we only need to record the height that it was saved at.
-		key := keyCommitted(ev)
-
-		h := gogotypes.Int64Value{Value: ev.Height()}
-		evBytes, err := proto.Marshal(&h)
-		if err != nil {
-			evpool.logger.Error("failed to marshal committed evidence", "err", err, "key(height/hash)", key)
-			continue
-		}
-
-		if err := evpool.evidenceStore.Set(key, evBytes); err != nil {
-			evpool.logger.Error("Unable to save committed evidence", "err", err, "key(height/hash)", key)
+		for _, removed := range evpool.commitEvidence(ev) {
+			blockEvidenceMap[evMapKey(removed)] = struct{}{}
 		}
 	}
 
@@ -524,6 +511,82 @@ func (evpool *Pool) markEvidenceAsCommitted(evidence types.EvidenceList) {
 	if len(blockEvidenceMap) != 0 {
 		evpool.removeEvidenceFromList(blockEvidenceMap)
 	}
+}
+
+// commitEvidence records ev as committed and deletes it from the pending store
+// in one write. For duplicate vote evidence it also records the validator and
+// height as committed and deletes any other pending evidence for them. It
+// returns the pending evidence that was deleted.
+//
+// dveMtx is held across the write so that concurrent admission sees either the
+// pending entry or the commit marker.
+func (evpool *Pool) commitEvidence(ev types.Evidence) []types.Evidence {
+	evpool.dveMtx.Lock()
+	defer evpool.dveMtx.Unlock()
+
+	batch := evpool.evidenceStore.NewBatch()
+	defer batch.Close()
+
+	var removed []types.Evidence
+	var dveKey string
+	dve, isDuplicateVote := ev.(*types.DuplicateVoteEvidence)
+	if isDuplicateVote {
+		ts, err := gogotypes.TimestampProto(dve.Time())
+		if err == nil {
+			var tsBytes []byte
+			tsBytes, err = proto.Marshal(ts)
+			if err == nil {
+				err = batch.Set(keyCommittedDuplicateVote(dve), tsBytes)
+			}
+		}
+		if err != nil {
+			evpool.logger.Error("Unable to save committed duplicate vote evidence", "err", err)
+		}
+
+		// Pending evidence for the same validator and height that was
+		// committed under a different hash.
+		dveKey = duplicateVoteKey(dve)
+		if pending, exists := evpool.pendingDuplicateVotes[dveKey]; exists && evMapKey(pending) != evMapKey(ev) {
+			if err := batch.Delete(keyPending(pending)); err != nil {
+				evpool.logger.Error("Unable to delete pending evidence", "err", err)
+			} else {
+				removed = append(removed, pending)
+			}
+		}
+	}
+
+	if evpool.isPending(ev) {
+		if err := batch.Delete(keyPending(ev)); err != nil {
+			evpool.logger.Error("Unable to delete pending evidence", "err", err)
+		} else {
+			removed = append(removed, ev)
+		}
+	}
+
+	// Add evidence to the committed list. As the evidence is stored in the block store
+	// we only need to record the height that it was saved at.
+	key := keyCommitted(ev)
+	h := gogotypes.Int64Value{Value: ev.Height()}
+	evBytes, err := proto.Marshal(&h)
+	if err != nil {
+		evpool.logger.Error("failed to marshal committed evidence", "err", err, "key(height/hash)", key)
+	} else if err := batch.Set(key, evBytes); err != nil {
+		evpool.logger.Error("Unable to save committed evidence", "err", err, "key(height/hash)", key)
+	}
+
+	if err := batch.Write(); err != nil {
+		evpool.logger.Error("Unable to commit evidence", "err", err, "ev", ev)
+		return nil
+	}
+
+	if isDuplicateVote {
+		delete(evpool.pendingDuplicateVotes, dveKey)
+	}
+	for _, r := range removed {
+		atomic.AddUint32(&evpool.evidenceSize, ^uint32(0))
+		evpool.logger.Debug("Deleted pending evidence", "evidence", r)
+	}
+	return removed
 }
 
 // listEvidence retrieves lists evidence from oldest to newest within maxBytes.
@@ -602,6 +665,42 @@ func (evpool *Pool) removeExpiredPendingEvidence() (int64, time.Time) {
 		evpool.removeEvidenceFromList(blockEvidenceMap)
 	}
 	return evpool.State().LastBlockHeight, evpool.State().LastBlockTime
+}
+
+// removeExpiredCommittedDuplicateVotes deletes the commit markers of duplicate
+// vote evidence that has expired. Expired evidence fails verification, so the
+// markers are no longer needed. Markers are ordered by height, and the scan
+// stops at the first marker that has not expired.
+func (evpool *Pool) removeExpiredCommittedDuplicateVotes() {
+	iter, err := dbm.IteratePrefix(evpool.evidenceStore, []byte{baseKeyCommittedDuplicateVote})
+	if err != nil {
+		evpool.logger.Error("Unable to iterate over committed duplicate vote evidence", "err", err)
+		return
+	}
+	var expired [][]byte
+	for ; iter.Valid(); iter.Next() {
+		height, evTime, err := parseCommittedDuplicateVote(iter.Key(), iter.Value())
+		if err != nil {
+			evpool.logger.Error("Unable to parse committed duplicate vote evidence", "err", err)
+			expired = append(expired, append([]byte(nil), iter.Key()...))
+			continue
+		}
+		if !evpool.isExpired(height, evTime) {
+			break
+		}
+		expired = append(expired, append([]byte(nil), iter.Key()...))
+	}
+	if err := iter.Error(); err != nil {
+		evpool.logger.Error("Unable to iterate over committed duplicate vote evidence", "err", err)
+	}
+	if err := iter.Close(); err != nil {
+		evpool.logger.Error("Unable to close iterator", "err", err)
+	}
+	for _, key := range expired {
+		if err := evpool.evidenceStore.Delete(key); err != nil {
+			evpool.logger.Error("Unable to delete committed duplicate vote evidence", "err", err)
+		}
+	}
 }
 
 func (evpool *Pool) removeEvidenceFromList(
@@ -694,15 +793,21 @@ func (evpool *Pool) processConsensusBuffer(state sm.State) {
 			continue
 		}
 
-		added, err := evpool.addPendingDuplicateVote(dve)
+		canonical, err := evpool.canonicalDuplicateVote(dve)
+		if err != nil {
+			evpool.logger.Error("failed to canonicalize evidence from consensus buffer", "err", err)
+			continue
+		}
+		added, err := evpool.addPendingDuplicateVote(canonical)
 		if err != nil {
 			evpool.logger.Error("failed to flush evidence from consensus buffer to pending list", "err", err)
 			continue
 		}
 		if !added {
-			evpool.logger.Info("evidence for this duplicate vote already pending or committed; ignoring", "evidence", dve)
+			evpool.logger.Info("evidence for this validator and height already pending or committed; ignoring", "evidence", dve)
 			continue
 		}
+		dve = canonical
 
 		evpool.logger.Info("verified new evidence of byzantine behavior", "evidence", dve)
 	}
@@ -746,10 +851,33 @@ func keyCommittedDuplicateVote(dve *types.DuplicateVoteEvidence) []byte {
 	return append([]byte{baseKeyCommittedDuplicateVote}, []byte(duplicateVoteKey(dve))...)
 }
 
-// duplicateVoteKey identifies the equivocation that dve proves, independent of
-// which conflicting votes or encoding were used to prove it.
+// duplicateVoteKey identifies the validator and height that dve is evidence
+// against, independent of the round, vote type, conflicting votes or encoding
+// used to prove it. It starts with the height so that keys sort by height.
 func duplicateVoteKey(dve *types.DuplicateVoteEvidence) string {
-	return fmt.Sprintf("%s/%d/%d/%X", bE(dve.VoteA.Height), dve.VoteA.Round, dve.VoteA.Type, dve.VoteA.ValidatorAddress)
+	return fmt.Sprintf("%s/%X", bE(dve.VoteA.Height), dve.VoteA.ValidatorAddress)
+}
+
+// parseCommittedDuplicateVote returns the height and evidence time of a commit
+// marker written under keyCommittedDuplicateVote.
+func parseCommittedDuplicateVote(key, value []byte) (int64, time.Time, error) {
+	const heightLen = 16
+	if len(key) < 1+heightLen {
+		return 0, time.Time{}, fmt.Errorf("committed duplicate vote key too short: %X", key)
+	}
+	height, err := strconv.ParseInt(string(key[1:1+heightLen]), 16, 64)
+	if err != nil {
+		return 0, time.Time{}, fmt.Errorf("parsing committed duplicate vote height: %w", err)
+	}
+	var ts gogotypes.Timestamp
+	if err := proto.Unmarshal(value, &ts); err != nil {
+		return 0, time.Time{}, fmt.Errorf("parsing committed duplicate vote time: %w", err)
+	}
+	evTime, err := gogotypes.TimestampFromProto(&ts)
+	if err != nil {
+		return 0, time.Time{}, fmt.Errorf("parsing committed duplicate vote time: %w", err)
+	}
+	return height, evTime, nil
 }
 
 func keySuffix(evidence types.Evidence) []byte {

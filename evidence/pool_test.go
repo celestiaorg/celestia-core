@@ -17,6 +17,7 @@ import (
 	"github.com/cometbft/cometbft/evidence/mocks"
 	"github.com/cometbft/cometbft/internal/test"
 	"github.com/cometbft/cometbft/libs/log"
+	cmtproto "github.com/cometbft/cometbft/proto/tendermint/types"
 	cmtversion "github.com/cometbft/cometbft/proto/tendermint/version"
 	sm "github.com/cometbft/cometbft/state"
 	smmocks "github.com/cometbft/cometbft/state/mocks"
@@ -568,8 +569,8 @@ func createState(height int64, valSet *types.ValidatorSet) sm.State {
 	}
 }
 
-// Evidence for the same equivocation (validator, height, round and vote type)
-// should only be admitted to the pool once, however it is encoded.
+// Duplicate vote evidence for a validator at a height should only be admitted
+// to the pool once, whatever its round, vote type or encoding.
 func TestAddEvidenceIgnoresDuplicateVoteVariants(t *testing.T) {
 	height := int64(10)
 	pool, val := defaultTestPool(t, height)
@@ -601,6 +602,14 @@ func TestAddEvidenceIgnoresDuplicateVoteVariants(t *testing.T) {
 			}(variant)
 		}
 	}
+	// Freshly signed equivocations at other rounds of the same height.
+	for round := int32(1); round <= numVariants; round++ {
+		wg.Add(1)
+		go func(variant types.Evidence) {
+			defer wg.Done()
+			assert.NoError(t, pool.AddEvidence(variant))
+		}(newDuplicateVoteAtRound(t, height, round, evTime, val))
+	}
 	wg.Wait()
 
 	evs, _ := pool.PendingEvidence(defaultEvidenceMaxBytes)
@@ -617,8 +626,9 @@ func TestAddEvidenceIgnoresDuplicateVoteVariants(t *testing.T) {
 }
 
 // Duplicate vote evidence whose unsigned fields are not in canonical form is
-// rejected when submitted to the pool.
-func TestAddEvidenceRejectsNonCanonicalDuplicateVote(t *testing.T) {
+// admitted without error, and the pool keeps a canonical copy of it. An error
+// would make the reactor disconnect honest peers that relay such evidence.
+func TestAddEvidenceStoresCanonicalDuplicateVote(t *testing.T) {
 	height := int64(10)
 	evTime := defaultEvidenceTime.Add(time.Duration(height) * time.Minute)
 
@@ -638,13 +648,20 @@ func TestAddEvidenceRejectsNonCanonicalDuplicateVote(t *testing.T) {
 			pool, val := defaultTestPool(t, height)
 			ev, err := types.NewMockDuplicateVoteEvidenceWithValidator(height, evTime, val, evidenceChainID)
 			require.NoError(t, err)
+			canonicalHash := ev.Hash()
 			tc.malleate(ev)
 			require.NoError(t, ev.ValidateBasic())
+			malleatedHash := ev.Hash()
+			require.NotEqual(t, canonicalHash, malleatedHash)
 
-			err = pool.AddEvidence(ev)
-			var invalidErr *types.ErrInvalidEvidence
-			require.ErrorAs(t, err, &invalidErr)
-			assert.Zero(t, pool.Size())
+			require.NoError(t, pool.AddEvidence(ev))
+			assert.Equal(t, malleatedHash, ev.Hash(), "AddEvidence must not modify its argument")
+
+			evs, _ := pool.PendingEvidence(defaultEvidenceMaxBytes)
+			require.Len(t, evs, 1)
+			assert.Equal(t, canonicalHash, evs[0].Hash())
+			require.NotNil(t, pool.EvidenceFront())
+			assert.Equal(t, canonicalHash, pool.EvidenceFront().Value.(types.Evidence).Hash())
 
 			// Evidence in a block is validated as before.
 			require.NoError(t, pool.CheckEvidence(types.EvidenceList{ev}))
@@ -652,8 +669,9 @@ func TestAddEvidenceRejectsNonCanonicalDuplicateVote(t *testing.T) {
 	}
 }
 
-// Once evidence for an equivocation is committed, pending and future evidence
-// for the same equivocation under a different hash is dropped.
+// Once duplicate vote evidence for a validator at a height is committed,
+// pending and future evidence for that validator and height is dropped, at
+// any round and under any hash.
 func TestCommittedDuplicateVoteVariantIsDropped(t *testing.T) {
 	height := int64(21)
 	pool, val := defaultTestPool(t, height)
@@ -679,8 +697,12 @@ func TestCommittedDuplicateVoteVariantIsDropped(t *testing.T) {
 	assert.Nil(t, pool.EvidenceFront())
 
 	require.NoError(t, pool.AddEvidence(pending))
+	for round := int32(1); round <= 10; round++ {
+		require.NoError(t, pool.AddEvidence(newDuplicateVoteAtRound(t, height, round, evTime, val)))
+	}
 	evs, _ = pool.PendingEvidence(defaultEvidenceMaxBytes)
 	assert.Empty(t, evs)
+	assert.Zero(t, pool.Size())
 }
 
 // A pool restored from a store that holds several pieces of duplicate vote
@@ -768,4 +790,101 @@ func TestCommitDuplicateVoteConcurrentWithAdmission(t *testing.T) {
 		require.Empty(t, evs, "iteration %d", i)
 		require.Zero(t, pool.Size(), "iteration %d", i)
 	}
+}
+
+// Pending duplicate vote evidence for a validator and height that is already
+// committed is dropped when the pool restarts. This covers a crash between
+// writing the commit marker and deleting the pending entry.
+func TestNewPoolDropsCommittedDuplicateVotes(t *testing.T) {
+	height := int64(21)
+	evTime := defaultEvidenceTime.Add(time.Duration(height) * time.Minute)
+	val := types.NewMockPV()
+	evidenceDB := dbm.NewMemDB()
+	stateStore := initializeValidatorState(val, height)
+	state, err := stateStore.Load()
+	require.NoError(t, err)
+	blockStore, err := initializeBlockStore(dbm.NewMemDB(), state, val.PrivKey.PubKey().Address())
+	require.NoError(t, err)
+
+	pool, err := evidence.NewPool(evidenceDB, stateStore, blockStore)
+	require.NoError(t, err)
+	committed, err := types.NewMockDuplicateVoteEvidenceWithValidator(height, evTime, val, evidenceChainID)
+	require.NoError(t, err)
+	require.NoError(t, pool.AddEvidence(committed))
+	state = pool.State()
+	state.LastBlockHeight = height + 1
+	state.LastBlockTime = evTime.Add(time.Minute)
+	pool.Update(state, types.EvidenceList{committed})
+	require.Zero(t, pool.Size())
+
+	// Leftover pending entries: the committed evidence itself, and evidence
+	// for the same validator and height at another round.
+	require.NoError(t, pool.AddPendingEvidenceUnchecked(committed))
+	require.NoError(t, pool.AddPendingEvidenceUnchecked(newDuplicateVoteAtRound(t, height, 3, evTime, val)))
+	stillPending, err := types.NewMockDuplicateVoteEvidenceWithValidator(height-1, evTime.Add(-time.Minute), val, evidenceChainID)
+	require.NoError(t, err)
+	require.NoError(t, pool.AddPendingEvidenceUnchecked(stillPending))
+
+	for restart := 0; restart < 2; restart++ {
+		pool, err = evidence.NewPool(evidenceDB, stateStore, blockStore)
+		require.NoError(t, err)
+		evs, _ := pool.PendingEvidence(-1)
+		require.Len(t, evs, 1)
+		assert.Equal(t, stillPending.Hash(), evs[0].Hash())
+		assert.EqualValues(t, 1, pool.Size())
+	}
+}
+
+// Commit markers for duplicate vote evidence are pruned once evidence at that
+// height has expired.
+func TestCommittedDuplicateVoteMarkerIsPruned(t *testing.T) {
+	height := int64(21)
+	pool, val := defaultTestPool(t, height)
+	evTime := defaultEvidenceTime.Add(time.Duration(height) * time.Minute)
+
+	ev, err := types.NewMockDuplicateVoteEvidenceWithValidator(height, evTime, val, evidenceChainID)
+	require.NoError(t, err)
+	require.NoError(t, pool.AddEvidence(ev))
+	state := pool.State()
+	state.LastBlockHeight = height + 1
+	state.LastBlockTime = evTime.Add(time.Minute)
+	pool.Update(state, types.EvidenceList{ev})
+	require.True(t, pool.HasCommittedDuplicateVote(ev))
+
+	params := state.ConsensusParams.Evidence
+	state.LastBlockHeight = height + params.MaxAgeNumBlocks + 1
+	state.LastBlockTime = evTime.Add(params.MaxAgeDuration).Add(time.Minute)
+	pool.Update(state, nil)
+	assert.False(t, pool.HasCommittedDuplicateVote(ev))
+}
+
+// newDuplicateVoteAtRound returns duplicate vote evidence signed by pv at the
+// given height and round.
+func newDuplicateVoteAtRound(
+	t *testing.T, height int64, round int32, evTime time.Time, pv types.MockPV,
+) *types.DuplicateVoteEvidence {
+	t.Helper()
+	pubKey := pv.PrivKey.PubKey()
+	valSet := types.NewValidatorSet([]*types.Validator{types.NewValidator(pubKey, 10)})
+	makeVote := func() *types.Vote {
+		vote := &types.Vote{
+			Type:   cmtproto.PrecommitType,
+			Height: height,
+			Round:  round,
+			BlockID: types.BlockID{
+				Hash:          crypto.CRandBytes(32),
+				PartSetHeader: types.PartSetHeader{Total: 1, Hash: crypto.CRandBytes(32)},
+			},
+			Timestamp:        evTime,
+			ValidatorAddress: pubKey.Address(),
+			ValidatorIndex:   0,
+		}
+		pb := vote.ToProto()
+		require.NoError(t, pv.SignVote(evidenceChainID, pb))
+		vote.Signature = pb.Signature
+		return vote
+	}
+	ev, err := types.NewDuplicateVoteEvidence(makeVote(), makeVote(), evTime, valSet)
+	require.NoError(t, err)
+	return ev
 }

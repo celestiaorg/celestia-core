@@ -538,10 +538,39 @@ func TestFuzzEvidencePoolTimestampOverflow(t *testing.T) {
 }
 
 // TestFuzzEvidencePoolEquivocationVariants replays an input with two valid
-// duplicate vote evidence for the same validator, height, round and type but
-// different block IDs. Only the first is kept pending.
+// duplicate vote evidence for the same validator and height but different
+// block IDs. Only the first is kept pending.
 func TestFuzzEvidencePoolEquivocationVariants(t *testing.T) {
 	runEvidencePoolFuzz(t, fuzzEvidenceFixture(t), []byte("100020000"))
+}
+
+// TestReactorKeepsPeerRelayingNonCanonicalDuplicateVote checks that a peer
+// relaying valid duplicate vote evidence whose unsigned fields are not in
+// canonical form is not disconnected, and that the canonical form is kept.
+// Honest peers can hold such evidence, for example from a block or from a
+// node running an older version.
+func TestReactorKeepsPeerRelayingNonCanonicalDuplicateVote(t *testing.T) {
+	fx := fuzzEvidenceFixture(t)
+	cases := fx.generate(t, []byte{})
+	require.Len(t, cases, 1)
+	ev := cases[0].ev.(*cmttypes.DuplicateVoteEvidence)
+	canonicalHash := ev.Hash()
+	voteA := *ev.VoteA
+	voteA.ValidatorIndex = (voteA.ValidatorIndex + 1) % int32(len(fx.privVals))
+	mutated := *ev
+	mutated.VoteA = &voteA
+	require.NoError(t, mutated.ValidateBasic())
+
+	pool := fx.newPool(t)
+	reactor, peer := newFuzzReactor(t, pool)
+	list, err := evidenceListToProto(cmttypes.EvidenceList{&mutated})
+	require.NoError(t, err)
+	reactor.Receive(p2p.Envelope{Src: peer, ChannelID: EvidenceChannel, Message: list})
+
+	require.True(t, peer.IsRunning(), "peer stopped for relaying valid evidence")
+	pending, _ := pool.PendingEvidence(-1)
+	require.Len(t, pending, 1)
+	require.Equal(t, canonicalHash, pending[0].Hash())
 }
 
 // runEvidencePoolFuzz runs one FuzzEvidencePool iteration.

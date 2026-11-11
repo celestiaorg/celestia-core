@@ -87,6 +87,26 @@ func InjectEvidence(ctx context.Context, r *rand.Rand, testnet *e2e.Testnet, amo
 		return err
 	}
 
+	// The pool keeps one piece of duplicate vote evidence per validator and
+	// height, so each piece must be for a different validator or height.
+	targets := &duplicateVoteTargets{
+		privVals:  privVals,
+		minHeight: testnet.InitialHeight,
+		height:    evidenceHeight + 1,
+		fetch: func(height int64) (time.Time, *types.ValidatorSet, error) {
+			block, err := client.Block(ctx, &height)
+			if err != nil {
+				return time.Time{}, nil, err
+			}
+			vals, err := client.Validators(ctx, &height, nil, &nValidators)
+			if err != nil {
+				return time.Time{}, nil, err
+			}
+			valSet, err := types.ValidatorSetFromExistingValidators(vals.Validators)
+			return block.Block.Time, valSet, err
+		},
+	}
+
 	var ev types.Evidence
 	for i := 0; i < amount; i++ {
 		validEv := true
@@ -96,13 +116,11 @@ func InjectEvidence(ctx context.Context, r *rand.Rand, testnet *e2e.Testnet, amo
 				ctx, privVals, evidenceHeight, valSet, testnet.Name, blockRes.Block.Time, validEv,
 			)
 		} else {
-			// Use a distinct round for each piece of duplicate vote evidence so
-			// that each one is a separate equivocation: the pool keeps only one
-			// piece of evidence per validator, height, round and vote type.
 			var dve *types.DuplicateVoteEvidence
-			dve, err = generateDuplicateVoteEvidence(
-				privVals, evidenceHeight, int32(i), valSet, testnet.Name, blockRes.Block.Time,
-			)
+			dve, err = targets.generate(testnet.Name)
+			if err != nil {
+				return err
+			}
 			if dve.VoteA.Height < testnet.VoteExtensionsEnableHeight {
 				dve.VoteA.Extension = nil
 				dve.VoteA.ExtensionSignature = nil
@@ -218,25 +236,60 @@ func generateLightClientAttackEvidence(
 	return ev, nil
 }
 
-// generateDuplicateVoteEvidence picks a random validator from the val set and
-// returns duplicate vote evidence against the validator
+// duplicateVoteTargets generates duplicate vote evidence for a different
+// (height, validator) pair each time. It uses every validator at a height, then
+// moves one height down.
+type duplicateVoteTargets struct {
+	privVals  []types.MockPV
+	minHeight int64
+	fetch     func(height int64) (time.Time, *types.ValidatorSet, error)
+
+	height int64
+	time   time.Time
+	valSet *types.ValidatorSet
+	next   int
+}
+
+func (d *duplicateVoteTargets) generate(chainID string) (*types.DuplicateVoteEvidence, error) {
+	for {
+		for d.valSet != nil && d.next < d.valSet.Size() {
+			valIdx := int32(d.next)
+			_, val := d.valSet.GetByIndex(valIdx)
+			d.next++
+			for _, privVal := range d.privVals {
+				if bytes.Equal(privVal.PrivKey.PubKey().Address(), val.Address) {
+					return generateDuplicateVoteEvidence(privVal, valIdx, d.height, d.valSet, chainID, d.time)
+				}
+			}
+		}
+		if d.height-1 < d.minHeight {
+			return nil, errors.New("no height left to generate duplicate vote evidence for")
+		}
+		d.height--
+		var err error
+		d.time, d.valSet, err = d.fetch(d.height)
+		if err != nil {
+			return nil, err
+		}
+		d.next = 0
+	}
+}
+
+// generateDuplicateVoteEvidence returns duplicate vote evidence against the
+// validator with the given private key and index in vals.
 func generateDuplicateVoteEvidence(
-	privVals []types.MockPV,
+	privVal types.MockPV,
+	valIdx int32,
 	height int64,
-	round int32,
 	vals *types.ValidatorSet,
 	chainID string,
 	time time.Time,
 ) (*types.DuplicateVoteEvidence, error) {
-	privVal, valIdx, err := getRandomValidatorIndex(privVals, vals)
+	voteA, err := types.MakeVote(privVal, chainID, valIdx, height, 0, 2, makeRandomBlockID(), time)
 	if err != nil {
 		return nil, err
 	}
-	voteA, err := types.MakeVote(privVal, chainID, valIdx, height, round, 2, makeRandomBlockID(), time)
-	if err != nil {
-		return nil, err
-	}
-	voteB, err := types.MakeVote(privVal, chainID, valIdx, height, round, 2, makeRandomBlockID(), time)
+	voteB, err := types.MakeVote(privVal, chainID, valIdx, height, 0, 2, makeRandomBlockID(), time)
 	if err != nil {
 		return nil, err
 	}
@@ -246,19 +299,6 @@ func generateDuplicateVoteEvidence(
 	}
 
 	return ev, nil
-}
-
-// getRandomValidatorIndex picks a random validator from a slice of mock PrivVals that's
-// also part of the validator set, returning the PrivVal and its index in the validator set
-func getRandomValidatorIndex(privVals []types.MockPV, vals *types.ValidatorSet) (types.MockPV, int32, error) {
-	for _, idx := range rand.Perm(len(privVals)) {
-		pv := privVals[idx]
-		valIdx, _ := vals.GetByAddress(pv.PrivKey.PubKey().Address())
-		if valIdx >= 0 {
-			return pv, valIdx, nil
-		}
-	}
-	return types.MockPV{}, -1, errors.New("no private validator found in validator set")
 }
 
 func readPrivKey(keyFilePath string) (crypto.PrivKey, error) {

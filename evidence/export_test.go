@@ -7,3 +7,10 @@ import "github.com/cometbft/cometbft/types"
 func (evpool *Pool) AddPendingEvidenceUnchecked(ev types.Evidence) error {
 	return evpool.addPendingEvidence(ev)
 }
+
+// HasCommittedDuplicateVote reports whether the pool has recorded that
+// duplicate vote evidence for dve's validator and height was committed.
+func (evpool *Pool) HasCommittedDuplicateVote(dve *types.DuplicateVoteEvidence) bool {
+	ok, err := evpool.evidenceStore.Has(keyCommittedDuplicateVote(dve))
+	return err == nil && ok
+}
