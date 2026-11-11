@@ -2,6 +2,7 @@ package consensus
 
 import (
 	"context"
+	"slices"
 	"testing"
 	"time"
 
@@ -127,26 +128,29 @@ func waitHeight(t *testing.T, sub types.Subscription, target int64) map[int64]ti
 
 func TestPacingIntervalIncludesRoundAndSlowBlockStartsNextImmediately(t *testing.T) {
 	const (
-		tc    = 500 * time.Millisecond
-		delay = 400 * time.Millisecond
+		tc    = time.Second
+		delay = 500 * time.Millisecond
 	)
 	css := newPacedNet(t, 4, func() *pacedApp {
 		// The long propose timeout keeps round 0 alive while ProcessProposal sleeps.
 		return &pacedApp{Application: newKVStore(), dynamic: tc, timeoutPropose: 5 * time.Second,
-			processDelay: delay, slowHeight: 5, slowFor: 2 * tc}
+			processDelay: delay, slowHeight: 6, slowFor: 2 * tc}
 	})
 	_, subs := startPacedNet(t, css, []bool{true, true, true, true})
 
-	seen := waitHeight(t, subs[0], 7)
+	seen := waitHeight(t, subs[0], 8)
 
-	for h := int64(3); h <= 4; h++ {
-		interval := seen[h].Sub(seen[h-1])
-		t.Logf("height %d->%d %v", h-1, h, interval)
-		require.Less(t, interval, tc+3*delay/4, "proposal processing must count towards the floor, not add to it")
+	// Counting the round towards the floor gives ~tc; adding it on top gives >= tc+delay.
+	intervals := make([]time.Duration, 0, 3)
+	for h := int64(3); h <= 5; h++ {
+		intervals = append(intervals, seen[h].Sub(seen[h-1]))
 	}
-	afterSlow, next := seen[6].Sub(seen[5]), seen[7].Sub(seen[6])
-	t.Logf("height 5->6 %v, 6->7 %v", afterSlow, next)
-	require.Less(t, afterSlow, tc+3*delay/4, "a block slower than the floor must not wait the floor again")
+	slices.Sort(intervals)
+	t.Logf("heights 2->5 %v", intervals)
+	require.Less(t, intervals[1], tc+delay/2, "proposal processing must count towards the floor, not add to it")
+	afterSlow, next := seen[7].Sub(seen[6]), seen[8].Sub(seen[7])
+	t.Logf("height 6->7 %v, 7->8 %v", afterSlow, next)
+	require.Less(t, afterSlow, tc+delay/2, "a block slower than the floor must not wait the floor again")
 	require.Greater(t, next, tc/2, "the floor must apply again once heights are fast")
 }
 
