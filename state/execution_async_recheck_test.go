@@ -10,14 +10,14 @@ import (
 	dbm "github.com/cometbft/cometbft-db"
 
 	abci "github.com/cometbft/cometbft/abci/types"
-	"github.com/cometbft/cometbft/config"
+	cmtcfg "github.com/cometbft/cometbft/config"
 	"github.com/cometbft/cometbft/libs/log"
 	"github.com/cometbft/cometbft/mempool"
 	"github.com/cometbft/cometbft/mempool/cat"
 	"github.com/cometbft/cometbft/proxy"
 	sm "github.com/cometbft/cometbft/state"
 	"github.com/cometbft/cometbft/store"
-	"github.com/cometbft/cometbft/types"
+	cmttypes "github.com/cometbft/cometbft/types"
 )
 
 // gatedRecheckApp blocks every recheck until the gate is closed.
@@ -45,7 +45,7 @@ func TestApplyBlockAsyncRecheck(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, mpConn.Start())
 	defer mpConn.Stop() //nolint:errcheck // ignore for tests
-	cfg := config.TestMempoolConfig()
+	cfg := cmtcfg.TestMempoolConfig()
 	cfg.AsyncRecheck = true
 	mp := cat.NewTxPool(log.NewNopLogger(), cfg, mpConn, 0)
 
@@ -54,15 +54,15 @@ func TestApplyBlockAsyncRecheck(t *testing.T) {
 	blockExec := sm.NewBlockExecutor(stateStore, log.TestingLogger(), proxyApp.Consensus(),
 		mp, sm.EmptyEvidencePool{}, store.NewBlockStore(dbm.NewMemDB()))
 
-	block, bps, err := makeBlock(state, 1, new(types.Commit))
+	block, bps, err := makeBlock(state, 1, new(cmttypes.Commit))
 	require.NoError(t, err)
 	for _, tx := range block.Txs {
 		require.NoError(t, mp.CheckTx(tx, nil, mempool.TxInfo{}))
 	}
-	pending := types.Tx("pending")
+	pending := cmttypes.Tx("pending")
 	require.NoError(t, mp.CheckTx(pending, nil, mempool.TxInfo{}))
 
-	blockID := types.BlockID{Hash: block.Hash(), PartSetHeader: bps.Header()}
+	blockID := cmttypes.BlockID{Hash: block.Hash(), PartSetHeader: bps.Header()}
 	applied := make(chan error, 1)
 	go func() {
 		_, err := blockExec.ApplyBlock(state, blockID, block, nil)
