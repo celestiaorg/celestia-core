@@ -606,8 +606,18 @@ func (txmp *TxPool) addNewTransaction(wtx *wrappedTx) error {
 		newAggPriority := txmp.store.aggregatedPriorityAfterAdd(wtx)
 		victimSets, victimBytes := txmp.store.getTxSetsBelowPriority(newAggPriority)
 
-		// If there are no suitable eviction candidates, or the total size is insufficient, drop the new one.
-		if len(victimSets) == 0 || victimBytes < wtx.size() {
+		victimTxs := 0
+		for _, set := range victimSets {
+			victimTxs += len(set.txs)
+		}
+		// The pool must end up with at most config.Size txs including the new one.
+		neededTxs := txmp.Size() - txmp.config.Size + 1
+
+		// Only the bytes the pool is short of need to be freed by eviction.
+		neededBytes := wtx.size() - txmp.availableBytes()
+
+		// If there are no suitable eviction candidates, or they can't free enough bytes or tx slots, drop the new one.
+		if len(victimSets) == 0 || victimBytes < neededBytes || victimTxs < neededTxs {
 			txmp.metrics.EvictedTxs.Add(1)
 			txKey := wtx.key()
 			txmp.evictedTxCache.Push(txKey)
@@ -640,16 +650,20 @@ func (txmp *TxPool) addNewTransaction(wtx *wrappedTx) error {
 			return is.aggregatedPriority < js.aggregatedPriority
 		})
 
-		// Evict as many sets as needed to make room for the incoming tx
+		// Evict as many sets as needed to make room for the incoming tx, both
+		// in bytes and in tx count
 		availableBytes := txmp.availableBytes()
+		needsRoom := func() bool {
+			return availableBytes < wtx.size() || txmp.Size() >= txmp.config.Size
+		}
 		for _, set := range victimSets {
 			// Iterate in reverse order removing the higher sequence numbers first
-			for i := len(set.txs) - 1; i >= 0 && availableBytes < wtx.size(); i-- {
+			for i := len(set.txs) - 1; i >= 0 && needsRoom(); i-- {
 				tx := set.txs[i]
 				txmp.evictTx(tx)
 				availableBytes += tx.size()
 			}
-			if availableBytes >= wtx.size() {
+			if !needsRoom() {
 				break
 			}
 		}
@@ -801,7 +815,7 @@ func (txmp *TxPool) canAddTx(size int64) bool {
 	numTxs := txmp.Size()
 	txBytes := txmp.SizeBytes()
 
-	if numTxs > txmp.config.Size || size+txBytes > txmp.config.MaxTxsBytes {
+	if numTxs >= txmp.config.Size || size+txBytes > txmp.config.MaxTxsBytes {
 		return false
 	}
 
