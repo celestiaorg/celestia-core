@@ -513,6 +513,8 @@ func (cs *State) OnStart() error {
 	}
 	if proposer != nil {
 		cs.propagator.SetConsensusState(height, round, proposer.PubKey)
+		// Re-seed after SetConsensusState, which may apply a peer's cached compact block to fill, and
+		// before shareBlock, whose parts-only entry would keep our compact block from being sent.
 		cs.reseedPropagator()
 	}
 	cs.shareBlock(cs.rs.LockedRound, cs.rs.LockedBlockParts)
