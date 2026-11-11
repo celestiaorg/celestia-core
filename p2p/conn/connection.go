@@ -340,6 +340,7 @@ func (c *MConnection) String() string {
 
 func (c *MConnection) flush() {
 	//c.Logger.Debug("Flush", "conn", c)
+	c.lowLatencyPending = false
 	err := c.bufConnWriter.Flush()
 	if err != nil {
 		c.Logger.Debug("MConnection flush failed", "err", err)
@@ -538,12 +539,17 @@ func (c *MConnection) sendBatchPacketMsgs(w protoio.Writer, batchSize int) bool 
 			c.sendMonitor.Update(totalBytesWritten)
 		}
 	}()
-	for i := 0; i < batchSize; i++ {
+	// Check once more after a full batch, so a batch that drains the queues
+	// flushes now instead of after the next rate limit wait.
+	for i := 0; ; i++ {
 		channel := selectChannelToGossipOn(c.channels)
 		// nothing to send across any channel.
 		if channel == nil {
 			c.flushLowLatency()
 			return true
+		}
+		if i == batchSize {
+			return false
 		}
 		bytesWritten, err := c.sendPacketMsgOnChannel(w, channel)
 		if err {
@@ -551,7 +557,6 @@ func (c *MConnection) sendBatchPacketMsgs(w protoio.Writer, batchSize int) bool 
 		}
 		totalBytesWritten += bytesWritten
 	}
-	return false
 }
 
 // flushLowLatency flushes if a LowLatency message was written since the last
@@ -559,11 +564,9 @@ func (c *MConnection) sendBatchPacketMsgs(w protoio.Writer, batchSize int) bool 
 // out in one write. While the queues stay busy the buffer flushes when it
 // fills (minWriteBufferSize) or the flush throttle fires, as usual.
 func (c *MConnection) flushLowLatency() {
-	if !c.lowLatencyPending {
-		return
+	if c.lowLatencyPending {
+		c.flush()
 	}
-	c.lowLatencyPending = false
-	c.flush()
 }
 
 // selects a channel to gossip our next message on.

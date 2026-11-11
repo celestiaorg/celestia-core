@@ -838,6 +838,22 @@ func TestMConnectionBatchesQueuedLowLatencyMessages(t *testing.T) {
 		require.Equal(t, 1, conn.writes)
 	})
 
+	t.Run("batch that drains the queue flushes", func(t *testing.T) {
+		c, conn := newConn(t)
+		queueVotes(c, numBatchPacketMsgs)
+		require.True(t, c.sendBatchPacketMsgs(protoio.NewDelimitedWriter(c.bufConnWriter), numBatchPacketMsgs))
+		require.Equal(t, 1, conn.writes)
+	})
+
+	t.Run("other flushes clear the pending low latency flush", func(t *testing.T) {
+		c, conn := newConn(t)
+		c.lowLatencyPending = true
+		c.flush() // e.g. the flush timer
+		require.True(t, c.channelsIdx[0x02].sendBytes([]byte("tx")))
+		require.True(t, c.sendBatchPacketMsgs(protoio.NewDelimitedWriter(c.bufConnWriter), numBatchPacketMsgs))
+		require.Zero(t, conn.writes)
+	})
+
 	t.Run("bulk only batch is not flushed", func(t *testing.T) {
 		c, conn := newConn(t)
 		require.True(t, c.channelsIdx[0x02].sendBytes([]byte("tx")))
