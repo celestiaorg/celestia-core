@@ -363,10 +363,6 @@ func (f *reactorFuzzer) sendRaw(peer *fuzzPeer, ch byte, raw []byte) {
 	if decErr == nil {
 		decErr = decoded.ValidateBasic()
 	}
-	if w, ok := decoded.(*proptypes.WantParts); ok && decErr == nil && (w.Round < 0 || w.Round > fuzzMaxRound) {
-		// Excluded pending PROTOCO-3516; remove with the fix.
-		return
-	}
 	f.r.Receive(p2p.Envelope{Src: peer, ChannelID: ch, Message: &pb})
 	if decErr != nil {
 		require.Nil(f.t, f.r.getPeer(peer.ID()), "peer sending an invalid message must be removed: %v", decErr)

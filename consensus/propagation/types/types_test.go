@@ -289,6 +289,26 @@ func TestWantParts_ValidateBasic(t *testing.T) {
 			true,
 		},
 		{
+			"zero height and round",
+			WantParts{Height: 0, Round: 0, Parts: bits.NewBitArray(16), MissingPartsCount: 10},
+			false,
+		},
+		{
+			"negative height",
+			WantParts{Height: -1, Round: 1, Parts: bits.NewBitArray(16), MissingPartsCount: 10},
+			true,
+		},
+		{
+			"round -1",
+			WantParts{Height: 1, Round: -1, Parts: bits.NewBitArray(16), MissingPartsCount: 10},
+			true,
+		},
+		{
+			"round below -1",
+			WantParts{Height: 1, Round: -2, Parts: bits.NewBitArray(16), MissingPartsCount: 10},
+			true,
+		},
+		{
 			"negative missing parts count",
 			WantParts{Height: 1, Round: 1, Parts: &bits.BitArray{}, MissingPartsCount: -1},
 			true,
