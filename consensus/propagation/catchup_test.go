@@ -87,11 +87,13 @@ func TestReseedAfterRestart(t *testing.T) {
 
 	require.NoError(t, r1.ProposeBlock(prop, ps, metaData))
 
+	// An immediate catch-up want can arrive before the proposer re-seeds.
+	// It expires at the second retry tick; leave another tick for delivery.
 	for _, r := range []*Reactor{r2, r3} {
 		require.Eventually(t, func() bool {
 			_, parts, has := r.GetProposal(prop.Height, prop.Round)
 			return has && parts.IsComplete()
-		}, 2*RetryTime, 50*time.Millisecond)
+		}, 3*RetryTime, 50*time.Millisecond)
 		_, parts, _ := r.GetProposal(prop.Height, prop.Round)
 		require.Equal(t, psh, parts.Header())
 	}
