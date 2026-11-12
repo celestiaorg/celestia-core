@@ -450,7 +450,7 @@ func (c *Client) Update(ctx context.Context, now time.Time) (*types.LightBlock, 
 	}
 
 	if latestBlock.Height > lastTrustedHeight {
-		err = c.verifyLightBlock(ctx, latestBlock, now)
+		latestBlock, err = c.verifyLightBlock(ctx, latestBlock, now)
 		if err != nil {
 			return nil, err
 		}
@@ -490,7 +490,11 @@ func (c *Client) VerifyLightBlockAtHeight(ctx context.Context, height int64, now
 		return nil, err
 	}
 
-	return l, c.verifyLightBlock(ctx, l, now)
+	verified, err := c.verifyLightBlock(ctx, l, now)
+	if err != nil {
+		return l, err
+	}
+	return verified, nil
 }
 
 // VerifyHeader verifies a new header against the trusted state. It returns
@@ -552,10 +556,18 @@ func (c *Client) VerifyHeader(ctx context.Context, newHeader *types.Header, now 
 		return fmt.Errorf("light block header %X does not match newHeader %X", l.Hash(), newHeader.Hash())
 	}
 
-	return c.verifyLightBlock(ctx, l, now)
+	_, err = c.verifyLightBlock(ctx, l, now)
+	return err
 }
 
-func (c *Client) verifyLightBlock(ctx context.Context, newLightBlock *types.LightBlock, now time.Time) error {
+// verifyLightBlock verifies newLightBlock and saves it to the trusted store. It
+// returns the light block that was saved, which can differ from newLightBlock
+// if the primary was replaced during backwards verification.
+func (c *Client) verifyLightBlock(
+	ctx context.Context,
+	newLightBlock *types.LightBlock,
+	now time.Time,
+) (*types.LightBlock, error) {
 	c.logger.Info("VerifyHeader", "height", newLightBlock.Height, "hash", newLightBlock.Hash())
 
 	var (
@@ -574,7 +586,7 @@ func (c *Client) verifyLightBlock(ctx context.Context, newLightBlock *types.Ligh
 
 	firstBlockHeight, err := c.FirstTrustedHeight()
 	if err != nil {
-		return fmt.Errorf("can't get first light block height: %w", err)
+		return nil, fmt.Errorf("can't get first light block height: %w", err)
 	}
 
 	switch {
@@ -587,26 +599,29 @@ func (c *Client) verifyLightBlock(ctx context.Context, newLightBlock *types.Ligh
 		var firstBlock *types.LightBlock
 		firstBlock, err = c.trustedStore.LightBlock(firstBlockHeight)
 		if err != nil {
-			return fmt.Errorf("can't get first light block: %w", err)
+			return nil, fmt.Errorf("can't get first light block: %w", err)
 		}
-		err = c.backwards(ctx, firstBlock.Header, newLightBlock.Header)
+		newLightBlock, err = c.backwards(ctx, firstBlock.Header, newLightBlock)
 
 	// Verifying between first and last trusted light block
 	default:
 		var closestBlock *types.LightBlock
 		closestBlock, err = c.trustedStore.LightBlockBefore(newLightBlock.Height)
 		if err != nil {
-			return fmt.Errorf("can't get signed header before height %d: %w", newLightBlock.Height, err)
+			return nil, fmt.Errorf("can't get signed header before height %d: %w", newLightBlock.Height, err)
 		}
 		err = verifyFunc(ctx, closestBlock, newLightBlock, now)
 	}
 	if err != nil {
 		c.logger.Error("Can't verify", "err", err)
-		return err
+		return nil, err
 	}
 
 	// Once verified, save and return
-	return c.updateTrustedLightBlock(newLightBlock)
+	if err := c.updateTrustedLightBlock(newLightBlock); err != nil {
+		return nil, err
+	}
+	return newLightBlock, nil
 }
 
 // see VerifyHeader
@@ -928,22 +943,61 @@ func (c *Client) updateTrustedLightBlock(l *types.LightBlock) error {
 }
 
 // backwards verification (see VerifyHeaderBackwards func in the spec) verifies
-// headers before a trusted header. If a sent header is invalid the primary is
-// replaced with another provider and the operation is repeated.
+// the commit of newLightBlock against its validator set, then verifies headers
+// before a trusted header. If the commit or a sent header is invalid the
+// primary is replaced with another provider and the operation is repeated. It
+// returns the verified light block, which comes from the new primary if the
+// primary was replaced.
 func (c *Client) backwards(
 	ctx context.Context,
 	trustedHeader *types.Header,
-	newHeader *types.Header,
-) error {
+	newLightBlock *types.LightBlock,
+) (*types.LightBlock, error) {
 	var (
 		verifiedHeader = trustedHeader
 		interimHeader  *types.Header
+		newHeader      = newLightBlock.Header
 	)
+
+	// replacePrimary replaces the primary after it sent an invalid light block
+	// and retries with the new primary. It returns err if the primary can't be
+	// replaced.
+	replacePrimary := func(err error) (*types.LightBlock, error) {
+		c.logger.Error("backwards verification failed, replacing primary...", "err", err, "primary", c.primary)
+
+		// the client tries to see if it can get a witness to continue with the request
+		newPrimarysBlock, replaceErr := c.findNewPrimary(ctx, newHeader.Height, true)
+		if replaceErr != nil {
+			c.logger.Debug("failed to replace primary. Returning original error", "err", replaceErr)
+			return nil, err
+		}
+
+		// before continuing we must check that they have the same target header to validate
+		if !bytes.Equal(newPrimarysBlock.Hash(), newHeader.Hash()) {
+			c.logger.Debug("replaced primary but new primary has a different block to the initial one")
+			// return the original error
+			return nil, err
+		}
+
+		// try again with the new primary
+		return c.backwards(ctx, verifiedHeader, newPrimarysBlock)
+	}
+
+	// Hash chaining only verifies the header. Verify the commit too, since the
+	// light block is saved to the trusted store with it. Do this before the walk:
+	// the walk can promote a witness to primary (see lightBlockFromPrimary), and
+	// replacePrimary removes whoever is primary at the time. Here the primary is
+	// still the provider that served newLightBlock, so it is the one removed.
+	if err := newLightBlock.ValidatorSet.VerifyCommit(
+		c.chainID, newLightBlock.Commit.BlockID, newLightBlock.Height, newLightBlock.Commit,
+	); err != nil {
+		return replacePrimary(ErrInvalidHeader{fmt.Errorf("invalid commit at height %d: %w", newLightBlock.Height, err)})
+	}
 
 	for verifiedHeader.Height > newHeader.Height {
 		interimBlock, err := c.lightBlockFromPrimary(ctx, verifiedHeader.Height-1)
 		if err != nil {
-			return fmt.Errorf("failed to obtain the header at height #%d: %w", verifiedHeader.Height-1, err)
+			return nil, fmt.Errorf("failed to obtain the header at height #%d: %w", verifiedHeader.Height-1, err)
 		}
 		interimHeader = interimBlock.Header
 		c.logger.Trace("Verify newHeader against verifiedHeader",
@@ -952,30 +1006,20 @@ func (c *Client) backwards(
 			"newHeight", interimHeader.Height,
 			"newHash", interimHeader.Hash())
 		if err := VerifyBackwards(interimHeader, verifiedHeader); err != nil {
-			// verification has failed
-			c.logger.Error("backwards verification failed, replacing primary...", "err", err, "primary", c.primary)
-
-			// the client tries to see if it can get a witness to continue with the request
-			newPrimarysBlock, replaceErr := c.findNewPrimary(ctx, newHeader.Height, true)
-			if replaceErr != nil {
-				c.logger.Debug("failed to replace primary. Returning original error", "err", replaceErr)
-				return err
-			}
-
-			// before continuing we must check that they have the same target header to validate
-			if !bytes.Equal(newPrimarysBlock.Hash(), newHeader.Hash()) {
-				c.logger.Debug("replaced primary but new primary has a different block to the initial one")
-				// return the original error
-				return err
-			}
-
-			// try again with the new primary
-			return c.backwards(ctx, verifiedHeader, newPrimarysBlock.Header)
+			return replacePrimary(err)
 		}
 		verifiedHeader = interimHeader
 	}
 
-	return nil
+	// The primary can change during the walk, so the verified chain may end at
+	// a different header than the one we were asked to verify.
+	if !bytes.Equal(verifiedHeader.Hash(), newHeader.Hash()) {
+		return nil, ErrInvalidHeader{
+			fmt.Errorf("header hash %X at height %d does not match the verified header hash %X",
+				newHeader.Hash(), newHeader.Height, verifiedHeader.Hash())}
+	}
+
+	return newLightBlock, nil
 }
 
 // lightBlockFromPrimary retrieves the lightBlock from the primary provider
