@@ -1077,6 +1077,16 @@ func (cs *State) receiveRoutine(maxSteps int) {
 			}
 		}
 
+		// Handle our own messages before peer messages. Otherwise a quorum of peer
+		// precommits queued while we signed can commit the block before our own
+		// precommit is added, so peers never receive it for their next LastCommit.
+		select {
+		case mi := <-cs.internalMsgQueue:
+			cs.handleInternalMsg(mi)
+			continue
+		default:
+		}
+
 		rs := cs.rs
 		var mi msgInfo
 
