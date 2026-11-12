@@ -1,11 +1,15 @@
 package consensus
 
 import (
+	"bytes"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/require"
 
+	cstypes "github.com/cometbft/cometbft/consensus/types"
+
+	cmtpubsub "github.com/cometbft/cometbft/libs/pubsub"
 	cmtproto "github.com/cometbft/cometbft/proto/tendermint/types"
 	"github.com/cometbft/cometbft/types"
 )
@@ -52,5 +56,39 @@ func TestLatePrecommitIncludedAfterSlowExecution(t *testing.T) {
 		case <-deadline:
 			t.Fatalf("height %d not reached", to)
 		}
+	}
+}
+
+// receiveRoutine must handle our own queued vote before queued peer votes.
+// Under random select order this fails about half the time per iteration.
+func TestReceiveRoutineHandlesOwnMessagesFirst(t *testing.T) {
+	for i := 0; i < 20; i++ {
+		cs, vss := randState(4)
+		voteCh := subscribeBuffered(cs.eventBus, types.EventQueryVote, 10)
+		ownAddr := cs.privValidatorPubKey.Address()
+
+		// A nil prevote quorum moves the state to a new step, which ends
+		// receiveRoutine(1) without a goroutine.
+		cs.updateRoundStep(0, cstypes.RoundStepPrevote)
+		cs.nSteps = 0
+		for _, vs := range vss {
+			vs.Height, vs.Round = cs.rs.Height, 0
+			vote := signVote(vs, cmtproto.PrevoteType, nil, types.PartSetHeader{}, false)
+			if bytes.Equal(vote.ValidatorAddress, ownAddr) {
+				cs.internalMsgQueue <- msgInfo{&VoteMessage{vote}, ""}
+			} else {
+				cs.peerMsgQueue <- msgInfo{&VoteMessage{vote}, "peer"}
+			}
+		}
+		cs.receiveRoutine(1)
+
+		var msg cmtpubsub.Message
+		select {
+		case msg = <-voteCh:
+		case <-time.After(5 * time.Second):
+			t.Fatal("no vote event")
+		}
+		first := msg.Data().(types.EventDataVote).Vote
+		require.Equal(t, ownAddr, first.ValidatorAddress, "iteration %d", i)
 	}
 }
