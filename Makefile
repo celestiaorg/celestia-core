@@ -396,7 +396,7 @@ test-group-%:split-test-packages
 
 #? test-deadlock-group-%: Run a specific test group split with the deadlock build tag
 test-deadlock-group-%:split-test-packages
-	cat $(BUILDDIR)/packages.txt.$* | xargs go test -mod=readonly -timeout=15m -tags deadlock
+	cat $(BUILDDIR)/packages.txt.$* | xargs go test -mod=readonly -count=1 -timeout=15m -tags deadlock
 
 #? help: Get more info on make commands.
 help: Makefile

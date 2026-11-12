@@ -2,6 +2,8 @@
 # libs/sync mutexes for go-deadlock ones, which report lock-order inversions
 # and locks held for over 30 seconds. The regular Test workflow does not use
 # the tag. Packages are split into the same groups as the Test workflow.
+# The make target passes -count=1, so setup-go's restored build cache never
+# replays an earlier night's test results.
 #
 # Reproduce one group locally with:
 #   make test-deadlock-group-00 NUM_SPLIT=6
