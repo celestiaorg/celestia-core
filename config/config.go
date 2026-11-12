@@ -754,6 +754,11 @@ type P2PConfig struct {
 	// Time to wait before flushing messages out on the connection
 	FlushThrottleTimeout time.Duration `mapstructure:"flush_throttle_timeout"`
 
+	// Flush latency-critical messages (votes, round steps, compact blocks,
+	// haves, wants, recovery parts) as soon as none are left queued, instead of
+	// waiting for the flush throttle. Other traffic stays batched.
+	FlushLowLatency bool `mapstructure:"flush_low_latency"`
+
 	// Maximum size of a message packet payload, in bytes
 	MaxPacketMsgPayloadSize int `mapstructure:"max_packet_msg_payload_size"`
 
@@ -802,6 +807,7 @@ func DefaultP2PConfig() *P2PConfig {
 		MaxNumOutboundPeers:          10,
 		PersistentPeersMaxDialPeriod: 0 * time.Second,
 		FlushThrottleTimeout:         100 * time.Millisecond,
+		FlushLowLatency:              true,
 		MaxPacketMsgPayloadSize:      1024,    // 1 kB
 		SendRate:                     5120000, // 5 mB/s
 		RecvRate:                     5120000, // 5 mB/s
@@ -1232,6 +1238,12 @@ type ConsensusConfig struct {
 	// Make progress as soon as we have all the precommits (as if TimeoutCommit = 0)
 	SkipTimeoutCommit bool `mapstructure:"skip_timeout_commit"`
 
+	// LegacyPacing is a disaster-recovery switch: it ignores the application's
+	// DynamicTimeoutCommit and paces blocks with the two LegacyPacing* timeouts.
+	LegacyPacing                        bool          `mapstructure:"legacy_pacing"`
+	LegacyPacingTimeoutCommit           time.Duration `mapstructure:"legacy_pacing_timeout_commit"`
+	LegacyPacingDelayedPrecommitTimeout time.Duration `mapstructure:"legacy_pacing_delayed_precommit_timeout"`
+
 	// EmptyBlocks mode and possible interval between empty blocks
 	// Deprecated: CreateEmptyBlocks is deprecated and will be removed in a future version.
 	CreateEmptyBlocks         bool          `mapstructure:"create_empty_blocks"`
@@ -1269,6 +1281,10 @@ func DefaultConsensusConfig() *ConsensusConfig {
 		DoubleSignCheckHeight:       int64(0),
 		DisablePropagationReactor:   false,
 		EnableLegacyBlockProp:       false,
+
+		// About v11's ~0.85 s blocks: interval ≈ these two + one precommit round.
+		LegacyPacingTimeoutCommit:           100 * time.Millisecond,
+		LegacyPacingDelayedPrecommitTimeout: 550 * time.Millisecond,
 	}
 }
 
@@ -1386,6 +1402,12 @@ func (cfg *ConsensusConfig) ValidateBasic() error {
 	}
 	if cfg.TimeoutCommit < 0 {
 		return errors.New("timeout_commit can't be negative")
+	}
+	if cfg.LegacyPacingTimeoutCommit < 0 {
+		return errors.New("legacy_pacing_timeout_commit can't be negative")
+	}
+	if cfg.LegacyPacingDelayedPrecommitTimeout < 0 {
+		return errors.New("legacy_pacing_delayed_precommit_timeout can't be negative")
 	}
 	if cfg.CreateEmptyBlocksInterval < 0 {
 		return errors.New("create_empty_blocks_interval can't be negative")
