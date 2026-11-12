@@ -9,6 +9,7 @@ import (
 	"os"
 	"sort"
 	"strconv"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -415,8 +416,6 @@ func TestTxPool_Eviction(t *testing.T) {
 	require.False(t, txmp.WasRecentlyEvicted(types.Tx("key8=0007=20").Key()))
 }
 
-<<<<<<< HEAD
-=======
 // TestTxPool_CountLimit checks that the pool never holds more than
 // config.Size txs when the byte limit still has room.
 func TestTxPool_CountLimit(t *testing.T) {
@@ -502,7 +501,6 @@ func TestTxPool_EvictionSkipsIncomingSigner(t *testing.T) {
 	})
 }
 
->>>>>>> fa6b967 (fix(mempool/cat): [high] don't evict the incoming signer's own txs (#3659))
 func TestTxPool_Flush(t *testing.T) {
 	txmp := setup(t, 0)
 	txs := checkTxs(t, txmp, 100, 0)

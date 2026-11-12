@@ -901,6 +901,10 @@ func (memR *Reactor) findNewPeerToRequestTx(txKey types.TxKey) {
 	if memR.ids.Len() == 0 {
 		return
 	}
+	// a late response may already have delivered the tx
+	if memR.mempool.Has(txKey) {
+		return
+	}
 
 	peerIDs := memR.mempool.seenTracker.PeersForTx(txKey)
 	for peerID := range peerIDs {
