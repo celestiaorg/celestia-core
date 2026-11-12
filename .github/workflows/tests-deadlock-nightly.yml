@@ -1,0 +1,35 @@
+# Runs the unit tests nightly with the deadlock build tag. The tag swaps
+# libs/sync mutexes for go-deadlock ones, which report lock-order inversions
+# and locks held for over 30 seconds. The regular Test workflow does not use
+# the tag. Packages are split into the same groups as the Test workflow.
+#
+# Reproduce one group locally with:
+#   make test-deadlock-group-00 NUM_SPLIT=6
+name: Deadlock Tests
+on:
+  workflow_dispatch:  # allow running workflow manually
+  schedule:
+    - cron: '23 2 * * *'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.run_id }}
+  cancel-in-progress: false
+
+jobs:
+  tests-deadlock:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        part: ["00", "01", "02", "03", "04", "05"]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: "go.mod"
+      - name: Run Go Tests with deadlock detection
+        run: make test-deadlock-group-${{ matrix.part }} NUM_SPLIT=6

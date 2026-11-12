@@ -1,0 +1,59 @@
+# Runs the generated E2E testnets nightly. The generator builds random
+# testnets that kill, pause, disconnect and restart nodes. Every node runs the
+# local build. e2e-manual-multiversion.yml runs the same testnets against the
+# latest release, but only on demand.
+#
+# A failing testnet's container logs are printed to the job log by
+# run-multiple.sh. Reproduce one group locally from test/e2e with:
+#   make docker generator runner
+#   ./build/generator -g 5 -d networks/nightly/ -p
+#   ./run-multiple.sh networks/nightly/*-group00-*.toml
+name: e2e-nightly
+on:
+  workflow_dispatch:  # allow running workflow manually
+  schedule:
+    - cron: '41 1 * * *'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.run_id }}
+  cancel-in-progress: false
+
+jobs:
+  e2e-nightly-test:
+    # Run parallel jobs for the listed testnet groups (must match the
+    # ./build/generator -g flag). Group 05 runs the regression testnets.
+    strategy:
+      fail-fast: false
+      matrix:
+        group: ['00', '01', '02', '03', '04', '05']
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: 'go.mod'
+
+      - name: Build
+        working-directory: test/e2e
+        # Run make jobs in parallel, since we can't run steps in parallel.
+        run: make -j2 docker generator runner
+
+      - name: Generate testnets
+        if: matrix.group != '05'
+        working-directory: test/e2e
+        # When changing -g, also change the matrix groups above.
+        run: ./build/generator -g 5 -d networks/nightly/ -p
+
+      - name: Run p2p testnets (${{ matrix.group }})
+        if: matrix.group != '05'
+        working-directory: test/e2e
+        run: ./run-multiple.sh networks/nightly/*-group${{ matrix.group }}-*.toml
+
+      - name: Run p2p testnets (regression)
+        if: matrix.group == '05'
+        working-directory: test/e2e
+        run: ./run-multiple.sh networks_regressions/*.toml
