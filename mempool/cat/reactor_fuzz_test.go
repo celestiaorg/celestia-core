@@ -580,9 +580,17 @@ func (h *catFuzzHarness) checkSeenTracker(active func(uint16) bool) {
 			require.True(t, active(pid), "tracker holds inactive peer %d", pid)
 			counts[pid]++
 		}
-		if e.pendingTxInfo != nil {
-			pending++
+		require.LessOrEqual(t, len(e.claims), len(e.peers), "claims outnumber peers")
+		backers := map[uint16]struct{}{}
+		for _, c := range e.claims {
+			require.Same(t, e, c.entry)
+			for pid := range c.announcers {
+				require.Contains(t, e.peers, pid, "claim announced by a peer without the tx")
+				require.NotContains(t, backers, pid, "peer backs two claims")
+				backers[pid] = struct{}{}
+			}
 		}
+		pending += len(e.claims)
 	}
 	require.Equal(t, len(counts), len(st.txCountByPeer))
 	for pid, n := range counts {
@@ -593,12 +601,12 @@ func (h *catFuzzHarness) checkSeenTracker(active func(uint16) bool) {
 	for signerKey, q := range st.pendingTxsBySigner {
 		require.NotEmpty(t, q)
 		require.LessOrEqual(t, len(q), st.perSignerLimit)
-		for k, e := range q {
-			require.NotNil(t, e.pendingTxInfo)
-			require.Equal(t, signerKey, e.pendingTxInfo.signerKey)
-			require.Same(t, st.txByKey[e.txKey], e)
+		for k, c := range q {
+			require.Equal(t, signerKey, c.signerKey)
+			require.Same(t, st.txByKey[c.entry.txKey], c.entry)
+			require.Contains(t, c.entry.claims, c)
 			if k > 0 {
-				require.LessOrEqual(t, q[k-1].pendingTxInfo.sequence, e.pendingTxInfo.sequence)
+				require.LessOrEqual(t, q[k-1].sequence, c.sequence)
 			}
 		}
 		queued += len(q)

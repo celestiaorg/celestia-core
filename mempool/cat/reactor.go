@@ -344,7 +344,8 @@ func (memR *Reactor) processNowOrBuffer(cachedTx *types.CachedTx, key types.TxKe
 
 	// The signer's sequence advanced past this tx while our request was in
 	// flight. A consumed sequence can never be applied, so drop the tx
-	// without running CheckTx and forget it entirely.
+	// without running CheckTx. Only the sender's claim is known to be stale:
+	// forget it and the sender as a source, and ask another peer.
 	if sequence < expectedSeq {
 		memR.Logger.Debug(
 			"dropping tx with stale sequence",
@@ -352,7 +353,9 @@ func (memR *Reactor) processNowOrBuffer(cachedTx *types.CachedTx, key types.TxKe
 			"sequence", sequence,
 			"expectedSequence", expectedSeq,
 		)
-		memR.mempool.seenTracker.RemoveKey(key)
+		memR.mempool.seenTracker.ClearPendingClaim(key, signer, sequence)
+		memR.mempool.seenTracker.RemovePeerFromTx(key, txInfo.SenderID)
+		memR.findNewPeerToRequestTx(key)
 		return false
 	}
 
@@ -360,7 +363,7 @@ func (memR *Reactor) processNowOrBuffer(cachedTx *types.CachedTx, key types.TxKe
 	// enough to apply later, otherwise drop it (we re-request when the gap closes).
 	if sequence <= expectedSeq+maxReceivedBufferSize {
 		if memR.receivedBuffer.add(signer, sequence, cachedTx, key, txInfo, string(src.ID())) {
-			memR.mempool.seenTracker.ClearPendingTx(key)
+			memR.mempool.seenTracker.ClearPendingClaim(key, signer, sequence)
 		}
 	}
 	return false
@@ -648,10 +651,25 @@ func (memR *Reactor) requestTx(txKey types.TxKey, peer p2p.Peer) bool {
 	return true
 }
 
-// tryAddNewTx attempts to add a tx to the mempool and traces the result.
-// Returns the response and true if processing should continue (success or already in mempool).
+// tryAddNewTx attempts to add a tx delivered by a peer to the mempool, traces
+// the result and updates the tx's queued claims. A tx the application rejects
+// may only be early: if a peer other than the sender claimed it, that claim
+// stays queued and the rejection is not cached, so the tx is requested again
+// when its gap closes.
 func (memR *Reactor) tryAddNewTx(cachedTx *types.CachedTx, key types.TxKey, txInfo mempool.TxInfo, peerID string) (*abci.ResponseCheckTx, error) {
-	rsp, err := memR.mempool.TryAddNewTx(cachedTx, key, txInfo)
+	cacheRejection := !memR.mempool.seenTracker.HasPendingClaimNotFrom(key, txInfo.SenderID)
+	rsp, err := memR.mempool.tryAddNewTx(cachedTx, key, txInfo, cacheRejection)
+	switch {
+	case err == nil && rsp.Code == abci.CodeTypeOK, errors.Is(err, ErrTxInMempool):
+		// Drop the claims but preserve the peer-has-tx record so the SeenTx
+		// broadcast that follows skips peers already known to have the tx
+		// (including the sender).
+		memR.mempool.seenTracker.ClearPendingTx(key)
+	case err == nil:
+		// The sender's claim, if any, put the tx at the expected sequence and
+		// the application disagreed.
+		memR.mempool.seenTracker.ClearPendingClaimFrom(key, txInfo.SenderID)
+	}
 	if err != nil {
 		signer, sequence := "", uint64(0)
 		if rsp != nil {
@@ -679,12 +697,6 @@ func (memR *Reactor) tryAddNewTx(cachedTx *types.CachedTx, key types.TxKey, txIn
 // draining any buffered transactions for the same signer.
 func (memR *Reactor) processReceivedTx(cachedTx *types.CachedTx, key types.TxKey, txInfo mempool.TxInfo, src p2p.Peer) {
 	rsp, err := memR.tryAddNewTx(cachedTx, key, txInfo, string(src.ID()))
-	if err == nil || errors.Is(err, ErrTxInMempool) {
-		// Drop the entry from the per-signer queue but preserve the
-		// peer-has-tx record so the SeenTx broadcast that follows skips
-		// peers already known to have the tx (including the sender).
-		memR.mempool.seenTracker.ClearPendingTx(key)
-	}
 	if err != nil {
 		return
 	}
@@ -719,9 +731,6 @@ func (memR *Reactor) processReceivedBuffer(signer []byte) {
 		memR.receivedBuffer.removeLowerSeqs(signer, expectedSeq)
 
 		rsp, err := memR.tryAddNewTx(buffered.tx, buffered.txKey, buffered.txInfo, buffered.peerID)
-		if err == nil || errors.Is(err, ErrTxInMempool) {
-			memR.mempool.seenTracker.ClearPendingTx(buffered.txKey)
-		}
 		if err != nil {
 			break
 		}
@@ -755,9 +764,9 @@ func (memR *Reactor) processPendingSeenForSigner(signer []byte) {
 	requested := 0
 
 	for _, entry := range entries {
-		// Clean up entries that are already processed
+		// Clean up claims for sequences that are already used
 		if entry.pendingTxInfo.sequence < expectedSeq {
-			memR.mempool.seenTracker.ClearPendingTx(entry.txKey)
+			memR.mempool.seenTracker.ClearPendingClaim(entry.txKey, signer, entry.pendingTxInfo.sequence)
 			continue
 		}
 
@@ -892,8 +901,9 @@ func (memR *Reactor) findNewPeerToRequestTx(txKey types.TxKey) {
 		return
 	}
 
-	peerIDs := memR.mempool.seenTracker.PeersForTx(txKey)
-	for peerID := range peerIDs {
+	// Ask peers that announced a claim first, so the delivery is judged by
+	// metadata its sender announced.
+	for _, peerID := range memR.mempool.seenTracker.RequestCandidates(txKey) {
 		peer := memR.ids.GetPeer(peerID)
 		if peer == nil {
 			continue

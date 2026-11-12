@@ -301,6 +301,12 @@ func (txmp *TxPool) markToBeBroadcast(key types.TxKey) {
 // If it passes `CheckTx`, the new transaction is added to the mempool as long as it has
 // sufficient priority and space else if evicted it will return an error
 func (txmp *TxPool) TryAddNewTx(tx *types.CachedTx, key types.TxKey, txInfo mempool.TxInfo) (*abci.ResponseCheckTx, error) {
+	return txmp.tryAddNewTx(tx, key, txInfo, true)
+}
+
+// tryAddNewTx is TryAddNewTx. If cacheRejection is false, a tx the application
+// rejects is not added to the rejected tx cache, because it may be valid later.
+func (txmp *TxPool) tryAddNewTx(tx *types.CachedTx, key types.TxKey, txInfo mempool.TxInfo, cacheRejection bool) (*abci.ResponseCheckTx, error) {
 	// First check the cache to see if we can conclude early. We may have already seen and processed
 	// the transaction if:
 	// - We are connected to nodes running v0 or v1 which simply flood the network
@@ -349,7 +355,9 @@ func (txmp *TxPool) TryAddNewTx(tx *types.CachedTx, key types.TxKey, txInfo memp
 		return rsp, err
 	}
 	if rsp.Code != abci.CodeTypeOK {
-		txmp.rejectedTxCache.Push(key, rsp.Code, rsp.Log)
+		if cacheRejection {
+			txmp.rejectedTxCache.Push(key, rsp.Code, rsp.Log)
+		}
 		txmp.metrics.FailedTxs.Add(1)
 		schema.WriteMempoolTxStatus(
 			txmp.traceClient,
