@@ -589,10 +589,11 @@ func TestPruneServesCommittedBlockToParkedWants(t *testing.T) {
 }
 
 // TestRetryWantsReRequestsAfterWrongBlockPart asserts that a catch-up want answered
-// with another block's parts is asked again on the next retry tick.
+// with another block's parts is asked again once the request expires.
 func TestRetryWantsReRequestsAfterWrongBlockPart(t *testing.T) {
 	reactors, _ := createTestReactors(2, defaultTestP2PConf(), false, "")
 	requester, server := reactors[0], reactors[1]
+	requester.requestTimeout = 100 * time.Millisecond
 	cleanup, _, sm, pv := state.SetupTestCaseWithPrivVal(t)
 	t.Cleanup(func() { cleanup(t) })
 
@@ -626,6 +627,33 @@ func TestRetryWantsReRequestsAfterWrongBlockPart(t *testing.T) {
 		_, parts, has := requester.GetProposal(propX.Height, propX.Round)
 		return has && parts.IsComplete()
 	}, 2*time.Second, 10*time.Millisecond)
+}
+
+// TestRetryWantsWaitsForCatchupRequestExpiry asserts that a catch-up want still in flight
+// to a peer is not sent again until the request expires.
+func TestRetryWantsWaitsForCatchupRequestExpiry(t *testing.T) {
+	reactors, switches := testBlockPropReactors(1, defaultTestP2PConf())
+	stopSwitchesOnCleanup(t, switches)
+	r := reactors[0]
+	r.requestTimeout = time.Hour
+	rp := addRecordingPeer(t, r, 0)
+	peer := r.getPeer(rp.ID())
+	peer.SetConsensusPeerState(&MockPeerStateEditor{height: 10})
+
+	psh := types.PartSetHeader{Total: 4, Hash: cmtrand.Bytes(32)}
+	r.AddCommitment(1, 0, &psh)
+	require.Eventually(t, func() bool {
+		reqs, has := peer.GetRequests(1, 0)
+		return has && !reqs.IsEmpty()
+	}, time.Second, 10*time.Millisecond)
+	require.Equal(t, 1, rp.sentWants())
+
+	r.retryWants()
+	require.Equal(t, 1, rp.sentWants(), "in-flight request is not sent again")
+
+	r.requestTimeout = 0
+	r.retryWants()
+	require.Equal(t, 2, rp.sentWants(), "expired request is sent again")
 }
 
 // TestRecoveryPartForOlderRound asserts that a proven part answering a catch-up want is

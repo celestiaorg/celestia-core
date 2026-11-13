@@ -25,10 +25,6 @@ func (blockProp *Reactor) retryWants() {
 		if prop.block.IsComplete() {
 			continue
 		}
-		blockProp.pmtx.Lock()
-		catchup := prop.catchup
-		blockProp.pmtx.Unlock()
-
 		// only re-request original parts that are missing, not parity parts.
 		missing := prop.block.MissingOriginal()
 		if missing.IsEmpty() {
@@ -52,10 +48,10 @@ func (blockProp *Reactor) retryWants() {
 			// full or its stored parts budget is used up. Let old requests
 			// expire so that they can be sent to this peer again.
 			peer.ExpireRequests(height, round, blockProp.requestTimeout)
-			// catch-up entries ignore past requests (ReqLimit still caps each pass): a peer
-			// may have answered with another block's parts or parked the want on a stub.
+			// requests expire after requestTimeout, so a peer that parked the want or sent
+			// another block's parts is asked again.
 			reqs, has := peer.GetRequests(height, round)
-			if has && !catchup {
+			if has {
 				mc = mc.Sub(reqs)
 			}
 
@@ -322,7 +318,7 @@ func (blockProp *Reactor) handleCachedCompactBlock(cb *proptypes.CompactBlock) b
 	if props, ok := blockProp.proposals[cb.Proposal.Height]; ok {
 		if prop := props[cb.Proposal.Round]; prop != nil {
 			if sameProposalIdentity(prop, cb) {
-				// Mark as catchup to skip parity requests in retryWants
+				// catchup keeps it in unfinishedHeights: parts are fetched and delayed precommit is skipped.
 				prop.catchup = true
 				propFound = true
 				// forward the proposal to consensus only if it has not been

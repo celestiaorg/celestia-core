@@ -23,14 +23,15 @@ import (
 
 const storedTestHeight = int64(5)
 
-// recordingPeer is a mock peer that records the recovery parts sent to it and
-// accepts at most capacity of them, like a peer with a bounded send queue.
+// recordingPeer is a mock peer that counts the wants sent to it, records the recovery
+// parts and accepts at most capacity of them, like a peer with a bounded send queue.
 type recordingPeer struct {
 	*mock.Peer
 	mtx      sync.Mutex
 	capacity int
 	attempts int
 	sent     []*propproto.RecoveryPart
+	wants    int
 }
 
 func newRecordingPeer(capacity int) *recordingPeer {
@@ -40,6 +41,10 @@ func newRecordingPeer(capacity int) *recordingPeer {
 func (rp *recordingPeer) TrySend(e p2p.Envelope) bool {
 	rp.mtx.Lock()
 	defer rp.mtx.Unlock()
+	if _, ok := e.Message.(*propproto.WantParts); ok {
+		rp.wants++
+		return true
+	}
 	part, ok := e.Message.(*propproto.RecoveryPart)
 	if !ok {
 		return true
@@ -50,6 +55,12 @@ func (rp *recordingPeer) TrySend(e p2p.Envelope) bool {
 	}
 	rp.sent = append(rp.sent, part)
 	return true
+}
+
+func (rp *recordingPeer) sentWants() int {
+	rp.mtx.Lock()
+	defer rp.mtx.Unlock()
+	return rp.wants
 }
 
 func (rp *recordingPeer) sentParts() []*propproto.RecoveryPart {

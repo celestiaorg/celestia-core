@@ -46,9 +46,9 @@ const (
 	// per part this is about 128 MiB/s. The burst is one maximum-size block.
 	StoredPartsPerSecond = 2000
 
-	// RequestTimeout is how long a catchup request to a peer stays outstanding
-	// before it can be sent to that peer again.
-	RequestTimeout = 2 * RetryTime
+	// RequestTimeout is how long a catchup request to a peer stays outstanding.
+	// A request expires before the second retry tick after it was sent.
+	RequestTimeout = 2*RetryTime - RetryTime/2
 )
 
 type Reactor struct {
