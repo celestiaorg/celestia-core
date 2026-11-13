@@ -1675,6 +1675,12 @@ func (cs *State) reseedPropagator() {
 	}
 	block.FillCachedHashes()
 	parts, err := block.MakePartSet(types.BlockPartSizeBytes)
+	if err == nil && !parts.HasHeader(prop.BlockID.PartSetHeader) &&
+		rs.ProposalBlockParts.HasHeader(prop.BlockID.PartSetHeader) && rs.ProposalBlockParts.IsComplete() {
+		// A re-proposed ValidBlock keeps the parts that got the polka, which
+		// may differ from its re-encoding; use the replayed parts.
+		parts = rs.ProposalBlockParts
+	}
 	if err != nil || !parts.HasHeader(prop.BlockID.PartSetHeader) {
 		cs.Logger.Error("cannot rebuild the replayed proposal's part set", "height", prop.Height, "round", prop.Round, "err", err)
 		return

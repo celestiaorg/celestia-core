@@ -137,3 +137,39 @@ func (r *proposeRecordingPropagator) proposedTxs() [][]proptypes.TxMetaData {
 	return r.proposed
 }
 
+// A proposer that re-proposed ValidBlock's original parts and then restarts
+// must hand those parts back to the propagator. Re-encoding the replayed block
+// gives a different PartSetHeader when the original encoding was not
+// canonical, so the replayed parts are used instead.
+func TestReseedPropagatorUsesReproposedValidBlockParts(t *testing.T) {
+	cs, vss := randState(4)
+	ourIdx, _ := cs.rs.Validators.GetByAddress(cs.privValidatorPubKey.Address())
+	require.True(t, cs.isProposer(cs.privValidatorPubKey.Address()))
+	deliverTxsRange(t, cs, 0, 5)
+	block, canonicalParts, err := cs.createProposalBlock(context.Background())
+	require.NoError(t, err)
+	pbb, err := block.ToProto()
+	require.NoError(t, err)
+	bz, err := proto.Marshal(pbb)
+	require.NoError(t, err)
+	// The canonical encoding followed by an unknown field (field 100, varint 1).
+	parts, err := types.NewPartSetFromData(append(bz, 0xa0, 0x06, 0x01), types.BlockPartSizeBytes)
+	require.NoError(t, err)
+	require.NotEqual(t, canonicalParts.Header(), parts.Header())
+
+	blockID := types.BlockID{Hash: block.Hash(), PartSetHeader: parts.Header()}
+	proposal := types.NewProposal(cs.rs.Height, cs.rs.Round, 0, blockID)
+	p := proposal.ToProto()
+	require.NoError(t, vss[ourIdx].SignProposal(cs.state.ChainID, p))
+	proposal.Signature = p.Signature
+
+	rec := &proposeRecorder{Propagator: propagation.NewNoOpPropagator()}
+	cs.propagator = rec
+	cs.rs.Proposal, cs.rs.ProposalBlock, cs.rs.ProposalBlockParts = proposal, block, parts
+	cs.reseedPropagator()
+
+	rec.mtx.Lock()
+	defer rec.mtx.Unlock()
+	require.Len(t, rec.parts, 1)
+	require.True(t, rec.parts[0].HasHeader(blockID.PartSetHeader))
+}
