@@ -121,6 +121,7 @@ func (cs *State) applyLockInfo(li LockInfo) {
 		cs.fillLockBytes(block, parts)
 		if cs.rs.ProposalBlockParts == nil || cs.rs.ProposalBlockParts.HasHeader(li.BlockID.PartSetHeader) {
 			cs.rs.ProposalBlock, cs.rs.ProposalBlockParts = block, parts
+			cs.rs.ProposalBlockNonCanonical = false // a locked block is always canonical
 		}
 	}
 }
