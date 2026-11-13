@@ -471,3 +471,46 @@ func TestBigInt(t *testing.T) {
 		})
 	}
 }
+
+func TestBlockSearchCapsIntersection(t *testing.T) {
+	idx := blockidxkv.New(db.NewMemDB(), blockidxkv.WithMaxSearchResults(2))
+	for i := 1; i <= 10; i++ {
+		recipient := "common"
+		if i == 1 {
+			recipient = "rare"
+		}
+		require.NoError(t, idx.Index(types.EventDataNewBlockEvents{
+			Height: int64(i), Events: []abci.Event{{Type: "transfer", Attributes: []abci.EventAttribute{
+				{Key: "recipient", Value: recipient, Index: true},
+				{Key: "amount", Value: "1", Index: true},
+			}}},
+		}))
+	}
+	for _, condition := range []string{"transfer.amount = 1", "transfer.amount EXISTS", "transfer.amount CONTAINS '1'"} {
+		results, err := idx.Search(context.Background(), query.MustCompile("transfer.recipient = 'rare' AND "+condition))
+		require.NoError(t, err, condition)
+		require.Equal(t, []int64{1}, results, condition)
+	}
+	_, err := idx.Search(context.Background(), query.MustCompile("transfer.amount = 1"))
+	require.ErrorIs(t, err, indexer.ErrTooManyResults, "the first condition must remain bounded")
+}
+
+// TestBlockSearchRangeOrderIsDeterministic checks that two range conditions are
+// visited in a fixed order, so the result does not depend on map iteration.
+func TestBlockSearchRangeOrderIsDeterministic(t *testing.T) {
+	idx := blockidxkv.New(db.NewMemDB(), blockidxkv.WithMaxSearchResults(2))
+	for i := 1; i <= 10; i++ {
+		require.NoError(t, idx.Index(types.EventDataNewBlockEvents{
+			Height: int64(i), Events: []abci.Event{{Type: "transfer", Attributes: []abci.EventAttribute{
+				{Key: "amount", Value: fmt.Sprint(i), Index: true},
+				{Key: "kind", Value: "1", Index: true},
+			}}},
+		}))
+	}
+	q := query.MustCompile("transfer.amount < 2 AND transfer.kind > 0")
+	for range 50 {
+		results, err := idx.Search(context.Background(), q)
+		require.NoError(t, err)
+		require.Equal(t, []int64{1}, results)
+	}
+}

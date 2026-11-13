@@ -40,6 +40,15 @@ const (
 
 	// RetryTime automatic catchup retry timeout.
 	RetryTime = 2500 * time.Millisecond
+
+	// StoredPartsPerSecond is how many block parts per second this node loads
+	// from the block store to serve catchup wants, across all peers. At 64 KiB
+	// per part this is about 128 MiB/s. The burst is one maximum-size block.
+	StoredPartsPerSecond = 2000
+
+	// RequestTimeout is how long a catchup request to a peer stays outstanding.
+	// A request expires before the second retry tick after it was sent.
+	RequestTimeout = 2*RetryTime - RetryTime/2
 )
 
 type Reactor struct {
@@ -54,9 +63,19 @@ type Reactor struct {
 	// proposer, height, and round are always observed together.
 	currentProposer crypto.PubKey
 
-	privval       types.PrivValidator
-	chainID       string
-	BlockMaxBytes int64
+	privval types.PrivValidator
+	chainID string
+	// blockMaxBytes is the Block.MaxBytes consensus param for the height
+	// consensus is on. It is guarded by the ProposalCache's pmtx.
+	blockMaxBytes int64
+
+	// storedPartsBudget limits how many block parts this node loads from the
+	// block store per second to serve catchup wants, across all peers.
+	storedPartsBudget *tokenBucket
+
+	// requestTimeout is how long catchup requests to a peer stay outstanding
+	// before retryWants may send them to that peer again.
+	requestTimeout time.Duration
 
 	// mempool access to read the transactions by hash from the mempool
 	// and eventually remove it.
@@ -101,10 +120,13 @@ func NewReactor(
 		cancel:        cancel,
 		privval:       config.Privval,
 		chainID:       config.ChainID,
-		BlockMaxBytes: config.BlockMaxBytes,
+		blockMaxBytes: config.BlockMaxBytes,
 		partChan:      make(chan types.PartInfo, 30_000),
 		proposalChan:  make(chan ProposalAndSrc, 1000),
 		ticker:        time.NewTicker(RetryTime),
+
+		storedPartsBudget: newTokenBucket(StoredPartsPerSecond, float64(types.MaxBlockPartsCount)),
+		requestTimeout:    RequestTimeout,
 	}
 	for _, option := range options {
 		option(reactor)
@@ -156,6 +178,7 @@ func (blockProp *Reactor) GetChannels() []*conn.ChannelDescriptor {
 		{
 			ID:                  WantChannel,
 			Priority:            145,
+			LowLatency:          true,
 			SendQueueCapacity:   20000,
 			RecvMessageCapacity: maxMsgSize,
 			MessageType:         &propproto.Message{},
@@ -163,6 +186,7 @@ func (blockProp *Reactor) GetChannels() []*conn.ChannelDescriptor {
 		{
 			ID:                  DataChannel,
 			Priority:            140,
+			LowLatency:          true,
 			SendQueueCapacity:   20000,
 			RecvMessageCapacity: maxMsgSize,
 			MessageType:         &propproto.Message{},
@@ -311,6 +335,7 @@ func (blockProp *Reactor) Prune(committedHeight int64) {
 		peer.prune(prunePast)
 	}
 	blockProp.prune(prunePast)
+	go blockProp.serveCommitted(committedHeight)
 	blockProp.pmtx.Lock()
 	defer blockProp.pmtx.Unlock()
 	blockProp.height = committedHeight
@@ -353,6 +378,15 @@ func (blockProp *Reactor) SetConsensusState(height int64, round int32, proposer 
 	// todo: delete the old round data as its no longer relevant don't delete
 	// past round data if it has a POL
 	blockProp.applyCachedProposalIfAvailable()
+}
+
+// SetBlockMaxBytes installs the Block.MaxBytes consensus param that applies to
+// the height consensus is entering, so compact blocks are checked against the
+// current limit after a governance change.
+func (blockProp *Reactor) SetBlockMaxBytes(maxBytes int64) {
+	blockProp.pmtx.Lock()
+	blockProp.blockMaxBytes = maxBytes
+	blockProp.pmtx.Unlock()
 }
 
 func (blockProp *Reactor) ResetRequestCounts() {

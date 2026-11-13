@@ -516,6 +516,8 @@ func TestBitArrayValidateBasic(t *testing.T) {
 		{"valid with elements", NewBitArray(10), true},
 		{"more elements than bits specifies", &BitArray{Bits: 0, Elems: make([]uint64, 5)}, false},
 		{"less elements than bits specifies", &BitArray{Bits: 200, Elems: make([]uint64, 1)}, false},
+		{"negative bits no elements", &BitArray{Bits: -1, Elems: nil}, false},
+		{"negative bits with elements", &BitArray{Bits: -64, Elems: make([]uint64, 1)}, false},
 	}
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {

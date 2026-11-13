@@ -106,6 +106,10 @@ type MConnection struct {
 	// are safe to call concurrently.
 	stopMtx cmtsync.Mutex
 
+	// set when a LowLatency message finished writing and hasn't been flushed.
+	// Only touched by sendRoutine.
+	lowLatencyPending bool
+
 	flushTimer *timer.ThrottleTimer // flush writes as necessary but throttled.
 	pingTimer  *time.Ticker         // send pings periodically
 
@@ -131,6 +135,10 @@ type MConnConfig struct {
 	// Interval to flush writes (throttled)
 	FlushThrottle time.Duration `mapstructure:"flush_throttle"`
 
+	// FlushLowLatency flushes once LowLatency channels have no more to send,
+	// instead of waiting for the flush throttle.
+	FlushLowLatency bool `mapstructure:"flush_low_latency"`
+
 	// Interval to send pings
 	PingInterval time.Duration `mapstructure:"ping_interval"`
 
@@ -149,6 +157,7 @@ func DefaultMConnConfig() MConnConfig {
 		RecvRate:                defaultRecvRate,
 		MaxPacketMsgPayloadSize: defaultMaxPacketMsgPayloadSize,
 		FlushThrottle:           defaultFlushThrottle,
+		FlushLowLatency:         true,
 		PingInterval:            defaultPingInterval,
 		PongTimeout:             defaultPongTimeout,
 	}
@@ -329,6 +338,7 @@ func (c *MConnection) String() string {
 
 func (c *MConnection) flush() {
 	//c.Logger.Debug("Flush", "conn", c)
+	c.lowLatencyPending = false
 	err := c.bufConnWriter.Flush()
 	if err != nil {
 		c.Logger.Debug("MConnection flush failed", "err", err)
@@ -538,8 +548,24 @@ func (c *MConnection) sendBatchPacketMsgs(w protoio.Writer, batchSize int) bool 
 			return true
 		}
 		totalBytesWritten += bytesWritten
+		c.flushLowLatency()
 	}
 	return false
+}
+
+// flushLowLatency flushes once a LowLatency message was written and no
+// LowLatency channel has more to send. Queued LowLatency messages share one
+// write, and other channels' traffic doesn't hold them back.
+func (c *MConnection) flushLowLatency() {
+	if !c.lowLatencyPending {
+		return
+	}
+	for _, ch := range c.channels {
+		if ch.desc.LowLatency && ch.isSendPending() {
+			return
+		}
+	}
+	c.flush()
 }
 
 // selects a channel to gossip our next message on.
@@ -578,7 +604,10 @@ func (c *MConnection) sendPacketMsgOnChannel(w protoio.Writer, sendChannel *Chan
 		c.stopForError(err)
 		return n, true
 	}
-	// TODO: Change this to only add flush signals at the start and end of the batch.
+	// sending is cleared once the last packet of a message is written.
+	if c.config.FlushLowLatency && sendChannel.desc.LowLatency && len(sendChannel.sending) == 0 {
+		c.lowLatencyPending = true
+	}
 	c.flushTimer.Set()
 	return n, false
 }
@@ -757,6 +786,10 @@ type ChannelDescriptor struct {
 	RecvBufferCapacity  int
 	RecvMessageCapacity int
 	MessageType         proto.Message
+
+	// LowLatency marks latency-critical channels whose messages skip the
+	// flush throttle. See MConnConfig.FlushLowLatency.
+	LowLatency bool
 
 	// RecvMessagePrecheck, if set, runs on an incoming message's raw bytes
 	// before it's unmarshalled. A non-nil error drops the message (and the peer)

@@ -580,30 +580,117 @@ func TestTxIndexDuplicatePreviouslySuccessful(t *testing.T) {
 			},
 			true,
 		},
+		{
+			"overwrite as the failed tx is the same tx executed again after a rollback",
+			&abci.TxResult{
+				Height: 2,
+				Index:  0,
+				Tx:     mockTx,
+				Result: abci.ExecTxResult{
+					Code: abci.CodeTypeOK,
+				},
+			},
+			&abci.TxResult{
+				Height: 2,
+				Index:  0,
+				Tx:     mockTx,
+				Result: abci.ExecTxResult{
+					Code: abci.CodeTypeOK + 1,
+				},
+			},
+			true,
+		},
+		{
+			"don't overwrite as the failed tx is a duplicate later in the same block",
+			&abci.TxResult{
+				Height: 2,
+				Index:  0,
+				Tx:     mockTx,
+				Result: abci.ExecTxResult{
+					Code: abci.CodeTypeOK,
+				},
+			},
+			&abci.TxResult{
+				Height: 2,
+				Index:  1,
+				Tx:     mockTx,
+				Result: abci.ExecTxResult{
+					Code: abci.CodeTypeOK + 1,
+				},
+			},
+			false,
+		},
 	}
 
 	hash := mockTx.Hash()
 
 	for _, tc := range testCases {
+		for _, batched := range []bool{false, true} {
+			t.Run(fmt.Sprintf("%s/batched=%t", tc.name, batched), func(t *testing.T) {
+				indexer := NewTxIndex(db.NewMemDB())
+
+				// index the first tx
+				err := indexer.Index(tc.tx1)
+				require.NoError(t, err)
+
+				// index the same tx with different results
+				if batched {
+					batch := txindex.NewBatch(int64(tc.tx2.Index) + 1)
+					if tc.tx2.Index > 0 {
+						// tx1 is earlier in the same block, so it is in the batch too.
+						require.NoError(t, batch.Add(tc.tx1))
+					}
+					require.NoError(t, batch.Add(tc.tx2))
+					err = indexer.AddBatch(batch)
+				} else {
+					err = indexer.Index(tc.tx2)
+				}
+				require.NoError(t, err)
+
+				res, err := indexer.Get(hash)
+				require.NoError(t, err)
+
+				if tc.expOverwrite {
+					require.Equal(t, tc.tx2, res)
+				} else {
+					require.Equal(t, tc.tx1, res)
+				}
+			})
+		}
+	}
+}
+
+// TestTxIndexDuplicateInBatch indexes a block where the same tx succeeds and then
+// fails as a duplicate, and checks that the successful result is kept.
+func TestTxIndexDuplicateInBatch(t *testing.T) {
+	mockTx := types.Tx("MOCK_TX_HASH")
+	result := func(index uint32, code uint32) *abci.TxResult {
+		return &abci.TxResult{Height: 2, Index: index, Tx: mockTx, Result: abci.ExecTxResult{Code: code}}
+	}
+
+	testCases := []struct {
+		name   string
+		stored *abci.TxResult // indexed before the batch, e.g. before a rollback
+	}{
+		{"nothing indexed before", nil},
+		{"the duplicate succeeded before a rollback", result(1, abci.CodeTypeOK)},
+	}
+
+	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			indexer := NewTxIndex(db.NewMemDB())
-
-			// index the first tx
-			err := indexer.Index(tc.tx1)
-			require.NoError(t, err)
-
-			// index the same tx with different results
-			err = indexer.Index(tc.tx2)
-			require.NoError(t, err)
-
-			res, err := indexer.Get(hash)
-			require.NoError(t, err)
-
-			if tc.expOverwrite {
-				require.Equal(t, tc.tx2, res)
-			} else {
-				require.Equal(t, tc.tx1, res)
+			if tc.stored != nil {
+				require.NoError(t, indexer.Index(tc.stored))
 			}
+
+			batch := txindex.NewBatch(2)
+			require.NoError(t, batch.Add(result(0, abci.CodeTypeOK)))
+			require.NoError(t, batch.Add(result(1, abci.CodeTypeOK+1)))
+			require.NoError(t, indexer.AddBatch(batch))
+
+			res, err := indexer.Get(mockTx.Hash())
+			require.NoError(t, err)
+			require.Equal(t, result(0, abci.CodeTypeOK), res)
 		})
 	}
 }
@@ -980,4 +1067,90 @@ func TestWrappedTxIndex(t *testing.T) {
 	loadedTxResult, err := indexer.Get(hash)
 	require.NoError(t, err)
 	assert.True(t, proto.Equal(txResult, loadedTxResult))
+}
+
+func TestTxSearchCapsIntersection(t *testing.T) {
+	txi := NewTxIndex(db.NewMemDB(), WithMaxSearchResults(2))
+	for i := 1; i <= 10; i++ {
+		recipient := "common"
+		if i == 1 {
+			recipient = "rare"
+		}
+		require.NoError(t, txi.Index(&abci.TxResult{
+			Height: int64(i), Tx: types.Tx(fmt.Sprintf("tx%d", i)),
+			Result: abci.ExecTxResult{Events: []abci.Event{{Type: "transfer", Attributes: []abci.EventAttribute{
+				{Key: "recipient", Value: recipient, Index: true},
+				{Key: "amount", Value: "1", Index: true},
+			}}}},
+		}))
+	}
+	for _, condition := range []string{"transfer.amount = 1", "transfer.amount EXISTS", "transfer.amount CONTAINS '1'"} {
+		results, err := txi.Search(context.Background(), query.MustCompile("transfer.recipient = 'rare' AND "+condition))
+		require.NoError(t, err, condition)
+		require.Len(t, results, 1, condition)
+		require.EqualValues(t, 1, results[0].Height)
+	}
+	_, err := txi.Search(context.Background(), query.MustCompile("transfer.amount = 1"))
+	require.ErrorIs(t, err, indexer.ErrTooManyResults, "the first condition must remain bounded")
+}
+
+// TestTxSearchCapsLaterRange checks that a later range condition keeps only
+// matches already in the earlier results, so its broad standalone match set
+// does not hit the cap. Search visits ranges in map order, so the earlier
+// results are seeded directly.
+func TestTxSearchCapsLaterRange(t *testing.T) {
+	txi := NewTxIndex(db.NewMemDB(), WithMaxSearchResults(2))
+	for i := 1; i <= 10; i++ {
+		require.NoError(t, txi.Index(&abci.TxResult{
+			Height: int64(i), Tx: types.Tx(fmt.Sprintf("tx%d", i)),
+			Result: abci.ExecTxResult{Events: []abci.Event{{Type: "transfer", Attributes: []abci.EventAttribute{
+				{Key: "amount", Value: fmt.Sprint(i), Index: true},
+			}}}},
+		}))
+	}
+	ctx := context.Background()
+	narrow, heightInfo := txQueryRange(t, "transfer.amount < 2")
+	filtered, err := txi.matchRange(ctx, narrow, startKey(narrow.Key), map[string]txRef{}, true, heightInfo)
+	require.NoError(t, err)
+	require.Len(t, filtered, 1)
+
+	broad, heightInfo := txQueryRange(t, "transfer.amount > 0")
+	_, err = txi.matchRange(ctx, broad, startKey(broad.Key), map[string]txRef{}, true, heightInfo)
+	require.ErrorIs(t, err, indexer.ErrTooManyResults, "the broad range alone must exceed the cap")
+	results, err := txi.matchRange(ctx, broad, startKey(broad.Key), filtered, false, heightInfo)
+	require.NoError(t, err)
+	require.Len(t, results, 1)
+}
+
+func txQueryRange(t *testing.T, q string) (indexer.QueryRange, HeightInfo) {
+	t.Helper()
+	conditions, heightInfo := dedupHeight(query.MustCompile(q).Syntax())
+	ranges, _, heightRange := indexer.LookForRangesWithHeight(conditions)
+	heightInfo.heightRange = heightRange
+	require.Len(t, ranges, 1)
+	for _, qr := range ranges {
+		return qr, heightInfo
+	}
+	return indexer.QueryRange{}, heightInfo
+}
+
+// TestTxSearchRangeOrderIsDeterministic checks that two range conditions are
+// visited in a fixed order, so the result does not depend on map iteration.
+func TestTxSearchRangeOrderIsDeterministic(t *testing.T) {
+	txi := NewTxIndex(db.NewMemDB(), WithMaxSearchResults(2))
+	for i := 1; i <= 10; i++ {
+		require.NoError(t, txi.Index(&abci.TxResult{
+			Height: int64(i), Tx: types.Tx(fmt.Sprintf("tx%d", i)),
+			Result: abci.ExecTxResult{Events: []abci.Event{{Type: "transfer", Attributes: []abci.EventAttribute{
+				{Key: "amount", Value: fmt.Sprint(i), Index: true},
+				{Key: "kind", Value: "1", Index: true},
+			}}}},
+		}))
+	}
+	q := query.MustCompile("transfer.amount < 2 AND transfer.kind > 0")
+	for range 50 {
+		results, err := txi.Search(context.Background(), q)
+		require.NoError(t, err)
+		require.Len(t, results, 1)
+	}
 }

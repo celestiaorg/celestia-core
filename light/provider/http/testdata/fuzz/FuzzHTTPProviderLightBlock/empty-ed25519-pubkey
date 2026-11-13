@@ -1,0 +1,5 @@
+go test fuzz v1
+[]byte("{\"signed_header\":{\"header\":{\"height\":\"3\"}}}")
+[]byte("{\"validators\":[{\"0000000\":\"000000000000000000000000\",\"pub_key\":{\"tYpe\":\"tendermint/PubKeyEd25519\",\"vAlue\":\"\"}}],\"total\":\"1\"}")
+byte('`')
+int64(59)

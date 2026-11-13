@@ -13,11 +13,16 @@ type Propagator interface {
 	GetProposal(height int64, round int32) (*types.Proposal, *types.PartSet, bool)
 	ProposeBlock(proposal *types.Proposal, parts *types.PartSet, txs []proptypes.TxMetaData) error
 	AddCommitment(height int64, round int32, psh *types.PartSetHeader)
+	// AddBlock hands over a complete block consensus holds for (height, round).
+	AddBlock(height int64, round int32, parts *types.PartSet)
 	Prune(committedHeight int64)
 	// SetConsensusState installs the height, round, and proposer atomically so
 	// compact blocks are never verified against the proposer of a different
 	// round.
 	SetConsensusState(height int64, round int32, proposer crypto.PubKey)
+	// SetBlockMaxBytes installs the Block.MaxBytes consensus param that
+	// applies to the height consensus is entering.
+	SetBlockMaxBytes(maxBytes int64)
 	StartProcessing()
 	GetPartChan() <-chan types.PartInfo
 	GetProposalChan() <-chan ProposalAndSrc
@@ -74,10 +79,16 @@ func (nop *NoOpPropagator) ProposeBlock(_ *types.Proposal, _ *types.PartSet, _ [
 func (nop *NoOpPropagator) AddCommitment(_ int64, _ int32, _ *types.PartSetHeader) {
 }
 
+func (nop *NoOpPropagator) AddBlock(_ int64, _ int32, _ *types.PartSet) {
+}
+
 func (nop *NoOpPropagator) Prune(_ int64) {
 }
 
 func (nop *NoOpPropagator) SetConsensusState(_ int64, _ int32, _ crypto.PubKey) {
+}
+
+func (nop *NoOpPropagator) SetBlockMaxBytes(_ int64) {
 }
 
 func (nop *NoOpPropagator) StartProcessing() {

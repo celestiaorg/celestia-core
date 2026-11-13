@@ -5,6 +5,7 @@ import (
 	"math/rand/v2"
 	"os"
 	"runtime/pprof"
+	"sync"
 	"testing"
 	"time"
 
@@ -402,4 +403,275 @@ func TestValidateCompactBlockUsesRoundProposer(t *testing.T) {
 	n2.handleCompactBlock(genuine, n1.self, false)
 	_, _, has = n2.GetProposal(1, 2)
 	require.True(t, has, "genuine compact block from the round-2 proposer must be applied")
+}
+
+// TestValidateCompactBlockUsesUpdatedBlockMaxBytes ensures the parts-count
+// check follows Block.MaxBytes updates without restarting the reactor.
+func TestValidateCompactBlockUsesUpdatedBlockMaxBytes(t *testing.T) {
+	reactors, _ := createTestReactors(1, defaultTestP2PConf(), false, "")
+	r := reactors[0]
+
+	cleanup, _, sm, pv := state.SetupTestCaseWithPrivVal(t)
+	t.Cleanup(func() {
+		cleanup(t)
+	})
+
+	signer := types.NewMockPV()
+	r.SetConsensusState(1, 0, signer.PrivKey.PubKey())
+	cb := signedCompactBlock(t, sm, pv, signer, 1, 0)
+
+	// A limit of one part is below the compact block's size.
+	r.SetBlockMaxBytes(int64(types.BlockPartSizeBytes))
+	require.ErrorContains(t, r.validateCompactBlock(cb), "too many parts")
+
+	// Raise the limit as a governance param change would, while validating
+	// concurrently to surface data races.
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		for i := 0; i < 100; i++ {
+			_ = r.validateCompactBlock(cb)
+		}
+	}()
+	r.SetBlockMaxBytes(int64(types.MaxBlockSizeBytes))
+	<-done
+	require.NoError(t, r.validateCompactBlock(cb))
+}
+
+// TestProcessValidatedCompactBlockForwardsOnce ensures duplicates of a
+// compact block are not forwarded to consensus again.
+func TestProcessValidatedCompactBlockForwardsOnce(t *testing.T) {
+	p2pCfg := defaultTestP2PConf()
+	reactors, _ := createTestReactors(1, p2pCfg, false, "")
+	n1 := reactors[0]
+
+	cleanup, _, sm, pv := state.SetupTestCaseWithPrivVal(t)
+	t.Cleanup(func() {
+		cleanup(t)
+	})
+
+	n1.SetConsensusState(2, 0, mockPubKey)
+	for len(n1.GetProposalChan()) > 0 {
+		<-n1.GetProposalChan()
+	}
+
+	cb, _, _, _ := testCompactBlock(t, sm, pv, 2, 0)
+	for i := 0; i < 10; i++ {
+		n1.processValidatedCompactBlock(cb, "peer", false)
+	}
+
+	require.Len(t, n1.GetProposalChan(), 1, "compact block should be forwarded to consensus exactly once")
+	prop := <-n1.GetProposalChan()
+	require.True(t, cb.Proposal.BlockID.Equals(prop.Proposal.BlockID))
+}
+
+// TestProcessValidatedCompactBlockForwardsOnceAfterCommitment ensures a
+// compact block matching an entry created by AddCommitment is forwarded to
+// consensus once, and its duplicates are not.
+func TestProcessValidatedCompactBlockForwardsOnceAfterCommitment(t *testing.T) {
+	p2pCfg := defaultTestP2PConf()
+	reactors, _ := createTestReactors(1, p2pCfg, false, "")
+	n1 := reactors[0]
+
+	cleanup, _, sm, pv := state.SetupTestCaseWithPrivVal(t)
+	t.Cleanup(func() {
+		cleanup(t)
+	})
+
+	n1.SetConsensusState(2, 0, mockPubKey)
+	cb, _, _, _ := testCompactBlock(t, sm, pv, 2, 0)
+	psh := cb.Proposal.BlockID.PartSetHeader
+	n1.AddCommitment(2, 0, &psh)
+	for len(n1.GetProposalChan()) > 0 {
+		<-n1.GetProposalChan()
+	}
+
+	for i := 0; i < 10; i++ {
+		n1.processValidatedCompactBlock(cb, "peer", false)
+	}
+
+	require.Len(t, n1.GetProposalChan(), 1, "compact block should be forwarded to consensus exactly once")
+	prop := <-n1.GetProposalChan()
+	require.True(t, cb.Proposal.BlockID.Equals(prop.Proposal.BlockID))
+}
+
+// TestForwardCompactBlockBeforeRecovery checks that a stalled mempool recovery
+// does not delay forwarding, and that recovery still completes afterwards.
+func TestForwardCompactBlockBeforeRecovery(t *testing.T) {
+	reactors, _ := testBlockPropReactors(3, defaultTestP2PConf())
+	// n2 sends the compact block to n1, which should forward it to n3.
+	n1, n2, n3 := reactors[0], reactors[1], reactors[2]
+
+	cleanup, _, sm, pv := state.SetupTestCaseWithPrivVal(t)
+	t.Cleanup(func() { cleanup(t) })
+	prop, ps, block, metaData := createTestProposal(t, sm, pv, 1, 0, 2, 1000000)
+	cb, _, _ := compactBlockFor(t, prop, ps, metaData)
+
+	// n1 has the block's txs, but its recovery is stuck until released.
+	release := make(chan struct{})
+	n1.mempool = &blockingMempool{mockMempool: mempoolWith(block.Txs), release: release}
+
+	handled := make(chan struct{})
+	go func() {
+		defer close(handled)
+		n1.handleCompactBlock(cb, n2.self, false)
+	}()
+
+	// n3 gets the compact block while n1 is still stuck.
+	require.Eventually(t, hasProposalFn(n3), 5*time.Second, 10*time.Millisecond)
+
+	// once released, n1 still recovers parts from its mempool.
+	close(release)
+	<-handled
+	_, parts, _ := n1.GetProposal(1, 0)
+	require.NotZero(t, parts.Count())
+}
+
+// TestForwardCompactBlockFromManyPeers delivers the same compact block to a
+// node from every peer at once and checks it is forwarded and handed to
+// consensus once, whatever local recovery does.
+func TestForwardCompactBlockFromManyPeers(t *testing.T) {
+	cleanup, _, sm, pv := state.SetupTestCaseWithPrivVal(t)
+	t.Cleanup(func() { cleanup(t) })
+
+	tests := []struct {
+		name string
+		// mempool builds n1's mempool from the block's txs.
+		mempool   func(txs types.Txs) Mempool
+		recovered bool
+	}{
+		{
+			name:      "mempool hit",
+			mempool:   func(txs types.Txs) Mempool { return mempoolWith(txs) },
+			recovered: true,
+		},
+		{
+			name:    "mempool miss",
+			mempool: func(types.Txs) Mempool { return mempoolWith(nil) },
+		},
+		{
+			name:    "corrupt mempool",
+			mempool: corruptMempool,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			reactors, _ := testBlockPropReactors(5, defaultTestP2PConf())
+			n1, peers := reactors[0], reactors[1:]
+
+			prop, ps, block, metaData := createTestProposal(t, sm, pv, 1, 0, 2, 1000000)
+			cb, _, _ := compactBlockFor(t, prop, ps, metaData)
+			n1.mempool = tt.mempool(block.Txs)
+
+			// every peer delivers the same compact block at the same time.
+			var wg sync.WaitGroup
+			for _, p := range peers {
+				wg.Go(func() { n1.handleCompactBlock(cb, p.self, false) })
+			}
+			wg.Wait()
+
+			// consensus sees the proposal exactly once.
+			require.Len(t, n1.proposalChan, 1)
+
+			// every peer ends up with the compact block.
+			for _, p := range peers {
+				require.Eventually(t, hasProposalFn(p), 5*time.Second, 10*time.Millisecond)
+			}
+
+			_, parts, _ := n1.GetProposal(1, 0)
+			require.Equal(t, tt.recovered, parts.Count() > 0)
+		})
+	}
+}
+
+// TestHandleCompactBlockForwarding checks that only a valid, unseen compact
+// block is forwarded to peers.
+func TestHandleCompactBlockForwarding(t *testing.T) {
+	cleanup, _, sm, pv := state.SetupTestCaseWithPrivVal(t)
+	t.Cleanup(func() { cleanup(t) })
+
+	tests := []struct {
+		name string
+		// setup makes the compact block unacceptable to n1.
+		setup     func(n1 *Reactor, cb *proptypes.CompactBlock)
+		forwarded bool
+	}{
+		{
+			name:      "valid",
+			setup:     func(*Reactor, *proptypes.CompactBlock) {},
+			forwarded: true,
+		},
+		{
+			name:  "invalid signature",
+			setup: func(_ *Reactor, cb *proptypes.CompactBlock) { cb.Proposal.Signature = cmtrand.Bytes(64) },
+		},
+		{
+			name:  "stale height",
+			setup: func(n1 *Reactor, _ *proptypes.CompactBlock) { n1.Prune(2) },
+		},
+		{
+			name:  "duplicate",
+			setup: func(n1 *Reactor, cb *proptypes.CompactBlock) { require.True(t, n1.AddProposal(cb)) },
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			reactors, _ := testBlockPropReactors(3, defaultTestP2PConf())
+			// n2 sends the compact block to n1, which forwards it to n3 only if valid.
+			n1, n2, n3 := reactors[0], reactors[1], reactors[2]
+
+			cb, _, _, _ := testCompactBlock(t, sm, pv, 1, 0)
+			tt.setup(n1, cb)
+			n1.handleCompactBlock(cb, n2.self, false)
+
+			// n3 caches compact blocks it rejects, so this
+			// also catches a forwarded block that fails its validation.
+			received := func() bool {
+				return hasProposalFn(n3)() ||
+					n3.getPeer(n1.self).GetUnverifiedProposal(1) != nil
+			}
+			if tt.forwarded {
+				require.Eventually(t, received, 5*time.Second, 10*time.Millisecond)
+			} else {
+				require.Never(t, received, 500*time.Millisecond, 10*time.Millisecond)
+			}
+		})
+	}
+}
+
+// hasProposalFn reports whether r has stored the proposal for height 1, round 0.
+func hasProposalFn(r *Reactor) func() bool {
+	return func() bool {
+		_, _, has := r.GetProposal(1, 0)
+		return has
+	}
+}
+
+// mempoolWith returns a mempool holding txs.
+func mempoolWith(txs types.Txs) *mockMempool {
+	pool := &mockMempool{txs: make(map[types.TxKey]*types.CachedTx)}
+	for _, tx := range txs {
+		pool.AddTx(tx)
+	}
+	return pool
+}
+
+// corruptMempool returns a mempool holding random bytes under each tx's key.
+func corruptMempool(txs types.Txs) Mempool {
+	pool := mempoolWith(nil)
+	for _, tx := range txs {
+		pool.txs[tx.Key()] = &types.CachedTx{Tx: cmtrand.Bytes(len(tx))}
+	}
+	return pool
+}
+
+// blockingMempool blocks every lookup until release is closed.
+type blockingMempool struct {
+	*mockMempool
+	release chan struct{}
+}
+
+func (m *blockingMempool) GetTxByKey(key types.TxKey) (*types.CachedTx, bool) {
+	<-m.release
+	return m.mockMempool.GetTxByKey(key)
 }

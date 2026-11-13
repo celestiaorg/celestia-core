@@ -270,13 +270,17 @@ func (blockProp *Reactor) processValidatedCompactBlock(cb *proptypes.CompactBloc
 	}
 
 	if !proposer {
-		select {
-		case <-blockProp.ctx.Done():
-			return
-		case blockProp.proposalChan <- ProposalAndSrc{
-			Proposal: cb.Proposal,
-			From:     peer,
-		}:
+		// forward each proposal to consensus only once: duplicates of an
+		// already forwarded compact block must not fill proposalChan.
+		if blockProp.claimForward(cb) {
+			select {
+			case <-blockProp.ctx.Done():
+				return
+			case blockProp.proposalChan <- ProposalAndSrc{
+				Proposal: cb.Proposal,
+				From:     peer,
+			}:
+			}
 		}
 		if p := blockProp.getPeer(peer); p != nil {
 			p.consensusPeerState.SetHasProposal(&cb.Proposal)
@@ -294,12 +298,13 @@ func (blockProp *Reactor) processValidatedCompactBlock(cb *proptypes.CompactBloc
 	}
 
 	if !proposer {
+		// forward before recovering locally so peers don't wait on our rebuild.
+		// The proposer sends the compact block itself from ProposeBlock,
+		// followed by the parts it pushes.
+		blockProp.broadcastCompactBlock(cb, peer)
+
 		// check if we have any transactions that are in the compact block
 		blockProp.recoverPartsFromMempool(cb)
-
-		// the proposer sends the compact block itself from ProposeBlock,
-		// followed by the parts it pushes
-		blockProp.broadcastCompactBlock(cb, peer)
 	}
 }
 
@@ -493,6 +498,7 @@ func (blockProp *Reactor) validateCompactBlock(cb *proptypes.CompactBlock) error
 	proposer := blockProp.currentProposer
 	currentHeight := blockProp.height
 	currentRound := blockProp.round
+	maxBytes := blockProp.blockMaxBytes
 	blockProp.pmtx.Unlock()
 	if proposer == nil {
 		return errors.New("nil proposer key")
@@ -521,7 +527,6 @@ func (blockProp *Reactor) validateCompactBlock(cb *proptypes.CompactBlock) error
 	}
 
 	// Validate the proposed block size, derived from its PartSetHeader
-	maxBytes := blockProp.BlockMaxBytes
 	if maxBytes == -1 {
 		maxBytes = int64(types.MaxBlockSizeBytes)
 	}

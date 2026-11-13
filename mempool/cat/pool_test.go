@@ -9,11 +9,13 @@ import (
 	"os"
 	"sort"
 	"strconv"
+	"strings"
 	"sync"
 	"testing"
 	"time"
 
-	"github.com/celestiaorg/go-square/v3/share"
+	"github.com/celestiaorg/go-square/v4/share"
+	squaretx "github.com/celestiaorg/go-square/v4/tx"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -24,7 +26,6 @@ import (
 	"github.com/cometbft/cometbft/config"
 	"github.com/cometbft/cometbft/libs/log"
 	"github.com/cometbft/cometbft/mempool"
-	tmproto "github.com/cometbft/cometbft/proto/tendermint/types"
 	"github.com/cometbft/cometbft/proxy"
 	"github.com/cometbft/cometbft/types"
 )
@@ -415,6 +416,91 @@ func TestTxPool_Eviction(t *testing.T) {
 	require.False(t, txmp.WasRecentlyEvicted(types.Tx("key8=0007=20").Key()))
 }
 
+// TestTxPool_CountLimit checks that the pool never holds more than
+// config.Size txs when the byte limit still has room.
+func TestTxPool_CountLimit(t *testing.T) {
+	t.Run("equal priority", func(t *testing.T) {
+		txmp := setup(t, 1000)
+		txmp.config.Size = 2
+		txmp.config.MaxTxsBytes = 1 << 20
+		for i := 0; i < 50; i++ {
+			_ = txmp.CheckTx([]byte(fmt.Sprintf("s%03d=k=10", i)), nil, mempool.TxInfo{})
+		}
+		require.Equal(t, txmp.config.Size, txmp.Size())
+	})
+
+	t.Run("increasing priority evicts by count", func(t *testing.T) {
+		txmp := setup(t, 1000)
+		txmp.config.Size = 2
+		txmp.config.MaxTxsBytes = 1 << 20
+		for i := 0; i < 50; i++ {
+			mustCheckTx(t, txmp, fmt.Sprintf("s%03d=k=%d", i, 10+i))
+			require.LessOrEqual(t, txmp.Size(), txmp.config.Size)
+		}
+		require.Equal(t, txmp.config.Size, txmp.Size())
+		// the two highest-priority txs are kept
+		require.True(t, txmp.Has(types.Tx("s049=k=59").Key()))
+		require.True(t, txmp.Has(types.Tx("s048=k=58").Key()))
+		require.True(t, txmp.WasRecentlyEvicted(types.Tx("s000=k=10").Key()))
+	})
+
+	t.Run("count-full pool with byte headroom admits larger higher-priority tx", func(t *testing.T) {
+		txmp := setup(t, 1000)
+		txmp.config.Size = 2
+		txmp.config.MaxTxsBytes = 1 << 20
+		mustCheckTx(t, txmp, "s000=k=10")
+		mustCheckTx(t, txmp, "s001=k=11")
+		big := fmt.Sprintf("s002=%s=100", strings.Repeat("v", 200))
+		mustCheckTx(t, txmp, big)
+		require.Equal(t, txmp.config.Size, txmp.Size())
+		require.True(t, txmp.Has(types.Tx(big).Key()))
+		require.True(t, txmp.WasRecentlyEvicted(types.Tx("s000=k=10").Key()))
+	})
+}
+
+// TestTxPool_EvictionSkipsIncomingSigner checks that a full pool never makes
+// room for a new tx by evicting txs from the new tx's own signer.
+func TestTxPool_EvictionSkipsIncomingSigner(t *testing.T) {
+	t.Run("count-full rejects instead of evicting own txs", func(t *testing.T) {
+		txmp := setup(t, 1000)
+		txmp.config.Size = 2
+		txmp.config.MaxTxsBytes = 1 << 20
+		mustCheckTx(t, txmp, "A=0=1")
+		mustCheckTx(t, txmp, "A=1=1")
+		require.Error(t, txmp.CheckTx([]byte("A=2=100"), nil, mempool.TxInfo{}))
+		require.Equal(t, 2, txmp.Size())
+		require.True(t, txmp.Has(types.Tx("A=0=1").Key()))
+		require.True(t, txmp.Has(types.Tx("A=1=1").Key()))
+		require.False(t, txmp.Has(types.Tx("A=2=100").Key()))
+	})
+
+	t.Run("byte-full rejects instead of evicting own txs", func(t *testing.T) {
+		txmp := setup(t, 1000)
+		txmp.config.Size = 100
+		mustCheckTx(t, txmp, "A=0=1")
+		mustCheckTx(t, txmp, "A=1=1")
+		txmp.config.MaxTxsBytes = txmp.SizeBytes()
+		require.Error(t, txmp.CheckTx([]byte("A=2=100"), nil, mempool.TxInfo{}))
+		require.Equal(t, 2, txmp.Size())
+		require.True(t, txmp.Has(types.Tx("A=0=1").Key()))
+		require.True(t, txmp.Has(types.Tx("A=1=1").Key()))
+		require.False(t, txmp.Has(types.Tx("A=2=100").Key()))
+	})
+
+	t.Run("other signers are still evicted", func(t *testing.T) {
+		txmp := setup(t, 1000)
+		txmp.config.Size = 2
+		txmp.config.MaxTxsBytes = 1 << 20
+		mustCheckTx(t, txmp, "A=0=1")
+		mustCheckTx(t, txmp, "B=0=2")
+		mustCheckTx(t, txmp, "A=1=100")
+		require.Equal(t, 2, txmp.Size())
+		require.True(t, txmp.Has(types.Tx("A=0=1").Key()))
+		require.True(t, txmp.Has(types.Tx("A=1=100").Key()))
+		require.True(t, txmp.WasRecentlyEvicted(types.Tx("B=0=2").Key()))
+	})
+}
+
 func TestTxPool_Flush(t *testing.T) {
 	txmp := setup(t, 0)
 	txs := checkTxs(t, txmp, 100, 0)
@@ -489,6 +575,93 @@ func TestTxPool_ReapMaxBytesMaxGas(t *testing.T) {
 	require.Equal(t, len(tTxs), txmp.Size())
 	require.Equal(t, int64(5800), txmp.SizeBytes())
 	require.Len(t, reapedTxs, 25)
+}
+
+// Regression for #3494: a multi-tx signer set crossing the byte budget must not
+// pull in the rest of the pool.
+func TestTxPool_ReapMaxBytesMaxGasMultiTxSetAtBoundary(t *testing.T) {
+	txmp := setup(t, 0)
+	var top []types.Tx
+	for i := 0; i < 3; i++ {
+		tx := types.Tx(fmt.Sprintf("s000=%02d=%03d", i, 999))
+		top = append(top, tx)
+		require.NoError(t, txmp.CheckTx(tx, nil, mempool.TxInfo{}))
+	}
+	for i := 1; i <= 50; i++ {
+		require.NoError(t, txmp.CheckTx(types.Tx(fmt.Sprintf("s%03d=00=%03d", i, i)), nil, mempool.TxInfo{}))
+	}
+
+	reaped := types.TxsFromCachedTxs(txmp.ReapMaxBytesMaxGas(int64(2*len(top[0])), -1))
+	require.Equal(t, types.Txs(top[:2]), reaped)
+}
+
+func TestTxPool_ReapMaxBytesMaxGasProperties(t *testing.T) {
+	seed := time.Now().UnixNano()
+	t.Logf("seed %d", seed)
+	rng := rand.New(rand.NewSource(seed))
+	budget := func(total int64) int64 {
+		if rng.Intn(4) == 0 {
+			return -1
+		}
+		return rng.Int63n(total + 2)
+	}
+
+	for iter := 0; iter < 500; iter++ {
+		txmp := &TxPool{store: newStore()}
+		var totalBytes, totalGas int64
+		numSets := 1 + rng.Intn(30)
+		for s := 0; s < numSets; s++ {
+			sender := []byte(fmt.Sprintf("signer-%d", s))
+			if rng.Intn(3) == 0 {
+				sender = nil // each unsigned tx is its own set
+			}
+			n := 1 + rng.Intn(5)
+			for k, seq := range rng.Perm(n) {
+				if rng.Intn(4) == 0 {
+					seq = rng.Intn(n) // duplicate sequences are ordered by arrival
+				}
+				tx := types.Tx(fmt.Sprintf("%d-%d-%s", s, k, bytes.Repeat([]byte{'x'}, rng.Intn(50))))
+				wtx := newWrappedTx(tx.ToCachedTx(), 1, rng.Int63n(10), rng.Int63n(100), sender, uint64(seq), false)
+				require.True(t, txmp.store.set(wtx))
+				totalBytes += wtx.size()
+				totalGas += wtx.gasWanted
+			}
+		}
+		maxBytes, maxGas := budget(totalBytes), budget(totalGas)
+		reaped := txmp.ReapMaxBytesMaxGas(maxBytes, maxGas)
+
+		var reapedBytes, reapedGas int64
+		var sets []*txSet
+		txmp.store.processOrderedTxSets(func(txSets []*txSet) { sets = append(sets, txSets...) })
+		for _, tx := range reaped {
+			wtx := txmp.store.get(tx.Key())
+			reapedBytes += wtx.size()
+			reapedGas += wtx.gasWanted
+		}
+		if maxBytes >= 0 {
+			require.LessOrEqual(t, reapedBytes, maxBytes)
+		}
+		if maxGas >= 0 {
+			require.LessOrEqual(t, reapedGas, maxGas)
+		}
+
+		// Reaped txs are, in priority order, a sequence-ordered prefix of each set, and a
+		// set is cut short only where its next tx no longer fits.
+		i := 0
+		for _, set := range sets {
+			m := 0
+			for m < len(set.txs) && i < len(reaped) && reaped[i].Key() == set.txs[m].key() {
+				m++
+				i++
+			}
+			if m < len(set.txs) {
+				next := set.txs[m]
+				require.True(t, maxBytes >= 0 && reapedBytes+next.size() > maxBytes ||
+					maxGas >= 0 && reapedGas+next.gasWanted > maxGas)
+			}
+		}
+		require.Equal(t, len(reaped), i, "reaped txs out of priority or sequence order")
+	}
 }
 
 func TestTxMempoolTxLargerThanMaxBytes(t *testing.T) {
@@ -803,16 +976,12 @@ func TestTxPool_RemoveBlobTx(t *testing.T) {
 	originalTx := []byte("sender=00001")
 	indexWrapper, err := types.MarshalIndexWrapper(originalTx, 100)
 	require.NoError(t, err)
-	namespaceOne := bytes.Repeat([]byte{1}, share.NamespaceIDSize)
+	namespaceOne := share.MustNewV0Namespace(bytes.Repeat([]byte{1}, share.NamespaceVersionZeroIDSize))
 
 	// create the blobTx
-	b := tmproto.Blob{
-		NamespaceId:      namespaceOne,
-		Data:             []byte{1, 2, 3, 4, 5, 6, 7, 8, 1, 2, 3, 4, 5, 6, 7, 8, 9},
-		ShareVersion:     0,
-		NamespaceVersion: 0,
-	}
-	bTx, err := types.MarshalBlobTx(originalTx, &b)
+	b, err := share.NewV0Blob(namespaceOne, []byte{1, 2, 3, 4, 5, 6, 7, 8, 1, 2, 3, 4, 5, 6, 7, 8, 9})
+	require.NoError(t, err)
+	bTx, err := squaretx.MarshalBlobTx(originalTx, b)
 	require.NoError(t, err)
 
 	err = txmp.CheckTx(bTx, nil, mempool.TxInfo{})

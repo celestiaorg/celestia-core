@@ -6,6 +6,7 @@ import (
 	"errors"
 	"net"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -433,4 +434,160 @@ func TestBaseReactorRecvMessagePrecheck(t *testing.T) {
 	// Only the allowed message reached Receive; the rejected one was dropped
 	// before unmarshalling.
 	require.Equal(t, []string{"allow me"}, r.received)
+}
+
+var _ p2p.Reactor = &stalledReactor{}
+
+// stalledReactor blocks in Receive until unblock is closed.
+type stalledReactor struct {
+	p2p.BaseReactor
+
+	started     chan struct{}
+	unblock     chan struct{}
+	unblockOnce sync.Once
+	received    atomic.Int32
+}
+
+func newStalledReactor() *stalledReactor {
+	r := &stalledReactor{started: make(chan struct{}, 1), unblock: make(chan struct{})}
+	r.BaseReactor = *p2p.NewBaseReactor("StalledReactor", r,
+		p2p.WithIncomingQueueSize(1),
+		p2p.WithQueueingFunc(r.TryQueueUnprocessedEnvelope),
+	)
+	return r
+}
+
+// release unblocks Receive. It is safe to call more than once.
+func (r *stalledReactor) release() {
+	r.unblockOnce.Do(func() { close(r.unblock) })
+}
+
+func (r *stalledReactor) GetChannels() []*conn.ChannelDescriptor {
+	return []*conn.ChannelDescriptor{
+		{
+			ID:                  0x78,
+			Priority:            1,
+			RecvMessageCapacity: 1024,
+			MessageType:         &mempool.Txs{},
+		},
+	}
+}
+
+func (r *stalledReactor) Receive(p2p.Envelope) {
+	select {
+	case r.started <- struct{}{}:
+	default:
+	}
+	<-r.unblock
+	r.received.Add(1)
+}
+
+// TestBaseReactorWithQueueingFunc verifies that QueueUnprocessedEnvelope uses
+// the queueing function set via WithQueueingFunc: with a non-blocking queueing
+// function, a stalled processor and a full queue cause messages to be dropped
+// instead of blocking the caller (the peer's receive routine).
+func TestBaseReactorWithQueueingFunc(t *testing.T) {
+	r := newStalledReactor()
+	t.Cleanup(func() {
+		r.release()
+		r.OnStop()
+	})
+	peer := &imaginaryPeer{}
+	msg, err := proto.Marshal(&mempool.Txs{Txs: [][]byte{[]byte("tx")}})
+	require.NoError(t, err)
+	env := p2p.UnprocessedEnvelope{Src: peer, Message: msg, ChannelID: 0x78}
+
+	// The first message stalls the processor.
+	r.QueueUnprocessedEnvelope(env)
+	select {
+	case <-r.started:
+	case <-time.After(time.Second):
+		t.Fatal("processor did not start processing the first message")
+	}
+
+	// The second message fills the queue; the third must be dropped without
+	// blocking.
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		r.QueueUnprocessedEnvelope(env)
+		r.QueueUnprocessedEnvelope(env)
+	}()
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("QueueUnprocessedEnvelope blocked on a full queue")
+	}
+
+	r.release()
+	require.Eventually(t, func() bool { return r.received.Load() == 2 }, time.Second, 10*time.Millisecond)
+	time.Sleep(50 * time.Millisecond)
+	require.EqualValues(t, 2, r.received.Load())
+}
+
+type concurrencyReactor struct {
+	p2p.BaseReactor
+	entered chan struct{}
+	release chan struct{}
+}
+
+func newConcurrencyReactor() *concurrencyReactor {
+	r := &concurrencyReactor{
+		entered: make(chan struct{}, 2),
+		release: make(chan struct{}),
+	}
+	r.BaseReactor = *p2p.NewBaseReactor("ConcurrencyReactor", r,
+		p2p.WithIncomingQueueSize(1),
+		p2p.WithUnmarshalConcurrency(1),
+		p2p.WithProcessor(func(ctx context.Context, _ <-chan p2p.UnmarshalResult) {
+			<-ctx.Done()
+		}),
+	)
+	return r
+}
+
+func (r *concurrencyReactor) GetChannels() []*conn.ChannelDescriptor {
+	return []*conn.ChannelDescriptor{{
+		ID:                  0x78,
+		Priority:            1,
+		RecvMessageCapacity: 1024,
+		MessageType:         &mempool.Txs{},
+		RecvMessagePrecheck: func([]byte) error {
+			r.entered <- struct{}{}
+			<-r.release
+			return nil
+		},
+	}}
+}
+
+func (r *concurrencyReactor) Receive(p2p.Envelope) {}
+
+func TestBaseReactorUnmarshalConcurrency(t *testing.T) {
+	r := newConcurrencyReactor()
+	peer := &imaginaryPeer{}
+	msg, err := proto.Marshal(&mempool.Txs{Txs: [][]byte{[]byte("message")}})
+	require.NoError(t, err)
+	envelope := p2p.UnprocessedEnvelope{Src: peer, Message: msg, ChannelID: 0x78}
+
+	var wg sync.WaitGroup
+	wg.Add(2)
+	go func() {
+		defer wg.Done()
+		r.QueueUnprocessedEnvelope(envelope)
+	}()
+	<-r.entered
+	go func() {
+		defer wg.Done()
+		r.QueueUnprocessedEnvelope(envelope)
+	}()
+
+	select {
+	case <-r.entered:
+		t.Fatal("second precheck bypassed the unmarshal concurrency bound")
+	case <-time.After(50 * time.Millisecond):
+	}
+	close(r.release)
+	<-r.entered
+	r.OnStop()
+	wg.Wait()
 }

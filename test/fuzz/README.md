@@ -1,22 +1,222 @@
-# fuzz
+# Fuzzing
 
-Fuzzing for various packages in Tendermint using the fuzzing infrastructure
-included in Go 1.21.
-
-Inputs:
-
-- mempool `CheckTx` (using kvstore in-process ABCI app)
-- p2p `SecretConnection#Read` and `SecretConnection#Write`
-- rpc jsonrpc server
-
-## Running
-
-The fuzz tests are in native Go fuzzing format. Use the `go` tool to run them:
+Run native Go fuzz targets from the repository root. For example:
 
 ```sh
-go test -fuzz Mempool ./tests
-go test -fuzz P2PSecretConnection ./tests
-go test -fuzz RPCJSONRPCServer ./tests
+go test -run='^$' -fuzz='^FuzzMempool$' -fuzztime=1m -parallel=2 ./test/fuzz/tests
+go test -run='^$' -fuzz='^FuzzConsensusMessage$' -fuzztime=1m -parallel=2 ./consensus
+go test -run='^$' -fuzz='^FuzzPartFromProto$' -fuzztime=1m -parallel=2 ./types
 ```
 
-See [the Go Fuzzing introduction](https://go.dev/doc/fuzz/) for more information.
+Use `go test -run='^Fuzz' ./<package>` to replay seed corpora without mutation. See the
+[Go fuzzing introduction](https://go.dev/doc/fuzz/) for more information.
+
+### Structured inputs
+
+Decoder targets and the legacy `test/fuzz/tests` targets take two byte slices,
+`(raw, edits)` or `(raw, ops)`. With an empty second argument they feed `raw`
+straight to the decoder, as a peer's wire bytes would arrive. Otherwise they
+start from a valid fixture (a signed vote, a block, a message envelope, a
+JSON-RPC request), apply the field edits that `internal/fuzzinput` reads from
+the second argument, re-sign or rehash where needed, and encode the result
+before running the same checks. Raw mode covers parser robustness; structured
+mode reaches validation, signature and round-trip checks that random bytes
+rarely get past. Stateful targets read their whole operation sequence through
+the same kind of typed decoding.
+
+## Decoder coverage inventory
+
+Audited for [PROTOCO-3327](https://linear.app/celestia/issue/PROTOCO-3327)
+against celestia-core main at `5f758c67451574702aad23b92ecd62af77fbc46d`,
+including the targets merged in [#3512](https://github.com/celestiaorg/celestia-core/pull/3512).
+The cross-repository inventory in
+[PROTOCO-3321](https://linear.app/celestia/issue/PROTOCO-3321) builds on this
+table; the stateful targets that close its celestia-core gaps are listed under
+[Entry-point coverage](#entry-point-coverage). It describes exercised
+paths, not measured code coverage or a completed AI security scan. No AI scan
+date has been recorded for these entries.
+
+| Entry point / package | Untrusted input | Native fuzz target(s) | Nightly |
+| --- | --- | --- | --- |
+| `cat.TxPool.CheckTx` | Transactions from peers and RPC, forwarded to ABCI | `FuzzMempool` in `test/fuzz/tests` | Yes |
+| `cat.validateMempoolBytes`, mempool `Message.Unmarshal` / `Unwrap` | CAT Txs, SeenTx, WantTx envelopes | `FuzzMempoolMessage` in `mempool/cat` | Yes |
+| Consensus `Message.Unmarshal` / `Unwrap`, `MsgFromProto` | All nine consensus envelope variants, including block parts | `FuzzConsensusMessage` in `consensus` | Yes |
+| `blocksync.validateBlockSyncBytes`, `ValidateMsg`, block conversion | Block request/response and status envelopes, signature-count precheck | `FuzzBlockSyncMessage` in `blocksync` | Yes |
+| Propagation `MsgFromProto` and per-message helpers | CompactBlock, HaveParts, WantParts, RecoveryPart | `FuzzPropagationMessage` in `consensus/propagation/types` | Yes |
+| `types` block-level `FromProto`, validation and part-set insertion | Blocks, parts/proofs, votes, proposals, commits, evidence | `FuzzBlockFromProto`, `FuzzPartFromProto`, `FuzzVoteFromProto`, `FuzzProposalFromProto`, `FuzzCommitFromProto`, `FuzzEvidenceFromProto` in `types` | Yes |
+| `types.unwrapLegacyBlobTx`, `Tx.Hash` / `Key` | Legacy BlobTx wire fields | `FuzzUnwrapLegacyBlobTx` in `types` (differential against generated decoder) | Yes |
+| `CheckBlockCardinality` (proposal block bytes, blocksync responses) | Raw block bytes before decoding | `FuzzCheckBlockCardinality` in `proto/tendermint/types` | Yes |
+| `conn.SecretConnection.Read` / `Write` | Encrypted peer connection traffic | `FuzzP2PSecretConnection` in `test/fuzz/tests` | Yes |
+| JSON-RPC server | RPC request bytes | `FuzzRPCJSONRPCServer` in `test/fuzz/tests` | Yes |
+| Evidence reactor envelope | EvidenceList protobuf envelope | `FuzzEvidenceReactorReceive` in `evidence` | Yes |
+| State-sync message decoding | Snapshot and chunk envelopes | `FuzzStateSyncReactor` in `statesync` | Yes |
+| P2P packet framing and node-info handshake | Packet and node-info wire bytes | `FuzzMConnectionRecv` in `p2p/conn`, `FuzzTransportUpgrade` in `p2p` | Yes |
+
+The original decoder suite has **14 targets**, and `FuzzCheckBlockCardinality`
+makes 15; the last three rows are now covered by the entry-point targets below.
+CheckTx uses the in-process kvstore app, so it exercises core admission and tx
+hashing, not celestia-app ante handlers. Its pool, caches and app are recreated
+for every input so a full pool or a previously seen tx cannot mask a decoder
+failure. A small configured tx limit also exercises rejection above that limit.
+The new envelope targets check accepted-message round trips and let panics fail
+the test. They bound inputs to 1 MiB (512 KiB for consensus); they do not test
+maximum-size blocks or a live reactor's full state machine.
+
+### Other existing targets and upstream comparison
+
+The upstream audit checked CometBFT
+[`v0.38.17`](https://github.com/cometbft/cometbft/tree/v0.38.17/test/fuzz)
+(`d03254d3599b973f979314e6383b89fa1802e679`) and
+[`main`](https://github.com/cometbft/cometbft/tree/6aef1e12197f587d1e85bc4cf3b3db4bf8d1be43/test/fuzz)
+(`6aef1e12197f587d1e85bc4cf3b3db4bf8d1be43`). Both have the three native
+mempool, SecretConnection and JSON-RPC harnesses under `test/fuzz/tests`;
+neither tree has dedicated reactor-envelope or block-level decoder fuzz files.
+Core's CAT-specific precheck and propagation paths require local targets.
+
+Outside the decoder suite, core also has `FuzzParallelImplementations` in
+`crypto/merkle`, which tests tree algorithms rather than network decoders and
+is not in the nightly matrix; [`nightly-excluded.txt`](nightly-excluded.txt)
+records that with its reason. It derives every tree and proof index from the fuzz
+input, so saved inputs replay exactly. `FuzzTxsToParts` and `FuzzTxsToParts_Panic` in
+`consensus/propagation/types` now derive their data from the fuzz input and run
+nightly; see [Entry-point coverage](#entry-point-coverage). `consensus/wal_fuzz.go` is a
+legacy `gofuzz`-tagged WAL harness; `p2p/fuzz.go` simulates connection faults and
+is not a native fuzz target. `test/fuzz/mempool/checktx.go` is a legacy byte-slice
+harness, separate from the native CheckTx target. The OSS-Fuzz build script
+still registers only its original three native targets.
+
+## Entry-point coverage
+
+The decoder targets above check that bytes parse. The targets below drive the
+stateful handlers behind them (reactor `Receive`, pools, verification and block
+execution) with sequences of attacker-chosen messages, and assert invariants
+after each sequence: no panics, bounded per-peer state, only verified data
+stored or relayed, and that valid inputs are accepted. They cover the P1 and P2
+celestia-core entry points (CORE-1 to CORE-43) of the
+[PROTOCO-3321](https://linear.app/celestia/issue/PROTOCO-3321) inventory. All
+run in the nightly matrix.
+
+| Entry point | Untrusted input | Native fuzz target(s) |
+| --- | --- | --- |
+| Consensus state machine and reactor | Proposals, block parts, votes, round-state messages from peers | `FuzzConsensusStateHandleMsg`, `FuzzConsensusReactorReceive` in `consensus` |
+| SecretConnection handshake and MConnection framing | Raw peer TCP bytes before and after authentication | `FuzzSecretConnectionHandshake`, `FuzzSecretConnectionRead`, `FuzzMConnectionRecv` in `p2p/conn` |
+| Transport upgrade and peer dispatch | Node-info handshake, channel envelopes | `FuzzTransportUpgrade`, `FuzzPeerReceive` in `p2p` |
+| CAT mempool reactor | SeenTx, WantTx and Txs sequences from several peers | `FuzzReactorReceive` in `mempool/cat` |
+| Compact-block propagation reactor | CompactBlock, HaveParts, WantParts, RecoveryPart sequences | `FuzzPropagationReactor` in `consensus/propagation` |
+| Combined part sets and tx-to-part mapping | Recovery parts, parity data, tx metadata | `FuzzCombinedPartSetDecode`, `FuzzTxsToPartsMetadata`, `FuzzTxsToParts`, `FuzzTxsToParts_Panic` in `consensus/propagation/types` |
+| Evidence pool and reactor | Duplicate-vote and light-client-attack evidence | `FuzzEvidencePool`, `FuzzEvidenceReactorReceive` in `evidence` |
+| Blocksync reactor and pool | Status, block request and response sequences | `FuzzBlockSyncReactor` in `blocksync` |
+| Commit and validator-set verification | Commits, extended commits, light blocks, validator sets | `FuzzVerifyCommit`, `FuzzExtendedCommitFromProto`, `FuzzLightBlockFromProto`, `FuzzValidatorSetFromProto` in `types` |
+| Light client | Light blocks from primary and witnesses; provider HTTP responses | `FuzzLightClientVerify` in `light`, `FuzzHTTPProviderLightBlock` in `light/provider/http` |
+| State-sync reactor and syncer | Snapshots and chunks (trusted state comes from a fixed provider) | `FuzzStateSyncReactor` in `statesync` |
+| PEX reactor and address book | Address requests and address lists | `FuzzPexReactor` in `p2p/pex` |
+| Block validation and execution | Proposed blocks and vote extensions | `FuzzBlockExecValidateApply`, `FuzzVerifyVoteExtension` in `state` |
+| RPC handlers and JSON-RPC server | URI, JSON-RPC (single, batch, websocket) requests | `FuzzRPCCoreHandlers`, `FuzzRPCCoreJSONRPC` in `rpc/core` |
+| Legacy gRPC API | BlockAPI and BlobstreamAPI requests | `FuzzRPCGRPCAPI` in `rpc/core` |
+
+With these **29 targets** the nightly matrix runs **44 targets**.
+
+Known limits:
+
+- A few invariants are disabled with an `Excluded pending PROTOCO-<n>` comment
+  until the linked issue is fixed. Remove the exclusion together with the fix
+  and add the reproducer as a regression seed at that time.
+- Timer-driven routines (gossip goroutines, blocksync pool request routines)
+  run only as far as the harness drives them; they are not fuzzed on their own
+  schedule.
+- State sync gets its light blocks and params from RPC providers, not peers.
+  `FuzzStateSyncReactor` uses a fixed trusted state provider.
+  `FuzzHTTPProviderLightBlock` and `FuzzLightClientVerify` cover light-block
+  fetching and verification; the `consensus_params` call is not fuzzed.
+- `broadcast_tx_commit` over JSON-RPC is not exercised, because it blocks on
+  block commit.
+- The trace, pprof and Prometheus listeners (CORE-44) are operator-only and out
+  of scope.
+
+## CI and crash handling
+
+[The Fuzz Tests workflow](../../.github/workflows/fuzz-nightly.yml) runs each
+listed nightly target as its own job for ten minutes on the daily schedule and
+manual dispatch. It uses two workers per target and starts each target from the
+corpus earlier nights built (see [Persistent corpora](#persistent-corpora)).
+Failures on main feed the existing `notify-protocol-ci.yml` workflow.
+
+Every native fuzz target must be either in that matrix or listed with a reason
+in [`nightly-excluded.txt`](nightly-excluded.txt).
+[`scripts/check-fuzz-targets.sh`](../../scripts/check-fuzz-targets.sh) checks
+this on pull requests and also fails on entries for targets that no longer
+exist. When adding a target, add a matrix entry with a `priority` (or an
+exclusion) and a row to the tables above.
+
+A crashing input can describe an exploitable bug, and this repository's logs and
+artifacts are public. The nightly jobs therefore write `go test` output to a file
+on the runner and print only `PASS` or `FAIL`. When a target fails on main,
+[`report-fuzz-failures.py`](../../.github/scripts/report-fuzz-failures.py) files
+a PROTOCO Linear issue titled `Nightly celestia-core fuzz failure: Fuzz<Target>`,
+or comments on the open issue with that title. The issue holds the run URL, the
+commit, the output tail and the complete crashing corpus file. Its priority comes
+from the target's `priority` in the workflow matrix, which follows the
+PROTOCO-3321 inventory: 1 (Urgent) for P1 entry points, 2 (High) for P2. This
+needs the `LINEAR_API_KEY` repository secret; the `FUZZ_LINEAR_ASSIGNEE_ID`
+repository variable optionally overrides the assignee. Add a `priority` to each
+new matrix entry.
+
+Pull requests skip that matrix. A single job runs
+[`scripts/fuzz-changed.sh`](../../scripts/fuzz-changed.sh), which fuzzes the
+targets in packages with a changed Go file or corpus entry for 15 seconds each,
+or every target when `go.mod`, `go.sum`, `internal/fuzzinput`, the script or
+the workflow changes. It withholds output the same way and uploads no artifact.
+It files no Linear issue: the job runs the pull request's code, so it gets no
+secrets. The author reproduces a failure locally with the same script.
+Seed corpora run on every pull request as part of the regular test jobs. Use
+`DRY_RUN=1 scripts/fuzz-changed.sh origin/main` to list the targets a branch
+would fuzz.
+
+For any crash or invariant failure:
+
+1. Download the complete corpus file from the Linear issue (for a pull request
+   crash, reproduce it locally first) and save it in the target
+   package's `testdata/fuzz/Fuzz<Target>/` directory.
+2. Replay with `go test -run='Fuzz<Target>/<input-hash>' ./<package>`.
+3. Link the nightly issue to PROTOCO-3327, or file one for a crash found
+   elsewhere, with the commit, target, input, command and stack trace. Keep
+   crash details out of public PRs and issues. Distinguish a production failure
+   from a harness assumption.
+4. Include the minimized input as a regression corpus entry with the fix and
+   replay it in ordinary tests before rerunning the fuzzer.
+
+### Persistent corpora
+
+Each nightly target starts from the inputs earlier nights found. `go test -fuzz`
+stores the inputs that reach new coverage in a cache directory, by default
+`$(go env GOCACHE)/fuzz`. The job passes `-test.fuzzcachedir` to keep each
+target's corpus under `$RUNNER_TEMP/fuzz-corpus/<package>/Fuzz<Target>`
+instead, apart from the Go build cache that `setup-go` saves. It restores that
+directory from an `actions/cache` entry keyed
+`fuzz-corpus-v1-<package>/<target>-<run>`, fuzzes, and saves it under a new key
+even when the target fails. It then deletes the target's older entries, so each
+target keeps one entry. The `gathering baseline coverage` count in a target's
+output is its seeds plus the restored corpus, so it grows from night to night.
+
+The cache holds only inputs that did not fail. `go test` writes a crashing input
+to the package's `testdata/fuzz` directory, which the job never caches or
+uploads; it reaches only the Linear issue. The saved corpus can still hold
+inputs one mutation away from a crash, and a pull request workflow can restore
+caches saved on `main`, so treat the corpus as public.
+
+Corpus files are small. In a local 90-second run, `FuzzConsensusMessage` wrote
+526 files totalling 27 KB. Even if a long-running target grows to a few MB, the
+matrix's 44 targets, with one entry each, need a few hundred MB at most of
+GitHub's 10 GB repository cache. A corpus over 32 MiB (`CORPUS_MAX_MIB` in the
+workflow) is not saved, which bounds the worst case at about 1.4 GB, and the job
+prints a warning. The target then keeps restoring its last saved corpus. Bump
+`v1` in `CORPUS_KEY` to start every target from its seeds again. Entries that no
+longer match a target's argument types are skipped by `go test`, so a signature
+change needs no bump.
+
+To reuse a corpus locally, pass the same directory on successive runs:
+
+```sh
+go test -run='^$' -fuzz='^FuzzConsensusMessage$' -fuzztime=1m -parallel=2 ./consensus \
+  -args -test.fuzzcachedir=/tmp/fuzz-corpus/consensus
+```

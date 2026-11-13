@@ -110,6 +110,7 @@ func TestLoadEventSink(t *testing.T) {
 func TestLoadBlockStore(t *testing.T) {
 	cfg := cmtcfg.TestConfig()
 	cfg.DBPath = t.TempDir()
+	cfg.BlockstorePath = cfg.DBPath
 	_, _, err := loadStateAndBlockStore(cfg)
 	require.Error(t, err)
 

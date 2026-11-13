@@ -2,17 +2,23 @@ package propagation
 
 import (
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	dbm "github.com/cometbft/cometbft-db"
+
 	cfg "github.com/cometbft/cometbft/config"
 	proptypes "github.com/cometbft/cometbft/consensus/propagation/types"
+	"github.com/cometbft/cometbft/libs/bits"
 	"github.com/cometbft/cometbft/libs/log"
 	cmtrand "github.com/cometbft/cometbft/libs/rand"
+	"github.com/cometbft/cometbft/p2p"
 	"github.com/cometbft/cometbft/state"
+	"github.com/cometbft/cometbft/store"
 	"github.com/cometbft/cometbft/types"
 )
 
@@ -63,6 +69,35 @@ func TestGapCatchup(t *testing.T) {
 	_, caughtUp, has = n3.GetProposal(prop.Height, prop.Round)
 	require.True(t, has)
 	require.True(t, caughtUp.IsComplete())
+}
+
+// After a restart every reactor starts empty: r2 asks for the block too early
+// (a catch-up stub, as for a restored lock), r3 has nothing, and r1 re-seeds
+// from its replayed proposal. Both must fetch the whole block from r1.
+func TestReseedAfterRestart(t *testing.T) {
+	reactors, _ := createTestReactors(3, defaultTestP2PConf(), false, "")
+	r1, r2, r3 := reactors[0], reactors[1], reactors[2]
+	cleanup, _, sm, pv := state.SetupTestCaseWithPrivVal(t)
+	t.Cleanup(func() {
+		cleanup(t)
+	})
+
+	prop, ps, _, metaData := createTestProposal(t, sm, pv, 1, 0, 2, 1000000)
+	psh := ps.Header()
+	r2.AddCommitment(prop.Height, prop.Round, &psh)
+
+	require.NoError(t, r1.ProposeBlock(prop, ps, metaData))
+
+	// An immediate catch-up want can arrive before the proposer re-seeds.
+	// It expires at the second retry tick; leave another tick for delivery.
+	for _, r := range []*Reactor{r2, r3} {
+		require.Eventually(t, func() bool {
+			_, parts, has := r.GetProposal(prop.Height, prop.Round)
+			return has && parts.IsComplete()
+		}, 3*RetryTime, 50*time.Millisecond)
+		_, parts, _ := r.GetProposal(prop.Height, prop.Round)
+		require.Equal(t, psh, parts.Header())
+	}
 }
 
 func TestReceiveHaveOnCatchupBlock(t *testing.T) {
@@ -484,7 +519,7 @@ func TestHandleCachedCompactBlockAllowsIdenticalDuplicate(t *testing.T) {
 	select {
 	case prop := <-n1.GetProposalChan():
 		require.True(t, cbA.Proposal.BlockID.Equals(prop.Proposal.BlockID))
-	default:
+	case <-time.After(5 * time.Second):
 		t.Fatal("identical duplicate should have been forwarded to consensus")
 	}
 
@@ -523,6 +558,211 @@ func TestAddCommitment_ReplaceProposalData(t *testing.T) {
 	actualSecondPsh := r1.proposals[secondProposal.Height][secondProposal.Round].block.Original().Header()
 	assert.Equal(t, secondPartset.Total(), actualSecondPsh.Total)
 	assert.Equal(t, secondPsh.Hash, actualSecondPsh.Hash)
+}
+
+// TestPruneServesCommittedBlockToParkedWants asserts that committing a block
+// fills the catch-up stub for it and answers the wants peers parked on that stub.
+func TestPruneServesCommittedBlockToParkedWants(t *testing.T) {
+	reactors, _ := createTestReactors(2, defaultTestP2PConf(), false, "")
+	server, requester := reactors[0], reactors[1]
+	cleanup, _, sm, pv := state.SetupTestCaseWithPrivVal(t)
+	t.Cleanup(func() { cleanup(t) })
+
+	prop, ps, block, _ := createTestProposal(t, sm, pv, 1, 0, 2, 1000000)
+	psh := ps.Header()
+
+	// the server only holds an empty stub, so it parks the requester's want.
+	server.AddCommitment(prop.Height, prop.Round, &psh)
+	requester.AddCommitment(prop.Height, prop.Round, &psh)
+	require.Eventually(t, func() bool {
+		wants, has := server.getPeer(requester.self).GetWants(prop.Height, prop.Round)
+		return has && !wants.IsEmpty()
+	}, time.Second, 10*time.Millisecond)
+
+	// the server commits the block without receiving it through propagation.
+	server.store.SaveBlock(block, ps, testCommit(block, ps))
+	server.Prune(prop.Height)
+
+	require.Eventually(t, func() bool {
+		_, parts, has := requester.GetProposal(prop.Height, prop.Round)
+		return has && parts.IsComplete()
+	}, 2*time.Second, 10*time.Millisecond)
+}
+
+// TestRetryWantsReRequestsAfterWrongBlockPart asserts that a catch-up want answered
+// with another block's parts is asked again once the request expires.
+func TestRetryWantsReRequestsAfterWrongBlockPart(t *testing.T) {
+	reactors, _ := createTestReactors(2, defaultTestP2PConf(), false, "")
+	requester, server := reactors[0], reactors[1]
+	requester.requestTimeout = 100 * time.Millisecond
+	cleanup, _, sm, pv := state.SetupTestCaseWithPrivVal(t)
+	t.Cleanup(func() { cleanup(t) })
+
+	propX, psX, blockX, _ := createTestProposal(t, sm, pv, 1, 0, 2, 1000000)
+	propY, psY, _, metaY := createTestProposal(t, sm, pv, 1, 0, 2, 1000000)
+	require.Equal(t, psX.Total(), psY.Total())
+
+	// the server holds Y at the round the requester needs X for.
+	cbY, parityY := createCompactBlock(t, propY, psY, metaY)
+	require.True(t, server.AddProposal(cbY))
+	_, partsY, _, has := server.getAllState(propY.Height, propY.Round, true)
+	require.True(t, has)
+	partsY.SetProposalData(psY, parityY)
+
+	pshX := psX.Header()
+	requester.AddCommitment(propX.Height, propX.Round, &pshX)
+	require.Eventually(t, func() bool {
+		reqs, has := requester.getPeer(server.self).GetRequests(propX.Height, propX.Round)
+		return has && !reqs.IsEmpty()
+	}, time.Second, 10*time.Millisecond)
+	time.Sleep(200 * time.Millisecond)
+	_, parts, _ := requester.GetProposal(propX.Height, propX.Round)
+	require.Zero(t, parts.Count(), "Y's parts must not verify against X")
+
+	// once the server commits X, the next retry must reach it again.
+	server.store.SaveBlock(blockX, psX, testCommit(blockX, psX))
+	server.Prune(propX.Height)
+	requester.retryWants()
+
+	require.Eventually(t, func() bool {
+		_, parts, has := requester.GetProposal(propX.Height, propX.Round)
+		return has && parts.IsComplete()
+	}, 2*time.Second, 10*time.Millisecond)
+}
+
+// TestRetryWantsWaitsForCatchupRequestExpiry asserts that a catch-up want still in flight
+// to a peer is not sent again until the request expires.
+func TestRetryWantsWaitsForCatchupRequestExpiry(t *testing.T) {
+	reactors, switches := testBlockPropReactors(1, defaultTestP2PConf())
+	stopSwitchesOnCleanup(t, switches)
+	r := reactors[0]
+	r.requestTimeout = time.Hour
+	rp := addRecordingPeer(t, r, 0)
+	peer := r.getPeer(rp.ID())
+	peer.SetConsensusPeerState(&MockPeerStateEditor{height: 10})
+
+	psh := types.PartSetHeader{Total: 4, Hash: cmtrand.Bytes(32)}
+	r.AddCommitment(1, 0, &psh)
+	require.Eventually(t, func() bool {
+		reqs, has := peer.GetRequests(1, 0)
+		return has && !reqs.IsEmpty()
+	}, time.Second, 10*time.Millisecond)
+	require.Equal(t, 1, rp.sentWants())
+
+	r.retryWants()
+	require.Equal(t, 1, rp.sentWants(), "in-flight request is not sent again")
+
+	r.requestTimeout = 0
+	r.retryWants()
+	require.Equal(t, 2, rp.sentWants(), "expired request is sent again")
+}
+
+// TestRecoveryPartForOlderRound asserts that a proven part answering a catch-up want is
+// accepted after the reactor moved on to a later round of the same height.
+func TestRecoveryPartForOlderRound(t *testing.T) {
+	reactors, _ := createTestReactors(2, defaultTestP2PConf(), false, "")
+	r1, r2 := reactors[0], reactors[1]
+	cleanup, _, sm, pv := state.SetupTestCaseWithPrivVal(t)
+	t.Cleanup(func() { cleanup(t) })
+
+	prop, ps, _, _ := createTestProposal(t, sm, pv, 1, 0, 2, 1000000)
+	psh := ps.Header()
+	r1.AddCommitment(prop.Height, 0, &psh)
+	pubKey, err := pv.GetPubKey()
+	require.NoError(t, err)
+	r1.SetConsensusState(prop.Height, 1, pubKey)
+
+	// the part answers a catch-up want, so it was requested from the peer
+	r1.getPeer(r2.self).AddRequests(prop.Height, 0, createBitArray(int(ps.Total())*2, []int{0}))
+
+	part := ps.GetPart(0)
+	r1.handleRecoveryPart(r2.self, &proptypes.RecoveryPart{Height: prop.Height, Round: 0, Index: 0, Data: part.Bytes, Proof: &part.Proof})
+	_, parts, has := r1.GetProposal(prop.Height, 0)
+	require.True(t, has)
+	require.True(t, parts.HasPart(0))
+}
+
+// TestRetryWantsFetchesOlderPartialProposalOnCommit asserts that a commit for a round whose
+// proposal we hold without parts fetches them, even with a newer proposal cached.
+func TestRetryWantsFetchesOlderPartialProposalOnCommit(t *testing.T) {
+	reactors, _ := createTestReactors(2, defaultTestP2PConf(), false, "")
+	requester, server := reactors[0], reactors[1]
+	cleanup, _, sm, pv := state.SetupTestCaseWithPrivVal(t)
+	t.Cleanup(func() { cleanup(t) })
+
+	propX, psX, _, metaX := createTestProposal(t, sm, pv, 1, 0, 2, 1000000)
+	propY, psY, _, metaY := createTestProposal(t, sm, pv, 1, 1, 2, 1000000)
+	cbX, parityX := createCompactBlock(t, propX, psX, metaX)
+	cbY, _ := createCompactBlock(t, propY, psY, metaY)
+
+	require.True(t, server.AddProposal(cbX))
+	_, partsX, _, has := server.getAllState(propX.Height, propX.Round, true)
+	require.True(t, has)
+	partsX.SetProposalData(psX, parityX)
+
+	// the requester holds X's compact block without parts and Y's newer proposal.
+	require.True(t, requester.AddProposal(cbX))
+	require.True(t, requester.AddProposal(cbY))
+	pshX := psX.Header()
+	requester.AddCommitment(propX.Height, propX.Round, &pshX)
+
+	require.Eventually(t, func() bool {
+		_, parts, has := requester.GetProposal(propX.Height, propX.Round)
+		return has && parts.IsComplete()
+	}, 2*time.Second, 10*time.Millisecond)
+	part := <-requester.GetPartChan()
+	require.Equal(t, propX.Round, part.Round)
+}
+
+// countingDB counts point reads.
+type countingDB struct {
+	dbm.DB
+	reads atomic.Int64
+}
+
+func (d *countingDB) Get(key []byte) ([]byte, error) {
+	d.reads.Add(1)
+	return d.DB.Get(key)
+}
+
+func (d *countingDB) Has(key []byte) (bool, error) {
+	d.reads.Add(1)
+	return d.DB.Has(key)
+}
+
+// TestRecoveryPartReadsNoStore asserts that an unsolicited proven part for a
+// committed height is dropped without reading the block store.
+func TestRecoveryPartReadsNoStore(t *testing.T) {
+	reactors, _ := createTestReactors(2, defaultTestP2PConf(), false, "")
+	r1, r2 := reactors[0], reactors[1]
+	cleanup, _, sm, pv := state.SetupTestCaseWithPrivVal(t)
+	t.Cleanup(func() { cleanup(t) })
+
+	prop, ps, block, _ := createTestProposal(t, sm, pv, 1, 0, 2, 1000000)
+	db := &countingDB{DB: dbm.NewMemDB()}
+	r1.pmtx.Lock()
+	r1.store = store.NewBlockStore(db)
+	r1.pmtx.Unlock()
+	r1.store.SaveBlock(block, ps, testCommit(block, ps))
+	pubKey, err := pv.GetPubKey()
+	require.NoError(t, err)
+	r1.SetConsensusState(prop.Height+1, 0, pubKey)
+
+	before := db.reads.Load()
+	for i := range ps.Total() {
+		part := ps.GetPart(int(i))
+		r1.handleRecoveryPart(r2.self, &proptypes.RecoveryPart{Height: prop.Height, Round: 0, Index: i, Data: part.Bytes, Proof: &part.Proof})
+	}
+	require.Equal(t, before, db.reads.Load())
+	_, _, has, _ := r1.getCachedState(prop.Height, 0, true)
+	require.False(t, has)
+}
+
+func testCommit(block *types.Block, ps *types.PartSet) *types.Commit {
+	return &types.Commit{
+		Height:  block.Height,
+		BlockID: types.BlockID{Hash: block.Hash(), PartSetHeader: ps.Header()},
+	}
 }
 
 // signedCompactBlock returns a compact block for the given height and round
@@ -646,4 +886,238 @@ func createCompactBlock(
 	}
 	cb.SetProofCache(proofs)
 	return cb, parityBlock
+}
+
+// TestHandleCachedCompactBlockForwardsOnce ensures a cached proposal is
+// forwarded to consensus at most once, however often it is applied.
+func TestHandleCachedCompactBlockForwardsOnce(t *testing.T) {
+	p2pCfg := defaultTestP2PConf()
+	reactors, _ := createTestReactors(1, p2pCfg, false, "")
+	n1 := reactors[0]
+
+	cleanup, _, sm, pv := state.SetupTestCaseWithPrivVal(t)
+	t.Cleanup(func() {
+		cleanup(t)
+	})
+
+	n1.SetConsensusState(2, 0, mockPubKey)
+
+	cb, _, _, _ := testCompactBlock(t, sm, pv, 2, 0)
+	require.True(t, n1.AddProposal(cb))
+	for len(n1.GetProposalChan()) > 0 {
+		<-n1.GetProposalChan()
+	}
+
+	for i := 0; i < 10; i++ {
+		require.True(t, n1.handleCachedCompactBlock(cb))
+	}
+
+	select {
+	case prop := <-n1.GetProposalChan():
+		require.True(t, cb.Proposal.BlockID.Equals(prop.Proposal.BlockID))
+	case <-time.After(5 * time.Second):
+		t.Fatal("cached proposal should have been forwarded to consensus")
+	}
+	select {
+	case prop := <-n1.GetProposalChan():
+		t.Fatalf("cached proposal was forwarded more than once: %v", prop.Proposal)
+	case <-time.After(200 * time.Millisecond):
+	}
+}
+
+// stopSwitchesOnCleanup stops the switches (and so their reactors) when the
+// test ends, so goroutines blocked on a reactor's channels exit.
+func stopSwitchesOnCleanup(t *testing.T, switches []*p2p.Switch) {
+	t.Cleanup(func() {
+		for _, s := range switches {
+			_ = s.Stop()
+		}
+	})
+}
+
+// TestHandleCachedCompactBlockDoesNotBlock ensures applying a cached proposal
+// returns even when consensus is not draining the proposal or part channels,
+// since it runs on the consensus receive routine.
+func TestHandleCachedCompactBlockDoesNotBlock(t *testing.T) {
+	tests := []struct {
+		name string
+		// fill is the channel to fill before applying the cached proposal.
+		fill func(r *Reactor)
+	}{
+		{
+			name: "full proposal channel",
+			fill: func(r *Reactor) {
+				for len(r.proposalChan) < cap(r.proposalChan) {
+					r.proposalChan <- ProposalAndSrc{}
+				}
+			},
+		},
+		{
+			name: "full part channel",
+			fill: func(r *Reactor) {
+				for len(r.partChan) < cap(r.partChan) {
+					r.partChan <- types.PartInfo{}
+				}
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			p2pCfg := defaultTestP2PConf()
+			reactors, switches := createTestReactors(1, p2pCfg, false, "")
+			stopSwitchesOnCleanup(t, switches)
+			n1 := reactors[0]
+
+			cleanup, _, sm, pv := state.SetupTestCaseWithPrivVal(t)
+			t.Cleanup(func() {
+				cleanup(t)
+			})
+
+			n1.SetConsensusState(2, 0, mockPubKey)
+
+			// put the block's transactions in the mempool so that applying
+			// the cached proposal recovers parts and sends them to partChan.
+			prop, ps, block, metaData := createTestProposal(t, sm, pv, 2, 0, 10, int(types.BlockPartSizeBytes/3))
+			mp, ok := n1.mempool.(*mockMempool)
+			require.True(t, ok)
+			for _, tx := range block.Txs {
+				mp.AddTx(tx)
+			}
+			cb, _ := createCompactBlock(t, prop, ps, metaData)
+			require.True(t, n1.AddProposal(cb))
+
+			tt.fill(n1)
+
+			done := make(chan bool, 1)
+			go func() {
+				done <- n1.handleCachedCompactBlock(cb)
+			}()
+			select {
+			case applied := <-done:
+				require.True(t, applied)
+			case <-time.After(5 * time.Second):
+				t.Fatal("handleCachedCompactBlock blocked on a full channel")
+			}
+		})
+	}
+}
+
+// TestAddBlockServesWants asserts that a block handed over by consensus answers
+// wants parked on a stub for it and replaces another block's entry at that round.
+func TestAddBlockServesWants(t *testing.T) {
+	cleanup, _, sm, pv := state.SetupTestCaseWithPrivVal(t)
+	t.Cleanup(func() { cleanup(t) })
+	propX, psX, _, _ := createTestProposal(t, sm, pv, 1, 0, 2, 1000000)
+	propY, psY, _, metaY := createTestProposal(t, sm, pv, 1, 0, 2, 1000000)
+	pshX := psX.Header()
+
+	completeFn := func(r *Reactor) func() bool {
+		return func() bool {
+			_, parts, has := r.GetProposal(propX.Height, propX.Round)
+			return has && parts.IsComplete() && parts.HasHeader(pshX)
+		}
+	}
+
+	t.Run("parked want", func(t *testing.T) {
+		reactors, _ := createTestReactors(2, defaultTestP2PConf(), false, "")
+		server, requester := reactors[0], reactors[1]
+		server.AddCommitment(propX.Height, propX.Round, &pshX)
+		requester.AddCommitment(propX.Height, propX.Round, &pshX)
+		require.Eventually(t, func() bool {
+			wants, has := server.getPeer(requester.self).GetWants(propX.Height, propX.Round)
+			return has && !wants.IsEmpty()
+		}, time.Second, 10*time.Millisecond)
+
+		server.AddBlock(propX.Height, propX.Round, psX)
+		require.Eventually(t, completeFn(requester), 2*time.Second, 10*time.Millisecond)
+	})
+
+	t.Run("replaces another block", func(t *testing.T) {
+		reactors, _ := createTestReactors(2, defaultTestP2PConf(), false, "")
+		server, requester := reactors[0], reactors[1]
+		cbY, parityY := createCompactBlock(t, propY, psY, metaY)
+		require.True(t, server.AddProposal(cbY))
+		_, partsY, _, has := server.getAllState(propY.Height, propY.Round, true)
+		require.True(t, has)
+		partsY.SetProposalData(psY, parityY)
+
+		server.AddBlock(propX.Height, propX.Round, psX)
+		require.True(t, completeFn(server)())
+		requester.AddCommitment(propX.Height, propX.Round, &pshX)
+		require.Eventually(t, completeFn(requester), 2*time.Second, 10*time.Millisecond)
+	})
+}
+
+// TestAddBlockReplacingAnotherBlockDropsPeerRound asserts that peers' wants and
+// requests for the replaced block's round are dropped with it.
+func TestAddBlockReplacingAnotherBlockDropsPeerRound(t *testing.T) {
+	cleanup, _, sm, pv := state.SetupTestCaseWithPrivVal(t)
+	t.Cleanup(func() { cleanup(t) })
+	propX, psX, _, _ := createTestProposal(t, sm, pv, 1, 0, 2, 1000000)
+	propY, psY, _, metaY := createTestProposal(t, sm, pv, 1, 0, 2, 1000000)
+	reactors, switches := createTestReactors(1, defaultTestP2PConf(), false, "")
+	stopSwitchesOnCleanup(t, switches)
+	r := reactors[0]
+	cbY, _ := createCompactBlock(t, propY, psY, metaY)
+	require.True(t, r.AddProposal(cbY))
+	ps := r.getPeer(addRecordingPeer(t, r, 1_000_000).ID())
+	h, round := propY.Height, propY.Round
+	ba := bits.NewBitArray(int(psY.Total() * 2))
+	ba.SetIndex(0, true)
+	ps.AddWants(h, round, ba)
+	ps.AddRequests(h, round, ba)
+	ps.SetRemainingRequests(h, round, 1)
+
+	r.AddBlock(propX.Height, propX.Round, psX)
+	_, hasWants := ps.GetWants(h, round)
+	_, hasRequests := ps.GetRequests(h, round)
+	require.False(t, hasWants)
+	require.False(t, hasRequests)
+	require.Zero(t, ps.GetRemainingRequests(h, round))
+}
+
+// TestAddBlockCompletesEntry asserts that AddBlock completing an entry keeps its
+// compact block and catchup flag, and ignores an incomplete part set.
+func TestAddBlockCompletesEntry(t *testing.T) {
+	cleanup, _, sm, pv := state.SetupTestCaseWithPrivVal(t)
+	t.Cleanup(func() { cleanup(t) })
+	prop, ps, _, meta := createTestProposal(t, sm, pv, 1, 0, 2, 1000000)
+	psh := ps.Header()
+	newEntry := func(t *testing.T) (*Reactor, *proptypes.CompactBlock) {
+		reactors, switches := createTestReactors(1, defaultTestP2PConf(), false, "")
+		stopSwitchesOnCleanup(t, switches)
+		cb, _ := createCompactBlock(t, prop, ps, meta)
+		require.True(t, reactors[0].AddProposal(cb))
+		reactors[0].AddCommitment(prop.Height, prop.Round, &psh) // marks it catchup
+		return reactors[0], cb
+	}
+	entry := func(r *Reactor) *proposalData {
+		r.pmtx.Lock()
+		defer r.pmtx.Unlock()
+		return r.proposals[prop.Height][prop.Round]
+	}
+
+	t.Run("complete", func(t *testing.T) {
+		r, cb := newEntry(t)
+		r.AddBlock(prop.Height, prop.Round, ps)
+		got, parts, has := r.GetProposal(prop.Height, prop.Round)
+		require.True(t, has)
+		require.True(t, parts.IsComplete())
+		require.Equal(t, cb.Proposal, *got)
+		require.True(t, entry(r).catchup)
+	})
+
+	t.Run("incomplete", func(t *testing.T) {
+		r, _ := newEntry(t)
+		before := entry(r)
+		partial := types.NewPartSetFromHeader(psh, types.BlockPartSizeBytes)
+		added, err := partial.AddPart(ps.GetPart(0))
+		require.NoError(t, err)
+		require.True(t, added)
+		r.AddBlock(prop.Height, prop.Round, partial)
+		require.Same(t, before, entry(r))
+		r.AddBlock(prop.Height, prop.Round, nil)
+		require.Same(t, before, entry(r))
+		require.False(t, entry(r).block.IsComplete())
+	})
 }

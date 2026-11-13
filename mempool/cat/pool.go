@@ -19,7 +19,10 @@ import (
 )
 
 // enforce compile-time satisfaction of the Mempool interface
-var _ mempool.Mempool = (*TxPool)(nil)
+var (
+	_ mempool.Mempool          = (*TxPool)(nil)
+	_ mempool.PendingSequencer = (*TxPool)(nil)
+)
 
 var (
 	ErrTxInMempool = errors.New("tx already exists in mempool")
@@ -208,6 +211,13 @@ func (txmp *TxPool) GetTxByKey(txKey types.TxKey) (*types.CachedTx, bool) {
 		return wtx.tx, true
 	}
 	return &types.CachedTx{}, false
+}
+
+// HighestPendingSequence returns the highest sequence the pool holds for the
+// signer, or false if it holds none. It takes only the store's read lock, never
+// txmp.mtx, so it cannot block on Commit or recheck.
+func (txmp *TxPool) HighestPendingSequence(signer []byte) (uint64, bool) {
+	return txmp.store.highestSequence(signer)
 }
 
 // WasRecentlyEvicted returns a bool indicating whether the transaction with
@@ -446,64 +456,20 @@ func (txmp *TxPool) ReapMaxBytesMaxGas(maxBytes, maxGas int64) []*types.CachedTx
 
 	var keep []*types.CachedTx
 	txmp.store.processOrderedTxSets(func(txSets []*txSet) {
-		for idx, txSet := range txSets {
-			if maxBytes >= 0 && totalBytes+txSet.bytes > maxBytes ||
-				maxGas >= 0 && totalGas+txSet.totalGasWanted > maxGas {
-				// if the next transaction set can not fit, then we need to break down the indidual transactions
-				// and work out the residual set that has the highest accumulative priority and append that
-				keep = append(keep, txmp.determineLeftoverTxs(txSets[idx:], maxBytes-totalBytes, maxGas-totalGas)...)
-				break
+		for _, txSet := range txSets {
+			// Take the longest sequence-ordered prefix of each set that still fits.
+			for _, wtx := range txSet.txs {
+				if maxBytes >= 0 && totalBytes+wtx.size() > maxBytes ||
+					maxGas >= 0 && totalGas+wtx.gasWanted > maxGas {
+					break
+				}
+				totalBytes += wtx.size()
+				totalGas += wtx.gasWanted
+				keep = append(keep, wtx.tx)
 			}
-			totalBytes += txSet.bytes
-			totalGas += txSet.totalGasWanted
-			keep = append(keep, txSet.rawTxs()...)
 		}
 	})
 	return keep
-}
-
-// this function iterates over remaining txSets starting at all possible offsets i.e. from
-// the first, second, third etc. transaction and working out what permutation given the remaining
-// available bytes and gas has the highest aggregated priority
-func (txmp *TxPool) determineLeftoverTxs(txSets []*txSet, remainingBytes, remainingGas int64) []*types.CachedTx {
-	priorities := make([]int64, len(txSets))
-	possibleTxPermutations := make([][]*types.CachedTx, len(txSets))
-	for i := 0; i < len(txSets); i++ {
-		priorities[i], possibleTxPermutations[i] = txmp.getAggregatedPriorityAndTxs(txSets[i:], remainingBytes, remainingGas)
-	}
-	highestPriorityIndex := 0
-	for i := 1; i < len(priorities); i++ {
-		if priorities[i] > priorities[highestPriorityIndex] {
-			highestPriorityIndex = i
-		}
-	}
-	return possibleTxPermutations[highestPriorityIndex]
-}
-
-// getAggregatedPriorityAndTxs return the first n txs in the provided txSets that fit within
-// the remaining bytes and gas and returns the aggregated priority of the resulting txs
-func (txmp *TxPool) getAggregatedPriorityAndTxs(txSets []*txSet, remainingBytes, remainingGas int64) (int64, []*types.CachedTx) {
-	aggregatedTxSubSets := make([]*txSet, 0, len(txSets))
-
-	for _, txSet := range txSets {
-		slicedSet := txSet.sliceTxsByBytesAndGas(remainingBytes, remainingGas)
-		aggregatedTxSubSets = append(aggregatedTxSubSets, slicedSet)
-		// if the full tx set is not returned, that indicates there are no more bytes or gas left
-		if len(slicedSet.txs) != len(txSet.txs) {
-			return aggregatePriorityAcrossSets(aggregatedTxSubSets), flattenTxSets(aggregatedTxSubSets)
-		}
-		remainingBytes -= txSet.bytes
-		remainingGas -= txSet.totalGasWanted
-	}
-	return aggregatePriorityAcrossSets(aggregatedTxSubSets), flattenTxSets(aggregatedTxSubSets)
-}
-
-func flattenTxSets(txSets []*txSet) []*types.CachedTx {
-	txs := make([]*types.CachedTx, 0, len(txSets))
-	for _, txSet := range txSets {
-		txs = append(txs, txSet.rawTxs()...)
-	}
-	return txs
 }
 
 // ReapMaxTxs returns up to max transactions from the mempool. The results are
@@ -638,10 +604,22 @@ func (txmp *TxPool) addNewTransaction(wtx *wrappedTx) error {
 	if !txmp.canAddTx(wtx.size()) {
 		// Set-level eviction: aggregate by signer and compare against the new set's aggregated priority
 		newAggPriority := txmp.store.aggregatedPriorityAfterAdd(wtx)
-		victimSets, victimBytes := txmp.store.getTxSetsBelowPriority(newAggPriority)
+		// Never evict the incoming signer's own txs: that would leave a
+		// sequence gap the new tx could not fill.
+		victimSets, victimBytes := txmp.store.getTxSetsBelowPriority(newAggPriority, string(wtx.sender))
 
-		// If there are no suitable eviction candidates, or the total size is insufficient, drop the new one.
-		if len(victimSets) == 0 || victimBytes < wtx.size() {
+		victimTxs := 0
+		for _, set := range victimSets {
+			victimTxs += len(set.txs)
+		}
+		// The pool must end up with at most config.Size txs including the new one.
+		neededTxs := txmp.Size() - txmp.config.Size + 1
+
+		// Only the bytes the pool is short of need to be freed by eviction.
+		neededBytes := wtx.size() - txmp.availableBytes()
+
+		// If there are no suitable eviction candidates, or they can't free enough bytes or tx slots, drop the new one.
+		if len(victimSets) == 0 || victimBytes < neededBytes || victimTxs < neededTxs {
 			txmp.metrics.EvictedTxs.Add(1)
 			txKey := wtx.key()
 			txmp.evictedTxCache.Push(txKey)
@@ -674,16 +652,20 @@ func (txmp *TxPool) addNewTransaction(wtx *wrappedTx) error {
 			return is.aggregatedPriority < js.aggregatedPriority
 		})
 
-		// Evict as many sets as needed to make room for the incoming tx
+		// Evict as many sets as needed to make room for the incoming tx, both
+		// in bytes and in tx count
 		availableBytes := txmp.availableBytes()
+		needsRoom := func() bool {
+			return availableBytes < wtx.size() || txmp.Size() >= txmp.config.Size
+		}
 		for _, set := range victimSets {
 			// Iterate in reverse order removing the higher sequence numbers first
-			for i := len(set.txs) - 1; i >= 0 && availableBytes < wtx.size(); i-- {
+			for i := len(set.txs) - 1; i >= 0 && needsRoom(); i-- {
 				tx := set.txs[i]
 				txmp.evictTx(tx)
 				availableBytes += tx.size()
 			}
-			if availableBytes >= wtx.size() {
+			if !needsRoom() {
 				break
 			}
 		}
@@ -835,7 +817,7 @@ func (txmp *TxPool) canAddTx(size int64) bool {
 	numTxs := txmp.Size()
 	txBytes := txmp.SizeBytes()
 
-	if numTxs > txmp.config.Size || size+txBytes > txmp.config.MaxTxsBytes {
+	if numTxs >= txmp.config.Size || size+txBytes > txmp.config.MaxTxsBytes {
 		return false
 	}
 

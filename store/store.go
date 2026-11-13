@@ -932,11 +932,14 @@ func (bs *BlockStore) SaveTxInfo(block *types.Block, execTxRes []*abci.ExecTxRes
 		return errors.New("tx execution results length mismatch with block txs length")
 	}
 
+	block.FillCachedHashes()
+	hashes := block.CachedHashes()
+
 	// Create a new batch
 	batch := bs.db.NewBatch()
 
 	// Batch and save txs from the block
-	for i, tx := range block.Txs {
+	for i := range block.Txs {
 		result := execTxRes[i]
 		txInfo := cmtstore.TxInfo{
 			Height: block.Height,
@@ -956,7 +959,7 @@ func (bs *BlockStore) SaveTxInfo(block *types.Block, execTxRes []*abci.ExecTxRes
 		if err != nil {
 			return fmt.Errorf("unable to marshal tx: %w", err)
 		}
-		if err := batch.Set(calcTxHashKey(tx.Hash()), txInfoBytes); err != nil {
+		if err := batch.Set(calcTxHashKey(hashes[i]), txInfoBytes); err != nil {
 			return err
 		}
 	}

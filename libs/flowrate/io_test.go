@@ -36,8 +36,8 @@ func TestReader(t *testing.T) {
 		in[i] = byte(i)
 	}
 	b := make([]byte, 100)
-	r := NewReader(bytes.NewReader(in), 100)
 	start := time.Now()
+	r := NewReader(bytes.NewReader(in), 100)
 
 	// Make sure r implements Limiter
 	_ = Limiter(r)
@@ -63,7 +63,10 @@ func TestReader(t *testing.T) {
 	r.SetBlocking(true)
 	if n, err := r.Read(b[10:]); n != 10 || err != nil {
 		t.Fatalf("r.Read(b[10:]) expected 10 (<nil>); got %v (%v)", n, err)
-	} else if rt := time.Since(start); rt < _100ms {
+	} else if rt := time.Since(start); rt < _100ms-clockRate {
+		// clock() rounds to the nearest clockRate (20ms), so the 100ms sample
+		// boundary can be crossed after as little as 100ms - clockRate of
+		// wall time.
 		t.Fatalf("r.Read(b[10:]) returned ahead of time (%v)", rt)
 	}
 

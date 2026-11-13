@@ -275,6 +275,15 @@ vulncheck:
 	@go run golang.org/x/vuln/cmd/govulncheck@v1.8.0 ./...
 .PHONY: vulncheck
 
+# Keep in sync with GREMLINS_VERSION in .github/workflows/mutation-nightly.yml.
+GREMLINS_VERSION ?= v0.6.0
+
+#? mutation-test: Run gremlins mutation testing on one package, e.g. make mutation-test PKG=crypto/merkle [FILES="proof.go tree.go"]
+mutation-test:
+	@test -n "$(PKG)" || { echo "usage: make mutation-test PKG=<package dir> [FILES=\"a.go b.go\"]"; exit 2; }
+	@GREMLINS="go run github.com/go-gremlins/gremlins/cmd/gremlins@$(GREMLINS_VERSION)" scripts/mutation-test.sh $(PKG) $(FILES)
+.PHONY: mutation-test
+
 #? lint-typo: Run codespell to check typos
 lint-typo:
 	which codespell || pip3 install codespell
@@ -384,6 +393,10 @@ split-test-packages:$(BUILDDIR)/packages.txt
 #? test-group-%: Run a specific test group split
 test-group-%:split-test-packages
 	cat $(BUILDDIR)/packages.txt.$* | xargs go test -mod=readonly -timeout=15m -race -coverprofile=$(BUILDDIR)/$*.profile.out
+
+#? test-deadlock-group-%: Run a specific test group split with the deadlock build tag
+test-deadlock-group-%:split-test-packages
+	cat $(BUILDDIR)/packages.txt.$* | xargs go test -mod=readonly -count=1 -timeout=15m -tags deadlock
 
 #? help: Get more info on make commands.
 help: Makefile

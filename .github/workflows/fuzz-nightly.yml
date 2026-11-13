@@ -1,6 +1,22 @@
-# Runs the native Go fuzz tests in test/fuzz nightly. Failures on main are
-# reported to #protocol-ci by notify-protocol-ci.yml, which watches this
-# workflow by name.
+# Runs the native Go fuzz targets listed in test/fuzz/README.md nightly.
+# Failures on main are reported to #protocol-ci by notify-protocol-ci.yml,
+# which watches this workflow by name.
+#
+# A crashing input can describe an exploitable bug, and this repository's logs
+# and artifacts are public. The nightly jobs therefore print only PASS or FAIL,
+# and on main file a Linear issue holding the output and the crashing input.
+#
+# Each nightly target's generated corpus is cached between runs, so every night
+# starts from the inputs earlier nights found. The cache holds only inputs that
+# did not fail: go test writes a crashing input to the package's testdata/fuzz
+# directory, which is never cached or uploaded. See test/fuzz/README.md.
+#
+# Pull requests skip the per-target matrix, which would start one job per
+# target, and run fuzz-changed instead: a single job that briefly fuzzes the
+# targets in the packages the pull request changes. Seed corpora run in the
+# regular test jobs either way. They also run fuzz-targets-listed, which fails
+# when a fuzz target is in neither the matrix below nor
+# test/fuzz/nightly-excluded.txt.
 name: Fuzz Tests
 on:
   workflow_dispatch:  # allow running workflow manually
@@ -8,7 +24,14 @@ on:
     - cron: '0 3 * * *'
   pull_request:
     paths:
-      - "test/fuzz/**"
+      - "**.go"
+      - "**/testdata/fuzz/**"
+      - "go.mod"
+      - "go.sum"
+      - "scripts/fuzz-changed.sh"
+      - "scripts/check-fuzz-targets.sh"
+      - "test/fuzz/nightly-excluded.txt"
+      - "scripts/fuzz-only-deadline*.sh"
       - ".github/workflows/fuzz-nightly.yml"
 
 permissions:
@@ -23,32 +46,206 @@ concurrency:
 jobs:
   fuzz:
     name: Fuzz ${{ matrix.target }}
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    permissions:
+      contents: read
+      # Deletes this target's superseded corpus cache entries.
+      actions: write
+    env:
+      # Bump the version to drop every saved corpus. Entries that no longer
+      # match a target's argument types are skipped by go test, so a signature
+      # change does not need a bump.
+      CORPUS_KEY: fuzz-corpus-v1-${{ matrix.package }}/${{ matrix.target }}-
+      # A corpus larger than this is not saved; see test/fuzz/README.md.
+      CORPUS_MAX_MIB: 32
     strategy:
       fail-fast: false
       matrix:
-        target: [Mempool, P2PSecretConnection, RPCJSONRPCServer]
+        # priority is the entry point's risk in the PROTOCO-3321 inventory and
+        # sets the Linear priority of the issue filed on failure:
+        # 1 = Urgent, 2 = High.
+        include:
+          - {package: test/fuzz/tests, target: Mempool, priority: 1}
+          - {package: test/fuzz/tests, target: P2PSecretConnection, priority: 1}
+          - {package: p2p, target: TransportUpgrade, priority: 1}
+          - {package: p2p, target: PeerReceive, priority: 1}
+          - {package: p2p/conn, target: SecretConnectionHandshake, priority: 1}
+          - {package: p2p/conn, target: SecretConnectionRead, priority: 1}
+          - {package: p2p/conn, target: MConnectionRecv, priority: 1}
+          - {package: test/fuzz/tests, target: RPCJSONRPCServer, priority: 2}
+          - {package: rpc/core, target: RPCGRPCAPI, priority: 2}
+          - {package: p2p/pex, target: PexReactor, priority: 2}
+          - {package: rpc/core, target: RPCCoreHandlers, priority: 2}
+          - {package: rpc/core, target: RPCCoreJSONRPC, priority: 2}
+          - {package: mempool/cat, target: MempoolMessage, priority: 1}
+          - {package: mempool/cat, target: ReactorReceive, priority: 1}
+          - {package: consensus, target: ConsensusMessage, priority: 1}
+          - {package: consensus, target: ConsensusStateHandleMsg, priority: 1}
+          - {package: consensus, target: ConsensusReactorReceive, priority: 1}
+          - {package: blocksync, target: BlockSyncMessage, priority: 1}
+          - {package: statesync, target: StateSyncReactor, priority: 2}
+          - {package: blocksync, target: BlockSyncReactor, priority: 1}
+          - {package: consensus/propagation/types, target: PropagationMessage, priority: 1}
+          - {package: consensus/propagation/types, target: CombinedPartSetDecode, priority: 1}
+          - {package: consensus/propagation/types, target: TxsToPartsMetadata, priority: 1}
+          - {package: consensus/propagation/types, target: TxsToParts, priority: 1}
+          - {package: consensus/propagation/types, target: TxsToParts_Panic, priority: 1}
+          - {package: consensus/propagation, target: PropagationReactor, priority: 1}
+          - {package: types, target: BlockFromProto, priority: 1}
+          - {package: state, target: BlockExecValidateApply, priority: 1}
+          - {package: state, target: VerifyVoteExtension, priority: 1}
+          - {package: types, target: PartFromProto, priority: 1}
+          - {package: types, target: VoteFromProto, priority: 1}
+          - {package: types, target: ProposalFromProto, priority: 1}
+          - {package: types, target: CommitFromProto, priority: 1}
+          - {package: types, target: VerifyCommit, priority: 1}
+          - {package: types, target: ExtendedCommitFromProto, priority: 1}
+          - {package: types, target: LightBlockFromProto, priority: 2}
+          - {package: types, target: ValidatorSetFromProto, priority: 2}
+          - {package: types, target: EvidenceFromProto, priority: 1}
+          - {package: evidence, target: EvidencePool, priority: 1}
+          - {package: evidence, target: EvidenceReactorReceive, priority: 1}
+          - {package: types, target: UnwrapLegacyBlobTx, priority: 1}
+          - {package: proto/tendermint/types, target: CheckBlockCardinality, priority: 1}
+          - {package: light, target: LightClientVerify, priority: 2}
+          - {package: light/provider/http, target: HTTPProviderLightBlock, priority: 2}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: 'go.mod'
 
-      # Fuzz for 10 minutes on the nightly schedule; keep pull request runs
-      # short since they only check that the targets still build and run.
-      - name: Fuzz
-        working-directory: test/fuzz/tests
-        env:
-          FUZZTIME: ${{ github.event_name == 'pull_request' && '30s' || '10m' }}
-        run: go test -run='^$' -fuzz='^Fuzz${{ matrix.target }}$' -fuzztime="$FUZZTIME" .
-
-      # Go writes any input that triggered a failure to testdata/fuzz/<Target>/.
-      - name: Archive failing inputs
-        if: failure()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      # The corpus lives under runner.temp rather than GOCACHE, so setup-go's
+      # build cache neither overwrites it nor saves it.
+      - name: Restore fuzz corpus
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
-          name: failing-inputs-${{ matrix.target }}
-          path: test/fuzz/tests/testdata/fuzz/Fuzz${{ matrix.target }}/
-          if-no-files-found: ignore
-          retention-days: 7
+          path: ${{ runner.temp }}/fuzz-corpus
+          key: ${{ env.CORPUS_KEY }}${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: ${{ env.CORPUS_KEY }}
+
+      # The output stays in a file under runner.temp and is sent only to Linear.
+      - name: Fuzz
+        id: fuzz
+        env:
+          FUZZ_PACKAGE: ./${{ matrix.package }}
+          FUZZ_TARGET: Fuzz${{ matrix.target }}
+          FUZZ_PRIORITY: ${{ matrix.priority }}
+          FUZZTIME: 10m
+          FUZZ_LOG_DIR: ${{ runner.temp }}/fuzz
+          FUZZ_CACHE_DIR: ${{ runner.temp }}/fuzz-corpus/${{ matrix.package }}
+        run: |
+          mkdir -p "$FUZZ_LOG_DIR"
+          : >"$FUZZ_LOG_DIR/failed.txt"
+          log="$FUZZ_LOG_DIR/$FUZZ_TARGET.log"
+          # go test exits 0 with "no fuzz tests to fuzz" when the target is missing.
+          # go test passes its own -test.fuzzcachedir first, so this one wins.
+          if go test -run='^$' -fuzz="^${FUZZ_TARGET}$" -fuzztime="$FUZZTIME" -parallel=2 "$FUZZ_PACKAGE" \
+            -args -test.fuzzcachedir="$FUZZ_CACHE_DIR" >"$log" 2>&1 &&
+            ! grep -q 'no fuzz tests to fuzz' "$log"; then
+            echo "PASS $FUZZ_TARGET"
+          elif scripts/fuzz-only-deadline.sh "$log" "$FUZZ_TARGET"; then
+            echo "PASS $FUZZ_TARGET (go test reported its own -fuzztime deadline; no failing input)"
+          else
+            echo "FAIL $FUZZ_TARGET (output withheld; see the Linear issue)"
+            echo "$FUZZ_PRIORITY $FUZZ_PACKAGE $FUZZ_TARGET" >>"$FUZZ_LOG_DIR/failed.txt"
+            exit 1
+          fi
+
+      - name: File Linear issue for failing target
+        if: ${{ failure() && github.ref == 'refs/heads/main' }}
+        env:
+          LINEAR_API_KEY: ${{ secrets.LINEAR_API_KEY }}
+          LINEAR_TEAM_KEY: PROTOCO
+          LINEAR_ASSIGNEE_ID: ${{ vars.FUZZ_LINEAR_ASSIGNEE_ID || 'e9929f5b-e156-4046-95df-aeea6faa9a58' }}
+          FUZZ_LOG_DIR: ${{ runner.temp }}/fuzz
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          COMMIT_SHA: ${{ github.sha }}
+          TITLE_PREFIX: Nightly celestia-core fuzz failure
+        run: python3 .github/scripts/report-fuzz-failures.py
+
+      # Saves the corpus even when the target fails, so inputs found before a
+      # crash are kept.
+      - name: Check fuzz corpus size
+        id: corpus
+        if: ${{ !cancelled() && (steps.fuzz.outcome == 'success' || steps.fuzz.outcome == 'failure') }}
+        env:
+          FUZZ_TARGET: Fuzz${{ matrix.target }}
+          CORPUS_DIR: ${{ runner.temp }}/fuzz-corpus
+        run: |
+          if [ ! -d "$CORPUS_DIR" ]; then
+            echo "No corpus to save"
+            exit 0
+          fi
+          files=$(find "$CORPUS_DIR" -type f | wc -l)
+          mib=$(du -sm --apparent-size "$CORPUS_DIR" | cut -f1)
+          echo "Corpus: $files files, $mib MiB"
+          if [ "$mib" -gt "$CORPUS_MAX_MIB" ]; then
+            echo "::warning::$FUZZ_TARGET corpus is $mib MiB, over the ${CORPUS_MAX_MIB} MiB cap; not saving it"
+            exit 0
+          fi
+          echo "save=true" >> "$GITHUB_OUTPUT"
+
+      - name: Save fuzz corpus
+        id: save-corpus
+        if: ${{ !cancelled() && steps.corpus.outputs.save == 'true' }}
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ runner.temp }}/fuzz-corpus
+          key: ${{ env.CORPUS_KEY }}${{ github.run_id }}-${{ github.run_attempt }}
+
+      # Each save holds the whole corpus, so only the newest entry is needed.
+      # Keeping the newest by creation time, not by this run's key, never
+      # deletes the last good corpus if the save above did not land.
+      - name: Delete superseded fuzz corpora
+        if: ${{ !cancelled() && steps.save-corpus.outcome == 'success' }}
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          gh cache list --ref "$GITHUB_REF" --key "$CORPUS_KEY" --limit 100 --json id,key,createdAt |
+            jq -r 'sort_by(.createdAt) | reverse | .[1:][] | "\(.id) \(.key)"' |
+            while read -r id key; do
+              echo "Deleting $key"
+              gh cache delete "$id" || echo "::warning::Could not delete cache $key"
+            done
+
+  fuzz-targets-listed:
+    name: Fuzz targets listed
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Check every fuzz target is nightly or excluded
+        run: scripts/check-fuzz-targets.sh
+
+  fuzz-changed:
+    name: Fuzz changed packages
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: 'go.mod'
+
+      - name: Test the fuzz deadline filter
+        run: scripts/fuzz-only-deadline_test.sh
+
+      # Output stays out of the public log and no artifact is uploaded: a
+      # crashing input can describe an exploitable bug in code already on main.
+      # No secret is exposed here either, since the job runs the PR's code;
+      # the author reproduces a failure locally with scripts/fuzz-changed.sh.
+      - name: Fuzz targets in changed packages
+        env:
+          BASE_REF: ${{ github.base_ref }}
+          FUZZTIME: 15s
+          FUZZ_LOG_DIR: ${{ runner.temp }}/fuzz
+        run: scripts/fuzz-changed.sh "origin/${BASE_REF}"

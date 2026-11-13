@@ -78,6 +78,7 @@ type BaseReactor struct {
 
 	incoming     chan UnmarshalResult
 	queueingFunc func(UnprocessedEnvelope)
+	unmarshalSem chan struct{}
 
 	ctx    context.Context
 	cancel context.CancelFunc
@@ -119,7 +120,6 @@ func NewBaseReactor(name string, impl Reactor, opts ...ReactorOptions) *BaseReac
 		name:        name,
 		traceClient: trace.NoOpTracer(),
 	}
-	base.queueingFunc = base.QueueUnprocessedEnvelope
 	for _, opt := range opts {
 		opt(base)
 	}
@@ -184,11 +184,41 @@ func WithIncomingQueueSize(size int) ReactorOptions {
 	}
 }
 
+// WithUnmarshalConcurrency limits concurrent prechecks, decoding and delivery
+// on the blocking queue path, so peer receive loops cannot decode past a full queue.
+func WithUnmarshalConcurrency(limit int) ReactorOptions {
+	return func(br *BaseReactor) {
+		if limit <= 0 {
+			panic("unmarshal concurrency must be positive")
+		}
+		br.unmarshalSem = make(chan struct{}, limit)
+	}
+}
+
 // QueueUnprocessedEnvelope is called by the switch when an unprocessed
-// envelope is received. Unprocessed envelopes are immediately buffered in a
-// queue to avoid blocking. The size of the queue can be changed by passing
-// options to the base reactor.
+// envelope is received. It uses the queueing function set via
+// WithQueueingFunc, if any, and otherwise blocks until the envelope fits in
+// the incoming queue. The size of the queue can be changed by passing options
+// to the base reactor.
 func (br *BaseReactor) QueueUnprocessedEnvelope(e UnprocessedEnvelope) {
+	if br.queueingFunc != nil {
+		br.queueingFunc(e)
+		return
+	}
+	br.queueUnprocessedEnvelopeBlocking(e)
+}
+
+// queueUnprocessedEnvelopeBlocking queues an unprocessed envelope, blocking
+// while the incoming queue is full.
+func (br *BaseReactor) queueUnprocessedEnvelopeBlocking(e UnprocessedEnvelope) {
+	if br.unmarshalSem != nil {
+		select {
+		case <-br.ctx.Done():
+			return
+		case br.unmarshalSem <- struct{}{}:
+			defer func() { <-br.unmarshalSem }()
+		}
+	}
 	if len(br.incoming) == cap(br.incoming) {
 		schema.WriteQueueLimit(br.traceClient, e.ChannelID, br.name, true)
 	}

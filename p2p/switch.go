@@ -40,6 +40,7 @@ const (
 func MConnConfig(cfg *config.P2PConfig) conn.MConnConfig {
 	mConfig := conn.DefaultMConnConfig()
 	mConfig.FlushThrottle = cfg.FlushThrottleTimeout
+	mConfig.FlushLowLatency = cfg.FlushLowLatency
 	mConfig.SendRate = cfg.SendRate
 	mConfig.RecvRate = cfg.RecvRate
 	mConfig.MaxPacketMsgPayloadSize = cfg.MaxPacketMsgPayloadSize
@@ -423,8 +424,12 @@ func (sw *Switch) getPeerAddress(peer Peer) (*NetAddress, error) {
 	if peer.IsOutbound() {
 		return peer.SocketAddr(), nil
 	}
-	// For inbound peers, get the self-reported address
-	addr, err := peer.NodeInfo().NetAddress()
+	// For inbound persistent peers, use the configured address
+	if addr := sw.persistentPeerAddr(peer.ID()); addr != nil {
+		return addr, nil
+	}
+	// For other inbound peers, get the self-reported address
+	addr, err := PeerAddress(peer)
 	if err != nil {
 		sw.Logger.Error("Failed to get address for inbound peer",
 			"peer", peer, "err", err)
@@ -721,6 +726,22 @@ func (sw *Switch) IsPeerPersistent(na *NetAddress) bool {
 	return false
 }
 
+// isPeerIDPersistent returns true if na has the ID of a persistent peer.
+func (sw *Switch) isPeerIDPersistent(na *NetAddress) bool {
+	return sw.persistentPeerAddr(na.ID) != nil
+}
+
+// persistentPeerAddr returns the configured address of the persistent peer
+// with the given ID, or nil if there is none.
+func (sw *Switch) persistentPeerAddr(id ID) *NetAddress {
+	for _, pa := range sw.persistentPeersAddrs {
+		if pa.ID == id {
+			return pa
+		}
+	}
+	return nil
+}
+
 func (sw *Switch) acceptRoutine() {
 	for {
 		p, err := sw.transport.Accept(peerConfig{
@@ -730,7 +751,7 @@ func (sw *Switch) acceptRoutine() {
 			msgTypeByChID: sw.msgTypeByChID,
 			metrics:       sw.metrics,
 			mlc:           sw.mlc,
-			isPersistent:  sw.IsPeerPersistent,
+			isPersistent:  sw.isPeerIDPersistent,
 		})
 		if err != nil {
 			switch err := err.(type) {

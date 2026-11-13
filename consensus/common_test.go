@@ -306,15 +306,15 @@ func validatePrevote(t *testing.T, cs *State, round int32, privVal *validatorStu
 	}
 }
 
-func validateLastPrecommit(t *testing.T, cs *State, privVal *validatorStub, blockHash []byte) {
-	cs.rsMtx.RLock()
-	votes := cs.rs.LastCommit
-	cs.rsMtx.RUnlock()
+// validateLastPrecommit reads the stored seen commit of height: the live
+// LastCommit already belongs to the next height once that one commits too.
+func validateLastPrecommit(t *testing.T, cs *State, height int64, privVal *validatorStub, blockHash []byte) {
+	commit := cs.blockStore.LoadSeenCommit(height)
+	require.NotNil(t, commit, "no seen commit at height %d", height)
 	pv, err := privVal.GetPubKey()
 	require.NoError(t, err)
-	address := pv.Address()
-	var vote *types.Vote
-	if vote = votes.GetByAddress(address); vote == nil {
+	vote := commit.GetVote(privVal.Index)
+	if !bytes.Equal(vote.ValidatorAddress, pv.Address()) {
 		panic("Failed to find precommit from validator")
 	}
 	if !bytes.Equal(vote.BlockID.Hash, blockHash) {
@@ -352,20 +352,20 @@ func validatePrecommit(
 
 	rs := cs.GetRoundState()
 	if lockedBlockHash == nil {
-		if rs.LockedRound != lockRound || rs.LockedBlock != nil {
+		if rs.LockedRound != lockRound || rs.IsLocked() {
 			panic(fmt.Sprintf(
 				"Expected to be locked on nil at round %d. Got locked at round %d with block %v",
 				lockRound,
 				rs.LockedRound,
-				rs.LockedBlock))
+				rs.LockedBlockID))
 		}
 	} else {
-		if rs.LockedRound != lockRound || !bytes.Equal(rs.LockedBlock.Hash(), lockedBlockHash) {
+		if rs.LockedRound != lockRound || !bytes.Equal(rs.LockedBlockID.Hash, lockedBlockHash) {
 			panic(fmt.Sprintf(
 				"Expected block to be locked on round %d, got %d. Got locked block %X, expected %X",
 				lockRound,
 				rs.LockedRound,
-				rs.LockedBlock.Hash(),
+				rs.LockedBlockID.Hash,
 				lockedBlockHash))
 		}
 	}
@@ -630,7 +630,9 @@ func ensureNewRound(roundCh <-chan cmtpubsub.Message, height int64, round int32)
 }
 
 func ensureNewTimeout(timeoutCh <-chan cmtpubsub.Message, height int64, round int32, timeout int64) {
-	timeoutDuration := time.Duration(timeout*10) * time.Nanosecond
+	// Test timeouts are ~10ms, so 10x alone is too tight on a loaded race-enabled
+	// runner. Waiting longer only delays a real failure; it cannot hide one.
+	timeoutDuration := max(time.Duration(timeout*10)*time.Nanosecond, ensureVoteTimeout)
 	ensureNewEvent(timeoutCh, height, round, timeoutDuration,
 		"Timeout expired while waiting for NewTimeout event")
 }

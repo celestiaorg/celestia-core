@@ -1,0 +1,33 @@
+name: auto-assign
+
+# Assign a new PR to its author so it shows up in their assigned PRs.
+#
+# This workflow never checks out or runs PR code: it reads only the event
+# payload. pull_request_target gives fork PRs a token that can write the
+# assignee.
+on:
+  pull_request_target:
+    types: [opened]
+
+permissions: {}
+
+jobs:
+  auto-assign:
+    # Bots (dependabot, mergify backports) cannot be assigned.
+    if: github.event.pull_request.user.type == 'User' && github.event.pull_request.assignees[0] == null
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      pull-requests: write
+    steps:
+      - name: Assign author
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        with:
+          script: |
+            const pr = context.payload.pull_request;
+            // GitHub silently drops assignees without repo access, such as fork authors.
+            await github.rest.issues.addAssignees({
+              ...context.repo,
+              issue_number: pr.number,
+              assignees: [pr.user.login],
+            });

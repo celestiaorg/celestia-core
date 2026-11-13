@@ -49,6 +49,18 @@ func TestByzantinePrevoteEquivocation(t *testing.T) {
 	appFunc := newKVStore
 
 	genDoc, privVals := randGenesisDoc(nValidators, false, 30, nil)
+	// Give the byzantine validator twice the power of each honest one, so the
+	// three honest validators hold 90/150 = 60% of the voting power. With equal
+	// powers they hold 75%, commit height 2 without the byzantine's prevote, and
+	// move to height 3 before its conflicting prevotes arrive; both are then
+	// dropped as votes for an old height and no DuplicateVoteEvidence forms.
+	byzPubKey, err := privVals[byzantineNode].GetPubKey()
+	require.NoError(t, err)
+	for i := range genDoc.Validators {
+		if genDoc.Validators[i].PubKey.Equals(byzPubKey) {
+			genDoc.Validators[i].Power = 60
+		}
+	}
 	css := make([]*State, nValidators)
 	blockStores := make([]*store.BlockStore, nValidators)
 
@@ -268,6 +280,12 @@ func TestByzantinePrevoteEquivocation(t *testing.T) {
 					t.Logf("[byz] send prevote to peer=%s hash=%X sent=%v", peer.ID(), v.BlockID.Hash, sent)
 				}
 			}
+			// Only now add prevote1 to the byzantine's own state. The honest
+			// validators cannot commit height 2 without the byzantine's
+			// precommit, and it cannot precommit until it counts its own
+			// prevote, so both conflicting prevotes reach every peer while
+			// that peer is still at height 2.
+			bcs.sendInternalMessage(msgInfo{&VoteMessage{prevote1}, ""})
 		}()
 	}
 

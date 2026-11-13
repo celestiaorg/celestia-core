@@ -6,6 +6,10 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/cometbft/cometbft/crypto/ed25519"
+	"github.com/cometbft/cometbft/crypto/secp256k1"
+	"github.com/cometbft/cometbft/crypto/sr25519"
 )
 
 func TestValidatorProtoBuf(t *testing.T) {
@@ -84,6 +88,21 @@ func TestValidatorValidateBasic(t *testing.T) {
 			},
 			err: true,
 			msg: fmt.Sprintf("validator address is incorrectly derived from pubkey. Exp: %v, got 61", pubKey.Address()),
+		},
+		{
+			val: &Validator{PubKey: ed25519.PubKey{}},
+			err: true,
+			msg: "validator ed25519 public key has size 0, want 32",
+		},
+		{
+			val: &Validator{PubKey: secp256k1.PubKey(make([]byte, 5))},
+			err: true,
+			msg: "validator secp256k1 public key has size 5, want 33",
+		},
+		{
+			val: &Validator{PubKey: sr25519.PubKey(make([]byte, 31))},
+			err: true,
+			msg: "validator sr25519 public key has size 31, want 32",
 		},
 	}
 
