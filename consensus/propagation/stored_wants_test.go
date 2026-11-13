@@ -276,6 +276,25 @@ func TestUncommittedHeightWantIsNotServedFromStore(t *testing.T) {
 	require.Empty(t, rp.sentParts())
 }
 
+// An incomplete entry for the committed block must not park a catchup want:
+// nothing would ever fill it.
+func TestIncompleteCommittedEntryWantIsServedFromStore(t *testing.T) {
+	r, ps := newStoredBlockReactor(t)
+	rp := addRecordingPeer(t, r, 1_000_000)
+	psh := ps.Header()
+	// A late compact block leaves a header-only entry at the committed height.
+	r.AddCommitment(storedTestHeight, 0, &psh)
+	r.pmtx.Lock()
+	r.height = storedTestHeight + 1
+	r.pmtx.Unlock()
+
+	r.handleWants(rp.ID(), storedWant(ps.Total(), 2, 0, 1))
+	require.Len(t, rp.sentParts(), 2)
+	parts, has, _ := r.getCachedState(storedTestHeight, 0, true)
+	require.True(t, has)
+	require.False(t, parts.IsComplete(), "the parts came from the store, not the cache")
+}
+
 func TestTokenBucket(t *testing.T) {
 	now := time.Unix(0, 0)
 	b := newTokenBucket(10, 3)
