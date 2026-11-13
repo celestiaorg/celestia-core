@@ -25,6 +25,9 @@ func (blockProp *Reactor) retryWants() {
 		if prop.block.IsComplete() {
 			continue
 		}
+		blockProp.pmtx.Lock()
+		catchup := prop.catchup
+		blockProp.pmtx.Unlock()
 
 		// only re-request original parts that are missing, not parity parts.
 		missing := prop.block.MissingOriginal()
@@ -45,8 +48,14 @@ func (blockProp *Reactor) retryWants() {
 			}
 			mc := missing.Copy()
 
+			// A peer may drop a request, for example when its send queue is
+			// full or its stored parts budget is used up. Let old requests
+			// expire so that they can be sent to this peer again.
+			peer.ExpireRequests(height, round, blockProp.requestTimeout)
+			// catch-up entries ignore past requests (ReqLimit still caps each pass): a peer
+			// may have answered with another block's parts or parked the want on a stub.
 			reqs, has := peer.GetRequests(height, round)
-			if has {
+			if has && !catchup {
 				mc = mc.Sub(reqs)
 			}
 
@@ -107,6 +116,11 @@ func (blockProp *Reactor) AddCommitment(height int64, round int32, psh *types.Pa
 	if blockProp.proposals[height][round] != nil {
 		existingPSH := blockProp.proposals[height][round].block.Original().Header()
 		if existingPSH.Total == psh.Total && bytes.Equal(existingPSH.Hash, psh.Hash) {
+			// a proposal we hold only partly may be committed after we moved on to a later round.
+			if existing := blockProp.proposals[height][round]; !existing.catchup && !existing.block.IsComplete() {
+				existing.catchup = true
+				go blockProp.retryWants()
+			}
 			return
 		}
 		blockProp.Logger.Error("replacing existing proposal with new one", "height", height, "round", round, "psh", psh, "existingPSH", existingPSH)
@@ -137,6 +151,43 @@ func (blockProp *Reactor) AddCommitment(height int64, round int32, psh *types.Pa
 	blockProp.round = 0
 	blockProp.ticker.Reset(RetryTime)
 	go blockProp.retryWants()
+}
+
+// serveCommitted fills incomplete entries of the committed block from the store and
+// answers the wants parked on them: a node that committed from its locked block never
+// receives those parts, so nothing else would.
+func (blockProp *Reactor) serveCommitted(height int64) {
+	meta := blockProp.store.LoadBlockMeta(height)
+	if meta == nil {
+		return
+	}
+	blockProp.pmtx.Lock()
+	entries := make(map[int32]*proptypes.CombinedPartSet)
+	for round, prop := range blockProp.proposals[height] {
+		if !prop.block.IsComplete() && prop.block.Original().Header().Equals(meta.BlockID.PartSetHeader) {
+			entries[round] = prop.block
+		}
+	}
+	blockProp.pmtx.Unlock()
+	if len(entries) == 0 {
+		return
+	}
+
+	parts, _, err := blockProp.store.LoadPartSet(height)
+	if err != nil {
+		blockProp.Logger.Error("failed to load committed parts", "height", height, "err", err)
+		return
+	}
+	for round, block := range entries {
+		for i := 0; i < int(parts.Total()); i++ {
+			part := parts.GetPart(i)
+			if _, err := block.AddOriginalPart(part); err != nil {
+				blockProp.Logger.Error("failed to add committed part", "height", height, "round", round, "part", i, "err", err)
+				return
+			}
+			blockProp.clearWants(&proptypes.RecoveryPart{Height: height, Round: round, Index: part.Index, Data: part.Bytes}, part.Proof)
+		}
+	}
 }
 
 func shuffle[T any](slice []T) []T {

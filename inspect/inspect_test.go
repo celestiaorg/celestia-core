@@ -523,6 +523,7 @@ func TestBlockSearch(t *testing.T) {
 
 	txIndexerMock := &txindexmocks.TxIndexer{}
 	blkIdxMock := &indexermocks.BlockIndexer{}
+	blockStoreMock.On("Base").Return(int64(0))
 	blockStoreMock.On("LoadBlock", testHeight).Return(&types.Block{
 		Header: types.Header{
 			Height: testHeight,

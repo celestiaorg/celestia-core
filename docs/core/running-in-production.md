@@ -363,6 +363,11 @@ theres something to send its peers.
 
 You can also try lowering `timeout_commit` (time we sleep before
 proposing the next block).
+If the application returns a non-zero `dynamic_timeout_commit` in
+`TimeoutInfo`, that value is a floor on the block interval (see [Dynamic timeout
+commit](./configuration.md#dynamic-timeout-commit-application-set)). The
+`config.toml` `timeout_commit` then only applies when the application returns 0
+and on the first height after a restart.
 
 - `p2p.addr_book_strict`
 

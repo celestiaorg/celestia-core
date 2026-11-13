@@ -6,6 +6,7 @@ option go_package = "github.com/cometbft/cometbft/proto/tendermint/consensus";
 import "gogoproto/gogo.proto";
 import "tendermint/consensus/types.proto";
 import "tendermint/types/events.proto";
+import "tendermint/types/types.proto";
 import "google/protobuf/duration.proto";
 import "google/protobuf/timestamp.proto";
 
@@ -30,12 +31,21 @@ message EndHeight {
   int64 height = 1;
 }
 
+// LockInfo journals the lock held when a precommit is signed. Round -1 is an unlock.
+message LockInfo {
+  int64                     height     = 1;
+  int32                     round      = 2;
+  tendermint.types.BlockID  block_id   = 3 [(gogoproto.nullable) = false];
+  google.protobuf.Timestamp block_time = 4 [(gogoproto.nullable) = false, (gogoproto.stdtime) = true];
+}
+
 message WALMessage {
   oneof sum {
     tendermint.types.EventDataRoundState event_data_round_state = 1;
     MsgInfo                              msg_info               = 2;
     TimeoutInfo                          timeout_info           = 3;
     EndHeight                            end_height             = 4;
+    LockInfo                             lock_info              = 5;
   }
 }
 

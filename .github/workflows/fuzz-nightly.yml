@@ -14,7 +14,9 @@
 # Pull requests skip the per-target matrix, which would start one job per
 # target, and run fuzz-changed instead: a single job that briefly fuzzes the
 # targets in the packages the pull request changes. Seed corpora run in the
-# regular test jobs either way.
+# regular test jobs either way. They also run fuzz-targets-listed, which fails
+# when a fuzz target is in neither the matrix below nor
+# test/fuzz/nightly-excluded.txt.
 name: Fuzz Tests
 on:
   workflow_dispatch:  # allow running workflow manually
@@ -27,6 +29,8 @@ on:
       - "go.mod"
       - "go.sum"
       - "scripts/fuzz-changed.sh"
+      - "scripts/check-fuzz-targets.sh"
+      - "test/fuzz/nightly-excluded.txt"
       - "scripts/fuzz-only-deadline*.sh"
       - ".github/workflows/fuzz-nightly.yml"
 
@@ -104,6 +108,7 @@ jobs:
           - {package: evidence, target: EvidencePool, priority: 1}
           - {package: evidence, target: EvidenceReactorReceive, priority: 1}
           - {package: types, target: UnwrapLegacyBlobTx, priority: 1}
+          - {package: proto/tendermint/types, target: CheckBlockCardinality, priority: 1}
           - {package: light, target: LightClientVerify, priority: 2}
           - {package: light/provider/http, target: HTTPProviderLightBlock, priority: 2}
     steps:
@@ -115,7 +120,7 @@ jobs:
       # The corpus lives under runner.temp rather than GOCACHE, so setup-go's
       # build cache neither overwrites it nor saves it.
       - name: Restore fuzz corpus
-        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ${{ runner.temp }}/fuzz-corpus
           key: ${{ env.CORPUS_KEY }}${{ github.run_id }}-${{ github.run_attempt }}
@@ -186,7 +191,7 @@ jobs:
       - name: Save fuzz corpus
         id: save-corpus
         if: ${{ !cancelled() && steps.corpus.outputs.save == 'true' }}
-        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ${{ runner.temp }}/fuzz-corpus
           key: ${{ env.CORPUS_KEY }}${{ github.run_id }}-${{ github.run_attempt }}
@@ -207,6 +212,16 @@ jobs:
               echo "Deleting $key"
               gh cache delete "$id" || echo "::warning::Could not delete cache $key"
             done
+
+  fuzz-targets-listed:
+    name: Fuzz targets listed
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Check every fuzz target is nightly or excluded
+        run: scripts/check-fuzz-targets.sh
 
   fuzz-changed:
     name: Fuzz changed packages

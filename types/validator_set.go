@@ -715,6 +715,46 @@ func (vals *ValidatorSet) VerifyCommit(chainID string, blockID BlockID,
 	return VerifyCommit(chainID, vals, blockID, height, commit)
 }
 
+// VerifyCommitExtended similar to VerifyCommit but for extended commits.
+// extCommit must already be validated by ValidateBasic.
+func (vals *ValidatorSet) VerifyCommitExtended(
+	chainID string,
+	blockID BlockID,
+	height int64,
+	extCommit *ExtendedCommit,
+) error {
+	if extCommit == nil {
+		return errors.New("nil extended commit")
+	}
+
+	// 1. ensure vote extensions
+	err := extCommit.EnsureExtensions(true)
+	if err != nil {
+		return err
+	}
+
+	// 2. verify regular commit
+	err = vals.VerifyCommit(chainID, blockID, height, extCommit.ToCommit())
+	if err != nil {
+		return err
+	}
+
+	// 3. check vote extension signatures. Only commit votes carry extensions:
+	// EnsureExtensions above rejects extension data on absent and nil votes.
+	// VerifyCommit checked len(vals.Validators) == len(ExtendedSignatures).
+	for idx, ecs := range extCommit.ExtendedSignatures {
+		if ecs.BlockIDFlag != BlockIDFlagCommit {
+			continue
+		}
+		vote := extCommit.GetExtendedVote(int32(idx))
+		if err := vote.VerifyExtension(chainID, vals.Validators[idx].PubKey); err != nil {
+			return fmt.Errorf("invalid vote extension signature (val #%d): %w", idx, err)
+		}
+	}
+
+	return nil
+}
+
 // LIGHT CLIENT VERIFICATION METHODS
 
 // VerifyCommitLight verifies +2/3 of the set had signed the given commit.

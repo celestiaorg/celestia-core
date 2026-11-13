@@ -31,11 +31,6 @@ const (
 	fzSigners    = 3
 	fzSeenLimit  = 8 // lowered tracker caps so short sequences reach overflow paths
 	fzIterBudget = 20 * time.Second
-
-	// Excluded pending PROTOCO-3514; remove with the fix.
-	fzCheckStaleBuffered = false
-	// Excluded pending PROTOCO-3524; remove with the fix.
-	fzCheckCountLimit = false
 )
 
 // fzPoolLimits derives the pool's count and byte limits from the first input
@@ -441,8 +436,7 @@ func (h *catFuzzHarness) step(in *fzInput) {
 			h.peers[i] = nil
 		}
 	}
-	// Excluded pending PROTOCO-3515; remove with the fix.
-	h.checkSent(op == 6 || op == 8 || expectBan)
+	h.checkSent()
 }
 
 // timeout replicates the request scheduler's response timer firing.
@@ -474,7 +468,7 @@ func (h *catFuzzHarness) timeout(i int, b byte) {
 }
 
 // checkSent validates every message the reactor sent during the last op.
-func (h *catFuzzHarness) checkSent(reRequested bool) {
+func (h *catFuzzHarness) checkSent() {
 	for i, p := range h.peers {
 		if p == nil {
 			continue
@@ -500,9 +494,7 @@ func (h *catFuzzHarness) checkSent(reRequested bool) {
 				case *protomem.Message_WantTx:
 					key, err := cmttypes.TxKeyFromBytes(inner.WantTx.TxKey)
 					require.NoError(h.t, err)
-					if !reRequested {
-						require.False(h.t, h.pool.Has(key), "requested a tx already in the pool")
-					}
+					require.False(h.t, h.pool.Has(key), "requested a tx already in the pool")
 					h.wants[i] = append(h.wants[i], key)
 				default:
 					h.t.Fatalf("unexpected message %T", inner)
@@ -520,9 +512,7 @@ func (h *catFuzzHarness) checkSent(reRequested bool) {
 func (h *catFuzzHarness) checkInvariants() {
 	t := h.t
 	require.LessOrEqual(t, h.pool.SizeBytes(), h.cfg.MaxTxsBytes)
-	if fzCheckCountLimit {
-		require.LessOrEqual(t, h.pool.Size(), h.cfg.Size)
-	}
+	require.LessOrEqual(t, h.pool.Size(), h.cfg.Size)
 	func() {
 		h.app.mtx.Lock()
 		defer h.app.mtx.Unlock()
@@ -611,15 +601,19 @@ func (h *catFuzzHarness) checkReceivedBuffer() {
 	t := h.t
 	rb := h.r.receivedBuffer
 	byPeer := map[string]int{}
+	var bytes int64
 	for _, buf := range rb.buffers {
 		require.NotEmpty(t, buf)
 		require.LessOrEqual(t, len(buf), maxReceivedBufferSize)
 		for seq, e := range buf {
 			require.Equal(t, seq, e.sequence)
 			byPeer[e.peerID]++
+			bytes += int64(len(e.tx.Tx))
 		}
 	}
 	require.Equal(t, byPeer, rb.countByPeer)
+	require.Equal(t, bytes, rb.totalBytes)
+	require.LessOrEqual(t, rb.totalBytes, rb.maxBytes)
 	for _, n := range rb.countByPeer {
 		require.LessOrEqual(t, n, maxRequestsPerPeer)
 	}
@@ -628,9 +622,6 @@ func (h *catFuzzHarness) checkReceivedBuffer() {
 // checkNoStaleBuffered runs after a refresh and checks that no buffered tx is
 // below its signer's expected sequence.
 func (h *catFuzzHarness) checkNoStaleBuffered() {
-	if !fzCheckStaleBuffered {
-		return
-	}
 	rb := h.r.receivedBuffer
 	rb.mu.Lock()
 	defer rb.mu.Unlock()

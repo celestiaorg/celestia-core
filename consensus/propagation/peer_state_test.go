@@ -425,3 +425,20 @@ func TestPeerState_DeleteUnverifiedProposal(t *testing.T) {
 	// Deleting non-existent proposal doesn't panic
 	ps.DeleteUnverifiedProposal(999)
 }
+
+// TestPeerState_pruneRemainingRequestsWithoutState checks that request
+// counters set without a part state entry for their height are still pruned.
+func TestPeerState_pruneRemainingRequestsWithoutState(t *testing.T) {
+	ps := newTestPeerState()
+	for h := int64(1); h <= 5; h++ {
+		ps.SetRemainingRequests(h, 0, 1)
+	}
+
+	ps.prune(5)
+
+	ps.mtx.RLock()
+	defer ps.mtx.RUnlock()
+	require.Empty(t, ps.state)
+	require.Len(t, ps.remainingRequests, 1)
+	require.Contains(t, ps.remainingRequests, int64(5))
+}
