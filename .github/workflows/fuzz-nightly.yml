@@ -108,6 +108,7 @@ jobs:
           - {package: evidence, target: EvidencePool, priority: 1}
           - {package: evidence, target: EvidenceReactorReceive, priority: 1}
           - {package: types, target: UnwrapLegacyBlobTx, priority: 1}
+          - {package: proto/tendermint/types, target: CheckBlockCardinality, priority: 1}
           - {package: light, target: LightClientVerify, priority: 2}
           - {package: light/provider/http, target: HTTPProviderLightBlock, priority: 2}
     steps:
@@ -119,7 +120,7 @@ jobs:
       # The corpus lives under runner.temp rather than GOCACHE, so setup-go's
       # build cache neither overwrites it nor saves it.
       - name: Restore fuzz corpus
-        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ${{ runner.temp }}/fuzz-corpus
           key: ${{ env.CORPUS_KEY }}${{ github.run_id }}-${{ github.run_attempt }}
@@ -190,7 +191,7 @@ jobs:
       - name: Save fuzz corpus
         id: save-corpus
         if: ${{ !cancelled() && steps.corpus.outputs.save == 'true' }}
-        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ${{ runner.temp }}/fuzz-corpus
           key: ${{ env.CORPUS_KEY }}${{ github.run_id }}-${{ github.run_attempt }}

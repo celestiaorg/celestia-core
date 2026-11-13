@@ -533,6 +533,8 @@ func TestStateOversizedBlock(t *testing.T) {
 func TestStateFullRound1(t *testing.T) {
 	cs, vss := randState(1)
 	height, round := cs.rs.Height, cs.rs.Round
+	// Building our own proposal can outlast 40 ms under -race; nothing waits on it.
+	cs.state.Timeouts.TimeoutPropose = 500 * time.Millisecond
 
 	// NOTE: buffer capacity of 0 ensures we can validate prevote and last commit
 	// before consensus can move to the next height (and cause a race condition)
@@ -559,7 +561,7 @@ func TestStateFullRound1(t *testing.T) {
 
 	// we're going to roll right into new height
 	ensureNewRound(newRoundCh, height+1, 0)
-	validateLastPrecommit(t, cs, vss[0], propBlockHash)
+	validateLastPrecommit(t, cs, height, vss[0], propBlockHash)
 }
 
 // nil is proposed, so prevote and precommit nil
@@ -1032,6 +1034,9 @@ func TestStateLockPOLUnlockOnUnknownBlock(t *testing.T) {
 	cs1, vss := randState(4)
 	vs2, vs3, vs4 := vss[1], vss[2], vss[3]
 	height, round := cs1.rs.Height, cs1.rs.Round
+	// Round 2's proposal is built (newState, slow under -race) while its 40 ms
+	// propose timeout already runs. Round 1 waits this timeout out in full.
+	cs1.state.Timeouts.TimeoutPropose = 500 * time.Millisecond
 
 	partSize := types.BlockPartSizeBytes
 
@@ -1600,6 +1605,42 @@ func TestSetValidBlockOnDelayedProposal(t *testing.T) {
 			rs.ValidBlockParts.Header().Equals(propBlockParts.Header()) &&
 			rs.ValidRound == round
 	}, ensureTimeout, 10*time.Millisecond)
+}
+
+// TestStatePolkaBeforeProposalStepOrder pins the step order when a polka arrives
+// before its proposal: Prevote then Precommit, never back to Prevote.
+func TestStatePolkaBeforeProposalStepOrder(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	cs1, vss := randState(4)
+	vs2, vs3, vs4 := vss[1], vss[2], vss[3]
+	height, round := cs1.rs.Height, cs1.rs.Round+1 // vs2 proposes round 1
+	incrementRound(vs2, vs3, vs4)
+	cs1.state.Timeouts.TimeoutPropose = time.Minute
+
+	stepSub, err := cs1.eventBus.Subscribe(ctx, testSubscriber, types.EventQueryNewRoundStep, 10)
+	require.NoError(t, err)
+	pv1, err := cs1.privValidator.GetPubKey()
+	require.NoError(t, err)
+	voteCh := subscribeToVoter(cs1, pv1.Address())
+
+	startTestRound(cs1, height, round)
+	prop, propBlock := decideProposal(ctx, t, cs1, vs2, vs2.Height, vs2.Round)
+	propBlockParts, err := propBlock.MakePartSet(types.BlockPartSizeBytes)
+	require.NoError(t, err)
+	signAddVotes(cs1, cmtproto.PrevoteType, propBlock.Hash(), propBlockParts.Header(), false, vs2, vs3, vs4)
+	require.NoError(t, cs1.SetProposalAndBlock(prop, propBlock, propBlockParts, "some peer"))
+
+	ensurePrevoteMatch(t, voteCh, height, round, propBlock.Hash())
+	ensurePrecommitMatch(t, voteCh, height, round, propBlock.Hash())
+	var steps []string
+	for len(stepSub.Out()) > 0 {
+		if rs := (<-stepSub.Out()).Data().(types.EventDataRoundState); rs.Round == round {
+			steps = append(steps, rs.Step)
+		}
+	}
+	require.Equal(t, []string{"RoundStepPropose", "RoundStepPrevote", "RoundStepPrecommit"}, steps)
 }
 
 func TestProcessProposalAccept(t *testing.T) {
