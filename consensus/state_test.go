@@ -463,6 +463,41 @@ func TestNonCanonicalProposalBlockIsNotLockedOrPrecommitted(t *testing.T) {
 	}
 }
 
+// When the proposal block is non-canonical but the polka is for our canonical
+// ValidBlock, haveBlock makes ValidBlock the proposal block. The flag must
+// follow it, so the node locks and precommits ValidBlock.
+func TestPolkaForValidBlockLocksItOverNonCanonicalProposalBlock(t *testing.T) {
+	// cs1 is vss[0]; the other three validators hold +2/3 of the power.
+	cs1, vss := randState(4)
+	cs1.state.Timeouts.DelayedPrecommitTimeout = 0
+	deliverTxsRange(t, cs1, 0, 5)
+
+	// ValidBlock: a canonical block from an earlier polka.
+	validBlock, validParts, err := cs1.createProposalBlock(context.Background())
+	require.NoError(t, err)
+	cs1.rs.ValidRound = cs1.rs.Round
+	cs1.rs.ValidBlock, cs1.rs.ValidBlockParts = validBlock, validParts
+	validID := types.BlockID{Hash: validBlock.Hash(), PartSetHeader: validParts.Header()}
+
+	// The current proposal block is non-canonical.
+	_, chunks := nonCanonicalProposalParts(t, cs1)
+	deliverProposalBlockParts(t, cs1, chunks)
+	require.True(t, cs1.rs.ProposalBlockNonCanonical)
+
+	addTwoThirds(t, cs1, vss[1:], cmtproto.PrevoteType, validID)
+	// Voting steps release and re-take the state locks.
+	cs1.lockAll()
+	cs1.enterPrecommit(cs1.rs.Height, cs1.rs.Round)
+	cs1.unlockAll()
+
+	vote := popVote(t, cs1)
+	require.NotNil(t, vote)
+	require.Equal(t, cmtproto.PrecommitType, vote.Type)
+	require.Equal(t, validID, vote.BlockID)
+	require.True(t, blockMatchesBlockID(cs1.rs.LockedBlock, cs1.rs.LockedBlockParts, validID))
+	require.False(t, cs1.rs.ProposalBlockNonCanonical)
+}
+
 func TestNonCanonicalProposalBlockIsNotValidBlock(t *testing.T) {
 	testCases := []struct {
 		name string
