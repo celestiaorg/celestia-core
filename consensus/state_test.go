@@ -243,7 +243,7 @@ func TestStateReproposesValidBlockParts(t *testing.T) {
 	require.NoError(t, err)
 	voteCh := subscribeToVoter(cs1, pv1.Address())
 
-	// Byzantine vs2 encodes a valid block non-canonically: the canonical
+	// A byzantine proposer encoded a valid block non-canonically: the canonical
 	// encoding followed by an unknown field (field 100, varint 1). The block
 	// has txs so the re-proposal exercises the compact block's tx metadata.
 	deliverTxsRange(t, cs1, 0, 5)
@@ -271,32 +271,23 @@ func TestStateReproposesValidBlockParts(t *testing.T) {
 	}
 	blockID := types.BlockID{Hash: block.Hash(), PartSetHeader: header}
 
-	// Round 1: vs2 proposes it and everyone prevotes it, so cs1 locks it and
-	// records it as ValidBlock.
+	// cs1 locked the block and recorded it as ValidBlock after a polka in
+	// round 0. Nodes that check the encoding before voting (PROTOCO-2791)
+	// never reach this state, so it is set directly: this test covers nodes
+	// without that check and keeps the re-proposal correct on its own.
+	cs1.rs.LockedRound = 0
+	cs1.rs.LockedBlock = block
+	cs1.rs.LockedBlockParts = parts
+	cs1.rs.ValidRound = 0
+	cs1.rs.ValidBlock = block
+	cs1.rs.ValidBlockParts = parts
+
+	// Until cs1 is the proposer, nobody proposes. cs1 prevotes its locked
+	// block, vs3 and vs4 vote nil, and vs2 withholds.
 	round := int32(1)
 	incrementRound(vs2, vs3, vs4)
-	proposal := types.NewProposal(height, round, -1, blockID)
-	p := proposal.ToProto()
-	require.NoError(t, vs2.SignProposal(cs1.state.ChainID, p))
-	proposal.Signature = p.Signature
-	require.NoError(t, cs1.SetProposalAndBlock(proposal, block, parts, "peer"))
 	startTestRound(cs1, height, round)
-	ensureNewRound(newRoundCh, height, round)
-	ensureNewProposal(proposalCh, height, round)
-	ensurePrevote(voteCh, height, round)
-	validatePrevote(t, cs1, round, vss[0], blockID.Hash)
-	signAddVotes(cs1, cmtproto.PrevoteType, blockID.Hash, header, false, vs2, vs3, vs4)
-	ensurePrecommit(voteCh, height, round)
-	validatePrecommit(t, cs1, round, round, vss[0], blockID.Hash, blockID.Hash)
-
-	// vs3 and vs4 missed the polka and precommit nil; vs2 withholds.
-	signAddVotes(cs1, cmtproto.PrecommitType, nil, types.PartSetHeader{}, true, vs3, vs4)
-
-	// Later rounds: until cs1 is the proposer, nobody proposes. cs1 prevotes
-	// its locked block and the others prevote nil.
 	for {
-		round++
-		incrementRound(vs2, vs3, vs4)
 		ensureNewRound(newRoundCh, height, round)
 		if cs1.isProposer(pv1.Address()) {
 			break
@@ -306,6 +297,8 @@ func TestStateReproposesValidBlockParts(t *testing.T) {
 		signAddVotes(cs1, cmtproto.PrevoteType, nil, types.PartSetHeader{}, false, vs3, vs4)
 		ensurePrecommit(voteCh, height, round)
 		signAddVotes(cs1, cmtproto.PrecommitType, nil, types.PartSetHeader{}, true, vs3, vs4)
+		round++
+		incrementRound(vs2, vs3, vs4)
 	}
 
 	// cs1 re-proposes ValidBlock with the original parts, so its locked
@@ -313,7 +306,7 @@ func TestStateReproposesValidBlockParts(t *testing.T) {
 	ensureNewProposal(proposalCh, height, round)
 	rs := cs1.GetRoundState()
 	require.Equal(t, blockID, rs.Proposal.BlockID)
-	require.Equal(t, int32(1), rs.Proposal.POLRound)
+	require.Equal(t, int32(0), rs.Proposal.POLRound)
 	// Peers validate the compact block's tx metadata; the stored parts have
 	// no tx positions, so cs1 must send none rather than zero-value entries.
 	proposed := propagator.proposedTxs()
