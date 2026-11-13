@@ -21,29 +21,20 @@ func uncoveredParts(blobs []proptypes.TxMetaData, total, partSize, lastLen uint3
 	covered := mergeRanges(blobs)
 
 	uncovered := make([]uint32, 0, maxPushedParts)
-	next := 0
 	for part := range total {
 		start := part * partSize
 		end := start + partSize
 		if part == total-1 && lastLen > 0 {
 			end = start + lastLen
 		}
-
-		// Ranges and parts both ascend, so the cursor only moves forward.
-		for next < len(covered) && covered[next][1] <= start {
-			next++
+		// after merging, a part is covered iff one range spans all of it
+		if slices.ContainsFunc(covered, func(r [2]uint32) bool { return r[0] <= start && end <= r[1] }) {
+			continue
 		}
-		cursor := start
-		for i := next; i < len(covered) && cursor < end && covered[i][0] <= cursor; i++ {
-			cursor = covered[i][1]
+		if len(uncovered) == maxPushedParts {
+			return nil
 		}
-
-		if cursor < end {
-			if len(uncovered) == maxPushedParts {
-				return nil
-			}
-			uncovered = append(uncovered, part)
-		}
+		uncovered = append(uncovered, part)
 	}
 	return uncovered
 }

@@ -3,6 +3,7 @@ package propagation
 import (
 	"errors"
 	"fmt"
+	"slices"
 	"time"
 
 	"github.com/cosmos/gogoproto/proto"
@@ -68,9 +69,8 @@ func (blockProp *Reactor) ProposeBlock(proposal *types.Proposal, block *types.Pa
 
 	cb.Signature = sig
 
-	// save the compact block locally and broadcast it to the connected peers
+	// save the compact block locally
 	blockProp.handleCompactBlock(&cb, blockProp.self, true)
-	reached := blockProp.broadcastCompactBlock(&cb, blockProp.self)
 
 	_, parts, _, has := blockProp.getAllState(proposal.Height, proposal.Round, false)
 	if !has {
@@ -85,21 +85,23 @@ func (blockProp *Reactor) ProposeBlock(proposal *types.Proposal, block *types.Pa
 	// push the parts no mempool can rebuild (header, evidence, last commit)
 	original := parts.Original()
 	pushed := make([]*types.Part, 0, maxPushedParts)
-	initialPartsMeta := make([]*propagation.PartMetaData, 0, maxPushedParts)
+	pushedMeta := make([]*propagation.PartMetaData, 0, maxPushedParts)
 	for _, index := range uncoveredParts(cb.Blobs, original.Total(), types.BlockPartSizeBytes, cb.LastLen) {
 		part := original.GetPart(int(index))
 		pushed = append(pushed, part)
-		initialPartsMeta = append(initialPartsMeta, &propagation.PartMetaData{Index: part.Index, Hash: part.Proof.LeafHash})
+		pushedMeta = append(pushedMeta, &propagation.PartMetaData{Index: part.Index, Hash: part.Proof.LeafHash})
 	}
+	cbMsg := cb.ToProto()
 	for index, peer := range peers {
-		// a peer that didn't get the compact block would reject pushed parts
-		if !reached[peer.peer.ID()] {
+		// the compact block goes first: it is what lets the peer accept the
+		// pushed parts
+		if !peer.peer.TrySend(p2p.Envelope{ChannelID: DataChannel, Message: cbMsg}) {
+			blockProp.Logger.Debug("failed to send proposal to peer", "peer", peer.peer.ID())
 			continue
 		}
-		chunkedParts := chunkToPartMetaData(chunks[index], parts.Parity())
-		partsMeta := append([]*propagation.PartMetaData{}, initialPartsMeta...)
-		partsMeta = append(partsMeta, chunkedParts...)
+		schema.WriteProposal(blockProp.traceClient, proposal.Height, proposal.Round, string(peer.peer.ID()), schema.Upload)
 
+		partsMeta := append(slices.Clone(pushedMeta), chunkToPartMetaData(chunks[index], parts.Parity())...)
 		e := p2p.Envelope{
 			ChannelID: DataChannel,
 			Message: &propagation.HaveParts{
@@ -148,7 +150,7 @@ func (blockProp *Reactor) ProposeBlock(proposal *types.Proposal, block *types.Pa
 				},
 			}
 			if !peer.peer.TrySend(e) {
-				blockProp.Logger.Error("failed to push part", "peer", peer, "height", proposal.Height, "round", proposal.Round, "part", part.Index)
+				blockProp.Logger.Error("failed to push part", "peer", peer.peer.ID(), "height", proposal.Height, "round", proposal.Round, "part", part.Index)
 				continue
 			}
 			schema.WriteBlockPart(blockProp.traceClient, proposal.Height, proposal.Round, part.Index, false, string(peer.peer.ID()), schema.Upload)
@@ -281,12 +283,12 @@ func (blockProp *Reactor) processValidatedCompactBlock(cb *proptypes.CompactBloc
 	// the peer that sent the compact block may push the parts no mempool can
 	// rebuild
 	if p := blockProp.getPeer(peer); p != nil {
-		p.GrantPushAllowance(cb.Proposal.Height, cb.Proposal.Round, maxPushedParts)
+		p.GrantPushAllowance(cb)
 	}
 
 	if !added || proposer {
-		// the proposer broadcasts from ProposeBlock so it knows which peers
-		// to push parts to
+		// the proposer sends the compact block itself from ProposeBlock,
+		// followed by the parts it pushes
 		return
 	}
 
@@ -398,9 +400,7 @@ func (blockProp *Reactor) recoverPartsFromMempool(cb *proptypes.CompactBlock) {
 // broadcastProposal gossips the provided proposal to all peers. This should
 // only be called upon receiving a proposal for the first time or after creating
 // a proposal block.
-// It returns the peers the compact block was sent to.
-func (blockProp *Reactor) broadcastCompactBlock(cb *proptypes.CompactBlock, from p2p.ID) map[p2p.ID]bool {
-	reached := make(map[p2p.ID]bool)
+func (blockProp *Reactor) broadcastCompactBlock(cb *proptypes.CompactBlock, from p2p.ID) {
 	e := p2p.Envelope{
 		ChannelID: DataChannel,
 		Message:   cb.ToProto(),
@@ -418,11 +418,9 @@ func (blockProp *Reactor) broadcastCompactBlock(cb *proptypes.CompactBlock, from
 			// todo: we need to avoid sending this peer anything else until we can queue this message.
 			continue
 		}
-		reached[peer.peer.ID()] = true
 
 		schema.WriteProposal(blockProp.traceClient, cb.Proposal.Height, cb.Proposal.Round, string(peer.peer.ID()), schema.Upload)
 	}
-	return reached
 }
 
 // chunkParts takes a bit array then returns an array of chunked bit arrays.

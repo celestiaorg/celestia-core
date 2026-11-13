@@ -1,13 +1,18 @@
 package propagation
 
 import (
+	"context"
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 
 	cfg "github.com/cometbft/cometbft/config"
 	proptypes "github.com/cometbft/cometbft/consensus/propagation/types"
+	"github.com/cometbft/cometbft/libs/log"
+	"github.com/cometbft/cometbft/p2p"
+	"github.com/cometbft/cometbft/p2p/mocks"
 	"github.com/cometbft/cometbft/state"
 	"github.com/cometbft/cometbft/types"
 )
@@ -120,24 +125,27 @@ func TestPushAllowancePruned(t *testing.T) {
 	reactors, _ := testBlockPropReactors(2, cfg.DefaultP2PConfig())
 	p := reactors[0].getPeer(reactors[1].self)
 	for h := int64(1); h <= 5; h++ {
-		p.GrantPushAllowance(h, 0, maxPushedParts)
+		p.GrantPushAllowance(&proptypes.CompactBlock{Proposal: types.Proposal{Height: h}})
 	}
 	p.prune(4)
 	require.False(t, p.ConsumePushAllowance(3, 0))
 	require.True(t, p.ConsumePushAllowance(4, 0))
 }
 
-func TestRemoveRequestsKeepsEarlierRequests(t *testing.T) {
-	reactors, _ := testBlockPropReactors(2, cfg.DefaultP2PConfig())
-	p := reactors[0].getPeer(reactors[1].self)
+func TestRequestPartsRollsBackFailedSend(t *testing.T) {
+	peer := &mocks.Peer{}
+	peer.On("TrySend", mock.Anything).Return(false).Once()
+	peer.On("TrySend", mock.Anything).Return(true)
+	p := newPeerState(context.Background(), peer, log.NewNopLogger())
 	p.AddRequests(1, 0, createBitArray(4, []int{0}))
 
-	added := p.AddRequests(1, 0, createBitArray(4, []int{0, 1}))
-	require.Equal(t, []int{1}, added.GetTrueIndices())
-
-	p.RemoveRequests(1, 0, added)
+	// a failed send rolls back only the parts this call added
+	require.False(t, p.RequestParts(1, 0, createBitArray(4, []int{0, 1}), p2p.Envelope{}))
 	require.True(t, p.Requested(1, 0, 0))
 	require.False(t, p.Requested(1, 0, 1))
+
+	require.True(t, p.RequestParts(1, 0, createBitArray(4, []int{1}), p2p.Envelope{}))
+	require.True(t, p.Requested(1, 0, 1))
 }
 
 func TestCachedCompactBlockGrantsPushAllowance(t *testing.T) {

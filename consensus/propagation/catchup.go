@@ -69,11 +69,7 @@ func (blockProp *Reactor) retryWants() {
 				},
 			}
 
-			// record the request before sending so a fast reply isn't treated
-			// as unrequested
-			added := peer.AddRequests(height, round, mc)
-			if !peer.peer.TrySend(e) {
-				peer.RemoveRequests(height, round, added)
+			if !peer.RequestParts(height, round, mc, e) {
 				blockProp.Logger.Error("failed to send want part", "peer", peer.peer.ID(), "height", height, "round", round)
 				continue
 			}
@@ -203,7 +199,7 @@ func (blockProp *Reactor) applyCachedProposalIfAvailable() {
 				continue
 			}
 			if c := p.GetUnverifiedProposal(currentHeight); c != nil && c.Proposal.Round == currentRound && c.Proposal.BlockID.Equals(cb.Proposal.BlockID) {
-				p.GrantPushAllowance(currentHeight, currentRound, maxPushedParts)
+				p.GrantPushAllowance(cb)
 			}
 		}
 

@@ -54,10 +54,6 @@ type PeerState struct {
 	// These have NOT been verified via the consensus reactor's verification
 	// function. Limited to MaxUnverifiedProposals entries, keeping lowest heights.
 	unverifiedProposals map[int64]*proptypes.CompactBlock
-
-	// pushAllowance is how many more parts this peer may send unrequested
-	// for a height and round. It is set when the peer sends the compact block.
-	pushAllowance map[int64]map[int32]int
 }
 
 type partData struct {
@@ -82,7 +78,6 @@ func newPeerState(ctx context.Context, peer p2p.Peer, logger log.Logger) *PeerSt
 		remainingRequests:   make(map[int64]map[int32]int),
 		consensusPeerState:  noOpPSE{},
 		unverifiedProposals: make(map[int64]*proptypes.CompactBlock),
-		pushAllowance:       make(map[int64]map[int32]int),
 	}
 }
 
@@ -205,35 +200,39 @@ func (d *PeerState) AddWants(height int64, round int32, wants *bits.BitArray) {
 	d.state[height][round].addWants(wants)
 }
 
-// AddRequests sets the requests for a given height and round and returns the
-// ones that were not already set.
-func (d *PeerState) AddRequests(height int64, round int32, requests *bits.BitArray) *bits.BitArray {
+// AddRequests sets the requests for a given height and round.
+func (d *PeerState) AddRequests(height int64, round int32, requests *bits.BitArray) {
 	if requests == nil || requests.Size() == 0 {
 		d.logger.Error("peer state requests is nil or empty")
-		return nil
+		return
 	}
 	d.mtx.Lock()
 	defer d.mtx.Unlock()
 	d.initialize(height, round, requests.Size())
-	added := requests.Sub(d.state[height][round].requests)
 	d.state[height][round].addRequests(requests)
-	return added
 }
 
-// RemoveRequests unsets the given requests, undoing AddRequests for a request
-// that could not be sent.
-func (d *PeerState) RemoveRequests(height int64, round int32, requests *bits.BitArray) {
-	if requests == nil {
-		return
+// RequestParts records the parts as requested from the peer and sends the
+// want. Recording first means a fast reply is never treated as unrequested; a
+// failed send rolls back only the parts this call added.
+func (d *PeerState) RequestParts(height int64, round int32, parts *bits.BitArray, e p2p.Envelope) bool {
+	if parts == nil || parts.Size() == 0 {
+		d.logger.Error("peer state requests is nil or empty")
+		return false
 	}
 	d.mtx.Lock()
 	defer d.mtx.Unlock()
-	if d.state[height] == nil || d.state[height][round] == nil {
-		return
+	d.initialize(height, round, parts.Size())
+	requests := d.state[height][round].requests
+	added := parts.Sub(requests)
+	requests.AddBitArray(parts)
+	if d.peer.TrySend(e) {
+		return true
 	}
-	for _, i := range requests.GetTrueIndices() {
-		d.state[height][round].requests.SetIndex(i, false)
+	for _, i := range added.GetTrueIndices() {
+		requests.SetIndex(i, false)
 	}
+	return false
 }
 
 // SetHave sets the have bit for a given part.
@@ -370,11 +369,6 @@ func (d *PeerState) prune(prunePastHeight int64) {
 			delete(d.remainingRequests, height)
 		}
 	}
-	for height := range d.pushAllowance {
-		if height < prunePastHeight {
-			delete(d.pushAllowance, height)
-		}
-	}
 	// Prune unverified proposals for heights <= prunePastHeight
 	for height := range d.unverifiedProposals {
 		if height <= prunePastHeight {
@@ -438,17 +432,18 @@ func (d *PeerState) DeleteUnverifiedProposal(height int64) {
 	delete(d.unverifiedProposals, height)
 }
 
-// GrantPushAllowance lets the peer send up to n parts unrequested for a height
-// and round. Only the first grant counts, so resending the compact block does
-// not refill it.
-func (d *PeerState) GrantPushAllowance(height int64, round int32, n int) {
+// GrantPushAllowance lets the peer that sent cb push up to maxPushedParts of
+// its parts unrequested. Only the first grant counts, so resending the compact
+// block does not refill it.
+func (d *PeerState) GrantPushAllowance(cb *proptypes.CompactBlock) {
+	height, round := cb.Proposal.Height, cb.Proposal.Round
 	d.mtx.Lock()
 	defer d.mtx.Unlock()
-	if d.pushAllowance[height] == nil {
-		d.pushAllowance[height] = make(map[int32]int)
-	}
-	if _, granted := d.pushAllowance[height][round]; !granted {
-		d.pushAllowance[height][round] = n
+	d.initialize(height, round, int(cb.Proposal.BlockID.PartSetHeader.Total)*2)
+	ps := d.state[height][round]
+	if !ps.pushGranted {
+		ps.pushGranted = true
+		ps.pushAllowance = maxPushedParts
 	}
 }
 
@@ -457,10 +452,11 @@ func (d *PeerState) GrantPushAllowance(height int64, round int32, n int) {
 func (d *PeerState) ConsumePushAllowance(height int64, round int32) bool {
 	d.mtx.Lock()
 	defer d.mtx.Unlock()
-	if d.pushAllowance[height][round] <= 0 {
+	ps := d.state[height][round]
+	if ps == nil || ps.pushAllowance == 0 {
 		return false
 	}
-	d.pushAllowance[height][round]--
+	ps.pushAllowance--
 	return true
 }
 
@@ -474,6 +470,10 @@ type partState struct {
 	haves    *bits.BitArray
 	wants    *bits.BitArray
 	requests *bits.BitArray
+	// pushAllowance is how many more parts the peer may send unrequested. It
+	// is granted once, when the peer sends the compact block.
+	pushAllowance int
+	pushGranted   bool
 }
 
 // newpartState initializes and returns a new partState
