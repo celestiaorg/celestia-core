@@ -295,6 +295,29 @@ func TestUncommittedHeightWantIsNotServedFromStore(t *testing.T) {
 	require.Empty(t, rp.sentParts())
 }
 
+// An incomplete entry for the committed block, created after Prune filled the
+// entries it saw, must not park a catchup want: nothing would ever fill it.
+func TestIncompleteCommittedEntryWantIsServedFromStore(t *testing.T) {
+	r, ps := newStoredBlockReactor(t)
+	rp := addRecordingPeer(t, r, 1_000_000)
+	psh := ps.Header()
+	// Prune's background pass fills this entry; once it is complete, the pass's
+	// snapshot is taken and cannot include the late entry.
+	r.AddCommitment(storedTestHeight, 1, &psh)
+	r.Prune(storedTestHeight)
+	require.Eventually(t, func() bool {
+		_, parts, has, _ := r.getCachedState(storedTestHeight, 1, true)
+		return has && parts.IsComplete()
+	}, 5*time.Second, 5*time.Millisecond)
+	r.AddCommitment(storedTestHeight, 0, &psh)
+
+	r.handleWants(rp.ID(), storedWant(ps.Total(), 2, 0, 1))
+	require.Len(t, rp.sentParts(), 2)
+	_, parts, has, _ := r.getCachedState(storedTestHeight, 0, true)
+	require.True(t, has)
+	require.False(t, parts.IsComplete(), "the parts came from the store, not the cache")
+}
+
 func TestTokenBucket(t *testing.T) {
 	now := time.Unix(0, 0)
 	b := newTokenBucket(10, 3)
