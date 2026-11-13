@@ -133,18 +133,15 @@ type Mempool interface {
 
 // AsyncRechecker is a Mempool that can run the post-Update recheck in the background.
 type AsyncRechecker interface {
-	// UpdateAsyncRecheck does Update's removals before returning; a recheck pass may keep the
-	// lock in the background. It always calls unlock exactly once, when the lock is released.
+	// UpdateAsyncRecheck does Update's removals before returning and always releases the lock,
+	// possibly later from a background recheck pass that holds it.
 	UpdateAsyncRecheck(
 		blockHeight int64,
 		blockTxs []*types.CachedTx,
 		deliverTxResponses []*abci.ExecTxResult,
 		newPreFn PreCheckFunc,
 		newPostFn PostCheckFunc,
-		unlock func(),
 	) error
-	// WaitRecheck returns once no recheck pass holds the lock.
-	WaitRecheck()
 }
 
 // PreCheckFunc is an optional filter executed before CheckTx and rejects

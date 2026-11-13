@@ -86,10 +86,10 @@ type TxPool struct {
 	// heightSignal notifies listeners whenever the mempool height advances.
 	heightSignal chan struct{}
 
-	// rechecking is set while a background recheck pass holds mtx; recheckLate
-	// (guarded by mtx) records that the last Lock caller had to wait for one.
-	rechecking  atomic.Bool
-	recheckLate bool
+	// recheckHeight is the height of the background recheck pass holding mtx, 0 if none;
+	// recheckLate (guarded by mtx) records that the last Lock caller had to wait for one.
+	recheckHeight atomic.Int64
+	recheckLate   bool
 }
 
 // NewTxPool constructs a new, empty content addressable txpool at the specified
@@ -153,7 +153,7 @@ func WithTracer(tracer trace.Tracer) TxPoolOption {
 // Lock locks the mempool, no new transactions can be processed. If a recheck
 // pass is still running, the next UpdateAsyncRecheck rechecks synchronously.
 func (txmp *TxPool) Lock() {
-	late := txmp.rechecking.Load()
+	late := txmp.recheckHeight.Load() != 0
 	txmp.mtx.Lock()
 	txmp.recheckLate = late
 }
@@ -462,13 +462,16 @@ func (txmp *TxPool) PeerHasTx(peer uint16, txKey types.TxKey) {
 // constraints, the result will also be empty.
 func (txmp *TxPool) ReapMaxBytesMaxGas(maxBytes, maxGas int64) []*types.CachedTx {
 	var totalGas, totalBytes int64
+	// While a recheck pass runs, stop each signer at its first tx the pass has not yet kept.
+	passHeight := txmp.recheckHeight.Load()
 
 	var keep []*types.CachedTx
 	txmp.store.processOrderedTxSets(func(txSets []*txSet) {
 		for _, txSet := range txSets {
 			// Take the longest sequence-ordered prefix of each set that still fits.
 			for _, wtx := range txSet.txs {
-				if maxBytes >= 0 && totalBytes+wtx.size() > maxBytes ||
+				if passHeight != 0 && wtx.rechecked.Load() != passHeight ||
+					maxBytes >= 0 && totalBytes+wtx.size() > maxBytes ||
 					maxGas >= 0 && totalGas+wtx.gasWanted > maxGas {
 					break
 				}
@@ -532,7 +535,7 @@ func (txmp *TxPool) Update(
 }
 
 // UpdateAsyncRecheck is Update with the recheck pass moved to a goroutine that inherits the
-// caller's lock, so admission, the next Commit and WaitRecheck callers wait for it.
+// caller's lock, so admission and the next Commit wait for it; reaps take only rechecked txs.
 // It is plain Update when disable_async_recheck is set or the previous pass outlived the interval.
 func (txmp *TxPool) UpdateAsyncRecheck(
 	blockHeight int64,
@@ -540,12 +543,11 @@ func (txmp *TxPool) UpdateAsyncRecheck(
 	deliverTxResponses []*abci.ExecTxResult,
 	newPreFn mempool.PreCheckFunc,
 	newPostFn mempool.PostCheckFunc,
-	unlock func(),
 ) error {
 	handedOff := false
 	defer func() {
 		if !handedOff {
-			unlock()
+			txmp.mtx.Unlock()
 		}
 	}()
 	if txmp.config.DisableAsyncRecheck {
@@ -560,21 +562,15 @@ func (txmp *TxPool) UpdateAsyncRecheck(
 		txmp.signalHeight()
 		return nil
 	}
-	txmp.rechecking.Store(true)
+	txmp.recheckHeight.Store(blockHeight)
 	handedOff = true
 	go func() {
-		defer unlock()
+		defer txmp.mtx.Unlock()
 		txmp.recheckTransactions()
 		txmp.signalHeight()
-		txmp.rechecking.Store(false)
+		txmp.recheckHeight.Store(0)
 	}()
 	return nil
-}
-
-// WaitRecheck returns once no recheck pass holds the lock.
-func (txmp *TxPool) WaitRecheck() {
-	txmp.mtx.Lock()
-	txmp.mtx.Unlock() //nolint:staticcheck // empty critical section waits for the pass
 }
 
 // update removes the committed and expired transactions, advances the height
@@ -794,6 +790,7 @@ func (txmp *TxPool) handleRecheckResult(wtx *wrappedTx, checkTxRes *abci.Respons
 	if checkTxRes.Code == abci.CodeTypeOK && err == nil {
 		// Note that we do not update the transaction with any of the values returned in
 		// recheck tx
+		wtx.rechecked.Store(txmp.height)
 		txKey := wtx.key()
 		schema.WriteMempoolRecheck(
 			txmp.traceClient,

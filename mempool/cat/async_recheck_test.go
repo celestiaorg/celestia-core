@@ -124,7 +124,7 @@ func commitBlock(t testing.TB, txmp *TxPool, app *checkStateApp, height int64, t
 	for i, tx := range txs {
 		cached[i] = tx.ToCachedTx()
 	}
-	require.NoError(t, txmp.UpdateAsyncRecheck(height, cached, abciResponses(len(txs), abci.CodeTypeOK), nil, nil, txmp.Unlock))
+	require.NoError(t, txmp.UpdateAsyncRecheck(height, cached, abciResponses(len(txs), abci.CodeTypeOK), nil, nil))
 }
 
 func addSeqTxs(t testing.TB, txmp *TxPool, signer string, from, to uint64) {
@@ -132,6 +132,12 @@ func addSeqTxs(t testing.TB, txmp *TxPool, signer string, from, to uint64) {
 	for s := from; s < to; s++ {
 		require.NoError(t, txmp.CheckTx(checkStateTx(signer, s), nil, mempool.TxInfo{}))
 	}
+}
+
+// waitForPass returns once no recheck pass holds the lock.
+func waitForPass(txmp *TxPool) {
+	txmp.mtx.Lock()
+	txmp.mtx.Unlock() //nolint:staticcheck // empty critical section waits for the pass
 }
 
 func drain(ch <-chan struct{}) {
@@ -144,33 +150,63 @@ func drain(ch <-chan struct{}) {
 	}
 }
 
-// The commit path returns with committed txs removed while the pass is still
-// running, and reaping neither waits for the pass nor returns a committed tx.
-func TestAsyncRecheck_CommittedTxNeverReaped(t *testing.T) {
-	app := newCheckStateApp()
-	txmp := setupCheckStatePool(t, app, nil)
-	addSeqTxs(t, txmp, "a", 0, 5)
-
-	app.recheckGate = make(chan struct{})
-	commitBlock(t, txmp, app, 1, []cmttypes.Tx{checkStateTx("a", 0), checkStateTx("a", 1)})
-
-	require.Equal(t, 3, txmp.Size())
-	reaped := make(chan []*cmttypes.CachedTx)
-	go func() { reaped <- txmp.ReapMaxBytesMaxGas(-1, -1) }()
-	select {
-	case txs := <-reaped:
-		require.Len(t, txs, 3)
-		for _, tx := range txs {
-			_, seq := parseCheckStateTx(tx.Tx)
-			require.GreaterOrEqual(t, seq, uint64(2))
-		}
-	case <-time.After(5 * time.Second):
-		t.Fatal("reap waited for the recheck pass")
+func keysOf(txs []*cmttypes.CachedTx) []string {
+	out := make([]string, len(txs))
+	for i, tx := range txs {
+		out[i] = string(tx.Tx)
 	}
+	return out
+}
+
+// While the pass runs, a reap returns at once with only the txs the pass has
+// already kept, each signer cut at its first unchecked tx; once it ends, the
+// reap equals a synchronous recheck's.
+func TestAsyncRecheck_ReapTakesOnlyRechecked(t *testing.T) {
+	run := func(disableAsync bool) (*TxPool, *checkStateApp) {
+		app := newCheckStateApp()
+		txmp := setupCheckStatePool(t, app, func(c *cmtcfg.MempoolConfig) { c.DisableAsyncRecheck = disableAsync })
+		addSeqTxs(t, txmp, "a", 0, 4)
+		addSeqTxs(t, txmp, "b", 0, 2)
+		addSeqTxs(t, txmp, "c", 0, 2)
+		if !disableAsync {
+			app.recheckGate = make(chan struct{})
+		}
+		// b/5 is not in the pool: it moves b's committed sequence, so b/0 and b/1 go stale.
+		commitBlock(t, txmp, app, 1, []cmttypes.Tx{checkStateTx("a", 0), checkStateTx("b", 5)})
+		return txmp, app
+	}
+	syncPool, _ := run(true)
+	want := keysOf(syncPool.ReapMaxBytesMaxGas(-1, -1))
+	require.Equal(t, []string{"a/1", "a/2", "a/3", "c/0", "c/1"}, want)
+
+	txmp, app := run(false)
+	reap := func() []string {
+		reaped := make(chan []*cmttypes.CachedTx, 1)
+		go func() { reaped <- txmp.ReapMaxBytesMaxGas(-1, -1) }()
+		select {
+		case txs := <-reaped:
+			return keysOf(txs)
+		case <-time.After(5 * time.Second):
+			t.Fatal("reap waited for the recheck pass")
+			return nil
+		}
+	}
+	require.Empty(t, reap())
+	// Pass order: a/1 a/2 a/3 b/0 b/1 c/0 c/1. Keep a/1 and a/2, hold the pass at a/3.
+	app.recheckGate <- struct{}{}
+	app.recheckGate <- struct{}{}
+	require.Eventually(t, func() bool { return app.rechecks.Load() == 3 }, 5*time.Second, time.Millisecond)
+	require.Equal(t, []string{"a/1", "a/2"}, reap())
+	// a/3 kept, b/0 and b/1 evicted, pass held at c/0: b never shows up.
+	for i := 0; i < 3; i++ {
+		app.recheckGate <- struct{}{}
+	}
+	require.Eventually(t, func() bool { return app.rechecks.Load() == 6 }, 5*time.Second, time.Millisecond)
+	require.Equal(t, []string{"a/1", "a/2", "a/3"}, reap())
+
 	close(app.recheckGate)
-	txmp.WaitRecheck()
-	require.EqualValues(t, 3, app.rechecks.Load())
-	require.Equal(t, 3, txmp.Size())
+	waitForPass(txmp)
+	require.Equal(t, want, reap())
 }
 
 // A new tx is not checked until the pass has replayed the pending txs, so its
@@ -221,7 +257,7 @@ func TestAsyncRecheck_NextCommitWaitsForPass(t *testing.T) {
 	}
 	close(app.recheckGate)
 	<-committed
-	txmp.WaitRecheck()
+	waitForPass(txmp)
 	require.False(t, app.commitRaced.Load())
 	require.EqualValues(t, 3+2, app.rechecks.Load())
 	require.Equal(t, 2, txmp.Size())
@@ -260,7 +296,7 @@ func TestAsyncRecheck_LatePassFallsBackToSync(t *testing.T) {
 	commitBlock(t, txmp, app, 3, []cmttypes.Tx{checkStateTx("a", 2)}) // async again: returns with the pass gated
 	require.False(t, txmp.mtx.TryLock())
 	close(app.recheckGate)
-	txmp.WaitRecheck()
+	waitForPass(txmp)
 	require.EqualValues(t, 5+4+3, app.rechecks.Load())
 	require.Equal(t, 3, txmp.Size())
 }
@@ -270,7 +306,7 @@ func TestAsyncRecheck_PanicReleasesLock(t *testing.T) {
 	txmp := setupCheckStatePool(t, newCheckStateApp(), nil)
 	txmp.Lock()
 	require.Panics(t, func() {
-		_ = txmp.UpdateAsyncRecheck(1, []*cmttypes.CachedTx{checkStateTx("a", 0).ToCachedTx()}, nil, nil, nil, txmp.Unlock)
+		_ = txmp.UpdateAsyncRecheck(1, []*cmttypes.CachedTx{checkStateTx("a", 0).ToCachedTx()}, nil, nil, nil)
 	})
 	require.True(t, txmp.mtx.TryLock())
 	txmp.mtx.Unlock()
@@ -325,7 +361,7 @@ func TestAsyncRecheck_PassesNeverPileUp(t *testing.T) {
 		pool -= signers
 		want += pool
 	}
-	txmp.WaitRecheck()
+	waitForPass(txmp)
 	// Overlapping or skipped passes would break the per-signer replay order.
 	require.False(t, app.commitRaced.Load())
 	require.EqualValues(t, want, app.rechecks.Load())
@@ -354,12 +390,12 @@ func TestAsyncRecheck_SwitchesOffStaySynchronous(t *testing.T) {
 			drain(txmp.TxsAvailable())
 			drain(txmp.HeightSignal())
 
-			var unlocked atomic.Bool
 			txmp.Lock()
 			app.commit([]cmttypes.Tx{checkStateTx("a", 0)})
 			require.NoError(t, txmp.UpdateAsyncRecheck(1, []*cmttypes.CachedTx{checkStateTx("a", 0).ToCachedTx()},
-				abciResponses(1, abci.CodeTypeOK), nil, nil, func() { unlocked.Store(true); txmp.Unlock() }))
-			require.True(t, unlocked.Load())
+				abciResponses(1, abci.CodeTypeOK), nil, nil))
+			require.True(t, txmp.mtx.TryLock())
+			txmp.mtx.Unlock()
 			require.Equal(t, tc.wantRechecks, app.rechecks.Load())
 			require.Len(t, txmp.HeightSignal(), 1)
 			require.Len(t, txmp.TxsAvailable(), 1)
@@ -429,7 +465,7 @@ func TestAsyncRecheck_Race(t *testing.T) {
 	}
 	close(stop)
 	wg.Wait()
-	txmp.WaitRecheck()
+	waitForPass(txmp)
 	require.False(t, app.commitRaced.Load())
 	require.Positive(t, app.rechecks.Load())
 }

@@ -3,6 +3,7 @@ package state_test
 import (
 	"bytes"
 	"context"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -21,14 +22,17 @@ import (
 	cmttypes "github.com/cometbft/cometbft/types"
 )
 
-// gatedRecheckApp blocks every recheck until the gate is closed, then rejects "stale" txs.
+// gatedRecheckApp makes each recheck take a gate token (or wait for the gate to close), then
+// rejects "stale" txs.
 type gatedRecheckApp struct {
 	abci.BaseApplication
-	gate chan struct{}
+	gate     chan struct{}
+	rechecks atomic.Int32
 }
 
 func (app *gatedRecheckApp) CheckTx(_ context.Context, req *abci.RequestCheckTx) (*abci.ResponseCheckTx, error) {
 	if req.Type == abci.CheckTxType_Recheck {
+		app.rechecks.Add(1)
 		<-app.gate
 		if bytes.HasPrefix(req.Tx, []byte("stale")) {
 			return &abci.ResponseCheckTx{Code: 1}, nil
@@ -37,7 +41,7 @@ func (app *gatedRecheckApp) CheckTx(_ context.Context, req *abci.RequestCheckTx)
 	return &abci.ResponseCheckTx{Code: abci.CodeTypeOK, GasWanted: 1}, nil
 }
 
-func newGatedCATExecutor(t *testing.T) (*sm.BlockExecutor, *cat.TxPool, *gatedRecheckApp, sm.State, map[string]cmttypes.PrivValidator) {
+func newGatedCATExecutor(t *testing.T, disableAsync bool) (*sm.BlockExecutor, *cat.TxPool, *gatedRecheckApp, sm.State, map[string]cmttypes.PrivValidator) {
 	t.Helper()
 	proxyApp := proxy.NewAppConns(proxy.NewLocalClientCreator(&testApp{}), proxy.NopMetrics())
 	require.NoError(t, proxyApp.Start())
@@ -48,7 +52,9 @@ func newGatedCATExecutor(t *testing.T) (*sm.BlockExecutor, *cat.TxPool, *gatedRe
 	require.NoError(t, err)
 	require.NoError(t, mpConn.Start())
 	t.Cleanup(func() { _ = mpConn.Stop() })
-	mp := cat.NewTxPool(log.NewNopLogger(), cmtcfg.TestMempoolConfig(), mpConn, 0)
+	cfg := cmtcfg.TestMempoolConfig()
+	cfg.DisableAsyncRecheck = disableAsync
+	mp := cat.NewTxPool(log.NewNopLogger(), cfg, mpConn, 0)
 
 	state, stateDB, privVals := makeState(1, 1)
 	stateStore := sm.NewStore(stateDB, sm.StoreOptions{DiscardABCIResponses: false})
@@ -60,7 +66,7 @@ func newGatedCATExecutor(t *testing.T) (*sm.BlockExecutor, *cat.TxPool, *gatedRe
 // ApplyBlock returns while the recheck pass still holds the mempool lock, with
 // the block's txs already removed from the pool.
 func TestApplyBlockAsyncRecheck(t *testing.T) {
-	blockExec, mp, mpApp, state, _ := newGatedCATExecutor(t)
+	blockExec, mp, mpApp, state, _ := newGatedCATExecutor(t, false)
 
 	block, bps, err := makeBlock(state, 1, new(cmttypes.Commit))
 	require.NoError(t, err)
@@ -100,40 +106,65 @@ func TestApplyBlockAsyncRecheck(t *testing.T) {
 	<-locked
 }
 
-// The next proposal is reaped only after the recheck pass, so it leaves out the
-// txs the committed block invalidated.
-func TestCreateProposalBlockWaitsForRecheck(t *testing.T) {
-	blockExec, mp, mpApp, state, privVals := newGatedCATExecutor(t)
-
-	block, bps, err := makeBlock(state, 1, new(cmttypes.Commit))
-	require.NoError(t, err)
-	pending := cmttypes.Txs{cmttypes.Tx("stale-1"), cmttypes.Tx("pending"), cmttypes.Tx("stale-2")}
-	for _, txs := range []cmttypes.Txs{block.Txs, pending} {
-		for _, tx := range txs {
-			require.NoError(t, mp.CheckTx(tx, nil, mempool.TxInfo{}))
+// A proposal made while the pass runs returns at once with only the txs the pass
+// has kept; after the pass it equals the synchronous recheck's.
+func TestCreateProposalBlockDuringRecheck(t *testing.T) {
+	pending := cmttypes.Txs{cmttypes.Tx("pending-1"), cmttypes.Tx("stale-1"), cmttypes.Tx("pending-2")}
+	setup := func(disableAsync bool) (func() cmttypes.Txs, *cat.TxPool, *gatedRecheckApp) {
+		blockExec, mp, mpApp, state, privVals := newGatedCATExecutor(t, disableAsync)
+		if disableAsync {
+			close(mpApp.gate)
 		}
-	}
-	blockID := cmttypes.BlockID{Hash: block.Hash(), PartSetHeader: bps.Header()}
-	state, err = blockExec.ApplyBlock(state, blockID, block, nil) // returns with the pass gated
-	require.NoError(t, err)
-	require.Equal(t, len(pending), mp.Size())
-
-	state.ConsensusParams.ABCI.VoteExtensionsEnableHeight = 1 // makeValidCommit signs extensions
-	commit, _, err := makeValidCommit(1, blockID, state.Validators, privVals)
-	require.NoError(t, err)
-	proposer, _ := state.Validators.GetByIndex(0)
-	proposed := make(chan *cmttypes.Block, 1)
-	go func() {
-		b, _, err := blockExec.CreateProposalBlock(context.Background(), 2, state, commit, proposer)
+		block, bps, err := makeBlock(state, 1, new(cmttypes.Commit))
 		require.NoError(t, err)
-		proposed <- b
-	}()
-	select {
-	case <-proposed:
-		t.Fatal("proposal reaped before the recheck pass ended")
-	case <-time.After(100 * time.Millisecond):
+		for _, txs := range []cmttypes.Txs{block.Txs, pending} {
+			for _, tx := range txs {
+				require.NoError(t, mp.CheckTx(tx, nil, mempool.TxInfo{}))
+			}
+		}
+		blockID := cmttypes.BlockID{Hash: block.Hash(), PartSetHeader: bps.Header()}
+		state, err = blockExec.ApplyBlock(state, blockID, block, nil) // async: returns with the pass gated
+		require.NoError(t, err)
+
+		state.ConsensusParams.ABCI.VoteExtensionsEnableHeight = 1 // makeValidCommit signs extensions
+		commit, _, err := makeValidCommit(1, blockID, state.Validators, privVals)
+		require.NoError(t, err)
+		proposer, _ := state.Validators.GetByIndex(0)
+		propose := func() cmttypes.Txs {
+			type result struct {
+				block *cmttypes.Block
+				err   error
+			}
+			proposed := make(chan result, 1)
+			go func() {
+				b, _, err := blockExec.CreateProposalBlock(context.Background(), 2, state, commit, proposer)
+				proposed <- result{b, err}
+			}()
+			select {
+			case r := <-proposed:
+				require.NoError(t, r.err)
+				return r.block.Txs
+			case <-time.After(5 * time.Second):
+				t.Fatal("proposal waited for the recheck pass")
+				return nil
+			}
+		}
+		return propose, mp, mpApp
 	}
+	proposeSync, _, _ := setup(true)
+	want := proposeSync()
+	require.Equal(t, cmttypes.Txs{cmttypes.Tx("pending-1"), cmttypes.Tx("pending-2")}, want)
+
+	propose, mp, mpApp := setup(false)
+	require.Empty(t, propose())
+	mpApp.gate <- struct{}{} // pending-1 kept; the pass now holds at stale-1
+	require.Eventually(t, func() bool { return mpApp.rechecks.Load() == 2 }, 5*time.Second, time.Millisecond)
+	require.Equal(t, cmttypes.Txs{cmttypes.Tx("pending-1")}, propose())
+	mpApp.gate <- struct{}{} // stale-1 evicted; the pass now holds at pending-2
+	require.Eventually(t, func() bool { return mpApp.rechecks.Load() == 3 }, 5*time.Second, time.Millisecond)
+	require.Equal(t, cmttypes.Txs{cmttypes.Tx("pending-1")}, propose())
 	close(mpApp.gate)
-	b := <-proposed
-	require.Equal(t, cmttypes.Txs{cmttypes.Tx("pending")}, b.Txs)
+	mp.Lock()
+	mp.Unlock() //nolint:staticcheck // empty critical section waits for the pass
+	require.Equal(t, want, propose())
 }

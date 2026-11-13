@@ -917,7 +917,7 @@ type MempoolConfig struct {
 	// so that the recheck duration is not affected by network delays when making requests and receiving responses.
 	RecheckTimeout time.Duration `mapstructure:"recheck_timeout"`
 	// DisableAsyncRecheck (default: false), when true, rechecks inside Commit as before. By default
-	// CAT runs the recheck as a background pass after Commit: admission and the next proposal wait for it.
+	// CAT runs the recheck as a background pass after Commit: admission waits for it, proposals reap only rechecked txs.
 	DisableAsyncRecheck bool `mapstructure:"disable_async_recheck"`
 	// Broadcast (default: true) defines whether the mempool should relay
 	// transactions to other peers. Setting this to false will stop the mempool

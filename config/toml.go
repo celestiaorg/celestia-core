@@ -394,7 +394,7 @@ recheck_timeout = "{{ .Mempool.RecheckTimeout }}"
 
 # disable_async_recheck (default: false) set to true rechecks inside the commit, as before.
 # By default (CAT only) recheck runs as a background pass after the commit: new transactions
-# and the next proposal wait for it.
+# wait for it and a proposal made meanwhile takes only transactions it has already rechecked.
 disable_async_recheck = {{ .Mempool.DisableAsyncRecheck }}
 
 # Broadcast (default: true) defines whether the mempool should relay
