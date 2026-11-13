@@ -25,10 +25,6 @@ func (blockProp *Reactor) retryWants() {
 		if prop.block.IsComplete() {
 			continue
 		}
-		blockProp.pmtx.Lock()
-		catchup := prop.catchup
-		blockProp.pmtx.Unlock()
-
 		// only re-request original parts that are missing, not parity parts.
 		missing := prop.block.MissingOriginal()
 		if missing.IsEmpty() {
@@ -52,10 +48,10 @@ func (blockProp *Reactor) retryWants() {
 			// full or its stored parts budget is used up. Let old requests
 			// expire so that they can be sent to this peer again.
 			peer.ExpireRequests(height, round, blockProp.requestTimeout)
-			// catch-up entries ignore past requests (ReqLimit still caps each pass): a peer
-			// may have answered with another block's parts or parked the want on a stub.
+			// requests expire after requestTimeout, so a peer that parked the want or sent
+			// another block's parts is asked again.
 			reqs, has := peer.GetRequests(height, round)
-			if has && !catchup {
+			if has {
 				mc = mc.Sub(reqs)
 			}
 
@@ -98,6 +94,46 @@ func (blockProp *Reactor) retryWants() {
 			peer.AddRequests(height, round, mc)
 		}
 	}
+}
+
+// AddBlock stores a complete block that has a polka or commit at (height, round), so peers'
+// wants there are served without a compact block. Like AddCommitment, it replaces an entry
+// for another block, whose proposal lost that round.
+func (blockProp *Reactor) AddBlock(height int64, round int32, parts *types.PartSet) {
+	if parts == nil || !parts.IsComplete() {
+		return
+	}
+	psh := parts.Header()
+	entry := &proposalData{
+		compactBlock: &proptypes.CompactBlock{Proposal: types.Proposal{Height: height, Round: round}},
+		block:        proptypes.NewCombinedPartSetFromOriginal(parts, true),
+		maxRequests:  bits.NewBitArray(int(psh.Total * 2)),
+	}
+	blockProp.pmtx.Lock()
+	defer blockProp.pmtx.Unlock()
+	if blockProp.proposals[height] == nil {
+		blockProp.proposals[height] = make(map[int32]*proposalData)
+	}
+	switch prop := blockProp.proposals[height][round]; {
+	case prop == nil:
+	case !prop.block.Original().Header().Equals(psh):
+		for _, peer := range blockProp.getPeers() {
+			peer.DeleteRound(height, round)
+		}
+	case prop.block.IsComplete():
+		return
+	default:
+		entry.compactBlock, entry.catchup = prop.compactBlock, prop.catchup
+	}
+	blockProp.proposals[height][round] = entry
+
+	// answer the wants peers parked on the incomplete entry.
+	go func() {
+		for i := 0; i < int(parts.Total()); i++ {
+			part := parts.GetPart(i)
+			blockProp.clearWants(&proptypes.RecoveryPart{Height: height, Round: round, Index: part.Index, Data: part.Bytes}, part.Proof)
+		}
+	}()
 }
 
 func (blockProp *Reactor) AddCommitment(height int64, round int32, psh *types.PartSetHeader) {
@@ -282,7 +318,7 @@ func (blockProp *Reactor) handleCachedCompactBlock(cb *proptypes.CompactBlock) b
 	if props, ok := blockProp.proposals[cb.Proposal.Height]; ok {
 		if prop := props[cb.Proposal.Round]; prop != nil {
 			if sameProposalIdentity(prop, cb) {
-				// Mark as catchup to skip parity requests in retryWants
+				// catchup keeps it in unfinishedHeights: parts are fetched and delayed precommit is skipped.
 				prop.catchup = true
 				propFound = true
 				// forward the proposal to consensus only if it has not been
