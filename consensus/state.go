@@ -161,6 +161,9 @@ type State struct {
 	replayMode   bool // so we don't log signing errors during replay
 	doWALCatchup bool // determines if we even try to do the catchup
 
+	// lockedBlocks copies a stalled height's locked block for a restart (only_internal_wal only).
+	lockedBlocks *lockedBlockWriter
+
 	// for tests where we want to limit the number of transitions the state makes
 	nSteps int
 
@@ -168,6 +171,7 @@ type State struct {
 	decideProposal        func(height int64, round int32)
 	doPrevote             func(height int64, round int32)
 	setProposal           func(proposal *types.Proposal) error
+	lockedBlockDelay      func() time.Duration
 	StartedPrecommitSleep atomic.Bool
 
 	// closed when we finish shutting down
@@ -245,6 +249,7 @@ func NewState(
 	cs.decideProposal = cs.defaultDecideProposal
 	cs.doPrevote = cs.defaultDoPrevote
 	cs.setProposal = cs.defaultSetProposal
+	cs.lockedBlockDelay = cs.defaultLockedBlockDelay
 
 	// We have no votes, so reconstruct LastCommit from SeenCommit.
 	if state.LastBlockHeight > 0 {
@@ -413,6 +418,10 @@ func (cs *State) OnStart() error {
 
 	cs.metrics.Height.Set(float64(cs.rs.Height))
 
+	if cs.config.OnlyInternalWal {
+		cs.lockedBlocks = newLockedBlockWriter(lockedBlockFile(cs.config), cs.Logger)
+	}
+
 	// we need the timeoutRoutine for replay so
 	// we don't block on the tick chan.
 	// NOTE: we will get a build up of garbage go routines
@@ -498,7 +507,10 @@ func (cs *State) OnStart() error {
 	cs.rsMtx.RUnlock()
 	if proposer != nil {
 		cs.propagator.SetConsensusState(height, round, proposer.PubKey)
+		cs.reseedPropagator()
 	}
+	cs.shareBlock(cs.rs.LockedRound, cs.rs.LockedBlockParts)
+	cs.shareBlock(cs.rs.ValidRound, cs.rs.ValidBlockParts)
 
 	// now start the receiveRoutine
 	go cs.receiveRoutine(0)
@@ -956,9 +968,8 @@ func (cs *State) updateToState(state sm.State) {
 	cs.rs.ProposalBlock = nil
 	cs.rs.ProposalBlockParts = nil
 	cs.proposalReceivedTime = time.Time{}
-	cs.rs.LockedRound = -1
-	cs.rs.LockedBlock = nil
-	cs.rs.LockedBlockParts = nil
+	cs.clearLock()
+	cs.lockedBlocks.reset()
 	cs.rs.ValidRound = -1
 	cs.rs.ValidBlock = nil
 	cs.rs.ValidBlockParts = nil
@@ -972,6 +983,9 @@ func (cs *State) updateToState(state sm.State) {
 	cs.rs.TriggeredTimeoutPrecommit = false
 
 	cs.state = state
+	// Block.MaxBytes can change through governance; keep the propagator's
+	// compact block size check on the limit for the new height.
+	cs.propagator.SetBlockMaxBytes(state.ConsensusParams.Block.MaxBytes)
 
 	// Finally, broadcast RoundState
 	cs.newStep()
@@ -1040,6 +1054,8 @@ func (cs *State) receiveRoutine(maxSteps int) {
 		// NOTE: the internalMsgQueue may have signed messages from our
 		// priv_val that haven't hit the WAL, but its ok because
 		// priv_val tracks LastSig
+
+		cs.lockedBlocks.stop()
 
 		// close wal now that we're done writing to it
 		if err := cs.wal.Stop(); err != nil {
@@ -1160,6 +1176,7 @@ func (cs *State) handleInternalMsg(mi msgInfo) {
 
 // handlePeerMsg logs a peer message to the WAL and handles it.
 func (cs *State) handlePeerMsg(mi msgInfo) {
+	before := cs.rs.Proposal
 	if !cs.config.OnlyInternalWal {
 		if err := cs.wal.Write(mi); err != nil {
 			cs.Logger.Error("failed writing to WAL", "err", err)
@@ -1168,6 +1185,18 @@ func (cs *State) handlePeerMsg(mi msgInfo) {
 	// handles proposals, block parts, votes
 	// may generate internal events (votes, complete proposals, 2/3 majorities)
 	cs.handleMsg(mi)
+	if cs.config.OnlyInternalWal && walPeerMsg(before, cs.rs.Proposal, mi) {
+		if err := cs.wal.Write(mi); err != nil {
+			cs.Logger.Error("failed writing to WAL", "err", err)
+		}
+	}
+}
+
+// walPeerMsg reports whether only_internal_wal still journals a peer message: a
+// proposal handleMsg just accepted, so a restarted node can accept its block's parts again.
+func walPeerMsg(before, after *types.Proposal, mi msgInfo) bool {
+	m, ok := mi.Msg.(*ProposalMessage)
+	return ok && before == nil && after == m.Proposal
 }
 
 // writeInternalMsgToWAL persists local messages with per-type durability.
@@ -1214,6 +1243,7 @@ func (cs *State) handleMsg(mi msgInfo) {
 	case *BlockPartMessage:
 		// if the proposal is complete, we'll enterPrevote or tryFinalizeCommit
 		added, _ = cs.addProposalBlockPart(msg, peerID)
+		cs.fillLockFromPropagator()
 
 		// We unlock here to yield to any routines that need to read the the RoundState.
 		// Previously, this code held the lock from the point at which the final block
@@ -1512,6 +1542,7 @@ func (cs *State) enterPropose(height int64, round int32) {
 
 	if cs.isProposer(address) {
 		logger.Debug("propose step; our turn to propose", "proposer", address)
+		cs.fillLockFromPropagator() // so a restored lock is re-proposed
 		cs.decideProposal(height, round)
 	} else {
 		logger.Debug("propose step; not our turn to propose", "proposer", cs.rs.Validators.GetProposer().Address)
@@ -1591,17 +1622,7 @@ func (cs *State) defaultDecideProposal(height int64, round int32) {
 
 		cs.Logger.Debug("verified proposal signature", "proposal", proposal)
 		// TxPos is empty when re-proposing stored ValidBlockParts (see above).
-		metaData := make([]proptypes.TxMetaData, len(blockParts.TxPos))
-		hashes := block.CachedHashes()
-		for i, pos := range blockParts.TxPos {
-			metaData[i] = proptypes.TxMetaData{
-				Start: pos.Start,
-				End:   pos.End,
-				Hash:  hashes[i],
-			}
-		}
-
-		err = cs.propagator.ProposeBlock(proposal, blockParts, metaData)
+		err = cs.propagator.ProposeBlock(proposal, blockParts, txMetaData(block, blockParts))
 		if err != nil {
 			cs.Logger.Error("propagation reactor failed to propose the block", "err", err)
 			if !cs.gossipDataEnabled.Load() {
@@ -1625,6 +1646,46 @@ func (cs *State) defaultDecideProposal(height int64, round int32) {
 		cs.Logger.Debug("propagated proposal", "height", height, "round", round, "proposal", proposal)
 	} else if !cs.replayMode {
 		cs.Logger.Error("propose step; failed signing proposal", "height", height, "round", round, "err", err)
+	}
+}
+
+// txMetaData returns the propagation metadata of block. It is empty when parts
+// carry no tx positions, i.e. did not come from block.MakePartSet.
+func txMetaData(block *types.Block, parts *types.PartSet) []proptypes.TxMetaData {
+	metaData := make([]proptypes.TxMetaData, len(parts.TxPos))
+	hashes := block.CachedHashes()
+	for i, pos := range parts.TxPos {
+		metaData[i] = proptypes.TxMetaData{
+			Start: pos.Start,
+			End:   pos.End,
+			Hash:  hashes[i],
+		}
+	}
+	return metaData
+}
+
+// reseedPropagator hands our replayed proposal back to the propagation reactor, which starts
+// empty after a restart. Only the round's proposer can: peers verify the compact block against its key.
+func (cs *State) reseedPropagator() {
+	rs := &cs.rs
+	prop, block := rs.Proposal, rs.ProposalBlock
+	if prop == nil || block == nil || prop.Height != rs.Height || prop.Round != rs.Round ||
+		cs.privValidatorPubKey == nil || !cs.isProposer(cs.privValidatorPubKey.Address()) {
+		return
+	}
+	block.FillCachedHashes()
+	parts, err := block.MakePartSet(types.BlockPartSizeBytes)
+	if err != nil || !parts.HasHeader(prop.BlockID.PartSetHeader) {
+		cs.Logger.Error("cannot rebuild the replayed proposal's part set", "height", prop.Height, "round", prop.Round, "err", err)
+		return
+	}
+	// A peer's copy of our compact block may already be held without its parts; fill it.
+	if _, _, has := cs.propagator.GetProposal(prop.Height, prop.Round); has {
+		cs.propagator.AddBlock(prop.Height, prop.Round, parts)
+		return
+	}
+	if err := cs.propagator.ProposeBlock(prop, parts, txMetaData(block, parts)); err != nil {
+		cs.Logger.Error("failed to re-seed the propagation reactor", "height", prop.Height, "round", prop.Round, "err", err)
 	}
 }
 
@@ -1726,9 +1787,9 @@ func (cs *State) defaultDoPrevote(height int64, round int32) {
 	logger := cs.Logger.With("height", height, "round", round)
 
 	// If a block is locked, prevote that.
-	if cs.rs.LockedBlock != nil {
+	if cs.rs.IsLocked() {
 		logger.Debug("prevote step; already locked on a block; prevoting locked block")
-		cs.signAddVote(cmtproto.PrevoteType, cs.rs.LockedBlock.Hash(), cs.rs.LockedBlockParts.Header(), nil)
+		cs.signAddVote(cmtproto.PrevoteType, cs.rs.LockedBlockID.Hash, cs.rs.LockedBlockID.PartSetHeader, nil)
 		return
 	}
 
@@ -1885,12 +1946,19 @@ func (cs *State) enterPrecommit(height int64, round int32) {
 
 	// If we don't have a polka, we must precommit nil.
 	if !ok {
-		if cs.rs.LockedBlock != nil {
+		if cs.rs.IsLocked() {
 			logger.Debug("precommit step; no +2/3 prevotes during enterPrecommit while we are locked; precommitting nil")
 		} else {
 			logger.Debug("precommit step; no +2/3 prevotes during enterPrecommit; precommitting nil")
 		}
 
+		cs.signAddVote(cmtproto.PrecommitType, nil, types.PartSetHeader{}, nil)
+		return
+	}
+
+	// Replay can resume below a restored lock's round: an older polka must not move the lock.
+	if cs.rs.IsLocked() && round < cs.rs.LockedRound {
+		logger.Debug("precommit step; polka below the locked round; precommitting nil", "locked_round", cs.rs.LockedRound)
 		cs.signAddVote(cmtproto.PrecommitType, nil, types.PartSetHeader{}, nil)
 		return
 	}
@@ -1908,13 +1976,11 @@ func (cs *State) enterPrecommit(height int64, round int32) {
 
 	// +2/3 prevoted nil. Unlock and precommit nil.
 	if len(blockID.Hash) == 0 {
-		if cs.rs.LockedBlock == nil {
+		unlocked := cs.unlock()
+		if !unlocked {
 			logger.Debug("precommit step; +2/3 prevoted for nil")
 		} else {
 			logger.Debug("precommit step; +2/3 prevoted for nil; unlocking")
-			cs.rs.LockedRound = -1
-			cs.rs.LockedBlock = nil
-			cs.rs.LockedBlockParts = nil
 
 			if err := cs.eventBus.PublishEventUnlock(cs.rs.RoundStateEvent()); err != nil {
 				logger.Error("failed publishing event unlock", "err", err)
@@ -1922,26 +1988,30 @@ func (cs *State) enterPrecommit(height int64, round int32) {
 		}
 
 		cs.signAddVote(cmtproto.PrecommitType, nil, types.PartSetHeader{}, nil)
+		if unlocked {
+			cs.writeLockInfo()
+		}
 		return
 	}
 
 	// At this point, +2/3 prevoted for a particular block.
 
 	// If we're already locked on that block, precommit it, and update the LockedRound
-	if blockMatchesBlockID(cs.rs.LockedBlock, cs.rs.LockedBlockParts, blockID) {
+	if cs.rs.IsLocked() && cs.rs.LockedBlockID.Equals(blockID) {
 		logger.Debug("precommit step; +2/3 prevoted locked block; relocking")
-		cs.rs.LockedRound = round
+		cs.lockOn(round, blockID, cs.rs.LockedBlockTime, cs.rs.LockedBlock, cs.rs.LockedBlockParts)
 
 		if err := cs.eventBus.PublishEventRelock(cs.rs.RoundStateEvent()); err != nil {
 			logger.Error("failed publishing event relock", "err", err)
 		}
 
 		cs.signAddVote(cmtproto.PrecommitType, blockID.Hash, blockID.PartSetHeader, cs.rs.LockedBlock)
+		cs.writeLockInfo()
 		return
 	}
 
 	// If +2/3 prevoted for proposal block, stage and precommit it
-	if blockMatchesBlockID(cs.rs.ProposalBlock, cs.rs.ProposalBlockParts, blockID) {
+	if cs.haveBlock(round, blockID) {
 		logger.Debug("precommit step; +2/3 prevoted proposal block; locking", "hash", blockID.Hash)
 
 		// Validate the block.
@@ -1949,15 +2019,14 @@ func (cs *State) enterPrecommit(height int64, round int32) {
 			panic(fmt.Sprintf("precommit step; +2/3 prevoted for an invalid block: %v", err))
 		}
 
-		cs.rs.LockedRound = round
-		cs.rs.LockedBlock = cs.rs.ProposalBlock
-		cs.rs.LockedBlockParts = cs.rs.ProposalBlockParts
+		cs.lockOn(round, blockID, cs.rs.ProposalBlock.Time, cs.rs.ProposalBlock, cs.rs.ProposalBlockParts)
 
 		if err := cs.eventBus.PublishEventLock(cs.rs.RoundStateEvent()); err != nil {
 			logger.Error("failed publishing event lock", "err", err)
 		}
 
 		cs.signAddVote(cmtproto.PrecommitType, blockID.Hash, blockID.PartSetHeader, cs.rs.ProposalBlock)
+		cs.writeLockInfo()
 		return
 	}
 
@@ -1966,9 +2035,7 @@ func (cs *State) enterPrecommit(height int64, round int32) {
 	// The +2/3 prevotes for this round is the POL for our unlock.
 	logger.Debug("precommit step; +2/3 prevotes for a block we do not have; voting nil", "block_id", blockID)
 
-	cs.rs.LockedRound = -1
-	cs.rs.LockedBlock = nil
-	cs.rs.LockedBlockParts = nil
+	unlocked := cs.unlock()
 
 	if !cs.rs.ProposalBlockParts.HasHeader(blockID.PartSetHeader) {
 		cs.rs.ProposalBlock = nil
@@ -1982,6 +2049,9 @@ func (cs *State) enterPrecommit(height int64, round int32) {
 	}
 
 	cs.signAddVote(cmtproto.PrecommitType, nil, types.PartSetHeader{}, nil)
+	if unlocked {
+		cs.writeLockInfo()
+	}
 }
 
 // Enter: any +2/3 precommits for next round.
@@ -2050,19 +2120,8 @@ func (cs *State) enterCommit(height int64, commitRound int32) {
 		panic("RunActionCommit() expects +2/3 precommits")
 	}
 
-	// The Locked* fields no longer matter.
-	// Move them over to ProposalBlock if they match the full commit BlockID,
-	// otherwise they'll be cleared in updateToState. Promoting on the hash
-	// alone could replace a proposal pair that matches the commit with a
-	// locked body built from a different part set.
-	if blockMatchesBlockID(cs.rs.LockedBlock, cs.rs.LockedBlockParts, blockID) {
-		logger.Debug("commit is for a locked block; set ProposalBlock=LockedBlock", "block_hash", blockID.Hash)
-		cs.rs.ProposalBlock = cs.rs.LockedBlock
-		cs.rs.ProposalBlockParts = cs.rs.LockedBlockParts
-	}
-
 	// If we don't have the block being committed, set up to get it.
-	if !blockMatchesBlockID(cs.rs.ProposalBlock, cs.rs.ProposalBlockParts, blockID) {
+	if !cs.haveBlock(commitRound, blockID) {
 		// Whatever block we were holding was not built from the part set being
 		// committed, so it cannot be the block to finalize even if it happens
 		// to hash to blockID.Hash. Drop it before announcing the new round
@@ -2554,17 +2613,11 @@ func (cs *State) addProposalBlockPart(msg *BlockPartMessage, peerID p2p.ID) (add
 			duration := time.Since(cs.proposalReceivedTime)
 			schema.WriteFullBlockReceivingTime(cs.traceClient, msg.Height, msg.Round, duration)
 		}
-		bz := cs.rs.ProposalBlockParts.GetBytes()
-
-		pbb := new(cmtproto.Block)
 		// Use committed state, never the proposer's claimed header version.
-		err = cmtproto.CheckBlockCardinality(bz, blockLimits(cs.state))
-		if err == nil {
-			err = proto.Unmarshal(bz, pbb)
-		}
+		block, err := decodeBlock(cs.rs.ProposalBlockParts, blockLimits(cs.state))
 		if err != nil {
 			cs.Logger.Error(
-				"failed to unmarshal completed proposal block",
+				"failed to decode completed proposal block",
 				"height", height,
 				"round", round,
 				"peer", peerID,
@@ -2572,19 +2625,6 @@ func (cs *State) addProposalBlockPart(msg *BlockPartMessage, peerID p2p.ID) (add
 			)
 			return added, err
 		}
-
-		block, err := types.BlockFromProto(pbb)
-		if err != nil {
-			cs.Logger.Error(
-				"failed to build completed proposal block from proto",
-				"height", height,
-				"round", round,
-				"peer", peerID,
-				"err", err,
-			)
-			return added, err
-		}
-		block.FillCachedHashes()
 
 		cs.rs.ProposalBlock = block
 
@@ -2598,7 +2638,31 @@ func (cs *State) addProposalBlockPart(msg *BlockPartMessage, peerID p2p.ID) (add
 	return added, nil
 }
 
+// decodeBlock decodes the block of a complete part set, bounding its cardinality first.
+func decodeBlock(parts *types.PartSet, limits cmtproto.BlockLimits) (*types.Block, error) {
+	bz := parts.GetBytes()
+	if err := cmtproto.CheckBlockCardinality(bz, limits); err != nil {
+		return nil, err
+	}
+	pbb := new(cmtproto.Block)
+	if err := proto.Unmarshal(bz, pbb); err != nil {
+		return nil, err
+	}
+	block, err := types.BlockFromProto(pbb)
+	if err != nil {
+		return nil, err
+	}
+	block.FillCachedHashes()
+	return block, nil
+}
+
 func (cs *State) handleCompleteProposal(blockHeight int64) {
+	// A lock restored from the WAL gets its bytes back.
+	if cs.rs.IsLocked() && cs.rs.LockedBlock == nil &&
+		blockMatchesBlockID(cs.rs.ProposalBlock, cs.rs.ProposalBlockParts, cs.rs.LockedBlockID) {
+		cs.fillLockBytes(cs.rs.ProposalBlock, cs.rs.ProposalBlockParts)
+	}
+
 	// Update Valid* if we can.
 	prevotes := cs.rs.Votes.Prevotes(cs.rs.Round)
 	blockID, hasTwoThirds := prevotes.TwoThirdsMajority()
@@ -2885,16 +2949,15 @@ func (cs *State) addVote(vote *types.Vote, peerID p2p.ID) (added bool, err error
 
 			// Unlock if `cs.rs.LockedRound < vote.Round <= cs.rs.Round`
 			// NOTE: If vote.Round > cs.rs.Round, we'll deal with it when we get to vote.Round
-			if (cs.rs.LockedBlock != nil) &&
+			if cs.rs.IsLocked() &&
 				(cs.rs.LockedRound < vote.Round) &&
 				(vote.Round <= cs.rs.Round) &&
-				!blockMatchesBlockID(cs.rs.LockedBlock, cs.rs.LockedBlockParts, blockID) {
+				!cs.rs.LockedBlockID.Equals(blockID) {
 
 				cs.Logger.Debug("unlocking because of POL", "locked_round", cs.rs.LockedRound, "pol_round", vote.Round)
 
-				cs.rs.LockedRound = -1
-				cs.rs.LockedBlock = nil
-				cs.rs.LockedBlockParts = nil
+				cs.unlock()
+				cs.writeLockInfo()
 
 				if err := cs.eventBus.PublishEventUnlock(cs.rs.RoundStateEvent()); err != nil {
 					return added, err
@@ -2904,7 +2967,7 @@ func (cs *State) addVote(vote *types.Vote, peerID p2p.ID) (added bool, err error
 			// Update Valid* if we can.
 			// NOTE: our proposal block may be nil or not what received a polka..
 			if len(blockID.Hash) != 0 && (cs.rs.ValidRound < vote.Round) && (vote.Round == cs.rs.Round) {
-				partsMatch := cs.rs.ProposalBlockParts.HasHeader(blockID.PartSetHeader)
+				partsMatch := cs.haveBlock(vote.Round, blockID) || cs.rs.ProposalBlockParts.HasHeader(blockID.PartSetHeader)
 				if cs.rs.ProposalBlock.HashesTo(blockID.Hash) && partsMatch {
 					cs.Logger.Debug("updating valid block because of POL", "valid_round", cs.rs.ValidRound, "pol_round", vote.Round)
 					cs.rs.ValidRound = vote.Round
@@ -2949,6 +3012,10 @@ func (cs *State) addVote(vote *types.Vote, peerID p2p.ID) (added bool, err error
 
 		case cs.rs.Round == vote.Round && cstypes.RoundStepPrevote <= cs.rs.Step: // current round
 			cs.handlePrevoteQuorum(height, vote.Round)
+
+		case cs.rs.Round == vote.Round && cs.isProposalComplete():
+			// A held block made the proposal block above, as its last part arriving would have.
+			cs.enterPrevote(height, cs.rs.Round)
 
 		case cs.rs.Proposal != nil && 0 <= cs.rs.Proposal.POLRound && cs.rs.Proposal.POLRound == vote.Round:
 			// If the proposal is now complete, enter prevote of cs.rs.Round.
@@ -3027,6 +3094,10 @@ func (cs *State) signVote(
 		// if the signedMessage type is for a non-nil precommit, add
 		// VoteExtension
 		if extEnabled {
+			if block == nil {
+				// A lock restored from the WAL has no bytes to extend the vote with.
+				return nil, errors.New("cannot extend a precommit without the block")
+			}
 			ext, err := cs.blockExec.ExtendVote(context.TODO(), vote, block, cs.state)
 			if err != nil {
 				return nil, err
@@ -3049,11 +3120,11 @@ func (cs *State) voteTime() time.Time {
 	// Minimum time increment between blocks
 	const timeIota = time.Millisecond
 	// TODO: We should remove next line in case we don't vote for v in case cs.rs.ProposalBlock == nil,
-	// even if cs.rs.LockedBlock != nil. See https://github.com/cometbft/cometbft/tree/v0.38.x/spec/.
-	if cs.rs.LockedBlock != nil {
+	// even if cs.rs.IsLocked(). See https://github.com/cometbft/cometbft/tree/v0.38.x/spec/.
+	if cs.rs.IsLocked() {
 		// See the BFT time spec
 		// https://github.com/cometbft/cometbft/blob/v0.38.x/spec/consensus/bft-time.md
-		minVoteTime = cs.rs.LockedBlock.Time.Add(timeIota)
+		minVoteTime = cs.rs.LockedBlockTime.Add(timeIota)
 	} else if cs.rs.ProposalBlock != nil {
 		minVoteTime = cs.rs.ProposalBlock.Time.Add(timeIota)
 	}
@@ -3334,13 +3405,15 @@ func (cs *State) syncData() {
 			h, r := cs.rs.Height, cs.rs.Round
 			// a commit can be for an earlier round, whose parts the commit stub then receives.
 			forCommit := cs.rs.Step == cstypes.RoundStepCommit && part.Round == cs.rs.CommitRound
+			// a lock restored by ID takes its round's parts whatever the current round.
+			forLock := cs.rs.IsLocked() && cs.rs.LockedBlock == nil && part.Round == cs.rs.LockedRound
 			currentProposalParts := cs.rs.ProposalBlockParts
 			cs.rsMtx.RUnlock()
-			if part.Height != h || (part.Round != r && !forCommit) {
+			if part.Height != h || (part.Round != r && !forCommit && !forLock) {
 				continue
 			}
 
-			if currentProposalParts != nil {
+			if currentProposalParts != nil && !forLock {
 				if currentProposalParts.IsComplete() {
 					continue
 				}
@@ -3360,6 +3433,128 @@ func (cs *State) syncData() {
 // serialized body.
 func blockMatchesBlockID(block *types.Block, parts *types.PartSet, blockID types.BlockID) bool {
 	return block.HashesTo(blockID.Hash) && parts.HasHeader(blockID.PartSetHeader)
+}
+
+// lockOn locks on blockID; the caller journals it with writeLockInfo once the precommit is signed.
+func (cs *State) lockOn(round int32, blockID types.BlockID, blockTime time.Time, block *types.Block, parts *types.PartSet) {
+	cs.rs.LockedRound = round
+	cs.rs.LockedBlockID = blockID
+	cs.rs.LockedBlockTime = blockTime
+	cs.rs.LockedBlock = block
+	cs.rs.LockedBlockParts = parts
+	cs.copyLockedBlock()
+}
+
+// copyLockedBlock arms the copy of the locked block's parts unless the WAL holds them.
+func (cs *State) copyLockedBlock() {
+	if cs.lockedBlocks == nil || cs.replayMode || cs.rs.LockedBlockParts == nil {
+		return
+	}
+	// Our own proposal's parts are already internal WAL records.
+	if cs.rs.Proposal != nil && cs.rs.Proposal.BlockID.Equals(cs.rs.LockedBlockID) &&
+		cs.privValidatorPubKey != nil && cs.isProposer(cs.privValidatorPubKey.Address()) {
+		return
+	}
+	li := LockInfo{Height: cs.rs.Height, Round: cs.rs.LockedRound, BlockID: cs.rs.LockedBlockID, BlockTime: cs.rs.LockedBlockTime}
+	cs.lockedBlocks.arm(cs.lockedBlockDelay(), li, cs.rs.LockedBlockParts)
+}
+
+// defaultLockedBlockDelay is how long a lock stays open before its block is copied; healthy heights commit sooner.
+func (cs *State) defaultLockedBlockDelay() time.Duration {
+	commit := cs.state.Timeouts.TimeoutCommit
+	if commit == 0 {
+		commit = cs.config.TimeoutCommit
+	}
+	return 2*commit + cs.state.Timeouts.DelayedPrecommitTimeout
+}
+
+// fillLockBytes gives a lock held by ID its bytes; Valid* follows so a proposer re-proposes it.
+func (cs *State) fillLockBytes(block *types.Block, parts *types.PartSet) {
+	cs.rs.LockedBlock, cs.rs.LockedBlockParts = block, parts
+	if cs.rs.ValidRound < cs.rs.LockedRound {
+		cs.rs.ValidRound = cs.rs.LockedRound
+		cs.rs.ValidBlock, cs.rs.ValidBlockParts = block, parts
+	}
+	cs.shareBlock(cs.rs.LockedRound, parts)
+	cs.copyLockedBlock()
+}
+
+// fillLockFromPropagator gives a lock held by ID the block the propagator completed
+// for the lock round, which consensus may have left since.
+func (cs *State) fillLockFromPropagator() {
+	if !cs.rs.IsLocked() || cs.rs.LockedBlock != nil {
+		return
+	}
+	_, parts, ok := cs.propagator.GetProposal(cs.rs.Height, cs.rs.LockedRound)
+	if !ok || !parts.IsComplete() || !parts.HasHeader(cs.rs.LockedBlockID.PartSetHeader) {
+		return
+	}
+	block, err := decodeBlock(parts, blockLimits(cs.state))
+	if err != nil || !block.HashesTo(cs.rs.LockedBlockID.Hash) {
+		cs.Logger.Error("propagator's lock round block does not match the lock", "height", cs.rs.Height, "round", cs.rs.LockedRound, "err", err)
+		return
+	}
+	cs.fillLockBytes(block, parts)
+}
+
+// haveBlock reports whether the proposal block is blockID's, making a matching locked or
+// valid block the proposal block, as if its parts had arrived, and sharing it for round.
+func (cs *State) haveBlock(round int32, blockID types.BlockID) bool {
+	if blockMatchesBlockID(cs.rs.ProposalBlock, cs.rs.ProposalBlockParts, blockID) {
+		return true
+	}
+	for _, b := range []struct {
+		block *types.Block
+		parts *types.PartSet
+	}{{cs.rs.LockedBlock, cs.rs.LockedBlockParts}, {cs.rs.ValidBlock, cs.rs.ValidBlockParts}} {
+		if blockMatchesBlockID(b.block, b.parts, blockID) {
+			cs.rs.ProposalBlock, cs.rs.ProposalBlockParts = b.block, b.parts
+			cs.shareBlock(round, b.parts)
+			return true
+		}
+	}
+	return false
+}
+
+// shareBlock hands a block with a polka or commit at round to the propagator, so peers
+// asking for it there are served. Replay defers it to OnStart, once the propagator is set up.
+func (cs *State) shareBlock(round int32, parts *types.PartSet) {
+	if !cs.replayMode && round >= 0 && parts != nil {
+		cs.propagator.AddBlock(cs.rs.Height, round, parts)
+	}
+}
+
+// unlock releases the lock and reports whether one was held; the caller journals it.
+func (cs *State) unlock() bool {
+	if !cs.rs.IsLocked() {
+		return false
+	}
+	cs.clearLock()
+	return true
+}
+
+func (cs *State) clearLock() {
+	cs.rs.LockedRound = -1
+	cs.rs.LockedBlockID = types.BlockID{}
+	cs.rs.LockedBlockTime = time.Time{}
+	cs.rs.LockedBlock = nil
+	cs.rs.LockedBlockParts = nil
+}
+
+// writeLockInfo journals the current lock, buffered. Called after signing, it rides
+// the precommit's WriteSync, which runs before the vote is handled or gossiped. Replay
+// re-derives locks from the WAL; rewriting them appends stale records that replay reads back.
+func (cs *State) writeLockInfo() {
+	if cs.replayMode {
+		return
+	}
+	li := LockInfo{Height: cs.rs.Height, Round: cs.rs.LockedRound, BlockID: cs.rs.LockedBlockID, BlockTime: cs.rs.LockedBlockTime}
+	if err := cs.wal.Write(li); err != nil {
+		panic(fmt.Errorf(
+			"failed to write %v msg to consensus WAL; check your file system and restart the node: %w",
+			li, err,
+		))
+	}
 }
 
 func (cs *State) lockAll() {

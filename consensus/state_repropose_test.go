@@ -68,6 +68,8 @@ func TestStateReproposesValidBlockParts(t *testing.T) {
 	// never reach this state, so it is set directly: this test covers nodes
 	// without that check and keeps the re-proposal correct on its own.
 	cs1.rs.LockedRound = 0
+	cs1.rs.LockedBlockID = blockID
+	cs1.rs.LockedBlockTime = block.Time
 	cs1.rs.LockedBlock = block
 	cs1.rs.LockedBlockParts = parts
 	cs1.rs.ValidRound = 0
@@ -134,3 +136,4 @@ func (r *proposeRecordingPropagator) proposedTxs() [][]proptypes.TxMetaData {
 	defer r.mtx.Unlock()
 	return r.proposed
 }
+

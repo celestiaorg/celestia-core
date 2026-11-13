@@ -2,6 +2,7 @@ package consensus
 
 import (
 	"bytes"
+	"sync"
 	"testing"
 	"time"
 
@@ -9,6 +10,7 @@ import (
 
 	cstypes "github.com/cometbft/cometbft/consensus/types"
 
+	cmtevents "github.com/cometbft/cometbft/libs/events"
 	cmtpubsub "github.com/cometbft/cometbft/libs/pubsub"
 	cmtproto "github.com/cometbft/cometbft/proto/tendermint/types"
 	"github.com/cometbft/cometbft/types"
@@ -37,6 +39,18 @@ func TestLatePrecommitIncludedAfterSlowExecution(t *testing.T) {
 	})
 	css[3].SetPrivValidator(&latePrecommitPV{PrivValidator: css[3].privValidator, delay: 50 * time.Millisecond})
 	lateIdx, _ := css[0].state.Validators.GetByAddress(css[3].privValidatorPubKey.Address())
+	// Heights the late validator committed on its peers' precommits before adding its own:
+	// its precommit waits out the execution, so missing the next LastCommit is expected.
+	var mu sync.Mutex
+	lateCommitted := make(map[int64]bool)
+	require.NoError(t, css[3].evsw.AddListenerForEvent("test", types.EventVote, func(data cmtevents.EventData) {
+		v := data.(*types.Vote)
+		if v.Type == cmtproto.PrecommitType && v.ValidatorIndex == lateIdx && v.Height < css[3].rs.Height {
+			mu.Lock()
+			lateCommitted[v.Height] = true
+			mu.Unlock()
+		}
+	}))
 	_, subs := startPacedNet(t, css, []bool{true, true, true, true})
 
 	deadline := time.After(2 * time.Minute)
@@ -45,7 +59,12 @@ func TestLatePrecommitIncludedAfterSlowExecution(t *testing.T) {
 		case msg := <-subs[0].Out():
 			b := msg.Data().(types.EventDataNewBlock).Block
 			if b.Height >= from && b.LastCommit.Signatures[lateIdx].BlockIDFlag == types.BlockIDFlagAbsent {
-				absent++
+				mu.Lock()
+				expected := lateCommitted[b.Height-1]
+				mu.Unlock()
+				if !expected {
+					absent++
+				}
 			}
 			if b.Height >= to {
 				// One miss in 18 heights is allowed: a precommit still in flight when round 0
