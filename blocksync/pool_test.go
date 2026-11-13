@@ -860,7 +860,7 @@ func TestAddBlockUnsolicitedCommittedBlock(t *testing.T) {
 	block, extCommit := testBlock(3)
 	err, removePeer := pool.addBlock("A", block, extCommit, 123)
 	require.Error(t, err)
-	assert.True(t, removePeer, "a block never requested from the peer must disconnect it")
+	assert.False(t, removePeer, "an unrequested committed block earns nothing, so it does not disconnect the peer")
 
 	pool.mtx.Lock()
 	assert.EqualValues(t, 1, pool.peers["A"].numPending, "the request at height 5 is still outstanding")
@@ -925,4 +925,129 @@ func TestAddBlockLateFromSlowPeer(t *testing.T) {
 	pool.mtx.Lock()
 	defer pool.mtx.Unlock()
 	assert.EqualValues(t, 0, pool.peers["A"].numPending)
+}
+
+// TestAddBlockLateAnswerAfterRedo checks that once a request is re-sent to
+// another peer, a late block from the first peer does not count as an answer:
+// the first peer still times out, so its advertised height stops counting
+// toward maxPeerHeight.
+func TestAddBlockLateAnswerAfterRedo(t *testing.T) {
+	pool := NewBlockPool(1, make(chan BlockRequest, 10), make(chan peerError, 10))
+	pool.SetLogger(log.TestingLogger())
+
+	pool.SetPeerRange("A", 1, math.MaxInt64)
+	pool.SetPeerRange("B", 1, 10)
+
+	assignRequest(t, pool, 1, "A")
+	// A does not answer in time, so the request is re-sent to B.
+	pool.mtx.Lock()
+	req := pool.requesters[1]
+	pool.mtx.Unlock()
+	require.EqualValues(t, "A", req.resetAll())
+	assignRequest(t, pool, 1, "B")
+
+	pool.mtx.Lock()
+	assert.EqualValues(t, 0, pool.peers["A"].numPending, "the re-sent request is no longer pending with A")
+	pool.mtx.Unlock()
+
+	block, extCommit := testBlock(1)
+	err, _ := pool.addBlock("B", block, extCommit, 123)
+	require.NoError(t, err)
+	pool.PopRequest()
+
+	// A now answers its old request with any block at that height.
+	junk, junkCommit := testBlock(1)
+	_, removePeer := pool.addBlock("A", junk, junkCommit, 1<<20)
+	assert.False(t, removePeer)
+
+	require.Eventually(t, func() bool {
+		pool.mtx.Lock()
+		defer pool.mtx.Unlock()
+		return pool.peers["A"].didTimeout
+	}, 3*peerTimeout, 50*time.Millisecond, "a late answer to a re-sent request must not keep the peer alive")
+
+	pool.removeTimedoutPeers()
+	assert.EqualValues(t, 10, pool.MaxPeerHeight())
+}
+
+// TestAddBlockDuplicateIsNotCredited checks that a block that is not stored,
+// because another peer's copy was stored first, does not reset the sender's
+// timeout.
+func TestAddBlockDuplicateIsNotCredited(t *testing.T) {
+	pool := NewBlockPool(1, make(chan BlockRequest, 10), make(chan peerError, 10))
+	pool.SetLogger(log.TestingLogger())
+
+	pool.SetPeerRange("A", 1, 10)
+	pool.SetPeerRange("B", 1, 10)
+	assignRequest(t, pool, 1, "A")
+	assignRequest(t, pool, 2, "A")
+	assignRequest(t, pool, 1, "B")
+	requestedAt := time.Now()
+
+	block, extCommit := testBlock(1)
+	err, _ := pool.addBlock("B", block, extCommit, 123)
+	require.NoError(t, err)
+
+	time.Sleep(peerTimeout * 6 / 10)
+	err, removePeer := pool.addBlock("A", block, extCommit, 1<<20)
+	require.NoError(t, err)
+	require.False(t, removePeer)
+
+	pool.mtx.Lock()
+	assert.EqualValues(t, 1, pool.peers["A"].numPending, "the request at height 2 is still outstanding")
+	pool.mtx.Unlock()
+
+	// A must time out peerTimeout after its first request, not peerTimeout
+	// after the duplicate.
+	require.Eventually(t, func() bool {
+		pool.mtx.Lock()
+		defer pool.mtx.Unlock()
+		return pool.peers["A"].didTimeout
+	}, peerTimeout*13/10-time.Since(requestedAt), 20*time.Millisecond, "a block that was not stored must not reset the timeout")
+}
+
+// TestAddBlockCommittedFromUnknownOrBannedPeer checks that a block below
+// pool.height from a peer that is not in the pool, or that was banned, is
+// ignored without disconnecting the peer: it can be a response that was in
+// flight when the peer was removed.
+func TestAddBlockCommittedFromUnknownOrBannedPeer(t *testing.T) {
+	pool := NewBlockPool(1, make(chan BlockRequest, 10), make(chan peerError, 10))
+	pool.SetLogger(log.TestingLogger())
+
+	pool.SetPeerRange("A", 1, 10)
+	pool.mtx.Lock()
+	pool.height = 5
+	pool.removePeer("A")
+	pool.banPeer("A")
+	pool.mtx.Unlock()
+
+	block, extCommit := testBlock(3)
+	for _, peerID := range []p2p.ID{"A", "unknown"} {
+		err, removePeer := pool.addBlock(peerID, block, extCommit, 123)
+		assert.NoError(t, err, peerID)
+		assert.False(t, removePeer, peerID)
+	}
+}
+
+// TestAddBlockDuplicateKeepsPoolNumPending checks that only a stored block
+// decrements the pool's count of pending requests.
+func TestAddBlockDuplicateKeepsPoolNumPending(t *testing.T) {
+	pool := NewBlockPool(1, make(chan BlockRequest, 10), make(chan peerError, 10))
+	pool.SetLogger(log.TestingLogger())
+
+	pool.SetPeerRange("A", 1, 10)
+	pool.SetPeerRange("B", 1, 10)
+	assignRequest(t, pool, 1, "A")
+	assignRequest(t, pool, 1, "B")
+	// makeNextRequester counts one pending request per requester.
+	pool.numPending = 1
+
+	block, extCommit := testBlock(1)
+	for _, peerID := range []p2p.ID{"A", "B"} {
+		err, _ := pool.addBlock(peerID, block, extCommit, 123)
+		require.NoError(t, err)
+	}
+
+	_, numPending, _ := pool.GetStatus()
+	assert.EqualValues(t, 0, numPending)
 }

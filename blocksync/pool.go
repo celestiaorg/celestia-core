@@ -429,14 +429,19 @@ func (pool *BlockPool) addBlock(peerID p2p.ID, block *types.Block, extCommit *ty
 			return fmt.Errorf("peer sent us block #%d we didn't expect (current height: %d, start height: %d)",
 				block.Height, pool.height, pool.startHeight), true
 		}
-		// A slow peer may still deliver a block we asked it for after another
-		// peer's copy was already applied. Any other block at this height was
-		// not requested from this peer.
+		// The block can be in flight from a peer that was removed or banned
+		// since we asked it. Ignore it, as the requester path does.
 		peer := pool.peers[peerID]
-		if peer == nil || !peer.decrPending(block.Height, blockSize) {
-			return fmt.Errorf("peer sent us block #%d we didn't request from it (current height: %d)",
-				block.Height, pool.height), true
+		if peer == nil || pool.isPeerBanned(peerID) {
+			return nil, false
 		}
+		// A slow peer may still deliver a block we asked it for after another
+		// peer's copy was applied. This answers its request but earns it no
+		// liveness credit, because the block is not stored. A block we did not
+		// request from this peer (never asked, re-sent to another peer, or asked
+		// on an earlier connection) changes nothing, so we do not disconnect for
+		// it: an honest slow peer can send one after its request was re-sent.
+		peer.blockReceived(block.Height, blockSize, false)
 		return fmt.Errorf("got an already committed block #%d (possibly from the slow peer %s)", block.Height, peerID), false
 	}
 
@@ -452,10 +457,12 @@ func (pool *BlockPool) addBlock(peerID p2p.ID, block *types.Block, extCommit *ty
 		return fmt.Errorf("requested block #%d from %v, not %s, %w", block.Height, requester.peerID, peerID, err), true
 	}
 
-	atomic.AddInt32(&pool.numPending, -1)
+	if blockSet {
+		atomic.AddInt32(&pool.numPending, -1)
+	}
 	peer := pool.peers[peerID]
 	if peer != nil {
-		peer.decrPending(block.Height, blockSize)
+		peer.blockReceived(block.Height, blockSize, blockSet)
 	}
 
 	if blockSet {
@@ -606,6 +613,16 @@ func (pool *BlockPool) isPeerBanned(peerID p2p.ID) bool {
 	return time.Since(pool.bannedPeers[peerID]) < time.Second*60
 }
 
+// abandonPeerRequest releases the request at height from peerID, if the peer is
+// still in the pool, because it is re-sent to another peer.
+//
+// CONTRACT: pool.mtx must be locked.
+func (pool *BlockPool) abandonPeerRequest(peerID p2p.ID, height int64) {
+	if peer := pool.peers[peerID]; peer != nil {
+		peer.abandonPending(height)
+	}
+}
+
 // CONTRACT: pool.mtx must be locked.
 func (pool *BlockPool) banPeer(peerID p2p.ID) {
 	pool.Logger.Debug("Banning peer", peerID)
@@ -742,6 +759,12 @@ type bpPeer struct {
 	// height. Its values sum to numPending.
 	pendingHeights map[int64]int32
 
+	// abandoned is set when a request to this peer is re-sent to another peer
+	// before it answered. Until a block from this peer is stored, its timeout
+	// keeps running even when nothing is pending with it, so the peer cannot
+	// clear its timeout by failing to answer.
+	abandoned bool
+
 	logger log.Logger
 }
 
@@ -779,17 +802,17 @@ func (peer *bpPeer) resetTimeout() {
 func (peer *bpPeer) incrPending(height int64) {
 	if peer.numPending == 0 {
 		peer.resetMonitor()
-		peer.resetTimeout()
+		if !peer.abandoned {
+			peer.resetTimeout()
+		}
 	}
 	peer.numPending++
 	peer.pendingHeights[height]++
 }
 
-// decrPending marks one outstanding request at height as answered. It returns
-// false, and changes nothing, if no request at height is outstanding with this
-// peer: the block was never requested from it, was already answered, or was
-// requested from an earlier connection with this peer.
-func (peer *bpPeer) decrPending(height int64, recvSize int) bool {
+// releasePending removes one outstanding request at height. It returns false,
+// and changes nothing, if no request at height is outstanding with this peer.
+func (peer *bpPeer) releasePending(height int64) bool {
 	if peer.pendingHeights[height] <= 0 {
 		return false
 	}
@@ -798,13 +821,41 @@ func (peer *bpPeer) decrPending(height int64, recvSize int) bool {
 		delete(peer.pendingHeights, height)
 	}
 	peer.numPending--
-	if peer.numPending == 0 {
-		peer.timeout.Stop()
-	} else {
-		peer.recvMonitor.Update(recvSize)
-		peer.resetTimeout()
-	}
 	return true
+}
+
+// abandonPending releases the request at height because it was re-sent to
+// another peer. It gives the peer no credit: its timeout keeps running.
+func (peer *bpPeer) abandonPending(height int64) {
+	if peer.releasePending(height) {
+		peer.abandoned = true
+	}
+}
+
+// blockReceived records a block at height from this peer. Only a stored block
+// counts toward the peer's receive rate and resets its timeout. A block that
+// is not stored only answers the request at height, if one is outstanding.
+func (peer *bpPeer) blockReceived(height int64, recvSize int, stored bool) {
+	wasPending := peer.releasePending(height)
+	if stored {
+		peer.abandoned = false
+		if peer.numPending == 0 {
+			peer.stopTimeout()
+		} else {
+			peer.recvMonitor.Update(recvSize)
+			peer.resetTimeout()
+		}
+		return
+	}
+	if wasPending && peer.numPending == 0 && !peer.abandoned {
+		peer.stopTimeout()
+	}
+}
+
+func (peer *bpPeer) stopTimeout() {
+	if peer.timeout != nil {
+		peer.timeout.Stop()
+	}
 }
 
 func (peer *bpPeer) onTimeout() {
@@ -918,13 +969,19 @@ func (bpr *bpRequester) gotBlockFromPeerID() p2p.ID {
 	return bpr.gotBlockFrom
 }
 
+// resetAll drops the active request so that it can be re-sent to another
+// peer, and releases it from the peer it was sent to.
+// CONTRACT: pool.mtx must not be locked.
 func (bpr *bpRequester) resetAll() p2p.ID {
+	bpr.pool.mtx.Lock()
+	defer bpr.pool.mtx.Unlock()
 	bpr.mtx.Lock()
 	defer bpr.mtx.Unlock()
 	cur := bpr.peerID
 	if bpr.peerID != "" {
 		bpr.tryRemoveBlock(bpr.peerID)
 		bpr.peerID = ""
+		bpr.pool.abandonPeerRequest(cur, bpr.height)
 	}
 	return cur
 }
@@ -941,13 +998,18 @@ func (bpr *bpRequester) tryRemoveBlock(peerID p2p.ID) bool {
 }
 
 // Removes the block (IF we got it from the given peer) and resets the peer.
+// If the active request was to peerID, it is released from that peer.
+// CONTRACT: pool.mtx must not be locked.
 func (bpr *bpRequester) reset(peerID p2p.ID) (removedBlock bool) {
+	bpr.pool.mtx.Lock()
+	defer bpr.pool.mtx.Unlock()
 	bpr.mtx.Lock()
 	defer bpr.mtx.Unlock()
 
 	removedBlock = bpr.tryRemoveBlock(peerID)
 	if bpr.peerID == peerID {
 		bpr.peerID = ""
+		bpr.pool.abandonPeerRequest(peerID, bpr.height)
 	}
 	return removedBlock
 }
