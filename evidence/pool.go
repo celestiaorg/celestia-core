@@ -192,23 +192,18 @@ func (evpool *Pool) AddEvidence(ev types.Evidence) error {
 		return nil
 	}
 
-	// Duplicate vote evidence for a validator and height that already has
-	// evidence pending or committed is ignored before it is verified. This
-	// keeps the cost of resubmitting variants low. As a result, a peer that
-	// sends such evidence with invalid signatures is not punished.
-	dve, isDuplicateVote := ev.(*types.DuplicateVoteEvidence)
-	if isDuplicateVote && evpool.isDuplicateVoteKnown(dve) {
-		evpool.logger.Info("Evidence for this validator and height already pending or committed, ignoring this one", "ev", ev)
-		return nil
-	}
-
-	// 1) Verify against state.
+	// 1) Verify against state. Duplicate vote evidence is verified even when
+	// evidence for the same validator and height is already pending or
+	// committed, so a peer sending invalid evidence is still disconnected,
+	// exactly as before deduplication. Verification is the only source of
+	// ErrInvalidEvidence: evidence that passes it is never rejected, so honest
+	// peers relaying it, including nodes on older versions, stay connected.
 	err := evpool.verify(ev)
 	if err != nil {
 		return types.NewErrInvalidEvidence(ev, err)
 	}
 
-	if isDuplicateVote {
+	if dve, isDuplicateVote := ev.(*types.DuplicateVoteEvidence); isDuplicateVote {
 		// Keep a canonical copy of the evidence. Fields not covered by the vote
 		// signatures are reset rather than rejected, so that honest peers
 		// relaying non-canonical but valid evidence are not disconnected.
@@ -417,15 +412,9 @@ func (evpool *Pool) removePendingEvidence(evidence types.Evidence) {
 	}
 }
 
-// isDuplicateVoteKnown returns true if duplicate vote evidence for the same
-// validator and height as dve is already pending or committed, possibly at a
-// different round or under a different hash.
-func (evpool *Pool) isDuplicateVoteKnown(dve *types.DuplicateVoteEvidence) bool {
-	evpool.dveMtx.Lock()
-	defer evpool.dveMtx.Unlock()
-	return evpool.isDuplicateVoteKnownLocked(dve)
-}
-
+// isDuplicateVoteKnownLocked returns true if duplicate vote evidence for the
+// same validator and height as dve is already pending or committed, possibly
+// at a different round or under a different hash. dveMtx must be held.
 func (evpool *Pool) isDuplicateVoteKnownLocked(dve *types.DuplicateVoteEvidence) bool {
 	if _, ok := evpool.pendingDuplicateVotes[duplicateVoteKey(dve)]; ok {
 		return true

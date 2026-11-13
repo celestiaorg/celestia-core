@@ -459,12 +459,14 @@ func newPendingModel() *pendingModel {
 }
 
 // known reports whether the pool ignores ev without verifying it: the same
-// evidence, or other duplicate vote evidence for the same equivocation, is
-// already pending.
+// evidence is already pending.
 func (m *pendingModel) known(ev cmttypes.Evidence) bool {
-	if m.want[keyOf(ev)] {
-		return true
-	}
+	return m.want[keyOf(ev)]
+}
+
+// duplicate reports whether the pool verifies ev and then ignores it: other
+// duplicate vote evidence for the same validator and height is pending.
+func (m *pendingModel) duplicate(ev cmttypes.Evidence) bool {
 	dve, ok := ev.(*cmttypes.DuplicateVoteEvidence)
 	return ok && m.equivocation[duplicateVoteKey(dve)]
 }
@@ -611,7 +613,9 @@ func runEvidencePoolFuzz(t *testing.T, fx *evFixture, data []byte) {
 			punished = true
 			break
 		}
-		model.add(c.ev)
+		if !model.duplicate(c.ev) {
+			model.add(c.ev)
+		}
 	}
 	require.Equal(t, punished, !peer.IsRunning(), "peer stopped for error mismatch")
 	fx.requirePending(t, pool, model.want)
@@ -635,7 +639,9 @@ func runEvidencePoolFuzz(t *testing.T, fx *evFixture, data []byte) {
 		}
 		if c.valid {
 			require.NoError(t, err)
-			model.add(c.ev)
+			if !model.duplicate(c.ev) {
+				model.add(c.ev)
+			}
 		} else {
 			var invalid *cmttypes.ErrInvalidEvidence
 			require.ErrorAs(t, err, &invalid)

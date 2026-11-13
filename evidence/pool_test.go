@@ -625,6 +625,45 @@ func TestAddEvidenceIgnoresDuplicateVoteVariants(t *testing.T) {
 	assert.Len(t, evs, 2)
 }
 
+// Invalid duplicate vote evidence is rejected as invalid even when evidence for
+// the same validator and height is already pending or committed, so that peers
+// sending it are disconnected as they were before deduplication.
+func TestAddEvidenceRejectsInvalidVariantOfKnownDuplicateVote(t *testing.T) {
+	height := int64(10)
+	pool, val := defaultTestPool(t, height)
+	evTime := defaultEvidenceTime.Add(time.Duration(height) * time.Minute)
+
+	ev, err := types.NewMockDuplicateVoteEvidenceWithValidator(height, evTime, val, evidenceChainID)
+	require.NoError(t, err)
+	require.NoError(t, pool.AddEvidence(ev))
+
+	badSignature := *ev
+	voteB := *ev.VoteB
+	voteB.Signature = make([]byte, len(voteB.Signature))
+	badSignature.VoteB = &voteB
+
+	otherRound := newDuplicateVoteAtRound(t, height, 1, evTime, val)
+	mismatchedRound := *ev
+	mismatchedRound.VoteB = otherRound.VoteB
+
+	requireInvalid := func() {
+		t.Helper()
+		for _, invalid := range []*types.DuplicateVoteEvidence{&badSignature, &mismatchedRound} {
+			var errInvalid *types.ErrInvalidEvidence
+			require.ErrorAs(t, pool.AddEvidence(invalid), &errInvalid)
+		}
+	}
+	requireInvalid()
+
+	// Also after the evidence is committed.
+	state := pool.State()
+	state.LastBlockHeight++
+	state.LastBlockTime = state.LastBlockTime.Add(time.Minute)
+	pool.Update(state, types.EvidenceList{ev})
+	require.Zero(t, pool.Size())
+	requireInvalid()
+}
+
 // Duplicate vote evidence whose unsigned fields are not in canonical form is
 // admitted without error, and the pool keeps a canonical copy of it. An error
 // would make the reactor disconnect honest peers that relay such evidence.
