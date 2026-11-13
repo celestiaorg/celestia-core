@@ -196,7 +196,7 @@ func FuzzTransportUpgrade(f *testing.F) {
 			if len(dni.Channels) > maxNumChannels || strings.TrimSpace(dni.Moniker) == "" {
 				t.Fatalf("accepted node info with bad channels/moniker: %+v", dni)
 			}
-			if _, aerr := ni.NetAddress(); aerr != nil {
+			if _, aerr := dni.listenAddress(net.IPv4zero); aerr != nil {
 				t.Fatalf("accepted node info without a valid NetAddress: %v", aerr)
 			}
 		}

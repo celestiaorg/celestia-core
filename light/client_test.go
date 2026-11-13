@@ -17,6 +17,7 @@ import (
 	"github.com/cometbft/cometbft/light"
 	"github.com/cometbft/cometbft/light/provider"
 	mockp "github.com/cometbft/cometbft/light/provider/mock"
+	"github.com/cometbft/cometbft/light/store"
 	dbs "github.com/cometbft/cometbft/light/store/db"
 	"github.com/cometbft/cometbft/types"
 )
@@ -921,6 +922,114 @@ func TestClient_BackwardsVerificationPrimaryReplaced(t *testing.T) {
 	if stored, err := trustedStore.LightBlock(1); err == nil {
 		require.Equal(t, h1.Hash(), stored.Hash(), "trusted store holds a forged light block")
 	}
+}
+
+// TestClient_BackwardsVerificationInvalidCommit checks that backwards
+// verification verifies the commit of the target light block, whose header is
+// only verified by hash chaining. A primary that serves the authentic header
+// with an invalid commit is replaced, and its light block is never saved to the
+// trusted store.
+func TestClient_BackwardsVerificationInvalidCommit(t *testing.T) {
+	// withBadCommit returns sh with one commit signature corrupted.
+	withBadCommit := func(sh *types.SignedHeader) *types.SignedHeader {
+		badCommit := *sh.Commit
+		badCommit.Signatures = make([]types.CommitSig, len(sh.Commit.Signatures))
+		copy(badCommit.Signatures, sh.Commit.Signatures)
+		badSig := make([]byte, len(badCommit.Signatures[0].Signature))
+		copy(badSig, badCommit.Signatures[0].Signature)
+		badSig[0] ^= 0x01
+		badCommit.Signatures[0].Signature = badSig
+		bad := &types.SignedHeader{Header: sh.Header, Commit: &badCommit}
+		require.NoError(t, bad.ValidateBasic(chainID))
+		require.Equal(t, sh.Hash(), bad.Hash())
+		return bad
+	}
+	badH1 := withBadCommit(h1)
+	badH2 := withBadCommit(h2)
+
+	newClient := func(t *testing.T, primary provider.Provider, witnesses []provider.Provider) (*light.Client, store.Store) {
+		t.Helper()
+		trustedStore := dbs.New(dbm.NewMemDB(), chainID)
+		c, err := light.NewClient(
+			ctx,
+			chainID,
+			light.TrustOptions{Period: 4 * time.Hour, Height: 3, Hash: h3.Hash()},
+			primary,
+			witnesses,
+			trustedStore,
+			light.Logger(log.TestingLogger()),
+			light.MaxRetryAttempts(1),
+		)
+		require.NoError(t, err)
+		return c, trustedStore
+	}
+	badPrimary := func() provider.Provider {
+		return mockp.New(chainID, map[int64]*types.SignedHeader{1: h1, 2: badH2, 3: h3}, valSet)
+	}
+
+	t.Run("primary is replaced by honest witness", func(t *testing.T) {
+		primary := badPrimary()
+		// The client errors out if replacing the primary leaves it without
+		// witnesses, so give it two honest ones.
+		c, trustedStore := newClient(t, primary, []provider.Provider{fullNode, mockp.New(chainID, headerSet, valSet)})
+
+		lb, err := c.VerifyLightBlockAtHeight(ctx, 2, bTime.Add(2*time.Hour))
+		require.NoError(t, err)
+		require.Equal(t, h2.Commit, lb.Commit)
+		require.NotEqual(t, primary, c.Primary(), "primary was not replaced")
+
+		stored, err := trustedStore.LightBlock(2)
+		require.NoError(t, err)
+		require.Equal(t, h2.Commit, stored.Commit)
+	})
+
+	t.Run("no honest witness", func(t *testing.T) {
+		// Two bad witnesses, so the client can promote one and must then reject
+		// the replacement's commit too, instead of stopping at ErrNoWitnesses.
+		c, trustedStore := newClient(t, badPrimary(), []provider.Provider{badPrimary(), badPrimary()})
+
+		_, err := c.VerifyLightBlockAtHeight(ctx, 2, bTime.Add(2*time.Hour))
+		var errInvalid light.ErrInvalidHeader
+		require.ErrorAs(t, err, &errInvalid)
+
+		_, err = trustedStore.LightBlock(2)
+		require.Error(t, err, "light block with invalid commit was saved to the trusted store")
+	})
+
+	t.Run("honest witness promoted during the walk is not removed", func(t *testing.T) {
+		// The primary serves an invalid commit at the target height and answers
+		// "not found" for the interim height, which promotes a witness to primary
+		// during the walk. The provider removed for the invalid commit must be
+		// the one that served it, not the promoted honest witness.
+		primary := mockp.New(chainID, map[int64]*types.SignedHeader{1: badH1, 3: h3}, valSet)
+		witness1 := mockp.New(chainID, headerSet, valSet)
+		witness2 := mockp.New(chainID, headerSet, valSet)
+		c, trustedStore := newClient(t, primary, []provider.Provider{witness1, witness2})
+
+		lb, err := c.VerifyLightBlockAtHeight(ctx, 1, bTime.Add(2*time.Hour))
+		require.NoError(t, err)
+		require.Equal(t, h1.Commit, lb.Commit)
+
+		stored, err := trustedStore.LightBlock(1)
+		require.NoError(t, err)
+		require.Equal(t, h1.Commit, stored.Commit)
+
+		// Compare by identity: the honest mocks are deeply equal to each other.
+		has := func(p provider.Provider) bool {
+			if c.Primary() == p {
+				return true
+			}
+			for _, w := range c.Witnesses() {
+				if w == p {
+					return true
+				}
+			}
+			return false
+		}
+		require.True(t, has(witness1), "honest witness was removed")
+		require.True(t, has(witness2), "honest witness was removed")
+		require.False(t, has(primary), "primary that served the invalid commit was not removed")
+	})
 }
 
 func TestClient_NewClientFromTrustedStore(t *testing.T) {
