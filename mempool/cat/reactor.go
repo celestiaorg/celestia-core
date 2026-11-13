@@ -668,8 +668,10 @@ func (memR *Reactor) tryAddNewTx(cachedTx *types.CachedTx, key types.TxKey, txIn
 		// (including the sender).
 		memR.mempool.seenTracker.ClearPendingTx(key)
 	case err == nil:
-		// The application disproved the sender's claim, if any, and every
-		// claim that put the tx at or below its signer's expected sequence.
+		// The application disproved every claim that put the tx at or below
+		// its signer's expected sequence. The sender vouched for a tx that
+		// failed, so its announcement is withdrawn too; a claim another peer
+		// also backs stays queued.
 		memR.mempool.seenTracker.ClearPendingClaimFrom(key, txInfo.SenderID)
 		for _, claim := range tested {
 			memR.mempool.seenTracker.ClearPendingClaim(key, claim.signer, claim.sequence)

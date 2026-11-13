@@ -372,8 +372,9 @@ func (s *SeenTracker) ClearPendingClaim(txKey types.TxKey, signer []byte, sequen
 	}
 }
 
-// ClearPendingClaimFrom removes the claim peer announced for a tx, if any,
-// and keeps the tx's other claims.
+// ClearPendingClaimFrom withdraws peer's announcement for a tx, if any. The
+// claim is removed only if no other peer backs it; the tx's other claims are
+// kept.
 func (s *SeenTracker) ClearPendingClaimFrom(txKey types.TxKey, peer uint16) {
 	s.mtx.Lock()
 	defer s.mtx.Unlock()
@@ -383,7 +384,10 @@ func (s *SeenTracker) ClearPendingClaimFrom(txKey types.TxKey, peer uint16) {
 		return
 	}
 	if claim := entry.claimFrom(peer); claim != nil {
-		s.dropClaimLocked(claim)
+		delete(claim.announcers, peer)
+		if len(claim.announcers) == 0 {
+			s.dropClaimLocked(claim)
+		}
 	}
 }
 

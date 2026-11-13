@@ -890,3 +890,56 @@ func TestReactorDroppedBufferedCopyKeepsOtherClaims(t *testing.T) {
 		})
 	}
 }
+
+// TestReactorSendersLaterClaimSharedWithOtherPeerSurvives checks that when a
+// peer's buffered copy is dropped or rejected, a later claim that peer
+// announced is kept while another peer also backs it, so the tx is still
+// requested from that other peer when its gap closes.
+func TestReactorSendersLaterClaimSharedWithOtherPeerSurvives(t *testing.T) {
+	signer := []byte("sender-000-0")
+	const realSeq = 5
+
+	testCases := map[string]func(reactor *Reactor, app *sequenceEnforcingApp){
+		"buffered copy at a used sequence": func(reactor *Reactor, app *sequenceEnforcingApp) {
+			app.SetSequence(string(signer), 4)
+			reactor.processReceivedBuffer(signer)
+		},
+		"buffered copy rejected": func(reactor *Reactor, app *sequenceEnforcingApp) {
+			app.SetSequence(string(signer), 3)
+			reactor.processReceivedBuffer(signer)
+			require.Equal(t, 1, app.CheckTxCalls())
+		},
+	}
+	for name, drop := range testCases {
+		t.Run(name, func(t *testing.T) {
+			reactor, pool, app, peers := sequenceEnforcingReactor(t, 2)
+			sender, honest := peers[0], peers[1]
+			app.SetSequence(string(signer), 1)
+
+			tx := newDefaultTx("shared-later-claim")
+			key := tx.Key()
+			app.txSequences[string(tx)] = realSeq
+
+			receiveSeenTx(reactor, sender, key, signer, 3)
+			requestTxFromPeer(t, reactor, sender, key)
+			receiveTx(reactor, sender, tx)
+			require.NotNil(t, reactor.receivedBuffer.get(signer, 3))
+
+			receiveSeenTx(reactor, sender, key, signer, realSeq)
+			receiveSeenTx(reactor, honest, key, signer, realSeq)
+			require.ElementsMatch(t,
+				[]uint16{reactor.ids.GetIDForPeer(sender.ID()), reactor.ids.GetIDForPeer(honest.ID())},
+				queuedSequences(reactor, signer, key)[realSeq])
+
+			drop(reactor, app)
+
+			require.Nil(t, reactor.receivedBuffer.get(signer, 3))
+			require.Equal(t, []uint16{reactor.ids.GetIDForPeer(honest.ID())}, queuedSequences(reactor, signer, key)[realSeq],
+				"the claim the honest peer backs must stay queued")
+			rejected, _, _ := pool.WasRecentlyRejected(key)
+			require.False(t, rejected)
+
+			requireRequestedAndAccepted(t, reactor, pool, app, honest, signer, realSeq, tx)
+		})
+	}
+}
