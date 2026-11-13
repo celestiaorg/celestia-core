@@ -505,6 +505,12 @@ func (cs *State) OnStart() error {
 		proposer = cs.rs.Validators.GetProposer()
 	}
 	cs.rsMtx.RUnlock()
+	// A lock restored by ID is refetched once, for its final round; fillLockFromPropagator
+	// takes the bytes. AddCommitment resets the propagator's round, so it goes first.
+	if cs.rs.IsLocked() && cs.rs.LockedBlock == nil {
+		psh := cs.rs.LockedBlockID.PartSetHeader
+		cs.propagator.AddCommitment(height, cs.rs.LockedRound, &psh)
+	}
 	if proposer != nil {
 		cs.propagator.SetConsensusState(height, round, proposer.PubKey)
 		cs.reseedPropagator()
