@@ -3520,6 +3520,10 @@ func (cs *State) unlock() bool {
 		return false
 	}
 	cs.clearLock()
+	// A released lock's copy is never read, but a replayed unlock may precede the lock the file restores.
+	if !cs.replayMode {
+		cs.lockedBlocks.reset()
+	}
 	return true
 }
 

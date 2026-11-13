@@ -2,11 +2,15 @@
 
 package consensus
 
-import "os"
+import (
+	"os"
+	"testing"
+)
 
 // Without O_DIRECT the tests run the locked-block copy through a buffered file.
 func init() {
-	openLockedBlockFile = func(path string) (*os.File, error) {
-		return os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o600)
-	}
+	openLockedBlockFile = openBufferedLockedBlockFile
 }
+
+// shrinkPipe is a no-op: pipes here hold at most 64 KiB, less than one part record.
+func shrinkPipe(*testing.T, *os.File) {}
