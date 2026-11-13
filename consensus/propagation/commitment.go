@@ -86,7 +86,8 @@ func (blockProp *Reactor) ProposeBlock(proposal *types.Proposal, block *types.Pa
 	original := parts.Original()
 	pushed := make([]*types.Part, 0, maxPushedParts)
 	pushedMeta := make([]*propagation.PartMetaData, 0, maxPushedParts)
-	for _, index := range uncoveredParts(cb.Blobs, original.Total(), types.BlockPartSizeBytes, cb.LastLen) {
+	uncoveredIndexes := uncoveredParts(cb.Blobs, original.Total(), types.BlockPartSizeBytes, cb.LastLen)
+	for _, index := range uncoveredIndexes {
 		part := original.GetPart(int(index))
 		pushed = append(pushed, part)
 		pushedMeta = append(pushedMeta, &propagation.PartMetaData{Index: part.Index, Hash: part.Proof.LeafHash})

@@ -7,57 +7,91 @@ import (
 	proptypes "github.com/cometbft/cometbft/consensus/propagation/types"
 )
 
-// maxPushedParts bounds the original parts a proposer pushes to each peer, and
-// that a node accepts unrequested from a peer that sent it the compact block.
-// The header takes 1 part and evidence plus last commit (~110 B per validator) up to
-// 5 more, which fits ~2,300 validators with no evidence. Above it, nothing is
-// pushed and peers use have/want.
+// maxPushedParts is how many parts the proposer pushes per peer, and how many
+// unrequested parts we accept from a peer that sent us the compact block.
+// 1 for the header, 5 for evidence and last commit (good for ~2,300 validators).
+// If more are needed we push nothing and peers just ask via have/want.
 const maxPushedParts = 6
 
-// uncoveredParts returns the original parts with bytes outside every
-// transaction's range, which no mempool can rebuild. It returns nil when there
-// are more than maxPushedParts of them.
-func uncoveredParts(blobs []proptypes.TxMetaData, total, partSize, lastLen uint32) []uint32 {
-	covered := mergeRanges(blobs)
+// byteRange is a span of bytes in the block: start is included, end is not.
+type byteRange struct {
+	start uint32
+	end   uint32
+}
+
+// uncoveredParts returns the indexes of the original parts that hold bytes no
+// transaction covers (header, evidence, last commit). No mempool can rebuild
+// those parts. It returns nil when there are more than maxPushedParts of them.
+func uncoveredParts(txs []proptypes.TxMetaData, totalParts, partSize, lastPartSize uint32) []uint32 {
+	txRanges := mergedTxRanges(txs)
 
 	uncovered := make([]uint32, 0, maxPushedParts)
-	for part := range total {
-		start := part * partSize
-		end := start + partSize
-		if part == total-1 && lastLen > 0 {
-			end = start + lastLen
+	for partIndex := range totalParts {
+		partStart := partIndex * partSize
+		partEnd := partStart + partSize
+
+		// the last part is usually shorter than a full part
+		isLastPart := partIndex == totalParts-1
+		if isLastPart && lastPartSize > 0 {
+			partEnd = partStart + lastPartSize
 		}
-		// after merging, a part is covered iff one range spans all of it
-		if slices.ContainsFunc(covered, func(r [2]uint32) bool { return r[0] <= start && end <= r[1] }) {
+
+		if isCoveredByTxs(txRanges, partStart, partEnd) {
 			continue
 		}
+
+		// too many to push, so push nothing
 		if len(uncovered) == maxPushedParts {
 			return nil
 		}
-		uncovered = append(uncovered, part)
+		uncovered = append(uncovered, partIndex)
 	}
 	return uncovered
 }
 
-// mergeRanges returns the blobs' byte ranges sorted and merged, so overlapping
-// or adjacent transactions become one span.
-func mergeRanges(blobs []proptypes.TxMetaData) [][2]uint32 {
-	ranges := make([][2]uint32, 0, len(blobs))
-	for _, blob := range blobs {
-		if blob.End > blob.Start {
-			ranges = append(ranges, [2]uint32{blob.Start, blob.End})
+// isCoveredByTxs reports whether every byte of the part belongs to a
+// transaction. txRanges must be merged, so that is true only when a single
+// range spans the whole part.
+func isCoveredByTxs(txRanges []byteRange, partStart, partEnd uint32) bool {
+	for _, txRange := range txRanges {
+		startsBeforePart := txRange.start <= partStart
+		endsAfterPart := partEnd <= txRange.end
+		if startsBeforePart && endsAfterPart {
+			return true
 		}
 	}
-	slices.SortFunc(ranges, func(a, b [2]uint32) int { return cmp.Compare(a[0], b[0]) })
+	return false
+}
 
-	merged := make([][2]uint32, 0, len(ranges))
-	for _, r := range ranges {
-		last := len(merged) - 1
-		if last >= 0 && r[0] <= merged[last][1] {
-			merged[last][1] = max(merged[last][1], r[1])
+// mergedTxRanges returns the byte ranges of the transactions, sorted, with
+// overlapping or touching ranges joined into one.
+func mergedTxRanges(txs []proptypes.TxMetaData) []byteRange {
+	txRanges := make([]byteRange, 0, len(txs))
+	for _, tx := range txs {
+		isEmpty := tx.End <= tx.Start
+		if isEmpty {
 			continue
 		}
-		merged = append(merged, r)
+		txRanges = append(txRanges, byteRange{start: tx.Start, end: tx.End})
+	}
+	slices.SortFunc(txRanges, func(a, b byteRange) int {
+		return cmp.Compare(a.start, b.start)
+	})
+
+	merged := make([]byteRange, 0, len(txRanges))
+	for _, txRange := range txRanges {
+		if len(merged) == 0 {
+			merged = append(merged, txRange)
+			continue
+		}
+
+		previous := &merged[len(merged)-1]
+		touchesPrevious := txRange.start <= previous.end
+		if touchesPrevious {
+			previous.end = max(previous.end, txRange.end)
+			continue
+		}
+		merged = append(merged, txRange)
 	}
 	return merged
 }
