@@ -972,6 +972,9 @@ func (cs *State) updateToState(state sm.State) {
 	cs.rs.TriggeredTimeoutPrecommit = false
 
 	cs.state = state
+	// Block.MaxBytes can change through governance; keep the propagator's
+	// compact block size check on the limit for the new height.
+	cs.propagator.SetBlockMaxBytes(state.ConsensusParams.Block.MaxBytes)
 
 	// Finally, broadcast RoundState
 	cs.newStep()

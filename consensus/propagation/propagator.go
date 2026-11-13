@@ -18,6 +18,9 @@ type Propagator interface {
 	// compact blocks are never verified against the proposer of a different
 	// round.
 	SetConsensusState(height int64, round int32, proposer crypto.PubKey)
+	// SetBlockMaxBytes installs the Block.MaxBytes consensus param that
+	// applies to the height consensus is entering.
+	SetBlockMaxBytes(maxBytes int64)
 	StartProcessing()
 	GetPartChan() <-chan types.PartInfo
 	GetProposalChan() <-chan ProposalAndSrc
@@ -78,6 +81,9 @@ func (nop *NoOpPropagator) Prune(_ int64) {
 }
 
 func (nop *NoOpPropagator) SetConsensusState(_ int64, _ int32, _ crypto.PubKey) {
+}
+
+func (nop *NoOpPropagator) SetBlockMaxBytes(_ int64) {
 }
 
 func (nop *NoOpPropagator) StartProcessing() {
