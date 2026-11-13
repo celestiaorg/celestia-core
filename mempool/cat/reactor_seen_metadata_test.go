@@ -593,3 +593,34 @@ func TestReactorCapFallbackDeliveryKeepsQueuedMetadata(t *testing.T) {
 	receiveTx(reactor, other, ahead)
 	require.True(t, pool.Has(ahead.Key()), "the tx must enter the mempool at its real sequence")
 }
+
+// TestReactorRejectedDeliveryDropsDisprovedClaims checks that once the
+// application rejects a tx, a queued claim that put it at the expected
+// sequence is dropped even if its announcer is gone, so the rejected tx is
+// not requested again in a loop.
+func TestReactorRejectedDeliveryDropsDisprovedClaims(t *testing.T) {
+	reactor, pool, app, peers := sequenceEnforcingReactor(t, 2)
+	first, second := peers[0], peers[1]
+	secondID := reactor.ids.GetIDForPeer(second.ID())
+	signer := []byte("sender-000-0")
+	app.SetSequence(string(signer), 0)
+
+	tx := newDefaultTx("disproved-claim")
+	key := tx.Key()
+	app.txSequences[string(tx)] = 3
+
+	receiveSeenTx(reactor, first, key, signer, 1)
+	app.SetSequence(string(signer), 1)
+	reactor.processPendingSeenForSigner(signer)
+	require.EqualValues(t, reactor.ids.GetIDForPeer(first.ID()), reactor.requests.ForTx(key))
+
+	receiveSeenTx(reactor, second, key, signer, 3)
+	reactor.RemovePeer(first, nil)
+	require.EqualValues(t, secondID, reactor.requests.ForTx(key))
+
+	receiveTx(reactor, second, tx)
+
+	require.False(t, pool.Has(key))
+	require.NotContains(t, queuedAt(reactor, signer, key), uint64(1), "the claim the application disproved must be dropped")
+	require.Zero(t, reactor.requests.ForTx(key), "a rejected tx must not be requested again right away")
+}

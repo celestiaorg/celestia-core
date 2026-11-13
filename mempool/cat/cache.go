@@ -387,22 +387,20 @@ func (s *SeenTracker) ClearPendingClaimFrom(txKey types.TxKey, peer uint16) {
 	}
 }
 
-// HasPendingClaimNotFrom reports whether a tx is queued under a claim that
-// peer did not announce.
-func (s *SeenTracker) HasPendingClaimNotFrom(txKey types.TxKey, peer uint16) bool {
+// PendingClaims returns copies of the signer/sequence claims queued for a tx.
+func (s *SeenTracker) PendingClaims(txKey types.TxKey) []*PendingTxInfo {
 	s.mtx.Lock()
 	defer s.mtx.Unlock()
 
 	entry, ok := s.txByKey[txKey]
 	if !ok {
-		return false
+		return nil
 	}
+	out := make([]*PendingTxInfo, 0, len(entry.claims))
 	for _, claim := range entry.claims {
-		if !claim.announcedBy(peer) {
-			return true
-		}
+		out = append(out, claim.clone())
 	}
-	return false
+	return out
 }
 
 // RemoveKey drops a tx from every tracker index.
