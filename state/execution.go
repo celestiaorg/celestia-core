@@ -520,10 +520,10 @@ func (blockExec *BlockExecutor) Commit(
 	abciResponse *abci.ResponseFinalizeBlock,
 ) (int64, error) {
 	blockExec.mempool.Lock()
-	unlock := blockExec.mempool.Unlock
+	handedOff := false
 	defer func() {
-		if unlock != nil {
-			unlock()
+		if !handedOff {
+			blockExec.mempool.Unlock()
 		}
 	}()
 
@@ -551,17 +551,15 @@ func (blockExec *BlockExecutor) Commit(
 
 	// Update mempool.
 	if mp, ok := blockExec.mempool.(mempool.AsyncRechecker); ok {
-		releaseLock := unlock
-		unlock = nil // ownership of the lock moves to the mempool
-		err = mp.UpdateAsyncRecheck(
+		handedOff = true // the mempool releases the lock
+		return res.RetainHeight, mp.UpdateAsyncRecheck(
 			block.Height,
 			block.CachedTxs(),
 			abciResponse.TxResults,
 			TxPreCheck(state),
 			TxPostCheck(state),
-			releaseLock,
+			blockExec.mempool.Unlock,
 		)
-		return res.RetainHeight, err
 	}
 	err = blockExec.mempool.Update(
 		block.Height,
