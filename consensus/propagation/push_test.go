@@ -141,11 +141,34 @@ func TestRequestPartsRollsBackFailedSend(t *testing.T) {
 
 	// a failed send rolls back only the parts this call added
 	require.False(t, p.RequestParts(1, 0, createBitArray(4, []int{0, 1}), p2p.Envelope{}))
-	require.True(t, p.Requested(1, 0, 0))
-	require.False(t, p.Requested(1, 0, 1))
+	requests, _ := p.GetRequests(1, 0)
+	require.Equal(t, []int{0}, requests.GetTrueIndices())
 
 	require.True(t, p.RequestParts(1, 0, createBitArray(4, []int{1}), p2p.Envelope{}))
-	require.True(t, p.Requested(1, 0, 1))
+	requests, _ = p.GetRequests(1, 0)
+	require.Equal(t, []int{0, 1}, requests.GetTrueIndices())
+}
+
+func TestLateReplyAfterRequestExpiredIsAccepted(t *testing.T) {
+	cleanup, _, sm, pv := state.SetupTestCaseWithPrivVal(t)
+	t.Cleanup(func() { cleanup(t) })
+	cb, ps, _, _ := testCompactBlock(t, sm, pv, 10, 0)
+
+	reactors, _ := testBlockPropReactors(3, cfg.DefaultP2PConfig())
+	receiver, sender, other := reactors[0], reactors[1], reactors[2]
+	receiver.handleCompactBlock(cb, sender.self, true)
+
+	// we asked other for part 0, and the request expired before it replied
+	otherPeer := receiver.getPeer(other.self)
+	otherPeer.AddRequests(10, 0, createBitArray(int(ps.Total())*2, []int{0}))
+	otherPeer.ExpireRequests(10, 0, 0)
+
+	part := ps.GetPart(0)
+	receiver.handleRecoveryPart(other.self, &proptypes.RecoveryPart{Height: 10, Round: 0, Index: part.Index, Data: part.Bytes, Proof: &part.Proof})
+
+	require.NotNil(t, receiver.getPeer(other.self))
+	_, parts, _, _ := receiver.getAllState(10, 0, false)
+	require.True(t, parts.HasPart(0))
 }
 
 func TestCachedCompactBlockGrantsPushAllowance(t *testing.T) {

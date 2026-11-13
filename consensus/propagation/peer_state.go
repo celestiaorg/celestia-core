@@ -243,6 +243,7 @@ func (d *PeerState) RequestParts(height int64, round int32, partsToRequest *bits
 
 	// the peer never got the request, so unmark the parts. Only the new ones:
 	// the rest were requested earlier and those requests did go out.
+	// everRequested is left alone: it only decides whether a reply is accepted.
 	for _, partIndex := range newlyRequested.GetTrueIndices() {
 		requestedFromPeer.SetIndex(partIndex, false)
 	}
@@ -483,10 +484,17 @@ func (d *PeerState) ConsumePushAllowance(height int64, round int32) bool {
 	return true
 }
 
-// Requested reports whether this node requested the part from the peer.
+// Requested reports whether this node has ever requested the part from the
+// peer, including requests that have since expired.
 func (d *PeerState) Requested(height int64, round int32, index uint32) bool {
-	reqs, has := d.GetRequests(height, round)
-	return has && reqs.GetIndex(int(index))
+	d.mtx.RLock()
+	defer d.mtx.RUnlock()
+
+	partState := d.state[height][round]
+	if partState == nil {
+		return false
+	}
+	return partState.everRequested.GetIndex(int(index))
 }
 
 type partState struct {
@@ -495,6 +503,10 @@ type partState struct {
 	requests *bits.BitArray
 	// requestedAt is when requests were last added.
 	requestedAt time.Time
+	// everRequested is every part we have asked this peer for. Unlike
+	// requests it is never cleared, so a reply that arrives after its request
+	// expired is still recognized as requested.
+	everRequested *bits.BitArray
 	// pushAllowance is how many more parts the peer may send unrequested. It
 	// is granted once, when the peer sends the compact block.
 	pushAllowance int
@@ -507,6 +519,8 @@ func newpartState(size int, _ int64, _ int32) *partState {
 		haves:    bits.NewBitArray(size),
 		wants:    bits.NewBitArray(size),
 		requests: bits.NewBitArray(size),
+
+		everRequested: bits.NewBitArray(size),
 	}
 }
 
@@ -521,6 +535,7 @@ func (p *partState) addWants(wants *bits.BitArray) {
 func (p *partState) addRequests(requests *bits.BitArray) {
 	p.requests.AddBitArray(requests)
 	p.requestedAt = time.Now()
+	p.everRequested.AddBitArray(requests)
 }
 
 // SetHave sets the have bit for a given part.
