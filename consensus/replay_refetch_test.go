@@ -261,14 +261,14 @@ func (f *lockRoundFeeder) deliver(round int32, parts *types.PartSet, send bool) 
 	}
 }
 
-// A node locked by ID whose lock-round parts arrive only after it left that round, live or
-// during replay, fills the lock and re-proposes it with its lock round as POL. A block the
-// propagator completed without passing parts on is taken when the node proposes.
+// A node locked by ID whose lock-round parts arrive only after it left that round (live, during
+// replay or with the current round's proposal complete) fills the lock and re-proposes it with its
+// lock round as POL. A block the propagator completed without passing parts on is taken when it proposes.
 func TestRestartedLockFilledInLaterRound(t *testing.T) {
 	for _, tc := range []struct {
-		name           string
-		inReplay, send bool
-	}{{"live", false, true}, {"in_replay", true, true}, {"held_only", false, false}} {
+		name                     string
+		inReplay, send, proposed bool
+	}{{"live", false, true, false}, {"in_replay", true, true, false}, {"held_only", false, false, false}, {"round_1_proposal_complete", false, true, true}} {
 		inReplay := tc.inReplay
 		t.Run(tc.name, func(t *testing.T) {
 			f := newLockFixture(t, true, false)
@@ -294,9 +294,14 @@ func TestRestartedLockFilledInLaterRound(t *testing.T) {
 			feed := &lockRoundFeeder{Propagator: cs.propagator, partChan: make(chan types.PartInfo, parts.Total())}
 			rec := &callRecorder{Propagator: feed}
 			cs.propagator = rec
-			newRoundCh, _ := startRestarted(t, cs)
+			newRoundCh, voteCh := startRestarted(t, cs)
 			if !inReplay {
 				f.moveToRound1(t, cs, newRoundCh)
+			}
+			if tc.proposed {
+				f.proposeFreshY(t, cs)
+				nextVote(t, voteCh, 1, 1, cmtproto.PrevoteType)
+				require.True(t, cs.GetRoundState().ProposalBlockParts.IsComplete())
 			}
 			rs := cs.GetRoundState()
 			require.EqualValues(t, 1, rs.Round)
@@ -320,6 +325,97 @@ func TestRestartedLockFilledInLaterRound(t *testing.T) {
 			require.Contains(t, rec.snapshot(), propagatorCall{block: true, height: 1, round: 0, psh: parts.Header()})
 		})
 	}
+}
+
+// A lock held by ID takes the propagator's lock-round block only if both its hash and its
+// part set header match: the header is what binds the tx bytes, which the hash does not cover.
+func TestFillLockFromPropagatorChecksBlockID(t *testing.T) {
+	cs, _ := randState(1)
+	feed := &lockRoundFeeder{Propagator: cs.propagator}
+	cs.propagator = feed
+	block, parts := proposalBlock(t, cs)
+	twinParts := sameHashOtherTxs(t, block)
+	require.NotEqual(t, parts.Header(), twinParts.Header())
+	xID := types.BlockID{Hash: block.Hash(), PartSetHeader: parts.Header()}
+	for _, tc := range []struct {
+		name  string
+		lock  types.BlockID
+		held  *types.PartSet
+		fills bool
+	}{
+		{"matching", xID, parts, true},
+		{"wrong hash", types.BlockID{Hash: cmtrand.Bytes(32), PartSetHeader: parts.Header()}, parts, false},
+		{"same hash, other tx bytes", xID, twinParts, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			cs.clearLock()
+			cs.rs.LockedRound, cs.rs.LockedBlockID = 0, tc.lock
+			feed.deliver(0, tc.held, false)
+			cs.fillLockFromPropagator()
+			if !tc.fills {
+				require.Nil(t, cs.rs.LockedBlock)
+				return
+			}
+			require.True(t, blockMatchesBlockID(cs.rs.LockedBlock, cs.rs.LockedBlockParts, xID))
+		})
+	}
+}
+
+// Filling a lock held by ID leaves a newer valid block of another block alone.
+func TestFillLockKeepsNewerValidBlock(t *testing.T) {
+	cs, _ := randState(1)
+	feed := &lockRoundFeeder{Propagator: cs.propagator}
+	cs.propagator = feed
+	_, p1, b2, p2 := lockUnderNewerValid(t, cs)
+	feed.deliver(1, p1, false)
+	cs.fillLockFromPropagator()
+	require.Same(t, p1, cs.rs.LockedBlockParts)
+	require.EqualValues(t, 3, cs.rs.ValidRound)
+	require.Same(t, b2, cs.rs.ValidBlock)
+	require.Same(t, p2, cs.rs.ValidBlockParts)
+}
+
+// lockUnderNewerValid locks cs by ID on B1 at round 1 and sets B2 as its valid block at round 3.
+// It stands in for a replayed WAL: OnStart's shareBlock reads only the height and these rounds.
+func lockUnderNewerValid(t *testing.T, cs *State) (b1 *types.Block, p1 *types.PartSet, b2 *types.Block, p2 *types.PartSet) {
+	t.Helper()
+	b1, p1 = proposalBlock(t, cs)
+	b2, p2 = freshBlock(t, cs)
+	cs.rs.LockedRound, cs.rs.LockedBlockID = 1, types.BlockID{Hash: b1.Hash(), PartSetHeader: p1.Header()}
+	cs.rs.ValidRound, cs.rs.ValidBlock, cs.rs.ValidBlockParts = 3, b2, p2
+	return b1, p1, b2, p2
+}
+
+// proposalBlock builds a block for cs's height from its mempool.
+func proposalBlock(t *testing.T, cs *State) (*types.Block, *types.PartSet) {
+	t.Helper()
+	cs.mtx.Lock()
+	block, parts, err := cs.createProposalBlock(context.Background())
+	cs.mtx.Unlock()
+	require.NoError(t, err)
+	return block, parts
+}
+
+// freshBlock adds a mempool tx, so the block differs from earlier ones.
+func freshBlock(t *testing.T, cs *State) (*types.Block, *types.PartSet) {
+	t.Helper()
+	require.NoError(t, assertMempool(cs.txNotifier).CheckTx(kvstore.NewTx("fresh", cmtrand.Str(8)), nil, mempl.TxInfo{}))
+	return proposalBlock(t, cs)
+}
+
+// sameHashOtherTxs returns the parts of block with a tx appended under the same header, hence the same hash.
+func sameHashOtherTxs(t *testing.T, block *types.Block) *types.PartSet {
+	t.Helper()
+	pb, err := block.ToProto()
+	require.NoError(t, err)
+	pb.Data.Txs = append(pb.Data.Txs, []byte("forged"))
+	pb.Data.Hash = block.DataHash
+	twin, err := types.BlockFromProto(pb)
+	require.NoError(t, err)
+	require.Equal(t, block.Hash(), twin.Hash())
+	parts, err := twin.MakePartSet(types.BlockPartSizeBytes)
+	require.NoError(t, err)
+	return parts
 }
 
 // A restarted node hands its locked block X to the propagator for the lock round, and
@@ -348,6 +444,20 @@ func TestLockedBlockSharedWithPropagator(t *testing.T) {
 	require.True(t, blockMatchesBlockID(rs.ValidBlock, rs.ValidBlockParts, xID))
 }
 
+// A node restarting locked on one block with a newer valid block hands both to the propagator.
+func TestRestartSharesLockedAndValidBlocks(t *testing.T) {
+	f := newLockFixture(t, false, false)
+	cs := f.newState()
+	b1, p1, _, p2 := lockUnderNewerValid(t, cs)
+	cs.rs.LockedBlock, cs.rs.LockedBlockParts = b1, p1
+	rec := &callRecorder{Propagator: cs.propagator}
+	cs.propagator = rec
+	startRestarted(t, cs)
+	calls := rec.snapshot()
+	require.Contains(t, calls, propagatorCall{block: true, height: 1, round: 1, psh: p1.Header()})
+	require.Contains(t, calls, propagatorCall{block: true, height: 1, round: 3, psh: p2.Header()})
+}
+
 // A polka for the locked block, re-proposed without its parts, completes the
 // proposal from the lock, so the node prevotes before the propose timeout.
 func TestPolkaOnHeldBlockPrevotesAtOnce(t *testing.T) {
@@ -370,6 +480,16 @@ func TestPolkaOnHeldBlockPrevotesAtOnce(t *testing.T) {
 	signAddVotes(cs, cmtproto.PrevoteType, xID.Hash, xID.PartSetHeader, false, f.others...)
 	require.Equal(t, xID, nextVote(t, voteCh, 1, 1, cmtproto.PrevoteType).BlockID)
 	require.Less(t, time.Since(start), cs.state.Timeouts.TimeoutPropose/2)
+}
+
+// A polka or commit for the locked block makes it the proposal block, though the valid block differs.
+func TestHaveBlockTakesLockedBlock(t *testing.T) {
+	cs, _ := randState(1)
+	b1, p1, _, _ := lockUnderNewerValid(t, cs)
+	cs.rs.LockedBlock, cs.rs.LockedBlockParts = b1, p1
+	require.True(t, cs.haveBlock(4, cs.rs.LockedBlockID))
+	require.Same(t, b1, cs.rs.ProposalBlock)
+	require.Same(t, p1, cs.rs.ProposalBlockParts)
 }
 
 // A node that unlocked keeps X as its valid block; when X gets a polka or a commit in a
