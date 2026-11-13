@@ -185,9 +185,7 @@ func (p *ProposalCache) safeRelevant(height int64, round int32) bool {
 	return p.relevant(height, round)
 }
 
-// GetProposal returns the proposal and block for a given height and round if
-// this node has it stored or cached. It also return the max requests for that
-// block.
+// getAllState returns the cached or stored proposal, parts and max requests at height and round.
 func (p *ProposalCache) getAllState(height int64, round int32, catchup bool) (*proptypes.CompactBlock, *proptypes.CombinedPartSet, *bits.BitArray, bool) {
 	p.pmtx.Lock()
 	defer p.pmtx.Unlock()

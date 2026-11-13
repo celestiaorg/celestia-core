@@ -48,7 +48,7 @@ func testRestartAllAfterLock(t *testing.T, p0Delay time.Duration) {
 		TimeoutPrecommit: 500 * time.Millisecond, TimeoutPrecommitDelta: 100 * time.Millisecond,
 		TimeoutCommit: 200 * time.Millisecond,
 	}
-	css, restartNode := newRestartFleet(t, n, ti)
+	css, restartNode := newRestartFleetFn(t, n, ti)
 
 	// roles at the target height: proposer priorities advance once per height.
 	vals := css[0].GetState().Validators.CopyIncrementProposerPriority(int32(target - 1))

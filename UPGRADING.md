@@ -28,7 +28,8 @@ This guide provides instructions for upgrading to specific versions of CometBFT.
 * Linux only, with `only_internal_wal = true`: a height that stays open after the
   node locks on a peer's block copies that block to `locked_block` next to the WAL
   with O_DIRECT (skipped if the filesystem rejects O_DIRECT), so a restart can
-  restore it; the file is removed once the height commits.
+  restore it; the file is removed once the height commits. The copy is not
+  fsynced: it covers a process restart, not a power loss.
 
 ## v0.38.13
 
