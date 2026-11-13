@@ -264,6 +264,11 @@ persistent_peers_max_dial_period = "0s"
 # Time to wait before flushing messages out on the connection
 flush_throttle_timeout = "100ms"
 
+# Flush latency-critical messages (votes, round steps, compact blocks,
+# haves, wants, recovery parts) as soon as none are left queued, instead of
+# waiting for flush_throttle_timeout. Other traffic stays batched.
+flush_low_latency = true
+
 # Maximum size of a message packet payload, in bytes
 max_packet_msg_payload_size = 1024
 
@@ -548,6 +553,70 @@ Here's a brief summary of the timeouts:
 - `timeout_commit` = how long a validator should wait after committing a block, before starting
   on the new height (this gives us a chance to receive some more precommits,
   even though we already have +2/3)
+
+### Dynamic timeout commit (application-set)
+
+`timeout_commit`, `skip_timeout_commit` and the application's delayed precommit
+timeout behave as described above. The application can also return
+`dynamic_timeout_commit` in `TimeoutInfo`, a floor on the interval between the
+start times of consecutive heights. It has no `config.toml` setting, and `0`
+(the default) disables it, leaving the behaviour above unchanged. When it is set,
+a node starts height `H+1` at
+
+`max(now, CommitTime(H) + timeout_commit, StartTime(H) + dynamic_timeout_commit)`
+
+where `StartTime(H)` is when the node started height `H` on its own clock. A node
+with no start on that schedule keeps `max(now, CommitTime(H) + timeout_commit)`
+for one height and paces from there: on the first height after start-up, when `H`
+was committed before its `StartTime` (it fell behind, or its clock stepped back),
+and on the first height with `dynamic_timeout_commit` set, so an upgrade enabling
+it keeps the previous `timeout_commit` at the upgrade height and paces from the
+next one. Nodes already on the schedule also start about `timeout_commit` after
+the same commit, so a restarted node rejoins it at once. Disabling it leaves one
+height paced only by `timeout_commit`. Proposal, voting and block execution count towards the
+interval, so a loaded block pays only for its own work, and a height that already
+took longer starts the next one immediately. Round 0 starts when the deadline's
+timer fires, and a complete proposal received earlier is held until then (WAL
+replay is never held); `skip_timeout_commit` is ignored while
+`dynamic_timeout_commit` is set. +2/3 precommits for the new
+height start round 0 at once, and a node commits on a +2/3 majority from any step,
+which is how a lagging node catches up without waiting at every height.
+
+The floor is per node, start to start on its own clock: nodes that started a
+height at different times keep that offset, so the network-wide interval is
+`dynamic_timeout_commit` on average, not at every height. With a short
+`timeout_commit`, a validator whose precommit arrives after the next proposal is
+built may be absent from its `LastCommit`. Applications that move pacing to the
+dynamic floor return a short `timeout_commit` (celestia-app v11: 100ms, a window
+for late precommits; `0` means "use `config.toml`") and a delayed precommit
+timeout of `0`.
+
+### Disaster recovery: legacy pacing
+
+If dynamic pacing misbehaves on a live network, validators can return to the
+legacy rule without an application release by setting, in `[consensus]`:
+
+```toml
+legacy_pacing = true
+legacy_pacing_timeout_commit = "100ms"
+legacy_pacing_delayed_precommit_timeout = "550ms"
+```
+
+The node then ignores the application's `dynamic_timeout_commit` and uses these
+two values instead of the application's `timeout_commit` and delayed precommit
+timeout (`0` means no wait); everything else, including stored state, is
+unchanged. It has no effect while the application returns
+`dynamic_timeout_commit = 0`, so leaving it on cannot change a legacy-paced chain. The interval is
+then about `timeout_commit + delayed precommit timeout + one precommit round`;
+the defaults give about the same block time as the 800 ms dynamic floor.
+
+Pacing is local timing, so the switch is safe in a mixed network, but it only
+slows the chain once validators with more than 1/3 of the stake use it: every
+height then waits for one of their delayed precommits. Below 1/3, the others
+commit without them, and because the delayed precommit holds the node's
+consensus routine, these validators fall behind and miss most of their
+signatures. Coordinate the switch, apply it with a rolling restart (restarting
+all validators at once can halt the chain), and revert the same way.
 
 ### The adverse effect of using inconsistent `timeout_propose` in a network
 

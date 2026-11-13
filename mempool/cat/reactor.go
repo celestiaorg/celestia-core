@@ -144,7 +144,7 @@ func NewReactor(mempool *TxPool, opts *ReactorOptions) (*Reactor, error) {
 		mempool:        mempool,
 		ids:            newMempoolIDs(),
 		requests:       newRequestScheduler(opts.MaxGossipDelay, defaultGlobalRequestTimeout),
-		receivedBuffer: newReceivedTxBuffer(),
+		receivedBuffer: newReceivedTxBuffer(mempool.config.MaxTxsBytes),
 		traceClient:    traceClient,
 	}
 	memR.BaseReactor = *p2p.NewBaseReactor("CAT", memR,
@@ -724,6 +724,13 @@ func (memR *Reactor) processReceivedBuffer(signer []byte) {
 			break
 		}
 
+		// Txs below the expected sequence can never be applied: their
+		// sequences were consumed some other way. Drop them even when
+		// nothing is buffered at the expected sequence.
+		for _, key := range memR.receivedBuffer.removeBelow(signer, expectedSeq) {
+			memR.mempool.seenTracker.RemoveKey(key)
+		}
+
 		buffered := memR.receivedBuffer.get(signer, expectedSeq)
 		if buffered == nil {
 			break
@@ -860,6 +867,7 @@ func (memR *Reactor) refreshPendingSeenQueues() {
 	// Age out stale entries (peer disconnected, gap never filled) before
 	// scheduling more work.
 	memR.mempool.seenTracker.PruneExpired()
+	memR.pruneExpiredBuffered(time.Now())
 
 	// Collect signers from both the tracker's pending queue and the buffer.
 	seenSigners := make(map[string][]byte)
@@ -884,6 +892,14 @@ func (memR *Reactor) refreshPendingSeenQueues() {
 	}
 }
 
+// pruneExpiredBuffered drops buffered txs whose gap was not filled within
+// seenEntryTTL, the same lifetime the seen tracker gives pending entries.
+func (memR *Reactor) pruneExpiredBuffered(now time.Time) {
+	for _, key := range memR.receivedBuffer.pruneOlderThan(now.Add(-seenEntryTTL)) {
+		memR.mempool.seenTracker.RemoveKey(key)
+	}
+}
+
 func (memR *Reactor) querySequenceFromApplication(signer []byte) (uint64, bool) {
 	ctx := context.Background()
 	resp, err := memR.mempool.proxyAppConn.QuerySequence(ctx, &abci.RequestQuerySequence{Signer: signer})
@@ -898,6 +914,10 @@ func (memR *Reactor) querySequenceFromApplication(signer []byte) (uint64, bool) 
 func (memR *Reactor) findNewPeerToRequestTx(txKey types.TxKey) {
 	// ensure that we are connected to peers
 	if memR.ids.Len() == 0 {
+		return
+	}
+	// a late response may already have delivered the tx
+	if memR.mempool.Has(txKey) {
 		return
 	}
 

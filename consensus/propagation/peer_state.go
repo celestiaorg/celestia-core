@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"sync/atomic"
+	"time"
 
 	proptypes "github.com/cometbft/cometbft/consensus/propagation/types"
 	"github.com/cometbft/cometbft/libs/bits"
@@ -343,6 +344,12 @@ func (d *PeerState) prune(prunePastHeight int64) {
 	for height := range d.state {
 		if height < prunePastHeight {
 			delete(d.state, height)
+		}
+	}
+	// A want that needs no new wants recorded sets a request counter without a
+	// part state entry, so prune the counters on their own.
+	for height := range d.remainingRequests {
+		if height < prunePastHeight {
 			delete(d.remainingRequests, height)
 		}
 	}
@@ -413,6 +420,8 @@ type partState struct {
 	haves    *bits.BitArray
 	wants    *bits.BitArray
 	requests *bits.BitArray
+	// requestedAt is when requests were last added.
+	requestedAt time.Time
 }
 
 // newpartState initializes and returns a new partState
@@ -434,6 +443,7 @@ func (p *partState) addWants(wants *bits.BitArray) {
 
 func (p *partState) addRequests(requests *bits.BitArray) {
 	p.requests.AddBitArray(requests)
+	p.requestedAt = time.Now()
 }
 
 // SetHave sets the have bit for a given part.
@@ -445,4 +455,22 @@ func (p *partState) setHave(index int, has bool) {
 // SetWant sets the want bit for a given part.
 func (p *partState) setWant(part int, wants bool) {
 	p.wants.SetIndex(part, wants)
+}
+
+// ExpireRequests clears the requests for a given height and round if none
+// were added within timeout.
+func (d *PeerState) ExpireRequests(height int64, round int32, timeout time.Duration) {
+	d.mtx.Lock()
+	defer d.mtx.Unlock()
+	hdata, has := d.state[height]
+	if !has {
+		return
+	}
+	rdata, has := hdata[round]
+	if !has || rdata.requests.IsEmpty() {
+		return
+	}
+	if time.Since(rdata.requestedAt) >= timeout {
+		rdata.requests = bits.NewBitArray(rdata.requests.Size())
+	}
 }

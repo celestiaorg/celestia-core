@@ -17,6 +17,7 @@ import (
 	cmtos "github.com/cometbft/cometbft/libs/os"
 	"github.com/cometbft/cometbft/libs/service"
 	cmtcons "github.com/cometbft/cometbft/proto/tendermint/consensus"
+	"github.com/cometbft/cometbft/types"
 	cmttime "github.com/cometbft/cometbft/types/time"
 )
 
@@ -43,12 +44,21 @@ type EndHeightMessage struct {
 	Height int64 `json:"height"`
 }
 
+// LockInfo journals the lock held when a precommit is signed. Round -1 is an unlock.
+type LockInfo struct {
+	Height    int64         `json:"height"`
+	Round     int32         `json:"round"`
+	BlockID   types.BlockID `json:"block_id"`
+	BlockTime time.Time     `json:"block_time"`
+}
+
 type WALMessage interface{}
 
 func init() {
 	cmtjson.RegisterType(msgInfo{}, "tendermint/wal/MsgInfo")
 	cmtjson.RegisterType(timeoutInfo{}, "tendermint/wal/TimeoutInfo")
 	cmtjson.RegisterType(EndHeightMessage{}, "tendermint/wal/EndHeightMessage")
+	cmtjson.RegisterType(LockInfo{}, "tendermint/wal/LockInfo")
 }
 
 //--------------------------------------------------------

@@ -182,6 +182,7 @@ func (conR *Reactor) GetChannels() []*p2p.ChannelDescriptor {
 		{
 			ID:                  StateChannel,
 			Priority:            230,
+			LowLatency:          true,
 			SendQueueCapacity:   200,
 			RecvMessageCapacity: maxMsgSize,
 			MessageType:         &cmtcons.Message{},
@@ -189,6 +190,7 @@ func (conR *Reactor) GetChannels() []*p2p.ChannelDescriptor {
 		{
 			ID:                  VoteChannel,
 			Priority:            235,
+			LowLatency:          true,
 			SendQueueCapacity:   200,
 			RecvBufferCapacity:  100 * 100,
 			RecvMessageCapacity: maxMsgSize,
@@ -197,6 +199,7 @@ func (conR *Reactor) GetChannels() []*p2p.ChannelDescriptor {
 		{
 			ID:                  VoteSetBitsChannel,
 			Priority:            206,
+			LowLatency:          true,
 			SendQueueCapacity:   10,
 			RecvBufferCapacity:  1024,
 			RecvMessageCapacity: maxMsgSize,
@@ -1014,8 +1017,10 @@ func (conR *Reactor) gossipVotesForHeight(
 			return true
 		}
 	}
-	// If there are precommits to send...
-	if prs.Step <= cstypes.RoundStepPrecommitWait && prs.Round != -1 && prs.Round <= rs.Round {
+	// If there are precommits to send... Under dynamic pacing a committing peer may
+	// start its next height without a window, so it also needs late precommits.
+	if prs.Round != -1 && prs.Round <= rs.Round &&
+		(prs.Step <= cstypes.RoundStepPrecommitWait || (prs.Step == cstypes.RoundStepCommit && conR.dynamicPacing())) {
 		if conR.pickSendVoteAndTrace(rs.Votes.Precommits(prs.Round), rs, ps) {
 			logger.Trace("Picked rs.Precommits(prs.Round) to send", "round", prs.Round)
 			return true
@@ -1040,6 +1045,12 @@ func (conR *Reactor) gossipVotesForHeight(
 	}
 
 	return false
+}
+
+func (conR *Reactor) dynamicPacing() bool {
+	conR.conS.stateMtx.RLock()
+	defer conR.conS.stateMtx.RUnlock()
+	return conR.conS.dynamicTimeoutCommit() > 0
 }
 
 // NOTE: `queryMaj23Routine` has a simple crude design since it only comes
@@ -1210,6 +1221,13 @@ func (conR *Reactor) peerStatsRoutine() {
 					conR.Switch.MarkPeerAsGood(peer)
 				}
 			}
+		case pe := <-conR.conS.badPeerQueue:
+			// Stop the peer here rather than in the state machine, which
+			// must not call into the switch while holding its locks.
+			if peer := conR.Switch.Peers().Get(pe.peerID); peer != nil {
+				conR.Switch.StopPeerForError(peer, pe.err, conR.String())
+			}
+
 		case <-conR.conS.Quit():
 			return
 

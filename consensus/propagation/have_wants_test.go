@@ -9,6 +9,7 @@ import (
 
 	cfg "github.com/cometbft/cometbft/config"
 	proptypes "github.com/cometbft/cometbft/consensus/propagation/types"
+	"github.com/cometbft/cometbft/libs/bits"
 	cmtrand "github.com/cometbft/cometbft/libs/rand"
 	"github.com/cometbft/cometbft/state"
 	"github.com/cometbft/cometbft/types"
@@ -182,4 +183,53 @@ func TestCountRemainingParts(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestHandleWantsTracksOnlyCachedRounds checks that wants for heights and
+// rounds this node has no cached proposal for do not grow the peer's state,
+// while a want for a committed block is still served from the block store.
+func TestHandleWantsTracksOnlyCachedRounds(t *testing.T) {
+	reactors, switches := createTestReactors(2, defaultTestP2PConf(), false, "")
+	stopSwitchesOnCleanup(t, switches)
+	n1, n2 := reactors[0], reactors[1]
+	require.Eventually(t, func() bool {
+		return n1.getPeer(n2.self) != nil && n2.getPeer(n1.self) != nil
+	}, 5*time.Second, 10*time.Millisecond)
+
+	cleanup, _, sm, pv := state.SetupTestCaseWithPrivVal(t)
+	t.Cleanup(func() { cleanup(t) })
+
+	// n1 has committed height 1 and moved on to height 2.
+	prop, ps, block, _ := createTestProposal(t, sm, pv, 1, 0, 2, 1000)
+	n1.store.SaveBlock(block, ps, &types.Commit{Height: 1})
+	n1.pmtx.Lock()
+	n1.height = 2
+	n1.pmtx.Unlock()
+
+	combinedTotal := int(ps.Total()) * 2
+	want := func(height int64, round int32) *proptypes.WantParts {
+		parts := bits.NewBitArray(combinedTotal)
+		parts.Fill()
+		return &proptypes.WantParts{Height: height, Round: round, Prove: true, Parts: parts, MissingPartsCount: 1}
+	}
+	for r := int32(0); r < 100; r++ {
+		n1.handleWants(n2.self, want(1, r))    // committed height, served from the store
+		n1.handleWants(n2.self, want(2, r))    // current height, nothing cached
+		n1.handleWants(n2.self, want(1000, r)) // far future height
+	}
+
+	peer := n1.getPeer(n2.self)
+	require.NotNil(t, peer)
+	peer.mtx.RLock()
+	require.Empty(t, peer.state, "peer part state grew for uncached rounds")
+	require.Empty(t, peer.remainingRequests, "peer request counters grew for uncached rounds")
+	peer.mtx.RUnlock()
+
+	// A node still waiting for the committed block catches up from n1's store.
+	psh := ps.Header()
+	n2.AddCommitment(prop.Height, prop.Round, &psh)
+	require.Eventually(t, func() bool {
+		_, parts, has := n2.GetProposal(prop.Height, prop.Round)
+		return has && parts.IsComplete()
+	}, 5*time.Second, 50*time.Millisecond)
 }

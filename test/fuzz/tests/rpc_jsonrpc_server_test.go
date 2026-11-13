@@ -103,10 +103,6 @@ func rawRPCReplies(body []byte, maxBatch int) (replies []rpcReply, ok bool) {
 		if req.ID == nil {
 			continue // notifications get no response
 		}
-		// Excluded pending PROTOCO-3521; remove with the fix.
-		if req.Method == "c" && len(req.Params) == 0 {
-			return nil, false
-		}
 		replies = append(replies, rpcReply{id: req.ID})
 	}
 	return replies, true
@@ -208,15 +204,9 @@ func genRPCRequest(r *fuzzinput.Reader) (req map[string]any, reply *rpcReply, ba
 	}
 	req["method"] = method
 
-	// Excluded pending PROTOCO-3521 (a call to c without params panics);
-	// remove with the fix.
-	paramsKinds := 15
-	if method == "c" && id != nil {
-		paramsKinds = 14
-	}
 	args := map[string]any{"s": rpcString(r), "i": strconv.Itoa(int(r.Int32()))}
 	ok := true
-	switch r.Intn(paramsKinds) {
+	switch r.Intn(15) {
 	case 0:
 		req["params"] = nil
 	case 1:
