@@ -13,6 +13,7 @@ import (
 	cstypes "github.com/cometbft/cometbft/consensus/types"
 	"github.com/cometbft/cometbft/p2p"
 	cmtcons "github.com/cometbft/cometbft/proto/tendermint/consensus"
+	cmtproto "github.com/cometbft/cometbft/proto/tendermint/types"
 )
 
 // laterRoundsFilter is missedBlockFilter that also drops every vote after round 0
@@ -49,28 +50,7 @@ func testRestartAllAfterLock(t *testing.T, p0Delay time.Duration) {
 		TimeoutCommit: 200 * time.Millisecond,
 	}
 	css, restartNode := newRestartFleetFn(t, n, ti)
-
-	// roles at the target height: proposer priorities advance once per height.
-	vals := css[0].GetState().Validators.CopyIncrementProposerPriority(int32(target - 1))
-	p0Addr := vals.GetProposer().Address
-	p1Addr := vals.CopyIncrementProposerPriority(1).GetProposer().Address
-	valIdx := map[int32]int{}
-	p0, d, b, c := -1, -1, -1, -1
-	for i, cs := range css {
-		addr := cs.privValidatorPubKey.Address()
-		idx, _ := vals.GetByAddress(addr)
-		valIdx[idx] = i
-		switch {
-		case bytes.Equal(addr, p0Addr):
-			p0 = i
-		case bytes.Equal(addr, p1Addr):
-			d = i
-		case b < 0:
-			b = i
-		default:
-			c = i
-		}
-	}
+	p0, d, b, c, valIdx := restartRoles(css, target)
 
 	reactors, blocksSubs, eventBuses := startPropagationNet(t, css, func(i int, r p2p.Reactor) p2p.Reactor {
 		return laterRoundsFilter{&missedBlockFilter{Reactor: r, node: i, d: d, b: b, c: c, target: target, valIdx: valIdx}}
@@ -102,6 +82,119 @@ func testRestartAllAfterLock(t *testing.T, p0Delay time.Duration) {
 	defer stopConsensusNet(css2[0].Logger, reactors2, eventBuses2)
 	time.Sleep(p0Delay)
 	reactors2[p0].SwitchToConsensus(css2[p0].GetState(), false)
+	require.Eventually(t, func() bool {
+		for _, cs := range css2 {
+			if cs.GetRoundState().Height <= target {
+				return false
+			}
+		}
+		return true
+	}, 30*time.Second, 50*time.Millisecond, "not every node committed height %d after the restart", target)
+	for i, cs := range css2 {
+		require.Equal(t, x, cs.blockStore.LoadBlock(target).Hash(), "node %d", i)
+	}
+}
+
+// restartRoles returns, at height target, the round-0 proposer p0, the round-1 proposer d,
+// the two other validators b and c, and each validator index's node.
+func restartRoles(css []*State, target int64) (p0, d, b, c int, valIdx map[int32]int) {
+	// proposer priorities advance once per height.
+	vals := css[0].GetState().Validators.CopyIncrementProposerPriority(int32(target - 1))
+	p0Addr := vals.GetProposer().Address
+	p1Addr := vals.CopyIncrementProposerPriority(1).GetProposer().Address
+	valIdx = map[int32]int{}
+	p0, d, b, c = -1, -1, -1, -1
+	for i, cs := range css {
+		addr := cs.privValidatorPubKey.Address()
+		idx, _ := vals.GetByAddress(addr)
+		valIdx[idx] = i
+		switch {
+		case bytes.Equal(addr, p0Addr):
+			p0 = i
+		case bytes.Equal(addr, p1Addr):
+			d = i
+		case b < 0:
+			b = i
+		default:
+			c = i
+		}
+	}
+	return p0, d, b, c, valIdx
+}
+
+// unlockedProposerFilter is laterRoundsFilter that also hides c's round-0 prevote from p0,
+// so p0 sees no polka for its own block and does not lock on it.
+type unlockedProposerFilter struct {
+	laterRoundsFilter
+	p0 int
+}
+
+func (f unlockedProposerFilter) QueueUnprocessedEnvelope(e p2p.UnprocessedEnvelope) {
+	if f.node == f.p0 && e.ChannelID == VoteChannel {
+		m := &cmtcons.Message{}
+		if proto.Unmarshal(e.Message, m) == nil {
+			if v := m.GetVote(); v != nil && v.Vote != nil && v.Vote.Height == f.target && v.Vote.Round == 0 &&
+				v.Vote.Type == cmtproto.PrevoteType && f.valIdx[v.Vote.ValidatorIndex] == f.c {
+				return
+			}
+		}
+	}
+	f.laterRoundsFilter.QueueUnprocessedEnvelope(e)
+}
+
+// p0 proposes X in round 0 but sees no polka, so only b and c lock on X; d never gets X and
+// proposes Y in round 1. All four restart in round 1 with no locked-block copy: only p0's
+// replayed WAL holds X, and the lockers block any other block.
+func TestRestartAllAfterUnlockedProposerRound(t *testing.T) {
+	const n = 4
+	const target = int64(3)
+	ti := abci.TimeoutInfo{
+		TimeoutPropose: 2 * time.Second, TimeoutProposeDelta: 500 * time.Millisecond,
+		TimeoutPrevote: 500 * time.Millisecond, TimeoutPrevoteDelta: 100 * time.Millisecond,
+		TimeoutPrecommit: 500 * time.Millisecond, TimeoutPrecommitDelta: 100 * time.Millisecond,
+		TimeoutCommit: 200 * time.Millisecond,
+	}
+	css, restartNode := newRestartFleetFn(t, n, ti)
+	noCopy := func(cs *State) *State {
+		cs.lockedBlockDelay = func() time.Duration { return time.Hour }
+		return cs
+	}
+	for _, cs := range css {
+		noCopy(cs)
+	}
+	p0, d, b, c, valIdx := restartRoles(css, target)
+
+	reactors, blocksSubs, eventBuses := startPropagationNet(t, css, func(i int, r p2p.Reactor) p2p.Reactor {
+		return unlockedProposerFilter{laterRoundsFilter{&missedBlockFilter{Reactor: r, node: i, d: d, b: b, c: c, target: target, valIdx: valIdx}}, p0}
+	})
+	stopRun1 := sync.OnceFunc(func() { stopConsensusNet(css[0].Logger, reactors, eventBuses) })
+	t.Cleanup(stopRun1)
+	for h := int64(1); h < target; h++ {
+		timeoutWaitGroup(n, func(j int) { <-blocksSubs[j].Out() })
+	}
+	require.Eventually(t, func() bool {
+		for i, cs := range css {
+			rs := cs.GetRoundState()
+			if rs.Height != target || rs.Round != 1 || rs.Step != cstypes.RoundStepPrevote ||
+				rs.Proposal == nil || rs.Proposal.Round != 1 ||
+				((i == b || i == c) && rs.LockedRound != 0) || (i == p0 && rs.IsLocked()) {
+				return false
+			}
+		}
+		return true
+	}, 30*time.Second, 10*time.Millisecond, "the fleet did not park in round 1 with only b and c locked")
+	x := css[b].GetRoundState().LockedBlockID.Hash
+	require.Equal(t, x, css[c].GetRoundState().LockedBlockID.Hash)
+	require.NotEqual(t, x, css[d].GetRoundState().Proposal.BlockID.Hash)
+	require.Nil(t, css[p0].GetRoundState().ValidBlock)
+	stopRun1()
+
+	css2 := make([]*State, n)
+	for i := range css {
+		css2[i] = noCopy(restartNode(i))
+	}
+	reactors2, _, eventBuses2 := startPropagationNet(t, css2, nil)
+	defer stopConsensusNet(css2[0].Logger, reactors2, eventBuses2)
 	require.Eventually(t, func() bool {
 		for _, cs := range css2 {
 			if cs.GetRoundState().Height <= target {
