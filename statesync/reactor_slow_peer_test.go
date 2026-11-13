@@ -55,7 +55,22 @@ func newCountingReactor(opts ...p2p.ReactorOptions) *countingReactor {
 }
 
 func (*countingReactor) GetChannels() []*p2p.ChannelDescriptor {
-	return NewReactor(*config.DefaultStateSyncConfig(), nil, nil, NopMetrics()).GetChannels()
+	return []*p2p.ChannelDescriptor{
+		{
+			ID:                  SnapshotChannel,
+			Priority:            5,
+			SendQueueCapacity:   10,
+			RecvMessageCapacity: snapshotMsgSize,
+			MessageType:         &ssproto.Message{},
+		},
+		{
+			ID:                  ChunkChannel,
+			Priority:            3,
+			SendQueueCapacity:   10,
+			RecvMessageCapacity: chunkMsgSize,
+			MessageType:         &ssproto.Message{},
+		},
+	}
 }
 
 func (r *countingReactor) Receive(e p2p.Envelope) {
