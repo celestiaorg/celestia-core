@@ -16,8 +16,9 @@ Approvals are not bound to a commit: they persist across later pushes.
 | Medium | 0 for a trusted author; otherwise 1 |
 | High | 1 |
 
-A trusted author is a human with write, maintain, or admin permission.
-Bot-authored PRs (including coding agents, Dependabot, and Mergify backports)
+A trusted author is a human with write, maintain, or admin permission, or
+Dependabot, whose tier is fixed by the title prefix in `.github/dependabot.yml`.
+Other bot-authored PRs (including coding agents and Mergify backports)
 and PRs from people without write permission always need one human approval.
 The maintainer who prompted an agent may give it.
 
@@ -33,7 +34,7 @@ cannot merge, a change request from a reviewer with write access blocks the
 merge, and approvals survive pushes because stale approvals are not dismissed.
 
 `auto-approve.yml` approves as a GitHub App when a PR is not a draft, its title
-tag is `[low]` or `[medium]`, and its author is a trusted human. When a PR
+tag is `[low]` or `[medium]`, and its author is trusted. When a PR
 stops qualifying (retitled to `[high]`, converted to a draft, or its author
 loses write access), the workflow dismisses the App's approval. `[high]` PRs
 are never auto-approved, so they always wait for a human.
@@ -44,11 +45,13 @@ branch's copy of the workflow, so it covers stacked PRs whatever their base. A
 changes. It never checks out or runs PR code; it reads only the event payload
 and the GitHub API.
 
-`CODEOWNERS` assigns `@celestiaorg/protocol` to `.github/`, the agent
-instruction files, and the root `README.md`. Because the author picks the
-tier, code-owner review ensures a `[low]` PR cannot change this policy, CI, or
-agent behavior without a protocol team approval; the App's approval never
-satisfies code-owner review.
+`CODEOWNERS` assigns `@celestiaorg/protocol` to this policy,
+`auto-approve.yml`, `dependabot.yml`, `CODEOWNERS` itself, the agent
+instruction files, and the root `README.md`. Because the author picks the tier,
+code-owner review ensures a `[low]` PR cannot change this policy or agent
+behavior without a protocol team approval; the App's approval never satisfies
+code-owner review. Other files under `.github/`, including CI workflows, have
+no code owner, so the App's approval covers them like any other change.
 
 ## Administrator setup
 

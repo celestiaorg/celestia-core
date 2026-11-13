@@ -6,10 +6,17 @@
 # and artifacts are public. The nightly jobs therefore print only PASS or FAIL,
 # and on main file a Linear issue holding the output and the crashing input.
 #
+# Each nightly target's generated corpus is cached between runs, so every night
+# starts from the inputs earlier nights found. The cache holds only inputs that
+# did not fail: go test writes a crashing input to the package's testdata/fuzz
+# directory, which is never cached or uploaded. See test/fuzz/README.md.
+#
 # Pull requests skip the per-target matrix, which would start one job per
 # target, and run fuzz-changed instead: a single job that briefly fuzzes the
 # targets in the packages the pull request changes. Seed corpora run in the
-# regular test jobs either way.
+# regular test jobs either way. They also run fuzz-targets-listed, which fails
+# when a fuzz target is in neither the matrix below nor
+# test/fuzz/nightly-excluded.txt.
 name: Fuzz Tests
 on:
   workflow_dispatch:  # allow running workflow manually
@@ -22,6 +29,8 @@ on:
       - "go.mod"
       - "go.sum"
       - "scripts/fuzz-changed.sh"
+      - "scripts/check-fuzz-targets.sh"
+      - "test/fuzz/nightly-excluded.txt"
       - "scripts/fuzz-only-deadline*.sh"
       - ".github/workflows/fuzz-nightly.yml"
 
@@ -40,6 +49,17 @@ jobs:
     if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    permissions:
+      contents: read
+      # Deletes this target's superseded corpus cache entries.
+      actions: write
+    env:
+      # Bump the version to drop every saved corpus. Entries that no longer
+      # match a target's argument types are skipped by go test, so a signature
+      # change does not need a bump.
+      CORPUS_KEY: fuzz-corpus-v1-${{ matrix.package }}/${{ matrix.target }}-
+      # A corpus larger than this is not saved; see test/fuzz/README.md.
+      CORPUS_MAX_MIB: 32
     strategy:
       fail-fast: false
       matrix:
@@ -88,6 +108,7 @@ jobs:
           - {package: evidence, target: EvidencePool, priority: 1}
           - {package: evidence, target: EvidenceReactorReceive, priority: 1}
           - {package: types, target: UnwrapLegacyBlobTx, priority: 1}
+          - {package: proto/tendermint/types, target: CheckBlockCardinality, priority: 1}
           - {package: light, target: LightClientVerify, priority: 2}
           - {package: light/provider/http, target: HTTPProviderLightBlock, priority: 2}
     steps:
@@ -96,33 +117,33 @@ jobs:
         with:
           go-version-file: 'go.mod'
 
-      - name: Locate fuzz cache
-        id: fuzz-cache
-        run: echo "path=$(go env GOCACHE)/fuzz" >> "$GITHUB_OUTPUT"
-
-      # Bump the key prefix whenever fuzz target signatures change, so
-      # entries cached under an old signature are not replayed.
+      # The corpus lives under runner.temp rather than GOCACHE, so setup-go's
+      # build cache neither overwrites it nor saves it.
       - name: Restore fuzz corpus
-        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
-          path: ${{ steps.fuzz-cache.outputs.path }}
-          key: fuzz-v2-${{ runner.os }}-${{ matrix.target }}-${{ github.run_id }}-${{ github.run_attempt }}
-          restore-keys: fuzz-v2-${{ runner.os }}-${{ matrix.target }}-
+          path: ${{ runner.temp }}/fuzz-corpus
+          key: ${{ env.CORPUS_KEY }}${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: ${{ env.CORPUS_KEY }}
 
       # The output stays in a file under runner.temp and is sent only to Linear.
       - name: Fuzz
+        id: fuzz
         env:
           FUZZ_PACKAGE: ./${{ matrix.package }}
           FUZZ_TARGET: Fuzz${{ matrix.target }}
           FUZZ_PRIORITY: ${{ matrix.priority }}
           FUZZTIME: 10m
           FUZZ_LOG_DIR: ${{ runner.temp }}/fuzz
+          FUZZ_CACHE_DIR: ${{ runner.temp }}/fuzz-corpus/${{ matrix.package }}
         run: |
           mkdir -p "$FUZZ_LOG_DIR"
           : >"$FUZZ_LOG_DIR/failed.txt"
           log="$FUZZ_LOG_DIR/$FUZZ_TARGET.log"
           # go test exits 0 with "no fuzz tests to fuzz" when the target is missing.
-          if go test -run='^$' -fuzz="^${FUZZ_TARGET}$" -fuzztime="$FUZZTIME" -parallel=2 "$FUZZ_PACKAGE" >"$log" 2>&1 &&
+          # go test passes its own -test.fuzzcachedir first, so this one wins.
+          if go test -run='^$' -fuzz="^${FUZZ_TARGET}$" -fuzztime="$FUZZTIME" -parallel=2 "$FUZZ_PACKAGE" \
+            -args -test.fuzzcachedir="$FUZZ_CACHE_DIR" >"$log" 2>&1 &&
             ! grep -q 'no fuzz tests to fuzz' "$log"; then
             echo "PASS $FUZZ_TARGET"
           elif scripts/fuzz-only-deadline.sh "$log" "$FUZZ_TARGET"; then
@@ -144,6 +165,63 @@ jobs:
           COMMIT_SHA: ${{ github.sha }}
           TITLE_PREFIX: Nightly celestia-core fuzz failure
         run: python3 .github/scripts/report-fuzz-failures.py
+
+      # Saves the corpus even when the target fails, so inputs found before a
+      # crash are kept.
+      - name: Check fuzz corpus size
+        id: corpus
+        if: ${{ !cancelled() && (steps.fuzz.outcome == 'success' || steps.fuzz.outcome == 'failure') }}
+        env:
+          FUZZ_TARGET: Fuzz${{ matrix.target }}
+          CORPUS_DIR: ${{ runner.temp }}/fuzz-corpus
+        run: |
+          if [ ! -d "$CORPUS_DIR" ]; then
+            echo "No corpus to save"
+            exit 0
+          fi
+          files=$(find "$CORPUS_DIR" -type f | wc -l)
+          mib=$(du -sm --apparent-size "$CORPUS_DIR" | cut -f1)
+          echo "Corpus: $files files, $mib MiB"
+          if [ "$mib" -gt "$CORPUS_MAX_MIB" ]; then
+            echo "::warning::$FUZZ_TARGET corpus is $mib MiB, over the ${CORPUS_MAX_MIB} MiB cap; not saving it"
+            exit 0
+          fi
+          echo "save=true" >> "$GITHUB_OUTPUT"
+
+      - name: Save fuzz corpus
+        id: save-corpus
+        if: ${{ !cancelled() && steps.corpus.outputs.save == 'true' }}
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ runner.temp }}/fuzz-corpus
+          key: ${{ env.CORPUS_KEY }}${{ github.run_id }}-${{ github.run_attempt }}
+
+      # Each save holds the whole corpus, so only the newest entry is needed.
+      # Keeping the newest by creation time, not by this run's key, never
+      # deletes the last good corpus if the save above did not land.
+      - name: Delete superseded fuzz corpora
+        if: ${{ !cancelled() && steps.save-corpus.outcome == 'success' }}
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          gh cache list --ref "$GITHUB_REF" --key "$CORPUS_KEY" --limit 100 --json id,key,createdAt |
+            jq -r 'sort_by(.createdAt) | reverse | .[1:][] | "\(.id) \(.key)"' |
+            while read -r id key; do
+              echo "Deleting $key"
+              gh cache delete "$id" || echo "::warning::Could not delete cache $key"
+            done
+
+  fuzz-targets-listed:
+    name: Fuzz targets listed
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Check every fuzz target is nightly or excluded
+        run: scripts/check-fuzz-targets.sh
 
   fuzz-changed:
     name: Fuzz changed packages

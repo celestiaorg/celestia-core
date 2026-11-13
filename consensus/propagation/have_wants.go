@@ -375,7 +375,17 @@ func (blockProp *Reactor) handleWants(peer p2p.ID, wants *proptypes.WantParts) {
 
 	// get data, use the prove as a proxy for determining if this Want message
 	// if for catchup
-	_, parts, _, has := blockProp.getAllState(height, round, wants.Prove)
+	_, parts, has, committed := blockProp.getCachedState(height, round, wants.Prove)
+	// at a committed height only the committed block is useful: a cached entry for
+	// another block must not shadow the store.
+	if has && wants.Prove && committed {
+		meta := blockProp.store.LoadBlockMeta(height)
+		has = meta == nil || parts.Original().Header().Equals(meta.BlockID.PartSetHeader)
+	}
+	if !has && wants.Prove && committed {
+		blockProp.handleStoredWants(p, wants)
+		return
+	}
 	// the peer must always send the proposal before sending parts, if they did
 	//  not, this node must disconnect from them.
 	if !has {
@@ -397,9 +407,16 @@ func (blockProp *Reactor) handleWants(peer p2p.ID, wants *proptypes.WantParts) {
 		return
 	}
 
-	p.SetRemainingRequests(height, round, int(wants.MissingPartsCount))
+	// Only keep per-peer request state for a proposal cached at exactly this
+	// height and round, which pruning bounds. Wants answered from the block
+	// store are served without it, as they may name any round.
+	tracked := blockProp.hasCachedRound(height, round)
+	untrackedRemaining := int(wants.MissingPartsCount)
+	if tracked {
+		p.SetRemainingRequests(height, round, untrackedRemaining)
+	}
 	for _, partIndex := range canSend.GetTrueIndices() {
-		if p.GetRemainingRequests(height, round) <= 0 {
+		if tracked && p.GetRemainingRequests(height, round) <= 0 || !tracked && untrackedRemaining <= 0 {
 			break
 		}
 		part, _ := parts.GetPart(uint32(partIndex))
@@ -423,15 +440,80 @@ func (blockProp *Reactor) handleWants(peer p2p.ID, wants *proptypes.WantParts) {
 			blockProp.Logger.Error("failed to send part", "peer", peer, "height", height, "round", round, "part", partIndex)
 			continue
 		}
-		p.DecreaseRemainingRequests(height, round, 1)
+		if tracked {
+			p.DecreaseRemainingRequests(height, round, 1)
+		} else {
+			untrackedRemaining--
+		}
 		// p.SetHave(height, round, int(partIndex))
 		schema.WriteBlockPart(blockProp.traceClient, height, round, part.Index, wants.Prove, string(peer), schema.Upload)
 	}
 
 	// for parts that we don't have, but they still want, store the wants.
 	stillMissing := wants.Parts.Sub(canSend)
-	if !stillMissing.IsEmpty() {
+	if tracked && !stillMissing.IsEmpty() {
 		p.AddWants(height, round, stillMissing)
+	}
+}
+
+// handleStoredWants serves a catchup want for a committed height that is no
+// longer cached. It loads from the block store only the parts it sends. It
+// stops at the first failed send, and it takes each part load from a budget
+// that all peers share. This bounds the work that small want messages can
+// cause on the reactor's single processing goroutine.
+func (blockProp *Reactor) handleStoredWants(p *PeerState, wants *proptypes.WantParts) {
+	height, round := wants.Height, wants.Round
+	peer := p.peer.ID()
+
+	meta := blockProp.store.LoadBlockMeta(height)
+	if meta == nil {
+		blockProp.Logger.Debug("received catchup want for unknown height", "peer", peer, "height", height)
+		return
+	}
+	// The block store keeps only the original parts. A want covers the
+	// original and parity parts, so its size is twice the original total.
+	total := int(meta.BlockID.PartSetHeader.Total)
+	if wants.Parts.Size() != total*2 {
+		blockProp.Logger.Error("received want part with invalid parts size", "peer", peer, "height", height, "round", round, "expected_parts_size", total*2, "received_parts_size", wants.Parts.Size())
+		return
+	}
+
+	// The peer chooses the round, so count its remaining requests locally
+	// instead of in its PeerState, which pruning would not bound.
+	remaining := int(wants.MissingPartsCount)
+	for _, partIndex := range wants.Parts.GetTrueIndices() {
+		// Indices are ascending, so the rest are parity parts.
+		if partIndex >= total {
+			break
+		}
+		if remaining <= 0 {
+			break
+		}
+		if !blockProp.storedPartsBudget.allow() {
+			blockProp.Logger.Debug("stored parts budget exhausted", "peer", peer, "height", height)
+			break
+		}
+		part := blockProp.store.LoadBlockPart(height, partIndex)
+		if part == nil {
+			blockProp.Logger.Error("stored block part not found", "height", height, "part", partIndex)
+			return
+		}
+		e := p2p.Envelope{
+			ChannelID: DataChannel,
+			Message: &propproto.RecoveryPart{
+				Height: height,
+				Round:  round,
+				Index:  part.Index,
+				Data:   part.Bytes,
+				Proof:  *part.Proof.ToProto(),
+			},
+		}
+		if !p.peer.TrySend(e) {
+			blockProp.Logger.Debug("failed to send stored part", "peer", peer, "height", height, "part", partIndex)
+			break
+		}
+		remaining--
+		schema.WriteBlockPart(blockProp.traceClient, height, round, part.Index, true, string(peer), schema.Upload)
 	}
 }
 
@@ -452,7 +534,9 @@ func (blockProp *Reactor) handleRecoveryPart(peer p2p.ID, part *proptypes.Recove
 	}
 	// the peer must always send the proposal before sending parts, if they did
 	// not this node must disconnect from them.
-	cb, parts, _, has := blockProp.getAllState(part.Height, part.Round, false)
+	// proven parts answer catch-up wants, which may be for a round we already left.
+	// Only an incomplete cached entry can use a part, so never read the store here.
+	cb, parts, has, _ := blockProp.getCachedState(part.Height, part.Round, part.Proof != nil)
 	if !has {
 		blockProp.Logger.Debug("received part for unknown proposal", "peer", peer, "height", part.Height, "round", part.Round)
 		// blockProp.Switch.StopPeerForError(p.peer, errors.New("received recovery part for unknown proposal"))

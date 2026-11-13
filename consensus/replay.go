@@ -83,6 +83,8 @@ func (cs *State) readReplayMessage(msg *TimedWALMessage, newStepSub types.Subscr
 	case timeoutInfo:
 		cs.Logger.Info("Replay: Timeout", "height", m.Height, "round", m.Round, "step", m.Step, "dur", m.Duration)
 		cs.handleTimeout(m, cs.rs)
+	case LockInfo:
+		// Not restored yet.
 	default:
 		return fmt.Errorf("replay: Unknown TimedWALMessage type: %v", reflect.TypeOf(msg.Msg))
 	}
@@ -376,6 +378,7 @@ func (h *Handshaker) ReplayBlocksWithContext(
 			state.Timeouts.TimeoutPrecommit = res.TimeoutInfo.TimeoutPrecommit
 			state.Timeouts.TimeoutPrecommitDelta = res.TimeoutInfo.TimeoutPrecommitDelta
 			state.Timeouts.DelayedPrecommitTimeout = res.TimeoutInfo.DelayedPrecommitTimeout
+			state.Timeouts.DynamicTimeoutCommit = res.TimeoutInfo.DynamicTimeoutCommit
 			// We update the last results hash with the empty hash, to conform with RFC-6962.
 			state.LastResultsHash = merkle.HashFromByteSlices(nil)
 			if err := h.stateStore.Save(state); err != nil {

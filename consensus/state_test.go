@@ -754,6 +754,8 @@ func TestStateOversizedBlock(t *testing.T) {
 func TestStateFullRound1(t *testing.T) {
 	cs, vss := randState(1)
 	height, round := cs.rs.Height, cs.rs.Round
+	// Building our own proposal can outlast 40 ms under -race; nothing waits on it.
+	cs.state.Timeouts.TimeoutPropose = 500 * time.Millisecond
 
 	// NOTE: buffer capacity of 0 ensures we can validate prevote and last commit
 	// before consensus can move to the next height (and cause a race condition)
@@ -780,7 +782,7 @@ func TestStateFullRound1(t *testing.T) {
 
 	// we're going to roll right into new height
 	ensureNewRound(newRoundCh, height+1, 0)
-	validateLastPrecommit(t, cs, vss[0], propBlockHash)
+	validateLastPrecommit(t, cs, height, vss[0], propBlockHash)
 }
 
 // nil is proposed, so prevote and precommit nil
@@ -1253,6 +1255,9 @@ func TestStateLockPOLUnlockOnUnknownBlock(t *testing.T) {
 	cs1, vss := randState(4)
 	vs2, vs3, vs4 := vss[1], vss[2], vss[3]
 	height, round := cs1.rs.Height, cs1.rs.Round
+	// Round 2's proposal is built (newState, slow under -race) while its 40 ms
+	// propose timeout already runs. Round 1 waits this timeout out in full.
+	cs1.state.Timeouts.TimeoutPropose = 500 * time.Millisecond
 
 	partSize := types.BlockPartSizeBytes
 
@@ -1821,6 +1826,42 @@ func TestSetValidBlockOnDelayedProposal(t *testing.T) {
 			rs.ValidBlockParts.Header().Equals(propBlockParts.Header()) &&
 			rs.ValidRound == round
 	}, ensureTimeout, 10*time.Millisecond)
+}
+
+// TestStatePolkaBeforeProposalStepOrder pins the step order when a polka arrives
+// before its proposal: Prevote then Precommit, never back to Prevote.
+func TestStatePolkaBeforeProposalStepOrder(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	cs1, vss := randState(4)
+	vs2, vs3, vs4 := vss[1], vss[2], vss[3]
+	height, round := cs1.rs.Height, cs1.rs.Round+1 // vs2 proposes round 1
+	incrementRound(vs2, vs3, vs4)
+	cs1.state.Timeouts.TimeoutPropose = time.Minute
+
+	stepSub, err := cs1.eventBus.Subscribe(ctx, testSubscriber, types.EventQueryNewRoundStep, 10)
+	require.NoError(t, err)
+	pv1, err := cs1.privValidator.GetPubKey()
+	require.NoError(t, err)
+	voteCh := subscribeToVoter(cs1, pv1.Address())
+
+	startTestRound(cs1, height, round)
+	prop, propBlock := decideProposal(ctx, t, cs1, vs2, vs2.Height, vs2.Round)
+	propBlockParts, err := propBlock.MakePartSet(types.BlockPartSizeBytes)
+	require.NoError(t, err)
+	signAddVotes(cs1, cmtproto.PrevoteType, propBlock.Hash(), propBlockParts.Header(), false, vs2, vs3, vs4)
+	require.NoError(t, cs1.SetProposalAndBlock(prop, propBlock, propBlockParts, "some peer"))
+
+	ensurePrevoteMatch(t, voteCh, height, round, propBlock.Hash())
+	ensurePrecommitMatch(t, voteCh, height, round, propBlock.Hash())
+	var steps []string
+	for len(stepSub.Out()) > 0 {
+		if rs := (<-stepSub.Out()).Data().(types.EventDataRoundState); rs.Round == round {
+			steps = append(steps, rs.Step)
+		}
+	}
+	require.Equal(t, []string{"RoundStepPropose", "RoundStepPrevote", "RoundStepPrecommit"}, steps)
 }
 
 func TestProcessProposalAccept(t *testing.T) {
@@ -3031,6 +3072,131 @@ func TestStateOutputVoteStats(t *testing.T) {
 	}
 }
 
+// forgeSignature flips a bit in the vote's signature so it no longer verifies.
+func forgeSignature(vote *types.Vote) *types.Vote {
+	vote.Signature = bytes.Clone(vote.Signature)
+	vote.Signature[0] ^= 0x01
+	return vote
+}
+
+// requireNoBadPeerReport fails if the state machine reported a peer.
+func requireNoBadPeerReport(t *testing.T, cs *State) {
+	t.Helper()
+	select {
+	case pe := <-cs.badPeerQueue:
+		t.Fatalf("unexpected bad peer report for %s: %v", pe.peerID, pe.err)
+	default:
+	}
+}
+
+func TestStateReportsPeerForInvalidVoteSignature(t *testing.T) {
+	cs, vss := randState(2)
+	peer := p2pmock.NewPeer(nil)
+	blockHash := cmtrand.Bytes(tmhash.Size)
+	header := types.PartSetHeader{Total: 1, Hash: cmtrand.Bytes(tmhash.Size)}
+
+	t.Run("vote from a peer is reported", func(t *testing.T) {
+		vote := forgeSignature(signVote(vss[1], cmtproto.PrevoteType, blockHash, header, false))
+		cs.handleMsg(msgInfo{&VoteMessage{vote}, peer.ID()})
+
+		select {
+		case pe := <-cs.badPeerQueue:
+			require.Equal(t, peer.ID(), pe.peerID)
+			require.ErrorIs(t, pe.err, types.ErrVoteInvalidSignature)
+		default:
+			t.Fatal("expected the peer to be reported")
+		}
+	})
+
+	t.Run("precommit with forged core and extension signatures is reported", func(t *testing.T) {
+		precommit := forgeSignature(signVote(vss[1], cmtproto.PrecommitType, blockHash, header, true))
+		precommit.ExtensionSignature = bytes.Clone(precommit.ExtensionSignature)
+		precommit.ExtensionSignature[0] ^= 0x01
+		cs.handleMsg(msgInfo{&VoteMessage{precommit}, peer.ID()})
+
+		select {
+		case pe := <-cs.badPeerQueue:
+			require.Equal(t, peer.ID(), pe.peerID)
+			require.ErrorIs(t, pe.err, types.ErrVoteInvalidSignature)
+			require.NotErrorIs(t, pe.err, types.ErrVoteInvalidExtensionSignature)
+		default:
+			t.Fatal("expected the peer to be reported")
+		}
+	})
+
+	t.Run("our own vote is not reported", func(t *testing.T) {
+		vote := forgeSignature(signVote(vss[1], cmtproto.PrevoteType, blockHash, header, false))
+		cs.handleMsg(msgInfo{&VoteMessage{vote}, ""})
+		requireNoBadPeerReport(t, cs)
+	})
+
+	t.Run("vote replayed from the WAL is not reported", func(t *testing.T) {
+		vote := forgeSignature(signVote(vss[1], cmtproto.PrevoteType, blockHash, header, false))
+		cs.replayMode = true
+		defer func() { cs.replayMode = false }()
+		cs.handleMsg(msgInfo{&VoteMessage{vote}, peer.ID()})
+		requireNoBadPeerReport(t, cs)
+	})
+}
+
+func TestStateDoesNotReportPeerForUnpunishableVotes(t *testing.T) {
+	cs, vss := randState(2)
+	peer := p2pmock.NewPeer(nil)
+	header := types.PartSetHeader{Total: 1, Hash: cmtrand.Bytes(tmhash.Size)}
+
+	// A vote for another round of the current height.
+	vss[1].Round = 1
+	vote := signVote(vss[1], cmtproto.PrevoteType, cmtrand.Bytes(tmhash.Size), header, false)
+	cs.handleMsg(msgInfo{&VoteMessage{vote}, peer.ID()})
+	requireNoBadPeerReport(t, cs)
+
+	// Conflicting votes from a validator become evidence instead.
+	vss[1].Round = 0
+	voteA := signVote(vss[1], cmtproto.PrevoteType, cmtrand.Bytes(tmhash.Size), header, false)
+	voteB := signVote(vss[1], cmtproto.PrevoteType, cmtrand.Bytes(tmhash.Size), header, false)
+	cs.handleMsg(msgInfo{&VoteMessage{voteA}, peer.ID()})
+	cs.handleMsg(msgInfo{&VoteMessage{voteB}, peer.ID()})
+	requireNoBadPeerReport(t, cs)
+
+	// A peer only gets votes for two catch-up rounds; later rounds are
+	// dropped, not punished.
+	for round := int32(5); round < 8; round++ {
+		vss[1].Round = round
+		vote := signVote(vss[1], cmtproto.PrevoteType, cmtrand.Bytes(tmhash.Size), header, false)
+		cs.handleMsg(msgInfo{&VoteMessage{vote}, peer.ID()})
+	}
+	requireNoBadPeerReport(t, cs)
+
+	// A bad vote extension signature: blocksync does not verify these, so an
+	// honest peer may relay one.
+	vss[1].Round = 0
+	precommit := signVote(vss[1], cmtproto.PrecommitType, cmtrand.Bytes(tmhash.Size), header, true)
+	precommit.ExtensionSignature = bytes.Clone(precommit.ExtensionSignature)
+	precommit.ExtensionSignature[0] ^= 0x01
+	cs.handleMsg(msgInfo{&VoteMessage{precommit}, peer.ID()})
+	requireNoBadPeerReport(t, cs)
+}
+
+// Votes that cannot count towards the current height are dropped before their
+// signatures are checked, so the peer is not punished even if they are forged.
+func TestStateDoesNotReportPeerForLateOrFutureVotes(t *testing.T) {
+	cs, vss := randState(2)
+	peer := p2pmock.NewPeer(nil)
+	header := types.PartSetHeader{Total: 1, Hash: cmtrand.Bytes(tmhash.Size)}
+
+	// A late precommit for height 1, once we have moved on to height 3.
+	late := forgeSignature(signVote(vss[1], cmtproto.PrecommitType, cmtrand.Bytes(tmhash.Size), header, false))
+	cs.rs.Height = 3
+	cs.handleMsg(msgInfo{&VoteMessage{late}, peer.ID()})
+	requireNoBadPeerReport(t, cs)
+
+	// A vote for a height we have not reached yet.
+	vss[1].Height = 5
+	future := forgeSignature(signVote(vss[1], cmtproto.PrevoteType, cmtrand.Bytes(tmhash.Size), header, false))
+	cs.handleMsg(msgInfo{&VoteMessage{future}, peer.ID()})
+	requireNoBadPeerReport(t, cs)
+}
+
 func TestSignSameVoteTwice(t *testing.T) {
 	_, vss := randState(2)
 
@@ -3345,4 +3511,31 @@ func TestWALSelectiveFsyncUnexpectedTypePanics(t *testing.T) {
 	require.Panics(t, func() {
 		cs.writeInternalMsgToWAL(unknown)
 	})
+}
+
+// TestStatePrecommitBeforeInitialHeightIgnored checks that a precommit for the
+// height before InitialHeight is ignored, since there is no LastCommit to add
+// it to.
+func TestStatePrecommitBeforeInitialHeightIgnored(t *testing.T) {
+	genDoc, privVals := randGenesisDoc(1, false, 10, test.ConsensusParams())
+	genDoc.InitialHeight = 10
+	state, err := sm.MakeGenesisState(genDoc)
+	require.NoError(t, err)
+
+	cs := newState(state, privVals[0], kvstore.NewInMemoryApplication())
+	require.Equal(t, int64(10), cs.rs.Height)
+	require.Equal(t, cstypes.RoundStepNewHeight, cs.rs.Step)
+	require.Nil(t, cs.rs.LastCommit)
+
+	// The vote does not need to come from a validator.
+	vs := newValidatorStub(types.NewMockPV(), 0)
+	vs.Height = genDoc.InitialHeight - 1
+	vote := signVote(vs, cmtproto.PrecommitType, nil, types.PartSetHeader{}, false)
+
+	require.NotPanics(t, func() {
+		added, err := cs.tryAddVote(vote, "peer")
+		require.NoError(t, err)
+		require.False(t, added)
+	})
+	require.Nil(t, cs.rs.LastCommit)
 }

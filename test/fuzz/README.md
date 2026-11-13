@@ -45,14 +45,15 @@ date has been recorded for these entries.
 | Propagation `MsgFromProto` and per-message helpers | CompactBlock, HaveParts, WantParts, RecoveryPart | `FuzzPropagationMessage` in `consensus/propagation/types` | Yes |
 | `types` block-level `FromProto`, validation and part-set insertion | Blocks, parts/proofs, votes, proposals, commits, evidence | `FuzzBlockFromProto`, `FuzzPartFromProto`, `FuzzVoteFromProto`, `FuzzProposalFromProto`, `FuzzCommitFromProto`, `FuzzEvidenceFromProto` in `types` | Yes |
 | `types.unwrapLegacyBlobTx`, `Tx.Hash` / `Key` | Legacy BlobTx wire fields | `FuzzUnwrapLegacyBlobTx` in `types` (differential against generated decoder) | Yes |
+| `CheckBlockCardinality` (proposal block bytes, blocksync responses) | Raw block bytes before decoding | `FuzzCheckBlockCardinality` in `proto/tendermint/types` | Yes |
 | `conn.SecretConnection.Read` / `Write` | Encrypted peer connection traffic | `FuzzP2PSecretConnection` in `test/fuzz/tests` | Yes |
 | JSON-RPC server | RPC request bytes | `FuzzRPCJSONRPCServer` in `test/fuzz/tests` | Yes |
 | Evidence reactor envelope | EvidenceList protobuf envelope | `FuzzEvidenceReactorReceive` in `evidence` | Yes |
 | State-sync message decoding | Snapshot and chunk envelopes | `FuzzStateSyncReactor` in `statesync` | Yes |
 | P2P packet framing and node-info handshake | Packet and node-info wire bytes | `FuzzMConnectionRecv` in `p2p/conn`, `FuzzTransportUpgrade` in `p2p` | Yes |
 
-The original decoder suite has **14 targets**; the last three rows are now
-covered by the entry-point targets below.
+The original decoder suite has **14 targets**, and `FuzzCheckBlockCardinality`
+makes 15; the last three rows are now covered by the entry-point targets below.
 CheckTx uses the in-process kvstore app, so it exercises core admission and tx
 hashing, not celestia-app ante handlers. Its pool, caches and app are recreated
 for every input so a full pool or a previously seen tx cannot mask a decoder
@@ -74,7 +75,8 @@ Core's CAT-specific precheck and propagation paths require local targets.
 
 Outside the decoder suite, core also has `FuzzParallelImplementations` in
 `crypto/merkle`, which tests tree algorithms rather than network decoders and
-is not in the nightly matrix. It derives every tree and proof index from the fuzz
+is not in the nightly matrix; [`nightly-excluded.txt`](nightly-excluded.txt)
+records that with its reason. It derives every tree and proof index from the fuzz
 input, so saved inputs replay exactly. `FuzzTxsToParts` and `FuzzTxsToParts_Panic` in
 `consensus/propagation/types` now derive their data from the fuzz input and run
 nightly; see [Entry-point coverage](#entry-point-coverage). `consensus/wal_fuzz.go` is a
@@ -112,7 +114,7 @@ run in the nightly matrix.
 | RPC handlers and JSON-RPC server | URI, JSON-RPC (single, batch, websocket) requests | `FuzzRPCCoreHandlers`, `FuzzRPCCoreJSONRPC` in `rpc/core` |
 | Legacy gRPC API | BlockAPI and BlobstreamAPI requests | `FuzzRPCGRPCAPI` in `rpc/core` |
 
-With these **29 targets** the nightly matrix runs **43 targets**.
+With these **29 targets** the nightly matrix runs **44 targets**.
 
 Known limits:
 
@@ -135,9 +137,16 @@ Known limits:
 
 [The Fuzz Tests workflow](../../.github/workflows/fuzz-nightly.yml) runs each
 listed nightly target as its own job for ten minutes on the daily schedule and
-manual dispatch. It uses two workers per target and restores previously
-interesting inputs from the fuzz cache. Failures on main feed the existing
-`notify-protocol-ci.yml` workflow.
+manual dispatch. It uses two workers per target and starts each target from the
+corpus earlier nights built (see [Persistent corpora](#persistent-corpora)).
+Failures on main feed the existing `notify-protocol-ci.yml` workflow.
+
+Every native fuzz target must be either in that matrix or listed with a reason
+in [`nightly-excluded.txt`](nightly-excluded.txt).
+[`scripts/check-fuzz-targets.sh`](../../scripts/check-fuzz-targets.sh) checks
+this on pull requests and also fails on entries for targets that no longer
+exist. When adding a target, add a matrix entry with a `priority` (or an
+exclusion) and a row to the tables above.
 
 A crashing input can describe an exploitable bug, and this repository's logs and
 artifacts are public. The nightly jobs therefore write `go test` output to a file
@@ -175,3 +184,39 @@ For any crash or invariant failure:
    from a harness assumption.
 4. Include the minimized input as a regression corpus entry with the fix and
    replay it in ordinary tests before rerunning the fuzzer.
+
+### Persistent corpora
+
+Each nightly target starts from the inputs earlier nights found. `go test -fuzz`
+stores the inputs that reach new coverage in a cache directory, by default
+`$(go env GOCACHE)/fuzz`. The job passes `-test.fuzzcachedir` to keep each
+target's corpus under `$RUNNER_TEMP/fuzz-corpus/<package>/Fuzz<Target>`
+instead, apart from the Go build cache that `setup-go` saves. It restores that
+directory from an `actions/cache` entry keyed
+`fuzz-corpus-v1-<package>/<target>-<run>`, fuzzes, and saves it under a new key
+even when the target fails. It then deletes the target's older entries, so each
+target keeps one entry. The `gathering baseline coverage` count in a target's
+output is its seeds plus the restored corpus, so it grows from night to night.
+
+The cache holds only inputs that did not fail. `go test` writes a crashing input
+to the package's `testdata/fuzz` directory, which the job never caches or
+uploads; it reaches only the Linear issue. The saved corpus can still hold
+inputs one mutation away from a crash, and a pull request workflow can restore
+caches saved on `main`, so treat the corpus as public.
+
+Corpus files are small. In a local 90-second run, `FuzzConsensusMessage` wrote
+526 files totalling 27 KB. Even if a long-running target grows to a few MB, the
+matrix's 44 targets, with one entry each, need a few hundred MB at most of
+GitHub's 10 GB repository cache. A corpus over 32 MiB (`CORPUS_MAX_MIB` in the
+workflow) is not saved, which bounds the worst case at about 1.4 GB, and the job
+prints a warning. The target then keeps restoring its last saved corpus. Bump
+`v1` in `CORPUS_KEY` to start every target from its seeds again. Entries that no
+longer match a target's argument types are skipped by `go test`, so a signature
+change needs no bump.
+
+To reuse a corpus locally, pass the same directory on successive runs:
+
+```sh
+go test -run='^$' -fuzz='^FuzzConsensusMessage$' -fuzztime=1m -parallel=2 ./consensus \
+  -args -test.fuzzcachedir=/tmp/fuzz-corpus/consensus
+```

@@ -34,6 +34,8 @@ func TestUnmarshal(t *testing.T) {
 		"int64":               {`"64"`, int64(64), false},
 		"int64 noend":         {`"64`, int64(64), true},
 		"int64 number":        {`64`, int64(64), true},
+		"int64 lone quote":    {`"`, int64(0), true},
+		"uint64 lone quote":   {`"`, uint64(0), true},
 		"int64 ptr":           {`"64"`, &i64, false},
 		"int64 ptr nil":       {`null`, i64Nil, false},
 		"string":              {`"foo"`, "foo", false},

@@ -42,13 +42,16 @@ import (
 func TestNodeStartStop(t *testing.T) {
 	config := test.ResetTestRoot("node_node_test")
 	defer os.RemoveAll(config.RootDir)
-	testFreeConfig(t, config)
 
 	// create & start node
-	n, err := DefaultNewNode(config, log.TestingLogger())
-	require.NoError(t, err)
-	err = n.Start()
-	require.NoError(t, err)
+	n := startNodeRetryingPortConflicts(t, func() (*Node, error) {
+		testFreeConfig(t, config)
+		n, err := DefaultNewNode(config, log.TestingLogger())
+		if err != nil {
+			return nil, err
+		}
+		return n, n.Start()
+	})
 
 	t.Logf("Started node %v", n.sw.NodeInfo())
 
@@ -105,16 +108,17 @@ func TestSplitAndTrimEmpty(t *testing.T) {
 func TestNodeDelayedStart(t *testing.T) {
 	config := test.ResetTestRoot("node_delayed_start_test")
 	defer os.RemoveAll(config.RootDir)
-	testFreeConfig(t, config)
-	now := cmttime.Now()
 
 	// create & start node
-	n, err := DefaultNewNode(config, log.TestingLogger())
-	n.GenesisDoc().GenesisTime = now.Add(2 * time.Second)
-	require.NoError(t, err)
-
-	err = n.Start()
-	require.NoError(t, err)
+	n := startNodeRetryingPortConflicts(t, func() (*Node, error) {
+		testFreeConfig(t, config)
+		n, err := DefaultNewNode(config, log.TestingLogger())
+		if err != nil {
+			return nil, err
+		}
+		n.GenesisDoc().GenesisTime = cmttime.Now().Add(2 * time.Second)
+		return n, n.Start()
+	})
 	defer n.Stop() //nolint:errcheck // ignore for tests
 
 	startTime := cmttime.Now()
@@ -166,25 +170,36 @@ func TestNodeInfoAdvertisesAllReactorChannels(t *testing.T) {
 func TestPprofServer(t *testing.T) {
 	config := test.ResetTestRoot("node_pprof_test")
 	defer os.RemoveAll(config.RootDir)
-	testFreeConfig(t, config)
-	config.RPC.PprofListenAddress = testFreeAddr(t)
 
-	// should not work yet
-	_, err := http.Get("http://" + config.RPC.PprofListenAddress) //nolint: bodyclose
-	assert.Error(t, err)
+	n := startNodeRetryingPortConflicts(t, func() (*Node, error) {
+		testFreeConfig(t, config)
+		config.RPC.PprofListenAddress = testFreeAddr(t)
 
-	n, err := DefaultNewNode(config, log.TestingLogger())
-	assert.NoError(t, err)
-	assert.NoError(t, n.Start())
+		// should not work yet
+		_, err := http.Get("http://" + config.RPC.PprofListenAddress) //nolint: bodyclose
+		assert.Error(t, err)
+
+		n, err := DefaultNewNode(config, log.TestingLogger())
+		if err != nil {
+			return nil, err
+		}
+		return n, n.Start()
+	})
 	defer func() {
 		require.NoError(t, n.Stop())
 	}()
 	assert.NotNil(t, n.pprofSrv)
 
-	resp, err := http.Get("http://" + config.RPC.PprofListenAddress + "/debug/pprof")
-	assert.NoError(t, err)
-	defer resp.Body.Close()
-	assert.Equal(t, 200, resp.StatusCode)
+	// The pprof server starts listening in a background goroutine, so it may
+	// not accept connections immediately after Start returns.
+	require.Eventually(t, func() bool {
+		resp, err := http.Get("http://" + config.RPC.PprofListenAddress + "/debug/pprof")
+		if err != nil {
+			return false
+		}
+		defer resp.Body.Close()
+		return resp.StatusCode == http.StatusOK
+	}, 10*time.Second, 50*time.Millisecond, "pprof server did not respond with 200")
 }
 
 func TestNodeSetPrivValTCP(t *testing.T) {
@@ -583,16 +598,10 @@ func state(nVals int, height int64) (sm.State, dbm.DB, []types.PrivValidator) {
 func TestNodePrivValidatorGRPCServer(t *testing.T) {
 	config := test.ResetTestRoot("node_privval_grpc_test")
 	defer os.RemoveAll(config.RootDir)
-	testFreeConfig(t, config)
 
-	addr := testFreeAddr(t)
-	config.PrivValidatorGRPCListenAddr = addr
-
-	n, err := DefaultNewNode(config, log.TestingLogger())
-	require.NoError(t, err)
-	err = n.Start()
-	require.NoError(t, err)
+	n := startPrivValGRPCNode(t, config)
 	defer func() { _ = n.Stop() }()
+	addr := n.config.PrivValidatorGRPCListenAddr
 
 	// Connect a gRPC client to the node's privval gRPC server.
 	conn, err := grpc.NewClient(
