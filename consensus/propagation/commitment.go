@@ -3,7 +3,6 @@ package propagation
 import (
 	"errors"
 	"fmt"
-	"slices"
 	"time"
 
 	"github.com/cosmos/gogoproto/proto"
@@ -85,12 +84,12 @@ func (blockProp *Reactor) ProposeBlock(proposal *types.Proposal, block *types.Pa
 	// push the parts no mempool can rebuild (header, evidence, last commit)
 	original := parts.Original()
 	pushed := make([]*types.Part, 0, maxPushedParts)
-	pushedMeta := make([]*propagation.PartMetaData, 0, maxPushedParts)
+	initialPartsMeta := make([]*propagation.PartMetaData, 0, maxPushedParts)
 	uncoveredIndexes := uncoveredParts(cb.Blobs, original.Total(), types.BlockPartSizeBytes, cb.LastLen)
 	for _, index := range uncoveredIndexes {
 		part := original.GetPart(int(index))
 		pushed = append(pushed, part)
-		pushedMeta = append(pushedMeta, &propagation.PartMetaData{Index: part.Index, Hash: part.Proof.LeafHash})
+		initialPartsMeta = append(initialPartsMeta, &propagation.PartMetaData{Index: part.Index, Hash: part.Proof.LeafHash})
 	}
 	cbMsg := cb.ToProto()
 	for index, peer := range peers {
@@ -102,7 +101,10 @@ func (blockProp *Reactor) ProposeBlock(proposal *types.Proposal, block *types.Pa
 		}
 		schema.WriteProposal(blockProp.traceClient, proposal.Height, proposal.Round, string(peer.peer.ID()), schema.Upload)
 
-		partsMeta := append(slices.Clone(pushedMeta), chunkToPartMetaData(chunks[index], parts.Parity())...)
+		chunkedParts := chunkToPartMetaData(chunks[index], parts.Parity())
+		partsMeta := append([]*propagation.PartMetaData{}, initialPartsMeta...)
+		partsMeta = append(partsMeta, chunkedParts...)
+
 		e := p2p.Envelope{
 			ChannelID: DataChannel,
 			Message: &propagation.HaveParts{
@@ -287,16 +289,18 @@ func (blockProp *Reactor) processValidatedCompactBlock(cb *proptypes.CompactBloc
 		p.GrantPushAllowance(cb)
 	}
 
-	if !added || proposer {
-		// the proposer sends the compact block itself from ProposeBlock,
-		// followed by the parts it pushes
+	if !added {
 		return
 	}
 
-	// check if we have any transactions that are in the compact block
-	blockProp.recoverPartsFromMempool(cb)
+	if !proposer {
+		// check if we have any transactions that are in the compact block
+		blockProp.recoverPartsFromMempool(cb)
 
-	blockProp.broadcastCompactBlock(cb, peer)
+		// the proposer sends the compact block itself from ProposeBlock,
+		// followed by the parts it pushes
+		blockProp.broadcastCompactBlock(cb, peer)
+	}
 }
 
 // recoverPartsFromMempool queries the mempool to see if we can recover any block parts locally.

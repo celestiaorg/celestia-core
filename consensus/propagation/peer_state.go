@@ -215,22 +215,34 @@ func (d *PeerState) AddRequests(height int64, round int32, requests *bits.BitArr
 // RequestParts records the parts as requested from the peer and sends the
 // want. Recording first means a fast reply is never treated as unrequested; a
 // failed send rolls back only the parts this call added.
-func (d *PeerState) RequestParts(height int64, round int32, parts *bits.BitArray, e p2p.Envelope) bool {
-	if parts == nil || parts.Size() == 0 {
+func (d *PeerState) RequestParts(height int64, round int32, partsToRequest *bits.BitArray, wantMessage p2p.Envelope) bool {
+	if partsToRequest == nil || partsToRequest.Size() == 0 {
 		d.logger.Error("peer state requests is nil or empty")
 		return false
 	}
+
 	d.mtx.Lock()
 	defer d.mtx.Unlock()
-	d.initialize(height, round, parts.Size())
-	requests := d.state[height][round].requests
-	added := parts.Sub(requests)
-	requests.AddBitArray(parts)
-	if d.peer.TrySend(e) {
+
+	d.initialize(height, round, partsToRequest.Size())
+	requestedFromPeer := d.state[height][round].requests
+
+	// the parts we have not asked this peer for before
+	newlyRequested := partsToRequest.Sub(requestedFromPeer)
+
+	// mark them as requested before sending, so a fast reply isn't treated
+	// as unrequested
+	requestedFromPeer.AddBitArray(partsToRequest)
+
+	sent := d.peer.TrySend(wantMessage)
+	if sent {
 		return true
 	}
-	for _, i := range added.GetTrueIndices() {
-		requests.SetIndex(i, false)
+
+	// the peer never got the request, so unmark the parts. Only the new ones:
+	// the rest were requested earlier and those requests did go out.
+	for _, partIndex := range newlyRequested.GetTrueIndices() {
+		requestedFromPeer.SetIndex(partIndex, false)
 	}
 	return false
 }
@@ -437,8 +449,10 @@ func (d *PeerState) DeleteUnverifiedProposal(height int64) {
 // block does not refill it.
 func (d *PeerState) GrantPushAllowance(cb *proptypes.CompactBlock) {
 	height, round := cb.Proposal.Height, cb.Proposal.Round
+
 	d.mtx.Lock()
 	defer d.mtx.Unlock()
+
 	d.initialize(height, round, int(cb.Proposal.BlockID.PartSetHeader.Total)*2)
 	ps := d.state[height][round]
 	if !ps.pushGranted {
@@ -452,6 +466,7 @@ func (d *PeerState) GrantPushAllowance(cb *proptypes.CompactBlock) {
 func (d *PeerState) ConsumePushAllowance(height int64, round int32) bool {
 	d.mtx.Lock()
 	defer d.mtx.Unlock()
+
 	ps := d.state[height][round]
 	if ps == nil || ps.pushAllowance == 0 {
 		return false
