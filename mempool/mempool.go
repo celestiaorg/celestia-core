@@ -143,6 +143,8 @@ type AsyncRechecker interface {
 		newPostFn PostCheckFunc,
 		unlock func(),
 	) error
+	// WaitRecheck returns once no recheck pass holds the lock.
+	WaitRecheck()
 }
 
 // PreCheckFunc is an optional filter executed before CheckTx and rejects

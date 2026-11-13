@@ -156,6 +156,10 @@ func (blockExec *BlockExecutor) CreateProposalBlock(
 		maxReapBytes = maxDataBytes + (maxDataBytes / 4)
 	}
 
+	// Reap after the recheck pass, so the proposal leaves out txs the last block invalidated.
+	if mp, ok := blockExec.mempool.(mempool.AsyncRechecker); ok {
+		mp.WaitRecheck()
+	}
 	txs := blockExec.mempool.ReapMaxBytesMaxGas(maxReapBytes, maxGas)
 	commit := lastExtCommit.ToCommit()
 	block, err := state.MakeBlockWithoutPartset(height, types.MakeData(types.TxsFromCachedTxs(txs)), commit, evidence, proposerAddr)

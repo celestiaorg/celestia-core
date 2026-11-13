@@ -134,12 +134,6 @@ func addSeqTxs(t testing.TB, txmp *TxPool, signer string, from, to uint64) {
 	}
 }
 
-// waitForPass returns once no recheck pass holds the lock.
-func waitForPass(txmp *TxPool) {
-	txmp.Lock()
-	txmp.Unlock() //nolint:staticcheck // empty critical section waits for the pass
-}
-
 func drain(ch <-chan struct{}) {
 	for {
 		select {
@@ -174,7 +168,7 @@ func TestAsyncRecheck_CommittedTxNeverReaped(t *testing.T) {
 		t.Fatal("reap waited for the recheck pass")
 	}
 	close(app.recheckGate)
-	waitForPass(txmp)
+	txmp.WaitRecheck()
 	require.EqualValues(t, 3, app.rechecks.Load())
 	require.Equal(t, 3, txmp.Size())
 }
@@ -227,7 +221,7 @@ func TestAsyncRecheck_NextCommitWaitsForPass(t *testing.T) {
 	}
 	close(app.recheckGate)
 	<-committed
-	waitForPass(txmp)
+	txmp.WaitRecheck()
 	require.False(t, app.commitRaced.Load())
 	require.EqualValues(t, 3+2, app.rechecks.Load())
 	require.Equal(t, 2, txmp.Size())
@@ -266,7 +260,7 @@ func TestAsyncRecheck_LatePassFallsBackToSync(t *testing.T) {
 	commitBlock(t, txmp, app, 3, []cmttypes.Tx{checkStateTx("a", 2)}) // async again: returns with the pass gated
 	require.False(t, txmp.mtx.TryLock())
 	close(app.recheckGate)
-	waitForPass(txmp)
+	txmp.WaitRecheck()
 	require.EqualValues(t, 5+4+3, app.rechecks.Load())
 	require.Equal(t, 3, txmp.Size())
 }
@@ -331,7 +325,7 @@ func TestAsyncRecheck_PassesNeverPileUp(t *testing.T) {
 		pool -= signers
 		want += pool
 	}
-	waitForPass(txmp)
+	txmp.WaitRecheck()
 	// Overlapping or skipped passes would break the per-signer replay order.
 	require.False(t, app.commitRaced.Load())
 	require.EqualValues(t, want, app.rechecks.Load())
@@ -435,7 +429,7 @@ func TestAsyncRecheck_Race(t *testing.T) {
 	}
 	close(stop)
 	wg.Wait()
-	waitForPass(txmp)
+	txmp.WaitRecheck()
 	require.False(t, app.commitRaced.Load())
 	require.Positive(t, app.rechecks.Load())
 }

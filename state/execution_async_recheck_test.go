@@ -1,6 +1,7 @@
 package state_test
 
 import (
+	"bytes"
 	"context"
 	"testing"
 	"time"
@@ -20,7 +21,7 @@ import (
 	cmttypes "github.com/cometbft/cometbft/types"
 )
 
-// gatedRecheckApp blocks every recheck until the gate is closed.
+// gatedRecheckApp blocks every recheck until the gate is closed, then rejects "stale" txs.
 type gatedRecheckApp struct {
 	abci.BaseApplication
 	gate chan struct{}
@@ -29,29 +30,37 @@ type gatedRecheckApp struct {
 func (app *gatedRecheckApp) CheckTx(_ context.Context, req *abci.RequestCheckTx) (*abci.ResponseCheckTx, error) {
 	if req.Type == abci.CheckTxType_Recheck {
 		<-app.gate
+		if bytes.HasPrefix(req.Tx, []byte("stale")) {
+			return &abci.ResponseCheckTx{Code: 1}, nil
+		}
 	}
 	return &abci.ResponseCheckTx{Code: abci.CodeTypeOK, GasWanted: 1}, nil
 }
 
-// ApplyBlock returns while the recheck pass still holds the mempool lock, with
-// the block's txs already removed from the pool.
-func TestApplyBlockAsyncRecheck(t *testing.T) {
+func newGatedCATExecutor(t *testing.T) (*sm.BlockExecutor, *cat.TxPool, *gatedRecheckApp, sm.State, map[string]cmttypes.PrivValidator) {
+	t.Helper()
 	proxyApp := proxy.NewAppConns(proxy.NewLocalClientCreator(&testApp{}), proxy.NopMetrics())
 	require.NoError(t, proxyApp.Start())
-	defer proxyApp.Stop() //nolint:errcheck // ignore for tests
+	t.Cleanup(func() { _ = proxyApp.Stop() })
 
 	mpApp := &gatedRecheckApp{gate: make(chan struct{})}
 	mpConn, err := proxy.NewLocalClientCreator(mpApp).NewABCIClient()
 	require.NoError(t, err)
 	require.NoError(t, mpConn.Start())
-	defer mpConn.Stop() //nolint:errcheck // ignore for tests
-	cfg := cmtcfg.TestMempoolConfig()
-	mp := cat.NewTxPool(log.NewNopLogger(), cfg, mpConn, 0)
+	t.Cleanup(func() { _ = mpConn.Stop() })
+	mp := cat.NewTxPool(log.NewNopLogger(), cmtcfg.TestMempoolConfig(), mpConn, 0)
 
-	state, stateDB, _ := makeState(1, 1)
+	state, stateDB, privVals := makeState(1, 1)
 	stateStore := sm.NewStore(stateDB, sm.StoreOptions{DiscardABCIResponses: false})
 	blockExec := sm.NewBlockExecutor(stateStore, log.TestingLogger(), proxyApp.Consensus(),
 		mp, sm.EmptyEvidencePool{}, store.NewBlockStore(dbm.NewMemDB()))
+	return blockExec, mp, mpApp, state, privVals
+}
+
+// ApplyBlock returns while the recheck pass still holds the mempool lock, with
+// the block's txs already removed from the pool.
+func TestApplyBlockAsyncRecheck(t *testing.T) {
+	blockExec, mp, mpApp, state, _ := newGatedCATExecutor(t)
 
 	block, bps, err := makeBlock(state, 1, new(cmttypes.Commit))
 	require.NoError(t, err)
@@ -89,4 +98,42 @@ func TestApplyBlockAsyncRecheck(t *testing.T) {
 	}
 	close(mpApp.gate)
 	<-locked
+}
+
+// The next proposal is reaped only after the recheck pass, so it leaves out the
+// txs the committed block invalidated.
+func TestCreateProposalBlockWaitsForRecheck(t *testing.T) {
+	blockExec, mp, mpApp, state, privVals := newGatedCATExecutor(t)
+
+	block, bps, err := makeBlock(state, 1, new(cmttypes.Commit))
+	require.NoError(t, err)
+	pending := cmttypes.Txs{cmttypes.Tx("stale-1"), cmttypes.Tx("pending"), cmttypes.Tx("stale-2")}
+	for _, txs := range []cmttypes.Txs{block.Txs, pending} {
+		for _, tx := range txs {
+			require.NoError(t, mp.CheckTx(tx, nil, mempool.TxInfo{}))
+		}
+	}
+	blockID := cmttypes.BlockID{Hash: block.Hash(), PartSetHeader: bps.Header()}
+	state, err = blockExec.ApplyBlock(state, blockID, block, nil) // returns with the pass gated
+	require.NoError(t, err)
+	require.Equal(t, len(pending), mp.Size())
+
+	state.ConsensusParams.ABCI.VoteExtensionsEnableHeight = 1 // makeValidCommit signs extensions
+	commit, _, err := makeValidCommit(1, blockID, state.Validators, privVals)
+	require.NoError(t, err)
+	proposer, _ := state.Validators.GetByIndex(0)
+	proposed := make(chan *cmttypes.Block, 1)
+	go func() {
+		b, _, err := blockExec.CreateProposalBlock(context.Background(), 2, state, commit, proposer)
+		require.NoError(t, err)
+		proposed <- b
+	}()
+	select {
+	case <-proposed:
+		t.Fatal("proposal reaped before the recheck pass ended")
+	case <-time.After(100 * time.Millisecond):
+	}
+	close(mpApp.gate)
+	b := <-proposed
+	require.Equal(t, cmttypes.Txs{cmttypes.Tx("pending")}, b.Txs)
 }

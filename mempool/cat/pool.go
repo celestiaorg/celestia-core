@@ -532,7 +532,7 @@ func (txmp *TxPool) Update(
 }
 
 // UpdateAsyncRecheck is Update with the recheck pass moved to a goroutine that inherits the
-// caller's lock, so admission and the next Commit wait for it while reaping does not.
+// caller's lock, so admission, the next Commit and WaitRecheck callers wait for it.
 // It is plain Update when disable_async_recheck is set or the previous pass outlived the interval.
 func (txmp *TxPool) UpdateAsyncRecheck(
 	blockHeight int64,
@@ -569,6 +569,12 @@ func (txmp *TxPool) UpdateAsyncRecheck(
 		txmp.rechecking.Store(false)
 	}()
 	return nil
+}
+
+// WaitRecheck returns once no recheck pass holds the lock.
+func (txmp *TxPool) WaitRecheck() {
+	txmp.mtx.Lock()
+	txmp.mtx.Unlock() //nolint:staticcheck // empty critical section waits for the pass
 }
 
 // update removes the committed and expired transactions, advances the height
