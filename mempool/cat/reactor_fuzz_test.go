@@ -35,11 +35,13 @@ const (
 
 // fzPoolLimits derives the pool's count and byte limits from the first input
 // byte. Generated txs are 11-13 bytes, so with an even byte the byte limit
-// binds (96 bytes holds at most 8 txs, below the count limit of 16) and with an
-// odd byte the count limit (2-5 txs) binds well before the byte limit.
+// binds (160 bytes holds at most 14 txs, below the count limit of 16) and with
+// an odd byte the count limit (2-5 txs) binds well before the byte limit. With
+// an even byte the received-tx buffer's per-peer budget (16 bytes) holds one
+// tx, so a peer's second buffered tx goes over it.
 func fzPoolLimits(b byte) (txs int, bytes int64) {
 	if b&1 == 0 {
-		return 16, 96
+		return 16, 160
 	}
 	return 2 + int(b>>1)%4, 4096
 }
@@ -66,6 +68,9 @@ func FuzzReactorReceive(f *testing.F) {
 		{0, 2, 0, 8, 1, 3, 2, 3, 0, 4, 0, 0, 0},
 		// count limit binds (2 txs) for a single delivery
 		{1, 0, 0, 0, 2, 3, 0, 4, 0, 2, 0, 0, 0},
+		// a peer delivers two out-of-order txs: the first is buffered, the
+		// second goes over the peer's byte budget in the received-tx buffer
+		[]byte("0800107100$1$000$0$001$0$0020"),
 	} {
 		f.Add(seed)
 	}
