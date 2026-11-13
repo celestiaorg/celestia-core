@@ -9,6 +9,7 @@ import (
 	"reflect"
 	"runtime"
 	"strings"
+	"sync/atomic"
 	"syscall"
 	"testing"
 	"time"
@@ -832,5 +833,64 @@ func TestTransportMultiplexAcceptReturnsFatalError(t *testing.T) {
 	case <-done:
 	case <-time.After(5 * time.Second):
 		t.Fatal("accept loop did not exit after fatal error")
+	}
+}
+
+// alwaysErrListener wraps a net.Listener and returns err from every Accept
+// call. It counts the calls.
+type alwaysErrListener struct {
+	net.Listener
+	err   error
+	calls atomic.Int32
+}
+
+func (l *alwaysErrListener) Accept() (net.Conn, error) {
+	l.calls.Add(1)
+	return nil, l.err
+}
+
+func TestTransportMultiplexAcceptStopsOnCloseDuringBackoff(t *testing.T) {
+	pv := ed25519.GenPrivKey()
+	id := PubKeyToID(pv.PubKey())
+	mt := newMultiplexTransport(testNodeInfo(id, "transport"), NodeKey{PrivKey: pv})
+
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	el := &alwaysErrListener{
+		Listener: ln,
+		err:      &net.OpError{Op: "accept", Net: "tcp", Err: os.NewSyscallError("accept4", syscall.EMFILE)},
+	}
+	mt.listener = el
+	mt.netAddr = *NewNetAddress(id, ln.Addr())
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		mt.acceptPeers()
+	}()
+
+	// The delay doubles from minAcceptRetryDelay on each error. After this
+	// many errors it reaches maxAcceptRetryDelay, so the loop now waits for
+	// the full maximum delay before the next Accept call.
+	const errsToMaxDelay = 9
+	deadline := time.Now().Add(10 * time.Second)
+	for el.calls.Load() < errsToMaxDelay {
+		if time.Now().After(deadline) {
+			t.Fatalf("accept loop made only %d Accept calls", el.calls.Load())
+		}
+		time.Sleep(time.Millisecond)
+	}
+
+	if err := mt.Close(); err != nil {
+		t.Fatal(err)
+	}
+	// The loop must stop waiting when the transport closes. The bound is
+	// much shorter than the maxAcceptRetryDelay wait the loop is in.
+	select {
+	case <-done:
+	case <-time.After(maxAcceptRetryDelay / 5):
+		t.Fatal("accept loop did not exit promptly after Close during backoff")
 	}
 }
