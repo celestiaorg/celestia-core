@@ -343,6 +343,12 @@ func (d *PeerState) prune(prunePastHeight int64) {
 	for height := range d.state {
 		if height < prunePastHeight {
 			delete(d.state, height)
+		}
+	}
+	// A want that needs no new wants recorded sets a request counter without a
+	// part state entry, so prune the counters on their own.
+	for height := range d.remainingRequests {
+		if height < prunePastHeight {
 			delete(d.remainingRequests, height)
 		}
 	}
