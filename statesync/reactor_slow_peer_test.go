@@ -9,7 +9,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	abci "github.com/cometbft/cometbft/abci/types"
-	"github.com/cometbft/cometbft/config"
+	cmtcfg "github.com/cometbft/cometbft/config"
 	"github.com/cometbft/cometbft/libs/log"
 	"github.com/cometbft/cometbft/p2p"
 	ssproto "github.com/cometbft/cometbft/proto/tendermint/statesync"
@@ -89,7 +89,7 @@ func TestReceiveDoesNotBlockOnSlowPeer(t *testing.T) {
 		slowRequests = 64
 	)
 
-	cfg := config.DefaultP2PConfig()
+	cfg := cmtcfg.DefaultP2PConfig()
 	cfg.AllowDuplicateIP = true
 	cfg.SendRate = 1 << 30
 	cfg.RecvRate = 1 << 30
@@ -108,7 +108,7 @@ func TestReceiveDoesNotBlockOnSlowPeer(t *testing.T) {
 		switches[i] = p2p.MakeSwitch(cfg, i, func(i int, sw *p2p.Switch) *p2p.Switch {
 			switch i {
 			case 0:
-				sw.AddReactor("STATESYNC", NewReactor(*config.DefaultStateSyncConfig(), app, nil, NopMetrics()))
+				sw.AddReactor("STATESYNC", NewReactor(*cmtcfg.DefaultStateSyncConfig(), app, nil, NopMetrics()))
 			case 1:
 				sw.AddReactor("STATESYNC", slow)
 			case 2:
