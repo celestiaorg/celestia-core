@@ -8,6 +8,11 @@ import (
 	"github.com/cometbft/cometbft/types"
 )
 
+// receivedBufferPeerShare sets each peer's byte budget in the received-tx
+// buffer to maxBytes / receivedBufferPeerShare, so that no single peer can
+// take the whole buffer and starve out-of-order txs from other peers.
+const receivedBufferPeerShare = 10
+
 // bufferedTx holds a transaction that are requested out-of-order within certain bounds, waiting to be processed
 type bufferedTx struct {
 	tx       *types.CachedTx
@@ -22,35 +27,44 @@ type bufferedTx struct {
 // Transactions are buffered by (signer, sequence) and processed in order
 // once earlier sequences complete.
 //
-// Buffered txs have not been through CheckTx, so the buffer is bounded
-// independently of peer identity: total bytes are capped by maxBytes, and
-// entries are dropped once they expire (pruneOlderThan) or fall below the
-// signer's expected sequence (removeBelow).
+// Buffered txs have not been through CheckTx, so the buffer is bounded:
+// total bytes are capped by maxBytes, each peer's bytes are capped by
+// maxBytes / receivedBufferPeerShare, and entries are dropped once they
+// expire (pruneOlderThan) or fall below the signer's expected sequence
+// (removeBelow). An entry stays charged to the peer that delivered it until
+// it leaves the buffer, also after that peer disconnects, so reconnecting
+// does not give a peer a fresh budget.
 type receivedTxBuffer struct {
 	mu sync.Mutex
 	// buffers contains mapping: signer (as string) -> sequence -> buffered tx
 	buffers map[string]map[uint64]*bufferedTx
 	// countByPeer tracks how many transactions are buffered from each peer
 	countByPeer map[string]int
+	// bytesByPeer tracks the summed size of txs buffered from each peer
+	bytesByPeer map[string]int64
 	// totalBytes is the summed size of all buffered txs.
 	totalBytes int64
 	// maxBytes caps totalBytes.
 	maxBytes int64
+	// maxBytesPerPeer caps each entry of bytesByPeer.
+	maxBytesPerPeer int64
 }
 
 // newReceivedTxBuffer creates a new buffer for out-of-order transactions
 // holding at most maxBytes of tx data.
 func newReceivedTxBuffer(maxBytes int64) *receivedTxBuffer {
 	return &receivedTxBuffer{
-		buffers:     make(map[string]map[uint64]*bufferedTx),
-		countByPeer: make(map[string]int),
-		maxBytes:    maxBytes,
+		buffers:         make(map[string]map[uint64]*bufferedTx),
+		countByPeer:     make(map[string]int),
+		bytesByPeer:     make(map[string]int64),
+		maxBytes:        maxBytes,
+		maxBytesPerPeer: maxBytes / receivedBufferPeerShare,
 	}
 }
 
 // add stores a transaction in the buffer for later processing.
 // Returns false if the buffer is full for this signer, peer is at capacity,
-// the byte limit would be exceeded, or tx already exists.
+// the peer's or the total byte limit would be exceeded, or tx already exists.
 func (b *receivedTxBuffer) add(signer []byte, seq uint64, tx *types.CachedTx, txKey types.TxKey, txInfo mempool.TxInfo, peerID string) bool {
 	if len(signer) == 0 {
 		return false
@@ -64,8 +78,11 @@ func (b *receivedTxBuffer) add(signer []byte, seq uint64, tx *types.CachedTx, tx
 		return false
 	}
 
-	// Check the total byte limit
+	// Check the peer's and the total byte limits
 	txSize := int64(len(tx.Tx))
+	if b.bytesByPeer[peerID]+txSize > b.maxBytesPerPeer {
+		return false
+	}
 	if b.totalBytes+txSize > b.maxBytes {
 		return false
 	}
@@ -96,6 +113,7 @@ func (b *receivedTxBuffer) add(signer []byte, seq uint64, tx *types.CachedTx, tx
 		addedAt:  time.Now(),
 	}
 	b.countByPeer[peerID]++
+	b.bytesByPeer[peerID] += txSize
 	b.totalBytes += txSize
 	return true
 }
@@ -168,14 +186,17 @@ func (b *receivedTxBuffer) removeIfLocked(signerKey string, match func(*buffered
 		if !match(entry) {
 			continue
 		}
-		// Decrement peer count before removing
-		if entry.peerID != "" {
-			b.countByPeer[entry.peerID]--
-			if b.countByPeer[entry.peerID] <= 0 {
-				delete(b.countByPeer, entry.peerID)
-			}
+		// Release the peer's count and bytes before removing
+		txSize := int64(len(entry.tx.Tx))
+		b.countByPeer[entry.peerID]--
+		if b.countByPeer[entry.peerID] <= 0 {
+			delete(b.countByPeer, entry.peerID)
 		}
-		b.totalBytes -= int64(len(entry.tx.Tx))
+		b.bytesByPeer[entry.peerID] -= txSize
+		if b.bytesByPeer[entry.peerID] <= 0 {
+			delete(b.bytesByPeer, entry.peerID)
+		}
+		b.totalBytes -= txSize
 		delete(signerBuf, entSeq)
 		removed = append(removed, entry.txKey)
 	}
@@ -209,6 +230,15 @@ func (b *receivedTxBuffer) countForPeer(peerID string) int {
 	defer b.mu.Unlock()
 
 	return b.countByPeer[peerID]
+}
+
+// bytesForPeer returns the summed size of buffered transactions from a
+// specific peer
+func (b *receivedTxBuffer) bytesForPeer(peerID string) int64 {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+
+	return b.bytesByPeer[peerID]
 }
 
 // size returns the number of buffered transactions and their total bytes.

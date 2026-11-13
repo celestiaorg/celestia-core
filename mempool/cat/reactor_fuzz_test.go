@@ -601,6 +601,7 @@ func (h *catFuzzHarness) checkReceivedBuffer() {
 	t := h.t
 	rb := h.r.receivedBuffer
 	byPeer := map[string]int{}
+	bytesByPeer := map[string]int64{}
 	var bytes int64
 	for _, buf := range rb.buffers {
 		require.NotEmpty(t, buf)
@@ -608,10 +609,15 @@ func (h *catFuzzHarness) checkReceivedBuffer() {
 		for seq, e := range buf {
 			require.Equal(t, seq, e.sequence)
 			byPeer[e.peerID]++
+			bytesByPeer[e.peerID] += int64(len(e.tx.Tx))
 			bytes += int64(len(e.tx.Tx))
 		}
 	}
 	require.Equal(t, byPeer, rb.countByPeer)
+	require.Equal(t, bytesByPeer, rb.bytesByPeer)
+	for _, n := range rb.bytesByPeer {
+		require.LessOrEqual(t, n, rb.maxBytesPerPeer)
+	}
 	require.Equal(t, bytes, rb.totalBytes)
 	require.LessOrEqual(t, rb.totalBytes, rb.maxBytes)
 	for _, n := range rb.countByPeer {

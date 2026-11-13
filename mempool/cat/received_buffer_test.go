@@ -297,22 +297,48 @@ func TestReceivedTxBuffer(t *testing.T) {
 	})
 
 	t.Run("respects total byte limit across peers and signers", func(t *testing.T) {
-		buf := newReceivedTxBuffer(10)
-		tx1, key1 := makeTx("aaaaaa") // 6 bytes
+		// Each peer may use 10 bytes, so 10 peers fill the 100-byte cap.
+		buf := newReceivedTxBuffer(100)
+		for i := 0; i < receivedBufferPeerShare; i++ {
+			tx, key := makeTx(fmt.Sprintf("tx-%07d", i)) // 10 bytes
+			signer := []byte(fmt.Sprintf("signer-%d", i))
+			require.True(t, buf.add(signer, 1, tx, key, mempool.TxInfo{}, fmt.Sprintf("peer%d", i)))
+		}
+		n, size := buf.size()
+		require.Equal(t, receivedBufferPeerShare, n)
+		require.Equal(t, int64(100), size)
+
+		tx, key := makeTx("x")
+		require.False(t, buf.add(signer1, 1, tx, key, mempool.TxInfo{}, "fresh-peer"), "would exceed byte limit")
+
+		buf.removeLowerSeqs([]byte("signer-0"), 1)
+		_, size = buf.size()
+		require.Equal(t, int64(90), size)
+		require.True(t, buf.add(signer1, 1, tx, key, mempool.TxInfo{}, "fresh-peer"), "space freed")
+	})
+
+	t.Run("respects byte budget per peer", func(t *testing.T) {
+		buf := newReceivedTxBuffer(100) // 10 bytes per peer
+		tx1, key1 := makeTx("aaaaaa")   // 6 bytes
 		tx2, key2 := makeTx("bbbbbb")
 		tx3, key3 := makeTx("cccc")
 
 		require.True(t, buf.add(signer1, 1, tx1, key1, mempool.TxInfo{}, "peer1"))
-		require.False(t, buf.add(signer2, 1, tx2, key2, mempool.TxInfo{}, "peer2"), "would exceed byte limit")
-		require.True(t, buf.add(signer2, 1, tx3, key3, mempool.TxInfo{}, "peer2"), "fits exactly")
-		n, size := buf.size()
-		require.Equal(t, 2, n)
-		require.Equal(t, int64(10), size)
+		require.False(t, buf.add(signer1, 2, tx2, key2, mempool.TxInfo{}, "peer1"), "would exceed peer budget")
+		require.True(t, buf.add(signer1, 2, tx2, key2, mempool.TxInfo{}, "peer2"), "other peer has its own budget")
+		require.True(t, buf.add(signer2, 1, tx3, key3, mempool.TxInfo{}, "peer1"), "fits the peer budget exactly")
+		require.Equal(t, int64(10), buf.bytesForPeer("peer1"))
+		require.Equal(t, int64(6), buf.bytesForPeer("peer2"))
 
+		// Budget is released by removeLowerSeqs, removeBelow and pruneOlderThan.
 		buf.removeLowerSeqs(signer1, 1)
-		_, size = buf.size()
-		require.Equal(t, int64(4), size)
-		require.True(t, buf.add(signer1, 1, tx2, key2, mempool.TxInfo{}, "peer2"), "space freed")
+		require.Equal(t, int64(4), buf.bytesForPeer("peer1"))
+		require.Len(t, buf.removeBelow(signer2, 2), 1)
+		require.Zero(t, buf.bytesForPeer("peer1"))
+		buf.buffers[string(signer1)][2].addedAt = time.Now().Add(-time.Hour)
+		require.Len(t, buf.pruneOlderThan(time.Now().Add(-time.Minute)), 1)
+		require.Zero(t, buf.bytesForPeer("peer2"))
+		require.Empty(t, buf.bytesByPeer)
 	})
 
 	t.Run("removeBelow keeps the boundary sequence", func(t *testing.T) {
@@ -347,4 +373,34 @@ func TestReceivedTxBuffer(t *testing.T) {
 		_, size := buf.size()
 		require.Equal(t, int64(len(tx2.Tx)), size)
 	})
+}
+
+// TestReceivedTxBufferPeerCannotStarveOthers is a regression test for
+// starvation on the shared byte cap: two peers answer with large junk txs
+// under fake signers and fill the whole buffer, so an honest out-of-order tx
+// from a third peer is refused. Each peer must only get a share of maxBytes.
+func TestReceivedTxBufferPeerCannotStarveOthers(t *testing.T) {
+	const maxBytes = testReceivedBufferMaxBytes
+	buf := newReceivedTxBuffer(maxBytes)
+
+	// Each attacker uses up to maxRequestsPerPeer-1 slots, sized so that two
+	// attackers together would fill the whole cap.
+	junkSize := maxBytes / (2 * (maxRequestsPerPeer - 1))
+	for _, attacker := range []string{"sybil1", "sybil2"} {
+		for i := 0; i < maxRequestsPerPeer-1; i++ {
+			junk := make([]byte, junkSize)
+			copy(junk, fmt.Sprintf("%s-%d", attacker, i))
+			tx := types.Tx(junk)
+			fakeSigner := []byte(fmt.Sprintf("fake-%s-%d", attacker, i))
+			buf.add(fakeSigner, 1, tx.ToCachedTx(), tx.Key(), mempool.TxInfo{}, attacker)
+		}
+		require.LessOrEqual(t, buf.bytesForPeer(attacker), int64(maxBytes/receivedBufferPeerShare))
+	}
+
+	honest := types.Tx(make([]byte, 1024))
+	copy(honest, "honest")
+	require.True(t,
+		buf.add([]byte("honest-signer"), 7, honest.ToCachedTx(), honest.Key(), mempool.TxInfo{}, "honest-peer"),
+		"an honest out-of-order tx must not be refused because two peers filled the buffer",
+	)
 }
