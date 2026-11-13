@@ -33,17 +33,18 @@ const (
 	fzIterBudget = 20 * time.Second
 )
 
-// fzPoolLimits derives the pool's count and byte limits from the first input
-// byte. Generated txs are 11-13 bytes, so with an even byte the byte limit
-// binds (160 bytes holds at most 14 txs, below the count limit of 16) and with
-// an odd byte the count limit (2-5 txs) binds well before the byte limit. With
-// an even byte the received-tx buffer's per-peer budget (16 bytes) holds one
-// tx, so a peer's second buffered tx goes over it.
-func fzPoolLimits(b byte) (txs int, bytes int64) {
+// fzPoolLimits derives the pool's count, byte and max tx size limits from the
+// first input byte. Generated txs are 11-14 bytes, so with an even byte the
+// byte limit binds (160 bytes holds at most 14 txs, below the count limit of
+// 16) and with an odd byte the count limit (2-5 txs) binds well before the byte
+// limit. With an even byte the received-tx buffer's per-peer budget
+// (max(160/10, maxTx) = 16 bytes) holds one tx, so a peer's second buffered tx
+// goes over it.
+func fzPoolLimits(b byte) (txs int, bytes int64, maxTx int) {
 	if b&1 == 0 {
-		return 16, 160
+		return 16, 160, 16
 	}
-	return 2 + int(b>>1)%4, 4096
+	return 2 + int(b>>1)%4, 4096, 64
 }
 
 // FuzzReactorReceive drives the CAT reactor's Receive with a short sequence of
@@ -241,7 +242,7 @@ func newCatFuzzHarness(t *testing.T, limits byte) *catFuzzHarness {
 	cfg := cmtcfg.TestMempoolConfig()
 	cfg.Recheck = false
 	cfg.Broadcast = false
-	cfg.Size, cfg.MaxTxsBytes = fzPoolLimits(limits)
+	cfg.Size, cfg.MaxTxsBytes, cfg.MaxTxBytes = fzPoolLimits(limits)
 	cfg.CacheSize = 100
 	pool := NewTxPool(log.NewNopLogger(), cfg, conn, 1)
 	pool.seenTracker.perPeerLimit = fzSeenLimit

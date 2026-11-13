@@ -10,7 +10,8 @@ import (
 
 // receivedBufferPeerShare sets each peer's byte budget in the received-tx
 // buffer to maxBytes / receivedBufferPeerShare, so that no single peer can
-// take the whole buffer and starve out-of-order txs from other peers.
+// take the whole buffer and starve out-of-order txs from other peers. The
+// budget is raised to hold at least one max-size tx (see newReceivedTxBuffer).
 const receivedBufferPeerShare = 10
 
 // bufferedTx holds a transaction that are requested out-of-order within certain bounds, waiting to be processed
@@ -29,7 +30,7 @@ type bufferedTx struct {
 //
 // Buffered txs have not been through CheckTx, so the buffer is bounded:
 // total bytes are capped by maxBytes, each peer's bytes are capped by
-// maxBytes / receivedBufferPeerShare, and entries are dropped once they
+// maxBytesPerPeer, and entries are dropped once they
 // expire (pruneOlderThan) or fall below the signer's expected sequence
 // (removeBelow). An entry stays charged to the peer that delivered it until
 // it leaves the buffer, also after that peer disconnects, so reconnecting
@@ -51,14 +52,16 @@ type receivedTxBuffer struct {
 }
 
 // newReceivedTxBuffer creates a new buffer for out-of-order transactions
-// holding at most maxBytes of tx data.
-func newReceivedTxBuffer(maxBytes int64) *receivedTxBuffer {
+// holding at most maxBytes of tx data. Each peer may buffer
+// maxBytes / receivedBufferPeerShare bytes, but at least maxTxBytes (one
+// max-size tx) and at most maxBytes.
+func newReceivedTxBuffer(maxBytes, maxTxBytes int64) *receivedTxBuffer {
 	return &receivedTxBuffer{
 		buffers:         make(map[string]map[uint64]*bufferedTx),
 		countByPeer:     make(map[string]int),
 		bytesByPeer:     make(map[string]int64),
 		maxBytes:        maxBytes,
-		maxBytesPerPeer: maxBytes / receivedBufferPeerShare,
+		maxBytesPerPeer: min(max(maxBytes/receivedBufferPeerShare, maxTxBytes), maxBytes),
 	}
 }
 

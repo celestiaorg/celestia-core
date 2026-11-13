@@ -18,6 +18,7 @@ import (
 	"github.com/cometbft/cometbft/abci/example/kvstore"
 	abcitypes "github.com/cometbft/cometbft/abci/types"
 	cfg "github.com/cometbft/cometbft/config"
+	"github.com/cometbft/cometbft/internal/test"
 	"github.com/cometbft/cometbft/mempool"
 	"github.com/cometbft/cometbft/p2p"
 	protomem "github.com/cometbft/cometbft/proto/tendermint/mempool"
@@ -577,4 +578,23 @@ func TestReactorReceivedBufferCleanup(t *testing.T) {
 	require.Empty(t, reactor.receivedBuffer.signerKeys())
 	require.Nil(t, seen.Get(key9), "expired tx should leave the seen tracker")
 	require.Nil(t, seen.Get(key10))
+}
+
+// TestReactorReceivedBufferHoldsMaxSizeTx checks that a peer's byte budget in
+// the received-tx buffer holds at least one max-size tx, even when
+// MaxTxsBytes / receivedBufferPeerShare is smaller than MaxTxBytes.
+func TestReactorReceivedBufferHoldsMaxSizeTx(t *testing.T) {
+	app := newSequenceTrackingTestApp()
+	conf := test.ResetTestRoot("mempool_test")
+	conf.Mempool.MaxTxsBytes = 5 << 20
+	conf.Mempool.MaxTxBytes = 1 << 20
+	pool, cleanup := newMempoolWithAppAndConfig(proxy.NewLocalClientCreator(app), conf)
+	t.Cleanup(cleanup)
+	reactor, err := NewReactor(pool, &ReactorOptions{})
+	require.NoError(t, err)
+
+	maxSizeTx := types.Tx(make([]byte, conf.Mempool.MaxTxBytes))
+	require.True(t, reactor.receivedBuffer.add([]byte("signer"), 5, maxSizeTx.ToCachedTx(), maxSizeTx.Key(), mempool.TxInfo{}, "peer"),
+		"an empty buffer must accept one max-size tx from a peer")
+	require.LessOrEqual(t, reactor.receivedBuffer.maxBytesPerPeer, reactor.receivedBuffer.maxBytes)
 }
