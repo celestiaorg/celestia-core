@@ -2,6 +2,7 @@ package cat
 
 import (
 	"context"
+	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/mock"
@@ -493,4 +494,102 @@ func TestReactorStaleDeliveryKeepsOtherSources(t *testing.T) {
 
 	receiveTx(reactor, honest, tx)
 	require.NotNil(t, reactor.receivedBuffer.get(signer, 3), "the honest delivery is buffered at its announced sequence")
+}
+
+// queuedAt returns the sequences under which key is queued for signer.
+func queuedAt(reactor *Reactor, signer []byte, key types.TxKey) []uint64 {
+	var out []uint64
+	for _, entry := range reactor.mempool.seenTracker.PendingTxsForSigner(signer) {
+		if entry.txKey == key {
+			out = append(out, entry.pendingTxInfo.sequence)
+		}
+	}
+	return out
+}
+
+// expireRequest does what the request timer does when peer does not answer
+// in time: the request moves on, but peer keeps its slot for a late reply.
+func expireRequest(t *testing.T, reactor *Reactor, key types.TxKey, peer uint16) {
+	t.Helper()
+	reactor.requests.mtx.Lock()
+	require.Equal(t, peer, reactor.requests.requestsByTx[key])
+	delete(reactor.requests.requestsByTx, key)
+	reactor.requests.mtx.Unlock()
+	reactor.onRequestTimeout(key, peer)
+}
+
+// TestReactorLateReplyKeepsQueuedMetadata checks that a reply that arrives
+// after its request timed out, while the tx is still ahead of the expected
+// sequence, does not erase the queued metadata or mark the tx as rejected.
+// This can happen between honest peers alone.
+func TestReactorLateReplyKeepsQueuedMetadata(t *testing.T) {
+	reactor, pool, app, peers := sequenceEnforcingReactor(t, 2)
+	first, second := peers[0], peers[1]
+	firstID, secondID := reactor.ids.GetIDForPeer(first.ID()), reactor.ids.GetIDForPeer(second.ID())
+	signer := []byte("sender-000-0")
+	const sequence = 3
+	app.SetSequence(string(signer), 1)
+
+	tx := newDefaultTx("late-reply")
+	key := tx.Key()
+	app.txSequences[string(tx)] = sequence
+
+	receiveSeenTx(reactor, first, key, signer, sequence)
+	receiveSeenTx(reactor, second, key, signer, sequence)
+	requestTxFromPeer(t, reactor, first, key)
+	expireRequest(t, reactor, key, firstID)
+	require.EqualValues(t, secondID, reactor.requests.ForTx(key), "the request moves to the other announcer")
+
+	receiveTx(reactor, first, tx)
+
+	require.False(t, pool.Has(key), "the tx is ahead of the expected sequence")
+	rejected, _, _ := pool.WasRecentlyRejected(key)
+	require.False(t, rejected, "a late reply must not mark the tx as rejected")
+	require.Contains(t, queuedAt(reactor, signer, key), uint64(sequence), "the other peer's metadata must stay queued")
+	require.EqualValues(t, secondID, reactor.requests.ForTx(key), "the request to the other peer stays in flight")
+
+	receiveTx(reactor, second, tx)
+	require.NotNil(t, reactor.receivedBuffer.get(signer, sequence), "the other peer's delivery is buffered at its announced sequence")
+}
+
+// TestReactorCapFallbackDeliveryKeepsQueuedMetadata checks that when the
+// announcer has no free request slot and gap-fill asks a peer that did not
+// announce the tx, an early delivery from that peer does not erase the
+// queued metadata, and the tx is requested again once its gap closes.
+func TestReactorCapFallbackDeliveryKeepsQueuedMetadata(t *testing.T) {
+	reactor, pool, app, peers := sequenceEnforcingReactor(t, 2)
+	announcer, other := peers[0], peers[1]
+	announcerID, otherID := reactor.ids.GetIDForPeer(announcer.ID()), reactor.ids.GetIDForPeer(other.ID())
+	signer := []byte("sender-000-0")
+	app.SetSequence(string(signer), 1)
+
+	next, ahead := newDefaultTx("cap-fallback-2"), newDefaultTx("cap-fallback-3")
+	app.txSequences[string(next)] = 2
+	app.txSequences[string(ahead)] = 3
+	for seq, tx := range map[uint64]types.Tx{2: next, 3: ahead} {
+		receiveSeenTx(reactor, announcer, tx.Key(), signer, seq)
+		reactor.mempool.PeerHasTx(otherID, tx.Key())
+	}
+
+	for i := 0; i < maxRequestsPerPeer; i++ {
+		require.True(t, reactor.requests.Add(newDefaultTx(fmt.Sprintf("filler-%d", i)).Key(), announcerID, nil))
+	}
+	app.SetSequence(string(signer), 2)
+	reactor.processPendingSeenForSigner(signer)
+	require.EqualValues(t, otherID, reactor.requests.ForTx(next.Key()))
+	require.EqualValues(t, otherID, reactor.requests.ForTx(ahead.Key()))
+
+	receiveTx(reactor, other, ahead)
+
+	require.False(t, pool.Has(ahead.Key()), "the tx is ahead of the expected sequence")
+	rejected, _, _ := pool.WasRecentlyRejected(ahead.Key())
+	require.False(t, rejected, "an early delivery must not mark the tx as rejected")
+	require.Contains(t, queuedAt(reactor, signer, ahead.Key()), uint64(3), "the announcer's metadata must stay queued")
+
+	receiveTx(reactor, other, next)
+	require.True(t, pool.Has(next.Key()))
+	require.EqualValues(t, otherID, reactor.requests.ForTx(ahead.Key()), "the tx must be requested again once its gap closes")
+
+	receiveTx(reactor, other, ahead)
+	require.True(t, pool.Has(ahead.Key()), "the tx must enter the mempool at its real sequence")
 }
