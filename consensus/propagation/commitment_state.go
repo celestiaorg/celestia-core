@@ -285,3 +285,12 @@ func (p *ProposalCache) prune(pruneHeight int64) {
 		}
 	}
 }
+
+// hasCachedRound reports whether a proposal is cached at exactly the given
+// height and round.
+func (p *ProposalCache) hasCachedRound(height int64, round int32) bool {
+	p.pmtx.Lock()
+	defer p.pmtx.Unlock()
+	_, has := p.proposals[height][round]
+	return has
+}

@@ -397,9 +397,16 @@ func (blockProp *Reactor) handleWants(peer p2p.ID, wants *proptypes.WantParts) {
 		return
 	}
 
-	p.SetRemainingRequests(height, round, int(wants.MissingPartsCount))
+	// Only keep per-peer request state for a proposal cached at exactly this
+	// height and round, which pruning bounds. Wants answered from the block
+	// store are served without it, as they may name any round.
+	tracked := blockProp.hasCachedRound(height, round)
+	untrackedRemaining := int(wants.MissingPartsCount)
+	if tracked {
+		p.SetRemainingRequests(height, round, untrackedRemaining)
+	}
 	for _, partIndex := range canSend.GetTrueIndices() {
-		if p.GetRemainingRequests(height, round) <= 0 {
+		if tracked && p.GetRemainingRequests(height, round) <= 0 || !tracked && untrackedRemaining <= 0 {
 			break
 		}
 		part, _ := parts.GetPart(uint32(partIndex))
@@ -423,18 +430,86 @@ func (blockProp *Reactor) handleWants(peer p2p.ID, wants *proptypes.WantParts) {
 			blockProp.Logger.Error("failed to send part", "peer", peer, "height", height, "round", round, "part", partIndex)
 			continue
 		}
-		p.DecreaseRemainingRequests(height, round, 1)
+		if tracked {
+			p.DecreaseRemainingRequests(height, round, 1)
+		} else {
+			untrackedRemaining--
+		}
 		// p.SetHave(height, round, int(partIndex))
 		schema.WriteBlockPart(blockProp.traceClient, height, round, part.Index, wants.Prove, string(peer), schema.Upload)
 	}
 
 	// for parts that we don't have, but they still want, store the wants.
 	stillMissing := wants.Parts.Sub(canSend)
-	if !stillMissing.IsEmpty() {
+	if tracked && !stillMissing.IsEmpty() {
 		p.AddWants(height, round, stillMissing)
 	}
 }
 
+<<<<<<< HEAD
+=======
+// handleStoredWants serves a catchup want for a committed height that is no
+// longer cached. It loads from the block store only the parts it sends. It
+// stops at the first failed send, and it takes each part load from a budget
+// that all peers share. This bounds the work that small want messages can
+// cause on the reactor's single processing goroutine.
+func (blockProp *Reactor) handleStoredWants(p *PeerState, wants *proptypes.WantParts) {
+	height, round := wants.Height, wants.Round
+	peer := p.peer.ID()
+
+	meta := blockProp.store.LoadBlockMeta(height)
+	if meta == nil {
+		blockProp.Logger.Debug("received catchup want for unknown height", "peer", peer, "height", height)
+		return
+	}
+	// The block store keeps only the original parts. A want covers the
+	// original and parity parts, so its size is twice the original total.
+	total := int(meta.BlockID.PartSetHeader.Total)
+	if wants.Parts.Size() != total*2 {
+		blockProp.Logger.Error("received want part with invalid parts size", "peer", peer, "height", height, "round", round, "expected_parts_size", total*2, "received_parts_size", wants.Parts.Size())
+		return
+	}
+
+	// The peer chooses the round, so count its remaining requests locally
+	// instead of in its PeerState, which pruning would not bound.
+	remaining := int(wants.MissingPartsCount)
+	for _, partIndex := range wants.Parts.GetTrueIndices() {
+		// Indices are ascending, so the rest are parity parts.
+		if partIndex >= total {
+			break
+		}
+		if remaining <= 0 {
+			break
+		}
+		if !blockProp.storedPartsBudget.allow() {
+			blockProp.Logger.Debug("stored parts budget exhausted", "peer", peer, "height", height)
+			break
+		}
+		part := blockProp.store.LoadBlockPart(height, partIndex)
+		if part == nil {
+			blockProp.Logger.Error("stored block part not found", "height", height, "part", partIndex)
+			return
+		}
+		e := p2p.Envelope{
+			ChannelID: DataChannel,
+			Message: &propproto.RecoveryPart{
+				Height: height,
+				Round:  round,
+				Index:  part.Index,
+				Data:   part.Bytes,
+				Proof:  *part.Proof.ToProto(),
+			},
+		}
+		if !p.peer.TrySend(e) {
+			blockProp.Logger.Debug("failed to send stored part", "peer", peer, "height", height, "part", partIndex)
+			break
+		}
+		remaining--
+		schema.WriteBlockPart(blockProp.traceClient, height, round, part.Index, true, string(peer), schema.Upload)
+	}
+}
+
+>>>>>>> 8469058 (fix(propagation): [high] bound WantParts height/round and per-peer want state (#3611))
 // handleRecoveryPart is called when a peer sends a block part message. This is used
 // to store the part and clear any wants for that part.
 func (blockProp *Reactor) handleRecoveryPart(peer p2p.ID, part *proptypes.RecoveryPart) {
