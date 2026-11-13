@@ -550,6 +550,93 @@ func TestNonCanonicalProposalBlockIsFinalizedWhenCommitted(t *testing.T) {
 	require.Equal(t, block.Hash(), cs1.blockStore.LoadBlock(height).Hash())
 }
 
+// End to end on the state machine: a byzantine proposer's non-canonical block
+// gets prevotes from every other validator, but an honest node neither locks
+// it nor records it as ValidBlock. When the node proposes later, it proposes
+// a new block with no POL round, and that block can commit. Before the fix,
+// the node locked the non-canonical BlockID and re-proposed the block
+// re-encoded under a different PartSetHeader, so locked and unlocked
+// validators prevoted different BlockIDs and no polka could form.
+func TestStateDoesNotLockNonCanonicalProposalBlock(t *testing.T) {
+	cs1, vss := randState(4)
+	vs2, vs3, vs4 := vss[1], vss[2], vss[3]
+	height := cs1.rs.Height
+
+	proposalCh := subscribe(cs1.eventBus, types.EventQueryCompleteProposal)
+	newRoundCh := subscribe(cs1.eventBus, types.EventQueryNewRound)
+	newBlockCh := subscribe(cs1.eventBus, types.EventQueryNewBlockHeader)
+	pv1, err := cs1.privValidator.GetPubKey()
+	require.NoError(t, err)
+	voteCh := subscribeToVoter(cs1, pv1.Address())
+
+	// Byzantine vs2 encodes a valid block non-canonically.
+	deliverTxsRange(t, cs1, 0, 5)
+	block, chunks := nonCanonicalProposalParts(t, cs1)
+	root, proofs := merkle.ProofsFromByteSlices(chunks)
+	header := types.PartSetHeader{Total: uint32(len(chunks)), Hash: root}
+	parts := types.NewPartSetFromHeader(header, types.BlockPartSizeBytes)
+	for i, c := range chunks {
+		_, err := parts.AddPart(&types.Part{Index: uint32(i), Bytes: c, Proof: *proofs[i]})
+		require.NoError(t, err)
+	}
+	blockID := types.BlockID{Hash: block.Hash(), PartSetHeader: header}
+
+	// Round 1: vs2 proposes it and the other three validators prevote it.
+	// cs1 prevotes nil and, despite the polka, precommits nil without
+	// locking it or recording it as ValidBlock.
+	round := int32(1)
+	incrementRound(vs2, vs3, vs4)
+	proposal := types.NewProposal(height, round, -1, blockID)
+	p := proposal.ToProto()
+	require.NoError(t, vs2.SignProposal(cs1.state.ChainID, p))
+	proposal.Signature = p.Signature
+	require.NoError(t, cs1.SetProposalAndBlock(proposal, block, parts, "peer"))
+	startTestRound(cs1, height, round)
+	ensureNewRound(newRoundCh, height, round)
+	ensureNewProposal(proposalCh, height, round)
+	ensurePrevote(voteCh, height, round)
+	validatePrevote(t, cs1, round, vss[0], nil)
+	signAddVotes(cs1, cmtproto.PrevoteType, blockID.Hash, header, false, vs2, vs3, vs4)
+	ensurePrecommit(voteCh, height, round)
+	validatePrecommit(t, cs1, round, -1, vss[0], nil, nil)
+	rs := cs1.GetRoundState()
+	require.Nil(t, rs.ValidBlock)
+	require.Equal(t, int32(-1), rs.ValidRound)
+
+	// vs3 and vs4 precommit nil; vs2 withholds.
+	signAddVotes(cs1, cmtproto.PrecommitType, nil, types.PartSetHeader{}, true, vs3, vs4)
+
+	// Later rounds: until cs1 is the proposer, nobody proposes and everyone
+	// votes nil.
+	for {
+		round++
+		incrementRound(vs2, vs3, vs4)
+		ensureNewRound(newRoundCh, height, round)
+		if cs1.isProposer(pv1.Address()) {
+			break
+		}
+		ensurePrevote(voteCh, height, round)
+		validatePrevote(t, cs1, round, vss[0], nil)
+		signAddVotes(cs1, cmtproto.PrevoteType, nil, types.PartSetHeader{}, false, vs3, vs4)
+		ensurePrecommit(voteCh, height, round)
+		signAddVotes(cs1, cmtproto.PrecommitType, nil, types.PartSetHeader{}, true, vs3, vs4)
+	}
+
+	// cs1 proposes a new block with no POL round, and it commits.
+	ensureNewProposal(proposalCh, height, round)
+	rs = cs1.GetRoundState()
+	require.Equal(t, int32(-1), rs.Proposal.POLRound)
+	require.NotEqual(t, header, rs.Proposal.BlockID.PartSetHeader)
+	newBlockID := rs.Proposal.BlockID
+	ensurePrevote(voteCh, height, round)
+	validatePrevote(t, cs1, round, vss[0], newBlockID.Hash)
+	signAddVotes(cs1, cmtproto.PrevoteType, newBlockID.Hash, newBlockID.PartSetHeader, false, vs3, vs4)
+	ensurePrecommit(voteCh, height, round)
+	validatePrecommit(t, cs1, round, round, vss[0], newBlockID.Hash, newBlockID.Hash)
+	signAddVotes(cs1, cmtproto.PrecommitType, newBlockID.Hash, newBlockID.PartSetHeader, true, vs3, vs4)
+	ensureNewBlockHeader(newBlockCh, height, newBlockID.Hash)
+}
+
 // makeBlockWithPartAlignedEncoding rebuilds block with a single tx sized so
 // that the block's encoding is an exact multiple of BlockPartSizeBytes.
 func makeBlockWithPartAlignedEncoding(t *testing.T, state sm.State, block *types.Block) (*types.Block, *types.PartSet) {
