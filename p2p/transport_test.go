@@ -1,12 +1,15 @@
 package p2p
 
 import (
+	"errors"
 	"fmt"
 	"math/rand"
 	"net"
+	"os"
 	"reflect"
 	"runtime"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 
@@ -716,4 +719,118 @@ func (c *testTransportConn) SetWriteDeadline(_ time.Time) error {
 
 func (c *testTransportConn) Write(_ []byte) (int, error) {
 	return -1, fmt.Errorf("write() not implemented")
+}
+
+// errListener wraps a net.Listener and returns the queued errors from Accept
+// before it accepts real connections.
+type errListener struct {
+	net.Listener
+	errs chan error
+}
+
+func (l *errListener) Accept() (net.Conn, error) {
+	select {
+	case err := <-l.errs:
+		return nil, err
+	default:
+		return l.Listener.Accept()
+	}
+}
+
+// testSetupErrListenerTransport starts a transport whose listener returns
+// errs from Accept before it accepts real connections. The returned channel
+// is closed when the accept loop exits.
+func testSetupErrListenerTransport(t *testing.T, errs ...error) (*MultiplexTransport, <-chan struct{}) {
+	t.Helper()
+	pv := ed25519.GenPrivKey()
+	id := PubKeyToID(pv.PubKey())
+	mt := newMultiplexTransport(testNodeInfo(id, "transport"), NodeKey{PrivKey: pv})
+
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	el := &errListener{Listener: ln, errs: make(chan error, len(errs))}
+	for _, err := range errs {
+		el.errs <- err
+	}
+	mt.listener = el
+	mt.netAddr = *NewNetAddress(id, ln.Addr())
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		mt.acceptPeers()
+	}()
+	return mt, done
+}
+
+func TestTransportMultiplexAcceptRetriesTemporaryErrors(t *testing.T) {
+	emfile := &net.OpError{Op: "accept", Net: "tcp", Err: os.NewSyscallError("accept4", syscall.EMFILE)}
+	enfile := &net.OpError{Op: "accept", Net: "tcp", Err: os.NewSyscallError("accept4", syscall.ENFILE)}
+	mt, done := testSetupErrListenerTransport(t, emfile, emfile, enfile, emfile)
+
+	errc := make(chan error, 1)
+	go testDialer(mt.NetAddress(), errc)
+
+	acceptc := make(chan error, 1)
+	go func() {
+		p, err := mt.Accept(peerConfig{})
+		if err == nil {
+			mt.Cleanup(p)
+		}
+		acceptc <- err
+	}()
+
+	select {
+	case err := <-acceptc:
+		if err != nil {
+			t.Fatalf("Accept returned error after temporary accept errors: %v", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("timed out waiting for Accept")
+	}
+	if err := <-errc; err != nil {
+		t.Fatalf("dial failed: %v", err)
+	}
+
+	if err := mt.Close(); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("accept loop did not exit after Close")
+	}
+}
+
+func TestTransportMultiplexAcceptStopsOnClose(t *testing.T) {
+	mt, done := testSetupErrListenerTransport(t)
+
+	if err := mt.Close(); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("accept loop did not exit after Close")
+	}
+	if _, err := mt.Accept(peerConfig{}); !errors.As(err, &ErrTransportClosed{}) {
+		t.Fatalf("want ErrTransportClosed, got %v", err)
+	}
+}
+
+func TestTransportMultiplexAcceptReturnsFatalError(t *testing.T) {
+	fatal := errors.New("fatal accept error")
+	mt, done := testSetupErrListenerTransport(t, fatal)
+	defer mt.Close()
+
+	if _, err := mt.Accept(peerConfig{}); !errors.Is(err, fatal) {
+		t.Fatalf("want %v, got %v", fatal, err)
+	}
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("accept loop did not exit after fatal error")
+	}
 }
