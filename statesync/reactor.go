@@ -138,7 +138,9 @@ func (r *Reactor) Receive(e p2p.Envelope) {
 			for _, snapshot := range snapshots {
 				r.Logger.Trace("Advertising snapshot", "height", snapshot.Height,
 					"format", snapshot.Format, "peer", e.Src.ID())
-				e.Src.Send(p2p.Envelope{
+				// Use a non-blocking send so a slow peer cannot hold up Receive.
+				// The peer asks again if the response is dropped.
+				if !e.Src.TrySend(p2p.Envelope{
 					ChannelID: e.ChannelID,
 					Message: &ssproto.SnapshotsResponse{
 						Height:   snapshot.Height,
@@ -147,7 +149,9 @@ func (r *Reactor) Receive(e p2p.Envelope) {
 						Hash:     snapshot.Hash,
 						Metadata: snapshot.Metadata,
 					},
-				})
+				}) {
+					r.Logger.Debug("Dropped snapshot response, send queue is full", "peer", e.Src.ID())
+				}
 			}
 
 		case *ssproto.SnapshotsResponse:
@@ -193,7 +197,9 @@ func (r *Reactor) Receive(e p2p.Envelope) {
 			}
 			r.Logger.Trace("Sending chunk", "height", msg.Height, "format", msg.Format,
 				"chunk", msg.Index, "peer", e.Src.ID())
-			e.Src.Send(p2p.Envelope{
+			// Use a non-blocking send so a slow peer cannot hold up Receive.
+			// The peer asks again if the response is dropped.
+			if !e.Src.TrySend(p2p.Envelope{
 				ChannelID: ChunkChannel,
 				Message: &ssproto.ChunkResponse{
 					Height:  msg.Height,
@@ -202,7 +208,10 @@ func (r *Reactor) Receive(e p2p.Envelope) {
 					Chunk:   resp.Chunk,
 					Missing: resp.Chunk == nil,
 				},
-			})
+			}) {
+				r.Logger.Debug("Dropped chunk response, send queue is full", "height", msg.Height,
+					"format", msg.Format, "chunk", msg.Index, "peer", e.Src.ID())
+			}
 
 		case *ssproto.ChunkResponse:
 			r.mtx.RLock()

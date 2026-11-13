@@ -1100,3 +1100,65 @@ func TestPEXReactorReceiveAddrsFromHostNamePeer(t *testing.T) {
 	assert.False(t, r.requestsSent.Has(string(peer.ID())))
 	assert.True(t, sw.Peers().Has(peer.ID()), "peer must not be disconnected")
 }
+
+// fullQueuePeer is a mock peer whose send queue is full: Send waits until
+// the test releases it, and TrySend returns false at once.
+type fullQueuePeer struct {
+	*mock.Peer
+	release  chan struct{}
+	trySends chan struct{}
+}
+
+func newFullQueuePeer() *fullQueuePeer {
+	return &fullQueuePeer{
+		Peer:     mock.NewPeer(nil),
+		release:  make(chan struct{}),
+		trySends: make(chan struct{}, 10),
+	}
+}
+
+func (p *fullQueuePeer) Send(p2p.Envelope) bool {
+	<-p.release
+	return false
+}
+
+func (p *fullQueuePeer) TrySend(p2p.Envelope) bool {
+	p.trySends <- struct{}{}
+	return false
+}
+
+func TestReceiveDoesNotBlockOnSlowPeer(t *testing.T) {
+	testCases := []struct {
+		name     string
+		seedMode bool
+	}{
+		{name: "default", seedMode: false},
+		{name: "seed mode", seedMode: true},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			r, book := createReactor(&ReactorConfig{SeedMode: tc.seedMode})
+			defer teardownReactor(book)
+			sw := createSwitchAndAddReactors(r)
+			sw.SetAddrBook(book)
+
+			peer := newFullQueuePeer()
+			defer close(peer.release)
+			p2p.AddPeerToSwitchPeerSet(sw, peer)
+
+			done := make(chan struct{})
+			go func() {
+				defer close(done)
+				r.Receive(p2p.Envelope{ChannelID: PexChannel, Src: peer, Message: &tmp2p.PexRequest{}})
+			}()
+
+			select {
+			case <-done:
+			case <-time.After(2 * time.Second):
+				t.Fatal("Receive did not return while the peer's send queue was full")
+			}
+			require.Len(t, peer.trySends, 1, "the reply should use TrySend")
+		})
+	}
+}
