@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
@@ -837,4 +838,55 @@ func TestReactorRejectedDeliveryDropsSendersAheadClaim(t *testing.T) {
 	require.Empty(t, reactor.mempool.seenTracker.PendingClaims(key), "the sender's claim must be dropped")
 	rejected, _, _ := pool.WasRecentlyRejected(key)
 	require.True(t, rejected)
+}
+
+// TestReactorDroppedBufferedCopyKeepsOtherClaims checks that when a buffered
+// copy of a tx is dropped, because its sequence was used or because it waited
+// too long, only the peer that delivered it loses its claim and its place as
+// a source. Another peer's claim stays queued, so the tx is requested from
+// that peer once its gap closes.
+func TestReactorDroppedBufferedCopyKeepsOtherClaims(t *testing.T) {
+	signer := []byte("sender-000-0")
+
+	testCases := map[string]func(t *testing.T, reactor *Reactor, app *sequenceEnforcingApp){
+		"sequence used by a block": func(t *testing.T, reactor *Reactor, app *sequenceEnforcingApp) {
+			app.SetSequence(string(signer), 4)
+			reactor.processReceivedBuffer(signer)
+		},
+		// The tracker entry is younger than the buffered copy when it was
+		// pruned and then recreated by a later announcement.
+		"buffered copy expired": func(t *testing.T, reactor *Reactor, _ *sequenceEnforcingApp) {
+			buffered := reactor.receivedBuffer.get(signer, 3)
+			require.NotNil(t, buffered)
+			buffered.addedAt = time.Now().Add(-2 * seenEntryTTL)
+			reactor.pruneExpiredBuffered(time.Now())
+		},
+	}
+	for name, drop := range testCases {
+		t.Run(name, func(t *testing.T) {
+			reactor, pool, app, peers := sequenceEnforcingReactor(t, 2)
+			honest, attacker := peers[0], peers[1]
+			app.SetSequence(string(signer), 1)
+
+			tx := newDefaultTx("dropped-buffered-copy")
+			key := tx.Key()
+			app.txSequences[string(tx)] = 5
+
+			receiveSeenTx(reactor, honest, key, signer, 5)
+			receiveSeenTx(reactor, attacker, key, signer, 3)
+			requestTxFromPeer(t, reactor, attacker, key)
+			receiveTx(reactor, attacker, tx)
+			require.NotNil(t, reactor.receivedBuffer.get(signer, 3), "the delivery is buffered at the sender's sequence")
+
+			drop(t, reactor, app)
+
+			require.Nil(t, reactor.receivedBuffer.get(signer, 3), "the buffered copy is dropped")
+			require.Zero(t, app.CheckTxCalls())
+			require.Equal(t, []uint64{5}, queuedAt(reactor, signer, key), "the honest peer's claim must stay queued")
+			require.True(t, reactor.mempool.seenTracker.Has(key, reactor.ids.GetIDForPeer(honest.ID())), "the honest peer is still a source")
+			require.False(t, reactor.mempool.seenTracker.Has(key, reactor.ids.GetIDForPeer(attacker.ID())), "the sender of the dropped copy is no longer a source")
+
+			requireRequestedAndAccepted(t, reactor, pool, app, honest, signer, 5, tx)
+		})
+	}
 }

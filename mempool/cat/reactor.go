@@ -768,8 +768,8 @@ func (memR *Reactor) processReceivedBuffer(signer []byte) {
 		// Txs below the expected sequence can never be applied: their
 		// sequences were consumed some other way. Drop them even when
 		// nothing is buffered at the expected sequence.
-		for _, key := range memR.receivedBuffer.removeBelow(signer, expectedSeq) {
-			memR.mempool.seenTracker.RemoveKey(key)
+		for _, stale := range memR.receivedBuffer.removeBelow(signer, expectedSeq) {
+			memR.dropBufferedCopy(stale)
 		}
 
 		buffered := memR.receivedBuffer.get(signer, expectedSeq)
@@ -936,9 +936,23 @@ func (memR *Reactor) refreshPendingSeenQueues() {
 // pruneExpiredBuffered drops buffered txs whose gap was not filled within
 // seenEntryTTL, the same lifetime the seen tracker gives pending entries.
 func (memR *Reactor) pruneExpiredBuffered(now time.Time) {
-	for _, key := range memR.receivedBuffer.pruneOlderThan(now.Add(-seenEntryTTL)) {
-		memR.mempool.seenTracker.RemoveKey(key)
+	for _, expired := range memR.receivedBuffer.pruneOlderThan(now.Add(-seenEntryTTL)) {
+		memR.dropBufferedCopy(expired)
 	}
+}
+
+// dropBufferedCopy forgets a buffered tx that was dropped. Only the peer that
+// delivered it is forgotten, as a source and as an announcer, while other
+// peers' claims for the tx stay queued, so it is requested from them when its
+// gap closes. With no claim left, the tx is forgotten entirely.
+func (memR *Reactor) dropBufferedCopy(buffered *bufferedTx) {
+	seen := memR.mempool.seenTracker
+	seen.ClearPendingClaimFrom(buffered.txKey, buffered.txInfo.SenderID)
+	if len(seen.PendingClaims(buffered.txKey)) == 0 {
+		seen.RemoveKey(buffered.txKey)
+		return
+	}
+	seen.RemovePeerFromTx(buffered.txKey, buffered.txInfo.SenderID)
 }
 
 func (memR *Reactor) querySequenceFromApplication(signer []byte) (uint64, bool) {
