@@ -20,3 +20,13 @@ func (evpool *Pool) HasCommittedDuplicateVote(dve *types.DuplicateVoteEvidence) 
 func (evpool *Pool) MarkCommittedWithoutDuplicateVoteMarker(ev types.Evidence) error {
 	return evpool.evidenceStore.Set(keyCommitted(ev), []byte{})
 }
+
+// AddEvidenceUnchecked adds ev to the pending store and to the gossip list
+// without verification or deduplication, as an older version may have.
+func (evpool *Pool) AddEvidenceUnchecked(ev types.Evidence) error {
+	if err := evpool.addPendingEvidence(ev); err != nil {
+		return err
+	}
+	evpool.evidenceList.PushBack(ev)
+	return nil
+}

@@ -585,9 +585,9 @@ func runEvidencePoolFuzz(t *testing.T, fx *evFixture, data []byte) {
 
 	// Reactor: one undecodable piece rejects the whole message.
 	// Otherwise evidence is added in order until the first invalid
-	// piece, which gets the peer stopped. Evidence already pending, or
-	// duplicate vote evidence for an equivocation already pending, is
-	// skipped without verification.
+	// piece, which gets the peer stopped. Evidence already pending is
+	// skipped without verification. Duplicate vote evidence for a
+	// validator and height already pending is verified, then ignored.
 	pool := fx.newPool(t)
 	reactor, peer := newFuzzReactor(t, pool)
 	list, err := evidenceListToProto(all)
