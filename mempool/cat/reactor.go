@@ -674,6 +674,12 @@ func (memR *Reactor) tryAddNewTx(cachedTx *types.CachedTx, key types.TxKey, txIn
 		for _, claim := range tested {
 			memR.mempool.seenTracker.ClearPendingClaim(key, claim.signer, claim.sequence)
 		}
+		// A bogus far-ahead claim also keeps the tx out of the rejected
+		// cache, so each later delivery of it is checked again. This is
+		// bounded: the claim goes when its announcer contradicts it, when
+		// its signer's sequence passes it, or at the latest when the seen
+		// tracker prunes the tx seenEntryTTL after first tracking it (on
+		// the next block after that).
 		if len(memR.mempool.seenTracker.PendingClaims(key)) == 0 {
 			memR.mempool.rejectedTxCache.Push(key, rsp.Code, rsp.Log)
 		}
