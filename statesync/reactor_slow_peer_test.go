@@ -159,6 +159,10 @@ func TestReceiveDoesNotBlockOnSlowPeer(t *testing.T) {
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
+	// Once the send queue for the slow peer is full, the server stops loading
+	// chunks for it.
+	require.Less(t, app.loads.Load(), int64(slowRequests),
+		"the server should not load chunks it cannot queue for the slow peer")
 
 	require.True(t, honestPeer.Send(p2p.Envelope{
 		ChannelID: ChunkChannel,

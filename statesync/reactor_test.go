@@ -13,6 +13,7 @@ import (
 	abci "github.com/cometbft/cometbft/abci/types"
 	"github.com/cometbft/cometbft/config"
 	"github.com/cometbft/cometbft/p2p"
+	cmtconn "github.com/cometbft/cometbft/p2p/conn"
 	p2pmocks "github.com/cometbft/cometbft/p2p/mocks"
 	ssproto "github.com/cometbft/cometbft/proto/tendermint/statesync"
 	proxymocks "github.com/cometbft/cometbft/proxy/mocks"
@@ -55,6 +56,7 @@ func TestReactor_Receive_ChunkRequest(t *testing.T) {
 			// Mock peer to store response, if found
 			peer := &p2pmocks.Peer{}
 			peer.On("ID").Return(p2p.ID("id"))
+			peer.On("Status").Return(cmtconn.ConnectionStatus{})
 			var response *ssproto.ChunkResponse
 			if tc.expectResponse != nil {
 				peer.On("TrySend", mock.MatchedBy(func(i interface{}) bool {
@@ -200,6 +202,7 @@ func TestReactor_Receive_SnapshotsRequest(t *testing.T) {
 			// Mock peer to catch responses and store them in a slice
 			responses := []*ssproto.SnapshotsResponse{}
 			peer := &p2pmocks.Peer{}
+			peer.On("Status").Return(cmtconn.ConnectionStatus{})
 			if len(tc.expectResponses) > 0 {
 				peer.On("ID").Return(p2p.ID("id"))
 				peer.On("TrySend", mock.MatchedBy(func(i interface{}) bool {
@@ -238,6 +241,50 @@ func TestReactor_Receive_SnapshotsRequest(t *testing.T) {
 
 			conn.AssertExpectations(t)
 			peer.AssertExpectations(t)
+		})
+	}
+}
+
+// fullQueueStatus reports a connection whose send queue for chID is full.
+func fullQueueStatus(chID byte) cmtconn.ConnectionStatus {
+	return cmtconn.ConnectionStatus{Channels: []cmtconn.ChannelStatus{
+		{ID: chID, SendQueueCapacity: 10, SendQueueSize: 10},
+	}}
+}
+
+// TestReactor_Receive_SkipsRequestWhenSendQueueFull checks that Receive does
+// not ask the app for data when the reply cannot be queued for the peer.
+func TestReactor_Receive_SkipsRequestWhenSendQueueFull(t *testing.T) {
+	testcases := map[string]struct {
+		chID byte
+		msg  proto.Message
+	}{
+		"chunk request":     {ChunkChannel, &ssproto.ChunkRequest{Height: 1, Format: 1, Index: 1}},
+		"snapshots request": {SnapshotChannel, &ssproto.SnapshotsRequest{}},
+	}
+
+	for name, tc := range testcases {
+		t.Run(name, func(t *testing.T) {
+			// The connection has no expectations, so any ABCI call fails the test.
+			conn := &proxymocks.AppConnSnapshot{}
+
+			peer := &p2pmocks.Peer{}
+			peer.On("ID").Return(p2p.ID("id")).Maybe()
+			peer.On("Status").Return(fullQueueStatus(tc.chID))
+
+			r := NewReactor(*config.DefaultStateSyncConfig(), conn, nil, NopMetrics())
+			require.NoError(t, r.Start())
+			t.Cleanup(func() {
+				if err := r.Stop(); err != nil {
+					t.Error(err)
+				}
+			})
+
+			r.Receive(p2p.Envelope{ChannelID: tc.chID, Src: peer, Message: tc.msg})
+
+			conn.AssertExpectations(t)
+			peer.AssertExpectations(t)
+			peer.AssertNotCalled(t, "TrySend", mock.Anything)
 		})
 	}
 }
