@@ -89,6 +89,43 @@ func (cs *State) readReplayMessage(msg *TimedWALMessage, newStepSub types.Subscr
 	return nil
 }
 
+<<<<<<< HEAD
+=======
+// applyLockInfo restores the lock journaled by writeLockInfo; the last record wins.
+func (cs *State) applyLockInfo(li LockInfo) {
+	cs.lockAll()
+	defer cs.unlockAll()
+
+	if li.Height != cs.rs.Height {
+		cs.Logger.Error("Replay: lock for another height", "height", cs.rs.Height, "lock_height", li.Height)
+		return
+	}
+	if li.Round < 0 {
+		cs.clearLock()
+		return
+	}
+	cs.rs.LockedRound = li.Round
+	cs.rs.LockedBlockID = li.BlockID
+	cs.rs.LockedBlockTime = li.BlockTime
+	if blockMatchesBlockID(cs.rs.LockedBlock, cs.rs.LockedBlockParts, li.BlockID) {
+		cs.fillLockBytes(cs.rs.LockedBlock, cs.rs.LockedBlockParts) // relock: raise Valid*
+		return
+	}
+	cs.rs.LockedBlock, cs.rs.LockedBlockParts = nil, nil
+	if blockMatchesBlockID(cs.rs.ProposalBlock, cs.rs.ProposalBlockParts, li.BlockID) {
+		cs.fillLockBytes(cs.rs.ProposalBlock, cs.rs.ProposalBlockParts)
+		return
+	}
+	if block, parts := cs.lockedBlocks.read(li); block != nil {
+		cs.fillLockBytes(block, parts)
+		if cs.rs.ProposalBlockParts == nil || cs.rs.ProposalBlockParts.HasHeader(li.BlockID.PartSetHeader) {
+			cs.rs.ProposalBlock, cs.rs.ProposalBlockParts = block, parts
+			cs.rs.ProposalBlockNonCanonical = false // a locked block is always canonical
+		}
+	}
+}
+
+>>>>>>> 1998bf5 (fix(consensus): [high] require canonical proposal block encoding (#3595))
 // Replay only those messages since the last block.  `timeoutRoutine` should
 // run concurrently to read off tickChan.
 func (cs *State) catchupReplay(csHeight int64) error {

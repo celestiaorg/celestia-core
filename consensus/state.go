@@ -910,6 +910,7 @@ func (cs *State) updateToState(state sm.State) {
 	cs.rs.Proposal = nil
 	cs.rs.ProposalBlock = nil
 	cs.rs.ProposalBlockParts = nil
+	cs.rs.ProposalBlockNonCanonical = false
 	cs.proposalReceivedTime = time.Time{}
 	cs.rs.LockedRound = -1
 	cs.rs.LockedBlock = nil
@@ -1253,6 +1254,7 @@ func (cs *State) enterNewRound(height int64, round int32) {
 		cs.rs.Proposal = nil
 		cs.rs.ProposalBlock = nil
 		cs.rs.ProposalBlockParts = nil
+		cs.rs.ProposalBlockNonCanonical = false
 		cs.proposalReceivedTime = time.Time{}
 	}
 
@@ -1569,6 +1571,13 @@ func (cs *State) defaultDoPrevote(height int64, round int32) {
 		return
 	}
 
+	// If the parts are not the block's canonical encoding, prevote nil.
+	if cs.rs.ProposalBlockNonCanonical {
+		logger.Error("prevote step: proposal block parts are not the canonical block encoding; prevoting nil")
+		cs.signAddVote(cmtproto.PrevoteType, nil, types.PartSetHeader{}, nil)
+		return
+	}
+
 	// Validate proposal block, from consensus' perspective
 	err := cs.blockExec.ValidateBlock(cs.state, cs.rs.ProposalBlock)
 	if err != nil {
@@ -1770,8 +1779,15 @@ func (cs *State) enterPrecommit(height int64, round int32) {
 		return
 	}
 
+<<<<<<< HEAD
 	// If +2/3 prevoted for proposal block, stage and precommit it
 	if blockMatchesBlockID(cs.rs.ProposalBlock, cs.rs.ProposalBlockParts, blockID) {
+=======
+	// If +2/3 prevoted for proposal block, stage and precommit it, unless its
+	// parts are not the canonical encoding. Such a block is never locked or
+	// precommitted: it is treated like a polka for a block we do not have.
+	if cs.haveBlock(round, blockID) && !cs.rs.ProposalBlockNonCanonical {
+>>>>>>> 1998bf5 (fix(consensus): [high] require canonical proposal block encoding (#3595))
 		logger.Debug("precommit step; +2/3 prevoted proposal block; locking", "hash", blockID.Hash)
 
 		// Validate the block.
@@ -1802,6 +1818,7 @@ func (cs *State) enterPrecommit(height int64, round int32) {
 
 	if !cs.rs.ProposalBlockParts.HasHeader(blockID.PartSetHeader) {
 		cs.rs.ProposalBlock = nil
+		cs.rs.ProposalBlockNonCanonical = false
 		cs.rs.ProposalBlockParts = types.NewPartSetFromHeader(blockID.PartSetHeader, types.BlockPartSizeBytes)
 		psh := cs.rs.ProposalBlockParts.Header()
 		cs.propagator.AddCommitment(height, round, &psh)
@@ -1896,6 +1913,7 @@ func (cs *State) enterCommit(height int64, commitRound int32) {
 		// to hash to blockID.Hash. Drop it before announcing the new round
 		// state and wait for the committed parts.
 		cs.rs.ProposalBlock = nil
+		cs.rs.ProposalBlockNonCanonical = false
 
 		if !cs.rs.ProposalBlockParts.HasHeader(blockID.PartSetHeader) {
 			logger.Info(
@@ -2412,7 +2430,28 @@ func (cs *State) addProposalBlockPart(msg *BlockPartMessage, peerID p2p.ID) (add
 			return added, err
 		}
 
+		// Record whether the parts are the block's canonical encoding. Other
+		// nodes (e.g. blocksync) rebuild the PartSetHeader by re-encoding the
+		// block, so a committed non-canonical encoding would make the
+		// BlockID unverifiable for them. This is a voting rule, not an
+		// assembly rule: the block is still kept so it can be finalized if
+		// +2/3 precommitted it, but we never vote for it. At the commit step
+		// no more votes are cast, so the check is skipped.
+		nonCanonical := false
+		if cs.rs.Step != cstypes.RoundStepCommit {
+			nonCanonical = !isCanonicalBlockEncoding(block, cs.rs.ProposalBlockParts.GetBytes(), cs.rs.ProposalBlockParts.Total())
+			if nonCanonical {
+				cs.Logger.Error(
+					"proposal block parts are not the canonical block encoding; will not vote for it",
+					"height", height,
+					"round", round,
+					"peer", peerID,
+				)
+			}
+		}
+
 		cs.rs.ProposalBlock = block
+		cs.rs.ProposalBlockNonCanonical = nonCanonical
 
 		// NOTE: it's possible to receive complete proposal blocks for future rounds without having the proposal
 		cs.Logger.Info("received complete proposal block", "height", cs.rs.ProposalBlock.Height, "hash", cs.rs.ProposalBlock.Hash())
@@ -2429,7 +2468,10 @@ func (cs *State) handleCompleteProposal(blockHeight int64) {
 	prevotes := cs.rs.Votes.Prevotes(cs.rs.Round)
 	blockID, hasTwoThirds := prevotes.TwoThirdsMajority()
 	if hasTwoThirds && !blockID.IsZero() && (cs.rs.ValidRound < cs.rs.Round) {
-		if blockMatchesBlockID(cs.rs.ProposalBlock, cs.rs.ProposalBlockParts, blockID) {
+		// A non-canonical block is never recorded as ValidBlock, so we never
+		// propose it ourselves.
+		if blockMatchesBlockID(cs.rs.ProposalBlock, cs.rs.ProposalBlockParts, blockID) &&
+			!cs.rs.ProposalBlockNonCanonical {
 			cs.Logger.Debug(
 				"updating valid block to new proposal block",
 				"valid_round", cs.rs.Round,
@@ -2732,10 +2774,18 @@ func (cs *State) addVote(vote *types.Vote, peerID p2p.ID) (added bool, err error
 			if len(blockID.Hash) != 0 && (cs.rs.ValidRound < vote.Round) && (vote.Round == cs.rs.Round) {
 				partsMatch := cs.rs.ProposalBlockParts.HasHeader(blockID.PartSetHeader)
 				if cs.rs.ProposalBlock.HashesTo(blockID.Hash) && partsMatch {
-					cs.Logger.Debug("updating valid block because of POL", "valid_round", cs.rs.ValidRound, "pol_round", vote.Round)
-					cs.rs.ValidRound = vote.Round
-					cs.rs.ValidBlock = cs.rs.ProposalBlock
-					cs.rs.ValidBlockParts = cs.rs.ProposalBlockParts
+					if cs.rs.ProposalBlockNonCanonical {
+						// Keep the block so it can still be finalized if it
+						// is committed, but never record it as ValidBlock,
+						// so we never propose it ourselves.
+						cs.Logger.Info("not updating valid block: proposal block parts are not the canonical block encoding",
+							"pol_round", vote.Round)
+					} else {
+						cs.Logger.Debug("updating valid block because of POL", "valid_round", cs.rs.ValidRound, "pol_round", vote.Round)
+						cs.rs.ValidRound = vote.Round
+						cs.rs.ValidBlock = cs.rs.ProposalBlock
+						cs.rs.ValidBlockParts = cs.rs.ProposalBlockParts
+					}
 				} else if cs.rs.ProposalBlock != nil {
 					cs.Logger.Debug(
 						"valid block we do not know about; set ProposalBlock=nil",
@@ -2747,6 +2797,7 @@ func (cs *State) addVote(vote *types.Vote, peerID p2p.ID) (added bool, err error
 
 					// we're getting the wrong block
 					cs.rs.ProposalBlock = nil
+					cs.rs.ProposalBlockNonCanonical = false
 				}
 
 				if !partsMatch {
@@ -3179,6 +3230,25 @@ func (cs *State) syncData() {
 	}
 }
 
+// isCanonicalBlockEncoding reports whether bz, received as total parts, is
+// the canonical encoding of block, i.e. what block.MakePartSet would produce.
+// Every part but the last is exactly BlockPartSizeBytes, so a matching part
+// count also rules out a trailing empty part. An encoding error is reported
+// as non-canonical.
+func isCanonicalBlockEncoding(block *types.Block, bz []byte, total uint32) bool {
+	pb, err := block.ToProto()
+	if err != nil {
+		return false
+	}
+	canonical, err := proto.Marshal(pb)
+	if err != nil {
+		return false
+	}
+	partSize := int(types.BlockPartSizeBytes)
+	canonicalTotal := (len(canonical) + partSize - 1) / partSize
+	return int(total) == canonicalTotal && bytes.Equal(canonical, bz)
+}
+
 // blockMatchesBlockID reports whether block hashes to blockID.Hash and parts
 // carries blockID.PartSetHeader; a nil block or part set never matches. Both
 // halves are checked because a hash alone does not uniquely determine the
@@ -3187,6 +3257,137 @@ func blockMatchesBlockID(block *types.Block, parts *types.PartSet, blockID types
 	return block.HashesTo(blockID.Hash) && parts.HasHeader(blockID.PartSetHeader)
 }
 
+<<<<<<< HEAD
+=======
+// lockOn locks on blockID; the caller journals it with writeLockInfo once the precommit is signed.
+func (cs *State) lockOn(round int32, blockID types.BlockID, blockTime time.Time, block *types.Block, parts *types.PartSet) {
+	cs.rs.LockedRound = round
+	cs.rs.LockedBlockID = blockID
+	cs.rs.LockedBlockTime = blockTime
+	cs.rs.LockedBlock = block
+	cs.rs.LockedBlockParts = parts
+	cs.copyLockedBlock()
+}
+
+// copyLockedBlock arms the copy of the locked block's parts unless the WAL holds them.
+func (cs *State) copyLockedBlock() {
+	if cs.lockedBlocks == nil || cs.replayMode || cs.rs.LockedBlockParts == nil {
+		return
+	}
+	// Our own proposal's parts are already internal WAL records.
+	if cs.rs.Proposal != nil && cs.rs.Proposal.BlockID.Equals(cs.rs.LockedBlockID) &&
+		cs.privValidatorPubKey != nil && cs.isProposer(cs.privValidatorPubKey.Address()) {
+		return
+	}
+	li := LockInfo{Height: cs.rs.Height, Round: cs.rs.LockedRound, BlockID: cs.rs.LockedBlockID, BlockTime: cs.rs.LockedBlockTime}
+	cs.lockedBlocks.arm(cs.lockedBlockDelay(), li, cs.rs.LockedBlockParts)
+}
+
+// defaultLockedBlockDelay is how long a lock stays open before its block is copied; healthy heights commit sooner.
+func (cs *State) defaultLockedBlockDelay() time.Duration {
+	commit := cs.state.Timeouts.TimeoutCommit
+	if commit == 0 {
+		commit = cs.config.TimeoutCommit
+	}
+	return 2*commit + cs.state.Timeouts.DelayedPrecommitTimeout
+}
+
+// fillLockBytes gives a lock held by ID its bytes; Valid* follows so a proposer re-proposes it.
+func (cs *State) fillLockBytes(block *types.Block, parts *types.PartSet) {
+	cs.rs.LockedBlock, cs.rs.LockedBlockParts = block, parts
+	if cs.rs.ValidRound < cs.rs.LockedRound {
+		cs.rs.ValidRound = cs.rs.LockedRound
+		cs.rs.ValidBlock, cs.rs.ValidBlockParts = block, parts
+	}
+	cs.shareBlock(cs.rs.LockedRound, parts)
+	cs.copyLockedBlock()
+}
+
+// fillLockFromPropagator gives a lock held by ID the block the propagator completed
+// for the lock round, which consensus may have left since.
+func (cs *State) fillLockFromPropagator() {
+	if !cs.rs.IsLocked() || cs.rs.LockedBlock != nil {
+		return
+	}
+	_, parts, ok := cs.propagator.GetProposal(cs.rs.Height, cs.rs.LockedRound)
+	if !ok || !parts.IsComplete() || !parts.HasHeader(cs.rs.LockedBlockID.PartSetHeader) {
+		return
+	}
+	block, err := decodeBlock(parts, blockLimits(cs.state))
+	if err != nil || !block.HashesTo(cs.rs.LockedBlockID.Hash) {
+		cs.Logger.Error("propagator's lock round block does not match the lock", "height", cs.rs.Height, "round", cs.rs.LockedRound, "err", err)
+		return
+	}
+	cs.fillLockBytes(block, parts)
+}
+
+// haveBlock reports whether the proposal block is blockID's, making a matching locked or
+// valid block the proposal block, as if its parts had arrived, and sharing it for round.
+func (cs *State) haveBlock(round int32, blockID types.BlockID) bool {
+	if blockMatchesBlockID(cs.rs.ProposalBlock, cs.rs.ProposalBlockParts, blockID) {
+		return true
+	}
+	for _, b := range []struct {
+		block *types.Block
+		parts *types.PartSet
+	}{{cs.rs.LockedBlock, cs.rs.LockedBlockParts}, {cs.rs.ValidBlock, cs.rs.ValidBlockParts}} {
+		if blockMatchesBlockID(b.block, b.parts, blockID) {
+			cs.rs.ProposalBlock, cs.rs.ProposalBlockParts = b.block, b.parts
+			// Locked and valid blocks are always canonical.
+			cs.rs.ProposalBlockNonCanonical = false
+			cs.shareBlock(round, b.parts)
+			return true
+		}
+	}
+	return false
+}
+
+// shareBlock hands a block with a polka or commit at round to the propagator, so peers
+// asking for it there are served. Replay defers it to OnStart, once the propagator is set up.
+func (cs *State) shareBlock(round int32, parts *types.PartSet) {
+	if !cs.replayMode && round >= 0 && parts != nil {
+		cs.propagator.AddBlock(cs.rs.Height, round, parts)
+	}
+}
+
+// unlock releases the lock and reports whether one was held; the caller journals it.
+func (cs *State) unlock() bool {
+	if !cs.rs.IsLocked() {
+		return false
+	}
+	cs.clearLock()
+	// A released lock's copy is never read, but a replayed unlock may precede the lock the file restores.
+	if !cs.replayMode {
+		cs.lockedBlocks.reset()
+	}
+	return true
+}
+
+func (cs *State) clearLock() {
+	cs.rs.LockedRound = -1
+	cs.rs.LockedBlockID = types.BlockID{}
+	cs.rs.LockedBlockTime = time.Time{}
+	cs.rs.LockedBlock = nil
+	cs.rs.LockedBlockParts = nil
+}
+
+// writeLockInfo journals the current lock, buffered. Called after signing, it rides
+// the precommit's WriteSync, which runs before the vote is handled or gossiped. Replay
+// re-derives locks from the WAL; rewriting them appends stale records that replay reads back.
+func (cs *State) writeLockInfo() {
+	if cs.replayMode {
+		return
+	}
+	li := LockInfo{Height: cs.rs.Height, Round: cs.rs.LockedRound, BlockID: cs.rs.LockedBlockID, BlockTime: cs.rs.LockedBlockTime}
+	if err := cs.wal.Write(li); err != nil {
+		panic(fmt.Errorf(
+			"failed to write %v msg to consensus WAL; check your file system and restart the node: %w",
+			li, err,
+		))
+	}
+}
+
+>>>>>>> 1998bf5 (fix(consensus): [high] require canonical proposal block encoding (#3595))
 func (cs *State) lockAll() {
 	cs.mtx.Lock()
 	cs.stateMtx.Lock()

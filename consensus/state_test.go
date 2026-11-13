@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cosmos/gogoproto/proto"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
@@ -16,6 +17,7 @@ import (
 	abci "github.com/cometbft/cometbft/abci/types"
 	abcimocks "github.com/cometbft/cometbft/abci/types/mocks"
 	cstypes "github.com/cometbft/cometbft/consensus/types"
+	"github.com/cometbft/cometbft/crypto/merkle"
 	"github.com/cometbft/cometbft/crypto/tmhash"
 	"github.com/cometbft/cometbft/internal/test"
 	cmtbytes "github.com/cometbft/cometbft/libs/bytes"
@@ -189,6 +191,511 @@ func TestStateEnterProposeYesPrivValidator(t *testing.T) {
 	ensureNoNewTimeout(timeoutCh, cs.config.TimeoutPropose.Nanoseconds())
 }
 
+<<<<<<< HEAD
+=======
+// A block assembled from parts carries tx hashes computed locally, not the proposer's.
+func TestAddProposalBlockPartFillsCachedHashes(t *testing.T) {
+	cs1, _ := randState(1)
+	deliverTxsRange(t, cs1, 0, 10)
+
+	block, parts, err := cs1.createProposalBlock(context.Background())
+	require.NoError(t, err)
+	require.Len(t, block.Txs, 10)
+	want := make([][]byte, len(block.Txs))
+	for i, tx := range block.Txs {
+		want[i] = tx.Hash()
+	}
+	bogus := make([][]byte, len(block.Txs))
+	for i := range bogus {
+		bogus[i] = []byte("bogus")
+	}
+	block.SetCachedHashes(bogus)
+
+	cs1.rs.ProposalBlockParts = types.NewPartSetFromHeader(parts.Header(), types.BlockPartSizeBytes)
+	for i := range parts.Total() {
+		msg := &BlockPartMessage{Height: cs1.rs.Height, Round: cs1.rs.Round, Part: parts.GetPart(int(i))}
+		_, err := cs1.addProposalBlockPart(msg, "peer")
+		require.NoError(t, err)
+	}
+
+	require.NotNil(t, cs1.rs.ProposalBlock)
+	require.Equal(t, want, cs1.rs.ProposalBlock.CachedHashes())
+}
+
+// splitIntoParts splits bz into BlockPartSizeBytes chunks.
+func splitIntoParts(bz []byte) [][]byte {
+	partSize := int(types.BlockPartSizeBytes)
+	var chunks [][]byte
+	for len(bz) > partSize {
+		chunks = append(chunks, bz[:partSize])
+		bz = bz[partSize:]
+	}
+	return append(chunks, bz)
+}
+
+// deliverProposalBlockParts sets up cs.rs.ProposalBlockParts for the part set
+// built from chunks and adds every part. It returns the part set header.
+func deliverProposalBlockParts(t *testing.T, cs *State, chunks [][]byte) types.PartSetHeader {
+	t.Helper()
+	root, proofs := merkle.ProofsFromByteSlices(chunks)
+	header := types.PartSetHeader{Total: uint32(len(chunks)), Hash: root}
+	if !cs.rs.ProposalBlockParts.HasHeader(header) {
+		cs.rs.ProposalBlockParts = types.NewPartSetFromHeader(header, types.BlockPartSizeBytes)
+	}
+	for i, c := range chunks {
+		part := &types.Part{Index: uint32(i), Bytes: c, Proof: *proofs[i]}
+		msg := &BlockPartMessage{Height: cs.rs.Height, Round: cs.rs.Round, Part: part}
+		_, err := cs.addProposalBlockPart(msg, "peer")
+		require.NoError(t, err)
+	}
+	require.True(t, cs.rs.ProposalBlockParts.IsComplete())
+	return header
+}
+
+// nonCanonicalProposalParts returns a proposal block and an encoding of it
+// that decodes to the same block but is not its canonical encoding (a
+// trailing unknown field).
+func nonCanonicalProposalParts(t *testing.T, cs *State) (*types.Block, [][]byte) {
+	t.Helper()
+	block, _, err := cs.createProposalBlock(context.Background())
+	require.NoError(t, err)
+	pbb, err := block.ToProto()
+	require.NoError(t, err)
+	bz, err := proto.Marshal(pbb)
+	require.NoError(t, err)
+	// field 100, varint, value 1
+	return block, splitIntoParts(append(bz, 0xa0, 0x06, 0x01))
+}
+
+// canonicalProposalParts returns a proposal block and its canonical encoding.
+func canonicalProposalParts(t *testing.T, cs *State) (*types.Block, [][]byte) {
+	t.Helper()
+	block, parts, err := cs.createProposalBlock(context.Background())
+	require.NoError(t, err)
+	chunks := make([][]byte, parts.Total())
+	for i := range chunks {
+		chunks[i] = parts.GetPart(i).Bytes
+	}
+	return block, chunks
+}
+
+// popVote returns the next vote cs signed, or nil if none is queued.
+func popVote(t *testing.T, cs *State) *types.Vote {
+	t.Helper()
+	for {
+		select {
+		case mi := <-cs.internalMsgQueue:
+			if vm, ok := mi.Msg.(*VoteMessage); ok {
+				return vm.Vote
+			}
+		default:
+			return nil
+		}
+	}
+}
+
+// addTwoThirds adds +2/3 prevotes (or precommits) for blockID to cs.
+func addTwoThirds(t *testing.T, cs *State, vss []*validatorStub, voteType cmtproto.SignedMsgType, blockID types.BlockID) {
+	t.Helper()
+	extEnabled := cs.state.ConsensusParams.ABCI.VoteExtensionsEnabled(cs.rs.Height)
+	signExt := extEnabled && voteType == cmtproto.PrecommitType
+	for _, vs := range vss {
+		vote := signVote(vs, voteType, blockID.Hash, blockID.PartSetHeader, signExt)
+		_, err := cs.rs.Votes.AddVote(vote, "peer", extEnabled)
+		require.NoError(t, err)
+	}
+}
+
+// A proposal whose parts are not the canonical encoding of the block is kept
+// as the proposal block, so it can be finalized if committed, but flagged so
+// it is never voted for. Other nodes (e.g. blocksync) rebuild the
+// PartSetHeader by re-encoding the block and could not verify the committed
+// BlockID.
+func TestAddProposalBlockPartFlagsNonCanonicalEncoding(t *testing.T) {
+	partSize := int(types.BlockPartSizeBytes)
+
+	testCases := []struct {
+		name string
+		// exactParts rebuilds the block so its canonical encoding is an
+		// exact multiple of the part size.
+		exactParts   bool
+		mutate       func(t *testing.T, bz []byte) [][]byte
+		nonCanonical bool
+	}{
+		{
+			name:   "canonical",
+			mutate: func(_ *testing.T, bz []byte) [][]byte { return splitIntoParts(bz) },
+		},
+		{
+			name: "trailing unknown field",
+			mutate: func(_ *testing.T, bz []byte) [][]byte {
+				// field 100, varint, value 1
+				return splitIntoParts(append(bz, 0xa0, 0x06, 0x01))
+			},
+			nonCanonical: true,
+		},
+		{
+			name: "non-minimal varint tag",
+			mutate: func(t *testing.T, bz []byte) [][]byte {
+				// Field 1 (header) tag 0x0a encoded as two bytes.
+				require.Equal(t, byte(0x0a), bz[0])
+				return splitIntoParts(append([]byte{0x8a, 0x00}, bz[1:]...))
+			},
+			nonCanonical: true,
+		},
+		{
+			name:       "trailing empty part",
+			exactParts: true,
+			mutate: func(t *testing.T, bz []byte) [][]byte {
+				require.Zero(t, len(bz)%partSize)
+				return append(splitIntoParts(bz), []byte{})
+			},
+			nonCanonical: true,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			cs1, vss := randState(1)
+			deliverTxsRange(t, cs1, 0, 5)
+
+			block, honestParts, err := cs1.createProposalBlock(context.Background())
+			require.NoError(t, err)
+			if tc.exactParts {
+				block, honestParts = makeBlockWithPartAlignedEncoding(t, cs1.state, block)
+			}
+
+			pbb, err := block.ToProto()
+			require.NoError(t, err)
+			bz, err := proto.Marshal(pbb)
+			require.NoError(t, err)
+			chunks := tc.mutate(t, bz)
+
+			header := deliverProposalBlockParts(t, cs1, chunks)
+			require.NotNil(t, cs1.rs.ProposalBlock)
+			require.Equal(t, block.Hash(), cs1.rs.ProposalBlock.Hash())
+			require.Equal(t, tc.nonCanonical, cs1.rs.ProposalBlockNonCanonical)
+			if !tc.nonCanonical {
+				require.Equal(t, honestParts.Header(), header)
+				return
+			}
+			require.NotEqual(t, honestParts.Header(), header)
+
+			// This is why such a block must not be voted for: the committed
+			// BlockID would not be verifiable by a node that re-encodes the
+			// block (blocksync).
+			signedID := types.BlockID{Hash: block.Hash(), PartSetHeader: header}
+			commit, err := test.MakeCommit(signedID, block.Height, 0, cs1.state.Validators,
+				[]types.PrivValidator{vss[0].PrivValidator}, cs1.state.ChainID, time.Now())
+			require.NoError(t, err)
+			reencoded, err := cs1.rs.ProposalBlock.MakePartSet(types.BlockPartSizeBytes)
+			require.NoError(t, err)
+			reencodedID := types.BlockID{Hash: block.Hash(), PartSetHeader: reencoded.Header()}
+			require.Error(t, cs1.state.Validators.VerifyCommit(cs1.state.ChainID, reencodedID, block.Height, commit))
+		})
+	}
+}
+
+func TestNonCanonicalProposalBlockPrevotesNil(t *testing.T) {
+	for _, nonCanonical := range []bool{false, true} {
+		t.Run(fmt.Sprintf("non_canonical=%t", nonCanonical), func(t *testing.T) {
+			cs1, _ := randState(1)
+			deliverTxsRange(t, cs1, 0, 5)
+			proposalParts := canonicalProposalParts
+			if nonCanonical {
+				proposalParts = nonCanonicalProposalParts
+			}
+			block, chunks := proposalParts(t, cs1)
+			deliverProposalBlockParts(t, cs1, chunks)
+			require.Equal(t, nonCanonical, cs1.rs.ProposalBlockNonCanonical)
+
+			// Voting steps release and re-take the state locks.
+			cs1.lockAll()
+			cs1.defaultDoPrevote(cs1.rs.Height, cs1.rs.Round)
+			cs1.unlockAll()
+
+			vote := popVote(t, cs1)
+			require.NotNil(t, vote)
+			require.Equal(t, cmtproto.PrevoteType, vote.Type)
+			if nonCanonical {
+				require.True(t, vote.BlockID.IsZero())
+			} else {
+				require.Equal(t, block.Hash(), vote.BlockID.Hash)
+			}
+		})
+	}
+}
+
+func TestNonCanonicalProposalBlockIsNotLockedOrPrecommitted(t *testing.T) {
+	for _, nonCanonical := range []bool{false, true} {
+		t.Run(fmt.Sprintf("non_canonical=%t", nonCanonical), func(t *testing.T) {
+			// cs1 is vss[0]; the other three validators hold +2/3 of the power.
+			cs1, vss := randState(4)
+			cs1.state.Timeouts.DelayedPrecommitTimeout = 0
+			deliverTxsRange(t, cs1, 0, 5)
+			proposalParts := canonicalProposalParts
+			if nonCanonical {
+				proposalParts = nonCanonicalProposalParts
+			}
+			block, chunks := proposalParts(t, cs1)
+			header := deliverProposalBlockParts(t, cs1, chunks)
+			blockID := types.BlockID{Hash: block.Hash(), PartSetHeader: header}
+
+			// Older validators prevoted for it.
+			addTwoThirds(t, cs1, vss[1:], cmtproto.PrevoteType, blockID)
+			// Voting steps release and re-take the state locks.
+			cs1.lockAll()
+			cs1.enterPrecommit(cs1.rs.Height, cs1.rs.Round)
+			cs1.unlockAll()
+
+			vote := popVote(t, cs1)
+			require.NotNil(t, vote)
+			require.Equal(t, cmtproto.PrecommitType, vote.Type)
+			if nonCanonical {
+				require.Nil(t, cs1.rs.LockedBlock)
+				require.True(t, vote.BlockID.IsZero())
+				// The block and its parts are kept in case it is committed.
+				require.NotNil(t, cs1.rs.ProposalBlock)
+				require.True(t, cs1.rs.ProposalBlockParts.HasHeader(header))
+			} else {
+				require.Equal(t, block.Hash(), cs1.rs.LockedBlock.Hash())
+				require.Equal(t, blockID, vote.BlockID)
+			}
+		})
+	}
+}
+
+// When the proposal block is non-canonical but the polka is for our canonical
+// ValidBlock, haveBlock makes ValidBlock the proposal block. The flag must
+// follow it, so the node locks and precommits ValidBlock.
+func TestPolkaForValidBlockLocksItOverNonCanonicalProposalBlock(t *testing.T) {
+	// cs1 is vss[0]; the other three validators hold +2/3 of the power.
+	cs1, vss := randState(4)
+	cs1.state.Timeouts.DelayedPrecommitTimeout = 0
+	deliverTxsRange(t, cs1, 0, 5)
+
+	// ValidBlock: a canonical block from an earlier polka.
+	validBlock, validParts, err := cs1.createProposalBlock(context.Background())
+	require.NoError(t, err)
+	cs1.rs.ValidRound = cs1.rs.Round
+	cs1.rs.ValidBlock, cs1.rs.ValidBlockParts = validBlock, validParts
+	validID := types.BlockID{Hash: validBlock.Hash(), PartSetHeader: validParts.Header()}
+
+	// The current proposal block is non-canonical.
+	_, chunks := nonCanonicalProposalParts(t, cs1)
+	deliverProposalBlockParts(t, cs1, chunks)
+	require.True(t, cs1.rs.ProposalBlockNonCanonical)
+
+	addTwoThirds(t, cs1, vss[1:], cmtproto.PrevoteType, validID)
+	// Voting steps release and re-take the state locks.
+	cs1.lockAll()
+	cs1.enterPrecommit(cs1.rs.Height, cs1.rs.Round)
+	cs1.unlockAll()
+
+	vote := popVote(t, cs1)
+	require.NotNil(t, vote)
+	require.Equal(t, cmtproto.PrecommitType, vote.Type)
+	require.Equal(t, validID, vote.BlockID)
+	require.True(t, blockMatchesBlockID(cs1.rs.LockedBlock, cs1.rs.LockedBlockParts, validID))
+	require.False(t, cs1.rs.ProposalBlockNonCanonical)
+}
+
+func TestNonCanonicalProposalBlockIsNotValidBlock(t *testing.T) {
+	testCases := []struct {
+		name string
+		// polka gets +2/3 prevotes for blockID to cs, along whichever path
+		// updates ValidBlock.
+		polka func(t *testing.T, cs *State, vss []*validatorStub, blockID types.BlockID)
+	}{
+		{
+			name: "polka after complete proposal (addVote)",
+			polka: func(t *testing.T, cs *State, vss []*validatorStub, blockID types.BlockID) {
+				for _, vs := range vss {
+					vote := signVote(vs, cmtproto.PrevoteType, blockID.Hash, blockID.PartSetHeader, false)
+					_, err := cs.addVote(vote, "peer")
+					require.NoError(t, err)
+				}
+			},
+		},
+		{
+			name: "complete proposal after polka (handleCompleteProposal)",
+			polka: func(t *testing.T, cs *State, vss []*validatorStub, blockID types.BlockID) {
+				addTwoThirds(t, cs, vss, cmtproto.PrevoteType, blockID)
+				cs.handleCompleteProposal(cs.rs.Height)
+			},
+		},
+	}
+	for _, tc := range testCases {
+		for _, nonCanonical := range []bool{false, true} {
+			t.Run(fmt.Sprintf("%s/non_canonical=%t", tc.name, nonCanonical), func(t *testing.T) {
+				// cs1 is vss[0]; the other three validators hold +2/3 of the power.
+				cs1, vss := randState(4)
+				deliverTxsRange(t, cs1, 0, 5)
+				proposalParts := canonicalProposalParts
+				if nonCanonical {
+					proposalParts = nonCanonicalProposalParts
+				}
+				block, chunks := proposalParts(t, cs1)
+				header := deliverProposalBlockParts(t, cs1, chunks)
+				blockID := types.BlockID{Hash: block.Hash(), PartSetHeader: header}
+
+				tc.polka(t, cs1, vss[1:], blockID)
+
+				if nonCanonical {
+					require.Nil(t, cs1.rs.ValidBlock)
+					require.Equal(t, int32(-1), cs1.rs.ValidRound)
+					// The block is kept in case it is committed.
+					require.True(t, blockMatchesBlockID(cs1.rs.ProposalBlock, cs1.rs.ProposalBlockParts, blockID))
+				} else {
+					require.True(t, blockMatchesBlockID(cs1.rs.ValidBlock, cs1.rs.ValidBlockParts, blockID))
+				}
+			})
+		}
+	}
+}
+
+// A non-canonical block that already has +2/3 precommits (e.g. from validators
+// that do not run this check) must be finalized rather than leave the node
+// stuck at the commit step.
+func TestNonCanonicalProposalBlockIsFinalizedWhenCommitted(t *testing.T) {
+	// cs1 is vss[0]; the other three validators hold +2/3 of the power.
+	cs1, vss := randState(4)
+	deliverTxsRange(t, cs1, 0, 5)
+	height := cs1.rs.Height
+	block, chunks := nonCanonicalProposalParts(t, cs1)
+	root, _ := merkle.ProofsFromByteSlices(chunks)
+	blockID := types.BlockID{
+		Hash:          block.Hash(),
+		PartSetHeader: types.PartSetHeader{Total: uint32(len(chunks)), Hash: root},
+	}
+
+	// Commit before we have the block, then receive its parts.
+	addTwoThirds(t, cs1, vss[1:], cmtproto.PrecommitType, blockID)
+	// Committing releases and re-takes the state locks.
+	cs1.lockAll()
+	cs1.enterCommit(height, cs1.rs.Round)
+	require.Equal(t, cstypes.RoundStepCommit, cs1.rs.Step)
+	require.Nil(t, cs1.rs.ProposalBlock)
+	deliverProposalBlockParts(t, cs1, chunks)
+	// No more votes are cast at the commit step, so the check is skipped.
+	require.False(t, cs1.rs.ProposalBlockNonCanonical)
+	cs1.handleCompleteProposal(height)
+	cs1.unlockAll()
+
+	require.Equal(t, height, cs1.state.LastBlockHeight)
+	require.Equal(t, blockID, cs1.state.LastBlockID)
+	require.Equal(t, block.Hash(), cs1.blockStore.LoadBlock(height).Hash())
+}
+
+// End to end on the state machine: a byzantine proposer's non-canonical block
+// gets prevotes from every other validator, but an honest node neither locks
+// it nor records it as ValidBlock. When the node proposes later, it proposes
+// a new block with no POL round, and that block can commit. Before the fix,
+// the node locked the non-canonical BlockID and re-proposed the block
+// re-encoded under a different PartSetHeader, so locked and unlocked
+// validators prevoted different BlockIDs and no polka could form.
+func TestStateDoesNotLockNonCanonicalProposalBlock(t *testing.T) {
+	cs1, vss := randState(4)
+	vs2, vs3, vs4 := vss[1], vss[2], vss[3]
+	height := cs1.rs.Height
+
+	proposalCh := subscribe(cs1.eventBus, types.EventQueryCompleteProposal)
+	newRoundCh := subscribe(cs1.eventBus, types.EventQueryNewRound)
+	newBlockCh := subscribe(cs1.eventBus, types.EventQueryNewBlockHeader)
+	pv1, err := cs1.privValidator.GetPubKey()
+	require.NoError(t, err)
+	voteCh := subscribeToVoter(cs1, pv1.Address())
+
+	// Byzantine vs2 encodes a valid block non-canonically.
+	deliverTxsRange(t, cs1, 0, 5)
+	block, chunks := nonCanonicalProposalParts(t, cs1)
+	root, proofs := merkle.ProofsFromByteSlices(chunks)
+	header := types.PartSetHeader{Total: uint32(len(chunks)), Hash: root}
+	parts := types.NewPartSetFromHeader(header, types.BlockPartSizeBytes)
+	for i, c := range chunks {
+		_, err := parts.AddPart(&types.Part{Index: uint32(i), Bytes: c, Proof: *proofs[i]})
+		require.NoError(t, err)
+	}
+	blockID := types.BlockID{Hash: block.Hash(), PartSetHeader: header}
+
+	// Round 1: vs2 proposes it and the other three validators prevote it.
+	// cs1 prevotes nil and, despite the polka, precommits nil without
+	// locking it or recording it as ValidBlock.
+	round := int32(1)
+	incrementRound(vs2, vs3, vs4)
+	proposal := types.NewProposal(height, round, -1, blockID)
+	p := proposal.ToProto()
+	require.NoError(t, vs2.SignProposal(cs1.state.ChainID, p))
+	proposal.Signature = p.Signature
+	require.NoError(t, cs1.SetProposalAndBlock(proposal, block, parts, "peer"))
+	startTestRound(cs1, height, round)
+	ensureNewRound(newRoundCh, height, round)
+	ensureNewProposal(proposalCh, height, round)
+	ensurePrevote(voteCh, height, round)
+	validatePrevote(t, cs1, round, vss[0], nil)
+	signAddVotes(cs1, cmtproto.PrevoteType, blockID.Hash, header, false, vs2, vs3, vs4)
+	ensurePrecommit(voteCh, height, round)
+	validatePrecommit(t, cs1, round, -1, vss[0], nil, nil)
+	rs := cs1.GetRoundState()
+	require.Nil(t, rs.ValidBlock)
+	require.Equal(t, int32(-1), rs.ValidRound)
+
+	// vs3 and vs4 precommit nil; vs2 withholds.
+	signAddVotes(cs1, cmtproto.PrecommitType, nil, types.PartSetHeader{}, true, vs3, vs4)
+
+	// Later rounds: until cs1 is the proposer, nobody proposes and everyone
+	// votes nil.
+	for {
+		round++
+		incrementRound(vs2, vs3, vs4)
+		ensureNewRound(newRoundCh, height, round)
+		if cs1.isProposer(pv1.Address()) {
+			break
+		}
+		ensurePrevote(voteCh, height, round)
+		validatePrevote(t, cs1, round, vss[0], nil)
+		signAddVotes(cs1, cmtproto.PrevoteType, nil, types.PartSetHeader{}, false, vs3, vs4)
+		ensurePrecommit(voteCh, height, round)
+		signAddVotes(cs1, cmtproto.PrecommitType, nil, types.PartSetHeader{}, true, vs3, vs4)
+	}
+
+	// cs1 proposes a new block with no POL round, and it commits.
+	ensureNewProposal(proposalCh, height, round)
+	rs = cs1.GetRoundState()
+	require.Equal(t, int32(-1), rs.Proposal.POLRound)
+	require.NotEqual(t, header, rs.Proposal.BlockID.PartSetHeader)
+	newBlockID := rs.Proposal.BlockID
+	ensurePrevote(voteCh, height, round)
+	validatePrevote(t, cs1, round, vss[0], newBlockID.Hash)
+	signAddVotes(cs1, cmtproto.PrevoteType, newBlockID.Hash, newBlockID.PartSetHeader, false, vs3, vs4)
+	ensurePrecommit(voteCh, height, round)
+	validatePrecommit(t, cs1, round, round, vss[0], newBlockID.Hash, newBlockID.Hash)
+	signAddVotes(cs1, cmtproto.PrecommitType, newBlockID.Hash, newBlockID.PartSetHeader, true, vs3, vs4)
+	ensureNewBlockHeader(newBlockCh, height, newBlockID.Hash)
+}
+
+// makeBlockWithPartAlignedEncoding rebuilds block with a single tx sized so
+// that the block's encoding is an exact multiple of BlockPartSizeBytes.
+func makeBlockWithPartAlignedEncoding(t *testing.T, state sm.State, block *types.Block) (*types.Block, *types.PartSet) {
+	t.Helper()
+	partSize := int(types.BlockPartSizeBytes)
+	for txLen := partSize - 1024; txLen < partSize; txLen++ {
+		tx := types.Tx(bytes.Repeat([]byte{'a'}, txLen))
+		b, parts, err := state.MakeBlock(block.Height, types.MakeData(types.Txs{tx}), block.LastCommit, nil, block.ProposerAddress)
+		require.NoError(t, err)
+		pbb, err := b.ToProto()
+		require.NoError(t, err)
+		bz, err := proto.Marshal(pbb)
+		require.NoError(t, err)
+		if len(bz)%partSize == 0 {
+			return b, parts
+		}
+	}
+	t.Fatal("no tx size gives a part-aligned block encoding")
+	return nil, nil
+}
+
+>>>>>>> 1998bf5 (fix(consensus): [high] require canonical proposal block encoding (#3595))
 func TestStateBadProposal(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
