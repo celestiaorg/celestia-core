@@ -84,11 +84,37 @@ func (cs *State) readReplayMessage(msg *TimedWALMessage, newStepSub types.Subscr
 		cs.Logger.Info("Replay: Timeout", "height", m.Height, "round", m.Round, "step", m.Step, "dur", m.Duration)
 		cs.handleTimeout(m, cs.rs)
 	case LockInfo:
-		// Not restored yet.
+		cs.Logger.Info("Replay: Lock", "height", m.Height, "round", m.Round, "blockID", m.BlockID)
+		cs.applyLockInfo(m)
 	default:
 		return fmt.Errorf("replay: Unknown TimedWALMessage type: %v", reflect.TypeOf(msg.Msg))
 	}
 	return nil
+}
+
+// applyLockInfo restores the lock journaled by writeLockInfo; the last record wins.
+func (cs *State) applyLockInfo(li LockInfo) {
+	cs.lockAll()
+	defer cs.unlockAll()
+
+	if li.Height != cs.rs.Height {
+		cs.Logger.Error("Replay: lock for another height", "height", cs.rs.Height, "lock_height", li.Height)
+		return
+	}
+	if li.Round < 0 {
+		cs.clearLock()
+		return
+	}
+	cs.rs.LockedRound = li.Round
+	cs.rs.LockedBlockID = li.BlockID
+	cs.rs.LockedBlockTime = li.BlockTime
+	if blockMatchesBlockID(cs.rs.LockedBlock, cs.rs.LockedBlockParts, li.BlockID) {
+		return
+	}
+	cs.rs.LockedBlock, cs.rs.LockedBlockParts = nil, nil
+	if blockMatchesBlockID(cs.rs.ProposalBlock, cs.rs.ProposalBlockParts, li.BlockID) {
+		cs.rs.LockedBlock, cs.rs.LockedBlockParts = cs.rs.ProposalBlock, cs.rs.ProposalBlockParts
+	}
 }
 
 // Replay only those messages since the last block.  `timeoutRoutine` should
