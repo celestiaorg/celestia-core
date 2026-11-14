@@ -317,6 +317,11 @@ func isTemporaryAcceptError(err error) bool {
 		errors.Is(err, syscall.ENOBUFS) || errors.Is(err, syscall.ENOMEM) {
 		return true
 	}
+	for _, errno := range platformTemporaryAcceptErrnos {
+		if errors.Is(err, errno) {
+			return true
+		}
+	}
 	var ne net.Error
 	//nolint:staticcheck // Temporary is deprecated, but net/http still uses it for Accept errors.
 	return errors.As(err, &ne) && ne.Temporary()
