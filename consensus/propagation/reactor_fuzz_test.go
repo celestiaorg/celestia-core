@@ -785,6 +785,13 @@ func FuzzPropagationReactor(f *testing.F) {
 		[]byte{1, 0, 0},
 		[]byte{0, 0, 0},
 	))
+	f.Add(seed( // wants served from the block store at the committed height, for rounds the peers pick
+		[]byte{0, 1, 4, 2, byte(fuzzStoredHeight), 0, 1, 0x03, 0, 0, 0, 0, 1, 1},
+		[]byte{0, 1, 4, 2, byte(fuzzStoredHeight), 9, 1, 0x0f, 0, 0, 0, 0, 3, 1},
+		[]byte{1, 1, 4, 2, byte(fuzzStoredHeight), 100, 1, 0x0f, 0, 0, 0, 0, 3, 1},
+		[]byte{1, 1, 4, 2, byte(fuzzStoredHeight), 127, 1, 0x01, 0, 0, 0, 0, 0, 1},
+		[]byte{0, 1, 4, 2, byte(fuzzStoredHeight + 1), 100, 1, 0x0f, 0, 0, 0, 0, 3, 1}, // current height, uncached round
+	))
 	f.Fuzz(func(t *testing.T, input []byte) {
 		if len(input) > 1<<14 {
 			return

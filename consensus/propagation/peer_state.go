@@ -17,6 +17,18 @@ const (
 	// MaxUnverifiedProposals is the maximum number of compact blocks
 	// that can be cached per peer. Keeps the lowest heights when full.
 	MaxUnverifiedProposals = 24
+
+	// MaxPeerStateHeights caps the heights a PeerState tracks part state and
+	// request counters for. The reactor only tracks heights it holds a
+	// proposal for, from the last committed height up, and pruning on commit
+	// drops lower ones, so honest use needs a few heights.
+	MaxPeerStateHeights = 16
+
+	// MaxPeerStateRoundsPerHeight caps the rounds a PeerState tracks per
+	// height. Consensus reaches round 32 at one height only after a stall of
+	// several minutes. State for rounds above the cap is not kept, which only
+	// costs gossip efficiency: requests and wants are retried.
+	MaxPeerStateRoundsPerHeight = 32
 )
 
 type request struct {
@@ -118,16 +130,47 @@ func (d *PeerState) Initialize(height int64, round int32, size int) {
 	d.initialize(height, round, size)
 }
 
-// initialize initializes the state for a given height and round. This method is
-// not thread-safe.
-func (d *PeerState) initialize(height int64, round int32, size int) {
-	// Initialize the inner map if it doesn't exist
-	if d.state[height] == nil {
-		d.state[height] = make(map[int32]*partState)
+// initialize initializes the state for a given height and round and returns
+// it, or returns nil if the caps on tracked heights and rounds refuse it. This
+// method is not thread-safe.
+func (d *PeerState) initialize(height int64, round int32, size int) *partState {
+	if !admit(d.state, height, MaxPeerStateHeights) {
+		return nil
 	}
-	if d.state[height][round] == nil {
-		d.state[height][round] = newpartState(size, height, round)
+	rounds := d.state[height]
+	if rounds == nil {
+		rounds = make(map[int32]*partState)
+		d.state[height] = rounds
 	}
+	if !admit(rounds, round, MaxPeerStateRoundsPerHeight) {
+		return nil
+	}
+	if rounds[round] == nil {
+		rounds[round] = newpartState(size, height, round)
+	}
+	return rounds[round]
+}
+
+// admit reports whether key may be stored in m, which holds at most limit
+// keys. A full map keeps its lowest keys: admit evicts the highest key to make
+// room for a lower one and refuses a key above all present ones. Keeping the
+// lowest keys means keys a peer picks above the honest ones cannot push the
+// honest ones out.
+func admit[K int64 | int32, V any](m map[K]V, key K, limit int) bool {
+	if _, ok := m[key]; ok || len(m) < limit {
+		return true
+	}
+	highest := key
+	for k := range m {
+		if k > highest {
+			highest = k
+		}
+	}
+	if highest == key {
+		return false
+	}
+	delete(m, highest)
+	return true
 }
 
 func (d *PeerState) IncreaseConcurrentReqs(add int64) {
@@ -155,13 +198,25 @@ func (d *PeerState) DecreaseRemainingRequests(height int64, round int32, sub int
 	d.remainingRequests[height][round] -= sub
 }
 
-func (d *PeerState) SetRemainingRequests(height int64, round int32, count int) {
+// SetRemainingRequests sets the request counter for a given height and round.
+// It reports false, storing nothing, if the caps on tracked heights and rounds
+// refuse it.
+func (d *PeerState) SetRemainingRequests(height int64, round int32, count int) bool {
 	d.mtx.Lock()
 	defer d.mtx.Unlock()
-	if d.remainingRequests[height] == nil {
-		d.remainingRequests[height] = make(map[int32]int)
+	if !admit(d.remainingRequests, height, MaxPeerStateHeights) {
+		return false
 	}
-	d.remainingRequests[height][round] = count
+	rounds := d.remainingRequests[height]
+	if rounds == nil {
+		rounds = make(map[int32]int)
+		d.remainingRequests[height] = rounds
+	}
+	if !admit(rounds, round, MaxPeerStateRoundsPerHeight) {
+		return false
+	}
+	rounds[round] = count
+	return true
 }
 
 func (d *PeerState) GetRemainingRequests(height int64, round int32) int {
@@ -189,16 +244,18 @@ func (d *PeerState) DecreaseConcurrentReqs(sub int64) {
 func (d *PeerState) AddHaves(height int64, round int32, haves *bits.BitArray) {
 	d.mtx.Lock()
 	defer d.mtx.Unlock()
-	d.initialize(height, round, haves.Size())
-	d.state[height][round].addHaves(haves)
+	if ps := d.initialize(height, round, haves.Size()); ps != nil {
+		ps.addHaves(haves)
+	}
 }
 
 // AddWants sets the wants for a given height and round.
 func (d *PeerState) AddWants(height int64, round int32, wants *bits.BitArray) {
 	d.mtx.Lock()
 	defer d.mtx.Unlock()
-	d.initialize(height, round, wants.Size())
-	d.state[height][round].addWants(wants)
+	if ps := d.initialize(height, round, wants.Size()); ps != nil {
+		ps.addWants(wants)
+	}
 }
 
 // AddRequests sets the requests for a given height and round.
@@ -209,8 +266,9 @@ func (d *PeerState) AddRequests(height int64, round int32, requests *bits.BitArr
 	}
 	d.mtx.Lock()
 	defer d.mtx.Unlock()
-	d.initialize(height, round, requests.Size())
-	d.state[height][round].addRequests(requests)
+	if ps := d.initialize(height, round, requests.Size()); ps != nil {
+		ps.addRequests(requests)
+	}
 }
 
 // SetHave sets the have bit for a given part.
@@ -359,7 +417,8 @@ func (d *PeerState) prune(prunePastHeight int64) {
 			delete(d.unverifiedProposals, height)
 		}
 	}
-	// todo: prune rounds separately from heights
+	// todo: prune rounds separately from heights. Until then the caps in
+	// initialize and SetRemainingRequests bound the rounds kept per height.
 }
 
 // StoreUnverifiedProposal caches a compact block for a future height.

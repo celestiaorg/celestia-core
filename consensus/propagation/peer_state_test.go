@@ -442,3 +442,82 @@ func TestPeerState_pruneRemainingRequestsWithoutState(t *testing.T) {
 	require.Len(t, ps.remainingRequests, 1)
 	require.Contains(t, ps.remainingRequests, int64(5))
 }
+
+// TestPeerState_capsRoundsPerHeight checks that no caller can grow a peer's
+// part state or request counters past MaxPeerStateRoundsPerHeight rounds at
+// one height, and that the lowest rounds are kept.
+func TestPeerState_capsRoundsPerHeight(t *testing.T) {
+	ps := newTestPeerState()
+	const height = int64(3)
+	for r := int32(1); r <= 1000; r++ {
+		ps.Initialize(height, r, 4)
+		ps.AddHaves(height, r, bits.NewBitArray(4))
+		ps.AddWants(height, r, bits.NewBitArray(4))
+		ps.AddRequests(height, r, bits.NewBitArray(4))
+		ps.SetRemainingRequests(height, r, 1)
+	}
+
+	ps.mtx.RLock()
+	require.Len(t, ps.state[height], MaxPeerStateRoundsPerHeight)
+	require.Len(t, ps.remainingRequests[height], MaxPeerStateRoundsPerHeight)
+	ps.mtx.RUnlock()
+	_, has := ps.GetWants(height, 1)
+	require.True(t, has, "lowest round must be kept")
+	_, has = ps.GetWants(height, 1000)
+	require.False(t, has, "round above the cap must be refused")
+	require.False(t, ps.SetRemainingRequests(height, 1000, 1))
+
+	// A round below all tracked ones evicts the highest.
+	highest := int32(MaxPeerStateRoundsPerHeight)
+	ps.AddWants(height, 0, bits.NewBitArray(4))
+	require.True(t, ps.SetRemainingRequests(height, 0, 1))
+	_, has = ps.GetWants(height, 0)
+	require.True(t, has)
+	_, has = ps.GetWants(height, highest)
+	require.False(t, has)
+	require.Zero(t, ps.GetRemainingRequests(height, highest))
+	ps.mtx.RLock()
+	require.Len(t, ps.state[height], MaxPeerStateRoundsPerHeight)
+	require.Len(t, ps.remainingRequests[height], MaxPeerStateRoundsPerHeight)
+	ps.mtx.RUnlock()
+
+	// Updating a tracked round still works when the height is full.
+	require.NoError(t, ps.SetWant(height, 1, 2, true))
+	require.True(t, ps.WantsPart(height, 1, 2))
+}
+
+// TestPeerState_capsHeights checks that no caller can grow a peer's part
+// state or request counters past MaxPeerStateHeights heights, and that the
+// lowest heights are kept.
+func TestPeerState_capsHeights(t *testing.T) {
+	ps := newTestPeerState()
+	for h := int64(2); h <= 1000; h++ {
+		ps.AddWants(h, 0, bits.NewBitArray(4))
+		ps.SetRemainingRequests(h, 0, 1)
+	}
+
+	ps.mtx.RLock()
+	require.Len(t, ps.state, MaxPeerStateHeights)
+	require.Len(t, ps.remainingRequests, MaxPeerStateHeights)
+	ps.mtx.RUnlock()
+	_, has := ps.GetWants(2, 0)
+	require.True(t, has, "lowest height must be kept")
+	_, has = ps.GetWants(1000, 0)
+	require.False(t, has, "height above the cap must be refused")
+
+	// A height below all tracked ones evicts the highest.
+	highest := int64(1 + MaxPeerStateHeights)
+	ps.AddWants(1, 0, bits.NewBitArray(4))
+	require.True(t, ps.SetRemainingRequests(1, 0, 1))
+	_, has = ps.GetWants(1, 0)
+	require.True(t, has)
+	_, has = ps.GetWants(highest, 0)
+	require.False(t, has)
+	require.Zero(t, ps.GetRemainingRequests(highest, 0))
+
+	// Pruning frees room for new heights.
+	ps.prune(1000)
+	ps.AddWants(1000, 0, bits.NewBitArray(4))
+	_, has = ps.GetWants(1000, 0)
+	require.True(t, has)
+}
