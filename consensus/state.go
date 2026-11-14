@@ -1579,6 +1579,20 @@ func (cs *State) defaultDecideProposal(height int64, round int32) {
 			return
 		}
 		blockParts = parts
+
+		// Re-propose the exact parts that received the polka. Validators
+		// locked on ValidBlock prevote its original BlockID, so a re-encoding
+		// with a different PartSetHeader would split prevotes and stall the
+		// height. Re-encoding gives the same parts for any canonically encoded
+		// block; it differs only when the original proposer encoded the
+		// block non-canonically. The stored parts have no tx positions, so
+		// the compact block then carries no tx metadata and peers fetch the
+		// parts instead of recovering them from their mempool.
+		if !parts.HasHeader(cs.rs.ValidBlockParts.Header()) {
+			cs.Logger.Info("re-proposing valid block parts that differ from their re-encoding",
+				"height", height, "round", round, "valid_round", cs.rs.ValidRound)
+			blockParts = cs.rs.ValidBlockParts
+		}
 	} else {
 		// Create a new proposal block from state/txs from the mempool.
 		var err error
@@ -1615,6 +1629,7 @@ func (cs *State) defaultDecideProposal(height int64, round int32) {
 		}
 
 		cs.Logger.Debug("verified proposal signature", "proposal", proposal)
+		// TxPos is empty when re-proposing stored ValidBlockParts (see above).
 		err = cs.propagator.ProposeBlock(proposal, blockParts, txMetaData(block, blockParts))
 		if err != nil {
 			cs.Logger.Error("propagation reactor failed to propose the block", "err", err)
@@ -1642,9 +1657,10 @@ func (cs *State) defaultDecideProposal(height int64, round int32) {
 	}
 }
 
-// txMetaData returns the propagation metadata of block; parts must come from block.MakePartSet.
+// txMetaData returns the propagation metadata of block. It is empty when parts
+// carry no tx positions, i.e. did not come from block.MakePartSet.
 func txMetaData(block *types.Block, parts *types.PartSet) []proptypes.TxMetaData {
-	metaData := make([]proptypes.TxMetaData, len(block.Txs))
+	metaData := make([]proptypes.TxMetaData, len(parts.TxPos))
 	hashes := block.CachedHashes()
 	for i, pos := range parts.TxPos {
 		metaData[i] = proptypes.TxMetaData{
@@ -1667,6 +1683,12 @@ func (cs *State) reseedPropagator() {
 	}
 	block.FillCachedHashes()
 	parts, err := block.MakePartSet(types.BlockPartSizeBytes)
+	if err == nil && !parts.HasHeader(prop.BlockID.PartSetHeader) &&
+		rs.ProposalBlockParts.HasHeader(prop.BlockID.PartSetHeader) && rs.ProposalBlockParts.IsComplete() {
+		// A re-proposed ValidBlock keeps the parts that got the polka, which
+		// may differ from its re-encoding; use the replayed parts.
+		parts = rs.ProposalBlockParts
+	}
 	if err != nil || !parts.HasHeader(prop.BlockID.PartSetHeader) {
 		cs.Logger.Error("cannot rebuild the replayed proposal's part set", "height", prop.Height, "round", prop.Round, "err", err)
 		return
