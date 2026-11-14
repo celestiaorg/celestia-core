@@ -1001,8 +1001,11 @@ func newMockTickerFunc(onlyOnce bool) func() TimeoutTicker {
 	}
 }
 
+// mockTickerLateNewHeight is when an onlyOnce mock ticker fires a later height's timeout.
+const mockTickerLateNewHeight = 5 * time.Second
+
 // mock ticker only fires on RoundStepNewHeight
-// and only once if onlyOnce=true
+// and only once if onlyOnce=true, then late
 type mockTicker struct {
 	c chan timeoutInfo
 
@@ -1022,13 +1025,22 @@ func (m *mockTicker) Stop() error {
 func (m *mockTicker) ScheduleTimeout(ti timeoutInfo) {
 	m.mtx.Lock()
 	defer m.mtx.Unlock()
-	if m.onlyOnce && m.fired {
+	if ti.Step != cstypes.RoundStepNewHeight {
 		return
 	}
-	if ti.Step == cstypes.RoundStepNewHeight {
-		m.c <- ti
-		m.fired = true
+	if m.onlyOnce && m.fired {
+		// A node that got every precommit before the block has nothing left to start the
+		// height; fire late so the all-precommits skip still wins whenever it can.
+		time.AfterFunc(mockTickerLateNewHeight, func() {
+			select {
+			case m.c <- ti:
+			default:
+			}
+		})
+		return
 	}
+	m.c <- ti
+	m.fired = true
 }
 
 func (m *mockTicker) Chan() <-chan timeoutInfo {
