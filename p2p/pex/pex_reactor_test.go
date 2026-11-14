@@ -904,12 +904,10 @@ func TestPEXReactorWhenAddressBookIsSmallerThanMaxDials(t *testing.T) {
 	sw := createSwitchAndAddReactors(pexR)
 	sw.SetAddrBook(book)
 
-	peers := make([]*p2p.NetAddress, 3)
-	for i := range peers {
-		peerAddr := closedLocalAddr(t)
+	peers := closedLocalAddrs(t, 3)
+	for _, peerAddr := range peers {
 		err = book.AddAddress(peerAddr, peerAddr)
 		require.NoError(t, err)
-		peers[i] = peerAddr
 	}
 
 	pexR.SetEnsurePeersPeriod(1 * time.Millisecond)
@@ -927,16 +925,24 @@ func TestPEXReactorWhenAddressBookIsSmallerThanMaxDials(t *testing.T) {
 	}, 5*time.Second, 10*time.Millisecond)
 }
 
-// closedLocalAddr returns the address of a closed local port, which refuses dials at once.
-func closedLocalAddr(t *testing.T) *p2p.NetAddress {
+// closedLocalAddrs returns n distinct closed local ports, which refuse dials at once.
+// All listeners stay open until every port is chosen, so the OS cannot reuse a port.
+func closedLocalAddrs(t *testing.T, n int) []*p2p.NetAddress {
 	t.Helper()
-	ln, err := net.Listen("tcp", "127.0.0.1:0")
-	require.NoError(t, err)
-	tcpAddr := ln.Addr().(*net.TCPAddr)
-	require.NoError(t, ln.Close())
-	addr := p2p.NewNetAddressIPPort(tcpAddr.IP, uint16(tcpAddr.Port))
-	addr.ID = p2p.PubKeyToID(ed25519.GenPrivKey().PubKey())
-	return addr
+	listeners := make([]net.Listener, n)
+	addrs := make([]*p2p.NetAddress, n)
+	for i := range addrs {
+		ln, err := net.Listen("tcp", "127.0.0.1:0")
+		require.NoError(t, err)
+		listeners[i] = ln
+		tcpAddr := ln.Addr().(*net.TCPAddr)
+		addrs[i] = p2p.NewNetAddressIPPort(tcpAddr.IP, uint16(tcpAddr.Port))
+		addrs[i].ID = p2p.PubKeyToID(ed25519.GenPrivKey().PubKey())
+	}
+	for _, ln := range listeners {
+		require.NoError(t, ln.Close())
+	}
+	return addrs
 }
 
 // createTestAddresses creates a slice of NetAddress for testing
