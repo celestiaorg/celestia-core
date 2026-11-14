@@ -916,6 +916,9 @@ type MempoolConfig struct {
 	// transaction. We consider that the ABCI application runs in the same location as the CometBFT binary
 	// so that the recheck duration is not affected by network delays when making requests and receiving responses.
 	RecheckTimeout time.Duration `mapstructure:"recheck_timeout"`
+	// AsyncRecheck (default: false), when true, CAT runs the recheck as a background pass after Commit:
+	// admission waits for it, proposals reap only rechecked txs.
+	AsyncRecheck bool `mapstructure:"async_recheck"`
 	// Broadcast (default: true) defines whether the mempool should relay
 	// transactions to other peers. Setting this to false will stop the mempool
 	// from relaying transactions to other peers until they are included in a

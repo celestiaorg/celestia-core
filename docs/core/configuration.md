@@ -319,6 +319,11 @@ type = "flood"
 # you can disable rechecking.
 recheck = true
 
+# async_recheck (default: false, CAT only) runs recheck as a background pass after the commit:
+# new transactions wait for it and a proposal made meanwhile takes only transactions it has
+# already rechecked. When false, recheck runs inside the commit.
+async_recheck = false
+
 # Broadcast (default: true) defines whether the mempool should relay
 # transactions to other peers. Setting this to false will stop the mempool
 # from relaying transactions to other peers until they are included in a

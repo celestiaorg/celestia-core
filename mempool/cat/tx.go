@@ -2,6 +2,7 @@ package cat
 
 import (
 	"sort"
+	"sync/atomic"
 	"time"
 
 	"github.com/cometbft/cometbft/types"
@@ -20,6 +21,8 @@ type wrappedTx struct {
 	sender        []byte          // app: assigned sender label
 	sequence      uint64          // app: sequence number for this transaction
 	fromBroadcast bool            // true if submitted via local RPC broadcast
+
+	rechecked atomic.Int64 // height of the last recheck that kept this tx; read lock-free by reaps
 }
 
 func newWrappedTx(tx *types.CachedTx, height, gasWanted, priority int64, sender []byte, sequence uint64, fromBroadcast bool) *wrappedTx {
