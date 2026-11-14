@@ -15,6 +15,8 @@ type Propagator interface {
 	AddCommitment(height int64, round int32, psh *types.PartSetHeader)
 	// AddBlock hands over a complete block consensus holds for (height, round).
 	AddBlock(height int64, round int32, parts *types.PartSet)
+	// AddProposedBlock is AddBlock for our own proposal: it never replaces another block.
+	AddProposedBlock(height int64, round int32, parts *types.PartSet)
 	Prune(committedHeight int64)
 	// SetConsensusState installs the height, round, and proposer atomically so
 	// compact blocks are never verified against the proposer of a different
@@ -80,6 +82,9 @@ func (nop *NoOpPropagator) AddCommitment(_ int64, _ int32, _ *types.PartSetHeade
 }
 
 func (nop *NoOpPropagator) AddBlock(_ int64, _ int32, _ *types.PartSet) {
+}
+
+func (nop *NoOpPropagator) AddProposedBlock(_ int64, _ int32, _ *types.PartSet) {
 }
 
 func (nop *NoOpPropagator) Prune(_ int64) {
