@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/go-kit/kit/metrics"
 	"github.com/stretchr/testify/require"
 
 	abci "github.com/cometbft/cometbft/abci/types"
@@ -141,6 +142,13 @@ func waitForPass(txmp *TxPool) {
 	txmp.mtx.Unlock() //nolint:staticcheck // empty critical section waits for the pass
 }
 
+// countingCounter is a metrics.Counter whose total the test can read.
+type countingCounter struct{ n atomic.Int64 }
+
+func (c *countingCounter) With(...string) metrics.Counter { return c }
+func (c *countingCounter) Add(delta float64)              { c.n.Add(int64(delta)) }
+func (c *countingCounter) Value() int64                   { return c.n.Load() }
+
 func drain(ch <-chan struct{}) {
 	for {
 		select {
@@ -210,6 +218,24 @@ func TestAsyncRecheck_ReapTakesOnlyRechecked(t *testing.T) {
 	require.Equal(t, want, reap())
 }
 
+// A pass ignores stamps left by the previous height's pass: a tx it has not yet
+// kept is not reaped.
+func TestAsyncRecheck_ReapIgnoresEarlierPassStamps(t *testing.T) {
+	app := newCheckStateApp()
+	txmp := setupCheckStatePool(t, app, nil)
+	addSeqTxs(t, txmp, "a", 0, 4)
+	commitBlock(t, txmp, app, 1, []cmttypes.Tx{checkStateTx("a", 0)}) // stamps a/1-a/3 with height 1
+	waitForPass(txmp)
+	require.Equal(t, []string{"a/1", "a/2", "a/3"}, keysOf(txmp.ReapMaxBytesMaxGas(-1, -1)))
+
+	app.recheckGate = make(chan struct{})
+	commitBlock(t, txmp, app, 2, []cmttypes.Tx{checkStateTx("a", 1)})
+	require.Empty(t, keysOf(txmp.ReapMaxBytesMaxGas(-1, -1)), "reaped txs only the height-1 pass kept")
+	close(app.recheckGate)
+	waitForPass(txmp)
+	require.Equal(t, []string{"a/2", "a/3"}, keysOf(txmp.ReapMaxBytesMaxGas(-1, -1)))
+}
+
 // A new tx is not checked until the pass has replayed the pending txs, so its
 // sequence is checked against the rebuilt check state.
 func TestAsyncRecheck_AdmissionWaitsForPass(t *testing.T) {
@@ -269,6 +295,8 @@ func TestAsyncRecheck_NextCommitWaitsForPass(t *testing.T) {
 func TestAsyncRecheck_LatePassFallsBackToSync(t *testing.T) {
 	app := newCheckStateApp()
 	txmp := setupCheckStatePool(t, app, nil)
+	late := &countingCounter{}
+	txmp.metrics.RecheckLateCommits = late
 	addSeqTxs(t, txmp, "a", 0, 6)
 
 	app.recheckGate = make(chan struct{})
@@ -293,6 +321,7 @@ func TestAsyncRecheck_LatePassFallsBackToSync(t *testing.T) {
 	<-committed
 	require.True(t, txmp.mtx.TryLock(), "late commit left a background pass holding the lock")
 	txmp.mtx.Unlock()
+	require.EqualValues(t, 1, late.Value())
 
 	commitBlock(t, txmp, app, 3, []cmttypes.Tx{checkStateTx("a", 2)}) // async again: returns with the pass gated
 	require.False(t, txmp.mtx.TryLock())
@@ -300,6 +329,7 @@ func TestAsyncRecheck_LatePassFallsBackToSync(t *testing.T) {
 	waitForPass(txmp)
 	require.EqualValues(t, 5+4+3, app.rechecks.Load())
 	require.Equal(t, 3, txmp.Size())
+	require.EqualValues(t, 1, late.Value(), "an on-time commit counted as late")
 }
 
 // A panic in the synchronous part still releases the lock.
@@ -311,6 +341,15 @@ func TestAsyncRecheck_PanicReleasesLock(t *testing.T) {
 	})
 	require.True(t, txmp.mtx.TryLock())
 	txmp.mtx.Unlock()
+}
+
+// The pool can empty between update and the pass (RemoveTxByKey skips mtx):
+// the pass then returns instead of panicking.
+func TestAsyncRecheck_EmptyPoolPassReturns(t *testing.T) {
+	txmp := setupCheckStatePool(t, newCheckStateApp(), nil)
+	txmp.mtx.Lock()
+	defer txmp.mtx.Unlock()
+	require.NotPanics(t, txmp.recheckTransactions)
 }
 
 // The height signal and txs-available notification fire after the pass.

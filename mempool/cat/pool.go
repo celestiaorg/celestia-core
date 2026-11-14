@@ -150,8 +150,9 @@ func WithTracer(tracer trace.Tracer) TxPoolOption {
 	return func(txmp *TxPool) { txmp.traceClient = tracer }
 }
 
-// Lock locks the mempool, no new transactions can be processed. If a recheck
-// pass is still running, the next UpdateAsyncRecheck rechecks synchronously.
+// Lock locks the mempool, no new transactions can be processed. For every caller it records
+// whether a recheck pass was still running, so the next UpdateAsyncRecheck rechecks synchronously;
+// that is correct only because Commit is the last caller to lock before UpdateAsyncRecheck.
 func (txmp *TxPool) Lock() {
 	late := txmp.recheckHeight.Load() != 0
 	txmp.mtx.Lock()
@@ -493,6 +494,9 @@ func (txmp *TxPool) ReapMaxBytesMaxGas(maxBytes, maxGas int64) []*types.CachedTx
 //
 // The result may have fewer than max elements (possibly zero) if the mempool
 // does not have that many transactions available.
+//
+// Unlike ReapMaxBytesMaxGas it is not cut during a recheck pass: its only
+// production caller is the unconfirmed_txs RPC, which lists the pool.
 func (txmp *TxPool) ReapMaxTxs(max int) []*types.CachedTx {
 	var keep []*types.CachedTx
 
