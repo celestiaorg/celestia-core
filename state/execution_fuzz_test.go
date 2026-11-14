@@ -220,7 +220,7 @@ func fuzzExecTxs(spec []byte) cmttypes.Txs {
 			}
 		case 3:
 			nsLen := int(kind>>3) % (share.NamespaceIDSize + 4)
-			//nolint:staticcheck // the legacy message is what pre-v11 blocks carry
+			//nolint:staticcheck // the legacy message is what pre-v12 blocks carry
 			btx := &cmtproto.BlobTx{
 				Tx:     inner,
 				Blobs:  []*cmtproto.Blob{{NamespaceId: make([]byte, nsLen), Data: payload}},
@@ -237,7 +237,7 @@ func fuzzExecTxs(spec []byte) cmttypes.Txs {
 }
 
 // wantUnwrapped is the tx FinalizeBlock must receive: the go-square decoder's
-// inner tx from app version 11, and the generated legacy decoder's before it.
+// inner tx from BlobTxValidationAppVersion, and the generated legacy decoder's before it.
 func wantUnwrapped(tx []byte, appVersion uint64) []byte {
 	if appVersion >= cmttypes.BlobTxValidationAppVersion {
 		if btx, isBlob, err := squaretx.UnmarshalBlobTx(tx); isBlob && err == nil {
