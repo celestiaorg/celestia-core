@@ -447,6 +447,37 @@ type evKey struct {
 
 func keyOf(ev cmttypes.Evidence) evKey { return evKey{ev.Height(), string(ev.Hash())} }
 
+// pendingModel tracks what the pool should hold: evidence by hash, and which
+// equivocations already have duplicate vote evidence pending.
+type pendingModel struct {
+	want         map[evKey]bool
+	equivocation map[string]bool
+}
+
+func newPendingModel() *pendingModel {
+	return &pendingModel{want: map[evKey]bool{}, equivocation: map[string]bool{}}
+}
+
+// known reports whether the pool ignores ev without verifying it: the same
+// evidence is already pending.
+func (m *pendingModel) known(ev cmttypes.Evidence) bool {
+	return m.want[keyOf(ev)]
+}
+
+// duplicate reports whether the pool verifies ev and then ignores it: other
+// duplicate vote evidence for the same validator and height is pending.
+func (m *pendingModel) duplicate(ev cmttypes.Evidence) bool {
+	dve, ok := ev.(*cmttypes.DuplicateVoteEvidence)
+	return ok && m.equivocation[duplicateVoteKey(dve)]
+}
+
+func (m *pendingModel) add(ev cmttypes.Evidence) {
+	m.want[keyOf(ev)] = true
+	if dve, ok := ev.(*cmttypes.DuplicateVoteEvidence); ok {
+		m.equivocation[duplicateVoteKey(dve)] = true
+	}
+}
+
 // requirePending checks that the pool holds exactly the expected evidence and
 // that each item is independently verifiable.
 func (fx *evFixture) requirePending(t *testing.T, pool *Pool, want map[evKey]bool) {
@@ -508,6 +539,42 @@ func TestFuzzEvidencePoolTimestampOverflow(t *testing.T) {
 	runEvidencePoolFuzz(t, fuzzEvidenceFixture(t), []byte{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 255})
 }
 
+// TestFuzzEvidencePoolEquivocationVariants replays an input with two valid
+// duplicate vote evidence for the same validator and height but different
+// block IDs. Only the first is kept pending.
+func TestFuzzEvidencePoolEquivocationVariants(t *testing.T) {
+	runEvidencePoolFuzz(t, fuzzEvidenceFixture(t), []byte("100020000"))
+}
+
+// TestReactorKeepsPeerRelayingNonCanonicalDuplicateVote checks that a peer
+// relaying valid duplicate vote evidence whose unsigned fields are not in
+// canonical form is not disconnected, and that the canonical form is kept.
+// Honest peers can hold such evidence, for example from a block or from a
+// node running an older version.
+func TestReactorKeepsPeerRelayingNonCanonicalDuplicateVote(t *testing.T) {
+	fx := fuzzEvidenceFixture(t)
+	cases := fx.generate(t, []byte{})
+	require.Len(t, cases, 1)
+	ev := cases[0].ev.(*cmttypes.DuplicateVoteEvidence)
+	canonicalHash := ev.Hash()
+	voteA := *ev.VoteA
+	voteA.ValidatorIndex = (voteA.ValidatorIndex + 1) % int32(len(fx.privVals))
+	mutated := *ev
+	mutated.VoteA = &voteA
+	require.NoError(t, mutated.ValidateBasic())
+
+	pool := fx.newPool(t)
+	reactor, peer := newFuzzReactor(t, pool)
+	list, err := evidenceListToProto(cmttypes.EvidenceList{&mutated})
+	require.NoError(t, err)
+	reactor.Receive(p2p.Envelope{Src: peer, ChannelID: EvidenceChannel, Message: list})
+
+	require.True(t, peer.IsRunning(), "peer stopped for relaying valid evidence")
+	pending, _ := pool.PendingEvidence(-1)
+	require.Len(t, pending, 1)
+	require.Equal(t, canonicalHash, pending[0].Hash())
+}
+
 // runEvidencePoolFuzz runs one FuzzEvidencePool iteration.
 func runEvidencePoolFuzz(t *testing.T, fx *evFixture, data []byte) {
 	cases := fx.generate(t, data)
@@ -519,13 +586,14 @@ func runEvidencePoolFuzz(t *testing.T, fx *evFixture, data []byte) {
 	// Reactor: one undecodable piece rejects the whole message.
 	// Otherwise evidence is added in order until the first invalid
 	// piece, which gets the peer stopped. Evidence already pending is
-	// skipped without verification.
+	// skipped without verification. Duplicate vote evidence for a
+	// validator and height already pending is verified, then ignored.
 	pool := fx.newPool(t)
 	reactor, peer := newFuzzReactor(t, pool)
 	list, err := evidenceListToProto(all)
 	require.NoError(t, err)
 	reactor.Receive(p2p.Envelope{Src: peer, ChannelID: EvidenceChannel, Message: list})
-	want, punished := map[evKey]bool{}, false
+	model, punished := newPendingModel(), false
 	var decoded []fzCase
 	for _, c := range cases {
 		if c.decoded {
@@ -538,17 +606,19 @@ func runEvidencePoolFuzz(t *testing.T, fx *evFixture, data []byte) {
 		if punished {
 			break
 		}
-		if want[keyOf(c.ev)] {
+		if model.known(c.ev) {
 			continue
 		}
 		if !c.valid {
 			punished = true
 			break
 		}
-		want[keyOf(c.ev)] = true
+		if !model.duplicate(c.ev) {
+			model.add(c.ev)
+		}
 	}
 	require.Equal(t, punished, !peer.IsRunning(), "peer stopped for error mismatch")
-	fx.requirePending(t, pool, want)
+	fx.requirePending(t, pool, model.want)
 
 	// AddEvidence and CheckEvidence are only reached with evidence
 	// that passed decoding and ValidateBasic.
@@ -560,22 +630,24 @@ func runEvidencePoolFuzz(t *testing.T, fx *evFixture, data []byte) {
 
 	// AddEvidence on a fresh pool reports each item independently.
 	pool = fx.newPool(t)
-	want = map[evKey]bool{}
+	model = newPendingModel()
 	for _, c := range cases {
 		err := pool.AddEvidence(c.ev)
-		if want[keyOf(c.ev)] {
+		if model.known(c.ev) {
 			require.NoError(t, err)
 			continue
 		}
 		if c.valid {
 			require.NoError(t, err)
-			want[keyOf(c.ev)] = true
+			if !model.duplicate(c.ev) {
+				model.add(c.ev)
+			}
 		} else {
 			var invalid *cmttypes.ErrInvalidEvidence
 			require.ErrorAs(t, err, &invalid)
 		}
 	}
-	fx.requirePending(t, pool, want)
+	fx.requirePending(t, pool, model.want)
 
 	// CheckEvidence treats the list as a proposed block's evidence.
 	pool = fx.newPool(t)
@@ -743,11 +815,16 @@ func FuzzEvidenceReactorReceive(f *testing.F) {
 			return
 		}
 		// Unedited evidence the generator built as valid must be accepted
-		// without punishing the peer, each distinct piece once.
-		distinct, allValid := map[evKey]bool{}, true
+		// without punishing the peer: each distinct piece once, and one
+		// piece of duplicate vote evidence per validator and height.
+		distinct, allValid := map[string]bool{}, true
 		for _, c := range cases {
 			allValid = allValid && c.valid && c.decoded
-			distinct[keyOf(c.ev)] = true
+			if dve, ok := c.ev.(*cmttypes.DuplicateVoteEvidence); ok {
+				distinct["dve/"+duplicateVoteKey(dve)] = true
+			} else {
+				distinct[string(c.ev.Hash())] = true
+			}
 		}
 		if allValid {
 			require.NoError(t, got.decodeErr)
