@@ -80,7 +80,7 @@ type RoundState struct {
 	// ProposalBlockNonCanonical is set when ProposalBlockParts are not the
 	// canonical encoding of ProposalBlock. Such a block is never voted for,
 	// locked, or recorded as ValidBlock, but is still finalized if it gets
-	// +2/3 precommits.
+	// +2/3 precommits. It is only set from app version 12 on.
 	ProposalBlockNonCanonical bool `json:"proposal_block_non_canonical"`
 
 	LockedRound     int32         `json:"locked_round"`

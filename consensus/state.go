@@ -2635,9 +2635,10 @@ func (cs *State) addProposalBlockPart(msg *BlockPartMessage, peerID p2p.ID) (add
 		// BlockID unverifiable for them. This is a voting rule, not an
 		// assembly rule: the block is still kept so it can be finalized if
 		// +2/3 precommitted it, but we never vote for it. At the commit step
-		// no more votes are cast, so the check is skipped.
+		// no more votes are cast, so the check is skipped. It is also skipped
+		// below canonicalProposalEncodingAppVersion.
 		nonCanonical := false
-		if cs.rs.Step != cstypes.RoundStepCommit {
+		if cs.rs.Step != cstypes.RoundStepCommit && canonicalProposalEncodingRuleActive(cs.state) {
 			nonCanonical = !isCanonicalBlockEncoding(block, cs.rs.ProposalBlockParts.GetBytes(), cs.rs.ProposalBlockParts.Total())
 			if nonCanonical {
 				cs.Logger.Error(
@@ -3463,6 +3464,19 @@ func (cs *State) syncData() {
 	}
 }
 
+// canonicalProposalEncodingAppVersion is the first app version at which a
+// node does not vote for a proposal block whose parts are not its canonical
+// encoding. It is gated so every validator starts to apply the rule at the
+// same height.
+const canonicalProposalEncodingAppVersion uint64 = 12
+
+// canonicalProposalEncodingRuleActive reports whether the canonical proposal
+// encoding rule applies to the block that state applies next. The app version
+// comes from committed state, so every node gets the same answer for a height.
+func canonicalProposalEncodingRuleActive(state sm.State) bool {
+	return state.Version.Consensus.App >= canonicalProposalEncodingAppVersion
+}
+
 // isCanonicalBlockEncoding reports whether bz, received as total parts, is
 // the canonical encoding of block, i.e. what block.MakePartSet would produce.
 // Every part but the last is exactly BlockPartSizeBytes, so a matching part
@@ -3564,7 +3578,7 @@ func (cs *State) haveBlock(round int32, blockID types.BlockID) bool {
 	}{{cs.rs.LockedBlock, cs.rs.LockedBlockParts}, {cs.rs.ValidBlock, cs.rs.ValidBlockParts}} {
 		if blockMatchesBlockID(b.block, b.parts, blockID) {
 			cs.rs.ProposalBlock, cs.rs.ProposalBlockParts = b.block, b.parts
-			// Locked and valid blocks are always canonical.
+			// Locked and valid blocks are never flagged.
 			cs.rs.ProposalBlockNonCanonical = false
 			cs.shareBlock(round, b.parts)
 			return true

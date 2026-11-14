@@ -511,6 +511,13 @@ func randStateWithApp(nValidators int, app abci.Application) (*State, []*validat
 	return randStateWithAppImpl(nValidators, app, c)
 }
 
+// randStateWithAppVersion is randStateWithApp with a genesis app version.
+func randStateWithAppVersion(nValidators int, app abci.Application, appVersion uint64) (*State, []*validatorStub) {
+	c := test.ConsensusParams()
+	c.Version.App = appVersion
+	return randStateWithAppImpl(nValidators, app, c)
+}
+
 func randStateWithAppImpl(
 	nValidators int,
 	app abci.Application,
