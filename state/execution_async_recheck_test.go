@@ -41,7 +41,7 @@ func (app *gatedRecheckApp) CheckTx(_ context.Context, req *abci.RequestCheckTx)
 	return &abci.ResponseCheckTx{Code: abci.CodeTypeOK, GasWanted: 1}, nil
 }
 
-func newGatedCATExecutor(t *testing.T, disableAsync bool) (*sm.BlockExecutor, *cat.TxPool, *gatedRecheckApp, sm.State, map[string]cmttypes.PrivValidator) {
+func newGatedCATExecutor(t *testing.T, async bool) (*sm.BlockExecutor, *cat.TxPool, *gatedRecheckApp, sm.State, map[string]cmttypes.PrivValidator) {
 	t.Helper()
 	proxyApp := proxy.NewAppConns(proxy.NewLocalClientCreator(&testApp{}), proxy.NopMetrics())
 	require.NoError(t, proxyApp.Start())
@@ -53,7 +53,7 @@ func newGatedCATExecutor(t *testing.T, disableAsync bool) (*sm.BlockExecutor, *c
 	require.NoError(t, mpConn.Start())
 	t.Cleanup(func() { _ = mpConn.Stop() })
 	cfg := cmtcfg.TestMempoolConfig()
-	cfg.DisableAsyncRecheck = disableAsync
+	cfg.AsyncRecheck = async
 	mp := cat.NewTxPool(log.NewNopLogger(), cfg, mpConn, 0)
 
 	state, stateDB, privVals := makeState(1, 1)
@@ -66,7 +66,7 @@ func newGatedCATExecutor(t *testing.T, disableAsync bool) (*sm.BlockExecutor, *c
 // ApplyBlock returns while the recheck pass still holds the mempool lock, with
 // the block's txs already removed from the pool.
 func TestApplyBlockAsyncRecheck(t *testing.T) {
-	blockExec, mp, mpApp, state, _ := newGatedCATExecutor(t, false)
+	blockExec, mp, mpApp, state, _ := newGatedCATExecutor(t, true)
 
 	block, bps, err := makeBlock(state, 1, new(cmttypes.Commit))
 	require.NoError(t, err)
@@ -110,9 +110,9 @@ func TestApplyBlockAsyncRecheck(t *testing.T) {
 // has kept; after the pass it equals the synchronous recheck's.
 func TestCreateProposalBlockDuringRecheck(t *testing.T) {
 	pending := cmttypes.Txs{cmttypes.Tx("pending-1"), cmttypes.Tx("stale-1"), cmttypes.Tx("pending-2")}
-	setup := func(disableAsync bool) (func() cmttypes.Txs, *cat.TxPool, *gatedRecheckApp) {
-		blockExec, mp, mpApp, state, privVals := newGatedCATExecutor(t, disableAsync)
-		if disableAsync {
+	setup := func(async bool) (func() cmttypes.Txs, *cat.TxPool, *gatedRecheckApp) {
+		blockExec, mp, mpApp, state, privVals := newGatedCATExecutor(t, async)
+		if !async {
 			close(mpApp.gate)
 		}
 		block, bps, err := makeBlock(state, 1, new(cmttypes.Commit))
@@ -151,11 +151,11 @@ func TestCreateProposalBlockDuringRecheck(t *testing.T) {
 		}
 		return propose, mp, mpApp
 	}
-	proposeSync, _, _ := setup(true)
+	proposeSync, _, _ := setup(false)
 	want := proposeSync()
 	require.Equal(t, cmttypes.Txs{cmttypes.Tx("pending-1"), cmttypes.Tx("pending-2")}, want)
 
-	propose, mp, mpApp := setup(false)
+	propose, mp, mpApp := setup(true)
 	require.Empty(t, propose())
 	mpApp.gate <- struct{}{} // pending-1 kept; the pass now holds at stale-1
 	require.Eventually(t, func() bool { return mpApp.rechecks.Load() == 2 }, 5*time.Second, time.Millisecond)

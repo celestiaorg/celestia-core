@@ -104,6 +104,7 @@ func (app *checkStateApp) commit(txs []cmttypes.Tx) {
 func setupCheckStatePool(t testing.TB, app *checkStateApp, mutate func(*cmtcfg.MempoolConfig)) *TxPool {
 	t.Helper()
 	cfg := cmtcfg.TestMempoolConfig()
+	cfg.AsyncRecheck = true
 	if mutate != nil {
 		mutate(cfg)
 	}
@@ -162,24 +163,24 @@ func keysOf(txs []*cmttypes.CachedTx) []string {
 // already kept, each signer cut at its first unchecked tx; once it ends, the
 // reap equals a synchronous recheck's.
 func TestAsyncRecheck_ReapTakesOnlyRechecked(t *testing.T) {
-	run := func(disableAsync bool) (*TxPool, *checkStateApp) {
+	run := func(async bool) (*TxPool, *checkStateApp) {
 		app := newCheckStateApp()
-		txmp := setupCheckStatePool(t, app, func(c *cmtcfg.MempoolConfig) { c.DisableAsyncRecheck = disableAsync })
+		txmp := setupCheckStatePool(t, app, func(c *cmtcfg.MempoolConfig) { c.AsyncRecheck = async })
 		addSeqTxs(t, txmp, "a", 0, 4)
 		addSeqTxs(t, txmp, "b", 0, 2)
 		addSeqTxs(t, txmp, "c", 0, 2)
-		if !disableAsync {
+		if async {
 			app.recheckGate = make(chan struct{})
 		}
 		// b/5 is not in the pool: it moves b's committed sequence, so b/0 and b/1 go stale.
 		commitBlock(t, txmp, app, 1, []cmttypes.Tx{checkStateTx("a", 0), checkStateTx("b", 5)})
 		return txmp, app
 	}
-	syncPool, _ := run(true)
+	syncPool, _ := run(false)
 	want := keysOf(syncPool.ReapMaxBytesMaxGas(-1, -1))
 	require.Equal(t, []string{"a/1", "a/2", "a/3", "c/0", "c/1"}, want)
 
-	txmp, app := run(false)
+	txmp, app := run(true)
 	reap := func() []string {
 		reaped := make(chan []*cmttypes.CachedTx, 1)
 		go func() { reaped <- txmp.ReapMaxBytesMaxGas(-1, -1) }()
@@ -368,21 +369,23 @@ func TestAsyncRecheck_PassesNeverPileUp(t *testing.T) {
 	require.Equal(t, pool, txmp.Size())
 }
 
-// With disable_async_recheck set, or recheck off, the lock is released before return.
+// With the default config, or recheck off, the recheck runs inside the call and
+// the lock is released before return.
 func TestAsyncRecheck_SwitchesOffStaySynchronous(t *testing.T) {
 	for _, tc := range []struct {
 		name         string
-		disableAsync bool
+		async        bool
 		recheck      bool
 		wantRechecks int32
 	}{
-		{"async disabled", true, true, 2},
-		{"recheck off", false, false, 0},
+		{"default config", cmtcfg.DefaultMempoolConfig().AsyncRecheck, true, 2},
+		{"recheck off", true, false, 0},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			app := newCheckStateApp()
+			app.recheckDelay = 20 * time.Millisecond // a background pass would still hold the lock
 			txmp := setupCheckStatePool(t, app, func(c *cmtcfg.MempoolConfig) {
-				c.DisableAsyncRecheck = tc.disableAsync
+				c.AsyncRecheck = tc.async
 				c.Recheck = tc.recheck
 			})
 			txmp.EnableTxsAvailable()
