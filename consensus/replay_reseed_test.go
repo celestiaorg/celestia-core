@@ -288,7 +288,8 @@ func testCorrelatedRestart(t *testing.T, restartProposer, legacyGossip bool) {
 	for h := int64(1); h < target; h++ {
 		timeoutWaitGroup(n, func(j int) { <-blocksSubs[j].Out() })
 	}
-	// A node that applied the proposal from its catch-up cache skips the delay: wait for a later height.
+	// A node that applied the proposal from its catch-up cache skips the delay, and one near the
+	// end of it may precommit before the stop: wait for a later height.
 	require.Eventually(t, func() bool {
 		height := css[0].GetRoundState().Height
 		if height < target {
@@ -296,12 +297,13 @@ func testCorrelatedRestart(t *testing.T, restartProposer, legacyGossip bool) {
 		}
 		for _, cs := range css {
 			rs := cs.GetRoundState()
-			if rs.Height != height || rs.Round != 0 || !cs.StartedPrecommitSleep.Load() {
+			if rs.Height != height || rs.Round != 0 || !cs.StartedPrecommitSleep.Load() ||
+				cs.propagator.IsCatchingUp() || time.Until(rs.StartTime.Add(ti.DelayedPrecommitTimeout)) < 500*time.Millisecond {
 				return false
 			}
 		}
 		return true
-	}, 20*time.Second, 2*time.Millisecond)
+	}, 60*time.Second, 2*time.Millisecond)
 	stopRun1()
 
 	rs := css[0].GetRoundState()
