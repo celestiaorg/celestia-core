@@ -174,6 +174,9 @@ type State struct {
 	lockedBlockDelay      func() time.Duration
 	StartedPrecommitSleep atomic.Bool
 
+	// lastSignedVote is our latest vote handed to internalMsgQueue.
+	lastSignedVote *types.Vote
+
 	// closed when we finish shutting down
 	done chan struct{}
 
@@ -1759,9 +1762,19 @@ func (cs *State) enterPrevote(height int64, round int32) {
 	cs.updateRoundStep(round, cstypes.RoundStepPrevote)
 	cs.newStep()
 
-	// Prevotes collected before this step are otherwise only acted on when our own
-	// prevote is added, which never happens if the signer refused it.
-	cs.handlePrevoteQuorum(height, round)
+	// Prevotes collected before this step are otherwise only acted on when our own prevote is
+	// added, which never happens if the signer refused it. A queued prevote does it once it is
+	// in the WAL; acting first could crash in the precommit delay with that prevote unjournaled.
+	if !cs.prevoteQueued(height, round) {
+		cs.handlePrevoteQuorum(height, round)
+	}
+}
+
+// prevoteQueued reports whether our prevote for height/round is signed but not yet added.
+func (cs *State) prevoteQueued(height int64, round int32) bool {
+	v := cs.lastSignedVote
+	return v != nil && v.Type == cmtproto.PrevoteType && v.Height == height && v.Round == round &&
+		cs.rs.Votes.Prevotes(round).GetByAddress(v.ValidatorAddress) == nil
 }
 
 // handlePrevoteQuorum moves on from the prevote step once +2/3 prevotes are in.
@@ -3207,6 +3220,7 @@ func (cs *State) signAddVote(
 		panic(fmt.Errorf("vote extension absence/presence does not match extensions enabled %t!=%t, height %d, type %v",
 			hasExt, extEnabled, vote.Height, vote.Type))
 	}
+	cs.lastSignedVote = vote
 	cs.sendInternalMessage(msgInfo{&VoteMessage{vote}, ""})
 	cs.Logger.Debug("signed and pushed vote", "height", cs.rs.Height, "round", cs.rs.Round, "vote", vote)
 }
