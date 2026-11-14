@@ -109,6 +109,10 @@ func (p *fuzzPeer) Send(p2p.Envelope) bool {
 	return true
 }
 
+func (p *fuzzPeer) TrySend(e p2p.Envelope) bool {
+	return p.Send(e)
+}
+
 // fuzzSnapshotConn is a scripted ABCI snapshot connection.
 type fuzzSnapshotConn struct {
 	offer    abci.ResponseOfferSnapshot_Result
