@@ -354,7 +354,7 @@ func TestAddProposalBlockPartFlagsNonCanonicalEncoding(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			cs1, vss := randState(1)
+			cs1, vss := randStateAtCanonicalGate(1)
 			deliverTxsRange(t, cs1, 0, 5)
 
 			block, honestParts, err := cs1.createProposalBlock(context.Background())
@@ -397,7 +397,7 @@ func TestAddProposalBlockPartFlagsNonCanonicalEncoding(t *testing.T) {
 func TestNonCanonicalProposalBlockPrevotesNil(t *testing.T) {
 	for _, nonCanonical := range []bool{false, true} {
 		t.Run(fmt.Sprintf("non_canonical=%t", nonCanonical), func(t *testing.T) {
-			cs1, _ := randState(1)
+			cs1, _ := randStateAtCanonicalGate(1)
 			deliverTxsRange(t, cs1, 0, 5)
 			proposalParts := canonicalProposalParts
 			if nonCanonical {
@@ -428,7 +428,7 @@ func TestNonCanonicalProposalBlockIsNotLockedOrPrecommitted(t *testing.T) {
 	for _, nonCanonical := range []bool{false, true} {
 		t.Run(fmt.Sprintf("non_canonical=%t", nonCanonical), func(t *testing.T) {
 			// cs1 is vss[0]; the other three validators hold +2/3 of the power.
-			cs1, vss := randState(4)
+			cs1, vss := randStateAtCanonicalGate(4)
 			cs1.state.Timeouts.DelayedPrecommitTimeout = 0
 			deliverTxsRange(t, cs1, 0, 5)
 			proposalParts := canonicalProposalParts
@@ -468,7 +468,7 @@ func TestNonCanonicalProposalBlockIsNotLockedOrPrecommitted(t *testing.T) {
 // follow it, so the node locks and precommits ValidBlock.
 func TestPolkaForValidBlockLocksItOverNonCanonicalProposalBlock(t *testing.T) {
 	// cs1 is vss[0]; the other three validators hold +2/3 of the power.
-	cs1, vss := randState(4)
+	cs1, vss := randStateAtCanonicalGate(4)
 	cs1.state.Timeouts.DelayedPrecommitTimeout = 0
 	deliverTxsRange(t, cs1, 0, 5)
 
@@ -527,7 +527,7 @@ func TestNonCanonicalProposalBlockIsNotValidBlock(t *testing.T) {
 		for _, nonCanonical := range []bool{false, true} {
 			t.Run(fmt.Sprintf("%s/non_canonical=%t", tc.name, nonCanonical), func(t *testing.T) {
 				// cs1 is vss[0]; the other three validators hold +2/3 of the power.
-				cs1, vss := randState(4)
+				cs1, vss := randStateAtCanonicalGate(4)
 				deliverTxsRange(t, cs1, 0, 5)
 				proposalParts := canonicalProposalParts
 				if nonCanonical {
@@ -557,7 +557,7 @@ func TestNonCanonicalProposalBlockIsNotValidBlock(t *testing.T) {
 // stuck at the commit step.
 func TestNonCanonicalProposalBlockIsFinalizedWhenCommitted(t *testing.T) {
 	// cs1 is vss[0]; the other three validators hold +2/3 of the power.
-	cs1, vss := randState(4)
+	cs1, vss := randStateAtCanonicalGate(4)
 	deliverTxsRange(t, cs1, 0, 5)
 	height := cs1.rs.Height
 	block, chunks := nonCanonicalProposalParts(t, cs1)
@@ -593,7 +593,7 @@ func TestNonCanonicalProposalBlockIsFinalizedWhenCommitted(t *testing.T) {
 // re-encoded under a different PartSetHeader, so locked and unlocked
 // validators prevoted different BlockIDs and no polka could form.
 func TestStateDoesNotLockNonCanonicalProposalBlock(t *testing.T) {
-	cs1, vss := randState(4)
+	cs1, vss := randStateAtCanonicalGate(4)
 	vs2, vs3, vs4 := vss[1], vss[2], vss[3]
 	height := cs1.rs.Height
 
@@ -670,6 +670,177 @@ func TestStateDoesNotLockNonCanonicalProposalBlock(t *testing.T) {
 	validatePrecommit(t, cs1, round, round, vss[0], newBlockID.Hash, newBlockID.Hash)
 	signAddVotes(cs1, cmtproto.PrecommitType, newBlockID.Hash, newBlockID.PartSetHeader, true, vs3, vs4)
 	ensureNewBlockHeader(newBlockCh, height, newBlockID.Hash)
+}
+
+// randStateAtCanonicalGate returns a state whose app version applies the
+// canonical proposal encoding rule.
+func randStateAtCanonicalGate(nValidators int) (*State, []*validatorStub) {
+	return randStateWithAppVersion(nValidators, kvstore.NewInMemoryApplication(), canonicalProposalEncodingAppVersion)
+}
+
+// The rule applies only from canonicalProposalEncodingAppVersion. Below it a
+// non-canonical proposal block is not flagged, so the node prevotes it, locks
+// on its polka and precommits it, as before the rule.
+func TestCanonicalProposalEncodingRuleIsGatedOnAppVersion(t *testing.T) {
+	for _, appVersion := range []uint64{
+		1,
+		canonicalProposalEncodingAppVersion - 1,
+		canonicalProposalEncodingAppVersion,
+		canonicalProposalEncodingAppVersion + 1,
+	} {
+		t.Run(fmt.Sprintf("app_version=%d", appVersion), func(t *testing.T) {
+			ruleActive := appVersion >= canonicalProposalEncodingAppVersion
+			// cs1 is vss[0]; the other three validators hold +2/3 of the power.
+			cs1, vss := randStateWithAppVersion(4, kvstore.NewInMemoryApplication(), appVersion)
+			cs1.state.Timeouts.DelayedPrecommitTimeout = 0
+			require.Equal(t, appVersion, cs1.state.Version.Consensus.App)
+			deliverTxsRange(t, cs1, 0, 5)
+			block, chunks := nonCanonicalProposalParts(t, cs1)
+			header := deliverProposalBlockParts(t, cs1, chunks)
+			blockID := types.BlockID{Hash: block.Hash(), PartSetHeader: header}
+			require.Equal(t, ruleActive, cs1.rs.ProposalBlockNonCanonical)
+
+			// Voting steps release and re-take the state locks.
+			cs1.lockAll()
+			cs1.defaultDoPrevote(cs1.rs.Height, cs1.rs.Round)
+			cs1.unlockAll()
+			prevote := popVote(t, cs1)
+			require.NotNil(t, prevote)
+			require.Equal(t, cmtproto.PrevoteType, prevote.Type)
+
+			addTwoThirds(t, cs1, vss[1:], cmtproto.PrevoteType, blockID)
+			cs1.lockAll()
+			cs1.enterPrecommit(cs1.rs.Height, cs1.rs.Round)
+			cs1.unlockAll()
+			precommit := popVote(t, cs1)
+			require.NotNil(t, precommit)
+			require.Equal(t, cmtproto.PrecommitType, precommit.Type)
+
+			if ruleActive {
+				require.True(t, prevote.BlockID.IsZero())
+				require.True(t, precommit.BlockID.IsZero())
+				require.Nil(t, cs1.rs.LockedBlock)
+				return
+			}
+			require.Equal(t, blockID, prevote.BlockID)
+			require.Equal(t, blockID, precommit.BlockID)
+			require.Equal(t, blockID, cs1.rs.LockedBlockID)
+			require.True(t, blockMatchesBlockID(cs1.rs.LockedBlock, cs1.rs.LockedBlockParts, blockID))
+		})
+	}
+}
+
+// Regression test for a mixed validator set: below the activation app
+// version, a node on this code votes for a non-canonical proposal block
+// exactly like a node without the rule. It prevotes it, locks on the polka,
+// records it as ValidBlock, precommits it, and the height commits in that
+// round. So this binary cannot split votes with validators that lack the rule.
+func TestStateCommitsNonCanonicalProposalBlockBelowGate(t *testing.T) {
+	cs1, vss := randStateWithAppVersion(4, kvstore.NewInMemoryApplication(), canonicalProposalEncodingAppVersion-1)
+	vs2, vs3, vs4 := vss[1], vss[2], vss[3]
+	height := cs1.rs.Height
+
+	proposalCh := subscribe(cs1.eventBus, types.EventQueryCompleteProposal)
+	newRoundCh := subscribe(cs1.eventBus, types.EventQueryNewRound)
+	newBlockCh := subscribe(cs1.eventBus, types.EventQueryNewBlockHeader)
+	pv1, err := cs1.privValidator.GetPubKey()
+	require.NoError(t, err)
+	voteCh := subscribeToVoter(cs1, pv1.Address())
+
+	// vs2 encodes a valid block non-canonically.
+	deliverTxsRange(t, cs1, 0, 5)
+	block, chunks := nonCanonicalProposalParts(t, cs1)
+	root, proofs := merkle.ProofsFromByteSlices(chunks)
+	header := types.PartSetHeader{Total: uint32(len(chunks)), Hash: root}
+	parts := types.NewPartSetFromHeader(header, types.BlockPartSizeBytes)
+	for i, c := range chunks {
+		_, err := parts.AddPart(&types.Part{Index: uint32(i), Bytes: c, Proof: *proofs[i]})
+		require.NoError(t, err)
+	}
+	blockID := types.BlockID{Hash: block.Hash(), PartSetHeader: header}
+
+	// Round 1: vs2 proposes it and every validator, cs1 included, votes for it.
+	round := int32(1)
+	incrementRound(vs2, vs3, vs4)
+	proposal := types.NewProposal(height, round, -1, blockID)
+	p := proposal.ToProto()
+	require.NoError(t, vs2.SignProposal(cs1.state.ChainID, p))
+	proposal.Signature = p.Signature
+	require.NoError(t, cs1.SetProposalAndBlock(proposal, block, parts, "peer"))
+	startTestRound(cs1, height, round)
+	ensureNewRound(newRoundCh, height, round)
+	ensureNewProposal(proposalCh, height, round)
+	ensurePrevote(voteCh, height, round)
+	validatePrevote(t, cs1, round, vss[0], blockID.Hash)
+	signAddVotes(cs1, cmtproto.PrevoteType, blockID.Hash, header, false, vs2, vs3, vs4)
+	ensurePrecommit(voteCh, height, round)
+	validatePrecommit(t, cs1, round, round, vss[0], blockID.Hash, blockID.Hash)
+	rs := cs1.GetRoundState()
+	require.False(t, rs.ProposalBlockNonCanonical)
+	require.Equal(t, blockID, rs.LockedBlockID)
+	require.True(t, blockMatchesBlockID(rs.ValidBlock, rs.ValidBlockParts, blockID))
+	require.Equal(t, round, rs.ValidRound)
+
+	signAddVotes(cs1, cmtproto.PrecommitType, blockID.Hash, header, true, vs2, vs3, vs4)
+	ensureNewBlockHeader(newBlockCh, height, blockID.Hash)
+	require.Equal(t, blockID, cs1.blockStore.LoadBlockMeta(height).BlockID)
+}
+
+// appVersionBumpApp is a kvstore that returns newAppVersion in the
+// ConsensusParamUpdates of FinalizeBlock at bumpHeight.
+type appVersionBumpApp struct {
+	*kvstore.Application
+	bumpHeight    int64
+	newAppVersion uint64
+}
+
+func (app *appVersionBumpApp) FinalizeBlock(ctx context.Context, req *abci.RequestFinalizeBlock) (*abci.ResponseFinalizeBlock, error) {
+	resp, err := app.Application.FinalizeBlock(ctx, req)
+	if err != nil || req.Height != app.bumpHeight {
+		return resp, err
+	}
+	resp.ConsensusParamUpdates = &cmtproto.ConsensusParams{Version: &cmtproto.VersionParams{App: app.newAppVersion}}
+	return resp, nil
+}
+
+// When FinalizeBlock of height H moves the app version to the activation
+// version, the rule does not apply at H and applies from H+1, the first height
+// whose block is proposed and executed under the new app version.
+func TestCanonicalProposalEncodingRuleStartsAfterAppVersionBump(t *testing.T) {
+	app := &appVersionBumpApp{
+		Application:   kvstore.NewInMemoryApplication(),
+		bumpHeight:    1,
+		newAppVersion: canonicalProposalEncodingAppVersion,
+	}
+	// cs1 is vss[0]; the other three validators hold +2/3 of the power.
+	cs1, vss := randStateWithAppVersion(4, app, canonicalProposalEncodingAppVersion-1)
+	height := cs1.rs.Height
+	require.Equal(t, app.bumpHeight, height)
+
+	// Height H: the rule is not active, even for the block that bumps the
+	// app version.
+	deliverTxsRange(t, cs1, 0, 5)
+	block, chunks := nonCanonicalProposalParts(t, cs1)
+	header := deliverProposalBlockParts(t, cs1, chunks)
+	require.False(t, cs1.rs.ProposalBlockNonCanonical)
+	blockID := types.BlockID{Hash: block.Hash(), PartSetHeader: header}
+
+	// Commit height H.
+	addTwoThirds(t, cs1, vss[1:], cmtproto.PrecommitType, blockID)
+	// Committing releases and re-takes the state locks.
+	cs1.lockAll()
+	cs1.enterCommit(height, cs1.rs.Round)
+	cs1.unlockAll()
+	require.Equal(t, height, cs1.state.LastBlockHeight)
+	require.Equal(t, canonicalProposalEncodingAppVersion, cs1.state.Version.Consensus.App)
+	require.Equal(t, height+1, cs1.rs.Height)
+
+	// Height H+1: the rule is active.
+	incrementHeight(vss[1:]...)
+	block, chunks = nonCanonicalProposalParts(t, cs1)
+	require.Equal(t, canonicalProposalEncodingAppVersion, block.Version.App)
+	deliverProposalBlockParts(t, cs1, chunks)
+	require.True(t, cs1.rs.ProposalBlockNonCanonical)
 }
 
 // makeBlockWithPartAlignedEncoding rebuilds block with a single tx sized so
