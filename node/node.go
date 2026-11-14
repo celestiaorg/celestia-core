@@ -527,6 +527,7 @@ func NewNodeWithContext(ctx context.Context,
 	transport, peerFilters := createTransport(config, nodeInfo, nodeKey, proxyApp, tracer)
 
 	p2pLogger := logger.With("module", "p2p")
+	p2p.MultiplexTransportLogger(p2pLogger)(transport)
 	sw := createSwitch(
 		config, transport, p2pMetrics, peerFilters, mempoolReactor, bcReactor,
 		stateSyncReactor, consensusReactor, evidenceReactor, propagationReactor, nodeInfo, nodeKey, p2pLogger, tracer,

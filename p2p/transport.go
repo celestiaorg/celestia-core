@@ -4,8 +4,10 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"net"
+	"syscall"
 	"time"
 
 	"golang.org/x/net/netutil"
@@ -13,6 +15,7 @@ import (
 	"github.com/cosmos/gogoproto/proto"
 
 	"github.com/cometbft/cometbft/crypto"
+	"github.com/cometbft/cometbft/libs/log"
 	"github.com/cometbft/cometbft/libs/protoio"
 	"github.com/cometbft/cometbft/libs/trace"
 	"github.com/cometbft/cometbft/p2p/conn"
@@ -23,6 +26,10 @@ const (
 	defaultDialTimeout      = time.Second
 	defaultFilterTimeout    = 5 * time.Second
 	defaultHandshakeTimeout = 3 * time.Second
+
+	// Backoff bounds for retrying temporary Accept errors, as in net/http.
+	minAcceptRetryDelay = 5 * time.Millisecond
+	maxAcceptRetryDelay = time.Second
 )
 
 // IPResolver is a behavior subset of net.Resolver.
@@ -143,6 +150,11 @@ func MultiplexTransportMaxIncomingConnections(n int) MultiplexTransportOption {
 	return func(mt *MultiplexTransport) { mt.maxIncomingConnections = n }
 }
 
+// MultiplexTransportLogger sets the logger. Default: no-op logger.
+func MultiplexTransportLogger(l log.Logger) MultiplexTransportOption {
+	return func(mt *MultiplexTransport) { mt.logger = l }
+}
+
 // MultiplexTransport accepts and dials tcp connections and upgrades them to
 // multiplexed peers.
 type MultiplexTransport struct {
@@ -170,6 +182,7 @@ type MultiplexTransport struct {
 	mConfig conn.MConnConfig
 	// the tracer is passed to peers for collecting trace data
 	tracer trace.Tracer
+	logger log.Logger
 }
 
 // Test multiplexTransport for interface completeness.
@@ -195,6 +208,7 @@ func NewMultiplexTransport(
 		conns:            NewConnSet(),
 		resolver:         net.DefaultResolver,
 		tracer:           tracer,
+		logger:           log.NewNopLogger(),
 	}
 }
 
@@ -296,7 +310,25 @@ func (mt *MultiplexTransport) AddChannel(chID byte) {
 	}
 }
 
+// isTemporaryAcceptError reports whether an Accept error is transient, such as
+// running out of file descriptors, so the accept loop should retry.
+func isTemporaryAcceptError(err error) bool {
+	if errors.Is(err, syscall.EMFILE) || errors.Is(err, syscall.ENFILE) ||
+		errors.Is(err, syscall.ENOBUFS) || errors.Is(err, syscall.ENOMEM) {
+		return true
+	}
+	for _, errno := range platformTemporaryAcceptErrnos {
+		if errors.Is(err, errno) {
+			return true
+		}
+	}
+	var ne net.Error
+	//nolint:staticcheck // Temporary is deprecated, but net/http still uses it for Accept errors.
+	return errors.As(err, &ne) && ne.Temporary()
+}
+
 func (mt *MultiplexTransport) acceptPeers() {
+	var tempDelay time.Duration // how long to sleep on accept failure
 	for {
 		c, err := mt.listener.Accept()
 		if err != nil {
@@ -310,9 +342,32 @@ func (mt *MultiplexTransport) acceptPeers() {
 				// Transport is not closed
 			}
 
-			mt.acceptc <- accept{err: err}
+			// Back off and retry on temporary errors, like net/http's Server.Serve.
+			if isTemporaryAcceptError(err) {
+				if tempDelay == 0 {
+					tempDelay = minAcceptRetryDelay
+				} else {
+					tempDelay *= 2
+				}
+				if tempDelay > maxAcceptRetryDelay {
+					tempDelay = maxAcceptRetryDelay
+				}
+				mt.logger.Error("Accept error, retrying", "err", err, "delay", tempDelay)
+				select {
+				case <-time.After(tempDelay):
+					continue
+				case <-mt.closec:
+					return
+				}
+			}
+
+			select {
+			case mt.acceptc <- accept{err: err}:
+			case <-mt.closec:
+			}
 			return
 		}
+		tempDelay = 0
 
 		// Connection upgrade and filtering should be asynchronous to avoid
 		// Head-of-line blocking[0].
