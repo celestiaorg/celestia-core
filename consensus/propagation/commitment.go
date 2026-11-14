@@ -68,7 +68,7 @@ func (blockProp *Reactor) ProposeBlock(proposal *types.Proposal, block *types.Pa
 
 	cb.Signature = sig
 
-	// save the compact block locally and broadcast it to the connected peers
+	// save the compact block locally
 	blockProp.handleCompactBlock(&cb, blockProp.self, true)
 
 	_, parts, _, has := blockProp.getAllState(proposal.Height, proposal.Round, false)
@@ -81,14 +81,26 @@ func (blockProp *Reactor) ProposeBlock(proposal *types.Proposal, block *types.Pa
 	// distribute equal portions of haves to each of the proposer's peers
 	peers := blockProp.getPeers()
 	chunks := chunkParts(parts.Parity().BitArray(), len(peers), 1)
-	initialPartsMeta := []*propagation.PartMetaData{{Index: 0, Hash: parts.Original().GetPart(0).Proof.LeafHash}}
-	if parts.Original().Total() > 1 {
-		lastPart := parts.Original().GetPart(int(parts.Original().Total() - 1))
-		if lastPart != nil {
-			initialPartsMeta = append(initialPartsMeta, &propagation.PartMetaData{Index: lastPart.Index, Hash: lastPart.Proof.LeafHash})
-		}
+	// push the parts no mempool can rebuild (header, evidence, last commit)
+	original := parts.Original()
+	pushed := make([]*types.Part, 0, maxPushedParts)
+	initialPartsMeta := make([]*propagation.PartMetaData, 0, maxPushedParts)
+	uncoveredIndexes := uncoveredParts(cb.Blobs, original.Total(), types.BlockPartSizeBytes, cb.LastLen)
+	for _, index := range uncoveredIndexes {
+		part := original.GetPart(int(index))
+		pushed = append(pushed, part)
+		initialPartsMeta = append(initialPartsMeta, &propagation.PartMetaData{Index: part.Index, Hash: part.Proof.LeafHash})
 	}
+	cbMsg := cb.ToProto()
 	for index, peer := range peers {
+		// the compact block goes first: it is what lets the peer accept the
+		// pushed parts
+		if !peer.peer.TrySend(p2p.Envelope{ChannelID: DataChannel, Message: cbMsg}) {
+			blockProp.Logger.Debug("failed to send proposal to peer", "peer", peer.peer.ID())
+			continue
+		}
+		schema.WriteProposal(blockProp.traceClient, proposal.Height, proposal.Round, string(peer.peer.ID()), schema.Upload)
+
 		chunkedParts := chunkToPartMetaData(chunks[index], parts.Parity())
 		partsMeta := append([]*propagation.PartMetaData{}, initialPartsMeta...)
 		partsMeta = append(partsMeta, chunkedParts...)
@@ -128,6 +140,24 @@ func (blockProp *Reactor) ProposeBlock(proposal *types.Proposal, block *types.Pa
 		}
 
 		schema.WriteBlockPartState(blockProp.traceClient, proposal.Height, proposal.Round, chunks[index].GetTrueIndices(), true, string(peer.peer.ID()), schema.Upload, "have")
+
+		for _, part := range pushed {
+			e := p2p.Envelope{
+				ChannelID: DataChannel,
+				Message: &propagation.RecoveryPart{
+					Height: proposal.Height,
+					Round:  proposal.Round,
+					Index:  part.Index,
+					Data:   part.Bytes,
+					Proof:  *part.Proof.ToProto(),
+				},
+			}
+			if !peer.peer.TrySend(e) {
+				blockProp.Logger.Error("failed to push part", "peer", peer.peer.ID(), "height", proposal.Height, "round", proposal.Round, "part", part.Index)
+				continue
+			}
+			schema.WriteBlockPart(blockProp.traceClient, proposal.Height, proposal.Round, part.Index, false, string(peer.peer.ID()), schema.Upload)
+		}
 	}
 	return nil
 }
@@ -257,14 +287,22 @@ func (blockProp *Reactor) processValidatedCompactBlock(cb *proptypes.CompactBloc
 		}
 	}
 
+	// the peer that sent the compact block may push the parts no mempool can
+	// rebuild
+	if p := blockProp.getPeer(peer); p != nil {
+		p.GrantPushAllowance(cb)
+	}
+
 	if !added {
 		return
 	}
 
-	// forward before recovering locally so peers don't wait on our rebuild.
-	blockProp.broadcastCompactBlock(cb, peer)
-
 	if !proposer {
+		// forward before recovering locally so peers don't wait on our rebuild.
+		// The proposer sends the compact block itself from ProposeBlock,
+		// followed by the parts it pushes.
+		blockProp.broadcastCompactBlock(cb, peer)
+
 		// check if we have any transactions that are in the compact block
 		blockProp.recoverPartsFromMempool(cb)
 	}

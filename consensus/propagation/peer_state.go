@@ -213,6 +213,43 @@ func (d *PeerState) AddRequests(height int64, round int32, requests *bits.BitArr
 	d.state[height][round].addRequests(requests)
 }
 
+// RequestParts records the parts as requested from the peer and sends the
+// want. Recording first means a fast reply is never treated as unrequested; a
+// failed send rolls back only the parts this call added.
+func (d *PeerState) RequestParts(height int64, round int32, partsToRequest *bits.BitArray, wantMessage p2p.Envelope) bool {
+	if partsToRequest == nil || partsToRequest.Size() == 0 {
+		d.logger.Error("peer state requests is nil or empty")
+		return false
+	}
+
+	d.mtx.Lock()
+	defer d.mtx.Unlock()
+
+	d.initialize(height, round, partsToRequest.Size())
+	partState := d.state[height][round]
+	requestedFromPeer := partState.requests
+
+	// the parts we have not asked this peer for before
+	newlyRequested := partsToRequest.Sub(requestedFromPeer)
+
+	// mark them as requested before sending, so a fast reply isn't treated
+	// as unrequested
+	partState.addRequests(partsToRequest)
+
+	sent := d.peer.TrySend(wantMessage)
+	if sent {
+		return true
+	}
+
+	// the peer never got the request, so unmark the parts. Only the new ones:
+	// the rest were requested earlier and those requests did go out.
+	// everRequested is left alone: it only decides whether a reply is accepted.
+	for _, partIndex := range newlyRequested.GetTrueIndices() {
+		requestedFromPeer.SetIndex(partIndex, false)
+	}
+	return false
+}
+
 // SetHave sets the have bit for a given part.
 // Returns an error if the state is not initialized.
 func (d *PeerState) SetHave(height int64, round int32, part int) error {
@@ -416,12 +453,64 @@ func (d *PeerState) DeleteUnverifiedProposal(height int64) {
 	delete(d.unverifiedProposals, height)
 }
 
+// GrantPushAllowance lets the peer that sent cb push up to maxPushedParts of
+// its parts unrequested. Only the first grant counts, so resending the compact
+// block does not refill it.
+func (d *PeerState) GrantPushAllowance(cb *proptypes.CompactBlock) {
+	height, round := cb.Proposal.Height, cb.Proposal.Round
+
+	d.mtx.Lock()
+	defer d.mtx.Unlock()
+
+	d.initialize(height, round, int(cb.Proposal.BlockID.PartSetHeader.Total)*2)
+	ps := d.state[height][round]
+	if !ps.pushGranted {
+		ps.pushGranted = true
+		ps.pushAllowance = maxPushedParts
+	}
+}
+
+// ConsumePushAllowance uses one unrequested part from the peer's allowance and
+// reports whether there was one left.
+func (d *PeerState) ConsumePushAllowance(height int64, round int32) bool {
+	d.mtx.Lock()
+	defer d.mtx.Unlock()
+
+	ps := d.state[height][round]
+	if ps == nil || ps.pushAllowance == 0 {
+		return false
+	}
+	ps.pushAllowance--
+	return true
+}
+
+// Requested reports whether this node has ever requested the part from the
+// peer, including requests that have since expired.
+func (d *PeerState) Requested(height int64, round int32, index uint32) bool {
+	d.mtx.RLock()
+	defer d.mtx.RUnlock()
+
+	partState := d.state[height][round]
+	if partState == nil {
+		return false
+	}
+	return partState.everRequested.GetIndex(int(index))
+}
+
 type partState struct {
 	haves    *bits.BitArray
 	wants    *bits.BitArray
 	requests *bits.BitArray
 	// requestedAt is when requests were last added.
 	requestedAt time.Time
+	// everRequested is every part we have asked this peer for. Unlike
+	// requests it is never cleared, so a reply that arrives after its request
+	// expired is still recognized as requested.
+	everRequested *bits.BitArray
+	// pushAllowance is how many more parts the peer may send unrequested. It
+	// is granted once, when the peer sends the compact block.
+	pushAllowance int
+	pushGranted   bool
 }
 
 // newpartState initializes and returns a new partState
@@ -430,6 +519,8 @@ func newpartState(size int, _ int64, _ int32) *partState {
 		haves:    bits.NewBitArray(size),
 		wants:    bits.NewBitArray(size),
 		requests: bits.NewBitArray(size),
+
+		everRequested: bits.NewBitArray(size),
 	}
 }
 
@@ -444,6 +535,7 @@ func (p *partState) addWants(wants *bits.BitArray) {
 func (p *partState) addRequests(requests *bits.BitArray) {
 	p.requests.AddBitArray(requests)
 	p.requestedAt = time.Now()
+	p.everRequested.AddBitArray(requests)
 }
 
 // SetHave sets the have bit for a given part.

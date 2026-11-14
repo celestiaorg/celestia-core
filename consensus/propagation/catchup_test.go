@@ -672,6 +672,9 @@ func TestRecoveryPartForOlderRound(t *testing.T) {
 	require.NoError(t, err)
 	r1.SetConsensusState(prop.Height, 1, pubKey)
 
+	// the part answers a catch-up want, so it was requested from the peer
+	r1.getPeer(r2.self).AddRequests(prop.Height, 0, createBitArray(int(ps.Total())*2, []int{0}))
+
 	part := ps.GetPart(0)
 	r1.handleRecoveryPart(r2.self, &proptypes.RecoveryPart{Height: prop.Height, Round: 0, Index: 0, Data: part.Bytes, Proof: &part.Proof})
 	_, parts, has := r1.GetProposal(prop.Height, 0)
