@@ -7,6 +7,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"sync/atomic"
 	"syscall"
 	"testing"
 	"time"
@@ -19,6 +20,7 @@ import (
 	dbm "github.com/cometbft/cometbft-db"
 
 	"github.com/cometbft/cometbft/abci/example/kvstore"
+	abci "github.com/cometbft/cometbft/abci/types"
 	cfg "github.com/cometbft/cometbft/config"
 	"github.com/cometbft/cometbft/crypto/ed25519"
 	"github.com/cometbft/cometbft/evidence"
@@ -83,6 +85,63 @@ func TestNodeStartStop(t *testing.T) {
 		err = p.Signal(syscall.SIGABRT)
 		fmt.Println(err)
 		t.Fatal("timed out waiting for shutdown")
+	}
+}
+
+// gatedRecheckApp holds every recheck until gate is closed.
+type gatedRecheckApp struct {
+	*kvstore.Application
+	gate     chan struct{}
+	rechecks atomic.Int32
+}
+
+func (app *gatedRecheckApp) CheckTx(ctx context.Context, req *abci.RequestCheckTx) (*abci.ResponseCheckTx, error) {
+	if req.Type == abci.CheckTxType_Recheck {
+		app.rechecks.Add(1)
+		<-app.gate
+	}
+	return app.Application.CheckTx(ctx, req)
+}
+
+// Stop waits for a running recheck pass, so the pass never outlives the node.
+func TestNodeStopWaitsForRecheckPass(t *testing.T) {
+	config := test.ResetTestRoot("node_stop_waits_for_recheck_pass_test")
+	defer os.RemoveAll(config.RootDir)
+	config.Mempool.AsyncRecheck = true
+	app := &gatedRecheckApp{Application: kvstore.NewInMemoryApplication(), gate: make(chan struct{})}
+	nodeKey, err := p2p.LoadOrGenNodeKey(config.NodeKeyFile())
+	require.NoError(t, err)
+
+	n := startNodeRetryingPortConflicts(t, func() (*Node, error) {
+		testFreeConfig(t, config)
+		// Not the genesis validator, so consensus never commits and the test runs the pass.
+		n, err := NewNode(config, types.NewMockPV(), nodeKey, proxy.NewConnSyncLocalClientCreator(app),
+			DefaultGenesisDocProviderFunc(config), cfg.DefaultDBProvider,
+			DefaultMetricsProvider(config.Instrumentation), log.TestingLogger())
+		if err != nil {
+			return nil, err
+		}
+		return n, n.Start()
+	})
+	mp := n.Mempool().(*cat.TxPool)
+	require.NoError(t, mp.CheckTx(kvstore.NewTx("k", "v"), nil, mempl.TxInfo{}))
+	mp.Lock()
+	require.NoError(t, mp.UpdateAsyncRecheck(1, nil, nil, nil, nil))
+	require.Eventually(t, func() bool { return app.rechecks.Load() == 1 }, 5*time.Second, time.Millisecond)
+
+	stopped := make(chan error, 1)
+	go func() { stopped <- n.Stop() }()
+	select {
+	case <-stopped:
+		t.Fatal("node stopped while the recheck pass was running")
+	case <-time.After(200 * time.Millisecond):
+	}
+	close(app.gate)
+	select {
+	case err := <-stopped:
+		require.NoError(t, err)
+	case <-time.After(10 * time.Second):
+		t.Fatal("node did not stop after the recheck pass")
 	}
 }
 
