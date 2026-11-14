@@ -999,8 +999,8 @@ func TestHandleCachedCompactBlockDoesNotBlock(t *testing.T) {
 	}
 }
 
-// TestAddBlockServesWants asserts that a block handed over by consensus answers
-// wants parked on a stub for it and replaces another block's entry at that round.
+// TestAddBlockServesWants asserts that a block handed over by consensus answers wants
+// parked on a stub for it and replaces another block's entry at that round, unless it is our proposal.
 func TestAddBlockServesWants(t *testing.T) {
 	cleanup, _, sm, pv := state.SetupTestCaseWithPrivVal(t)
 	t.Cleanup(func() { cleanup(t) })
@@ -1042,6 +1042,18 @@ func TestAddBlockServesWants(t *testing.T) {
 		require.True(t, completeFn(server)())
 		requester.AddCommitment(propX.Height, propX.Round, &pshX)
 		require.Eventually(t, completeFn(requester), 2*time.Second, 10*time.Millisecond)
+	})
+
+	t.Run("own proposal keeps another block", func(t *testing.T) {
+		reactors, _ := createTestReactors(1, defaultTestP2PConf(), false, "")
+		r := reactors[0]
+		cbY, _ := createCompactBlock(t, propY, psY, metaY)
+		require.True(t, r.AddProposal(cbY))
+
+		r.AddProposedBlock(propX.Height, propX.Round, psX)
+		_, parts, has := r.GetProposal(propY.Height, propY.Round)
+		require.True(t, has)
+		require.True(t, parts.HasHeader(psY.Header()))
 	})
 
 	t.Run("keeps forwarded", func(t *testing.T) {
