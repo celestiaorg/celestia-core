@@ -144,7 +144,7 @@ func NewReactor(mempool *TxPool, opts *ReactorOptions) (*Reactor, error) {
 		mempool:        mempool,
 		ids:            newMempoolIDs(),
 		requests:       newRequestScheduler(opts.MaxGossipDelay, defaultGlobalRequestTimeout),
-		receivedBuffer: newReceivedTxBuffer(mempool.config.MaxTxsBytes),
+		receivedBuffer: newReceivedTxBuffer(mempool.config.MaxTxsBytes, int64(mempool.config.MaxTxBytes)),
 		traceClient:    traceClient,
 	}
 	memR.BaseReactor = *p2p.NewBaseReactor("CAT", memR,
