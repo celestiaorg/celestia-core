@@ -124,19 +124,19 @@ func (b *receivedTxBuffer) removeLowerSeqs(signer []byte, seq uint64) {
 }
 
 // removeBelow deletes all buffered transactions with sequence < seq and
-// returns their keys. Such txs can never be applied once the signer's
+// returns them. Such txs can never be applied once the signer's
 // expected sequence has reached seq.
-func (b *receivedTxBuffer) removeBelow(signer []byte, seq uint64) []types.TxKey {
+func (b *receivedTxBuffer) removeBelow(signer []byte, seq uint64) []*bufferedTx {
 	return b.removeIf(signer, func(e *bufferedTx) bool { return e.sequence < seq })
 }
 
 // pruneOlderThan deletes all buffered transactions added before cutoff and
-// returns their keys.
-func (b *receivedTxBuffer) pruneOlderThan(cutoff time.Time) []types.TxKey {
+// returns them.
+func (b *receivedTxBuffer) pruneOlderThan(cutoff time.Time) []*bufferedTx {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 
-	removed := make([]types.TxKey, 0, len(b.buffers))
+	removed := make([]*bufferedTx, 0, len(b.buffers))
 	for signerKey := range b.buffers {
 		removed = append(removed, b.removeIfLocked(signerKey, func(e *bufferedTx) bool {
 			return e.addedAt.Before(cutoff)
@@ -145,7 +145,7 @@ func (b *receivedTxBuffer) pruneOlderThan(cutoff time.Time) []types.TxKey {
 	return removed
 }
 
-func (b *receivedTxBuffer) removeIf(signer []byte, match func(*bufferedTx) bool) []types.TxKey {
+func (b *receivedTxBuffer) removeIf(signer []byte, match func(*bufferedTx) bool) []*bufferedTx {
 	if len(signer) == 0 {
 		return nil
 	}
@@ -157,13 +157,13 @@ func (b *receivedTxBuffer) removeIf(signer []byte, match func(*bufferedTx) bool)
 }
 
 // removeIfLocked deletes the signer's buffered txs that match and returns
-// their keys. b.mu must be held.
-func (b *receivedTxBuffer) removeIfLocked(signerKey string, match func(*bufferedTx) bool) []types.TxKey {
+// them. b.mu must be held.
+func (b *receivedTxBuffer) removeIfLocked(signerKey string, match func(*bufferedTx) bool) []*bufferedTx {
 	signerBuf, exists := b.buffers[signerKey]
 	if !exists {
 		return nil
 	}
-	var removed []types.TxKey
+	var removed []*bufferedTx
 	for entSeq, entry := range signerBuf {
 		if !match(entry) {
 			continue
@@ -177,7 +177,7 @@ func (b *receivedTxBuffer) removeIfLocked(signerKey string, match func(*buffered
 		}
 		b.totalBytes -= int64(len(entry.tx.Tx))
 		delete(signerBuf, entSeq)
-		removed = append(removed, entry.txKey)
+		removed = append(removed, entry)
 	}
 
 	// Clean up empty signer map

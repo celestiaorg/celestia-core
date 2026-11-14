@@ -122,9 +122,9 @@ func TestSeenTrackerGet(t *testing.T) {
 
 		// Mutating the returned entry must not affect tracker state.
 		delete(entry.peers, peer1)
-		entry.pendingTxInfo.sequence = 99
+		entry.claims[0].sequence = 99
 		require.True(t, tracker.Has(txKey, peer1))
-		_, seq, ok := tracker.PendingTxInfo(txKey)
+		_, seq, ok := pendingTxInfo(tracker, txKey)
 		require.True(t, ok)
 		require.Equal(t, uint64(3), seq)
 	})
@@ -311,7 +311,7 @@ func TestSeenTrackerAddIndexesPendingTx(t *testing.T) {
 		seq := uint64(7)
 		require.True(t, tracker.AddPendingTx(txKey, peer1, signer, seq))
 
-		gotSigner, gotSeq, ok := tracker.PendingTxInfo(txKey)
+		gotSigner, gotSeq, ok := pendingTxInfo(tracker, txKey)
 		require.True(t, ok)
 		require.Equal(t, signer, gotSigner)
 		require.Equal(t, seq, gotSeq)
@@ -322,7 +322,7 @@ func TestSeenTrackerAddIndexesPendingTx(t *testing.T) {
 		txKey := types.Tx("tx").Key()
 		zeroSeq := uint64(0)
 		require.True(t, tracker.AddPendingTx(txKey, peer1, signer, zeroSeq))
-		_, gotSeq, ok := tracker.PendingTxInfo(txKey)
+		_, gotSeq, ok := pendingTxInfo(tracker, txKey)
 		require.True(t, ok)
 		require.Equal(t, zeroSeq, gotSeq)
 	})
@@ -331,7 +331,7 @@ func TestSeenTrackerAddIndexesPendingTx(t *testing.T) {
 		tracker := NewSeenTracker()
 		txKey := types.Tx("tx").Key()
 		require.True(t, tracker.AddPeer(txKey, peer1))
-		_, _, ok := tracker.PendingTxInfo(txKey)
+		_, _, ok := pendingTxInfo(tracker, txKey)
 		require.False(t, ok)
 		require.Nil(t, tracker.SignersWithPendingTxs())
 	})
@@ -356,13 +356,13 @@ func TestSeenTrackerAddIndexesPendingTx(t *testing.T) {
 
 		// First seen without a signer: tracked by peer only, not queued by sequence.
 		require.True(t, tracker.AddPeer(txKey, peer1))
-		_, _, ok := tracker.PendingTxInfo(txKey)
+		_, _, ok := pendingTxInfo(tracker, txKey)
 		require.False(t, ok)
 
 		// Seen again with a signer: the same tx is now also queued by sequence,
 		// while keeping the peer that was already recorded.
 		require.True(t, tracker.AddPendingTx(txKey, peer2, signer, 4))
-		_, seq, ok := tracker.PendingTxInfo(txKey)
+		_, seq, ok := pendingTxInfo(tracker, txKey)
 		require.True(t, ok)
 		require.Equal(t, uint64(4), seq)
 		require.Equal(t, map[uint16]struct{}{peer1: {}, peer2: {}}, tracker.PeersForTx(txKey))
@@ -384,7 +384,7 @@ func TestSeenTrackerAddIndexesPendingTx(t *testing.T) {
 		// The demoted tx survives as peer-only state.
 		demoted := tracker.Get(keySeq7)
 		require.NotNil(t, demoted)
-		require.Nil(t, demoted.pendingTxInfo)
+		require.Empty(t, demoted.claims)
 		require.True(t, tracker.Has(keySeq7, peer1))
 	})
 
@@ -401,27 +401,31 @@ func TestSeenTrackerAddIndexesPendingTx(t *testing.T) {
 		require.True(t, tracker.AddPendingTx(keySeq9, peer1, signer, 9))
 
 		require.Equal(t, []uint64{5, 6}, seenTrackerSequences(tracker.PendingTxsForSigner(signer)))
-		require.Nil(t, tracker.Get(keySeq9).pendingTxInfo)
+		require.Empty(t, tracker.Get(keySeq9).claims)
 		require.True(t, tracker.Has(keySeq9, peer1))
 	})
 
-	t.Run("does not re-index an already-indexed key", func(t *testing.T) {
+	t.Run("queues each distinct claim for a key", func(t *testing.T) {
 		tracker := NewSeenTracker()
 		txKey := types.Tx("tx").Key()
 		signerA := []byte("signer-a")
 		signerB := []byte("signer-b")
 		require.True(t, tracker.AddPendingTx(txKey, peer1, signerA, 1))
 
-		// Re-adding the same key with a different signer keeps the original
-		// signer/sequence; only the peer is added.
+		// A different signer/sequence for the same key is queued as its own
+		// claim, so the first claim cannot hide it.
 		require.True(t, tracker.AddPendingTx(txKey, peer2, signerB, 2))
 
-		gotSigner, seq, ok := tracker.PendingTxInfo(txKey)
+		gotSigner, seq, ok := tracker.PendingTxInfoFrom(txKey, peer1)
 		require.True(t, ok)
 		require.Equal(t, signerA, gotSigner)
 		require.Equal(t, uint64(1), seq)
-		require.NotNil(t, tracker.PendingTxsForSigner(signerA))
-		require.Nil(t, tracker.PendingTxsForSigner(signerB))
+		gotSigner, seq, ok = tracker.PendingTxInfoFrom(txKey, peer2)
+		require.True(t, ok)
+		require.Equal(t, signerB, gotSigner)
+		require.Equal(t, uint64(2), seq)
+		require.Len(t, tracker.PendingTxsForSigner(signerA), 1)
+		require.Len(t, tracker.PendingTxsForSigner(signerB), 1)
 		require.Equal(t, map[uint16]struct{}{peer1: {}, peer2: {}}, tracker.PeersForTx(txKey))
 	})
 }
@@ -435,14 +439,14 @@ func TestSeenTrackerPendingTxInfo(t *testing.T) {
 
 	t.Run("unknown tx", func(t *testing.T) {
 		tracker := NewSeenTracker()
-		_, _, ok := tracker.PendingTxInfo(txKey)
+		_, _, ok := pendingTxInfo(tracker, txKey)
 		require.False(t, ok)
 	})
 
 	t.Run("peer-only tx", func(t *testing.T) {
 		tracker := NewSeenTracker()
 		require.True(t, tracker.AddPeer(txKey, peer1))
-		_, _, ok := tracker.PendingTxInfo(txKey)
+		_, _, ok := pendingTxInfo(tracker, txKey)
 		require.False(t, ok)
 	})
 
@@ -450,11 +454,11 @@ func TestSeenTrackerPendingTxInfo(t *testing.T) {
 		tracker := NewSeenTracker()
 		require.True(t, tracker.AddPendingTx(txKey, peer1, signer, 2))
 
-		gotSigner, _, ok := tracker.PendingTxInfo(txKey)
+		gotSigner, _, ok := pendingTxInfo(tracker, txKey)
 		require.True(t, ok)
 		// Mutating the returned signer must not affect tracker state.
 		gotSigner[0] = 'x'
-		stillSigner, seq, _ := tracker.PendingTxInfo(txKey)
+		stillSigner, seq, _ := pendingTxInfo(tracker, txKey)
 		require.Equal(t, signer, stillSigner)
 		require.Equal(t, uint64(2), seq)
 	})
@@ -531,7 +535,7 @@ func TestSeenTrackerClearSequence(t *testing.T) {
 		require.True(t, tracker.AddPendingTx(txKey, peer1, signer, 5))
 
 		tracker.ClearPendingTx(txKey)
-		_, _, ok := tracker.PendingTxInfo(txKey)
+		_, _, ok := pendingTxInfo(tracker, txKey)
 		require.False(t, ok)
 		require.True(t, tracker.Has(txKey, peer1))
 		require.Nil(t, tracker.PendingTxsForSigner(signer))
@@ -556,11 +560,11 @@ func TestSeenTrackerPrunePending(t *testing.T) {
 	tracker.PrunePending(baseTime.Add(time.Minute))
 
 	// Old future metadata is dropped, but the peer cache survives.
-	_, _, oldOK := tracker.PendingTxInfo(oldKey)
+	_, _, oldOK := pendingTxInfo(tracker, oldKey)
 	require.False(t, oldOK)
 	require.True(t, tracker.Has(oldKey, peer1))
 	// Fresh future metadata is kept.
-	_, _, freshOK := tracker.PendingTxInfo(freshKey)
+	_, _, freshOK := pendingTxInfo(tracker, freshKey)
 	require.True(t, freshOK)
 	require.Equal(t, []types.TxKey{freshKey}, seenTrackerKeys(tracker.PendingTxsForSigner(signer)))
 }
@@ -629,4 +633,17 @@ func seenTrackerKeys(entries []*SeenEntry) []types.TxKey {
 		out[i] = entry.txKey
 	}
 	return out
+}
+
+// pendingTxInfo returns the oldest signer/sequence claim queued for txKey.
+func pendingTxInfo(s *SeenTracker, txKey types.TxKey) (signer []byte, sequence uint64, ok bool) {
+	s.mtx.Lock()
+	defer s.mtx.Unlock()
+
+	entry, found := s.txByKey[txKey]
+	if !found || len(entry.claims) == 0 {
+		return nil, 0, false
+	}
+	claim := entry.claims[0]
+	return append([]byte(nil), claim.signer...), claim.sequence, true
 }
