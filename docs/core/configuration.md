@@ -320,8 +320,8 @@ type = "flood"
 recheck = true
 
 # async_recheck (default: false, CAT only) runs recheck as a background pass after the commit:
-# new transactions wait for it and a proposal made meanwhile takes only transactions it has
-# already rechecked. When false, recheck runs inside the commit.
+# new transactions wait for it and a proposal made meanwhile waits until it has rechecked a
+# full block. When false, recheck runs inside the commit.
 async_recheck = false
 
 # Broadcast (default: true) defines whether the mempool should relay

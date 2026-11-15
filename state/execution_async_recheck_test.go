@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 
 	dbm "github.com/cometbft/cometbft-db"
@@ -16,6 +17,7 @@ import (
 	"github.com/cometbft/cometbft/libs/log"
 	"github.com/cometbft/cometbft/mempool"
 	"github.com/cometbft/cometbft/mempool/cat"
+	mpmocks "github.com/cometbft/cometbft/mempool/mocks"
 	"github.com/cometbft/cometbft/proxy"
 	sm "github.com/cometbft/cometbft/state"
 	"github.com/cometbft/cometbft/store"
@@ -106,11 +108,11 @@ func TestApplyBlockAsyncRecheck(t *testing.T) {
 	<-locked
 }
 
-// A proposal made while the pass runs returns at once with only the txs the pass
-// has kept; after the pass it equals the synchronous recheck's.
+// A proposal made while the pass runs waits until the pass has kept a full block, here
+// the whole pass (core cannot classify these txs), and equals the synchronous recheck's.
 func TestCreateProposalBlockDuringRecheck(t *testing.T) {
 	pending := cmttypes.Txs{cmttypes.Tx("pending-1"), cmttypes.Tx("stale-1"), cmttypes.Tx("pending-2")}
-	setup := func(async bool) (func() cmttypes.Txs, *cat.TxPool, *gatedRecheckApp) {
+	setup := func(async bool) (func() <-chan cmttypes.Txs, *gatedRecheckApp) {
 		blockExec, mp, mpApp, state, privVals := newGatedCATExecutor(t, async)
 		if !async {
 			close(mpApp.gate)
@@ -130,41 +132,68 @@ func TestCreateProposalBlockDuringRecheck(t *testing.T) {
 		commit, _, err := makeValidCommit(1, blockID, state.Validators, privVals)
 		require.NoError(t, err)
 		proposer, _ := state.Validators.GetByIndex(0)
-		propose := func() cmttypes.Txs {
-			type result struct {
-				block *cmttypes.Block
-				err   error
-			}
-			proposed := make(chan result, 1)
+		propose := func() <-chan cmttypes.Txs {
+			proposed := make(chan cmttypes.Txs, 1)
 			go func() {
 				b, _, err := blockExec.CreateProposalBlock(context.Background(), 2, state, commit, proposer)
-				proposed <- result{b, err}
+				require.NoError(t, err)
+				proposed <- b.Txs
 			}()
-			select {
-			case r := <-proposed:
-				require.NoError(t, r.err)
-				return r.block.Txs
-			case <-time.After(5 * time.Second):
-				t.Fatal("proposal waited for the recheck pass")
-				return nil
-			}
+			return proposed
 		}
-		return propose, mp, mpApp
+		return propose, mpApp
 	}
-	proposeSync, _, _ := setup(false)
-	want := proposeSync()
+	proposeSync, _ := setup(false)
+	want := <-proposeSync()
 	require.Equal(t, cmttypes.Txs{cmttypes.Tx("pending-1"), cmttypes.Tx("pending-2")}, want)
 
-	propose, mp, mpApp := setup(true)
-	require.Empty(t, propose())
-	mpApp.gate <- struct{}{} // pending-1 kept; the pass now holds at stale-1
-	require.Eventually(t, func() bool { return mpApp.rechecks.Load() == 2 }, 5*time.Second, time.Millisecond)
-	require.Equal(t, cmttypes.Txs{cmttypes.Tx("pending-1")}, propose())
+	propose, mpApp := setup(true)
+	proposed := propose()
+	mpApp.gate <- struct{}{} // pending-1 kept
 	mpApp.gate <- struct{}{} // stale-1 evicted; the pass now holds at pending-2
 	require.Eventually(t, func() bool { return mpApp.rechecks.Load() == 3 }, 5*time.Second, time.Millisecond)
-	require.Equal(t, cmttypes.Txs{cmttypes.Tx("pending-1")}, propose())
+	require.Never(t, func() bool { return len(proposed) > 0 }, 200*time.Millisecond, 5*time.Millisecond)
 	close(mpApp.gate)
-	mp.Lock()
-	mp.Unlock() //nolint:staticcheck // empty critical section waits for the pass
-	require.Equal(t, want, propose())
+	select {
+	case got := <-proposed:
+		require.Equal(t, want, got)
+	case <-time.After(5 * time.Second):
+		t.Fatal("proposal did not return at the pass end")
+	}
+}
+
+type appVersionMempool struct {
+	*mpmocks.Mempool
+	appVersion uint64
+}
+
+func (m *appVersionMempool) SetNextAppVersion(v uint64) { m.appVersion = v }
+
+// Commit hands the mempool the next block's app version before Update, which sizes the
+// recheck pass's class quotas with it.
+func TestCommitSetsNextAppVersion(t *testing.T) {
+	proxyApp := proxy.NewAppConns(proxy.NewLocalClientCreator(&testApp{}), proxy.NopMetrics())
+	require.NoError(t, proxyApp.Start())
+	t.Cleanup(func() { _ = proxyApp.Stop() })
+	mp := &appVersionMempool{Mempool: &mpmocks.Mempool{}}
+	mp.On("Lock").Return()
+	mp.On("Unlock").Return()
+	mp.On("FlushAppConn", mock.Anything).Return(nil)
+	var atUpdate uint64
+	mp.On("Update", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		Run(func(mock.Arguments) { atUpdate = mp.appVersion }).Return(nil)
+
+	state, stateDB, _ := makeState(1, 1)
+	state.Version.Consensus.App = cmttypes.BlockTxLimitAppVersion
+	blockExec := sm.NewBlockExecutor(sm.NewStore(stateDB, sm.StoreOptions{}), log.TestingLogger(),
+		proxyApp.Consensus(), mp, sm.EmptyEvidencePool{}, store.NewBlockStore(dbm.NewMemDB()))
+	block, _, err := makeBlock(state, 1, new(cmttypes.Commit))
+	require.NoError(t, err)
+	resp := &abci.ResponseFinalizeBlock{TxResults: make([]*abci.ExecTxResult, len(block.Txs))}
+	for i := range resp.TxResults {
+		resp.TxResults[i] = &abci.ExecTxResult{}
+	}
+	_, err = blockExec.Commit(state, block, resp)
+	require.NoError(t, err)
+	require.Equal(t, cmttypes.BlockTxLimitAppVersion, atUpdate)
 }

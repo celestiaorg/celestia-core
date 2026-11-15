@@ -20,3 +20,12 @@ func MaxBlockTxsForAppVersion(appVersion uint64) int {
 	}
 	return MaxBlockTxsCeiling
 }
+
+// MaxBlockMsgsForAppVersion returns app v11's per-block message caps by class (SDK, PayForBlobs,
+// PayForFibre), which sum to MaxBlockTxs; ok is false below BlockTxLimitAppVersion.
+func MaxBlockMsgsForAppVersion(appVersion uint64) (sdk, pfb, pff int, ok bool) {
+	if appVersion >= BlockTxLimitAppVersion {
+		return 600, 200, 200, true
+	}
+	return 0, 0, 0, false
+}

@@ -167,8 +167,8 @@ func keysOf(txs []*cmttypes.CachedTx) []string {
 	return out
 }
 
-// While the pass runs, a reap returns at once with only the txs the pass has
-// already kept, each signer cut at its first unchecked tx; once it ends, the
+// While the pass runs, the reap (here without its wait) takes only the txs the pass
+// has already kept, each signer cut at its first unchecked tx; once it ends, the
 // reap equals a synchronous recheck's.
 func TestAsyncRecheck_ReapTakesOnlyRechecked(t *testing.T) {
 	run := func(async bool) (*TxPool, *checkStateApp) {
@@ -189,17 +189,7 @@ func TestAsyncRecheck_ReapTakesOnlyRechecked(t *testing.T) {
 	require.Equal(t, []string{"a/1", "a/2", "a/3", "c/0", "c/1"}, want)
 
 	txmp, app := run(true)
-	reap := func() []string {
-		reaped := make(chan []*cmttypes.CachedTx, 1)
-		go func() { reaped <- txmp.ReapMaxBytesMaxGas(-1, -1) }()
-		select {
-		case txs := <-reaped:
-			return keysOf(txs)
-		case <-time.After(5 * time.Second):
-			t.Fatal("reap waited for the recheck pass")
-			return nil
-		}
-	}
+	reap := func() []string { return keysOf(txmp.reapRechecked(-1, -1)) }
 	require.Empty(t, reap())
 	// Pass order: a/1 a/2 a/3 b/0 b/1 c/0 c/1. Keep a/1 and a/2, hold the pass at a/3.
 	app.recheckGate <- struct{}{}
@@ -230,7 +220,7 @@ func TestAsyncRecheck_ReapIgnoresEarlierPassStamps(t *testing.T) {
 
 	app.recheckGate = make(chan struct{})
 	commitBlock(t, txmp, app, 2, []cmttypes.Tx{checkStateTx("a", 1)})
-	require.Empty(t, keysOf(txmp.ReapMaxBytesMaxGas(-1, -1)), "reaped txs only the height-1 pass kept")
+	require.Empty(t, keysOf(txmp.reapRechecked(-1, -1)), "reaped txs only the height-1 pass kept")
 	close(app.recheckGate)
 	waitForPass(txmp)
 	require.Equal(t, []string{"a/2", "a/3"}, keysOf(txmp.ReapMaxBytesMaxGas(-1, -1)))

@@ -23,6 +23,8 @@ type wrappedTx struct {
 	fromBroadcast bool            // true if submitted via local RPC broadcast
 
 	rechecked atomic.Int64 // height of the last recheck that kept this tx; read lock-free by reaps
+	class     uint8        // message class, set at admission with async recheck
+	weight    int64        // messages charged to class; 0 without async recheck
 }
 
 func newWrappedTx(tx *types.CachedTx, height, gasWanted, priority int64, sender []byte, sequence uint64, fromBroadcast bool) *wrappedTx {

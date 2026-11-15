@@ -550,6 +550,9 @@ func (blockExec *BlockExecutor) Commit(
 	)
 
 	// Update mempool.
+	if mp, ok := blockExec.mempool.(mempool.AppVersionSetter); ok {
+		mp.SetNextAppVersion(state.Version.Consensus.App) // state is already the next height's
+	}
 	if mp, ok := blockExec.mempool.(mempool.AsyncRechecker); ok {
 		txs, preCheck, postCheck := block.CachedTxs(), TxPreCheck(state), TxPostCheck(state)
 		handedOff = true // the mempool releases the lock

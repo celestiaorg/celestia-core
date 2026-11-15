@@ -144,6 +144,12 @@ type AsyncRechecker interface {
 	) error
 }
 
+// AppVersionSetter is a Mempool that sizes proposal reaps by app version. Commit calls it
+// under the lock, before Update, with the app version of the next block.
+type AppVersionSetter interface {
+	SetNextAppVersion(appVersion uint64)
+}
+
 // PreCheckFunc is an optional filter executed before CheckTx and rejects
 // transaction if false is returned. An example would be to ensure that a
 // transaction doesn't exceeded the block size.
