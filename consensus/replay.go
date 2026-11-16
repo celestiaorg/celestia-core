@@ -92,7 +92,7 @@ func (cs *State) readReplayMessage(msg *TimedWALMessage, newStepSub types.Subscr
 	return nil
 }
 
-// applyLockInfo restores the lock journaled by writeLockInfo; the last record wins.
+// applyLockInfo restores the lock written by writeLockInfo; the last record wins.
 func (cs *State) applyLockInfo(li LockInfo) {
 	cs.lockAll()
 	defer cs.unlockAll()
@@ -101,7 +101,7 @@ func (cs *State) applyLockInfo(li LockInfo) {
 		cs.Logger.Error("Replay: lock for another height", "height", cs.rs.Height, "lock_height", li.Height)
 		return
 	}
-	if li.Round < 0 {
+	if li.IsUnlock() {
 		cs.clearLock()
 		return
 	}
@@ -121,6 +121,7 @@ func (cs *State) applyLockInfo(li LockInfo) {
 		cs.fillLockBytes(block, parts)
 		if cs.rs.ProposalBlockParts == nil || cs.rs.ProposalBlockParts.HasHeader(li.BlockID.PartSetHeader) {
 			cs.rs.ProposalBlock, cs.rs.ProposalBlockParts = block, parts
+			cs.rs.ProposalBlockNonCanonical = false // a locked block is always canonical
 		}
 	}
 }

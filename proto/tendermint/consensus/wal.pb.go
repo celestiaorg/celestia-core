@@ -197,7 +197,7 @@ func (m *EndHeight) GetHeight() int64 {
 	return 0
 }
 
-// LockInfo journals the lock held when a precommit is signed. Round -1 is an unlock.
+// LockInfo records the lock held when a precommit is signed. Round -1 is an unlock.
 type LockInfo struct {
 	Height    int64         `protobuf:"varint,1,opt,name=height,proto3" json:"height,omitempty"`
 	Round     int32         `protobuf:"varint,2,opt,name=round,proto3" json:"round,omitempty"`

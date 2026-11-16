@@ -28,7 +28,8 @@ func lockedBlockFile(config *cfg.ConsensusConfig) string {
 const directIOAlign = 4096
 
 // lockedBlockWriter copies the locked block's parts to a file once a height has stayed open
-// for a while, so a restarted node can restore the lock's bytes without peers. Never fsynced.
+// for a while, so a restarted node can restore the lock's bytes without peers.
+// Never fsynced: after a power loss the file may be missing or torn, and the node refetches.
 type lockedBlockWriter struct {
 	path   string
 	logger log.Logger

@@ -999,12 +999,12 @@ func TestHandleCachedCompactBlockDoesNotBlock(t *testing.T) {
 	}
 }
 
-// TestAddBlockServesWants asserts that a block handed over by consensus answers
-// wants parked on a stub for it and replaces another block's entry at that round.
+// TestAddBlockServesWants asserts that a block handed over by consensus answers wants
+// parked on a stub for it and replaces another block's entry at that round, unless it is our proposal.
 func TestAddBlockServesWants(t *testing.T) {
 	cleanup, _, sm, pv := state.SetupTestCaseWithPrivVal(t)
 	t.Cleanup(func() { cleanup(t) })
-	propX, psX, _, _ := createTestProposal(t, sm, pv, 1, 0, 2, 1000000)
+	propX, psX, _, metaX := createTestProposal(t, sm, pv, 1, 0, 2, 1000000)
 	propY, psY, _, metaY := createTestProposal(t, sm, pv, 1, 0, 2, 1000000)
 	pshX := psX.Header()
 
@@ -1042,6 +1042,30 @@ func TestAddBlockServesWants(t *testing.T) {
 		require.True(t, completeFn(server)())
 		requester.AddCommitment(propX.Height, propX.Round, &pshX)
 		require.Eventually(t, completeFn(requester), 2*time.Second, 10*time.Millisecond)
+	})
+
+	t.Run("own proposal keeps another block", func(t *testing.T) {
+		reactors, _ := createTestReactors(1, defaultTestP2PConf(), false, "")
+		r := reactors[0]
+		cbY, _ := createCompactBlock(t, propY, psY, metaY)
+		require.True(t, r.AddProposal(cbY))
+
+		r.AddProposedBlock(propX.Height, propX.Round, psX)
+		_, parts, has := r.GetProposal(propY.Height, propY.Round)
+		require.True(t, has)
+		require.True(t, parts.HasHeader(psY.Header()))
+	})
+
+	t.Run("keeps forwarded", func(t *testing.T) {
+		reactors, _ := createTestReactors(1, defaultTestP2PConf(), false, "")
+		r := reactors[0]
+		cbX, _ := createCompactBlock(t, propX, psX, metaX)
+		require.True(t, r.AddProposal(cbX))
+		require.True(t, r.claimForward(cbX))
+
+		r.AddBlock(propX.Height, propX.Round, psX)
+		require.True(t, completeFn(r)())
+		require.False(t, r.claimForward(cbX), "the proposal was forwarded a second time")
 	})
 }
 
