@@ -139,11 +139,15 @@ func TestRequestPartsRollsBackFailedSend(t *testing.T) {
 	peer.On("TrySend", mock.Anything).Return(true)
 	p := newPeerState(context.Background(), peer, log.NewNopLogger())
 	p.AddRequests(1, 0, createBitArray(4, []int{0}))
+	requestedAt := p.state[1][0].requestedAt
 
 	// a failed send rolls back only the parts this call added
 	require.False(t, p.RequestParts(1, 0, createBitArray(4, []int{0, 1}), p2p.Envelope{}))
+	require.Equal(t, requestedAt, p.state[1][0].requestedAt)
 	requests, _ := p.GetRequests(1, 0)
 	require.Equal(t, []int{0}, requests.GetTrueIndices())
+	require.True(t, p.Requested(1, 0, 0))
+	require.False(t, p.Requested(1, 0, 1), "a part whose only request failed must not count as requested")
 
 	require.True(t, p.RequestParts(1, 0, createBitArray(4, []int{1}), p2p.Envelope{}))
 	requests, _ = p.GetRequests(1, 0)
