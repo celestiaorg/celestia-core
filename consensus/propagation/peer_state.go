@@ -230,8 +230,8 @@ func (d *PeerState) RequestParts(height int64, round int32, partsToRequest *bits
 
 	// remember what was already marked, so a failed send can undo only its
 	// own marks
-	notYetRequested := partsToRequest.Sub(partState.requests)
-	neverRequested := partsToRequest.Sub(partState.everRequested)
+	addedToRequests := partsToRequest.Sub(partState.requests)
+	addedToEverRequested := partsToRequest.Sub(partState.everRequested)
 	previousRequestedAt := partState.requestedAt
 
 	// mark the parts as requested before sending, so a fast reply isn't
@@ -245,10 +245,10 @@ func (d *PeerState) RequestParts(height int64, round int32, partsToRequest *bits
 
 	// the peer never got the request, so undo this call's marks. Earlier
 	// marks stay: those requests did go out.
-	for _, partIndex := range notYetRequested.GetTrueIndices() {
+	for _, partIndex := range addedToRequests.GetTrueIndices() {
 		partState.requests.SetIndex(partIndex, false)
 	}
-	for _, partIndex := range neverRequested.GetTrueIndices() {
+	for _, partIndex := range addedToEverRequested.GetTrueIndices() {
 		partState.everRequested.SetIndex(partIndex, false)
 	}
 	partState.requestedAt = previousRequestedAt
