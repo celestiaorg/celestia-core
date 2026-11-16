@@ -100,6 +100,16 @@ func (blockProp *Reactor) retryWants() {
 // wants there are served without a compact block. Like AddCommitment, it replaces an entry
 // for another block, whose proposal lost that round.
 func (blockProp *Reactor) AddBlock(height int64, round int32, parts *types.PartSet) {
+	blockProp.addBlock(height, round, parts, true)
+}
+
+// AddProposedBlock stores our own complete proposal block for (height, round). It has no
+// polka or commit, so an entry for another block there is kept.
+func (blockProp *Reactor) AddProposedBlock(height int64, round int32, parts *types.PartSet) {
+	blockProp.addBlock(height, round, parts, false)
+}
+
+func (blockProp *Reactor) addBlock(height int64, round int32, parts *types.PartSet, replace bool) {
 	if parts == nil || !parts.IsComplete() {
 		return
 	}
@@ -117,6 +127,9 @@ func (blockProp *Reactor) AddBlock(height int64, round int32, parts *types.PartS
 	switch prop := blockProp.proposals[height][round]; {
 	case prop == nil:
 	case !prop.block.Original().Header().Equals(psh):
+		if !replace {
+			return
+		}
 		for _, peer := range blockProp.getPeers() {
 			peer.DeleteRound(height, round)
 		}

@@ -22,10 +22,11 @@ import (
 	"github.com/cometbft/cometbft/types"
 )
 
-// propagatorCall is one AddCommitment, AddBlock or SetConsensusState call.
+// propagatorCall is one AddCommitment, AddBlock, AddProposedBlock or SetConsensusState call.
 type propagatorCall struct {
 	commitment bool
 	block      bool
+	proposed   bool
 	height     int64
 	round      int32
 	psh        types.PartSetHeader
@@ -51,6 +52,13 @@ func (r *callRecorder) AddBlock(height int64, round int32, parts *types.PartSet)
 	r.calls = append(r.calls, propagatorCall{block: true, height: height, round: round, psh: parts.Header()})
 	r.mtx.Unlock()
 	r.Propagator.AddBlock(height, round, parts)
+}
+
+func (r *callRecorder) AddProposedBlock(height int64, round int32, parts *types.PartSet) {
+	r.mtx.Lock()
+	r.calls = append(r.calls, propagatorCall{proposed: true, height: height, round: round, psh: parts.Header()})
+	r.mtx.Unlock()
+	r.Propagator.AddProposedBlock(height, round, parts)
 }
 
 func (r *callRecorder) SetConsensusState(height int64, round int32, proposer crypto.PubKey) {
