@@ -51,6 +51,9 @@ import (
 
 var defaultTestTime = time.Date(2019, 1, 1, 0, 0, 0, 0, time.UTC)
 
+// blockSubCapacity is how many new-block events a test subscription buffers.
+const blockSubCapacity = 1000
+
 func startConsensusNet(t *testing.T, css []*State, n int) (
 	[]*Reactor,
 	[]types.Subscription,
@@ -69,7 +72,10 @@ func startConsensusNet(t *testing.T, css []*State, n int) (
 		eventBuses[i] = css[i].eventBus
 		reactors[i].SetEventBus(eventBuses[i])
 
-		blocksSub, err := eventBuses[i].Subscribe(context.Background(), testSubscriber, types.EventQueryNewBlock)
+		// Empty blocks commit every few milliseconds. With the default capacity of 1, two
+		// blocks committed between a test's reads cancel the subscription and the test
+		// then waits forever, so leave room for the gaps between reads.
+		blocksSub, err := eventBuses[i].Subscribe(context.Background(), testSubscriber, types.EventQueryNewBlock, blockSubCapacity)
 		require.NoError(t, err)
 		blocksSubs = append(blocksSubs, blocksSub)
 
