@@ -363,9 +363,9 @@ func (txmp *TxPool) TryAddNewTx(tx *types.CachedTx, key types.TxKey, txInfo memp
 	}
 
 	var class uint8
-	var weight int64
+	var simple bool
 	if txmp.config.AsyncRecheck {
-		class, weight = classifyTx(tx.Tx)
+		class, simple = classifyTx(tx.Tx)
 	}
 
 	txmp.mtx.Lock()
@@ -394,7 +394,7 @@ func (txmp *TxPool) TryAddNewTx(tx *types.CachedTx, key types.TxKey, txInfo memp
 	wtx := newWrappedTx(
 		tx, txmp.height, rsp.GasWanted, rsp.Priority, rsp.Address, rsp.Sequence, txInfo.FromBroadcast,
 	)
-	wtx.class, wtx.weight = class, weight
+	wtx.class, wtx.simple = class, simple
 
 	// Perform the post check
 	err = txmp.postCheck(wtx.tx, rsp)
@@ -471,8 +471,8 @@ func (txmp *TxPool) PeerHasTx(peer uint16, txKey types.TxKey) {
 // If the mempool is empty or has no transactions fitting within the given
 // constraints, the result will also be empty.
 //
-// While an async recheck pass runs, it waits until the pass has kept every class's quota or
-// all its txs, or maxBytes, and then takes only txs the pass has kept.
+// While an async recheck pass runs, it waits until a reap of the txs the pass has kept gives
+// the app as much of each class as a reap after the pass would, and takes only those.
 func (txmp *TxPool) ReapMaxBytesMaxGas(maxBytes, maxGas int64) []*types.CachedTx {
 	if p := txmp.pass.Load(); p != nil {
 		p.wait(maxBytes)
@@ -588,7 +588,7 @@ func (txmp *TxPool) UpdateAsyncRecheck(
 		return nil
 	}
 	txmp.recheckHeight.Store(blockHeight)
-	pass := newRecheckPass(classQuotas(appVersion), txmp.store.getOrderedTxs())
+	pass := newRecheckPass(appVersion, txmp.store.getOrderedTxs())
 	txmp.pass.Store(pass)
 	handedOff = true
 	go func() {
@@ -885,26 +885,19 @@ func (txmp *TxPool) recheckTransactions() {
 	// Get all transactions currently in the mempool requiring recheck.
 	// This avoids holding the store lock during the CheckTx calls which could
 	// cause a deadlock when handleRecheckResult tries to modify the store.
-	// An async pass rechecks the snapshot it took under the lock and counts what it keeps.
 	var wtxs []*wrappedTx
 	if pass != nil {
-		wtxs = pass.order
+		wtxs = pass.order // taken under the lock, in UpdateAsyncRecheck
 	} else {
 		wtxs = txmp.store.getOrderedTxs()
 	}
-	var prevSender []byte
-	prefixOpen := true
 
 	// Issue CheckTx calls for each remaining transaction, and when all the
 	// rechecks are complete signal watchers that transactions may be available.
-	for _, wtx := range wtxs {
-		if len(wtx.sender) == 0 || string(wtx.sender) != string(prevSender) {
-			prevSender, prefixOpen = wtx.sender, true
-		}
+	for i, wtx := range wtxs {
 		if pass != nil && txmp.store.get(wtx.key()) != wtx {
 			// Removed since the snapshot: rechecking it would advance its sender's sequence.
-			prefixOpen = false
-			pass.processed(wtx)
+			pass.processed(i, false)
 			continue
 		}
 		// The response for this CheckTx is handled by the default recheckTxCallback.
@@ -912,17 +905,15 @@ func (txmp *TxPool) recheckTransactions() {
 			Tx:   wtx.tx.Tx,
 			Type: abci.CheckTxType_Recheck,
 		})
+		kept := false // a tx left unstamped ends its sender's reapable prefix
 		if err != nil {
 			txmp.logger.Error("failed to execute CheckTx during recheck",
 				"err", err, "key", fmt.Sprintf("%x", wtx.key()))
-			prefixOpen = false // the reap stops at a tx left unstamped
-		} else if txmp.handleRecheckResult(wtx, rsp) && pass != nil && prefixOpen {
-			pass.take(wtx)
 		} else {
-			prefixOpen = false
+			kept = txmp.handleRecheckResult(wtx, rsp)
 		}
 		if pass != nil {
-			pass.processed(wtx)
+			pass.processed(i, kept)
 		}
 	}
 	_ = txmp.proxyAppConn.Flush(context.Background())

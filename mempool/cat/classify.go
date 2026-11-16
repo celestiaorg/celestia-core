@@ -1,116 +1,136 @@
 package cat
 
 import (
-	"math"
-
 	squaretx "github.com/celestiaorg/go-square/v4/tx"
 	"google.golang.org/protobuf/encoding/protowire"
 
 	"github.com/cometbft/cometbft/types"
 )
 
-// Message classes the app caps separately when it fills a block.
+// Message classes the app fills separately, in this order, when it builds a block.
 const (
 	classSDK = iota
 	classPFB
 	classPFF
-	// classUnknown is charged to no class and never capped, and the reap waits for every
-	// such tx, so a tx core cannot classify can only make a reap wait longer.
+	// classUnknown is a tx core cannot place. While one may still be rechecked, a proposal
+	// does not stop waiting early for a class that has run out of txs.
 	classUnknown
 	numClasses
 )
 
-const (
-	payForFibreURL = "/celestia.fibre.v1.MsgPayForFibre" //nolint:misspell // proto package name
-	msgExecURL     = "/cosmos.authz.v1beta1.MsgExec"
-)
+const payForFibreURL = "/celestia.fibre.v1.MsgPayForFibre" //nolint:misspell // proto package name
 
 // maxBlockMsgs is types.MaxBlockMsgsForAppVersion; tests shrink the caps.
 var maxBlockMsgs = types.MaxBlockMsgsForAppVersion
 
-// classQuotas returns the reap's per-class message caps for appVersion: the app's cap plus
-// the reap's 25% over-reap. Without caps every class is unlimited.
-func classQuotas(appVersion uint64) (q [numClasses]int64) {
-	for c := range q {
-		q[c] = math.MaxInt64
-	}
-	if sdk, pfb, pff, ok := maxBlockMsgs(appVersion); ok {
-		for c, n := range [...]int{sdk, pfb, pff} {
-			q[c] = int64(n + n/4)
-		}
-	}
-	return q
+// classNeeds returns, per class, how many simple txs a rechecked prefix needs before a
+// proposal can stop waiting: the app's cap plus a margin for txs PrepareProposal drops for
+// reasons core cannot see. ok is false for an app version whose caps core does not know.
+func classNeeds(appVersion uint64) (need [classUnknown]int64, ok bool) {
+	sdk, pfb, pff, ok := maxBlockMsgs(appVersion)
+	// SDK txs are filled first, so they see no more spent state than at recheck; blob txs
+	// come next; a PayForFibre can pass CheckTx and still fail to settle, so its margin is 2x cap.
+	return [classUnknown]int64{int64(sdk + sdk/4), int64(pfb + pfb/2), int64(pff + 2*pff)}, ok
 }
 
-// classifyTx returns the class the app's PrepareProposal sorts tx into and a weight that
-// never exceeds the app's message count for it. Anything ambiguous is classUnknown. Only
-// txs CheckTx accepts keep their class, so it trusts the encoding CheckTx enforces.
-func classifyTx(tx []byte) (class uint8, weight int64) {
+// classifyTx returns the class the app's PrepareProposal sorts tx into, and whether it is
+// simple: one message the app counts once and never executes while building a block, and
+// no timeout. It trusts the encoding CheckTx enforces; only accepted txs keep their class.
+func classifyTx(tx []byte) (class uint8, simple bool) {
 	var body, typeID []byte
 	if !protoFields(tx, func(num protowire.Number, typ protowire.Type, v []byte) bool {
 		switch {
 		case num == 1 && typ == protowire.BytesType:
-			body = v // TxRaw.body_bytes; the last one wins, as in protobuf
+			body = v // TxRaw.body_bytes or BlobTx.tx; the last one wins, as in protobuf
 		case num == 3 && typ == protowire.BytesType:
 			typeID = v // BlobTx.type_id; CheckTx rejects a TxRaw whose last signature is "BLOB"
 		}
 		return true
 	}) {
-		return classUnknown, 1
+		return classUnknown, false
 	}
 	if string(typeID) == squaretx.ProtoBlobTxTypeID {
-		return classPFB, 1 // CheckTx admits one MsgPayForBlobs per BlobTx
-	}
-	msgs, pffs := 0, 0
-	if !protoFields(body, func(num protowire.Number, typ protowire.Type, v []byte) bool {
-		if num != 1 { // TxBody.messages
+		// CheckTx admits one MsgPayForBlobs per BlobTx; body is its TxRaw.
+		var inner []byte
+		ok := protoFields(body, func(num protowire.Number, typ protowire.Type, v []byte) bool {
+			if num == 1 && typ == protowire.BytesType {
+				inner = v
+			}
 			return true
-		}
-		if typ != protowire.BytesType {
-			return false
-		}
-		url, val, ok := anyParts(v)
-		if !ok {
-			return false
-		}
-		msgs++
-		weight++
-		switch string(url) {
-		case payForFibreURL:
-			pffs++
-		case msgExecURL: // the app also counts each message a MsgExec dispatches (field 2)
-			return protoFields(val, func(num protowire.Number, typ protowire.Type, _ []byte) bool {
-				if num == 2 && typ == protowire.BytesType {
-					weight++
-				}
-				return true
-			})
-		}
-		return true
-	}) || msgs == 0 {
-		return classUnknown, 1
+		})
+		_, timeout, ok2 := scanBody(inner)
+		return classPFB, ok && ok2 && !timeout
 	}
-	if pffs > 0 {
-		if msgs != 1 { // CheckTx rejects a PayForFibre beside other messages
-			return classUnknown, 1
-		}
-		return classPFF, 1
+	msgs, timeout, ok := scanBody(body)
+	if !ok || msgs.n == 0 || msgs.unknown {
+		return classUnknown, false
 	}
-	return classSDK, weight
+	if msgs.pff {
+		if msgs.n != 1 { // CheckTx rejects a PayForFibre beside other messages
+			return classUnknown, false
+		}
+		return classPFF, !timeout
+	}
+	return classSDK, msgs.n == 1 && msgs.simple && !timeout
 }
 
-// anyParts returns a google.protobuf.Any's type_url and value.
-func anyParts(b []byte) (url, val []byte, ok bool) {
-	ok = protoFields(b, func(num protowire.Number, typ protowire.Type, v []byte) bool {
-		switch {
-		case num == 1 && typ == protowire.BytesType:
-			url = v
-		case num == 2 && typ == protowire.BytesType:
-			val = v
+type bodyMsgs struct {
+	n       int
+	pff     bool // a MsgPayForFibre
+	unknown bool // a message the app executes or caps in a proposal in ways core does not model
+	simple  bool // the last message is one the app counts once and does not execute in a proposal
+}
+
+// scanBody reads a TxBody's messages, and reports whether it sets a timeout or unordered.
+func scanBody(body []byte) (msgs bodyMsgs, timeout, ok bool) {
+	ok = protoFields(body, func(num protowire.Number, typ protowire.Type, v []byte) bool {
+		switch num {
+		case 1: // messages
+			if typ != protowire.BytesType {
+				return false
+			}
+			url, ok := anyURL(v)
+			if !ok {
+				return false
+			}
+			msgs.n++
+			msgs.simple = false
+			switch string(url) {
+			case payForFibreURL:
+				msgs.pff = true
+			case "/celestia.fibre.v1.MsgDepositToEscrow", //nolint:misspell // proto package name
+				"/celestia.fibre.v1.MsgPaymentPromiseTimeout", //nolint:misspell // proto package name
+				"/celestia.zkism.v1.MsgCreateInterchainSecurityModule",
+				"/celestia.zkism.v1.MsgUpdateInterchainSecurityModule",
+				"/celestia.zkism.v1.MsgSubmitMessages",
+				"/celestia.zkism.v1.MsgUpdateVerifyingKeys",
+				"/hyperlane.core.v1.MsgProcessMessage":
+				msgs.unknown = true
+			case "/cosmos.bank.v1beta1.MsgSend",
+				"/ibc.applications.transfer.v1.MsgTransfer",
+				"/cosmos.staking.v1beta1.MsgDelegate",
+				"/cosmos.staking.v1beta1.MsgUndelegate",
+				"/cosmos.staking.v1beta1.MsgBeginRedelegate",
+				"/cosmos.distribution.v1beta1.MsgWithdrawDelegatorReward":
+				msgs.simple = true
+			}
+		case 3, 4, 5: // timeout_height, unordered, timeout_timestamp
+			timeout = true
 		}
 		return true
 	})
-	return url, val, ok
+	return msgs, timeout, ok
+}
+
+// anyURL returns a google.protobuf.Any's type_url; the last one wins, as in protobuf.
+func anyURL(b []byte) (url []byte, ok bool) {
+	ok = protoFields(b, func(num protowire.Number, typ protowire.Type, v []byte) bool {
+		if num == 1 && typ == protowire.BytesType {
+			url = v
+		}
+		return true
+	})
+	return url, ok
 }
 
 // protoFields calls fn for each field of a protobuf message (v is set for bytes fields);
