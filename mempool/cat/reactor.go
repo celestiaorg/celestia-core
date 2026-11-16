@@ -440,18 +440,6 @@ func (memR *Reactor) Receive(e p2p.Envelope) {
 			return
 		}
 
-		// If we are already requesting that tx, don't request it again. Still
-		// queue this peer's claim: the request may rest on a different claim
-		// (or none, if it was at the expected sequence), and this one must
-		// still decide what happens to the tx if the request is retried with
-		// this peer or the delivery is rejected as early. The tracker's
-		// per-peer, per-tx and per-signer limits bound the queued claims.
-		if memR.requests.ForTx(txKey) != 0 {
-			memR.Logger.Trace("received a SeenTx message for a transaction we are already requesting", "txKey", txKey)
-			memR.mempool.seenTracker.AddPendingTx(txKey, peerID, msg.Signer, msg.Sequence)
-			return
-		}
-
 		expectedSeq, haveExpected := memR.querySequenceFromApplication(msg.Signer)
 		if !haveExpected {
 			memR.Logger.Error("no signer sequence found in application", "signer", fmt.Sprintf("%X", msg.Signer))
@@ -460,11 +448,19 @@ func (memR *Reactor) Receive(e p2p.Envelope) {
 
 		switch {
 		case msg.Sequence == expectedSeq:
+			// If we are already requesting that tx, we don't need to go any further.
+			if memR.requests.ForTx(txKey) != 0 {
+				memR.Logger.Trace("received a SeenTx message for a transaction we are already requesting", "txKey", txKey)
+				return
+			}
 			// continue below to request the expected transaction.
 		case msg.Sequence > expectedSeq:
-			// Hold the tx in the per-signer queue until the gap closes.
-			// The tracker's per-peer cap bounds memory under a malicious
-			// flood of future-sequence SeenTx.
+			// Hold the tx in the per-signer queue until the gap closes, even
+			// while it is being requested: the request may rest on another
+			// peer's claim, and this claim must still decide what happens to
+			// the tx if the request is retried with this peer or the delivery
+			// is rejected as early. The tracker's per-peer cap bounds memory
+			// under a malicious flood of future-sequence SeenTx.
 			memR.mempool.seenTracker.AddPendingTx(txKey, peerID, msg.Signer, msg.Sequence)
 			return
 		default:
@@ -668,10 +664,12 @@ func (memR *Reactor) tryAddNewTx(cachedTx *types.CachedTx, key types.TxKey, txIn
 	tested := memR.claimsNotAhead(key)
 	rsp, err := memR.mempool.tryAddNewTx(cachedTx, key, txInfo, false)
 	switch {
-	case err == nil && rsp.Code == abci.CodeTypeOK, errors.Is(err, ErrTxInMempool):
+	case err == nil && rsp.Code == abci.CodeTypeOK,
+		errors.Is(err, ErrTxInMempool) && memR.mempool.Has(key):
 		// Drop the claims but preserve the peer-has-tx record so the SeenTx
 		// broadcast that follows skips peers already known to have the tx
-		// (including the sender).
+		// (including the sender). ErrTxInMempool also means another check
+		// of the tx is still in flight; its result decides the claims then.
 		memR.mempool.seenTracker.ClearPendingTx(key)
 	case err == nil:
 		// The application disproved every claim that put the tx at or below

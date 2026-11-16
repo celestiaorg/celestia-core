@@ -10,6 +10,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	abcitypes "github.com/cometbft/cometbft/abci/types"
+	"github.com/cometbft/cometbft/mempool"
 	"github.com/cometbft/cometbft/p2p"
 	"github.com/cometbft/cometbft/p2p/mocks"
 	protomem "github.com/cometbft/cometbft/proto/tendermint/mempool"
@@ -397,7 +398,7 @@ func TestReactorRejectedDeliveryKeepsOtherPeersMetadata(t *testing.T) {
 				receiveSeenTx(reactor, attacker, key, signer, sequence)
 				receiveSeenTx(reactor, honest, key, signer, sequence)
 				requestTxFromPeer(t, reactor, attacker, key)
-				receiveSeenTx(reactor, attacker, key, []byte("fresh-signer"), 0)
+				receiveSeenTx(reactor, attacker, key, signer, 0)
 			},
 		},
 		{
@@ -1014,4 +1015,85 @@ func TestReactorAnnouncementDuringRequestIsQueued(t *testing.T) {
 			requireRequestedAndAccepted(t, reactor, pool, app, honest, signer, sequence, tx)
 		})
 	}
+}
+
+// TestReactorInFlightAnnouncementFollowsSequenceRules checks that a claim
+// announced while its tx is being requested is queued under the same rules
+// as any other announcement: only ahead of its signer's expected sequence.
+// A claim at the expected sequence would otherwise sit, in flight, ahead of
+// another tx queued at that sequence and keep it from being requested.
+func TestReactorInFlightAnnouncementFollowsSequenceRules(t *testing.T) {
+	signer := []byte("sender-000-0")
+	attackerSigner := []byte("attacker-signer")
+
+	testCases := []struct {
+		name     string
+		sequence uint64
+	}{
+		{name: "at the expected sequence", sequence: 2},
+		{name: "below the expected sequence", sequence: 1},
+	}
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			reactor, _, app, peers := seenMetadataTestReactor(t, 2)
+			honest, attacker := peers[0], peers[1]
+			app.SetSequence(string(signer), 1)
+			app.SetSequence(string(attackerSigner), 0)
+
+			real, junk := newDefaultTx("in-flight-real"), newDefaultTx("in-flight-junk")
+			receiveSeenTx(reactor, honest, real.Key(), signer, 2)
+			require.Equal(t, []uint64{2}, queuedAt(reactor, signer, real.Key()))
+
+			receiveSeenTx(reactor, attacker, junk.Key(), attackerSigner, 0)
+			require.EqualValues(t, reactor.ids.GetIDForPeer(attacker.ID()), reactor.requests.ForTx(junk.Key()))
+
+			// A block moves the signer to the honest tx's sequence, then the
+			// in-flight tx is announced under that signer.
+			app.SetSequence(string(signer), 2)
+			receiveSeenTx(reactor, attacker, junk.Key(), signer, tc.sequence)
+			require.Empty(t, queuedAt(reactor, signer, junk.Key()), "a claim not ahead of the expected sequence must not be queued")
+
+			reactor.processPendingSeenForSigner(signer)
+			require.EqualValues(t, reactor.ids.GetIDForPeer(honest.ID()), reactor.requests.ForTx(real.Key()), "the honest tx must be requested")
+		})
+	}
+}
+
+// TestReactorDeliveryDuringInFlightCheckKeepsClaims checks that a delivery
+// that finds the tx reserved by a check still in flight (for example an RPC
+// CheckTx) leaves the queued claims alone. Only an admitted tx clears them,
+// so if the in-flight check rejects the tx as early, the claims that put it
+// ahead keep it out of the rejected cache and it is requested again when its
+// gap closes.
+func TestReactorDeliveryDuringInFlightCheckKeepsClaims(t *testing.T) {
+	reactor, pool, app, peers := sequenceEnforcingReactor(t, 2)
+	honest, sender := peers[0], peers[1]
+	signer := []byte("sender-000-0")
+	app.SetSequence(string(signer), 1)
+
+	tx := newDefaultTx("in-flight-check")
+	key := tx.Key()
+	app.txSequences[string(tx)] = 3
+
+	receiveSeenTx(reactor, honest, key, signer, 3)
+	receiveSeenTx(reactor, sender, key, signer, 1)
+	senderID := reactor.ids.GetIDForPeer(sender.ID())
+	require.EqualValues(t, senderID, reactor.requests.ForTx(key))
+
+	// Another check of the same tx holds the reservation.
+	require.True(t, pool.store.reserve(key))
+	receiveTx(reactor, sender, tx)
+	require.Zero(t, app.CheckTxCalls(), "the duplicate delivery is not checked")
+	require.False(t, pool.Has(key))
+	require.Equal(t, []uint64{3}, queuedAt(reactor, signer, key), "a tx not yet admitted must keep its claims")
+
+	// The in-flight check finishes and rejects the tx as early.
+	pool.store.release(key)
+	rsp, err := reactor.tryAddNewTx(tx.ToCachedTx(), key, mempool.TxInfo{SenderID: senderID}, string(sender.ID()))
+	require.NoError(t, err)
+	require.NotEqual(t, abcitypes.CodeTypeOK, rsp.Code)
+	rejected, _, _ := pool.WasRecentlyRejected(key)
+	require.False(t, rejected, "the honest claim says the tx may be valid later")
+
+	requireRequestedAndAccepted(t, reactor, pool, app, honest, signer, 3, tx)
 }
