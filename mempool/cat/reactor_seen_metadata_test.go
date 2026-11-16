@@ -397,7 +397,7 @@ func TestReactorRejectedDeliveryKeepsOtherPeersMetadata(t *testing.T) {
 				receiveSeenTx(reactor, attacker, key, signer, sequence)
 				receiveSeenTx(reactor, honest, key, signer, sequence)
 				requestTxFromPeer(t, reactor, attacker, key)
-				receiveSeenTx(reactor, attacker, key, signer, 0)
+				receiveSeenTx(reactor, attacker, key, []byte("fresh-signer"), 0)
 			},
 		},
 		{
@@ -940,6 +940,78 @@ func TestReactorSendersLaterClaimSharedWithOtherPeerSurvives(t *testing.T) {
 			require.False(t, rejected)
 
 			requireRequestedAndAccepted(t, reactor, pool, app, honest, signer, realSeq, tx)
+		})
+	}
+}
+
+// TestReactorAnnouncementDuringRequestIsQueued checks that a claim a peer
+// announces while the tx is already being requested on another peer's
+// different claim is kept. The first announcement is at the expected
+// sequence, so it starts the request without queuing a claim; the second
+// peer's claim must still decide what happens to the tx when it arrives.
+func TestReactorAnnouncementDuringRequestIsQueued(t *testing.T) {
+	signer := []byte("sender-000-0")
+	const sequence = 3
+
+	testCases := []struct {
+		name string
+		// deliver makes the tx arrive after both announcements and returns
+		// the peer that delivered it.
+		deliver func(t *testing.T, reactor *Reactor, honest, attacker *mocks.Peer, tx types.Tx) *mocks.Peer
+		// buffered is set when the delivery is judged by the honest claim.
+		buffered bool
+	}{
+		{
+			name: "first announcer disconnects and the request is retried",
+			deliver: func(t *testing.T, reactor *Reactor, honest, attacker *mocks.Peer, tx types.Tx) *mocks.Peer {
+				reactor.RemovePeer(attacker, "test")
+				require.EqualValues(t, reactor.ids.GetIDForPeer(honest.ID()), reactor.requests.ForTx(tx.Key()), "the request is retried with the other announcer")
+				receiveTx(reactor, honest, tx)
+				return honest
+			},
+			buffered: true,
+		},
+		{
+			name: "first announcer delivers the tx early",
+			deliver: func(t *testing.T, reactor *Reactor, _, attacker *mocks.Peer, tx types.Tx) *mocks.Peer {
+				receiveTx(reactor, attacker, tx)
+				return attacker
+			},
+		},
+	}
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			reactor, pool, app, peers := sequenceEnforcingReactor(t, 2)
+			honest, attacker := peers[0], peers[1]
+			app.SetSequence(string(signer), 1)
+
+			tx := newDefaultTx("announced-during-request")
+			key := tx.Key()
+			app.txSequences[string(tx)] = sequence
+
+			receiveSeenTx(reactor, attacker, key, signer, 1)
+			require.EqualValues(t, reactor.ids.GetIDForPeer(attacker.ID()), reactor.requests.ForTx(key))
+			receiveSeenTx(reactor, honest, key, signer, sequence)
+			require.Equal(t, []uint64{sequence}, queuedAt(reactor, signer, key), "the honest claim must be queued while the request is in flight")
+
+			sender := tc.deliver(t, reactor, honest, attacker, tx)
+
+			rejected, _, _ := pool.WasRecentlyRejected(key)
+			require.False(t, rejected, "the tx must not be recorded as rejected while a peer says it is ahead")
+			require.False(t, pool.Has(key), "the tx is ahead of the expected sequence")
+			if tc.buffered {
+				require.Zero(t, app.CheckTxCalls(), "a tx ahead of the expected sequence must wait in the buffer")
+				require.NotNil(t, reactor.receivedBuffer.get(signer, sequence), "the tx must be buffered at the honest peer's sequence")
+
+				app.SetSequence(string(signer), sequence)
+				reactor.processReceivedBuffer(signer)
+				require.True(t, pool.Has(key), "the buffered tx must enter the mempool when its gap closes")
+				return
+			}
+			require.Equal(t, 1, app.CheckTxCalls(), "the early delivery is checked by the application")
+			require.NotEqual(t, honest, sender)
+			require.Contains(t, queuedAt(reactor, signer, key), uint64(sequence), "the honest peer's claim must stay queued")
+			requireRequestedAndAccepted(t, reactor, pool, app, honest, signer, sequence, tx)
 		})
 	}
 }

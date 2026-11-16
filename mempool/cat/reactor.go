@@ -440,9 +440,15 @@ func (memR *Reactor) Receive(e p2p.Envelope) {
 			return
 		}
 
-		// If we are already requesting that tx, then we don't need to go any further.
+		// If we are already requesting that tx, don't request it again. Still
+		// queue this peer's claim: the request may rest on a different claim
+		// (or none, if it was at the expected sequence), and this one must
+		// still decide what happens to the tx if the request is retried with
+		// this peer or the delivery is rejected as early. The tracker's
+		// per-peer, per-tx and per-signer limits bound the queued claims.
 		if memR.requests.ForTx(txKey) != 0 {
 			memR.Logger.Trace("received a SeenTx message for a transaction we are already requesting", "txKey", txKey)
+			memR.mempool.seenTracker.AddPendingTx(txKey, peerID, msg.Signer, msg.Sequence)
 			return
 		}
 
