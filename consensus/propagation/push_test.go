@@ -50,6 +50,18 @@ func TestUnrequestedParts(t *testing.T) {
 		require.Nil(t, receiver.getPeer(sender.self))
 	})
 
+	t.Run("accepted pushed part is announced to other peers", func(t *testing.T) {
+		receiver, sender, other := setup(t)
+		require.True(t, other.AddProposal(cb))
+
+		receiver.handleRecoveryPart(sender.self, partMsg(0))
+
+		require.Eventually(t, func() bool {
+			haves, has := other.getPeer(receiver.self).GetHaves(10, 0)
+			return has && haves.GetIndex(0)
+		}, 5*time.Second, 20*time.Millisecond)
+	})
+
 	t.Run("resending the compact block does not refill the allowance", func(t *testing.T) {
 		receiver, sender, _ := setup(t)
 		for i := range maxPushedParts {
@@ -119,6 +131,15 @@ func TestProposePushesUncoveredParts(t *testing.T) {
 	}
 	for _, r := range reactors {
 		require.Len(t, r.getPeers(), 2)
+	}
+
+	// the pushed parts arrive before the haves, so no peer asks the proposer
+	// for them again
+	proposer := reactors[0]
+	for _, r := range reactors[1:] {
+		for _, index := range pushed {
+			require.False(t, r.getPeer(proposer.self).Requested(prop.Height, prop.Round, index))
+		}
 	}
 }
 

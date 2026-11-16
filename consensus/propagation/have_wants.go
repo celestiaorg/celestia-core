@@ -541,6 +541,9 @@ func (blockProp *Reactor) handleRecoveryPart(peer p2p.ID, part *proptypes.Recove
 		return
 	}
 
+	// a part we accept without having requested it was pushed to us
+	wasPushed := p != nil && !p.Requested(part.Height, part.Round, part.Index)
+
 	if p != nil && !blockProp.admitPart(p, cb, parts, part) {
 		return
 	}
@@ -592,6 +595,17 @@ func (blockProp *Reactor) handleRecoveryPart(peer p2p.ID, part *proptypes.Recove
 	// been seen, and therefore doesn't need to be cleared.
 	if !added {
 		return
+	}
+
+	// tell the other peers we have the pushed part, so they can request it.
+	// For a requested part this was already done when the want was sent.
+	if wasPushed {
+		haves := &proptypes.HaveParts{
+			Height: part.Height,
+			Round:  part.Round,
+			Parts:  []proptypes.PartMetaData{{Index: part.Index, Hash: proof.LeafHash}},
+		}
+		blockProp.broadcastHaves(haves, peer, int(parts.Total()))
 	}
 
 	// only send original parts to the consensus reactor

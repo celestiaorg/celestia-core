@@ -101,6 +101,26 @@ func (blockProp *Reactor) ProposeBlock(proposal *types.Proposal, block *types.Pa
 		}
 		schema.WriteProposal(blockProp.traceClient, proposal.Height, proposal.Round, string(peer.peer.ID()), schema.Upload)
 
+		// the pushed parts go before the haves, so the peer already holds them
+		// when it reads the haves and doesn't request them again
+		for _, part := range pushed {
+			e := p2p.Envelope{
+				ChannelID: DataChannel,
+				Message: &propagation.RecoveryPart{
+					Height: proposal.Height,
+					Round:  proposal.Round,
+					Index:  part.Index,
+					Data:   part.Bytes,
+					Proof:  *part.Proof.ToProto(),
+				},
+			}
+			if !peer.peer.TrySend(e) {
+				blockProp.Logger.Error("failed to push part", "peer", peer.peer.ID(), "height", proposal.Height, "round", proposal.Round, "part", part.Index)
+				continue
+			}
+			schema.WriteBlockPart(blockProp.traceClient, proposal.Height, proposal.Round, part.Index, false, string(peer.peer.ID()), schema.Upload)
+		}
+
 		chunkedParts := chunkToPartMetaData(chunks[index], parts.Parity())
 		partsMeta := append([]*propagation.PartMetaData{}, initialPartsMeta...)
 		partsMeta = append(partsMeta, chunkedParts...)
@@ -140,24 +160,6 @@ func (blockProp *Reactor) ProposeBlock(proposal *types.Proposal, block *types.Pa
 		}
 
 		schema.WriteBlockPartState(blockProp.traceClient, proposal.Height, proposal.Round, chunks[index].GetTrueIndices(), true, string(peer.peer.ID()), schema.Upload, "have")
-
-		for _, part := range pushed {
-			e := p2p.Envelope{
-				ChannelID: DataChannel,
-				Message: &propagation.RecoveryPart{
-					Height: proposal.Height,
-					Round:  proposal.Round,
-					Index:  part.Index,
-					Data:   part.Bytes,
-					Proof:  *part.Proof.ToProto(),
-				},
-			}
-			if !peer.peer.TrySend(e) {
-				blockProp.Logger.Error("failed to push part", "peer", peer.peer.ID(), "height", proposal.Height, "round", proposal.Round, "part", part.Index)
-				continue
-			}
-			schema.WriteBlockPart(blockProp.traceClient, proposal.Height, proposal.Round, part.Index, false, string(peer.peer.ID()), schema.Upload)
-		}
 	}
 	return nil
 }
