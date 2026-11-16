@@ -183,6 +183,10 @@ type MultiplexTransport struct {
 	// the tracer is passed to peers for collecting trace data
 	tracer trace.Tracer
 	logger log.Logger
+
+	// acceptRetryAfter waits before the accept loop retries a temporary
+	// error. Tests replace it so they do not sleep. Default: time.After.
+	acceptRetryAfter func(time.Duration) <-chan time.Time
 }
 
 // Test multiplexTransport for interface completeness.
@@ -209,6 +213,7 @@ func NewMultiplexTransport(
 		resolver:         net.DefaultResolver,
 		tracer:           tracer,
 		logger:           log.NewNopLogger(),
+		acceptRetryAfter: time.After,
 	}
 }
 
@@ -327,6 +332,20 @@ func isTemporaryAcceptError(err error) bool {
 	return errors.As(err, &ne) && ne.Temporary()
 }
 
+// nextAcceptRetryDelay returns the wait before the next Accept retry, given
+// the previous wait (zero after a successful accept). The wait starts at
+// minAcceptRetryDelay and doubles up to maxAcceptRetryDelay.
+func nextAcceptRetryDelay(prev time.Duration) time.Duration {
+	next := minAcceptRetryDelay
+	if prev != 0 {
+		next = prev * 2
+	}
+	if next > maxAcceptRetryDelay {
+		next = maxAcceptRetryDelay
+	}
+	return next
+}
+
 func (mt *MultiplexTransport) acceptPeers() {
 	var tempDelay time.Duration // how long to sleep on accept failure
 	for {
@@ -344,17 +363,10 @@ func (mt *MultiplexTransport) acceptPeers() {
 
 			// Back off and retry on temporary errors, like net/http's Server.Serve.
 			if isTemporaryAcceptError(err) {
-				if tempDelay == 0 {
-					tempDelay = minAcceptRetryDelay
-				} else {
-					tempDelay *= 2
-				}
-				if tempDelay > maxAcceptRetryDelay {
-					tempDelay = maxAcceptRetryDelay
-				}
+				tempDelay = nextAcceptRetryDelay(tempDelay)
 				mt.logger.Error("Accept error, retrying", "err", err, "delay", tempDelay)
 				select {
-				case <-time.After(tempDelay):
+				case <-mt.acceptRetryAfter(tempDelay):
 					continue
 				case <-mt.closec:
 					return
