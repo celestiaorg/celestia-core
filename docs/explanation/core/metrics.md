@@ -82,6 +82,7 @@ The following metrics are available:
 | state\_store\_access\_duration\_seconds                 | Histogram | method             | Duration of accesses to the state store labeled by which method was called on the store                                                |
 | state\_fire\_block\_events\_delay\_seconds              | Gauge     |                    | Duration of event firing related to a new block                                                                                        |
 | statesync\_syncing                                      | Gauge     |                    | Either 0 (not state syncing) or 1 (syncing)                                                                                            |
+| statesync\_replies\_not\_sent                           | Counter   | message\_type, reason | Number of snapshot or chunk replies not sent; reason is `send_queue_full` (request skipped) or `try_send_failed` (reply dropped)   |
 
 ## Useful queries
 

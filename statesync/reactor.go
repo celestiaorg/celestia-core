@@ -132,6 +132,7 @@ func (r *Reactor) Receive(e p2p.Envelope) {
 		case *ssproto.SnapshotsRequest:
 			if sendQueueFull(e.Src, SnapshotChannel) {
 				r.Logger.Debug("Skipped snapshots request, send queue is full", "peer", e.Src.ID())
+				r.countReplyNotSent(msgTypeSnapshotsResponse, reasonSendQueueFull)
 				return
 			}
 			snapshots, err := r.recentSnapshots(recentSnapshots)
@@ -155,6 +156,7 @@ func (r *Reactor) Receive(e p2p.Envelope) {
 					},
 				}) {
 					r.Logger.Debug("Dropped snapshot response, send queue is full", "peer", e.Src.ID())
+					r.countReplyNotSent(msgTypeSnapshotsResponse, reasonTrySendFailed)
 				}
 			}
 
@@ -192,6 +194,7 @@ func (r *Reactor) Receive(e p2p.Envelope) {
 			if sendQueueFull(e.Src, ChunkChannel) {
 				r.Logger.Debug("Skipped chunk request, send queue is full", "height", msg.Height,
 					"format", msg.Format, "chunk", msg.Index, "peer", e.Src.ID())
+				r.countReplyNotSent(msgTypeChunkResponse, reasonSendQueueFull)
 				return
 			}
 			resp, err := r.conn.LoadSnapshotChunk(context.TODO(), &abci.RequestLoadSnapshotChunk{
@@ -220,6 +223,7 @@ func (r *Reactor) Receive(e p2p.Envelope) {
 			}) {
 				r.Logger.Debug("Dropped chunk response, send queue is full", "height", msg.Height,
 					"format", msg.Format, "chunk", msg.Index, "peer", e.Src.ID())
+				r.countReplyNotSent(msgTypeChunkResponse, reasonTrySendFailed)
 			}
 
 		case *ssproto.ChunkResponse:
@@ -251,6 +255,20 @@ func (r *Reactor) Receive(e p2p.Envelope) {
 	default:
 		r.Logger.Error("Received message on invalid channel %x", e.ChannelID)
 	}
+}
+
+// Label values for the RepliesNotSent metric.
+const (
+	msgTypeSnapshotsResponse = "snapshots_response"
+	msgTypeChunkResponse     = "chunk_response"
+
+	reasonSendQueueFull = "send_queue_full"
+	reasonTrySendFailed = "try_send_failed"
+)
+
+// countReplyNotSent counts a reply that was not sent to the peer.
+func (r *Reactor) countReplyNotSent(messageType, reason string) {
+	r.metrics.RepliesNotSent.With("message_type", messageType, "reason", reason).Add(1)
 }
 
 // sendQueueFull reports whether the peer's send queue for chID has no room.

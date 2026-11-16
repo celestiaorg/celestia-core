@@ -256,11 +256,12 @@ func fullQueueStatus(chID byte) cmtconn.ConnectionStatus {
 // not ask the app for data when the reply cannot be queued for the peer.
 func TestReactor_Receive_SkipsRequestWhenSendQueueFull(t *testing.T) {
 	testcases := map[string]struct {
-		chID byte
-		msg  proto.Message
+		chID        byte
+		msg         proto.Message
+		messageType string
 	}{
-		"chunk request":     {ChunkChannel, &ssproto.ChunkRequest{Height: 1, Format: 1, Index: 1}},
-		"snapshots request": {SnapshotChannel, &ssproto.SnapshotsRequest{}},
+		"chunk request":     {ChunkChannel, &ssproto.ChunkRequest{Height: 1, Format: 1, Index: 1}, "chunk_response"},
+		"snapshots request": {SnapshotChannel, &ssproto.SnapshotsRequest{}, "snapshots_response"},
 	}
 
 	for name, tc := range testcases {
@@ -272,7 +273,10 @@ func TestReactor_Receive_SkipsRequestWhenSendQueueFull(t *testing.T) {
 			peer.On("ID").Return(p2p.ID("id")).Maybe()
 			peer.On("Status").Return(fullQueueStatus(tc.chID))
 
-			r := NewReactor(*config.DefaultStateSyncConfig(), conn, nil, NopMetrics())
+			notSent := newCountingCounter()
+			m := NopMetrics()
+			m.RepliesNotSent = notSent
+			r := NewReactor(*config.DefaultStateSyncConfig(), conn, nil, m)
 			require.NoError(t, r.Start())
 			t.Cleanup(func() {
 				if err := r.Stop(); err != nil {
@@ -285,6 +289,59 @@ func TestReactor_Receive_SkipsRequestWhenSendQueueFull(t *testing.T) {
 			conn.AssertExpectations(t)
 			peer.AssertExpectations(t)
 			peer.AssertNotCalled(t, "TrySend", mock.Anything)
+			assert.Equal(t, float64(1), notSent.countFor(tc.messageType, "send_queue_full"))
+			assert.Equal(t, float64(0), notSent.countFor(tc.messageType, "try_send_failed"))
+		})
+	}
+}
+
+// TestReactor_Receive_CountsFailedTrySend checks that a reply that TrySend
+// cannot queue is counted.
+func TestReactor_Receive_CountsFailedTrySend(t *testing.T) {
+	testcases := map[string]struct {
+		chID        byte
+		msg         proto.Message
+		messageType string
+	}{
+		"chunk request":     {ChunkChannel, &ssproto.ChunkRequest{Height: 1, Format: 1, Index: 1}, "chunk_response"},
+		"snapshots request": {SnapshotChannel, &ssproto.SnapshotsRequest{}, "snapshots_response"},
+	}
+
+	for name, tc := range testcases {
+		t.Run(name, func(t *testing.T) {
+			conn := &proxymocks.AppConnSnapshot{}
+			conn.On("LoadSnapshotChunk", mock.Anything, mock.Anything).
+				Return(&abci.ResponseLoadSnapshotChunk{Chunk: []byte{1}}, nil).Maybe()
+			conn.On("ListSnapshots", mock.Anything, mock.Anything).
+				Return(&abci.ResponseListSnapshots{Snapshots: []*abci.Snapshot{
+					{Height: 2, Format: 1, Chunks: 1, Hash: []byte{2}},
+					{Height: 1, Format: 1, Chunks: 1, Hash: []byte{1}},
+				}}, nil).Maybe()
+
+			peer := &p2pmocks.Peer{}
+			peer.On("ID").Return(p2p.ID("id")).Maybe()
+			peer.On("Status").Return(cmtconn.ConnectionStatus{})
+			peer.On("TrySend", mock.Anything).Return(false)
+
+			notSent := newCountingCounter()
+			m := NopMetrics()
+			m.RepliesNotSent = notSent
+			r := NewReactor(*config.DefaultStateSyncConfig(), conn, nil, m)
+			require.NoError(t, r.Start())
+			t.Cleanup(func() {
+				if err := r.Stop(); err != nil {
+					t.Error(err)
+				}
+			})
+
+			r.Receive(p2p.Envelope{ChannelID: tc.chID, Src: peer, Message: tc.msg})
+
+			want := float64(1)
+			if tc.chID == SnapshotChannel {
+				want = 2 // one per snapshot
+			}
+			assert.Equal(t, want, notSent.countFor(tc.messageType, "try_send_failed"))
+			assert.Equal(t, float64(0), notSent.countFor(tc.messageType, "send_queue_full"))
 		})
 	}
 }
