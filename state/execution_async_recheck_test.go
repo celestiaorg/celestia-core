@@ -7,7 +7,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 
 	dbm "github.com/cometbft/cometbft-db"
@@ -17,7 +16,6 @@ import (
 	"github.com/cometbft/cometbft/libs/log"
 	"github.com/cometbft/cometbft/mempool"
 	"github.com/cometbft/cometbft/mempool/cat"
-	mpmocks "github.com/cometbft/cometbft/mempool/mocks"
 	"github.com/cometbft/cometbft/proxy"
 	sm "github.com/cometbft/cometbft/state"
 	"github.com/cometbft/cometbft/store"
@@ -160,40 +158,4 @@ func TestCreateProposalBlockDuringRecheck(t *testing.T) {
 	case <-time.After(5 * time.Second):
 		t.Fatal("proposal did not return at the pass end")
 	}
-}
-
-type appVersionMempool struct {
-	*mpmocks.Mempool
-	appVersion uint64
-}
-
-func (m *appVersionMempool) SetNextAppVersion(v uint64) { m.appVersion = v }
-
-// Commit hands the mempool the next block's app version before Update, which sizes the
-// recheck pass's class quotas with it.
-func TestCommitSetsNextAppVersion(t *testing.T) {
-	proxyApp := proxy.NewAppConns(proxy.NewLocalClientCreator(&testApp{}), proxy.NopMetrics())
-	require.NoError(t, proxyApp.Start())
-	t.Cleanup(func() { _ = proxyApp.Stop() })
-	mp := &appVersionMempool{Mempool: &mpmocks.Mempool{}}
-	mp.On("Lock").Return()
-	mp.On("Unlock").Return()
-	mp.On("FlushAppConn", mock.Anything).Return(nil)
-	var atUpdate uint64
-	mp.On("Update", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
-		Run(func(mock.Arguments) { atUpdate = mp.appVersion }).Return(nil)
-
-	state, stateDB, _ := makeState(1, 1)
-	state.Version.Consensus.App = cmttypes.BlockTxLimitAppVersion
-	blockExec := sm.NewBlockExecutor(sm.NewStore(stateDB, sm.StoreOptions{}), log.TestingLogger(),
-		proxyApp.Consensus(), mp, sm.EmptyEvidencePool{}, store.NewBlockStore(dbm.NewMemDB()))
-	block, _, err := makeBlock(state, 1, new(cmttypes.Commit))
-	require.NoError(t, err)
-	resp := &abci.ResponseFinalizeBlock{TxResults: make([]*abci.ExecTxResult, len(block.Txs))}
-	for i := range resp.TxResults {
-		resp.TxResults[i] = &abci.ExecTxResult{}
-	}
-	_, err = blockExec.Commit(state, block, resp)
-	require.NoError(t, err)
-	require.Equal(t, cmttypes.BlockTxLimitAppVersion, atUpdate)
 }

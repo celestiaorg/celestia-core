@@ -81,6 +81,7 @@ jobs:
           - {package: rpc/core, target: RPCCoreJSONRPC, priority: 2}
           - {package: mempool/cat, target: MempoolMessage, priority: 1}
           - {package: mempool/cat, target: ReactorReceive, priority: 1}
+          - {package: mempool/cat, target: ClassifyTx, priority: 1}
           - {package: consensus, target: ConsensusMessage, priority: 1}
           - {package: consensus, target: ConsensusStateHandleMsg, priority: 1}
           - {package: consensus, target: ConsensusReactorReceive, priority: 1}

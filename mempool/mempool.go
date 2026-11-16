@@ -134,20 +134,15 @@ type Mempool interface {
 // AsyncRechecker is a Mempool that can run the post-Update recheck in the background.
 type AsyncRechecker interface {
 	// UpdateAsyncRecheck does Update's removals before returning and always releases the lock,
-	// possibly later from a background recheck pass that holds it.
+	// possibly later from a background recheck pass that holds it. appVersion is the next block's.
 	UpdateAsyncRecheck(
 		blockHeight int64,
+		appVersion uint64,
 		blockTxs []*types.CachedTx,
 		deliverTxResponses []*abci.ExecTxResult,
 		newPreFn PreCheckFunc,
 		newPostFn PostCheckFunc,
 	) error
-}
-
-// AppVersionSetter is a Mempool that sizes proposal reaps by app version. Commit calls it
-// under the lock, before Update, with the app version of the next block.
-type AppVersionSetter interface {
-	SetNextAppVersion(appVersion uint64)
 }
 
 // PreCheckFunc is an optional filter executed before CheckTx and rejects

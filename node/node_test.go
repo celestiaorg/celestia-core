@@ -126,7 +126,7 @@ func TestNodeStopWaitsForRecheckPass(t *testing.T) {
 	mp := n.Mempool().(*cat.TxPool)
 	require.NoError(t, mp.CheckTx(kvstore.NewTx("k", "v"), nil, mempl.TxInfo{}))
 	mp.Lock()
-	require.NoError(t, mp.UpdateAsyncRecheck(1, nil, nil, nil, nil))
+	require.NoError(t, mp.UpdateAsyncRecheck(1, 0, nil, nil, nil, nil))
 	require.Eventually(t, func() bool { return app.rechecks.Load() == 1 }, 5*time.Second, time.Millisecond)
 
 	stopped := make(chan error, 1)

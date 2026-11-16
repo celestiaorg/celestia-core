@@ -126,7 +126,7 @@ func commitBlock(t testing.TB, txmp *TxPool, app *checkStateApp, height int64, t
 	for i, tx := range txs {
 		cached[i] = tx.ToCachedTx()
 	}
-	require.NoError(t, txmp.UpdateAsyncRecheck(height, cached, abciResponses(len(txs), abci.CodeTypeOK), nil, nil))
+	require.NoError(t, txmp.UpdateAsyncRecheck(height, 0, cached, abciResponses(len(txs), abci.CodeTypeOK), nil, nil))
 }
 
 func addSeqTxs(t testing.TB, txmp *TxPool, signer string, from, to uint64) {
@@ -327,7 +327,7 @@ func TestAsyncRecheck_PanicReleasesLock(t *testing.T) {
 	txmp := setupCheckStatePool(t, newCheckStateApp(), nil)
 	txmp.Lock()
 	require.Panics(t, func() {
-		_ = txmp.UpdateAsyncRecheck(1, []*cmttypes.CachedTx{checkStateTx("a", 0).ToCachedTx()}, nil, nil, nil)
+		_ = txmp.UpdateAsyncRecheck(1, 0, []*cmttypes.CachedTx{checkStateTx("a", 0).ToCachedTx()}, nil, nil, nil)
 	})
 	require.True(t, txmp.mtx.TryLock())
 	txmp.mtx.Unlock()
@@ -424,7 +424,7 @@ func TestAsyncRecheck_SwitchesOffStaySynchronous(t *testing.T) {
 
 			txmp.Lock()
 			app.commit([]cmttypes.Tx{checkStateTx("a", 0)})
-			require.NoError(t, txmp.UpdateAsyncRecheck(1, []*cmttypes.CachedTx{checkStateTx("a", 0).ToCachedTx()},
+			require.NoError(t, txmp.UpdateAsyncRecheck(1, 0, []*cmttypes.CachedTx{checkStateTx("a", 0).ToCachedTx()},
 				abciResponses(1, abci.CodeTypeOK), nil, nil))
 			require.True(t, txmp.mtx.TryLock())
 			txmp.mtx.Unlock()

@@ -80,13 +80,15 @@ type classTxMeta struct {
 }
 
 // classApp serves registered txs; rechecks are logged, wait on gate, reject bad txs and
-// return an error for failed ones.
+// return an error for failed ones. Like a real app, it then rejects the sender's later
+// sequences in the same pass.
 type classApp struct {
 	abci.BaseApplication
 	mtx    sync.Mutex
 	meta   map[string]classTxMeta
 	bad    map[string]bool
 	failed map[string]bool
+	dead   map[string]bool // senders with a rejected sequence in this pass
 	order  []string
 	gate   chan struct{}
 	at     atomic.Int32 // rechecks that reached the gate
@@ -95,9 +97,12 @@ type classApp struct {
 func (app *classApp) CheckTx(_ context.Context, req *abci.RequestCheckTx) (*abci.ResponseCheckTx, error) {
 	app.mtx.Lock()
 	m := app.meta[string(req.Tx)]
-	bad, failed := app.bad[m.name], app.failed[m.name]
+	bad, failed := app.bad[m.name] || app.dead[m.signer], app.failed[m.name]
 	if req.Type == abci.CheckTxType_Recheck {
 		app.order = append(app.order, m.name)
+		if bad || failed {
+			app.dead[m.signer] = true
+		}
 	}
 	app.mtx.Unlock()
 	if req.Type == abci.CheckTxType_Recheck {
@@ -117,9 +122,10 @@ func (app *classApp) CheckTx(_ context.Context, req *abci.RequestCheckTx) (*abci
 }
 
 type classPool struct {
-	t    testing.TB
-	app  *classApp
-	txmp *TxPool
+	t       testing.TB
+	app     *classApp
+	txmp    *TxPool
+	version uint64 // the app version commit hands the pool
 }
 
 // newClassPool starts an async recheck pool at app v11; caps, if set, replace the app's caps.
@@ -130,7 +136,7 @@ func newClassPool(t testing.TB, caps *[3]int) *classPool {
 		maxBlockMsgs = func(uint64) (int, int, int, bool) { return caps[0], caps[1], caps[2], true }
 		t.Cleanup(func() { maxBlockMsgs = orig })
 	}
-	app := &classApp{meta: map[string]classTxMeta{}, bad: map[string]bool{}, failed: map[string]bool{}}
+	app := &classApp{meta: map[string]classTxMeta{}, bad: map[string]bool{}, failed: map[string]bool{}, dead: map[string]bool{}}
 	cfg := cmtcfg.TestMempoolConfig()
 	cfg.AsyncRecheck = true
 	cfg.Size = 5000
@@ -139,8 +145,7 @@ func newClassPool(t testing.TB, caps *[3]int) *classPool {
 	require.NoError(t, conn.Start())
 	t.Cleanup(func() { require.NoError(t, conn.Stop()) })
 	txmp := NewTxPool(log.NewNopLogger(), cfg, conn, 0)
-	txmp.SetNextAppVersion(cmttypes.BlockTxLimitAppVersion)
-	return &classPool{t: t, app: app, txmp: txmp}
+	return &classPool{t: t, app: app, txmp: txmp, version: cmttypes.BlockTxLimitAppVersion}
 }
 
 // add admits signer/seq of class at prio; its name is "signer/seq/class".
@@ -164,6 +169,15 @@ func (p *classPool) names(txs []*cmttypes.CachedTx) []string {
 	return out
 }
 
+// weights sums the class weights of txs.
+func (p *classPool) weights(txs []*cmttypes.CachedTx) (w [numClasses]int64) {
+	for _, tx := range txs {
+		wtx := p.txmp.store.get(tx.Key())
+		w[wtx.class] += wtx.weight
+	}
+	return w
+}
+
 func (p *classPool) counts(txs []*cmttypes.CachedTx) map[string]int {
 	m := map[string]int{}
 	for _, n := range p.names(txs) {
@@ -174,9 +188,11 @@ func (p *classPool) counts(txs []*cmttypes.CachedTx) map[string]int {
 
 // commit starts a gated async recheck pass at height.
 func (p *classPool) commit(height int64, gate chan struct{}) {
-	p.app.gate = gate
+	p.app.mtx.Lock()
+	p.app.gate, p.app.dead = gate, map[string]bool{}
+	p.app.mtx.Unlock()
 	p.txmp.Lock()
-	require.NoError(p.t, p.txmp.UpdateAsyncRecheck(height, nil, nil, nil, nil))
+	require.NoError(p.t, p.txmp.UpdateAsyncRecheck(height, p.version, nil, nil, nil, nil))
 }
 
 func (p *classPool) startReap(maxBytes int64) chan []*cmttypes.CachedTx {
@@ -212,8 +228,8 @@ func feed(gate chan struct{}, n int) {
 }
 
 // 1100 SDK txs priced above 300 PFFs: at app v11 the reap returns once the pass has kept
-// 750 SDK txs and 250 PFFs (caps + 25%), which it rechecks first; at v10 nothing is capped,
-// so it waits for the whole pass.
+// 750 SDK txs and 250 PFFs (caps + 25%), and takes every tx it kept; at v10 nothing is
+// capped, so it waits for the whole pass.
 func TestReapClasses_SDKFloodKeepsPFFs(t *testing.T) {
 	flood := func(t *testing.T) *classPool {
 		p := newClassPool(t, nil)
@@ -230,23 +246,17 @@ func TestReapClasses_SDKFloodKeepsPFFs(t *testing.T) {
 		gate := make(chan struct{}, 2000)
 		p.commit(1, gate)
 		got := p.startReap(1 << 30)
-		feed(gate, 750+249)
+		feed(gate, 1100+249)
 		requireNoReap(t, got, "below the PFF quota")
 		feed(gate, 1)
-		during := requireReap(t, got, "at the PFF quota")
-		require.Equal(t, map[string]int{"sdk": 750, "pff": 250}, p.counts(during))
+		require.Equal(t, map[string]int{"sdk": 1100, "pff": 250}, p.counts(requireReap(t, got, "at the PFF quota")))
 		close(gate)
 		waitForPass(p.txmp)
-		require.Equal(t, p.names(p.txmp.ReapMaxBytesMaxGas(1<<30, -1)), p.names(during))
-		order := p.app.order
-		require.Len(t, order, 1400)
-		require.Equal(t, "s0749/0/sdk", order[749])
-		require.Equal(t, "p0000/0/pff", order[750])
-		require.Equal(t, "s0750/0/sdk", order[1000])
+		require.Equal(t, map[string]int{"sdk": 1100, "pff": 300}, p.counts(p.txmp.ReapMaxBytesMaxGas(1<<30, -1)))
 	})
 	t.Run("v10", func(t *testing.T) {
 		p := flood(t)
-		p.txmp.SetNextAppVersion(cmttypes.BlockTxLimitAppVersion - 1)
+		p.version = cmttypes.BlockTxLimitAppVersion - 1
 		gate := make(chan struct{}, 2000)
 		p.commit(1, gate)
 		got := p.startReap(1 << 30)
@@ -263,8 +273,7 @@ func TestReapClasses_PendingBelowQuota(t *testing.T) {
 	for _, evict := range []bool{false, true} {
 		t.Run(fmt.Sprintf("evicted=%v", evict), func(t *testing.T) {
 			p := newClassPool(t, &[3]int{2, 2, 2})
-			a, b := p.add("a", 0, 9, "sdk"), p.add("b", 0, 9, "sdk")
-			p.add("c", 0, 9, "sdk")
+			a, b, c := p.add("a", 0, 9, "sdk"), p.add("b", 0, 9, "sdk"), p.add("c", 0, 9, "sdk")
 			pff := p.add("p", 0, 5, "pff")
 			p.app.bad[pff] = evict
 			for i := 0; i < 5; i++ {
@@ -273,12 +282,12 @@ func TestReapClasses_PendingBelowQuota(t *testing.T) {
 			gate := make(chan struct{})
 			p.commit(1, gate)
 			got := p.startReap(-1)
-			feed(gate, 2)
+			feed(gate, 3)
 			requireNoReap(t, got, "PFF not yet processed")
 			feed(gate, 1)
-			want := []string{a, b, pff}
+			want := []string{a, b, c, pff}
 			if evict {
-				want = want[:2]
+				want = want[:3]
 			}
 			require.Equal(t, want, p.names(requireReap(t, got, "all pending PFFs processed")))
 			require.NotNil(t, p.txmp.pass.Load(), "pass must still be running")
@@ -334,13 +343,18 @@ func TestReapClasses_EvictedNotCounted(t *testing.T) {
 	waitForPass(p.txmp)
 }
 
-// Unknown txs are never capped; without async recheck nothing is classified or capped.
+// The class quotas only time the wait: a reap is never capped by class.
 func TestReapClasses_Uncapped(t *testing.T) {
 	p := newClassPool(t, &[3]int{1, 1, 1})
-	for i := 0; i < 6; i++ {
+	for i := 0; i < 3; i++ {
 		p.add(fmt.Sprintf("u%d", i), 0, 9-i, "unk")
+		p.add(fmt.Sprintf("s%d", i), 0, 9-i, "sdk")
+		p.add(fmt.Sprintf("p%d", i), 0, 9-i, "pff")
 	}
-	require.Len(t, p.txmp.ReapMaxBytesMaxGas(-1, -1), 6)
+	require.Len(t, p.txmp.ReapMaxBytesMaxGas(-1, -1), 9)
+	p.commit(1, nil)
+	waitForPass(p.txmp)
+	require.Len(t, p.txmp.ReapMaxBytesMaxGas(-1, -1), 9)
 
 	p = newClassPool(t, &[3]int{1, 1, 1})
 	p.txmp.config.AsyncRecheck = false
@@ -349,27 +363,6 @@ func TestReapClasses_Uncapped(t *testing.T) {
 		p.add(fmt.Sprintf("p%d", i), 0, 9-i, "pff")
 	}
 	require.Len(t, p.txmp.ReapMaxBytesMaxGas(-1, -1), 6)
-}
-
-// A class quota ends its sender's prefix: the reap never takes a later sequence after a tx
-// it left out, and the pass does not count one either.
-func TestReapClasses_SenderPrefix(t *testing.T) {
-	p := newClassPool(t, &[3]int{2, 1, 1}) // quotas 2, 1, 1
-	a0 := p.add("a", 0, 9, "sdk")
-	m0 := p.add("m", 0, 8, "sdk")
-	p.add("m", 1, 8, "sdk") // over the SDK quota: m's PFF behind it is not reapable
-	p.add("m", 2, 8, "pff")
-	p0 := p.add("p", 0, 1, "pff")
-	gate := make(chan struct{})
-	p.commit(1, gate)
-	got := p.startReap(-1)
-	feed(gate, 4)
-	requireNoReap(t, got, "m's PFF must not count")
-	feed(gate, 1)
-	require.Equal(t, []string{a0, m0, p0}, p.names(requireReap(t, got, "p kept")))
-	close(gate)
-	waitForPass(p.txmp)
-	require.Equal(t, []string{a0, m0, p0}, p.names(p.txmp.ReapMaxBytesMaxGas(-1, -1)))
 }
 
 // A recheck that errors leaves its tx unstamped, so the reap stops its sender there: the
@@ -392,27 +385,6 @@ func TestReapClasses_RecheckErrorEndsPrefix(t *testing.T) {
 	waitForPass(p.txmp)
 }
 
-// The pass rechecks whole signer sets, candidate sets first, each group in reap order, so
-// every sender is rechecked contiguously and in sequence order.
-func TestReapClasses_OrderKeepsSenderSequence(t *testing.T) {
-	p := newClassPool(t, &[3]int{2, 2, 2})
-	p.add("s0", 0, 9, "sdk")
-	p.add("s0", 1, 9, "sdk")
-	p.add("s1", 0, 8, "sdk")
-	p.add("s1", 1, 8, "sdk")
-	p.add("x", 0, 7, "sdk") // over the SDK quota, so x is not a candidate despite its PFF
-	p.add("x", 1, 7, "pff")
-	p.add("p0", 0, 5, "pff")
-	p.add("p1", 0, 5, "pff")
-	p.add("p2", 0, 4, "pff")
-	p.commit(1, nil)
-	waitForPass(p.txmp)
-	require.Equal(t, []string{
-		"s0/0/sdk", "s0/1/sdk", "p0/0/pff", "p1/0/pff",
-		"s1/0/sdk", "s1/1/sdk", "x/0/sdk", "x/1/pff", "p2/0/pff",
-	}, p.app.order)
-}
-
 // A reap returns once the pass has kept maxBytes, before the class quotas are met.
 func TestReapClasses_StopsAtMaxBytes(t *testing.T) {
 	p := newClassPool(t, nil)
@@ -430,66 +402,50 @@ func TestReapClasses_StopsAtMaxBytes(t *testing.T) {
 	waitForPass(p.txmp)
 }
 
-// Random pools: once its wait returns, the reap made during the pass equals the reap after
-// the pass under the same caps. Exact with mixed-class senders when every candidate is kept,
-// and with single-class senders of weight 1 when some are evicted.
-func TestReapClasses_DuringPassEqualsAfter(t *testing.T) {
+// Random pools: the pass rechecks in reap order, so the reap made during the pass is the
+// post-pass reap cut where the pass stood, and holds each class's quota or all of it.
+func TestReapClasses_DuringPassIsPrefix(t *testing.T) {
 	seed := time.Now().UnixNano()
 	t.Logf("seed %d", seed)
 	rng := rand.New(rand.NewSource(seed))
-	for _, tc := range []struct {
-		name    string
-		classes []string
-		mixed   bool
-		evict   int // in 1/5
-	}{
-		{"mixed senders, all kept", []string{"sdk", "sdk2", "sdk3", "pfb", "pff", "unk"}, true, 0},
-		{"single-class senders, evictions", []string{"sdk", "pfb", "pff", "unk"}, false, 1},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			early := 0
-			const rounds = 100
-			for round := 0; round < rounds; round++ {
-				p := newClassPool(t, &[3]int{1 + rng.Intn(6), 1 + rng.Intn(4), 1 + rng.Intn(6)})
-				total := 0
-				for s := 0; s < 3+rng.Intn(15); s++ {
-					prio, class := rng.Intn(10), tc.classes[rng.Intn(len(tc.classes))]
-					for q := 0; q < 1+rng.Intn(4); q++ {
-						if tc.mixed {
-							class = tc.classes[rng.Intn(len(tc.classes))]
-						}
-						p.app.bad[p.add(fmt.Sprintf("r%d", s), q, prio, class)] = rng.Intn(5) < tc.evict
-						total++
-					}
-				}
-				gate := make(chan struct{})
-				p.commit(1, gate)
-				got := p.startReap(-1)
-				var during []*cmttypes.CachedTx
-				returned := false
-				for k := 1; k <= total && !returned; k++ {
-					gate <- struct{}{}
-					if k < total { // tx k is processed once the pass reaches tx k+1
-						require.Eventually(t, func() bool { return p.app.at.Load() == int32(k+1) }, 5*time.Second, time.Microsecond)
-					}
-					select {
-					case during = <-got:
-						returned = true
-						if k < total {
-							early++
-						}
-					case <-time.After(time.Millisecond):
-					}
-				}
-				close(gate)
-				if !returned {
-					during = requireReap(t, got, "pass end")
-				}
-				waitForPass(p.txmp)
-				require.Equal(t, p.names(p.txmp.ReapMaxBytesMaxGas(-1, -1)), p.names(during), "round %d", round)
+	classes := []string{"sdk", "sdk2", "sdk3", "pfb", "pff", "unk"}
+	for round := 0; round < 100; round++ {
+		caps := [3]int{1 + rng.Intn(6), 1 + rng.Intn(4), 1 + rng.Intn(6)}
+		p := newClassPool(t, &caps)
+		total := 0
+		for s := 0; s < 3+rng.Intn(15); s++ {
+			prio := rng.Intn(10)
+			for q := 0; q < 1+rng.Intn(4); q++ {
+				p.app.bad[p.add(fmt.Sprintf("r%d", s), q, prio, classes[rng.Intn(len(classes))])] = rng.Intn(5) == 0
+				total++
 			}
-			t.Logf("%d of %d reaps returned before the pass end", early, rounds)
-		})
+		}
+		gate := make(chan struct{})
+		p.commit(1, gate)
+		got := p.startReap(-1)
+		var during []*cmttypes.CachedTx
+		for k := 1; k <= total && during == nil; k++ {
+			gate <- struct{}{}
+			if k < total { // tx k is processed once the pass reaches tx k+1
+				require.Eventually(t, func() bool { return p.app.at.Load() == int32(k+1) }, 5*time.Second, time.Microsecond)
+			}
+			select {
+			case during = <-got:
+			case <-time.After(time.Millisecond):
+			}
+		}
+		close(gate)
+		if during == nil {
+			during = requireReap(t, got, "pass end")
+		}
+		waitForPass(p.txmp)
+		after := p.names(p.txmp.ReapMaxBytesMaxGas(-1, -1))
+		require.Equal(t, after[:len(during)], p.names(during), "round %d", round)
+		quota := classQuotas(cmttypes.BlockTxLimitAppVersion)
+		in, all := p.weights(during), p.weights(p.txmp.ReapMaxBytesMaxGas(-1, -1))
+		for c := range in {
+			require.GreaterOrEqual(t, in[c], min(all[c], quota[c]), "round %d class %d", round, c)
+		}
 	}
 }
 
@@ -523,15 +479,30 @@ func TestClassifyTx(t *testing.T) {
 		"pff mixed":          {txRaw(nil, send, pff), want{classUnknown, 1}},
 		"two pffs":           {txRaw(nil, pff, pff), want{classUnknown, 1}},
 		"blob tx":            {blobTx, want{classPFB, 1}},
-		"blob tx, no blobs":  {pbBytes(pbBytes(nil, 1, txRaw(nil, send)), 3, []byte(squaretx.ProtoBlobTxTypeID)), want{classUnknown, 1}},
+		"blob tx, no blobs":  {pbBytes(pbBytes(nil, 1, txRaw(nil, send)), 3, []byte(squaretx.ProtoBlobTxTypeID)), want{classPFB, 1}}, // CheckTx rejects it
 		"no messages":        {txRaw(nil), want{classUnknown, 1}},
 		"garbage":            {[]byte{0xff, 0xff, 0xff}, want{classUnknown, 1}},
 		"truncated":          {txRaw(nil, pff)[:10], want{classUnknown, 1}},
 		"msg wrong wiretype": {pbBytes(nil, 1, protowire.AppendVarint(protowire.AppendTag(nil, 1, protowire.VarintType), 1)), want{classUnknown, 1}},
+		"type_url twice":     {txRaw(nil, pbBytes(pbBytes(nil, 1, []byte(sendURL)), 1, []byte(payForFibreURL))), want{classPFF, 1}},
 		// TxRaw body_bytes twice: protobuf keeps the last, and so does the classifier.
 		"body twice": {append(txRaw(nil, send), pbBytes(nil, 1, pbBytes(nil, 1, pff))...), want{classPFF, 1}},
 	} {
 		class, weight := classifyTx(c.tx)
 		require.Equal(t, c.want, want{class, weight}, name)
 	}
+}
+
+// classifyTx reads peer bytes before CheckTx: it must not panic and returns sane weights.
+func FuzzClassifyTx(f *testing.F) {
+	for _, c := range []string{"sdk3", "pff", "pfb", "unk"} {
+		f.Add(encodeClassTx(f, "a", c))
+	}
+	f.Add(txRaw(nil, anyMsg(msgExecURL, pbBytes(pbBytes(nil, 1, []byte("g")), 2, anyMsg(sendURL, nil)))))
+	f.Fuzz(func(t *testing.T, tx []byte) {
+		class, weight := classifyTx(tx)
+		require.Less(t, class, uint8(numClasses))
+		require.GreaterOrEqual(t, weight, int64(1))
+		require.True(t, class == classSDK || weight == 1)
+	})
 }

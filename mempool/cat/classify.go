@@ -43,22 +43,23 @@ func classQuotas(appVersion uint64) (q [numClasses]int64) {
 }
 
 // classifyTx returns the class the app's PrepareProposal sorts tx into and a weight that
-// never exceeds the app's message count for it. Anything ambiguous is classUnknown.
+// never exceeds the app's message count for it. Anything ambiguous is classUnknown. Only
+// txs CheckTx accepts keep their class, so it trusts the encoding CheckTx enforces.
 func classifyTx(tx []byte) (class uint8, weight int64) {
-	if _, isBlob, err := squaretx.UnmarshalBlobTxNoCopy(tx); isBlob {
-		if err != nil {
-			return classUnknown, 1
-		}
-		return classPFB, 1 // CheckTx admits one MsgPayForBlobs per BlobTx
-	}
-	var body []byte
+	var body, typeID []byte
 	if !protoFields(tx, func(num protowire.Number, typ protowire.Type, v []byte) bool {
-		if num == 1 && typ == protowire.BytesType {
+		switch {
+		case num == 1 && typ == protowire.BytesType:
 			body = v // TxRaw.body_bytes; the last one wins, as in protobuf
+		case num == 3 && typ == protowire.BytesType:
+			typeID = v // BlobTx.type_id; CheckTx rejects a TxRaw whose last signature is "BLOB"
 		}
 		return true
 	}) {
 		return classUnknown, 1
+	}
+	if string(typeID) == squaretx.ProtoBlobTxTypeID {
+		return classPFB, 1 // CheckTx admits one MsgPayForBlobs per BlobTx
 	}
 	msgs, pffs := 0, 0
 	if !protoFields(body, func(num protowire.Number, typ protowire.Type, v []byte) bool {
@@ -74,7 +75,7 @@ func classifyTx(tx []byte) (class uint8, weight int64) {
 		}
 		msgs++
 		weight++
-		switch url {
+		switch string(url) {
 		case payForFibreURL:
 			pffs++
 		case msgExecURL: // the app also counts each message a MsgExec dispatches (field 2)
@@ -99,11 +100,11 @@ func classifyTx(tx []byte) (class uint8, weight int64) {
 }
 
 // anyParts returns a google.protobuf.Any's type_url and value.
-func anyParts(b []byte) (url string, val []byte, ok bool) {
+func anyParts(b []byte) (url, val []byte, ok bool) {
 	ok = protoFields(b, func(num protowire.Number, typ protowire.Type, v []byte) bool {
 		switch {
 		case num == 1 && typ == protowire.BytesType:
-			url = string(v)
+			url = v
 		case num == 2 && typ == protowire.BytesType:
 			val = v
 		}
