@@ -24,6 +24,7 @@ import (
 	"github.com/cometbft/cometbft/crypto"
 	cmtrand "github.com/cometbft/cometbft/libs/rand"
 	cmtsync "github.com/cometbft/cometbft/libs/sync"
+	mempl "github.com/cometbft/cometbft/mempool"
 	"github.com/cometbft/cometbft/p2p"
 	"github.com/cometbft/cometbft/privval"
 	cmtproto "github.com/cometbft/cometbft/proto/tendermint/types"
@@ -39,6 +40,7 @@ type proposeRecorder struct {
 	calls []string
 	props []*types.Proposal
 	parts []*types.PartSet
+	txs   [][]proptypes.TxMetaData
 }
 
 func (r *proposeRecorder) SetConsensusState(height int64, round int32, proposer crypto.PubKey) {
@@ -53,6 +55,7 @@ func (r *proposeRecorder) ProposeBlock(prop *types.Proposal, parts *types.PartSe
 	r.calls = append(r.calls, "propose")
 	r.props = append(r.props, prop)
 	r.parts = append(r.parts, parts)
+	r.txs = append(r.txs, txs)
 	r.mtx.Unlock()
 	return r.Propagator.ProposeBlock(prop, parts, txs)
 }
@@ -62,6 +65,11 @@ func (r *proposeRecorder) ProposeBlock(prop *types.Proposal, parts *types.PartSe
 func TestRestartedProposerReseedsPropagator(t *testing.T) {
 	f := newLockFixture(t, true, true)
 	cs1 := f.newState()
+	for i := 0; i < 3; i++ {
+		require.NoError(t, assertMempool(cs1.txNotifier).CheckTx(kvstore.NewTx(fmt.Sprint(i), "v"), nil, mempl.TxInfo{}))
+	}
+	first := &proposeRecorder{Propagator: cs1.propagator}
+	cs1.propagator = first
 	require.NoError(t, cs1.Start())
 	voteCh := subscribeToVoter(cs1, cs1.privValidatorPubKey.Address())
 	v := nextVote(t, voteCh, 1, 0, cmtproto.PrevoteType)
@@ -84,6 +92,10 @@ func TestRestartedProposerReseedsPropagator(t *testing.T) {
 	require.Equal(t, prop.BlockID, rec.props[0].BlockID)
 	require.Equal(t, prop.Signature, rec.props[0].Signature)
 	require.True(t, rec.parts[0].HasHeader(prop.BlockID.PartSetHeader))
+	first.mtx.Lock()
+	defer first.mtx.Unlock()
+	require.NotEmpty(t, first.txs[0])
+	require.Equal(t, first.txs[0], rec.txs[0])
 	_, held, has := rec.GetProposal(1, 0)
 	require.True(t, has)
 	require.True(t, held.IsComplete())
@@ -224,9 +236,9 @@ func TestCorrelatedRestartDuringPrecommitDelay(t *testing.T) {
 	}
 }
 
-// newRestartFleet builds n only_internal_wal validators with FilePVs and fixed timeouts.
+// newRestartFleetFn builds n only_internal_wal validators with FilePVs and fixed timeouts.
 // restart(i) replaces node i with a fresh State on the same stores, WAL and privval.
-func newRestartFleet(t *testing.T, n int, ti abci.TimeoutInfo) (css []*State, restart func(i int) *State) {
+func newRestartFleetFn(t *testing.T, n int, ti abci.TimeoutInfo) (css []*State, restart func(i int) *State) {
 	genDoc, mockPVs := randGenesisDoc(n, false, 30, nil)
 	logger := consensusLogger()
 	configs := make([]*cfg.Config, n)
@@ -273,7 +285,7 @@ func testCorrelatedRestart(t *testing.T, restartProposer, legacyGossip bool) {
 		TimeoutCommit:           200 * time.Millisecond,
 		DelayedPrecommitTimeout: 2 * time.Second,
 	}
-	css, restartNode := newRestartFleet(t, n, ti)
+	css, restartNode := newRestartFleetFn(t, n, ti)
 	logger := css[0].Logger
 	start := func(css []*State) ([]*Reactor, []types.Subscription, []*types.EventBus) {
 		if legacyGossip {

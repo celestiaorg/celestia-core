@@ -123,7 +123,7 @@ func (blockProp *Reactor) AddBlock(height int64, round int32, parts *types.PartS
 	case prop.block.IsComplete():
 		return
 	default:
-		entry.compactBlock, entry.catchup = prop.compactBlock, prop.catchup
+		entry.compactBlock, entry.catchup, entry.forwarded = prop.compactBlock, prop.catchup, prop.forwarded
 	}
 	blockProp.proposals[height][round] = entry
 

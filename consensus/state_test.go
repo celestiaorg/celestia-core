@@ -464,7 +464,7 @@ func TestNonCanonicalProposalBlockIsNotLockedOrPrecommitted(t *testing.T) {
 }
 
 // When the proposal block is non-canonical but the polka is for our canonical
-// ValidBlock, haveBlock makes ValidBlock the proposal block. The flag must
+// ValidBlock, useHeldBlock makes ValidBlock the proposal block. The flag must
 // follow it, so the node locks and precommits ValidBlock.
 func TestPolkaForValidBlockLocksItOverNonCanonicalProposalBlock(t *testing.T) {
 	// cs1 is vss[0]; the other three validators hold +2/3 of the power.

@@ -3,6 +3,7 @@ package consensus
 import (
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"runtime"
 	"strings"
@@ -311,7 +312,7 @@ func TestPrecommitUnlockSurvivesRestart(t *testing.T) {
 	}
 }
 
-// A peer-driven round skip is not journaled, so replay resumes below the lock
+// A peer-driven round skip is not written to the WAL, so replay resumes below the lock
 // round; a polka of that older round must neither release nor lower the lock.
 func TestStalePolkaKeepsRestoredLock(t *testing.T) {
 	unknown := types.BlockID{Hash: cmtrand.Bytes(tmhash.Size), PartSetHeader: types.PartSetHeader{Total: 1, Hash: cmtrand.Bytes(tmhash.Size)}}
@@ -345,6 +346,8 @@ func TestStalePolkaKeepsRestoredLock(t *testing.T) {
 			rs := cs.GetRoundState()
 			require.EqualValues(t, 0, rs.Round, "replay should resume below the lock round")
 			require.EqualValues(t, 1, rs.LockedRound)
+			polkaSub, err := cs.eventBus.Subscribe(context.Background(), testSubscriber, types.EventQueryPolka, 10)
+			require.NoError(t, err)
 
 			for _, vs := range f.vss {
 				vs.Round = 0
@@ -355,6 +358,8 @@ func TestStalePolkaKeepsRestoredLock(t *testing.T) {
 				rs := cs.GetRoundState()
 				return rs.Round == 0 && rs.Step == cstypes.RoundStepPrecommit
 			}, 5*time.Second, 10*time.Millisecond)
+			ensureNewEvent(polkaSub.Out(), 1, 0, ensureTimeout, "the stale polka was not published")
+			ensureNoNewEvent(polkaSub.Out(), 200*time.Millisecond, "the stale polka was published twice")
 			rs = cs.GetRoundState()
 			require.EqualValues(t, 1, rs.LockedRound, "lock moved by a stale polka")
 			require.Equal(t, xID, rs.LockedBlockID)
@@ -462,9 +467,10 @@ func walMsgs(t *testing.T, walFile string) []*TimedWALMessage {
 	var msgs []*TimedWALMessage
 	for {
 		msg, err := dec.Decode()
-		if err != nil {
+		if err == io.EOF {
 			return msgs
 		}
+		require.NoError(t, err)
 		msgs = append(msgs, msg)
 	}
 }
