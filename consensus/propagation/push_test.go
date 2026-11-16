@@ -46,8 +46,10 @@ func TestUnrequestedParts(t *testing.T) {
 		_, parts, _, _ := receiver.getAllState(10, 0, false)
 		require.Equal(t, maxPushedParts, len(parts.BitArray().GetTrueIndices()))
 
+		// past the cap the part is dropped and the sender stays connected
 		receiver.handleRecoveryPart(sender.self, partMsg(maxPushedParts))
-		require.Nil(t, receiver.getPeer(sender.self))
+		require.NotNil(t, receiver.getPeer(sender.self))
+		require.False(t, parts.HasPart(maxPushedParts))
 	})
 
 	t.Run("accepted pushed part is announced to other peers", func(t *testing.T) {
@@ -69,13 +71,16 @@ func TestUnrequestedParts(t *testing.T) {
 		}
 		receiver.handleCompactBlock(cb, sender.self, true)
 		receiver.handleRecoveryPart(sender.self, partMsg(maxPushedParts))
-		require.Nil(t, receiver.getPeer(sender.self))
+		_, parts, _, _ := receiver.getAllState(10, 0, false)
+		require.False(t, parts.HasPart(maxPushedParts))
 	})
 
-	t.Run("unrequested part from a peer that sent no compact block disconnects it", func(t *testing.T) {
+	t.Run("unrequested part from a peer that sent no compact block is dropped", func(t *testing.T) {
 		receiver, _, other := setup(t)
 		receiver.handleRecoveryPart(other.self, partMsg(0))
-		require.Nil(t, receiver.getPeer(other.self))
+		require.NotNil(t, receiver.getPeer(other.self))
+		_, parts, _, _ := receiver.getAllState(10, 0, false)
+		require.False(t, parts.HasPart(0))
 	})
 
 	t.Run("requested part is accepted from any peer", func(t *testing.T) {
@@ -103,7 +108,7 @@ func TestUnrequestedParts(t *testing.T) {
 }
 
 // TestProposePushesUncoveredParts checks every peer completes the pushed parts
-// without anyone being disconnected, so relays don't forward them unasked.
+// without anyone being disconnected.
 func TestProposePushesUncoveredParts(t *testing.T) {
 	reactors, _ := testBlockPropReactors(3, cfg.DefaultP2PConfig())
 	cleanup, _, sm, pv := state.SetupTestCaseWithPrivVal(t)

@@ -281,9 +281,6 @@ func (blockProp *Reactor) applyCachedProposalIfAvailable() {
 			"height", currentHeight, "round", cb.Proposal.Round, "peer", peer.peer.ID())
 
 		if blockProp.handleCachedCompactBlock(cb) {
-			// TODO: pushed parts that arrive between applying the block and
-			// this grant still count as unrequested and disconnect the sender.
-			// Revisit once unrequested parts no longer disconnect peers.
 			blockProp.grantPushToCachedSenders(peers, cb)
 			// Clean up the cache entry for this peer only if we successfully applied it.
 			peer.DeleteUnverifiedProposal(currentHeight)

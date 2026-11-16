@@ -544,7 +544,7 @@ func (blockProp *Reactor) handleRecoveryPart(peer p2p.ID, part *proptypes.Recove
 	// a part we accept without having requested it was pushed to us
 	wasPushed := p != nil && !p.Requested(part.Height, part.Round, part.Index)
 
-	if p != nil && !blockProp.admitPart(p, cb, parts, part) {
+	if p != nil && !blockProp.admitPart(p, parts, part) {
 		return
 	}
 
@@ -703,19 +703,19 @@ func (blockProp *Reactor) handleRecoveryPart(peer p2p.ID, part *proptypes.Recove
 
 // admitPart reports whether a part from p may be processed: either this node
 // requested it, or p sent the compact block and is still within the push cap.
-// Any other part disconnects p, except during catchup where request state may
-// have been reset and the part is just dropped.
-func (blockProp *Reactor) admitPart(p *PeerState, cb *proptypes.CompactBlock, parts *proptypes.CombinedPartSet, part *proptypes.RecoveryPart) bool {
+// Any other part is dropped. The peer stays connected, because an honest
+// proposer can end up here when its compact block arrives late.
+func (blockProp *Reactor) admitPart(p *PeerState, parts *proptypes.CombinedPartSet, part *proptypes.RecoveryPart) bool {
 	if p.Requested(part.Height, part.Round, part.Index) {
 		return true
 	}
-	if part.Index < parts.Original().Total() && p.ConsumePushAllowance(part.Height, part.Round) {
+
+	isOriginalPart := part.Index < parts.Original().Total()
+	if isOriginalPart && p.ConsumePushAllowance(part.Height, part.Round) {
 		return true
 	}
-	if cb == nil || len(cb.PartsHashes) == 0 {
-		return false
-	}
-	blockProp.Switch.StopPeerForError(p.peer, fmt.Errorf("unrequested part %d at height %d round %d", part.Index, part.Height, part.Round), blockProp.String())
+
+	blockProp.Logger.Debug("dropping unrequested part", "peer", p.peer.ID(), "height", part.Height, "round", part.Round, "part", part.Index)
 	return false
 }
 
