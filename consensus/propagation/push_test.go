@@ -11,6 +11,7 @@ import (
 	cfg "github.com/cometbft/cometbft/config"
 	proptypes "github.com/cometbft/cometbft/consensus/propagation/types"
 	"github.com/cometbft/cometbft/libs/log"
+	cmtrand "github.com/cometbft/cometbft/libs/rand"
 	"github.com/cometbft/cometbft/p2p"
 	"github.com/cometbft/cometbft/p2p/mocks"
 	"github.com/cometbft/cometbft/state"
@@ -172,16 +173,27 @@ func TestLateReplyAfterRequestExpiredIsAccepted(t *testing.T) {
 }
 
 func TestCachedCompactBlockGrantsPushAllowance(t *testing.T) {
-	reactors, _ := createTestReactors(2, defaultTestP2PConf(), false, "")
-	receiver, sender := reactors[0], reactors[1]
+	reactors, _ := createTestReactors(3, defaultTestP2PConf(), false, "")
+	receiver, sender, forger := reactors[0], reactors[1], reactors[2]
 	cleanup, _, sm, pv := state.SetupTestCaseWithPrivVal(t)
 	t.Cleanup(func() { cleanup(t) })
 
 	receiver.SetConsensusState(1, 0, mockPubKey)
 	cb, _, _, _ := testCompactBlock(t, sm, pv, 2, 0)
 
-	// cached while behind, then replayed on reaching height 2
+	// same block ID, but the signature doesn't verify
+	forged := &proptypes.CompactBlock{
+		Proposal:    cb.Proposal,
+		LastLen:     cb.LastLen,
+		BpHash:      cb.BpHash,
+		Blobs:       cb.Blobs,
+		PartsHashes: cb.PartsHashes,
+		Signature:   cmtrand.Bytes(64),
+	}
+
+	// both cached while behind, then replayed on reaching height 2
 	receiver.handleCompactBlock(cb, sender.self, false)
+	receiver.handleCompactBlock(forged, forger.self, false)
 	require.NotNil(t, receiver.GetUnverifiedProposal(2))
 	receiver.Prune(1)
 	receiver.SetConsensusState(2, 0, mockPubKey)
@@ -189,4 +201,5 @@ func TestCachedCompactBlockGrantsPushAllowance(t *testing.T) {
 	_, _, has := receiver.GetProposal(2, 0)
 	require.True(t, has)
 	require.True(t, receiver.getPeer(sender.self).ConsumePushAllowance(2, 0))
+	require.False(t, receiver.getPeer(forger.self).ConsumePushAllowance(2, 0))
 }

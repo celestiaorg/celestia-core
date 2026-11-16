@@ -280,21 +280,42 @@ func (blockProp *Reactor) applyCachedProposalIfAvailable() {
 		blockProp.Logger.Info("applying cached proposal from catchup",
 			"height", currentHeight, "round", cb.Proposal.Round, "peer", peer.peer.ID())
 
-		// every peer that sent this compact block may push its parts
-		for _, p := range peers {
-			if p == nil {
-				continue
-			}
-			if c := p.GetUnverifiedProposal(currentHeight); c != nil && c.Proposal.Round == currentRound && c.Proposal.BlockID.Equals(cb.Proposal.BlockID) {
-				p.GrantPushAllowance(cb)
-			}
-		}
-
 		if blockProp.handleCachedCompactBlock(cb) {
+			// TODO: pushed parts that arrive between applying the block and
+			// this grant still count as unrequested and disconnect the sender.
+			// Revisit once unrequested parts no longer disconnect peers.
+			blockProp.grantPushToCachedSenders(peers, cb)
 			// Clean up the cache entry for this peer only if we successfully applied it.
 			peer.DeleteUnverifiedProposal(currentHeight)
 			return
 		}
+	}
+}
+
+// grantPushToCachedSenders lets every peer whose own cached compact block is
+// valid and matches the applied one push its parts. Cached entries are
+// unverified, so a matching block ID alone is not enough.
+func (blockProp *Reactor) grantPushToCachedSenders(peers []*PeerState, applied *proptypes.CompactBlock) {
+	height, round := applied.Proposal.Height, applied.Proposal.Round
+	for _, peer := range peers {
+		if peer == nil {
+			continue
+		}
+
+		cached := peer.GetUnverifiedProposal(height)
+		if cached == nil {
+			continue
+		}
+		if cached.Proposal.Round != round || !cached.Proposal.BlockID.Equals(applied.Proposal.BlockID) {
+			continue
+		}
+		if cached != applied {
+			if err := blockProp.validateCompactBlock(cached); err != nil {
+				continue
+			}
+		}
+
+		peer.GrantPushAllowance(applied)
 	}
 }
 
