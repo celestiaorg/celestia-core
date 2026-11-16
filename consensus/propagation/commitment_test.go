@@ -405,6 +405,39 @@ func TestValidateCompactBlockUsesRoundProposer(t *testing.T) {
 	require.True(t, has, "genuine compact block from the round-2 proposer must be applied")
 }
 
+// TestValidateCompactBlockUsesUpdatedBlockMaxBytes ensures the parts-count
+// check follows Block.MaxBytes updates without restarting the reactor.
+func TestValidateCompactBlockUsesUpdatedBlockMaxBytes(t *testing.T) {
+	reactors, _ := createTestReactors(1, defaultTestP2PConf(), false, "")
+	r := reactors[0]
+
+	cleanup, _, sm, pv := state.SetupTestCaseWithPrivVal(t)
+	t.Cleanup(func() {
+		cleanup(t)
+	})
+
+	signer := types.NewMockPV()
+	r.SetConsensusState(1, 0, signer.PrivKey.PubKey())
+	cb := signedCompactBlock(t, sm, pv, signer, 1, 0)
+
+	// A limit of one part is below the compact block's size.
+	r.SetBlockMaxBytes(int64(types.BlockPartSizeBytes))
+	require.ErrorContains(t, r.validateCompactBlock(cb), "too many parts")
+
+	// Raise the limit as a governance param change would, while validating
+	// concurrently to surface data races.
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		for i := 0; i < 100; i++ {
+			_ = r.validateCompactBlock(cb)
+		}
+	}()
+	r.SetBlockMaxBytes(int64(types.MaxBlockSizeBytes))
+	<-done
+	require.NoError(t, r.validateCompactBlock(cb))
+}
+
 // TestProcessValidatedCompactBlockForwardsOnce ensures duplicates of a
 // compact block are not forwarded to consensus again.
 func TestProcessValidatedCompactBlockForwardsOnce(t *testing.T) {

@@ -3,6 +3,7 @@ package consensus
 import (
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"runtime"
 	"strings"
@@ -19,7 +20,6 @@ import (
 	"github.com/cometbft/cometbft/crypto/tmhash"
 	cmtpubsub "github.com/cometbft/cometbft/libs/pubsub"
 	cmtrand "github.com/cometbft/cometbft/libs/rand"
-	mempl "github.com/cometbft/cometbft/mempool"
 	"github.com/cometbft/cometbft/privval"
 	cmtproto "github.com/cometbft/cometbft/proto/tendermint/types"
 	sm "github.com/cometbft/cometbft/state"
@@ -36,6 +36,8 @@ type lockFixture struct {
 	vss     []*validatorStub
 	others  []*validatorStub
 	p0, p1  int32
+	// lazyDelay is how long a lock stays open before its block is copied; long by default.
+	lazyDelay time.Duration
 }
 
 func newLockFixture(t *testing.T, onlyInternalWal, asProposer bool) *lockFixture {
@@ -48,7 +50,7 @@ func newLockFixture(t *testing.T, onlyInternalWal, asProposer bool) *lockFixture
 	state, privVals := randGenesisState(4, false, testMinPower, types.DefaultConsensusParams())
 	state.Timeouts.TimeoutPropose = 3 * time.Second
 
-	f := &lockFixture{config: config, state: state, app: kvstore.NewInMemoryApplication(), blockDB: dbm.NewMemDB()}
+	f := &lockFixture{config: config, state: state, app: kvstore.NewInMemoryApplication(), blockDB: dbm.NewMemDB(), lazyDelay: time.Hour}
 	for i, pv := range privVals {
 		f.vss = append(f.vss, newValidatorStub(pv, int32(i)))
 		f.vss[i].Height = 1
@@ -75,7 +77,9 @@ func newLockFixture(t *testing.T, onlyInternalWal, asProposer bool) *lockFixture
 // newState builds our node from the files on disk, as a restart would.
 func (f *lockFixture) newState() *State {
 	pv := privval.LoadFilePV(f.config.PrivValidatorKeyFile(), f.config.PrivValidatorStateFile())
-	return newStateWithConfigAndBlockStore(f.config, f.state, pv, f.app, f.blockDB)
+	cs := newStateWithConfigAndBlockStore(f.config, f.state, pv, f.app, f.blockDB)
+	cs.lockedBlockDelay = func() time.Duration { return f.lazyDelay }
+	return cs
 }
 
 // lockOnX drives a started cs to prevote the round 0 proposal X and receive a
@@ -107,13 +111,7 @@ func (f *lockFixture) lockAndStop(t *testing.T) (*types.Proposal, *types.Block, 
 // proposeFreshY makes the round 1 proposer propose a block other than X, with no POL.
 func (f *lockFixture) proposeFreshY(t *testing.T, cs *State) (*types.Block, *types.PartSet) {
 	t.Helper()
-	require.NoError(t, assertMempool(cs.txNotifier).CheckTx(kvstore.NewTx("lock", "y"), nil, mempl.TxInfo{}))
-	cs.mtx.Lock()
-	blockY, _, err := cs.createProposalBlock(context.Background())
-	cs.mtx.Unlock()
-	require.NoError(t, err)
-	partsY, err := blockY.MakePartSet(types.BlockPartSizeBytes)
-	require.NoError(t, err)
+	blockY, partsY := freshBlock(t, cs)
 	propY := types.NewProposal(1, 1, -1, types.BlockID{Hash: blockY.Hash(), PartSetHeader: partsY.Header()})
 	p := propY.ToProto()
 	require.NoError(t, f.vss[f.p1].SignProposal(cs.state.ChainID, p))
@@ -314,7 +312,7 @@ func TestPrecommitUnlockSurvivesRestart(t *testing.T) {
 	}
 }
 
-// A peer-driven round skip is not journaled, so replay resumes below the lock
+// A peer-driven round skip is not written to the WAL, so replay resumes below the lock
 // round; a polka of that older round must neither release nor lower the lock.
 func TestStalePolkaKeepsRestoredLock(t *testing.T) {
 	unknown := types.BlockID{Hash: cmtrand.Bytes(tmhash.Size), PartSetHeader: types.PartSetHeader{Total: 1, Hash: cmtrand.Bytes(tmhash.Size)}}
@@ -348,6 +346,8 @@ func TestStalePolkaKeepsRestoredLock(t *testing.T) {
 			rs := cs.GetRoundState()
 			require.EqualValues(t, 0, rs.Round, "replay should resume below the lock round")
 			require.EqualValues(t, 1, rs.LockedRound)
+			polkaSub, err := cs.eventBus.Subscribe(context.Background(), testSubscriber, types.EventQueryPolka, 10)
+			require.NoError(t, err)
 
 			for _, vs := range f.vss {
 				vs.Round = 0
@@ -358,6 +358,8 @@ func TestStalePolkaKeepsRestoredLock(t *testing.T) {
 				rs := cs.GetRoundState()
 				return rs.Round == 0 && rs.Step == cstypes.RoundStepPrecommit
 			}, 5*time.Second, 10*time.Millisecond)
+			ensureNewEvent(polkaSub.Out(), 1, 0, ensureTimeout, "the stale polka was not published")
+			ensureNoNewEvent(polkaSub.Out(), 200*time.Millisecond, "the stale polka was published twice")
 			rs = cs.GetRoundState()
 			require.EqualValues(t, 1, rs.LockedRound, "lock moved by a stale polka")
 			require.Equal(t, xID, rs.LockedBlockID)
@@ -465,9 +467,10 @@ func walMsgs(t *testing.T, walFile string) []*TimedWALMessage {
 	var msgs []*TimedWALMessage
 	for {
 		msg, err := dec.Decode()
-		if err != nil {
+		if err == io.EOF {
 			return msgs
 		}
+		require.NoError(t, err)
 		msgs = append(msgs, msg)
 	}
 }
@@ -612,13 +615,7 @@ func TestReplayDoesNotRewriteLockRecords(t *testing.T) {
 				vals.IncrementProposerPriority(r)
 				proposer, _ = f.state.Validators.GetByAddress(vals.GetProposer().Address)
 			}
-			require.NoError(t, assertMempool(cs.txNotifier).CheckTx(kvstore.NewTx("lock", "z"), nil, mempl.TxInfo{}))
-			cs.mtx.Lock()
-			blockZ, _, err := cs.createProposalBlock(context.Background())
-			cs.mtx.Unlock()
-			require.NoError(t, err)
-			partsZ, err := blockZ.MakePartSet(types.BlockPartSizeBytes)
-			require.NoError(t, err)
+			blockZ, partsZ := freshBlock(t, cs)
 			propZ := types.NewProposal(1, r, -1, types.BlockID{Hash: blockZ.Hash(), PartSetHeader: partsZ.Header()})
 			p := propZ.ToProto()
 			require.NoError(t, f.vss[proposer].SignProposal(cs.state.ChainID, p))

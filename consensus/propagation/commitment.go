@@ -460,6 +460,7 @@ func (blockProp *Reactor) validateCompactBlock(cb *proptypes.CompactBlock) error
 	proposer := blockProp.currentProposer
 	currentHeight := blockProp.height
 	currentRound := blockProp.round
+	maxBytes := blockProp.blockMaxBytes
 	blockProp.pmtx.Unlock()
 	if proposer == nil {
 		return errors.New("nil proposer key")
@@ -488,7 +489,6 @@ func (blockProp *Reactor) validateCompactBlock(cb *proptypes.CompactBlock) error
 	}
 
 	// Validate the proposed block size, derived from its PartSetHeader
-	maxBytes := blockProp.BlockMaxBytes
 	if maxBytes == -1 {
 		maxBytes = int64(types.MaxBlockSizeBytes)
 	}

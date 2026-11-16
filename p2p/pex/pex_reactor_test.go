@@ -14,6 +14,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/cometbft/cometbft/config"
+	"github.com/cometbft/cometbft/crypto/ed25519"
 	"github.com/cometbft/cometbft/libs/log"
 	"github.com/cometbft/cometbft/p2p"
 	"github.com/cometbft/cometbft/p2p/mock"
@@ -893,31 +894,55 @@ func TestPEXReactorWhenAddressBookIsSmallerThanMaxDials(t *testing.T) {
 	require.Nil(t, err)
 	defer os.RemoveAll(dir)
 
-	pexR, book := createReactor(&ReactorConfig{})
-	defer teardownReactor(book)
+	// A non-strict book accepts local addresses, so the test does not dial random
+	// internet hosts that may hold the connection open past the dial timeout.
+	book := NewAddrBook(filepath.Join(dir, "addrbook.json"), false)
+	book.SetLogger(log.TestingLogger())
+	pexR := NewReactor(book, &ReactorConfig{})
+	pexR.SetLogger(log.TestingLogger())
 
 	sw := createSwitchAndAddReactors(pexR)
 	sw.SetAddrBook(book)
 
-	peers := make([]*p2p.NetAddress, 3)
-	for i := 0; i < 3; i++ {
-		peer := mock.NewPeer(nil)
-		peerAddr := peer.SocketAddr()
+	peers := closedLocalAddrs(t, 3)
+	for _, peerAddr := range peers {
 		err = book.AddAddress(peerAddr, peerAddr)
 		require.NoError(t, err)
-		peers[i] = peerAddr
 	}
 
 	pexR.SetEnsurePeersPeriod(1 * time.Millisecond)
 
 	pexR.ensurePeers(true)
 
-	time.Sleep(2 * time.Second)
+	// check that we dialed all the peers; dials run in goroutines
+	require.Eventually(t, func() bool {
+		for _, peer := range peers {
+			if pexR.AttemptsToDial(peer) != 1 {
+				return false
+			}
+		}
+		return true
+	}, 5*time.Second, 10*time.Millisecond)
+}
 
-	// check that we dialed all the peers
-	for _, peer := range peers {
-		assert.Equal(t, 1, pexR.AttemptsToDial(peer))
+// closedLocalAddrs returns n distinct closed local ports, which refuse dials at once.
+// All listeners stay open until every port is chosen, so the OS cannot reuse a port.
+func closedLocalAddrs(t *testing.T, n int) []*p2p.NetAddress {
+	t.Helper()
+	listeners := make([]net.Listener, n)
+	addrs := make([]*p2p.NetAddress, n)
+	for i := range addrs {
+		ln, err := net.Listen("tcp", "127.0.0.1:0")
+		require.NoError(t, err)
+		listeners[i] = ln
+		tcpAddr := ln.Addr().(*net.TCPAddr)
+		addrs[i] = p2p.NewNetAddressIPPort(tcpAddr.IP, uint16(tcpAddr.Port))
+		addrs[i].ID = p2p.PubKeyToID(ed25519.GenPrivKey().PubKey())
 	}
+	for _, ln := range listeners {
+		require.NoError(t, ln.Close())
+	}
+	return addrs
 }
 
 // createTestAddresses creates a slice of NetAddress for testing

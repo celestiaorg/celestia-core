@@ -532,7 +532,7 @@ verify_data = {{ .BlockSync.VerifyData }}
 
 # If set to "true", only internal messages will be
 # written to the WAL. External messages like votes, proposal,
-# block parts, will not be written. The consensus lock is always journaled.
+# block parts, will not be written. The consensus lock is always persisted.
 only_internal_wal = "{{ .Consensus.OnlyInternalWal }}"
 
 wal_file = "{{ js .Consensus.WalPath }}"
