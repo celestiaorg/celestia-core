@@ -810,9 +810,6 @@ func (peer *bpPeer) incrPending(height int64) {
 	peer.pendingHeights[height]++
 }
 
-<<<<<<< HEAD
-func (peer *bpPeer) decrPending(recvSize int) {
-=======
 // releasePending removes one outstanding request at height. It returns false,
 // and changes nothing, if no request at height is outstanding with this peer.
 func (peer *bpPeer) releasePending(height int64) bool {
@@ -823,7 +820,6 @@ func (peer *bpPeer) releasePending(height int64) bool {
 	if peer.pendingHeights[height] == 0 {
 		delete(peer.pendingHeights, height)
 	}
->>>>>>> ee051af (fix(blocksync): [high] count block responses only against requests made to the peer (#3608))
 	peer.numPending--
 	return true
 }

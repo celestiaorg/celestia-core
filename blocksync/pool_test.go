@@ -774,8 +774,6 @@ func TestAddBlockDoesNotDeadlockOnSendError(t *testing.T) {
 		t.Fatal("deadlock: AddBlock held pool.mtx while blocked in sendError")
 	}
 }
-<<<<<<< HEAD
-=======
 
 // TestAddBlockFromReconnectedPeer checks that a block from a peer that was
 // removed and added back, after we requested that block from it, does not
@@ -1053,4 +1051,3 @@ func TestAddBlockDuplicateKeepsPoolNumPending(t *testing.T) {
 	_, numPending, _ := pool.GetStatus()
 	assert.EqualValues(t, 0, numPending)
 }
->>>>>>> ee051af (fix(blocksync): [high] count block responses only against requests made to the peer (#3608))
