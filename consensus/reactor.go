@@ -929,7 +929,7 @@ OUTER_LOOP:
 		// Catchup logic
 		// If peer is lagging by more than 1, send Commit.
 		blockStoreBase := conR.conS.blockStore.Base()
-		if blockStoreBase > 0 && prs.Height != 0 && rs.Height >= prs.Height+2 && prs.Height >= blockStoreBase {
+		if blockStoreBase > 0 && prs.Height > 0 && prs.Height <= rs.Height-2 && prs.Height >= blockStoreBase {
 			// Load the block's extended commit for prs.Height,
 			// which contains precommit signatures for prs.Height.
 			var ec *types.ExtendedCommit
@@ -943,16 +943,11 @@ OUTER_LOOP:
 				ec = conR.conS.blockStore.LoadBlockExtendedCommit(prs.Height)
 			} else {
 				c := conR.conS.blockStore.LoadBlockCommit(prs.Height)
-				if c == nil {
-					continue
+				if c != nil {
+					ec = c.WrappedExtendedCommit()
 				}
-				ec = c.WrappedExtendedCommit()
 			}
-			if ec == nil {
-				continue
-			}
-			vote := ps.PickSendVote(ec)
-			if vote != nil {
+			if ec != nil && ps.PickSendVote(ec) != nil {
 				logger.Trace("Picked Catchup commit to send", "height", prs.Height)
 				continue OUTER_LOOP
 			}
