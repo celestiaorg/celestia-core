@@ -15,7 +15,10 @@ import (
 // directories, into a destination file dest. It returns an error upon failure.
 // It assumes src is a directory.
 func zipDir(src, dest string) error {
-	zipFile, err := os.Create(dest)
+	// The archive contains the node's full config, including credentials such
+	// as the PostgreSQL indexer connection string, so it must not be readable
+	// by other local users.
+	zipFile, err := os.OpenFile(dest, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0o600)
 	if err != nil {
 		return err
 	}
