@@ -1227,3 +1227,36 @@ func TestRetainedDuplicateVoteLeavesGossipListOnExpiry(t *testing.T) {
 	assert.Empty(t, listedEvidence(pool))
 	assert.False(t, pool.HasPendingDuplicateVoteIndexEntry(stored))
 }
+
+// Evidence stored by CheckEvidence is not listed for gossip once other
+// evidence for the same validator and height is committed, whatever arrives
+// afterwards.
+func TestRetainedDuplicateVoteIsNotListedAfterVariantIsCommitted(t *testing.T) {
+	height := int64(10)
+	evHeight := int64(5)
+	evTime := defaultEvidenceTime.Add(time.Duration(evHeight) * time.Minute)
+	pool, val := defaultTestPool(t, height)
+
+	stored := newDuplicateVoteAtRound(t, evHeight, 0, evTime, val)
+	require.NoError(t, pool.CheckEvidence(types.EvidenceList{stored}))
+	require.EqualValues(t, 1, pool.Size())
+
+	committed := newDuplicateVoteAtRound(t, evHeight, 1, evTime, val)
+	state := pool.State()
+	state.LastBlockHeight++
+	state.LastBlockTime = state.LastBlockTime.Add(time.Minute)
+	pool.Update(state, types.EvidenceList{committed})
+	require.Zero(t, pool.Size())
+
+	require.NoError(t, pool.AddEvidence(stored))
+	require.NoError(t, pool.AddEvidence(newDuplicateVoteAtRound(t, evHeight, 2, evTime, val)))
+	reported := newDuplicateVoteAtRound(t, evHeight, 3, evTime, val)
+	pool.ReportConflictingVotes(reported.VoteA, reported.VoteB)
+	state.LastBlockHeight++
+	state.LastBlockTime = state.LastBlockTime.Add(time.Minute)
+	pool.Update(state, nil)
+
+	assert.Zero(t, pool.Size())
+	assert.Empty(t, listedEvidence(pool))
+	assert.False(t, pool.HasPendingDuplicateVoteIndexEntry(stored))
+}
