@@ -405,25 +405,27 @@ func TestSeenTrackerAddIndexesPendingTx(t *testing.T) {
 		require.True(t, tracker.Has(keySeq9, peer1))
 	})
 
-	t.Run("does not re-index an already-indexed key", func(t *testing.T) {
+	t.Run("queues each distinct claim for a key", func(t *testing.T) {
 		tracker := NewSeenTracker()
 		txKey := types.Tx("tx").Key()
 		signerA := []byte("signer-a")
 		signerB := []byte("signer-b")
 		require.True(t, tracker.AddPendingTx(txKey, peer1, signerA, 1))
 
-		// Re-adding the same key with a different signer keeps the original
-		// signer/sequence; only the peer is added, and it backs no claim.
+		// A different signer/sequence for the same key is queued as its own
+		// claim, so the first claim cannot hide it.
 		require.True(t, tracker.AddPendingTx(txKey, peer2, signerB, 2))
 
 		gotSigner, seq, ok := tracker.PendingTxInfoFrom(txKey, peer1)
 		require.True(t, ok)
 		require.Equal(t, signerA, gotSigner)
 		require.Equal(t, uint64(1), seq)
-		_, _, ok = tracker.PendingTxInfoFrom(txKey, peer2)
-		require.False(t, ok)
-		require.NotNil(t, tracker.PendingTxsForSigner(signerA))
-		require.Nil(t, tracker.PendingTxsForSigner(signerB))
+		gotSigner, seq, ok = tracker.PendingTxInfoFrom(txKey, peer2)
+		require.True(t, ok)
+		require.Equal(t, signerB, gotSigner)
+		require.Equal(t, uint64(2), seq)
+		require.Len(t, tracker.PendingTxsForSigner(signerA), 1)
+		require.Len(t, tracker.PendingTxsForSigner(signerB), 1)
 		require.Equal(t, map[uint16]struct{}{peer1: {}, peer2: {}}, tracker.PeersForTx(txKey))
 	})
 }

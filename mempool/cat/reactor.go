@@ -344,7 +344,8 @@ func (memR *Reactor) processNowOrBuffer(cachedTx *types.CachedTx, key types.TxKe
 
 	// The signer's sequence advanced past this tx while our request was in
 	// flight. A consumed sequence can never be applied, so drop the tx
-	// without running CheckTx and forget it entirely.
+	// without running CheckTx. Only the sender's claim is known to be stale:
+	// forget it and the sender as a source, and ask another peer.
 	if sequence < expectedSeq {
 		memR.Logger.Debug(
 			"dropping tx with stale sequence",
@@ -352,7 +353,9 @@ func (memR *Reactor) processNowOrBuffer(cachedTx *types.CachedTx, key types.TxKe
 			"sequence", sequence,
 			"expectedSequence", expectedSeq,
 		)
-		memR.mempool.seenTracker.RemoveKey(key)
+		memR.mempool.seenTracker.ClearPendingClaim(key, signer, sequence)
+		memR.mempool.seenTracker.RemovePeerFromTx(key, txInfo.SenderID)
+		memR.findNewPeerToRequestTx(key)
 		return false
 	}
 
@@ -437,12 +440,6 @@ func (memR *Reactor) Receive(e p2p.Envelope) {
 			return
 		}
 
-		// If we are already requesting that tx, then we don't need to go any further.
-		if memR.requests.ForTx(txKey) != 0 {
-			memR.Logger.Trace("received a SeenTx message for a transaction we are already requesting", "txKey", txKey)
-			return
-		}
-
 		expectedSeq, haveExpected := memR.querySequenceFromApplication(msg.Signer)
 		if !haveExpected {
 			memR.Logger.Error("no signer sequence found in application", "signer", fmt.Sprintf("%X", msg.Signer))
@@ -451,11 +448,19 @@ func (memR *Reactor) Receive(e p2p.Envelope) {
 
 		switch {
 		case msg.Sequence == expectedSeq:
+			// If we are already requesting that tx, we don't need to go any further.
+			if memR.requests.ForTx(txKey) != 0 {
+				memR.Logger.Trace("received a SeenTx message for a transaction we are already requesting", "txKey", txKey)
+				return
+			}
 			// continue below to request the expected transaction.
 		case msg.Sequence > expectedSeq:
-			// Hold the tx in the per-signer queue until the gap closes.
-			// The tracker's per-peer cap bounds memory under a malicious
-			// flood of future-sequence SeenTx.
+			// Hold the tx in the per-signer queue until the gap closes, even
+			// while it is being requested: the request may rest on another
+			// peer's claim, and this claim must still decide what happens to
+			// the tx if the request is retried with this peer or the delivery
+			// is rejected as early. The tracker's per-peer cap bounds memory
+			// under a malicious flood of future-sequence SeenTx.
 			memR.mempool.seenTracker.AddPendingTx(txKey, peerID, msg.Signer, msg.Sequence)
 			return
 		default:
@@ -659,10 +664,12 @@ func (memR *Reactor) tryAddNewTx(cachedTx *types.CachedTx, key types.TxKey, txIn
 	tested := memR.claimsNotAhead(key)
 	rsp, err := memR.mempool.tryAddNewTx(cachedTx, key, txInfo, false)
 	switch {
-	case err == nil && rsp.Code == abci.CodeTypeOK, errors.Is(err, ErrTxInMempool):
+	case err == nil && rsp.Code == abci.CodeTypeOK,
+		errors.Is(err, ErrTxInMempool) && memR.mempool.Has(key):
 		// Drop the claims but preserve the peer-has-tx record so the SeenTx
 		// broadcast that follows skips peers already known to have the tx
-		// (including the sender).
+		// (including the sender). ErrTxInMempool also means another check
+		// of the tx is still in flight; its result decides the claims then.
 		memR.mempool.seenTracker.ClearPendingTx(key)
 	case err == nil:
 		// The application disproved every claim that put the tx at or below
@@ -767,8 +774,8 @@ func (memR *Reactor) processReceivedBuffer(signer []byte) {
 		// Txs below the expected sequence can never be applied: their
 		// sequences were consumed some other way. Drop them even when
 		// nothing is buffered at the expected sequence.
-		for _, key := range memR.receivedBuffer.removeBelow(signer, expectedSeq) {
-			memR.mempool.seenTracker.RemoveKey(key)
+		for _, stale := range memR.receivedBuffer.removeBelow(signer, expectedSeq) {
+			memR.dropBufferedCopy(stale)
 		}
 
 		buffered := memR.receivedBuffer.get(signer, expectedSeq)
@@ -935,9 +942,23 @@ func (memR *Reactor) refreshPendingSeenQueues() {
 // pruneExpiredBuffered drops buffered txs whose gap was not filled within
 // seenEntryTTL, the same lifetime the seen tracker gives pending entries.
 func (memR *Reactor) pruneExpiredBuffered(now time.Time) {
-	for _, key := range memR.receivedBuffer.pruneOlderThan(now.Add(-seenEntryTTL)) {
-		memR.mempool.seenTracker.RemoveKey(key)
+	for _, expired := range memR.receivedBuffer.pruneOlderThan(now.Add(-seenEntryTTL)) {
+		memR.dropBufferedCopy(expired)
 	}
+}
+
+// dropBufferedCopy forgets a buffered tx that was dropped. Only the peer that
+// delivered it is forgotten, as a source and as an announcer, while other
+// peers' claims for the tx stay queued, so it is requested from them when its
+// gap closes. With no claim left, the tx is forgotten entirely.
+func (memR *Reactor) dropBufferedCopy(buffered *bufferedTx) {
+	seen := memR.mempool.seenTracker
+	seen.ClearPendingClaimFrom(buffered.txKey, buffered.txInfo.SenderID)
+	if len(seen.PendingClaims(buffered.txKey)) == 0 {
+		seen.RemoveKey(buffered.txKey)
+		return
+	}
+	seen.RemovePeerFromTx(buffered.txKey, buffered.txInfo.SenderID)
 }
 
 func (memR *Reactor) querySequenceFromApplication(signer []byte) (uint64, bool) {

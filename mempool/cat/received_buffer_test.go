@@ -340,7 +340,8 @@ func TestReceivedTxBuffer(t *testing.T) {
 		buf.buffers[string(signer1)][1].addedAt = time.Now().Add(-time.Hour)
 
 		removed := buf.pruneOlderThan(time.Now().Add(-time.Minute))
-		require.Equal(t, []types.TxKey{key1}, removed)
+		require.Len(t, removed, 1)
+		require.Equal(t, key1, removed[0].txKey)
 		require.Zero(t, buf.countForPeer("peer1"))
 		require.Equal(t, 1, buf.countForPeer("peer2"))
 		require.Equal(t, [][]byte{signer2}, buf.signerKeys())

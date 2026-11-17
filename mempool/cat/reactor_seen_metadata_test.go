@@ -4,11 +4,13 @@ import (
 	"context"
 	"fmt"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 
 	abcitypes "github.com/cometbft/cometbft/abci/types"
+	"github.com/cometbft/cometbft/mempool"
 	"github.com/cometbft/cometbft/p2p"
 	"github.com/cometbft/cometbft/p2p/mocks"
 	protomem "github.com/cometbft/cometbft/proto/tendermint/mempool"
@@ -203,8 +205,10 @@ func TestSeenTrackerPendingTxInfoFrom(t *testing.T) {
 		require.Equal(t, signer, gotSigner)
 		require.EqualValues(t, 3, gotSeq)
 	}
-	_, _, ok := tracker.PendingTxInfoFrom(key, 3)
-	require.False(t, ok, "a peer that announced different metadata must not be attributed the queued one")
+	gotSigner, gotSeq, ok := tracker.PendingTxInfoFrom(key, 3)
+	require.True(t, ok)
+	require.Equal(t, []byte("other"), gotSigner, "a peer is attributed only the claim it announced")
+	require.EqualValues(t, 7, gotSeq)
 
 	// A disconnected peer's ID may be reused, so its announcement is dropped.
 	tracker.RemovePeer(2)
@@ -225,7 +229,8 @@ func TestSeenTrackerPendingTxInfoFrom(t *testing.T) {
 
 // TestSeenTrackerKeepsClaimWithoutAnnouncers checks that a claim stays queued
 // when its last announcer stops being a source, so a retry with another peer
-// can still be requested when the gap closes.
+// can still be requested when the gap closes, but that such claims never
+// outnumber the peers that have the tx.
 func TestSeenTrackerKeepsClaimWithoutAnnouncers(t *testing.T) {
 	signer := []byte("signer")
 	removals := map[string]func(*SeenTracker, types.TxKey, uint16){
@@ -247,6 +252,14 @@ func TestSeenTrackerKeepsClaimWithoutAnnouncers(t *testing.T) {
 			_, _, ok := tracker.PendingTxInfoFrom(key, 1)
 			require.False(t, ok, "a reused peer ID must not inherit the announcement")
 			require.True(t, tracker.Has(key, 2), "the remaining peer is still known to have the tx")
+
+			// Peer 2 now backs its own claim, so the claim without
+			// announcers would outnumber the peers and is dropped.
+			require.True(t, tracker.AddPendingTx(key, 2, signer, 4))
+			_, seq, ok := tracker.PendingTxInfoFrom(key, 2)
+			require.True(t, ok)
+			require.EqualValues(t, 4, seq)
+			require.Len(t, tracker.PendingTxsForSigner(signer), 1)
 		})
 	}
 }
@@ -429,6 +442,60 @@ func TestReactorRejectedDeliveryKeepsOtherPeersMetadata(t *testing.T) {
 			requireRequestedAndAccepted(t, reactor, pool, app, source, signer, sequence, tx)
 		})
 	}
+}
+
+// TestReactorFirstAnnouncementDoesNotHideLaterOnes checks that each distinct
+// signer/sequence announced for a tx is queued, so a bogus first announcement
+// cannot hide the real one.
+func TestReactorFirstAnnouncementDoesNotHideLaterOnes(t *testing.T) {
+	reactor, pool, app, peers := sequenceEnforcingReactor(t, 2)
+	honest, attacker := peers[0], peers[1]
+	signer := []byte("sender-000-0")
+	app.SetSequence(string(signer), 1)
+
+	tx := newDefaultTx("first-announcement")
+	key := tx.Key()
+	app.txSequences[string(tx)] = 3
+
+	receiveSeenTx(reactor, attacker, key, signer, 9)
+	receiveSeenTx(reactor, honest, key, signer, 3)
+
+	queued := queuedSequences(reactor, signer, key)
+	require.ElementsMatch(t, []uint16{reactor.ids.GetIDForPeer(honest.ID())}, queued[3], "the honest announcement must be queued")
+	require.ElementsMatch(t, []uint16{reactor.ids.GetIDForPeer(attacker.ID())}, queued[9])
+
+	requireRequestedAndAccepted(t, reactor, pool, app, honest, signer, 3, tx)
+}
+
+// TestReactorStaleDeliveryKeepsOtherSources checks that a delivery whose own
+// announced sequence is already used only removes that peer as a source: the
+// tx is requested from another peer that has it.
+func TestReactorStaleDeliveryKeepsOtherSources(t *testing.T) {
+	reactor, _, app, peers := sequenceEnforcingReactor(t, 2)
+	honest, attacker := peers[0], peers[1]
+	signer := []byte("sender-000-0")
+	attackerSigner := []byte("attacker-signer")
+	app.SetSequence(string(signer), 1)
+	app.SetSequence(string(attackerSigner), 5)
+
+	tx := newDefaultTx("stale-delivery")
+	key := tx.Key()
+	app.txSequences[string(tx)] = 3
+
+	receiveSeenTx(reactor, honest, key, signer, 3)
+	receiveSeenTx(reactor, attacker, key, attackerSigner, 6)
+	requestTxFromPeer(t, reactor, attacker, key)
+	app.SetSequence(string(attackerSigner), 7)
+
+	receiveTx(reactor, attacker, tx)
+
+	require.Zero(t, app.CheckTxCalls(), "a delivery at a used sequence is dropped without a check")
+	require.False(t, reactor.mempool.seenTracker.Has(key, reactor.ids.GetIDForPeer(attacker.ID())), "the stale peer is no longer a source")
+	require.Contains(t, queuedSequences(reactor, signer, key), uint64(3), "the honest peer's metadata must stay queued")
+	require.EqualValues(t, reactor.ids.GetIDForPeer(honest.ID()), reactor.requests.ForTx(key), "the tx must be requested from the remaining source")
+
+	receiveTx(reactor, honest, tx)
+	require.NotNil(t, reactor.receivedBuffer.get(signer, 3), "the honest delivery is buffered at its announced sequence")
 }
 
 // queuedAt returns the sequences under which key is queued for signer.
@@ -658,6 +725,88 @@ func TestReactorRejectedDeliveryIsNotAdvertised(t *testing.T) {
 	require.Zero(t, reactor.requests.ForTx(key), "a rejected tx must not be requested again")
 }
 
+// TestReactorBufferedDeliveryKeepsOtherClaims checks that buffering a
+// delivery drops only the sender's claim. Another peer's claim for the same
+// tx stays queued, so the tx is requested again from that peer if the
+// buffered copy is rejected when its gap closes.
+func TestReactorBufferedDeliveryKeepsOtherClaims(t *testing.T) {
+	reactor, pool, app, peers := sequenceEnforcingReactor(t, 2)
+	attacker, honest := peers[0], peers[1]
+	signer := []byte("sender-000-0")
+	app.SetSequence(string(signer), 1)
+
+	tx := newDefaultTx("buffered-keeps-claims")
+	key := tx.Key()
+	app.txSequences[string(tx)] = 4
+
+	receiveSeenTx(reactor, attacker, key, signer, 3)
+	receiveSeenTx(reactor, honest, key, signer, 4)
+	requestTxFromPeer(t, reactor, attacker, key)
+	receiveTx(reactor, attacker, tx)
+
+	require.NotNil(t, reactor.receivedBuffer.get(signer, 3), "the delivery is buffered at the sender's sequence")
+	require.Equal(t, []uint64{4}, queuedAt(reactor, signer, key), "only the sender's claim is dropped")
+
+	// The gap closes and the buffered copy is rejected at the sender's sequence.
+	app.SetSequence(string(signer), 3)
+	reactor.processReceivedBuffer(signer)
+	require.Equal(t, 1, app.CheckTxCalls())
+	rejected, _, _ := pool.WasRecentlyRejected(key)
+	require.False(t, rejected, "the honest peer's claim says the tx may be valid later")
+
+	requireRequestedAndAccepted(t, reactor, pool, app, honest, signer, 4, tx)
+}
+
+// TestReactorUsedSequenceCleanupKeepsOtherClaims checks that dropping a claim
+// whose sequence is already used keeps another peer's claim for the same tx.
+func TestReactorUsedSequenceCleanupKeepsOtherClaims(t *testing.T) {
+	reactor, pool, app, peers := sequenceEnforcingReactor(t, 2)
+	attacker, honest := peers[0], peers[1]
+	signer := []byte("sender-000-0")
+	app.SetSequence(string(signer), 0)
+
+	tx := newDefaultTx("used-sequence-keeps-claims")
+	key := tx.Key()
+	app.txSequences[string(tx)] = 3
+
+	receiveSeenTx(reactor, attacker, key, signer, 1)
+	receiveSeenTx(reactor, honest, key, signer, 3)
+	require.ElementsMatch(t, []uint64{1, 3}, queuedAt(reactor, signer, key))
+
+	app.SetSequence(string(signer), 2)
+	reactor.processPendingSeenForSigner(signer)
+	require.Equal(t, []uint64{3}, queuedAt(reactor, signer, key), "only the claim at the used sequence is dropped")
+
+	requireRequestedAndAccepted(t, reactor, pool, app, honest, signer, 3, tx)
+}
+
+// TestReactorStaleDeliveryDropsStaleClaim checks that a delivery whose
+// announced sequence is already used drops that claim, even while enough
+// peers have the tx that the claim would not be trimmed.
+func TestReactorStaleDeliveryDropsStaleClaim(t *testing.T) {
+	reactor, _, app, peers := sequenceEnforcingReactor(t, 3)
+	honest, attacker, other := peers[0], peers[1], peers[2]
+	signer := []byte("sender-000-0")
+	attackerSigner := []byte("attacker-signer")
+	app.SetSequence(string(signer), 1)
+	app.SetSequence(string(attackerSigner), 5)
+
+	tx := newDefaultTx("stale-claim")
+	key := tx.Key()
+
+	receiveSeenTx(reactor, honest, key, signer, 3)
+	reactor.mempool.PeerHasTx(reactor.ids.GetIDForPeer(other.ID()), key)
+	receiveSeenTx(reactor, attacker, key, attackerSigner, 6)
+	requestTxFromPeer(t, reactor, attacker, key)
+	app.SetSequence(string(attackerSigner), 7)
+
+	receiveTx(reactor, attacker, tx)
+
+	require.Zero(t, app.CheckTxCalls())
+	require.Empty(t, queuedAt(reactor, attackerSigner, key), "the stale claim must be dropped")
+	require.Equal(t, []uint64{3}, queuedAt(reactor, signer, key), "the honest peer's claim must stay queued")
+}
+
 // TestReactorRejectedDeliveryDropsSendersAheadClaim checks that when a
 // sender's delivery is rejected, the claim that sender queued for the tx is
 // dropped even if it puts the tx ahead of its signer's sequence: the sender
@@ -690,4 +839,261 @@ func TestReactorRejectedDeliveryDropsSendersAheadClaim(t *testing.T) {
 	require.Empty(t, reactor.mempool.seenTracker.PendingClaims(key), "the sender's claim must be dropped")
 	rejected, _, _ := pool.WasRecentlyRejected(key)
 	require.True(t, rejected)
+}
+
+// TestReactorDroppedBufferedCopyKeepsOtherClaims checks that when a buffered
+// copy of a tx is dropped, because its sequence was used or because it waited
+// too long, only the peer that delivered it loses its claim and its place as
+// a source. Another peer's claim stays queued, so the tx is requested from
+// that peer once its gap closes.
+func TestReactorDroppedBufferedCopyKeepsOtherClaims(t *testing.T) {
+	signer := []byte("sender-000-0")
+
+	testCases := map[string]func(t *testing.T, reactor *Reactor, app *sequenceEnforcingApp){
+		"sequence used by a block": func(t *testing.T, reactor *Reactor, app *sequenceEnforcingApp) {
+			app.SetSequence(string(signer), 4)
+			reactor.processReceivedBuffer(signer)
+		},
+		// The tracker entry is younger than the buffered copy when it was
+		// pruned and then recreated by a later announcement.
+		"buffered copy expired": func(t *testing.T, reactor *Reactor, _ *sequenceEnforcingApp) {
+			buffered := reactor.receivedBuffer.get(signer, 3)
+			require.NotNil(t, buffered)
+			buffered.addedAt = time.Now().Add(-2 * seenEntryTTL)
+			reactor.pruneExpiredBuffered(time.Now())
+		},
+	}
+	for name, drop := range testCases {
+		t.Run(name, func(t *testing.T) {
+			reactor, pool, app, peers := sequenceEnforcingReactor(t, 2)
+			honest, attacker := peers[0], peers[1]
+			app.SetSequence(string(signer), 1)
+
+			tx := newDefaultTx("dropped-buffered-copy")
+			key := tx.Key()
+			app.txSequences[string(tx)] = 5
+
+			receiveSeenTx(reactor, honest, key, signer, 5)
+			receiveSeenTx(reactor, attacker, key, signer, 3)
+			requestTxFromPeer(t, reactor, attacker, key)
+			receiveTx(reactor, attacker, tx)
+			require.NotNil(t, reactor.receivedBuffer.get(signer, 3), "the delivery is buffered at the sender's sequence")
+
+			drop(t, reactor, app)
+
+			require.Nil(t, reactor.receivedBuffer.get(signer, 3), "the buffered copy is dropped")
+			require.Zero(t, app.CheckTxCalls())
+			require.Equal(t, []uint64{5}, queuedAt(reactor, signer, key), "the honest peer's claim must stay queued")
+			require.True(t, reactor.mempool.seenTracker.Has(key, reactor.ids.GetIDForPeer(honest.ID())), "the honest peer is still a source")
+			require.False(t, reactor.mempool.seenTracker.Has(key, reactor.ids.GetIDForPeer(attacker.ID())), "the sender of the dropped copy is no longer a source")
+
+			requireRequestedAndAccepted(t, reactor, pool, app, honest, signer, 5, tx)
+		})
+	}
+}
+
+// TestReactorSendersLaterClaimSharedWithOtherPeerSurvives checks that when a
+// peer's buffered copy is dropped or rejected, a later claim that peer
+// announced is kept while another peer also backs it, so the tx is still
+// requested from that other peer when its gap closes.
+func TestReactorSendersLaterClaimSharedWithOtherPeerSurvives(t *testing.T) {
+	signer := []byte("sender-000-0")
+	const realSeq = 5
+
+	testCases := map[string]func(reactor *Reactor, app *sequenceEnforcingApp){
+		"buffered copy at a used sequence": func(reactor *Reactor, app *sequenceEnforcingApp) {
+			app.SetSequence(string(signer), 4)
+			reactor.processReceivedBuffer(signer)
+		},
+		"buffered copy rejected": func(reactor *Reactor, app *sequenceEnforcingApp) {
+			app.SetSequence(string(signer), 3)
+			reactor.processReceivedBuffer(signer)
+			require.Equal(t, 1, app.CheckTxCalls())
+		},
+	}
+	for name, drop := range testCases {
+		t.Run(name, func(t *testing.T) {
+			reactor, pool, app, peers := sequenceEnforcingReactor(t, 2)
+			sender, honest := peers[0], peers[1]
+			app.SetSequence(string(signer), 1)
+
+			tx := newDefaultTx("shared-later-claim")
+			key := tx.Key()
+			app.txSequences[string(tx)] = realSeq
+
+			receiveSeenTx(reactor, sender, key, signer, 3)
+			requestTxFromPeer(t, reactor, sender, key)
+			receiveTx(reactor, sender, tx)
+			require.NotNil(t, reactor.receivedBuffer.get(signer, 3))
+
+			receiveSeenTx(reactor, sender, key, signer, realSeq)
+			receiveSeenTx(reactor, honest, key, signer, realSeq)
+			require.ElementsMatch(t,
+				[]uint16{reactor.ids.GetIDForPeer(sender.ID()), reactor.ids.GetIDForPeer(honest.ID())},
+				queuedSequences(reactor, signer, key)[realSeq])
+
+			drop(reactor, app)
+
+			require.Nil(t, reactor.receivedBuffer.get(signer, 3))
+			require.Equal(t, []uint16{reactor.ids.GetIDForPeer(honest.ID())}, queuedSequences(reactor, signer, key)[realSeq],
+				"the claim the honest peer backs must stay queued")
+			rejected, _, _ := pool.WasRecentlyRejected(key)
+			require.False(t, rejected)
+
+			requireRequestedAndAccepted(t, reactor, pool, app, honest, signer, realSeq, tx)
+		})
+	}
+}
+
+// TestReactorAnnouncementDuringRequestIsQueued checks that a claim a peer
+// announces while the tx is already being requested on another peer's
+// different claim is kept. The first announcement is at the expected
+// sequence, so it starts the request without queuing a claim; the second
+// peer's claim must still decide what happens to the tx when it arrives.
+func TestReactorAnnouncementDuringRequestIsQueued(t *testing.T) {
+	signer := []byte("sender-000-0")
+	const sequence = 3
+
+	testCases := []struct {
+		name string
+		// deliver makes the tx arrive after both announcements and returns
+		// the peer that delivered it.
+		deliver func(t *testing.T, reactor *Reactor, honest, attacker *mocks.Peer, tx types.Tx) *mocks.Peer
+		// buffered is set when the delivery is judged by the honest claim.
+		buffered bool
+	}{
+		{
+			name: "first announcer disconnects and the request is retried",
+			deliver: func(t *testing.T, reactor *Reactor, honest, attacker *mocks.Peer, tx types.Tx) *mocks.Peer {
+				reactor.RemovePeer(attacker, "test")
+				require.EqualValues(t, reactor.ids.GetIDForPeer(honest.ID()), reactor.requests.ForTx(tx.Key()), "the request is retried with the other announcer")
+				receiveTx(reactor, honest, tx)
+				return honest
+			},
+			buffered: true,
+		},
+		{
+			name: "first announcer delivers the tx early",
+			deliver: func(t *testing.T, reactor *Reactor, _, attacker *mocks.Peer, tx types.Tx) *mocks.Peer {
+				receiveTx(reactor, attacker, tx)
+				return attacker
+			},
+		},
+	}
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			reactor, pool, app, peers := sequenceEnforcingReactor(t, 2)
+			honest, attacker := peers[0], peers[1]
+			app.SetSequence(string(signer), 1)
+
+			tx := newDefaultTx("announced-during-request")
+			key := tx.Key()
+			app.txSequences[string(tx)] = sequence
+
+			receiveSeenTx(reactor, attacker, key, signer, 1)
+			require.EqualValues(t, reactor.ids.GetIDForPeer(attacker.ID()), reactor.requests.ForTx(key))
+			receiveSeenTx(reactor, honest, key, signer, sequence)
+			require.Equal(t, []uint64{sequence}, queuedAt(reactor, signer, key), "the honest claim must be queued while the request is in flight")
+
+			sender := tc.deliver(t, reactor, honest, attacker, tx)
+
+			rejected, _, _ := pool.WasRecentlyRejected(key)
+			require.False(t, rejected, "the tx must not be recorded as rejected while a peer says it is ahead")
+			require.False(t, pool.Has(key), "the tx is ahead of the expected sequence")
+			if tc.buffered {
+				require.Zero(t, app.CheckTxCalls(), "a tx ahead of the expected sequence must wait in the buffer")
+				require.NotNil(t, reactor.receivedBuffer.get(signer, sequence), "the tx must be buffered at the honest peer's sequence")
+
+				app.SetSequence(string(signer), sequence)
+				reactor.processReceivedBuffer(signer)
+				require.True(t, pool.Has(key), "the buffered tx must enter the mempool when its gap closes")
+				return
+			}
+			require.Equal(t, 1, app.CheckTxCalls(), "the early delivery is checked by the application")
+			require.NotEqual(t, honest, sender)
+			require.Contains(t, queuedAt(reactor, signer, key), uint64(sequence), "the honest peer's claim must stay queued")
+			requireRequestedAndAccepted(t, reactor, pool, app, honest, signer, sequence, tx)
+		})
+	}
+}
+
+// TestReactorInFlightAnnouncementFollowsSequenceRules checks that a claim
+// announced while its tx is being requested is queued under the same rules
+// as any other announcement: only ahead of its signer's expected sequence.
+// A claim at the expected sequence would otherwise sit, in flight, ahead of
+// another tx queued at that sequence and keep it from being requested.
+func TestReactorInFlightAnnouncementFollowsSequenceRules(t *testing.T) {
+	signer := []byte("sender-000-0")
+	attackerSigner := []byte("attacker-signer")
+
+	testCases := []struct {
+		name     string
+		sequence uint64
+	}{
+		{name: "at the expected sequence", sequence: 2},
+		{name: "below the expected sequence", sequence: 1},
+	}
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			reactor, _, app, peers := seenMetadataTestReactor(t, 2)
+			honest, attacker := peers[0], peers[1]
+			app.SetSequence(string(signer), 1)
+			app.SetSequence(string(attackerSigner), 0)
+
+			real, junk := newDefaultTx("in-flight-real"), newDefaultTx("in-flight-junk")
+			receiveSeenTx(reactor, honest, real.Key(), signer, 2)
+			require.Equal(t, []uint64{2}, queuedAt(reactor, signer, real.Key()))
+
+			receiveSeenTx(reactor, attacker, junk.Key(), attackerSigner, 0)
+			require.EqualValues(t, reactor.ids.GetIDForPeer(attacker.ID()), reactor.requests.ForTx(junk.Key()))
+
+			// A block moves the signer to the honest tx's sequence, then the
+			// in-flight tx is announced under that signer.
+			app.SetSequence(string(signer), 2)
+			receiveSeenTx(reactor, attacker, junk.Key(), signer, tc.sequence)
+			require.Empty(t, queuedAt(reactor, signer, junk.Key()), "a claim not ahead of the expected sequence must not be queued")
+
+			reactor.processPendingSeenForSigner(signer)
+			require.EqualValues(t, reactor.ids.GetIDForPeer(honest.ID()), reactor.requests.ForTx(real.Key()), "the honest tx must be requested")
+		})
+	}
+}
+
+// TestReactorDeliveryDuringInFlightCheckKeepsClaims checks that a delivery
+// that finds the tx reserved by a check still in flight (for example an RPC
+// CheckTx) leaves the queued claims alone. Only an admitted tx clears them,
+// so if the in-flight check rejects the tx as early, the claims that put it
+// ahead keep it out of the rejected cache and it is requested again when its
+// gap closes.
+func TestReactorDeliveryDuringInFlightCheckKeepsClaims(t *testing.T) {
+	reactor, pool, app, peers := sequenceEnforcingReactor(t, 2)
+	honest, sender := peers[0], peers[1]
+	signer := []byte("sender-000-0")
+	app.SetSequence(string(signer), 1)
+
+	tx := newDefaultTx("in-flight-check")
+	key := tx.Key()
+	app.txSequences[string(tx)] = 3
+
+	receiveSeenTx(reactor, honest, key, signer, 3)
+	receiveSeenTx(reactor, sender, key, signer, 1)
+	senderID := reactor.ids.GetIDForPeer(sender.ID())
+	require.EqualValues(t, senderID, reactor.requests.ForTx(key))
+
+	// Another check of the same tx holds the reservation.
+	require.True(t, pool.store.reserve(key))
+	receiveTx(reactor, sender, tx)
+	require.Zero(t, app.CheckTxCalls(), "the duplicate delivery is not checked")
+	require.False(t, pool.Has(key))
+	require.Equal(t, []uint64{3}, queuedAt(reactor, signer, key), "a tx not yet admitted must keep its claims")
+
+	// The in-flight check finishes and rejects the tx as early.
+	pool.store.release(key)
+	rsp, err := reactor.tryAddNewTx(tx.ToCachedTx(), key, mempool.TxInfo{SenderID: senderID}, string(sender.ID()))
+	require.NoError(t, err)
+	require.NotEqual(t, abcitypes.CodeTypeOK, rsp.Code)
+	rejected, _, _ := pool.WasRecentlyRejected(key)
+	require.False(t, rejected, "the honest claim says the tx may be valid later")
+
+	requireRequestedAndAccepted(t, reactor, pool, app, honest, signer, 3, tx)
 }

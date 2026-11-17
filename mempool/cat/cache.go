@@ -43,10 +43,10 @@ type SeenEntry struct {
 	peers   map[uint16]struct{}
 	addedAt time.Time
 
-	// claims are the signer/sequence claims under which the tx is queued
-	// while it waits for gap-fill. Today a tx has at most one claim: the
-	// first one announced while none is queued. Each peer backs at most one
-	// claim.
+	// claims are the distinct signer/sequence pairs that peers announced for
+	// the tx while it waits for gap-fill. Each claim is queued under its own
+	// signer, so a bogus claim cannot hide an honest one. Each peer backs at
+	// most one claim, and claims never outnumber peers.
 	claims []*PendingTxInfo
 
 	// pendingTxInfo is set only on copies returned by PendingTxsForSigner: it
@@ -209,8 +209,7 @@ func (s *SeenTracker) RecordPendingTxAnnouncement(txKey types.TxKey, peer uint16
 }
 
 // recordClaimLocked makes signer/sequence peer's only claim for entry. If no
-// claim matches, a new one is queued only when create is set and no other
-// claim is queued.
+// claim matches, a new one is queued only when create is set.
 func (s *SeenTracker) recordClaimLocked(entry *SeenEntry, peer uint16, signer []byte, sequence uint64, create bool) {
 	var match *PendingTxInfo
 	for _, claim := range slices.Clone(entry.claims) {
@@ -225,12 +224,13 @@ func (s *SeenTracker) recordClaimLocked(entry *SeenEntry, peer uint16, signer []
 			}
 		}
 	}
-	if match == nil && create && len(entry.claims) == 0 {
+	if match == nil && create {
 		match = s.indexClaimLocked(entry, signer, sequence)
 	}
 	if match != nil {
 		match.announcers[peer] = struct{}{}
 	}
+	s.trimClaimsLocked(entry)
 }
 
 // addPeerLocked adds the peer to txByKey (creating the entry if new); returns the entry and whether stored.
@@ -651,10 +651,26 @@ func (s *SeenTracker) RemovePeerFromTx(txKey types.TxKey, peer uint16) {
 // removeAnnouncerLocked withdraws a peer that no longer has the tx from its
 // claim. Peer IDs are reused, so a later peer must not inherit the
 // announcement. The claim itself stays queued, so a retry with another peer
-// can still be requested again when its gap closes.
+// can still be requested again when its gap closes. Claims left without
+// announcers are dropped only to keep claims from outnumbering peers.
 func (s *SeenTracker) removeAnnouncerLocked(entry *SeenEntry, peer uint16) {
 	if claim := entry.claimFrom(peer); claim != nil {
 		delete(claim.announcers, peer)
+	}
+	s.trimClaimsLocked(entry)
+}
+
+// trimClaimsLocked drops the oldest claims without announcers until claims no
+// longer outnumber the entry's peers. Each peer backs at most one claim, so
+// this bounds claims by the per-peer limit.
+func (s *SeenTracker) trimClaimsLocked(entry *SeenEntry) {
+	for _, claim := range slices.Clone(entry.claims) {
+		if len(entry.claims) <= len(entry.peers) {
+			return
+		}
+		if len(claim.announcers) == 0 {
+			s.dropClaimLocked(claim)
+		}
 	}
 }
 
