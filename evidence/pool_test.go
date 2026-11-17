@@ -1109,3 +1109,121 @@ func TestExpiredDuplicateVoteIsRemovedFromIndex(t *testing.T) {
 	require.Zero(t, pool.Size())
 	assert.False(t, pool.HasPendingDuplicateVoteIndexEntry(ev))
 }
+
+// listedEvidence returns the hashes of the evidence in the pool's gossip list.
+func listedEvidence(pool *evidence.Pool) [][]byte {
+	var hashes [][]byte
+	for e := pool.EvidenceFront(); e != nil; e = e.Next() {
+		hashes = append(hashes, e.Value.(types.Evidence).Hash())
+	}
+	return hashes
+}
+
+// Duplicate vote evidence stored by CheckEvidence for a block that is not
+// committed is not gossiped. When another valid piece of evidence for the same
+// validator and height arrives later, the pool keeps the stored evidence and
+// adds it to the gossip list once, so the equivocation is still relayed.
+func TestRetainedDuplicateVoteFromCheckEvidenceIsGossipedOnLaterAdmission(t *testing.T) {
+	height := int64(10)
+	evHeight := int64(5)
+	// The time of the block at evHeight, see initializeBlockStore.
+	evTime := defaultEvidenceTime.Add(time.Duration(evHeight) * time.Minute)
+
+	testCases := []struct {
+		name  string
+		admit func(t *testing.T, pool *evidence.Pool, stored *types.DuplicateVoteEvidence, val types.MockPV)
+	}{
+		{"AddEvidence of a variant", func(t *testing.T, pool *evidence.Pool, _ *types.DuplicateVoteEvidence, val types.MockPV) {
+			require.NoError(t, pool.AddEvidence(newDuplicateVoteAtRound(t, evHeight, 1, evTime, val)))
+		}},
+		{"AddEvidence of the same evidence", func(t *testing.T, pool *evidence.Pool, stored *types.DuplicateVoteEvidence, _ types.MockPV) {
+			require.NoError(t, pool.AddEvidence(stored))
+		}},
+		{"ReportConflictingVotes of a variant", func(t *testing.T, pool *evidence.Pool, _ *types.DuplicateVoteEvidence, val types.MockPV) {
+			reported := newDuplicateVoteAtRound(t, evHeight, 2, evTime, val)
+			pool.ReportConflictingVotes(reported.VoteA, reported.VoteB)
+			state := pool.State()
+			state.LastBlockHeight++
+			state.LastBlockTime = state.LastBlockTime.Add(time.Minute)
+			pool.Update(state, nil)
+		}},
+	}
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			pool, val := defaultTestPool(t, height)
+			stored := newDuplicateVoteAtRound(t, evHeight, 0, evTime, val)
+			require.NoError(t, pool.CheckEvidence(types.EvidenceList{stored}))
+			require.EqualValues(t, 1, pool.Size())
+			require.Empty(t, listedEvidence(pool))
+
+			tc.admit(t, pool, stored, val)
+			assert.EqualValues(t, 1, pool.Size())
+			assert.Equal(t, [][]byte{stored.Hash()}, listedEvidence(pool))
+
+			// Further admissions do not add it again.
+			tc.admit(t, pool, stored, val)
+			require.NoError(t, pool.AddEvidence(newDuplicateVoteAtRound(t, evHeight, 3, evTime, val)))
+			require.NoError(t, pool.CheckEvidence(types.EvidenceList{newDuplicateVoteAtRound(t, evHeight, 4, evTime, val)}))
+			assert.EqualValues(t, 1, pool.Size())
+			assert.Equal(t, [][]byte{stored.Hash()}, listedEvidence(pool))
+
+			// Committing the evidence removes it from the gossip list.
+			state := pool.State()
+			state.LastBlockHeight++
+			state.LastBlockTime = state.LastBlockTime.Add(time.Minute)
+			pool.Update(state, types.EvidenceList{stored})
+			assert.Zero(t, pool.Size())
+			assert.Empty(t, listedEvidence(pool))
+		})
+	}
+}
+
+// After a restart, evidence stored by CheckEvidence is in the gossip list, and
+// a later admission for the same validator and height does not add it again.
+func TestRetainedDuplicateVoteIsListedOnceAfterRestart(t *testing.T) {
+	height := int64(10)
+	evHeight := int64(5)
+	evTime := defaultEvidenceTime.Add(time.Duration(evHeight) * time.Minute)
+	val := types.NewMockPV()
+	evidenceDB := dbm.NewMemDB()
+	stateStore := initializeValidatorState(val, height)
+	state, err := stateStore.Load()
+	require.NoError(t, err)
+	blockStore, err := initializeBlockStore(dbm.NewMemDB(), state, val.PrivKey.PubKey().Address())
+	require.NoError(t, err)
+
+	pool, err := evidence.NewPool(evidenceDB, stateStore, blockStore)
+	require.NoError(t, err)
+	stored := newDuplicateVoteAtRound(t, evHeight, 0, evTime, val)
+	require.NoError(t, pool.CheckEvidence(types.EvidenceList{stored}))
+	require.Empty(t, listedEvidence(pool))
+
+	pool, err = evidence.NewPool(evidenceDB, stateStore, blockStore)
+	require.NoError(t, err)
+	require.Equal(t, [][]byte{stored.Hash()}, listedEvidence(pool))
+	require.NoError(t, pool.AddEvidence(newDuplicateVoteAtRound(t, evHeight, 1, evTime, val)))
+	require.NoError(t, pool.AddEvidence(stored))
+	assert.Equal(t, [][]byte{stored.Hash()}, listedEvidence(pool))
+}
+
+// Evidence listed after being stored by CheckEvidence leaves the gossip list
+// when it expires.
+func TestRetainedDuplicateVoteLeavesGossipListOnExpiry(t *testing.T) {
+	height := int64(21)
+	pool, val := defaultTestPool(t, height)
+	evTime := defaultEvidenceTime.Add(time.Duration(height) * time.Minute)
+
+	stored := newDuplicateVoteAtRound(t, height, 0, evTime, val)
+	require.NoError(t, pool.CheckEvidence(types.EvidenceList{stored}))
+	require.NoError(t, pool.AddEvidence(newDuplicateVoteAtRound(t, height, 1, evTime, val)))
+	require.Equal(t, [][]byte{stored.Hash()}, listedEvidence(pool))
+
+	state := pool.State()
+	params := state.ConsensusParams.Evidence
+	state.LastBlockHeight = height + params.MaxAgeNumBlocks + 1
+	state.LastBlockTime = evTime.Add(params.MaxAgeDuration).Add(time.Minute)
+	pool.Update(state, nil)
+	assert.Zero(t, pool.Size())
+	assert.Empty(t, listedEvidence(pool))
+	assert.False(t, pool.HasPendingDuplicateVoteIndexEntry(stored))
+}
