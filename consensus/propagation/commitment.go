@@ -5,14 +5,13 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/cosmos/gogoproto/proto"
+	"google.golang.org/protobuf/encoding/protowire"
 
 	proptypes "github.com/cometbft/cometbft/consensus/propagation/types"
 	"github.com/cometbft/cometbft/crypto/merkle"
 	"github.com/cometbft/cometbft/libs/bits"
 	"github.com/cometbft/cometbft/libs/trace/schema"
 	"github.com/cometbft/cometbft/p2p"
-	"github.com/cometbft/cometbft/proto/tendermint/mempool"
 	"github.com/cometbft/cometbft/proto/tendermint/propagation"
 	"github.com/cometbft/cometbft/types"
 )
@@ -287,14 +286,9 @@ func (blockProp *Reactor) recoverPartsFromMempool(cb *proptypes.CompactBlock) {
 			continue
 		}
 
-		protoTxs := mempool.Txs{Txs: [][]byte{tx.Tx}}
-		marshalledTx, err := proto.Marshal(&protoTxs)
-		if err != nil {
-			blockProp.Logger.Error("failed to encode tx", "err", err, "tx", txMetaData)
-			continue
-		}
-
-		txsFound = append(txsFound, proptypes.UnmarshalledTx{MetaData: txMetaData, Key: txKey, TxBytes: marshalledTx})
+		// the tx is encoded in the block as an entry of Data.Txs (field 1).
+		prefix := protowire.AppendVarint(protowire.AppendTag(nil, 1, protowire.BytesType), uint64(len(tx.Tx)))
+		txsFound = append(txsFound, proptypes.UnmarshalledTx{MetaData: txMetaData, Key: txKey, Prefix: prefix, TxBytes: tx.Tx})
 	}
 
 	if len(txsFound) == 0 {
