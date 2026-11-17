@@ -540,6 +540,155 @@ func TestSeenTrackerClearSequence(t *testing.T) {
 	})
 }
 
+func TestSeenTrackerClearPendingClaim(t *testing.T) {
+	var (
+		txKey         = types.Tx("tx").Key()
+		signer        = []byte("signer")
+		peer1  uint16 = 1
+		peer2  uint16 = 2
+	)
+
+	t.Run("unknown tx is a no-op", func(t *testing.T) {
+		tracker := NewSeenTracker()
+		tracker.ClearPendingClaim(txKey, signer, 5) // must not panic
+		require.Nil(t, tracker.PendingClaims(txKey))
+	})
+
+	t.Run("other signer or sequence keeps the claim", func(t *testing.T) {
+		tracker := NewSeenTracker()
+		require.True(t, tracker.AddPendingTx(txKey, peer1, signer, 5))
+
+		tracker.ClearPendingClaim(txKey, signer, 6)
+		tracker.ClearPendingClaim(txKey, []byte("other"), 5)
+		require.Len(t, tracker.PendingClaims(txKey), 1)
+		require.Len(t, tracker.PendingTxsForSigner(signer), 1)
+	})
+
+	t.Run("drops the claim of every announcer, keeps peers", func(t *testing.T) {
+		tracker := NewSeenTracker()
+		require.True(t, tracker.AddPendingTx(txKey, peer1, signer, 5))
+		require.True(t, tracker.AddPendingTx(txKey, peer2, signer, 5))
+
+		tracker.ClearPendingClaim(txKey, signer, 5)
+		require.Empty(t, tracker.PendingClaims(txKey))
+		require.Nil(t, tracker.PendingTxsForSigner(signer))
+		require.Nil(t, tracker.SignersWithPendingTxs())
+		_, _, ok := tracker.PendingTxInfoFrom(txKey, peer1)
+		require.False(t, ok)
+		_, _, ok = tracker.PendingTxInfoFrom(txKey, peer2)
+		require.False(t, ok)
+		require.Equal(t, map[uint16]struct{}{peer1: {}, peer2: {}}, tracker.PeersForTx(txKey))
+	})
+}
+
+func TestSeenTrackerClearPendingClaimFrom(t *testing.T) {
+	var (
+		txKey         = types.Tx("tx").Key()
+		signer        = []byte("signer")
+		peer1  uint16 = 1
+		peer2  uint16 = 2
+		peer3  uint16 = 3
+	)
+
+	t.Run("unknown tx is a no-op", func(t *testing.T) {
+		tracker := NewSeenTracker()
+		tracker.ClearPendingClaimFrom(txKey, peer1) // must not panic
+		require.Nil(t, tracker.PendingClaims(txKey))
+	})
+
+	t.Run("peer without a claim keeps the claim", func(t *testing.T) {
+		tracker := NewSeenTracker()
+		require.True(t, tracker.AddPendingTx(txKey, peer1, signer, 5))
+		require.True(t, tracker.AddPeer(txKey, peer3))
+
+		tracker.ClearPendingClaimFrom(txKey, peer3)
+		_, seq, ok := tracker.PendingTxInfoFrom(txKey, peer1)
+		require.True(t, ok)
+		require.Equal(t, uint64(5), seq)
+		require.Len(t, tracker.PendingTxsForSigner(signer), 1)
+	})
+
+	t.Run("clearing one announcer keeps the other", func(t *testing.T) {
+		tracker := NewSeenTracker()
+		require.True(t, tracker.AddPendingTx(txKey, peer1, signer, 5))
+		require.True(t, tracker.AddPendingTx(txKey, peer2, signer, 5))
+
+		tracker.ClearPendingClaimFrom(txKey, peer1)
+		_, _, ok := tracker.PendingTxInfoFrom(txKey, peer1)
+		require.False(t, ok)
+		gotSigner, seq, ok := tracker.PendingTxInfoFrom(txKey, peer2)
+		require.True(t, ok)
+		require.Equal(t, signer, gotSigner)
+		require.Equal(t, uint64(5), seq)
+		require.Len(t, tracker.PendingClaims(txKey), 1)
+		require.Len(t, tracker.PendingTxsForSigner(signer), 1)
+	})
+
+	t.Run("clearing the last announcer drops the claim, keeps peers", func(t *testing.T) {
+		tracker := NewSeenTracker()
+		require.True(t, tracker.AddPendingTx(txKey, peer1, signer, 5))
+		require.True(t, tracker.AddPendingTx(txKey, peer2, signer, 5))
+
+		tracker.ClearPendingClaimFrom(txKey, peer1)
+		tracker.ClearPendingClaimFrom(txKey, peer2)
+		// Both links are gone: the entry's claim and the signer queue.
+		require.Empty(t, tracker.PendingClaims(txKey))
+		require.Nil(t, tracker.PendingTxsForSigner(signer))
+		require.Nil(t, tracker.SignersWithPendingTxs())
+		require.Equal(t, map[uint16]struct{}{peer1: {}, peer2: {}}, tracker.PeersForTx(txKey))
+	})
+}
+
+func TestSeenTrackerPendingClaims(t *testing.T) {
+	var (
+		txKey         = types.Tx("tx").Key()
+		signer        = []byte("signer")
+		peer1  uint16 = 1
+		peer2  uint16 = 2
+	)
+
+	t.Run("unknown tx", func(t *testing.T) {
+		tracker := NewSeenTracker()
+		require.Nil(t, tracker.PendingClaims(txKey))
+	})
+
+	t.Run("peer-only tx", func(t *testing.T) {
+		tracker := NewSeenTracker()
+		require.True(t, tracker.AddPeer(txKey, peer1))
+		require.Empty(t, tracker.PendingClaims(txKey))
+	})
+
+	t.Run("returns copies", func(t *testing.T) {
+		tracker := NewSeenTracker()
+		require.True(t, tracker.AddPendingTx(txKey, peer1, signer, 5))
+		require.True(t, tracker.AddPendingTx(txKey, peer2, signer, 5))
+
+		claims := tracker.PendingClaims(txKey)
+		require.Len(t, claims, 1)
+		claim := claims[0]
+		require.Equal(t, signer, claim.signer)
+		require.Equal(t, uint64(5), claim.sequence)
+		require.Equal(t, map[uint16]struct{}{peer1: {}, peer2: {}}, claim.announcers)
+		require.Nil(t, claim.entry)
+
+		// Changing the returned claim must not change tracker state.
+		claim.signer[0] = 'x'
+		claim.sequence = 99
+		delete(claim.announcers, peer1)
+
+		stored := tracker.PendingClaims(txKey)
+		require.Len(t, stored, 1)
+		require.Equal(t, signer, stored[0].signer)
+		require.Equal(t, uint64(5), stored[0].sequence)
+		require.Equal(t, map[uint16]struct{}{peer1: {}, peer2: {}}, stored[0].announcers)
+		gotSigner, seq, ok := tracker.PendingTxInfoFrom(txKey, peer1)
+		require.True(t, ok)
+		require.Equal(t, signer, gotSigner)
+		require.Equal(t, uint64(5), seq)
+		require.Len(t, tracker.PendingTxsForSigner(signer), 1)
+	})
+}
+
 func TestSeenTrackerPrunePending(t *testing.T) {
 	var (
 		baseTime        = time.Date(2026, time.January, 2, 3, 4, 5, 0, time.UTC)
