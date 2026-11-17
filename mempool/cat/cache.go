@@ -1,6 +1,8 @@
 package cat
 
 import (
+	"maps"
+	"slices"
 	"sort"
 	"time"
 
@@ -24,8 +26,9 @@ type SeenTracker struct {
 	mtx tmsync.Mutex
 	// txByKey is the primary lookup for tx keys and the peers that know them.
 	txByKey map[types.TxKey]*SeenEntry
-	// pendingTxsBySigner queues future-sequence entries waiting for a gap to close.
-	pendingTxsBySigner map[string][]*SeenEntry
+	// pendingTxsBySigner queues future-sequence claims, sorted by sequence,
+	// waiting for a gap to close.
+	pendingTxsBySigner map[string][]*PendingTxInfo
 	// txCountByPeer tracks per-peer entries so one peer cannot pin unbounded tx keys.
 	txCountByPeer map[uint16]int
 
@@ -40,13 +43,14 @@ type SeenEntry struct {
 	peers   map[uint16]struct{}
 	addedAt time.Time
 
-	// pendingTxInfo is set only while the tx is queued for future-sequence gap-fill.
-	pendingTxInfo *PendingTxInfo
-}
+	// claims are the signer/sequence claims under which the tx is queued
+	// while it waits for gap-fill. Today a tx has at most one claim: the
+	// first one announced for it.
+	claims []*PendingTxInfo
 
-// clearPendingTxMetadata drops signer/sequence state while keeping the tx keyed by peer.
-func (e *SeenEntry) clearPendingTxMetadata() {
-	e.pendingTxInfo = nil
+	// pendingTxInfo is set only on copies returned by PendingTxsForSigner: it
+	// is the claim under which that copy is queued.
+	pendingTxInfo *PendingTxInfo
 }
 
 // clone deep-copies the entry so callers cannot mutate tracker state. Fields are
@@ -54,20 +58,14 @@ func (e *SeenEntry) clearPendingTxMetadata() {
 func (e *SeenEntry) clone() *SeenEntry {
 	cp := &SeenEntry{
 		txKey:   e.txKey,
-		peers:   make(map[uint16]struct{}, len(e.peers)),
+		peers:   maps.Clone(e.peers),
 		addedAt: e.addedAt,
 	}
-
-	for peer := range e.peers {
-		cp.peers[peer] = struct{}{}
+	for _, claim := range e.claims {
+		cp.claims = append(cp.claims, claim.clone())
 	}
-
 	if e.pendingTxInfo != nil {
-		cp.pendingTxInfo = &PendingTxInfo{
-			signerKey: e.pendingTxInfo.signerKey,
-			signer:    append([]byte(nil), e.pendingTxInfo.signer...),
-			sequence:  e.pendingTxInfo.sequence,
-		}
+		cp.pendingTxInfo = e.pendingTxInfo.clone()
 	}
 
 	return cp
@@ -87,20 +85,31 @@ func (e *SeenEntry) peerIDs() []uint16 {
 	return out
 }
 
-// PendingTxInfo is the signer metadata needed to order future txs.
+// PendingTxInfo is one signer/sequence claim for a tx, used to order future txs.
 type PendingTxInfo struct {
 	// signerKey is string(signer), used as the pendingTxsBySigner map key.
 	signerKey string
 	// signer is the tx's signer bytes.
 	signer   []byte
 	sequence uint64
+	// entry is the tracked tx this claim belongs to. It is nil on copies.
+	entry *SeenEntry
+}
+
+// clone copies the claim without its link to the tracked entry.
+func (p *PendingTxInfo) clone() *PendingTxInfo {
+	return &PendingTxInfo{
+		signerKey: p.signerKey,
+		signer:    append([]byte(nil), p.signer...),
+		sequence:  p.sequence,
+	}
 }
 
 // NewSeenTracker creates the shared seen-state tracker used by CAT gossip.
 func NewSeenTracker() *SeenTracker {
 	return &SeenTracker{
 		txByKey:            make(map[types.TxKey]*SeenEntry),
-		pendingTxsBySigner: make(map[string][]*SeenEntry),
+		pendingTxsBySigner: make(map[string][]*PendingTxInfo),
 		txCountByPeer:      make(map[uint16]int),
 		perPeerLimit:       seenPerPeerLimit,
 		perSignerLimit:     seenPerSignerLimit,
@@ -131,8 +140,8 @@ func (s *SeenTracker) AddPendingTx(txKey types.TxKey, peer uint16, signer []byte
 	}
 
 	// if not yet added to the future sequence queue, index
-	if entry.pendingTxInfo == nil {
-		s.indexPendingTxLocked(entry, signer, sequence)
+	if len(entry.claims) == 0 {
+		s.indexClaimLocked(entry, signer, sequence)
 	}
 	return true
 }
@@ -184,54 +193,77 @@ func (s *SeenTracker) addPeerToEntryLocked(entry *SeenEntry, peer uint16) bool {
 	return true
 }
 
-// indexPendingTxLocked queues an entry by signer/sequence. If the signer
-// queue is full, only the lowest sequences stay queued; overflow remains peer-only.
-func (s *SeenTracker) indexPendingTxLocked(entry *SeenEntry, signer []byte, sequence uint64) {
+// indexClaimLocked queues a new claim for entry by signer/sequence and
+// returns it. If the signer queue is full, only the lowest sequences stay
+// queued; it returns nil if the new claim is not one of them.
+func (s *SeenTracker) indexClaimLocked(entry *SeenEntry, signer []byte, sequence uint64) *PendingTxInfo {
 	signerKey := string(signer)
 	queue := s.pendingTxsBySigner[signerKey]
 
 	insertIdx := sort.Search(len(queue), func(i int) bool {
-		return queue[i].pendingTxInfo.sequence >= sequence
+		return queue[i].sequence >= sequence
 	})
 
 	// very last entry of the queue
 	wouldAppendToQueue := insertIdx == len(queue)
 	if len(queue) >= s.perSignerLimit && wouldAppendToQueue {
-		return
+		return nil
 	}
 
-	entry.pendingTxInfo = &PendingTxInfo{
+	claim := &PendingTxInfo{
 		signerKey: signerKey,
 		signer:    append([]byte(nil), signer...),
 		sequence:  sequence,
+		entry:     entry,
 	}
+	entry.claims = append(entry.claims, claim)
 
 	// insert future tx into the queue
-	queue = append(queue, nil)
-	copy(queue[insertIdx+1:], queue[insertIdx:])
-	queue[insertIdx] = entry
+	queue = slices.Insert(queue, insertIdx, claim)
 
 	// if queue is over limit, trim from the end (highest sequence)
 	for len(queue) > s.perSignerLimit {
-		queue[len(queue)-1].clearPendingTxMetadata()
+		last := queue[len(queue)-1]
+		last.entry.removeClaim(last)
 		queue = queue[:len(queue)-1]
 	}
 	s.pendingTxsBySigner[signerKey] = queue
+	return claim
 }
 
-// ClearPendingTx removes a tx from the future-sequence queue but keeps the
-// peer-has-tx entry around.
+// removeClaim unlinks claim from the entry, without touching the queue.
+func (e *SeenEntry) removeClaim(claim *PendingTxInfo) {
+	e.claims = slices.DeleteFunc(e.claims, func(c *PendingTxInfo) bool { return c == claim })
+}
+
+// dropClaimLocked removes claim from its signer queue and from its entry.
+func (s *SeenTracker) dropClaimLocked(claim *PendingTxInfo) {
+	queue := slices.DeleteFunc(s.pendingTxsBySigner[claim.signerKey], func(c *PendingTxInfo) bool { return c == claim })
+	if len(queue) == 0 {
+		delete(s.pendingTxsBySigner, claim.signerKey)
+	} else {
+		s.pendingTxsBySigner[claim.signerKey] = queue
+	}
+	claim.entry.removeClaim(claim)
+}
+
+// dropClaimsLocked removes every claim for entry but keeps the peer-has-tx
+// state.
+func (s *SeenTracker) dropClaimsLocked(entry *SeenEntry) {
+	for _, claim := range slices.Clone(entry.claims) {
+		s.dropClaimLocked(claim)
+	}
+}
+
+// ClearPendingTx removes every claim for a tx from the future-sequence queue
+// but keeps the peer-has-tx entry around.
 func (s *SeenTracker) ClearPendingTx(txKey types.TxKey) {
 	s.mtx.Lock()
 	defer s.mtx.Unlock()
 
-	entry, ok := s.txByKey[txKey]
-	if !ok || entry.pendingTxInfo == nil {
-		return
+	if entry, ok := s.txByKey[txKey]; ok {
+		s.dropClaimsLocked(entry)
 	}
-
-	s.removeFromPendingQueueLocked(entry)
-	entry.clearPendingTxMetadata()
 }
 
 // RemoveKey drops a tx from every tracker index.
@@ -249,35 +281,13 @@ func (s *SeenTracker) RemoveKey(txKey types.TxKey) {
 
 // removeEntryLocked removes the whole entry and fixes peer accounting.
 func (s *SeenTracker) removeEntryLocked(entry *SeenEntry) {
-	if entry.pendingTxInfo != nil {
-		s.removeFromPendingQueueLocked(entry)
-	}
+	s.dropClaimsLocked(entry)
 
 	for peer := range entry.peers {
 		s.decrementPeerTxCountLocked(peer)
 	}
 
 	delete(s.txByKey, entry.txKey)
-}
-
-// removeFromPendingQueueLocked removes entry from its signer's future tx queue.
-// The tx can still remain in txByKey as peer-has-tx state.
-func (s *SeenTracker) removeFromPendingQueueLocked(entry *SeenEntry) {
-	signerKey := entry.pendingTxInfo.signerKey
-	queue := s.pendingTxsBySigner[signerKey]
-
-	for i, candidate := range queue {
-		if candidate == entry {
-			queue = append(queue[:i], queue[i+1:]...)
-			break
-		}
-	}
-
-	if len(queue) == 0 {
-		delete(s.pendingTxsBySigner, signerKey)
-		return
-	}
-	s.pendingTxsBySigner[signerKey] = queue
 }
 
 // RemovePeer removes a peer from all seen entries. Entries stay alive if some
@@ -351,11 +361,12 @@ func (s *SeenTracker) PendingTxInfo(txKey types.TxKey) (signer []byte, sequence 
 	defer s.mtx.Unlock()
 
 	entry, found := s.txByKey[txKey]
-	if !found || entry.pendingTxInfo == nil {
+	if !found || len(entry.claims) == 0 {
 		return nil, 0, false
 	}
+	claim := entry.claims[0]
 
-	return append([]byte(nil), entry.pendingTxInfo.signer...), entry.pendingTxInfo.sequence, true
+	return append([]byte(nil), claim.signer...), claim.sequence, true
 }
 
 // PrunePending drops future-sequence metadata for entries added before cutoff
@@ -365,11 +376,9 @@ func (s *SeenTracker) PrunePending(cutoff time.Time) {
 	defer s.mtx.Unlock()
 
 	for _, entry := range s.txByKey {
-		if entry.pendingTxInfo == nil || !entry.addedAt.Before(cutoff) {
-			continue
+		if entry.addedAt.Before(cutoff) {
+			s.dropClaimsLocked(entry)
 		}
-		s.removeFromPendingQueueLocked(entry)
-		entry.clearPendingTxMetadata()
 	}
 }
 
@@ -405,11 +414,12 @@ func (s *SeenTracker) Reset() {
 	defer s.mtx.Unlock()
 
 	s.txByKey = make(map[types.TxKey]*SeenEntry)
-	s.pendingTxsBySigner = make(map[string][]*SeenEntry)
+	s.pendingTxsBySigner = make(map[string][]*PendingTxInfo)
 	s.txCountByPeer = make(map[uint16]int)
 }
 
-// PendingTxsForSigner returns that signer's future txs in sequence order.
+// PendingTxsForSigner returns that signer's future txs in sequence order,
+// one copy per claim, each with pendingTxInfo set to that claim.
 func (s *SeenTracker) PendingTxsForSigner(signer []byte) []*SeenEntry {
 	if len(signer) == 0 {
 		return nil
@@ -424,8 +434,13 @@ func (s *SeenTracker) PendingTxsForSigner(signer []byte) []*SeenEntry {
 	}
 
 	out := make([]*SeenEntry, len(queue))
-	for i, entry := range queue {
-		out[i] = entry.clone()
+	for i, claim := range queue {
+		out[i] = &SeenEntry{
+			txKey:         claim.entry.txKey,
+			peers:         maps.Clone(claim.entry.peers),
+			addedAt:       claim.entry.addedAt,
+			pendingTxInfo: claim.clone(),
+		}
 	}
 
 	return out

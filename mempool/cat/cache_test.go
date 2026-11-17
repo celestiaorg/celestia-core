@@ -122,7 +122,7 @@ func TestSeenTrackerGet(t *testing.T) {
 
 		// Mutating the returned entry must not affect tracker state.
 		delete(entry.peers, peer1)
-		entry.pendingTxInfo.sequence = 99
+		entry.claims[0].sequence = 99
 		require.True(t, tracker.Has(txKey, peer1))
 		_, seq, ok := tracker.PendingTxInfo(txKey)
 		require.True(t, ok)
@@ -384,7 +384,7 @@ func TestSeenTrackerAddIndexesPendingTx(t *testing.T) {
 		// The demoted tx survives as peer-only state.
 		demoted := tracker.Get(keySeq7)
 		require.NotNil(t, demoted)
-		require.Nil(t, demoted.pendingTxInfo)
+		require.Empty(t, demoted.claims)
 		require.True(t, tracker.Has(keySeq7, peer1))
 	})
 
@@ -401,7 +401,7 @@ func TestSeenTrackerAddIndexesPendingTx(t *testing.T) {
 		require.True(t, tracker.AddPendingTx(keySeq9, peer1, signer, 9))
 
 		require.Equal(t, []uint64{5, 6}, seenTrackerSequences(tracker.PendingTxsForSigner(signer)))
-		require.Nil(t, tracker.Get(keySeq9).pendingTxInfo)
+		require.Empty(t, tracker.Get(keySeq9).claims)
 		require.True(t, tracker.Has(keySeq9, peer1))
 	})
 
