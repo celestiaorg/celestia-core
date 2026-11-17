@@ -788,7 +788,7 @@ func (txmp *TxPool) handleRecheckResult(wtx *wrappedTx, checkTxRes *abci.Respons
 	if checkTxRes.Code == abci.CodeTypeOK && err == nil {
 		// Note that we do not update the transaction with any of the values returned in
 		// recheck tx
-		wtx.rechecked.Store(txmp.height)
+		wtx.rechecked.Store(txmp.height.Load())
 		txKey := wtx.key()
 		schema.WriteMempoolRecheck(
 			txmp.traceClient,
