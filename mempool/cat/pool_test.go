@@ -851,7 +851,7 @@ func TestTxPool_ExpiredTxs_Timestamp(t *testing.T) {
 		// Trigger an update so that pruning will occur.
 		txmp.Lock()
 		defer txmp.Unlock()
-		require.NoError(t, txmp.Update(txmp.height+1, nil, nil, nil, nil))
+		require.NoError(t, txmp.Update(txmp.height.Load()+1, nil, nil, nil, nil))
 
 		// All the transactions in the original set should have been purged.
 		for _, tx := range added1 {
@@ -883,7 +883,7 @@ func TestTxPool_ExpiredTxs_Timestamp(t *testing.T) {
 
 func TestTxPool_ExpiredTxs_NumBlocks(t *testing.T) {
 	txmp := setup(t, 500)
-	txmp.height = 100
+	txmp.height.Store(100)
 	txmp.config.TTLNumBlocks = 10
 
 	tTxs := checkTxs(t, txmp, 100, 0)
@@ -897,7 +897,7 @@ func TestTxPool_ExpiredTxs_NumBlocks(t *testing.T) {
 	}
 
 	txmp.Lock()
-	require.NoError(t, txmp.Update(txmp.height+1, reapedTxs, responses, nil, nil))
+	require.NoError(t, txmp.Update(txmp.height.Load()+1, reapedTxs, responses, nil, nil))
 	txmp.Unlock()
 
 	require.Equal(t, 95, txmp.Size())
@@ -921,10 +921,27 @@ func TestTxPool_ExpiredTxs_NumBlocks(t *testing.T) {
 	}
 
 	txmp.Lock()
-	require.NoError(t, txmp.Update(txmp.height+10, reapedTxs, responses, nil, nil))
+	require.NoError(t, txmp.Update(txmp.height.Load()+10, reapedTxs, responses, nil, nil))
 	txmp.Unlock()
 
 	require.GreaterOrEqual(t, txmp.Size(), 45)
+}
+
+// Height must not wait on txmp.mtx, which Update and recheck hold for long.
+func TestTxPool_HeightWithoutLock(t *testing.T) {
+	txmp := setup(t, 0)
+	txmp.Lock()
+	got := make(chan int64, 1)
+	go func() { got <- txmp.Height() }()
+	select {
+	case h := <-got:
+		require.Equal(t, int64(1), h)
+	case <-time.After(2 * time.Second):
+		t.Fatal("Height blocked on the pool mutex")
+	}
+	require.NoError(t, txmp.Update(5, nil, nil, nil, nil))
+	txmp.Unlock()
+	require.Equal(t, int64(5), txmp.Height())
 }
 
 func TestTxPool_CheckTxPostCheckError(t *testing.T) {

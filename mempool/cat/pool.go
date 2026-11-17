@@ -63,8 +63,8 @@ type TxPool struct {
 	txsAvailable         chan struct{} // one value sent per height when mempool is not empty
 	preCheckFn           mempool.PreCheckFunc
 	postCheckFn          mempool.PostCheckFunc
-	height               int64     // the latest height passed to Update
-	lastPurgeTime        time.Time // the last time we attempted to purge transactions via the TTL
+	height               atomic.Int64 // the latest height passed to Update; written under mtx, read lock-free
+	lastPurgeTime        time.Time    // the last time we attempted to purge transactions via the TTL
 
 	// Thread-safe cache of rejected transactions for quick look-up
 	rejectedTxCache *mempool.RejectedTxCache
@@ -110,7 +110,6 @@ func NewTxPool(
 		rejectedTxCache:  mempool.NewRejectedTxCache(cfg.CacheSize),
 		evictedTxCache:   mempool.NewLRUTxCache(cfg.CacheSize / 5),
 		seenTracker:      NewSeenTracker(),
-		height:           height,
 		preCheckFn:       func(_ *types.CachedTx) error { return nil },
 		postCheckFn:      func(_ *types.CachedTx, _ *abci.ResponseCheckTx) error { return nil },
 		store:            newStore(),
@@ -118,6 +117,7 @@ func NewTxPool(
 		txsToBeBroadcast: make([]types.TxKey, 0),
 		heightSignal:     make(chan struct{}, 1),
 	}
+	txmp.height.Store(height)
 
 	for _, opt := range options {
 		opt(txmp)
@@ -191,9 +191,7 @@ func (txmp *TxPool) TxsAvailable() <-chan struct{} { return txmp.txsAvailable }
 
 // Height returns the latest height that the mempool is at
 func (txmp *TxPool) Height() int64 {
-	txmp.mtx.Lock()
-	defer txmp.mtx.Unlock()
-	return txmp.height
+	return txmp.height.Load()
 }
 
 // HeightSignal returns a channel that fires whenever the mempool height advances.
@@ -383,7 +381,7 @@ func (txmp *TxPool) TryAddNewTx(tx *types.CachedTx, key types.TxKey, txInfo memp
 
 	// Create wrapped tx
 	wtx := newWrappedTx(
-		tx, txmp.height, rsp.GasWanted, rsp.Priority, rsp.Address, rsp.Sequence, txInfo.FromBroadcast,
+		tx, txmp.height.Load(), rsp.GasWanted, rsp.Priority, rsp.Address, rsp.Sequence, txInfo.FromBroadcast,
 	)
 
 	// Perform the post check
@@ -589,7 +587,7 @@ func (txmp *TxPool) update(
 	}
 	txmp.logger.Debug("updating mempool", "height", blockHeight, "txs", len(blockTxs))
 
-	txmp.height = blockHeight
+	txmp.height.Store(blockHeight)
 	txmp.notifiedTxsAvailable = false
 
 	if newPreFn != nil {
@@ -845,7 +843,7 @@ func (txmp *TxPool) recheckTransactions() {
 	txmp.logger.Trace(
 		"executing re-CheckTx for all remaining transactions",
 		"num_txs", txmp.Size(),
-		"height", txmp.height,
+		"height", txmp.height.Load(),
 	)
 
 	start := time.Now()

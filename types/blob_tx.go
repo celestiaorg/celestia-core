@@ -13,7 +13,7 @@ import (
 // BlobTxValidationAppVersion is the first app version whose blocks are unwrapped
 // with go-square's validating BlobTx decoder. Blocks from earlier app versions
 // keep the legacy rules so historical replay is unchanged.
-const BlobTxValidationAppVersion uint64 = 11
+const BlobTxValidationAppVersion uint64 = 12
 
 // UnwrapBlobTx returns the inner transaction of a BlobTx and true. It returns
 // tx and false if tx is not a BlobTx under the rules for appVersion.
