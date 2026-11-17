@@ -24,6 +24,7 @@ import (
 	abci "github.com/cometbft/cometbft/abci/types"
 	"github.com/cometbft/cometbft/abci/types/mocks"
 	cfg "github.com/cometbft/cometbft/config"
+	"github.com/cometbft/cometbft/consensus/propagation"
 	cstypes "github.com/cometbft/cometbft/consensus/types"
 	cryptoenc "github.com/cometbft/cometbft/crypto/encoding"
 	"github.com/cometbft/cometbft/internal/test"
@@ -284,6 +285,56 @@ func TestRestartAfterPrevoteWithLostProposal(t *testing.T) {
 	ensurePrecommitMatch(t, voteCh, 1, 0, nil)
 	signAddVotes(cs2, cmtproto.PrecommitType, nil, types.PartSetHeader{}, false, others...)
 	ensureNewRound(newRoundCh, 1, 1)
+}
+
+// A validator that completes the proposal after +2/3 prevotes signs its prevote and
+// enters the precommit delay; stopped there, it must still find that prevote in the WAL.
+func TestStopInPrecommitDelayKeepsPrevote(t *testing.T) {
+	config := ResetConfig(t.Name())
+	defer os.RemoveAll(config.RootDir)
+	config.Consensus.OnlyInternalWal = true
+
+	app := kvstore.NewInMemoryApplication()
+	state, privVals := randGenesisState(4, false, testMinPower, test.ConsensusParams())
+	state.Timeouts.TimeoutPropose = 3 * time.Second
+	state.Timeouts.DelayedPrecommitTimeout = time.Minute
+
+	vss := make([]*validatorStub, len(privVals))
+	for i, pv := range privVals {
+		vss[i] = newValidatorStub(pv, int32(i))
+		vss[i].Height = 1
+	}
+	proposer, _ := state.Validators.GetByAddress(state.Validators.GetProposer().Address)
+	ours := (proposer + 1) % int32(len(vss))
+	others := slices.Delete(slices.Clone(vss), int(ours), int(ours)+1)
+
+	filePV := privval.NewFilePV(privVals[ours].(types.MockPV).PrivKey,
+		config.PrivValidatorKeyFile(), config.PrivValidatorStateFile())
+	filePV.Save()
+	blockDB := dbm.NewMemDB()
+
+	cs1 := newStateWithConfigAndBlockStore(config, state, filePV, app, blockDB)
+	// A lone propagation reactor reports catching up, which skips the delay.
+	cs1.propagator = propagation.NewNoOpPropagator()
+	require.NoError(t, cs1.Start())
+	prop, block := decideProposal(context.Background(), t, cs1, vss[proposer], 1, 0)
+	parts, err := block.MakePartSet(types.BlockPartSizeBytes)
+	require.NoError(t, err)
+	signAddVotes(cs1, cmtproto.PrevoteType, block.Hash(), parts.Header(), false, others...)
+	require.Eventually(t, func() bool {
+		return cs1.GetRoundState().Votes.Prevotes(0).HasTwoThirdsMajority()
+	}, time.Second, time.Millisecond)
+	require.NoError(t, cs1.SetProposalAndBlock(prop, block, parts, "peer"))
+	require.Eventually(t, cs1.StartedPrecommitSleep.Load, 5*time.Second, time.Millisecond)
+	require.NoError(t, cs1.Stop())
+	cs1.Wait()
+
+	pv2 := privval.LoadFilePV(config.PrivValidatorKeyFile(), config.PrivValidatorStateFile())
+	cs2 := newStateWithConfigAndBlockStore(config, state, pv2, app, blockDB)
+	voteCh := subscribeToVoter(cs2, filePV.Key.Address)
+	require.NoError(t, cs2.Start())
+	defer func() { _ = cs2.Stop(); cs2.Wait() }()
+	ensurePrevoteMatch(t, voteCh, 1, 0, block.Hash())
 }
 
 // stopCrashedWAL stops the WAL of a State whose receiveRoutine exited via a
