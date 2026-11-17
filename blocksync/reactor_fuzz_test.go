@@ -551,23 +551,14 @@ func FuzzBlockSyncReactor(f *testing.F) {
 				msg, _ := h.blockResponse(r, height)
 				block, decodeErr := cmttypes.BlockFromProto(msg.Block)
 				pool.mtx.Lock()
-				expectErr, skip := false, false
+				expectErr := false
 				if decodeErr == nil {
 					bpr, banned := pool.requesters[block.Height], pool.isPeerBanned(p.id)
-					// Excluded pending PROTOCO-3517; remove with the fix.
-					if bp := pool.peers[p.id]; bp != nil && bp.recvMonitor == nil &&
-						((bpr == nil && block.Height >= pool.startHeight && block.Height <= pool.height) ||
-							(bpr != nil && bpr.didRequestFrom(p.id) && bpr.getBlock() == nil)) {
-						skip = true
-					}
 					expectErr = (msg.ExtCommit != nil && msg.ExtCommit.Height != block.Height) ||
 						(bpr == nil && (block.Height > pool.height || block.Height < pool.startHeight)) ||
 						(bpr != nil && !bpr.didRequestFrom(p.id) && !banned)
 				}
 				pool.mtx.Unlock()
-				if skip {
-					break
-				}
 				h.drainErrors()
 				h.receive(p, msg)
 				if decodeErr != nil {
