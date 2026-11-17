@@ -57,7 +57,17 @@ type Pool struct {
 	// validator and height. One piece is enough to punish the validator, and
 	// this bounds pending duplicate vote evidence by the evidence age window
 	// and the validator set instead of by what an attacker can sign.
-	pendingDuplicateVotes map[string]types.Evidence
+	pendingDuplicateVotes map[string]pendingDuplicateVote
+}
+
+// pendingDuplicateVote is an entry of Pool.pendingDuplicateVotes.
+type pendingDuplicateVote struct {
+	ev types.Evidence
+	// listed is whether ev is in the evidence list, which is what the reactor
+	// gossips. Evidence stored by CheckEvidence is not listed until evidence
+	// for the same validator and height is admitted from a peer or from
+	// consensus, or until the node restarts.
+	listed bool
 }
 
 // NewPool creates an evidence pool. If using an existing evidence store,
@@ -77,7 +87,7 @@ func NewPool(evidenceDB dbm.DB, stateDB sm.Store, blockStore BlockStore) (*Pool,
 		evidenceList:    clist.New(),
 		consensusBuffer: make([]duplicateVoteSet, 0),
 
-		pendingDuplicateVotes: make(map[string]types.Evidence),
+		pendingDuplicateVotes: make(map[string]pendingDuplicateVote),
 	}
 
 	// if pending evidence already in db, in event of prior failure, then check for expiration,
@@ -99,7 +109,7 @@ func NewPool(evidenceDB dbm.DB, stateDB sm.Store, blockStore BlockStore) (*Pool,
 			if pool.isDuplicateVoteKnownLocked(dve) {
 				drop = true
 			} else {
-				pool.pendingDuplicateVotes[duplicateVoteKey(dve)] = ev
+				pool.pendingDuplicateVotes[duplicateVoteKey(dve)] = pendingDuplicateVote{ev: ev, listed: true}
 			}
 		}
 		if drop {
@@ -172,6 +182,9 @@ func (evpool *Pool) AddEvidence(ev types.Evidence) error {
 
 	// We have already verified this piece of evidence - no need to do it again
 	if evpool.isPending(ev) {
+		if dve, ok := ev.(*types.DuplicateVoteEvidence); ok {
+			evpool.listPendingDuplicateVote(dve)
+		}
 		evpool.logger.Info("Evidence already pending, ignoring this one", "ev", ev)
 		return nil
 	}
@@ -397,7 +410,7 @@ func (evpool *Pool) removePendingEvidence(evidence types.Evidence) {
 	if dve, ok := evidence.(*types.DuplicateVoteEvidence); ok {
 		dveKey := duplicateVoteKey(dve)
 		evpool.dveMtx.Lock()
-		if pending, exists := evpool.pendingDuplicateVotes[dveKey]; exists && evMapKey(pending) == evMapKey(evidence) {
+		if pending, exists := evpool.pendingDuplicateVotes[dveKey]; exists && evMapKey(pending.ev) == evMapKey(evidence) {
 			delete(evpool.pendingDuplicateVotes, dveKey)
 		}
 		evpool.dveMtx.Unlock()
@@ -414,13 +427,14 @@ func (evpool *Pool) isDuplicateVoteKnownLocked(dve *types.DuplicateVoteEvidence)
 
 // addPendingDuplicateVote persists dve and adds it to the evidence list unless
 // evidence for the same equivocation is already pending or committed. It
-// returns whether dve was added.
+// returns whether dve was added. If evidence for the same validator and height
+// is already pending but not listed, that evidence is listed instead.
 func (evpool *Pool) addPendingDuplicateVote(dve *types.DuplicateVoteEvidence) (bool, error) {
 	evpool.dveMtx.Lock()
 	defer evpool.dveMtx.Unlock()
-	added, err := evpool.addPendingDuplicateVoteLocked(dve)
-	if added {
-		evpool.evidenceList.PushBack(dve)
+	added, err := evpool.addPendingDuplicateVoteLocked(dve, true)
+	if err == nil && !added {
+		evpool.listPendingDuplicateVoteLocked(duplicateVoteKey(dve))
 	}
 	return added, err
 }
@@ -430,10 +444,10 @@ func (evpool *Pool) addPendingDuplicateVote(dve *types.DuplicateVoteEvidence) (b
 func (evpool *Pool) addPendingDuplicateVoteToStore(dve *types.DuplicateVoteEvidence) (bool, error) {
 	evpool.dveMtx.Lock()
 	defer evpool.dveMtx.Unlock()
-	return evpool.addPendingDuplicateVoteLocked(dve)
+	return evpool.addPendingDuplicateVoteLocked(dve, false)
 }
 
-func (evpool *Pool) addPendingDuplicateVoteLocked(dve *types.DuplicateVoteEvidence) (bool, error) {
+func (evpool *Pool) addPendingDuplicateVoteLocked(dve *types.DuplicateVoteEvidence, list bool) (bool, error) {
 	// dve may be the canonical copy of the evidence a caller checked, with a
 	// different hash, so check its own hash too.
 	if evpool.isDuplicateVoteKnownLocked(dve) || evpool.isCommitted(dve) {
@@ -442,8 +456,35 @@ func (evpool *Pool) addPendingDuplicateVoteLocked(dve *types.DuplicateVoteEviden
 	if err := evpool.addPendingEvidence(dve); err != nil {
 		return false, err
 	}
-	evpool.pendingDuplicateVotes[duplicateVoteKey(dve)] = dve
+	evpool.pendingDuplicateVotes[duplicateVoteKey(dve)] = pendingDuplicateVote{ev: dve, listed: list}
+	if list {
+		evpool.evidenceList.PushBack(dve)
+	}
 	return true, nil
+}
+
+// listPendingDuplicateVote adds the pending duplicate vote evidence for dve's
+// validator and height to the evidence list if it is not listed yet.
+func (evpool *Pool) listPendingDuplicateVote(dve *types.DuplicateVoteEvidence) {
+	evpool.dveMtx.Lock()
+	defer evpool.dveMtx.Unlock()
+	evpool.listPendingDuplicateVoteLocked(duplicateVoteKey(dve))
+}
+
+// listPendingDuplicateVoteLocked adds the pending duplicate vote evidence for
+// dveKey to the evidence list if it is not listed yet, so that evidence stored
+// by CheckEvidence for a block that was not committed is still gossiped once
+// the equivocation is seen again. Each entry is listed at most once, so the
+// list keeps at most one piece of duplicate vote evidence per validator and
+// height. dveMtx must be held.
+func (evpool *Pool) listPendingDuplicateVoteLocked(dveKey string) {
+	pending, exists := evpool.pendingDuplicateVotes[dveKey]
+	if !exists || pending.listed {
+		return
+	}
+	evpool.evidenceList.PushBack(pending.ev)
+	pending.listed = true
+	evpool.pendingDuplicateVotes[dveKey] = pending
 }
 
 // canonicalDuplicateVote returns a copy of dve with the fields that are not
@@ -511,11 +552,11 @@ func (evpool *Pool) commitEvidence(ev types.Evidence) []types.Evidence {
 		// Pending evidence for the same validator and height that was
 		// committed under a different hash.
 		dveKey = duplicateVoteKey(dve)
-		if pending, exists := evpool.pendingDuplicateVotes[dveKey]; exists && evMapKey(pending) != evMapKey(ev) {
-			if err := batch.Delete(keyPending(pending)); err != nil {
+		if pending, exists := evpool.pendingDuplicateVotes[dveKey]; exists && evMapKey(pending.ev) != evMapKey(ev) {
+			if err := batch.Delete(keyPending(pending.ev)); err != nil {
 				evpool.logger.Error("Unable to delete pending evidence", "err", err)
 			} else {
-				removed = append(removed, pending)
+				removed = append(removed, pending.ev)
 			}
 		}
 	}
@@ -712,6 +753,7 @@ func (evpool *Pool) processConsensusBuffer(state sm.State) {
 
 		// check if we already have this evidence
 		if evpool.isPending(dve) {
+			evpool.listPendingDuplicateVote(dve)
 			evpool.logger.Info("evidence already pending; ignoring", "evidence", dve)
 			continue
 		}
