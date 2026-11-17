@@ -45,7 +45,8 @@ type SeenEntry struct {
 
 	// claims are the signer/sequence claims under which the tx is queued
 	// while it waits for gap-fill. Today a tx has at most one claim: the
-	// first one announced for it.
+	// first one announced while none is queued. Each peer backs at most one
+	// claim.
 	claims []*PendingTxInfo
 
 	// pendingTxInfo is set only on copies returned by PendingTxsForSigner: it
@@ -71,6 +72,16 @@ func (e *SeenEntry) clone() *SeenEntry {
 	return cp
 }
 
+// claimFrom returns the claim peer announced, if any.
+func (e *SeenEntry) claimFrom(peer uint16) *PendingTxInfo {
+	for _, claim := range e.claims {
+		if claim.announcedBy(peer) {
+			return claim
+		}
+	}
+	return nil
+}
+
 // peerIDs returns candidate peers for the request path.
 func (e *SeenEntry) peerIDs() []uint16 {
 	if len(e.peers) == 0 {
@@ -92,6 +103,10 @@ type PendingTxInfo struct {
 	// signer is the tx's signer bytes.
 	signer   []byte
 	sequence uint64
+	// announcers are the peers whose latest announcement for the tx is this
+	// claim. Only their deliveries are judged by it; the claim is unverified
+	// until the application checks the tx.
+	announcers map[uint16]struct{}
 	// entry is the tracked tx this claim belongs to. It is nil on copies.
 	entry *SeenEntry
 }
@@ -99,10 +114,22 @@ type PendingTxInfo struct {
 // clone copies the claim without its link to the tracked entry.
 func (p *PendingTxInfo) clone() *PendingTxInfo {
 	return &PendingTxInfo{
-		signerKey: p.signerKey,
-		signer:    append([]byte(nil), p.signer...),
-		sequence:  p.sequence,
+		signerKey:  p.signerKey,
+		signer:     append([]byte(nil), p.signer...),
+		sequence:   p.sequence,
+		announcers: maps.Clone(p.announcers),
 	}
+}
+
+// announcedBy reports whether peer announced this claim.
+func (p *PendingTxInfo) announcedBy(peer uint16) bool {
+	_, ok := p.announcers[peer]
+	return ok
+}
+
+// matches reports whether signer/sequence equal this claim.
+func (p *PendingTxInfo) matches(signer []byte, sequence uint64) bool {
+	return p.sequence == sequence && p.signerKey == string(signer)
 }
 
 // NewSeenTracker creates the shared seen-state tracker used by CAT gossip.
@@ -126,7 +153,8 @@ func (s *SeenTracker) AddPeer(txKey types.TxKey, peer uint16) bool {
 	return ok
 }
 
-// AddPendingTx is AddPeer plus queues the tx by signer/sequence for gap-fill (seq 0 is valid). Returns false if not stored.
+// AddPendingTx is AddPeer plus queues the tx under peer's signer/sequence
+// claim for gap-fill (seq 0 is valid). Returns false if not stored.
 func (s *SeenTracker) AddPendingTx(txKey types.TxKey, peer uint16, signer []byte, sequence uint64) bool {
 	if len(signer) == 0 {
 		return false
@@ -139,11 +167,52 @@ func (s *SeenTracker) AddPendingTx(txKey types.TxKey, peer uint16, signer []byte
 		return false
 	}
 
-	// if not yet added to the future sequence queue, index
-	if len(entry.claims) == 0 {
-		s.indexClaimLocked(entry, signer, sequence)
-	}
+	s.recordClaimLocked(entry, peer, signer, sequence, true)
 	return true
+}
+
+// RecordPendingTxAnnouncement reconciles a peer's announcement with txKey's
+// queued claims: peer backs the matching claim, if one is queued, and is
+// withdrawn from any other. A claim is dropped once no announcer is left.
+// No new claim is queued.
+func (s *SeenTracker) RecordPendingTxAnnouncement(txKey types.TxKey, peer uint16, signer []byte, sequence uint64) {
+	s.mtx.Lock()
+	defer s.mtx.Unlock()
+
+	entry, ok := s.txByKey[txKey]
+	if !ok {
+		return
+	}
+	// Only a peer known to have the tx can be asked for it.
+	if _, has := entry.peers[peer]; !has {
+		return
+	}
+	s.recordClaimLocked(entry, peer, signer, sequence, false)
+}
+
+// recordClaimLocked makes signer/sequence peer's only claim for entry. If no
+// claim matches, a new one is queued only when create is set and no other
+// claim is queued.
+func (s *SeenTracker) recordClaimLocked(entry *SeenEntry, peer uint16, signer []byte, sequence uint64, create bool) {
+	var match *PendingTxInfo
+	for _, claim := range slices.Clone(entry.claims) {
+		if claim.matches(signer, sequence) {
+			match = claim
+			continue
+		}
+		if claim.announcedBy(peer) {
+			delete(claim.announcers, peer)
+			if len(claim.announcers) == 0 {
+				s.dropClaimLocked(claim)
+			}
+		}
+	}
+	if match == nil && create && len(entry.claims) == 0 {
+		match = s.indexClaimLocked(entry, signer, sequence)
+	}
+	if match != nil {
+		match.announcers[peer] = struct{}{}
+	}
 }
 
 // addPeerLocked adds the peer to txByKey (creating the entry if new); returns the entry and whether stored.
@@ -211,10 +280,11 @@ func (s *SeenTracker) indexClaimLocked(entry *SeenEntry, signer []byte, sequence
 	}
 
 	claim := &PendingTxInfo{
-		signerKey: signerKey,
-		signer:    append([]byte(nil), signer...),
-		sequence:  sequence,
-		entry:     entry,
+		signerKey:  signerKey,
+		signer:     append([]byte(nil), signer...),
+		sequence:   sequence,
+		announcers: make(map[uint16]struct{}, 1),
+		entry:      entry,
 	}
 	entry.claims = append(entry.claims, claim)
 
@@ -266,6 +336,59 @@ func (s *SeenTracker) ClearPendingTx(txKey types.TxKey) {
 	}
 }
 
+// ClearPendingClaim removes the signer/sequence claim for a tx, if queued,
+// and keeps the tx's other claims.
+func (s *SeenTracker) ClearPendingClaim(txKey types.TxKey, signer []byte, sequence uint64) {
+	s.mtx.Lock()
+	defer s.mtx.Unlock()
+
+	entry, ok := s.txByKey[txKey]
+	if !ok {
+		return
+	}
+	for _, claim := range entry.claims {
+		if claim.matches(signer, sequence) {
+			s.dropClaimLocked(claim)
+			return
+		}
+	}
+}
+
+// ClearPendingClaimFrom withdraws peer's announcement for a tx, if any. The
+// claim is removed only if no other peer backs it; the tx's other claims are
+// kept.
+func (s *SeenTracker) ClearPendingClaimFrom(txKey types.TxKey, peer uint16) {
+	s.mtx.Lock()
+	defer s.mtx.Unlock()
+
+	entry, ok := s.txByKey[txKey]
+	if !ok {
+		return
+	}
+	if claim := entry.claimFrom(peer); claim != nil {
+		delete(claim.announcers, peer)
+		if len(claim.announcers) == 0 {
+			s.dropClaimLocked(claim)
+		}
+	}
+}
+
+// PendingClaims returns copies of the signer/sequence claims queued for a tx.
+func (s *SeenTracker) PendingClaims(txKey types.TxKey) []*PendingTxInfo {
+	s.mtx.Lock()
+	defer s.mtx.Unlock()
+
+	entry, ok := s.txByKey[txKey]
+	if !ok {
+		return nil
+	}
+	out := make([]*PendingTxInfo, 0, len(entry.claims))
+	for _, claim := range entry.claims {
+		out = append(out, claim.clone())
+	}
+	return out
+}
+
 // RemoveKey drops a tx from every tracker index.
 func (s *SeenTracker) RemoveKey(txKey types.TxKey) {
 	s.mtx.Lock()
@@ -307,7 +430,9 @@ func (s *SeenTracker) RemovePeer(peer uint16) {
 		}
 		if len(entry.peers) == 0 {
 			s.removeEntryLocked(entry)
+			continue
 		}
+		s.removeAnnouncerLocked(entry, peer)
 	}
 	delete(s.txCountByPeer, peer)
 }
@@ -365,6 +490,25 @@ func (s *SeenTracker) PendingTxInfo(txKey types.TxKey) (signer []byte, sequence 
 		return nil, 0, false
 	}
 	claim := entry.claims[0]
+
+	return append([]byte(nil), claim.signer...), claim.sequence, true
+}
+
+// PendingTxInfoFrom reports the signer/sequence claim that peer announced
+// for txKey; ok is false if peer announced no queued claim. The returned
+// signer is a copy.
+func (s *SeenTracker) PendingTxInfoFrom(txKey types.TxKey, peer uint16) (signer []byte, sequence uint64, ok bool) {
+	s.mtx.Lock()
+	defer s.mtx.Unlock()
+
+	entry, found := s.txByKey[txKey]
+	if !found {
+		return nil, 0, false
+	}
+	claim := entry.claimFrom(peer)
+	if claim == nil {
+		return nil, 0, false
+	}
 
 	return append([]byte(nil), claim.signer...), claim.sequence, true
 }
@@ -484,6 +628,18 @@ func (s *SeenTracker) RemovePeerFromTx(txKey types.TxKey, peer uint16) {
 	}
 	if len(entry.peers) == 0 {
 		s.removeEntryLocked(entry)
+		return
+	}
+	s.removeAnnouncerLocked(entry, peer)
+}
+
+// removeAnnouncerLocked withdraws a peer that no longer has the tx from its
+// claim. Peer IDs are reused, so a later peer must not inherit the
+// announcement. The claim itself stays queued, so a retry with another peer
+// can still be requested again when its gap closes.
+func (s *SeenTracker) removeAnnouncerLocked(entry *SeenEntry, peer uint16) {
+	if claim := entry.claimFrom(peer); claim != nil {
+		delete(claim.announcers, peer)
 	}
 }
 
