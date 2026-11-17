@@ -784,9 +784,9 @@ func testSetupScriptTransport(
 	return mt, sl, done
 }
 
-// recordRetry returns a retry wait that sends each delay on delays and
+// recordRetryFn returns a retry wait that sends each delay on delays and
 // fires at once.
-func recordRetry(delays chan<- time.Duration) func(time.Duration) <-chan time.Time {
+func recordRetryFn(delays chan<- time.Duration) func(time.Duration) <-chan time.Time {
 	return func(d time.Duration) <-chan time.Time {
 		delays <- d
 		c := make(chan time.Time, 1)
@@ -809,7 +809,7 @@ func emfileErr() error {
 }
 
 func TestTransportMultiplexAcceptRetriesTemporaryErrors(t *testing.T) {
-	mt, sl, done := testSetupScriptTransport(t, recordRetry(make(chan time.Duration, 64)))
+	mt, sl, done := testSetupScriptTransport(t, recordRetryFn(make(chan time.Duration, 64)))
 	enfile := &net.OpError{Op: "accept", Net: "tcp", Err: os.NewSyscallError("accept4", syscall.ENFILE)}
 	for _, err := range []error{emfileErr(), emfileErr(), enfile, emfileErr(), nil} {
 		sl.steps <- err
@@ -956,7 +956,7 @@ func (e tempNetError) Temporary() bool { return e.temporary }
 
 func TestTransportMultiplexAcceptBackoffSequence(t *testing.T) {
 	delays := make(chan time.Duration, 64)
-	_, sl, _ := testSetupScriptTransport(t, recordRetry(delays))
+	_, sl, _ := testSetupScriptTransport(t, recordRetryFn(delays))
 	recvDelay := func() time.Duration {
 		t.Helper()
 		select {
