@@ -24,6 +24,7 @@ import (
 	"github.com/cometbft/cometbft/crypto"
 	cmtrand "github.com/cometbft/cometbft/libs/rand"
 	cmtsync "github.com/cometbft/cometbft/libs/sync"
+	mempl "github.com/cometbft/cometbft/mempool"
 	"github.com/cometbft/cometbft/p2p"
 	"github.com/cometbft/cometbft/privval"
 	cmtproto "github.com/cometbft/cometbft/proto/tendermint/types"
@@ -39,6 +40,7 @@ type proposeRecorder struct {
 	calls []string
 	props []*types.Proposal
 	parts []*types.PartSet
+	txs   [][]proptypes.TxMetaData
 }
 
 func (r *proposeRecorder) SetConsensusState(height int64, round int32, proposer crypto.PubKey) {
@@ -53,6 +55,7 @@ func (r *proposeRecorder) ProposeBlock(prop *types.Proposal, parts *types.PartSe
 	r.calls = append(r.calls, "propose")
 	r.props = append(r.props, prop)
 	r.parts = append(r.parts, parts)
+	r.txs = append(r.txs, txs)
 	r.mtx.Unlock()
 	return r.Propagator.ProposeBlock(prop, parts, txs)
 }
@@ -62,6 +65,11 @@ func (r *proposeRecorder) ProposeBlock(prop *types.Proposal, parts *types.PartSe
 func TestRestartedProposerReseedsPropagator(t *testing.T) {
 	f := newLockFixture(t, true, true)
 	cs1 := f.newState()
+	for i := 0; i < 3; i++ {
+		require.NoError(t, assertMempool(cs1.txNotifier).CheckTx(kvstore.NewTx(fmt.Sprint(i), "v"), nil, mempl.TxInfo{}))
+	}
+	first := &proposeRecorder{Propagator: cs1.propagator}
+	cs1.propagator = first
 	require.NoError(t, cs1.Start())
 	voteCh := subscribeToVoter(cs1, cs1.privValidatorPubKey.Address())
 	v := nextVote(t, voteCh, 1, 0, cmtproto.PrevoteType)
@@ -84,6 +92,10 @@ func TestRestartedProposerReseedsPropagator(t *testing.T) {
 	require.Equal(t, prop.BlockID, rec.props[0].BlockID)
 	require.Equal(t, prop.Signature, rec.props[0].Signature)
 	require.True(t, rec.parts[0].HasHeader(prop.BlockID.PartSetHeader))
+	first.mtx.Lock()
+	defer first.mtx.Unlock()
+	require.NotEmpty(t, first.txs[0])
+	require.Equal(t, first.txs[0], rec.txs[0])
 	_, held, has := rec.GetProposal(1, 0)
 	require.True(t, has)
 	require.True(t, held.IsComplete())
@@ -149,6 +161,75 @@ func TestReseedPropagatorGuards(t *testing.T) {
 	cs.privValidatorPubKey = vss[(ourIdx+1)%4].PrivValidator.(types.MockPV).PrivKey.PubKey()
 	require.Zero(t, run(func(*proposeRecorder) {}), "not the round's proposer")
 	cs.privValidatorPubKey = pk
+}
+
+// Replay keeps a completed proposal block only for a round we proposed.
+func TestReplayKeepsOnlyOwnProposalBlocks(t *testing.T) {
+	cs, vss := randState(4)
+	height, round := cs.rs.Height, cs.rs.Round
+	ourIdx, _ := cs.rs.Validators.GetByAddress(cs.privValidatorPubKey.Address())
+	require.True(t, cs.isProposer(cs.privValidatorPubKey.Address()))
+	prop, block := decideProposal(context.Background(), t, cs, vss[ourIdx], height, round)
+	parts, err := block.MakePartSet(types.BlockPartSizeBytes)
+	require.NoError(t, err)
+
+	replay := func() map[int32]*types.PartSet {
+		cs.replayMode, cs.replayedBlocks = true, nil
+		defer func() { cs.replayMode = false }()
+		cs.rs.Proposal, cs.rs.ProposalBlock = prop, nil
+		cs.rs.ProposalBlockParts = types.NewPartSetFromHeader(parts.Header(), types.BlockPartSizeBytes)
+		for i := 0; i < int(parts.Total()); i++ {
+			_, err := cs.addProposalBlockPart(&BlockPartMessage{height, round, parts.GetPart(i)}, "")
+			require.NoError(t, err)
+		}
+		require.NotNil(t, cs.rs.ProposalBlock)
+		return cs.replayedBlocks
+	}
+	kept := replay()
+	require.Equal(t, map[int32]*types.PartSet{round: cs.rs.ProposalBlockParts}, kept)
+
+	pk := cs.privValidatorPubKey
+	cs.privValidatorPubKey = vss[(ourIdx+1)%4].PrivValidator.(types.MockPV).PrivKey.PubKey()
+	require.Empty(t, replay(), "another validator's proposal")
+	cs.privValidatorPubKey = pk
+}
+
+// The replayed blocks go to the propagator once, as our own proposals, except at the lock and
+// valid rounds, whose entries may be a refetch of another block.
+func TestShareReplayedBlocksSkipsLockAndValidRounds(t *testing.T) {
+	cs, _ := randState(1)
+	rec := &callRecorder{Propagator: propagation.NewNoOpPropagator()}
+	cs.propagator = rec
+	_, parts, err := cs.createProposalBlock(context.Background())
+	require.NoError(t, err)
+	cs.rs.LockedRound, cs.rs.ValidRound = 0, 1
+	cs.replayedBlocks = map[int32]*types.PartSet{0: parts, 1: parts, 2: parts}
+
+	cs.shareReplayedBlocks()
+	require.Equal(t, []propagatorCall{{proposed: true, height: cs.rs.Height, round: 2, psh: parts.Header()}}, rec.snapshot())
+	require.Nil(t, cs.replayedBlocks)
+}
+
+// A new height drops the previous height's replayed blocks.
+func TestReplayedBlocksResetAtNewHeight(t *testing.T) {
+	cs, _ := randState(1)
+	height, round := cs.rs.Height, cs.rs.Round
+	cs.replayedBlocks = map[int32]*types.PartSet{round: {}}
+	// NewBlock fires with the locks released, before updateToState; its NewHeight step follows the reset.
+	stepCh := subscribeBuffered(cs.eventBus, types.EventQueryNewRoundStep, 100)
+	startTestRound(cs, height, round)
+	for rs := (types.EventDataRoundState{}); rs.Height != height+1; {
+		select {
+		case msg := <-stepCh:
+			rs = msg.Data().(types.EventDataRoundState)
+		case <-time.After(10 * time.Second):
+			t.Fatal("timed out waiting for the next height")
+		}
+	}
+
+	cs.lockAll()
+	defer cs.unlockAll()
+	require.Nil(t, cs.replayedBlocks)
 }
 
 type heldPropagator struct{ *propagation.NoOpPropagator }
@@ -224,9 +305,9 @@ func TestCorrelatedRestartDuringPrecommitDelay(t *testing.T) {
 	}
 }
 
-// newRestartFleet builds n only_internal_wal validators with FilePVs and fixed timeouts.
+// newRestartFleetFn builds n only_internal_wal validators with FilePVs and fixed timeouts.
 // restart(i) replaces node i with a fresh State on the same stores, WAL and privval.
-func newRestartFleet(t *testing.T, n int, ti abci.TimeoutInfo) (css []*State, restart func(i int) *State) {
+func newRestartFleetFn(t *testing.T, n int, ti abci.TimeoutInfo) (css []*State, restart func(i int) *State) {
 	genDoc, mockPVs := randGenesisDoc(n, false, 30, nil)
 	logger := consensusLogger()
 	configs := make([]*cfg.Config, n)
@@ -273,7 +354,7 @@ func testCorrelatedRestart(t *testing.T, restartProposer, legacyGossip bool) {
 		TimeoutCommit:           200 * time.Millisecond,
 		DelayedPrecommitTimeout: 2 * time.Second,
 	}
-	css, restartNode := newRestartFleet(t, n, ti)
+	css, restartNode := newRestartFleetFn(t, n, ti)
 	logger := css[0].Logger
 	start := func(css []*State) ([]*Reactor, []types.Subscription, []*types.EventBus) {
 		if legacyGossip {

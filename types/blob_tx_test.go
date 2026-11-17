@@ -494,6 +494,44 @@ func BenchmarkTxHashBlobTx(b *testing.B) {
 	})
 }
 
+// TestUnwrapBlobTxIsGatedOnAppVersion pins the app version at which the
+// go-square BlobTx rules start. celestia-app v11 runs on celestia-core v0.42.x,
+// which applies the legacy rules at every app version, so app version 11 must
+// keep the legacy rules and the go-square rules must start at 12.
+func TestUnwrapBlobTxIsGatedOnAppVersion(t *testing.T) {
+	require.Equal(t, uint64(12), BlobTxValidationAppVersion)
+
+	nsID := append(make([]byte, share.NamespaceVersionZeroPrefixSize), bytes.Repeat([]byte{1}, share.NamespaceVersionZeroIDSize)...)
+	blob := &blobv4.BlobProto{NamespaceId: nsID, Data: []byte("data")}
+	tx, err := proto.Marshal(&blobv4.BlobTx{Tx: []byte("inner-tx"), Blobs: []*blobv4.BlobProto{blob}, TypeId: squaretx.ProtoBlobTxTypeID})
+	require.NoError(t, err)
+	// An unknown field is skipped by the legacy rules but rejected as
+	// non-canonical by go-square.
+	nonCanonical := append(bytes.Clone(tx), 0x78, 0x01) // field 15, varint 1
+
+	testCases := []struct {
+		appVersion    uint64
+		wantBlobTx    bool
+		wantUnwrapped Tx
+	}{
+		{appVersion: 1, wantBlobTx: true, wantUnwrapped: Tx("inner-tx")},
+		{appVersion: 10, wantBlobTx: true, wantUnwrapped: Tx("inner-tx")},
+		{appVersion: 11, wantBlobTx: true, wantUnwrapped: Tx("inner-tx")},
+		{appVersion: 12, wantBlobTx: false, wantUnwrapped: Tx(nonCanonical)},
+		{appVersion: 13, wantBlobTx: false, wantUnwrapped: Tx(nonCanonical)},
+	}
+	for _, tc := range testCases {
+		got, isBlobTx := UnwrapBlobTx(nonCanonical, tc.appVersion)
+		assert.Equal(t, tc.wantBlobTx, isBlobTx, "app version %d", tc.appVersion)
+		assert.Equal(t, tc.wantUnwrapped, got, "app version %d", tc.appVersion)
+
+		// A canonical BlobTx is unwrapped at every app version.
+		got, isBlobTx = UnwrapBlobTx(tx, tc.appVersion)
+		assert.True(t, isBlobTx, "app version %d", tc.appVersion)
+		assert.Equal(t, Tx("inner-tx"), got, "app version %d", tc.appVersion)
+	}
+}
+
 // TestUnwrapBlobTxDoesNotAlias checks that the inner tx UnwrapBlobTx returns
 // does not share memory with the BlobTx at any app version, so callers that
 // keep it, such as queued tx events, do not keep the blobs alive.
@@ -539,13 +577,13 @@ func BenchmarkUnwrapBlobTx(b *testing.B) {
 			UnwrapBlobTx(tx, BlobTxValidationAppVersion-1)
 		}
 	})
-	b.Run("v11", func(b *testing.B) {
+	b.Run("v12", func(b *testing.B) {
 		b.ReportAllocs()
 		for b.Loop() {
 			UnwrapBlobTx(tx, BlobTxValidationAppVersion)
 		}
 	})
-	b.Run("v11 copying decoder", func(b *testing.B) {
+	b.Run("v12 copying decoder", func(b *testing.B) {
 		b.ReportAllocs()
 		for b.Loop() {
 			bTx, _, err := squaretx.UnmarshalBlobTx(tx)

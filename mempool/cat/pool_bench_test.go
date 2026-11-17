@@ -3,6 +3,7 @@ package cat
 import (
 	"fmt"
 	"math/rand"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -58,4 +59,29 @@ func BenchmarkReapMaxBytesMaxGas(b *testing.B) {
 			})
 		}
 	}
+}
+
+// BenchmarkTxPool_Height reads the height while another goroutine holds the
+// pool mutex most of the time, as Commit and recheck do.
+func BenchmarkTxPool_Height(b *testing.B) {
+	txmp := setup(b, 0)
+	var stop atomic.Bool
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		for !stop.Load() {
+			txmp.Lock()
+			time.Sleep(time.Millisecond)
+			txmp.Unlock()
+		}
+	}()
+	b.Cleanup(func() { stop.Store(true); <-done })
+	b.ResetTimer()
+	var maxWait time.Duration
+	for n := 0; n < b.N; n++ {
+		start := time.Now()
+		_ = txmp.Height()
+		maxWait = max(maxWait, time.Since(start))
+	}
+	b.ReportMetric(float64(maxWait.Microseconds()), "max-µs")
 }
