@@ -22,10 +22,13 @@ import (
 )
 
 // pacingReplayState returns a node whose startup deadline is an hour away, so
-// replay never depends on timing, writing to a fresh WAL.
+// replay never depends on timing, writing to a fresh WAL. The first height takes
+// the bootstrap path, which sets StartTime to now plus TimeoutCommit and ignores
+// DynamicTimeoutCommit, so TimeoutCommit must also be an hour.
 func pacingReplayState(t *testing.T) (*State, []types.PrivValidator, WAL) {
 	t.Helper()
 	state, privVals := randGenesisState(4, false, 10, test.ConsensusParams())
+	state.Timeouts.TimeoutCommit = time.Hour
 	state.Timeouts.DynamicTimeoutCommit = time.Hour
 	cs := newState(state, privVals[0], kvstore.NewInMemoryApplication())
 	t.Cleanup(func() { require.NoError(t, cs.eventBus.Stop()) })
