@@ -324,25 +324,29 @@ func (blockProp *Reactor) recoverPartsFromMempool(cb *proptypes.CompactBlock) {
 		return
 	}
 
+	missing := make([]*types.Part, 0, len(parts))
+	for _, p := range parts {
+		if partSet.HasPart(int(p.Index)) {
+			continue
+		}
+		p.Proof = *proofs[p.Index]
+		missing = append(missing, p)
+	}
+	added, errs := partSet.AddOriginalParts(missing)
+
 	recoveredCount := 0
 	haves := proptypes.HaveParts{
 		Height: cb.Proposal.Height,
 		Round:  cb.Proposal.Round,
 		Parts:  make([]proptypes.PartMetaData, 0),
 	}
-	for _, p := range parts {
-		if partSet.HasPart(int(p.Index)) {
-			continue
-		}
-		p.Proof = *proofs[p.Index]
-
-		added, err := partSet.AddOriginalPart(p)
-		if err != nil {
-			blockProp.Logger.Error("failed to add locally recovered part", "err", err)
+	for i, p := range missing {
+		if errs[i] != nil {
+			blockProp.Logger.Error("failed to add locally recovered part", "err", errs[i])
 			continue
 		}
 
-		if !added {
+		if !added[i] {
 			blockProp.Logger.Error("failed to add locally recovered part", "part", p.Index)
 			continue
 		}
