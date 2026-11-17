@@ -156,6 +156,7 @@ func (blockProp *Reactor) GetChannels() []*conn.ChannelDescriptor {
 		{
 			ID:                  WantChannel,
 			Priority:            145,
+			LowLatency:          true,
 			SendQueueCapacity:   20000,
 			RecvMessageCapacity: maxMsgSize,
 			MessageType:         &propproto.Message{},
@@ -163,6 +164,7 @@ func (blockProp *Reactor) GetChannels() []*conn.ChannelDescriptor {
 		{
 			ID:                  DataChannel,
 			Priority:            140,
+			LowLatency:          true,
 			SendQueueCapacity:   20000,
 			RecvMessageCapacity: maxMsgSize,
 			MessageType:         &propproto.Message{},
