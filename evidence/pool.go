@@ -75,8 +75,22 @@ func NewPool(evidenceDB dbm.DB, stateDB sm.Store, blockStore BlockStore) (*Pool,
 	if err != nil {
 		return nil, err
 	}
-	atomic.StoreUint32(&pool.evidenceSize, uint32(len(evList)))
+	kept := evList[:0]
 	for _, ev := range evList {
+		// Drop pending evidence that is already committed. Pools written by
+		// earlier versions can hold such entries.
+		drop := pool.isCommitted(ev)
+		if drop {
+			pool.logger.Info("Removing pending evidence that is already committed", "ev", ev)
+			if err := pool.evidenceStore.Delete(keyPending(ev)); err != nil {
+				return nil, fmt.Errorf("cannot delete pending evidence: %w", err)
+			}
+			continue
+		}
+		kept = append(kept, ev)
+	}
+	atomic.StoreUint32(&pool.evidenceSize, uint32(len(kept)))
+	for _, ev := range kept {
 		pool.evidenceList.PushBack(ev)
 	}
 
@@ -328,24 +342,8 @@ func (evpool *Pool) removePendingEvidence(evidence types.Evidence) {
 func (evpool *Pool) markEvidenceAsCommitted(evidence types.EvidenceList) {
 	blockEvidenceMap := make(map[string]struct{}, len(evidence))
 	for _, ev := range evidence {
-		if evpool.isPending(ev) {
-			evpool.removePendingEvidence(ev)
-			blockEvidenceMap[evMapKey(ev)] = struct{}{}
-		}
-
-		// Add evidence to the committed list. As the evidence is stored in the block store
-		// we only need to record the height that it was saved at.
-		key := keyCommitted(ev)
-
-		h := gogotypes.Int64Value{Value: ev.Height()}
-		evBytes, err := proto.Marshal(&h)
-		if err != nil {
-			evpool.logger.Error("failed to marshal committed evidence", "err", err, "key(height/hash)", key)
-			continue
-		}
-
-		if err := evpool.evidenceStore.Set(key, evBytes); err != nil {
-			evpool.logger.Error("Unable to save committed evidence", "err", err, "key(height/hash)", key)
+		for _, removed := range evpool.commitEvidence(ev) {
+			blockEvidenceMap[evMapKey(removed)] = struct{}{}
 		}
 	}
 
@@ -353,6 +351,44 @@ func (evpool *Pool) markEvidenceAsCommitted(evidence types.EvidenceList) {
 	if len(blockEvidenceMap) != 0 {
 		evpool.removeEvidenceFromList(blockEvidenceMap)
 	}
+}
+
+// commitEvidence records ev as committed and deletes it from the pending store
+// in one write. It returns the pending evidence that was deleted.
+func (evpool *Pool) commitEvidence(ev types.Evidence) []types.Evidence {
+	batch := evpool.evidenceStore.NewBatch()
+	defer batch.Close()
+
+	var removed []types.Evidence
+	if evpool.isPending(ev) {
+		if err := batch.Delete(keyPending(ev)); err != nil {
+			evpool.logger.Error("Unable to delete pending evidence", "err", err)
+		} else {
+			removed = append(removed, ev)
+		}
+	}
+
+	// Add evidence to the committed list. As the evidence is stored in the block store
+	// we only need to record the height that it was saved at.
+	key := keyCommitted(ev)
+	h := gogotypes.Int64Value{Value: ev.Height()}
+	evBytes, err := proto.Marshal(&h)
+	if err != nil {
+		evpool.logger.Error("failed to marshal committed evidence", "err", err, "key(height/hash)", key)
+	} else if err := batch.Set(key, evBytes); err != nil {
+		evpool.logger.Error("Unable to save committed evidence", "err", err, "key(height/hash)", key)
+	}
+
+	if err := batch.Write(); err != nil {
+		evpool.logger.Error("Unable to commit evidence", "err", err, "ev", ev)
+		return nil
+	}
+
+	for _, r := range removed {
+		atomic.AddUint32(&evpool.evidenceSize, ^uint32(0))
+		evpool.logger.Debug("Deleted pending evidence", "evidence", r)
+	}
+	return removed
 }
 
 // listEvidence retrieves lists evidence from oldest to newest within maxBytes.

@@ -16,6 +16,7 @@ import (
 	"github.com/cometbft/cometbft/evidence/mocks"
 	"github.com/cometbft/cometbft/internal/test"
 	"github.com/cometbft/cometbft/libs/log"
+	cmtproto "github.com/cometbft/cometbft/proto/tendermint/types"
 	cmtversion "github.com/cometbft/cometbft/proto/tendermint/version"
 	sm "github.com/cometbft/cometbft/state"
 	smmocks "github.com/cometbft/cometbft/state/mocks"
@@ -564,5 +565,92 @@ func createState(height int64, valSet *types.ValidatorSet) sm.State {
 		LastBlockTime:   defaultEvidenceTime,
 		Validators:      valSet,
 		ConsensusParams: *types.DefaultConsensusParams(),
+	}
+}
+
+// newDuplicateVoteAtRound returns duplicate vote evidence of precommits signed
+// by pv at the given height and round.
+func newDuplicateVoteAtRound(
+	t *testing.T, height int64, round int32, evTime time.Time, pv types.MockPV,
+) *types.DuplicateVoteEvidence {
+	t.Helper()
+	return newDuplicateVote(t, height, round, cmtproto.PrecommitType, evTime, pv)
+}
+
+// newDuplicateVote returns duplicate vote evidence of votes of the given type
+// signed by pv at the given height and round.
+func newDuplicateVote(
+	t *testing.T, height int64, round int32, voteType cmtproto.SignedMsgType, evTime time.Time, pv types.MockPV,
+) *types.DuplicateVoteEvidence {
+	t.Helper()
+	pubKey := pv.PrivKey.PubKey()
+	valSet := types.NewValidatorSet([]*types.Validator{types.NewValidator(pubKey, 10)})
+	makeVote := func() *types.Vote {
+		vote := &types.Vote{
+			Type:   voteType,
+			Height: height,
+			Round:  round,
+			BlockID: types.BlockID{
+				Hash:          crypto.CRandBytes(32),
+				PartSetHeader: types.PartSetHeader{Total: 1, Hash: crypto.CRandBytes(32)},
+			},
+			Timestamp:        evTime,
+			ValidatorAddress: pubKey.Address(),
+			ValidatorIndex:   0,
+		}
+		pb := vote.ToProto()
+		require.NoError(t, pv.SignVote(evidenceChainID, pb))
+		vote.Signature = pb.Signature
+		return vote
+	}
+	ev, err := types.NewDuplicateVoteEvidence(makeVote(), makeVote(), evTime, valSet)
+	require.NoError(t, err)
+	return ev
+}
+
+// Pending evidence that is already committed under its own hash is dropped
+// when the pool restarts. Pools written by earlier versions can hold such
+// entries.
+func TestNewPoolDropsEvidenceCommittedByHash(t *testing.T) {
+	var (
+		height       int64 = 100
+		commonHeight int64 = 90
+	)
+	lunatic, trusted, common := makeLunaticEvidence(t, height, commonHeight,
+		10, 5, 5, defaultEvidenceTime, defaultEvidenceTime.Add(1*time.Hour))
+	state := sm.State{
+		LastBlockTime:   defaultEvidenceTime.Add(2 * time.Hour),
+		LastBlockHeight: 110,
+		ConsensusParams: *types.DefaultConsensusParams(),
+	}
+	stateStore := &smmocks.Store{}
+	stateStore.On("LoadValidators", height).Return(trusted.ValidatorSet, nil)
+	stateStore.On("LoadValidators", commonHeight).Return(common.ValidatorSet, nil)
+	stateStore.On("Load").Return(state, nil)
+	blockStore := &mocks.BlockStore{}
+
+	evidenceDB := dbm.NewMemDB()
+	pool, err := evidence.NewPool(evidenceDB, stateStore, blockStore)
+	require.NoError(t, err)
+
+	val := types.NewMockPV()
+	committedDVE := newDuplicateVoteAtRound(t, height, 0, defaultEvidenceTime, val)
+	stillPending := newDuplicateVoteAtRound(t, height-1, 0, defaultEvidenceTime, val)
+	for _, ev := range []types.Evidence{lunatic, committedDVE, stillPending} {
+		require.NoError(t, pool.AddPendingEvidenceUnchecked(ev))
+	}
+	for _, ev := range []types.Evidence{lunatic, committedDVE} {
+		require.NoError(t, pool.MarkCommittedWithoutDuplicateVoteMarker(ev))
+	}
+
+	for restart := 0; restart < 2; restart++ {
+		pool, err = evidence.NewPool(evidenceDB, stateStore, blockStore)
+		require.NoError(t, err)
+		evs, _ := pool.PendingEvidence(-1)
+		require.Len(t, evs, 1)
+		assert.Equal(t, stillPending.Hash(), evs[0].Hash())
+		assert.EqualValues(t, 1, pool.Size())
+		require.NotNil(t, pool.EvidenceFront())
+		assert.Nil(t, pool.EvidenceFront().Next())
 	}
 }
