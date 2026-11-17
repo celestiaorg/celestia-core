@@ -712,9 +712,9 @@ func (evpool *Pool) removeExpiredCommittedDuplicateVotes() {
 	}
 	var expired [][]byte
 	for ; iter.Valid(); iter.Next() {
-		height, evTime, err := parseCommittedDuplicateVote(iter.Key(), iter.Value())
+		height, evTime, err := decodeCommittedDuplicateVote(iter.Key(), iter.Value())
 		if err != nil {
-			evpool.logger.Error("Unable to parse committed duplicate vote evidence", "err", err)
+			evpool.logger.Error("Unable to decode committed duplicate vote evidence", "err", err)
 			expired = append(expired, append([]byte(nil), iter.Key()...))
 			continue
 		}
@@ -892,24 +892,24 @@ func duplicateVoteKey(dve *types.DuplicateVoteEvidence) string {
 	return fmt.Sprintf("%s/%X", bE(dve.VoteA.Height), dve.VoteA.ValidatorAddress)
 }
 
-// parseCommittedDuplicateVote returns the height and evidence time of a commit
+// decodeCommittedDuplicateVote returns the height and evidence time of a commit
 // marker written under keyCommittedDuplicateVote.
-func parseCommittedDuplicateVote(key, value []byte) (int64, time.Time, error) {
+func decodeCommittedDuplicateVote(key, value []byte) (int64, time.Time, error) {
 	const heightLen = 16
 	if len(key) < 1+heightLen {
 		return 0, time.Time{}, fmt.Errorf("committed duplicate vote key too short: %X", key)
 	}
 	height, err := strconv.ParseInt(string(key[1:1+heightLen]), 16, 64)
 	if err != nil {
-		return 0, time.Time{}, fmt.Errorf("parsing committed duplicate vote height: %w", err)
+		return 0, time.Time{}, fmt.Errorf("decoding committed duplicate vote height: %w", err)
 	}
 	var ts gogotypes.Timestamp
 	if err := proto.Unmarshal(value, &ts); err != nil {
-		return 0, time.Time{}, fmt.Errorf("parsing committed duplicate vote time: %w", err)
+		return 0, time.Time{}, fmt.Errorf("decoding committed duplicate vote time: %w", err)
 	}
 	evTime, err := gogotypes.TimestampFromProto(&ts)
 	if err != nil {
-		return 0, time.Time{}, fmt.Errorf("parsing committed duplicate vote time: %w", err)
+		return 0, time.Time{}, fmt.Errorf("decoding committed duplicate vote time: %w", err)
 	}
 	return height, evTime, nil
 }
