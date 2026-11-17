@@ -31,8 +31,7 @@ func TestABCIQueryRejectsProofPaths(t *testing.T) {
 			require.Nil(t, res)
 		})
 	}
-	// The mock fails the test if Query was called.
-	query.AssertNotCalled(t, "Query", mock.Anything, mock.Anything)
+	// The mock has no expectations, so it fails the test if Query is called.
 }
 
 func TestABCIQueryPassesOtherPaths(t *testing.T) {

@@ -50,22 +50,18 @@ func (env *Environment) ABCIInfo(_ *rpctypes.Context) (*ctypes.ResultABCIInfo, e
 
 var errProofQueryPath = errors.New("abci_query does not serve inclusion proof paths; use the tx, tx_search or prove_shares_v2 routes")
 
-// proofQueryRoutes are the custom query routes in celestia-app that build a
-// data square from the block bytes in the request. rpc/core calls them with
-// blocks from the block store (see tx.go). abci_query must not let callers
-// send their own block bytes to them.
-var proofQueryRoutes = map[string]bool{
-	"txInclusionProof":    true,
-	"shareInclusionProof": true,
-}
-
 // isProofQueryPath reports whether path routes to an inclusion proof query in
-// celestia-app. It splits the path the same way the Cosmos SDK BaseApp does:
-// on "/", after dropping one leading empty element.
+// celestia-app. Those queries build a data square from the block bytes in the
+// request. rpc/core calls them with blocks from the block store (see tx.go),
+// so abci_query must not let callers send their own block bytes to them.
+//
+// It splits the path the same way the Cosmos SDK BaseApp does: on "/", after
+// dropping one leading empty element.
 func isProofQueryPath(path string) bool {
 	parts := strings.Split(path, "/")
 	if len(parts) > 0 && parts[0] == "" {
 		parts = parts[1:]
 	}
-	return len(parts) >= 2 && parts[0] == "custom" && proofQueryRoutes[parts[1]]
+	return len(parts) >= 2 && parts[0] == "custom" &&
+		(parts[1] == "txInclusionProof" || parts[1] == "shareInclusionProof")
 }
