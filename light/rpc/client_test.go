@@ -3,6 +3,7 @@ package rpc
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
@@ -12,6 +13,7 @@ import (
 	"github.com/cometbft/cometbft/light/rpc/mocks"
 	rpcclient "github.com/cometbft/cometbft/rpc/client"
 	ctypes "github.com/cometbft/cometbft/rpc/core/types"
+	rpctypes "github.com/cometbft/cometbft/rpc/jsonrpc/types"
 	"github.com/cometbft/cometbft/types"
 )
 
@@ -171,4 +173,79 @@ func TestHeaderByHashRejectsMismatchedHash(t *testing.T) {
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "does not match requested hash")
 	lc.AssertNotCalled(t, "VerifyLightBlockAtHeight")
+}
+
+// nextEventsClient hands out one event channel for every subscription.
+type nextEventsClient struct {
+	rpcclient.Client
+	out chan ctypes.ResultEvent
+}
+
+func (n nextEventsClient) Subscribe(context.Context, string, string, ...int) (<-chan ctypes.ResultEvent, error) {
+	return n.out, nil
+}
+
+func (n nextEventsClient) Unsubscribe(context.Context, string, string) error { return nil }
+
+func (n nextEventsClient) UnsubscribeAll(context.Context, string) error { return nil }
+
+type wsConn struct {
+	ctx context.Context
+}
+
+func (wsConn) GetRemoteAddr() string                                        { return "remote" }
+func (wsConn) WriteRPCResponse(context.Context, rpctypes.RPCResponse) error { return nil }
+func (wsConn) TryWriteRPCResponse(rpctypes.RPCResponse) bool                { return true }
+func (c wsConn) Context() context.Context                                   { return c.ctx }
+
+// The goroutine that forwards events to a websocket client must stop when the
+// client unsubscribes or disconnects.
+func TestSubscribeWSStopsForwarding(t *testing.T) {
+	// forwarding reports whether something still reads the event channel.
+	forwarding := func(out chan ctypes.ResultEvent) bool {
+		select {
+		case out <- ctypes.ResultEvent{}:
+			return true
+		case <-time.After(20 * time.Millisecond):
+			return false
+		}
+	}
+
+	testCases := []struct {
+		name string
+		stop func(c *Client, ctx *rpctypes.Context, disconnect context.CancelFunc)
+	}{
+		{"unsubscribe", func(c *Client, ctx *rpctypes.Context, _ context.CancelFunc) {
+			_, err := c.UnsubscribeWS(ctx, "query")
+			require.NoError(t, err)
+		}},
+		{"unsubscribe all", func(c *Client, ctx *rpctypes.Context, _ context.CancelFunc) {
+			_, err := c.UnsubscribeAllWS(ctx)
+			require.NoError(t, err)
+		}},
+		{"disconnect", func(_ *Client, _ *rpctypes.Context, disconnect context.CancelFunc) {
+			disconnect()
+		}},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			out := make(chan ctypes.ResultEvent)
+			c := NewClient(nextEventsClient{out: out}, &mocks.LightClient{})
+
+			connCtx, disconnect := context.WithCancel(context.Background())
+			defer disconnect()
+			ctx := &rpctypes.Context{
+				JSONReq: &rpctypes.RPCRequest{ID: rpctypes.JSONRPCStringID("1")},
+				WSConn:  wsConn{ctx: connCtx},
+			}
+
+			_, err := c.SubscribeWS(ctx, "query")
+			require.NoError(t, err)
+			require.True(t, forwarding(out))
+
+			tc.stop(c, ctx, disconnect)
+			require.Eventually(t, func() bool { return !forwarding(out) }, 5*time.Second, time.Millisecond)
+		})
+	}
 }

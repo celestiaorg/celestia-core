@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"regexp"
+	"sync"
 	"time"
 
 	"github.com/cometbft/cometbft/crypto/merkle"
@@ -48,6 +49,11 @@ type Client struct {
 	// proof runtime used to verify values returned by ABCIQuery
 	prt       *merkle.ProofRuntime
 	keyPathFn KeyPathFunc
+
+	// wsSubs stops the event forwarder of each websocket subscription,
+	// by remote address and query.
+	wsSubsMtx sync.Mutex
+	wsSubs    map[string]map[string]context.CancelFunc
 }
 
 var _ rpcclient.Client = (*Client)(nil)
@@ -91,6 +97,8 @@ func NewClient(next rpcclient.Client, lc LightClient, opts ...Option) *Client {
 		next: next,
 		lc:   lc,
 		prt:  merkle.DefaultProofRuntime(),
+
+		wsSubs: make(map[string]map[string]context.CancelFunc),
 	}
 	c.BaseService = *service.NewBaseService(nil, "Client", c)
 	for _, o := range opts {
@@ -580,10 +588,24 @@ func (c *Client) Subscribe(ctx context.Context, subscriber, query string,
 }
 
 func (c *Client) Unsubscribe(ctx context.Context, subscriber, query string) error {
+	c.wsSubsMtx.Lock()
+	if cancel, ok := c.wsSubs[subscriber][query]; ok {
+		cancel()
+		delete(c.wsSubs[subscriber], query)
+	}
+	c.wsSubsMtx.Unlock()
+
 	return c.next.Unsubscribe(ctx, subscriber, query)
 }
 
 func (c *Client) UnsubscribeAll(ctx context.Context, subscriber string) error {
+	c.wsSubsMtx.Lock()
+	for _, cancel := range c.wsSubs[subscriber] {
+		cancel()
+	}
+	delete(c.wsSubs, subscriber)
+	c.wsSubsMtx.Unlock()
+
 	return c.next.UnsubscribeAll(ctx, subscriber)
 }
 
@@ -616,6 +638,18 @@ func (c *Client) SubscribeWS(ctx *rpctypes.Context, query string) (*ctypes.Resul
 		return nil, err
 	}
 
+	// The forwarder stops when the connection closes or the client unsubscribes.
+	subCtx, cancel := context.WithCancel(ctx.WSConn.Context())
+	c.wsSubsMtx.Lock()
+	if c.wsSubs[ctx.RemoteAddr()] == nil {
+		c.wsSubs[ctx.RemoteAddr()] = make(map[string]context.CancelFunc)
+	}
+	if cancelOld, ok := c.wsSubs[ctx.RemoteAddr()][query]; ok {
+		cancelOld()
+	}
+	c.wsSubs[ctx.RemoteAddr()][query] = cancel
+	c.wsSubsMtx.Unlock()
+
 	go func() {
 		for {
 			select {
@@ -627,6 +661,8 @@ func (c *Client) SubscribeWS(ctx *rpctypes.Context, query string) (*ctypes.Resul
 						rpctypes.JSONRPCStringID(fmt.Sprintf("%v#event", ctx.JSONReq.ID)),
 						resultEvent,
 					))
+			case <-subCtx.Done():
+				return
 			case <-c.Quit():
 				return
 			}
@@ -639,7 +675,7 @@ func (c *Client) SubscribeWS(ctx *rpctypes.Context, query string) (*ctypes.Resul
 // UnsubscribeWS calls original client's Unsubscribe using remote address as a
 // subscriber.
 func (c *Client) UnsubscribeWS(ctx *rpctypes.Context, query string) (*ctypes.ResultUnsubscribe, error) {
-	err := c.next.Unsubscribe(context.Background(), ctx.RemoteAddr(), query)
+	err := c.Unsubscribe(context.Background(), ctx.RemoteAddr(), query)
 	if err != nil {
 		return nil, err
 	}
@@ -649,7 +685,7 @@ func (c *Client) UnsubscribeWS(ctx *rpctypes.Context, query string) (*ctypes.Res
 // UnsubscribeAllWS calls original client's UnsubscribeAll using remote address
 // as a subscriber.
 func (c *Client) UnsubscribeAllWS(ctx *rpctypes.Context) (*ctypes.ResultUnsubscribe, error) {
-	err := c.next.UnsubscribeAll(context.Background(), ctx.RemoteAddr())
+	err := c.UnsubscribeAll(context.Background(), ctx.RemoteAddr())
 	if err != nil {
 		return nil, err
 	}
