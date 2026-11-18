@@ -33,15 +33,18 @@ const (
 	fzIterBudget = 20 * time.Second
 )
 
-// fzPoolLimits derives the pool's count and byte limits from the first input
-// byte. Generated txs are 11-13 bytes, so with an even byte the byte limit
-// binds (96 bytes holds at most 8 txs, below the count limit of 16) and with an
-// odd byte the count limit (2-5 txs) binds well before the byte limit.
-func fzPoolLimits(b byte) (txs int, bytes int64) {
+// fzPoolLimits derives the pool's count, byte and max tx size limits from the
+// first input byte. Generated txs are 11-14 bytes, so with an even byte the
+// byte limit binds (160 bytes holds at most 14 txs, below the count limit of
+// 16) and with an odd byte the count limit (2-5 txs) binds well before the byte
+// limit. With an even byte the received-tx buffer's per-peer budget
+// (max(160/10, maxTx) = 16 bytes) holds one tx, so a peer's second buffered tx
+// goes over it.
+func fzPoolLimits(b byte) (txs int, bytes int64, maxTx int) {
 	if b&1 == 0 {
-		return 16, 96
+		return 16, 160, 16
 	}
-	return 2 + int(b>>1)%4, 4096
+	return 2 + int(b>>1)%4, 4096, 64
 }
 
 // FuzzReactorReceive drives the CAT reactor's Receive with a short sequence of
@@ -66,6 +69,9 @@ func FuzzReactorReceive(f *testing.F) {
 		{0, 2, 0, 8, 1, 3, 2, 3, 0, 4, 0, 0, 0},
 		// count limit binds (2 txs) for a single delivery
 		{1, 0, 0, 0, 2, 3, 0, 4, 0, 2, 0, 0, 0},
+		// a peer delivers two out-of-order txs: the first is buffered, the
+		// second goes over the peer's byte budget in the received-tx buffer
+		[]byte("0800107100$1$000$0$001$0$0020"),
 	} {
 		f.Add(seed)
 	}
@@ -236,7 +242,7 @@ func newCatFuzzHarness(t *testing.T, limits byte) *catFuzzHarness {
 	cfg := cmtcfg.TestMempoolConfig()
 	cfg.Recheck = false
 	cfg.Broadcast = false
-	cfg.Size, cfg.MaxTxsBytes = fzPoolLimits(limits)
+	cfg.Size, cfg.MaxTxsBytes, cfg.MaxTxBytes = fzPoolLimits(limits)
 	cfg.CacheSize = 100
 	pool := NewTxPool(log.NewNopLogger(), cfg, conn, 1)
 	pool.seenTracker.perPeerLimit = fzSeenLimit
@@ -601,6 +607,7 @@ func (h *catFuzzHarness) checkReceivedBuffer() {
 	t := h.t
 	rb := h.r.receivedBuffer
 	byPeer := map[string]int{}
+	bytesByPeer := map[string]int64{}
 	var bytes int64
 	for _, buf := range rb.buffers {
 		require.NotEmpty(t, buf)
@@ -608,10 +615,15 @@ func (h *catFuzzHarness) checkReceivedBuffer() {
 		for seq, e := range buf {
 			require.Equal(t, seq, e.sequence)
 			byPeer[e.peerID]++
+			bytesByPeer[e.peerID] += int64(len(e.tx.Tx))
 			bytes += int64(len(e.tx.Tx))
 		}
 	}
 	require.Equal(t, byPeer, rb.countByPeer)
+	require.Equal(t, bytesByPeer, rb.bytesByPeer)
+	for _, n := range rb.bytesByPeer {
+		require.LessOrEqual(t, n, rb.maxBytesPerPeer)
+	}
 	require.Equal(t, bytes, rb.totalBytes)
 	require.LessOrEqual(t, rb.totalBytes, rb.maxBytes)
 	for _, n := range rb.countByPeer {
