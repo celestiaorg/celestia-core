@@ -274,7 +274,7 @@ func TestReactorKeepsPeerRelayingDuplicateVoteVariants(t *testing.T) {
 	assert.Len(t, reactors[0].Switch.Peers().List(), 1, "sender must stay connected")
 	assert.Len(t, reactors[1].Switch.Peers().List(), 1, "receiver must keep the sender")
 	evs, _ := pools[1].PendingEvidence(-1)
-	assert.Len(t, evs, 5, "one piece of evidence per validator and height")
+	assert.Len(t, evs, 4, "one piece of evidence per validator and height, none for the committed one")
 }
 
 func TestReactorBroadcastEvidenceMemoryLeak(t *testing.T) {
