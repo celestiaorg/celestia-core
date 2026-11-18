@@ -87,13 +87,19 @@ func InjectEvidence(ctx context.Context, r *rand.Rand, testnet *e2e.Testnet, amo
 		return err
 	}
 
+	// Every node must be able to verify the evidence, so do not use heights
+	// below the earliest block of any node (for example a node that started
+	// with state sync).
+	earliestHeights, err := earliestBlockHeights(ctx, testnet)
+	if err != nil {
+		return err
+	}
+
 	// The pool keeps one piece of duplicate vote evidence per validator and
-	// height, so each piece must be for a different validator or height. Only
-	// use heights in the newer half of the evidence age window, so that the
-	// evidence is committed before it expires.
+	// height, so each piece must be for a different validator or height.
 	targets := &duplicateVoteTargets{
 		privVals:  privVals,
-		minHeight: max(testnet.InitialHeight, evidenceHeight-e2e.EvidenceAgeHeight/2),
+		minHeight: lowestDuplicateVoteHeight(testnet.InitialHeight, evidenceHeight, earliestHeights),
 		height:    evidenceHeight + 1,
 		fetch: func(height int64) (time.Time, *types.ValidatorSet, error) {
 			block, err := client.Block(ctx, &height)
@@ -244,6 +250,39 @@ func generateLightClientAttackEvidence(
 		Header: makeHeaderRandom(chainID, forgedHeight),
 	})
 	return ev, nil
+}
+
+// earliestBlockHeights returns the earliest block height of each node that
+// stores blocks.
+func earliestBlockHeights(ctx context.Context, testnet *e2e.Testnet) ([]int64, error) {
+	heights := make([]int64, 0, len(testnet.Nodes))
+	for _, node := range testnet.Nodes {
+		if node.Mode == e2e.ModeSeed || node.Mode == e2e.ModeLight {
+			continue
+		}
+		client, err := node.Client()
+		if err != nil {
+			return nil, err
+		}
+		status, err := client.Status(ctx)
+		if err != nil {
+			return nil, fmt.Errorf("getting status of %v: %w", node.Name, err)
+		}
+		heights = append(heights, status.SyncInfo.EarliestBlockHeight)
+	}
+	return heights, nil
+}
+
+// lowestDuplicateVoteHeight returns the lowest height to generate duplicate
+// vote evidence for. It is in the newer half of the evidence age window, so
+// that the evidence is committed before it expires, and at or above the
+// earliest block of every node, so that every node can verify the evidence.
+func lowestDuplicateVoteHeight(initialHeight, evidenceHeight int64, earliestHeights []int64) int64 {
+	lowest := max(initialHeight, evidenceHeight-e2e.EvidenceAgeHeight/2)
+	for _, h := range earliestHeights {
+		lowest = max(lowest, h)
+	}
+	return lowest
 }
 
 var errNoDuplicateVoteTarget = errors.New("no height left to generate duplicate vote evidence for")
