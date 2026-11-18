@@ -20,11 +20,18 @@ func PrometheusMetrics(namespace string, labelsAndValues ...string) *Metrics {
 			Name:      "syncing",
 			Help:      "Whether or not a node is state syncing. 1 if yes, 0 if no.",
 		}, labels).With(labelsAndValues...),
+		RepliesNotSent: prometheus.NewCounterFrom(stdprometheus.CounterOpts{
+			Namespace: namespace,
+			Subsystem: MetricsSubsystem,
+			Name:      "replies_not_sent",
+			Help:      "Number of replies to state sync requests that were not sent, by message type and reason.",
+		}, append(labels, "message_type", "reason")).With(labelsAndValues...),
 	}
 }
 
 func NopMetrics() *Metrics {
 	return &Metrics{
-		Syncing: discard.NewGauge(),
+		Syncing:        discard.NewGauge(),
+		RepliesNotSent: discard.NewCounter(),
 	}
 }
