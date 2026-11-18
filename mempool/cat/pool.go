@@ -65,6 +65,8 @@ type TxPool struct {
 	postCheckFn          mempool.PostCheckFunc
 	height               atomic.Int64 // the latest height passed to Update; written under mtx, read lock-free
 	lastPurgeTime        time.Time    // the last time we attempted to purge transactions via the TTL
+	// recheckBatchUnsupportedLogged is set once the RecheckTxs fallback was logged.
+	recheckBatchUnsupportedLogged bool
 
 	// Thread-safe cache of rejected transactions for quick look-up
 	rejectedTxCache *mempool.RejectedTxCache
@@ -792,29 +794,73 @@ func (txmp *TxPool) recheckTransactions() {
 	// cause a deadlock when handleRecheckResult tries to modify the store.
 	wtxs := txmp.store.getOrderedTxs()
 
-	// Issue CheckTx calls for each remaining transaction, and when all the
-	// rechecks are complete signal watchers that transactions may be available.
-	for _, wtx := range wtxs {
-		// The response for this CheckTx is handled by the default recheckTxCallback.
-		rsp, err := txmp.proxyAppConn.CheckTx(context.Background(), &abci.RequestCheckTx{
-			Tx:   wtx.tx.Tx,
-			Type: abci.CheckTxType_Recheck,
-		})
-		if err != nil {
-			txmp.logger.Error("failed to execute CheckTx during recheck",
-				"err", err, "key", fmt.Sprintf("%x", wtx.key()))
-		} else {
-			txmp.handleRecheckResult(wtx, rsp)
+	batch := txmp.config.RecheckBatch && txmp.recheckBatch(wtxs)
+	if !batch {
+		// Issue CheckTx calls for each remaining transaction, and when all the
+		// rechecks are complete signal watchers that transactions may be available.
+		for _, wtx := range wtxs {
+			// The response for this CheckTx is handled by the default recheckTxCallback.
+			rsp, err := txmp.proxyAppConn.CheckTx(context.Background(), &abci.RequestCheckTx{
+				Tx:   wtx.tx.Tx,
+				Type: abci.CheckTxType_Recheck,
+			})
+			if err != nil {
+				txmp.logger.Error("failed to execute CheckTx during recheck",
+					"err", err, "key", fmt.Sprintf("%x", wtx.key()))
+			} else {
+				txmp.handleRecheckResult(wtx, rsp)
+			}
 		}
 	}
 	_ = txmp.proxyAppConn.Flush(context.Background())
 	elapsed := time.Since(start)
 	txmp.metrics.RecheckDurationSeconds.Observe(elapsed.Seconds())
 	txmp.logger.Info("rechecked mempool", "height", txmp.height.Load(), "txs", len(wtxs),
-		"duration_ms", elapsed.Milliseconds())
+		"duration_ms", elapsed.Milliseconds(), "batch", batch)
 
 	// When recheck is complete, trigger a notification for more transactions.
 	txmp.notifyTxsAvailable()
+}
+
+// recheckBatch rechecks wtxs in one RecheckTxs call and applies the responses
+// in order. It returns false, having changed nothing, if the application did not run it.
+func (txmp *TxPool) recheckBatch(wtxs []*wrappedTx) bool {
+	b, ok := txmp.proxyAppConn.(abci.RecheckTxsApplication)
+	if !ok {
+		return txmp.recheckBatchUnsupported()
+	}
+	req := &abci.RequestRecheckTxs{Txs: make([][]byte, len(wtxs))}
+	for i, wtx := range wtxs {
+		req.Txs[i] = wtx.tx.Tx
+	}
+	rsp, err := b.RecheckTxs(context.Background(), req)
+	switch {
+	case errors.Is(err, abci.ErrRecheckTxsUnsupported):
+		return txmp.recheckBatchUnsupported()
+	case err != nil:
+		// The application may have changed its check state, so a per-tx rerun
+		// could evict valid txs. Keep every tx until the next recheck instead.
+		txmp.logger.Error("batch recheck failed; keeping all txs", "err", err)
+	case rsp == nil || len(rsp.Responses) != len(wtxs):
+		txmp.logger.Error("batch recheck returned the wrong number of responses; keeping all txs", "want", len(wtxs))
+	default:
+		for i, wtx := range wtxs {
+			if rsp.Responses[i] != nil { // nil: not rechecked, the tx stays
+				txmp.handleRecheckResult(wtx, rsp.Responses[i])
+			}
+		}
+	}
+	return true
+}
+
+// recheckBatchUnsupported logs, once, that the batch path is configured but unavailable. Support
+// is checked per recheck: a multiplexed application can gain it at an upgrade.
+func (txmp *TxPool) recheckBatchUnsupported() bool {
+	if !txmp.recheckBatchUnsupportedLogged {
+		txmp.recheckBatchUnsupportedLogged = true
+		txmp.logger.Info("mempool.recheck_batch is set but the ABCI client or application does not support RecheckTxs; rechecking one tx at a time")
+	}
+	return false
 }
 
 // availableBytes returns the number of bytes available in the mempool.

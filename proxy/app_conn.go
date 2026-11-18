@@ -148,6 +148,17 @@ func (app *appConnMempool) CheckTxAsync(ctx context.Context, req *types.RequestC
 	return app.appConn.CheckTxAsync(ctx, req)
 }
 
+// RecheckTxs forwards a batch recheck if the underlying client supports it
+// (only the local client does).
+func (app *appConnMempool) RecheckTxs(ctx context.Context, req *types.RequestRecheckTxs) (*types.ResponseRecheckTxs, error) {
+	b, ok := app.appConn.(types.RecheckTxsApplication)
+	if !ok {
+		return nil, types.ErrRecheckTxsUnsupported
+	}
+	defer addTimeSample(app.metrics.MethodTimingSeconds.With("method", "recheck_txs", "type", "sync"))()
+	return b.RecheckTxs(ctx, req)
+}
+
 func (app *appConnMempool) QuerySequence(ctx context.Context, req *types.RequestQuerySequence) (*types.ResponseQuerySequence, error) {
 	defer addTimeSample(app.metrics.MethodTimingSeconds.With("method", "query_sequence", "type", "sync"))()
 	return app.appConn.QuerySequence(ctx, req)
