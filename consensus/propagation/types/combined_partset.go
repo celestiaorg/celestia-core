@@ -2,8 +2,11 @@ package types
 
 import (
 	"math"
+	"runtime"
 	"sync"
 	"sync/atomic"
+
+	"golang.org/x/sync/errgroup"
 
 	"github.com/cometbft/cometbft/crypto/merkle"
 	"github.com/cometbft/cometbft/libs/bits"
@@ -171,6 +174,28 @@ func (cps *CombinedPartSet) AddOriginalPart(part *types.Part) (bool, error) {
 		cps.totalMap.SetIndex(int(part.Index), true)
 	}
 	return added, err
+}
+
+// AddOriginalParts adds original parts with distinct indexes, verifying their
+// proofs concurrently. added[i] and errs[i] are what AddOriginalPart returns for parts[i].
+func (cps *CombinedPartSet) AddOriginalParts(parts []*types.Part) (added []bool, errs []error) {
+	added = make([]bool, len(parts))
+	errs = make([]error, len(parts))
+	cps.mtx.Lock()
+	defer cps.mtx.Unlock()
+	var eg errgroup.Group
+	eg.SetLimit(runtime.GOMAXPROCS(0))
+	for i, part := range parts {
+		eg.Go(func() error {
+			added[i], errs[i] = cps.original.AddPart(part)
+			if added[i] {
+				cps.totalMap.SetIndex(int(part.Index), true)
+			}
+			return nil
+		})
+	}
+	_ = eg.Wait()
+	return added, errs
 }
 
 func (cps *CombinedPartSet) HasPart(index int) bool {
