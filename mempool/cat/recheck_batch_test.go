@@ -118,7 +118,7 @@ func TestTxPool_RecheckBatchDisabled(t *testing.T) {
 }
 
 // An app without RecheckTxs, or one that answers ErrRecheckTxsUnsupported, is
-// probed once and then rechecked per tx.
+// rechecked per tx and the fallback is logged once.
 func TestTxPool_RecheckBatchUnsupported(t *testing.T) {
 	for _, tc := range []struct {
 		name      string
@@ -143,11 +143,44 @@ func TestTxPool_RecheckBatchUnsupported(t *testing.T) {
 			require.True(t, txmp.recheckBatchUnsupported)
 			require.Equal(t, 8+6, rc.rechecks, "falls back to per-tx recheck")
 			if tc.withIface {
-				require.Equal(t, 1, len(ba.batches), "not probed again")
+				require.Len(t, ba.batches, 2, "retried each height")
 			}
 			require.Equal(t, 1, strings.Count(logs.String(), "does not support RecheckTxs"), "logged once")
 		})
 	}
+}
+
+// A multiplexed app that gains RecheckTxs at an upgrade switches to the batch
+// path at the next height, and a later fallback is logged again.
+func TestTxPool_RecheckBatchUnsupportedThenSupported(t *testing.T) {
+	supported := []bool{false, false, true, false}
+	app := &batchApp{recheckCounter: newRecheckCounter()}
+	app.reply = func(n int) (*abci.ResponseRecheckTxs, error) {
+		if !supported[len(app.batches)-1] {
+			return nil, abci.ErrRecheckTxsUnsupported
+		}
+		rsp := &abci.ResponseRecheckTxs{Responses: make([]*abci.ResponseCheckTx, n)}
+		for i := range rsp.Responses {
+			rsp.Responses[i] = &abci.ResponseCheckTx{Code: abci.CodeTypeOK}
+		}
+		return rsp, nil
+	}
+	var logs bytes.Buffer
+	txmp := newBatchPool(t, app, false, log.NewTMLogger(log.NewSyncWriter(&logs)))
+	txs := checkTxs(t, txmp, 10, 0)
+
+	commitTxs(t, txmp, 1, txs[0].tx, txs[1].tx)
+	commitTxs(t, txmp, 2, txs[2].tx, txs[3].tx)
+	require.Equal(t, 8+6, app.rechecks)
+	commitTxs(t, txmp, 3, txs[4].tx, txs[5].tx)
+	require.Equal(t, 8+6, app.rechecks, "height 3 is batched")
+	require.Len(t, app.batches[2], 4)
+	commitTxs(t, txmp, 4, txs[6].tx, txs[7].tx)
+
+	require.Len(t, app.batches, 4)
+	require.Equal(t, 8+6+2, app.rechecks)
+	require.Equal(t, 2, txmp.Size())
+	require.Equal(t, 2, strings.Count(logs.String(), "does not support RecheckTxs"), "once per transition")
 }
 
 // A failed or malformed batch keeps every tx and is not retried per tx, since
