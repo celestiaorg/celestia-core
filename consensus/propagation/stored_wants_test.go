@@ -5,6 +5,7 @@ import (
 	"net"
 	"runtime"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -98,6 +99,12 @@ func TestDroppedStoredCatchupRequestIsRetried(t *testing.T) {
 	ps := storeTestBlock(t, server)
 
 	server.storedPartsBudget = newTokenBucket(0, 0)
+	// Count budget checks to tell when the server has processed the request.
+	var budgetChecks atomic.Int64
+	server.storedPartsBudget.now = func() time.Time {
+		budgetChecks.Add(1)
+		return time.Now()
+	}
 	client.requestTimeout = 200 * time.Millisecond
 	serverPeer := client.getPeer(server.self)
 	require.NotNil(t, serverPeer)
@@ -111,10 +118,8 @@ func TestDroppedStoredCatchupRequestIsRetried(t *testing.T) {
 	}, 2*time.Second, 10*time.Millisecond, "client sends a catchup request")
 
 	// Wait until the server has processed the request and dropped it.
-	clientPeer := server.getPeer(client.self)
-	require.NotNil(t, clientPeer)
 	require.Eventually(t, func() bool {
-		return clientPeer.GetRemainingRequests(storedTestHeight, 0) > 0
+		return budgetChecks.Load() > 0
 	}, 2*time.Second, 10*time.Millisecond)
 	_, parts, _ := client.GetProposal(storedTestHeight, 0)
 	require.True(t, parts.BitArray().IsEmpty(), "server sent no parts")

@@ -478,13 +478,15 @@ func (blockProp *Reactor) handleStoredWants(p *PeerState, wants *proptypes.WantP
 		return
 	}
 
-	p.SetRemainingRequests(height, round, int(wants.MissingPartsCount))
+	// The peer chooses the round, so count its remaining requests locally
+	// instead of in its PeerState, which pruning would not bound.
+	remaining := int(wants.MissingPartsCount)
 	for _, partIndex := range wants.Parts.GetTrueIndices() {
 		// Indices are ascending, so the rest are parity parts.
 		if partIndex >= total {
 			break
 		}
-		if p.GetRemainingRequests(height, round) <= 0 {
+		if remaining <= 0 {
 			break
 		}
 		if !blockProp.storedPartsBudget.allow() {
@@ -510,7 +512,7 @@ func (blockProp *Reactor) handleStoredWants(p *PeerState, wants *proptypes.WantP
 			blockProp.Logger.Debug("failed to send stored part", "peer", peer, "height", height, "part", partIndex)
 			break
 		}
-		p.DecreaseRemainingRequests(height, round, 1)
+		remaining--
 		schema.WriteBlockPart(blockProp.traceClient, height, round, part.Index, true, string(peer), schema.Upload)
 	}
 }
