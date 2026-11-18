@@ -239,7 +239,7 @@ func (env *Environment) proveTx(height int64, index uint32) (types.ShareProof, e
 // end exclusive.
 // Deprecated: Use ProveSharesV2 instead.
 func (env *Environment) ProveShares(
-	_ *rpctypes.Context,
+	ctx *rpctypes.Context,
 	height int64,
 	startShare uint64,
 	endShare uint64,
@@ -248,11 +248,15 @@ func (env *Environment) ProveShares(
 		pShareProof cmtproto.ShareProof
 		shareProof  types.ShareProof
 	)
+	// Check the range before loading the block.
+	if startShare >= endShare {
+		return shareProof, fmt.Errorf("start share %d must be less than end share %d", startShare, endShare)
+	}
 	rawBlock, err := loadRawBlock(env.BlockStore, height)
 	if err != nil {
 		return shareProof, err
 	}
-	res, err := env.ProxyAppQuery.Query(context.Background(), &abcitypes.RequestQuery{
+	res, err := env.ProxyAppQuery.Query(ctx.Context(), &abcitypes.RequestQuery{
 		Data: rawBlock,
 		Path: fmt.Sprintf(consts.ShareInclusionProofQueryPath, startShare, endShare),
 	})

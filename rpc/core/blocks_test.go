@@ -498,3 +498,14 @@ func TestBlockSearchResponseByteBudget(t *testing.T) {
 		require.Len(t, res.Blocks, numBlocks)
 	})
 }
+
+// An invalid share range is rejected before any block data is loaded. The
+// block store mock has no expectations, so any call to it fails the test.
+func TestProveSharesChecksRangeBeforeLoadingBlock(t *testing.T) {
+	env := &Environment{BlockStore: &mocks.BlockStore{}}
+
+	for _, tc := range []struct{ start, end uint64 }{{5, 5}, {6, 5}} {
+		_, err := env.ProveShares(&rpctypes.Context{}, 1, tc.start, tc.end)
+		require.ErrorContains(t, err, "must be less than end share")
+	}
+}
