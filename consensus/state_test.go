@@ -2996,6 +2996,45 @@ func TestCommitFromPreviousRound(t *testing.T) {
 	ensureNewRound(newRoundCh, height+1, 0)
 }
 
+// What we want:
+// P0 is in the commit step for round 0 and still waiting for the block. A +2/3 prevote
+// quorum for a later round must not move it out of the commit step, so it still commits
+// once the block arrives.
+func TestCommitStepIgnoresLaterRoundQuorum(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	cs1, vss := randState(4)
+	vs2, vs3, vs4 := vss[1], vss[2], vss[3]
+	height, round := cs1.rs.Height, int32(1)
+
+	partSize := types.BlockPartSizeBytes
+
+	newRoundCh := subscribe(cs1.eventBus, types.EventQueryNewRound)
+	validBlockCh := subscribe(cs1.eventBus, types.EventQueryValidBlock)
+
+	prop, propBlock := decideProposal(ctx, t, cs1, vs2, vs2.Height, vs2.Round)
+	propBlockHash := propBlock.Hash()
+	propBlockParts, err := propBlock.MakePartSet(partSize)
+	require.NoError(t, err)
+
+	startTestRound(cs1, height, round)
+	ensureNewRound(newRoundCh, height, round)
+
+	// +2/3 precommits for round 0 put P0 in the commit step.
+	signAddVotes(cs1, cmtproto.PrecommitType, propBlockHash, propBlockParts.Header(), true, vs2, vs3, vs4)
+	ensureNewValidBlock(validBlockCh, height, round)
+	require.Equal(t, cstypes.RoundStepCommit, cs1.GetRoundState().Step)
+
+	// +2/3 nil prevotes for round 2.
+	incrementRound(vs2, vs3, vs4)
+	incrementRound(vs2, vs3, vs4)
+	signAddVotes(cs1, cmtproto.PrevoteType, nil, types.PartSetHeader{}, false, vs2, vs3, vs4)
+
+	require.NoError(t, cs1.SetProposalAndBlock(prop, propBlock, propBlockParts, "some peer"))
+	ensureNewRound(newRoundCh, height+1, 0)
+}
+
 type fakeTxNotifier struct {
 	ch chan struct{}
 }

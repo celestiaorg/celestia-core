@@ -1415,7 +1415,9 @@ func (cs *State) handleTxsAvailable() {
 func (cs *State) enterNewRound(height int64, round int32) {
 	logger := cs.Logger.With("height", height, "round", round)
 
-	if cs.rs.Height != height || round < cs.rs.Round || (cs.rs.Round == round && cs.rs.Step != cstypes.RoundStepNewHeight) {
+	// Once in the commit step the height is decided, so no later round can start.
+	if cs.rs.Height != height || round < cs.rs.Round || (cs.rs.Round == round && cs.rs.Step != cstypes.RoundStepNewHeight) ||
+		cs.rs.Step == cstypes.RoundStepCommit {
 		logger.Debug(
 			"entering new round with invalid args",
 			"current", log.NewLazySprintf("%v/%v/%v", cs.rs.Height, cs.rs.Round, cs.rs.Step),
