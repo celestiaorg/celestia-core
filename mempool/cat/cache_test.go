@@ -784,5 +784,13 @@ func seenTrackerKeys(entries []*SeenEntry) []types.TxKey {
 
 // pendingTxInfo returns the oldest signer/sequence claim queued for txKey.
 func pendingTxInfo(s *SeenTracker, txKey types.TxKey) (signer []byte, sequence uint64, ok bool) {
-	return s.PendingTxInfo(txKey)
+	s.mtx.Lock()
+	defer s.mtx.Unlock()
+
+	entry, found := s.txByKey[txKey]
+	if !found || len(entry.claims) == 0 {
+		return nil, 0, false
+	}
+	claim := entry.claims[0]
+	return append([]byte(nil), claim.signer...), claim.sequence, true
 }

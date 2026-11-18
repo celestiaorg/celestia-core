@@ -72,6 +72,15 @@ func (e *SeenEntry) clone() *SeenEntry {
 	return cp
 }
 
+// announcedBy reports whether peer announced the claim this copy is queued
+// under or, for an entry that is not such a copy, any of its claims.
+func (e *SeenEntry) announcedBy(peer uint16) bool {
+	if e.pendingTxInfo != nil {
+		return e.pendingTxInfo.announcedBy(peer)
+	}
+	return e.claimFrom(peer) != nil
+}
+
 // claimFrom returns the claim peer announced, if any.
 func (e *SeenEntry) claimFrom(peer uint16) *PendingTxInfo {
 	for _, claim := range e.claims {
@@ -82,7 +91,9 @@ func (e *SeenEntry) claimFrom(peer uint16) *PendingTxInfo {
 	return nil
 }
 
-// peerIDs returns candidate peers for the request path.
+// peerIDs returns candidate peers for the request path. Peers that announced
+// a claim come first, so a tx requested for gap-fill is delivered by a peer
+// whose metadata applies to it.
 func (e *SeenEntry) peerIDs() []uint16 {
 	if len(e.peers) == 0 {
 		return nil
@@ -90,7 +101,14 @@ func (e *SeenEntry) peerIDs() []uint16 {
 
 	out := make([]uint16, 0, len(e.peers))
 	for peer := range e.peers {
-		out = append(out, peer)
+		if e.announcedBy(peer) {
+			out = append(out, peer)
+		}
+	}
+	for peer := range e.peers {
+		if !e.announcedBy(peer) {
+			out = append(out, peer)
+		}
 	}
 
 	return out
@@ -478,22 +496,6 @@ func (s *SeenTracker) Get(txKey types.TxKey) *SeenEntry {
 	return entry.clone()
 }
 
-// PendingTxInfo reports the signer/sequence under which txKey is queued for
-// future gap-fill; ok is false if it is unknown or tracked only by peer. The
-// returned signer is a copy.
-func (s *SeenTracker) PendingTxInfo(txKey types.TxKey) (signer []byte, sequence uint64, ok bool) {
-	s.mtx.Lock()
-	defer s.mtx.Unlock()
-
-	entry, found := s.txByKey[txKey]
-	if !found || len(entry.claims) == 0 {
-		return nil, 0, false
-	}
-	claim := entry.claims[0]
-
-	return append([]byte(nil), claim.signer...), claim.sequence, true
-}
-
 // PendingTxInfoFrom reports the signer/sequence claim that peer announced
 // for txKey; ok is false if peer announced no queued claim. The returned
 // signer is a copy.
@@ -542,6 +544,19 @@ func (s *SeenTracker) PeersForTx(txKey types.TxKey) map[uint16]struct{} {
 	}
 
 	return out
+}
+
+// RequestCandidates returns the peers known to have txKey, with peers that
+// announced a claim for it first.
+func (s *SeenTracker) RequestCandidates(txKey types.TxKey) []uint16 {
+	s.mtx.Lock()
+	defer s.mtx.Unlock()
+
+	entry, ok := s.txByKey[txKey]
+	if !ok {
+		return nil
+	}
+	return entry.peerIDs()
 }
 
 // Len returns the number of unique tx keys being tracked.
