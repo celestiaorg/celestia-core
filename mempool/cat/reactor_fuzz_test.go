@@ -571,8 +571,14 @@ func (h *catFuzzHarness) checkSeenTracker(active func(uint16) bool) {
 			counts[pid]++
 		}
 		require.LessOrEqual(t, len(e.claims), len(e.peers), "claims outnumber peers")
+		backers := map[uint16]struct{}{}
 		for _, c := range e.claims {
 			require.Same(t, e, c.entry)
+			for pid := range c.announcers {
+				require.Contains(t, e.peers, pid, "claim announced by a peer without the tx")
+				require.NotContains(t, backers, pid, "peer backs two claims")
+				backers[pid] = struct{}{}
+			}
 		}
 		pending += len(e.claims)
 	}
