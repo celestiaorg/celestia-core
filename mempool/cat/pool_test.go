@@ -16,6 +16,7 @@ import (
 
 	"github.com/celestiaorg/go-square/v4/share"
 	squaretx "github.com/celestiaorg/go-square/v4/tx"
+	gokitmetrics "github.com/go-kit/kit/metrics"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -272,6 +273,31 @@ func TestTxPool_Recheck(t *testing.T) {
 	newTxs := checkTxs(t, txmp, 3, 0)
 	require.Equal(t, 8, txmp.Size()) // 5 remaining + 3 new = 8
 	require.Len(t, newTxs, 3)
+}
+
+// histogramRecorder records every observed value.
+type histogramRecorder struct{ v []float64 }
+
+func (h *histogramRecorder) With(...string) gokitmetrics.Histogram { return h }
+func (h *histogramRecorder) Observe(v float64)                     { h.v = append(h.v, v) }
+
+func TestTxPool_RecheckMetrics(t *testing.T) {
+	metrics := mempool.NopMetrics()
+	recheckDuration := &histogramRecorder{}
+	metrics.RecheckDurationSeconds = recheckDuration
+	txmp := setup(t, 0, WithMetrics(metrics))
+	txmp.config.Recheck = true
+
+	txs := checkTxs(t, txmp, 10, 0)
+	committed := []*types.CachedTx{{Tx: txs[0].tx}, {Tx: txs[1].tx}}
+	responses := []*abci.ExecTxResult{{Code: abci.CodeTypeOK}, {Code: abci.CodeTypeOK}}
+
+	txmp.Lock()
+	require.NoError(t, txmp.Update(1, committed, responses, nil, nil))
+	txmp.Unlock()
+
+	require.Equal(t, 8, txmp.Size())
+	require.Len(t, recheckDuration.v, 1)
 }
 
 // TestTxPool_RecheckConcurrency tests that recheck works correctly under
