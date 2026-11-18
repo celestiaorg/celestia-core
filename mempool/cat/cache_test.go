@@ -428,6 +428,29 @@ func TestSeenTrackerAddIndexesPendingTx(t *testing.T) {
 		require.Len(t, tracker.PendingTxsForSigner(signerB), 1)
 		require.Equal(t, map[uint16]struct{}{peer1: {}, peer2: {}}, tracker.PeersForTx(txKey))
 	})
+
+	t.Run("peer switching to another peer's claim keeps both announcers", func(t *testing.T) {
+		tracker := NewSeenTracker()
+		txKey := types.Tx("tx").Key()
+		require.True(t, tracker.AddPendingTx(txKey, peer1, signer, 5))
+		require.True(t, tracker.AddPendingTx(txKey, peer2, signer, 7))
+
+		// peer1 moves to the claim peer2 already announced: its old claim
+		// goes, and peer2 still backs the claim they now share.
+		require.True(t, tracker.AddPendingTx(txKey, peer1, signer, 7))
+		claims := tracker.PendingClaims(txKey)
+		require.Len(t, claims, 1)
+		require.Equal(t, uint64(7), claims[0].sequence)
+		require.Equal(t, map[uint16]struct{}{peer1: {}, peer2: {}}, claims[0].announcers)
+
+		// peer2's attribution outlives peer1.
+		tracker.RemovePeer(peer1)
+		gotSigner, seq, ok := tracker.PendingTxInfoFrom(txKey, peer2)
+		require.True(t, ok)
+		require.Equal(t, signer, gotSigner)
+		require.Equal(t, uint64(7), seq)
+		require.Equal(t, []uint64{7}, seenTrackerSequences(tracker.PendingTxsForSigner(signer)))
+	})
 }
 
 func TestSeenTrackerPendingTxInfo(t *testing.T) {
