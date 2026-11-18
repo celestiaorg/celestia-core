@@ -748,7 +748,7 @@ func (a *addrBook) addBadPeer(addr *p2p.NetAddress, banTime time.Duration) bool 
 		return false
 	}
 
-	if _, alreadyBadPeer := a.badPeers[addr.ID]; !alreadyBadPeer {
+	if _, alreadyBadPeer := a.badPeers[addr.ID]; !alreadyBadPeer && len(a.badPeers) < maxBadPeers {
 		// add to bad peer list
 		ka.ban(banTime)
 		a.badPeers[addr.ID] = ka

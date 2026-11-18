@@ -401,6 +401,26 @@ func TestBanBadPeers(t *testing.T) {
 	assert.False(t, book.IsGood(addr))
 }
 
+func TestBadPeersAreBounded(t *testing.T) {
+	fname := createTempFileName("addrbook_test")
+	defer deleteTempFile(fname)
+
+	book := NewAddrBook(fname, false).(*addrBook)
+
+	for len(book.badPeers) < maxBadPeers {
+		addr := randIPv4Address(t)
+		_ = book.AddAddress(addr, addr)
+		book.MarkBad(addr, time.Hour)
+	}
+
+	// The list is full: one more bad peer is removed but not remembered.
+	addr := randIPv4Address(t)
+	require.NoError(t, book.AddAddress(addr, addr))
+	book.MarkBad(addr, time.Hour)
+	assert.False(t, book.HasAddress(addr))
+	assert.Equal(t, maxBadPeers, len(book.badPeers))
+}
+
 func TestAddrBookEmpty(t *testing.T) {
 	fname := createTempFileName("addrbook_test")
 	defer deleteTempFile(fname)
