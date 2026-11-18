@@ -421,6 +421,26 @@ func TestBadPeersAreBounded(t *testing.T) {
 	assert.Equal(t, maxBadPeers, len(book.badPeers))
 }
 
+func TestExpiredBansMakeRoomForNewBans(t *testing.T) {
+	fname := createTempFileName("addrbook_test")
+	defer deleteTempFile(fname)
+
+	book := NewAddrBook(fname, false).(*addrBook)
+
+	// Fill the list with bans that are already over.
+	for len(book.badPeers) < maxBadPeers {
+		addr := randIPv4Address(t)
+		_ = book.AddAddress(addr, addr)
+		book.MarkBad(addr, -time.Second)
+	}
+
+	addr := randIPv4Address(t)
+	require.NoError(t, book.AddAddress(addr, addr))
+	book.MarkBad(addr, time.Hour)
+	assert.True(t, book.IsBanned(addr))
+	assert.Equal(t, 1, len(book.badPeers))
+}
+
 func TestAddrBookEmpty(t *testing.T) {
 	fname := createTempFileName("addrbook_test")
 	defer deleteTempFile(fname)
