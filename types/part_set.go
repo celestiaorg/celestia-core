@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"runtime"
+	"slices"
 
 	"golang.org/x/sync/errgroup"
 
@@ -426,6 +427,79 @@ func pruneLastPart(data [][]byte, lastIndex uint32, lastPartLen int) {
 	}
 }
 
+// shards returns the parts of ops then eps, nil where missing, with the short
+// last original zero padded as Encode did.
+func shards(ops, eps *PartSet) [][]byte {
+	total := int(ops.Total())
+	data := make([][]byte, total+int(eps.Total()))
+	ops.mtx.Lock()
+	for i := 0; i < total; i++ {
+		data[i] = ops.getPartBytes(i)
+		if data[i] != nil && len(data[i]) < int(BlockPartSizeBytes) {
+			padded := make([]byte, BlockPartSizeBytes)
+			copy(padded, data[i])
+			data[i] = padded
+		}
+	}
+	ops.mtx.Unlock()
+	eps.mtx.Lock()
+	for i := 0; i < int(eps.Total()); i++ {
+		data[total+i] = eps.getPartBytes(i)
+	}
+	eps.mtx.Unlock()
+	return data
+}
+
+// DecodeOriginals rebuilds only the missing original parts, without parity,
+// and adds each with its proof, which AddPart verifies. It returns the parts
+// added, even on error.
+func DecodeOriginals(ops, eps *PartSet, lastPartLen int, proofs []*merkle.Proof) ([]*Part, error) {
+	total := int(ops.Total())
+	if int(eps.Total()) != total || len(proofs) < total {
+		return nil, fmt.Errorf("cannot decode %d original parts with %d parity parts and %d proofs", total, eps.Total(), len(proofs))
+	}
+	if lastPartLen <= 0 || lastPartLen > int(BlockPartSizeBytes) {
+		return nil, fmt.Errorf("invalid last part length %d", lastPartLen)
+	}
+	missing := ops.BitArray().Not().GetTrueIndices()
+	if len(missing) == 0 {
+		return nil, nil
+	}
+	enc, err := reedsolomon.New(total, total)
+	if err != nil {
+		return nil, err
+	}
+	data := shards(ops, eps)
+	if err := enc.ReconstructData(data); err != nil {
+		return nil, err
+	}
+	// a byzantine proposer can commit to short parity parts.
+	if len(data[total-1]) < lastPartLen {
+		return nil, fmt.Errorf("reconstructed last part has %d bytes, want %d", len(data[total-1]), lastPartLen)
+	}
+	pruneLastPart(data, uint32(total-1), lastPartLen)
+
+	// AddPart is safe for concurrent calls on distinct indexes.
+	added := make([]*Part, len(missing))
+	var g errgroup.Group
+	g.SetLimit(runtime.GOMAXPROCS(0))
+	for k, i := range missing {
+		g.Go(func() error {
+			part := &Part{Index: uint32(i), Bytes: data[i], Proof: *proofs[i]}
+			ok, err := ops.AddPart(part)
+			if err != nil {
+				return fmt.Errorf("reconstructed part %d: %w", i, err)
+			}
+			if ok {
+				added[k] = part
+			}
+			return nil
+		})
+	}
+	err = g.Wait()
+	return slices.DeleteFunc(added, func(p *Part) bool { return p == nil }), err
+}
+
 // Decode uses the block parts that are provided to reconstruct the original
 // data. It throws an error if the PartSet is incomplete or the resulting root
 // is different from that in the PartSetHeader. Parts are fully complete with
@@ -436,37 +510,7 @@ func Decode(ops, eps *PartSet, lastPartLen int) (*PartSet, *PartSet, error) {
 		return nil, nil, err
 	}
 
-	data := make([][]byte, ops.Total()+eps.Total())
-	ops.mtx.Lock()
-	for i := 0; i < int(ops.Total()); i++ {
-		chunk := ops.getPartBytes(i)
-		if chunk == nil {
-			data[i] = nil
-			continue
-		}
-		if len(chunk) != int(BlockPartSizeBytes) {
-			padded := make([]byte, BlockPartSizeBytes)
-			count := copy(padded, chunk)
-			if count < len(chunk) {
-				return nil, nil, fmt.Errorf("unpadded part with index %d copy failed %d < %d", i, count, len(chunk))
-			}
-			chunk = padded
-		}
-		data[i] = chunk
-	}
-	ops.mtx.Unlock()
-
-	eps.mtx.Lock()
-	for i := 0; i < int(eps.Total()); i++ {
-		chunk := eps.getPartBytes(i)
-		if chunk == nil {
-			data[int(ops.Total())+i] = nil
-			continue
-		}
-		data[int(ops.Total())+i] = chunk
-	}
-	eps.mtx.Unlock()
-
+	data := shards(ops, eps)
 	err = enc.Reconstruct(data)
 	if err != nil {
 		return nil, nil, err
