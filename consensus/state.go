@@ -1395,6 +1395,20 @@ func (cs *State) defaultDecideProposal(height int64, round int32) {
 			return
 		}
 		blockParts = parts
+
+		// Re-propose the exact parts that received the polka. Validators
+		// locked on ValidBlock prevote its original BlockID, so a re-encoding
+		// with a different PartSetHeader would split prevotes and stall the
+		// height. Re-encoding gives the same parts for any canonically encoded
+		// block; it differs only when the original proposer encoded the
+		// block non-canonically. The stored parts have no tx positions, so
+		// the compact block then carries no tx metadata and peers fetch the
+		// parts instead of recovering them from their mempool.
+		if !parts.HasHeader(cs.rs.ValidBlockParts.Header()) {
+			cs.Logger.Info("re-proposing valid block parts that differ from their re-encoding",
+				"height", height, "round", round, "valid_round", cs.rs.ValidRound)
+			blockParts = cs.rs.ValidBlockParts
+		}
 	} else {
 		// Create a new proposal block from state/txs from the mempool.
 		var err error
@@ -1431,6 +1445,7 @@ func (cs *State) defaultDecideProposal(height int64, round int32) {
 		}
 
 		cs.Logger.Debug("verified proposal signature", "proposal", proposal)
+<<<<<<< HEAD
 		metaData := make([]proptypes.TxMetaData, len(block.Txs))
 		hashes := block.CachedHashes()
 		for i, pos := range blockParts.TxPos {
@@ -1442,6 +1457,10 @@ func (cs *State) defaultDecideProposal(height int64, round int32) {
 		}
 
 		err = cs.propagator.ProposeBlock(proposal, blockParts, metaData)
+=======
+		// TxPos is empty when re-proposing stored ValidBlockParts (see above).
+		err = cs.propagator.ProposeBlock(proposal, blockParts, txMetaData(block, blockParts))
+>>>>>>> 58aa179 (fix(consensus): [high] re-propose ValidBlock with the parts that got the polka (#3631))
 		if err != nil {
 			cs.Logger.Error("propagation reactor failed to propose the block", "err", err)
 			if !cs.gossipDataEnabled.Load() {
@@ -1468,6 +1487,55 @@ func (cs *State) defaultDecideProposal(height int64, round int32) {
 	}
 }
 
+<<<<<<< HEAD
+=======
+// txMetaData returns the propagation metadata of block. It is empty when parts
+// carry no tx positions, i.e. did not come from block.MakePartSet.
+func txMetaData(block *types.Block, parts *types.PartSet) []proptypes.TxMetaData {
+	metaData := make([]proptypes.TxMetaData, len(parts.TxPos))
+	hashes := block.CachedHashes()
+	for i, pos := range parts.TxPos {
+		metaData[i] = proptypes.TxMetaData{
+			Start: pos.Start,
+			End:   pos.End,
+			Hash:  hashes[i],
+		}
+	}
+	return metaData
+}
+
+// reseedPropagator hands our replayed proposal back to the propagation reactor, which starts
+// empty after a restart. Only the round's proposer can: peers verify the compact block against its key.
+func (cs *State) reseedPropagator() {
+	rs := &cs.rs
+	prop, block := rs.Proposal, rs.ProposalBlock
+	if prop == nil || block == nil || prop.Height != rs.Height || prop.Round != rs.Round ||
+		cs.privValidatorPubKey == nil || !cs.isProposer(cs.privValidatorPubKey.Address()) {
+		return
+	}
+	block.FillCachedHashes()
+	parts, err := block.MakePartSet(types.BlockPartSizeBytes)
+	if err == nil && !parts.HasHeader(prop.BlockID.PartSetHeader) &&
+		rs.ProposalBlockParts.HasHeader(prop.BlockID.PartSetHeader) && rs.ProposalBlockParts.IsComplete() {
+		// A re-proposed ValidBlock keeps the parts that got the polka, which
+		// may differ from its re-encoding; use the replayed parts.
+		parts = rs.ProposalBlockParts
+	}
+	if err != nil || !parts.HasHeader(prop.BlockID.PartSetHeader) {
+		cs.Logger.Error("cannot rebuild the replayed proposal's part set", "height", prop.Height, "round", prop.Round, "err", err)
+		return
+	}
+	// A peer's copy of our compact block may already be held without its parts; fill it.
+	if _, _, has := cs.propagator.GetProposal(prop.Height, prop.Round); has {
+		cs.propagator.AddProposedBlock(prop.Height, prop.Round, parts)
+		return
+	}
+	if err := cs.propagator.ProposeBlock(prop, parts, txMetaData(block, parts)); err != nil {
+		cs.Logger.Error("failed to re-seed the propagation reactor", "height", prop.Height, "round", prop.Round, "err", err)
+	}
+}
+
+>>>>>>> 58aa179 (fix(consensus): [high] re-propose ValidBlock with the parts that got the polka (#3631))
 // Returns true if the proposal block is complete &&
 // (if POLRound was proposed, we have +2/3 prevotes from there).
 func (cs *State) isProposalComplete() bool {
