@@ -35,6 +35,8 @@ type chunkQueue struct {
 	chunkSenders   map[uint32]p2p.ID          // the peer who sent the given chunk
 	chunkAllocated map[uint32]bool            // chunks that have been allocated via Allocate()
 	chunkReturned  map[uint32]bool            // chunks returned via Next()
+	nextAllocate   uint32                     // all chunks below this index are allocated
+	nextReturn     uint32                     // all chunks below this index are returned
 	waiters        map[uint32][]chan<- uint32 // signals WaitFor() waiters about chunk arrival
 }
 
@@ -115,9 +117,10 @@ func (q *chunkQueue) Allocate() (uint32, error) {
 	if uint32(len(q.chunkAllocated)) >= q.snapshot.Chunks {
 		return 0, errDone
 	}
-	for i := uint32(0); i < q.snapshot.Chunks; i++ {
+	for i := q.nextAllocate; i < q.snapshot.Chunks; i++ {
 		if !q.chunkAllocated[i] {
 			q.chunkAllocated[i] = true
+			q.nextAllocate = i + 1
 			return i, nil
 		}
 	}
@@ -170,6 +173,8 @@ func (q *chunkQueue) discard(index uint32) error {
 	delete(q.chunkFiles, index)
 	delete(q.chunkReturned, index)
 	delete(q.chunkAllocated, index)
+	q.nextReturn = min(q.nextReturn, index)
+	q.nextAllocate = min(q.nextAllocate, index)
 	return nil
 }
 
@@ -267,8 +272,9 @@ func (q *chunkQueue) nextUp() (uint32, error) {
 	if q.snapshot == nil {
 		return 0, errDone
 	}
-	for i := uint32(0); i < q.snapshot.Chunks; i++ {
+	for i := q.nextReturn; i < q.snapshot.Chunks; i++ {
 		if !q.chunkReturned[i] {
+			q.nextReturn = i
 			return i, nil
 		}
 	}
@@ -280,6 +286,7 @@ func (q *chunkQueue) Retry(index uint32) {
 	q.Lock()
 	defer q.Unlock()
 	delete(q.chunkReturned, index)
+	q.nextReturn = min(q.nextReturn, index)
 }
 
 // RetryAll schedules all chunks to be retried, without refetching them.
@@ -287,6 +294,7 @@ func (q *chunkQueue) RetryAll() {
 	q.Lock()
 	defer q.Unlock()
 	q.chunkReturned = make(map[uint32]bool)
+	q.nextReturn = 0
 }
 
 // Size returns the total number of chunks for the snapshot and queue, or 0 when closed.
