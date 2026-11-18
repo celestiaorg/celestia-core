@@ -177,6 +177,22 @@ func TestChunkQueue_Allocate(t *testing.T) {
 	assert.Equal(t, errDone, err)
 }
 
+// Allocating every chunk of a large snapshot must not rescan the queue each time.
+func TestChunkQueue_Allocate_ManyChunks(t *testing.T) {
+	const chunks = 100000
+	queue, err := newChunkQueue(&snapshot{Height: 3, Format: 1, Chunks: chunks, Hash: []byte{1}}, "")
+	require.NoError(t, err)
+	defer queue.Close()
+
+	for i := uint32(0); i < chunks; i++ {
+		index, err := queue.Allocate()
+		require.NoError(t, err)
+		require.Equal(t, i, index)
+	}
+	_, err = queue.Allocate()
+	require.ErrorIs(t, err, errDone)
+}
+
 func TestChunkQueue_Discard(t *testing.T) {
 	queue, teardown := setupChunkQueue(t)
 	defer teardown()
