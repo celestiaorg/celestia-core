@@ -179,7 +179,7 @@ func (params ConsensusParams) ValidateBasic() error {
 
 	maxBytes := params.Block.MaxBytes
 	if maxBytes == -1 {
-		maxBytes = int64(MaxBlockSizeBytes)
+		maxBytes = DefaultMaxBlockSizeBytes
 	}
 	if params.Evidence.MaxBytes > maxBytes {
 		return fmt.Errorf("evidence.MaxBytesEvidence is greater than upper bound, %d > %d",

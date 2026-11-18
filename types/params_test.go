@@ -59,6 +59,10 @@ func TestConsensusParamsValidationWithReducedMaxBlockSize(t *testing.T) {
 
 	params := makeParams(32*1024*1024, 0, 2, 0, valEd25519, 0)
 	require.NoError(t, params.ValidateBasic())
+
+	// Unlimited block size with evidence above the reduced limit.
+	params = makeParams(-1, 0, 2, 16*1024*1024, valEd25519, 0)
+	require.NoError(t, params.ValidateBasic())
 }
 
 func makeParams(
