@@ -543,7 +543,13 @@ func (blockProp *Reactor) handleRecoveryPart(peer p2p.ID, part *proptypes.Recove
 		return
 	}
 
-	if parts.HasPart(int(part.Index)) || parts.IsComplete() {
+	// a part is still taken after the originals complete: it was requested,
+	// and peers may want it because the request advertised it.
+	if parts.HasPart(int(part.Index)) {
+		return
+	}
+	// catchup entries hold no parity set to add to.
+	if part.Index >= parts.Original().Total() && parts.Parity().Total() == 0 {
 		return
 	}
 
@@ -611,78 +617,58 @@ func (blockProp *Reactor) handleRecoveryPart(peer p2p.ID, part *proptypes.Recove
 
 	go blockProp.clearWants(part, *proof)
 
-	// attempt to decode the remaining block parts. If they are decoded, then
-	// this node should send all the wanted parts that nodes have requested. cp
-	// == nil means that there was no compact block available and this was
-	// during catchup. todo: use the bool found in the state instead of checking
-	// for nil.
-	if parts.CanDecode() {
-		if parts.IsDecoding.Load() {
-			return
-		}
-		parts.IsDecoding.Store(true)
-		defer parts.IsDecoding.Store(false)
-
-		missingOriginalParts := parts.Original().BitArray().Not()
-
-		err := parts.Decode()
-		if err != nil {
-			blockProp.Logger.Error("failed to decode parts", "peer", peer, "height", part.Height, "round", part.Round, "error", err)
-			return
-		}
-
-		// broadcast haves for all parts since we've decoded the entire block.
-		// rely on the broadcast method to ensure that parts are only sent once.
-		haves := &proptypes.HaveParts{
-			Height: part.Height,
-			Round:  part.Round,
-		}
-
-		for i := uint32(0); i < parts.Total(); i++ {
-			p, has := parts.GetPart(i)
-			if !has {
-				blockProp.Logger.Error("failed to get decoded part", "peer", peer, "height", part.Height, "round", part.Round, "part", i)
-				continue
-			}
-			// only send original parts to the consensus reactor
-			if i < parts.Original().Total() && missingOriginalParts.GetIndex(int(i)) {
-				select {
-				case <-blockProp.ctx.Done():
-					return
-				case blockProp.partChan <- types.PartInfo{
-					Part: &types.Part{
-						Index: p.Index,
-						Bytes: p.Bytes,
-						Proof: p.GetProof(),
-					},
-					Height: part.Height,
-					Round:  part.Round,
-				}:
-				}
-			}
-			haves.Parts = append(haves.Parts, proptypes.PartMetaData{Index: i, Hash: p.Proof.LeafHash})
-		}
-
-		blockProp.broadcastHaves(haves, peer, int(parts.Total()))
-
-		// clear all the wants if they exist
-		go func(height int64, round int32, parts *proptypes.CombinedPartSet) {
-			for i := uint32(0); i < parts.Total(); i++ {
-				p, _ := parts.GetPart(i)
-				pbz := make([]byte, len(p.Bytes))
-				copy(pbz, p.Bytes)
-				msg := &proptypes.RecoveryPart{
-					Height: height,
-					Round:  round,
-					Index:  i,
-					Data:   pbz,
-				}
-				blockProp.clearWants(msg, p.GetProof())
-			}
-		}(part.Height, part.Round, parts)
-
+	// consensus only needs the originals: decode only when some are missing,
+	// and then rebuild just those, never parity.
+	if parts.IsComplete() || !parts.CanDecode() {
 		return
 	}
+	if !parts.IsDecoding.CompareAndSwap(false, true) {
+		return
+	}
+	proofs, err := cb.Proofs()
+	if err != nil {
+		parts.IsDecoding.Store(false)
+		blockProp.Logger.Error("failed to get proofs from compact block", "peer", peer, "height", part.Height, "round", part.Round, "error", err)
+		return
+	}
+	recovered, err := parts.RecoverOriginals(proofs)
+	parts.IsDecoding.Store(false)
+	if err != nil {
+		blockProp.Logger.Error("failed to recover original parts", "peer", peer, "height", part.Height, "round", part.Round, "error", err)
+	}
+	if len(recovered) == 0 {
+		return
+	}
+	blockProp.publishLocalParts(part.Height, part.Round, recovered)
+	blockProp.broadcastLocalHaves(cb, parts)
+}
+
+// publishLocalParts hands parts this node added itself to consensus and
+// serves the wants parked on them.
+func (blockProp *Reactor) publishLocalParts(height int64, round int32, parts []*types.Part) {
+	go func() {
+		for _, p := range parts {
+			blockProp.clearWants(&proptypes.RecoveryPart{Height: height, Round: round, Index: p.Index, Data: p.Bytes}, p.GetProof())
+		}
+	}()
+	for _, p := range parts {
+		select {
+		case <-blockProp.ctx.Done():
+			return
+		case blockProp.partChan <- types.PartInfo{Part: p, Height: height, Round: round}:
+		}
+	}
+}
+
+// broadcastLocalHaves advertises the parts this node holds, never parity it
+// does not hold.
+func (blockProp *Reactor) broadcastLocalHaves(cb *proptypes.CompactBlock, parts *proptypes.CombinedPartSet) {
+	held := parts.BitArray()
+	haves := &proptypes.HaveParts{Height: cb.Proposal.Height, Round: cb.Proposal.Round}
+	for _, index := range held.GetTrueIndices() {
+		haves.Parts = append(haves.Parts, proptypes.PartMetaData{Index: uint32(index), Hash: cb.PartsHashes[index]})
+	}
+	blockProp.broadcastHaves(haves, blockProp.self, held.Size())
 }
 
 // clearWants checks the wantState to see if any peers want the given part, if
