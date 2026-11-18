@@ -130,6 +130,11 @@ func (r *Reactor) Receive(e p2p.Envelope) {
 	case SnapshotChannel:
 		switch msg := e.Message.(type) {
 		case *ssproto.SnapshotsRequest:
+			if sendQueueFull(e.Src, SnapshotChannel) {
+				r.Logger.Debug("Skipped snapshots request, send queue is full", "peer", e.Src.ID())
+				r.countReplyNotSent(msgTypeSnapshotsResponse, reasonSendQueueFull)
+				return
+			}
 			snapshots, err := r.recentSnapshots(recentSnapshots)
 			if err != nil {
 				r.Logger.Error("Failed to fetch snapshots", "err", err)
@@ -138,7 +143,9 @@ func (r *Reactor) Receive(e p2p.Envelope) {
 			for _, snapshot := range snapshots {
 				r.Logger.Trace("Advertising snapshot", "height", snapshot.Height,
 					"format", snapshot.Format, "peer", e.Src.ID())
-				e.Src.Send(p2p.Envelope{
+				// Use a non-blocking send so a slow peer cannot hold up Receive.
+				// The peer asks again if the response is dropped.
+				if !e.Src.TrySend(p2p.Envelope{
 					ChannelID: e.ChannelID,
 					Message: &ssproto.SnapshotsResponse{
 						Height:   snapshot.Height,
@@ -147,7 +154,10 @@ func (r *Reactor) Receive(e p2p.Envelope) {
 						Hash:     snapshot.Hash,
 						Metadata: snapshot.Metadata,
 					},
-				})
+				}) {
+					r.Logger.Debug("Dropped snapshot response, send queue is full", "peer", e.Src.ID())
+					r.countReplyNotSent(msgTypeSnapshotsResponse, reasonTrySendFailed)
+				}
 			}
 
 		case *ssproto.SnapshotsResponse:
@@ -181,6 +191,12 @@ func (r *Reactor) Receive(e p2p.Envelope) {
 		case *ssproto.ChunkRequest:
 			r.Logger.Trace("Received chunk request", "height", msg.Height, "format", msg.Format,
 				"chunk", msg.Index, "peer", e.Src.ID())
+			if sendQueueFull(e.Src, ChunkChannel) {
+				r.Logger.Debug("Skipped chunk request, send queue is full", "height", msg.Height,
+					"format", msg.Format, "chunk", msg.Index, "peer", e.Src.ID())
+				r.countReplyNotSent(msgTypeChunkResponse, reasonSendQueueFull)
+				return
+			}
 			resp, err := r.conn.LoadSnapshotChunk(context.TODO(), &abci.RequestLoadSnapshotChunk{
 				Height: msg.Height,
 				Format: msg.Format,
@@ -193,7 +209,9 @@ func (r *Reactor) Receive(e p2p.Envelope) {
 			}
 			r.Logger.Trace("Sending chunk", "height", msg.Height, "format", msg.Format,
 				"chunk", msg.Index, "peer", e.Src.ID())
-			e.Src.Send(p2p.Envelope{
+			// Use a non-blocking send so a slow peer cannot hold up Receive.
+			// The peer asks again if the response is dropped.
+			if !e.Src.TrySend(p2p.Envelope{
 				ChannelID: ChunkChannel,
 				Message: &ssproto.ChunkResponse{
 					Height:  msg.Height,
@@ -202,7 +220,11 @@ func (r *Reactor) Receive(e p2p.Envelope) {
 					Chunk:   resp.Chunk,
 					Missing: resp.Chunk == nil,
 				},
-			})
+			}) {
+				r.Logger.Debug("Dropped chunk response, send queue is full", "height", msg.Height,
+					"format", msg.Format, "chunk", msg.Index, "peer", e.Src.ID())
+				r.countReplyNotSent(msgTypeChunkResponse, reasonTrySendFailed)
+			}
 
 		case *ssproto.ChunkResponse:
 			r.mtx.RLock()
@@ -233,6 +255,34 @@ func (r *Reactor) Receive(e p2p.Envelope) {
 	default:
 		r.Logger.Error("Received message on invalid channel %x", e.ChannelID)
 	}
+}
+
+// Label values for the RepliesNotSent metric.
+const (
+	msgTypeSnapshotsResponse = "snapshots_response"
+	msgTypeChunkResponse     = "chunk_response"
+
+	reasonSendQueueFull = "send_queue_full"
+	reasonTrySendFailed = "try_send_failed"
+)
+
+// countReplyNotSent counts a reply that was not sent to the peer.
+func (r *Reactor) countReplyNotSent(messageType, reason string) {
+	r.metrics.RepliesNotSent.With("message_type", messageType, "reason", reason).Add(1)
+}
+
+// sendQueueFull reports whether the peer's send queue for chID has no room.
+// Receive checks it before it asks the app for data, so a peer that does not
+// read its replies cannot make the node load data that TrySend then drops.
+// The queue size also counts the message that is being sent, so the check can
+// report full when one slot is still free.
+func sendQueueFull(p p2p.Peer, chID byte) bool {
+	for _, ch := range p.Status().Channels {
+		if ch.ID == chID {
+			return ch.SendQueueSize >= ch.SendQueueCapacity
+		}
+	}
+	return false
 }
 
 // recentSnapshots fetches the n most recent snapshots from the app

@@ -393,14 +393,18 @@ func (r *Reactor) ReceiveAddrs(addrs []*p2p.NetAddress, src Peer) error {
 	return nil
 }
 
-// SendAddrs sends addrs to the peer.
+// SendAddrs sends addrs to the peer. It is called from Receive, so it uses a
+// non-blocking send: a slow peer cannot hold up Receive. The response is
+// dropped if the peer's send queue is full, and the peer asks again later.
 func (r *Reactor) SendAddrs(p Peer, netAddrs []*p2p.NetAddress) {
 	msg := capAddresses(netAddrs)
 	e := p2p.Envelope{
 		ChannelID: PexChannel,
 		Message:   msg,
 	}
-	p.Send(e)
+	if !p.TrySend(e) {
+		r.Logger.Debug("Dropped PEX addresses, send queue is full", "peer", p.ID())
+	}
 }
 
 // safeMaxAddressEstimationMargin is a factor used to estimate the maximum number of addresses fitting into a size limit.
