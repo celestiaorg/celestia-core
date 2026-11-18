@@ -13,7 +13,25 @@ import (
 type UnmarshalledTx struct {
 	MetaData TxMetaData
 	Key      types.TxKey
-	TxBytes  []byte
+	// Prefix and TxBytes together are the tx's encoding in the block, so the
+	// tx bytes can be referenced without copying them behind a prefix.
+	Prefix  []byte
+	TxBytes []byte
+}
+
+func (tx *UnmarshalledTx) encodedLen() int {
+	return len(tx.Prefix) + len(tx.TxBytes)
+}
+
+// copyEncoded copies the tx's encoding, starting at offset, into dst.
+func (tx *UnmarshalledTx) copyEncoded(dst []byte, offset int) {
+	if offset < len(tx.Prefix) {
+		n := copy(dst, tx.Prefix[offset:])
+		dst, offset = dst[n:], 0
+	} else {
+		offset -= len(tx.Prefix)
+	}
+	copy(dst, tx.TxBytes[offset:])
 }
 
 func TxsToParts(txs []UnmarshalledTx, partCount, partSize, lastPartLen uint32) ([]*types.Part, error) {
@@ -24,9 +42,9 @@ func TxsToParts(txs []UnmarshalledTx, partCount, partSize, lastPartLen uint32) (
 
 	for i, tx := range txs {
 		expectedLen := tx.MetaData.End - tx.MetaData.Start
-		if uint32(len(tx.TxBytes)) != expectedLen {
-			return nil, fmt.Errorf("transaction %d has inconsistent TxBytes length: expected %d, got %d",
-				i, expectedLen, len(tx.TxBytes))
+		if uint32(tx.encodedLen()) != expectedLen {
+			return nil, fmt.Errorf("transaction %d has inconsistent encoded length: expected %d, got %d",
+				i, expectedLen, tx.encodedLen())
 		}
 	}
 
@@ -83,7 +101,7 @@ func TxsToParts(txs []UnmarshalledTx, partCount, partSize, lastPartLen uint32) (
 			length := overlapEnd - overlapStart
 
 			// Defensive check: Ensure the computed bounds are within the slice lengths.
-			if txOffset+length > uint32(len(tx.TxBytes)) {
+			if txOffset+length > uint32(tx.encodedLen()) {
 				skip = true
 				break
 			}
@@ -92,7 +110,7 @@ func TxsToParts(txs []UnmarshalledTx, partCount, partSize, lastPartLen uint32) (
 				break
 			}
 
-			copy(partBytes[partOffset:partOffset+length], tx.TxBytes[txOffset:txOffset+length])
+			tx.copyEncoded(partBytes[partOffset:partOffset+length], int(txOffset))
 		}
 
 		if skip {
