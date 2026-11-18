@@ -906,10 +906,9 @@ type MempoolConfig struct {
 	// mempool may become invalid. If this does not apply to your application,
 	// you can disable rechecking.
 	Recheck bool `mapstructure:"recheck"`
-	// RecheckBatch (default: false) sends the whole recheck (if Recheck is set)
-	// to an in-process application in one RecheckTxs call when it supports it,
-	// so it can recheck independent senders in parallel.
-	RecheckBatch bool `mapstructure:"recheck_batch"`
+	// DisableRecheckBatch (default: false) stops sending the whole recheck to an in-process
+	// app in one RecheckTxs call; apps without RecheckTxs are rechecked per tx anyway.
+	DisableRecheckBatch bool `mapstructure:"disable_recheck_batch"`
 	// RecheckTimeout is the time the application has during the rechecking process
 	// to return CheckTx responses, once all requests have been sent. Responses that
 	// arrive after the timeout expires are discarded. It only applies to

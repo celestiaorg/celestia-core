@@ -36,7 +36,9 @@ broadcasting with `broadcast` config option.
 
 After each committed block, CometBFT rechecks all uncommitted transactions (can
 be disabled with the `recheck` config option) by repeatedly calling the ABCI
-`CheckTxAsync`.
+`CheckTxAsync`. An in-process app that implements `RecheckTxsApplication` gets
+the whole recheck in one `RecheckTxs` call instead, unless
+`disable_recheck_batch = true`.
 
 ### Transaction ordering
 

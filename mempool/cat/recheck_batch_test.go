@@ -56,10 +56,12 @@ func newRecheckCounter() *recheckCounter {
 	return &recheckCounter{application: &application{kvstore.NewApplication(dbm.NewMemDB())}}
 }
 
-func newBatchPool(t *testing.T, app abci.Application, batch bool, logger log.Logger) *TxPool {
+func newBatchPool(t *testing.T, app abci.Application, disable bool, logger log.Logger) *TxPool {
 	cfg := cmtcfg.TestMempoolConfig()
 	cfg.Recheck = true
-	cfg.RecheckBatch = batch
+	if disable {
+		cfg.DisableRecheckBatch = true
+	}
 	cli, err := proxy.NewLocalClientCreator(app).NewABCIClient()
 	require.NoError(t, err)
 	require.NoError(t, cli.Start())
@@ -70,9 +72,11 @@ func newBatchPool(t *testing.T, app abci.Application, batch bool, logger log.Log
 	return NewTxPool(logger, cfg, cli, 0)
 }
 
+// The default config uses the batch path when the app supports it.
 func TestTxPool_RecheckBatch(t *testing.T) {
+	require.False(t, cmtcfg.DefaultMempoolConfig().DisableRecheckBatch)
 	app := &batchApp{recheckCounter: newRecheckCounter()}
-	txmp := newBatchPool(t, app, true, log.TestingLogger())
+	txmp := newBatchPool(t, app, false, log.TestingLogger())
 	txs := checkTxs(t, txmp, 10, 0)
 	app.verdict = func(tx []byte) *abci.ResponseCheckTx {
 		switch {
@@ -100,28 +104,50 @@ func TestTxPool_RecheckBatch(t *testing.T) {
 	require.True(t, txmp.Has(txs[4].tx.Key()))
 }
 
-func TestTxPool_RecheckBatchOff(t *testing.T) {
+func TestTxPool_RecheckBatchDisabled(t *testing.T) {
+	var logs bytes.Buffer
 	app := &batchApp{recheckCounter: newRecheckCounter()}
-	txmp := newBatchPool(t, app, false, log.TestingLogger())
+	txmp := newBatchPool(t, app, true, log.NewTMLogger(log.NewSyncWriter(&logs)))
 	txs := checkTxs(t, txmp, 10, 0)
 	commitTxs(t, txmp, 1, txs[0].tx, txs[1].tx)
 
 	require.Empty(t, app.batches)
 	require.Equal(t, 8, app.rechecks)
 	require.Equal(t, 8, txmp.Size())
+	require.NotContains(t, logs.String(), "does not support RecheckTxs")
 }
 
+// An app without RecheckTxs, or one that answers ErrRecheckTxsUnsupported, is
+// probed once and then rechecked per tx.
 func TestTxPool_RecheckBatchUnsupported(t *testing.T) {
-	var logs bytes.Buffer
-	app := newRecheckCounter()
-	txmp := newBatchPool(t, app, true, log.NewTMLogger(log.NewSyncWriter(&logs)))
-	txs := checkTxs(t, txmp, 10, 0)
+	for _, tc := range []struct {
+		name      string
+		withIface bool
+	}{{"no interface", false}, {"unsupported error", true}} {
+		t.Run(tc.name, func(t *testing.T) {
+			rc := newRecheckCounter()
+			var app abci.Application = rc
+			ba := &batchApp{recheckCounter: rc, reply: func(int) (*abci.ResponseRecheckTxs, error) {
+				return nil, abci.ErrRecheckTxsUnsupported
+			}}
+			if tc.withIface {
+				app = ba
+			}
+			var logs bytes.Buffer
+			txmp := newBatchPool(t, app, false, log.NewTMLogger(log.NewSyncWriter(&logs)))
+			txs := checkTxs(t, txmp, 10, 0)
 
-	commitTxs(t, txmp, 1, txs[0].tx, txs[1].tx)
-	commitTxs(t, txmp, 2, txs[2].tx, txs[3].tx)
+			commitTxs(t, txmp, 1, txs[0].tx, txs[1].tx)
+			commitTxs(t, txmp, 2, txs[2].tx, txs[3].tx)
 
-	require.Equal(t, 8+6, app.rechecks, "falls back to per-tx recheck")
-	require.Equal(t, 1, strings.Count(logs.String(), "does not support RecheckTxs"), "logged once")
+			require.True(t, txmp.recheckBatchUnsupported)
+			require.Equal(t, 8+6, rc.rechecks, "falls back to per-tx recheck")
+			if tc.withIface {
+				require.Equal(t, 1, len(ba.batches), "not probed again")
+			}
+			require.Equal(t, 1, strings.Count(logs.String(), "does not support RecheckTxs"), "logged once")
+		})
+	}
 }
 
 // A failed or malformed batch keeps every tx and is not retried per tx, since
@@ -145,7 +171,7 @@ func TestTxPool_RecheckBatchBadReply(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			app := &batchApp{recheckCounter: newRecheckCounter(), reply: tc.reply}
-			txmp := newBatchPool(t, app, true, log.TestingLogger())
+			txmp := newBatchPool(t, app, false, log.TestingLogger())
 			txs := checkTxs(t, txmp, 10, 0)
 			commitTxs(t, txmp, 1, txs[0].tx, txs[1].tx)
 

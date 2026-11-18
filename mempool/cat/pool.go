@@ -65,8 +65,9 @@ type TxPool struct {
 	postCheckFn          mempool.PostCheckFunc
 	height               atomic.Int64 // the latest height passed to Update; written under mtx, read lock-free
 	lastPurgeTime        time.Time    // the last time we attempted to purge transactions via the TTL
-	// recheckBatchUnsupportedLogged is set once the RecheckTxs fallback was logged.
-	recheckBatchUnsupportedLogged bool
+	// recheckBatchUnsupported is set at the first ErrRecheckTxsUnsupported; later
+	// rechecks go straight to the per-tx loop.
+	recheckBatchUnsupported bool
 
 	// Thread-safe cache of rejected transactions for quick look-up
 	rejectedTxCache *mempool.RejectedTxCache
@@ -794,7 +795,7 @@ func (txmp *TxPool) recheckTransactions() {
 	// cause a deadlock when handleRecheckResult tries to modify the store.
 	wtxs := txmp.store.getOrderedTxs()
 
-	batch := txmp.config.RecheckBatch && txmp.recheckBatch(wtxs)
+	batch := !txmp.config.DisableRecheckBatch && !txmp.recheckBatchUnsupported && txmp.recheckBatch(wtxs)
 	if !batch {
 		// Issue CheckTx calls for each remaining transaction, and when all the
 		// rechecks are complete signal watchers that transactions may be available.
@@ -827,7 +828,7 @@ func (txmp *TxPool) recheckTransactions() {
 func (txmp *TxPool) recheckBatch(wtxs []*wrappedTx) bool {
 	b, ok := txmp.proxyAppConn.(abci.RecheckTxsApplication)
 	if !ok {
-		return txmp.recheckBatchUnsupported()
+		return txmp.markRecheckBatchUnsupported()
 	}
 	req := &abci.RequestRecheckTxs{Txs: make([][]byte, len(wtxs))}
 	for i, wtx := range wtxs {
@@ -836,7 +837,7 @@ func (txmp *TxPool) recheckBatch(wtxs []*wrappedTx) bool {
 	rsp, err := b.RecheckTxs(context.Background(), req)
 	switch {
 	case errors.Is(err, abci.ErrRecheckTxsUnsupported):
-		return txmp.recheckBatchUnsupported()
+		return txmp.markRecheckBatchUnsupported()
 	case err != nil:
 		// The application may have changed its check state, so a per-tx rerun
 		// could evict valid txs. Keep every tx until the next recheck instead.
@@ -853,13 +854,11 @@ func (txmp *TxPool) recheckBatch(wtxs []*wrappedTx) bool {
 	return true
 }
 
-// recheckBatchUnsupported logs, once, that the batch path is configured but unavailable. Support
-// is checked per recheck: a multiplexed application can gain it at an upgrade.
-func (txmp *TxPool) recheckBatchUnsupported() bool {
-	if !txmp.recheckBatchUnsupportedLogged {
-		txmp.recheckBatchUnsupportedLogged = true
-		txmp.logger.Info("mempool.recheck_batch is set but the ABCI client or application does not support RecheckTxs; rechecking one tx at a time")
-	}
+// markRecheckBatchUnsupported stops batch rechecks until restart, so an app that gains
+// RecheckTxs later (e.g. at a multiplexer upgrade) uses it only after a restart.
+func (txmp *TxPool) markRecheckBatchUnsupported() bool {
+	txmp.recheckBatchUnsupported = true
+	txmp.logger.Info("the ABCI client or application does not support RecheckTxs; rechecking one tx at a time")
 	return false
 }
 
