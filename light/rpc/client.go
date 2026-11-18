@@ -53,7 +53,12 @@ type Client struct {
 	// wsSubs stops the event forwarder of each websocket subscription,
 	// by remote address and query.
 	wsSubsMtx sync.Mutex
-	wsSubs    map[string]map[string]context.CancelFunc
+	wsSubs    map[string]map[string]*wsSub
+}
+
+// wsSub is a running websocket subscription.
+type wsSub struct {
+	cancel context.CancelFunc
 }
 
 var _ rpcclient.Client = (*Client)(nil)
@@ -98,7 +103,7 @@ func NewClient(next rpcclient.Client, lc LightClient, opts ...Option) *Client {
 		lc:   lc,
 		prt:  merkle.DefaultProofRuntime(),
 
-		wsSubs: make(map[string]map[string]context.CancelFunc),
+		wsSubs: make(map[string]map[string]*wsSub),
 	}
 	c.BaseService = *service.NewBaseService(nil, "Client", c)
 	for _, o := range opts {
@@ -589,9 +594,8 @@ func (c *Client) Subscribe(ctx context.Context, subscriber, query string,
 
 func (c *Client) Unsubscribe(ctx context.Context, subscriber, query string) error {
 	c.wsSubsMtx.Lock()
-	if cancel, ok := c.wsSubs[subscriber][query]; ok {
-		cancel()
-		delete(c.wsSubs[subscriber], query)
+	if sub, ok := c.wsSubs[subscriber][query]; ok {
+		sub.cancel()
 	}
 	c.wsSubsMtx.Unlock()
 
@@ -600,10 +604,9 @@ func (c *Client) Unsubscribe(ctx context.Context, subscriber, query string) erro
 
 func (c *Client) UnsubscribeAll(ctx context.Context, subscriber string) error {
 	c.wsSubsMtx.Lock()
-	for _, cancel := range c.wsSubs[subscriber] {
-		cancel()
+	for _, sub := range c.wsSubs[subscriber] {
+		sub.cancel()
 	}
-	delete(c.wsSubs, subscriber)
 	c.wsSubsMtx.Unlock()
 
 	return c.next.UnsubscribeAll(ctx, subscriber)
@@ -640,17 +643,20 @@ func (c *Client) SubscribeWS(ctx *rpctypes.Context, query string) (*ctypes.Resul
 
 	// The forwarder stops when the connection closes or the client unsubscribes.
 	subCtx, cancel := context.WithCancel(ctx.WSConn.Context())
+	sub := &wsSub{cancel: cancel}
+	addr := ctx.RemoteAddr()
 	c.wsSubsMtx.Lock()
-	if c.wsSubs[ctx.RemoteAddr()] == nil {
-		c.wsSubs[ctx.RemoteAddr()] = make(map[string]context.CancelFunc)
+	if c.wsSubs[addr] == nil {
+		c.wsSubs[addr] = make(map[string]*wsSub)
 	}
-	if cancelOld, ok := c.wsSubs[ctx.RemoteAddr()][query]; ok {
-		cancelOld()
+	if old, ok := c.wsSubs[addr][query]; ok {
+		old.cancel()
 	}
-	c.wsSubs[ctx.RemoteAddr()][query] = cancel
+	c.wsSubs[addr][query] = sub
 	c.wsSubsMtx.Unlock()
 
 	go func() {
+		defer c.removeWSSub(addr, query, sub)
 		for {
 			select {
 			case resultEvent := <-out:
@@ -670,6 +676,21 @@ func (c *Client) SubscribeWS(ctx *rpctypes.Context, query string) (*ctypes.Resul
 	}()
 
 	return &ctypes.ResultSubscribe{}, nil
+}
+
+// removeWSSub forgets sub once its forwarder has stopped.
+func (c *Client) removeWSSub(addr, query string, sub *wsSub) {
+	sub.cancel()
+
+	c.wsSubsMtx.Lock()
+	defer c.wsSubsMtx.Unlock()
+	if c.wsSubs[addr][query] != sub {
+		return
+	}
+	delete(c.wsSubs[addr], query)
+	if len(c.wsSubs[addr]) == 0 {
+		delete(c.wsSubs, addr)
+	}
 }
 
 // UnsubscribeWS calls original client's Unsubscribe using remote address as a

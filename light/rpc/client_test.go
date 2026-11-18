@@ -242,10 +242,17 @@ func TestSubscribeWSStopsForwarding(t *testing.T) {
 
 			_, err := c.SubscribeWS(ctx, "query")
 			require.NoError(t, err)
-			require.True(t, forwarding(out))
+			require.Eventually(t, func() bool { return forwarding(out) }, 5*time.Second, time.Millisecond)
 
 			tc.stop(c, ctx, disconnect)
 			require.Eventually(t, func() bool { return !forwarding(out) }, 5*time.Second, time.Millisecond)
+
+			// The stopped subscription is forgotten.
+			require.Eventually(t, func() bool {
+				c.wsSubsMtx.Lock()
+				defer c.wsSubsMtx.Unlock()
+				return len(c.wsSubs) == 0
+			}, 5*time.Second, time.Millisecond)
 		})
 	}
 }
