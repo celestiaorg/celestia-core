@@ -64,6 +64,16 @@ func TestEventBusPublishEventTx(t *testing.T) {
 	}
 }
 
+// An application event must not be able to set the reserved event name key.
+func TestEventBusIgnoresReservedEventTypeKey(t *testing.T) {
+	events := NewEventBus().validateAndStringifyEvents([]abci.Event{
+		{Type: "tm", Attributes: []abci.EventAttribute{{Key: "event", Value: EventTx}}},
+		{Type: "testType", Attributes: []abci.EventAttribute{{Key: "baz", Value: "1"}}},
+	})
+
+	require.Equal(t, map[string][]string{"testType.baz": {"1"}}, events)
+}
+
 func TestEventBusPublishEventNewBlock(t *testing.T) {
 	eventBus := NewEventBus()
 	err := eventBus.Start()
