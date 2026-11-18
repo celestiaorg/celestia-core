@@ -929,7 +929,9 @@ OUTER_LOOP:
 		// Catchup logic
 		// If peer is lagging by more than 1, send Commit.
 		blockStoreBase := conR.conS.blockStore.Base()
-		if blockStoreBase > 0 && prs.Height > 0 && prs.Height <= rs.Height-2 && prs.Height >= blockStoreBase {
+		peerIsBehind := prs.Height <= rs.Height-2
+		storeHasPeerHeight := blockStoreBase > 0 && prs.Height >= blockStoreBase
+		if peerIsBehind && storeHasPeerHeight {
 			// Load the block's extended commit for prs.Height,
 			// which contains precommit signatures for prs.Height.
 			var ec *types.ExtendedCommit
