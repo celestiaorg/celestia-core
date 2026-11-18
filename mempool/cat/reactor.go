@@ -816,6 +816,10 @@ func (memR *Reactor) processPendingSeenForSigner(signer []byte) {
 	// Clean up old entries and request consecutive sequences in parallel
 	nextSeq := expectedSeq
 	requested := 0
+	// counted holds the txs this scan already used for a lower sequence. A
+	// tx has one sequence, so another claim for it must not fill the gap at
+	// its own sequence, or a bogus claim would hide the tx really there.
+	counted := make(map[types.TxKey]struct{}, len(entries))
 
 	for _, entry := range entries {
 		// Clean up claims for sequences that are already used
@@ -823,6 +827,11 @@ func (memR *Reactor) processPendingSeenForSigner(signer []byte) {
 			memR.mempool.seenTracker.ClearPendingClaim(entry.txKey, signer, entry.pendingTxInfo.sequence)
 			continue
 		}
+
+		if _, ok := counted[entry.txKey]; ok {
+			continue
+		}
+		counted[entry.txKey] = struct{}{}
 
 		if entry.pendingTxInfo.sequence != nextSeq {
 			break

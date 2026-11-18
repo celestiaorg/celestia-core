@@ -1097,3 +1097,58 @@ func TestReactorDeliveryDuringInFlightCheckKeepsClaims(t *testing.T) {
 
 	requireRequestedAndAccepted(t, reactor, pool, app, honest, signer, 3, tx)
 }
+
+// TestReactorDuplicateClaimDoesNotCoverNextSequence checks that a second
+// claim for a tx already requested at a lower sequence does not count as
+// filling the claim's own sequence. The txs that peers announced at the
+// following sequences must all still be requested together.
+func TestReactorDuplicateClaimDoesNotCoverNextSequence(t *testing.T) {
+	signer := []byte("sender-000-0")
+
+	testCases := []struct {
+		name string
+		// attackerFirst is set when the duplicate claims are announced
+		// before the honest ones.
+		attackerFirst bool
+	}{
+		{name: "duplicate claims announced after the honest ones"},
+		{name: "duplicate claims announced before the honest ones", attackerFirst: true},
+	}
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			reactor, pool, app, peers := sequenceEnforcingReactor(t, 2)
+			honest, attacker := peers[0], peers[1]
+			honestID := reactor.ids.GetIDForPeer(honest.ID())
+			app.SetSequence(string(signer), 0)
+
+			txs := make([]types.Tx, 4)
+			for i := range txs {
+				txs[i] = newDefaultTx(fmt.Sprintf("duplicate-claim-%d", i))
+				app.txSequences[string(txs[i])] = uint64(i)
+			}
+
+			announceDuplicates := func() {
+				for i := 1; i < len(txs)-1; i++ {
+					receiveSeenTx(reactor, attacker, txs[i].Key(), signer, uint64(i+1))
+				}
+			}
+			if tc.attackerFirst {
+				announceDuplicates()
+			}
+			for i, tx := range txs {
+				receiveSeenTx(reactor, honest, tx.Key(), signer, uint64(i))
+			}
+			if !tc.attackerFirst {
+				announceDuplicates()
+			}
+			require.EqualValues(t, honestID, reactor.requests.ForTx(txs[0].Key()))
+
+			receiveTx(reactor, honest, txs[0])
+			require.True(t, pool.Has(txs[0].Key()))
+
+			for i := 1; i < len(txs); i++ {
+				require.EqualValues(t, honestID, reactor.requests.ForTx(txs[i].Key()), "the tx at sequence %d must be requested", i)
+			}
+		})
+	}
+}
