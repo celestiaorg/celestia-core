@@ -1415,9 +1415,12 @@ func (cs *State) handleTxsAvailable() {
 func (cs *State) enterNewRound(height int64, round int32) {
 	logger := cs.Logger.With("height", height, "round", round)
 
+	wrongHeight := cs.rs.Height != height
+	oldRound := round < cs.rs.Round
+	roundStarted := cs.rs.Round == round && cs.rs.Step != cstypes.RoundStepNewHeight
 	// Once in the commit step the height is decided, so no later round can start.
-	if cs.rs.Height != height || round < cs.rs.Round || (cs.rs.Round == round && cs.rs.Step != cstypes.RoundStepNewHeight) ||
-		cs.rs.Step == cstypes.RoundStepCommit {
+	heightDecided := cs.rs.Step == cstypes.RoundStepCommit
+	if wrongHeight || oldRound || roundStarted || heightDecided {
 		logger.Debug(
 			"entering new round with invalid args",
 			"current", log.NewLazySprintf("%v/%v/%v", cs.rs.Height, cs.rs.Round, cs.rs.Step),
@@ -1944,9 +1947,12 @@ func (cs *State) enterPrevoteWait(height int64, round int32) {
 func (cs *State) enterPrecommit(height int64, round int32) {
 	logger := cs.Logger.With("height", height, "round", round)
 
-	// the commit step is final for this height.
-	if cs.rs.Height != height || round < cs.rs.Round || (cs.rs.Round == round && cstypes.RoundStepPrecommit <= cs.rs.Step) ||
-		cs.rs.Step == cstypes.RoundStepCommit {
+	wrongHeight := cs.rs.Height != height
+	oldRound := round < cs.rs.Round
+	precommitStarted := cs.rs.Round == round && cstypes.RoundStepPrecommit <= cs.rs.Step
+	// The commit step is final for this height.
+	heightDecided := cs.rs.Step == cstypes.RoundStepCommit
+	if wrongHeight || oldRound || precommitStarted || heightDecided {
 		logger.Debug(
 			"entering precommit step with invalid args",
 			"current", log.NewLazySprintf("%v/%v/%v", cs.rs.Height, cs.rs.Round, cs.rs.Step),
