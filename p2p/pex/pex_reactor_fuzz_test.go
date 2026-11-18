@@ -135,6 +135,10 @@ func (p *fuzzPexPeer) Send(e p2p.Envelope) bool {
 	return true
 }
 
+func (p *fuzzPexPeer) TrySend(e p2p.Envelope) bool {
+	return p.Send(e)
+}
+
 // newFuzzAddrBook returns an address book whose bucket placement does not
 // depend on random keys, so inputs replay the same way.
 func newFuzzAddrBook(dir string, strict bool) *addrBook {
