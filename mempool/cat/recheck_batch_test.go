@@ -10,11 +10,11 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	db "github.com/cometbft/cometbft-db"
+	dbm "github.com/cometbft/cometbft-db"
 
 	"github.com/cometbft/cometbft/abci/example/kvstore"
 	abci "github.com/cometbft/cometbft/abci/types"
-	"github.com/cometbft/cometbft/config"
+	cmtcfg "github.com/cometbft/cometbft/config"
 	"github.com/cometbft/cometbft/libs/log"
 	"github.com/cometbft/cometbft/proxy"
 )
@@ -32,18 +32,18 @@ func (app *recheckCounter) CheckTx(ctx context.Context, req *abci.RequestCheckTx
 	return app.application.CheckTx(ctx, req)
 }
 
-// batchApp answers RecheckTxs with verdict(tx) for every tx, or with err.
+// batchApp answers RecheckTxs with verdict(tx) for every tx, or with reply if set.
 type batchApp struct {
 	*recheckCounter
 	verdict func(tx []byte) *abci.ResponseCheckTx
-	err     error
+	reply   func(n int) (*abci.ResponseRecheckTxs, error)
 	batches [][][]byte
 }
 
 func (app *batchApp) RecheckTxs(_ context.Context, req *abci.RequestRecheckTxs) (*abci.ResponseRecheckTxs, error) {
 	app.batches = append(app.batches, req.Txs)
-	if app.err != nil {
-		return nil, app.err
+	if app.reply != nil {
+		return app.reply(len(req.Txs))
 	}
 	rsp := &abci.ResponseRecheckTxs{Responses: make([]*abci.ResponseCheckTx, len(req.Txs))}
 	for i, tx := range req.Txs {
@@ -53,11 +53,11 @@ func (app *batchApp) RecheckTxs(_ context.Context, req *abci.RequestRecheckTxs) 
 }
 
 func newRecheckCounter() *recheckCounter {
-	return &recheckCounter{application: &application{kvstore.NewApplication(db.NewMemDB())}}
+	return &recheckCounter{application: &application{kvstore.NewApplication(dbm.NewMemDB())}}
 }
 
 func newBatchPool(t *testing.T, app abci.Application, batch bool, logger log.Logger) *TxPool {
-	cfg := config.TestMempoolConfig()
+	cfg := cmtcfg.TestMempoolConfig()
 	cfg.Recheck = true
 	cfg.RecheckBatch = batch
 	cli, err := proxy.NewLocalClientCreator(app).NewABCIClient()
@@ -124,14 +124,37 @@ func TestTxPool_RecheckBatchUnsupported(t *testing.T) {
 	require.Equal(t, 1, strings.Count(logs.String(), "does not support RecheckTxs"), "logged once")
 }
 
-func TestTxPool_RecheckBatchError(t *testing.T) {
-	app := &batchApp{recheckCounter: newRecheckCounter(), err: errors.New("boom")}
-	txmp := newBatchPool(t, app, true, log.TestingLogger())
-	txs := checkTxs(t, txmp, 10, 0)
-	commitTxs(t, txmp, 1, txs[0].tx, txs[1].tx)
+// A failed or malformed batch keeps every tx and is not retried per tx, since
+// the app may already have changed its check state.
+func TestTxPool_RecheckBatchBadReply(t *testing.T) {
+	reject := func(n int) *abci.ResponseRecheckTxs {
+		rsp := &abci.ResponseRecheckTxs{Responses: make([]*abci.ResponseCheckTx, n)}
+		for i := range rsp.Responses {
+			rsp.Responses[i] = &abci.ResponseCheckTx{Code: 1}
+		}
+		return rsp
+	}
+	for _, tc := range []struct {
+		name  string
+		reply func(n int) (*abci.ResponseRecheckTxs, error)
+	}{
+		{"error", func(n int) (*abci.ResponseRecheckTxs, error) { return reject(n), errors.New("boom") }},
+		{"nil response", func(int) (*abci.ResponseRecheckTxs, error) { return nil, nil }},
+		{"short", func(n int) (*abci.ResponseRecheckTxs, error) { return reject(n - 1), nil }},
+		{"long", func(n int) (*abci.ResponseRecheckTxs, error) { return reject(n + 1), nil }},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			app := &batchApp{recheckCounter: newRecheckCounter(), reply: tc.reply}
+			txmp := newBatchPool(t, app, true, log.TestingLogger())
+			txs := checkTxs(t, txmp, 10, 0)
+			commitTxs(t, txmp, 1, txs[0].tx, txs[1].tx)
 
-	// The app may have changed its check state, so nothing is rechecked again.
-	require.Len(t, app.batches, 1)
-	require.Zero(t, app.rechecks)
-	require.Equal(t, 8, txmp.Size())
+			require.Len(t, app.batches, 1)
+			require.Zero(t, app.rechecks)
+			require.Equal(t, 8, txmp.Size())
+			for _, tx := range txs[2:] {
+				require.True(t, txmp.Has(tx.tx.Key()))
+			}
+		})
+	}
 }
