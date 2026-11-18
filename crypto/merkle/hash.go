@@ -19,7 +19,7 @@ func emptyHash() []byte {
 
 // returns tmhash(0x00 || leaf)
 func leafHash(leaf []byte) []byte {
-	return tmhash.Sum(append(leafPrefix, leaf...))
+	return tmhash.SumMany(leafPrefix, leaf)
 }
 
 // returns tmhash(0x00 || leaf)
