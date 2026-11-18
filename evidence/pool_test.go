@@ -1,7 +1,10 @@
 package evidence_test
 
 import (
+	"bytes"
+	"errors"
 	"os"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -16,6 +19,7 @@ import (
 	"github.com/cometbft/cometbft/evidence/mocks"
 	"github.com/cometbft/cometbft/internal/test"
 	"github.com/cometbft/cometbft/libs/log"
+	cmtproto "github.com/cometbft/cometbft/proto/tendermint/types"
 	cmtversion "github.com/cometbft/cometbft/proto/tendermint/version"
 	sm "github.com/cometbft/cometbft/state"
 	smmocks "github.com/cometbft/cometbft/state/mocks"
@@ -565,4 +569,233 @@ func createState(height int64, valSet *types.ValidatorSet) sm.State {
 		Validators:      valSet,
 		ConsensusParams: *types.DefaultConsensusParams(),
 	}
+}
+
+// newDuplicateVoteAtRound returns duplicate vote evidence of precommits signed
+// by pv at the given height and round.
+func newDuplicateVoteAtRound(
+	t *testing.T, height int64, round int32, evTime time.Time, pv types.MockPV,
+) *types.DuplicateVoteEvidence {
+	t.Helper()
+	return newDuplicateVote(t, height, round, cmtproto.PrecommitType, evTime, pv)
+}
+
+// newDuplicateVote returns duplicate vote evidence of votes of the given type
+// signed by pv at the given height and round.
+func newDuplicateVote(
+	t *testing.T, height int64, round int32, voteType cmtproto.SignedMsgType, evTime time.Time, pv types.MockPV,
+) *types.DuplicateVoteEvidence {
+	t.Helper()
+	pubKey := pv.PrivKey.PubKey()
+	valSet := types.NewValidatorSet([]*types.Validator{types.NewValidator(pubKey, 10)})
+	makeVote := func() *types.Vote {
+		vote := &types.Vote{
+			Type:   voteType,
+			Height: height,
+			Round:  round,
+			BlockID: types.BlockID{
+				Hash:          crypto.CRandBytes(32),
+				PartSetHeader: types.PartSetHeader{Total: 1, Hash: crypto.CRandBytes(32)},
+			},
+			Timestamp:        evTime,
+			ValidatorAddress: pubKey.Address(),
+			ValidatorIndex:   0,
+		}
+		pb := vote.ToProto()
+		require.NoError(t, pv.SignVote(evidenceChainID, pb))
+		vote.Signature = pb.Signature
+		return vote
+	}
+	ev, err := types.NewDuplicateVoteEvidence(makeVote(), makeVote(), evTime, valSet)
+	require.NoError(t, err)
+	return ev
+}
+
+// Pending evidence that is already committed under its own hash is dropped
+// when the pool restarts. Pools written by earlier versions can hold such
+// entries.
+func TestNewPoolDropsEvidenceCommittedByHash(t *testing.T) {
+	var (
+		height       int64 = 100
+		commonHeight int64 = 90
+	)
+	lunatic, trusted, common := makeLunaticEvidence(t, height, commonHeight,
+		10, 5, 5, defaultEvidenceTime, defaultEvidenceTime.Add(1*time.Hour))
+	state := sm.State{
+		LastBlockTime:   defaultEvidenceTime.Add(2 * time.Hour),
+		LastBlockHeight: 110,
+		ConsensusParams: *types.DefaultConsensusParams(),
+	}
+	stateStore := &smmocks.Store{}
+	stateStore.On("LoadValidators", height).Return(trusted.ValidatorSet, nil)
+	stateStore.On("LoadValidators", commonHeight).Return(common.ValidatorSet, nil)
+	stateStore.On("Load").Return(state, nil)
+	blockStore := &mocks.BlockStore{}
+
+	evidenceDB := dbm.NewMemDB()
+	pool, err := evidence.NewPool(evidenceDB, stateStore, blockStore)
+	require.NoError(t, err)
+
+	val := types.NewMockPV()
+	committedDVE := newDuplicateVoteAtRound(t, height, 0, defaultEvidenceTime, val)
+	stillPending := newDuplicateVoteAtRound(t, height-1, 0, defaultEvidenceTime, val)
+	for _, ev := range []types.Evidence{lunatic, committedDVE, stillPending} {
+		require.NoError(t, pool.AddPendingEvidenceUnchecked(ev))
+	}
+	for _, ev := range []types.Evidence{lunatic, committedDVE} {
+		require.NoError(t, pool.MarkCommittedWithoutDuplicateVoteMarker(ev))
+	}
+
+	for restart := 0; restart < 2; restart++ {
+		pool, err = evidence.NewPool(evidenceDB, stateStore, blockStore)
+		require.NoError(t, err)
+		evs, _ := pool.PendingEvidence(-1)
+		require.Len(t, evs, 1)
+		assert.Equal(t, stillPending.Hash(), evs[0].Hash())
+		assert.EqualValues(t, 1, pool.Size())
+		require.NotNil(t, pool.EvidenceFront())
+		assert.Nil(t, pool.EvidenceFront().Next())
+	}
+}
+
+// failingBatchDB is an evidence DB whose batches fail to write while failWrites
+// is set. Writes made outside a batch are passed through.
+type failingBatchDB struct {
+	dbm.DB
+	failWrites atomic.Bool
+}
+
+func (db *failingBatchDB) NewBatch() dbm.Batch {
+	return &failingBatch{Batch: db.DB.NewBatch(), db: db}
+}
+
+type failingBatch struct {
+	dbm.Batch
+	db *failingBatchDB
+}
+
+var errBatchWrite = errors.New("injected batch write failure")
+
+func (b *failingBatch) Write() error {
+	if b.db.failWrites.Load() {
+		return errBatchWrite
+	}
+	return b.Batch.Write()
+}
+
+func (b *failingBatch) WriteSync() error {
+	if b.db.failWrites.Load() {
+		return errBatchWrite
+	}
+	return b.Batch.WriteSync()
+}
+
+// newCommitTestPool returns a pool on evidenceDB that holds one pending
+// duplicate vote evidence at height, and the state for the next block.
+func newCommitTestPool(
+	t *testing.T, evidenceDB dbm.DB, logger log.Logger,
+) (*evidence.Pool, sm.Store, *store.BlockStore, types.Evidence, sm.State) {
+	t.Helper()
+	const height int64 = 21
+	val := types.NewMockPV()
+	stateStore := initializeValidatorState(val, height)
+	state, err := stateStore.Load()
+	require.NoError(t, err)
+	blockStore, err := initializeBlockStore(dbm.NewMemDB(), state, val.PrivKey.PubKey().Address())
+	require.NoError(t, err)
+	pool, err := evidence.NewPool(evidenceDB, stateStore, blockStore)
+	require.NoError(t, err)
+	pool.SetLogger(logger)
+
+	ev, err := types.NewMockDuplicateVoteEvidenceWithValidator(height, defaultEvidenceTime.Add(21*time.Minute),
+		val, evidenceChainID)
+	require.NoError(t, err)
+	require.NoError(t, pool.AddEvidence(ev))
+	require.EqualValues(t, 1, pool.Size())
+
+	next := pool.State()
+	next.LastBlockHeight = height + 1
+	next.LastBlockTime = defaultEvidenceTime.Add(22 * time.Minute)
+	return pool, stateStore, blockStore, ev, next
+}
+
+// requireOnlyPending checks that ev is the only pending evidence: in the store,
+// in Size() and in the gossip list.
+func requireOnlyPending(t *testing.T, pool *evidence.Pool, ev types.Evidence) {
+	t.Helper()
+	evs, _ := pool.PendingEvidence(-1)
+	require.Len(t, evs, 1)
+	assert.Equal(t, ev.Hash(), evs[0].Hash())
+	assert.EqualValues(t, 1, pool.Size())
+	front := pool.EvidenceFront()
+	require.NotNil(t, front)
+	assert.False(t, front.Removed())
+	assert.Equal(t, ev.Hash(), front.Value.(types.Evidence).Hash())
+	assert.Nil(t, front.Next())
+}
+
+// If the batch that commits evidence fails to write, Update logs the error and
+// leaves the evidence pending: in the store, in Size() and in the gossip list.
+// It is not recorded as committed, so a later block can still commit it.
+func TestUpdateKeepsEvidencePendingWhenCommitWriteFails(t *testing.T) {
+	var logs bytes.Buffer
+	evidenceDB := &failingBatchDB{DB: dbm.NewMemDB()}
+	pool, stateStore, blockStore, ev, state := newCommitTestPool(t, evidenceDB, log.NewTMLogger(log.NewSyncWriter(&logs)))
+
+	evidenceDB.failWrites.Store(true)
+	require.NotPanics(t, func() { pool.Update(state, types.EvidenceList{ev}) })
+
+	assert.Contains(t, logs.String(), "Unable to commit evidence")
+	assert.Contains(t, logs.String(), errBatchWrite.Error())
+	requireOnlyPending(t, pool, ev)
+	// Not committed: the evidence is still accepted as pending.
+	require.NoError(t, pool.CheckEvidence(types.EvidenceList{ev}))
+	requireOnlyPending(t, pool, ev)
+
+	// A restart still loads it as pending, so nothing reached the store.
+	restarted, err := evidence.NewPool(evidenceDB, stateStore, blockStore)
+	require.NoError(t, err)
+	requireOnlyPending(t, restarted, ev)
+
+	// Once writes work again, the next block commits it.
+	evidenceDB.failWrites.Store(false)
+	state.LastBlockHeight++
+	pool.Update(state, types.EvidenceList{ev})
+	evs, _ := pool.PendingEvidence(-1)
+	assert.Empty(t, evs)
+	assert.Zero(t, pool.Size())
+	assert.Nil(t, pool.EvidenceFront())
+}
+
+// A successful Update removes the block's evidence from the pending store,
+// Size() and the gossip list, and records it as committed.
+func TestUpdateCommitsPendingEvidence(t *testing.T) {
+	evidenceDB := dbm.NewMemDB()
+	pool, stateStore, blockStore, ev, state := newCommitTestPool(t, evidenceDB, log.TestingLogger())
+	front := pool.EvidenceFront()
+	require.NotNil(t, front)
+
+	pool.Update(state, types.EvidenceList{ev})
+
+	evs, _ := pool.PendingEvidence(-1)
+	assert.Empty(t, evs)
+	assert.Zero(t, pool.Size())
+	assert.Nil(t, pool.EvidenceFront())
+	assert.True(t, front.Removed())
+
+	// Committed: a block that includes it again is rejected, and gossip of it
+	// is ignored without adding it back.
+	err := pool.CheckEvidence(types.EvidenceList{ev})
+	var invalid *types.ErrInvalidEvidence
+	require.ErrorAs(t, err, &invalid)
+	assert.EqualError(t, invalid.Reason, "evidence was already committed")
+	require.NoError(t, pool.AddEvidence(ev))
+	assert.Zero(t, pool.Size())
+	assert.Nil(t, pool.EvidenceFront())
+
+	// A restart does not load it as pending.
+	restarted, err := evidence.NewPool(evidenceDB, stateStore, blockStore)
+	require.NoError(t, err)
+	assert.Zero(t, restarted.Size())
+	assert.Nil(t, restarted.EvidenceFront())
 }
