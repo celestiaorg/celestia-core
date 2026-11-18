@@ -6,9 +6,9 @@ import (
 
 // maxPushedParts is how many parts the proposer pushes per peer, and how many
 // unrequested parts we accept from a peer that sent us the compact block.
-// 1 for the header, 5 for evidence and last commit (good for ~2,300 validators).
+// 1 for the header, 2 for evidence and last commit (good for ~900 validators).
 // If more are needed we push nothing and peers just ask via have/want.
-const maxPushedParts = 6
+const maxPushedParts = 3
 
 // uncoveredParts returns the indexes of the original parts that hold bytes
 // outside the transactions (header, evidence, last commit). No mempool can

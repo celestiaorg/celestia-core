@@ -65,7 +65,7 @@ func TestUncoveredParts(t *testing.T) {
 		"exactly the cap": {
 			total:   maxPushedParts,
 			lastLen: partSize,
-			want:    []uint32{0, 1, 2, 3, 4, 5},
+			want:    []uint32{0, 1, 2},
 		},
 		"above the cap pushes nothing": {
 			total:   maxPushedParts + 1,
