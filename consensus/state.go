@@ -1944,7 +1944,9 @@ func (cs *State) enterPrevoteWait(height int64, round int32) {
 func (cs *State) enterPrecommit(height int64, round int32) {
 	logger := cs.Logger.With("height", height, "round", round)
 
-	if cs.rs.Height != height || round < cs.rs.Round || (cs.rs.Round == round && cstypes.RoundStepPrecommit <= cs.rs.Step) {
+	// the commit step is final for this height.
+	if cs.rs.Height != height || round < cs.rs.Round || (cs.rs.Round == round && cstypes.RoundStepPrecommit <= cs.rs.Step) ||
+		cs.rs.Step == cstypes.RoundStepCommit {
 		logger.Debug(
 			"entering precommit step with invalid args",
 			"current", log.NewLazySprintf("%v/%v/%v", cs.rs.Height, cs.rs.Round, cs.rs.Step),

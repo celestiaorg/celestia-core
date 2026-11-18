@@ -2997,9 +2997,9 @@ func TestCommitFromPreviousRound(t *testing.T) {
 }
 
 // What we want:
-// P0 is in the commit step for round 0 and still waiting for the block. A +2/3 prevote
-// quorum for a later round must not move it out of the commit step, so it still commits
-// once the block arrives.
+// P0 is in the commit step for round 0 and still waiting for the block. +2/3 prevotes
+// or precommits for a later round must not move it out of the commit step, so it still
+// commits once the block arrives.
 func TestCommitStepIgnoresLaterRoundQuorum(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -3026,10 +3026,11 @@ func TestCommitStepIgnoresLaterRoundQuorum(t *testing.T) {
 	ensureNewValidBlock(validBlockCh, height, round)
 	require.Equal(t, cstypes.RoundStepCommit, cs1.GetRoundState().Step)
 
-	// +2/3 nil prevotes for round 2.
+	// +2/3 nil prevotes and precommits for round 2.
 	incrementRound(vs2, vs3, vs4)
 	incrementRound(vs2, vs3, vs4)
 	signAddVotes(cs1, cmtproto.PrevoteType, nil, types.PartSetHeader{}, false, vs2, vs3, vs4)
+	signAddVotes(cs1, cmtproto.PrecommitType, nil, types.PartSetHeader{}, true, vs2, vs3, vs4)
 
 	require.NoError(t, cs1.SetProposalAndBlock(prop, propBlock, propBlockParts, "some peer"))
 	ensureNewRound(newRoundCh, height+1, 0)
