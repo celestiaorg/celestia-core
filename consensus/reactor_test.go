@@ -315,6 +315,18 @@ func (s *maxHeightCommitCounter) LoadBlockCommit(height int64) *types.Commit {
 	return s.BlockStore.LoadBlockCommit(height)
 }
 
+// loopCountingPeer counts IsRunning calls, which the gossip routines make once
+// per loop iteration.
+type loopCountingPeer struct {
+	*p2pmock.Peer
+	loops atomic.Int64
+}
+
+func (p *loopCountingPeer) IsRunning() bool {
+	p.loops.Add(1)
+	return p.Peer.IsRunning()
+}
+
 // A peer claiming the maximum height is not behind us, so the vote gossip
 // routine must not try to catch it up.
 func TestGossipVotesRoutineIgnoresPeerAtMaxHeight(t *testing.T) {
@@ -333,14 +345,15 @@ func TestGossipVotesRoutineIgnoresPeerAtMaxHeight(t *testing.T) {
 		t.Fatal("timed out waiting for the first block")
 	}
 
-	peer := p2pmock.NewPeer(nil)
+	peer := &loopCountingPeer{Peer: p2pmock.NewPeer(nil)}
 	defer peer.Stop() //nolint:errcheck
 	ps := NewPeerState(peer)
 	ps.ApplyNewRoundStepMessage(&NewRoundStepMessage{Height: math.MaxInt64, Step: cstypes.RoundStepNewHeight})
 
 	go reactors[0].gossipVotesRoutine(peer, ps)
-	time.Sleep(100 * time.Millisecond)
 
+	// Wait for the routine to finish a few iterations.
+	require.Eventually(t, func() bool { return peer.loops.Load() > 3 }, 10*time.Second, time.Millisecond)
 	require.Zero(t, counter.loads.Load())
 }
 
