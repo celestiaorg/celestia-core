@@ -2,6 +2,8 @@ package privval
 
 import (
 	"fmt"
+	"io"
+	"net"
 	"testing"
 	"time"
 
@@ -45,4 +47,31 @@ func TestIsConnTimeoutForWrappedConnTimeouts(t *testing.T) {
 	assert.Error(t, err)
 	err = fmt.Errorf("%v: %w", err, ErrConnectionTimeout)
 	assert.True(t, IsConnTimeout(err))
+}
+
+// A failed handshake must close the connection, so repeated dials don't leak sockets.
+func TestDialTCPFnClosesConnOnFailedHandshake(t *testing.T) {
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	defer ln.Close()
+
+	// The remote side accepts the connection but never answers the handshake.
+	closed := make(chan error, 1)
+	go func() {
+		conn, err := ln.Accept()
+		if err != nil {
+			closed <- err
+			return
+		}
+		defer conn.Close()
+		_ = conn.SetReadDeadline(time.Now().Add(5 * time.Second))
+		// Returns nil once the dialer closes its end.
+		_, err = io.Copy(io.Discard, conn)
+		closed <- err
+	}()
+
+	conn, err := DialTCPFn(ln.Addr().String(), 50*time.Millisecond, ed25519.GenPrivKey())()
+	require.Error(t, err)
+	require.Nil(t, conn)
+	require.NoError(t, <-closed)
 }

@@ -117,6 +117,9 @@ func TestSignerServerKeepsDialing(t *testing.T) {
 		if err := signerClient.Close(); err != nil {
 			t.Error(err)
 		}
+		if err := listenerEndpoint.Stop(); err != nil {
+			t.Error(err)
+		}
 	})
 
 	require.Eventually(t, func() bool {
