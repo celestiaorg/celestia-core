@@ -755,12 +755,13 @@ func (a *addrBook) addBadPeer(addr *p2p.NetAddress, banTime time.Duration) bool 
 	if len(a.badPeers) >= maxBadPeers {
 		a.removeExpiredBans()
 	}
-	if len(a.badPeers) < maxBadPeers {
-		// add to bad peer list
-		ka.ban(banTime)
-		a.badPeers[addr.ID] = ka
-		a.Logger.Info("Add address to blacklist", "addr", addr)
+	if len(a.badPeers) >= maxBadPeers {
+		a.removeSoonestExpiringBan()
 	}
+	// add to bad peer list
+	ka.ban(banTime)
+	a.badPeers[addr.ID] = ka
+	a.Logger.Info("Add address to blacklist", "addr", addr)
 	return true
 }
 
@@ -770,6 +771,20 @@ func (a *addrBook) removeExpiredBans() {
 		if !ka.isBanned() {
 			delete(a.badPeers, id)
 		}
+	}
+}
+
+// removeSoonestExpiringBan drops the bad peer whose ban ends first, so a full
+// list can still take a new ban.
+func (a *addrBook) removeSoonestExpiringBan() {
+	var soonest *knownAddress
+	for _, ka := range a.badPeers {
+		if soonest == nil || ka.LastBanTime.Before(soonest.LastBanTime) {
+			soonest = ka
+		}
+	}
+	if soonest != nil {
+		delete(a.badPeers, soonest.ID())
 	}
 }
 

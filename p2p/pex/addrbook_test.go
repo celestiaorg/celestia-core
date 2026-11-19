@@ -407,17 +407,24 @@ func TestBadPeersAreBounded(t *testing.T) {
 
 	book := NewAddrBook(fname, false).(*addrBook)
 
+	// This ban ends first.
+	soonest := randIPv4Address(t)
+	require.NoError(t, book.AddAddress(soonest, soonest))
+	book.MarkBad(soonest, time.Minute)
+
 	for len(book.badPeers) < maxBadPeers {
 		addr := randIPv4Address(t)
 		_ = book.AddAddress(addr, addr)
 		book.MarkBad(addr, time.Hour)
 	}
+	require.True(t, book.IsBanned(soonest))
 
-	// The list is full: one more bad peer is removed but not remembered.
+	// The list is full: a new ban replaces the one that ends first.
 	addr := randIPv4Address(t)
 	require.NoError(t, book.AddAddress(addr, addr))
 	book.MarkBad(addr, time.Hour)
-	assert.False(t, book.HasAddress(addr))
+	assert.True(t, book.IsBanned(addr))
+	assert.False(t, book.IsBanned(soonest))
 	assert.Equal(t, maxBadPeers, len(book.badPeers))
 }
 
