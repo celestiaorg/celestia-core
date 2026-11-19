@@ -138,17 +138,21 @@ func (cps *CombinedPartSet) RecoverOriginals(proofs []*merkle.Proof) ([]*types.P
 }
 
 // BuildParity encodes the parity of complete originals, as the proposer did,
-// and keeps it only if it matches the committed parity root.
+// and keeps it only if it matches the committed parity root. It encodes
+// outside the lock so parts stay servable meanwhile.
 func (cps *CombinedPartSet) BuildParity() error {
 	cps.mtx.Lock()
-	defer cps.mtx.Unlock()
-	eps, lastLen, err := types.Encode(cps.original, types.BlockPartSizeBytes)
+	ops, root, wantLastLen := cps.original, cps.parity.Hash(), cps.lastLen
+	cps.mtx.Unlock()
+	eps, lastLen, err := types.Encode(ops, types.BlockPartSizeBytes)
 	if err != nil {
 		return err
 	}
-	if uint32(lastLen) != cps.lastLen || !bytes.Equal(eps.Hash(), cps.parity.Hash()) {
+	if uint32(lastLen) != wantLastLen || !bytes.Equal(eps.Hash(), root) {
 		return errors.New("built parity does not match the compact block")
 	}
+	cps.mtx.Lock()
+	defer cps.mtx.Unlock()
 	cps.parity = eps
 	cps.totalMap.Fill()
 	return nil

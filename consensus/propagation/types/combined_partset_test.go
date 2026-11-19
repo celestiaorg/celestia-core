@@ -219,9 +219,8 @@ func TestBuildParityMatchesProposer(t *testing.T) {
 		}
 
 		// parity that does not match the committed root is not kept.
-		bad := *cb
-		bad.BpHash = cmtrand.Bytes(32)
-		cps = addParts(t, &bad, ops, eps, proofs, seq(0, total))
+		cps = addParts(t, cb, ops, eps, proofs, seq(0, total))
+		cps.parity = cmttypes.NewPartSetFromHeader(cmttypes.PartSetHeader{Total: uint32(total), Hash: cmtrand.Bytes(32)}, cmttypes.BlockPartSizeBytes)
 		require.Error(t, cps.BuildParity())
 		require.Zero(t, cps.Parity().Count())
 	}
