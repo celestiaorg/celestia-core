@@ -541,14 +541,16 @@ func (blockProp *Reactor) handleRecoveryPart(peer p2p.ID, part *proptypes.Recove
 		return
 	}
 
-	// a part we accept without having requested it was pushed to us
-	wasPushed := p != nil && !p.Requested(part.Height, part.Round, part.Index)
-
-	if p != nil && !blockProp.admitPart(p, parts, part) {
+	// checked before admitPart, so a part we already have doesn't use up the
+	// peer's push allowance
+	if parts.HasPart(int(part.Index)) || parts.IsComplete() {
 		return
 	}
 
-	if parts.HasPart(int(part.Index)) || parts.IsComplete() {
+	// a part we accept without having requested it was pushed to us
+	wasPushed := p != nil && !p.Requested(part.Height, part.Round, part.Index)
+
+	if p != nil && !blockProp.admitPart(p, part) {
 		return
 	}
 
@@ -702,16 +704,15 @@ func (blockProp *Reactor) handleRecoveryPart(peer p2p.ID, part *proptypes.Recove
 }
 
 // admitPart reports whether a part from p may be processed: either this node
-// requested it, or p sent the compact block and is still within the push cap.
-// Any other part is dropped. The peer stays connected, because an honest
-// proposer can end up here when its compact block arrives late.
-func (blockProp *Reactor) admitPart(p *PeerState, parts *proptypes.CombinedPartSet, part *proptypes.RecoveryPart) bool {
+// requested it, or p sent the compact block and this is one of the parts it
+// may push. Any other part is dropped. The peer stays connected, because an
+// honest proposer can end up here when its compact block arrives late.
+func (blockProp *Reactor) admitPart(p *PeerState, part *proptypes.RecoveryPart) bool {
 	if p.Requested(part.Height, part.Round, part.Index) {
 		return true
 	}
 
-	isOriginalPart := part.Index < parts.Original().Total()
-	if isOriginalPart && p.ConsumePushAllowance(part.Height, part.Round) {
+	if p.ConsumePushAllowance(part.Height, part.Round, part.Index) {
 		return true
 	}
 

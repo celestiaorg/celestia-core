@@ -11,6 +11,7 @@ import (
 	"github.com/cometbft/cometbft/libs/log"
 	"github.com/cometbft/cometbft/libs/sync"
 	"github.com/cometbft/cometbft/p2p"
+	"github.com/cometbft/cometbft/types"
 )
 
 const (
@@ -458,35 +459,41 @@ func (d *PeerState) DeleteUnverifiedProposal(height int64) {
 	delete(d.unverifiedProposals, height)
 }
 
-// GrantPushAllowance lets the peer that sent cb push up to maxPushedParts of
-// its parts unrequested. Only the first grant counts, so resending the compact
+// GrantPushAllowance lets the peer that sent cb push the parts no mempool can
+// rebuild, unrequested. Only the first grant counts, so resending the compact
 // block does not refill it.
 func (d *PeerState) GrantPushAllowance(cb *proptypes.CompactBlock) {
 	height, round := cb.Proposal.Height, cb.Proposal.Round
+	totalParts := cb.Proposal.BlockID.PartSetHeader.Total
 
 	d.mtx.Lock()
 	defer d.mtx.Unlock()
 
-	d.initialize(height, round, int(cb.Proposal.BlockID.PartSetHeader.Total)*2)
+	d.initialize(height, round, int(totalParts)*2)
 	ps := d.state[height][round]
 	if !ps.pushGranted {
 		ps.pushGranted = true
-		ps.pushAllowance = maxPushedParts
+		ps.pushAllowance = uncoveredParts(cb.Blobs, totalParts, types.BlockPartSizeBytes, cb.LastLen)
 	}
 }
 
-// ConsumePushAllowance uses one unrequested part from the peer's allowance and
-// reports whether there was one left.
-func (d *PeerState) ConsumePushAllowance(height int64, round int32) bool {
+// ConsumePushAllowance reports whether the peer may push the part with this
+// index unrequested. Each part can be pushed once.
+func (d *PeerState) ConsumePushAllowance(height int64, round int32, index uint32) bool {
 	d.mtx.Lock()
 	defer d.mtx.Unlock()
 
 	ps := d.state[height][round]
-	if ps == nil || ps.pushAllowance == 0 {
+	if ps == nil {
 		return false
 	}
-	ps.pushAllowance--
-	return true
+	for i, allowed := range ps.pushAllowance {
+		if allowed == index {
+			ps.pushAllowance = append(ps.pushAllowance[:i], ps.pushAllowance[i+1:]...)
+			return true
+		}
+	}
+	return false
 }
 
 // Requested reports whether this node has ever requested the part from the
@@ -512,9 +519,9 @@ type partState struct {
 	// requests it is never cleared, so a reply that arrives after its request
 	// expired is still recognized as requested.
 	everRequested *bits.BitArray
-	// pushAllowance is how many more parts the peer may send unrequested. It
-	// is granted once, when the peer sends the compact block.
-	pushAllowance int
+	// pushAllowance is the parts the peer may still send unrequested. It is
+	// granted once, when the peer sends the compact block.
+	pushAllowance []uint32
 	pushGranted   bool
 }
 

@@ -22,7 +22,11 @@ func TestUnrequestedParts(t *testing.T) {
 	cleanup, _, sm, pv := state.SetupTestCaseWithPrivVal(t)
 	t.Cleanup(func() { cleanup(t) })
 	cb, ps, _, _ := testCompactBlock(t, sm, pv, 10, 0)
-	require.Greater(t, int(ps.Total()), maxPushedParts+2)
+	// the parts the sender may push, and one it may not
+	pushable := uncoveredParts(cb.Blobs, ps.Total(), types.BlockPartSizeBytes, cb.LastLen)
+	require.NotEmpty(t, pushable)
+	const coveredPart = 1
+	require.NotContains(t, pushable, uint32(coveredPart))
 
 	partMsg := func(i int) *proptypes.RecoveryPart {
 		part := ps.GetPart(i)
@@ -37,19 +41,29 @@ func TestUnrequestedParts(t *testing.T) {
 		return receiver, sender, other
 	}
 
-	t.Run("sender may push up to the cap", func(t *testing.T) {
+	t.Run("sender may push only the uncovered parts", func(t *testing.T) {
 		receiver, sender, _ := setup(t)
-		for i := range maxPushedParts {
-			receiver.handleRecoveryPart(sender.self, partMsg(i))
+		for _, i := range pushable {
+			receiver.handleRecoveryPart(sender.self, partMsg(int(i)))
 		}
 		require.NotNil(t, receiver.getPeer(sender.self))
 		_, parts, _, _ := receiver.getAllState(10, 0, false)
-		require.Equal(t, maxPushedParts, len(parts.BitArray().GetTrueIndices()))
+		require.Equal(t, len(pushable), len(parts.BitArray().GetTrueIndices()))
 
-		// past the cap the part is dropped and the sender stays connected
-		receiver.handleRecoveryPart(sender.self, partMsg(maxPushedParts))
+		// any other part is dropped and the sender stays connected
+		receiver.handleRecoveryPart(sender.self, partMsg(coveredPart))
 		require.NotNil(t, receiver.getPeer(sender.self))
-		require.False(t, parts.HasPart(maxPushedParts))
+		require.False(t, parts.HasPart(coveredPart))
+	})
+
+	t.Run("a part we already have does not use up the allowance", func(t *testing.T) {
+		receiver, sender, other := setup(t)
+		wants := createBitArray(int(ps.Total())*2, []int{0})
+		receiver.getPeer(other.self).AddRequests(10, 0, wants)
+		receiver.handleRecoveryPart(other.self, partMsg(0))
+
+		receiver.handleRecoveryPart(sender.self, partMsg(0))
+		require.True(t, receiver.getPeer(sender.self).ConsumePushAllowance(10, 0, 0))
 	})
 
 	t.Run("accepted pushed part is announced to other peers", func(t *testing.T) {
@@ -66,13 +80,10 @@ func TestUnrequestedParts(t *testing.T) {
 
 	t.Run("resending the compact block does not refill the allowance", func(t *testing.T) {
 		receiver, sender, _ := setup(t)
-		for i := range maxPushedParts {
-			receiver.handleRecoveryPart(sender.self, partMsg(i))
-		}
+		p := receiver.getPeer(sender.self)
+		require.True(t, p.ConsumePushAllowance(10, 0, 0))
 		receiver.handleCompactBlock(cb, sender.self, true)
-		receiver.handleRecoveryPart(sender.self, partMsg(maxPushedParts))
-		_, parts, _, _ := receiver.getAllState(10, 0, false)
-		require.False(t, parts.HasPart(maxPushedParts))
+		require.False(t, p.ConsumePushAllowance(10, 0, 0))
 	})
 
 	t.Run("unrequested part from a peer that sent no compact block is dropped", func(t *testing.T) {
@@ -175,11 +186,12 @@ func TestPushAllowancePruned(t *testing.T) {
 	reactors, _ := testBlockPropReactors(2, cfg.DefaultP2PConfig())
 	p := reactors[0].getPeer(reactors[1].self)
 	for h := int64(1); h <= 5; h++ {
-		p.GrantPushAllowance(&proptypes.CompactBlock{Proposal: types.Proposal{Height: h}})
+		blockID := types.BlockID{PartSetHeader: types.PartSetHeader{Total: 1}}
+		p.GrantPushAllowance(&proptypes.CompactBlock{Proposal: types.Proposal{Height: h, BlockID: blockID}})
 	}
 	p.prune(4)
-	require.False(t, p.ConsumePushAllowance(3, 0))
-	require.True(t, p.ConsumePushAllowance(4, 0))
+	require.False(t, p.ConsumePushAllowance(3, 0, 0))
+	require.True(t, p.ConsumePushAllowance(4, 0, 0))
 }
 
 func TestRequestPartsRollsBackFailedSend(t *testing.T) {
@@ -253,6 +265,6 @@ func TestCachedCompactBlockGrantsPushAllowance(t *testing.T) {
 
 	_, _, has := receiver.GetProposal(2, 0)
 	require.True(t, has)
-	require.True(t, receiver.getPeer(sender.self).ConsumePushAllowance(2, 0))
-	require.False(t, receiver.getPeer(forger.self).ConsumePushAllowance(2, 0))
+	require.True(t, receiver.getPeer(sender.self).ConsumePushAllowance(2, 0, 0))
+	require.False(t, receiver.getPeer(forger.self).ConsumePushAllowance(2, 0, 0))
 }
