@@ -748,13 +748,37 @@ func (a *addrBook) addBadPeer(addr *p2p.NetAddress, banTime time.Duration) bool 
 		return false
 	}
 
-	if _, alreadyBadPeer := a.badPeers[addr.ID]; !alreadyBadPeer {
-		// add to bad peer list
-		ka.ban(banTime)
-		a.badPeers[addr.ID] = ka
-		a.Logger.Info("Add address to blacklist", "addr", addr)
+	if _, alreadyBadPeer := a.badPeers[addr.ID]; alreadyBadPeer {
+		return true
 	}
+
+	if len(a.badPeers) >= maxBadPeers {
+		a.makeRoomForBan()
+	}
+	// add to bad peer list
+	ka.ban(banTime)
+	a.badPeers[addr.ID] = ka
+	a.Logger.Info("Add address to blacklist", "addr", addr)
 	return true
+}
+
+// makeRoomForBan drops bad peers whose ban is over. If the list is still
+// full, it also drops the one whose ban ends first. It scans the list once.
+func (a *addrBook) makeRoomForBan() {
+	now := time.Now()
+	var soonest *knownAddress
+	for id, ka := range a.badPeers {
+		if !ka.LastBanTime.After(now) {
+			delete(a.badPeers, id)
+			continue
+		}
+		if soonest == nil || ka.LastBanTime.Before(soonest.LastBanTime) {
+			soonest = ka
+		}
+	}
+	if len(a.badPeers) >= maxBadPeers && soonest != nil {
+		delete(a.badPeers, soonest.ID())
+	}
 }
 
 //---------------------------------------------------------------------

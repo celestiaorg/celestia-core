@@ -115,6 +115,33 @@ func TestSignerGetPubKey(t *testing.T) {
 	}
 }
 
+// The signer must reconnect after the node closes the connection.
+func TestSignerServerReconnectsAfterNodeDisconnect(t *testing.T) {
+	for _, tc := range getSignerTestCases(t) {
+		tc := tc
+		t.Cleanup(func() {
+			if err := tc.signerServer.Stop(); err != nil {
+				t.Error(err)
+			}
+		})
+		t.Cleanup(func() {
+			if err := tc.signerClient.Close(); err != nil {
+				t.Error(err)
+			}
+		})
+
+		_, err := tc.signerClient.GetPubKey()
+		require.NoError(t, err)
+
+		tc.signerClient.endpoint.DropConnection()
+
+		require.Eventually(t, func() bool {
+			_, err := tc.signerClient.GetPubKey()
+			return err == nil
+		}, 5*time.Second, 10*time.Millisecond)
+	}
+}
+
 func TestSignerProposal(t *testing.T) {
 	for _, tc := range getSignerTestCases(t) {
 		ts := time.Now()

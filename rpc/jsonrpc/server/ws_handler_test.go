@@ -57,6 +57,40 @@ func TestWebsocketManagerHandler(t *testing.T) {
 	dialResp.Body.Close()
 }
 
+// A handler that asks for the connection's context only after the connection
+// has stopped must still get a canceled context.
+func TestWebsocketContextCanceledAfterStop(t *testing.T) {
+	conns := make(chan types.WSRPCConnection, 1)
+	stopped := make(chan struct{})
+	funcMap := map[string]*RPCFunc{
+		"c": NewWSRPCFunc(func(ctx *types.Context) (string, error) {
+			conns <- ctx.WSConn
+			return "foo", nil
+		}, ""),
+	}
+	wm := NewWebsocketManager(funcMap, OnDisconnect(func(string) { close(stopped) }))
+	wm.SetLogger(log.TestingLogger())
+	mux := http.NewServeMux()
+	mux.HandleFunc("/websocket", wm.WebsocketHandler)
+	s := httptest.NewServer(mux)
+	defer s.Close()
+
+	c, dialResp, err := websocket.DefaultDialer.Dial("ws://"+s.Listener.Addr().String()+"/websocket", nil)
+	require.NoError(t, err)
+	defer dialResp.Body.Close()
+	require.NoError(t, c.WriteMessage(websocket.TextMessage, []byte(`{"jsonrpc":"2.0","id":"1","method":"c"}`)))
+	wsConn := <-conns
+
+	require.NoError(t, c.Close())
+	<-stopped
+
+	select {
+	case <-wsConn.Context().Done():
+	case <-time.After(5 * time.Second):
+		t.Fatal("context was not canceled after the connection stopped")
+	}
+}
+
 func newWSServer() *httptest.Server {
 	funcMap := map[string]*RPCFunc{
 		"c": NewWSRPCFunc(func(ctx *types.Context, s string, i int) (string, error) { return "foo", nil }, "s,i"),

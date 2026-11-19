@@ -11,6 +11,7 @@ import (
 	"github.com/cometbft/cometbft/libs/log"
 	"github.com/cometbft/cometbft/libs/sync"
 	"github.com/cometbft/cometbft/p2p"
+	"github.com/cometbft/cometbft/types"
 )
 
 const (
@@ -211,6 +212,48 @@ func (d *PeerState) AddRequests(height int64, round int32, requests *bits.BitArr
 	defer d.mtx.Unlock()
 	d.initialize(height, round, requests.Size())
 	d.state[height][round].addRequests(requests)
+}
+
+// RequestParts records the parts as requested from the peer and sends the
+// want. Recording first means a fast reply is never treated as unrequested; a
+// failed send rolls back only the parts this call added.
+func (d *PeerState) RequestParts(height int64, round int32, partsToRequest *bits.BitArray, wantMessage p2p.Envelope) bool {
+	if partsToRequest == nil || partsToRequest.Size() == 0 {
+		d.logger.Error("peer state requests is nil or empty")
+		return false
+	}
+
+	d.mtx.Lock()
+	defer d.mtx.Unlock()
+
+	d.initialize(height, round, partsToRequest.Size())
+	partState := d.state[height][round]
+
+	// remember what was already marked, so a failed send can undo only its
+	// own marks
+	addedToRequests := partsToRequest.Sub(partState.requests)
+	addedToEverRequested := partsToRequest.Sub(partState.everRequested)
+	previousRequestedAt := partState.requestedAt
+
+	// mark the parts as requested before sending, so a fast reply isn't
+	// treated as unrequested
+	partState.addRequests(partsToRequest)
+
+	sent := d.peer.TrySend(wantMessage)
+	if sent {
+		return true
+	}
+
+	// the peer never got the request, so undo this call's marks. Earlier
+	// marks stay: those requests did go out.
+	for _, partIndex := range addedToRequests.GetTrueIndices() {
+		partState.requests.SetIndex(partIndex, false)
+	}
+	for _, partIndex := range addedToEverRequested.GetTrueIndices() {
+		partState.everRequested.SetIndex(partIndex, false)
+	}
+	partState.requestedAt = previousRequestedAt
+	return false
 }
 
 // SetHave sets the have bit for a given part.
@@ -416,12 +459,70 @@ func (d *PeerState) DeleteUnverifiedProposal(height int64) {
 	delete(d.unverifiedProposals, height)
 }
 
+// GrantPushAllowance lets the peer that sent cb push the parts no mempool can
+// rebuild, unrequested. Only the first grant counts, so resending the compact
+// block does not refill it.
+func (d *PeerState) GrantPushAllowance(cb *proptypes.CompactBlock) {
+	height, round := cb.Proposal.Height, cb.Proposal.Round
+	totalParts := cb.Proposal.BlockID.PartSetHeader.Total
+
+	d.mtx.Lock()
+	defer d.mtx.Unlock()
+
+	d.initialize(height, round, int(totalParts)*2)
+	ps := d.state[height][round]
+	if !ps.pushGranted {
+		ps.pushGranted = true
+		ps.pushAllowance = uncoveredParts(cb.Blobs, totalParts, types.BlockPartSizeBytes, cb.LastLen)
+	}
+}
+
+// ConsumePushAllowance reports whether the peer may push the part with this
+// index unrequested. Each part can be pushed once.
+func (d *PeerState) ConsumePushAllowance(height int64, round int32, index uint32) bool {
+	d.mtx.Lock()
+	defer d.mtx.Unlock()
+
+	ps := d.state[height][round]
+	if ps == nil {
+		return false
+	}
+	for i, allowed := range ps.pushAllowance {
+		if allowed == index {
+			ps.pushAllowance = append(ps.pushAllowance[:i], ps.pushAllowance[i+1:]...)
+			return true
+		}
+	}
+	return false
+}
+
+// Requested reports whether this node has ever requested the part from the
+// peer, including requests that have since expired.
+func (d *PeerState) Requested(height int64, round int32, index uint32) bool {
+	d.mtx.RLock()
+	defer d.mtx.RUnlock()
+
+	partState := d.state[height][round]
+	if partState == nil {
+		return false
+	}
+	return partState.everRequested.GetIndex(int(index))
+}
+
 type partState struct {
 	haves    *bits.BitArray
 	wants    *bits.BitArray
 	requests *bits.BitArray
 	// requestedAt is when requests were last added.
 	requestedAt time.Time
+	// everRequested is every part we have asked this peer for. Unlike
+	// requests it is never cleared, so a reply that arrives after its request
+	// expired is still recognized as requested.
+	everRequested *bits.BitArray
+	// pushAllowance is the parts the peer may still send unrequested. It is
+	// granted once, when the peer sends the compact block.
+	pushAllowance []uint32
+	pushGranted   bool
 }
 
 // newpartState initializes and returns a new partState
@@ -430,6 +531,8 @@ func newpartState(size int, _ int64, _ int32) *partState {
 		haves:    bits.NewBitArray(size),
 		wants:    bits.NewBitArray(size),
 		requests: bits.NewBitArray(size),
+
+		everRequested: bits.NewBitArray(size),
 	}
 }
 
@@ -444,6 +547,7 @@ func (p *partState) addWants(wants *bits.BitArray) {
 func (p *partState) addRequests(requests *bits.BitArray) {
 	p.requests.AddBitArray(requests)
 	p.requestedAt = time.Now()
+	p.everRequested.AddBitArray(requests)
 }
 
 // SetHave sets the have bit for a given part.

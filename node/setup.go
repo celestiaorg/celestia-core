@@ -605,14 +605,15 @@ func startStateSync(
 			ssR.Logger.Error("State sync failed", "err", err)
 			return
 		}
-		err = stateStore.Bootstrap(state)
-		if err != nil {
-			ssR.Logger.Error("Failed to bootstrap node with new state", "err", err)
-			return
-		}
+		// The seen commit goes first: once the state is bootstrapped, a restart needs it.
 		err = blockStore.SaveSeenCommit(state.LastBlockHeight, commit)
 		if err != nil {
 			ssR.Logger.Error("Failed to store last seen commit", "err", err)
+			return
+		}
+		err = stateStore.Bootstrap(state)
+		if err != nil {
+			ssR.Logger.Error("Failed to bootstrap node with new state", "err", err)
 			return
 		}
 

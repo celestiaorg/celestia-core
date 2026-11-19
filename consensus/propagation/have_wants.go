@@ -291,7 +291,7 @@ func (blockProp *Reactor) sendWant(ps *PeerState, want *proptypes.WantParts) {
 		Message:   want.ToProto(),
 	}
 
-	if !ps.peer.TrySend(e) {
+	if !ps.RequestParts(want.Height, want.Round, want.Parts, e) {
 		blockProp.Logger.Error("failed to send part state", "peer", ps.peer.ID(), "height", want.Height, "round", want.Round)
 		return
 	}
@@ -307,8 +307,6 @@ func (blockProp *Reactor) sendWant(ps *PeerState, want *proptypes.WantParts) {
 		"want",
 	)
 
-	// keep track of the parts that this node has requested.
-	ps.AddRequests(want.Height, want.Round, want.Parts)
 	ps.IncreaseConcurrentReqs(int64(len(want.Parts.GetTrueIndices())))
 }
 
@@ -543,13 +541,21 @@ func (blockProp *Reactor) handleRecoveryPart(peer p2p.ID, part *proptypes.Recove
 		return
 	}
 
-	// a part is still taken after the originals complete: it was requested,
-	// and peers may want it because the request advertised it.
+	// checked before admitPart, so a dropped part doesn't use up the peer's push
+	// allowance. A part is still taken after the originals complete: it was
+	// requested, and peers may want it because the request advertised it.
 	if parts.HasPart(int(part.Index)) {
 		return
 	}
 	// catchup entries hold no parity set to add to.
 	if part.Index >= parts.Original().Total() && parts.Parity().Total() == 0 {
+		return
+	}
+
+	// a part we accept without having requested it was pushed to us
+	wasPushed := p != nil && !p.Requested(part.Height, part.Round, part.Index)
+
+	if p != nil && !blockProp.admitPart(p, part) {
 		return
 	}
 
@@ -596,6 +602,17 @@ func (blockProp *Reactor) handleRecoveryPart(peer p2p.ID, part *proptypes.Recove
 	// been seen, and therefore doesn't need to be cleared.
 	if !added {
 		return
+	}
+
+	// tell the other peers we have the pushed part, so they can request it.
+	// For a requested part this was already done when the want was sent.
+	if wasPushed {
+		haves := &proptypes.HaveParts{
+			Height: part.Height,
+			Round:  part.Round,
+			Parts:  []proptypes.PartMetaData{{Index: part.Index, Hash: proof.LeafHash}},
+		}
+		blockProp.broadcastHaves(haves, peer, int(parts.Total()))
 	}
 
 	// only send original parts to the consensus reactor
@@ -691,6 +708,23 @@ func (blockProp *Reactor) broadcastLocalHaves(cb *proptypes.CompactBlock, parts 
 		haves.Parts = append(haves.Parts, proptypes.PartMetaData{Index: uint32(index), Hash: cb.PartsHashes[index]})
 	}
 	blockProp.broadcastHaves(haves, blockProp.self, held.Size())
+}
+
+// admitPart reports whether a part from p may be processed: either this node
+// requested it, or p sent the compact block and this is one of the parts it
+// may push. Any other part is dropped. The peer stays connected, because an
+// honest proposer can end up here when its compact block arrives late.
+func (blockProp *Reactor) admitPart(p *PeerState, part *proptypes.RecoveryPart) bool {
+	if p.Requested(part.Height, part.Round, part.Index) {
+		return true
+	}
+
+	if p.ConsumePushAllowance(part.Height, part.Round, part.Index) {
+		return true
+	}
+
+	blockProp.Logger.Debug("dropping unrequested part", "peer", p.peer.ID(), "height", part.Height, "round", part.Round, "part", part.Index)
+	return false
 }
 
 // clearWants checks the wantState to see if any peers want the given part, if

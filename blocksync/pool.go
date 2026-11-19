@@ -435,12 +435,9 @@ func (pool *BlockPool) addBlock(peerID p2p.ID, block *types.Block, extCommit *ty
 		if peer == nil || pool.isPeerBanned(peerID) {
 			return nil, false
 		}
-		// A slow peer may still deliver a block we asked it for after another
-		// peer's copy was applied. This answers its request but earns it no
-		// liveness credit, because the block is not stored. A block we did not
-		// request from this peer (never asked, re-sent to another peer, or asked
-		// on an earlier connection) changes nothing, so we do not disconnect for
-		// it: an honest slow peer can send one after its request was re-sent.
+		// A late block answers this peer's request, if it still has one, but
+		// does not reset its timeout since it is not stored. We do not
+		// disconnect for it: an honest slow peer can send one.
 		peer.blockReceived(block.Height, blockSize, false)
 		return fmt.Errorf("got an already committed block #%d (possibly from the slow peer %s)", block.Height, peerID), false
 	}

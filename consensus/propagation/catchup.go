@@ -74,24 +74,22 @@ func (blockProp *Reactor) retryWants() {
 				},
 			}
 
-			if !peer.peer.TrySend(e) {
+			if !peer.RequestParts(height, round, mc, e) {
 				blockProp.Logger.Error("failed to send want part", "peer", peer.peer.ID(), "height", height, "round", round)
 				continue
 			}
 
 			schema.WriteCatchupRequest(blockProp.traceClient, height, round, mc.String(), string(peer.peer.ID()))
 
-			// subtract the parts we just requested
+			// subtract the parts we just requested. The count includes this
+			// peer's request, hence > rather than >=.
 			for _, partIndex := range mc.GetTrueIndices() {
 				reqLimit := ReqLimit(int(prop.block.Total()))
 				reqsCount := blockProp.countRequests(height, round, partIndex)
-				if len(reqsCount) >= reqLimit {
+				if len(reqsCount) > reqLimit {
 					missing.SetIndex(partIndex, false)
 				}
 			}
-
-			// keep track of which requests we've made this attempt.
-			peer.AddRequests(height, round, mc)
 		}
 	}
 }
@@ -296,10 +294,38 @@ func (blockProp *Reactor) applyCachedProposalIfAvailable() {
 			"height", currentHeight, "round", cb.Proposal.Round, "peer", peer.peer.ID())
 
 		if blockProp.handleCachedCompactBlock(cb) {
+			blockProp.grantPushToCachedSenders(peers, cb)
 			// Clean up the cache entry for this peer only if we successfully applied it.
 			peer.DeleteUnverifiedProposal(currentHeight)
 			return
 		}
+	}
+}
+
+// grantPushToCachedSenders lets every peer whose own cached compact block is
+// valid and matches the applied one push its parts. Cached entries are
+// unverified, so a matching block ID alone is not enough.
+func (blockProp *Reactor) grantPushToCachedSenders(peers []*PeerState, applied *proptypes.CompactBlock) {
+	height, round := applied.Proposal.Height, applied.Proposal.Round
+	for _, peer := range peers {
+		if peer == nil {
+			continue
+		}
+
+		cached := peer.GetUnverifiedProposal(height)
+		if cached == nil {
+			continue
+		}
+		if cached.Proposal.Round != round || !cached.Proposal.BlockID.Equals(applied.Proposal.BlockID) {
+			continue
+		}
+		if cached != applied {
+			if err := blockProp.validateCompactBlock(cached); err != nil {
+				continue
+			}
+		}
+
+		peer.GrantPushAllowance(applied)
 	}
 }
 

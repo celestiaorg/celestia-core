@@ -776,7 +776,8 @@ func (bs *BlockStore) SaveSeenCommit(height int64, seenCommit *types.Commit) err
 	if err != nil {
 		return fmt.Errorf("unable to marshal commit: %w", err)
 	}
-	return bs.db.Set(calcSeenCommitKey(height), seenCommitBytes)
+	// Synced, because a node restarting after state sync needs this commit.
+	return bs.db.SetSync(calcSeenCommitKey(height), seenCommitBytes)
 }
 
 func (bs *BlockStore) Close() error {

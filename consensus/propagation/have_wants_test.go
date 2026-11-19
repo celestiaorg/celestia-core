@@ -261,6 +261,11 @@ func TestRelayBuildsParityAfterCompleting(t *testing.T) {
 	leaf.getPeer(relay.self).AddRequests(1, 0, want)
 	relay.handleWants(leaf.self, &proptypes.WantParts{Height: 1, Round: 0, Parts: want, MissingPartsCount: 1})
 
+	originals := make([]int, total)
+	for i := range originals {
+		originals[i] = i
+	}
+	relay.getPeer(proposer.self).AddRequests(1, 0, createBitArray(2*total, originals))
 	for i := 0; i < total; i++ {
 		relay.handleRecoveryPart(proposer.self, &proptypes.RecoveryPart{Height: 1, Round: 0, Index: uint32(i), Data: ps.GetPart(i).Bytes})
 	}

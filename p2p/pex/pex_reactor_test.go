@@ -138,6 +138,36 @@ func TestPEXReactorReceive(t *testing.T) {
 	r.Receive(p2p.Envelope{ChannelID: PexChannel, Src: peer, Message: &tmp2p.PexRequest{}})
 }
 
+// socketAddrPeer is a peer whose socket address differs from the address it advertises.
+type socketAddrPeer struct {
+	p2p.Peer
+	socketAddr *p2p.NetAddress
+}
+
+func (p socketAddrPeer) SocketAddr() *p2p.NetAddress { return p.socketAddr }
+
+func TestPEXReactorUsesSocketAddrAsSource(t *testing.T) {
+	r, book := createReactor(&ReactorConfig{})
+	defer teardownReactor(book)
+
+	advertised := mock.NewPeer(nil)
+	socketAddr := p2p.CreateRandomPeer(false).SocketAddr()
+	socketAddr.ID = advertised.ID()
+	peer := socketAddrPeer{Peer: advertised, socketAddr: socketAddr}
+
+	// inbound peer
+	r.AddPeer(peer)
+	advertisedAddr, err := p2p.PeerAddress(peer)
+	require.NoError(t, err)
+	assert.Equal(t, socketAddr, book.(*addrBook).addrLookup[advertisedAddr.ID].Src)
+
+	// addresses the peer sends us
+	r.RequestAddrs(peer)
+	addr := p2p.CreateRandomPeer(false).SocketAddr()
+	require.NoError(t, r.ReceiveAddrs([]*p2p.NetAddress{addr}, peer))
+	assert.Equal(t, socketAddr, book.(*addrBook).addrLookup[addr.ID].Src)
+}
+
 func TestPEXReactorRequestMessageAbuse(t *testing.T) {
 	r, book := createReactor(&ReactorConfig{})
 	defer teardownReactor(book)
