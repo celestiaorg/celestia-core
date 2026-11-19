@@ -109,6 +109,7 @@ func (b *EventBus) Publish(eventType string, eventData TMEventData) error {
 // map of stringified events where each key is composed of the event
 // type and each of the event's attributes keys in the form of
 // "{event.Type}.{attribute.Key}" and the value is each attribute's value.
+// The reserved EventTypeKey is skipped, so an application can't set the event name.
 func (*EventBus) validateAndStringifyEvents(events []types.Event) map[string][]string {
 	result := make(map[string][]string)
 	for _, event := range events {
@@ -122,6 +123,9 @@ func (*EventBus) validateAndStringifyEvents(events []types.Event) map[string][]s
 			}
 
 			compositeTag := fmt.Sprintf("%s.%s", event.Type, attr.Key)
+			if compositeTag == EventTypeKey {
+				continue
+			}
 			result[compositeTag] = append(result[compositeTag], attr.Value)
 		}
 	}
