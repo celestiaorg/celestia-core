@@ -169,6 +169,7 @@ func newWSConnection(
 		pingPeriod:        defaultWSPingPeriod,
 		readRoutineQuit:   make(chan struct{}),
 	}
+	wsc.ctx, wsc.cancel = context.WithCancel(context.Background())
 	for _, option := range options {
 		option(wsc)
 	}
@@ -245,9 +246,7 @@ func (wsc *wsConnection) OnStop() {
 		wsc.onDisconnect(wsc.remoteAddr)
 	}
 
-	if wsc.ctx != nil {
-		wsc.cancel()
-	}
+	wsc.cancel()
 }
 
 // GetRemoteAddr returns the remote address of the underlying connection.
@@ -308,10 +307,6 @@ func (wsc *wsConnection) TryWriteRPCResponse(resp types.RPCResponse) bool {
 // Context returns the connection's context.
 // The context is canceled when the client's connection closes.
 func (wsc *wsConnection) Context() context.Context {
-	if wsc.ctx != nil {
-		return wsc.ctx
-	}
-	wsc.ctx, wsc.cancel = context.WithCancel(context.Background())
 	return wsc.ctx
 }
 
