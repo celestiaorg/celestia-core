@@ -68,6 +68,8 @@ func (ss *SignerServer) servicePendingRequest() {
 		if err != io.EOF {
 			ss.Logger.Error("SignerServer: HandleMessage", "err", err)
 		}
+		// The connection is closed or out of sync, so reconnect.
+		ss.endpoint.DropConnection()
 		return
 	}
 
