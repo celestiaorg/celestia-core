@@ -203,3 +203,25 @@ func seq(from, to int) []int {
 	}
 	return out
 }
+
+func TestBuildParityMatchesProposer(t *testing.T) {
+	partSize := int(cmttypes.BlockPartSizeBytes)
+	for _, size := range []int{1000, 4*partSize + 123, 299*partSize + 7} {
+		cb, ops, eps, proofs := testCompactBlock(t, cmtrand.Bytes(size))
+		total := int(ops.Total())
+		cps := addParts(t, cb, ops, eps, proofs, seq(0, total))
+		require.NoError(t, cps.BuildParity())
+		for i := 0; i < total; i++ {
+			p, has := cps.GetPart(uint32(total + i))
+			require.True(t, has)
+			require.Equal(t, eps.GetPart(i).Bytes, p.Bytes)
+			require.Equal(t, eps.GetPart(i).Proof, p.Proof)
+		}
+
+		// parity that does not match the committed root is not kept.
+		cps = addParts(t, cb, ops, eps, proofs, seq(0, total))
+		cps.parity = cmttypes.NewPartSetFromHeader(cmttypes.PartSetHeader{Total: uint32(total), Hash: cmtrand.Bytes(32)}, cmttypes.BlockPartSizeBytes)
+		require.Error(t, cps.BuildParity())
+		require.Zero(t, cps.Parity().Count())
+	}
+}

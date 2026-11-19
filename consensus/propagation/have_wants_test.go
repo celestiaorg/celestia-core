@@ -233,3 +233,77 @@ func TestHandleWantsTracksOnlyCachedRounds(t *testing.T) {
 		return has && parts.IsComplete()
 	}, 5*time.Second, 50*time.Millisecond)
 }
+
+// TestRelayBuildsParityAfterCompleting checks that a relay builds parity once
+// its originals complete and serves a want parked on it, without the proposer
+// sending parity or the retry ticker.
+func TestRelayBuildsParityAfterCompleting(t *testing.T) {
+	reactors, switches := createTestReactors(3, defaultTestP2PConf(), false, "")
+	stopSwitchesOnCleanup(t, switches)
+	proposer, relay, leaf := reactors[0], reactors[1], reactors[2]
+	cleanup, _, sm, pv := state.SetupTestCaseWithPrivVal(t)
+	t.Cleanup(func() { cleanup(t) })
+
+	cb, ps, _, _ := testCompactBlock(t, sm, pv, 1, 0)
+	for _, r := range reactors {
+		require.True(t, r.AddProposal(cb))
+	}
+	total := int(ps.Total())
+	_, relayParts, _, _ := relay.getAllState(1, 0, false)
+	_, leafParts, _, _ := leaf.getAllState(1, 0, false)
+
+	// the leaf misses its last original and wants the first parity part.
+	for i := 0; i < total-1; i++ {
+		_, err := leafParts.AddOriginalPart(ps.GetPart(i))
+		require.NoError(t, err)
+	}
+	want := createBitArray(2*total, []int{total})
+	leaf.getPeer(relay.self).AddRequests(1, 0, want)
+	relay.handleWants(leaf.self, &proptypes.WantParts{Height: 1, Round: 0, Parts: want, MissingPartsCount: 1})
+
+	originals := make([]int, total)
+	for i := range originals {
+		originals[i] = i
+	}
+	relay.getPeer(proposer.self).AddRequests(1, 0, createBitArray(2*total, originals))
+	for i := 0; i < total; i++ {
+		relay.handleRecoveryPart(proposer.self, &proptypes.RecoveryPart{Height: 1, Round: 0, Index: uint32(i), Data: ps.GetPart(i).Bytes})
+	}
+	require.Eventually(t, func() bool { return relayParts.Parity().IsComplete() }, RetryTime/2, 10*time.Millisecond, "the relay built no parity")
+	require.Eventually(t, leafParts.IsComplete, RetryTime/2, 10*time.Millisecond)
+	require.Eventually(t, func() bool { return leafParts.Parity().IsComplete() }, RetryTime/2, 10*time.Millisecond, "the leaf built no parity")
+}
+
+// TestMempoolRecoveryServesParkedWants checks that a want parked for a part
+// is served when that part is later rebuilt from the mempool.
+func TestMempoolRecoveryServesParkedWants(t *testing.T) {
+	reactors, switches := createTestReactors(2, defaultTestP2PConf(), false, "")
+	stopSwitchesOnCleanup(t, switches)
+	relay, leaf := reactors[0], reactors[1]
+	cleanup, _, sm, pv := state.SetupTestCaseWithPrivVal(t)
+	t.Cleanup(func() { cleanup(t) })
+
+	prop, ps, block, metaData := createTestProposal(t, sm, pv, 1, 0, 2, 1000000)
+	cb, _, _ := compactBlockFor(t, prop, ps, metaData)
+	require.True(t, relay.AddProposal(cb))
+	require.True(t, leaf.AddProposal(cb))
+	total := int(ps.Total())
+	mid := total / 2
+
+	want := createBitArray(2*total, []int{mid})
+	leaf.getPeer(relay.self).AddRequests(1, 0, want)
+	relay.handleWants(leaf.self, &proptypes.WantParts{Height: 1, Round: 0, Parts: want, MissingPartsCount: 1})
+	// with the edge parts in hand, the mempool rebuild completes the block.
+	_, relayParts, _, _ := relay.getAllState(1, 0, false)
+	for _, i := range []int{0, total - 1} {
+		_, err := relayParts.AddOriginalPart(ps.GetPart(i))
+		require.NoError(t, err)
+	}
+	relay.mempool = mempoolWith(block.Txs)
+	relay.recoverPartsFromMempool(cb)
+	require.True(t, relayParts.IsComplete())
+
+	_, leafParts, _, _ := leaf.getAllState(1, 0, false)
+	require.Eventually(t, func() bool { return leafParts.HasPart(mid) }, RetryTime/2, 10*time.Millisecond)
+	require.Eventually(t, func() bool { return relayParts.Parity().IsComplete() }, RetryTime/2, 10*time.Millisecond, "the relay built no parity")
+}
