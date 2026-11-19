@@ -49,6 +49,9 @@ const (
 	// min addresses that must be returned by GetSelection. Useful for bootstrapping.
 	minGetSelection = 32
 
+	// max banned peers we remember. Matches the capacity of the new buckets.
+	maxBadPeers = newBucketSize * newBucketCount
+
 	// max addresses returned by GetSelection
 	// NOTE: this must match "maxMsgSize"
 	maxGetSelection = 250
