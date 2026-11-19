@@ -88,6 +88,43 @@ func TestSignerRemoteRetryTCPOnly(t *testing.T) {
 	}
 }
 
+// The signer keeps dialing when the node stays down for longer than its dial retries.
+func TestSignerServerKeepsDialing(t *testing.T) {
+	addr := GetFreeLocalhostAddrPort()
+	chainID := cmtrand.Str(12)
+
+	dialerEndpoint := NewSignerDialerEndpoint(
+		log.TestingLogger(),
+		DialTCPFn(addr, testTimeoutReadWrite, ed25519.GenPrivKey()),
+		SignerDialerEndpointConnRetries(1),
+		SignerDialerEndpointRetryWaitInterval(time.Millisecond),
+	)
+	signerServer := NewSignerServer(dialerEndpoint, chainID, types.NewMockPV())
+	require.NoError(t, signerServer.Start())
+	t.Cleanup(func() {
+		if err := signerServer.Stop(); err != nil {
+			t.Error(err)
+		}
+	})
+
+	// Nothing listens yet, so the dial retries run out.
+	time.Sleep(100 * time.Millisecond)
+
+	listenerEndpoint := newSignerListenerEndpoint(log.TestingLogger(), addr, testTimeoutReadWrite)
+	signerClient, err := NewSignerClient(listenerEndpoint, chainID)
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		if err := signerClient.Close(); err != nil {
+			t.Error(err)
+		}
+	})
+
+	require.Eventually(t, func() bool {
+		_, err := signerClient.GetPubKey()
+		return err == nil
+	}, 5*time.Second, 10*time.Millisecond)
+}
+
 func TestRetryConnToRemoteSigner(t *testing.T) {
 	for _, tc := range getDialerTestCases(t) {
 		var (
