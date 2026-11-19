@@ -617,12 +617,13 @@ func (blockProp *Reactor) handleRecoveryPart(peer p2p.ID, part *proptypes.Recove
 
 	go blockProp.clearWants(part, *proof)
 
-	// consensus only needs the originals: decode only when some are missing,
-	// and then rebuild just those, never parity.
-	if parts.IsComplete() || !parts.CanDecode() {
+	// consensus votes on the originals: rebuild the missing ones first, then
+	// build parity in the background so peers can still recover from us.
+	if parts.IsComplete() {
+		go blockProp.buildParity(cb, parts)
 		return
 	}
-	if !parts.IsDecoding.CompareAndSwap(false, true) {
+	if !parts.CanDecode() || !parts.IsDecoding.CompareAndSwap(false, true) {
 		return
 	}
 	proofs, err := cb.Proofs()
@@ -640,6 +641,27 @@ func (blockProp *Reactor) handleRecoveryPart(peer p2p.ID, part *proptypes.Recove
 		return
 	}
 	blockProp.publishLocalParts(part.Height, part.Round, recovered)
+	go blockProp.buildParity(cb, parts)
+}
+
+// buildParity encodes the parity of a complete block, serves the wants parked
+// on it and advertises every part.
+func (blockProp *Reactor) buildParity(cb *proptypes.CompactBlock, parts *proptypes.CombinedPartSet) {
+	if !parts.IsComplete() || !parts.CanDecode() || parts.Parity().IsComplete() ||
+		!parts.IsDecoding.CompareAndSwap(false, true) {
+		return
+	}
+	defer parts.IsDecoding.Store(false)
+	height, round := cb.Proposal.Height, cb.Proposal.Round
+	if err := parts.BuildParity(); err != nil {
+		blockProp.Logger.Error("failed to build parity", "height", height, "round", round, "error", err)
+		return
+	}
+	for i := parts.Original().Total(); i < parts.Total(); i++ {
+		if p, has := parts.GetPart(i); has {
+			blockProp.clearWants(&proptypes.RecoveryPart{Height: height, Round: round, Index: i, Data: p.Bytes}, p.GetProof())
+		}
+	}
 	blockProp.broadcastLocalHaves(cb, parts)
 }
 

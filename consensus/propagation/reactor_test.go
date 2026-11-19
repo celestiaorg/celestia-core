@@ -246,12 +246,11 @@ func TestHandleHavesAndWantsAndRecoveryParts(t *testing.T) {
 	require.Equal(t, uint32(1), parts.Count())
 	require.Equal(t, randomData, parts.GetPart(0).Bytes.Bytes())
 
-	// the originals are complete, so no parity was generated.
+	// the parity is built in the background once the originals are complete.
 	_, combined, _, has := reactor3.getAllState(height, round, true)
 	assert.True(t, has)
 	assert.True(t, combined.IsComplete())
-	_, has = combined.GetPart(1)
-	assert.False(t, has)
+	require.Eventually(t, func() bool { _, has := combined.GetPart(1); return has }, time.Second, 10*time.Millisecond)
 }
 
 func TestInvalidPart(t *testing.T) {

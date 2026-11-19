@@ -350,6 +350,7 @@ func (blockProp *Reactor) recoverPartsFromMempool(cb *proptypes.CompactBlock) {
 	}
 	// a peer may have asked for one of these parts after a request advertised it.
 	blockProp.publishLocalParts(cb.Proposal.Height, cb.Proposal.Round, recovered)
+	go blockProp.buildParity(cb, partSet)
 
 	schema.WriteMempoolRecoveredParts(blockProp.traceClient, cb.Proposal.Height, cb.Proposal.Round, len(recovered), time.Since(startTime).Nanoseconds())
 
