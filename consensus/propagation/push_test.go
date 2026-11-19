@@ -148,6 +148,29 @@ func TestProposePushesUncoveredParts(t *testing.T) {
 	}
 }
 
+// TestProposeAdvertisesFirstAndLastWhenNothingIsPushed checks a peer still
+// learns the proposer has the first and last part when it pushes nothing, and
+// requests them.
+func TestProposeAdvertisesFirstAndLastWhenNothingIsPushed(t *testing.T) {
+	reactors, _ := testBlockPropReactors(2, cfg.DefaultP2PConfig())
+	cleanup, _, sm, pv := state.SetupTestCaseWithPrivVal(t)
+	t.Cleanup(func() { cleanup(t) })
+
+	prop, partSet, _, metaData := createTestProposal(t, sm, pv, 1, 0, 100, 1000)
+	// a gap between txs means nothing is pushed
+	metaData = append(metaData[:1], metaData[2:]...)
+	lastIndex := partSet.Total() - 1
+	require.Nil(t, uncoveredParts(metaData, partSet.Total(), types.BlockPartSizeBytes, uint32(len(partSet.GetPart(int(lastIndex)).Bytes))))
+
+	proposer, receiver := reactors[0], reactors[1]
+	require.NoError(t, proposer.ProposeBlock(prop, partSet, metaData))
+
+	require.Eventually(t, func() bool {
+		p := receiver.getPeer(proposer.self)
+		return p.Requested(prop.Height, prop.Round, 0) && p.Requested(prop.Height, prop.Round, lastIndex)
+	}, 5*time.Second, 20*time.Millisecond)
+}
+
 func TestPushAllowancePruned(t *testing.T) {
 	reactors, _ := testBlockPropReactors(2, cfg.DefaultP2PConfig())
 	p := reactors[0].getPeer(reactors[1].self)

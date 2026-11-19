@@ -47,6 +47,18 @@ func uncoveredParts(txs []proptypes.TxMetaData, totalParts, partSize, lastPartSi
 	return uncovered
 }
 
+// advertisedOriginalParts returns the original parts the proposer lists in its
+// haves: the pushed parts, or the first and last part when nothing is pushed.
+func advertisedOriginalParts(pushed []uint32, totalParts uint32) []uint32 {
+	if pushed != nil {
+		return pushed
+	}
+	if totalParts <= 1 {
+		return []uint32{0}
+	}
+	return []uint32{0, totalParts - 1}
+}
+
 // txsAreBackToBack reports whether every transaction starts exactly where the
 // previous one ends, with no gap or overlap.
 func txsAreBackToBack(txs []proptypes.TxMetaData) bool {
