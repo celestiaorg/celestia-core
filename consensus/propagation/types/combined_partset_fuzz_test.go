@@ -5,6 +5,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/cometbft/cometbft/crypto/merkle"
 	cmttypes "github.com/cometbft/cometbft/types"
 )
 
@@ -118,11 +119,41 @@ func FuzzCombinedPartSetDecode(f *testing.F) {
 			return
 		}
 		honest := !byzantineParity && cbLastLen == uint32(lastLen)
+
+		// RecoverOriginals runs on a copy of the accepted parts and must agree
+		// with Decode wherever Decode succeeds.
+		recovering := NewCombinedSetFromCompactBlock(cb)
+		for j := uint32(0); j < 2*total; j++ {
+			if accepted[j] {
+				_, err := recovering.AddPart(&RecoveryPart{Index: j, Data: genuine(j).Bytes}, genuine(j).Proof)
+				require.NoError(t, err)
+			}
+		}
+		proofs := make([]*merkle.Proof, 0, 2*total)
+		for j := uint32(0); j < 2*total; j++ {
+			proof := genuine(j).Proof
+			proofs = append(proofs, &proof)
+		}
+		_, recoverErr := recovering.RecoverOriginals(proofs)
+		if honest {
+			require.NoError(t, recoverErr, "recovering from enough genuine parts failed")
+		}
+		for j := uint32(0); j < total; j++ {
+			if stored := recovering.Original().GetPart(int(j)); stored != nil {
+				require.Equal(t, ops.GetPart(int(j)).Bytes, stored.Bytes, "recovered part %d differs from the genuine part", j)
+			}
+		}
+		for j := uint32(0); j < total; j++ {
+			require.Equal(t, accepted[total+j], recovering.HasPart(int(total+j)), "parity part %d materialized by recovery", j)
+		}
+
 		err = cps.Decode()
 		if err != nil {
 			require.False(t, honest, "decoding enough genuine parts failed: %v", err)
 			return
 		}
+		require.NoError(t, recoverErr, "decode succeeded but recovery failed")
+		require.True(t, recovering.IsComplete())
 		require.True(t, cps.IsComplete())
 		got := make([]byte, 0, dataLen)
 		for i := 0; i < int(total); i++ {

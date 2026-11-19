@@ -123,6 +123,18 @@ func (cps *CombinedPartSet) CanDecode() bool {
 		!cps.catchup
 }
 
+// RecoverOriginals rebuilds only the missing original parts, see
+// types.DecodeOriginals.
+func (cps *CombinedPartSet) RecoverOriginals(proofs []*merkle.Proof) ([]*types.Part, error) {
+	cps.mtx.Lock()
+	defer cps.mtx.Unlock()
+	parts, err := types.DecodeOriginals(cps.original, cps.parity, int(cps.lastLen), proofs)
+	for _, p := range parts {
+		cps.totalMap.SetIndex(int(p.Index), true)
+	}
+	return parts, err
+}
+
 func (cps *CombinedPartSet) Decode() error {
 	cps.mtx.Lock()
 	defer cps.mtx.Unlock()
