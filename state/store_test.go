@@ -356,3 +356,16 @@ func TestIntConversion(t *testing.T) {
 	b := sm.Int64ToBytes(x)
 	require.Equal(t, x, sm.Int64FromBytes(b))
 }
+
+// Bootstrap saves the state sync height together with the state.
+func TestBootstrapSavesStateSyncHeight(t *testing.T) {
+	state, _, _ := makeState(1, 5)
+	require.Positive(t, state.LastBlockHeight)
+
+	stateStore := sm.NewStore(dbm.NewMemDB(), sm.StoreOptions{DiscardABCIResponses: false})
+	require.NoError(t, stateStore.Bootstrap(state))
+
+	height, err := stateStore.GetOfflineStateSyncHeight()
+	require.NoError(t, err)
+	require.Equal(t, state.LastBlockHeight, height)
+}
