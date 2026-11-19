@@ -785,6 +785,7 @@ func (txmp *TxPool) recheckTransactions() {
 		"num_txs", txmp.Size(),
 		"height", txmp.height.Load(),
 	)
+	start := time.Now()
 
 	// Get all transactions currently in the mempool requiring recheck.
 	// This avoids holding the store lock during the CheckTx calls which could
@@ -807,6 +808,10 @@ func (txmp *TxPool) recheckTransactions() {
 		}
 	}
 	_ = txmp.proxyAppConn.Flush(context.Background())
+	elapsed := time.Since(start)
+	txmp.metrics.RecheckDurationSeconds.Observe(elapsed.Seconds())
+	txmp.logger.Info("rechecked mempool", "height", txmp.height.Load(), "txs", len(wtxs),
+		"duration_ms", elapsed.Milliseconds())
 
 	// When recheck is complete, trigger a notification for more transactions.
 	txmp.notifyTxsAvailable()
