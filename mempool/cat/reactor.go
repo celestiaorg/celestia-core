@@ -798,6 +798,15 @@ func (memR *Reactor) processReceivedBuffer(signer []byte) {
 // processPendingSeenForSigner tries to advance the pipeline of queued transactions for a signer.
 // It requests consecutive sequences in parallel from different peers whenever we have seen a consecutive sequence numbers,
 // buffering out-of-order arrivals for later processing. This allows fast catch-up even when tx sources are distributed.
+//
+// Signer/sequence from a SeenTx is unverified, so when different txs are
+// queued at one sequence the scan cannot tell which claim is true. It
+// requests each of them, so a claim for one tx does not stop the request
+// for another.
+// Requests stay bounded: the scan reads at most the signer's queue
+// (seenPerSignerLimit claims), goes less than maxReceivedBufferSize sequences
+// ahead, and requestTx asks each peer for at most maxRequestsPerPeer txs. A
+// tx is only requested from peers that said they have it.
 func (memR *Reactor) processPendingSeenForSigner(signer []byte) {
 	if len(signer) == 0 {
 		return
@@ -816,42 +825,42 @@ func (memR *Reactor) processPendingSeenForSigner(signer []byte) {
 	// Clean up old entries and request consecutive sequences in parallel
 	nextSeq := expectedSeq
 	requested := 0
-	// counted holds the txs this scan already used for a lower sequence. A
-	// tx has one sequence, so another claim for it must not fill the gap at
-	// its own sequence, or a bogus claim would hide the tx really there.
-	counted := make(map[types.TxKey]struct{}, len(entries))
+	// covered is set once a tx is queued at nextSeq. Only then may the scan
+	// go on to the next sequence.
+	covered := false
 
 	for _, entry := range entries {
+		sequence := entry.pendingTxInfo.sequence
 		// Clean up claims for sequences that are already used
-		if entry.pendingTxInfo.sequence < expectedSeq {
-			memR.mempool.seenTracker.ClearPendingClaim(entry.txKey, signer, entry.pendingTxInfo.sequence)
+		if sequence < expectedSeq {
+			memR.mempool.seenTracker.ClearPendingClaim(entry.txKey, signer, sequence)
 			continue
 		}
 
-		if _, ok := counted[entry.txKey]; ok {
-			continue
+		// Entries are in sequence order, so every tx queued at nextSeq was
+		// handled when the first entry of a higher sequence shows up. Stop
+		// at a gap: a sequence with nothing queued.
+		if sequence > nextSeq {
+			if !covered || sequence-nextSeq > 1 {
+				break
+			}
+			nextSeq = sequence
 		}
-		counted[entry.txKey] = struct{}{}
 
-		if entry.pendingTxInfo.sequence != nextSeq {
+		// Stay inside the range of sequences the received buffer can hold.
+		if sequence-expectedSeq >= maxReceivedBufferSize {
 			break
 		}
-
-		// Check limits
-		if requested >= maxReceivedBufferSize {
-			break
-		}
+		covered = true
 
 		// Skip if already in mempool
 		if memR.mempool.Has(entry.txKey) {
 			memR.mempool.seenTracker.ClearPendingTx(entry.txKey)
-			nextSeq++
 			continue
 		}
 
 		// Skip if already being requested, but count it
 		if memR.requests.ForTx(entry.txKey) != 0 {
-			nextSeq++
 			requested++
 			continue
 		}
@@ -860,7 +869,6 @@ func (memR *Reactor) processPendingSeenForSigner(signer []byte) {
 		if memR.tryRequestQueuedTx(entry) {
 			requested++
 		}
-		nextSeq++
 	}
 
 	if requested > 0 {
