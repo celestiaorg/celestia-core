@@ -753,10 +753,7 @@ func (a *addrBook) addBadPeer(addr *p2p.NetAddress, banTime time.Duration) bool 
 	}
 
 	if len(a.badPeers) >= maxBadPeers {
-		a.removeExpiredBans()
-	}
-	if len(a.badPeers) >= maxBadPeers {
-		a.removeSoonestExpiringBan()
+		a.makeRoomForBan()
 	}
 	// add to bad peer list
 	ka.ban(banTime)
@@ -765,25 +762,21 @@ func (a *addrBook) addBadPeer(addr *p2p.NetAddress, banTime time.Duration) bool 
 	return true
 }
 
-// removeExpiredBans drops bad peers whose ban is over, to make room for new bans.
-func (a *addrBook) removeExpiredBans() {
-	for id, ka := range a.badPeers {
-		if !ka.isBanned() {
-			delete(a.badPeers, id)
-		}
-	}
-}
-
-// removeSoonestExpiringBan drops the bad peer whose ban ends first, so a full
-// list can still take a new ban.
-func (a *addrBook) removeSoonestExpiringBan() {
+// makeRoomForBan drops bad peers whose ban is over. If the list is still
+// full, it also drops the one whose ban ends first. It scans the list once.
+func (a *addrBook) makeRoomForBan() {
+	now := time.Now()
 	var soonest *knownAddress
-	for _, ka := range a.badPeers {
+	for id, ka := range a.badPeers {
+		if !ka.LastBanTime.After(now) {
+			delete(a.badPeers, id)
+			continue
+		}
 		if soonest == nil || ka.LastBanTime.Before(soonest.LastBanTime) {
 			soonest = ka
 		}
 	}
-	if soonest != nil {
+	if len(a.badPeers) >= maxBadPeers && soonest != nil {
 		delete(a.badPeers, soonest.ID())
 	}
 }
