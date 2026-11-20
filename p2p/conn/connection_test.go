@@ -3,6 +3,7 @@ package conn
 import (
 	"encoding/hex"
 	"net"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -13,6 +14,7 @@ import (
 
 	"github.com/cometbft/cometbft/libs/log"
 	"github.com/cometbft/cometbft/libs/protoio"
+	"github.com/cometbft/cometbft/libs/timer"
 	tmp2p "github.com/cometbft/cometbft/proto/tendermint/p2p"
 	"github.com/cometbft/cometbft/proto/tendermint/types"
 )
@@ -704,4 +706,168 @@ func stopAll(t *testing.T, stoppers ...stopper) func() {
 			}
 		}
 	}
+}
+
+// writeCountingConn counts Write calls, i.e. flushes of the buffered writer.
+type writeCountingConn struct {
+	net.Conn
+	writes atomic.Int32
+}
+
+func (c *writeCountingConn) Write(b []byte) (int, error) {
+	c.writes.Add(1)
+	return c.Conn.Write(b)
+}
+
+// newFlushTestMConnection returns a started MConnection whose flush throttle
+// and ping interval are long enough that only an explicit flush can get a
+// packet onto the wire within the test. Channel 0x01 is LowLatency, 0x02 isn't.
+func newFlushTestMConnection(t *testing.T, conn net.Conn, flushLowLatency bool) *MConnection {
+	t.Helper()
+	c := newUnstartedFlushTestMConnection(conn, flushLowLatency)
+	c.SetLogger(log.TestingLogger())
+	require.NoError(t, c.Start())
+	t.Cleanup(func() { _ = c.Stop() })
+	return c
+}
+
+func newUnstartedFlushTestMConnection(conn net.Conn, flushLowLatency bool) *MConnection {
+	cfg := DefaultMConnConfig()
+	cfg.FlushThrottle = time.Hour
+	cfg.PingInterval = time.Hour
+	cfg.PongTimeout = time.Minute
+	cfg.FlushLowLatency = flushLowLatency
+	chDescs := []*ChannelDescriptor{
+		{ID: 0x01, Priority: 1, SendQueueCapacity: 100, LowLatency: true},
+		{ID: 0x02, Priority: 1, SendQueueCapacity: 100},
+	}
+	return NewMConnectionWithConfig(conn, chDescs, func(byte, []byte) {}, func(interface{}) {}, cfg)
+}
+
+// requireNoRead asserts nothing reaches the socket within a short window.
+func requireNoRead(t *testing.T, server net.Conn, msg string) {
+	t.Helper()
+	require.NoError(t, server.SetReadDeadline(time.Now().Add(200*time.Millisecond)))
+	_, err := server.Read(make([]byte, 64))
+	var netErr net.Error
+	require.ErrorAs(t, err, &netErr)
+	require.True(t, netErr.Timeout(), msg)
+}
+
+func TestMConnectionFlushLowLatency(t *testing.T) {
+	server, client := net.Pipe()
+	defer server.Close()
+	defer client.Close()
+	conn := &writeCountingConn{Conn: client}
+
+	mconn := newFlushTestMConnection(t, conn, true)
+	// Spans several packets, which should still go out in a single write.
+	msg := make([]byte, 3*mconn.config.MaxPacketMsgPayloadSize+1)
+	require.True(t, mconn.Send(0x01, msg))
+
+	require.NoError(t, server.SetReadDeadline(time.Now().Add(time.Second)))
+	read := 0
+	for read < len(msg) {
+		n, err := server.Read(make([]byte, 2*len(msg)))
+		require.NoError(t, err, "completed message should reach the socket without the flush timer")
+		read += n
+	}
+	require.EqualValues(t, 1, conn.writes.Load())
+}
+
+func TestMConnectionBulkChannelWaitsForFlushTimer(t *testing.T) {
+	server, client := net.Pipe()
+	defer server.Close()
+	defer client.Close()
+
+	mconn := newFlushTestMConnection(t, client, true)
+	require.True(t, mconn.Send(0x02, []byte("tx")))
+	requireNoRead(t, server, "non LowLatency channel should stay buffered until the flush timer fires")
+}
+
+func TestMConnectionWaitsForFlushTimerWithoutFlushLowLatency(t *testing.T) {
+	server, client := net.Pipe()
+	defer server.Close()
+	defer client.Close()
+
+	mconn := newFlushTestMConnection(t, client, false)
+	require.True(t, mconn.Send(0x01, []byte("vote")))
+	requireNoRead(t, server, "packet should stay buffered until the flush timer fires")
+}
+
+// bufferConn is a net.Conn whose writes never block.
+type bufferConn struct {
+	net.Conn
+	writes int
+}
+
+func (c *bufferConn) Write(b []byte) (int, error) {
+	c.writes++
+	return len(b), nil
+}
+
+func TestMConnectionBatchesQueuedLowLatencyMessages(t *testing.T) {
+	newConn := func(t *testing.T) (*MConnection, *bufferConn) {
+		conn := &bufferConn{}
+		c := newUnstartedFlushTestMConnection(conn, true)
+		// normally created in OnStart; sendBatchPacketMsgs arms it.
+		c.flushTimer = timer.NewThrottleTimer("flush", time.Hour)
+		t.Cleanup(func() { c.flushTimer.Stop() })
+		return c, conn
+	}
+	queueVotes := func(c *MConnection, n int) {
+		for i := 0; i < n; i++ {
+			require.True(t, c.channelsIdx[0x01].sendBytes([]byte("vote")))
+		}
+	}
+
+	t.Run("queued messages share one flush", func(t *testing.T) {
+		c, conn := newConn(t)
+		queueVotes(c, 5)
+		require.True(t, c.sendBatchPacketMsgs(protoio.NewDelimitedWriter(c.bufConnWriter), numBatchPacketMsgs))
+		require.Equal(t, 1, conn.writes)
+	})
+
+	t.Run("no flush while the queue is still busy", func(t *testing.T) {
+		c, conn := newConn(t)
+		queueVotes(c, numBatchPacketMsgs+5)
+		w := protoio.NewDelimitedWriter(c.bufConnWriter)
+		require.False(t, c.sendBatchPacketMsgs(w, numBatchPacketMsgs))
+		require.Zero(t, conn.writes)
+		require.True(t, c.sendBatchPacketMsgs(w, numBatchPacketMsgs))
+		require.Equal(t, 1, conn.writes)
+	})
+
+	t.Run("batch that drains the queue flushes", func(t *testing.T) {
+		c, conn := newConn(t)
+		queueVotes(c, numBatchPacketMsgs)
+		c.sendBatchPacketMsgs(protoio.NewDelimitedWriter(c.bufConnWriter), numBatchPacketMsgs)
+		require.Equal(t, 1, conn.writes)
+	})
+
+	t.Run("busy bulk channel doesn't hold back votes", func(t *testing.T) {
+		c, conn := newConn(t)
+		queueVotes(c, 2)
+		for i := 0; i < numBatchPacketMsgs; i++ {
+			require.True(t, c.channelsIdx[0x02].sendBytes([]byte("tx")))
+		}
+		require.False(t, c.sendBatchPacketMsgs(protoio.NewDelimitedWriter(c.bufConnWriter), numBatchPacketMsgs))
+		require.Equal(t, 1, conn.writes)
+	})
+
+	t.Run("other flushes clear the pending low latency flush", func(t *testing.T) {
+		c, conn := newConn(t)
+		c.lowLatencyPending = true
+		c.flush() // e.g. the flush timer
+		require.True(t, c.channelsIdx[0x02].sendBytes([]byte("tx")))
+		require.True(t, c.sendBatchPacketMsgs(protoio.NewDelimitedWriter(c.bufConnWriter), numBatchPacketMsgs))
+		require.Zero(t, conn.writes)
+	})
+
+	t.Run("bulk only batch is not flushed", func(t *testing.T) {
+		c, conn := newConn(t)
+		require.True(t, c.channelsIdx[0x02].sendBytes([]byte("tx")))
+		require.True(t, c.sendBatchPacketMsgs(protoio.NewDelimitedWriter(c.bufConnWriter), numBatchPacketMsgs))
+		require.Zero(t, conn.writes)
+	})
 }

@@ -182,6 +182,7 @@ func (conR *Reactor) GetChannels() []*p2p.ChannelDescriptor {
 		{
 			ID:                  StateChannel,
 			Priority:            230,
+			LowLatency:          true,
 			SendQueueCapacity:   200,
 			RecvMessageCapacity: maxMsgSize,
 			MessageType:         &cmtcons.Message{},
@@ -189,6 +190,7 @@ func (conR *Reactor) GetChannels() []*p2p.ChannelDescriptor {
 		{
 			ID:                  VoteChannel,
 			Priority:            235,
+			LowLatency:          true,
 			SendQueueCapacity:   200,
 			RecvBufferCapacity:  100 * 100,
 			RecvMessageCapacity: maxMsgSize,
@@ -197,6 +199,7 @@ func (conR *Reactor) GetChannels() []*p2p.ChannelDescriptor {
 		{
 			ID:                  VoteSetBitsChannel,
 			Priority:            206,
+			LowLatency:          true,
 			SendQueueCapacity:   10,
 			RecvBufferCapacity:  1024,
 			RecvMessageCapacity: maxMsgSize,
