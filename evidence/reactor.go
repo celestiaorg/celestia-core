@@ -26,7 +26,10 @@ const (
 	// If a message fails wait this much before sending it again
 	peerRetryMessageIntervalMS = 100
 	// ReactorIncomingMessageQueueSize the size of the reactor's message queue.
-	ReactorIncomingMessageQueueSize = 1
+	// It matches the default peer limit (40 inbound plus 10 outbound), so
+	// one message per peer can wait while another is processed. Messages
+	// that arrive while the queue is full are dropped.
+	ReactorIncomingMessageQueueSize = 50
 )
 
 // Reactor handles evpool evidence broadcasting amongst peers.
@@ -41,7 +44,13 @@ func NewReactor(evpool *Pool) *Reactor {
 	evR := &Reactor{
 		evpool: evpool,
 	}
-	evR.BaseReactor = *p2p.NewBaseReactor("Evidence", evR, p2p.WithIncomingQueueSize(ReactorIncomingMessageQueueSize))
+	// Queue without blocking. A blocking queue stalls the sending peer's
+	// whole connection while another peer's message is being processed.
+	// Dropped evidence is sent again by the peer's broadcast routine.
+	evR.BaseReactor = *p2p.NewBaseReactor("Evidence", evR,
+		p2p.WithIncomingQueueSize(ReactorIncomingMessageQueueSize),
+		p2p.WithQueueingFunc(evR.TryQueueUnprocessedEnvelope),
+	)
 	return evR
 }
 
