@@ -347,6 +347,11 @@ func (c *Client) Block(ctx context.Context, height *int64) (*ctypes.ResultBlock,
 		return nil, fmt.Errorf("blockID %X does not match with block %X",
 			bmH, bH)
 	}
+	// Bind the response to the request: an upstream can otherwise substitute
+	// a different, genuine block for the one that was asked for.
+	if height != nil && res.Block.Height != *height {
+		return nil, fmt.Errorf("block height %d does not match requested height %d", res.Block.Height, *height)
+	}
 
 	// Update the light client if we're behind.
 	l, err := c.updateLightClientIfNeededTo(ctx, &res.Block.Height)
@@ -427,6 +432,11 @@ func (c *Client) BlockResults(ctx context.Context, height *int64) (*ctypes.Resul
 	// Validate res.
 	if res.Height <= 0 {
 		return nil, errNegOrZeroHeight
+	}
+	// Bind the response to the request: the results are verified against
+	// height h below, so the response must not claim a different height.
+	if res.Height != h {
+		return nil, fmt.Errorf("block results height %d does not match requested height %d", res.Height, h)
 	}
 
 	// Update the light client if we're behind.
