@@ -39,6 +39,7 @@ func FuzzRPCCoreHandlers(f *testing.F) {
 	f.Add(uint8(14), int64(-1), uint64(1), uint64(3), 0, 0, "", []byte{})
 	f.Add(uint8(18), h+1, uint64(0), uint64(0), 2, 1000, "", []byte{})
 	f.Add(uint8(9), int64(0), uint64(21), uint64(0), 0, 0, "", bytes.Repeat(committed.Hash(), 21))
+	f.Add(uint8(24), int64(0), uint64(1)<<63, uint64(0), 0, 0, "", []byte{})
 
 	f.Fuzz(func(t *testing.T, sel uint8, height int64, a, b uint64, page, perPage int, s string, data []byte) {
 		if len(data) > 2*EnvTestMaxTxBytes || len(s) > 2*maxQueryLength {
