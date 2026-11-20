@@ -242,3 +242,80 @@ func TestCommitForEarlierRoundTakesHeldBlock(t *testing.T) {
 	_, newBlockCh := commitEarlierRound(t, cs1, vss[1:])
 	ensureNewBlock(newBlockCh, 1)
 }
+
+// proposalFeeder hands consensus the proposal and parts a test sends, and holds that
+// proposal's parts like the propagator does once it has them.
+type proposalFeeder struct {
+	propagation.Propagator
+	proposals chan propagation.ProposalAndSrc
+	parts     chan types.PartInfo
+	proposal  *types.Proposal
+	partSet   *types.PartSet
+}
+
+func (p *proposalFeeder) GetProposalChan() <-chan propagation.ProposalAndSrc { return p.proposals }
+
+func (p *proposalFeeder) GetPartChan() <-chan types.PartInfo { return p.parts }
+
+func (p *proposalFeeder) GetProposal(height int64, round int32) (*types.Proposal, *types.PartSet, bool) {
+	if p.proposal == nil || p.proposal.Height != height || p.proposal.Round != round {
+		return nil, nil, false
+	}
+	return p.proposal, p.partSet, true
+}
+
+// A part that reaches consensus before its proposal is dropped. Once the proposal
+// arrives, consensus must still take the parts the propagator holds and complete the
+// block before the propose timeout.
+func TestProposalAfterItsPartsCompletesBlock(t *testing.T) {
+	cs1, vss := randState(4)
+	others := vss[1:]
+	height := cs1.rs.Height
+	cs1.state.Timeouts.TimeoutPropose = time.Minute
+
+	// round 1's proposer signs a block built by cs1.
+	proposerAddr := cs1.rs.Validators.CopyIncrementProposerPriority(1).GetProposer().Address
+	var proposer *validatorStub
+	for _, vs := range others {
+		pubKey, err := vs.GetPubKey()
+		require.NoError(t, err)
+		if bytes.Equal(pubKey.Address(), proposerAddr) {
+			proposer = vs
+		}
+	}
+	require.NotNil(t, proposer)
+	proposal, block := decideProposal(context.Background(), t, cs1, proposer, height, 1)
+	parts, err := block.MakePartSet(types.BlockPartSizeBytes)
+	require.NoError(t, err)
+
+	feeder := &proposalFeeder{
+		Propagator: cs1.propagator,
+		proposals:  make(chan propagation.ProposalAndSrc, 1),
+		parts:      make(chan types.PartInfo, parts.Total()),
+		proposal:   proposal,
+		partSet:    parts,
+	}
+	cs1.propagator = feeder
+
+	newRoundCh := subscribe(cs1.eventBus, types.EventQueryNewRound)
+	require.NoError(t, cs1.Start())
+	t.Cleanup(func() { _ = cs1.Stop(); cs1.Wait() })
+	ensureNewRound(newRoundCh, height, 0)
+
+	// a nil polka at round 1 moves cs1 there.
+	incrementRound(others...)
+	signAddVotes(cs1, cmtproto.PrevoteType, nil, types.PartSetHeader{}, false, others...)
+	ensureNewRound(newRoundCh, height, 1)
+
+	// the parts go first: syncData forwards them while cs1 has no proposal.
+	for i := 0; i < int(parts.Total()); i++ {
+		feeder.parts <- types.PartInfo{Part: parts.GetPart(i), Height: height, Round: 1}
+	}
+	require.Eventually(t, func() bool { return len(feeder.parts) == 0 }, time.Second, time.Millisecond)
+	feeder.proposals <- propagation.ProposalAndSrc{Proposal: *proposal, From: "peer"}
+
+	require.Eventually(t, func() bool {
+		rs := cs1.GetRoundState()
+		return rs.Round == 1 && rs.ProposalBlock != nil && bytes.Equal(rs.ProposalBlock.Hash(), block.Hash())
+	}, 5*time.Second, 10*time.Millisecond, "the proposal's block never completed")
+}

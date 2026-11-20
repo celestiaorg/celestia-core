@@ -682,10 +682,7 @@ func (cs *State) SetProposalAndBlock(
 func (cs *State) updateHeight(height int64) {
 	cs.metrics.Height.Set(float64(height))
 	cs.rs.Height = height
-	select {
-	case cs.newHeightOrRoundChan <- struct{}{}:
-	default:
-	}
+	cs.wakeSyncData()
 }
 
 func (cs *State) updateRoundStep(round int32, step cstypes.RoundStepType) {
@@ -700,6 +697,12 @@ func (cs *State) updateRoundStep(round int32, step cstypes.RoundStepType) {
 	}
 	cs.rs.Round = round
 	cs.rs.Step = step
+	cs.wakeSyncData()
+}
+
+// wakeSyncData asks syncData to hand consensus the parts the propagator already
+// holds for the current proposal. It never blocks.
+func (cs *State) wakeSyncData() {
 	select {
 	case cs.newHeightOrRoundChan <- struct{}{}:
 	default:
@@ -2594,6 +2597,8 @@ func (cs *State) defaultSetProposal(proposal *types.Proposal) error {
 	// TODO: We can check if Proposal is for a different block as this is a sign of misbehavior!
 	if cs.rs.ProposalBlockParts == nil {
 		cs.rs.ProposalBlockParts = types.NewPartSetFromHeader(proposal.BlockID.PartSetHeader, types.BlockPartSizeBytes)
+		// parts that reached us before the proposal were dropped; take them now.
+		cs.wakeSyncData()
 	}
 
 	cs.Logger.Info("received proposal", "proposal", proposal, "proposer", pubKey.Address())
