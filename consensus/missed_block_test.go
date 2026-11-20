@@ -307,6 +307,14 @@ func TestProposalAfterItsPartsCompletesBlock(t *testing.T) {
 	signAddVotes(cs1, cmtproto.PrevoteType, nil, types.PartSetHeader{}, false, others...)
 	ensureNewRound(newRoundCh, height, 1)
 
+	// wait out the round-step wakes: one still pending could hand over the parts
+	// once the proposal is in, without the wake that setting the proposal sends.
+	// syncData handles a wake it took before it reads the proposal.
+	require.Eventually(t, func() bool {
+		rs := cs1.GetRoundState()
+		return rs.Round == 1 && rs.Step == cstypes.RoundStepPropose && len(cs1.newHeightOrRoundChan) == 0
+	}, time.Second, time.Millisecond)
+
 	// the parts go first: syncData forwards them while cs1 has no proposal.
 	for i := 0; i < int(parts.Total()); i++ {
 		feeder.parts <- types.PartInfo{Part: parts.GetPart(i), Height: height, Round: 1}
