@@ -17,6 +17,12 @@ This guide provides instructions for upgrading to specific versions of CometBFT.
   option to `0` to use the built-in default, or to a negative value to disable
   the limit (not recommended).
 
+### Light Client
+
+* `ProveShares` and `ProveSharesV2` check that the returned proof covers the
+  requested shares and verifies against the light-verified data root, as `Tx`
+  with `prove=true` already does.
+
 ### Consensus WAL
 
 * The consensus WAL now records the node's lock (`LockInfo`) so it survives a
