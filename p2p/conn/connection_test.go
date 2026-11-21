@@ -1,6 +1,7 @@
 package conn
 
 import (
+	"bytes"
 	"encoding/hex"
 	"net"
 	"sync/atomic"
@@ -722,7 +723,7 @@ func (c *writeCountingConn) Write(b []byte) (int, error) {
 // newFlushTestMConnection returns a started MConnection whose flush throttle
 // and ping interval are long enough that only an explicit flush can get a
 // packet onto the wire within the test. Channel 0x01 is LowLatency, 0x02 isn't.
-func newFlushTestMConnection(t *testing.T, conn net.Conn, flushLowLatency bool) *MConnection {
+func newFlushTestMConnection(t *testing.T, conn net.Conn, flushLowLatency time.Duration) *MConnection {
 	t.Helper()
 	c := newUnstartedFlushTestMConnection(conn, flushLowLatency)
 	c.SetLogger(log.TestingLogger())
@@ -731,7 +732,7 @@ func newFlushTestMConnection(t *testing.T, conn net.Conn, flushLowLatency bool) 
 	return c
 }
 
-func newUnstartedFlushTestMConnection(conn net.Conn, flushLowLatency bool) *MConnection {
+func newUnstartedFlushTestMConnection(conn net.Conn, flushLowLatency time.Duration) *MConnection {
 	cfg := DefaultMConnConfig()
 	cfg.FlushThrottle = time.Hour
 	cfg.PingInterval = time.Hour
@@ -760,7 +761,7 @@ func TestMConnectionFlushLowLatency(t *testing.T) {
 	defer client.Close()
 	conn := &writeCountingConn{Conn: client}
 
-	mconn := newFlushTestMConnection(t, conn, true)
+	mconn := newFlushTestMConnection(t, conn, 5*time.Millisecond)
 	// Spans several packets, which should still go out in a single write.
 	msg := make([]byte, 3*mconn.config.MaxPacketMsgPayloadSize+1)
 	require.True(t, mconn.Send(0x01, msg))
@@ -775,12 +776,34 @@ func TestMConnectionFlushLowLatency(t *testing.T) {
 	require.EqualValues(t, 1, conn.writes.Load())
 }
 
+func TestMConnectionFlushLowLatencyCoalesces(t *testing.T) {
+	server, client := net.Pipe()
+	defer server.Close()
+	defer client.Close()
+	conn := &writeCountingConn{Conn: client}
+
+	mconn := newFlushTestMConnection(t, conn, 200*time.Millisecond)
+	require.True(t, mconn.Send(0x01, []byte("vote1")))
+	time.Sleep(20 * time.Millisecond) // vote1's queue has drained by now
+	require.True(t, mconn.Send(0x01, []byte("vote2")))
+
+	require.NoError(t, server.SetReadDeadline(time.Now().Add(2*time.Second)))
+	var got []byte
+	for !bytes.Contains(got, []byte("vote2")) {
+		buf := make([]byte, 1024)
+		n, err := server.Read(buf)
+		require.NoError(t, err)
+		got = append(got, buf[:n]...)
+	}
+	require.EqualValues(t, 1, conn.writes.Load(), "messages sent within flush_low_latency should share one write")
+}
+
 func TestMConnectionBulkChannelWaitsForFlushTimer(t *testing.T) {
 	server, client := net.Pipe()
 	defer server.Close()
 	defer client.Close()
 
-	mconn := newFlushTestMConnection(t, client, true)
+	mconn := newFlushTestMConnection(t, client, 5*time.Millisecond)
 	require.True(t, mconn.Send(0x02, []byte("tx")))
 	requireNoRead(t, server, "non LowLatency channel should stay buffered until the flush timer fires")
 }
@@ -790,7 +813,7 @@ func TestMConnectionWaitsForFlushTimerWithoutFlushLowLatency(t *testing.T) {
 	defer server.Close()
 	defer client.Close()
 
-	mconn := newFlushTestMConnection(t, client, false)
+	mconn := newFlushTestMConnection(t, client, 0)
 	require.True(t, mconn.Send(0x01, []byte("vote")))
 	requireNoRead(t, server, "packet should stay buffered until the flush timer fires")
 }
@@ -809,11 +832,21 @@ func (c *bufferConn) Write(b []byte) (int, error) {
 func TestMConnectionBatchesQueuedLowLatencyMessages(t *testing.T) {
 	newConn := func(t *testing.T) (*MConnection, *bufferConn) {
 		conn := &bufferConn{}
-		c := newUnstartedFlushTestMConnection(conn, true)
-		// normally created in OnStart; sendBatchPacketMsgs arms it.
+		c := newUnstartedFlushTestMConnection(conn, time.Millisecond)
+		// normally created in OnStart; sendBatchPacketMsgs arms them.
 		c.flushTimer = timer.NewThrottleTimer("flush", time.Hour)
-		t.Cleanup(func() { c.flushTimer.Stop() })
+		c.lowLatencyTimer = timer.NewThrottleTimer("flushLowLatency", time.Millisecond)
+		t.Cleanup(func() { c.flushTimer.Stop(); c.lowLatencyTimer.Stop() })
 		return c, conn
+	}
+	// armed reports whether the low latency flush fires; no sendRoutine runs here.
+	armed := func(c *MConnection) bool {
+		select {
+		case <-c.lowLatencyTimer.Ch:
+			return true
+		case <-time.After(100 * time.Millisecond):
+			return false
+		}
 	}
 	queueVotes := func(c *MConnection, n int) {
 		for i := 0; i < n; i++ {
@@ -825,7 +858,8 @@ func TestMConnectionBatchesQueuedLowLatencyMessages(t *testing.T) {
 		c, conn := newConn(t)
 		queueVotes(c, 5)
 		require.True(t, c.sendBatchPacketMsgs(protoio.NewDelimitedWriter(c.bufConnWriter), numBatchPacketMsgs))
-		require.Equal(t, 1, conn.writes)
+		require.Zero(t, conn.writes)
+		require.True(t, armed(c))
 	})
 
 	t.Run("no flush while the queue is still busy", func(t *testing.T) {
@@ -833,26 +867,27 @@ func TestMConnectionBatchesQueuedLowLatencyMessages(t *testing.T) {
 		queueVotes(c, numBatchPacketMsgs+5)
 		w := protoio.NewDelimitedWriter(c.bufConnWriter)
 		require.False(t, c.sendBatchPacketMsgs(w, numBatchPacketMsgs))
-		require.Zero(t, conn.writes)
+		require.False(t, armed(c))
 		require.True(t, c.sendBatchPacketMsgs(w, numBatchPacketMsgs))
-		require.Equal(t, 1, conn.writes)
+		require.True(t, armed(c))
+		require.Zero(t, conn.writes)
 	})
 
-	t.Run("batch that drains the queue flushes", func(t *testing.T) {
-		c, conn := newConn(t)
+	t.Run("batch that drains the queue arms the flush", func(t *testing.T) {
+		c, _ := newConn(t)
 		queueVotes(c, numBatchPacketMsgs)
 		c.sendBatchPacketMsgs(protoio.NewDelimitedWriter(c.bufConnWriter), numBatchPacketMsgs)
-		require.Equal(t, 1, conn.writes)
+		require.True(t, armed(c))
 	})
 
 	t.Run("busy bulk channel doesn't hold back votes", func(t *testing.T) {
-		c, conn := newConn(t)
+		c, _ := newConn(t)
 		queueVotes(c, 2)
 		for i := 0; i < numBatchPacketMsgs; i++ {
 			require.True(t, c.channelsIdx[0x02].sendBytes([]byte("tx")))
 		}
 		require.False(t, c.sendBatchPacketMsgs(protoio.NewDelimitedWriter(c.bufConnWriter), numBatchPacketMsgs))
-		require.Equal(t, 1, conn.writes)
+		require.True(t, armed(c))
 	})
 
 	t.Run("other flushes clear the pending low latency flush", func(t *testing.T) {
@@ -861,6 +896,7 @@ func TestMConnectionBatchesQueuedLowLatencyMessages(t *testing.T) {
 		c.flush() // e.g. the flush timer
 		require.True(t, c.channelsIdx[0x02].sendBytes([]byte("tx")))
 		require.True(t, c.sendBatchPacketMsgs(protoio.NewDelimitedWriter(c.bufConnWriter), numBatchPacketMsgs))
+		require.False(t, armed(c))
 		require.Zero(t, conn.writes)
 	})
 
@@ -868,6 +904,7 @@ func TestMConnectionBatchesQueuedLowLatencyMessages(t *testing.T) {
 		c, conn := newConn(t)
 		require.True(t, c.channelsIdx[0x02].sendBytes([]byte("tx")))
 		require.True(t, c.sendBatchPacketMsgs(protoio.NewDelimitedWriter(c.bufConnWriter), numBatchPacketMsgs))
+		require.False(t, armed(c))
 		require.Zero(t, conn.writes)
 	})
 }
