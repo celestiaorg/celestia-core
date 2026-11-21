@@ -409,12 +409,10 @@ func (blockProp *Reactor) handleWants(peer p2p.ID, wants *proptypes.WantParts) {
 
 	// Only keep per-peer request state for a proposal cached at exactly this
 	// height and round, which pruning bounds. Wants answered from the block
-	// store are served without it, as they may name any round.
-	tracked := blockProp.hasCachedRound(height, round)
+	// store are served without it, as they may name any round. If the peer
+	// state caps refuse the counter, serve the want without it as well.
 	untrackedRemaining := int(wants.MissingPartsCount)
-	if tracked {
-		p.SetRemainingRequests(height, round, untrackedRemaining)
-	}
+	tracked := blockProp.hasCachedRound(height, round) && p.SetRemainingRequests(height, round, untrackedRemaining)
 	for _, partIndex := range canSend.GetTrueIndices() {
 		if tracked && p.GetRemainingRequests(height, round) <= 0 || !tracked && untrackedRemaining <= 0 {
 			break
