@@ -1,6 +1,7 @@
 package core
 
 import (
+	"math"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -85,5 +86,26 @@ func TestUnsafeDialPeers(t *testing.T) {
 			assert.NoError(t, err)
 			assert.NotNil(t, res)
 		}
+	}
+}
+
+func TestGenesisChunkedRejectsOutOfRangeChunk(t *testing.T) {
+	env := NewEnvForTest(t)
+	require.NotEmpty(t, env.genChunks)
+
+	res, err := env.GenesisChunked(&rpctypes.Context{}, 0)
+	require.NoError(t, err)
+	require.Equal(t, 0, res.ChunkNumber)
+
+	outOfRangeChunks := []uint{
+		uint(len(env.genChunks)),
+		uint(1) << 63, // wraps to a negative int
+		math.MaxUint,
+	}
+	for _, chunk := range outOfRangeChunks {
+		require.NotPanics(t, func() {
+			_, err := env.GenesisChunked(&rpctypes.Context{}, chunk)
+			require.Error(t, err)
+		})
 	}
 }
