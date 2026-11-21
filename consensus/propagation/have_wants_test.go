@@ -243,7 +243,7 @@ func TestHandleWantsServesWhenPeerStateFull(t *testing.T) {
 
 	r.pmtx.Lock()
 	height := r.height
-	round := int32(MaxPeerStateRoundsPerHeight)
+	round := int32(0)
 	r.proposals[height] = map[int32]*proposalData{
 		round: {block: proptypes.NewCombinedPartSetFromOriginal(ps, false)},
 	}
@@ -251,7 +251,8 @@ func TestHandleWantsServesWhenPeerStateFull(t *testing.T) {
 
 	p := r.getPeer(rp.ID())
 	require.NotNil(t, p)
-	for rd := int32(0); rd < MaxPeerStateRoundsPerHeight; rd++ {
+	// fill the height with rounds above the wanted one, so the cap refuses it
+	for rd := int32(1); rd <= MaxPeerStateRoundsPerHeight; rd++ {
 		require.True(t, p.SetRemainingRequests(height, rd, 1))
 	}
 
