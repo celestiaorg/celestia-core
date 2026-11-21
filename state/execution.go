@@ -373,7 +373,7 @@ func (blockExec *BlockExecutor) applyBlock(state State, blockID types.BlockID, b
 		ProposerAddress:    block.ProposerAddress,
 		Height:             block.Height,
 		Time:               block.Time,
-		DecidedLastCommit:  buildLastCommitInfoFromStore(block, blockExec.store, state.InitialHeight),
+		DecidedLastCommit:  lastCommitInfoForApply(state, block, blockExec.store),
 		Misbehavior:        block.Evidence.Evidence.ToABCI(),
 		Txs:                txs,
 
